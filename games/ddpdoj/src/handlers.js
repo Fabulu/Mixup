@@ -101,6 +101,7 @@ import { handlerMidboss } from './midboss.js';
 import { scoreHit, scoreKill } from './score.js';
 import { spawnEffect, remapBucket, REMAP, B } from './effects.js';
 import { spawnItem } from './items.js';
+import { allocBee27F92A } from './bee.js';
 
 /** `addi.l` -- a 32-bit add, where the low half's carry REACHES the high half.
  *  Named because the port also has `addi.w` pairs around a `swap`, which do
@@ -2085,10 +2086,15 @@ function deathSeq8A(ram, rom, a5, ctx, d1) {
   const a6 = ram.u32(a5 + 0x06);                       // the SUB-RECORD (A6)
   scoreKill(ram, rom, ctx, 0x01, d1);                  // $2767D0/$2767D2
   noteEffect(u, 0x28c25a, a5, 'death burst');          // $2767D8
-  u?.note(0x27f92a, `$27F92A in $8A death (D0 = ($1A,A5), D2 = ($1F,A6)) rec $`
-    + a5.toString(16) + ' -- IMPACT POOL A, the reserved ten at $817DC6 '
-    + '($8171BE + 70*$2C), NOT the $816B7A item family; its filler is '
-    + '$280B3E and its driver type-5 call #4 $27F95A, unported');  // $2767E6
+  // $2767DE move.w ($1A,A5),D0 -- the bee kind index ($0004 = kind 1).
+  // $2767E2 move.b ($1F,A6),D2 -- the display LAYER byte.
+  // $2767E6 jsr $27F92A -- allocate one bee from the reserved ten and fill it.
+  // W111: the allocator + fill + driver are now ported (src/bee.js).
+  {
+    const kind = ram.u16(a5 + 0x1a);                   // $2767DE D0 = ($1A,A5)
+    const layer = ram.u8(a6 + S.f1f);                  // $2767E2 D2 = ($1F,A6)
+    allocBee27F92A(ram, rom, ctx, kind, layer, a6);    // $2767E6 jsr $27F92A
+  }
   // W54: SPAWNED.  $2767EC moveq #$C / $2767EE jsr $289004, then
   // $2767F4..$276810 -- the $278320 remap and the $24179E hook.
   {

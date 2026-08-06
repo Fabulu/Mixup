@@ -134,6 +134,7 @@ import { runSegmentDriver, runBeamDraw } from './laser.js';
 import { runSparkDriver } from './spark.js';
 import { runEffectDriver } from './effects.js';
 import { runItemDriver } from './items.js';
+import { runPoolADriver } from './bee.js';
 import { bombDriver255DD8 } from './bomb.js';
 
 export const TYPE5 = {
@@ -150,6 +151,7 @@ export const TYPE5 = {
   beamDraw: 0x255042,       // $28B622 -- THE BEAM's draw                   (W45)
   sparkDriver: 0x28a098,    // $28B628 -- POOL E, THE SHOT'S IMPACT SPARK (W53)
   effectDriver: 0x288e4e,   // $28B5FE -- POOL B, THE DEATH EXPLOSION     (W54)
+  impactDriver: 0x27f95a,   // $28B5F4 -- POOL A, THE BEE/IMPACT DRIVER   (W111)
   itemDriver: 0x27e99e,     // $28B64C -- THE ITEM, pool family six       (W61)
   bombDriver: 0x255dd8,     // $28B5F8 -- **THE BOMB**, call #7            (W64)
   laserRampDown: 0x24c8be,  // inside it; $24C8CE is the write
@@ -220,6 +222,18 @@ export const TYPE5_PORTED = new Set([
   // reason.  Note that #6, `$2890F2`, is DELIBERATELY still counted: pool D is
   // refused rather than half-ported -- `src/effects.js` §THE REFUSAL.
   0x288e4e,   // #5  THE DEATH EXPLOSION: pool B's driver, buckets 0/1/2/3/7 (W54)
+  // W111 (M1).  #4 is `$27F95A`, POOL A's driver -- the bee/impact pool's 80-
+  // slot walk, scroll, 5-bit kind dispatch and the bee body (blink, off-screen
+  // free, collect + flat/chain-multiply award through $286128).  It ships in
+  // the SAME COMMIT as its allocator `$27F92A` (`src/bee.js allocBee27F92A`,
+  // called from `handlers.js deathSeq8A`) for W33 sec 4's reason, and the
+  // reserved-ten allocator REFUSES the 18 non-bee kinds.  This is FOURTH of
+  // twenty-three, between the sub-record reaper (#3) and the explosion (#5),
+  // and the position is load-bearing: the bee's idle-step emit at $27FCE2
+  // reaches bucket 0 (or whichever layer the fill picked) through the same
+  // per-record stubs the explosion uses, so running it BEFORE #5 means an
+  // explosion's records stack on top of the bee's rather than the reverse.
+  0x27f95a,   // #4  THE BEE/IMPACT: pool A's driver, the bee body        (W111)
   // W61 (I2).  #18 is `$27E99E`, THE ITEM's driver, and it has been LISTED in
   // `calls` since wave 8 and never made -- recon 59 §7's "one type-5 call
   // listed but not called".  It ships in the SAME COMMIT as its allocator
@@ -342,6 +356,17 @@ export function makeType5(rom) {
             + `($28AD70 onwards, reached by fall-through): the $81DB90 `
             + `sub-record cue-pool driver, count at $81DD0C. W33 ported only `
             + `the reaper loop $28AD54..$28AD6C ahead of it`);
+          break;
+        case TYPE5.impactDriver:                          // $28B5F4 -> $27F95A
+          // WAVE 111.  FOURTH of twenty-three, between the sub-record reaper
+          // (#3) and the explosion (#5), and the position is load-bearing for
+          // the same reason as #5's: the bee's idle-step emit at $27FCE2
+          // reaches bucket 0 (or whichever layer the fill picked) through the
+          // same per-record stubs `$23D762`/`$23D79E`/`$23D7DA`/`$23D816`/
+          // `$23D852` the explosion uses, so anything that appends to those
+          // buckets LATER in the frame stacks on top.  Running it out of order
+          // changes the DEPTH ORDER inside a bucket.
+          ctx.impactFrame = runPoolADriver(ram, rom, ctx);
           break;
         // WAVE 64 (B2).  #7 is `$255DD8`, **THE BOMB'S DRIVER**, and it has
         // been a counted note since wave 8.  It ships in the SAME COMMIT as

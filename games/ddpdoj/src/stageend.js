@@ -77,6 +77,7 @@
 import { u16 } from './ram.js';
 import { stageCreate, queueKill, ALLOC } from './objalloc.js';
 import { clearItemPool } from './items.js';
+import { clearPoolA } from './bee.js';
 
 export const SE = {
   stage: 0x813092, stageX2: 0x813094, stageX4: 0x813096,   // $25FD0C
@@ -166,6 +167,7 @@ export function rebuildWorld25FD38(ram, ctx) {
       + `-- counted, not run (W62 ports the stage machine, not the subsystems)`);
   }
   clearItemPool(ram);                                  // $25FD5E jsr $27E98A
+  clearPoolA(ram);                                     // $27F87C -- pool A (bee/impact)
   const r = stageCreate(ram, 1, (t) => ctx.rom.u16(SE.dispatch + t * 8 + 4));
   ram.setU32(SE.bgHandle, r.ok ? ram.u32(r.addr + ALLOC.idOff) : 0);   // $25FD74
   ram.setU16(r.addr + 0x06, 0);                        // $25FD7A -- ENTRY CLOCK 0

@@ -435,12 +435,15 @@ function itemCollisionBlock(ram, box, d7) {
 //   3. the guard is `$244E44 tst.b (-$3,A6) / bmi` -- bit 7 of `+$01` -- not
 //      block 2's `andi.w #$C0` on `+$00`.
 //
-// `$817F7E` is 0 on this tree and stays 0: `$27F8F8`, the only allocator into
-// this pool, is a COUNTED NOTE (W51 §3.1) because its driver `$27F95A` -- type-5
-// call #4 -- is unported.  So this block is transcribed and unexercised, and it
-// will stay that way until that call ships.
+// `$817F7E` is 0 on this tree until W111 ported the bee allocator `$27F92A` and
+// the driver `$27F95A` (type-5 call #4).  So this block is now exercised when a
+// type-$8A carrier dies.  The walk covers ALL 80 slots (general 70 + reserved
+// ten 10) because the ROM's `dbra D6` has no slot cap; the port's `idx < 80`
+// matches the true pool extent.  (W110 sec 1.4 said "block 3 will flag bees with
+// zero further port work" -- that was WRONG: the scan was capped at 70, one slot
+// short of the reserved ten.  Corrected by W111.)
 // ---------------------------------------------------------------------------
-function impactCollisionBlock(ram, box, d7) {
+export function impactCollisionBlock(ram, box, d7) {
   const d6 = ram.u16(DMG.impactCount);                // $244DFE move.w $817F7E
   if (d6 === 0) return 0;                             // $244E04 beq $244E5C
   const { d0, d1, d2, d3 } = box;
@@ -448,7 +451,7 @@ function impactCollisionBlock(ram, box, d7) {
   let idx = 0;
   for (let n = 0; n < d6; n++) {                      // $244E58 dbra
     let rec = -1;
-    for (; idx < 70; idx++) {                         // $244E12 tst.w (A6)+/bpl
+    for (; idx < 80; idx++) {                         // $244E12 tst.w (A6)+/bpl (80 = general 70 + reserved ten 10)
       const r = DMG.impactPool + idx * DMG.impactStride;
       if ((ram.u16(r) & 0x8000) !== 0) { rec = r; break; }
     }

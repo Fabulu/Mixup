@@ -302,7 +302,7 @@ test('$2634F4 walks the SPAWN SCRIPT before the 58-slot driver',
 // ===========================================================================
 // type 5 itself: the three calls must RUN, not be counted.
 // ===========================================================================
-test('TYPE5_PORTED is SIXTEEN of the twenty-three, and the list is the ROM\'s', () => {
+test('TYPE5_PORTED is SEVENTEEN of the twenty-three, and the list is the ROM\'s', () => {
   assert.equal(TYPE5.calls.length, 23, '$28B5E6..$28B66A');
   // W33 added call #3, `$28AD54` -- and ONLY its first loop, the sub-record
   // reaper.  The rest of that routine ($28AD70 onwards, reached by
@@ -330,7 +330,11 @@ test('TYPE5_PORTED is SIXTEEN of the twenty-three, and the list is the ROM\'s', 
   // here is not just W33 §4's pool hygiene: the record gates `$24560A`'s
   // damage and six other subsystems, so a driver-less allocation would leave
   // all of them on for the rest of the stage.
-  assert.equal(TYPE5_PORTED.size, 16);
+  // W111 added #4 `$27F95A`, THE BEE/IMPACT pool's driver -- in the same commit
+  // as its allocator `$27F92A` (src/bee.js allocBee27F92A, called from
+  // handlers.js deathSeq8A) and its clear `$27F87C`, for the same W33 sec 4
+  // reason: a pool with a producer and no consumer is a leak.
+  assert.equal(TYPE5_PORTED.size, 17);
   assert.ok(TYPE5_PORTED.has(TYPE5.bombDriver));
   assert.equal(TYPE5.calls.indexOf(TYPE5.bombDriver), 6, '$28B5F8 is call #7');
   assert.ok(TYPE5_PORTED.has(TYPE5.itemDriver));
