@@ -16,6 +16,8 @@ import { SHIP_MUTATE } from '../src/shipsprite.js';
 import { W82_MUTATE } from '../src/boss.js';
 import { B2_MUTATE } from '../src/background.js';
 import { W94_MUTATE } from '../src/bossscripts.js';
+import { W95_MUTATE } from '../src/bossphase.js';
+import { W95G_MUTATE } from '../src/bossguns.js';
 
 export const MUTATIONS = {
   // THE ONE THE BRIEF ASKS FOR.  $2495CA moves first ($2417F4 adds the vector
@@ -246,6 +248,30 @@ export const MUTATIONS = {
   // DECLARED EXPECTED-GREEN, with the measurement, BEFORE it was run --
   // see `W94_EXPECTED_GREEN` below and `src/bossscripts.js`'s own note.
   'main7-stale-target': () => { W94_MUTATE.value = 'main7-stale-target'; },
+
+  // -------------------------------------------------------------- WAVE 95
+  // THE STEADY STATE'S TEN (`src/bossphase.js`) AND THE THREE GUNS THEY START
+  // (`src/bossguns.js`).  **UNLIKE W94's, THESE CAN GO RED ON A LADDER**: with
+  // the twelve complete, `stage1-sweep`'s 28 steady-state rungs stop being
+  // blocked on their first frame and 10 of them are compared end to end, so a
+  // wrong port of this code moves a real segment.  W94 6.2's structural
+  // objection is what this wave removed.
+  //
+  // Each name is the WRONG PORT it stands for, written next to the right one in
+  // the source so a reviewer reads both.
+  'main2-speed-20': () => { W95_MUTATE.value = 'main2-speed-20'; },
+  'main5-ramp': () => { W95_MUTATE.value = 'main5-ramp'; },
+  'd20-init-byte': () => { W95_MUTATE.value = 'd20-init-byte'; },
+  'd20-wrap-ble': () => { W95_MUTATE.value = 'd20-wrap-ble'; },
+  'f1-volley-bcc': () => { W95_MUTATE.value = 'f1-volley-bcc'; },
+  'f1-start-d7': () => { W95_MUTATE.value = 'f1-start-d7'; },
+  'f6-one-draw': () => { W95_MUTATE.value = 'f6-one-draw'; },
+  'e0-bchg-slot': () => { W95_MUTATE.value = 'e0-bchg-slot'; },
+  'e1-set-param': () => { W95_MUTATE.value = 'e1-set-param'; },
+  'e1-one-draw': () => { W95_MUTATE.value = 'e1-one-draw'; },
+  'e11-muzzle-order': () => { W95_MUTATE.value = 'e11-muzzle-order'; },
+  'e4-init-own-step': () => { W95G_MUTATE.value = 'e4-init-own-step'; },
+  'e13-word-scale': () => { W95G_MUTATE.value = 'e13-word-scale'; },
 };
 
 /** W94's one mutation that is EXPECTED to change nothing, and the proof.
@@ -258,6 +284,49 @@ export const W94_EXPECTED_GREEN = {
     + 'writes ($2,A6)/($4,A6)), so the re-read at $293672 returns the same two '
     + 'words. Seen green deliberately by tests/w94boss.test.js, which asserts '
     + 'BYTE-IDENTICAL output under the mutation rather than "did not go red"',
+};
+
+/** W95's SEVEN mutations that do NOT move a `stage1-sweep` segment, each with
+ *  the measured or proven reason it cannot.  Declared here so a green cannot be
+ *  read after the fact as evidence -- W82 and W94 set this precedent and this is
+ *  the third and largest instance.  **All seven are driven RED in
+ *  `tests/w95boss.test.js`**, so the transcriptions are checked; what is stated
+ *  below is only why the LADDER cannot see them.  The six that DO move a
+ *  segment are `main2-speed-20`, `main5-ramp`, `d20-wrap-ble` (18 of 28),
+ *  `f1-volley-bcc`, `f6-one-draw` and `e1-one-draw`. */
+export const W95_EXPECTED_GREEN = {
+  'd20-init-byte': "PROVEN FROM THE BOARD'S OWN RAM: D 20 is armed only by F 6 "
+    + 'state 0, which first does `D.stop 7` -- and [M] at every one of the 28 '
+    + 'steady-state rungs where the MAIN sequencer is on 7 (the rendezvous F 6 '
+    + "waits for), the board's $AF(A6) is ALREADY $00. Clearing the word and "
+    + 'clearing the byte therefore agree on every frame these windows cover. '
+    + "Same shape as W82's d7-no-ramp declaration.",
+  'f1-start-d7': 'UNREACHED: F 1 state 3 needs E 1, E 3 and E 4 all idle, and '
+    + 'the mutation then differs from the shipped `moveq #$3,D0` only on the '
+    + '$FFFF terminator arm with an RNG byte of exactly 0. The unit test drives '
+    + 'that arm directly and the wrong port starts F 2 there.',
+  'e0-bchg-slot': 'A DOUBLE NO-OP, both halves provable. (1) $3(A5) is the '
+    + 'TARGET INDEX $242716 reads, and src/aim.js measured that P2 alive word '
+    + '$810448 is $0000 on all 12,281 rows of the recon capture -- so the '
+    + '$24270A fallback rescues every aim onto P1 whichever way the byte points. '
+    + '(2) the slot byte the mutation writes instead, $3(A4), is OVERWRITTEN two '
+    + 'instructions later by `$2958F8 move.w #$1001,$2(A4)`.',
+  'e1-set-param': 'THE RESIDUE IS ZERO: $C(A4) is only non-zero once E 1 has '
+    + 'been armed before in the same slot, and `add` and `set` agree on 0. The '
+    + 'unit test seeds a residue and the two readings then differ.',
+  'e11-muzzle-order': 'HP-GATED SHUT: `$296614 cmpi.l #$48CC,$16(A5) / bcc` '
+    + "returns before the volley, and [M] the board's HP0 over the 28 "
+    + 'steady-state rungs runs $147A4 down to $F44F -- never below $48CC. So E '
+    + '11 STEP does not execute one shot on this ladder, and its INIT does not '
+    + 're-run because the gate also stops the counter that retires the slot. '
+    + 'The same measurement covers E 0.',
+  'e4-init-own-step': 'UNREACHABLE WITH A LIVE PLAYER: the ROM copy bug '
+    + "($295F82 bcs.w $295E5E, E 3's step) is on the CARRY arm of $24226E, "
+    + 'which is "both players dead". The ladder holds P1 invulnerable throughout.',
+  'e13-word-scale': 'PROVABLE NO-OP, exhaustively: over all 65,536 word values '
+    + '`u8(u8(2x)*2)` and `u8(4x)` differ on ZERO, because doubling a byte twice '
+    + 'IS multiplying by four mod 256. The test asserts BYTE-IDENTICAL output '
+    + 'rather than "did not go red", as W94 2.1 did for main7-stale-target.',
 };
 
 /** Mutations that are EXPECTED to leave the RESULT line green, with the reason.
@@ -350,6 +419,8 @@ export function breakage(name, game) {
   W82_MUTATE.value = null;       // ...and wave 82's
   B2_MUTATE.value = null;        // ...and wave 85's
   W94_MUTATE.value = null;       // ...and wave 94's
+  W95_MUTATE.value = null;       // ...and wave 95's ten
+  W95G_MUTATE.value = null;      // ...and wave 95's three guns
   const m = MUTATIONS[name];
   if (!m) {
     throw new Error(`unknown mutation "${name}"; have: ${Object.keys(MUTATIONS).join(', ')}`);

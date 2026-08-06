@@ -28,6 +28,8 @@ import { AUTOSHOT_MUTATE, CLAMP_ORDER } from '../src/player.js';
 import { W82_MUTATE } from '../src/boss.js';
 import { B2_MUTATE } from '../src/background.js';
 import { W94_MUTATE } from '../src/bossscripts.js';
+import { W95_MUTATE } from '../src/bossphase.js';
+import { W95G_MUTATE } from '../src/bossguns.js';
 
 function readTsv(path) {
   const lines = readFileSync(path, 'utf8').trim().split(/\r?\n/);
@@ -136,6 +138,8 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
   W82_MUTATE.value = null;           // WAVE 82's seam, same rule
   B2_MUTATE.value = null;            // WAVE 85's seam, same rule
   W94_MUTATE.value = null;           // WAVE 94's seam, same rule
+  W95_MUTATE.value = null;           // WAVE 95's seam, same rule
+  W95G_MUTATE.value = null;          // WAVE 95's guns, same rule
   if (opts.break) breakage(opts.break, game);
 
   const pokes = (opts.poke ?? '').split(',').filter(Boolean).map((kv) => {
