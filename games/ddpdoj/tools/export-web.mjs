@@ -2377,12 +2377,41 @@ const manifest = {
         entries: STAGE1.nsmap * COL_ROWS,
         file: 'gfx/bg.smap.u16.gz',
         painter: '$26C20C (object type $1C, init $26C1C2) -- 23x9 columns into '
-          + 'ring columns 47.. (or 41 when $803926 is 0), every frame it lives',
+          + 'ring columns 47.. (or 41 when $803926 is NON-ZERO), every frame '
+          + 'it lives. PORTED: src/handlers.js handler1C.',
+        // W93 CORRECTED BOTH SENTENCES OF THIS NOTE AND QUOTES THE OLD ONE, for
+        // the reason `docs/knowledge/02-traps.md` gives: a comment that has gone
+        // stale is worse than none, because it is believed.  The old text was
+        //
+        //   "THE PAINTER IS UNPORTED: nothing in this bundle draws these yet,
+        //    and shard 7 therefore ships pixels no frame currently asks for.
+        //    What spawns type $1C is named-not-found (recon §8.5)."
+        //   ...and "ring columns 47.. (or 41 when $803926 is 0)"
+        //
+        // BOTH HALVES WERE FALSE, and had been since W57, five waves before the
+        // note was written:
+        //
+        //   [M] `$26C20C` is ported -- `src/handlers.js handler1C`, in the
+        //       HANDLERS map at `$26C20C`, with `ctx.vram` threaded from
+        //       `src/main.js #ctx` for it.
+        //   [M] what spawns type $1C IS named: `$26B7E0`/`$26B7E2`, the MIDBOSS
+        //       DEATH, and `src/midboss.js` executes that enqueue.
+        //   [M] `tools/midbossgate.mjs` has asserted the whole thing since W57:
+        //       "type $1C ($26C1C2/$26C1CA) is LIVE from lf3775", "painted 207
+        //       map longwords", "into ring columns [0..5,47..63]".
+        //   [M] and the column claim was INVERTED. $26C226 leas $9000BC FIRST;
+        //       $26C22C tst.w $803926 / $26C232 beq SKIPS the $9000A4 load. So
+        //       $803926 = 0 gives $9000BC/4 = column 47, and NON-zero gives
+        //       $9000A4/4 = 41. The old text had it exactly backwards, and
+        //       $803926 is 0 through all of stage-1 play, so the arm the note
+        //       called the exception is the only arm that ever runs.
         note: 'DECODED (tile, attr) pairs with $32A9 ALREADY ADDED, column '
-          + 'major, 9 rows per column. THE PAINTER IS UNPORTED: nothing in this '
-          + 'bundle draws these yet, and shard 7 therefore ships pixels no '
-          + 'frame currently asks for. What spawns type $1C is named-not-found '
-          + '(recon §8.5).',
+          + 'major, 9 rows per column. THE PAINTER IS PORTED (W57, '
+          + 'src/handlers.js handler1C) and type $1C is spawned by the MIDBOSS '
+          + 'DEATH ($26B7E0/$26B7E2, executed by src/midboss.js) -- so shard 7 '
+          + 'ships pixels the frames after the midboss dies do ask for. '
+          + 'tools/midbossgate.mjs asserts 207 longwords into ring columns '
+          + '47..63 then 0..5 from lf3775 to lf4277.',
       },
       palette: {
         at: `$${STAGE1.pal.toString(16).toUpperCase()}`,

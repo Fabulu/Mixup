@@ -107,8 +107,26 @@
 //     $24/$31 install their own eleven banks live: [M] 1,760 of 2,560 and 23 of
 //     32 sprite banks after 6,500 steps of stage-1 flight.
 //
-//     **WHAT IS STILL THE RECORDING'S: the TEXT strip (240 words) and nine
-//     sprite banks (0..9 less 6), AND THE PAGE SAYS SO EVERY FRAME.**
+//     **WAVE 93 TOOK 160 OF THE TEXT STRIP'S 240 WORDS**, ten of its fifteen
+//     banks, and it took them on two warrants rather than on a byte match.
+//     Banks 0..4 come from the RESET PATH (`$23BF86..$23BFCC`, straight-line
+//     inside `$23BEEA`, which both `$23B7D8` and `$23B7F2` jmp to) and every
+//     site in the image that can write those banks writes the same block, so
+//     the answer cannot depend on which one ran.  Banks 0..8 and 11 come from
+//     `$2605C8`, type $0A's state-0 init -- and [M] the seed's own `$80E240`
+//     slot 0 reads type $0A, STATE $01, priority $1F, which is the cartridge
+//     saying in its own RAM that the routine executed.  [M] 160 of 160 equal
+//     the board's palette RAM on all 161 recorded frames.
+//
+//     **WHAT IS STILL THE RECORDING'S: 80 words of the TEXT strip (banks 9,
+//     10, 12, 13, 14) and nine sprite banks (0..9 less 6), AND THE PAGE SAYS SO
+//     EVERY FRAME.**  [M] W93 measured that NO routine in the cartridge
+//     reproduces those nine sprite banks: six of them (2, 4, 5, 7, 8, 9) have
+//     no call site anywhere that names the block the seed carries, and the
+//     three that do (0, 1, 3) sit inside straight-line routines that contradict
+//     the seed on their OTHER installs -- `$24A764` on 1 of its 2 banks,
+//     `$25BE72` on 3 of its 5 -- so no ordering of them produces this seed.
+//     They are refused rather than fabricated, and `93-impl` §3 is the proof.
 //     `mergePalette` starts from the capture and overwrites only what a ported
 //     install sourced, so a bank nothing has sourced stays visibly on the
 //     recording instead of silently becoming zeroes; the status line prints

@@ -162,6 +162,8 @@ export class PaletteState {
     this.catchUp = null;
     /** ...and `catchUpBgPalette`'s.  W92. */
     this.bgCatchUp = null;
+    /** ...and `catchUpTextPalette`'s.  W93. */
+    this.txCatchUp = null;
     /** `bgFade241404`'s last result: whether both its gates were open, the
      *  level it wrote with, and whether the divider borrowed.  W92. */
     this.lastFade = null;
@@ -561,6 +563,294 @@ export function catchUpObjectStream(ram, rom, pal, opts = {}) {
   }
   res.banks.sort((a, b) => a - b);
   return (pal.catchUp = res);
+}
+
+/** The 15 TX banks, and their SIXTEEN entries each.  `$2414BE lsl.w #$5,D0`
+ *  is what makes a text bank half the size of a sprite one, and `$2413E2 moveq
+ *  #$E,D0` upstream is what pins the region at 15 banks = 240 words. */
+export const TX_BANKS = 15;
+export const TX_BANK_WORDS = 16;
+
+/**
+ * `$2414BE` -- the TEXT/HUD single-bank upload, the eighth of the nine.
+ *
+ * [M] `python tools/oracle/w27disasm.py 2414BE 241510`:
+ *
+ *   [M] 2414BE  movem.l  d0/a0-a1,-(a7)
+ *   [M] 2414C2  lea.l    $80F886,a1
+ *   [M] 2414C8  lsl.w    #$5,d0          <- FIVE, not six: a TX bank is 32 BYTES
+ *   [M] 2414CA  adda.w   d0,a1
+ *   [M] 2414CC  moveq    #$7,d0
+ *   [M] 2414CE  move.l   (a0)+,(a1)+ / dbra    = 8 longs = 32 B = 16 entries
+ *   [M] 2414D4  move.w   #$1,$80FA6A
+ *
+ * THE BOUND IS NOT ARBITRARY AND THE THROW NAMES WHAT IT PROTECTS.  The TX
+ * staging is 15 banks -- `$80F886..$80FA65`, 480 bytes -- and `$80FA66` is the
+ * SPRITE DIRTY FLAG.  So bank 15 would set the sprite flag with colour data on
+ * the board too; the port throws by address rather than clamping, for the
+ * reason `install24150A` does (`docs/knowledge/08`).
+ */
+export function install2414BE(ram, pal, d0, src, site, why) {
+  if (!(d0 >= 0 && d0 < TX_BANKS)) {
+    unreached(0x2414be, `$2414BE was handed TEXT bank ${d0} from $${site
+      .toString(16).toUpperCase()}. lsl.w #$5 makes that $80F886+$${(d0 * 32)
+      .toString(16).toUpperCase()}, and the text staging area is only ${TX_BANKS
+      } banks ($80F886..$80FA65) because $2413E2's moveq #$E copies 15 of them. `
+      + `Bank ${TX_BANKS} lands ON $80FA66, THE SPRITE DIRTY FLAG. The caller `
+      + `resolved the wrong table; clamping would hide it`);
+  }
+  if (src.length !== 32) {
+    unreached(0x2414be, `$2414BE from $${site.toString(16).toUpperCase()} was `
+      + `handed ${src.length} source bytes and it copies 8 longwords = 32. A `
+      + `short read means the ROM window is narrower than the block`);
+  }
+  const base = PALSTAGE.tx.stage + d0 * 32;
+  for (let i = 0; i < TX_BANK_WORDS; i++) {
+    ram.setU16(base + i * 2, (src[i * 2] << 8) | src[i * 2 + 1]);
+    pal.stageSourced.tx[d0 * TX_BANK_WORDS + i] = 1;
+  }
+  ram.setU16(PALSTAGE.tx.dirty, 1);                          // $2414D4
+  const k = `$${site.toString(16).toUpperCase()} TX bank ${d0} <- ${why}`;
+  const e = pal.installs.get(k) ?? { n: 0, bank: d0 };
+  e.n++;
+  pal.installs.set(k, e);
+  pal.installCount++;
+}
+
+/**
+ * THE BOOT TEXT INSTALLS -- `$23BF86..$23BFCC`, five banks, and this is the
+ * ONE palette catch-up in this port whose code path is the RESET PATH.
+ *
+ * [M] `python tools/oracle/w27disasm.py 23BF20 23C010`.  The routine at
+ * `$23BEEA` is entered by `jmp $23BEEA` from `$23B7D8` (cold, `$803908 := 0`)
+ * and from `$23B7F2` (warm, `$803908 := 1`), each of which has just set
+ * `A7 = $820000` and masked interrupts.  It runs 20 initialisers and then:
+ *
+ *   [M] 23BF38  jsr $2412FE            <- ZEROES THE WHOLE PALETTE STAGING
+ *   [M] 23BF86  lea $222638,A0 / moveq #$0,D0 / jsr $2414BE
+ *   [M] 23BF94  lea $222658,A0 / moveq #$1,D0 / jsr $2414BE
+ *   [M] 23BFA2  lea $222678,A0 / moveq #$2,D0 / jsr $2414BE
+ *   [M] 23BFB0  lea $222698,A0 / moveq #$3,D0 / jsr $2414BE
+ *   [M] 23BFBE  lea $2226B8,A0 / moveq #$4,D0 / jsr $2414BE
+ *   [M] 23BFCC  move.w #$8,D0 / jsr $241182 ... / bra.b $23BFDC   <- the main loop
+ *
+ * There is NO BRANCH between `$23BF86` and `$23BFCC`: five unconditional
+ * installs of five constant banks from five constant blocks.
+ *
+ * ============================================================================
+ * WHY THESE FIVE AND NOT THE OTHER TEN, and the answer is a MEASUREMENT
+ * ============================================================================
+ *
+ * `92-impl` §5.2 matched ELEVEN of the 15 text banks to a named site and
+ * REFUSED to wire any of them, because "the bytes match, therefore replay it"
+ * is the reasoning that would have installed the wrong sprite bank 1, 7 and 8
+ * (`92-impl` §5.1).  That refusal was right and this wave does not overturn it.
+ * What it does is separate the five banks where the argument is NOT a byte
+ * match from the ten where it is.
+ *
+ * [M] every absolute-long `$2414BE`/`$2414E2` site in the 6 MiB image is
+ * enumerated in `.scratch/w93/txsites.py` -- 27 of them.  Grouped by BANK:
+ *
+ *   [M] bank 0  $23BF8E($222638) $25A80E($222638) $25A92C($222638)
+ *               $25A9A2($222618) $25AC10($222618) $25C9AE($222618)
+ *               $25CDCE($222618) $26056C($222618) $2605DC($222638)
+ *               $28F394($222638)
+ *   [M] bank 1  $23BF9C($222658)   $2605EA($222658)
+ *   [M] bank 2  $23BFAA($222678)   $2605F8($222678)
+ *   [M] bank 3  $23BFB8($222698)   $260606($222698)
+ *   [M] bank 4  $23BFC6($2226B8)   $260614($2226B8)
+ *
+ * **AND THAT IS WHY THESE FIVE ARE SOUND: THE RESULT DOES NOT DEPEND ON WHICH
+ * SITE RAN.**  Banks 1..4 have exactly TWO installers in the whole image and
+ * both name the SAME block, so no ordering of them produces a different answer.
+ * Bank 0 has ten installers naming two different blocks, `$222618` and
+ * `$222638` -- and [M] THOSE TWO BLOCKS ARE BYTE-IDENTICAL for all 32 bytes,
+ * so the ambiguity is not observable either.  The claim being made is not "the
+ * seed's bytes match this block" but "every code path in the cartridge that can
+ * write this bank writes these bytes", which no later overwrite can falsify.
+ *
+ * Banks 5, 6, 7, 8 and 11 are taken too, and by a SECOND argument that is not
+ * this one -- `TX_OBJ0A_INSTALLS` below.  The four that are NOT taken are:
+ *
+ *   [M] bank 9 ($2226F8) has NO installer anywhere in the image at all.
+ *   [M] bank 13 ($222818) has one, `$288590`, whose reachability this wave did
+ *       not establish.  It stays the recording's.
+ *   [M] banks 10, 12, 14 are ZERO in the seed, and bank 12's only named site
+ *       ($25C600 <- $2227F8) does NOT match, so that install never ran.  They
+ *       are zero because `$2412FE` zeroed them and nothing wrote them since;
+ *       that is a code-sourced zero, not a cartridge block, and it is counted
+ *       as UNSOURCED rather than claimed.
+ *
+ * **AND `$2412FE` IS NOT REPLAYED HERE, DELIBERATELY.**  [M] it is `lea
+ * $80E886,A0 / move.w #$8F5,D0 / move.w #$0,(A0)+ / dbra` -- 2,294 words =
+ * 4,588 bytes, which is $80E886..$80FA71: ALL THREE staging areas and the fade
+ * state.  Running it here would erase the ten text banks and the nine sprite
+ * banks the port still takes from the recording, replacing visible recorded
+ * colour with black.  The board ran it before every one of its own installs;
+ * the port arrives after all of them, so replaying it would be running the
+ * cartridge's code at the wrong instant.  (It is worth naming for one more
+ * reason: [M] its tail sets `$80FA6C := $20`, `$80FA6E := $1` and
+ * `$80FA70 := $0101` -- the fade level, step and DIVIDER `92-impl` §0.2 found
+ * from the other end, with the level at exactly the identity.)
+ */
+export const TX_BOOT_INSTALLS = [
+  [0x23bf8e, 0, 0x222638],
+  [0x23bf9c, 1, 0x222658],
+  [0x23bfaa, 2, 0x222678],
+  [0x23bfb8, 3, 0x222698],
+  [0x23bfc6, 4, 0x2226b8],
+];
+
+/**
+ * `$2605C8` -- TYPE `$0A`'s STATE-0 INIT, and the seed's own RAM says it ran.
+ *
+ * THIS ROUTINE LOOKED UNREACHABLE AND IT IS NOT.  [M] a scan of the whole 6 MiB
+ * image for `jsr.l`/`jmp.l`/`bsr.w`/`bra.w`/`jsr (d16,PC)` and for the longword
+ * `$002605C8` at EVERY byte offset finds nothing -- and that scan was MINE and
+ * it was WRONG, because it did not include the conditional branches.  There is
+ * exactly one reference and it is a `beq.w`:
+ *
+ *   [M] 260794  tst.b    $2(a5)
+ *   [M] 260798  beq.w    $2605C8            <- state 0: the INIT arm
+ *   [M] 26079C  cmpi.b   #$2,$2(a5)
+ *   [M] 2607A2  beq.b    $260788            <- state 2: the teardown
+ *   [M] 2607A4  jsr      $25FF7A(pc)        <- state 1: the per-frame body
+ *
+ * and `$2605C8`'s own first instruction is `move.b #$1,$2(a5)`, which is what
+ * takes the object out of state 0 after exactly one visit.
+ *
+ * THE CHAIN, every link with its disassembly, from the main loop down:
+ *
+ *   [M] 23BFDC  the main loop; its third call is `jsr $2410BC.l`
+ *   [M] 2410C4  lea $80E240,A5 / moveq #$13,D0      <- 20 slots of $50 bytes
+ *   [M] 2410CC  move.w (A5),D1 / beq / andi.w #$FF,D1 / lsl.w #$3,D1
+ *   [M] 2410DA  lea ($240F62,PC),A0 / movea.l (A0,D1.w),A0 / jsr (A0)
+ *   [M] $240F62 is 20 entries of 8 bytes {handler.l, priority.w, $0000}, and
+ *       [M] entry $0A ($240FB2) is `$260794`, priority `$001F`
+ *   [M] 241182  the allocator: same table for the priority, then
+ *       [M] 2411AC move.w D0,(A0) with D0 = $8000|type, and
+ *       [M] 2411AE clr.w $2(A0)   <- STATE := 0, so the NEXT dispatch inits
+ *
+ * ============================================================================
+ * AND THE SEED WITNESSES THE EXECUTION, which is what makes this a replay and
+ * not a guess
+ * ============================================================================
+ *
+ * [M] the shipped seed's `$80E240` slot array, slot 0:
+ *
+ *   [M] word $800A   -- ACTIVE ($8000) and TYPE $0A
+ *   [M] $2(a5) $01   -- THE STATE BYTE, and $01 is not $00
+ *   [M] $4A(a5) $001F -- the priority, equal to $240F62[$0A]'s own word
+ *
+ * The state byte is `clr.w`ed to 0 by the allocator and the ONLY instruction in
+ * the cartridge that makes it 1 is `$2605C8`'s first.  So the seed's own RAM
+ * records that this routine executed, exactly the way `$813196` records how far
+ * the object stream's cursor had advanced (`catchUpObjectStream`, W91 §2) --
+ * and that is a STRONGER warrant than `catchUpBgPalette`'s, which has no seed
+ * witness at all and rests on a stage index.
+ *
+ * [M] and the result agrees: all TEN banks this installs are byte-identical to
+ * the staging area the seed carries, 160 of 160 words.  Compare `92-impl`
+ * §5.1's sprite routines, where the same "the bytes match" reasoning gives
+ * `$24A764` 1 of 2 and `$25BE72` 2 of 5 -- see `catchUpTextPalette`'s caller in
+ * `93-impl` for why those two stay refused and this one does not.
+ *
+ * ONLY THE TEN INSTALLS ARE REPLAYED, not the routine.  `$2605C8` also does
+ * `jsr $259C4A`, `clr.w $813080`, `move.w #$1,$813082` and a `$813098` branch;
+ * none of that is executed here and none of it is written.  That is the same
+ * partial replay `catchUpBgPalette` makes of `$261136` (one call out of a
+ * per-stage init) and it is declared rather than implied.
+ *
+ * [M] banks 0..4 are installed by BOTH this and the reset path, from the SAME
+ * five blocks, so running both in board order is idempotent on them -- measured
+ * as `sameAsReset` below rather than assumed.
+ */
+export const TX_OBJ0A_INSTALLS = [
+  [0x2605dc, 0, 0x222638], [0x2605ea, 1, 0x222658], [0x2605f8, 2, 0x222678],
+  [0x260606, 3, 0x222698], [0x260614, 4, 0x2226b8], [0x260622, 5, 0x2226d8],
+  [0x260630, 6, 0x222778], [0x26063e, 7, 0x222798], [0x26064c, 8, 0x2227b8],
+  [0x26065a, 11, 0x2227d8],
+];
+
+/** `$80E240`, 20 slots of `$50` bytes; `(0,slot)` is `$8000|type` and
+ *  `(2,slot)` is the state byte `$260794` switches on. */
+export const OBJ_SLOTS = 0x80e240;
+export const OBJ_SLOT_BYTES = 0x50;
+export const OBJ_SLOT_COUNT = 20;
+export const OBJ_TYPE_0A = 0x0a;
+
+/** Did type `$0A` reach state 1 or later before the seed instant?  Returns the
+ *  slot and its state, or null -- and a null is what makes `catchUpTextPalette`
+ *  leave the ten banks on the recording instead of replaying them blind. */
+export function obj0AWitness(ram) {
+  for (let s = 0; s < OBJ_SLOT_COUNT; s++) {
+    const a = OBJ_SLOTS + s * OBJ_SLOT_BYTES;
+    const w = ram.u16(a);
+    if ((w & 0x8000) === 0 || (w & 0xff) !== OBJ_TYPE_0A) continue;
+    const state = ram.u16(a + 2) >> 8;              // $260794 tst.b $2(a5)
+    if (state === 0) continue;                      // still IN state 0: has not run
+    return { slot: s, addr: a, state, prio: ram.u16(a + 0x4a) };
+  }
+  return null;
+}
+
+export function catchUpTextPalette(ram, rom, pal, opts = {}) {
+  const res = {
+    banks: 0, same: 0, total: 0, reset: 0, obj0A: 0, witness: null,
+    sameAsReset: 0,
+  };
+  const run = (list, why) => {
+    let n = 0;
+    for (const [site, bank, block] of list) {
+      let src;
+      try {
+        src = rom.bytes(block, 32);
+      } catch (e) {
+        // NAMED, never silent, and never fatal: the bank stays the recording's.
+        res.skipped = (res.skipped ?? 0) + 1;
+        opts.note?.(site, `the text block $${block.toString(16).toUpperCase()
+          } for TX bank ${bank} (${why}) is outside every ROM window: ${e.message
+            .slice(0, 120)}. Its 16 words stay the recording's`);
+        continue;
+      }
+      // The equality check against the staging the seed carries, BEFORE the
+      // write and never a gate on it -- a seed from another instant may
+      // disagree, and a port that REFUSED on disagreement would be asserting
+      // that this recording is the only one that exists.
+      const already = pal.stageSourced.tx[bank * TX_BANK_WORDS] === 1;
+      for (let i = 0; i < TX_BANK_WORDS; i++) {
+        res.total++;
+        const cart = (src[i * 2] << 8) | src[i * 2 + 1];
+        if (ram.u16(PALSTAGE.tx.stage + bank * 32 + i * 2) === cart) res.same++;
+        if (already) res.sameAsReset++;
+      }
+      install2414BE(ram, pal, bank, src, site, `$${block.toString(16)
+        .toUpperCase()} (${why})`);
+      n++;
+      res.banks++;
+    }
+    return n;
+  };
+  // 1. THE RESET PATH.  Unconditional: the machine cannot be mid-stage-1
+  //    without having run $23BEEA.
+  res.reset = run(TX_BOOT_INSTALLS, 'the RESET path $23BEEA, $23BF86..$23BFCC');
+  // 2. TYPE $0A's STATE-0 INIT, and ONLY if the seed's own object slot array
+  //    says it ran.  A seed whose type-$0A object is still in state 0 -- or
+  //    which has no type-$0A object at all -- gets NOTHING from this arm and
+  //    keeps the recording's ten banks, which is the whole point: the warrant
+  //    is the witness, not the byte match.
+  const w = obj0AWitness(ram);
+  res.witness = w;
+  if (w) {
+    res.obj0A = run(TX_OBJ0A_INSTALLS, `$2605C8, type $0A's state-0 init, `
+      + `witnessed by slot ${w.slot} state $${w.state.toString(16)}`);
+  } else {
+    opts.note?.(0x2605c8, `no ACTIVE type $0A object past state 0 in the seed's `
+      + `$80E240 slot array, so $2605C8's ten TEXT installs are NOT replayed `
+      + `and banks 5, 6, 7, 8 and 11 stay the recording's. The bytes would have `
+      + `matched; the witness is what makes replaying them a replay`);
+  }
+  return (pal.txCatchUp = res);
 }
 
 /** The per-stage BACKGROUND palette table, and the one call that reads it.

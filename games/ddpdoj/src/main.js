@@ -47,6 +47,7 @@ import { makeStageClear } from './stageend.js';
 import { makeHudObject } from './hud.js';
 import {
   PaletteState, flush24133C, catchUpObjectStream, catchUpBgPalette,
+  catchUpTextPalette,
 } from './palette.js';
 
 /** THE BUCKETS `pgm.py shipgate` SUBSTITUTES, in drain (= depth) order.
@@ -223,6 +224,20 @@ export class Game {
       // here, so it is replayed for the same reason the object stream is --
       // and this one takes NOTHING from the recording, not even an integer.
       catchUpBgPalette(this.ram, this.rom, this.palette,
+        { note: (a, w) => this.unportedLog.note(a, w) });
+      // WAVE 93 -- FIVE of the fifteen TEXT banks, and this is the one palette
+      // catch-up whose code path is the RESET PATH: `$23BF86..$23BFCC`, five
+      // unconditional installs with no branch between them, in the routine
+      // `$23BEEA` that both `$23B7D8` (cold) and `$23B7F2` (warm) jmp to.  The
+      // machine cannot be mid-stage-1 without having run it.
+      //
+      // THE OTHER TEN BANKS ARE NOT TAKEN and `catchUpTextPalette`'s header
+      // says exactly why per bank.  Five of them are installed only by
+      // `$2605C8`, which [M] has ZERO references anywhere in the 6 MiB image,
+      // so its bytes match and its code path cannot be named -- and "the bytes
+      // match, therefore replay it" is what would have installed W92's wrong
+      // sprite bank 1, 7 and 8.  Broken and declared beats fabricated.
+      catchUpTextPalette(this.ram, this.rom, this.palette,
         { note: (a, w) => this.unportedLog.note(a, w) });
       // The first flush, so the port has a palette before frame 1 rather than
       // one frame late.  $23C454 runs it once per loop iteration and the board

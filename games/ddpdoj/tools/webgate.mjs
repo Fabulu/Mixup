@@ -1581,6 +1581,126 @@ try {
           + `copies on the board either`);
       }
 
+      // ============================ WAVE 93 -- THE TEXT STRIP, AND ITS WITNESS
+      //
+      // W92 §5.2 matched ELEVEN of the fifteen text banks to a named site and
+      // REFUSED to wire any of them, because "the bytes match, therefore replay
+      // it" is exactly what would have installed its own wrong sprite bank 1, 7
+      // and 8 (§5.1).  W93 takes TEN of them, and the thing that changed is not
+      // the byte match -- it is that both routines can now be shown to have
+      // RUN.  This stage asserts the difference, not the result.
+      //
+      // WHAT IS ASSERTED, and every number is independent of `src/`:
+      //   * the RESET arm installs five banks from `$23BF86..$23BFCC`, which is
+      //     straight-line code inside `$23BEEA`, the routine both `$23B7D8` and
+      //     `$23B7F2` jmp to.  The machine cannot be mid-stage-1 without it;
+      //   * the `$2605C8` arm installs ten more -- and ONLY because the seed's
+      //     own `$80E240` slot array holds an ACTIVE type `$0A` past state 0.
+      //     `$2411AE clr.w $2(A0)` starts it at 0 and `$2605C8`'s own first
+      //     instruction is what makes it 1, so that byte is the cartridge
+      //     saying in the seed's RAM that the routine executed;
+      //   * **160 OF 160 SOURCED TEXT WORDS EQUAL THE BOARD'S OWN $A01000 ON
+      //     ALL 161 RECORDED FRAMES.**  The text third is CONSTANT across the
+      //     recording, so this is a comparison that sits where two readings
+      //     agree -- which is why the mutation below matters more than it does.
+      // and TWO mutations: the catch-up refused (the page before this wave),
+      // and THE WITNESS REMOVED, which must drop the ten banks and keep five.
+      {
+        const TX0 = 0x800, TXN = 0xf0;
+        const mkG = (opts) => new Game(bundle.seed, bundle.tables, {
+          logicFrame: bundle.cap.frames[0].lf,
+          videoFrame: bundle.cap.frames[0].vf,
+          bgSeed: bundle.cap.part(0, 'bg'), ...opts,
+        });
+        // [M] read off the cartridge and the seed, not typed:
+        const EXP93 = {
+          reset: 5, obj0A: 10, banks: 10, words: 160, same: 240, total: 240,
+          sameAsReset: 80, witnessSlot: 0, witnessState: 1, witnessPrio: 0x1f,
+        };
+        const g93 = mkG();
+        const tc = g93.palette.txCatchUp;
+        const led93 = g93.palette.ledger();
+        let worst = Infinity, wf = -1, n93 = 0;
+        for (let f = 0; f < bundle.cap.length; f++) {
+          const cp = bundle.cap.part(f, 'palette');
+          let ok = 0, n = 0;
+          for (let i = TX0; i < TX0 + TXN; i++) {
+            if (!g93.palette.sourced[i]) continue;
+            n++; if (g93.palette.words[i] === cp[i]) ok++;
+          }
+          n93 = n;
+          if (ok < worst) { worst = ok; wf = f; }
+        }
+        const w = tc?.witness;
+        const ok93 = tc && tc.reset === EXP93.reset && tc.obj0A === EXP93.obj0A
+          && tc.same === EXP93.same && tc.total === EXP93.total
+          && tc.sameAsReset === EXP93.sameAsReset && !tc.skipped
+          && w && w.slot === EXP93.witnessSlot && w.state === EXP93.witnessState
+          && w.prio === EXP93.witnessPrio
+          && led93.tx === EXP93.words && n93 === EXP93.words
+          && worst === EXP93.words;
+        console.log(`${ok93 ? 'PASS' : 'FAIL'}: W93 THE TEXT STRIP -- the RESET `
+          + `path $23BF86..$23BFCC installed ${tc?.reset} banks (expect `
+          + `${EXP93.reset}) and $2605C8 installed ${tc?.obj0A} more (expect `
+          + `${EXP93.obj0A}), WITNESSED by $80E240 slot ${w?.slot} holding an `
+          + `ACTIVE type $0A at state $${w?.state?.toString(16)} priority `
+          + `$${w?.prio?.toString(16).toUpperCase()} (expect slot `
+          + `${EXP93.witnessSlot} state $1 prio $1F -- $2411AE clr.w $2(A0) `
+          + `starts it at 0 and only $2605C8 makes it 1). That wrote `
+          + `${tc?.same} of ${tc?.total} bytes-as-words IDENTICAL to the `
+          + `staging the seed carries, of which ${tc?.sameAsReset} were written `
+          + `TWICE from the same block (expect ${EXP93.sameAsReset}); it `
+          + `sources ${led93.tx} of ${TXN} text words and they equal the `
+          + `BOARD'S OWN $A01000 on ${worst} of ${n93} on all `
+          + `${bundle.cap.length} recorded frames (worst frame ${wf})`);
+        if (!ok93) code = 1;
+
+        // MUTATION 1 -- the text third before this wave.
+        const gm93 = mkG({ palCatchUp: false });
+        const lm93 = gm93.palette.ledger();
+        const okMut93 = lm93.tx === 0 && gm93.palette.txCatchUp === null;
+        console.log(`${okMut93 ? 'PASS' : 'FAIL'}: W93 --break palCatchUp:false `
+          + `-- with the catch-up refused the port sources ${lm93.tx} of `
+          + `${TXN} text words (expect 0), which IS the page before this wave: `
+          + `every HUD and score colour one frozen instant of capture.bin`);
+        if (!okMut93) code = 1;
+
+        // MUTATION 2 -- **THE WITNESS REMOVED**, and this is the stage that
+        // says W93 is not W92's refused reasoning with a coat of paint.  The
+        // seed's type-$0A object is put back into state 0.  Every one of the
+        // ten banks' BYTES still matches the cartridge exactly; only the
+        // evidence that the routine ran is gone.  A port that had quietly gone
+        // back to trusting the byte match would install them anyway and this
+        // stage would read 160.
+        const gw = mkG();
+        gw.ram.setU16(0x80e240 + 2, 0);        // $2(A5) := 0 -- "has not run"
+        const { catchUpTextPalette: cu, PaletteState: PS, flush24133C: fl }
+          = await import('../src/palette.js');
+        const pw = new PS();
+        cu(gw.ram, gw.rom, pw, {});
+        fl(gw.ram, pw);
+        const lw = pw.ledger();
+        const okW = lw.tx === EXP93.reset * 16 && pw.txCatchUp.witness === null
+          && pw.txCatchUp.obj0A === 0;
+        console.log(`${okW ? 'PASS' : 'FAIL'}: W93 --break the WITNESS -- with `
+          + `the seed's type $0A object put back into state 0, the port sources `
+          + `${lw.tx} of ${TXN} text words (expect ${EXP93.reset * 16} = the `
+          + `RESET five alone) and $2605C8's ten are REFUSED. **THE BYTES STILL `
+          + `MATCH THE CARTRIDGE EXACTLY** -- only the evidence that the `
+          + `routine ran is gone -- so a port that trusted the byte match `
+          + `would read ${EXP93.words} here. That is the W92 §5.1 trap made `
+          + `into a check that can fail`);
+        if (!okW) code = 1;
+
+        console.log(`  W93 LEDGER at boot: ${led93.total} of 2560 palette words `
+          + `CARTRIDGE-SOURCED -- sprites ${led93.spr}/${led93.of.spr}, `
+          + `background ${led93.bg}/${led93.of.bg}, text `
+          + `${led93.tx}/${led93.of.tx}, and ${led93.of.unwritten} words `
+          + `($8F0..$9FF) that NO region of $24133C copies on the board either. `
+          + `STILL THE RECORDING'S: nine sprite banks (0..5,7,8,9) and five `
+          + `text banks (9,10,12,13,14)`);
+      }
+
       // ================================================== WAVE 66 -- E6, THE BOMB
       //
       // W64 shipped the BOMB and W65 the LASER BOMB and NEITHER HAD A PICTURE.

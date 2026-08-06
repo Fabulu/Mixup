@@ -1235,6 +1235,43 @@ SHOT_WINDOWS.append(
                        "The per-stage table $261252 is what chooses it"),
 )
 
+# ============ W93: THE FIVE TEXT BANKS THE RESET PATH INSTALLS ===============
+#
+# `$23BF86..$23BFCC` is five `lea $22xxxx,A0 / moveq #n,D0 / jsr $2414BE` with
+# NO BRANCH between them, inside `$23BEEA` -- the routine both `$23B7D8` (cold
+# boot, $803908 := 0) and `$23B7F2` (warm, := 1) `jmp` to.  A TEXT bank is 32
+# bytes = 16 xRGB555 entries ($2414BE lsl.w #$5,D0), so the five blocks
+# $222638 $222658 $222678 $222698 $2226B8 are CONTIGUOUS and the window is
+# exactly their extent: $2226B8 + $20 = $2226D8.
+#
+# [M] the low end ABUTS the W?? block that ends at $222618, and $222618 is
+# itself a text bank -- the OTHER block eight $2414BE sites name for bank 0 --
+# and it is byte-identical to $222638.  It is left OUT of the window on purpose:
+# nothing the port executes reads it, and a window is a claim about what the
+# port reads.
+#
+# AND THE SECOND ROUTINE, `$2605C8` -- type $0A's state-0 init, reached by
+# `$260798 beq.w` from the handler `$240F62[$0A] = $260794`, which the object
+# walker `$2410BC` calls from the main loop.  It installs TEN banks: 0..8 and
+# 11.  Banks 0..4 are the SAME five blocks the reset path uses, so the first
+# window covers 0..5 contiguously ($222638..$2226F8) and the second covers
+# 6, 7, 8 and 11 ($222778..$2227F8).  Bank 9's block $2226F8 is deliberately
+# EXCLUDED -- no site in the image installs it, so the port never reads it.
+SHOT_WINDOWS.extend([
+    (0x222638, 0x00C0, "W93: TEXT palette banks 0..5, 32 bytes each = 16 "
+                       "entries ($2414BE lsl.w #$5). $23BF86..$23BFCC (the "
+                       "RESET path) uploads 0..4 and $2605DC..$260622 (type "
+                       "$0A's init) uploads 0..5; src/palette.js "
+                       "catchUpTextPalette replays both. High end is bank 5's "
+                       "$2226D8 plus its own 32 bytes -- bank 9's $2226F8 is "
+                       "OUTSIDE on purpose, because nothing installs it"),
+    (0x222778, 0x0080, "W93: TEXT palette banks 6, 7, 8 and 11 ($222778 "
+                       "$222798 $2227B8 $2227D8), the four $2605C8 installs "
+                       "above bank 5. They ABUT. $2227F8 -- bank 12's block, "
+                       "whose only site $25C600 does NOT match the seed -- is "
+                       "the first byte past the end and stays outside"),
+])
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and
@@ -2865,6 +2902,252 @@ def check_bg_palette_and_fade(d: bytes) -> None:
                          "divider's reload.")
 
 
+# W93.  The five RESET-path text installs, and the routine they go through.
+TX_BOOT = ((0x23BF86, 0x222638, 0x7000), (0x23BF94, 0x222658, 0x7001),
+           (0x23BFA2, 0x222678, 0x7002), (0x23BFB0, 0x222698, 0x7003),
+           (0x23BFBE, 0x2226B8, 0x7004))
+TXPAL_LOW = 0x222638
+
+
+def check_text_palette_boot(d: bytes) -> None:
+    """W93.  `$2414BE` (the TEXT upload) and `$23BF86..$23BFCC` (the five
+    installs on the RESET path that src/palette.js catchUpTextPalette replays).
+
+    THE POINT OF THIS CHECK is that the port claims these five banks are
+    cartridge-sourced on a STRUCTURAL argument -- "every code path that can
+    write this bank writes these bytes" -- and not on a byte match.  If a sixth
+    site appears naming a different block for banks 1..4, or if $222618 stops
+    being byte-identical to $222638, that argument is dead and the build stops.
+    """
+    # ---- the window, DERIVED from the declaration rather than typed twice.
+    # W91 shipped a check that could not fail because its bound was written in
+    # SHOT_WINDOWS as well as in the check; both arms of this refusal are
+    # exercised in the wave's red log.
+    decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == TXPAL_LOW]
+    if decl != [(TXPAL_LOW, 0xC0)]:
+        raise SystemExit(
+            f"the W93 text-palette window is declared {decl} and must be "
+            f"(${TXPAL_LOW:06X}, $C0) -- SIX banks of 32 bytes, because "
+            f"$2414BE's `lsl.w #$5,D0` makes a TEXT bank 16 entries and not 32. "
+            f"A short window and catchUpTextPalette skips banks it can source.")
+    decl2 = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x222778]
+    if decl2 != [(0x222778, 0x80)]:
+        raise SystemExit(
+            f"the W93 upper text-palette window is declared {decl2} and must be "
+            f"($222778, $80) -- banks 6, 7, 8 and 11, the four $2605C8 installs "
+            f"above bank 5.")
+    # ---- $2414BE itself.  The shift is the whole difference from $24150A.
+    if u16(d, 0x2414C2) != 0x43F9 or u32(d, 0x2414C4) != 0x80F886:
+        raise SystemExit(
+            "$2414C2 is not `lea $80F886.l,A1` -- **THAT ADDRESS IS WHICH THIRD "
+            "OF PALETTE RAM THIS UPLOAD FEEDS**. $80E886 would be the sprites "
+            "and $80F086 the background, and getting it wrong is exactly the "
+            "defect W90 found in src/web/app.js.")
+    if u16(d, 0x2414C8) != 0xEB48:
+        raise SystemExit(
+            f"$2414C8 is ${u16(d, 0x2414C8):04X}, not $EB48 = `lsl.w #$5,D0`. "
+            f"**THAT SHIFT IS THE BANK SIZE**: five, not six, so a TEXT bank is "
+            f"32 bytes = 16 entries. src/palette.js TX_BANK_WORDS is 16 under "
+            f"it, and a six would make the port stride sprite-sized banks "
+            f"through a 480-byte region.")
+    if u16(d, 0x2414CC) != 0x7007:
+        raise SystemExit(
+            f"$2414CC is ${u16(d, 0x2414CC):04X}, not `moveq #$7,D0` -- eight "
+            f"longwords, which is the same 32 bytes counted the other way.")
+    if u16(d, 0x2414D4) != 0x33FC or u16(d, 0x2414D6) != 1 \
+            or u32(d, 0x2414D8) != 0x80FA6A:
+        raise SystemExit(
+            "$2414D4 is not `move.w #$1,$80FA6A.l` -- the TEXT dirty flag. "
+            "$80FA66 is the SPRITE flag and $80FA68 the background's; if this "
+            "upload set one of those, $24133C would copy the wrong region.")
+    # ---- $2413E2: what pins the region at FIFTEEN banks.
+    if u16(d, 0x2413E2) != 0x700E:
+        raise SystemExit(
+            f"$2413E2 is ${u16(d, 0x2413E2):04X}, not `moveq #$E,D0` -- "
+            f"**THAT IS WHY THE TEXT THIRD IS 15 BANKS = 240 WORDS**, and it is "
+            f"the denominator the page prints and src/palette.js TX_BANKS is "
+            f"written under. It also makes bank 15 land ON the sprite dirty "
+            f"flag $80FA66, which is what install2414BE's throw names.")
+    # ---- the five installs, and NO BRANCH between them.
+    for i, (p, block, moveq) in enumerate(TX_BOOT):
+        if u16(d, p) != 0x41F9 or u32(d, p + 2) != block:
+            raise SystemExit(
+                f"${p:06X} is not `lea ${block:06X}.l,A0` -- the RESET path's "
+                f"text install {i} names a different block now, so "
+                f"src/palette.js TX_BOOT_INSTALLS would replay the wrong "
+                f"colours at boot.")
+        if u16(d, p + 6) != moveq:
+            raise SystemExit(
+                f"${p + 6:06X} is ${u16(d, p + 6):04X}, not `moveq #${i:X},D0` "
+                f"-- install {i} of the RESET path targets a different TEXT "
+                f"bank now.")
+        if u16(d, p + 8) != 0x4EB9 or u32(d, p + 10) != 0x2414BE:
+            raise SystemExit(
+                f"${p + 8:06X} is not `jsr $2414BE.l` -- the RESET path's text "
+                f"install {i} no longer goes through the upload "
+                f"src/palette.js install2414BE transcribes.")
+    # ---- $23BF86..$23BFCC is STRAIGHT-LINE, and that is load-bearing: the port
+    # replays all five unconditionally, so a branch appearing in the middle of
+    # them would mean some of the five are conditional on state the seed carries.
+    for a in range(0x23BF86, 0x23BFCC, 2):
+        w = u16(d, a)
+        if 0x6000 <= w <= 0x6FFF or w in (0x4EFA, 0x4EF9):
+            raise SystemExit(
+                f"${a:06X} is ${w:04X}, a BRANCH inside $23BF86..$23BFCC. The "
+                f"five RESET-path text installs are replayed UNCONDITIONALLY by "
+                f"src/palette.js catchUpTextPalette; if any of them is now "
+                f"conditional, that replay is a guess.")
+    # ---- the two entries into $23BEEA, which is what makes "the reset path
+    # provably ran" a fact rather than a hope.
+    for p, why in ((0x23B7D8, "the COLD boot ($803908 := 0)"),
+                   (0x23B7F2, "the WARM boot ($803908 := 1)")):
+        if u16(d, p) != 0x4EF9 or u32(d, p + 2) != 0x23BEEA:
+            raise SystemExit(
+                f"${p:06X} is not `jmp $23BEEA.l` -- {why} no longer reaches "
+                f"the routine that holds the five text installs, so "
+                f"catchUpTextPalette's whole argument (the machine cannot be "
+                f"mid-stage-1 without having run them) is gone.")
+    # ---- $2412FE, which the port deliberately does NOT replay.  Named here so
+    # that a reader who wonders why the staging is not cleared first finds it.
+    if u16(d, 0x2412FE) != 0x41F9 or u32(d, 0x241300) != 0x80E886 \
+            or u16(d, 0x241304) != 0x303C or u16(d, 0x241306) != 0x8F5:
+        raise SystemExit(
+            "$2412FE is not `lea $80E886.l,A0 / move.w #$8F5,D0` -- it is the "
+            "PALETTE STAGING CLEAR, 2,294 words = $80E886..$80FA71, all three "
+            "regions and the fade state. src/palette.js names it as the one "
+            "boot routine it must NOT replay: the port arrives after every "
+            "install the board made, so clearing here would erase the ten text "
+            "banks and nine sprite banks still taken from the recording.")
+    # ---- and the ambiguity that is NOT observable: bank 0's two blocks.
+    if d[0x222618:0x222638] != d[0x222638:0x222658]:
+        raise SystemExit(
+            "$222618 and $222638 are no longer byte-identical. EIGHT $2414BE "
+            "sites lea $222618 for TEXT bank 0 and ten lea $222638; "
+            "catchUpTextPalette replays bank 0 only because those two blocks "
+            "are equal, so which site ran cannot change the answer. If they "
+            "differ, bank 0 must come off the sourced list.")
+    # ---- and the property banks 1..4 rest on: exactly two sites each, both
+    # naming the same block.  DERIVED by scanning the image, not asserted.
+    sites = {}
+    for a in range(0x200000, len(d) - 6, 2):
+        if u16(d, a) == 0x4EB9 and u32(d, a + 2) == 0x2414BE:
+            src = u32(d, a - 6) if u16(d, a - 8) == 0x41F9 else None
+            bank = u16(d, a - 2) & 0xFF if (u16(d, a - 2) & 0xFF00) == 0x7000 \
+                else (u16(d, a - 2) if u16(d, a - 4) == 0x303C else None)
+            sites.setdefault(bank, set()).add(src)
+    for i, (_, block, _) in enumerate(TX_BOOT):
+        if i == 0:
+            continue                            # bank 0 is handled above
+        got = sites.get(i, set())
+        if got != {block}:
+            raise SystemExit(
+                f"TEXT bank {i} is installed from {sorted('$%06X' % s for s in got if s)} "
+                f"and catchUpTextPalette replays ${block:06X} on the strength of "
+                f"there being exactly ONE distinct block across every site in "
+                f"the image. A second block means the answer depends on WHICH "
+                f"site ran, which is the reasoning that would have installed "
+                f"W92's wrong sprite bank 1, 7 and 8.")
+    check_text_palette_obj0A(d)
+
+
+# W93.  `$2605C8` -- type $0A's state-0 init, ten TEXT installs.
+TX_OBJ0A = ((0x2605D4, 0, 0x222638), (0x2605E2, 1, 0x222658),
+            (0x2605F0, 2, 0x222678), (0x2605FE, 3, 0x222698),
+            (0x26060C, 4, 0x2226B8), (0x26061A, 5, 0x2226D8),
+            (0x260628, 6, 0x222778), (0x260636, 7, 0x222798),
+            (0x260644, 8, 0x2227B8), (0x260652, 11, 0x2227D8))
+OBJ_TABLE = 0x240F62
+OBJ_TYPE_0A_IDX = 0x0A
+
+
+def check_text_palette_obj0A(d: bytes) -> None:
+    """W93.  The chain main loop -> `$2410BC` -> `$240F62[$0A]` -> `$260794`
+    -> `beq.w $2605C8`, and the ten installs at the end of it.
+
+    THE POINT OF THIS CHECK.  `92-impl` §5.2 refused these ten banks because
+    `$2605C8`'s ENTRY could not be named, and this wave names it.  Everything
+    below is a link in that chain: if any one breaks, the port is replaying a
+    routine it can no longer show the board reaches, and the build stops.
+    """
+    # ---- the three-way state switch, and the beq that is the only reference.
+    if u16(d, 0x260794) != 0x4A2D or u16(d, 0x260796) != 0x0002:
+        raise SystemExit(
+            "$260794 is not `tst.b $2(A5)` -- type $0A's handler no longer "
+            "switches on the STATE BYTE, and src/palette.js obj0AWitness reads "
+            "that byte out of the seed to decide whether $2605C8 ran.")
+    if u16(d, 0x260798) != 0x6700 or 0x26079A + s16(u16(d, 0x26079A)) != 0x2605C8:
+        raise SystemExit(
+            f"$260798 is not `beq.w $2605C8` -- it is the ONLY reference to "
+            f"$2605C8 in the whole 6 MiB image (no jsr, no jmp, no bsr, no "
+            f"longword at any byte offset). src/palette.js replays that "
+            f"routine's ten TEXT installs; without this branch it is "
+            f"unreachable code and replaying it would be fabrication.")
+    if u16(d, 0x2605C8) != 0x1B7C or u16(d, 0x2605CA) != 0x0001 \
+            or u16(d, 0x2605CC) != 0x0002:
+        raise SystemExit(
+            "$2605C8 is not `move.b #$1,$2(A5)`. **THAT STORE IS THE WITNESS**: "
+            "it is the only instruction in the cartridge that takes a type $0A "
+            "object out of state 0, so a seed whose slot reads state $01 has "
+            "run this routine. src/palette.js obj0AWitness rests on it.")
+    # ---- the dispatch table, and entry $0A.
+    if u16(d, 0x2410DA) != 0x41FA or 0x2410DC + s16(u16(d, 0x2410DC)) != OBJ_TABLE:
+        raise SystemExit(
+            f"$2410DA is not `lea (${OBJ_TABLE:06X},PC),A0` -- the object "
+            f"handler table moved, so $240F62[$0A] is no longer what the walker "
+            f"dispatches through.")
+    if u16(d, 0x2410D4) != 0xE749 or u16(d, 0x2410DE) != 0x2070:
+        raise SystemExit(
+            "$2410D4/$2410DE are not `lsl.w #$3,D1 / movea.l (A0,D1.w),A0` -- "
+            "**THAT SHIFT IS THE TABLE STRIDE**: eight bytes per entry, a "
+            "longword handler and a priority word. A two would make entry $0A "
+            "some other object's handler.")
+    if u32(d, OBJ_TABLE + OBJ_TYPE_0A_IDX * 8) != 0x260794:
+        raise SystemExit(
+            f"${OBJ_TABLE:06X}[$0A] is ${u32(d, OBJ_TABLE + OBJ_TYPE_0A_IDX * 8):06X}, "
+            f"not $260794 -- type $0A is a different object now and the seed's "
+            f"slot-0 witness proves nothing about $2605C8.")
+    if u16(d, 0x2410C4) != 0x4BF9 or u32(d, 0x2410C6) != 0x80E240 \
+            or u16(d, 0x2410CA) != 0x7013 or u16(d, 0x2410E8) != 0x4BED \
+            or u16(d, 0x2410EA) != 0x0050:
+        raise SystemExit(
+            "$2410C4..$2410EA is not `lea $80E240,A5 / moveq #$13,D0 ... lea "
+            "$50(A5),A5` -- the object slot array is 20 slots of $50 bytes and "
+            "src/palette.js OBJ_SLOTS/OBJ_SLOT_BYTES/OBJ_SLOT_COUNT walk the "
+            "seed with exactly those three numbers.")
+    if u16(d, 0x2411AE) != 0x4268 or u16(d, 0x2411B0) != 0x0002:
+        raise SystemExit(
+            "$2411AE is not `clr.w $2(A0)` -- the allocator no longer starts an "
+            "object in STATE 0, so a state of $01 in the seed would no longer "
+            "mean $2605C8 had run.")
+    # ---- the ten installs.
+    for i, (p, bank, block) in enumerate(TX_OBJ0A):
+        if u16(d, p) != 0x41F9 or u32(d, p + 2) != block:
+            raise SystemExit(
+                f"${p:06X} is not `lea ${block:06X}.l,A0` -- install {i} of "
+                f"$2605C8 names a different block, so src/palette.js "
+                f"TX_OBJ0A_INSTALLS would replay the wrong colours.")
+        moveq = 0x7000 | bank
+        if u16(d, p + 6) != moveq:
+            raise SystemExit(
+                f"${p + 6:06X} is ${u16(d, p + 6):04X}, not `moveq #${bank:X},D0` "
+                f"-- install {i} of $2605C8 targets a different TEXT bank. NOTE "
+                f"the tenth is bank $B and NOT bank 9: banks 9, 10, 12, 13 and "
+                f"14 are not installed here and the port does not claim them.")
+        if u16(d, p + 8) != 0x4EB9 or u32(d, p + 10) != 0x2414BE:
+            raise SystemExit(
+                f"${p + 8:06X} is not `jsr $2414BE.l` -- install {i} of "
+                f"$2605C8 no longer goes through the TEXT upload.")
+    # ---- and that the ten are STRAIGHT-LINE, for $23BF86's reason.
+    for a in range(0x2605D4, 0x260660, 2):
+        w = u16(d, a)
+        if 0x6000 <= w <= 0x6FFF:
+            raise SystemExit(
+                f"${a:06X} is ${w:04X}, a BRANCH inside $2605D4..$260660. The "
+                f"ten installs are replayed UNCONDITIONALLY once the seed's "
+                f"witness is found; a branch among them means some are "
+                f"conditional on state the witness does not carry.")
+
+
 def build(d: bytes) -> dict:
     check_pool_e_extents(d)                    # W53 -- see the function's docstring
     check_pool_b_extents(d)                    # W54 -- see the function's docstring
@@ -2878,6 +3161,7 @@ def build(d: bytes) -> dict:
     check_beam_impact_extents(d)               # W90 -- THE LASER's IMPACT
     check_palette_upload_family(d)             # W91 -- THE SPRITE PALETTE
     check_bg_palette_and_fade(d)               # W92 -- THE BACKGROUND THIRD
+    check_text_palette_boot(d)                 # W93 -- THE RESET PATH'S FIVE
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
     levels = speed_index_set(d)
