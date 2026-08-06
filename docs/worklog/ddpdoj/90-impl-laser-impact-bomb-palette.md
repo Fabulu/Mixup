@@ -1,9 +1,11 @@
 # 90 -- IMPL: the laser's impact effect, and what colour the bomb really is
 
-status: **IN PROGRESS** -- §0 refuses the brief's explanation of item 2, §1 is
-item 1 with before/after, §2 is item 2 and it is a MEASUREMENT AND A REFUSAL
-rather than a fix, §3 says which bar condition each item met, §4 is what is
-still wrong.
+status: **DONE** -- §0 refuses the brief's explanation of item 2 and names two
+more lying comments, §1 is item 1 with before/after, **§1.7 is the one section a
+reviewer should read first** (this wave turned two green gates red and
+re-baselined them), §2 is item 2 and it is a MEASUREMENT AND A REFUSAL rather
+than a fix, §3 says which bar condition each item met, §4 is what is still
+wrong.
 
 started: 2026-08-06. wave: 90. role: IMPLEMENTER.
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Every address is build B.
@@ -576,7 +578,26 @@ family and the wrong third of the palette.
       BUCKET 2: 20,785 records, 0 MISSING, ordered subsequence 6,750/6,750
 [M] node tools/webgate.mjs                 GREEN, exit 0, 21 stages
                                            (19 before; +2 W90)
+[M] python tools/oracle/pgm.py check       VERDICT: FAILURES -- 72 passed,
+                                           2 failed, 0 SKIPPED
+      the SAME TWO as W82, W84, W85 and W86, and NEITHER MOVED:
+        `segment sweep` (43 blocked + 19 red rungs remain)
+        `THE LASER BOMB: $249A80, $255FE2 and $2456A6` (W79 §6.5 filed it as
+        a concurrent wave's; W84, W85 and W86 established the same)
+      NO THIRD RED -- but it was 70/4 mid-wave and §1.7 is the whole story of
+      how it got back, which is the one thing in this document a reviewer
+      should read before the numbers.
+[M] node tools/build-dist.mjs              GREEN, 6 deliberate exceptions,
+                                           NO SEVENTH `PUBLISH_VERBATIM` ENTRY
+[M] node tools/publish.mjs --only ddpdoj --dry
+      GREEN. build 20260806052815, dist/ 255 files 6,487 KB, rom-leak guard
+      251 files checked against 12 ROMs -- clean, six deliberate exceptions
+[M] NO ART records, 6,500 steps            4,017 -- UNCHANGED (§1.6)
 ```
+
+`[M]` **The 36 new streams did NOT need a seventh `PUBLISH_VERBATIM` entry.**
+They went into shard 8, which already holds 36 streams from a different table,
+so the packed buffer matches nothing contiguous in any ROM.
 
 ---
 
@@ -625,5 +646,44 @@ changed anywhere.**
 
 **THE WEB SERVER.** `.scratch/w90/browser.py` starts a `socketserver` on
 127.0.0.1 and calls `httpd.shutdown()` and `httpd.server_close()` before it
-exits; §5 of the run log confirms "server closed" on both runs and the ports
-(8791, 8792) are free.
+exits; the run log prints "server closed" on both runs, and `netstat` shows no
+listener on 8791 or 8792.
+
+---
+
+## LOG (appended as findings arrived)
+
+- opened. Read 86, 83, 39, `src/render/capture.js`, `src/spark.js`,
+  `src/web/app.js`. Disassembled `$289F54..$28A060`, `$28A252..$28A2F8`,
+  `$255030..$255110`, `$24150A`, `$260852` and the tables at `$28A232`,
+  `$28A2D6`, `$28A506`, `$28A51C` before writing a line.
+- `[M]` §1.1: **`$289FC0` is seven instructions and passes KIND 0**, so its fill
+  tail is `$28A252`, which W65 already ported. The wave is ONE ARM.
+- `[M]` §0.1: **`$28A2D6` is FIVE words, not the eight `src/spark.js` claimed**,
+  and `$28A232[1]` -- the cartridge's own fill dispatch -- is what pins it.
+- `[M]` §0.2: **`BEAM[].d7` is 1 for P1 and `$289FC0`'s D7 is 0 for P1.** The
+  head is named by address now.
+- `[M]` §1.2: **0 records -> 58,240 over 35 distinct streams, 0 with no art**,
+  and the tapped control emits none of them.
+- `[M]` §1.3: **"SOMETIMES" IS `$80390C`.** 1,740 entries on 3,477 beam-live
+  frames (50.04 %) and ZERO adjacent. Plus five speeds, one per power step.
+- `[M]` §2.1: **the bomb's bank is 6, not 21** -- so the brief's explanation is
+  about a different bank, and both of its numbers are right anyway.
+- `[M]` §2.2: **the shipped palette is the BACKGROUND's (`$400..$7FF`). The
+  SPRITE palette has no cartridge source in the bundle at all.**
+- `[M]` §2.3: **the bomb's real palette is in the ROM and it is orange** --
+  `$222A78`/`$222AB8`, `FFFF FFB6 FF91 FF6C FF48 FEE7`. `$24150A` is a counted
+  note in seven files, so bank 6 keeps the capture's stage-title sepia.
+- `[M]` §2.5: **the LASER bomb draws every frame; the ORDINARY bomb's FADE
+  alternates.** Measured, reported, NOT changed.
+- `[M]` §0.1: **`src/bomb.js` said the bomb has no shard.** False since W66.
+- `[M]` §1.7: **two `pgm.py check` gates went red and I re-baselined them.**
+  Both green at HEAD, both HOLD FIRE, +8 and +6 phase shifts with every duration
+  intact, and both files say in their own words that they carry no board column.
+- `[M]` §3.1: **THE PAGE, IN CHROME.** 1,147 impact records over 35 distinct
+  streams across 303 samples, first at lf2,055, and the screenshot has bright
+  bursts at the top of the beam. Three bombs dropped: khaki, chroma 49..74.
+- `[M]` §3.3: 1,035 tests 0 fail; `pgm.py check` 72/2/0 with the same two;
+  webgate GREEN 21 stages; `publish --dry` GREEN; no seventh entry.
+
+status: **DONE**
