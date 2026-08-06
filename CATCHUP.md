@@ -224,16 +224,64 @@ left, and each represents real cost.
 
 ## 7. WHAT IS RUNNING AND WHAT IS NEXT
 
-**In flight as this was written** (both may have landed by the time you read
-it; check `git log`):
+**BOTH LANDED before this file was finished. Updated results:**
 
-- **W98, boss body art.** The boss runs and nothing draws: 4,071 records with no
-  art over 75 streams. This is an export job. It also carries four owner play
-  reports folded in: a translucent laser bomb, an always-on flame, missing
-  thrusters, and removing the recorded HUD, plus the mandated `$29540C`.
-- **W99, a static inventory of the boss** (a `fable` model agent, read only).
-  Enumerate every boss entry point from the ROM rather than discovering them one
-  throw at a time.
+**W98, the boss body art. DONE, and the boss is VISIBLE.** A navy and cyan
+battleship filling the top third, twin barrels, two side pods with circular
+turrets, firing pink ringed bullets. Photographed in Chrome, cropped at the
+records' own coordinates. Records without art went **4,071 to 64**, and 30 of
+those 64 are the null stream. All new art deferred; boot grew 1.0 KiB.
+
+Two corrections worth carrying: **"the boss's art is 58 streams" was a CENSUS
+figure, not an inventory** - its ROM tables hold **244**, and 58 is merely what
+a 559 frame life indexes. Same shape as the walk-order trap. And **two tables
+inside those windows are not art at all**, which is the exact trap that produced
+186 art-less records a week earlier, caught before export this time.
+
+**W100, the owner's four play reports.** The replayed HUD is REMOVED, so the
+upper left is now empty and honest. The always-on flame is **confirmed as the
+invulnerability aura**, and removing the poke makes the player mortal, so it is
+an OWNER DECISION and was not taken. **Thrusters: nothing is missing**, the
+owner's suspicion was wrong. The laser bomb's translucency is **unresolved**:
+three candidates killed, the fourth needs MAME.
+
+**W99, the static inventory. DONE, and it is the most valuable single document
+about the boss.** See section 8.
+
+**`$29540C` was scoped and NOT taken**, correctly. It is 21 entry points and
+~701 instructions, not a fold-in, and **it would not have restored the red gate
+anyway** because it belongs to a different script than the one blocking. The
+owner mandated it believing otherwise; that mandate is now superseded by
+measurement and needs re-putting to them.
+
+## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
+
+**Read this file before touching the boss.** It replaces every earlier size
+estimate.
+
+The boss has **111 entry points across five tables, verified CLOSED** against
+the ROM rather than estimated. **59 ported, 44 live-unported**, at 937
+instructions plus a spawn closure, roughly 1,160 total. **All 44 hang off two
+scripts, F 2 and F 3, so the remainder is ONE wave-shaped unit.** The old
+figures of 2,173 instructions and 39 entry points are superseded.
+
+**The find that justifies the whole approach: EIGHT entry points are DEAD.**
+Four have no start site anywhere in build B, and two of those are the kind-9
+guns, so **bullet kind 9 can never fire**. That contradicts recon 48 and every
+brief since, including the heartbeat's standing text. A later script still
+computes 9-or-10 into a register before a subsequent instruction discards it,
+which is exactly the vestigial code that reads as live until traced.
+
+**Dynamic discovery is structurally incapable of finding that.** You cannot
+observe the absence of a call site by running the game.
+
+Two premise corrections: the OBJECT list is walked by a different tail than
+believed, and one script spawns a **second object**, so the boss is not strictly
+one object. And a reusable lesson: earlier reference graphs missed three scripts
+because they are entered by **jump tail-calls rather than calls**.
+
+Left unsettled and honestly named: indirect calls through a register,
+register-computed RAM writes, and the stage-end release.
 
 **Then `100-PLAN-static-coverage-system.md`**, which is the owner's idea and the
 most valuable thing on the list. Two of the three games already have a coverage
