@@ -377,6 +377,19 @@ isolated); risk is live play + the input unit suites (red-validate each).
 5. Publish.
 6. Stage 1 feature-complete -> 5 parallel recons + 1 architect (own model, NOT Fable) plan the next phase -> carry on (owner forward directive).
 
+## 7c. UPDATE -- session 2026-08-07: bees + DOJ input + HUD score digits all LIVE
+
+Stage-1 content shipped and live this session (all published, deploy confirmed 3/3):
+- **W111 bees / yellow medals** (live `20260806222827`). Pool-A driver `$27F95A`, body `$27FACC`, flat + chain-multiply award via `$286128` (no chain tick); x2 + cursor ratchet shipped after the `$81293C` no-miss flag was identified; rank gauge REFUSED. Bees drop from the ten type-`$8A` carriers in stage 1. Block-3 collision cap fixed (`idx<70` -> `idx<80`) so bees in slots 70-79 are collectable.
+- **W109 shared input layer (DaiOuJou)** (live `20260806213338`). `shared/input.js`: keyboard + gamepad (Standard mapping) + touch (fixed 8-way D-pad + floating stick), keyboard unified, CTRL picker. Wave B (Gradius + Batman) HELD for owner live-verify before touching the complete games.
+- **HUD**: W113 sprite frames (live `20260806231854`: panel box, chain bar, banner panels, hyper flash into bucket 25); W115 score digits (live `20260806233817`: the score NUMBER). PREMISE BREAK (W114 MAME): the digits flush through `$185DC4` (IRQ6, already in `machine.js` isr6Gated), NOT `$240DC2`; a `TxVram` model was added and `wantTx` flipped on. W116 (other text: lives/bombs/credits/chain-high-water/labels via `$240DC2`/`$141258`) IN FLIGHT.
+
+Recons W110 (bee port plan), W112 (HUD draw plan), W114 (MAME score-digit, the `$185DC4` premise break) all DONE + committed.
+
+Queue: W116 other text -> chain/combo (Wave D') -> deferred popup `$2855B6` / item-row `$2857B4` (need `$24157A`/`$242AC6`) -> stage-1 FEATURE COMPLETE -> 5 parallel recons + 1 architect (own model, NOT Fable) plan the next phase -> carry on (owner forward directive). Wave B input (Gradius + Batman) held for owner verify.
+
+Owner play-reports still OPEN: the boss-explosion art (`$03/$04/$07/$10/$87` unconfirmed at the death frame -- blank if a stream is missing); the laser-bomb translucency (no translucency anywhere in the port; the sparse artwork is unverified vs board -- needs a MAME laser-bomb capture); and live-verify of the DOJ input feel (unlocks Wave B).
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
