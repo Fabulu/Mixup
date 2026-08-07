@@ -627,6 +627,16 @@ Phase 4c recon IN FLIGHT: design the live-page REC (tee `currentPortWord` + pack
 via the W129 format) + PLAY (boot from `.replay`, feed portin, compare digests, show divergence) +
 the UI + the integration points. Then ~1-2 impl waves.
 
+## 7q. UPDATE -- 2026-08-07: Phase 4c recon done (W130); W131 (REC + browser digest) IN FLIGHT
+
+Phase 4c recon (W130): live-page REC (tee `currentPortWord` + capture the seed -- 128 KiB RAM + BG
+ring + tables + package via the W129 `.replay` format) + PLAY (boot from `.replay`, feed portin,
+digest, surface first divergence). UI: `#rec` toggle + `#play` file-input + `#replay-banner`; off
+by default (normal play undisturbed). Key subtlety: the browser cannot import `replay.mjs`
+(`node:fs/crypto`), so a new `src/web/replay.js` uses `crypto.subtle` (accumulate-then-hash ==
+the incremental hash; a cross-check gate proves it). 2 waves: **W131 (REC + the browser digest
+module) IN FLIGHT**; W132 (PLAY + the divergence UI) next.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
