@@ -415,6 +415,31 @@ The hourly idle cron was DELETED for the block (it cannot dispatch under the lim
 the stale 7a queue) -- recreate it next session per 7a. Wave B input (task 9) still held for
 owner live-verify of the DOJ module.
 
+## 7e. UPDATE -- 2026-08-07: Phase 0 verdicts -- RANK diverges (substantive fix), sub-handler CLEAN
+
+Phase 0 (the strategic plan's correctness guard) is complete:
+- **0a RANK type-10: DIVERGENCE.** Rank (dynamic difficulty) is FROZEN at seed, never
+  computed (object type 10 `$260794`/`$2608D2` not in the port's dispatch; 0 source writes to
+  the rank output `$81309E` or its clock `$8130C6`). Stage-1 SCORING (points/chain/combo) is
+  CORRECT -- those machines never read rank. The frozen rank affects ENEMY BULLET DENSITY (the
+  `$2650BC/CC` selector at thresholds `$C0`/`$E0`): a playing run diverges in difficulty, not
+  score. MASKED in the corpus (seedcmp re-seeds `$81309E` every 250 frames, so the green ladder
+  is not proof of correctness). Fix: port the gauge/stock pipeline (`$287682` -> `$2530CA` ->
+  `$285A62`) FIRST, then object type 10 -- else the recompute unmasks the inert upstream errors
+  (frozen -> wrong-and-rising). Zero risk to the frame-exact chain (separate dispatch entry;
+  the recompute reads no chain/score state). This is a substantive multi-wave port (recon 71
+  sec 4.2's chain), NOT the quick fix the plan assumed.
+- **0b sub-handler budget: CLEAN.** All 8 stride-based per-slot sub-tables are
+  unbounded/correct -- no truncation under a 60,000-nop overrun inject (MAME-measured, mirrors
+  W2). `src/budget.js NEVER_TRIGGERS` stands for the sub-handlers too. No fix.
+
+Net: the foundation is mostly solid (object ordering + scoring correct). The one open
+correctness item is the RANK/difficulty subsystem -- a substantive port, scheduled (not
+urgent: difficulty not scoring; masked in verification). Next per W119: Phase 1 (MAME capture
+for boss-death verify + bomb translucency, IN FLIGHT; Wave B input Gradius+Batman owner-gated)
+-> Phase 2 (result screen `$28D9AA`) -> Phase 3/4 (stage-2 data, replay) -> Phase 5 (sound,
+slowdown). The RANK fix slots in as its own subsystem port.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
