@@ -255,6 +255,63 @@ export function install24150A(ram, pal, d0, src, site, why) {
 }
 
 /**
+ * `$24157A` -- the HI-HALF sibling of `$24150A`.  [M] it is the FOURTH entry of
+ * the nine-routine `$24150A` family (`palette.js:56-71` documents it but did
+ * not implement it):
+ *
+ *   [M] 24157a  movem.l d0/a0-a1,-(a7)
+ *   [M] 24157e  lea $80e886.l,A1     ; the SPRITE staging area
+ *   [M] 241584  lsl.w #$6,D0         ; bank * 64
+ *   [M] 241586  addi.w #$20,D0       ; + $20  -> the HIGH 16 entries of the bank
+ *   [M] 24158a  adda.w D0,A1         ; A1 = $80E886 + bank*64 + $20
+ *   [M] 24158c  moveq #$7,D0         ; 8 longwords = 16 entries (not 32)
+ *   [M] 24158e  move.l (A0)+,(A1)+ / dbra
+ *   [M] 241594  move.w #$1,$80fa66.l ; SPRITE dirty flag
+ *
+ * Two diffs from `install24150A` and no third: `addi.w #$20` before `adda.w`
+ * (high half, not whole bank), and 8 longwords (`moveq #$7`) not 16.  Same
+ * `(ram, pal, d0, src, site, why)` signature; `src` is the 32-byte ROM block
+ * (16 xRGB555 entries).  [M] the call-site census is THREE sites, all inside
+ * the popup `$2855B6` (W117 sec 1) -- this routine has no other consumer.
+ *
+ * The high half writes `pal.stageSourced.spr[bank*32 + 16..31]`; the next
+ * `catchUpObjectStream` install refreshes bank 7's whole block after the popup
+ * ends, so no restore is needed (W117 sec 6.1).
+ *
+ * @param ram   the port's main RAM
+ * @param pal   the PaletteState
+ * @param d0    the bank number, D0 (the popup passes D4 = 7)
+ * @param src   32 bytes read out of the cartridge (`rom.bytes(ptr, 32)`)
+ * @param site  the ROM address of the `jsr`, for the census
+ * @param why   what the site is
+ */
+export function install24157A(ram, pal, d0, src, site, why) {
+  if (!(d0 >= 0 && d0 < SPR_BANKS)) {
+    unreached(0x24157a, `$24157A was handed bank ${d0} from $${site.toString(16)
+      .toUpperCase()}. lsl.w #$6 + addi.w #$20 makes that $80E886+$${(d0 * 64
+        + 0x20).toString(16).toUpperCase()}, which is outside the 32-bank sprite `
+      + `staging area. The caller resolved the wrong table; clamping would `
+      + `hide it`);
+  }
+  if (src.length !== 32) {
+    unreached(0x24157a, `$24157A from $${site.toString(16).toUpperCase()} was `
+      + `handed ${src.length} source bytes and it copies 8 longwords = 32. `
+      + `A short read means the ROM window is narrower than the block`);
+  }
+  const base = PALSTAGE.spr.stage + d0 * 64 + 0x20;            // $241586 addi.w #$20
+  for (let i = 0; i < 16; i++) {                               // $24158C moveq #$7
+    ram.setU16(base + i * 2, (src[i * 2] << 8) | src[i * 2 + 1]);
+    pal.stageSourced.spr[d0 * BANK_WORDS + 16 + i] = 1;        // hi half: words 16..31
+  }
+  ram.setU16(PALSTAGE.spr.dirty, 1);                           // $241594
+  const k = `$${site.toString(16).toUpperCase()} hi-half bank ${d0} <- ${why}`;
+  const e = pal.installs.get(k) ?? { n: 0, bank: d0 };
+  e.n++;
+  pal.installs.set(k, e);
+  pal.installCount++;
+}
+
+/**
  * `$2415E8` -- THE BACKGROUND THIRD, and the whole of it arrives in one call.
  *
  * [M] `$2415E8` is `$24150A`'s shape with two differences and no third:

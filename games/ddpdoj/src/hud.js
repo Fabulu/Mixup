@@ -186,6 +186,8 @@ import { unreached } from './unported.js';
 import { queueKill } from './objalloc.js';
 import { OBJ } from './objdriver.js';
 import { enqueueRegisters } from './spritequeue.js';
+import { install24157A } from './palette.js';
+import { bcd242AC6 } from './items.js';
 
 /** Every ROM address this file touches, as the operand of a named instruction. */
 export const HUD = {
@@ -254,6 +256,21 @@ export const HUD = {
   bombTileP2: 0x3ee000a,      // $287B00 move.l -- P2 bomb-stock graphic
   hyperStockActiveTile: 0x414000a, // $286F30/$286F98 -- hyper-active stock icon
   chainHwLabelTile: 0x53d000a,     // $286044 move.l -- the chain high-water label
+  // W118: the chain-BREAK popup $2855B6 + item row $2857B4 data tables.
+  popupLateWords: 0x28567c,  // $285666 move.w (pc,D2.w) -- 10 per-digit offsets
+  popupJump: 0x2856d4,       // $285652 lea (pc) -- 4 per-zoom digit-table bases
+  popupSuffix: 0x285784,     // $2856AA lea (pc) -- 12 suffix zoom tile longs
+  popupPalActive: 0x2250d8,  // $2855DC lea -- D2 != 0 palette source (32 bytes)
+  popupPalDefault: 0x225118, // $2855F0 lea -- D2 == 0 primary palette source
+  popupPalSecondary: 0x225158, // $285608 lea -- D0 >= $100 palette source
+  popupD5Active: 0x1c9778,   // $2855C2 move.l -- D5 tile base when $80390C != 0
+  popupD5Default: 0x1c9980,  // $2855D0 move.l -- D5 tile base when $80390C == 0
+  popupSuffixTile: 0x1cc34c, // $2856B4/$2856C2 move.l -- default suffix tile
+  itemJump: 0x28587c,        // $285808 lea (pc) -- 4 per-zoom digit-table bases
+  itemLate: 0x28592c,        // $285830 lea (pc) -- 10 per-digit late-path longs
+  itemBase1p2p: 0x285954,    // $285824 lea (pc) -- 4-word 1P/2P base, idx $80390A&6
+  itemSuffix: 0x28595c,      // $285868 lea (pc) -- 14 suffix zoom tile longs
+  itemSuffixTile: 0x1ce8e8,  // $285854 move.l -- default suffix tile
 };
 
 /** RAM, by the instruction that names it.
@@ -1067,6 +1084,187 @@ export function bannerPanel284FA2(ram, rom, ctx, d6) {
 }
 
 // ===========================================================================
+// W118 -- THE CHAIN-BREAK POPUP + ITEM ROW (bucket 25), transcribed from ROM.
+// W113 deferred these two on claims W117 measured FALSE: `$24157A` is a palette
+// hi-half installer (not an object-record installer), and `$242AC6` is the
+// already-ported BCD converter. Both bodies are BCD digit walks that emit into
+// bucket 25; the popup adds a per-frame palette install. The "combo" the owner
+// asked for IS this popup: its D0 is `popupVal`, snapshot from the live chain
+// count (W117 sec 5).
+// ===========================================================================
+
+/** `rol.l #n,Dn` -- the 32-bit rotate-left the item row's 8-nibble walk uses. */
+function rol32(v, n) { return ((v << n) | (v >>> (32 - n))) >>> 0; }
+
+/** The shared early-path zoom-level: how many times D6 (low word) can be
+ *  decremented by 3 before borrowing, times 4.  Both bodies run this as
+ *  `moveq #$0,D5 / move.l D6,-(A7) / subi.w #$3,D6 / bcs / addq.w #$4,D5`.
+ *  Capped at 3 by the caller's `cmpi.w #$C,D6 / bcc late` gate (D6lo < $C
+ *  here), so the result is a valid index into the 4-entry jump table. */
+function zoomLevel4(d6lo) {
+  let d5 = 0, t = d6lo & 0xffff;
+  for (;;) {
+    if (t < 3) break;                  // $285646/$2857FC subi.w #$3,D6 / bcs
+    t = u16(t - 3);
+    d5 += 4;                           // $28564C/$285802 addq.w #$4,D5
+  }
+  return d5;
+}
+
+/**
+ * `$2855B6` -- THE CHAIN-BREAK POPUP (the "combo").  Three phases: a per-frame
+ * palette install (1-2x), a 4-nibble BCD digit walk, and a suffix sprite.  All
+ * emits go to bucket 25.
+ *
+ * Entry registers (the caller `playerBlock` computes them; the countdown side
+ * effects stay there):
+ *  - D0 = popupVal (the BCD word to display, 4 nibbles)
+ *  - D1 = position (caller sets the low word; this body sets the hi word $4FC0)
+ *  - D2 = popupSpeed (the palette-scheme gate: != 0 -> active source)
+ *  - D4 = 7 (the SPRITE palette bank to install)
+ *  - D6 = popupIdx (the zoom/animation counter)
+ *
+ * A caller with no `PaletteState` on its ctx keeps the counted note the draw
+ * always had -- a silent skip here would be indistinguishable from a popup that
+ * rendered right, which is the failure `src/unported.js` exists to stop.
+ */
+export function chainPopup2855B6(ram, rom, ctx, d0, d1, d2, d4, d6) {
+  if (!rom) { draw(ctx, 0x2855b6); return; }
+  let d0w = d0 & 0xffff;                                     // D0 = popupVal (word)
+  // $2855B6 swap / move.w #$4FC0,D1 / swap: hi word $4FC0, low word preserved.
+  let d1cur = ((0x4fc0 << 16) | (d1 & 0xffff)) >>> 0;
+  const d3digit = 0x0610;                                    // $2855BE move.w #$610,D3
+  // $2855C2/$2855D0: D5 = the late-path tile base ($1C9778 unless $80390C == 0).
+  const d5base = (ram.u16(0x80390c) !== 0) ? HUD.popupD5Active : HUD.popupD5Default;
+  let d6lo = d6 & 0xffff;                                    // popupIdx (low word)
+  let drawn = false;                                         // the $80000000 bit of D6
+
+  // ---- Phase A: the palette install (1-2x). -----------------------------
+  // $2855D6 tst D2 / beq -> D2==0 arm.  Both arms install at least once; the
+  // popup body has NO path that reaches the digit walk without installing.
+  if (ctx?.palette) {
+    const pal = ctx.palette;
+    if (d2 !== 0) {                                          // $2855D8 bne (active)
+      install24157A(ram, pal, d4, rom.bytes(HUD.popupPalActive, 32),
+        0x2855e4, 'popup active palette');                   // $2855E4 jsr
+    } else {
+      install24157A(ram, pal, d4, rom.bytes(HUD.popupPalDefault, 32),
+        0x2855f8, 'popup default palette');                  // $2855F8 jsr
+      if (d0w >= 0x100) {                                    // $285600 cmpi.w #$100 / bcs
+        install24157A(ram, pal, d4, rom.bytes(HUD.popupPalSecondary, 32),
+          0x285610, 'popup secondary palette (popupVal >= $100)'); // $285610 jsr
+      }
+      // $285618 cmpi.w #$1000 / bcs -> skip; $28561E is a `nop` in build B
+      // (W117 sec 3.2: a fourth install that is a deliberate no-op).
+    }
+  } else {
+    note(ctx, 0x24157a, `$24157A hi-half install for popup $2855B6 -- no `
+      + `PaletteState on this ctx, so bank ${d4}'s hi half stays whatever it `
+      + `was (W118)`);
+  }
+
+  // ---- Phase B: the 4-nibble BCD walk. ----------------------------------
+  for (let it = 0; it < 4; it++) {                           // $285620 moveq #$3,D7
+    d0w = rol16(d0w, 4);                                     // $285622 rol.w #$4,D0
+    const nibble = d0w & 0x0f;                               // $285624/$285626
+    if (nibble === 0 && !drawn) {                            // $285628 tst.l D6 / bmi
+      // leading-zero suppress.  $28562E cmpi.w #$1C00,D1 / bgt -> off-screen
+      // right: advance the position anyway; else collapse (no advance).
+      if (i16(d1cur & 0xffff) > 0x1c00) {
+        d1cur = ((d1cur & 0xffff0000) | u16((d1cur & 0xffff) + 0x480)) >>> 0; // $285672
+      }
+      continue;                                              // $285676 dbra
+    }
+    drawn = true;                                            // $285636 ori.l #$80000000
+    let d2tile;
+    if (d6lo < 0x000c) {                                     // $28563C cmpi.w #$C / bcc
+      // early path: per-zoom digit table.  $285642..$28565E.
+      const d5 = zoomLevel4(d6lo);                           // the zoom index * 4
+      const base = rom.u32(HUD.popupJump + d5);              // $285652/$285656 jump table
+      d2tile = rom.u32(base + nibble * 4);                   // $28565A/$28565E
+    } else {
+      // late path: word offset + the D5 tile base.  $285664..$28566A.
+      d2tile = (rom.u16(HUD.popupLateWords + nibble * 2) + d5base) >>> 0; // $285666/$28566A
+    }
+    enqueueRegisters(ram, 25, d1cur, d2tile, d3digit, d4);   // $28566C jsr $23FAC4
+    d1cur = ((d1cur & 0xffff0000) | u16((d1cur & 0xffff) + 0x480)) >>> 0; // $285672 addi.w #$480
+  }
+
+  // ---- Phase C: the suffix sprite. -------------------------------------
+  // $285690 addi.w #$FE00,D1; $285694..$28569A swap/move.w #$4EC0/swap (hi=$4EC0).
+  let d1suf = ((0x4ec0 << 16) | u16((d1cur & 0xffff) + 0xfe00)) >>> 0;
+  let d2suf;
+  const d6after = u16(d6lo - 0x17);                          // $28569C subi.w #$17,D6
+  if (d6lo >= 0x17) {                                        // $2856A0 bcc -> default
+    d2suf = HUD.popupSuffixTile;                             // $2856B4 (both arms $1CC34C)
+  } else {
+    // $2856A2 neg.w D6 / andi.w #$FFFE / add.w D6,D6 -> index into $285784.
+    const idx = (u16(-d6after & 0xffff) & 0xfffe) << 1;
+    d2suf = rom.u32(HUD.popupSuffix + idx);                  // $2856AA/$2856AE
+  }
+  enqueueRegisters(ram, 25, d1suf, d2suf, 0x0420, d4);       // $2856C8 move.w #$420 / jmp $23FA96
+}
+
+/**
+ * `$2857B4` -- THE ITEM ROW.  An 8-nibble BCD walk over `itemCount $81B610`
+ * (converted by `bcd242AC6`), then a suffix sprite.  NO palette install:
+ * `itemKind $81B612` is the sprite colour/flip word (D4), not a palette bank.
+ * The body reads its own RAM, so it takes no entry registers.
+ *
+ * Leading zeros are suppressed but STILL ADVANCE the position (the row is a
+ * fixed-width field), unlike the popup which collapses them.  Transcribed
+ * faithfully from $2857B4..$285874.
+ */
+export function itemRow2857B4(ram, rom, ctx) {
+  if (!rom) { draw(ctx, 0x2857b4); return; }
+  // $2857B4 move.w $81B610,D0 / bpl / moveq #$0,D0 (clamp negative to 0).
+  let itemCount = ram.u16(HUDRAM.itemCount);                 // $2857B4
+  if (i16(itemCount) < 0) itemCount = 0;                     // $2857BA bpl
+  let d0 = bcd242AC6(itemCount) >>> 0;                       // $2857BE jsr / $2857C4 move.l D2,D0
+  // $2857C6 move.l #$5BBFFE00,D1 / addi.w #$440,D1 -> $5BBF0240.
+  let d1cur = ((0x5bbf << 16) | u16(0xfe00 + 0x440)) >>> 0;
+  const d4 = ram.u16(HUDRAM.itemKind);                       // $2857D0 move.w $81B612,D4
+  let d6lo = ram.u16(HUDRAM.itemDir) & 0xffff;               // $2857D8 move.w $81B60E,D6
+  let drawn = false;                                         // the $80000000 bit of D6
+
+  for (let it = 0; it < 8; it++) {                           // $2857DE moveq #$7,D7
+    d0 = rol32(d0, 4);                                       // $2857E0 rol.l #$4,D0
+    const nibble = d0 & 0x0f;                                // $2857E2/$2857E4
+    if (nibble === 0 && !drawn) {                            // $2857E8 tst.l D6 / bpl $285842
+      d1cur = ((d1cur & 0xffff0000) | u16((d1cur & 0xffff) + 0x440)) >>> 0; // $285842 advance
+      continue;                                              // $285846 dbra
+    }
+    drawn = true;                                            // $2857EC ori.l #$80000000
+    let d2tile;
+    if (d6lo < 0x000c) {                                     // $2857F2 cmpi.w #$C / bcc
+      // early path: per-zoom digit table.  $2857F8..$285814.
+      const d5 = zoomLevel4(d6lo);
+      const base = rom.u32(HUD.itemJump + d5);               // $285808/$28580C jump table
+      d2tile = rom.u32(base + nibble * 4);                   // $285810/$285814
+    } else {
+      // late path: 1P/2P base + per-digit long offset.  $28581A..$285834.
+      const modeIdx = ram.u16(0x80390a) & 0x06;              // $28581C/$28581E
+      const base1p2p = rom.u16(HUD.itemBase1p2p + modeIdx);  // $285824/$285828
+      d2tile = (base1p2p + rom.u32(HUD.itemLate + nibble * 4)) >>> 0; // $28582C/$285834
+    }
+    enqueueRegisters(ram, 25, d1cur, d2tile, 0x0610, d4);    // $285838/$28583C jsr $23FAC4
+    d1cur = ((d1cur & 0xffff0000) | u16((d1cur & 0xffff) + 0x440)) >>> 0; // $285842 addi.w #$440
+  }
+
+  // ---- suffix. ---------------------------------------------------------
+  // $28584A addi.w #$FE00,D1 (low word only) / $28584E subi.l #$2000000,D1.
+  let d1suf = ((d1cur & 0xffff0000) | u16((d1cur & 0xffff) + 0xfe00)) >>> 0;
+  d1suf = u32(d1suf - 0x02000000);                           // $28584E subi.l #$2000000
+  let d2suf = HUD.itemSuffixTile;                            // $285854 move.l #$1CE8E8
+  const d6after = u16(d6lo - 0x1b);                          // $28585A subi.w #$1B,D6
+  if (d6lo < 0x1b) {                                         // $28585E bcc -> default
+    const idx = (u16(-d6after & 0xffff) & 0xfffe) << 1;      // $285860..$285866
+    d2suf = rom.u32(HUD.itemSuffix + idx);                   // $285868/$28586C
+  }
+  enqueueRegisters(ram, 25, d1suf, d2suf, 0x0420, d4);       // $285870/$285874 jmp $23FA96
+}
+
+// ===========================================================================
 // W116 -- THE HUD TEXT BODIES (the $240DC2 callers). Each replaces a former
 // `draw(ctx, addr)` NOTE with the real body, transcribed off maincpu.bin. The
 // chain popup `$2855B6` and item row `$2857B4` stay NOTES (they are SPRITE
@@ -1414,13 +1612,23 @@ function playerBlock(ram, rom, ctx, P) {
   }
   // ---- $2845C4 / $284762: THE CHAIN-BREAK POPUP COUNTDOWN.
   if (ram.u16(P.popup) !== 0) {                         // tst.w / beq
-    ram.setU16(P.popup, u16(ram.u16(P.popup) - 1));     // $2845CC / $28476A subq.w #$1
-    void ram.u16(P.popupVal);                           // $2845D2 / $284770 -> D0
+    const popup = ram.u16(P.popup);                     // PRE-dec countdown
+    ram.setU16(P.popup, u16(popup - 1));                // $2845CC / $28476A subq.w #$1
+    const d0 = ram.u16(P.popupVal);                     // $2845D2 / $284770 -> D0
+    const d6 = ram.u16(P.popupIdx);                     // $2845DA -> D6 (PRE-inc)
     ram.setU16(P.popupIdx, u16(ram.u16(P.popupIdx) + 1));   // $2845E0 / $28477E addq.w #$1
-    if (ram.u16(P.popupSpeed) !== 0) {                  // $2845FE / $28479C tst.w / beq
-      ram.setU16(P.popupSpeed, u16(ram.u16(P.popupSpeed) - 1));   // $284606 / $2847A4
+    let d1lo = 0x40;                                    // $2845E6 move.w #$40,D1
+    const d3 = u16(popup - 1);                          // $2845EA countdown POST-dec
+    if (d3 < 0x2a) {                                    // $2845F0 cmpi.w #$2a / bcc
+      d1lo = u16(0x40 + (u16(d3 - 0x2a) << 7));         // subi / lsl.w #7 / add.w D3,D1
     }
-    draw(ctx, 0x2855b6);                                // $284610 / $2847AE bsr
+    const d2 = ram.u16(P.popupSpeed);                   // $2845FE -> D2 (PRE-dec)
+    if (d2 !== 0) {                                     // $284604 beq
+      ram.setU16(P.popupSpeed, u16(d2 - 1));            // $284606 / $2847A4 subq.w #$1
+    }
+    // $28460C move.w #$7,D4 / $284610 bsr $2855B6.  D6 is PRE-inc and D2 PRE-dec,
+    // matching what the ROM body sees; the body sets D1's hi word to $4FC0.
+    chainPopup2855B6(ram, rom, ctx, d0, d1lo, d2, 7, d6);
   }
   // ---- $284614 / $2847B2: **THE CHAIN METER**.
   const meter = ram.u16(P.meter);                       // move.w $81B5C0/$81B5EA,D6
@@ -1636,7 +1844,7 @@ function banner2847FE(ram, rom, ctx) {
 /** `$284AB6..$284B6A` -- the ITEM / EXTEND counter tail and `$284B5E`'s exit
  *  into the tally.  Gated on `$8130F8` bit 2, which only `$29279C` sets, so in
  *  this port the counter is dead; `BOSS_TAIL` says exactly why. */
-function extendCounter284AB6(ram, ctx) {
+function extendCounter284AB6(ram, rom, ctx) {
   if (ram.u8(HUDRAM.flags8) & 0x04) {                   // $284AB6 btst #$2 / beq.w $284B5E
     if (i16(ram.u16(HUDRAM.itemCount)) < 0) {           // $284AC2 tst.w / bpl
       ram.setU16(HUDRAM.itemDir, u16(ram.u16(HUDRAM.itemDir) - 1));   // $284ACA subq.w
@@ -1648,7 +1856,7 @@ function extendCounter284AB6(ram, ctx) {
         && i16(ram.u16(HUDRAM.itemDir)) >= 0) {         // $284B36 tst.w / bmi
         ram.setU16(HUDRAM.itemKind, 7);                 // $284B3E
         ram.setU16(HUDRAM.itemTimer, 0);                // $284B46 clr.w
-        draw(ctx, 0x2857b4);                            // $284B4C bsr
+        itemRow2857B4(ram, rom, ctx);                   // $284B4C bsr
       }
     } else if (i16(ram.u16(HUDRAM.attract2)) < 0) {     // $284AE2 tst.w $81308E / bmi
       ram.setU16(HUDRAM.itemCount, 0);                  // $284B52 clr.w
@@ -1657,7 +1865,7 @@ function extendCounter284AB6(ram, ctx) {
       const t = u16(ram.u16(HUDRAM.itemTimer) - 1);     // $284AF6 subq.w #$1
       ram.setU16(HUDRAM.itemTimer, t);
       if (t !== 0) {                                    // $284AFC bne.b $284B4C
-        draw(ctx, 0x2857b4);
+        itemRow2857B4(ram, rom, ctx);
       } else {
         ram.setU16(HUDRAM.itemKind, 8);                 // $284AFE
         ram.setU16(HUDRAM.itemTimer, 0x0a);             // $284B06
@@ -1672,7 +1880,7 @@ function extendCounter284AB6(ram, ctx) {
         } else if (n === 0) {                           // $284B26 bne.b $284B4C
           grant2877B8(ram);                             // $284B28 bsr $2877B8
         } else {
-          draw(ctx, 0x2857b4);                          // $284B4C bsr
+          itemRow2857B4(ram, rom, ctx);                 // $284B4C bsr
         }
       }
     }
@@ -1778,7 +1986,7 @@ export function gates2844A6(ram, ctx, rom = null) {
   if ((ram.u8(HUDRAM.flags9) & 0x01)                    // $2844A6 btst #$0,$8130F9 / bne
     || (ram.u8(HUDRAM.dfFlags) & 0x08)) {               // $2844B2 btst #$3,$81DF1E / bne
     if (banner2847FE(ram, rom, ctx) !== 'rejoin') {       // bne.w $2847FE
-      extendCounter284AB6(ram, ctx);                    // every arm ends bra.w $284AB6
+      extendCounter284AB6(ram, rom, ctx);                    // every arm ends bra.w $284AB6
       return;
     }
     // $284B72 bmi.w $2844BE -- REJOIN the skeleton at the P1 block.
@@ -1789,7 +1997,7 @@ export function gates2844A6(ram, ctx, rom = null) {
   if (i16(ram.u16(HUDRAM.aliveP2)) >= 0) {              // $28465C tst.w $8130C0 / bmi
     playerBlock(ram, rom, ctx, HUDRAM.p2);               // $284666..$2847F8
   }
-  extendCounter284AB6(ram, ctx);                        // $284AB6
+  extendCounter284AB6(ram, rom, ctx);                        // $284AB6
 }
 
 // ===========================================================================

@@ -1141,6 +1141,45 @@ SHOT_WINDOWS.extend([
                        "$81B65C*4 at $286F1E/$286F86"),
 ])
 
+# ====== W118: THE CHAIN-BREAK POPUP + ITEM-ROW DIGIT/SUFFIX TABLES ==========
+#
+# W117 mapped the two last HUD sprite bodies and cut the smallest port.  Both
+# are BCD digit walks that read per-zoom tile-code longwords out of $285xxx
+# tables; none of W63/W113/W116 covers the $285xxx region.
+#
+# The popup's THREE palette source tables ($2250D8/$225118/$225158, 32 bytes
+# each) are ALREADY inside the W91 window ($222A78..$2252F8); no new window for
+# them.  `check_hud_popup_item_extents` pins their bytes (and every jump-table
+# pointer + table extent) out of the image on every export.
+#
+#   $28567C  the popup late-path per-digit word table (10 words, digits 0-9,
+#            stride $34), read at $285666 `move.w $28567C(pc,D2.w),D2`. The
+#            words at $285690+ are the suffix CODE, not table; the window spans
+#            them to keep the popup's data contiguous.
+#   $2856D4  the popup jump table (4 longs: $2856E4/$28570C/$285734/$28575C),
+#            read at $285652 `lea $2856D4(pc),A0 / movea.l (A0,D5.w),A0`, and
+#            the 40-long per-zoom digit block it points at ($2856E4..$285783),
+#            and the 12-long suffix zoom table $285784 (`lea $285784(pc),A0`).
+#            One window $28567C..$2857B4.
+#   $28587C  the item jump table (4 longs: $28588C/$2858B4/$2858DC/$285904),
+#            read at $285808 `lea $28587C(pc),A0`, the 40-long per-zoom digit
+#            block ($28588C..$28592B), the 10-long late-path table $28592C
+#            (`lea $28592C(pc),A0`), the 4-word 1P/2P base $285954
+#            (`lea $285954(pc),A0`, index `$80390A & 6`), and the 14-long
+#            suffix table $28595C (`lea $28595C(pc),A0`). One window
+#            $28587C..$285994; $285994 is the hi-score walk (W115).
+SHOT_WINDOWS.extend([
+    (0x28567C, 0x0138, "W118: popup late-path word table $28567C (10 words, "
+                       "$285666) and, spanning the suffix code, the jump table "
+                       "$2856D4 + the 40-long per-zoom digit block $2856E4 + "
+                       "the 12-long suffix table $285784. $2857B4 is the item "
+                       "row"),
+    (0x28587C, 0x0118, "W118: item jump table $28587C (4 longs, $285808) + "
+                       "the 40-long per-zoom digit block $28588C + late-path "
+                       "long table $28592C + 1P/2P base $285954 + suffix table "
+                       "$28595C (14 longs); $285994 is the hi-score walk (W115)"),
+])
+
 # ============ W64 (B2): THE BOMB'S RECORD TEMPLATES AND SCRIPTS =============
 #
 # ONE window, $25653C..$25664D, and it is a UNION of six extents that are each
@@ -2722,6 +2761,61 @@ def check_hud_sprite_extents(d: bytes) -> None:
             f"the rank-icon P2 table (8 longwords).")
 
 
+def check_hud_popup_item_extents(d: bytes) -> None:
+    """W118.  THE POPUP + ITEM-ROW DIGIT/SUFFIX TABLES, pinned out of the image.
+
+    The two bodies index per-zoom tile-code longwords out of $285xxx tables.
+    Every jump-table pointer and every table extent is read here out of the
+    cartridge -- never trusted from a run.  The three popup palette source
+    tables ($2250D8/$225118/$225158) sit inside the W91 window; their first
+    fourteen bytes are identical across all three (W117 sec 3.2) and that is
+    asserted too, so a wave that moves one is caught here.
+    """
+    # 1. the popup palette source tables: 32 bytes each, abutting, first 14
+    #    bytes identical (the shared non-digit colour entries).
+    for base, tag in ((0x2250D8, "active"), (0x225118, "default"),
+                      (0x225158, "secondary")):
+        if base + 32 > len(d):
+            raise SystemExit(f"palette source ${base:06X} ({tag}) is past EOF.")
+    if d[0x2250D8:0x2250D8 + 14] != d[0x225118:0x225118 + 14]:
+        raise SystemExit(
+            "the popup palette sources $2250D8 and $225118 disagree on their "
+            "first 14 bytes -- W117 sec 3.2 says they are identical.")
+    if d[0x2250D8:0x2250D8 + 14] != d[0x225158:0x225158 + 14]:
+        raise SystemExit(
+            "the popup palette sources $2250D8 and $225158 disagree on their "
+            "first 14 bytes -- W117 sec 3.2 says they are identical.")
+    # 2. the popup jump table $2856D4 must point at the four per-zoom bases.
+    popup_jumps = [0x2856E4, 0x28570C, 0x285734, 0x28575C]
+    for i, want in enumerate(popup_jumps):
+        got = u32(d, 0x2856D4 + i * 4)
+        if got != want:
+            raise SystemExit(
+                f"$2856D4[{i}] is ${got:06X}, not ${want:06X} (the popup "
+                f"per-zoom digit-table base).")
+    # 3. the item jump table $28587C must point at the four per-zoom bases.
+    item_jumps = [0x28588C, 0x2858B4, 0x2858DC, 0x285904]
+    for i, want in enumerate(item_jumps):
+        got = u32(d, 0x28587C + i * 4)
+        if got != want:
+            raise SystemExit(
+                f"$28587C[{i}] is ${got:06X}, not ${want:06X} (the item "
+                f"per-zoom digit-table base).")
+    # 4. the popup window must reach the end of the suffix table $285784+48.
+    declared_pu = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x28567C]
+    if not declared_pu or 0x28567C + declared_pu[0][1] < 0x2857B4:
+        raise SystemExit(
+            f"the $28567C window is {declared_pu} and must reach $2857B4 -- "
+            f"the end of the popup suffix table $285784 (12 longs).")
+    # 5. the item window must reach the end of the suffix table $28595C+56.
+    declared_it = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x28587C]
+    if not declared_it or 0x28587C + declared_it[0][1] < 0x285994:
+        raise SystemExit(
+            f"the $28587C window is {declared_it} and must reach $285994 -- "
+            f"the end of the item suffix table $28595C (14 longs); $285994 is "
+            f"the hi-score walk (W115).")
+
+
 def check_boss_a4_extent(d: bytes) -> None:
     """W64 (B2).  W62's `$294F68` window was FIVE pairs and the table is SEVEN.
 
@@ -3844,6 +3938,7 @@ def build(d: bytes) -> dict:
     check_item_extents(d)                      # W61 -- see the function's docstring
     check_hud_extents(d)                       # W63 -- see the function's docstring
     check_hud_sprite_extents(d)                # W113 -- HUD sprite-frame tables
+    check_hud_popup_item_extents(d)            # W118 -- popup + item-row tables
     check_bomb_extents(d)                      # W64 -- ...and this one's
     check_boss_a4_extent(d)                    # W64 -- W62's window was SHORT
     check_boss_script_table_extents(d)         # W82 -- ...and so were A3 and A1
