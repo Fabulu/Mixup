@@ -657,6 +657,14 @@ agent death. Holding ONE more interval: if it is a 429 stuck-waiting-for-reset, 
 may clear and W132 resumes. If STILL no progress next firing: `TaskStop(aa57426c8dd677c29)` +
 re-dispatch W132 fresh. The cron idle-gates (W132 nominally in flight).
 
+## 7t. UPDATE -- 2026-08-07: W132 stalled+killed; fresh re-dispatch RUNNING; limit reset; stray cleaned
+
+The original W132 (aa57426c8dd677c29) stalled (3+ intervals; its last note mentioned a "bogus
+parallel tree"). Killed via TaskStop -- it had written nothing to the main tree (left an empty
+stray dir `games/ddpdoj/tools/w12/`, removed). Re-dispatched FRESH (a9508a6b4f000eafe) -- the
+dispatch SUCCEEDED, so the usage limit has RESET (no active third block). The fresh W132
+(live-page PLAY + divergence UI) is RUNNING. Will publish W131+W132 together when it completes.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
