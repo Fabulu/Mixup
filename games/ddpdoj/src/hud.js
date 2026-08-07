@@ -181,7 +181,7 @@
 // pop and NOT the write; writing into `RomWindows` would throw and writing into
 // `Ram` would be a fabrication.
 
-import { u16, i16 } from './ram.js';
+import { u16, i16, u32 } from './ram.js';
 import { unreached } from './unported.js';
 import { queueKill } from './objalloc.js';
 import { OBJ } from './objdriver.js';
@@ -231,6 +231,29 @@ export const HUD = {
   iconTileP2: 0x1ce9b4,     // $285EA0 move.l -- the P2 hyper-stock icon tile
   bannerPanelP1: 0x1cf060,  // $284F86 move.l -- the banner panel tile P1
   bannerPanelP2: 0x1cee58,  // $284FB6 move.l -- the banner panel tile P2
+  // W116: the general TEXT defer path ($240DC2 printer + $141258 flush). The
+  // flush is build A (the 3rd ISR6-gated routine, machine.js isr6Gated[2]),
+  // shared on a VERSION-B run per HANDOVER sec 7. The printer is build B.
+  txPrint: 0x240dc2,        // the base grid variant: tile = (D4|$C0000000)+$10000*i
+  txPrintStride: 0x240e1a,  // == $240E1E + its prologue; grid + caller inter-col stride
+  txPrintSingle: 0x240e84,  // the one-cell variant: dest=$904000+D0+D1, tile=D4|$C0000000
+  txPrintBlank: 0x240ebc,   // the fill-with-$C0000000 variant (clears a grid)
+  txFlush: 0x141258,        // (A) drains $80B058 -> $904xxx, then re-arms the buffer
+  // W116: the text TABLES the bodies read (tiles are 4-byte longwords).
+  livesIconP1: 0x2881e2,    // $28792A/$284EAE lea -- P1 lives icon, idx sel*2
+  livesIconP2: 0x2881ea,    // $2879B4/$284F26 lea -- P2 lives icon
+  hyperStockTab: 0x2883e6,  // $286F1E lea -- hyper-stock icon, idx stock*4
+  credDigitTab: 0x287f86,   // $285FC0 lea -- 1-digit credit char, idx digit*4
+  credSuffixTab: 0x287f7a,  // $285FDA lea -- the credit suffix, idx D5
+  cred2dTens: 0x287fae,    // $286000 lea -- 2-digit tens char, idx digit*4
+  cred2dOnes: 0x287fd6,     // $286022 lea -- 2-digit ones char, idx digit*4
+  chainHwTab: 0x287ffe,     // $28606E lea -- chain high-water digit, idx digit*4
+  // W116: tile IMMEDIATES the bodies move into D4 (no table read).
+  panelLabelTile: 0x54f000a,  // $284EE6/$284F5E move.l -- the score-row label
+  bombTileP1: 0x404000a,      // $287ACE move.l -- P1 bomb-stock graphic
+  bombTileP2: 0x3ee000a,      // $287B00 move.l -- P2 bomb-stock graphic
+  hyperStockActiveTile: 0x414000a, // $286F30/$286F98 -- hyper-active stock icon
+  chainHwLabelTile: 0x53d000a,     // $286044 move.l -- the chain high-water label
 };
 
 /** RAM, by the instruction that names it.
@@ -303,6 +326,23 @@ export const HUDRAM = {
   hyperStockFlag: 0x81b6e4, // $285D8A/$285F04 -- shared guard (non-hyper arm only)
   rankAccumP1: 0x81b64a,   // $285D4E/$285DB2 -- picks one of 8 rank-icon tiles
   rankAccumP2: 0x81b64c,   // $285EC8/$285F2C -- P2
+  // W116: the OTHER-TEXT bodies' RAM sources (each read by a $240DC2 caller).
+  // Written by the unported hyper/tally tails; read here by the text bodies.
+  shipSelectBodyP1: 0x813084,  // $287922 move.w -- idx into $2881E2 (lives icon)
+  shipSelectBodyP2: 0x813086,  // $2879AC move.w -- idx into $2881EA
+  // The slide-in's INLINE lives draw indexes the SAME table off the PLAYER
+  // record's shipSel ($81043E/$8104A0 == RAM.player1/P2 + P.shipSel), not this
+  // word; see shipSelectSlideP1/P2 below.
+  shipSelectSlideP1: 0x81043e, // $284EA6 move.w -- player1 +$58 (P.shipSel)
+  shipSelectSlideP2: 0x8104a0, // $284F1E move.w -- player2 +$58
+  hyperStockIdxP1: 0x81b65c,   // $286F14 move.w -- idx into $2883E6 (stock icon)
+  hyperStockIdxP2: 0x81b65e,   // $286F7C move.w -- P2
+  chainHiWaterP1: 0x81b632,    // $2845BA move.w -- the chain HIGH-WATER BCD (P1)
+  chainHiWaterP2: 0x81b634,    // $284758 move.w -- P2
+  creditSuffixP1: 0x812910,    // $2845A6 move.w -> D5 -- the credit suffix idx (P1)
+  creditSuffixP2: 0x812912,    // $284744 move.w -> D5 -- P2
+  // creditCountP1/P2 are HUDRAM.p1/p2.creditRow ($812900/$81290E) -- the BCD
+  // credit count D6 the credits body `$285FB6` decodes.
   // ---- per player: everything `$2844C8`/`$284666`'s two blocks differ in
   p1: {
     who: 0,
@@ -319,7 +359,9 @@ export const HUDRAM = {
     accA: 0x81b5b8,         // $284640 move.l D0 -- zeroed with the meter
     accB: 0x81b5ce,         // $284646
     chain: 0x81b5da,
-    creditRow: 0x812900,    // $28455A move.w -- the CONTINUE prompt
+    creditRow: 0x812900,    // $28455A move.w -- the CONTINUE prompt (BCD credit count)
+    creditSuffix: 0x812910, // $2845A6 move.w -> D5 -- the credit suffix idx (W116)
+    chainHiWater: 0x81b632, // $2845BA move.w -> D6 -- the chain high-water BCD (W116)
     playerState: 0x8103e6,  // $284550 btst #$6
     panel: 0x285c5e,        // $2844C8 bsr
     creditDuty: 0x14,       // $28456A cmpi.w #$14
@@ -339,7 +381,9 @@ export const HUDRAM = {
     accA: 0x81b5e2,         // $2847DE
     accB: 0x81b5f8,         // $2847E4
     chain: 0x81b604,
-    creditRow: 0x81290e,    // $2846F8
+    creditRow: 0x81290e,    // $2846F8 -- the CONTINUE prompt (BCD credit count)
+    creditSuffix: 0x812912, // $284744 move.w -> D5 -- P2 credit suffix idx (W116)
+    chainHiWater: 0x81b634, // $284758 move.w -> D6 -- P2 chain high-water BCD (W116)
     playerState: 0x810448,  // $2846EE
     panel: 0x285dd8,        // $284666 bsr
     creditDuty: 0x2c,       // $284708 cmpi.w #$2C -- NOT $14; the ROM's own
@@ -638,6 +682,159 @@ export function flushScoreDigits185DC4(ram, txvram) {
   }
 }
 
+// ===========================================================================
+// W116 -- $240DC2 + variants (the TX deferred-write printer) and $141258
+// (its IRQ6-gated flush). This is the path the OTHER HUD text rides: lives,
+// bombs, credits, chain high-water, hyper-stock icons, the labels. The score
+// digits do NOT come this way (they have their own $185DC4 flush, above).
+//
+// The printer appends `(destination, tile-longword)` pairs to the defer buffer
+// at $80B058 (cursor $80C8D8, terminator $FFFFFFFF) -- the SAME buffer W112
+// sec 2 mapped and `deferReset` (background.js) arms each init. The flush
+// $141258 (build A, the 3rd ISR6-gated routine, isr.js) drains that buffer into
+// TxVram each IRQ6 and re-arms it (its tail $14123A IS deferReset).
+//
+// Every variant is transcribed cell-for-cell off maincpu.bin this wave; see the
+// worklog's PREMISE CHECK for the verbatim listings.
+// ===========================================================================
+
+/** The defer buffer's RAM addresses (the same three `CAM` owns in
+ *  `src/background.js`: deferHead=$80B058, deferCursor=$80C8D8, and the stride
+ *  scratch $80D518 that `$240E1A` sets and `deferReset` clears). Named here so
+ *  the printer/flush read as the ROM's `lea $80B058,A0` does. */
+const TXDEFER = {
+  head: 0x80b058,      // $240DC6/$141258 the buffer head (and reset target)
+  cursor: 0x80c8d8,    // $240DC6 movea.l $80C8D8,A0  (also the NULL value)
+  stride: 0x80d518,    // $240E34 move.l D5,$80D518  (inter-column tile stride)
+  tag: 0x904000,       // $240DE0 move.l #$904000,(A0) -- the dest-base tag
+};
+const TX_CELLS = 64 * 32;   // the longword capacity of the $904000 tilemap
+
+/** Append a (D2+1)-column by (D3+1)-row grid of `(dest,tile)` pairs to the
+ *  defer buffer. `d4` is the STARTING tile longword (palette already applied).
+ *  `d4CellInc` is added to d4 each cell (`$240DEE addi.l #$10000,D4`);
+ *  `d4ColInc` is added between columns (`$240E62 add.l $80D518,D4`, E1A only).
+ *  Mirrors the loop nest `$240DDC..$240E02` exactly: D6 resets to D1 each outer
+ *  pass and steps `$100` (one row) each inner pass; D0 steps `-4` (one column)
+ *  each outer pass; each cell's dest is `$904000 + (D6 + D0)`. */
+function txDeferGrid(ram, d0, d1, d2, d3, d4, d4CellInc, d4ColInc) {
+  let a0 = ram.u32(TXDEFER.cursor);                        // $240DC6 movea.l $80C8D8,A0
+  const end = TXDEFER.cursor;                              // $80C8D8 -- buffer end / null sentinel
+  // $240DCC cmpa.l #$80C8D8 / beq -- the ROM refuses the NULL sentinel. The
+  // port also refuses any cursor BELOW the head: in production camReset arms
+  // the cursor to $80B058 before any body runs, but a test that drops the HUD
+  // straight into state 1 on fresh RAM has an unarmed cursor (0). An unarmed
+  // buffer draws nothing -- same as the ROM's null case.
+  if (a0 < TXDEFER.head || a0 >= end) return;
+  // The ROM trusts the per-IRQ6 flush to drain the buffer every frame, so it
+  // never bounds the write. The port bounds it: each cell needs 8 bytes plus a
+  // 4-byte terminator, and once there is no room for both, the printer stops.
+  // Without this, a long no-flush run (a test that never sets the $803940
+  // semaphore, or many overrun frames in a row) walks the cursor past $80C8D8
+  // into the rest of main RAM. A stopped printer drops the rest of THIS body's
+  // cells; the flush drains what landed and re-arms.
+  const outer = d2 & 0xffff, inner = d3 & 0xffff;
+  let d6 = d1 & 0xffff;                                    // $240DDC move.w D1,D6
+  let full = false;
+  for (let o = 0; o <= outer; o++) {                       // $240DFE dbra D2
+    d6 = d1 & 0xffff;                                      // $240DDC (reset each pass)
+    for (let i = 0; i <= inner; i++) {                     // $240DF8 dbra D7 (D7=D3)
+      if (a0 + 12 > end) { full = true; break; }           // room for cell (8) + terminator (4)
+      const d5 = (d6 + d0) & 0xffff;                       // $240DE6/$240DE8 D5 = D6 + D0
+      ram.setU32(a0, u32(TXDEFER.tag + d5));               // $240DE0 write $904000 + $240DEA add D5
+      ram.setU32(a0 + 4, d4 >>> 0);                        // $240DEC move.l D4,(A0)+
+      a0 += 8;
+      d4 = u32(d4 + d4CellInc);                            // $240DEE addi.l #$10000,D4 (or 0)
+      d6 = (d6 + 0x100) & 0xffff;                          // $240DF4 addi.w #$100,D6
+    }
+    if (full) break;
+    d4 = u32(d4 + d4ColInc);                               // $240E62 add.l $80D518,D4 (or 0)
+    d0 = (d0 - 4) & 0xffff;                                // $240DFC subq.w #$4,D0
+  }
+  ram.setU32(a0, 0xffffffff);                              // $240E02 terminator (a0+4 <= end, proven)
+  ram.setU32(TXDEFER.cursor, a0);                          // $240E08 store advanced cursor
+}
+
+/** `$240DC2` -- the base grid variant. D4 |= $C0000000, then tile advances
+ *  `$10000` per cell. Entry regs: D0 outer step, D1 base col, D2 outer count,
+ *  D3 inner count, D4 start tile code. */
+export function txPrint240DC2(ram, d0, d1, d2, d3, d4) {
+  txDeferGrid(ram, d0, d1, d2, d3, u32(d4 + 0xc0000000), 0x10000, 0);
+}
+
+/** `$240E1A` (== `$240E1E` + prologue) -- grid + caller inter-column tile
+ *  stride. Computes `$80D518 := ((D5 - D3 - 1) & $FFFF) << 16`
+ *  (`$240E2C..$240E34`) and adds it to D4 between columns. The credits and
+ *  chain-high-water bodies call THIS variant for their multi-digit walks. */
+export function txPrint240E1A(ram, d0, d1, d2, d3, d4, d5) {
+  const stride = (((d5 - d3 - 1) & 0xffff) << 16) >>> 0;  // $240E2C..$240E34
+  ram.setU32(TXDEFER.stride, stride);                      // $240E34
+  txDeferGrid(ram, d0, d1, d2, d3, u32(d4 + 0xc0000000), 0x10000, stride);
+}
+
+/** `$240E84` -- the SINGLE-cell variant. dest = `$904000 + D0 + D1`, tile =
+ *  `D4 | $C0000000`. No grid. */
+export function txPrint240E84(ram, d0, d1, d4) {
+  let a0 = ram.u32(TXDEFER.cursor);                        // $240E84 (prologue $240E80)
+  const end = TXDEFER.cursor;
+  if (a0 < TXDEFER.head || a0 + 12 > end) return;          // $240E90 beq -- NULL/unarmed/full refused
+  const dest = u32(TXDEFER.tag + ((d0 + d1) & 0xffff));    // $240E98 + $240E9E/$240EA0
+  ram.setU32(a0, dest);                                    // $240E98 move.l #$904000,(A0) + add D1
+  ram.setU32(a0 + 4, u32(d4 + 0xc0000000));                // $240EA2 move.l D4,(A0)+
+  ram.setU32(a0 + 8, 0xffffffff);                          // $240EA4 terminator
+  ram.setU32(TXDEFER.cursor, a0 + 8);                      // $240EAA
+}
+
+/** `$240EBC` -- fill a grid with the ONE blank tile `$C0000000`. The caller's
+ *  D4 is DISCARDED (`$240ECE move.l #$C0000000,D4`) and there is NO per-cell
+ *  increment; every cell in the (D2+1)x(D3+1) grid gets the same blank tile.
+ *  Used to clear the lives slots that have no icon. */
+export function txPrint240EBC(ram, d0, d1, d2, d3) {
+  txDeferGrid(ram, d0, d1, d2, d3, 0xc0000000, 0, 0);
+}
+
+/** `$141258` (build A, the 3rd ISR6-gated routine) -- drain the `$80B058`
+ *  defer buffer into TxVram, then re-arm it. Walks `(dest, value)` longword
+ *  pairs until the `$FFFFFFFF` terminator; for each, writes the value to its
+ *  dest (`$14126C move.l (a0)+,(a1)`). Dest addresses are `$904xxx` (TX); the
+ *  port writes `BgVram` directly so NO `$900xxx` (BG) entries ever appear --
+ *  the BG arm is defensive and notes rather than silences.
+ *
+ *  The tail `$14123A` IS `deferReset`: clear `$80D518`, re-arm the terminator
+ *  at the head, reset the cursor. So one flush drains a frame's worth and
+ *  leaves the buffer empty for the next frame's bodies. Has NO inner gate (the
+ *  outer `$803940` ISR6 semaphore, already enforced by `irq6`, governs it). */
+export function flushTextDefer141258(ram, txvram, ctx) {
+  let a0 = TXDEFER.head;                                   // $141258 lea $80B058,A0
+  const end = TXDEFER.cursor;                              // $80C8D8 -- the buffer's hard end
+  for (;;) {
+    // The ROM trusts the $FFFFFFFF terminator to always be present (the per-
+    // frame flush + deferReset guarantee it). The port also stops at the buffer
+    // end: a seed captured mid-frame or a long no-flush run can leave the
+    // terminator past where the flush starts, and walking past $80C8D8 would
+    // run off the top of main RAM. Stopping at `end` is the buffer's own bound.
+    if (a0 >= end) break;
+    const dest = ram.u32(a0); a0 += 4;                     // $141262 movea.l (A0)+,A1
+    if (dest === 0xffffffff) break;                        // $141264/$14126A beq
+    if (a0 >= end) break;                                  // no value half-entry hanging
+    const value = ram.u32(a0); a0 += 4;                    // $14126C move.l (A0)+,(A1) [the src]
+    const cell = (dest - TXDEFER.tag) >>> 2;
+    if (cell < TX_CELLS) {
+      txvram.setLong(dest, value);                         // -> $904000 tilemap
+    } else if (ctx) {
+      // A defer write outside the TX tilemap window. The port never queues BG
+      // writes here (background.js writes BgVram directly), so this is
+      // unexpected; name it rather than swallow it.
+      ctx.unportedLog.note(dest, `$141258 defer write to $${dest.toString(16)
+        .toUpperCase()} is outside the $904000 TX tilemap -- dropped`);
+    }
+  }
+  // $14123A tail (= deferReset): clear the stride, re-arm, reset the cursor.
+  ram.setU32(TXDEFER.stride, 0);                           // $14123C
+  ram.setU32(TXDEFER.head, 0xffffffff);                    // $141242
+  ram.setU32(TXDEFER.cursor, TXDEFER.head);                // $14124C
+}
+
 
 // ===========================================================================
 // $285F8A / $285F52 -- the two per-frame HUD animation cursors
@@ -869,6 +1066,215 @@ export function bannerPanel284FA2(ram, rom, ctx, d6) {
   scoreRow285C62(ram, rom, ctx, 1, d6, 0);                   // $284FCC bra $285DDC
 }
 
+// ===========================================================================
+// W116 -- THE HUD TEXT BODIES (the $240DC2 callers). Each replaces a former
+// `draw(ctx, addr)` NOTE with the real body, transcribed off maincpu.bin. The
+// chain popup `$2855B6` and item row `$2857B4` stay NOTES (they are SPRITE
+// draws deferred in W113 -- they need `$24157A`/`$242AC6`, not this path).
+// ===========================================================================
+
+/** `rol.w #n,Dn` -- the 16-bit rotate-left the BCD digit walks use. Bits that
+ *  leave the top re-enter at the bottom. (`rol.w #$4,D6` brings the top nibble
+ *  to the bottom; `rol.w #$C,D6` == ror4 brings nibble 1 to the bottom.) */
+function rol16(v, n) { return ((v << n) | (v >>> (16 - n))) & 0xffff; }
+
+/** P1/P2 parameter set for the bodies that mirror (lives, hyper-stock). The
+ *  two are instruction-for-instruction identical apart from these addresses. */
+function textBodyCfg(who) {
+  return who === 0 ? {
+    alive: HUDRAM.aliveP1, shipSel: HUDRAM.shipSelectBodyP1,
+    iconTab: HUD.livesIconP1, d1Base: 0x200, d1Step: +0x100,
+    hyper: HUDRAM.hyperActiveP1, stockIdx: HUDRAM.hyperStockIdxP1,
+    addr: 0x2878cc,
+  } : {
+    alive: HUDRAM.aliveP2, shipSel: HUDRAM.shipSelectBodyP2,
+    iconTab: HUD.livesIconP2, d1Base: 0x1900, d1Step: -0x100,
+    hyper: HUDRAM.hyperActiveP2, stockIdx: HUDRAM.hyperStockIdxP2,
+    addr: 0x28795c,
+  };
+}
+
+/** `$2878CC` (P1) / `$28795C` (P2) -- THE LIVES ROW. Six vertical slots (D7=5,
+ *  dbra -> 6 iterations split between icons and blanks), each slot a 2-cell-
+ *  wide icon (D2=1, D3=0). Icons come from `$2881E2[$813084*2]` (P1) /
+ *  `$2881EA[$813086*2]` (P2); the unfilled slots are cleared by `$240EBC`.
+ *
+ *  The banner-active arm (`$8130F9 bit0` + `$81B61F bmi` + `$81B61E bit4`)
+ *  shifts D0/D1; in this port `$8130F9 bit0`'s only writer is the unported
+ *  BOSS_TAIL, so the arm never fires -- but it is ported faithfully. */
+export function livesRow2878CC(ram, rom, ctx, who) {
+  const C = textBodyCfg(who);
+  if (!rom) { note(ctx, C.addr, DRAWS[C.addr]); return; }
+  let d0 = 0xbc, d1 = C.d1Base;                             // $2878D0/$2878D4
+  if ((ram.u8(HUDRAM.flags9) & 0x01)                       // $2878D8 btst #0,$8130F9
+    && (ram.u8(HUDRAM.bannerFlagsClear) & 0x80) === 0      // $2878E4 tst.b $81B61F / bmi
+    && (ram.u8(HUDRAM.bannerFlagsBoss) & 0x10)) {          // $2878EE btst #4,$81B61E
+    d0 = 0xc0; d1 = who === 0 ? 0x0000 : 0x1b00;           // $2878FA/$2878FE (P1) / $287984/$287988
+  }
+  const lives = ram.u16(C.alive);                          // $28790C
+  let d7 = 5;                                              // $287902 moveq #5,D7 (total slots-1)
+  const d2 = 1, d3 = 0;                                    // $287904/$287908 (2-wide, 1-tall)
+  if (lives !== 0) {
+    let d6 = (lives - 1) & 0xffff;                         // $287914 subq.w #1,D6
+    d7 = (d7 - 1) & 0xffff;                                // $287916 subq.w #1,D7
+    if (d6 > 5) d6 = 5;                                    // $287918 cmpi / $28791E moveq #5
+    d7 = (d7 - d6) & 0xffff;                               // $287920 sub.w D6,D7
+    const sel = ram.u16(C.shipSel);                        // $287922
+    const tile = rom.u32(C.iconTab + ((sel * 2) & 0xffff));// $287928/$28792A/$287930
+    do {
+      txPrint240DC2(ram, d0, d1, d2, d3, tile);            // $287936 jsr $240DC2
+      d1 = (d1 + C.d1Step) & 0xffff;                       // $28793C addi / $2879C6 subi
+    } while (d6-- !== 0);                                  // $287940 dbra D6
+  }
+  if ((d7 & 0x8000) === 0) {                               // $287944 tst.w D7 / $287946 bmi SKIP
+    do {
+      txPrint240EBC(ram, d0, d1, d2, d3);                  // $287948 jsr $240EBC
+      d1 = (d1 + C.d1Step) & 0xffff;                       // $28794E addi / $2879D8 subi
+    } while (d7-- !== 0);                                  // $287952 dbra D7
+  }
+}
+
+/** `$284E7A..$284EC8` (P1) / `$284EF2..$284F42` (P2) -- the slide-in's INLINE
+ *  lives draw, the path that ACTUALLY shows lives in normal stage-1 play (the
+ *  body `$2878CC` is only reached from the dead `$8130F9 bit0` arm). Same shape
+ *  as the body but indexes the table off the PLAYER record's shipSel
+ *  (`$81043E`/`$8104A0`), draws no blanks, and runs D7 through the same clamp.
+ *  Called from `slideIn284CF2` on the slide's last frame. */
+function slideInLivesDraw(ram, rom, ctx, who) {
+  const C = textBodyCfg(who);
+  const aliveAddr = who === 0 ? HUDRAM.aliveP1 : HUDRAM.aliveP2;
+  const slideSel = who === 0 ? HUDRAM.shipSelectSlideP1 : HUDRAM.shipSelectSlideP2;
+  const lives = ram.u16(aliveAddr);                        // $284E7A / $284EF2
+  if ((lives & 0x8000) !== 0) return;                      // $284E80 / $284EF8 bmi -> skip P1
+  if (lives === 0) return;                                 // $284E86 bcs (subq#1 borrows) -> skip icons
+  let d7 = lives - 1;                                      // $284E84 subq.w #1,D7
+  if (d7 > 5) d7 = 5;                                      // $284E8A cmpi #5 / $284E90 moveq #5
+  const d0 = 0xbc, d2 = 1, d3 = 0;                         // $284E92 / $284E9E / $284EA2
+  let d1 = C.d1Base;                                       // $284E96 / $284F0E
+  // $284E9A tst.w D7 / bmi -> skip: d7 is 0..5 here (>=1 lives), so never taken.
+  const sel = ram.u16(slideSel);                           // $284EA6 / $284F1E
+  const tile = rom.u32(C.iconTab + ((sel * 2) & 0xffff));  // $284EAC/$284EAE/$284EB4
+  do {
+    txPrint240DC2(ram, d0, d1, d2, d3, tile);              // $284EBA jsr $240DC2
+    d1 = (d1 + C.d1Step) & 0xffff;                         // $284EC0 addi / $284F38 subi
+  } while (d7-- !== 0);                                    // $284EC4 dbra D7
+}
+
+/** `$287ABE` (P1) / `$287AF0` (P2) -- THE BOMB-STOCK ROW. Trivial: five moves
+ *  and a `jmp $240DC2`. A fixed 8-wide-by-2-tall graphic (D2=7, D3=1) with the
+ *  per-cell tile advancing $10000; no RAM read. */
+export function bombStock287ABE(ram, rom, ctx, who) {
+  const addr = who === 0 ? 0x287abe : 0x287af0;
+  if (!rom) { note(ctx, addr, DRAWS[addr]); return; }
+  const d0 = 0xd4, d2 = 7, d3 = 1;                         // $287ABE/$287AC6/$287ACA
+  const d1 = who === 0 ? 0x0000 : 0x1a00;                  // $287AC2 / $287AF4
+  const d4 = who === 0 ? HUD.bombTileP1 : HUD.bombTileP2;  // $287ACE / $287B00
+  txPrint240DC2(ram, d0, d1, d2, d3, d4);                  // $287AD4 / $287B06 jmp $240DC2
+}
+
+/** `$286ED6` (P1) / `$286F3E` (P2) -- THE HYPER-STOCK ICONS. A 3wide-by-6tall
+ *  grid (D2=2, D3=5). When the player is hypering (`$81B63E`/`$81B640`) the
+ *  active tile `$414000A` is used; otherwise the icon is
+ *  `$2883E6[$81B65C*4]`/`[$81B65E*4]`. */
+export function hyperStock286ED6(ram, rom, ctx, who) {
+  const addr = who === 0 ? 0x286ed6 : 0x286f3e;
+  if (!rom) { note(ctx, addr, DRAWS[addr]); return; }
+  const hyper = who === 0 ? HUDRAM.hyperActiveP1 : HUDRAM.hyperActiveP2;
+  const stockIdx = who === 0 ? HUDRAM.hyperStockIdxP1 : HUDRAM.hyperStockIdxP2;
+  let d0 = 0xc8, d1 = who === 0 ? 0x200 : 0x1400;          // $286ED6/$286EDA / $286F3E/$286F42
+  // The banner-active arm: only when flags9 bit0 is set, the stage-clear flag
+  // is clear, AND bannerFlagsBoss bit4 is set; bit4 clear returns WITHOUT
+  // drawing. In this port flags9 bit0's writer is unported, so the arm never
+  // fires -- ported faithfully.
+  if ((ram.u8(HUDRAM.flags9) & 0x01)                       // $286EDE/$286F46 btst #0,$8130F9
+    && (ram.u8(HUDRAM.bannerFlagsClear) & 0x80) === 0) {   // $286EE8/$286F50 tst.b / bmi -> skip arm
+    if ((ram.u8(HUDRAM.bannerFlagsBoss) & 0x10) === 0) return; // $286EF8 beq -> rts (bit4 clear)
+    d0 = 0xcc; d1 = who === 0 ? 0x0000 : 0x1600;           // $286EFC/$286F00 / $286F64/$286F68
+  }
+  const d2 = 2, d3 = 5;                                    // $286F04/$286F08
+  let d4;
+  if (ram.u16(hyper) !== 0) {                              // $286F0C/$286F74 tst.w / bne
+    d4 = HUD.hyperStockActiveTile;                         // $286F30/$286F98
+  } else {
+    const idx = ram.u16(stockIdx);                         // $286F14/$286F7C
+    d4 = rom.u32(HUD.hyperStockTab + ((idx * 4) & 0xffff));// $286F1A..$286F24
+  }
+  txPrint240DC2(ram, d0, d1, d2, d3, d4);                  // $286F28/$286F90 jmp $240DC2
+}
+
+/** `$285FB6` -- THE CREDIT ROW. Draws the credit count (D6, BCD) as big 3x3
+ *  tile digits. The 1-digit arm (D6 < $10) draws the digit from `$287F86[D6*4]`
+ *  then a suffix from `$287F7A[D5]` via the stride variant; the 2-digit arm
+ *  extracts tens/ones via `rol.w #4 / and #$F` and draws each from `$287FAE`/
+ *  `$287FD6`. The caller (playerBlock `$2845AC`/`$28474A`) supplies D0, D1 and
+ *  loads D5 from `$812910`/`$812912` and D6 from `$812900`/`$81290E`. */
+export function creditRow285FB6(ram, rom, ctx, d0, d1, d5, d6) {
+  if (!rom) { note(ctx, 0x285fb6, DRAWS[0x285fb6]); return; }
+  const d2 = 2, d3 = 2;                                    // $285FCA/$285FCC (3x3 grid)
+  if ((d6 & 0xffff) < 0x10) {                              // $285FB6 cmpi #$10,D6 / bcc 2-digit
+    const dim = (d6 & 0xffff) * 4;                         // $285FBC/$285FBE add.w D6,D6 twice
+    const tileD = rom.u32(HUD.credDigitTab + dim);         // $285FC0/$285FC6/$285FCC -> D4
+    txPrint240DC2(ram, d0, d1, d2, d3, tileD);             // $285FCE jsr $240DC2
+    d1 = (d1 + 0x300) & 0xffff;                            // $285FD4 addi.w #$300,D1
+    const tileS = rom.u32(HUD.credSuffixTab + (d5 & 0xffff)); // $285FD8/$285FDA/$285FE0
+    txPrint240E1A(ram, d0, d1, d2, d3, tileS, 9);          // $285FE8/$285FEA jmp $240E1A (stride 9)
+    return;
+  }
+  // 2-digit arm ($285FF2..). The count is BCD in the low byte (nibble1=tens,
+  // nibble0=ones). `$285FF6 rol.w D5,D6` with D5=$C rotates left 12 (== ror4),
+  // bringing nibble1 to the low nibble; `$286018 rol.w #$4,D6` then brings
+  // nibble0 to the low nibble. D5 is saved/restored (the suffix draw uses it).
+  let d6w = d6 & 0xffff;
+  const tens = rol16(d6w, 12) & 0xf;                       // $285FF4 moveq #$C,D5 / $285FF6 rol.w D5,D6
+  const tileT = rom.u32(HUD.cred2dTens + tens * 4);        // $285FFC..$286006
+  txPrint240DC2(ram, d0, d1, 2, 1, tileT);                 // $28600E jsr $240DC2 (D2=2,D3=1, 3x2)
+  d1 = (d1 + 0x200) & 0xffff;                              // $286014 addi.w #$200,D1
+  const ones = rol16(rol16(d6w, 12), 4) & 0xf;             // $286018 rol.w #$4,D6
+  const tileO = rom.u32(HUD.cred2dOnes + ones * 4);        // $28601E..$286028
+  txPrint240E1A(ram, d0, d1, 2, 0, tileO, 3);              // $286032 jsr $240E1A (D2=2,D3=0,D5=3)
+  d1 = (d1 + 0x100) & 0xffff;                              // $286038 addi.w #$100,D1
+  // $28603C move.w (A7)+,D5 ; $28603E bra $285FD8 -- the suffix draw (same as
+  // the 1-digit arm's tail).
+  const tileS = rom.u32(HUD.credSuffixTab + (d5 & 0xffff));
+  txPrint240E1A(ram, d0, d1, d2, d3, tileS, 9);
+}
+
+/** `$286040` -- THE CHAIN HIGH-WATER. Draws the label (imm `$53D000A`, 3x6
+ *  grid) then four BCD digits of the chain high-water count (D6, from
+ *  `$81B632`/`$81B634`) via `$240E1A`, each a 3x1 strip off a per-digit
+ *  sub-table (`$287FFE + n*$28`; `$28608C lea $28(A1),A1` steps A1 $28 bytes
+ *  per digit). Leading zeros are suppressed (digit 0 -> tile `$00000000`, and
+ *  once a nonzero digit has printed, zeros DO print). The caller supplies
+ *  D0/D1. */
+export function chainHiWater286040(ram, rom, ctx, d0, d1, d6) {
+  if (!rom) { note(ctx, 0x286040, DRAWS[0x286040]); return; }
+  txPrint240DC2(ram, d0, d1, 2, 5, HUD.chainHwLabelTile);  // $286044 jsr $240DC2 (the label)
+  d1 = (d1 + 0x200) & 0xffff;                              // $286050 addi.w #$200,D1
+  let any = 0;                                             // $28605A moveq #0,D5 (saw-nonzero)
+  let d6w = d6 & 0xffff;
+  for (let n = 0; n < 4; n++) {                            // $28605C moveq #3,D7 / dbra
+    const nib = (d6w >> 12) & 0xf;                         // $28605E rol.w #$4,D6 / $286062 and #$F
+    d6w = (d6w << 4) & 0xffff;                             //  (rol feeds the next iter)
+    if (nib !== 0 || any !== 0) {                          // $286064 bne PRINT / $286066 tst D5 / beq SKIP
+      const tile = rom.u32(HUD.chainHwTab + n * 0x28 + nib * 4); // $28606A..$28606E (A1 += $28/digit)
+      txPrint240E1A(ram, d0, d1, 2, 0, tile, 0xa);         // $286076..$28607C jsr $240E1A (stride $A)
+      any = 1;                                             // $286086 moveq #1,D5
+    }
+    d1 = (d1 + 0x100) & 0xffff;                            // $286088 addi.w #$100,D1
+  }
+}
+
+/** `$284EEC` (P1) / `$284F64` (P2) -- the slide-in's PANEL-LABEL inline draw.
+ *  A 3wide-by-6tall grid of the fixed label tile `$54F000A` (the "1UP"/"2UP"
+ *  row label). Three moves and a `jsr $240DC2`. */
+export function panelLabelInline(ram, rom, ctx, who) {
+  const addr = who === 0 ? 0x284ee6 : 0x284f4e;
+  if (!rom) { note(ctx, addr, DRAWS[0x240dc2]); return; }
+  const d0 = 0xd4, d2 = 2, d3 = 5;                         // $284ED6/$284EDE/$284EE2
+  const d1 = who === 0 ? 0x200 : 0x1400;                   // $284EDA / $284F52
+  txPrint240DC2(ram, d0, d1, d2, d3, HUD.panelLabelTile);  // $284EE6/$284F64 jsr $240DC2
+}
+
 /** `$284FD2` -- the BOSS banner's panels.  138 instructions and **exactly four
  *  absolute RAM writes**; the other 134 are `$23FA96`/`$23FAC4`/`$240DC2`/
  *  `$286ED6`/`$286F3E`.  Its mirror `$2851D2` has the two sub-counters SWAPPED
@@ -937,14 +1343,22 @@ function slideIn284CF2(ram, rom, ctx) {
     }
     return false;                                       // $284E78 rts
   }
-  // ---- $284E7A: the LAST frame of the slide-in.
+  // ---- $284E7A: the LAST frame of the slide-in. W116: the inline lives draw,
+  // the hyper-stock + bombs bodies, and the panel-label inline now run for real
+  // (they append to the $80B058 defer buffer; the IRQ6 flush $141258 drains it
+  // into TxVram). The `$81043E`/`$8104A0` lives path is the one that shows lives
+  // in normal stage-1 play.
   if (i16(ram.u16(HUDRAM.aliveP1)) >= 0) {              // $284E7A / $284E80 bmi
-    draw(ctx, 0x240dc2);                                // $284EBA, the dbra
-    draw(ctx, 0x286ed6); draw(ctx, 0x287abe); draw(ctx, 0x240dc2);   // $284ECA..$284EEC
+    slideInLivesDraw(ram, rom, ctx, 0);                 // $284E7A..$284EC8 (inline lives P1)
+    hyperStock286ED6(ram, rom, ctx, 0);                 // $284ECA jsr $286ED6
+    bombStock287ABE(ram, rom, ctx, 0);                  // $284ED0 jsr $287ABE
+    panelLabelInline(ram, rom, ctx, 0);                 // $284ED6..$284EEC (the 1UP label)
   }
   if (i16(ram.u16(HUDRAM.aliveP2)) >= 0) {              // $284EF2 / $284EF8 bmi
-    draw(ctx, 0x240dc2);                                // $284F32
-    draw(ctx, 0x286f3e); draw(ctx, 0x287af0); draw(ctx, 0x240dc2);   // $284F42..$284F64
+    slideInLivesDraw(ram, rom, ctx, 1);                 // $284EF2..$284F42 (inline lives P2)
+    hyperStock286ED6(ram, rom, ctx, 1);                 // $284F42 jsr $286F3E
+    bombStock287ABE(ram, rom, ctx, 1);                  // $284F48 jsr $287AF0
+    panelLabelInline(ram, rom, ctx, 1);                 // $284F4E..$284F64 (the 2UP label)
   }
   ram.setU16(HUDRAM.slideFlag, 0);                      // $284F6A clr.w $81B6EE
   return false;                                         // $284F70 rts
@@ -965,7 +1379,13 @@ function playerBlock(ram, rom, ctx, P) {
   } else if (ram.u16(P.hyper) !== 0) {                  // $2844E0 / $28467E tst.w
     const had = ram.u8(P.hyperShown) & 0x01;            // $2844E8 / $284686 bset.b #$0
     ram.setU8(P.hyperShown, ram.u8(P.hyperShown) | 0x01);
-    if (!had) { draw(ctx, 0x240dc2); draw(ctx, 0x240dc2); }  // $284508/$284524
+    if (!had) {
+      // W116: the hyper-start transition redraws the panel label ($54F000A)
+      // and the active hyper-stock icon ($414000A) as text, then the flash.
+      panelLabelInline(ram, rom, ctx, P.who);            // $284508 jsr $240DC2 (tile $54F000A)
+      txPrint240DC2(ram, 0xc8, P.who === 0 ? 0x200 : 0x1400, // $28450E..$28451E (D0=$C8)
+        2, 5, HUD.hyperStockActiveTile);                 // $284524 jsr $240DC2 (active icon)
+    }
     hyperFlash285FA6(ram, rom, ctx, 0x64c00400,           // $28452A move.l / $284530 D2
       ram.u32(HUDRAM.cursorValB));                        // $284536 / $2846D4 bsr
   } else {
@@ -974,14 +1394,22 @@ function playerBlock(ram, rom, ctx, P) {
       && (ram.u8(P.playerState) & 0x40) === 0           // $284550 / $2846EE btst #$6
       && ram.u16(P.creditRow) !== 0) {                  // $28455A / $2846F8 move.w / beq
       if ((ram.u16(HUDRAM.frameCounter) & 0x3f) < P.creditDuty) {   // $28456A / $284708
-        draw(ctx, 0x240dc2);                            // $284586 / $284724
+        // W116: the panel-label inline ($284586 jsr $240DC2, tile $54F000A)
+        panelLabelInline(ram, rom, ctx, P.who);         // $284570..$284586 / $28470E..$284724
         hyperFlash285FA6(ram, rom, ctx, 0x64c00400,       // $28458C move.l / $284592 D2
           ram.u32(HUDRAM.cursorValA));                    // $284598 / $284736 bsr
       } else {
-        draw(ctx, 0x285fb6);                            // $2845AC / $28474A bsr
+        // W116: the credit row. D0=$D4, D1=$200/$1400, D5=creditSuffix,
+        // D6=creditRow (the BCD count).
+        creditRow285FB6(ram, rom, ctx, 0xd4,            // $28459E/$28473C
+          P.who === 0 ? 0x200 : 0x1400,                   // $2845A2 / $284740
+          ram.u16(P.creditSuffix), ram.u16(P.creditRow)); // $2845A6/$2845AC (D5/D6)
       }
     } else {
-      draw(ctx, 0x286040);                              // $2845C0 / $28475E bsr
+      // W116: the chain high-water. D0=$D4, D1=$200(P1)/$1400(P2), D6=chainHiWater.
+      chainHiWater286040(ram, rom, ctx, 0xd4,           // $2845B2 / $284750
+        P.who === 0 ? 0x200 : 0x1400,                     // $2845B6 / $284754
+        ram.u16(P.chainHiWater));                         // $2845BA / $284758 -> D6
     }
   }
   // ---- $2845C4 / $284762: THE CHAIN-BREAK POPUP COUNTDOWN.

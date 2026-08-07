@@ -36,7 +36,7 @@
 import { RAM, ROM } from './machine.js';
 import { isr6InputRead } from './input.js';
 import { uploadRegs } from './background.js';
-import { flushScoreDigits185DC4 } from './hud.js';
+import { flushScoreDigits185DC4, flushTextDefer141258 } from './hud.js';
 
 /**
  * One IRQ6 dispatch.  Returns true if it RELEASED the semaphore (i.e. the main
@@ -66,13 +66,25 @@ export function irq6(ram, portWord, ctx) {
       uploadRegs(ram, ctx.video, { subtractShake: ctx.bgMutate === 'upload-subtracts-shake' });
       continue;
     }
+    // W116.  THE THIRD OF THE FOUR is THE GENERAL TEXT FLUSH.  It drains the
+    // `$80B058` defer buffer (populated by the `$240DC2`-family printers the
+    // HUD text bodies now call -- lives, bombs, credits, chain high-water,
+    // hyper-stock, the labels) into `ctx.txvram`, then re-arms the buffer (its
+    // tail `$14123A` IS `deferReset`).  Build A, like every routine behind this
+    // gate.  Has no inner gate of its own -- the outer `$803940` semaphore
+    // (enforced just above) governs it, and when no body queued anything the
+    // buffer holds only the terminator and the flush is a no-op + reset.
+    if (a === ROM.isr6TextFlush) {
+      if (ctx.txvram) flushTextDefer141258(ram, ctx.txvram, ctx);
+      continue;
+    }
     // W114/W115.  THE FOURTH OF THE FOUR is THE SCORE-DIGIT FLUSH.  It drains
     // the dirty records at $81B4C8 (populated by `digits2843A8` on the main
     // loop) straight into the TX tilemap `$904000` via `ctx.txvram`, and is
     // the route the P1/P2 score numbers ship -- INDEPENDENTLY of the general
-    // text flush `$141258` (still gated-routine #3 here, still a counted note,
-    // Wave C').  Reached by a direct `jsr $185dc4.l` at `$13C800`, NOT the
-    // indirect `jsr (An)` W112 hypothesised.
+    // text flush `$141258` (the THIRD of the four, ported just above in W116).
+    // Reached by a direct `jsr $185dc4.l` at `$13C800`, NOT the indirect
+    // `jsr (An)` W112 hypothesised.
     if (a === ROM.isr6ScoreFlush) {
       if (ctx.txvram) flushScoreDigits185DC4(ram, ctx.txvram);
       continue;

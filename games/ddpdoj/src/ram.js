@@ -18,6 +18,9 @@ export const i16 = (v) => (v << 16) >> 16;
 export const u16 = (v) => v & 0xffff;
 /** 32-bit, for the `move.l (A3)+,D2 / asr.l #4` in the movement vector. */
 export const i32 = (v) => v | 0;
+/** 32-bit UNSIGNED, the `>>> 0` half of longword arithmetic. Used by the W116
+ *  TX defer printer (`$240DC2`) and anywhere a tile longword must stay positive. */
+export const u32 = (v) => v >>> 0;
 /** ASR is an ARITHMETIC shift: it rounds toward -infinity, not toward zero.
  *  $2417DE's `asr.l #4` on a negative vector component is the difference
  *  between -1 and 0 units of movement, every frame, forever. */

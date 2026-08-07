@@ -448,18 +448,26 @@ test('W63 $2845C4: the chain-BREAK popup countdown, its index and its speed', ()
   assert.equal(ram.u16(HUDRAM.p1.popupSpeed), 0, 'not wrapped to $FFFF');
 });
 
-test('W63 $2844E8/$28453E: the HYPER label latch is set and cleared', () => {
+test('W63 $2844E8/$28453E: the HYPER label latch is set and cleared',
+  { skip: haveTables ? false : 'no export' }, () => {
   const { ram, ctx } = fresh();
   playing(ram, 0);
   ram.setU16(HUDRAM.p1.hyper, 1);
   ram.setU8(HUDRAM.p1.hyperShown, 0);
-  gates2844A6(ram, ctx);
+  // W116: the hyper-start transition now DRAWS the panel label + the active
+  // hyper-stock icon via $240DC2 (it was two NOTEs). Arm the defer buffer and
+  // watch the cursor: two 3x6 grids = 36 cells = $120 bytes, once only.
+  ram.setU32(0x80b058, 0xffffffff);                       // terminator at head
+  ram.setU32(0x80c8d8, 0x80b058);                         // cursor = head
+  gates2844A6(ram, ctx, rom);
   assert.equal(ram.u8(HUDRAM.p1.hyperShown) & 1, 1, '$2844E8 bset.b #$0');
-  assert.equal(counted(ctx, 0x240dc2), 2, 'the two labels print ONCE');
-  gates2844A6(ram, ctx);
-  assert.equal(counted(ctx, 0x240dc2), 2, '...and not again while it holds');
+  assert.equal(ram.u32(0x80c8d8), 0x80b058 + 0x120,
+    'the two labels draw ONCE (36 cells = $120 bytes into the defer buffer)');
+  const held = ram.u32(0x80c8d8);
+  gates2844A6(ram, ctx, rom);
+  assert.equal(ram.u32(0x80c8d8), held, '...and not again while it holds');
   ram.setU16(HUDRAM.p1.hyper, 0);
-  gates2844A6(ram, ctx);
+  gates2844A6(ram, ctx, rom);
   assert.equal(ram.u8(HUDRAM.p1.hyperShown) & 1, 0, '$28453E bclr.b #$0');
 });
 

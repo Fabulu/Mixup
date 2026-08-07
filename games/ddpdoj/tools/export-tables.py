@@ -1105,6 +1105,42 @@ SHOT_WINDOWS.extend([
                        "$285EDA/$285F3E)"),
 ])
 
+# ===== W116: THE HUD OTHER-TEXT TABLES (Wave C' of the HUD port) =============
+#
+# The $240DC2 text bodies index tile longwords the export did not yet carry.
+# Every extent is pinned by the instruction that reads it; like W113 these are
+# 4-byte tile-code longwords (a tile number high, an attr low), not pixel art,
+# and the four needed ranges sit in the gaps W113 and W63 left.
+#
+#   $287FCA  the CREDIT / CHAIN-HIGH-WATER digit-table tails. W63's window
+#            $287E8E+$13C covers $287F7A/$287F86 and the BASE of $287FAE, but
+#            `$285FB6`'s 2-digit ones table `$287FD6` (`$286022 lea / move.l
+#            (A0,D5.w)` with D5=nib*4) and `$286040`'s chain-high-water walk
+#            `$287FFE` (`$286054 lea / $28608C lea $28(A1),A1` stepping 4
+#            sub-tables $28 apart) sit beyond it. `$287FD6 + 9*4 == $287FFA`
+#            and `$287FFE + 3*$28 + 9*4 == $28809A` pin the far end at $28809E.
+#   $2881E2  the LIVES icon table, read at $28792A / $2879B4 (the bodies) and
+#            $284EAE / $284F26 (the slide-in inline draw) as
+#            `move.w sel,D4 / add.w D4,D4 / lea $2881E2,A0 / move.l (A0,D4.w),D4`.
+#            P1 base $2881E2, P2 base $2881EA; sel 0/2/4 keeps the read within
+#            $2881E2..$2881F2, where the W113 panel-table window picks up.
+#   $2883E6  the HYPER-STOCK icon table, read at $286F1E / $286F86 as
+#            `move.w $81B65C,D4 / add.w D4,D4 / add.w D4,D4 / lea $2883E6,A0 /
+#            move.l (A0,D4.w),D4` -- stock 0..5 keeps the read within
+#            $2883E6..$288402.
+SHOT_WINDOWS.extend([
+    (0x287FCA, 0x00D6, "W116: credit 2-digit ones table $287FD6 ($286022) and "
+                       "chain high-water digit walk $287FFE (4 sub-tables $28 "
+                       "apart, $286054/$28608C); the tail W63's $287E8E window "
+                       "did not reach"),
+    (0x2881E2, 0x0010, "W116: lives icon table $2881E2 (P1) / $2881EA (P2), "
+                       "indexed by shipSel*2 at $28792A/$2879B4/$284EAE/$284F26; "
+                       "the W113 panel-table window at $2881F2 picks up the far "
+                       "end"),
+    (0x2883E6, 0x0020, "W116: hyper-stock icon table $2883E6, indexed by "
+                       "$81B65C*4 at $286F1E/$286F86"),
+])
+
 # ============ W64 (B2): THE BOMB'S RECORD TEMPLATES AND SCRIPTS =============
 #
 # ONE window, $25653C..$25664D, and it is a UNION of six extents that are each
