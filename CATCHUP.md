@@ -531,6 +531,27 @@ pipeline `$287682`/`$2530CA`/`$285A62` + rank object type 10; recon IN FLIGHT to
 Phase 3 (stage-2 data export + boot verification), Phase 4 (replay packaging -- cheap/light),
 Phase 5 (sound via W27; slowdown via MiSTer). Wave B input (Gradius+Batman) owner-gated.
 
+## 7k. UPDATE -- 2026-08-07: RANK-fix recon (W126) -> sized; Wave A (type 10) IN FLIGHT
+
+The RANK-fix recon (W126) reframes the fix. Premise correction: the middle "pipeline" link
+`$285A62` is NOT a pipeline link -- it is the hyper-ACTIVATION body (gated by the unported
+hyper button `$24989A`/`$249814`, thrown in player.js since W4). So the fix SPLITS:
+- **Wave A -- object type 10 (Tier 1, ~1 wave, CORPUS-SAFE).** Port the dispatch entry
+  (`$260794`, priority `$001F`, runs first) + state machine + recompute `$2608D2`
+  (rank = base[stage] + (clock>>8) + hyper-term) + `$288610`. On no-hyper runs (the corpus +
+  most play) the hyper term is 0 on BOTH port+board, so `$81309E` = base+clock matches the
+  board. Zero scoring risk (recompute reads no chain/score state). Unfreezes the rank clock
+  (currently frozen). IN FLIGHT. Defer state-0 INIT `$2605C8` (cold-boot only). One unknown:
+  `$288610` jump-table (trace before ship).
+- **Wave B -- the hyper subsystem (Tier 2, 3-4 waves, MAME-gated).** Hyper button + activation
+  `$285A62` + grantor `$287682` + spawner `$27E912` + collect `$2530CA` + sinks (death-quarter
+  `$24A006`, bomb debit `$249976`, bee feed `$27FBDE`). The "wrong-and-rising" risk (W120) lives
+  here. Needs a hyper-active MAME capture to red-validate (the corpus has no hypers).
+
+Wave A ships FIRST (safe, corpus-matchable, unfreezes the rank for no-hyper play); Wave B (the
+hyper power term) follows. This inverts the brief's "pipeline first" but is safe (the recompute
+reads no chain/score state; no wrong-and-rising until hypers activate).
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
