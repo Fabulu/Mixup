@@ -625,18 +625,53 @@ test('W63 THE HYPER throws by address, and its TWO GUARDS are the cartridge\'s',
   assert.doesNotThrow(() => perFrame28444E(ram, rom, ctx));
 });
 
-test('W63 THE STAGE-CLEAR TALLY: the guard returns, and past it is a throw', () => {
+test('W124 THE STAGE-CLEAR TALLY is PORTED (was a W63 throw): bit 3 runs the '
+  + 'one-shot init, and with bit 2 clear the body returns without producing bit 1', () => {
   const { ram, ctx } = fresh();
   ram.setU16(HUDRAM.aliveP1, 0xffff);
   ram.setU16(HUDRAM.aliveP2, 0xffff);
   ram.setU8(HUDRAM.dfFlags, 0);
   ram.setU8(HUDRAM.flags9, 0);
-  ram.setU8(HUDRAM.flags8, 0x08);              // $284B5E btst #$3 -- W62's bit
+  ram.setU8(HUDRAM.flags8, 0x08);              // $284B5E btst #$3 -- the gate
   assert.doesNotThrow(() => gates2844A6(ram, ctx),
     '$2853D2 btst #$3,$8130F9 / beq.b $2853D0 -- the bare rts two bytes before');
   ram.setU8(HUDRAM.flags9, 0x08);              // ...only $28DB52 can do this
-  assert.throws(() => gates2844A6(ram, ctx),
-    (e) => e instanceof Unreached && e.romAddress === HUD.tallyBody);
+  assert.doesNotThrow(() => gates2844A6(ram, ctx),
+    'the tally front runs the one-shot init (no longer an unreached throw)');
+  assert.equal(ram.u8(HUDRAM.flags9) & 0x10, 0x10, 'one-shot bit 4 latched');
+  assert.equal(ram.u16(HUDRAM.tallyHold), 7, '$2853E6 move.w #$7,$81B614');
+  // bit 2 (medal walk done) is still clear -> body returns before $285496
+  assert.equal(ram.u8(HUDRAM.flags9) & 0x02, 0,
+    'bit 1 is not produced until bit 2 lands and $81B610 underflows');
+});
+
+test('W124 MUST-FAIL (a): with a non-zero item count + medal accumulator the '
+  + 'tally AWARDS the stage-clear score to P1 before $285496 fires', () => {
+  // The shipped seed has zero bonus (no bees/items/medals), so the bare seed
+  // awards nothing -- CORRECTLY.  This test injects a non-zero bonus to prove
+  // the award MECHANISM credits P1 pending and then produces bit 1.  Red->green:
+  // disabling the tallyBody285400 award arm (or the $285496 fall-through) makes
+  // this fail.
+  const { ram, ctx } = fresh();
+  ram.setU16(HUDRAM.aliveP1, 0xffff);              // i16<0 -> player block skips
+  ram.setU16(HUDRAM.aliveP2, 0xffff);              //   (the tally still runs)
+  ram.setU16(0x8103e6, 0xa004);                    // P1 LIVE for the award arm
+  ram.setU8(HUDRAM.dfFlags, 0);
+  ram.setU8(HUDRAM.flags8, 0x08);                  // $284B5E dispatch gate
+  ram.setU16(HUDRAM.itemCount, 50);                // $81B610 = 50 items
+  ram.setU32(HUDRAM.tallyMedalAcc, 0x00010000);    // medalAcc (BCD 1,000,000)
+  const P1PEND = 0x81b4c0;                         // LEDGER.p1 pending acc
+  const before = ram.u32(P1PEND) >>> 0;
+  ram.setU8(HUDRAM.flags9, 0x08);                  // bit 3 -> one-shot init
+  gates2844A6(ram, ctx);
+  ram.setU8(HUDRAM.flags9, 0x08 | 0x04);           // bit 3 + bit 2 -> body drains
+  let n = 0;
+  for (; n < 6000 && (ram.u8(HUDRAM.flags9) & 0x02) === 0; n++) gates2844A6(ram, ctx);
+  const after = ram.u32(P1PEND) >>> 0;
+  assert.notEqual((ram.u8(HUDRAM.flags9) & 0x02), 0,
+    () => `$285496 bset #1,$8130F9 must fire (ran ${n} frames)`);
+  assert.ok(after > before, () => `P1 pending INCREASED across the tally `
+    + `($${before.toString(16)} -> $${after.toString(16)})`);
 });
 
 test('W63 THE BOSS HP BAR refuses a NULL $81B62A by address, not by reading 0', () => {

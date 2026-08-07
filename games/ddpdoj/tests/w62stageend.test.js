@@ -46,6 +46,7 @@ const TABLES = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
 const HAVE = fs.existsSync(TABLES);
 const TJ = HAVE ? JSON.parse(fs.readFileSync(TABLES, 'utf8')) : null;
 const ROM = HAVE ? new (await import('../src/rom.js')).RomWindows(TJ.rom) : null;
+const MOVE = HAVE ? new (await import('../src/vectors.js')).MoveTables(TJ) : null;
 const SKIP = HAVE ? false
   : 'rip/port/player.tables.json missing -- `python tools/export-tables.py`';
 
@@ -55,7 +56,7 @@ function ctxOf(ram) {
   const u = new UnportedLog();
   const ev = [];
   return { ram,
-    ctx: { rom: ROM, unportedLog: u, tables: null,
+    ctx: { rom: ROM, unportedLog: u, tables: MOVE,
       stageEndEvent: (k, v) => ev.push([k, v]),
       bossEvent: (k, v) => ev.push([k, v]) },
     notes: u, ev };
@@ -562,13 +563,37 @@ test('type 6\'s INIT destroys the background object and sets $812970',
     assert.equal(ram.u16(SE.advanceFlag), 1, '$28D5DC');
   });
 
-test('type 6 walks 0 -> $A -> 1 -> $B -> 2 -> 3 -> 4, ONE STATE PER FRAME',
+test('type 6 HOLDS IN STATE 1 while the result screen waits for the tally '
+  + '(W124: state 1 no longer short-circuits to $B)', { skip: SKIP }, () => {
+    const { ram, slot } = type6Fixture();
+    const { ctx } = ctxOf(ram);
+    const h = makeStageClear(ROM);
+    const seen = [];
+    for (let i = 0; i < 120; i++) {
+      h(ram, slot, 0, ctx);
+      const s = ram.u8(slot + 0x06);
+      if (seen[seen.length - 1] !== s) seen.push(s);
+    }
+    assert.deepEqual(seen, [0, 0x0a, 1], 'reaches state 1 and HOLDS there');
+    assert.equal(ram.u8(slot + 0x06), 1, 'still in state 1 after 120 frames');
+    assert.equal((ram.u8(SE.bossFlags9) & 0x02), 0,
+      'bit 1 is NOT set -- the ported tally is not running in this isolation, '
+      + 'so F8 waits. DEV-1 is gone: nothing sets bit 1 stand-in here');
+  });
+
+test('once $8130F9 bit 1 is set, type 6 walks 1 -> $B -> 2 -> 3 -> 4',
   { skip: SKIP }, () => {
     const { ram, slot } = type6Fixture();
     const { ctx } = ctxOf(ram);
     const h = makeStageClear(ROM);
     const seen = [];
-    for (let i = 0; i < 200; i++) {
+    let bit1Set = false;
+    for (let i = 0; i < 400; i++) {
+      // simulate the tally completing once the result screen has run a while
+      if (!bit1Set && ram.u8(slot + 0x06) === 1 && i > 20) {
+        ram.setU8(SE.bossFlags9, ram.u8(SE.bossFlags9) | 0x02);
+        bit1Set = true;
+      }
       h(ram, slot, 0, ctx);
       const s = ram.u8(slot + 0x06);
       if (seen[seen.length - 1] !== s) seen.push(s);
@@ -592,17 +617,30 @@ test('the state tests are DESCENDING, so 2 -> 3 -> 4 cannot happen in one frame'
     assert.equal(ram.u8(slot + 0x06), 3, 'state 2 set 3 and the frame ENDED');
   });
 
-test('type 6 HOLDS IN STATE 4 -- the exit W62 did NOT fake', { skip: SKIP }, () => {
-  const { ram, slot } = type6Fixture();
-  const { ctx, notes } = ctxOf(ram);
-  const h = makeStageClear(ROM);
-  for (let i = 0; i < 200 && ram.u8(slot + 0x06) !== 4; i++) h(ram, slot, 0, ctx);
-  assert.equal(ram.u16(SE.dff6), 1, '$28E7DC set it in state 2');
-  for (let i = 0; i < 50; i++) h(ram, slot, 0, ctx);
-  assert.equal(ram.u8(slot + 0x02), 1, 'still ALIVE, not destroying');
-  assert.ok(notes.report().some((l) => /28E7F8/.test(l)),
-    'and it says so, loudly, every frame');
-});
+test('W124: the banner `$28E7F8` frees the slot -- type 6 LEAVES state 4 '
+  + '(`$28EAD4 clr.w $81DFF6`)', { skip: SKIP }, () => {
+    const { ram, slot } = type6Fixture();
+    const { ctx } = ctxOf(ram);
+    const h = makeStageClear(ROM);
+    // reach state 4: drive, and set bit 1 so F8 advances past state 1
+    let bit1Set = false;
+    for (let i = 0; i < 600 && ram.u8(slot + 0x06) !== 4; i++) {
+      if (!bit1Set && ram.u8(slot + 0x06) === 1 && i > 10) {
+        ram.setU8(SE.bossFlags9, ram.u8(SE.bossFlags9) | 0x02);
+        bit1Set = true;
+      }
+      h(ram, slot, 0, ctx);
+    }
+    assert.equal(ram.u8(slot + 0x06), 4, 'reached state 4');
+    assert.equal(ram.u16(SE.dff6), 1, '$28E7DC set $81DFF6 in state 2');
+    // drive the banner slide-out to completion -- `$81DFEC` drains, `$28EAD4`
+    // fires, and the NEXT frame's state-4 check sees DFF6 clear and self-destroys
+    let n = 0;
+    while (ram.u8(slot + 0x02) === 1 && n < 2000) { h(ram, slot, 0, ctx); n++; }
+    assert.equal(ram.u16(SE.dff6), 0, '$28EAD4 clr.w $81DFF6 -- the SOLE clearer');
+    assert.equal(ram.u8(slot + 0x02), 2, 'type 6 set ($2,A5):=2 to self-destroy');
+    assert.ok(n < 2000, `the banner drained in ${n} frames (bounded)`);
+  });
 
 test('$28D5E6 destroys type 6 by ID through $241292 -> $241238',
   { skip: SKIP }, () => {
@@ -633,38 +671,47 @@ test('$28ECCE returns C=1 for 63 calls and C=0 on the 64th, off $28EC86 seeds',
 // 6. THE DEVIATION -- pinned so a later wave cannot ship past it silently
 // ===========================================================================
 
-test('W62 DEV-1: $8130F9 bit 1 has ONE producer in this port, and it is the '
-  + 'DEVIATION standing in for $285496', { skip: SKIP }, () => {
-    const src = ['stageend.js', 'boss.js', 'scheduler.js', 'handlers.js',
+test('W124 DEV-1 CLEARED: $8130F9 bit 1 has ONE producer, the REAL $285496 '
+  + 'inside the ported tally (hud.js), and no DEV-1 stand-in remains',
+  { skip: SKIP }, () => {
+    const src = ['stageend.js', 'hud.js', 'boss.js', 'scheduler.js', 'handlers.js',
       'score.js', 'main.js', 'player.js', 'items.js', 'laser.js']
       .map((f) => fs.readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8'))
       .join('\n');
-    const setters = src.match(/bossFlags9[^\n]*\|\s*0x02|0x8130f9[^\n]*\|\s*0x02/gi) ?? [];
+    const setters = src.match(/flags9[^\n]*\|\s*0x02|0x8130f9[^\n]*\|\s*0x02/gi) ?? [];
     assert.equal(setters.length, 1,
-      'THE MOMENT A WAVE PORTS $285496 FOR REAL there will be two producers of '
-      + '$8130F9 bit 1 and this test goes RED. That is what it is for: recon 49 '
-      + '5.3 requires the short-circuit to be pinned by a check that fails when '
-      + 'the real producer lands. Delete the DEVIATION, not this test.');
-    assert.ok(/285496/.test(PRESENTATION_DEVIATION[0x28de5c]),
-      'and the deviation names the instruction it replaces');
+      'exactly ONE producer of $8130F9 bit 1: the real $285496 in the tally. '
+      + 'W62\'s DEV-1 stand-in ($28DE5C, which set bit 1 itself) is GONE.');
+    assert.ok(!PRESENTATION_DEVIATION[0x28de5c],
+      'DEV-1 key removed from PRESENTATION_DEVIATION');
+    assert.ok(src.includes('tallyBody285400'),
+      'the tally body $285400 is ported in hud.js');
   });
 
-test('W62 DEV-2 is declared, and both deviations are keyed by ROM address',
+test('W124 DEV-2 REFINED: the only declared deviation key is $28D6FC',
   { skip: SKIP }, () => {
-    assert.deepEqual(Object.keys(PRESENTATION_DEVIATION).map(Number).sort(),
-      [0x28d6fc, 0x28de5c].sort());
-    assert.ok(/24681A/.test(PRESENTATION_DEVIATION[0x28d6fc]));
+    assert.deepEqual(Object.keys(PRESENTATION_DEVIATION).map(Number), [0x28d6fc]);
+    assert.ok(/24681A|246410/.test(PRESENTATION_DEVIATION[0x28d6fc]),
+      'DEV-2 names the anim-driver gap ($246410) or the checker ($24681A)');
   });
 
-test('both deviations are COUNTED in unportedLog when they fire', { skip: SKIP }, () => {
+test('DEV-2 is COUNTED in unportedLog when the chain does not drain', { skip: SKIP }, () => {
   const { ram, slot } = type6Fixture();
   const { ctx, notes } = ctxOf(ram);
   const h = makeStageClear(ROM);
-  for (let i = 0; i < 200 && ram.u8(slot + 0x06) !== 4; i++) h(ram, slot, 0, ctx);
+  // reach state $B: set bit 1 so F8 advances state 1 -> $B
+  let bit1Set = false;
+  for (let i = 0; i < 400; i++) {
+    if (!bit1Set && ram.u8(slot + 0x06) === 1 && i > 10) {
+      ram.setU8(SE.bossFlags9, ram.u8(SE.bossFlags9) | 0x02);
+      bit1Set = true;
+    }
+    h(ram, slot, 0, ctx);
+    if (ram.u8(slot + 0x06) === 2) break;
+  }
   const r = notes.report().join('\n');
-  assert.ok(/\$28DE5C/.test(r), 'DEV-1 is counted');
-  assert.ok(/\$28D6FC/.test(r), 'DEV-2 is counted');
-  assert.ok(/\$28D9AA/.test(r), 'and the routine they stand in for is named');
+  assert.ok(/\$28D6FC/.test(r), 'DEV-2 is counted (the chain did not drain, so '
+    + 'the port notes the wait-skip and frees the chain)');
 });
 
 test('every emitter D-script 6 counts is keyed by the address it stands at',

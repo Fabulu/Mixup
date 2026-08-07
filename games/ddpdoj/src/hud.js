@@ -188,6 +188,7 @@ import { OBJ } from './objdriver.js';
 import { enqueueRegisters } from './spritequeue.js';
 import { install24157A } from './palette.js';
 import { bcd242AC6 } from './items.js';
+import { bcdAdd, scorePending } from './score.js';
 
 /** Every ROM address this file touches, as the operand of a named instruction. */
 export const HUD = {
@@ -290,6 +291,11 @@ export const HUDRAM = {
   itemTimer: 0x81b60c,      // $284AEC
   itemDir: 0x81b60e,        // $284AD2 addq / $284ACA subq
   itemKind: 0x81b612,       // $284AFE / $284B3E
+  // W124: the STAGE-CLEAR TALLY fields (`$2853D2`/`$285400`).  `$81B614` is the
+  // per-tier hold countdown, `$81B616` the bonus accumulator (BCD longword;
+  // `bcdAdd` accEnd `$81B61A` addresses `$81B616..$81B619`), `$81B61A` the
+  // read-only medal accumulator the stage populated.
+  tallyHold: 0x81b614, tallyBonus: 0x81b616, tallyMedalAcc: 0x81b61a,
   flags8: 0x8130f8, flags9: 0x8130f9, dfFlags: 0x81df1e,
   aliveP1: 0x8130be, aliveP2: 0x8130c0,   // the two players' LIVES words
   frameCounter: 0x80390a,   // $285F8C and.w
@@ -1895,20 +1901,144 @@ function grant2877B8(ram) {
   ram.setU16(HUDRAM.itemTimer, 0x17);                   // $2877C8
 }
 
-/** `$2853D2` -- THE STAGE-CLEAR TALLY's front door, and its own guard.  See
- *  this file's header: the body is unreachable by construction because the only
- *  producer of `$8130F9` bit 3 is `$28DB52`, inside the unported result screen
- *  `$28D9AA`.  The port takes the same `beq` to the same bare `rts`. */
+/** `$2853D2` -- THE STAGE-CLEAR TALLY's front door and one-shot init.  Reached
+ *  once `$8130F9` bit 3 is set (its sole producer is `$28DB52` in the ported
+ *  result-screen `result28D9AA`, F3).  Bit 4 is the one-shot: on the first frame
+ *  it seeds the hold countdown `$81B614 := 7` and BCD-seeds the bonus
+ *  accumulator `$81B616 := $81B61A << 4` (the medal accumulator the stage
+ *  populated).  Then it falls into the body `$285400`.
+ *
+ *  W124 PORTED the body (was `unreached(0x2853dc)` since W62).  The body drains
+ *  `$81B610` through the `$32/$64/$96` medal tiers, BCD-compounds `$81B616`, and
+ *  when `$81B610` underflows `$FFFF -> $FFFE` the fall-through at `$285496
+ *  bset #1,$8130F9` fires -- the SOLE producer of bit 1, which the result
+ *  screen's F8 waits on.  Clearing DEV-1. */
 function tally2853D2(ram, ctx) {
-  if ((ram.u8(HUDRAM.flags9) & 0x08) === 0) return;     // $2853D2 btst #$3 / beq.b $2853D0
-  void ctx;
-  unreached(HUD.tallyBody, 'THE STAGE-CLEAR TALLY $2853DC..$285568 -- the '
-    + '$81B610 -> $81B616 bonus walk, its $28C6C6 conversion and its '
-    + '$28614A/$286154 SCORE ADDS. Reached because $8130F9 bit 3 is set, whose '
-    + 'ONE producer in $230000..$2B0000 is $28DB52 inside $28D9AA, THE RESULT '
-    + 'SCREEN (819 instructions, declared unported by W62 2). If this fires the '
-    + 'result screen has landed, and the tally must land with it -- it is where '
-    + 'the stage-clear score comes from');
+  if ((ram.u8(HUDRAM.flags9) & 0x08) === 0) return;     // $2853D2 btst #$3 / beq rts
+  if ((ram.u8(HUDRAM.flags9) & 0x10) === 0) {           // $2853DC bset #$4 / bne body
+    ram.setU8(HUDRAM.flags9, ram.u8(HUDRAM.flags9) | 0x10);
+    ram.setU16(HUDRAM.tallyHold, 7);                    // $2853E6
+    const seed = (ram.u32(HUDRAM.tallyMedalAcc) << 4) >>> 0; // $2853EE lsl.l #4
+    bcdAdd(ram, HUDRAM.tallyMedalAcc, seed);            // $2853F6 -> $81B616 += seed
+  }
+  tallyBody285400(ram, ctx);
+}
+
+/** `$285400..$285568` -- the tally body.  Needs `$8130F9` bit 2 (medal walk
+ *  done, from `$28DE16`) and the absence of bit 1 (not yet complete).  Drains
+ *  `$81B610` through the medal tiers and produces `$285496 bset #1` when
+ *  `$81B610` underflows `$FFFF -> $FFFE`. */
+function tallyBody285400(ram, ctx) {
+  if ((ram.u8(HUDRAM.flags9) & 0x04) === 0) return;     // $285400 btst #$2 / beq exit
+  if ((ram.u8(HUDRAM.flags9) & 0x02) !== 0) return;     // $28540C btst #$1 (done)
+  if (tallyButton28556C(ram)) {                          // $285418 bsr $28556C
+    tallyFastDrain2854C8(ram); return;                   // $28541C bcs $2854C8
+  }
+  const hold = u16(ram.u16(HUDRAM.tallyHold) - 1);       // $285420 subq.w #1
+  ram.setU16(HUDRAM.tallyHold, hold);
+  if (hold !== 0xffff) { tallyAward28551E(ram, ctx); return; } // $285426 bcc -> $28551E
+  // ---- recompute arm (hold underflowed, carry set): $28542A.. ----
+  if (ram.u32(HUDRAM.tallyBonus) !== 0) note28C6C6(ctx); // $28542A tst.l / $285434 jsr
+  // $28543A moveq #$10,D0 ; $28543C sub.w $81B610,D0 ; $285442 bmi.  The sub is
+  // a SIGNED 16-bit compare: D0 = $10 - b610, and bmi tests bit 15 of the result.
+  // For b610 = $FFFF (signed -1): $10 - (-1) = $11 (positive, hold = 5); for
+  // b610 = $20: $10 - $20 = -$10 (negative, hold = 0).  NOT an unsigned compare.
+  const sub = u16(0x10 - ram.u16(HUDRAM.itemCount));
+  const d0 = (sub & 0x8000) ? 0 : u16((sub >>> 2) + 1);  // $285444 lsr / addq
+  ram.setU16(HUDRAM.tallyHold, d0);                      // $28544C
+  let d7 = 0;                                            // $285452 moveq #0,d7
+  // tier checks are UNSIGNED (cmpi.w then bcs = carry = unsigned-less-than)
+  if (ram.u16(HUDRAM.itemCount) >= 0x32) {               // $285454 cmpi/bcs
+    ram.setU16(HUDRAM.itemCount, u16(ram.u16(HUDRAM.itemCount) - 1)); d7 = 1;
+  }
+  if (ram.u16(HUDRAM.itemCount) >= 0x64) {               // $285466
+    ram.setU16(HUDRAM.itemCount, u16(ram.u16(HUDRAM.itemCount) - 1)); d7 = 2;
+  }
+  if (ram.u16(HUDRAM.itemCount) >= 0x96) {               // $285478
+    ram.setU16(HUDRAM.itemCount, u16(ram.u16(HUDRAM.itemCount) - 1)); d7 = 3;
+  }
+  // $28548A subq.w #1, $81B610 (always).  The branch fan-out below is the crux:
+  // beq (b610==0) -> fast drain; bpl (result positive) -> medal drain; bcs
+  // (borrow, old was 0 -> $FFFF) -> hold=8 arm; FALL-THROUGH (negative result,
+  // NO borrow) -> $285496.  The fall-through is what produces bit 1: it fires the
+  // first frame b610 (after the tier subqs) is a non-zero negative value, e.g.
+  // $FFFF -> tier-drain -> $FFFC -> subq -> $FFFB (negative, no borrow).
+  const preSubq = ram.u16(HUDRAM.itemCount);
+  const after = u16(preSubq - 1);
+  ram.setU16(HUDRAM.itemCount, after);
+  const borrow = (preSubq === 0);                        // C flag from the subq
+  if (after === 0) { tallyFastDrain2854C8(ram); return; } // $285490 beq $2854C8
+  if ((after & 0x8000) === 0) { tallyMedalDrain2854E0(ram, d7); return; } // $285492 bpl
+  if (borrow) {                                           // $285494 bcs -> $2854B6
+    ram.setU16(HUDRAM.tallyHold, 8);                      // $2854B6
+    ram.setU16(HUDRAM.itemDir, 0xffff);                   // $2854BE
+    tallyAward28551E(ram, ctx);                           // $2854C6 bra $28551E
+    return;
+  }
+  // ---- $285496 FALL-THROUGH: the SOLE producer of $8130F9 bit 1 ----
+  ram.setU8(HUDRAM.flags9, ram.u8(HUDRAM.flags9) | 0x02); // $285496 bset #$1
+  ram.setU16(HUDRAM.itemCount, 0);                        // $2854A0
+  ram.setU16(HUDRAM.tallyHold, 0);                        // $2854A6
+  ram.setU32(HUDRAM.tallyBonus, 0);                       // $2854AC
+}
+
+/** `$28551E` -- the award arm.  Reached every frame the hold did NOT underflow.
+ *  Awards `$81B616 >> 4` to each live player's score (`$28614A`/`$286154`) ONLY
+ *  when `$81B610 == 0` AND `$81B614 == 8`, then zeroes `$81B616`. */
+function tallyAward28551E(ram, ctx) {
+  const ic = ram.u16(HUDRAM.itemCount);                  // $28551E tst.w
+  if (ic !== 0 && (ic & 0x8000) === 0) return;           // $285524 beq / $285526 bpl (ic>0 -> exit)
+  if (ram.u16(HUDRAM.tallyHold) !== 8) return;           // $28552A cmpi #$8 / $285532 bne
+  const d1 = ram.u32(HUDRAM.tallyBonus);                 // $285536
+  if (d1 === 0) return;                                  // $28553C beq
+  note28C6C6(ctx);                                       // $28553E jsr $28C6C6
+  const d0 = d1 >>> 4;                                   // $285546 lsr.l #4
+  if ((ram.u16(0x8103e6) & 0x8000) !== 0) scorePending(ram, 1, d0); // $285550 bsr $28614A
+  if ((ram.u16(0x810448) & 0x8000) !== 0) scorePending(ram, 2, d0); // $28555C bsr $286154
+  ram.setU32(HUDRAM.tallyBonus, 0);                      // $285562
+}
+
+/** `$2854C8` -- the fast-drain / zero-count entry: set `$81B610 := $FFFF` and the
+ *  hold/dir so the NEXT frame's `subq` makes `$FFFE` and trips `$285496`. */
+function tallyFastDrain2854C8(ram) {
+  ram.setU16(HUDRAM.itemCount, 0xffff);                  // $2854C8
+  ram.setU16(HUDRAM.itemDir, 0x17);                      // $2854D0 $81B60E
+  ram.setU16(HUDRAM.tallyHold, 0x12);                    // $2854D8
+  tallyMedalDrain2854E0(ram, 0);
+}
+
+/** `$2854E0..$28551A` -- the medal-tier BCD compound: add `$81B61A >> 8` into
+ *  the `$81B616` accumulator `5 * (d7+1)` times (the dbra at `$28551A` loops the
+ *  five `bcdAdd`s `d7+1` times).  `$286626` is `bcdAdd` (src/score.js). */
+function tallyMedalDrain2854E0(ram, d7) {
+  const addend = (ram.u32(HUDRAM.tallyMedalAcc) >>> 8) >>> 0; // $2854E0/$2854E6 lsr.l #8
+  for (let n = 0; n <= d7; n++) {                        // $28551A dbra d7
+    for (let k = 0; k < 5; k++) {                        // $2854E8..$285516 (5x bsr $286626)
+      bcdAdd(ram, HUDRAM.tallyMedalAcc, addend);         // -> $81B616
+    }
+  }
+}
+
+/** `$28556C` -- the button read.  Returns true (C set) when a button (mask $70)
+ *  is held, which fast-drains the tally.  The port reads the raw input mirror
+ *  `$803970` for each live player (the gate holds fire, which is in the $70
+ *  mask), matching the `$23D16C`/`$23D17E` reads. */
+function tallyButton28556C(ram) {
+  const ic = ram.u16(HUDRAM.itemCount);                  // $28556C
+  if ((ic & 0x8000) !== 0 || ic === 0) return false;     // $285572 subq/bpl (ic==0 -> C clear)
+  let d0 = 0;                                            // $28557A moveq #0
+  if ((ram.u16(0x8103e6) & 0x8000) !== 0) d0 |= ram.u16(0x803970); // $28557C/$285584 P1
+  if ((ram.u16(0x810448) & 0x8000) !== 0) d0 |= ram.u16(0x803970); // $28558A/$285592 P2
+  if ((d0 & 0x70) === 0) return false;                   // $28559C andi #$70 / beq
+  ram.setU16(HUDRAM.itemCount, 0);                       // $2855AA clr $81B610
+  return true;                                           // $2855B0 ori #$1,sr (C set)
+}
+
+/** `$28C6C6` -- the bonus-event sound cue (no arithmetic).  Named note. */
+function note28C6C6(ctx) {
+  ctx?.unportedLog?.note(0x28c6c6, '$285434/$28553E jsr $28C6C6 -- the tally '
+    + 'bonus-event sound cue (D0=$19/D1=$80/D2=$0 via $28C02A). No arithmetic; '
+    + 'ships as a note');
 }
 
 /** `$285A12` (P1) / `$285B3C` (P2) -- **THE HYPER**, recon 38's wave 2.

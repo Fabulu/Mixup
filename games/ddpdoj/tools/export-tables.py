@@ -1098,11 +1098,18 @@ SHOT_WINDOWS.extend([
                        "words, loop 1: 90 words), far end $2881CE pinned by the "
                        "panel tile table $2881F2"),
     (0x2881F2, 0x0140, "W113: panel tile table $2881F2 (8 longwords, "
-                       "$285C86/$285E00) and rank-icon P1 table $2882A6 (8 "
-                       "longwords, $285D64/$285DC4); the gap between them is "
-                       "covered because both are read in the same routine"),
-    (0x288326, 0x0020, "W113: rank-icon P2 table $288326 (8 longwords, "
-                       "$285EDA/$285F3E)"),
+                       "$285C86/$285E00) and rank-icon P1 table $2882A6.  W124 "
+                       "CORRECTION: the P1 rank-icon table is 32 longwords "
+                       "($1CA36C..$1CA008, $1c-delta), running $2882A6..$288326 "
+                       "($80 bytes), NOT 8 -- the rank-icon index "
+                       "($81B64A<<4/$4B0)*4 is unclamped and reaches entry 8 "
+                       "once rankAccum passes 600.  This window covers all 32"),
+    (0x288326, 0x0080, "W113+W124: rank-icon P2 table $288326 ($285EDA/$285F3E).  "
+                       "W124 CORRECTION: 32 longwords ($1CED18..$1CE9B4, "
+                       "$1c-delta), $288326..$2883A6 ($80 bytes), NOT 8 -- the "
+                       "seeded W62 gate crashed at entry 8 ($288346) because the "
+                       "old $20 window ended there.  The $1c-delta pattern breaks "
+                       "cleanly at $2883A6 ($00326D44, a different table)"),
 ])
 
 # ===== W116: THE HUD OTHER-TEXT TABLES (Wave C' of the HUD port) =============
@@ -1692,6 +1699,46 @@ SHOT_WINDOWS.extend([
     (0x293D94, 0x0032, "W107: part 2 state-2 burst table $293D94 -- four 12-byte "
                        "entries plus $FFFF for the $2938F2 helper; pinned by "
                        "$293DC6 (D-script 6 INIT, code)"),
+])
+
+# ==================== W124: THE RESULT SCREEN + BANNER DATA TABLES ==============
+#
+# `src/stageend.js result28D9AA` (the phase machine F0-F8) and `banner28E7F8`
+# (the slide-out state machine) read four embedded data tables out of the
+# `$28Exxx` cluster.  Every extent is pinned by the routine's own end-marker
+# compare (`$28DB16 cmpa.l #$28E6E6` for the slide; `$28DE00 cmpa.l #$28E716`
+# for the medal walk) or by the template-copy length.  The anim-chain loader
+# reads only the node-count word of the `$28D862` script (the per-node content
+# is the presentation tier the anim driver `$246410` dispatches on -- R2b).
+SHOT_WINDOWS.extend([
+    # The F2 sprite-init prototype at $28E646 (18 bytes, copied by $28DA7A's
+    # four longs + one word), the F3 slide-in delta table at $28E698 (39 words,
+    # ended by the cmpa.l #$28E6E6), and the three F7 medal counter tables at
+    # $28E6E8/$28E718/$28E748 (each 23 words, ended by the cmpa.l #$28E716).
+    # One window covers $28E646..$28E776 ($130 bytes); the far end is pinned by
+    # $28E778 (the banner code, $28E780 follows).
+    (0x28E646, 0x0130, "W124: result-screen F2 prototype $28E646 + slide table "
+                       "$28E698 + medal tables $28E6E8/$28E718/$28E748"),
+    # The banner slide-out template at $28EA58 (16 longwords copied by $28EA14)
+    # and the 2-word $81DFEC seed at $28EA54 ($28EA1A lea).  $28 bytes; pinned
+    # at the far end by $28EA98 (the teardown, code).
+    (0x28EA54, 0x0044, "W124: banner slide-out template $28EA58 + DFEC seed "
+                       "$28EA54; ends at $28EA98 (teardown, code)"),
+    # The anim-chain build script at $28D862: the loader reads only word 0 (the
+    # node count, $0008).  A 2-byte window is all the port reaches; the per-node
+    # content words are R2b (the anim driver $246410).
+    (0x28D862, 0x0002, "W124: anim-chain script node-count word at $28D862 "
+                       "(the $24652A loader reads only this; content is R2b)"),
+    # W124: the next-stage BG PALETTE block at $229DF8.  background.js:1059 reads
+    # rom.bytes(bgBlock, 32*64) = 2048 bytes during the stage-transition rebuild
+    # ($2611C4 install2415E8 with D1=$1F = 32 banks x 64 bytes).  CATCHUP 7a named
+    # this as the one remaining 2 KB data gap at the stage-1 tail.  Windowed here
+    # so the seeded W62 gate can drive PAST the stage clear into the banner drain
+    # (the slot-free and the type-6-self-destroy both happen in state 4, which the
+    # rebuild spawns; without this the gate crashes one frame into state 4).
+    (0x229DF8, 0x0800, "W124: next-stage BG palette block $229DF8 (32 banks x 64 "
+                       "bytes, read by background.js backgroundInit/$2611C4; the "
+                       "2 KB gap CATCHUP 7a named)"),
 ])
 
 
@@ -2746,19 +2793,25 @@ def check_hud_sprite_extents(d: bytes) -> None:
             f"loop 1's meter data ($287DF0 cap = {cap1} words). A SHORT window "
             f"is not caught here, it is caught by src/rom.js on a player's "
             f"machine.")
-    # 3. the panel tile table $2881F2: hyperlevel max 7, so 8 longwords.
+    # 3. the panel tile table $2881F2 (hyperlevel max 7, so 8 longwords) AND the
+    #    rank-icon P1 table $2882A6.  W124 CORRECTION: the P1 rank-icon table is
+    #    32 longwords ($1c-delta, verified in the image), running to $288326, so
+    #    the $2881F2 window must reach $288326 -- the old check ($2882C6 = 8
+    #    longs) undercounted and an unclamped rankAccum>600 read past it.
     #    $285C7E divu.w #$4B0 then $285C82 add.w D2,D2 / add.w D2,D2 => index*4.
     declared_p = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x2881F2]
-    if not declared_p or 0x2881F2 + declared_p[0][1] < 0x2882C6:
+    if not declared_p or 0x2881F2 + declared_p[0][1] < 0x288326:
         raise SystemExit(
-            f"the $2881F2 window is {declared_p} and must reach $2882C6 -- "
-            f"the rank-icon P1 table $2882A6 (8 longwords).")
-    # 4. the rank-icon P2 table $288326: same shape, 8 longwords.
+            f"the $2881F2 window is {declared_p} and must reach $288326 -- "
+            f"the rank-icon P1 table $2882A6 is 32 longwords (W124: was 8).")
+    # 4. the rank-icon P2 table $288326: 32 longwords (W124: was 8), running to
+    #    $2883A6 where the $1c-delta pattern breaks ($00326D44 follows).
     declared_p2 = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x288326]
-    if not declared_p2 or 0x288326 + declared_p2[0][1] < 0x288346:
+    if not declared_p2 or 0x288326 + declared_p2[0][1] < 0x2883A6:
         raise SystemExit(
-            f"the $288326 window is {declared_p2} and must reach $288346 -- "
-            f"the rank-icon P2 table (8 longwords).")
+            f"the $288326 window is {declared_p2} and must reach $2883A6 -- "
+            f"the rank-icon P2 table is 32 longwords (W124: was 8, seeded "
+            f"W62 gate crashed at entry 8 $288346).")
 
 
 def check_hud_popup_item_extents(d: bytes) -> None:

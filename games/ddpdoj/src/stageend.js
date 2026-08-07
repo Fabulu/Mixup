@@ -76,8 +76,9 @@
 
 import { u16 } from './ram.js';
 import { stageCreate, queueKill, ALLOC } from './objalloc.js';
-import { clearItemPool } from './items.js';
+import { clearItemPool, bcd242AC6 } from './items.js';
 import { clearPoolA } from './bee.js';
+import { bcdAdd, scoreByMask } from './score.js';
 
 export const SE = {
   stage: 0x813092, stageX2: 0x813094, stageX4: 0x813096,   // $25FD0C
@@ -364,20 +365,512 @@ function loadBannerArt(ram, ctx) {
 }
 
 // ------------------------------------------------------------- the deviation
-/** The two invented transitions, in one place, so a reader counts them.  Each
- *  key is the ROM instruction the port stands in for. */
+/** The ONE remaining invented transition, in one place, so a reader counts it.
+ *  Each key is the ROM instruction the port stands in for.
+ *
+ *  W124 CLEARED DEV-1 (`$28DE5C`): the result-screen phase machine `$28D9AA`
+ *  and the HUD tally `$285400` are now ported (see `result28D9AA` and
+ *  `tally2853D2`), so `$8130F9` bit 1 has its real sole producer `$285496` and
+ *  F8 advances on it naturally. The manual `bset #1` stand-in is gone.
+ *
+ *  W124 REFINED DEV-2 (`$28D6FC`): the animation chain primitives
+ *  (`chainLoader24652A` / `chainCheck24681A` / `chainFree246800`) ARE ported and
+ *  wired, so `($8,A5)` is REALLY written by `$24652A` and REALLY freed by
+ *  `$246800`. But the per-frame animation-object driver `$246410` -- the machine
+ *  that drains each node's lifetime word `$18(node)` (seeded `$ffff0000`) -- is
+ *  presentation tier (R2b), and without it `chainCheck24681A` would never report
+ *  "done". The port therefore treats the first state-$B frame as the fly-away's
+ *  end, frees the chain, and advances. The RAM lifecycle is faithful; only the
+ *  visual wait collapses. */
 export const PRESENTATION_DEVIATION = Object.freeze({
-  0x28de5c: 'DEV-1 -- $28DE5C. The result screen $28D9AA (819 instructions) is '
-    + 'NOT PORTED, so $8130F9 bit 1 -- whose ONLY producer in build B is '
-    + '$285496, inside the HUD tally $285400 -- is never set and object type 6 '
-    + 'can never leave state 1. The port performs $28DE5C\'s own state '
-    + 'assignment (($6,A5) := $B) and sets $8130F9 bit 1 itself. THE MOMENT A '
-    + 'WAVE PORTS $285496 FOR REAL, tests/w62stageend.test.js goes RED.',
-  0x28d6fc: 'DEV-2 -- $28D6FC. ($8,A5) is written by $28DE5C jsr $24652A, in '
-    + 'the same unported routine, so it is 0 and $24681A would dereference '
-    + 'address $2C. The port treats the animation chain as FINISHED and skips '
-    + '$246800, which would have nothing to free.',
+  0x28d6fc: 'DEV-2 -- $28D6FC. The anim chain is built by `chainLoader24652A` '
+    + '(F8 advance tail) and freed by `chainFree246800` (state $B) for real, so '
+    + '($8,A5) is honest. But the per-frame anim-object driver $246410 -- which '
+    + 'drains each node lifetime $18(node) so that chainCheck24681A eventually '
+    + 'returns "done" -- is the PRESENTATION tier (R2b, referenced as unported '
+    + 'by boss.js/midboss.js/bossarrival.js). Without it the chain would never '
+    + 'drain and state $B would hang, so the port frees the chain and advances '
+    + 'on state $B\'s first frame rather than waiting for the fly-away. The pool '
+    + 'lifecycle is faithful; the animation wait is not.',
 });
+
+// ============================================================================
+// W124: THE RESULT SCREEN `$28D9AA`, THE ANIM CHAIN, THE BANNER `$28E7F8`
+// ============================================================================
+// A6 = `$81DEBE` = `SE.result` (reloaded by every caller).  `$2(a6)` = `$81DEC0`
+// is the FOUR-bit phase byte (bit0 F0, bit1 F4, bit2 F1, bit3 F6).  The GLOBAL
+// handshake lives in `$8130F9` (bit1 tally-done `$285496`, bit2 medal-walk-done
+// `$28DE16`, bit3 slide-in-done `$28DB52`).  A5 is the type-6 object slot, read
+// in the F8 advance tail.  See `123-recon-result-screen.md` for the phase map.
+
+/** ROM data tables the phase machine and banner read (build B, file offset). */
+const RESULT_ROM = {
+  protoF2: 0x28e646,      // $28DA70 lea (PC) -- 18-byte position prototype
+  slideTable: 0x28e698,   // $28DAD6 lea (PC) -- 39-word slide-in delta table
+  slideEnd: 0x28e6e6,     // $28DB16 cmpa.l -- the table's end marker
+  medalA: 0x28e6e8,       // $28DDC0 lea (PC) -- 23-word medal counter tables
+  medalB: 0x28e718,       // $28DDD4 lea (PC)
+  medalC: 0x28e748,       // $28DDE2/$28DDEE lea (PC)
+  medalEnd: 0x28e716,     // $28DE00 cmpa.l -- medalA's end marker
+  animScript: 0x28d862,   // $28DE5C lea (PC) -- the 8-node fly-away script
+  bannerSlideOut: 0x28ea58, // $28EA0A lea (PC) -- 16-longword banner template
+  bannerSlideIn: 0x28e86e,  // $28E820 lea (PC)
+  bannerDfecOut: 0x28ea54,  // $28EA1A lea (PC) -- 2-word seed for $81DFEC
+  bannerDfecIn: 0x28e868,   // $28E830 lea (PC)
+};
+
+/** The bonus-pool and tick fields inside the result buffer (offsets from A6). */
+const RF = {
+  phase: 0x02, f1cnt: 0x04, slide: 0x06,
+  p1x: 0x08, p1y: 0x0a, p2x: 0x0c, p2y: 0x0e, clamp16: 0x16,
+  p1beeBcd: 0x18, p1bee: 0x1a, p1itemBcd: 0x1c, p1item: 0x1e,
+  p2beeBcd: 0x22, p2bee: 0x24, p2itemBcd: 0x26, p2item: 0x28,
+  hold: 0x2c, medal: 0x3e,
+  m0: 0x4c, m1: 0x4e, m2: 0x50, m3: 0x52,
+};
+
+/** `$81DF24` (P1) / `$81DF26` (P2) -- the three-step bonus-cue throttle. */
+const CUE_TIMER = { p1: 0x81df24, p2: 0x81df26 };
+
+/**
+ * `$28D9AA` -- THE RESULT SCREEN, eight phases on `SE.result`.  One phase step
+ *  per call (the ROM `rts`es out of whichever arm runs); type 6 calls this every
+ *  frame from states $A / 1 / $B / $15.  The art/palette/draw calls are NOTES
+ *  (R2b); the score arithmetic, the slide-in table walk, the bonus tick and the
+ *  `$8130F9` handshake are REAL. */
+export function result28D9AA(ram, rom, ctx, a5) {
+  const a6 = SE.result;
+  const ph = () => ram.u8(a6 + RF.phase);
+  // ---- F0 ART INSTALL
+  if ((ph() & 0x01) === 0) {                                // $28D9AA btst #0
+    ram.setU8(a6 + RF.phase, ph() | 0x01);                  // $28D9B4 bset #0
+    ram.setU8(SE.df1e, ram.u8(SE.df1e) | 0x02);             // $28D9BA bset #1
+    ram.setU16(0x813172, 0);                                // $28D9C4 camera zero
+    ram.setU16(0x813176, 0);                                // $28D9C9
+    note(ctx, 0x24150a, '$28D9C4..$28DA3A seven jsr $24150A -- result-screen art '
+      + 'install (entries $11..$16,$10 from $2254B8..$225878). R2b presentation');
+    return;                                                 // $28DA40 rts
+  }
+  // ---- F1 PALETTE CUE
+  if ((ph() & 0x04) === 0) {                                // $28DA42 btst #2
+    ram.setU8(a6 + RF.phase, ph() | 0x04);                  // $28DA4C bset #2
+    ram.setU16(a6 + RF.f1cnt, 1);                           // $28DA52 $4 := 1
+    note(ctx, 0x23c638, '$28DA58 jsr $23C638 -- result-screen palette cue. R2b');
+    return;                                                 // $28DA5E rts
+  }
+  // ---- F2 SPRITE-INIT (one frame, when $4(a6) drains 1->0)
+  if (ram.u16(a6 + RF.f1cnt) !== 0) {                       // $28DA60 tst/beq F3
+    const n = u16(ram.u16(a6 + RF.f1cnt) - 1);              // $28DA68 subq
+    ram.setU16(a6 + RF.f1cnt, n);
+    if (n !== 0) return;                                    // $28DA6C bne rts
+    f2SpriteInit28DA70(ram, rom);                           // $28DA70..$28DACC
+    return;
+  }
+  // ---- F3 SLIDE-IN (walks the 39-word table, ends $28DB52 bset #3)
+  if ((ram.u16(a6 + RF.slide) & 0x8000) === 0) {            // $28DACE tst/bmi F4
+    f3SlideIn28DACE(ram, rom, ctx);
+    return;                                                 // -> $28DED8 draw (noted)
+  }
+  // ---- F4 BONUS-POOL INIT (once, when bit1 of phase is clear)
+  if ((ph() & 0x02) === 0) {                                // $28DB5E bset #1/bne F5
+    f4BonusPool28DB5E(ram, rom, ctx);
+    return;                                                 // $28DC16 rts
+  }
+  // ---- F5 HOLD + DRAW  (the draws are notes; the $2c countdown is real)
+  note(ctx, 0x28ded8, '$28DC18 bsr $28DED8 / $28DC1C bsr $28E1AC -- result-screen '
+    + 'sprite draws. R2b presentation');
+  if (ram.u16(a6 + RF.hold) !== 0) {                        // $28DC20 tst/beq F6
+    ram.setU16(a6 + RF.hold, u16(ram.u16(a6 + RF.hold) - 1));  // $28DC26 subq
+    return;                                                 // $28DC2A rts
+  }
+  // ---- F6 BEE/ITEM TICK ($2c == 0); credits $50 per drain step via $286128
+  if ((ph() & 0x08) === 0) {                                // $28DC2C btst #3(local)
+    f6BonusTick28DC2C(ram, ctx);
+    return;                                                 // $28DDAE rts
+  }
+  // ---- F7 MEDAL WALK (three tables; ends $28DE16 bset #2) -- falls into F8
+  if ((ram.u16(a6 + RF.medal) & 0x8000) === 0) {            // $28DDB0 tst/bmi F8
+    f7MedalWalk28DDB0(ram, rom);                            // may set $8130F9 bit 2
+  }
+  // ---- F8 EXIT HANDSHAKE (waits for $8130F9 bit 1, then advances type 6)
+  if ((ram.u8(SE.bossFlags9) & 0x02) === 0) return;         // $28DE1E btst #1/beq rts
+  f8Exit28DE1E(ram, rom, ctx, a5);                          // $28DE2A..$28DE78
+}
+
+/** `$28DA70..$28DACC` -- F2 sprite-init: copy the 18-byte prototype and seed the
+ *  six art pointer longwords at `$3A..$58(a6)`.  RAM-only; no notes. */
+function f2SpriteInit28DA70(ram, rom) {
+  const a6 = SE.result;
+  for (let i = 0; i < 4; i++) {                             // $28DA7A move.l x4
+    ram.setU32(a6 + 0x06 + i * 4, rom.u32(RESULT_ROM.protoF2 + i * 4));
+  }
+  ram.setU16(a6 + 0x16, rom.u16(RESULT_ROM.protoF2 + 16));  // $28DA82 move.w
+  ram.setU32(a6 + 0x3a, 0x000a0000);                        // $28DA84
+  ram.setU32(a6 + 0x40, 0x4d001c00);                        // $28DA8C
+  ram.setU32(a6 + 0x44, 0x2d001c00);                        // $28DA94
+  ram.setU32(a6 + 0x48, 0x0e001c00);                        // $28DA9C
+  ram.setU16(a6 + 0x4c, 0); ram.setU16(a6 + 0x4e, 0);       // $28DAA4..$28DAB2
+  ram.setU16(a6 + 0x50, 0); ram.setU16(a6 + 0x52, 0);
+  ram.setU32(a6 + 0x54, 0x001bcd0c);                        // $28DABC
+  ram.setU32(a6 + 0x58, 0x001be60c);                        // $28DAC4
+}
+
+/** `$28DACE..$28DB5A` -- F3 slide-in: walk the delta table, then the P1/P2
+ *  live-player clamps, then `$28DB52 bset #3,$8130F9` when the table ends. */
+function f3SlideIn28DACE(ram, rom, ctx) {
+  const a6 = SE.result;
+  const idx = ram.u16(a6 + RF.slide);                       // $28DADC move.w $6,d1
+  const d0 = (idx < (RESULT_ROM.slideEnd - RESULT_ROM.slideTable))
+    ? rom.u16(RESULT_ROM.slideTable + idx) : 0;             // $28DAE0 (a0,d1.w)
+  ram.setU16(a6 + RF.p1x, u16(ram.u16(a6 + RF.p1x) - d0));  // $28DAE4 sub $8
+  ram.setU16(a6 + RF.p2x, u16(ram.u16(a6 + RF.p2x) + d0));  // $28DAE8 add $c
+  ram.setU16(a6 + RF.slide, u16(idx + 2));                  // $28DAEC addq #2
+  // $28DAF2..$28DB12 -- the $16(a6) sub-pixel clamp, then the P2 mirror on $a/$e
+  let d0b = d0;
+  if (ram.u16(a6 + RF.clamp16) !== 0) {                     // $28DAF2 tst/beq
+    const before = ram.u16(a6 + RF.clamp16);
+    const after = u16(ram.u16(a6 + RF.clamp16) - d0);       // $28DAF8 sub
+    ram.setU16(a6 + RF.clamp16, after);
+    if (after === 0) {                                      // $28DAFC beq
+      // fall through with d0 unchanged
+    } else if ((before & 0x8000) === 0 && (after & 0x8000) !== 0) { // $28DAFE bcc
+      // crossed through zero: clamp the remainder
+      d0b = u16(-(before & 0xffff));                        // $28DB00 neg
+      ram.setU16(a6 + RF.clamp16, 0);                       // $28DB06 clr
+    } else {
+      d0b = 0;                                              // $28DB0C bra (no mirror)
+    }
+  }
+  if (d0b !== 0) {
+    ram.setU16(a6 + RF.p1y, u16(ram.u16(a6 + RF.p1y) - d0b));  // $28DB0E sub $a
+    ram.setU16(a6 + RF.p2y, u16(ram.u16(a6 + RF.p2y) + d0b));  // $28DB12 add $e
+  }
+  // $28DB16 cmpa.l #$28E6E6,a0 -- a0 is base+OLD-idx; the table ends at base+78.
+  const tblBytes = RESULT_ROM.slideEnd - RESULT_ROM.slideTable;
+  if (idx >= tblBytes) ram.setU16(a6 + RF.slide, 0xffff);   // $28DB1E
+  // $28DB24..$28DB46 -- P1/P2 live clamps
+  if ((ram.u16(SE.p1) & 0x8000) === 0) {                    // $28DB24 tst/bmi
+    ram.setU16(a6 + RF.p1x, 0);                             // $28DB2C
+    ram.setU16(a6 + RF.p1y, 0);                             // $28DB32
+  }
+  if ((ram.u16(SE.p2) & 0x8000) === 0) {                    // $28DB38 tst/bmi
+    ram.setU16(a6 + RF.p2x, 0x40);                          // $28DB40
+    ram.setU16(a6 + RF.p2y, 0x40);                          // $28DB46
+  }
+  if ((ram.u16(a6 + RF.slide) & 0x8000) !== 0) {            // $28DB4C tst/bpl
+    ram.setU8(SE.bossFlags9, ram.u8(SE.bossFlags9) | 0x08); // $28DB52 bset #3
+  }
+  note(ctx, 0x28ded8, '$28DB5A bra $28DED8 -- result-screen draw (F3 frame). R2b');
+}
+
+/** `$28DB5E..$28DC16` -- F4 bonus-pool init: read bee/item counts, BCD-convert,
+ *  seed the four pools, set `$2c(a6)`. */
+function f4BonusPool28DB5E(ram, rom, ctx) {
+  const a6 = SE.result;
+  ram.setU8(a6 + RF.phase, ram.u8(a6 + RF.phase) | 0x02);   // $28DB5E bset #1
+  let anyLive = 0;                                          // $28DB6E moveq #0,d7
+  if ((ram.u16(SE.p1) & 0x8000) !== 0) {                    // $28DB70 tst/bpl
+    const bee = ram.u16(0x817f84), item = ram.u16(0x817f86); // $28DB78/$28DB7E
+    if ((bee + item) !== 0) {                               // $28DB84 beq
+      anyLive = 1;                                          // $28DB86 moveq #1
+      ram.setU16(a6 + RF.p1beeBcd, bcd242AC6(item) & 0xffff); // $28DB88/$28DB96
+      ram.setU16(a6 + RF.p1bee, u16(item * 10));            // $28DB9A mulu #$a
+      ram.setU16(a6 + RF.p1itemBcd, bcd242AC6(bee) & 0xffff); // $28DBA2/$28DBB0
+      ram.setU16(a6 + RF.p1item, u16(bee * 20));            // $28DBB4 mulu #$14
+    }
+  }
+  if ((ram.u16(SE.p2) & 0x8000) !== 0) {                    // $28DBBC tst/bpl
+    const bee = ram.u16(0x817f88), item = ram.u16(0x817f8a); // $28DBC4/$28DBCA
+    if ((bee + item) !== 0) {                               // $28DBD0 beq
+      // NOTE: $28DBD0 reads the LONGWORD $817F88 into D0 for the beq test, which
+      // is bee|item as one 32-bit value -- equivalent to the sum test above.
+      anyLive = 1;                                          // $28DBD8
+      ram.setU16(a6 + RF.p2beeBcd, bcd242AC6(item) & 0xffff); // $28DBDA/$28DBE8
+      ram.setU16(a6 + RF.p2bee, u16(item * 10));            // $28DBEC mulu #$a
+      ram.setU16(a6 + RF.p2itemBcd, bcd242AC6(bee) & 0xffff); // $28DBF4/$28DC02
+      ram.setU16(a6 + RF.p2item, u16(bee * 20));            // $28DC06 mulu #$14
+    }
+  }
+  ram.setU16(a6 + RF.hold, anyLive !== 0 ? 0x18 : 0x04);    // $28DC0E/$28DC12
+  note(ctx, 0x28ded8, '$28DC18 bsr $28DED8 / $28DC1C bsr $28E1AC -- draws. R2b');
+}
+
+/** `$28DC2C..$28DDAE` -- F6 bee/item tick: drain the four pools by 5 each,
+ *  credit `$50` per step via `$286128` (scoreByMask), throttle the bonus cue
+ *  through `$81DF24`/`$81DF26`.  When all four are empty, set the local F6 bit
+ *  and reload `$2c(a6) := 8` (or 1 if `$81B610 == 0`). */
+function f6BonusTick28DC2C(ram, ctx) {
+  const a6 = SE.result;
+  let credited = 0;                                         // $28DC36 moveq #0,d7
+  // ---- P1
+  let d6 = u16(ram.u16(a6 + RF.p1bee) + ram.u16(a6 + RF.p1item)); // $28DC38/$28DC3C
+  if (d6 !== 0) {                                           // $28DC40 beq P2
+    // $28DC44 jsr $23D186 (P1 buttons) -- the port does not model the result-
+    // screen button accelerate; treat as no-button (the normal per-frame drain).
+    if (ram.u16(a6 + RF.p1bee) !== 0) {                     // $28DC68 tst/beq
+      ram.setU16(a6 + RF.p1bee, u16(ram.u16(a6 + RF.p1bee) - 5)); // $28DC6E subq #5
+      scoreByMask(ram, 0x50, 0x10);                         // $28DC74/$28DC7A jsr $286128
+      credited = 1;                                         // $28DC74 moveq #1,d7
+      cue28C6C6(ram, ctx, CUE_TIMER.p1);                    // $28DC80..$28DC9C
+    }
+    if (ram.u16(a6 + RF.p1item) !== 0) {                    // $28DCA4 tst/beq
+      ram.setU16(a6 + RF.p1item, u16(ram.u16(a6 + RF.p1item) - 5)); // $28DCAA
+      scoreByMask(ram, 0x50, 0x10);                         // $28DCB6 jsr $286128
+      credited = 1;
+      cue28C6C6(ram, ctx, CUE_TIMER.p1);                    // $28DCC2..$28DCDE
+    }
+  }
+  // ---- P2
+  d6 = u16(ram.u16(a6 + RF.p2bee) + ram.u16(a6 + RF.p2item));
+  if (d6 !== 0) {                                           // $28DCEC beq done
+    if (ram.u16(a6 + RF.p2bee) !== 0) {                     // $28DD14 tst/beq
+      ram.setU16(a6 + RF.p2bee, u16(ram.u16(a6 + RF.p2bee) - 5)); // $28DD1A
+      scoreByMask(ram, 0x50, 0x08);                         // $28DD26 jsr $286128
+      credited = 1;
+      cue28C6C6(ram, ctx, CUE_TIMER.p2);                    // $28DD2C..$28DD48
+    }
+    if (ram.u16(a6 + RF.p2item) !== 0) {                    // $28DD50 tst/beq
+      ram.setU16(a6 + RF.p2item, u16(ram.u16(a6 + RF.p2item) - 5)); // $28DD56
+      scoreByMask(ram, 0x50, 0x08);                         // $28DD62 jsr $286128
+      credited = 1;
+      cue28C6C6(ram, ctx, CUE_TIMER.p2);                    // $28DD6E..$28DD8A
+    }
+  }
+  if (credited !== 0) return;                               // $28DD90 tst/bne rts
+  // All four pools empty: latch local F6 and reload the hold.
+  ram.setU8(a6 + RF.phase, ram.u8(a6 + RF.phase) | 0x08);   // $28DD94 bset #3
+  ram.setU16(a6 + RF.hold, ram.u16(0x81b610) !== 0 ? 0x08 : 0x01); // $28DD9A..$28DDAA
+}
+
+/** `$28C6C6`-style bonus cue, throttled by a 3-step timer at `timerAddr`.
+ *  `$28C6C6` itself posts a sound cue (D0=$19/D1=$80/D2=$0 via `$28C02A`) and
+ *  does NO arithmetic (the BCD conversion happened at the caller via `$242AC6`).
+ *  Shipped as a note; the throttle decrement is real RAM. */
+function cue28C6C6(ram, ctx, timerAddr) {
+  if (ram.u16(timerAddr) !== 0) {                           // tst.w/beq
+    ram.setU16(timerAddr, u16(ram.u16(timerAddr) - 1));     // subq.w #1
+    return;
+  }
+  ram.setU16(timerAddr, 3);                                 // move.w #$3
+  note(ctx, 0x28c6c6, '$28C6C6 -- the bonus-event sound cue (D0=$19/D1=$80/D2=$0 '
+    + 'via $28C02A). No arithmetic; ships as a note, joins the sound subsystem '
+    + 'later');
+}
+
+/** `$28DDB0..$28DE16` -- F7 medal walk: add the three per-index tables to the
+ *  four medal counters; when the index ends, set `$8130F9` bit 2. */
+function f7MedalWalk28DDB0(ram, rom) {
+  const a6 = SE.result;
+  const idx = ram.u16(a6 + RF.medal);                       // $28DDC8 move.w $3e
+  const inRange = idx < (RESULT_ROM.medalEnd - RESULT_ROM.medalA);
+  if (inRange) {
+    ram.setU16(a6 + RF.m0, u16(ram.u16(a6 + RF.m0)
+      + rom.u16(RESULT_ROM.medalA + idx)));                 // $28DDCC/$28DDD0
+    ram.setU16(a6 + RF.m1, u16(ram.u16(a6 + RF.m1)
+      + rom.u16(RESULT_ROM.medalB + idx)));                 // $28DDDA/$28DDDE
+    const mc = rom.u16(RESULT_ROM.medalC + idx);
+    ram.setU16(a6 + RF.m2, u16(ram.u16(a6 + RF.m2) + mc));  // $28DDE6/$28DDEA
+    ram.setU16(a6 + RF.m3, u16(ram.u16(a6 + RF.m3) + mc));  // $28DDF2/$28DDF6
+  }
+  ram.setU16(a6 + RF.medal, u16(idx + 2));                  // $28DDFA addq #2
+  if (idx >= (RESULT_ROM.medalEnd - RESULT_ROM.medalA)) {   // $28DE00 cmpa/bne
+    ram.setU16(a6 + RF.medal, 0xffff);                      // $28DE08
+  }
+  if ((ram.u16(a6 + RF.medal) & 0x8000) !== 0) {            // $28DE0E tst/bpl
+    ram.setU8(SE.bossFlags9, ram.u8(SE.bossFlags9) | 0x04); // $28DE16 bset #2
+  }
+}
+
+/** `$28DE1E..$28DE78` -- F8 exit handshake: once `$8130F9` bit 1 is set, advance
+ *  type 6 out of state 1: load the fly-away anim chain (`$24652A`), store its
+ *  handle at `($8,A5)`, and set state `$B`.  The stage-5 variant (state $15,
+ *  create type $13) is out of scope -- no stage 5 in the seed. */
+function f8Exit28DE1E(ram, rom, ctx, a5) {
+  const st = ram.u8(a5 + 0x06);                             // $28DE2A cmpi.b #$b
+  if (st === 0x0b || st === 0x15) return;                   // $28DE30/$28DE38 beq rts
+  if (ram.u16(a5 + 0x04) === 5) {                           // $28DE3A cmpi.w #$5
+    // stage-5 ending arm ($28DE44): create type $13.  Not reached on the seed.
+    note(ctx, 0x28de44, '$28DE44..$28DE58 stage-5 ending: lea $28D8C4 / state $15 '
+      + '/ jsr $241182 type $13. Out of scope (no stage 5)');
+    return;
+  }
+  // $28DE5C lea $28D862(PC),A0; $28DE60 move.b #$B,$6(A5); $28DE66 jsr $24652A
+  ram.setU8(a5 + 0x06, 0x0b);                               // $28DE60
+  const handle = chainLoader24652A(ram, rom, RESULT_ROM.animScript); // $28DE66
+  ram.setU32(a5 + 0x08, handle >>> 0);                      // $28DE6C move.l D0,$8(A5)
+  note(ctx, 0x28c186, '$28DE72 jsr $28C186 (D1=0) -- the result-screen exit '
+    + 'handshake tail. Counted; its body $28BBAC is the presentation tier');
+}
+
+// ----------------------------------------------------- the animation chain
+//
+// `$24652A` (loader) / `$24681A` (checker) / `$246800` (free) -- the fly-away
+// animation chain.  The loader walks the player-slot list `$810346` (stride
+// `$30`, 3 slots) and, for the first free slot, allocates a chain of nodes from
+// the object pool `$80FA86` (stride `$70`, 20 slots), linking them at
+// `($2C,node)`.  Returns D0 = the player-slot handle (whose `($2C)` is the chain
+// head).  The checker sums `$18(node)`; the free walks and clears.  All three
+// are byte-for-byte from the ROM; they touch the SHARED `$80FA86` pool exactly
+// as the cartridge does.  See `PRESENTATION_DEVIATION[0x28d6fc]` for why the
+// faithful WAIT is a declared gap (the anim driver `$246410` is R2b).
+
+const CHAIN = {
+  playerList: 0x810346, playerStride: 0x30, playerSlots: 3,
+  pool: 0x80fa86, poolStride: 0x70, poolSlots: 20,
+  linkOff: 0x2c, lifeOff: 0x18, idOff: 0x00, subOff: 0x04,
+};
+
+/** `$24652A` -- load a chain from the script at `scriptAddr` into the first free
+ *  player slot.  Returns the player-slot address (the handle, whose `($2C)` is
+ *  the chain head), or `$FFFFFFFF` on failure.  The ROM saves A0/A1 before the
+ *  pool scan and restores them before returning (`$2465E8`), so D0 is the slot,
+ *  not the tail.
+ *
+ *  R2a ports the POOL LIFECYCLE byte-for-byte (claim slot, allocate N nodes from
+ *  `$80FA86`, link at `($2C,node)`, seed the lifetime `$18 := $FFFF0000`).  The
+ *  per-node CONTENT seeding (`$24627A` code-pointer table, `$246B38` anim-data
+ *  table, the `$30(node)` code-script copy) is the presentation tier the anim
+ *  driver `$246410` dispatches on; it is NOT ported here and the node-count word
+ *  is the only script byte the loader reads.  See `PRESENTATION_DEVIATION[0x28d6fc]`. */
+export function chainLoader24652A(ram, rom, scriptAddr) {
+  for (let s = 0; s < CHAIN.playerSlots; s++) {             // $246538 moveq #2,d7
+    const slot = CHAIN.playerList + s * CHAIN.playerStride;
+    if ((ram.u16(slot) & 0x8000) !== 0) continue;           // $24653C bmi next
+    ram.setU16(slot, 0x8000);                               // $246540 claim
+    ram.setU16(slot + CHAIN.subOff, 0);                     // $246544 d6=0
+    const nodeCount = rom.u16(scriptAddr);                  // $24654C (A0)+,D0
+    let tail = slot;                                        // a1 walks prev -> node
+    let built = 0;
+    for (let n = 0; n < nodeCount; n++) {                   // $246558..$2465E2
+      let pslot = -1;
+      for (let p = 0; p < CHAIN.poolSlots; p++) {
+        if ((ram.u16(CHAIN.pool + p * CHAIN.poolStride) & 0x8000) === 0) { pslot = p; break; }
+      }
+      if (pslot < 0) break;                                 // $2465E6 pool full
+      const node = CHAIN.pool + pslot * CHAIN.poolStride;
+      ram.setU16(node, 0x8000);                             // $24655E claim
+      ram.setU16(node + 0x20, 0);                           // $246562
+      ram.setU32(node + CHAIN.linkOff, 0);                  // $246568
+      ram.setU32(tail + CHAIN.linkOff, node >>> 0);         // $246570 link prev
+      tail = node;                                          // $246574 a1 := a2
+      ram.setU16(node + 0x1e, 0);                           // $246576
+      ram.setU16(node + 0x02, 0);                           // $24657C
+      ram.setU32(node + CHAIN.lifeOff, 0xffff0000);         // $2465C0 the lifetime
+      built++;
+    }
+    if (built < nodeCount) {                                // $2465EC tst.w d0/bpl
+      chainFree246800(ram, slot);
+      ram.setU16(slot, 0);                                  // release the player slot
+      return 0xffffffff;                                    // $246608 moveq #$ff
+    }
+    return slot;                                            // $2465F8 D0 := player slot
+  }
+  return 0xffffffff;                                        // $246608 no free slot
+}
+
+/** `$24681A` -- walk the chain from `handle`, summing `$18(node)` (word).
+ *  Returns the sum; Z (zero) means the chain has finished. */
+export function chainCheck24681A(ram, handle) {
+  let sum = 0;                                              // $24681E moveq #0,d1
+  let cur = ram.u32((handle >>> 0) + CHAIN.linkOff);        // $246822 $2c(handle)
+  while (cur !== 0) {                                       // $246826 beq
+    sum = u16(sum + ram.u16((cur >>> 0) + CHAIN.lifeOff));  // $24682A add $18
+    cur = ram.u32((cur >>> 0) + CHAIN.linkOff);             // $24682E $2c(node)
+  }
+  return sum;                                               // $246834/$246836 tst.w
+}
+
+/** `$246800` -- free the chain: clear each node's id word and sub word, walking
+ *  `($2C,node)` until the link is zero. */
+export function chainFree246800(ram, handle) {
+  let cur = handle >>> 0;                                   // $246804 movea.l d0,a0
+  while (true) {
+    ram.setU16(cur, 0);                                     // $246806 clr.w (a0)
+    ram.setU16(cur + CHAIN.subOff, 0);                      // $246808 $4 := 0
+    const next = ram.u32(cur + CHAIN.linkOff);              // $24680E $2c(a0)
+    if (next === 0) break;                                  // $246812 bne loop
+    cur = next >>> 0;
+  }
+}
+
+// --------------------------------------------------------- the banner $28E7F8
+//
+// A6 = `$81DFAC` (the banner buffer), A4 = `$81DFEC` (the slide-out counter).
+// In R2a only the slide-OUT arm runs: `$81DFF8` (banner-active) is NEVER set
+// because its setter `$28E7B6` has ZERO callers in the whole `$23xxxx..$2Axxxx`
+// image (PC-relative scan this wave).  State 2 sets `$81DFF6` (`$28E7DC`), so
+// `$28E7F8` inits the slide-out, drains `$81DFEC` via the milestone motion, and
+// the teardown `$28EAD4 clr.w $81DFF6` fires -- freeing the stuck object slot.
+// The paint calls (`$23F782`/`$23F7F4`/`$24150A`) are notes (R2b); the motion
+// (`$241812`/`tables.vector`) and the teardown are real.
+
+const BANNER = {
+  buf: 0x81dfac, dfec: 0x81dfec, dff6: 0x81dff6, dff8: 0x81dff8,
+  // banner sub-record offsets (two sprites: +0 and +$20)
+  s2: 0x02, s4: 0x04, s8: 0x08, s10: 0x10, s12: 0x12, s14: 0x14, s1a: 0x1a,
+};
+
+/** `$28E7F8` -- the banner state machine, called every frame by type 6. */
+export function banner28E7F8(ram, ctx, rom) {
+  void rom;
+  if (ram.u16(BANNER.dff8) !== 0) {                         // $28E804 tst/bne slide-in
+    // slide-in arm: would run `$28E81A..$28E866` (init + art) then motion.  The
+    // slide-in never starts ($28E7B6 has no caller), so this arm is dormant.
+    note(ctx, 0x28e81a, '$28E81A banner slide-in arm -- dormant: $81DFF8 is never '
+      + 'set ($28E7B6 has no caller in the image). R2b if a caller is found');
+    return;
+  }
+  if (ram.u16(BANNER.dff6) === 0) return;                   // $28E80E tst/beq rts
+  // ---- slide-out arm (`$28EA04..$28EA46`)
+  bannerSlideOutStep(ram, ctx);
+}
+
+/** One frame of the slide-out: init from the template on the first frame, then
+ *  run the two sprites' counter+motion, draining `$81DFEC`.  When it hits zero,
+ *  fire the teardown `$28EAD4`. */
+function bannerSlideOutStep(ram, ctx) {
+  const a6 = BANNER.buf;
+  if ((ram.u16(a6) & 0x8000) === 0) {                       // $28EA04 tst (a6)/bmi
+    // first frame: copy the 16-longword template and the 2-word DFEC seed
+    for (let i = 0; i < 16; i++) {                          // $28EA14 move.l x16
+      ram.setU32(a6 + i * 4, ctx.rom.u32(RESULT_ROM.bannerSlideOut + i * 4));
+    }
+    ram.setU16(BANNER.dfec, ctx.rom.u16(RESULT_ROM.bannerDfecOut));      // $28EA22
+    ram.setU16(BANNER.dfec + 2, ctx.rom.u16(RESULT_ROM.bannerDfecOut + 2));
+    // $28EA28..$28EA40 -- per-stage art byte + jsr $24150A (noted)
+    note(ctx, 0x24150a, '$28EA40 jsr $24150A -- banner slide-out art install. R2b');
+  }
+  // motion for both sprites (banner+0 and banner+$20), via `$28EB62 lea $20(a6)`
+  for (let sub = 0; sub < 2; sub++) {
+    const base = a6 + sub * 0x20;
+    if (ram.u16(base + BANNER.s10) === 0) continue;         // $28EADE tst $10/beq next
+    if (ram.u16(base + BANNER.s12) !== 0) {                 // $28EAE6 tst $12/beq adv
+      ram.setU16(base + BANNER.s12, u16(ram.u16(base + BANNER.s12) - 1)); // $28EAEC
+    } else {
+      // $28EAF8..$28EB26 -- position advance via `$241812` + milestone check
+      const heading = ram.u8(base + BANNER.s1a);            // $28EB00 move.b $1a
+      const v = ctx.tables.vector(0x30, heading);           // $28EB04 jsr $241812
+      ram.setU16(base + BANNER.s2, u16(ram.u16(base + BANNER.s2) + v.dy)); // $28EB0A $2 += d2
+      let diff = ram.u16(base + BANNER.s2) - ram.u16(base + BANNER.s14);  // $28EB16
+      diff = diff & 0xffff;
+      const abs = (diff & 0x8000) ? u16(-diff) : diff;      // $28EB18 bpl/neg
+      if (abs < 0x400) {                                    // $28EB1C cmpi/bcc
+        ram.setU16(base + BANNER.s10, 0);                   // $28EB22 clr $10
+        ram.setU16(BANNER.dfec, u16(ram.u16(BANNER.dfec) - 1)); // $28EB26 subq (a4)
+      }
+    }
+    note(ctx, 0x23f782, '$28EB28/$28EBB2 jsr $23F782 + $23F7F4 -- banner paint. R2b');
+  }
+  // ---- teardown `$28EA98`: when `$81DFEC` reaches zero, fire `$28EAD4`.
+  if (ram.u16(BANNER.dfec) !== 0) return;                   // $28EA98 tst (a4)/bne
+  ram.setU16(BANNER.dfec + 2, 1);                           // $28EA9C $2(a4) := 1
+  ram.setU16(0x81b6e4, 0);                                  // $28EAA2 clr $81B6E4
+  // $28EAB8/$28EACE jsr $2875B4/$287616 -- P1/P2 hyper-end checks (presentation)
+  note(ctx, 0x2875b4, '$28EAB8 jsr $2875B4 / $28EACE jsr $287616 -- P1/P2 hyper-end '
+    + 'checks on banner teardown. Counted');
+  ram.setU16(BANNER.dff6, 0);                               // $28EAD4 clr $81DFF6 -- THE CLEARER
+  ram.setU16(a6, 0);                                        // $28EADA clr (a6)
+}
 
 /**
  * `$28D63C` -- OBJECT TYPE 6.  The state tests run HIGH TO LOW in ONE pass
@@ -387,20 +880,19 @@ export const PRESENTATION_DEVIATION = Object.freeze({
  */
 export function makeStageClear(rom) {
   return function stageClear(ram, slot, index, ctx) {
-    void index; void rom;
+    void index;
     const a5 = slot;
     if (ram.u8(a5 + 0x02) === 0) { init28D566(ram, a5, ctx); return; }   // $28D63C
     if (ram.u8(a5 + 0x02) === 2) { destroy28D5E6(ram, a5); return; }     // $28D644
     note(ctx, 0x28edc0, '$28D64C jsr $28EDC0 -- the banner DRAW (the $23F82A/'
       + '$23DECE sprite path), the presentation tier');
     const st = () => ram.u8(a5 + 0x06);
-    // ---- state 4 ($28D652).  NOT SHORT-CIRCUITED: see the header.
+    // ---- state 4 ($28D652).  `$81DFF6` is set in state 2 and cleared ONLY by
+    // `$28EAD4` inside `banner28E7F8` (called at the foot of this handler).  So
+    // type 6 holds in state 4 for the banner's slide-out duration, then the
+    // clear trips the `bne`'s opposite and type 6 self-destroys via state 2.
     if (st() === 4) {
       if (ram.u16(SE.dff6) === 0) ram.setU8(a5 + 0x02, 2);   // $28D65C/$28D664
-      else note(ctx, 0x28e7f8, '$28D7F6/$28D65C -- $81DFF6 is still 1 because '
-        + '$28E7F8\'s banner ($28EAD4 clr.w $81DFF6) is NOT PORTED, so type 6 '
-        + 'HOLDS IN STATE 4 and keeps one object slot. Declared, not faked: '
-        + 'the stage has already advanced in states 2 and 3');
     }
     // ---- state 3 ($28D66A) -- **THE REBUILD**
     if (st() === 3) {
@@ -424,19 +916,22 @@ export function makeStageClear(rom) {
     }
     // ---- state $15 ($28D6CE) -- THE ENDING ARM, stage 5 only.
     if (st() === 0x15) {
-      note(ctx, 0x28d9aa, '$28D6DE bsr $28D9AA from the ENDING arm (state $15). '
-        + 'Reachable only when ($4,A5) == 5; recon 49 8 puts it after stage 5 '
-        + 'exists');
+      result28D9AA(ram, rom, ctx, a5);                 // $28D6DE bsr $28D9AA
       return;                                          // $28D6E2 rts
     }
-    // ---- state $B ($28D6E4) -- the tally, then the handover to state 2
+    // ---- state $B ($28D6E4) -- the result screen's F8 returns immediately here
+    // (state is already $B); the real work is the anim-chain check + free.  The
+    // chain would drain via `$246410` (R2b); until then the port frees it on the
+    // first frame and advances -- see `PRESENTATION_DEVIATION[0x28d6fc]`.
     if (st() === 0x0b) {
-      note(ctx, 0x28d9aa, '$28D6F4 bsr $28D9AA -- THE RESULT SCREEN (819 '
-        + 'instructions) and, through it, the HUD tally $285400..$285568 that '
-        + 'awards the stage-clear score. The presentation tier, recon 49 8 '
-        + 'wave B');
-      note(ctx, 0x28d6fc, PRESENTATION_DEVIATION[0x28d6fc]);      // DEV-2
-      // $28D704/$28D708 jsr $246800 -- nothing to free, see DEV-2.
+      result28D9AA(ram, rom, ctx, a5);                 // $28D6F4 bsr $28D9AA
+      const handle = ram.u32(a5 + 0x08) >>> 0;         // $28D6F8 move.l $8(A5),D0
+      const sum = (handle === 0 || handle === 0xffffffff)
+        ? 0 : chainCheck24681A(ram, handle);           // $28D6FC jsr $24681A
+      if (sum !== 0) note(ctx, 0x28d6fc, PRESENTATION_DEVIATION[0x28d6fc]); // DEV-2
+      if (handle !== 0 && handle !== 0xffffffff) {
+        chainFree246800(ram, handle);                  // $28D704/$28D708 jsr $246800
+      }
       resetPower25313E(ram, ctx, SE.p1, 0x25313e);     // $28D70E
       resetPower25313E(ram, ctx, SE.p2, 0x25318e);     // $28D714
       ram.setU8(SE.df1e, ram.u8(SE.df1e) & ~0x08);     // $28D71A bclr #3
@@ -445,16 +940,15 @@ export function makeStageClear(rom) {
       ram.setU8(a5 + 0x06, 2);                         // $28D72E
       return;                                          // $28D734 rts
     }
-    // ---- state 1 ($28D736) -- where the result screen would decide
+    // ---- state 1 ($28D736) -- the result screen runs until F8 sees $8130F9
+    // bit 1 (produced by the HUD tally `$285496`).  No DEV-1 stand-in: F8 inside
+    // `result28D9AA` performs the real `$28DE5C..$28DE78` advance to state $B.
     if (st() === 1) {
-      note(ctx, 0x28d9aa, '$28D746 bsr $28D9AA -- THE RESULT SCREEN, state 1');
-      note(ctx, 0x28de5c, PRESENTATION_DEVIATION[0x28de5c]);      // DEV-1
-      ram.setU8(SE.bossFlags9, ram.u8(SE.bossFlags9) | 0x02);     // stands for $285496
-      ram.setU8(a5 + 0x06, 0x0b);                                 // $28DE64
+      result28D9AA(ram, rom, ctx, a5);                 // $28D746 bsr $28D9AA
     }
     // ---- state $A ($28D74A) -- four frames, then the palette and the anim
     if (st() === 0x0a) {
-      note(ctx, 0x28d9aa, '$28D75A bsr $28D9AA -- THE RESULT SCREEN, state $A');
+      result28D9AA(ram, rom, ctx, a5);                 // $28D75A bsr $28D9AA
       const n = (ram.u8(a5 + 0x07) - 1) & 0xff;        // $28D75E subq.b #$1
       ram.setU8(a5 + 0x07, n);
       if (n === 0) {
@@ -471,8 +965,7 @@ export function makeStageClear(rom) {
     if (st() === 0) {
       if (!bannerStep28ECCE(ram, ctx)) ram.setU8(a5 + 0x06, 0x0a);   // $28D7E6/$28D7F0
     }
-    note(ctx, 0x28e7f8, '$28D7F6 jsr $28E7F8 -- the stage-clear BANNER (299 '
-      + 'instructions), the presentation tier');                    // $28D7F6
+    banner28E7F8(ram, ctx, rom);                                     // $28D7F6 jsr $28E7F8
   };
 }
 
