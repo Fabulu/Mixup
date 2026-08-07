@@ -88,3 +88,82 @@ only the history proves the simulation is reproducible. Both are useful - MAME's
 savestates already restore DaiOuJou faithfully (27 bytes of dead stack and one
 IRQ4 phase byte differ) - but a savestate cannot demonstrate determinism, and a
 replay cannot let you skip ahead.
+
+---
+
+# W129 -- the v1 `.replay` format, the headless player, and the RTC freeze
+
+The property above has been packaged (wave 129) into a single self-describing
+`.replay` artifact plus a headless player (`tools/replay.mjs`).  A green
+`.replay` is provably the SAME property the oracle checks, because the player
+reuses `portdiff.mjs`'s exact digest feed - `columns.map(c => String(v[c])).join('\t') + '\n'`
+- so `digest.cumulative` equals `run.digest` byte-for-byte.  Nothing in `src/`
+changed to make this work: the player imports `Game`, `stateVector`, `CLAIMED`,
+`readTrace` and `run`, resets the eight module mutation switches the same way
+`portdiff.mjs:137-144` does, and steps with the recorded portin.
+
+## The v1 format (`ddpdoj.replay/v1`)
+
+Self-describing JSON; binary fields are base64.  One file is one replay.
+
+```
+{
+  "format": "ddpdoj.replay/v1",
+  "build": "B",                                  // VERSION-B (A and B are different games in one ROM)
+  "version": { "git", "tablesSha256", "buildId" },
+  "seed": {                                      // the whole initial state
+    "lf",                                        // logic frame the seed was dumped at
+    "vf",                                        // video frame at the seed
+    "ramB64",                                    // 128 KiB main RAM ($800000..$820000)
+    "bgB64",                                     // the 2048-word big-endian tilemap ring ($900000)
+    "tablesB64"                                  // the exported tables JSON (self-contained)
+  },
+  "scenario",                                    // "fly-around", "stage1-open", ...
+  "intervention",                                // e.g. the invuln timer held at $FF
+  "poke",                                        // "810424=FF" -- applied every frame, like portdiff:261
+  "portin": { "encoding": "u16be", "count", "b64" },  // one input word per logic frame
+  "digest": {
+    "algo": "sha256",
+    "columns",                                   // the CLAIMED subset actually hashed, frozen at record
+    "cumulative",                                // == run.digest (portdiff.mjs:276 feed, full run)
+    "periodFrames": 250,                         // the checkpoint cadence (manifest.json `every`)
+    "periods": [{ "lf", "sha256" }]              // one FRESH window hash per 250 frames
+  }
+}
+```
+
+The `digest.columns` set is the CLAIMED subset the trace carried at record time
+(`portdiff.mjs`'s `cols = CLAIMED.filter(c => start[c] !== undefined)`), frozen
+into the file.  The player uses that set verbatim, so a green verify means the
+exact same bytes were hashed at record and at verify.  The per-period windows are
+FRESH hashes (the hash resets at each 250-frame boundary); the first window whose
+hash differs is the first-divergence location at 250-frame resolution.  Frame
+localisation WITHIN a window needs the live trace (which the builder has); the
+packaged player reports the window and says so, rather than implying finer.
+
+Two modes (see `tools/replay.mjs`):
+
+```
+replay.mjs <file.replay>                                 # verify: GREEN or first divergent window
+replay.mjs --mk <trace.tsv> <seed.bin> <bg.bin> [...] -o <file.replay>   # record/package
+```
+
+## The RTC decision -- FREEZE THE DATE IN THE SEED (zero code)
+
+`grep -iE '$80209B|$80209C|$8020AC|$80211C|$802204|$8022C8|$23C53A|C00006'`
+over `src/` returns ZERO matches (measured, W129).  The port does not read the
+RTC: the calendar bytes (month/day at `$80209B/$80209C`, weekday/year at
+`$8020AC/$80211C`, the RTC mirrors at `$802204/$8022C8`) and the RTC read
+routine itself (`$23C53A`, register `C00006`) are never touched by any ported
+routine.  The bytes are frozen in the seed (wave 1 carved the RTC date words out
+of `d_ram` into their own reported column, `state.js:369`) and excluded from
+CLAIMED by name.  So a `.replay` is reproducible without a wall clock by
+construction, not by discipline - which is exactly what constraint 1 above asks.
+
+**FORWARD CONSTRAINT.**  If a later wave ports the `$23C53A` RTC read, it MUST
+take the date from the FROZEN SEED (the seed's own bytes at `$80209B`..`$8022C8`),
+never from `new Date()` / `Date.now()` / the host clock.  Replaying a recorded
+game on a different day must produce byte-identical state; a live host date
+breaks that the moment it is read.  Constraint 1 (all state derives from the
+initial state + the input sequence) is the rule; this paragraph is the place it
+will bite if it ever does.
