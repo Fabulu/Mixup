@@ -481,6 +481,19 @@ score-number renderer; makes it visible). Risk: `$24652A` writes the shared `$80
 exactly + red-validate); banner slide-in visual is R2b (R2a frees the slot correctly but not
 visually).
 
+## 7h. UPDATE -- 2026-08-07: R2a (result-screen logic) FAILED at the usage limit; partial stashed
+
+R2a (the result-screen logic impl, W124) FAILED at the 5h usage limit (429; reset
+2026-08-07 15:36:08) mid-work. The gate crashed on an UNWINDOWED ROM read at `0x288346` (a
+result-screen data table needing an `export-tables.py` window). The agent's partial src/
+changes (stageend.js, hud.js, w62/w63 tests, export-tables.py) are in `git stash` (label
+"W124 R2a..."); worklog 124 is committed with the findings. Tree is clean (HEAD `3cb30e7`).
+
+RESUME after the reset: re-dispatch R2a. The fresh agent should READ worklog 124 + run
+`git stash pop` FIRST (recover the partial), then add the `0x288346` window to
+`export-tables.py` and complete the wave (clear DEV-1/DEV-2, award the score, free the slot).
+The cron (clean tree now) will auto-dispatch R2a after the reset.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
