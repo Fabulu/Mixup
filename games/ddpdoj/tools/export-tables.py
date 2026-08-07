@@ -1769,6 +1769,27 @@ SHOT_WINDOWS.extend([
                        "stage entries) + the alt pointer $28EE46"),
 ])
 
+# ==================== W127 (Wave A): THE RANK BASE TABLE =======================
+#
+# `src/rank.js` ports object type 10 (`$260794`, the RANK object).  The recompute
+# `$2608D2` reads the per-stage rank BASE BYTE through a RAM pointer:
+#   $2608D2 `movea.l $81315C.l,A0`  ; A0 = base table pointer (held in RAM)
+#   $2608D8 `move.w  $813092.l,D2`  ; D2 = stage index
+#   $2608E0 `move.b  (A0,D2.w),D1`  ; D1 = base[stage]
+# The seed carries `$81315C` = `$260874` (a ROM address, the `$26xxxx` build-B
+# half).  The port dereferences it the same way (`rom.u8(ram.u32($81315C)+stage)`),
+# so the table must be a window.  SIX bytes: one base byte per stage index 0..4
+# (stages 1..5), plus a $00 sentinel at index 5.  MEASURED contents $34/$44/$54/
+# $64/$64/$00 (stage-1 base = $34 = 52, matching W19's cited ~52 and the seed's
+# own `$81309E` = $35 = 52 + clock>>8 = 1).  Both ends are data: `$260874-6` is
+# the rank object's own code and `$26087A` onward is more rank/difficulty data;
+# six is the honest per-stage extent.
+SHOT_WINDOWS.append(
+    (0x260874, 0x0006, "W127: the per-stage RANK BASE table $260874 -- 6 bytes "
+                       "(one per stage 0..5), read by $2608D2 through the RAM "
+                       "pointer $81315C.  Stage-1 base $34; the seed's $81309E=$35 "
+                       "is this byte + (clock>>8)"))
+
 
 
 def check_boss_arrival_tables(d: bytes) -> None:

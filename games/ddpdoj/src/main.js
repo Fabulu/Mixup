@@ -45,6 +45,7 @@ import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
 import { makeBackground, BgVram, TxVram, VideoRegs } from './background.js';
 import { makeStageClear } from './stageend.js';
 import { makeHudObject } from './hud.js';
+import { makeRankObject } from './rank.js';
 import {
   PaletteState, flush24133C, catchUpObjectStream, catchUpBgPalette,
   catchUpTextPalette,
@@ -121,6 +122,17 @@ export function defaultHandlers(rom, vram, opts = {}) {
     // the world through `$25FD38`.  It is the machine ALL FIVE stages advance
     // through -- see src/stageend.js, including its ONE declared deviation.
     [6, makeStageClear(rom)],
+    // WAVE 127 (Wave A, Tier 1).  $240F62[10] = $260794, priority $001F (the
+    // HIGHEST of all 20 -- runs FIRST every frame, before the player `$1C` and
+    // the ledger `$09`).  THE RANK OBJECT: it owns the rank clock `$8130C6` and
+    // the recompute `$2608D2` that writes the dynamic-difficulty output
+    // `$81309E` (= base[stage] + clock>>8 on the no-hyper corpus).  Until W127
+    // this entry was absent and `$81309E` was frozen at its seed value for the
+    // whole run (W120's verdict).  See src/rank.js, including its ONE declared
+    // deviation (the cold-boot-only state-0 INIT).  CORPUS-SAFE: the recompute
+    // reads no chain/score state, so it cannot perturb the frame-exact chain
+    // decrement in entry [0].
+    [10, makeRankObject(rom)],
   ]);
 }
 

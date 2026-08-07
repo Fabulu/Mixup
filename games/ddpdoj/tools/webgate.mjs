@@ -453,8 +453,17 @@ try {
     // `missing === 0` is asserted unchanged.  **The rule this stage enforces
     // did not move: zero records with no art anywhere.**
     const EXP = {
-      steps: 300, records: 20842, min: 21, max: 99, b0min: 14,
-      b23: 3001, pending: 1214, pendingShards: [3, 7, 14], pendingFrom: 59,
+      // W127: records 20842 -> 20847 and b23 3001 -> 3006 (both +5).  Object
+      // type 10 (the RANK object) is now ported, so `$2608D2` writes `$81309E`
+      // and the 15-byte fan-out `$8130A1..$8130BD` every frame and `$8130CA`
+      // cycles with the frame counter, exactly as the board does.  Enemy fire
+      // cadence reads those bytes, so bullet counts now reflect live rank
+      // instead of the frozen seed value.  The +5 records are exactly the +5
+      // bucket-23 enemy bullets; no other bucket moved.  The 20842/3001
+      // baselines were the frozen-rank port, which already diverged from the
+      // board (whose rank is always live).
+      steps: 300, records: 20847, min: 21, max: 99, b0min: 14,
+      b23: 3006, pending: 1214, pendingShards: [3, 7, 14], pendingFrom: 59,
     };
     // WAVE 47: SHARD-AWARE, and this is not optional. `loadBundle` awaited the
     // BOOT sprite shard only -- exactly what the page does -- so the other five
@@ -921,7 +930,17 @@ try {
           what: 'THE PLAYER\'S SHOTS ($2554EA/$255502 + the pods\' $24D2FC/$24D35C)' },
         // 36 distinct images, not 32: W81 wired type $10's and $82's fans and
         // [M] they reach four bullet images this window had never produced.
-        7: { streams: 298, records: 7070, distinct: 36, first: 98,
+        // W127: records 7070 -> 6853.  Object type 10 (the RANK object) is now
+        // ported, so the rank clock advances and `$2608D2` writes `$81309E` +
+        // the 15-byte fan-out `$8130A1..$8130BD` and `$8130CA` every frame, as
+        // the board does.  The enemy fire cadence reads those bytes, so the
+        // bullet COUNT now reflects live rank instead of the frozen seed value.
+        // The 7070 baseline was the frozen-rank port, which already diverged
+        // from the board (whose rank is always live); 6853 is the live-rank
+        // count.  `streams`/`distinct`/`first` did not move, which says the same
+        // 298 spawns produced 217 fewer records over 1200 frames -- a cadence
+        // shift, not a different picture.
+        7: { streams: 298, records: 6853, distinct: 36, first: 98,
           what: 'THE ENEMY BULLETS ($281D9A\'s bulk write, buckets 22/23)' },
         // WAVE 53 -- THE IMPACT SPARK, the SAME window and the SAME four
         // absolute port-side fields.  `distinct` is 35 and not 36 ON PURPOSE:
