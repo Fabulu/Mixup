@@ -463,6 +463,24 @@ Next: Phase 2a (result-screen recon `$28D9AA`, IN FLIGHT) -> Phase 2b impl (comp
 honestly, removes the two declared deviations). Phase 1b (Wave B input Gradius+Batman) still
 owner-gated.
 
+## 7g. UPDATE -- 2026-08-07: Phase 2a result-screen recon (W123) -> plan; R2a logic IN FLIGHT
+
+Phase 2a done. Decisive: `$28D9AA` is a clean 8-phase FSM on `$81DEC0` (A6 = `$81DEBE` = W62's
+`SE.result`), NOT a separate object with indirect pointers -- W119's biggest risk resolved. Two
+score machines (F6 bee/item tick `$286128` + HUD tally `$285400`) coordinate via the `$8130F9`
+bit 1/2/3 handshake. Deviations confirmed: DEV-1 = `$285496` (sole producer, inside tally
+`$285400`); DEV-2 = `$28DE6C` (inside F8, fed by `$24652A`). Stuck slot freed by `$28EAD4`
+(banner teardown, sole clearer in build B). Score callees all ported (`$28614A`/`$286154`/
+`$286626`/`$286128` in score.js; `bcd242AC6`).
+
+Smallest port = 2 waves: **R2a LOGIC** (~750 instr: phase machine + tally `$285400`/`$28556C` +
+anim chain `$24652A`/`$24681A`/`$246800` + banner state machine `$28E7F8`; clears DEV-1/DEV-2,
+awards the score, frees the slot; headlessly testable from the seed) IN FLIGHT; then **R2b
+PRESENTATION** (~660 instr + art: the draws `$28DED8`/`$28E1AC`/`$28EDC0`, banner painters,
+score-number renderer; makes it visible). Risk: `$24652A` writes the shared `$80FA86` pool (port
+exactly + red-validate); banner slide-in visual is R2b (R2a frees the slot correctly but not
+visually).
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
