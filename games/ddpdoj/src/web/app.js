@@ -184,13 +184,16 @@ import {
 import { mergePalette } from '../palette.js';
 import { loadBundle, httpReader, gunzip, AssetError } from './assets.js';
 import { attachInput, pollInput, currentPortWord } from './input.js';
-// WAVE 131 -- the browser-side replay module (live-page REC).  Owns the
-// `.replay` digest feed + ACCUMULATE-then-hash (SubtleCrypto has no
-// incremental update), the recorder arm/stop, and the v1 packaging.  Imports
-// only browser-safe `stateVector`/`CLAIMED` from `../state.js`; does NOT
-// import `tools/replay.mjs` (that is a Node tool).
+// WAVE 131/132 -- the browser-side replay module.  W131 owns the REC half: the
+// `.replay` digest feed + ACCUMULATE-then-hash (SubtleCrypto has no incremental
+// update), the recorder arm/stop, and the v1 packaging.  W132 owns the PLAY
+// half: `armPlayback` (the verifier that runs on the visible Game) and
+// `decodePortinWords` (the u16be inverse).  Imports only browser-safe
+// `stateVector`/`CLAIMED` from `../state.js`; does NOT import `tools/replay.mjs`
+// (that is a Node tool).
 import {
-  armRecorder, stopRecorder, b64 as recB64, beBytesFromWords, sha256Hex,
+  armRecorder, stopRecorder, b64 as recB64, unb64 as recUnb64, beBytesFromWords,
+  sha256Hex, armPlayback, decodePortinWords,
   FORMAT as REPLAY_FORMAT, BUILD as REPLAY_BUILD, PERIOD_FRAMES as REPLAY_PERIOD,
 } from './replay.js';
 import { CLAIMED } from '../state.js';
@@ -691,6 +694,16 @@ class Demo {
     // cannot reproduce, because it is the PARSED json, not the shipped bytes).
     this.recorder = null;
     this.assetBase = null;
+    // WAVE 132 -- LIVE-PAGE PLAY.  `playback` is null until the owner loads a
+    // `.replay` via the #play file-input; when null, `step()` reads the live
+    // input exactly as before.  When set, `step()` feeds `playback.words[i]`
+    // instead of `currentPortWord()` and the verifier hashes the resulting state
+    // each frame.  `onPlaybackUpdate` is the page-supplied callback that renders
+    // `#replay-banner` (playing / green / mismatch / divergent); Demo owns the
+    // verdict, the page owns the DOM, mirroring how the loop owns the simulation
+    // and the page owns presentation.
+    this.playback = null;
+    this.onPlaybackUpdate = null;
     this.seedLf = rung ? rung.lf : this.cap.frames[0].lf;
     // WAVE 13.  THE PORT NOW OWNS THE BACKGROUND'S MOTION.  Two things go in
     // and one comes out:
@@ -801,17 +814,35 @@ class Demo {
     // without stepping, and that must not shift the list by a frame.
     this.portList = portSpriteList(g.ram, this.romToPacked, this.listOpts);
     g.ram.setU8(INVULN, 0xff);           // the scenario's intervention
-    // WAVE 131 -- THE REC TEE.  `pw` is computed once and used for both the
-    // tee (when armed) and the step, so the recorded word is exactly the word
-    // the simulation saw -- the one property a `.replay` must have.  The tee
-    // is BEFORE the step (portin is the input); the digest feed is AFTER the
-    // step (it hashes the state the step produced), matching `replay.mjs:136`
-    // (poke, step(portin[i]), then stateVector -> feed line).  Both hooks are
-    // null-guarded, so an unarmed page runs the same binding plus two checks.
-    const pw = currentPortWord();
+    // WAVE 131/132 -- THE INPUT WORD.  `pw` is computed once and used for the
+    // REC tee (W131, when armed) and the step.  WAVE 132 PLAY replaces the live
+    // `currentPortWord()` with the next recorded word: the visible Game is fed
+    // exactly the input sequence the recording captured, so the picture the
+    // owner watches is the picture the verifier is hashing.  The live poke
+    // `0x810424=FF` just above IS the file's `poke` (every live REC records
+    // exactly that), so PLAY applies it once and there is no double-apply.
+    const pw = this.playback && !this.playback.ended
+      ? this.playback.words[this.playback.i++]
+      : currentPortWord();
     if (this.recorder) this.recorder.input(pw);
     g.step(pw);
     if (this.recorder) this.recorder.feed();
+    // WAVE 132 -- THE PLAYBACK DIGEST FEED.  After the step hashes the state the
+    // step produced (same position as the recorder's feed and `replay.mjs:140`).
+    // The verifier's `feed()` is synchronous (it only grows a string); the
+    // async hash work happens at period boundaries in `loop()` and at
+    // end-of-portin in `endPlayback()`.
+    if (this.playback && !this.playback.ended) {
+      const nBoundsBefore = this.playback.verifier.periodBounds.length;
+      this.playback.verifier.feed();
+      // A closed period is cheap to detect (feed pushed a char-offset bound) and
+      // is the signal `loop()` uses to kick off the async window hash.
+      if (this.playback.verifier.periodBounds.length > nBoundsBefore) {
+        this.playback.needCheck = true;
+      }
+      // End-of-portin: stop the feed and kick off the final verdict.
+      if (this.playback.i >= this.playback.count) this.endPlayback();
+    }
     this.stepsRun++;
     // WAVE 14 -- THE SCROLL DRIVES THE DOWNLOAD.  The VM's own column cursor is
     // the same axis the background shards are cut on, so "which shard do I need
@@ -842,6 +873,14 @@ class Demo {
    */
   async armRecording() {
     if (this.recorder) return this.recorder;
+    // WAVE 132 -- REC and PLAY are mutually exclusive.  The recorder would tee
+    // the recorded portin the playback is already feeding, double-counting the
+    // input; and the seed the recorder captures at arm time would be the
+    // playback Game's mid-walk state, not a clean starting point.  Refuse rather
+    // than silently disarming either side.
+    if (this.playback) {
+      throw new Error('cannot arm REC while a .replay is playing; stop PLAY first.');
+    }
     const g = this.game;
     const lf = g.logicFrame;
     const vf = g.videoFrame;
@@ -899,6 +938,129 @@ class Demo {
     const obj = await stopRecorder(this.recorder);
     this.recorder = null;
     return obj;
+  }
+
+  /**
+   * WAVE 132 -- BOOT A FRESH GAME FROM A `.replay` AND START PLAYBACK.
+   *
+   * The visible Game becomes the verify target.  `obj.seed` is decoded the same
+   * way `loadRung` (app.js:1259) and `replay.mjs:118` decode a seed: RAM is the
+   * raw 128 KiB, BG is `beWords(...)` of the 4096 BE bytes, tables are
+   * `JSON.parse` of the bytes, and `{ logicFrame, videoFrame, bgSeed }` are the
+   * seed's own lf/vf.  The first fed portin is for lf+1, matching the headless
+   * player's convention (`replay.mjs:137`).  This is the SAME construction the
+   * `Demo` constructor uses (app.js:707-711) and `loadRung` feeds it, so the BG
+   * shard scheduler + the sprite-list hold all work off the new `game` and the
+   * visible picture is a faithful playback.
+   *
+   * The game-derived pieces (`prevTilt`/`prevPos`/`portList`/`seedLf`) are
+   * re-initialised for the new Game; everything else (renderer, `romToPacked`,
+   * `listOpts`, canvas, palette) is game-independent and stays.  Any armed
+   * recorder is dropped (REC/PLAY mutually exclusive; `armRecording` refuses the
+   * reverse direction).  PLAY ignores `?rung=` -- it boots from the file's seed.
+   *
+   * Returns the playback descriptor (or throws on a format/seed mismatch).
+   */
+  playFrom(obj) {
+    if (obj?.format !== REPLAY_FORMAT) {
+      throw new Error(`not a ${REPLAY_FORMAT} artifact (got ${String(obj?.format)})`);
+    }
+    // Decode the seed the same way `replay.mjs:108-121` does.
+    const ram = recUnb64(obj.seed.ramB64);
+    const bg = beWords(recUnb64(obj.seed.bgB64));
+    const tables = JSON.parse(new TextDecoder().decode(recUnb64(obj.seed.tablesB64)));
+    const game = new Game(ram, tables, {
+      logicFrame: obj.seed.lf,
+      videoFrame: obj.seed.vf,
+      bgSeed: bg,
+    });
+
+    // Swap in the fresh Game and re-init the game-derived state.  `recorder` is
+    // dropped (mutually exclusive); `onPlaybackUpdate` is left to the page.
+    this.game = game;
+    this.seedLf = obj.seed.lf;
+    this.prevTilt = game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
+    this.prevPos = [game.ram.u16(RAM.player1 + P.posY),
+      game.ram.u16(RAM.player1 + P.posX)];
+    this.portList = portSpriteList(game.ram, this.romToPacked, this.listOpts);
+    this.dirty = true;                  // repaint with the new Game's picture
+    this.recorder = null;
+
+    const words = decodePortinWords(obj);
+    this.playback = {
+      obj,
+      words,
+      count: obj.portin.count,
+      i: 0,                             // next word to feed (lf = seedLf + i + 1)
+      verifier: armPlayback(game, obj),
+      ended: false,                     // set by endPlayback at end-of-portin
+      result: null,                     // the verdict, once finalize() resolves
+      pending: null,                    // in-flight boundary check promise
+      needCheck: false,                 // a boundary closed; loop() should check
+    };
+    // Surface the PLAYING state immediately so the banner is not blank for the
+    // first 250 frames (the first window a divergence could surface at).
+    this._emitPlayback({ kind: 'playing', lf: obj.seed.lf, count: obj.portin.count });
+    return this.playback;
+  }
+
+  /**
+   * WAVE 132 -- END OF PORTIN.  Finalise the verifier (close the trailing
+   * partial period, hash the cumulative), store the verdict, and surface it.
+   * After this `step()` no-ops the playback branch (the feed stops growing) and
+   * the loop stops calling into the verifier.  Idempotent: a second call is a
+   * no-op once a result is in.  The promise is stored on `playback.pending` so
+   * `loop()` does not start a second finalize in parallel.
+   */
+  endPlayback() {
+    if (!this.playback || this.playback.ended) return;
+    this.playback.ended = true;
+    const pb = this.playback;
+    const p = pb.verifier.finalize().then((result) => {
+      pb.result = result;
+      this._emitPlayback({ kind: result.green ? 'green' : 'red', result, lf: pb.obj.seed.lf,
+        count: pb.count, toLf: pb.obj.seed.lf + pb.count });
+    }).catch((e) => {
+      pb.result = { green: false, error: e?.message ?? String(e) };
+      this._emitPlayback({ kind: 'error', error: pb.result.error });
+    });
+    pb.pending = p;
+  }
+
+  /**
+   * WAVE 132 -- LIVE BOUNDARY CHECK.  Called from `loop()` after the step batch.
+   * If a period boundary closed this batch (or a prior check left one pending),
+   * hash the newly-closed window FRESH and, on the FIRST divergence, surface it
+   * immediately -- a divergence in the first 250 frames shows up at ~lf+250, not
+   * at end-of-portin.  Cheap when nothing closed (the common path: nothing
+   * awaits).  No-op when playback is absent or already finalised.
+   */
+  _pollPlayback() {
+    if (!this.playback || this.playback.ended) return;
+    const pb = this.playback;
+    if (pb.pending) return;             // a finalize or a check is in flight
+    if (!pb.needCheck) return;          // no boundary closed since last check
+    pb.needCheck = false;
+    pb.pending = pb.verifier.check().then((div) => {
+      pb.pending = null;
+      if (div) {
+        // First divergence localised to a 250-frame window; never "N frames
+        // differ" (docs/knowledge/01).  Playback continues to end-of-portin so
+        // the cumulative verdict is still reached, but the banner flips red now.
+        this._emitPlayback({ kind: 'divergent', divergent: div,
+          lf: pb.obj.seed.lf, compared: pb.verifier.n });
+      }
+    }).catch(() => { pb.pending = null; });
+  }
+
+  /**
+   * WAVE 132 -- Render a playback state through `onPlaybackUpdate`.  The page
+   * supplies the callback (it owns `#replay-banner`); the Demo owns the verdict.
+   * Centralised here so every transition (playing / divergent / green / red /
+   * error) goes through one shape and the page's renderer can stay simple.
+   */
+  _emitPlayback(state) {
+    try { this.onPlaybackUpdate?.(state); } catch { /* a banner throw must not stop the port */ }
   }
 
   /**
@@ -1216,6 +1378,12 @@ class Demo {
       this.step();
       n++;
     }
+    // WAVE 132 -- PLAYBACK LIVE BOUNDARY CHECK.  After the step batch, if a
+    // period window closed, hash it fresh and surface the first divergence now
+    // (a divergence in window 0 shows up at ~lf+250, not at end-of-portin).
+    // Cheap when nothing closed and no playback is active.  The async hash does
+    // not block the rAF: `_pollPlayback` stores a promise and resolves later.
+    if (this.playback && !this.playback.ended) this._pollPlayback();
     if (n || this.dirty) {
       // `dirty` is set by setMode: resizing the backing store blanks it, and a
       // mode change between two logic frames would otherwise leave a black
@@ -1408,6 +1576,12 @@ export async function boot(canvas, opts = {}) {
     // page's API stays one shape (`app.armRecording()`), matching `setMode` etc.
     armRecording: () => demo.armRecording(),
     stopRecording: () => demo.stopRecording(),
+    // WAVE 132 -- PLAY entry points for the #play file-input + the banner
+    // callback.  `playFrom(obj)` boots a fresh Game from the file's seed and
+    // starts playback; `onPlaybackUpdate` is the page's banner renderer.
+    playFrom: (obj) => demo.playFrom(obj),
+    set onPlaybackUpdate(fn) { demo.onPlaybackUpdate = fn; },
+    get playback() { return demo.playback; },
     get game() { return demo.game; },
     stop() { demo.running = false; },
   };

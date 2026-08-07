@@ -219,3 +219,164 @@ export async function stopRecorder(rec) {
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// WAVE 132 -- THE PLAYBACK VERIFIER (live-page PLAY).
+//
+// `verifyReplay` in `tools/replay.mjs` (the W129 headless player) boots a FRESH
+// Game from a `.replay`'s seed, walks it with the recorded portin, and compares
+// the per-period + cumulative digests.  WAVE 131 shipped the RECORDER half of
+// the live page (the browser module that BUILDS a `.replay`); this is the other
+// half -- the verifier that runs on the SAME Game the user is WATCHING.
+//
+// The visible Demo's Game IS the verify target: `playFrom(obj)` swaps in a
+// fresh Game booted from the file's seed, `step()` feeds it `portin[i]` each
+// logic frame, and the verifier's `feed()` hashes the resulting state vector.
+// No SHADOW Game is needed -- there is nothing to compare the picture against
+// except the file's recorded digest, and the picture the owner sees is produced
+// by exactly the Game whose state is being hashed (worklog 130 section 3c).
+//
+// The return shape MIRRORS `verifyReplay` (replay.mjs:167): `{ green, compared,
+// cumulative, cumulativeMatch, cumulativeWant, divergentPeriod, periodCount }`,
+// and `divergentPeriod` is the `replay.mjs:151` shape
+// `{ index, from, to, got, want }`.  So the live banner and the headless report
+// are symmetric: a green live verdict is a green headless verdict on the same
+// file, and the first divergent 250-frame window is reported the same way
+// (never "N frames differ" -- docs/knowledge/01).
+//
+// The hot path (`feed()`) is SYNCHRONOUS, exactly like the recorder's: it only
+// appends a feed line to a growing string and records a char offset at each
+// 250-frame boundary.  All `crypto.subtle.digest` work is deferred to
+// `check()`/`finalize()` (the page calls them from `Demo.loop()` at each crossed
+// boundary and at end-of-portin), so the per-frame path never awaits -- the
+// identical design call W131 made for the recorder (worklog 131 section 1).
+// ---------------------------------------------------------------------------
+
+/** Decode the v1 `portin` block (u16be bytes) into a `Uint16Array` of input
+ *  words, mirroring `replay.mjs:179 decodePortin` verbatim.  The recorder
+ *  encodes each portin word as two big-endian bytes (`stopRecorder` above); this
+ *  is the inverse, used by `playFrom` to feed the visible Game one word per
+ *  logic frame. */
+export function decodePortinWords(obj) {
+  if (obj.portin.encoding !== 'u16be') {
+    throw new Error(`unsupported portin encoding ${obj.portin.encoding} (want u16be)`);
+  }
+  const bytes = unb64(obj.portin.b64);
+  const w = new Uint16Array(bytes.length >> 1);
+  for (let i = 0; i < w.length; i++) w[i] = (bytes[i * 2] << 8) | bytes[i * 2 + 1];
+  return w;
+}
+
+/**
+ * Arm a playback verifier on `game` against a parsed `.replay` object `obj`.
+ * Mirrors `verifyReplay` (replay.mjs:104) but runs on the LIVE game the user is
+ * watching and hashes through this module's ACCUMULATE-then-`sha256Hex` path
+ * (the same path the W131 recorder uses and the W131 cross-check proved
+ * byte-identical to Node's incremental `createHash`).
+ *
+ * `feed()` is called ONCE per logic frame, AFTER `g.step()` (it hashes the state
+ * the step produced), exactly where the recorder's `feed()` sits and exactly
+ * where `verifyReplay` reads `stateVector` (replay.mjs:140).  `check()` (async)
+ * hashes each newly-closed 250-frame window FRESH (a fresh sha256 of the slice,
+ * not a running hash -- the same `replay.mjs:128` convention) and records the
+ * first divergence; `finalize()` (async) closes the trailing partial period,
+ * hashes the cumulative, and returns the verdict in `verifyReplay`'s shape.
+ *
+ * Period boundaries are tracked as char offsets into the growing feed (the same
+ * representation the recorder uses), so each period slice is the exact bytes the
+ * headless player would hash for that window.  The `from`/`to` of a divergent
+ * window are LOGIC FRAMES (lf), matching `replay.mjs:154-155`.
+ */
+export function armPlayback(game, obj) {
+  if (obj.format !== FORMAT) {
+    throw new Error(`not a ${FORMAT} artifact (got ${String(obj.format)})`);
+  }
+  const columns = obj.digest.columns;
+  const periodFrames = obj.digest.periodFrames;
+  const seedLf = obj.seed.lf;
+  const ver = {
+    game,
+    obj,
+    columns,
+    periodFrames,
+    seedLf,
+    // The feed is accumulated as one growing string; period boundaries are
+    // recorded as [start, end) char offsets so each period slice is hashed fresh
+    // at its boundary (the player's per-period windows are FRESH hashes, not a
+    // running hash -- `replay.mjs:128/160`).  periodLfs[k] is the lf of the LAST
+    // frame of period k, matching `obj.digest.periods[k].lf` and the headless
+    // player's `to` field.
+    cumulativeFeed: '',
+    periodBounds: [0],
+    periodLfs: [],
+    periodIdx: 0,          // the next period to hash (closed but unchecked)
+    divergentPeriod: null, // the FIRST divergence, in the replay.mjs:151 shape
+    n: 0,                  // frames fed
+    ended: false,
+
+    /** One logic frame.  Appends the feed line for the CURRENT state and closes a
+     *  period boundary when reached.  No-op once `ended` (so a step() that runs
+     *  past end-of-portin does not grow a dead feed). */
+    feed() {
+      if (this.ended) return;
+      const v = stateVector(this.game);
+      this.cumulativeFeed += feedLine(this.columns, v);
+      this.n++;
+      if (this.n % this.periodFrames === 0) {
+        this.periodBounds.push(this.cumulativeFeed.length);
+        this.periodLfs.push(this.seedLf + this.n);
+      }
+    },
+
+    /** Hash every period that has CLOSED but not yet been checked, and record the
+     *  first divergence.  Idempotent for already-checked periods.  Returns the
+     *  current `divergentPeriod` (null until a window diverges).  The page calls
+     *  this from `Demo.loop()` at each crossed boundary so a divergence surfaces
+     *  at the FIRST window, not only at end-of-portin. */
+    async check() {
+      while (this.periodBounds.length - 1 > this.periodIdx && !this.divergentPeriod) {
+        const k = this.periodIdx;
+        const slice = this.cumulativeFeed.slice(this.periodBounds[k], this.periodBounds[k + 1]);
+        const got = await sha256Hex(slice);
+        const want = this.obj.digest.periods[k]?.sha256 ?? '<missing>';
+        if (got !== want) {
+          this.divergentPeriod = {
+            index: k,
+            from: this.seedLf + k * this.periodFrames + 1,
+            to: this.periodLfs[k],
+            got,
+            want,
+          };
+        }
+        this.periodIdx++;
+      }
+      return this.divergentPeriod;
+    },
+
+    /** Close the trailing partial period (the headless player hashes the last
+     *  window even when it is short: `replay.mjs:148 i === count - 1`), hash the
+     *  cumulative, and return the verdict in `verifyReplay`'s shape.  After this,
+     *  `feed()` is a no-op. */
+    async finalize() {
+      this.ended = true;
+      if (this.periodBounds[this.periodBounds.length - 1] !== this.cumulativeFeed.length) {
+        this.periodBounds.push(this.cumulativeFeed.length);
+        this.periodLfs.push(this.seedLf + this.n);
+      }
+      await this.check();
+      const cumulative = await sha256Hex(this.cumulativeFeed);
+      const cumulativeMatch = cumulative === this.obj.digest.cumulative;
+      const green = this.divergentPeriod === null && cumulativeMatch;
+      return {
+        green,
+        compared: this.n,
+        cumulative,
+        cumulativeMatch,
+        cumulativeWant: this.obj.digest.cumulative,
+        divergentPeriod: this.divergentPeriod,
+        periodCount: this.periodBounds.length - 1,
+      };
+    },
+  };
+  return ver;
+}

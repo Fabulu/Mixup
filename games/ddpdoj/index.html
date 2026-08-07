@@ -225,10 +225,25 @@
   /* WAVE 131 -- LIVE-PAGE REC.  The #rec button is a toggle: it lights RED
      while armed so the owner can see the page is recording.  #replay-banner
      is parallel to #rung-banner and carries the REC status (armed / saved);
-     the PLAY green/report text is W132. */
+     WAVE 132 PLAY reuses it for the green/red report + the divergent window. */
   #bar button.on-rec { background: #5a1c1c; color: #ffb0b0;
      border-color: #b04040; box-shadow: 0 0 6px 1px #b0404088 inset; }
   #rec[disabled] { opacity: 0.5; cursor: default; }
+  /* WAVE 132 -- LIVE-PAGE PLAY.  The #play control is a <label> styled like the
+     bar's buttons, backed by a hidden file-input.  A label (not a button) is the
+     standard way to give a file picker the bar's look without JS, because a
+     <button> cannot open the OS file dialog.  While a playback is in flight the
+     label dims, mirroring #rec's disabled look. */
+  #bar label.bar-btn {
+    background: #131a22; border: 1px solid #2a343d; color: #cfe0ef;
+    font: 600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    border-radius: 5px; padding: 4px 8px; cursor: pointer; white-space: nowrap;
+    touch-action: manipulation; display: inline-block;
+  }
+  #play.busy { opacity: 0.5; cursor: default; }
+  #play-input { position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0);
+    white-space: nowrap; border: 0; }
   #replay-banner { position: fixed; inset: 8px 8px auto auto; z-index: 30;
      display: none; max-width: 46vw; white-space: pre-wrap; font-size: 12px;
      line-height: 1.35; color: #ffd0a0;
@@ -236,6 +251,15 @@
      padding: 8px 10px; background: #1a130b; border-radius: 4px; }
   #replay-banner b { color: #ffe6b0; }
   #replay-banner .rec { color: #ef8a8a; font-weight: bold; }
+  #replay-banner .play { color: #8ac0ef; font-weight: bold; }
+  #replay-banner .ok { color: #8ae08a; font-weight: bold; }
+  #replay-banner .bad { color: #ef8a8a; font-weight: bold; }
+  #replay-banner.dim { color: #8a7f6a; }
+  /* GREEN at end-of-portin: the left border goes green.  RED (a divergent
+     window or a cumulative MISMATCH): the left border goes red.  The text
+     inside still carries the detail, never just "N frames differ". */
+  #replay-banner.green { border-left-color: #6ec96e; }
+  #replay-banner.red { border-left-color: #ef6a6a; }
 </style>
 </head>
 <body>
@@ -247,6 +271,8 @@
   <button id="rot" type="button" aria-pressed="true" title="TATE = the cabinet's own 224x448 portrait picture. WIDE = the raw 448x224 board buffer, unrotated.">TATE</button>
   <button id="ctrl" type="button" aria-pressed="false" title="Touch control scheme: AUTO / FIXED 8-way D-pad / FLOATING stick. Cycles on click.">CTRL</button>
   <button id="rec" type="button" aria-pressed="false" title="Record a .replay of this run: arm at the current frame, play, click again to save. The file carries the seed + one input word per logic frame + a sha256 state digest the headless player (tools/replay.mjs) verifies.">REC</button>
+  <label id="play" class="bar-btn" for="play-input" title="Play back a .replay: boots a fresh Game from the file's seed, feeds its recorded input one word per logic frame, and verifies the on-page state against the file's sha256 digest. GREEN at end-of-portin, or the first divergent 250-frame window.">PLAY</label>
+  <input id="play-input" type="file" accept=".replay,application/json">
   <button id="infobtn" type="button" aria-pressed="false">INFO</button>
 </div>
 
@@ -544,6 +570,8 @@ const rotBtn = document.getElementById('rot');
 const ctrlBtn = document.getElementById('ctrl');
 const recBtn = document.getElementById('rec');
 const replayBannerEl = document.getElementById('replay-banner');
+const playLabel = document.getElementById('play');
+const playInput = document.getElementById('play-input');
 const infoEl = document.getElementById('info');
 const infoBtn = document.getElementById('infobtn');
 
@@ -838,6 +866,104 @@ try {
     } finally {
       recArming = false;
       recBtn.disabled = false;
+    }
+  });
+
+  // WAVE 132 -- LIVE-PAGE PLAY.  The #play file-input loads a `.replay`, boots a
+  // fresh Game from its seed, and feeds its recorded input one word per logic
+  // frame while the verifier compares the on-page state to the file's digest.
+  // The banner carries the verdict: PLAYING while it runs, GREEN at end-of-portin
+  // when every period reproduces, or the FIRST divergent 250-frame window (never
+  // "N frames differ" -- docs/knowledge/01).  REC and PLAY share #replay-banner;
+  // each overwrites the other, and they cannot run at once (Demo refuses).
+  //
+  // The renderer is a callback on the Demo so the DOM stays here and the verdict
+  // stays there, mirroring how the loop owns the simulation and the page owns
+  // presentation.  A short hash prefix is all the banner shows -- the full 64
+  // hex chars would be noise on a phone, and a green/red verdict + the window is
+  // what the owner reads.
+  const shortHex = (h) => (h ? String(h).slice(0, 12) : '(none)');
+  const paintReplayBanner = (cls, inner) => {
+    replayBannerEl.className = cls;          // '' (neutral) | 'green' | 'red'
+    replayBannerEl.innerHTML = inner;
+    replayBannerEl.style.display = 'block';
+  };
+  app.onPlaybackUpdate = (state) => {
+    if (state.kind === 'playing') {
+      paintReplayBanner('',
+        `<span class="play">PLAY</span> lf${state.lf + 1}..${state.lf + state.count} `
+        + `(${state.count} frames) -- verifying against the recorded digest...`);
+      return;
+    }
+    if (state.kind === 'divergent') {
+      // First divergent window, surfaced at the boundary (not end-of-portin).
+      const d = state.divergent;
+      paintReplayBanner('red',
+        `<span class="bad">REPLAY RED</span> first divergence in window `
+        + `lf${d.from}..lf${d.to} (period ${d.index}); `
+        + `player ${shortHex(d.got)} vs recorded ${shortHex(d.want)}.\n`
+        + `Playback continues to end-of-portin for the cumulative verdict; `
+        + `re-run with the trace to localise to a single frame.`);
+      return;
+    }
+    if (state.kind === 'green') {
+      paintReplayBanner('green',
+        `<span class="ok">REPLAY GREEN</span> ${state.count} frames, `
+        + `all ${state.result.periodCount} period(s) reproduce. `
+        + `cumulative ${shortHex(state.result.cumulative)}`);
+      return;
+    }
+    if (state.kind === 'red') {
+      const r = state.result;
+      // Distinguish a WINDOW divergence (a period's fresh hash differs) from a
+      // cumulative MISMATCH (every window reproduced but the whole-feed hash
+      // differs -- only reachable by corrupting digest.cumulative itself).
+      if (r.divergentPeriod) {
+        const d = r.divergentPeriod;
+        paintReplayBanner('red',
+          `<span class="bad">REPLAY RED</span> first divergence in window `
+          + `lf${d.from}..lf${d.to} (period ${d.index}); `
+          + `player ${shortHex(d.got)} vs recorded ${shortHex(d.want)}.\n`
+          + `Re-run with the trace to localise to a single frame.`);
+      } else {
+        paintReplayBanner('red',
+          `<span class="bad">REPLAY MISMATCH</span> every period window `
+          + `reproduced, but the cumulative hash differs: `
+          + `player ${shortHex(r.cumulative)} vs recorded ${shortHex(r.cumulativeWant)}.\n`
+          + `This signals a corrupted digest.cumulative, not a simulation divergence.`);
+      }
+      return;
+    }
+    if (state.kind === 'error') {
+      paintReplayBanner('red',
+        `<span class="bad">REPLAY ERROR</span> ${state.error ?? '(unknown)'}`);
+    }
+  };
+
+  playInput.addEventListener('change', async () => {
+    const file = playInput.files && playInput.files[0];
+    if (!file) return;
+    playLabel.classList.add('busy');
+    // If REC is armed, disarm it first: REC and PLAY are mutually exclusive at
+    // the Demo level (armRecording refuses while playback is active), and a
+    // dangling armed REC would otherwise tee into the playback's input stream.
+    if (recArmed) {
+      try { await app.stopRecording(); } catch { /* a failed stop must not block PLAY */ }
+      recArmed = false;
+      paintRec();
+    }
+    try {
+      const buf = new Uint8Array(await file.arrayBuffer());
+      const text = new TextDecoder().decode(buf);
+      const obj = JSON.parse(text);
+      app.playFrom(obj);
+    } catch (e) {
+      showError(e, 'loading the .replay failed.');
+    } finally {
+      // Reset so selecting the SAME file again fires change (otherwise the owner
+      // cannot re-play after editing the file on disk).
+      playInput.value = '';
+      playLabel.classList.remove('busy');
     }
   });
 
