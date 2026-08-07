@@ -665,6 +665,18 @@ stray dir `games/ddpdoj/tools/w12/`, removed). Re-dispatched FRESH (a9508a6b4f00
 dispatch SUCCEEDED, so the usage limit has RESET (no active third block). The fresh W132
 (live-page PLAY + divergence UI) is RUNNING. Will publish W131+W132 together when it completes.
 
+## 7u. UPDATE -- 2026-08-07: W132 (live-page PLAY) DONE; REC/PLAY feature COMPLETE; PUBLISHING
+
+W132 landed (`5b1d691`): boot-from-`.replay` + the playback feed + the digest comparison (mirrors
+`verifyReplay`; first-divergence at the 250-frame boundary) + the divergence UI (`#play` +
+`#replay-banner`). The complete REC/PLAY feature is done (W131 REC + W132 PLAY). Must-fail A/B/C
+green->red->green; the live verifier byte-identical to Node. Gates 1305/0/0. PUBLISHING W131+W132
+together (the live DOJ page gets REC + PLAY).
+
+Phase 4 (replay packaging + live REC/PLAY) is COMPLETE. The next phase is owner-TBD again (RANK
+Wave B / stage-2 / sound / Wave B input). The cron should AWAIT owner steer -- the replay feature
+(the continue-default) is done.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
