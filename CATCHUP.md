@@ -390,6 +390,31 @@ Queue: W116 other text -> chain/combo (Wave D') -> deferred popup `$2855B6` / it
 
 Owner play-reports still OPEN: the boss-explosion art (`$03/$04/$07/$10/$87` unconfirmed at the death frame -- blank if a stream is missing); the laser-bomb translucency (no translucency anywhere in the port; the sparse artwork is unverified vs board -- needs a MAME laser-bomb capture); and live-verify of the DOJ input feel (unlocks Wave B).
 
+## 7d. UPDATE -- 2026-08-07: stage-1 FEATURE-COMPLETE + live; strategic plan W119; Phase 0 BLOCKED at the usage limit
+
+**Stage 1 is FEATURE-COMPLETE and live** (build `20260807010426`): full gameplay plus the
+whole HUD -- W113 sprite frames, W115 score digits (via `$185DC4`), W116 other text (via
+`$240DC2`/`$141258`), W118 chain-break popup (the combo) + item row. Bees (W111), boss
+explosion (W107), shared DOJ input (W109) all live.
+
+**Strategic round done -> plan in W119** (`docs/worklog/ddpdoj/119-strategic-plan.md`,
+5 recons + architect, committed `2531d27`). Six premise corrections, notably: boss-explosion
+art is NOT missing (166/166 streams; W107 fixed the emitters); the slowdown gate is `$803940`
+(the vblank semaphore), not `$81308C`. Plan order: Phase 0 (correctness recons: RANK type-10
+`$260794` vs score.js inline rank; + the 20 per-type sub-handler budget loops, open since W2)
+-> Phase 1 (MAME capture for boss-verify + bomb translucency; Wave B input Gradius+Batman,
+held for owner live-verify of the DOJ module) -> Phase 2 (result screen `$28D9AA`, removes
+the two declared deviations) -> sound, lag/slowdown, replay, stage 2.
+
+**BLOCKED: the two Phase 0 recons FAILED at the 5-hour usage limit** (429; resets
+2026-08-07 10:23:01). RANK got most of the way (partial worklog `120-recon-rank-type10.md`,
+committed -- resume from there; it had the full recompute, was finalizing the verdict on
+whether score.js substitutes for the rank object). Sub-handler was early (no worklog yet).
+Re-dispatch BOTH after the reset. Tree clean; W118 green (1268/0/0, bosscoverage 103/0/8).
+The hourly idle cron was DELETED for the block (it cannot dispatch under the limit and reads
+the stale 7a queue) -- recreate it next session per 7a. Wave B input (task 9) still held for
+owner live-verify of the DOJ module.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
