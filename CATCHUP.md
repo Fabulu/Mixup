@@ -440,6 +440,29 @@ for boss-death verify + bomb translucency, IN FLIGHT; Wave B input Gradius+Batma
 -> Phase 2 (result screen `$28D9AA`) -> Phase 3/4 (stage-2 data, replay) -> Phase 5 (sound,
 slowdown). The RANK fix slots in as its own subsystem port.
 
+## 7f. UPDATE -- 2026-08-07: Phase 1a MAME capture -- both play-reports RESOLVED (port correct)
+
+Phase 1a (batched MAME capture, W122) done; both owner play-reports closed in the port's favor:
+- **Boss death: CORRECT, no defect.** Premise correction: under passive-laser hold the boss is
+  never HP0-killed (HP drains ~44/frame and times out at `$294F32`), and the BOARD shows the same
+  stasis at timeout (~100 boss-body entries, zero effects at lf19500-19555). A forced HP0 death
+  (poke `$813752=-1`) makes BOTH the board and the port explode (pool-B burst: 5/19/15 entries
+  lf18100-18300, boss freed by lf18500). The port wires every death emitter (W107; 166/166 streams;
+  must-fail green). So "stasis, no explosion" was the pre-W107 placeholder bug (fixed) COMBINED
+  with the passive-laser-timeout path (correct -- to SEE the explosion the boss must be HP0-killed,
+  e.g. point-blank, not parked under the laser until timeout).
+- **Laser bomb: PIXEL-FAITHFUL.** The board's bomb is ~30 fully opaque palette-indexed beam
+  segments (no alpha; PGM has no blender). The port transcribes the same `$2561AA` 41-segment beam
+  (W66 `draw23FF06` fix), `alpha:false` canvas, byte-exact display list. Recon 106's 4th candidate
+  pixel-verified: the "translucent" look is genuinely sparse opaque art. No blender needed.
+- **Coverage gap (not a defect):** the seeded oracle blocks past ~lf2700 in the bomb/boss scenario
+  on `$27FE0E` (an unported pool-A kind-2 body) and `$2629AE` (an unported element updater). Live
+  play doesn't hit them (different input path). Surfaced for a future coverage wave.
+
+Next: Phase 2a (result-screen recon `$28D9AA`, IN FLIGHT) -> Phase 2b impl (completes stage 1
+honestly, removes the two declared deviations). Phase 1b (Wave B input Gradius+Batman) still
+owner-gated.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
