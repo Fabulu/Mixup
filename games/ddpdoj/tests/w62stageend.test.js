@@ -27,7 +27,7 @@ import { HANDLER_ADDRESSES } from '../src/handlers.js';
 import {
   SE, ADVANCE_ENTRIES, PRESENTATION_DEVIATION, runStageAdvance242952,
   writeStage25FD0C, wipeStageBlock25FD24, bgDestroy25FCFA, rebuildWorld25FD38,
-  makeStageClear, bannerStep28ECCE,
+  makeStageClear, bannerStep28ECCE, result28D9AA, draw1_28DED8, draw2_28E1AC,
 } from '../src/stageend.js';
 import {
   SCHED, installScripts, runScheduler25962E, registerScript, scriptAddresses,
@@ -40,6 +40,7 @@ import { BOSS, BOSS_NOTED, livePlayers2428A6, bossDamage294AD8, bossTimeout294F3
   handlerBoss292902 } from '../src/boss.js';
 import { ALLOC } from '../src/objalloc.js';
 import { OBJ } from '../src/objdriver.js';
+import { BUCKETS } from '../src/spritequeue.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TABLES = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
@@ -665,6 +666,56 @@ test('$28ECCE returns C=1 for 63 calls and C=0 on the 64th, off $28EC86 seeds',
     while (bannerStep28ECCE(ram, ctx) && n < 500) n++;
     assert.equal(n, 63, 'recon 49 9 could not determine this; $28EC86 is the '
       + 'other half of the answer and $28D566 calls it');
+  });
+
+// ===========================================================================
+// W125 (R2b): THE RESULT-SCREEN PRESENTATION DRAWS EMIT SPRITE RECORDS
+// ===========================================================================
+//
+// Before W125 the draws (`$28DED8`/`$28E1AC`) were `note()` placeholders, so
+// zero sprite records reached buckets 0 (`$23DECE`) and 2 (`$23DF2A`).  After
+// W125 the draws are REAL register-convention enqueues.  This test drives the
+// result FSM `$28D9AA` from its F0 entry through F5 (the hold+draw phase) on a
+// fixture and asserts both bucket counters grew -- then breaks draw1 in
+// isolation and watches them go red.
+
+test('W125 MUST-FAIL: the result-screen draws `$28DED8`/`$28E1AC` emit sprite '
+  + 'records into buckets 0 and 2 (was zero when they were notes)', { skip: SKIP }, () => {
+    const { ram, slot } = type6Fixture();
+    const { ctx } = ctxOf(ram);
+    const a6 = SE.result;
+    // the bucket counters the two draw stubs feed ($23DECE -> 0, $23DF2A -> 2)
+    const ctr0 = BUCKETS[0].counter;     // $80AFC0
+    const ctr2 = BUCKETS[2].counter;     // $80AFC4
+    // Drive the result FSM F0 -> F5.  F2 seeds the panel pointers ($40/$44/$48)
+    // and F3 walks the slide-in table; F5 then calls draw1 + draw2 every frame.
+    // P1 is live ($8103E6 = $8000 from the fixture), so draw1's P1 arm + draw2's
+    // P1 block both run.
+    for (let i = 0; i < 80; i++) result28D9AA(ram, ROM, ctx, slot);
+    const b0 = ram.u16(ctr0);
+    const b2 = ram.u16(ctr2);
+    assert.ok(b0 > 0, `draw1/draw2 enqueued to bucket 0 ($23DECE): ${b0} bytes`);
+    assert.ok(b2 > 0, `draw1 enqueued to bucket 2 ($23DF2A): ${b2} bytes`);
+  });
+
+test('W125 MUST-FAIL (red half): with the P1/P2 live arms gated off, draw1 still '
+  + 'emits the base panels + medal counters (bucket 0 and 2 both non-zero)',
+  { skip: SKIP }, () => {
+    const ram = new Ram();
+    const a6 = SE.result;
+    // seed the panel pointers the way F2 does (the prototype at $28E646 is four
+    // longs + a word; the port's f2SpriteInit28DA70 seeds $40/$44/$48 directly)
+    ram.setU32(a6 + 0x40, 0x4d001c00);
+    ram.setU32(a6 + 0x44, 0x2d001c00);
+    ram.setU32(a6 + 0x48, 0x0e001c00);
+    ram.setU32(a6 + 0x54, 0x001bcd0c);
+    ram.setU32(a6 + 0x58, 0x001be60c);
+    // NO live player -> the P1/P2 arms are skipped, but the base panels + medal
+    // counters still draw
+    const ctr0 = BUCKETS[0].counter, ctr2 = BUCKETS[2].counter;
+    draw1_28DED8(ram, ROM);
+    assert.ok(ram.u16(ctr0) > 0, 'base panels went to bucket 0');
+    assert.ok(ram.u16(ctr2) > 0, 'medal counters went to bucket 2');
   });
 
 // ===========================================================================

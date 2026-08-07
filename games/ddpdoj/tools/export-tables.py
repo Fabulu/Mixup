@@ -1741,6 +1741,34 @@ SHOT_WINDOWS.extend([
                        "2 KB gap CATCHUP 7a named)"),
 ])
 
+# ==================== W125 (R2b): THE RESULT-SCREEN + BANNER ART WINDOWS =======
+#
+# `src/stageend.js` F0 (result28D9AA) installs seven 64-byte sprite-palette
+# banks via `$24150A`, reading six distinct ROM sources in the `$225xxx` block.
+# Each `$24150A` call copies exactly 16 longwords (64 bytes), so each window is
+# one 64-byte block -- except the four contiguous sources $2255B8/$2255F8/
+# $225638/$225678, which abut exactly ($40 apart) and share one 256-byte window.
+# `$2254B8` (bank $11) and `$225878` (bank $16) are isolated by gaps on both
+# sides, so they are their own windows.  (W123 §6 R2b; F0 disasm $28D9C4..$28DA3A.)
+SHOT_WINDOWS.extend([
+    (0x2254B8, 0x0040, "W125: result-screen art bank $11 source $2254B8 -- "
+                       "16 longwords copied by $24150A at $28D9DA (F0 art install)"),
+    (0x2255B8, 0x0100, "W125: result-screen art banks $12/$13/$14/$15 sources "
+                       "$2255B8/$2255F8/$225638/$225678 -- four contiguous 64-byte "
+                       "blocks, copied by $24150A at $28D9EA/$28D9FA/$28DA0A/$28DA1A "
+                       "(and $2255B8 again for bank $10 at $28DA3A)"),
+    (0x225878, 0x0040, "W125: result-screen art bank $16 source $225878 -- "
+                       "16 longwords copied by $24150A at $28DA2A (F0 art install)"),
+    # The banner picture `$28EDC0` indexes `$28EE1E` by (per-stage art byte << 3)
+    # to read the banner sprite's art pointer (D2).  Five art pairs (art byte
+    # 0..4, $28ECB2's output), so the table runs $28EE1E..$28EE3E; the window
+    # also covers the alternate pointer at $28EE46 ($28EDFA lea, the
+    # counter-nonzero branch).  $40 bytes, 8 entries x 8.
+    (0x28EE1E, 0x0040, "W125: the banner-picture art-pointer table $28EE1E (read "
+                       "by $28EDC0's `move.l (A0),D2` after `bsr $28ECB2`; 5 per-"
+                       "stage entries) + the alt pointer $28EE46"),
+])
+
 
 
 def check_boss_arrival_tables(d: bytes) -> None:

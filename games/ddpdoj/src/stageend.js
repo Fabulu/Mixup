@@ -79,6 +79,8 @@ import { stageCreate, queueKill, ALLOC } from './objalloc.js';
 import { clearItemPool, bcd242AC6 } from './items.js';
 import { clearPoolA } from './bee.js';
 import { bcdAdd, scoreByMask } from './score.js';
+import { enqueueRegistersThroughStub, enqueueRegisters, enqueueRequest } from './spritequeue.js';
+import { install24150A } from './palette.js';
 
 export const SE = {
   stage: 0x813092, stageX2: 0x813094, stageX4: 0x813096,   // $25FD0C
@@ -373,25 +375,37 @@ function loadBannerArt(ram, ctx) {
  *  `tally2853D2`), so `$8130F9` bit 1 has its real sole producer `$285496` and
  *  F8 advances on it naturally. The manual `bset #1` stand-in is gone.
  *
- *  W124 REFINED DEV-2 (`$28D6FC`): the animation chain primitives
- *  (`chainLoader24652A` / `chainCheck24681A` / `chainFree246800`) ARE ported and
- *  wired, so `($8,A5)` is REALLY written by `$24652A` and REALLY freed by
- *  `$246800`. But the per-frame animation-object driver `$246410` -- the machine
- *  that drains each node's lifetime word `$18(node)` (seeded `$ffff0000`) -- is
- *  presentation tier (R2b), and without it `chainCheck24681A` would never report
- *  "done". The port therefore treats the first state-$B frame as the fly-away's
- *  end, frees the chain, and advances. The RAM lifecycle is faithful; only the
- *  visual wait collapses. */
+ *  W124 REFINED DEV-2 (`$28D6FC`), W125 CORRECTED: the animation chain
+ *  primitives (`chainLoader24652A` / `chainCheck24681A` / `chainFree246800`) ARE
+ *  ported and wired, so `($8,A5)` is REALLY written by `$24652A` and REALLY
+ *  freed by `$246800`. W124's text named `$246410` as "the per-frame driver that
+ *  drains `$18(node)`"; W125 disassembled `$246410` and that name is WRONG.
+ *  `$246410` is a LOADER (10 absolute-long call sites: `$28D770` here plus
+ *  `$26B802`/`$26C828`/`$278AC4`/`$279248`/...` in boss/midboss), a SIBLING of
+ *  `$24652A` -- it claims a player slot at `$810346`, allocates nodes from
+ *  `$80FA86`, seeds each node's content (code ptr from `$24627A`, anim data from
+ *  `$246B38`, the `$30(node)` script copy) and SEEDS `$18(node):=$FFFF0000`. It
+ *  does NOT decrement `$18`. The actual per-frame decrement -- the animation-
+ *  object EXECUTION engine that walks the chain via address-register indirect
+ *  (invisible to `xref.py`) and runs each node's code script -- is the TRUE
+ *  remaining gap, and it is the deep presentation tier five waves have deferred.
+ *  Without it `chainCheck24681A` never returns "done", so the port frees the
+ *  chain and advances on state $B's first frame. The RAM lifecycle is faithful;
+ *  only the visual wait collapses. */
 export const PRESENTATION_DEVIATION = Object.freeze({
   0x28d6fc: 'DEV-2 -- $28D6FC. The anim chain is built by `chainLoader24652A` '
     + '(F8 advance tail) and freed by `chainFree246800` (state $B) for real, so '
-    + '($8,A5) is honest. But the per-frame anim-object driver $246410 -- which '
-    + 'drains each node lifetime $18(node) so that chainCheck24681A eventually '
-    + 'returns "done" -- is the PRESENTATION tier (R2b, referenced as unported '
-    + 'by boss.js/midboss.js/bossarrival.js). Without it the chain would never '
-    + 'drain and state $B would hang, so the port frees the chain and advances '
-    + 'on state $B\'s first frame rather than waiting for the fly-away. The pool '
-    + 'lifecycle is faithful; the animation wait is not.',
+    + '($8,A5) is honest. The chain does not DRAIN because the animation-object '
+    + 'EXECUTION engine -- the per-frame machine that walks the `$810346` chain '
+    + 'via register-indirect and runs each node\'s code script, decrementing its '
+    + 'lifetime $18(node) (seeded $FFFF0000) so chainCheck24681A eventually '
+    + 'returns "done" -- is unported presentation tier. (W125 CORRECTION: W124 '
+    + 'named $246410 as this driver; $246410 is a LOADER sibling of $24652A, '
+    + 'reached from 10 abs-long sites, that SEEDS $18 -- it does not decrement '
+    + 'it. The true drain is the execution engine, reached via register-indirect '
+    + 'so xref.py cannot see it.) The port therefore frees the chain and advances '
+    + 'on state $B\'s first frame. The pool lifecycle is faithful; the animation '
+    + 'wait is not.',
 });
 
 // ============================================================================
@@ -447,8 +461,24 @@ export function result28D9AA(ram, rom, ctx, a5) {
     ram.setU8(SE.df1e, ram.u8(SE.df1e) | 0x02);             // $28D9BA bset #1
     ram.setU16(0x813172, 0);                                // $28D9C4 camera zero
     ram.setU16(0x813176, 0);                                // $28D9C9
-    note(ctx, 0x24150a, '$28D9C4..$28DA3A seven jsr $24150A -- result-screen art '
-      + 'install (entries $11..$16,$10 from $2254B8..$225878). R2b presentation');
+    // $28D9C4..$28DA3A -- seven `$24150A` resource installs (sprite palette
+    // banks $11/$12/$13/$14/$15/$16/$10, six ROM sources).  W125 promotes the
+    // R2a note to the real `install24150A`; guarded on `ctx.palette` because a
+    // bare-RAM test fixture has no palette state (background.js's own pattern).
+    if (ctx.palette) {
+      const art = (src, bank) => install24150A(ram, ctx.palette, bank,
+        rom.bytes(src, 64), 0x28d9c4, `F0 result-screen art bank $${bank.toString(16)}`);
+      art(0x2254b8, 0x11);                                   // $28D9D0/$28D9DA
+      art(0x2255b8, 0x12);                                   // $28D9E0/$28D9EA
+      art(0x2255f8, 0x13);                                   // $28D9F0/$28D9FA
+      art(0x225638, 0x14);                                   // $28DA00/$28DA0A
+      art(0x225678, 0x15);                                   // $28DA10/$28DA1A
+      art(0x225878, 0x16);                                   // $28DA20/$28DA2A
+      art(0x2255b8, 0x10);                                   // $28DA30/$28DA3A
+    } else {
+      note(ctx, 0x24150a, '$28D9C4..$28DA3A seven jsr $24150A -- result-screen art '
+        + 'install (banks $11..$16,$10); skipped, no ctx.palette');
+    }
     return;                                                 // $28DA40 rts
   }
   // ---- F1 PALETTE CUE
@@ -476,9 +506,9 @@ export function result28D9AA(ram, rom, ctx, a5) {
     f4BonusPool28DB5E(ram, rom, ctx);
     return;                                                 // $28DC16 rts
   }
-  // ---- F5 HOLD + DRAW  (the draws are notes; the $2c countdown is real)
-  note(ctx, 0x28ded8, '$28DC18 bsr $28DED8 / $28DC1C bsr $28E1AC -- result-screen '
-    + 'sprite draws. R2b presentation');
+  // ---- F5 HOLD + DRAW  (W125: the draws are REAL; the $2c countdown is real)
+  draw1_28DED8(ram, rom);                                    // $28DC18 bsr $28DED8
+  draw2_28E1AC(ram, rom);                                    // $28DC1C bsr $28E1AC
   if (ram.u16(a6 + RF.hold) !== 0) {                        // $28DC20 tst/beq F6
     ram.setU16(a6 + RF.hold, u16(ram.u16(a6 + RF.hold) - 1));  // $28DC26 subq
     return;                                                 // $28DC2A rts
@@ -560,7 +590,7 @@ function f3SlideIn28DACE(ram, rom, ctx) {
   if ((ram.u16(a6 + RF.slide) & 0x8000) !== 0) {            // $28DB4C tst/bpl
     ram.setU8(SE.bossFlags9, ram.u8(SE.bossFlags9) | 0x08); // $28DB52 bset #3
   }
-  note(ctx, 0x28ded8, '$28DB5A bra $28DED8 -- result-screen draw (F3 frame). R2b');
+  draw1_28DED8(ram, rom);                                    // $28DB5A bra $28DED8 (draw1 only)
 }
 
 /** `$28DB5E..$28DC16` -- F4 bonus-pool init: read bee/item counts, BCD-convert,
@@ -592,7 +622,8 @@ function f4BonusPool28DB5E(ram, rom, ctx) {
     }
   }
   ram.setU16(a6 + RF.hold, anyLive !== 0 ? 0x18 : 0x04);    // $28DC0E/$28DC12
-  note(ctx, 0x28ded8, '$28DC18 bsr $28DED8 / $28DC1C bsr $28E1AC -- draws. R2b');
+  draw1_28DED8(ram, rom);                                    // $28DC18 bsr $28DED8
+  draw2_28E1AC(ram, rom);                                    // $28DC1C bsr $28E1AC
 }
 
 /** `$28DC2C..$28DDAE` -- F6 bee/item tick: drain the four pools by 5 each,
@@ -700,6 +731,337 @@ function f8Exit28DE1E(ram, rom, ctx, a5) {
   ram.setU32(a5 + 0x08, handle >>> 0);                      // $28DE6C move.l D0,$8(A5)
   note(ctx, 0x28c186, '$28DE72 jsr $28C186 (D1=0) -- the result-screen exit '
     + 'handshake tail. Counted; its body $28BBAC is the presentation tier');
+}
+
+// ============================================================================
+// W125 (R2b): THE RESULT-SCREEN PRESENTATION DRAWS `$28DED8` / `$28E1AC`
+// ============================================================================
+// A6 = `SE.result`.  Each draw is a sequence of REGISTER-CONVENTION sprite
+// enqueues -- `$23DECE` (the queue, bucket 0) and `$23DF2A` (bucket 2),
+// resolved from the cartridge stub pointer by `enqueueRegistersThroughStub`.
+// The stubs `move.l D1,D0 / asr.l #6` and never touch D1-D4 of the caller, so
+// D1-D4 are PRESERVED across each `jsr` and the draws rely on that (several
+// enqueues inherit the previous D4).  D1 is PACKED: hi word = long axis, lo
+// word = short axis; `addi.w`/`add.w`/`sub.w` touch only the low word, `swap`
+// exchanges the halves, `move.w -> Dn` leaves the high word UNCHANGED.  The
+// two helpers below keep that arithmetic faithful.  See W123 §6 (R2b) and the
+// `123-recon` SS for the per-block sprite census.
+
+/** Pack / mutate a 32-bit D1 the way the 68000 does: `add.w` and `addi.w`
+ *  touch only the low word; `swap` exchanges the halves. */
+const d1SetLo = (d, v) => ((d & 0xffff0000) | ((v & 0xffff))) >>> 0;
+const d1AddLo = (d, v) => d1SetLo(d, (d & 0xffff) + v);
+const d1Swap = (d) => (((d & 0xffff) << 16) | ((d >>> 16) & 0xffff)) >>> 0;
+
+/** The two register-convention emit stubs the result screen uses, resolved
+ *  from the cartridge.  `$23DECE` -> bucket 0 (the queue), `$23DF2A` -> 2. */
+function resultSprite(ram, rom, stub, d1, d2, d3, d4) {
+  enqueueRegistersThroughStub(ram, rom, stub, d1 >>> 0, d2 >>> 0, d3, d4);
+}
+
+/** `$28DED8` -- RESULT DRAW 1: the three base panels, the P1/P2 panel+label
+ *  slides, the four medal counters, and (per live player) the ship icon plus
+ *  two bee/item animation cells.  Advances the two animation-cell pointers at
+ *  `$54/$58(a6)` on the way in.  F3/F4/F5 call this. */
+export function draw1_28DED8(ram, rom) {
+  const a6 = SE.result;
+  // ---- the two animation-cell advances ($10/$11 and $12/$13 counters)
+  const c1 = (ram.u8(a6 + 0x10) - 1) & 0xff;                   // $28DED8 subq.b
+  ram.setU8(a6 + 0x10, c1);
+  if (c1 === 0xff) {                                           // $28DEDC bcc (C=1 -> reload)
+    ram.setU8(a6 + 0x10, ram.u8(a6 + 0x11));                   // $28DEDE
+    let p = (ram.u32(a6 + 0x54) + 0x34) >>> 0;                 // $28DEE8 addi.l #$34
+    if (p === 0x1bd04c) p = 0x1bcd0c;                          // $28DEEE/$28DEF6 wrap
+    ram.setU32(a6 + 0x54, p);
+  }
+  const c2 = (ram.u8(a6 + 0x12) - 1) & 0xff;                   // $28DEFC subq.b
+  ram.setU8(a6 + 0x12, c2);
+  if (c2 === 0xff) {                                           // $28DF00 bcc
+    ram.setU8(a6 + 0x12, ram.u8(a6 + 0x13));                   // $28DF02
+    let p = (ram.u32(a6 + 0x58) + 0x34) >>> 0;                 // $28DF0C
+    if (p === 0x1be94c) p = 0x1be60c;                          // $28DF12/$28DF1A
+    ram.setU32(a6 + 0x58, p);
+  }
+  // ---- the three base panels ($23DECE)
+  let d1, d2, d3, d4;
+  d1 = ram.u32(a6 + 0x40); d1 = (d1 + 0xf000e400) >>> 0;       // $28DF20/$28DF24
+  resultSprite(ram, rom, 0x23dece, d1, 0x328aec, 0x10e0, 0x15);   // $28DF38
+  d1 = ram.u32(a6 + 0x44); d1 = (d1 + 0xf000e400) >>> 0;       // $28DF3E/$28DF42
+  resultSprite(ram, rom, 0x23dece, d1, 0x3291f0, 0x10e0, 0x15);   // $28DF56
+  d1 = ram.u32(a6 + 0x48); d1 = (d1 + 0xf200e400) >>> 0;       // $28DF5C/$28DF60
+  resultSprite(ram, rom, 0x23dece, d1, 0x327150, 0x0ee0, 0x15);   // $28DF74
+  // ---- the P1/P2 panel slides + medal counters ($23DF2A)
+  d1 = ram.u32(a6 + 0x40); d1 = d1AddLo(d1, ram.u16(a6 + 0x08));    // $28DF7A/$28DF7E
+  d1 = (d1 + 0xf000e400) >>> 0;                                 // $28DF82
+  resultSprite(ram, rom, 0x23df2a, d1, 0x3283e8, 0x10e0, 0x15);    // $28DF96
+  // `move.w $42(A6),D1` loads the HI word of $40 into D1's LO word; D1's HI
+  // word is UNCHANGED (the packed long-axis from the line above).  Then the
+  // P1 y-slide $a and the #-$1c00 offset are added to the lo word.
+  d1 = d1SetLo(d1, ram.u16(a6 + 0x42)); d1 = d1AddLo(d1, ram.u16(a6 + 0x0a));  // $28DF9C/$28DFA0
+  d1 = d1AddLo(d1, 0xe400);                                     // $28DFA4 addi.w #-$1c00
+  resultSprite(ram, rom, 0x23df2a, d1, 0x327ce4, 0x10e0, 0x15);    // $28DFB2 (D4 inherits $15)
+  d1 = ram.u32(a6 + 0x44); d1 = d1AddLo(d1, ram.u16(a6 + 0x0c)); d1 = (d1 + 0xf000e400) >>> 0; // $28DFB8/BC/C0
+  resultSprite(ram, rom, 0x23df2a, d1, 0x3283e8, 0x10e0, 0x6015);   // $28DFD4
+  d1 = d1SetLo(d1, ram.u16(a6 + 0x46)); d1 = d1AddLo(d1, ram.u16(a6 + 0x0e));  // $28DFDA/$28DFDE
+  d1 = d1AddLo(d1, 0xe400);                                     // $28DFE2
+  resultSprite(ram, rom, 0x23df2a, d1, 0x327ce4, 0x10e0, 0x6015);   // $28DFF0 (D4 inherits $6015)
+  // ---- the four medal counters m0/m1/m2/m3 off the $48 base
+  d1 = ram.u32(a6 + 0x48); d1 = d1Swap(d1); d1 = d1AddLo(d1, 0x0440);  // $28DFF6/$28DFFA/$28DFFC
+  d1 = d1AddLo(d1, ram.u16(a6 + 0x4c)); d1 = d1Swap(d1);          // $28E000/$28E004
+  d1 = (d1 + 0xfa00ee00) >>> 0;                                  // $28E006
+  resultSprite(ram, rom, 0x23df2a, d1, 0x3298f4, 0x0690, 0x15);     // $28E01A
+  d1 = ram.u32(a6 + 0x48); d1 = d1Swap(d1); d1 = d1AddLo(d1, 0x0440);  // $28E020/$28E024/$28E026
+  d1 = d1SetLo(d1, (d1 & 0xffff) - ram.u16(a6 + 0x4e)); d1 = d1Swap(d1);  // $28E02A sub.w $4e / $28E02E
+  d1 = (d1 + 0xfa00ee00) >>> 0;                                  // $28E030
+  resultSprite(ram, rom, 0x23df2a, d1, 0x329aa8, 0x0690, 0x15);     // $28E044
+  d1 = ram.u32(a6 + 0x48); d1 = d1Swap(d1); d1 = d1AddLo(d1, 0x0400);  // $28E04A/$28E04E/$28E050
+  d1 = d1AddLo(d1, ram.u16(a6 + 0x50)); d1 = d1Swap(d1);          // $28E054/$28E058
+  d1 = (d1 + 0xf800ec00) >>> 0;                                  // $28E05A
+  resultSprite(ram, rom, 0x23df2a, d1, 0x327774, 0x08a0, 0x14);     // $28E06E
+  d1 = ram.u32(a6 + 0x48); d1 = d1Swap(d1); d1 = d1AddLo(d1, 0x0400);  // $28E074/$28E078/$28E07A
+  d1 = d1SetLo(d1, (d1 & 0xffff) - ram.u16(a6 + 0x52)); d1 = d1Swap(d1);  // $28E07E sub.w $52 / $28E082
+  d1 = (d1 + 0xf800ec00) >>> 0;                                  // $28E084
+  resultSprite(ram, rom, 0x23df2a, d1, 0x3279f8, 0x08a0, 0x14);     // $28E098
+  // ---- P1 LIVE arm: ship icon + two bee/item anim cells
+  if ((ram.u16(SE.p1) & 0x8000) !== 0) {                        // $28E09E tst/bpl (bmi set -> live)
+    d1 = ram.u32(a6 + 0x40); d1 = (d1 + 0xf400f200) >>> 0;       // $28E0A6/$28E0AA
+    resultSprite(ram, rom, 0x23dece, d1, 0x326eac, 0x0c70, 0x13); // $28E0BE
+    d1 = ram.u32(a6 + 0x40); d1 = (d1 + 0xf3bff940) >>> 0;       // $28E0C4/$28E0C8
+    d1 = (d1 + 0xfe00fa00) >>> 0;                                // $28E0CE
+    resultSprite(ram, rom, 0x23dece, d1, 0x327c7c, 0x0230, 0x12); // $28E0E2
+    d1 = (0x53001300 - 0x3ff0300) >>> 0;                         // $28E0E8/$28E0EE
+    resultSprite(ram, rom, 0x23dece, d1, ram.u32(a6 + 0x54), 0x0418, 0x1c);  // $28E0F4 D2=$54(a6)
+    d1 = (0x47801300 - 0x3ff0300) >>> 0;                         // $28E106/$28E10C
+    resultSprite(ram, rom, 0x23dece, d1, ram.u32(a6 + 0x58), 0x0418, 0x1c);  // $28E112 D2=$58(a6)
+  }
+  // ---- P2 LIVE arm
+  if ((ram.u16(SE.p2) & 0x8000) !== 0) {                        // $28E124 tst/bpl
+    d1 = ram.u32(a6 + 0x44); d1 = (d1 + 0xf400f200) >>> 0;       // $28E12C/$28E130
+    resultSprite(ram, rom, 0x23dece, d1, 0x326eac, 0x0c70, 0x13); // $28E144
+    d1 = ram.u32(a6 + 0x44); d1 = (d1 + 0x0cc00700) >>> 0;       // $28E14A/$28E14E
+    d1 = (d1 + 0xfe00fa00) >>> 0;                                // $28E154
+    resultSprite(ram, rom, 0x23dece, d1, 0x327cb0, 0x0230, 0x12); // $28E168
+    d1 = (0x32c01300 - 0x3ff0300) >>> 0;                         // $28E16E/$28E174
+    resultSprite(ram, rom, 0x23dece, d1, ram.u32(a6 + 0x54), 0x0418, 0x1c);  // $28E17A
+    d1 = (0x27401300 - 0x3ff0300) >>> 0;                         // $28E18C/$28E192
+    resultSprite(ram, rom, 0x23dece, d1, ram.u32(a6 + 0x58), 0x0418, 0x1c);  // $28E198
+  }
+}
+
+/** The 16-entry digit-art table at `$28E658` (PC-relative from each caller),
+ *  read by draw2's BCD-digit walks.  Already inside the W124 `$28E646` window.
+ *  Each entry is a longword art pointer. */
+const DIGIT_ART_28E658 = 0x28e658;
+/** One BCD digit -> its art pointer: mask the low nibble, x4, read the table. */
+function digitArt(rom, nibble) {
+  const i = (nibble & 0xf) << 2;                                // $28E1BE..$28E1C8 (*2,*2)
+  return rom.u32(DIGIT_ART_28E658 + i);                         // move.l (A1,D2.w),D2
+}
+
+/** `$28E1AC` -- RESULT DRAW 2: the P1 then P2 bee-bonus, item-bonus and
+ *  medal-count NUMBER renders.  Each number is a BCD-digit walk: read the
+ *  pool word, mask $F, x4, index `$28E658`, enqueue, `lsr #4`, repeat (up to
+ *  4 digits, stopping on zero with a leading-blank suppression flag).  The
+ *  item-bonus arm BCD-converts via `$242AC6` first.  Each digit's D1 steps
+ *  `-$200` (one cell left).  Per live player only. */
+export function draw2_28E1AC(ram, rom) {
+  const a6 = SE.result;
+  let d1, d2, d3, d4;
+  // ---- P1 LIVE
+  if ((ram.u16(SE.p1) & 0x8000) !== 0) {                        // $28E1AC tst/bpl
+    // P1 bee bonus ($18(a6) BCD): up to 3 digits then the fixed label
+    let d7 = ram.u16(a6 + 0x18);                                // $28E1B6 move.w $18
+    d2 = digitArt(rom, d7);                                     // $28E1BA..$28E1C8
+    d1 = ram.u32(a6 + 0x40); d1 = (d1 + 0x080001c0) >>> 0;      // $28E1CC/$28E1D0
+    d1 = (d1 + 0xfe00ff00) >>> 0;                               // $28E1D6
+    resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);     // $28E1E4
+    d7 = (d7 >>> 4) & 0xffff;                                   // $28E1EA lsr.w #4
+    if (d7 !== 0) {                                             // $28E1EC beq
+      d2 = digitArt(rom, d7); d1 = d1AddLo(d1, -0x200);         // $28E1FA/$28E1F4 (subi -> addi -)
+      resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);   // $28E1FE
+      d7 = (d7 >>> 4) & 0xffff;                                 // $28E204
+      if (d7 !== 0) {                                           // $28E206
+        d2 = digitArt(rom, d7); d1 = d1AddLo(d1, -0x200);
+        resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16); // $28E218
+      }
+    }
+    // the "bee label" fixed sprite
+    d1 = ram.u32(a6 + 0x40); d1 = (d1 + 0x030009c0) >>> 0;      // $28E21E/$28E222
+    d1 = (d1 + 0xfe00ff00) >>> 0;                               // $28E228
+    resultSprite(ram, rom, 0x23dece, d1, 0x33252c, 0x0208, 0x16);  // $28E23C
+    // P1 item bonus ($1a(a6) binary -> BCD via $242AC6, then up to 5 digits)
+    if (ram.u16(a6 + 0x1a) !== 0) {                             // $28E242 move.w $1a/beq
+      d1 = d1AddLo(d1, -0x200);                                 // $28E24A
+      resultSprite(ram, rom, 0x23dece, d1, 0x33252c, 0x0208, 0x16);  // $28E24E (the tens-cell)
+      d7 = bcd242AC6(ram.u16(a6 + 0x1a)) >>> 0;                 // $28E254/$28E258 jsr $242AC6 -> D2 (long)
+      // D7 holds the BCD longword; walk 4 nibbles (the ROM walks until zero)
+      let nibs = d7 >>> 0;
+      d2 = digitArt(rom, nibs & 0xf);                           // $28E260..$28E26E
+      d1 = d1AddLo(d1, -0x200);                                 // $28E272
+      resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);   // $28E276
+      nibs = (nibs >>> 4) >>> 0;                                // $28E27C lsr.l #4
+      if (nibs !== 0) {                                         // $28E27E
+        d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+        resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16); // $28E290
+        nibs = (nibs >>> 4) >>> 0;                              // $28E296
+        if (nibs !== 0) {                                       // $28E298
+          d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+          resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);  // $28E2AA
+          nibs = (nibs >>> 4) >>> 0;                            // $28E2B0
+          if (nibs !== 0) {                                     // $28E2B2
+            d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+            resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);  // $28E2C4
+          }
+        }
+      }
+    }
+    // P1 medal count ($1c(a6) BCD): up to 3 digits then the fixed label
+    d7 = ram.u16(a6 + 0x1c);                                    // $28E2CA
+    d2 = digitArt(rom, d7);                                     // $28E2CE..$28E2DC
+    d1 = ram.u32(a6 + 0x40); d1 = (d1 + 0xfd4001c0) >>> 0;      // $28E2E0/$28E2E4 (addi -$2bffe40)
+    d1 = (d1 + 0xfe00ff00) >>> 0;                               // $28E2EA
+    resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);     // $28E2F8
+    d7 = (d7 >>> 4) & 0xffff;                                   // $28E2FE
+    if (d7 !== 0) {                                             // $28E300
+      d2 = digitArt(rom, d7); d1 = d1AddLo(d1, -0x200);
+      resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);   // $28E312
+      d7 = (d7 >>> 4) & 0xffff;                                 // $28E318
+      if (d7 !== 0) {                                           // $28E31A
+        d2 = digitArt(rom, d7); d1 = d1AddLo(d1, -0x200);
+        resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16); // $28E32C
+      }
+    }
+    // the "medal label" fixed sprite
+    d1 = ram.u32(a6 + 0x40); d1 = (d1 + 0xf84009c0) >>> 0;      // $28E332/$28E336 (addi -$7bff640)
+    d1 = (d1 + 0xfe00ff00) >>> 0;                               // $28E33C
+    resultSprite(ram, rom, 0x23dece, d1, 0x33252c, 0x0208, 0x16);  // $28E350
+    // P1 medal-bonus ($1e(a6) binary -> BCD, up to 5 digits) -- same shape as item
+    if (ram.u16(a6 + 0x1e) !== 0) {                             // $28E356
+      d1 = d1AddLo(d1, -0x200);                                 // $28E35E
+      resultSprite(ram, rom, 0x23dece, d1, 0x33252c, 0x0208, 0x16);  // $28E362
+      let nibs = bcd242AC6(ram.u16(a6 + 0x1e)) >>> 0;           // $28E368/$28E36C
+      d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200); // $28E374..$28E386
+      resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);   // $28E38A
+      nibs = (nibs >>> 4) >>> 0;                                // $28E390
+      if (nibs !== 0) {                                         // $28E392
+        d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+        resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16); // $28E3A4
+        nibs = (nibs >>> 4) >>> 0;                              // $28E3AA
+        if (nibs !== 0) {                                       // $28E3AC
+          d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+          resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);  // $28E3BE
+          nibs = (nibs >>> 4) >>> 0;                            // $28E3C4
+          if (nibs !== 0) {                                     // $28E3C6
+            d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+            resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);  // $28E3D8
+            nibs = (nibs >>> 4) >>> 0;                          // $28E3DE
+            if (nibs !== 0) {                                   // $28E3E0
+              d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+              resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);  // $28E3F2
+            }
+          }
+        }
+      }
+    }
+  }
+  // ---- P2 LIVE (the mirror of P1, off $44(a6) and the P2 pools $22/$24/$26/$28)
+  if ((ram.u16(SE.p2) & 0x8000) !== 0) {                        // $28E3F8 tst/bpl
+    p2NumberBlock(ram, rom, a6, 0x22, 0x24, 0x26, 0x28, 0x44);
+  }
+}
+
+/** The P2 number block is the exact mirror of P1's, off `$44(a6)` and the P2
+ *  pools.  Folded out (not looped) to stay byte-faithful to the ROM's
+ *  `$28E402..$28E642` -- the ROM repeats the whole P1 shape verbatim. */
+function p2NumberBlock(ram, rom, a6, beeOff, beeBin, itemOff, itemBin, base) {
+  let d1, d2, d7;
+  // bee bonus
+  d7 = ram.u16(a6 + beeOff);
+  d2 = digitArt(rom, d7);
+  d1 = ram.u32(a6 + base); d1 = (d1 + 0x080001c0) >>> 0; d1 = (d1 + 0xfe00ff00) >>> 0;
+  resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+  d7 = (d7 >>> 4) & 0xffff;
+  if (d7 !== 0) {
+    d2 = digitArt(rom, d7); d1 = d1AddLo(d1, -0x200);
+    resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+    d7 = (d7 >>> 4) & 0xffff;
+    if (d7 !== 0) {
+      d2 = digitArt(rom, d7); d1 = d1AddLo(d1, -0x200);
+      resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+    }
+  }
+  // bee label
+  d1 = ram.u32(a6 + base); d1 = (d1 + 0x030009c0) >>> 0; d1 = (d1 + 0xfe00ff00) >>> 0;
+  resultSprite(ram, rom, 0x23dece, d1, 0x33252c, 0x0208, 0x16);
+  // item bonus
+  if (ram.u16(a6 + beeBin) !== 0) {
+    d1 = d1AddLo(d1, -0x200);
+    resultSprite(ram, rom, 0x23dece, d1, 0x33252c, 0x0208, 0x16);
+    let nibs = bcd242AC6(ram.u16(a6 + beeBin)) >>> 0;
+    d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+    resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+    nibs = (nibs >>> 4) >>> 0;
+    if (nibs !== 0) {
+      d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+      resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+      nibs = (nibs >>> 4) >>> 0;
+      if (nibs !== 0) {
+        d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+        resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+        nibs = (nibs >>> 4) >>> 0;
+        if (nibs !== 0) {
+          d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+          resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+        }
+      }
+    }
+  }
+  // medal count
+  d7 = ram.u16(a6 + itemOff);
+  d2 = digitArt(rom, d7);
+  d1 = ram.u32(a6 + base); d1 = (d1 + 0xfd4001c0) >>> 0; d1 = (d1 + 0xfe00ff00) >>> 0;
+  resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+  d7 = (d7 >>> 4) & 0xffff;
+  if (d7 !== 0) {
+    d2 = digitArt(rom, d7); d1 = d1AddLo(d1, -0x200);
+    resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+    d7 = (d7 >>> 4) & 0xffff;
+    if (d7 !== 0) {
+      d2 = digitArt(rom, d7); d1 = d1AddLo(d1, -0x200);
+      resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+    }
+  }
+  // medal label
+  d1 = ram.u32(a6 + base); d1 = (d1 + 0xf84009c0) >>> 0; d1 = (d1 + 0xfe00ff00) >>> 0;
+  resultSprite(ram, rom, 0x23dece, d1, 0x33252c, 0x0208, 0x16);
+  // medal bonus
+  if (ram.u16(a6 + itemBin) !== 0) {
+    d1 = d1AddLo(d1, -0x200);
+    resultSprite(ram, rom, 0x23dece, d1, 0x33252c, 0x0208, 0x16);
+    let nibs = bcd242AC6(ram.u16(a6 + itemBin)) >>> 0;
+    d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+    resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+    nibs = (nibs >>> 4) >>> 0;
+    if (nibs !== 0) {
+      d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+      resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+      nibs = (nibs >>> 4) >>> 0;
+      if (nibs !== 0) {
+        d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+        resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+        nibs = (nibs >>> 4) >>> 0;
+        if (nibs !== 0) {
+          d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+          resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+          nibs = (nibs >>> 4) >>> 0;
+          if (nibs !== 0) {
+            d2 = digitArt(rom, nibs & 0xf); d1 = d1AddLo(d1, -0x200);
+            resultSprite(ram, rom, 0x23dece, d1, d2, 0x0208, 0x16);
+          }
+        }
+      }
+    }
+  }
 }
 
 // ----------------------------------------------------- the animation chain
@@ -825,6 +1187,62 @@ export function banner28E7F8(ram, ctx, rom) {
   bannerSlideOutStep(ram, ctx);
 }
 
+/** `$28EB28`/`$28EB5C` -- one banner sprite's two paint calls (both bucket 22):
+ *  `$23F782` (RECORD convention) enqueues the frame record at `base` verbatim,
+ *  then `$23F7F4` (REGISTER convention) draws the banner PICTURE (art $1F18E4)
+ *  at a position derived from `base`.  The picture's D0 = ($3800 - $2(base))<<1
+ *  and its packed D1 swaps twice, adding $8/$6(base) and D0. */
+function bannerPaint(ram, base) {
+  enqueueRequest(ram, 22, base);                               // $28EB28 jsr $23F782
+  let d0 = (0x3800 - ram.u16(base + 0x02)) & 0xffff;          // $28EB2E/$28EB32
+  d0 = (d0 + d0) & 0xffff;                                     // $28EB36 add.w D0,D0
+  let d1 = ram.u32(base + 0x02);                              // $28EB38 move.l $2(base),D1
+  d1 = d1AddLo(d1, ram.u16(base + 0x08));                     // $28EB3C add.w $8
+  d1 = d1Swap(d1);                                             // $28EB40
+  d1 = d1AddLo(d1, ram.u16(base + 0x06));                     // $28EB42 add.w $6
+  d1 = d1AddLo(d1, d0);                                        // $28EB46 add.w D0
+  d1 = d1Swap(d1);                                             // $28EB48
+  const d3 = ram.u16(base + 0x0e);                            // $28EB4E move.w $e,D3
+  const d4 = ram.u16(base + 0x1c);                            // $28EB52 move.w $1c,D4
+  enqueueRegisters(ram, 22, d1, 0x1f18e4, d3, d4);            // $28EB56/$28EB5C (D2 overriden)
+}
+
+/** `$28EDC0` -- the banner PICTURE draw, called every frame at the top of type
+ *  6.  When `$81E02C == $FFFF` it returns immediately; otherwise it reads the
+ *  per-stage art byte (`$28ECB2`), indexes `$28EE1E[artbyte*8]` for the art
+ *  pointer (D2), and -- when `$81E02C != 0` -- enqueues the picture via
+ *  `$23DECE` (register, bucket 0) at the fixed banner position D1=$10000.  The
+ *  ENTRY arm (`$81E02C == 0`, the `$23F82A` ZOOMING enqueue on the `$23E78C`
+ *  scale table, bucket 22) is a different zooming routine than `$23D9E2`'s
+ *  family and is NOT ported here -- noted by address. */
+function bannerDraw28EDC0(ram, rom, ctx) {
+  if (ram.u16(SE.e02c) === 0xffff) return;                    // $28EDC0 cmpi/beq rts
+  const artByte = artByte28ECB2(ram);                         // $28EDCC bsr $28ECB2 -> D0
+  const d2 = rom.u32(0x28ee1e + (artByte << 3));              // $28EDD0 lsl #3 / $28EDDA (A0)
+  const d1 = 0x00010000;                                      // $28EDDC/$28EDE2 ($38001c00-$37ff1c00)
+  const d3 = 0x38e0, d4 = 0x17;                               // $28EDE8/$28EDEC
+  if (ram.u16(SE.e02c) !== 0) {                               // $28EDF0 tst/bne -> normal arm
+    resultSprite(ram, rom, 0x23dece, d1, d2, d3, d4);         // $28EE16 jsr $23dece
+    return;
+  }
+  // $28EDFA..$28EE14 -- the ENTRY banner: D6 = [$28EE46 + $81E028*4], jsr $23F82A
+  // (a ZOOMING enqueue on the $23E78C scale table, bucket 22 -- NOT $23D9E2's
+  // family, which `enqueueZoomedRequest` covers).  Its own scale dispatch is
+  // presentation tier; noted rather than half-ported.
+  note(ctx, 0x23f82a, '$28EE0E jsr $23F82A -- the banner ENTRY picture (zooming '
+    + 'enqueue on the $23E78C scale table, bucket 22; distinct from $23D9E2). R2b');
+}
+
+/** `$28ECB2` -- the per-stage art byte.  `$28EDA2[stageX4]` is a longword RAM
+ *  pointer (the table is `$81DFFC, $81E004, $81E00C, ...` = `$81DFFC + n*8`),
+ *  so the ROM's pointer chase is equivalent to `0x81DFFC + (stageX4>>2)*8`; the
+ *  byte read is at `list + 7 - $81E02A`.  Same computation `loadBannerArt` uses. */
+function artByte28ECB2(ram) {
+  const listBase = 0x81dffc;                                   // $28EDA2[0] (the pointer chase)
+  const list = listBase + (ram.u16(SE.stageX4) >> 2) * 8;
+  return ram.u8(list + 7 - ram.u16(SE.e02a));                 // $28ECC2/$28ECC4/$28ECCA
+}
+
 /** One frame of the slide-out: init from the template on the first frame, then
  *  run the two sprites' counter+motion, draining `$81DFEC`.  When it hits zero,
  *  fire the teardown `$28EAD4`. */
@@ -859,7 +1277,11 @@ function bannerSlideOutStep(ram, ctx) {
         ram.setU16(BANNER.dfec, u16(ram.u16(BANNER.dfec) - 1)); // $28EB26 subq (a4)
       }
     }
-    note(ctx, 0x23f782, '$28EB28/$28EBB2 jsr $23F782 + $23F7F4 -- banner paint. R2b');
+    // W125: the banner paint -- `$23F782` (record convention, bucket 22) draws
+    // the banner frame from the sub-record at `base`, then `$23F7F4` (register
+    // convention, bucket 22) draws the banner PICTURE (art $1F18E4) at the
+    // computed position.  Both feed bucket 22 ($809274/$80AFE0).
+    bannerPaint(ram, base);
   }
   // ---- teardown `$28EA98`: when `$81DFEC` reaches zero, fire `$28EAD4`.
   if (ram.u16(BANNER.dfec) !== 0) return;                   // $28EA98 tst (a4)/bne
@@ -884,8 +1306,7 @@ export function makeStageClear(rom) {
     const a5 = slot;
     if (ram.u8(a5 + 0x02) === 0) { init28D566(ram, a5, ctx); return; }   // $28D63C
     if (ram.u8(a5 + 0x02) === 2) { destroy28D5E6(ram, a5); return; }     // $28D644
-    note(ctx, 0x28edc0, '$28D64C jsr $28EDC0 -- the banner DRAW (the $23F82A/'
-      + '$23DECE sprite path), the presentation tier');
+    bannerDraw28EDC0(ram, rom, ctx);                             // $28D64C jsr $28EDC0
     const st = () => ram.u8(a5 + 0x06);
     // ---- state 4 ($28D652).  `$81DFF6` is set in state 2 and cleared ONLY by
     // `$28EAD4` inside `banner28E7F8` (called at the foot of this handler).  So
@@ -953,8 +1374,18 @@ export function makeStageClear(rom) {
       ram.setU8(a5 + 0x07, n);
       if (n === 0) {
         ram.setU16(SE.dffa, 1);                        // $28D764 jsr $28E7C0
+        // $28D770 jsr $246410 -- the ANIMATION-OBJECT LOADER (a SIBLING of
+        // `$24652A`, NOT the per-frame drain: W125 disasm). It reads the
+        // `$28D7FE` script, claims a player slot at `$810346`, and installs N
+        // nodes from `$80FA86` with full content (code ptrs from `$24627A`,
+        // anim data from `$246B38`, the `$30(node)` script copy, lifetime
+        // `$18:=$FFFF0000`). The install needs the `$24627A`/`$246B38`/`$28D7FE`
+        // tables windowed AND is inert without the unported animation-object
+        // EXECUTION engine (see PRESENTATION_DEVIATION[0x28d6fc]); left a note.
         note(ctx, 0x246410, '$28D770 jsr $246410 off the $28D7FE script -- the '
-          + 'ANIMATION-OBJECT loader, the presentation tier');
+          + 'ANIMATION-OBJECT LOADER (sibling of $24652A; seeds $18, does not '
+          + 'drain it). Inert without the unported execution engine; tables '
+          + '$24627A/$246B38/$28D7FE not yet windowed');
         ram.setU8(a5 + 0x06, 1);                       // $28D776
         note(ctx, 0x28d77c, '$28D77C..$28D7DA -- sixteen longwords out of '
           + '$A00000+$5C0 (PALETTE RAM, which this port does not model) through '
