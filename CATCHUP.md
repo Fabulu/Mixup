@@ -689,6 +689,19 @@ Phase 3 recon IN FLIGHT: the stage-2 data windows (`$229DF8` palette, `$228658` 
 `$2325D0` spawn script) + the boot-from-rung verification + the garbage-spawn risk. Then S1
 (export) + S2 (boot verify).
 
+## 7w. UPDATE -- 2026-08-08: Phase 3 recon done (W133); S1+S2 (stage-2 export + boot verify) IN FLIGHT
+
+Phase 3 recon (W133): TWO corrections -- (1) the spawn-record stride is 8 (hardcoded, ported
+correctly); the x16 at `$263392` is the stage-table index, NOT a spawn stride; (2) the
+garbage-spawn risk is structurally IMPOSSIBLE (the port never calls `installStage`, so the walker
+no-ops at stage-1's `$FFFF` terminator). Stage-2 data windows: `$229DF8` (palette, 0x800),
+`$228658` (column stream, 168x36=0x17A0), `$223000` (SPAWN palette banks, 0x2300, live-only).
+Most stage-2 data is ALREADY exported (WAVE 13). Boot: seed from lf19500, step ~100-400 frames
+-> result screen completes -> type-6 state 3 -> stage 2 boots. NO MAME needed. S2 expected: clean
+scroll ~36 frames + a clean throw (`unreached $2627AC`, the stage-2 BGELEM constructor).
+
+S1+S2 (the data export + boot verification) IN FLIGHT. Proves the multi-stage architecture.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
