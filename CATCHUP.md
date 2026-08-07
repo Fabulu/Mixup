@@ -637,6 +637,17 @@ by default (normal play undisturbed). Key subtlety: the browser cannot import `r
 the incremental hash; a cross-check gate proves it). 2 waves: **W131 (REC + the browser digest
 module) IN FLIGHT**; W132 (PLAY + the divergence UI) next.
 
+## 7r. UPDATE -- 2026-08-07: W131 (live-page REC + browser digest) DONE; W132 (PLAY + divergence UI) IN FLIGHT
+
+W131 landed (`cd9e74e`): the browser digest module (`src/web/replay.js`, `crypto.subtle`
+accumulate-then-hash == the Node incremental hash, cross-check byte-identical), the REC tee + seed
+capture in `app.js`, the `#rec` button + Blob download in `index.html`. Off by default (normal
+play undisturbed). Gates 1297/0/0. NOT yet published (REC is half the feature; batch with W132).
+
+W132 (PLAY + divergence UI) IN FLIGHT: boot-from-`.replay`, feed portin, compare period digests
+(reuse the W131 browser module), surface the first divergent window. Then publish W131+W132
+together (the complete REC/PLAY feature).
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
