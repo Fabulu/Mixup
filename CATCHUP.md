@@ -600,6 +600,21 @@ packaging wave (W129, IN FLIGHT): `games/ddpdoj/tools/replay.mjs` (player + buil
 imports only) + `NOTES-replay.md` v1 spec + a gitignored fixture + a gate stage. Phase 4c (live
 REC/PLAY) deferred (depends on 4a).
 
+## 7o. UPDATE -- 2026-08-07: Phase 4a+4b (replay packaging) DONE (`cdd4aaf`); tooling, no publish; next phase owner-TBD
+
+W129 landed (`cdd4aaf`): `games/ddpdoj/tools/replay.mjs` (verify + record modes; reuses portdiff's
+EXACT digest feed so a green `.replay` is provably the same property the oracle checks), the v1
+`.replay` format spec + the RTC freeze decision in `NOTES-replay.md` (the port does NOT read the
+RTC -- grep zero; the date is frozen in the seed, zero code), and `tests/w129replay.test.js` (the
+gate, 6/6, A/B/C red-validated). TOOLING only -- no `src/` game-logic change, not bundled into the
+live page, so no deploy needed. Gates 1290/0/0. Phase 4c (live REC/PLAY) deferred (depends on 4a,
+now done).
+
+The continue-default (Phase 4) is FULFILLED. The next phase is owner-TBD (a strategic fork): RANK
+Wave B (the hyper subsystem), Phase 3 (stage-2 data + boot), Phase 4c (live REC/PLAY), Phase 5
+(sound via W27 / slowdown via MiSTer), or Wave B input (Gradius+Batman, owner-gated). The cron
+should AWAIT owner steer -- do not auto-dispatch.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
