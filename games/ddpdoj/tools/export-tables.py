@@ -1790,6 +1790,125 @@ SHOT_WINDOWS.append(
                        "pointer $81315C.  Stage-1 base $34; the seed's $81309E=$35 "
                        "is this byte + (clock>>8)"))
 
+# ==================== W133: STAGE-2 BACKGROUND DATA (the boot windows) =========
+#
+# W124's worklog (6.3, "THE SEEDED GATE CANNOT REACH THE BANNER DRAIN") added the
+# next-stage BG PALETTE block $229DF8 and named the COLUMN STREAM behind it as
+# "a future data-export wave ... not result-screen logic".  This is that wave.
+# `src/background.js backgroundInit` reads both the way the 68000 does when the
+# stage-transition rebuild spawns the stage-2 background object:
+#
+#   $2611B2  lea ($261252,PC),A0 / adda.w $813096,A0 / movea.l (A0),A0
+#   $2611C4  jsr $2415E8   with D0=0, D1=$1F  -> 32 banks x 64 B out of
+#            rom.u32($261252 + stage*4).  Stage 2's block is $229DF8 (W124).
+#   $2611D6  lea ($261266,PC),A0 / adda.w $813096,A0 / movea.l (A0),A0
+#   $2611E0  colptr = rom.u32($261266 + stage*4) + (clock>>2)*36, then 15 cols
+#            x 9 longwords are pre-filled into the BG ring.  Stage 2's stream is
+#            $228658 (this window).
+#
+# The two blocks ABUT: $228658 + $17A0 == $229DF8 == the palette block, and
+# $229DF8 + $800 == $22A5F8 == stage-3's own column stream (recon section 2's
+# five-stream run $228658/$22A5F8/$22B1E8/$22D770).  `check_stage2_boot_data`
+# pins all three relationships out of the image on every export, and re-reads
+# the per-stage pointers so a moved table stops the build rather than the boot.
+SHOT_WINDOWS.append(
+    (0x228658, 0x17A0, "W133: the STAGE-2 BG column stream, 168 columns x 36 B "
+                       "= 6048 B ($2611D6 -> $26135A), the column stream W124 "
+                       "named as the remaining stage-1-tail gap.  Abuts the W124 "
+                       "palette block: $228658 + $17A0 == $229DF8"))
+
+# W133 window 3 -- DEFERRED, and named rather than skipped.  The stage-2 SPAWN
+# palette-bank sources $2236F8..$2252F8 (19 banks x 64 B) live in the
+# $223000..$2252F8 block; the 20th bank $246BB8 is already covered by W91's
+# $246BB8/$246BF8 windows.  They are read by the OBJECT-STREAM palette installer
+# `$24150A` when a stage-2 ENEMY spawns.  The headless boot of this wave never
+# reaches them: the port does not call `installStage` for stage 2, so the spawn
+# walker breaks at stage-1's $FFFF terminator and no stage-2 enemy is ever
+# created.  Live-page-only this wave; the first live stage-2 enemy is a future
+# port and will add `$223000..$2252F8` then.  A read there today stays a LOUD
+# NAMED THROW out of src/rom.js, which is the correct answer to an unproven need.
+
+
+def check_stage2_boot_data(d: bytes) -> None:
+    """W133.  The two stage-2 BG data windows the boot reads and the geometry
+    they sit in.  Window 1 ($229DF8, the palette block) is W124's; window 2
+    ($228658, the column stream) is this wave's.  Both declarations are DERIVED
+    from SHOT_WINDOWS rather than typed a second time here, so a change to either
+    declaration fails the export (not a player's machine), the rule W92 and W93
+    already follow.  Also re-reads the three per-stage pointers out of the image
+    and pins the stage-2 elemTable entry that the boot test expects to throw on.
+    """
+    # ---- window 1: W124's $229DF8 palette block, derived from the declaration.
+    PAL2, PAL2_LEN = 0x229DF8, 0x0800
+    decl1 = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == PAL2]
+    if decl1 != [(PAL2, PAL2_LEN)]:
+        raise SystemExit(
+            f"W133: the stage-2 BG palette window is declared {decl1} and must be "
+            f"(${PAL2:06X}, ${PAL2_LEN:X}) -- it is the W124 window the boot reads "
+            f"through $2611C4, and a different declaration has to argue with this "
+            f"check rather than silently change the exported bytes")
+    # ---- window 2: this wave's $228658 column stream, same derivation.
+    COL2, COL2_LEN = 0x228658, 0x17A0
+    decl2 = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == COL2]
+    if decl2 != [(COL2, COL2_LEN)]:
+        raise SystemExit(
+            f"W133: the stage-2 BG column-stream window is declared {decl2} and "
+            f"must be (${COL2:06X}, ${COL2_LEN:X}) -- 168 columns x 36 B, the table "
+            f"W124 named as the remaining stage-1-tail gap")
+    # ---- the three extent invariants, all exact.
+    STAGE3_COLSTREAM = 0x22A5F8
+    if PAL2 + PAL2_LEN != STAGE3_COLSTREAM:
+        raise SystemExit(
+            f"W133: ${PAL2:06X} + ${PAL2_LEN:X} must be the stage-3 column-stream "
+            f"landmark ${STAGE3_COLSTREAM:06X} (they abut); it is "
+            f"${PAL2 + PAL2_LEN:06X}. A moved stage-3 stream or a resized stage-2 "
+            f"palette block has to surface here")
+    if COL2 + COL2_LEN != PAL2:
+        raise SystemExit(
+            f"W133: ${COL2:06X} + ${COL2_LEN:X} must be the stage-2 palette block "
+            f"${PAL2:06X} (the column stream abuts the palette block); it is "
+            f"${COL2 + COL2_LEN:06X}")
+    if COL2_LEN % 36 != 0:
+        raise SystemExit(
+            f"W133: the stage-2 column stream is ${COL2_LEN:X} bytes, not a whole "
+            f"number of 36-byte columns (COL2_LEN % 36 == {COL2_LEN % 36}); a "
+            f"non-whole stream cannot be walked the way $26135A walks it")
+    COLS = COL2_LEN // 36
+    if COLS != 168:
+        raise SystemExit(
+            f"W133: the stage-2 column stream is {COLS} columns, not 168 -- recon "
+            f"section 2's five-stream layout has stage 2 at 168 and the boot reads "
+            f"exactly that many")
+    # ---- the three per-stage pointer tables, re-read out of the image.
+    BGPAL_TABLE, BGCOL_TABLE, BGELEM_TABLE = 0x261252, 0x261266, 0x262302
+    if u32(d, BGPAL_TABLE + 4) != PAL2:
+        raise SystemExit(
+            f"W133: $261252[1] (stage-2 BG palette) is ${u32(d, BGPAL_TABLE + 4):06X}, "
+            f"not ${PAL2:06X}. src/background.js BGTAB.palette + stage reads this "
+            f"longword and the W124 window is declared for ${PAL2:06X}")
+    if u32(d, BGCOL_TABLE + 4) != COL2:
+        raise SystemExit(
+            f"W133: $261266[1] (stage-2 BG column stream) is "
+            f"${u32(d, BGCOL_TABLE + 4):06X}, not ${COL2:06X}. src/background.js "
+            f"BGTAB.colStream + stage reads this longword and the W133 window is "
+            f"declared for ${COL2:06X}")
+    # ---- the stage-2 BGELEM handler table and the constructor the boot throws on.
+    ELEM2 = u32(d, BGELEM_TABLE + 4)
+    if ELEM2 != 0x26227E:
+        raise SystemExit(
+            f"W133: $262302[1] (stage-2 BGELEM handler table) is ${ELEM2:06X}, not "
+            f"$26227E. The boot test asserts the first op-$10 constructor this "
+            f"table names is $2627AC; a moved table has to re-derive that here")
+    ctor0 = u32(d, ELEM2)
+    if ctor0 != 0x2627AC:
+        raise SystemExit(
+            f"W133: the stage-2 elemTable [0] is ${ctor0:06X}, not $2627AC. The boot "
+            f"reaches elemSpawn -> rom.u32(tab + 0*4) and the test asserts the "
+            f"Unreached throw carries $2627AC; if the cartridge names a different "
+            f"first constructor, both the test and this pin have to move together")
+    # and $2627AC must NOT be one of the port's 13 stage-1 constructors, which is
+    # exactly the w86bgelem.test.js W86/1 assertion.  Stated here so a future wave
+    # that ports stage 2 sees the dependency next to the data, not only in the test.
 
 
 def check_boss_arrival_tables(d: bytes) -> None:
@@ -4053,6 +4172,7 @@ def build(d: bytes) -> dict:
     check_palette_upload_family(d)             # W91 -- THE SPRITE PALETTE
     check_bg_palette_and_fade(d)               # W92 -- THE BACKGROUND THIRD
     check_text_palette_boot(d)                 # W93 -- THE RESET PATH'S FIVE
+    check_stage2_boot_data(d)                  # W133 -- STAGE-2 BG boot windows
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
     levels = speed_index_set(d)
