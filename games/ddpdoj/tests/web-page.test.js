@@ -699,8 +699,11 @@ test('Demo.draw() renders the HELD list, and step() takes it BEFORE the frame',
     const body = src.slice(src.indexOf('  step() {'));
     // The exact call sites, not a substring: the prose above them says "BEFORE
     // `g.step()`" and a looser search finds the COMMENT rather than the code.
+    // WAVE 131: the argument is now `pw` (computed once from
+    // `currentPortWord()` so the REC tee can capture the same word the
+    // simulation sees); the ORDER this test pins is unchanged.
     const iSnap = body.indexOf('this.portList = portSpriteList(');
-    const iStep = body.indexOf('g.step(currentPortWord())');
+    const iStep = body.indexOf('g.step(pw)');
     assert.ok(iSnap >= 0 && iStep >= 0, 'step() must do both');
     assert.ok(iSnap < iStep,
       'step() builds the port list AFTER g.step(), so the page renders the '

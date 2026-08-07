@@ -222,6 +222,20 @@
          padding: 8px 10px; background: #1a130b; border-radius: 4px; }
   #rung-banner b { color: #ffe6b0; }
   #rung-banner .rung { color: #ef8a8a; font-weight: bold; }
+  /* WAVE 131 -- LIVE-PAGE REC.  The #rec button is a toggle: it lights RED
+     while armed so the owner can see the page is recording.  #replay-banner
+     is parallel to #rung-banner and carries the REC status (armed / saved);
+     the PLAY green/report text is W132. */
+  #bar button.on-rec { background: #5a1c1c; color: #ffb0b0;
+     border-color: #b04040; box-shadow: 0 0 6px 1px #b0404088 inset; }
+  #rec[disabled] { opacity: 0.5; cursor: default; }
+  #replay-banner { position: fixed; inset: 8px 8px auto auto; z-index: 30;
+     display: none; max-width: 46vw; white-space: pre-wrap; font-size: 12px;
+     line-height: 1.35; color: #ffd0a0;
+     border: 1px solid #5a4a2b; border-left: 3px solid #efc88a;
+     padding: 8px 10px; background: #1a130b; border-radius: 4px; }
+  #replay-banner b { color: #ffe6b0; }
+  #replay-banner .rec { color: #ef8a8a; font-weight: bold; }
 </style>
 </head>
 <body>
@@ -232,6 +246,7 @@
   <span id="stats"></span>
   <button id="rot" type="button" aria-pressed="true" title="TATE = the cabinet's own 224x448 portrait picture. WIDE = the raw 448x224 board buffer, unrotated.">TATE</button>
   <button id="ctrl" type="button" aria-pressed="false" title="Touch control scheme: AUTO / FIXED 8-way D-pad / FLOATING stick. Cycles on click.">CTRL</button>
+  <button id="rec" type="button" aria-pressed="false" title="Record a .replay of this run: arm at the current frame, play, click again to save. The file carries the seed + one input word per logic frame + a sha256 state digest the headless player (tools/replay.mjs) verifies.">REC</button>
   <button id="infobtn" type="button" aria-pressed="false">INFO</button>
 </div>
 
@@ -266,6 +281,7 @@
 <div id="status">loading&hellip;</div>
 <div id="err"></div>
 <div id="rung-banner"></div>
+<div id="replay-banner"></div>
 
 <div id="info">
 <div class="sheet">
@@ -526,6 +542,8 @@ const dpadEl = document.getElementById('dpad');
 const stickzone = document.getElementById('stickzone');
 const rotBtn = document.getElementById('rot');
 const ctrlBtn = document.getElementById('ctrl');
+const recBtn = document.getElementById('rec');
+const replayBannerEl = document.getElementById('replay-banner');
 const infoEl = document.getElementById('info');
 const infoBtn = document.getElementById('infobtn');
 
@@ -752,6 +770,75 @@ try {
     try { localStorage.setItem(STORE, mode); } catch { /* private mode */ }
     paintRot();
     fit();
+  });
+
+  // WAVE 131 -- LIVE-PAGE REC.  A toggle: click to ARM at the current frame
+  // (the seed is captured NOW, from the live RAM/BG/tables), play, click again
+  // to STOP and download the `.replay`.  The recorder is a null flag on Demo,
+  // so until the first click the page plays exactly as before.  The download is
+  // a Blob + a synthetic `<a download>` -- the standard browser save-as path.
+  // `tools/replay.mjs <file>` verifies the result headlessly; that is W132's
+  // on-page PLAY, not this wave's.
+  let recArmed = false;
+  let recArming = false;             // guard the async arm across double-clicks
+  const paintRec = () => {
+    recBtn.textContent = recArmed ? 'STOP REC' : 'REC';
+    recBtn.classList.toggle('on-rec', recArmed);
+    recBtn.setAttribute('aria-pressed', String(recArmed));
+  };
+  recBtn.addEventListener('click', async () => {
+    if (recArming) return;
+    if (!recArmed) {
+      recArming = true;
+      recBtn.disabled = true;
+      try {
+        await app.armRecording();
+        recArmed = true;
+        replayBannerEl.innerHTML =
+          `<span class="rec">REC armed</span> at lf${app.game.logicFrame}`
+          + `\nsaving one .replay word per logic frame; click STOP REC to save.`;
+        replayBannerEl.style.display = 'block';
+      } catch (e) {
+        showError(e, 'arming REC failed.');
+      } finally {
+        recArming = false;
+        recBtn.disabled = false;
+      }
+      paintRec();
+      return;
+    }
+    // STOP: package + download.
+    recArming = true;
+    recBtn.disabled = true;
+    try {
+      const obj = await app.stopRecording();
+      recArmed = false;
+      paintRec();
+      if (obj) {
+        const n = obj.portin.count;
+        const fname = `doj-lf${obj.seed.lf}-${n}.replay`;
+        const blob = new Blob([JSON.stringify(obj, null, 1)],
+          { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = fname;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        replayBannerEl.innerHTML =
+          `<span class="rec">REC saved</span> ${fname}\n`
+          + `${n} logic frames, ${obj.digest.periods.length} period(s), `
+          + `cumulative ${obj.digest.cumulative.slice(0, 12)}...\n`
+          + `verify headlessly: node tools/replay.mjs ${fname}`;
+        replayBannerEl.style.display = 'block';
+      } else {
+        replayBannerEl.style.display = 'none';
+      }
+    } catch (e) {
+      showError(e, 'stopping REC failed.');
+    } finally {
+      recArming = false;
+      recBtn.disabled = false;
+    }
   });
 
   // WAVE 44 -- THE A/B, ON ONE KEY.  `port` (default) draws the port's own

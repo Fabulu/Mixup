@@ -182,8 +182,18 @@ import {
   parseSpriteList, BUFFER_STRIDE, RAM_STRIDE, SPRITE_LIMIT,
 } from '../render/index.js';
 import { mergePalette } from '../palette.js';
-import { loadBundle, httpReader, AssetError } from './assets.js';
+import { loadBundle, httpReader, gunzip, AssetError } from './assets.js';
 import { attachInput, pollInput, currentPortWord } from './input.js';
+// WAVE 131 -- the browser-side replay module (live-page REC).  Owns the
+// `.replay` digest feed + ACCUMULATE-then-hash (SubtleCrypto has no
+// incremental update), the recorder arm/stop, and the v1 packaging.  Imports
+// only browser-safe `stateVector`/`CLAIMED` from `../state.js`; does NOT
+// import `tools/replay.mjs` (that is a Node tool).
+import {
+  armRecorder, stopRecorder, b64 as recB64, beBytesFromWords, sha256Hex,
+  FORMAT as REPLAY_FORMAT, BUILD as REPLAY_BUILD, PERIOD_FRAMES as REPLAY_PERIOD,
+} from './replay.js';
+import { CLAIMED } from '../state.js';
 
 // --------------------------------------------------------------- PRESENTATION
 //
@@ -672,6 +682,15 @@ class Demo {
     // renderer changes, and `tools/bundlegate.mjs` is what proves that.
     this.renderer = new Renderer(bundle.roms, bundle.tileFns);
     this.rung = rung;
+    // WAVE 131 -- LIVE-PAGE REC.  `recorder` is null until the owner arms REC
+    // from the #rec button; when null, `step()` is the same path as today
+    // (one `const pw = currentPortWord()` binding + two null checks are the
+    // only overhead).  `assetBase` is the URL `boot()` resolved for `assets/`
+    // so `armRecording()` can re-fetch `player.tables.json.gz` for a
+    // byte-exact `tablesSha256` (the one seed field `bundle.tables` alone
+    // cannot reproduce, because it is the PARSED json, not the shipped bytes).
+    this.recorder = null;
+    this.assetBase = null;
     this.seedLf = rung ? rung.lf : this.cap.frames[0].lf;
     // WAVE 13.  THE PORT NOW OWNS THE BACKGROUND'S MOTION.  Two things go in
     // and one comes out:
@@ -782,7 +801,17 @@ class Demo {
     // without stepping, and that must not shift the list by a frame.
     this.portList = portSpriteList(g.ram, this.romToPacked, this.listOpts);
     g.ram.setU8(INVULN, 0xff);           // the scenario's intervention
-    g.step(currentPortWord());
+    // WAVE 131 -- THE REC TEE.  `pw` is computed once and used for both the
+    // tee (when armed) and the step, so the recorded word is exactly the word
+    // the simulation saw -- the one property a `.replay` must have.  The tee
+    // is BEFORE the step (portin is the input); the digest feed is AFTER the
+    // step (it hashes the state the step produced), matching `replay.mjs:136`
+    // (poke, step(portin[i]), then stateVector -> feed line).  Both hooks are
+    // null-guarded, so an unarmed page runs the same binding plus two checks.
+    const pw = currentPortWord();
+    if (this.recorder) this.recorder.input(pw);
+    g.step(pw);
+    if (this.recorder) this.recorder.feed();
     this.stepsRun++;
     // WAVE 14 -- THE SCROLL DRIVES THE DOWNLOAD.  The VM's own column cursor is
     // the same axis the background shards are cut on, so "which shard do I need
@@ -791,6 +820,85 @@ class Demo {
     // Everything is queued at boot anyway (`prefetchAll`); this decides ORDER,
     // which is what matters when the link is slow.
     this.bundle.bg?.followColumn(this.streamColumn());
+  }
+
+  /**
+   * WAVE 131 -- ARM the live-page REC.  Captures the seed from the live
+   * `Demo.game` at the moment of arming (RAM, BG ring, lf/vf, tables) and
+   * starts the recorder that `step()` tees one portin word + one digest feed
+   * line into each logic frame.  Idempotent while armed (returns the active
+   * recorder).  The seed is a DETACHED snapshot: `ram.b.slice()` copies the
+   * live 128 KiB so later frames do not mutate the recording's seed, and
+   * `beBytesFromWords(vram.w)` is the 4096-BE-byte form the v1 `bgB64` field
+   * carries (the inverse of `beWords`, the layout `Game`'s `bgSeed` expects).
+   *
+   * The tables are RE-FETCHED (`player.tables.json.gz` -> gunzip -> base64)
+   * when `assetBase` is set, so `version.tablesSha256` matches the shipped
+   * bytes byte-for-byte.  If the fetch fails (a non-HTTP dev page, or the gz
+   * is unreachable), the fallback is `JSON.stringify(bundle.tables)` -- lossy
+   * for `tablesSha256` but the headless player `JSON.parse`s it back lossless,
+   * so the recording still replays; `version.tablesSha256` is flagged
+   * `'fallback-json'` so the discrepancy is on the file, not hidden.
+   */
+  async armRecording() {
+    if (this.recorder) return this.recorder;
+    const g = this.game;
+    const lf = g.logicFrame;
+    const vf = g.videoFrame;
+
+    // RAM: detached copy of the live 128 KiB (`ram.b` is mutated in place every
+    // step).  BG: the live 2048-word ring as 4096 big-endian bytes.
+    const ramB64 = recB64(g.ram.b.slice());
+    const bgB64 = recB64(beBytesFromWords(g.vram.w));
+
+    // Tables: prefer the shipped bytes (byte-exact tablesSha256); fall back to
+    // the parsed bundle stringified.  `sha256Hex` hashes the SAME bytes that
+    // go into tablesB64 so the two fields agree by construction.
+    let tablesBytes = null;
+    if (this.assetBase) {
+      try {
+        tablesBytes = await gunzip(await httpReader(this.assetBase)('player.tables.json.gz'));
+      } catch {
+        tablesBytes = null;          // surfaced below as the fallback marker
+      }
+    }
+    let tablesSha256;
+    if (tablesBytes) {
+      tablesSha256 = await sha256Hex(tablesBytes);
+    } else {
+      tablesBytes = new TextEncoder().encode(JSON.stringify(this.bundle.tables));
+      tablesSha256 = 'fallback-json';
+    }
+    const tablesB64 = recB64(tablesBytes);
+
+    const seeded = this.stats().seeded;
+    this.recorder = armRecorder(g, {
+      columns: CLAIMED,                 // a live recording freezes ALL of CLAIMED
+      periodFrames: REPLAY_PERIOD,
+      seed: { lf, vf, ramB64, bgB64, tablesB64 },
+      version: {
+        git: 'unknown',                // the browser cannot run git; see worklog 131
+        tablesSha256,
+        buildId: 'ddpdoj-live',
+      },
+      scenario: seeded?.scenario ?? 'live',
+      intervention: seeded?.intervention,
+      poke: '810424=FF',               // the live INVULN poke at app.js:784
+    });
+    return this.recorder;
+  }
+
+  /**
+   * WAVE 131 -- STOP the live-page REC and return the packaged v1 `.replay`
+   * object (the format frozen by W129, assembled by `replay.js stopRecorder`).
+   * Clears `this.recorder` (so `step()` stops teeing).  Returns null if not
+   * armed.  The caller (the #rec button) turns the object into a download.
+   */
+  async stopRecording() {
+    if (!this.recorder) return null;
+    const obj = await stopRecorder(this.recorder);
+    this.recorder = null;
+    return obj;
   }
 
   /**
@@ -1266,6 +1374,10 @@ export async function boot(canvas, opts = {}) {
         opts.rung, opts.ladder, opts.ladderDir)
     : null;
   const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE, rung);
+  // WAVE 131 -- the asset base `armRecording()` re-fetches the tables from, so
+  // a live REC's `version.tablesSha256` can match the shipped bytes rather than
+  // the fallback `JSON.stringify(bundle.tables)`.
+  demo.assetBase = base;
   attachInput(opts.target);
 
   const frame = (t) => {
@@ -1292,6 +1404,11 @@ export async function boot(canvas, opts = {}) {
     setMode: (m) => demo.setMode(m),
     get spriteSource() { return demo.spriteSource; },
     setSpriteSource: (s) => demo.setSpriteSource(s),
+    // WAVE 131 -- REC entry points for the #rec button.  Thin wrappers so the
+    // page's API stays one shape (`app.armRecording()`), matching `setMode` etc.
+    armRecording: () => demo.armRecording(),
+    stopRecording: () => demo.stopRecording(),
+    get game() { return demo.game; },
     stop() { demo.running = false; },
   };
 }
