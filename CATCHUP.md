@@ -494,6 +494,23 @@ RESUME after the reset: re-dispatch R2a. The fresh agent should READ worklog 124
 `export-tables.py` and complete the wave (clear DEV-1/DEV-2, award the score, free the slot).
 The cron (clean tree now) will auto-dispatch R2a after the reset.
 
+## 7i. UPDATE -- 2026-08-07: R2a result-screen logic DONE (`05d59e3`); R2b presentation IN FLIGHT
+
+R2a landed (recovered from the stash; committed `05d59e3`, tree clean). The 8-phase FSM
+`result28D9AA` + tally `tallyBody285400`/`tally2853D2`/`tallyAward28551E` + anim chain
+`$24652A`/`$24681A`/`$246800` + banner `banner28E7F8` (teardown `$28EAD4` frees the slot).
+**DEV-1 cleared** (the real `$285496` producer fires at lf10628). Three premise corrections:
+(1) `$288346` was a RANK-ICON P2 table overrun (W113 said 8 entries, it is 32; window widened
+`$20`->`$80`); (2) the tally had two ROM-faithfulness bugs that made `$285496` never fire
+(wrong fall-through `===0xfffe` vs N=1&C=0; wrong hold-recompute sign) -- both fixed; (3) the
+seed cannot reach the banner drain (next-stage BG data) -- (c)/(d) verified by unit test.
+DEV-2 has a residual (`$246410` anim-driver, R2b). Gates 1270/0/0, bosscoverage 103/0/8.
+NOT yet published (logic-only, no visual change; deploys with R2b).
+
+R2b PRESENTATION IN FLIGHT: the draws `$28DED8`/`$28E1AC`/`$28EDC0`, banner painters, 8 art
+windows, score-number renderer, + the `$246410` DEV-2 residual. Makes the result screen
+visible. Publish R2a+R2b together after R2b.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
