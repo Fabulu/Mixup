@@ -577,6 +577,18 @@ The session has been heavy (two 5h usage-limit blocks today). The cron should AW
 on the next phase rather than auto-dispatch -- the owner should test the DOJ milestones + pick
 the direction.
 
+## 7m. UPDATE -- 2026-08-07: un-holding; Phase 4 (replay packaging) recon IN FLIGHT (continue-default; owner can redirect)
+
+Stage 1 is feature-complete + honest (W127 RANK Wave A live, build `20260807112531`). The owner
+has been away since the 7l checkpoint; per the standing loop + the offered "continue -> Phase 4"
+default, proceeding with the safe/light Phase 4 (replay packaging) while awaiting steer. Owner:
+redirect anytime (RANK Wave B / stage-2 / sound / Wave B input remain on the menu); the DOJ
+milestones are live for testing.
+
+Phase 4 replay-packaging recon IN FLIGHT: map the existing replay infra (portdiff.mjs,
+determinism.mjs, seedcmp, boot-from-rung) + design the `.replay` format + headless player + the
+RTC date-leak decision. Then ~1 impl wave.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
