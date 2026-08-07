@@ -702,6 +702,20 @@ scroll ~36 frames + a clean throw (`unreached $2627AC`, the stage-2 BGELEM const
 
 S1+S2 (the data export + boot verification) IN FLIGHT. Proves the multi-stage architecture.
 
+## 7x. UPDATE -- 2026-08-08: S1+S2 (stage-2 export + boot verify) DONE; stage 2 BOOTS + SCROLLS; Phase 3 complete; PUBLISHING
+
+S1+S2 landed (`13689ae`): the stage-2 BG column-stream window (`$228658`, 0x17A0 = 168 cols x 36) +
+the extent invariants (bounding W124's palette window 1 + this column stream). The boot verification
+(`w133stage2boot.test.js`): from the lf19500 rung, stage 2 boots (`$813096` 0->4), the BG scrolls
+(~289 camBgAccumulate advances over ~730 frames), at scroll clock `$24` the first stage-2 BGELEM
+throws `unreached($2627AC)` cleanly. NO garbage spawns (the walker no-ops). Both windows
+load-bearing (must-fail). Gates 1309/0/0. PUBLISHING.
+
+Phase 3 (stage-2 data + boot verification) is COMPLETE. Stage 2 BOOTS + SCROLLS -- the multi-stage
+architecture works. The next phase is owner-TBD (RANK Wave B [MAME-gated] / Phase 5 sound+slowdown
+[long poles] / Wave B input [owner-gated] / stage-2 CONTENT [owner-gated -- only if the owner wants
+past stage 1]). The cron should AWAIT owner steer.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
