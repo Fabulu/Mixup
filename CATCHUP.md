@@ -677,6 +677,18 @@ Phase 4 (replay packaging + live REC/PLAY) is COMPLETE. The next phase is owner-
 Wave B / stage-2 / sound / Wave B input). The cron should AWAIT owner steer -- the replay feature
 (the continue-default) is done.
 
+## 7v. UPDATE -- 2026-08-08: un-holding; Phase 3 (stage-2 data + boot) recon IN FLIGHT (next reasonable)
+
+The owner has been away (overnight) since the 7u checkpoint; per the standing loop + the offered
+"pick the next reasonable one," proceeding with Phase 3 (stage-2 data export + boot verification)
+-- the safest remaining unattended step (no MAME-gating; it is export + boot + observe, proving
+the multi-stage architecture; DOJ-visible). RANK Wave B (the correctness follow-on) is MAME-gated
+(cannot fully red-validate unattended) so it waits for the owner. Owner: redirect anytime.
+
+Phase 3 recon IN FLIGHT: the stage-2 data windows (`$229DF8` palette, `$228658` column stream,
+`$2325D0` spawn script) + the boot-from-rung verification + the garbage-spawn risk. Then S1
+(export) + S2 (boot verify).
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
