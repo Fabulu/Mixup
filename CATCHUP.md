@@ -648,6 +648,15 @@ W132 (PLAY + divergence UI) IN FLIGHT: boot-from-`.replay`, feed portin, compare
 (reuse the W131 browser module), surface the first divergent window. Then publish W131+W132
 together (the complete REC/PLAY feature).
 
+## 7s. UPDATE -- 2026-08-07: W132 stall-suspected; holding one interval, then stop+redispatch
+
+W132 (live-page PLAY) dispatched ~2 cron intervals ago. No completion notification, no worklog
+(`132`), no dirty tree -- abnormal for an impl wave (W131 took ~14 min). Likely a THIRD
+usage-limit block (the session has been enormous; the 15:36 window likely filled) or a silent
+agent death. Holding ONE more interval: if it is a 429 stuck-waiting-for-reset, the rolling limit
+may clear and W132 resumes. If STILL no progress next firing: `TaskStop(aa57426c8dd677c29)` +
+re-dispatch W132 fresh. The cron idle-gates (W132 nominally in flight).
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
