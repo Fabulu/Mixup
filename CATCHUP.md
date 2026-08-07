@@ -511,6 +511,26 @@ R2b PRESENTATION IN FLIGHT: the draws `$28DED8`/`$28E1AC`/`$28EDC0`, banner pain
 windows, score-number renderer, + the `$246410` DEV-2 residual. Makes the result screen
 visible. Publish R2a+R2b together after R2b.
 
+## 7j. UPDATE -- 2026-08-07: R2b result-screen presentation DONE (`b737c8f`); result screen VISIBLE; R2a+R2b PUBLISHING
+
+R2b landed (committed `b737c8f`): the draws `$28DED8`/`$28E1AC` (panels, medal/item counters,
+bonus numbers via bucket 0/2 sprite enqueues), banner paint `$23F782`/`$23F7F4` + picture
+`$28EDC0`, F0 art install (seven `install24150A`), 8 art windows. The result screen is now
+VISIBLE. Premise correction: `$246410` is a LOADER (not the per-frame drain); the true drain
+is the animation-object EXECUTION engine (register-indirect, invisible to xref.py) -- DEV-2
+honestly refined (names the engine gap, not fabricated-cleared). Score renderer `$2855B6`
+deferred (it is the popup, W117-named, not result-specific). Gates 1272/0/0, bosscoverage
+103/0/8.
+
+R2a+R2b PUBLISHING together (`--only ddpdoj`). Result: the stage-clear result screen is live
+(banner, score tally, bonus numbers); DEV-1 cleared; DEV-2 refined (animation engine = named
+gap). Stage 1 is "complete honestly" modulo DEV-2's deep engine + the deferred draws.
+
+NEXT (W119, owner to steer): the RANK/difficulty fix (Phase 0a divergence -- gauge/stock
+pipeline `$287682`/`$2530CA`/`$285A62` + rank object type 10; recon IN FLIGHT to size it),
+Phase 3 (stage-2 data export + boot verification), Phase 4 (replay packaging -- cheap/light),
+Phase 5 (sound via W27; slowdown via MiSTer). Wave B input (Gradius+Batman) owner-gated.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
