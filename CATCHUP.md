@@ -552,6 +552,31 @@ Wave A ships FIRST (safe, corpus-matchable, unfreezes the rank for no-hyper play
 hyper power term) follows. This inverts the brief's "pipeline first" but is safe (the recompute
 reads no chain/score state; no wrong-and-rising until hypers activate).
 
+## 7l. UPDATE -- 2026-08-07: RANK Wave A DONE + LIVE; big DOJ milestone checkpoint -- owner steer requested
+
+RANK Wave A (object type 10, W127) landed (`ec07f18`) + PUBLISHING. The rank clock unfreezes:
+`$81309E` = base[stage] + (clock>>8) matches the board on no-hyper runs (validated against the
+seed: `$35`, exact). Declared side-effect: enemy fire cadence now reads the live rank, so two
+webgate baselines shifted to live-rank values (+5 bullets in one scenario) -- the port matching
+the board's live rank, not a regression. Gates 1284/0/0, bosscoverage 103/0/8.
+
+SESSION MILESTONE: stage 1 is FEATURE-COMPLETE + HONEST. Live DOJ now has the scrolling level,
+enemies/bullets/boss+explosion, items, bees, the full HUD (score/chain/combo/lives/bombs/
+credits), the result screen, the shared input layer (keyboard/gamepad/touch), and the live rank
+clock. Wave B input (Gradius+Batman gamepad) remains owner-gated.
+
+NEXT PHASE -- OWNER STEER REQUESTED (strategic fork after the DOJ milestones):
+- **RANK Wave B** (the hyper subsystem: hyper button + activation + grantor + death/bomb sinks;
+  3-4 waves; MAME-gated for red-validation). Completes the rank power term.
+- **Phase 3** (stage-2 data export + boot verification -- a scrolling stage-2 background).
+- **Phase 4** (replay packaging -- cheap, light, high-leverage).
+- **Phase 5** (sound via the W27 10-recons+architect process; slowdown via the MiSTer FPGA).
+- **Wave B input** (gamepad on Gradius + Batman -- needs the owner's DOJ-module live-verify).
+
+The session has been heavy (two 5h usage-limit blocks today). The cron should AWAIT owner steer
+on the next phase rather than auto-dispatch -- the owner should test the DOJ milestones + pick
+the direction.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
