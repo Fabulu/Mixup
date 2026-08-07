@@ -615,6 +615,18 @@ Wave B (the hyper subsystem), Phase 3 (stage-2 data + boot), Phase 4c (live REC/
 (sound via W27 / slowdown via MiSTer), or Wave B input (Gradius+Batman, owner-gated). The cron
 should AWAIT owner steer -- do not auto-dispatch.
 
+## 7p. UPDATE -- 2026-08-07: un-holding; Phase 4c (live REC/PLAY) recon IN FLIGHT (continue-default)
+
+The owner has been away ~4hr since the 7o checkpoint; per the standing loop + the offered
+"continue -> likely Phase 4c" default, proceeding with Phase 4c (live REC/PLAY) -- completing the
+replay feature on the live DOJ page (record a run -> `.replay`; load + play it back, surfacing the
+first divergence). Owner: redirect anytime to RANK Wave B / stage-2 / sound / Wave B input; the
+DOJ milestones remain live for testing.
+
+Phase 4c recon IN FLIGHT: design the live-page REC (tee `currentPortWord` + package with the seed
+via the W129 format) + PLAY (boot from `.replay`, feed portin, compare digests, show divergence) +
+the UI + the integration points. Then ~1-2 impl waves.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
