@@ -589,6 +589,17 @@ Phase 4 replay-packaging recon IN FLIGHT: map the existing replay infra (portdif
 determinism.mjs, seedcmp, boot-from-rung) + design the `.replay` format + headless player + the
 RTC date-leak decision. Then ~1 impl wave.
 
+## 7n. UPDATE -- 2026-08-07: Phase 4 replay-packaging recon done; W129 impl IN FLIGHT
+
+The Phase 4 recon (W128, text-only) confirmed the replay property is ALREADY structurally built
+(portdiff's step loop + SHA-256 digest + determinism + seed-anywhere + boot-from-rung); only the
+packaged `.replay` artifact + headless player are missing. RTC date-leak is a NON-ISSUE for the
+port (the port does not read the RTC -- grep zero; the date bytes are frozen in the seed and
+excluded from the CLAIMED digest) -- document + freeze, zero code. Phase 4a+4b = one small
+packaging wave (W129, IN FLIGHT): `games/ddpdoj/tools/replay.mjs` (player + builder + red mode,
+imports only) + `NOTES-replay.md` v1 spec + a gitignored fixture + a gate stage. Phase 4c (live
+REC/PLAY) deferred (depends on 4a).
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
