@@ -781,6 +781,20 @@ reproduction) -> **Wave E** (ICS2115 synth, datasheet-referenced, not MAME) -> w
 Sample data: tight-union 28-fragment stitch (1.10 MiB, +41%, deferred fetch). Wave F: the cubic
 Hermite resampler + stereo + limiter, proven on Gradius (13-stage gate green).
 
+## 7ac. UPDATE -- 2026-08-08: Wave C6 DONE + LIVE (613 SFX keyons reproduce); sound driver structurally complete through SFX
+
+Wave C6 (`95ce3c6`, build `20260808040955`): the main-loop dispatcher (15-command table `$078E`,
+the real Z80 behavioral entry point) + the immediate-SFX note-on path. **613 of 641 SFX keyons
+reproduce row-for-row** through the full chain (mailbox -> dispatch -> note-on -> voice engine ->
+register file). The param-set is payload-driven (14 distinct SFX param-sets, keyed per-door via
+the oracle).
+
+Remaining sound: **C7** (BGM, 979 keyons, HIGHEST RISK -- needs the 68k-side score data banked
+via `$C10000`, NOT in `z80ram.bin`; a recon to locate/decode it first), **C5** (keyoff ~0.5 wave),
+**C8** (28 remaining SFX + the door->keyon timeline). Then **E** (ICS2115 synth, datasheet) ->
+wire into F -> **audible**. Total ~1.8 waves of C-depth + E (research). Wave F (shared Web Audio
+shim) committed but not deployed (Gradius refactor; needs a full publish).
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
