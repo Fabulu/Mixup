@@ -60,6 +60,41 @@ function keyonDataWrites(rows) {
   return out;
 }
 
+/** Indices of every keyoff (reg=$10 hi data=$0F) data-write in the oracle. */
+function keyoffDataWrites(rows) {
+  const out = [];
+  for (let i = 0; i < rows.length; i++) {
+    const e = unpack(rows[i]);
+    if (e.reg === 0x10 && e.half === 2 && e.data === 0x0F) out.push(i);
+  }
+  return out;
+}
+
+/**
+ * The 15-row keyoff episode for the keyoff at index `k`: from the `lo $4F` that
+ * opened it through the closing `$00=00`. Walks back past the sel rows to the
+ * `lo $4F`, forward through the `$00 hi` tail. Returns the packed rows.
+ */
+function keyoffEpisode(rows, k) {
+  let start = k;
+  while (start > 0 && !(unpack(rows[start]).reg === 0x4F && unpack(rows[start]).half === 1)) {
+    start--;
+  }
+  // lo $4F is `start`; walk forward to the $00 hi=00 tail (the 15th row).
+  let end = k;
+  let j = k + 1;
+  const voice = unpack(rows[k]).voice;
+  while (j < rows.length) {
+    const e = unpack(rows[j]);
+    if (e.reg === 0x4F && e.half === 1) break;   // next episode's voice-select
+    if (e.voice !== voice) break;
+    end = j;
+    if (e.reg === 0x00 && e.half === 2) break;    // the $00=00 tail closes it
+    j++;
+  }
+  return rows.slice(start, end + 1).map((r) => r >>> 0);
+}
+
 /**
  * Reconstruct a VoiceSlot from a keyon episode's packed rows (the values the cue
  * deposited into $62EC, read back out of the ICS writes the engine emitted). The
@@ -328,3 +363,217 @@ test('the ICS-voice allocator is round-robin and marks the shadow', () => {
     assert.equal(got, v, `voice ${v} acquired in round-robin order`);
   }
 });
+
+// =============================================================== the keyoff path
+// Wave C5 (Sound) -- the keyoff emission + the $3F11 free + the oscillator-end
+// trigger. See worklog 146. The same oracle (rip/sound/ics.tsv) gates the
+// keyoff half of the emission contract: the 1720 keyoff episodes reproduce
+// through the full chain (trigger -> $0A0C emission -> the 15-row write
+// sequence). Skips loudly when the oracle is absent (the keyon tests' SKIP).
+
+test('the keyoff path addresses and the shadow-free math are self-consistent', () => {
+  // The keyoff emission, shadow-free, composite, and the two IRQ entries.
+  assert.equal(ENGINE.emitKeyoff, 0x0A0C, '$0A0C is the keyoff emission');
+  assert.equal(ENGINE.freeShadow, 0x3F11, '$3F11 frees the shadow slot');
+  assert.equal(ENGINE.releaseBusy, 0x3F22, '$3F22 is the release-if-busy composite');
+  assert.equal(ENGINE.irqEntry, 0x0FEA, '$0FEA is the oscillator-end IRQ entry');
+  assert.equal(ENGINE.irqvDispatch, 0x1000, '$1000 is the $0F IRQV dispatch loop');
+  assert.equal(ENGINE.irqvReg, 0x000F, '$0F is the IRQV register');
+  assert.equal(ENGINE.oscIrqBit, 0x02, 'status bit1 is the oscillator-end IRQ');
+  assert.equal(ENGINE.timerIrqBit, 0x01, 'status bit0 is the timer-0 tick');
+  // The $3F11 math: voice * 10 + $654E (the mul16 stride + the shadow base).
+  assert.equal(ENGINE.icsShadow + 8 * ENGINE.icsShadowStride, 0x654E + 80,
+    '$3F11 indexes voice*10 + $654E (voice 8 -> $659E)');
+});
+
+test('GREEN: every keyoff episode is the fixed 15-row $0A0C sequence',
+  { skip: SKIP }, () => {
+    const { rows } = parseOracle();
+    const keyoffs = keyoffDataWrites(rows);
+    assert.equal(keyoffs.length, 1720, `1720 keyoffs in the oracle (got ${keyoffs.length})`);
+    // The fixed (reg,half,data) pattern of the $0A0C emission, voice-wildcarded
+    // (the $4F/lo data is the voice). 15 rows from lo$4F through $00=00.
+    const PATTERN = [
+      [0x4F, 1, null],   // lo $4F = voice
+      [0x0D, 0, 0x0D],   // sel $0D (the READ)
+      [0x0D, 0, 0x0D],   // sel $0D (the WRITE)
+      [0x0D, 2, 0x01],   // hi $0D = 01 (masked VCtl)
+      [0x07, 0, 0x07],   // sel $07
+      [0x07, 2, 0x01],   // hi $07 = 01
+      [0x08, 0, 0x08],   // sel $08
+      [0x08, 2, 0x01],   // hi $08 = 01
+      [0x10, 0, 0x10],   // sel $10
+      [0x10, 2, 0x0F],   // hi $10 = 0F (KEYOFF)
+      [0x0D, 0, 0x0D],   // sel $0D (the re-READ)
+      [0x0D, 0, 0x0D],   // sel $0D (the WRITE)
+      [0x0D, 2, 0x03],   // hi $0D = 03 (re-arm)
+      [0x00, 0, 0x00],   // sel $00
+      [0x00, 2, 0x00],   // hi $00 = 00
+    ];
+    let violations = 0;
+    let firstBad = null;
+    for (const k of keyoffs) {
+      const ep = keyoffEpisode(rows, k);
+      if (ep.length !== PATTERN.length) {
+        violations++;
+        if (firstBad === null) firstBad = { k, len: ep.length };
+        continue;
+      }
+      for (let i = 0; i < PATTERN.length; i++) {
+        const e = unpack(ep[i]);
+        const [reg, half, data] = PATTERN[i];
+        if (e.reg !== reg || e.half !== half || (data !== null && e.data !== data)) {
+          violations++;
+          if (firstBad === null) firstBad = { k, at: i, e };
+          break;
+        }
+      }
+    }
+    assert.equal(violations, 0,
+      `all 1720 keyoffs match the fixed $0A0C sequence (violations=${violations}, first=${JSON.stringify(firstBad)})`);
+  });
+
+test('GREEN/RED: emitKeyoff reproduces a real keyoff episode row-for-row; corrupt diverges; restore re-greens',
+  { skip: SKIP }, () => {
+    const { rows } = parseOracle();
+    const keyoffs = keyoffDataWrites(rows);
+    // Voice 1's first keyoff (vf=5, the boot release-all). Walk to its episode.
+    const k1 = keyoffs.find((k) => unpack(rows[k]).voice === 1);
+    assert.ok(k1 > 0, 'found voice 1 keyoff');
+    const oracleEpisode = keyoffEpisode(rows, k1);
+    assert.equal(oracleEpisode.length, 15, `keyoff episode is 15 rows (${oracleEpisode.length})`);
+    assert.equal(unpack(oracleEpisode[0]).voice, 1, 'episode is for voice 1');
+
+    // GREEN: seed the shadow $0D = $01 (the oracle's pre-keyoff VCtl for every
+    // keyoff) and emit. Compare from lo$4F onward (the sel$4F is the previous
+    // episode's tail, same attribution rule as the keyon test).
+    function emit() {
+      const rf = new IcsRegisterFile();
+      const eng = new VoiceEngine(rf);
+      const slot = eng.voices[1];
+      slot.icsVoice = 1;
+      slot.state = ENGINE.STATE_SUSTAIN;
+      rf.voices[1].hi[0x0D] = vctlSeed;       // the pre-keyoff VCtl (Layer 1 shadow)
+      eng.emitKeyoff(slot);
+      return rf.regLog.slice(1).map((r) => r >>> 0);   // drop the sel$4F (prev voice)
+    }
+
+    let vctlSeed = 0x01;   // the oracle truth (every keyoff reads VCtl=$01)
+    const green = emit();
+    assert.equal(green.length, oracleEpisode.length,
+      `emitted one write per oracle row (${green.length} vs ${oracleEpisode.length})`);
+    let mismatch = -1;
+    for (let i = 0; i < green.length; i++) {
+      if (green[i] !== oracleEpisode[i]) { mismatch = i; break; }
+    }
+    assert.equal(mismatch, -1,
+      `keyoff episode row-for-row match (first mismatch at ${mismatch}: `
+      + `oracle=${JSON.stringify(unpack(oracleEpisode[mismatch]))}, `
+      + `got=${JSON.stringify(unpack(green[mismatch]))})`);
+
+    // RED: corrupt the pre-keyoff VCtl to $03; the masked $0D write diverges
+    // ($03 & $C3 = $03, bit1 set -> |$01 = $03, vs the oracle's $01).
+    vctlSeed = 0x03;
+    const red = emit();
+    let redMismatch = -1;
+    for (let i = 0; i < red.length; i++) {
+      if (red[i] !== oracleEpisode[i]) { redMismatch = i; break; }
+    }
+    assert.ok(redMismatch >= 0, 'a corrupted VCtl diverges the emitted sequence');
+    const bad = unpack(red[redMismatch]);
+    assert.ok(bad.reg === 0x0D && bad.half === 2,
+      `the divergence is at the $0D hi write (reg=$${bad.reg.toString(16)} half=${bad.half})`);
+
+    // RESTORE: re-green.
+    vctlSeed = 0x01;
+    const restored = emit();
+    let restMismatch = -1;
+    for (let i = 0; i < restored.length; i++) {
+      if (restored[i] !== oracleEpisode[i]) { restMismatch = i; break; }
+    }
+    assert.equal(restMismatch, -1, 'restore re-greens the keyoff episode');
+  });
+
+test('GREEN/RED: the oscillator-end trigger fires the keyoff + frees the shadow; looped never ends',
+  () => {
+    const FC = 0x0100;   // a small fc so the countdown arithmetic is clear
+
+    // Build a fresh engine with one armed one-shot voice (voice 3). The shadow
+    // $0D is seeded to $01 so emitKeyoff reads the oracle-true VCtl.
+    function build(loopMode) {
+      const rf = new IcsRegisterFile();
+      const eng = new VoiceEngine(rf);
+      const slot = eng.voices[3];
+      slot.icsVoice = 3;
+      slot.state = ENGINE.STATE_SUSTAIN;
+      slot.fc = FC;
+      slot.oscConf = loopMode ? 0x02 : 0x20;   // bit1 set -> loop (wrap, no end)
+      slot.loopMode = loopMode;
+      slot.oscEnded = false;
+      slot.oscCountdown = FC;                   // ends after exactly ONE advance
+      eng.icsShadow[3][0] = 0x55;               // voice is bound (allocated)
+      rf.voices[3].hi[0x0D] = 0x01;             // pre-keyoff VCtl
+      return eng;
+    }
+
+    // GREEN: one advance ends the oscillator; the IRQ service keyoffs + frees.
+    let eng = build(false);
+    assert.equal(eng.voices[3].oscEnded, false, 'not ended before advance');
+    eng.advanceOscillators();
+    assert.equal(eng.voices[3].oscEnded, true, 'oscillator ended after one advance');
+    const before = eng.rf.regLog.length;
+    const n = eng.serviceOscillatorIrq();
+    assert.equal(n, 1, 'one voice released');
+    assert.ok(eng.rf.regLog.length > before, 'keyoff writes were emitted');
+    assert.equal(eng.icsShadow[3][0], 0, 'shadow slot freed ($3F11)');
+    // the keyoff OscCtl=$0F write appears in the log
+    const hasKeyoff = eng.rf.regLog.some((r) => {
+      const e = unpack(r); return e.reg === 0x10 && e.half === 2 && e.data === 0x0F;
+    });
+    assert.ok(hasKeyoff, 'the $10=$0F keyoff write fired');
+
+    // RED: a looped voice never ends -> no keyoff, shadow stays bound.
+    eng = build(true);
+    eng.advanceOscillators();
+    assert.equal(eng.voices[3].oscEnded, false, 'looped voice does not end');
+    const nRed = eng.serviceOscillatorIrq();
+    assert.equal(nRed, 0, 'no voice released (looped)');
+    assert.equal(eng.icsShadow[3][0], 0x55, 'shadow slot stays bound');
+    const noKeyoff = !eng.rf.regLog.some((r) => {
+      const e = unpack(r); return e.reg === 0x10 && e.half === 2 && e.data === 0x0F;
+    });
+    assert.ok(noKeyoff, 'no keyoff write fired for a looped voice');
+
+    // RESTORE: clear loopMode -> advance ends -> service releases. Re-green.
+    eng = build(false);
+    eng.advanceOscillators();
+    assert.equal(eng.voices[3].oscEnded, true, 'restore: one-shot ends');
+    const nRest = eng.serviceOscillatorIrq();
+    assert.equal(nRest, 1, 'restore: one voice released');
+    assert.equal(eng.icsShadow[3][0], 0, 'restore: shadow freed');
+  });
+
+test('the $3F11 free closes the allocator cycle (a freed slot is reused)',
+  () => {
+    const rf = new IcsRegisterFile();
+    const eng = new VoiceEngine(rf);
+    // Acquire voice 8 (the seeded round-robin start), then free it.
+    assert.equal(eng.acquireIcsVoice(0x55), 8, 'first acquire is voice 8');
+    assert.equal(eng.icsShadow[8][0], 0x55, 'shadow slot marked');
+    eng.releaseIcsVoice(8);
+    assert.equal(eng.icsShadow[8][0], 0, 'releaseIcsVoice freed the shadow byte');
+    // The freed slot is now reusable: position the cursor at 8 and re-acquire.
+    eng.allocStart = 8;
+    assert.equal(eng.acquireIcsVoice(0x66), 8, 'the freed slot is reused ($3E8F/$3F11 cycle)');
+    assert.equal(eng.icsShadow[8][0], 0x66, 're-acquire re-marks the shadow');
+
+    // releaseVoiceIfBusy ($3F22): keyoffs + frees a bound voice; no-op if free.
+    rf.voices[5].hi[0x0D] = 0x01;       // seed VCtl for the keyoff read
+    eng.voices[5].state = ENGINE.STATE_SUSTAIN;
+    eng.icsShadow[5][0] = 0x77;         // voice 5 bound
+    const did = eng.releaseVoiceIfBusy(5);
+    assert.equal(did, true, 'releaseVoiceIfBusy ran on a bound voice');
+    assert.equal(eng.icsShadow[5][0], 0, 'releaseVoiceIfBusy freed the shadow');
+    const did2 = eng.releaseVoiceIfBusy(5);
+    assert.equal(did2, false, 'releaseVoiceIfBusy is a no-op on an already-free voice');
+  });
