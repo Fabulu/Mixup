@@ -733,6 +733,22 @@ Wave A (sound.js + ring/drain/gates + ~25 note() replacements) + the silent-latc
 -> stage 2-5 content; NO MiSTer (deferred until after all 5 levels). Wave B input: owner asked
 (pending). Assets: regenerated + live (build `20260807235656`).
 
+## 7z. UPDATE -- 2026-08-08: Sound Wave A (68k cue post/queue) DONE + merged + PUBLISHING
+
+Wave A (the sound KEYSTONE) landed (`e8da5cc`, merged to main): `sound.js` (~370 lines -- the 6
+cue entries + the 100-slot ring/drain + the 3 gates + 69 wrappers auto-extracted via capstone) +
+the ~25 `note()` placeholders replaced across 11 source files (handlers/shots/items/boss/midboss/
+bee/stageend/hud/bomb/laser). The mailbox oracle (633 de-duped doors, `mailbox_dedup.tsv`) +
+must-fail red->green (619 wrapper-mapped doors reproduce byte-for-byte). The silent-latch
+validation (W137) confirmed the oracle is COMPLETE. Open items resolved: `$81DEB4` master-vol =
+0 across stage 1; `$44` sentinel confirmed dropped; the dead-code ringer `$28C19A` confirmed dead
+(BIOS pump `$18ACE0` is the live doorbell). Streaming-BGM poller deferred (14 doors,
+input-bit-driven). Frame-for-frame alignment deferred (needs a stage1-deep seed). Transform-level
+byte-exactness is the live claim. Gates 1313/0/0, bosscoverage 103/0/8. PUBLISHING.
+
+Sound direction: Wave B (trivial Z80 upload + listing) next, then Wave C (the Z80 driver port,
+the real work, 3-5 waves).
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
