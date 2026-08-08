@@ -298,12 +298,10 @@ export async function boot(canvas, opts = {}) {
   // 256-frame countdown, the attract demo, START, and the whole way back round
   // from a game over now run.
   //
-  // WHAT A PLAYER SEES IS NOT YET THE CARTRIDGE'S TITLE SCREEN, and that is the
-  // one gap left: `$8871`'s 2304 `$2007` writes are not ported (src/modes.js
-  // header), so the LOGO is missing. Everything that reaches the screen through
-  // the $0700 queue -- the palette (packet 6), the four text lines (packets
-  // 4,3,2,1) and the cursor ship -- does arrive, because those are producers
-  // this port has had since W2.
+  // The title screen's `$8871` full-screen RLE writes are loaded from
+  // `screens/nametables.json` alongside the other ROM-derived assets. The
+  // palette (packet 6), four text lines (packets 4,3,2,1), and cursor ship
+  // still arrive through the normal queue and OAM paths.
   //
   // `opts.startMode` exists for the launcher and for anyone who wants the old
   // behaviour; it is not a fallback the frame loop can take by itself.

@@ -57,13 +57,12 @@
 //
 // ============================ WHAT IS *NOT* HERE =============================
 //
-//   * THE PICTURE. `$882C`/`$8824`'s 2304 `$2007` writes are still the named gap
-//     src/flow.js has carried since W4. W39 identified the source data (`$8893`
-//     is a two-entry INTERLEAVED word table -> $8C78 playfield and $8C8C
-//     title/attract, six RLE chunks each, escape $34, terminator $39), which
-//     retires export_assets.py's "its source table has not been identified", but
-//     emitting the bytes is a separate wave. Until then the title screen runs
-//     with the nametable it inherited.
+//   * THE PICTURE. `$882C`/`$8824`'s full-screen `$2007` streams are decoded by
+//     export_assets.py into `screens/nametables.json` and applied by
+//     src/flow.js. The source data is `$8893`'s interleaved table, with
+//     playfield `$8C78`, title/attract `$8C8C`, escape `$34`, and terminator
+//     `$39`. The loader is a direct sequential write, so stale VRAM cannot
+//     survive a return from attract to the title menu.
 //   * `$8336`'s DIRECT `$2000`/`$2001` writes. The port's picture comes from the
 //     band latches src/nmi.js takes at `$809C`, and those are taken BEFORE the
 //     mode dispatch, so a register written at `$8309` lands nowhere. This is the
@@ -324,7 +323,7 @@ function titlePackets(state, res) {
 function buildTitleScreen(state, res) {
   stopAllSound(state, res);                         // $8256 JSR $83AB
   state.ppu.chrSel = 3;                             // $8259/$825B
-  titleScreenLoad(state);                           // $825D JSR $8824
+  titleScreenLoad(state, res.screenImages);         // $825D JSR $8824
   clear0100(state);                                 // $8260 JSR $8418
   clear0020(state);                                 // $8263 JSR $8424
   cannedPacket(state, res.hudPackets, 0x06);        // $8266/$8268
@@ -660,7 +659,7 @@ export function st80E2(state, res) {
     // does -- and `gameover`'s cartridge rows read `lagged` 0 at f4365 while
     // reading 1 at f4364, the `$9751` frame that ran one load. See the note at
     // the `$9B78` call site in src/flow.js: the drop belongs to the call site.
-    fullScreenLoad(state, 0);                       // $80E6 JSR $882C
+    fullScreenLoad(state, 0, res.screenImages);     // $80E6 JSR $882C
     buildTitleScreen(state, res);                   // $80E9 JSR $8256
     state.ppu.chrSel = 3;                           // $80EC/$80EE
     state.ppu.scrollY = 0;                          // $80F0/$80F2

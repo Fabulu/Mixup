@@ -103,6 +103,27 @@ function queueOf(indices) {
   return [...scratch.vram.q.subarray(0, scratch.vram.cursor), 0x00];
 }
 
+/** Decode `$8871` independently from the exporter and runtime. */
+function romScreen(table) {
+  const out = [];
+  const decode = (start) => {
+    const chunk = [];
+    let p = start;
+    for (;;) {
+      const v = rom(p++);
+      if (v === 0x39) return chunk;
+      if (v === 0x34) {
+        const n = rom(p++), value = rom(p++);
+        for (let i = 0; i < n; i++) chunk.push(value);
+      } else chunk.push(v);
+    }
+  };
+  for (let i = 0; i < 6; i++) out.push(...decode(romw(table + i * 2)));
+  return out;
+}
+
+const TITLE_IMAGE = romScreen(0x8C8C);
+
 // ===========================================================================
 //  1. The table itself, and the enumeration behind mode 6
 // ===========================================================================
@@ -201,6 +222,24 @@ test('$80E2 phase 0: the two loads, then $12 = $FE and $1F = 1', () => {
   assert.strictEqual(s.ppu.blank, 0x10, '$81BC -> $83B0 STA $0D');
   assert.strictEqual(s.frameDrops, 0,
     'MEASURED rom 0 at gameover f4365: two loads and no dropped NMI');
+});
+
+test('$8824/$8871: the initial title load paints the ROM logo nametable', () => {
+  // `$8C8C` is the title stream selected by `$8824` and `$8871` writes it at
+  // $2000 with increment 1. The expected bytes are decoded from prg.bin here,
+  // independently of screens/nametables.json and fullScreenLoad().
+  // RED WHEN: the loader is omitted, writes the playfield image, starts at the
+  // wrong PPU address, or leaves the image only in a private cache. This is the
+  // visual defect reported by the owner: the title logo is otherwise absent.
+  const s = boot();
+  nmi(s, 0, res);                                  // $80E6 + $8256
+  assert.strictEqual(TITLE_IMAGE.length, 1024, '$8C8C stream length');
+  assert.deepStrictEqual([...s.vram.nt.subarray(0, TITLE_IMAGE.length)],
+    TITLE_IMAGE, '$8871 title bytes at $2000');
+  assert.deepStrictEqual([...s.vram.nt.subarray(0x800, 0x800 + TITLE_IMAGE.length)],
+    TITLE_IMAGE, 'vertical mirror at $2800');
+  assert.ok(TITLE_IMAGE.slice(8 * 32, 13 * 32).some((v) => v !== 0),
+    'the ROM title stream contains non-zero logo tiles');
 });
 
 test('$8266/$82B6: the title frame queues packets 6, 4, 3, 2, 1 IN THAT ORDER', () => {
@@ -792,7 +831,20 @@ test('END TO END: the attract demo ends and the whole cycle repeats, TWICE', () 
   let i = 0;
   let scriptRan = 0;
   for (; i < 12000 && seen.length < 7; i++) {
+    const before = s.mode;
     nmi(s, 0, res);
+    // `$8135` enters mode 0 at the tail of the demo frame. The next NMI runs
+    // `$80E2` phase 0 and `$8256`, which must reload the title image before the
+    // menu packets can land. Check the whole ROM title stream on both returns,
+    // not just the first boot. RED WHEN: fullScreenLoad/titleScreenLoad is
+    // skipped on the return, leaving gameplay VRAM under the menu text.
+    if (before === 2 && s.mode === 0) {
+      nmi(s, 0, res);
+      assert.deepStrictEqual([...s.vram.nt.subarray(0, TITLE_IMAGE.length)],
+        TITLE_IMAGE, `title nametable was not rebuilt on attract return ${i}`);
+      assert.deepStrictEqual([...s.vram.nt.subarray(0x800, 0x800 + TITLE_IMAGE.length)],
+        TITLE_IMAGE, `title mirror was not rebuilt on attract return ${i}`);
+    }
     if (s.mode === 2 && s.zp31 > scriptRan) scriptRan = s.zp31;
     if (s.mode !== last) { seen.push(s.mode); at.push(i); last = s.mode; }
   }

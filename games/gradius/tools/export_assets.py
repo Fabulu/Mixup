@@ -353,18 +353,6 @@ NOT_EXPORTED = [
     "of the PPU.  tools/oracle/palprobe.lua measures the emulator's, and it "
     "lands in tools/oracle/out/video/master_palette.bin.  Nothing here may "
     "claim a ROM address for it.",
-    # W39 HALF-RETIRED THIS.  The source table IS identified now, so the second
-    # sentence used to be false: "$8893" is a TWO-ENTRY INTERLEAVED word table
-    # (five bytes, the two words sharing $8895) -- X = 0 -> $8C78, the playfield
-    # image, and X = 2 -> $8C8C, the title/attract one -- with six chunk pointers
-    # per image and one shared RLE decoder at $8871 (escape $34 introduces a
-    # count/value RUN, $39 ends the chunk, anything else is a literal).  What is
-    # still not exported is the 2304 decoded bytes per image.
-    "The title and playfield NAMETABLE IMAGES.  $8871 (the shared RLE loader) "
-    "writes them at load time from the two chunk lists at $8C78 and $8C8C, "
-    "behind the interleaved word table at $8893; src/flow.js fullScreenLoad() "
-    "reproduces the RAM side effects and not the 2304 $2007 writes.  Decoding "
-    "them is its own wave.  NOTES-render.md 9, src/modes.js header.",
     # Sound USED to be listed here as "untouched by any recon".  It is exported
     # now -- assets/sound/tables.json, the $ECB2 channel bases and the one
     # $EFB8-$FFC0 block that holds the pitch table, the 64 sound records and
@@ -376,6 +364,50 @@ NOT_EXPORTED = [
     # palette blobs above stay pinned by measurement as well, so the two routes
     # to the same bytes can still disagree.
 ]
+
+
+def full_screen_images(rom: Rom) -> dict:
+    """Decode the two images consumed by `$8871`'s full-screen loader."""
+    def decode(addr: int) -> list[int]:
+        out: list[int] = []
+        p = addr
+        while True:
+            v = rom.b(p); p += 1
+            if v == 0x39:
+                return out
+            if v == 0x34:
+                n = rom.b(p); value = rom.b(p + 1); p += 2
+                out.extend([value] * n)
+            else:
+                out.append(v)
+
+    def image(table: int) -> dict:
+        chunks = []
+        data: list[int] = []
+        for i in range(6):
+            ptr = rom.w(table + 2 * i)
+            chunk = decode(ptr)
+            chunks.append({"rom": f"${ptr:04X}", "bytes": len(chunk)})
+            data.extend(chunk)
+        return {"rom": f"${table:04X}", "chunks": chunks,
+                "writes": len(data), "bytes": data}
+
+    playfield = image(0x8C78)
+    title = image(0x8C8C)
+    if playfield["writes"] != 2304:
+        raise SystemExit(f"ABORT: playfield full-screen image decoded to "
+                         f"{playfield['writes']} bytes, expected 2304")
+    if title["writes"] != 1024:
+        raise SystemExit(f"ABORT: title full-screen image decoded to "
+                         f"{title['writes']} bytes, expected 1024")
+    return {
+        "note": "CACHE. Rebuild with tools/export_assets.py; authority is the ROM.",
+        "loader": {"rom": "$8871", "pointerTable": "$8893",
+                   "escape": "$34 count value", "chunkEnd": "$39",
+                   "writeStart": "$2000", "increment": 1},
+        "playfield": playfield,
+        "title": title,
+    }
 
 
 # =============================================================== decoding ==
@@ -1874,6 +1906,11 @@ def main() -> int:
     write(out, "sound/tables.json",
           json.dumps(sound, separators=(",", ":")).encode("utf-8"),
           "cache", "prg.bin, the ranges $833F-$8355 / $ECB2-$ECB5 / $EFB8-$FFF9", files)
+
+    screens = full_screen_images(rom)
+    write(out, "screens/nametables.json",
+          json.dumps(screens, separators=(",", ":")).encode("utf-8"),
+          "cache", "prg.bin via $8871/$8893/$8C78/$8C8C", files)
 
     manifest = build_manifest(rom, files)
     (out / "manifest.json").write_text(

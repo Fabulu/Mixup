@@ -22,6 +22,7 @@ async function fetchOrExplain(rel, how) {
 
 const EXPORT = 'python games/gradius/tools/export_assets.py';
 const EXPORT_MS = 'python games/gradius/tools/export_metasprites.py';
+const EXPORT_SCREENS = EXPORT;
 
 /**
  * assets/hud/packets.json -> the array src/hudpackets.js indexes.
@@ -160,7 +161,7 @@ function romByteReader(json, file, label) {
 }
 
 export async function loadResources(stageIndex = 0) {
-  const [manifest, tilesBuf, stages, ms, hud, enemies, flow, coll, weap, snd] = await Promise.all([
+  const [manifest, tilesBuf, stages, ms, hud, enemies, flow, coll, weap, snd, screens] = await Promise.all([
     fetchOrExplain('manifest.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('chr/tiles.u8', EXPORT).then((r) => r.arrayBuffer()),
     fetchOrExplain('terrain/stages.json', EXPORT).then((r) => r.json()),
@@ -171,6 +172,7 @@ export async function loadResources(stageIndex = 0) {
     fetchOrExplain('collision/tables.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('weapons/tables.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('sound/tables.json', EXPORT).then((r) => r.json()),
+    fetchOrExplain('screens/nametables.json', EXPORT_SCREENS).then((r) => r.json()),
   ]);
 
   const tiles = new Uint8Array(tilesBuf);
@@ -197,7 +199,16 @@ export async function loadResources(stageIndex = 0) {
   // 1's blocks. Fixed in W38 -- the four calls take `res.stages[state.zp19]`,
   // the same expression `streamBlock` has used since W27. The sentence is left
   // here, corrected, because it is the sentence that hid the defect.
-  return { manifest, tiles, metasprites,
+  const screenImages = {
+    playfield: Uint8Array.from(screens.playfield.bytes),
+    title: Uint8Array.from(screens.title.bytes),
+  };
+  if (screenImages.playfield.length !== 2304 || screenImages.title.length !== 1024) {
+    throw new Error(`screens/nametables.json has ${screenImages.playfield.length}/`
+      + `${screenImages.title.length} bytes, expected 2304/1024`);
+  }
+
+  return { manifest, tiles, metasprites, screenImages,
            stage: stages.stages[stageIndex], stages: stages.stages,
            hudPackets: hudPacketTable(hud), enemyTables: enemyTables(enemies),
            flowTables: flowTables(flow),

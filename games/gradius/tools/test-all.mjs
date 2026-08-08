@@ -66,7 +66,8 @@ const romPresent = existsSync(ROM);
 const assetsPresent = existsSync(join(ASSETS, 'manifest.json'))
                    && existsSync(join(ASSETS, 'metasprites.json'))
                    && existsSync(join(ASSETS, 'chr', 'tiles.u8'))
-                   && existsSync(join(ASSETS, 'terrain', 'stages.json'));
+                   && existsSync(join(ASSETS, 'terrain', 'stages.json'))
+                   && existsSync(join(ASSETS, 'screens', 'nametables.json'));
 
 stage('inputs', () => {
   console.log(`  ROM     ${romPresent ? 'present' : 'ABSENT'}  ${ROM}`);

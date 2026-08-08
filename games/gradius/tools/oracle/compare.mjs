@@ -192,7 +192,7 @@ function compareDisplayList(frames, byFrameO, byFrameP) {
  * untouched. On a deep scenario that number is the whole answer to "is the seed
  * doing the work", so it is printed rather than left to be inferred.
  */
-function compareVideo(name, oracle, port, stoppedAt, introInWindow) {
+function compareVideo(name, oracle, port, stoppedAt) {
   if (stoppedAt !== null) {
     return { compared: false, why: `the window was truncated at f${stoppedAt}; `
            + `the cartridge left the state the port models, so its screen is `
@@ -246,24 +246,10 @@ function compareVideo(name, oracle, port, stoppedAt, introInWindow) {
     ntHalvesDiffer: oracle.final.ntHalvesDiffer,
     collChanged: oracle.final.collChanged,
     nt, pal, oam, coll,
-    // THE ONE EXCUSED DIVERGENCE, and it is knownFail's rule, not a new one.
-    // src/flow.js fullScreenLoad() says it in a comment at the code:
-    // "$8849-$886B: PPUADDR = $2000 and six JSR $8871 chunks. NOT PORTED."
-    // $882C rewrites 2304 bytes from $2000 on every stage load, so a window
-    // that contains one contains a screen the port never draws. MEASURED: the
-    // differing bytes are cells the CARTRIDGE blanked (rom 0) and the PORT left
-    // at the seed's star tiles (58..63) -- port == seed on 84/84, 69/69,
-    // 356/356, 179/179 of them, i.e. the port wrote nothing there at all.
-    //
-    // The excuse is DERIVED, not a list of scenario names: it applies exactly
-    // when the cartridge's $1B re-enters the intro set {1,2,3,4} inside the
-    // window, OR the cartridge is in game MODE 0 (W39 -- the title screen is
-    // two more $8871 images, and `gameover` is the first window to contain one).
-    // Three of the excused scenarios (intro-boot, intro-respawn, capsule-shield)
-    // are byte-exact anyway. Every other scenario -- including both deep ones
-    // and every long one -- is graded strictly.
-    ntKnown: introInWindow,
-    bad: ((nt.n && !introInWindow) ? 1 : 0) + (pal.n ? 1 : 0) + (oam.n ? 1 : 0)
+    // Full-screen `$8871` streams are ROM-derived and replayed by src/flow.js,
+    // so every compared nametable is graded strictly.
+    ntKnown: false,
+    bad: (nt.n ? 1 : 0) + (pal.n ? 1 : 0) + (oam.n ? 1 : 0)
        + (coll.n ? 1 : 0),
   };
 }
@@ -472,29 +458,9 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
     // recorded field would have agreed (rendergate.py rebuilds pictures from
     // MESEN's video state and imports no src/, so it cannot see this either).
     //
-    // ONLY WHEN THE WINDOW RAN TO THE END. If the cartridge left the modelled
-    // $1B set the port was never asked to follow it, so the screens are allowed
-    // to differ and comparing them would be inventing a failure.
-    // `introInWindow`: did the cartridge run a FULL-SCREEN LOAD inside this
-    // window? Read off the ORACLE's own bytes, never off a scenario list.
-    //
-    //   $1B in {1,2,3,4}  the five-step stage intro ($9B3E $9BED $9C12 $9C1E
-    //                     $9C24); $9B78's `JSR $882C` is inside the first.
-    //   $00 == 0          W39. MODE 0 loads TWO screens ($80E6 `JSR $882C` and
-    //                     $8256's `JSR $8824`) on its phase-0 frame, and every
-    //                     later mode-0 frame is still showing them. The old
-    //                     derivation missed this because the port could not
-    //                     leave mode 5, so no window contained a mode-0 frame;
-    //                     `gameover` now does, from f4364 on. Note $9751's own
-    //                     frame samples $00 = 0 AND $1B = 0 -- $9B3E INCs $1B
-    //                     to 1 and $9758 puts it straight back -- so the mode
-    //                     is the only byte at $80B5 that sees that load.
-    //
-    // See compareVideo() for what it excuses and what it does not.
-    video: compareVideo(name, oracle, port, stoppedAt,
-                        frames.some((f) => [1, 2, 3, 4]
-                          .includes(byFrameO.get(f).w_001B)
-                          || byFrameO.get(f).w_0000 === 0)),
+    // Full-screen stage and title streams are compared just like ordinary
+    // queued VRAM writes. See compareVideo() for the strict video grading.
+    video: compareVideo(name, oracle, port, stoppedAt),
     romLagTotal: oracle.lagFrames, romLagInWindow, portLag: portLagInWindow,
     // A field that never varies across the whole run tells you nothing when it
     // matches. Counted and printed, per docs/knowledge/03 trap 4.3.
@@ -886,32 +852,10 @@ function main(argv) {
   console.log(`  [${collBad === 0 ? 'PASS' : 'FAIL'}] TERRAIN MAP: ${collBad} of `
             + `512 bytes differ; the cartridge rewrote ${collChangedTotal} over `
             + `those windows`);
-  const strict = vidRows.filter((r) => !r.video.ntKnown);
-  const excused = vidRows.filter((r) => r.video.ntKnown);
-  const ntStrictBad = strict.reduce((n, r) => n + r.video.nt.n, 0);
+  const ntStrictBad = vidRows.reduce((n, r) => n + r.video.nt.n, 0);
   console.log(`  [${ntStrictBad + palBad + oamBad === 0 ? 'PASS' : 'FAIL'}] `
-            + `${ntStrictBad} nametable (over ${strict.length} strictly graded `
+            + `${ntStrictBad} nametable (over ${vidRows.length} strictly graded `
             + `scenarios), ${palBad} palette, ${oamBad} hardware-OAM bytes differ`);
-  // knownFail $8871, held to account at CORPUS level exactly like the field
-  // annotations above: an annotation that nothing diverges under is STALE and
-  // must be deleted, or the port has quietly grown the full-screen loader and
-  // 10 scenarios are being excused for nothing.
-  if (excused.length) {
-    const live = excused.filter((r) => r.video.nt.n > 0);
-    const ntKnownBad = excused.reduce((n, r) => n + r.video.nt.n, 0);
-    console.log(`  [${live.length ? 'STILL BROKEN' : 'FAIL -- STALE'}] `
-              + `knownFail $8871 (src/flow.js fullScreenLoad, "$8849-$886B ... `
-              + `six JSR $8871 chunks. NOT PORTED"): ${live.length} of `
-              + `${excused.length} windows with a stage load diverge, `
-              + `${ntKnownBad} bytes total`);
-    console.log(`      ${live.map((r) => `${r.name}:${r.video.nt.n}`).join(' ') || '(none)'}`);
-    if (!live.length) {
-      videoBad++;
-      console.log('      Nothing diverges any more. $8871 is drawn, or no '
-                + 'window contains a stage load -- DELETE the excuse in '
-                + 'compareVideo() and grade every scenario strictly.');
-    }
-  }
   for (const r of rows.filter((x) => !x.video.compared)) {
     console.log(`    (not compared) ${r.name}: ${r.video.why}`);
   }

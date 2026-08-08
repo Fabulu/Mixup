@@ -267,5 +267,5 @@ export function probeCollision(state, screenX, screenY) {
 //   $8871  six RLE chunks, 2304 $2007 writes from $2000, no literals
 //          (h_8871 = 6, h_888B = 2304 per stage load)
 //
-// so src/main.js boots into the real intro instead. The $8871 image is still
-// not drawn -- that gap is named at src/flow.js fullScreenLoad().
+// so src/main.js boots into the real intro instead. The $8871 image is decoded
+// by export_assets.py and replayed by src/flow.js fullScreenLoad().

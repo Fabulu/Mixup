@@ -107,6 +107,11 @@ export const loadWeaponTables = () =>
   weaponTables(JSON.parse(readFileSync(assetOrThrow('weapons/tables.json'), 'utf8')));
 export const loadSoundTables = () =>
   soundTables(JSON.parse(readFileSync(assetOrThrow('sound/tables.json'), 'utf8')));
+export const loadScreenImages = () => {
+  const j = JSON.parse(readFileSync(assetOrThrow('screens/nametables.json'), 'utf8'));
+  return { playfield: Uint8Array.from(j.playfield.bytes),
+           title: Uint8Array.from(j.title.bytes) };
+};
 
 export function loadMetasprites() {
   const j = JSON.parse(readFileSync(assetOrThrow('metasprites.json'), 'utf8'));
@@ -207,6 +212,7 @@ export function headlessResources(stageIndex = 0) {
     collisionTables: loadCollisionTables(),
     weaponTables: loadWeaponTables(),
     soundTables: loadSoundTables(),
+    screenImages: loadScreenImages(),
   };
 }
 

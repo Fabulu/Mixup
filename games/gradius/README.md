@@ -9,8 +9,8 @@ driver (wave 8), the enemy bullets (wave 11) and, since wave 13, an NES APU
 synthesiser that turns the driver's register writes into sound - verified
 frame-exact against the cartridge by `tools/test-all.mjs`.
 
-**What is still absent, and it is named rather than left to be discovered:** the
-`$8871` full-screen RLE loader, game over / continue, the boss and the end of
+**What is still absent, and it is named rather than left to be discovered:**
+game over / continue, the boss and the end of
 stage 1, stages 2-7, two-player, and the fifteen enemy handlers wave 12's audit
 found reachable. Every unported arm in `src/` throws with the ROM address the
 cartridge would have reached; nothing is a silent no-op. The notes below are the

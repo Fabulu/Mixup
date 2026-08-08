@@ -395,7 +395,7 @@ export function introReset(state, res) {
   state.zp1A = state.save28[p];                     // $9B72/$9B74  $1A
   state.substate = u8(state.substate + 1);          // $9B76 INC $1B
 
-  fullScreenLoad(state, 0);                         // $9B78 JSR $882C
+  fullScreenLoad(state, 0, res.screenImages);       // $9B78 JSR $882C
   // THE DROPPED NMI, and it belongs to THIS call site rather than to $882C.
   //
   // MEASURED, and the four measurements do not agree with each other, which is
@@ -494,7 +494,8 @@ export function clearZeroPage(state) {
 }
 
 /**
- * `$882C` -- the full-screen RLE load, REPRODUCED ONLY AS ITS RAM SIDE EFFECTS.
+ * `$882C` -- the full-screen RLE load, including its ROM-derived nametable
+ * stream and RAM side effects.
  *
  *   882C  A2 00     LDX #$00                    (X = 2 is the title screen)
  *   882E  BD 93 88 / 85 9B / BD 94 88 / 85 9C   $9B:$9C = $8893[X] = $8C78
@@ -504,17 +505,11 @@ export function clearZeroPage(state) {
  *   8845  PPUADDR := $2000, then six chunks through $8871's RLE
  *   886E  JMP $81B5  -> $10 = $88, PPUCTRL = $88, then $83B0 again ($0D = $10)
  *
- * THE GAP, NAMED. The 2304 `$2007` writes are NOT ported and the nametable is
- * left exactly as it was. MEASURED (00-recon-flow.md 5): `h_8871 = 6` and
- * `h_888B = 2304` per stage load, all of them RUN bytes and no literals,
- * starting at $2000 -- so it is more than one nametable's worth and what 2304
- * bytes from $2000 means for this cartridge's mirroring is an open question the
- * wave plan excludes on purpose. What covers the hole in practice is $9C24: the
- * intro then streams 84 terrain blocks over the next 21 frames, which is 384 px
- * of terrain in front of a camera sitting at 0, so the visible screen is rebuilt
- * before $0D lets the picture back on. What is NOT covered is anything $8871
- * draws that the streamer does not -- and on a RESPAWN the port keeps the old
- * screen's tiles outside that band.
+ * MEASURED (00-recon-flow.md 5): `h_8871 = 6` and `h_888B = 2304` per stage
+ * load. The decoded bytes are kept in `screens/nametables.json` and replayed
+ * in the same sequential `$2007` order, including the cartridge's vertical
+ * mirroring. The title image uses the second table entry and is therefore
+ * restored on every menu return instead of inheriting stale gameplay tiles.
  *
  * $0D is set to $10 twice here and then to 6 by $9BC5 four instructions later,
  * so neither survives; both are written down because the ORDER is the only
@@ -544,20 +539,28 @@ export function clearZeroPage(state) {
  * screens. It also retires export_assets.py's NOT_EXPORTED line "The title
  * screen's nametable ... its source table has not been identified."
  *
- * IT COSTS THE MODE PORT NOTHING, which is why `which` is documented and then
- * unused: the two entries differ only in `$2D` (which `$8824` writes itself and
- * `$8256` immediately re-writes) and in WHICH image is pushed -- and the image
- * is the part that is not ported. The parameter exists so the call sites read
- * as the ROM does and so the day the 2304 writes land, the selector is already
- * plumbed through.
+ * The two entries differ in `$2D` (which `$8824` writes itself and `$8256`
+ * immediately re-writes) and in WHICH image is pushed. The decoded streams
+ * are supplied by `res.screenImages`, preserving the selector and the ROM's
+ * sequential `$2007` write order.
  */
-export function fullScreenLoad(state, which = 0) {
+export function fullScreenLoad(state, which = 0, screenImages = null) {
   state.ppu.blank = 0x10;                           // $8838 -> $8333 -> $83B0
   state.vram.cursor = 0;                            // $883B STA $0E
   state.zp1F = 0;                                   // $883F STA $1F
   state.ppu.scrollY = 0;                            // $8841 STA $13
   state.ppu.scrollX = 0;                            // $8843 STA $12
-  // $8849-$886B: PPUADDR = $2000 and six JSR $8871 chunks. NOT PORTED.
+  // $8849-$886B: PPUADDR = $2000 and six JSR $8871 chunks. The image bytes
+  // are ROM-derived in assets/screens/nametables.json. The JS write below is
+  // the same sequential $2007 stream, including the NES's vertical mirroring.
+  const image = screenImages?.[which === 2 ? 'title' : 'playfield'];
+  if (image) {
+    for (let i = 0; i < image.length; i++) {
+      const off = i & 0x7FF;                      // $2000-$2FFF, vertical mirror
+      state.vram.nt[off] = image[i];
+      state.vram.nt[off + 0x800] = image[i];
+    }
+  }
   state.ppu.ctrl = 0x88;                            // $886E -> $81B5 $10 = $88
   state.ppu.blank = 0x10;                           // $81BC -> $83B0
   // THE DROPPED NMI USED TO BE SET HERE AND IT IS NOT ANY MORE (W39). It is a
@@ -578,9 +581,9 @@ export function fullScreenLoad(state, which = 0) {
  * is redundant on that path -- and it is reproduced anyway, because "the caller
  * already did it" is how a port acquires a difference nobody can find later.
  */
-export function titleScreenLoad(state) {
+export function titleScreenLoad(state, screenImages = null) {
   state.ppu.chrSel = 3;                             // $8824/$8826 LDA #$03 / STA $2D
-  fullScreenLoad(state, 2);                         // $8828 LDX #$02 -> $882E
+  fullScreenLoad(state, 2, screenImages);           // $8828 LDX #$02 -> $882E
 }
 
 /**
