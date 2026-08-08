@@ -29,7 +29,15 @@ import { unreached } from './unported.js';
 import { spawnShot } from './shots.js';
 import { drawShipShadow, SHIP_MUTATE } from './shipsprite.js';
 import { fireBomb2498E2, BOMBRAM } from './bomb.js';
-import { requestHyper249868 } from './hyper.js';
+import {
+  HYPER, endHyper285AF2, grantHyper287682, requestHyper249868,
+  resetHyper25392E,
+} from './hyper.js';
+import { spawnItem } from './items.js';
+import { BEAM, wipeSegmentPool } from './laser.js';
+import { hyperStock286ED6 } from './hud.js';
+import { install2415A2 } from './palette.js';
+import { ALLOC, queueKill } from './objalloc.js';
 
 // Globals the player reads and the port does not write.  Seeded once and
 // FROZEN for the run.  Listed by name so the runner can print them and a
@@ -76,6 +84,34 @@ export const FROZEN_GLOBALS = [
 // 'rom' is the ROM's order and the only value the port ever ships with.
 export const CLAMP_ORDER = { value: 'rom' };
 
+/** W164 mutation seam. `skip-rank-quarter` is the plausible broken port that
+ * ends a hyper and clears stock but leaves its persistent rank power intact. */
+export const DEATH_MUTATE = { value: null };
+
+export const DEATH = Object.freeze({
+  hit: 0x249f8a, state: 0x24a130, reset: 0x24a1ec,
+  animList: 0x255b7c, formationCaps: 0x2551fa,
+  commonMedal: 0x817f80,
+  p1: Object.freeze({
+    h: HYPER.p1, beam: BEAM[0], ready: 0x81292c, flag: 0x812930,
+    noMiss: 0x81293c, medalA: 0x817f84, medalB: 0x817f86,
+    activeSave: 0x812974, suffix: 0x812910,
+    reloadA: 0x812914, reloadB: 0x812916,
+    lives: 0x8130be, dropGate: 0x812934, dropCount: 0x812938,
+    paletteTable: 0x25321e, paletteCall: 0x2531de, stateWord: 2,
+  }),
+  p2: Object.freeze({
+    h: HYPER.p2, beam: BEAM[1], ready: 0x81292e, flag: 0x812932,
+    noMiss: 0x81293e, medalA: 0x817f88, medalB: 0x817f8a,
+    activeSave: 0x812976, suffix: 0x812912,
+    reloadA: 0x812918, reloadB: 0x81291a,
+    lives: 0x8130c0, dropGate: 0x812936, dropCount: 0x81293a,
+    paletteTable: 0x25323e, paletteCall: 0x2531fe, stateWord: 3,
+  }),
+});
+
+function deathSide(p2) { return p2 ? DEATH.p2 : DEATH.p1; }
+
 /** $24A42A -- the tilt (bank) decay: ($4e,A6) moves 4 toward zero, or stays. */
 function tiltDecay(ram, rec) {
   const t = i16(ram.u16(rec + P.tilt));       // $24A42E tst.w ($4e,A6)
@@ -98,6 +134,153 @@ function tiltRamp(ram, rec, limit, step) {
   ram.setU16(rec + P.tilt, u16(i16(ram.u16(rec + P.tilt)) + step));
 }
 
+/** `$2531DE/$2531FE -> $2415A2`, the death-time partial sprite-palette
+ * install. The table row supplies its source, bank and exact word count. */
+function deathPalette2531DE(ram, rom, ctx, p2) {
+  const d = deathSide(p2);
+  const index = u16(ram.u16(d.suffix) * 2);             // $2531DE/$2531FE
+  const row = d.paletteTable + index;
+  const src = rom.u32(row);
+  const bank = rom.u16(row + 4);
+  const count = rom.u16(row + 6);
+  if (!ctx.palette) {
+    ctx.unportedLog?.note(d.paletteCall, `$${d.paletteCall.toString(16)
+      .toUpperCase()} -> $2415A2 partial sprite-palette install skipped because `
+      + 'this isolated caller supplied no PaletteState');
+    return;
+  }
+  install2415A2(ram, ctx.palette, bank, count,
+    rom.bytes(src, (count + 1) * 2), d.paletteCall,
+    `death palette table $${d.paletteTable.toString(16).toUpperCase()}`);
+}
+
+/** `$249F8A..$24A12E`, the immediate player-hit/death initializer. */
+export function playerHit249F8A(ram, slot, rec, ctx, p2 = false) {
+  const d = deathSide(p2);
+  const h = d.h;
+
+  ram.setU16(0x81316c, 1);                              // $261116
+  ram.setU16(0x81316a, 0);                              // $26111E
+  if (!ram.btst8(rec, 6)) {                             // $249F90
+    ctx.unportedLog?.note(0x2532ea, '$249F96 jsr $2532EA, the death-time HUD '
+      + 'draw; its closure is presentation-only');
+  }
+  ctx.soundPost?.(0x28c3a0);                            // $249F9C
+  ram.setU16(0x803938, 1);                              // $249FA2
+
+  wipeSegmentPool(ram, ctx, d.beam);                    // $249FB2/$24A056
+  ram.setU16(d.ready, 1);                               // $249FB8/$24A05C
+  ram.setU16(d.flag, 1);                                // $249FC0/$24A064
+  ram.setU16(d.noMiss, u16(ram.u16(d.noMiss) + 2));     // $249FC8/$24A06C
+  ram.setU16(DEATH.commonMedal, 0);                     // $27F898/$27F8AE
+  ram.setU16(d.medalA, 0);
+  ram.setU16(d.medalB, 0);
+
+  let earn = u16(ram.u16(h.earn) + 0x0258);             // $287B9A/$287BB6
+  ram.setU16(h.earn, earn);
+  if (earn >= 0x095f) ram.setU16(h.earn, 0x095e);
+  grantHyper287682(ram, ctx.rom, ctx, p2);               // $249FDA/$24A07E
+
+  ram.setU16(d.activeSave, ram.u16(h.active));           // $249FE0/$24A084
+  ram.setU16(d.suffix, 0);                               // $249FEA/$24A08E
+  ram.setU16(d.reloadA, 8);                              // $249FF0/$24A094
+  ram.setU16(d.reloadB, 8);                              // $249FF8/$24A09C
+  endHyper285AF2(ram, ctx.rom, ctx, p2);                 // $24A000/$24A0A4
+  if (DEATH_MUTATE.value !== 'skip-rank-quarter') {
+    ram.setU16(h.power, ram.u16(h.power) >>> 2);         // $24A00C/$24A0B0
+  }
+  if (ram.u16(h.stock) !== 0) {                          // $24A014/$24A0B8
+    ram.setU16(h.stock, 0);                              // $24A01C/$24A0C0
+    hyperStock286ED6(ram, ctx.rom, ctx, p2 ? 1 : 0);    // $24A022/$24A0C6
+  }
+
+  const lives = ram.u16(d.lives);                       // $24A028/$24A0CC
+  if (lives === 0) resetHyper25392E(ram, p2);            // $24A030/$24A0D4
+  ram.setU16(rec + P.auraPhase, d.stateWord);            // $24A036/$24A0DA
+  deathPalette2531DE(ram, ctx.rom, ctx, p2);             // $24A03E/$24A0E2
+
+  let drops = 1, kind = 4;                               // $24A0F6/$24A0F8
+  if (lives !== 0) {
+    drops = 3;
+    kind = 0;
+    if (ram.u16(d.dropGate) === 0) {                     // $24A102
+      const before = ram.u16(d.dropCount);
+      ram.setU16(d.dropCount, u16(before + 1));           // $24A108
+      drops = before;                                    // D7=(A3); addq; subq
+    }
+  }
+  for (let n = 0; n < drops; n++) {
+    spawnItem(ram, ctx.rom, ctx, kind, rec, 0x24a10e);    // $24A10E/dbra
+  }
+
+  ram.setU16(rec, ram.u16(rec) & 0x2000);                // $24A118
+  ram.bset8(rec, 0);                                     // $24A11C, state $0100
+  ram.setU32(rec + P.hitXPlus, DEATH.animList);          // $24A120
+  ram.setU16(rec + P.dirByte, 6);                        // $24A128
+  ctx.deathEvent?.('hit', p2 ? 2 : 1, drops, kind);
+}
+
+/** `$24A130..$24A21A`, the complete death animation and player-record reset.
+ * Its final jump queues the current object ID for deferred destruction. */
+export function playerDead24A130(ram, slot, rec, ctx, p2 = false) {
+  if (!ram.btst8(rec, 2)) {                              // $24A130
+    const next = (ram.u32(rec + P.hitXPlus) + 4) >>> 0;  // $24A136/$24A13A
+    if (ctx.rom.i16(next) >= 0) {                        // $24A13C
+      ram.setU32(rec + P.hitXPlus, next);                // $24A140
+      return 'animating';
+    }
+    ram.setU16(rec + 0x26, 0x20);                        // $24A146
+    ram.bset8(rec, 2);                                   // $24A14C
+  }
+  const delay = u16(ram.u16(rec + 0x26) - 1);            // $24A150
+  ram.setU16(rec + 0x26, delay);
+  if (i16(delay) >= 0) return 'waiting';                 // $24A154
+
+  const d = deathSide(p2);
+  const keepState = ram.u16(rec) & 0x2000;               // $24A172/$24A174
+  const formation = ram.u16(rec + P.optFormation);       // $24A17C
+  let keep20 = 0, keep22 = 0;
+  if (formation & 0x0002) {                              // $24A180
+    if (formation === 6 || ram.u16(0x813098) !== 0) {
+      keep22 = ram.u16(rec + 0x22);
+      if (keep22 !== 0) keep22 = u16(keep22 - 2);
+    }
+    keep20 = ram.u16(rec + 0x20);
+    if (keep20 !== 0) keep20 = u16(keep20 - 2);
+  } else if (formation & 0x0004) {                       // $24A1AC
+    if (ram.u16(0x813098) !== 0) {
+      keep20 = ram.u16(rec + 0x20);
+      if (keep20 !== 0) keep20 = u16(keep20 - 2);
+    }
+    keep22 = ram.u16(rec + 0x22);
+    if (keep22 !== 0) keep22 = u16(keep22 - 2);
+  }
+  let keep25 = ram.u8(rec + 0x25);                       // $24A1CC
+  if (ram.u16(d.activeSave) === 0) {                     // $24A1D0
+    const cap = (ctx.rom.u8(DEATH.formationCaps
+      + i16(u16(formation - 2))) * 2) & 0xff;             // $24A1D4..$24A1E4
+    if (keep25 < cap) keep25 = (keep25 + 1) & 0xff;       // $24A1E6..$24A1EA
+  }
+
+  for (let n = 0; n <= 0x30; n++) {                      // $24A1EC..$24A1F4
+    ram.setU16(rec + n * 2, 0);
+  }
+  ram.setU16(rec, keepState);                            // $24A1F8
+  ram.setU16(rec + P.optFormation, formation);           // $24A1FA
+  ram.setU16(rec + 0x20, keep20);                        // $24A1FE
+  ram.setU16(rec + 0x22, keep22);                        // $24A202
+  ram.setU8(rec + 0x25, keep25);                         // $24A206
+  ram.setU16(rec, ram.u16(rec) & 0x7fff);                // $24A20A
+
+  const idx = ram.u8(slot + 0x07);                       // $24A210
+  const reset = idx === 0 ? 0x8130fa : 0x81311e;
+  ram.setU16(reset, 1);                                  // $26080A -> $25FF38
+  ram.setU16(reset + 2, 0);
+  queueKill(ram, ram.u32(slot + ALLOC.idOff));           // $24A21A -> $241292
+  ctx.deathEvent?.('reset', p2 ? 2 : 1, keep20, keep22, keep25);
+  return 'reset';
+}
+
 /**
  * $2494FA -- one frame of the player.
  * @param ctx {{tables, unportedLog, wallHits}}
@@ -113,7 +296,7 @@ export function updatePlayer(ram, slot, slotIndex, ctx) {
   // BYTE test here (`btst #n,<mem>` is always byte-sized), so this is bit 0 of
   // $8103E6, the HIGH byte of the state word.
   if (ram.btst8(rec + P.state, 0)) {
-    unreached(ROM.playerDead, 'player death / respawn state ($24A130)');
+    return playerDead24A130(ram, slot, rec, ctx, idx !== 0);
   }
   // $249508 tst.w $812972 / bne $24A3A2 -- **THE STAGE-CLEAR ARM.**
   // W62 (S1) makes this real.  `$812972` has exactly two writers in build B:
@@ -141,33 +324,13 @@ export function updatePlayer(ram, slot, slotIndex, ctx) {
   } else {
     ram.setU8(rec + P.dirLatch, ram.u8(rec + 0x3b)); // $24953C
     if (ram.bclr8(rec + P.state, 4)) {               // $249542 bclr #4,(A6)/bne
-      // **WAVE 64 MADE THIS REACHABLE AND IT IS THE BIGGEST THING THE BOMB
-      // OPENS.**  `$249524 tst.b ($3e,A6)` sends an INVULNERABLE player to
-      // `$24952A bclr #4,(A6)`, which clears the same bit without branching --
-      // so while the invulnerability holds, this arm is dead.  `[M]` the
-      // shipped seed has `($3e,A6) = $FF`, and `$249530 cmpi.b #$FF / beq`
-      // means $FF NEVER counts down, so from wave 4 to wave 63 nothing in this
-      // port could clear it and this line could not fire.
-      //
-      // `$2564BA clr.b ($3e,A0)` -- **the BOMB's cooldown expiry**, 40 frames
-      // after the bomb's script ends -- is the FIRST instruction this port has
-      // ever run that clears it.  So a bomb makes the ship MORTAL, and bit 4
-      // is what the collision pass sets when it is hit.
-      //
-      // `$249F8A` is 212 instructions and twenty callees, and among them are
-      // `$24A00C lsr.w #$2,$81B646` (**death QUARTERS the rank power word**,
-      // recon 38 §3.2), `$24A01C clr.w $81B65C` and `$249FDA jsr $287682` --
-      // i.e. it is rank-critical and item-granting, which is exactly the
-      // ground `20-OWNER-scoring-must-be-exact.md` says not to guess on.
-      unreached(ROM.playerBit4, 'the player was HIT: $249542 bclr #$4,(A6) '
-        + 'found the bit set, so control goes to $249F8A -- the hit/death '
-        + 'path, 212 instructions, which QUARTERS $81B646 at $24A00C, clears '
-        + 'the hyper stock at $24A01C and calls the item machine $287682. '
-        + 'W64 (B2) is what made this reachable: $2564BA, the BOMB\'s cooldown '
-        + 'expiry, is the only thing in this port that clears the seed\'s '
-        + '($3e,A6) = $FF, and while that held $249524\'s arm cleared bit 4 '
-        + 'every frame without branching. Bomb, then get hit, and you are '
-        + 'here');
+      // W64 made this reachable: `$2564BA` clears the bomb's invulnerability,
+      // and the collision pass sets this bit. W164 follows the complete death
+      // initializer and its later `$24A130..$24A21A` reset state. Returning at
+      // `$24A12E` would strand the dead object instead of advancing its
+      // animation and queuing the deferred kill.
+      playerHit249F8A(ram, slot, rec, ctx, idx !== 0);
+      return;
     }
   }
   // $24954A andi.w #$ffdf,(A6): clears bit 5 of the WORD (i.e. of $8103E7).

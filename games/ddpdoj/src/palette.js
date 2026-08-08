@@ -75,8 +75,8 @@
 // so a text bank is SIXTEEN entries, not 32 -- `$2414BE`, and `moveq #$E`
 // upstream is what pins the region at 15 of them.)
 //
-// **W92: this module implements `$24150A`, `$2415E8`, `$24133C` and its
-// `$241404` tail, and NOTHING ELSE of the nine.**  `$2415E8` is the whole
+// **W164: this module implements `$24150A`, `$2415A2`, `$2415E8`, `$24133C`
+// and its `$241404` tail.**  `$2415E8` is the whole
 // BACKGROUND third in ONE call -- [M] `$2611C4 moveq #$0,D0 / moveq #$1F,D1 /
 // jsr $2415E8`, 32 banks = 2048 bytes, from the per-stage block the cartridge
 // publishes at `$261252[$813096]` (stage 1: `$227E58`, which this bundle has
@@ -305,6 +305,38 @@ export function install24157A(ram, pal, d0, src, site, why) {
   }
   ram.setU16(PALSTAGE.spr.dirty, 1);                           // $241594
   const k = `$${site.toString(16).toUpperCase()} hi-half bank ${d0} <- ${why}`;
+  const e = pal.installs.get(k) ?? { n: 0, bank: d0 };
+  e.n++;
+  pal.installs.set(k, e);
+  pal.installCount++;
+}
+
+/**
+ * `$2415A2` -- install `(D1+1)` WORDS at the low end of sprite bank D0.
+ *
+ * The player-death path reaches this through `$2531DE/$2531FE`. The selected
+ * row supplies the source pointer, bank and DBRA count together, so the source
+ * length is derived from D1 rather than widened to a whole palette bank.
+ */
+export function install2415A2(ram, pal, d0, d1, src, site, why) {
+  const words = d1 + 1;
+  if (!(d0 >= 0 && d0 < SPR_BANKS) || !(words >= 1 && words <= BANK_WORDS)) {
+    unreached(0x2415a2, `$2415A2 was handed D0=${d0} D1=${d1} from $${site
+      .toString(16).toUpperCase()}; that selects ${words} words at `
+      + `sprite bank ${d0}. The board does not clamp either register`);
+  }
+  if (src.length !== words * 2) {
+    unreached(0x2415a2, `$2415A2 from $${site.toString(16).toUpperCase()} was `
+      + `handed ${src.length} source bytes for D1=${d1}; DBRA copies exactly `
+      + `${words} words (${words * 2} bytes)`);
+  }
+  const base = PALSTAGE.spr.stage + d0 * 64;
+  for (let i = 0; i < words; i++) {
+    ram.setU16(base + i * 2, (src[i * 2] << 8) | src[i * 2 + 1]);
+    pal.stageSourced.spr[d0 * BANK_WORDS + i] = 1;
+  }
+  ram.setU16(PALSTAGE.spr.dirty, 1);                       // $2415B6
+  const k = `$${site.toString(16).toUpperCase()} ${words}-word bank ${d0} <- ${why}`;
   const e = pal.installs.get(k) ?? { n: 0, bank: d0 };
   e.n++;
   pal.installs.set(k, e);

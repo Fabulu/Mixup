@@ -61,11 +61,11 @@
 // grant, collection and activation pipeline. Both dispatch entries are live,
 // player-specific mirrors and remain inside the existing range check.
 //
-// [M] the only `$27E812` sites this port can reach are `$275B06` and `$275B1A`
-// (`handler85`'s death arm, types `$85`/`$86`), and they pass D0 = `$0` or `$8`.
-// The other seven sites are the player's own death (`$24A10E`, behind the
-// unported `$249F8A`), the stage-1 boss (`$294C5E`/`$294C7E`/`$294D42`/
-// `$294D62`, 0 of 111 boss entry points ported) and two unattributed bodies
+// [M] Three `$27E812` routes are now live: `$275B06`/`$275B1A` in handler85's
+// death arm and W164's player-death loop at `$24A10E`. The latter authentically
+// emits kind `$4` with no lives or kind `$0` under the surviving-lives arms.
+// The remaining six sites are the stage-1 boss (`$294C5E`/`$294C7E`/
+// `$294D42`/`$294D62`) and two unattributed bodies
 // (`$267CAC`, `$27B4A0` -- recon 59 §9.1).
 //
 // ================================ THE RECORD ================================

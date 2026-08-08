@@ -181,18 +181,16 @@
 // ------- THE CONSEQUENCE, MEASURED, AND WHY IT DOES NOT STOP THE BUILD ------
 //
 // `$8103E6` bit 4 (byte op) is exactly the bit `src/player.js` tests at
-// `$249542 bclr #$4,(A6) / bne $249F8A` -- **a loud named throw**, the PLAYER
-// DEATH routine (`$24A006 lsr.w #2,$81B646` quarters the rank power;
+// `$249542 bclr #$4,(A6) / bne $249F8A` -- the W164 PLAYER DEATH routine
+// (`$24A00C..$24A018` loads, quarters and stores the rank power;
 // `$24A10E jsr $27E812` is the player's own item drop).  So `$2459D0` is the
 // instruction that makes player death reachable.
 //
-// [M] It does not reach it on this tree, and the reason is a SEED PROPERTY and
-// not a fact about the cartridge: `($3e,A4)`, the invulnerability byte, is
-// `$FF` in the shipped bundle seed on all 3,001 measured frames, nothing under
-// `src/` writes it, and `$FF` is the "hold" value `$24952E cmpi.b #$FF` refuses
-// to decrement.  So `$249524`'s arm runs, `$24952A bclr #$4,(A6)` clears the
-// flag, and `$249542` is never reached.  **On the board the invulnerability
-// expires and the player dies.**  That is stated here rather than relied on.
+// [M] Older seeded gates did not reach it because the inherited player
+// invulnerability byte was `$FF`, the hold value `$24952E` refuses to
+// decrement. W164 validates the now-live port with a controlled board run:
+// zero invulnerability plus this exact hit bit enters `$249F8A`, then reaches
+// the final `$24A21A` deferred-kill handoff 70 logic frames later.
 //
 // ------------------------------- BLOCK 4 IS REAL ----------------------------
 //

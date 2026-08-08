@@ -1650,10 +1650,9 @@ function fire85(ram, rom, a5, a6, ctx) {
 // **THE DROP THE OWNER WAS MISSING IS TWELVE INSTRUCTIONS ABOVE AN EXPLOSION
 // W54 ALREADY PORTED**, and until W61 the port ran the explosion and skipped
 // the drop in the same twelve.  `$275B06` and `$275B1A jsr $27E812` are the
-// only two of the routine's nine `$27E812` sites this port can reach -- the
-// other seven are the player's own death (behind the unported `$249F8A`), the
-// stage-1 boss (0 of 111 script entry points ported) and two bodies recon 59
-// §9.1 could not attribute.
+// two handler85 sites in the routine's nine-site `$27E812` inventory. W164
+// additionally makes the player's own `$24A10E` death-drop site live; the
+// stage-1 boss sites and two bodies from recon 59 remain separate owners.
 //
 //   $275AF2  moveq #$25,D0 / jsr $28615E   THE KILL SCORE.        ported W34
 //   $275AFA  moveq #$0,D0

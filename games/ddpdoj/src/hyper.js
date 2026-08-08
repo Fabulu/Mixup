@@ -166,6 +166,22 @@ export function endHyper285AF2(ram, rom, ctx, p2 = false) {
   ctx?.hyperEvent?.('end', h.who, ram.u16(h.power));
 }
 
+/** `$25392E/$253968` -- the no-lives death reset. Power is deliberately not
+ * cleared: the death call site quarters `$81B646/$81B648` before this routine,
+ * and these two reset bodies have no write to either power word. */
+export function resetHyper25392E(ram, p2 = false) {
+  const h = side(p2);
+  ram.setU16(h.active, 0);                              // $253930/$25396A
+  ram.setU16(h.earn, 0);                                // $253936/$253970
+  ram.setU16(h.gauge, 0);                               // $25393C/$253976
+  ram.setU16(h.subTick, 0);                             // $253942/$25397C
+  ram.setU16(h.level, 0);                               // $253948/$253982
+  ram.setU16(h.req, 0);                                 // $25394E/$253988
+  ram.setU16(h.stock, 0);                               // $253954/$25398E
+  ram.setU16(p2 ? 0x81b6a0 : 0x81b660, 0);             // $25395A/$253994
+  ram.setU16(h.pending, 0);                             // $253960/$25399A
+}
+
 /** `$285A12/$285B3C`, in the type-0 object's authentic frame slot. */
 export function stepHyper285A12(ram, rom, ctx, p2 = false) {
   const h = side(p2);
