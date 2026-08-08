@@ -716,6 +716,23 @@ architecture works. The next phase is owner-TBD (RANK Wave B [MAME-gated] / Phas
 [long poles] / Wave B input [owner-gated] / stage-2 CONTENT [owner-gated -- only if the owner wants
 past stage 1]). The cron should AWAIT owner steer.
 
+## 7y. UPDATE -- 2026-08-08: W27 sound round DONE (W134 + W135); Wave A IN FLIGHT
+
+The W27 sound round (10 recons + architect, ~1.2M tokens) produced the sound plan (W135,
+committed `ff3940e`). 9 premise corrections: Z80 upload = trivial verbatim copy (not a
+transform hunt); synth core = small (no LFO/ADSR, single-ramp volume); stage-1 = 16-bit only;
+oracle = `ics.tsv` (191k rows) NOT `keyon.tsv` (broken); ~33.8 kHz native rate (not
+11025/15625); the "doubling" is a MAME tap artifact (write ONCE). Wave plan: A (68k cue
+post/queue keystone, state-exact) -> B (trivial upload + listing) -> C (Z80 driver, the real
+work, 3-5 waves) -> D (sample data, tight-union stitch 1.10 MiB +41%) -> E (ICS2115 synth,
+research) -> F (shared Web Audio shim, prove on Gradius). Gate: command-stream + register-state
+exact = STRONG; PCM-vs-MAME = REJECTED.
+
+Wave A (sound.js + ring/drain/gates + ~25 note() replacements) + the silent-latch validation
+(Wave A prerequisite: prove DOJ does not write `$C00005`/`$C0000D`) IN FLIGHT. Direction: sound
+-> stage 2-5 content; NO MiSTer (deferred until after all 5 levels). Wave B input: owner asked
+(pending). Assets: regenerated + live (build `20260807235656`).
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
