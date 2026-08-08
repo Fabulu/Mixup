@@ -369,6 +369,24 @@ VELOCITY_FIELD = (0x200920, 0x221520 - 0x200920,
                   "point at, $200D20..$22151F")
 SHOT_WINDOWS.append(VELOCITY_FIELD)
 
+# WAVE 27 SOUND B -- THE Z80 PROGRAM UPLOAD SOURCE.  The Z80 has 64 KiB RAM and
+# NO ROM (pgm.cpp:29); the 68k uploads its whole program through the $C10000
+# shared window early in boot.  The upload source is a verbatim, stride-1 copy
+# sitting in the decrypted 68k image at $2C348A, length $5B98 (23448 bytes):
+# copying it into the Z80 RAM model matches rip/sound/z80ram.bin byte-for-byte
+# across the code region $0086-$5B97 (23314 bytes), with exactly 31 differences
+# ALL in the volatile scratch $0000-$0085 (set by reset/init, never part of the
+# uploaded program text).  See docs/worklog/ddpdoj/138-impl-sound-wave-b.md.
+# The port reconstructs the Z80 program from THIS window; z80ram.bin is the
+# byte-match ORACLE only (gitignored, never shipped).
+Z80_UPLOAD_LEN = 0x5B98  # 23448. NOTE: $5B98 = 23448, not the 23416 some old
+                         # briefs carried (23416 = $5B78). The hex figure wins.
+Z80_UPLOAD = (0x2C348A, Z80_UPLOAD_LEN,
+              "WAVE 27B: the Z80 program upload source -- verbatim, stride 1. "
+              "Read into the Z80 RAM model by src/z80.js uploadZ80Program(). "
+              "Code region $0086-$5B97 matches rip/sound/z80ram.bin exactly.")
+SHOT_WINDOWS.append(Z80_UPLOAD)
+
 # WAVE 22 -- THE SPAWN SIDE.  src/spawn.js reads the stage table, the stage-1
 # spawn script and the aux table the way the walker `$2633BE` does.  The two
 # enemy TYPE tables (LO `$267824` / HI `$27E412`, 8 bytes per type -- init then
