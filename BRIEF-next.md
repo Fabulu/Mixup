@@ -61,7 +61,53 @@ them as three.
 
 ---
 
-## 3. THE ROOT CAUSE BEHIND THE HUD CLUSTER
+## 3. MEASURED. THE HUD RECON LANDED AND SETTLED THIS.
+
+**`docs/worklog/ddpdoj/100-recon-hud.md`, commit `2c0958f`. Read it before
+touching the HUD. The section below it was my hypothesis and is kept only to
+show what was wrong.**
+
+**PEN 0 IS NOT TRANSPARENT. PEN 15 IS.** Stated in three places already
+(`render/tiles.js:160`, `tools/assets.py:164`, `framerender.py:102`). Measured:
+pen 0 is a real colour in **12 of 15 text banks**, and bank 5's is `$17B7`,
+RGB(41,239,189), **cyan**. So the fallback paints every missing text tile as a
+solid cyan block. **That comment was lie number twelve**, and it is a one-line
+fix: change the fallback pen to 15.
+
+**THE RECTANGLE IS NOT THE HYPER GAUGE.** It is the **chain high-water
+counter**, `$286040`, a four-slot BCD digit readout at TATE pixels x48..63
+y16..39, sitting beside its own label, which is the partial "MAX" visible in the
+screenshot. **It jumps on digit carries and freezes because all 119 glyphs
+(`$C5AA..$C620`) are absent and the fallback paints every value identically.**
+
+**My partial-fill-tile theory is DISPROVEN: there is no fill bar at all.** The
+owner read it as a gauge and so did I; it is a number whose digits cannot draw.
+
+**THE CHAIN COUNTER: state runs, picture absent, and it is missing from TWO
+sheets.** The live popup `$2855B6` is ported and does emit into bucket 25, which
+renders. All 50 popup digit streams and the chain-bar base `$1CC4A0` are missing
+from the **sprite** sheet: **3,314 of 3,357 records dropped per 900 frames.**
+
+**THE HYPER: state dead, picture fine.** The stock icons render correctly at
+zero. `$81B642`'s only setter is `$2530D0`, inside the hyper-item collect arm,
+and **`items.js:179` refuses that item deliberately**. So the counter never
+moves.
+
+**AN OPEN CONTRADICTION WORTH RESOLVING FIRST.** The owner reports *"At some
+point I get a hyper and I can use it"*. If the only setter is refused at the
+allocator, that should be impossible. Either they are describing something else
+(the bomb, whose button forks on stock), or there is a second path nobody has
+found. **Settle that before building on the recon's hyper conclusion.**
+
+**`src/hud.js:105` is confirmed stale**, as suspected.
+
+**Fix order the recon recommends:** transparent pen to 15, ship the 128 TX
+tiles (full index list in its section 4), ship the bucket-25 streams, hyper
+last.
+
+---
+
+## 3b. WHAT I GUESSED BEFORE THE MEASUREMENT (kept as a record of the error)
 
 **The TX tile sheet holds 159 tiles. The port writes index 49208 (`$c038`).**
 
