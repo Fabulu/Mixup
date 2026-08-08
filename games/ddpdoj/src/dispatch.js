@@ -95,6 +95,7 @@ export class MailboxQueue {
   constructor() { this.msgs = []; }
   poll() { return this.msgs.length > 0; }
   dequeue() { return this.msgs.shift(); }
+  peek() { return this.msgs[0]; }
   enqueue(message) {
     if (this.msgs.length >= DISPATCH.queueCapacity) {
       throw new Error('sound dispatch: $6001 queue overflow (80 records)');
@@ -250,7 +251,7 @@ export class MainLoop {
   }
 }
 
-/** Test/runtime Layer 3 hub. The browser runtime bridge is a later wave. */
+/** Live Layer 3 hub. `SoundRuntime` owns its per-frame/core integration. */
 export class SoundChain {
   constructor(driverParams = null, cues = null) {
     this.rf = new IcsRegisterFile();
@@ -290,8 +291,8 @@ export class SoundChain {
     return armed;
   }
 
-  tick() {
-    this.rf.resetFrame();
+  tick(resetFrame = true) {
+    if (resetFrame) this.rf.resetFrame();
     if (this.sequencer) this.sequencer.tick();
     this.engine.tick();
   }

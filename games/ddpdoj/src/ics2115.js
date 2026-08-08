@@ -272,7 +272,10 @@ export class Ics2115Core {
     voice.phase = accumulatorPhase(voice.u16(0x0a), voice.u16(0x0b));
     const start = boundaryPhase(voice.u16(0x02), voice.u16(0x03));
     const end = boundaryPhase(voice.u16(0x04), voice.u16(0x05));
-    if (end < start || voice.phase < start || voice.phase > end) {
+    // OscStrt is the forward-loop return boundary, not a lower clamp on the
+    // initial accumulator. Live BGM descriptors deliberately attack before
+    // OscStrt and enter the loop range later.
+    if (end < start || voice.phase > end) {
       throw new Error(`ICS2115 invalid forward phase range start=${start} phase=${voice.phase} end=${end}`);
     }
     voice.running = true;
@@ -339,8 +342,11 @@ export class Ics2115Core {
     return (sample * volumeGain(voice.u16(0x09))) >> 15;
   }
 
-  runNative(count, emit = true) {
+  runNative(count, emit = true, onNativeBoundary = null) {
     integer('native frame count', count, 0, 0x7fffffff);
+    if (onNativeBoundary !== null && typeof onNativeBoundary !== 'function') {
+      throw new TypeError('ICS2115 native-boundary callback must be a function');
+    }
     if (emit) this._ensureOut(count);
     for (let n = 0; n < count; n++) {
       let left = 0;
@@ -356,16 +362,17 @@ export class Ics2115Core {
         this.out[1][this.outLen] = right / 32768;
         this.outLen++;
       }
+      if (onNativeBoundary) onNativeBoundary(n);
     }
   }
 
-  frame(log, emit = true) {
+  frame(log, emit = true, onNativeBoundary = null) {
     this.applyLog(log);
     this.nativeClockAcc += ICS_SOURCE_RATE * LOGIC_RATE_DEN;
     const count = Math.floor(this.nativeClockAcc / LOGIC_RATE_NUM);
     this.nativeClockAcc -= count * LOGIC_RATE_NUM;
     this.frameCount++;
-    this.runNative(count, emit);
+    this.runNative(count, emit, onNativeBoundary);
     return count;
   }
 

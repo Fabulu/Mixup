@@ -2400,7 +2400,8 @@ if (SPR_ORDER.length !== SPR_SHARDS.length
 // WAVE 27D (SOUND) -- STITCH THE 28-FRAGMENT TIGHT UNION OF u17 into one shard.
 //
 // The 28 windows come from tables.sound.sampleWindows (export-tables.py
-// measured them from keyon.tsv).  Each is a non-adjacent byte run in u17; the
+// measured them from keyon.tsv, plus OscEnd and its interpolation neighbour).
+// Each is a non-adjacent byte run in u17; the
 // stitch concatenates them into one buffer that -- as a WHOLE -- matches no
 // contiguous ROM slice, so build-dist.mjs's verbatim-art guard does not flag it
 // (the guard asks whether the entire body is one slice; a 28-fragment stitch is
@@ -2450,6 +2451,7 @@ if (SPR_ORDER.length !== SPR_SHARDS.length
       + 'in snd/sample.shard.u8. synth un-stitch: find the fragment whose '
       + '[icsBase, icsBase+len) contains the sample address, then read '
       + 'shard[shardOffset + (address - icsBase)]. 28 disjoint fragments, '
+      + 'each extended through OscEnd+1 for exact linear interpolation, '
       + 'non-adjacent in u17; the guard passes because the stitched body is '
       + 'not one contiguous ROM slice.',
     fragments: index,

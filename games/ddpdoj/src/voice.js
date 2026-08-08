@@ -359,8 +359,8 @@ export class VoiceEngine {
    *
    * KEYOFF is NOT dispatched from this walk: the oscillator-end keyoff is a
    * SEPARATE IRQ path (status bit1 -> `$0FEA` -> `$1000`). `ics2115.js` now owns
-   * the hardware-rate phase and IRQV state; runtime wiring from its IRQV result
-   * back to this driver's `releaseVoiceIfBusy` remains a later integration.
+   * the hardware-rate phase and IRQV state; `SoundRuntime` wires each completed
+   * native-frame IRQV result back to this exact `releaseVoiceIfBusy` path.
    *
    * TODO(later-wave): the state-2/3/4 accumulator advances (oscAcc phase ramp,
    * volAcc volume ramp toward vEnd at vIncr).

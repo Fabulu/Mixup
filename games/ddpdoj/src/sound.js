@@ -397,6 +397,22 @@ export function drainFrame(ram, sound, lf) {
   return door;
 }
 
+/**
+ * The complete per-logic-frame boundary consumed by the live sound runtime.
+ * An empty frame is zero bytes; a drained 68k/Z80 door is its exact four bytes.
+ * This deliberately carries no decoded or oracle-only parameter history.
+ */
+export function soundFrameInput(door) {
+  if (door === null || door === undefined) return new Uint8Array(0);
+  const bytes = [door.type, door.pan, door.id, door.packedChannel ?? door.chan];
+  for (let i = 0; i < bytes.length; i++) {
+    if (!Number.isInteger(bytes[i]) || bytes[i] < 0 || bytes[i] > 0xff) {
+      throw new TypeError(`sound frame input: byte ${i} is outside 0..255`);
+    }
+  }
+  return Uint8Array.from(bytes);
+}
+
 /** Convenience for handlers: post by wrapper and (if a sound state is absent,
  *  e.g. in a unit test without a full Game) degrade to a counted note instead of
  *  throwing. The 68k never crashes on a cue post, and neither does the port. */

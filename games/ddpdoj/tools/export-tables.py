@@ -417,8 +417,11 @@ SHOT_WINDOWS.append(Z80_UPLOAD)
 # hand-edit that drops or shortens a fragment turns the export red -- the
 # must-fail.  See docs/worklog/ddpdoj/140-impl-sound-wave-d.md.
 U17_SAMPLE_BASE = 0x400000  # u17's load address in the ICS 24-bit sample space
-# The 28 intervals as (u17_file_lo, u17_file_hi) HALF-OPEN, copied verbatim
-# from tools/verify_wave_d.py's output (which derives them from keyon.tsv).
+# The 28 intervals as (u17_file_lo, u17_file_osc_end), copied verbatim from
+# tools/verify_wave_d.py's output (which derives them from keyon.tsv). The ICS
+# linear interpolator reads the byte at address+1, including when the selectable
+# strict-crossing mechanic renders OscEnd itself. SAMPLE_WINDOWS therefore owns
+# two bytes beyond each captured OscEnd, still without joining any fragments.
 # Declaring them as lo/hi -- not lo/len -- removes a hand-converted hex length
 # that is trivially wrong (0x4DF9 vs 0x59F9 etc.); the length is hi - lo.
 _SAMPLE_INTERVALS = [
@@ -435,13 +438,14 @@ _SAMPLE_INTERVALS = [
 ]
 # (offset, length, why) -- the SHOT_WINDOWS shape, length DERIVED from lo/hi.
 SAMPLE_WINDOWS = [
-    (lo, hi - lo,
-     f"WAVE 27D: sample frag {i + 1}/28 (u17 ${lo:06X}..${hi:06X}, "
-     f"ICS ${lo + U17_SAMPLE_BASE:06X}-${hi + U17_SAMPLE_BASE:06X}).")
+    (lo, hi + 2 - lo,
+     f"WAVE 27D/W156: sample frag {i + 1}/28 (u17 ${lo:06X}..${hi + 2:06X}, "
+     f"ICS ${lo + U17_SAMPLE_BASE:06X}-${hi + 2 + U17_SAMPLE_BASE:06X}; "
+     "OscEnd plus the linear-interpolation neighbour).")
     for i, (lo, hi) in enumerate(_SAMPLE_INTERVALS)
 ]
 # The union must be DISJOINT and SORTED, and total exactly this many bytes.
-SAMPLE_UNION_RAW = 1_538_920  # measured; check_sample_windows asserts this too
+SAMPLE_UNION_RAW = 1_538_976  # measured union + two interpolation bytes/fragment
 
 # WAVE 22 -- THE SPAWN SIDE.  src/spawn.js reads the stage table, the stage-1
 # spawn script and the aux table the way the walker `$2633BE` does.  The two
@@ -4273,7 +4277,7 @@ def check_sample_windows() -> None:
     valid = [(s, e) for s, e in rows if e > s]
     n_invalid = len(rows) - len(valid)
     inv_triples = len({(s, e) for s, e in rows if e <= s})  # start/end only here
-    intervals = [(s - U17_SAMPLE_BASE, e - U17_SAMPLE_BASE) for s, e in valid]
+    intervals = [(s - U17_SAMPLE_BASE, e - U17_SAMPLE_BASE + 2) for s, e in valid]
     # Every valid keyon must live inside u17's $400000 window (architect: 0
     # bytes from pgm_m01s.rom).  A keyon outside it is a premise breach.
     for s, e in valid:

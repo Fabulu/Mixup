@@ -46,7 +46,7 @@ import { makeBackground, BgVram, TxVram, VideoRegs } from './background.js';
 import { makeStageClear } from './stageend.js';
 import { makeHudObject } from './hud.js';
 import { makeRankObject } from './rank.js';
-import { SoundState, drainFrame, postWrapper } from './sound.js';
+import { SoundState, drainFrame, postWrapper, soundFrameInput } from './sound.js';
 import {
   PaletteState, flush24133C, catchUpObjectStream, catchUpBgPalette,
   catchUpTextPalette,
@@ -229,6 +229,14 @@ export class Game {
     // the shadow/log/digest triple the sound gate compares per frame. See
     // src/sound.js for the engine and the byte-exactness claim.
     this.sound = new SoundState();
+    if (opts.soundSink != null && typeof opts.soundSink.frame !== 'function') {
+      throw new TypeError('Game soundSink must expose frame(input)');
+    }
+    // Policy-neutral ownership boundary. Game produces one compact input after
+    // its real mailbox drain. A direct SoundRuntime or the future shared
+    // AudioController may own consumption; Game never advances the chip twice.
+    this.soundSink = opts.soundSink ?? null;
+    this.soundInput = new Uint8Array(0);
     // WAVE 91 -- THE PALETTE, and it is PER GAME for the same reason `prot` and
     // `vram` are (NOTES-replay.md §2).  Until this wave the port modelled none
     // of it and every sprite on the page was coloured by one frozen instant of
@@ -659,6 +667,8 @@ export class Game {
     // the logic frame that just completed, before the increment below. See
     // src/sound.js drainFrame for the dead-code-trap and ACK notes.
     this.soundFrame = drainFrame(this.ram, this.sound, this.logicFrame);
+    this.soundInput = soundFrameInput(this.soundFrame);
+    if (this.soundSink) this.soundSink.frame(this.soundInput);
     this.logicFrame++;
     return this;
   }

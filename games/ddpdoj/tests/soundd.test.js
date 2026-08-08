@@ -5,7 +5,7 @@
 // `cave_m04401b032.u17` (4 MiB @ $400000 in the ICS sample space) that together
 // cover 100% of the 1501 valid stage-1 keyons. The three required colours:
 //
-//   GREEN -- the 28 windows are disjoint, sorted, total 1,538,920 B, all inside
+//   GREEN -- the 28 windows are disjoint, sorted, total 1,538,976 B, all inside
 //            u17's 4 MiB, and every one of the 28 representative keyons (one
 //            per fragment, measured from keyon.tsv) is covered.
 //   RED   -- drop fragment k; the representative keyon that lives in it goes
@@ -21,9 +21,9 @@
 // (assets/snd/sample.index.json.gz) is present, it is cross-checked against the
 // embedded expectation so the two cannot drift.
 //
-// This does NOT prove the synth works (Wave E is unwritten). It proves the DATA
-// packaging is faithful: the tight union is the minimum slice that covers every
-// stage-1 keyon, and no fragment is free.
+// This gate proves DATA packaging; W155/W156 separately prove synth and runtime
+// mechanics. The published union is the minimum captured slice plus the two
+// interpolation bytes each fragment needs, and no fragment is free.
 
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
@@ -36,14 +36,14 @@ const INDEX_GZ = HERE + '../assets/snd/sample.index.json.gz';
 
 const U17_BASE = 0x400000;          // u17 in the ICS 24-bit sample space
 const U17_SIZE = 0x400000;          // 4 MiB
-const RAW = 1_538_920;              // the tight union, measured
+const RAW = 1_538_976;              // capture union + OscEnd/+1 per fragment
 const FRAGS = 28;
 
 // The 28 windows as [u17Lo, u17Hi) HALF-OPEN file offsets. Source of truth:
 // tools/verify_wave_d.py output, derived from rip/sound/keyon.tsv. Copied
 // verbatim into export-tables.py::_SAMPLE_INTERVALS; editing one without the
 // other makes this test or the export go red.
-const WINDOWS = [
+const CAPTURE_WINDOWS = [
   [0x000000, 0x009BFF], [0x01C819, 0x021612], [0x06809B, 0x0759FE],
   [0x0C0CD3, 0x0C7748], [0x0C7AE3, 0x0CAB51], [0x0CD4B1, 0x0CF034],
   [0x0DB935, 0x0DC255], [0x0F661E, 0x0FFFDF], [0x100000, 0x1CD8DC],
@@ -55,6 +55,9 @@ const WINDOWS = [
   [0x2EEF3C, 0x2EF13C], [0x2F661E, 0x2F6DFA], [0x300000, 0x351212],
   [0x352E7C, 0x35BD94],
 ];
+// The nine-bit interpolator reads address+1. Strict crossing can render
+// OscEnd itself, so every published window owns OscEnd and its neighbour.
+const WINDOWS = CAPTURE_WINDOWS.map(([lo, oscEnd]) => [lo, oscEnd + 2]);
 
 // One representative keyon per fragment, as [icsStart, icsEnd) (the 24-bit ICS
 // sample addresses straight from keyon.tsv's decoded start/end columns, as
@@ -80,7 +83,7 @@ function coveredBy(icsLo, icsHi, windows) {
   return false;
 }
 
-test('wave D: the tight union is 28 disjoint sorted windows totalling 1,538,920 B', () => {
+test('wave D/W156: 28 disjoint windows total 1,538,976 B through OscEnd+1', () => {
   assert.equal(WINDOWS.length, FRAGS, 'exactly 28 fragments');
   let total = 0, prevHi = -1;
   for (const [lo, hi] of WINDOWS) {
