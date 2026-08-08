@@ -170,14 +170,11 @@ const tables = fs.readFileSync(tablesFile);
 // the raw buffer so put('player.tables.json', tables) writes it byte-for-byte.
 const tablesJson = JSON.parse(tables);
 
-// WAVE 27D (SOUND) -- THE ICS2115 SAMPLE ROM.  `cave_m04401b032.u17` is 4 MiB,
-// mapped at $400000 in the ICS 24-bit sample space.  The 1501 valid stage-1
-// keyons all draw from it (0 from pgm_m01s.rom); export-tables.py measured the
-// 28-fragment TIGHT UNION (1,538,920 B raw) they need and listed it under
-// tables.sound.sampleWindows.  The whole ROM is NEVER shipped: the 28 fragments
-// are stitched into assets/snd/sample.shard.u8.gz below, deferred like
-// col.shard5, and a sidecar index lets the future synth un-stitch.  See
-// docs/worklog/ddpdoj/140-impl-sound-wave-d.md.
+// W158 -- owner-approved complete static ICS sample union. W157 derives 228
+// intervals from all 69 live SFX descriptors and all 159 score-reachable BGM
+// descriptors in every live command form, then merges them to 6 non-contiguous
+// u17 fragments. Captures
+// only validate this inventory. pgm_m01s has zero reachable witnesses.
 const SOUND = tablesJson.sound;
 const u17 = readRom(SOUND.rom);
 if (u17.length !== SOUND.fileSize) {
@@ -2397,14 +2394,14 @@ if (SPR_ORDER.length !== SPR_SHARDS.length
     + `the ${SPR_SHARDS.length} sprite shards, so some shard would never be `
     + 'queued at all.');
 }
-// WAVE 27D (SOUND) -- STITCH THE 28-FRAGMENT TIGHT UNION OF u17 into one shard.
+// W158 -- STITCH THE 6-FRAGMENT COMPLETE STATIC COMMAND UNION OF u17.
 //
-// The 28 windows come from tables.sound.sampleWindows (export-tables.py
-// measured them from keyon.tsv, plus OscEnd and its interpolation neighbour).
+// The windows come from tables.sound.sampleWindows (W157's descriptor-derived
+// union, through OscEnd and its interpolation neighbour).
 // Each is a non-adjacent byte run in u17; the
 // stitch concatenates them into one buffer that -- as a WHOLE -- matches no
 // contiguous ROM slice, so build-dist.mjs's verbatim-art guard does not flag it
-// (the guard asks whether the entire body is one slice; a 28-fragment stitch is
+// (the guard asks whether the entire body is one slice; this 6-fragment stitch is
 // not, same property col.shard0 relies on).  ZERO PUBLISH_VERBATIM entries.
 //
 // The sidecar index records, per fragment, the u17 file offset, the ICS 24-bit
@@ -2412,10 +2409,10 @@ if (SPR_ORDER.length !== SPR_SHARDS.length
 // the future synth (Wave E) can map a keyon's sample address back into the
 // shard: sample address -> icsBase lookup -> shardOffset + (address - icsBase).
 {
-  if (!SOUND.sampleWindows || SOUND.sampleWindows.length !== 28) {
+  if (!SOUND.sampleWindows || SOUND.sampleWindows.length !== 6) {
     throw new Error(`tables.sound.sampleWindows is `
       + `${SOUND.sampleWindows ? SOUND.sampleWindows.length : 'missing'}, `
-      + 'expected 28. Re-run tools/export-tables.py.');
+      + 'expected 6. Re-run tools/export-tables.py.');
   }
   const frags = SOUND.sampleWindows;
   const raw = frags.reduce((s, w) => s + w.len, 0);
@@ -2446,14 +2443,18 @@ if (SPR_ORDER.length !== SPR_SHARDS.length
   if (pack !== raw) throw new Error('sample stitch packed ' + pack + ', expected ' + raw);
   put('snd/sample.shard.u8', shard);
   put('snd/sample.index.json', new TextEncoder().encode(JSON.stringify({
+    version: 1, layout: 'ics2115-static-fragment-stitch-v1',
+    coverage: 'all-live-descriptors', descriptorIntervals: 228,
+    fragmentCount: index.length,
     rom: SOUND.rom, icsBase: SOUND.icsBase, shardBytes: raw,
-    note: 'WAVE 27D sidecar. Each fragment maps a u17 byte run to its offset '
+    note: 'W158 sidecar. Each fragment maps a u17 byte run to its offset '
       + 'in snd/sample.shard.u8. synth un-stitch: find the fragment whose '
       + '[icsBase, icsBase+len) contains the sample address, then read '
-      + 'shard[shardOffset + (address - icsBase)]. 28 disjoint fragments, '
+      + 'shard[shardOffset + (address - icsBase)]. 6 disjoint fragments, '
       + 'each extended through OscEnd+1 for exact linear interpolation, '
       + 'non-adjacent in u17; the guard passes because the stitched body is '
-      + 'not one contiguous ROM slice.',
+      + 'not one contiguous ROM slice. Static source: all 69 driver-valid SFX '
+      + 'plus 159 score-reachable BGM descriptors; full-ROM fallback is forbidden.',
     fragments: index,
   })));
 }
@@ -2764,12 +2765,11 @@ const manifest = {
   },
   capture: { layout: capJson.layout, frameBytes: capJson.frameBytes },
   // WAVE 27D (SOUND) -- where the ICS2115 sample data lives.  The shard is a
-  // 28-fragment STITCH of u17 (1,538,920 B raw, ~1.10 MiB gz), DEFERRED like
-  // col.shard5: the synth (Wave E, not yet written) fetches both files when it
-  // first needs samples, never at first paint.  No bytes ship in the manifest;
-  // this only points at the two files and records the count.
+  // 6-fragment static command STITCH of u17 (3,612,873 B raw), DEFERRED and fetched
+  // only by the browser sound path after first paint. No sample bytes live in
+  // the manifest; it records the exact topology and file names.
   sound: { shard: 'snd/sample.shard.u8.gz', index: 'snd/sample.index.json.gz',
-           rom: SOUND.rom, icsBase: SOUND.icsBase, fragments: 28,
+           rom: SOUND.rom, icsBase: SOUND.icsBase, fragments: 6,
            shardBytes: SOUND.fragments, deferred: true,
            // WAVE 27C7: the parsed BGM score (cues -> tracks -> note events).
            // DEFERRED like the sample shard; fetched when the BGM synth needs it.

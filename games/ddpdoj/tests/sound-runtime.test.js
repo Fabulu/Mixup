@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Game } from '../src/main.js';
 import { SOUND, postWrapper, soundFrameInput } from '../src/sound.js';
-import { ENDPOINT_POLICY, boundaryPhase } from '../src/ics2115.js';
+import { ENDPOINT_POLICY, boundaryPhase, volumeGain } from '../src/ics2115.js';
 import { IRQ_TIMING_POLICY, soundRuntimeFromAssets } from '../src/soundruntime.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -27,7 +27,7 @@ const ASSETS = Object.freeze({
 // Deliberately synthetic structural policy. It is not an ICS center-pan claim.
 const SYNTHETIC_PAN = Object.freeze({
   name: 'synthetic-unity-structural-test',
-  center(sample) { return [sample, sample]; },
+  centerGains(volAcc) { const gain = volumeGain(volAcc); return [gain, gain]; },
 });
 const POLICIES = Object.freeze({
   endpointPolicy: ENDPOINT_POLICY.EQUALITY,
@@ -89,7 +89,7 @@ test('runtime loudly refuses missing assets, malformed inputs, and every implici
   const badIndex = JSON.parse(ASSETS.sampleIndex);
   badIndex.shardBytes++;
   assert.throws(() => runtime(POLICIES, { ...ASSETS, sampleIndex: badIndex }),
-    /shard length/);
+    /complete static/);
   const rt = runtime();
   assert.throws(() => rt.frame([]), /must be a Uint8Array/);
   assert.throws(() => rt.frame(Uint8Array.of(1, 2, 3)), /0 or 4 bytes/);

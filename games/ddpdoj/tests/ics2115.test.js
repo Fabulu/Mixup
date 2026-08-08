@@ -23,7 +23,7 @@ const REAL_SHARD = new Uint8Array(gunzipSync(readFileSync(join(ASSET, 'sample.sh
 // is not exported by production and contains no center-pan hardware number.
 const UNIT_CENTER = Object.freeze({
   name: 'test-only-unit-center (non-authoritative)',
-  center(sample) { return [sample, sample]; },
+  centerGains(volAcc) { const gain = volumeGain(volAcc); return [gain, gain]; },
 });
 
 function syntheticMap() {
@@ -37,7 +37,9 @@ function syntheticMap() {
   }
   shard[0] = 0xff;
   shard[1] = 0xfe;
-  return new IcsSampleMap({ rom: 'cave_m04401b032.u17', icsBase: 0x400000,
+  return new IcsSampleMap({ version: 1,
+    layout: 'ics2115-static-fragment-stitch-v1', fragmentCount: fragments.length,
+    rom: 'cave_m04401b032.u17', icsBase: 0x400000,
     shardBytes: shard.length, fragments }, shard);
 }
 
@@ -81,7 +83,7 @@ test('W151 arithmetic vectors and the 32-oscillator native rate are exact', () =
   assert.equal(ACTIVE_OSC, 31);
 });
 
-test('the real 28-fragment shard maps every edge and refuses every gap', () => {
+test('the real W158 static shard maps every edge and refuses every gap', () => {
   const map = new IcsSampleMap(REAL_INDEX, REAL_SHARD);
   for (let i = 0; i < REAL_INDEX.fragments.length; i++) {
     const f = REAL_INDEX.fragments[i];
@@ -102,7 +104,7 @@ test('sample loader rejects malformed index, topology, bounds, and shard length'
   bad = copy(); bad.icsBase = 0;
   assert.throws(() => new IcsSampleMap(bad, REAL_SHARD), /base must be/);
   bad = copy(); bad.fragments.pop();
-  assert.throws(() => new IcsSampleMap(bad, REAL_SHARD), /exactly 28/);
+  assert.throws(() => new IcsSampleMap(bad, REAL_SHARD), /fragmentCount/);
   bad = copy(); bad.fragments[1].icsBase = bad.fragments[0].icsBase;
   assert.throws(() => new IcsSampleMap(bad, REAL_SHARD), /inconsistent|overlaps/);
   bad = copy(); bad.fragments[4].shardOffset++;

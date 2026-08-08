@@ -130,6 +130,12 @@ export function soundRuntimeFromAssets(assets, policies) {
   const params = driverParamsFromJson(assets.driverParams);
   const score = scoreFromJson(assets.bgmScore);
   const index = jsonValue('sampleIndex', assets.sampleIndex);
+  if (index.coverage !== 'all-live-descriptors'
+      || index.descriptorIntervals !== 228 || index.fragmentCount !== 6
+      || index.shardBytes !== 3_612_873) {
+    throw new Error('sound runtime: sample index is not the W158 complete static '
+      + 'command coverage (228 descriptor intervals, 6 fragments, 3612873 bytes)');
+  }
   const sampleMap = new IcsSampleMap(index, assets.sampleShard);
   return new SoundRuntime(params, score, sampleMap, policies);
 }

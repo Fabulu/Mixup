@@ -96,3 +96,35 @@ implementation is admittedly incomplete. That is a research problem, not a
 porting problem, and it should be labelled as one rather than allowed to look
 like the last 10% of a port. If it is attempted, the ICS2115's own
 documentation - not MAME's source - is the reference to work from.
+
+## Permanent approximation ledger (owner approval 2026-08-08)
+
+The browser may be audible using exactly two owner-approved substitutions. They
+are deterministic and tested, but **they are not hardware-authentic ICS2115
+facts** because this project has no physical PGM motherboard or raw serial-DAC
+capture. Runtime/site copy must keep that distinction visible.
+
+1. `amd-us5659466-center-approximation`: AMD US Patent 5,659,466 publishes the
+   InterWave/GF1-descendant position-7 volume-index offsets 116 left and 141
+   right. DOJ's `$7F` center position applies those offsets before W151's exact
+   logarithmic conversion. The frozen diagnostic rows are `$7FF0 -> 99/93`,
+   `$E600 -> 7872/7472`, `$FD60 -> 22656/21056`, and `$FFFF -> 25280/23680`.
+   This changes stereo amplitude; it is cross-chip patent evidence, not an
+   ICS2115 measurement. No GPL table or numeric value is used.
+2. `strict-crossing`: a forward one-shot ends only when the post-step phase is
+   greater than OscEnd, so the endpoint is rendered once. This follows the AMD
+   descendant's negative-remainder boundary formula and is stronger than the
+   equality alternative, but exact ICS2115 service ordering remains unmeasured.
+   It changes the final sample/IRQ service by one native frame.
+
+The driver-to-chip IRQ bridge additionally names `after-native-frame`. The Z80
+listing proves IRQV -> keyoff -> allocator release, but not Z80-cycle latency;
+this is a deterministic scheduling boundary, not a third hardware claim.
+
+Replacement procedure: execute W154's Packet P and Packet E on a physical PGM
+board. Retain the synthetic test image hash, exact register log, raw decoded
+`LRCLK/BCK/SERDATA` capture and IRQ/ROM-address trace. Packet P records 1,024
+stable DAC frames for the four VolAcc rows plus channel-orientation endpoints;
+Packet E repeats the phase 0/256/512 one-shot 128 times and records whether the
+endpoint fetch precedes IRQ. Only those raw artifacts may replace the two
+policies and upgrade the associated behavior to hardware-authentic.

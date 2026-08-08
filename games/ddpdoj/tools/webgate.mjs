@@ -54,7 +54,9 @@ import { fileURLToPath } from 'node:url';
 import { Game, RAM } from '../src/main.js';
 import { BIT, P } from '../src/machine.js';
 import { portWordFromBits } from '../src/input.js';
-import { loadBundle, httpReader, AssetError } from '../src/web/assets.js';
+import { loadBundle, loadSoundAssets, httpReader, AssetError } from '../src/web/assets.js';
+import { soundRuntimeFromAssets } from '../src/soundruntime.js';
+import { APPROVED_SOUND_POLICIES } from '../src/soundpolicy.js';
 import {
   Renderer, paletteRgb, resolveRgb, rotateCCW, rgbToRgba, SCREEN_W, SCREEN_H,
   parseSpriteList, RAM_STRIDE,
@@ -300,6 +302,19 @@ try {
       + 'the fetch-path checks are fake');
     code = 1;
   } else {
+    // W158: the four sound bodies are deliberately absent from first paint,
+    // then fetched over this same real HTTP/r.ok/gzip path. Cue 9 is the exact
+    // later-cue regression that escaped the capture-bounded shard.
+    const soundFiles = [];
+    const soundAssets = await loadSoundAssets(httpReader(base, (name, n) => {
+      if (n === 0) soundFiles.push(name);
+    }), bundle.manifest);
+    const sound = soundRuntimeFromAssets(soundAssets, APPROVED_SOUND_POLICIES);
+    sound.frame(Uint8Array.of(0x11, 0xff, 9, 0), false);
+    console.log(`PASS: W158 deferred sound fetched ${soundFiles.length} files over HTTP; `
+      + `cue 9 advanced ${sound.lastFrame.nativeFrames} native frames with `
+      + `${sound.lastFrame.registerLog.length} register rows and no shard refusal`);
+
     // Loadable is not the same as usable. Render one frame through the real
     // renderer and require a picture rather than a black rectangle: a
     // zero-filled sheet loads perfectly and draws a plausible empty starfield.

@@ -98,7 +98,11 @@
   #bar button[aria-pressed="true"] { background: #234c70; border-color: #3f7fb4; }
   #stats { color: #6f7d8a; font-size: 10.5px; white-space: nowrap;
            overflow: hidden; text-overflow: ellipsis; }
+  #sound-state { color: #7f91a1; font-size: 10px; white-space: nowrap;
+                 pointer-events: none; max-width: 18em; overflow: hidden;
+                 text-overflow: ellipsis; }
   @media (max-width: 560px) { #stats { display: none; } }
+  @media (max-width: 760px) { #sound-state { display: none; } }
 
   /* ---- row 2: THE PICTURE, and nothing else. ------------------------------
      image-rendering: pixelated AND an integer scale -- both are needed. A
@@ -268,6 +272,9 @@
   <span class="name">DoDonPachi DaiOuJou <span class="dim">ddpdojblk BLACK VER</span></span>
   <span class="spacer"></span>
   <span id="stats"></span>
+  <span id="sound-state" role="status" aria-live="polite">sound locked</span>
+  <button id="sound" type="button" aria-pressed="false"
+    aria-label="Enable or mute game sound">SOUND</button>
   <button id="rot" type="button" aria-pressed="true" title="TATE = the cabinet's own 224x448 portrait picture. WIDE = the raw 448x224 board buffer, unrotated.">TATE</button>
   <button id="ctrl" type="button" aria-pressed="false" title="Touch control scheme: AUTO / FIXED 8-way D-pad / FLOATING stick. Cycles on click.">CTRL</button>
   <button id="rec" type="button" aria-pressed="false" title="Record a .replay of this run: arm at the current frame, play, click again to save. The file carries the seed + one input word per logic frame + a sha256 state digest the headless player (tools/replay.mjs) verifies.">REC</button>
@@ -455,8 +462,11 @@ the other sixteen out of the sprite ROMs by address and ships the 17 rebased
 pairs in <code>manifest.ship</code>. A limitation that looked like a missing
 feature was a missing table.</p>
 
-<p><b>No weapon is drawn and there is no sound at all.</b> What the fire buttons
-actually do, which is three different things:</p>
+<p><b>Sound is available after you press SOUND.</b> Browser autoplay rules keep
+it locked until that gesture; its deferred sample data never delays the first
+picture. The center-pan gain and exact sample endpoint use two permanently
+labelled owner-approved approximations because no physical PGM capture is
+available. What the fire buttons actually do, which is three different things:</p>
 <ul>
   <li><b>TAP shot</b> &mdash; really runs the ported cadence machine
     (<code>$249B2C..$249BE2</code>), the ported spawn (<code>$249BFC</code>),
@@ -534,11 +544,10 @@ MAME&nbsp;0.288.</p>
     rather than from 58&nbsp;MiB of cartridge, with four deliberate breaks
     that all go red.</li>
 </ul>
-<p>What is <em>not</em> measured, said plainly: the enemies you can see are a
-recording; sound is not implemented at all; and <b>no part of this page has ever
-been run in a browser by the people who wrote it</b> &mdash; every check above is
-headless. If something here looks wrong, it probably is, and saying so is
-useful.</p>
+<p>What is <em>not</em> measured, said plainly: the two sound substitutions above
+are not physical ICS2115 facts. They are deterministic approximations pending
+the serial-DAC experiment documented in <code>NOTES-sound.md</code>. If
+something here looks wrong, saying so is useful.</p>
 <div id="provenance" class="dim"></div>
 </div>
 </div>
@@ -550,6 +559,8 @@ import { attachPad, attachStick, clearKeyboard, CONTROLS } from './src/web/input
 const canvas = document.getElementById('screen');
 const stage = document.getElementById('stage');
 const statsEl = document.getElementById('stats');
+const soundBtn = document.getElementById('sound');
+const soundStateEl = document.getElementById('sound-state');
 const statusEl = document.getElementById('status');
 const errEl = document.getElementById('err');
 const rungBannerEl = document.getElementById('rung-banner');
@@ -762,6 +773,9 @@ try {
     // The named throws are the port's most useful output. Losing them to a
     // silent freeze wasted a real play session on another port in this repo.
     onError: (e) => showError(e, 'The port reached something it has not ported.'),
+    // Sound has its own firewall: a bad deferred asset or synth refusal is
+    // visible on the SOUND control and never stops gameplay.
+    onSoundError: (e) => console.error('DOJ sound disabled:', e),
   });
   booting = false;
   statusEl.textContent = '';
@@ -774,6 +788,42 @@ try {
   // the power word moved.  Exposing the app costs no behaviour and turns "I saw
   // a sprite" into a measurement.
   window.__mixup = app;
+
+  const paintSound = () => {
+    const s = app.sound.stats();
+    soundBtn.disabled = s.status === 'unsupported' || s.status === 'failed';
+    soundBtn.setAttribute('aria-pressed', String(s.status === 'on'));
+    if (s.status === 'on') {
+      soundBtn.textContent = 'SOUND ON';
+      soundStateEl.textContent = `sound on ${s.rate} Hz; backlog ${s.backlog}, `
+        + `dropped ${s.dropped}, underruns ${s.underruns}`;
+    } else if (s.status === 'muted') {
+      soundBtn.textContent = 'SOUND MUTED';
+      soundStateEl.textContent = 'sound muted; synthesizer state still advances';
+    } else if (s.status === 'loading') {
+      soundBtn.textContent = 'SOUND…';
+      soundStateEl.textContent = 'audio armed; deferred sound assets loading';
+    } else if (s.status === 'failed') {
+      soundBtn.textContent = 'SOUND FAILED';
+      soundStateEl.textContent = `sound failed: ${s.error || 'unknown error'}`;
+    } else if (s.status === 'unsupported') {
+      soundBtn.textContent = 'NO AUDIO';
+      soundStateEl.textContent = 'this browser has no AudioContext support';
+    } else {
+      soundBtn.textContent = 'SOUND';
+      soundStateEl.textContent = 'sound locked; press SOUND to enable';
+    }
+  };
+  soundBtn.addEventListener('click', () => {
+    const status = app.sound.stats().status;
+    if (status === 'locked') app.sound.arm(); // synchronous gesture boundary
+    else if (status === 'on' || status === 'muted') {
+      app.sound.setMuted(status === 'on');
+    }
+    paintSound();
+  });
+  app.soundReady.finally(paintSound);
+  paintSound();
 
   // WAVE 101 -- THE SEED BANNER, rendered once after boot.  A rung screenshot
   //  with no label is unauditable; this carries the rung and the manifest's own
@@ -1001,6 +1051,7 @@ try {
 
   setInterval(() => {
     const s = app.stats();
+    paintSound();
     statsEl.innerHTML = [
       `lf ${s.logicFrame}`,
       `${s.pyPx.toFixed(1)},${s.pxPx.toFixed(1)}px`,

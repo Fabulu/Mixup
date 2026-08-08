@@ -157,7 +157,9 @@
 //     until the other 26 buckets have producers, so its records are written
 //     into the recorded one at the slots the wave-9 conditional matcher finds.
 //
-//   NOT THERE AT ALL:  enemies as SIMULATION, any DRAWN weapon, and sound.
+//   W158 SOUND: Game's live four-byte boundary feeds one deferred shared-audio
+//     controller and one SoundRuntime. Browser audio is opt-in by gesture; two
+//     permanently named hardware details remain approved approximations.
 //     Pressing fire runs the ported cadence machine ($249B2C..$249BE2) and the
 //     ported spawn and driver, but no shot sprite stream is in the bundle, so
 //     what the port computes is INVISIBLE.  The bomb ($249814) and HOLDING fire
@@ -182,8 +184,11 @@ import {
   parseSpriteList, BUFFER_STRIDE, RAM_STRIDE, SPRITE_LIMIT,
 } from '../render/index.js';
 import { mergePalette } from '../palette.js';
-import { loadBundle, httpReader, gunzip, AssetError } from './assets.js';
+import { loadBundle, loadSoundAssets, httpReader, gunzip, AssetError } from './assets.js';
 import { attachInput, pollInput, currentPortWord } from './input.js';
+import { AudioController } from '../../../../shared/audio.js';
+import { soundRuntimeFromAssets } from '../soundruntime.js';
+import { APPROVED_SOUND_POLICIES } from '../soundpolicy.js';
 // WAVE 131/132 -- the browser-side replay module.  W131 owns the REC half: the
 // `.replay` digest feed + ACCUMULATE-then-hash (SubtleCrypto has no incremental
 // update), the recorder arm/stop, and the v1 packaging.  W132 owns the PLAY
@@ -678,7 +683,8 @@ class Demo {
   //  fetched and `101-Plan-boot-the-page-at-any-rung.md` for why every field
   //  is labelled on screen.  It is LOCAL DEVELOPMENT ONLY: the ladder files
   //  are not in dist/, so on the published page `rung` is always null.
-  constructor(canvas, bundle, frameHz, mode = DEFAULT_MODE, rung = null) {
+  constructor(canvas, bundle, frameHz, mode = DEFAULT_MODE, rung = null,
+      soundController = null) {
     this.bundle = bundle;
     this.cap = bundle.cap;
     // The tile functions come from the exported sheets; nothing else about the
@@ -717,10 +723,12 @@ class Demo {
     //       the ported $240D76 writes.  `draw()` below hands the renderer BOTH
     //       in place of the capture's, which is what takes L5 and L6's program
     //       half off the CAPTURE LEDGER.
+    this.soundController = soundController;
     this.game = new Game(rung ? rung.seed : bundle.seed, bundle.tables, {
       logicFrame: this.seedLf,
       videoFrame: rung ? rung.vf : this.cap.frames[0].vf,
       bgSeed: rung ? rung.bgSeed : this.cap.part(0, 'bg'),
+      soundSink: soundController,
     });
     this.prevTilt = this.game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
     this.prevPos = [this.game.ram.u16(RAM.player1 + P.posY),
@@ -973,6 +981,7 @@ class Demo {
       logicFrame: obj.seed.lf,
       videoFrame: obj.seed.vf,
       bgSeed: bg,
+      soundSink: this.soundController,
     });
 
     // Swap in the fresh Game and re-init the game-derived state.  `recorder` is
@@ -1311,6 +1320,7 @@ class Demo {
       dlTrail: g.trailRecords ?? 0,
       capture: this.capFrame,
       unported: g.unportedLog.report(),
+      sound: this.soundController?.stats() ?? { status: 'absent' },
       // WAVE 13 -- the scroll program, live.
       clock: g.ram.u16(0x8130ce),          // $8130CE, the distance odometer
       bgx: g.video.bg_xscroll,
@@ -1397,6 +1407,9 @@ class Demo {
         this.hudSteps = this.stepsRun;
       }
     }
+    // Game queued each compact door once during the catch-up batch. The shared
+    // controller is the only runtime/chip owner and is pumped once afterwards.
+    this.soundController?.pump();
   }
 }
 
@@ -1541,7 +1554,10 @@ export async function boot(canvas, opts = {}) {
     ? await loadRung(opts.ladderBase ?? new URL('../../tools/oracle/out/', import.meta.url),
         opts.rung, opts.ladder, opts.ladderDir)
     : null;
-  const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE, rung);
+  // One controller exists before Game. It drops frames while locked/loading,
+  // so neither autoplay delay nor asset latency accumulates a stale backlog.
+  const sound = new AudioController(null, opts.onSoundError);
+  const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE, rung, sound);
   // WAVE 131 -- the asset base `armRecording()` re-fetches the tables from, so
   // a live REC's `version.tablesSha256` can match the shipped bytes rather than
   // the fallback `JSON.stringify(bundle.tables)`.
@@ -1564,6 +1580,17 @@ export async function boot(canvas, opts = {}) {
   };
   requestAnimationFrame(frame);
 
+  // Deferred and deliberately not awaited: first paint is already scheduled.
+  // A gesture may synchronously arm the AudioContext first; setFactory attaches
+  // the sole SoundRuntime when all four validated assets arrive.
+  const soundReady = new Promise((resolve) => requestAnimationFrame(resolve))
+    .then(() => loadSoundAssets(httpReader(base), bundle.manifest))
+    .then((assets) => {
+      sound.setFactory(() => soundRuntimeFromAssets(assets, APPROVED_SOUND_POLICIES));
+      return assets;
+    })
+    .catch((e) => { sound.fail(e); return null; });
+
   return {
     demo,
     bundle,
@@ -1583,6 +1610,8 @@ export async function boot(canvas, opts = {}) {
     set onPlaybackUpdate(fn) { demo.onPlaybackUpdate = fn; },
     get playback() { return demo.playback; },
     get game() { return demo.game; },
+    sound,
+    soundReady,
     stop() { demo.running = false; },
   };
 }

@@ -474,6 +474,60 @@ export function httpReader(base, onProgress) {
 const TD = new TextDecoder();
 
 /**
+ * Fetch the four deferred sound assets after first paint. Runtime constructors
+ * perform the semantic validation; this boundary validates manifest names,
+ * gzip transport and byte/text types without making sound a boot dependency.
+ */
+export async function loadSoundAssets(readRaw, manifest) {
+  if (!manifest?.sound || manifest.sound.deferred !== true) {
+    throw new AssetError('assets/manifest.json has no deferred sound contract');
+  }
+  if (manifest.sound.rom !== 'cave_m04401b032.u17'
+      || manifest.sound.icsBase !== 0x400000 || manifest.sound.fragments !== 6
+      || manifest.sound.shardBytes !== 3_612_873) {
+    throw new AssetError('assets/manifest.json sound topology must be the W158 '
+      + 'u17-only 6-fragment/3612873-byte static command union');
+  }
+  const expected = Object.freeze({
+    sampleShard: 'snd/sample.shard.u8.gz',
+    sampleIndex: 'snd/sample.index.json.gz',
+    bgmScore: 'snd/bgm-score.json.gz',
+    driverParams: 'snd/driver-params.json.gz',
+  });
+  const declared = {
+    sampleShard: manifest.sound.shard,
+    sampleIndex: manifest.sound.index,
+    bgmScore: manifest.sound.bgmScore,
+    driverParams: manifest.sound.driverParams,
+  };
+  for (const key of Object.keys(expected)) {
+    if (declared[key] !== expected[key]) {
+      throw new AssetError(`assets/manifest.json sound.${key} is `
+        + `${JSON.stringify(declared[key])}; expected ${expected[key]}`);
+    }
+  }
+  let bodies;
+  try {
+    bodies = await Promise.all(Object.values(expected).map(async (name) =>
+      gunzip(await readRaw(name))));
+  } catch (e) {
+    throw e instanceof AssetError ? e
+      : new AssetError(`deferred sound assets failed validation: ${e.message}`);
+  }
+  const [sampleShard, sampleIndex, bgmScore, driverParams] = bodies;
+  if (sampleShard.length !== manifest.sound.shardBytes) {
+    throw new AssetError(`assets/${expected.sampleShard} is ${sampleShard.length} B, `
+      + `manifest says ${manifest.sound.shardBytes}`);
+  }
+  return Object.freeze({
+    sampleShard: new Uint8Array(sampleShard),
+    sampleIndex: TD.decode(sampleIndex),
+    bgmScore: TD.decode(bgmScore),
+    driverParams: TD.decode(driverParams),
+  });
+}
+
+/**
  * Load and assemble the whole bundle.
  *
  * @param {(name:string)=>Promise<Uint8Array>} readRaw  reads one file of

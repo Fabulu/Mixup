@@ -391,61 +391,40 @@ Z80_UPLOAD = (0x2C348A, Z80_UPLOAD_LEN,
               "Code region $0086-$5B97 matches rip/sound/z80ram.bin exactly.")
 SHOT_WINDOWS.append(Z80_UPLOAD)
 
-# WAVE 27 SOUND D -- THE ICS2115 SAMPLE DATA, AS A TIGHT UNION OF u17.
+# WAVE 158 -- THE COMPLETE STATIC ICS2115 SAMPLE DATA UNION OF u17.
 #
-# Stage 1 draws every one of its 1501 valid keyons (the 1620-row keyon.tsv
-# minus 119 end<=start events across 17 distinct samples) from
-# `cave_m04401b032.u17`, the 4 MiB sample ROM the PGM maps at $400000 in the
-# ICS2115 24-bit sample space (window $400000-$7FFFFF).  ZERO valid keyon
-# touches `pgm_m01s.rom` (@0, 2 MiB), so m01s ships no bytes for sound.
+# W157 statically walked all 69 driver-valid SFX descriptors and every score
+# selector/event reachable from all 11 cues.  That inventory reaches 159/160
+# BGM descriptors and 69+159 exact playback intervals.  Their conservative
+# corrected command union is 6 disjoint half-open byte runs, including OscEnd and the adjacent
+# interpolation byte.  Captured keyons validate it in both directions but do
+# not define it: 1,620/1,620 dynamic episodes belong to this static set, while
+# 175/228 static descriptor intervals were absent from the stage-1 capture.
 #
-# The samples are SCATTERED across all four MiB of u17, so the minimum slice
-# that satisfies stage 1 is the TIGHT UNION: 28 disjoint byte intervals, merged
-# = 1,538,920 bytes raw / 1,156,232 gzipped (1.10 MiB, +41% to assets).  That
-# is 2.4x smaller than shipping all of u17 (2.67 MiB gz) and -- load-bearing
-# for this repo -- it is a STITCH of 28 non-adjacent runs, so build-dist.mjs's
-# verbatim-art guard (containsVerbatim at line 355) does not flag it: the guard
-# asks whether the WHOLE decompressed shard is one contiguous ROM slice, and a
-# 28-fragment stitch is not.  This is the same property col.shard0 already
-# relies on (build-dist.mjs lines 152-160); it is the FAITHFUL packing (the
-# samples themselves are non-adjacent), not a trick to defeat the guard, and it
-# needs ZERO PUBLISH_VERBATIM entries.
-#
-# The offsets below are u17 FILE offsets (ics_address - $400000), measured
-# straight from keyon.tsv by tools/verify_wave_d.py.  check_sample_windows()
-# re-derives them on every export and asserts byte-for-byte equality, so a
-# hand-edit that drops or shortens a fragment turns the export red -- the
-# must-fail.  See docs/worklog/ddpdoj/140-impl-sound-wave-d.md.
+# All reachable banks are 4..7, hence only `cave_m04401b032.u17` is needed;
+# `pgm_m01s.rom` has zero reachable descriptor witnesses.  The owner approved
+# this near-full global deferred shard on 2026-08-08.  It remains a stitched
+# non-contiguous semantic asset with no full-ROM runtime fallback.
 U17_SAMPLE_BASE = 0x400000  # u17's load address in the ICS 24-bit sample space
-# The 28 intervals as (u17_file_lo, u17_file_osc_end), copied verbatim from
-# tools/verify_wave_d.py's output (which derives them from keyon.tsv). The ICS
-# linear interpolator reads the byte at address+1, including when the selectable
-# strict-crossing mechanic renders OscEnd itself. SAMPLE_WINDOWS therefore owns
-# two bytes beyond each captured OscEnd, still without joining any fragments.
-# Declaring them as lo/hi -- not lo/len -- removes a hand-converted hex length
-# that is trivially wrong (0x4DF9 vs 0x59F9 etc.); the length is hi - lo.
+# Half-open u17 file intervals [lo, hi), mechanically copied from W157's
+# descriptor-derived checker.  Do not add one: `hi` already includes OscEnd
+# plus its interpolation neighbour.
 _SAMPLE_INTERVALS = [
-    (0x000000, 0x009BFF), (0x01C819, 0x021612), (0x06809B, 0x0759FE),
-    (0x0C0CD3, 0x0C7748), (0x0C7AE3, 0x0CAB51), (0x0CD4B1, 0x0CF034),
-    (0x0DB935, 0x0DC255), (0x0F661E, 0x0FFFDF), (0x100000, 0x1CD8DC),
-    (0x1EBF90, 0x1ED16E), (0x1FFED6, 0x1FFFF4), (0x20C14E, 0x210428),
-    (0x211704, 0x214C70), (0x215D78, 0x218B02), (0x21B0C6, 0x21B43E),
-    (0x22C352, 0x22D3A2), (0x234D78, 0x234FF0), (0x24FB9C, 0x252A3A),
-    (0x252E7C, 0x254450), (0x29D284, 0x29D57C), (0x2AA0E2, 0x2AE838),
-    (0x2B049A, 0x2B4208), (0x2B70A6, 0x2BA4C8), (0x2C284A, 0x2C33D2),
-    (0x2EEF3C, 0x2EF13C), (0x2F661E, 0x2F6DFA), (0x300000, 0x351212),
-    (0x352E7C, 0x35BD94),
+    (0x000000, 0x0DB837), (0x0DB935, 0x0DC257),
+    (0x0E1853, 0x0FFFE1),
+    (0x100000, 0x1FFFF6),
+    (0x200000, 0x2FFBFA), (0x300000, 0x377BF2),
 ]
-# (offset, length, why) -- the SHOT_WINDOWS shape, length DERIVED from lo/hi.
+# (offset, length, why) -- length derived from the half-open bounds.
 SAMPLE_WINDOWS = [
-    (lo, hi + 2 - lo,
-     f"WAVE 27D/W156: sample frag {i + 1}/28 (u17 ${lo:06X}..${hi + 2:06X}, "
-     f"ICS ${lo + U17_SAMPLE_BASE:06X}-${hi + 2 + U17_SAMPLE_BASE:06X}; "
-     "OscEnd plus the linear-interpolation neighbour).")
+    (lo, hi - lo,
+     f"W158 static sample frag {i + 1}/6 (u17 ${lo:06X}..${hi:06X}, "
+     f"ICS ${lo + U17_SAMPLE_BASE:06X}-${hi + U17_SAMPLE_BASE:06X}; "
+     "descriptor-derived through OscEnd and its interpolation neighbour).")
     for i, (lo, hi) in enumerate(_SAMPLE_INTERVALS)
 ]
 # The union must be DISJOINT and SORTED, and total exactly this many bytes.
-SAMPLE_UNION_RAW = 1_538_976  # measured union + two interpolation bytes/fragment
+SAMPLE_UNION_RAW = 3_612_873
 
 # WAVE 22 -- THE SPAWN SIDE.  src/spawn.js reads the stage table, the stage-1
 # spawn script and the aux table the way the walker `$2633BE` does.  The two
@@ -4247,86 +4226,30 @@ def _merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
 
 
 def check_sample_windows() -> None:
-    """WAVE 27D -- the sample-data MUST-FAIL.
+    """W158 -- validate the frozen output of W157's semantic static gate.
 
-    Re-derives the tight union of stage-1 sample bytes straight from
-    rip/sound/keyon.tsv and asserts it equals SAMPLE_WINDOWS: 28 disjoint
-    fragments totalling SAMPLE_UNION_RAW bytes, covering 100% of the 1501 valid
-    keyons (end>start).  keyon.tsv is gitignored MAME-derived scratch, so when
-    it is absent the check is a documented SKIP (it cannot run without the
-    capture); when present it is BINDING -- a hand-edit that drops or shortens a
-    fragment makes a keyon's sample address uncovered and this raises.
-
-    Address decode is frame.lua:131-133: `addr=(saddr<<20)|((acc>>12)&0xfffff)`,
-    masked to 24 bits; keyon.tsv's start/end columns are the decoded addresses.
-    u17 is at $400000; u17 file offset = ics_address - $400000.
+    `w157samplecoverage.mjs` remains the executable derivation from all 69 SFX
+    descriptors plus score-reachable BGM events and performs the captured
+    bidirectional join.  This exporter validates that its frozen half-open
+    output remains sorted, non-touching, u17-only and byte-exact in size.
     """
-    if not KEYON_TSV.exists():
-        print(f"  sample-windows: SKIP ({KEYON_TSV} absent -- no capture to "
-              f"re-derive from).", file=sys.stderr)
-        return
-    rows = []
-    with open(KEYON_TSV, encoding="utf-8") as f:
-        h = f.readline().split("\t")
-        ix = {n: i for i, n in enumerate(h)}
-        for ln in f:
-            c = ln.rstrip("\n").split("\t")
-            if not c[0].strip():
-                continue
-            rows.append((int(c[ix["start"]], 16), int(c[ix["end"]], 16)))
-    valid = [(s, e) for s, e in rows if e > s]
-    n_invalid = len(rows) - len(valid)
-    inv_triples = len({(s, e) for s, e in rows if e <= s})  # start/end only here
-    intervals = [(s - U17_SAMPLE_BASE, e - U17_SAMPLE_BASE + 2) for s, e in valid]
-    # Every valid keyon must live inside u17's $400000 window (architect: 0
-    # bytes from pgm_m01s.rom).  A keyon outside it is a premise breach.
-    for s, e in valid:
-        if not (U17_SAMPLE_BASE <= s and e <= U17_SAMPLE_BASE + 0x400000):
-            raise SystemExit(
-                f"sample keyon ${s:06X}-${e:06X} is OUTSIDE u17's "
-                f"$400000-$7FFFFF window -- the tight-union premise (0 bytes "
-                f"from pgm_m01s.rom) is FALSE. Re-derive SAMPLE_WINDOWS.")
-    merged = _merge_intervals(intervals)
+    if len(_SAMPLE_INTERVALS) != 6:
+        raise SystemExit(f"static sample union has {len(_SAMPLE_INTERVALS)} fragments, expected 6")
+    merged = _merge_intervals(_SAMPLE_INTERVALS)
+    if merged != _SAMPLE_INTERVALS:
+        raise SystemExit("static sample fragments overlap, touch, or are unsorted")
     declared = [(lo, lo + ln) for lo, ln, _ in SAMPLE_WINDOWS]
     if merged != declared:
-        raise SystemExit(
-            f"SAMPLE_WINDOWS does not match the tight union re-derived from "
-            f"{KEYON_TSV}:\n  declared {len(declared)} frags\n  measured "
-            f"{len(merged)} frags.\n  Remove a fragment -> {len(valid)} valid "
-            f"keyons' coverage goes red (the must-fail). Re-run "
-            f"tools/verify_wave_d.py and copy the measured intervals into "
-            f"_SAMPLE_INTERVALS.")
+        raise SystemExit("SAMPLE_WINDOWS drifted from the W157 half-open fragments")
     raw = sum(hi - lo for lo, hi in merged)
     if raw != SAMPLE_UNION_RAW:
         raise SystemExit(
             f"sample union is {raw} bytes, SAMPLE_UNION_RAW says "
             f"{SAMPLE_UNION_RAW}. Update the constant.")
-    # Coverage is exact by construction (merged was built FROM the keyons), but
-    # assert it explicitly so a future edit to _merge_intervals cannot silently
-    # drop coverage while keeping the fragment list.
-    def _covered(lo, hi):
-        return any(mlo <= lo and hi <= mhi for mlo, mhi in merged)
-    uncovered = sum(1 for lo, hi in intervals if not _covered(lo, hi))
-    if uncovered:
-        raise SystemExit(f"{uncovered} valid keyons uncovered by the union.")
-    # EVERY fragment must be load-bearing: removing any one turns >=1 keyon red.
-    # This is the must-fail at the fragment granularity; the per-fragment counts
-    # are printed so a reader sees the load-bearing distribution.
-    counts = []
-    for k in range(len(merged)):
-        reduced = merged[:k] + merged[k + 1:]
-        red = sum(1 for lo, hi in intervals
-                  if not any(mlo <= lo and hi <= mhi for mlo, mhi in reduced))
-        counts.append(red)
-    if any(c == 0 for c in counts):
-        k = counts.index(0)
-        raise SystemExit(
-            f"sample fragment {k + 1} (u17 ${merged[k][0]:06X}) is NOT "
-            f"load-bearing: removing it leaves all {len(valid)} keyons green. "
-            f"Every fragment must cover >=1 keyon.")
-    print(f"  sample-windows: {len(merged)} frags, {raw} B raw, "
-          f"{len(valid)} valid keyons covered (100%), {n_invalid} invalid "
-          f"({inv_triples} distinct), per-frag red {min(counts)}-{max(counts)}.")
+    if merged[0][0] < 0 or merged[-1][1] > 0x400000:
+        raise SystemExit("static sample union escaped cave_m04401b032.u17")
+    print(f"  sample-windows: {len(merged)} static frags, {raw} B raw, "
+          "228 descriptor witnesses; W157 dynamic-minus-static=0.")
 
 
 def build(d: bytes) -> dict:
@@ -4393,14 +4316,14 @@ def build(d: bytes) -> dict:
                 "windows": [{"base": f"${a:06X}", "len": ln, "why": why,
                              "hex": d[a:a + ln].hex()}
                             for a, ln, why in SHOT_WINDOWS]},
-        # WAVE 27D -- THE ICS2115 SAMPLE DATA, as a tight union of u17.  These
+        # W158 -- complete descriptor-derived ICS2115 sample data union of u17.
         # are FILE offsets into `cave_m04401b032.u17` (the 4 MiB sample ROM at
         # $400000); export-web.mjs reads u17 directly and stitches the fragments
         # into assets/snd/sample.shard.u8.gz, NOT out of this JSON.  Only the
         # OFFSETS ship here (no ROM bytes); icsBase = romOffset + $400000 is the
         # address the ICS2115 addresses, so the synth can map a keyon's sample
         # address to a shard offset via sample.index.json.  check_sample_windows
-        # re-derives this list from keyon.tsv on every export (the must-fail).
+        # w157samplecoverage.mjs derives and gates this exact semantic set.
         "sound": {"rom": U17_FILE, "icsBase": U17_SAMPLE_BASE,
                   "fileSize": 0x400000,
                   "fragments": SAMPLE_UNION_RAW,

@@ -46,7 +46,12 @@ export function interpolate9(a, b, fraction) {
 /** Static logarithmic gain before the unresolved pan stage. */
 export function volumeGain(volAcc) {
   integer('VolAcc', volAcc, 0, 0xffff);
-  const index = volAcc >>> 4;
+  return volumeIndexGain(volAcc >>> 4);
+}
+
+/** W151's exact logarithmic conversion at the 12-bit volume-index stage. */
+export function volumeIndexGain(index) {
+  integer('volume index', index, 0, 0xfff);
   if (index === 0) return 0;
   const exponent = index >>> 8;
   const mantissa = index & 0xff;
@@ -86,6 +91,11 @@ export class IcsSampleMap {
     if (!(shard instanceof Uint8Array)) {
       throw new Error('ICS2115 sample shard must be a Uint8Array');
     }
+    if (index.version !== 1
+        || index.layout !== 'ics2115-static-fragment-stitch-v1') {
+      throw new Error('ICS2115 sample index requires version 1 layout '
+        + '"ics2115-static-fragment-stitch-v1"');
+    }
     if (index.rom !== 'cave_m04401b032.u17') {
       throw new Error(`ICS2115 sample index rom mismatch: ${index.rom}`);
     }
@@ -97,8 +107,11 @@ export class IcsSampleMap {
     if (index.shardBytes !== shard.length) {
       throw new Error(`ICS2115 sample shard length ${shard.length} != index ${index.shardBytes}`);
     }
-    if (!Array.isArray(index.fragments) || index.fragments.length !== 28) {
-      throw new Error(`ICS2115 sample index must contain exactly 28 fragments`);
+    integer('sample index fragmentCount', index.fragmentCount, 1, 0xffff);
+    if (!Array.isArray(index.fragments)
+        || index.fragments.length !== index.fragmentCount) {
+      throw new Error(`ICS2115 sample index fragments length must equal declared `
+        + `fragmentCount ${index.fragmentCount}`);
     }
 
     let packed = 0;
@@ -171,8 +184,9 @@ class Oscillator {
 
 function validatePanPolicy(policy) {
   if (!policy || typeof policy !== 'object' || typeof policy.name !== 'string'
-      || policy.name.length === 0 || typeof policy.center !== 'function') {
-    throw new Error('ICS2115 audible stereo requires an explicit named panPolicy with center(sample, voice)');
+      || policy.name.length === 0 || typeof policy.centerGains !== 'function') {
+    throw new Error('ICS2115 audible stereo requires an explicit named panPolicy '
+      + 'with centerGains(volAcc, voice)');
   }
   return policy;
 }
@@ -299,12 +313,13 @@ export class Ics2115Core {
   _serviceVoice(voiceNo) {
     const voice = this.voices[voiceNo];
     if (!voice.running) return null;
-    const mono = this.prePanSample(voiceNo);
-    const pair = this.panPolicy.center(mono, voiceNo);
-    if (!Array.isArray(pair) || pair.length !== 2
-        || !Number.isFinite(pair[0]) || !Number.isFinite(pair[1])) {
-      throw new Error(`ICS2115 pan policy '${this.panPolicy.name}' returned an invalid stereo pair`);
+    const sample = this.sourceSample(voiceNo);
+    const gains = this.panPolicy.centerGains(voice.u16(0x09), voiceNo);
+    if (!Array.isArray(gains) || gains.length !== 2
+        || gains.some((gain) => !Number.isInteger(gain) || gain < 0 || gain > 0x8000)) {
+      throw new Error(`ICS2115 pan policy '${this.panPolicy.name}' returned invalid channel gains`);
     }
+    const pair = [(sample * gains[0]) >> 15, (sample * gains[1]) >> 15];
 
     const conf = voice.u8(VOICE_REG.oscConf);
     const next = voice.phase + (voice.u16(VOICE_REG.fc) >>> 1);
@@ -331,15 +346,20 @@ export class Ics2115Core {
 
   /** Current signed mono contribution after static volume, before pan policy. */
   prePanSample(voiceNo) {
+    const voice = this.voices[voiceNo];
+    return (this.sourceSample(voiceNo) * volumeGain(voice.u16(0x09))) >> 15;
+  }
+
+  /** Current signed interpolated sample before static volume and pan. */
+  sourceSample(voiceNo) {
     integer('pre-pan voice', voiceNo, 0, this.activeOsc);
     const voice = this.voices[voiceNo];
     if (!voice.running) return 0;
     const address = ((voice.u8(VOICE_REG.saddr) & 0x0f) * 0x100000)
       + Math.floor(voice.phase / 512);
     const fraction = voice.phase & 0x1ff;
-    const sample = interpolate9(linear8(this.samples.byte(address)),
+    return interpolate9(linear8(this.samples.byte(address)),
       linear8(this.samples.byte(address + 1)), fraction);
-    return (sample * volumeGain(voice.u16(0x09))) >> 15;
   }
 
   runNative(count, emit = true, onNativeBoundary = null) {

@@ -394,11 +394,40 @@ export class AudioController {
    * @param {(e:Error)=>void} [onError]
    */
   constructor(makeChip, onError) {
+    if (makeChip != null && typeof makeChip !== 'function') {
+      throw new TypeError('AudioController makeChip must be a function or null while assets load');
+    }
     this.makeChip = makeChip;
     this.muted = false;
-    this.status = 'locked';   // 'locked' | 'on' | 'unsupported' | 'failed'
+    this.status = 'locked';   // locked | loading | on | unsupported | failed
     this.onError = onError;
     this.out = null;
+    this.ctx = null;
+    this.preReadyFrames = 0;
+    this.error = '';
+  }
+
+  _attach() {
+    if (!this.ctx || !this.makeChip || this.out) return;
+    try {
+      this.out = new AudioOut(this.ctx, this.makeChip);
+      this.out.setMuted(this.muted);
+      this.status = 'on';
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** Supply the singleton chip factory when deferred assets finish loading. */
+  setFactory(makeChip) {
+    if (typeof makeChip !== 'function') {
+      throw new TypeError('AudioController deferred makeChip must be a function');
+    }
+    if (this.makeChip && this.makeChip !== makeChip) {
+      throw new Error('AudioController chip factory is single-assignment');
+    }
+    this.makeChip = makeChip;
+    this._attach();
   }
 
   /**
@@ -408,15 +437,15 @@ export class AudioController {
    */
   arm() {
     if (this.status === 'unsupported' || this.status === 'failed') return;
-    if (this.out) { this.out.ctx.resume?.(); return; }
+    if (this.ctx) { this.ctx.resume?.(); this._attach(); return; }
     const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
     if (!AC) { this.status = 'unsupported'; return; }
     try {
       const ctx = new AC({ latencyHint: 'interactive' });
-      this.out = new AudioOut(ctx, this.makeChip);
-      this.out.setMuted(this.muted);
+      this.ctx = ctx;
       ctx.resume?.();
-      this.status = 'on';
+      this.status = 'loading';
+      this._attach();
     } catch (e) {
       this.status = 'failed';
       this.onError?.(e);
@@ -426,6 +455,7 @@ export class AudioController {
   /** One logic frame of register writes. Dropped while locked. */
   frame(log) {
     if (this.out) this.out.frame(log);
+    else this.preReadyFrames++;
   }
 
   /**
@@ -440,14 +470,7 @@ export class AudioController {
     try {
       this.out.pump();
     } catch (e) {
-      this.status = 'failed';
-      const out = this.out;
-      this.out = null;
-      // Swallowed: the context is being torn down because something already
-      // went wrong, and an unhandled rejection here would replace a useful
-      // named error with a useless one.
-      out.close().catch(() => {});
-      this.onError?.(e);
+      this.fail(e);
     }
   }
 
@@ -456,15 +479,35 @@ export class AudioController {
     this.out?.setMuted(this.muted);
   }
 
+  /** Permanently surface an async asset/runtime failure without stopping play. */
+  fail(error) {
+    if (this.status === 'failed') return;
+    this.status = 'failed';
+    this.error = String(error?.message ?? error);
+    const out = this.out;
+    const ctx = this.ctx;
+    this.out = null;
+    this.ctx = null;
+    if (out) out.close().catch(() => {});
+    else ctx?.close?.().catch?.(() => {});
+    this.onError?.(error instanceof Error ? error : new Error(String(error)));
+  }
+
   /** For the page's status line. Numbers, not adjectives. */
   stats() {
-    if (!this.out) return { status: this.status };
+    if (!this.out) {
+      const stats = { status: this.status };
+      if (this.preReadyFrames) stats.preReadyFrames = this.preReadyFrames;
+      if (this.error) stats.error = this.error;
+      return stats;
+    }
     return {
       status: this.muted ? 'muted' : this.status,
       rate: this.out.ctx.sampleRate,
       backlog: this.out.queue.length,
       dropped: this.out.dropped,
       underruns: this.out.underruns,
+      preReadyFrames: this.preReadyFrames,
     };
   }
 }

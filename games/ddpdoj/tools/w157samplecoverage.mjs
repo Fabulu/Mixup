@@ -33,17 +33,17 @@ const EXPECT = Object.freeze({
   selectedStreams: 288,
   scoreEvents: 11_413,
   descriptorIntervals: 228,
-  fragments: 20,
-  raw: 3_612_823,
-  gzip: 2_818_488,
+  fragments: 6,
+  raw: 3_612_873,
+  gzip: 2_818_499,
   fullRaw: 4_194_304,
   fullGzip: 2_832_370,
   dynamicKeyons: 1_620,
   dynamicMinusStatic: 0,
-  staticIntervalsWithoutDynamic: 175,
-  staticFragmentsWithoutDynamic: 7,
-  sfxRaw: 1_392_445,
-  sfxGzip: 1_051_868,
+  staticIntervalsWithoutDynamic: 182,
+  staticFragmentsWithoutDynamic: 0,
+  sfxRaw: 1_392_495,
+  sfxGzip: 1_051_879,
   cueRaw: Object.freeze([305917, 179081, 461951, 500875, 395395, 350141,
     31795, 147837, 121749, 192149, 141659]),
   cueGzip: Object.freeze([213449, 124838, 355816, 413897, 325721, 307173,
@@ -91,14 +91,20 @@ function descriptorInterval(record, kind, index) {
   const base = bank * 0x100000;
   const accumulator = base
     + Math.floor(accumulatorPhase(record.r0A, record.r0B) / 512);
-  const loopStart = kind === 'bgm'
-    ? base + Math.floor(boundaryPhase(record.r02, record.r03) / 512)
-    : accumulator;
+  // The 12-byte SFX record has no independent r02/r03 pair. `$3245` writes
+  // its r0A/r0B pair both as the accumulator and, through the boundary-width
+  // encoding, as OscStart. BGM has the explicit r02/r03 pair.
+  const loopStart = base + Math.floor((kind === 'sfx'
+    ? boundaryPhase(record.r0A, record.r0B)
+    : boundaryPhase(record.r02, record.r03)) / 512);
   const neighbor = mutation === 'endpoint-one' ? 1 : 2;
   const end = base + Math.floor(boundaryPhase(record.r04, record.r05) / 512)
     + neighbor;
   const conf = kind === 'bgm' ? record.r00 : 0x20;
-  return Object.freeze({ start: (conf & 0x08) ? Math.min(accumulator, loopStart)
+  // Every SFX selector is accepted by cmd $02 as a forward loop even though
+  // the descriptor's stored r00 byte is zero; its live loop return is r02/r03.
+  const mayLoop = kind === 'sfx' || (conf & 0x08);
+  return Object.freeze({ start: mayLoop ? Math.min(accumulator, loopStart)
     : accumulator, end, kind, index, bank, conf });
 }
 
@@ -147,6 +153,9 @@ const bgmIntervals = [...reachableBgm].sort((a, b) => a - b)
 const descriptorIntervals = [...sfxIntervals, ...bgmIntervals];
 let staticFragments = mergeIntervals(descriptorIntervals);
 if (mutation === 'drop-fragment') staticFragments = staticFragments.slice(0, -1);
+if (process.env.W157_DUMP === '1') {
+  console.log(JSON.stringify(staticFragments.map(({ start, end }) => ({ start, end })), null, 2));
+}
 
 check('raw Z80 accepts 69 SFX selectors; fixed wrappers name a 54-selector subset', () => {
   for (let index = 0; index < EXPECT.tableSfxDescriptors; index++) params.sfx(index);
@@ -169,7 +178,7 @@ check('all reachable descriptors use exercised linear8 banks in u17 only', () =>
   assert.deepEqual([...new Set(descriptorIntervals.map((x) => x.bank))], [4, 5, 6, 7]);
   assert.ok(bgmIntervals.every((x) => x.conf === 0x00 || x.conf === 0x08));
 });
-check('228 reachable intervals merge to 20 tight non-redundant fragments', () => {
+check('228 reachable command intervals merge to the tight non-redundant union', () => {
   assert.equal(descriptorIntervals.length, EXPECT.descriptorIntervals);
   assert.equal(staticFragments.length, EXPECT.fragments);
   for (let i = 0; i < staticFragments.length; i++) {
@@ -258,14 +267,16 @@ check('SFX and eleven cue demand-shard measurements are stable', () => {
   assert.deepEqual(cueSizes.map((x) => x.gzip), [...EXPECT.cueGzip]);
 });
 
-check('the current 28-fragment artifact has a static descriptor witness per fragment', () => {
+check('the shipped W158 artifact exactly equals the static command union', () => {
   const current = JSON.parse(gunzipSync(readFileSync(INDEX)));
-  assert.equal(current.fragments.length, 28);
-  for (const fragment of current.fragments) {
-    const shipped = { start: fragment.icsBase, end: fragment.icsBase + fragment.len };
-    assert.ok(descriptorIntervals.some((witness) =>
-      witness.start < shipped.end && shipped.start < witness.end));
-  }
+  assert.equal(current.version, 1);
+  assert.equal(current.layout, 'ics2115-static-fragment-stitch-v1');
+  assert.equal(current.coverage, 'all-live-descriptors');
+  assert.equal(current.descriptorIntervals, EXPECT.descriptorIntervals);
+  assert.equal(current.fragmentCount, EXPECT.fragments);
+  assert.deepEqual(current.fragments.map((fragment) => ({
+    start: fragment.icsBase, end: fragment.icsBase + fragment.len,
+  })), staticFragments.map(({ start, end }) => ({ start, end })));
 });
 
 console.log(`W157 GREEN: ${checks} checks, static=${descriptorIntervals.length} descriptors/`
