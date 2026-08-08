@@ -384,9 +384,10 @@ export class AudioOut {
 /**
  * Autoplay policy, verbatim from Gradius's W13. Browsers refuse to start audio
  * before a user gesture; this object starts `locked` and the AudioContext IS
- * NOT CREATED AT ALL until `arm()` runs inside a gesture handler. Until then
- * `frame()` drops its batches rather than queueing them, so nothing accumulates
- * while the page waits. THE GAME RUNS REGARDLESS: audio never gates the sim.
+ * NOT CREATED AT ALL until `arm()` runs inside a gesture handler. A deferred
+ * stateful chip may still advance with emit=false while locked. Before that
+ * chip arrives, compact frame inputs are retained for state catch-up, never
+ * for later audible playback. THE GAME RUNS REGARDLESS: audio never gates it.
  */
 export class AudioController {
   /**
@@ -403,6 +404,8 @@ export class AudioController {
     this.onError = onError;
     this.out = null;
     this.ctx = null;
+    this.chip = null;
+    this.pendingStateFrames = makeChip == null ? [] : null;
     this.preReadyFrames = 0;
     this.error = '';
   }
@@ -427,6 +430,37 @@ export class AudioController {
       throw new Error('AudioController chip factory is single-assignment');
     }
     this.makeChip = makeChip;
+    // Legacy factories construct only at gesture time. Their pre-arm frames
+    // have no live chip state to preserve, matching the original contract.
+    if (this.pendingStateFrames) this.pendingStateFrames.length = 0;
+    this.pendingStateFrames = null;
+    this._attach();
+  }
+
+  /**
+   * Supply one already-constructed stateful chip. Deferred games use this to
+   * keep driver/chip time alive before autoplay unlock, then AudioOut attaches
+   * this exact instance. Pending inputs are applied silently and are not put
+   * into AudioOut's audible queue.
+   */
+  setChip(chip) {
+    if (!chip || typeof chip.frame !== 'function' || typeof chip.drain !== 'function') {
+      throw new TypeError('AudioController deferred chip must expose frame and drain');
+    }
+    if (this.chip && this.chip !== chip) {
+      throw new Error('AudioController chip is single-assignment');
+    }
+    if (this.makeChip) throw new Error('AudioController already has a chip factory');
+    this.chip = chip;
+    try {
+      for (const log of this.pendingStateFrames ?? []) chip.frame(log, false);
+    } catch (e) {
+      this.fail(e);
+      return;
+    }
+    if (this.pendingStateFrames) this.pendingStateFrames.length = 0;
+    this.pendingStateFrames = null;
+    this.makeChip = () => chip;
     this._attach();
   }
 
@@ -452,10 +486,19 @@ export class AudioController {
     }
   }
 
-  /** One logic frame of register writes. Dropped while locked. */
+  /** One logic frame. Locked state advances silently; only AudioOut emits. */
   frame(log) {
-    if (this.out) this.out.frame(log);
-    else this.preReadyFrames++;
+    if (this.status === 'failed') return;
+    if (this.out) {
+      this.out.frame(log);
+      return;
+    }
+    this.preReadyFrames++;
+    if (this.chip) {
+      try { this.chip.frame(log, false); } catch (e) { this.fail(e); }
+    } else if (this.pendingStateFrames) {
+      this.pendingStateFrames.push(log && log.length ? Uint8Array.from(log) : EMPTY);
+    }
   }
 
   /**

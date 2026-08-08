@@ -960,9 +960,9 @@ function interpret(ram, rom, ctx, a5, clock, mut) {
     const before = ram.u16(BGRAM.cueCount);
     ram.setU16(BGRAM.cueCount, u16(before - 1));           // $2620A8 subq.w #1
     if (before === 0) {                                    // the BORROW case
-      ctx.unportedLog.note(0x2620b4, `$2620B4 jsr (A0) -- the stage script's `
-        + `deferred cue callback $${call.toString(16).toUpperCase()} (sound; `
-        + `excluded, 20-plan §7 item 1)`);
+      // `$2620B0 movea.l $8131C4,A0; $2620B4 jsr (A0)`. Sound is now a live
+      // Game boundary, so execute the exact wrapper stored by the script.
+      ctx.soundPost?.(call);
       ctx.scrollEvent?.({ op: 0x14, recTime: clock, kind: 'defer', call });
       ram.setU32(BGRAM.cueCall, 0);                        // $2620B6
     }

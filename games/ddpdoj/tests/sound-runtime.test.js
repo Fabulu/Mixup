@@ -106,25 +106,33 @@ test('real Game SFX wrapper reaches registers, PCM, native IRQ keyoff, and alloc
   assert.equal(rt.lastFrame.door.selector, 0x24);
   assert.equal(rt.lastFrame.door.channel, 3);
   assert.equal(rt.lastFrame.nativeFrames, 558);
-  assert.ok(rt.lastFrame.registerLog.length > 40);
-  assert.deepEqual(rt.lastFrame.irqs.map((irq) => irq.voice), [8]);
-  assert.ok(rt.lastFrame.irqs[0].registerLog.length > 10);
-  assert.equal(rt.chain.engine.icsShadow[8][0], 0);
+  assert.ok(rt.lastFrame.registerLog.length > 30);
+  assert.deepEqual(rt.lastFrame.irqs, [], 'the authentic FC does not end in 19 ms');
   assert.ok(rt.outLen > 0);
   assert.ok(rt.core.out[0].subarray(0, rt.outLen).some((sample) => sample !== 0));
 
-  const ended = [8];
+  const ended = [];
+  for (let guard = 0; !rt.lastFrame.irqs.length; guard++) {
+    assert.ok(guard < 200, 'selector $24 must eventually raise oscillator IRQ');
+    rt.frame(new Uint8Array(0), false);
+  }
+  ended.push(rt.lastFrame.irqs[0].voice);
+  assert.ok(rt.lastFrame.irqs[0].registerLog.length > 10);
+  assert.equal(rt.chain.engine.icsShadow[8][0], 0);
   for (let i = 1; i < 25; i++) {
     g.ram.setU8(SOUND.debounceB, 0);
     assert.equal(postWrapper(g.ram, g.sound, 0x28c714), true);
     g.step(0xffff);
+    for (let guard = 0; !rt.lastFrame.irqs.length; guard++) {
+      assert.ok(guard < 200, 'each selector $24 voice must eventually end');
+      rt.frame(new Uint8Array(0), false);
+    }
     ended.push(rt.lastFrame.irqs[0].voice);
   }
   assert.deepEqual(ended, [...Array.from({ length: 24 }, (_, i) => i + 8), 8]);
-  assert.equal(rt.frameCount, 25);
-  assert.equal(rt.core.frameCount, 25); // one owner, no duplicate advancement
+  assert.equal(rt.frameCount, rt.core.frameCount); // one owner, no duplicate advancement
   assert.equal(rt.chain.keyonCount, 25);
-  assert.equal(pcmHash(rt), 'f6bcccff9cd6239471fa01909def56a89600b48fee1fd5886b0c3ab2ac0dad11');
+  assert.equal(pcmHash(rt), '98d3a56cc36e8ed37e6fba68e7650f2aa4c74a1d5f518fdc730d104f63d4a31e');
 });
 
 test('a real streaming leaf starts a live BGM cue and reaches stereo samples', () => {
@@ -192,6 +200,10 @@ test('same-boundary oscillator IRQs key off in IRQV round-robin order', () => {
   const rt = runtime();
   rt.chain.enqueueDoor({ type: 0, pan: 0xff, id: 36, packedChannel: 0, lf: 0 });
   rt.frame(Uint8Array.of(0, 0xff, 36, 0));
+  for (let guard = 0; !rt.lastFrame.irqs.length; guard++) {
+    assert.ok(guard < 200, 'paired voices must reach their common endpoint');
+    rt.frame(new Uint8Array(0), false);
+  }
   assert.deepEqual(rt.lastFrame.irqs.map((irq) => irq.voice), [8, 9]);
   assert.equal(rt.chain.engine.icsShadow[8][0], 0);
   assert.equal(rt.chain.engine.icsShadow[9][0], 0);

@@ -3,13 +3,20 @@
 // Game supplies exactly zero or four bytes per logic frame. This object is the
 // sole owner of Layer 3 scheduling, Layer 2 register emission, native 33,075 Hz
 // advancement, oscillator IRQ feedback, and stereo buffering. It implements
-// shared/audio.js's chip contract directly, so an AudioOut must construct this
-// object inside its chip factory and must not also inject it into Game.
+// shared/audio.js's chip contract directly. The browser constructs exactly one
+// object when deferred assets arrive, advances it silently before gesture, and
+// later attaches that same object to AudioOut. Game supplies only frame inputs.
 
 import { SoundChain } from './dispatch.js';
 import { driverParamsFromJson } from './driverparams.js';
 import { scoreFromJson } from './bgmscore.js';
 import { Ics2115Core, IcsSampleMap } from './ics2115.js';
+
+export const STAGE1_SEED_SOUND = Object.freeze({
+  startFrame: 1562,
+  startLeaf: 0x28cb9c,
+  startDoor: Object.freeze([0x12, 0xeb, 0x00, 0x00]),
+});
 
 export const IRQ_TIMING_POLICY = Object.freeze({
   AFTER_NATIVE_FRAME: 'after-native-frame',
@@ -138,4 +145,24 @@ export function soundRuntimeFromAssets(assets, policies) {
   }
   const sampleMap = new IcsSampleMap(index, assets.sampleShard);
   return new SoundRuntime(params, score, sampleMap, policies);
+}
+
+/**
+ * Reconstruct the live sound state omitted by the mid-stage main-RAM seed.
+ * `$25D5C2` posts `$28CB9C`; the captured door is type $12/id 0 at lf 1562.
+ * Calls through the frame before `seedFrame` advance with emit=false, leaving
+ * no stale PCM for a later browser gesture.
+ */
+export function soundRuntimeFromStage1Seed(assets, policies, seedFrame) {
+  if (!Number.isInteger(seedFrame) || seedFrame < 0) {
+    throw new TypeError('stage-1 sound seed frame must be a non-negative integer');
+  }
+  const runtime = soundRuntimeFromAssets(assets, policies);
+  const S = STAGE1_SEED_SOUND;
+  if (seedFrame <= S.startFrame) return runtime;
+  runtime.frame(Uint8Array.from(S.startDoor), false);
+  for (let lf = S.startFrame + 1; lf < seedFrame; lf++) {
+    runtime.frame(new Uint8Array(0), false);
+  }
+  return runtime;
 }

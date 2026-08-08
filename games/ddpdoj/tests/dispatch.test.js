@@ -73,7 +73,9 @@ test('W152: door decode preserves four bytes and reconstructs all ten selector b
 });
 
 test('W152: transformed driver parameters cover exact ranges and are immutable', () => {
-  assert.equal(JSON_PARAMS.version, 1);
+  assert.equal(JSON_PARAMS.version, 2);
+  assert.deepEqual(JSON_PARAMS.clock, { sourceRateAddress: 0x6168,
+    sourceRateHz: 0x8133 });
   assert.equal(JSON_PARAMS.sfx.base, 0x7600);
   assert.equal(JSON_PARAMS.sfx.stride, 12);
   assert.equal(JSON_PARAMS.sfx.entries.length, 69);
@@ -87,8 +89,9 @@ test('W152: transformed driver parameters cover exact ranges and are immutable',
   for (let selector = 0; selector < DRIVER_PARAMS.sfxCount; selector++) {
     const record = PARAMS.sfx(selector);
     assert.ok(Object.isFrozen(record), `SFX record ${selector} is frozen`);
-    assert.equal(record.initialFc, Z80[0x7602 + selector * 12]
+    assert.equal(record.sampleRateHz, Z80[0x7602 + selector * 12]
       | (Z80[0x7603 + selector * 12] << 8));
+    assert.equal(record.oscFc, Math.floor(record.sampleRateHz * 0x400 / 0x8133));
   }
   assert.ok(Object.isFrozen(PARAMS));
   assert.throws(() => PARAMS.sfx(69), /0\.\.68/);
@@ -106,7 +109,11 @@ test('W152: regenerated artifact and manifest expose the validated deferred tabl
 
 test('W152: loader refuses bad version, layout, ranges, and counts', () => {
   const mutate = (fn) => { const value = structuredClone(JSON_PARAMS); fn(value); return value; };
-  assert.throws(() => driverParamsFromJson(mutate((v) => { v.version = 2; })), /version/);
+  assert.throws(() => driverParamsFromJson(mutate((v) => { v.version = 3; })), /version/);
+  assert.throws(() => driverParamsFromJson(mutate((v) => { v.clock.sourceRateAddress++; })),
+    /source-rate address/);
+  assert.throws(() => driverParamsFromJson(mutate((v) => { v.sfx.entries[0].oscFc++; })),
+    /\$0B92 conversion/);
   assert.throws(() => driverParamsFromJson(mutate((v) => { v.sfx.base++; })), /base\/stride/);
   assert.throws(() => driverParamsFromJson(mutate((v) => { v.sfx.entries.pop(); })), /69/);
   assert.throws(() => driverParamsFromJson(mutate((v) => { v.sfx.entries[0].r11 = 256; })), /r11/);
@@ -130,7 +137,7 @@ test('W152: arbitrary selectors resolve `$7600 + selector*12` and program `$0B92
     assert.equal(logical.icsVoice, 8, '`$37DB` performs the seeded ICS allocation');
     const record = PARAMS.sfx(selector);
     const voice = chain.rf.voices[8];
-    assert.equal(voice.u16(VOICE_REG.fc), record.initialFc);
+    assert.equal(voice.u16(VOICE_REG.fc), record.oscFc);
     assert.equal(voice.u8(VOICE_REG.saddr), record.r11);
     assert.equal(voice.u16(0x0b), record.r0B);
     assert.equal(voice.u16(0x0a), record.r0A);
@@ -211,7 +218,7 @@ test('W152: a production wrapper door reaches the live selector path without his
   chain.enqueueDoor(drained);
   assert.equal(chain.runMainLoop(), 1);
   chain.tick();
-  assert.equal(chain.rf.voices[8].u16(VOICE_REG.fc), PARAMS.sfx(0x24).initialFc);
+  assert.equal(chain.rf.voices[8].u16(VOICE_REG.fc), PARAMS.sfx(0x24).oscFc);
 });
 
 test('W152: the `$28CB60` stage-clear leaf resolves index 9 and type `$11`', () => {

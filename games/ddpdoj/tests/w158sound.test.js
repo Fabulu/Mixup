@@ -118,7 +118,7 @@ test('W158 approved production policies produce deterministic nonzero stereo PCM
   const h = createHash('sha256');
   h.update(new Uint8Array(rt.core.out[0].buffer, 0, rt.outLen * 4));
   h.update(new Uint8Array(rt.core.out[1].buffer, 0, rt.outLen * 4));
-  assert.equal(h.digest('hex'), '6beac719cbf3a743d55e6fb6c96116090ea97fec83a4d4f62a24ad747a2b902f');
+  assert.equal(h.digest('hex'), '4736799d3717a4675301c7ca8175570342ad217fb8bfc65e2602d4e19b5cb26f');
 });
 
 test('W158 deferred loader fetches exactly four sound bodies and rejects manifest drift', async () => {

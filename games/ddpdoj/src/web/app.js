@@ -187,7 +187,7 @@ import { mergePalette } from '../palette.js';
 import { loadBundle, loadSoundAssets, httpReader, gunzip, AssetError } from './assets.js';
 import { attachInput, pollInput, currentPortWord } from './input.js';
 import { AudioController } from '../../../../shared/audio.js';
-import { soundRuntimeFromAssets } from '../soundruntime.js';
+import { soundRuntimeFromStage1Seed } from '../soundruntime.js';
 import { APPROVED_SOUND_POLICIES } from '../soundpolicy.js';
 // WAVE 131/132 -- the browser-side replay module.  W131 owns the REC half: the
 // `.replay` digest feed + ACCUMULATE-then-hash (SubtleCrypto has no incremental
@@ -1554,8 +1554,9 @@ export async function boot(canvas, opts = {}) {
     ? await loadRung(opts.ladderBase ?? new URL('../../tools/oracle/out/', import.meta.url),
         opts.rung, opts.ladder, opts.ladderDir)
     : null;
-  // One controller exists before Game. It drops frames while locked/loading,
-  // so neither autoplay delay nor asset latency accumulates a stale backlog.
+  // One controller exists before Game. It retains only compact frame inputs
+  // until assets arrive, then advances the singleton runtime silently until a
+  // gesture attaches AudioOut. No pre-gesture PCM becomes an audible backlog.
   const sound = new AudioController(null, opts.onSoundError);
   const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE, rung, sound);
   // WAVE 131 -- the asset base `armRecording()` re-fetches the tables from, so
@@ -1581,12 +1582,16 @@ export async function boot(canvas, opts = {}) {
   requestAnimationFrame(frame);
 
   // Deferred and deliberately not awaited: first paint is already scheduled.
-  // A gesture may synchronously arm the AudioContext first; setFactory attaches
-  // the sole SoundRuntime when all four validated assets arrive.
+  // A gesture may synchronously arm the AudioContext first. Asset completion
+  // constructs the sole SoundRuntime independently, restores the authentic
+  // lf1562 stage-one BGM start up to the page seed, then setChip catches up any
+  // post-seed frame inputs silently and attaches that same instance if armed.
   const soundReady = new Promise((resolve) => requestAnimationFrame(resolve))
     .then(() => loadSoundAssets(httpReader(base), bundle.manifest))
     .then((assets) => {
-      sound.setFactory(() => soundRuntimeFromAssets(assets, APPROVED_SOUND_POLICIES));
+      const runtime = soundRuntimeFromStage1Seed(assets, APPROVED_SOUND_POLICIES,
+        demo.seedLf);
+      sound.setChip(runtime);
       return assets;
     })
     .catch((e) => { sound.fail(e); return null; });

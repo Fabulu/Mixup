@@ -125,7 +125,10 @@ export class ImmediateNoteOn {
     const alternate = message.cmd === 0x02;
     slot.selector = message.selector;
     slot.icsVoice = -1;                               // `$37DB` allocates it
-    slot.fc = descriptor.initialFc;
+    // `$7600 + 2` is a sample-rate word in Hz. `$0B92` divides it by the
+    // live source-rate word at `$6168` and scales by $400 before writing
+    // OscFC. Writing the descriptor word itself makes one-shots ~33x short.
+    slot.fc = descriptor.oscFc;
     slot.saddr = descriptor.r11;
     slot.r0B = descriptor.r0B;
     slot.r0A = descriptor.r0A;

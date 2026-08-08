@@ -101,9 +101,11 @@ function newGame(recs, opts = {}) {
   const vram = new BgVram();
   const unportedLog = new UnportedLog();
   const events = [];
-  const ctx = { unportedLog, scrollEvent: (e) => events.push(e) };
+  const soundPosts = [];
+  const ctx = { unportedLog, scrollEvent: (e) => events.push(e),
+    soundPost: (address) => soundPosts.push(address) };
   const handler = makeBackground(rom, vram, opts);
-  return { ram, rom, vram, ctx, events, unportedLog, handler,
+  return { ram, rom, vram, ctx, events, soundPosts, unportedLog, handler,
     step: () => handler(ram, A5, 0, ctx) };
 }
 
@@ -336,8 +338,8 @@ test('op $14 CUE sub-op 0 arms the deferred callback and the countdown fires on 
   assert.equal(g.events.filter((e) => e.kind === 'defer').length, 1,
     'the callback fired on the arming frame');
   assert.equal(g.ram.u32(BGRAM.cueCall), 0, '$2620B6 cleared it');
-  assert.ok(g.unportedLog.report().some((l) => l.includes('$28CB88')),
-    'and the callee is COUNTED, by address -- sound is excluded, not silent');
+  assert.deepEqual(g.soundPosts, [0x28cb88],
+    'and `$2620B4 jsr (A0)` posts the stage script sound wrapper');
 });
 
 test('op $18 FLAG sets rungs 1..N of $81B414 and throws above the listing', () => {

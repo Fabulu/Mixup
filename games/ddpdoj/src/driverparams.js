@@ -5,8 +5,9 @@
 // re-entry. No contiguous ROM byte slice is exposed by the artifact.
 
 export const DRIVER_PARAMS = Object.freeze({
-  version: 1,
+  version: 2,
   sfxBase: 0x7600, sfxStride: 12, sfxCount: 69,
+  sourceRateAddress: 0x6168,
   bgmBase: 0x6840, bgmStride: 22, bgmCount: 160,
   fcMapBase: 0x4439, fcMapStride: 2, fcMapMin: 0x32, fcMapMax: 0x716,
   fcMapCount: 0x716 - 0x32 + 1,
@@ -52,17 +53,29 @@ function le16(bytes, address) {
   return bytes[address] | (bytes[address + 1] << 8);
 }
 
+/** `$0B92`: convert the `$7600` descriptor's Hz word through `[$6168]`. */
+export function sfxRateToOscFc(rateHz, sourceRateHz = 0x8133) {
+  word('SFX sample rate', rateHz);
+  word('driver source rate', sourceRateHz);
+  if (sourceRateHz === 0) throw new RangeError('driver params: source rate must be non-zero');
+  return Math.floor(rateHz * 0x400 / sourceRateHz);
+}
+
 /** Transform the runtime tables in the uploaded 64 KiB Z80 image. */
 export function driverParamsToJson(bytes) {
   if (!(bytes instanceof Uint8Array) || bytes.length < 0x10000) {
     throw new TypeError('driver params export requires the complete 64 KiB Z80 image');
   }
   const C = DRIVER_PARAMS;
+  const sourceRateHz = le16(bytes, C.sourceRateAddress);
+  if (sourceRateHz === 0) throw new RangeError('driver params export: [$6168] source rate is zero');
   const sfx = [];
   for (let i = 0; i < C.sfxCount; i++) {
     const p = C.sfxBase + i * C.sfxStride;
+    const sampleRateHz = le16(bytes, p + 2);
     sfx.push({
-      r11: bytes[p], raw01: bytes[p + 1], initialFc: le16(bytes, p + 2),
+      r11: bytes[p], raw01: bytes[p + 1], sampleRateHz,
+      oscFc: sfxRateToOscFc(sampleRateHz, sourceRateHz),
       r0B: le16(bytes, p + 4), r0A: le16(bytes, p + 6),
       r05: le16(bytes, p + 8), r04: le16(bytes, p + 10),
     });
@@ -90,6 +103,7 @@ export function driverParamsToJson(bytes) {
     le16(bytes, C.fcMapBase + i * C.fcMapStride));
   return {
     version: C.version,
+    clock: { sourceRateAddress: C.sourceRateAddress, sourceRateHz },
     sfx: { base: C.sfxBase, stride: C.sfxStride, entries: sfx },
     bgm: { base: C.bgmBase, stride: C.bgmStride, entries: bgm },
     fcMap: { base: C.fcMapBase, stride: C.fcMapStride,
@@ -108,13 +122,14 @@ function freezeRecord(record) { return Object.freeze(record); }
 
 /** Validated, immutable selector-indexed access to the transformed tables. */
 export class DriverParams {
-  constructor(sfx, bgm, fcMap, pitch, pan, volume) {
+  constructor(sfx, bgm, fcMap, pitch, pan, volume, sourceRateHz) {
     this.sfxEntries = Object.freeze(sfx);
     this.bgmEntries = Object.freeze(bgm);
     this.fcMapEntries = Object.freeze(fcMap);
     this.pitchBanks = Object.freeze(pitch);
     this.panEntries = Object.freeze(pan);
     this.volumeEntries = Object.freeze(volume);
+    this.sourceRateHz = sourceRateHz;
     Object.freeze(this);
   }
 
@@ -160,6 +175,12 @@ export function driverParamsFromJson(input) {
   if (json.version !== C.version) {
     throw new RangeError(`driver params: unsupported version ${json.version}`);
   }
+  object('clock', json.clock);
+  if (json.clock.sourceRateAddress !== C.sourceRateAddress) {
+    throw new RangeError('driver params: source-rate address mismatch');
+  }
+  const sourceRateHz = word('clock.sourceRateHz', json.clock.sourceRateHz);
+  if (sourceRateHz === 0) throw new RangeError('driver params: source rate must be non-zero');
   metadata('sfx', json.sfx, C.sfxBase, C.sfxStride, C.sfxCount);
   metadata('bgm', json.bgm, C.bgmBase, C.bgmStride, C.bgmCount);
   metadata('fcMap', json.fcMap, C.fcMapBase, C.fcMapStride, C.fcMapCount);
@@ -180,10 +201,15 @@ export function driverParamsFromJson(input) {
 
   const sfx = json.sfx.entries.map((raw, i) => {
     object(`sfx.entries[${i}]`, raw);
+    const sampleRateHz = word(`sfx[${i}].sampleRateHz`, raw.sampleRateHz);
+    const oscFc = word(`sfx[${i}].oscFc`, raw.oscFc);
+    if (oscFc !== sfxRateToOscFc(sampleRateHz, sourceRateHz)) {
+      throw new RangeError(`driver params: sfx[${i}].oscFc does not match $0B92 conversion`);
+    }
     return freezeRecord({
       r11: byte(`sfx[${i}].r11`, raw.r11),
       raw01: byte(`sfx[${i}].raw01`, raw.raw01),
-      initialFc: word(`sfx[${i}].initialFc`, raw.initialFc),
+      sampleRateHz, oscFc,
       r0B: word(`sfx[${i}].r0B`, raw.r0B),
       r0A: word(`sfx[${i}].r0A`, raw.r0A),
       r05: word(`sfx[${i}].r05`, raw.r05),
@@ -213,5 +239,5 @@ export function driverParamsFromJson(input) {
     .map((value, i) => byte(`control.pan[${i}]`, value));
   const volume = array('control.volume.entries', json.control.volume.entries,
     C.volumeCount).map((value, i) => word(`control.volume[${i}]`, value));
-  return new DriverParams(sfx, bgm, fcMap, pitch, pan, volume);
+  return new DriverParams(sfx, bgm, fcMap, pitch, pan, volume, sourceRateHz);
 }
