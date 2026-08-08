@@ -749,6 +749,22 @@ byte-exactness is the live claim. Gates 1313/0/0, bosscoverage 103/0/8. PUBLISHI
 Sound direction: Wave B (trivial Z80 upload + listing) next, then Wave C (the Z80 driver port,
 the real work, 3-5 waves).
 
+## 7aa. UPDATE -- 2026-08-08: Sound Waves A+B+C-L1 LIVE; D + F IN FLIGHT
+
+Sound progress (all published, live):
+- **Wave A** (68k cue post/queue, build `20260808010309`) — the sound keystone; ~25 `note()`
+  placeholders replaced with real cue posts. State-exact against the de-duped `mailbox.tsv`.
+- **Wave B** (Z80 upload + driver listing, build `20260808012020`) — byte-exact upload
+  (`$5B98` bytes from `$2C348A`; code region matches `z80ram.bin`). Bank-mapping settled.
+- **Wave C-L1** (ICS2115 register file, build `20260808014042`) — the virtual register file +
+  register-write interpreter. State-exact against `ics.tsv` (191,367 rows: log + digest + shadow).
+- **Wave D** (sample stitching, tools/) + **Wave F** (shared Web Audio shim, Gradius src/) IN FLIGHT.
+- Next: **Wave C-L2** (voice engine `$376C`) + C-L3 (cue dispatch) -> Wave E (ICS2115 synth) ->
+  wire into F -> audible output.
+- The sound plan (W135): 9 premise corrections (Z80 upload trivial; synth core small; 16-bit
+  stage-1; `ics.tsv` oracle; ~33.8 kHz). Gate: command-stream + register-state exact = STRONG;
+  PCM vs MAME = REJECTED.
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
