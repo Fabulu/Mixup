@@ -14,9 +14,9 @@
 // WHAT THIS WAVE OWNS and what it defers. Layer 2 owns the engine CORE: the
 // per-tick 32-voice walk, the ICS-voice allocator, and the register-write
 // EMISSION CONTRACT (the keyon sequence + the per-tick refresh -- the two
-// patterns that are the bulk of ics.tsv). The full ramp math (the oscAcc/volAcc
-// accumulator advance inside states 2/3/4), keyoff, and loop-mode wrap are
-// DEFERRED to later waves with named TODOs below. The `$62EC` voice-state array
+// patterns that are the bulk of ics.tsv). Hardware-rate oscillator phase,
+// boundary, sample and IRQ behavior lives in `ics2115.js`; it is not duplicated
+// here at logic-frame granularity. The `$62EC` voice-state array
 // is POPULATED BY THE CUE DISPATCH (Layer 3); Layer 2 advances and emits, so it
 // is driven with reconstructed state in tests and with live cues once Layer 3
 // lands.
@@ -116,15 +116,6 @@ export class VoiceSlot {
     this.hasLoop = true;   // emit $02/$03 loop-start span (false for ~361 keyons)
     this.hasPan = true;    // emit $0C
     this.hasR09 = true;    // emit $09
-    // THE OSCILLATOR-END TRIGGER (Wave C5). A one-shot voice (OscConf loop-bit
-    // clear -- ALL stage-1 voices) raises an IRQ when its oscillator reaches
-    // oscEnd; the $0FEA/$1000 path reads $0F for the voice and fires the keyoff.
-    // `oscCountdown` is the frame-granularity approximation (W143 TODO 3 blesses
-    // this for Wave C's register-stream gate; the exact 29-bit oscAcc / 15-bit fc
-    // bit layout is Wave E). `loopMode` voices wrap instead of ending (no IRQ).
-    this.oscCountdown = 0;   // samples remaining before oscEnd (0 = ended/idle)
-    this.oscEnded = false;   // the oscillator reached oscEnd this tick
-    this.loopMode = false;   // OscConf loop-bit set -> wrap, not end (no IRQ)
   }
   /** The engine skips slots whose state byte is zero. */
   get active() { return this.state !== 0; }
@@ -264,12 +255,6 @@ export class VoiceEngine {
     writeReg8hi(rf, VOICE_REG.oscCtl, 0x00);              // $10 = 00 (keyon)
     // Post-keyon the Z80 transitions the slot to the sustain/refresh state.
     slot.state = ENGINE.STATE_SUSTAIN;
-    // Arm the oscillator-end trigger (Wave C5). One-shot voices (OscConf loop-bit
-    // clear) play from oscStrt to oscEnd then raise the IRQ. The countdown is a
-    // frame-granularity approximation of (oscEnd - oscStrt) samples; the exact
-    // 29-bit oscAcc / 15-bit fc advance is Wave E. Loop-mode voices wrap and never
-    // end (no IRQ). See advanceOscillators / serviceOscillatorIrq.
-    this.armOscillator(slot);
   }
 
   /**
@@ -292,22 +277,6 @@ export class VoiceEngine {
   // worklog 146. The keyoff reuses the Layer 1 IcsRegisterFile write sink (the
   // same path emitKeyon feeds), so the oracle sees the same (voice, reg, half,
   // data) tuples the real Z80 produces.
-
-  /**
-   * Arm one voice's oscillator-end countdown from its oscEnd/oscStrt span (the
-   * frame-granularity subset of the Wave E oscillator). Called at keyon. The
-   * ICS2115 OscConf loop-bit (bit1) selects wrap-vs-end; stage-1 OscConf values
-   * ($20 SFX, $08 BGM) all have bit1 clear -> one-shot -> the IRQ fires at end.
-   */
-  armOscillator(slot) {
-    slot.loopMode = (slot.oscConf & 0x02) !== 0;
-    slot.oscEnded = false;
-    if (slot.loopMode) { slot.oscCountdown = 0; return; }
-    // 24-bit oscEnd/oscStrt: $02/$04 carry bits 23-8, $03/$05 carry bits 7-0.
-    const end24 = ((slot.oscEnd & 0xFFFF) << 8) | (slot.oscEndLo & 0xFF);
-    const strt24 = ((slot.oscStrt & 0xFFFF) << 8) | (slot.oscStrtLo & 0xFF);
-    slot.oscCountdown = (end24 - strt24) & 0xFFFFFF;
-  }
 
   /**
    * Emit the keyoff register-write sequence for one voice slot (the `$0A0C`
@@ -350,7 +319,6 @@ export class VoiceEngine {
     }
     // Post-keyoff the slot is idle; the caller frees the shadow ($3F11).
     slot.state = 0;
-    slot.oscEnded = false;
   }
 
   /**
@@ -383,60 +351,6 @@ export class VoiceEngine {
   }
 
   /**
-   * Advance every active one-shot voice's oscillator by one tick (the frame-
-   * granularity phase advance). Decrements `oscCountdown` by the voice's fc; when
-   * it reaches zero the oscillator has reached oscEnd and the voice is marked
-   * `oscEnded` (the source of the `$0F` IRQV bit the oscillator-end IRQ reads).
-   * Loop-mode voices wrap (no end); idle voices are skipped.
-   *
-   * TODO(Wave E): the real advance is fc per SAMPLE (~551 samples/frame at the
-   * 33.8 kHz native rate) against the 29-bit oscAcc; this wave's fc-per-tick is
-   * the frame-granularity subset W143 TODO 3 blesses for the register-stream gate.
-   */
-  advanceOscillators() {
-    for (let i = 0; i < N_VOICES; i++) {
-      const slot = this.voices[i];
-      if (!slot.active || slot.loopMode) continue;
-      if (slot.oscEnded || slot.oscCountdown <= 0) {
-        if (slot.oscCountdown <= 0 && slot.active && !slot.loopMode) slot.oscEnded = true;
-        continue;
-      }
-      slot.oscCountdown -= slot.fc & 0xFFFF;
-      if (slot.oscCountdown <= 0) { slot.oscCountdown = 0; slot.oscEnded = true; }
-    }
-  }
-
-  /**
-   * The oscillator-end IRQ service (the `$0FEA` -> `$1000` path). For each voice
-   * whose oscillator has ended (in voice-index order, the order the `$1000` loop
-   * drains the `$0F` IRQV queue), run the keyoff emission + free the shadow.
-   * Returns the number of voices released. This is keyoff TRIGGER (i) (one-shot
-   * SFX). Trigger (ii) -- the BGM note-duration from the `$25F2` sequencer -- is
-   * DEFERRED to the C7 wave (it lives in `$25F2`, which calls `$0A0C` at `$2679`
-   * when a note's duration expires; the emission this method reuses is identical).
-   *
-   * Decoded: status `$8000` bit1 -> `$0FEA` (timer bookkeeping) -> `$1000`:
-   *   `LD HL,$000F; CALL $028E` (READ $0F IRQV); `A &= $1F` -> voice; if the high
-   *   bits are not both `$C0`, `CALL $0A0C(voice)` (`$1099`) then `CALL $3F11`
-   *   (`$10A2`); `JP $1000` while more voices pending.
-   */
-  serviceOscillatorIrq() {
-    let released = 0;
-    for (let logical = 0; logical < N_VOICES; logical++) {
-      const slot = this.voices[logical];
-      if (!slot.oscEnded) continue;
-      const v = slot.icsVoice;
-      if (v < 0 || v >= N_VOICES) {
-        throw new Error('voice: ended logical slot has no bound ICS voice');
-      }
-      this.emitKeyoff(slot);
-      this.releaseIcsVoice(v);
-      released++;
-    }
-    return released;
-  }
-
-  /**
    * The per-tick 32-voice walk (the `$376C` main loop, called from the timer-0
    * IRQ `$0FC8` at `$0FD8`). For each active slot, dispatch on the state byte and
    * emit. Implements the SUSTAIN refresh (state 4) and the KEYON emission (state
@@ -444,10 +358,9 @@ export class VoiceEngine {
    * is deferred). The loop walks voices in index order, the way the Z80 does.
    *
    * KEYOFF is NOT dispatched from this walk: the oscillator-end keyoff is a
-   * SEPARATE IRQ path (status bit1 -> `$0FEA` -> `$1000`, modelled by
-   * advanceOscillators + serviceOscillatorIrq), and the BGM note-duration keyoff
-   * is driven by the `$25F2` sequencer (C7 wave). The `$0A0C` emission both use
-   * is `emitKeyoff` above.
+   * SEPARATE IRQ path (status bit1 -> `$0FEA` -> `$1000`). `ics2115.js` now owns
+   * the hardware-rate phase and IRQV state; runtime wiring from its IRQV result
+   * back to this driver's `releaseVoiceIfBusy` remains a later integration.
    *
    * TODO(later-wave): the state-2/3/4 accumulator advances (oscAcc phase ramp,
    * volAcc volume ramp toward vEnd at vIncr).

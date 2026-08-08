@@ -494,65 +494,6 @@ test('GREEN/RED: emitKeyoff reproduces a real keyoff episode row-for-row; corrup
     assert.equal(restMismatch, -1, 'restore re-greens the keyoff episode');
   });
 
-test('GREEN/RED: the oscillator-end trigger fires the keyoff + frees the shadow; looped never ends',
-  () => {
-    const FC = 0x0100;   // a small fc so the countdown arithmetic is clear
-
-    // Build a fresh engine with one armed one-shot voice (voice 3). The shadow
-    // $0D is seeded to $01 so emitKeyoff reads the oracle-true VCtl.
-    function build(loopMode) {
-      const rf = new IcsRegisterFile();
-      const eng = new VoiceEngine(rf);
-      const slot = eng.voices[3];
-      slot.icsVoice = 3;
-      slot.state = ENGINE.STATE_SUSTAIN;
-      slot.fc = FC;
-      slot.oscConf = loopMode ? 0x02 : 0x20;   // bit1 set -> loop (wrap, no end)
-      slot.loopMode = loopMode;
-      slot.oscEnded = false;
-      slot.oscCountdown = FC;                   // ends after exactly ONE advance
-      eng.icsShadow[3][0] = 0x55;               // voice is bound (allocated)
-      rf.voices[3].hi[0x0D] = 0x01;             // pre-keyoff VCtl
-      return eng;
-    }
-
-    // GREEN: one advance ends the oscillator; the IRQ service keyoffs + frees.
-    let eng = build(false);
-    assert.equal(eng.voices[3].oscEnded, false, 'not ended before advance');
-    eng.advanceOscillators();
-    assert.equal(eng.voices[3].oscEnded, true, 'oscillator ended after one advance');
-    const before = eng.rf.regLog.length;
-    const n = eng.serviceOscillatorIrq();
-    assert.equal(n, 1, 'one voice released');
-    assert.ok(eng.rf.regLog.length > before, 'keyoff writes were emitted');
-    assert.equal(eng.icsShadow[3][0], 0, 'shadow slot freed ($3F11)');
-    // the keyoff OscCtl=$0F write appears in the log
-    const hasKeyoff = eng.rf.regLog.some((r) => {
-      const e = unpack(r); return e.reg === 0x10 && e.half === 2 && e.data === 0x0F;
-    });
-    assert.ok(hasKeyoff, 'the $10=$0F keyoff write fired');
-
-    // RED: a looped voice never ends -> no keyoff, shadow stays bound.
-    eng = build(true);
-    eng.advanceOscillators();
-    assert.equal(eng.voices[3].oscEnded, false, 'looped voice does not end');
-    const nRed = eng.serviceOscillatorIrq();
-    assert.equal(nRed, 0, 'no voice released (looped)');
-    assert.equal(eng.icsShadow[3][0], 0x55, 'shadow slot stays bound');
-    const noKeyoff = !eng.rf.regLog.some((r) => {
-      const e = unpack(r); return e.reg === 0x10 && e.half === 2 && e.data === 0x0F;
-    });
-    assert.ok(noKeyoff, 'no keyoff write fired for a looped voice');
-
-    // RESTORE: clear loopMode -> advance ends -> service releases. Re-green.
-    eng = build(false);
-    eng.advanceOscillators();
-    assert.equal(eng.voices[3].oscEnded, true, 'restore: one-shot ends');
-    const nRest = eng.serviceOscillatorIrq();
-    assert.equal(nRest, 1, 'restore: one voice released');
-    assert.equal(eng.icsShadow[3][0], 0, 'restore: shadow freed');
-  });
-
 test('the $3F11 free closes the allocator cycle (a freed slot is reused)',
   () => {
     const rf = new IcsRegisterFile();

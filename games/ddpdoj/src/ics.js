@@ -33,12 +33,12 @@ export const ICS_PORT = {
 
 // ------------------------------------------------------------- the register set
 // VERIFIED from ics.tsv (the 27 distinct registers DOJ touches):
-//   per-voice synthesizer: $00-$11 (18 registers)
+//   per-voice synthesizer: $00-$11 (18 written registers)
 //   general-purpose: $40 $41 $42 $43 $4A $4B $4C $4D $4F (9 registers)
 // Plus $5A/$A5 (sel-only reset artifacts; 6 rows; touch no state).
 // (The brief said "26 = 19 + 7"; the lists were right, the arithmetic was off.)
 export const N_VOICES = 32;
-const PV_LAST = 0x11;    // last per-voice register ($00-$11)
+const PV_LAST = 0x11;    // last written per-voice register ($00-$11)
 const GL_LAST = 0x4F;    // last general register
 const ARR = 0x50;        // Uint8Array size (index by register number $00-$4F)
 
@@ -69,17 +69,18 @@ export const REG_HALF = {
 // frame.lua are stored as opaque bytes (Layer 2 will name them when it ports
 // $376C). See worklog 139 section 0 for the full decode table.
 export const VOICE_REG = {
-  oscConf:  0x00,  // 8-bit hi: format/loop bits (conf&1=ulaw, conf&4=8bit, else 16bit)
+  oscConf:  0x00,  // 8-bit hi: bit0 mu-law, bit1 16-bit, bit3 loop, bit5 osc IRQ
   fc:       0x01,  // 16-bit: OscFC, the phase increment (15-bit frequency control)
   oscStrt:  0x02,  // 16-bit: OscStrt hi+mid (bits 23-8 of the 24-bit loop/osc start)
   oscStrtLo:0x03,  // 16-bit: OscStrt lo (bits 7-0 of the 24-bit start; hi lane only)
   oscEnd:   0x04,  // 16-bit: OscEnd hi+mid (bits 23-8 of the 24-bit loop/osc end)
   oscEndLo: 0x05,  // 16-bit: OscEnd lo (bits 7-0 of the 24-bit end; hi lane only)
-  // $06: 16-bit opaque (Layer 2 will name)
-  // $07: 8-bit hi opaque (frame.lua's vol decode looks at the wrong lane; the
-  //     known $07 half-byte bug. Stored faithfully; Layer 2/E settle the field.)
-  // $08: 8-bit hi opaque
-  // $09/$0A/$0B: 16-bit opaque (Layer 2 will name -- likely OscAcc/VIncr/VolAcc)
+  vIncr:    0x06,  // 16-bit: volume increment (retained; live envelope is static)
+  vStart:   0x07,  // 8-bit hi: volume-envelope start boundary
+  vEnd:     0x08,  // 8-bit hi: volume-envelope end boundary
+  volAcc:   0x09,  // 16-bit: static logarithmic volume accumulator
+  oscAccHi: 0x0A,  // 16-bit: accumulator high word (bits 28..13)
+  oscAccLo: 0x0B,  // 16-bit: accumulator low word (bits 12..0)
   pan:      0x0C,  // 8-bit hi: OscPan
   vCtl:     0x0D,  // 8-bit hi: VCtl ($01=arm, $03=fire; the volume-ramp gate)
   activeOsc:0x0E,  // 8-bit hi: active-oscillator count ($1F=31 in the corpus)
@@ -103,7 +104,7 @@ export const GLOB_REG = {
 // ----------------------------------------------------------------- a voice slot
 /**
  * One voice's register cells. Raw lo/hi byte arrays indexed by register number
- * ($00-$4F). Only $00-$11 are ever written per-voice, but the full range is
+ * ($00-$4F). Only $00-$11 are written per-voice, but the full range is
  * allocated so a divergence report names a register number, with no translation
  * layer for a bug to hide behind (the project's flat-state rule, src/ram.js).
  */
