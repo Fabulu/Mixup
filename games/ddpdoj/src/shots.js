@@ -255,8 +255,7 @@ export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
   // comparison can see and the sound is not.
   if (ram.u8(prec + PS.soundGate) !== 0) return;                    // $249D04
   ram.setU8(prec + PS.soundGate, 2);                                // $249D0C
-  ctx?.unportedLog?.note(0x28c3ba,
-    'the shot fire SOUND ($249D26 jsr $28C3BA) -- audio is outside the slice');
+  ctx.soundPost?.(0x28c3ba);  // WAVE A: BGM id=$0D, shot-fire SOUND ($249D26 jsr $28C3BA)
 }
 
 // ---------------------------------------------------------------- handlers
@@ -352,9 +351,8 @@ function firstHit(ram, rom, rec, ctx, v, prec) {
   // visual impact burst is `$289F54`, which is ported now.  A note that names
   // the wrong subsystem sends the next implementer to the wrong wave, so it is
   // corrected rather than left.
-  ctx?.unportedLog?.note(0x28c714, `$253C70/$253F2E jsr $28C714 -- the shot's `
-    + `impact SOUND CUE ($28C722 -> $28C0AE -> $28BFEC's $81DEB4 volume `
-    + `clamp), NOT a visual. Audio is outside the slice (PLAN 6.2)`);
+  ctx.soundPost?.(0x28c714);  // WAVE A: SFX id=$24 (debounced), the shot impact SOUND CUE
+    // ($253C70/$253F2E jsr $28C714 -> $28C0AE -> $28BFEC volume clamp). NOT a visual.
   // $253C76/$253F34: re-point the whole sprite block out of the table.
   const a0 = rom.u32(v.table + i16(ram.u16(rec + S.tableIdx)));     // $253C7A/$253F38
   ram.setU32(rec + S.drawOff, rom.u32(a0));                         // $253C84/$253F42

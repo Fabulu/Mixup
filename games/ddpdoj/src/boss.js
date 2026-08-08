@@ -596,7 +596,7 @@ function d6Step293E04(ram, rom, ctx, a4) {
     const n = u16(ram.u16(a4 + D6.wait) - 1);          // $293EDE
     ram.setU16(a4 + D6.wait, n);
     if (n === 0) {
-      note(ctx, 0x28c392);                             // $293EE6
+      ctx.soundPost?.(0x28c392);                       // WAVE A: BGM id=6, SOUND ($293EE6)
       note(ctx, 0x2440e0);                             // $293EEC
       ram.setU16(a4 + D6.wait, 0x80);                  // $293EF2
       ram.setU8(a4 + D6.state, 6);                     // $293EF8
@@ -625,7 +625,7 @@ function d6Step293E04(ram, rom, ctx, a4) {
         ram.setU16(a4 + D6.cursorE, 0);                // $293FC8
         ram.setU8(a4 + D6.state, 4);                   // $293FCC
         fadeArm259B7E(ram, 0x12);                      // $293FD2/$293FD6
-        note(ctx, 0x28c2c2);                           // $293FDC
+        ctx.soundPost?.(0x28c2c2);                           // $293FDC
       }
     }
   }
@@ -650,7 +650,7 @@ function d6Step293E04(ram, rom, ctx, a4) {
           // $294082 jsr $242EC2 -> D0; $294088 move.b D0,D1 -- the base angle
           const rngByte = drawWord242EC2(ram, rom) & 0xff;   // $294082
           bigBurst28B4BE(ram, rom, ctx, bossPos, rngByte, 0, 0x000c, 0x29409c); // $29409C
-          note(ctx, 0x28c2a8);                         // $2940A2 -- SOUND
+          ctx.soundPost?.(0x28c2a8);                         // $2940A2 -- SOUND
         }
         const e = u16(ram.u16(a4 + D6.cursorE) + 0x10);   // $2940A8
         ram.setU16(a4 + D6.cursorE, e);
@@ -680,7 +680,7 @@ function d6Step293E04(ram, rom, ctx, a4) {
   // ---- state 0 ($29410E)
   if (st() === 0) {
     ram.setU8(a4 + D6.state, 1);                       // $294118
-    note(ctx, 0x28c2c2);                               // $29411E -- SOUND
+    ctx.soundPost?.(0x28c2c2);                               // $29411E -- SOUND
     // $294124 move.l $2(A6),D2 / lea $294154 / bsr $2938AE -- THE death burst.
     // Its last entry carries loopctl=$0001, which arms timer A ($3(a4) bit 0).
     burst2938AE(ram, rom, ctx, a4, bossPos, 0x294154, 0x29412e);  // $29412E
@@ -735,7 +735,7 @@ function partScriptStep(ram, rom, ctx, a4, a6, id) {
   ram.setU16(a6 + f.scrollY, u16(ram.u16(a6 + f.scrollY)
     - ram.u16(0x813176)));                             // $293966/$29396C
   if (ram.u8(a4 + 0x02) === 2) {                       // $293A44 / $293C88
-    note(ctx, 0x28c2a8);                               // $293A4E -- SOUND
+    ctx.soundPost?.(0x28c2a8);                               // $293A4E -- SOUND
     // $293A54 move.l $POS(A6),D2 / lea $tState2 / bsr $2938F2 -- the part's
     // off-screen retire burst (bucket $04, rng angle).  Usually off-screen.
     burst2938F2(ram, rom, ctx, ram.u32(a6 + f.pos), f.tState2, 0x293a5e);  // $293A5E
@@ -763,7 +763,7 @@ function partScriptStep(ram, rom, ctx, a4, a6, id) {
   }
   if (ram.u8(a4 + 0x02) === 0) {                       // $293AC0 / $293D04
     ram.setU8(a4 + 0x02, 1);                           // $293ACA
-    note(ctx, 0x28c2c2);                               // $293AD0 -- SOUND
+    ctx.soundPost?.(0x28c2c2);                               // $293AD0 -- SOUND
     // $293AD6 move.l $POS(A6),D2 / lea $tState0 / bsr $2938AE -- the part's
     // DETACH burst (the visible pop when the side part breaks off).
     burst2938AE(ram, rom, ctx, a4, ram.u32(a6 + f.pos), f.tState0, 0x293ae0);  // $293AE0

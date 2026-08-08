@@ -408,8 +408,7 @@ function deathBurst(ram, rom, a5, a6, ctx) {
     }
     ram.setU8(a4 + A.dying, 1);                        // $26B1BE (EVERY arm)
   }
-  note(ctx, 0x28c310, 'the midboss death burst $28C310 (the $28C02A family, '
-    + 'D0=7 / D1=$FF / D2=$1E)');                      // $26B1CC
+  ctx.soundPost?.(0x28c310);  // WAVE A: BGM id=7, midboss death burst ($26B1CC)
   // $26B1D2 lea $26B214(pc),A4 -- 14 records of (word D1, word D0, long).
   for (let i = 0; ; i++) {
     const at = BURST_LIST + i * 8;
@@ -775,7 +774,7 @@ export function handlerMidboss(ram, rom, a5, ctx) {
       scoreKill(ram, rom, ctx, 0x26, d);             // $26B872/$26B874
       kill = true;                                     // fall through to $26B87A
     }
-    note(ctx, 0x28c25a, `midboss ARM ${n} death burst $28C25A`);   // $26B87A
+    ctx.soundPost?.(0x28c25a);  // WAVE A: SFX id=0, midboss ARM death burst ($26B87A)
     // W54: SPAWNED.  $26B880 move.w #$85 / $26B884 jsr $289004, then the
     // five writes at $26B88A..$26B8A2 -- position from THE ARM (A4).
     {

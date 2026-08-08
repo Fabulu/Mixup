@@ -683,9 +683,7 @@ function cue28C6C6(ram, ctx, timerAddr) {
     return;
   }
   ram.setU16(timerAddr, 3);                                 // move.w #$3
-  note(ctx, 0x28c6c6, '$28C6C6 -- the bonus-event sound cue (D0=$19/D1=$80/D2=$0 '
-    + 'via $28C02A). No arithmetic; ships as a note, joins the sound subsystem '
-    + 'later');
+  ctx.soundPost?.(0x28c6c6);  // WAVE A: BGM id=$19, bonus-event cue ($28C6C6 via $28C02A)
 }
 
 /** `$28DDB0..$28DE16` -- F7 medal walk: add the three per-index tables to the

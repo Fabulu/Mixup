@@ -46,6 +46,7 @@ import { makeBackground, BgVram, TxVram, VideoRegs } from './background.js';
 import { makeStageClear } from './stageend.js';
 import { makeHudObject } from './hud.js';
 import { makeRankObject } from './rank.js';
+import { SoundState, drainFrame, postWrapper } from './sound.js';
 import {
   PaletteState, flush24133C, catchUpObjectStream, catchUpBgPalette,
   catchUpTextPalette,
@@ -221,6 +222,13 @@ export class Game {
     this.frozen = FROZEN_GLOBALS.map(([a, why]) => ({
       addr: a, value: this.ram.u16(a), why,
     }));
+    // WAVE A (SOUND) -- the cue post/queue. PER GAME for NOTES-replay.md's
+    // reason (state derives from initial state + input only). The ring, head,
+    // tail, master volume and debounce counters all live in main RAM (seeded by
+    // the snapshot, exactly as every other RAM field is); this object owns only
+    // the shadow/log/digest triple the sound gate compares per frame. See
+    // src/sound.js for the engine and the byte-exactness claim.
+    this.sound = new SoundState();
     // WAVE 91 -- THE PALETTE, and it is PER GAME for the same reason `prot` and
     // `vram` are (NOTES-replay.md §2).  Until this wave the port modelled none
     // of it and every sprite on the page was coloured by one frozen instant of
@@ -298,6 +306,11 @@ export class Game {
       // between "this bank is the recording's" and "this bank is wrong".
       palette: this.palette,
       unportedLog: this.unportedLog,
+      // WAVE A (SOUND). Post a cue by wrapper address -- the one-for-one
+      // replacement for the counted `note(ctx, 0x28Cxxx, ...)` placeholders the
+      // sound wave removes. Runs the gate, tail, packer and ring enqueue from
+      // src/sound.js; returns true if the cue posted. See sound.js.
+      soundPost: (addr) => postWrapper(this.ram, this.sound, addr),
       // WAVE 8: every record the shot spawn creates, and every frame it could
       // not.  Printed by the runner for the same reason `allocEvents` is: a
       // spawn that silently did nothing is indistinguishable from a spawn that
@@ -638,6 +651,14 @@ export class Game {
     // any of the six addresses, so this line cannot move a compared column.
     this.paletteFlush = flush24133C(this.ram, this.palette);   // $24133C
     this.armedVblanks = this.#frameSync();            // 10: THE SAMPLE POINT
+    // WAVE A (SOUND) -- the per-frame drain. The 68k pumps the cue ring once per
+    // logic frame (the BIOS pump $18ACE0, mailbox PC $18AD78); the debounce
+    // guards tick down at the top of the sibling $28C19A. Posts accumulate in
+    // the ring during the object driver above; this drains one longword and
+    // records it in the shadow/log/digest the sound gate compares. Tagged with
+    // the logic frame that just completed, before the increment below. See
+    // src/sound.js drainFrame for the dead-code-trap and ACK notes.
+    this.soundFrame = drainFrame(this.ram, this.sound, this.logicFrame);
     this.logicFrame++;
     return this;
   }

@@ -648,9 +648,7 @@ export function bombScript255E3E(ram, rom, ctx) {
         + `is ($7,A5)<<7 | ($58,A6), so bit 1 is bit 1 of the SHIP SELECTOR, `
         + `which is 0 on every frame of every run in this corpus`);
     }
-    note(ctx, BOMB.cue28C55C, `$255E92 jsr (A0) with A0 = $28C55C -- the `
-      + `bomb's own sound cue. The $28Cxxx family is item 6 of `
-      + `39-OWNER-visible-play-before-sound.md and is deferred whole (W53)`);
+    ctx.soundPost?.(0x28c55c);  // WAVE A: BGM id=$10, bomb's own cue ($255E92)
   }
 
   const phase = ram.u16(rec + B.phase);                // $255E94 tst.w $28(A6)
@@ -1033,9 +1031,7 @@ export function bombScriptAlt255FE2(ram, rom, ctx, p2) {
         + `SHIP SELECTOR, 0 on every frame of every run in this corpus -- the `
         + `same argument $255E84's twin throws on`);
     }
-    note(ctx, BOMB.beamCue28C528, `$2560BC jsr (A0) with A0 = $28C528 -- the `
-      + `LASER BOMB's sound cue. The $28Cxxx family is item 6 of `
-      + `39-OWNER-visible-play-before-sound.md and is deferred whole (W53)`);
+    ctx.soundPost?.(0x28c528);  // WAVE A: BGM id=$F, LASER BOMB cue ($2560BC)
     ctx.bombEvent?.('beam-init', 0);
   }
   // ---- $2560BE: the four heads follow the ship.  THREE of the four writes are

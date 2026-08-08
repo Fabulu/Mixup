@@ -106,6 +106,7 @@ function kill(ram, opts = {}) {
   const rom = opts.rom ?? ledgerRom();
   const ctx = {
     tables: null, unported: log, unportedLog: log, rom,
+    soundPost: (a) => log.note(a, 'WAVE A sound post'),
     killEvent: (d0, d1) => kills.push([d0, d1]),
   };
   const h = handlerMap().get(0x2747c6);

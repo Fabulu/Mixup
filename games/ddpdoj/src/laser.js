@@ -325,11 +325,18 @@ function copySeedRecord(ram, ctx, b, a1, src) {
  */
 export function wipeSegmentPool(ram, ctx, b) {
   const { pool, rec, blk, opt, d7 } = b;
-  ctx.unportedLog.note(d7 ? 0x252738 : 0x252780, `the pool wipe's `
-    + `\`jsr (A0)\` -- a SOUND request through $2527BE[$81043E] ($28C43C / `
-    + `$28C49C / $28C452 / $28C4B2, or $28C4FC while hypering). Sound is item 6 `
-    + `of 39-OWNER-visible-play-before-sound.md and nothing in this port reads `
-    + `what it writes`);
+  // WAVE A: the pool wipe's `jsr (A0)` is a SOUND cue. A0 is read from the
+  // table at $2527BE indexed by the laser level ($81043E P1 / $8104A0 P2) with
+  // `add.w d0,d0` (level*2 stride -- faithful to the 68k; the corpus has level 0
+  // so it resolves to $28C43C), and overridden to $28C4FC while hypering
+  // ($81B63E != 0, $252732). The four table longwords are inlined here (their
+  // literal ROM contents at $2527BE) so the post does not open a new ROM window
+  // for a 16-byte constant table.
+  const LASER_WIPE_SND = [0x28C43C, 0x28C49C, 0x28C452, 0x28C4B2];
+  const level = u16(ram.u16(d7 ? 0x81043E : 0x8104A0));
+  let snd = LASER_WIPE_SND[level & 3];                         // $2527BE[level]; corpus has level 0
+  if (ram.u16(0x81B63E) !== 0) snd = 0x28C4FC;                  // $252732 hyper override
+  ctx.soundPost?.(snd);                                         // $252738 (P1) / $252780 (P2)
   ram.bclr8(opt + OPT.flags1, 7);                           // $25279A bclr #7
   ram.setU16(rec, 0);                                       // $2527A2 move.w
   ram.setU16(blk, 0);                                       // $2527A4 move.w
@@ -758,12 +765,7 @@ function scriptBody(ram, ctx, b, a6, snd, fn) {
     if (ram.u16(a6 + S.player) !== 0) doSound = ram.u16(0x81294c) === 0;
     else doSound = ram.u16(0x81294e) === 0;
     if (doSound) {
-      ctx.unportedLog.note(snd, `$25494C jsr (A3) from segment handler `
-        + `$${fn.toString(16).toUpperCase()} -- a SOUND request `
-        + `(movem.l / move.w #id,D0 / move.w #pan,D1 / move.w #chan,D2 / jsr `
-        + `($28C074,PC)). Sound is item 6 of `
-        + `39-OWNER-visible-play-before-sound.md; nothing in this port reads `
-        + `what it writes`);
+      ctx.soundPost?.(snd);  // WAVE A: T2 SOUND ($25494C jsr (A3), the $28C074 family)
     }
     startBeamRecords(ram, ctx, b, a6);                      // $25494E bsr $254C1E
   }

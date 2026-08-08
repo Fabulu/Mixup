@@ -17,7 +17,13 @@ import {
   fireBomb2498E2, flushPendingGrants2875B4, resetChain2877D0,
 } from '../src/bomb.js';
 
-const ctx = (extra = {}) => ({ unportedLog: new UnportedLog(), ...extra });
+const ctx = (extra = {}) => {
+  const c = { unportedLog: new UnportedLog(), ...extra };
+  // WAVE A: route sound posts into the same log so cue-firing assertions still
+  // see them (the real Game posts to the ring; tests just verify the cue fires).
+  c.soundPost = (a) => c.unportedLog.note(a, 'WAVE A sound post');
+  return c;
+};
 
 /** A player record with the seed's own shape: LIVE, 3 bombs, $FF invulnerable. */
 function player(ram, { stock = 3, dead = 0, hyper = 0 } = {}) {

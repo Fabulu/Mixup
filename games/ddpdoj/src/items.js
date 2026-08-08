@@ -608,8 +608,8 @@ function body27EA2A(ram, rom, ctx, a6, d1) {
         return { collected: true, ...collectMax27F582(ram, rom, ctx, a6) };
       }
     }
-    note(ctx, 0x28c5ca, '$27EA60 jsr $28C5CA -- the item PICKUP sound');
-    note(ctx, 0x28c9f8, '$27EA66 jsr $28C9F8 -- the POWER-UP\'s own cue');
+    ctx.soundPost?.(0x28c5ca);  // WAVE A: BGM id=$1D, item PICKUP ($27EA60)
+    ctx.soundPost?.(0x28c9f8);  // WAVE A: BGM id=$3B, POWER-UP ($27EA66)
     collect27F54C(ram, rom, ctx, a6, ANIM_LISTS.d27F480);   // $27EA6C/$27EA72
     return { collected: true };
   }
@@ -752,8 +752,8 @@ function body27EBDC(ram, rom, ctx, a6, d1) {
     } else if (collect252E26(ram, rom, ctx)) {         // $27EC28/$27EC2E bcc
       return { collected: true, ...collectMax27F582(ram, rom, ctx, a6) };
     }
-    note(ctx, 0x28c5ca, '$27EC12 jsr $28C5CA -- the item PICKUP sound');
-    note(ctx, 0x28c9f8, '$27EC18 jsr $28C9F8 -- FULL POWER\'s own cue');
+    ctx.soundPost?.(0x28c5ca);  // WAVE A: BGM id=$1D, item PICKUP ($27EC12)
+    ctx.soundPost?.(0x28c9f8);  // WAVE A: BGM id=$3B, FULL POWER ($27EC18)
     collect27F54C(ram, rom, ctx, a6, ANIM_LISTS.d27F480);   // $27EC1E/$27EC24
     return { collected: true };
   }
@@ -841,8 +841,8 @@ function body27ED8C(ram, rom, ctx, a6, d1) {
     } else if (collect252FAC(ram, rom, ctx)) {         // $27EDD8/$27EDDE bcc
       return { collected: true, ...collectMax27F582(ram, rom, ctx, a6) };
     }
-    note(ctx, 0x28c5ca, '$27EDC2 jsr $28C5CA -- the item PICKUP sound');
-    note(ctx, 0x28ca12, '$27EDC8 jsr $28CA12 -- the SET ITEM\'s own cue');
+    ctx.soundPost?.(0x28c5ca);  // WAVE A: BGM id=$1D, item PICKUP ($27EDC2)
+    ctx.soundPost?.(0x28ca12);  // WAVE A: BGM id=$3C, SET ITEM ($27EDC8)
     collect27F54C(ram, rom, ctx, a6, ANIM_LISTS.b27F380);   // $27EDCE/$27EDD4
     return { collected: true };
   }
@@ -935,8 +935,8 @@ function body27F1A6(ram, rom, ctx, a6, d1) {
   }
   const touch = d1 & 0x1800;                           // $27F1C2
   if (touch !== 0) {
-    note(ctx, 0x28c678, '$27F1CA jsr $28C678 -- the $8130BE item\'s own cue, '
-      + 'and it is the ONLY body that sounds BEFORE the P1/P2 fork');
+    ctx.soundPost?.(0x28c678);  // WAVE A: BGM id=$22, $8130BE item cue ($27F1CA) --
+      // the ONLY body that sounds BEFORE the P1/P2 fork
     if ((touch & 0x1000) !== 0) collect25310E(ram, ctx);   // $27F1D8 jsr
     else collect253126(ram, ctx);                          // $27F1E2 jsr
     collect27F54C(ram, rom, ctx, a6, ANIM_LISTS.a27F300);  // $27F1E8/$27F1EE
@@ -996,7 +996,7 @@ export function collect27F54C(ram, rom, ctx, a6, list) {
 /** `$27F582` -- collected AT MAXIMUM.  Scores `$1000`, through the same
  *  `$286128`, and the immediate is a `move.l` where the other is a `moveq`. */
 export function collectMax27F582(ram, rom, ctx, a6) {
-  note(ctx, 0x28c5ca, '$27F582 jsr $28C5CA -- the AT-MAXIMUM pickup sound');
+  ctx.soundPost?.(0x28c5ca);  // WAVE A: BGM id=$1D, AT-MAXIMUM pickup ($27F582)
   const d1 = ram.u8(a6);                               // $27F58C move.b (A6),D1
   scoreByMask(ram, 0x1000, d1);                        // $27F58E/$27F594
   ram.setU8(a6, 0x80);                                 // $27F59E

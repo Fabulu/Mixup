@@ -73,7 +73,9 @@ function ctxOf(ram) {
   const log = new UnportedLog();
   const spawns = [];
   return {
-    ctx: { ram, rom: ROM, tables: MT, unported: log, bulletSpawn: (s, r) => spawns.push([s, r]) },
+    ctx: { ram, rom: ROM, tables: MT, unported: log,
+           soundPost: (a) => log.note(a, 'WAVE A sound post'),
+           bulletSpawn: (s, r) => spawns.push([s, r]) },
     log, spawns,
   };
 }

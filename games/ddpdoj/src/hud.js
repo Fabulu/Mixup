@@ -600,8 +600,7 @@ function drainOne2842FE(ram, rom, who, ctx) {
       ram.setU16(P.alive, u16(ram.u16(P.alive) + 1));   // $284350 addq.w #$1 -- **AN EXTEND**
       extendStep286FDA(ram, rom, P.idx, P.thr, ctx);    // $284352 bsr $286FDA
       ctx?.hudEvent?.('extend', who, ram.u16(P.alive));
-      note(ctx, 0x28c678, '$284356 jsr $28C678 -- the EXTEND jingle (the '
-        + '$28Cxxx sound family, deferred whole since W53)');
+      ctx.soundPost?.(0x28c678);  // WAVE A: BGM id=$22, EXTEND jingle ($284356)
       draw(ctx, who === 0 ? 0x2878cc : 0x28795c);       // $284360 / $284368
     }
   }
@@ -1698,7 +1697,7 @@ function bossBar284A3E(ram, ctx) {
     if ((d2 & 0x8000) === 0 || (d2 & 1) === 0) {        // $284A72 bpl / $284A74 btst #$0
       const had = ram.u8(HUDRAM.bossHpLatch) & 0x01;    // $284A7A bset.b #$0
       ram.setU8(HUDRAM.bossHpLatch, ram.u8(HUDRAM.bossHpLatch) | 0x01);
-      if (!had) draw(ctx, 0x28ca7a);                    // $284A84 jsr -- THE WARNING CUE
+      if (!had) ctx.soundPost?.(0x28ca7a);              // WAVE A: BGM id=$40, boss-warning ($284A84)
     }
   }
   draw(ctx, 0x23fa96);                                  // $284A8C..$284AB4, the bar
@@ -2034,11 +2033,9 @@ function tallyButton28556C(ram) {
   return true;                                           // $2855B0 ori #$1,sr (C set)
 }
 
-/** `$28C6C6` -- the bonus-event sound cue (no arithmetic).  Named note. */
+/** `$28C6C6` -- the bonus-event sound cue (no arithmetic). WAVE A: now posts. */
 function note28C6C6(ctx) {
-  ctx?.unportedLog?.note(0x28c6c6, '$285434/$28553E jsr $28C6C6 -- the tally '
-    + 'bonus-event sound cue (D0=$19/D1=$80/D2=$0 via $28C02A). No arithmetic; '
-    + 'ships as a note');
+  ctx?.soundPost?.(0x28c6c6);  // WAVE A: BGM id=$19, tally bonus-event ($285434/$28553E)
 }
 
 /** `$285A12` (P1) / `$285B3C` (P2) -- **THE HYPER**, recon 38's wave 2.

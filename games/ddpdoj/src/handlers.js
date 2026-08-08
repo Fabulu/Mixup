@@ -615,7 +615,7 @@ function deathSeq11(ram, rom, a5, a6, ctx, d1) {
   // before; the cap test + spawn are W26-owned, the gating is faithful now).
   if ((ram.u8(0x815ea5) & 1) !== 0)                    // $26889E btst #0,$815EA5 (set -> call)
     noteEffect(u, 0x289af4, a5, 'D0=$4 secondary');    // $2688BA (ea5 bit 0 SET)
-  noteEffect(u, 0x28c25a, a5, 'death burst');          // $2688C0
+  ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst          // $2688C0
   freeEnemy(ram, a5);                                  // $2688C6 jmp $263762
 }
 
@@ -929,7 +929,7 @@ function deathSeq10(ram, rom, a5, a6, ctx, d1) {
   // 137 x $7 because type $11's death arm IS $7 and type $10's is not.
   effectArmNine(ram, rom, ctx, a6, 0x04, REMAP.death267FA0, 0x2681dc);
   noteEffect(u, 0x289af4, a5, 'D0=$4 secondary');
-  noteEffect(u, 0x28c25a, a5, 'death burst');
+  ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst
   freeEnemy(ram, a5);                                  // jmp $263762
 }
 
@@ -990,7 +990,7 @@ function damageFirstHead269CEA(ram, rom, a5, a6, ctx) {
       // W54: SPAWNED.  $269D1C moveq #$2 / $269D1E jsr $289004, then
       // $269D24..$269D44's five writes -- no remap table, bucket 7 flat.
       effectArmFamily(ram, rom, ctx, a6, 0x02, 0x269d1e);
-      noteEffect(u, 0x28c2a8, a5, 'death burst');      // jsr $28C2A8
+      ctx.soundPost?.(0x28c2a8);                       // WAVE A: SFX id=3, death burst      // jsr $28C2A8
       freeEnemy(ram, a5);                              // jmp $263762
       return null;
     }
@@ -1182,7 +1182,7 @@ function handler07(ram, rom, a5, ctx) {
 function deathSeq82(ram, rom, a5, a6, ctx, d1) {
   const u = ctx.unported;
   scoreKill(ram, rom, ctx, 0x42, d1);                  // $274AF0/$274AF2
-  noteEffect(u, 0x28c274, a5, 'death burst');          // $274AF8 jsr $28C274
+  ctx.soundPost?.(0x28c274);                       // WAVE A: SFX id=1, death burst          // $274AF8 jsr $28C274
   const e1 = spawnEffect(ram, ctx, 0x0d, 0x274b00);    // $274AFE/$274B00
   ram.setU32(e1 + B.pos, ram.u32(a6 + 0x02));          // $274B06
   ram.setU16(e1 + B.bucket, 0x0010);                   // $274B0C
@@ -1440,7 +1440,7 @@ function handler8B(ram, rom, a5, ctx) {
     // So a hit that does not kill an $8B scores nothing at all.
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $2768EA tst.w $18 / bmi
       scoreKill(ram, rom, ctx, 0x01, d1);              // $2768F2/$2768F4 jsr $28615E
-      noteEffect(u, 0x28c25a, a5, 'death burst');      // jsr $28C25A
+      ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst      // jsr $28C25A
       u?.note(0x27f8ee, `$27F8EE $8B death routine (W29) rec $${a5.toString(16)}`);
       // W54: SPAWNED.  $27690E moveq #$1 / $276910 jsr $289004, then
       // $276916..$276932 -- the $278320 remap and the $24179E hook.
@@ -1709,7 +1709,7 @@ function deathSeq85(ram, rom, a5, a6, ctx, d1) {
     ram.setU16(e3 + B.nudge, 0xee00);                   // $275B94
     ram.setU16(e3 + B.nudge + 2, 0xfe00);               // $275B9A
   }
-  noteEffect(u, 0x28c274, a5, 'death burst');          // $275BA0 jsr $28C274
+  ctx.soundPost?.(0x28c274);                       // WAVE A: SFX id=1, death burst          // $275BA0 jsr $28C274
   freeEnemy(ram, a5);                                  // $275BA6 jmp $263762
 }
 
@@ -1945,7 +1945,7 @@ function laser80(ram, rom, a5, a6, ctx) {
 function deathSeq80(ram, rom, a5, ctx, d1) {
   const u = ctx.unported;
   scoreKill(ram, rom, ctx, 0x83, d1);                  // $273DAE/$273DB4
-  noteEffect(u, 0x28c2dc, a5, 'death burst');          // $273DBA jsr $28C2DC
+  ctx.soundPost?.(0x28c2dc);                       // WAVE A: BGM id=5, death burst          // $273DBA jsr $28C2DC
   // W54: SPAWNED, all six.  No remap table -- every one hardcodes bucket
   // $10 (bucket 7).  [M] ALL SIX WRITE `($12,A0) = 1`, i.e. each asks pool
   // D for TWO records: `50-recon` 4.2's "every death arm writes ($12) = 0"
@@ -2085,7 +2085,7 @@ function deathSeq8A(ram, rom, a5, ctx, d1) {
   const u = ctx.unported;
   const a6 = ram.u32(a5 + 0x06);                       // the SUB-RECORD (A6)
   scoreKill(ram, rom, ctx, 0x01, d1);                  // $2767D0/$2767D2
-  noteEffect(u, 0x28c25a, a5, 'death burst');          // $2767D8
+  ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst          // $2767D8
   // $2767DE move.w ($1A,A5),D0 -- the bee kind index ($0004 = kind 1).
   // $2767E2 move.b ($1F,A6),D2 -- the display LAYER byte.
   // $2767E6 jsr $27F92A -- allocate one bee from the reserved ten and fill it.
@@ -2341,7 +2341,7 @@ function damageFirstHead(ram, rom, a5, a6, ctx, score) {
       // W54: SPAWNED.  `$26A616`/`$26A882`/`$26AD4A moveq #$2,D0`, and the
       // five writes after each are $269D24's, instruction for instruction.
       effectArmFamily(ram, rom, ctx, a6, 0x02, 0x26a618);
-      noteEffect(u, 0x28c2a8, a5, 'death burst');
+      ctx.soundPost?.(0x28c2a8);                       // WAVE A: SFX id=3, death burst
       freeEnemy(ram, a5);                              // jmp $263762
       return null;
     }
@@ -2762,7 +2762,7 @@ function deathSeq89(ram, rom, a5, ctx, d1) {
   const u = ctx.unported;
   const a6 = ram.u32(a5 + 0x06);                       // the SUB-RECORD (A6)
   scoreKill(ram, rom, ctx, 0x34, d1);                  // $27749C/$27749E jsr $28615E
-  noteEffect(u, 0x28c25a, a5, 'death burst');          // $2774A4
+  ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst          // $2774A4
   noteEffect(u, 0x289af4, a5, 'D0=$8 secondary');      // $2774BC (D1 from $278314)
   u?.note(0x27f8ee, `$27F8EE $89 death routine (D0=$8, D2=($1E,A6)) rec $${
     a5.toString(16)}`);                                // $2774C8
@@ -3019,7 +3019,7 @@ function deathSeq88(ram, rom, a5, ctx, d1) {
   const u = ctx.unported;
   const a6 = ram.u32(a5 + 0x06);                       // the SUB-RECORD (A6)
   scoreKill(ram, rom, ctx, 0x115, d1);                 // $27627E/$276284 jsr $28615E
-  noteEffect(u, 0x28c2dc, a5, 'death burst');          // $27628A
+  ctx.soundPost?.(0x28c2dc);                       // WAVE A: BGM id=5, death burst          // $27628A
   noteEffect(u, 0x289b22, a5, 'D0=$C, D2=$FFFFFA00');  // $27629C
   noteEffect(u, 0x289b22, a5, 'D0=$C, D2=$00000600');  // $2762A8
   u?.note(0x27f8fa, `$27F8FA x7 (D0=$8, D1 from $2763E8) in $88's death rec $${
@@ -3061,7 +3061,7 @@ function handler31(ram, rom, a5, ctx) {
     ram.setU8(a5 + R.rec1E, (c - 1) & 0xff);
     if (c === 0) {                                     // $269802 bcc $269816
       ram.setU8(a5 + R.rec1E, ram.u8(a5 + 0x1f));      // $269806
-      noteEffect(u, 0x28c692, a5, 'the $31 emitter');  // $26980C jsr $28C692
+      ctx.soundPost?.(0x28c692);                    // WAVE A: BGM id=$1C, the $31 emitter ($26980C)
       ram.setU16(a5 + 0x20, u16(ram.u16(a5 + 0x20) - 1));   // $269812 subq.w #$1
     }
   }

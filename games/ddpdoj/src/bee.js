@@ -687,8 +687,7 @@ function scoreAward27FBEE(ram, rom, ctx, a6, d3, d4, d5) {
   }
 
   // $27FC6C: sound cue.  Noted (sound subsystem deferred).
-  note(ctx, POOL_A.soundCue, `$27FC6C jsr $28C62A -- the bee-collect sound. `
-    + `Sound is deferred.`);
+  ctx.soundPost?.(0x28c62a);  // WAVE A: BGM id=$1F, bee-collect sound ($27FC6C)
 
   // $27FC72: set "already collected" bit (bit 0 of the low byte = bit 0 of the
   // status word).  Next drive, btst #0 sends the slot to the collected arm.
