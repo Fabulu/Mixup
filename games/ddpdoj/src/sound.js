@@ -144,6 +144,26 @@ const WRAPPERS = {
   0x28CA7A: { id: 0x40, pan: 0xFF, ch: 0x14, entry: 0x28C02A }, // boss warning
 };
 
+// W150: the real streaming leaf wrappers call one of two score-index resolvers
+// and tail-jump into `$28C11C` (type $12) or `$28C146` (type $11). The first
+// word is passed through `$28B884`; its side effect remains outside this wave,
+// so it is logged rather than invented. The second word becomes the selector.
+export const STREAMING_LEAVES = Object.freeze(new Map([
+  [0x28CB38, { index: 7,  group: 0, id: 7, type: 0x12 }],
+  [0x28CB4C, { index: 8,  group: 0, id: 8, type: 0x11 }],
+  [0x28CB60, { index: 9,  group: 0, id: 9, type: 0x11 }],
+  [0x28CB74, { index: 10, group: 0, id: 10, type: 0x12 }],
+  [0x28CB88, { index: 12, group: 1, id: 1, type: 0x12 }],
+  [0x28CB9C, { index: 11, group: 1, id: 0, type: 0x12 }],
+  [0x28CBB0, { index: 13, group: 2, id: 0, type: 0x12 }],
+  [0x28CBC4, { index: 14, group: 5, id: 1, type: 0x12 }],
+  [0x28CBD8, { index: 15, group: 3, id: 0, type: 0x12 }],
+  [0x28CBEC, { index: 16, group: 4, id: 0, type: 0x12 }],
+  [0x28CC00, { index: 17, group: 3, id: 1, type: 0x12 }],
+  [0x28CC14, { index: 18, group: 6, id: 0, type: 0x12 }],
+  [0x28CC28, { index: 19, group: 5, id: 0, type: 0x12 }],
+]));
+
 /** The id=$44 sentinel: the BGM entry $28C02A silently drops any cue whose id is
  *  $44 (cmpi.w #$44,d0; beq -> rts). No wrapper in the table emits id=$44; this
  *  constant exists so the gate can name the behaviour and a caller can verify it.
@@ -240,6 +260,7 @@ export class SoundState {
     this.postCount = 0;     // total enqueues
     this.dropCount = 0;     // total gate drops
     this.doorCount = 0;     // total drained doors
+    this.streamingResolvers = []; // exact leaf/index/group facts; `$28B884` remains named
   }
   /** Gradius's polynomial, applied to the drained longword. All four bytes are
    *  mixed (type/pan/id/chan) so a change to ANY one -- including the pan the
@@ -295,6 +316,9 @@ export function postEntry(ram, sound, entryAddr, id, panArg, chan) {
 export function postWrapper(ram, sound, wrapperAddr) {
   const w = WRAPPERS[wrapperAddr];
   if (!w) {
+    if (STREAMING_LEAVES.has(wrapperAddr)) {
+      return postStreamingLeaf(ram, sound, wrapperAddr);
+    }
     // An unmapped wrapper is a loud gap, not a silent drop.
     throw new Error(`sound.postWrapper: no wrapper at $${wrapperAddr.toString(16).toUpperCase()}`
       + ` -- add it to WRAPPERS or fix the call site`);
@@ -313,6 +337,10 @@ export function postWrapper(ram, sound, wrapperAddr) {
  *  poller $28BE76 calls these with D0=id, D1=pan after gating on gateDual. They
  *  run the tail and pack through the $28BB9E variant (same longword shape). */
 export function postStreamingRejoiner(ram, sound, rejoinerAddr, id, panArg) {
+  if (rejoinerAddr !== 0x28C11C && rejoinerAddr !== 0x28C146) {
+    throw new Error(`sound.postStreamingRejoiner: unknown rejoiner `
+      + `$${rejoinerAddr.toString(16).toUpperCase()}`);
+  }
   if (ram.u16(SOUND.gateDual) !== 0) { sound.dropCount++; sound.frameDrops++; return false; }
   const type = rejoinerAddr === 0x28C11C ? 0x12 : 0x11;
   const pan = tailPan(ram, id, panArg);
@@ -320,6 +348,19 @@ export function postStreamingRejoiner(ram, sound, rejoinerAddr, id, panArg) {
   if (enqueue(ram, word)) { sound.postCount++; sound.framePosts++; return true; }
   sound.dropCount++; sound.frameDrops++;
   return false;
+}
+
+/** `$28CB38-$28CC28`: resolve the fixed score index, then run the real tail. */
+export function postStreamingLeaf(ram, sound, wrapperAddr) {
+  const leaf = STREAMING_LEAVES.get(wrapperAddr);
+  if (!leaf) {
+    throw new Error(`sound.postStreamingLeaf: no leaf at `
+      + `$${wrapperAddr.toString(16).toUpperCase()}`);
+  }
+  sound.streamingResolvers.push({ wrapper: wrapperAddr, index: leaf.index,
+    group: leaf.group, id: leaf.id, type: leaf.type });
+  const rejoiner = leaf.type === 0x12 ? 0x28C11C : 0x28C146;
+  return postStreamingRejoiner(ram, sound, rejoiner, leaf.id, 0xff);
 }
 
 /** $28C19A + $18ACE0 -- the per-frame drain. The debounce counters decrement
@@ -344,7 +385,10 @@ export function drainFrame(ram, sound, lf) {
   const pan = (word >>> 16) & 0xFF;
   const id = (word >>> 8) & 0xFF;
   const chan = word & 0xFF;
-  const door = { lf, type, pan, id, chan, word };
+  const selector = id | ((chan & 3) << 8);
+  const channel = chan >> 2;
+  const door = { lf, type, pan, id, chan, packedChannel: chan,
+    selector, channel, word };
   sound.doorLog.push(door);
   sound.shadow.push(word);
   sound.frameDoors.push(door);

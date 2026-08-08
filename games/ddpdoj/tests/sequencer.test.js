@@ -6,10 +6,10 @@
 //       stream CF markers). Corrupt the parse -> mismatch (RED) -> restore;
 //   (2) loadCue REPRODUCES THE CAPTURED STATE for cue 8 (the active cue);
 //   (3) SCHEDULER MECHANICS: the tempo gate, the row advance, the track walk;
-//   (4) CENTREPIECE: ALL 979 BGM keyons (OscConf `$08`/`$00`) reproduce through
-//       mailbox -> dispatch -> BGM sequencer -> voice engine -> register writes,
-//       matching ics.tsv row-for-row. Break the sequencer -> diverge (RED) ->
-//       restore;
+//   (4) LEGACY TEST-ONLY VALIDATION: 979 BGM keyon parameter episodes can be
+//       injected through the shared emission layer and match ics.tsv. W150
+//       proved that this is not a production sequencer implementation: the
+//       event grammar and handler state machine remain refused.
 //   (5) SCORE -> PARAM LINK: loadCue(8) resolves tracks whose base params match
 //       the oracle's distinct BGM signatures; the parsed note streams contain
 //       the 7 fc values the oracle shows.
@@ -34,8 +34,7 @@ import {
   BgmSequencer, BGM, TOFF, parseEvent, EV_FAMILY, eventFamily,
 } from '../src/sequencer.js';
 import {
-  SoundChain, decodeDoor, MainLoop, MailboxQueue, ImmediateNoteOn,
-  SfxParamTable, ROUTE, cmdRoute,
+  SoundChain, decodeDoor, ROUTE, cmdRoute,
 } from '../src/dispatch.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -264,7 +263,7 @@ test('CENTREPIECE GREEN/RED/RESTORE: the 979 BGM keyons reproduce row-for-row',
     // mailbox -> dispatch path (door 6, cmd $12). Each BGM keyon is then armed
     // via the sequencer's fireKeyon (the `$25F2` -> `$62EC` arm) and emitted by
     // the Layer 2 engine tick, the same chain the scheduler uses.
-    const chain = new SoundChain(new SfxParamTable(), score.cues);
+    const chain = new SoundChain(null, score.cues);
     const door6 = doors.get(6);
     assert.equal(door6.type, 0x12, 'door 6 is cmd $12 (the cue-load door)');
     chain.enqueueDoor(decodeDoor(door6));
@@ -309,7 +308,7 @@ test('CENTREPIECE GREEN/RED/RESTORE: the 979 BGM keyons reproduce row-for-row',
 
     // RED 1: the SEQUENCER DROPPED (no cues -> the dispatcher logs cmd $12 but
     // cannot load a cue) -> no BGM keyons can fire.
-    const chainDrop = new SoundChain(new SfxParamTable(), null);
+    const chainDrop = new SoundChain(null, null);
     assert.equal(chainDrop.sequencer, null, 'no sequencer without cues');
     chainDrop.enqueueDoor(decodeDoor(door6));
     chainDrop.runMainLoop();
@@ -394,7 +393,7 @@ test('SCORE -> PARAM LINK: cue 8 resolves the BGM param signatures + the fc valu
       'the 7 BGM fc values');
   });
 
-test('HONEST COVERAGE: 1592 of 1620 keyons reproduce (613 SFX + 979 BGM); 28 deferred',
+test('LEGACY ORACLE INVENTORY: 1620 keyons, without temporal-door causality claims',
   { skip: SKIP }, () => {
     const keyons = parseKeyon();
     assert.equal(keyons.length, 1620, '1620 keyons total');
@@ -402,20 +401,22 @@ test('HONEST COVERAGE: 1592 of 1620 keyons reproduce (613 SFX + 979 BGM); 28 def
     const bgm = keyons.filter((k) => k.conf === 0x08 || k.conf === 0x00).length;
     assert.equal(sfx, 641, '641 SFX keyons (OscConf $20)');
     assert.equal(bgm, 979, '979 BGM keyons (OscConf $08/$00)');
-    // C6 reproduced 613 SFX (cmd $00/$01); C7 reproduces 979 BGM. The remainder:
+    // W150 invalidated the old `after_door` causality and cmd-$0F note-on
+    // interpretation. Keep the corpus counts as test-only inventory, not as a
+    // production-coverage claim.
     const todo = {
-      cmd0F: 'cmd $0F ($34FB): 10 SFX keyons (a different note-on variant).',
-      cmd15_1sfx: 'cmd $15 door: 1 SFX keyon (the stop-door side effect). C8.',
-      noDoor: '17 SFX keyons with no triggering door (pre-gameplay). C8.',
+      cmd0F: 'cmd $0F is selector-matched release; nearby keyons are not caused by it.',
+      cmd15_1sfx: 'the keyon near cmd $15 is not attributed without driver timing.',
+      noDoor: 'pre-gameplay SFX need a live producer timeline.',
       grammar: 'the live note-event grammar (note-index -> fc, the $80/$C0 cmds): '
             + 'the centrepiece reconstructs fc from the oracle; the live score '
             + 'resolution lands with the W147 sec 4 grammar TODO.',
       timeline: 'the BGM keyon timeline alignment (the tempo/lf->vf warp): C8.',
     };
-    assert.equal(Object.keys(todo).length, 5, 'five named TODOs gate the rest');
+    assert.equal(Object.keys(todo).length, 5, 'five named Layer 2/runtime refusals remain');
     // The chain wires the BGM sequencer when cues are provided.
     const score = parseScore(ram());
-    const chain = new SoundChain(new SfxParamTable(), score.cues);
+    const chain = new SoundChain(null, score.cues);
     assert.ok(chain.sequencer instanceof BgmSequencer, 'Layer 3: BgmSequencer wired');
     assert.equal(cmdRoute(0x12), ROUTE.SEQUENCER, 'cmd $12 -> sequencer');
     assert.equal(cmdRoute(0x11), ROUTE.SEQUENCER, 'cmd $11 -> sequencer');

@@ -112,6 +112,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
 import { parseScore, scoreToJson } from '../src/bgmscore.js';
+import { driverParamsToJson } from '../src/driverparams.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GAME = path.resolve(HERE, '..');
@@ -2455,7 +2456,8 @@ if (SPR_ORDER.length !== SPR_SHARDS.length
   })));
 }
 
-// WAVE 27C7 (SOUND) -- THE BGM SCORE DATA. The ~7.2 KB score blob is resident
+// WAVE 27C7/W152 (SOUND) -- THE BGM SCORE DATA AND DRIVER PARAMETERS. The
+// score blob and runtime driver tables are resident
 // in the uploaded Z80 image (z80ram.bin), NOT runtime-paged (W145 sec 0). This
 // step PARSES it -- walks the cue table at `$0070`, the 11 per-cue blocks, the
 // row/selector streams, the shared 8-entry pointer tables and the note-event
@@ -2476,11 +2478,16 @@ if (SPR_ORDER.length !== SPR_SHARDS.length
     + 'uploaded Z80 image (the 68k writes the full 64 KiB through `$C10000` at '
     + 'sound-boot). Each cue carries its header (rowlen/tracks), the row/'
     + 'selector stream, the shared 8-entry LE pointer table and the per-track '
-    + 'note-event bytes (hex). The note-event grammar: the event byte\'s top 2 '
-    + 'bits select a handler (`$00`=NOTE `[note][dur][vel]`, `$C0`=cmd, the '
-    + '`$CF` section marker). A transformation of z80ram.bin, not a verbatim '
-    + 'slice -- the guard passes.';
+    + 'note-event bytes (hex). W150 fixed the framing: `$00-$3F` is one byte, '
+    + '`$40-$BF` is two bytes, `$D0-$EF` is three bytes, and `$C0-$CF`/`$F0-$FF` '
+    + 'is four bytes. A transformation of z80ram.bin, not a verbatim slice.';
   put('snd/bgm-score.json', new TextEncoder().encode(JSON.stringify(json)));
+
+  // W152: semantic objects for 69 SFX descriptors, 160 BGM descriptors, the
+  // 16x60 pitch grid, and the two control conversion tables used by `$0B92`,
+  // `$0E55`, and `$0E81`. This is decoded numeric structure, never a Z80 slice.
+  const params = driverParamsToJson(z80ram);
+  put('snd/driver-params.json', new TextEncoder().encode(JSON.stringify(params)));
 }
 put('capture.bin', outBin);
 put('seed.bin', seed);
@@ -2763,7 +2770,8 @@ const manifest = {
            shardBytes: SOUND.fragments, deferred: true,
            // WAVE 27C7: the parsed BGM score (cues -> tracks -> note events).
            // DEFERRED like the sample shard; fetched when the BGM synth needs it.
-           bgmScore: 'snd/bgm-score.json.gz' },
+           bgmScore: 'snd/bgm-score.json.gz',
+           driverParams: 'snd/driver-params.json.gz' },
   romsUsed: [...IGS023_LAYOUT, ...SPRCOL_LAYOUT, ...SPRMASK_LAYOUT]
     .map(([n]) => n).concat(SOUND.rom),
 };
@@ -2820,6 +2828,9 @@ DEFERRED.add('snd/sample.index.json.gz');
 // WAVE 27C7 (SOUND): the parsed BGM score. DEFERRED -- the live note-event
 // grammar (W147 sec 4) is not yet wired into first paint.
 DEFERRED.add('snd/bgm-score.json.gz');
+// W152: Layer 3 consumes this with the sample/BGM data once live runtime sound
+// is connected. It remains outside first paint until that bridge exists.
+DEFERRED.add('snd/driver-params.json.gz');
 
 let total = 0, boot = 0;
 for (const [name, gz, raw] of written) {

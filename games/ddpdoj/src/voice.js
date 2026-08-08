@@ -98,7 +98,8 @@ export const STRIDE = ENGINE.voiceStride;   // 19
 export class VoiceSlot {
   constructor() {
     this.state = 0;        // the $62EC state byte
-    this.icsVoice = 0;     // the bound ICS voice (alloc result)
+    this.icsVoice = -1;    // the bound ICS voice (allocated by `$37DB` at keyon)
+    this.selector = -1;    // slot +$02: 10-bit selector matched by `$34FB`
     // Register values this slot emits (the cue payload, mirrored from the
     // struct offsets the engine reads). Named by ICS register.
     this.fc = 0;           // $01 OscFC (16-bit)
@@ -196,6 +197,25 @@ export class VoiceEngine {
       }
     }
     throw new Error('voice: acquireIcsVoice -- no free ICS voice (all 32 in use)');
+  }
+
+  /** `$311C`: first inactive logical `$62EC` slot, independent of ICS voice. */
+  acquireSlot() {
+    const slot = this.voices.find((candidate) => !candidate.active);
+    if (!slot) throw new Error('voice: $311C has no free logical voice slot');
+    return slot;
+  }
+
+  /** `$0E55`: write one active ICS voice's OscFC register immediately. */
+  writeVoiceFrequency(voice, value) {
+    selectVoice(this.rf, voice);
+    writeReg16(this.rf, VOICE_REG.fc, value & 0xff, (value >> 8) & 0xff);
+  }
+
+  /** `$0E81`: write one active ICS voice's converted volume immediately. */
+  writeVoiceVolume(voice, value) {
+    selectVoice(this.rf, voice);
+    writeReg16(this.rf, 0x09, value & 0xff, (value >> 8) & 0xff);
   }
 
   /**
@@ -341,7 +361,10 @@ export class VoiceEngine {
    */
   releaseVoiceIfBusy(v) {
     if (this.icsShadow[v][0] === 0) return false;
-    const slot = this.voices[v];
+    // `$62EC` logical slots and `$654E` ICS voices are separate arrays. Find
+    // the logical owner rather than treating both indices as interchangeable.
+    const slot = this.voices.find((candidate) => candidate.active
+      && candidate.icsVoice === v) ?? this.voices[v];
     slot.icsVoice = v;
     this.emitKeyoff(slot);
     this.releaseIcsVoice(v);
@@ -388,10 +411,13 @@ export class VoiceEngine {
    */
   serviceOscillatorIrq() {
     let released = 0;
-    for (let v = 0; v < N_VOICES; v++) {
-      const slot = this.voices[v];
+    for (let logical = 0; logical < N_VOICES; logical++) {
+      const slot = this.voices[logical];
       if (!slot.oscEnded) continue;
-      slot.icsVoice = v;
+      const v = slot.icsVoice;
+      if (v < 0 || v >= N_VOICES) {
+        throw new Error('voice: ended logical slot has no bound ICS voice');
+      }
       this.emitKeyoff(slot);
       this.releaseIcsVoice(v);
       released++;
@@ -423,6 +449,7 @@ export class VoiceEngine {
       if (!slot.active) continue;   // the $37C1 `AND A; JR Z` skip
       switch (slot.state) {
         case ENGINE.STATE_KEYON:
+          if (slot.icsVoice < 0) slot.icsVoice = this.acquireIcsVoice(0x04);
           this.emitKeyon(slot);
           break;
         case ENGINE.STATE_RETRIG:   // TODO: full re-trigger path

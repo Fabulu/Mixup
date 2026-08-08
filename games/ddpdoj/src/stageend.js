@@ -187,7 +187,9 @@ export function rebuildWorld25FD38(ram, ctx) {
  * boss script being stepped twice a frame from here on.
  */
 export function runStageAdvance242952(ram, rom, ctx) {
-  note(ctx, 0x28cb60, '$242952 jsr $28CB60 -- the stage-clear SOUND cue');
+  // W152: `$28CB60 -> $28CB1A -> $28C146` is the real fixed-index streaming
+  // leaf, now handled by the same production sound post API as normal wrappers.
+  ctx.soundPost?.(0x28cb60);
   ram.setU8(SE.bossFlags, ram.u8(SE.bossFlags) | 0x08);    // $242958 bset #3
   ram.setU8(SE.bossFlags, ram.u8(SE.bossFlags) & ~0x10);   // $242960 bclr #4
   ram.setU16(SE.clearing, 1);                              // $242968
