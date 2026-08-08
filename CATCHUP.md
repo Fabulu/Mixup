@@ -765,6 +765,22 @@ Sound progress (all published, live):
   stage-1; `ics.tsv` oracle; ~33.8 kHz). Gate: command-stream + register-state exact = STRONG;
   PCM vs MAME = REJECTED.
 
+## 7ab. UPDATE -- 2026-08-08: Wave C COMPLETE (all 3 layers + SoundChain) LIVE; sound driver structurally end-to-end
+
+Sound Waves A+B+C-L1+C-L2+C-L3+D all LIVE (build `20260808022625`). **Wave C STRUCTURALLY
+complete**: register file (L1, `ics.js`) + voice engine (L2, `voice.js`) + cue dispatch (L3,
+`dispatch.js`) shipped + coupled via `SoundChain` (mailbox -> dispatch -> voice update -> register
+writes). A single keyon reproduces row-for-row through the full chain against `ics.tsv`. Wave F
+(shared Web Audio shim, `shared/audio.js`) committed + pushed, NOT yet deployed (Gradius refactor;
+needs a full publish).
+
+Remaining sound path: **C-depth** (4 named TODOs: cue-id->script interpreter [the biggest], Layer 2
+ramp math, Layer 2 keyoff, mailbox door->keyon map -- needed for the full 191,367-row `ics.tsv`
+reproduction) -> **Wave E** (ICS2115 synth, datasheet-referenced, not MAME) -> wire into F ->
+**audible output**. Gate: command-stream + register-state exact = STRONG; PCM vs MAME = REJECTED.
+Sample data: tight-union 28-fragment stitch (1.10 MiB, +41%, deferred fetch). Wave F: the cubic
+Hermite resampler + stereo + limiter, proven on Gradius (13-stage gate green).
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
