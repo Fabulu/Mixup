@@ -4,15 +4,18 @@ You are taking over **Mixup**, at `C:\programmieren\batman`. Hand-translating
 console games from their disassembly into readable JavaScript, verified frame by
 frame against the real ROM in an emulator. Not emulation.
 
-## Read these three, in this order, before doing anything
+## Read these four, in this order, before doing anything
 
-1. **`CATCHUP.md`** - what changed recently and what would most mislead you.
-   **Read this first even if you think you know the project.** If you worked on
-   this before around 2026-08-04, your mental model is stale in five specific
-   ways and that file names them.
-2. **`HANDOVER.md`** - the fundamentals that have not changed: the method, the
+1. **`BRIEF-next.md`** - **THE QUEUE. Start here.** The state verified rather
+   than quoted, the owner's open reports in their own words, what is running,
+   and what to do next in order with the reasoning for each.
+2. **`CATCHUP.md`** - what changed recently and what would most mislead you.
+   **Read this even if you think you know the project.** If you worked on this
+   before around 2026-08-04, your mental model is stale in five specific ways
+   and that file names them.
+3. **`HANDOVER.md`** - the fundamentals that have not changed: the method, the
    three games, every path, every command, the emulators, the platform traps.
-3. **`docs/knowledge/`** - the cross-game lessons. `01` the oracle method, `02`
+4. **`docs/knowledge/`** - the cross-game lessons. `01` the oracle method, `02`
    the traps, `03` what makes a check capable of failing, `09` enumerate
    statically and validate dynamically, `10` coverage is branches not frames.
 
