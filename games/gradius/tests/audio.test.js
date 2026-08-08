@@ -525,7 +525,9 @@ test('eight logic frames in one callback become eight frames of CONTIGUOUS audio
         + 'buffers overlap or leave a hole');
     }
     // 8 logic frames is 8/60.098814 s of audio, and that is what was queued.
-    const scheduled = ctx.starts.reduce((n, s) => n + s.n, 0) + a.out.apu.outLen;
+    // (W46: the chip is now behind the shared shim's factory; a.out.chip is the
+    // NesApu adapter and outLen passes straight through to the chip's buffer.)
+    const scheduled = ctx.starts.reduce((n, s) => n + s.n, 0) + a.out.chip.outLen;
     const want = 8 * ctx.sampleRate / 60.098814;
     assert.ok(Math.abs(scheduled - want) < 4,
       `${scheduled} samples for 8 frames, want ${want.toFixed(0)}`);
@@ -539,7 +541,7 @@ test('past the backlog ceiling the chip still advances -- only the samples go',
     // thinks has passed, independently of how many samples came out.
     a.frame([0x00, 0x1F, 0x01, 0x00, 0x02, 0x00, 0x03, 0x09]);   // length 254
     a.pump();
-    const startLen = a.out.apu.p1.length;
+    const startLen = a.out.chip.apu.p1.length;
     assert.ok(startLen > 200);
 
     // 40 frames handed over at once: 15 are rendered, 25 are fast-forwarded.
@@ -547,7 +549,7 @@ test('past the backlog ceiling the chip still advances -- only the samples go',
     a.pump();
     assert.ok(a.out.dropped > 0, 'nothing was dropped -- the valve did not open');
     // 41 frames at 96 half frames/s and 60.0988 frames/s = 65.5 half frames.
-    const spent = startLen - a.out.apu.p1.length;
+    const spent = startLen - a.out.chip.apu.p1.length;
     assert.ok(spent >= 60 && spent <= 70,
       `the length counter moved ${spent} steps over 41 logic frames, want ~65 -- `
       + 'a dropped frame must cost audio time, never chip state');
