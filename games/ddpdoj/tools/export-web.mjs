@@ -946,6 +946,80 @@ for (const [shard, offs, why] of W81_IMMEDIATES) {
   void why;
 }
 
+// W161 -- THE HUD SPRITE INVENTORY, ENUMERATED FROM THE COMPLETE ROM TABLES.
+// These records are not added from the capture. The chain bar's 56/90 words
+// collapse to 32 unique stream addresses, and the popup bodies carry their own
+// complete digit and suffix tables. They live in a deferred shard because the
+// first frame does not need them, but a live chain can demand them by address.
+const HUD_CHAIN_SHARD = 17;
+function addHudStreamGroup(name, addresses, why) {
+  const unique = [...new Set(addresses)];
+  let added = 0, already = 0;
+  for (const offs of unique) {
+    if (streams.has(offs)) { already++; continue; }
+    streams.set(offs, romExtent(offs));
+    shardOfStream.set(offs, HUD_CHAIN_SHARD);
+    harvested++;
+    added++;
+  }
+  harvestAlready += already;
+  const end = unique.length ? Math.max(...unique) + 4 : 0;
+  harvestReport.push({ shard: HUD_CHAIN_SHARD, base: 0, entries: addresses.length,
+    stride: 0, runsTo: unique.length, endsAt: end, distinct: unique.length,
+    added, already, why: `${name}: ${why}` });
+}
+
+const chainBarStreams = new Set();
+for (let loop = 0; loop < 2; loop++) {
+  const ptr = romBe32(0x28809e + loop * 4);
+  const cap = romBe16(0x287df0 + loop * 2);
+  for (let i = 0; i < cap; i++) {
+    chainBarStreams.add(0x1cc4a0 + romBe16(ptr + i * 2));
+  }
+}
+if (chainBarStreams.size !== 32) {
+  throw new Error(`W161 chain-bar tables resolve ${chainBarStreams.size} streams, `
+    + 'not the 32 unique addresses pinned by the 56/90-entry tables');
+}
+addHudStreamGroup('chain bar', [...chainBarStreams],
+  '$28809E -> $2880A6/$28811A, caps $287DF0 = 56/90, tile base $1CC4A0');
+
+const popupDigitStreams = [];
+for (let zoom = 0; zoom < 4; zoom++) {
+  const base = romBe32(0x2856d4 + zoom * 4);
+  for (let digit = 0; digit < 10; digit++) {
+    popupDigitStreams.push(romBe32(base + digit * 4));
+  }
+}
+if (new Set(popupDigitStreams).size !== 40) {
+  throw new Error(`W161 popup digit table resolves ${new Set(popupDigitStreams).size} `
+    + 'streams, not all 40 entries from $2856D4');
+}
+addHudStreamGroup('popup digits', popupDigitStreams,
+  '$2856D4 four jump entries, ten digits per zoom at $2856E4..$285783');
+
+const popupLateStreams = [];
+for (const base of [0x1c9778, 0x1c9980]) {
+  for (let digit = 0; digit < 10; digit++) {
+    popupLateStreams.push(base + romBe16(0x28567c + digit * 2));
+  }
+}
+if (new Set(popupLateStreams).size !== 20) {
+  throw new Error(`W161 popup late table resolves ${new Set(popupLateStreams).size} `
+    + 'streams, not the two complete ten-digit families from $28567C');
+}
+addHudStreamGroup('popup late digits', popupLateStreams,
+  '$28567C ten word offsets applied to both $1C9778/$1C9980 bases');
+
+const popupSuffixStreams = [];
+for (let i = 0; i < 12; i++) popupSuffixStreams.push(romBe32(0x285784 + i * 4));
+if (new Set(popupSuffixStreams).size !== 12) {
+  throw new Error(`W161 popup suffix table resolves ${new Set(popupSuffixStreams).size} `
+    + 'streams, not all 12 entries from $285784');
+}
+addHudStreamGroup('popup suffix', popupSuffixStreams,
+  '$285784 twelve suffix zoom entries');
+
 // ------------------------------------------------------------------- WAVE 52
 // 1b. THE PLAYER'S SHOTS, and 1c. THE ENEMY BULLETS.
 //
@@ -1902,9 +1976,8 @@ const B13_MEASURED = Object.freeze([
 }
 
 const bgList = [...bgUsed].sort((a, b) => a - b);
-const txList = [...txUsed].sort((a, b) => a - b);
 console.log(`coverage over ${cap.length} captured frames, ${records} records:`);
-console.log(`  BG tiles ${bgList.length}   TX tiles ${txList.length}   `
+console.log(`  BG tiles ${bgList.length}   TX tiles ${txUsed.size}   `
   + `sprite streams ${streams.size} (${shipHarvested} of them the ship's own `
   + `bank frames, harvested by address because the recorded ship never banked)`);
 console.log(`  sprite EXTENTS from the ROM chain (src/render/spritedir.js): `
@@ -2141,6 +2214,34 @@ const smapPairs = new Uint16Array(STAGE1.nsmap * COL_ROWS * 2);
   let k = 0;
   for (const col of secondMap) for (const [t, a] of col) { smapPairs[k++] = t; smapPairs[k++] = a; }
 }
+
+// W161 -- THE TX INVENTORY IS THE ROM'S TABLES, NOT THE 161-FRAME CAPTURE.
+// The capture still supplies the ordinary text. These additional families are
+// reached by the live HUD bodies and are complete by construction: score
+// digits are written as $C030..$C03F by $2843A8, while the other values come
+// from the longword tables named by $240DC2 callers.
+const TX_TABLES_W161 = Object.freeze([
+  [0x287f7a, 3, 'credit suffix'],
+  [0x287f86, 10, 'credit one-digit'],
+  [0x287fae, 10, 'credit two-digit tens'],
+  [0x287fd6, 10, 'credit two-digit ones'],
+  [0x287ffe, 40, 'chain high-water, four digit families'],
+  [0x2881e2, 4, 'lives icons'],
+  [0x2883e6, 6, 'hyper-stock icons'],
+]);
+const txRomSources = [];
+for (const [at, count, name] of TX_TABLES_W161) {
+  for (let i = 0; i < count; i++) {
+    const word = romBe32(at + i * 4);
+    txUsed.add((word >>> 16) & 0xffff);
+  }
+  txRomSources.push({ at, count, name });
+}
+for (let i = 0; i < 16; i++) txUsed.add(0xc030 + i); // $2843A8 score glyphs
+for (const word of [0x054f000a, 0x053d000a, 0x0404000a,
+  0x03ee000a, 0x0414000a]) txUsed.add((word >>> 16) & 0xffff);
+
+const txList = [...txUsed].sort((a, b) => a - b);
 
 const txSheet = new Uint8Array(txList.length * TX_TILE_BYTES);
 const txNo = new Uint16Array(txList.length);
@@ -2655,7 +2756,15 @@ const manifest = {
         + 'RECORDING uses that no map column names -- they are folded into '
         + 'shard 0 so verifyCoverage is satisfiable at boot.',
     },
-    tx: { tiles: txList.length, tileBytes: TX_TILE_BYTES, w: TX_W, h: TX_H, bpp: 4 },
+    tx: {
+      tiles: txList.length, tileBytes: TX_TILE_BYTES, w: TX_W, h: TX_H, bpp: 4,
+      sources: txRomSources.map((s) => ({
+        at: `$${s.at.toString(16).toUpperCase()}`, entries: s.count, name: s.name,
+      })),
+      scoreGlyphs: ['$C030', '$C03F'],
+      note: 'Capture text plus complete W161 table-derived HUD families. '
+        + 'All values are tile numbers decoded from the IGS023 mask ROM.',
+    },
   },
   spr: {
     maskWords: packedMask.buf.length, maskUsed: packedMask.used,

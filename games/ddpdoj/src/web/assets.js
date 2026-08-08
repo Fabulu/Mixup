@@ -646,7 +646,7 @@ export async function loadBundle(readRaw, opts = {}) {
   // Missing TX tiles (ported code writes tiles the capture never saw) degrade
   // to transparent like BG tiles, not a throw that stops the page.
   const missingTxTiles = new Set();
-  const TX_TRANSPARENT_PEN = 0;       // txTile: pen 0 is unused/background
+  const TX_TRANSPARENT_PEN = 15;      // txTile: pen 15 is board-transparent
   const txTileFn = (roms, index, out = new Uint8Array(TX_TILE_BYTES)) => {
     const i = index & 0xffff;
     const s = sheets.tx.slot[i];
