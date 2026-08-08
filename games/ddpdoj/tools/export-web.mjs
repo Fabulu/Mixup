@@ -2460,12 +2460,12 @@ if (SPR_ORDER.length !== SPR_SHARDS.length
 // score blob and runtime driver tables are resident
 // in the uploaded Z80 image (z80ram.bin), NOT runtime-paged (W145 sec 0). This
 // step PARSES it -- walks the cue table at `$0070`, the 11 per-cue blocks, the
-// row/selector streams, the shared 8-entry pointer tables and the note-event
+// row/selector streams, the aligned 8*df pointer grids and the note-event
 // streams -- and ships the JS structure, not the raw bytes. That is a
 // transformation (cues -> tracks -> events), so the verbatim-art guard accepts
 // it with no new exception (W145 sec 7 option (a)). DEFERRED like the sample
-// shard: the BGM synth (the live note-event grammar, W147 sec 4) is not yet
-// wired into the page's first paint, so this is fetched on demand.
+// shard: the live Layer 3 grammar consumes it, but browser/audio wiring is not
+// yet part of first paint, so this is fetched on demand.
 {
   const z80Path = path.join(RIP, 'sound', 'z80ram.bin');
   if (!fs.existsSync(z80Path)) {
@@ -2477,15 +2477,16 @@ if (SPR_ORDER.length !== SPR_SHARDS.length
   json.note = 'WAVE 27C7 BGM score. The parsed cue blocks resident in the '
     + 'uploaded Z80 image (the 68k writes the full 64 KiB through `$C10000` at '
     + 'sound-boot). Each cue carries its header (rowlen/tracks), the row/'
-    + 'selector stream, the shared 8-entry LE pointer table and the per-track '
-    + 'note-event bytes (hex). W150 fixed the framing: `$00-$3F` is one byte, '
+    + 'selector stream, the word-aligned track-major `8 * df` LE pointer grid '
+    + 'and the per-track/per-selector note-event bytes (hex). W150 fixed the '
+    + 'framing: `$00-$3F` is one byte, '
     + '`$40-$BF` is two bytes, `$D0-$EF` is three bytes, and `$C0-$CF`/`$F0-$FF` '
     + 'is four bytes. A transformation of z80ram.bin, not a verbatim slice.';
   put('snd/bgm-score.json', new TextEncoder().encode(JSON.stringify(json)));
 
-  // W152: semantic objects for 69 SFX descriptors, 160 BGM descriptors, the
-  // 16x60 pitch grid, and the two control conversion tables used by `$0B92`,
-  // `$0E55`, and `$0E81`. This is decoded numeric structure, never a Z80 slice.
+  // W152/W153: semantic objects for 69 SFX descriptors, 160 BGM descriptors,
+  // the `$4439` period-to-FC map, the 16x60 pitch grid, and the control tables.
+  // This is decoded numeric structure, never a contiguous Z80 slice.
   const params = driverParamsToJson(z80ram);
   put('snd/driver-params.json', new TextEncoder().encode(JSON.stringify(params)));
 }
@@ -2825,8 +2826,8 @@ for (const [i] of SPR_SHARDS) {
 // them out of boot holds the line on the owner's "boot must not get slower".
 DEFERRED.add('snd/sample.shard.u8.gz');
 DEFERRED.add('snd/sample.index.json.gz');
-// WAVE 27C7 (SOUND): the parsed BGM score. DEFERRED -- the live note-event
-// grammar (W147 sec 4) is not yet wired into first paint.
+// WAVE 27C7/W153 (SOUND): parsed BGM score, validated and consumed by Layer 3.
+// It remains deferred because runtime/browser audio is not yet wired.
 DEFERRED.add('snd/bgm-score.json.gz');
 // W152: Layer 3 consumes this with the sample/BGM data once live runtime sound
 // is connected. It remains outside first paint until that bridge exists.

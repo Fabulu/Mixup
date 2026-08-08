@@ -218,6 +218,17 @@ export class VoiceEngine {
     writeReg16(this.rf, 0x09, value & 0xff, (value >> 8) & 0xff);
   }
 
+  /** `$3E6D/$0EB8`: reserve one fixed BGM voice and install pan/start level. */
+  initializeBgmVoice(voice, pan) {
+    if (!Number.isInteger(voice) || voice < 0 || voice >= N_VOICES) {
+      throw new RangeError(`voice: BGM voice ${voice} is outside 0..31`);
+    }
+    this.icsShadow[voice][0] = 2;
+    selectVoice(this.rf, voice);
+    writeReg8hi(this.rf, VOICE_REG.pan, pan & 0xff);
+    writeReg16(this.rf, 0x06, 0x3f, 0x00);
+  }
+
   /**
    * Emit the keyon register-write sequence for one voice slot (the state-1
    * handler's emission contract). This is the INVARIANT order every keyon in

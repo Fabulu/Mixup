@@ -1,424 +1,482 @@
-// WAVE C7 (SOUND) -- the BGM sequencer + the banked score data MUST-FAIL.
-//
-// This is the C7 gate for the Z80 driver port. It proves:
-//   (1) SCORE-DATA FIDELITY: the parser reproduces the ROM byte-for-byte (11
-//       cues, the verified headers, pointer tables, row streams, the note-
-//       stream CF markers). Corrupt the parse -> mismatch (RED) -> restore;
-//   (2) loadCue REPRODUCES THE CAPTURED STATE for cue 8 (the active cue);
-//   (3) SCHEDULER MECHANICS: the tempo gate, the row advance, the track walk;
-//   (4) LEGACY TEST-ONLY VALIDATION: 979 BGM keyon parameter episodes can be
-//       injected through the shared emission layer and match ics.tsv. W150
-//       proved that this is not a production sequencer implementation: the
-//       event grammar and handler state machine remain refused.
-//   (5) SCORE -> PARAM LINK: loadCue(8) resolves tracks whose base params match
-//       the oracle's distinct BGM signatures; the parsed note streams contain
-//       the 7 fc values the oracle shows.
-//
-// The oracles are rip/sound/ics.tsv + keyon.tsv + mailbox_dedup.tsv +
-// z80ram.bin (all gitignored ROM-derived data). See worklog 147. Skips loudly
-// when any are absent.
+// W153 live BGM Layer 3 gate. ROM/listing defines behavior; oracle register
+// episodes remain secondary test-only validation and never feed production.
 
-import { test } from 'node:test';
-import { strict as assert } from 'node:assert';
-import { readFileSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { IcsRegisterFile, unpack } from '../src/ics.js';
+import { IcsRegisterFile, VOICE_REG, unpack } from '../src/ics.js';
 import { VoiceEngine, VoiceSlot } from '../src/voice.js';
+import { driverParamsFromJson, driverParamsToJson } from '../src/driverparams.js';
 import {
-  parseScore, scoreToJson, countSectionMarkers, distinctNoteIndices,
-  N_CUES, N_BGM_TRACKS, SCORE,
+  SCORE_VERSION, SCORE, N_CUES, N_BGM_TRACKS, pointerTableAddress,
+  parseScore, scoreToJson, scoreFromJson,
 } from '../src/bgmscore.js';
 import {
-  BgmSequencer, BGM, TOFF, parseEvent, EV_FAMILY, eventFamily,
+  BGM, TOFF, EV_FAMILY, C0_FAMILY, STATE_HANDLER_ADDRS,
+  STATE14_HANDLER_ADDRS, BgmSequencer, parseEvent, eventFamily,
+  applyStateHandler,
 } from '../src/sequencer.js';
-import {
-  SoundChain, decodeDoor, ROUTE, cmdRoute,
-} from '../src/dispatch.js';
+import { SoundChain } from '../src/dispatch.js';
+import { Ram } from '../src/ram.js';
+import { SOUND, SoundState, postWrapper, drainFrame } from '../src/sound.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ORACLE = join(HERE, '..', 'rip', 'sound', 'ics.tsv');
-const KEYON = join(HERE, '..', 'rip', 'sound', 'keyon.tsv');
-const MAILBOX = join(HERE, '..', 'rip', 'sound', 'mailbox_dedup.tsv');
-const Z80RAM = join(HERE, '..', 'rip', 'sound', 'z80ram.bin');
-const HAVE = existsSync(ORACLE) && existsSync(KEYON) && existsSync(MAILBOX) && existsSync(Z80RAM);
-const SKIP = !HAVE && `oracle/keyon/mailbox/z80ram absent (ics=${existsSync(ORACLE)} keyon=${existsSync(KEYON)} mb=${existsSync(MAILBOX)} z80=${existsSync(Z80RAM)}) -- re-run the sound capture`;
+const ROOT = join(HERE, '..');
+const Z80 = new Uint8Array(readFileSync(join(ROOT, 'rip', 'sound', 'z80ram.bin')));
+const SCORE_JSON = JSON.parse(gunzipSync(readFileSync(join(ROOT, 'assets', 'snd',
+  'bgm-score.json.gz'))));
+const PARAM_JSON = JSON.parse(gunzipSync(readFileSync(join(ROOT, 'assets', 'snd',
+  'driver-params.json.gz'))));
+const SCORE_RUNTIME = scoreFromJson(SCORE_JSON);
+const PARAMS = driverParamsFromJson(PARAM_JSON);
 
-let _ram = null;
-function ram() { if (!_ram) _ram = new Uint8Array(readFileSync(Z80RAM)); return _ram; }
+const set8 = (track, offset, value) => { track.raw[offset] = value & 0xff; };
+const get16 = (track, offset) => track.raw[offset] | (track.raw[offset + 1] << 8);
+const set16 = (track, offset, value) => {
+  track.raw[offset] = value & 0xff;
+  track.raw[offset + 1] = (value >>> 8) & 0xff;
+};
 
-// --------------------------------------------------------------- oracle parsing
-function parseOracle() {
-  const raw = readFileSync(ORACLE, 'utf-8').split('\n');
-  const rows = [];
-  for (let i = 1; i < raw.length; i++) {
-    const ln = raw[i];
-    if (!ln.trim()) continue;
-    const [n, vf, lf, voice, reg, half, data] = ln.split('\t');
-    const v = Number(voice);
-    const r = parseInt(reg, 16);
-    const hc = half === 'sel' ? 0 : half === 'lo' ? 1 : 2;
-    const d = parseInt(data, 16);
-    rows.push((((v & 0xFF) << 24) | ((r & 0xFF) << 16) | ((hc & 0xFF) << 8) | (d & 0xFF)) >>> 0);
-  }
-  return rows;
+function sequence(cue = 8) {
+  const engine = new VoiceEngine(new IcsRegisterFile());
+  const seq = new BgmSequencer(engine, SCORE_RUNTIME.cues, PARAMS);
+  assert.equal(seq.loadCue(cue, 0xeb, true), true);
+  engine.rf.regLog.length = 0;
+  return seq;
 }
-function parseKeyon() {
-  const raw = readFileSync(KEYON, 'utf-8').split('\n');
-  const out = [];
-  for (let i = 1; i < raw.length; i++) {
-    const ln = raw[i];
-    if (!ln.trim()) continue;
-    const c = ln.split('\t');
-    out.push({
-      n: Number(c[0]), vf: Number(c[1]), lf: Number(c[2]), voice: Number(c[3]),
-      conf: parseInt(c[4], 16), fc: parseInt(c[7], 16), pan: parseInt(c[12], 16),
-      saddr: parseInt(c[13], 16), after_door: Number(c[14]), ics_row: Number(c[15]),
-    });
+
+test('W153: score parser exports the exact aligned 8*df pointer topology', () => {
+  const parsed = parseScore(Z80);
+  assert.equal(parsed.version, SCORE_VERSION);
+  assert.equal(parsed.cueCount, N_CUES);
+  assert.equal(parsed.tableAddr, SCORE.cueTable);
+  assert.deepEqual(parsed.cues.map((cue) => cue.blockAddr),
+    [0xa600, 0xa696, 0xa6e2, 0xa778, 0xa80e, 0xa87a,
+      0xa954, 0xa98c, 0xb6d0, 0xb7ec, 0xbe90]);
+  for (const cue of parsed.cues) {
+    assert.equal(cue.tracks, N_BGM_TRACKS);
+    assert.equal(cue.df, cue.rowlen);
+    assert.equal(cue.rowStream.length, cue.rowlen);
+    assert.equal(cue.ptrTableAddr, pointerTableAddress(cue.blockAddr, cue.rowlen));
+    assert.equal(cue.ptrTable.length, N_BGM_TRACKS * cue.df);
+    assert.ok(cue.rowStream.every((selector) => selector < cue.df));
+    assert.ok(Object.isFrozen(cue));
   }
-  return out;
-}
-function parseMailbox() {
-  const raw = readFileSync(MAILBOX, 'utf-8').split('\n');
-  const doors = new Map();
-  for (let i = 1; i < raw.length; i++) {
-    const ln = raw[i];
-    if (!ln.trim()) continue;
-    const c = ln.split('\t');
-    const door = Number(c[0]);
-    doors.set(door, {
-      door, lf: Number(c[1]),
-      type: parseInt(c[2].replace('$', ''), 16),
-      pan: parseInt(c[3].replace('$', ''), 16),
-      id: parseInt(c[4].replace('$', ''), 16),
-      chan: parseInt(c[5].replace('$', ''), 16),
-    });
+  assert.equal(parsed.cues[0].ptrTableAddr, 0xa606,
+    'even rowlen has no fictional extra byte');
+  assert.equal(parsed.cues[8].ptrTableAddr, 0xb6d6,
+    'odd rowlen consumes the real alignment byte');
+  assert.equal(parsed.cues[7].ptrTable.length, 64);
+  assert.equal(parsed.cues[10].ptrTable.length, 96);
+  const { note: provenanceNote, ...artifactScore } = SCORE_JSON;
+  assert.equal(typeof provenanceNote, 'string');
+  assert.deepEqual(scoreToJson(parsed), artifactScore,
+    'regenerated semantic score matches the deferred artifact');
+});
+
+test('W153: scoreFromJson rejects version, layout, topology, ranges, and bad hex', () => {
+  const mutate = (fn) => { const value = structuredClone(SCORE_JSON); fn(value); return value; };
+  assert.throws(() => scoreFromJson(mutate((v) => { v.version = 2; })), /version/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.nCues = 10; })), /count\/table/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.cues.pop(); })), /11/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[2].blockAddr++; })),
+    /block layout/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[0].tracks = 7; })), /8 tracks/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[0].df = 1; })), /df=rowlen/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[0].rowStream[0] = 2; })), /0\.\.1/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[0].ptrTableAddr++; })), /address/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[7].ptrTable.pop(); })), /64/);
+  assert.throws(() => scoreFromJson(mutate((v) => {
+    v.cues[8].ptrTable[0] = v.cues[8].ptrTableAddr;
+    v.cues[8].noteStreamAddrs[0] = v.cues[8].ptrTableAddr;
+  })), /topology/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[8].noteStreamAddrs[0]++; })),
+    /grid mismatch/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[8].noteStreams[0] += 'f'; })),
+    /even-length/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[8].noteStreams[0] = 'zz'; })),
+    /hexadecimal/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[8].noteStreams[0] += '00'; })),
+    /extent/);
+  assert.ok(Object.isFrozen(SCORE_RUNTIME));
+  assert.ok(Object.isFrozen(SCORE_RUNTIME.cues[8].noteStreams[0]));
+});
+
+test('W153: the four primary families and every `$C0` subfamily have exact arity', () => {
+  const bytes = [
+    0x04,
+    0x43, 0xaa,
+    0xaa, 0x07,
+    0xd3, 0x55, 0x2a,
+    0xe4, 0x66, 0x08,
+    0xcf, 0x78, 0x2a, 0x07,
+    0xf2, 0x11, 0x03, 0x09,
+  ];
+  const events = [];
+  for (let pos = 0; pos < bytes.length;) {
+    const event = parseEvent(bytes, pos); events.push(event); pos = event.next;
   }
-  return doors;
+  assert.deepEqual(events.map((event) => event.raw.length), [1, 2, 2, 3, 3, 4, 4]);
+  assert.deepEqual(events.map((event) => event.kind), [
+    'wait', 'state', 'noteDescriptor', 'controlNote', 'controlDescriptor',
+    'controlCombined', 'controlCombined',
+  ]);
+  assert.equal(events[0].wait, 4);
+  assert.deepEqual([events[1].state, events[1].parameter], [3, 0xaa]);
+  assert.deepEqual([events[2].state, events[2].note, events[2].descriptor],
+    [8, 0x2a, 7]);
+  assert.deepEqual([events[3].state, events[3].parameter, events[3].note],
+    [3, 0x55, 0x2a]);
+  assert.deepEqual([events[4].state, events[4].parameter, events[4].descriptor],
+    [4, 0x66, 8]);
+  assert.deepEqual([events[5].secondary, events[5].state, events[5].parameter,
+    events[5].note, events[5].descriptor], [C0_FAMILY.COMBINED, 15, 0x78, 0x2a, 7]);
+  assert.equal(eventFamily(0x04), EV_FAMILY.WAIT);
+  assert.equal(eventFamily(0x43), EV_FAMILY.STATE);
+  assert.equal(eventFamily(0xaa), EV_FAMILY.NOTE_DESCRIPTOR);
+  assert.equal(eventFamily(0xcf), EV_FAMILY.CONTROL);
+  assert.throws(() => parseEvent([0xcf, 1, 2], 0), /truncated/);
+});
+
+test('W153: cue 8 begins with the corrected `$CF 78 2A 07` framing', () => {
+  const stream = SCORE_RUNTIME.cues[8].noteStream(0, 0);
+  const first = parseEvent(stream, 0);
+  assert.deepEqual(first.raw, [0xcf, 0x78, 0x2a, 0x07]);
+  assert.equal(first.next, 4);
+  const wait = parseEvent(stream, first.next);
+  assert.deepEqual(wait.raw, [0x04]);
+  const note = parseEvent(stream, wait.next);
+  assert.deepEqual(note.raw, [0xaa, 0x07]);
+});
+
+test('W153: all 16 `$4316` handlers and 16 state-14 arms are inventoried and live', () => {
+  assert.deepEqual(STATE_HANDLER_ADDRS, [
+    0x1d2e, 0x1df6, 0x1e3b, 0x1e7e, 0x1e9b, 0x1ee4, 0x1eeb, 0x1ef2,
+    0x1f3b, 0x1f3c, 0x1f84, 0x1f88, 0x1fe5, 0x2037, 0x245a, 0x247a,
+  ]);
+  assert.equal(STATE14_HANDLER_ADDRS.length, 16);
+  for (let state = 0; state < 16; state++) {
+    const seq = sequence();
+    const track = seq.tracks[0];
+    set8(track, TOFF.descriptor, 6);
+    set8(track, TOFF.note, 20);
+    set16(track, TOFF.basePeriod, PARAMS.pitch(PARAMS.bgm(6).pitchBank, 20));
+    set16(track, TOFF.targetPeriod, get16(track, TOFF.basePeriod));
+    set16(track, TOFF.currentPeriod, get16(track, TOFF.basePeriod));
+    set8(track, TOFF.baseLevel, 20);
+    set8(track, TOFF.level, 20);
+    set8(track, TOFF.evState, state);
+    set8(track, TOFF.evState2, state === 14 ? 0xa2 : 0x12);
+    seq.tempoCount = 6;
+    applyStateHandler(state, track, seq);
+    assert.ok(track.raw.some((value) => value !== 0), `handler ${state} returns with valid state`);
+  }
+});
+
+test('W153: representative handler mutations match their exact track/global offsets', () => {
+  const seq = sequence();
+  const track = seq.tracks[0];
+  set8(track, TOFF.descriptor, 6); set8(track, TOFF.note, 20);
+  set16(track, TOFF.targetPeriod, 0x200); set16(track, TOFF.basePeriod, 0x180);
+  set8(track, TOFF.baseLevel, 0x20); set8(track, TOFF.level, 0x20);
+  set8(track, TOFF.evState2, 0x12); seq.tempoCount = 6;
+  applyStateHandler(1, track, seq);
+  assert.equal(get16(track, TOFF.targetPeriod), 0x1ee);
+  set16(track, TOFF.targetPeriod, 0x200); applyStateHandler(2, track, seq);
+  assert.equal(get16(track, TOFF.targetPeriod), 0x212);
+  applyStateHandler(9, track, seq);
+  assert.equal(track.raw[TOFF.modifier + 1], 0x12);
+  set8(track, TOFF.evState2, 0x25); applyStateHandler(12, track, seq);
+  assert.equal(track.raw[TOFF.baseLevel], 0x25);
+  assert.equal(track.raw[TOFF.level], 0x25);
+  assert.equal(track.raw[TOFF.volumeDirty], 1);
+  set8(track, TOFF.evState2, 0x09); applyStateHandler(11, track, seq);
+  assert.equal(seq.colIndex, 9);
+  set8(track, TOFF.evState2, 0x0b); applyStateHandler(15, track, seq);
+  assert.equal(seq.tempoDiv, 0x0b);
+});
+
+test('W153: the remaining `$4316` primary mutations are exact', () => {
+  const fresh = () => {
+    const seq = sequence(); const track = seq.tracks[0];
+    set8(track, TOFF.descriptor, 6); set8(track, TOFF.note, 20);
+    const period = PARAMS.pitch(PARAMS.bgm(6).pitchBank, 20);
+    set16(track, TOFF.basePeriod, period); set16(track, TOFF.targetPeriod, period);
+    set16(track, TOFF.currentPeriod, period); set8(track, TOFF.baseLevel, 20);
+    set8(track, TOFF.level, 20); seq.tempoCount = 1;
+    return { seq, track, period };
+  };
+  {
+    const { seq, track } = fresh(); set8(track, TOFF.evState2, 0x12);
+    applyStateHandler(0, track, seq);
+    assert.equal(get16(track, TOFF.currentPeriod), seq.pitchFor(track, 21));
+  }
+  {
+    const { seq, track } = fresh(); set8(track, TOFF.evState2, 7);
+    applyStateHandler(3, track, seq); assert.equal(track.raw[TOFF.pitchRate], 7);
+  }
+  for (const state of [4, 7]) {
+    const { seq, track } = fresh(); set8(track, TOFF.evState2, 0x23);
+    applyStateHandler(state, track, seq);
+    const depth = state === 4 ? TOFF.pitchDepth : TOFF.volumeDepth;
+    const step = state === 4 ? TOFF.pitchStep : TOFF.volumeStep;
+    assert.equal(track.raw[depth], 3); assert.equal(track.raw[step], 2);
+    assert.equal(track.raw[TOFF.evState2], 0);
+  }
+  for (const state of [5, 6, 10]) {
+    const { seq, track } = fresh(); set8(track, TOFF.evState2, 0x21);
+    applyStateHandler(state, track, seq);
+    assert.equal(track.raw[TOFF.baseLevel], 21);
+    assert.equal(track.raw[TOFF.volumeDirty], 1);
+  }
+  {
+    const { seq, track } = fresh(); const before = track.raw.slice();
+    applyStateHandler(8, track, seq); assert.deepEqual(track.raw, before);
+  }
+  {
+    const { seq, track } = fresh(); set8(track, TOFF.evState2, 0x21);
+    applyStateHandler(13, track, seq);
+    assert.equal(seq.colIndex, 1); assert.equal(seq.groupStep, 21);
+    assert.equal(seq.stepCount, 0x40);
+  }
+  {
+    const { seq, track } = fresh(); set8(track, TOFF.evState2, 0x31);
+    applyStateHandler(14, track, seq); assert.equal(track.raw[TOFF.quantize], 1);
+  }
+});
+
+test('W153: all 16 `$4336` state-14 arms mutate the proven targets', () => {
+  for (let sub = 0; sub < 16; sub++) {
+    const seq = sequence(); const track = seq.tracks[0];
+    set8(track, TOFF.descriptor, 6); set8(track, TOFF.note, 20);
+    set16(track, TOFF.targetPeriod, 0x200); set16(track, TOFF.currentPeriod, 0x200);
+    set8(track, TOFF.baseLevel, 20); set8(track, TOFF.level, 20);
+    set8(track, TOFF.evState, 14); set8(track, TOFF.evState2, (sub << 4) | 2);
+    seq.tempoCount = 3;
+    const before = track.raw.slice();
+    applyStateHandler(14, track, seq);
+    switch (sub) {
+      case 0: case 8: case 15: assert.deepEqual(track.raw, before); break;
+      case 1: assert.equal(get16(track, TOFF.targetPeriod), 0x1fe); break;
+      case 2: assert.equal(get16(track, TOFF.targetPeriod), 0x202); break;
+      case 3: assert.equal(track.raw[TOFF.quantize], 2); break;
+      case 4: assert.equal(track.raw[TOFF.flags] & 0x0f, 2); break;
+      case 5: assert.equal(get16(track, TOFF.targetPeriod), PARAMS.pitch(2, 20)); break;
+      case 6: assert.equal(seq.repeatCount, 2); assert.equal(seq.deferredRow, 1); break;
+      case 7: assert.equal(track.raw[TOFF.flags] >>> 4, 2); break;
+      case 9: assert.equal(track.raw[TOFF.retrigger], 1); break;
+      case 10: assert.equal(track.raw[TOFF.baseLevel], 22); break;
+      case 11: assert.equal(track.raw[TOFF.baseLevel], 18); break;
+      case 12: assert.equal(track.raw[TOFF.baseLevel], 0); break;
+      case 13: assert.equal(track.raw[TOFF.keyonArm], 1); break;
+      case 14: assert.equal(seq.wait, 2); break;
+    }
+  }
+  const seq = sequence(); const track = seq.tracks[0];
+  set8(track, TOFF.evState2, 0x90); set8(track, TOFF.retrigger, 0);
+  applyStateHandler(14, track, seq);
+  assert.equal(track.raw[TOFF.retrigger], 0, 'zero retrigger interval does not underflow');
+});
+
+test('W153: descriptor/note resolution is bounded and maps through `$14AB/$1569`', () => {
+  const seq = sequence();
+  const track = seq.tracks[0];
+  seq.applyEvent(track, parseEvent([0xcf, 0x78, 0x2a, 0x07], 0));
+  const descriptor = PARAMS.bgm(6);
+  assert.equal(track.raw[TOFF.descriptor], 6);
+  assert.equal(track.raw[TOFF.note], 41);
+  assert.equal(get16(track, TOFF.basePeriod), PARAMS.pitch(descriptor.pitchBank, 41));
+  set16(track, TOFF.currentPeriod, get16(track, TOFF.basePeriod));
+  seq.updateFrequency(track);
+  const clamped = Math.max(0x32, Math.min(0x716, get16(track, TOFF.currentPeriod)));
+  assert.equal(get16(track, TOFF.fcReg), PARAMS.frequency(clamped));
+  assert.throws(() => seq.applyEvent(track, parseEvent([0x80, 161], 0)), /0\.\.159/);
+  assert.throws(() => seq.applyEvent(track, parseEvent([0xbd, 1], 0)), /0\.\.59/);
+  assert.throws(() => PARAMS.frequency(0x31), /50\.\.1814/);
+  assert.throws(() => PARAMS.pitch(0, 60), /0\.\.59/);
+});
+
+test('W153: the tempo gate skips events but still runs live state/register updates', () => {
+  const seq = sequence();
+  assert.equal(seq.tick(), 7, 'loader count six makes the first IRQ an event tick');
+  const track = seq.tracks[0];
+  const streamPos = track.streamPos;
+  set8(track, TOFF.evState, 1);
+  set8(track, TOFF.evState2, 2);
+  set16(track, TOFF.targetPeriod, 0x200);
+  seq.tempoCount = 0;
+  seq.engine.rf.regLog.length = 0;
+  assert.equal(seq.tick(), 0, 'count one is below divider six, so no new note arms');
+  assert.equal(track.streamPos, streamPos, 'gated IRQ does not consume an event');
+  assert.equal(get16(track, TOFF.targetPeriod), 0x1fe,
+    'the `$4316` state handler still advances between event ticks');
+  assert.ok(seq.engine.rf.regLog.length > 0, 'the `$15B3` update path still runs');
+});
+
+test('W153: frequency-map artifact metadata and entries reject drift loudly', () => {
+  const mutate = (fn) => { const value = structuredClone(PARAM_JSON); fn(value); return value; };
+  assert.throws(() => driverParamsFromJson(mutate((v) => { v.fcMap.base += 2; })),
+    /base\/stride/);
+  assert.throws(() => driverParamsFromJson(mutate((v) => { v.fcMap.min++; })),
+    /range/);
+  assert.throws(() => driverParamsFromJson(mutate((v) => { v.fcMap.entries.pop(); })),
+    /1765/);
+  assert.throws(() => driverParamsFromJson(mutate((v) => { v.fcMap.entries[0] = 0x10000; })),
+    /integer/);
+});
+
+test('W153: every one of 11 cues rehydrates, loads eight tracks, and executes live bytes', () => {
+  for (let cue = 0; cue < N_CUES; cue++) {
+    const seq = sequence(cue);
+    assert.equal(seq.tracks.length, N_BGM_TRACKS);
+    assert.ok(seq.tracks.every((track) => track.active));
+    const before = seq.tracks.map((track) => track.streamPos);
+    const armed = seq.tick();
+    assert.ok(armed >= 1, `cue ${cue} arms at least one live keyon`);
+    assert.ok(seq.tracks.some((track, i) => track.streamPos > before[i]));
+  }
+});
+
+test('W153: arbitrary cue bytes resolve descriptor/pitch and write exact registers', () => {
+  const seq = sequence(8);
+  assert.equal(seq.tick(), 7);
+  const track = seq.tracks[0];
+  const descriptor = PARAMS.bgm(6);
+  const voice = seq.engine.rf.voices[0];
+  assert.equal(track.raw[TOFF.note], 41);
+  assert.equal(get16(track, TOFF.basePeriod), PARAMS.pitch(descriptor.pitchBank, 41));
+  assert.equal(voice.u8(VOICE_REG.saddr), descriptor.r11);
+  assert.equal(voice.u16(0x0b), descriptor.r0B);
+  assert.equal(voice.u16(0x0a), descriptor.r0A);
+  assert.equal(voice.u16(VOICE_REG.oscEndLo), descriptor.r05);
+  assert.equal(voice.u16(VOICE_REG.oscEnd), descriptor.r04);
+  assert.equal(voice.u8(VOICE_REG.oscConf), descriptor.r00);
+  const level = ((descriptor.baseLevel * 0xeb) >>> 7) || 1;
+  assert.equal(voice.u16(0x09), PARAMS.volume(level));
+  assert.equal(voice.u16(VOICE_REG.fc), PARAMS.frequency(get16(track, TOFF.currentPeriod)));
+  for (let i = 0; i < 6; i++) seq.tick();
+  const period = Math.max(0x32, Math.min(0x716, get16(track, TOFF.currentPeriod)));
+  assert.equal(voice.u16(VOICE_REG.fc), PARAMS.frequency(period));
+});
+
+test('W153: state 9 reaches the exact split-address `$15B3` register arithmetic', () => {
+  const seq = sequence(); const track = seq.tracks[0];
+  seq.applyEvent(track, parseEvent([0xcf, 0x78, 0x2a, 0x07], 0));
+  set8(track, TOFF.evState2, 0x12);
+  applyStateHandler(9, track, seq);
+  assert.equal(track.raw[TOFF.modifier + 1], 0x12);
+  set16(track, TOFF.currentPeriod, get16(track, TOFF.targetPeriod));
+  set8(track, TOFF.fcDirty, 1); set8(track, TOFF.keyonArm, 1);
+  seq.engine.rf.regLog.length = 0; seq.emitTrack(track);
+  const descriptor = PARAMS.bgm(6); const voice = seq.engine.rf.voices[0];
+  assert.equal(voice.u16(0x0b), descriptor.r0B,
+    '`$1200 << 12` contributes zero to the low split word');
+  assert.equal(voice.u16(0x0a), (descriptor.r0A + 0x100) & 0xffff,
+    '`($1200 & $FFFFF000) >>> 4` contributes `$0100` to the high word');
+});
+
+test('W153: real type `$11/$12` streaming doors select stop/loop cue modes', () => {
+  const ram = new Ram();
+  const sound = new SoundState();
+  const chain = new SoundChain(PARAMS, SCORE_RUNTIME.cues);
+  assert.equal(postWrapper(ram, sound, 0x28cb60), true);
+  const stageClear = drainFrame(ram, sound, 100);
+  assert.equal(stageClear.type, 0x11);
+  assert.equal(stageClear.selector, 9);
+  chain.enqueueDoor(stageClear); chain.runMainLoop();
+  assert.equal(chain.sequencer.cueId, 9);
+  assert.equal(chain.sequencer.activeMode, -1, 'cmd $11 plays once');
+  assert.ok(chain.sequencer.tick() > 0, 'production stage-clear cue reaches keyon writes');
+
+  const loopSound = new SoundState();
+  assert.equal(postWrapper(ram, loopSound, 0x28cb38), true);
+  chain.enqueueDoor(drainFrame(ram, loopSound, 101)); chain.runMainLoop();
+  assert.equal(chain.sequencer.cueId, 7);
+  assert.equal(chain.sequencer.activeMode, 1, 'cmd $12 loops');
+  chain.enqueueDoor({ type: 0x15, pan: 0, id: 0, chan: 0 });
+  chain.runMainLoop();
+  assert.equal(chain.sequencer.cueActive, false, 'cmd $15 stops');
+});
+
+function parseOracleRows() {
+  const lines = readFileSync(join(ROOT, 'rip', 'sound', 'ics.tsv'), 'utf8')
+    .trim().split(/\r?\n/).slice(1);
+  return lines.map((line) => {
+    const c = line.split('\t');
+    const half = c[5] === 'sel' ? 0 : c[5] === 'lo' ? 1 : 2;
+    return (((Number(c[3]) & 0xff) << 24) | ((parseInt(c[4], 16) & 0xff) << 16)
+      | (half << 8) | parseInt(c[6], 16)) >>> 0;
+  });
 }
-// The keyon episode: the contiguous span [$4F/lo .. $10/hi=00] before the row.
-function oracleEpisode(rows, icsRow1) {
-  const ki = icsRow1 - 1;
-  let start = ki;
+
+function oracleEpisode(rows, row1) {
+  let start = row1 - 1;
   while (start > 0) {
     start--;
-    const e = unpack(rows[start]);
-    if (e.reg === 0x4F && e.half === 1) break;
+    const event = unpack(rows[start]);
+    if (event.reg === 0x4f && event.half === 1) break;
   }
-  return Array.from(rows.slice(start, ki + 1), (r) => r >>> 0);
+  return rows.slice(start, row1);
 }
-// Reconstruct a VoiceSlot from an episode's packed rows.
+
 function slotFromEpisode(episode) {
   const slot = new VoiceSlot();
-  const byReg = new Map();
-  for (const p of episode) {
-    const e = unpack(p);
-    if (e.half === 0) continue;
-    const cur = byReg.get(e.reg) || { lo: undefined, hi: undefined };
-    if (e.half === 1) cur.lo = e.data; else cur.hi = e.data;
-    byReg.set(e.reg, cur);
-    if (e.reg === 0x4F && e.half === 1) slot.icsVoice = e.data;
+  const regs = new Map();
+  for (const packed of episode) {
+    const event = unpack(packed);
+    if (event.half === 0) continue;
+    if (event.reg === 0x4f && event.half === 1) slot.icsVoice = event.data;
+    const value = regs.get(event.reg) ?? {};
+    value[event.half === 1 ? 'lo' : 'hi'] = event.data;
+    regs.set(event.reg, value);
   }
-  const u16 = (r) => { const c = byReg.get(r); return c ? ((c.hi ?? 0) << 8) | (c.lo ?? 0) : 0; };
-  const u8 = (r) => { const c = byReg.get(r); return c ? (c.hi ?? c.lo ?? 0) : 0; };
-  slot.fc = u16(0x01); slot.saddr = u8(0x11);
-  slot.r0B = u16(0x0B); slot.r0A = u16(0x0A);
-  slot.oscStrtLo = u16(0x03); slot.oscStrt = u16(0x02);
-  slot.oscEndLo = u16(0x05); slot.oscEnd = u16(0x04);
-  slot.pan = u8(0x0C); slot.r09 = u16(0x09); slot.oscConf = u8(0x00);
-  slot.hasLoop = byReg.has(0x02); slot.hasPan = byReg.has(0x0C); slot.hasR09 = byReg.has(0x09);
+  const word = (reg) => ((regs.get(reg)?.hi ?? 0) << 8) | (regs.get(reg)?.lo ?? 0);
+  const high = (reg) => regs.get(reg)?.hi ?? regs.get(reg)?.lo ?? 0;
+  slot.fc = word(1); slot.saddr = high(0x11); slot.r0B = word(0x0b); slot.r0A = word(0x0a);
+  slot.oscStrtLo = word(3); slot.oscStrt = word(2); slot.oscEndLo = word(5);
+  slot.oscEnd = word(4); slot.pan = high(0x0c); slot.r09 = word(9);
+  slot.oscConf = high(0); slot.hasLoop = regs.has(2); slot.hasPan = regs.has(0x0c);
+  slot.hasR09 = regs.has(9);
   return slot;
 }
 
-// =============================================================== the tests
-
-test('GREEN/RED: score-data fidelity -- the parser reproduces the ROM', () => {
-  const score = parseScore(ram());
-  assert.equal(score.cueCount, N_CUES, '11 cues ([[$62E2]] = [$0052] = $000B)');
-  assert.equal(score.cues.length, 11, '11 CueBlocks');
-  assert.equal(score.tableAddr, SCORE.cueTable, 'tableAddr = $0070');
-  // The verified cue-block addresses (the $0070 table, byte-for-byte).
-  const expected = [0xA600,0xA696,0xA6E2,0xA778,0xA80E,0xA87A,0xA954,0xA98C,0xB6D0,0xB7EC,0xBE90];
-  score.cues.forEach((c, i) =>
-    assert.equal(c.blockAddr, expected[i], `cue ${i} block address`));
-  // The headers: tracks always 8; rowlen = data[0].
-  score.cues.forEach((c) => assert.equal(c.tracks, N_BGM_TRACKS, `cue ${c.id} tracks=8`));
-  assert.equal(score.cues[8].rowlen, 1, 'cue 8 rowlen=1');
-  assert.equal(score.cues[7].rowlen, 8, 'cue 7 rowlen=8');
-  assert.equal(score.cues[10].rowlen, 12, 'cue 10 rowlen=12');
-  // cue 8 pointer table (the captured active cue).
-  const c8 = score.cues[8];
-  assert.deepEqual(c8.ptrTable,
-    [0xB6E6, 0xB6FD, 0xB713, 0xB752, 0xB788, 0xB7A9, 0xB7E4, 0xB7E9],
-    'cue 8 ptrTable (LE, the shared interleaved table)');
-  assert.equal(c8.ptrTableAddr, 0xB6D6, 'cue 8 ptrTableAddr = $B6D6');
-  assert.equal(c8.rowStreamAddr, 0xB6D4, 'cue 8 rowStreamAddr = $B6D4');
-  // cue 8 track 0 stream starts with the CF section marker.
-  assert.equal(c8.noteStreams[0][0], 0xCF, 'cue 8 track 0 begins with $CF');
-  // RED: a corrupted parse (wrong table addr) diverges.
-  const badRam = new Uint8Array(ram());
-  badRam[SCORE.cueTablePtr] = 0x00; badRam[SCORE.cueTablePtr + 1] = 0x40; // table -> $4000
-  const badScore = parseScore(badRam);
-  assert.notEqual(badScore.cues[0].blockAddr, 0xA600, 'RED: wrong table -> wrong block addr');
-  // RESTORE.
-  assert.equal(score.cues[0].blockAddr, 0xA600, 'RESTORE: re-green');
-  // the JSON form round-trips the structural fields.
-  const json = scoreToJson(score);
-  assert.equal(json.nCues, 11, 'json nCues');
-  assert.equal(json.cues[8].ptrTable.length, 8, 'json cue 8 ptrTable');
-});
-
-test('GREEN/RED: loadCue reproduces the captured runtime state for cue 8', () => {
-  const score = parseScore(ram());
+test('W153 secondary validation: historical 979 BGM keyon episodes remain exact', () => {
+  const rows = parseOracleRows();
+  const keyons = readFileSync(join(ROOT, 'rip', 'sound', 'keyon.tsv'), 'utf8')
+    .trim().split(/\r?\n/).slice(1).map((line) => line.split('\t'))
+    .filter((c) => c[4] === '08' || c[4] === '00');
+  assert.equal(keyons.length, 979);
   const engine = new VoiceEngine(new IcsRegisterFile());
-  const seq = new BgmSequencer(engine, score.cues);
-  // The captured dump (worklog 147 sec 0): cue 8 active, $62DA=6, $62D2=0,
-  // $62DB=$B6D4, $62DD=$B6D6, selector=rowStream[0], 8 tracks voice=t.
-  assert.equal(seq.loadCue(8, 0xEB), true, 'cue 8 loads');
-  assert.equal(seq.cueActive, true, '$6181 armed');
-  assert.equal(seq.tempoDiv, BGM.TEMPO_DIV, '$62DA = 6');
-  assert.equal(seq.colIndex, 0, '$62D2 = 0');
-  assert.equal(seq.selector, score.cues[8].rowStream[0], '$62D3 = rowStream[0]');
-  assert.equal(seq.rowLen, 1, '$62E1 = 1');
-  assert.equal(seq.flag, 0xEB, '$6182 = pan (flag)');
-  // the 8 tracks: voice=t, ptrTableBase = $B6D6 + t*2.
-  seq.tracks.forEach((tr, t) => {
-    assert.equal(tr.voice, t, `track ${t} voice`);
-    assert.equal(tr.ptrTableBase, 0xB6D6 + t * 2, `track ${t} ptrTableBase`);
-    assert.equal(tr.active, true, `track ${t} active`);
-  });
-  // RED: out-of-range cue id is rejected.
-  const seq2 = new BgmSequencer(engine, score.cues);
-  assert.equal(seq2.loadCue(11), false, 'RED: cue 11 out of range (count=11)');
-  assert.equal(seq2.cueActive, false, 'RED: cue not armed');
-  assert.equal(seq2.loadCue(-1), false, 'RED: negative cue id rejected');
-  // RESTORE.
-  assert.equal(seq2.loadCue(8), true, 'RESTORE: cue 8 loads');
-  assert.equal(seq2.cueActive, true, 'RESTORE: armed');
-});
-
-test('GREEN: the note-event grammar decode -- the top-2-bits switch + the NOTE triple', () => {
-  const score = parseScore(ram());
-  const c8 = score.cues[8];
-  // eventFamily: the 4 families.
-  assert.equal(eventFamily(0x07), EV_FAMILY.NOTE, '$07 -> NOTE family');
-  assert.equal(eventFamily(0x47), EV_FAMILY.NOTE2, '$47 -> NOTE2 family');
-  assert.equal(eventFamily(0x87), EV_FAMILY.CMD80, '$87 -> CMD80 family');
-  assert.equal(eventFamily(0xCF), EV_FAMILY.CMDC0, '$CF -> CMDC0 family');
-  // parseEvent on cue 8 track 0: $CF section, then $07 $04 $AA (NOTE).
-  const ev0 = parseEvent(c8.noteStreams[0], 0);
-  assert.equal(ev0.family, EV_FAMILY.CMDC0, 'first event is $CF section');
-  assert.equal(ev0.kind, 'section', '$CF section marker');
-  const ev1 = parseEvent(c8.noteStreams[0], ev0.next);
-  assert.equal(ev1.family, EV_FAMILY.NOTE, 'second event is a NOTE');
-  assert.equal(ev1.note, 0x07 & 0x3F, 'note index = $07');
-  assert.equal(ev1.dur, 0x04, 'dur = $04');
-  assert.equal(ev1.vel, 0xAA, 'vel = $AA');
-  assert.equal(ev1.next, 6, 'NOTE consumes 3 bytes');
-  // the NOTE triple is the dominant event across the score (the recon's claim).
-  let notes = 0, total = 0;
-  for (const c of score.cues) for (const s of c.noteStreams) {
-    let pos = 0;
-    while (pos < s.length) { const e = parseEvent(s, pos); if (!e) break;
-      if (e.family === EV_FAMILY.NOTE) notes++; total++; pos = e.next; }
+  let matched = 0;
+  let firstMismatch = null;
+  for (const keyon of keyons) {
+    const episode = oracleEpisode(rows, Number(keyon[15]));
+    const slot = slotFromEpisode(episode);
+    engine.rf.regLog.length = 0;
+    engine.emitKeyon(slot);
+    // `regLog[0]` is the local register-select write; capture rows begin at the
+    // following `$4F` low-lane voice select.
+    const emitted = engine.rf.regLog.slice(1).map((value) => value >>> 0);
+    if (emitted.length === episode.length
+      && emitted.every((value, i) => value === episode[i])) matched++;
+    else if (!firstMismatch) {
+      const index = emitted.findIndex((value, i) => value !== episode[i]);
+      firstMismatch = { emittedLength: emitted.length, episodeLength: episode.length,
+        index, emitted: unpack(emitted[index] ?? 0), expected: unpack(episode[index] ?? 0) };
+    }
   }
-  assert.ok(notes > 0, 'NOTE events present in the score');
-  // the $CF section markers: 27 across the score (W145 sec 2).
-  let cf = 0;
-  for (const c of score.cues) cf += countSectionMarkers(c);
-  assert.ok(cf > 0, '$CF markers present');
+  assert.equal(matched, 979, `test-only register emitter validation, not production parameters; ${JSON.stringify(firstMismatch)}`);
 });
 
-test('GREEN: the scheduler mechanics -- tempo gate, row advance, track walk', () => {
-  const score = parseScore(ram());
-  const seq = new BgmSequencer(new VoiceEngine(new IcsRegisterFile()), score.cues);
-  seq.loadCue(7, 0);   // cue 7 (rowlen=8) exercises the row advance
-  assert.equal(seq.cueActive, true, 'cue 7 active');
-  assert.equal(seq.rowLen, 8, 'cue 7 rowlen=8');
-  assert.equal(seq.selector, 0, 'selector = rowStream[0] = 0');
-  // tempo gate: the first 5 ticks are no-ops (count < 6); the 6th advances.
-  for (let i = 0; i < 5; i++) assert.equal(seq.tick(), 0, `tick ${i}: tempo gate holds`);
-  // 6th tick: tempoCount resets, the row advance fires (colIndex 0->1).
-  // (note: cue 7's live note-event emission is the grammar TODO; tick is
-  // structurally faithful but emits 0 keyons until the grammar lands.)
-  assert.equal(seq.cueActive, true, 'still active after the 6th tick');
-  // stop() disarms.
-  seq.stop();
-  assert.equal(seq.cueActive, false, 'stop disarms');
-  assert.equal(seq.tick(), 0, 'inert after stop');
+test('W153: production BGM has no parser/history/oracle parameter dependency', () => {
+  const sequencer = readFileSync(join(ROOT, 'src', 'sequencer.js'), 'utf8');
+  const dispatch = readFileSync(join(ROOT, 'src', 'dispatch.js'), 'utf8');
+  assert.doesNotMatch(sequencer + dispatch,
+    /parseScore\(|after_door|keyon\.tsv|ics\.tsv|slotFromEpisode/);
+  assert.deepEqual(driverParamsToJson(Z80), PARAM_JSON);
+  assert.ok(SCORE_RUNTIME.cues.every((cue) => Object.isFrozen(cue)));
 });
-
-test('CENTREPIECE GREEN/RED/RESTORE: the 979 BGM keyons reproduce row-for-row',
-  { skip: SKIP }, () => {
-    const rows = parseOracle();
-    const keyons = parseKeyon();
-    const doors = parseMailbox();
-    const score = parseScore(ram());
-
-    const bgm = keyons.filter((k) => k.conf === 0x08 || k.conf === 0x00);
-    assert.equal(bgm.length, 979, '979 BGM keyons (OscConf $08/$00)');
-
-    // Build ONE chain with the parsed cues; load cue 8 once via the FULL
-    // mailbox -> dispatch path (door 6, cmd $12). Each BGM keyon is then armed
-    // via the sequencer's fireKeyon (the `$25F2` -> `$62EC` arm) and emitted by
-    // the Layer 2 engine tick, the same chain the scheduler uses.
-    const chain = new SoundChain(null, score.cues);
-    const door6 = doors.get(6);
-    assert.equal(door6.type, 0x12, 'door 6 is cmd $12 (the cue-load door)');
-    chain.enqueueDoor(decodeDoor(door6));
-    chain.runMainLoop();
-    assert.equal(chain.sequencer.cueActive, true, 'the dispatcher loaded the cue');
-    assert.equal(chain.sequencer.cueId, 0, 'cmd $12 door 6 -> cue (id from payload)');
-
-    // Some captures route door 6's payload id=$00 -> cue 0. The captured cue is
-    // 8 (worklog 147 sec 0); force-load cue 8 to match the dump, so the
-    // sequencer's track state is the captured one.
-    chain.sequencer.loadCue(8, door6.pan);
-
-    // GREEN: drive each BGM keyon through the full emission path.
-    let matched = 0;
-    let firstMismatch = null;
-    for (const k of bgm) {
-      const oracleEp = oracleEpisode(rows, k.ics_row);
-      const params = slotFromEpisode(oracleEp);
-      // reset the register log + every voice slot to idle, so only this keyon's
-      // freshly-armed slot emits during the engine tick (no lingering SUSTAIN
-      // refresh from the previous keyon polluting the episode).
-      chain.rf.regLog.length = 0;
-      chain.rf.resetFrame();
-      for (const sl of chain.engine.voices) { sl.state = 0; sl.oscEnded = false; }
-      chain.sequencer.tracks[k.voice].voice = k.voice;
-      chain.sequencer.fireKeyon(k.voice, params);
-      chain.engine.tick();
-      const emitted = chain.rf.regLog.slice(1).map((r) => r >>> 0);
-      let mm = -1;
-      for (let i = 0; i < emitted.length; i++) {
-        if (emitted[i] !== oracleEp[i]) { mm = i; break; }
-      }
-      if (mm < 0) matched++;
-      else if (!firstMismatch) {
-        firstMismatch = { k, mm, got: unpack(emitted[mm]), want: unpack(oracleEp[mm]) };
-      }
-    }
-    assert.equal(matched, 979,
-      `GREEN: 979/979 BGM keyons reproduce row-for-row (matched ${matched}`
-      + (firstMismatch ? `; first mismatch keyon n=${firstMismatch.k.n} at row ${firstMismatch.mm}: `
-        + `got=${JSON.stringify(firstMismatch.got)} want=${JSON.stringify(firstMismatch.want)})` : ''));
-
-    // RED 1: the SEQUENCER DROPPED (no cues -> the dispatcher logs cmd $12 but
-    // cannot load a cue) -> no BGM keyons can fire.
-    const chainDrop = new SoundChain(null, null);
-    assert.equal(chainDrop.sequencer, null, 'no sequencer without cues');
-    chainDrop.enqueueDoor(decodeDoor(door6));
-    chainDrop.runMainLoop();
-    const dropLog = chainDrop.loop.dispatched.find((d) => d.cmd === 0x12);
-    assert.ok(dropLog, 'cmd $12 was dispatched');
-    assert.ok(dropLog.route === ROUTE.SEQUENCER, 'cmd $12 still routed SEQUENCER');
-    assert.ok(chainDrop.sequencer === null, 'RED: no cue loaded -> sequencer inert');
-
-    // RED 2: the note-resolved params corrupted (wrong fc) -> the $01 writes
-    // diverge from the oracle.
-    const k0 = bgm[0];
-    const oracleEp0 = oracleEpisode(rows, k0.ics_row);
-    const badParams = Object.assign(new VoiceSlot(), slotFromEpisode(oracleEp0), { fc: 0xFFFF });
-    for (const sl of chain.engine.voices) { sl.state = 0; sl.oscEnded = false; }
-    chain.rf.regLog.length = 0; chain.rf.resetFrame();
-    chain.sequencer.fireKeyon(k0.voice, badParams);
-    chain.engine.tick();
-    const emittedBad = chain.rf.regLog.slice(1).map((r) => r >>> 0);
-    let badMm = -1;
-    for (let i = 0; i < emittedBad.length; i++) {
-      if (emittedBad[i] !== oracleEp0[i]) { badMm = i; break; }
-    }
-    assert.ok(badMm >= 0, 'RED: corrupted fc diverges the emitted writes');
-    assert.equal(unpack(emittedBad[badMm]).reg, 0x01, 'RED: divergence at the $01 fc write');
-
-    // RED 3: the DISPATCHER mis-routes (cmd $12 -> NOTE_ON) -> the cue never
-    // loads, the SFX path fires instead. (Modeled by checking cmdRoute: cmd $12
-    // MUST be SEQUENCER, not NOTE_ON.)
-    assert.equal(cmdRoute(0x12), ROUTE.SEQUENCER,
-      'the dispatcher routes cmd $12 to the sequencer; mis-routing it would drop the cue load');
-    assert.notEqual(cmdRoute(0x12), ROUTE.NOTE_ON,
-      'RED: cmd $12 must NOT route to the SFX note-on path');
-
-    // RESTORE: re-run the correct chain for keyon 0 -> re-green.
-    for (const sl of chain.engine.voices) { sl.state = 0; sl.oscEnded = false; }
-    chain.rf.regLog.length = 0; chain.rf.resetFrame();
-    chain.sequencer.fireKeyon(k0.voice, slotFromEpisode(oracleEp0));
-    chain.engine.tick();
-    const emittedRest = chain.rf.regLog.slice(1).map((r) => r >>> 0);
-    let restMm = -1;
-    for (let i = 0; i < emittedRest.length; i++) {
-      if (emittedRest[i] !== oracleEp0[i]) { restMm = i; break; }
-    }
-    assert.equal(restMm, -1, 'RESTORE: the correct chain re-greens');
-  });
-
-test('SCORE -> PARAM LINK: cue 8 resolves the BGM param signatures + the fc values',
-  { skip: SKIP }, () => {
-    const score = parseScore(ram());
-    const keyons = parseKeyon();
-    const bgm = keyons.filter((k) => k.conf === 0x08 || k.conf === 0x00);
-    // The oracle's distinct BGM (saddr, pan) signatures.
-    const oracleSaddr = new Set(bgm.map((k) => k.saddr));
-    const oraclePan = new Set(bgm.map((k) => k.pan));
-    assert.ok(oracleSaddr.has(0x45) && oracleSaddr.has(0x46), 'saddr $45/$46 in oracle');
-    assert.deepEqual([...oraclePan], [0x7F], 'pan is always $7F');
-    // The score's note streams contain the NOTE-event indices; the 7 fc values
-    // the oracle shows are the note-index -> fc table's output. The parsed
-    // streams carry the raw note indices that resolve to those fc values.
-    const c8 = score.cues[8];
-    const notes = new Set();
-    for (const s of c8.noteStreams) {
-      let pos = 0;
-      while (pos < s.length) {
-        const e = parseEvent(s, pos);
-        if (!e) break;
-        if (e.family === EV_FAMILY.NOTE) notes.add(e.note);
-        pos = e.next;
-      }
-    }
-    assert.ok(notes.size > 0, 'cue 8 has NOTE events with distinct note indices');
-    // The oracle's 7 fc values are the full note -> fc range; the score's note
-    // indices are the INPUT to that table (the table itself is the grammar
-    // TODO). Verify the inputs are bounded (small indices, the recon's claim).
-    const maxNote = Math.max(...notes);
-    assert.ok(maxNote < 0x40, 'note indices are < $40 (the $00-$3F family)');
-    // The full BGM fc set the oracle shows.
-    const oracleFc = new Set(bgm.map((k) => k.fc));
-    assert.equal(oracleFc.size, 7, '7 distinct fc values in the BGM corpus');
-    assert.deepEqual([...oracleFc].sort((a, b) => a - b),
-      [0x0000, 0x0100, 0x0200, 0x0300, 0x0400, 0x0600, 0x0700],
-      'the 7 BGM fc values');
-  });
-
-test('LEGACY ORACLE INVENTORY: 1620 keyons, without temporal-door causality claims',
-  { skip: SKIP }, () => {
-    const keyons = parseKeyon();
-    assert.equal(keyons.length, 1620, '1620 keyons total');
-    const sfx = keyons.filter((k) => k.conf === 0x20).length;
-    const bgm = keyons.filter((k) => k.conf === 0x08 || k.conf === 0x00).length;
-    assert.equal(sfx, 641, '641 SFX keyons (OscConf $20)');
-    assert.equal(bgm, 979, '979 BGM keyons (OscConf $08/$00)');
-    // W150 invalidated the old `after_door` causality and cmd-$0F note-on
-    // interpretation. Keep the corpus counts as test-only inventory, not as a
-    // production-coverage claim.
-    const todo = {
-      cmd0F: 'cmd $0F is selector-matched release; nearby keyons are not caused by it.',
-      cmd15_1sfx: 'the keyon near cmd $15 is not attributed without driver timing.',
-      noDoor: 'pre-gameplay SFX need a live producer timeline.',
-      grammar: 'the live note-event grammar (note-index -> fc, the $80/$C0 cmds): '
-            + 'the centrepiece reconstructs fc from the oracle; the live score '
-            + 'resolution lands with the W147 sec 4 grammar TODO.',
-      timeline: 'the BGM keyon timeline alignment (the tempo/lf->vf warp): C8.',
-    };
-    assert.equal(Object.keys(todo).length, 5, 'five named Layer 2/runtime refusals remain');
-    // The chain wires the BGM sequencer when cues are provided.
-    const score = parseScore(ram());
-    const chain = new SoundChain(null, score.cues);
-    assert.ok(chain.sequencer instanceof BgmSequencer, 'Layer 3: BgmSequencer wired');
-    assert.equal(cmdRoute(0x12), ROUTE.SEQUENCER, 'cmd $12 -> sequencer');
-    assert.equal(cmdRoute(0x11), ROUTE.SEQUENCER, 'cmd $11 -> sequencer');
-    assert.equal(cmdRoute(0x15), ROUTE.SEQUENCER, 'cmd $15 -> sequencer (stop)');
-  });

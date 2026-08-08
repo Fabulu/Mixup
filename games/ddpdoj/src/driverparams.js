@@ -8,6 +8,8 @@ export const DRIVER_PARAMS = Object.freeze({
   version: 1,
   sfxBase: 0x7600, sfxStride: 12, sfxCount: 69,
   bgmBase: 0x6840, bgmStride: 22, bgmCount: 160,
+  fcMapBase: 0x4439, fcMapStride: 2, fcMapMin: 0x32, fcMapMax: 0x716,
+  fcMapCount: 0x716 - 0x32 + 1,
   pitchBase: 0x5203, pitchStride: 0x78, pitchBanks: 16, pitchNotes: 60,
   panBase: 0x5987, panCount: 16,
   volumeBase: 0x5997, volumeCount: 256,
@@ -84,10 +86,14 @@ export function driverParamsToJson(bytes) {
     for (let note = 0; note < C.pitchNotes; note++) row.push(le16(bytes, p + note * 2));
     banks.push(row);
   }
+  const fcMap = Array.from({ length: C.fcMapCount }, (_, i) =>
+    le16(bytes, C.fcMapBase + i * C.fcMapStride));
   return {
     version: C.version,
     sfx: { base: C.sfxBase, stride: C.sfxStride, entries: sfx },
     bgm: { base: C.bgmBase, stride: C.bgmStride, entries: bgm },
+    fcMap: { base: C.fcMapBase, stride: C.fcMapStride,
+      min: C.fcMapMin, max: C.fcMapMax, entries: fcMap },
     pitch: { base: C.pitchBase, stride: C.pitchStride, banks },
     control: {
       pan: { base: C.panBase, entries: Array.from(bytes.subarray(C.panBase,
@@ -102,9 +108,10 @@ function freezeRecord(record) { return Object.freeze(record); }
 
 /** Validated, immutable selector-indexed access to the transformed tables. */
 export class DriverParams {
-  constructor(sfx, bgm, pitch, pan, volume) {
+  constructor(sfx, bgm, fcMap, pitch, pan, volume) {
     this.sfxEntries = Object.freeze(sfx);
     this.bgmEntries = Object.freeze(bgm);
+    this.fcMapEntries = Object.freeze(fcMap);
     this.pitchBanks = Object.freeze(pitch);
     this.panEntries = Object.freeze(pan);
     this.volumeEntries = Object.freeze(volume);
@@ -119,6 +126,12 @@ export class DriverParams {
   bgm(index) {
     integer('BGM descriptor', index, 0, DRIVER_PARAMS.bgmCount - 1);
     return this.bgmEntries[index];
+  }
+
+  frequency(period) {
+    integer('frequency-map period', period, DRIVER_PARAMS.fcMapMin,
+      DRIVER_PARAMS.fcMapMax);
+    return this.fcMapEntries[period - DRIVER_PARAMS.fcMapMin];
   }
 
   pitch(bank, note) {
@@ -149,6 +162,10 @@ export function driverParamsFromJson(input) {
   }
   metadata('sfx', json.sfx, C.sfxBase, C.sfxStride, C.sfxCount);
   metadata('bgm', json.bgm, C.bgmBase, C.bgmStride, C.bgmCount);
+  metadata('fcMap', json.fcMap, C.fcMapBase, C.fcMapStride, C.fcMapCount);
+  if (json.fcMap.min !== C.fcMapMin || json.fcMap.max !== C.fcMapMax) {
+    throw new RangeError('driver params: frequency map range mismatch');
+  }
   object('pitch', json.pitch);
   if (json.pitch.base !== C.pitchBase || json.pitch.stride !== C.pitchStride) {
     throw new RangeError('driver params: pitch base/stride mismatch');
@@ -187,6 +204,8 @@ export function driverParamsFromJson(input) {
       raw20: word(`bgm[${i}].raw20`, raw.raw20),
     });
   });
+  const fcMap = json.fcMap.entries.map((value, i) =>
+    word(`fcMap[${i}]`, value));
   const pitch = json.pitch.banks.map((raw, bank) => Object.freeze(
     array(`pitch.banks[${bank}]`, raw, C.pitchNotes)
       .map((value, note) => word(`pitch[${bank}][${note}]`, value))));
@@ -194,5 +213,5 @@ export function driverParamsFromJson(input) {
     .map((value, i) => byte(`control.pan[${i}]`, value));
   const volume = array('control.volume.entries', json.control.volume.entries,
     C.volumeCount).map((value, i) => word(`control.volume[${i}]`, value));
-  return new DriverParams(sfx, bgm, pitch, pan, volume);
+  return new DriverParams(sfx, bgm, fcMap, pitch, pan, volume);
 }

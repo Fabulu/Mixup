@@ -243,7 +243,7 @@ export class MainLoop {
       }
     } else if (route === ROUTE.SEQUENCER && this.sequencer) {
       if (cmd === 0x15) this.sequencer.stop();
-      else this.sequencer.loadCue(message.selector, cmd === 0x12 ? message.pan : 0);
+      else this.sequencer.loadCue(message.selector, message.pan, cmd === 0x12);
     }
     this.dispatched.push({ cmd, handler, route, message, armed, affected, payload });
     return armed;
@@ -259,7 +259,7 @@ export class SoundChain {
     this.queue = new MailboxQueue();
     this.inote = new ImmediateNoteOn(driverParams);
     this.controls = new SelectorControl(driverParams);
-    this.sequencer = cues ? new BgmSequencer(this.engine, cues) : null;
+    this.sequencer = cues ? new BgmSequencer(this.engine, cues, driverParams) : null;
     this.loop = new MainLoop(this.queue, this.inote, this.controls, this.sequencer);
     this.driverParams = driverParams;
     this.cues = cues;
