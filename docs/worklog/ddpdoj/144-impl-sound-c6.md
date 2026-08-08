@@ -2,6 +2,15 @@
 
 status: DONE   role: implementer   wave: W27 sound, Wave C depth (TODO 1a)   owns: games/ddpdoj/src/
 
+> **W150 correction:** The `$6001` queue element is four bytes, not six.
+> `DE=$0006` at `$080B` is the banked source offset `$C10006`; `$3BEA` obtains
+> the actual copy size, 4, from queue header `+$08`. The 10-bit selector is
+> already packed into byte 2 plus bits 1..0 of byte 3 by `$28BB04`; byte 3 bits
+> 7..2 carry the channel. Also, cmd `$0F` calls `$34FB` to stop/release every
+> active slot matching that selector. It is not a note-on variant. The
+> `after_door` keyon association used below is noncausal historical proximity
+> and must not be used as a production parameter source. See W150.
+
 Wave C depth, sub-wave C6 of the W27 sound port (143-recon-c-depth.md
 section C6 / TODO 1a). The single deliverable: the ported Z80 MAIN-LOOP
 dispatcher (`$0321` poll / `$3CDD` dequeue / `$41D0` switch over the 15-command

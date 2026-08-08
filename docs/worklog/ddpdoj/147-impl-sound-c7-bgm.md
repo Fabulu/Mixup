@@ -2,6 +2,14 @@
 
 status: DONE   role: implementer   wave: W27 sound, Wave C7 (TODO 1b)   owns: games/ddpdoj/src/
 
+> **W150 correction:** Refinement 2 below decoded the event grammar one byte
+> out of phase. `$00-$3F` is a one-byte wait, not a note triple. `$CF` begins a
+> four-byte combined state/parameter/note/descriptor event, not a three-byte
+> section marker. `$80-$BF` is the two-byte note plus optional descriptor
+> family. `$40-$7F` is two-byte state/parameter. The `$C0-$FF` subfamilies are
+> three or four bytes as decoded in W150. Current `parseEvent()` therefore
+> cannot be treated as live framing evidence.
+
 Wave C7 of the W27 sound port (135-sound-architect-plan.md section 2; the C7
 recon is 145-recon-c7-bgm.md). The single deliverable: the BGM SEQUENCER --
 the `$2E38` cue loader + the `$25F2` per-tick scheduler -- fed by the PARSED
