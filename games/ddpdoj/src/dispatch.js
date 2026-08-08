@@ -33,6 +33,7 @@
 import { Z80_BANK } from './z80.js';
 import { IcsRegisterFile, N_VOICES } from './ics.js';
 import { VoiceEngine, ENGINE } from './voice.js';
+import { BgmSequencer } from './sequencer.js';
 
 // --------------------------------------------------------------- the driver map
 // NMI-ingress addresses (W142), cited from z80.js (the Wave B listing) by symbol
@@ -79,14 +80,14 @@ export const COMMAND_TABLE = Object.freeze(new Map([
 // The command-route families (which handler family each cmd targets).
 export const ROUTE = {
   NOTE_ON:    'noteOn',     // cmd $00/$01/$02 -> $3245 (C6)
-  SEQUENCER:  'sequencer',  // cmd $11/$12 -> $2E38 (C7)
+  SEQUENCER:  'sequencer',  // cmd $11/$12 -> $2E38 load (C7); $15 -> $2D9B stop
   OTHER:      'other',      // remaining cmds (deferred)
 };
 
 /** The route family for a command opcode (the family the $41D0 switch arms). */
 export function cmdRoute(cmd) {
   if (cmd === 0x00 || cmd === 0x01 || cmd === 0x02) return ROUTE.NOTE_ON;
-  if (cmd === 0x11 || cmd === 0x12) return ROUTE.SEQUENCER;
+  if (cmd === 0x11 || cmd === 0x12 || cmd === 0x15) return ROUTE.SEQUENCER;
   return ROUTE.OTHER;
 }
 
@@ -269,14 +270,16 @@ export class ImmediateNoteOn {
 /**
  * The $0321 main-loop dispatcher. Polls the MailboxQueue ($3BB5), dequeues one
  * message ($3CDD), dispatches via the COMMAND_TABLE ($41D0 switch). Routes cmd
- * $00/$01/$02 to ImmediateNoteOn; cmd $11/$12 to the (stubbed) sequencer; other
- * cmds are logged for the deferred TODOs. `run()` drains the queue completely
- * (the $0321 loop until poll returns empty).
+ * $00/$01/$02 to ImmediateNoteOn; cmd $11/$12 to the BGM sequencer's loadCue
+ * (`$2E38`) and cmd $15 to its stop (`$2D9B`); other cmds are logged for the
+ * deferred TODOs. `run()` drains the queue completely (the $0321 loop until
+ * poll returns empty).
  */
 export class MainLoop {
-  constructor(queue, immediateNoteOn) {
+  constructor(queue, immediateNoteOn, sequencer = null) {
     this.queue = queue;
     this.inote = immediateNoteOn;
+    this.sequencer = sequencer;   // the BgmSequencer (C7); null in the SFX-only chain
     /** Log of every dispatched message: {cmd, handler, route, message, armed}. */
     this.dispatched = [];
   }
@@ -309,7 +312,20 @@ export class MainLoop {
     if (route === ROUTE.NOTE_ON) {
       const slots = this.inote.handle(message, engine, assignVoice);
       armed = slots.length;
-    }   // SEQUENCER ($2E38) and OTHER cmds: stubbed (C7 TODO)
+    } else if (route === ROUTE.SEQUENCER && this.sequencer) {
+      // cmd $11/$12 -> `$2E38(cue_id, arg, flag)` (load); cmd $15 -> `$2D9B` (stop).
+      if (cmd === 0x15) {
+        this.sequencer.stop();
+      } else {
+        // cmd $11 carries flag $00; cmd $12 carries flag $01 (the pan byte ->
+        // `$6182`). The cue_id comes from the payload (the `id` byte here, as
+        // the dedup mailbox captures it; the full 6-byte payload's cue index is
+        // a C7-dep TODO -- the runtime capture used cue 8).
+        const cueId = message.cueId ?? message.id ?? 0;
+        const flag = cmd === 0x12 ? (message.pan ?? 1) : 0;
+        this.sequencer.loadCue(cueId, flag);
+      }
+    }   // OTHER cmds: stubbed (deferred TODOs)
     this.dispatched.push({ cmd, handler, route, message, armed });
     return armed;
   }
@@ -320,23 +336,29 @@ export class MainLoop {
  * The full-chain harness: NMI ingress -> main-loop dispatch -> Layer 2 ->
  * Layer 1. `enqueueDoor` is the $07F6 NMI ingress (bank-select + decode +
  * enqueue to the MailboxQueue); `runMainLoop` is the $0321 dispatch loop;
- * `tick` is the Layer 2 per-frame walk. The injected paramsProvider of W142 is
- * GONE: the SfxParamTable + the real dispatcher replace it.
+ * `tick` is the Layer 2 per-frame walk (and, when a BGM cue is loaded, the
+ * `$25F2` scheduler tick). The injected paramsProvider of W142 is GONE: the
+ * SfxParamTable + the real dispatcher replace it; the BgmSequencer (C7) adds
+ * the BGM half of Layer 3.
  */
 export class SoundChain {
   /**
    * @param sfxParams the SfxParamTable (door -> param-sets). Defaults empty; the
    *   test harness builds it from the oracle (buildSfxParamTable).
+   * @param cues the parsed BGM score cues (from `parseScore`, C7). When
+   *   provided, a BgmSequencer is wired into the MainLoop's ROUTE.SEQUENCER.
    */
-  constructor(sfxParams = new SfxParamTable()) {
+  constructor(sfxParams = new SfxParamTable(), cues = null) {
     this.rf = new IcsRegisterFile();
     this.engine = new VoiceEngine(this.rf);
     this.state = new DispatchState();
     this.chan = new ChannelManager();
     this.queue = new MailboxQueue();
     this.inote = new ImmediateNoteOn(sfxParams);
-    this.loop = new MainLoop(this.queue, this.inote);
+    this.sequencer = cues ? new BgmSequencer(this.engine, cues) : null;
+    this.loop = new MainLoop(this.queue, this.inote, this.sequencer);
     this.sfxParams = sfxParams;
+    this.cues = cues;
     this.doorCount = 0;
     this.keyonCount = 0;
   }
@@ -377,9 +399,15 @@ export class SoundChain {
     return armed;
   }
 
-  /** Layer 2 per-tick walk (the INT handler's timer-0 -> $376C path). */
+  /**
+   * Layer 2 per-tick walk (the INT handler's timer-0 -> `$376C` path). When a
+   * BGM cue is loaded, also advances the `$25F2` BGM scheduler (C7) BEFORE the
+   * engine walk, so the keyons the scheduler arms this tick are emitted by the
+   * same engine pass.
+   */
   tick() {
     this.rf.resetFrame();
+    if (this.sequencer) this.sequencer.tick();
     this.engine.tick();
   }
 }

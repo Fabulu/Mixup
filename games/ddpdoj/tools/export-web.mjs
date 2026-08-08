@@ -111,6 +111,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 // W86: the art harvest for the background elements is derived from the PORT's
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
+import { parseScore, scoreToJson } from '../src/bgmscore.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GAME = path.resolve(HERE, '..');
@@ -2453,6 +2454,34 @@ if (SPR_ORDER.length !== SPR_SHARDS.length
     fragments: index,
   })));
 }
+
+// WAVE 27C7 (SOUND) -- THE BGM SCORE DATA. The ~7.2 KB score blob is resident
+// in the uploaded Z80 image (z80ram.bin), NOT runtime-paged (W145 sec 0). This
+// step PARSES it -- walks the cue table at `$0070`, the 11 per-cue blocks, the
+// row/selector streams, the shared 8-entry pointer tables and the note-event
+// streams -- and ships the JS structure, not the raw bytes. That is a
+// transformation (cues -> tracks -> events), so the verbatim-art guard accepts
+// it with no new exception (W145 sec 7 option (a)). DEFERRED like the sample
+// shard: the BGM synth (the live note-event grammar, W147 sec 4) is not yet
+// wired into the page's first paint, so this is fetched on demand.
+{
+  const z80Path = path.join(RIP, 'sound', 'z80ram.bin');
+  if (!fs.existsSync(z80Path)) {
+    throw new Error(`${z80Path} is missing. Run: python games/ddpdoj/tools/oracle/pgm.py sound`);
+  }
+  const z80ram = new Uint8Array(fs.readFileSync(z80Path));
+  const score = parseScore(z80ram);
+  const json = scoreToJson(score);
+  json.note = 'WAVE 27C7 BGM score. The parsed cue blocks resident in the '
+    + 'uploaded Z80 image (the 68k writes the full 64 KiB through `$C10000` at '
+    + 'sound-boot). Each cue carries its header (rowlen/tracks), the row/'
+    + 'selector stream, the shared 8-entry LE pointer table and the per-track '
+    + 'note-event bytes (hex). The note-event grammar: the event byte\'s top 2 '
+    + 'bits select a handler (`$00`=NOTE `[note][dur][vel]`, `$C0`=cmd, the '
+    + '`$CF` section marker). A transformation of z80ram.bin, not a verbatim '
+    + 'slice -- the guard passes.';
+  put('snd/bgm-score.json', new TextEncoder().encode(JSON.stringify(json)));
+}
 put('capture.bin', outBin);
 put('seed.bin', seed);
 // WAVE 14.  These two were the last uncompressed bodies in the bundle -- 121 KB
@@ -2731,7 +2760,10 @@ const manifest = {
   // this only points at the two files and records the count.
   sound: { shard: 'snd/sample.shard.u8.gz', index: 'snd/sample.index.json.gz',
            rom: SOUND.rom, icsBase: SOUND.icsBase, fragments: 28,
-           shardBytes: SOUND.fragments, deferred: true },
+           shardBytes: SOUND.fragments, deferred: true,
+           // WAVE 27C7: the parsed BGM score (cues -> tracks -> note events).
+           // DEFERRED like the sample shard; fetched when the BGM synth needs it.
+           bgmScore: 'snd/bgm-score.json.gz' },
   romsUsed: [...IGS023_LAYOUT, ...SPRCOL_LAYOUT, ...SPRMASK_LAYOUT]
     .map(([n]) => n).concat(SOUND.rom),
 };
@@ -2785,6 +2817,9 @@ for (const [i] of SPR_SHARDS) {
 // them out of boot holds the line on the owner's "boot must not get slower".
 DEFERRED.add('snd/sample.shard.u8.gz');
 DEFERRED.add('snd/sample.index.json.gz');
+// WAVE 27C7 (SOUND): the parsed BGM score. DEFERRED -- the live note-event
+// grammar (W147 sec 4) is not yet wired into first paint.
+DEFERRED.add('snd/bgm-score.json.gz');
 
 let total = 0, boot = 0;
 for (const [name, gz, raw] of written) {
