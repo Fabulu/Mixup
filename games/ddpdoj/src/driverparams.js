@@ -5,7 +5,7 @@
 // re-entry. No contiguous ROM byte slice is exposed by the artifact.
 
 export const DRIVER_PARAMS = Object.freeze({
-  version: 2,
+  version: 3,
   sfxBase: 0x7600, sfxStride: 12, sfxCount: 69,
   sourceRateAddress: 0x6168,
   bgmBase: 0x6840, bgmStride: 22, bgmCount: 160,
@@ -14,6 +14,8 @@ export const DRIVER_PARAMS = Object.freeze({
   pitchBase: 0x5203, pitchStride: 0x78, pitchBanks: 16, pitchNotes: 60,
   panBase: 0x5987, panCount: 16,
   volumeBase: 0x5997, volumeCount: 256,
+  timerPresetBase: 0x4376, timerRawMin: 0x3d, timerRawMax: 0xc8,
+  timerPresetCount: 0xc8 - 0x3d + 1, timerScale0: 0x94,
 });
 
 function integer(name, value, lo, hi) {
@@ -114,6 +116,10 @@ export function driverParamsToJson(bytes) {
         C.panBase + C.panCount)) },
       volume: { base: C.volumeBase, entries: Array.from({ length: C.volumeCount },
         (_, i) => le16(bytes, C.volumeBase + i * 2)) },
+      timer0: { base: C.timerPresetBase, rawMin: C.timerRawMin,
+        rawMax: C.timerRawMax, scale: C.timerScale0,
+        entries: Array.from(bytes.subarray(C.timerPresetBase,
+          C.timerPresetBase + C.timerPresetCount)) },
     },
   };
 }
@@ -122,13 +128,14 @@ function freezeRecord(record) { return Object.freeze(record); }
 
 /** Validated, immutable selector-indexed access to the transformed tables. */
 export class DriverParams {
-  constructor(sfx, bgm, fcMap, pitch, pan, volume, sourceRateHz) {
+  constructor(sfx, bgm, fcMap, pitch, pan, volume, timerPresets, sourceRateHz) {
     this.sfxEntries = Object.freeze(sfx);
     this.bgmEntries = Object.freeze(bgm);
     this.fcMapEntries = Object.freeze(fcMap);
     this.pitchBanks = Object.freeze(pitch);
     this.panEntries = Object.freeze(pan);
     this.volumeEntries = Object.freeze(volume);
+    this.timerPresetEntries = Object.freeze(timerPresets);
     this.sourceRateHz = sourceRateHz;
     Object.freeze(this);
   }
@@ -165,6 +172,12 @@ export class DriverParams {
     // `$0B92/$0E81`: zero uses the word at `$5999`, table entry one.
     return this.volumeEntries[level === 0 ? 1 : level];
   }
+
+  timer0Preset(rawRate) {
+    integer('timer-0 requested rate', rawRate, 0, DRIVER_PARAMS.timerRawMax);
+    const index = Math.max(0, rawRate - DRIVER_PARAMS.timerRawMin);
+    return this.timerPresetEntries[index];
+  }
 }
 
 /** Parse and strictly validate a published driver-params JSON value. */
@@ -195,7 +208,9 @@ export function driverParamsFromJson(input) {
   object('control', json.control);
   object('control.pan', json.control.pan);
   object('control.volume', json.control.volume);
-  if (json.control.pan.base !== C.panBase || json.control.volume.base !== C.volumeBase) {
+  object('control.timer0', json.control.timer0);
+  if (json.control.pan.base !== C.panBase || json.control.volume.base !== C.volumeBase
+      || json.control.timer0.base !== C.timerPresetBase) {
     throw new RangeError('driver params: control table base mismatch');
   }
 
@@ -239,5 +254,12 @@ export function driverParamsFromJson(input) {
     .map((value, i) => byte(`control.pan[${i}]`, value));
   const volume = array('control.volume.entries', json.control.volume.entries,
     C.volumeCount).map((value, i) => word(`control.volume[${i}]`, value));
-  return new DriverParams(sfx, bgm, fcMap, pitch, pan, volume, sourceRateHz);
+  if (json.control.timer0.rawMin !== C.timerRawMin
+      || json.control.timer0.rawMax !== C.timerRawMax
+      || json.control.timer0.scale !== C.timerScale0) {
+    throw new RangeError('driver params: timer-0 range/scale mismatch');
+  }
+  const timerPresets = array('control.timer0.entries', json.control.timer0.entries,
+    C.timerPresetCount).map((value, i) => byte(`control.timer0[${i}]`, value));
+  return new DriverParams(sfx, bgm, fcMap, pitch, pan, volume, timerPresets, sourceRateHz);
 }

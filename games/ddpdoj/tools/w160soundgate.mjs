@@ -56,7 +56,7 @@ check(main.subarray(0x2620b4, 0x2620b6).toString('hex') === '4e90',
 
 const params = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(ROOT, 'assets',
   'snd', 'driver-params.json.gz'))));
-check(params.version === 2, 'published driver-params schema is not v2');
+check(params.version === 3, 'published driver-params schema is not v3');
 check(params.clock?.sourceRateAddress === 0x6168 && params.clock?.sourceRateHz === 0x8133,
   'published source-rate provenance drifted');
 check(params.sfx.entries[0].sampleRateHz === 0x5622

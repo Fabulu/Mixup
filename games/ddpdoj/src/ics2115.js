@@ -289,7 +289,7 @@ export class Ics2115Core {
     // OscStrt is the forward-loop return boundary, not a lower clamp on the
     // initial accumulator. Live BGM descriptors deliberately attack before
     // OscStrt and enter the loop range later.
-    if (end < start || voice.phase > end) {
+    if (((conf & 0x08) !== 0 && end < start) || voice.phase > end) {
       throw new Error(`ICS2115 invalid forward phase range start=${start} phase=${voice.phase} end=${end}`);
     }
     voice.running = true;

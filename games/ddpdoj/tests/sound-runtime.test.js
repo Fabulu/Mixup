@@ -106,6 +106,7 @@ test('real Game SFX wrapper reaches registers, PCM, native IRQ keyoff, and alloc
   assert.equal(rt.lastFrame.door.selector, 0x24);
   assert.equal(rt.lastFrame.door.channel, 3);
   assert.equal(rt.lastFrame.nativeFrames, 558);
+  while (!rt.core.voices[8].running) rt.frame(new Uint8Array(0));
   assert.ok(rt.lastFrame.registerLog.length > 30);
   assert.deepEqual(rt.lastFrame.irqs, [], 'the authentic FC does not end in 19 ms');
   assert.ok(rt.outLen > 0);
@@ -132,7 +133,7 @@ test('real Game SFX wrapper reaches registers, PCM, native IRQ keyoff, and alloc
   assert.deepEqual(ended, [...Array.from({ length: 24 }, (_, i) => i + 8), 8]);
   assert.equal(rt.frameCount, rt.core.frameCount); // one owner, no duplicate advancement
   assert.equal(rt.chain.keyonCount, 25);
-  assert.equal(pcmHash(rt), '98d3a56cc36e8ed37e6fba68e7650f2aa4c74a1d5f518fdc730d104f63d4a31e');
+  assert.equal(pcmHash(rt), '2b98e2758ab15110d9d362b8c2096ba04cd265ca692f96555fc59e092903e1f0');
 });
 
 test('a real streaming leaf starts a live BGM cue and reaches stereo samples', () => {
@@ -140,20 +141,22 @@ test('a real streaming leaf starts a live BGM cue and reaches stereo samples', (
   const g = game(rt);
   emptyMailbox(g);
   // `$28CB9C` is a real type-$12 resolver leaf whose group maps to cue 0.
+  rt.selectScoreGroup(1);
   assert.equal(postWrapper(g.ram, g.sound, 0x28cb9c), true);
   g.step(0xffff);
   assert.deepEqual(Array.from(g.soundInput), [0x12, 0xeb, 0x00, 0x00]);
   assert.equal(rt.lastFrame.door.cmd, 0x12);
   assert.equal(rt.chain.sequencer.cueId, 0);
   assert.equal(rt.chain.sequencer.cueActive, true);
+  while (rt.chain.sequencer.keyonCount === 0) rt.frame(new Uint8Array(0));
   assert.ok(rt.chain.sequencer.keyonCount > 0);
   assert.ok(rt.lastFrame.registerLog.length > 100);
   assert.ok(rt.core.out[0].subarray(0, rt.outLen).some((sample) => sample !== 0));
-  assert.equal(pcmHash(rt), '77c2814d45b59d0db354dc61de885117049852585ee6b7bf4385c87a76b501ae');
+  assert.equal(pcmHash(rt), '1b03ea2580402ecb0f5e65d2b678ab26995e4a3bb3e47d5897c9ee8475281861');
   const before = rt.outLen;
-  const dests = [new Float32Array(64), new Float32Array(64)];
-  assert.equal(rt.drain(64, dests), 64);
-  assert.equal(rt.outLen, before - 64);
+  const dests = [new Float32Array(before), new Float32Array(before)];
+  assert.equal(rt.drain(before, dests), before);
+  assert.equal(rt.outLen, 0);
   assert.ok(dests[0].some((sample) => sample !== 0));
 });
 

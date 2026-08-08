@@ -316,7 +316,9 @@ export class BgmSequencer {
     this.deferredRow = 0;
     this.deferredStep = 0;
     this.handlerDirty = 0;
-    this.raw616c = 0;
+    // `$13B7` boot default. Handler 15 may replace this requested timer rate;
+    // `$13D4` maps it through `$4376` before programming ICS timer 0.
+    this.raw616c = 0x7d;
     this.keyonCount = 0;
     this.keyoffCount = 0;
   }

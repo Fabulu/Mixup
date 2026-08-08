@@ -111,7 +111,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 // W86: the art harvest for the background elements is derived from the PORT's
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
-import { parseScore, scoreToJson } from '../src/bgmscore.js';
+import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -2460,9 +2460,9 @@ if (SPR_ORDER.length !== SPR_SHARDS.length
 }
 
 // WAVE 27C7/W152 (SOUND) -- THE BGM SCORE DATA AND DRIVER PARAMETERS. The
-// score blob and runtime driver tables are resident
-// in the uploaded Z80 image (z80ram.bin), NOT runtime-paged (W145 sec 0). This
-// step PARSES it -- walks the cue table at `$0070`, the 11 per-cue blocks, the
+// runtime driver tables are resident in the uploaded Z80 image. Score groups
+// are selected and transformed from maincpu by `$28B814/$28B884/$28CF36`.
+// This step walks all seven group descriptors and the generated cue blocks,
 // row/selector streams, the aligned 8*df pointer grids and the note-event
 // streams -- and ships the JS structure, not the raw bytes. That is a
 // transformation (cues -> tracks -> events), so the verbatim-art guard accepts
@@ -2475,16 +2475,21 @@ if (SPR_ORDER.length !== SPR_SHARDS.length
     throw new Error(`${z80Path} is missing. Run: python games/ddpdoj/tools/oracle/pgm.py sound`);
   }
   const z80ram = new Uint8Array(fs.readFileSync(z80Path));
-  const score = parseScore(z80ram);
+  const maincpuPath = path.join(RIP, 'sound', 'maincpu.bin');
+  if (!fs.existsSync(maincpuPath)) {
+    throw new Error(`${maincpuPath} is missing. Run: python games/ddpdoj/tools/oracle/pgm.py sound`);
+  }
+  const score = parseScoreGroups(new Uint8Array(fs.readFileSync(maincpuPath)));
   const json = scoreToJson(score);
-  json.note = 'WAVE 27C7 BGM score. The parsed cue blocks resident in the '
-    + 'uploaded Z80 image (the 68k writes the full 64 KiB through `$C10000` at '
-    + 'sound-boot). Each cue carries its header (rowlen/tracks), the row/'
+  json.note = 'W162 live BGM score groups. `$28B814/$28B884/$28CF36` selects '
+    + 'and transforms one of seven 68k score banks into Z80 `$A600`; group 0 '
+    + 'is only the boot snapshot and stage 1 uses group 1. Each cue carries its '
+    + 'header (rowlen/tracks), row/'
     + 'selector stream, the word-aligned track-major `8 * df` LE pointer grid '
     + 'and the per-track/per-selector note-event bytes (hex). W150 fixed the '
     + 'framing: `$00-$3F` is one byte, '
     + '`$40-$BF` is two bytes, `$D0-$EF` is three bytes, and `$C0-$CF`/`$F0-$FF` '
-    + 'is four bytes. A transformation of z80ram.bin, not a verbatim slice.';
+    + 'is four bytes. A semantic transformation, not a verbatim ROM slice.';
   put('snd/bgm-score.json', new TextEncoder().encode(JSON.stringify(json)));
 
   // W152/W153: semantic objects for 69 SFX descriptors, 160 BGM descriptors,

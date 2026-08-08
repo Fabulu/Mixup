@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { driverParamsFromJson, driverParamsToJson } from '../src/driverparams.js';
-import { parseScore, scoreFromJson, scoreToJson } from '../src/bgmscore.js';
+import { parseScore } from '../src/bgmscore.js';
 import { parseEvent } from '../src/sequencer.js';
 import { accumulatorPhase, boundaryPhase } from '../src/ics2115.js';
 import { SOUND_WRAPPERS } from '../src/sound.js';
@@ -110,7 +110,9 @@ function descriptorInterval(record, kind, index) {
 
 const z80 = new Uint8Array(readFileSync(join(RIP, 'z80ram.bin')));
 const params = driverParamsFromJson(driverParamsToJson(z80));
-const score = scoreFromJson(scoreToJson(parseScore(z80)));
+// Group 0 alone already reaches the conservative 159/160 descriptor union;
+// W162 separately proves every other live group is a subset of that same union.
+const score = parseScore(z80);
 
 const reachableBgm = new Set([0]);
 const cueDescriptors = [];

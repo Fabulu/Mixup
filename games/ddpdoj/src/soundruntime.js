@@ -10,7 +10,8 @@
 import { SoundChain } from './dispatch.js';
 import { driverParamsFromJson } from './driverparams.js';
 import { scoreFromJson } from './bgmscore.js';
-import { Ics2115Core, IcsSampleMap } from './ics2115.js';
+import { ICS_CLOCK, Ics2115Core, IcsSampleMap,
+  LOGIC_RATE_DEN, LOGIC_RATE_NUM } from './ics2115.js';
 
 export const STAGE1_SEED_SOUND = Object.freeze({
   startFrame: 1562,
@@ -60,18 +61,26 @@ export class SoundRuntime {
     if (!driverParams || typeof driverParams.sfx !== 'function') {
       throw new Error('sound runtime requires validated driver parameters');
     }
-    if (!score || !Array.isArray(score.cues) || score.cues.length !== 11) {
-      throw new Error('sound runtime requires the validated 11-cue BGM score');
+    if (!score || !Array.isArray(score.groups) || score.groups.length !== 7) {
+      throw new Error('sound runtime requires the validated seven-group BGM score');
     }
     if (irqTimingPolicy !== IRQ_TIMING_POLICY.AFTER_NATIVE_FRAME) {
       throw new Error('sound runtime requires explicit irqTimingPolicy "after-native-frame"');
     }
     this.irqTimingPolicy = irqTimingPolicy;
     this.score = score;
-    this.chain = new SoundChain(driverParams, score.cues);
+    this.scoreGroup = 0;
+    this.chain = new SoundChain(driverParams, score.groups[0].cues);
     this.core = new Ics2115Core(sampleMap, { endpointPolicy, panPolicy });
     this.frameCount = 0;
     this.irqCount = 0;
+    // `$13D4` maps `$616C` through the preset table at `$4376`; timer scale is
+    // `$94`. The ICS period is `((scale&31)+1)*(preset+1) << (4+scale>>>5)`.
+    // Stage `$87 -> $74` is 628,992 chip clocks (53.846153... Hz). Keep that
+    // clock rational and independent of the 15625/264 Hz logic frame.
+    this.timerClockAcc = 0;
+    this.timerIrqCount = 0;
+    this.timerHoldFrames = 0;
     this.lastFrame = Object.freeze({ frame: -1, door: null,
       nativeFrames: 0, registerLog: Object.freeze([]), irqs: Object.freeze([]) });
   }
@@ -79,6 +88,14 @@ export class SoundRuntime {
   get outLen() { return this.core.outLen; }
   get sourceRate() { return this.core.sourceRate; }
   get channels() { return this.core.channels; }
+
+  selectScoreGroup(group) {
+    if (!Number.isInteger(group) || group < 0 || group >= this.score.groups.length) {
+      throw new RangeError(`sound runtime: score group ${group} is outside 0..6`);
+    }
+    this.scoreGroup = group;
+    this.chain.selectScoreGroup(this.score.groups[group].cues);
+  }
 
   frame(input, emit = true) {
     const door = compactDoor(input, this.frameCount);
@@ -91,7 +108,30 @@ export class SoundRuntime {
     // its payload arrives rather than manufacturing two payload bytes.
     const head = chain.queue.peek();
     if (!(head?.cmd === 0x0e && chain.queue.length === 1)) chain.runMainLoop();
-    chain.tick(false);
+    let timerTicks = 0;
+    if (this.timerHoldFrames > 0) this.timerHoldFrames--;
+    else {
+      const requestedRate = chain.sequencer?.raw616c ?? 0x7d;
+      const preset = chain.driverParams.timer0Preset(requestedRate);
+      const scale = 0x94;
+      const period = ((scale & 0x1f) + 1) * (preset + 1)
+        * (2 ** (4 + (scale >>> 5)));
+      this.timerClockAcc += ICS_CLOCK * LOGIC_RATE_DEN;
+      const threshold = period * LOGIC_RATE_NUM;
+      while (this.timerClockAcc >= threshold) {
+        this.timerClockAcc -= threshold;
+        const beforeRate = chain.sequencer?.raw616c ?? requestedRate;
+        chain.tick(false);
+        timerTicks++;
+        this.timerIrqCount++;
+        // `$13C1->$13D4->$0EE7` reprograms timer 0 when handler 15 changes
+        // `$616C`. The new preset restarts the timer period; carrying the old
+        // fractional remainder makes every later score event one frame early.
+        if ((chain.sequencer?.raw616c ?? beforeRate) !== beforeRate) {
+          this.timerClockAcc = 0;
+        }
+      }
+    }
 
     const initialRows = chain.rf.regLog.slice();
     const irqs = [];
@@ -117,7 +157,7 @@ export class SoundRuntime {
     const registerLog = Object.freeze(chain.rf.regLog.slice());
     chain.rf.regLog.length = 0;
     this.lastFrame = Object.freeze({ frame: this.frameCount, door: message,
-      nativeFrames, registerLog, irqs: Object.freeze(irqs) });
+      nativeFrames, timerTicks, registerLog, irqs: Object.freeze(irqs) });
     this.frameCount++;
     return nativeFrames;
   }
@@ -160,6 +200,10 @@ export function soundRuntimeFromStage1Seed(assets, policies, seedFrame) {
   const runtime = soundRuntimeFromAssets(assets, policies);
   const S = STAGE1_SEED_SOUND;
   if (seedFrame <= S.startFrame) return runtime;
+  runtime.selectScoreGroup(1);
+  // The captured NMI lands after timer service at lf1562; `$28B884` finishes
+  // during lf1563 and the first group-1 event batch fires at lf1564.
+  runtime.timerHoldFrames = 1;
   runtime.frame(Uint8Array.from(S.startDoor), false);
   for (let lf = S.startFrame + 1; lf < seedFrame; lf++) {
     runtime.frame(new Uint8Array(0), false);

@@ -112,13 +112,14 @@ test('W158 all eleven BGM cues reach a keyon and advance without shard refusal',
 test('W158 approved production policies produce deterministic nonzero stereo PCM', () => {
   const rt = runtime();
   rt.frame(Uint8Array.of(0x01, 0xff, 36, 0), true);
+  while (!rt.core.voices[8].running) rt.frame(new Uint8Array(0), true);
   assert.ok(rt.outLen > 0);
   assert.ok(rt.core.out[0].subarray(0, rt.outLen).some((x) => x !== 0));
   assert.ok(rt.core.out[1].subarray(0, rt.outLen).some((x) => x !== 0));
   const h = createHash('sha256');
   h.update(new Uint8Array(rt.core.out[0].buffer, 0, rt.outLen * 4));
   h.update(new Uint8Array(rt.core.out[1].buffer, 0, rt.outLen * 4));
-  assert.equal(h.digest('hex'), '4736799d3717a4675301c7ca8175570342ad217fb8bfc65e2602d4e19b5cb26f');
+  assert.equal(h.digest('hex'), 'c85b5731fa226236e9a3bbf196d52f06cea4846c7fa442248c654567fc046ec6');
 });
 
 test('W158 deferred loader fetches exactly four sound bodies and rejects manifest drift', async () => {

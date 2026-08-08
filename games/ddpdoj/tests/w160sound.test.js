@@ -70,6 +70,7 @@ test('W160 `$0B92` converts SFX Hz through live `[$6168]` before OscFC', () => {
   let beforeFinal = 0;
   let count = rt.frame(Uint8Array.of(0x01, 0xa0, 0x00, 0x00), false);
   assert.equal(rt.chain.engine.voices[0].fc, 0x02aa);
+  while (!rt.core.voices[8].running) count = rt.frame(EMPTY, false);
   while (rt.lastFrame.irqs.length === 0) {
     beforeFinal += count;
     assert.ok(rt.frameCount < 100, 'selector 0 must end, but not as a 19 ms pop');

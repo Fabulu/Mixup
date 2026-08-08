@@ -271,6 +271,17 @@ export class SoundChain {
     this.keyonCount = 0;
   }
 
+  selectScoreGroup(cues) {
+    if (!Array.isArray(cues) || cues.length === 0) {
+      throw new Error('sound dispatch: score group must contain cues');
+    }
+    this.cues = cues;
+    if (this.sequencer) {
+      this.sequencer.stop();
+      this.sequencer.cues = cues;
+    }
+  }
+
   enqueueDoor(input) {
     const door = decodeDoor(input);
     this.doorCount++;

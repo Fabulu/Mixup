@@ -13,7 +13,7 @@ import { VoiceEngine, VoiceSlot } from '../src/voice.js';
 import { driverParamsFromJson, driverParamsToJson } from '../src/driverparams.js';
 import {
   SCORE_VERSION, SCORE, N_CUES, N_BGM_TRACKS, pointerTableAddress,
-  parseScore, scoreToJson, scoreFromJson,
+  parseScore, parseScoreGroups, scoreToJson, scoreFromJson,
 } from '../src/bgmscore.js';
 import {
   BGM, TOFF, EV_FAMILY, C0_FAMILY, STATE_HANDLER_ADDRS,
@@ -27,6 +27,7 @@ import { SOUND, SoundState, postWrapper, drainFrame } from '../src/sound.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
 const Z80 = new Uint8Array(readFileSync(join(ROOT, 'rip', 'sound', 'z80ram.bin')));
+const MAINCPU = new Uint8Array(readFileSync(join(ROOT, 'rip', 'sound', 'maincpu.bin')));
 const SCORE_JSON = JSON.parse(gunzipSync(readFileSync(join(ROOT, 'assets', 'snd',
   'bgm-score.json.gz'))));
 const PARAM_JSON = JSON.parse(gunzipSync(readFileSync(join(ROOT, 'assets', 'snd',
@@ -72,35 +73,39 @@ test('W153: score parser exports the exact aligned 8*df pointer topology', () =>
     'odd rowlen consumes the real alignment byte');
   assert.equal(parsed.cues[7].ptrTable.length, 64);
   assert.equal(parsed.cues[10].ptrTable.length, 96);
+  const allGroups = parseScoreGroups(MAINCPU);
+  assert.deepEqual(allGroups.groups.map((group) => group.cueCount), [11, 2, 2, 2, 1, 2, 1]);
+  assert.equal(allGroups.groups[1].cues[0].rowlen, 44);
+  assert.equal(allGroups.groups[1].cues[0].df, 28);
   const { note: provenanceNote, ...artifactScore } = SCORE_JSON;
   assert.equal(typeof provenanceNote, 'string');
-  assert.deepEqual(scoreToJson(parsed), artifactScore,
+  assert.deepEqual(scoreToJson(allGroups), artifactScore,
     'regenerated semantic score matches the deferred artifact');
 });
 
 test('W153: scoreFromJson rejects version, layout, topology, ranges, and bad hex', () => {
   const mutate = (fn) => { const value = structuredClone(SCORE_JSON); fn(value); return value; };
-  assert.throws(() => scoreFromJson(mutate((v) => { v.version = 2; })), /version/);
-  assert.throws(() => scoreFromJson(mutate((v) => { v.nCues = 10; })), /count\/table/);
-  assert.throws(() => scoreFromJson(mutate((v) => { v.cues.pop(); })), /11/);
-  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[2].blockAddr++; })),
+  assert.throws(() => scoreFromJson(mutate((v) => { v.version = 1; })), /version/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.groups.pop(); })), /7/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.groups[1].nCues = 1; })), /inventory/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.groups[0].cues[2].blockAddr++; })),
     /block layout/);
-  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[0].tracks = 7; })), /8 tracks/);
-  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[0].df = 1; })), /df=rowlen/);
-  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[0].rowStream[0] = 2; })), /0\.\.1/);
-  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[0].ptrTableAddr++; })), /address/);
-  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[7].ptrTable.pop(); })), /64/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.groups[0].cues[0].tracks = 7; })), /8 tracks/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.groups[1].cues[0].df = 0; })), /nonzero/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.groups[0].cues[0].rowStream[0] = 2; })), /0\.\.1/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.groups[0].cues[0].ptrTableAddr++; })), /address/);
+  assert.throws(() => scoreFromJson(mutate((v) => { v.groups[0].cues[7].ptrTable.pop(); })), /64/);
   assert.throws(() => scoreFromJson(mutate((v) => {
-    v.cues[8].ptrTable[0] = v.cues[8].ptrTableAddr;
-    v.cues[8].noteStreamAddrs[0] = v.cues[8].ptrTableAddr;
+    v.groups[0].cues[8].ptrTable[0] = v.groups[0].cues[8].ptrTableAddr;
+    v.groups[0].cues[8].noteStreamAddrs[0] = v.groups[0].cues[8].ptrTableAddr;
   })), /topology/);
-  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[8].noteStreamAddrs[0]++; })),
+  assert.throws(() => scoreFromJson(mutate((v) => { v.groups[0].cues[8].noteStreamAddrs[0]++; })),
     /grid mismatch/);
-  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[8].noteStreams[0] += 'f'; })),
+  assert.throws(() => scoreFromJson(mutate((v) => { v.groups[0].cues[8].noteStreams[0] += 'f'; })),
     /even-length/);
-  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[8].noteStreams[0] = 'zz'; })),
+  assert.throws(() => scoreFromJson(mutate((v) => { v.groups[0].cues[8].noteStreams[0] = 'zz'; })),
     /hexadecimal/);
-  assert.throws(() => scoreFromJson(mutate((v) => { v.cues[8].noteStreams[0] += '00'; })),
+  assert.throws(() => scoreFromJson(mutate((v) => { v.groups[0].cues[8].noteStreams[0] += '00'; })),
     /extent/);
   assert.ok(Object.isFrozen(SCORE_RUNTIME));
   assert.ok(Object.isFrozen(SCORE_RUNTIME.cues[8].noteStreams[0]));

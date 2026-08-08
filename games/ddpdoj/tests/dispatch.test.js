@@ -73,7 +73,7 @@ test('W152: door decode preserves four bytes and reconstructs all ten selector b
 });
 
 test('W152: transformed driver parameters cover exact ranges and are immutable', () => {
-  assert.equal(JSON_PARAMS.version, 2);
+  assert.equal(JSON_PARAMS.version, 3);
   assert.deepEqual(JSON_PARAMS.clock, { sourceRateAddress: 0x6168,
     sourceRateHz: 0x8133 });
   assert.equal(JSON_PARAMS.sfx.base, 0x7600);
@@ -86,6 +86,7 @@ test('W152: transformed driver parameters cover exact ranges and are immutable',
   assert.equal(PARAMS.pitch(0, 41), 0x00a0);
   assert.equal(PARAMS.pan(7), 0x7f);
   assert.equal(PARAMS.volume(0), PARAMS.volumeEntries[1]);
+  assert.equal(PARAMS.timer0Preset(0x87), 0x74);
   for (let selector = 0; selector < DRIVER_PARAMS.sfxCount; selector++) {
     const record = PARAMS.sfx(selector);
     assert.ok(Object.isFrozen(record), `SFX record ${selector} is frozen`);
@@ -109,7 +110,7 @@ test('W152: regenerated artifact and manifest expose the validated deferred tabl
 
 test('W152: loader refuses bad version, layout, ranges, and counts', () => {
   const mutate = (fn) => { const value = structuredClone(JSON_PARAMS); fn(value); return value; };
-  assert.throws(() => driverParamsFromJson(mutate((v) => { v.version = 3; })), /version/);
+  assert.throws(() => driverParamsFromJson(mutate((v) => { v.version = 4; })), /version/);
   assert.throws(() => driverParamsFromJson(mutate((v) => { v.clock.sourceRateAddress++; })),
     /source-rate address/);
   assert.throws(() => driverParamsFromJson(mutate((v) => { v.sfx.entries[0].oscFc++; })),

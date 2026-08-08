@@ -46,7 +46,8 @@ import { makeBackground, BgVram, TxVram, VideoRegs } from './background.js';
 import { makeStageClear } from './stageend.js';
 import { makeHudObject } from './hud.js';
 import { makeRankObject } from './rank.js';
-import { SoundState, drainFrame, postWrapper, soundFrameInput } from './sound.js';
+import { SoundState, drainFrame, postWrapperWithRuntime,
+  soundFrameInput } from './sound.js';
 import {
   PaletteState, flush24133C, catchUpObjectStream, catchUpBgPalette,
   catchUpTextPalette,
@@ -318,7 +319,12 @@ export class Game {
       // replacement for the counted `note(ctx, 0x28Cxxx, ...)` placeholders the
       // sound wave removes. Runs the gate, tail, packer and ring enqueue from
       // src/sound.js; returns true if the cue posted. See sound.js.
-      soundPost: (addr) => postWrapper(this.ram, this.sound, addr),
+      soundPost: (addr) => {
+        // `$28CAFC->$28B884` synchronously installs the selected score group
+        // before the leaf posts its ordinary four-byte door. Keep that side
+        // effect ordered at the sound boundary; it is not a fifth payload byte.
+        return postWrapperWithRuntime(this.ram, this.sound, this.soundSink, addr);
+      },
       // WAVE 8: every record the shot spawn creates, and every frame it could
       // not.  Printed by the runner for the same reason `allocEvents` is: a
       // spawn that silently did nothing is indistinguishable from a spawn that

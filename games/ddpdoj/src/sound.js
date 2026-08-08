@@ -146,8 +146,9 @@ const WRAPPERS = {
 
 // W150: the real streaming leaf wrappers call one of two score-index resolvers
 // and tail-jump into `$28C11C` (type $12) or `$28C146` (type $11). The first
-// word is passed through `$28B884`; its side effect remains outside this wave,
-// so it is logged rather than invented. The second word becomes the selector.
+// word is passed through `$28B884`; W162 preserves that synchronous group
+// upload at the runtime boundary before posting the ordinary four-byte door.
+// The second word becomes the selector.
 export const STREAMING_LEAVES = Object.freeze(new Map([
   [0x28CB38, { index: 7,  group: 0, id: 7, type: 0x12 }],
   [0x28CB4C, { index: 8,  group: 0, id: 8, type: 0x11 }],
@@ -260,7 +261,7 @@ export class SoundState {
     this.postCount = 0;     // total enqueues
     this.dropCount = 0;     // total gate drops
     this.doorCount = 0;     // total drained doors
-    this.streamingResolvers = []; // exact leaf/index/group facts; `$28B884` remains named
+    this.streamingResolvers = []; // exact leaf/index/group facts from `$28B884`
   }
   /** Gradius's polynomial, applied to the drained longword. All four bytes are
    *  mixed (type/pan/id/chan) so a change to ANY one -- including the pan the
@@ -361,6 +362,14 @@ export function postStreamingLeaf(ram, sound, wrapperAddr) {
     group: leaf.group, id: leaf.id, type: leaf.type });
   const rejoiner = leaf.type === 0x12 ? 0x28C11C : 0x28C146;
   return postStreamingRejoiner(ram, sound, rejoiner, leaf.id, 0xff);
+}
+
+/** `$28CAFC`: preserve `$28B884`'s synchronous group upload before the leaf's
+ * ordinary four-byte queue post. The upload is a side effect, never payload. */
+export function postWrapperWithRuntime(ram, sound, runtimeSink, wrapperAddr) {
+  const leaf = STREAMING_LEAVES.get(wrapperAddr);
+  if (leaf) runtimeSink?.selectScoreGroup?.(leaf.group);
+  return postWrapper(ram, sound, wrapperAddr);
 }
 
 /** $28C19A + $18ACE0 -- the per-frame drain. The debounce counters decrement

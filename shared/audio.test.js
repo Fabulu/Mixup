@@ -332,6 +332,22 @@ test('AudioController: starts locked, drops frames until armed', () => {
   assert.equal(ac.status, 'unsupported');
 });
 
+test('AudioController: deferred semantic controls stay ordered with silent frames', () => {
+  const events = [];
+  const chip = {
+    sourceRate: 33075, channels: 2, outLen: 0,
+    selectScoreGroup(group) { events.push(`group:${group}`); },
+    frame(log, emit) { events.push(`frame:${log[0] ?? '-'}:${emit}`); },
+    drain() { return 0; },
+  };
+  const ac = new AudioController(null, () => {});
+  ac.frame(Uint8Array.of(1));
+  ac.selectScoreGroup(1);
+  ac.frame(Uint8Array.of(2));
+  ac.setChip(chip);
+  assert.deepEqual(events, ['frame:1:false', 'group:1', 'frame:2:false']);
+});
+
 test('AudioController: arm() builds the engine once, second arm only resumes', () => {
   const ac = new AudioController(() => makeSineChip(48000, 1), () => {});
   let resumes = 0;

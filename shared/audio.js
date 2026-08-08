@@ -275,6 +275,18 @@ export class AudioOut {
     this.frames++;
   }
 
+  /** Ordered chip-side semantic control. DOJ uses this for `$28B884`'s score
+   * bank upload, which occurs before its following four-byte Z80 door. */
+  selectScoreGroup(group) {
+    if (!Number.isInteger(group) || group < 0 || group > 0xff) {
+      throw new RangeError('AudioOut score group must be one byte');
+    }
+    if (typeof this.chip.selectScoreGroup !== 'function') {
+      throw new Error('AudioOut chip does not expose selectScoreGroup');
+    }
+    this.queue.push(Object.freeze({ kind: 'score-group', group }));
+  }
+
   /** Called once per animation frame, after the catch-up loop has run. */
   pump() {
     const ctx = this.ctx;
@@ -282,12 +294,18 @@ export class AudioOut {
 
     // ---- 1. queued logic frames -> chip ------------------------------------
     while (this.queue.length) {
+      const queued = this.queue.length;
+      const entry = this.queue.shift();
+      if (entry?.kind === 'score-group') {
+        chip.selectScoreGroup(entry.group);
+        continue;
+      }
       // THE BACKLOG VALVE. Past the ceiling the batch is still applied (the
       // chip's state must not be allowed to diverge from the driver's) but its
       // samples are discarded.
-      const emit = this.queue.length <= MAX_BACKLOG_FRAMES;
+      const emit = queued <= MAX_BACKLOG_FRAMES;
       if (!emit) this.dropped++;
-      chip.frame(this.queue.shift(), emit);
+      chip.frame(entry, emit);
     }
 
     // ---- 2. resync against the AudioContext clock --------------------------
@@ -453,7 +471,10 @@ export class AudioController {
     if (this.makeChip) throw new Error('AudioController already has a chip factory');
     this.chip = chip;
     try {
-      for (const log of this.pendingStateFrames ?? []) chip.frame(log, false);
+      for (const entry of this.pendingStateFrames ?? []) {
+        if (entry?.kind === 'score-group') chip.selectScoreGroup(entry.group);
+        else chip.frame(entry, false);
+      }
     } catch (e) {
       this.fail(e);
       return;
@@ -499,6 +520,18 @@ export class AudioController {
     } else if (this.pendingStateFrames) {
       this.pendingStateFrames.push(log && log.length ? Uint8Array.from(log) : EMPTY);
     }
+  }
+
+  /** Preserve the `$28B884` group upload in-order with subsequent frame doors. */
+  selectScoreGroup(group) {
+    if (!Number.isInteger(group) || group < 0 || group > 0xff) {
+      throw new RangeError('AudioController score group must be one byte');
+    }
+    const entry = Object.freeze({ kind: 'score-group', group });
+    if (this.out) this.out.selectScoreGroup(group);
+    else if (this.chip) {
+      try { this.chip.selectScoreGroup(group); } catch (e) { this.fail(e); }
+    } else if (this.pendingStateFrames) this.pendingStateFrames.push(entry);
   }
 
   /**

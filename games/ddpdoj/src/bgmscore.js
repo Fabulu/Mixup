@@ -5,13 +5,27 @@
 // module exports that topology as immutable numeric structure. It never exposes
 // a contiguous slice of the uploaded Z80 image.
 
-export const SCORE_VERSION = 1;
+export const SCORE_VERSION = 2;
 export const N_CUES = 11;
 export const N_BGM_TRACKS = 8;
 export const TRACK_STRIDE = 0x29;
 export const CUE_BLOCK_ADDRS = Object.freeze([
   0xa600, 0xa696, 0xa6e2, 0xa778, 0xa80e, 0xa87a,
   0xa954, 0xa98c, 0xb6d0, 0xb7ec, 0xbe90,
+]);
+
+// `$28B814` is the complete live 68k score-group inventory. `$28B884` selects
+// one entry and `$28CF36` transforms its 18-byte cue descriptors into the Z80
+// `$A600` topology. Group 0 is merely the boot-time image captured in
+// z80ram.bin; stage 1 selects group 1 before posting cue 0.
+export const SCORE_GROUPS = Object.freeze([
+  Object.freeze({ id: 0, descriptorAddr: 0x2ae118, cueCount: 11 }),
+  Object.freeze({ id: 1, descriptorAddr: 0x2b240a, cueCount: 2 }),
+  Object.freeze({ id: 2, descriptorAddr: 0x2b58f6, cueCount: 2 }),
+  Object.freeze({ id: 3, descriptorAddr: 0x2b974a, cueCount: 2 }),
+  Object.freeze({ id: 4, descriptorAddr: 0x2bc366, cueCount: 1 }),
+  Object.freeze({ id: 5, descriptorAddr: 0x2c0472, cueCount: 2 }),
+  Object.freeze({ id: 6, descriptorAddr: 0x2c2f38, cueCount: 1 }),
 ]);
 
 export const SCORE = Object.freeze({
@@ -101,7 +115,7 @@ function finishCue(cue) {
 }
 
 /** Parse the complete live score topology from the uploaded 64 KiB Z80 image. */
-export function parseScore(ram, nCues) {
+export function parseScore(ram, nCues, scoreEnd = 0x10000) {
   if (!(ram instanceof Uint8Array) || ram.length < 0x10000) {
     throw new TypeError('BGM score parse requires the complete 64 KiB Z80 image');
   }
@@ -127,7 +141,7 @@ export function parseScore(ram, nCues) {
 
   for (let id = 0; id < cues.length; id++) {
     const cue = cues[id];
-    const end = id + 1 < cues.length ? cues[id + 1].blockAddr : 0x10000;
+    const end = id + 1 < cues.length ? cues[id + 1].blockAddr : scoreEnd;
     for (let i = 0; i < cue.noteStreamAddrs.length; i++) {
       const start = cue.noteStreamAddrs[i];
       const next = i + 1 < cue.noteStreamAddrs.length
@@ -140,8 +154,91 @@ export function parseScore(ram, nCues) {
     cueCount: count, tableAddr });
 }
 
+const be16 = (bytes, address) => (bytes[address] << 8) | bytes[address + 1];
+const be32 = (bytes, address) => ((bytes[address] * 0x1000000)
+  + (bytes[address + 1] << 16) + (bytes[address + 2] << 8)
+  + bytes[address + 3]) >>> 0;
+
+/** `$28CF36`: reconstruct every live score group from semantic 68k records. */
+export function parseScoreGroups(maincpu) {
+  if (!(maincpu instanceof Uint8Array) || maincpu.length <= 0x2c2f38) {
+    throw new TypeError('BGM score groups require the complete maincpu image');
+  }
+  const groups = [];
+  for (const spec of SCORE_GROUPS) {
+    const ram = new Uint8Array(0x10000);
+    ram[SCORE.cueTablePtr] = SCORE.cueTable & 0xff;
+    ram[SCORE.cueTablePtr + 1] = SCORE.cueTable >>> 8;
+    ram[SCORE.cueCountPtr] = spec.cueCount;
+    let output = 0xa600;
+    for (let id = 0; id < spec.cueCount; id++) {
+      const descriptor = spec.descriptorAddr + id * 18;
+      ram[SCORE.cueTable + id * 2] = output & 0xff;
+      ram[SCORE.cueTable + id * 2 + 1] = output >>> 8;
+      const rowlen = maincpu[descriptor];
+      const tracks = maincpu[descriptor + 1];
+      const df = maincpu[descriptor + 2];
+      if (tracks !== N_BGM_TRACKS || rowlen === 0 || df === 0) {
+        throw new RangeError(`BGM score group ${spec.id} cue ${id} descriptor layout mismatch`);
+      }
+      const rowPtr = be32(maincpu, descriptor + 4);
+      const lengthsPtr = be32(maincpu, descriptor + 8);
+      const streamsPtr = be32(maincpu, descriptor + 12);
+      const streamsLength = be16(maincpu, descriptor + 16);
+      const rowBytes = rowlen + (rowlen & 1);
+      const pointerCount = tracks * df;
+      const streamBase = output + 4 + rowBytes + pointerCount * 2;
+      const end = streamBase + streamsLength;
+      for (const [name, start, length] of [
+        ['header', descriptor, 4], ['row stream', rowPtr, rowBytes],
+        ['length grid', lengthsPtr, pointerCount * 2],
+        ['note streams', streamsPtr, streamsLength],
+      ]) {
+        if (start < 0 || length < 0 || start + length > maincpu.length) {
+          throw new RangeError(`BGM score group ${spec.id} cue ${id} ${name} is outside maincpu`);
+        }
+      }
+      if (end > 0x10000) {
+        throw new RangeError(`BGM score group ${spec.id} cue ${id} overflows Z80 RAM`);
+      }
+      ram.set(maincpu.subarray(descriptor, descriptor + 4), output);
+      ram.set(maincpu.subarray(rowPtr, rowPtr + rowBytes), output + 4);
+      let cumulative = 0;
+      const pointerBase = output + 4 + rowBytes;
+      for (let i = 0; i < pointerCount; i++) {
+        const pointer = streamBase + cumulative;
+        ram[pointerBase + i * 2] = pointer & 0xff;
+        ram[pointerBase + i * 2 + 1] = pointer >>> 8;
+        cumulative += be16(maincpu, lengthsPtr + i * 2);
+      }
+      // `$28CF36` copies a word-rounded body. A single final padding byte is
+      // permitted; no descriptor may hide a missing or extra event extent.
+      if (cumulative > streamsLength || streamsLength - cumulative > 1) {
+        throw new RangeError(`BGM score group ${spec.id} cue ${id} stream extent mismatch`);
+      }
+      ram.set(maincpu.subarray(streamsPtr, streamsPtr + streamsLength), streamBase);
+      output = end;
+    }
+    const score = parseScore(ram, spec.cueCount, output);
+    groups.push(Object.freeze({ id: spec.id, descriptorAddr: spec.descriptorAddr,
+      cueCount: spec.cueCount, tableAddr: score.tableAddr, endAddr: output,
+      cues: score.cues }));
+  }
+  return Object.freeze({ version: SCORE_VERSION, groups: Object.freeze(groups),
+    // Compatibility view for recon tools: the uploaded boot bank is group 0.
+    cues: groups[0].cues, cueCount: groups[0].cueCount, tableAddr: SCORE.cueTable });
+}
+
 /** Serialize the decoded topology; byte streams become even-length hex. */
 export function scoreToJson(score) {
+  if (Array.isArray(score.groups)) {
+    return { version: SCORE_VERSION, groups: score.groups.map((group) => ({
+      id: group.id, descriptorAddr: group.descriptorAddr, nCues: group.cueCount,
+      tableAddr: group.tableAddr, endAddr: group.endAddr,
+      cues: scoreToJson({ cueCount: group.cueCount, tableAddr: group.tableAddr,
+        cues: group.cues }).cues,
+    })) };
+  }
   return {
     version: SCORE_VERSION,
     nCues: score.cueCount,
@@ -180,23 +277,33 @@ export function scoreFromJson(input) {
   if (json.version !== SCORE_VERSION) {
     throw new RangeError(`BGM score: unsupported version ${json.version}`);
   }
-  if (json.nCues !== N_CUES || json.tableAddr !== SCORE.cueTable) {
-    throw new RangeError('BGM score: cue count/table layout mismatch');
-  }
-  array('cues', json.cues, N_CUES);
+  array('groups', json.groups, SCORE_GROUPS.length);
+  const groups = json.groups.map((rawGroup, groupId) => {
+    const spec = SCORE_GROUPS[groupId];
+    const group = object(`groups[${groupId}]`, rawGroup);
+    if (group.id !== groupId || group.descriptorAddr !== spec.descriptorAddr
+        || group.nCues !== spec.cueCount || group.tableAddr !== SCORE.cueTable) {
+      throw new RangeError(`BGM score: group ${groupId} inventory/layout mismatch`);
+    }
+    const endAddr = word(`group ${groupId} endAddr`, group.endAddr);
+    array(`group ${groupId} cues`, group.cues, spec.cueCount);
+    return { spec, group, endAddr };
+  });
+  const hydrated = groups.map(({ spec, group, endAddr }, groupId) => {
   const cues = [];
-  for (let id = 0; id < N_CUES; id++) {
-    const raw = object(`cues[${id}]`, json.cues[id]);
+  for (let id = 0; id < spec.cueCount; id++) {
+    const raw = object(`group ${groupId} cues[${id}]`, group.cues[id]);
     if (raw.id !== id) throw new RangeError(`BGM score: cue ${id} id mismatch`);
     const blockAddr = word(`cue ${id} blockAddr`, raw.blockAddr);
-    if (blockAddr !== CUE_BLOCK_ADDRS[id]) {
+    if ((groupId === 0 && blockAddr !== CUE_BLOCK_ADDRS[id])
+        || (id === 0 && blockAddr !== 0xa600)) {
       throw new RangeError(`BGM score: cue ${id} block layout mismatch`);
     }
     const rowlen = byte(`cue ${id} rowlen`, raw.rowlen);
     const tracks = byte(`cue ${id} tracks`, raw.tracks);
     const df = byte(`cue ${id} df`, raw.df);
-    if (tracks !== N_BGM_TRACKS || rowlen === 0 || df !== rowlen) {
-      throw new RangeError(`BGM score: cue ${id} must have 8 tracks and df=rowlen>0`);
+    if (tracks !== N_BGM_TRACKS || rowlen === 0 || df === 0) {
+      throw new RangeError(`BGM score: cue ${id} must have 8 tracks and nonzero rowlen/df`);
     }
     if (id > 0 && blockAddr <= cues[id - 1].blockAddr) {
       throw new RangeError(`BGM score: cue ${id} blocks are not strictly ascending`);
@@ -220,7 +327,7 @@ export function scoreFromJson(input) {
 
   for (let id = 0; id < cues.length; id++) {
     const cue = cues[id];
-    const end = id + 1 < cues.length ? cues[id + 1].blockAddr : 0x10000;
+    const end = id + 1 < cues.length ? cues[id + 1].blockAddr : endAddr;
     const pointerDataEnd = cue.ptrTableAddr + cue.ptrTable.length * 2;
     if (cue.ptrTable[0] !== pointerDataEnd) {
       throw new RangeError(`BGM score: cue ${id} pointer topology has a leading gap`);
@@ -241,8 +348,13 @@ export function scoreFromJson(input) {
     }
     finishCue(cue);
   }
-  return Object.freeze({ version: SCORE_VERSION, cues: Object.freeze(cues),
-    cueCount: N_CUES, tableAddr: SCORE.cueTable });
+  return Object.freeze({ id: groupId, descriptorAddr: spec.descriptorAddr,
+    cues: Object.freeze(cues), cueCount: spec.cueCount,
+    tableAddr: SCORE.cueTable, endAddr });
+  });
+  return Object.freeze({ version: SCORE_VERSION, groups: Object.freeze(hydrated),
+    cues: hydrated[0].cues, cueCount: hydrated[0].cueCount,
+    tableAddr: SCORE.cueTable });
 }
 
 export function countSectionMarkers(cue) {
