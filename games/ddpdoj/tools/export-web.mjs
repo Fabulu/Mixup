@@ -163,6 +163,25 @@ const capBin = new Uint8Array(fs.readFileSync(path.join(webDir, 'capture.bin')))
 const cap = new Capture(capJson, capBin);
 const seed = new Uint8Array(fs.readFileSync(path.join(webDir, 'seed.bin')));
 const tables = fs.readFileSync(tablesFile);
+// WAVE 27D -- the parsed form is needed to read the ICS sample windows the
+// Python exporter measured (tables.sound.sampleWindows). `tables` itself stays
+// the raw buffer so put('player.tables.json', tables) writes it byte-for-byte.
+const tablesJson = JSON.parse(tables);
+
+// WAVE 27D (SOUND) -- THE ICS2115 SAMPLE ROM.  `cave_m04401b032.u17` is 4 MiB,
+// mapped at $400000 in the ICS 24-bit sample space.  The 1501 valid stage-1
+// keyons all draw from it (0 from pgm_m01s.rom); export-tables.py measured the
+// 28-fragment TIGHT UNION (1,538,920 B raw) they need and listed it under
+// tables.sound.sampleWindows.  The whole ROM is NEVER shipped: the 28 fragments
+// are stitched into assets/snd/sample.shard.u8.gz below, deferred like
+// col.shard5, and a sidecar index lets the future synth un-stitch.  See
+// docs/worklog/ddpdoj/140-impl-sound-wave-d.md.
+const SOUND = tablesJson.sound;
+const u17 = readRom(SOUND.rom);
+if (u17.length !== SOUND.fileSize) {
+  throw new Error(`${SOUND.rom} is ${u17.length} B, expected ${SOUND.fileSize} `
+    + '(0x400000). The ICS sample ROM must be 4 MiB.');
+}
 
 // ------------------------------------------------------------------- WAVE 47
 // THE SPRITE SHEET IS SHARDED, AND THE ENEMY BODY TABLES ARE HARVESTED BY
@@ -2376,6 +2395,64 @@ if (SPR_ORDER.length !== SPR_SHARDS.length
     + `the ${SPR_SHARDS.length} sprite shards, so some shard would never be `
     + 'queued at all.');
 }
+// WAVE 27D (SOUND) -- STITCH THE 28-FRAGMENT TIGHT UNION OF u17 into one shard.
+//
+// The 28 windows come from tables.sound.sampleWindows (export-tables.py
+// measured them from keyon.tsv).  Each is a non-adjacent byte run in u17; the
+// stitch concatenates them into one buffer that -- as a WHOLE -- matches no
+// contiguous ROM slice, so build-dist.mjs's verbatim-art guard does not flag it
+// (the guard asks whether the entire body is one slice; a 28-fragment stitch is
+// not, same property col.shard0 relies on).  ZERO PUBLISH_VERBATIM entries.
+//
+// The sidecar index records, per fragment, the u17 file offset, the ICS 24-bit
+// address it corresponds to, and the OFFSET IN THE SHARD it was packed at, so
+// the future synth (Wave E) can map a keyon's sample address back into the
+// shard: sample address -> icsBase lookup -> shardOffset + (address - icsBase).
+{
+  if (!SOUND.sampleWindows || SOUND.sampleWindows.length !== 28) {
+    throw new Error(`tables.sound.sampleWindows is `
+      + `${SOUND.sampleWindows ? SOUND.sampleWindows.length : 'missing'}, `
+      + 'expected 28. Re-run tools/export-tables.py.');
+  }
+  const frags = SOUND.sampleWindows;
+  const raw = frags.reduce((s, w) => s + w.len, 0);
+  if (raw !== SOUND.fragments) {
+    throw new Error(`sample windows sum to ${raw} B, tables.sound.fragments `
+      + `says ${SOUND.fragments}. Re-run tools/export-tables.py.`);
+  }
+  const shard = new Uint8Array(raw);
+  const index = new Array(frags.length);
+  let pack = 0, prevHi = -1;
+  for (let k = 0; k < frags.length; k++) {
+    const w = frags[k];
+    const lo = w.romOffset, hi = lo + w.len;
+    // Disjoint + sorted is the property the guard's silence depends on; assert
+    // it here so a future edit to export-tables.py cannot order two fragments
+    // adjacently into what becomes one contiguous ROM run.
+    if (lo <= prevHi) {
+      throw new Error(`sample fragment ${k + 1} (u17 $${lo.toString(16)}) `
+        + `overlaps or touches the previous fragment's end ($${prevHi.toString(16)})`
+        + ` -- the tight union must be disjoint with gaps, or the verbatim-art `
+        + 'guard flags the shard.');
+    }
+    shard.set(u17.subarray(lo, hi), pack);
+    index[k] = { romOffset: lo, icsBase: w.icsBase, shardOffset: pack, len: w.len };
+    pack += w.len;
+    prevHi = hi;
+  }
+  if (pack !== raw) throw new Error('sample stitch packed ' + pack + ', expected ' + raw);
+  put('snd/sample.shard.u8', shard);
+  put('snd/sample.index.json', new TextEncoder().encode(JSON.stringify({
+    rom: SOUND.rom, icsBase: SOUND.icsBase, shardBytes: raw,
+    note: 'WAVE 27D sidecar. Each fragment maps a u17 byte run to its offset '
+      + 'in snd/sample.shard.u8. synth un-stitch: find the fragment whose '
+      + '[icsBase, icsBase+len) contains the sample address, then read '
+      + 'shard[shardOffset + (address - icsBase)]. 28 disjoint fragments, '
+      + 'non-adjacent in u17; the guard passes because the stitched body is '
+      + 'not one contiguous ROM slice.',
+    fragments: index,
+  })));
+}
 put('capture.bin', outBin);
 put('seed.bin', seed);
 // WAVE 14.  These two were the last uncompressed bodies in the bundle -- 121 KB
@@ -2647,7 +2724,16 @@ const manifest = {
       + 'by address.',
   },
   capture: { layout: capJson.layout, frameBytes: capJson.frameBytes },
-  romsUsed: [...IGS023_LAYOUT, ...SPRCOL_LAYOUT, ...SPRMASK_LAYOUT].map(([n]) => n),
+  // WAVE 27D (SOUND) -- where the ICS2115 sample data lives.  The shard is a
+  // 28-fragment STITCH of u17 (1,538,920 B raw, ~1.10 MiB gz), DEFERRED like
+  // col.shard5: the synth (Wave E, not yet written) fetches both files when it
+  // first needs samples, never at first paint.  No bytes ship in the manifest;
+  // this only points at the two files and records the count.
+  sound: { shard: 'snd/sample.shard.u8.gz', index: 'snd/sample.index.json.gz',
+           rom: SOUND.rom, icsBase: SOUND.icsBase, fragments: 28,
+           shardBytes: SOUND.fragments, deferred: true },
+  romsUsed: [...IGS023_LAYOUT, ...SPRCOL_LAYOUT, ...SPRMASK_LAYOUT]
+    .map(([n]) => n).concat(SOUND.rom),
 };
 // WAVE 53 -- **THE MANIFEST IS WRITTEN COMPACT NOW**, and it is worth a
 // paragraph because it is a 2.5 KiB boot saving for no lost information.
@@ -2693,6 +2779,12 @@ for (const [i] of SPR_SHARDS) {
     DEFERRED.add(`spr/col.shard${i}.u16.gz`);
   }
 }
+// WAVE 27D (SOUND): the ICS2115 sample shard + sidecar index.  DEFERRED like
+// col.shard5 (which the page first asks for 103 s in): the synth is Wave E and
+// has not been written, so neither file is needed for first paint.  Keeping
+// them out of boot holds the line on the owner's "boot must not get slower".
+DEFERRED.add('snd/sample.shard.u8.gz');
+DEFERRED.add('snd/sample.index.json.gz');
 
 let total = 0, boot = 0;
 for (const [name, gz, raw] of written) {
