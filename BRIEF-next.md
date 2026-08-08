@@ -150,6 +150,69 @@ art waves and it is a wave, not a patch.
 
 ---
 
+## 3c. MEASURED. BEES, MEDALS AND THE BOMB.
+
+**`docs/worklog/ddpdoj/148-recon-bees-medals-bomb.md`, commit `115a1c0`.**
+
+**BOTH of my load-bearing claims were stale**, and this is instance eight of
+"verified has a shelf life":
+
+- I wrote *"medals: nobody here has ever looked"*. **W110 is a 572-line medals
+  recon**, dated 2026-08-06.
+- I wrote *"pool A's driver `$27F95A` is unported"*. **W111 ported it the same
+  day.** My map was two days old.
+
+**MEDALS ARE THE BEES.** Same object, pool A kind 1/16, body `$27FACC`, worth
+`$0500`. Not the item family from W61, which scores `$10`/`$1000`. The recon
+re-derived all five constant tables from the ROM independently and they match
+the port. Measured working end to end: allocation, blink, scroll, emission, into
+the final display list.
+
+**WHY THE OWNER SEES NO BEES, AND IT IS NOT A DEFECT.** Three authentic gates,
+none of them signposted in game:
+
+1. The hidden bee only draws within `$240` of the player.
+2. Only damage block 7 accepts it, and that block's A2 is the **laser beam
+   HEAD**, not the beam.
+3. **The head is laid once per laser PRESS** and travels at `+$800` per frame,
+   so **it exists for 21 frames out of 8,000 when the laser is HELD**.
+
+Ten carriers spawned and all ten expired unharmed in every unaided run. Placing
+one inside the head's box produced three bees immediately. **So the owner should
+TAP the laser near a bee position rather than hold it.** That is a gameplay
+fact, not something to fix.
+
+**THE COVER: NEGATIVE RESULT, AND IT MATTERS.** There is no cover sprite at all.
+Carrier and bee share one sprite and size; a single instruction toggles to the
+bee's second frame, and the hidden bee is **the same art at 50% duty**. The
+owner's theory was reasonable and is wrong. **Do not chase art.**
+
+**THE BOMB IS AUTHENTIC.** Candidate 4 survived and was pixel-verified against
+the board by a run in W122, a worklog my brief did not cite. Sparse opaque 16px
+slices, no blender anywhere in the hardware. **Recommend changing nothing.**
+Caveat: if the owner pressed the ORDINARY bomb rather than the laser bomb, its
+fade genuinely alternates and that is also authentic.
+
+**THE ONE REAL DEFECT LEFT HERE:** `$287682`, the rank-gauge callee, is still
+refused. So **a bee scores correctly and feeds rank not at all.** That is
+rank-critical and `20-OWNER-scoring-must-be-exact.md` governs.
+
+**Fix wave should start by** capturing a bee on MAME, near the spot, laser tip
+across it, second half of the stage, to settle the head's lifetime and unblock a
+real diff.
+
+---
+
+## 3d. A HOUSEKEEPING PROBLEM WORTH FIXING EARLY
+
+**The worklog numbering has collided.** There are now two files numbered 100
+(`100-PLAN-static-coverage-system.md` and `100-recon-hud.md`) and the bees recon
+took 148, which a killed sound wave had been told to use. Numbers are being
+assigned from stale views of the directory. Pick the next free number by
+listing, not by memory, and consider renaming one of the 100s.
+
+---
+
 ## 4. WHAT IS RUNNING RIGHT NOW
 
 Check `git log` before starting anything; these may have landed.
@@ -172,19 +235,9 @@ Check `git log` before starting anything; these may have landed.
    nothing audible, so they come after, not before.
 2. **The TX tile sharding wave.** Clears the HUD cluster, probably all three
    reports at once. Start from the recon's index list.
-3. **Bees.** Pool A's driver `$27F95A` is unported, so killing a carrier yields
-   no bee, which alone may explain seeing none. Pair it with the missing cover
-   the owner asked about so one wave owns bees end to end. **Rank-critical**:
-   bees feed rank two indirections deep and `20-OWNER-scoring-must-be-exact.md`
-   governs.
-4. **Medals.** Nobody here has ever looked. May be the item family already
-   ported (W61), in which case it is small.
-5. **The bomb's translucency.** Three candidates dead, one needs MAME. Lowest
-   value of the visual items and the owner calls it a nitpick themselves. **If
-   it turns out authentic, change nothing and say so** - the hardware has no
-   blender, so translucency was faked by alternate-frame drawing, and
-   `src/render/capture.js` is explicit that nobody may "fix" that with half
-   alpha.
+3. **BEES, MEDALS AND THE BOMB ARE MEASURED AND MOSTLY NOT DEFECTS.** See
+   section 3c. **Both claims I wrote here were stale and the recon broke them.**
+   The only real remaining work is the rank feed, `$287682`.
 6. **The static coverage system** (`100-PLAN-static-coverage-system.md`). Built
    for the boss in W102 and it worked; generalising it is the owner's idea and
    the highest-leverage thing on this list. The join runs both ways: static
