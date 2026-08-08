@@ -2,6 +2,21 @@
 
 status: PLANNING (no port work started)   raised: 2026-08-01
 
+## 2026-08-08 W151 correction
+
+The planning-era format labels below are stale. `keyon.tsv` says `fmt=16bit`
+because the capture helper decoded the OscConf format bit incorrectly. The live
+stage-1 modes `$20`, `$08`, and `$00` are all signed 8-bit linear on PGM's
+byte-wide M-ROM bus. Bit 1 selects 16-bit and is clear in all 1,620 keyons; bit
+3 is loop, so `$08` is the looping BGM mode; bit 5 is oscillator IRQ enable, so
+`$20` is the IRQ-producing one-shot SFX mode. `$A0` appears only in three reset
+writes and is never keyed on. FC `$0100` advances half a byte sample per 33,075
+Hz native frame, or 16,537.5 sample bytes per second. See W151 for evidence,
+integer fixtures, the exact center-pan measurement still required, and the
+endpoint-equality question. Do not use `sampledump.py`'s current `fmt` branch as
+hardware truth until that diagnostic tool is corrected in an implementation
+wave.
+
 ## The thing that changed
 
 Batman's sound was a handful of DMG channels: square, wave, noise, a driver
