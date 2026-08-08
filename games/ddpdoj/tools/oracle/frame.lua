@@ -1394,7 +1394,11 @@ local snd
 if SOUNDDIR then
   snd = { pend = {}, doors = 0, keyons = 0, regw = 0, z80w = 0,
           reg_select = 0, osc = 0, active = 31, V = {},
-          fmail = nil, fics = nil, fkey = nil, lastdoor = 0 }
+          fmail = nil, fics = nil, fkey = nil, lastdoor = 0,
+          -- W135 silent-latch census: every 68k WRITE into $C00000-$C0000D,
+          -- attributed by offset + PC.  mailbox.tsv is COMPLETE iff the only
+          -- written offsets are the doorbell $C00002/$C00003.
+          lw = {}, lwpc = {}, lwd = {}, lwn = 0, lwoff = 0, flw = nil }
   for i = 0, 31 do
     snd.V[i] = { conf = 0, fc = 0, st = 0, en = 0, saddr = 0, vol = 0, pan = 0 }
   end
@@ -1412,6 +1416,8 @@ if SOUNDDIR then
     snd.fkey:write("n\tvf\tlf\tvoice\tconf\tfmt\tloop\tfc\tstart\tend\tlen\t"
                    .. "vol\tpan\tsaddr\tafter_door\tics_row\n")
   end
+  snd.flw = open("latchwrite.tsv")
+  if snd.flw then snd.flw:write("offset\tpc\tcount\n") end
 
   -- (a) the 68k -> Z80 shared RAM window.  Both the program upload and the
   --     command mailbox go through here.
@@ -1440,6 +1446,33 @@ if SOUNDDIR then
           table.concat(snd.pend, " ")))
       end
       snd.pend = {}
+      return data
+    end)
+
+  -- (b2) THE SILENT-LATCH CENSUS (W135 sound-plan prerequisite).  The doorbell
+  --      tap above covers ONLY $C00002/$C00003.  PGM wires three soundlatch
+  --      devices into $C00000-$C0000D (NOTES-machine.md:226), and the W135 plan
+  --      flagged that if the 68k also writes command bytes to the other latches
+  --      (e.g. $C00005/$C0000D) then mailbox.tsv is silently incomplete and
+  --      Wave A's row-for-row claim is false.  Tap the WHOLE range and attribute
+  --      every write by offset + PC.  write taps are observers and coexist with
+  --      the doorbell tap, so the $C00002/$C00003 rows here are a cross-check on
+  --      snd.doors (they must match).  CPU.state["CURPC"] is safe inside a write
+  --      tap (the doorbell above relies on it).
+  TAPS[#TAPS + 1] = PROG:install_write_tap(0xc00000, 0xc0000d, "slw",
+    function(offset, data, mask)
+      snd.lwn = snd.lwn + 1
+      local off = offset & 0xffffff
+      local was = snd.lw[off]
+      snd.lw[off] = (was or 0) + 1
+      if not was then snd.lwoff = snd.lwoff + 1 end
+      local pc = CPU.state["CURPC"].value & 0xffffff
+      local k = (off << 24) | pc
+      snd.lwpc[k] = (snd.lwpc[k] or 0) + 1
+      local dw = data & 0xffff
+      local h = snd.lwd[off]
+      if not h then h = {}; snd.lwd[off] = h end
+      h[dw] = (h[dw] or 0) + 1
       return data
     end)
 
@@ -1690,7 +1723,40 @@ local function finish()
       snd.doors, snd.z80w, snd.regw, snd.keyons)
     p("CENSUS sound z80ram_nonzero=%d of %d maincpu_dumped=%d",
       nz, ZR.size, rg.size)
-    for _, f in ipairs({snd.fmail, snd.fics, snd.fkey}) do
+    -- THE SILENT-LATCH CENSUS (W135 prerequisite).  One line per offset that
+    -- received a 68k WRITE inside $C00000-$C0000D, with every distinct PC and
+    -- its count.  The oracle is COMPLETE iff the only offsets are $C00002/$C00003
+    -- (the doorbell); ANY other offset is a sound path mailbox.tsv missed.
+    do
+      local offs = {}
+      for o in pairs(snd.lw) do offs[#offs + 1] = o end
+      table.sort(offs)
+      p("CENSUS sound latch_writes=%d distinct_offsets=%d (doorbell only = oracle COMPLETE)",
+        snd.lwn, snd.lwoff)
+      for _, o in ipairs(offs) do
+        local pcs = {}
+        for k, n in pairs(snd.lwpc) do
+          if (k >> 24) & 0xffffff == o then
+            pcs[#pcs + 1] = string.format("%06X:%d", k & 0xffffff, n)
+          end
+        end
+        table.sort(pcs)
+        p("CENSUS sound latch_off=%06X total=%d pcs=[%s]",
+          o, snd.lw[o], table.concat(pcs, " "))
+        -- the DATA histogram for this offset: a fixed-protocol latch has very
+        -- few distinct values (e.g. soundlatch[2] handshake); a latch carrying
+        -- cue command bytes has many.  This is the "command bytes?" verdict.
+        local dhs, ndv = {}, 0
+        for dv, n in pairs(snd.lwd[o] or {}) do
+          dhs[#dhs + 1] = string.format("$%04Xx%d", dv, n)
+          ndv = ndv + 1
+        end
+        table.sort(dhs)
+        p("CENSUS sound latch_data_off=%06X values=%d [%s]",
+          o, ndv, table.concat(dhs, " "))
+      end
+    end
+    for _, f in ipairs({snd.fmail, snd.fics, snd.fkey, snd.flw}) do
       if f then f:close() end
     end
   end
