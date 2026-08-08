@@ -176,25 +176,15 @@ test('$27E812 walks its OWN pool\'s slots and stops there -- kind $04 has TWO, '
     'the silent failure is COUNTED -- neither call site tests the carry');
 });
 
-test('$27E812 REFUSES the two hyper-stock kinds and counts what it did not '
-  + 'grant', { skip: SKIP }, () => {
-  // THE LIST IS THE CLAIM.  Iterating `REFUSED_KINDS` alone is vacuous -- an
-  // empty list makes the loop body never run and the test pass, which is
-  // exactly what emptying it did on the first mutation pass.
-  assert.deepEqual([...REFUSED_KINDS], [0x0c, 0x14],
-    'kinds $0C and $14 are P1 and P2 HYPER STOCK; recon 59 §5.2 measures one '
-    + 'extra stock as +16 RANK PERMANENTLY at the next super');
+test('$27E812 allocates both hyper-stock kinds in their ROM pools', { skip: SKIP }, () => {
+  assert.deepEqual([...REFUSED_KINDS], []);
   for (const d0 of [0x0c, 0x14]) {
     const ram = new Ram();
-    const { ctx, log } = ctxOf();
-    assert.equal(spawnItem(ram, ROM, ctx, d0, dying(ram)), null);
-    assert.equal(ram.u16(ITEM.count), 0, 'nothing was allocated');
-    const pool = POOLS.find((p) => p.d0 === d0);
-    assert.equal(ram.u16(pool.base), 0, 'and its pool is untouched');
-    const k = [...log.calls.keys()].find((x) =>
-      x.startsWith(d0 === 0x0c ? '$2530BE' : '$2530E6'));
-    assert.ok(k, 'the refusal names the COLLECT routine it prevented');
-    assert.ok(/81B65[CE]/.test(k), 'and the stock word it would have raised');
+    const { ctx } = ctxOf();
+    const slot = spawnItem(ram, ROM, ctx, d0, dying(ram));
+    assert.equal(slot, POOLS.find((p) => p.d0 === d0).base);
+    assert.equal(ram.u16(slot), 0x8000 | d0);
+    assert.equal(ram.u16(ITEM.count), 1);
   }
 });
 
@@ -331,16 +321,13 @@ test('$27E99E range-checks the dispatch: the $3C mask admits SIXTEEN indices '
     '$27E9E2 -- index 8 lands in the sprite table at $27EA1A');
 });
 
-test('$27E99E REFUSES a hyper-kind record loudly, because $27E812 says one '
-  + 'cannot exist', { skip: SKIP }, () => {
-  for (const [idx, d0] of [[3, 0x0c], [5, 0x14]]) {
+test('$27E99E initializes both hyper-kind item bodies', { skip: SKIP }, () => {
+  for (const d0 of [0x0c, 0x14]) {
     const ram = new Ram();
     const r = putItem(ram, 0x000, { kind: d0 });
-    void r;
     ram.setU16(ITEM.count, 1);
-    throwsAt(() => runItemDriver(ram, ROM, ctxOf().ctx), DISPATCH[idx],
-      `kind $${d0.toString(16)} is REFUSED at the allocator, so a record of it `
-      + 'means something wrote a status word behind $27E812');
+    assert.doesNotThrow(() => runItemDriver(ram, ROM, ctxOf().ctx));
+    assert.ok((ram.u16(r) & 0x2000) !== 0, 'hyper item body initialized');
   }
 });
 

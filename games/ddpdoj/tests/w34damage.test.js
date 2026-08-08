@@ -34,6 +34,10 @@ function ledgerRom() {
   return new RomWindows({
     windows: [{ base: '$287df0', len: 8, why: 'test',
       hex: '0038005a00140012' },
+    { base: '$2866d2', len: 12, why: 'W163 stock adjustment',
+      hex: '0000ffff0000000100020003' },
+    { base: '$286ec2', len: 20, why: 'W163 cap earn',
+      hex: '0004000400050004000400010001000100010001' },
     // W54: the death arms now ALLOCATE, and $268864/$2682D2/$2681EE read the
     // enemy-bucket remap row out of the cartridge.  The bytes are the
     // cartridge's own, checked against it by tests/w54effects.test.js.
@@ -157,15 +161,15 @@ test('the chain counter is PACKED BCD: nine chains then $10, never $0A', () => {
     '16 chained kills read $16 in BCD, not $10 -- and $0A never appears');
 });
 
-test('$286664 clamps the meter to the cap and COUNTS $286674', () => {
+test('$286664 clamps the meter and $286674 feeds chain-earned hyper', () => {
   const ram = new Ram();
   const rom = ledgerRom();
   const c = ctx();
   ram.setU16(LEDGER.p1.meter, 0x30);         // 48, cap will be 56, refill 20
   scoreKill(ram, rom, c, 0x08, 0x10);
   assert.equal(ram.u16(LEDGER.p1.meter), 0x38, 'clamped to the cap, not 68');
-  assert.ok([...c.unportedLog.calls.keys()].some((k) => k.startsWith('$286674')),
-    'the hyper-stock bonus $286674 is counted BY ADDRESS, not silently skipped');
+  assert.equal(ram.u16(0x81b64a), 8,
+    '$286EC2 gives 4 and $2866B8 doubles it when D1 bit 2 is clear');
 });
 
 // ================================================= $244EE0, the BOUNDING BOX
@@ -411,8 +415,8 @@ test('$286660 is `bls`, so a refill that lands EXACTLY on the cap still clamps',
   ram.setU16(LEDGER.p1.meter, 0x38 - 0x14);   // cap 56, refill 20 -> exactly 56
   scoreKill(ram, rom, c, 0x08, 0x10);
   assert.equal(ram.u16(LEDGER.p1.meter), 0x38);
-  assert.ok([...c.unportedLog.calls.keys()].some((k) => k.startsWith('$286674')),
-    '$286660 bls takes the clamp on EQUALITY; `bcs` would not');
+  assert.equal(ram.u16(0x81b64a), 8,
+    '$286660 bls takes the clamp tail on EQUALITY; `bcs` would not');
 });
 
 // ---- the two damage-reaction arms in `src/handlers.js` -------------------

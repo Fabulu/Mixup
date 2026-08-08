@@ -14,18 +14,13 @@
 //
 //   $249864 move.w (A1),D1        A1 = $81B65C (P1) / $81B65E (P2)
 //   $249866 beq.b  $2498E2        ZERO  -> THE BOMB     <- THIS FILE
-//           $249868..$2498DE      NON-0 -> THE HYPER    <- a named throw
+//           $249868..$2498DE      NON-0 -> THE HYPER    <- src/hyper.js
 //
 // `src/player.js` carried ONE name (`THE BOMB ($249814)`) for BOTH arms from
 // wave 4 to wave 63, which is exactly how the next wave gets misled: a wave
 // that "implements the bomb at $249814" implements the hyper by accident.  W64
-// splits the name.  The hyper arm now throws at `$249868` and says HYPER.
-//
-// `[M]` the shipped seed has `$81B65C = $81B65E = 0` and `src/items.js`
-// REFUSES the two hyper-stock item kinds AT THE ALLOCATOR (I2's `THE
-// REFUSAL`), so `$2530CA` -- the ONLY absolute writer of the stock -- is
-// unreachable by construction.  **The bomb arm is the only arm this port can
-// take**, which is why B2 comes before the hyper (see the worklog's §1).
+// splits the name. W163 ports the hyper arm and keeps this file on the zero-
+// stock bomb arm plus the bomb-during-hyper rank sink.
 //
 // ============================================================================
 // 1. THE BOMB IS AN OBJECT IN THE `$811F72` TABLE, AND THAT IS THE WHOLE SHAPE
@@ -125,7 +120,7 @@
 //        ramp, which is the STAGE-TITLE card's palette.
 //    Fixing it is a subsystem, not a line: see `90-impl` §2.4.  Nothing here
 //    hand-patches a palette, because a typed-in colour is a fabricated one.
-//  * **THE HYPER.**  Every arm of `$249868` throws by address.
+//  * **THE HYPER.** W163 owns `$249868` and the shared end/debit dependency.
 //  * `$2456A6` -- `$24560A`'s OTHER arm, behind `btst #$0,D5` (bit 0 of the
 //    record's own type word, i.e. bit 0 of `($58,A6)`).  `[M]` `($58,A6)` is 0
 //    on every frame of every run in this corpus and the exporter exports
@@ -146,6 +141,7 @@ import { drawSigned242FDE } from './rng.js';
 import { wipeSegmentPool } from './laser.js';
 import { spawnBeamBombSpark289FF4 } from './spark.js';
 import { install24150A } from './palette.js';
+import { bombEndHyper249970, flushPendingHyper2875B4 } from './hyper.js';
 
 const note = (ctx, addr, what) => ctx.unportedLog.note(addr, what);
 
@@ -374,50 +370,11 @@ export function armBombCancel243DA0(ram) {
  * so it runs on the last bomb of a life and at the end of every hyper
  * (`$285B2A jmp`).
  *
- * **[M] IT IS A PROVEN NO-OP IN THIS PORT AND IT IS NOT STUBBED TO BE ONE.**
- * `$81B6E4` is 0 in the shipped seed, so `$2875BA beq` takes the `$2875D6`
- * arm; `$81B6E0` (the PENDING GRANT COUNT) is 0, so `$2875DC beq` returns.
- * The only way past is `$81B6E0 != 0`, whose only writer is `$2876C6` inside
- * `$287682` -- which `src/score.js` has NOTED for thirty waves.
- *
- * **AND IF IT EVER RUNS IT MAKES `$2530BE` REACHABLE**, which the brief asks
- * to hear about loudly: `$2875FC moveq #$C,D0 / jsr $27E912` spawns the
- * HYPER-STOCK item, `src/items.js` REFUSES kind `$C` at the allocator, and a
- * hyper item collected is +1 stock, which is +1 to `$81B646` at the next
- * super, which is +16 RANK, permanently.  So this throws by address rather
- * than spawning.
+ * W163 delegates both mirrors to the shared hyper implementation. A non-zero
+ * pending count now spawns kind C/14 items at the ROM's stepped positions.
  */
 export function flushPendingGrants2875B4(ram, ctx, p2) {
-  const gate = ram.u16(BOMBRAM.pendGate);            // $2875B4 tst.w $81B6E4
-  if (gate !== 0) {
-    // $2875BC tst.w $8103E6 / bpl $2875D6 is NOT what it looks like: `bmi`
-    // takes the arm when the player record is LIVE, and only then does
-    // $2875CE test the bomb stock.  Both sides are transcribed; neither is
-    // reachable while $81B6E4 is 0.
-    const rec = p2 ? RAM.player2 : RAM.player1;      // $2875BC / $28761E
-    if ((ram.u16(rec) & 0x8000) !== 0) {             // bmi $2875CE
-      if (ram.u8(rec + BOMBRAM.stockOffset) !== 0) return;   // $2875CE / $287630
-    } else if ((ram.u16(p2 ? 0x8130c0 : 0x8130be) & 0x8000) === 0) {
-      return;                                        // $2875CA bmi / $2875CC rts
-    }
-  }
-  let d7 = ram.u16(p2 ? BOMBRAM.pending2 : BOMBRAM.pending1);   // $2875D6
-  if (d7 === 0) return;                              // $2875DC beq
-  const earn = p2 ? BOMBRAM.earnP2 : BOMBRAM.earnP1;
-  if (ram.u16(earn) === 0x95f) {                     // $2875DE cmpi.w #$95F
-    ram.setU16(earn, 0);                             // $2875E8 clr.w
-    d7 = u16(d7 + 1);                                // $2875EE addq.w #$1
-  }
-  unreached(BOMB.itemSpawner, `$2875FC's grant loop -- ${d7} PENDING HYPER `
-    + `ITEM(S) at $${(p2 ? BOMBRAM.pending2 : BOMBRAM.pending1).toString(16)
-      .toUpperCase()}. Each iteration is `
-    + `moveq #$C,D0 / jsr $27E912 with D6 stepping $800, i.e. it SPAWNS THE `
-    + `HYPER-STOCK ITEM. src/items.js REFUSES kinds $C/$14 at the allocator `
-    + `(I2's THE REFUSAL) precisely so that $2530BE/$2530E6 stay unreachable: `
-    + `one collected hyper item is +1 $81B65C, which $285A62 turns into +1 `
-    + `$81B646 at the NEXT super, which is +16 RANK, ACCUMULATING and paid `
-    + `for ever. The only producer of $81B6E0 is $2876C6 inside $287682, `
-    + `which src/score.js has noted since W34`);
+  return flushPendingHyper2875B4(ram, ctx.rom, ctx, p2);
 }
 
 // ===========================================================================
@@ -1460,16 +1417,7 @@ export function fireBomb2498E2(ram, ctx, rec, playerIdx) {
   // ---- $249968: **THE RANK DEBIT, AND IT IS AT THE CALL SITE.**
   const hyper = p2 ? BOMBRAM.hyperActiveP2 : BOMBRAM.hyperActiveP1;
   if (ram.u16(hyper) !== 0) {                          // $249968 tst.w / beq
-    unreached(BOMB.hyperEnd, `$249970 jsr $285AF2 and $249976 subq.w #$3,`
-      + `$81B646 -- **BOMBING WHILE A HYPER IS UP**. $285AF2 is the hyper END `
-      + `and W63 (B1) throws on both of its arms; the -3 is a PERMANENT debit `
-      + `to the rank power word, floored at 0 by $24997E, and recon 38 3.4 is `
-      + `explicit that $285AF2 itself never touches $81B646 -- the debit is `
-      + `HERE, at the call site, so a bomb ends a hyper differently from the `
-      + `gauge expiring. $81B63E is $${ram.u16(hyper).toString(16)
-        .toUpperCase()}; the only way it can be non-zero is $285A30, behind `
-      + `W63's throw, reached only from a hyper stock $2530CA can grant and `
-      + `src/items.js refuses`);
+    bombEndHyper249970(ram, ctx.rom, ctx, p2);
   }
 
   if (d0 !== 0) ram.setU16(a3, 1);                     // $2499D4 tst.w/$2499D8

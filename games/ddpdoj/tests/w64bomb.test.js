@@ -7,7 +7,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
 import { Ram } from '../src/ram.js';
+import { RomWindows } from '../src/rom.js';
 import { RAM, P } from '../src/machine.js';
 import { Unreached, UnportedLog } from '../src/unported.js';
 import {
@@ -17,8 +19,11 @@ import {
   fireBomb2498E2, flushPendingGrants2875B4, resetChain2877D0,
 } from '../src/bomb.js';
 
+const TABLES = JSON.parse(fs.readFileSync(new URL('../rip/port/player.tables.json', import.meta.url), 'utf8'));
+const ROM = new RomWindows(TABLES.rom);
+
 const ctx = (extra = {}) => {
-  const c = { unportedLog: new UnportedLog(), ...extra };
+  const c = { unportedLog: new UnportedLog(), rom: ROM, ...extra };
   // WAVE A: route sound posts into the same log so cue-firing assertions still
   // see them (the real Game posts to the ring; tests just verify the cue fires).
   c.soundPost = (a) => c.unportedLog.note(a, 'WAVE A sound post');
@@ -100,27 +105,16 @@ test('$249916 subq.b: the stock falls by one per bomb and $24991A gates the '
     'and the next press is dropped at $2498E6');
 });
 
-test('$2875B4 is a PROVEN no-op here, and it THROWS rather than granting', () => {
+test('$2875B4 flushes pending chain-earned hyper items', () => {
   const ram = new Ram();
   const c = ctx();
   // The seed: $81B6E4 = 0 and $81B6E0 = 0.
   flushPendingGrants2875B4(ram, c, false);
   assert.equal(ram.u16(BOMBRAM.pending1), 0, '$2875DC beq $287614 -- an rts');
-  // ONE pending grant and it must not spawn: $2530BE would become reachable.
   ram.setU16(BOMBRAM.pending1, 1);
-  try {
-    flushPendingGrants2875B4(ram, c, false);
-    assert.fail('a pending hyper-stock grant must not be spawned silently');
-  } catch (err) {
-    assert.ok(err instanceof Unreached);
-    assert.equal(err.romAddress, BOMB.itemSpawner,
-      'matched by romAddress, never by message text');
-  }
-  // $2875DE cmpi.w #$95F -- the meter at exactly $95F adds ONE MORE grant.
-  ram.setU16(BOMBRAM.earnP1, 0x95f);
-  try { flushPendingGrants2875B4(ram, c, false); } catch { /* expected */ }
-  assert.equal(ram.u16(BOMBRAM.earnP1), 0,
-    '$2875E8 clr.w runs BEFORE the loop, so the accumulator is spent either way');
+  assert.equal(flushPendingGrants2875B4(ram, c, false), 1);
+  assert.equal(ram.u16(BOMBRAM.pending1), 0);
+  assert.equal(ram.u16(0x816e7a), 0x800c);
 });
 
 // ===========================================================================
@@ -150,23 +144,14 @@ test('the P2 arm sets bit 7 of the record\'s LOW byte, which is what $255DD8 '
   assert.equal(ram.u16(BOMBRAM.usedP2), 1, '$249986, not $249936');
 });
 
-test('**BOMBING WHILE HYPERING THROWS AT $285AF2** -- and the -3 is at the '
-  + 'CALL SITE, not inside the hyper end', () => {
+test('bombing while hypering ends it and applies the call-site -3 rank debit', () => {
   const ram = new Ram();
   const rec = player(ram, { hyper: 1 });
   ram.setU16(BOMBRAM.rankPowerP1, 10);
-  try {
-    fireBomb2498E2(ram, ctx(), rec, 0);
-    assert.fail('$249970/$249976 must not be skipped silently');
-  } catch (err) {
-    assert.ok(err instanceof Unreached);
-    assert.equal(err.romAddress, BOMB.hyperEnd);
-  }
-  assert.equal(ram.u16(BOMBRAM.rankPowerP1), 10,
-    'nothing was debited: the throw is in FRONT of $249976, so a run that '
-    + 'hits it has not silently moved the rank power word');
-  assert.equal(ram.u16(BOMBRAM.rec), 0,
-    '...and the record was not allocated either -- $249968 is before $249A4A');
+  assert.equal(fireBomb2498E2(ram, ctx(), rec, 0), 'fired');
+  assert.equal(ram.u16(BOMBRAM.hyperActiveP1), 0);
+  assert.equal(ram.u16(BOMBRAM.rankPowerP1), 7);
+  assert.ok((ram.u16(BOMBRAM.rec) & 0x8000) !== 0);
 });
 
 test('$2499D8: the chain LATCH is set only when the meter was non-zero', () => {
@@ -608,7 +593,6 @@ test('$24560A\'s two guards are checked BEFORE $245622 writes $812952', () => {
 // ===========================================================================
 // THE EXPORTER'S OWN CLAIMS
 // ===========================================================================
-import fs from 'node:fs';
 const TOOL = (n) => fs.readFileSync(new URL(`../tools/${n}`, import.meta.url), 'utf8');
 
 test('the exporter DECLARES the bomb window and ASSERTS its six extents', () => {
@@ -653,12 +637,9 @@ test('$24991A: $2875B4 runs ONLY on the bomb that takes the stock to ZERO', () =
   assert.equal(fireBomb2498E2(ram, ctx(), rec, 0), 'fired',
     'stock 2 -> 1: $24991A bne $249930, so $249922 is NOT called');
   ram.setU16(BOMBRAM.rec, 0);
-  try {
-    fireBomb2498E2(ram, ctx(), rec, 0);
-    assert.fail('stock 1 -> 0 must call $249922 jsr $2875B4');
-  } catch (err) {
-    assert.equal(err.romAddress, BOMB.itemSpawner);
-  }
+  assert.equal(fireBomb2498E2(ram, ctx(), rec, 0), 'fired');
+  assert.equal(ram.u16(BOMBRAM.pending1), 0);
+  assert.equal(ram.u16(0x816e7a), 0x800c);
 });
 
 test('$24990E: the queue word $803938 is set BEFORE the stock is consumed', () => {

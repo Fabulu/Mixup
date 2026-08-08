@@ -43,7 +43,8 @@ const tables = haveTables ? JSON.parse(fs.readFileSync(TABLES, 'utf8')) : null;
 const rom = haveTables ? new RomWindows(tables.rom) : null;
 
 function fresh() {
-  return { ram: new Ram(new Uint8Array(0x20000)), ctx: { unportedLog: new UnportedLog() } };
+  return { ram: new Ram(new Uint8Array(0x20000)),
+    ctx: { unportedLog: new UnportedLog(), rom } };
 }
 /** A ctx whose `unportedLog` can be counted by address. */
 function counted(ctx, addr) {
@@ -591,7 +592,7 @@ test('W63 $28840E has FOUR entries and [3] is the $FFFFFFFF terminator',
 // 7. THE THROWS -- every one carries its ROM address
 // ===========================================================================
 
-test('W63 THE HYPER throws by address, and its TWO GUARDS are the cartridge\'s', () => {
+test('W163 the hyper duration and activation arms run in the HUD frame slot', () => {
   const { ram, ctx } = fresh();
   ram.setU16(HUDRAM.slideFlag, 0);
   ram.setU16(HUDRAM.aliveP1, 0xffff);
@@ -600,29 +601,18 @@ test('W63 THE HYPER throws by address, and its TWO GUARDS are the cartridge\'s',
   ram.setU8(HUDRAM.dfFlags, 0);
   ram.setU8(HUDRAM.cursorTickB, 0x02);
   ram.setU8(HUDRAM.cursorReloadB, 0x02);
-  // Guard 1: $81B63E non-zero -> $285A96, the per-frame TAIL.
+  ram.setU16(HUDRAM.hyperGaugeP1, 4);
   ram.setU16(HUDRAM.hyperActiveP1, 1);
-  assert.throws(() => perFrame28444E(ram, rom, ctx),
-    (e) => e instanceof Unreached && e.romAddress === HUD.hyperTailP1);
-  ram.setU16(HUDRAM.hyperActiveP1, 0);
-  // Guard 2: $81B658 non-zero -> the ACTIVATION, and with it $285A62's RANK GAIN.
-  ram.setU16(HUDRAM.hyperReqP1, 1);
-  assert.throws(() => perFrame28444E(ram, rom, ctx),
-    (e) => e instanceof Unreached && e.romAddress === HUD.hyperActP1);
-  ram.setU16(HUDRAM.hyperReqP1, 0);
-  // Guard 3: the hyper-END FLASH, whose one producer is $285AFC.
-  ram.setU16(HUDRAM.flashTimerP1, 0x48);
-  assert.throws(() => perFrame28444E(ram, rom, ctx),
-    (e) => e instanceof Unreached && e.romAddress === HUD.flashBodyP1);
-  ram.setU16(HUDRAM.flashTimerP1, 0);
-  // ...and P2's three are DIFFERENT addresses, not the same routine twice.
-  ram.setU16(HUDRAM.hyperActiveP2, 1);
-  assert.throws(() => perFrame28444E(ram, rom, ctx),
-    (e) => e instanceof Unreached && e.romAddress === HUD.hyperTailP2);
-  assert.notEqual(HUD.hyperTailP1, HUD.hyperTailP2);
-  ram.setU16(HUDRAM.hyperActiveP2, 0);
-  // ...and with all three guards clear, NOTHING throws.
   assert.doesNotThrow(() => perFrame28444E(ram, rom, ctx));
+  assert.equal(ram.u16(HUDRAM.hyperGaugeP1), 2);
+  ram.setU16(HUDRAM.hyperActiveP1, 0);
+  ram.setU16(HUDRAM.hyperReqP1, 1);
+  ram.setU16(0x81b65c, 2);
+  ram.setU16(HUDRAM.hyperGaugeP1, 0x095f);
+  assert.doesNotThrow(() => perFrame28444E(ram, rom, ctx));
+  assert.equal(ram.u16(HUDRAM.hyperActiveP1), 1);
+  assert.equal(ram.u16(0x81b646), 2);
+  assert.equal(ram.u16(0x81b65c), 0);
 });
 
 test('W124 THE STAGE-CLEAR TALLY is PORTED (was a W63 throw): bit 3 runs the '

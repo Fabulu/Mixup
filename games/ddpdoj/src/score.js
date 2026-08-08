@@ -179,6 +179,7 @@
 
 import { u16 } from './ram.js';
 import { unreached } from './unported.js';
+import { grantHyper287682, HYPER_MUTATE } from './hyper.js';
 
 export const SCORE = {
   hit: 0x286096,            // A HIT LANDS
@@ -187,14 +188,14 @@ export const SCORE = {
   adder: 0x286626,
   refillP1: 0x28663a, refillP2: 0x2866de,
   capClamp: 0x286664,
-  capTail: 0x286674,        // NOTED -- the hyper-stock bonus
+  capTail: 0x286674,        // chain-cap hyper earn tail
   wrapP1: 0x28614a, wrapP2: 0x286154, wrapMask: 0x286128, wrapTail: 0x286102,
   /** `$286876..$286A80`, 523 bytes -- `$286096`'s `$400`-bit arm.  PORTED in
    *  wave 51; see this file's header for why it stopped being unreachable. */
   altBomb: 0x286876,
   altBombShared: 0x286aaa,  // its `$8130F8` bit-2 arm, INSIDE $286A82's body
   bombRankFeed: 0x286774,   // $2868EE bsr -- the twin of $2867B4
-  hyperGrant: 0x287682,     // $2867A4 jsr -- W28 wave 8, still NOTED
+  hyperGrant: 0x287682,     // $2867A4 jsr, shared W163 grantor
   rankAccum: 0x81b64a,      // $28679E add.w D2,$81B64A
   bombStock: 0x81b65c,      // $286782 cmpi.w #$5
   altLaserP1: 0x286a82, altLaserP2: 0x286da8,   // NOTED
@@ -332,36 +333,32 @@ export function bcdAdd(ram, accEnd, d0) {
 
 /** `$28663A` (P1) / `$2866DE` (P2) -- the meter REFILL, and `$286664`'s clamp.
  *
- *  `$28666E tst.w D1 / bmi $286662` is the only exit from the clamp that this
- *  port takes: D1 is the hit mask, a value between `$04` and `$5C`, never
- *  negative.  So the board FALLS THROUGH into `$286674` -- the hyper-stock
- *  bonus and `jmp $287682` -- and that is NOTED, not run.  See this file's
- *  header for why: `$287682` grants the stock that `$285A62` turns into +16
- *  rank, and rank is the owner's named failure. */
-export function refillMeter(ram, ctx, p, d1) {
+ *  `$28666E tst.w D1 / bmi $286662` is the only early exit. Otherwise W163
+ *  runs the ROM gain tables and the `$287682/$287722` grant tail. */
+export function refillMeter(ram, rom, ctx, p, d1) {
   const d0 = ram.u16(SCORE.refillAmt);                // $28663A move.w $81B5E0,D0
   if ((d1 & 0x04) === 0                               // $286640 btst #2,D1 / bne
       && ram.u16(SCORE.loop) !== 0) {                 // $286646 tst.w $813098 / bne
-    return capClamp(ram, ctx, p, d1);                 // -> $286664
+    return capClamp(ram, rom, ctx, p, d1);            // -> $286664
   }
   ram.setU16(p.meter, u16(ram.u16(p.meter) + d0));    // $28664E add.w D0,$81B5C0
   const cap = ram.u16(SCORE.capWord);                 // $286654
   if (cap > ram.u16(p.meter)) return;                 // $28665A cmp / bls -> clamp
-  return capClamp(ram, ctx, p, d1);                   // $286660 bls $286664
+  return capClamp(ram, rom, ctx, p, d1);              // $286660 bls $286664
 }
 
-function capClamp(ram, ctx, p, d1) {
+function capClamp(ram, rom, ctx, p, d1) {
   ram.setU16(p.meter, ram.u16(SCORE.capWord));        // $286664
   if ((d1 & 0x8000) !== 0) return;                    // $28666E tst.w D1 / bmi -> rts
-  note(ctx, SCORE.capTail, `$286674 onwards -- the chain meter reached its cap `
-    + `and the board runs the HYPER-STOCK BONUS: the $813094-indexed tables at `
-    + `$286EC2/$286ECC/$2866D2, then $2866C4 add.w D0,$81B64A and `
-    + `$2866CA jmp $287682. W38 §2.4 CORRECTS what eight waves of this file's `
-    + `text said: $287682 never writes $81B65C at all -- $28768C cmpi.w #$5 is `
-    + `a REFUSAL test, the only absolute writer of the stock is $2530CA and it `
-    + `is UNCAPPED, and what $287682 increments is $81B6E0, the pending-item `
-    + `count. The rank chain is still real, one step longer: item -> $2530CA `
-    + `stock -> $285A62 +$81B646 -> $2608F4's 16x term. Not ported`);
+  const tableIndex = ram.u16(0x813094);
+  let gain = rom.u16((ram.u16(p.hyper) !== 0 ? 0x286ecc : 0x286ec2) + tableIndex);
+  const stock = ram.u16(p.who === 1 ? 0x81b65c : 0x81b65e);
+  if (ram.u16(p.hyper) === 0) gain = u16(gain + rom.u16(0x2866d2 + stock * 2));
+  if (stock !== 5 && (d1 & 0x04) === 0) gain = u16(gain + gain);
+  if (HYPER_MUTATE.value === 'drop-cap-feed') return;
+  const earn = p.who === 1 ? 0x81b64a : 0x81b64c;
+  ram.setU16(earn, u16(ram.u16(earn) + gain));
+  grantHyper287682(ram, rom, ctx, p.who === 2);
 }
 
 /**
@@ -398,9 +395,9 @@ export function chainHit(ram, rom, ctx, p, d0, d1) {
   ram.setU16(p.w1e, 0x1e);                            // $2862FC
   if (ram.u16(p.hyper) !== 0) ram.setU16(p.w1e, 1);   // $286304 / $28630C
   if (ram.u16(p.meter) !== 0) {                       // $286314 tst.w / bne $286366
-    return chainContinue(ram, ctx, p, d3, d1);
+    return chainContinue(ram, rom, ctx, p, d3, d1);
   }
-  refillMeter(ram, ctx, p, d1);                       // $28631C bsr $28663A
+  refillMeter(ram, rom, ctx, p, d1);                  // $28631C bsr $28663A
   ram.setU16(p.chain, 0);                             // $286320 clr.w
   scoreAdd(ram, p, d3);                               // $286326
   return d3;
@@ -418,7 +415,7 @@ function scoreAdd(ram, p, d3) {
 }
 
 /** `$286366..$286472` -- the CHAINED path. */
-function chainContinue(ram, ctx, p, d3, d1) {
+function chainContinue(ram, rom, ctx, p, d3, d1) {
   if (ram.u32(p.acc1) !== 0) {                        // $286366 tst.l / beq $286390
     const d0 = ram.u32(p.acc1);
     ram.setU32(p.accA, d0);                           // $286374
@@ -439,7 +436,7 @@ function chainContinue(ram, ctx, p, d3, d1) {
   }
   bcdAdd(ram, p.accB, d3);                            // $2863CE/$2863D4
   bcdAdd(ram, p.acc3, ram.u32(p.accA));               // $2863D8/$2863DE/$2863E4
-  refillMeter(ram, ctx, p, d1);                       // $2863E8 bsr $28663A
+  refillMeter(ram, rom, ctx, p, d1);                  // $2863E8 bsr $28663A
   bcdAdd(ram, p.pendingEnd, ram.u32(p.accA));         // $2863EC/$2863F2/$2863F8
   const chain = ram.u16(p.chain);
   if (chain < 0x10) {                                 // $2863FE cmpi.w #$10 / bcc
@@ -486,16 +483,7 @@ function bombRankFeed(ram, ctx) {
   ram.setU16(SCORE.laserRankDivider, d);
   if (d !== 0xffff) return;                             // $28677A bcc -> rts
   ram.setU16(SCORE.rankAccum, u16(ram.u16(SCORE.rankAccum) + 0x18));  // $28679E
-  note(ctx, SCORE.hyperGrant, `$2867A4 jsr $287682 from $286774, the $400 `
-    + `arm's rank feeder -- the SIXTH of that routine's six absolute callers `
-    + `and the first this port has ever reached. $287682 tests $81B64A against `
-    + `#$95F, clears it, and increments $81B6E0, the PENDING-ITEM count, which `
-    + `$2530CA turns into a hyper stock and $285A62 into +$81B646 of RANK `
-    + `(W38 §2.4). It is W28's wave 8 and stays unported. CONSEQUENCE, stated `
-    + `rather than hidden: $81B64A now ACCUMULATES with nothing to drain it at `
-    + `#$95F, so a beam that chains for long enough banks rank the board would `
-    + `have spent. That is the owner's named failure surface `
-    + `(20-OWNER-scoring-must-be-exact) and it is the LAST link of this chain`);
+  grantHyper287682(ram, ctx.rom, ctx, false);           // $2867A4 jsr $287682
   ram.setU16(SCORE.laserRankDivider, 8);                // $2867AA/$2867AC
 }
 

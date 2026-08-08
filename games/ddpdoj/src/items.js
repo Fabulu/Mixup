@@ -57,19 +57,9 @@
 // **ONE EXTRA HYPER ITEM IS +16 RANK, PERMANENTLY, PAID AT THE NEXT SUPER AND
 // NOT AT PICKUP.**  Cause and symptom in different objects and different
 // frames, which is exactly the failure `20-OWNER-scoring-must-be-exact` exists
-// to prevent.  Recon 59 §10 puts the hyper item in wave I3 WITH the hyper
-// machine for that reason, and W52/W54's precedent is to refuse rather than
-// half-port.  So:
-//
-//   * `spawnItem` REFUSES D0 = `$C` and D0 = `$14`.  No record of either kind
-//     can exist, so `$2530BE`/`$2530E6` are unreachable BY CONSTRUCTION and not
-//     merely unreached.  The refusal is COUNTED with the player and the stock
-//     the grant would have made, because recon 59 §11.8 is right that an
-//     ungranted stock and a wrongly-granted one are both permanent rank errors
-//     and only the counted one is diagnosable.
-//   * the DISPATCH entries for both kinds are still present and still
-//     range-checked; reaching one is a LOUD NAMED THROW, because it would mean
-//     a record exists that the allocator says cannot.
+// to prevent. W163 therefore ports D0 = `$C` and D0 = `$14` together with the
+// grant, collection and activation pipeline. Both dispatch entries are live,
+// player-specific mirrors and remain inside the existing range check.
 //
 // [M] the only `$27E812` sites this port can reach are `$275B06` and `$275B1A`
 // (`handler85`'s death arm, types `$85`/`$86`), and they pass D0 = `$0` or `$8`.
@@ -103,11 +93,8 @@
 //  * **`$27E88A`**, the third allocator (allocate D1+1 in a loop).  [M] recon 59
 //    found NO CALLER, absolute-long or PC-relative, in $230000..$2B0000, and
 //    re-checked here.  Not transcribed; named.
-//  * **`$27E912` and `$27F6E4`** (fill B, and the `$8171BC` spawn-variant
-//    counter that wraps `$9C`->0 and `$A2`->6).  All four of `$27E912`'s callers
-//    are inside the hyper-stock machine `$2875B4..$287720`, which is I3's.
-//  * **`$27F8EE`** -- the impact-pool spawn the REFUSED hyper item makes when it
-//    is refused by the game's own rules.  Pool A has no driver in this port
+//  * **`$27F8EE`** -- the impact-pool spawn a hyper item requests when the
+//    game's active/stock-5 rules discard it. Pool A has no driver in this port
 //    (`$27F95A` is type-5 call #4, unported), so W52's refusal stands.
 //  * **the `$28Cxxx` sound cues** (`$28C5CA`, `$28C9F8`, `$28CA12`, `$28C65E`,
 //    `$28C678`, `$28C43C`, `$28C49C`, `$28C4FC`) -- W53 §0 established that
@@ -175,8 +162,8 @@ export const POOLS = Object.freeze([
   { d0: 0x10, base: 0x81717a, d2: 0, slots: 1 },   // $27E86C/$27E872 -- the ELSE
 ]);
 
-/** The kinds this wave REFUSES TO ALLOCATE.  See §THE REFUSAL in the header. */
-export const REFUSED_KINDS = Object.freeze([0x0c, 0x14]);
+/** No valid item kind is refused after W163. */
+export const REFUSED_KINDS = Object.freeze([]);
 
 /** `$27E9F8`, the 8-entry kind dispatch, as the ROM's own addresses.  [M]
  *  entry [6] is THE FREE and the longword at entry [7] is `4E75 001B` --
@@ -329,6 +316,46 @@ export function spawnItem(ram, rom, ctx, d0, a6, siteAddr = ITEM.alloc) {
     + `instruction and overwrites the flags). The drop is LOST, silently, on `
     + `the board too. Site $${siteAddr.toString(16).toUpperCase()}`);
   return null;
+}
+
+/** `$27E912 -> $27F6E4`, the hyper grantor's position-driven allocator. */
+export function spawnHyperItem(ram, rom, ctx, d0, d6, siteAddr = ITEM.allocHyper) {
+  if (d0 !== 0x0c && d0 !== 0x14) {
+    unreached(ITEM.allocHyper, `$27E912 hyper allocator received kind $${d0
+      .toString(16).toUpperCase()} at $${siteAddr.toString(16).toUpperCase()}`);
+  }
+  const pool = POOLS.find((p) => p.d0 === d0);
+  for (let n = 0; n <= pool.d2; n++) {
+    const a0 = pool.base + n * ITEM.stride;
+    if (ram.u16(a0 + I.status) !== 0) continue;
+    fill27F6E4(ram, rom, a0, d0, d6);
+    ctx?.itemSpawn?.(d0, siteAddr, a0);
+    return a0;
+  }
+  note(ctx, 0x27e984, `$27E912 found no free kind-$${d0.toString(16)
+    .toUpperCase()} slot; the board silently loses this hyper item`);
+  return null;
+}
+
+/** `$27F6E4`, preserving the deliberately unwritten bytes at +$04/+0D/+19. */
+export function fill27F6E4(ram, rom, a0, d0, d6) {
+  const tmpl = TEMPLATES[d0 >> 2];
+  ram.setU16(a0 + I.status, u16(d0 | 0x8000));
+  ram.setU16(a0 + I.pos, d6);
+  ram.setU32(a0 + 0x06, rom.u32(tmpl));
+  ram.setU32(a0 + 0x0a, rom.u32(tmpl + 4));
+  ram.setU16(a0 + 0x0e, 0xffff);
+  ram.setU16(a0 + 0x10, rom.u16(tmpl + 10));
+  ram.setU32(a0 + 0x12, rom.u32(tmpl + 12));
+  ram.setU32(a0 + 0x16, rom.u32(tmpl + 16));
+  ram.setU32(a0 + 0x1a, rom.u32(tmpl + 20));
+  ram.setU16(a0 + 0x1e, ram.u16(ITEM.variant));
+  ram.setU16(ITEM.count, u16(ram.u16(ITEM.count) + 1));
+  let v = u16(ram.u16(ITEM.variant) + 0x0c);
+  if (v === 0x009c) v = 0;
+  else if (v === 0x00a2) v = 6;
+  ram.setU16(ITEM.variant, v);
+  return a0;
 }
 
 /**
@@ -489,16 +516,8 @@ function runBody(ram, rom, ctx, a6, d1, idx) {
     case 0: return body27EA2A(ram, rom, ctx, a6, d1);       // kind $00 POWER-UP
     case 1: return body27EBDC(ram, rom, ctx, a6, d1);       // kind $04 FULL POWER
     case 2: return body27ED8C(ram, rom, ctx, a6, d1);       // kind $08 SET ITEM
-    case 3: case 5:                                         // kinds $0C / $14
-      unreached(DISPATCH[idx], `$27E9F8[${idx}] -- a LIVE item record of kind `
-        + `$${(idx * 4).toString(16).toUpperCase()} reached the dispatch. This `
-        + `wave REFUSES to allocate the hyper-stock kinds (see src/items.js `
-        + `§THE REFUSAL), so no such record can exist: something wrote a status `
-        + `word behind $27E812. Its collect arm $${(idx === 3 ? 0x2530be
-          : 0x2530e6).toString(16).toUpperCase()} raises $${(idx === 3
-            ? 0x81b65c : 0x81b65e).toString(16).toUpperCase()}, which $285A62 `
-        + `ACCUMULATES into the rank power at the player's next super`);
-      return null;
+    case 3: return bodyHyperItem(ram, rom, ctx, a6, d1, false); // kind $0C, P1
+    case 5: return bodyHyperItem(ram, rom, ctx, a6, d1, true);  // kind $14, P2
     case 4: return body27F1A6(ram, rom, ctx, a6, d1);       // kind $10 COUNTER
     case 6: return { freed: freeItem(ram, a6) };            // $27F2F0 THE FREE
     case 7: return null;                                    // $27EA18 rts
@@ -924,6 +943,99 @@ function motion27EE54(ram, rom, ctx, a6) {
 // bra $27F54C`, unconditionally.  So a 21st `$10` item is collected NORMALLY,
 // scores `$10`, and grants nothing.  It is also the only body that sounds
 // BEFORE the fork, and the only one whose motion is the scroll pair.
+
+/** `$2530BE/$2530E6`, the uncapped stock increment and 0x095F duration load. */
+export function collectHyperStock(ram, ctx, p2) {
+  const stock = p2 ? 0x81b65e : 0x81b65c;
+  const gauge = p2 ? 0x81b644 : 0x81b642;
+  const trail = p2 ? 0x81b6a0 : 0x81b660;
+  const playerPos = p2 ? 0x81044a : 0x8103e8;
+  if (ram.u16(stock) === 0) {
+    const pos = ram.u32(playerPos);
+    for (let n = 0; n < 16; n++) ram.setU32(trail + n * 4, pos);
+  }
+  ram.setU16(stock, u16(ram.u16(stock) + 1));
+  ram.setU16(gauge, 0x095f);
+  ctx?.hyperEvent?.('collect', p2 ? 2 : 1, ram.u16(stock));
+  return false;
+}
+
+/** `$27EF50/$27F254`, the two hyper item bodies through their shared mover. */
+function bodyHyperItem(ram, rom, ctx, a6, d1, p2) {
+  if ((d1 & 0x2000) === 0) {
+    ram.setU8(a6, ram.u8(a6) | 0x20);                  // bset #5,(A6)
+    ram.setU8(a6 + 0x19, 1);
+    const off = ram.u16(a6 + I.tick);
+    ram.setU16(a6 + I.tick, rom.u16(0x27f0fa + off));
+    ram.setU32(a6 + I.speed, rom.u32(0x27f0fc + off));
+    if (i16(ram.u16(a6 + I.anim)) < 0) {
+      ram.setU16(a6 + I.posX, p2 ? 0x2400 : 0x1400);
+    }
+    ram.setU16(a6 + I.frame, 0x0202);
+    ram.setU16(a6 + I.anim, 0);
+  }
+  if (ram.u16(0x81df22) !== 0) return { freed: freeItem(ram, a6) };
+  const active = p2 ? 0x81b640 : 0x81b63e;
+  const stock = p2 ? 0x81b65e : 0x81b65c;
+  if (ram.u16(active) !== 0 || ram.u16(stock) === 5) {
+    note(ctx, 0x27f8ee, `$${p2 ? '27F28E' : '27EF8A'} discards a hyper item `
+      + `while active or at stock 5 and requests the cosmetic impact pool`);
+    return { freed: freeItem(ram, a6) };
+  }
+  const touch = p2 ? 0x0800 : 0x1000;
+  if ((d1 & touch) !== 0) {
+    collectHyperStock(ram, ctx, p2);
+    ctx?.soundPost?.(0x28c65e);
+    collect27F54C(ram, rom, ctx, a6, ANIM_LISTS.c27F400);
+    return { emitted: true };
+  }
+  if (ram.u16(ITEM.freeze) === 0) {
+    const motion = ram.u8(a6 + 0x19);
+    if (motion !== 0) {
+      ram.setU16(a6 + I.pos, u16(ram.u16(a6 + I.pos) - 0x40));
+      if ((motion & 0x80) === 0 && ram.u16(a6 + I.pos) < 0x0800) {
+        ram.setU8(a6 + 0x19, 0);
+      }
+    } else {
+      ram.setU16(a6 + I.pos, u16(ram.u16(a6 + I.pos) + 0x18));
+      if (ram.u16(a6 + I.pos) + 0x8800 > 0xffff) {
+        return { freed: freeItem(ram, a6) };
+      }
+    }
+    const tick = (ram.u8(a6 + I.tickReload) - 1) & 0xff;
+    ram.setU8(a6 + I.tickReload, tick);
+    if (tick === 0) {
+      const off = ram.u8(a6 + I.tick);
+      ram.setU16(a6 + I.tick, rom.u16(0x27f0fa + off));
+      ram.setU32(a6 + I.speed, rom.u32(0x27f0fc + off));
+    }
+    ram.setU16(a6 + I.pos, u16(ram.u16(a6 + I.pos) + ram.u16(a6 + I.speed)));
+    ram.setU16(a6 + I.posX, u16(ram.u16(a6 + I.posX) + ram.u16(a6 + I.angle)));
+  }
+  const base = p2 ? 0x001b8bd4 : 0x001b8b28;
+  const long = u16(ram.u16(a6 + I.pos) - 0x0700);
+  const short = u16(ram.u16(a6 + I.posX) - 0x0600);
+  enqueueRegistersThroughStub(ram, rom, ITEM.emitStub,
+    ((long << 16) | short) >>> 0, base, 0x0638, 5);
+  if (ram.u16(0x80390c) !== 0) {
+    const l2 = u16(ram.u16(a6 + I.pos) - 0x0400);
+    const s2 = u16(ram.u16(a6 + I.posX) - 0x0300);
+    enqueueRegistersThroughStub(ram, rom, ITEM.emitStub,
+      ((l2 << 16) | s2) >>> 0, 0x001b8c80, 0x0418, 5);
+  }
+  const l3 = u16(ram.u16(a6 + I.pos) - 0x0400);
+  const s3 = u16(ram.u16(a6 + I.posX) - 0x0300);
+  enqueueRegistersThroughStub(ram, rom, ITEM.emitStub,
+    ((l3 << 16) | s3) >>> 0, rom.u32(0x27ef10 + ram.u16(a6 + I.anim)),
+    0x0418, 5);
+  const frame = (ram.u8(a6 + I.frame) - 1) & 0xff;
+  ram.setU8(a6 + I.frame, frame);
+  if (frame === 0) {
+    ram.setU8(a6 + I.frame, ram.u8(a6 + I.reload));
+    ram.setU16(a6 + I.anim, (ram.u16(a6 + I.anim) + 4) & 0x3f);
+  }
+  return { emitted: true };
+}
 
 function body27F1A6(ram, rom, ctx, a6, d1) {
   if ((d1 & 0x2000) === 0) {                           // $27F1A6 btst #$D

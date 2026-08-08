@@ -85,6 +85,12 @@ SCAN_CAP = 512                # see speed_levels(): a scan cap, not the table en
 # know are used, because "wider than measured" fails loudly at the export and
 # "narrower than used" fails at runtime on the player's machine.
 SHOT_WINDOWS = [
+    (0x252B42, 0x008E, "W163 hyper rank-power tables including power-zero reads"),
+    (0x25531C, 0x001E, "W163 hyper pending and request mode tables"),
+    (0x2866D2, 0x000C, "W163 chain cap stock adjustment table"),
+    (0x286EC2, 0x0014, "W163 normal and active chain cap earn tables"),
+    (0x2874E0, 0x004C, "W163 hyper end-flash sprite table"),
+    (0x27F0FA, 0x009C, "W163 hyper-item motion table through next data boundary"),
     # $249C3E lea $2554EA / $249C88 lea $255502 / $249D5E lea $25551A -- the
     # per-FORMATION pointer tables, and the per-POWER tables they point at
     # ($255532..$2555A9, five longs each at a TWO-byte stride, so the power word

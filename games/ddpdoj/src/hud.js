@@ -108,29 +108,12 @@
 // would have drawn.
 //
 // ===========================================================================
-// THE HYPER: ITS TWO GUARDS ARE PORTED AND EVERYTHING PAST THEM THROWS
+// THE HYPER
 // ===========================================================================
 //
-// A bare throw at `$284460` would stop the game on logic frame 49 and take the
-// owner's "load the page, fly, shoot" with it.  A quiet skip is forbidden.  The
-// cartridge itself supplies the third answer, and it is two instructions:
-//
-//     $285A12 tst.w $81B63E / bne.w $285A96   ALREADY HYPERING -> the tail
-//     $285A1C tst.w $81B658 / beq.b $285A0A   no REQUEST -> jmp $2873AC
-//
-// [M] both words are **0** in the shipped seed, and `$81B658`'s only producer
-// is `$24989A move.w #$1,(A2)` inside `$249814` -- the button, which
-// `src/player.js` has thrown for since wave 4.  So the cartridge's own guards
-// send every frame to `$285A0A`, and the port transcribes the guards and
-// THROWS BY ADDRESS on both arms past them.  That is a transcription of two
-// real instructions, not a stub of a routine.
-//
-// `$2873AC` (P1) / `$28748A` (P2), the hyper-END flash, gets the same
-// treatment: its own first instruction is `tst.w $81B6FA / beq.b $287400`
-// (a bare `rts`), and [M] `$81B6FA`'s ONE non-local writer in
-// $230000..$2B0000 is `$285AFC move.w #$48`, inside `$285AF2` -- the hyper end,
-// behind the throw.  So the flash is a PROVEN two-instruction no-op here, and
-// its body is a throw carrying `$2873B4`.
+// W163 places `$285A12/$285B3C` in this authentic type-0 frame slot. The
+// shared implementation owns activation, duration, chain maintenance, end,
+// pending-item flush, and both live/end flash mirrors.
 //
 // ===========================================================================
 // ONE MORE ARM IS A THROW AND IT CANNOT FIRE
@@ -186,6 +169,7 @@ import { unreached } from './unported.js';
 import { queueKill } from './objalloc.js';
 import { OBJ } from './objdriver.js';
 import { enqueueRegisters } from './spritequeue.js';
+import { stepHyper285A12 } from './hyper.js';
 import { install24157A } from './palette.js';
 import { bcd242AC6 } from './items.js';
 import { bcdAdd, scorePending } from './score.js';
@@ -2038,45 +2022,9 @@ function note28C6C6(ctx) {
   ctx?.soundPost?.(0x28c6c6);  // WAVE A: BGM id=$19, tally bonus-event ($285434/$28553E)
 }
 
-/** `$285A12` (P1) / `$285B3C` (P2) -- **THE HYPER**, recon 38's wave 2.
- *
- *  The TWO GUARDS are ported; both arms past them are LOUD NAMED THROWS.  See
- *  this file's header for why that is a transcription and not a stub. */
+/** `$285A12` (P1) / `$285B3C` (P2), including activation and duration. */
 function hyper285A12(ram, ctx, who) {
-  const P = who === 0
-    ? { active: HUDRAM.hyperActiveP1, req: HUDRAM.hyperReqP1, entry: HUD.hyperP1,
-      tail: HUD.hyperTailP1, act: HUD.hyperActP1, flash: HUD.flashP1,
-      flashT: HUDRAM.flashTimerP1, flashBody: HUD.flashBodyP1 }
-    : { active: HUDRAM.hyperActiveP2, req: HUDRAM.hyperReqP2, entry: HUD.hyperP2,
-      tail: HUD.hyperTailP2, act: HUD.hyperActP2, flash: HUD.flashP2,
-      flashT: HUDRAM.flashTimerP2, flashBody: HUD.flashBodyP2 };
-  if (ram.u16(P.active) !== 0) {                        // $285A12 tst.w $81B63E / bne
-    unreached(P.tail, `THE HYPER's PER-FRAME TAIL, P${who + 1} `
-      + `($${P.tail.toString(16).toUpperCase()}). $81B63E/$81B640 is non-zero, `
-      + 'so a hyper is UP -- which no run in this repo has ever had (W19 1.4). '
-      + 'The tail is $287340, $285A9C\'s death exit into $285AF2, $285AA8\'s '
-      + 'popup arm and $285AEA subq.w #$2,$81B642, the 1,200-frame gauge. '
-      + 'Recon 38 wave 2');
-  }
-  if (ram.u16(P.req) !== 0) {                           // $285A1C tst.w $81B658 / beq
-    unreached(P.act, `THE HYPER's ACTIVATION, P${who + 1} `
-      + `($${P.act.toString(16).toUpperCase()}). $81B658/$81B65A is non-zero, so `
-      + 'the button asked for one -- and its ONE producer is $24989A inside '
-      + '$249814, which src/player.js has thrown for since wave 4. The body is '
-      + '$285A30 ($81B63E := 1), **$285A62 add.w $81B65C,$81B646 -- THE RANK '
-      + 'GAIN, capped $23**, $285A4C (the chain meter := the cap, ONLY if it '
-      + 'was already non-zero) and $285A8A clr.w $81B65C. Do NOT stub it: '
-      + '$81B646 ACCUMULATES across hypers and $2608F4 turns it into +16 rank '
-      + 'per level, permanently. Recon 38 wave 2');
-  }
-  // $285A0A / $285B34 jmp $2873AC / $28748A -- THE HYPER-END FLASH.
-  if (ram.u16(P.flashT) === 0) return;                  // $2873AC tst.w / beq.b $287400
-  unreached(P.flashBody, `THE HYPER-END FLASH, P${who + 1} `
-    + `($${P.flashBody.toString(16).toUpperCase()}). $81B6FA/$81B6FC is non-zero, `
-    + 'and [M] its ONE non-local writer in $230000..$2B0000 is $285AFC move.w '
-    + '#$48, inside $285AF2 -- the hyper END, which is behind the throw above. '
-    + 'So this cannot fire until wave 2 lands. It reads $2874E0[$81B6FA] into '
-    + '$81B6F2 and draws through $240A5A');
+  stepHyper285A12(ram, ctx.rom, ctx, who !== 0);
 }
 
 /** `$28444E` -- the whole thing, in ROM order. */
