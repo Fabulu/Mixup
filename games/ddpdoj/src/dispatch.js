@@ -1,67 +1,96 @@
-// THE Z80 CUE DISPATCH -- Wave C Layer 3 (the LAST layer of Wave C).
-//
-// See docs/worklog/ddpdoj/142-impl-sound-wave-c3.md (this wave) and
-// 135-sound-architect-plan.md section 2 (Wave C, Layer 3). Layer 1
-// (src/ics.js, the ICS2115 register file) and Layer 2 (src/voice.js, the voice
-// engine) ship; this layer is the NMI cue dispatch that COUPLES them.
+// THE Z80 CUE DISPATCH -- the NMI ingress (W142) + the MAIN-LOOP dispatcher
+// (W144 / Wave C6). See docs/worklog/ddpdoj/142-impl-sound-wave-c3.md (the NMI
+// ingress) and 144-impl-sound-c6.md (the main-loop dispatcher + the immediate
+// note-on) and 143-recon-c-depth.md section C6 (the recon that sized this wave).
 //
 // The chain this module wires:
 //   mailbox door (Wave A's src/sound.js: the [type][pan][id][chan] longword)
-//     -> Layer 3: bank-select $09B7, read command $8200, route the cue-id
-//     -> Layer 3 populates a $62EC voice slot (via the CueRouter)
-//     -> Layer 2: VoiceEngine.tick emits register writes
-//     -> Layer 1: IcsRegisterFile logs them (the ics.tsv oracle stream)
+//     -> NMI ingress ($07F6): bank-select $09B7, enqueue to the MailboxQueue
+//     -> MAIN LOOP ($0321): poll $3BB5, dequeue $3CDD, dispatch $41D0 over the
+//        15-command table at $078E
+//     -> cmd $00/$01 handler -> $3245 -> $3150 populator -> $62EC voice slot
+//     -> Layer 2 (VoiceEngine.tick): emitKeyon (the $0B92 register programmer)
+//     -> Layer 1 (IcsRegisterFile): logs the ics.tsv register stream
 //
-// THE NMI FLOW (decoded in worklog 142 section 0; every address cited from the
-// Wave B listing z80.js):
-//   $0128 NMI handler: PUSH regs; CALL $07F6; ack via OUT $8100; RETN
-//   $07F6 cue dispatch:
-//     LD HL,$00F0; CALL $09B7            ; bank-select(tag $00F0)
-//     LD HL,$8200; CALL $0147            ; inFromPort -> A = command byte
-//     AND $0F; LD ($6151),A              ; command nibble -> RAM $6151
-//     CP $01; JR NZ,restore              ; command $01 = cue-with-payload
-//     LD DE,$0006; LD HL,$6001; CALL $3BEA   ; copy 6-byte payload to RAM $6001
-//     ... enqueue to the channel manager ...
-//     LD HL,$0000; CALL $09B7            ; bank-select($0000) restore; RET
-//   $09B7 bank-select: byte = (base & $0F) | (tag & $F0); OUT($8400),byte;
-//                        $614F := tag_lo
-//   $0829 channel manager: 40 slots (LD HL,$0028), 16-byte stride (LD HL,$0010);
-//                        sets $6150 := $01 (the persistent bank base)
+// THE W143 CORRECTION (load-bearing). W138 framed the main thread as idling;
+// re-decoded, the main thread RUNS the cue dispatch loop at $0321 (verified:
+// $07CA is literally `JP $0321`). So the cue->voice route is MAIN-LOOP driven,
+// polled off the MailboxQueue the NMI drains into -- NOT purely interrupt-
+// driven. The mailbox TYPE byte IS the command opcode the $41D0 switch dispatch
+// (type $00 -> cmd $00, ... type $15 -> cmd $15). C6 ports this main-loop
+// dispatch and REPLACES W142's injected paramsProvider(id) with the real
+// $3245/$3150 populator fed by the empirical SfxParamTable.
 //
-// WHAT THIS WAVE OWNS and what it defers. Layer 3 owns the dispatch CORE: the
-// bank-select arithmetic, the command decode, the channel-manager slot model,
-// and the FULL-CHAIN WIRING (CueDispatch -> VoiceEngine -> IcsRegisterFile). The
-// cue-id -> voice-param SCRIPTS (each id indexes Z80-side ROM tables for
-// sample-address / fc / volume / pan and writes them into $62EC) are DEFERRED:
-// this wave routes via an injectable `paramsProvider(id)` so the chain runs now
-// with oracle-reconstructed params and later with live ROM-table params. Layer
-// 2's ramp math / keyoff / loop wrap (worklog 141 TODOs) also remain.
+// WHAT C6 OWNS and what it defers. C6 owns the main-loop dispatcher (the
+// $078E table, the $41D0 switch, the $3BB5/$3CDD poll/dequeue) + the immediate
+// note-on path (cmd $00/$01/$02 -> $3245 -> $3150 -> $62EC). The param data
+// comes from the SfxParamTable (the 14 reconstructed SFX param-sets, keyed per
+// door); the LIVE banked-score-data lookup (the $62EA sample-base + the 10-bit
+// sample-descriptor index $3150 masks) is a C7 dependency. Cmd $0F ($34FB), the
+// cue-id sequencer ($2E38, cmds $11/$12/$15), Layer 2 keyoff/ramp, and the
+// historical door->keyon timeline are NAMED TODOs (C5/C7/C8).
 
-import { Z80_PORT, Z80_BANK } from './z80.js';
-import { IcsRegisterFile, ICS_PORT, N_VOICES } from './ics.js';
-import { VoiceEngine, VoiceSlot, ENGINE } from './voice.js';
+import { Z80_BANK } from './z80.js';
+import { IcsRegisterFile, N_VOICES } from './ics.js';
+import { VoiceEngine, ENGINE } from './voice.js';
 
 // --------------------------------------------------------------- the driver map
-// Layer 3 addresses, cited from z80.js (the Wave B listing) by symbol so a
-// reviewer checks any one against the disassembly. Restated here for the port's
-// self-documentation; the canonical copy is z80.js Z80_ROM.
+// NMI-ingress addresses (W142), cited from z80.js (the Wave B listing) by symbol
+// so a reviewer checks any one against the disassembly.
 export const DISPATCH = {
   nmiHandler:  0x0128,   // PUSH regs; CALL $07F6; OUT $8100; RETN
   cueDispatch: 0x07F6,   // bank-select; read $8200; payload from RAM $6001
   bankSelect:  0x09B7,   // byte = (base & $0F) | (tag & $F0); OUT $8400
   channelMgr:  0x0829,   // 40-slot channel manager (stride $10 = 16 bytes)
-  payloadCopy: 0x3BEA,   // window -> RAM $6001 copy (length DE, dest HL)
   cmp16:       0x4231,   // carry iff HL <= DE (the 16-bit compare; loop bound)
-  // the channel-manager constants decoded from the $0829 prologue
   N_SLOTS:     40,       // LD HL,$0028 at $0848 (the outer loop bound)
   SLOT_STRIDE: 0x10,     // LD HL,$0010; ADD HL,DE at $0851 (16 bytes per slot)
-  // the command nibble values
-  CMD_CUE:     0x01,     // CP $01 at $0807 -- the cue-with-payload command
+  CMD_CUE:     0x01,     // the NMI doorbell command (cue-with-payload)
 };
 
+// MAIN-LOOP addresses (C6), re-decoded in worklog 144 section 0.
+export const MAINLOOP = {
+  top:        0x0321,   // the main-loop entry: poll -> dequeue -> dispatch
+  poll:       0x3BB5,   // non-empty test on the $6001 queue struct (HL=0 has work)
+  dequeue:    0x3CDD,   // dequeue one message (bank-select + read cmd + copy)
+  switchDisp: 0x41D0,   // JP (HL) switch over the command table
+  cmdTable:   0x078E,   // the 15-command, 4-byte-stride table
+  backEdge:   0x07CA,   // JP $0321 -- the main-loop return (verified literally)
+  noteOn:     0x3245,   // the immediate note-on entry (cmd $00/$01/$02 call it)
+  populator:  0x3150,   // the $62EC slot populator (alloc + write fields)
+  slotAlloc:  0x311C,   // the $62EC slot allocator (called by $3150)
+  regProg:    0x0B92,   // the ICS2115 register programmer (Layer 2 emitKeyon)
+};
+
+// THE 15-COMMAND TABLE at $078E -- verified byte-for-byte against z80ram.bin
+// (worklog 144 section 0). 4-byte stride [cmd][00][addr_lo][addr_hi], scanned
+// by $41D0 which JP (HL) to the handler. The mailbox TYPE byte IS the key.
+// Route families (confirmed by scanning each handler for CALL $3245/$2E38):
+//   immediate note-on: $00/$01/$02 -> $3245 (C6)
+//   cue-id sequencer:  $11/$12     -> $2E38 (C7)
+//   direct global:     $14         -> $0EE7 (timer/config; later)
+//   other:             $0D/$0E/$0F/$10/$13/$15/$16/$1D/$20 (C7+ / out of scope)
+export const COMMAND_TABLE = Object.freeze(new Map([
+  [0x00, 0x0371], [0x01, 0x03E5], [0x02, 0x0468], [0x0D, 0x0527], [0x0E, 0x0592],
+  [0x0F, 0x04DD], [0x10, 0x0521], [0x11, 0x05F0], [0x12, 0x065B], [0x13, 0x06C8],
+  [0x14, 0x0700], [0x15, 0x0738], [0x16, 0x073E], [0x1D, 0x0776], [0x20, 0x077F],
+]));
+
+// The command-route families (which handler family each cmd targets).
+export const ROUTE = {
+  NOTE_ON:    'noteOn',     // cmd $00/$01/$02 -> $3245 (C6)
+  SEQUENCER:  'sequencer',  // cmd $11/$12 -> $2E38 (C7)
+  OTHER:      'other',      // remaining cmds (deferred)
+};
+
+/** The route family for a command opcode (the family the $41D0 switch arms). */
+export function cmdRoute(cmd) {
+  if (cmd === 0x00 || cmd === 0x01 || cmd === 0x02) return ROUTE.NOTE_ON;
+  if (cmd === 0x11 || cmd === 0x12) return ROUTE.SEQUENCER;
+  return ROUTE.OTHER;
+}
+
 // The PGM-specific control latches the channel manager programs (besides $8400).
-// $094F in $0829 does a second OUT to $8300 -- a sound-control latch. Recorded,
-// not interpreted (their semantics are invisible to the ics.tsv register stream).
 export const DISPATCH_PORT = {
   bankLatch:  0x8400,   // the bank-select byte (written by $09B7)
   ctrlLatch:  0x8300,   // a second control latch (written by $0829 at $094F)
@@ -77,10 +106,6 @@ export const DISPATCH_PORT = {
  * With the channel-manager base $6150=$01 and the NMI tag $00F0: ($01 & $0F) |
  * ($F0 & $F0) = $F1. The NMI-tail restore $09B7($0000): ($01 & $0F) | ($00 & $F0)
  * = $01.
- *
- * @param base the persistent bank base (RAM $6150)
- * @param tag the bank-select argument (the NMI passes $00F0)
- * @returns the byte written to port $8400
  */
 export function bankSelectByte(base, tag) {
   return ((base & 0x0F) | (tag & 0xF0)) & 0xFF;
@@ -91,7 +116,6 @@ export function bankSelectByte(base, tag) {
  * The Z80-side dispatch state -- the bank-mapping bytes and the command nibble
  * the NMI handler touches. Modeled as a small struct (not the full 64 KiB RAM)
  * because only these cells affect the dispatch behaviour the port reproduces.
- * The full Z80Ram (src/z80.js) is the upload oracle's concern, not the chain's.
  */
 export class DispatchState {
   constructor() {
@@ -102,22 +126,11 @@ export class DispatchState {
     this.lastCtrlByte = 0x00; // the byte last written to port $8300
     this.commandPort = 0x00;  // the raw byte on port $8200 (the doorbell payload)
   }
-
-  /**
-   * $09B7 -- bank-select. Compute the byte, write it to the $8400 latch, store
-   * the tag low byte to $614F. Mirrors the disassembly exactly.
-   */
   bankSelect(tag) {
     this.bankTag = tag & 0xFF;
     this.lastBankByte = bankSelectByte(this.bankBase, tag);
     return this.lastBankByte;
   }
-
-  /**
-   * $07FC-$0804 -- read the sound-command port $8200, mask the command nibble,
-   * store to $6151. Returns the nibble. `commandPort` is set by the doorbell
-   * (the test harness / Wave A writes the cue byte there before the NMI runs).
-   */
   readCommand() {
     this.cmdNibble = this.commandPort & 0x0F;
     return this.cmdNibble;
@@ -127,36 +140,23 @@ export class DispatchState {
 // ====================================================== the channel manager slots
 /**
  * One channel-manager slot ($0829's 40-slot queue). Each slot is 16 bytes
- * (stride $10) in the Z80; this model carries the cue assigned to it. A slot is
- * free when `cue === null`. The slot's internal byte layout (the state the
- * channel-manager script interpreter reads) is DEFERRED -- the 40-slot queue is
- * an INTERMEDIATE not observable in ics.tsv, so the port models it behaviourally.
+ * (stride $10) in the Z80; this model carries the cue assigned to it.
  */
 export class ChannelSlot {
-  constructor() {
-    this.cue = null;   // {type, pan, id, chan} or null when free
-  }
+  constructor() { this.cue = null; }
   get free() { return this.cue === null; }
 }
 
 /**
- * $0829 -- the 40-slot channel manager. Holds the 40 slots and the bank base
- * $6150 (set to $01 on first enqueue, the $0925 path). `enqueue` walks for a free
- * slot round-robin and assigns the cue; `take` peeks/slots for the router.
+ * $0829 -- the 40-slot channel manager (NMI side). Holds the 40 slots and the
+ * bank base $6150 (set to $01 on first enqueue, the $0925 path).
  */
 export class ChannelManager {
   constructor() {
     this.slots = Array.from({ length: DISPATCH.N_SLOTS }, () => new ChannelSlot());
-    this.cursor = 0;          // the round-robin search start
-    this.baseArmed = false;   // $6150 starts $00; $0829 sets $01 on first cue
+    this.cursor = 0;
+    this.baseArmed = false;
   }
-
-  /**
-   * Enqueue one cue. Walks the 40 slots round-robin from `cursor` for a free
-   * slot; assigns the cue; returns the slot index (or -1 if all 40 are full, the
-   * `$0020` error path at $081C). On the first successful enqueue, arms the bank
-   * base $6150 := $01 (the $0925 `LD A,$01; LD ($6150),A` path).
-   */
   enqueue(cue) {
     for (let step = 0; step < DISPATCH.N_SLOTS; step++) {
       const i = (this.cursor + step) % DISPATCH.N_SLOTS;
@@ -167,124 +167,217 @@ export class ChannelManager {
         return i;
       }
     }
-    return -1;   // queue full (the $0020 error-handler path)
+    return -1;   // queue full
   }
-
-  /** The bank base $6150 the channel manager owns. $00 until first cue, then $01. */
   get bankBase() { return this.baseArmed ? 0x01 : 0x00; }
-
-  /** Count of occupied slots (for the coverage / structural test). */
   get occupied() { return this.slots.reduce((n, s) => n + (s.free ? 0 : 1), 0); }
 }
 
-// ============================================================ the cue-id router
+// ====================================================== the main-loop queue ($6001)
 /**
- * Routes a cue-id to the voice parameters that populate a $62EC VoiceSlot. The
- * cue-id -> params lookup is the DEFERRED part (each id indexes Z80-side ROM
- * tables for sample-address / fc / volume / pan; the script interpreter that
- * reads them is a later wave). This wave takes an injectable `paramsProvider(id)`
- * so the chain runs now with oracle-reconstructed params and later with live
- * ROM-table params.
- *
- * The provider returns a `VoiceSlot`-shaped object (the params the cue deposits);
- * `null` means "id not in the table / no keyon" (some cues are control-only).
+ * The Z80-RAM queue struct at $6001: the NMI drains the 68k mailbox ring into
+ * it, and the main loop dequeues from it. `$3BB5` is the non-empty poll (reads
+ * struct+$0C); `$3CDD` is the dequeue (bank-select + read cmd + copy one msg).
+ * Modeled as a FIFO of decoded messages -- the queue is an intermediate not
+ * observable in ics.tsv, so the port models it behaviourally.
  */
-export class CueRouter {
+export class MailboxQueue {
+  constructor() { this.msgs = []; }
+  /** $3BB5 -- non-empty test (returns true if there is work to dequeue). */
+  poll() { return this.msgs.length > 0; }
+  /** $3CDD -- dequeue one message (the head). Returns undefined if empty. */
+  dequeue() { return this.msgs.shift(); }
+  /** The NMI-side enqueue (drains the mailbox ring into this struct). */
+  enqueue(msg) { this.msgs.push(msg); }
+  get empty() { return this.msgs.length === 0; }
+  get length() { return this.msgs.length; }
+}
+
+// ============================================ the empirical SFX param-set table
+/**
+ * The door -> param-set map, reconstructed from the oracle. The real $3150
+ * populator resolves the param-set from a 10-bit sample-descriptor INDEX in the
+ * 6-byte message payload (`masked = arg & $03FF; addr = [$62EA] + masked*12`),
+ * validated against the limit `[[$62E8]]`. That index lives in the banked score
+ * data loaded from the 68k ROM (a C7 dependency), and the dedup mailbox TSV
+ * captures only 4 of the 6 payload bytes -- so the param-set CANNOT be derived
+ * from the mailbox columns alone (worklog 144 section 0: all 368 type-$00
+ * id-$0D doors share identical pan/chan yet map to 10 distinct param-sets).
+ *
+ * The recon-sanctioned shortcut: ship the 14 distinct param-sets reconstructed
+ * from the 1620-episode clustering, keyed per-door via the oracle's `after_door`
+ * map. One door maps to 1 or 2 ordered param-sets (94 doors trigger 2 keyons).
+ * The param-set carries the SOUND params (fc, saddr, oscStrt/End, ...); the
+ * VOICE is assigned separately (the allocator, or oracle-injection in tests).
+ */
+export class SfxParamTable {
+  constructor() { this.byDoor = new Map(); }
+  /** Append one param-set for a door (a door may carry 1 or 2, in order). */
+  add(doorNum, params) {
+    if (!this.byDoor.has(doorNum)) this.byDoor.set(doorNum, []);
+    this.byDoor.get(doorNum).push(params);
+  }
+  /** The ordered param-set(s) for a door (1 or 2), or null if the door has none. */
+  get(doorNum) { return this.byDoor.get(doorNum) ?? null; }
+  /** The number of doors that carry at least one param-set. */
+  get size() { return this.byDoor.size; }
+}
+
+// ============================================================= the note-on path
+/**
+ * The cmd $00/$01 -> $3245 -> $3150 populator. Allocates a $62EC slot, writes
+ * the door's param-set into it, arms state=KEYON. The $0B92 register programmer
+ * (Layer 2's emitKeyon) runs on the next tick. The param data comes from the
+ * SfxParamTable (the empirical reconstruction; the live $62EA lookup is C7).
+ */
+export class ImmediateNoteOn {
+  constructor(sfxParams) { this.sfxParams = sfxParams; }
+
   /**
-   * @param {(id: number) => (Partial<VoiceSlot>|null)} paramsProvider
-   *   returns the voice params for a cue-id, or null if the cue does not keyon.
+   * Handle one cmd $00/$01 message ($3245 -> $3150). Looks up the door's
+   * param-set(s) and populates slot(s). Returns the armed slots (0, 1, or 2).
+   *
+   * @param message the dequeued message (carries `door` for the param lookup)
+   * @param engine the VoiceEngine (Layer 2)
+   * @param assignVoice optional fn(keyonIdx, slot) -> voice index. Defaults to
+   *   the engine's round-robin allocator ($3E8F). The must-fail injects the
+   *   oracle voice to isolate the populator from the deferred allocator timing
+   *   (the allocator cannot track the oracle's voice history without keyoff,
+   *   the C5 TODO).
+   * @returns {VoiceSlot[]} the armed slots (state = KEYON)
    */
-  constructor(paramsProvider) {
-    this.paramsProvider = paramsProvider;
+  handle(message, engine, assignVoice) {
+    const sets = this.sfxParams.get(message.door);
+    if (!sets) return [];   // no param-set (control-only door, or not in table)
+    const armed = [];
+    for (let i = 0; i < sets.length; i++) {
+      const voice = assignVoice
+        ? assignVoice(i, sets[i])
+        : engine.acquireIcsVoice(0x01);
+      const slot = engine.voices[voice];
+      // $3150 writes the struct fields from the resolved sample descriptor.
+      Object.assign(slot, sets[i]);
+      slot.icsVoice = voice;
+      slot.state = ENGINE.STATE_KEYON;
+      armed.push(slot);
+    }
+    return armed;
+  }
+}
+
+// ============================================================ the main-loop ($0321)
+/**
+ * The $0321 main-loop dispatcher. Polls the MailboxQueue ($3BB5), dequeues one
+ * message ($3CDD), dispatches via the COMMAND_TABLE ($41D0 switch). Routes cmd
+ * $00/$01/$02 to ImmediateNoteOn; cmd $11/$12 to the (stubbed) sequencer; other
+ * cmds are logged for the deferred TODOs. `run()` drains the queue completely
+ * (the $0321 loop until poll returns empty).
+ */
+export class MainLoop {
+  constructor(queue, immediateNoteOn) {
+    this.queue = queue;
+    this.inote = immediateNoteOn;
+    /** Log of every dispatched message: {cmd, handler, route, message, armed}. */
+    this.dispatched = [];
   }
 
   /**
-   * Populate a VoiceSlot from a cue. Looks up the id's params via the provider
-   * and, if the cue keys on, acquires an ICS voice and binds it. Returns the
-   * populated slot (state = KEYON) or null if the cue does not keyon.
+   * Drain the queue: poll + dequeue + dispatch until empty.
+   * @param engine the VoiceEngine (passed to the note-on handler)
+   * @param assignVoice optional voice-assignment override (see ImmediateNoteOn)
+   * @returns {number} the count of note-on slots armed this run
    */
-  route(cue, engine) {
-    const params = this.paramsProvider(cue.id);
-    if (!params) return null;   // control-only cue (no keyon)
-    const icsVoice = engine.acquireIcsVoice(0x01);
-    const slot = engine.voices[icsVoice];
-    // Apply the cue-id params (the provider's values -- oracle-reconstructed now,
-    // ROM-table-derived once the scripts are ported).
-    Object.assign(slot, params);
-    slot.icsVoice = icsVoice;
-    slot.state = ENGINE.STATE_KEYON;
-    return slot;
+  run(engine, assignVoice) {
+    let armed = 0;
+    while (this.queue.poll()) {                 // $3BB5 (loop while non-empty)
+      const msg = this.queue.dequeue();         // $3CDD
+      armed += this._dispatch(msg, engine, assignVoice);
+    }
+    return armed;
+  }
+
+  /** $41D0 -- the switch over the $078E table. Returns the slots armed. */
+  _dispatch(message, engine, assignVoice) {
+    const cmd = message.cmd;
+    const handler = COMMAND_TABLE.get(cmd);
+    if (handler === undefined) {
+      this.dispatched.push({ cmd, handler: null, route: 'unknown', message, armed: 0 });
+      return 0;
+    }
+    const route = cmdRoute(cmd);
+    let armed = 0;
+    if (route === ROUTE.NOTE_ON) {
+      const slots = this.inote.handle(message, engine, assignVoice);
+      armed = slots.length;
+    }   // SEQUENCER ($2E38) and OTHER cmds: stubbed (C7 TODO)
+    this.dispatched.push({ cmd, handler, route, message, armed });
+    return armed;
   }
 }
 
 // ============================================================ the full-chain hub
 /**
- * The full-chain harness: Layer 3 (CueDispatch) -> Layer 2 (VoiceEngine) ->
- * Layer 1 (IcsRegisterFile). One place that wires the three layers the way the
- * real Z80 does, so a gate can drive mailbox doors through the whole chain and
- * compare the emitted register writes to ics.tsv.
- *
- * The engine's per-tick walk (Layer 2) and the register file (Layer 1) are the
- * existing classes; this class owns the Layer 3 dispatch state + the channel
- * manager + the router, and the frame/tick boundary the INT handler drives.
+ * The full-chain harness: NMI ingress -> main-loop dispatch -> Layer 2 ->
+ * Layer 1. `enqueueDoor` is the $07F6 NMI ingress (bank-select + decode +
+ * enqueue to the MailboxQueue); `runMainLoop` is the $0321 dispatch loop;
+ * `tick` is the Layer 2 per-frame walk. The injected paramsProvider of W142 is
+ * GONE: the SfxParamTable + the real dispatcher replace it.
  */
 export class SoundChain {
   /**
-   * @param {(id: number) => (Partial<VoiceSlot>|null)} paramsProvider
-   *   the cue-id -> voice-params provider (oracle-reconstructed now; ROM-table
-   *   later). Required: without it the chain cannot populate $62EC.
+   * @param sfxParams the SfxParamTable (door -> param-sets). Defaults empty; the
+   *   test harness builds it from the oracle (buildSfxParamTable).
    */
-  constructor(paramsProvider) {
+  constructor(sfxParams = new SfxParamTable()) {
     this.rf = new IcsRegisterFile();
     this.engine = new VoiceEngine(this.rf);
     this.state = new DispatchState();
     this.chan = new ChannelManager();
-    this.router = new CueRouter(paramsProvider);
+    this.queue = new MailboxQueue();
+    this.inote = new ImmediateNoteOn(sfxParams);
+    this.loop = new MainLoop(this.queue, this.inote);
+    this.sfxParams = sfxParams;
     this.doorCount = 0;
     this.keyonCount = 0;
   }
 
   /**
-   * Dispatch one mailbox door (the $07F6 flow). The door carries the decoded cue
-   * `{type, pan, id, chan}` (Wave A's packLongword output). The flow:
-   *   1. bank-select($00F0) -- program the bank register for the payload window
-   *   2. read command ($8200) -- command $01 = cue-with-payload (stage 1 always)
-   *   3. enqueue the cue to the channel manager (the 40-slot queue)
-   *   4. route the cue-id -> populate a $62EC voice slot (keyon arm)
-   *   5. bank-select($0000) -- restore
-   * Returns the bound ICS voice index, or -1 if the cue did not keyon.
+   * NMI ingress ($07F6): bank-select the payload window, decode the cue, enqueue
+   * a message to the MailboxQueue (the $6001 struct the main loop dequeues
+   * from), and enqueue the cue to the channel manager (the 40-slot NMI queue).
+   * The mailbox TYPE byte is the command opcode the main loop dispatches.
+   * @param door {door, lf, type, pan, id, chan} (decoded by decodeDoor)
+   * @returns the enqueued message
    */
-  dispatchDoor(door) {
+  enqueueDoor(door) {
     this.doorCount++;
-    // 1. bank-select the payload window (the NMI's $00F0 tag).
     this.state.bankSelect(Z80_BANK.tag);
-    // 2. read the command. stage-1 doors are always command $01 (cue-with-
-    //    payload); the doorbell carries the cue. Set the command port so the
-    //    read reproduces the nibble the Z80 sees.
-    this.state.commandPort = DISPATCH.CMD_CUE;
-    const cmd = this.state.readCommand();
-    if (cmd !== DISPATCH.CMD_CUE) {
-      this.state.bankSelect(0x0000);   // the non-$01 path: restore + RET
-      return -1;
-    }
-    // 3. enqueue the cue to the channel manager.
-    const cue = { type: door.type, pan: door.pan, id: door.id, chan: door.chan };
-    this.chan.enqueue(cue);
-    // arm the bank base the channel manager owns ($6150 := $01 on first cue).
+    this.state.commandPort = door.type;   // the TYPE byte IS the cmd opcode
+    this.state.readCommand();
+    const message = {
+      cmd: door.type,                     // $41D0 switch key
+      door: door.door ?? this.doorCount,  // the param-table key (oracle unit)
+      pan: door.pan, id: door.id, chan: door.chan, lf: door.lf,
+    };
+    this.queue.enqueue(message);
+    this.chan.enqueue({ type: door.type, pan: door.pan, id: door.id, chan: door.chan });
     this.state.bankBase = this.chan.bankBase;
-    // 4. route the cue-id -> populate a $62EC slot.
-    const slot = this.router.route(cue, this.engine);
-    if (slot) this.keyonCount++;
-    // 5. bank-select restore (the NMI tail).
     this.state.bankSelect(0x0000);
-    return slot ? slot.icsVoice : -1;
+    return message;
   }
 
   /**
-   * Run one Layer 2 per-tick walk (the INT handler's timer-0 -> $376C path).
-   * Emits register writes for every active voice (keyon episodes + refreshes).
-   * Call once per frame to drive the sustain refresh stream.
+   * Run the main-loop dispatcher over all queued messages ($0321 drains the
+   * queue). Returns the count of note-on slots armed this run.
+   * @param assignVoice optional voice-assignment override (see ImmediateNoteOn)
    */
+  runMainLoop(assignVoice) {
+    const armed = this.loop.run(this.engine, assignVoice);
+    this.keyonCount += armed;
+    return armed;
+  }
+
+  /** Layer 2 per-tick walk (the INT handler's timer-0 -> $376C path). */
   tick() {
     this.rf.resetFrame();
     this.engine.tick();
@@ -293,18 +386,15 @@ export class SoundChain {
 
 // ---------------------------------------------------------- mailbox door decode
 /**
- * Decode one mailbox row into the cue the dispatch consumes. The mailbox
- * `payload_since_last_door` carries the 68k-side writes to the $C10000 window;
- * the cue longword is `[type][pan][id][chan]` (Wave A's packLongword). The dedup
- * TSV already carries these columns decoded; this helper accepts either shape.
- *
- * @param door {lf, type, pan, id, chan} (the dedup row) -- type/pan/id/chan may
- *   be hex strings or numbers.
- * @returns {lf, type, pan, id, chan} with numeric fields
+ * Decode one mailbox row into the door the NMI ingress consumes. The cue
+ * longword is `[type][pan][id][chan]` (Wave A's packLongword). The dedup TSV
+ * already carries these columns decoded; this helper accepts either shape and
+ * normalizes hex strings to numbers.
  */
 export function decodeDoor(door) {
   const num = (v) => (typeof v === 'string' ? parseInt(v.replace('$', ''), 16) : v);
   return {
+    door: door.door != null ? Number(door.door) : undefined,
     lf: Number(door.lf),
     type: num(door.type),
     pan: num(door.pan),
