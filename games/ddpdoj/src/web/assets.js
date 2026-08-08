@@ -589,12 +589,17 @@ export async function loadBundle(readRaw, opts = {}) {
     out.set(bg.pixels.subarray(s * BG_TILE_BYTES, (s + 1) * BG_TILE_BYTES));
     return out;
   };
+  // Missing TX tiles (ported code writes tiles the capture never saw) degrade
+  // to transparent like BG tiles, not a throw that stops the page.
+  const missingTxTiles = new Set();
+  const TX_TRANSPARENT_PEN = 0;       // txTile: pen 0 is unused/background
   const txTileFn = (roms, index, out = new Uint8Array(TX_TILE_BYTES)) => {
-    const s = sheets.tx.slot[index & 0xffff];
+    const i = index & 0xffff;
+    const s = sheets.tx.slot[i];
     if (s < 0) {
-      throw new AssetError(`TX tile ${index} ($${index.toString(16)}) is not in `
-        + `the exported sheet (${sheets.tx.count} tiles). The bundle was built `
-        + 'for a different capture than the one being drawn.');
+      missingTxTiles.add(i);
+      out.fill(TX_TRANSPARENT_PEN);
+      return out;
     }
     out.set(sheets.tx.pixels.subarray(s * TX_TILE_BYTES, (s + 1) * TX_TILE_BYTES));
     return out;
