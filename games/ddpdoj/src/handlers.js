@@ -199,6 +199,7 @@ const G = {
   // `xref.py abs 8130b8` finds 18 readers in the image, $273BE0 and $273DA0
   // among them.  `src/initbody.js`'s own table has always had it.
   b8: 0x8130b8,   // $273BDE (type $80 salvo reload) / $273D9E (turret 2 cadence)
+  freezeD4: 0x8130d4,
 };
 /** `$27327A` -- type $85/$86's 32-entry longword MUZZLE-VECTOR table, read at
  *  `$275ABC move.l (A4,D0.w),D3`.  Its window is declared by
@@ -3357,6 +3358,11 @@ export const TYPE8C_ART = Object.freeze({
 // Heading selects the even entry and `$80390B` alternates the adjacent frame.
 export const TYPE3E_ART = Object.freeze({ table: 0x265698, frames: 64 });
 
+// Stage-3 type $36: one fixed hull and two 32-heading attachment families.
+export const TYPE36_ART = Object.freeze({
+  body: 0x178c8c, upperTable: 0x272cfa, lowerTable: 0x272dfa, headings: 32,
+});
+
 function addPackedWords(pos, high, low) {
   return ((u16((pos >>> 16) + high) << 16) | u16((pos & 0xffff) + low)) >>> 0;
 }
@@ -5073,6 +5079,293 @@ function handler93(ram, rom, a5, ctx) {
 }
 
 // ############################################################################
+// # W193: TYPE $36, STAGE-3 SEVEN-PART CARRIER                              #
+// ############################################################################
+
+function bullet36(ram, rom, a5, ctx, site, entry, regs) {
+  ctx.bulletSpawn?.(site, fireBullet({ ram, rom, log: new WriteLog(ram) },
+    entry, { d4: 0, d5: 0, a5, ...regs }));
+}
+
+function partEffect36(ram, ctx, a6, posOff, kind, sub14, site) {
+  const e = spawnEffect(ram, ctx, kind, site);
+  ram.setU32(e + B.pos, ram.u32(a6 + posOff));
+  ram.setU16(e + B.sub12, 0);
+  ram.setU16(e + B.sub14, sub14);
+  ram.setU16(e + B.bucket, 0x10);
+  ram.setU16(e + B.hook, 2);
+  ram.setU8(e + B.speed, ram.u8(a6 + S.speed));
+  ram.setU8(e + B.angle, ram.u8(a6 + S.heading) * 4);
+}
+
+function deathEffects36(ram, rom, a6, ctx) {
+  for (let p = 0x263c32; ; p += 12) {
+    const delay = rom.u16(p);
+    if (delay === 0xffff) break;
+    const e = spawnEffect(ram, ctx, rom.u16(p + 2), 0x263f1c);
+    ram.setU8(e + B.f1c, rom.u16(p + 4));
+    ram.setU16(e + B.delay, delay);
+    ram.setU32(e + B.nudge, rom.u32(p + 6));
+    ram.setU32(e + B.pos, ram.u32(a6 + S.posX));
+    ram.setU16(e + B.bucket, 0x10);
+    ram.setU16(e + B.sub12, 0);
+    ram.setU16(e + B.sub14, 0);
+    ram.setU8(e + B.speed, ram.u8(a6 + S.speed));
+    ram.setU8(e + B.angle, ram.u8(a6 + S.heading) * 4);
+  }
+}
+
+function fireSeven36(ram, rom, a5, a6, ctx, partOff, heading, sites) {
+  const muzzle = rom.u32(0x27327a + ((((heading + 1) & 0x3e) * 2)));
+  const random = drawByte242B3C(ram, rom);
+  const d0 = ((((ram.u16(0x803916) & 0xff00) | random) << 16) | 5) >>> 0;
+  const d2 = ram.u32(a6 + partOff);
+  for (const [n, delta] of [[0, 0], [1, -4], [2, -8], [3, -12],
+    [4, 4], [5, 8], [6, 12]]) {
+    const d1 = (heading + delta) & 0xff;
+    const d3 = u32(rom.u32(0x2735fa + ((d1 & 0x3f) * 4)) + muzzle);
+    bullet36(ram, rom, a5, ctx, sites[n], 0x2814ac,
+      { d0, d1, d2, d3 });
+  }
+}
+
+function fireUpper36(ram, rom, a5, a6, ctx) {
+  const heading = ram.u8(a6 + 0x9b);
+  const d1a = (heading + 1) & 0x3e;
+  const d2 = ram.u32(a6 + 0x82);
+  const d3 = rom.u32(0x27307a + ((heading & 0x3e) * 4));
+  for (const [site, d0, d1] of [
+    [0x2642a2, 0x00060004, d1a], [0x2642ae, 0x00020004, d1a],
+    [0x2642bc, 0x00060004, d1a + 2], [0x2642c8, 0x00020004, d1a + 2],
+    [0x2642d6, 0x00060004, d1a - 2], [0x2642e2, 0x00020004, d1a - 2],
+  ]) bullet36(ram, rom, a5, ctx, site, 0x281442,
+    { d0, d1: d1 & 0xff, d2, d3 });
+}
+
+function fireLower36(ram, rom, a5, a6, ctx) {
+  const heading = ram.u8(a6 + 0xbb);
+  const off = (((heading + 1) & 0x3e) * 4);
+  const common = { d0: 0x00010005, d1: (heading + 1) & 0x3e,
+    d2: ram.u32(a6 + 0xa2) };
+  bullet36(ram, rom, a5, ctx, 0x26438a, 0x281402,
+    { ...common, d3: rom.u32(0x27307a + off) });
+  bullet36(ram, rom, a5, ctx, 0x264394, 0x281402,
+    { ...common, d3: rom.u32(0x27307a + off + 4) });
+}
+
+function fireCore36(ram, rom, a5, a6, ctx) {
+  const base = ram.u8(a6 + 0xd6);
+  const odd = (ram.u8(a6 + 0xd4) & 1) !== 0;
+  const angles = odd ? [base + 2, base + 6, base - 2, base - 6]
+    : [base, base + 4, base + 8, base - 4, base - 8];
+  if (!odd) ram.setU8(a6 + 0xd8, 1);
+  const d2 = ram.u32(a6 + S.posX);
+  const sites = odd ? [0x2644dc, 0x2644f4, 0x26450e, 0x264526]
+    : [0x26445e, 0x264476, 0x26448e, 0x2644a8, 0x2644c0];
+  for (let n = 0; n < angles.length; n++) {
+    const d1 = angles[n] & 0xff;
+    const d3 = u32(rom.u32(0x2735fa + ((d1 & 0x3f) * 4)) + 0x04000000);
+    bullet36(ram, rom, a5, ctx, sites[n], 0x2814ac,
+      { d0: 0x00020004, d1, d2, d3 });
+  }
+  ram.setU8(a6 + 0xd4, ram.u8(a6 + 0xd4) - 1);
+}
+
+function deathFan36(ram, rom, a5, a6, ctx) {
+  if (ram.u8(a6 + 0xd8) !== 0 || i16(ram.u16(a6 + S.posX)) <= 0x1000) return;
+  const aim = aim64FromCaller(aimTables(rom), ram, a5,
+    u16(ram.u16(a6 + S.posX) + 0x0400), ram.u16(a6 + S.posY));
+  if (aim.carry) return;
+  const d2 = ram.u32(a6 + S.posX);
+  const angles = [aim.dir, aim.dir + 2, aim.dir + 4, aim.dir + 6,
+    aim.dir - 2, aim.dir - 4, aim.dir - 6];
+  const sites = [0x26469c, 0x2646b4, 0x2646cc, 0x2646e4,
+    0x2646fe, 0x264716, 0x26472e];
+  for (let n = 0; n < angles.length; n++) {
+    const d1 = angles[n] & 0xff;
+    const d3 = u32(rom.u32(0x2736fa + ((d1 & 0x3f) * 4)) + 0x04000000);
+    bullet36(ram, rom, a5, ctx, sites[n], 0x281442,
+      { d0: 0x00040004, d1, d2, d3 });
+  }
+}
+
+function drawPart36(ram, rom, a6, posOff, deadOff, headingOff, paletteOff, table) {
+  if (ram.u8(a6 + deadOff) !== 0) return;
+  const h = (ram.u8(a6 + headingOff) + 1) & 0x3e;
+  enqueueRegistersThroughStub(ram, rom, 0x23e056,
+    u32(ram.u32(a6 + posOff) + 0xfa00fc00),
+    rom.u32(table + h * 2), 0x0620, ram.u8(a6 + paletteOff));
+}
+
+function draw36(ram, rom, a6) {
+  enqueueRegistersThroughStub(ram, rom, 0x23e056,
+    u32(ram.u32(a6 + S.posX) + 0xdc00f600), TYPE36_ART.body,
+    0x2450, ram.u8(a6 + S.palette));
+  drawPart36(ram, rom, a6, 0x42, 0x5f, 0x5b, 0x5d, TYPE36_ART.lowerTable);
+  drawPart36(ram, rom, a6, 0x62, 0x7f, 0x7b, 0x7d, TYPE36_ART.lowerTable);
+  drawPart36(ram, rom, a6, 0xa2, 0xbf, 0xbb, 0xbd, TYPE36_ART.upperTable);
+  drawPart36(ram, rom, a6, 0x82, 0x9f, 0x9b, 0x9d, TYPE36_ART.upperTable);
+}
+
+function handler36(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  if (i16(ram.u16(a6 + S.posX)) <= -0x2400) {
+    if (ram.u8(a5 + R.onScreen) !== 0) {
+      ram.setU16(0x8130f2, 0); freeEnemy(ram, a5); return;
+    }
+  } else ram.setU8(a5 + R.onScreen, 1);
+  if (stepMovement(ram, rom, a5, ctx.tables, ctx.unported)) return;
+  if (ram.u16(G.clock) >= 0x7f) {
+    ram.setU16(0x8130f2, 0); ram.setU16(0x8130f6, 0);
+  }
+
+  const pos = ram.u32(a6 + S.posX);
+  ram.setU32(a6 + 0x22, pos);
+  ram.setU32(a6 + 0x42, addPackedWords(pos, 0x0a00, 0xfa00));
+  ram.setU32(a6 + 0x62, addPackedWords(pos, 0x0a00, 0x0600));
+  ram.setU32(a6 + 0x82, addPackedWords(pos, 0xfd00, 0));
+  ram.setU32(a6 + 0xa2, addPackedWords(pos, 0xf000, 0));
+
+  const d1 = (ram.u8(a6) | ram.u8(a6 + 0x20)) & 0x5c;
+  let resetPal = d1 === 0;
+  if (d1 !== 0) {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);
+    ram.setU8(a6 + 0x20, ram.u8(a6 + 0x20) & 0xa3);
+    scoreHit(ram, ctx, a6, d1);
+    ram.setU8(a6 + S.palette, ram.u8(a6 + S.palette) ^ ram.u8(a5 + R.rec19));
+    for (const p of [0x5d, 0x7d, 0x9d, 0xbd])
+      ram.setU8(a6 + p, ram.u8(a6 + p) ^ ram.u8(a6 + p + 1));
+    const damage = u16(0x7fff - ram.u16(a6 + S.hp))
+      + u16(0x7fff - ram.u16(a6 + 0x38));
+    ram.setU32(a5 + R.rec1A, u32(ram.u32(a5 + R.rec1A) - damage));
+    ram.setU16(a6 + S.hp, 0x7fff); ram.setU16(a6 + 0x38, 0x7fff);
+
+    if (ram.u8(a6 + 0x5f) === 0 && (ram.u32(a5 + R.rec1A) | 0) <= 0x1000) {
+      scoreKill(ram, rom, ctx, 0x13, d1); scoreKill(ram, rom, ctx, 0x13, d1);
+      ctx.soundPost?.(0x28c25a);
+      ram.setU8(a6 + 0x5f, 1); ram.setU8(a6 + 0x7f, 1);
+      partEffect36(ram, ctx, a6, 0x42, 0x83, 0, 0x263dc4);
+      partEffect36(ram, ctx, a6, 0x62, 0x83, 0, 0x263dfa);
+    }
+    if (ram.u8(a6 + 0xbf) === 0 && (ram.u32(a5 + R.rec1A) | 0) <= 0x2a00) {
+      scoreKill(ram, rom, ctx, 0x11, d1); ram.setU8(a6 + 0xbf, 1);
+      partEffect36(ram, ctx, a6, 0xa2, 0x84, 0x0800, 0x263e56);
+      ctx.soundPost?.(0x28c25a);
+    }
+    if (ram.u8(a6 + 0x9f) === 0 && (ram.u32(a5 + R.rec1A) | 0) <= 0x2000) {
+      scoreKill(ram, rom, ctx, 0x32, d1); ram.setU8(a6 + 0x9f, 1);
+      partEffect36(ram, ctx, a6, 0x82, 0x84, 0x0800, 0x263eb8);
+      ctx.soundPost?.(0x28c25a);
+    }
+    if ((ram.u32(a5 + R.rec1A) & 0x80000000) !== 0) {
+      scoreKill(ram, rom, ctx, 0x174, d1);
+      deathEffects36(ram, rom, a6, ctx); ctx.soundPost?.(0x28c2dc);
+      deathFan36(ram, rom, a5, a6, ctx);
+      if (ram.u8(a6 + 0xd9) !== 0) ram.setU16(0x8130f4, 0);
+      ram.setU16(0x8130f6, 0); ram.setU16(0x8130f2, 0);
+      ram.setU16(a6, 0x8000); ram.setU16(a6 + 0x20, 0x8000);
+      ram.setU8(a6 + 0xda, 1);
+      resetPal = true;
+    }
+  }
+
+  if (resetPal) {
+    ram.setU8(a6 + S.palette, ram.u8(a5 + R.rec18));
+    for (const p of [0x5d, 0x7d, 0x9d, 0xbd])
+      ram.setU8(a6 + p, ram.u8(a6 + p - 1));
+  }
+  if (ram.u8(a6 + 0xda) !== 0) {
+    const left = (ram.u8(a6 + 0xdb) - 1) & 0xff;
+    ram.setU8(a6 + 0xdb, left);
+    if (left === 0) { freeEnemy(ram, a5); return; }
+  }
+  spawnCues28AC86(ram, rom, a5, ram.u32(a5 + R.rec1A));
+  if (ram.u16(G.freeze) !== 0) { draw36(ram, rom, a6); return; }
+
+  const aimA = aim64FromCaller(aimTables(rom), ram, a5,
+    ram.u16(a6 + 0x42), ram.u16(a6 + 0x44));
+  if (aimA.carry) { draw36(ram, rom, a6); return; }
+  ram.setU8(a6 + 0x5b, slew64(ram.u8(a6 + 0x5b), aimA.dir));
+  const aimB = aim64FromCaller(aimTables(rom), ram, a5,
+    ram.u16(a6 + 0x62), ram.u16(a6 + 0x64));
+  ram.setU8(a6 + 0x7b, slew64(ram.u8(a6 + 0x7b),
+    aimB.carry ? ram.u16(a6 + 0x64) : aimB.dir));
+
+  let old = ram.u8(a6 + 0xc6); ram.setU8(a6 + 0xc6, old - 1);
+  if (old === 0) {
+    ram.setU8(a6 + 0xc6, u16(0x20 - ram.u16(G.bc)));
+    if (i16(ram.u16(a6 + 0x62)) > 0x1800) {
+      if (ram.u8(a6 + 0x5f) === 0 && ram.u16(G.freezeD4) === 0)
+        fireSeven36(ram, rom, a5, a6, ctx, 0x42, ram.u8(a6 + 0x5b),
+          [0x264096, 0x2640ae, 0x2640c6, 0x2640de, 0x2640f8, 0x264110, 0x264128]);
+      if (ram.u8(a6 + 0x7f) === 0 && ram.u16(G.freezeD4) === 0)
+        fireSeven36(ram, rom, a5, a6, ctx, 0x62, ram.u8(a6 + 0x7b),
+          [0x26418a, 0x2641a2, 0x2641ba, 0x2641d2, 0x2641ec, 0x264204, 0x26421c]);
+    }
+  }
+
+  if (ram.u8(a6 + 0x9f) === 0) {
+    const aim = aim64FromCaller(aimTables(rom), ram, a5,
+      ram.u16(a6 + 0x82), ram.u16(a6 + 0x84));
+    ram.setU8(a6 + 0x9b, slew64(ram.u8(a6 + 0x9b),
+      aim.carry ? ram.u16(a6 + 0x84) : aim.dir));
+    old = ram.u8(a6 + 0xc8); ram.setU8(a6 + 0xc8, old - 1);
+    if (old === 0) {
+      ram.setU8(a6 + 0xc8, u16(0x30 - ram.u16(G.ba)));
+      if (i16(ram.u16(a6 + 0x82)) > 0x1800 && ram.u16(G.freezeD4) === 0)
+        fireUpper36(ram, rom, a5, a6, ctx);
+    }
+  }
+
+  if (ram.u8(a6 + 0xbf) === 0) {
+    let lowerCadence = ram.u8(a6 + 0xce) !== 0;
+    if (ram.u8(a6 + 0xce) === 0) {
+      const aim = aim64FromCaller(aimTables(rom), ram, a5,
+        ram.u16(a6 + 0xa2), ram.u16(a6 + 0xa4));
+      ram.setU8(a6 + 0xbb, slew64(ram.u8(a6 + 0xbb),
+        aim.carry ? ram.u16(a6 + 0xa4) : aim.dir));
+      const ca = (ram.u8(a6 + 0xca) - 1) & 0xff; ram.setU8(a6 + 0xca, ca);
+      if (ca === 0) {
+        ram.setU8(a6 + 0xca, ram.u8(a6 + 0xcb));
+        ram.setU8(a6 + 0xce, ram.u8(a6 + 0xcf));
+        lowerCadence = true;
+      }
+    }
+    if (lowerCadence) {
+      old = ram.u8(a6 + 0xcc); ram.setU8(a6 + 0xcc, old - 1);
+    }
+    if (lowerCadence && old === 0) {
+      ram.setU8(a6 + 0xcc, u16(8 - (ram.u16(G.bc) >>> 3)));
+      if (i16(ram.u16(a6 + 0xa2)) > 0x1800 && ram.u16(G.freezeD4) === 0) {
+        fireLower36(ram, rom, a5, a6, ctx); ram.setU8(a6 + 0xce, ram.u8(a6 + 0xce) - 1);
+      }
+    }
+  }
+
+  const dead = ram.u8(a6 + 0x5f) + ram.u8(a6 + 0x7f)
+    + ram.u8(a6 + 0x9f) + ram.u8(a6 + 0xbf);
+  if (dead === 4) {
+    ram.setU8(a6 + 0xd7, 1);
+    if (ram.u8(a6 + 0xd4) === 0) {
+      old = ram.u8(a6 + 0xd0); ram.setU8(a6 + 0xd0, old - 1);
+      if (old !== 0) { draw36(ram, rom, a6); return; }
+      ram.setU8(a6 + 0xd0, ram.u8(a6 + 0xd1));
+      ram.setU8(a6 + 0xd4, ram.u8(a6 + 0xd5));
+      const aim = aim64FromCaller(aimTables(rom), ram, a5,
+        u16(ram.u16(a6 + S.posX) + 0x0400), ram.u16(a6 + S.posY));
+      if (!aim.carry) ram.setU8(a6 + 0xd6, aim.dir);
+    }
+    old = ram.u8(a6 + 0xd2); ram.setU8(a6 + 0xd2, old - 1);
+    if (old === 0) {
+      ram.setU8(a6 + 0xd2, u16(0x10 - (ram.u16(G.bc) >>> 2)));
+      if (i16(ram.u16(a6 + S.posX)) > 0x1800 && ram.u16(G.freezeD4) === 0)
+        fireCore36(ram, rom, a5, a6, ctx);
+    }
+  }
+  draw36(ram, rom, a6);
+}
+
+// ############################################################################
 // # W192: TYPE $3E, STAGE-3 OPENING TWO-HITBOX FIGHTER                       #
 // ############################################################################
 
@@ -5255,6 +5548,7 @@ const HANDLERS = new Map([
   [0x27a1b4, handler94],       // W180: stage-2 type $94
   [0x279f4a, handler93],       // W181: stage-2 type $93
   [0x265486, handler3E],       // W192: stage-3 opening type $3E
+  [0x263c7c, handler36],       // W193: stage-3 seven-part carrier type $36
   [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 

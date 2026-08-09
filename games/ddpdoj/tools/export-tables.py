@@ -499,6 +499,13 @@ SHOT_WINDOWS.extend([
     (0x2653E6, 0x03B2, "W192: complete stage-3 type $3E closure: run-length "
                        "stub, init, record/two-sub prototypes, handler, and "
                        "64-entry heading/mirror art table through type $3F"),
+    (0x263A50, 0x0CE8, "W193: complete stage-3 type $36 closure: run-length "
+                       "stub, init, record/seven-sub prototypes, cue/death "
+                       "tables, and handler through the type $37 stub"),
+    (0x27307A, 0x0100, "W193: type $36 exact 64-long paired bullet-vector "
+                       "table used by its upper and lower batteries"),
+    (0x272CFA, 0x0080, "W193: type $36 exact 32-long upper-attachment sprite "
+                       "table, bounded by the next adjacent family"),
     (0x27782E, 0x05B2, "W170: complete stage-2 type $95 closure: run-length "
                        "stub, init body, palette/prototypes, handler, muzzle "
                        "offsets and exact eight-entry art table "
@@ -2132,6 +2139,34 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if hashlib.sha256(d[0x2653E6:0x265798]).hexdigest() != (
             "8b258d08e235a2efc4a872c57e3ea6c21a9babb1b27f7d8b11cda129211ba11c"):
         raise SystemExit("W192: stage-3 type $3E closure drifted")
+    type36_records = [(a, d[a:a + 8]) for a in range(script3, cursor3, 8)
+                      if d[a + 4] == 0x36]
+    expected36 = [
+        (0x234312, bytes.fromhex("000a000036000000")),
+        (0x234342, bytes.fromhex("001b00003600005a")),
+        (0x2343da, bytes.fromhex("002600003600005b")),
+        (0x2345f2, bytes.fromhex("0068000036000011")),
+        (0x23481a, bytes.fromhex("00c000003600006a")),
+    ]
+    if type36_records != expected36:
+        raise SystemExit(f"W193: stage-3 type $36 occurrence set drifted: "
+                         f"{type36_records!r}")
+    if d[0x2350A8:0x2350BA] != bytes.fromhex(
+            "974037408901c00622f8c0052ca0c0052200"):
+        raise SystemExit("W193: first type $36 movement stream drifted")
+    if d[0x2679D4:0x2679DC] != bytes.fromhex("00263a5000263c7c"):
+        raise SystemExit("W193: type $36 registry row drifted")
+    if d[0x263A50:0x263A58] != bytes.fromhex("3b7c000600044e75"):
+        raise SystemExit("W193: type $36 run-length stub drifted")
+    if hashlib.sha256(d[0x263A50:0x264738]).hexdigest() != (
+            "773fb8e091ea6420e98c8918983a4d4e0382c4e15ad7fbff295bb9e19509c12d"):
+        raise SystemExit("W193: stage-3 type $36 closure drifted")
+    if hashlib.sha256(d[0x27307A:0x27317A]).hexdigest() != (
+            "55fe36d0686db39662ea0930073013afef6f23c2ff57c8c4013b6420ece8782e"):
+        raise SystemExit("W193: type $36 paired bullet-vector table drifted")
+    if hashlib.sha256(d[0x272CFA:0x272D7A]).hexdigest() != (
+            "9f267e93f70e90ad3351fbc7707fd4c253c46d070d1187e322f43300fedea696"):
+        raise SystemExit("W193: type $36 upper-attachment art table drifted")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and

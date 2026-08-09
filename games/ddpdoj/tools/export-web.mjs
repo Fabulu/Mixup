@@ -113,7 +113,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 import { BGELEM_HANDLERS } from '../src/background.js';
 import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE90_ART, TYPE91_ART, TYPE92_ART,
   TYPE93_ART, TYPE94_ART, TYPE95_ART, TYPE96_ART, TYPE97_ART,
-  TYPE3E_ART } from '../src/handlers.js';
+  TYPE3E_ART, TYPE36_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -283,6 +283,14 @@ if (u17.length !== SOUND.fileSize) {
 //
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
+  [17, TYPE36_ART.upperTable, TYPE36_ART.headings, 4,
+    192, 0x272ffa,
+    'stage-3 type $36 upper attachments. Heading is rounded to one of 32 '
+      + 'entries; the valid stream run continues through adjacent families'],
+  [17, TYPE36_ART.lowerTable, TYPE36_ART.headings, 4,
+    128, 0x272ffa,
+    'stage-3 type $36 lower attachments. All 32 heading entries are live; '
+      + 'this family is shared with earlier translated enemies'],
   [17, TYPE3E_ART.table, TYPE3E_ART.frames, 4,
     TYPE3E_ART.frames, 0x265798,
     'stage-3 type $3E heading/mirror animation. The heading selects each even '
@@ -685,6 +693,8 @@ const ITEM_SHARD = 12;
  *
  *  `[shard, offs, why]`. */
 const W81_IMMEDIATES = Object.freeze([
+  [17, TYPE36_ART.body,
+    'TYPE $36 fixed carrier hull, emitted directly by $26453E at size $2450'],
   [15, 0x1735fc,
     'TYPE $82\'s BODY. Not a table: the sub-record PROTOTYPE at $274770 carries '
     + 'it at +6, which `loadSubProto` copies to ($a,A6) (initbody.js:496), and '

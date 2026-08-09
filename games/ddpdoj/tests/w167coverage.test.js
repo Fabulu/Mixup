@@ -47,7 +47,7 @@ test('W167 config is a machine-readable family map with an exact backlog', () =>
   assert.equal(stage3.stage, 2);
   assert.equal(stage3.stage_table, 0x263336);
   assert.equal(stage3.derived_type_count, 28);
-  assert.equal(stage3.derived_ported_type_count, 14);
+  assert.equal(stage3.derived_ported_type_count, 15);
   assert.equal(config.backlog[1].derive_from,
     'stage3_spawn_script.live_rom_aux_resource');
   assert.ok(config.backlog.every((x) => x.status && x.reason));
@@ -64,12 +64,12 @@ test('W167 reusable coverage derives the current closed-family totals', { skip: 
   assert.equal(got.status, 0, got.stdout + got.stderr);
   assert.match(got.stdout, /top_objects: 7\/20 ported/);
   assert.match(got.stdout, /type5_calls: 18\/23 ported/);
-  assert.match(got.stdout, /enemy_types: 45\/256 ported, 81 unknown, 130 null/);
+  assert.match(got.stdout, /enemy_types: 46\/256 ported, 80 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
-  assert.match(got.stdout, /stage3_spawn_script: 253\/414 ported, 161 unknown, 0 null/);
-  assert.match(got.stdout, /stage3_enemy_frontier: 161 ordered records/);
-  assert.match(got.stdout, /stage3_enemy_types: 14\/28 covered types/);
+  assert.match(got.stdout, /stage3_spawn_script: 258\/414 ported, 156 unknown, 0 null/);
+  assert.match(got.stdout, /stage3_enemy_frontier: 156 ordered records/);
+  assert.match(got.stdout, /stage3_enemy_types: 15\/28 covered types/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported, 0 unknown, 0 null/);
   assert.match(got.stdout, /stage2_spawn_script:[\s\S]*static-minus-dynamic: 304/);
   assert.match(got.stdout, /stage1_bgelem: 13\/13 ported/);

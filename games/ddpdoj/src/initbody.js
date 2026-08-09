@@ -75,7 +75,7 @@ const G = {
   // the per-stage "midboss/boss spawned" kill flags (set by $0D/$0E init)
   d8: 0x8130d8, da: 0x8130da, dc: 0x8130dc, de: 0x8130de, e0: 0x8130e0,
   e2: 0x8130e2, e4: 0x8130e4, e6: 0x8130e6, f6: 0x8130f6,
-  f2: 0x8130f2,
+  f2: 0x8130f2, f4: 0x8130f4,
   // $242E24's rank byte source + its increment side-effect
   rankReg: 0x803916, rankCtr: 0x803917,
   scrollDelta: 0x813172,
@@ -477,6 +477,37 @@ BODY.set(0x2653EE, (ram, rom, a5, a6, unported) => {
     freeEnemy(ram, a5);                                // $265430 jmp $263762
     return FREED;
   }
+});
+
+// --- type $36 ($263A58): Stage-3's seven-part carrier. All seven long-form
+// prototypes are contiguous, and A0 after the load is the long-threshold cue
+// cursor consumed by $28AC86 in the handler.
+BODY.set(0x263A58, (ram, rom, a5, a6, unported) => {
+  const cues = loadSubProto(ram, rom, a5, a6, 0x263B2C); // $263A58..$263A64
+  ram.setU32(a5 + R.rec44, cues);                       // $263A64
+  loadRecordProto(ram, rom, a5, 0x263B24, 0x03);       // $263A68..$263A74
+  readInitPosition(ram, rom, a5, unported);            // $263A76
+  for (const off of [0x40, 0x60, 0x80, 0xa0]) {
+    ram.setU8(a6 + off + 0x1c, 0x10);                 // $263A7C..$263AA0
+    ram.setU8(a6 + off + 0x1e, 0x0f);
+  }
+
+  const clock = ram.u16(G.scrollClock);
+  if (clock === 0x26) {
+    if (ram.u16(G.f4) !== 0) { freeEnemy(ram, a5); return FREED; }
+    ram.setU16(G.f2, 1);                               // $263B1A
+    return;
+  }
+  if (clock === 0x1b) {
+    if (ram.u16(G.f6) !== 0) { freeEnemy(ram, a5); return FREED; }
+    ram.setU8(a6 + 0xd9, 1);                          // $263B02
+    ram.setU16(G.f4, 1);
+    ram.setU16(G.f2, 1);
+    return;
+  }
+  ram.setU16(G.f6, 1);                                // $263AE8
+  ram.setU16(G.f4, 1);
+  ram.setU16(G.f2, 1);
 });
 
 // --- type $24 ($296FB0): boss-approach prop.  Sub-proto, resource install,
