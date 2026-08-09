@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-09, after W179 publication.
+Last updated: 2026-08-09, after W180 publication.
 
 ## Current directive
 
@@ -14,10 +14,10 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The old W175 pause is resolved. W176 through W179 are live. W179 ports all five
-chronological stage-2 type `$97` records, including aimed animation, cue
-spawning, both sprite layers, bullets, and death. Continue
-from the first unsupported type `$94` record. Do not repeat W175 through W179.
+The old W175 pause is resolved. W176 through W180 are live. W180 ports all six
+chronological stage-2 type `$94` records, including mirror folding, 16-frame
+animation, aimed fire, and death. Continue from the first unsupported type
+`$93` record. Do not repeat W175 through W180.
 
 ## Exact repository and deployment state
 
@@ -29,11 +29,13 @@ At handoff:
 - W177 is committed, pushed, and deployed
 - W178 is committed, pushed, and deployed
 - W179 is committed, pushed, and deployed
+- W180 is committed, pushed, and deployed
 - W175 live build: `20260809081027`
 - W176 live build: `20260809092221`
 - W177 live build: `20260809095334`
 - W178 live build: `20260809102233`
 - W179 live build: `20260809105517`
+- W180 live build: `20260809112012`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
 - no agent or command is running now
 
@@ -57,35 +59,35 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W179 is complete and live:
+W180 is complete and live:
 
-- worklog: `docs/worklog/ddpdoj/179-impl-stage2-type97.md`
-- stage-2 type `$97` is ported at five records from `$232DA8` through `$232F00`
-- init stub/body: `$277DE0` / `$277DE8`; handler: `$277F26`
-- its prototypes, three movement variants, cue spawning, four-frame animation,
-  aimed attachment, bullet fan, BCD score `$88`, effects, and impacts are included
-- stage-2 coverage is 323/332 records with 9 unknown
-- enemy-type coverage is 39/256; dynamic-minus-static remains zero
-- the seeded boot completes the exact 254-record prefix with 250 allocations
+- worklog: `docs/worklog/ddpdoj/180-impl-stage2-type94.md`
+- stage-2 type `$94` is ported at six records from `$232DC0` through `$232F10`
+- init stub/body: `$27A0E0` / `$27A0E8`; handler: `$27A1B4`
+- its prototypes, six movement variants, mirror folding, 16-frame animation,
+  aimed bullet fan, BCD score `$34`, and death effect are included
+- stage-2 coverage is 329/332 records with 3 unknown
+- enemy-type coverage is 40/256; dynamic-minus-static remains zero
+- the seeded boot completes the exact 292-record prefix with 288 allocations
   and four authentic declines
-- the web exporter contains all 36 type `$97` body and attachment streams
+- the web exporter contains all 16 type `$94` animation streams
 
 The next honest chronological unsupported record is:
 
-- record `$232DC0`
-- clock `$016B`
-- type `$94`
-- movement index `$039`
-- init body `$27A0E8`
-- handler `$27A1B4`
+- record `$232EF0`
+- clock `$0197`
+- type `$93`
+- movement index `$03D`
+- init body `$279EC2`
+- handler `$279F4A`
 
 Reserve the next immutable worklog number and continue with the
-dependency-complete type `$94` wave.
+dependency-complete type `$93` wave.
 
 Useful current tests and tools:
 
 ```powershell
-node --test games/ddpdoj/tests/w179type97.test.js games/ddpdoj/tests/w133stage2boot.test.js games/ddpdoj/tests/w167coverage.test.js
+node --test games/ddpdoj/tests/w180type94.test.js games/ddpdoj/tests/w133stage2boot.test.js games/ddpdoj/tests/w167coverage.test.js
 python games/ddpdoj/tools/dojcoverage.py
 python games/ddpdoj/tools/export-tables.py --verify
 node games/ddpdoj/tools/export-web.mjs
@@ -108,8 +110,8 @@ Important completed work:
 - W165: replay parity and the obstructive recording/help tooltip behavior
 - W166: bee chain/rank/hyper feed
 - W167: reusable bidirectional static/dynamic coverage
-- W168-W179: stage-2 background elements, stage install, and enemy types `$95`,
-  `$8D`, `$8F`, `$84`, `$90`, `$96`, `$8C`, `$91`, `$92`, and `$97`
+- W168-W180: stage-2 background elements, stage install, and enemy types `$95`,
+  `$8D`, `$8F`, `$84`, `$90`, `$96`, `$8C`, `$91`, `$92`, `$97`, and `$94`
 - Gradius commit `21fed98`: restored title/menu nametable after demo return
 
 The owner reported that sound became very good after the duration fix, while
@@ -126,8 +128,8 @@ that reported cluster. Preserve those mechanics and their tests.
 1. `PROMPT.md`
 2. this `instructions.md`
 3. `AGENTS.md`
-4. `docs/worklog/ddpdoj/179-impl-stage2-type97.md`
-5. `docs/worklog/ddpdoj/178-impl-stage2-type92.md`
+4. `docs/worklog/ddpdoj/180-impl-stage2-type94.md`
+5. `docs/worklog/ddpdoj/179-impl-stage2-type97.md`
 6. `docs/worklog/ddpdoj/167-impl-general-static-dynamic-coverage.md`
 7. `HANDOVER.md`
 8. relevant files under `docs/knowledge/`, especially 01, 02, 03, 09, and 10
@@ -180,8 +182,8 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W179 closed all five type `$97` records and moved the controlled frontier from
-`$232DA8` to `$232DC0`. Its 1,502-test release, controlled boot, bundle/web
+W180 closed all six type `$94` records and moved the controlled frontier from
+`$232DC0` to `$232EF0`. Its 1,507-test release, controlled boot, bundle/web
 gates, ROM-leak guard, deployment, and stable live polls pass. Build
-`20260809105517` is live. Continue with type `$94`; the full-game goal remains
+`20260809112012` is live. Continue with type `$93`; the full-game goal remains
 active after every wave.

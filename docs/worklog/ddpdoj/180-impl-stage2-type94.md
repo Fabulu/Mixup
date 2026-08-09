@@ -1,6 +1,6 @@
 # W180: Stage-2 type `$94`
 
-Status: COMPLETE, RELEASE PENDING
+Status: COMPLETE
 
 ## Scope
 
@@ -75,4 +75,8 @@ allocations and four authentic declines, then stops honestly at record
 - Focused W180 behavior: 5 passed, zero failed/skipped.
 - Combined registry, boot, coverage, integration, and W180 check: 50 passed,
   zero failed/skipped.
-- Release gate, deployment, and live confirmation are pending.
+- Release gate: 1,507 passed, zero failed/skipped; bundle/web and ROM-leak
+  checks passed.
+- Commit `fb2571b` contains the W180 port and current-state docs.
+- Published and confirmed live as build `20260809112012` at
+  `https://gbtman.pages.dev/games/ddpdoj/`.

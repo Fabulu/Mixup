@@ -174,7 +174,7 @@ npm run typecheck                               # tsc over the ports - no ROM ne
 refuses to publish on a red gate *or on any skip*. `--only gradius` /
 `--only ddpdoj` gate one game; `--dry` gates and builds without deploying.
 
-At DDPDOJ W179: **2,967 unit tests green** - 740 Batman, 725 Gradius, 1,502
+At DDPDOJ W180: **2,972 unit tests green** - 740 Batman, 725 Gradius, 1,507
 DaiOuJou. These are the recorded release counts, not a substitute for
 running the relevant focused check after a change.
 The Gradius gate is not yet wired into the root runner (its header says so and
@@ -248,10 +248,10 @@ controls, and deterministic REC/PLAY are translated and live.
 
 Stage 2 boots and scrolls. Its background elements and enemy program are
 installed, and the chronological enemy families `$95`, `$8D`, `$8F`, `$84`,
-`$90`, `$96`, `$8C`, `$91`, `$92`, and `$97` are ported. At W179 the ROM-backed
-registry reports 323 of 332 stage-2 records covered, with 9 records remaining
-and zero dynamic entries outside the static inventory. The next unsupported
-record is type `$94` at `$232DC0`.
+`$90`, `$96`, `$8C`, `$91`, `$92`, `$97`, and `$94` are ported. At W180 the
+ROM-backed registry reports 329 of 332 stage-2 records covered, with 3 records
+remaining and zero dynamic entries outside the static inventory. The next
+unsupported record is type `$93` at `$232EF0`.
 
 The full game is not complete. Stages 2 through 5, their bosses, later loops,
 remaining systems and presentation, and authentic slowdown still require
