@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-09, after W177 implementation and focused verification.
+Last updated: 2026-08-09, after W177 publication.
 
 ## Current directive
 
@@ -14,7 +14,7 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The old W175 pause is resolved. W176 is live, and W177 has now ported the next
+The old W175 pause is resolved. W176 and W177 are live. W177 ported the next
 chronological stage-2 family, type `$91`, including its three-effect death and
 seven-vector impact tail. Continue from the first unsupported type `$92`
 record. Do not repeat W175 through W177.
@@ -26,9 +26,10 @@ Repository root: `C:\programmieren\batman`
 At handoff:
 
 - W176 is committed, pushed, and deployed
-- W177 is implemented and focused-green; release publication is the current step
+- W177 is committed, pushed, and deployed
 - W175 live build: `20260809081027`
 - W176 live build: `20260809092221`
+- W177 live build: `20260809095334`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
 - no agent or command is running now
 
@@ -51,7 +52,7 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W177 is complete in the worktree:
+W177 is complete and live:
 
 - worklog: `docs/worklog/ddpdoj/177-impl-stage2-type91.md`
 - stage-2 type `$91` is ported at record `$232CE8`, clock `$013F`
@@ -72,8 +73,8 @@ The next honest chronological unsupported record is:
 - init body `$279CD0`
 - handler `$279D72`
 
-Finish W177 publication, then reserve the next immutable worklog number and
-continue with the dependency-complete type `$92` wave.
+Reserve the next immutable worklog number and continue with the
+dependency-complete type `$92` wave.
 
 Useful current tests and tools:
 
@@ -174,6 +175,6 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 ## Latest completed delivery
 
 W177 closed type `$91` and moved the controlled frontier from `$232CE8` to
-`$232D58`. Its focused 30-test integration set, controlled boot, ROM exporter,
-and reusable coverage checks pass. Publish W177, then continue with type `$92`;
-the full-game goal remains active after every individual wave.
+`$232D58`. Its 1,492-test release, controlled boot, bundle/web gates, ROM-leak
+guard, deployment, and stable live polls pass. Build `20260809095334` is live.
+Continue with type `$92`; the full-game goal remains active after every wave.

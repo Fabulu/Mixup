@@ -869,5 +869,6 @@ one long-form prototype, palette threshold, handler, indirect draw, BCD score
 The controlled boot now completes 241 records with 237 allocations and four
 authentic declines, then stops honestly at type `$92` body `$279CD0`, record
 `$232D58`, clock `$0155`. Coverage is 37/256 enemy types and 316/332 stage-2
-records, with 16 unknown. Focused W177 and affected regressions pass with zero
-failures or skips. Publication is the current release step.
+records, with 16 unknown. The release passed 1,492 tests with zero failures or
+skips, bundle/web and ROM-leak gates, deployment, and stable live polls. Build
+`20260809095334` is live.

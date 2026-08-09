@@ -175,7 +175,7 @@ refuses to publish on a red gate *or on any skip*. `--only gradius` /
 `--only ddpdoj` gate one game; `--dry` gates and builds without deploying.
 
 At DDPDOJ W177: **2,957 unit tests green** - 740 Batman, 725 Gradius, 1,492
-DaiOuJou. These are the expected release counts for this wave, not a substitute for
+DaiOuJou. These are the recorded release counts, not a substitute for
 running the relevant focused check after a change.
 The Gradius gate is not yet wired into the root runner (its header says so and
 why: two writers in one file).

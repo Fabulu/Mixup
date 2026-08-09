@@ -1,6 +1,6 @@
 # W177: Stage-2 type `$91`
 
-Status: COMPLETE, RELEASE PENDING
+Status: COMPLETE
 
 ## Scope
 
@@ -59,4 +59,12 @@ exporting any type `$92` body code.
 - `export-tables.py`: passed with 233 windows and 273,132 bytes.
 - `dojcoverage.py`: passed; static-minus-dynamic remains 304.
 
-Release publication and the live build id are pending.
+## Release
+
+- Commit `1612905` contains the W177 port and current-state docs.
+- Commit `1429ea5` refreshes the two whole-registry expectations found by the
+  release gate.
+- Release gate: 1,492 passed, zero failed/skipped; bundle/web and ROM-leak
+  checks passed.
+- Published and confirmed live as build `20260809095334` at
+  `https://gbtman.pages.dev/games/ddpdoj/`.
