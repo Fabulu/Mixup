@@ -283,8 +283,8 @@ export function runInitBody(addr, ram, rom, rec, unported, tables, palette) {
 // transition is this loop, and this loop is TYPE-5 CALL #3**, which the port
 // counted as a note labelled "the sub-record spawn engine driver". It is TWO
 // routines by fall-through: the reaper below, and then `$28AD70` onwards, the
-// driver over the $81DB90 cue pool, which is a different subsystem and stays
-// noted (see `src/type5.js`).
+// driver over the $81DB90 cue pool. W173 closes the type-$84 descriptor subset
+// of that second subsystem in `src/cues.js`.
 //
 //   $28AD54 move.w #$95,D0        150 slots -- the 100-slot COMMON pool
 //   $28AD58 moveq #$0,D1          $81459C and the 50-slot SPECIAL pool $81521C

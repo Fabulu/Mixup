@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "target": "ddpdojblk VERSION-B (2002.10.07 BLACK VER)",
+  "source": "w25handler.lua controlled MAME run w173-type84, 2026-08-09",
+  "static_occurrence_count": 2,
+  "static_occurrences": [
+    {"record": 2304032, "trigger": 84, "type": 132},
+    {"record": 2304128, "trigger": 108, "type": 132}
+  ],
+  "observed_occurrences": [],
+  "controlled_attempt": {
+    "run": "w173-type84",
+    "logic_frames": 13720,
+    "video_frames": 13772,
+    "wall_seconds": 90,
+    "options": ["--fire", "1250"],
+    "outcome": "NO_STAGE2_TYPE84",
+    "result": "The run completed with fails=0 but recorded only stage-1 handlers. No X84 row exists in the 4,602,800-byte TSV.",
+    "policy": "This was the wave's single bounded MAME attempt. It was not retried and is not positive type-$84 evidence."
+  },
+  "emitter": {
+    "observed": false,
+    "body_calls": [2350798, 2348898, 2350798, 2350798, 2350798],
+    "cue_natural_pointer": 2349138,
+    "cue_natural_bucket": 7
+  },
+  "limitations": "The board corpus contains no type-$84 occurrence. Lifecycle, firing, death, direct body call order, cue descriptor chaining, cue art, and cue emitter-table routing are ROM/static and port-unit verified in W173, not claimed as controlled-board observations."
+}

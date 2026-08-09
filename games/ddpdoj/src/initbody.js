@@ -924,6 +924,42 @@ BODY.set(0x27751c, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + R.rec19, rom.u8(pal + 1));            // $277594
 });
 
+// --- type $84 ($275154): stage 2's two-sub-record phased gunship. W173.
+//
+// The run-length stub is one. Both prototypes at `$27523E..$275276` use the
+// long form, so `$2637A2` consumes exactly 56 bytes and leaves A0 on the cue
+// threshold script. The init preserves that returned cursor at record +$44.
+BODY.set(0x275154, (ram, rom, a5, a6, unported) => {
+  const cueScript = loadSubProto(ram, rom, a5, a6, 0x27523e); // $275154..$27515A
+  ram.setU32(a5 + R.rec44, cueScript);                  // $275160
+  loadRecordProto(ram, rom, a5, 0x275222, 0x0d);       // $275164..$27516C
+  readInitPosition(ram, rom, a5, unported);            // $275172
+
+  const early = ram.u16(G.stage) <= 1;                 // $275178..$275192
+  ram.setU8(a5 + R.rec2A, early ? 6 : 2);
+  ram.setU8(a5 + R.rec2B, 5);
+  const artCursor = ram.u16(a6 + 0x28);
+  ram.setU32(a6 + 0x2a, rom.u32(0x2757ca + artCursor)); // $27519A..$2751A4
+  ram.setU8(a5 + R.rec2E,
+    ram.u8(a5 + R.rec2E) - (ram.u16(0x8130a8) & 0xff)); // $2751AA..$2751B0
+  ram.setU8(a5 + R.rec1E,
+    ram.u8(a5 + R.rec1E) - (ram.u16(G.ae) & 0xff));    // $2751B4..$2751BA
+
+  const pal = 0x275218 + ram.u16(G.stageX2);           // $2751BE..$2751D4
+  ram.setU8(a6 + S.palette, rom.u8(pal));
+  ram.setU8(a5 + R.rec1C, rom.u8(pal));
+  ram.setU8(a5 + R.rec1D, rom.u8(pal + 1));
+
+  if ((ram.u8(a6) & 0x20) === 0) {                    // $2751D8
+    ram.setU16(a6 + 0x30, 1);
+    const part = u16(ram.u8(a6 + S.anim) - 1);
+    ram.setU16(a6 + 0x32, part);
+    ram.setU16(a6 + (part === 0 ? 0x12 : 0x10), 0xf000);
+    ram.setU8(a6 + S.anim, 0);
+  }
+  if (ram.u16(G.stage) === 4) ram.setU16(a6 + S.hp, 0x1400); // $275204..$275216
+});
+
 // ============================================================ the entry point
 /** Run the init+8 body at `addr`.  Replaces spawn.js's throwing stub.  Returns
  *  FREED if the body freed the enemy (a stage-kill gate fired); otherwise

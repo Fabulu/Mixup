@@ -136,13 +136,14 @@ import { runEffectDriver } from './effects.js';
 import { runItemDriver } from './items.js';
 import { runPoolADriver } from './bee.js';
 import { bombDriver255DD8 } from './bomb.js';
+import { runCueDriver28AD70 } from './cues.js';
 
 export const TYPE5 = {
   handler: 0x28b5e0,
   entryTest: 0x28b5e0,      // tst.b ($2,A5)
   notStarted: 0x28b5a8,
   enemyFrame: 0x2634f4,     // $28B5EC -- the spawn walker + the 58-slot driver
-  subReaper: 0x28ad54,      // $28B5F2 -- W33: its FIRST loop only (the reaper)
+  subReaper: 0x28ad54,      // $28B5F2 -- reaper plus cue driver fall-through (W173)
   bulletDriver: 0x281d9a,   // $28B658 -- the screen clear + THE MOVER
   clearTimer: 0x25354c,     // $28B65E -- the screen clear's arming timer
   shotDriver: 0x253a70,     // $28B610 -- the ONE call this port makes
@@ -196,7 +197,7 @@ export function laserRampWouldMove(held, speedIdx, laserFloor) {
  *  machine whole rather than half-wired. */
 export const TYPE5_PORTED = new Set([
   0x2634f4,   // #2  THE ENEMY SUBSYSTEM: spawn walk + deferred drain + driver (W29)
-  0x28ad54,   // #3  the SUB-RECORD REAPER, first loop only (W33) -- see below
+  0x28ad54,   // #3  SUB-RECORD REAPER (W33) + cue driver fall-through (W173)
   0x253a70,   // #8  the player-shot driver (wave 8)
   0x24c096,   // #9  THE OPTION OBJECT (wave 12) -- and THE BEAM (W45)
   0x254680,   // #10 THE BEAM's segment driver, 32 slots x 2 players (W45)
@@ -338,7 +339,7 @@ export function makeType5(rom) {
           ctx.itemSink?.(ctx.itemFrame);
           break;
         case TYPE5.subReaper:                           // $28B5F2 -> $28AD54
-          // WAVE 33.  ONLY the reaper half of `$28AD54` runs here -- the twelve
+          // WAVE 33 ports the reaper half of `$28AD54`: the twelve
           // instructions $28AD54..$28AD6C that turn a DYING sub-record (byte 0
           // == 1, written by `$263762`) into a FREE one (byte 0 == 0, the only
           // thing `$2635D8` accepts).  Until this wave nothing performed that
@@ -347,15 +348,10 @@ export function makeType5(rom) {
           // replay, with fifteen enemies alive, after which every spawn was
           // silently dropped.  See src/spawn.js's SUB_REAPER block.
           //
-          // The REST of $28AD54 -- $28AD70 onwards, the driver over the
-          // $81DB90 cue pool -- is a different subsystem reached by
-          // FALL-THROUGH and is still counted, by its own address, so this
-          // stays visibly a partial port rather than quietly a whole one.
+          // W173 closes its inseparable fall-through at `$28AD70`, the driver
+          // over type `$84`'s bounded kind-0/kind-4/kind-8 `$81DB90` cues.
           ctx.subReaped = reapSubRecords(ram);
-          ctx.unportedLog.note(SUB_REAPER.tail, `$28AD54's SECOND routine `
-            + `($28AD70 onwards, reached by fall-through): the $81DB90 `
-            + `sub-record cue-pool driver, count at $81DD0C. W33 ported only `
-            + `the reaper loop $28AD54..$28AD6C ahead of it`);
+          ctx.cueFrame = runCueDriver28AD70(ram, rom);
           break;
         case TYPE5.impactDriver:                          // $28B5F4 -> $27F95A
           // WAVE 111.  FOURTH of twenty-three, between the sub-record reaper

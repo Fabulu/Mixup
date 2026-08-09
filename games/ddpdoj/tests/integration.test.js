@@ -245,7 +245,7 @@ test('the handler adapter covers every address in handlerMap(), and only those',
   { skip: SKIP }, () => {
     const m = enemyHandlerMap(ROM);
     assert.deepEqual([...m.keys()].sort(), [...HANDLER_ADDRESSES].sort());
-    assert.equal(m.size, 24, 'W25 ported six of stage 1\'s nineteen SCRIPT '
+    assert.equal(m.size, 25, 'W25 ported six of stage 1\'s nineteen SCRIPT '
       + 'handlers; W30 added $275914, $2739C0 and $276702 -- the three that '
       + 'BLOCKED the fly-around gate -- W31 added $26B6FA, the MIDMOSS, the '
       + 'fourth, W33 added $272AAC, the scripted carrier, and W36 added the '
@@ -257,7 +257,8 @@ test('the handler adapter covers every address in handlerMap(), and only those',
       + 'own death does ($26B7E0/$26B7E2). W103 added $296DD6, which is also '
       + 'NOT one of the nineteen: it is the boss\'s carrier enemy, spawned by '
       + 'E 8. W170 adds stage-2 type $95 handler $2779B6, W171 adds type '
-      + '$8D handler $276A02, and W172 adds $8F handler $2775CC, so the map has 24 '
+      + '$8D handler $276A02, W172 adds $8F handler $2775CC, and W173 adds '
+      + '$84 handler $2752B0, so the map has 25 '
       + 'entries against the stage-1 script denominator of 19/19');
   });
 
@@ -306,9 +307,8 @@ test('$2634F4 walks the SPAWN SCRIPT before the 58-slot driver',
 // ===========================================================================
 test('TYPE5_PORTED is SEVENTEEN of the twenty-three, and the list is the ROM\'s', () => {
   assert.equal(TYPE5.calls.length, 23, '$28B5E6..$28B66A');
-  // W33 added call #3, `$28AD54` -- and ONLY its first loop, the sub-record
-  // reaper.  The rest of that routine ($28AD70 onwards, reached by
-  // fall-through) is still counted under its own address.
+  // W33 added call #3, `$28AD54`'s sub-record reaper. W173 adds its inseparable
+  // `$28AD70` fall-through for type `$84`'s bounded cue descriptor family.
   // W45 added #10 `$254680` and #11 `$255042`, THE BEAM's segment driver and
   // its draw.  They belong with #9 `$24C096`: the beam is a bootstrap across
   // frame boundaries -- #9 seeds a segment, #10's handler `$2548C4` runs

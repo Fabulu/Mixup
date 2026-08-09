@@ -493,8 +493,14 @@ SHOT_WINDOWS.extend([
     (0x277514, 0x031A, "W172: complete stage-2 type $8F closure: stub, init, "
                        "palette/prototypes and handler through the next type "
                        "$95 stub at $27782E"),
-    (0x27514C, 0x0008, "W172: next chronological boundary type $84's exact "
-                       "run-length stub; unknown init body begins at $275154"),
+    (0x27514C, 0x06CE, "W173: complete stage-2 type $84 closure: stub, init, "
+                       "palettes/prototypes/cue script, handler and tables "
+                       "through the next stub at $275812"),
+    (0x28AC72, 0x041C, "W173: type $84's inseparable cue spawner, live driver "
+                       "path, dispatch/emitter tables and kind-4/kind-8 "
+                       "descriptors/art tables ($28AC72..$28B08E)"),
+    (0x279802, 0x0008, "W173: next chronological boundary type $90's exact "
+                       "run-length stub; unknown init body begins at $27980A"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -2135,6 +2141,91 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if not (u16(d, 0x232820) == 0x0054 and d[0x232824] == 0x84
             and d[0x27514C:0x275154] == bytes.fromhex("3b7c000100044e75")):
         raise SystemExit("W172: chronological frontier is not $232820 type $84 body $275154")
+
+    # W173. Type $84 has two sub-records, stores the returned prototype cursor
+    # as its cue script, and closes at the next type's run-length stub.
+    if not (pc_rel_lea(0x275154) == 0x27523E
+            and u16(d, 0x27515A) == 0x4EB9 and u32(d, 0x27515C) == 0x2637A2
+            and u16(d, 0x275160) == 0x2B48
+            and pc_rel_lea(0x275164) == 0x275222
+            and u16(d, 0x27516A) == 0x700D
+            and u16(d, 0x27516C) == 0x4EB9 and u32(d, 0x27516E) == 0x26377A
+            and u16(d, 0x275172) == 0x4EB9 and u32(d, 0x275174) == 0x263808):
+        raise SystemExit("W173: type $84 init loader/cue-cursor sequence drifted")
+    if d[0x2752B0:0x2752B6] != bytes.fromhex("4eb9002638a6"):
+        raise SystemExit("W173: type $84 handler no longer starts with $2638A6")
+    if d[0x2757C2:0x2757CA] != bytes.fromhex("4ef9002637624e71"):
+        raise SystemExit("W173: type $84 handler no longer ends at its data")
+    if d[0x275812:0x27581A] != bytes.fromhex("3b7c000100044e75"):
+        raise SystemExit("W173: type $84 tables are no longer bounded by the next stub")
+    calls84 = {u32(d, a + 2) for a in range(0x2752B0, 0x2757CA, 2)
+               if u16(d, a) == 0x4EB9}
+    required84 = {0x2638A6, 0x286096, 0x28AC72, 0x2422A2,
+                  0x242B3C, 0x242FFC, 0x281764, 0x2817B8, 0x28615E,
+                  0x28C2DC, 0x289B22, 0x27F8FA, 0x289004,
+                  0x23DECE, 0x23D762}
+    if not required84 <= calls84:
+        raise SystemExit(f"W173: type $84 handler call closure drifted: "
+                         f"missing {sorted(required84 - calls84)!r}")
+    if any(u16(d, a) == 0x4E90 for a in range(0x2752B0, 0x2757CA, 2)):
+        raise SystemExit("W173: type $84 unexpectedly gained an indirect call")
+    if [u32(d, 0x2757CA + i * 4) for i in range(4)] != \
+            [0x17DE54, 0x17DED8, 0x17DF5C, 0x17DFE0]:
+        raise SystemExit("W173: type $84 four-frame art table drifted")
+    if [u16(d, 0x2757DA + i * 2) for i in range(11)] != \
+            [0x0000, 0x0040, 0x0080, 0x00C0, 0x0100, 0x0140,
+             0x0180, 0x01C0, 0x0200, 0x0240, 0x0200]:
+        raise SystemExit("W173: type $84 11-word phase table drifted")
+    if [u16(d, 0x2757F0 + i * 2) for i in range(3)] != [0x0E00, 0x0C40, 0x0A80]:
+        raise SystemExit("W173: type $84 muzzle table drifted")
+    if u16(d, 0x275812) != 0x3B7C or 0x275812 - 0x2757F6 != 7 * 4:
+        raise SystemExit("W173: type $84 seven-vector table extent drifted")
+    if [u32(d, 0x28AFD4 + i * 4) for i in range(20)][:3] != \
+            [0x28B024, 0x28B042, 0x28B060]:
+        raise SystemExit("W173: cue dispatch kinds 0/4/8 drifted")
+    if not (d[0x28AC72:0x28AC86] == bytes.fromhex(
+                "226d004430196b22b06e00186d1c6100001e60ec")
+            and u16(d, 0x28ACA0) == 0x41F9 and u32(d, 0x28ACA2) == 0x0081DB90
+            and d[0x28ACA6:0x28ACB4] == bytes.fromhex(
+                "70094a50671641e8002651c8fff6")
+            and d[0x28ACC2:0x28ACD4] == bytes.fromhex(
+                "222d00064cd9040c2b49004452790081dd0c")
+            and d[0x28ACD6:0x28ACEC] == bytes.fromhex(
+                "301a47fa02fa4e7126730000301b4a526a0408c00007")
+            and d[0x28AD28:0x28AD3C] == bytes.fromhex(
+                "20c330db1143fffe20ca261b96790081dd0e20c3")):
+        raise SystemExit("W173: cue threshold/pool/cursor ownership drifted")
+    if not (d[0x28AD68:0x28AD76] == bytes.fromhex(
+                "41e8002051c8fff23e390081dd0c")
+            and d[0x28ADAC:0x28ADB8] == bytes.fromhex(
+                "4a026b0a536e002266046130")
+            and d[0x28ADC4:0x28ADCA] == bytes.fromhex("d8c028544ed4")
+            and d[0x28AF46:0x28AF62] == bytes.fromhex(
+                "302e00180816000067061028001ee54841fa00144e71d0c020504e90")):
+        raise SystemExit("W173: cue reaper fall-through/driver dispatch drifted")
+    if [u32(d, 0x28AF6C + i * 4) for i in range(6)] != \
+            [0x23D79E, 0x23D762, 0x23D79E, 0x23D7DA, 0x23D816, 0x23D852]:
+        raise SystemExit("W173: cue six-entry emitter table drifted")
+    if [u32(d, 0x28B032 + i * 4) for i in range(4)] != \
+            [0x22C608, 0x22C5E4, 0x22C5C0, 0x22C59C]:
+        raise SystemExit("W173: cue kind-0 art table drifted")
+    if [u32(d, 0x28B050 + i * 4) for i in range(4)] != \
+            [0x22C3C0, 0x22C374, 0x22C328, 0x22C2DC]:
+        raise SystemExit("W173: cue kind-4 art table drifted")
+    if [u32(d, 0x28B06E + i * 4) for i in range(8)] != \
+            [0x22BC18, 0x22BB74, 0x22BAD0, 0x22BA2C,
+             0x22B988, 0x22B8E4, 0x22B840, 0x22B79C]:
+        raise SystemExit("W173: cue kind-8 art table drifted")
+    type84_records = [(script + i * 8, u16(d, script + i * 8),
+                       u16(d, script + i * 8 + 6) & 0x0FFF)
+                      for i in range(332) if d[script + i * 8 + 4] == 0x84]
+    if type84_records != [(0x232820, 0x0054, 0x005), (0x232880, 0x006C, 0x09F)]:
+        raise SystemExit(f"W173: stage-2 type $84 occurrence order drifted: "
+                         f"{type84_records!r}")
+    if not (u16(d, 0x2328D0) == 0x0085 and d[0x2328D4] == 0x90
+            and (u16(d, 0x2328D6) & 0x0FFF) == 0x037
+            and d[0x279802:0x27980A] == bytes.fromhex("3b7c000000044e75")):
+        raise SystemExit("W173: next chronological frontier is not $2328D0 type $90 idx $037")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")

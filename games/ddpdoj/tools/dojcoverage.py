@@ -399,7 +399,7 @@ def build_report(break_coverage=False, break_inventory=False,
     # every row from the live source registries, ROM script, aux table and
     # movement-resource offsets and refuse any stale/reordered/manual list.
     frontier = next(x for x in config["backlog"]
-                    if x["name"] == "stage2_enemy_frontier_type84")
+                    if x["name"].startswith("stage2_enemy_frontier_type"))
     tab = cfg["stage2_spawn_script"]["stage_table"] + 0x10
     aux, resource = rom.r32(tab + 4), rom.r32(tab + 8)
     offsets = [rom.r16(aux + i * 2) for i in range(174)]
@@ -414,7 +414,7 @@ def build_report(break_coverage=False, break_inventory=False,
                               e["handler"], idx, resource + offsets[idx],
                               resource + end_off])
     if frontier.get("remaining_records") != exact_backlog:
-        raise ValueError("stage2_enemy_frontier_type84 remaining_records is not "
+        raise ValueError(f"{frontier['name']} remaining_records is not "
                          "the exact ordered live-registry/ROM backlog")
 
     object_types, ckpt_updates, n_ckpt = read_checkpoints()

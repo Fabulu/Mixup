@@ -111,7 +111,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 // W86: the art harvest for the background elements is derived from the PORT's
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
-import { TYPE8D_ART, TYPE8F_ART, TYPE95_ART } from '../src/handlers.js';
+import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE95_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -281,6 +281,21 @@ if (u17.length !== SOUND.fileSize) {
 //
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
+  [17, TYPE84_ART.animationTable, TYPE84_ART.animationFrames, 4,
+    6, 0x2757e2,
+    'stage-2 type $84 body animation. Sub-record +$28 wraps over raw byte '
+      + 'offsets 0,$04,$08,$0C and reaches exactly four pointers. Two adjacent '
+      + 'pairs from the phase-word table also decode as valid stream starts, '
+      + 'but this selector cannot reach them'],
+  // Type $84 cue kind 0 points into the already closed `$22C59C..$22C6BC`
+  // laser-impact chain below. Keep those four streams in shard 10: assigning
+  // them here first would silently move shared live art between shards.
+  [17, TYPE84_ART.cue4Table, TYPE84_ART.cue4Frames, 4,
+    TYPE84_ART.cue4Frames, TYPE84_ART.cue4Table + TYPE84_ART.cue4Frames * 4,
+    'type $84 cue descriptor kind 4. $28AE8A reloads phase $0C'],
+  [17, TYPE84_ART.cue8Table, TYPE84_ART.cue8Frames, 4,
+    TYPE84_ART.cue8Frames, TYPE84_ART.cue8Table + TYPE84_ART.cue8Frames * 4,
+    'type $84 cue descriptor kind 8. $28AEAC reloads phase $1C'],
   // W172. `$272EFA`'s first 32 longs are type $8F's heading selector. The
   // next 32 valid pointers are the adjacent type $89 family, so the valid
   // pointer run is 64 while this registry owns exactly its first half.
@@ -973,6 +988,16 @@ for (const offs of [TYPE95_ART.main, TYPE95_ART.fixed]) {
 // `$22C59C` chain in shard 10, completing the 43-stream dependency family
 // without changing their established shard owner.
 for (const offs of [TYPE8D_ART.death, TYPE8F_ART.death]) {
+  if (!streams.has(offs)) {
+    streams.set(offs, romExtent(offs));
+    shardOfStream.set(offs, 17);
+    harvested++;
+  } else {
+    harvestAlready++;
+  }
+}
+for (const offs of [TYPE84_ART.body, TYPE84_ART.fixedA,
+  TYPE84_ART.fixedB, TYPE84_ART.fixedC]) {
   if (!streams.has(offs)) {
     streams.set(offs, romExtent(offs));
     shardOfStream.set(offs, 17);
