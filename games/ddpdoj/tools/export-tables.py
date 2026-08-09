@@ -576,7 +576,7 @@ SHOT_WINDOWS.extend([
     (0x29804C, 0x002A, "W186: complete A3/D3 randomized heading driver"),
     (0x299194, 0x0220, "W186: complete A4/F3 attack conductor and four-pair "
                        "A1 choice table through the next A4 script"),
-    (0x2998AC, 0x0070, "W186: complete fourteen-pair stage-2 boss A1 table"),
+    (0x2998AC, 0x0080, "W189: complete sixteen-pair stage-2 boss A1 table"),
     (0x2999B0, 0x0080, "W187: stage-2 boss E6-E11 packed muzzle-offset table"),
     (0x299E90, 0x108A, "W187: complete stage-2 boss A1 attack leaves E6-E11"),
     (0x298310, 0x0956, "W183: complete stage-2 boss multi-part damage controller, "
@@ -584,6 +584,19 @@ SHOT_WINDOWS.extend([
                        "and timeout tail through the A4 table at $298C66"),
     (0x298C66, 0x007C, "W183: complete nine-pair A4 scheduler table plus the "
                        "translated script-0 bootstrap $298CAE..$298CE2"),
+    (0x298CE2, 0x00E0, "W189: stage-2 boss A4/F1 init, step and four-row "
+                       "effect table through F2 at $298DC2"),
+    (0x297BE8, 0x0070, "W189: stage-2 boss MAIN3 init and approach step"),
+    (0x298DC2, 0x03D2, "W189: complete stage-2 boss A4/F2 death conductor, "
+                       "effect rows and palette-animation tables"),
+    (0x297AE6, 0x000A, "W189: stage-2 boss MAIN1 death drift"),
+    (0x246520, 0x00F0, "W189: no-fill palette-animation chain loader"),
+    (0x28B34A, 0x0174, "W189: stage-2 boss eight-particle death burst"),
+    (0x2440E0, 0x0C5E, "W189: final boss-blast producer and 39-row effect table"),
+    (0x260EC8, 0x0130, "W189: screen-shake mode-1 driver and 42-pair table"),
+    (0x299882, 0x002A, "W189: stage-2 boss A4/F8 low-HP conductor"),
+    (0x298218, 0x002C, "W189: stage-2 boss A3/D10 retract driver"),
+    (0x29B6D6, 0x00CA, "W189: stage-2 boss A1/E15 aimed low-HP barrage"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -2912,6 +2925,36 @@ def check_stage2_spawn_data(d: bytes) -> None:
         if hashlib.sha256(d[start:end]).hexdigest() != expected:
             raise SystemExit(
                 f"W187: stage-2 boss attack closure ${start:06X} drifted")
+    boss2_phase_closures = [
+        (0x298CE2, 0x298DC2,
+         "4b93e335828e13e174c622b9f7f8d6c9392f415fb29e8f5c118eaf814c6e1195"),
+        (0x297BE8, 0x297C58,
+         "f354c6ec32e0d77777c5da506d7ae558ce18c0397f4c7fd5acefb40a26f306a4"),
+        (0x298DC2, 0x299194,
+         "5b47a586270e97e459e7269fc3c5dd3b21f625682809c0090b3811abc2691257"),
+        (0x297AE6, 0x297AF0,
+         "9625ceb54ecc59d1fc8f9edd88345f571944f59e6a9edfdbe5f341529e0c7c41"),
+        (0x246520, 0x246610,
+         "ada0fb1969570e5aa1467ac6647be6efbe5a08cff3472d03b0e32b37fd068b49"),
+        (0x28B34A, 0x28B4BE,
+         "88b06c6501537b06307a09d6acc7efbfac5d2a8fc29271c9bbca8e80f5310925"),
+        (0x2440E0, 0x244D3E,
+         "f7823515f49a2d06eb2d888dcac183e7b211daf99e4b6b36c4e1fca07abd202b"),
+        (0x260EC8, 0x260FF8,
+         "6e69eacd3258433067d94edbbb2e394327dbde71645d9b608d0c38e11001479e"),
+        (0x299882, 0x2998AC,
+         "5eb87be7d7cc8f1b8769a3fd188e3b4293b3be3e9580bbc238ee824572192cff"),
+        (0x298218, 0x298244,
+         "ef51b327cf8b45f8f0925ab1911fa6a45f33e5f71d70273c2f339050aa58ff0a"),
+        (0x29B6D6, 0x29B7A0,
+         "2901927e902be48a0b6fa46989e007a1c9768c12067202b0c0d0edba98bbdba6"),
+        (0x2998AC, 0x29992C,
+         "4bf0409651713a21f9be68b6b15d9f1c3bc7d3a2ec00e0294810ecd597e36b9a"),
+    ]
+    for start, end, expected in boss2_phase_closures:
+        if hashlib.sha256(d[start:end]).hexdigest() != expected:
+            raise SystemExit(
+                f"W189: stage-2 boss phase closure ${start:06X} drifted")
     type30_records = [(script + i * 8, u16(d, script + i * 8),
                        u16(d, script + i * 8 + 6) & 0x0FFF)
                       for i in range(332) if d[script + i * 8 + 4] == 0x30]

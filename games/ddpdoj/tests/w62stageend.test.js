@@ -413,7 +413,7 @@ test('every registered script address is in an installed boss scheduler table',
     for (let i = 0; i < 9; i++) {                        // A4, $298C66
       legal.push(ROM.u32(0x298c66 + i * 8), ROM.u32(0x298c66 + i * 8 + 4));
     }
-    for (let i = 0; i < 14; i++) {                       // A1, $2998AC
+    for (let i = 0; i < 16; i++) {                       // A1, $2998AC (W189)
       legal.push(ROM.u32(0x2998ac + i * 8), ROM.u32(0x2998ac + i * 8 + 4));
     }
     for (let i = 0; i < 11; i++) legal.push(ROM.u32(0x297432 + i * 4)); // A2

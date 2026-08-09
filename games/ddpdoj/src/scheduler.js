@@ -183,6 +183,14 @@ export function a2Stop25994A(ram, d0) {
   ram.setU16(a, ram.u16(a) & 0xfffe);                  // $259958
 }
 
+/** `$259924` -- clear RUN on every present A2 object slot. */
+export function a2StopAll259924(ram) {
+  for (let i = 0; i < SCHED.a2Slots; i++) {
+    const a = SCHED.a2Base + i * SCHED.a2Stride;
+    if (i16(ram.u16(a)) < 0) ram.setU16(a, ram.u16(a) & 0xfffe);
+  }
+}
+
 /** `$259962` -- START A3 SCRIPT D0.  If a slot already carries it, return the
  *  slot's parameter block ($812BB4, which the ROM hands back in A0 and the
  *  stage-1 boss's caller ignores); otherwise claim the first EMPTY slot and

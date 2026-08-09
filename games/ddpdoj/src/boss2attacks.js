@@ -6,9 +6,9 @@
 
 import { u16, i16 } from './ram.js';
 import { registerScript } from './scheduler.js';
-import { AimTables, aim64FromCaller, slew64 } from './aim.js';
+import { AimTables, aim64FromCaller, aim256AtTarget, slew64 } from './aim.js';
 import {
-  drawByte242B3C, drawByte242E24, drawSigned242FDE,
+  drawByte242B3C, drawByte242E24, drawSigned242FDE, drawWord24328E,
 } from './rng.js';
 import { fire as fireBullet, WriteLog } from './bullets.js';
 
@@ -450,6 +450,48 @@ function e11Init29AE48(ram, rom, ctx, a4) {
   e11Step29AE4C(ram, rom, ctx, a4);
 }
 
+// --------------------------------------------------------------------- E15
+
+function e15Step29B6F0(ram, rom, ctx, a4) {
+  if (!due8(ram, a4 + 0x04)) return;
+  ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));
+
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  const lowHp = ((ram.u32(a5 + 0x16) << 0) <= 0x00002a00);
+  const boost = lowHp ? 3 : 0;
+  const iterations = lowHp && ram.u16(0x80390c) === 0 ? 2 : 1;
+  for (let i = 0; i < iterations; i++) {
+    const aimed = aim256AtTarget(aimTables(rom), ram, a5, a6);
+    if (aimed.carry) return;
+
+    const jitterY = i16(drawWord24328E(ram, rom)) >> 3;
+    const jitterX = i16(drawWord24328E(ram, rom)) >> 3;
+    const d3 = ((u16(jitterY) << 16) | u16(jitterX)) >>> 0;
+    const r0 = (drawByte242B3C(ram, rom) << 24) >> 24;
+    const angle = u8(aimed.dir + 5 * r0);
+    const r1 = (drawByte242B3C(ram, rom) << 24) >> 24;
+    const magnitude = Math.abs(r0);
+    const speed = (r1 >> 1) - 6 + (magnitude > 1 ? magnitude : 0) + boost;
+    const d0 = ((u16(speed) << 16) | 0x0016) >>> 0;
+    const entry = ram.bchg8(a4 + 0x06, 0) === 0 ? 0x281744 : 0x281776;
+    shoot(ram, rom, ctx, entry === 0x281744 ? 0x29b78a : 0x29b794, entry, {
+      d0, d1: angle, d2: (ram.u32(a6 + 0x02) + 0x06000000) >>> 0,
+      d3, d4: 0, d5: magnitude, a5,
+    });
+  }
+}
+
+/** `$29B6D6`, E15 INIT. The ROM falls straight into STEP. */
+function e15Init29B6D6(ram, rom, ctx, a4) {
+  ram.bchg8(ctx.bossRec + 0x03, 0);
+  ram.setU8(a4 + 0x02, 0);
+  ram.setU16(a4 + 0x04, 0);
+  ram.setU16(a4 + 0x06, 0);
+  ram.setU16(0x803934, 1);
+  ram.setU16(0x803936, 0);
+  e15Step29B6F0(ram, rom, ctx, a4);
+}
+
 registerScript(0x299e90, e6Init299E90);
 registerScript(0x299eda, e6Step299EDA);
 registerScript(0x29a0f6, e7Init29A0F6);
@@ -462,3 +504,5 @@ registerScript(0x29ab50, e10Init29AB50);
 registerScript(0x29ab7e, e10Step29AB7E);
 registerScript(0x29ae48, e11Init29AE48);
 registerScript(0x29ae4c, e11Step29AE4C);
+registerScript(0x29b6d6, e15Init29B6D6);
+registerScript(0x29b6f0, e15Step29B6F0);

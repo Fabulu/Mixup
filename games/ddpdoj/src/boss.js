@@ -540,6 +540,25 @@ export function bigBurst28B4BE(ram, rom, ctx, pos, rngByte, shift, bucket, site)
   }
 }
 
+/** `$28B34A`, the stage-2 boss death's eight-particle burst. */
+export function bigBurst28B34A(ram, rom, ctx, pos, rngByte, bucket, site) {
+  const particles = [
+    [0x07, 0x05, 0], [0x04, 0x07, 1], [0x07, 0x0a, 2],
+    [0x04, 0x0e, 3], [0x05, 0x12, 6], [0x04, 0x16, 8],
+    [0x05, 0x1c, 10], [0x05, 0x22, 12],
+  ];
+  for (const [kind, speed, delay] of particles) {
+    const a0 = spawnEffect(ram, ctx, kind, site);
+    ram.setU16(a0 + B.bucket, bucket);
+    ram.setU32(a0 + B.pos, pos);
+    ram.setU8(a0 + B.speed, speed);
+    ram.setU8(a0 + B.angle, rngByte);
+    const r = (drawByte242B3C(ram, rom) << 24) >> 24;
+    ram.setU8(a0 + B.angle, ram.u8(a0 + B.angle) + (r >> 2));
+    ram.setU16(a0 + B.delay, delay);
+  }
+}
+
 /** `$293E04` -- D-script 6's STEP: the boss's death animation, and the last
  *  128 frames of it are the stage's. */
 function d6Step293E04(ram, rom, ctx, a4) {

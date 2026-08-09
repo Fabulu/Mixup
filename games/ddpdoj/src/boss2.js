@@ -11,20 +11,24 @@ import { freeEnemy } from './initbody.js';
 import { runStageAdvance242952 } from './stageend.js';
 import { u16, i16, i32 } from './ram.js';
 import { scoreHit, scoreKill } from './score.js';
-import { spawnEffect, B } from './effects.js';
-import { drawByte242E24, drawSigned242FDE, drawWord242EC2 } from './rng.js';
+import { spawnEffect, clearEffectPool, B } from './effects.js';
+import {
+  drawByte242B3C, drawByte242E24, drawSigned242FDE,
+  drawWord242EC2, drawWord24328E,
+} from './rng.js';
 import { aim64, slew64, AimTables } from './aim.js';
-import { livePlayers2428A6, bigBurst28B4BE } from './boss.js';
+import { livePlayers2428A6, bigBurst28B34A, bigBurst28B4BE } from './boss.js';
 import { applyVelocity, scrollCompensate } from './movement.js';
-import { dist242494 } from './bossscripts.js';
+import { dist242494, rampSpeed293400 } from './bossscripts.js';
 import { install24150A } from './palette.js';
-import { loadAnimObjects246410 } from './animobjects.js';
+import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import {
   runScheduler25962E, registerScript, seqStart2598D0, a3Start259962,
   a3Stop2599EC, a2Stop25994A, a1Clear259B34, a4Clear2598A2,
   a4Start25980C, seqStop2598BE, a1Start259A18, a1Running259A4A,
+  a2StopAll259924, fadeArm259B7E, fadeDone259B9E, suspend2595E8,
 } from './scheduler.js';
 
 const note = (ctx, addr, what) => (ctx.unportedLog ?? ctx.unported)?.note(addr, what);
@@ -34,6 +38,12 @@ function aimTables(rom) {
   let tables = AIM_TABLES.get(rom);
   if (!tables) { tables = new AimTables(rom); AIM_TABLES.set(rom, tables); }
   return tables;
+}
+
+function dueByte(ram, addr) {
+  const old = ram.u8(addr);
+  ram.setU8(addr, old - 1);
+  return old === 0;
 }
 
 const ANIM_A = [
@@ -368,6 +378,299 @@ function main2Init297B22(ram, rom, ctx, a4) {
 
 registerScript(0x297b22, main2Init297B22);
 registerScript(0x297b48, main2Step297B48);
+
+/** `$297BFC`, MAIN 3 STEP: approach the phase-one assembly point. */
+function main3Step297BFC(ram, rom, ctx, a4) {
+  const a5 = ctx.bossRec;
+  const a6 = ctx.bossSubRec;
+  const targetY = ram.u16(a4 + 0x08);
+  const targetX = ram.u16(a4 + 0x0a);
+  ram.setU8(a6 + 0x1b, aim64(aimTables(rom),
+    ram.u16(a6 + 0x02), ram.u16(a6 + 0x04), targetY, targetX));
+  const distance = dist242494(ram.u16(a6 + 0x02), ram.u16(a6 + 0x04),
+    targetY, targetX);
+  ram.setU8(a4 + 0x02, distance >>> 8);
+  if (i16(distance) <= 0x0100) {
+    seqStart2598D0(ram, 5);
+    ram.setU16(a6 + 0x148, 0);                        // $298BDA
+  }
+  const old = ram.u8(a4 + 0x04);
+  ram.setU8(a4 + 0x04, old - 1);
+  if (old === 0) {
+    ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));
+    rampSpeed293400(ram, a4, a6);
+  }
+  applyVelocity(ram, ctx.tables, a5);
+  placeBoss2Parts297990(ram, a6);
+}
+
+/** `$297BE8`, MAIN 3 INIT. The ROM falls straight into STEP. */
+function main3Init297BE8(ram, rom, ctx, a4) {
+  ram.setU8(a4 + 0x02, 2);
+  ram.setU16(a4 + 0x04, 0x0404);
+  ram.setU32(a4 + 0x08, 0x5c001c00);
+  main3Step297BFC(ram, rom, ctx, a4);
+}
+
+registerScript(0x297be8, main3Init297BE8);
+registerScript(0x297bfc, main3Step297BFC);
+
+/** `$297AE6`, MAIN 1: drift the dead boss left and keep its children attached. */
+function main1Step297AE6(ram, _rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  ram.setU16(a6 + 0x02, u16(ram.u16(a6 + 0x02) - 0x10));
+  placeBoss2Parts297990(ram, a6);
+}
+
+registerScript(0x297ae6, main1Step297AE6);
+
+function f2PostSound(ram, rom, ctx, a4) {
+  ctx.soundPost?.(rom.u32(0x29906a + ram.u16(a4 + 0x14)));
+  ram.setU16(a4 + 0x14, (ram.u16(a4 + 0x14) + 4) & 0x001f);
+}
+
+function f2SpawnRow(ram, rom, ctx, a6, cursor, withSubs) {
+  const row = 0x29908a + cursor;
+  const e = spawnEffect(ram, ctx, rom.u16(row), 0x298e78);
+  ram.setU8(e + B.f1c, rom.u16(row + 2));
+  ram.setU32(e + B.nudge, rom.u32(row + 4));
+  ram.setU32(e + B.pos, ram.u32(a6 + 0x02));
+  ram.setU16(e + B.bucket, 8);
+  ram.setU16(e + B.speed, rom.u16(row + 8));
+  if (withSubs) {
+    ram.setU16(e + B.sub12, 0);
+    ram.setU16(e + B.sub14, 0);
+  }
+  return e;
+}
+
+/** `$2440E0`, clear pool B and seed the 39-row final boss blast. */
+function f2FinalBlast2440E0(ram, rom, ctx, a6) {
+  clearEffectPool(ram);
+  ram.setU16(0x803930, 0x0014);
+  for (let row = 0x244ace; row < 0x244d3e; row += 16) {
+    const e = spawnEffect(ram, ctx, rom.u16(row), 0x2440f8);
+    ram.setU32(e + B.pos, ram.u32(a6 + 0x02));
+    ram.setU16(e + B.bucket, rom.u16(row + 2));
+    ram.setU32(e + B.nudge, rom.u32(row + 4));
+    ram.setU16(e + B.speed, rom.u16(row + 8));
+    ram.setU16(e + B.sub12, rom.u16(row + 10));
+    ram.setU16(e + B.sub14, rom.u16(row + 12));
+    ram.setU16(e + B.delay, rom.u16(row + 14));
+    ram.setU16(e + B.hook, ram.u16(0x813092) === 4 ? 2 : 1);
+  }
+  ram.setU16(0x813186, 1);
+  ram.setU16(0x813188, 0);
+  ram.setU16(0x80b054, 0);
+  ram.setU16(0x80b056, 0);
+  ram.setU16(0x803934, 6);
+  ram.setU16(0x803936, 0);
+}
+
+/** `$298E02`, A4/F2 STEP: the complete stage-2 boss death presentation. */
+function f2Step298E02(ram, rom, ctx, a4) {
+  const a6 = ctx.bossSubRec;
+  const state = ram.u8(a4 + 0x02);
+
+  if (state === 4) {
+    const timer = u16(ram.u16(a4 + 0x04) - 1);
+    ram.setU16(a4 + 0x04, timer);
+    if (timer === 0) {
+      suspend2595E8(ram);
+      ram.setU16(a4, 0);
+    }
+    return;
+  }
+
+  if (state === 3) {
+    const timer = u16(ram.u16(a4 + 0x04) - 1);
+    ram.setU16(a4 + 0x04, timer);
+    if (timer === 0) {
+      f2FinalBlast2440E0(ram, rom, ctx, a6);
+      const e = spawnEffect(ram, ctx, 0x1e, 0x298fee);
+      ram.setU32(e + B.pos, ram.u32(a6 + 0x02));
+      ram.setU32(e + B.nudge, 0xf4000000);
+      ram.setU16(e + B.bucket, 4);
+      ctx.soundPost?.(0x28c392);
+      ram.setU16(a4 + 0x04, 0x0080);
+      ram.setU8(a4 + 0x02, 4);
+    }
+    return;
+  }
+
+  if (state === 2) {
+    if (fadeDone259B9E(ram)) return;
+    loadAnimObjects246410(ram, rom, 0x29912c);
+    a2StopAll259924(ram);
+    ram.setU8(a4 + 0x02, 3);
+    ram.setU16(a4 + 0x0a, 1);
+    ram.setU16(a4 + 0x04, 8);
+    return;
+  }
+
+  if (state === 1) {
+    if (dueByte(ram, a4 + 0x10)) {
+      ram.setU8(a4 + 0x10, ram.u8(a4 + 0x11));
+      const angle = drawWord242EC2(ram, rom) & 0xff;
+      const dx = i16(drawWord24328E(ram, rom)) >> 2;
+      const dy = (i16(drawWord24328E(ram, rom)) >> 1) - 0x1000;
+      const root = ram.u32(a6 + 0x02);
+      const pos = ((u16((root >>> 16) + dy) << 16)
+        | u16((root & 0xffff) + dx)) >>> 0;
+      bigBurst28B34A(ram, rom, ctx, pos, angle, 8, 0x298ed4);
+      ctx.soundPost?.(0x28c2c2);
+    }
+    if (dueByte(ram, a4 + 0x0e)) {
+      ram.setU8(a4 + 0x0e, ram.u8(a4 + 0x0f));
+      if (ram.u8(a4 + 0x07) !== 2) {
+        ram.setU8(a4 + 0x07, ram.u8(a4 + 0x07) - 1);
+        ram.setU8(a4 + 0x0c, ram.u8(a4 + 0x0c) + 1);
+      }
+    }
+    if (!dueByte(ram, a4 + 0x06)) return;
+    ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));
+    if (dueByte(ram, a4 + 0x12)) {
+      ram.setU8(a4 + 0x12, ram.u8(a4 + 0x13));
+      f2PostSound(ram, rom, ctx, a4);
+    }
+    const cursor = ram.u16(a4 + 0x08);
+    const e = f2SpawnRow(ram, rom, ctx, a6, cursor, false);
+    const randomSpeed = (drawByte242B3C(ram, rom) << 24) >> 24;
+    const speed = (randomSpeed >> 2) + 2 + (ram.i8(a4 + 0x0c) >> 1);
+    ram.setU8(e + B.speed, speed);
+    ram.setU8(e + B.angle, drawWord242EC2(ram, rom));
+    const next = cursor + 0x0a;
+    ram.setU16(a4 + 0x08, next < 0x00a0 ? next : 0);
+    if (next >= 0x00a0 && ram.u8(a4 + 0x07) === 2) {
+      fadeArm259B7E(ram, 0x16);
+      ram.setU8(a4 + 0x02, 2);
+    }
+    return;
+  }
+
+  if (state === 0) {
+    if (dueByte(ram, a4 + 0x12)) {
+      ram.setU8(a4 + 0x12, ram.u8(a4 + 0x13));
+      f2PostSound(ram, rom, ctx, a4);
+    }
+    if (!dueByte(ram, a4 + 0x06)) return;
+    ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));
+    const cursor = ram.u16(a4 + 0x08);
+    f2SpawnRow(ram, rom, ctx, a6, cursor, true);
+    const next = cursor + 0x0a;
+    if (next < 0x00a0) { ram.setU16(a4 + 0x08, next); return; }
+    ram.setU16(a4 + 0x08, 0);
+    const passes = u16(ram.u16(a4 + 0x0a) - 1);
+    ram.setU16(a4 + 0x0a, passes);
+    if (passes !== 0) return;
+    ram.setU16(a4 + 0x06, 0x2010);
+    ram.setU16(a4 + 0x0e, 0x1111);
+    ram.setU8(a4 + 0x02, 1);
+    ram.setU16(a4 + 0x12, 0x0101);
+    ram.setU16(a4 + 0x14, 0);
+  }
+}
+
+/** `$298DC2`, A4/F2 INIT. The ROM falls straight into state 0. */
+function f2Init298DC2(ram, rom, ctx, a4) {
+  seqStart2598D0(ram, 1);
+  loadAnimObjects246520(ram, rom, 0x29914a);
+  ram.setU8(a4 + 0x02, 0);
+  ram.setU16(a4 + 0x06, 0x0101);
+  ram.setU16(a4 + 0x08, 0);
+  ram.setU16(a4 + 0x0a, 1);
+  ram.setU8(a4 + 0x0c, 0);
+  ram.setU16(a4 + 0x10, 0x2020);
+  ram.setU16(a4 + 0x12, 0x0004);
+  ram.setU16(a4 + 0x14, 0);
+  f2Step298E02(ram, rom, ctx, a4);
+}
+
+registerScript(0x298dc2, f2Init298DC2);
+registerScript(0x298e02, f2Step298E02);
+
+/** `$298D24`, A4/F1 STEP: detach the outer body and conduct its sound burst. */
+function f1Step298D24(ram, rom, ctx, a4) {
+  const a6 = ctx.bossSubRec;
+  if (ram.u8(a4 + 0x02) === 0) {
+    emitPartTable(ram, rom, ctx, a6, 0x298d90, ram.u32(a6 + 0x02));
+    ram.setU8(a4 + 0x02, 1);
+  }
+  if (ram.u8(a4 + 0x02) !== 1) return;
+
+  const old = ram.u8(a4 + 0x06);
+  ram.setU8(a4 + 0x06, old - 1);
+  if (old === 0) {
+    ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));
+    ctx.soundPost?.(rom.u32(0x29906a + ram.u16(a4 + 0x14)));
+    ram.setU16(a4 + 0x14, u16(ram.u16(a4 + 0x14) + 4));
+    // Literal cartridge bug: the mask targets +$08, not the sound cursor +$14.
+    ram.setU16(a4 + 0x08, ram.u16(a4 + 0x08) & 0x001f);
+  }
+
+  const timer = u16(ram.u16(a4 + 0x04) - 1);
+  ram.setU16(a4 + 0x04, timer);
+  if (timer !== 0) return;
+  a2Stop25994A(ram, 2);
+  ram.setU16(a4, 0);
+  a4Start25980C(ram, 4);
+}
+
+/** `$298CE2`, A4/F1 INIT. The ROM falls through both state 0 and state 1. */
+function f1Init298CE2(ram, rom, ctx, a4) {
+  const a6 = ctx.bossSubRec;
+  seqStart2598D0(ram, 3);
+  ram.setU16(a6 + 0x100, 0x8000);
+  ram.setU16(a6 + 0x00, 0xa000);
+  ram.setU16(a6 + 0x20, 0xa000);
+  ram.setU16(a6 + 0x148, 1);
+  ram.setU8(a4 + 0x02, 0);
+  ram.setU16(a4 + 0x04, 0x0010);
+  ram.setU16(a4 + 0x06, 0x0004);
+  ram.setU16(a4 + 0x08, 0);
+  f1Step298D24(ram, rom, ctx, a4);
+}
+
+/** `$29821E`, A3/D10 STEP: retract the central draw offset every other call. */
+function d10Step29821E(ram, _rom, ctx, a4) {
+  const old = ram.u8(a4 + 0x02);
+  ram.setU8(a4 + 0x02, old - 1);
+  if (old !== 0) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+  const next = u16(ram.u16(ctx.bossSubRec + 0x166) - 4);
+  ram.setU16(ctx.bossSubRec + 0x166, next);
+  if (i16(next) <= 0) {
+    ram.setU16(ctx.bossSubRec + 0x166, 0);
+    ram.setU16(a4, 0);
+  }
+}
+
+/** `$298218`, A3/D10 INIT. The ROM falls straight into STEP. */
+function d10Init298218(ram, rom, ctx, a4) {
+  ram.setU16(a4 + 0x02, 0x0101);
+  d10Step29821E(ram, rom, ctx, a4);
+}
+
+/** `$2998AA`, A4/F8 STEP is an intentional persistent no-op. */
+function f8Step2998AA() {}
+
+/** `$299882`, A4/F8 INIT: arm the low-HP retract and aimed E15 barrage. */
+function f8Init299882(ram, rom, ctx, a4) {
+  ram.setU8(a4 + 0x02, 0);
+  ram.setU16(a4 + 0x04, 0x0010);
+  ram.setU16(a4 + 0x06, 0x200a);
+  ram.setU16(a4 + 0x0c, 0x0101);
+  a3Start259962(ram, 10);
+  a1Start259A18(ram, 15);
+  f8Step2998AA(ram, rom, ctx, a4);
+}
+
+registerScript(0x298ce2, f1Init298CE2);
+registerScript(0x298d24, f1Step298D24);
+registerScript(0x298218, d10Init298218);
+registerScript(0x29821e, d10Step29821E);
+registerScript(0x299882, f8Init299882);
+registerScript(0x2998aa, f8Step2998AA);
 
 const F3_ATTACKS = [
   [6, 0x0040], [7, 0x00a0], [8, 0x0040], [9, 0x0030],

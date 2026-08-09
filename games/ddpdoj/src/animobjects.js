@@ -116,6 +116,68 @@ export function loadAnimObjects246410(ram, rom, table) {
   return root;                                        // $246508
 }
 
+/** `$246520`, the no-fill palette-animation loader used by the stage-2 boss
+ * death. Entries omit `$246410`'s fill word and snapshot the live palette
+ * instead of overwriting it before the fade begins. */
+export function loadAnimObjects246520(ram, rom, table) {
+  let root = 0;
+  for (let i = 0; i < ANIM_OBJECT.rootSlots; i++) {
+    const at = ANIM_OBJECT.roots + i * ANIM_OBJECT.rootStride;
+    if (i16(ram.u16(at)) >= 0) { root = at; break; }
+  }
+  if (root === 0) return 0;
+
+  ram.setU16(root + N.status, 0x8000);
+  ram.setU16(root + N.mode, 1);
+  ram.setU32(root + N.next, 0);
+  let previous = root;
+  let left = rom.u16(table); table += 2;
+
+  while (left !== 0) {
+    let node = 0;
+    for (let i = 0; i < ANIM_OBJECT.nodeSlots; i++) {
+      const at = ANIM_OBJECT.nodes + i * ANIM_OBJECT.nodeStride;
+      if (i16(ram.u16(at)) >= 0) { node = at; break; }
+    }
+    if (node === 0) { clearChain(ram, root); return 0; }
+
+    ram.setU16(node + N.status, 0x8000);
+    ram.setU16(node + N.progress, 0);
+    ram.setU32(node + N.next, 0);
+    ram.setU32(previous + N.next, node);
+    previous = node;
+    ram.setU16(node + N.shared, 0);
+    ram.setU16(node + 0x02, 0);
+
+    const family = rom.u16(table); table += 2;
+    const targetFamily = TARGETS[family];
+    if (!targetFamily) {
+      clearChain(ram, root);
+      unreached(0x246588, `$246520 target-family byte offset $${family
+        .toString(16).toUpperCase()} is outside the three-entry $24627A table`);
+    }
+    const current = targetFamily.current + rom.i16(table); table += 2;
+    const target = rom.u32(table); table += 4;
+    const wordsMinusOne = rom.u16(table); table += 2;
+    const timingIndex = rom.u16(table); table += 2;
+    const [reload, step] = timing(timingIndex);
+
+    ram.setU32(node + N.writer, targetFamily.dirty);
+    ram.setU32(node + N.current, current);
+    ram.setU32(node + N.target, target);
+    ram.setU16(node + N.fill, 0);
+    ram.setU16(node + N.mode, wordsMinusOne);
+    ram.setU16(node + N.reload, reload);
+    ram.setU16(node + N.countdown, reload);
+    ram.setU16(node + N.step, step);
+    ram.setU32(node + N.active, 0xffff0000);
+    for (let i = 0; i <= wordsMinusOne; i++)
+      ram.setU16(node + N.snapshot + i * 2, ram.u16(current + i * 2));
+    left--;
+  }
+  return root;
+}
+
 function moveChannel(current, target) {
   if (current === target) return current;
   if (target > current) {

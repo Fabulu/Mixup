@@ -101,6 +101,8 @@ export const BGRAM = {
   extSpeed: 0x813180,     // external speed push                    $2612AA
   extSpeedBg: 0x813182,
   extSpeedTx: 0x813184,
+  shakeMode: 0x813186,
+  shakeCursor: 0x813188,
   ringCursor: 0x81318a,   // a MIRROR of ($e,A5)                    $26137A
   colAccum: 0x81318c,     // a MIRROR of ($20,A5)                   $261382
   fastFwd: 0x813190,      // 1 while $26200E replays the interpreter
@@ -1296,11 +1298,32 @@ export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {}) {
  *  the screen shake, run last in `$2612A0` and first in its frozen branch. */
 function elementDriverAndShake(ram, rom, ctx) {
   elemDriver(ram, rom, ctx);                               // $2613A0 -> $26233A
-  // $260EC8 the screen shake -- UNPORTED. MEASURED live: $813186 = 1 for 43
-  // frames during the stage-1 boss (W17 §9), lf11922..11964, far past the W18
-  // window; the elements do not read its outputs. Kept as a named note.
-  ctx.unportedLog.note(0x260ec8, '$260EC8 the screen shake -- UNPORTED; '
-    + 'measured live for 43 frames during the stage-1 boss (W17 §9)');
+  screenShake260EC8(ram, rom, ctx);
+}
+
+/** `$260EC8`, the screen-shake driver. Mode 1 is the stage-2 boss death's
+ * exact 42-pair sequence; other modes remain explicitly counted. */
+export function screenShake260EC8(ram, rom, ctx) {
+  const mode = ram.u16(BGRAM.shakeMode);
+  if (mode === 0) return;
+  if (mode !== 1) {
+    ctx.unportedLog.note(0x260ec8, `$260EC8 screen-shake mode ${mode} is not `
+      + 'yet translated; mode 1 is complete');
+    return;
+  }
+  const at = 0x260f4c + ram.u16(BGRAM.shakeCursor);
+  const x = rom.u16(at), y = rom.u16(at + 2);
+  if (x === 0 && y === 0) {
+    ram.setU16(BGRAM.shakeMode, 0);
+    ram.setU16(CAM.shakeX, 0);
+    ram.setU16(CAM.shakeY, 0);
+    ram.setU16(0x803934, 0);
+    ram.setU16(0x803936, 1);
+    return;
+  }
+  ram.setU16(CAM.shakeX, x);
+  ram.setU16(CAM.shakeY, y);
+  ram.setU16(BGRAM.shakeCursor, ram.u16(BGRAM.shakeCursor) + 4);
 }
 
 /**
