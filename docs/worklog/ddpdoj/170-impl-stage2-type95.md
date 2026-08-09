@@ -37,7 +37,7 @@ they were not invented as zero-cost closure.
 
 The body applies the cartridge's zero-based stage gates: human stage 2 is
 `$813092 == 1`. It copies the record/sub-record prototypes, installs movement,
-selects the loop palette pair, uses reload 5 through human stages 1/2 and 2
+selects the stage-index-times-two palette pair, uses reload 5 through human stages 1/2 and 2
 afterward, applies stage-2 clock/kill/HP gates, and preserves the stage-5
 four-way progress gates.
 

@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "target": "ddpdojblk VERSION-B (2002.10.07 BLACK VER)",
+  "source": "w25handler.lua controlled MAME run w171-type8d-controlled-fire, 2026-08-09",
+  "static_occurrence_count": 37,
+  "observed_occurrences": [
+    {"record": 2303744, "trigger": 30, "type": 141},
+    {"record": 2303792, "trigger": 33, "type": 141},
+    {"record": 2303816, "trigger": 36, "type": 141},
+    {"record": 2303824, "trigger": 36, "type": 141},
+    {"record": 2303832, "trigger": 40, "type": 141},
+    {"record": 2303904, "trigger": 57, "type": 141}
+  ],
+  "isolation_intervention": {
+    "logic_frame": 12842,
+    "operation": "At the first type-$8D pre-handler sample, clear every non-type-$8D enemy on every frame and clear the enemy-bullet pool once.",
+    "valid_for": "Attributing type-$8D-family animation, art, and later enemy-bullet count rises.",
+    "invalid_for": "Pacing, density, difficulty, and unaided lifetime."
+  },
+  "first_lifecycle": {
+    "slot": 8469484,
+    "first_logic_frame": 12842,
+    "last_sampled_logic_frame": 13043,
+    "sampled_frames": 202,
+    "prototype_hp": 320,
+    "animation_first_cycle": [
+      {"logic_frame": 12843, "cursor_after": 16, "stream": 1653712},
+      {"logic_frame": 12847, "cursor_after": 12, "stream": 1653796},
+      {"logic_frame": 12851, "cursor_after": 8, "stream": 1653880},
+      {"logic_frame": 12855, "cursor_after": 4, "stream": 1653964},
+      {"logic_frame": 12859, "cursor_after": 0, "stream": 1654048},
+      {"logic_frame": 12863, "cursor_after": 20, "stream": 1654132}
+    ],
+    "family_bullet_count_first_rise": {"logic_frame": 12904, "from": 0, "to": 1},
+    "heading_art_at_first_sample": 1651864,
+    "bob_phase_step": 3
+  },
+  "death_intervention": {
+    "stages": 2,
+    "slot": 8469484,
+    "stage1_logic_frame": 13042,
+    "stage2_logic_frame": 13043,
+    "freed_logic_frame": 13044,
+    "operation": "After 200 isolated lifecycle frames, force the P1-hit bit and negative HP on two successive pre-handler samples.",
+    "stage1_observed": "Enemy remains live with sub-record flag byte 1 bit 7 set and fixed art $193B4C.",
+    "stage2_observed": "The next forced negative hit frees the slot one sampled logic frame later.",
+    "valid_for": "Reachability and ordering of the two-stage damage/death lifecycle.",
+    "invalid_for": "Natural damage, kill time, score values, sound identity, and unaided survival."
+  },
+  "bounded_attempts": {
+    "first_run": "13200 frames with auto-fire disabled reached no stage-2 enemies; this is a runner-input correction, not negative type-$8D evidence.",
+    "corrected_run": "13400 frames with the existing labelled auto-fire intervention reached six type-$8D occurrences.",
+    "aggregate_wall_seconds": 136
+  },
+  "limitations": "The static ROM inventory has 37 type-$8D records. This controlled run reaches the first six. Remaining occurrences are static-minus-dynamic, never guessed."
+}

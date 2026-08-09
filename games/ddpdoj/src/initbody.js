@@ -36,16 +36,19 @@ import { installScripts, a2Run2598E6, a4Start25980C } from './scheduler.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
 import { install24150A } from './palette.js';
+import { AimTables, aim64AtTarget } from './aim.js';
+import { drawWord242EC2 } from './rng.js';
 
 // ----------------------------------------------------------- the record layout
 // A5 = enemy record, A6 = sub-record (= ($6,A5)).  The offsets the init bodies
 // touch, named once here so every body reads as the listing does.
 const R = {
   // record (A5)
-  rec16: 0x16, rec18: 0x18, rec1A: 0x1a, rec1B: 0x1b, rec1C: 0x1c,
+  rec16: 0x16, rec18: 0x18, rec19: 0x19, rec1A: 0x1a, rec1B: 0x1b, rec1C: 0x1c,
   rec1D: 0x1d, rec1E: 0x1e,
   rec20: 0x20, rec21: 0x21, rec22: 0x22, rec23: 0x23, rec24: 0x24, rec25: 0x25,
-  rec26: 0x26, rec28: 0x28, rec29: 0x29, rec2A: 0x2a, rec2C: 0x2c, rec2D: 0x2d,
+  rec26: 0x26, rec28: 0x28, rec29: 0x29, rec2A: 0x2a, rec2B: 0x2b,
+  rec2C: 0x2c, rec2D: 0x2d,
   rec2E: 0x2e, rec2F: 0x2f, rec31: 0x31, rec32: 0x32, rec33: 0x33, rec34: 0x34,
   rec35: 0x35, rec36: 0x36, rec44: 0x44, handler: 0x4c, runLen: 0x04,
   subRec: 0x06, movement: 0x12, typeByte: 0x0c, classByte: 0x0d,
@@ -61,7 +64,7 @@ const S = {
 // The bespoke adjustments branch on these.  The gate seeds them from the board
 // at spawn; the live frame loop will own them once their writers are ported.
 const G = {
-  stage: 0x813092, loop: 0x813094, rank98: 0x813098, scrollClock: 0x8130ce,
+  stage: 0x813092, stageX2: 0x813094, rank98: 0x813098, scrollClock: 0x8130ce,
   // the rank/power HP & palette bias words the init bodies subtract
   b2: 0x8130b2, b4: 0x8130b4, b6: 0x8130b6, b8: 0x8130b8, ba: 0x8130ba,
   bc: 0x8130bc, ae: 0x8130ae,
@@ -231,7 +234,7 @@ function init11(ram, rom, a5, a6, unported) {
   const sp = 0x268C9E + (d1 << 1);                     // add.w D1,D1 (x2 of the quantised)
   ram.setU32(a5 + R.rec22, rom.u32(sp));               // move.l (A0,D1.w),($22,A5)
   // $2687E0: palette byte from $2687FE indexed by $813094 (loop word).
-  const lp = ram.u16(G.loop);
+  const lp = ram.u16(G.stageX2);
   const pal = 0x2687FE + lp;
   ram.setU8(a6 + S.palette, rom.u8(pal));              // move.b (A0),($1d,A6)
   ram.setU8(a5 + R.rec34, rom.u8(pal));                // move.b (A0)+,($34,A5)
@@ -270,7 +273,7 @@ function init10(ram, rom, a5, a6, unported) {
   const d1 = (ram.u8(a6 + S.heading) + 1) & 0x3e;
   ram.setU32(a5 + R.rec22, rom.u32(0x268694 + (d1 << 1)));
   // $26816A: palette from $268188 indexed by $813094.
-  const lp = ram.u16(G.loop);
+  const lp = ram.u16(G.stageX2);
   const pal = 0x268188 + lp;
   ram.setU8(a6 + S.palette, rom.u8(pal));
   ram.setU8(a5 + R.rec34, rom.u8(pal));
@@ -473,7 +476,7 @@ BODY.set(0x269754, (ram, rom, a5, a6, unported, tables, palette) => {
   loadRecordProto(ram, rom, a5, 0x2697CE, 0x05);       // moveq #$5,D0; jsr $26377A
   ram.setU32(a6 + S.posX, 0x40001c00);                 // move.l #$40001c00,($2,A6)
   unported?.note(0x28ca60, `$28CA60 in type $31 init -- bespoke; not a stat`);
-  const lp = ram.u16(G.loop);
+  const lp = ram.u16(G.stageX2);
   // $26978A: `move.w (A1,D6.w),D0 / move.b D0,($1d,A6)` -- reads a WORD at
   // $2697B0+lp and takes its LOW byte (not a direct byte read like $11/$80).
   // **AND D0 IS STILL THAT WORD AT `$269792 jsr $24150A`** (W92): the ONE
@@ -523,7 +526,7 @@ BODY.set(0x273802, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + R.rec1E, (ram.u8(a5 + R.rec1E) - d0) & 0xff);
   ram.setU8(a5 + R.rec22, (ram.u8(a5 + R.rec22) - ((d0 - 8) & 0xff)) & 0xff);
   // $273906: palette from $273922 indexed by $813094.
-  const lp = ram.u16(G.loop);
+  const lp = ram.u16(G.stageX2);
   const pal = 0x273922 + lp;
   ram.setU8(a6 + S.palette, rom.u8(pal));
   ram.setU8(a5 + R.rec1C, rom.u8(pal));
@@ -554,7 +557,7 @@ BODY.set(0x27462A, (ram, rom, a5, a6, unported) => {
     ram.setU8(a5 + R.rec22, (ram.u8(a5 + R.rec22) - 0x10) & 0xff);
   d0 = ram.u16(G.b2) & 0xff;
   ram.setU8(a5 + R.rec23, (ram.u8(a5 + R.rec23) - d0) & 0xff);  // $8130B2 -> +$23
-  const lp = ram.u16(G.loop);
+  const lp = ram.u16(G.stageX2);
   const pal = 0x27474A + lp;
   ram.setU8(a6 + S.palette, rom.u8(pal));
   ram.setU8(a5 + R.rec1C, rom.u8(pal));
@@ -579,7 +582,7 @@ BODY.set(0x27581A, (ram, rom, a5, a6, unported) => {
   ram.setU32(a5 + 0x24, rom.u32(0x272DFA + d1));        // move.l (A2,D1.w),($24,A5)
   let d0 = ram.u16(G.b6) & 0xff;
   ram.setU8(a5 + R.rec1E, (ram.u8(a5 + R.rec1E) - d0) & 0xff);  // $8130B6 -> +$1E
-  const lp = ram.u16(G.loop);
+  const lp = ram.u16(G.stageX2);
   const pal = 0x275890 + lp;
   ram.setU8(a6 + S.palette, rom.u8(pal));
   ram.setU8(a5 + R.rec1C, rom.u8(pal));
@@ -613,7 +616,7 @@ BODY.set(0x275DA0, (ram, rom, a5, a6, unported) => {
   ram.setU32(a6 + 0x2a, rom.u32(0x2763D8 + sw));        // move.l (A0,D0.w),($2a,A6)
   let d0 = ram.u16(G.ae) & 0xff;
   ram.setU8(a5 + R.rec1E, (ram.u8(a5 + R.rec1E) - d0) & 0xff);  // $8130AE -> +$1E
-  const lp = ram.u16(G.loop);
+  const lp = ram.u16(G.stageX2);
   const pal = 0x275EA2 + lp;
   ram.setU8(a6 + S.palette, rom.u8(pal));
   ram.setU8(a5 + R.rec1C, rom.u8(pal));
@@ -650,7 +653,7 @@ BODY.set(0x277278, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + 0x17, 0x04);                           // move.b #$4,($17,A5)
   let d0 = ram.u16(G.b4) & 0xff;
   ram.setU8(a5 + R.rec1A, (ram.u8(a5 + R.rec1A) - d0) & 0xff);  // $8130B4 -> +$1A
-  const lp = ram.u16(G.loop);
+  const lp = ram.u16(G.stageX2);
   const pal = 0x27730C + lp;
   ram.setU8(a6 + S.palette, rom.u8(pal));
   ram.setU8(a5 + 0x18, rom.u8(pal));
@@ -835,8 +838,8 @@ BODY.set(0x277836, (ram, rom, a5, a6, unported) => {
   }
 
   // $813094 is a raw BYTE offset into five two-byte palette pairs.  Do not
-  // convert it to an array index: loop 0 reads bytes 0/1 and loop 4 reads 4/5.
-  const pal = 0x27795a + ram.u16(G.loop);              // $2778B4..$2778C0
+  // convert it to an array index: stage 1 reads bytes 0/1 and stage 3 reads 4/5.
+  const pal = 0x27795a + ram.u16(G.stageX2);           // $2778B4..$2778C0
   ram.setU8(a6 + S.palette, rom.u8(pal));              // $2778C2
   ram.setU8(a5 + R.rec1A, rom.u8(pal));                // $2778C6
   ram.setU8(a5 + R.rec1B, rom.u8(pal + 1));            // $2778CA
@@ -852,6 +855,41 @@ BODY.set(0x277836, (ram, rom, a5, a6, unported) => {
   if (ram.u16(gate) !== 0 && (gate !== G.e6 || clock > 0x240)) {
     freeEnemy(ram, a5); return FREED;                  // $2778F6/$914/$932/$950
   }
+});
+
+// --- type $8D ($276946): stage 2's bobbing aimed-firing enemy. W171.
+//
+// The run-length stub says zero, so the one 28-byte sub prototype at
+// `$2769E6..$276A02` is exact. The record loader copies twelve words from
+// `$2769CE..$2769E6`; `$276A02` is the handler, not prototype data.
+const TYPE8D_AIM_TABLES = new WeakMap();
+BODY.set(0x276946, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x2769e6);            // $276946/$27694C
+  loadRecordProto(ram, rom, a5, 0x2769ce, 0x0b);       // $276952..$27695A
+  readInitPosition(ram, rom, a5, unported);            // $276960
+
+  let aimTables = TYPE8D_AIM_TABLES.get(rom);
+  if (!aimTables) { aimTables = new AimTables(rom); TYPE8D_AIM_TABLES.set(rom, aimTables); }
+  const aimed = aim64AtTarget(aimTables, ram, a5, a6); // $276966/$27696A
+  // `$24202C` returns with carry when both players are dead and leaves D1 as
+  // the caller supplied heading. Preserve that register behavior here.
+  const d1 = aimed.carry ? ram.u8(a6 + S.heading) : aimed.dir;
+  ram.setU8(a5 + R.rec25, d1);                         // $276970
+  ram.setU32(a6 + 0x0a, rom.u32(0x276d50 + ((d1 & 0x3e) << 1))); // $276974..$276980
+
+  ram.setU8(a5 + R.rec2B, drawWord242EC2(ram, rom));  // $276986..$27698C
+  const rankBias = ((ram.u8(G.b6 + 1) - 4) & 0xff);
+  ram.setU8(a5 + R.rec1A, ram.u8(a5 + R.rec1A) - rankBias); // $276990..$276998
+  const rankByte = rankByte242E24(ram, rom);
+  const signedHalf = ((rankByte << 24) >> 24) >> 1;    // $27699C/$2769A2 asr.b
+  ram.setU8(a5 + R.rec1A, ram.u8(a5 + R.rec1A) + signedHalf); // $2769A4
+
+  // `$813094` is stage index times two, an exact raw byte offset into five
+  // palette pairs. It is not the second-loop flag.
+  const pal = 0x2769c4 + ram.u16(G.stageX2);           // $2769A8..$2769B4
+  ram.setU8(a6 + S.palette, rom.u8(pal));              // $2769B6
+  ram.setU8(a5 + R.rec18, rom.u8(pal));                // $2769BA
+  ram.setU8(a5 + R.rec19, rom.u8(pal + 1));            // $2769BE
 });
 
 // ============================================================ the entry point

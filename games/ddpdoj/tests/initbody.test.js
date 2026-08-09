@@ -1,4 +1,4 @@
-// WAVE 23/W170 -- the stage-1 bodies plus the first stage-2 body
+// WAVE 23/W170/W171 -- the stage-1 bodies plus the first two stage-2 bodies
 // (src/initbody.js).  These tests run the
 // translated bodies against the REAL exported ROM (skipped, loudly, when the
 // rip is absent -- the ROM is gitignored).  They verify the loader-written
@@ -50,7 +50,7 @@ function freshEnemy(ram, type, classByte = 0) {
   return { rec, sub };
 }
 
-test('the stage-1 bodies and W170 stage-2 body are all dispatched', () => {
+test('the stage-1 bodies and W170/W171 stage-2 bodies are all dispatched', () => {
   // the addresses the spawn walker resolves for the 21 stage-1 types (census).
   const want = new Set([
     0x269bce, 0x26a1ea, 0x26a4bc, 0x26a794, 0x26aba0, 0x26871c, 0x2680b8,
@@ -71,10 +71,12 @@ test('the stage-1 bodies and W170 stage-2 body are all dispatched', () => {
     'W103: type $1E\'s body $296D8A -- the boss\'s carrier enemy (E 8 spawns)');
   assert.ok(INIT_BODY_ADDRESSES.includes(0x277836),
     'W170: stage-2 type $95 body $277836');
-  assert.equal(INIT_BODY_ADDRESSES.length, 22,
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x276946),
+    'W171: stage-2 type $8D body $276946');
+  assert.equal(INIT_BODY_ADDRESSES.length, 23,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
     + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
-    + `and W170's stage-2 $277836`);
+    + `W170's stage-2 $277836, and W171's stage-2 $276946`);
 });
 
 test('runInitBodyAddr throws on an unknown body address', () => {

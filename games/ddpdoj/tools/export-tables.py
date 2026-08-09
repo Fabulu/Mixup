@@ -486,8 +486,12 @@ SHOT_WINDOWS.extend([
                        "stub, init body, palette/prototypes, handler, muzzle "
                        "offsets and exact eight-entry art table "
                        "($27782E..$277DE0)"),
-    (0x27693E, 0x0008, "W170: next stage-2 boundary type $8D's inseparable "
-                       "run-length stub; unknown init body begins at $276946"),
+    (0x27693E, 0x0932, "W171: complete stage-2 type $8D closure: stub, init, "
+                       "palette/prototypes, handler, pointer/vector tables, "
+                       "and the structurally bounded 516-word bob table "
+                       "($27693E..$277270)"),
+    (0x277514, 0x0008, "W171: next chronological boundary type $8F's exact "
+                       "run-length stub; unknown init body begins at $27751C"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -2007,6 +2011,47 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W170: $277DE0 is no longer the next type's exact stub")
     if d[0x27693E:0x276946] != bytes.fromhex("3b7c000000044e75"):
         raise SystemExit("W170: next boundary type $8D stub drifted")
+    # W171. The init's two PC-relative LEAs and copy counts close the exact
+    # prototype spans. The handler is bounded by its tail JMP and the first
+    # heading pointer, while the next type-$89 stub closes the 516-word table.
+    if not (u16(d, 0x27694C) == 0x4EB9 and u32(d, 0x27694E) == 0x2637A2
+            and u16(d, 0x276958) == 0x700B
+            and u16(d, 0x27695A) == 0x4EB9 and u32(d, 0x27695C) == 0x26377A
+            and u16(d, 0x276960) == 0x4EB9 and u32(d, 0x276962) == 0x263808):
+        raise SystemExit("W171: type $8D init loader sequence drifted")
+    if (pc_rel_lea(0x276946), pc_rel_lea(0x276952)) != (0x2769E6, 0x2769CE):
+        raise SystemExit("W171: type $8D prototype LEAs no longer name exact starts")
+    if d[0x2769C2:0x2769C4] != bytes.fromhex("4e75"):
+        raise SystemExit("W171: type $8D init no longer ends at $2769C4")
+    if d[0x2769C4:0x2769CE] != bytes.fromhex("100f140b100f100f100f"):
+        raise SystemExit("W171: type $8D five palette pairs drifted")
+    if d[0x276A02:0x276A08] != bytes.fromhex("4eb9002638a6"):
+        raise SystemExit("W171: type $8D handler no longer starts with $2638A6")
+    if d[0x276D48:0x276D50] != bytes.fromhex("4ef9002637624e71"):
+        raise SystemExit("W171: type $8D handler/data boundary drifted")
+    calls8d = {u32(d, a + 2) for a in range(0x276A02, 0x276D50, 2)
+               if u16(d, a) == 0x4EB9}
+    required8d = {0x2638A6, 0x242684, 0x286096, 0x24203E, 0x242190,
+                  0x268018, 0x281420, 0x2813F0, 0x28615E, 0x289004,
+                  0x28C25A}
+    if not required8d <= calls8d:
+        raise SystemExit(f"W171: type $8D handler call closure drifted: "
+                         f"missing {sorted(required8d - calls8d)!r}")
+    heading8d = [u32(d, 0x276D50 + i * 4) for i in range(32)]
+    if heading8d != [0x192ACC + i * 0x84 for i in range(32)]:
+        raise SystemExit("W171: type $8D 32-entry heading art table drifted")
+    anim8d = [u32(d, 0x276DD0 + i * 4) for i in range(6)]
+    if anim8d != [0x193D74, 0x193D20, 0x193CCC,
+                  0x193C78, 0x193C24, 0x193BD0]:
+        raise SystemExit("W171: type $8D six-entry animation art table drifted")
+    if u32(d, 0x276CEA) != 0x193B4C:
+        raise SystemExit("W171: type $8D fixed death stream drifted")
+    if 0x277270 - 0x276E68 != 516 * 2:
+        raise SystemExit("W171: type $8D bob-table structural extent is not 516 words")
+    if d[0x277270:0x277278] != bytes.fromhex("3b7c000000044e75"):
+        raise SystemExit("W171: bob table is no longer bounded by type $89's stub")
+    if d[0x277514:0x27751C] != bytes.fromhex("3b7c000000044e75"):
+        raise SystemExit("W171: next boundary type $8F stub drifted")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")

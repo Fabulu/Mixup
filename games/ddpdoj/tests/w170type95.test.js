@@ -30,7 +30,7 @@ function initFixture(stage = 1, clock = 0x0c) {
   ram.setU32(A5 + 0x12, 0);             // script-less focused fixture
   ram.setU8(A5 + 0x0c, 0x95);
   ram.setU16(0x813092, stage);           // zero-based: human stage 2 == 1
-  ram.setU16(0x813094, 0);
+  ram.setU16(0x813094, stage * 2);       // stage index times two, not loop
   ram.setU16(0x8130ce, clock);
   ram.setU16(0x8130ba, 0);
   runInitBodyAddr(0x277836, ram, ROM, A5, new UnportedLog(), MT);
@@ -105,9 +105,9 @@ test('W170/2 init copies both prototypes and applies stage/palette/reload semant
   assert.equal(ram.u32(A5 + 0x24), ROM.u32(0x277972));
   assert.equal(ram.u16(A6 + 0x18), 0x0900, 'stage 2 keeps prototype HP');
   assert.equal(ram.u8(A5 + 0x2f), 5, 'human stages 1/2 use the long attack reload');
-  assert.equal(ram.u8(A6 + 0x1d), ROM.u8(0x27795a));
-  assert.equal(ram.u8(A5 + 0x1a), ROM.u8(0x27795a));
-  assert.equal(ram.u8(A5 + 0x1b), ROM.u8(0x27795b));
+  assert.equal(ram.u8(A6 + 0x1d), ROM.u8(0x27795c));
+  assert.equal(ram.u8(A5 + 0x1a), ROM.u8(0x27795c));
+  assert.equal(ram.u8(A5 + 0x1b), ROM.u8(0x27795d));
   assert.notEqual(ram.u16(A6 + 0x20), 0,
     'run length 1 copies the second sub record at +$20 too');
   const lateStage2 = initFixture(1, 0x80);

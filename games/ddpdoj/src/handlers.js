@@ -6,6 +6,7 @@
 //         $27 share `$26A2E2`), `$2739C0` ($80), `$276702` ($8A)
 //   W31:  `$26B6FA` ($0D, THE MIDBOSS) -- in src/midboss.js, not this file
 //   W170: `$2779B6` ($95), the first stage-2-only handler
+//   W171: `$276A02` ($8D), the next stage-2 handler
 //
 // The enemy driver `$263502` (src/enemies.js) dispatches each live enemy's
 // handler from the function pointer the init stored at record `+$4C`.
@@ -3282,6 +3283,14 @@ export const TYPE95_ART = Object.freeze({
   main: 0x1744f8, table: 0x277dc0, frames: 8, fixed: 0x174e7c,
 });
 
+// `$276D50` has 32 heading pointers and `$276DD0` has six animation pointers.
+// Together with the immediate death stream they name exactly 39 contiguous
+// sprite streams from `$192ACC` through `$193DC8`.
+export const TYPE8D_ART = Object.freeze({
+  headingTable: 0x276d50, headings: 32, death: 0x193b4c,
+  animationTable: 0x276dd0, animations: 6,
+});
+
 function addPackedWords(pos, high, low) {
   return ((u16((pos >>> 16) + high) << 16) | u16((pos & 0xffff) + low)) >>> 0;
 }
@@ -3477,6 +3486,132 @@ function handler95(ram, rom, a5, ctx) {
   emit95(ram, rom, a5, a6);                            // $277CA6..$277D16
 }
 
+// ############################################################################
+// # W171: TYPE $8D, BOBBING AIMED-FIRING ENEMY                              #
+// ############################################################################
+
+function emit8d(ram, rom, a5, a6, special) {
+  enqueueThroughStub(ram, rom, 0x23d852, a6);          // $276ACE/$276BD8
+  const pos = ram.u32(a6 + 0x02);
+  const bob = ram.u16(a5 + 0x2c);
+  enqueueRegistersThroughStub(ram, rom, 0x23df86,
+    addPackedWords(pos, u16(0xfc00 + bob), 0xfb00),
+    ram.u32(a5 + 0x20), 0x0428, 0x0d);                 // $276AD0..$276B02
+  if (!special || ram.u16(G.mirror2) === 0) return;
+  const artIndex = (ram.u16(0x80390a) & 6) << 1;
+  enqueueRegistersThroughStub(ram, rom, 0x23df58,
+    addPackedWords(pos, u16(0x0100 + bob), 0xfe00),
+    rom.u32(0x278338 + artIndex), 0x0410, 0x1e);       // $276B04..$276B4E
+}
+
+function effect8d(ram, rom, a6, ctx, kind, site, second) {
+  const e = spawnEffect(ram, ctx, kind, site);
+  ram.setU32(e + B.pos, ram.u32(a6 + 0x02));
+  ram.setU16(e + B.bucket,
+    remapBucket(rom, REMAP.shared278320, u16(ram.u16(a6 + S.anim) * 2), site));
+  ram.setU16(e + B.sub12, 1);
+  ram.setU16(e + B.sub14, 0);
+  ram.setU32(e + B.nudge, second ? 0xfc000000 : 0);
+  ram.setU16(e + B.hook, second ? 1 : 2);
+  return e;
+}
+
+function death8d(ram, rom, a5, a6, ctx, d1) {
+  if (!ram.bset8(a6 + 0x01, 7)) {                     // $276C96 bset / bne
+    scoreKill(ram, rom, ctx, 0x11, d1);               // $276C9E
+    effect8d(ram, rom, a6, ctx, 0x0b, 0x276ca8, false);
+    ram.bclr8(a6, 1);                                 // $276CE4
+    ram.setU32(a6 + S.sprite0a, TYPE8D_ART.death);    // $276CE8
+    ram.setU16(a6 + S.hp, 0x0140);                    // $276CF0
+    emit8d(ram, rom, a5, a6, true);                   // $276CF6 -> $276ABC
+    return;
+  }
+  ctx.soundPost?.(0x28c25a);                          // $276CFA
+  scoreKill(ram, rom, ctx, 0x08, d1);                 // $276D00/$276D02
+  effect8d(ram, rom, a6, ctx, 0x0c, 0x276d0c, true);
+  freeEnemy(ram, a5);                                 // $276D48
+}
+
+function fire8d(ram, rom, a5, a6, ctx) {
+  let reload = 8 - (ram.u16(G.bc) >>> 2);             // $276C26..$276C34
+  ram.setU8(a5 + 0x1a, reload);
+  if (playerDist268018(ram, rom, a6).carry) return;    // $276C38
+  const heading = ram.u16(a5 + 0x24);
+  const delta = rom.u32(0x276de8 + ((heading & 0x3e) << 1));
+  const entry = ram.u8(a5 + 0x1c) === 2 ? 0x281420 : 0x2813f0;
+  const site = entry === 0x281420 ? 0x276c68 : 0x276c72;
+  const cb = { ram, rom, log: new WriteLog(ram) };
+  const regs = { d0: 0x0c, d1: heading, d2: ram.u32(a6 + 0x02),
+    d3: delta, d4: a6, d5: 0, a5 };
+  ctx.bulletSpawn?.(site, fireBullet(cb, entry, regs));
+  const salvo = ram.u8(a5 + 0x1c);
+  ram.setU8(a5 + 0x1c, salvo - 1);                    // $276C78
+  if (salvo !== 0) return;
+  ram.setU8(a5 + 0x1c, ram.u8(a5 + 0x1d));
+  reload = 0x50 - ram.u16(G.b4) + 4;
+  ram.setU8(a5 + 0x1a, reload);                       // $276C7E..$276C90
+}
+
+function handler8D(ram, rom, a5, ctx) {
+  const { tables, unported: u } = ctx;
+  const a6 = ram.u32(a5 + 0x06);
+  if (stepMovement(ram, rom, a5, tables, u)) return;  // $276A02
+  if (!onScreen242684(ram, a6)) ram.setU8(a5 + 0x16, 1);
+  else if (ram.u8(a5 + 0x16) !== 0) { freeEnemy(ram, a5); return; }
+
+  const d1 = ram.u8(a6) & 0x5c;
+  let pal;
+  if (d1 === 0) {
+    pal = ram.u8(a5 + 0x18);
+    if (ram.u16(a6 + S.hp) < 0x50 && ram.u16(G.ca) === 0) pal = 0x19;
+  } else {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);                 // $276A42
+    scoreHit(ram, ctx, a6, d1);                       // $276A46
+    pal = ram.u8(a6 + S.palette);
+    if (pal === 0x19) pal = ram.u8(a5 + 0x18);
+    pal ^= ram.u8(a5 + 0x19);
+    if (i16(ram.u16(a6 + S.hp)) < 0) { death8d(ram, rom, a5, a6, ctx, d1); return; }
+  }
+  ram.setU8(a6 + S.palette, pal);                      // $276A68
+
+  const animTimer = ram.u8(a5 + 0x26);
+  ram.setU8(a5 + 0x26, animTimer - 1);
+  if (animTimer === 0) {
+    ram.setU8(a5 + 0x26, ram.u8(a5 + 0x27));
+    const cursor = ram.u16(a5 + 0x28);
+    ram.setU32(a5 + 0x20, rom.u32(TYPE8D_ART.animationTable + cursor));
+    ram.setU16(a5 + 0x28, cursor === 0 ? 0x14 : cursor - 4);
+  }
+  const phase = ram.u16(a5 + 0x2a);
+  const bob = rom.u16(0x276e68 + u16(phase * 2));
+  ram.setU16(a5 + 0x2c, bob);
+  ram.setU16(a6 + 0x06, u16(bob + 0xf800));
+  ram.setU8(a5 + 0x2b, ram.u8(a5 + 0x2b) + 3);        // $276A94..$276AB0
+
+  if ((ram.u8(a6 + 0x01) & 0x80) !== 0) { emit8d(ram, rom, a5, a6, true); return; }
+  if (ram.u32(G.freeze) === 0) {
+    const aimTimer = ram.u8(a5 + 0x1e);
+    ram.setU8(a5 + 0x1e, aimTimer - 1);
+    if (aimTimer === 0) {
+      ram.setU8(a5 + 0x1e, ram.u8(a5 + 0x1f));
+      if (ram.u8(a5 + 0x1c) === ram.u8(a5 + 0x1d)) {
+        const aimed = aim64AtTarget(aimTables(rom), ram, a5, a6);
+        if (!aimed.carry) {
+          const heading = slew64(ram.u16(a5 + 0x24), aimed.dir);
+          ram.setU16(a5 + 0x24, heading);
+          ram.setU32(a6 + S.sprite0a,
+            rom.u32(TYPE8D_ART.headingTable + ((heading & 0x3e) << 1)));
+        }
+      }
+    }
+  }
+  emit8d(ram, rom, a5, a6, false);                    // $276BC6..$276C0C
+  if (ram.u32(G.freeze) !== 0 || i16(ram.u16(a6 + 0x02)) < 0x1000) return;
+  const fireTimer = ram.u8(a5 + 0x1a);
+  ram.setU8(a5 + 0x1a, fireTimer - 1);
+  if (fireTimer === 0) fire8d(ram, rom, a5, a6, ctx); // $276C16..$276C94
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
@@ -3516,6 +3651,7 @@ const HANDLERS = new Map([
   // It drifts and explodes into a kind 3/4/5 fan on death.  See bossf23.js.
   [0x296dd6, handler1E_296DD6],
   [0x2779b6, handler95],       // W170: stage-2 type $95
+  [0x276a02, handler8D],       // W171: stage-2 type $8D
 ]);
 
 /** Run the handler at `addr` for the enemy record `a5`.  An unknown address is a

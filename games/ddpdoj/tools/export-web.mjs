@@ -111,7 +111,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 // W86: the art harvest for the background elements is derived from the PORT's
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
-import { TYPE95_ART } from '../src/handlers.js';
+import { TYPE8D_ART, TYPE95_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -281,6 +281,19 @@ if (u17.length !== SOUND.fileSize) {
 //
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
+  // W171. The 32 headings and six descending animation pointers are adjacent
+  // pointer tables, but separate indexed families. The first valid-pointer run
+  // therefore has 38 entries while only its first 32 belong to the heading
+  // selector. `$276DE8` begins shot vectors, which pins the shared far end.
+  [17, TYPE8D_ART.headingTable, TYPE8D_ART.headings, 4,
+    TYPE8D_ART.headings + TYPE8D_ART.animations, 0x276de8,
+    'stage-2 type $8D heading art. $276974 masks a 64-heading byte to $3E '
+      + 'and doubles it, reaching exactly 32 longwords; the following six '
+      + 'valid pointers belong to the animation selector'],
+  [17, TYPE8D_ART.animationTable, TYPE8D_ART.animations, 4,
+    TYPE8D_ART.animations, 0x276de8,
+    'stage-2 type $8D animation art. Record +$28 walks raw byte offsets '
+      + '$14,$10,$0C,$08,$04,$00, reaching all six pointers'],
   // W170. The gameplay registry owns this extent: +$20 advances 0..$1C in
   // four-byte steps, so all eight pointers are reachable. $277DE0 is the next
   // init stub and the cartridge's valid-stream run stops there too.
@@ -940,6 +953,19 @@ for (const offs of LASER_STREAMS) {
 // packed plane remains a derived multi-family asset and needs no publish-owner
 // exception.
 for (const offs of [TYPE95_ART.main, TYPE95_ART.fixed]) {
+  if (!streams.has(offs)) {
+    streams.set(offs, romExtent(offs));
+    shardOfStream.set(offs, 17);
+    harvested++;
+  } else {
+    harvestAlready++;
+  }
+}
+// W171: the immediate death stream completes the 39 type-specific streams.
+// The four `$278338` shared overlays are already owned by W53/W58's closed
+// `$22C59C` chain in shard 10, completing the 43-stream dependency family
+// without changing their established shard owner.
+for (const offs of [TYPE8D_ART.death]) {
   if (!streams.has(offs)) {
     streams.set(offs, romExtent(offs));
     shardOfStream.set(offs, 17);
