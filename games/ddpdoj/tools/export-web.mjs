@@ -763,9 +763,9 @@ const SPR_SHARDS = Object.freeze([
   // UNCOMPRESSED, so every character of it is a boot byte. [M] W66: the first
   // draft of this string cost 329 B and the shipped one costs 174 (E3 §3's
   // trim-after-measuring, for the same reason).
-  [13, 'bomb', 'THE BOMB AND THE LASER BOMB: $255E3E\'s three phase scripts, '
+  [13, 'bomb', 'THE BOMB, LASER BOMB, AND HYPER AURA: $255E3E\'s three phase scripts, '
     + 'the laser bomb\'s data block $256662..$256986, pool E\'s $28A464, the '
-    + 'ship\'s bit-7 aura and type $8A\'s pair (W66)'],
+    + 'ship\'s bit-7 aura, hyper activation burst, and type $8A\'s pair (W66/W188)'],
   [14, 'type10', 'THE GOLD MECH: type $10\'s hull $268594 (64, by heading) and '
     + 'turret $268694 (32, by facing) -- the pair W80 read as one 96-entry '
     + 'table. The owner\'s "tanks on the golden terrain" (W81)'],
@@ -1103,6 +1103,20 @@ for (const offs of ITEM_STREAMS) {
   shardOfStream.set(offs, ITEM_SHARD);
   harvested++;
 }
+
+// W188: `$287324/$287340` advances this 112x80 hyper activation aura by its
+// exact `$234` ROM stride, and `$2873AC` selects the ending frames from the
+// same family. No pointer table enumerates the complete union. All 34 stream
+// starts are live, from `$0530FC` through `$0579B0`, and belong beside the
+// other Button-2 presentation in deferred shard 13.
+const HYPER_AURA = Object.freeze({ base: 0x0530fc, frames: 34, stride: 0x234 });
+for (let i = 0; i < HYPER_AURA.frames; i++) {
+  const offs = HYPER_AURA.base + i * HYPER_AURA.stride;
+  if (streams.has(offs)) { harvestAlready++; continue; }
+  streams.set(offs, romExtent(offs));
+  shardOfStream.set(offs, 13);
+  harvested++;
+}
 // WAVE 81: the three immediates above.  `romExtent` throws unless each is a real
 // stream start, which is the whole check an immediate can have -- there is no
 // run and no neighbour to pin it against.
@@ -1212,20 +1226,26 @@ addHudStreamGroup('popup suffix', popupSuffixStreams,
 //   `streamExtent` solves each stream's stride out of the cartridge and the
 //   walk ENDS EXACTLY on the stated address or this build stops.
 const SHOT_TABLES = Object.freeze([
-  [0x2554ea, 'ship PRIMARY, $249C3E `movea.l ($2554EA,PC,D0.w),A0`. D0 = '
-    + '(($5a,A6)-2)<<2 and MEASURED ($5a,A6) = 2, so entry 0. $249C3A\'s +4 is '
-    + 'the LASER arm and is NOT harvested (below)'],
-  [0x255502, 'ship SECONDARY, $249C88, the same index'],
-  [0x24d2fc, 'option pod 0, $24D4EA `movea.l ($24D2FC,PC,D0.w),A0`. D0 = '
+  [0x2554ea, 0, 'ship PRIMARY normal, $249C3E'],
+  [0x255502, 0, 'ship SECONDARY normal, $249C88'],
+  [0x2554ea, 4, 'ship PRIMARY hyper, $249C3A adds 4'],
+  [0x255502, 4, 'ship SECONDARY hyper, $249C3A adds 4'],
+  [0x25551a, 4, 'option hyper family selected by $249D5E'],
+  [0x24d2fc, 0, 'option pod 0, $24D4EA `movea.l ($24D2FC,PC,D0.w),A0`. D0 = '
     + '($58,A4)*4 and MEASURED ($58,A4) = 0 (TYPE-A) -- machine.js P.shipSel'],
-  [0x24d35c, 'option pod 1, $24D4EE, the same index'],
+  [0x24d35c, 0, 'option pod 1, $24D4EE, the same index'],
+  [0x24d2fc, 4, 'option pod 0 hyper, $24D4C6 adds 4'],
+  [0x24d35c, 4, 'option pod 1 hyper, $24D4C6 adds 4'],
+  [0x24d2fc, 12, 'TYPE-B option pod 0 hyper, ship selector 2 plus 4'],
+  [0x24d35c, 12, 'TYPE-B option pod 1 hyper, ship selector 2 plus 4'],
 ]);
 /** the five POWER steps: `$249C48`/`$24D4F8` index by ($20,A6)*2 and the power
  *  word is 0,2,4,6,8 -- `src/shots.js PS.power`. */
 const SHOT_POWERS = [0, 2, 4, 6, 8];
 /** `$253C7A` (dispatch nibble 0/8) and `$253F38` (nibble 2/10): the HIT
  *  re-point tables, indexed by the template's own ($26,A6). */
-const SHOT_HIT_TABLE = { 0: 0x24deb2, 2: 0x25014c };
+const SHOT_HIT_TABLE = { 0: 0x24deb2, 2: 0x25014c,
+  4: 0x24ed4e, 5: 0x24f4ae, 6: 0x2519e0, 7: 0x2525d6 };
 /** `$24A238 move.l (A2,D0.w),(A0)+` / `$24D548`: D0 is the firing object's
  *  animation PHASE, which `$24A26E`/`$24D500` cycle 8,4,0. */
 const SPAWN_PHASES = [0, 4, 8];
@@ -1233,20 +1253,21 @@ const SPAWN_PHASES = [0, 4, 8];
  *  `$253BC6 subq.w #4 / bcc / move.w #$4` can index: the ship copies the
  *  player's ($44,A6), which `$24A32E` cycles 4,0; a pod copies its own D7
  *  phase, which `$24D510` cycles 8,4,0. */
-const SHOT_ANIM_TOP = { 0x2554ea: 4, 0x255502: 4, 0x24d2fc: 8, 0x24d35c: 8 };
+const SHOT_ANIM_TOP = { 0x2554ea: 4, 0x255502: 4, 0x25551a: 8,
+  0x24d2fc: 8, 0x24d35c: 8 };
 
 const shotStreams = new Set();
 const shotReport = [];
-for (const [ptr, why] of SHOT_TABLES) {
-  const table = romBe32(ptr);
+for (const [ptr, selector, why] of SHOT_TABLES) {
+  const table = romBe32(ptr + selector);
   for (const pw of SHOT_POWERS) {
     const tpl = romBe32(table + pw * 2);
     const nib = romBe16(tpl) & 0xf;
     if (!(nib in SHOT_HIT_TABLE)) {
       throw new Error(`shot template $${tpl.toString(16)} (from $${ptr.toString(16)}`
-        + `[0], power ${pw}) carries type word $${romBe16(tpl).toString(16)}, i.e. `
-        + `$253ADE dispatch nibble ${nib}. src/shots.js ports nibbles 0, 2, 8 and `
-        + `10 only -- harvesting art for a handler that does not exist is what `
+        + `[${selector}], power ${pw}) carries type word $${romBe16(tpl).toString(16)}, i.e. `
+        + `$253ADE dispatch nibble ${nib}. src/shots.js has no matching handler; `
+        + `harvesting art for a handler that does not exist is what `
         + `$268594 is NAMED for. (${why})`);
     }
     // the SPAWN's own descriptor: the template's +$0A pointer, three phases.
@@ -1269,19 +1290,7 @@ for (const [ptr, why] of SHOT_TABLES) {
         + 'table has moved.');
     }
     for (let k = 0; k <= top; k += 4) shotStreams.add(romBe32(hp + k) & 0x7fffff);
-    shotReport.push({ ptr, pw, tpl, nib, a2, ap, hit: blk, top });
-  }
-}
-// WHAT IS DELIBERATELY NOT HARVESTED, named rather than omitted: the `+4` arm of
-// all four tables.  [M] $25556E/$255582 carry type word $8004 = dispatch entry
-// [4] = $254078, which `src/shots.js` throws by address, and $24D334/$24D394
-// carry $8006, entry [6], which the port does not have at all.
-for (const [ptr] of SHOT_TABLES) {
-  const t = romBe32(ptr + 4), nib = romBe16(romBe32(t)) & 0xf;
-  if (nib in SHOT_HIT_TABLE) {
-    throw new Error(`the LASER arm $${ptr.toString(16)}[+4] -> $${t.toString(16)} `
-      + `now carries a PORTED dispatch nibble (${nib}). It used to be an unported `
-      + 'handler and that is the only reason its art is not harvested here.');
+    shotReport.push({ ptr, selector, pw, tpl, nib, a2, ap, hit: blk, top });
   }
 }
 {
@@ -1296,7 +1305,7 @@ for (const [ptr] of SHOT_TABLES) {
   harvestReport.push({ shard: 6, base: 0x2554ea, entries: shotStreams.size,
     stride: 0, runsTo: shotStreams.size, endsAt: 0, distinct: shotStreams.size,
     added, already,
-    why: 'THE PLAYER SHOTS -- 4 pointer tables x 5 powers x 3 chains (W52)' });
+    why: 'THE PLAYER SHOTS -- normal and hyper pointer tables, five powers, three chains' });
 }
 
 /** `[base, endsAt, why]` -- walk the mask ROM's stream chain from `base` and

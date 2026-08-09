@@ -19,6 +19,7 @@ import { ENEMY } from '../src/enemies.js';
 import { runInitBodyAddr, freeEnemy, INIT_BODY_FREED,
   INIT_BODY_ADDRESSES } from '../src/initbody.js';
 import { MoveTables } from '../src/vectors.js';
+import { REMAP, remapBucket } from '../src/effects.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TABLES = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
@@ -140,6 +141,30 @@ test('type $11 body writes the prototype HP/palette/anim and the rank-adjusted b
   // the bucket emitter pointers at +$2A/+$2E ($23D762/$23DECE per census).
   assert.equal(ram.u32(rec + 0x2a), 0x0023d762);
   assert.equal(ram.u32(rec + 0x2e), 0x0023dece);
+});
+
+test('type $10/$11 movement layer selects the visible front death bucket',
+  { skip: !HAVE && 'rip absent' }, () => {
+  const rom = realRom();
+  for (const [type, body, movement, site] of [
+    [0x11, 0x26871c, 0x231d58, 0x268852],
+    [0x10, 0x2680b8, 0x231e80, 0x2681dc],
+  ]) {
+    const ram = new Ram();
+    const { rec, sub } = freshEnemy(ram, type);
+    ram.setU32(rec + 0x12, movement);
+    ram.setU16(0x813092, 1); ram.setU16(0x813094, 0); ram.setU16(0x813098, 0);
+    ram.setU16(0x8130b2, 0); ram.setU16(0x8130b4, 0);
+    ram.setU16(0x8130ba, 0); ram.setU16(0x8130bc, 0);
+    ram.setU16(0x8130ce, 0x60); ram.setU16(0x803916, 0);
+    runInitBodyAddr(body, ram, rom, rec, { note() {} });
+    assert.equal(ram.u8(sub + 0x1f), 4, `type $${type.toString(16)} movement layer`);
+    assert.equal(ram.u8(sub + 0x1e), 8, `type $${type.toString(16)} doubled layer`);
+    assert.equal(remapBucket(rom, REMAP.death267FA0, 0, site), 0,
+      'the old mistranslation selected the hidden bucket 0');
+    assert.equal(remapBucket(rom, REMAP.death267FA0, ram.u8(sub + 0x1e), site), 0x0c,
+      'the ROM layer selects bucket 3 in front of the building');
+  }
 });
 
 test('type $07 body writes its prototype HP and the family palette copy',

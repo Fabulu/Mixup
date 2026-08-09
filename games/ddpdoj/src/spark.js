@@ -86,13 +86,12 @@
 //   $253EF8  dispatch [2] $253E34   PORTED, the other
 //   $253DB6  dispatch [9] $253D52   unported -- the handler throws by address
 //   $25401A  dispatch [3] $253F56   unported
-//   $254176  dispatch [4] $254078   unported (the LASER's shot, W52 §0.1)
-//   $2542BA  dispatch [5] $2541BC   unported
-//   $2543E4  dispatch [6] $254300   unported
-//   $25450E  dispatch [7] $25442A   unported
+//   $254176  dispatch [4] $254078   hyper ship shot, ported W188
+//   $2542BA  dispatch [5] $2541BC   hyper ship/alternate shot, ported W188
+//   $2543E4  dispatch [6] $254300   hyper option shot, ported W188
+//   $25450E  dispatch [7] $25442A   alternate option shot, ported W188
 //
-// so **2 of 8 call sites are reachable and 6 are behind loud named throws** --
-// which is the honest coverage sentence, not "both sites ported".
+// so all eight impact-spark call sites now have translated shot handlers.
 //
 // AND THREE MORE PRODUCERS FILL THIS POOL, all of them the LASER's, all of them
 // inside code W45 ALREADY PORTED:

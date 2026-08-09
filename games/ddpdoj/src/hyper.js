@@ -153,7 +153,7 @@ function endFlash(ram, rom, h) {
   ram.setU16(h.endFlash, u16(timer - 4));
 }
 
-export function endHyper285AF2(ram, rom, ctx, p2 = false) {
+export function endHyper285AF2(ram, rom, ctx, p2 = false, redrawStock = null) {
   const h = side(p2);
   if (ram.u16(h.active) !== 0) ram.setU16(h.endFlash, 0x48);
   beamReset25270C(ram, ctx, p2 ? 1 : 0);
@@ -162,6 +162,7 @@ export function endHyper285AF2(ram, rom, ctx, p2 = false) {
   ram.setU16(h.gauge, 0);
   ram.setU16(h.level, 0);
   ram.setU16(h.req, 0);
+  redrawStock?.(p2 ? 1 : 0);                         // $285B24/$285C4E
   flushPendingHyper2875B4(ram, rom, ctx, p2);
   ctx?.hyperEvent?.('end', h.who, ram.u16(h.power));
 }
@@ -183,7 +184,7 @@ export function resetHyper25392E(ram, p2 = false) {
 }
 
 /** `$285A12/$285B3C`, in the type-0 object's authentic frame slot. */
-export function stepHyper285A12(ram, rom, ctx, p2 = false) {
+export function stepHyper285A12(ram, rom, ctx, p2 = false, redrawStock = null) {
   const h = side(p2);
   if (ram.u16(h.active) === 0 && ram.u16(h.req) !== 0) {
     if ((ram.u8(h.player) & 0x11) !== 0) return;
@@ -197,6 +198,7 @@ export function stepHyper285A12(ram, rom, ctx, p2 = false) {
     ram.setU16(h.power, Math.min(0x23, u16(ram.u16(h.power) + stock)));
     ram.setU16(h.subTick, 0);
     ram.setU16(h.stock, 0);
+    redrawStock?.(p2 ? 1 : 0);                       // $285A3E/$285B68
     const invuln = p2 ? 0x50 : ((ram.u8(HYPER.flags) & 0x04) ? 0x78 : 0x50);
     ram.setU8(h.player + 0x3e, invuln);
     ctx?.hyperEvent?.('activate', h.who, stock);
@@ -204,7 +206,7 @@ export function stepHyper285A12(ram, rom, ctx, p2 = false) {
   if (ram.u16(h.active) !== 0) {
     liveFlash(ram, h);
     if ((ram.u8(h.player) & 0x01) !== 0) {
-      endHyper285AF2(ram, rom, ctx, p2);
+      endHyper285AF2(ram, rom, ctx, p2, redrawStock);
       return;
     }
     if (ram.u16(h.chain) >= 0x10 && ram.u16(h.chainMeter) !== 0) {
@@ -216,7 +218,7 @@ export function stepHyper285A12(ram, rom, ctx, p2 = false) {
       const before = ram.u16(h.gauge);
       ram.setU16(h.gauge, u16(before - 2));
       if (before < 2) {
-        endHyper285AF2(ram, rom, ctx, p2);
+        endHyper285AF2(ram, rom, ctx, p2, redrawStock);
         return;
       }
     }

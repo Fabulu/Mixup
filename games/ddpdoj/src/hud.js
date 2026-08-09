@@ -2024,7 +2024,8 @@ function note28C6C6(ctx) {
 
 /** `$285A12` (P1) / `$285B3C` (P2), including activation and duration. */
 function hyper285A12(ram, ctx, who) {
-  stepHyper285A12(ram, ctx.rom, ctx, who !== 0);
+  stepHyper285A12(ram, ctx.rom, ctx, who !== 0,
+    player => hyperStock286ED6(ram, ctx.rom, ctx, player));
 }
 
 /** `$28444E` -- the whole thing, in ROM order. */

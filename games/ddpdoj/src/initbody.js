@@ -226,10 +226,11 @@ function init11(ram, rom, a5, a6, unported) {
   const btab = 0x267F70 + (f << 3);
   ram.setU32(a5 + R.rec2A, rom.u32(btab));             // move.l (A0)+,($2a,A5)
   ram.setU32(a5 + R.rec2E, rom.u32(btab + 4));         // move.l (A0),($2e,A5)
-  // $2687B0: anim double (if non-zero) -- tst.b ($1e,A6); beq; move.b; add.w D1,D1.
-  if (ram.u8(a6 + S.anim) !== 0) {
-    ram.setU8(a6 + S.anim, (ram.u8(a6 + S.anim) * 2) & 0xff);  // d241 add.w D1,D1
-  }
+  // $2687B0: D1 still holds +$1F from the bucket lookup. A nonzero +$1E
+  // replaces it; either way the doubled value is stored back unconditionally.
+  let layer = f;
+  if (ram.u8(a6 + S.anim) !== 0) layer = ram.u8(a6 + S.anim);
+  ram.setU8(a6 + S.anim, (layer * 2) & 0xff);           // $2687BC move.b D1,+$1E
   // $2687C0: re-read A6 (the loader's A6 == ($6,A5) still; the ROM re-fetches
   // after $263808, which may have walked the pointer.  Here it is unchanged.)
   // $2687C4: record +$33 := heading; then heading+1 quantised for the sprite.
@@ -270,8 +271,11 @@ function init10(ram, rom, a5, a6, unported) {
   const btab = 0x267F70 + (f << 3);
   ram.setU32(a5 + R.rec2A, rom.u32(btab));
   ram.setU32(a5 + R.rec2E, rom.u32(btab + 4));
-  // $26813A: anim double.
-  if (ram.u8(a6 + S.anim) !== 0) ram.setU8(a6 + S.anim, (ram.u8(a6 + S.anim) * 2) & 0xff);
+  // $26813A..$268146: as in type $11, the bucket index in D1 survives when
+  // +$1E is zero, and the doubled value is always stored.
+  let layer = f;
+  if (ram.u8(a6 + S.anim) !== 0) layer = ram.u8(a6 + S.anim);
+  ram.setU8(a6 + S.anim, (layer * 2) & 0xff);
   // $26814A: re-fetch A6 (unchanged), heading -> record +$33, sprite from $268694.
   ram.setU8(a5 + R.rec33, ram.u8(a6 + S.heading));
   const d1 = (ram.u8(a6 + S.heading) + 1) & 0x3e;

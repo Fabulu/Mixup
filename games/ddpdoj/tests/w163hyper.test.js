@@ -61,26 +61,30 @@ function earnItem(p2 = false) {
 
 test('P1 chain cap earns, spawns, collects, activates, and feeds rank power', () => {
   const { ram, ctx, rec, h, p } = earnItem(false);
+  const stockRedraws = [];
+  const redraw = player => stockRedraws.push(player);
   assert.equal(requestHyper249868(ram, ROM, ctx, rec, false), true);
   assert.equal(ram.u16(h.req), 1, '$24989A arms the HUD-frame activation');
-  stepHyper285A12(ram, ROM, ctx, false);
+  stepHyper285A12(ram, ROM, ctx, false, redraw);
   assert.equal(ram.u16(h.active), 1, '$285A30 activates');
   assert.equal(ram.u16(h.stock), 0, '$285A8A spends the whole stock');
   assert.equal(ram.u16(h.level), 1, '$285A5C records the used level');
   assert.equal(ram.u16(h.power), 1, '$285A62 makes chain-earned stock rank-critical');
   assert.equal(ram.u16(h.gauge), 0x095d, '$285AEA drains two on the activation frame');
+  assert.deepEqual(stockRedraws, [0], '$285A3E redraws the spent hyper stock immediately');
 
   ram.setU16(p.chain, 0x10);
   ram.setU16(p.meter, 0x20);
-  stepHyper285A12(ram, ROM, ctx, false);
+  stepHyper285A12(ram, ROM, ctx, false, redraw);
   assert.equal(ram.u16(h.chainHold), 0x78, '$285ABA keeps an established chain alive');
   assert.equal(ram.u16(h.chainSaved), 0x20, '$285AC2 snapshots its meter');
 
   ram.setU16(h.gauge, 1);
-  stepHyper285A12(ram, ROM, ctx, false);
+  stepHyper285A12(ram, ROM, ctx, false, redraw);
   assert.equal(ram.u16(h.active), 0, '$285AF2 ends on gauge borrow');
   assert.equal(ram.u16(h.gauge), 0);
   assert.equal(ram.btst8(rec + P.flags1, 0), 0, '$25329A clears the hyper flag');
+  assert.deepEqual(stockRedraws, [0, 0], '$285B24 redraws the inactive stock at hyper end');
 });
 
 test('$249868 requests hyper and rejoins shot cadence at $249B2C', () => {

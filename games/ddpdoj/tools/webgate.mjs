@@ -941,7 +941,7 @@ try {
       // stable three and all three are still asserted.
       const EXP52 = {
         frames: 1200,
-        6: { streams: 71, records: 22000, distinct: 20, first: 1,
+        6: { streams: 96, records: 22000, distinct: 20, first: 1,
           what: 'THE PLAYER\'S SHOTS ($2554EA/$255502 + the pods\' $24D2FC/$24D35C)' },
         // 36 distinct images, not 32: W81 wired type $10's and $82's fans and
         // [M] they reach four bullet images this window had never produced.
@@ -1913,7 +1913,7 @@ try {
           what: 'THE LASER BOMB ($255FE2\'s four heads and 41 segments out of '
             + '$256662..$256986, + pool E, the bit-7 aura and type $8A) with '
             + 'fire HELD' },
-        streams: 218,
+        streams: 252,
       };
       const runW66 = (frames, hold) => {
         const g = new Game(bundle.seed, bundle.tables, {

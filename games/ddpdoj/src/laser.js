@@ -3,10 +3,8 @@
 // `37-recon-laser.md` §0 established that "the laser" is TWO weapons and this
 // file is the SECOND of them:
 //
-//   (A) the BOMB-LASER, selected by bit 0 of the player's ($1,A6), written only
-//       by `$24989E` inside the bomb, recorded in the 36-slot shot table
-//       `$810572` and handled by `$254078`.  NOT THIS FILE.  `src/shots.js`
-//       still throws on `$254078` and must keep doing so.
+//   (A) the HYPER SHOT, selected by bit 0 of the player's ($1,A6), recorded in
+//       the 36-slot shot table `$810572`, and handled by `$254078` in shots.js.
 //   (B) THE BEAM, gated by `$24C164 btst #4,($40,A6)` -- the RAW held bit the
 //       player copies into the option block at `$24C134` -- built inside the
 //       OPTION OBJECT `$24C096`, recorded in a 32-slot x $30 segment pool per

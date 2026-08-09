@@ -80,11 +80,9 @@
 // $24C096), so nothing in the port could ever have reached it.
 //
 // SO THE ANSWER WAS (b): the path is reached and quietly does nothing.  The
-// silence had a second half, which is why the page's author expected a throw
-// that never came: the spawn's laser selector is `btst #$0,($1,A6)` on the
-// player record ($249C1C/$249C32), the flag is READ in four places in `src/`
-// and WRITTEN IN NONE, so `laser` in `shots.js` is permanently whatever the
-// seed says (0), and the `$254078` throw sitting behind it is unreachable.
+// silence had a second half: the spawn's selector is `btst #$0,($1,A6)` on the
+// player record ($249C1C/$249C32). W163 translated the hyper request that sets
+// it, and W188 translated the resulting `$254078` shot family.
 //
 // The 22 calls cannot ALL become throws -- they run every frame regardless of
 // input, and a throw there is a page that never boots.  So the throw is put on

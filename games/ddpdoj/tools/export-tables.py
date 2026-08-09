@@ -107,17 +107,26 @@ SHOT_WINDOWS = [
     # $24A222's template: 38 bytes copied field by field into the shot record.
     # $24DA20..$24DB9B is the ten SHOT templates (2 tables x 5 powers).
     (0x24D8A0, 0x0360, "shot templates $24DA20.. + the $24D8AC/$24D918 anim tables"),
-    # ...and the LASER templates plus their anim tables.
-    (0x24E740, 0x0320, "laser templates $24E8BC.. + $24E744/$24E7D4"),
+    # ...and the HYPER-shot templates plus their anim tables.
+    (0x24E740, 0x0320, "hyper-shot templates $24E8BC.. + $24E744/$24E7D4"),
     # The $25551A family's templates and anim tables ($24DFE8/$24E054 and
     # $24EEA4/$24EF34).  Not reached by the player's own spawn; reached by a
     # SEEDED option-pod shot, whose ($1a,A6) the handlers feed to $241D34.
     (0x24DFE0, 0x0300, "$25551A[0] templates $24E15C.. + $24DFE8/$24E054"),
     (0x24EEA0, 0x0360, "$25551A[1] templates $24F01C.. + $24EEA4/$24EF34"),
+    (0x24EC72, 0x022E, "W188 P1 hyper-shot normal/hit tables and pointed structs"),
     # The OPTION PODS' pointer tables and templates ($24D4E2's $24D2FC/$24D35C).
     (0x24D2E0, 0x00E0, "$24D2FC/$24D35C + their per-power tables"),
+    (0x24D47C, 0x0004, "W188 option-pod hyper shot-count words for ship selectors 0/2"),
     (0x24F400, 0x0C00, "option-pod templates $24F8EC.. and every anim table they point at"),
+    (0x24F3D2, 0x002E, "W188 P2 hyper-shot normal table through $24F400 boundary"),
     (0x251100, 0x0300, "option-pod laser templates $251184.."),
+    (0x250F40, 0x01C0, "W188 option-pod hyper spawn and frame animation tables"),
+    (0x251526, 0x0082, "W188 option hyper-shot 0 normal table and structs"),
+    (0x2519E0, 0x00AA, "W188 option hyper-shot 0 hit table and structs"),
+    (0x25211C, 0x0082, "W188 option hyper-shot 1 normal table and structs"),
+    (0x2525D6, 0x00AA, "W188 option hyper-shot 1 hit table and structs"),
+    (0x251B36, 0x03CA, "W188 TYPE-B option hyper spawn/animation tables and templates"),
     # $253B72 lea $24DDD6 / $253C7A lea $24DEB2 -- the per-($26,A6) tables the
     # handlers re-point the record's sprite fields from, and their structs.
     (0x24DDD0, 0x01B0, "$24DDD6 and $24DEB2 + the structs they point at"),

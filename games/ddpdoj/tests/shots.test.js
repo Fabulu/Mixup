@@ -123,13 +123,20 @@ test('the ten compared slots are the two bases $249C5C/$249C60 name', () => {
   assert.equal(a2, 0x810962); assert.equal(l2, 5 * SHOT.stride);
 });
 
-test('$253BDA and $253EC6 are entry points INTO the other two handlers', () => {
+test('ordinary and hyper shot base/continuation entries are registered', () => {
   const h = shotHandlers();
   assert.deepEqual([...h.keys()].sort(),
-    [0x253b1e, 0x253bda, 0x253e34, 0x253ec6].sort());
+    [0x253b1e, 0x253bda, 0x253e34, 0x253ec6,
+      0x254078, 0x254136, 0x2541bc, 0x25427a,
+      0x254300, 0x2543a4, 0x25442a, 0x2544ce].sort());
   // dispatch entries 0, 8, 2 and 10 -- the four low nibbles wave 5 measured
   for (const [i, a] of [[0, 0x253b1e], [8, 0x253bda], [2, 0x253e34], [10, 0x253ec6]]) {
     assert.equal(SHOT_HANDLERS[i], a, `$253ADE[${i}]`);
+  }
+  for (const [i, a] of [[4, 0x254078], [12, 0x254136],
+    [5, 0x2541bc], [13, 0x25427a], [6, 0x254300], [14, 0x2543a4],
+    [7, 0x25442a], [15, 0x2544ce]]) {
+    assert.equal(SHOT_HANDLERS[i], a, `$253ADE[${i}] hyper shot`);
   }
 });
 

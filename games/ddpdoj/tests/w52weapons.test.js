@@ -230,17 +230,15 @@ test('the shot harvest walks the four template tables the PORT reaches', () => {
     'a pod installs ($24,A6) from a phase that cycles 8,4,0, so its ring is 3 long');
 });
 
-test('the shot harvest REFUSES a template whose dispatch nibble is unported', () => {
+test('the shot harvest includes ship and option hyper handlers', () => {
   const s = TOOL('export-web.mjs');
-  assert.ok(s.includes('SHOT_HIT_TABLE = { 0: 0x24deb2, 2: 0x25014c }'),
-    'nibble 0 -> $253C7A\'s table, nibble 2 -> $253F38\'s');
+  assert.ok(s.includes('4: 0x24ed4e, 5: 0x24f4ae, 6: 0x2519e0, 7: 0x2525d6'),
+    'hyper shot nibbles 4..7 use their ROM hit tables');
   assert.ok(/if \(!\(nib in SHOT_HIT_TABLE\)\) \{[\s\S]{0,400}throw new Error/.test(s),
     'a template carrying an unported nibble must STOP the export, not ship art '
     + 'for a handler that does not exist ($268594 is the precedent)');
-  assert.ok(s.includes('now carries a PORTED dispatch nibble'),
-    'and the deliberately-unharvested +4 laser arm is asserted to STAY unported: '
-    + 'the day $254078 lands, the export must stop and say so rather than leave '
-    + 'the laser shots as a silent named skip');
+  assert.ok(s.includes("[0x24d2fc, 4, 'option pod 0 hyper"),
+    'the option pods\' +4 hyper templates are harvested too');
 });
 
 test('every bullet range must close EXACTLY on its stated end address', () => {
