@@ -901,5 +901,6 @@ The controlled boot now completes 254 records with 250 allocations and four
 authentic declines, then stops honestly at type `$94` body `$27A0E8`, record
 `$232DC0`, clock `$016B`. Coverage is 39/256 enemy types and 323/332 stage-2
 records, with 9 unknown. The regenerated web bundle contains all 36 newly
-required body and attachment streams. Focused verification is green; release
-and deployment are pending.
+required body and attachment streams. The release passed 1,502 tests with zero
+failures or skips, bundle/web and ROM-leak gates, deployment, and stable live
+polls. Build `20260809105517` is live.

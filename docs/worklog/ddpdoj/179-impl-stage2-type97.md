@@ -1,6 +1,6 @@
 # W179: Stage-2 type `$97`
 
-Status: COMPLETE, RELEASE PENDING
+Status: COMPLETE
 
 ## Scope
 
@@ -79,4 +79,8 @@ regenerated `streams.u32.gz` contains all 36 and reports 2,726 total streams.
 
 ## Release
 
-Release gate, deployment, and live build confirmation are pending.
+- Commit `54e9aa1` contains the W179 port and current-state docs.
+- Release gate: 1,502 passed, zero failed/skipped; bundle/web and ROM-leak
+  checks passed.
+- Published and confirmed live as build `20260809105517` at
+  `https://gbtman.pages.dev/games/ddpdoj/`.

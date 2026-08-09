@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-09, after W179 implementation and before publication.
+Last updated: 2026-08-09, after W179 publication.
 
 ## Current directive
 
@@ -14,9 +14,9 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The old W175 pause is resolved. W176 through W178 are live. W179 ports all five
+The old W175 pause is resolved. W176 through W179 are live. W179 ports all five
 chronological stage-2 type `$97` records, including aimed animation, cue
-spawning, both sprite layers, bullets, and death. Publish W179, then continue
+spawning, both sprite layers, bullets, and death. Continue
 from the first unsupported type `$94` record. Do not repeat W175 through W179.
 
 ## Exact repository and deployment state
@@ -28,11 +28,12 @@ At handoff:
 - W176 is committed, pushed, and deployed
 - W177 is committed, pushed, and deployed
 - W178 is committed, pushed, and deployed
-- W179 is implemented and focused-green; release is pending
+- W179 is committed, pushed, and deployed
 - W175 live build: `20260809081027`
 - W176 live build: `20260809092221`
 - W177 live build: `20260809095334`
 - W178 live build: `20260809102233`
+- W179 live build: `20260809105517`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
 - no agent or command is running now
 
@@ -56,7 +57,7 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W179 is implementation-complete and release-pending:
+W179 is complete and live:
 
 - worklog: `docs/worklog/ddpdoj/179-impl-stage2-type97.md`
 - stage-2 type `$97` is ported at five records from `$232DA8` through `$232F00`
@@ -78,7 +79,7 @@ The next honest chronological unsupported record is:
 - init body `$27A0E8`
 - handler `$27A1B4`
 
-Publish W179, reserve the next immutable worklog number, and continue with the
+Reserve the next immutable worklog number and continue with the
 dependency-complete type `$94` wave.
 
 Useful current tests and tools:
@@ -180,6 +181,7 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 ## Latest completed delivery
 
 W179 closed all five type `$97` records and moved the controlled frontier from
-`$232DA8` to `$232DC0`. Its focused regression, controlled boot, coverage,
-ROM export, and web asset generation pass. Publish W179, then continue with
-type `$94`; the full-game goal remains active after every wave.
+`$232DA8` to `$232DC0`. Its 1,502-test release, controlled boot, bundle/web
+gates, ROM-leak guard, deployment, and stable live polls pass. Build
+`20260809105517` is live. Continue with type `$94`; the full-game goal remains
+active after every wave.
