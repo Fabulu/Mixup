@@ -67,3 +67,15 @@ Results:
 
 The expensive boot was not rerun after narrowing its new visible-output
 assertion to the exact already-observed E6/E9 evidence.
+
+## Publication
+
+- source commits: `26985dd`, `4e47eaf`
+- release tests: 1,530/1,530 green
+- bundle parity: 100.0000%
+- web fetch and ROM-leak guard: green, with the existing six owner exceptions
+- build: `20260809173436`
+- deployment: `https://d8ba1d4a.gbtman.pages.dev`
+- production: `https://gbtman.pages.dev/games/ddpdoj/`
+- three consecutive production confirmations returned the new build and HTTP
+  200 for Gradius, DOJ, and the DOJ asset manifest

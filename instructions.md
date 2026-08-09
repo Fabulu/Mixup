@@ -70,7 +70,7 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W187 is implemented and awaiting publication:
+W187 is complete and live:
 
 - worklog: `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
 - stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
@@ -210,8 +210,9 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W186 translated F3, MAIN2, and D3. Build `20260809160147` is live. W187 now
-translates the complete E6-E11 leaf set, and its focused scheduler/bullet checks
-pass. The controlled boot runs beyond the old E6 stop and produces real E6 and
-E9 bullet output. Publish W187, then continue with the statically mapped F1,
-F2, and F8 phase entries; the full-game goal remains active after every wave.
+W187 translates the complete E6-E11 leaf set. Its focused scheduler/bullet
+checks and 1,530-test release gate pass. The controlled boot runs beyond the
+old E6 stop and produces real E6 and E9 bullet output. Build
+`20260809173436` is live and confirmed. Continue with the statically mapped
+F1, F2, and F8 phase entries; the full-game goal remains active after every
+wave.
