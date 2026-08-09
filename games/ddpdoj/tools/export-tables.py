@@ -1030,6 +1030,13 @@ SHOT_WINDOWS.extend([
                        "$278320, read by $2762D8/$276316/$27635A/$2763A0/"
                        "$276800/$2774E2. $278338 is $0022C59C, a stream "
                        "address, so the table ends there"),
+    (0x242D24, 0x0100, "W191 $242CAC signed-byte RNG table through the "
+                       "$242E24 entry boundary"),
+    (0x24399C, 0x0100, "W191 $24397A packed debris-position RNG table"),
+    (0x289084, 0x054C, "W191 POOL D: clear, allocator, driver and vector "
+                       "solver through the exact $2895D0 boundary"),
+    (0x289610, 0x04D0, "W191 POOL D: animation, fill, template dispatch and "
+                       "all five 32-frame descriptor lists through $289AE0"),
 ])
 
 # ======= W57 (M1): ENEMY TYPE $1C -- WHAT THE MIDBOSS'S DEATH SPAWNS =========
@@ -2982,6 +2989,29 @@ def check_stage2_spawn_data(d: bytes) -> None:
         if hashlib.sha256(d[start:end]).hexdigest() != expected:
             raise SystemExit(
                 f"W190: stage-2 boss F4 closure ${start:06X} drifted")
+    pool_d_closures = [
+        (0x289084, 0x2890F2,
+         "e0a86e2863f4ac3b3400723b0336593b9d44c14e92ba88391a55ad8ea09be622"),
+        (0x2890F2, 0x2892DA,
+         "92ed788649a408395abe7ab440f1d0ad3c9cbc32a0e8b66943689d5a52b52a4c"),
+        (0x2892DA, 0x2895D0,
+         "51b3df4d6587313d15b05892405c88b2b815fa062b9a02fac983cd93aa099fe4"),
+        (0x289610, 0x289AE0,
+         "603d5963ebec793cd608bb64eee471f855159bf14a7182dbee05ca785af2ced3"),
+    ]
+    for start, end, expected in pool_d_closures:
+        if hashlib.sha256(d[start:end]).hexdigest() != expected:
+            raise SystemExit(f"W191: pool-D closure ${start:06X} drifted")
+    pool_d_lists = [
+        (0x289820, "6e097fdc076d2d2367a36ee3c6f4ebc2b2bef0c2c2c1f83fce1cc5d5dccd4712"),
+        (0x2898B0, "a023600765178e3ab669fbc179fb4698a8e17af14c186caf87e8863035a89008"),
+        (0x289940, "fe8be72dd74663837de72e99478dac422480b8ccedd320243b66cd07ba11be6e"),
+        (0x2899D0, "e7ffa664135e7858f2700c81cc3a7c8c65ed7b5aa26f7400dd1e6c8b13a13227"),
+        (0x289A60, "4ff53b0cb1fe023984589024118f030283c347697ee6df518b106bc3951aa673"),
+    ]
+    for start, expected in pool_d_lists:
+        if hashlib.sha256(d[start:start + 0x80]).hexdigest() != expected:
+            raise SystemExit(f"W191: pool-D descriptor list ${start:06X} drifted")
     type30_records = [(script + i * 8, u16(d, script + i * 8),
                        u16(d, script + i * 8 + 6) & 0x0FFF)
                       for i in range(332) if d[script + i * 8 + 4] == 0x30]

@@ -10,7 +10,7 @@
 //           $252bd0   $281d9a   $25354c   $25292a   $252a52
 //   28b670: tst.w $81308c / beq $28b730 ...
 //
-// **THIS FILE RUNS TWELVE OF THE TWENTY-THREE AND COUNTS THE OTHER ELEVEN.**
+// **THIS FILE RUNS EIGHTEEN OF THE TWENTY-THREE AND COUNTS THE OTHER FIVE.**
 // (W45 added #10 `$254680` and #11 `$255042`, the beam's segment driver and its
 // draw.  Both were counted as "three of the thirteen unported calls, with no
 // indication that they are the laser" -- `37-recon-laser.md` §5.)
@@ -130,7 +130,7 @@ import { runType5Tail } from './damage.js';
 import { notePerFrameLedger } from './score.js';
 import { runSegmentDriver, runBeamDraw } from './laser.js';
 import { runSparkDriver } from './spark.js';
-import { runEffectDriver } from './effects.js';
+import { runEffectDriver, runSubEffectDriver } from './effects.js';
 import { runItemDriver } from './items.js';
 import { runPoolADriver } from './bee.js';
 import { bombDriver255DD8 } from './bomb.js';
@@ -150,6 +150,7 @@ export const TYPE5 = {
   beamDraw: 0x255042,       // $28B622 -- THE BEAM's draw                   (W45)
   sparkDriver: 0x28a098,    // $28B628 -- POOL E, THE SHOT'S IMPACT SPARK (W53)
   effectDriver: 0x288e4e,   // $28B5FE -- POOL B, THE DEATH EXPLOSION     (W54)
+  subEffectDriver: 0x2890f2,// $28B604 -- POOL D, secondary debris        (W191)
   impactDriver: 0x27f95a,   // $28B5F4 -- POOL A, THE BEE/IMPACT DRIVER   (W111)
   itemDriver: 0x27e99e,     // $28B64C -- THE ITEM, pool family six       (W61)
   bombDriver: 0x255dd8,     // $28B5F8 -- **THE BOMB**, call #7            (W64)
@@ -218,9 +219,11 @@ export const TYPE5_PORTED = new Set([
   // W54 (E5b).  #5 is `$288E4E`, THE DEATH EXPLOSION's driver.  It ships in the
   // same commit as its allocator `$289004` (`src/effects.js spawnEffect`, called
   // from ~25 death arms in `src/handlers.js` and `src/midboss.js`) for W33 §4's
-  // reason.  Note that #6, `$2890F2`, is DELIBERATELY still counted: pool D is
-  // refused rather than half-ported -- `src/effects.js` §THE REFUSAL.
+  // reason. W191 completes the immediately following pool-D allocator and
+  // driver, so the secondary debris requested here is consumed in the same
+  // type-5 call order as the ROM.
   0x288e4e,   // #5  THE DEATH EXPLOSION: pool B's driver, buckets 0/1/2/3/7 (W54)
+  0x2890f2,   // #6  POOL D: secondary debris allocator + driver          (W191)
   // W111 (M1).  #4 is `$27F95A`, POOL A's driver -- the bee/impact pool's 80-
   // slot walk, scroll, 5-bit kind dispatch and the bee body (blink, off-screen
   // free, collect + flat/chain-multiply award through $286128).  It ships in
@@ -323,6 +326,10 @@ export function makeType5(rom) {
           // `delayed`, and neither is recoverable from RAM after the frame.
           ctx.effectFrame = runEffectDriver(ram, rom, ctx);
           ctx.effectSink?.(ctx.effectFrame);
+          break;
+        case TYPE5.subEffectDriver:                     // $28B604 -> $2890F2
+          ctx.subEffectFrame = runSubEffectDriver(ram, rom, ctx);
+          ctx.subEffectSink?.(ctx.subEffectFrame);
           break;
         case TYPE5.itemDriver:                          // $28B64C -> $27E99E
           // WAVE 61.  EIGHTEENTH of twenty-three, and the position decides two

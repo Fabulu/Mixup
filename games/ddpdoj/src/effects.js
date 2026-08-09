@@ -28,7 +28,7 @@
 //   D SUB-EFFECT $81C8EC  $40 x 20   $289098          driver $2890F2   §THE REFUSAL
 //   E SHOT SPARK $81D394  $22 x 60   $289F54          driver $28A098   W53, ported
 //
-// **THIS FILE IS POOL B AND ITS TWO CLEARS, AND NOTHING ELSE.**  Pool B's
+// This file owns pool B and pool D, including both allocators and drivers. Pool B's
 // allocator AND its driver are both here, in one commit, because a pool with a
 // producer and no consumer is W33 §4's leak -- 100 of 100 slots consumed by
 // logic frame 2906 and every later spawn silently discarded, through four
@@ -43,7 +43,7 @@
 //   All three do the same `clr.w (A6)`; the driver RE-COUNTS `$81C8EA` from
 //   scratch every frame, so a freed slot cannot leave a stale count behind.
 //
-// ============ THE REFUSAL: POOL D IS NOT ALLOCATED FROM, DELIBERATELY =======
+// ===== HISTORICAL W54 REFUSAL, SUPERSEDED BY W191'S COMPLETE POOL-D PORT =====
 //
 // `$288EF0 jsr $289098` -- inside the driver, once per record, gated on
 // `($12,A6)` being non-negative -- SUB-ALLOCATES INTO POOL D.  `$289004` inits
@@ -156,6 +156,10 @@
 import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueThroughStub } from './spritequeue.js';
+import {
+  drawByte242B3C, drawByte242E24, drawByte2431F4, drawLong24397A,
+  drawSigned242CAC, drawSigned242FDE, drawWord242EC2,
+} from './rng.js';
 
 export const POOL_B = {
   base: 0x81b732,          // $289022 / $288E52 lea $81B732
@@ -180,11 +184,19 @@ export const POOL_D = {
   base: 0x81c8ec,          // $289084 / $2890AA lea $81C8EC
   stride: 0x40,            // $2890CC lea ($40,A0),A0
   slots: 20,               // $2890B0 move.w #$13,D1 (+1)
-  slotsNarrow: 10,         // $2890C4 move.w #$9,D1  (+1), when $813098/$81308C
+  slotsNarrow: 10,         // when $813098 != 0 or $81308C == 0
   count: 0x81cdec,         // $2890E0 addq.w #1 / $289238 subq.w #1
   clearWords: 0x281,       // $28908A move.w #$280,D0 + the dbra's own pass
-  allocator: 0x289098,     // THE REFUSAL -- see the header
-  driver: 0x2890f2,        // type-5 call #6, unported
+  allocator: 0x289098,
+  driver: 0x2890f2,        // type-5 call #6
+};
+
+/** Pool-D's `$40`-byte secondary-debris record. */
+export const D = {
+  status: 0x00, pos: 0x02, offs: 0x06, descriptor: 0x0a, size: 0x0e,
+  cursor: 0x10, wrap: 0x12, list: 0x14, lifetime: 0x18,
+  speed: 0x1a, angle: 0x1b, attr: 0x1c, mode: 0x1e,
+  drift: 0x20, hold: 0x22, bucket: 0x24, auxAngle: 0x26,
 };
 
 /** Record offsets, from the slot base.  See the map in the header. */
@@ -417,11 +429,11 @@ export function walkDescriptor288E20(ram, rom, a6) {
 /**
  * `$288E4E` -- step and emit the whole 80-slot effect pool, once per frame.
  * @returns {{live:number, emitted:number, freed:number, culled:number,
- *            delayed:number, subRefused:number}} telemetry; the ROM returns none.
+ *            delayed:number, subSpawned:number}} telemetry; the ROM returns none.
  */
 export function runEffectDriver(ram, rom, ctx) {
   ram.setU16(POOL_B.count, 0);                           // $288E58 clr.w $81C8EA
-  let live = 0, emitted = 0, freed = 0, culled = 0, delayed = 0, subRefused = 0;
+  let live = 0, emitted = 0, freed = 0, culled = 0, delayed = 0, subSpawned = 0;
   const laserOn = (ram.u16(POOL_B.laserRec) & 0x8000) !== 0;   // $288FC2 tst.w / bpl
   const parityGate = laserOn && (ram.u16(POOL_B.frameParity) & 1) === 0;
 
@@ -476,7 +488,7 @@ export function runEffectDriver(ram, rom, ctx) {
     }
 
     // ------------------------------------- $288ED0: THE POOL-D SUB-SPAWN
-    if (subSpawn288ED0(ram, ctx, a6)) subRefused++;
+    if (subSpawn288ED0(ram, ctx, a6)) subSpawned++;
 
     // $288F00: the SCROLL, subtracted from the SHORT axis (the low word).
     ram.setU16(a6 + B.pos + 2,
@@ -576,48 +588,279 @@ export function runEffectDriver(ram, rom, ctx) {
     enqueueThroughStub(ram, rom, stub, a6);              // $288FE4 jsr (A0)
     emitted++;
   }
-  return { live, emitted, freed, culled, delayed, subRefused };
+  return { live, emitted, freed, culled, delayed, subSpawned };
+}
+
+function poolDTemplateInit(ram, rom, a0, templateIndex) {
+  let list = ram.u32(a0 + D.list);
+  if (templateIndex === 0) {
+    const pick = drawByte2431F4(ram, rom);
+    list = rom.u32(0x2897d0 + pick * 4);
+    ram.setU32(a0 + D.list, list);
+  }
+  const pick = drawByte2431F4(ram, rom);
+  const delta = ((pick + 1) << 5) - 4;
+  ram.setU16(a0 + D.cursor, u16(ram.u16(a0 + D.cursor) - delta));
+  ram.setU32(a0 + D.descriptor, rom.u32(list + delta));
+}
+
+/** `$289658`, initialize one pool-D record from its selected ROM template. */
+function fillSubEffect289658(ram, rom, ctx, a0, parent, packed, multi) {
+  let select = (packed >>> 8) & 0xff;
+  let mode = select >= 0x80 ? select - 0x100 : select;
+  let status = 0x8000;
+  if (mode < 0) {
+    select = (~select) & 0xff;
+    const oldBit = select & 1;
+    select &= 0xfe;
+    if (oldBit !== 0) status |= 0x0400;
+    const m = (~select) & 0xff;
+    mode = m >= 0x80 ? m - 0x100 : m;
+  }
+  const templateIndex = select & 0x1c;
+  if (templateIndex > 0x10) {
+    unreached(0x289680, `pool D template selector $${templateIndex.toString(16)} `
+      + `is past the five-entry pointer table at $2897FC`);
+  }
+  const template = rom.u32(0x2897fc + templateIndex);
+  ram.setU16(a0 + D.status, status);
+  ram.setU32(a0 + D.pos, ram.u32(parent + B.pos));
+  if (multi) {
+    const jitter = drawLong24397A(ram, rom);
+    ram.setU16(a0 + D.pos + 2,
+      u16(ram.u16(a0 + D.pos + 2) + (jitter & 0xffff)));
+  }
+  ram.setU32(a0 + D.offs, rom.u32(template));
+  let bucket = (packed >>> 16) & 0xff00;
+  if (drawSigned242FDE(ram, rom) === 0) bucket |= 0x1000;
+  bucket = ((bucket << 8) & 0xff);
+  ram.setU16(a0 + D.bucket, bucket);
+  ram.setU8(a0 + D.attr, 0);
+  ram.setU8(a0 + D.attr + 1, 0x1e);
+  ram.setU16(a0 + D.size, rom.u16(template + 4));
+  ram.setU16(a0 + D.mode, mode);
+  ram.setU32(a0 + D.list, rom.u32(template + 6));
+  ram.setU16(a0 + D.drift, rom.u16(template + 10));
+  ram.setU16(a0 + D.lifetime, rom.u16(template + 12));
+  const wrap = rom.u16(template + 14);
+  ram.setU16(a0 + D.cursor, wrap);
+  ram.setU16(a0 + D.wrap, wrap);
+  ram.setU8(a0 + D.speed, (drawWord242EC2(ram, rom) & 0x0f) + 0x1a);
+  ram.setU16(a0 + D.hold, u16(drawSigned242CAC(ram, rom) * 4 + 0x30));
+  poolDTemplateInit(ram, rom, a0, templateIndex);
+
+  let angle;
+  if (mode < 0) {
+    ram.setU8(a0 + D.drift, ram.u8(a0 + D.drift + 1) + 0x10);
+    let spread = drawWord242EC2(ram, rom) & 0x0f;
+    if ((ram.u8(a0 + D.status) & 0x04) !== 0) {
+      spread >>>= 1;
+      ram.setU8(a0 + D.speed, ram.u8(a0 + D.speed) - 8);
+    }
+    ram.setU8(a0 + D.speed, ram.u8(a0 + D.speed) + spread);
+    ram.setU8(a0 + D.auxAngle, ram.u8(a0 + D.speed) + 0x20);
+    const random = drawByte242B3C(ram, rom);
+    angle = (((random << 24) >> 24) >> 2) + (packed & 0xff);
+  } else {
+    angle = drawByte242E24(ram, rom);
+    if (angle > 0x15 && angle < 0x2b) angle = (angle + 0x20) & 0x3f;
+    const modeByte = ram.u8(a0 + D.mode + 1);
+    ram.setU8(a0 + D.mode + 1, modeByte & ~0x20);
+    if ((modeByte & 0x20) !== 0)
+      angle = ((((angle + 0x16) & 0x3f) >> 1) + 0x15) & 0xff;
+  }
+  angle &= 0xff;
+  if (angle >= 0x20) ram.setU8(a0 + D.attr, ram.u8(a0 + D.attr) | 0x20);
+  ram.setU8(a0 + D.angle, angle * 4);
+  ctx?.subEffectSpawn?.(a0, templateIndex, packed);
+}
+
+/** `$289098`, allocate and fill one or more pool-D debris records. */
+export function spawnSubEffect289098(ram, rom, ctx, packed, parent,
+  siteAddr = 0x289098) {
+  const requested = ((packed >>> 16) & 0xff) + 1;
+  const limit = ram.u16(0x813098) !== 0 || ram.u16(0x81308c) === 0
+    ? POOL_D.slotsNarrow : POOL_D.slots;
+  let allocated = 0;
+  for (let n = 0; n < requested; n++) {
+    let slot = -1;
+    for (let i = 0; i < limit; i++) {
+      const candidate = POOL_D.base + i * POOL_D.stride;
+      if (ram.u16(candidate + D.status) === 0) { slot = candidate; break; }
+    }
+    if (slot < 0) {
+      ctx?.subEffectDrop?.(requested - allocated, siteAddr);
+      break;
+    }
+    fillSubEffect289658(ram, rom, ctx, slot, parent, packed, requested > 1);
+    ram.setU16(POOL_D.count, u16(ram.u16(POOL_D.count) + 1));
+    allocated++;
+  }
+  return allocated;
 }
 
 /**
- * `$288ED0..$288EFA` -- THE POOL-D SUB-SPAWN, **with the `jsr $289098` REFUSED**.
+ * `$288ED0..$288EFA` -- the one-shot pool-D sub-spawn.
  *
  *   288ed0: move.w ($12,A6),D0 / bmi $288f00     <- $FFFF = disarmed, skip all
  *   288ed8: move.w ($1e,A6),D1 / lsl.w #8,D1 / or.w D1,D0
  *   288ee0: move.w ($1c,A6),-(A7)               <- PUSHED across the call
  *   288ee4: swap D0 / move.w ($14,A6),D0        <- D0 = (bucket<<8|param12) : ($14)
  *   288eea: move.b ($16,A6),($1d,A6)
- *   288ef0: jsr $289098                          <- **NOT CALLED.  §THE REFUSAL**
+ *   288ef0: jsr $289098                          <- allocate pool-D debris
  *   288ef6: move.w (A7)+,($1c,A6)               <- POPPED
  *   288efa: move.w #$FFFF,($12,A6)              <- ONE-SHOT: never again
- *
- * Everything except the `jsr` is performed, so the pool-B record ends the frame
- * in exactly the state the board leaves it in.  What is lost is pool D's record
- * -- the secondary debris -- and the seven RNG draws `$289658` makes off the
- * shared `$803916`/`$803917` counters.  Both are named in the note.
  *
  * [M] `($12,A6)` is a COUNT MINUS ONE, not a flag: `$289098` does
  * `andi.l #$FF,D3 / addi.l #-$10000,D3` and then `dbra D3`, so 0 asks for ONE
  * record and 1 asks for TWO.  Six of type `$80`'s death-arm sites write 1.
  *
- * @returns {boolean} whether a sub-spawn was refused this record.
+ * @returns {boolean} whether this record requested its one-shot sub-spawn.
  */
 export function subSpawn288ED0(ram, ctx, a6) {
   const d0 = ram.u16(a6 + B.sub12);                      // $288ED0 move.w ($12,A6)
   if ((d0 & 0x8000) !== 0) return false;                 // $288ED4 bmi $288F00
   const param = ram.u16(a6 + B.sub14);                   // $288EE6 move.w ($14,A6)
   ram.setU8(a6 + B.f1d, ram.u8(a6 + B.f16));             // $288EEA move.b ($16,A6)
-  ctx?.unportedLog?.note(POOL_D.allocator, `$288EF0 jsr $289098 -- POOL D's `
-    + `allocator, REFUSED (not called). This record asked for ${(d0 & 0xff) + 1} `
-    + `sub-effect record(s) into $81C8EC's ${POOL_D.slots} slots with `
-    + `D0 = $${(((ram.u16(a6 + B.bucket) << 8 | (d0 & 0xff)) >>> 0)
-      .toString(16).toUpperCase())}:$${param.toString(16).toUpperCase()}. `
-    + `W54 ports pool B alone: pool D's ONLY consumer is $2890F2 (type-5 call `
-    + `#6, ~1,800 B, an unpinned $200920 window and seven unported callees), `
-    + `and allocating without it is W33 4's leak one level down. So NOTHING `
-    + `allocates from pool D and it CANNOT leak -- W52 0.2's refusal, applied `
-    + `one pool along. THE COST: the secondary debris this explosion would `
-    + `throw is MISSING, and $289658's RNG draws do not happen`);
+  const packed = ((((ram.u16(a6 + B.bucket) << 8) | (d0 & 0xff)) << 16)
+    | param) >>> 0;
+  spawnSubEffect289098(ram, ctx.rom, ctx, packed, a6, 0x288ef0);
   ram.setU16(a6 + B.sub12, 0xffff);                      // $288EFA -- the one-shot
   return true;
+}
+
+function animateSubEffect289610(ram, rom, a6) {
+  let cursor = ram.u16(a6 + D.cursor);
+  ram.setU32(a6 + D.descriptor, rom.u32(ram.u32(a6 + D.list) + cursor));
+  const speed = ram.u8(a6 + D.speed);
+  const steps = speed >= 0x0e ? 4 : speed >= 0x0a ? 2 : 1;
+  for (let n = 0; n < steps; n++) {
+    cursor = u16(cursor - 4);
+    if ((cursor & 0x8000) !== 0) cursor = ram.u16(a6 + D.wrap);
+  }
+  ram.setU16(a6 + D.cursor, cursor);
+}
+
+function freeSubEffect(ram, a6) {
+  ram.setU16(a6 + D.status, 0);
+  ram.setU16(POOL_D.count, u16(ram.u16(POOL_D.count) - 1));
+}
+
+function subEffectInBounds(ram, a6, lowerY = -0x600, upperY = 0x7600) {
+  const x = i16(ram.u16(a6 + D.pos + 2));
+  const y = i16(ram.u16(a6 + D.pos));
+  return x >= -0x400 && x < 0x3c00 && y >= lowerY && y < upperY;
+}
+
+/** `$2890F2`, step and emit pool-D secondary debris. */
+export function runSubEffectDriver(ram, rom, ctx) {
+  let remaining = ram.u16(POOL_D.count);
+  const initial = remaining;
+  let emitted = 0, freed = 0, found = 0;
+  if (remaining === 0) return { live: 0, emitted, freed };
+
+  // This branch runs before ROM replaces inherited A6. A6 still points at
+  // pool B's bit bucket, so it deliberately does not clear pool-D statuses.
+  if (ram.u16(0x813098) !== 0) {
+    for (let n = 0; n < initial; n++) {
+      ram.setU16(POOL_B.bitBucket + n * POOL_D.stride, 0);
+      ram.setU16(POOL_D.count, u16(ram.u16(POOL_D.count) - 1));
+    }
+    return { live: initial, emitted, freed: 0, inheritedCleared: initial };
+  }
+
+  const d6Negative = i16(u16(-ram.u16(0x803912))) < 0;
+  const collisionPhase = ram.u16(0x80390c);
+  const d5Negative = ram.u16(0x8130f8) !== 0;
+  const frame = ram.u16(0x80390a);
+
+  for (let n = 0; n < POOL_D.slots && remaining > 0; n++) {
+    const a6 = POOL_D.base + n * POOL_D.stride;
+    if (ram.u8(a6 + D.status) === 0) continue;
+    found++;
+    remaining--;
+
+    const mode = i16(ram.u16(a6 + D.mode));
+    let speed = ram.u8(a6 + D.speed);
+    if (mode >= 0) {
+      if (speed !== 0) {
+        const mask = speed >= 6 && speed <= 8 ? 3 : 1;
+        if ((frame & mask) === 0) {
+          speed = (speed - 1) & 0xff;
+          ram.setU8(a6 + D.speed, speed);
+        }
+      }
+      if (speed !== 0) {
+        const v = ctx.tables.shotVector(speed, ram.u8(a6 + D.angle));
+        ram.setU16(a6 + D.pos, u16(ram.u16(a6 + D.pos) + v.dy));
+        ram.setU16(a6 + D.pos + 2,
+          u16(ram.u16(a6 + D.pos + 2) + v.dx - (v.dx >> 2)));
+      }
+      ram.setU16(a6 + D.pos,
+        u16(ram.u16(a6 + D.pos) + speed * 2 - 0x58));
+      ram.setU16(a6 + D.pos + 2,
+        u16(ram.u16(a6 + D.pos + 2) - ram.u16(POOL_B.scroll)));
+      if (!d6Negative && !subEffectInBounds(ram, a6)) {
+        freeSubEffect(ram, a6); freed++; continue;
+      }
+    } else {
+      if (!d5Negative && speed > 2) {
+        const mask = speed >= 6 && speed <= 8 ? 3 : 2;
+        if ((frame & mask) === 0) {
+          speed = (speed - 1) & 0xff;
+          ram.setU8(a6 + D.speed, speed);
+        }
+      }
+      if (ram.u16(POOL_B.bgFreeze) === 0) {
+        const v = ctx.tables.shotVector(speed, ram.u8(a6 + D.angle));
+        ram.setU16(a6 + D.pos, u16(ram.u16(a6 + D.pos) + v.dy));
+        ram.setU16(a6 + D.pos + 2,
+          u16(ram.u16(a6 + D.pos + 2) + v.dx));
+      }
+      if (!d5Negative) {
+        ram.setU16(a6 + D.pos, u16(ram.u16(a6 + D.pos) - 0x20));
+        ram.setU16(a6 + D.pos + 2,
+          u16(ram.u16(a6 + D.pos + 2) - ram.u16(POOL_B.scroll)));
+        if (!d6Negative && !subEffectInBounds(ram, a6)) {
+          freeSubEffect(ram, a6); freed++; continue;
+        }
+      } else {
+        ram.setU16(a6 + D.pos,
+          u16(ram.u16(a6 + D.pos) - ram.u8(a6 + D.drift)));
+        if (!d6Negative && !subEffectInBounds(ram, a6, 0, 0x7000)) {
+          freeSubEffect(ram, a6); freed++; continue;
+        }
+      }
+    }
+
+    animateSubEffect289610(ram, rom, a6);
+    const hold = ram.u16(a6 + D.hold);
+    let shouldEmit = true;
+    if (hold !== 0) {
+      ram.setU16(a6 + D.hold, u16(hold - 1));
+    } else {
+      const life = (ram.u8(a6 + D.lifetime + 1) - 1) & 0xff;
+      ram.setU8(a6 + D.lifetime + 1, life);
+      if (life === 0) {
+        freeSubEffect(ram, a6); freed++; continue;
+      }
+      shouldEmit = collisionPhase !== 0;
+    }
+    if (!shouldEmit) continue;
+
+    const selector = ram.u16(a6 + D.bucket);
+    const stub = EMIT_STUB[selector];
+    if (stub === undefined) {
+      unreached(0x28921e, `pool D emitter selector $${selector.toString(16)} `
+        + `is not one of 0, 4, 8, $C or $10`);
+    }
+    enqueueThroughStub(ram, rom, stub, a6);
+    emitted++;
+  }
+
+  if (remaining !== 0) {
+    unreached(0x289218, `pool D live count ${initial} exceeds the ${found} `
+      + `allocated records found in its 20 slots`);
+  }
+  return { live: initial, emitted, freed };
 }

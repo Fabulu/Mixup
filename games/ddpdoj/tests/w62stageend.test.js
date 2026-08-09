@@ -545,6 +545,9 @@ test('$25FD38 builds a NEW background object with ENTRY CLOCK ZERO',
     ram.setU16(0x8130ce, 0x0344);
     ram.setU32(SE.bgHandle, 7);
     ram.setU16(ALLOC.createStage + 0x06, 0x38);   // a stale entry clock
+    ram.setU16(0x81b732, 0x8007);                 // stale pool-B effect
+    ram.setU16(0x81c8ec, 0x8000);                 // stale pool-D debris
+    ram.setU16(0x81cdec, 1);
     rebuildWorld25FD38(ram, ctx);
     assert.equal(ram.u16(SE.pauseFlag), 0, '$25FD24 lifts the pause $25FCFA set');
     assert.equal(ram.u16(0x8130ce), 0, '...and zeroes the distance clock');
@@ -552,6 +555,9 @@ test('$25FD38 builds a NEW background object with ENTRY CLOCK ZERO',
     assert.equal(ram.u16(ALLOC.createStage + ALLOC.priOff), 0x001a);
     assert.equal(ram.u16(ALLOC.createStage + 0x06), 0, '$25FD7A -- ENTRY CLOCK 0');
     assert.notEqual(ram.u32(SE.bgHandle), 7, '$25FD74 -- a DIFFERENT handle');
+    assert.equal(ram.u16(0x81b732), 0, '$25FD40 clears pool B');
+    assert.equal(ram.u16(0x81c8ec), 0, '$25FD46 clears pool D');
+    assert.equal(ram.u16(0x81cdec), 0, 'pool-D live count is cleared with it');
   });
 
 // ===========================================================================

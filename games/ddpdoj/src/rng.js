@@ -333,3 +333,28 @@ export function drawByte24311A(ram, rom) {
   const i = u16(ram.u16(RNG.state)) & 0x7f;                   // $243120/$243122
   return rom.u8(RNG_24311A.table + i);                        // $243130
 }
+
+// =========================== W191: POOL-D DEBRIS RNG ======================
+
+/** `$242CAC`'s signed-byte table: 256 bytes `$242D24..$242E23`, pinned by
+ * `$242E24`, the next shared-counter draw entry. */
+export const RNG_242CAC = { table: 0x242d24, entries: 256 };
+
+/** `$242CAC` -- the signed-byte twin of `$242FDE` over its own table. */
+export function drawSigned242CAC(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);
+  const i = u16(ram.u16(RNG.state));
+  const idx = i >= 0x8000 ? i - 0x10000 : i;
+  const b = rom.u8(RNG_242CAC.table + idx);
+  return b >= 0x80 ? b - 0x100 : b;
+}
+
+/** `$24397A`'s 64 packed position offsets at `$24399C..$243A9B`. */
+export const RNG_24397A = { table: 0x24399c, entries: 64 };
+
+/** `$24397A` -- advance the shared counter and return one packed long offset. */
+export function drawLong24397A(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);
+  const i = u16(ram.u16(RNG.state)) & 0x3f;
+  return rom.u32(RNG_24397A.table + i * 4);
+}

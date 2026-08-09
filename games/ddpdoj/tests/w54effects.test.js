@@ -464,14 +464,14 @@ test('the driver walks ALL EIGHTY SLOTS every frame -- a free slot costs a '
 });
 
 // ===========================================================================
-// 5. THE REFUSAL -- pool D receives NOTHING, and it is said out loud
+// 5. THE SUB-SPAWN -- pool D receives the requested secondary debris
 // ===========================================================================
 
-test('$288ED0 the SUB-SPAWN is COUNTED AND REFUSED: nothing is allocated from '
-  + 'pool D, the one-shot still fires, and ($16,A6) still reaches ($1d,A6)',
+test('$288ED0 the SUB-SPAWN allocates the requested records, the one-shot still '
+  + 'fires, and ($16,A6) still reaches ($1d,A6)',
   () => {
   const ram = new Ram();
-  const { ctx, log } = ctxOf();
+  const { ctx } = ctxOf();
   const a6 = slot(0);
   ram.setU16(a6 + B.sub12, 0x0001);      // TWO records asked for
   ram.setU16(a6 + B.sub14, 0x0400);
@@ -480,14 +480,12 @@ test('$288ED0 the SUB-SPAWN is COUNTED AND REFUSED: nothing is allocated from '
   assert.equal(subSpawn288ED0(ram, ctx, a6), true);
   assert.equal(ram.u8(a6 + B.f1d), 0x2a, '$288EEA move.b ($16,A6),($1d,A6)');
   assert.equal(ram.u16(a6 + B.sub12), 0xffff, '$288EFA -- the ONE-SHOT');
-  const n = log.report().join('\n');
-  assert.match(n, /\$289098/, 'the refusal is counted BY THE ALLOCATOR\'S ADDRESS');
-  assert.match(n, /2 sub-effect record/, 'and it says HOW MANY were refused');
-  // and the pool itself is untouched, which is the whole claim
   let liveD = 0;
-  for (let i = 0; i < POOL_D.slots; i++) if (ram.u8(POOL_D.base + i * POOL_D.stride)) liveD++;
-  assert.equal(liveD, 0);
-  assert.equal(ram.u16(POOL_D.count), 0, 'pool D CANNOT leak: nothing fills it');
+  for (let i = 0; i < POOL_D.slots; i++) {
+    if (ram.u16(POOL_D.base + i * POOL_D.stride) !== 0) liveD++;
+  }
+  assert.equal(liveD, 2, 'the COUNT-MINUS-ONE input 1 allocates TWO records');
+  assert.equal(ram.u16(POOL_D.count), 2, 'pool D count tracks both records');
   // second call: $FFFF now, so nothing happens at all
   assert.equal(subSpawn288ED0(ram, ctx, a6), false, '$288ED4 bmi $288F00');
 });
@@ -611,18 +609,18 @@ test('the $221520 ROM window is 4,344 bytes and its extent is asserted against '
     'and the window\'s far end is re-derived by walking the scripts, not stated');
 });
 
-test('TYPE5_PORTED gained $288E4E and did NOT gain $2890F2', () => {
+test('TYPE5_PORTED gained the pool B and pool D drivers', () => {
   const s = SRC('type5.js');
   assert.ok(/0x288e4e,\s+\/\/ #5/.test(s), 'pool B\'s driver RUNS');
-  assert.ok(!/0x2890f2,\s+\/\/ #6/.test(s),
-    'pool D\'s driver does NOT -- and the allocator is refused with it, so the '
-    + 'pool cannot leak (src/effects.js THE REFUSAL)');
+  assert.ok(/0x2890f2,\s+\/\/ #6/.test(s), 'pool D\'s driver RUNS');
   assert.ok(/effectDriver: 0x288e4e/.test(s));
+  assert.ok(/subEffectDriver: 0x2890f2/.test(s));
 });
 
-test('$288EF0 does NOT call $289098 -- the refusal is in the source, by name', () => {
+test('$288EF0 calls $289098 and the allocator is present in the source', () => {
   const s = SRC('effects.js');
-  assert.ok(/REFUSED \(not called\)/.test(s));
-  assert.ok(/POOL_D\.allocator/.test(s), 'and it is counted BY THAT ADDRESS');
+  assert.ok(/spawnSubEffect289098\(ram, ctx\.rom, ctx, packed/.test(s),
+    '$288EF0 dispatches to the pool-D allocator');
+  assert.ok(/runSubEffectDriver/.test(s), '$2890F2 has a driver');
   assert.ok(/allocator: 0x289098/.test(s));
 });

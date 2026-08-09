@@ -81,6 +81,7 @@ import { resetAndInstallStage26331E } from './spawn.js';
 import { bcdAdd, scoreByMask } from './score.js';
 import { enqueueRegistersThroughStub, enqueueRegisters, enqueueRequest } from './spritequeue.js';
 import { install24150A } from './palette.js';
+import { clearEffectPool, clearSubEffectPool } from './effects.js';
 
 export const SE = {
   stage: 0x813092, stageX2: 0x813094, stageX4: 0x813096,   // $25FD0C
@@ -165,8 +166,10 @@ export function rebuildWorld25FD38(ram, ctx) {
   // `$81332C..$816B79`, then install the current stage through `$263386`.
   resetAndInstallStage26331E(ram, ctx.rom, ctx.unportedLog, ctx.prot);
   ctx.stageEndEvent?.('spawn-install', ram.u32(0x8132cc));
-  // $25FD40..$25FD58 -- these five subsystem resets remain deferred by W36.
-  for (const a of [0x288e0c, 0x289084, 0x289ae0, 0x28ac3a, 0x289f3a]) {
+  clearEffectPool(ram);                                 // $25FD40 jsr $288E0C
+  clearSubEffectPool(ram);                              // $25FD46 jsr $289084
+  // $25FD4C..$25FD58 -- these three subsystem resets remain deferred.
+  for (const a of [0x289ae0, 0x28ac3a, 0x289f3a]) {
     note(ctx, a, `$25FD38's subsystem reset $${a.toString(16).toUpperCase()} `
       + `-- counted, not run (W62 ports the stage machine, not the subsystems)`);
   }

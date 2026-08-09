@@ -310,7 +310,7 @@ test('$2634F4 walks the SPAWN SCRIPT before the 58-slot driver',
 // ===========================================================================
 // type 5 itself: the three calls must RUN, not be counted.
 // ===========================================================================
-test('TYPE5_PORTED is SEVENTEEN of the twenty-three, and the list is the ROM\'s', () => {
+test('TYPE5_PORTED is EIGHTEEN of the twenty-three, and the list is the ROM\'s', () => {
   assert.equal(TYPE5.calls.length, 23, '$28B5E6..$28B66A');
   // W33 added call #3, `$28AD54`'s sub-record reaper. W173 adds its inseparable
   // `$28AD70` fall-through for type `$84`'s bounded cue descriptor family.
@@ -341,7 +341,7 @@ test('TYPE5_PORTED is SEVENTEEN of the twenty-three, and the list is the ROM\'s'
   // as its allocator `$27F92A` (src/bee.js allocBee27F92A, called from
   // handlers.js deathSeq8A) and its clear `$27F87C`, for the same W33 sec 4
   // reason: a pool with a producer and no consumer is a leak.
-  assert.equal(TYPE5_PORTED.size, 17);
+  assert.equal(TYPE5_PORTED.size, 18);
   assert.ok(TYPE5_PORTED.has(TYPE5.bombDriver));
   assert.equal(TYPE5.calls.indexOf(TYPE5.bombDriver), 6, '$28B5F8 is call #7');
   assert.ok(TYPE5_PORTED.has(TYPE5.itemDriver));
@@ -353,7 +353,9 @@ test('TYPE5_PORTED is SEVENTEEN of the twenty-three, and the list is the ROM\'s'
   assert.ok(TYPE5_PORTED.has(TYPE5.effectDriver));
   assert.ok(TYPE5.calls.includes(TYPE5.effectDriver));
   assert.equal(TYPE5.effectDriver, 0x288e4e);
-  assert.ok(!TYPE5_PORTED.has(0x2890f2), 'pool D stays REFUSED');
+  assert.ok(TYPE5_PORTED.has(TYPE5.subEffectDriver));
+  assert.ok(TYPE5.calls.includes(TYPE5.subEffectDriver));
+  assert.equal(TYPE5.subEffectDriver, 0x2890f2);
   assert.ok(TYPE5_PORTED.has(TYPE5.sparkDriver));
   assert.ok(TYPE5.calls.includes(TYPE5.sparkDriver));
   assert.equal(TYPE5.sparkDriver, 0x28a098);

@@ -282,6 +282,16 @@ if (u17.length !== SOUND.fileSize) {
 //
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
+  [18, 0x289820, 32, 4, 32, 0x2898a0,
+    'pool-D debris template 0 descriptor list'],
+  [18, 0x2898b0, 32, 4, 32, 0x289930,
+    'pool-D debris template 1 descriptor list'],
+  [18, 0x289940, 32, 4, 32, 0x2899c0,
+    'pool-D debris template 2 descriptor list'],
+  [18, 0x2899d0, 32, 4, 32, 0x289a50,
+    'pool-D debris template 3 descriptor list'],
+  [18, 0x289a60, 32, 4, 32, 0x289ae0,
+    'pool-D debris template 4 descriptor list'],
   [17, TYPE97_ART.animationTable, TYPE97_ART.frames, 4,
     TYPE97_ART.frames, 0x278288,
     'stage-2 type $97 body animation. Record +$36 walks raw byte offsets '
@@ -780,6 +790,8 @@ const SPR_SHARDS = Object.freeze([
   [17, 'boss', 'THE STAGE-1 BATTLESHIP: its hull $292F84 and the six OBJECT '
     + 'tables around it, plus stage-2 boss parts and late-game enemy families. '
     + 'These compact late-game families share one derived packed shard'],
+  [18, 'debris', 'POOL-D SECONDARY DEBRIS: all five 32-frame template lists '
+    + 'used by enemy and boss death explosions (W191)'],
 ]);
 const SPR_BOOT = [0];
 /** the order the deferred shards are FETCHED in -- measured first need, not
@@ -838,7 +850,7 @@ const SPR_BOOT = [0];
 // so putting it anywhere but last would delay a shard whose deadline is
 // twenty-five times nearer.  `demand()` still promotes it the moment a record
 // asks, exactly as it has since W47, and until it lands the page NAMES it.
-const SPR_ORDER = Object.freeze([0, 7, 6, 10, 9, 13, 12, 8, 14, 16, 15, 3,
+const SPR_ORDER = Object.freeze([0, 7, 6, 10, 9, 18, 13, 12, 8, 14, 16, 15, 3,
   1, 2, 4, 5, 11, 17]);
 
 // ---------------------------------------------------------------------------

@@ -293,7 +293,7 @@ test('the two weapon shards are DEFERRED and fetched FIRST among the deferred', 
   // where shard 1 wants art at +7.7 s. It is also the largest body here
   // (367.0 KiB), so it must not sit in front of anything. W170's small stage-2
   // type-$95 family shares this final late-game shard.
-  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 10, 9, 13, 12, 8, 14, 16, 15, 3,\s*1, 2, 4, 5, 11, 17\]\)/.test(s),
+  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 10, 9, 18, 13, 12, 8, 14, 16, 15, 3,\s*1, 2, 4, 5, 11, 17\]\)/.test(s),
     'the bullets (+0.7 s), the shots (the first fire frame), the LASER (the '
     + 'first held frame), the death explosion, THE BOMB, THE ITEM, the impact '
     + 'spark, W81\'s three enemy-art shards and W84\'s shard 3 all come before '
@@ -303,7 +303,7 @@ test('the two weapon shards are DEFERRED and fetched FIRST among the deferred', 
   // says, every shard whose first need is earlier than shard 1's must precede
   // it. This is the assertion the literal above cannot make on its own.
   const order = JSON.parse(s.match(/SPR_ORDER = Object\.freeze\((\[[\s\S]*?\])\)/)[1]);
-  for (const early of [7, 6, 10, 9, 13, 12, 8, 14, 16, 15, 3]) {
+  for (const early of [7, 6, 10, 9, 18, 13, 12, 8, 14, 16, 15, 3]) {
     assert.ok(order.indexOf(early) < order.indexOf(1),
       `shard ${early}'s first need is earlier than shard 1's +7.7 s, so it must `
       + 'be fetched first');
