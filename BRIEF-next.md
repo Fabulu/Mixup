@@ -1,5 +1,10 @@
 # BRIEF - what to do next on DoDonPachi DaiOuJou
 
+> **RETIRED QUEUE, retained for history.** This was the working queue on
+> 2026-08-08. Its sound, HUD, hyper, bee/rank, replay, coverage, and early
+> stage-2 items have since landed. Do not dispatch from this file. Use
+> `instructions.md`, live `git log`, and the newest numbered DDPDOJ worklogs.
+
 Written 2026-08-08 by the outgoing orchestrator. **This is the working brief.
 `CATCHUP.md` is the orientation, `HANDOVER.md` is the fundamentals, this file is
 the queue.**

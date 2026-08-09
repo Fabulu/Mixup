@@ -1,5 +1,12 @@
 # MIXUP - complete handover
 
+> **Historical fundamentals, not the current queue.** This document captures
+> project state from before DDPDOJ W175. Its methodology, paths, emulator notes,
+> and platform traps remain useful, but its game-status, counts, and next-work
+> sections are superseded by `instructions.md`, live `git log`, and the newest
+> numbered worklogs. In particular, Gradius is playable end to end and DDPDOJ
+> has sound, HUD, replay, complete stage 1, and stage-2 work through type `$96`.
+
 **Read this whole file before touching anything.** It is the only document that
 covers all three games, the method, the tooling, the traps, and where every
 artifact lives. Everything else is detail hanging off it.

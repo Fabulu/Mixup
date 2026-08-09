@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | stage 1 playable and being finished |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | stage 1 complete; stage 2 in progress |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -174,7 +174,9 @@ npm run typecheck                               # tsc over the ports - no ROM ne
 refuses to publish on a red gate *or on any skip*. `--only gradius` /
 `--only ddpdoj` gate one game; `--dry` gates and builds without deploying.
 
-Current: **2,399 unit tests green** - 740 Batman, 725 Gradius, 934 DaiOuJou.
+At DDPDOJ W175: **2,947 unit tests green** - 740 Batman, 725 Gradius, 1,482
+DaiOuJou. These are the recorded counts at that commit, not a substitute for
+running the relevant focused check after a change.
 The Gradius gate is not yet wired into the root runner (its header says so and
 why: two writers in one file).
 
@@ -237,19 +239,25 @@ start screen with level select and a starting power-up picker. They include
 checkpoint death-spiral) and `always-on-enemies`, which lifts the NES
 sprite-per-scanline cap without removing the flicker the game uses deliberately.
 
-### DoDonPachi DaiOuJou - stage 1, in flight
+### DoDonPachi DaiOuJou - stage 2 in progress
 
-The active work. Stage 1 is playable: enemies with bodies that draw, move, fire
-and die; shot, laser and bomb all working and visible; impacts sparking;
-explosions; the midboss killable; P capsules dropping and powering up; the stage
-running to its end at logic frame 19,217.
+The active work. Stage 1 is feature-complete and playable: scrolling terrain,
+enemies, bullets, weapons, items, bees, boss and death sequence, result screen,
+HUD, scoring and chaining, earned hypers, rank, sound and music, browser
+controls, and deterministic REC/PLAY are translated and live.
 
-Honest about what is not done: several enemy types are collidable but still
-emit no sprite record, the stage boss is not ported, and sound has not started.
-The standing bar for this game is **two** conditions - feature complete *and*
-oracle-clean - because satisfying one and reporting the pair is a mistake this
-project has made more than once. `docs/worklog/ddpdoj/` carries the per-wave
-record and the open debts.
+Stage 2 boots and scrolls. Its background elements and enemy program are
+installed, and the chronological enemy families `$95`, `$8D`, `$8F`, `$84`,
+`$90`, and `$96` are ported. At W175 the ROM-backed registry reports 314 of 332
+stage-2 records covered, with 18 records remaining and zero dynamic entries
+outside the static inventory. The next unsupported record is type `$8C` at
+`$232C00`.
+
+The full game is not complete. Stages 2 through 5, their bosses, later loops,
+remaining systems and presentation, and authentic slowdown still require
+ROM-backed translation and verification. Feature completion and oracle evidence
+remain separate claims. `instructions.md` and the newest numbered worklogs are
+the current state; older briefs are historical.
 
 ## Contributing
 

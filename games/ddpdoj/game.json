@@ -4,7 +4,7 @@
   "platform": "pgm",
   "year": 2002,
   "publisher": "Cave / AMI",
-  "blurb": "Vertical shooter on IGS PGM hardware. The ship is fully real: position, tilt, clamps, speed modes, both option pods, the shadows and the banking image are computed live and match the board byte for byte, in RAM and in the display list. The picture is pixel-exact against MAME. The whole stage-1 background scrolls from the game's own scroll program. The enemies ARE simulated -- spawned, moved, aimed, with their bullet patterns generated from the developers' own generators -- but SPRITE EMISSION is unported, so they do not draw yet; wave 37 took the recorded enemies off the screen on the owner's instruction, so the sky is empty rather than a replay. No drawn weapons, no sound.",
+  "blurb": "Vertical shooter on IGS PGM hardware, translated from the Version-B program rather than CPU-emulated. Stage 1 is feature-complete with live enemies, weapons, boss, result screen, HUD, chaining, hypers, rank, sound, music and replay. Stage 2 boots and scrolls; its background and first six chronological enemy families are ported, covering 314 of 332 spawn records at W175.",
   "status": "in-progress",
   "rom": {
     "set": "ddpdojblk",
@@ -32,7 +32,7 @@
     "mods": null,
     "input": null,
     "page": "index.html",
-    "pageNote": "code.page, NOT code.entry. The root launcher's card imports entry + mods + input and boots the game inline; this port has none of the three (it is not a CPU emulator, it is a translated main loop plus a replayed capture), so the picker links to its own page instead."
+    "pageNote": "code.page, NOT code.entry. The root launcher expects a generic inline boot contract, while this translated PGM main loop owns a dedicated TATE host, asset loader, frame cadence, Web Audio runtime, and REC/PLAY UI. The picker therefore links to its own page."
   },
   "input": {
     "note": "Bit POSITIONS in the P1 input mirror $803970, which is derived from the raw 68000 port word $C08000 by build A's $13D464 (one read per IRQ6, measured). The port takes the RAW PORT WORD as its input so the mirrors stay a genuinely compared field; src/input.js portWordFromBits() is the inverse, checked against the board: 1P Start alone -> $FFFE, P1 Button 3 held -> $FF7F. src/machine.js BIT is the authority and tests/web-input.test.js holds this table, BIT and src/web/input.js against each other.",
@@ -67,7 +67,7 @@
   "assets": {
     "dir": "assets",
     "build": "node games/ddpdoj/tools/export-web.mjs",
-    "note": "ROM-derived and gitignored, like every other game here. 363 KiB served, gzipped: BG and TX tiles DECODED to one byte per pixel, sprite streams RE-BASED into a compact address space, 161 frames of board capture, the seed RAM image and the player's tables. tools/bundlegate.mjs renders the whole demo off this bundle and must stay at 15955968/15955968 pixels against MAME."
+    "note": "ROM-derived and gitignored, like every other game here. BG and TX tiles are decoded to one byte per pixel and sprite streams are rebased into deferred shards. The board capture remains reference and seed material for state not yet translated; port-generated sprites are the default live source. tools/bundlegate.mjs renders the demo from the exported bundle and must remain 15955968/15955968 pixels against MAME."
   },
   "entries": [],
   "options": []

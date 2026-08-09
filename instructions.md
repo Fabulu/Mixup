@@ -1,48 +1,28 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-09, immediately after the owner asked all work to stop
-because the CLI broke.
+Last updated: 2026-08-09, after the owner restarted the buggy CLI and explicitly
+lifted the pause.
 
-## First response to the owner
+## Current directive
 
-Do not start another wave, deploy, spawn an agent, or change goal state yet.
-Tell the owner that the project is paused and ask these questions first:
+The CLI problem was external harness state and is resolved. Do not investigate
+or fix the CLI. The owner explicitly directed work to continue until the full
+project is finished.
 
-1. What exactly broke in the CLI, and what did it display or stop doing?
-2. Was the CLI failure related to the persisted goal showing `blocked`, agent
-   status, queued messages, or something else?
-3. Should the obsolete blocked goal be resumed/replaced with the full-game goal,
-   or should goal state remain untouched until the CLI problem is understood?
-4. After that is settled, should the first project action be independent review
-   and deployment of W175, or should the repository remain paused?
+The permanent full-game goal is active under thread
+`019fe582-cced-7ce0-ae2e-55dea8de48b2`: complete DoDonPachi DaiOuJou Black
+Label Version-B as readable JavaScript verified against the ROM, including all
+stages, bosses, loops, systems, presentation, sound, authentic timing, and
+slowdown. Individual waves are milestones, not the finish line.
 
-Do not infer the answers. The owner explicitly asked the previous AI to stop and
-leave this handoff.
+The project stopped at W175 only because the owner ordered the previous session
+to stop when the CLI broke. W175 had already been committed and pushed, but the
+orchestrator correctly did not review or deploy it and did not reserve W176.
+There was no game or repository blocker.
 
-## The goal-state problem
-
-The goal tool currently reports:
-
-- status: `blocked`
-- objective: an old five-item DOJ queue covering sound, HUD, bees/rank,
-  generalized coverage, and `$29540C`
-- thread id: `019fdfed-5db1-7d90-99d2-ca2b30c67668`
-- last reported usage: 608,435 tokens and 17,659 seconds
-
-That objective is stale. Sound, HUD/chaining, bee rank feed, and generalized
-coverage were completed after it was written, and work continued through stage
-2 type `$96`. Earlier in this session, creating a new goal was refused because
-the blocked goal was still treated as unfinished. The project itself is not
-technically blocked. This appears to be persisted CLI/orchestrator state.
-
-Do not mark it complete merely to clear it. Do not fabricate a new blocker.
-Ask the owner whether the CLI failure they saw is this goal-state mismatch and
-what they want done with it.
-
-The permanent project objective is in `AGENTS.md`: complete the full
-DoDonPachi DaiOuJou Black Label Version-B game as readable JavaScript verified
-against the ROM, including all stages, bosses, loops, systems, presentation,
-sound, authentic timing, and slowdown. Individual waves are only milestones.
+Resume with an independent W175 review. Deploy W175 only if the focused gates
+remain green, then reserve the next worklog number and continue with the first
+chronological unsupported stage-2 record, type `$8C` at `$232C00`.
 
 ## Exact repository and deployment state
 
@@ -102,9 +82,8 @@ The next honest chronological unsupported record is:
 - init body `$2789F6`
 - handler `$278C0E`
 
-If the owner authorizes resuming, first independently review W175 and deploy it
-only if green. Then reserve W176 and start the dependency-complete type `$8C`
-wave. Do not begin W176 while the requested pause is still in force.
+First independently review W175 and deploy it only if green. Then reserve W176
+and start the dependency-complete type `$8C` wave.
 
 Useful W175 tests and tools:
 
@@ -116,7 +95,7 @@ node games/ddpdoj/tools/export-web.mjs
 node tools/publish.mjs --only ddpdoj --dry
 ```
 
-Only after an independent green review and owner clearance to resume:
+Only after an independent green review:
 
 ```powershell
 node tools/publish.mjs --only ddpdoj
@@ -151,7 +130,7 @@ The owner also reported chaining as vital, specifically that it must rise on
 hits, decay when hits stop, and feed hypers. W161, W163, W164, and W166 close
 that reported cluster. Preserve those mechanics and their tests.
 
-## Read these files in this order after the owner answers
+## Read these files in this order before continuing
 
 1. `PROMPT.md`
 2. this `instructions.md`
@@ -216,6 +195,5 @@ stop request arrived after both agents had effectively finished. The writer had
 already committed and pushed W175; the auditor had made no files. The previous
 AI did not deploy W175 and did not start W176.
 
-This is a clean pause point. The next AI should solve the CLI/goal-state question
-with the owner first, then continue from W175 review rather than repeating the
-implementation or trusting an older queue.
+This was a clean pause point. The CLI question is resolved. Continue from W175
+review rather than repeating the implementation or trusting an older queue.

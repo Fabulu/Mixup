@@ -13,7 +13,7 @@
 // THIS COMMENT USED TO SAY "nothing published is a verbatim slice of a cartridge
 // ... and there is no allowlist". BOTH HALVES WERE FALSE, and had been since the
 // owner reverted the placeholder swap. SUBSTITUTE is empty; PUBLISH_VERBATIM
-// holds FIVE enumerated files that ARE verbatim cartridge slices and ARE
+// holds SIX enumerated files that ARE verbatim cartridge slices and ARE
 // published, each with its reasoning, printed on every build. The old wording
 // propagated into README.md and NOTICE.md before anyone checked it.
 //
@@ -80,18 +80,16 @@ const INCLUDE = ['index.html', 'games/index.json', 'shared',
 // intermediate nobody remembers is exactly how this would come back.
 const NEVER_SHIP = new Set(['prg.bin', 'chr.bin', 'prg.asm', 'input.test.js']);
 
-// THERE IS NO ALLOWLIST. There used to be one -- `SHIPPED_ANYWAY`, holding
+// THE OLD GENERAL ALLOWLIST IS GONE. There used to be one -- `SHIPPED_ANYWAY`, holding
 // exactly `player.tiles.bin`: 6974 B of the player's animation tile pool
 // lifted verbatim out of bank 2, which src/assets.js:82 fetches and without
 // which the port could not draw its player at all. So the guard found it,
 // named it, and was told to ship it anyway, on every deploy since the first.
 //
-// It is gone, and so is the mechanism, deliberately: an allowlist is a hole
-// somebody can widen with one line and a plausible reason. What replaced it is
-// SUBSTITUTE below -- the shipped build gets ORIGINAL placeholder art of the
-// same length and the same tile indexing, and the guard checks it like
-// anything else. If a future file genuinely cannot be published, the answer is
-// to not publish it, or to draw a replacement, not to re-open this door.
+// That broad mechanism is gone. What remains is SUBSTITUTE plus the explicit
+// six-entry PUBLISH_VERBATIM owner-decision map below. Every exception names one
+// exact fetched asset and prints its reason on every build; everything else is
+// still blocked.
 //
 // The Gradius chr/bank*.bin files never needed an entry: the renderer fetches
 // chr/tiles.u8, a re-indexed one-byte-per-pixel sheet, and the raw banks are
