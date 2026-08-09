@@ -1,6 +1,6 @@
 # W181: Stage-2 type `$93`
 
-Status: COMPLETE, RELEASE PENDING
+Status: COMPLETE
 
 ## Scope
 
@@ -62,4 +62,8 @@ allocations and five authentic declines, then stops honestly at record
 - Focused W181 behavior: 4 passed, zero failed/skipped.
 - Registry, coverage, integration, and both controlled-boot frontier checks
   pass after the measured five-decline expectation was recorded.
-- Release gate, deployment, and live confirmation are pending.
+- Release gate: 1,511 passed, zero failed/skipped; bundle/web and ROM-leak
+  checks passed.
+- Commit `cc74af2` contains the W181 port and current-state docs.
+- Published and confirmed live as build `20260809114953` at
+  `https://gbtman.pages.dev/games/ddpdoj/`.

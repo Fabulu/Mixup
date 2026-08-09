@@ -3,7 +3,7 @@
 > **HISTORICAL DELTA, not current status.** This narrative records the rapid
 > 2026-08-06 through 2026-08-08 transition and intentionally preserves the
 > claims made at each checkpoint. Later sections supersede earlier ones, and
-> DDPDOJ has since advanced through W180. Use `instructions.md`, live `git log`,
+> DDPDOJ has since advanced through W181. Use `instructions.md`, live `git log`,
 > and the newest numbered worklogs for the current queue and counts.
 
 **You are resuming a project you last touched around DaiOuJou W26/W27 and
@@ -920,3 +920,18 @@ records, with 3 unknown. The regenerated web bundle contains all 16 type `$94`
 animation streams and 2,742 streams total. The release passed 1,507 tests with
 zero failures or skips, bundle/web and ROM-leak gates, deployment, and stable
 live polls. Build `20260809112012` is live.
+
+## 9d. UPDATE -- 2026-08-09: W181 TYPE `$93` IMPLEMENTED
+
+W181 ports the sole stage-2 type `$93` record at `$232EF0`, clock `$0197`.
+The exact `$279EBA..$27A0E0` closure covers initialization, threshold damage,
+draw, BCD score `$15`, high-bit effect kinds `$85/$0D/$85`, the 19-frame death
+linger, terminal `$27F8F0` impact request, and free.
+
+The controlled boot now completes 329 records with 324 allocations and five
+authentic declines, then stops honestly at type `$86` body `$275BB6`, record
+`$233018`, clock `$01D5`. Coverage is 41/256 enemy types and 330/332 stage-2
+records, with 2 unknown. The regenerated web bundle adds the sole `$237470`
+body stream and contains 2,743 streams total. The release passed 1,511 tests
+with zero failures or skips, bundle/web and ROM-leak gates, deployment, and
+stable live polls. Build `20260809114953` is live.
