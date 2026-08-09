@@ -562,6 +562,12 @@ SHOT_WINDOWS.extend([
                        "closure, including nine art-pointer tables"),
     (0x29BB1E, 0x00D6, "W185: complete deferred type-$4D closure: stub, init, "
                        "overlapping prototype, handler and eight-frame art"),
+    (0x297B22, 0x00C6, "W186: complete stage-2 boss MAIN2 init/step and sixteen-"
+                       "waypoint table through the next MAIN script"),
+    (0x29804C, 0x002A, "W186: complete A3/D3 randomized heading driver"),
+    (0x299194, 0x0220, "W186: complete A4/F3 attack conductor and four-pair "
+                       "A1 choice table through the next A4 script"),
+    (0x2998AC, 0x0070, "W186: complete fourteen-pair stage-2 boss A1 table"),
     (0x298310, 0x0956, "W183: complete stage-2 boss multi-part damage controller, "
                        "four part-death helpers, their effect tables, death latch "
                        "and timeout tail through the A4 table at $298C66"),
@@ -2867,6 +2873,22 @@ def check_stage2_spawn_data(d: bytes) -> None:
             and d[0x29BB64:0x29BB66] == bytes.fromhex("4eb9")
             and d[0x29BB4A + 26:0x29BB4A + 28] == bytes.fromhex("4eb9")):
         raise SystemExit("W185: type $4D registry/prototype overlap drifted")
+    boss2_f3_closures = [
+        (0x297B22, 0x297BE8,
+         "fab498c2d60bc352cd1a58b9726d70ebe2f94f7862912971a9ee3aee9aec65a5"),
+        (0x29804C, 0x298076,
+         "85d69b11b21a803a58af02d31ae47ebe95f3408835fd5fe0b467cd91c1065e5d"),
+        (0x299194, 0x2993B4,
+         "09ad6e637a4910a60ac57a29618feba9a50797b71d57e5407682068825431c6d"),
+        (0x2998AC, 0x29991C,
+         "550da5d7fa3124b242965f654b46fca2619cddb789147295c3d16b563245d85e"),
+    ]
+    for start, end, expected in boss2_f3_closures:
+        if hashlib.sha256(d[start:end]).hexdigest() != expected:
+            raise SystemExit(f"W186: stage-2 boss F3 closure ${start:06X} drifted")
+    if d[0x2993A4:0x2993B4] != bytes.fromhex(
+            "00060040000700a00008004000090030"):
+        raise SystemExit("W186: stage-2 boss F3 attack-choice table drifted")
     type30_records = [(script + i * 8, u16(d, script + i * 8),
                        u16(d, script + i * 8 + 6) & 0x0FFF)
                       for i in range(332) if d[script + i * 8 + 4] == 0x30]

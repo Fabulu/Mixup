@@ -131,6 +131,15 @@ function bootStage2(ROM) {
   return result;
 }
 
+// The two dynamic assertions inspect the same immutable boot result. Running
+// the 25-30 second seed twice added no coverage and made every frontier update
+// pay the full emulation cost twice.
+let bootStage2Cache;
+function bootStage2Once() {
+  if (!bootStage2Cache) bootStage2Cache = bootStage2();
+  return bootStage2Cache;
+}
+
 // ===========================================================================
 // 1. STATIC INVARIANTS -- the table geometry the boot depends on. These need
 // only the export (ROM-gated), not the ladder.
@@ -172,8 +181,8 @@ test('W133/2 the stage-1 $FFFF terminator is at $231704, where the seed parks '
 // ===========================================================================
 
 test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at boss '
-  + 'A4/F3 init $299194 after W185', { skip: SKIP }, () => {
-  const r = bootStage2();
+  + 'A1/E6 init $299E90 after W186', { skip: SKIP }, () => {
+  const r = bootStage2Once();
 
   // (a) stage 2 really booted: $813096 went 0 -> 4 (stage index 1, x4).
   assert.ok(r.stage2BootLf !== null,
@@ -190,8 +199,8 @@ test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at boss '
     + 'times); without window 2 the column-stream read would throw earlier');
 
   assert.ok(r.threw instanceof Unreached);
-  assert.strictEqual(r.threw.romAddress, 0x299194);
-  assert.strictEqual(r.throwClock, 0x0218);
+  assert.strictEqual(r.threw.romAddress, 0x299e90);
+  assert.strictEqual(r.throwClock, 0x0227);
   assert.notStrictEqual(r.threw.romAddress, STAGE2_ELEM0_CTOR,
     'W168\'s later background constructor is no longer the first stop');
 });
@@ -203,7 +212,7 @@ test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at boss '
 
 test('W133/4 installer replaces the old terminator and consumes type $30 before '
   + 'its scheduler frontier', { skip: SKIP }, () => {
-  const r = bootStage2();
+  const r = bootStage2Once();
 
   assert.strictEqual(r.seedLiveCursor, STAGE1_FFFF,
     `the seed must park LIVE_CURSOR at stage-1's $FFFF terminator $${STAGE1_FFFF.toString(16)} `
@@ -211,10 +220,10 @@ test('W133/4 installer replaces the old terminator and consumes type $30 before 
     + 'no-garbage-spawn argument has no foundation');
   assert.ok(r.game.stageEndEvents.some((e) => e[0] === 'spawn-install'
     && e[2] === 0x2325d0), '$26331E/$263386 installed stage 2 at clock zero');
-  assert.strictEqual(r.game.allocEvents.get('spawn-script'), 326,
-    '326 of the 331 consumed records allocate slots; five authentically decline');
-  assert.strictEqual(r.game.ram.u32(LIVE_CURSOR), 0x233028,
-    'the cursor advances past type $30 to the later type-$31 record at clock $01E3');
-  assert.strictEqual((r.game.ram.u32(LIVE_CURSOR) - 0x2325d0) / 8, 331,
-    'the live cursor proves the type-$30 record was consumed before MAIN starts');
+  assert.strictEqual(r.game.allocEvents.get('spawn-script'), 327,
+    '326 stage records allocate and F3 adds one deferred type-$4D satellite');
+  assert.strictEqual(r.game.ram.u32(LIVE_CURSOR), 0x233030,
+    'the later E6 frontier lets the final type-$31 record run before the terminator');
+  assert.strictEqual((r.game.ram.u32(LIVE_CURSOR) - 0x2325d0) / 8, 332,
+    'the live cursor proves every stage-2 record was consumed before E6 starts');
 });

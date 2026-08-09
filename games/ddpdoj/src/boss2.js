@@ -10,9 +10,11 @@ import { runStageAdvance242952 } from './stageend.js';
 import { u16, i16, i32 } from './ram.js';
 import { scoreHit, scoreKill } from './score.js';
 import { spawnEffect, B } from './effects.js';
-import { drawWord242EC2 } from './rng.js';
+import { drawByte242E24, drawSigned242FDE, drawWord242EC2 } from './rng.js';
+import { aim64, slew64, AimTables } from './aim.js';
 import { livePlayers2428A6, bigBurst28B4BE } from './boss.js';
-import { scrollCompensate } from './movement.js';
+import { applyVelocity, scrollCompensate } from './movement.js';
+import { dist242494 } from './bossscripts.js';
 import { install24150A } from './palette.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
@@ -20,10 +22,17 @@ import { enqueueRegistersThroughStub } from './spritequeue.js';
 import {
   runScheduler25962E, registerScript, seqStart2598D0, a3Start259962,
   a3Stop2599EC, a2Stop25994A, a1Clear259B34, a4Clear2598A2,
-  a4Start25980C, seqStop2598BE,
+  a4Start25980C, seqStop2598BE, a1Start259A18, a1Running259A4A,
 } from './scheduler.js';
 
 const note = (ctx, addr, what) => (ctx.unportedLog ?? ctx.unported)?.note(addr, what);
+
+const AIM_TABLES = new WeakMap();
+function aimTables(rom) {
+  let tables = AIM_TABLES.get(rom);
+  if (!tables) { tables = new AimTables(rom); AIM_TABLES.set(rom, tables); }
+  return tables;
+}
 
 const ANIM_A = [
   [0x127, 0x10, 0x0f], [0x126, 0x12, 0x0d], [0x128, 0x17, 0x08],
@@ -317,6 +326,165 @@ function main0Init297A10(ram, rom, ctx, a4) {
 
 registerScript(0x297a10, main0Init297A10);
 registerScript(0x297a28, main0Step297A28);
+
+function main2Waypoint(ram, rom, a4) {
+  const at = 0x297ba8 + ram.u16(a4);
+  return { y: rom.u16(at), x: rom.u16(at + 2) };
+}
+
+/** `$297B48`, MAIN2 STEP: wander the boss through its sixteen waypoints. */
+function main2Step297B48(ram, rom, ctx, a4) {
+  const a5 = ctx.bossRec;
+  const a6 = ctx.bossSubRec;
+  let target = main2Waypoint(ram, rom, a4);
+  const wanted = aim64(aimTables(rom), ram.u16(a6 + 0x02), ram.u16(a6 + 0x04),
+    target.y, target.x);
+  ram.setU8(a6 + 0x1b, slew64(ram.u8(a6 + 0x1b), wanted));
+  applyVelocity(ram, ctx.tables, a5);
+  target = main2Waypoint(ram, rom, a4);
+  const distance = dist242494(ram.u16(a6 + 0x02), ram.u16(a6 + 0x04),
+    target.y, target.x);
+  if (i16(distance) <= 0x0100) {
+    ram.setU16(a4, (ram.u16(a4) + 4) & 0x003f);
+    ram.setU8(a6 + 0x1a, 4);
+    ram.setU8(a6 + 0x1a, ram.u8(a6 + 0x1a) - drawSigned242FDE(ram, rom));
+  }
+  placeBoss2Parts297990(ram, a6);
+}
+
+/** `$297B22`, MAIN2 INIT. The ROM falls straight into STEP. */
+function main2Init297B22(ram, rom, ctx, a4) {
+  const a6 = ctx.bossSubRec;
+  ram.setU16(a4, 0);
+  ram.setU8(a6 + 0x1a, 4);
+  const target = main2Waypoint(ram, rom, a4);
+  ram.setU8(a6 + 0x1b,
+    aim64(aimTables(rom), ram.u16(a6 + 0x02), ram.u16(a6 + 0x04),
+      target.y, target.x));
+  main2Step297B48(ram, rom, ctx, a4);
+}
+
+registerScript(0x297b22, main2Init297B22);
+registerScript(0x297b48, main2Step297B48);
+
+const F3_ATTACKS = [
+  [6, 0x0040], [7, 0x00a0], [8, 0x0040], [9, 0x0030],
+];
+
+function f3AttacksRunning(ram) {
+  return [6, 7, 8, 9].some((id) => a1Running259A4A(ram, id));
+}
+
+/** `$2991BC`, A4/F3 STEP: conduct the stage-2 boss's first attack cycle. */
+function f3Step2991BC(ram, rom, ctx, a4) {
+  const a6 = ctx.bossSubRec;
+
+  if (ram.u8(a4 + 0x02) === 0) {
+    const timer = ram.u16(a4 + 0x04);
+    if (timer !== 0) {
+      const next = u16(timer - 1);
+      ram.setU16(a4 + 0x04, next);
+      if (next === 0) {
+        ram.setU16(a6 + 0x148, 0);                     // $298BDA
+        if (ram.u16(0x813098) !== 0) a3Stop2599EC(ram, 13);
+        const slot = a1Start259A18(ram, 6);
+        ram.setU16(slot + 0x04, 0x00a0);
+      }
+    } else if (!a1Running259A4A(ram, 6)) {
+      ram.setU8(a4 + 0x02, 2);
+    }
+  }
+
+  if (ram.u8(a4 + 0x02) === 2 && !f3AttacksRunning(ram)) {
+    let choice;
+    do choice = drawByte242E24(ram, rom) & 3;
+    while (choice === ram.u16(a4 + 0x06));
+    ram.setU16(a4 + 0x06, choice);
+    const [id, duration] = F3_ATTACKS[choice];
+    const slot = a1Start259A18(ram, id);
+    ram.setU16(slot + 0x04, duration);
+    const count = u16(ram.u16(a4 + 0x08) + 1);
+    ram.setU16(a4 + 0x08, count);
+    if (count === 3) {
+      ram.setU16(a4 + 0x08, 0);
+      ram.setU8(a4 + 0x02, 3);
+      ram.setU16(a4 + 0x04, 0x0040);
+    }
+  }
+
+  if (ram.u8(a4 + 0x02) === 3 && !f3AttacksRunning(ram)) {
+    const timer = ram.u16(a4 + 0x04);
+    if (timer !== 0) {
+      const next = u16(timer - 1);
+      ram.setU16(a4 + 0x04, next);
+      if (next === 0) {
+        ram.setU16(a4 + 0x0c, 0x0020);
+        ram.setU16(a4 + 0x0e, 0x4040);
+        ram.setU16(a4 + 0x10, 4);
+      }
+    } else {
+      if (!a1Running259A4A(ram, 11)) {
+        const slot = a1Start259A18(ram, 11);
+        ram.setU16(slot + 0x0c, ram.u16(a4 + 0x0e));
+        const cadence = ram.u8(a4 + 0x0e);
+        if (cadence !== 0x10) {
+          const reduced = (cadence - 8) & 0xff;
+          ram.setU8(a4 + 0x0e, ((reduced << 24) >> 24) > 0x10 ? reduced : 0x10);
+        }
+        const volleys = u16(ram.u16(a4 + 0x10) - 1);
+        ram.setU16(a4 + 0x10, volleys);
+        if (volleys === 0) ram.setU8(a4 + 0x02, 2);
+      }
+      if (ram.u8(a4 + 0x02) === 3 && !a1Running259A4A(ram, 10)) {
+        const old = ram.u8(a4 + 0x0c);
+        ram.setU8(a4 + 0x0c, old - 1);
+        if (old === 0) {
+          ram.setU8(a4 + 0x0c, ram.u8(a4 + 0x0d));
+          const slot = a1Start259A18(ram, 10);
+          ram.setU16(slot + 0x04,
+            (drawByte242E24(ram, rom) & 3) + ram.u16(a4 + 0x0a));
+        }
+      }
+    }
+  }
+
+  // State 4 has no producer in the cartridge, but this dormant tail is literal.
+  if (ram.u8(a4 + 0x02) === 4
+      && !a1Running259A4A(ram, 10) && !a1Running259A4A(ram, 11)) {
+    ram.setU8(a4 + 0x02, 0);
+    ram.setU16(a4 + 0x04, 0x0040);
+  }
+}
+
+/** `$299194`, A4/F3 INIT. The ROM falls straight into STEP. */
+function f3Init299194(ram, rom, ctx, a4) {
+  ram.setU8(a4 + 0x02, 0);
+  seqStart2598D0(ram, 2);
+  a3Start259962(ram, 3);
+  ram.setU16(a4 + 0x04, 0x0040);
+  ram.setU16(a4 + 0x08, 0);
+  ram.setU16(a4 + 0x06, 0);
+  ram.setU16(a4 + 0x0a, 2);
+  f3Step2991BC(ram, rom, ctx, a4);
+}
+
+/** `$298066`, D3 STEP: rotate the center heading modulo `$40`. */
+function d3Step298066(ram, _rom, ctx, a4) {
+  const a6 = ctx.bossSubRec;
+  ram.setU8(a6 + 0x11b, (ram.u8(a6 + 0x11b) + ram.i8(a4 + 0x06)) & 0x3f);
+}
+
+/** `$29804C`, D3 INIT. The ROM falls straight into STEP. */
+function d3Init29804C(ram, rom, ctx, a4) {
+  ram.setU16(a4 + 0x04, 0);
+  ram.setU8(a4 + 0x06, drawSigned242FDE(ram, rom) === 0 ? 0xff : 1);
+  d3Step298066(ram, rom, ctx, a4);
+}
+
+registerScript(0x299194, f3Init299194);
+registerScript(0x2991bc, f3Step2991BC);
+registerScript(0x29804c, d3Init29804C);
+registerScript(0x298066, d3Step298066);
 
 /** `$297F60`, D0 STEP: advance the root animation selector every 3 calls. */
 function d0Step297F60(ram, _rom, ctx, _a4) {

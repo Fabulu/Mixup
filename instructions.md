@@ -95,12 +95,18 @@ it, and follow every script start/stop it performs through the boss attack graph
 Useful current tests and tools:
 
 ```powershell
-node --test games/ddpdoj/tests/w185boss2a2.test.js games/ddpdoj/tests/w184boss2d0.test.js
-python games/ddpdoj/tools/dojcoverage.py
-python games/ddpdoj/tools/export-tables.py --verify
-node games/ddpdoj/tools/export-web.mjs
+node --test games/ddpdoj/tests/w186boss2f3.test.js games/ddpdoj/tests/w185boss2a2.test.js
+python games/ddpdoj/tools/export-tables.py
+node --test games/ddpdoj/tests/w133stage2boot.test.js
 node tools/publish.mjs --only ddpdoj --dry
 ```
+
+`export-tables.py` verifies every invariant before writing, so do not precede
+it with a redundant `--verify` run. The W133 tests share one immutable seeded
+boot result; keep both assertions in one invocation. Run `dojcoverage.py` only
+when a source registry, spawn script, or BGELEM family changed. Run
+`export-web.mjs` when sprite/audio harvest declarations changed or once at the
+publish boundary, not repeatedly during a code-only boss slice.
 
 ## Recent project state that supersedes the old brief
 
@@ -179,6 +185,16 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
   fidelity-critical ROM translation or difficult architecture.
 - Poll agents only at meaningful milestones or with long waits. The owner asked
   to reduce polling because it consumed too many tokens.
+- Give each non-overlapping ROM closure one static-analysis owner. That owner
+  reports code, dependency graph, assets, and next frontier together; do not
+  duplicate the same slice across separate recon, graph, asset, reviewer, and
+  QA agents. Split agents by disjoint address ranges only when the work can run
+  independently.
+- Group compact same-frame scheduler dependencies into one delivery slice. A
+  newly registered conductor must not become a publication merely to stop one
+  call later at a tiny MAIN or D script that static analysis already bounded.
+- Use one focused behavior check plus one seeded product smoke per meaningful
+  slice. Do not rerun unchanged prior suites or coverage reports.
 - Before a new wave, enumerate numeric worklogs and atomically reserve max+1 as
   specified in `AGENTS.md`. Never reuse gaps or killed numbers.
 - Never use `git add -A`. Use a private index and stage exact intended files.
