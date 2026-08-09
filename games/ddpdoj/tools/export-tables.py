@@ -2796,8 +2796,8 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W182: next frontier is not $233020 type $30 idx $000")
 
     # W183: the final stage-2 spawn record is the boss entry. Static analysis
-    # closes its spawn-time init/data and wrapper, then follows the installed
-    # scheduler tables to the first honest internal frontier, MAIN init $297A10.
+    # closes its spawn-time init/data and wrapper, follows the installed tables
+    # through arrival MAIN 0, and pins A3/D0 init $297F54 as the next frontier.
     if hashlib.sha256(d[0x297118:0x2973B8]).hexdigest() != (
             "578e3ee78b5a9da04e1dd90ac30475f09db7b4832e0d74bc501ea08e2b93a5fb"):
         raise SystemExit("W183: type $30 entry closure $297118..$2973B8 drifted")

@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-09, after W182 publication.
+Last updated: 2026-08-09, after W183 publication.
 
 ## Current directive
 
@@ -14,10 +14,10 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The old W175 pause is resolved. W176 through W182 are live. W182 ports the sole
-stage-2 type `$86` record and repairs the shared type `$85/$86` aim, cue cursor,
-and cue-spawn path. Continue from the final unsupported stage-2 type `$30`
-record. Do not repeat W175 through W182.
+The old W175 pause is resolved. W176 through W183 are live. W183 closes the
+332/332 stage-2 spawn script and translates type `$30`'s boss entry, complete
+damage controller, A4 bootstrap, and arrival MAIN 0. Continue from A3/D0 init
+`$297F54`. Do not repeat W175 through W183.
 
 ## Exact repository and deployment state
 
@@ -32,6 +32,7 @@ At handoff:
 - W180 is committed, pushed, and deployed
 - W181 is committed, pushed, and deployed
 - W182 is committed, pushed, and deployed
+- W183 is committed, pushed, and deployed
 - W175 live build: `20260809081027`
 - W176 live build: `20260809092221`
 - W177 live build: `20260809095334`
@@ -40,6 +41,7 @@ At handoff:
 - W180 live build: `20260809112012`
 - W181 live build: `20260809114953`
 - W182 live build: `20260809124334`
+- W183 live build: `20260809140956`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
 - no agent or command is running now
 
@@ -63,36 +65,34 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W182 is complete and live:
+W183 is complete and live:
 
 - worklog: `docs/worklog/ddpdoj/182-impl-stage2-type86.md`
-- stage-2 type `$86` is ported at record `$233018`, clock `$01D5`
-- init stub/body: `$275BAE` / `$275BB6`; shared handler: `$275914`
-- its movement, shared prototypes, three threshold cues, aimed heading art,
-  firing, kind `$08` death drop, effects, sound, and free are included
-- stage-2 coverage is 331/332 records with 1 unknown
-- enemy-type coverage is 42/256; dynamic-minus-static remains zero
-- the seeded boot completes the exact 330-record prefix with 325 allocations
-  and five authentic declines
-- all type `$86` body, heading, cue, item, and effect art was already packed;
-  the web bundle remains at 2,743 streams
+- stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
+- init stub/body: `$297118` / `$297120`; handler: `$297398`
+- the complete `$298310` multi-part controller, A4 bootstrap, and arrival MAIN
+  0 are included; the remaining boss program is not
+- stage-2 coverage is 332/332 records with 0 unknown
+- enemy-type coverage is 43/256
+- the seeded boot consumes 331 records with 326 allocations and five authentic
+  declines, then stops at A3/D0 init `$297F54`
+- no new art was needed; the web bundle remains at 2,743 streams
 
-The next honest chronological unsupported record is:
+The next honest unsupported boss dependency is:
 
-- record `$233020`
-- clock `$01DC`
-- type `$30`
-- movement index `$000`
-- init body `$297120`
-- handler `$297398`
+- A3/D script id `$00`
+- init `$297F54`
+- step `$297F60`
+- installed table base `$297EE0`
+- reached during type `$30`'s first handler frame at clock `$01DC`
 
-Reserve the next immutable worklog number and continue with the
-dependency-complete type `$30` wave.
+Reserve the next immutable worklog number, statically map the D0 dependency
+closure before implementation, and continue through the stage-2 boss program.
 
 Useful current tests and tools:
 
 ```powershell
-node --test games/ddpdoj/tests/w182type86.test.js games/ddpdoj/tests/w133stage2boot.test.js games/ddpdoj/tests/w167coverage.test.js
+node --test games/ddpdoj/tests/w183type30.test.js games/ddpdoj/tests/w133stage2boot.test.js games/ddpdoj/tests/w167coverage.test.js
 python games/ddpdoj/tools/dojcoverage.py
 python games/ddpdoj/tools/export-tables.py --verify
 node games/ddpdoj/tools/export-web.mjs
@@ -115,7 +115,7 @@ Important completed work:
 - W165: replay parity and the obstructive recording/help tooltip behavior
 - W166: bee chain/rank/hyper feed
 - W167: reusable bidirectional static/dynamic coverage
-- W168-W182: stage-2 background elements, stage install, and enemy types `$95`,
+- W168-W183: stage-2 background elements, stage install, and enemy types `$95`,
   `$8D`, `$8F`, `$84`, `$90`, `$96`, `$8C`, `$91`, `$92`, `$97`, `$94`, `$93`,
   and `$86`
 - Gradius commit `21fed98`: restored title/menu nametable after demo return
@@ -188,8 +188,8 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W182 closed the sole stage-2 type `$86` record and moved the controlled frontier
-from `$233018` to `$233020`. Its 1,515-test release, controlled boot, bundle/web
-gates, ROM-leak guard, deployment, and stable live polls pass. Build
-`20260809124334` is live. Continue with type `$30`; the full-game goal remains
-active after every wave.
+W183 closed the final stage-2 spawn record and moved the controlled frontier
+inside the boss program to A3/D0 init `$297F54`. Its 1,519-test release,
+controlled boot, bundle/web gates, ROM-leak guard, deployment, and stable live
+polls pass. Build `20260809140956` is live. Continue through the statically
+mapped boss scripts; the full-game goal remains active after every wave.

@@ -174,7 +174,7 @@ npm run typecheck                               # tsc over the ports - no ROM ne
 refuses to publish on a red gate *or on any skip*. `--only gradius` /
 `--only ddpdoj` gate one game; `--dry` gates and builds without deploying.
 
-At DDPDOJ W182: **2,980 unit tests green** - 740 Batman, 725 Gradius, 1,515
+At DDPDOJ W183: **2,984 unit tests green** - 740 Batman, 725 Gradius, 1,519
 DaiOuJou. These are the recorded release counts, not a substitute for
 running the relevant focused check after a change.
 The Gradius gate is not yet wired into the root runner (its header says so and
@@ -246,12 +246,12 @@ enemies, bullets, weapons, items, bees, boss and death sequence, result screen,
 HUD, scoring and chaining, earned hypers, rank, sound and music, browser
 controls, and deterministic REC/PLAY are translated and live.
 
-Stage 2 boots and scrolls. Its background elements and enemy program are
-installed, and the chronological enemy families `$95`, `$8D`, `$8F`, `$84`,
-`$90`, `$96`, `$8C`, `$91`, `$92`, `$97`, `$94`, `$93`, and `$86` are ported.
-At W182 the ROM-backed registry reports 331 of 332 stage-2 records covered, with
-1 record remaining and zero dynamic entries outside the static inventory. The
-final unsupported stage-2 enemy record is type `$30` at `$233020`.
+Stage 2 boots and scrolls. Its background elements and complete 332-record enemy
+program are installed, including chronological families `$95`, `$8D`, `$8F`,
+`$84`, `$90`, `$96`, `$8C`, `$91`, `$92`, `$97`, `$94`, `$93`, `$86`, and the
+type `$30` boss entry. W183 statically mapped and translated that entry, its
+complete multi-part damage/controller path, and arrival MAIN 0. The controlled
+runtime now stops honestly at the first remaining boss D-script, `$297F54`.
 
 The full game is not complete. Stages 2 through 5, their bosses, later loops,
 remaining systems and presentation, and authentic slowdown still require

@@ -3,7 +3,7 @@
 > **HISTORICAL DELTA, not current status.** This narrative records the rapid
 > 2026-08-06 through 2026-08-08 transition and intentionally preserves the
 > claims made at each checkpoint. Later sections supersede earlier ones, and
-> DDPDOJ has since advanced through W182. Use `instructions.md`, live `git log`,
+> DDPDOJ has since advanced through W183. Use `instructions.md`, live `git log`,
 > and the newest numbered worklogs for the current queue and counts.
 
 **You are resuming a project you last touched around DaiOuJou W26/W27 and
@@ -953,3 +953,19 @@ enemy types and 331/332 stage-2 records, with 1 unknown. All required type `$86`
 art was already packed, so the regenerated bundle remains at 2,743 streams. The
 release passed 1,515 tests with zero failures or skips, bundle/web and ROM-leak
 gates, deployment, and stable live polls. Build `20260809124334` is live.
+
+## 9f. UPDATE -- 2026-08-09: W183 STAGE-2 SPAWN SCRIPT COMPLETE
+
+W183 statically mapped type `$30` across all five stage scripts, then ported its
+sole occurrence at `$233020`, clock `$01DC`. The stage-2 spawn denominator is
+now 332/332 with zero unknown, and enemy-type coverage is 43/256.
+
+The wave includes the twelve-sub-record init, complete `$298310` multi-part
+damage/death controller, A4 bootstrap, and arrival MAIN 0 with its eight-child
+placement tail and six-bank palette animation. It does not claim the full boss:
+the next strict scheduler frontier is A3/D0 init `$297F54`.
+
+The controlled boot consumes 331 records, allocates 326, authentically declines
+five, and reaches `$297F54` at clock `$01DC`. The 1,519-test release, ROM export,
+coverage, 100.0000% bundle parity, HTTP rendering, ROM-leak guard, deployment,
+and three stable production polls pass. Build `20260809140956` is live.
