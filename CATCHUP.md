@@ -986,3 +986,20 @@ harvested before those objects become visible.
 Focused scheduler and controlled-boot checks, ROM export, asset build, the
 ROM-leak guard, deployment, and three stable production polls pass. Build
 `20260809144557` is live.
+
+## 9h. UPDATE -- 2026-08-09: W185 STAGE-2 BOSS PARTS VISIBLE
+
+W185 statically closed the stage-2 boss's eleven A2 draw objects and D13's
+deferred type `$4D` satellite. The A2 routines now emit one bucket-1 record each
+in the ROM's non-address pointer order, and type `$4D` reproduces its overlapping
+prototype, movement, scroll compensation, eight-frame animation, and cleanup.
+
+Static writer analysis constrained object 3 to eight of its nine structurally
+valid pointers. The exact art delta is therefore 176 reachable unique streams,
+all added to deferred boss shard 17. The bundle now contains 2,919 streams and
+remains 15,955,968/15,955,968 pixels identical to the reference capture.
+
+The controlled boot reaches the next honest boss frontier at A4/F3 init
+`$299194`, clock `$0218`. Enemy coverage rises to 44/256 while stage 2 remains
+332/332. Focused checks, ROM export, bundle parity, ROM-leak guard, deployment,
+and three production polls pass. Build `20260809151417` is live.
