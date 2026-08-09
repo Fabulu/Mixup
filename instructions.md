@@ -114,11 +114,13 @@ The next honest gameplay phase dependencies are:
 
 - pool-D allocator `$289098` and type-5 driver `$2890F2`, already requested by
   the translated Stage-2 boss-death effects
-- after pool D, the Stage-3 entry and its static spawn census
+- pool D is complete in W191, including its allocator, driver, five templates,
+  exact RNG consumption, and all 160 sprite streams
+- the next frontier is the Stage-3 entry and its static spawn census
 
-Reserve the next immutable worklog number, statically map pool D first, and
-close its allocator, driver, templates, RNG consumption, and reachable art in
-one delivery before moving to Stage 3.
+Reserve the next immutable worklog number and statically map the Stage-3 install
+and complete spawn-script census before translating its first unsupported live
+family.
 
 Useful current tests and tools:
 
@@ -171,10 +173,10 @@ that reported cluster. Preserve those mechanics and their tests.
 1. `PROMPT.md`
 2. this `instructions.md`
 3. `AGENTS.md`
-4. `docs/worklog/ddpdoj/190-impl-stage2-boss-f4-main5.md`
-5. `docs/worklog/ddpdoj/189-impl-stage2-boss-phases.md`
-6. `docs/worklog/ddpdoj/188-fix-stage1-death-hyper.md`
-7. `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
+4. `docs/worklog/ddpdoj/191-impl-pool-d-debris.md`
+5. `docs/worklog/ddpdoj/190-impl-stage2-boss-f4-main5.md`
+6. `docs/worklog/ddpdoj/189-impl-stage2-boss-phases.md`
+7. `docs/worklog/ddpdoj/188-fix-stage1-death-hyper.md`
 8. `docs/worklog/ddpdoj/167-impl-general-static-dynamic-coverage.md`
 9. `HANDOVER.md`
 10. relevant files under `docs/knowledge/`, especially 01, 02, 03, 09, and 10
@@ -237,9 +239,9 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W190 translates MAIN5 and the complete F4 dual-track conductor plus D6, D9,
-E1, E13, and E14. Its focused regression, seeded 9,000-frame product smoke,
-and 1,538-test release gate are green. The reachable Stage-2 boss scheduler
-graph is closed. Build `20260809215527` is live and confirmed three
-consecutive times. Continue with live pool-D secondary debris at
-`$289098/$2890F2`; the full-game goal remains active after every wave.
+W191 translates pool D `$289098/$2890F2`, including the five templates, exact
+RNG consumption, animation and lifetime driver, and all 160 reachable debris
+sprites in deferred shard 18. The focused debris regression and existing
+Stage-2 boss product smoke are green. Stage 2's reachable gameplay graph is
+closed. Continue with the Stage-3 install and static spawn census; the full-game
+goal remains active after every wave.
