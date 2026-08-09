@@ -499,8 +499,12 @@ SHOT_WINDOWS.extend([
     (0x28AC72, 0x041C, "W173: type $84's inseparable cue spawner, live driver "
                        "path, dispatch/emitter tables and kind-4/kind-8 "
                        "descriptors/art tables ($28AC72..$28B08E)"),
-    (0x279802, 0x0008, "W173: next chronological boundary type $90's exact "
-                       "run-length stub; unknown init body begins at $27980A"),
+    (0x279802, 0x02A0, "W174: complete stage-2 type $90 closure: run-length "
+                       "stub, init, palettes/prototypes, handler and exact "
+                       "four-word damage-particle table through the next "
+                       "local type $91 body at $279AA2"),
+    (0x27A44C, 0x0008, "W174: next chronological boundary type $96's exact "
+                       "run-length stub; unknown init body begins at $27A454"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -2226,6 +2230,56 @@ def check_stage2_spawn_data(d: bytes) -> None:
             and (u16(d, 0x2328D6) & 0x0FFF) == 0x037
             and d[0x279802:0x27980A] == bytes.fromhex("3b7c000000044e75")):
         raise SystemExit("W173: next chronological frontier is not $2328D0 type $90 idx $037")
+
+    # W174. Type $90 owns one long-form sub-record, a six-word record
+    # prototype, five palette pairs, and no indirect calls or firing subsystem.
+    if not (pc_rel_lea(0x27980A) == 0x27986C
+            and u16(d, 0x279810) == 0x4EB9 and u32(d, 0x279812) == 0x2637A2
+            and pc_rel_lea(0x279816) == 0x279860
+            and u16(d, 0x27981C) == 0x7005
+            and u16(d, 0x27981E) == 0x4EB9 and u32(d, 0x279820) == 0x26377A
+            and u16(d, 0x279824) == 0x4EB9 and u32(d, 0x279826) == 0x263808):
+        raise SystemExit("W174: type $90 init loader sequence drifted")
+    if d[0x279856:0x279860] != bytes.fromhex("100f110e100f100f100f"):
+        raise SystemExit("W174: type $90 five palette pairs drifted")
+    if [u16(d, 0x279860 + i * 2) for i in range(6)] != \
+            [0x0004, 0x7EFF, 0x0000, 0x0001, 0x0001, 0x0000]:
+        raise SystemExit("W174: type $90 six-word record prototype drifted")
+    if not (u16(d, 0x27986C) == 0xA000 and u32(d, 0x279872) == 0x002351AC
+            and 0x279888 - 0x27986C == 28):
+        raise SystemExit("W174: type $90 long-form sub prototype/art drifted")
+    if d[0x279888:0x27989E] != bytes.fromhex(
+            "532d0017640001184ef9002637624e714a2e00016bea"):
+        raise SystemExit("W174: type $90 countdown tail/handler entry drifted")
+    calls90 = {u32(d, a + 2) for a in range(0x279888, 0x279A92, 2)
+               if u16(d, a) == 0x4EB9}
+    required90 = {0x2638A6, 0x286096, 0x2431F4, 0x27F8FA,
+                  0x23D762, 0x28C2DC, 0x28615E, 0x289004}
+    if not required90 <= calls90:
+        raise SystemExit(f"W174: type $90 handler call closure drifted: "
+                         f"missing {sorted(required90 - calls90)!r}")
+    if any(u16(d, a) == 0x4E90 for a in range(0x279888, 0x279A92, 2)):
+        raise SystemExit("W174: type $90 unexpectedly gained an indirect call")
+    if any(0x281000 <= call < 0x282000 for call in calls90):
+        raise SystemExit("W174: type $90 unexpectedly gained a bullet-generator call")
+    if [u16(d, 0x279A92 + i * 2) for i in range(4)] != \
+            [0x0480, 0x0600, 0x0740, 0x08C0]:
+        raise SystemExit("W174: type $90 damage-particle vector table drifted")
+    if d[0x279A9A:0x279AA2] != bytes.fromhex("3b7c000000044e75"):
+        raise SystemExit("W174: type $90 closure no longer ends at type $91 body")
+    if d[0x27A44C:0x27A454] != bytes.fromhex("3b7c000000044e75"):
+        raise SystemExit("W174: chronological type $96 boundary stub drifted")
+    type90_records = [(script + i * 8, u16(d, script + i * 8),
+                       u16(d, script + i * 8 + 6) & 0x0FFF)
+                      for i in range(332) if d[script + i * 8 + 4] == 0x90]
+    if type90_records != [(0x2328D0, 0x0085, 0x037)]:
+        raise SystemExit(f"W174: stage-2 type $90 occurrence order drifted: "
+                         f"{type90_records!r}")
+    if d[0x233670:0x233676] != bytes.fromhex("7c003d004000"):
+        raise SystemExit("W174: type $90 movement stream idx $037 drifted")
+    if not (u16(d, 0x2329C0) == 0x00B8 and d[0x2329C4] == 0x96
+            and (u16(d, 0x2329C6) & 0x0FFF) == 0x03C):
+        raise SystemExit("W174: next chronological frontier is not $2329C0 type $96 idx $03C")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")

@@ -69,12 +69,11 @@
   ],
   "backlog": [
     {
-      "name": "stage2_enemy_frontier_type90",
+      "name": "stage2_enemy_frontier_type96",
       "shape": "ordered_record_dependency_backlog",
       "status": "STATIC_FRONTIER_PORT_OBSERVED",
       "field_order": ["record", "trigger", "type", "init_body", "handler", "movement_index", "movement_start", "movement_end_exclusive"],
       "remaining_records": [
-        [2304208, 133, 144, 2594826, 2594968, 55, 2307696, 2307702],
         [2304448, 184, 150, 2597972, 2598216, 60, 2307738, 2307746],
         [2305024, 280, 140, 2591222, 2591758, 63, 2307760, 2308494],
         [2305256, 319, 145, 2595490, 2595630, 43, 2307348, 2307354],
@@ -95,7 +94,7 @@
         [2306072, 469, 134, 2579382, 2578708, 2, 2306484, 2306518],
         [2306080, 476, 48, 2715936, 2716568, 0, 2306452, 2306458]
       ],
-      "reason": "W173 closes both type-$84 records and their bounded cue-pool dependency. The first chronological unsupported record is $2328D0, type $90 at clock $0085, body $27980A, handler $279898. The ordered 20-record list is derived from the live registries and ROM stage-2 script, never hand-selected at runtime."
+      "reason": "W174 closes the sole type-$90 record and its bounded init/handler/art dependency. The first chronological unsupported record is $2329C0, type $96 at clock $00B8, body $27A454, handler $27A548. The ordered 19-record list is derived from the live registries and ROM stage-2 script, never hand-selected at runtime."
     },
     {
       "name": "stage3_to_stage5_spawn_scripts",

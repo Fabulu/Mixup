@@ -26,6 +26,8 @@
 -- W172 adds type $8F rows with the same bounded controls.
 -- W173 adds type $84 lifecycle and cue-pool rows. Its single bounded run uses
 -- only the existing labelled auto-fire intervention.
+-- W174 adds type $90 lifecycle/palette/threshold/emitter rows; no new
+-- intervention is enabled for its single bounded attempt.
 -- ENV: W25_FRAMES W25_INPUT W25_TSV W25_POKE_FROM W25_FIRE_FROM W25_MOVE_FROM W25_REQUIRE_BUILD W25_MAX_TRACK W170_ISOLATE W170_KILL_FIRST W171_ISOLATE W171_KILL_SEQUENCE W172_ISOLATE W172_KILL_SEQUENCE
 local TAG = "PROBE "
 local function p(...) print(TAG .. string.format(...)) end
@@ -64,6 +66,7 @@ local HANDLERS = {
   [0x276A02] = 0x8D, -- W171: bobbing aimed-firing stage-2 enemy
   [0x2775CC] = 0x8F, -- W172: 32-heading aimed-firing stage-2 enemy
   [0x2752B0] = 0x84, -- W173: two-part phased stage-2 gunship
+  [0x279898] = 0x90, -- W174: one-part damage-threshold stage-2 enemy
 }
 
 -- ------------------------------------------------------------------ input
@@ -167,6 +170,15 @@ local function w173_detail(rec, sub, clk)
     r16(0x81DD0C), r16(0x80AFC0), r16(0x80AFC8)))
 end
 
+local function w174_detail(rec, sub, clk)
+  if not fh then return end
+  fh:write(string.format(
+    "X90\t%d\t%04X\t%06X\t%04X\t%04X\t%04X\t%04X\t%04X\t%04X\t%02X\t%02X\t%08X\t%04X\n",
+    lf, clk, rec, r16(rec + 0x18), r16(rec + 0x1C), r16(rec + 0x1E),
+    r16(rec + 0x20), r16(sub + 0x18), r16(sub + 0x1E), r8(sub + 0x01),
+    r8(sub + 0x1D), r32(sub + 0x0A), r16(0x80AFC0)))
+end
+
 -- W171 correction: record the two actual index-0 stub writes. Isolation makes
 -- ownership unambiguous; the PC identifies record-vs-register convention and
 -- the tapped address identifies the board bucket. The first-death intervention
@@ -236,6 +248,7 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
               if handler == 0x276A02 then w171_detail(rec, sub, clk) end
               if handler == 0x2775CC then w172_detail(rec, sub, clk) end
               if handler == 0x2752B0 then w173_detail(rec, sub, clk) end
+              if handler == 0x279898 then w174_detail(rec, sub, clk) end
             end
           else
             -- alive another frame: emit the position row.
@@ -248,6 +261,7 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
             if handler == 0x276A02 then w171_detail(rec, sub, clk) end
             if handler == 0x2775CC then w172_detail(rec, sub, clk) end
             if handler == 0x2752B0 then w173_detail(rec, sub, clk) end
+            if handler == 0x279898 then w174_detail(rec, sub, clk) end
           end
         end
       elseif wasTracked then

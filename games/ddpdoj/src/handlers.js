@@ -105,7 +105,7 @@ import { scoreHit, scoreKill } from './score.js';
 import { spawnEffect, remapBucket, REMAP, B } from './effects.js';
 import { spawnItem } from './items.js';
 import { allocBee27F92A } from './bee.js';
-import { drawByte242B3C, drawSigned242FFC } from './rng.js';
+import { drawByte242B3C, drawByte2431F4, drawSigned242FFC } from './rng.js';
 import { spawnCues28AC72 } from './cues.js';
 
 /** `addi.l` -- a 32-bit add, where the low half's carry REACHES the high half.
@@ -126,7 +126,8 @@ const R = {
   // and a SALVO COUNTER in $85, `($22,A5)` is a sprite scratch in $82 and an
   // AIM CADENCE in $85.  One name per meaning, so a reader is never told a byte
   // is a death flag while it is being decremented as a counter.
-  rec1C: 0x1c, rec1D: 0x1d, rec1E: 0x1e, rec21: 0x21, rec23: 0x23, rec24: 0x24,
+  rec1A: 0x1a, rec1B: 0x1b, rec1C: 0x1c, rec1D: 0x1d, rec1E: 0x1e,
+  rec21: 0x21, rec23: 0x23, rec24: 0x24,
   salvo: 0x20, cadence22: 0x22,
   // W30: the SPRITE-EMITTER pair the init copies out of `$267F70` -- a RECORD-
   // convention stub and a REGISTER-convention one.  They were called
@@ -3311,6 +3312,11 @@ export const TYPE84_ART = Object.freeze({
   cue8Table: 0x28b06e, cue8Frames: 8,
 });
 
+// Type $90 has no pointer table: its one long-form prototype carries this
+// immediate sprite-stream address and `$2799A6` always calls `$23D762`
+// directly. `romExtent` in export-web proves the immediate is a stream start.
+export const TYPE90_ART = Object.freeze({ main: 0x2351ac });
+
 function addPackedWords(pos, high, low) {
   return ((u16((pos >>> 16) + high) << 16) | u16((pos & 0xffff) + low)) >>> 0;
 }
@@ -3910,6 +3916,107 @@ function handler84(ram, rom, a5, ctx) {
   emit84(ram, rom, a5, a6);
 }
 
+// ############################################################################
+// # W174: TYPE $90, ONE-PART DAMAGE-THRESHOLD ENEMY                          #
+// ############################################################################
+
+function emit90(ram, rom, a6) {
+  enqueueThroughStub(ram, rom, 0x23d762, a6);          // $2799A6, bucket 0
+}
+
+function effect90(ram, rom, a6, ctx, kind, site, sub14, nudge, delay) {
+  const e = spawnEffect(ram, ctx, kind, site);
+  ram.setU32(e + B.pos, ram.u32(a6 + 0x02));
+  const off = u16(ram.u16(a6 + S.anim) * 2);           // $2799D4/$279A18/$279A5E
+  ram.setU16(e + B.bucket, remapBucket(rom, REMAP.shared278320, off, site));
+  ram.setU16(e + B.sub12, 2);
+  ram.setU16(e + B.sub14, sub14);
+  ram.setU32(e + B.nudge, nudge >>> 0);
+  ram.setU16(e + B.hook, 1);
+  if (delay !== null) ram.setU16(e + B.delay, delay);
+  return e;
+}
+
+function death90(ram, rom, a5, a6, ctx, d1) {
+  ctx.soundPost?.(0x28c2dc);                           // $2799AE
+  scoreKill(ram, rom, ctx, 0x32, d1);                 // $2799B4/$2799B6
+  ram.setU16(a6, 0x8080);                             // $2799BC
+  ram.setU8(a6 + S.palette, ram.u8(a5 + R.rec1A));    // $2799C0
+  effect90(ram, rom, a6, ctx, 0x0d, 0x2799c8, 0x0000, 0xfa000600, 4);
+  effect90(ram, rom, a6, ctx, 0x0d, 0x279a0c, 0x0400, 0xfa00fa00, 2);
+  effect90(ram, rom, a6, ctx, 0x85, 0x279a52, 0x0000, 0xfe000000, null);
+  emit90(ram, rom, a6);                               // $279A8E -> $2799A6
+}
+
+function handler90(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+
+  // `$279898 tst.b ($1,A6) / bmi $279888`: after death, the handler enters a
+  // byte countdown tail without stepping movement. `subq.b` draws while there
+  // is no borrow and frees on the first borrow.
+  if (i16((ram.u8(a6 + 0x01) << 8) & 0xffff) < 0) {
+    const linger = ram.u8(a5 + 0x17);
+    ram.setU8(a5 + 0x17, linger - 1);                  // $279888
+    if (linger === 0) freeEnemy(ram, a5);             // $279890
+    else emit90(ram, rom, a6);                        // $27988C -> $2799A6
+    return;
+  }
+  if (stepMovement(ram, rom, a5, ctx.tables, ctx.unported)) return; // $27989E
+
+  const x = u16(ram.u16(a6 + 0x02) + 0x1000);         // two WORD adds
+  if (x + 0x7000 <= 0xffff) ram.setU8(a5 + R.onScreen, 1); // $2798B0 bcc
+  else if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; }
+
+  // Record +$1C owns an HP transition gate. The position comparison and HP
+  // clamp are unsigned except for the explicit `tst.w ... / bpl` death test.
+  if (ram.u16(a5 + R.rec1C) !== 0) {
+    if (ram.u16(a6 + 0x02) >= 0x3c00) {
+      if (i16(ram.u16(a6 + S.hp)) < 0) {
+        ram.setU16(a6 + S.hp, 0x7fff);
+        ram.setU16(a5 + R.cooldown, 0x7eff);
+        ram.setU16(a5 + R.rec1E, ram.u16(a5 + R.rec1E) + 1);
+        ram.setU16(a5 + R.deathFlag, 1);
+      }
+    } else {
+      ram.setU16(a5 + R.rec1C, 0);
+      if (ram.u16(a5 + R.deathFlag) !== 0) {
+        ram.setU16(a6 + S.hp, 0x0400);
+        ram.setU16(a5 + R.cooldown, 0x0300);
+      } else if (ram.u16(a6 + S.hp) >= 0x1000) {
+        ram.setU16(a6 + S.hp, 0x1000);
+        ram.setU16(a5 + R.cooldown, 0x0f00);
+      }
+    }
+  }
+
+  const d1 = ram.u8(a6) & 0x5c;
+  let pal;
+  if (d1 === 0) {
+    pal = ram.u8(a5 + R.rec1A);
+    if (ram.u16(a6 + S.hp) < 0x0400 && ram.u16(G.ca) === 0) pal = 0x19;
+  } else {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);                 // $279944
+    scoreHit(ram, ctx, a6, d1);                       // $279948
+    pal = ram.u8(a6 + S.palette);
+    if (pal === 0x19) pal = ram.u8(a5 + R.rec1A);
+    pal ^= ram.u8(a5 + R.rec1B);
+    const hp = ram.u16(a6 + S.hp);
+    if (i16(hp) < 0) { death90(ram, rom, a5, a6, ctx, d1); return; }
+    if (hp < ram.u16(a5 + R.cooldown)) {
+      const count = ram.u16(a5 + R.rec1E);
+      for (let n = 0; n <= count; n++) {               // $279996 dbra D6
+        const index = drawByte2431F4(ram, rom);        // exact shared RNG side effect
+        const d1fx = (0x08c00000 | rom.u16(0x279a92 + index * 2)) >>> 0;
+        ctx.unported?.note(0x27f8fa, `$27F8FA type $90 damage particle `
+          + `D0=$10, D1=$${d1fx.toString(16).toUpperCase()} rec $${a5.toString(16)}`);
+      }
+      ram.setU16(a5 + R.cooldown, ram.u16(a5 + R.cooldown) - 0x0100);
+    }
+  }
+  ram.setU8(a6 + S.palette, pal);                      // $2799A2
+  emit90(ram, rom, a6);
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
@@ -3952,6 +4059,7 @@ const HANDLERS = new Map([
   [0x276a02, handler8D],       // W171: stage-2 type $8D
   [0x2775cc, handler8F],       // W172: stage-2 type $8F
   [0x2752b0, handler84],       // W173: stage-2 type $84
+  [0x279898, handler90],       // W174: stage-2 type $90
 ]);
 
 /** Run the handler at `addr` for the enemy record `a5`.  An unknown address is a

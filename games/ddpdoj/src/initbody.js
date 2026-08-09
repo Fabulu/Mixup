@@ -960,6 +960,24 @@ BODY.set(0x275154, (ram, rom, a5, a6, unported) => {
   if (ram.u16(G.stage) === 4) ram.setU16(a6 + S.hp, 0x1400); // $275204..$275216
 });
 
+// --- type $90 ($27980A): stage 2's one-part damage-threshold enemy. W174.
+//
+// The one-entry stub at `$279802` makes `$2637A2` consume exactly the single
+// 28-byte long-form prototype at `$27986C..$279888`.  The six-word record
+// prototype and five stage palette pairs immediately precede it; `$279888` is
+// handler code, so both data extents have code-backed far ends.
+BODY.set(0x27980a, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x27986c);            // $27980A..$279810
+  loadRecordProto(ram, rom, a5, 0x279860, 0x05);       // $279816..$27981E
+  readInitPosition(ram, rom, a5, unported);            // $279824
+
+  const pal = 0x279856 + ram.u16(G.stageX2);           // $27982A..$279836
+  ram.setU8(a6 + S.palette, rom.u8(pal));              // $279838
+  ram.setU8(a5 + R.rec1A, rom.u8(pal));                // `$27983C` reads (A0)+
+  ram.setU8(a5 + R.rec1B, rom.u8(pal + 1));            // `$279840` next byte
+  if (ram.u16(G.rank98) !== 0) ram.setU16(a5 + R.rec1E, 0); // $279844..$27984E
+});
+
 // ============================================================ the entry point
 /** Run the init+8 body at `addr`.  Replaces spawn.js's throwing stub.  Returns
  *  FREED if the body freed the enemy (a stage-kill gate fired); otherwise

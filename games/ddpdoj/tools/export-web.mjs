@@ -111,7 +111,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 // W86: the art harvest for the background elements is derived from the PORT's
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
-import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE95_ART } from '../src/handlers.js';
+import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE90_ART, TYPE95_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -998,6 +998,17 @@ for (const offs of [TYPE8D_ART.death, TYPE8F_ART.death]) {
 }
 for (const offs of [TYPE84_ART.body, TYPE84_ART.fixedA,
   TYPE84_ART.fixedB, TYPE84_ART.fixedC]) {
+  if (!streams.has(offs)) {
+    streams.set(offs, romExtent(offs));
+    shardOfStream.set(offs, 17);
+    harvested++;
+  } else {
+    harvestAlready++;
+  }
+}
+// W174: type $90's prototype carries its sole stream directly; there is no
+// pointer table or indirect draw family to infer beyond this exact immediate.
+for (const offs of [TYPE90_ART.main]) {
   if (!streams.has(offs)) {
     streams.set(offs, romExtent(offs));
     shardOfStream.set(offs, 17);

@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "target": "ddpdojblk VERSION-B (2002.10.07 BLACK VER)",
+  "source": "w25handler.lua controlled MAME run w174-type90, 2026-08-09",
+  "static_occurrence_count": 1,
+  "static_occurrences": [
+    {"record": 2304208, "trigger": 133, "type": 144}
+  ],
+  "observed_occurrences": [],
+  "controlled_attempt": {
+    "run": "w174-type90",
+    "logic_frames": 13720,
+    "video_frames": 13772,
+    "wall_seconds": 88,
+    "options": ["--fire", "1250"],
+    "outcome": "NO_STAGE2_TYPE90",
+    "result": "The run completed with fails=0 but recorded only stage-1 handlers. No X90 row exists in the 4,602,800-byte TSV.",
+    "policy": "This was W174's single bounded MAME attempt. It was not retried and is not positive type-$90 evidence."
+  },
+  "emitter": {
+    "observed": false,
+    "rom_call": 2348898,
+    "bucket": 0,
+    "sprite_stream": 2314668
+  },
+  "limitations": "The board corpus contains no type-$90 occurrence. Lifecycle, HP transitions, damage-particle RNG/vector order, death, linger, direct emission, and art are ROM/static and port-unit verified in W174, not claimed as controlled-board observations."
+}
