@@ -53,13 +53,14 @@
 // one is a LOUD NAMED THROW, because it would mean a record exists the
 // allocator says cannot.
 //
-//   Also REFUSED (loud named notes, like W61's hyper-stock refusal):
-//   * the RANK GAUGE add `$27FBA2..$27FBDE` (P1, writes `$81B64A`) and
-//     `$27FB1C..$27FB68` (P2, writes `$81B64C`).  Both call `$287682`
-//     (undecided).  Shipping rank without the full chain (recon 71 sec 4.2)
-//     would bank rank the board would have spent.
+//   Also REFUSED (loud named note, like W61's hyper-stock refusal):
 //   * the kind-16 FLYING arm `$27FCEA`.  Stage-1 use unknown; the thrown path
 //     is unreachable on the shipped seed by recon 73's measurement.
+//
+// W166 closes the former rank-gauge refusal. W163 supplied the complete
+// `$287682/$287722` grant, item, collection and activation pipeline, so the
+// collect arms can now perform their authentic BCD-hit conversion and feed
+// chain-earned hypers instead of merely scoring the bee.
 //
 // ================================ THE GEOMETRY ===============================
 //
@@ -94,6 +95,8 @@ import { u16 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueThroughStub } from './spritequeue.js';
 import { scoreByMask } from './score.js';
+import { bcd242AC6 } from './items.js';
+import { grantHyper287682 } from './hyper.js';
 
 // ============================== THE GEOMETRY ================================
 
@@ -126,8 +129,8 @@ export const POOL_A = Object.freeze({
   scoreAward: 0x27fbee,      // flat + chain-multiply through $286128
   collectP1: 0x27fb6c,       // btst #$C -> P1 collect arm
   collectP2: 0x27fae6,       // btst #$B -> P2 collect arm
-  gaugeP1: 0x27fba2,         // the rank gauge (REFUSED)
-  gaugeP2: 0x27fb1c,         // the rank gauge P2 (REFUSED)
+  gaugeP1: 0x27fba2,         // P1 bee chain-to-hyper feed
+  gaugeP2: 0x27fb1c,         // P2 mirror
   kind16Arm: 0x27fcea,       // the flying bee (REFUSED)
   kind16Waypoint: 0x27fd72,  // the waypoint script
   // data
@@ -147,13 +150,16 @@ export const POOL_A = Object.freeze({
   chainMeterP2: 0x81b5ea,    // $27FAEC move.w
   chainHitsP1: 0x81b5da,     // $27FB78 move.w -- D5 for the digit-multiply
   chainHitsP2: 0x81b604,     // $27FAF2 move.w
-  rankP1: 0x81b64a,          // $27FBDE add.w D0 -- the REFUSED rank accumulator
+  rankP1: 0x81b64a,          // $27FBDE add.w D0 -- hyper earn accumulator
   rankP2: 0x81b64c,          // $27FB58 add.w D0 -- P2
   hyperP1: 0x81b63e,         // $27FBA2 tst.w -- hyper-active gate (gauge skip)
   hyperP2: 0x81b640,         // $27FB1C tst.w
   soundCue: 0x28c62a,        // $27FC6C jsr -- the collect sound (noted)
   twoPlayer: 0x8130f8,       // $27FB7E btst #$1 -- 2P mode flag
 });
+
+/** Deliberate-red seam used only by W166's causal regression. */
+export const BEE_MUTATE = { value: null };
 
 /** Record offsets from the slot base.  Every one cited on its use. */
 export const B = Object.freeze({
@@ -543,8 +549,8 @@ function beeBody27FACC(ram, rom, ctx, a6, d1) {
 // ========================= $27FB6C/$27FAE6, THE COLLECT ARM =================
 //
 // Both arms load D3 (no-miss counter), D4 (chain meter), D5 (chain hit count),
-// skip a 2P adjustment (not relevant in 1P), then REFUSE the gauge add and run
-// the score award.  The score award is the same code path for both players:
+// apply the shared 2P adjustment, feed chain-earned hyper progress, and then
+// run the score award. The score award is the same code path for both players:
 //
 //   $27FBEE  D1 = cursor $817F82
 //   $27FBF4  addq.w #1,$817F80          <- bump bee count
@@ -565,49 +571,53 @@ function collectArm(ram, rom, ctx, a6, player) {
   const isP1 = player === 1;
   // D3 = no-miss counter, D4 = chain meter, D5 = chain hit count.
   const d3 = ram.u16(isP1 ? POOL_A.noMissP1 : POOL_A.noMissP2); // $27FB6C/$27FAE6
-  const d4 = ram.u16(isP1 ? POOL_A.chainMeterP1 : POOL_A.chainMeterP2);
-  const d5 = ram.u16(isP1 ? POOL_A.chainHitsP1 : POOL_A.chainHitsP2);
+  let d4 = ram.u16(isP1 ? POOL_A.chainMeterP1 : POOL_A.chainMeterP2);
+  let d5 = ram.u16(isP1 ? POOL_A.chainHitsP1 : POOL_A.chainHitsP2);
 
   // $27FB7E btst #$1,$8130F8: 2P mode adjustment.  In 1P this is clear and the
-  // branch skips to the gauge.  Transcribed faithfully: if 2P is active, the
-  // arm reads $81B610 and may call $242AC6 (a chain recomputation).  For the
-  // port, the 2P adjustment feeds the gauge (which is REFUSED), so we note it
-  // only when it would fire and use the unadjusted D4/D5 for the award gate.
+  // branch skips to the gauge. If 2P is active, the arm reads the binary item
+  // count at $81B610 and converts it through $242AC6; the low word of D2
+  // becomes packed-BCD D5, while $81B60C supplies D4. A negative count clears
+  // D4 but preserves the original D5, exactly like `$27FB02..$27FB1A` and
+  // `$27FB88..$27FBA0`.
   if ((ram.u8(POOL_A.twoPlayer) & 0x02) !== 0) {           // $27FB7E btst #$1
-    note(ctx, isP1 ? 0x27fb88 : 0x27fb88, `2P-mode chain adjustment in the bee `
-      + `collect arm: $242AC6 called, D4/D5 overwritten from $81B60C/$81B610. `
-      + `The gauge that consumes the adjusted values is REFUSED, so the award `
-      + `gate below uses the unadjusted chain meter/hits. If the 2P path `
-      + `diverges from 1P on the award (not just the gauge), this note is the `
-      + `diagnostic`);
+    const count = ram.u16(0x81b610);                      // $27FB02/$27FB88
+    if ((count & 0x8000) !== 0) {
+      d4 = 0;                                             // $27FB1A/$27FBA0
+    } else {
+      d5 = bcd242AC6(count) & 0xffff;                     // $242AC6; move.l D2,D5
+      d4 = ram.u16(0x81b60c);                             // $27FB12/$27FB98
+    }
   }
 
-  // ===================== THE GAUGE ADD (REFUSED) =====================
+  // ===================== THE CHAIN-EARNED HYPER FEED =====================
   // $27FBA2 (P1) / $27FB1C (P2): tst.w hyper / tst D4 / tst D5 / bmi ->
-  // skip; otherwise a BCD loop adding to $81B64A (P1) or $81B64C (P2), the
-  // RANK accumulators, then jsr $287682.  REFUSED: rank is the owner's named
-  // failure surface, and $287682 is undecided.
-  if (isP1) {
-    if (ram.u16(POOL_A.hyperP1) === 0 && d4 !== 0 && d5 !== 0 && (d5 & 0x8000) === 0) {
-      note(ctx, POOL_A.gaugeP1, `$27FBA2..$27FBDE -- the P1 RANK GAUGE add. `
-        + `Adds BCD-adjusted D0 to $81B64A (the rank accumulator) and calls `
-        + `$287682. REFUSED: shipping rank without the full chain (recon 71 `
-        + `sec 4.2: $27FBDE -> $287682 -> $81B6E0 -> $2875B4 -> $27E912 -> `
-        + `kind-$C item -> $2530CA -> $285A62 -> $2608D2's x16 term) banks `
-        + `rank the board would have spent. D4=$${d4.toString(16)} D5=${
-        d5.toString(16)}`);
-    }
-  } else {
-    if (ram.u16(POOL_A.hyperP2) === 0 && d4 !== 0 && d5 !== 0 && (d5 & 0x8000) === 0) {
-      note(ctx, POOL_A.gaugeP2, `$27FB1C..$27FB68 -- the P2 RANK GAUGE add. `
-        + `Adds to $81B64C (P2 rank) and calls $287682. REFUSED for the same `
-        + `reason as the P1 gauge. D4=$${d4.toString(16)} D5=${
-        d5.toString(16)}`);
+  // skip. Otherwise clamp packed-BCD hits to $0200, convert through $242AF6,
+  // and add `$48` for every complete 20 hits. The arithmetic after conversion
+  // is binary: `$27FBD0 subi #$14,D2 / $27FBD8 addi #$48,D0`.
+  const active = ram.u16(isP1 ? POOL_A.hyperP1 : POOL_A.hyperP2);
+  if (active === 0 && d4 !== 0 && d5 !== 0 && (d5 & 0x8000) === 0) {
+    const cappedBcd = d5 > 0x0200 ? 0x0200 : d5;          // $27FBBA..$27FBC2
+    const binaryHits = packedBcdWordToBinary(cappedBcd);  // $27FBC6/$242AF6
+    const gain = Math.floor(binaryHits / 0x14) * 0x48;    // $27FBD0..$27FBDC
+    if (BEE_MUTATE.value !== 'drop-rank-feed') {
+      const earn = isP1 ? POOL_A.rankP1 : POOL_A.rankP2;
+      ram.setU16(earn, u16(ram.u16(earn) + gain));         // $27FBDE/$27FB58
+      grantHyper287682(ram, rom, ctx, !isP1);             // $27FBE4/$27FB5E
     }
   }
 
   // ======================== THE SCORE AWARD ===========================
   return scoreAward27FBEE(ram, rom, ctx, a6, d3, d4, d5);
+}
+
+/** `$242AF6`'s valid packed-BCD-word result, used after the ROM's `$0200`
+ * clamp. The routine itself is a 14-pass `sbcd` table conversion; spelling
+ * out its mathematical result keeps the nibble boundaries visible and avoids
+ * the historical bug of treating packed BCD `$0100` as binary 256. */
+function packedBcdWordToBinary(v) {
+  return ((v >>> 12) & 0x0f) * 1000 + ((v >>> 8) & 0x0f) * 100
+    + ((v >>> 4) & 0x0f) * 10 + (v & 0x0f);
 }
 
 /**
