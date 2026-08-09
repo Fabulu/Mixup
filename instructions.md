@@ -77,9 +77,9 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W189 is complete and live:
+W190 is complete locally and awaiting publication:
 
-- latest worklog: `docs/worklog/ddpdoj/189-impl-stage2-boss-phases.md`
+- latest worklog: `docs/worklog/ddpdoj/190-impl-stage2-boss-f4-main5.md`
 - stage-2 boss baseline: `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
 - stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
 - init stub/body: `$297118` / `$297120`; handler: `$297398`
@@ -104,21 +104,26 @@ W189 is complete and live:
   eight-particle burst, 39-effect final blast, 42-frame shake, scheduler
   suspension, and stage advance
 - the Stage-2 A1 table is correctly exported as 16 pairs, not 14
+- MAIN5 `$297CC2/$297CFA` now runs the anchored phase-one boss wander
+- F4 `$2993B4/$299406` now runs its complete dual attack conductor with D6,
+  D9, E1, E13, and E14
+- every scheduler entry reachable from the installed type-`$30` Stage-2 boss
+  graph is translated; E12 and F5-F7 have no live start site in this build
 
 The next honest gameplay phase dependencies are:
 
-- A4/F4 init `$2993B4`, step `$299406`, scheduled by F1
-- MAIN5 init `$297CC2`, step `$297CFA`, conditionally scheduled by MAIN3
-- pool-D `$289098/$2890F2` secondary debris remains a separate visible
-  fidelity closure; the primary boss death presentation is complete
+- pool-D allocator `$289098` and type-5 driver `$2890F2`, already requested by
+  the translated Stage-2 boss-death effects
+- after pool D, the Stage-3 entry and its static spawn census
 
-Reserve the next immutable worklog number, statically map F4 and MAIN5 first,
-and include their compact same-frame descendants in the same delivery.
+Reserve the next immutable worklog number, statically map pool D first, and
+close its allocator, driver, templates, RNG consumption, and reachable art in
+one delivery before moving to Stage 3.
 
 Useful current tests and tools:
 
 ```powershell
-node --test games/ddpdoj/tests/w189boss2phases.test.js
+node --test games/ddpdoj/tests/w190boss2f4main5.test.js
 python games/ddpdoj/tools/export-tables.py
 node --test games/ddpdoj/tests/w133stage2boot.test.js
 node tools/publish.mjs --only ddpdoj --dry
@@ -166,10 +171,10 @@ that reported cluster. Preserve those mechanics and their tests.
 1. `PROMPT.md`
 2. this `instructions.md`
 3. `AGENTS.md`
-4. `docs/worklog/ddpdoj/189-impl-stage2-boss-phases.md`
-5. `docs/worklog/ddpdoj/188-fix-stage1-death-hyper.md`
-6. `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
-7. `docs/worklog/ddpdoj/186-impl-stage2-boss-f3.md`
+4. `docs/worklog/ddpdoj/190-impl-stage2-boss-f4-main5.md`
+5. `docs/worklog/ddpdoj/189-impl-stage2-boss-phases.md`
+6. `docs/worklog/ddpdoj/188-fix-stage1-death-hyper.md`
+7. `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
 8. `docs/worklog/ddpdoj/167-impl-general-static-dynamic-coverage.md`
 9. `HANDOVER.md`
 10. relevant files under `docs/knowledge/`, especially 01, 02, 03, 09, and 10
@@ -232,9 +237,8 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W189 translates F1, F2, and F8 plus their immediate MAIN1, MAIN3, D10, and E15
-dependencies. Its focused phase regression and seeded 9,000-frame product
-smoke pass; the 1,537-test release gate, 100% bundle gate, and HTTP asset gate
-are green. Build `20260809212505` is live and confirmed three consecutive
-times. Continue with F4 `$2993B4/$299406` and MAIN5 `$297CC2/$297CFA`; the
-full-game goal remains active after every wave.
+W190 translates MAIN5 and the complete F4 dual-track conductor plus D6, D9,
+E1, E13, and E14. Its focused regression, seeded 9,000-frame product smoke,
+and 1,538-test release gate are green. The reachable Stage-2 boss scheduler
+graph is closed. Publish W190, then continue with live pool-D secondary debris
+at `$289098/$2890F2`; the full-game goal remains active after every wave.
