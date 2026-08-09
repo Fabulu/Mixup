@@ -112,7 +112,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
 import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE90_ART, TYPE91_ART, TYPE92_ART,
-  TYPE95_ART, TYPE96_ART, TYPE97_ART } from '../src/handlers.js';
+  TYPE94_ART, TYPE95_ART, TYPE96_ART, TYPE97_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -341,6 +341,14 @@ const HARVEST = Object.freeze([
     'stage-2 type $95 animation. $277B4C/$277C6E step record +$20 by four, '
       + '$277C9A indexes this table with the raw byte cursor, and $277DE0 is '
       + 'the next type init stub'],
+  // W180. The gameplay registry owns all sixteen entries: +$20 advances the
+  // raw cursor through 0..$78 in eight-byte records. $27A44C is the next
+  // type-$96 init stub and structurally bounds the table.
+  [17, TYPE94_ART.table, TYPE94_ART.frames, 8, TYPE94_ART.frames,
+    TYPE94_ART.table + TYPE94_ART.frames * 8,
+    'stage-2 type $94 extending body animation. $27A1B4 advances record '
+      + '+$20 by eight, reaching all sixteen pointers; $27A44C is the next '
+      + 'type init stub'],
   // the LASER's five streams are IMMEDIATES, not a table -- see LASER_STREAMS.
   [1, 0x268b9e, 64, 4, 96, 0x268d1e,
     'type $11 HULL by HEADING ($2689BC). Entries: $2689A0 builds '

@@ -1121,6 +1121,32 @@ BODY.set(0x277de8, (ram, rom, a5, a6, unported, tablesArg) => {
   ram.setU8(a6 + S.anim, 0);                           // $277EAC
 });
 
+// --- type $94 ($27A0E8): stage 2's mirrored extending aimed shooter. W180.
+BODY.set(0x27a0e8, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x27a198);            // $27A0E8..$27A0F4
+  loadRecordProto(ram, rom, a5, 0x27a184, 0x09);       // $27A0F4..$27A102
+  readInitPosition(ram, rom, a5, unported);             // $27A102
+  ram.setU8(a5 + R.rec17, ram.u16(G.stage) <= 1 ? 6 : 2); // $27A108..$27A11A
+  ram.setU8(a5 + R.rec1C,
+    u16(ram.u8(a5 + R.rec1C) - ram.u16(G.b2)) & 0xff); // $27A11E..$27A124
+
+  if (ram.u8(a6 + S.anim) !== 0) {                     // $27A128..$27A140
+    ram.setU8(a6 + S.anim, 0);
+    ram.setU8(a6 + 0x1c, ram.u8(a6 + 0x1c) | 0x40);
+    ram.setU32(a5 + R.rec24, 0x14);
+    ram.setU16(a5 + R.rec28, 0);
+  }
+  const collision = (a6 + ram.u32(a5 + R.rec24)) >>> 0; // $27A146..$27A14C
+  ram.setU32(a5 + R.rec24, collision);
+  const frame = ram.u16(a5 + 0x20);
+  ram.setU16(collision, rom.u16(0x27a3cc + frame + 4)); // $27A14C..$27A15A
+
+  const pal = 0x27a17a + ram.u16(G.stageX2);           // $27A15E..$27A16C
+  ram.setU8(a6 + S.palette, rom.u8(pal));
+  ram.setU8(a5 + R.rec1A, rom.u8(pal));
+  ram.setU8(a5 + R.rec1B, rom.u8(pal + 1));
+});
+
 // ============================================================ the entry point
 /** Run the init+8 body at `addr`.  Replaces spawn.js's throwing stub.  Returns
  *  FREED if the body freed the enemy (a stage-kill gate fired); otherwise

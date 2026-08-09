@@ -3333,6 +3333,9 @@ export const TYPE97_ART = Object.freeze({
   headingTable: 0x272c7a, headings: 32,
 });
 
+// Type $94's state cursor walks all sixteen eight-byte art/size entries.
+export const TYPE94_ART = Object.freeze({ table: 0x27a3cc, frames: 16 });
+
 // Type $96's record +$20 walks byte offsets 0..$78 in steps of eight. Each
 // entry is one sprite pointer followed by the longword copied to sub +$14.
 // The fixed death stream begins exactly one `$684` stride after frame 15.
@@ -4860,6 +4863,131 @@ function handler97(ram, rom, a5, ctx) {
   fire97(ram, rom, a5, a6, ctx);
 }
 
+// ############################################################################
+// # W180: TYPE $94, MIRRORED EXTENDING AIMED SHOOTER                         #
+// ############################################################################
+
+function update94(ram, rom, a5, a6) {
+  const frame = ram.u16(a5 + 0x20);
+  ram.setU32(a6 + S.sprite0a, rom.u32(TYPE94_ART.table + frame));
+  ram.setU16(ram.u32(a5 + 0x24), rom.u16(TYPE94_ART.table + frame + 4));
+}
+
+function emit94(ram, rom, a6) {
+  const idx = u16(ram.u16(a6 + S.anim) * 4);           // $27A356..$27A368
+  enqueueThroughStub(ram, rom,
+    rom.u32(EMIT_TABLE.dispatch27829C + idx), a6);
+}
+
+function death94(ram, rom, a5, a6, ctx, d1) {
+  ctx.soundPost?.(0x28c2c2);                           // $27A36C
+  scoreKill(ram, rom, ctx, 0x34, d1);                 // $27A372..$27A374
+  ctx.unported?.note(0x27f8ee, `$27F8EE type $94 death D0=$8, D2=$${ram
+    .u16(a6 + S.anim).toString(16).toUpperCase()} rec $${a5.toString(16)}`);
+  const e = effectArmShared278320(ram, rom, ctx, a6, 0x0c, 0x27a388);
+  ram.setU16(e + B.sub12, 1);
+  ram.setU16(e + B.sub14, 0);
+  ram.setU32(e + B.nudge, 0xfd000000);
+  ram.setU16(e + B.hook, 1);
+  freeEnemy(ram, a5);                                  // $27A3C4
+}
+
+function fire94(ram, rom, a5, a6, ctx) {
+  if (playerDist268018(ram, rom, a6).carry) return false; // $27A298
+  const sel = targetSelect(ram, a5);                   // $27A2A2..$27A2C0 inline
+  if (sel.carry) return true;
+  const dir = aim256(aimTables(rom),
+    u16(ram.u16(a6 + S.posX) + 0x0300),
+    u16(ram.u16(a6 + S.posY) + ram.u16(a5 + 0x28)),
+    ram.u16(sel.addr + 0x02), ram.u16(sel.addr + 0x04));
+  const regs = { d0: 0x0001000c, d1: dir, d2: ram.u32(a6 + 0x02),
+    d3: ((0x0300 << 16) | ram.u16(a5 + 0x28)) >>> 0,
+    d4: a6, d5: 0, a5 };
+  const result = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281764, regs);
+  ctx.bulletSpawn?.(0x27a2ee, result);
+  return true;
+}
+
+function handler94(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  if (stepMovement(ram, rom, a5, ctx.tables, ctx.unported)) return;
+
+  const x = u16(ram.u16(a6 + S.posX) + 0x0a00);
+  if (x + 0x7c00 <= 0xffff) ram.setU8(a5 + R.onScreen, 1);
+  else if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; }
+
+  const d1 = hitMask(ram, a6);
+  let pal;
+  if (d1 === 0) {
+    pal = ram.u8(a5 + 0x1a);
+    if (ram.u16(a6 + S.hp) < 0x0180 && ram.u16(G.ca) === 0) pal = 0x19;
+  } else {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);
+    scoreHit(ram, ctx, a6, d1);                        // $27A1FE
+    pal = ram.u8(a6 + S.palette);
+    if (pal === 0x19) pal = ram.u8(a5 + 0x1a);
+    pal ^= ram.u8(a5 + 0x1b);
+    if (i16(ram.u16(a6 + S.hp)) < 0) {
+      death94(ram, rom, a5, a6, ctx, d1);
+      return;
+    }
+  }
+  ram.setU8(a6 + S.palette, pal);                      // $27A220
+
+  if (ram.u32(G.freeze) === 0 && i16(ram.u16(a6 + S.posX)) >= 0x2c00) {
+    const state = ram.u16(a5 + 0x18);
+    if (state === 0) {
+      const wait = ram.u8(a5 + 0x1c);
+      ram.setU8(a5 + 0x1c, wait - 1);
+      if (wait === 0) {
+        ram.setU8(a5 + 0x1c, 0x10);
+        ram.setU16(a5 + 0x18, 1);
+      }
+    } else if (state === 1) {
+      const tick = ram.u8(a5 + 0x22);
+      ram.setU8(a5 + 0x22, tick - 1);
+      if (tick === 0) {
+        ram.setU8(a5 + 0x22, ram.u8(a5 + 0x23));
+        const frame = u16(ram.u16(a5 + 0x20) + 8);
+        ram.setU16(a5 + 0x20, frame);
+        if (frame === 0x78) ram.setU16(a5 + 0x18, 2);
+        update94(ram, rom, a5, a6);
+      }
+    } else if (state === 2) {
+      const fireTick = ram.u8(a5 + 0x1c);
+      ram.setU8(a5 + 0x1c, fireTick - 1);
+      if (fireTick === 0) {
+        ram.setU8(a5 + 0x1c, ram.u8(a5 + 0x17));
+        if (fire94(ram, rom, a5, a6, ctx)) {
+          const salvo = ram.u8(a5 + 0x1e);
+          ram.setU8(a5 + 0x1e, salvo - 1);
+          if (salvo === 0) {
+            ram.setU8(a5 + 0x1e, ram.u8(a5 + 0x1f));
+            ram.setU8(a5 + 0x1c, 0x10);
+            ram.setU16(a5 + 0x18, 3);
+          }
+        }
+      }
+    } else if (ram.u8(a5 + 0x1c) !== 0) {
+      ram.setU8(a5 + 0x1c, ram.u8(a5 + 0x1c) - 1);
+    } else {
+      const tick = ram.u8(a5 + 0x22);
+      ram.setU8(a5 + 0x22, tick - 1);
+      if (tick === 0) {
+        ram.setU8(a5 + 0x22, ram.u8(a5 + 0x23));
+        const frame = u16(ram.u16(a5 + 0x20) - 8);
+        ram.setU16(a5 + 0x20, frame);
+        if (frame === 0) {
+          ram.setU8(a5 + 0x1c, u16(0x40 - ram.u16(G.b6)) & 0xff);
+          ram.setU16(a5 + 0x18, 0);
+        }
+        update94(ram, rom, a5, a6);
+      }
+    }
+  }
+  emit94(ram, rom, a6);
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
@@ -4908,6 +5036,7 @@ const HANDLERS = new Map([
   [0x279b2e, handler91],       // W177: stage-2 type $91
   [0x279d72, handler92],       // W178: stage-2 type $92
   [0x277f26, handler97],       // W179: stage-2 type $97
+  [0x27a1b4, handler94],       // W180: stage-2 type $94
 ]);
 
 /** Run the handler at `addr` for the enemy record `a5`.  An unknown address is a

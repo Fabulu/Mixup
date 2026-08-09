@@ -494,8 +494,10 @@ SHOT_WINDOWS.extend([
                        "table selected by init and the live retarget cadence"),
     (0x272FFA, 0x0080, "W179: type $97 exact 32-entry heading-indexed bullet "
                        "muzzle-vector table"),
-    (0x27A0E0, 0x0008, "W179: exact type $94 run-length-zero stub needed to "
-                       "reach the next chronological unsupported body $27A0E8"),
+    (0x27A0E0, 0x036C, "W180: complete stage-2 type $94 closure: stub, init, "
+                       "palettes/prototypes, handler, aimed fire, death and "
+                       "exact sixteen-entry art/collision table through the "
+                       "next local type $96 stub at $27A44C"),
     (0x27693E, 0x0932, "W171: complete stage-2 type $8D closure: stub, init, "
                        "palette/prototypes, handler, pointer/vector tables, "
                        "and the structurally bounded 516-word bob table "
@@ -2601,6 +2603,71 @@ def check_stage2_spawn_data(d: bytes) -> None:
             and d[0x23367E:0x233686] == bytes.fromhex("7800080081034000")
             and d[0x27A0E0:0x27A0E8] == bytes.fromhex("3b7c000000044e75")):
         raise SystemExit("W179: next frontier is not $232DC0 type $94 idx $039")
+
+    # W180: type $94. The stub-inclusive family is exactly $27A0E0..$27A44C:
+    # init, palette/prototypes, handler, and its 16 reachable art/collision
+    # pairs. $27A44C starts the already-known type-$96 stub.
+    if not (pc_rel_lea(0x27A0E8) == 0x27A198
+            and u16(d, 0x27A0EE) == 0x4EB9 and u32(d, 0x27A0F0) == 0x2637A2
+            and pc_rel_lea(0x27A0F4) == 0x27A184
+            and u16(d, 0x27A0FA) == 0x7009
+            and u16(d, 0x27A0FC) == 0x4EB9 and u32(d, 0x27A0FE) == 0x26377A
+            and u16(d, 0x27A102) == 0x4EB9 and u32(d, 0x27A104) == 0x263808
+            and pc_rel_lea(0x27A150) == 0x27A3CC
+            and pc_rel_lea(0x27A164) == 0x27A17A):
+        raise SystemExit("W180: type $94 init loader/table sequence drifted")
+    if d[0x27A17A:0x27A184] != bytes.fromhex("120d130c120d120d120d"):
+        raise SystemExit("W180: type $94 five stage palette pairs drifted")
+    if d[0x27A184:0x27A198] != bytes.fromhex(
+            "0000000000006040020200000001000000160000"):
+        raise SystemExit("W180: type $94 ten-word record prototype drifted")
+    if d[0x27A198:0x27A1B4] != bytes.fromhex(
+            "a000f800f80000236430084008000a00060006000600100000000000"):
+        raise SystemExit("W180: type $94 long-form sub-record prototype drifted")
+    calls94 = {u32(d, a + 2) for a in range(0x27A1B4, 0x27A3CA, 2)
+               if u16(d, a) == 0x4EB9}
+    required94 = {0x2638A6, 0x286096, 0x268018, 0x2422A2, 0x281764,
+                  0x28C2C2, 0x28615E, 0x27F8EE, 0x289004}
+    if not required94 <= calls94:
+        raise SystemExit(f"W180: type $94 call closure drifted: "
+                         f"missing {sorted(required94 - calls94)!r}")
+    if sum(1 for a in range(0x27A1B4, 0x27A3CA, 2)
+           if u16(d, a) == 0x4EB9 and u32(d, a + 2) == 0x289004) != 1:
+        raise SystemExit("W180: type $94 death is no longer exactly one effect")
+    if not (u16(d, 0x27A368) == 0x4E90
+            and d[0x27A3C4:0x27A3CC] == bytes.fromhex("4ef9002637624e71")):
+        raise SystemExit("W180: type $94 emitter/free boundary drifted")
+    art94 = [(u32(d, 0x27A3CC + i * 8), u16(d, 0x27A3D0 + i * 8),
+              u16(d, 0x27A3D2 + i * 8)) for i in range(16)]
+    if art94 != [(0x236430 + i * 0x104, 0x0600 + i * 0x40, 0)
+                 for i in range(16)]:
+        raise SystemExit(f"W180: type $94 16-entry art/collision table drifted: "
+                         f"{art94!r}")
+    if d[0x27A44C:0x27A454] != bytes.fromhex("3b7c000000044e75"):
+        raise SystemExit("W180: next type-$96 stub no longer closes the family")
+    type94_records = [(script + i * 8, u16(d, script + i * 8),
+                       u16(d, script + i * 8 + 6) & 0x0FFF)
+                      for i in range(332) if d[script + i * 8 + 4] == 0x94]
+    if type94_records != [(0x232DC0, 0x016B, 0x039),
+                          (0x232E00, 0x0176, 0x053),
+                          (0x232E50, 0x0181, 0x071),
+                          (0x232EC0, 0x018D, 0x03B),
+                          (0x232EF8, 0x0198, 0x072),
+                          (0x232F10, 0x01A3, 0x077)]:
+        raise SystemExit(f"W180: stage-2 type $94 occurrence order drifted: "
+                         f"{type94_records!r}")
+    movement94 = {
+        0x23367E: "7800080081034000", 0x233C7E: "7880080081034000",
+        0x233F08: "78c0080081034000", 0x233690: "78404000880181034000",
+        0x233F10: "78c04000880181034000", 0x233F66: "79004000880181034000",
+    }
+    for start, raw in movement94.items():
+        if d[start:start + len(raw) // 2] != bytes.fromhex(raw):
+            raise SystemExit(f"W180: type $94 movement at ${start:06X} drifted")
+    if not (u16(d, 0x232EF0) == 0x0197 and d[0x232EF4] == 0x93
+            and (u16(d, 0x232EF6) & 0x0FFF) == 0x03D
+            and d[0x279EBA:0x279EC2] == bytes.fromhex("3b7c000000044e75")):
+        raise SystemExit("W180: next frontier is not $232EF0 type $93 idx $03D")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")

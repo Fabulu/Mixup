@@ -69,22 +69,16 @@
   ],
   "backlog": [
     {
-      "name": "stage2_enemy_frontier_type94",
+      "name": "stage2_enemy_frontier_type93",
       "shape": "ordered_record_dependency_backlog",
       "status": "STATIC_FRONTIER_PORT_OBSERVED",
       "field_order": ["record", "trigger", "type", "init_body", "handler", "movement_index", "movement_start", "movement_end_exclusive"],
       "remaining_records": [
-        [2305472, 363, 148, 2597096, 2597300, 57, 2307710, 2307718],
-        [2305536, 374, 148, 2597096, 2597300, 83, 2309246, 2309254],
-        [2305616, 385, 148, 2597096, 2597300, 113, 2309896, 2309904],
-        [2305728, 397, 148, 2597096, 2597300, 59, 2307728, 2307738],
         [2305776, 407, 147, 2596546, 2596682, 61, 2307746, 2307752],
-        [2305784, 408, 148, 2597096, 2597300, 114, 2309904, 2309914],
-        [2305808, 419, 148, 2597096, 2597300, 119, 2309990, 2310000],
         [2306072, 469, 134, 2579382, 2578708, 2, 2306484, 2306518],
         [2306080, 476, 48, 2715936, 2716568, 0, 2306452, 2306458]
       ],
-      "reason": "W179 closes all five type-$97 records, their three movement streams, aimed animation and fire, cue spawning, and death closure. The first chronological unsupported record is $232DC0, type $94 at clock $016B, body $27A0E8, handler $27A1B4. The ordered nine-record list is derived from the live registries and ROM stage-2 script, never hand-selected at runtime."
+      "reason": "W180 closes all six type-$94 records across six movement streams, including init, handler, movement, firing, and death closure. The first chronological unsupported record is now $232EF0, type $93 at clock $0197, body $279EC2, handler $279F4A. The ordered three-record list is derived from the live registries and ROM stage-2 script, never hand-selected at runtime."
     },
     {
       "name": "stage3_to_stage5_spawn_scripts",

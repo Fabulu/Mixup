@@ -102,5 +102,5 @@ test('W169/4 dynamic-minus-static regression goes red and restores', { skip: SKI
   assert.match(red.stdout, /\$2325C8 outside static inventory/);
   const green = run();
   assert.equal(green.status, 0, green.stdout + green.stderr);
-  assert.match(green.stdout, /stage2_spawn_script: 323\/332 ported, 9 unknown, 0 null, dynamic 28/);
+  assert.match(green.stdout, /stage2_spawn_script: 329\/332 ported, 3 unknown, 0 null, dynamic 28/);
 });
