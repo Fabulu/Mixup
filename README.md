@@ -250,8 +250,9 @@ Stage 2 boots and scrolls. Its background elements and complete 332-record enemy
 program are installed, including chronological families `$95`, `$8D`, `$8F`,
 `$84`, `$90`, `$96`, `$8C`, `$91`, `$92`, `$97`, `$94`, `$93`, `$86`, and the
 type `$30` boss entry. W183 statically mapped and translated that entry, its
-complete multi-part damage/controller path, and arrival MAIN 0. The controlled
-runtime now stops honestly at the first remaining boss D-script, `$297F54`.
+complete multi-part damage/controller path, and arrival MAIN 0. W184 added all
+five initially armed A3 scripts. The controlled runtime now stops honestly at
+the first A2 boss-part object, `$297462`.
 
 The full game is not complete. Stages 2 through 5, their bosses, later loops,
 remaining systems and presentation, and authentic slowdown still require

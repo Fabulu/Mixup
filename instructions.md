@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-09, after W183 publication.
+Last updated: 2026-08-09, after W184 publication.
 
 ## Current directive
 
@@ -14,10 +14,9 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The old W175 pause is resolved. W176 through W183 are live. W183 closes the
-332/332 stage-2 spawn script and translates type `$30`'s boss entry, complete
-damage controller, A4 bootstrap, and arrival MAIN 0. Continue from A3/D0 init
-`$297F54`. Do not repeat W175 through W183.
+The old W175 pause is resolved. W176 through W184 are live. W184 translates all
+five initially armed stage-2 boss A3 scripts and advances the controlled runtime
+to A2 object 0 `$297462`. Do not repeat W175 through W184.
 
 ## Exact repository and deployment state
 
@@ -33,6 +32,7 @@ At handoff:
 - W181 is committed, pushed, and deployed
 - W182 is committed, pushed, and deployed
 - W183 is committed, pushed, and deployed
+- W184 is committed, pushed, and deployed
 - W175 live build: `20260809081027`
 - W176 live build: `20260809092221`
 - W177 live build: `20260809095334`
@@ -42,6 +42,7 @@ At handoff:
 - W181 live build: `20260809114953`
 - W182 live build: `20260809124334`
 - W183 live build: `20260809140956`
+- W184 live build: `20260809144557`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
 - no agent or command is running now
 
@@ -65,34 +66,37 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W183 is complete and live:
+W184 is complete and live:
 
-- worklog: `docs/worklog/ddpdoj/182-impl-stage2-type86.md`
+- worklog: `docs/worklog/ddpdoj/184-impl-stage2-boss-d0.md`
 - stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
 - init stub/body: `$297118` / `$297120`; handler: `$297398`
-- the complete `$298310` multi-part controller, A4 bootstrap, and arrival MAIN
-  0 are included; the remaining boss program is not
+- the complete `$298310` multi-part controller, A4 bootstrap, arrival MAIN 0,
+  and initially armed A3 scripts D0/D2/D11/D12/D13 are included
 - stage-2 coverage is 332/332 records with 0 unknown
 - enemy-type coverage is 43/256
 - the seeded boot consumes 331 records with 326 allocations and five authentic
-  declines, then stops at A3/D0 init `$297F54`
+  declines, then stops at A2 object 0 `$297462`
 - no new art was needed; the web bundle remains at 2,743 streams
 
 The next honest unsupported boss dependency is:
 
-- A3/D script id `$00`
-- init `$297F54`
-- step `$297F60`
-- installed table base `$297EE0`
+- A2 object id `$00`
+- routine `$297462`
+- installed object list base `$297432`
 - reached during type `$30`'s first handler frame at clock `$01DC`
 
-Reserve the next immutable worklog number, statically map the D0 dependency
-closure before implementation, and continue through the stage-2 boss program.
+The complete eleven-object A2 code/data closure is `$297462..$297950`. Static
+analysis found 176 distinct referenced sprite streams absent from the bundle;
+harvest them into the boss shard before making the A2 family visible. D13 also
+queues type `$4D`, whose init/body/handler closure is `$29BB1E..$29BBF4`.
+Reserve the next immutable worklog number, finish the static A2 map, then
+translate the objects and type `$4D` child before continuing the attack graph.
 
 Useful current tests and tools:
 
 ```powershell
-node --test games/ddpdoj/tests/w183type30.test.js games/ddpdoj/tests/w133stage2boot.test.js games/ddpdoj/tests/w167coverage.test.js
+node --test games/ddpdoj/tests/w184boss2d0.test.js games/ddpdoj/tests/w183type30.test.js
 python games/ddpdoj/tools/dojcoverage.py
 python games/ddpdoj/tools/export-tables.py --verify
 node games/ddpdoj/tools/export-web.mjs
@@ -188,8 +192,8 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W183 closed the final stage-2 spawn record and moved the controlled frontier
-inside the boss program to A3/D0 init `$297F54`. Its 1,519-test release,
-controlled boot, bundle/web gates, ROM-leak guard, deployment, and stable live
-polls pass. Build `20260809140956` is live. Continue through the statically
-mapped boss scripts; the full-game goal remains active after every wave.
+W184 translated the five initially armed A3 scripts and moved the controlled
+frontier to A2 object 0 `$297462`. Focused scheduler and 30-second stage boot
+checks, ROM export, asset build, ROM-leak guard, deployment, and stable live
+polls pass. Build `20260809144557` is live. Continue through the statically
+mapped A2 family; the full-game goal remains active after every wave.

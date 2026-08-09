@@ -969,3 +969,20 @@ The controlled boot consumes 331 records, allocates 326, authentically declines
 five, and reaches `$297F54` at clock `$01DC`. The 1,519-test release, ROM export,
 coverage, 100.0000% bundle parity, HTTP rendering, ROM-leak guard, deployment,
 and three stable production polls pass. Build `20260809140956` is live.
+
+## 9g. UPDATE -- 2026-08-09: W184 INITIAL BOSS A3 SET LIVE
+
+W184 statically mapped the stage-2 boss's complete 14-pair A3 table, then
+translated the five scripts armed by its bootstrap: D0, D2, D11, D12, and D13.
+Their exact init-to-step fall-throughs, byte-counter cadence, RNG ordering,
+selector wraps, and D13 deferred type-`$4D` spawn are now live.
+
+The controlled boot advances from D0 `$297F54` through the entire initial set
+and stops honestly at A2 object 0 `$297462`, still at clock `$01DC`. No new art
+was needed for W184, so the bundle remains at 2,743 streams. Static analysis of
+the next `$297462..$297950` A2 family found 176 missing boss streams that must be
+harvested before those objects become visible.
+
+Focused scheduler and controlled-boot checks, ROM export, asset build, the
+ROM-leak guard, deployment, and three stable production polls pass. Build
+`20260809144557` is live.
