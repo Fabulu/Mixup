@@ -58,6 +58,9 @@ Results:
 
 - ROM export green, 260 windows and 287,746 bytes
 - W186 plus W187 focused checks: 6/6 green
+- the release census initially rejected the new registrations because its legal
+  set omitted the stage-2 A1 table; adding all fourteen cartridge pairs made
+  the focused scheduler census 44/44 green
 - one 9,000-frame seeded boot crossed the old E6 frontier without an
   `Unreached`; observed E6 and E9 ROM call sites
 - the same boot retained all 332 consumed stage records and 327 allocations

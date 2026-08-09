@@ -413,6 +413,9 @@ test('every registered script address is in an installed boss scheduler table',
     for (let i = 0; i < 9; i++) {                        // A4, $298C66
       legal.push(ROM.u32(0x298c66 + i * 8), ROM.u32(0x298c66 + i * 8 + 4));
     }
+    for (let i = 0; i < 14; i++) {                       // A1, $2998AC
+      legal.push(ROM.u32(0x2998ac + i * 8), ROM.u32(0x2998ac + i * 8 + 4));
+    }
     for (let i = 0; i < 11; i++) legal.push(ROM.u32(0x297432 + i * 4)); // A2
     assert.strictEqual(ROM.u32(0x297432 + 11 * 4) >>> 0, 0xffffffff,
       'the stage-2 A2 list is eleven longwords and a $FFFFFFFF terminator');
