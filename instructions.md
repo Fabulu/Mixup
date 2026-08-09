@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-09, after W185 publication.
+Last updated: 2026-08-09, after W186 publication.
 
 ## Current directive
 
@@ -14,10 +14,9 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The old W175 pause is resolved. W176 through W185 are live. W185 translates all
-eleven stage-2 boss A2 draw objects plus their deferred type `$4D` satellite and
-advances the controlled runtime to A4/F3 `$299194`. Do not repeat W175 through
-W185.
+The old W175 pause is resolved. W176 through W186 are live. W186 translates F3,
+MAIN2, and D3 and advances the controlled runtime to A1/E6 `$299E90`. Do not
+repeat W175 through W186.
 
 ## Exact repository and deployment state
 
@@ -35,6 +34,7 @@ At handoff:
 - W183 is committed, pushed, and deployed
 - W184 is committed, pushed, and deployed
 - W185 is committed, pushed, and deployed
+- W186 is committed, pushed, and deployed
 - W175 live build: `20260809081027`
 - W176 live build: `20260809092221`
 - W177 live build: `20260809095334`
@@ -46,6 +46,7 @@ At handoff:
 - W183 live build: `20260809140956`
 - W184 live build: `20260809144557`
 - W185 live build: `20260809151417`
+- W186 live build: `20260809160147`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
 - no agent or command is running now
 
@@ -69,7 +70,7 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W185 is complete and live:
+W186 is complete and live:
 
 - worklog: `docs/worklog/ddpdoj/185-impl-stage2-boss-a2.md`
 - stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
@@ -78,16 +79,17 @@ W185 is complete and live:
   initially armed A3 scripts, all eleven A2 objects, and type `$4D` are included
 - stage-2 coverage is 332/332 records with 0 unknown
 - enemy-type coverage is 44/256
-- the seeded boot consumes 331 records with 326 allocations and five authentic
-  declines, then stops at A4/F3 init `$299194`, clock `$0218`
+- the seeded boot consumes all 332 records, materializes 327 allocations
+  including D13's deferred satellite, and stops at A1/E6 init `$299E90`, clock
+  `$0227`
 - the web bundle contains 2,919 streams; W185 added 176 to deferred boss shard 17
 
 The next honest unsupported boss dependency is:
 
-- A4/F script id `$03`
-- init `$299194`
-- step `$2991BC`
-- reached after the stage-2 boss arrival at clock `$0218`
+- A1/E script id `$06`
+- init `$299E90`
+- step `$299EDA`
+- reached after F3's startup countdown at clock `$0227`
 
 Reserve the next immutable worklog number, statically map F3 before translating
 it, and follow every script start/stop it performs through the boss attack graph.
@@ -143,8 +145,8 @@ that reported cluster. Preserve those mechanics and their tests.
 1. `PROMPT.md`
 2. this `instructions.md`
 3. `AGENTS.md`
-4. `docs/worklog/ddpdoj/181-impl-stage2-type93.md`
-5. `docs/worklog/ddpdoj/180-impl-stage2-type94.md`
+4. `docs/worklog/ddpdoj/186-impl-stage2-boss-f3.md`
+5. `docs/worklog/ddpdoj/185-impl-stage2-boss-a2.md`
 6. `docs/worklog/ddpdoj/167-impl-general-static-dynamic-coverage.md`
 7. `HANDOVER.md`
 8. relevant files under `docs/knowledge/`, especially 01, 02, 03, 09, and 10
@@ -207,9 +209,9 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W185 translated all eleven A2 boss-part objects and type `$4D`, added their 176
-reachable streams, and moved the controlled frontier to A4/F3 `$299194`.
-Focused scheduler and controlled-boot checks, ROM export, 100.0000% bundle
-parity, ROM-leak guard, deployment, and stable live polls pass. Build
-`20260809151417` is live. Continue with a static F3 map; the full-game goal
+W186 translated F3, MAIN2, and D3 and moved the controlled frontier to A1/E6
+`$299E90`. Focused scheduler and controlled-boot checks, all 1,527 release
+tests, ROM export, 100.0000% bundle parity, ROM-leak guard, deployment, and
+stable live polls pass. Build `20260809160147` is live. Continue by statically
+closing E6 through E11 as one grouped leaf-attack slice; the full-game goal
 remains active after every wave.
