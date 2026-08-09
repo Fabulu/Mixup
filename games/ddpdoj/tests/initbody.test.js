@@ -1,4 +1,5 @@
-// WAVE 23 -- the 21 stage-1 init bodies (src/initbody.js).  These tests run the
+// WAVE 23/W170 -- the stage-1 bodies plus the first stage-2 body
+// (src/initbody.js).  These tests run the
 // translated bodies against the REAL exported ROM (skipped, loudly, when the
 // rip is absent -- the ROM is gitignored).  They verify the loader-written
 // stats fields land and the bespoke adjustments run, for a representative type
@@ -49,7 +50,7 @@ function freshEnemy(ram, type, classByte = 0) {
   return { rec, sub };
 }
 
-test('the 21 stage-1 init bodies are all dispatched (no body missing)', () => {
+test('the stage-1 bodies and W170 stage-2 body are all dispatched', () => {
   // the addresses the spawn walker resolves for the 21 stage-1 types (census).
   const want = new Set([
     0x269bce, 0x26a1ea, 0x26a4bc, 0x26a794, 0x26aba0, 0x26871c, 0x2680b8,
@@ -68,16 +69,19 @@ test('the 21 stage-1 init bodies are all dispatched (no body missing)', () => {
     'W57: type $1C\'s body $26C1CA -- what the midboss\'s death spawns');
   assert.ok(INIT_BODY_ADDRESSES.includes(0x296d8a),
     'W103: type $1E\'s body $296D8A -- the boss\'s carrier enemy (E 8 spawns)');
-  assert.equal(INIT_BODY_ADDRESSES.length, 21,
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x277836),
+    'W170: stage-2 type $95 body $277836');
+  assert.equal(INIT_BODY_ADDRESSES.length, 22,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
-    + `$272A4A) plus W57's deferred $26C1CA plus W103's boss-spawned $296D8A`);
+    + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
+    + `and W170's stage-2 $277836`);
 });
 
-test('runInitBodyAddr throws on an unknown (non-stage-1) body address', () => {
+test('runInitBodyAddr throws on an unknown body address', () => {
   const ram = new Ram();
   const { rec } = freshEnemy(ram, 0x11);
   assert.throws(() => runInitBodyAddr(0x281000, ram, realRomMaybe(), rec, { note() {} }),
-    /UNPORTED.*not in the W23 stage-1 body table/);
+    /UNPORTED.*not in the live init-body registry/);
 });
 
 function realRomMaybe() { return HAVE ? realRom() : new RomWindows({ windows: [] }); }

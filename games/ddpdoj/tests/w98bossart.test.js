@@ -185,8 +185,8 @@ test('W98/7 the boss shard is DEFERRED and fetched LAST', () => {
   const order = JSON.parse(s.match(/SPR_ORDER = Object\.freeze\((\[[\s\S]*?\])\)/)[1]);
   assert.equal(order[order.length - 1], 17,
     '[M] the boss\'s first record lands at lf8,144 = 137.6 s from the seed, '
-    + 'where the LATEST deadline anything else in this bundle has is shard '
-    + '11\'s +5.3 s. It is also the largest body here, so it goes last');
+      + 'where the LATEST deadline anything else in this bundle has is shard '
+      + '11\'s +5.3 s. W170 co-locates its small later type-$95 family here');
   for (const early of [7, 6, 10, 9, 13, 12, 8, 14, 16, 15, 3, 1, 2, 4, 5, 11]) {
     assert.ok(order.indexOf(early) < order.indexOf(17),
       `shard ${early}'s first need is earlier than the boss's 137.6 s`);

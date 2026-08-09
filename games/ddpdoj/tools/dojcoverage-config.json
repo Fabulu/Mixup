@@ -41,7 +41,7 @@
       "stage": 1,
       "stage_table": 2503478,
       "ported_from": "enemy_types live source registries",
-      "dynamic_from": "w169-stage2-spawn-evidence.json board occurrence records"
+      "dynamic_from": "w169-stage2-spawn-evidence.json plus w170-stage2-type95-evidence.json record-qualified board occurrences"
     },
     {
       "name": "stage1_bgelem",
@@ -68,6 +68,19 @@
     }
   ],
   "backlog": [
+    {
+      "name": "stage2_enemy_frontier_type8d",
+      "shape": "dependency_closed_enemy_type",
+      "status": "STATIC_FRONTIER_DYNAMIC_OBSERVED",
+      "record": 2303744,
+      "trigger": 30,
+      "type": 141,
+      "init_body": 2582854,
+      "handler": 2583042,
+      "movement_start": 2306798,
+      "movement_end_exclusive": 2306804,
+      "reason": "W170 closes type $95 and the next honest stage-2 stop is record $232700, type $8D at clock $001E. Its init/handler/art family is separate and remains unported."
+    },
     {
       "name": "stage3_to_stage5_spawn_scripts",
       "shape": "ffff_terminated_stride8_records",

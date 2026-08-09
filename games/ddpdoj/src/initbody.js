@@ -1,4 +1,4 @@
-// THE 21 STAGE-1 INIT BODIES (at init+8) -- the routines that turn enemy stats
+// THE PORTED ENEMY INIT BODIES (at init+8) -- the routines that turn enemy stats
 // into DATA.  Each one calls the two prototype loaders `$2637A2`/`$26377A`
 // (src/enemyproto.js, ported W20) to copy hitbox/HP/speed/heading/palette/
 // animation/draw-bucket out of ROM, then runs a handful of bespoke per-type
@@ -42,7 +42,8 @@ import { install24150A } from './palette.js';
 // touch, named once here so every body reads as the listing does.
 const R = {
   // record (A5)
-  rec16: 0x16, rec18: 0x18, rec1A: 0x1a, rec1C: 0x1c, rec1D: 0x1d, rec1E: 0x1e,
+  rec16: 0x16, rec18: 0x18, rec1A: 0x1a, rec1B: 0x1b, rec1C: 0x1c,
+  rec1D: 0x1d, rec1E: 0x1e,
   rec20: 0x20, rec21: 0x21, rec22: 0x22, rec23: 0x23, rec24: 0x24, rec25: 0x25,
   rec26: 0x26, rec28: 0x28, rec29: 0x29, rec2A: 0x2a, rec2C: 0x2c, rec2D: 0x2d,
   rec2E: 0x2e, rec2F: 0x2f, rec31: 0x31, rec32: 0x32, rec33: 0x33, rec34: 0x34,
@@ -808,6 +809,51 @@ BODY.set(0x296d8a, (ram, rom, a5, a6) => {
   ram.setU16(a5 + 0x20, 0);                             // $296DB4 move.w #$0,$20(a5)
 });
 
+// --- type $95 ($277836): THE FIRST STAGE-2-ONLY BODY.  W170.
+//
+// The 8-byte table entry at $27782E says run length 1, so $2637A2 consumes the
+// two long-form sub-record prototypes at $27797E..$2779B6.  The record loader
+// copies 13 words from $277964..$27797E.  Those exact ends matter: $2779B6 is
+// the handler's first instruction, not more prototype data.
+BODY.set(0x277836, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x27797e);            // $277836/$27783C
+  loadRecordProto(ram, rom, a5, 0x277964, 0x0c);       // $277842..$27784A
+  readInitPosition(ram, rom, a5, unported);            // $277850 jsr $263808
+
+  // `$813092` is zero-based: the attack reload is five through human stages
+  // 1/2 (indices 0/1) and two from stage 3 on.
+  ram.setU8(a5 + 0x2f, ram.u16(G.stage) <= 1 ? 5 : 2); // $277856..$277868
+  ram.setU8(a5 + 0x2b,
+    (ram.u8(a5 + 0x2b) - (ram.u16(G.ba) & 0xff)) & 0xff); // $27786C/$277872
+
+  if (ram.u16(G.stage) === 1) {                        // $277876: stage 2
+    const clock = ram.u16(G.scrollClock);
+    if (clock >= 0x100 && clock < 0x16c && ram.u16(G.d8) !== 0) {
+      freeEnemy(ram, a5); return FREED;                // $277880..$27789C
+    }
+    if (clock >= 0x80) ram.setU16(a6 + S.hp, 0x0680); // $2778A4..$2778AE
+  }
+
+  // $813094 is a raw BYTE offset into five two-byte palette pairs.  Do not
+  // convert it to an array index: loop 0 reads bytes 0/1 and loop 4 reads 4/5.
+  const pal = 0x27795a + ram.u16(G.loop);              // $2778B4..$2778C0
+  ram.setU8(a6 + S.palette, rom.u8(pal));              // $2778C2
+  ram.setU8(a5 + R.rec1A, rom.u8(pal));                // $2778C6
+  ram.setU8(a5 + R.rec1B, rom.u8(pal + 1));            // $2778CA
+
+  if (ram.u16(G.stage) !== 4) return;                  // $2778CE/$2778D6
+  ram.setU16(a6 + S.hp, 0x0880);                       // $2778DA
+  const clock = ram.u16(G.scrollClock);
+  const gate = clock < 0x230 ? G.e0
+    : clock < 0x250 ? G.e2
+      : clock < 0x290 ? G.e4 : G.e6;                  // $2778E0..$277940
+  // The final arm really compares against $240 after already proving clock is
+  // at least $290.  It is redundant in this build and remains explicit here.
+  if (ram.u16(gate) !== 0 && (gate !== G.e6 || clock > 0x240)) {
+    freeEnemy(ram, a5); return FREED;                  // $2778F6/$914/$932/$950
+  }
+});
+
 // ============================================================ the entry point
 /** Run the init+8 body at `addr`.  Replaces spawn.js's throwing stub.  Returns
  *  FREED if the body freed the enemy (a stage-kill gate fired); otherwise
@@ -827,8 +873,8 @@ export function runInitBodyAddr(addr, ram, rom, a5, unported, tables, palette) {
   const fn = BODY.get(addr);
   if (!fn) {
     unreached(addr, `init+8 body at $${addr.toString(16).toUpperCase()} -- not in `
-      + `the W23 stage-1 body table (21 bodies). Either a non-stage-1 type was `
-      + `spawned, or a body was missed; do NOT smooth`);
+      + `the live init-body registry. Either an unported type was spawned, or `
+      + `a body was missed; do NOT smooth`);
   }
   const r = fn(ram, rom, a5, a6, unported, tables, palette);
   return r === FREED ? FREED : undefined;

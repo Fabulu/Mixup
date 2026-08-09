@@ -5,6 +5,7 @@
 //   W30:  `$275914` ($85 AND $86 -- one handler, two types, exactly as $07 and
 //         $27 share `$26A2E2`), `$2739C0` ($80), `$276702` ($8A)
 //   W31:  `$26B6FA` ($0D, THE MIDBOSS) -- in src/midboss.js, not this file
+//   W170: `$2779B6` ($95), the first stage-2-only handler
 //
 // The enemy driver `$263502` (src/enemies.js) dispatches each live enemy's
 // handler from the function pointer the init stored at record `+$4C`.
@@ -3269,6 +3270,213 @@ function handler1C(ram, rom, a5, ctx) {
   }
 }                                                      // $26C264 rts
 
+// ############################################################################
+// #  W170: TYPE $95, THE FIRST STAGE-2-ONLY ENEMY                         #
+// ############################################################################
+//
+// `$2779B6..$277DB6` is one closed handler.  The four muzzle-offset words at
+// `$277DB8` and the eight art pointers at `$277DC0` are data; `$277DE0` is the
+// next type's init stub.  The animation cursor in record +$20 advances by raw
+// byte offsets 0,4,...,$1C, so exactly all eight pointers are live.
+export const TYPE95_ART = Object.freeze({
+  main: 0x1744f8, table: 0x277dc0, frames: 8, fixed: 0x174e7c,
+});
+
+function addPackedWords(pos, high, low) {
+  return ((u16((pos >>> 16) + high) << 16) | u16((pos & 0xffff) + low)) >>> 0;
+}
+
+function fire95SideGuns(ram, rom, a5, a6, ctx) {
+  const common = { d0: 0x00020007, d1: 0x20, d2: ram.u32(a6 + 0x02),
+    d4: 0, d5: 0, a5 };
+  const cb = { ram, rom, log: new WriteLog(ram) };
+  const pair = (site, d3) => {
+    const regs = { ...common, d3 };
+    ctx.bulletSpawn?.(site, fireBullet(cb, 0x2813f0, regs));
+  };
+  if ((ram.u8(a6 + 0x01) & 0x40) === 0) {             // $277A8C btst #6
+    pair(0x277aa0, 0xf200f940);                       // $277A94..$277AA0
+    pair(0x277aac, 0xf2000700);                       // $277AA6..$277AAC
+  } else {
+    pair(0x277ac0, 0xf400fe00);                       // $277AB4..$277AC0
+    pair(0x277acc, 0xf4000240);                       // $277AC6..$277ACC
+  }
+}
+
+function fire95AimedPair(ram, rom, a5, a6, ctx) {
+  const sel = targetSelect(ram, a5);                   // $277B7A..$277B98 inline
+  if (sel.carry) return;                               // $277B94 bpl $277C34
+  const barrel = ram.u8(a5 + 0x1e);
+  const muzzle = rom.u16(0x277db8 + barrel * 2);       // $277BA8..$277BB4
+  const selfY = u16(ram.u16(a6 + 0x02) + muzzle);
+  const targetY = ram.u16(sel.addr + 0x02);
+  const targetX = ram.u16(sel.addr + 0x04);
+  const cb = { ram, rom, log: new WriteLog(ram) };
+  for (const [firstSite, secondSite, shortOff] of [
+    [0x277bde, 0x277bf2, 0x0700], [0x277c1a, 0x277c2e, 0xf900],
+  ]) {
+    const dir = aim256(aimTables(rom), selfY,
+      u16(ram.u16(a6 + 0x04) + shortOff), targetY, targetX); // $2422A2
+    const regs = { d0: 0x0002000b, d1: dir, d2: ram.u32(a6 + 0x02),
+      d3: ((muzzle << 16) | shortOff) >>> 0, d4: 0, d5: 0, a5 };
+    ctx.bulletSpawn?.(firstSite, fireBullet(cb, 0x2817b8, regs));
+    // `$277BE4 swap/addq.w #3/swap` raises only D0's HIGH word.  The second
+    // generator then biases the direction byte by barrel*2.
+    regs.d0 = (regs.d0 + 0x00030000) >>> 0;
+    regs.d1 = ((regs.d1 & ~0xff) | ((regs.d1 + ((barrel * 2) & 0xff)) & 0xff)) >>> 0;
+    ctx.bulletSpawn?.(secondSite, fireBullet(cb, 0x281708, regs));
+  }
+}
+
+function emit95(ram, rom, a5, a6) {
+  enqueueThroughStub(ram, rom, 0x23d852, a6);           // $277CA6
+  const pos = ram.u32(a6 + 0x02);
+  enqueueRegistersThroughStub(ram, rom, 0x23df86,
+    addPackedWords(pos, 0xfd00, 0xf700),               // $277CAC..$277CBA
+    ram.u32(a5 + 0x24), 0x0648, ram.u16(a6 + 0x1c));  // $277CBC..$277CC8
+  if (ram.u16(G.rank98) === 0 && ram.u16(G.mirror2) !== 0
+      && !(ram.u16(G.stage) === 1 && ram.u16(G.clock) >= 0x16c)) {
+    enqueueRegistersThroughStub(ram, rom, 0x23df58,
+      addPackedWords(pos, 0xd800, 0x0200), TYPE95_ART.fixed, 0x0830, 0x18);
+  }                                                    // $277CCE..$277D10
+}
+
+function death95(ram, rom, a5, a6, ctx, d1) {
+  scoreKill(ram, rom, ctx, 0x55, d1);                  // $277D18/$277D1A
+  ctx.soundPost?.(0x28c2dc);                           // $277D20
+  const e0 = spawnEffect(ram, ctx, 0x0d, 0x277d28);   // $277D26/$277D28
+  ram.setU32(e0 + B.pos, ram.u32(a6 + 0x02));
+  ram.setU16(e0 + B.bucket, 0x10);
+  ram.setU16(e0 + B.sub12, 1);
+  ram.setU16(e0 + B.sub14, 0);
+  ram.setU16(e0 + B.nudge, 0xf600);
+  ram.setU16(e0 + B.nudge + 2, 0);
+  if (!(ram.u16(G.stage) === 1 && ram.u16(G.clock) >= 0x150)) {
+    let d0 = ram.u16(a6 + S.speed);
+    d0 = (d0 & 0xff00) | (((d0 & 0xff) * 4) & 0xff);  // $277D66..$277D6E
+    ram.setU16(e0 + B.speed, d0);
+    const e1 = spawnEffect(ram, ctx, 0x84, 0x277d76); // $277D72/$277D76
+    ram.setU32(e1 + B.pos, ram.u32(a6 + 0x02));
+    ram.setU16(e1 + B.bucket, 0x10);
+    ram.setU16(e1 + B.sub12, 1);
+    ram.setU16(e1 + B.sub14, 0x0400);
+    ram.setU16(e1 + B.nudge, 0x0400);
+    ram.setU16(e1 + B.nudge + 2, 0);
+    d0 = u16(ram.u16(a6 + S.speed) + 0x0800);
+    d0 = (d0 & 0xff00) | (((d0 & 0xff) * 4) & 0xff);  // $277DA0..$277DAC
+    ram.setU16(e1 + B.speed, d0);
+  }
+  freeEnemy(ram, a5);                                  // $277DB0
+}
+
+function handler95(ram, rom, a5, ctx) {
+  const { tables, unported: u } = ctx;
+  const a6 = ram.u32(a5 + 0x06);
+  if (stepMovement(ram, rom, a5, tables, u)) return;   // $2779B6
+
+  // `$2779C0` and `$2779C4` are two WORD adds.  Only the second add's carry is
+  // tested, after the first has already wrapped.
+  const x = u16(ram.u16(a6 + 0x02) + 0x1000);
+  if (x + 0x7000 <= 0xffff) ram.setU8(a5 + 0x16, 1); // $2779D8
+  else if (ram.u8(a5 + 0x16) !== 0) { freeEnemy(ram, a5); return; }
+  ram.setU32(a6 + 0x22, ram.u32(a6 + 0x02));           // $2779DE
+
+  let d1 = (ram.u8(a6) | ram.u8(a6 + 0x20)) & 0x5c;
+  let d0;
+  if (d1 === 0) {
+    d0 = ram.u8(a5 + 0x1a);                            // $2779F0
+    if (ram.u16(a6 + S.hp) < 0x0240 && ram.u16(G.ca) === 0) d0 = 0x19;
+  } else {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);                 // $277A08
+    ram.setU8(a6 + 0x20, ram.u8(a6 + 0x20) & 0xa3);
+    scoreHit(ram, ctx, a6, d1);                        // $277A12
+    d0 = ram.u8(a6 + S.palette);
+    if (d0 === 0x19) d0 = ram.u8(a5 + 0x1a);
+    d0 ^= ram.u8(a5 + 0x1b);
+    let hp = ram.u16(a6 + S.hp);
+    if (i16(hp) > i16(ram.u16(a6 + S.f38))) hp = ram.u16(a6 + S.f38);
+    ram.setU16(a6 + S.hp, hp);
+    ram.setU16(a6 + S.f38, hp);
+    if (i16(hp) < 0) { death95(ram, rom, a5, a6, ctx, d1); return; }
+  }
+  ram.setU8(a6 + S.palette, d0);                       // $277A4A
+
+  if (ram.u32(G.freeze) === 0) {
+    if ((ram.u16(G.rank98) !== 0 || ram.u16(G.stage) >= 3)
+        && i16(ram.u16(a6 + 0x02)) >= 0x1000) {
+      const c = ram.u8(a5 + 0x2a);
+      ram.setU8(a5 + 0x2a, (c - 1) & 0xff);
+      if (c === 0) {
+        ram.setU8(a5 + 0x2a, ram.u8(a5 + 0x2e));
+        fire95SideGuns(ram, rom, a5, a6, ctx);         // $277A7E..$277ACC
+        const flip = ram.u8(a5 + 0x2c);
+        ram.setU8(a5 + 0x2c, (flip - 1) & 0xff);
+        if (flip === 0) {
+          ram.setU8(a5 + 0x2c, ram.u8(a5 + 0x2d));
+          ram.bchg8(a6 + 0x01, 6);
+          const reload = u16(0x28 - ram.u16(G.ba)) & 0xff;
+          ram.setU8(a5 + 0x2a, reload);
+          ram.setU8(a5 + 0x2b, reload);
+        }
+      }
+    }
+
+    if (i16(ram.u16(a6 + 0x02)) >= 0x1000 && ram.u8(a5 + 0x16) !== 0) {
+      const state = ram.u16(a5 + 0x18);
+      if (state === 0) {
+        const c = ram.u8(a5 + 0x1c);
+        ram.setU8(a5 + 0x1c, (c - 1) & 0xff);
+        if (c === 0) {
+          ram.setU8(a5 + 0x1c, u16(0x10 - ram.u16(G.bc)) & 0xff);
+          ram.setU16(a5 + 0x18, 1);
+        }
+      } else if (state === 1) {
+        const c = ram.u8(a5 + 0x22);
+        ram.setU8(a5 + 0x22, (c - 1) & 0xff);
+        if (c === 0) {
+          ram.setU8(a5 + 0x22, ram.u8(a5 + 0x23));
+          const cur = u16(ram.u16(a5 + 0x20) + 4);
+          ram.setU16(a5 + 0x20, cur);
+          if (cur === 0x1c) ram.setU16(a5 + 0x18, 2);
+          ram.setU32(a5 + 0x24, rom.u32(TYPE95_ART.table + cur));
+        }
+      } else if (state === 2) {
+        const c = ram.u8(a5 + 0x1c);
+        ram.setU8(a5 + 0x1c, (c - 1) & 0xff);
+        if (c === 0) {
+          ram.setU8(a5 + 0x1c, ram.u8(a5 + 0x2f));
+          fire95AimedPair(ram, rom, a5, a6, ctx);
+          const barrel = ram.u8(a5 + 0x1e);
+          ram.setU8(a5 + 0x1e, (barrel - 1) & 0xff);
+          if (barrel === 0) {
+            ram.setU8(a5 + 0x1e, ram.u8(a5 + 0x1f));
+            ram.setU8(a5 + 0x1c, u16(0x10 - ram.u16(G.bc)) & 0xff);
+            ram.setU16(a5 + 0x18, 3);
+          }
+        }
+      } else if (ram.u8(a5 + 0x1c) !== 0) {
+        ram.setU8(a5 + 0x1c, (ram.u8(a5 + 0x1c) - 1) & 0xff);
+      } else {
+        const c = ram.u8(a5 + 0x22);
+        ram.setU8(a5 + 0x22, (c - 1) & 0xff);
+        if (c === 0) {
+          ram.setU8(a5 + 0x22, ram.u8(a5 + 0x23));
+          const cur = u16(ram.u16(a5 + 0x20) - 4);
+          ram.setU16(a5 + 0x20, cur);
+          if (cur === 0) {
+            let reload = ram.u16(G.stage) === 4 ? 0x40 : 0x30;
+            reload = u16(reload - ram.u16(G.b8));
+            ram.setU8(a5 + 0x1c, reload & 0xff);
+            ram.setU16(a5 + 0x18, 0);
+          }
+          ram.setU32(a5 + 0x24, rom.u32(TYPE95_ART.table + cur));
+        }
+      }
+    }
+  }
+  emit95(ram, rom, a5, a6);                            // $277CA6..$277D16
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
@@ -3307,6 +3515,7 @@ const HANDLERS = new Map([
   // W103: type $1E, the boss's carrier enemy (spawned by E 8 at `$2963C2').
   // It drifts and explodes into a kind 3/4/5 fan on death.  See bossf23.js.
   [0x296dd6, handler1E_296DD6],
+  [0x2779b6, handler95],       // W170: stage-2 type $95
 ]);
 
 /** Run the handler at `addr` for the enemy record `a5`.  An unknown address is a
@@ -3317,7 +3526,7 @@ export function runHandler(addr, ram, rom, a5, ctx) {
     unreached(addr, `enemy handler at $${(addr & 0xffffff).toString(16).toUpperCase()} `
       + `is not in the ported handler table {`
       + [...HANDLERS.keys()].map((a) => `$${a.toString(16).toUpperCase()}`).join(' ')
-      + `}. Either a non-stage-1 type was dispatched, or a handler was missed`);
+      + `}. Either an unported type was dispatched, or a handler was missed`);
   }
   fn(ram, rom, a5, ctx);
 }

@@ -19,7 +19,10 @@
 --   SPAWN <lf> <slot> <handler> <type> <posX> <posY> <cursor+12> <param+0a> <class+0d> <scrollOdo> <b03c> <freeze> <scroll>
 --   P     <lf> <slot> <posX> <posY> <freeze> <scroll> <b03c> <heading+1b> <speed+1a> <cursor+12>
 --   DEATH <lf> <slot>
--- ENV: W25_FRAMES W25_INPUT W25_TSV W25_POKE_FROM W25_FIRE_FROM W25_MOVE_FROM W25_REQUIRE_BUILD W25_MAX_TRACK
+-- W170 extends the same pre-handler probe with type $95 X95 rows. Optional
+-- W170_ISOLATE and W170_KILL_FIRST are explicitly labelled interventions for
+-- emission attribution and the damage/death arm, never pacing evidence.
+-- ENV: W25_FRAMES W25_INPUT W25_TSV W25_POKE_FROM W25_FIRE_FROM W25_MOVE_FROM W25_REQUIRE_BUILD W25_MAX_TRACK W170_ISOLATE W170_KILL_FIRST
 local TAG = "PROBE "
 local function p(...) print(TAG .. string.format(...)) end
 
@@ -38,6 +41,8 @@ local MOVE_FROM = tonumber(os.getenv("W25_MOVE_FROM")  or "1900")
 local WANT      = os.getenv("W25_REQUIRE_BUILD")
 local TSV       = os.getenv("W25_TSV")
 local MAX_TRACK = tonumber(os.getenv("W25_MAX_TRACK")  or "48")
+local W170_KILL_FIRST = os.getenv("W170_KILL_FIRST") == "1"
+local W170_ISOLATE = os.getenv("W170_ISOLATE") == "1"
 local fh        = TSV and io.open(TSV, "w") or nil
 
 p("SHARES sram=%d", RAM.size)
@@ -47,6 +52,7 @@ p("SHARES sram=%d", RAM.size)
 local HANDLERS = {
   [0x2688CC] = 0x11, [0x26A2E2] = 0x07, [0x2747C6] = 0x82,
   [0x269CEA] = 0x05, [0x27687E] = 0x8B, [0x268232] = 0x10,
+  [0x2779B6] = 0x95, -- W170: first stage-2-only handler
 }
 
 -- ------------------------------------------------------------------ input
@@ -103,6 +109,16 @@ end
 
 -- the tracked set: slot address -> true (spawns/deaths detected by presence)
 local tracked, byType = {}, {}
+local w170_armed, w170_killed = false, false
+
+local function w170_detail(rec, sub, clk)
+  if not fh then return end
+  fh:write(string.format(
+    "X95\t%d\t%04X\t%06X\t%04X\t%04X\t%08X\t%04X\t%04X\t%02X\t%02X\t%04X\t%04X\n",
+    lf, clk, rec, r16(rec + 0x18), r16(rec + 0x20), r32(rec + 0x24),
+    r16(sub + 0x18), r16(sub + 0x38), r8(sub), r8(sub + 0x20),
+    r16(0x81B40C), r16(0x81CDEC)))
+end
 
 -- ------------------------------------- THE ENEMY-DRIVER-ENTRY TAP ($263502)
 TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
@@ -114,6 +130,7 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
     local fz  = r16(0x8130d2)
     local sc  = r16(0x813172)
     local b03c= r16(0x80b03c)
+    local saw95 = false
     -- scan all 58 slots; track any live slot whose handler is one of the six.
     for i = 0, 57 do
       local rec = 0x81332C + i * 0x50
@@ -123,6 +140,7 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
       if live then
         local handler = r32(rec + 0x4c) & 0xffffff
         if HANDLERS[handler] then
+          if handler == 0x2779B6 then saw95 = true end
           if not wasTracked then
             -- SPAWN.  Capture the init state: position (post-$263808), the
             -- movement cursor (+$12), the spawn param (+$0A), the class byte
@@ -138,6 +156,7 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
                 lf, rec, handler, HANDLERS[handler], r16(sub+0x02), r16(sub+0x04),
                 r32(rec + 0x12), r16(rec + 0x0a), r8(rec + 0x0d), r16(0x8130d0),
                 b03c, fz, sc))
+              if handler == 0x2779B6 then w170_detail(rec, sub, clk) end
             end
           else
             -- alive another frame: emit the position row.
@@ -146,12 +165,47 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
               "P\t%d\t%06X\t%04X\t%04X\t%04X\t%04X\t%04X\t%02X\t%02X\t%08X\n",
               lf, rec, r16(sub+0x02), r16(sub+0x04), fz, sc, b03c,
               r8(sub + 0x1b), r8(sub + 0x1a), r32(rec + 0x12)))
+            if handler == 0x2779B6 then w170_detail(rec, sub, clk) end
           end
         end
       elseif wasTracked then
         -- the slot was freed: DEATH.
         fh:write(string.format("DEATH\t%d\t%06X\n", lf, rec))
         tracked[rec] = nil
+      end
+    end
+    -- W170 controlled interventions. ISOLATE clears every non-$95 enemy at
+    -- the pre-handler point after the first $95 exists, and clears the bullet
+    -- pool once at activation. Valid for attributing later bullet-count rises,
+    -- not for pacing/density. KILL_FIRST forces one P1 hit with negative HP to
+    -- prove the exact score/sound/effect/free arm; it is not natural damage.
+    if saw95 and not w170_armed then
+      w170_armed = true
+      if W170_ISOLATE then
+        for a = 0x817F8C, 0x81B40B, 2 do RAM:write_u16(a - 0x800000, 0) end
+        RAM:write_u16(0x1B40C, 0)
+        fh:write(string.format("I95\t%d\tISOLATE\n", lf))
+      end
+    end
+    if w170_armed and W170_ISOLATE then
+      for i = 0, 57 do
+        local rec = 0x81332C + i * 0x50
+        if r16(rec) ~= 0 and r8(rec + 0x0c) ~= 0x95 then
+          RAM:write_u16(rec - 0x800000, 0)
+        end
+      end
+    end
+    if saw95 and W170_KILL_FIRST and not w170_killed then
+      for rec, handler in pairs(tracked) do
+        if handler == 0x2779B6 then
+          local sub = r32(rec + 0x06)
+          RAM:write_u8(sub - 0x800000, r8(sub) | 0x10)
+          RAM:write_u16(sub - 0x800000 + 0x18, 0x8001)
+          RAM:write_u16(sub - 0x800000 + 0x38, 0x8001)
+          w170_killed = true
+          fh:write(string.format("I95\t%d\tKILL_FIRST\t%06X\n", lf, rec))
+          break
+        end
       end
     end
     return data

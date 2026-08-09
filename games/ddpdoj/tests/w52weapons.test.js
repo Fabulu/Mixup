@@ -293,7 +293,8 @@ test('the two weapon shards are DEFERRED and fetched FIRST among the deferred', 
   // bundle whose deadline is measurably LATER than shard 1's rather than
   // earlier. [M] its first record lands at lf8,144 = 137.6 s from the seed,
   // where shard 1 wants art at +7.7 s. It is also the largest body here
-  // (367.0 KiB), so it must not sit in front of anything.
+  // (367.0 KiB), so it must not sit in front of anything. W170's small stage-2
+  // type-$95 family shares this final late-game shard.
   assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 10, 9, 13, 12, 8, 14, 16, 15, 3,\s*1, 2, 4, 5, 11, 17\]\)/.test(s),
     'the bullets (+0.7 s), the shots (the first fire frame), the LASER (the '
     + 'first held frame), the death explosion, THE BOMB, THE ITEM, the impact '

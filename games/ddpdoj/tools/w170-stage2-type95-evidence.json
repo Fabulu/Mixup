@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "target": "ddpdojblk VERSION-B (2002.10.07 BLACK VER)",
+  "source": "w25handler.lua controlled MAME runs w170-type95-isolate3 and w170-type95-kill, 2026-08-09",
+  "static_occurrence_count": 31,
+  "observed_occurrences": [
+    {"logic_frame": 12554, "record": 2303584, "trigger": 12, "type": 149, "slot": 8468684},
+    {"logic_frame": 12810, "record": 2303720, "trigger": 28, "type": 149, "slot": 8468044},
+    {"logic_frame": 13066, "record": 2303848, "trigger": 44, "type": 149, "slot": 8468204},
+    {"logic_frame": 13162, "record": 2303872, "trigger": 50, "type": 149, "slot": 8468124}
+  ],
+  "isolation_intervention": {
+    "logic_frame": 12554,
+    "operation": "At the pre-handler sample, clear every non-type-$95 enemy on every frame and clear the enemy-bullet pool once.",
+    "valid_for": "Attributing later enemy-bullet count rises and type-$95 state/art order.",
+    "invalid_for": "Pacing, density, difficulty, and unaided lifetime."
+  },
+  "first_lifecycle": {
+    "slot": 8468684,
+    "first_logic_frame": 12554,
+    "last_logic_frame": 13105,
+    "sampled_frames": 552,
+    "prototype_hp": 2304,
+    "animation_first_frames": [
+      {"logic_frame": 12554, "state": 0, "cursor": 0, "stream": 1525660},
+      {"logic_frame": 12689, "state": 1, "cursor": 0, "stream": 1525660},
+      {"logic_frame": 12690, "state": 1, "cursor": 4, "stream": 1525880},
+      {"logic_frame": 12692, "state": 1, "cursor": 8, "stream": 1526100},
+      {"logic_frame": 12694, "state": 1, "cursor": 12, "stream": 1526320},
+      {"logic_frame": 12696, "state": 1, "cursor": 16, "stream": 1526540},
+      {"logic_frame": 12698, "state": 1, "cursor": 20, "stream": 1526760},
+      {"logic_frame": 12700, "state": 1, "cursor": 24, "stream": 1526980},
+      {"logic_frame": 12702, "state": 2, "cursor": 28, "stream": 1527200},
+      {"logic_frame": 12725, "state": 3, "cursor": 28, "stream": 1527200},
+      {"logic_frame": 12737, "state": 3, "cursor": 24, "stream": 1526980},
+      {"logic_frame": 12739, "state": 3, "cursor": 20, "stream": 1526760},
+      {"logic_frame": 12741, "state": 3, "cursor": 16, "stream": 1526540},
+      {"logic_frame": 12743, "state": 3, "cursor": 12, "stream": 1526320},
+      {"logic_frame": 12745, "state": 3, "cursor": 8, "stream": 1526100},
+      {"logic_frame": 12747, "state": 3, "cursor": 4, "stream": 1525880}
+    ],
+    "enemy_bullet_count_rises": [
+      {"logic_frame": 12713, "from": 0, "to": 4},
+      {"logic_frame": 12719, "from": 4, "to": 8},
+      {"logic_frame": 12725, "from": 8, "to": 12},
+      {"logic_frame": 12803, "from": 12, "to": 16},
+      {"logic_frame": 12809, "from": 16, "to": 20}
+    ]
+  },
+  "death_intervention": {
+    "logic_frame": 12554,
+    "slot": 8468684,
+    "before_hp": 2304,
+    "operation": "Set the first sub-record's P1-hit bit and set HP and HP-floor to $8001 after its pre-handler sample.",
+    "freed_logic_frame": 12555,
+    "valid_for": "Damage-branch and death/free lifecycle reachability.",
+    "invalid_for": "Natural weapon damage, kill time, score timing, and unaided survival."
+  },
+  "static_emitter_order": [
+    {"call": 2349138, "bucket": 7, "stream_source": "sub-record body descriptor $1744F8"},
+    {"call": 2350982, "bucket": 7, "stream_source": "record +$24, eight-entry animation table"},
+    {"call": 2350936, "bucket": 3, "stream_source": "fixed immediate $174E7C, conditional"}
+  ],
+  "limitations": "The static ROM inventory has 31 type-$95 records. This run reaches the first four; W169's longer spawn corpus reaches six. Unobserved occurrences remain static-minus-dynamic, never guessed."
+}

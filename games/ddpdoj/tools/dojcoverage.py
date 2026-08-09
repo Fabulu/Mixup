@@ -37,6 +37,7 @@ W22_TSV = OUT / "w22-spawn-stage1.tsv"
 W75_JSON = OUT / "w75" / "seedcmp.json"
 W168_JSON = HERE / "w168-stage2-bgelem-evidence.json"
 W169_JSON = HERE / "w169-stage2-spawn-evidence.json"
+W170_JSON = HERE / "w170-stage2-type95-evidence.json"
 RAM_BASE = 0x800000
 
 
@@ -300,6 +301,21 @@ def read_w169_stage2_spawns():
     return rows
 
 
+def read_w170_type95_spawns():
+    """Read W170's record-qualified type-$95 lifecycle corpus."""
+    if not W170_JSON.exists():
+        raise FileNotFoundError(f"{W170_JSON} missing")
+    doc = json.loads(W170_JSON.read_text(encoding="utf-8"))
+    if doc.get("schema") != 1 or "VERSION-B" not in doc.get("target", ""):
+        raise ValueError(f"{W170_JSON.name} is not VERSION-B schema 1 evidence")
+    if doc.get("static_occurrence_count") != 31:
+        raise ValueError(f"{W170_JSON.name} lost the exact 31-record static count")
+    rows = doc.get("observed_occurrences", [])
+    if len(rows) != 4 or any(int(row.get("type", -1)) != 0x95 for row in rows):
+        raise ValueError(f"{W170_JSON.name} must hold four type-$95 occurrences")
+    return rows
+
+
 def lower_bound(rom: Rom, addresses):
     seen = {}
     indirect = 0
@@ -351,6 +367,7 @@ def build_report(break_coverage=False, break_inventory=False,
     w75_updates = read_w75_element_updates()
     w168_elements = read_w168_stage2_elements()
     w169_spawns = read_w169_stage2_spawns()
+    w170_spawns = read_w170_type95_spawns()
     inventory_errors = []
 
     object_by_id = {int(e["key"]): e for e in families["top_objects"]}
@@ -439,6 +456,24 @@ def build_report(break_coverage=False, break_inventory=False,
         else:
             e["dynamic"] = True
 
+    # W170 overlaps W169 at record $232660 on purpose, then adds three later
+    # record-qualified observations. Across corpora an exact duplicate is one
+    # witness, not an inventory error; any field disagreement remains hard red.
+    for row in w170_spawns:
+        record = int(row["record"])
+        trigger = int(row["trigger"])
+        typ = int(row["type"])
+        e = stage2_spawn_by_record.get(record)
+        if e is None:
+            inventory_errors.append(
+                f"w170 observed stage 2 spawn record ${record:06X} outside static inventory")
+        elif e["trigger"] != trigger or e["type"] != typ:
+            inventory_errors.append(
+                f"w170 stage 2 spawn ${record:06X} observed trigger ${trigger:04X}/type ${typ:02X}, "
+                f"static record says ${e['trigger']:04X}/${e['type']:02X}")
+        else:
+            e["dynamic"] = True
+
     if break_stage2_spawn_inventory:
         inventory_errors.append(
             "DELIBERATE RED: w169 observed stage 2 spawn record $2325C8 outside static inventory")
@@ -479,7 +514,8 @@ def build_report(break_coverage=False, break_inventory=False,
                               w168_stage2_element_events=len(w168_elements),
                               # Record-qualified evidence, intentionally not a
                               # type-only count.
-                              w169_stage2_spawn_events=len(w169_spawns)),
+                              w169_stage2_spawn_events=len(w169_spawns),
+                              w170_type95_spawn_events=len(w170_spawns)),
                 families=report_families, delegated=config["delegated"],
                 backlog=config["backlog"], phantoms=sorted(phantoms),
                 inventory_errors=inventory_errors,

@@ -134,7 +134,7 @@ test('the ported handler addresses are registered (W25 six + W30 three + W31 the
   assert.deepEqual([...HANDLER_ADDRESSES].sort((a, b) => a - b),
     [...SIX, 0x26b6fa, 0x272aac,
       0x26a5e4, 0x26a860, 0x26ad28, 0x27733e, 0x275f30, 0x2697f6, 0x29700c,
-      0x26c20c, 0x292902, 0x296dd6,
+      0x26c20c, 0x292902, 0x296dd6, 0x2779b6,
     ].sort((a, b) => a - b));
 });
 

@@ -111,6 +111,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 // W86: the art harvest for the background elements is derived from the PORT's
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
+import { TYPE95_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -280,6 +281,14 @@ if (u17.length !== SOUND.fileSize) {
 //
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
+  // W170. The gameplay registry owns this extent: +$20 advances 0..$1C in
+  // four-byte steps, so all eight pointers are reachable. $277DE0 is the next
+  // init stub and the cartridge's valid-stream run stops there too.
+  [17, TYPE95_ART.table, TYPE95_ART.frames, 4, TYPE95_ART.frames,
+    TYPE95_ART.table + TYPE95_ART.frames * 4,
+    'stage-2 type $95 animation. $277B4C/$277C6E step record +$20 by four, '
+      + '$277C9A indexes this table with the raw byte cursor, and $277DE0 is '
+      + 'the next type init stub'],
   // the LASER's five streams are IMMEDIATES, not a table -- see LASER_STREAMS.
   [1, 0x268b9e, 64, 4, 96, 0x268d1e,
     'type $11 HULL by HEADING ($2689BC). Entries: $2689A0 builds '
@@ -684,7 +693,8 @@ const SPR_SHARDS = Object.freeze([
   // The `why` below is what the page prints when the shard has not landed, and
   // `manifest.json` is served UNCOMPRESSED, so every character is a boot byte.
   [17, 'boss', 'THE STAGE-1 BATTLESHIP: its hull $292F84 and the six OBJECT '
-    + 'tables around it. 244 streams, the biggest thing in the stage (W98)'],
+    + 'tables around it, plus stage-2 type $95\'s ten-stream family. The two '
+    + 'late-game families share one derived packed shard (W98/W170)'],
 ]);
 const SPR_BOOT = [0];
 /** the order the deferred shards are FETCHED in -- measured first need, not
@@ -921,6 +931,22 @@ for (const offs of LASER_STREAMS) {
   streams.set(offs, romExtent(offs));
   shardOfStream.set(offs, LASER_SHARD);
   harvested++;
+}
+// W170: the body and fixed overlay are immediates, not entries in the eight-
+// pointer animation table. The sub prototype carries main and `$277D02`
+// carries fixed, which is the full ten-stream family with the table. This
+// compact, late-stage family shares shard 17 with the immediately preceding
+// boss family: alone its colour plane is a verbatim ROM span, while the joined
+// packed plane remains a derived multi-family asset and needs no publish-owner
+// exception.
+for (const offs of [TYPE95_ART.main, TYPE95_ART.fixed]) {
+  if (!streams.has(offs)) {
+    streams.set(offs, romExtent(offs));
+    shardOfStream.set(offs, 17);
+    harvested++;
+  } else {
+    harvestAlready++;
+  }
 }
 // W61: the item's LAST THREE streams are IMMEDIATES, not a table -- `move.l
 // #$1B8B28,D2` at $27EFBE, `#$1B8C80` at $27F03E and `#$1B8BD4` at $27F2C2,

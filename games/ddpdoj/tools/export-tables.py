@@ -482,8 +482,12 @@ SHOT_WINDOWS.extend([
     (0x2325D0, 0x1CEA, "W169: complete STAGE-2 spawn dependency span: 332 "
                        "records + terminator, 174-word aux table, and 174 "
                        "movement streams ($2325D0..$2342BA)"),
-    (0x27782E, 0x0008, "W169: stage-2 type $95's inseparable run-length stub; "
-                       "the unknown init body begins loudly at $277836"),
+    (0x27782E, 0x05B2, "W170: complete stage-2 type $95 closure: run-length "
+                       "stub, init body, palette/prototypes, handler, muzzle "
+                       "offsets and exact eight-entry art table "
+                       "($27782E..$277DE0)"),
+    (0x27693E, 0x0008, "W170: next stage-2 boundary type $8D's inseparable "
+                       "run-length stub; unknown init body begins at $276946"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -1961,6 +1965,48 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W169: stage-2 resource does not end at stage-3 script")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
+    # W170. The two loader LEAs pin the prototype starts; the next routine and
+    # next type stub pin their far ends. The art run is eight pointers because
+    # record +$20 walks raw offsets 0..$1C and $277DE0 is code.
+    if not (u16(d, 0x27783C) == 0x4EB9 and u32(d, 0x27783E) == 0x2637A2
+            and u16(d, 0x277848) == 0x700C
+            and u16(d, 0x27784A) == 0x4EB9 and u32(d, 0x27784C) == 0x26377A
+            and u16(d, 0x277850) == 0x4EB9 and u32(d, 0x277852) == 0x263808):
+        # The PC-relative targets are checked below. These calls also refuse a
+        # rewrite that preserves data while changing the loader sequence.
+        raise SystemExit("W170: type $95 init loader sequence drifted")
+    def pc_rel_lea(pc: int) -> int:
+        disp = u16(d, pc + 2)
+        if disp & 0x8000:
+            disp -= 0x10000
+        return pc + 2 + disp
+    if (pc_rel_lea(0x277836), pc_rel_lea(0x277842)) != (0x27797E, 0x277964):
+        raise SystemExit("W170: type $95 prototype LEAs no longer name exact starts")
+    if d[0x277958:0x27795A] != bytes.fromhex("4e75"):
+        raise SystemExit("W170: type $95 init body no longer ends at $27795A")
+    if d[0x2779B6:0x2779BC] != bytes.fromhex("4eb9002638a6"):
+        raise SystemExit("W170: type $95 handler no longer starts with $2638A6")
+    calls = {u32(d, a + 2) for a in range(0x2779B6, 0x277DB8, 2)
+             if u16(d, a) == 0x4EB9}
+    required = {0x2638A6, 0x286096, 0x2813F0, 0x2422A2, 0x2817B8,
+                0x281708, 0x23D852, 0x23DF86, 0x23DF58, 0x28615E,
+                0x28C2DC, 0x289004}
+    if not required <= calls:
+        raise SystemExit(f"W170: type $95 handler call closure drifted: "
+                         f"missing {sorted(required - calls)!r}")
+    if [u16(d, 0x277DB8 + i * 2) for i in range(4)] != [0x0600, 0x0400, 0x0200, 0x0000]:
+        raise SystemExit("W170: type $95 four-entry muzzle table drifted")
+    art = [u32(d, 0x277DC0 + i * 4) for i in range(8)]
+    if art != [0x17479C + i * 0xDC for i in range(8)]:
+        raise SystemExit(f"W170: type $95 eight-entry art table drifted: {art!r}")
+    if u32(d, 0x277984) != 0x1744F8:
+        raise SystemExit("W170: type $95 sub prototype lost body stream $1744F8")
+    if u16(d, 0x277D02) != 0x243C or u32(d, 0x277D04) != 0x174E7C:
+        raise SystemExit("W170: type $95 fixed-overlay immediate drifted")
+    if d[0x277DE0:0x277DE8] != bytes.fromhex("3b7c000000044e75"):
+        raise SystemExit("W170: $277DE0 is no longer the next type's exact stub")
+    if d[0x27693E:0x276946] != bytes.fromhex("3b7c000000044e75"):
+        raise SystemExit("W170: next boundary type $8D stub drifted")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")
