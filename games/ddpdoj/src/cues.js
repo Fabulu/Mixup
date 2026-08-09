@@ -1,4 +1,5 @@
-// W173: `$28AC72`'s threshold cue spawner and the live `$28AD70` driver path.
+// W173/W176: `$28AC72`'s word-threshold and `$28AC86`'s long-threshold cue
+// spawners, plus the live `$28AD70` driver path.
 // Type `$84` seeds four 14-byte threshold records at `$275276..$2752AE`.
 // Every resulting cue starts as descriptor kind 0, then advances through the
 // bounded kind-4 and (for the first two thresholds) kind-8 paths.
@@ -83,6 +84,30 @@ export function spawnCues28AC72(ram, rom, a5, a6) {
     const cueScript = rom.u32(script + 10);
     script += 14;
     ram.setU32(a5 + 0x44, script);                     // both success and full
+    if (slot !== null) installCue(ram, rom, slot, ram.u32(a5 + 0x06),
+      d2, d3, cueScript, true);
+  }
+}
+
+/** `$28AC86`, the long-threshold entry used by type `$8C`. D0 is the live
+ * 32-bit damage accumulator at sub-record +$3C. Each record is sixteen bytes:
+ * threshold.l followed by the same D2.l/D3.l/script.l payload `$28ACA0`
+ * consumes for the word-threshold entry. */
+export function spawnCues28AC86(ram, rom, a5, d0) {
+  let script = ram.u32(a5 + 0x44);
+  for (;;) {
+    const threshold = rom.u32(script); script += 4;
+    if ((threshold & 0x80000000) !== 0 || (threshold | 0) < (d0 | 0)) break;
+    let slot = null;
+    for (let i = 0; i < CUE.slots; i++) {
+      const at = CUE.base + i * CUE.stride;
+      if (ram.u16(at) === 0) { slot = at; break; }
+    }
+    const d2 = rom.u32(script);
+    const d3 = rom.u32(script + 4);
+    const cueScript = rom.u32(script + 8);
+    script += 12;
+    ram.setU32(a5 + 0x44, script);                     // success and full
     if (slot !== null) installCue(ram, rom, slot, ram.u32(a5 + 0x06),
       d2, d3, cueScript, true);
   }

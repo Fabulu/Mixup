@@ -4,7 +4,7 @@
   "platform": "pgm",
   "year": 2002,
   "publisher": "Cave / AMI",
-  "blurb": "Vertical shooter on IGS PGM hardware, translated from the Version-B program rather than CPU-emulated. Stage 1 is feature-complete with live enemies, weapons, boss, result screen, HUD, chaining, hypers, rank, sound, music and replay. Stage 2 boots and scrolls; its background and first six chronological enemy families are ported, covering 314 of 332 spawn records at W175.",
+  "blurb": "Vertical shooter on IGS PGM hardware, translated from the Version-B program rather than CPU-emulated. Stage 1 is feature-complete with live enemies, weapons, boss, result screen, HUD, chaining, hypers, rank, sound, music and replay. Stage 2 boots and scrolls; its background and first seven chronological enemy families are ported, covering 315 of 332 spawn records at W176.",
   "status": "in-progress",
   "rom": {
     "set": "ddpdojblk",

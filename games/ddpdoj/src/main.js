@@ -52,6 +52,7 @@ import {
   PaletteState, flush24133C, catchUpObjectStream, catchUpBgPalette,
   catchUpTextPalette,
 } from './palette.js';
+import { runAnimObjects24683E } from './animobjects.js';
 
 /** THE BUCKETS `pgm.py shipgate` SUBSTITUTES, in drain (= depth) order.
  *
@@ -602,7 +603,7 @@ export class Game {
     // FRAMES A BEAM IS ON** and a reader who saw only a total could not tell
     // that from "it never fired". The owner's word for this is "sometimes".
     this.beamImpacts = ctx.beamImpacts ?? 0;
-    this.unportedLog.note(ROM.call3, 'main-loop call #3 ($24683E)');
+    this.animFrame = runAnimObjects24683E(this.ram, this.rom); // 8: $24683E
     // 9: call #4, $23D2AE, THE SPRITE LIST BUILD.  PORTED WHOLE in wave 11
     // (src/displaylist.js): the sum, the pre-emptive drop policy, the 29-bucket
     // drain with the equality cap and the abandon-the-tail carry, the emit with

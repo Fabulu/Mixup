@@ -36,8 +36,9 @@ import { installScripts, a2Run2598E6, a4Start25980C } from './scheduler.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
 import { install24150A } from './palette.js';
-import { AimTables, aim64AtTarget } from './aim.js';
+import { AimTables, aim64AtTarget, aim256, targetSelect } from './aim.js';
 import { drawWord242EC2 } from './rng.js';
+import { loadAnimObjects246410 } from './animobjects.js';
 
 // ----------------------------------------------------------- the record layout
 // A5 = enemy record, A6 = sub-record (= ($6,A5)).  The offsets the init bodies
@@ -995,6 +996,53 @@ BODY.set(0x27a454, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + R.rec1B, rom.u8(pal + 1));            // adjacent byte
 });
 
+// --- type $8C ($2789F6): stage 2's three-part palette-fading carrier. W176.
+//
+// The run-length stub is two. All three long-form prototypes occupy
+// `$278B1E..$278B72`; the returned cursor is therefore the long-threshold cue
+// script. The 21-word record prototype is `$278AF4..$278B1E`.
+const TYPE8C_AIM_TABLES = new WeakMap();
+BODY.set(0x2789f6, (ram, rom, a5, a6, unported, tablesArg, palette, soundPost) => {
+  void tablesArg; void palette;
+  const cueScript = loadSubProto(ram, rom, a5, a6, 0x278b1e); // $2789F6
+  ram.setU32(a5 + R.rec44, cueScript);                  // $278A02
+  loadRecordProto(ram, rom, a5, 0x278af4, 0x14);       // $278A06..$278A12
+  readInitPosition(ram, rom, a5, unported);            // $278A14
+
+  // Merge the main and second-part collision flags exactly as the handler does
+  // every frame. The destination is the second sub-record at A6+$20.
+  const merged = (ram.u16(a6) & 0xe7ff) | (ram.u16(a6 + 0x20) & 0xdffe);
+  ram.setU16(a6 + 0x20, merged);                       // $278A1A..$278A2A
+
+  let tables = TYPE8C_AIM_TABLES.get(rom);
+  if (!tables) { tables = new AimTables(rom); TYPE8C_AIM_TABLES.set(rom, tables); }
+  const initialDirection = (dy, dx) => {
+    const sel = targetSelect(ram, a5);
+    if (sel.carry) return (ram.u8(a6 + S.heading) * 4) & 0xff;
+    return aim256(tables,
+      u16(ram.u16(a6 + S.posX) + dy), u16(ram.u16(a6 + S.posY) + dx),
+      ram.u16(sel.addr + 0x02), ram.u16(sel.addr + 0x04));
+  };
+  let d1 = initialDirection(0x0ac0, 0x0780);           // $278A34..$278A52
+  ram.setU8(a5 + R.rec2D, d1);
+  ram.setU32(a5 + R.rec28, rom.u32(0x272d7a + ((d1 & 0xf8) >>> 1)));
+  d1 = initialDirection(0x0ac0, 0xf880);               // $278A62..$278A80
+  ram.setU8(a5 + R.rec33, d1);
+  ram.setU32(a5 + R.rec2E, rom.u32(0x272d7a + ((d1 & 0xf8) >>> 1)));
+
+  // Both stage arms in the cartridge load these same constants.
+  ram.setU8(a5 + R.rec34, 0x10);
+  ram.setU8(a5 + R.rec35, 0x02);
+  ram.setU8(a5 + 0x3c, 0x18);                         // $278A90..$278ABA
+  loadAnimObjects246410(ram, rom, 0x278bb4);           // $278ABE
+  ram.setU16(G.d8, 1);                                // stage progression gate
+  if (soundPost) soundPost(0x28c7a8);                  // $278AD2
+  else unported?.note(0x28c7a8, '$278AD2 type $8C looping engine sound '
+    + '(no soundPost callback on this init-body call)');
+  ram.setU16(0x81b414, 1);
+  if (ram.u16(G.rank98) !== 0) ram.setU16(0x81b416, 1);
+});
+
 // ============================================================ the entry point
 /** Run the init+8 body at `addr`.  Replaces spawn.js's throwing stub.  Returns
  *  FREED if the body freed the enemy (a stage-kill gate fired); otherwise
@@ -1009,7 +1057,8 @@ BODY.set(0x27a454, (ram, rom, a5, a6, unported) => {
 // which does `lea <64-byte block>,A0 / moveq #<bank>,D0 / jsr $24150A` and
 // carried a counted note from W23 to W91.  A caller that omits it gets that
 // note back rather than a silently missing colour install.
-export function runInitBodyAddr(addr, ram, rom, a5, unported, tables, palette) {
+export function runInitBodyAddr(addr, ram, rom, a5, unported, tables, palette,
+  soundPost) {
   const a6 = ram.u32(a5 + R.subRec);                  // A6 = ($6,A5)
   const fn = BODY.get(addr);
   if (!fn) {
@@ -1017,7 +1066,7 @@ export function runInitBodyAddr(addr, ram, rom, a5, unported, tables, palette) {
       + `the live init-body registry. Either an unported type was spawned, or `
       + `a body was missed; do NOT smooth`);
   }
-  const r = fn(ram, rom, a5, a6, unported, tables, palette);
+  const r = fn(ram, rom, a5, a6, unported, tables, palette, soundPost);
   return r === FREED ? FREED : undefined;
 }
 

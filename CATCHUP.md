@@ -3,7 +3,7 @@
 > **HISTORICAL DELTA, not current status.** This narrative records the rapid
 > 2026-08-06 through 2026-08-08 transition and intentionally preserves the
 > claims made at each checkpoint. Later sections supersede earlier ones, and
-> DDPDOJ has since advanced through W175. Use `instructions.md`, live `git log`,
+> DDPDOJ has since advanced through W176. Use `instructions.md`, live `git log`,
 > and the newest numbered worklogs for the current queue and counts.
 
 **You are resuming a project you last touched around DaiOuJou W26/W27 and

@@ -15,14 +15,10 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The project stopped at W175 only because the owner ordered the previous session
-to stop when the CLI broke. W175 had already been committed and pushed, but the
-orchestrator correctly did not review or deploy it and did not reserve W176.
-There was no game or repository blocker.
-
-Resume with an independent W175 review. Deploy W175 only if the focused gates
-remain green, then reserve the next worklog number and continue with the first
-chronological unsupported stage-2 record, type `$8C` at `$232C00`.
+The old W175 pause is resolved. W175 was independently reviewed and deployed as
+build `20260809081027`. W176 then ported the next chronological stage-2 family,
+type `$8C`, including its shared palette-animation dependency. Continue from
+the first unsupported type `$91` record. Do not repeat W175 or W176.
 
 ## Exact repository and deployment state
 
@@ -30,12 +26,10 @@ Repository root: `C:\programmieren\batman`
 
 At handoff:
 
-- local `HEAD`: `f0d4a476fbf4d01cb682fbad26abd28f676f24c7`
-- `origin/main`: the same commit
-- commit title: `ddpdoj: port stage 2 type 96`
-- W175 is committed and pushed, but NOT deployed
-- W175 dry-publish build: `20260809062532`
-- last real deployment: W174 build `20260809060321`
+- W176 implementation and focused verification are complete
+- W175 live build: `20260809081027`
+- W176 publication details are recorded in
+  `docs/worklog/ddpdoj/176-impl-stage2-type8c.md`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
 - no agent or command is running now
 
@@ -58,47 +52,37 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W175 is complete in the repository:
+W176 is complete:
 
-- worklog: `docs/worklog/ddpdoj/175-impl-stage2-type96.md`
-- stage-2 type `$96` is ported
-- source record: `$2329C0`, clock `$00B8`, movement index `$3C`
-- init stub/body: `$27A44C` / `$27A454`
-- handler: `$27A548`
-- full state, firing, damage, death, screen-clear behavior, art, and emitter
-  dependencies are included
-- stage-2 coverage is 314/332 records
-- dynamic-minus-static is zero
-- full suite at commit: 1,482/1,482 pass, zero skips
-- bundle gate: 100 percent identical
-- exporter, browser gate, boss coverage, and dry publish all passed
+- worklog: `docs/worklog/ddpdoj/176-impl-stage2-type8c.md`
+- stage-2 type `$8C` is ported at record `$232C00`, clock `$0118`
+- init stub/body: `$2789EE` / `$2789F6`; handler: `$278C0E`
+- its three-part lifecycle, firing, damage, death, cues, sound, six-part draw,
+  and `$246410/$24683E` palette-animation path are included
+- stage-2 coverage is 315/332 records with 17 unknown
+- enemy-type coverage is 36/256; dynamic-minus-static remains zero
+- the seeded boot completes the exact 227-record prefix with 223 allocations
+  and four authentic declines
 
 The next honest chronological unsupported record is:
 
-- record `$232C00`
-- clock `$0118`
-- type `$8C`
-- movement index `$3F`
-- init body `$2789F6`
-- handler `$278C0E`
+- record `$232CE8`
+- clock `$013F`
+- type `$91`
+- movement index `$02B`
+- init body `$279AA2`
+- handler `$279B2E`
 
-First independently review W175 and deploy it only if green. Then reserve W176
-and start the dependency-complete type `$8C` wave.
+Reserve W177 and start the dependency-complete type `$91` wave.
 
-Useful W175 tests and tools:
+Useful current tests and tools:
 
 ```powershell
-node --test games/ddpdoj/tests/w175type96.test.js games/ddpdoj/tests/handlers.test.js games/ddpdoj/tests/initbody.test.js games/ddpdoj/tests/w167coverage.test.js
+node --test games/ddpdoj/tests/w176type8c.test.js games/ddpdoj/tests/w133stage2boot.test.js games/ddpdoj/tests/w167coverage.test.js
 python games/ddpdoj/tools/dojcoverage.py
 python games/ddpdoj/tools/export-tables.py --verify
 node games/ddpdoj/tools/export-web.mjs
 node tools/publish.mjs --only ddpdoj --dry
-```
-
-Only after an independent green review:
-
-```powershell
-node tools/publish.mjs --only ddpdoj
 ```
 
 ## Recent project state that supersedes the old brief
@@ -117,8 +101,8 @@ Important completed work:
 - W165: replay parity and the obstructive recording/help tooltip behavior
 - W166: bee chain/rank/hyper feed
 - W167: reusable bidirectional static/dynamic coverage
-- W168-W175: stage-2 background elements, stage install, and enemy types `$95`,
-  `$8D`, `$8F`, `$84`, `$90`, and `$96`
+- W168-W176: stage-2 background elements, stage install, and enemy types `$95`,
+  `$8D`, `$8F`, `$84`, `$90`, `$96`, and `$8C`
 - Gradius commit `21fed98`: restored title/menu nametable after demo return
 
 The owner reported that sound became very good after the duration fix, while
@@ -135,8 +119,8 @@ that reported cluster. Preserve those mechanics and their tests.
 1. `PROMPT.md`
 2. this `instructions.md`
 3. `AGENTS.md`
-4. `docs/worklog/ddpdoj/175-impl-stage2-type96.md`
-5. `docs/worklog/ddpdoj/174-impl-stage2-type90.md`
+4. `docs/worklog/ddpdoj/176-impl-stage2-type8c.md`
+5. `docs/worklog/ddpdoj/175-impl-stage2-type96.md`
 6. `docs/worklog/ddpdoj/167-impl-general-static-dynamic-coverage.md`
 7. `HANDOVER.md`
 8. relevant files under `docs/knowledge/`, especially 01, 02, 03, 09, and 10
@@ -187,13 +171,9 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
   only after green.
 - No em dash in output or files.
 
-## What was happening when the stop arrived
+## Latest completed delivery
 
-The previous AI had just deployed W174 after independent review. It then sent
-W175 to the single DOJ writer and a separate read-only ROM auditor. The owner's
-stop request arrived after both agents had effectively finished. The writer had
-already committed and pushed W175; the auditor had made no files. The previous
-AI did not deploy W175 and did not start W176.
-
-This was a clean pause point. The CLI question is resolved. Continue from W175
-review rather than repeating the implementation or trusting an older queue.
+W176 closed type `$8C` and moved the controlled live frontier from `$232C00`
+to `$232CE8`. Its focused 38-test integration set, ROM exporter verification,
+and reusable coverage check pass. Continue with W177/type `$91`; the full-game
+goal remains active after every individual wave.

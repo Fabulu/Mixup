@@ -108,7 +108,7 @@ export function runEnemyFrame(ram, rom, ctx, handlers) {
   // Appended like `tables` and `spawnEvent`; a caller that omits it gets those
   // notes back.
   const { script, deferred } = runSpawnWalker(ram, rom, u, ctx.tables,
-    ctx.spawnEvent, ctx.palette);                              // $2634F6
+    ctx.spawnEvent, ctx.palette, ctx.soundPost);               // $2634F6
   const driven = runEnemyDriver(ram, handlers, hctx(ctx));    // $2634FA
   return { script, deferred, driven };
 }

@@ -507,8 +507,12 @@ SHOT_WINDOWS.extend([
                        "stub, init, palettes/prototypes, death tail, handler, "
                        "animation/emission table and death-effect body through "
                        "the next local type $98 body at $27AA74"),
-    (0x2789EE, 0x0008, "W175: next chronological boundary type $8C's exact "
-                       "run-length stub; unknown init body begins at $2789F6"),
+    (0x2789EE, 0x0E14, "W176: complete stage-2 type $8C closure: run-length "
+                       "stub, init, three prototypes, long-threshold cue "
+                       "script, spawn palette-animation list, shared death "
+                       "tail, handler, exact body/attachment/pose/fire tables "
+                       "and fifteen-entry death palette-animation list through "
+                       "the next local type $90 stub at $279802"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -555,8 +559,9 @@ ENEMY_PROTO_WINDOWS = [
     #            at $14; the five are spaced $EA4 and $26BFFC breaks the run.
     # One window covers all four plus the two tail routines interleaved with
     # them ($26BF10 and $26BFC2), which is how the ROM lays them out.
-    (0x26BE70, 0x0190, "W31: the midboss's four sprite tables $26BE70 (8), "
-                       "$26BE90 (32), $26BF42 (32) and $26BFE8 (5 longs)"),
+    (0x26BE70, 0x028C, "W31/W176: the midboss's four sprite tables $26BE70 "
+                       "(8), $26BE90 (32), $26BF42 (32), $26BFE8 (5), plus "
+                       "type $8C's complete 64-long vector table $26BFFC"),
     # the scripted carriers $20/$21 (sub only, $272A90) and prop $24.
     (0x272A90, 0x0020, "W23: types $20/$21 sub-record prototype $272A90"),
     (0x296FF0, 0x0020, "W23: type $24 sub-record prototype $296FF2"),
@@ -2349,6 +2354,58 @@ def check_stage2_spawn_data(d: bytes) -> None:
             and (u16(d, 0x232C06) & 0x0FFF) == 0x03F
             and d[0x2789EE:0x2789F6] == bytes.fromhex("3b7c000200044e75")):
         raise SystemExit("W175: next frontier is not $232C00 type $8C idx $03F")
+
+    # W176. Type $8C owns three long-form sub-records, a 21-word record
+    # prototype, two palette-animation loader lists, the long-threshold cue
+    # entry and a shared backwards death tail. Its data ends exactly where the
+    # already-ported type $90 stub begins at $279802.
+    if not (pc_rel_lea(0x2789F6) == 0x278B1E
+            and u16(d, 0x2789FC) == 0x4EB9 and u32(d, 0x2789FE) == 0x2637A2
+            and pc_rel_lea(0x278A06) == 0x278AF4
+            and u16(d, 0x278A0C) == 0x7014
+            and u16(d, 0x278A0E) == 0x4EB9 and u32(d, 0x278A10) == 0x26377A
+            and u16(d, 0x278A14) == 0x4EB9 and u32(d, 0x278A16) == 0x263808):
+        raise SystemExit("W176: type $8C init loader sequence drifted")
+    if d[0x278AF4:0x278B1E] != bytes.fromhex(
+            "000000000000150a605009094030111100000000000000800000000000800000"
+            "2020000cfffe00080010"):
+        raise SystemExit("W176: type $8C 21-word record prototype drifted")
+    if not all((u16(d, 0x278B1E + i * 28) & 0x8000) != 0 for i in range(3)):
+        raise SystemExit("W176: type $8C lost one of three long-form prototypes")
+    if u32(d, 0x278B72) != 0x00007B0C or u16(d, 0x278BB2) != 0xFFFF:
+        raise SystemExit("W176: type $8C long-threshold cue script extent drifted")
+    if not (u16(d, 0x278BB4) == 3 and 0x278BB4 + 2 + 3 * 14 == 0x278BE0
+            and u16(d, 0x27972E) == 15 and 0x27972E + 2 + 15 * 14 == 0x279802):
+        raise SystemExit("W176: type $8C palette-animation list geometry drifted")
+    calls8c = {u32(d, a + 2) for a in range(0x2789F6, 0x279502, 2)
+               if u16(d, a) == 0x4EB9}
+    required8c = {0x2637A2, 0x26377A, 0x263808, 0x24226E, 0x246410,
+                  0x28C7A8, 0x2638A6, 0x286096, 0x28AC86, 0x2422A2,
+                  0x24220A, 0x281764, 0x2816F6, 0x2817A8, 0x281708,
+                  0x2817B8, 0x28C7C2, 0x28C310, 0x28615E, 0x289004}
+    if not required8c <= calls8c:
+        raise SystemExit(f"W176: type $8C call closure drifted: "
+                         f"missing {sorted(required8c - calls8c)!r}")
+    if sum(1 for a in range(0x279226, 0x279502, 2)
+           if u16(d, a) == 0x4EB9 and u32(d, a + 2) == 0x289004) != 12:
+        raise SystemExit("W176: type $8C death is no longer exactly twelve effects")
+    if [u16(d, a) for a in (0x278F9C, 0x278FC6, 0x278FE4, 0x278FF2,
+                            0x279012, 0x279050)] != [0x4E92, 0x4E93, 0x4E93,
+                                                    0x4E93, 0x4E93, 0x4E94]:
+        raise SystemExit("W176: type $8C six indirect emitter sites drifted")
+    if len(d[0x27959E:0x2795BE]) != 8 * 4 or len(d[0x2795BE:0x27961E]) != 24 * 4:
+        raise SystemExit("W176: type $8C body/attachment table extents drifted")
+    if len(d[0x27961E:0x2796DE]) != 24 * 8:
+        raise SystemExit("W176: type $8C 24-pose table extent drifted")
+    type8c_records = [(script + i * 8, u16(d, script + i * 8),
+                       u16(d, script + i * 8 + 6) & 0x0FFF)
+                      for i in range(332) if d[script + i * 8 + 4] == 0x8C]
+    if type8c_records != [(0x232C00, 0x0118, 0x03F)]:
+        raise SystemExit(f"W176: stage-2 type $8C occurrence order drifted: "
+                         f"{type8c_records!r}")
+    if not (u16(d, 0x232CE8) == 0x013F and d[0x232CEC] == 0x91
+            and (u16(d, 0x232CEE) & 0x0FFF) == 0x02B):
+        raise SystemExit("W176: next frontier is not $232CE8 type $91 idx $02B")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")
