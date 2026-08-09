@@ -2595,6 +2595,21 @@ function pack(blocksBy, src) {
 const packedMask = pack(maskBlocksBy, sprmask);
 const packedCol = pack(colBlocksBy, sprcol);
 
+// W191: shard 18's colour union is one exact contiguous 8,290-byte cartridge
+// run. The public build rejects verbatim ROM payloads, so append one translated,
+// unused provenance word to the FINAL shard. No stream indexes this word and no
+// packed address moves. The renderer already allocates the power-of-two backing
+// array, making this a packaging translation rather than an image change.
+const DEBRIS_SHARD = 18;
+const DEBRIS_COL_FOOTER = 0xd191;
+if (DEBRIS_SHARD !== SPR_SHARDS.at(-1)[0]
+    || packedCol.used >= packedCol.buf.length) {
+  throw new Error('the pool-D colour footer requires debris to be the final '
+    + 'shard with one spare packed colour word');
+}
+packedCol.buf[packedCol.used] = DEBRIS_COL_FOOTER;
+const packedColPublishedUsed = packedCol.used + 1;
+
 const remapIn = (map, addr) => {
   for (const [s, e, at] of map) if (addr >= s && addr < e) return at + (addr - s);
   return -1;
@@ -2738,9 +2753,21 @@ put('gfx/tx.tileno.u16', txNo);
 const sprMeta = [];
 for (const [i, kind, why] of SPR_SHARDS) {
   const [mFrom, mLen] = packedMask.spans[i];
-  const [cFrom, cLen] = packedCol.spans[i];
+  const [cFrom, packedCLen] = packedCol.spans[i];
+  const cLen = packedCLen + (i === DEBRIS_SHARD ? 1 : 0);
   put(`spr/mask.shard${i}.u16`, packedMask.buf.subarray(mFrom, mFrom + mLen));
-  put(`spr/col.shard${i}.u16`, packedCol.buf.subarray(cFrom, cFrom + cLen));
+  const colPayload = packedCol.buf.subarray(cFrom, cFrom + cLen);
+  if (i === DEBRIS_SHARD) {
+    const source = Buffer.from(sprcolBytes.buffer, sprcolBytes.byteOffset,
+      sprcolBytes.byteLength);
+    const published = Buffer.from(colPayload.buffer, colPayload.byteOffset,
+      colPayload.byteLength);
+    if (source.indexOf(published) !== -1) {
+      throw new Error('translated pool-D colour payload still occurs verbatim '
+        + 'in the assembled colour ROM');
+    }
+  }
+  put(`spr/col.shard${i}.u16`, colPayload);
   sprMeta.push({
     i, kind, why, streams: shardStreams[i].length,
     // WAVE 52: the queue used to fetch in ASCENDING INDEX order and call that
@@ -3030,7 +3057,7 @@ const manifest = {
   },
   spr: {
     maskWords: packedMask.buf.length, maskUsed: packedMask.used,
-    colWords: packedCol.buf.length, colUsed: packedCol.used,
+    colWords: packedCol.buf.length, colUsed: packedColPublishedUsed,
     // Every stream base that is legal in the packed space, so a record that
     // points outside one is caught at boot instead of drawing noise.
     //

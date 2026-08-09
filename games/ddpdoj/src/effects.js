@@ -25,7 +25,7 @@
 //   A IMPACT     $8171BE  $2C x 80   $27F8F8/$27F92A  driver $27F95A   E4/E7's
 //   B EFFECT     $81B732  $38 x 80   $289004          driver $288E4E   ***THIS***
 //   C sub-record $81CDEE  $30 x 48   (not located)    driver $289B80
-//   D SUB-EFFECT $81C8EC  $40 x 20   $289098          driver $2890F2   §THE REFUSAL
+//   D SUB-EFFECT $81C8EC  $40 x 20   $289098          driver $2890F2   W191, ported
 //   E SHOT SPARK $81D394  $22 x 60   $289F54          driver $28A098   W53, ported
 //
 // This file owns pool B and pool D, including both allocators and drivers. Pool B's
@@ -43,45 +43,13 @@
 //   All three do the same `clr.w (A6)`; the driver RE-COUNTS `$81C8EA` from
 //   scratch every frame, so a freed slot cannot leave a stale count behind.
 //
-// ===== HISTORICAL W54 REFUSAL, SUPERSEDED BY W191'S COMPLETE POOL-D PORT =====
+// ===== W191 POOL-D COMPLETION =====
 //
-// `$288EF0 jsr $289098` -- inside the driver, once per record, gated on
-// `($12,A6)` being non-negative -- SUB-ALLOCATES INTO POOL D.  `$289004` inits
-// `($12) = $FFFF` so a bare allocation does nothing, but [M] every death arm
-// this port reaches writes `($12,A0) = 0` or `= 1`, which arms it.  Pool D has
-// 20 slots and its ONLY consumer is `$2890F2`, type-5 call #6.
-//
-// **SO PORTING `$289004` + `$288E4E` AND CALLING `$289098` WOULD REBUILD W33's
-// LEAK ONE LEVEL DOWN, after 20 spawns instead of 80** -- `50-recon` §4.2, and
-// the reason this wave exists to navigate it.  There are exactly two ways past
-// it and only one of them fits in a wave:
-//
-//   (a) PORT POOL D TOO.  [M] measured this session, from the listing: the
-//       driver body `$2890F2..$2892D8`, a vector solver `$2892DA..$28930A`, a
-//       four-arm quadrant jump table at stride $40 `$28930A..$2893CF`, 128 words
-//       of `i*8` at `$2893D0`, `$289610..$289657`, and the FILL `$289658..
-//       $2897FB` with its own 5-entry dispatch `$289644`, its 4-entry list table
-//       `$2897D0` and FIVE 144-byte templates `$289810..$289AE0`.  It reads a
-//       pointer table at **`$200920` whose extent nothing in the listing pins**,
-//       and it calls seven routines this port does not have ($241E34 $24397A
-//       $242FDE $242EC2 $242CAC $2431F4 $242B3C).  ~1,800 B plus an unpinned
-//       window plus its own unpriced art.  That is a wave, not a paragraph.
-//
-//   (b) **REFUSE TO ALLOCATE.**  W52 §0.2's shape exactly: it was handed the
-//       impact pool `$27F8F8` and refused it rather than allocate without its
-//       driver.  `subSpawn288ED0` below does everything `$288ED0..$288EFA` does
-//       EXCEPT the `jsr` -- the push/pop of `($1c,A6)`, the `($16,A6) ->
-//       ($1d,A6)` copy and the one-shot `($12,A6) = $FFFF` -- and COUNTS the
-//       call by address.  **Pool D therefore receives zero allocations and
-//       CANNOT leak**, which is a stronger statement than "it leaks slowly".
-//
-// (b) is what ships, and its cost is stated rather than hidden: **the secondary
-// debris/smoke each explosion would spawn is MISSING**, and `$289098`'s own
-// draws off the shared `$803916`/`$803917` counters do not happen, so the RNG
-// trajectory is one step short per death effect on the paths that reach it.
-// That is the same class of defect W53 §0 FIXED for `$289F62`, and it is named
-// here rather than discovered later.  `$289084`, pool D's clear, IS ported --
-// a pool that survives a reset it should not is `50-recon` §4.3 item 6.
+// `$288EF0 jsr $289098` sub-allocates into pool D when a pool-B record's `$12`
+// field is non-negative. Pool D's allocator, fill, five templates, animation,
+// movement, culling, lifetime gates, emitter, and type-5 driver are all owned
+// here. The one-shot parent field is disarmed only after the allocation attempt,
+// exactly as the ROM does, and the driver drains or culls every live child.
 //
 // ================================ THE GEOMETRY =============================
 //
