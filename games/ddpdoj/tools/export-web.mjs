@@ -112,7 +112,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
 import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE90_ART, TYPE91_ART, TYPE92_ART,
-  TYPE94_ART, TYPE95_ART, TYPE96_ART, TYPE97_ART } from '../src/handlers.js';
+  TYPE93_ART, TYPE94_ART, TYPE95_ART, TYPE96_ART, TYPE97_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -1042,10 +1042,10 @@ for (const offs of [TYPE90_ART.main]) {
     harvestAlready++;
   }
 }
-// W177/W178: both compact threshold enemies carry one immediate body stream in
-// their long-form prototype. They share shard 17 with the adjacent stage-2
-// families, and `romExtent` proves each value is an authentic stream start.
-for (const offs of [TYPE91_ART.main, TYPE92_ART.main]) {
+// W177/W178/W181: these compact threshold enemies carry one immediate body
+// stream in their long-form prototype. They share shard 17 with the adjacent
+// stage-2 families, and `romExtent` proves each value is a stream start.
+for (const offs of [TYPE91_ART.main, TYPE92_ART.main, TYPE93_ART.main]) {
   if (!streams.has(offs)) {
     streams.set(offs, romExtent(offs));
     shardOfStream.set(offs, 17);

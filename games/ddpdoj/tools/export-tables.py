@@ -533,6 +533,12 @@ SHOT_WINDOWS.extend([
                        "palette/record/sub-record prototypes, mirrored death "
                        "tail, handler and two pool-B effects plus the next "
                        "local type $93 stub through $279EC2"),
+    (0x279EBA, 0x0226, "W181: complete stage-2 type $93 closure: run-length "
+                       "stub, init, palettes/prototypes, death linger tail, "
+                       "handler and three pool-B effects through the next "
+                       "local type $94 stub at $27A0E0"),
+    (0x275BAE, 0x0008, "W181: exact next chronological type $86 run-length "
+                       "stub, so controlled boot stops at body $275BB6"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -2668,6 +2674,59 @@ def check_stage2_spawn_data(d: bytes) -> None:
             and (u16(d, 0x232EF6) & 0x0FFF) == 0x03D
             and d[0x279EBA:0x279EC2] == bytes.fromhex("3b7c000000044e75")):
         raise SystemExit("W180: next frontier is not $232EF0 type $93 idx $03D")
+
+    # W181: type $93. Its death arm branches back to the shared draw at
+    # $279FC0, and the structural closure includes the 24-byte shared trailer
+    # before the next type-$94 stub at $27A0E0.
+    if not (pc_rel_lea(0x279EC2) == 0x279F0C
+            and u16(d, 0x279EC8) == 0x4EB9 and u32(d, 0x279ECA) == 0x2637A2
+            and pc_rel_lea(0x279ECE) == 0x279F08
+            and u16(d, 0x279ED4) == 0x7001
+            and u16(d, 0x279ED6) == 0x4EB9 and u32(d, 0x279ED8) == 0x26377A
+            and u16(d, 0x279EDC) == 0x4EB9 and u32(d, 0x279EDE) == 0x263808
+            and pc_rel_lea(0x279EE8) == 0x279EFE):
+        raise SystemExit("W181: type $93 init loader/palette sequence drifted")
+    if d[0x279EFE:0x279F08] != bytes.fromhex("100f140b100f100f100f"):
+        raise SystemExit("W181: type $93 five stage palette pairs drifted")
+    if d[0x279F08:0x279F0C] != bytes.fromhex("00120000"):
+        raise SystemExit("W181: type $93 two-word record prototype drifted")
+    if d[0x279F0C:0x279F28] != bytes.fromhex(
+            "a000ec00f80000237470144014001000080008000e00100000000000"):
+        raise SystemExit("W181: type $93 long-form sub-record prototype drifted")
+    if d[0x279F28:0x279F4A] != bytes.fromhex(
+            "532d001764000092700c223cfac0fa40142e001f4eb90027f8f0"
+            "4ef9002637624e71"):
+        raise SystemExit("W181: type $93 linger/terminal-impact tail drifted")
+    calls93 = {u32(d, a + 2) for a in range(0x279F28, 0x27A0C8, 2)
+               if u16(d, a) == 0x4EB9}
+    required93 = {0x27F8F0, 0x2638A6, 0x286096, 0x28C2DC,
+                  0x28615E, 0x289004}
+    if not required93 <= calls93:
+        raise SystemExit(f"W181: type $93 call closure drifted: "
+                         f"missing {sorted(required93 - calls93)!r}")
+    if sum(1 for a in range(0x279F28, 0x27A0C8, 2)
+           if u16(d, a) == 0x4EB9 and u32(d, a + 2) == 0x289004) != 3:
+        raise SystemExit("W181: type $93 death is no longer exactly three effects")
+    if not (u16(d, 0x279FD2) == 0x4E90
+            and d[0x27A0C4:0x27A0C8] == bytes.fromhex("6000fefa")):
+        raise SystemExit("W181: type $93 indirect emitter/death return drifted")
+    if u32(d, 0x279F12) != 0x237470:
+        raise SystemExit("W181: type $93 immediate body stream drifted")
+    if d[0x27A0C8:0x27A0E0] != bytes.fromhex(
+            "000c00040a0001800500fd8000000180fb00fd80f6000180"):
+        raise SystemExit("W181: type $93 24-byte structural trailer drifted")
+    type93_records = [(script + i * 8, u16(d, script + i * 8),
+                       u16(d, script + i * 8 + 6) & 0x0FFF)
+                      for i in range(332) if d[script + i * 8 + 4] == 0x93]
+    if type93_records != [(0x232EF0, 0x0197, 0x03D)]:
+        raise SystemExit(f"W181: stage-2 type $93 occurrence order drifted: "
+                         f"{type93_records!r}")
+    if d[0x2336A2:0x2336A8] != bytes.fromhex("840009004000"):
+        raise SystemExit("W181: type $93 movement stream idx $03D drifted")
+    if not (u16(d, 0x233018) == 0x01D5 and d[0x23301C] == 0x86
+            and (u16(d, 0x23301E) & 0x0FFF) == 0x002
+            and d[0x275BAE:0x275BB6] == bytes.fromhex("3b7c000100044e75")):
+        raise SystemExit("W181: next frontier is not $233018 type $86 idx $002")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")

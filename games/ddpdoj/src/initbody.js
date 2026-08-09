@@ -1080,6 +1080,18 @@ BODY.set(0x279cd0, (ram, rom, a5, a6, unported) => {
   }
 });
 
+// --- type $93 ($279EC2): stage 2's heavy damage-threshold enemy. W181.
+BODY.set(0x279ec2, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x279f0c);            // $279EC2..$279ECE
+  loadRecordProto(ram, rom, a5, 0x279f08, 0x01);       // $279ECE..$279EDC
+  readInitPosition(ram, rom, a5, unported);            // $279EDC
+
+  const pal = 0x279efe + ram.u16(G.stageX2);           // $279EE2..$279EEE
+  ram.setU8(a6 + S.palette, rom.u8(pal));               // $279EF0
+  ram.setU8(a5 + R.rec18, rom.u8(pal));                 // $279EF4 reads (A0)+
+  ram.setU8(a5 + R.rec19, rom.u8(pal + 1));             // $279EF8 adjacent byte
+});
+
 // --- type $97 ($277DE8): stage 2's animated aimed-firing carrier. W179.
 const TYPE97_AIM_TABLES = new WeakMap();
 BODY.set(0x277de8, (ram, rom, a5, a6, unported, tablesArg) => {
