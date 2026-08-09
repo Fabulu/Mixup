@@ -56,7 +56,7 @@ test('W167 reusable coverage derives the current closed-family totals', { skip: 
   assert.equal(got.status, 0, got.stdout + got.stderr);
   assert.match(got.stdout, /top_objects: 7\/20 ported/);
   assert.match(got.stdout, /type5_calls: 17\/23 ported/);
-  assert.match(got.stdout, /enemy_types: 43\/256 ported, 83 unknown, 130 null/);
+  assert.match(got.stdout, /enemy_types: 44\/256 ported, 82 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported, 0 unknown, 0 null/);
