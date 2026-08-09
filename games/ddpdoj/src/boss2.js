@@ -2,8 +2,8 @@
 //
 // Type `$30` installs a new set of five `$259554` scheduler tables. This file
 // owns the per-frame wrapper, complete damage controller, first A4 bootstrap,
-// and arrival MAIN 0. The bootstrap also starts D scripts 0/2/11/12/13. D0 is
-// the first translated arrival animation driver; D2 init `$298002` is next.
+// arrival MAIN 0, its initially armed A3 drivers, and all eleven A2 draw-only
+// boss-part objects. Later phase scripts remain outside this module's closure.
 
 import { freeEnemy } from './initbody.js';
 import { runStageAdvance242952 } from './stageend.js';
@@ -16,6 +16,7 @@ import { scrollCompensate } from './movement.js';
 import { install24150A } from './palette.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
+import { enqueueRegistersThroughStub } from './spritequeue.js';
 import {
   runScheduler25962E, registerScript, seqStart2598D0, a3Start259962,
   a3Stop2599EC, a2Stop25994A, a1Clear259B34, a4Clear2598A2,
@@ -425,3 +426,94 @@ registerScript(0x29826e, d12Init29826E);
 registerScript(0x298298, d12Step298298);
 registerScript(0x2982bc, d13Init2982BC);
 registerScript(0x2982c8, d13Step2982C8);
+
+function boss2D4(ram, a6, anim) {
+  return (ram.u16(a6 + 0x1c) & 0xff00) | ram.u8(a6 + anim);
+}
+
+function boss2DrawA2(ram, rom, a6, table, cursor, d1, d3, anim) {
+  enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1 >>> 0,
+    rom.u32(table + cursor), d3, boss2D4(ram, a6, anim));
+}
+
+function addWordLow(value, add) {
+  return ((value & 0xffff0000) | u16((value & 0xffff) + add)) >>> 0;
+}
+
+/** `$297462`, A2 object 0, the root body's eight-frame draw. */
+function boss2Object0(ram, rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  const d1 = (addWordLow(ram.u32(a6 + 0x22), 0xfd00) + 0xec00f000) >>> 0;
+  boss2DrawA2(ram, rom, a6, 0x297490, ram.u16(a6 + 0x28), d1,
+    0x1480, 0x126);
+}
+
+/** `$2974FE`, A2 object 1. */
+function boss2Object1(ram, rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  const pos = ((u16(ram.u16(a6 + 0x02) + ram.u16(a6 + 0x168)) << 16)
+    | ram.u16(a6 + 0x04)) >>> 0;
+  boss2DrawA2(ram, rom, a6, 0x297538, ram.u16(a6 + 0x166),
+    (pos + 0x04000000 + 0xee00ed00) >>> 0, 0x1298, 0x128);
+}
+
+/** `$297578`, A2 object 2. */
+function boss2Object2(ram, rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  const pos = ((ram.u32(a6 + 0x02) - 0x0a000000) + 0xf400ed00) >>> 0;
+  boss2DrawA2(ram, rom, a6, 0x2975a8, ram.u16(a6 + 0x16a),
+    pos, 0x0c98, 0x130);
+}
+
+/** `$2974B0`, A2 object 3. */
+function boss2Object3(ram, rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  boss2DrawA2(ram, rom, a6, 0x2974da, ram.u16(a6 + 0x06),
+    (ram.u32(a6 + 0x02) + 0xee00fa00) >>> 0, 0x1230, 0x127);
+}
+
+function boss2Object45(ram, rom, ctx, cfg) {
+  const a6 = ctx.bossSubRec;
+  const pos = ((u16(ram.u16(a6 + cfg.part + 0x02) + ram.u16(a6 + 0x168)) << 16)
+    | ram.u16(a6 + cfg.part + 0x04)) >>> 0;
+  boss2DrawA2(ram, rom, a6, cfg.table, ram.u16(a6 + cfg.cursor),
+    (pos + 0xf600fc00) >>> 0, 0x0a20, cfg.anim);
+}
+
+function boss2HeadingObject(ram, rom, ctx, cfg) {
+  const a6 = ctx.bossSubRec;
+  const cursor = ((ram.u8(a6 + cfg.heading) + 1) & 0x3e) << 1;
+  boss2DrawA2(ram, rom, a6, cfg.table, cursor,
+    (ram.u32(a6 + cfg.part + 0x02) + cfg.bias) >>> 0,
+    cfg.d3, cfg.anim);
+}
+
+/** `$29789A`, A2 object 10. */
+function boss2Object10(ram, rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  const cursor = ((ram.u8(a6 + 0x11b) + 1) & 0x3e) << 1;
+  boss2DrawA2(ram, rom, a6, 0x2978d0, cursor,
+    (ram.u32(a6 + 0x102) + 0xfc00fd00) >>> 0, 0x0418, 0x12f);
+}
+
+registerScript(0x297462, boss2Object0);
+registerScript(0x2974fe, boss2Object1);
+registerScript(0x297578, boss2Object2);
+registerScript(0x2974b0, boss2Object3);
+registerScript(0x2975e0, (ram, rom, ctx) => boss2Object45(ram, rom, ctx,
+  { part: 0xc0, table: 0x297686, cursor: 0xc6, anim: 0x12d }));
+registerScript(0x297654, (ram, rom, ctx) => boss2Object45(ram, rom, ctx,
+  { part: 0xe0, table: 0x297614, cursor: 0xe6, anim: 0x12e }));
+registerScript(0x2976c6, (ram, rom, ctx) => boss2HeadingObject(ram, rom, ctx,
+  { part: 0x40, heading: 0x5b, table: 0x2976fc, bias: 0xfa00fc00,
+    d3: 0x0620, anim: 0x129 }));
+registerScript(0x29777c, (ram, rom, ctx) => boss2HeadingObject(ram, rom, ctx,
+  { part: 0x60, heading: 0x7b, table: 0x2976fc, bias: 0xfa00fc00,
+    d3: 0x0620, anim: 0x12a }));
+registerScript(0x2977b0, (ram, rom, ctx) => boss2HeadingObject(ram, rom, ctx,
+  { part: 0x80, heading: 0x9b, table: 0x2977e6, bias: 0xf600fa00,
+    d3: 0x0a30, anim: 0x12b }));
+registerScript(0x297866, (ram, rom, ctx) => boss2HeadingObject(ram, rom, ctx,
+  { part: 0xa0, heading: 0xbb, table: 0x2977e6, bias: 0xf600fa00,
+    d3: 0x0a30, anim: 0x12c }));
+registerScript(0x29789a, boss2Object10);

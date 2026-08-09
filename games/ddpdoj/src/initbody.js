@@ -819,7 +819,7 @@ BODY.set(0x2926E2, (ram, rom, a5, a6, unported, tables, palette) => {
 //
 // This closes the spawn-time layer and installs the boss's five scheduler
 // tables. `boss2.js` owns the damage controller, A4 bootstrap and arrival MAIN
-// 0 and the five initially armed A3 scripts; A2 object 0 at $297462 is next.
+// 0, the five initially armed A3 scripts, and all eleven A2 draw objects.
 BODY.set(0x297120, (ram, rom, a5, a6, unported, tables, palette) => {
   void tables;
   loadSubProto(ram, rom, a5, a6, 0x297248);            // $297120..$29712C
@@ -878,6 +878,17 @@ BODY.set(0x296d8a, (ram, rom, a5, a6) => {
   ram.setU16(a5 + 0x26, 0);                             // $296DA8 move.w #$0,$26(a5)
   ram.setU16(a5 + 0x1e, 0x0101);                        // $296DAE move.w #$101,$1e(a5)
   ram.setU16(a5 + 0x20, 0);                             // $296DB4 move.w #$0,$20(a5)
+});
+
+// --- type $4D ($29BB26): stage-2 boss satellite, queued by A3/D13. W185.
+// The 28-byte prototype at $29BB4A deliberately overlaps the handler's first
+// opcode word at $29BB64; loadSubProto reads that final `$4EB9` word exactly.
+BODY.set(0x29bb26, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x29bb4a);             // $29BB26..$29BB32
+  ram.setU32(a6 + S.posX, ram.u32(a5 + 0x16));          // $29BB32
+  ram.setU8(a5 + 0x16, 0);                             // $29BB38 clr.b only
+  ram.setU16(a5 + 0x1e, 0x0202);                       // $29BB3C
+  ram.setU16(a5 + 0x20, 0);                            // $29BB42
 });
 
 // --- type $95 ($277836): THE FIRST STAGE-2-ONLY BODY.  W170.

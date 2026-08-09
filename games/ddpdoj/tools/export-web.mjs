@@ -349,6 +349,31 @@ const HARVEST = Object.freeze([
     'stage-2 type $94 extending body animation. $27A1B4 advances record '
       + '+$20 by eight, reaching all sixteen pointers; $27A44C is the next '
       + 'type init stub'],
+  // W185. The eleven stage-2 boss A2 routines are draw-only register emitters.
+  // Their nine pointer tables are structurally pinned by the next routine and
+  // by the exact selector bounds established before the routines were ported.
+  [17, 0x297490, 8, 4, 8, 0x2974b0,
+    'stage-2 boss A2 object 0. A6+$28 cycles 0..$1C in four-byte steps'],
+  [17, 0x2974da, 8, 4, 9, 0x2974fe,
+    'stage-2 boss A2 object 3. A6+$06 reaches raw offsets 0..$1C through '
+      + 'D2/D6/D7, exactly eight pointers. The ninth valid pointer at $20 is '
+      + 'structurally adjacent but unreachable'],
+  [17, 0x297538, 16, 4, 16, 0x297578,
+    'stage-2 boss A2 object 1. A6+$166 indexes all sixteen pointers'],
+  [17, 0x2975a8, 14, 4, 14, 0x2975e0,
+    'stage-2 boss A2 object 2. A6+$16A cycles 0..$34'],
+  [17, 0x297614, 16, 4, 16, 0x297654,
+    'stage-2 boss A2 object 5. A6+$E6 is masked to $3F'],
+  [17, 0x297686, 16, 4, 16, 0x2976c6,
+    'stage-2 boss A2 object 4. A6+$C6 is masked to $3F'],
+  [17, 0x2976fc, 32, 4, 32, 0x29777c,
+    'stage-2 boss A2 objects 6 and 7. Heading bytes map to 32 pointers'],
+  [17, 0x2977e6, 32, 4, 32, 0x297866,
+    'stage-2 boss A2 objects 8 and 9. Heading bytes map to 32 pointers'],
+  [17, 0x2978d0, 32, 4, 32, 0x297950,
+    'stage-2 boss A2 object 10. A6+$11B maps to 32 pointers'],
+  [17, 0x29bbd4, 8, 4, 8, 0x29bbf4,
+    'stage-2 boss type $4D satellite. Record +$20 cycles 0..$1C'],
   // the LASER's five streams are IMMEDIATES, not a table -- see LASER_STREAMS.
   [1, 0x268b9e, 64, 4, 96, 0x268d1e,
     'type $11 HULL by HEADING ($2689BC). Entries: $2689A0 builds '
@@ -753,8 +778,8 @@ const SPR_SHARDS = Object.freeze([
   // The `why` below is what the page prints when the shard has not landed, and
   // `manifest.json` is served UNCOMPRESSED, so every character is a boot byte.
   [17, 'boss', 'THE STAGE-1 BATTLESHIP: its hull $292F84 and the six OBJECT '
-    + 'tables around it, plus stage-2 types $95/$8D/$8F. These compact '
-    + 'late-game families share one derived packed shard (W98/W170-W172)'],
+    + 'tables around it, plus stage-2 boss parts and late-game enemy families. '
+    + 'These compact late-game families share one derived packed shard'],
 ]);
 const SPR_BOOT = [0];
 /** the order the deferred shards are FETCHED in -- measured first need, not

@@ -6,11 +6,12 @@ import { existsSync, readFileSync } from 'node:fs';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
-import { UnportedLog, Unreached } from '../src/unported.js';
+import { UnportedLog } from '../src/unported.js';
 import { runInitBodyAddr } from '../src/initbody.js';
 import { runHandler } from '../src/handlers.js';
 import { SCHED } from '../src/scheduler.js';
 import { SPAWN } from '../src/spawn.js';
+import { BUCKETS, RECORD_BYTES } from '../src/spritequeue.js';
 
 const tablesPath = new URL('../rip/port/player.tables.json', import.meta.url);
 const HAVE = existsSync(tablesPath);
@@ -38,12 +39,11 @@ test('W184/1 D0 ROM closure is exact and has no external dependencies',
     + '0c6e00200028660000083d7c000000284e75');
 });
 
-test('W184/2 the initial A3 set runs before A2 object 0 becomes the frontier',
+test('W184/2 the initial A3 set and all eleven A2 objects run in one pass',
   { skip: SKIP }, () => {
   const ram = fixture();
   const ctx = { ram, rom: ROM, unportedLog: new UnportedLog() };
-  assert.throws(() => runHandler(0x297398, ram, ROM, A5, ctx),
-    (e) => e instanceof Unreached && e.romAddress === 0x297462);
+  assert.doesNotThrow(() => runHandler(0x297398, ram, ROM, A5, ctx));
   assert.deepEqual([ram.u8(A6 + 0x26), ram.u8(A6 + 0x27), ram.u16(A6 + 0x28)],
     [2, 2, 4]);
   assert.deepEqual(Array.from({ length: 5 }, (_, i) =>
@@ -58,4 +58,6 @@ test('W184/2 the initial A3 set runs before A2 object 0 becomes the frontier',
   assert.equal(ram.u16(SPAWN.DEFQ_BASE + 0x02), 0x004d);
   assert.equal(ram.u32(SPAWN.DEFQ_BASE + 0x16),
     (ram.u32(A6 + 0x22) + 0xf000f500) >>> 0);
+  assert.equal(ram.u16(BUCKETS[1].counter), 11 * RECORD_BYTES,
+    'each active A2 object emits exactly one bucket-1 record in list order');
 });

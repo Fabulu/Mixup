@@ -558,6 +558,10 @@ SHOT_WINDOWS.extend([
     (0x29826E, 0x004E, "W184: complete A3/D12 dual side-selector driver"),
     (0x2982BC, 0x0054, "W184: complete A3/D13 type-$4D satellite emitter and "
                        "four-long position-offset table"),
+    (0x297462, 0x04EE, "W185: complete eleven-object stage-2 boss A2 draw "
+                       "closure, including nine art-pointer tables"),
+    (0x29BB1E, 0x00D6, "W185: complete deferred type-$4D closure: stub, init, "
+                       "overlapping prototype, handler and eight-frame art"),
     (0x298310, 0x0956, "W183: complete stage-2 boss multi-part damage controller, "
                        "four part-death helpers, their effect tables, death latch "
                        "and timeout tail through the A4 table at $298C66"),
@@ -2853,6 +2857,16 @@ def check_stage2_spawn_data(d: bytes) -> None:
     for start, end, expected in boss2_initial_a3:
         if hashlib.sha256(d[start:end]).hexdigest() != expected:
             raise SystemExit(f"W184: stage-2 boss A3 closure ${start:06X} drifted")
+    if hashlib.sha256(d[0x297462:0x297950]).hexdigest() != (
+            "4be222fa8b366e9da24641ca02362e8ab3c08313230625139d3c5ed633d81cc6"):
+        raise SystemExit("W185: stage-2 boss eleven-object A2 closure drifted")
+    if hashlib.sha256(d[0x29BB1E:0x29BBF4]).hexdigest() != (
+            "cdc464e32a561b910ccc180c2cc3cfeb226eb901580c5515792d40827978438d"):
+        raise SystemExit("W185: type $4D closure drifted")
+    if not (d[0x267A8C:0x267A94] == bytes.fromhex("0029bb1e0029bb64")
+            and d[0x29BB64:0x29BB66] == bytes.fromhex("4eb9")
+            and d[0x29BB4A + 26:0x29BB4A + 28] == bytes.fromhex("4eb9")):
+        raise SystemExit("W185: type $4D registry/prototype overlap drifted")
     type30_records = [(script + i * 8, u16(d, script + i * 8),
                        u16(d, script + i * 8 + 6) & 0x0FFF)
                       for i in range(332) if d[script + i * 8 + 4] == 0x30]

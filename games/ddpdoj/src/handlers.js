@@ -5068,6 +5068,35 @@ function handler93(ram, rom, a5, ctx) {
   emit93(ram, rom, a6);
 }
 
+// ############################################################################
+// # W185: TYPE $4D, STAGE-2 BOSS SATELLITE                                  #
+// ############################################################################
+
+function handler4D(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  if (onScreen242684(ram, a6)) {                      // $29BB64 jsr / bcc
+    if (ram.u8(a5 + 0x16) !== 0) { freeEnemy(ram, a5); return; }
+  } else {
+    ram.setU8(a5 + 0x16, 1);                         // $29BB7A
+  }
+
+  applyVelocity(ram, ctx.tables, a5);                 // $29BB80 jsr $2417DE
+  scrollCompensate(ram, a5);                          // $29BB86 jsr $24179E
+
+  const old = ram.u8(a5 + 0x1e);
+  ram.setU8(a5 + 0x1e, old - 1);                      // $29BB8C subq.b
+  if (old === 0) {
+    ram.setU8(a5 + 0x1e, ram.u8(a5 + 0x1f));          // $29BB94
+    const cursor = u16(ram.u16(a5 + 0x20) + 4);
+    ram.setU16(a5 + 0x20, cursor);
+    if (cursor === 0x20) { freeEnemy(ram, a5); return; }
+  }
+
+  enqueueRegistersThroughStub(ram, rom, 0x23dece,
+    (ram.u32(a6 + 0x02) + 0xfa00fc00) >>> 0,
+    rom.u32(0x29bbd4 + ram.u16(a5 + 0x20)), 0x0620, 0x17);
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
@@ -5119,6 +5148,7 @@ const HANDLERS = new Map([
   [0x277f26, handler97],       // W179: stage-2 type $97
   [0x27a1b4, handler94],       // W180: stage-2 type $94
   [0x279f4a, handler93],       // W181: stage-2 type $93
+  [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 
 /** Run the handler at `addr` for the enemy record `a5`.  An unknown address is a

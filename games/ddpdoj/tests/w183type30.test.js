@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
-import { UnportedLog, Unreached } from '../src/unported.js';
+import { UnportedLog } from '../src/unported.js';
 import { runInitBodyAddr, INIT_BODY_ADDRESSES } from '../src/initbody.js';
 import { runHandler, HANDLER_ADDRESSES } from '../src/handlers.js';
 import { boss2Damage298310 } from '../src/boss2.js';
@@ -80,8 +80,7 @@ test('W183/3 first handler frame runs controller, MAIN 0 and initial A3 scripts'
   const ram = fixture();
   const unportedLog = new UnportedLog();
   const ctx = { ram, rom: ROM, unportedLog };
-  assert.throws(() => runHandler(0x297398, ram, ROM, A5, ctx),
-    (e) => e instanceof Unreached && e.romAddress === 0x297462);
+  assert.doesNotThrow(() => runHandler(0x297398, ram, ROM, A5, ctx));
   assert.equal(ram.u16(A5 + 0x1a), 0x2a2f,
     '$298C30 spends the first real timeout frame before scheduler dispatch');
   assert.equal(ram.u16(SCHED.seqCursor), 0);
