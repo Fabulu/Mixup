@@ -550,6 +550,14 @@ SHOT_WINDOWS.extend([
                        "arrival MAIN-0 init/step through $297AE6"),
     (0x297E8A, 0x00C6, "W183: six-entry boss arrival palette-animation table "
                        "and complete fourteen-pair A3 table through $297F50"),
+    (0x297F54, 0x0030, "W184: complete stage-2 boss A3/D0 init-step closure; "
+                       "the init falls through into the timer/selector step"),
+    (0x298002, 0x004A, "W184: complete A3/D2 init-step closure and six-word "
+                       "first-child selector table"),
+    (0x298244, 0x002A, "W184: complete A3/D11 overlay-selector driver"),
+    (0x29826E, 0x004E, "W184: complete A3/D12 dual side-selector driver"),
+    (0x2982BC, 0x0054, "W184: complete A3/D13 type-$4D satellite emitter and "
+                       "four-long position-offset table"),
     (0x298310, 0x0956, "W183: complete stage-2 boss multi-part damage controller, "
                        "four part-death helpers, their effect tables, death latch "
                        "and timeout tail through the A4 table at $298C66"),
@@ -2829,6 +2837,22 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if hashlib.sha256(d[0x298C66:0x298CE2]).hexdigest() != (
             "f47bccf8b6586b3bc3548d8a7f4f5c036f10fe6d4637dbae944102c12e602ba0"):
         raise SystemExit("W183: type $30 A4 table/bootstrap closure drifted")
+    if hashlib.sha256(d[0x297F54:0x297F84]).hexdigest() != (
+            "e14a920322a5ac9e26f8642f714dcd881027f497e27d99df83e7bf49beec90d2"):
+        raise SystemExit("W184: stage-2 boss A3/D0 closure drifted")
+    boss2_initial_a3 = [
+        (0x298002, 0x29804C,
+         "155488ea8da1f481edf15969af24647b7669515b740aa0fb137eba0962d84c9a"),
+        (0x298244, 0x29826E,
+         "d9a6eaf08adfb86a256eeecf6860904dab99a17475a9da53115d31680fdbb99f"),
+        (0x29826E, 0x2982BC,
+         "973365bef1b33127c51697e63a82c65bdcc6cb0b030ad29aa80c5da874531030"),
+        (0x2982BC, 0x298310,
+         "b77abccb13198e39c07215c3fd44453b4741891323720bd13f8c522cd33bdd73"),
+    ]
+    for start, end, expected in boss2_initial_a3:
+        if hashlib.sha256(d[start:end]).hexdigest() != expected:
+            raise SystemExit(f"W184: stage-2 boss A3 closure ${start:06X} drifted")
     type30_records = [(script + i * 8, u16(d, script + i * 8),
                        u16(d, script + i * 8 + 6) & 0x0FFF)
                       for i in range(332) if d[script + i * 8 + 4] == 0x30]

@@ -819,7 +819,7 @@ BODY.set(0x2926E2, (ram, rom, a5, a6, unported, tables, palette) => {
 //
 // This closes the spawn-time layer and installs the boss's five scheduler
 // tables. `boss2.js` owns the damage controller, A4 bootstrap and arrival MAIN
-// 0; the next unported scheduler dependency is D0 init $297F54.
+// 0 and the five initially armed A3 scripts; A2 object 0 at $297462 is next.
 BODY.set(0x297120, (ram, rom, a5, a6, unported, tables, palette) => {
   void tables;
   loadSubProto(ram, rom, a5, a6, 0x297248);            // $297120..$29712C

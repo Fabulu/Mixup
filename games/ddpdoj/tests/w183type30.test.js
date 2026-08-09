@@ -75,13 +75,13 @@ test('W183/2 init copies all twelve prototypes and installs the five schedulers'
     assert.equal(ram.u16(A6 + off), 0x8000);
 });
 
-test('W183/3 first handler frame runs controller and MAIN 0 before D0 stops loudly',
+test('W183/3 first handler frame runs controller, MAIN 0 and initial A3 scripts',
   { skip: SKIP }, () => {
   const ram = fixture();
   const unportedLog = new UnportedLog();
   const ctx = { ram, rom: ROM, unportedLog };
   assert.throws(() => runHandler(0x297398, ram, ROM, A5, ctx),
-    (e) => e instanceof Unreached && e.romAddress === 0x297f54);
+    (e) => e instanceof Unreached && e.romAddress === 0x297462);
   assert.equal(ram.u16(A5 + 0x1a), 0x2a2f,
     '$298C30 spends the first real timeout frame before scheduler dispatch');
   assert.equal(ram.u16(SCHED.seqCursor), 0);
@@ -90,7 +90,9 @@ test('W183/3 first handler frame runs controller and MAIN 0 before D0 stops loud
     ram.u16(SCHED.seqDst + 0x06), ram.u16(SCHED.seqDst + 0x08),
   ], [0, 0x01bf, 0, 0]);
   assert.equal(ram.u16(SCHED.a3Base), 0x8100,
-    'D0 is started by A4 bootstrap and marked initialized before its loud throw');
+    'D0 is started by A4 bootstrap and marked initialized');
+  assert.deepEqual([ram.u8(A6 + 0x26), ram.u8(A6 + 0x27), ram.u16(A6 + 0x28)],
+    [2, 2, 4], 'D0 init falls through into its first timer/selector step');
   assert.deepEqual([ram.u16(A6 + 0x22), ram.u16(A6 + 0x24)], [0x8400, 0x1ee0],
     'MAIN 0 immediately runs the shared first-child placement tail');
 });

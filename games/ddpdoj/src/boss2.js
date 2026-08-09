@@ -2,8 +2,8 @@
 //
 // Type `$30` installs a new set of five `$259554` scheduler tables. This file
 // owns the per-frame wrapper, complete damage controller, first A4 bootstrap,
-// and arrival MAIN 0. The bootstrap also starts D scripts 0/2/11/12/13; after
-// MAIN 0 enters, the next strict scheduler frontier is D0 init `$297F54`.
+// and arrival MAIN 0. The bootstrap also starts D scripts 0/2/11/12/13. D0 is
+// the first translated arrival animation driver; D2 init `$298002` is next.
 
 import { freeEnemy } from './initbody.js';
 import { runStageAdvance242952 } from './stageend.js';
@@ -15,6 +15,7 @@ import { livePlayers2428A6, bigBurst28B4BE } from './boss.js';
 import { scrollCompensate } from './movement.js';
 import { install24150A } from './palette.js';
 import { loadAnimObjects246410 } from './animobjects.js';
+import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import {
   runScheduler25962E, registerScript, seqStart2598D0, a3Start259962,
   a3Stop2599EC, a2Stop25994A, a1Clear259B34, a4Clear2598A2,
@@ -315,3 +316,112 @@ function main0Init297A10(ram, rom, ctx, a4) {
 
 registerScript(0x297a10, main0Init297A10);
 registerScript(0x297a28, main0Step297A28);
+
+/** `$297F60`, D0 STEP: advance the root animation selector every 3 calls. */
+function d0Step297F60(ram, _rom, ctx, _a4) {
+  const a6 = ctx.bossSubRec;
+  const old = ram.u8(a6 + 0x26);
+  ram.setU8(a6 + 0x26, old - 1);                       // $297F60 subq.b
+  if (old !== 0) return;                               // $297F64 bcc
+  ram.setU8(a6 + 0x26, ram.u8(a6 + 0x27));            // $297F68
+  const selector = u16(ram.u16(a6 + 0x28) + 4);       // $297F6E
+  ram.setU16(a6 + 0x28, selector === 0x20 ? 0 : selector);
+}
+
+/** `$297F54`, D0 INIT. The ROM falls straight into STEP on first dispatch. */
+function d0Init297F54(ram, rom, ctx, a4) {
+  const a6 = ctx.bossSubRec;
+  ram.setU16(a6 + 0x26, 2);
+  ram.setU16(a6 + 0x28, 0);
+  d0Step297F60(ram, rom, ctx, a4);
+}
+
+registerScript(0x297f54, d0Init297F54);
+registerScript(0x297f60, d0Step297F60);
+
+const D2_SELECTORS = [0x0000, 0x0004, 0x0008, 0x000c, 0x0008, 0x0004];
+
+/** `$29800E`, D2 STEP: cycle the first child through a six-frame selector. */
+function d2Step29800E(ram, _rom, ctx, a4) {
+  const old = ram.u8(a4 + 0x02);
+  ram.setU8(a4 + 0x02, old - 1);
+  if (old !== 0) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+  const cursor = ram.u16(a4 + 0x04);
+  ram.setU16(ctx.bossSubRec + 0x06, D2_SELECTORS[cursor >>> 1]);
+  ram.setU16(a4 + 0x04, cursor + 2 === 0x0c ? 0 : cursor + 2);
+}
+
+/** `$298002`, D2 INIT, falling straight into STEP. */
+function d2Init298002(ram, rom, ctx, a4) {
+  ram.setU16(a4 + 0x02, 3);
+  ram.setU16(a4 + 0x04, 0);
+  d2Step29800E(ram, rom, ctx, a4);
+}
+
+/** `$29824A`, D11 STEP: cycle the boss overlay selector `$00..$34`. */
+function d11Step29824A(ram, _rom, ctx, a4) {
+  const old = ram.u8(a4 + 0x02);
+  ram.setU8(a4 + 0x02, old - 1);
+  if (old !== 0) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+  const selector = u16(ram.u16(ctx.bossSubRec + 0x16a) + 4);
+  ram.setU16(ctx.bossSubRec + 0x16a, selector < 0x38 ? selector : 0);
+}
+
+/** `$298244`, D11 INIT, falling straight into STEP. */
+function d11Init298244(ram, rom, ctx, a4) {
+  ram.setU16(a4 + 0x02, 0x0202);
+  d11Step29824A(ram, rom, ctx, a4);
+}
+
+/** `$298298`, D12 STEP: advance the two side-part selectors modulo `$40`. */
+function d12Step298298(ram, _rom, ctx, a4) {
+  const old = ram.u8(a4 + 0x02);
+  ram.setU8(a4 + 0x02, old - 1);
+  if (old !== 0) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+  const a6 = ctx.bossSubRec;
+  ram.setU16(a6 + 0xc6, u16(ram.u16(a6 + 0xc6) + 4) & 0x003f);
+  ram.setU16(a6 + 0xe6, u16(ram.u16(a6 + 0xe6) + 4) & 0x003f);
+}
+
+/** `$29826E`, D12 INIT, including its two independent RNG seeds. */
+function d12Init29826E(ram, rom, ctx, a4) {
+  const a6 = ctx.bossSubRec;
+  ram.setU16(a4 + 0x02, 0x0101);
+  ram.setU16(a6 + 0xc6, (drawWord242EC2(ram, rom) & 0x0f) << 2);
+  ram.setU16(a6 + 0xe6, (drawWord242EC2(ram, rom) & 0x0f) << 2);
+  d12Step298298(ram, rom, ctx, a4);
+}
+
+const D13_OFFSETS = [0xf000f500, 0xf0000500, 0xf480f100, 0xf4800900];
+
+/** `$2982C8`, D13 STEP: enqueue one type `$4D` satellite at a root offset. */
+function d13Step2982C8(ram, _rom, ctx, a4) {
+  const old = ram.u8(a4 + 0x02);
+  ram.setU8(a4 + 0x02, old - 1);
+  if (old !== 0) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+  const q = enqueueDeferred(ram, 0x4d, DEFQ_D1.FIXED00);
+  const cursor = ram.u16(a4 + 0x04);
+  ram.setU32(q.addr + 0x16,
+    (ram.u32(ctx.bossSubRec + 0x22) + D13_OFFSETS[cursor >>> 2]) >>> 0);
+  ram.setU16(a4 + 0x04, (cursor + 4) & 0x000f);
+}
+
+/** `$2982BC`, D13 INIT, falling straight into STEP. */
+function d13Init2982BC(ram, rom, ctx, a4) {
+  ram.setU16(a4 + 0x02, 0);
+  ram.setU16(a4 + 0x04, 0);
+  d13Step2982C8(ram, rom, ctx, a4);
+}
+
+registerScript(0x298002, d2Init298002);
+registerScript(0x29800e, d2Step29800E);
+registerScript(0x298244, d11Init298244);
+registerScript(0x29824a, d11Step29824A);
+registerScript(0x29826e, d12Init29826E);
+registerScript(0x298298, d12Step298298);
+registerScript(0x2982bc, d13Init2982BC);
+registerScript(0x2982c8, d13Step2982C8);

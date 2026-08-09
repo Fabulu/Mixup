@@ -172,7 +172,7 @@ test('W133/2 the stage-1 $FFFF terminator is at $231704, where the seed parks '
 // ===========================================================================
 
 test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at boss '
-  + 'D-script 0 init $297F54 after W183', { skip: SKIP }, () => {
+  + 'A2 object 0 at $297462 after W184', { skip: SKIP }, () => {
   const r = bootStage2();
 
   // (a) stage 2 really booted: $813096 went 0 -> 4 (stage index 1, x4).
@@ -190,7 +190,7 @@ test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at boss '
     + 'times); without window 2 the column-stream read would throw earlier');
 
   assert.ok(r.threw instanceof Unreached);
-  assert.strictEqual(r.threw.romAddress, 0x297f54);
+  assert.strictEqual(r.threw.romAddress, 0x297462);
   assert.strictEqual(r.throwClock, 0x01dc);
   assert.notStrictEqual(r.threw.romAddress, STAGE2_ELEM0_CTOR,
     'W168\'s later background constructor is no longer the first stop');
