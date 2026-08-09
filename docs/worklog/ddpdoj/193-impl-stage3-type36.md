@@ -1,6 +1,6 @@
 # W193: Stage-3 type $36
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 ## Scope
 
@@ -65,3 +65,12 @@ draw with complete art. The next chronological unsupported record is type
 `$37` at `$234502`, clock `$003B`, with body `$264740` and handler `$2647A6`.
 Stage 3 has 258/414 translated records, leaving 156 records across 13
 unsupported types.
+
+## Release
+
+- implementation commit: `17fb995`
+- shared-shard ownership correction: `ea573d3`
+- production build: `20260809235214`
+- release gate: 1,546/1,546 tests, bundle render, web fetch, and ROM leak guard
+- deployment: `https://gbtman.pages.dev/games/ddpdoj/`
+- confirmation: three consecutive production polls returned the new build

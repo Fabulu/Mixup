@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-10, after W192 publication.
+Last updated: 2026-08-10, after W193 publication.
 
 ## Current directive
 
@@ -14,11 +14,11 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The old W175 pause is resolved. W176 through W192 are live. W188 fixes the
+The old W175 pause is resolved. W176 through W193 are live. W188 fixes the
 reported stage-1 tank-death and hyper defects. W189 completes the directly
 reachable F1, F2, and F8 stage-2 boss phases, including the primary death
 presentation and screen shake. W191 closes Stage 2, and W192 opens Stage 3
-with its real terrain and first enemy family. Do not repeat W175 through W192.
+with its real terrain and first two enemy families. Do not repeat W175 through W193.
 
 ## Exact repository and deployment state
 
@@ -43,6 +43,7 @@ At handoff:
 - W190 is committed, pushed, and deployed
 - W191 is committed, pushed, and deployed
 - W192 is committed, pushed, and deployed
+- W193 is committed, pushed, and deployed
 - W175 live build: `20260809081027`
 - W176 live build: `20260809092221`
 - W177 live build: `20260809095334`
@@ -61,6 +62,7 @@ At handoff:
 - W190 live build: `20260809215527`
 - W191 live build: `20260809224615`
 - W192 live build: `20260809231913`
+- W193 live build: `20260809235214`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
 - no agent or command is running now
 
@@ -84,16 +86,16 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W192 is complete and live as build `20260809231913`:
+W193 is complete and live as build `20260809235214`:
 
-- latest worklog: `docs/worklog/ddpdoj/192-impl-stage3-install-census.md`
+- latest worklog: `docs/worklog/ddpdoj/193-impl-stage3-type36.md`
 - stage-2 boss baseline: `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
 - stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
 - init stub/body: `$297118` / `$297120`; handler: `$297398`
 - the complete `$298310` multi-part controller, A4 bootstrap, arrival MAIN 0,
   initially armed A3 scripts, all eleven A2 objects, and type `$4D` are included
 - stage-2 coverage is 332/332 records with 0 unknown
-- enemy-type coverage is 45/256
+- enemy-type coverage is 46/256
 - the complete F3 attack cycle is translated: A1/E6 through E11, including
   aim, RNG, timer, freeze, bullet-generator, and self-retirement behavior
 - the seeded boot consumes all 332 records, materializes 327 allocations, runs
@@ -123,24 +125,27 @@ W192 is complete and live as build `20260809231913`:
   verbatim ROM slice
 - Stage 3 installs from script `$2342BA`, aux `$234FB2`, and resource `$2350A8`
 - the complete 414-record Stage-3 script and 123 movement streams are statically
-  owned; coverage is 253/414 records and 14/28 types
+  owned; coverage is 258/414 records and 15/28 types
 - Stage-3 opening type `$3E` is translated at init `$2653EE`, handler `$265486`;
   all 70 occurrences, both linked hitboxes, bullets, death, and 64 art streams
   are live
-- the browser bundle contains 3,202 sprite streams and now includes the missing
+- Stage-3 type `$36` is translated at init `$263A58`, handler `$263C7C`; all
+  five occurrences, seven sub-records, linked damage, four batteries, cues,
+  death linger, and 33 new sprite streams are live
+- the browser bundle contains 3,235 sprite streams and now includes the missing
   1,404-tile Stage-2 and 252-tile Stage-3 background families as deferred shards
 
-The next honest gameplay frontier is Stage-3 type `$36` at record `$234312`,
-clock `$000A`.
+The next honest gameplay frontier is Stage-3 type `$37` at record `$234502`,
+clock `$003B`, body `$264740`, handler `$2647A6`.
 
-Reserve the next immutable worklog number, statically map type `$36` and its
+Reserve the next immutable worklog number, statically map type `$37` and its
 direct dependencies once, translate it, and continue through the ordered
 Stage-3 frontier without redoing W192's complete census.
 
 Useful current tests and tools:
 
 ```powershell
-node --test games/ddpdoj/tests/w192stage3.test.js
+node --test games/ddpdoj/tests/w193type36.test.js
 python games/ddpdoj/tools/export-tables.py
 python games/ddpdoj/tools/dojcoverage.py
 node tools/publish.mjs --only ddpdoj --dry
@@ -169,10 +174,10 @@ Important completed work:
 - W165: replay parity and the obstructive recording/help tooltip behavior
 - W166: bee chain/rank/hyper feed
 - W167: reusable bidirectional static/dynamic coverage
-- W168-W192: stage-2 background elements, stage install, and enemy types `$95`,
+- W168-W193: stage-2 background elements, stage install, and enemy types `$95`,
   `$8D`, `$8F`, `$84`, `$90`, `$96`, `$8C`, `$91`, `$92`, `$97`, `$94`, `$93`,
   and `$86`, the complete Stage-2 boss/death closure, and the Stage-3 install,
-  terrain, census, and opening type `$3E`
+  terrain, census, and opening types `$3E` and `$36`
 - Gradius commit `21fed98`: restored title/menu nametable after demo return
 
 The owner reported that sound became very good after the duration fix, while
