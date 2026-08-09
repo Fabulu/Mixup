@@ -65,6 +65,9 @@ already ROM-addressable, but the tiles themselves needed deferred web shards.
   maximum linked damage, death, and the real clock-6 three-record spawn pass.
 - Reusable coverage: green at 253/414 Stage-3 records and 14/28 Stage-3 types.
 - Directly affected coverage and shard-loader checks: 10/10 green.
+- Release compatibility gate: 1,544/1,544 green. Its first pass found three
+  stale registry counts; the focused 35-check inventory set is green after
+  adding the new init and handler entries.
 
 ## Result
 
@@ -73,3 +76,12 @@ is playable with complete art, and both Stage-2 and Stage-3 human background
 tile families are available to the browser renderer. The next chronological
 unsupported record is type `$36` at `$234312`, clock `$000A`. Stage-3 coverage
 is 253/414 records, leaving 161 records across 14 unsupported types.
+
+## Release
+
+- implementation commit: `5956fa0`
+- registry inventory update: `eca24e9`
+- production build: `20260809231913`
+- deployment: `https://gbtman.pages.dev/games/ddpdoj/`
+- confirmation: three consecutive production polls returned the new build and
+  HTTP 200 for the game route
