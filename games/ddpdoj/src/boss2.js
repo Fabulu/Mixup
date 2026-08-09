@@ -26,9 +26,10 @@ import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import {
   runScheduler25962E, registerScript, seqStart2598D0, a3Start259962,
-  a3Stop2599EC, a2Stop25994A, a1Clear259B34, a4Clear2598A2,
+  a3Stop2599EC, a3Running2599B4, a2Stop25994A, a1Clear259B34, a4Clear2598A2,
   a4Start25980C, seqStop2598BE, a1Start259A18, a1Running259A4A,
   a2StopAll259924, fadeArm259B7E, fadeDone259B9E, suspend2595E8,
+  a1Stop259B08,
 } from './scheduler.js';
 
 const note = (ctx, addr, what) => (ctx.unportedLog ?? ctx.unported)?.note(addr, what);
@@ -423,6 +424,195 @@ function main1Step297AE6(ram, _rom, ctx) {
 }
 
 registerScript(0x297ae6, main1Step297AE6);
+
+function main5Jitter297CE4(ram, rom, a4) {
+  const anchor = ram.u32(a4 + 0x04);
+  ram.setU32(a4 + 0x08, anchor);
+  ram.setU16(a4 + 0x08, u16(ram.u16(a4 + 0x08)
+    + (i16(drawWord24328E(ram, rom)) >> 2)));
+  ram.setU16(a4 + 0x0a, u16(ram.u16(a4 + 0x0a)
+    + (i16(drawWord24328E(ram, rom)) >> 2)));
+}
+
+/** `$297CFA`, MAIN 5 STEP: wander around the saved phase-one anchor. */
+function main5Step297CFA(ram, rom, ctx, a4) {
+  const a5 = ctx.bossRec;
+  const a6 = ctx.bossSubRec;
+  const targetY = ram.u16(a4 + 0x08);
+  const targetX = ram.u16(a4 + 0x0a);
+  const wanted = aim64(aimTables(rom), ram.u16(a6 + 0x02),
+    ram.u16(a6 + 0x04), targetY, targetX);
+  ram.setU8(a6 + 0x1b, slew64(ram.u8(a6 + 0x1b), wanted));
+  if (dueByte(ram, a4 + 0x0c)) {
+    ram.setU8(a4 + 0x0c, ram.u8(a4 + 0x0d));
+    rampSpeed293400(ram, a4, a6);
+  }
+  applyVelocity(ram, ctx.tables, a5);
+  const distance = dist242494(ram.u16(a6 + 0x02), ram.u16(a6 + 0x04),
+    targetY, targetX);
+  if (i16(distance) <= 0x0100) main5Jitter297CE4(ram, rom, a4);
+  placeBoss2Parts297990(ram, a6);
+}
+
+/** `$297CC2`, MAIN 5 INIT. The ROM falls straight into STEP. */
+function main5Init297CC2(ram, rom, ctx, a4) {
+  const a6 = ctx.bossSubRec;
+  a1Stop259B08(ram, 2);
+  ram.setU8(a4 + 0x02, 2);
+  ram.setU16(a4 + 0x0c, 0);
+  ram.setU32(a4 + 0x04, ram.u32(a6 + 0x02));
+  main5Jitter297CE4(ram, rom, a4);
+  main5Step297CFA(ram, rom, ctx, a4);
+}
+
+registerScript(0x297cc2, main5Init297CC2);
+registerScript(0x297cfa, main5Step297CFA);
+
+function d6Step298106(ram, _rom, ctx, a4) {
+  if (!dueByte(ram, a4 + 0x02)) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+  const cursor = u16(ram.u16(ctx.bossSubRec + 0x06) + 4);
+  ram.setU16(ctx.bossSubRec + 0x06, cursor);
+  if (cursor === 0x001c) ram.setU16(a4, 0);
+}
+
+function d6Init2980FA(ram, rom, ctx, a4) {
+  ram.setU16(a4 + 0x02, 2);
+  ram.setU16(a4 + 0x04, 0);
+  d6Step298106(ram, rom, ctx, a4);
+}
+
+function d9Step2981F2(ram, _rom, ctx, a4) {
+  if (!dueByte(ram, a4 + 0x02)) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+  const cursor = u16(ram.u16(ctx.bossSubRec + 0x166) + 4);
+  ram.setU16(ctx.bossSubRec + 0x166, cursor);
+  if (i16(cursor) >= 0x20) {
+    ram.setU16(ctx.bossSubRec + 0x166, 0x20);
+    ram.setU16(a4, 0);
+  }
+}
+
+function d9Init2981EC(ram, rom, ctx, a4) {
+  ram.setU16(a4 + 0x02, 1);
+  d9Step2981F2(ram, rom, ctx, a4);
+}
+
+function f4TrackE(ram, ctx, a4) {
+  if (ram.u8(a4 + 0x03) === 1
+      && !a1Running259A4A(ram, 1) && !a1Running259A4A(ram, 14)
+      && dueByte(ram, a4 + 0x16)) {
+    ram.setU8(a4 + 0x16, ram.u8(a4 + 0x17));
+    if (i32(ram.u32(ctx.bossRec + 0x16)) < 0x6900) ram.setU8(a4 + 0x16, 8);
+    const child = a1Start259A18(ram, 14);
+    ram.setU16(child + 0x06, ram.u16(a4 + 0x18));
+    ram.setU16(child + 0x08, 0xfff9);
+    ram.setU16(child + 0x16, 4);
+    ram.setU16(child + 0x18, 5);
+    if (dueByte(ram, a4 + 0x1a)) {
+      ram.setU8(a4 + 0x1a, ram.u8(a4 + 0x1b));
+      ram.setU16(child + 0x08, 0xfffa);
+      ram.setU16(child + 0x16, 0x000b);
+      ram.setU16(child + 0x18, 0x000c);
+      ram.setU8(child + 0x06, 4);
+      ram.setU8(a4 + 0x03, 2);
+    }
+  }
+
+  if (ram.u8(a4 + 0x03) === 2 && !a1Running259A4A(ram, 1)
+      && dueByte(ram, a4 + 0x06)) {
+    ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));
+    const child = a1Start259A18(ram, 1);
+    ram.setU8(child + 0x04, ram.u8(a4 + 0x0a));
+    ram.setU16(child + 0x06, ram.u16(a4 + 0x08));
+    ram.setU8(a4 + 0x0a, -ram.i8(a4 + 0x0a));
+    ram.setU8(a4 + 0x03, 1);
+    ram.setU16(a4 + 0x08, Math.min(0x28, ram.u16(a4 + 0x08) + 1));
+  }
+}
+
+function f4TrackD(ram, a4) {
+  if (ram.u8(a4 + 0x02) === 2
+      && !a3Running2599B4(ram, 10) && !a1Running259A4A(ram, 12)
+      && dueByte(ram, a4 + 0x10)) {
+    ram.setU8(a4 + 0x10, ram.u8(a4 + 0x11));
+    ram.setU8(a4 + 0x02, 3);
+    ram.setU16(a4 + 0x04, 0x20);
+    if (ram.u8(a4 + 0x14) !== 4) ram.setU8(a4 + 0x14, ram.u8(a4 + 0x14) + 1);
+  }
+
+  if (ram.u8(a4 + 0x02) === 3 && !a1Running259A4A(ram, 12)) {
+    const left = u16(ram.u16(a4 + 0x04) - 1);
+    ram.setU16(a4 + 0x04, left);
+    if (left === 0) {
+      a3Start259962(ram, 9);
+      ram.setU8(a4 + 0x02, 4);
+    }
+  }
+
+  if (ram.u8(a4 + 0x02) === 4
+      && !a3Running2599B4(ram, 9) && !a1Running259A4A(ram, 13)
+      && dueByte(ram, a4 + 0x12)) {
+    ram.setU8(a4 + 0x12, ram.u8(a4 + 0x13));
+    const child = a1Start259A18(ram, 13);
+    ram.setU16(child + 0x06, 4);
+    const left = u16(ram.u8(a4 + 0x0c) - 1) & 0xff;
+    ram.setU8(a4 + 0x0c, left);
+    if (left === 0) {
+      ram.setU8(a4 + 0x0c, ram.u8(a4 + 0x0d));
+      ram.setU8(a4 + 0x13, Math.max(0x10, ram.u8(a4 + 0x13) - 4));
+      ram.setU8(a4 + 0x12, ram.u8(a4 + 0x13));
+      ram.setU8(a4 + 0x02, 5);
+    }
+  }
+
+  if (ram.u8(a4 + 0x02) === 5 && !a1Running259A4A(ram, 13)) {
+    a3Start259962(ram, 10);
+    ram.setU8(a4 + 0x02, 2);
+    if (ram.u8(a4 + 0x15) !== 4) ram.setU8(a4 + 0x15, ram.u8(a4 + 0x15) + 1);
+  }
+}
+
+function f4Step299406(ram, _rom, ctx, a4) {
+  if (ram.u8(a4 + 0x02) === 0) {
+    const left = u16(ram.u16(a4 + 0x04) - 1);
+    ram.setU16(a4 + 0x04, left);
+    if (left === 0) {
+      a3Stop2599EC(ram, 2);
+      a3Start259962(ram, 6);
+      ram.setU8(a4 + 0x02, 2);
+      ram.setU8(a4 + 0x03, 1);
+    }
+  }
+  f4TrackE(ram, ctx, a4);
+  f4TrackD(ram, a4);
+}
+
+function f4Init2993B4(ram, rom, ctx, a4) {
+  ram.setU8(a4 + 0x02, 0);
+  ram.setU8(a4 + 0x03, 0);
+  ram.setU16(a4 + 0x04, 0x0060);
+  ram.setU16(a4 + 0x06, 0x6060);
+  ram.setU16(a4 + 0x08, 0x001e);
+  ram.setU8(a4 + 0x0a, 1);
+  ram.setU16(a4 + 0x10, 0x3040);
+  ram.setU16(a4 + 0x12, 0x0020);
+  ram.setU16(a4 + 0x0c, 0x0303);
+  ram.setU16(a4 + 0x16, 0x2024);
+  ram.setU16(a4 + 0x1a, 0x0303);
+  ram.setU8(a4 + 0x14, 0);
+  ram.setU8(a4 + 0x15, 0);
+  ram.setU8(a4 + 0x18, 2);
+  ram.setU8(a4 + 0x19, 2);
+  f4Step299406(ram, rom, ctx, a4);
+}
+
+registerScript(0x2980fa, d6Init2980FA);
+registerScript(0x298106, d6Step298106);
+registerScript(0x2981ec, d9Init2981EC);
+registerScript(0x2981f2, d9Step2981F2);
+registerScript(0x2993b4, f4Init2993B4);
+registerScript(0x299406, f4Step299406);
 
 function f2PostSound(ram, rom, ctx, a4) {
   ctx.soundPost?.(rom.u32(0x29906a + ram.u16(a4 + 0x14)));

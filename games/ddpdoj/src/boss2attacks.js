@@ -450,6 +450,133 @@ function e11Init29AE48(ram, rom, ctx, a4) {
   e11Step29AE4C(ram, rom, ctx, a4);
 }
 
+// ---------------------------------------------------------------------- E1
+
+function e1Shot(ram, rom, ctx, a5, angle, d2, d5, site, entry) {
+  const d1 = u8(angle);
+  const d3 = (rom.u32(0x2734fa + ((d1 & 0x3f) << 2)) + d5) >>> 0;
+  shoot(ram, rom, ctx, site, entry,
+    { d0: 0x00050013, d1, d2, d3, d4: 0, d5, a5 });
+}
+
+function e1Step299B74(ram, rom, ctx, a4) {
+  if (!due8(ram, a4 + 0x02)) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+  const direction = ram.i8(a4 + 0x08);
+  const jitter = (ram.i8(a4 + 0x09) + direction) << 24 >> 24;
+  ram.setU8(a4 + 0x09, jitter);
+  if ((direction < 0 && jitter <= 0) || (direction >= 0 && jitter >= 0))
+    ram.setU8(a4 + 0x08, -direction);
+
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  const aimed = aim64FromCaller(aimTables(rom), ram, a5,
+    u16(ram.u16(a6 + 0x02) + 0x0800), ram.u16(a6 + 0x04));
+  if (!aimed.carry) {
+    const base = u8(aimed.dir * 4 + ram.u8(a4 + 0x09)
+      + drawByte242B3C(ram, rom));
+    const d2 = ram.u32(a6 + 0x02);
+    const d5 = ram.i8(a4 + 0x04) < 0 ? 0x07ffff00 : 0x08000100;
+    e1Shot(ram, rom, ctx, a5, base, d2, d5, 0x299c0e, 0x2816f6);
+    e1Shot(ram, rom, ctx, a5, base + 0x0c, d2, d5, 0x299c28, 0x2816f6);
+    e1Shot(ram, rom, ctx, a5, base - 0x0c, d2, d5, 0x299c42, 0x2816f6);
+    if (ram.u16(LOOP) !== 0) {
+      e1Shot(ram, rom, ctx, a5, base - 0x14, d2, d5, 0x299c64, 0x281708);
+      e1Shot(ram, rom, ctx, a5, base - 0x04, d2, d5, 0x299c7e, 0x281708);
+    }
+  }
+  const left = u16(ram.u16(a4 + 0x06) - 1);
+  ram.setU16(a4 + 0x06, left);
+  if (left === 0) ram.setU16(a4, 0);
+}
+
+function e1Init299B54(ram, rom, ctx, a4) {
+  ram.setU16(a4 + 0x02, 5);
+  ram.setU8(a4 + 0x09, 0);
+  ram.setU8(a4 + 0x08, drawSigned242FDE(ram, rom) === 0 ? 0xff : 1);
+  e1Step299B74(ram, rom, ctx, a4);
+}
+
+// --------------------------------------------------------------------- E13
+
+function e13Step29B024(ram, rom, ctx, a4) {
+  if (!due8(ram, a4 + 0x04)) return;
+  ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  const speed = ram.u16(LOOP) === 0 ? 0xfffe : 0x000a;
+  const offsets = [0xf9c0f080, 0xf9c0f400, 0xf9c00bc0, 0xf9c00f00];
+  const sites = [0x29b052, 0x29b05e, 0x29b06a, 0x29b076];
+  for (let i = 0; i < offsets.length; i++) {
+    shoot(ram, rom, ctx, sites[i], 0x2813f0, {
+      d0: ((speed << 16) | 7) >>> 0, d1: 0x20,
+      d2: (ram.u32(a6 + 0x02) + offsets[i]) >>> 0,
+      d3: 0, d4: 0, d5: 0, a5,
+    });
+  }
+  const left = u16(ram.u16(a4 + 0x06) - 1);
+  ram.setU16(a4 + 0x06, left);
+  if (left === 0) ram.setU16(a4, 0);
+}
+
+function e13Init29B00A(ram, rom, ctx, a4) {
+  ram.setU8(a4 + 0x02, 0);
+  ram.setU16(a4 + 0x04, 4);
+  e13Step29B024(ram, rom, ctx, a4);
+}
+
+// --------------------------------------------------------------------- E14
+
+function e14Shot(ram, rom, ctx, a5, d0, angle, d2, site) {
+  const d1 = u8(angle);
+  const d3 = (rom.u32(0x2735fa + ((d1 + 2) & 0xfc)) + 0x08000000) >>> 0;
+  shoot(ram, rom, ctx, site, 0x281708,
+    { d0: d0 >>> 0, d1, d2, d3, d4: 0, d5: 0x08000000, a5 });
+}
+
+function e14Fan29B108(ram, rom, ctx, a4, a5, a6) {
+  const d0 = ((ram.u16(a4 + 0x08) << 16) | ram.u16(a4 + 0x16)) >>> 0;
+  const base = ram.u8(a4 + 0x12);
+  const d2 = ram.u32(a6 + 0x02);
+  e14Shot(ram, rom, ctx, a5, d0, base, d2, 0x29b132);
+  const count = ram.u16(a4 + 0x16) === 4 ? 3 : 10;
+  const spacing = ram.u8(a4 + 0x06);
+  for (let i = 1; i <= count; i++) {
+    const angle = u8(base + spacing * i);
+    e14Shot(ram, rom, ctx, a5, d0, angle, d2, 0x29b160);
+    if (ram.u16(LOOP) !== 0)
+      e14Shot(ram, rom, ctx, a5, d0 - 0x00030000, angle - 2, d2, 0x29b178);
+  }
+  for (let i = 1; i <= count; i++) {
+    const angle = u8(base - spacing * i);
+    e14Shot(ram, rom, ctx, a5, d0, angle, d2, 0x29b1b2);
+    if (ram.u16(LOOP) !== 0)
+      e14Shot(ram, rom, ctx, a5, d0 - 0x00030000, angle + 2, d2, 0x29b1ca);
+  }
+}
+
+function e14Step29B0D0(ram, rom, ctx, a4) {
+  if (!due8(ram, a4 + 0x10)) return;
+  ram.setU8(a4 + 0x10, ram.u8(a4 + 0x11));
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  e14Fan29B108(ram, rom, ctx, a4, a5, a6);
+  ram.setU16(a4 + 0x08, u16(ram.u16(a4 + 0x08) + 0x0a));
+  ram.setU8(a4 + 0x06, ram.u8(a4 + 0x06) + 2);
+  ram.setU16(a4 + 0x16, ram.u16(a4 + 0x18));
+  const left = u16(ram.u16(a4 + 0x14) - 1);
+  ram.setU16(a4 + 0x14, left);
+  if (left === 0) ram.setU16(a4, 0);
+}
+
+function e14Init29B0A6(ram, rom, ctx, a4) {
+  ram.bchg8(ctx.bossRec + 0x03, 0);
+  ram.setU8(a4 + 0x02, 0);
+  ram.setU16(a4 + 0x10, 8);
+  ram.setU16(a4 + 0x14, 2);
+  ram.setU8(a4 + 0x12, 0x80);
+  const aimed = aim256AtTarget(aimTables(rom), ram, ctx.bossRec, ctx.bossSubRec);
+  if (!aimed.carry) ram.setU8(a4 + 0x12, aimed.dir);
+  e14Step29B0D0(ram, rom, ctx, a4);
+}
+
 // --------------------------------------------------------------------- E15
 
 function e15Step29B6F0(ram, rom, ctx, a4) {
@@ -504,5 +631,11 @@ registerScript(0x29ab50, e10Init29AB50);
 registerScript(0x29ab7e, e10Step29AB7E);
 registerScript(0x29ae48, e11Init29AE48);
 registerScript(0x29ae4c, e11Step29AE4C);
+registerScript(0x299b54, e1Init299B54);
+registerScript(0x299b74, e1Step299B74);
+registerScript(0x29b00a, e13Init29B00A);
+registerScript(0x29b024, e13Step29B024);
+registerScript(0x29b0a6, e14Init29B0A6);
+registerScript(0x29b0d0, e14Step29B0D0);
 registerScript(0x29b6d6, e15Init29B6D6);
 registerScript(0x29b6f0, e15Step29B6F0);

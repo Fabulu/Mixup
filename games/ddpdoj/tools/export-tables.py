@@ -597,6 +597,13 @@ SHOT_WINDOWS.extend([
     (0x299882, 0x002A, "W189: stage-2 boss A4/F8 low-HP conductor"),
     (0x298218, 0x002C, "W189: stage-2 boss A3/D10 retract driver"),
     (0x29B6D6, 0x00CA, "W189: stage-2 boss A1/E15 aimed low-HP barrage"),
+    (0x297CC2, 0x00A8, "W190: stage-2 boss MAIN5 anchored wander init/step"),
+    (0x2993B4, 0x027A, "W190: complete dual-track A4/F4 attack conductor"),
+    (0x2980FA, 0x002C, "W190: A3/D6 part-selector extension driver"),
+    (0x2981EC, 0x002C, "W190: A3/D9 body-offset extension driver"),
+    (0x299B54, 0x013C, "W190: A1/E1 oscillating aimed barrage"),
+    (0x29B00A, 0x009C, "W190: A1/E13 four-emitter barrage and offsets"),
+    (0x29B0A6, 0x013C, "W190: A1/E14 widening aimed fan"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -2955,6 +2962,26 @@ def check_stage2_spawn_data(d: bytes) -> None:
         if hashlib.sha256(d[start:end]).hexdigest() != expected:
             raise SystemExit(
                 f"W189: stage-2 boss phase closure ${start:06X} drifted")
+    boss2_f4_closures = [
+        (0x297CC2, 0x297D6A,
+         "9f4fc76f61b9f6d29b0c9aa07e7f2a4dfda1b2040fd5aa4d06e59d2703f4ebfb"),
+        (0x2993B4, 0x29962E,
+         "a7694e700c26b0060a37b9559f20fa59c3495878cb5b573e0753390e4b1c9ed9"),
+        (0x2980FA, 0x298126,
+         "a7c9fd76489540b1070391abaaf3cebf85303ab6fcc1dc980492662f18c76143"),
+        (0x2981EC, 0x298218,
+         "fcc48c0852563b7915ad1d48e56a6f864cd98b078e7799dd2c4ac29f3ec9d51f"),
+        (0x299B54, 0x299C90,
+         "983a79401bdfb2d480cc9a0f0c5601e0b4076f7d54f2712c3fa660147d1ce05e"),
+        (0x29B00A, 0x29B0A6,
+         "47bc5b106c7aaabe55300efb6877bbbb194492cfb5ec2266146364f16a5f54d9"),
+        (0x29B0A6, 0x29B1E2,
+         "3fb68f6eb7876935668ebaf4487934c40d72a1051cf467ab933828f5c80f6049"),
+    ]
+    for start, end, expected in boss2_f4_closures:
+        if hashlib.sha256(d[start:end]).hexdigest() != expected:
+            raise SystemExit(
+                f"W190: stage-2 boss F4 closure ${start:06X} drifted")
     type30_records = [(script + i * 8, u16(d, script + i * 8),
                        u16(d, script + i * 8 + 6) & 0x0FFF)
                       for i in range(332) if d[script + i * 8 + 4] == 0x30]
