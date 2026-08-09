@@ -245,7 +245,7 @@ test('the handler adapter covers every address in handlerMap(), and only those',
   { skip: SKIP }, () => {
     const m = enemyHandlerMap(ROM);
     assert.deepEqual([...m.keys()].sort(), [...HANDLER_ADDRESSES].sort());
-    assert.equal(m.size, 35, 'W25 ported six of stage 1\'s nineteen SCRIPT '
+    assert.equal(m.size, 36, 'W25 ported six of stage 1\'s nineteen SCRIPT '
       + 'handlers; W30 added $275914, $2739C0 and $276702 -- the three that '
       + 'BLOCKED the fly-around gate -- W31 added $26B6FA, the MIDMOSS, the '
       + 'fourth, W33 added $272AAC, the scripted carrier, and W36 added the '
@@ -263,7 +263,8 @@ test('the handler adapter covers every address in handlerMap(), and only those',
       + 'handler $279B2E, W178 adds $92 handler $279D72, and W179 adds $97 '
       + 'handler $277F26, W180 adds $94 handler $27A1B4, and W181 adds $93 '
       + 'handler $279F4A, and W183 adds the stage-2 boss entry wrapper '
-      + '$297398, and W185 adds the type $4D satellite handler $29BB64, so the map has 35 '
+      + '$297398, W185 adds the type $4D satellite handler $29BB64, and W192 '
+      + 'adds the Stage-3 type $3E handler $265486, so the map has 36 '
       + 'entries against the stage-1 script denominator of 19/19');
   });
 
