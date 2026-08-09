@@ -1989,7 +1989,7 @@ function deathSeq80(ram, rom, a5, ctx, d1) {
 //
 // A scroll-locked prop like type `$8B`: no `stepMovement`, just
 // `$24179E scrollCompensate`.  What is new is the tail -- it reaches an enqueue
-// through the 24-entry DISPATCH TABLE `$27829C`, indexed by the sub-record's
+// through the 18-entry primary DISPATCH TABLE `$27829C`, indexed by the sub-record's
 // `($1E,A6)` word, which is why `resolveEmitStub` exists (src/spritequeue.js
 // 1c).  For this type the prototype leaves that word 0, i.e. `$23D762`, i.e.
 // BUCKET 0 -- the bucket W28 measured at 87,545 sprite pixels (72.1 % of the
@@ -2058,7 +2058,7 @@ function handler8A(ram, rom, a5, ctx) {
       + `$2767C8 indexed $27829C with ($1E,A6) = $${ram.u16(a6 + S.anim)
         .toString(16).toUpperCase()}, i.e. byte offset $${idx.toString(16)
         .toUpperCase()}. The table has ${EMIT_TABLE.entries27829C} longwords `
-      + `($27829C..$2782FB); past it is $278300, which is not a pointer table`);
+      + `($27829C..$2782E3); $2782E4 begins the separate register table`);
   }
   enqueueThroughStub(ram, rom, rom.u32(EMIT_TABLE.dispatch27829C + idx), a6);
   void u;
@@ -2951,7 +2951,7 @@ function emit88(ram, rom, a5, a6) {
   enqueueThroughStub(ram, rom,
     rom.u32(EMIT_TABLE.dispatch27829C + idx), a6);     // $2760FA jsr (A0)
   const pos = ram.u32(a6 + 0x02);
-  const stub2 = rom.u32(0x2782e4 + idx);               // $276120 lea $2782E4
+  const stub2 = rom.u32(EMIT_TABLE.dispatch2782E4 + idx); // $276120 lea $2782E4
   // #2 -- $2760FC..$27612A.  Two `addi.w`s straddling a pair of swaps.
   let d1 = ((u16((pos >>> 16) + 0xf200) << 16)         // $276106 addi.w #$F200
     | u16((pos & 0xffff) + 0xf500)) >>> 0;             // $276100 addi.w #$F500
@@ -3491,15 +3491,18 @@ function handler95(ram, rom, a5, ctx) {
 // ############################################################################
 
 function emit8d(ram, rom, a5, a6, special) {
-  enqueueThroughStub(ram, rom, 0x23d852, a6);          // $276ACE/$276BD8
+  const idx = u16(ram.u16(a6 + S.anim) * 4);          // $276ABC/$276BC6
+  const recordStub = rom.u32(EMIT_TABLE.dispatch27829C + idx);
+  const registerStub = rom.u32(EMIT_TABLE.dispatch2782E4 + idx);
+  enqueueThroughStub(ram, rom, recordStub, a6);        // $276ACE/$276BD8
   const pos = ram.u32(a6 + 0x02);
   const bob = ram.u16(a5 + 0x2c);
-  enqueueRegistersThroughStub(ram, rom, 0x23df86,
+  enqueueRegistersThroughStub(ram, rom, registerStub,
     addPackedWords(pos, u16(0xfc00 + bob), 0xfb00),
     ram.u32(a5 + 0x20), 0x0428, 0x0d);                 // $276AD0..$276B02
   if (!special || ram.u16(G.mirror2) === 0) return;
   const artIndex = (ram.u16(0x80390a) & 6) << 1;
-  enqueueRegistersThroughStub(ram, rom, 0x23df58,
+  enqueueRegistersThroughStub(ram, rom, registerStub,
     addPackedWords(pos, u16(0x0100 + bob), 0xfe00),
     rom.u32(0x278338 + artIndex), 0x0410, 0x1e);       // $276B04..$276B4E
 }

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "target": "ddpdojblk VERSION-B (2002.10.07 BLACK VER)",
-  "source": "w25handler.lua controlled MAME run w171-type8d-controlled-fire, 2026-08-09",
+  "source": "w25handler.lua controlled MAME runs w171-type8d-controlled-fire and w171-correction-emitter, 2026-08-09",
   "static_occurrence_count": 37,
   "observed_occurrences": [
     {"record": 2303744, "trigger": 30, "type": 141},
@@ -47,10 +47,31 @@
     "valid_for": "Reachability and ordering of the two-stage damage/death lifecycle.",
     "invalid_for": "Natural damage, kill time, score values, sound identity, and unaided survival."
   },
+  "emitter_correction": {
+    "run": "w171-correction-emitter",
+    "first_isolated_logic_frame": 12842,
+    "live_animation_index": 0,
+    "record_table_pointer": 2348898,
+    "register_table_pointer": 2350798,
+    "first_isolated_handler_emissions": [
+      {"pc": 2348948, "convention": "record", "bucket": 0, "counter_after": 60},
+      {"pc": 2350834, "convention": "register", "bucket": 0, "counter_after": 72}
+    ],
+    "special_death_logic_frame": 13042,
+    "special_death_emission_suffix": [
+      {"pc": 2348948, "convention": "record", "bucket": 0, "counter_after": 156},
+      {"pc": 2350834, "convention": "register", "bucket": 0, "counter_after": 168},
+      {"pc": 2350834, "convention": "register", "bucket": 0, "counter_after": 180}
+    ],
+    "intervention": "At the already-labelled first death intervention, set mirror2 to 1 so the optional overlay path is observable. Five isolated live type-$8D records emitted record/register pairs in slot order; the intervened fifth added the final register call for body, turret, overlay order.",
+    "valid_for": "Actual board emitter PCs, bucket-0 counter selection, call order, and optional-overlay reachability.",
+    "invalid_for": "Natural mirror2 timing or visual frequency."
+  },
   "bounded_attempts": {
     "first_run": "13200 frames with auto-fire disabled reached no stage-2 enemies; this is a runner-input correction, not negative type-$8D evidence.",
     "corrected_run": "13400 frames with the existing labelled auto-fire intervention reached six type-$8D occurrences.",
-    "aggregate_wall_seconds": 136
+    "correction_run": "13050 frames captured exact index-0 record/register emitter PCs and the intervened special-path overlay in bucket 0.",
+    "aggregate_wall_seconds": 270
   },
   "limitations": "The static ROM inventory has 37 type-$8D records. This controlled run reaches the first six. Remaining occurrences are static-minus-dynamic, never guessed."
 }

@@ -591,24 +591,29 @@ ENEMY_STAT_TABLES = [
     (0x272E70, 0x0090, "W23: the aim-derived sprite table $272E7A ($89)"),
     # W30: THE SPRITE-EMITTER STUB FAMILY, read as DATA by src/spritequeue.js's
     # `resolveEmitStub`.  The enemy handlers reach an enqueue through a POINTER
-    # ($267F70's twelve longwords, $27829C's twenty-four), and the bucket a
+    # ($267F70's twelve longwords, $27829C's eighteen primary pointers, and
+    # $2782E4's twelve register pointers), and the bucket a
     # pointer feeds is the `lea <abs>.l,A0 / adda.w <abs>.l,A0` pair inside the
     # stub itself.  Resolving it FROM THE CARTRIDGE is what stops the port
     # carrying a transcribed pointer->bucket map that agrees with itself.
-    # $23D760 is the `rts` before $23D762; $23DF98 is inside $23DF86's body and
-    # the window ends past the last stub's counter operand.
-    # W31 WIDENED THIS from $840 to $910.  The midboss `jsr $23E056` twice
+    # $23D760 is the `rts` before $23D762. W31 widened this from $840 for the
+    # midboss `jsr $23E056` twice
     # ($26BE3A/$26BE60) -- a FOURTH stub shape (`move.l A0,-(A7) / move.l
     # D0,-(A7)` in front of the same fourteen instructions), and it sat
     # $B6 bytes past the old end, so `resolveEmitStub` could not read it.
-    (0x23D760, 0x0910, "W30/W31: the sprite-emitter stub family "
-                       "$23D762..$23E08C, read as data to resolve "
+    # W171 correction closes the table's final pointer too: $23E08C is the
+    # last register stub, its RTS is $23E0C0, and unrelated zoom code begins
+    # at $23E0C2. The half-open export is therefore exact, not padded.
+    (0x23D760, 0x0962, "W30/W31/W171: the sprite-emitter stub family "
+                       "$23D762..$23E0C2 (exclusive), read as data to resolve "
                        "(bucket, convention) per stub"),
-    # W30: the 24-entry emitter dispatch $27829C (type $8A's $2767C2) and its
-    # neighbour $278320, and the $267F70 pair table is already covered by the
-    # W23 $267F60 window.
-    (0x278290, 0x00B0, "W30: $27829C the 24-entry sprite-emitter dispatch "
-                       "(type $8A $2767C2) + $278320's death-effect words"),
+    # W30/W171: exact adjacent emitter dispatch tables: 12 record-convention
+    # plus six zoom pointers at $27829C..$2782E3, and 12 register pointers at
+    # $2782E4..$278313. $278314 begins coordinate/remap data, and the $267F70
+    # pair table is already covered by the W23 $267F60 window.
+    (0x278290, 0x00B0, "W30/W171: $27829C's 18 primary-emitter pointers, "
+                       "$2782E4's 12 register-emitter pointers, and "
+                       "$278320's death-effect words"),
     # W30: $267FC6's FOUR position-box tables, five longwords each, contiguous
     # at $242562..$2425B1 -- pinned from BOTH ends ($242560 is the previous
     # routine's `rts`, $2425B2 is `48E7 C080 movem.l`, i.e. code).
@@ -2046,6 +2051,19 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W171: type $8D six-entry animation art table drifted")
     if u32(d, 0x276CEA) != 0x193B4C:
         raise SystemExit("W171: type $8D fixed death stream drifted")
+    record_emitters = [u32(d, 0x27829C + i * 4) for i in range(18)]
+    if record_emitters != [
+            0x23D762, 0x23D762, 0x23D79E, 0x23D7DA, 0x23D816, 0x23D852,
+            0x23D88E, 0x23D88E, 0x23D8D2, 0x23D916, 0x23D95A, 0x23D99E,
+            0x23D9E2, 0x23D9E2, 0x23DA5C, 0x23DAD6, 0x23DB50, 0x23DBCA]:
+        raise SystemExit("W171 correction: $27829C 18-entry primary-emitter table drifted")
+    register_emitters = [u32(d, 0x2782E4 + i * 4) for i in range(12)]
+    if register_emitters != [
+            0x23DECE, 0x23DECE, 0x23DEFC, 0x23DF2A, 0x23DF58, 0x23DF86,
+            0x23DFB4, 0x23DFB4, 0x23DFEA, 0x23E020, 0x23E056, 0x23E08C]:
+        raise SystemExit("W171 correction: $2782E4 12-entry register-emitter table drifted")
+    if u32(d, 0x278314) != 0 or u32(d, 0x278318) != 0x00040008:
+        raise SystemExit("W171 correction: register-emitter table no longer ends at $278314")
     if 0x277270 - 0x276E68 != 516 * 2:
         raise SystemExit("W171: type $8D bob-table structural extent is not 516 words")
     if d[0x277270:0x277278] != bytes.fromhex("3b7c000000044e75"):

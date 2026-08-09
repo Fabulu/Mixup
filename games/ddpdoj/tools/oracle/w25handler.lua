@@ -127,13 +127,31 @@ end
 
 local function w171_detail(rec, sub, clk)
   if not fh then return end
+  local anim = r16(sub + 0x1E)
   fh:write(string.format(
-    "X8D\t%d\t%04X\t%06X\t%02X\t%02X\t%02X\t%02X\t%08X\t%04X\t%02X\t%04X\t%04X\t%04X\t%04X\t%02X\t%04X\t%04X\n",
+    "X8D\t%d\t%04X\t%06X\t%02X\t%02X\t%02X\t%02X\t%08X\t%04X\t%02X\t%04X\t%04X\t%04X\t%04X\t%02X\t%04X\t%04X\t%04X\t%06X\t%06X\t%04X\t%04X\t%04X\n",
     lf, clk, rec, r8(rec + 0x18), r8(rec + 0x1A), r8(rec + 0x1C),
     r8(rec + 0x1D), r32(rec + 0x20), r16(rec + 0x24), r8(rec + 0x26),
     r16(rec + 0x28), r16(rec + 0x2A), r16(rec + 0x2C), r16(sub + 0x18),
-    r8(sub + 0x01), r32(sub + 0x0A), r16(0x81B40C)))
+    r8(sub + 0x01), r32(sub + 0x0A), r16(0x81B40C), anim,
+    PROG:read_u32(0x27829C + anim * 4), PROG:read_u32(0x2782E4 + anim * 4),
+    r16(0x80AFC0), r16(0x80AFC6), r16(0x80AFC8)))
 end
+
+-- W171 correction: record the two actual index-0 stub writes. Isolation makes
+-- ownership unambiguous; the PC identifies record-vs-register convention and
+-- the tapped address identifies the board bucket. The first-death intervention
+-- below enables mirror2 so the register stub is observed twice, in call order.
+local E8D_EMIT_PC = { [0x23D794] = "record", [0x23DEF2] = "register" }
+TAPS[#TAPS + 1] = PROG:install_write_tap(0x80AFC0, 0x80AFC1, "w171-b0",
+  function(offset, data, mask)
+    local pc = CPU.state["CURPC"].value & 0xffffff
+    if fh and W171_ISOLATE and w171_armed and E8D_EMIT_PC[pc] then
+      fh:write(string.format("E8D\t%d\t%06X\t%s\t0\t%04X\t%04X\n",
+        lf, pc, E8D_EMIT_PC[pc], data & 0xffff, mask & 0xffff))
+    end
+    return data
+  end)
 
 -- ------------------------------------- THE ENEMY-DRIVER-ENTRY TAP ($263502)
 TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
@@ -253,8 +271,9 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
           local sub = r32(rec + 0x06)
           RAM:write_u8(sub - 0x800000, r8(sub) | 0x10)
           RAM:write_u16(sub - 0x800000 + 0x18, 0x8001)
+          RAM:write_u16(0x390C, 1)
           w171_kill_stage = w171_kill_stage + 1
-          fh:write(string.format("I8D\t%d\tKILL_STAGE%d\t%06X\n",
+          fh:write(string.format("I8D\t%d\tKILL_STAGE%d_MIRROR2_1\t%06X\n",
             lf, w171_kill_stage, rec))
           break
         end

@@ -117,9 +117,9 @@ test('the ZOOMING emitter family is a LOUD NAMED THROW, not a silent bucket',
     }
   });
 
-test('$27829C has 24 entries and every one resolves to a bucket',
+test('$27829C has 12 record plus 6 zoom slots; $2782E4 has 12 register slots',
   { skip: SKIP }, () => {
-    let record = 0, register = 0, zoom = 0;
+    let record = 0, zoom = 0;
     for (let i = 0; i < EMIT_TABLE.entries27829C; i++) {
       const stub = ROM.u32(EMIT_TABLE.dispatch27829C + 4 * i);
       let r = null;
@@ -127,13 +127,22 @@ test('$27829C has 24 entries and every one resolves to a bucket',
         assert.ok(e instanceof Unreached && e.romAddress === stub);
         zoom++; continue;
       }
-      if (r.conv === 'record') record++; else register++;
+      assert.equal(r.conv, 'record');
+      record++;
     }
-    // The counts are the ROM's, re-derived here rather than quoted: 10 record,
-    // 5 zoom, 9 register (entries 0/1, 6/7, 12/13 and 18/19 are repeats).
-    assert.equal(record + register + zoom, 24);
+    // The first table ends at $2782E4. Entries 12..17 select the zooming
+    // record emitters; they are not register-convention entries from the
+    // neighbouring table.
+    assert.equal(record, 12);
+    assert.equal(record + zoom, 18);
     assert.equal(zoom, 6, 'entries 12..17 -- SIX slots, FIVE distinct routines '
       + '(12 and 13 are both $23D9E2)');
+    for (let i = 0; i < EMIT_TABLE.entries2782E4; i++) {
+      const stub = ROM.u32(EMIT_TABLE.dispatch2782E4 + 4 * i);
+      assert.equal(resolveEmitStub(ROM, stub).conv, 'register');
+    }
+    assert.equal(ROM.u32(0x278314), 0,
+      '$278314 is the first non-pointer word after the register table');
   });
 
 // ===========================================================================

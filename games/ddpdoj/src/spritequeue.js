@@ -266,12 +266,16 @@ export function enqueueRegisters(ram, bucket, d1, d2, d3, d4) {
 // those two longwords written at spawn out of `$267F70` (six 8-byte pairs,
 // indexed by the sub-record's `($1F,A6)` << 3), and `$276702` does
 // `move.w ($1E,A6),D0 / lsl x2 / lea $27829C(pc),A0 / movea.l (A0,D0.w),A0 /
-// jsr (A0)` through a 24-entry table.
+// jsr (A0)` through an 18-entry primary-emitter table. Its first 12 slots use
+// the record convention and its last six select the distinct zoom family. The adjacent
+// `$2782E4` table has 12 register-convention entries.
 //
 // **THIS CORRECTS A LABEL, NOT JUST AN ABSENCE.**  `src/handlers.js` called the
 // `($2A,A5)`/`($2E,A5)` calls "indirect fire-actions -> the `$23Dxxx` routines
 // -> the `$281xxx` bullet fans".  They are nothing of the kind: read out of the
-// ROM, every one of the twelve longwords in `$267F70` and all 24 in `$27829C`
+// ROM, every one of the twelve longwords in `$267F70`, the first 12 in
+// `$27829C`,
+// and all 12 in `$2782E4`
 // is a member of THIS family -- a sprite ENQUEUE stub.  The enemies' draw was
 // being counted as their fire.
 //
@@ -289,8 +293,10 @@ export function enqueueRegisters(ram, bucket, d1, d2, d3, d4) {
 // match one of the shapes is a LOUD NAMED THROW carrying the stub's address.
 export const EMIT_TABLE = {
   pair267F70: 0x267f70,   // 6 pairs: (record stub, register stub)
-  dispatch27829C: 0x27829c, // 24 longwords, indexed by ($1E,A6) * 4
-  entries27829C: 24,
+  dispatch27829C: 0x27829c, // 18 primary stubs: 12 record, 6 zoom
+  entries27829C: 18,
+  dispatch2782E4: 0x2782e4, // 12 register stubs, same index
+  entries2782E4: 12,
 };
 
 /** @returns {{bucket:number, conv:'record'|'register'}} */

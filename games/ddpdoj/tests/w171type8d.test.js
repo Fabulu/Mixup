@@ -10,7 +10,7 @@ import { MoveTables } from '../src/vectors.js';
 import { UnportedLog } from '../src/unported.js';
 import { runInitBodyAddr, INIT_BODY_ADDRESSES } from '../src/initbody.js';
 import { runHandler, HANDLER_ADDRESSES, TYPE8D_ART } from '../src/handlers.js';
-import { BUCKETS } from '../src/spritequeue.js';
+import { BUCKETS, EMIT_TABLE, resolveEmitStub } from '../src/spritequeue.js';
 import { B } from '../src/effects.js';
 
 const tablesPath = new URL('../rip/port/player.tables.json', import.meta.url);
@@ -69,6 +69,23 @@ test('W171/1 ROM pins exact body, tables, 43-stream dependency closure, and next
     Array.from({ length: 32 }, (_, i) => 0x192acc + i * 0x84));
   assert.deepEqual(Array.from({ length: 6 }, (_, i) => ROM.u32(0x276dd0 + i * 4)),
     [0x193d74, 0x193d20, 0x193ccc, 0x193c78, 0x193c24, 0x193bd0]);
+  const recordEmitters = [
+    0x23d762, 0x23d762, 0x23d79e, 0x23d7da, 0x23d816, 0x23d852,
+    0x23d88e, 0x23d88e, 0x23d8d2, 0x23d916, 0x23d95a, 0x23d99e,
+    0x23d9e2, 0x23d9e2, 0x23da5c, 0x23dad6, 0x23db50, 0x23dbca,
+  ];
+  const registerEmitters = [
+    0x23dece, 0x23dece, 0x23defc, 0x23df2a, 0x23df58, 0x23df86,
+    0x23dfb4, 0x23dfb4, 0x23dfea, 0x23e020, 0x23e056, 0x23e08c,
+  ];
+  assert.equal(EMIT_TABLE.entries27829C, 18);
+  assert.equal(EMIT_TABLE.entries2782E4, 12);
+  assert.deepEqual(Array.from({ length: 18 }, (_, i) =>
+    ROM.u32(EMIT_TABLE.dispatch27829C + i * 4)), recordEmitters);
+  assert.deepEqual(Array.from({ length: 12 }, (_, i) =>
+    ROM.u32(EMIT_TABLE.dispatch2782E4 + i * 4)), registerEmitters);
+  assert.equal(ROM.u32(0x278314), 0,
+    '$278314 begins coordinate/remap data, not another emitter pointer');
   assert.equal(0x277270 - 0x276e68, 516 * 2,
     'the full structural bob table is 516 words');
   assert.equal(ROM.u16(0x277270), 0x3b7c, 'the type $89 stub pins its far end');
@@ -90,21 +107,52 @@ test('W171/2 init copies exact prototypes, aims, draws both RNG bytes, and uses 
   assert.equal(ram.u8(0x803917), 2, 'both RNG-family calls advance the shared byte');
 });
 
-test('W171/3 descending animation, 256-value live bob index, and emit order are exact',
+test('W171/3 spawn index 0 emits body, turret, then overlay through bucket 0',
   { skip: SKIP }, () => {
   const ram = fixture();
   const c = context(ram);
   ram.setU8(A5 + 0x26, 0);
   ram.setU16(A5 + 0x28, 0x14);
   ram.setU8(A5 + 0x2b, 0xff);
+  ram.setU8(A6 + 0x01, ram.u8(A6 + 0x01) | 0x80);
+  ram.setU16(0x80390c, 1);
   runHandler(0x276a02, ram, ROM, A5, c.ctx);
   assert.equal(ram.u32(A5 + 0x20), ROM.u32(0x276dd0 + 0x14));
   assert.equal(ram.u16(A5 + 0x28), 0x10);
   assert.equal(ram.u8(A5 + 0x2b), 2, 'addq.b wraps without carrying into +$2A');
   assert.equal(ram.u8(A5 + 0x2a), 0,
     'only the 256-word reachable prefix is indexed by the byte phase');
-  assert.deepEqual(sprites(ram, 7).slice(0, 2),
-    [ram.u32(A6 + 0x0a), ram.u32(A5 + 0x20)]);
+  assert.equal(ram.u16(A6 + 0x1e), 0, 'prototype starts on emitter index 0');
+  assert.deepEqual(resolveEmitStub(ROM, ROM.u32(0x27829c)),
+    { bucket: 0, conv: 'record' });
+  assert.deepEqual(resolveEmitStub(ROM, ROM.u32(0x2782e4)),
+    { bucket: 0, conv: 'register' });
+  assert.deepEqual(sprites(ram, 0), [
+    ram.u32(A6 + 0x0a),
+    ram.u32(A5 + 0x20),
+    ROM.u32(0x278338),
+  ], 'ROM call order is body, turret, optional overlay');
+  assert.deepEqual(sprites(ram, 3), []);
+  assert.deepEqual(sprites(ram, 7), []);
+});
+
+test('W171/3b hardcoded-index mutation: live index 5 redirects all three emits to bucket 7',
+  { skip: SKIP }, () => {
+  const ram = fixture();
+  const c = context(ram);
+  ram.setU16(A6 + 0x1e, 5);
+  ram.setU8(A6 + 0x01, ram.u8(A6 + 0x01) | 0x80);
+  ram.setU16(0x80390c, 1);
+  runHandler(0x276a02, ram, ROM, A5, c.ctx);
+  assert.equal(ROM.u32(0x27829c + 5 * 4), 0x23d852);
+  assert.equal(ROM.u32(0x2782e4 + 5 * 4), 0x23df86);
+  assert.deepEqual(sprites(ram, 7), [
+    ram.u32(A6 + 0x0a),
+    ram.u32(A5 + 0x20),
+    ROM.u32(0x278338),
+  ]);
+  assert.deepEqual(sprites(ram, 0), [],
+    'forcing either emitter table to index 0 makes this mutation fail');
 });
 
 test('W171/4 fire selects $281420 for salvo byte 2 and advances the ROM cadence',
@@ -158,4 +206,18 @@ test('W171/6 controlled evidence is record-qualified and pins lifecycle interven
     { record: 0x232700, trigger: 0x001e, type: 0x8d });
   assert.match(e.isolation_intervention.invalid_for, /Pacing/);
   assert.equal(e.death_intervention.stages, 2);
+  assert.equal(e.emitter_correction.live_animation_index, 0);
+  assert.equal(e.emitter_correction.record_table_pointer, 0x23d762);
+  assert.equal(e.emitter_correction.register_table_pointer, 0x23dece);
+  assert.deepEqual(e.emitter_correction.first_isolated_handler_emissions.map((x) =>
+    [x.pc, x.convention, x.bucket]), [
+    [0x23d794, 'record', 0],
+    [0x23def2, 'register', 0],
+  ]);
+  assert.deepEqual(e.emitter_correction.special_death_emission_suffix.map((x) =>
+    [x.pc, x.convention, x.bucket]), [
+    [0x23d794, 'record', 0],
+    [0x23def2, 'register', 0],
+    [0x23def2, 'register', 0],
+  ], 'body, turret, optional overlay are observed in board call order');
 });
