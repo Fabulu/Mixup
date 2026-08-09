@@ -197,8 +197,8 @@ import { APPROVED_SOUND_POLICIES } from '../soundpolicy.js';
 // `stateVector`/`CLAIMED` from `../state.js`; does NOT import `tools/replay.mjs`
 // (that is a Node tool).
 import {
-  armRecorder, stopRecorder, b64 as recB64, unb64 as recUnb64, beBytesFromWords,
-  sha256Hex, armPlayback, decodePortinWords,
+  armRecorder, stopRecorder, b64 as recB64, beBytesFromWords,
+  sha256Hex, armPlayback, validateReplay,
   FORMAT as REPLAY_FORMAT, BUILD as REPLAY_BUILD, PERIOD_FRAMES as REPLAY_PERIOD,
 } from './replay.js';
 import { CLAIMED } from '../state.js';
@@ -246,7 +246,7 @@ export const CANVAS_W = PICTURES.tate.w, CANVAS_H = PICTURES.tate.h;
 // $2495A2; it changes WHETHER the ship dies, not what any ported routine
 // computes.  Without it a button-free run of this script dies at lf2469 on the
 // board (measured, `scenarios.json`).
-const INVULN = 0x810424;
+const LIVE_POKES = Object.freeze([[0x810424, 0xff]]);
 
 /**
  * PURE.  The largest whole scale in DEVICE pixels, for either picture.
@@ -821,14 +821,16 @@ class Demo {
     // makes it independent of how often `draw()` runs: a mode change repaints
     // without stepping, and that must not shift the list by a frame.
     this.portList = portSpriteList(g.ram, this.romToPacked, this.listOpts);
-    g.ram.setU8(INVULN, 0xff);           // the scenario's intervention
+    const pokes = this.playback && !this.playback.ended
+      ? this.playback.pokes : LIVE_POKES;
+    for (const [a, val] of pokes) g.ram.setU8(a, val);
     // WAVE 131/132 -- THE INPUT WORD.  `pw` is computed once and used for the
     // REC tee (W131, when armed) and the step.  WAVE 132 PLAY replaces the live
     // `currentPortWord()` with the next recorded word: the visible Game is fed
     // exactly the input sequence the recording captured, so the picture the
     // owner watches is the picture the verifier is hashing.  The live poke
-    // `0x810424=FF` just above IS the file's `poke` (every live REC records
-    // exactly that), so PLAY applies it once and there is no double-apply.
+    // Live play uses the file's complete `poke` list, while ordinary play uses
+    // the live intervention below; there is no hidden second write.
     const pw = this.playback && !this.playback.ended
       ? this.playback.words[this.playback.i++]
       : currentPortWord();
@@ -930,7 +932,7 @@ class Demo {
       },
       scenario: seeded?.scenario ?? 'live',
       intervention: seeded?.intervention,
-      poke: '810424=FF',               // the live INVULN poke at app.js:784
+      poke: '810424=FF',               // the live INVULN intervention
     });
     return this.recorder;
   }
@@ -970,24 +972,21 @@ class Demo {
    * Returns the playback descriptor (or throws on a format/seed mismatch).
    */
   playFrom(obj) {
-    if (obj?.format !== REPLAY_FORMAT) {
-      throw new Error(`not a ${REPLAY_FORMAT} artifact (got ${String(obj?.format)})`);
-    }
+    const parsed = validateReplay(obj);
     // Decode the seed the same way `replay.mjs:108-121` does.
-    const ram = recUnb64(obj.seed.ramB64);
-    const bg = beWords(recUnb64(obj.seed.bgB64));
-    const tables = JSON.parse(new TextDecoder().decode(recUnb64(obj.seed.tablesB64)));
+    const { ram, bg, tables, words, pokes } = parsed;
+    const seed = obj.seed;
     const game = new Game(ram, tables, {
-      logicFrame: obj.seed.lf,
-      videoFrame: obj.seed.vf,
-      bgSeed: bg,
+      logicFrame: seed.lf,
+      videoFrame: seed.vf,
+      bgSeed: beWords(bg),
       soundSink: this.soundController,
     });
 
     // Swap in the fresh Game and re-init the game-derived state.  `recorder` is
     // dropped (mutually exclusive); `onPlaybackUpdate` is left to the page.
     this.game = game;
-    this.seedLf = obj.seed.lf;
+    this.seedLf = seed.lf;
     this.prevTilt = game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
     this.prevPos = [game.ram.u16(RAM.player1 + P.posY),
       game.ram.u16(RAM.player1 + P.posX)];
@@ -995,10 +994,10 @@ class Demo {
     this.dirty = true;                  // repaint with the new Game's picture
     this.recorder = null;
 
-    const words = decodePortinWords(obj);
     this.playback = {
       obj,
       words,
+      pokes,
       count: obj.portin.count,
       i: 0,                             // next word to feed (lf = seedLf + i + 1)
       verifier: armPlayback(game, obj),

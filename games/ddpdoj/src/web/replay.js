@@ -84,10 +84,33 @@ export function b64(bytes) {
 
 /** Inverse of `b64`: decode a base64 string into a fresh Uint8Array. */
 export function unb64(str) {
+  if (typeof str !== 'string'
+      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(str)) {
+    throw new Error('invalid base64 replay field');
+  }
   const bin = atob(str);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
+}
+
+/** Parse and validate the replay's per-frame RAM writes.  This is deliberately
+ * strict: a malformed address/value must fail before a fresh Game is swapped
+ * into the visible Demo, and the browser must apply the same writes as the
+ * headless player. */
+export function parsePoke(s) {
+  if (s === undefined || s === null || s === '') return [];
+  if (typeof s !== 'string') throw new Error('replay poke must be a string');
+  return s.split(',').map((kv) => {
+    const m = /^([0-9a-f]{6})=([0-9a-f]{1,2})$/i.exec(kv);
+    if (!m) throw new Error(`invalid replay poke ${kv}`);
+    const address = Number.parseInt(m[1], 16);
+    const value = Number.parseInt(m[2], 16);
+    if (address < 0x800000 || address >= 0x820000) {
+      throw new Error(`replay poke address $${m[1].toUpperCase()} is outside main RAM`);
+    }
+    return [address, value];
+  });
 }
 
 /** The inverse of `beWords` (`tools/replay.mjs:58`, `app.js:1130`): lay a
@@ -258,13 +281,63 @@ export async function stopRecorder(rec) {
  *  is the inverse, used by `playFrom` to feed the visible Game one word per
  *  logic frame. */
 export function decodePortinWords(obj) {
-  if (obj.portin.encoding !== 'u16be') {
-    throw new Error(`unsupported portin encoding ${obj.portin.encoding} (want u16be)`);
+  if (!obj?.portin || obj.portin.encoding !== 'u16be') {
+    throw new Error(`unsupported portin encoding ${obj?.portin?.encoding} (want u16be)`);
+  }
+  if (!Number.isSafeInteger(obj.portin.count) || obj.portin.count < 1) {
+    throw new Error('replay portin.count must be a positive integer');
   }
   const bytes = unb64(obj.portin.b64);
+  if (bytes.length % 2 !== 0 || bytes.length / 2 !== obj.portin.count) {
+    throw new Error(`replay portin count ${obj.portin.count} does not match its u16be bytes`);
+  }
   const w = new Uint16Array(bytes.length >> 1);
   for (let i = 0; i < w.length; i++) w[i] = (bytes[i * 2] << 8) | bytes[i * 2 + 1];
   return w;
+}
+
+/** Validate the complete browser/headless initialization contract. */
+export function validateReplay(obj) {
+  if (!obj || obj.format !== FORMAT) {
+    throw new Error(`not a ${FORMAT} artifact (got ${String(obj?.format)})`);
+  }
+  if (obj.build !== BUILD) throw new Error(`unsupported replay build ${String(obj.build)}`);
+  if (!obj.seed || !Number.isSafeInteger(obj.seed.lf) || obj.seed.lf < 0
+      || !Number.isSafeInteger(obj.seed.vf) || obj.seed.vf < 0) {
+    throw new Error('replay seed lf/vf must be non-negative integers');
+  }
+  const ram = unb64(obj.seed.ramB64);
+  const bg = unb64(obj.seed.bgB64);
+  const tablesBytes = unb64(obj.seed.tablesB64);
+  if (ram.length !== 0x20000) throw new Error(`replay RAM seed is ${ram.length} bytes, expected 131072`);
+  if (bg.length !== 0x1000) throw new Error(`replay BG seed is ${bg.length} bytes, expected 4096`);
+  try { JSON.parse(new TextDecoder().decode(tablesBytes)); }
+  catch (e) { throw new Error(`replay tables seed is not JSON: ${e.message}`); }
+  const words = decodePortinWords(obj);
+  const pokes = parsePoke(obj.poke);
+  if (!obj.digest || !Array.isArray(obj.digest.columns)
+      || obj.digest.columns.length === 0
+      || obj.digest.columns.some((c) => typeof c !== 'string' || c.length === 0)) {
+    throw new Error('replay digest.columns must be a non-empty string array');
+  }
+  if (!Number.isSafeInteger(obj.digest.periodFrames) || obj.digest.periodFrames < 1) {
+    throw new Error('replay digest.periodFrames must be a positive integer');
+  }
+  const periods = Math.ceil(words.length / obj.digest.periodFrames);
+  if (!Array.isArray(obj.digest.periods) || obj.digest.periods.length !== periods) {
+    throw new Error(`replay digest has ${obj.digest.periods?.length ?? 0} periods, expected ${periods}`);
+  }
+  for (let i = 0; i < periods; i++) {
+    const p = obj.digest.periods[i];
+    const end = obj.seed.lf + Math.min((i + 1) * obj.digest.periodFrames, words.length);
+    if (!p || p.lf !== end || !/^[0-9a-f]{64}$/.test(p.sha256 ?? '')) {
+      throw new Error(`replay digest period ${i} is malformed`);
+    }
+  }
+  if (!/^[0-9a-f]{64}$/.test(obj.digest.cumulative ?? '')) {
+    throw new Error('replay digest.cumulative is not a SHA-256 hex digest');
+  }
+  return { ram, bg, tables: JSON.parse(new TextDecoder().decode(tablesBytes)), words, pokes };
 }
 
 /**
@@ -288,9 +361,7 @@ export function decodePortinWords(obj) {
  * window are LOGIC FRAMES (lf), matching `replay.mjs:154-155`.
  */
 export function armPlayback(game, obj) {
-  if (obj.format !== FORMAT) {
-    throw new Error(`not a ${FORMAT} artifact (got ${String(obj.format)})`);
-  }
+  validateReplay(obj);
   const columns = obj.digest.columns;
   const periodFrames = obj.digest.periodFrames;
   const seedLf = obj.seed.lf;

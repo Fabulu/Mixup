@@ -94,7 +94,7 @@ test('decodePortinWords: u16be round-trips (mirror of stopRecorder encode)', () 
   // The W131 recorder encodes each portin word as two big-endian bytes; this is
   // the inverse `Demo.playFrom` uses to feed the visible Game.  Pin the exact
   // byte order so a future edit cannot drift from `replay.mjs:179 decodePortin`.
-  const obj = { portin: { encoding: 'u16be', b64: b64(new Uint8Array([
+  const obj = { portin: { encoding: 'u16be', count: 3, b64: b64(new Uint8Array([
     0x12, 0x34, 0x00, 0x01, 0xff, 0xff,
   ])) } };
   const w = decodePortinWords(obj);

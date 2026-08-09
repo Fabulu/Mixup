@@ -62,15 +62,28 @@ function beWords(bytes) {
 }
 
 const B64 = (bytes) => Buffer.from(bytes).toString('base64');
-const UNB64 = (s) => new Uint8Array(Buffer.from(s, 'base64'));
+const UNB64 = (s) => {
+  if (typeof s !== 'string'
+      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(s)) {
+    throw new Error('invalid base64 replay field');
+  }
+  return new Uint8Array(Buffer.from(s, 'base64'));
+};
 
 /** Parse "803970=FF,810424=FF" into [[addr,val]...] the way portdiff.mjs:147
  *  does, so the player applies the SAME poke at the SAME point (every frame at
  *  the top of the loop, before step, after the row is recorded -- portdiff:261). */
-function parsePoke(s) {
-  return (s ?? '').split(',').filter(Boolean).map((kv) => {
-    const [a, v] = kv.split('=');
-    return [parseInt(a, 16), parseInt(v, 16)];
+export function parsePoke(s) {
+  if (s === undefined || s === null || s === '') return [];
+  if (typeof s !== 'string') throw new Error('replay poke must be a string');
+  return s.split(',').map((kv) => {
+    const m = /^([0-9a-f]{6})=([0-9a-f]{1,2})$/i.exec(kv);
+    if (!m) throw new Error(`invalid replay poke ${kv}`);
+    const address = parseInt(m[1], 16), value = parseInt(m[2], 16);
+    if (address < 0x800000 || address >= 0x820000) {
+      throw new Error(`replay poke address $${m[1].toUpperCase()} is outside main RAM`);
+    }
+    return [address, value];
   });
 }
 
@@ -102,15 +115,7 @@ function resetMutationSwitches() {
  * again at verify time, in a separate process, with no emulator and no trace.
  */
 export function verifyReplay(obj, opts = {}) {
-  if (obj.format !== FORMAT) {
-    throw new Error(`not a ${FORMAT} artifact (got ${String(obj.format)})`);
-  }
-  const ramBytes = UNB64(obj.seed.ramB64);
-  const bgBytes = UNB64(obj.seed.bgB64);
-  const tablesBytes = UNB64(obj.seed.tablesB64);
-  const tables = JSON.parse(Buffer.from(tablesBytes).toString('utf8'));
-  const portinBytes = UNB64(obj.portin.b64);
-  const portinWords = decodePortin(portinBytes, obj.portin);
+  const { ramBytes, bgBytes, tables, portinWords, pokes } = validateReplayObject(obj);
 
   // Same construction as portdiff.mjs:128 and seedcmp.mjs:134.  bgSeed is the
   // 2048-word big-endian tilemap ring, NOT main RAM; without it a seeded port
@@ -122,7 +127,6 @@ export function verifyReplay(obj, opts = {}) {
   });
   resetMutationSwitches();
 
-  const pokes = parsePoke(obj.poke);
   const columns = obj.digest.columns;
   const cumulative = createHash('sha256');
   let period = createHash('sha256');      // FRESH per window (resets at boundary)
@@ -176,9 +180,66 @@ export function verifyReplay(obj, opts = {}) {
   };
 }
 
+/** Validate the file shape before constructing a Game, matching the browser's
+ * `validateReplay` contract so malformed seed/input/frame data cannot become a
+ * plausible playback with a different initialization path. */
+function validateReplayObject(obj) {
+  if (!obj || obj.format !== FORMAT) {
+    throw new Error(`not a ${FORMAT} artifact (got ${String(obj?.format)})`);
+  }
+  if (obj.build !== BUILD) throw new Error(`unsupported replay build ${String(obj.build)}`);
+  if (!obj.seed || !Number.isSafeInteger(obj.seed.lf) || obj.seed.lf < 0
+      || !Number.isSafeInteger(obj.seed.vf) || obj.seed.vf < 0) {
+    throw new Error('replay seed lf/vf must be non-negative integers');
+  }
+  const ramBytes = UNB64(obj.seed.ramB64);
+  const bgBytes = UNB64(obj.seed.bgB64);
+  const tablesBytes = UNB64(obj.seed.tablesB64);
+  if (ramBytes.length !== 0x20000) {
+    throw new Error(`replay RAM seed is ${ramBytes.length} bytes, expected 131072`);
+  }
+  if (bgBytes.length !== 0x1000) {
+    throw new Error(`replay BG seed is ${bgBytes.length} bytes, expected 4096`);
+  }
+  let tables;
+  try { tables = JSON.parse(Buffer.from(tablesBytes).toString('utf8')); }
+  catch (e) { throw new Error(`replay tables seed is not JSON: ${e.message}`); }
+  if (!obj.portin) throw new Error('replay portin is missing');
+  const portinBytes = UNB64(obj.portin.b64);
+  const portinWords = decodePortin(portinBytes, obj.portin);
+  const pokes = parsePoke(obj.poke);
+  if (!obj.digest || !Array.isArray(obj.digest.columns)
+      || obj.digest.columns.length === 0
+      || obj.digest.columns.some((c) => typeof c !== 'string' || c.length === 0)) {
+    throw new Error('replay digest.columns must be a non-empty string array');
+  }
+  if (!Number.isSafeInteger(obj.digest.periodFrames) || obj.digest.periodFrames < 1) {
+    throw new Error('replay digest.periodFrames must be a positive integer');
+  }
+  const periods = Math.ceil(portinWords.length / obj.digest.periodFrames);
+  if (!Array.isArray(obj.digest.periods) || obj.digest.periods.length !== periods) {
+    throw new Error(`replay digest has ${obj.digest.periods?.length ?? 0} periods, expected ${periods}`);
+  }
+  for (let i = 0; i < periods; i++) {
+    const p = obj.digest.periods[i];
+    const end = obj.seed.lf + Math.min((i + 1) * obj.digest.periodFrames, portinWords.length);
+    if (!p || p.lf !== end || !/^[0-9a-f]{64}$/.test(p.sha256 ?? '')) {
+      throw new Error(`replay digest period ${i} is malformed`);
+    }
+  }
+  if (!/^[0-9a-f]{64}$/.test(obj.digest.cumulative ?? '')) {
+    throw new Error('replay digest.cumulative is not a SHA-256 hex digest');
+  }
+  return { ramBytes, bgBytes, tables, portinWords, pokes };
+}
+
 function decodePortin(bytes, meta) {
   if (meta.encoding !== 'u16be') {
     throw new Error(`unsupported portin encoding ${meta.encoding} (want u16be)`);
+  }
+  if (!Number.isSafeInteger(meta.count) || meta.count < 1
+      || bytes.length % 2 !== 0 || bytes.length / 2 !== meta.count) {
+    throw new Error(`replay portin count ${meta.count} does not match its u16be bytes`);
   }
   const w = new Uint16Array(bytes.length >> 1);
   for (let i = 0; i < w.length; i++) w[i] = (bytes[i * 2] << 8) | bytes[i * 2 + 1];

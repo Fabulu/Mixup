@@ -248,11 +248,12 @@
   #play-input { position: absolute; width: 1px; height: 1px;
     padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0);
     white-space: nowrap; border: 0; }
-  #replay-banner { position: fixed; inset: 8px 8px auto auto; z-index: 30;
+  #replay-banner { position: fixed; inset: 36px 8px auto auto; z-index: 30;
      display: none; max-width: 46vw; white-space: pre-wrap; font-size: 12px;
      line-height: 1.35; color: #ffd0a0;
      border: 1px solid #5a4a2b; border-left: 3px solid #efc88a;
-     padding: 8px 10px; background: #1a130b; border-radius: 4px; }
+     padding: 8px 10px; background: #1a130b; border-radius: 4px;
+     pointer-events: none; }
   #replay-banner b { color: #ffe6b0; }
   #replay-banner .rec { color: #ef8a8a; font-weight: bold; }
   #replay-banner .play { color: #8ac0ef; font-weight: bold; }
@@ -264,6 +265,15 @@
      inside still carries the detail, never just "N frames differ". */
   #replay-banner.green { border-left-color: #6ec96e; }
   #replay-banner.red { border-left-color: #ef6a6a; }
+  /* W165 -- shared keyboard/mouse help. It is below the control strip and
+     pointer-transparent, so a hint can never steal the REC/STOP click. */
+  #control-help { position: fixed; top: 36px; right: 8px; z-index: 31;
+     display: none; max-width: min(46vw, 46ch); white-space: pre-wrap;
+     font-size: 11px; line-height: 1.3; color: #d8e5ef;
+     border: 1px solid #34485a; border-left: 3px solid #6c9ac0;
+     padding: 6px 8px; background: #101820ee; border-radius: 4px;
+     pointer-events: none; }
+  #control-help.on { display: block; }
 </style>
 </head>
 <body>
@@ -275,12 +285,12 @@
   <span id="sound-state" role="status" aria-live="polite">sound locked</span>
   <button id="sound" type="button" aria-pressed="false"
     aria-label="Enable or mute game sound">SOUND</button>
-  <button id="rot" type="button" aria-pressed="true" title="TATE = the cabinet's own 224x448 portrait picture. WIDE = the raw 448x224 board buffer, unrotated.">TATE</button>
-  <button id="ctrl" type="button" aria-pressed="false" title="Touch control scheme: AUTO / FIXED 8-way D-pad / FLOATING stick. Cycles on click.">CTRL</button>
-  <button id="rec" type="button" aria-pressed="false" title="Record a .replay of this run: arm at the current frame, play, click again to save. The file carries the seed + one input word per logic frame + a sha256 state digest the headless player (tools/replay.mjs) verifies.">REC</button>
-  <label id="play" class="bar-btn" for="play-input" title="Play back a .replay: boots a fresh Game from the file's seed, feeds its recorded input one word per logic frame, and verifies the on-page state against the file's sha256 digest. GREEN at end-of-portin, or the first divergent 250-frame window.">PLAY</label>
+  <button id="rot" type="button" aria-label="Switch between TATE portrait and WIDE landscape picture" aria-pressed="true" data-help="TATE shows the cabinet's 224x448 portrait picture. WIDE shows the raw 448x224 board buffer.">TATE</button>
+  <button id="ctrl" type="button" aria-label="Cycle touch control scheme" aria-pressed="false" data-help="CTRL cycles AUTO, FIXED 8-way D-pad, and FLOATING stick.">CTRL</button>
+  <button id="rec" type="button" aria-label="Record or stop a replay" aria-pressed="false" data-help="REC arms a replay at the current frame. Press again to stop and save; while armed it becomes STOP REC.">REC</button>
+  <label id="play" class="bar-btn" for="play-input" role="button" tabindex="0" aria-label="Play a replay file" data-help="PLAY loads a replay file and checks every recorded input, poke, frame, and digest window.">PLAY</label>
   <input id="play-input" type="file" accept=".replay,application/json">
-  <button id="infobtn" type="button" aria-pressed="false">INFO</button>
+  <button id="infobtn" type="button" aria-label="Open information" aria-pressed="false" data-help="INFO opens the project notes. Press Escape or INFO again to close.">INFO</button>
 </div>
 
 <div id="stage"><canvas id="screen" width="224" height="448"></canvas><div id="stickzone"></div></div>
@@ -315,6 +325,7 @@
 <div id="err"></div>
 <div id="rung-banner"></div>
 <div id="replay-banner"></div>
+<div id="control-help" role="status" aria-live="polite"></div>
 
 <div id="info">
 <div class="sheet">
@@ -581,6 +592,7 @@ const rotBtn = document.getElementById('rot');
 const ctrlBtn = document.getElementById('ctrl');
 const recBtn = document.getElementById('rec');
 const replayBannerEl = document.getElementById('replay-banner');
+const controlHelpEl = document.getElementById('control-help');
 const playLabel = document.getElementById('play');
 const playInput = document.getElementById('play-input');
 const infoEl = document.getElementById('info');
@@ -698,6 +710,39 @@ infoBtn.addEventListener('click', () => {
 document.getElementById('closeinfo').addEventListener('click', () => {
   infoEl.classList.remove('on');
   infoBtn.setAttribute('aria-pressed', 'false');
+});
+
+// W165 -- one shared, non-native hint for every bar control. Native `title`
+// popups are browser-owned, persistent, and can sit over REC/STOP. This hint
+// is pointer-transparent, starts below the bar, and is dismissed on leave,
+// blur, Escape, or a short timeout. `aria-label` remains available to AT.
+let helpTimer = null;
+const hideControlHelp = () => {
+  if (helpTimer) clearTimeout(helpTimer);
+  helpTimer = null;
+  controlHelpEl.classList.remove('on');
+  controlHelpEl.textContent = '';
+};
+const showControlHelp = (el) => {
+  if (!el.dataset.help) return;
+  if (helpTimer) clearTimeout(helpTimer);
+  controlHelpEl.textContent = el.dataset.help;
+  controlHelpEl.classList.add('on');
+  helpTimer = setTimeout(hideControlHelp, 4200);
+};
+for (const el of document.querySelectorAll('#bar [data-help]')) {
+  el.addEventListener('mouseenter', () => showControlHelp(el));
+  el.addEventListener('mouseleave', hideControlHelp);
+  el.addEventListener('focus', () => showControlHelp(el));
+  el.addEventListener('blur', hideControlHelp);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); hideControlHelp(); }
+  });
+}
+playLabel.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  e.preventDefault();
+  playInput.click();
 });
 
 // showError is used by BOTH channels: the boot-time catch below, and onError,
