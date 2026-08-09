@@ -77,7 +77,7 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W190 is complete locally and awaiting publication:
+W190 is complete and live as build `20260809215527`:
 
 - latest worklog: `docs/worklog/ddpdoj/190-impl-stage2-boss-f4-main5.md`
 - stage-2 boss baseline: `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
@@ -240,5 +240,6 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 W190 translates MAIN5 and the complete F4 dual-track conductor plus D6, D9,
 E1, E13, and E14. Its focused regression, seeded 9,000-frame product smoke,
 and 1,538-test release gate are green. The reachable Stage-2 boss scheduler
-graph is closed. Publish W190, then continue with live pool-D secondary debris
-at `$289098/$2890F2`; the full-game goal remains active after every wave.
+graph is closed. Build `20260809215527` is live and confirmed three
+consecutive times. Continue with live pool-D secondary debris at
+`$289098/$2890F2`; the full-game goal remains active after every wave.

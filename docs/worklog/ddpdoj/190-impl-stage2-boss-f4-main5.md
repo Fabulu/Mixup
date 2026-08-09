@@ -88,3 +88,9 @@ instead of translating unreachable boss scripts.
 ## Release
 
 - implementation commit: `53c3315`
+- documentation commit: `f44ca54`
+- production build: `20260809215527`
+- deployment: `https://1868dad2.gbtman.pages.dev`
+- production URL: `https://gbtman.pages.dev/games/ddpdoj/`
+- production confirmation: three consecutive checks reported the expected
+  build ID and HTTP 200 for the DOJ page and asset manifest
