@@ -3,7 +3,7 @@
 > **HISTORICAL DELTA, not current status.** This narrative records the rapid
 > 2026-08-06 through 2026-08-08 transition and intentionally preserves the
 > claims made at each checkpoint. Later sections supersede earlier ones, and
-> DDPDOJ has since advanced through W181. Use `instructions.md`, live `git log`,
+> DDPDOJ has since advanced through W182. Use `instructions.md`, live `git log`,
 > and the newest numbered worklogs for the current queue and counts.
 
 **You are resuming a project you last touched around DaiOuJou W26/W27 and
@@ -935,3 +935,21 @@ records, with 2 unknown. The regenerated web bundle adds the sole `$237470`
 body stream and contains 2,743 streams total. The release passed 1,511 tests
 with zero failures or skips, bundle/web and ROM-leak gates, deployment, and
 stable live polls. Build `20260809114953` is live.
+
+## 9e. UPDATE -- 2026-08-09: W182 TYPE `$86` IMPLEMENTED
+
+W182 ports the sole stage-2 type `$86` record at `$233018`, clock `$01D5`.
+The exact `$275BAE..$275C32` local closure reuses type `$85`'s two long-form
+prototypes, record prototype, three word-threshold cues, 32-entry heading-art
+table, and handler. The shared path now stores the loader-returned cue pointer,
+executes the ROM's `$24200A` init aim with carry fallback, and runs the already
+ported `$28AC72` cue spawner. Type `$86`'s death takes the guaranteed kind `$08`
+item branch, three effects, sound, and immediate free.
+
+The controlled boot now completes 330 records with 325 allocations and five
+authentic declines, then stops honestly at the final unsupported stage-2 record:
+type `$30` body `$297120`, record `$233020`, clock `$01DC`. Coverage is 42/256
+enemy types and 331/332 stage-2 records, with 1 unknown. All required type `$86`
+art was already packed, so the regenerated bundle remains at 2,743 streams. The
+release passed 1,515 tests with zero failures or skips, bundle/web and ROM-leak
+gates, deployment, and stable live polls. Build `20260809124334` is live.
