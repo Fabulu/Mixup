@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
-import { UnportedLog, Unreached } from '../src/unported.js';
+import { UnportedLog } from '../src/unported.js';
 import { runInitBodyAddr } from '../src/initbody.js';
 import { runHandler } from '../src/handlers.js';
 import { MoveTables } from '../src/vectors.js';
@@ -74,7 +74,7 @@ test('W186/2 F3 immediately dispatches MAIN2 and D3 in scheduler order',
     assert.ok(ram.u8(A6 + 0x11b) === 1 || ram.u8(A6 + 0x11b) === 0x3f);
   });
 
-test('W186/3 the startup countdown reaches the honest E6 frontier',
+test('W186/3 the startup countdown starts E6 with its ROM duration',
   { skip: SKIP }, () => {
     const ram = fixture();
     const ctx = context(ram);
@@ -83,9 +83,7 @@ test('W186/3 the startup countdown reaches the honest E6 frontier',
     a4Start25980C(ram, 3);
     runHandler(0x297398, ram, ROM, A5, ctx);
     ram.setU16(SCHED.a4Base + 0x04, 1);
-    assert.throws(() => runHandler(0x297398, ram, ROM, A5, ctx), (err) => {
-      assert.ok(err instanceof Unreached);
-      assert.equal(err.romAddress, 0x299e90);
-      return true;
-    });
+    runHandler(0x297398, ram, ROM, A5, ctx);
+    assert.equal(ram.u16(SCHED.a1Base), 0x8106);
+    assert.equal(ram.u16(SCHED.a1Base + 0x04), 0x00a0);
   });

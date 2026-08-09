@@ -180,8 +180,8 @@ test('W133/2 the stage-1 $FFFF terminator is at $231704, where the seed parks '
 // ROM- and ladder-gated; skips when the ladder is absent.
 // ===========================================================================
 
-test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at boss '
-  + 'A1/E6 init $299E90 after W186', { skip: SKIP }, () => {
+test('W133/3 booting from lf19500 reaches stage 2 and runs the boss attack '
+  + 'cycle past W186\'s E6 frontier', { skip: SKIP }, () => {
   const r = bootStage2Once();
 
   // (a) stage 2 really booted: $813096 went 0 -> 4 (stage index 1, x4).
@@ -198,11 +198,16 @@ test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at boss '
     `camBgAccumulate must advance in stage 2 (advanced ${r.scrolledInStage2} `
     + 'times); without window 2 the column-stream read would throw earlier');
 
-  assert.ok(r.threw instanceof Unreached);
-  assert.strictEqual(r.threw.romAddress, 0x299e90);
-  assert.strictEqual(r.throwClock, 0x0227);
-  assert.notStrictEqual(r.threw.romAddress, STAGE2_ELEM0_CTOR,
-    'W168\'s later background constructor is no longer the first stop');
+  assert.strictEqual(r.threw, null,
+    `the translated E6-E11 cycle must run for the full smoke budget: ${r.threw}`);
+  const sites = new Set(r.game.bulletSpawns.keys());
+  for (const [attack, candidates] of [
+    ['E6', ['$299F9E', '$29A014']],
+    ['a later randomized leaf', ['$29A2B2', '$29A694', '$29AA2E']],
+  ]) {
+    assert.ok(candidates.some((site) => sites.has(site)),
+      `${attack} must reach a ROM-named bullet site; saw ${[...sites].join(', ')}`);
+  }
 });
 
 // ===========================================================================

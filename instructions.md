@@ -70,34 +70,35 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W186 is complete and live:
+W187 is implemented and awaiting publication:
 
-- worklog: `docs/worklog/ddpdoj/185-impl-stage2-boss-a2.md`
+- worklog: `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
 - stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
 - init stub/body: `$297118` / `$297120`; handler: `$297398`
 - the complete `$298310` multi-part controller, A4 bootstrap, arrival MAIN 0,
   initially armed A3 scripts, all eleven A2 objects, and type `$4D` are included
 - stage-2 coverage is 332/332 records with 0 unknown
 - enemy-type coverage is 44/256
-- the seeded boot consumes all 332 records, materializes 327 allocations
-  including D13's deferred satellite, and stops at A1/E6 init `$299E90`, clock
-  `$0227`
+- the complete F3 attack cycle is translated: A1/E6 through E11, including
+  aim, RNG, timer, freeze, bullet-generator, and self-retirement behavior
+- the seeded boot consumes all 332 records, materializes 327 allocations, runs
+  through the old E6 stop for the full 9,000-frame budget, and visibly fires E6
+  plus a later randomized E9 leaf
 - the web bundle contains 2,919 streams; W185 added 176 to deferred boss shard 17
 
-The next honest unsupported boss dependency is:
+The next honest gameplay phase dependencies are:
 
-- A1/E script id `$06`
-- init `$299E90`
-- step `$299EDA`
-- reached after F3's startup countdown at clock `$0227`
+- A4/F1 init `$298CE2`, step `$298D24`, started by the part/HP phase threshold
+- A4/F2 init `$298DC2`, step `$298E02`, started by boss death or timeout
+- A4/F8 init `$299882`, step `$2998AA`, started by the low-HP threshold
 
-Reserve the next immutable worklog number, statically map F3 before translating
-it, and follow every script start/stop it performs through the boss attack graph.
+Reserve the next immutable worklog number, statically map these disjoint phase
+closures in parallel, and translate their compact shared dependencies together.
 
 Useful current tests and tools:
 
 ```powershell
-node --test games/ddpdoj/tests/w186boss2f3.test.js games/ddpdoj/tests/w185boss2a2.test.js
+node --test games/ddpdoj/tests/w187boss2attacks.test.js games/ddpdoj/tests/w186boss2f3.test.js
 python games/ddpdoj/tools/export-tables.py
 node --test games/ddpdoj/tests/w133stage2boot.test.js
 node tools/publish.mjs --only ddpdoj --dry
@@ -145,8 +146,8 @@ that reported cluster. Preserve those mechanics and their tests.
 1. `PROMPT.md`
 2. this `instructions.md`
 3. `AGENTS.md`
-4. `docs/worklog/ddpdoj/186-impl-stage2-boss-f3.md`
-5. `docs/worklog/ddpdoj/185-impl-stage2-boss-a2.md`
+4. `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
+5. `docs/worklog/ddpdoj/186-impl-stage2-boss-f3.md`
 6. `docs/worklog/ddpdoj/167-impl-general-static-dynamic-coverage.md`
 7. `HANDOVER.md`
 8. relevant files under `docs/knowledge/`, especially 01, 02, 03, 09, and 10
@@ -209,9 +210,8 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W186 translated F3, MAIN2, and D3 and moved the controlled frontier to A1/E6
-`$299E90`. Focused scheduler and controlled-boot checks, all 1,527 release
-tests, ROM export, 100.0000% bundle parity, ROM-leak guard, deployment, and
-stable live polls pass. Build `20260809160147` is live. Continue by statically
-closing E6 through E11 as one grouped leaf-attack slice; the full-game goal
-remains active after every wave.
+W186 translated F3, MAIN2, and D3. Build `20260809160147` is live. W187 now
+translates the complete E6-E11 leaf set, and its focused scheduler/bullet checks
+pass. The controlled boot runs beyond the old E6 stop and produces real E6 and
+E9 bullet output. Publish W187, then continue with the statically mapped F1,
+F2, and F8 phase entries; the full-game goal remains active after every wave.

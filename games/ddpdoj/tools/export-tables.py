@@ -568,6 +568,8 @@ SHOT_WINDOWS.extend([
     (0x299194, 0x0220, "W186: complete A4/F3 attack conductor and four-pair "
                        "A1 choice table through the next A4 script"),
     (0x2998AC, 0x0070, "W186: complete fourteen-pair stage-2 boss A1 table"),
+    (0x2999B0, 0x0080, "W187: stage-2 boss E6-E11 packed muzzle-offset table"),
+    (0x299E90, 0x108A, "W187: complete stage-2 boss A1 attack leaves E6-E11"),
     (0x298310, 0x0956, "W183: complete stage-2 boss multi-part damage controller, "
                        "four part-death helpers, their effect tables, death latch "
                        "and timeout tail through the A4 table at $298C66"),
@@ -2889,6 +2891,18 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if d[0x2993A4:0x2993B4] != bytes.fromhex(
             "00060040000700a00008004000090030"):
         raise SystemExit("W186: stage-2 boss F3 attack-choice table drifted")
+    boss2_attack_leaves = [
+        (0x2999B0, 0x299A30,
+         "83a739cc7ae81ccc466e33302340d5947b842af965145d556ff1a3dccf9ccee5"),
+        (0x299E90, 0x29A886,
+         "91e7efea232e1ddda04bb51d1668d5dee98499e02082048512902471001c9637"),
+        (0x29A886, 0x29AF1A,
+         "f1c0328268ea8221e5d7b3c70c0977da62534884923c0fce2fbca02d46b33466"),
+    ]
+    for start, end, expected in boss2_attack_leaves:
+        if hashlib.sha256(d[start:end]).hexdigest() != expected:
+            raise SystemExit(
+                f"W187: stage-2 boss attack closure ${start:06X} drifted")
     type30_records = [(script + i * 8, u16(d, script + i * 8),
                        u16(d, script + i * 8 + 6) & 0x0FFF)
                       for i in range(332) if d[script + i * 8 + 4] == 0x30]

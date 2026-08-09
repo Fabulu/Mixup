@@ -5,6 +5,8 @@
 // arrival MAIN 0, its initially armed A3 drivers, and all eleven A2 draw-only
 // boss-part objects. Later phase scripts remain outside this module's closure.
 
+import './boss2attacks.js';
+
 import { freeEnemy } from './initbody.js';
 import { runStageAdvance242952 } from './stageend.js';
 import { u16, i16, i32 } from './ram.js';
