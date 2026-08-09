@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-09, after W188 publication.
+Last updated: 2026-08-09, after W189 publication.
 
 ## Current directive
 
@@ -14,10 +14,10 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The old W175 pause is resolved. W176 through W188 are live. W187 completes the
-F3/E6-E11 attack cycle. W188 fixes the reported stage-1 tank-death layering,
-restores all hyper activation art, and ports the ship and option hyper-shot
-families that crashed during held fire. Do not repeat W175 through W188.
+The old W175 pause is resolved. W176 through W189 are live. W188 fixes the
+reported stage-1 tank-death and hyper defects. W189 completes the directly
+reachable F1, F2, and F8 stage-2 boss phases, including the primary death
+presentation and screen shake. Do not repeat W175 through W189.
 
 ## Exact repository and deployment state
 
@@ -38,6 +38,7 @@ At handoff:
 - W186 is committed, pushed, and deployed
 - W187 is committed, pushed, and deployed
 - W188 is committed, pushed, and deployed
+- W189 is committed, pushed, and deployed
 - W175 live build: `20260809081027`
 - W176 live build: `20260809092221`
 - W177 live build: `20260809095334`
@@ -52,6 +53,7 @@ At handoff:
 - W186 live build: `20260809160147`
 - W187 live build: `20260809173436`
 - W188 live build: `20260809204248`
+- W189 live build: `20260809212505`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
 - no agent or command is running now
 
@@ -75,9 +77,9 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W188 is complete and live:
+W189 is complete and live:
 
-- latest worklog: `docs/worklog/ddpdoj/188-fix-stage1-death-hyper.md`
+- latest worklog: `docs/worklog/ddpdoj/189-impl-stage2-boss-phases.md`
 - stage-2 boss baseline: `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
 - stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
 - init stub/body: `$297118` / `$297120`; handler: `$297398`
@@ -97,20 +99,26 @@ W188 is complete and live:
   transitions
 - ship and option hyper projectiles run through their normal and hit handlers;
   the bundle now contains 2,978 streams
+- F1, F2, and F8 are translated with same-pass MAIN1, MAIN3, D10, and E15
+- boss death now runs the palette transition, 16-row debris sequence,
+  eight-particle burst, 39-effect final blast, 42-frame shake, scheduler
+  suspension, and stage advance
+- the Stage-2 A1 table is correctly exported as 16 pairs, not 14
 
 The next honest gameplay phase dependencies are:
 
-- A4/F1 init `$298CE2`, step `$298D24`, started by the part/HP phase threshold
-- A4/F2 init `$298DC2`, step `$298E02`, started by boss death or timeout
-- A4/F8 init `$299882`, step `$2998AA`, started by the low-HP threshold
+- A4/F4 init `$2993B4`, step `$299406`, scheduled by F1
+- MAIN5 init `$297CC2`, step `$297CFA`, conditionally scheduled by MAIN3
+- pool-D `$289098/$2890F2` secondary debris remains a separate visible
+  fidelity closure; the primary boss death presentation is complete
 
-Reserve the next immutable worklog number, statically map these disjoint phase
-closures in parallel, and translate their compact shared dependencies together.
+Reserve the next immutable worklog number, statically map F4 and MAIN5 first,
+and include their compact same-frame descendants in the same delivery.
 
 Useful current tests and tools:
 
 ```powershell
-node --test games/ddpdoj/tests/w187boss2attacks.test.js games/ddpdoj/tests/w186boss2f3.test.js
+node --test games/ddpdoj/tests/w189boss2phases.test.js
 python games/ddpdoj/tools/export-tables.py
 node --test games/ddpdoj/tests/w133stage2boot.test.js
 node tools/publish.mjs --only ddpdoj --dry
@@ -158,12 +166,13 @@ that reported cluster. Preserve those mechanics and their tests.
 1. `PROMPT.md`
 2. this `instructions.md`
 3. `AGENTS.md`
-4. `docs/worklog/ddpdoj/188-fix-stage1-death-hyper.md`
-5. `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
-6. `docs/worklog/ddpdoj/186-impl-stage2-boss-f3.md`
-7. `docs/worklog/ddpdoj/167-impl-general-static-dynamic-coverage.md`
-8. `HANDOVER.md`
-9. relevant files under `docs/knowledge/`, especially 01, 02, 03, 09, and 10
+4. `docs/worklog/ddpdoj/189-impl-stage2-boss-phases.md`
+5. `docs/worklog/ddpdoj/188-fix-stage1-death-hyper.md`
+6. `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
+7. `docs/worklog/ddpdoj/186-impl-stage2-boss-f3.md`
+8. `docs/worklog/ddpdoj/167-impl-general-static-dynamic-coverage.md`
+9. `HANDOVER.md`
+10. relevant files under `docs/knowledge/`, especially 01, 02, 03, 09, and 10
 
 For older issue history, use the worklogs rather than summaries:
 
@@ -223,10 +232,9 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W188 fixes the three owner-reported playable defects: building-tank deaths now
-render in front, the complete 34-frame hyper aura is present, and hyper plus
-held fire no longer crashes at the stage-1 boss. Its focused 74-test gate,
-1,533-test release gate, bundle gate, HTTP asset gate, and real checkpoint smoke
-pass. Build `20260809204248` is live and confirmed three consecutive times.
-Continue with the statically mapped F1, F2, and F8 stage-2 boss phases; the
+W189 translates F1, F2, and F8 plus their immediate MAIN1, MAIN3, D10, and E15
+dependencies. Its focused phase regression and seeded 9,000-frame product
+smoke pass; the 1,537-test release gate, 100% bundle gate, and HTTP asset gate
+are green. Build `20260809212505` is live and confirmed three consecutive
+times. Continue with F4 `$2993B4/$299406` and MAIN5 `$297CC2/$297CFA`; the
 full-game goal remains active after every wave.

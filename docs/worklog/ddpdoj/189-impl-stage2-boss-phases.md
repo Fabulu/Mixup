@@ -1,6 +1,6 @@
 # W189: Stage-2 boss F1, F2, and F8 phases
 
-Status: READY TO PUBLISH
+Status: COMPLETE
 
 ## Scope
 
@@ -99,3 +99,12 @@ can run through the final blast, screen shake, scheduler suspension, and stage
 advance. The next normal-play frontiers are F4 init `$2993B4` and conditional
 MAIN5 init `$297CC2`, both scheduled for a later pass by F1/MAIN3. Pool-D
 secondary debris remains a separate visible fidelity closure.
+
+## Release
+
+- implementation commit: `44182936e345d29aeaaa07ea988e7f1ee11c34c8`
+- production build: `20260809212505`
+- deployment: `https://4640b391.gbtman.pages.dev`
+- production URL: `https://gbtman.pages.dev/games/ddpdoj/`
+- production confirmation: three consecutive checks reported the expected
+  build ID and HTTP 200 for the DOJ page and asset manifest
