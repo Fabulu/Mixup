@@ -486,8 +486,16 @@ SHOT_WINDOWS.extend([
                        "stub, init body, palette/prototypes, handler, muzzle "
                        "offsets and exact eight-entry art table "
                        "($27782E..$277DE0)"),
-    (0x277DE0, 0x0008, "W178: exact type $97 run-length-zero stub needed to "
-                       "reach the next chronological unsupported body $277DE8"),
+    (0x277DE0, 0x0568, "W179: complete stage-2 type $97 closure: stub, init, "
+                       "palettes/prototypes, three-record cue script, handler, "
+                       "animation/impact/emitter/remap/shared-overlay tables through "
+                       "the unrelated routine at $278348"),
+    (0x272C7A, 0x0080, "W179: type $97 exact 32-entry heading attachment-art "
+                       "table selected by init and the live retarget cadence"),
+    (0x272FFA, 0x0080, "W179: type $97 exact 32-entry heading-indexed bullet "
+                       "muzzle-vector table"),
+    (0x27A0E0, 0x0008, "W179: exact type $94 run-length-zero stub needed to "
+                       "reach the next chronological unsupported body $27A0E8"),
     (0x27693E, 0x0932, "W171: complete stage-2 type $8D closure: stub, init, "
                        "palette/prototypes, handler, pointer/vector tables, "
                        "and the structurally bounded 516-word bob table "
@@ -2516,6 +2524,83 @@ def check_stage2_spawn_data(d: bytes) -> None:
             and d[0x277DE0:0x277DE8] == bytes.fromhex("3b7c000000044e75")
             and d[0x279EBA:0x279EC2] == bytes.fromhex("3b7c000000044e75")):
         raise SystemExit("W178: next frontier is not $232DA8 type $97 idx $065")
+
+    # W179: type $97. The exact family ends where unrelated code begins at
+    # `$278348`; the handler's local tables are part of its executable closure.
+    if not (pc_rel_lea(0x277DE8) == 0x277EDE
+            and u16(d, 0x277DEE) == 0x4EB9 and u32(d, 0x277DF0) == 0x2637A2
+            and pc_rel_lea(0x277DF8) == 0x277EBC
+            and u16(d, 0x277DFE) == 0x7010
+            and u16(d, 0x277E00) == 0x4EB9 and u32(d, 0x277E02) == 0x26377A
+            and u16(d, 0x277E06) == 0x4EB9 and u32(d, 0x277E08) == 0x263808):
+        raise SystemExit("W179: type $97 init loader sequence drifted")
+    if d[0x277EB2:0x277EBC] != bytes.fromhex("16090a15130c0a15130c"):
+        raise SystemExit("W179: type $97 five stage palette pairs drifted")
+    if d[0x277EBC:0x277EDE] != bytes.fromhex(
+            "0000000000000000807005050000000000000020000a0000fd800000000000010000"):
+        raise SystemExit("W179: type $97 17-word record prototype drifted")
+    if d[0x277EDE:0x277EFA] != bytes.fromhex(
+            "a000f400f8000017e6080c400c000a00080008000b00060000000000"):
+        raise SystemExit("W179: type $97 long-form sub-record prototype drifted")
+    if d[0x277EFA:0x277F26] != bytes.fromhex(
+            "07a80800fe00001400000028af8a057804000400001400000028af8a"
+            "0348fe00fc00000800000028af84ffff"):
+        raise SystemExit("W179: type $97 three-record cue script drifted")
+    calls97 = {u32(d, a + 2) for a in range(0x277DE8, 0x278276, 2)
+               if u16(d, a) == 0x4EB9}
+    required97 = {0x2637A2, 0x26377A, 0x263808, 0x24200A, 0x2638A6,
+                  0x286096, 0x28AC72, 0x24203E, 0x242190, 0x281420,
+                  0x28C28E, 0x28615E, 0x289B22, 0x27F8FA, 0x289004}
+    if not required97 <= calls97:
+        raise SystemExit(f"W179: type $97 call closure drifted: "
+                         f"missing {sorted(required97 - calls97)!r}")
+    if sum(1 for a in range(0x27818E, 0x278270, 2)
+           if u16(d, a) == 0x4EB9 and u32(d, a + 2) == 0x289004) != 2:
+        raise SystemExit("W179: type $97 death is no longer exactly two effects")
+    if not (u16(d, 0x2780A6) == 0x4E90 and u16(d, 0x2780DC) == 0x4E90):
+        raise SystemExit("W179: type $97 two indirect emitter sites drifted")
+    if [u32(d, 0x278278 + i * 4) for i in range(4)] != [
+            0x17E608, 0x17E78C, 0x17E910, 0x17EA94]:
+        raise SystemExit("W179: type $97 four-entry animation table drifted")
+    if [u32(d, 0x278288 + i * 4) for i in range(5)] != [
+            0x04000400, 0x0400FC00, 0x00000000, 0xFC00FC00, 0xFC000400]:
+        raise SystemExit("W179: type $97 five-vector impact table drifted")
+    if [u32(d, 0x272C7A + i * 4) for i in range(32)] != [
+            0x14FE90 + i * 0x64 for i in range(32)]:
+        raise SystemExit("W179: type $97 32-entry heading-art table drifted")
+    if d[0x278270:0x278278] != bytes.fromhex("4ef9002637624e71"):
+        raise SystemExit("W179: type $97 handler/free boundary drifted")
+    if d[0x278314:0x278320] != bytes.fromhex("0000000000040008000c0010"):
+        raise SystemExit("W179: type $97 death-selector words drifted")
+    if d[0x278338:0x278348] != bytes.fromhex(
+            "0022c59c0022c5c00022c5e40022c608"):
+        raise SystemExit("W179: trailing shared-overlay table drifted")
+    if d[0x278348:0x27834C] != bytes.fromhex("48e7fffe"):
+        raise SystemExit("W179: unrelated code no longer opens at closure end")
+    type97_records = [(script + i * 8, u16(d, script + i * 8),
+                       u16(d, script + i * 8 + 6) & 0x0FFF)
+                      for i in range(332) if d[script + i * 8 + 4] == 0x97]
+    if type97_records != [(0x232DA8, 0x0162, 0x065),
+                          (0x232DE8, 0x0173, 0x06A),
+                          (0x232E48, 0x0180, 0x06A),
+                          (0x232E88, 0x0188, 0x055),
+                          (0x232F00, 0x01A0, 0x055)]:
+        raise SystemExit(f"W179: stage-2 type $97 occurrence order drifted: "
+                         f"{type97_records!r}")
+    if d[0x233DEE:0x233E0E] != bytes.fromhex(
+            "6dc050808801c0053070c0043010c0033010c0023010c0013010701010047000"):
+        raise SystemExit("W179: type $97 movement stream idx $065 drifted")
+    if d[0x233E8A:0x233EAA] != bytes.fromhex(
+            "730007808201c005100182021070c0031010c0021010c0011010501030045000"):
+        raise SystemExit("W179: type $97 movement stream idx $06A drifted")
+    if d[0x233C8E:0x233CB0] != bytes.fromhex(
+            "6e803f4088018201c005300182023070c0033010c0023010c0013010701010047000"):
+        raise SystemExit("W179: type $97 movement stream idx $055 drifted")
+    if not (u16(d, 0x232DC0) == 0x016B and d[0x232DC4] == 0x94
+            and (u16(d, 0x232DC6) & 0x0FFF) == 0x039
+            and d[0x23367E:0x233686] == bytes.fromhex("7800080081034000")
+            and d[0x27A0E0:0x27A0E8] == bytes.fromhex("3b7c000000044e75")):
+        raise SystemExit("W179: next frontier is not $232DC0 type $94 idx $039")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")

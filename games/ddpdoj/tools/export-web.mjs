@@ -112,7 +112,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
 import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE90_ART, TYPE91_ART, TYPE92_ART,
-  TYPE95_ART, TYPE96_ART } from '../src/handlers.js';
+  TYPE95_ART, TYPE96_ART, TYPE97_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -282,6 +282,17 @@ if (u17.length !== SOUND.fileSize) {
 //
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
+  [17, TYPE97_ART.animationTable, TYPE97_ART.frames, 4,
+    TYPE97_ART.frames, 0x278288,
+    'stage-2 type $97 body animation. Record +$36 walks raw byte offsets '
+      + '0,$04,$08,$0C and wraps before $10, reaching exactly four pointers; '
+      + '$278288 begins the five-vector death table'],
+  [17, TYPE97_ART.headingTable, TYPE97_ART.headings, 4,
+    224, 0x272ffa,
+    'stage-2 type $97 heading attachment. Init $277E42 and retarget $278088 '
+      + 'mask the 64-heading selector to $3E and double it, reaching exactly '
+      + 'the first 32 longwords. The valid-pointer run continues across '
+      + 'adjacent families to the vector table at $272FFA'],
   [17, TYPE96_ART.animationTable, TYPE96_ART.frames, 8,
     TYPE96_ART.frames, 0x27aa6c,
     'stage-2 type $96 opening/closing animation. Record +$20 is a byte offset '

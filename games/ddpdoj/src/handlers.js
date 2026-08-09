@@ -3327,6 +3327,12 @@ export const TYPE91_ART = Object.freeze({ main: 0x235470 });
 // Type $92's one long-form prototype carries its only body stream directly.
 export const TYPE92_ART = Object.freeze({ main: 0x23624c });
 
+// Type $97 animates four consecutive body streams through `$278278`.
+export const TYPE97_ART = Object.freeze({
+  animationTable: 0x278278, frames: 4,
+  headingTable: 0x272c7a, headings: 32,
+});
+
 // Type $96's record +$20 walks byte offsets 0..$78 in steps of eight. Each
 // entry is one sprite pointer followed by the longword copied to sub +$14.
 // The fixed death stream begins exactly one `$684` stride after frame 15.
@@ -4697,6 +4703,163 @@ function handler92(ram, rom, a5, ctx) {
   emit92(ram, rom, a6);
 }
 
+// ############################################################################
+// # W179: TYPE $97, ANIMATED AIMED-FIRING CARRIER                            #
+// ############################################################################
+
+function emit97(ram, rom, a5, a6) {
+  const idx = u16(ram.u16(a6 + S.anim) * 4);           // $278094..$2780A6
+  enqueueThroughStub(ram, rom,
+    rom.u32(EMIT_TABLE.dispatch27829C + idx), a6);
+  enqueueRegistersThroughStub(ram, rom,
+    rom.u32(EMIT_TABLE.dispatch2782E4 + idx),
+    addPackedWords(ram.u32(a6 + 0x02), 0xfe40,
+      u16(ram.u16(a5 + 0x2e) + 0xfc00)),
+    ram.u32(a5 + 0x24), 0x0620, ram.u8(a6 + S.palette));
+}
+
+function effect97(ram, rom, a6, ctx, kind, site, sub14, nudge) {
+  const e = effectArmShared278320(ram, rom, ctx, a6, kind, site);
+  if (ram.u16(G.stage) === 1) ram.setU16(e + B.bucket, 8);
+  ram.setU16(e + B.sub12, 1);
+  ram.setU16(e + B.sub14, sub14);
+  ram.setU32(e + B.nudge, nudge >>> 0);
+  ram.setU16(e + B.hook, 1);
+}
+
+function death97(ram, rom, a5, a6, ctx, d1) {
+  ctx.soundPost?.(0x28c28e);                           // $27818E
+  scoreKill(ram, rom, ctx, 0x88, d1);                 // $278194..$27819A
+  const selector = ram.u16(a6 + S.anim);
+  const burstBucket = rom.u16(0x278314 + selector * 2);
+  noteEffect(ctx.unported, 0x289b22, a5,
+    `D0=$C, D1=$${burstBucket.toString(16).toUpperCase()}, D2=$FE000000`);
+  const vectors = Array.from({ length: 5 }, (_, i) => rom.u32(0x278288 + i * 4));
+  ctx.unported?.note(0x27f8fa, `$27F8FA x5 type $97 death D0=$8, D1=[${vectors
+    .map((v) => `$${v.toString(16).toUpperCase().padStart(8, '0')}`).join(',')}]
+    rec $${a5.toString(16)}`);
+  effect97(ram, rom, a6, ctx, 0x0d, 0x2781d6, 0x0400, 0xfc000000);
+  effect97(ram, rom, a6, ctx, 0x08, 0x278224, 0x0000, 0xf6000000);
+  freeEnemy(ram, a5);                                  // $278270
+}
+
+function fire97(ram, rom, a5, a6, ctx) {
+  if (ram.u32(G.freeze) !== 0 || i16(ram.u16(a6 + S.posX)) < 0x1000) return;
+  const cadence = ram.u8(a5 + 0x1e);
+  ram.setU8(a5 + 0x1e, cadence - 1);                   // $2780EE
+  if (cadence !== 0) return;
+  ram.setU8(a5 + 0x1e, u16(3 - (ram.u16(G.bc) >>> 3)) & 0xff);
+
+  const heading = ram.u16(a5 + 0x28);
+  const delta = addPackedWords(
+    rom.u32(0x272ffa + ((heading & 0x3e) << 1)),
+    0x0440, ram.u16(a5 + 0x2e));
+  const base = { d0: 0x0002000c, d2: ram.u32(a6 + 0x02), d3: delta,
+    d4: a6, d5: 0, a5 };
+  const cb = { ram, rom, log: new WriteLog(ram) };
+  const fireAt = (site, d1) => ctx.bulletSpawn?.(site,
+    fireBullet(cb, 0x281420, { ...base, d1: u16(d1) }));
+  if ((ram.u8(a5 + 0x20) & 1) !== 0) {
+    fireAt(0x278140, heading - 2);
+    fireAt(0x278148, heading + 2);
+  } else {
+    fireAt(0x278150, heading);
+  }
+
+  const salvo = ram.u8(a5 + 0x20);
+  ram.setU8(a5 + 0x20, salvo - 1);
+  if (salvo === 0) {
+    ram.setU8(a5 + 0x20, ram.u8(a5 + 0x21));
+    ram.setU8(a5 + 0x1e, u16(0x12 - ram.u16(G.bc)) & 0xff);
+    const volley = ram.u8(a5 + 0x2c);
+    ram.setU8(a5 + 0x2c, volley - 1);
+    if (volley === 0) {
+      ram.setU8(a5 + 0x2c, ram.u8(a5 + 0x2d));
+      ram.setU8(a5 + 0x1e, u16(0x70 - ram.u16(G.b6)) & 0xff);
+    }
+  }
+}
+
+function handler97(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  const vec = { dy: 0, dx: 0 };
+  if (stepMovement(ram, rom, a5, ctx.tables, ctx.unported, vec)) return;
+
+  if (ram.u16(a5 + 0x30) !== 0 && (ram.u8(a6) & 0x20) !== 0) {
+    const secondary = ram.u16(a5 + 0x32) !== 0;
+    const off = secondary ? S.f14 : 0x16;
+    const delta = secondary ? -vec.dx : vec.dx;
+    if (i16(ram.u16(a6 + off)) < 0x0800)
+      ram.setU16(a6 + off, u16(ram.u16(a6 + off) + delta));
+  }
+
+  const y = u16(ram.u16(a6 + S.posY) + 0x1000 + ram.u16(G.scroll));
+  const x = u16(ram.u16(a6 + S.posX) + 0x0c00);
+  const outside = y + 0xa800 > 0xffff || x + 0x7800 > 0xffff;
+  if (!outside) ram.setU8(a5 + R.onScreen, 1);
+  else if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; }
+
+  const d1 = hitMask(ram, a6);
+  let pal;
+  if (d1 === 0) {
+    pal = ram.u8(a5 + 0x1c);
+    if (ram.u16(a6 + S.hp) < 0x02c0 && ram.u16(G.ca) === 0) pal = 0x19;
+  } else {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);
+    scoreHit(ram, ctx, a6, d1);                        // $277FA6
+    pal = ram.u8(a6 + S.palette);
+    if (pal === 0x19) pal = ram.u8(a5 + 0x1c);
+    pal ^= ram.u8(a5 + 0x1d);
+    if (i16(ram.u16(a6 + S.hp)) < 0) {
+      death97(ram, rom, a5, a6, ctx, d1);
+      return;
+    }
+  }
+  ram.setU8(a6 + S.palette, pal);                      // $277FC8
+  spawnCues28AC72(ram, rom, a5, a6);                  // $277FCC
+
+  if (ram.u16(G.freeze) === 0) {                       // $277FD2 tst.w
+    if (ram.u8(a6 + S.heading) < 0x40) {
+      const tick = ram.u8(a5 + 0x34);
+      ram.setU8(a5 + 0x34, tick - 1);
+      if (tick === 0) {
+        ram.setU8(a5 + 0x34, ram.u8(a6 + 0x35));
+        let frame = ram.u16(a5 + 0x36);
+        if (ram.u8(a6 + S.heading) === 0x10) {
+          frame = u16(frame + 4);
+          if (frame === 0x10) frame = 0;
+        } else {
+          frame = u16(frame - 4);
+          if (frame > 0x000c) frame = 0x000c;
+        }
+        ram.setU16(a5 + 0x36, frame);
+        ram.setU32(a6 + S.sprite0a, rom.u32(TYPE97_ART.animationTable + frame));
+      }
+    }
+
+  }
+
+  if (ram.u32(G.freeze) === 0) {                       // $278024 tst.l
+    const aimTick = ram.u8(a5 + 0x22);
+    ram.setU8(a5 + 0x22, aimTick - 1);
+    if (aimTick === 0) {
+      ram.setU8(a5 + 0x22, ram.u8(a5 + 0x23));
+      const aimed = aim64FromCaller(aimTables(rom), ram, a5,
+        u16(ram.u16(a6 + S.posX) + 0x0440),
+        u16(ram.u16(a6 + S.posY) + ram.u16(a5 + 0x2e)));
+      if (!aimed.carry) {
+        const heading = slew64(ram.u16(a5 + 0x28), aimed.dir);
+        ram.setU16(a5 + 0x28, heading);
+        ram.setU32(a5 + 0x24,
+          rom.u32(TYPE97_ART.headingTable + ((heading & 0x3e) << 1)));
+      }
+    }
+  }
+
+  emit97(ram, rom, a5, a6);
+  fire97(ram, rom, a5, a6, ctx);
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
@@ -4744,6 +4907,7 @@ const HANDLERS = new Map([
   [0x278c0e, handler8C],       // W176: stage-2 type $8C
   [0x279b2e, handler91],       // W177: stage-2 type $91
   [0x279d72, handler92],       // W178: stage-2 type $92
+  [0x277f26, handler97],       // W179: stage-2 type $97
 ]);
 
 /** Run the handler at `addr` for the enemy record `a5`.  An unknown address is a

@@ -888,3 +888,18 @@ records, with 14 unknown. The web exporter also now harvests the immediate art
 streams for both W177 type `$91` and W178 type `$92`. The release passed 1,497
 tests with zero failures or skips, bundle/web and ROM-leak gates, deployment,
 and stable live polls. Build `20260809102233` is live.
+
+## 9b. UPDATE -- 2026-08-09: W179 TYPE `$97` IMPLEMENTED
+
+W179 ports all five stage-2 type `$97` records through three movement streams.
+The exact `$277DE0..$278348` family closure and its external heading-art and
+bullet-vector tables cover initialization, three collision variants, cue
+spawning, four-frame body animation, aimed attachment, paired `$281420` fire,
+damage, BCD score `$88`, two pool-B effects, and five terminal impacts.
+
+The controlled boot now completes 254 records with 250 allocations and four
+authentic declines, then stops honestly at type `$94` body `$27A0E8`, record
+`$232DC0`, clock `$016B`. Coverage is 39/256 enemy types and 323/332 stage-2
+records, with 9 unknown. The regenerated web bundle contains all 36 newly
+required body and attachment streams. Focused verification is green; release
+and deployment are pending.

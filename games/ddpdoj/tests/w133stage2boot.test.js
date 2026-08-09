@@ -75,7 +75,7 @@ const STAGE2_ELEM_HANDLER_TABLE = 0x26227e;
 const STAGE2_ELEM0_CTOR = 0x2627ac;
 
 const SEED_LF = 19500;
-const MAX_FRAMES = 7000;               // crosses clock $162 and reaches W178's next stop
+const MAX_FRAMES = 7000;               // crosses clock $16B and reaches W179's next stop
 
 /** Boot the port from the lf19500 rung and step neutral frames until it throws
  *  or MAX_FRAMES elapses. Returns the walked game, any throw, and how
@@ -172,7 +172,7 @@ test('W133/2 the stage-1 $FFFF terminator is at $231704, where the seed parks '
 // ===========================================================================
 
 test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at type '
-  + '$97 init body after W178', { skip: SKIP }, () => {
+  + '$94 init body after W179', { skip: SKIP }, () => {
   const r = bootStage2();
 
   // (a) stage 2 really booted: $813096 went 0 -> 4 (stage index 1, x4).
@@ -190,8 +190,8 @@ test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at type '
     + 'times); without window 2 the column-stream read would throw earlier');
 
   assert.ok(r.threw instanceof Unreached);
-  assert.strictEqual(r.threw.romAddress, 0x277de8);
-  assert.strictEqual(r.throwClock, 0x0162);
+  assert.strictEqual(r.threw.romAddress, 0x27a0e8);
+  assert.strictEqual(r.throwClock, 0x016b);
   assert.notStrictEqual(r.threw.romAddress, STAGE2_ELEM0_CTOR,
     'W168\'s later background constructor is no longer the first stop');
 });
@@ -202,7 +202,7 @@ test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at type '
 // ===========================================================================
 
 test('W133/4 installer replaces the old terminator and the exact ordered prefix '
-  + 'completes before type $97', { skip: SKIP }, () => {
+  + 'completes before type $94', { skip: SKIP }, () => {
   const r = bootStage2();
 
   assert.strictEqual(r.seedLiveCursor, STAGE1_FFFF,
@@ -211,10 +211,10 @@ test('W133/4 installer replaces the old terminator and the exact ordered prefix 
     + 'no-garbage-spawn argument has no foundation');
   assert.ok(r.game.stageEndEvents.some((e) => e[0] === 'spawn-install'
     && e[2] === 0x2325d0), '$26331E/$263386 installed stage 2 at clock zero');
-  assert.strictEqual(r.game.allocEvents.get('spawn-script'), 247,
-    '247 of the 251 consumed records allocate slots; four authentically decline');
-  assert.strictEqual(r.game.ram.u32(LIVE_CURSOR), 0x232da8,
+  assert.strictEqual(r.game.allocEvents.get('spawn-script'), 250,
+    '250 of the 254 consumed records allocate slots; four authentically decline');
+  assert.strictEqual(r.game.ram.u32(LIVE_CURSOR), 0x232dc0,
     'the live cursor names the exact record whose init callback throws');
-  assert.strictEqual((r.game.ram.u32(LIVE_CURSOR) - 0x2325d0) / 8, 251,
-    'the live cursor proves the 251-record prefix completed before type $97');
+  assert.strictEqual((r.game.ram.u32(LIVE_CURSOR) - 0x2325d0) / 8, 254,
+    'the live cursor proves the 254-record prefix completed before type $94');
 });

@@ -248,10 +248,10 @@ controls, and deterministic REC/PLAY are translated and live.
 
 Stage 2 boots and scrolls. Its background elements and enemy program are
 installed, and the chronological enemy families `$95`, `$8D`, `$8F`, `$84`,
-`$90`, `$96`, `$8C`, `$91`, and `$92` are ported. At W178 the ROM-backed
-registry reports 318 of 332 stage-2 records covered, with 14 records remaining
+`$90`, `$96`, `$8C`, `$91`, `$92`, and `$97` are ported. At W179 the ROM-backed
+registry reports 323 of 332 stage-2 records covered, with 9 records remaining
 and zero dynamic entries outside the static inventory. The next unsupported
-record is type `$97` at `$232DA8`.
+record is type `$94` at `$232DC0`.
 
 The full game is not complete. Stages 2 through 5, their bosses, later loops,
 remaining systems and presentation, and authentic slowdown still require

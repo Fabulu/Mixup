@@ -36,7 +36,7 @@ import { installScripts, a2Run2598E6, a4Start25980C } from './scheduler.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
 import { install24150A } from './palette.js';
-import { AimTables, aim64AtTarget, aim256, targetSelect } from './aim.js';
+import { AimTables, aim64AtTarget, aim64FromCaller, aim256, targetSelect } from './aim.js';
 import { drawWord242EC2 } from './rng.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 
@@ -51,7 +51,8 @@ const R = {
   rec20: 0x20, rec21: 0x21, rec22: 0x22, rec23: 0x23, rec24: 0x24, rec25: 0x25,
   rec26: 0x26, rec28: 0x28, rec29: 0x29, rec2A: 0x2a, rec2B: 0x2b,
   rec2C: 0x2c, rec2D: 0x2d,
-  rec2E: 0x2e, rec2F: 0x2f, rec31: 0x31, rec32: 0x32, rec33: 0x33, rec34: 0x34,
+  rec2E: 0x2e, rec2F: 0x2f, rec30: 0x30, rec31: 0x31, rec32: 0x32,
+  rec33: 0x33, rec34: 0x34,
   rec35: 0x35, rec36: 0x36, rec44: 0x44, handler: 0x4c, runLen: 0x04,
   subRec: 0x06, movement: 0x12, typeByte: 0x0c, classByte: 0x0d,
 };
@@ -1077,6 +1078,47 @@ BODY.set(0x279cd0, (ram, rom, a5, a6, unported) => {
     ram.setU8(a6 + S.anim, 0);
     ram.setU8(a6 + 0x1c, ram.u8(a6 + 0x1c) | 0x40);
   }
+});
+
+// --- type $97 ($277DE8): stage 2's animated aimed-firing carrier. W179.
+const TYPE97_AIM_TABLES = new WeakMap();
+BODY.set(0x277de8, (ram, rom, a5, a6, unported, tablesArg) => {
+  void tablesArg;
+  const cue = loadSubProto(ram, rom, a5, a6, 0x277ede); // $277DE8..$277DF4
+  ram.setU32(a5 + R.rec44, cue);                        // $277DF4
+  loadRecordProto(ram, rom, a5, 0x277ebc, 0x10);       // $277DF8..$277E00
+  readInitPosition(ram, rom, a5, unported);             // $277E06
+
+  if (ram.u8(a6 + S.anim) !== 0) {                     // $277E0C..$277E18
+    ram.setU8(a6 + 0x1c, ram.u8(a6 + 0x1c) | 0x40);
+    ram.setU16(a5 + R.rec2E, 0x0280);
+  }
+
+  let t = TYPE97_AIM_TABLES.get(rom);
+  if (!t) { t = new AimTables(rom); TYPE97_AIM_TABLES.set(rom, t); }
+  const aimed = aim64FromCaller(t, ram, a5,
+    u16(ram.u16(a6 + S.posX) + 0x0440),
+    u16(ram.u16(a6 + S.posY) + ram.u16(a5 + R.rec2E)));
+  const heading = aimed.carry ? ram.u8(a6 + S.heading) : aimed.dir;
+  ram.setU8(a5 + R.rec29, heading);                     // $277E3E
+  ram.setU32(a5 + R.rec24,
+    rom.u32(0x272c7a + ((heading & 0x3e) << 1)));       // $277E42..$277E48
+  ram.setU8(a5 + R.rec2A, 3);                          // $277E4E..$277E60
+  ram.setU8(a5 + R.rec1E,
+    u16(ram.u8(a5 + R.rec1E) - ram.u16(G.ae)) & 0xff); // $277E64..$277E6A
+
+  const pal = 0x277eb2 + ram.u16(G.stageX2);           // $277E6E..$277E7A
+  ram.setU8(a6 + S.palette, rom.u8(pal));
+  ram.setU8(a5 + R.rec1C, rom.u8(pal));
+  ram.setU8(a5 + R.rec1D, rom.u8(pal + 1));
+
+  if ((ram.u8(a6) & 0x20) === 0) {                    // $277E88..$277EA8
+    ram.setU16(a5 + R.rec30, 1);
+    const variant = ram.u8(a6 + S.anim);
+    ram.setU8(a5 + R.rec33, variant);
+    ram.setU16(a6 + (variant !== 0 ? S.hit14 : S.hit16), 0xf800);
+  }
+  ram.setU8(a6 + S.anim, 0);                           // $277EAC
 });
 
 // ============================================================ the entry point
