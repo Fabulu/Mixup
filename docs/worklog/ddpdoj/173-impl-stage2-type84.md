@@ -63,9 +63,25 @@ the cue immediately.
 
 Two layout traps are now explicit. `$28ADAC tst.b D2` reads the low byte of the
 flags word, while memory `btst` sites read its high byte. Also, descriptor word
-`+$08` is copied to cue `+$1C`, script starts at cue `+$1E`, and the descriptor
-timer long from descriptor `+$0A` starts at cue `+$22`; its low word is the art
-phase at cue `+$24`.
+`+$08` is copied to cue `+$1C`, then `$28AD2C move.b D3,-2(A0)` overwrites the
+HIGH byte at that big-endian address with D3's low byte. Script starts at cue
+`+$1E`, and the descriptor timer long from descriptor `+$0A` starts at cue
+`+$22`; its low word is the art phase at cue `+$24`.
+
+### Post-review byte-order correction
+
+Independent review after the first W173 push found that the initial JavaScript
+composition had that `$28AD2C` overwrite backwards: it kept descriptor high and
+put D3 low into the word's low byte. The corrected composition is
+`((D3 & $FF) << 8) | (descriptor & $FF)`. For type `$84`'s first descriptor,
+cue `+$1C` is now the exact `$001E`, not `$0000`.
+
+The bounded kind-0/4/8 handlers do not branch on cue `+$1C`, so lifecycle and
+descriptor selection were unchanged. The record-convention sprite emitter does
+consume the word as palette/flip state, however, so the old state was visibly
+wrong and not acceptable as a counted difference. W173/4c uses distinct
+descriptor bytes `$12/$34` and D3 low byte `$AB`; the correct result is `$AB34`.
+Restoring the reversed `$12AB` composition makes that focused gate red.
 
 The first two thresholds naturally use emitter byte offset `$14`, resolving
 through the ROM table to `$23D852`, bucket 7. The port resolves the live word on
@@ -123,9 +139,9 @@ verified in this wave, not claimed as controlled-board observations.
 
 ## Verification
 
-- Focused W133/W167/W169/W173/init/handler/integration tests: 49 passed, zero
+- Focused W133/W167/W169/W173/init/handler/integration tests: 50 passed, zero
   failed, zero skipped.
-- Full DOJ suite: 1,468 passed, zero failed, zero skipped.
+- Full DOJ suite: 1,469 passed, zero failed, zero skipped.
 - `npm run typecheck`: passed.
 - `export-tables.py --verify`: passed, 230 ROM windows, 266,478 bytes.
 - `dojcoverage.py`: green, coverage and inventory regressions restored.
@@ -134,7 +150,7 @@ verified in this wave, not claimed as controlled-board observations.
 - `bundlegate.mjs`: 15,955,968/15,955,968 pixels, 100.0000 percent.
 - `webgate.mjs`: all stages passed.
 - `node tools/publish.mjs --only ddpdoj --dry`: passed, build
-  `20260809052609`; no deployment.
+  `20260809053150`; no deployment.
 - `git diff --check`: passed.
 
 The three owner `c1_*.py` files remain untracked and untouched. No sound,

@@ -37,6 +37,13 @@ function descriptor(rom, index) {
   return addr;
 }
 
+/** `$28AD2A/$28AD2C` on big-endian 68000 memory. The word copy writes both
+ * bytes at cue `+$1C`, then `move.b D3,-2(A0)` replaces the byte at the lower
+ * address, which is the word's HIGH byte. */
+export function mergeDescriptorByte28AD2C(descriptorWord, d3) {
+  return (((d3 & 0xff) << 8) | (descriptorWord & 0xff)) & 0xffff;
+}
+
 function installCue(ram, rom, slot, parent, d2, d3, script, countLive) {
   const index = rom.u16(script); script += 2;          // $28ACD6
   const desc = descriptor(rom, index);                 // $28ACD8..$28ACE0
@@ -50,7 +57,7 @@ function installCue(ram, rom, slot, parent, d2, d3, script, countLive) {
   ram.setU32(slot + F.delta, d2);
   ram.setU32(slot + F.emitter, d3);
   ram.setU16(slot + F.descriptorWord,
-    (rom.u16(desc + 8) & 0xff00) | (d3 & 0xff));
+    mergeDescriptorByte28AD2C(rom.u16(desc + 8), d3));
   ram.setU32(slot + F.script, script);
   const timers = rom.u32(desc + 10);
   ram.setU32(slot + F.countdown, ((timers & 0xffff0000)

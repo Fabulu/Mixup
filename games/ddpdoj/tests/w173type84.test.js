@@ -10,7 +10,7 @@ import { MoveTables } from '../src/vectors.js';
 import { UnportedLog } from '../src/unported.js';
 import { runInitBodyAddr, INIT_BODY_ADDRESSES } from '../src/initbody.js';
 import { runHandler, HANDLER_ADDRESSES, TYPE84_ART } from '../src/handlers.js';
-import { CUE, runCueDriver28AD70 } from '../src/cues.js';
+import { CUE, mergeDescriptorByte28AD2C, runCueDriver28AD70 } from '../src/cues.js';
 
 const evidencePath = new URL('../tools/w173-stage2-type84-evidence.json', import.meta.url);
 import { BUCKETS } from '../src/spritequeue.js';
@@ -132,6 +132,8 @@ test('W173/4 cue advances through 0/4/8, holds terminal, then frees with parent'
   runHandler(0x2752b0, ram, ROM, A5, c.ctx);
   assert.equal(ram.u32(A5 + 0x44), 0x275284);
   assert.equal(ram.u16(CUE.count), 1);
+  assert.equal(ram.u16(CUE.base + 0x1c), 0x001e,
+    '$28AD2C overwrites the big-endian word high byte, not its low byte');
   ram.setU16(0x80390c, 1);
   let f = runCueDriver28AD70(ram, ROM);
   assert.equal(f.emitted, 1);
@@ -153,6 +155,11 @@ test('W173/4 cue advances through 0/4/8, holds terminal, then frees with parent'
   f = runCueDriver28AD70(ram, ROM);
   assert.equal(f.freed, 1);
   assert.equal(ram.u16(CUE.count), 0);
+});
+
+test('W173/4c big-endian byte overwrite keeps descriptor low and D3 low as high', () => {
+  assert.equal(mergeDescriptorByte28AD2C(0x1234, 0x556677ab), 0xab34,
+    'the reversed 0x12AB composition is the concrete byte-order regression');
 });
 
 test('W173/4b emitter-index mutation resolves the cartridge table instead of hardcoding',
