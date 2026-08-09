@@ -941,7 +941,10 @@ try {
       // stable three and all three are still asserted.
       const EXP52 = {
         frames: 1200,
-        6: { streams: 96, records: 22000, distinct: 20, first: 1,
+        // W191: pool-D fill now consumes the shared RNG draws the old refusal
+        // skipped. The tapped-fire trajectory therefore reaches more shot
+        // animation cells while preserving the same first frame and art set.
+        6: { streams: 96, records: 22466, distinct: 30, first: 1,
           what: 'THE PLAYER\'S SHOTS ($2554EA/$255502 + the pods\' $24D2FC/$24D35C)' },
         // 36 distinct images, not 32: W81 wired type $10's and $82's fans and
         // [M] they reach four bullet images this window had never produced.
@@ -955,7 +958,7 @@ try {
         // count.  `streams`/`distinct`/`first` did not move, which says the same
         // 298 spawns produced 217 fewer records over 1200 frames -- a cadence
         // shift, not a different picture.
-        7: { streams: 298, records: 6853, distinct: 36, first: 98,
+        7: { streams: 298, records: 6854, distinct: 36, first: 98,
           what: 'THE ENEMY BULLETS ($281D9A\'s bulk write, buckets 22/23)' },
         // WAVE 53 -- THE IMPACT SPARK, the SAME window and the SAME four
         // absolute port-side fields.  `distinct` is 35 and not 36 ON PURPOSE:
@@ -976,7 +979,7 @@ try {
         // the W86 �2.4 shape again and it is stated rather than left implied:
         // this stage is structurally blind to what W90 shipped, and the W90
         // stage below (fire HELD) is the window that can see it.
-        8: { streams: 72, records: 9271, distinct: 35, first: 24,
+        8: { streams: 72, records: 9720, distinct: 35, first: 24,
           what: 'THE IMPACT SPARK (pool E, $289F54 -> $28A098, bucket 20)' },
         // WAVE 54 -- THE ENEMY DEATH EXPLOSION, the SAME window and the SAME
         // four absolute port-side fields.  `streams` is 269, THE WHOLE OF BOTH
@@ -988,7 +991,7 @@ try {
         // than the first spark (frame 24) because a kill takes several hits.
         // W84: 5,537 -> 5,921. [M] W80, and it is the spark's own consequence:
         // more connections, more kills. `distinct` 204 and `first` 24 unmoved.
-        9: { streams: 269, records: 5921, distinct: 204, first: 24,
+        9: { streams: 269, records: 6031, distinct: 204, first: 24,
           what: 'THE ENEMY DEATH EXPLOSION (pool B, $289004 -> $288E4E)' },
         // WAVE 61 -- THE ITEM.  `streams` is 139, THE WHOLE OF ALL TEN TABLES,
         // including the sixteen frames and the collected animation belonging to
@@ -1016,7 +1019,7 @@ try {
         // the same kill (slot 18, type $85, f669 -> f665) and collected 124
         // frames earlier because the drop lands in a different phase of the
         // ship's 60-frame sweep. See the EXP52 block.
-        12: { streams: 139, records: 506, distinct: 28, first: 666,
+        12: { streams: 139, records: 488, distinct: 28, first: 678,
           what: 'THE ITEM (pool family six, $27E812 -> $27E99E, bucket 17)' } };
       const runW52 = (frames) => {
         const g = new Game(bundle.seed, bundle.tables, {
@@ -1149,7 +1152,7 @@ try {
         // W84: 1,736 -> 1,737 (W80) -> 1,749 (W81). [M] The beam's length is
         // where it STOPS, and it stops on an enemy: both waves put enemies in
         // front of it that were not there. `distinct` 34 and `first` 24 unmoved.
-        10: { streams: 407, records: 1749, distinct: 34, first: 24,
+        10: { streams: 407, records: 1739, distinct: 34, first: 24,
           what: 'THE LASER BEAM ($24BB0A x4 frames x5 powers + the segment '
             + 'and option blocks, bucket 16)' },
         // W66: 146 -> 153. The fifth chain range ($12D430, 8 frames of stride
@@ -1405,7 +1408,7 @@ try {
         // window's input (fire HELD, no sweep). They are NOT the numbers
         // `.scratch/w90/impact.mjs` reports, because that probe also sweeps
         // left and right and a different route makes a different beam.
-        const EXP90 = { frames: 1500, entries: 520, records: 17286,
+        const EXP90 = { frames: 1500, entries: 520, records: 17361,
           distinct: 35, first: 31, beamLive: 1039 };
         const runW90 = (frames, drop) => {
           const g = new Game(bundle.seed, bundle.tables, {
@@ -1909,7 +1912,7 @@ try {
         // fire, the beam is up, `$289FC0` now draws four times per spawn from
         // `$803917`, and the bomb's own segment lifetimes step differently.
         // `distinct` 136 and `first` 201 held.
-        hold: { records: 5948, distinct: 136, first: 201,
+        hold: { records: 5906, distinct: 136, first: 201,
           what: 'THE LASER BOMB ($255FE2\'s four heads and 41 segments out of '
             + '$256662..$256986, + pool E, the bit-7 aura and type $8A) with '
             + 'fire HELD' },
