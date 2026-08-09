@@ -1059,6 +1059,26 @@ BODY.set(0x279aa2, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + R.rec19, rom.u8(pal + 1));             // $279AD8 adjacent byte
 });
 
+// --- type $92 ($279CD0): stage 2's mirrored damage-threshold enemy. W178.
+BODY.set(0x279cd0, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x279d2a);             // $279CD0..$279CD6
+  loadRecordProto(ram, rom, a5, 0x279d26, 0x01);       // $279CDC..$279CE4
+  readInitPosition(ram, rom, a5, unported);            // $279CEA
+
+  const pal = 0x279d1c + ram.u16(G.stageX2);           // $279CF0..$279CFC
+  ram.setU8(a6 + S.palette, rom.u8(pal));               // $279CFE
+  ram.setU8(a5 + R.rec18, rom.u8(pal));                 // $279D02 reads (A0)+
+  ram.setU8(a5 + R.rec19, rom.u8(pal + 1));             // $279D06 adjacent byte
+
+  // Movement escape $88 can select the mirrored spawn variant. The ROM folds
+  // that nonzero HIGH selector byte into attribute bit 6, then clears only
+  // +$1E. Escape `$81 03` remains in LOW byte +$1F, so the selector WORD is 3.
+  if (ram.u8(a6 + S.anim) !== 0) {                      // $279D0A..$279D18
+    ram.setU8(a6 + S.anim, 0);
+    ram.setU8(a6 + 0x1c, ram.u8(a6 + 0x1c) | 0x40);
+  }
+});
+
 // ============================================================ the entry point
 /** Run the init+8 body at `addr`.  Replaces spawn.js's throwing stub.  Returns
  *  FREED if the body freed the enemy (a stage-kill gate fired); otherwise

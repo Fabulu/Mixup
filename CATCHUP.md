@@ -872,3 +872,18 @@ authentic declines, then stops honestly at type `$92` body `$279CD0`, record
 records, with 16 unknown. The release passed 1,492 tests with zero failures or
 skips, bundle/web and ROM-leak gates, deployment, and stable live polls. Build
 `20260809095334` is live.
+
+## 9a. UPDATE -- 2026-08-09: W178 TYPE `$92` IMPLEMENTED
+
+W178 ports both stage-2 type `$92` records at `$232D58` and `$232E10`, clocks
+`$0155` and `$0177`. The exact `$279CC8..$279EC2` dependency closure includes
+its init stub/body, long-form prototype, mirrored selector folding, palette
+threshold, handler, indirect draw, BCD score `$14`, two pool-B death effects,
+and `$27F8F0` terminal request.
+
+The controlled boot now completes 251 records with 247 allocations and four
+authentic declines, then stops honestly at type `$97` body `$277DE8`, record
+`$232DA8`, clock `$0162`. Coverage is 38/256 enemy types and 318/332 stage-2
+records, with 14 unknown. The web exporter also now harvests the immediate art
+streams for both W177 type `$91` and W178 type `$92`. Focused verification is
+green; release and deployment are pending.

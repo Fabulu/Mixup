@@ -3324,6 +3324,9 @@ export const TYPE90_ART = Object.freeze({ main: 0x2351ac });
 // prototype. Its emitter is selected from `$27829C` by sub-record +$1E.
 export const TYPE91_ART = Object.freeze({ main: 0x235470 });
 
+// Type $92's one long-form prototype carries its only body stream directly.
+export const TYPE92_ART = Object.freeze({ main: 0x23624c });
+
 // Type $96's record +$20 walks byte offsets 0..$78 in steps of eight. Each
 // entry is one sprite pointer followed by the longword copied to sub +$14.
 // The fixed death stream begins exactly one `$684` stride after frame 15.
@@ -4622,6 +4625,78 @@ function handler91(ram, rom, a5, ctx) {
   emit91(ram, rom, a6);
 }
 
+// ############################################################################
+// # W178: TYPE $92, MIRRORED DAMAGE-THRESHOLD ENEMY                          #
+// ############################################################################
+
+function emit92(ram, rom, a6) {
+  const idx = u16(ram.u16(a6 + S.anim) * 4);            // $279DE8..$279DEE
+  const stub = rom.u32(EMIT_TABLE.dispatch27829C + idx);
+  enqueueThroughStub(ram, rom, stub, a6);                // $279DFA jsr (A0)
+}
+
+function effect92(ram, rom, a6, ctx, spec) {
+  const e = effectArmShared278320(ram, rom, ctx, a6, spec.kind, spec.site);
+  ram.setU16(e + B.sub12, 1);
+  ram.setU16(e + B.sub14, spec.sub14);
+  ram.setU32(e + B.nudge, spec.nudge >>> 0);
+  ram.setU16(e + B.hook, 1);
+  ram.setU16(e + B.delay, spec.delay);
+}
+
+function tail92(ram, rom, a5, a6, ctx) {
+  const linger = ram.u8(a5 + 0x17);
+  ram.setU8(a5 + 0x17, linger - 1);                     // $279D46 subq.b #1
+  if (linger !== 0) { emit92(ram, rom, a6); return; }   // $279D4A bcc $279DE8
+
+  let d1 = 0xff00fe00;
+  if ((ram.u8(a6 + S.f1c) & 0x40) !== 0)
+    d1 = ((d1 & 0xffff0000) | u16(-(d1 & 0xffff))) >>> 0; // $279D56..$279D5E
+  const d2 = ram.u8(a6 + S.f1f);
+  ctx.unported?.note(0x27f8f0, `$27F8F0 type $92 death D0=$C, D1=$${d1
+    .toString(16).toUpperCase()}, D2=$${d2.toString(16).toUpperCase()} rec $${a5.toString(16)}`);
+  freeEnemy(ram, a5);                                   // $279D6A jmp $263762
+}
+
+function death92(ram, rom, a5, a6, ctx, d1) {
+  ctx.soundPost?.(0x28c2dc);                            // $279DFE
+  scoreKill(ram, rom, ctx, 0x14, d1);                  // $279E04..$279E06
+  ram.setU16(a6, 0x8080);                              // $279E0C
+  ram.setU8(a6 + S.palette, ram.u8(a5 + R.rec18));     // $279E10
+  for (const spec of [
+    { kind: 0x0d, site: 0x279e16, sub14: 0x0400, nudge: 0x00000000, delay: 3 },
+    { kind: 0x05, site: 0x279e5a, sub14: 0x0000, nudge: 0xf2000080, delay: 0 },
+  ]) effect92(ram, rom, a6, ctx, spec);
+  emit92(ram, rom, a6);                                 // $279E9E -> $279DE8
+}
+
+function handler92(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  if (stepMovement(ram, rom, a5, ctx.tables, ctx.unported)) return; // $279D72
+
+  const x = u16(ram.u16(a6 + S.posX) + 0x1400);         // $279D78..$279D80
+  if (x + 0x6800 <= 0xffff) ram.setU8(a5 + R.onScreen, 1);
+  else if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; }
+
+  if ((ram.u8(a6 + 0x01) & 0x80) !== 0) { tail92(ram, rom, a5, a6, ctx); return; }
+
+  const d1 = ram.u8(a6) & 0x5c;
+  let pal;
+  if (d1 === 0) {
+    pal = ram.u8(a5 + R.rec18);
+    if (ram.u16(a6 + S.hp) < 0x0380 && ram.u16(G.ca) === 0) pal = 0x19;
+  } else {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $279DBE
+    scoreHit(ram, ctx, a6, d1);                        // $279DC2
+    pal = ram.u8(a6 + S.palette);
+    if (pal === 0x19) pal = ram.u8(a5 + R.rec18);
+    pal ^= ram.u8(a5 + R.rec19);
+    if (i16(ram.u16(a6 + S.hp)) < 0) { death92(ram, rom, a5, a6, ctx, d1); return; }
+  }
+  ram.setU8(a6 + S.palette, pal);                       // $279DE4
+  emit92(ram, rom, a6);
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
@@ -4668,6 +4743,7 @@ const HANDLERS = new Map([
   [0x27a548, handler96],       // W175: stage-2 type $96
   [0x278c0e, handler8C],       // W176: stage-2 type $8C
   [0x279b2e, handler91],       // W177: stage-2 type $91
+  [0x279d72, handler92],       // W178: stage-2 type $92
 ]);
 
 /** Run the handler at `addr` for the enemy record `a5`.  An unknown address is a

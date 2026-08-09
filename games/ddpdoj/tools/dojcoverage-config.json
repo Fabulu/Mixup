@@ -69,17 +69,15 @@
   ],
   "backlog": [
     {
-      "name": "stage2_enemy_frontier_type92",
+      "name": "stage2_enemy_frontier_type97",
       "shape": "ordered_record_dependency_backlog",
       "status": "STATIC_FRONTIER_PORT_OBSERVED",
       "field_order": ["record", "trigger", "type", "init_body", "handler", "movement_index", "movement_start", "movement_end_exclusive"],
       "remaining_records": [
-        [2305368, 341, 146, 2596048, 2596210, 56, 2307702, 2307710],
         [2305448, 354, 151, 2588136, 2588454, 101, 2309614, 2309646],
         [2305472, 363, 148, 2597096, 2597300, 57, 2307710, 2307718],
         [2305512, 371, 151, 2588136, 2588454, 106, 2309770, 2309802],
         [2305536, 374, 148, 2597096, 2597300, 83, 2309246, 2309254],
-        [2305552, 375, 146, 2596048, 2596210, 58, 2307718, 2307728],
         [2305608, 384, 151, 2588136, 2588454, 106, 2309770, 2309802],
         [2305616, 385, 148, 2597096, 2597300, 113, 2309896, 2309904],
         [2305672, 392, 151, 2588136, 2588454, 85, 2309262, 2309296],
@@ -91,7 +89,7 @@
         [2306072, 469, 134, 2579382, 2578708, 2, 2306484, 2306518],
         [2306080, 476, 48, 2715936, 2716568, 0, 2306452, 2306458]
       ],
-      "reason": "W177 closes the sole type-$91 record, its one-part handler, three pool-B death effects, and seven-vector impact tail. The first chronological unsupported record is $232D58, type $92 at clock $0155, body $279CD0, handler $279D72. The ordered 16-record list is derived from the live registries and ROM stage-2 script, never hand-selected at runtime."
+      "reason": "W178 closes both type-$92 records, their mirrored movement variants, two pool-B death effects, and $27F8F0 impact tail. The first chronological unsupported record is $232DA8, type $97 at clock $0162, body $277DE8, handler $277F26. The ordered 14-record list is derived from the live registries and ROM stage-2 script, never hand-selected at runtime."
     },
     {
       "name": "stage3_to_stage5_spawn_scripts",

@@ -486,6 +486,8 @@ SHOT_WINDOWS.extend([
                        "stub, init body, palette/prototypes, handler, muzzle "
                        "offsets and exact eight-entry art table "
                        "($27782E..$277DE0)"),
+    (0x277DE0, 0x0008, "W178: exact type $97 run-length-zero stub needed to "
+                       "reach the next chronological unsupported body $277DE8"),
     (0x27693E, 0x0932, "W171: complete stage-2 type $8D closure: stub, init, "
                        "palette/prototypes, handler, pointer/vector tables, "
                        "and the structurally bounded 516-word bob table "
@@ -517,6 +519,10 @@ SHOT_WINDOWS.extend([
                        "palette/record/sub-record prototypes, death tail, "
                        "handler, three pool-B effects and seven-vector impact "
                        "table plus the next local type $92 stub through $279CD0"),
+    (0x279CD0, 0x01F2, "W178: complete stage-2 type $92 body closure: init, "
+                       "palette/record/sub-record prototypes, mirrored death "
+                       "tail, handler and two pool-B effects plus the next "
+                       "local type $93 stub through $279EC2"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -2458,6 +2464,58 @@ def check_stage2_spawn_data(d: bytes) -> None:
             and (u16(d, 0x232D5E) & 0x0FFF) == 0x038
             and d[0x279CC8:0x279CD0] == bytes.fromhex("3b7c000000044e75")):
         raise SystemExit("W177: next frontier is not $232D58 type $92 idx $038")
+
+    # W178. Type $92 is the mirrored twin of $91, with two stage-2 records,
+    # two death effects, and a single $27F8F0 impact request after its linger.
+    if not (pc_rel_lea(0x279CD0) == 0x279D2A
+            and u16(d, 0x279CD6) == 0x4EB9 and u32(d, 0x279CD8) == 0x2637A2
+            and pc_rel_lea(0x279CDC) == 0x279D26
+            and u16(d, 0x279CE2) == 0x7001
+            and u16(d, 0x279CE4) == 0x4EB9 and u32(d, 0x279CE6) == 0x26377A
+            and u16(d, 0x279CEA) == 0x4EB9 and u32(d, 0x279CEC) == 0x263808):
+        raise SystemExit("W178: type $92 init loader sequence drifted")
+    if d[0x279D1C:0x279D26] != bytes.fromhex("100f120d100f100f100f"):
+        raise SystemExit("W178: type $92 five stage palette pairs drifted")
+    if d[0x279D26:0x279D2A] != bytes.fromhex("00120000"):
+        raise SystemExit("W178: type $92 two-word record prototype drifted")
+    if d[0x279D2A:0x279D46] != bytes.fromhex(
+            "a000ec00fa000023624c143014001400060006000e00100000000000"):
+        raise SystemExit("W178: type $92 long-form sub-record prototype drifted")
+    calls92 = {u32(d, a + 2) for a in range(0x279CD0, 0x279EA2, 2)
+               if u16(d, a) == 0x4EB9}
+    required92 = {0x2637A2, 0x26377A, 0x263808, 0x2638A6, 0x286096,
+                  0x28C2DC, 0x28615E, 0x289004, 0x27F8F0}
+    if not required92 <= calls92:
+        raise SystemExit(f"W178: type $92 call closure drifted: "
+                         f"missing {sorted(required92 - calls92)!r}")
+    if sum(1 for a in range(0x279DFE, 0x279EA2, 2)
+           if u16(d, a) == 0x4EB9 and u32(d, a + 2) == 0x289004) != 2:
+        raise SystemExit("W178: type $92 death is no longer exactly two effects")
+    if u16(d, 0x279DFA) != 0x4E90:
+        raise SystemExit("W178: type $92 indirect emitter site drifted")
+    if not (u16(d, 0x279D4E) == 0x700C
+            and u32(d, 0x279D52) == 0xFF00FE00
+            and u16(d, 0x279D64) == 0x4EB9 and u32(d, 0x279D66) == 0x27F8F0):
+        raise SystemExit("W178: type $92 mirrored death-tail request drifted")
+    if d[0x279EA2:0x279EBA] != bytes.fromhex(
+            "000c00040a0001800500fd8000000180fb00fd80f6000180"):
+        raise SystemExit("W178: type $92 24-byte closure trailer drifted")
+    type92_records = [(script + i * 8, u16(d, script + i * 8),
+                       u16(d, script + i * 8 + 6) & 0x0FFF)
+                      for i in range(332) if d[script + i * 8 + 4] == 0x92]
+    if type92_records != [(0x232D58, 0x0155, 0x038),
+                          (0x232E10, 0x0177, 0x03A)]:
+        raise SystemExit(f"W178: stage-2 type $92 occurrence order drifted: "
+                         f"{type92_records!r}")
+    if d[0x233676:0x23367E] != bytes.fromhex("8400060081034000"):
+        raise SystemExit("W178: type $92 movement stream idx $038 drifted")
+    if d[0x233686:0x233690] != bytes.fromhex("84404200880181034000"):
+        raise SystemExit("W178: type $92 movement stream idx $03A drifted")
+    if not (u16(d, 0x232DA8) == 0x0162 and d[0x232DAC] == 0x97
+            and (u16(d, 0x232DAE) & 0x0FFF) == 0x065
+            and d[0x277DE0:0x277DE8] == bytes.fromhex("3b7c000000044e75")
+            and d[0x279EBA:0x279EC2] == bytes.fromhex("3b7c000000044e75")):
+        raise SystemExit("W178: next frontier is not $232DA8 type $97 idx $065")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")
