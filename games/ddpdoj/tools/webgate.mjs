@@ -1173,6 +1173,10 @@ try {
         // a stage that only re-pinned `streams` here would be re-pinning the
         // number that moved and staying blind to the reason. The W86 stage
         // below is the window that can see them.
+        // W168: 158 -> 211. The 53 new streams are ROM-derived stage-2
+        // BGELEM art: seven simple descriptors plus the distinct union of the
+        // closed 32-pair table at $262A4C. This stage-1-only 1,500-frame
+        // scenario cannot execute them, so records/distinct/first stay pinned.
         // W90: 12,769 -> 12,805, AND IT IS AN RNG SHIFT RATHER THAN NEW ART.
         // `streams` 158, `distinct` 101 and `first` 315 all held; only
         // `records` moved, by 36 in 12,769 (0.28 %).  This window HOLDS fire
@@ -1185,7 +1189,7 @@ try {
         // the port skipped them -- the same defect `src/spark.js`'s header
         // records W53 fixing for `$289F54` ("every draw after a shot hit was
         // one step out").  Re-pinned with the reason, not quietly.
-        11: { streams: 158, records: 12805, distinct: 101, first: 315,
+        11: { streams: 211, records: 12805, distinct: 101, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };

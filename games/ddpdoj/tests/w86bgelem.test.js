@@ -41,6 +41,8 @@ import { fileURLToPath } from 'node:url';
 import { RomWindows } from '../src/rom.js';
 import { BGELEM_HANDLERS } from '../src/background.js';
 
+const STAGE1_HANDLERS = BGELEM_HANDLERS.filter((h) => h.stage === 0);
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TABLES = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
 const HAVE = fs.existsSync(TABLES);
@@ -61,35 +63,32 @@ const BGELEM_TABLE = 0x26224a;
 
 test('W86/1 the CARTRIDGE\'s own $26224A names the port\'s 13 constructors, in '
   + 'order', { skip: SKIP }, () => {
-  assert.equal(BGELEM_HANDLERS.length, 13,
+  assert.equal(STAGE1_HANDLERS.length, 13,
     'W13 read 13 stage-1 handlers behind $26224A');
-  for (let i = 0; i < BGELEM_HANDLERS.length; i++) {
-    assert.equal(ROM.u32(BGELEM_TABLE + i * 4), BGELEM_HANDLERS[i].ctor,
+  for (let i = 0; i < STAGE1_HANDLERS.length; i++) {
+    assert.equal(ROM.u32(BGELEM_TABLE + i * 4), STAGE1_HANDLERS[i].ctor,
       `$26224A entry ${i}. src/background.js's rows are indexed BY THIS TABLE `
       + '(elemSpawn does `rom.u32(tab + id*4)`), so a row out of order sends '
       + "op $10's id to the wrong element");
   }
-  // AND THE ONE PAST THE END IS A REAL CONSTRUCTOR THE PORT REFUSES.  That is
-  // what stops "13" reading as "the table is 13 long": it is not. $2627AC is
-  // the same shape and `elemSpawn` throws a named `unreached` on it, which the
-  // exporter's own header prefers to a quiet blank.
+  // The next longword is a real constructor, but it belongs to the adjacent
+  // stage-2 table. W168 ports it without changing stage 1's 13-entry extent.
   assert.equal(ROM.u32(BGELEM_TABLE + 13 * 4), 0x2627ac,
     'entry 13 exists and is $2627AC -- the table does NOT end at 13. What ends '
-    + 'at 13 is what THIS PORT can construct, and $2627CA (its updater) is one '
-    + 'of the addresses W75 §5.1 measured the port blocking on');
-  assert.ok(!BGELEM_HANDLERS.some((h) => h.ctor === 0x2627ac),
-    'and $2627AC is deliberately NOT one of the port\'s 13');
+    + 'at 13 is stage 1; $2627CA is stage 2 entry 0\'s updater');
+  assert.ok(BGELEM_HANDLERS.some((h) => h.stage === 1 && h.ctor === 0x2627ac),
+    'W168 ports $2627AC as stage 2, without extending stage 1 past 13 rows');
 });
 
 test('W86/2 every element draws with EXACTLY ONE sprite stream, and all 13 are '
   + 'different', () => {
-  const data = BGELEM_HANDLERS.map((h) => h.data);
+  const data = STAGE1_HANDLERS.map((h) => h.data);
   assert.equal(new Set(data).size, 13,
     'thirteen distinct streams. `elemConstruct` writes ($10,A6) ONCE and '
     + '`elemUpdate` only reads it, so the art an element can ever ask for is '
     + 'this one address -- a duplicate would mean two elements share a picture '
     + 'and the harvest is one stream short of what it claims');
-  for (const h of BGELEM_HANDLERS) {
+  for (const h of STAGE1_HANDLERS) {
     assert.ok(h.data >= 0x220000 && h.data < 0x240000,
       `$${h.data.toString(16)} is in the $22xxxx/$23xxxx block every element's `
       + 'descriptor comes from');
@@ -112,7 +111,7 @@ test('W86/3 the SHIPPED BUNDLE holds a stream for all 13, the five late ones '
   // by thirteen wrong addresses, and because these five ARE the owner's report.
   const LATE = [0x231520, 0x231c44, 0x232578, 0x232eac, 0x233630];
   for (const offs of LATE) {
-    assert.ok(BGELEM_HANDLERS.some((h) => h.data === offs),
+    assert.ok(STAGE1_HANDLERS.some((h) => h.data === offs),
       `$${offs.toString(16).toUpperCase()} -- one of W68 §5.2's five missing `
       + 'bucket-2 streams -- must be one of the thirteen this row harvests');
   }

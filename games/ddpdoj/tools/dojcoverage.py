@@ -35,6 +35,7 @@ CKPT_DIR = OUT / "w69" / "stage1-sweep" / "ckpt"
 W25_TSV = OUT / "w25-handler-stage1.tsv"
 W22_TSV = OUT / "w22-spawn-stage1.tsv"
 W75_JSON = OUT / "w75" / "seedcmp.json"
+W168_JSON = HERE / "w168-stage2-bgelem-evidence.json"
 RAM_BASE = 0x800000
 
 
@@ -267,6 +268,19 @@ def read_w75_element_updates():
     return out
 
 
+def read_w168_stage2_elements():
+    """Read ID-qualified evidence so shared updater targets remain distinct."""
+    if not W168_JSON.exists():
+        raise FileNotFoundError(f"{W168_JSON} missing")
+    doc = json.loads(W168_JSON.read_text(encoding="utf-8"))
+    if doc.get("schema") != 1 or "VERSION-B" not in doc.get("target", ""):
+        raise ValueError(f"{W168_JSON.name} is not VERSION-B schema 1 evidence")
+    rows = doc.get("events", [])
+    if not rows:
+        raise ValueError(f"{W168_JSON.name} has no element events")
+    return rows
+
+
 def lower_bound(rom: Rom, addresses):
     seen = {}
     indirect = 0
@@ -315,6 +329,7 @@ def build_report(break_coverage=False, break_inventory=False):
     enemy_dynamic = read_enemy_dynamic()
     spawned_types = read_spawned_types()
     w75_updates = read_w75_element_updates()
+    w168_elements = read_w168_stage2_elements()
     inventory_errors = []
 
     object_by_id = {int(e["key"]): e for e in families["top_objects"]}
@@ -358,6 +373,28 @@ def build_report(break_coverage=False, break_inventory=False):
         else:
             bg_all[addr]["dynamic"] = True
 
+    stage2_by_id = {int(e["key"]): e for e in families["stage2_bgelem"]}
+    seen_stage2_ids = set()
+    for row in w168_elements:
+        elem_id = int(row["id"])
+        observed_ctor = int(row["constructor"])
+        observed_update = int(row["update"])
+        if elem_id in seen_stage2_ids:
+            inventory_errors.append(f"w168 observed stage 2 BGELEM id {elem_id} twice")
+            continue
+        seen_stage2_ids.add(elem_id)
+        e = stage2_by_id.get(elem_id)
+        if e is None:
+            inventory_errors.append(
+                f"w168 observed stage 2 BGELEM id {elem_id} outside static inventory")
+        elif e["ctor"] != observed_ctor or e["update"] != observed_update:
+            inventory_errors.append(
+                f"w168 stage 2 BGELEM id {elem_id} observed "
+                f"${observed_ctor:06X}/${observed_update:06X}, static table says "
+                f"${e['ctor']:06X}/${e['update']:06X}")
+        else:
+            e["dynamic"] = True
+
     if break_inventory:
         inventory_errors.append("DELIBERATE RED: observed object type $FF outside the 20-entry table")
 
@@ -390,7 +427,8 @@ def build_report(break_coverage=False, break_inventory=False):
                 evidence=dict(checkpoint_rungs=n_ckpt,
                               board_spawned_types=len(spawned_types),
                               enemy_type_handler_pairs=len(enemy_dynamic),
-                              w75_element_updates=len(w75_updates)),
+                              w75_element_updates=len(w75_updates),
+                              w168_stage2_element_events=len(w168_elements)),
                 families=report_families, delegated=config["delegated"],
                 backlog=config["backlog"], phantoms=sorted(phantoms),
                 inventory_errors=inventory_errors,

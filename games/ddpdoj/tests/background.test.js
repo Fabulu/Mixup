@@ -603,8 +603,8 @@ test('the external freeze $81317E: 1 freezes, anything else unfreezes, and it '
 });
 
 // --------------------------------------------------------- the ROM boundary
-test('a stage other than 1 is a LOUD THROW BY ADDRESS, not a plausible '
-  + 'picture -- only stage 1s column stream was exported', () => {
+test('a stage beyond the exported stage-1/stage-2 streams is a LOUD THROW BY '
+  + 'ADDRESS, not a plausible picture', () => {
   const g = newGame([[0, 0x08, 0x20]]);
   g.ram.setU16(BGRAM.stageX4, 4);                   // stage index 1
   const e = (() => { try { g.step(); } catch (x) { return x; } })();

@@ -49,6 +49,7 @@
 
 import { unreached } from './unported.js';
 import { install24150A, install2415E8 } from './palette.js';
+import { enqueueRegistersThroughStub } from './spritequeue.js';
 
 // ---------------------------------------------------------------- addresses
 /** The background OBJECT RECORD, A5-relative.  Every offset is cited at the
@@ -416,7 +417,8 @@ export function writeMapLong(ram, rom, vram, row, col, d4) {
 
 // ------------------------------------------------------- background ELEMENTS
 //
-// Op $10 BGELEM, the 8-slot driver $26233A / spawner $262366, the 13 stage-1
+// Op $10 BGELEM, the 8-slot driver $26233A / spawner $262366, and the closed
+// stage-1/stage-2 constructor families
 // handlers behind $26224A, the $24179E scroll compensation, the $8130DA kill
 // gate and the $23DF2A bucket-2 sprite stage.  Every line is cited from the
 // listing; the recon is §0 of `18-impl-background-elements.md`.
@@ -452,19 +454,32 @@ export const ESLOT = {
  *  which is why the stage went black after the golden terrain.  A list taken off
  *  a run is a floor; this column is the enumeration. */
 export const BGELEM_HANDLERS = [
-  { ctor: 0x2623A4, upd: 0x2623C2, data: 0x22CBCC, yPos: 0x24D0, kind: 0x14, thr: 0x4800, v: 'wbge', gate: true },
-  { ctor: 0x2623FC, upd: 0x26241A, data: 0x22DA70, yPos: 0x1470, kind: 0x13, thr: 0x2800, v: 'wbge', gate: false },
-  { ctor: 0x26244A, upd: 0x262468, data: 0x22DED4, yPos: 0x1690, kind: 0x13, thr: 0x2C00, v: 'lbgt', gate: false },
-  { ctor: 0x26249C, upd: 0x2624BA, data: 0x22E508, yPos: 0x26A8, kind: 0x16, thr: 0x4C00, v: 'lbgt', gate: false },
-  { ctor: 0x2624EE, upd: 0x26250C, data: 0x22F184, yPos: 0x26B0, kind: 0x16, thr: 0x4C00, v: 'wbgt', gate: false },
-  { ctor: 0x26253C, upd: 0x26255A, data: 0x22FE98, yPos: 0x2860, kind: 0x12, thr: 0x5000, v: 'wbgt', gate: false },
-  { ctor: 0x26258A, upd: 0x2625A8, data: 0x23061C, yPos: 0x28C0, kind: 0x12, thr: 0x5000, v: 'wbgt', gate: false },
-  { ctor: 0x2625D8, upd: 0x2625F6, data: 0x231520, yPos: 0x2660, kind: 0x12, thr: 0x4C00, v: 'wbgt', gate: false },
-  { ctor: 0x262626, upd: 0x262644, data: 0x231C44, yPos: 0x2A70, kind: 0x13, thr: 0x5400, v: 'wbgt', gate: false },
-  { ctor: 0x262674, upd: 0x262692, data: 0x232578, yPos: 0x2A70, kind: 0x13, thr: 0x5400, v: 'wbgt', gate: false },
-  { ctor: 0x2626C2, upd: 0x2626E0, data: 0x232EAC, yPos: 0x1E80, kind: 0x14, thr: 0x3C00, v: 'wbgt', gate: false },
-  { ctor: 0x262710, upd: 0x26272E, data: 0x233630, yPos: 0x2090, kind: 0x14, thr: 0x4000, v: 'wbgt', gate: false },
-  { ctor: 0x26275E, upd: 0x26277C, data: 0x233F34, yPos: 0x0A50, kind: 0x15, thr: 0x1400, v: 'wbgt', gate: false },
+  { stage: 0, ctor: 0x2623A4, upd: 0x2623C2, data: 0x22CBCC, yPos: 0x24D0, kind: 0x14, thr: 0x4800, v: 'wbge', gate: true },
+  { stage: 0, ctor: 0x2623FC, upd: 0x26241A, data: 0x22DA70, yPos: 0x1470, kind: 0x13, thr: 0x2800, v: 'wbge', gate: false },
+  { stage: 0, ctor: 0x26244A, upd: 0x262468, data: 0x22DED4, yPos: 0x1690, kind: 0x13, thr: 0x2C00, v: 'lbgt', gate: false },
+  { stage: 0, ctor: 0x26249C, upd: 0x2624BA, data: 0x22E508, yPos: 0x26A8, kind: 0x16, thr: 0x4C00, v: 'lbgt', gate: false },
+  { stage: 0, ctor: 0x2624EE, upd: 0x26250C, data: 0x22F184, yPos: 0x26B0, kind: 0x16, thr: 0x4C00, v: 'wbgt', gate: false },
+  { stage: 0, ctor: 0x26253C, upd: 0x26255A, data: 0x22FE98, yPos: 0x2860, kind: 0x12, thr: 0x5000, v: 'wbgt', gate: false },
+  { stage: 0, ctor: 0x26258A, upd: 0x2625A8, data: 0x23061C, yPos: 0x28C0, kind: 0x12, thr: 0x5000, v: 'wbgt', gate: false },
+  { stage: 0, ctor: 0x2625D8, upd: 0x2625F6, data: 0x231520, yPos: 0x2660, kind: 0x12, thr: 0x4C00, v: 'wbgt', gate: false },
+  { stage: 0, ctor: 0x262626, upd: 0x262644, data: 0x231C44, yPos: 0x2A70, kind: 0x13, thr: 0x5400, v: 'wbgt', gate: false },
+  { stage: 0, ctor: 0x262674, upd: 0x262692, data: 0x232578, yPos: 0x2A70, kind: 0x13, thr: 0x5400, v: 'wbgt', gate: false },
+  { stage: 0, ctor: 0x2626C2, upd: 0x2626E0, data: 0x232EAC, yPos: 0x1E80, kind: 0x14, thr: 0x3C00, v: 'wbgt', gate: false },
+  { stage: 0, ctor: 0x262710, upd: 0x26272E, data: 0x233630, yPos: 0x2090, kind: 0x14, thr: 0x4000, v: 'wbgt', gate: false },
+  { stage: 0, ctor: 0x26275E, upd: 0x26277C, data: 0x233F34, yPos: 0x0A50, kind: 0x15, thr: 0x1400, v: 'wbgt', gate: false },
+
+  // W168. Stage 2's complete adjacent table at $26227E. Entries 4 and 5 are
+  // colour variants which deliberately share entries 2 and 3's updater and
+  // art. `emit` names the ROM's register-convention sprite stub; an omitted
+  // value is stage 1's existing bucket-2 $23DF2A path.
+  { stage: 1, ctor: 0x2627AC, upd: 0x2627CA, data: 0x27A078, yPos: 0x2EE0, kind: 0x13, thr: 0x5C00, v: 'lbge', gate: false, emit: 0x23DF2A },
+  { stage: 1, ctor: 0x2627FE, upd: 0x26281C, data: 0x2340C8, yPos: 0x1F20, kind: 0x11, thr: 0x3C00, v: 'lbge', gate: false, emit: 0x23DEFC },
+  { stage: 1, ctor: 0x262850, upd: 0x26286E, data: 0x2356B4, yPos: 0x2050, kind: 0x12, thr: 0x4000, v: 'lbge', gate: false, emit: 0x23DF2A },
+  { stage: 1, ctor: 0x2628C0, upd: 0x2628DE, data: 0x235BB8, yPos: 0x2A50, kind: 0x12, thr: 0x5400, v: 'lbge', gate: false, emit: 0x23DF2A },
+  { stage: 1, ctor: 0x2628A2, upd: 0x26286E, data: 0x2356B4, yPos: 0x2050, kind: 0x52, thr: 0x4000, v: 'lbge', gate: false, emit: 0x23DF2A, kindWord: true },
+  { stage: 1, ctor: 0x262912, upd: 0x2628DE, data: 0x235BB8, yPos: 0x2A50, kind: 0x52, thr: 0x5400, v: 'lbge', gate: false, emit: 0x23DF2A, kindWord: true },
+  { stage: 1, ctor: 0x262930, upd: 0x26294E, data: 0x27B49C, yPos: 0x1220, kind: 0x15, thr: 0x2400, v: 'lbge', gate: false, emit: 0x23DF2A },
+  { stage: 1, ctor: 0x262982, upd: 0x2629AE, complex: 'stage2-pair', animTable: 0x262A4C, animPairs: 32 },
 ];
 const BGELEM_BY_CTOR = new Map(BGELEM_HANDLERS.map((h) => [h.ctor, h]));
 const BGELEM_BY_UPD = new Map(BGELEM_HANDLERS.map((h) => [h.upd, h]));
@@ -484,7 +499,8 @@ function elemSpawn(ram, rom, ctx, id, arg, mut) {
     const h = BGELEM_BY_CTOR.get(ctorAddr);
     if (!h) {
       unreached(ctorAddr, `$${ctorAddr.toString(16).toUpperCase()} is not one `
-        + `of the 13 stage-1 BGELEM constructors at $26224A (id ${id})`);
+        + `of the ${BGELEM_HANDLERS.length} ported stage-1/stage-2 BGELEM `
+        + `constructors (id ${id})`);
       return;
     }
     elemConstruct(ram, slot, h, mut);                        // $26238E jsr (A1)
@@ -497,16 +513,28 @@ function elemSpawn(ram, rom, ctx, id, arg, mut) {
     + `occupied -- dropped (W17 measured this never happens in stage 1)`);
 }
 
-/** One constructor -- the shape all 13 share (`$2623A4` etc.). */
+/** The common constructor shape shared by stage 1 and seven stage-2 rows. */
 function elemConstruct(ram, slot, h, mut) {
+  if (h.complex === 'stage2-pair') {
+    ram.setU32(slot + ESLOT.update, h.upd);                // $262982
+    ram.setU16(slot + 0x06, 0x00F8);                       // $26298A
+    ram.setU32(slot + 0x10, 0x2376F4);                    // $262990
+    ram.setU32(slot + 0x14, 0x24CD34);                    // $262998
+    ram.setU8(slot + 0x18, 2);                            // $2629A0
+    ram.setU8(slot + 0x19, 2);                            // $2629A6
+    return;
+  }
   // RED: deleting a constructor field must diverge the staged bytes. Handler
   // 0's data pointer ($22CBCC) is the one the gate mutates; every other field
   // is cited straight from the listing.
-  const data = (mut === 'delete-handler0-data' && h.ctor === 0x2623A4) ? 0 : h.data;
+  const deleteData = (mut === 'delete-handler0-data' && h.ctor === 0x2623A4)
+    || (mut === 'delete-stage2-handler0-data' && h.ctor === 0x2627AC);
+  const data = deleteData ? 0 : h.data;
   ram.setU32(slot + ESLOT.data, data);                      // $2623A4 move.l #data
   ram.setU16(slot + ESLOT.yPos, h.yPos);                    // $2623AC move.w #yPos
   ram.setU32(slot + ESLOT.update, h.upd);                   // $2623B2 move.l #upd
-  ram.setU8(slot + 0x0d, h.kind);                           // $2623BA move.b #kind
+  if (h.kindWord) ram.setU16(slot + ESLOT.kind, h.kind);    // $2628B8/$262928
+  else ram.setU8(slot + 0x0d, h.kind);                      // move.b #kind,$d(A6)
 }
 
 /** `$26233A` -- the 8-slot driver, run once per frame from `$2613A0` (after
@@ -521,10 +549,10 @@ function elemDriver(ram, rom, ctx) {
     const h = BGELEM_BY_UPD.get(updAddr);
     if (!h) {
       unreached(updAddr, `element updater $${updAddr.toString(16)
-        .toUpperCase()} is not one of the 13 ported stage-1 handlers`);
+        .toUpperCase()} is not one of the ported stage-1/stage-2 handlers`);
       continue;
     }
-    elemUpdate(ram, ctx, slot, h);                          // $262358 jsr (A1)
+    elemUpdate(ram, rom, ctx, slot, h);                     // $262358 jsr (A1)
   }
 }
 
@@ -568,9 +596,55 @@ function elemStage(ram, d1, d2, d3, d4) {
   ram.setU16(B2_COUNT, u16(off + 12));                     // $23DF4E
 }
 
-/** One updater -- the shape all 13 share (`$2623C2` etc.). The `$8130DA` kill
+/** Stage 2 uses the same register record with three ROM stubs: bucket 1's
+ * `$23DEFC`, bucket 2's `$23DF2A`, and bucket 3's `$23DF58`/`$23E056`.
+ * Keep stage 1 on its measured inline bucket-2 path so W18's mutation seam and
+ * byte gate stay unchanged; resolve every other stub from the ROM. */
+function elemEmit(ram, rom, h, d1, d2, d3, d4) {
+  if (!h.emit || h.emit === 0x23DF2A) elemStage(ram, d1, d2, d3, d4);
+  else enqueueRegistersThroughStub(ram, rom, h.emit, d1, d2, d3, d4);
+}
+
+/** `$2629AE..$262A4A`, stage-2 entry 7. This is the one handler which is not
+ * the short common updater: it animates a closed 32-pair table at `$262A4C`,
+ * draws its first half only before clock `$21A`, and its second half through
+ * the `$22F` lifetime boundary. */
+function elemUpdateStage2Pair(ram, rom, slot, h) {
+  const clock = ram.u16(BGRAM.clock);
+  if (clock >= 0x022F) {                                  // $2629AE cmpi/bcs
+    ram.setU8(slot + ESLOT.active, 0);                    // $2629BA
+    return;
+  }
+  elemScrollComp(ram, slot);                              // $2629BE
+  if (clock >= 0x01F4 && i16(ram.u16(slot + 0x06)) >= 0) {// $2629C4..D4
+    const before = ram.u8(slot + 0x18);
+    ram.setU8(slot + 0x18, u16(before - 1) & 0xff);       // $2629D8 subq.b
+    if (before === 0) {                                   // $2629DC bcc otherwise
+      ram.setU8(slot + 0x18, ram.u8(slot + 0x19));        // $2629E0
+      const at = h.animTable + i16(ram.u16(slot + 0x06)); // $2629E6..F0
+      ram.setU32(slot + 0x10, rom.u32(at));               // $2629F2
+      ram.setU32(slot + 0x14, rom.u32(at + 4));           // $2629F6
+      ram.setU16(slot + 0x06, u16(ram.u16(slot + 0x06) - 8)); // $2629FA
+    }
+  }
+  if (clock < 0x021A) {                                   // $2629FE bcc
+    enqueueRegistersThroughStub(ram, rom, 0x23E056,
+      u32(ram.u32(slot + ESLOT.arg) + 0xFE00DC00),        // $262A08
+      ram.u32(slot + 0x10), 0x2720, 0x15);                // $262A12..1E
+  }
+  const d1 = u32((u16(ram.u16(slot + 0x02) + 0x4C00) << 16)
+    | ram.u16(slot + 0x04));                              // $262A24..32
+  enqueueRegistersThroughStub(ram, rom, 0x23DF58,
+    u32(d1 + 0xFE00DC00), ram.u32(slot + 0x14), 0x2320, 0x15); // $262A32..44
+}
+
+/** The common updater shape. The `$8130DA` kill
  *  gate and the despawn check differ per handler; both port exactly. */
-function elemUpdate(ram, ctx, slot, h) {
+function elemUpdate(ram, rom, ctx, slot, h) {
+  if (h.complex === 'stage2-pair') {
+    elemUpdateStage2Pair(ram, rom, slot, h);
+    return;
+  }
   if (h.gate && ram.u16(BGRAM.elemGate) !== 0) {           // $2623C2 (handler 0)
     ram.setU8(slot + ESLOT.active, 0);                     // $2623D8 clr.b -- die
     return;
@@ -587,13 +661,13 @@ function elemUpdate(ram, ctx, slot, h) {
   // here: i16(slot2)+thr is in [-32768, 54271]).
   const slot2 = ram.u16(slot + ESLOT.arg);                 // move.w $2(a6),d0
   const sum = i16(slot2) + h.thr;
-  const alive = h.v === 'wbge' ? sum >= 0 : sum > 0;
+  const alive = h.v.endsWith('bge') ? sum >= 0 : sum > 0;
   if (!alive) {
     ram.setU8(slot + ESLOT.active, 0);                     // clr.b (a6) -- die
     return;
   }
   elemScrollComp(ram, slot);                               // $24179E
-  elemStage(ram,                                            // $23DF2A
+  elemEmit(ram, rom, h,
     ram.u32(slot + ESLOT.arg),                             // d1 = move.l $2(a6)
     ram.u32(slot + ESLOT.data),                            // d2 = move.l $10(a6)
     ram.u16(slot + ESLOT.yPos),                            // d3 = move.w $14(a6)

@@ -1669,10 +1669,11 @@ const STRUCTURE_STREAMS = Object.freeze([
 // $232EAC $233630`.
 const BGELEM_TABLE = 0x26224a;   // $262380 move.l $8132C8,A1 -- stage 1's
 {
+  const handlers = BGELEM_HANDLERS.filter((h) => h.stage === 0);
   let added = 0, already = 0;
   const seen = new Set();
-  for (let i = 0; i < BGELEM_HANDLERS.length; i++) {
-    const h = BGELEM_HANDLERS[i];
+  for (let i = 0; i < handlers.length; i++) {
+    const h = handlers[i];
     const fromTable = romBe32(BGELEM_TABLE + i * 4);
     if (fromTable !== h.ctor) {
       throw new Error(`background element ${i}: the cartridge's own handler `
@@ -1704,8 +1705,8 @@ const BGELEM_TABLE = 0x26224a;   // $262380 move.l $8132C8,A1 -- stage 1's
   }
   harvested += added; harvestAlready += already;
   harvestReport.push({ shard: STRUCT_SHARD, base: BGELEM_TABLE,
-    entries: BGELEM_HANDLERS.length, stride: 4,
-    runsTo: BGELEM_HANDLERS.length, endsAt: BGELEM_TABLE + BGELEM_HANDLERS.length * 4,
+    entries: handlers.length, stride: 4,
+    runsTo: handlers.length, endsAt: BGELEM_TABLE + handlers.length * 4,
     distinct: seen.size, added, already,
     why: 'W86 THE BLACK TERRAIN: the 13 stage-1 background elements\' own '
       + 'sprites, one per handler, taken from src/background.js BGELEM_HANDLERS '
@@ -1713,8 +1714,80 @@ const BGELEM_TABLE = 0x26224a;   // $262380 move.l $8132C8,A1 -- stage 1's
       + '`move.l #imm,($10,A6)`. Five of them ($231520 $231C44 $232578 $232EAC '
       + '$233630) had no picture and are [M] 83.1 % of every NO-ART record the '
       + 'port emitted over 6,500 steps' });
-  console.log(`  background elements: ${BGELEM_HANDLERS.length} handlers, `
+  console.log(`  background elements: ${handlers.length} handlers, `
     + `${seen.size} distinct streams, ${added} new -- the BLACK TERRAIN`);
+}
+
+// ------------------------------------------------------------------ WAVE 168
+// (1g.2) STAGE-2 BACKGROUND ELEMENT ART. `$26227E..$26229D` is an adjacent,
+// closed table of eight constructors and the stage-2 script dispatches every
+// id once. Seven constructors carry one immediate descriptor. Entry 7 is the
+// inseparable exception: `$2629AE` walks all 32 pairs at `$262A4C..$262B4B`
+// backwards, feeding one stream to bucket 3's first arm and one to its second.
+// Harvest the ROM table, never a run-derived floor or a copied list.
+const STAGE2_BGELEM_TABLE = 0x26227e;
+{
+  const handlers = BGELEM_HANDLERS.filter((h) => h.stage === 1);
+  if (handlers.length !== 8) {
+    throw new Error(`stage-2 background element registry has ${handlers.length} `
+      + 'rows; the adjacent ROM table $26227E..$26229D has exactly 8');
+  }
+  let added = 0, already = 0;
+  const seen = new Set();
+  const addStream = (offs) => {
+    seen.add(offs);
+    if (streams.has(offs)) { already++; return; }
+    streams.set(offs, romExtent(offs));
+    shardOfStream.set(offs, STRUCT_SHARD);
+    added++;
+  };
+  for (let i = 0; i < handlers.length; i++) {
+    const h = handlers[i];
+    const fromTable = romBe32(STAGE2_BGELEM_TABLE + i * 4);
+    if (fromTable !== h.ctor) {
+      throw new Error(`stage-2 background element ${i}: ROM table names $${
+        fromTable.toString(16)} but the live registry names $${h.ctor.toString(16)}`);
+    }
+    if (i < 7) {
+      if (romBe16(h.ctor) !== 0x2d7c || romBe16(h.ctor + 6) !== 0x0010
+          || romBe32(h.ctor + 2) !== h.data) {
+        throw new Error(`stage-2 background element ${i}: constructor $${
+          h.ctor.toString(16)} does not write registry data $${h.data.toString(16)} `
+          + 'to ($10,A6)');
+      }
+      addStream(h.data);
+      continue;
+    }
+    if (h.complex !== 'stage2-pair' || h.animTable !== 0x262a4c
+        || h.animPairs !== 32) {
+      throw new Error('stage-2 background element 7 must name the closed '
+        + '32-pair table $262A4C');
+    }
+    if (romBe16(h.ctor) !== 0x2d7c || romBe32(h.ctor + 2) !== h.upd
+        || romBe16(h.ctor + 6) !== 0x0008) {
+      throw new Error('stage-2 background element 7 constructor no longer '
+        + 'opens by installing updater $2629AE at ($8,A6)');
+    }
+    const last = h.animTable + (h.animPairs - 1) * 8;
+    if (romBe32(h.ctor + 0x10) !== romBe32(last)
+        || romBe32(h.ctor + 0x18) !== romBe32(last + 4)) {
+      throw new Error('stage-2 background element 7 constructor initial pair '
+        + 'is not the last pair of its reverse-walked animation table');
+    }
+    for (let j = 0; j < h.animPairs; j++) {
+      addStream(romBe32(h.animTable + j * 8));
+      addStream(romBe32(h.animTable + j * 8 + 4));
+    }
+  }
+  harvested += added; harvestAlready += already;
+  harvestReport.push({ shard: STRUCT_SHARD, base: STAGE2_BGELEM_TABLE,
+    entries: handlers.length, stride: 4, runsTo: handlers.length,
+    endsAt: STAGE2_BGELEM_TABLE + handlers.length * 4,
+    distinct: seen.size, added, already, animationPairs: 32,
+    why: 'W168 stage-2 BGELEM closure: 8/8 ROM constructors, seven immediate '
+      + 'descriptors plus all 32 pairs from the closed $262A4C animation table' });
+  console.log(`  stage-2 background elements: ${handlers.length} handlers, `
+    + `${seen.size} distinct streams, ${added} new`);
 }
 
 // ------------------------------------------------------------------- WAVE 66

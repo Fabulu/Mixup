@@ -11,9 +11,10 @@ const rom = new URL('../tools/oracle/out/maincpu.bin', import.meta.url);
 const w22 = new URL('../tools/oracle/out/w22-spawn-stage1.tsv', import.meta.url);
 const w25 = new URL('../tools/oracle/out/w25-handler-stage1.tsv', import.meta.url);
 const w75 = new URL('../tools/oracle/out/w75/seedcmp.json', import.meta.url);
+const w168 = new URL('../tools/w168-stage2-bgelem-evidence.json', import.meta.url);
 const ckpt = new URL('../tools/oracle/out/w69/stage1-sweep/ckpt', import.meta.url);
 
-const evidence = [rom, w22, w25, w75, ckpt].every((p) => existsSync(p));
+const evidence = [rom, w22, w25, w75, w168, ckpt].every((p) => existsSync(p));
 
 function run(...args) {
   return spawnSync('python', [fileURLToPath(tool), ...args], {
@@ -47,7 +48,9 @@ test('W167 reusable coverage derives the current closed-family totals', { skip: 
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 231\/332 ported/);
   assert.match(got.stdout, /stage1_bgelem: 13\/13 ported/);
-  assert.match(got.stdout, /stage2_bgelem: 0\/8 ported/);
+  assert.match(got.stdout, /stage2_bgelem: 8\/8 ported/);
+  assert.match(got.stdout, /stage2_bgelem: 8\/8 ported, 0 unknown, 0 null, dynamic 8/);
+  assert.match(got.stdout, /stage2_bgelem:[\s\S]*static-minus-dynamic: 0/);
   assert.match(got.stdout, /LOWER BOUND, address-register indirect calls remain UNKNOWN/);
   assert.match(got.stdout, /OK inventory/);
 });

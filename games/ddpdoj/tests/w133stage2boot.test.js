@@ -6,33 +6,28 @@
 // the stage-2 BG COLUMN STREAM behind it to "a future data-export wave ...
 // [which] is NOT result-screen logic". This wave (W133) is that future wave:
 // it exports the column stream (`tools/export-tables.py` window `$228658`) and
-// this test proves the seeded page now drives PAST the stage clear, boots stage
-// 2, scrolls its background, and stops at the honest constructor throw rather
-// than at a data-export gap.
+// this test proves the seeded page drives past the stage clear, boots stage 2,
+// scrolls its background, and crosses W133's former constructor boundary. W168
+// now owns the complete eight-entry stage-2 element family.
 //
 // WHAT IS PINNED HERE, and every value comes from the cartridge or the listing:
 //   * the boot from the LAST `stage1-sweep` rung (lf19500, past the boss
 //     timeout lf19218) reaches stage 2 (stage index 1, `$813096` goes 0 -> 4);
 //   * the stage-2 BACKGROUND scrolls: `camBgAccumulate` (`$80B012`) advances
-//     for frames between the stage-2 boot and the throw, i.e. window 2
+//     for frames after the stage-2 boot, i.e. window 2
 //     (`$228658`) really feeds the column ring;
-//   * the CLEAN THROW: at scroll clock `$24` the first stage-2 op-$10 BGELEM
-//     fires, `elemSpawn` reads the stage-2 handler table `[0]` = `$2627AC`,
-//     which is NOT one of the port's 13 stage-1 constructors, and `unreached`
-//     THROWS naming `$2627AC` (the stage-2 constructor this port has not
-//     translated). Stage-2 CONTENT is a future port;
+//   * the OLD CLEAN THROW: at scroll clock `$24` the first stage-2 op-$10
+//     BGELEM fires and `elemSpawn` reads table entry `[0]` = `$2627AC`. W168
+//     ports that constructor and this test now proves the old stop stays shut;
 //   * the NO-GARBAGE-SPAWN invariant: the port never calls `installStage` for
 //     stage 2, so the spawn walker breaks at stage-1's `$FFFF` terminator every
 //     frame and `LIVE_CURSOR $8132CC` keeps its stage-1-end value for the whole
 //     boot. Stage 2's spawn script is never read.
 //
-// THE MUST-FAIL. WITH the windows (the committed state): the BG scrolls and the
-// boot throws `Unreached($2627AC)`. WITHOUT window 1 (`$229DF8`): the throw is
-// EARLIER and at a different address, the `rom.bytes($229DF8, 2048)` read inside
-// `backgroundInit`'s `install2415E8`. This test asserts the WITH-windows path;
-// the without-windows path is the honest earlier throw the window exists to
-// prevent. (The W124 window-1 declaration is pinned by `check_stage2_boot_data`
-// in the export, so the "without" case cannot arrive by accident.)
+// THE MUST-FAIL remains the data dependency. WITHOUT window 1 (`$229DF8`) or
+// window 2 (`$228658`), background init throws before clock `$24`. With both,
+// the boot crosses `$2627AC`. The declarations stay pinned by
+// `check_stage2_boot_data`, so the earlier data stop cannot arrive quietly.
 //
 // Skips LOUDLY when the ladder or the export is absent (CI), like w85bucket2.
 
@@ -83,10 +78,10 @@ const STAGE2_ELEM_HANDLER_TABLE = 0x26227e;
 const STAGE2_ELEM0_CTOR = 0x2627ac;
 
 const SEED_LF = 19500;
-const MAX_FRAMES = 1000;               // the throw lands ~730 frames past the seed
+const MAX_FRAMES = 1000;               // crosses clock $24 ~730 frames past the seed
 
 /** Boot the port from the lf19500 rung and step neutral frames until it throws
- *  or MAX_FRAMES elapses. Returns the walked game, the throw (or null), and how
+ *  or MAX_FRAMES elapses. Returns the walked game, any throw, and how
  *  many frames the BG accumulator advanced at all / within stage 2. */
 function bootStage2(ROM) {
   const man = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
@@ -144,7 +139,7 @@ function bootStage2(ROM) {
 // only the export (ROM-gated), not the ladder.
 // ===========================================================================
 
-test('W133/1 the stage-2 elemTable [0] is $2627AC and the port refuses it',
+test('W133/1 the stage-2 elemTable [0] is $2627AC and W168 accepts it',
   { skip: SKIP }, () => {
   const ROM = new RomWindows(JSON.parse(fs.readFileSync(TABLES, 'utf8')).rom);
   // $262302[1] is the stage-2 handler table pointer, and its entry [0] is the
@@ -155,13 +150,9 @@ test('W133/1 the stage-2 elemTable [0] is $2627AC and the port refuses it',
     + 'tab = rom.u32(BGTAB.elemTable + stage*4)');
   assert.strictEqual(ROM.u32(STAGE2_ELEM_HANDLER_TABLE + 0 * 4), STAGE2_ELEM0_CTOR,
     `$26227E[0] must be $2627AC -- the first stage-2 op-$10 BGELEM's constructor`);
-  // ...and $2627AC is deliberately NOT one of the port's 13 stage-1 constructors
-  // (the w86bgelem.test.js W86/1 assertion, restated here next to the boot that
-  // reaches it). So elemSpawn's BGELEM_BY_CTOR.get(0x2627AC) is undefined ->
-  // unreached throws, which is the clean stop this test catches.
-  assert.ok(!BGELEM_HANDLERS.some((h) => h.ctor === STAGE2_ELEM0_CTOR),
-    '$2627AC must not be one of the ported stage-1 constructors, or the boot '
-    + 'would not throw and stage 2 would run with no element handler ported');
+  assert.ok(BGELEM_HANDLERS.some((h) => h.stage === 1
+    && h.ctor === STAGE2_ELEM0_CTOR),
+  '$2627AC must be registered as stage 2, not appended to stage 1');
 });
 
 test('W133/2 the stage-1 $FFFF terminator is at $231704, where the seed parks '
@@ -179,12 +170,12 @@ test('W133/2 the stage-1 $FFFF terminator is at $231704, where the seed parks '
 });
 
 // ===========================================================================
-// 2. THE BOOT -- reaches stage 2, scrolls the BG, throws cleanly at $2627AC.
+// 2. THE BOOT -- reaches stage 2, scrolls the BG, crosses the old $2627AC stop.
 // ROM- and ladder-gated; skips when the ladder is absent.
 // ===========================================================================
 
-test('W133/3 booting from lf19500 reaches stage 2 and the BG scrolls before the '
-  + 'clean constructor throw', { skip: SKIP }, () => {
+test('W133/3 booting from lf19500 reaches stage 2, scrolls, and passes the old '
+  + '$2627AC stop', { skip: SKIP }, () => {
   const r = bootStage2();
 
   // (a) stage 2 really booted: $813096 went 0 -> 4 (stage index 1, x4).
@@ -194,31 +185,20 @@ test('W133/3 booting from lf19500 reaches stage 2 and the BG scrolls before the 
     `stage 2 must boot AFTER the seed (lf${SEED_LF}), not be carried into it`);
 
   // (b) the BG scrolled in stage 2: window 2 ($228658) fed the column ring and
-  // the accumulator advanced for some frames between boot and throw. This is
+  // the accumulator advanced for some frames after boot. This is
   // the proof the column-stream export is actually read, not just present.
   assert.ok(r.scrolledInStage2 > 0,
     `camBgAccumulate must advance in stage 2 (advanced ${r.scrolledInStage2} `
     + 'times); without window 2 the column-stream read would throw earlier');
 
-  // (c) the CLEAN THROW: it is an Unreached carrying $2627AC, the stage-2
-  // BGELEM constructor the port has not translated. NOT a ROM-window throw
-  // (which is what the without-window-1 path would produce, earlier and at
-  // $229DF8) -- the throw's romAddress names the CONSTRUCTOR, proving the
-  // windows let the boot get all the way to the element dispatch.
-  assert.ok(r.threw instanceof Unreached,
-    'the boot must throw Unreached, not a ROM-window error');
-  assert.strictEqual(r.threw.romAddress, STAGE2_ELEM0_CTOR,
-    `the throw must carry $2627AC (the stage-2 BGELEM constructor); got `
-    + `$${r.threw.romAddress.toString(16).toUpperCase()} -- a different address `
-    + 'means a window is missing and the boot stopped at the data gap instead '
-    + 'of the honest constructor stop');
-  assert.ok(r.threw.message.includes('$2627AC'),
-    'the throw message must name the stage-2 constructor $2627AC');
-  // The throw lands at scroll clock $24 (= 36), the brief's landmark: the first
-  // stage-2 BGELEM fires once the stage-2 scroll distance reaches 36.
-  assert.ok(r.throwClock !== null && r.throwClock >= 0x24,
-    `the throw must land at scroll clock >= $24 (got $${(r.throwClock ?? -1).toString(16)}), `
-    + 'where the first stage-2 BGELEM fires');
+  // W168 closes the old clean throw. A thousand frames from the seed crosses
+  // clock $24 and keeps running with entry 0's updater installed.
+  assert.strictEqual(r.threw, null,
+    `the old $2627AC stop must stay closed; got ${r.threw?.message ?? 'no throw'}`);
+  assert.ok(r.game.ram.u16(DIST_CLOCK) >= 0x24,
+    'the run must cross the old clock-$24 boundary');
+  assert.ok(Array.from({ length: 8 }, (_, s) => r.game.ram.u32(0x8131c8 + s * 0x20 + 8))
+    .includes(0x2627ca), '$2627AC must install updater $2627CA into an element slot');
 });
 
 // ===========================================================================

@@ -57,7 +57,7 @@
       "stage": 1,
       "pointer_table": 2499330,
       "ported_from": "src/background.js BGELEM_HANDLERS",
-      "dynamic_from": "w75 seedcmp blocked entry addresses"
+      "dynamic_from": "w168-stage2-bgelem-evidence.json board occurrence records"
     }
   ],
   "delegated": [

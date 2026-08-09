@@ -190,6 +190,11 @@ SHOT_WINDOWS = [
     #            the unported-note can NAME the constructor W18 must port.
     (0x262240, 0x0100, "WAVE 13: $26224A..$2622F2 the BG-element handler "
                        "tables and $262302 the per-stage pointer table"),
+    # W168. Stage 2's eight constructors and six updater bodies are one closed
+    # contiguous code family. The last updater reads the adjacent 32-pair
+    # animation table at $262A4C..$262B4B, so code and data are inseparable.
+    (0x2627AC, 0x03A0, "W168: all 8 stage-2 BGELEM constructors/updaters plus "
+                       "the closed 32-pair animation table $262A4C..$262B4B"),
     #   $225B78  STAGE 1's column stream, 248 columns x 36 B.  Stages 2..5 are
     #            deliberately NOT exported: this wave validated stage 1 and a
     #            read of another stage's stream must be a LOUD THROW BY ADDRESS
@@ -1958,7 +1963,7 @@ def check_stage2_boot_data(d: bytes) -> None:
             f"${u32(d, BGCOL_TABLE + 4):06X}, not ${COL2:06X}. src/background.js "
             f"BGTAB.colStream + stage reads this longword and the W133 window is "
             f"declared for ${COL2:06X}")
-    # ---- the stage-2 BGELEM handler table and the constructor the boot throws on.
+    # ---- the stage-2 BGELEM handler table and W168's first constructor.
     ELEM2 = u32(d, BGELEM_TABLE + 4)
     if ELEM2 != 0x26227E:
         raise SystemExit(
@@ -1969,12 +1974,9 @@ def check_stage2_boot_data(d: bytes) -> None:
     if ctor0 != 0x2627AC:
         raise SystemExit(
             f"W133: the stage-2 elemTable [0] is ${ctor0:06X}, not $2627AC. The boot "
-            f"reaches elemSpawn -> rom.u32(tab + 0*4) and the test asserts the "
-            f"Unreached throw carries $2627AC; if the cartridge names a different "
-            f"first constructor, both the test and this pin have to move together")
-    # and $2627AC must NOT be one of the port's 13 stage-1 constructors, which is
-    # exactly the w86bgelem.test.js W86/1 assertion.  Stated here so a future wave
-    # that ports stage 2 sees the dependency next to the data, not only in the test.
+            f"reaches elemSpawn -> rom.u32(tab + 0*4) and W168 registers $2627AC "
+            f"as stage-2 entry 0; if the cartridge names a different first "
+            f"constructor, both the registry and this pin have to move together")
 
 
 def check_boss_arrival_tables(d: bytes) -> None:

@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "target": "ddpdojblk VERSION-B (2002.10.07 BLACK VER)",
+  "purpose": "coverage only; invulnerability and autoshot invalidate pacing claims",
+  "source": "tools/oracle/w17stage.lua, 22500 logic frames",
+  "interventions": [
+    "player invulnerability refreshed every logic frame",
+    "autoshot with the established left-centre-right-centre sweep"
+  ],
+  "events": [
+    { "id": 0, "logic_frame": 14671, "clock": 36,  "constructor": 2500524, "update": 2500554 },
+    { "id": 6, "logic_frame": 16415, "clock": 145, "constructor": 2500912, "update": 2500942 },
+    { "id": 1, "logic_frame": 17679, "clock": 224, "constructor": 2500606, "update": 2500636 },
+    { "id": 2, "logic_frame": 19311, "clock": 326, "constructor": 2500688, "update": 2500718 },
+    { "id": 3, "logic_frame": 19823, "clock": 358, "constructor": 2500800, "update": 2500830 },
+    { "id": 4, "logic_frame": 19855, "clock": 360, "constructor": 2500770, "update": 2500718 },
+    { "id": 5, "logic_frame": 20367, "clock": 392, "constructor": 2500882, "update": 2500830 },
+    { "id": 7, "logic_frame": 21199, "clock": 444, "constructor": 2500994, "update": 2501038 }
+  ]
+}
