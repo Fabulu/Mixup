@@ -112,7 +112,8 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
 import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE90_ART, TYPE91_ART, TYPE92_ART,
-  TYPE93_ART, TYPE94_ART, TYPE95_ART, TYPE96_ART, TYPE97_ART } from '../src/handlers.js';
+  TYPE93_ART, TYPE94_ART, TYPE95_ART, TYPE96_ART, TYPE97_ART,
+  TYPE3E_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -282,6 +283,11 @@ if (u17.length !== SOUND.fileSize) {
 //
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
+  [17, TYPE3E_ART.table, TYPE3E_ART.frames, 4,
+    TYPE3E_ART.frames, 0x265798,
+    'stage-3 type $3E heading/mirror animation. The heading selects each even '
+      + 'pointer and record +$28 selects its adjacent mirror frame, reaching '
+      + 'all 64 longwords before the next type stub at $265798'],
   [18, 0x289820, 32, 4, 32, 0x2898a0,
     'pool-D debris template 0 descriptor list'],
   [18, 0x2898b0, 32, 4, 32, 0x289930,
@@ -2271,6 +2277,12 @@ const STAGE1 = Object.freeze({
   pal: 0x227e58,       // $2611B2's palette pointer for stage 0
   palWords: 1024,      // 2,048 B = 32 banks x 32 xRGB555
 });
+const STAGE2 = Object.freeze({
+  cols: 0x228658, ncols: 168, tileBase: 0x12a9,
+});
+const STAGE3 = Object.freeze({
+  cols: 0x22a5f8, ncols: 28, tileBase: 0x1aa9,
+});
 const COL_BYTES = 36;                    // 9 longwords, $26135A's `dbra D6`, D6=8
 const COL_ROWS = 9;
 
@@ -2292,6 +2304,8 @@ function decodeMap(at, n, base) {
 
 const stageMap = decodeMap(STAGE1.cols, STAGE1.ncols, STAGE1.tileBase);
 const secondMap = decodeMap(STAGE1.smap, STAGE1.nsmap, STAGE1.smapBase);
+const stage2Map = decodeMap(STAGE2.cols, STAGE2.ncols, STAGE2.tileBase);
+const stage3Map = decodeMap(STAGE3.cols, STAGE3.ncols, STAGE3.tileBase);
 
 // CHECK 1 -- the attribute word.  Recon §1b: no BG map entry in the whole game
 // sets a flip bit ($C0) or any bit outside $3E; the attribute is a pure 5-bit
@@ -2299,7 +2313,7 @@ const secondMap = decodeMap(STAGE1.smap, STAGE1.nsmap, STAGE1.smapBase);
 // half turns this into noise, so it is the cheapest way to catch all three.
 {
   const bad = [];
-  for (const map of [stageMap, secondMap]) {
+  for (const map of [stageMap, secondMap, stage2Map, stage3Map]) {
     for (const col of map) for (const [, a] of col) if (a & ~0x3e) bad.push(a);
   }
   if (bad.length) {
@@ -2314,6 +2328,10 @@ const mapTiles = new Set();
 for (const col of stageMap) for (const [t] of col) mapTiles.add(t);
 const smapTiles = new Set();
 for (const col of secondMap) for (const [t] of col) smapTiles.add(t);
+const stage2Tiles = new Set();
+for (const col of stage2Map) for (const [t] of col) stage2Tiles.add(t);
+const stage3Tiles = new Set();
+for (const col of stage3Map) for (const [t] of col) stage3Tiles.add(t);
 
 // CHECK 2 -- the counts and the ranges the recon measured.
 {
@@ -2328,6 +2346,18 @@ for (const col of secondMap) for (const [t] of col) smapTiles.add(t);
     throw new Error(`the second map holds ${smapTiles.size} distinct tiles `
       + `$${slo.toString(16)}..$${shi.toString(16)}; recon §3b measured 205 in `
       + '$32A9..$3381.');
+  }
+  const s2lo = Math.min(...stage2Tiles), s2hi = Math.max(...stage2Tiles);
+  if (stage2Tiles.size !== 1404 || s2lo !== 0x12aa || s2hi !== 0x1891) {
+    throw new Error(`stage 2 holds ${stage2Tiles.size} distinct BG tiles `
+      + `$${s2lo.toString(16)}..$${s2hi.toString(16)}; the ROM-owned map `
+      + 'measures 1,404 in $12AA..$1891');
+  }
+  const s3lo = Math.min(...stage3Tiles), s3hi = Math.max(...stage3Tiles);
+  if (stage3Tiles.size !== 252 || s3lo !== 0x1aaa || s3hi !== 0x1ba5) {
+    throw new Error(`stage 3 holds ${stage3Tiles.size} distinct BG tiles `
+      + `$${s3lo.toString(16)}..$${s3hi.toString(16)}; the ROM-owned map `
+      + 'measures 252 in $1AAA..$1BA5');
   }
 }
 
@@ -2373,8 +2403,10 @@ let palAgree = 0;
 // the earliest one that needs it.  Slots are contiguous across shards in shard
 // order, so ONE `bg.tileno.u16` describes every slot and the loader can build
 // its tile->slot table before a single shard body has arrived.
-const BG_SHARDS = 8;
+const BG_SHARDS = 10;
 const SMAP_SHARD = 7;
+const STAGE2_SHARD = 8;
+const STAGE3_SHARD = 9;
 const BOOT_SHARDS = [0, 1];
 const SHARD_COLS = 32;
 
@@ -2386,6 +2418,8 @@ for (let s = 0; s < SMAP_SHARD; s++) {
   }
 }
 for (const t of smapTiles) if (!shardOfTile.has(t)) shardOfTile.set(t, SMAP_SHARD);
+for (const t of stage2Tiles) if (!shardOfTile.has(t)) shardOfTile.set(t, STAGE2_SHARD);
+for (const t of stage3Tiles) if (!shardOfTile.has(t)) shardOfTile.set(t, STAGE3_SHARD);
 
 // THE CAPTURE'S OWN TILES ARE NOT NEGOTIABLE.  `verifyCoverage` throws at load
 // for any BG tile the recording uses and the sheet lacks, and that check must
@@ -2422,9 +2456,13 @@ for (let s = 0; s < BG_SHARDS; s++) {
   for (const t of shardTiles[s]) bgSlotNo.push(t);
   shardMeta.push({
     i: s,
-    kind: s === SMAP_SHARD ? 'secondmap' : 'scroll',
-    cols: s === SMAP_SHARD ? null : [s * SHARD_COLS,
-      Math.min((s + 1) * SHARD_COLS, STAGE1.ncols) - 1],
+    kind: s === SMAP_SHARD ? 'secondmap'
+      : s === STAGE2_SHARD ? 'stage2'
+        : s === STAGE3_SHARD ? 'stage3' : 'scroll',
+    cols: s === SMAP_SHARD ? null
+      : s === STAGE2_SHARD ? [0, STAGE2.ncols - 1]
+        : s === STAGE3_SHARD ? [0, STAGE3.ncols - 1]
+          : [s * SHARD_COLS, Math.min((s + 1) * SHARD_COLS, STAGE1.ncols) - 1],
     firstSlot,
     tiles: shardTiles[s].length,
   });

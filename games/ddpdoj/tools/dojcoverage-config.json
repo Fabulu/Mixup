@@ -40,8 +40,20 @@
       "shape": "ffff_terminated_stride8_records",
       "stage": 1,
       "stage_table": 2503478,
+      "movement_aux_count": 174,
+      "movement_terminal_offset": 4390,
       "ported_from": "enemy_types live source registries",
       "dynamic_from": "w169, w170, w171, and w172 record-qualified stage-2 board occurrences"
+    },
+    {
+      "name": "stage3_spawn_script",
+      "shape": "ffff_terminated_stride8_records",
+      "stage": 2,
+      "stage_table": 2503478,
+      "derived_type_count": 28,
+      "derived_ported_type_count": 14,
+      "ported_from": "enemy_types live source registries",
+      "dynamic_from": null
     },
     {
       "name": "stage1_bgelem",
@@ -75,6 +87,14 @@
       "field_order": ["record", "trigger", "type", "init_body", "handler", "movement_index", "movement_start", "movement_end_exclusive"],
       "remaining_records": [],
       "reason": "W183 closes the final unsupported stage-2 spawn record, type $30 at $233020, by translating its boss entry init and per-frame wrapper. The stage-2 spawn-script denominator is complete; the next honest delivery frontier is inside the separately scheduled boss program at MAIN init $297A10."
+    },
+    {
+      "name": "stage3_enemy_frontier",
+      "shape": "ordered_record_dependency_backlog",
+      "status": "OPEN",
+      "field_order": ["record", "trigger", "type", "init_body", "handler", "movement_index", "movement_start", "movement_end_exclusive"],
+      "derive_from": "stage3_spawn_script.live_rom_aux_resource",
+      "reason": "The 414-record Stage-3 script is ROM-owned at stage index 2; unsupported rows are derived in script order from its live movement aux/resource table. No execution corpus is claimed."
     },
     {
       "name": "stage3_to_stage5_spawn_scripts",

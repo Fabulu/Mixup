@@ -75,6 +75,7 @@ const G = {
   // the per-stage "midboss/boss spawned" kill flags (set by $0D/$0E init)
   d8: 0x8130d8, da: 0x8130da, dc: 0x8130dc, de: 0x8130de, e0: 0x8130e0,
   e2: 0x8130e2, e4: 0x8130e4, e6: 0x8130e6, f6: 0x8130f6,
+  f2: 0x8130f2,
   // $242E24's rank byte source + its increment side-effect
   rankReg: 0x803916, rankCtr: 0x803917,
   scrollDelta: 0x813172,
@@ -461,6 +462,21 @@ BODY.set(0x272A4A, (ram, rom, a5, a6, unported) => {
   ram.setU16(a5 + 0x1a, d2);                           // $272A86 move.w D2,($1A,A5)
   ram.setU32(a5 + R.movement, p);                      // $272A8A move.l A0,($12,A5)
   void unported;
+});
+
+// --- type $3E ($2653EE): the Stage-3 opening two-hitbox fighter. The loader
+// copies two consecutive long-form sub prototypes because the registry stub's
+// run length is one. Its only bespoke branch suppresses records in the narrow
+// clock window after the Stage-3 phase latch has been set.
+BODY.set(0x2653EE, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x26544E);            // $2653F4 jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x26543A, 0x09);       // $265400..$265406
+  readInitPosition(ram, rom, a5, unported);            // $265408 jsr $263808
+  const clock = i16(ram.u16(G.scrollClock));
+  if (clock > 0x10 && clock < 0x36 && ram.u16(G.f2) !== 0) {
+    freeEnemy(ram, a5);                                // $265430 jmp $263762
+    return FREED;
+  }
 });
 
 // --- type $24 ($296FB0): boss-approach prop.  Sub-proto, resource install,

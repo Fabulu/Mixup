@@ -129,9 +129,9 @@ const R = {
   // and a SALVO COUNTER in $85, `($22,A5)` is a sprite scratch in $82 and an
   // AIM CADENCE in $85.  One name per meaning, so a reader is never told a byte
   // is a death flag while it is being decremented as a counter.
-  rec18: 0x18, rec19: 0x19,
+  rec17: 0x17, rec18: 0x18, rec19: 0x19,
   rec1A: 0x1a, rec1B: 0x1b, rec1C: 0x1c, rec1D: 0x1d, rec1E: 0x1e,
-  rec21: 0x21, rec23: 0x23, rec24: 0x24,
+  rec21: 0x21, rec22: 0x22, rec23: 0x23, rec24: 0x24,
   salvo: 0x20, cadence22: 0x22,
   // W30: the SPRITE-EMITTER pair the init copies out of `$267F70` -- a RECORD-
   // convention stub and a REGISTER-convention one.  They were called
@@ -3353,6 +3353,10 @@ export const TYPE8C_ART = Object.freeze({
   spawnPalette: 0x278bb4, deathPalette: 0x27972e,
 });
 
+// Stage-3 type $3E uses every longword in this 64-entry heading/mirror table.
+// Heading selects the even entry and `$80390B` alternates the adjacent frame.
+export const TYPE3E_ART = Object.freeze({ table: 0x265698, frames: 64 });
+
 function addPackedWords(pos, high, low) {
   return ((u16((pos >>> 16) + high) << 16) | u16((pos & 0xffff) + low)) >>> 0;
 }
@@ -5069,6 +5073,108 @@ function handler93(ram, rom, a5, ctx) {
 }
 
 // ############################################################################
+// # W192: TYPE $3E, STAGE-3 OPENING TWO-HITBOX FIGHTER                       #
+// ############################################################################
+
+function fire3E(ram, rom, a5, a6, ctx, angle) {
+  const d2 = ram.u32(a6 + S.posX);
+  const d3 = rom.u32(0x2736fa + ((angle + 2) & 0xfc));
+  const cb = { ram, rom, log: new WriteLog(ram) };
+  const shoot = (site, entry, d0, d1) => ctx.bulletSpawn?.(site,
+    fireBullet(cb, entry, { d0, d1, d2, d3, d4: 0, d5: 0, a5 }));
+  if (ram.u16(G.stage) !== 4) {
+    shoot(0x2655f0, 0x2817a8, 0x0002000c, angle);
+    shoot(0x2655f8, 0x2816f6, 0x0002000c, u16(angle + 8));
+    shoot(0x265602, 0x2816f6, 0x0002000c, u16(angle - 8));
+    return;
+  }
+  shoot(0x265614, 0x2817b8, 0x0006000c, angle);
+  shoot(0x26561c, 0x2817b8, 0x0006000c, u16(angle + 8));
+  shoot(0x265626, 0x2817b8, 0x0006000c, u16(angle - 8));
+  shoot(0x265636, 0x2817b8, 0x0004000d, u16(angle + 4));
+  shoot(0x265642, 0x2817b8, 0x0004000d, u16(angle - 4));
+}
+
+function death3E(ram, rom, a5, a6, ctx, d1) {
+  scoreKill(ram, rom, ctx, 0x19, d1);                 // $26553A..$265540
+  const e = spawnEffect(ram, ctx, 0x82, 0x265546);
+  ram.setU32(e + B.pos, ram.u32(a6 + S.posX));
+  ram.setU16(e + B.bucket, 0x10);
+  ram.setU16(e + B.sub12, 0);
+  ram.setU16(e + B.sub14, 0);
+  ram.setU8(e + B.speed, ram.u8(a6 + S.speed));
+  ram.setU8(e + B.angle, ram.u8(a6 + S.heading) * 4);
+  ctx.soundPost?.(0x28c2a8);                          // $265576
+  freeEnemy(ram, a5);                                 // $26557C
+}
+
+function handler3E(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  if (onScreen242684(ram, a6)) {                      // $265486 jsr / bcc
+    if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; }
+  } else {
+    ram.setU8(a5 + R.onScreen, 1);                    // $26549E
+  }
+
+  applyVelocity(ram, ctx.tables, a5);                 // $2654A4 jsr $2417DE
+  if (ram.u16(a5 + R.rec1C) !== 0 && ram.u16(G.freeze) === 0) {
+    ram.setU16(a5 + R.rec1C, ram.u16(a5 + R.rec1C) - 1);
+    const old = ram.u8(a5 + R.rec1A);
+    ram.setU8(a5 + R.rec1A, old - 1);
+    if (old === 0) {
+      ram.setU8(a5 + R.rec1A, ram.u8(a5 + R.rec1B));
+      aim64TurnStore(aimTables(rom), ram, a5, a6);    // $2654CE
+    }
+  }
+
+  ram.setU32(a6 + 0x22, ram.u32(a6 + S.posX));       // second hitbox follows root
+  const d1 = (ram.u8(a6) | ram.u8(a6 + 0x20)) & 0x5c;
+  if (d1 !== 0) {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);
+    ram.setU8(a6 + 0x20, ram.u8(a6 + 0x20) & 0xa3);
+    scoreHit(ram, ctx, a6, d1);
+    ram.setU8(a6 + S.palette,
+      (ram.u8(a5 + R.rec18) ^ ram.u8(a5 + R.rec19)) & 0xff);
+    const damage0 = u16(0x7fff - ram.u16(a6 + S.hp));
+    const damage1 = u16(0x7fff - ram.u16(a6 + 0x38));
+    const damage = Math.max(damage0, damage1);
+    ram.setU32(a5 + R.rec24, u32(ram.u32(a5 + R.rec24) - damage));
+    ram.setU16(a6 + S.hp, 0x7fff);
+    ram.setU16(a6 + 0x38, 0x7fff);
+    if ((ram.u32(a5 + R.rec24) & 0x80000000) !== 0) {
+      death3E(ram, rom, a5, a6, ctx, d1);
+      return;
+    }
+  } else {
+    ram.setU8(a6 + S.palette, ram.u8(a5 + R.rec18));   // $265584
+  }
+
+  const cooldown = ram.u8(a5 + R.rec1E);
+  ram.setU8(a5 + R.rec1E, cooldown - 1);               // $26558A
+  if (cooldown === 0) {
+    const reload = u16(0x30 - ram.u16(G.b8) + 0x0a);
+    ram.setU8(a5 + R.rec1E, reload);
+    ram.setU8(a5 + R.rec22, ram.u8(a5 + R.rec23));
+    const heading = ram.u8(a6 + S.heading);
+    ram.setU8(a5 + R.rec17, heading);
+    if (i16(ram.u16(a6 + S.posX)) >= 0x2800) {
+      ram.setU8(a5 + R.rec22, ram.u8(a5 + R.rec22) - 1);
+      fire3E(ram, rom, a5, a6, ctx, (heading * 4) & 0xff);
+    }
+  }
+
+  if (ram.u8(G.mirror) !== 0) {
+    ram.setU16(a5 + R.rec28, (ram.u16(a5 + R.rec28) + 4) & 7);
+  }
+  const heading = (ram.u8(a6 + S.heading) + 1) & 0x3e;
+  const artOff = heading * 4 + ram.u16(a5 + R.rec28);
+  enqueueRegistersThroughStub(ram, rom, 0x23df86,
+    u32(ram.u32(a6 + S.posX) + 0xfa00fb00),
+    rom.u32(TYPE3E_ART.table + artOff), 0x0628,
+    ram.u8(a6 + S.palette));                           // $265690
+}
+
+// ############################################################################
 // # W185: TYPE $4D, STAGE-2 BOSS SATELLITE                                  #
 // ############################################################################
 
@@ -5148,6 +5254,7 @@ const HANDLERS = new Map([
   [0x277f26, handler97],       // W179: stage-2 type $97
   [0x27a1b4, handler94],       // W180: stage-2 type $94
   [0x279f4a, handler93],       // W181: stage-2 type $93
+  [0x265486, handler3E],       // W192: stage-3 opening type $3E
   [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 

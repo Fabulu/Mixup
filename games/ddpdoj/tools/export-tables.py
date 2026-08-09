@@ -484,13 +484,21 @@ SHOT_WINDOWS.extend([
     # WAVE 24 -- resource #$1F, the movement byte-code streams.  $2633A2 installs
     # the base into protection slot #$1F and $26341E `adda.w aux[idx],A1` resolves
     # each stream pointer = $231852 + aux[idx].  163 streams, 3454 B total
-    # ($231852..$2325D0, measured by w24streams.py).  Stages 3..5 are deliberately
-    # NOT exported: a read of a later stage's stream stays a LOUD THROW BY ADDRESS.
+    # ($231852..$2325D0, measured by w24streams.py).
     (0x231852, 0x0D7E, "WAVE 24: STAGE-1 resource #$1F -- the 163 movement "
                        "byte-code streams ($231852..$2325D0, 3454 B)"),
     (0x2325D0, 0x1CEA, "W169: complete STAGE-2 spawn dependency span: 332 "
                        "records + terminator, 174-word aux table, and 174 "
                        "movement streams ($2325D0..$2342BA)"),
+    (0x22A5F8, 0x0BF0, "W192: STAGE-3 background dependency span: 28 columns "
+                       "x 36 bytes followed by 32 palette banks, ending "
+                       "exactly at Stage 4's column stream $22B1E8"),
+    (0x2342BA, 0x15F6, "W192: complete STAGE-3 spawn dependency span: 414 "
+                       "records + terminator, 123-word aux table, and 123 "
+                       "movement streams ($2342BA..$2358B0)"),
+    (0x2653E6, 0x03B2, "W192: complete stage-3 type $3E closure: run-length "
+                       "stub, init, record/two-sub prototypes, handler, and "
+                       "64-entry heading/mirror art table through type $3F"),
     (0x27782E, 0x05B2, "W170: complete stage-2 type $95 closure: run-length "
                        "stub, init body, palette/prototypes, handler, muzzle "
                        "offsets and exact eight-entry art table "
@@ -2094,6 +2102,36 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W169: stage-2 movement stream starts are not exact")
     if resource + 0x1126 != rows[2][0]:
         raise SystemExit("W169: stage-2 resource does not end at stage-3 script")
+
+    script3, aux3, resource3, _ = rows[2]
+    cursor3 = script3
+    indices3 = []
+    while u16(d, cursor3) != 0xFFFF:
+        indices3.append(u16(d, cursor3 + 6) & 0x0FFF)
+        cursor3 += 8
+        if len(indices3) > 4096:
+            raise SystemExit("W192: stage-3 spawn script has no bounded terminator")
+    if len(indices3) != 414 or cursor3 != 0x234FAA:
+        raise SystemExit(
+            f"W192: stage-3 script is {len(indices3)} records ending "
+            f"${cursor3:06X}, expected 414 ending $234FAA")
+    if max(indices3) != 122 or len(set(indices3)) != 100:
+        raise SystemExit("W192: stage-3 aux use is not max index 122 / 100 used")
+    offsets3 = [u16(d, aux3 + i * 2) for i in range(123)]
+    if aux3 + len(offsets3) * 2 != resource3:
+        raise SystemExit("W192: 123-word aux table does not abut resource #$1F")
+    if offsets3 != sorted(set(offsets3)) or offsets3[0] != 0 \
+            or offsets3[-1] != 0x07EA:
+        raise SystemExit("W192: stage-3 movement stream starts are not exact")
+    if resource3 + 0x0808 != rows[3][0]:
+        raise SystemExit("W192: stage-3 resource does not end at stage-4 script")
+    if d[script3:script3 + 8] != bytes.fromhex("000600043e000021"):
+        raise SystemExit("W192: first stage-3 record is no longer type $3E")
+    if d[0x2352E8:0x2352F2] != bytes.fromhex("7a4014808901c0102000"):
+        raise SystemExit("W192: first stage-3 type $3E movement stream drifted")
+    if hashlib.sha256(d[0x2653E6:0x265798]).hexdigest() != (
+            "8b258d08e235a2efc4a872c57e3ea6c21a9babb1b27f7d8b11cda129211ba11c"):
+        raise SystemExit("W192: stage-3 type $3E closure drifted")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and

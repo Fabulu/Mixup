@@ -167,6 +167,31 @@ def walk_spawn_script(rom: Rom, enemy_by_type: dict, cfg: dict):
     return entries, []
 
 
+def spawn_frontier(rom: Rom, entries, cfg):
+    """Derive an ordered unsupported-record frontier from the live ROM tables."""
+    tab = cfg["stage_table"] + cfg["stage"] * 0x10
+    aux, resource = rom.r32(tab + 4), rom.r32(tab + 8)
+    indices = {rom.r16(int(e["record"]) + 6) & 0x0FFF for e in entries}
+    if not indices:
+        return []
+    offset_count = cfg.get("movement_aux_count", max(indices) + 2)
+    offsets = [rom.r16(aux + i * 2) for i in range(offset_count)]
+    out = []
+    for e in entries:
+        if e["ported"]:
+            continue
+        record = int(e["record"])
+        idx = rom.r16(record + 6) & 0x0FFF
+        end_offset = (offsets[idx + 1] if idx + 1 < len(offsets)
+                      else cfg.get("movement_terminal_offset"))
+        if end_offset is None:
+            raise ValueError(f"stage {cfg['stage'] + 1} movement index {idx} has no terminal offset")
+        out.append([record, e["trigger"], e["type"], e["init_body"],
+                    e["handler"], idx, resource + offsets[idx],
+                    resource + end_offset])
+    return out
+
+
 def ctor_update(rom: Rom, ctor: int) -> int | None:
     for ins in rom.md.disasm(rom.d[ctor:ctor + 64], ctor):
         op = ins.op_str.replace(" ", "").lower()
@@ -390,7 +415,7 @@ def build_report(break_coverage=False, break_inventory=False,
     families["type5_calls"], p = walk_type5(rom, regs, cfg["type5_calls"]); phantoms += p
     families["enemy_types"], p = walk_enemy_types(rom, regs, cfg["enemy_types"]); phantoms += p
     enemy_by_type = {int(e["key"]): e for e in families["enemy_types"]}
-    for name in ("stage1_spawn_script", "stage2_spawn_script"):
+    for name in ("stage1_spawn_script", "stage2_spawn_script", "stage3_spawn_script"):
         families[name], p = walk_spawn_script(rom, enemy_by_type, cfg[name]); phantoms += p
     for name in ("stage1_bgelem", "stage2_bgelem"):
         families[name], p = walk_bgelem(rom, regs, cfg[name]); phantoms += p
@@ -400,22 +425,23 @@ def build_report(break_coverage=False, break_inventory=False,
     # movement-resource offsets and refuse any stale/reordered/manual list.
     frontier = next(x for x in config["backlog"]
                     if x["name"].startswith("stage2_enemy_frontier_type"))
-    tab = cfg["stage2_spawn_script"]["stage_table"] + 0x10
-    aux, resource = rom.r32(tab + 4), rom.r32(tab + 8)
-    offsets = [rom.r16(aux + i * 2) for i in range(174)]
-    exact_backlog = []
-    for e in families["stage2_spawn_script"]:
-        if e["ported"]:
-            continue
-        record = int(e["record"])
-        idx = rom.r16(record + 6) & 0x0FFF
-        end_off = offsets[idx + 1] if idx + 1 < len(offsets) else 0x1126
-        exact_backlog.append([record, e["trigger"], e["type"], e["init_body"],
-                              e["handler"], idx, resource + offsets[idx],
-                              resource + end_off])
+    exact_backlog = spawn_frontier(rom, families["stage2_spawn_script"],
+                                   cfg["stage2_spawn_script"])
     if frontier.get("remaining_records") != exact_backlog:
         raise ValueError(f"{frontier['name']} remaining_records is not "
                          "the exact ordered live-registry/ROM backlog")
+    stage3_frontier = next(x for x in config["backlog"]
+                           if x["name"] == "stage3_enemy_frontier")
+    stage3_exact = spawn_frontier(rom, families["stage3_spawn_script"],
+                                  cfg["stage3_spawn_script"])
+    stage3_types = {e["type"] for e in families["stage3_spawn_script"]}
+    stage3_ported_types = {e["type"] for e in families["stage3_spawn_script"]
+                           if e["ported"]}
+    if (len(stage3_types) != cfg["stage3_spawn_script"]["derived_type_count"] or
+            len(stage3_ported_types) != cfg["stage3_spawn_script"]["derived_ported_type_count"]):
+        raise ValueError("stage3 derived type coverage no longer matches config")
+    if stage3_frontier.get("derive_from") != "stage3_spawn_script.live_rom_aux_resource":
+        raise ValueError("stage3 frontier must derive from the live ROM aux/resource table")
 
     object_types, ckpt_updates, n_ckpt = read_checkpoints()
     enemy_dynamic = read_enemy_dynamic()
@@ -607,7 +633,10 @@ def build_report(break_coverage=False, break_inventory=False,
                               w171_type8d_spawn_events=len(w171_spawns),
                               w172_type8f_spawn_events=len(w172_spawns)),
                 families=report_families, delegated=config["delegated"],
-                backlog=config["backlog"], phantoms=sorted(phantoms),
+                backlog=config["backlog"],
+                frontiers={"stage2_enemy_frontier_type30": exact_backlog,
+                           "stage3_enemy_frontier": stage3_exact},
+                phantoms=sorted(phantoms),
                 inventory_errors=inventory_errors,
                 baseline_present=baseline is not None,
                 coverage_regressions=regressions,
@@ -644,6 +673,11 @@ def main():
         if f["static_minus_dynamic"] is not None:
             print(f"    static-minus-dynamic: {len(f['static_minus_dynamic'])}")
     print(f"  backlog: {len(report['backlog'])} exact config records")
+    print(f"  stage3_enemy_frontier: {len(report['frontiers']['stage3_enemy_frontier'])} ordered records")
+    stage3 = next(f for f in report["families"] if f["name"] == "stage3_spawn_script")
+    stage3_types = {e["type"] for e in stage3["entries_detail"]}
+    stage3_ported_types = {e["type"] for e in stage3["entries_detail"] if e["ported"]}
+    print(f"  stage3_enemy_types: {len(stage3_ported_types)}/{len(stage3_types)} covered types")
     print("  sizing: LOWER BOUND, address-register indirect calls remain UNKNOWN")
 
     failed = False
