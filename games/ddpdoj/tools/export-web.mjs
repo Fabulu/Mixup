@@ -287,10 +287,6 @@ const HARVEST = Object.freeze([
     192, 0x272ffa,
     'stage-3 type $36 upper attachments. Heading is rounded to one of 32 '
       + 'entries; the valid stream run continues through adjacent families'],
-  [17, TYPE36_ART.lowerTable, TYPE36_ART.headings, 4,
-    128, 0x272ffa,
-    'stage-3 type $36 lower attachments. All 32 heading entries are live; '
-      + 'this family is shared with earlier translated enemies'],
   [17, TYPE3E_ART.table, TYPE3E_ART.frames, 4,
     TYPE3E_ART.frames, 0x265798,
     'stage-3 type $3E heading/mirror animation. The heading selects each even '
