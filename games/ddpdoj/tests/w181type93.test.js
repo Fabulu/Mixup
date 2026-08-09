@@ -52,7 +52,7 @@ function sprites(ram, bucket) {
   return out;
 }
 
-test('W181/1 ROM pins the sole record, movement, full closure and type $86 frontier',
+test('W181/1 ROM pins the sole record, movement, full closure and following type $86 row',
   { skip: SKIP }, () => {
   assert.ok(INIT_BODY_ADDRESSES.includes(0x279ec2));
   assert.ok(HANDLER_ADDRESSES.includes(0x279f4a));

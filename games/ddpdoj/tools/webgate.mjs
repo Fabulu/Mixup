@@ -1189,7 +1189,12 @@ try {
         // the port skipped them -- the same defect `src/spark.js`'s header
         // records W53 fixing for `$289F54` ("every draw after a shot hit was
         // one step out").  Re-pinned with the reason, not quietly.
-        11: { streams: 211, records: 12805, distinct: 101, first: 315,
+        // W182: `distinct` 101 -> 97 while records/first remain exact. Type
+        // $85/$86 now executes the ROM's `$24200A` init aim instead of always
+        // using its movement-heading fallback, so this deterministic input
+        // selects four fewer heading-art variants. The ROM-exact aim path is
+        // pinned directly by w182type86.test.js.
+        11: { streams: 211, records: 12805, distinct: 97, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };

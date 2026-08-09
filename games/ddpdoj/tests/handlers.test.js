@@ -48,7 +48,9 @@ const SIX = [0x2688cc, 0x268232, 0x269cea, 0x26a2e2, 0x2747c6, 0x27687e,
 //                                        $82's board slot-frames.
 const EMIT_REC = 0x23d762, EMIT_REG = 0x23dece, EMIT_FAM = 0x23d852;
 const EMIT_A = 0x23df86, EMIT_B = 0x23df58, EMIT_ZOOM = 0x23dbca;
+const CUE_END = 0x2fff00;
 const STUB_WORDS = new Map([
+  [CUE_END, 0xffff],
   [EMIT_REC, 0x41f9], [EMIT_REC + 6, 0xd0f9], [EMIT_REC + 12, 0x43ee],
   [EMIT_REG, 0x41f9], [EMIT_REG + 6, 0xd0f9], [EMIT_REG + 12, 0x2001],
   [EMIT_FAM, 0x41f9], [EMIT_FAM + 6, 0xd0f9], [EMIT_FAM + 12, 0x43ee],
@@ -76,6 +78,7 @@ function makeRam(over = {}) {
   ram.setU32(REC + 0x12, 0);          // movement cursor 0 -> stepMovement no-op
   ram.setU32(REC + 0x2a, EMIT_REC);   // W30: the emitter pair the init writes
   ram.setU32(REC + 0x2e, EMIT_REG);
+  ram.setU32(REC + 0x44, CUE_END);     // W182: shared $85/$86 cue terminator
   ram.setU8(REC + 0x18, 2);           // W30: the aim CADENCE -- non-zero, so
                                       // `$268A1A subq.b #1 / bcc` does NOT
                                       // borrow and the aim does not run.  These

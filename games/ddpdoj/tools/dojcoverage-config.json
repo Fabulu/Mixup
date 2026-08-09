@@ -69,15 +69,14 @@
   ],
   "backlog": [
     {
-      "name": "stage2_enemy_frontier_type86",
+      "name": "stage2_enemy_frontier_type30",
       "shape": "ordered_record_dependency_backlog",
       "status": "STATIC_FRONTIER_PORT_OBSERVED",
       "field_order": ["record", "trigger", "type", "init_body", "handler", "movement_index", "movement_start", "movement_end_exclusive"],
       "remaining_records": [
-        [2306072, 469, 134, 2579382, 2578708, 2, 2306484, 2306518],
         [2306080, 476, 48, 2715936, 2716568, 0, 2306452, 2306458]
       ],
-      "reason": "W181 closes the sole type-$93 record, including its movement, init, threshold damage handler, three death effects, linger, terminal impact, and draw closure. The first chronological unsupported record is now $233018, type $86 at clock $01D5, body $275BB6, shared handler $275914. The ordered two-record list is derived from the live registries and ROM stage-2 script, never hand-selected at runtime."
+      "reason": "W182 closes the sole type-$86 record, including its movement, shared prototypes and cue script, aimed init, shared handler, guaranteed kind-$08 death drop, and draw/fire closure. The final unsupported stage-2 record is now $233020, type $30 at clock $01DC, body $297120, handler $297398. The ordered one-record list is derived from the live registries and ROM stage-2 script, never hand-selected at runtime."
     },
     {
       "name": "stage3_to_stage5_spawn_scripts",

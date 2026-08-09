@@ -50,6 +50,7 @@ function fixture(over = {}) {
   ram.setU16(REC5, 0x8000);              // live
   ram.setU32(REC5 + 0x06, SUB);          // ($6,A5) -> the sub-record
   ram.setU32(REC5 + 0x12, 0);            // movement cursor 0 -> stepMovement no-op
+  ram.setU32(REC5 + 0x44, 0x275912);     // shared $85/$86 cue-script terminator
   ram.setU16(SUB + 0x18, 0x0100);        // HP positive
   ram.setU16(SUB + 0x38, 0x0100);
   // ON SCREEN, AND INSIDE $267FC6's POSITION BOX.  Both constraints are read
@@ -336,15 +337,13 @@ test('$85\'s bucket-3 request is SKIPPED when the rank word $813098 is set',
     assert.equal(ram.u16(BUCKETS[3].counter), before3, 'nothing was appended');
   });
 
-test('$85\'s unported callees are COUNTED BY ADDRESS, never silent',
+test('$85\'s completed cue spawner is quiet at the script terminator',
   { skip: SKIP }, () => {
     const ram = fixture();
     ram.setU8(REC5 + 0x1e, 5); ram.setU8(REC5 + 0x22, 5);
     const { log } = run85(ram);
-    // anchored on the KEY's ADDRESS FIELD, not on the prose, because the prose
-    // quotes other addresses (27-review 1A).
-    assert.ok([...log.calls.keys()].some((k) => k.startsWith('$28AC72 ')),
-      '$2759A6 jsr $28AC72 is counted');
+    assert.ok(![...log.calls.keys()].some((k) => k.startsWith('$28AC72 ')),
+      '$2759A6 executes the ported cue spawner instead of recording a gap');
   });
 
 // ===========================================================================

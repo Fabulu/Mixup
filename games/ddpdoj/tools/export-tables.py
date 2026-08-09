@@ -537,8 +537,11 @@ SHOT_WINDOWS.extend([
                        "stub, init, palettes/prototypes, death linger tail, "
                        "handler and three pool-B effects through the next "
                        "local type $94 stub at $27A0E0"),
-    (0x275BAE, 0x0008, "W181: exact next chronological type $86 run-length "
-                       "stub, so controlled boot stops at body $275BB6"),
+    (0x275BAE, 0x0084, "W182: complete stage-2 type $86 local closure: run-"
+                       "length stub, init body and five stage palette pairs "
+                       "through the next local type stub at $275C32"),
+    (0x297118, 0x0008, "W182: exact next chronological type $30 run-length "
+                       "stub, so controlled boot stops at body $297120"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -596,8 +599,9 @@ ENEMY_PROTO_WINDOWS = [
                        "rec $27392C)"),
     (0x274740, 0x0070, "W23: type $82 protos + palette $27474A (sub $274770, "
                        "rec $274754)"),
-    (0x275890, 0x0070, "W23: type $85 protos + palette $275890 (sub $2758B0, "
-                       "rec $27589A)"),
+    (0x275890, 0x0084, "W23/W182: shared types $85/$86 prototypes and complete "
+                       "word-threshold cue script (palette $275890, rec "
+                       "$27589A, two subs $2758B0, cues through $275914)"),
     (0x275EA0, 0x0080, "W23: type $88 protos + palette $275EA2 (sub $275ECC, "
                        "rec $275EAC)"),
     (0x2766E0, 0x0030, "W23: type $8A protos (sub $2766E6, rec $2766E0)"),
@@ -2727,6 +2731,56 @@ def check_stage2_spawn_data(d: bytes) -> None:
             and (u16(d, 0x23301E) & 0x0FFF) == 0x002
             and d[0x275BAE:0x275BB6] == bytes.fromhex("3b7c000100044e75")):
         raise SystemExit("W181: next frontier is not $233018 type $86 idx $002")
+
+    # W182: type $86 reuses type $85's two long-form sub prototypes, record
+    # prototype, threshold cues, heading art and handler. Its new local closure
+    # is the run-length stub, init body and stage palette table through $275C32.
+    if not (pc_rel_lea(0x275BB6) == 0x2758B0
+            and u16(d, 0x275BBA) == 0x4EB9 and u32(d, 0x275BBC) == 0x2637A2
+            and d[0x275BC0:0x275BC4] == bytes.fromhex("2b480044")
+            and pc_rel_lea(0x275BC4) == 0x27589A
+            and u16(d, 0x275BC8) == 0x700A
+            and u16(d, 0x275BCA) == 0x4EB9 and u32(d, 0x275BCC) == 0x26377A
+            and u16(d, 0x275BD0) == 0x4EB9 and u32(d, 0x275BD2) == 0x263808
+            and u32(d, 0x275BD8) == 0x00272DFA
+            and u16(d, 0x275BE6) == 0x4EB9 and u32(d, 0x275BE8) == 0x24200A):
+        raise SystemExit("W182: type $86 shared loader/aim sequence drifted")
+    if d[0x275C28:0x275C32] != bytes.fromhex("120d0e110e110d120d12"):
+        raise SystemExit("W182: type $86 five stage palette pairs drifted")
+    if d[0x275890:0x27589A] != bytes.fromhex("0f100f100f100e110e11"):
+        raise SystemExit("W182: shared type $85 palette table drifted")
+    if d[0x27589A:0x2758B0] != bytes.fromhex(
+            "00000700000000004050020201010000000000200000"):
+        raise SystemExit("W182: shared type $85/$86 record prototype drifted")
+    if d[0x2758B0:0x2758E8] != bytes.fromhex(
+            "a001f200f900001928bc0e3800000e00040004000700100000000000"
+            "a001000000000000000000000c000000060006000700000000000000"):
+        raise SystemExit("W182: shared type $85/$86 sub prototypes drifted")
+    if d[0x2758E8:0x275914] != bytes.fromhex(
+            "04e60800fc00001400000028af8a0380fa000200001400000028af8a"
+            "0219fe00fe00000800000028af84ffff"):
+        raise SystemExit("W182: shared type $85/$86 threshold cue script drifted")
+    if d[0x275BAE:0x275C32] != bytes.fromhex(
+            "3b7c000100044e7541fafcf84eb9002637a22b48004441fafcd4700a"
+            "4eb90026377a4eb90026380845f900272dfa4cae000300020640f900"
+            "4eb90024200a6404122e001b1b4100290241003ed2412b7210000024"
+            "3039008130b6912d001e30390081309441fa00144e71d0c01d50001d"
+            "1b58001c1b58001d4e75120d0e110e110d120d12"):
+        raise SystemExit("W182: exact type $86 local closure drifted")
+    type86_records = [(script + i * 8, u16(d, script + i * 8),
+                       u16(d, script + i * 8 + 6) & 0x0FFF)
+                      for i in range(332) if d[script + i * 8 + 4] == 0x86]
+    if type86_records != [(0x233018, 0x01D5, 0x002)]:
+        raise SystemExit(f"W182: stage-2 type $86 occurrence order drifted: "
+                         f"{type86_records!r}")
+    if d[0x2331B4:0x2331D6] != bytes.fromhex(
+            "800006008901c00c2020c00a2010c0082010c0062010c0042040c0052000c0062000"):
+        raise SystemExit("W182: type $86 movement stream idx $002 drifted")
+    if not (u16(d, 0x233020) == 0x01DC and d[0x233024] == 0x30
+            and (u16(d, 0x233026) & 0x0FFF) == 0x000
+            and d[0x233194:0x23319A] == bytes.fromhex("000000000000")
+            and d[0x297118:0x297120] == bytes.fromhex("3b7c000b00044e75")):
+        raise SystemExit("W182: next frontier is not $233020 type $30 idx $000")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")

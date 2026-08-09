@@ -572,24 +572,41 @@ BODY.set(0x27462A, (ram, rom, a5, a6, unported) => {
   }
 });
 
-// type $85 ($27581A): runLen 1, sprite/bucket from $272DFA, palette $275890.
-BODY.set(0x27581A, (ram, rom, a5, a6, unported) => {
-  loadSubProto(ram, rom, a5, a6, 0x2758B0);            // jsr $2637A2
-  ram.setU32(a5 + R.rec44, 0x2758B0 + 28);
+// Types $85/$86 share both prototypes, the threshold-cue script and the aimed
+// heading-art table. Their only init-body difference is the five-pair palette
+// table selected by the two entry points below.
+const TYPE85_86_AIM_TABLES = new WeakMap();
+function init85Or86(ram, rom, a5, a6, unported, paletteTable) {
+  const cue = loadSubProto(ram, rom, a5, a6, 0x2758B0); // jsr $2637A2
+  ram.setU32(a5 + R.rec44, cue);                        // $275826/$275BC0
   loadRecordProto(ram, rom, a5, 0x27589A, 0x0a);       // moveq #$a,D0; jsr $26377A
-  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
-  unported?.note(0x24200a, `$24200A aim in type $85 init -- bucket tracks W24 pos`);
-  let d1 = ram.u8(a6 + S.heading);
+  readInitPosition(ram, rom, a5, unported);             // jsr $263808
+
+  let tables = TYPE85_86_AIM_TABLES.get(rom);
+  if (!tables) { tables = new AimTables(rom); TYPE85_86_AIM_TABLES.set(rom, tables); }
+  const aimed = aim64FromCaller(tables, ram, a5,
+    u16(ram.u16(a6 + S.posX) + 0xf900), ram.u16(a6 + S.posY)); // jsr $24200A
+  let d1 = aimed.carry ? ram.u8(a6 + S.heading) : aimed.dir;
   ram.setU8(a5 + R.rec29, d1);                          // move.b D1,($29,A5)
   d1 = (d1 & 0x3e) << 1;
   ram.setU32(a5 + 0x24, rom.u32(0x272DFA + d1));        // move.l (A2,D1.w),($24,A5)
   let d0 = ram.u16(G.b6) & 0xff;
   ram.setU8(a5 + R.rec1E, (ram.u8(a5 + R.rec1E) - d0) & 0xff);  // $8130B6 -> +$1E
   const lp = ram.u16(G.stageX2);
-  const pal = 0x275890 + lp;
+  const pal = paletteTable + lp;
   ram.setU8(a6 + S.palette, rom.u8(pal));
   ram.setU8(a5 + R.rec1C, rom.u8(pal));
   ram.setU8(a5 + R.rec1D, rom.u8(pal + 1));
+}
+
+// type $85 ($27581A): runLen 1, palette $275890.
+BODY.set(0x27581A, (ram, rom, a5, a6, unported) => {
+  init85Or86(ram, rom, a5, a6, unported, 0x275890);
+});
+
+// type $86 ($275BB6): stage 2 entry point, palette $275C28. W182.
+BODY.set(0x275BB6, (ram, rom, a5, a6, unported) => {
+  init85Or86(ram, rom, a5, a6, unported, 0x275C28);
 });
 
 // type $88 ($275DA0): runLen 1, sprite/bucket from $272D7A (x2), sub-rec

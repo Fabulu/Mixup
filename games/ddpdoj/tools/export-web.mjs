@@ -640,7 +640,7 @@ const ITEM_SHARD = 12;
 /** THE THREE STREAMS THAT ARE IMMEDIATES, NOT TABLE ENTRIES.  Each is pinned by
  *  the instruction or the prototype word that carries it, and a fourth address
  *  the same reading produces -- type $85's `$2758B0` prototype -- is NOT here
- *  because [M] its descriptor `$172FC4` is already in shard 11.
+ *  because [M] its descriptor `$1928BC` is already in shard 11.
  *
  *  `[shard, offs, why]`. */
 const W81_IMMEDIATES = Object.freeze([

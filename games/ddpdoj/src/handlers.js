@@ -68,8 +68,8 @@
 //     F6 isolated)
 //   * `$28615E` (effect/score, 87 callers), `$289004` (sprite-EFFECT allocator,
 //     294 callers), `$289AF4`, `$28C25A`/`$274`/`$2A8`/`$2DC` (death effects)
-//   * `$28AC72` (types `$82`, `$85`, `$80`) -- the SUB-RECORD spawn engine, a
-//     ten-slot pool at `$81DB90` whose driver is type-5 call #3 `$28AD54`
+//   * `$28AC72` (types `$82`, `$85`, `$80`) -- W173's SUB-RECORD spawn engine,
+//     a ten-slot pool at `$81DB90` whose driver is `$28AD70`
 //   * `$27F8EE` (type `$8B`) and `$27F92A` (type `$8A`) -- **IMPACT POOL A's
 //     RESERVED TEN**, not the item family.  [M] W60 re-read `$27F936 lea
 //     $817DC6,A0 / move.w #$9,D7`: `$8171BE + 70*$2C == $817DC6`, so those
@@ -1537,14 +1537,11 @@ function handler85(ram, rom, a5, ctx) {
   // $2759A6 jsr $28AC72 -- the SUB-RECORD SPAWN ENGINE.  It walks a script
   // pointer at ($44,A5) and, each time HP ($18,A6) drops past the next
   // threshold word, allocates out of the ten-slot pool at $81DB90 (stride $26,
-  // counted at $81DD0C) and installs a part.  That pool's driver is type-5
-  // call #3 ($28AD54), also unported.  Its return value is DEAD here -- the
-  // next instruction is `tst.l $8130D2` -- so skipping it costs the sub-record
-  // spawns and the advance of ($44,A5), and NOTHING in this handler's own
-  // control flow.  Counted, never silent.
-  u?.note(0x28ac72, `$28AC72 sub-record spawn engine ($81DB90 pool, cue script `
-    + `at ($44,A5), driver $28AD54) in $85 rec $${a5.toString(16)} -- its result `
-    + `is unused by $2759AC; the spawns and the ($44,A5) advance are the gap`);
+  // counted at $81DD0C) and installs a part. W173 also ports the pool driver.
+  // Its return value is DEAD here -- the
+  // next instruction is `tst.l $8130D2`, so its return value is dead. W182
+  // closes the live spawn/advance side effects for both sharing types.
+  spawnCues28AC72(ram, rom, a5, a6);
   // $2759AC tst.l $8130D2 -- a LONG test, so it covers $8130D2 AND $8130D4.
   if (ram.u32(G.freeze) === 0) {                       // $2759B2 bne $275A24
     // $2759B6 subq.b #1,($22,A5) / bcc $275A24 -- the aim CADENCE.  `bcc` is
