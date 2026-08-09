@@ -366,7 +366,7 @@ test('$294DD4 starts THREE A3 scripts -- 4, 5 and 6', { skip: SKIP }, () => {
   assert.equal(ram.u8(A6 + BOSS.dead2), 1);
 });
 
-test('every registered script address is one of the boss\'s own table entries',
+test('every registered script address is in an installed boss scheduler table',
   { skip: SKIP }, () => {
     // W82: THREE classes, not two.  This test was written when the only
     // registered scripts were A3's and A0's, and it read TEN A3 pairs because
@@ -401,6 +401,21 @@ test('every registered script address is one of the boss\'s own table entries',
     for (let i = 0; i < 7; i++) legal.push(ROM.u32(0x292932 + i * 4));   // A2
     assert.strictEqual(ROM.u32(0x292932 + 7 * 4) >>> 0, 0xffffffff,
       'the A2 list is SEVEN longwords and a $FFFFFFFF terminator');
+    // W183 installs the stage-2 boss tables. Carry their statically closed A0,
+    // A3, A4 and A2 domains too, so this remains a cartridge-membership test
+    // rather than accidentally asserting that only the stage-1 boss exists.
+    for (let i = 0; i < 8; i++) {                        // A0, $297950
+      legal.push(ROM.u32(0x297950 + i * 8), ROM.u32(0x297950 + i * 8 + 4));
+    }
+    for (let i = 0; i < 14; i++) {                       // A3, $297EE0
+      legal.push(ROM.u32(0x297ee0 + i * 8), ROM.u32(0x297ee0 + i * 8 + 4));
+    }
+    for (let i = 0; i < 9; i++) {                        // A4, $298C66
+      legal.push(ROM.u32(0x298c66 + i * 8), ROM.u32(0x298c66 + i * 8 + 4));
+    }
+    for (let i = 0; i < 11; i++) legal.push(ROM.u32(0x297432 + i * 4)); // A2
+    assert.strictEqual(ROM.u32(0x297432 + 11 * 4) >>> 0, 0xffffffff,
+      'the stage-2 A2 list is eleven longwords and a $FFFFFFFF terminator');
     for (const s of scriptAddresses()) {
       if (s === 0x111111 || s === 0x222222) continue;   // this file's own fake
       assert.ok(legal.includes(s),

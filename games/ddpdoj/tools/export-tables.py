@@ -540,8 +540,21 @@ SHOT_WINDOWS.extend([
     (0x275BAE, 0x0084, "W182: complete stage-2 type $86 local closure: run-"
                        "length stub, init body and five stage palette pairs "
                        "through the next local type stub at $275C32"),
-    (0x297118, 0x0008, "W182: exact next chronological type $30 run-length "
-                       "stub, so controlled boot stops at body $297120"),
+    (0x297118, 0x02A0, "W183: stage-2 boss type $30 entry closure: run-length "
+                       "stub, init, record and twelve sub-record prototypes, "
+                       "and per-frame wrapper through $2973B8"),
+    (0x297432, 0x0030, "W183: exact eleven-entry type-$30 A2 routine list plus "
+                       "$FFFFFFFF terminator"),
+    (0x297950, 0x0040, "W183: complete eight-pair stage-2 boss MAIN table"),
+    (0x297990, 0x0156, "W183: shared eight-part placement tail and complete "
+                       "arrival MAIN-0 init/step through $297AE6"),
+    (0x297E8A, 0x00C6, "W183: six-entry boss arrival palette-animation table "
+                       "and complete fourteen-pair A3 table through $297F50"),
+    (0x298310, 0x0956, "W183: complete stage-2 boss multi-part damage controller, "
+                       "four part-death helpers, their effect tables, death latch "
+                       "and timeout tail through the A4 table at $298C66"),
+    (0x298C66, 0x007C, "W183: complete nine-pair A4 scheduler table plus the "
+                       "translated script-0 bootstrap $298CAE..$298CE2"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -2781,6 +2794,51 @@ def check_stage2_spawn_data(d: bytes) -> None:
             and d[0x233194:0x23319A] == bytes.fromhex("000000000000")
             and d[0x297118:0x297120] == bytes.fromhex("3b7c000b00044e75")):
         raise SystemExit("W182: next frontier is not $233020 type $30 idx $000")
+
+    # W183: the final stage-2 spawn record is the boss entry. Static analysis
+    # closes its spawn-time init/data and wrapper, then follows the installed
+    # scheduler tables to the first honest internal frontier, MAIN init $297A10.
+    if hashlib.sha256(d[0x297118:0x2973B8]).hexdigest() != (
+            "578e3ee78b5a9da04e1dd90ac30475f09db7b4832e0d74bc501ea08e2b93a5fb"):
+        raise SystemExit("W183: type $30 entry closure $297118..$2973B8 drifted")
+    if d[0x297242:0x297248] != bytes.fromhex("0002bdc02a30"):
+        raise SystemExit("W183: type $30 three-word record prototype drifted")
+    if hashlib.sha256(d[0x297248:0x297398]).hexdigest() != (
+            "309bc8f37122772e862c27349724b72b8d009bba09ca3b2742ae44f17d93163a"):
+        raise SystemExit("W183: type $30 twelve sub-record prototypes drifted")
+    if d[0x297398:0x2973B8] != bytes.fromhex(
+            "4eb9002983104eb90025962e640000104eb900242952"
+            "4ef9002637624e714e75"):
+        raise SystemExit("W183: type $30 per-frame wrapper drifted")
+    if d[0x297432:0x297462] != bytes.fromhex(
+            "00297462002974fe00297578002974b0002975e000297654"
+            "002976c60029777c002977b0002978660029789affffffff"):
+        raise SystemExit("W183: type $30 eleven-entry A2 list drifted")
+    if hashlib.sha256(d[0x297950:0x297990]).hexdigest() != (
+            "517489a06888b9a1a399d97f61d66536a088b74e6eecacb2cec4a8a33a6d1351"):
+        raise SystemExit("W183: type $30 complete MAIN table drifted")
+    if hashlib.sha256(d[0x297990:0x297AE6]).hexdigest() != (
+            "66ff45652d24f7252e56f91047db668efdee1442aa7ad5de7211918167c03f72"):
+        raise SystemExit("W183: type $30 placement/MAIN-0 closure drifted")
+    if hashlib.sha256(d[0x297E8A:0x297F50]).hexdigest() != (
+            "aa13215ca244735302855fca321316edc47bc3659a3de836e15befeb3342aa25"):
+        raise SystemExit("W183: type $30 arrival animation/A3 tables drifted")
+    if hashlib.sha256(d[0x298310:0x298C66]).hexdigest() != (
+            "bad73d89fe5e46cce77cab56016493ff26885d82e35c50226aa83b30eaa5d1e4"):
+        raise SystemExit("W183: stage-2 boss damage-controller closure drifted")
+    if hashlib.sha256(d[0x298C66:0x298CE2]).hexdigest() != (
+            "f47bccf8b6586b3bc3548d8a7f4f5c036f10fe6d4637dbae944102c12e602ba0"):
+        raise SystemExit("W183: type $30 A4 table/bootstrap closure drifted")
+    type30_records = [(script + i * 8, u16(d, script + i * 8),
+                       u16(d, script + i * 8 + 6) & 0x0FFF)
+                      for i in range(332) if d[script + i * 8 + 4] == 0x30]
+    if type30_records != [(0x233020, 0x01DC, 0x000)]:
+        raise SystemExit(f"W183: stage-2 type $30 occurrence order drifted: "
+                         f"{type30_records!r}")
+    if not (u16(d, 0x233028) == 0x01E3 and d[0x23302C] == 0x31
+            and (u16(d, 0x23302E) & 0x0FFF) == 0x076
+            and u32(d, 0x233030) == 0xFFFFFFFF):
+        raise SystemExit("W183: type $30 is no longer followed by type $31/terminator")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")

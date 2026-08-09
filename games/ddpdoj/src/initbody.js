@@ -32,7 +32,8 @@
 import { unreached } from './unported.js';
 import { initArms, stepArms } from './midboss.js';
 import { u16, i16 } from './ram.js';
-import { installScripts, a2Run2598E6, a4Start25980C } from './scheduler.js';
+import { installScripts, a2Run2598E6, a2RunAll2598FE,
+  a4Start25980C } from './scheduler.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
 import { install24150A } from './palette.js';
@@ -812,6 +813,53 @@ BODY.set(0x2926E2, (ram, rom, a5, a6, unported, tables, palette) => {
   installBank(ram, rom, palette, unported, 0x11, 0x222C38, 0x29278E,
     'the BOSS, install 5 of 5');
   unported?.note(0x294ad6, `boss bespoke $294AD6/$294EEA/$294F0A -- W30`);
+});
+
+// --- type $30 ($297120): THE STAGE-2 BOSS (runLen 11). W183.
+//
+// This closes the spawn-time layer and installs the boss's five scheduler
+// tables. `boss2.js` owns the damage controller, A4 bootstrap and arrival MAIN
+// 0; the next unported scheduler dependency is D0 init $297F54.
+BODY.set(0x297120, (ram, rom, a5, a6, unported, tables, palette) => {
+  void tables;
+  loadSubProto(ram, rom, a5, a6, 0x297248);            // $297120..$29712C
+  loadRecordProto(ram, rom, a5, 0x297242, 0x02);       // $29712C..$29713C
+  ram.setU32(a6 + S.posX, 0x9c001c00);                 // $29713C
+  ram.setU16(a6 + S.posY,
+    u16(ram.u16(a6 + S.posY) - ram.u16(G.scrollDelta))); // $297144..$29714A
+  ram.setU16(0x803934, 0);                             // $29714E
+
+  installScripts(ram, rom, {
+    a0: 0x297950, a1: 0x2998ac, a2: 0x297432,
+    a3: 0x297ee0, a4: 0x298c66,
+  });                                                  // $297156..$29717A
+  a2RunAll2598FE(ram);                                 // $29717A
+  a4Start25980C(ram, 0);                              // $297180..$297186
+
+  installBank(ram, rom, palette, unported, 0x10, 0x222c78, 0x297192,
+    'the STAGE-2 BOSS, install 1 of 6');
+  installBank(ram, rom, palette, unported, 0x11, 0x222cb8, 0x2971a2,
+    'the STAGE-2 BOSS, install 2 of 6');
+  installBank(ram, rom, palette, unported, 0x12, 0x222cf8, 0x2971b2,
+    'the STAGE-2 BOSS, install 3 of 6');
+  installBank(ram, rom, palette, unported, 0x17, 0x222d38, 0x2971c2,
+    'the STAGE-2 BOSS, install 4 of 6');
+  installBank(ram, rom, palette, unported, 0x13, 0x222db8, 0x2971d2,
+    'the STAGE-2 BOSS, install 5 of 6');
+  installBank(ram, rom, palette, unported, 0x16, 0x246bf8, 0x2971e2,
+    'the STAGE-2 BOSS, install 6 of 6');
+
+  ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x05);       // $2971E8/$2971F0
+  ram.setU32(0x81b626, 0x00000322);                   // $2971F8
+  ram.setU32(0x81b62a, a5 + R.rec16);                 // $297202..$297208
+  // $29830E is an RTS-only hook. $298BD2 arms boss damage ownership and
+  // $298BEC marks the seven detachable component records inactive.
+  ram.setU16(a6 + 0x148, 1);                          // $297212 -> $298BD2
+  for (const off of [0x40, 0x60, 0x80, 0xa0, 0xc0, 0xe0, 0x100])
+    ram.setU16(a6 + off, 0x8000);                     // $297218 -> $298BEC
+  ram.setU16(0x81b414, 1);                            // $29721E
+  ram.setU16(0x81b416, 1);                            // $297226
+  if (ram.u16(G.rank98) !== 0) ram.setU16(0x81b418, 1); // $29722E..$29723E
 });
 
 // --- type $1E ($296D8A): THE BOSS'S CARRIER (runLen 0).  W103.

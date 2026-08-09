@@ -48,9 +48,7 @@ test('W167 config is a machine-readable family map with an exact backlog', () =>
     'record', 'trigger', 'type', 'init_body', 'handler', 'movement_index',
     'movement_start', 'movement_end_exclusive',
   ]);
-  assert.equal(frontier.remaining_records.length, 1);
-  assert.deepEqual(frontier.remaining_records[0].slice(0, 5),
-    [0x233020, 0x01dc, 0x30, 0x297120, 0x297398]);
+  assert.deepEqual(frontier.remaining_records, []);
 });
 
 test('W167 reusable coverage derives the current closed-family totals', { skip: !evidence }, () => {
@@ -58,10 +56,10 @@ test('W167 reusable coverage derives the current closed-family totals', { skip: 
   assert.equal(got.status, 0, got.stdout + got.stderr);
   assert.match(got.stdout, /top_objects: 7\/20 ported/);
   assert.match(got.stdout, /type5_calls: 17\/23 ported/);
-  assert.match(got.stdout, /enemy_types: 42\/256 ported, 84 unknown, 130 null/);
+  assert.match(got.stdout, /enemy_types: 43\/256 ported, 83 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
-  assert.match(got.stdout, /stage2_spawn_script: 331\/332 ported/);
-  assert.match(got.stdout, /stage2_spawn_script: 331\/332 ported, 1 unknown, 0 null/);
+  assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
+  assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported, 0 unknown, 0 null/);
   assert.match(got.stdout, /stage2_spawn_script:[\s\S]*static-minus-dynamic: 304/);
   assert.match(got.stdout, /stage1_bgelem: 13\/13 ported/);
   assert.match(got.stdout, /stage2_bgelem: 8\/8 ported/);

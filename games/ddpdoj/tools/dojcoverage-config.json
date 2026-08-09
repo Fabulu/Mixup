@@ -71,12 +71,10 @@
     {
       "name": "stage2_enemy_frontier_type30",
       "shape": "ordered_record_dependency_backlog",
-      "status": "STATIC_FRONTIER_PORT_OBSERVED",
+      "status": "COMPLETE",
       "field_order": ["record", "trigger", "type", "init_body", "handler", "movement_index", "movement_start", "movement_end_exclusive"],
-      "remaining_records": [
-        [2306080, 476, 48, 2715936, 2716568, 0, 2306452, 2306458]
-      ],
-      "reason": "W182 closes the sole type-$86 record, including its movement, shared prototypes and cue script, aimed init, shared handler, guaranteed kind-$08 death drop, and draw/fire closure. The final unsupported stage-2 record is now $233020, type $30 at clock $01DC, body $297120, handler $297398. The ordered one-record list is derived from the live registries and ROM stage-2 script, never hand-selected at runtime."
+      "remaining_records": [],
+      "reason": "W183 closes the final unsupported stage-2 spawn record, type $30 at $233020, by translating its boss entry init and per-frame wrapper. The stage-2 spawn-script denominator is complete; the next honest delivery frontier is inside the separately scheduled boss program at MAIN init $297A10."
     },
     {
       "name": "stage3_to_stage5_spawn_scripts",

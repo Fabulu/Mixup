@@ -91,6 +91,7 @@ import { unreached } from './unported.js';
 import { u16, i16 } from './ram.js';
 import { freeEnemy } from './initbody.js';
 import { handlerBoss292902 } from './boss.js';
+import { handlerBoss297398 } from './boss2.js';
 import { handler1E_296DD6 } from './bossf23.js';
 import { stepMovement, scrollCompensate, applyVelocity } from './movement.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
@@ -5102,6 +5103,7 @@ const HANDLERS = new Map([
   // $294AD8, $294F32 (the 10,800-frame timeout), $294DD4 and D-script 6 -- and
   // NOT the boss.  Recon 48's 111 script entry points are still three waves.
   [0x292902, handlerBoss292902],
+  [0x297398, handlerBoss297398], // W183: stage-2 boss type $30 entry layer
   // W103: type $1E, the boss's carrier enemy (spawned by E 8 at `$2963C2').
   // It drifts and explodes into a kind 3/4/5 fan on death.  See bossf23.js.
   [0x296dd6, handler1E_296DD6],

@@ -159,10 +159,22 @@ export function seqStart2598D0(ram, d0) {
   ram.setU16(SCHED.seqPending, u16(d0));               // $2598D8
 }
 
+/** `$2598BE` -- stop the MAIN sequencer after the current script returns. */
+export function seqStop2598BE(ram) { ram.setU16(SCHED.seqCursor, 0xffff); }
+
 /** `$2598E6` -- set the RUN bit of A2 slot D0 (stride 8, `lsl.w #$3`). */
 export function a2Run2598E6(ram, d0) {
   const a = SCHED.a2Base + (u16(d0) << 3);             // $2598F0/$2598F2
   ram.setU16(a, ram.u16(a) | 1);                       // $2598F4 ori.w #$1,(A0)
+}
+
+/** `$2598FE` -- set RUN on every present A2 slot. Type `$30` uses this after
+ * `$259554` pre-fills its eleven-entry object table. Empty slots stay empty. */
+export function a2RunAll2598FE(ram) {
+  for (let i = 0; i < SCHED.a2Slots; i++) {
+    const a = SCHED.a2Base + i * SCHED.a2Stride;
+    if (i16(ram.u16(a)) < 0) ram.setU16(a, ram.u16(a) | 1);
+  }
 }
 
 /** `$25994A` -- clear the RUN bit of A2 slot D0 (`andi.w #$FFFE`). */

@@ -522,7 +522,7 @@ function timerCSpawn293F8C(ram, rom, ctx, a4, pos, site) {
  *  D1 = a base angle byte (from `$242EC2`), D2 = position, D3 = bucket `$0C`.
  *  Each particle: speed = `const >> D0`, angle = D1 + (`$242B3C` asr.b #2),
  *  with a per-particle spawn delay 0..6.  Kinds 4,7,4,5,5. */
-function bigBurst28B4BE(ram, rom, ctx, pos, rngByte, shift, bucket, site) {
+export function bigBurst28B4BE(ram, rom, ctx, pos, rngByte, shift, bucket, site) {
   const particles = [
     [0x04, 0x05, 0], [0x07, 0x07, 1], [0x04, 0x0a, 2],
     [0x05, 0x0e, 3], [0x05, 0x12, 6],
