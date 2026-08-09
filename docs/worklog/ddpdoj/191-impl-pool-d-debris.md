@@ -78,3 +78,10 @@ census, followed by its chronological unsupported gameplay families.
 ## Release
 
 - implementation commit: `18b0852`
+- completion documentation commit: `369ce01`
+- refreshed deterministic web witnesses: `c62f35e`
+- translated shard packaging commit: `8c9d48b`
+- production build: `20260809224615`
+- deployment: `https://gbtman.pages.dev/games/ddpdoj/`
+- confirmation: three consecutive production polls returned the new build and
+  HTTP 200 for the game route

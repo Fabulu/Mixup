@@ -77,9 +77,9 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W190 is complete and live as build `20260809215527`:
+W191 is complete and live as build `20260809224615`:
 
-- latest worklog: `docs/worklog/ddpdoj/190-impl-stage2-boss-f4-main5.md`
+- latest worklog: `docs/worklog/ddpdoj/191-impl-pool-d-debris.md`
 - stage-2 boss baseline: `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
 - stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
 - init stub/body: `$297118` / `$297120`; handler: `$297398`
@@ -109,14 +109,14 @@ W190 is complete and live as build `20260809215527`:
   D9, E1, E13, and E14
 - every scheduler entry reachable from the installed type-`$30` Stage-2 boss
   graph is translated; E12 and F5-F7 have no live start site in this build
+- pool D is translated end to end, including all five templates, exact RNG
+  consumption, animation, movement, lifetime, and 160 debris sprite streams
+- the web bundle contains 3,138 sprite streams; shard 18 uses an unused
+  translated footer so its indexed pixels remain exact without publishing one
+  verbatim ROM slice
 
-The next honest gameplay phase dependencies are:
-
-- pool-D allocator `$289098` and type-5 driver `$2890F2`, already requested by
-  the translated Stage-2 boss-death effects
-- pool D is complete in W191, including its allocator, driver, five templates,
-  exact RNG consumption, and all 160 sprite streams
-- the next frontier is the Stage-3 entry and its static spawn census
+The next honest gameplay frontier is the Stage-3 entry and its static spawn
+census.
 
 Reserve the next immutable worklog number and statically map the Stage-3 install
 and complete spawn-script census before translating its first unsupported live
