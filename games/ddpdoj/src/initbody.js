@@ -44,7 +44,8 @@ import { drawWord242EC2 } from './rng.js';
 // touch, named once here so every body reads as the listing does.
 const R = {
   // record (A5)
-  rec16: 0x16, rec18: 0x18, rec19: 0x19, rec1A: 0x1a, rec1B: 0x1b, rec1C: 0x1c,
+  rec16: 0x16, rec17: 0x17, rec18: 0x18, rec19: 0x19, rec1A: 0x1a,
+  rec1B: 0x1b, rec1C: 0x1c,
   rec1D: 0x1d, rec1E: 0x1e,
   rec20: 0x20, rec21: 0x21, rec22: 0x22, rec23: 0x23, rec24: 0x24, rec25: 0x25,
   rec26: 0x26, rec28: 0x28, rec29: 0x29, rec2A: 0x2a, rec2B: 0x2b,
@@ -976,6 +977,22 @@ BODY.set(0x27980a, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + R.rec1A, rom.u8(pal));                // `$27983C` reads (A0)+
   ram.setU8(a5 + R.rec1B, rom.u8(pal + 1));            // `$279840` next byte
   if (ram.u16(G.rank98) !== 0) ram.setU16(a5 + R.rec1E, 0); // $279844..$27984E
+});
+
+// --- type $96 ($27A454): stage 2's 16-frame opening fan carrier. W175.
+BODY.set(0x27a454, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x27a4d2);            // $27A454..$27A45A
+  loadRecordProto(ram, rom, a5, 0x27a4ba, 0x0b);       // $27A460..$27A468
+  readInitPosition(ram, rom, a5, unported);            // $27A46E
+
+  ram.setU8(a5 + R.rec17, ram.u16(G.stage) <= 1 ? 6 : 2); // $27A474..$27A486
+  ram.setU8(a5 + R.rec1D,
+    ram.u8(a5 + R.rec1D) - (ram.u16(G.bc) & 0xff));    // $27A48A..$27A490
+
+  const pal = 0x27a4b0 + ram.u16(G.stageX2);           // $27A494..$27A4A0
+  ram.setU8(a6 + S.palette, rom.u8(pal));              // $27A4A2
+  ram.setU8(a5 + R.rec1A, rom.u8(pal));                // same `(A0)+` byte
+  ram.setU8(a5 + R.rec1B, rom.u8(pal + 1));            // adjacent byte
 });
 
 // ============================================================ the entry point

@@ -194,20 +194,21 @@ function note(ctx, addr, what) {
 // `$28615E` already stands in for.  It is counted WITH THE LIVE-BULLET COUNT
 // so "the clear fired over an empty pool" and "the clear fired over 27
 // bullets" are not the same line in the log.
-export function armScreenClear(ram, ctx, d1, from) {
+function armScreenClearMode(ram, ctx, d1, from, mode, entry) {
   const ARM = BULLET_DRIVER.armWord, MODE = BULLET_DRIVER.modeWord;
-  if (ram.u16(ARM) !== 0                                // $243E7C tst.w $81B410
-      && ram.u16(MODE) >= 0x20                          // $243E84 cmpi/bcs
-      && ram.u16(MODE) <= 0x3c) {                       // $243E8E cmpi/bhi
-    return false;                                       // $243E98 rts
+  if (ram.u16(ARM) !== 0                                // $243E02/$243E7C tst.w
+      && ram.u16(MODE) >= 0x20                          // cmpi/bcs
+      && ram.u16(MODE) <= 0x3c) {                       // cmpi/bhi
+    return false;                                       // $243E1E/$243E98 rts
   }
-  ram.setU16(ARM, 1);                                   // $243E9A
-  ram.setU16(MODE, 0);                                  // $243EA2
-  if ((ram.u8(0x8130f8) & 0x02) !== 0) {                // $243EAA btst #1
+  ram.setU16(ARM, 1);                                   // $243E20/$243E9A
+  ram.setU16(MODE, mode);                               // $243E28/$243EA2
+  if ((ram.u8(0x8130f8) & 0x02) !== 0) {                // $243E30/$243EAA
     // $2440AE pushes the registers and immediately `bra.w $2440DA`s over its
     // own counting loop to the pop and the `rts`.  It really is a no-op, and
     // that is transcribed rather than smoothed into "the other arm".
-    note(ctx, 0x2440ae, `the $8130F8-bit-1 arm of $243E7C (${from}) -- its `
+    note(ctx, 0x2440ae, `the $8130F8-bit-1 arm of $${entry.toString(16).toUpperCase()} `
+      + `(${from}) -- its `
       + `loop at $2440B6 is jumped over by $2440B2 bra.w $2440DA, so it does `
       + `nothing but save and restore registers`);
     return true;
@@ -222,6 +223,16 @@ export function armScreenClear(ram, ctx, d1, from) {
     + `(bit 4 = P1 via $28614A, bit 3 = P2 via $286154, $46 each). The CANCEL `
     + `itself is $281CD6, gated on $81B410, which this call has just armed`);
   return true;
+}
+
+export function armScreenClear(ram, ctx, d1, from) {
+  return armScreenClearMode(ram, ctx, d1, from, 0, 0x243e7c);
+}
+
+/** `$243E02`, type $96's death-tail screen clear. It has the same guarded
+ * score walk as `$243E7C`, but writes mode `$FFFF` instead of zero. */
+export function armScreenClear243E02(ram, ctx, d1, from) {
+  return armScreenClearMode(ram, ctx, d1, from, 0xffff, 0x243e02);
 }
 
 // ===========================================================================

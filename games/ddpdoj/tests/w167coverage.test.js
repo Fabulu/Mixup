@@ -37,7 +37,7 @@ test('W167 config is a machine-readable family map with an exact backlog', () =>
   ]);
   assert.equal(config.delegated[0].tool, 'bosscoverage.py');
   assert.deepEqual(config.backlog.map((x) => x.name), [
-    'stage2_enemy_frontier_type96',
+    'stage2_enemy_frontier_type8c',
     'stage3_to_stage5_spawn_scripts', 'stage3_to_stage5_bgelem',
     'pool_a_non_bee_kinds', 'closure_only_hud_result_hyper',
     'indirect_call_targets',
@@ -48,9 +48,9 @@ test('W167 config is a machine-readable family map with an exact backlog', () =>
     'record', 'trigger', 'type', 'init_body', 'handler', 'movement_index',
     'movement_start', 'movement_end_exclusive',
   ]);
-  assert.equal(frontier.remaining_records.length, 19);
+  assert.equal(frontier.remaining_records.length, 18);
   assert.deepEqual(frontier.remaining_records[0].slice(0, 5),
-    [0x2329c0, 0x00b8, 0x96, 0x27a454, 0x27a548]);
+    [0x232c00, 0x0118, 0x8c, 0x2789f6, 0x278c0e]);
 });
 
 test('W167 reusable coverage derives the current closed-family totals', { skip: !evidence }, () => {
@@ -58,10 +58,10 @@ test('W167 reusable coverage derives the current closed-family totals', { skip: 
   assert.equal(got.status, 0, got.stdout + got.stderr);
   assert.match(got.stdout, /top_objects: 7\/20 ported/);
   assert.match(got.stdout, /type5_calls: 17\/23 ported/);
-  assert.match(got.stdout, /enemy_types: 34\/256 ported, 92 unknown, 130 null/);
+  assert.match(got.stdout, /enemy_types: 35\/256 ported, 91 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
-  assert.match(got.stdout, /stage2_spawn_script: 313\/332 ported/);
-  assert.match(got.stdout, /stage2_spawn_script: 313\/332 ported, 19 unknown, 0 null/);
+  assert.match(got.stdout, /stage2_spawn_script: 314\/332 ported/);
+  assert.match(got.stdout, /stage2_spawn_script: 314\/332 ported, 18 unknown, 0 null/);
   assert.match(got.stdout, /stage2_spawn_script:[\s\S]*static-minus-dynamic: 304/);
   assert.match(got.stdout, /stage1_bgelem: 13\/13 ported/);
   assert.match(got.stdout, /stage2_bgelem: 8\/8 ported/);

@@ -18,9 +18,8 @@
 //     (`$228658`) really feeds the column ring;
 //   * W169's reset/install changes LIVE_CURSOR from stage 1's terminator to
 //     stage 2's `$2325D0` at clock zero;
-//   * W174 closes type $90; 125 records complete and the 126th allocation
-//     reaches the next honest stop: type $96 body `$27A454`, record `$2329C0`,
-//     clock `$00B8`.
+//   * W175 closes type $96; the walker continues to the next honest stop:
+//     type $8C body `$2789F6`, record `$232C00`, clock `$0118`.
 //
 // THE MUST-FAIL remains the data dependency. WITHOUT window 1 (`$229DF8`) or
 // window 2 (`$228658`), background init throws before clock `$24`. With both,
@@ -76,7 +75,7 @@ const STAGE2_ELEM_HANDLER_TABLE = 0x26227e;
 const STAGE2_ELEM0_CTOR = 0x2627ac;
 
 const SEED_LF = 19500;
-const MAX_FRAMES = 4000;               // crosses clock $B8 and reaches W174's next stop
+const MAX_FRAMES = 7000;               // crosses clock $118 and reaches W175's next stop
 
 /** Boot the port from the lf19500 rung and step neutral frames until it throws
  *  or MAX_FRAMES elapses. Returns the walked game, any throw, and how
@@ -173,7 +172,7 @@ test('W133/2 the stage-1 $FFFF terminator is at $231704, where the seed parks '
 // ===========================================================================
 
 test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at type '
-  + '$96 init body after W174', { skip: SKIP }, () => {
+  + '$8C init body after W175', { skip: SKIP }, () => {
   const r = bootStage2();
 
   // (a) stage 2 really booted: $813096 went 0 -> 4 (stage index 1, x4).
@@ -190,8 +189,8 @@ test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at type '
     + 'times); without window 2 the column-stream read would throw earlier');
 
   assert.ok(r.threw instanceof Unreached);
-  assert.strictEqual(r.threw.romAddress, 0x27a454);
-  assert.strictEqual(r.throwClock, 0x00b8);
+  assert.strictEqual(r.threw.romAddress, 0x2789f6);
+  assert.strictEqual(r.throwClock, 0x0118);
   assert.notStrictEqual(r.threw.romAddress, STAGE2_ELEM0_CTOR,
     'W168\'s later background constructor is no longer the first stop');
 });
@@ -201,8 +200,8 @@ test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at type '
 // the whole boot; LIVE_CURSOR keeps its stage-1-end value.
 // ===========================================================================
 
-test('W133/4 installer replaces the old terminator and 126 records complete '
-  + 'before type $96', { skip: SKIP }, () => {
+test('W133/4 installer replaces the old terminator and the exact ordered prefix '
+  + 'completes before type $8C', { skip: SKIP }, () => {
   const r = bootStage2();
 
   assert.strictEqual(r.seedLiveCursor, STAGE1_FFFF,
@@ -211,10 +210,10 @@ test('W133/4 installer replaces the old terminator and 126 records complete '
     + 'no-garbage-spawn argument has no foundation');
   assert.ok(r.game.stageEndEvents.some((e) => e[0] === 'spawn-install'
     && e[2] === 0x2325d0), '$26331E/$263386 installed stage 2 at clock zero');
-  assert.strictEqual(r.game.allocEvents.get('spawn-script'), 122,
-    '122 of the 126 consumed records allocate slots; four authentically decline');
-  assert.strictEqual(r.game.ram.u32(LIVE_CURSOR), 0x2329b8,
-    'the callback throws before $263444 can write back the advanced cursor');
-  assert.strictEqual((r.game.ram.u32(LIVE_CURSOR) - 0x2325d0) / 8, 125,
-    'the live cursor proves 125 records completed; type $96 is allocation attempt 126');
+  assert.strictEqual(r.game.allocEvents.get('spawn-script'), 194,
+    '194 of the 198 consumed records allocate slots; four authentically decline');
+  assert.strictEqual(r.game.ram.u32(LIVE_CURSOR), 0x232c00,
+    'the live cursor names the exact record whose init callback throws');
+  assert.strictEqual((r.game.ram.u32(LIVE_CURSOR) - 0x2325d0) / 8, 198,
+    'the live cursor proves the 198-record prefix completed before type $8C');
 });

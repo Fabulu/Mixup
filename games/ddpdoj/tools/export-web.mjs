@@ -111,7 +111,8 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 // W86: the art harvest for the background elements is derived from the PORT's
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
-import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE90_ART, TYPE95_ART } from '../src/handlers.js';
+import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE90_ART, TYPE95_ART,
+  TYPE96_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -281,6 +282,11 @@ if (u17.length !== SOUND.fileSize) {
 //
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
+  [17, TYPE96_ART.animationTable, TYPE96_ART.frames, 8,
+    TYPE96_ART.frames, 0x27aa6c,
+    'stage-2 type $96 opening/closing animation. Record +$20 is a byte offset '
+      + '0..$78 in steps of eight, selecting exactly 16 pointer/update pairs; '
+      + 'the table is structurally bounded by the next type $98 stub'],
   [17, TYPE84_ART.animationTable, TYPE84_ART.animationFrames, 4,
     6, 0x2757e2,
     'stage-2 type $84 body animation. Sub-record +$28 wraps over raw byte '
@@ -1009,6 +1015,17 @@ for (const offs of [TYPE84_ART.body, TYPE84_ART.fixedA,
 // W174: type $90's prototype carries its sole stream directly; there is no
 // pointer table or indirect draw family to infer beyond this exact immediate.
 for (const offs of [TYPE90_ART.main]) {
+  if (!streams.has(offs)) {
+    streams.set(offs, romExtent(offs));
+    shardOfStream.set(offs, 17);
+    harvested++;
+  } else {
+    harvestAlready++;
+  }
+}
+// W175: the death stream is an immediate at `$27A50E`; it is the seventeenth
+// consecutive `$684`-stride stream after the 16 table-selected frames.
+for (const offs of [TYPE96_ART.death]) {
   if (!streams.has(offs)) {
     streams.set(offs, romExtent(offs));
     shardOfStream.set(offs, 17);

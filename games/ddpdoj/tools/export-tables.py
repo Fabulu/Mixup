@@ -503,8 +503,12 @@ SHOT_WINDOWS.extend([
                        "stub, init, palettes/prototypes, handler and exact "
                        "four-word damage-particle table through the next "
                        "local type $91 body at $279AA2"),
-    (0x27A44C, 0x0008, "W174: next chronological boundary type $96's exact "
-                       "run-length stub; unknown init body begins at $27A454"),
+    (0x27A44C, 0x0628, "W175: complete stage-2 type $96 closure: run-length "
+                       "stub, init, palettes/prototypes, death tail, handler, "
+                       "animation/emission table and death-effect body through "
+                       "the next local type $98 body at $27AA74"),
+    (0x2789EE, 0x0008, "W175: next chronological boundary type $8C's exact "
+                       "run-length stub; unknown init body begins at $2789F6"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -2280,6 +2284,71 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if not (u16(d, 0x2329C0) == 0x00B8 and d[0x2329C4] == 0x96
             and (u16(d, 0x2329C6) & 0x0FFF) == 0x03C):
         raise SystemExit("W174: next chronological frontier is not $2329C0 type $96 idx $03C")
+
+    # W175. Type $96 has one long-form sub-record, a twelve-word record
+    # prototype, five palette pairs, a 16-pair animation/update table and one
+    # structurally adjacent death stream. Both normal and tail draw sites are
+    # ROM-table indirect calls; pinning the two sites prevents a hardcoded
+    # bucket/index translation from passing as equivalent.
+    if not (pc_rel_lea(0x27A454) == 0x27A4D2
+            and u16(d, 0x27A45A) == 0x4EB9 and u32(d, 0x27A45C) == 0x2637A2
+            and pc_rel_lea(0x27A460) == 0x27A4BA
+            and u16(d, 0x27A466) == 0x700B
+            and u16(d, 0x27A468) == 0x4EB9 and u32(d, 0x27A46A) == 0x26377A
+            and u16(d, 0x27A46E) == 0x4EB9 and u32(d, 0x27A470) == 0x263808):
+        raise SystemExit("W175: type $96 init loader sequence drifted")
+    if d[0x27A4B0:0x27A4BA] != bytes.fromhex("120d120d120d120d120d"):
+        raise SystemExit("W175: type $96 five palette pairs drifted")
+    if d[0x27A4BA:0x27A4D2] != bytes.fromhex(
+            "000000000000982005050000000102121010006400180000"):
+        raise SystemExit("W175: type $96 twelve-word record prototype drifted")
+    if not (d[0x27A4D2:0x27A4EE] == bytes.fromhex(
+            "a000e600f000002731b41a8014001400060006000600100000000000")
+            and u32(d, 0x27A4D8) == 0x2731B4):
+        raise SystemExit("W175: type $96 long-form sub prototype/art drifted")
+    calls96 = {u32(d, a + 2) for a in range(0x27A4EE, 0x27A9EC, 2)
+               if u16(d, a) == 0x4EB9}
+    required96 = {0x243E02, 0x2638A6, 0x286096, 0x2422A2,
+                  0x2817B8, 0x28615E, 0x28C2DC, 0x289004}
+    if not required96 <= calls96:
+        raise SystemExit(f"W175: type $96 handler call closure drifted: "
+                         f"missing {sorted(required96 - calls96)!r}")
+    indirect96 = [a for a in range(0x27A4EE, 0x27A9EC, 2)
+                  if u16(d, a) == 0x4E90]
+    if indirect96 != [0x27A544, 0x27A784]:
+        raise SystemExit(f"W175: type $96 indirect draw sites drifted: {indirect96!r}")
+    if not (u32(d, 0x27A53C) == 0x0027829C
+            and u32(d, 0x27A77C) == 0x0027829C):
+        raise SystemExit("W175: type $96 draws no longer resolve through $27829C")
+    if sum(1 for a in range(0x27A788, 0x27A9EC, 2)
+           if u16(d, a) == 0x4EB9 and u32(d, a + 2) == 0x289004) != 9:
+        raise SystemExit("W175: type $96 death is no longer exactly nine effects")
+    frame_ptrs = [u32(d, 0x27A9EC + i * 8) for i in range(16)]
+    if frame_ptrs != [0x2731B4 + i * 0x684 for i in range(16)]:
+        raise SystemExit("W175: type $96 16-frame art-pointer table drifted")
+    frame_updates = [u32(d, 0x27A9F0 + i * 8) for i in range(16)]
+    if frame_updates != [((0x0600 + i * 0x40) << 16) | (0x0600 + i * 0x40)
+                         for i in range(16)]:
+        raise SystemExit("W175: type $96 16-frame update-long table drifted")
+    if not (frame_ptrs[-1] + 0x684 == 0x2799F4
+            and d[0x27AA6C:0x27AA74] == bytes.fromhex("3b7c000000044e75")):
+        raise SystemExit("W175: type $96 art family no longer ends at type $98 stub")
+    if not (d[0x243E02:0x243E08] == bytes.fromhex("4a790081b410")
+            and d[0x243E20:0x243E30] == bytes.fromhex(
+                "33fc00010081b41033fcffff0081b412")):
+        raise SystemExit("W175: $243E02 guarded screen-clear mode-$FFFF arm drifted")
+    type96_records = [(script + i * 8, u16(d, script + i * 8),
+                       u16(d, script + i * 8 + 6) & 0x0FFF)
+                      for i in range(332) if d[script + i * 8 + 4] == 0x96]
+    if type96_records != [(0x2329C0, 0x00B8, 0x03C)]:
+        raise SystemExit(f"W175: stage-2 type $96 occurrence order drifted: "
+                         f"{type96_records!r}")
+    if d[0x23369A:0x2336A2] != bytes.fromhex("8a00240081044000"):
+        raise SystemExit("W175: type $96 movement stream idx $03C drifted")
+    if not (u16(d, 0x232C00) == 0x0118 and d[0x232C04] == 0x8C
+            and (u16(d, 0x232C06) & 0x0FFF) == 0x03F
+            and d[0x2789EE:0x2789F6] == bytes.fromhex("3b7c000200044e75")):
+        raise SystemExit("W175: next frontier is not $232C00 type $8C idx $03F")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")
