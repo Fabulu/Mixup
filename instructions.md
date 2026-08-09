@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-09, after W186 publication.
+Last updated: 2026-08-09, after W188 publication.
 
 ## Current directive
 
@@ -14,9 +14,10 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The old W175 pause is resolved. W176 through W186 are live. W186 translates F3,
-MAIN2, and D3 and advances the controlled runtime to A1/E6 `$299E90`. Do not
-repeat W175 through W186.
+The old W175 pause is resolved. W176 through W188 are live. W187 completes the
+F3/E6-E11 attack cycle. W188 fixes the reported stage-1 tank-death layering,
+restores all hyper activation art, and ports the ship and option hyper-shot
+families that crashed during held fire. Do not repeat W175 through W188.
 
 ## Exact repository and deployment state
 
@@ -35,6 +36,8 @@ At handoff:
 - W184 is committed, pushed, and deployed
 - W185 is committed, pushed, and deployed
 - W186 is committed, pushed, and deployed
+- W187 is committed, pushed, and deployed
+- W188 is committed, pushed, and deployed
 - W175 live build: `20260809081027`
 - W176 live build: `20260809092221`
 - W177 live build: `20260809095334`
@@ -47,6 +50,8 @@ At handoff:
 - W184 live build: `20260809144557`
 - W185 live build: `20260809151417`
 - W186 live build: `20260809160147`
+- W187 live build: `20260809173436`
+- W188 live build: `20260809204248`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
 - no agent or command is running now
 
@@ -70,9 +75,10 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W187 is complete and live:
+W188 is complete and live:
 
-- worklog: `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
+- latest worklog: `docs/worklog/ddpdoj/188-fix-stage1-death-hyper.md`
+- stage-2 boss baseline: `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
 - stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
 - init stub/body: `$297118` / `$297120`; handler: `$297398`
 - the complete `$298310` multi-part controller, A4 bootstrap, arrival MAIN 0,
@@ -85,6 +91,12 @@ W187 is complete and live:
   through the old E6 stop for the full 9,000-frame budget, and visibly fires E6
   plus a later randomized E9 leaf
 - the web bundle contains 2,919 streams; W185 added 176 to deferred boss shard 17
+- the stage-1 type `$10/$11` death explosion now uses the ROM layer remap and
+  appears in front of buildings
+- all 34 hyper aura streams are exported and the hyper HUD redraws on state
+  transitions
+- ship and option hyper projectiles run through their normal and hit handlers;
+  the bundle now contains 2,978 streams
 
 The next honest gameplay phase dependencies are:
 
@@ -146,11 +158,12 @@ that reported cluster. Preserve those mechanics and their tests.
 1. `PROMPT.md`
 2. this `instructions.md`
 3. `AGENTS.md`
-4. `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
-5. `docs/worklog/ddpdoj/186-impl-stage2-boss-f3.md`
-6. `docs/worklog/ddpdoj/167-impl-general-static-dynamic-coverage.md`
-7. `HANDOVER.md`
-8. relevant files under `docs/knowledge/`, especially 01, 02, 03, 09, and 10
+4. `docs/worklog/ddpdoj/188-fix-stage1-death-hyper.md`
+5. `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
+6. `docs/worklog/ddpdoj/186-impl-stage2-boss-f3.md`
+7. `docs/worklog/ddpdoj/167-impl-general-static-dynamic-coverage.md`
+8. `HANDOVER.md`
+9. relevant files under `docs/knowledge/`, especially 01, 02, 03, 09, and 10
 
 For older issue history, use the worklogs rather than summaries:
 
@@ -210,9 +223,10 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W187 translates the complete E6-E11 leaf set. Its focused scheduler/bullet
-checks and 1,530-test release gate pass. The controlled boot runs beyond the
-old E6 stop and produces real E6 and E9 bullet output. Build
-`20260809173436` is live and confirmed. Continue with the statically mapped
-F1, F2, and F8 phase entries; the full-game goal remains active after every
-wave.
+W188 fixes the three owner-reported playable defects: building-tank deaths now
+render in front, the complete 34-frame hyper aura is present, and hyper plus
+held fire no longer crashes at the stage-1 boss. Its focused 74-test gate,
+1,533-test release gate, bundle gate, HTTP asset gate, and real checkpoint smoke
+pass. Build `20260809204248` is live and confirmed three consecutive times.
+Continue with the statically mapped F1, F2, and F8 stage-2 boss phases; the
+full-game goal remains active after every wave.

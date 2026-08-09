@@ -1,6 +1,6 @@
 # W188: Stage-1 tank deaths and hyper presentation/crash
 
-Status: READY TO PUBLISH
+Status: COMPLETE
 
 ## Scope
 
@@ -95,3 +95,12 @@ hyper plus held fire runs through ship and option projectiles without the
 reported boss-start crash. W188 does not change the stage-2 completion
 frontier; after publication, continue the full-game goal at the F1/F2/F8 boss
 phase closures recorded in `instructions.md`.
+
+## Release
+
+- implementation commit: `7079fa60fe3b8064e7f7a2e0a559c9ebabed9a06`
+- production build: `20260809204248`
+- deployment: `https://c4d9d9f7.gbtman.pages.dev`
+- production URL: `https://gbtman.pages.dev/games/ddpdoj/`
+- production confirmation: three consecutive checks reported the expected
+  build ID and HTTP 200 for the DOJ page and asset manifest
