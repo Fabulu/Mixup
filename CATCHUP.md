@@ -885,5 +885,6 @@ The controlled boot now completes 251 records with 247 allocations and four
 authentic declines, then stops honestly at type `$97` body `$277DE8`, record
 `$232DA8`, clock `$0162`. Coverage is 38/256 enemy types and 318/332 stage-2
 records, with 14 unknown. The web exporter also now harvests the immediate art
-streams for both W177 type `$91` and W178 type `$92`. Focused verification is
-green; release and deployment are pending.
+streams for both W177 type `$91` and W178 type `$92`. The release passed 1,497
+tests with zero failures or skips, bundle/web and ROM-leak gates, deployment,
+and stable live polls. Build `20260809102233` is live.

@@ -1,6 +1,6 @@
 # W178: Stage-2 type `$92`
 
-Status: COMPLETE, RELEASE PENDING
+Status: COMPLETE
 
 ## Scope
 
@@ -79,4 +79,8 @@ remain gitignored.
 
 ## Release
 
-Release gate, deployment, and live build confirmation are pending.
+- Commit `8c47ce2` contains the W178 port and current-state docs.
+- Release gate: 1,497 passed, zero failed/skipped; bundle/web and ROM-leak
+  checks passed.
+- Published and confirmed live as build `20260809102233` at
+  `https://gbtman.pages.dev/games/ddpdoj/`.
