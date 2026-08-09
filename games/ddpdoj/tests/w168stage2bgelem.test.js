@@ -50,8 +50,14 @@ function seededGame(bgMutate = null) {
   });
 }
 
-function stepUntil(game, done, limit) {
+function stepUntil(game, done, limit, isolateBackground = false) {
   for (let i = 0; i < limit; i++) {
+    // W169's authentic enemy install stops at clock $C, before this family
+    // begins at $24. These W168 tests isolate the already-proven background
+    // path by parking only its spawn cursor after the real install has run.
+    if (isolateBackground && game.ram.u16(0x813096) === 4) {
+      game.ram.setU32(0x8132cc, STAGE1_FFFF);
+    }
     game.step(0xffff);
     if (done(game)) return;
   }
@@ -108,24 +114,22 @@ test('W168/3 controlled port run dispatches all eight in board occurrence order 
   + 'and reaches the stage-2 lock', { skip: SKIP }, () => {
   const game = seededGame();
   stepUntil(game, (g) => g.scrollEvents.filter((e) => e.kind === 'bgelem').length === 8,
-    10000);
+    10000, true);
   const events = game.scrollEvents.filter((e) => e.kind === 'bgelem');
   const order = [0, 6, 1, 2, 3, 4, 5, 7];
   const hs = BGELEM_HANDLERS.filter((h) => h.stage === 1);
   assert.deepEqual(events.map((e) => e.id), order);
   assert.deepEqual(events.map((e) => e.handler), order.map((i) => hs[i].ctor));
-  // Stage-2 enemy installation is the next honest boundary. This background
-  // closure must not pretend it happened: the live spawn cursor stays parked
-  // on stage 1's terminator while the complete scenery program runs.
+  // This background-only gate explicitly parks the authentic W169 spawn side.
   assert.equal(game.ram.u32(0x8132cc), STAGE1_FFFF);
-  stepUntil(game, (g) => g.ram.u16(BGRAM.clock) === 0x0264, 4000);
+  stepUntil(game, (g) => g.ram.u16(BGRAM.clock) === 0x0264, 4000, true);
 });
 
 test('W168/4 deliberate data-field mutation makes the first-stage-2 gate red',
   { skip: SKIP }, () => {
   const run = (mutate) => {
     const game = seededGame(mutate);
-    stepUntil(game, (g) => g.scrollEvents.some((e) => e.kind === 'bgelem'), 1200);
+    stepUntil(game, (g) => g.scrollEvents.some((e) => e.kind === 'bgelem'), 1200, true);
     const slot = slotWithUpdater(game, 0x2627ca);
     assert.notEqual(slot, null, '$2627AC installed $2627CA');
     return game.ram.u32(slot + ESLOT.data);

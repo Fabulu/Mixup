@@ -445,16 +445,18 @@ SAMPLE_UNION_RAW = 3_612_873
 # enemy TYPE tables (LO `$267824` / HI `$27E412`, 8 bytes per type -- init then
 # handler) are already exported by wave 20 and are reused unchanged.
 #
+#   $26331E  enemy-subsystem clear followed by the `$263386` installer; the
+#            window includes the five-stage table and the full installer.
 #   $263336  5 stages x 16 bytes  the STAGE TABLE `$263386` installs from: each
 #           entry is (script_ptr, aux_ptr, res_ptr, pad).  `$813096` (stage*4)
 #           x4 is the index; stage 1 -> (script $230C6C, aux $23170C, res $231852).
 #   $230C6C  339 records x 8 B + $FFFF terminator = 2714 B, the stage-1 SPAWN
 #            SCRIPT.  The walker matches each record's first word (the trigger)
 #            against $8130CE.  The 8-byte layout is [trig:W][param:W][type:B]
-#            [flags:B][idx:W&$FFF] (census.py script_records).  Stages 2..5 are
-#            deliberately NOT exported: a read of another stage's script must be
-#            a LOUD THROW BY ADDRESS, not a plausible walk (the same rule W13
-#            applied to the BG column stream).
+#            [flags:B][idx:W&$FFF] (census.py script_records).
+#   $2325D0  stage-2's 332 records plus terminator, its 174-word aux table and
+#            its complete 174-stream resource #$1F.  The three exact extents
+#            form one dependency-closed span ending at stage 3's script.
 #   $23170C  the stage-1 AUX table, word offsets into resource #$1F (the
 #            movement-script bytes), indexed by each record's 12-bit data idx.
 #            Stage 1's max idx is 162, so the live prefix is 326 B; the window
@@ -462,8 +464,10 @@ SAMPLE_UNION_RAW = 3_612_873
 #            (the movement interpreter $2638A6); the port resolves the pointer
 #            and notes the body unported.
 SHOT_WINDOWS.extend([
-    (0x263330, 0x0060, "WAVE 22: $263336 the five-stage spawn table (16 B per "
-                       "entry: script ptr, aux ptr, resource ptr, pad)"),
+    (0x25FD38, 0x004A, "W169: complete `$25FD38` rebuild caller through RTS; "
+                       "pins the authentic eight-reset/install order"),
+    (0x26331E, 0x00A0, "W169: $26331E enemy-subsystem clear, the five-stage "
+                       "spawn table, and complete $263386 installer"),
     (0x230C6C, 0x0AA0, "WAVE 22: the STAGE-1 spawn script, 339 records x 8 B + "
                        "$FFFF terminator ($230C6C..$231706)"),
     (0x23170C, 0x0150, "WAVE 22: the STAGE-1 aux table -- per-record word "
@@ -471,10 +475,15 @@ SHOT_WINDOWS.extend([
     # WAVE 24 -- resource #$1F, the movement byte-code streams.  $2633A2 installs
     # the base into protection slot #$1F and $26341E `adda.w aux[idx],A1` resolves
     # each stream pointer = $231852 + aux[idx].  163 streams, 3454 B total
-    # ($231852..$2325D0, measured by w24streams.py).  Stages 2..5 are deliberately
-    # NOT exported: a read of another stage's stream stays a LOUD THROW BY ADDRESS.
+    # ($231852..$2325D0, measured by w24streams.py).  Stages 3..5 are deliberately
+    # NOT exported: a read of a later stage's stream stays a LOUD THROW BY ADDRESS.
     (0x231852, 0x0D7E, "WAVE 24: STAGE-1 resource #$1F -- the 163 movement "
                        "byte-code streams ($231852..$2325D0, 3454 B)"),
+    (0x2325D0, 0x1CEA, "W169: complete STAGE-2 spawn dependency span: 332 "
+                       "records + terminator, 174-word aux table, and 174 "
+                       "movement streams ($2325D0..$2342BA)"),
+    (0x27782E, 0x0008, "W169: stage-2 type $95's inseparable run-length stub; "
+                       "the unknown init body begins loudly at $277836"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -1888,16 +1897,119 @@ SHOT_WINDOWS.append(
                        "named as the remaining stage-1-tail gap.  Abuts the W124 "
                        "palette block: $228658 + $17A0 == $229DF8"))
 
-# W133 window 3 -- DEFERRED, and named rather than skipped.  The stage-2 SPAWN
-# palette-bank sources $2236F8..$2252F8 (19 banks x 64 B) live in the
-# $223000..$2252F8 block; the 20th bank $246BB8 is already covered by W91's
-# $246BB8/$246BF8 windows.  They are read by the OBJECT-STREAM palette installer
-# `$24150A` when a stage-2 ENEMY spawns.  The headless boot of this wave never
-# reaches them: the port does not call `installStage` for stage 2, so the spawn
-# walker breaks at stage-1's $FFFF terminator and no stage-2 enemy is ever
-# created.  Live-page-only this wave; the first live stage-2 enemy is a future
-# port and will add `$223000..$2252F8` then.  A read there today stays a LOUD
-# NAMED THROW out of src/rom.js, which is the correct answer to an unproven need.
+# W169 correction: W91's existing `$222A78..$2252F8` palette-family window
+# already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
+# There is no deferred palette export here.  W169 installs the spawn program;
+# its first unknown init body remains a loud code/art boundary at `$277836`.
+
+
+def check_stage2_spawn_data(d: bytes) -> None:
+    """W169. Pin the reset/installer and the complete stage-2 spawn span.
+
+    All extents are obtained from the five-row ROM stage table.  The script is
+    `$FFFF`-terminated; its used aux indices prove a 174-word table; all 174
+    aux offsets are strictly increasing stream starts and the next stage's
+    script is the exact resource end.
+    """
+    RESET, TABLE, INSTALL = 0x26331E, 0x263336, 0x263386
+    if d[RESET:RESET + 0x16] != bytes.fromhex(
+            "41f90081332c303c1c2630fc000051c8fffa61000054"):
+        raise SystemExit("W169: `$26331E` clear/BSR bytes drifted")
+    if u16(d, RESET + 0x16) != 0x4E75:
+        raise SystemExit("W169: `$26331E` no longer returns after `$263386`")
+    # The signed BSR displacement at $263330 is relative to $263332.
+    disp = u16(d, 0x263332)
+    if disp & 0x8000:
+        disp -= 0x10000
+    if 0x263332 + disp != INSTALL:
+        raise SystemExit("W169: `$263330` does not BSR `$263386`")
+
+    rows = [[u32(d, TABLE + stage * 0x10 + off) for off in (0, 4, 8, 12)]
+            for stage in range(5)]
+    expected = [
+        [0x230C6C, 0x23170C, 0x231852, 0],
+        [0x2325D0, 0x233038, 0x233194, 0],
+        [0x2342BA, 0x234FB2, 0x2350A8, 0],
+        [0x2358B0, 0x2364A8, 0x2365E2, 0],
+        [0x237978, 0x239190, 0x239396, 0],
+    ]
+    if rows != expected:
+        raise SystemExit(f"W169: five-stage spawn table drifted: {rows!r}")
+
+    script, aux, resource, _ = rows[1]
+    cursor = script
+    indices = []
+    while u16(d, cursor) != 0xFFFF:
+        indices.append(u16(d, cursor + 6) & 0x0FFF)
+        cursor += 8
+        if len(indices) > 4096:
+            raise SystemExit("W169: stage-2 spawn script has no bounded terminator")
+    if len(indices) != 332 or cursor != 0x233030:
+        raise SystemExit(
+            f"W169: stage-2 script is {len(indices)} records ending ${cursor:06X}, "
+            "expected 332 ending $233030")
+    if max(indices) != 173 or len(set(indices)) != 149:
+        raise SystemExit("W169: stage-2 aux use is not max index 173 / 149 used")
+    if cursor + 2 > aux:
+        raise SystemExit("W169: stage-2 script terminator overlaps its aux table")
+    offsets = [u16(d, aux + i * 2) for i in range(174)]
+    if aux + len(offsets) * 2 != resource:
+        raise SystemExit("W169: 174-word aux table does not abut resource #$1F")
+    if offsets != sorted(set(offsets)) or offsets[0] != 0 or offsets[-1] != 0x111E:
+        raise SystemExit("W169: stage-2 movement stream starts are not exact")
+    if resource + 0x1126 != rows[2][0]:
+        raise SystemExit("W169: stage-2 resource does not end at stage-3 script")
+    if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
+        raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
+    decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
+    if decl != [(script, rows[2][0] - script)]:
+        raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")
+
+    # `$25FD38` has exactly this order: stage-block wipe, eight subsystem
+    # calls, then type-1 construction.  `$26331E` is first and includes install.
+    caller = 0x25FD38
+    if u16(d, caller) != 0x61EA:  # bsr.b $25FD24
+        raise SystemExit("W169: `$25FD38` no longer begins with `$25FD24`")
+    ordered = [0x26331E, 0x288E0C, 0x289084, 0x289AE0,
+               0x28AC3A, 0x289F3A, 0x27E98A, 0x28131E]
+    got = []
+    pc = caller + 2
+    for _ in ordered:
+        if u16(d, pc) != 0x4EB9:
+            raise SystemExit(f"W169: expected JSR at ${pc:06X}")
+        got.append(u32(d, pc + 2))
+        pc += 6
+    if got != ordered:
+        raise SystemExit(f"W169: `$25FD38` reset order drifted: {got!r}")
+    if (u16(d, pc), u16(d, pc + 2), u16(d, pc + 4),
+            u32(d, pc + 6), u16(d, 0x25FD80)) != (
+            0x303C, 0x0001, 0x4EB9, 0x00241182, 0x4E75):
+        raise SystemExit("W169: `$25FD38` type-1 construction/tail drifted")
+
+    # Full-image even-address scan of every direct absolute/PC-relative JSR,
+    # JMP and BSR form supported by this 68000 image.  `$27F87C` has one real
+    # direct caller, `$2606E8`; it is not in the stage rebuild and must not be
+    # smuggled into it as a guessed pool clear.
+    target = 0x27F87C
+    sites = []
+    for a in range(0x200000, 0x300000, 2):
+        op = u16(d, a)
+        if op in (0x4EB9, 0x4EF9) and u32(d, a + 2) == target:
+            sites.append(a)
+        elif op in (0x4EBA, 0x4EFA, 0x6100):
+            disp = u16(d, a + 2)
+            if disp & 0x8000:
+                disp -= 0x10000
+            if a + 2 + disp == target:
+                sites.append(a)
+        elif (op & 0xFF00) == 0x6100 and (op & 0xFF):
+            disp = op & 0xFF
+            if disp & 0x80:
+                disp -= 0x100
+            if a + 2 + disp == target:
+                sites.append(a)
+    if sites != [0x2606E8]:
+        raise SystemExit(f"W169: `$27F87C` direct callers drifted: {sites!r}")
 
 
 def check_stage2_boot_data(d: bytes) -> None:
@@ -4283,6 +4395,7 @@ def build(d: bytes) -> dict:
     check_bg_palette_and_fade(d)               # W92 -- THE BACKGROUND THIRD
     check_text_palette_boot(d)                 # W93 -- THE RESET PATH'S FIVE
     check_stage2_boot_data(d)                  # W133 -- STAGE-2 BG boot windows
+    check_stage2_spawn_data(d)                 # W169 -- reset/install + spawn span
     check_sample_windows()                     # W27D -- ICS sample tight union
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)

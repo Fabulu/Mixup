@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "target": "ddpdojblk VERSION-B (2002.10.07 BLACK VER)",
+  "source": "w22spawn.lua-derived controlled MAME run, w169-stage2-install, 2026-08-09",
+  "interventions": [
+    "invulnerability from logic frame 1250",
+    "autoshot from logic frame 1800",
+    "horizontal sweep from logic frame 1900"
+  ],
+  "limitations": "Valid for install/cursor/dispatch occurrence order, not unaided pacing.",
+  "install": {
+    "logic_frame": 12360,
+    "stage_x4": 4,
+    "clock": 0,
+    "previous_cursor": 2299652,
+    "cursor": 2303440,
+    "aux": 2306104,
+    "resource": 2306452,
+    "deferred_count": 0
+  },
+  "events": [
+    {"logic_frame": 12379, "record": 2303440, "trigger": 1, "type": 139},
+    {"logic_frame": 12379, "record": 2303448, "trigger": 1, "type": 139},
+    {"logic_frame": 12379, "record": 2303456, "trigger": 1, "type": 139},
+    {"logic_frame": 12379, "record": 2303464, "trigger": 1, "type": 139},
+    {"logic_frame": 12379, "record": 2303472, "trigger": 1, "type": 139},
+    {"logic_frame": 12379, "record": 2303480, "trigger": 1, "type": 139},
+    {"logic_frame": 12379, "record": 2303488, "trigger": 1, "type": 139},
+    {"logic_frame": 12379, "record": 2303496, "trigger": 1, "type": 139},
+    {"logic_frame": 12379, "record": 2303504, "trigger": 1, "type": 139},
+    {"logic_frame": 12379, "record": 2303512, "trigger": 1, "type": 139},
+    {"logic_frame": 12491, "record": 2303520, "trigger": 8, "type": 16},
+    {"logic_frame": 12491, "record": 2303528, "trigger": 8, "type": 9},
+    {"logic_frame": 12491, "record": 2303536, "trigger": 8, "type": 138},
+    {"logic_frame": 12507, "record": 2303544, "trigger": 9, "type": 9},
+    {"logic_frame": 12523, "record": 2303552, "trigger": 10, "type": 16},
+    {"logic_frame": 12523, "record": 2303560, "trigger": 10, "type": 9},
+    {"logic_frame": 12555, "record": 2303568, "trigger": 12, "type": 17},
+    {"logic_frame": 12555, "record": 2303576, "trigger": 12, "type": 17},
+    {"logic_frame": 12555, "record": 2303584, "trigger": 12, "type": 149}
+  ],
+  "next_boundary": {
+    "record": 2303584,
+    "type": 149,
+    "param": 8,
+    "aux_index": 80,
+    "movement_start": 2309168,
+    "movement_end_exclusive": 2309230,
+    "init_stub": 2586670,
+    "init_body": 2586678,
+    "handler": 2587062
+  }
+}

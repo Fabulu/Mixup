@@ -36,6 +36,7 @@ W25_TSV = OUT / "w25-handler-stage1.tsv"
 W22_TSV = OUT / "w22-spawn-stage1.tsv"
 W75_JSON = OUT / "w75" / "seedcmp.json"
 W168_JSON = HERE / "w168-stage2-bgelem-evidence.json"
+W169_JSON = HERE / "w169-stage2-spawn-evidence.json"
 RAM_BASE = 0x800000
 
 
@@ -281,6 +282,24 @@ def read_w168_stage2_elements():
     return rows
 
 
+def read_w169_stage2_spawns():
+    """Read record-qualified evidence; type-only evidence cannot prove order."""
+    if not W169_JSON.exists():
+        raise FileNotFoundError(f"{W169_JSON} missing")
+    doc = json.loads(W169_JSON.read_text(encoding="utf-8"))
+    if doc.get("schema") != 1 or "VERSION-B" not in doc.get("target", ""):
+        raise ValueError(f"{W169_JSON.name} is not VERSION-B schema 1 evidence")
+    install = doc.get("install", {})
+    if (install.get("stage_x4"), install.get("clock"), install.get("cursor"),
+            install.get("aux"), install.get("resource"), install.get("deferred_count")) != (
+            4, 0, 0x2325D0, 0x233038, 0x233194, 0):
+        raise ValueError(f"{W169_JSON.name} has a non-stage-2 installer observation")
+    rows = doc.get("events", [])
+    if len(rows) != 19:
+        raise ValueError(f"{W169_JSON.name} has {len(rows)} spawn events, expected 19")
+    return rows
+
+
 def lower_bound(rom: Rom, addresses):
     seen = {}
     indirect = 0
@@ -307,7 +326,8 @@ def registry_tokens(regs):
     return tokens
 
 
-def build_report(break_coverage=False, break_inventory=False):
+def build_report(break_coverage=False, break_inventory=False,
+                 break_stage2_spawn_inventory=False):
     if not ROM_PATH.exists():
         raise FileNotFoundError(f"{ROM_PATH} missing")
     config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
@@ -330,6 +350,7 @@ def build_report(break_coverage=False, break_inventory=False):
     spawned_types = read_spawned_types()
     w75_updates = read_w75_element_updates()
     w168_elements = read_w168_stage2_elements()
+    w169_spawns = read_w169_stage2_spawns()
     inventory_errors = []
 
     object_by_id = {int(e["key"]): e for e in families["top_objects"]}
@@ -395,6 +416,33 @@ def build_report(break_coverage=False, break_inventory=False):
         else:
             e["dynamic"] = True
 
+    stage2_spawn_by_record = {
+        int(e["record"]): e for e in families["stage2_spawn_script"]
+    }
+    seen_stage2_records = set()
+    for row in w169_spawns:
+        record = int(row["record"])
+        trigger = int(row["trigger"])
+        typ = int(row["type"])
+        if record in seen_stage2_records:
+            inventory_errors.append(f"w169 observed stage 2 spawn record ${record:06X} twice")
+            continue
+        seen_stage2_records.add(record)
+        e = stage2_spawn_by_record.get(record)
+        if e is None:
+            inventory_errors.append(
+                f"w169 observed stage 2 spawn record ${record:06X} outside static inventory")
+        elif e["trigger"] != trigger or e["type"] != typ:
+            inventory_errors.append(
+                f"w169 stage 2 spawn ${record:06X} observed trigger ${trigger:04X}/type ${typ:02X}, "
+                f"static record says ${e['trigger']:04X}/${e['type']:02X}")
+        else:
+            e["dynamic"] = True
+
+    if break_stage2_spawn_inventory:
+        inventory_errors.append(
+            "DELIBERATE RED: w169 observed stage 2 spawn record $2325C8 outside static inventory")
+
     if break_inventory:
         inventory_errors.append("DELIBERATE RED: observed object type $FF outside the 20-entry table")
 
@@ -428,7 +476,10 @@ def build_report(break_coverage=False, break_inventory=False):
                               board_spawned_types=len(spawned_types),
                               enemy_type_handler_pairs=len(enemy_dynamic),
                               w75_element_updates=len(w75_updates),
-                              w168_stage2_element_events=len(w168_elements)),
+                              w168_stage2_element_events=len(w168_elements),
+                              # Record-qualified evidence, intentionally not a
+                              # type-only count.
+                              w169_stage2_spawn_events=len(w169_spawns)),
                 families=report_families, delegated=config["delegated"],
                 backlog=config["backlog"], phantoms=sorted(phantoms),
                 inventory_errors=inventory_errors,
@@ -443,9 +494,11 @@ def main():
     ap.add_argument("--emit-baseline", action="store_true")
     ap.add_argument("--break-coverage", action="store_true")
     ap.add_argument("--break-inventory", action="store_true")
+    ap.add_argument("--break-stage2-spawn-inventory", action="store_true")
     args = ap.parse_args()
     try:
-        report = build_report(args.break_coverage, args.break_inventory)
+        report = build_report(args.break_coverage, args.break_inventory,
+                              args.break_stage2_spawn_inventory)
     except (FileNotFoundError, ValueError, KeyError, AssertionError) as e:
         print(f"FAIL: {e}")
         return 1
@@ -489,7 +542,7 @@ def main():
             print(f"  {x}")
         failed = True
     else:
-        print("OK inventory: every dynamic object/type/handler/BGELEM observation is statically inventoried")
+        print("OK inventory: every dynamic object/type/handler/spawn/BGELEM observation is statically inventoried")
     print("FAIL" if failed else "OK")
     return 1 if failed else 0
 

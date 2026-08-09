@@ -47,6 +47,9 @@ import { runInitBodyAddr, INIT_BODY_FREED } from './initbody.js';
 
 // --------------------------------------------------------------- the addresses
 export const SPAWN = {
+  RESET_BASE: 0x81332c,       // $26331E lea $81332C,A0
+  RESET_WORDS: 0x1c27,        // $263324 #$1C26 / DBRA => $1C27 words
+  RESET_END: 0x816b7a,        // exclusive; exactly $27E98A's item-pool base
   STAGE_TAB: 0x263336,         // $263396 lea ($263336,PC),A0  (the install reads it)
   LIVE_CURSOR: 0x8132cc,       // $2633be lea $8132cc,A3 ; the live script ptr
   AUX_BASE: 0x8132d0,          // $81339e move.l (A0)+,($4,A4)  (= LIVE_CURSOR+4)
@@ -116,6 +119,21 @@ export function installStage(ram, rom, stage, unported, prot) {
   // resource -- the bytes are plain ROM, recon §2); `prot?.setSlot` keeps the
   // simulated $500000 latch faithful to the board for any other reader.
   prot?.setSlot(0x1f, e.res);                       // $246D04($1F, res)
+}
+
+/**
+ * `$26331E..$263334` -- clear the complete enemy subsystem and then install
+ * the current stage's spawn/aux/resource triple.  The order is indivisible:
+ * `$263330 bsr.w $263386` is inside the reset routine, after the DBRA clear.
+ * The half-open clear ends exactly where `$27E98A` starts the item pool.
+ */
+export function resetAndInstallStage26331E(ram, rom, unported, prot) {
+  for (let i = 0; i < SPAWN.RESET_WORDS; i++) {
+    ram.setU16(SPAWN.RESET_BASE + i * 2, 0);         // $263328 move.w #0,(A0)+
+  }
+  const stage = stageIndex(ram);                     // $26338C $813096 / 4
+  installStage(ram, rom, stage, unported, prot);     // $263330 bsr.w $263386
+  return stageTableEntry(rom, stage);
 }
 
 // ----------------------------------------------------------------- the walker

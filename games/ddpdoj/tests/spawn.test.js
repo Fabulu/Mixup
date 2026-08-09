@@ -19,6 +19,7 @@ import { Unreached } from '../src/unported.js';
 import { ENEMY } from '../src/enemies.js';
 import {
   SPAWN, REC, stageTableEntry, installStage, walkScriptLoop,
+  resetAndInstallStage26331E,
   resolveMovementPtr, initDispatch, allocSubRecord, enqueueDeferred,
   processDeferred, dispatchScriptRecord, runInitBody, DEFQ_D1,
 } from '../src/spawn.js';
@@ -137,6 +138,35 @@ test('installStage sets the cursor and clears the deferred queue', () => {
   assert.equal(ram.u32(SPAWN.LIVE_CURSOR), SCRIPT, 'cursor = script base');
   assert.equal(ram.u32(SPAWN.AUX_BASE), AUX, 'aux base installed');
   assert.equal(ram.u16(SPAWN.DEFQ_COUNT), 0, 'queue cleared ($2633b6)');
+});
+
+test('$26331E clears the exact half-open enemy span before installing $263386', () => {
+  const R = synthRom();
+  const good = new Ram();
+  good.setU16(SPAWN.RESET_BASE - 2, 0x1111);
+  good.setU16(SPAWN.RESET_BASE, 0x2222);
+  good.setU16(SPAWN.RESET_END - 2, 0x3333);
+  good.setU16(SPAWN.RESET_END, 0x4444);
+  good.setU16(0x813096, 0); // stage*4
+  const slots = [];
+  const entry = resetAndInstallStage26331E(good, R, { note() {} }, {
+    setSlot: (slot, value) => slots.push([slot, value]),
+  });
+  assert.deepEqual(entry, { script: SCRIPT, aux: AUX, res: RES });
+  assert.equal(good.u16(SPAWN.RESET_BASE - 2), 0x1111, 'word below is untouched');
+  assert.equal(good.u16(SPAWN.RESET_BASE), 0, 'inclusive first word cleared');
+  assert.equal(good.u16(SPAWN.RESET_END - 2), 0, 'inclusive last word cleared');
+  assert.equal(good.u16(SPAWN.RESET_END), 0x4444, 'exclusive end is untouched');
+  assert.equal(good.u32(SPAWN.LIVE_CURSOR), SCRIPT, 'installer follows clear');
+  assert.equal(good.u32(SPAWN.AUX_BASE), AUX);
+  assert.deepEqual(slots, [[0x1f, RES]]);
+
+  // Deliberate RED: the tempting ad-hoc fix (`installStage` only) installs the
+  // cursor but leaves stale enemy-subsystem state.  The endpoint gate catches it.
+  const bad = new Ram();
+  bad.setU16(SPAWN.RESET_BASE, 0x2222);
+  installStage(bad, R, 0, { note() {} });
+  assert.throws(() => assert.equal(bad.u16(SPAWN.RESET_BASE), 0));
 });
 
 // ---- 2. the walker: cursor, dispatch callback, terminator ------------------

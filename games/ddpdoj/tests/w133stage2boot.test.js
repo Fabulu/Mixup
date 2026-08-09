@@ -16,13 +16,10 @@
 //   * the stage-2 BACKGROUND scrolls: `camBgAccumulate` (`$80B012`) advances
 //     for frames after the stage-2 boot, i.e. window 2
 //     (`$228658`) really feeds the column ring;
-//   * the OLD CLEAN THROW: at scroll clock `$24` the first stage-2 op-$10
-//     BGELEM fires and `elemSpawn` reads table entry `[0]` = `$2627AC`. W168
-//     ports that constructor and this test now proves the old stop stays shut;
-//   * the NO-GARBAGE-SPAWN invariant: the port never calls `installStage` for
-//     stage 2, so the spawn walker breaks at stage-1's `$FFFF` terminator every
-//     frame and `LIVE_CURSOR $8132CC` keeps its stage-1-end value for the whole
-//     boot. Stage 2's spawn script is never read.
+//   * W169's reset/install changes LIVE_CURSOR from stage 1's terminator to
+//     stage 2's `$2325D0` at clock zero;
+//   * 18 records complete before the first honest stop: type $95's init body
+//     `$277836`, reached by record `$232660` at clock `$000C`.
 //
 // THE MUST-FAIL remains the data dependency. WITHOUT window 1 (`$229DF8`) or
 // window 2 (`$228658`), background init throws before clock `$24`. With both,
@@ -174,8 +171,8 @@ test('W133/2 the stage-1 $FFFF terminator is at $231704, where the seed parks '
 // ROM- and ladder-gated; skips when the ladder is absent.
 // ===========================================================================
 
-test('W133/3 booting from lf19500 reaches stage 2, scrolls, and passes the old '
-  + '$2627AC stop', { skip: SKIP }, () => {
+test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at type '
+  + '$95 init body', { skip: SKIP }, () => {
   const r = bootStage2();
 
   // (a) stage 2 really booted: $813096 went 0 -> 4 (stage index 1, x4).
@@ -191,14 +188,11 @@ test('W133/3 booting from lf19500 reaches stage 2, scrolls, and passes the old '
     `camBgAccumulate must advance in stage 2 (advanced ${r.scrolledInStage2} `
     + 'times); without window 2 the column-stream read would throw earlier');
 
-  // W168 closes the old clean throw. A thousand frames from the seed crosses
-  // clock $24 and keeps running with entry 0's updater installed.
-  assert.strictEqual(r.threw, null,
-    `the old $2627AC stop must stay closed; got ${r.threw?.message ?? 'no throw'}`);
-  assert.ok(r.game.ram.u16(DIST_CLOCK) >= 0x24,
-    'the run must cross the old clock-$24 boundary');
-  assert.ok(Array.from({ length: 8 }, (_, s) => r.game.ram.u32(0x8131c8 + s * 0x20 + 8))
-    .includes(0x2627ca), '$2627AC must install updater $2627CA into an element slot');
+  assert.ok(r.threw instanceof Unreached);
+  assert.strictEqual(r.threw.romAddress, 0x277836);
+  assert.strictEqual(r.throwClock, 0x000c);
+  assert.notStrictEqual(r.threw.romAddress, STAGE2_ELEM0_CTOR,
+    'W168\'s later background constructor is no longer the first stop');
 });
 
 // ===========================================================================
@@ -206,22 +200,18 @@ test('W133/3 booting from lf19500 reaches stage 2, scrolls, and passes the old '
 // the whole boot; LIVE_CURSOR keeps its stage-1-end value.
 // ===========================================================================
 
-test('W133/4 no garbage spawn: LIVE_CURSOR keeps its stage-1 $FFFF-terminator '
-  + 'value for the whole stage-2 boot', { skip: SKIP }, () => {
+test('W133/4 installer replaces the old terminator and 18 records complete '
+  + 'before type $95', { skip: SKIP }, () => {
   const r = bootStage2();
 
-  // The seed parks LIVE_CURSOR at stage-1's $FFFF terminator ($231704), and the
-  // port never calls installStage for stage 2, so walkScriptLoop breaks at that
-  // terminator every frame and never advances into stage 2's script. This is
-  // the W133 recon's correction (2): the garbage-spawn risk is structurally
-  // impossible, not merely avoided.
   assert.strictEqual(r.seedLiveCursor, STAGE1_FFFF,
     `the seed must park LIVE_CURSOR at stage-1's $FFFF terminator $${STAGE1_FFFF.toString(16)} `
     + `(got $${r.seedLiveCursor.toString(16)}) -- if it does not, the boot's `
     + 'no-garbage-spawn argument has no foundation');
-  assert.strictEqual(r.game.ram.u32(LIVE_CURSOR), r.seedLiveCursor,
-    `LIVE_CURSOR must be unchanged across the whole boot (seed $${r.seedLiveCursor.toString(16)} `
-    + `-> final $${r.game.ram.u32(LIVE_CURSOR).toString(16)}). The port never `
-    + 'calls installStage, so the walker breaks at stage-1\'s $FFFF terminator '
-    + 'and stage 2\'s script is never read');
+  assert.ok(r.game.stageEndEvents.some((e) => e[0] === 'spawn-install'
+    && e[2] === 0x2325d0), '$26331E/$263386 installed stage 2 at clock zero');
+  assert.strictEqual(r.game.allocEvents.get('spawn-script'), 18,
+    'exactly 18 stage-2 records finish before the type-$95 throw');
+  assert.strictEqual(r.game.ram.u32(LIVE_CURSOR), 0x232650,
+    'cursor writeback follows dispatch, so the throwing clock-$C batch remains pending');
 });

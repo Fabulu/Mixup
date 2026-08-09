@@ -77,7 +77,7 @@
 import { u16 } from './ram.js';
 import { stageCreate, queueKill, ALLOC } from './objalloc.js';
 import { clearItemPool, bcd242AC6 } from './items.js';
-import { clearPoolA } from './bee.js';
+import { resetAndInstallStage26331E } from './spawn.js';
 import { bcdAdd, scoreByMask } from './score.js';
 import { enqueueRegistersThroughStub, enqueueRegisters, enqueueRequest } from './spritequeue.js';
 import { install24150A } from './palette.js';
@@ -161,16 +161,18 @@ export function wipeStageBlock25FD24(ram) {
  */
 export function rebuildWorld25FD38(ram, ctx) {
   wipeStageBlock25FD24(ram);                           // $25FD38 bsr $25FD24
-  // $25FD3A..$25FD64 -- eight resets.  Six are in the $288xxx/$289xxx cluster
-  // W36 defers whole; `$27E98A` IS ported (src/items.js clearItemPool) and is
-  // called for real below; `$26331E` and `$28131E` are counted.
-  for (const a of [0x26331e, 0x288e0c, 0x289084, 0x289ae0, 0x28ac3a, 0x289f3a,
-    0x28131e]) {
+  // $25FD3A -- the first reset is one dependency-closed operation: clear
+  // `$81332C..$816B79`, then install the current stage through `$263386`.
+  resetAndInstallStage26331E(ram, ctx.rom, ctx.unportedLog, ctx.prot);
+  ctx.stageEndEvent?.('spawn-install', ram.u32(0x8132cc));
+  // $25FD40..$25FD58 -- these five subsystem resets remain deferred by W36.
+  for (const a of [0x288e0c, 0x289084, 0x289ae0, 0x28ac3a, 0x289f3a]) {
     note(ctx, a, `$25FD38's subsystem reset $${a.toString(16).toUpperCase()} `
       + `-- counted, not run (W62 ports the stage machine, not the subsystems)`);
   }
   clearItemPool(ram);                                  // $25FD5E jsr $27E98A
-  clearPoolA(ram);                                     // $27F87C -- pool A (bee/impact)
+  note(ctx, 0x28131e, `$25FD38's subsystem reset $28131E -- counted, not run `
+    + `(W62 ports the stage machine, not the subsystem)`); // $25FD64
   const r = stageCreate(ram, 1, (t) => ctx.rom.u16(SE.dispatch + t * 8 + 4));
   ram.setU32(SE.bgHandle, r.ok ? ram.u32(r.addr + ALLOC.idOff) : 0);   // $25FD74
   ram.setU16(r.addr + 0x06, 0);                        // $25FD7A -- ENTRY CLOCK 0

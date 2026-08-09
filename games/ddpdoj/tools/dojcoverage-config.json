@@ -41,7 +41,7 @@
       "stage": 1,
       "stage_table": 2503478,
       "ported_from": "enemy_types live source registries",
-      "dynamic_from": null
+      "dynamic_from": "w169-stage2-spawn-evidence.json board occurrence records"
     },
     {
       "name": "stage1_bgelem",

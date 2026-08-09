@@ -12,9 +12,10 @@ const w22 = new URL('../tools/oracle/out/w22-spawn-stage1.tsv', import.meta.url)
 const w25 = new URL('../tools/oracle/out/w25-handler-stage1.tsv', import.meta.url);
 const w75 = new URL('../tools/oracle/out/w75/seedcmp.json', import.meta.url);
 const w168 = new URL('../tools/w168-stage2-bgelem-evidence.json', import.meta.url);
+const w169 = new URL('../tools/w169-stage2-spawn-evidence.json', import.meta.url);
 const ckpt = new URL('../tools/oracle/out/w69/stage1-sweep/ckpt', import.meta.url);
 
-const evidence = [rom, w22, w25, w75, w168, ckpt].every((p) => existsSync(p));
+const evidence = [rom, w22, w25, w75, w168, w169, ckpt].every((p) => existsSync(p));
 
 function run(...args) {
   return spawnSync('python', [fileURLToPath(tool), ...args], {
@@ -47,6 +48,8 @@ test('W167 reusable coverage derives the current closed-family totals', { skip: 
   assert.match(got.stdout, /enemy_types: 29\/256 ported, 97 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 231\/332 ported/);
+  assert.match(got.stdout, /stage2_spawn_script: 231\/332 ported, 101 unknown, 0 null, dynamic 19/);
+  assert.match(got.stdout, /stage2_spawn_script:[\s\S]*static-minus-dynamic: 313/);
   assert.match(got.stdout, /stage1_bgelem: 13\/13 ported/);
   assert.match(got.stdout, /stage2_bgelem: 8\/8 ported/);
   assert.match(got.stdout, /stage2_bgelem: 8\/8 ported, 0 unknown, 0 null, dynamic 8/);
@@ -63,4 +66,8 @@ test('W167 both regression conditions demonstrably go red', { skip: !evidence },
   const inventory = run('--break-inventory');
   assert.equal(inventory.status, 1, inventory.stdout + inventory.stderr);
   assert.match(inventory.stdout, /DELIBERATE RED: observed object type \$FF/);
+
+  const stage2Inventory = run('--break-stage2-spawn-inventory');
+  assert.equal(stage2Inventory.status, 1, stage2Inventory.stdout + stage2Inventory.stderr);
+  assert.match(stage2Inventory.stdout, /stage 2 spawn record \$2325C8 outside static inventory/);
 });
