@@ -172,7 +172,7 @@ test('W133/2 the stage-1 $FFFF terminator is at $231704, where the seed parks '
 // ===========================================================================
 
 test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at type '
-  + '$8F init body after W171', { skip: SKIP }, () => {
+  + '$84 init body after W172', { skip: SKIP }, () => {
   const r = bootStage2();
 
   // (a) stage 2 really booted: $813096 went 0 -> 4 (stage index 1, x4).
@@ -189,8 +189,8 @@ test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at type '
     + 'times); without window 2 the column-stream read would throw earlier');
 
   assert.ok(r.threw instanceof Unreached);
-  assert.strictEqual(r.threw.romAddress, 0x27751c);
-  assert.strictEqual(r.throwClock, 0x0045);
+  assert.strictEqual(r.threw.romAddress, 0x275154);
+  assert.strictEqual(r.throwClock, 0x0054);
   assert.notStrictEqual(r.threw.romAddress, STAGE2_ELEM0_CTOR,
     'W168\'s later background constructor is no longer the first stop');
 });
@@ -200,8 +200,8 @@ test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at type '
 // the whole boot; LIVE_CURSOR keeps its stage-1-end value.
 // ===========================================================================
 
-test('W133/4 installer replaces the old terminator and 64 records complete '
-  + 'before type $8F', { skip: SKIP }, () => {
+test('W133/4 installer replaces the old terminator and 74 records complete '
+  + 'before type $84', { skip: SKIP }, () => {
   const r = bootStage2();
 
   assert.strictEqual(r.seedLiveCursor, STAGE1_FFFF,
@@ -210,10 +210,10 @@ test('W133/4 installer replaces the old terminator and 64 records complete '
     + 'no-garbage-spawn argument has no foundation');
   assert.ok(r.game.stageEndEvents.some((e) => e[0] === 'spawn-install'
     && e[2] === 0x2325d0), '$26331E/$263386 installed stage 2 at clock zero');
-  assert.strictEqual(r.game.allocEvents.get('spawn-script'), 60,
-    '60 of the 64 consumed records allocate slots; four authentically decline');
-  assert.strictEqual(r.game.ram.u32(LIVE_CURSOR), 0x2327d0,
-    'cursor writeback follows dispatch, so the throwing clock-$45 record remains pending');
-  assert.strictEqual((r.game.ram.u32(LIVE_CURSOR) - 0x2325d0) / 8, 64,
-    'the ROM cursor proves exactly 64 records were consumed before type $8F');
+  assert.strictEqual(r.game.allocEvents.get('spawn-script'), 70,
+    '70 of the 74 consumed records allocate slots; four authentically decline');
+  assert.strictEqual(r.game.ram.u32(LIVE_CURSOR), 0x232820,
+    'cursor writeback follows dispatch, so the throwing clock-$54 record remains pending');
+  assert.strictEqual((r.game.ram.u32(LIVE_CURSOR) - 0x2325d0) / 8, 74,
+    'the ROM cursor proves exactly 74 records were consumed before type $84');
 });

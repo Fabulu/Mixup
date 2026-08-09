@@ -490,8 +490,11 @@ SHOT_WINDOWS.extend([
                        "palette/prototypes, handler, pointer/vector tables, "
                        "and the structurally bounded 516-word bob table "
                        "($27693E..$277270)"),
-    (0x277514, 0x0008, "W171: next chronological boundary type $8F's exact "
-                       "run-length stub; unknown init body begins at $27751C"),
+    (0x277514, 0x031A, "W172: complete stage-2 type $8F closure: stub, init, "
+                       "palette/prototypes and handler through the next type "
+                       "$95 stub at $27782E"),
+    (0x27514C, 0x0008, "W172: next chronological boundary type $84's exact "
+                       "run-length stub; unknown init body begins at $275154"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -588,7 +591,8 @@ ENEMY_STAT_TABLES = [
                        "$269E48 + bucket table $269EC8 (16-dir, heading-indexed)"),
     (0x272D70, 0x0190, "W23: the aim-derived sprite/bucket tables $272D7A "
                        "($88) and $272DFA ($82/$85), 16 longs each"),
-    (0x272E70, 0x0090, "W23: the aim-derived sprite table $272E7A ($89)"),
+    (0x272E70, 0x010A, "W23/W172: adjacent aim-derived 32-entry sprite tables "
+                       "$272E7A ($89) and $272EFA ($8F), through $272F7A"),
     # W30: THE SPRITE-EMITTER STUB FAMILY, read as DATA by src/spritequeue.js's
     # `resolveEmitStub`.  The enemy handlers reach an enqueue through a POINTER
     # ($267F70's twelve longwords, $27829C's eighteen primary pointers, and
@@ -2070,6 +2074,67 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W171: bob table is no longer bounded by type $89's stub")
     if d[0x277514:0x27751C] != bytes.fromhex("3b7c000000044e75"):
         raise SystemExit("W171: next boundary type $8F stub drifted")
+
+    # W172. Type $8F is one exact stub/body/data/handler span ending where
+    # type $95 begins. Both normal and special draws independently resolve the
+    # primary emitter table. There is no register-convention table call here.
+    if not (u16(d, 0x277522) == 0x4EB9 and u32(d, 0x277524) == 0x2637A2
+            and u16(d, 0x27752E) == 0x7005
+            and u16(d, 0x277530) == 0x4EB9 and u32(d, 0x277532) == 0x26377A
+            and u16(d, 0x277536) == 0x4EB9 and u32(d, 0x277538) == 0x263808):
+        raise SystemExit("W172: type $8F init loader sequence drifted")
+    if (pc_rel_lea(0x27751C), pc_rel_lea(0x277528)) != (0x2775B0, 0x2775A4):
+        raise SystemExit("W172: type $8F prototype LEAs no longer name exact starts")
+    if d[0x277598:0x2775CC] != bytes.fromhex(
+            "4e75110e0e11110e0d120d12"
+            "000000004040000001010020"
+            "a200f800fb0000000000082808000900060006000300102000000000"):
+        raise SystemExit("W172: type $8F init/palette/prototype extent drifted")
+    if d[0x2775CC:0x2775D2] != bytes.fromhex("4eb9002638a6"):
+        raise SystemExit("W172: type $8F handler no longer starts with $2638A6")
+    if d[0x277826:0x27782E] != bytes.fromhex("4ef9002637624e71"):
+        raise SystemExit("W172: type $8F handler no longer ends at type $95")
+    calls8f = {u32(d, a + 2) for a in range(0x2775CC, 0x27782E, 2)
+               if u16(d, a) == 0x4EB9}
+    required8f = {0x2638A6, 0x242684, 0x286096, 0x24203E, 0x242190,
+                  0x268018, 0x2813F0, 0x28615E, 0x289004, 0x289AF4,
+                  0x27F8EE, 0x28C25A}
+    if not required8f <= calls8f:
+        raise SystemExit(f"W172: type $8F handler call closure drifted: "
+                         f"missing {sorted(required8f - calls8f)!r}")
+    indirect8f = [a for a in range(0x2775CC, 0x27782E, 2)
+                  if u16(d, a) == 0x4E90]
+    if indirect8f != [0x27764E, 0x2776C8]:
+        raise SystemExit(f"W172: type $8F indirect emitter sites drifted: {indirect8f!r}")
+    if not (u16(d, 0x277644) == 0x41FA and pc_rel_lea(0x277644) == 0x27829C
+            and u16(d, 0x2776BE) == 0x41FA and pc_rel_lea(0x2776BE) == 0x27829C):
+        raise SystemExit("W172: type $8F draw sites no longer resolve $27829C")
+    heading8f = [u32(d, 0x272EFA + i * 4) for i in range(32)]
+    if heading8f != [0x154710 + i * 0xA4 for i in range(32)]:
+        raise SystemExit("W172: type $8F 32-entry heading art table drifted")
+    if u16(d, 0x2777A4) != 0x2D7C or u32(d, 0x2777A6) != 0x155B90:
+        raise SystemExit("W172: type $8F fixed death stream drifted")
+    vectors8f = [u32(d, 0x27327A + i * 4) for i in range(32)]
+    if vectors8f[0] != 0x05000000 or vectors8f[8] != 0x004003C0 \
+            or vectors8f[16] != 0xFB800000 or vectors8f[24] != 0x0040FC40:
+        raise SystemExit("W172: type $8F 32-entry firing-vector table drifted")
+    type8f_records = [(script + i * 8, u16(d, script + i * 8))
+                      for i in range(332) if d[script + i * 8 + 4] == 0x8F]
+    if type8f_records != [
+            (0x2327D0, 0x0045), (0x2327D8, 0x0046),
+            (0x232978, 0x00AD), (0x232988, 0x00B0),
+            (0x2329C8, 0x00C0), (0x2329E0, 0x00CF),
+            (0x2329E8, 0x00D1), (0x2329F8, 0x00D5),
+            (0x232A08, 0x00D7), (0x232A10, 0x00D7),
+            (0x232EA8, 0x018B)]:
+        raise SystemExit(f"W172: stage-2 type $8F occurrence order drifted: "
+                         f"{type8f_records!r}")
+    if not (u16(d, 0x232EC0) == 0x018D and d[0x232EC4] == 0x94
+            and (u16(d, 0x232EC6) & 0x0FFF) == 0x03B):
+        raise SystemExit("W172: record after final type $8F is not $232EC0 type $94 idx $03B")
+    if not (u16(d, 0x232820) == 0x0054 and d[0x232824] == 0x84
+            and d[0x27514C:0x275154] == bytes.fromhex("3b7c000100044e75")):
+        raise SystemExit("W172: chronological frontier is not $232820 type $84 body $275154")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")

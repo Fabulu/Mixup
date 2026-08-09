@@ -23,7 +23,8 @@
 -- W170_ISOLATE and W170_KILL_FIRST are explicitly labelled interventions for
 -- emission attribution and the damage/death arm, never pacing evidence.
 -- W171 adds type $8D rows and labelled isolation/two-stage death controls.
--- ENV: W25_FRAMES W25_INPUT W25_TSV W25_POKE_FROM W25_FIRE_FROM W25_MOVE_FROM W25_REQUIRE_BUILD W25_MAX_TRACK W170_ISOLATE W170_KILL_FIRST W171_ISOLATE W171_KILL_SEQUENCE
+-- W172 adds type $8F rows with the same bounded controls.
+-- ENV: W25_FRAMES W25_INPUT W25_TSV W25_POKE_FROM W25_FIRE_FROM W25_MOVE_FROM W25_REQUIRE_BUILD W25_MAX_TRACK W170_ISOLATE W170_KILL_FIRST W171_ISOLATE W171_KILL_SEQUENCE W172_ISOLATE W172_KILL_SEQUENCE
 local TAG = "PROBE "
 local function p(...) print(TAG .. string.format(...)) end
 
@@ -46,6 +47,8 @@ local W170_KILL_FIRST = os.getenv("W170_KILL_FIRST") == "1"
 local W170_ISOLATE = os.getenv("W170_ISOLATE") == "1"
 local W171_KILL_SEQUENCE = os.getenv("W171_KILL_SEQUENCE") == "1"
 local W171_ISOLATE = os.getenv("W171_ISOLATE") == "1"
+local W172_KILL_SEQUENCE = os.getenv("W172_KILL_SEQUENCE") == "1"
+local W172_ISOLATE = os.getenv("W172_ISOLATE") == "1"
 local fh        = TSV and io.open(TSV, "w") or nil
 
 p("SHARES sram=%d", RAM.size)
@@ -57,6 +60,7 @@ local HANDLERS = {
   [0x269CEA] = 0x05, [0x27687E] = 0x8B, [0x268232] = 0x10,
   [0x2779B6] = 0x95, -- W170: first stage-2-only handler
   [0x276A02] = 0x8D, -- W171: bobbing aimed-firing stage-2 enemy
+  [0x2775CC] = 0x8F, -- W172: 32-heading aimed-firing stage-2 enemy
 }
 
 -- ------------------------------------------------------------------ input
@@ -115,6 +119,7 @@ end
 local tracked, byType = {}, {}
 local w170_armed, w170_killed = false, false
 local w171_armed, w171_armed_lf, w171_kill_stage = false, 0, 0
+local w172_armed, w172_armed_lf, w172_kill_stage = false, 0, 0
 
 local function w170_detail(rec, sub, clk)
   if not fh then return end
@@ -138,6 +143,17 @@ local function w171_detail(rec, sub, clk)
     r16(0x80AFC0), r16(0x80AFC6), r16(0x80AFC8)))
 end
 
+local function w172_detail(rec, sub, clk)
+  if not fh then return end
+  local anim = r16(sub + 0x1E)
+  fh:write(string.format(
+    "X8F\t%d\t%04X\t%06X\t%02X\t%02X\t%02X\t%02X\t%04X\t%04X\t%04X\t%04X\t%02X\t%04X\t%06X\t%04X\t%04X\n",
+    lf, clk, rec, r8(rec + 0x17), r8(rec + 0x18), r8(rec + 0x19),
+    r8(rec + 0x1A), r16(rec + 0x1C), r16(rec + 0x1E), r16(rec + 0x20),
+    r16(sub + 0x18), r8(sub + 0x01), anim,
+    PROG:read_u32(0x27829C + anim * 4), r16(0x80AFC0), r16(0x81B40C)))
+end
+
 -- W171 correction: record the two actual index-0 stub writes. Isolation makes
 -- ownership unambiguous; the PC identifies record-vs-register convention and
 -- the tapped address identifies the board bucket. The first-death intervention
@@ -153,6 +169,18 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x80AFC0, 0x80AFC1, "w171-b0",
     return data
   end)
 
+-- W172 has one record-convention draw per handler pass. The exact write PC
+-- identifies `$23D762`'s bucket-0 stub after the indexed `$27829C` dispatch.
+TAPS[#TAPS + 1] = PROG:install_write_tap(0x80AFC0, 0x80AFC1, "w172-b0",
+  function(offset, data, mask)
+    local pc = CPU.state["CURPC"].value & 0xffffff
+    if fh and W172_ISOLATE and w172_armed and pc == 0x23D794 then
+      fh:write(string.format("E8F\t%d\t%06X\trecord\t0\t%04X\t%04X\n",
+        lf, pc, data & 0xffff, mask & 0xffff))
+    end
+    return data
+  end)
+
 -- ------------------------------------- THE ENEMY-DRIVER-ENTRY TAP ($263502)
 TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
   function(offset, data, mask)
@@ -163,7 +191,7 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
     local fz  = r16(0x8130d2)
     local sc  = r16(0x813172)
     local b03c= r16(0x80b03c)
-    local saw95, saw8d = false, false
+    local saw95, saw8d, saw8f = false, false, false
     -- scan all 58 slots; track any live slot whose handler is one of the six.
     for i = 0, 57 do
       local rec = 0x81332C + i * 0x50
@@ -175,6 +203,7 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
         if HANDLERS[handler] then
           if handler == 0x2779B6 then saw95 = true end
           if handler == 0x276A02 then saw8d = true end
+          if handler == 0x2775CC then saw8f = true end
           if not wasTracked then
             -- SPAWN.  Capture the init state: position (post-$263808), the
             -- movement cursor (+$12), the spawn param (+$0A), the class byte
@@ -192,6 +221,7 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
                 b03c, fz, sc))
               if handler == 0x2779B6 then w170_detail(rec, sub, clk) end
               if handler == 0x276A02 then w171_detail(rec, sub, clk) end
+              if handler == 0x2775CC then w172_detail(rec, sub, clk) end
             end
           else
             -- alive another frame: emit the position row.
@@ -202,6 +232,7 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
               r8(sub + 0x1b), r8(sub + 0x1a), r32(rec + 0x12)))
             if handler == 0x2779B6 then w170_detail(rec, sub, clk) end
             if handler == 0x276A02 then w171_detail(rec, sub, clk) end
+            if handler == 0x2775CC then w172_detail(rec, sub, clk) end
           end
         end
       elseif wasTracked then
@@ -275,6 +306,40 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x815e9c, 0x815e9d, "drv",
           w171_kill_stage = w171_kill_stage + 1
           fh:write(string.format("I8D\t%d\tKILL_STAGE%d_MIRROR2_1\t%06X\n",
             lf, w171_kill_stage, rec))
+          break
+        end
+      end
+    end
+    -- W172 controlled interventions. Isolation makes emitter ownership exact;
+    -- the two successive negative-HP writes prove the authentic intermediate
+    -- death state and final free, but are invalid for natural pacing/density.
+    if saw8f and not w172_armed then
+      w172_armed = true
+      w172_armed_lf = lf
+      if W172_ISOLATE then
+        for a = 0x817F8C, 0x81B40B, 2 do RAM:write_u16(a - 0x800000, 0) end
+        RAM:write_u16(0x1B40C, 0)
+        fh:write(string.format("I8F\t%d\tISOLATE\n", lf))
+      end
+    end
+    if w172_armed and W172_ISOLATE then
+      for i = 0, 57 do
+        local rec = 0x81332C + i * 0x50
+        if r16(rec) ~= 0 and r8(rec + 0x0c) ~= 0x8F then
+          RAM:write_u16(rec - 0x800000, 0)
+        end
+      end
+    end
+    if saw8f and W172_KILL_SEQUENCE and lf >= w172_armed_lf + 160
+        and w172_kill_stage < 2 then
+      for rec, handler in pairs(tracked) do
+        if handler == 0x2775CC then
+          local sub = r32(rec + 0x06)
+          RAM:write_u8(sub - 0x800000, r8(sub) | 0x10)
+          RAM:write_u16(sub - 0x800000 + 0x18, 0x8001)
+          w172_kill_stage = w172_kill_stage + 1
+          fh:write(string.format("I8F\t%d\tKILL_STAGE%d\t%06X\n",
+            lf, w172_kill_stage, rec))
           break
         end
       end

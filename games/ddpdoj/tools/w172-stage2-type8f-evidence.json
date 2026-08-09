@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "target": "ddpdojblk VERSION-B (2002.10.07 BLACK VER)",
+  "source": "w25handler.lua controlled MAME run w172-type8f, 2026-08-09",
+  "static_occurrence_count": 11,
+  "static_occurrences": [
+    {"record": 2303952, "trigger": 69, "type": 143},
+    {"record": 2303960, "trigger": 70, "type": 143},
+    {"record": 2304376, "trigger": 173, "type": 143},
+    {"record": 2304392, "trigger": 176, "type": 143},
+    {"record": 2304456, "trigger": 192, "type": 143},
+    {"record": 2304480, "trigger": 207, "type": 143},
+    {"record": 2304488, "trigger": 209, "type": 143},
+    {"record": 2304504, "trigger": 213, "type": 143},
+    {"record": 2304520, "trigger": 215, "type": 143},
+    {"record": 2304528, "trigger": 215, "type": 143},
+    {"record": 2305704, "trigger": 395, "type": 143}
+  ],
+  "observed_occurrences": [],
+  "controlled_attempt": {
+    "run": "w172-type8f",
+    "logic_frames": 13720,
+    "wall_seconds": 137,
+    "options": ["--fire", "1250", "--w172-isolate", "--w172-kill-sequence", "--maxtrack", "96"],
+    "outcome": "NO_STAGE2_TYPE8F",
+    "result": "The run completed with fails=0 but recorded only stage-1 handlers. No X8F, E8F, or I8F row exists in the 4,602,800-byte TSV.",
+    "policy": "This was the wave's single bounded MAME attempt. It was not retried and is not positive type-$8F evidence."
+  },
+  "isolation_intervention": {
+    "armed": false,
+    "operation": "Would clear non-type-$8F enemies only after the first type-$8F pre-handler sample.",
+    "invalid_for": "Pacing, density, difficulty, and unaided lifetime."
+  },
+  "death_intervention": {
+    "armed": false,
+    "stages": 0,
+    "operation": "Would force two successive negative-HP hits only after 160 isolated lifecycle frames."
+  },
+  "emitter": {
+    "observed": false,
+    "live_animation_index": 0,
+    "table_pointer": 2348898,
+    "first_isolated_handler_emissions": []
+  },
+  "limitations": "The board corpus contains no type-$8F occurrence. Lifecycle, firing, two-stage death, and indexed emitter routing are therefore ROM/static and port-unit verified in W172, not claimed as controlled-board observations."
+}

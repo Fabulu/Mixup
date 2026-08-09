@@ -892,6 +892,38 @@ BODY.set(0x276946, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + R.rec19, rom.u8(pal + 1));            // $2769BE
 });
 
+// --- type $8F ($27751C): stage 2's 32-heading aimed-firing enemy. W172.
+//
+// The run-length stub is zero. `$2637A2` therefore copies exactly the one
+// 28-byte sub prototype at `$2775B0..$2775CC`; `$26377A` copies six words from
+// `$2775A4..$2775B0`. The five palette pairs immediately before those records
+// are indexed by the raw stage-times-two byte offset in `$813094`.
+const TYPE8F_AIM_TABLES = new WeakMap();
+BODY.set(0x27751c, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x2775b0);            // $27751C/$277522
+  loadRecordProto(ram, rom, a5, 0x2775a4, 0x05);       // $277528..$277530
+  readInitPosition(ram, rom, a5, unported);            // $277536
+
+  let aimTables = TYPE8F_AIM_TABLES.get(rom);
+  if (!aimTables) { aimTables = new AimTables(rom); TYPE8F_AIM_TABLES.set(rom, aimTables); }
+  const aimed = aim64AtTarget(aimTables, ram, a5, a6); // $27753C/$277540
+  // `$24202C` preserves the caller's D1 on carry (both players dead).
+  const d1 = aimed.carry ? ram.u8(a6 + S.heading) : aimed.dir;
+  ram.setU8(a5 + R.rec21, d1);                         // $27754C
+  ram.setU32(a6 + 0x0a, rom.u32(0x272efa + ((d1 & 0x3e) << 1))); // $277546..$277556
+
+  // The ROM contains a redundant stage comparison whose two arms both load
+  // four. Keeping the resulting constant explicit avoids inventing a rank arm.
+  ram.setU8(a5 + 0x17, 4);                            // $27755C..$27756E
+  const rankBias = u16(ram.u16(G.b6) - 4) & 0xff;
+  ram.setU8(a5 + R.rec1A, ram.u8(a5 + R.rec1A) - rankBias); // $277572..$27757A
+
+  const pal = 0x27759a + ram.u16(G.stageX2);           // $27757E..$27758A
+  ram.setU8(a6 + S.palette, rom.u8(pal));              // $27758C
+  ram.setU8(a5 + R.rec18, rom.u8(pal));                // $277590
+  ram.setU8(a5 + R.rec19, rom.u8(pal + 1));            // $277594
+});
+
 // ============================================================ the entry point
 /** Run the init+8 body at `addr`.  Replaces spawn.js's throwing stub.  Returns
  *  FREED if the body freed the enemy (a stage-kill gate fired); otherwise

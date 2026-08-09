@@ -9,7 +9,7 @@ READER-ONLY.  Writes a TSV under `out/` (gitignored, ROM-derived).  Same labelle
 interventions as W17/W22/W23/W24 (invulnerable + auto-shot), so the corpus is
 comparable.  AUTO-SHOT DISABLED by default (isolates movement from the W28
 hit-reaction, as W24 F6 measured); pass --fire N to re-enable.  ~3-4 min for
-5000 frames. W170/W171 controls are labelled interventions in the TSV and are
+5000 frames. W170/W171/W172 controls are labelled interventions in the TSV and are
 invalid for pacing.
 """
 from __future__ import annotations
@@ -50,6 +50,8 @@ def main() -> int:
         "W170_KILL_FIRST": "1" if "--w170-kill-first" in argv else "0",
         "W171_ISOLATE": "1" if "--w171-isolate" in argv else "0",
         "W171_KILL_SEQUENCE": "1" if "--w171-kill-sequence" in argv else "0",
+        "W172_ISOLATE": "1" if "--w172-isolate" in argv else "0",
+        "W172_KILL_SEQUENCE": "1" if "--w172-kill-sequence" in argv else "0",
     }
     r = pgm.run(HERE / "w25handler.lua", seconds=max(600, frames // 20 + 600),
                 env=env, timeout=7200)

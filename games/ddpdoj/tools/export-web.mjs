@@ -111,7 +111,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 // W86: the art harvest for the background elements is derived from the PORT's
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
-import { TYPE8D_ART, TYPE95_ART } from '../src/handlers.js';
+import { TYPE8D_ART, TYPE8F_ART, TYPE95_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -281,6 +281,13 @@ if (u17.length !== SOUND.fileSize) {
 //
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
+  // W172. `$272EFA`'s first 32 longs are type $8F's heading selector. The
+  // next 32 valid pointers are the adjacent type $89 family, so the valid
+  // pointer run is 64 while this registry owns exactly its first half.
+  [17, TYPE8F_ART.headingTable, TYPE8F_ART.headings, 4, 64, 0x272ffa,
+    'stage-2 type $8F heading art. $277550 masks the aimed heading to $3E '
+      + 'and doubles it, reaching exactly the first 32 longwords; the next '
+      + '32 valid pointers belong to a separately indexed family'],
   // W171. The 32 headings and six descending animation pointers are adjacent
   // pointer tables, but separate indexed families. The first valid-pointer run
   // therefore has 38 entries while only its first 32 belong to the heading
@@ -706,8 +713,8 @@ const SPR_SHARDS = Object.freeze([
   // The `why` below is what the page prints when the shard has not landed, and
   // `manifest.json` is served UNCOMPRESSED, so every character is a boot byte.
   [17, 'boss', 'THE STAGE-1 BATTLESHIP: its hull $292F84 and the six OBJECT '
-    + 'tables around it, plus stage-2 type $95\'s ten-stream family. The two '
-    + 'late-game families share one derived packed shard (W98/W170)'],
+    + 'tables around it, plus stage-2 types $95/$8D/$8F. These compact '
+    + 'late-game families share one derived packed shard (W98/W170-W172)'],
 ]);
 const SPR_BOOT = [0];
 /** the order the deferred shards are FETCHED in -- measured first need, not
@@ -965,7 +972,7 @@ for (const offs of [TYPE95_ART.main, TYPE95_ART.fixed]) {
 // The four `$278338` shared overlays are already owned by W53/W58's closed
 // `$22C59C` chain in shard 10, completing the 43-stream dependency family
 // without changing their established shard owner.
-for (const offs of [TYPE8D_ART.death]) {
+for (const offs of [TYPE8D_ART.death, TYPE8F_ART.death]) {
   if (!streams.has(offs)) {
     streams.set(offs, romExtent(offs));
     shardOfStream.set(offs, 17);

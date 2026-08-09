@@ -39,6 +39,7 @@ W168_JSON = HERE / "w168-stage2-bgelem-evidence.json"
 W169_JSON = HERE / "w169-stage2-spawn-evidence.json"
 W170_JSON = HERE / "w170-stage2-type95-evidence.json"
 W171_JSON = HERE / "w171-stage2-type8d-evidence.json"
+W172_JSON = HERE / "w172-stage2-type8f-evidence.json"
 RAM_BASE = 0x800000
 
 
@@ -332,6 +333,23 @@ def read_w171_type8d_spawns():
     return rows
 
 
+def read_w172_type8f_spawns():
+    """Read W172's record-qualified type-$8F lifecycle corpus."""
+    if not W172_JSON.exists():
+        raise FileNotFoundError(f"{W172_JSON} missing")
+    doc = json.loads(W172_JSON.read_text(encoding="utf-8"))
+    if doc.get("schema") != 1 or "VERSION-B" not in doc.get("target", ""):
+        raise ValueError(f"{W172_JSON.name} is not VERSION-B schema 1 evidence")
+    if doc.get("static_occurrence_count") != 11:
+        raise ValueError(f"{W172_JSON.name} lost the exact 11-record static count")
+    rows = doc.get("observed_occurrences", [])
+    if any(int(row.get("type", -1)) != 0x8F for row in rows):
+        raise ValueError(f"{W172_JSON.name} must hold type-$8F occurrences")
+    if not rows and doc.get("controlled_attempt", {}).get("outcome") != "NO_STAGE2_TYPE8F":
+        raise ValueError(f"{W172_JSON.name} has neither observations nor the bounded negative result")
+    return rows
+
+
 def lower_bound(rom: Rom, addresses):
     seen = {}
     indirect = 0
@@ -377,6 +395,28 @@ def build_report(break_coverage=False, break_inventory=False,
     for name in ("stage1_bgelem", "stage2_bgelem"):
         families[name], p = walk_bgelem(rom, regs, cfg[name]); phantoms += p
 
+    # The stage-2 backlog is executable configuration, not prose. Re-derive
+    # every row from the live source registries, ROM script, aux table and
+    # movement-resource offsets and refuse any stale/reordered/manual list.
+    frontier = next(x for x in config["backlog"]
+                    if x["name"] == "stage2_enemy_frontier_type84")
+    tab = cfg["stage2_spawn_script"]["stage_table"] + 0x10
+    aux, resource = rom.r32(tab + 4), rom.r32(tab + 8)
+    offsets = [rom.r16(aux + i * 2) for i in range(174)]
+    exact_backlog = []
+    for e in families["stage2_spawn_script"]:
+        if e["ported"]:
+            continue
+        record = int(e["record"])
+        idx = rom.r16(record + 6) & 0x0FFF
+        end_off = offsets[idx + 1] if idx + 1 < len(offsets) else 0x1126
+        exact_backlog.append([record, e["trigger"], e["type"], e["init_body"],
+                              e["handler"], idx, resource + offsets[idx],
+                              resource + end_off])
+    if frontier.get("remaining_records") != exact_backlog:
+        raise ValueError("stage2_enemy_frontier_type84 remaining_records is not "
+                         "the exact ordered live-registry/ROM backlog")
+
     object_types, ckpt_updates, n_ckpt = read_checkpoints()
     enemy_dynamic = read_enemy_dynamic()
     spawned_types = read_spawned_types()
@@ -385,6 +425,7 @@ def build_report(break_coverage=False, break_inventory=False,
     w169_spawns = read_w169_stage2_spawns()
     w170_spawns = read_w170_type95_spawns()
     w171_spawns = read_w171_type8d_spawns()
+    w172_spawns = read_w172_type8f_spawns()
     inventory_errors = []
 
     object_by_id = {int(e["key"]): e for e in families["top_objects"]}
@@ -506,6 +547,21 @@ def build_report(break_coverage=False, break_inventory=False,
         else:
             e["dynamic"] = True
 
+    for row in w172_spawns:
+        record = int(row["record"])
+        trigger = int(row["trigger"])
+        typ = int(row["type"])
+        e = stage2_spawn_by_record.get(record)
+        if e is None:
+            inventory_errors.append(
+                f"w172 observed stage 2 spawn record ${record:06X} outside static inventory")
+        elif e["trigger"] != trigger or e["type"] != typ:
+            inventory_errors.append(
+                f"w172 stage 2 spawn ${record:06X} observed trigger ${trigger:04X}/type ${typ:02X}, "
+                f"static record says ${e['trigger']:04X}/${e['type']:02X}")
+        else:
+            e["dynamic"] = True
+
     if break_stage2_spawn_inventory:
         inventory_errors.append(
             "DELIBERATE RED: w169 observed stage 2 spawn record $2325C8 outside static inventory")
@@ -548,7 +604,8 @@ def build_report(break_coverage=False, break_inventory=False,
                               # type-only count.
                               w169_stage2_spawn_events=len(w169_spawns),
                               w170_type95_spawn_events=len(w170_spawns),
-                              w171_type8d_spawn_events=len(w171_spawns)),
+                              w171_type8d_spawn_events=len(w171_spawns),
+                              w172_type8f_spawn_events=len(w172_spawns)),
                 families=report_families, delegated=config["delegated"],
                 backlog=config["backlog"], phantoms=sorted(phantoms),
                 inventory_errors=inventory_errors,

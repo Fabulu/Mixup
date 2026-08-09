@@ -245,7 +245,7 @@ test('the handler adapter covers every address in handlerMap(), and only those',
   { skip: SKIP }, () => {
     const m = enemyHandlerMap(ROM);
     assert.deepEqual([...m.keys()].sort(), [...HANDLER_ADDRESSES].sort());
-    assert.equal(m.size, 23, 'W25 ported six of stage 1\'s nineteen SCRIPT '
+    assert.equal(m.size, 24, 'W25 ported six of stage 1\'s nineteen SCRIPT '
       + 'handlers; W30 added $275914, $2739C0 and $276702 -- the three that '
       + 'BLOCKED the fly-around gate -- W31 added $26B6FA, the MIDMOSS, the '
       + 'fourth, W33 added $272AAC, the scripted carrier, and W36 added the '
@@ -256,8 +256,8 @@ test('the handler adapter covers every address in handlerMap(), and only those',
       + 'the nineteen: nothing in the script spawns type $1C -- the midboss\'s '
       + 'own death does ($26B7E0/$26B7E2). W103 added $296DD6, which is also '
       + 'NOT one of the nineteen: it is the boss\'s carrier enemy, spawned by '
-      + 'E 8. W170 adds stage-2 type $95 handler $2779B6 and W171 adds type '
-      + '$8D handler $276A02, so the map has 23 '
+      + 'E 8. W170 adds stage-2 type $95 handler $2779B6, W171 adds type '
+      + '$8D handler $276A02, and W172 adds $8F handler $2775CC, so the map has 24 '
       + 'entries against the stage-1 script denominator of 19/19');
   });
 
