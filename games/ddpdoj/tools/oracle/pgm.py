@@ -1178,6 +1178,30 @@ def _cmd_check(argv: list[str]) -> int:
                    if _bosscov("--break-inventory")[0] == "FAIL"
                    else ("FAIL", "GREEN with an unknown dynamic entry "
                                  "-- it is not measuring the inventory")))
+    # W167. Reuse W102's proven static walker for the other closed dispatch
+    # shapes that have source-derived registries and independent evidence:
+    # top objects, the type-5 bus, all enemy types, stage-1/2 spawn scripts and
+    # stage-1/2 BGELEM tables. bosscoverage.py remains its own authoritative
+    # gate above. Address-register indirect calls stay explicit lower bounds.
+    DOJ_COV = TOOLS.parent / "tools" / "dojcoverage.py"
+
+    def _dojcov(*extra):
+        if not MAINCPU.exists():
+            return ("SKIP", f"{MAINCPU.name} missing -- run any oracle command once")
+        return sub(DOJ_COV, *extra)
+
+    stage("DOJ reusable static/dynamic coverage: stage 1 + stage 2 closed families",
+          lambda: _dojcov())
+    stage("DOJ reusable coverage RED [coverage regression]",
+          lambda: (("PASS", "went red on a dropped live-registry entry, as it must")
+                   if _dojcov("--break-coverage")[0] == "FAIL"
+                   else ("FAIL", "GREEN with a live-registry entry dropped "
+                                 "-- it is not measuring coverage")))
+    stage("DOJ reusable coverage RED [inventory regression]",
+          lambda: (("PASS", "went red on an unknown dynamic entry, as it must")
+                   if _dojcov("--break-inventory")[0] == "FAIL"
+                   else ("FAIL", "GREEN with an unknown dynamic entry "
+                                 "-- it is not measuring the inventory")))
     # WAVE 13.  THE SCROLL PROGRAM, and it is here rather than under `if not
     # quick` because it needs NO EMULATOR RUN: it replays src/background.js
     # against TSVs already on disk (the wave-17 whole-stage corpus, the attract

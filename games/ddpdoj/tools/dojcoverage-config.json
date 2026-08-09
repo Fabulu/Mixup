@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "target": "ddpdojblk VERSION-B (2002.10.07 BLACK VER)",
+  "families": [
+    {
+      "name": "top_objects",
+      "shape": "stride8_pointer_data",
+      "base": 2363234,
+      "count": 20,
+      "ported_from": "src/main.js defaultHandlers",
+      "dynamic_from": "w69 stage1-sweep checkpoint object slots"
+    },
+    {
+      "name": "type5_calls",
+      "shape": "direct_jsr_range",
+      "start": 2668006,
+      "end": 2668144,
+      "count": 23,
+      "ported_from": "src/type5.js TYPE5_PORTED",
+      "dynamic_from": null
+    },
+    {
+      "name": "enemy_types",
+      "shape": "two_stride8_pointer_pairs",
+      "bases": [2521124, 2614290],
+      "count_each": 128,
+      "ported_from": "src/initbody.js BODY.set plus src/handlers.js HANDLERS",
+      "dynamic_from": "w22-spawn-stage1.tsv allocator claims plus w25-handler-stage1.tsv SPAWN rows"
+    },
+    {
+      "name": "stage1_spawn_script",
+      "shape": "ffff_terminated_stride8_records",
+      "stage": 0,
+      "stage_table": 2503478,
+      "ported_from": "enemy_types live source registries",
+      "dynamic_from": null
+    },
+    {
+      "name": "stage2_spawn_script",
+      "shape": "ffff_terminated_stride8_records",
+      "stage": 1,
+      "stage_table": 2503478,
+      "ported_from": "enemy_types live source registries",
+      "dynamic_from": null
+    },
+    {
+      "name": "stage1_bgelem",
+      "shape": "adjacent_pointer_table_with_constructor_update_pair",
+      "stage": 0,
+      "pointer_table": 2499330,
+      "ported_from": "src/background.js BGELEM_HANDLERS",
+      "dynamic_from": "w69 stage1-sweep checkpoint element slots"
+    },
+    {
+      "name": "stage2_bgelem",
+      "shape": "adjacent_pointer_table_with_constructor_update_pair",
+      "stage": 1,
+      "pointer_table": 2499330,
+      "ported_from": "src/background.js BGELEM_HANDLERS",
+      "dynamic_from": "w75 seedcmp blocked entry addresses"
+    }
+  ],
+  "delegated": [
+    {
+      "name": "stage1_boss_scheduler",
+      "tool": "bosscoverage.py",
+      "reason": "The proven W102 gate remains authoritative and must not be weakened."
+    }
+  ],
+  "backlog": [
+    {
+      "name": "stage3_to_stage5_spawn_scripts",
+      "shape": "ffff_terminated_stride8_records",
+      "status": "CONFIG_READY_DYNAMIC_UNKNOWN",
+      "reason": "The ROM inventory is closed, but this repository has no stage-3 to stage-5 execution corpus."
+    },
+    {
+      "name": "stage3_to_stage5_bgelem",
+      "shape": "adjacent_pointer_table_with_constructor_update_pair",
+      "status": "CONFIG_READY_DYNAMIC_UNKNOWN",
+      "reason": "The ROM inventory is closed, but this repository has no stage-3 to stage-5 execution corpus."
+    },
+    {
+      "name": "pool_a_non_bee_kinds",
+      "shape": "stride4_pointer_table",
+      "status": "UNKNOWN_ACTIVATION",
+      "reason": "The 18 general-allocator kind sources are register-computed and remain unattributed."
+    },
+    {
+      "name": "closure_only_hud_result_hyper",
+      "shape": "closure_roots",
+      "status": "NO_STABLE_LIVE_REGISTRY",
+      "reason": "These are direct callees, not dispatch tables. A source-derived port registry is required before gating coverage."
+    },
+    {
+      "name": "indirect_call_targets",
+      "shape": "jsr_address_register",
+      "status": "UNKNOWN",
+      "reason": "Static instruction totals remain lower bounds until each address-register target family is proven."
+    }
+  ]
+}
