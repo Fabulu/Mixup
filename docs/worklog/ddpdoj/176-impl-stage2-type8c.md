@@ -57,6 +57,8 @@ declines.
 - Focused W176/W175/boot/registry/coverage set: 38 passed, zero failed/skipped.
 - `export-tables.py --verify`: passed, 232 windows, 272,574 bytes.
 - `dojcoverage.py`: passed.
+- Release gate: 1,487 passed, zero failed/skipped; bundle/web and ROM-leak
+  checks passed.
+- Published and confirmed live as build `20260809092221`.
 
-No full-suite run was made for this focused family change. The protected owner
-files and `NUL` were not touched or staged.
+The protected owner files and `NUL` were not touched or staged.

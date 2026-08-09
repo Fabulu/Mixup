@@ -513,6 +513,10 @@ SHOT_WINDOWS.extend([
                        "tail, handler, exact body/attachment/pose/fire tables "
                        "and fifteen-entry death palette-animation list through "
                        "the next local type $90 stub at $279802"),
+    (0x279AA2, 0x022E, "W177: complete stage-2 type $91 body closure: init, "
+                       "palette/record/sub-record prototypes, death tail, "
+                       "handler, three pool-B effects and seven-vector impact "
+                       "table plus the next local type $92 stub through $279CD0"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
@@ -2406,6 +2410,54 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if not (u16(d, 0x232CE8) == 0x013F and d[0x232CEC] == 0x91
             and (u16(d, 0x232CEE) & 0x0FFF) == 0x02B):
         raise SystemExit("W176: next frontier is not $232CE8 type $91 idx $02B")
+
+    # W177. Type $91 has one long-form sub-record, a two-word record prototype,
+    # a five-pair palette table, one indirect emitter, three pool-B effects and
+    # a seven-long impact table consumed only after its death linger underflows.
+    if not (pc_rel_lea(0x279AA2) == 0x279AEC
+            and u16(d, 0x279AA8) == 0x4EB9 and u32(d, 0x279AAA) == 0x2637A2
+            and pc_rel_lea(0x279AAE) == 0x279AE8
+            and u16(d, 0x279AB4) == 0x7001
+            and u16(d, 0x279AB6) == 0x4EB9 and u32(d, 0x279AB8) == 0x26377A
+            and u16(d, 0x279ABC) == 0x4EB9 and u32(d, 0x279ABE) == 0x263808):
+        raise SystemExit("W177: type $91 init loader sequence drifted")
+    if d[0x279ADE:0x279AE8] != bytes.fromhex("100f110e100f100f100f"):
+        raise SystemExit("W177: type $91 five stage palette pairs drifted")
+    if d[0x279AE8:0x279AEC] != bytes.fromhex("000c0000"):
+        raise SystemExit("W177: type $91 two-word record prototype drifted")
+    if d[0x279AEC:0x279B08] != bytes.fromhex(
+            "a000ee00f80000235470124012001200060006000e00100000000000"):
+        raise SystemExit("W177: type $91 long-form sub-record prototype drifted")
+    calls91 = {u32(d, a + 2) for a in range(0x279AA2, 0x279CC8, 2)
+               if u16(d, a) == 0x4EB9}
+    required91 = {0x2637A2, 0x26377A, 0x263808, 0x2638A6, 0x286096,
+                  0x28C2DC, 0x28615E, 0x289004, 0x27F8FA}
+    if not required91 <= calls91:
+        raise SystemExit(f"W177: type $91 call closure drifted: "
+                         f"missing {sorted(required91 - calls91)!r}")
+    if sum(1 for a in range(0x279BBA, 0x279CA8, 2)
+           if u16(d, a) == 0x4EB9 and u32(d, a + 2) == 0x289004) != 3:
+        raise SystemExit("W177: type $91 death is no longer exactly three effects")
+    if u16(d, 0x279BB6) != 0x4E90:
+        raise SystemExit("W177: type $91 indirect emitter site drifted")
+    if [u16(d, 0x279CA8), u16(d, 0x279CAA)] != [0x0008, 0x0006]:
+        raise SystemExit("W177: type $91 death-tail D0/DBRA setup drifted")
+    if [u32(d, 0x279CAC + i * 4) for i in range(7)] != [
+            0x0C000100, 0x0800FF00, 0x04000100, 0x0000FF00,
+            0xFC000100, 0xF800FF00, 0xF4000100]:
+        raise SystemExit("W177: type $91 seven-vector impact table drifted")
+    type91_records = [(script + i * 8, u16(d, script + i * 8),
+                       u16(d, script + i * 8 + 6) & 0x0FFF)
+                      for i in range(332) if d[script + i * 8 + 4] == 0x91]
+    if type91_records != [(0x232CE8, 0x013F, 0x02B)]:
+        raise SystemExit(f"W177: stage-2 type $91 occurrence order drifted: "
+                         f"{type91_records!r}")
+    if d[0x233634:0x23363A] != bytes.fromhex("c0032d10c002"):
+        raise SystemExit("W177: type $91 movement stream idx $02B drifted")
+    if not (u16(d, 0x232D58) == 0x0155 and d[0x232D5C] == 0x92
+            and (u16(d, 0x232D5E) & 0x0FFF) == 0x038
+            and d[0x279CC8:0x279CD0] == bytes.fromhex("3b7c000000044e75")):
+        raise SystemExit("W177: next frontier is not $232D58 type $92 idx $038")
     decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == script]
     if decl != [(script, rows[2][0] - script)]:
         raise SystemExit(f"W169: stage-2 spawn window is {decl}, expected one exact span")

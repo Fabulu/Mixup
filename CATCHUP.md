@@ -3,7 +3,7 @@
 > **HISTORICAL DELTA, not current status.** This narrative records the rapid
 > 2026-08-06 through 2026-08-08 transition and intentionally preserves the
 > claims made at each checkpoint. Later sections supersede earlier ones, and
-> DDPDOJ has since advanced through W176. Use `instructions.md`, live `git log`,
+> DDPDOJ has since advanced through W177. Use `instructions.md`, live `git log`,
 > and the newest numbered worklogs for the current queue and counts.
 
 **You are resuming a project you last touched around DaiOuJou W26/W27 and
@@ -857,3 +857,17 @@ simulator with a JSON control server, giving a third oracle that runs locally.
 does. Two caveats are recorded: it used MAME as a reference so they are not
 independent witnesses, and the ARM7 internal ROM is recreated in both, so on
 protection they may share one reconstruction.
+
+## 9. UPDATE -- 2026-08-09: W177 TYPE `$91` IMPLEMENTED
+
+W177 ports the sole stage-2 type `$91` record at `$232CE8`, clock `$013F`.
+The exact `$279A9A..$279CD0` dependency closure includes its init stub/body,
+one long-form prototype, palette threshold, handler, indirect draw, BCD score
+`$13`, three kind-5 pool-B death effects, byte linger, and seven-vector
+`$27F8FA` terminal impact request.
+
+The controlled boot now completes 241 records with 237 allocations and four
+authentic declines, then stops honestly at type `$92` body `$279CD0`, record
+`$232D58`, clock `$0155`. Coverage is 37/256 enemy types and 316/332 stage-2
+records, with 16 unknown. Focused W177 and affected regressions pass with zero
+failures or skips. Publication is the current release step.

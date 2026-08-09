@@ -1043,6 +1043,22 @@ BODY.set(0x2789f6, (ram, rom, a5, a6, unported, tablesArg, palette, soundPost) =
   if (ram.u16(G.rank98) !== 0) ram.setU16(0x81b416, 1);
 });
 
+// --- type $91 ($279AA2): stage 2's compact damage-threshold enemy. W177.
+//
+// The run-length stub is zero. `$2637A2` therefore consumes the one 28-byte
+// long-form prototype at `$279AEC..$279B08`; the two-word record prototype and
+// five stage palette pairs sit immediately before it.
+BODY.set(0x279aa2, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x279aec);             // $279AA2..$279AA8
+  loadRecordProto(ram, rom, a5, 0x279ae8, 0x01);       // $279AAE..$279AB6
+  readInitPosition(ram, rom, a5, unported);            // $279ABC
+
+  const pal = 0x279ade + ram.u16(G.stageX2);           // $279AC2..$279ACE
+  ram.setU8(a6 + S.palette, rom.u8(pal));               // $279AD0
+  ram.setU8(a5 + R.rec18, rom.u8(pal));                 // $279AD4 reads (A0)+
+  ram.setU8(a5 + R.rec19, rom.u8(pal + 1));             // $279AD8 adjacent byte
+});
+
 // ============================================================ the entry point
 /** Run the init+8 body at `addr`.  Replaces spawn.js's throwing stub.  Returns
  *  FREED if the body freed the enemy (a stage-kill gate fired); otherwise

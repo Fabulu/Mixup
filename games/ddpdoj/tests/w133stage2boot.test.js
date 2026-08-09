@@ -172,7 +172,7 @@ test('W133/2 the stage-1 $FFFF terminator is at $231704, where the seed parks '
 // ===========================================================================
 
 test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at type '
-  + '$91 init body after W176', { skip: SKIP }, () => {
+  + '$92 init body after W177', { skip: SKIP }, () => {
   const r = bootStage2();
 
   // (a) stage 2 really booted: $813096 went 0 -> 4 (stage index 1, x4).
@@ -190,8 +190,8 @@ test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at type '
     + 'times); without window 2 the column-stream read would throw earlier');
 
   assert.ok(r.threw instanceof Unreached);
-  assert.strictEqual(r.threw.romAddress, 0x279aa2);
-  assert.strictEqual(r.throwClock, 0x013f);
+  assert.strictEqual(r.threw.romAddress, 0x279cd0);
+  assert.strictEqual(r.throwClock, 0x0155);
   assert.notStrictEqual(r.threw.romAddress, STAGE2_ELEM0_CTOR,
     'W168\'s later background constructor is no longer the first stop');
 });
@@ -202,7 +202,7 @@ test('W133/3 booting from lf19500 reaches stage 2 and stops honestly at type '
 // ===========================================================================
 
 test('W133/4 installer replaces the old terminator and the exact ordered prefix '
-  + 'completes before type $91', { skip: SKIP }, () => {
+  + 'completes before type $92', { skip: SKIP }, () => {
   const r = bootStage2();
 
   assert.strictEqual(r.seedLiveCursor, STAGE1_FFFF,
@@ -211,10 +211,10 @@ test('W133/4 installer replaces the old terminator and the exact ordered prefix 
     + 'no-garbage-spawn argument has no foundation');
   assert.ok(r.game.stageEndEvents.some((e) => e[0] === 'spawn-install'
     && e[2] === 0x2325d0), '$26331E/$263386 installed stage 2 at clock zero');
-  assert.strictEqual(r.game.allocEvents.get('spawn-script'), 223,
-    '223 of the 227 consumed records allocate slots; four authentically decline');
-  assert.strictEqual(r.game.ram.u32(LIVE_CURSOR), 0x232ce8,
+  assert.strictEqual(r.game.allocEvents.get('spawn-script'), 237,
+    '237 of the 241 consumed records allocate slots; four authentically decline');
+  assert.strictEqual(r.game.ram.u32(LIVE_CURSOR), 0x232d58,
     'the live cursor names the exact record whose init callback throws');
-  assert.strictEqual((r.game.ram.u32(LIVE_CURSOR) - 0x2325d0) / 8, 227,
-    'the live cursor proves the 227-record prefix completed before type $91');
+  assert.strictEqual((r.game.ram.u32(LIVE_CURSOR) - 0x2325d0) / 8, 241,
+    'the live cursor proves the 241-record prefix completed before type $92');
 });
