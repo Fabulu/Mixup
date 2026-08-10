@@ -28,21 +28,29 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is `35cdeee ddpdoj: draw the stage-clear banner, and measure the rest of D11`.
-- Suite: `node --test games/ddpdoj/tests/` is **1629/1629**, green, no skips.
+- HEAD is `3a0291d ddpdoj: spawn the secondary explosion`.
+- Suite: `node --test games/ddpdoj/tests/` is **1634/1634**, green, no skips.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
   closed at 414/414 script records and 28/28 script types.
 - The Stage-4 enemy section is translated through its boss spawn, and the Stage-4
   boss through its first damage-driven destruction transition (W224).
-- **A death is fully survivable.** W227 the option arm, W228 the respawn, W231 the
-  player object INIT and the pods' deploy. The headless scenario takes three
-  deaths and two full respawns; the ship comes back at the position its respawn
-  entry carries, with `$F0` frames of invulnerability, and its pods deploy to the
-  exact target `$24C928` names.
-- The stage transition MACHINE works; its presentation is the gap (see D11).
-- Sprite stream total is 3979, and the descriptor sweep reports zero unresolvable
-  descriptors bundle-wide.
+- **A death works end to end** (W227, W228, W231): the animation, the reset, the
+  life spent, a fresh player object placed where its respawn entry says, `$F0`
+  frames of invulnerability, and the pods deploying to the exact `$24C928` target.
+- The stage transition MACHINE works and its banner picture draws (W232); the rest
+  of its presentation is the gap.
+- The bee popup works (W234), and the secondary explosion spawns (W235).
+- Sprite streams 3985. `w230descriptorsweep.mjs` draws 718 distinct descriptors
+  with ZERO unresolvable.
 - Stage 5 has not started, and no loop-2 work has started.
+
+## An hourly cron is running
+
+A session-scoped job fires every hour at :23 telling the next wake to resume
+immediately, take the FIRST unfinished item in the work order below, and spend the
+wake on translation rather than on process. It is session-only: it dies with the
+Claude session and cannot restart one that has exited. It also auto-expires after
+seven days.
 
 ## The docket comes first
 
@@ -56,20 +64,20 @@ instrument (W230), and D11's banner picture (W232).
 
 ## Work order toward the goal
 
-1. **The TX TEXT layer, `$240DC2` and `$240EBC`.** No wave has touched it. It is 60
-   calls per stage transition, and it is very likely what D6's score popup and
-   D7's hyper gauges are waiting on too, so it pays three docket items at once.
-2. **The rest of D11**: the result screen (`$23C638`, `$246410`, `$28D77C`,
-   `$28DE72`/`$28C186`), the banner's `$24150A` resource installs, and
-   `$253794`, the option-pod teardown. All are counted by address today, so the
-   transition runs but shows almost nothing.
-3. **D3/D4, the missing explosions.** The sweep proves these are producer
-   problems, not bundle problems: run
-   `node games/ddpdoj/tools/w230descriptorsweep.mjs` and work its counted-gap
-   list. `$289AF4`, the secondary effect spawn, is the first candidate.
+1. **The rest of D11's transition presentation.** The result screen (`$23C638`
+   palette cue, `$246410` animation-object load, `$28D77C` sixteen longwords of
+   palette RAM, `$28DE72`/`$28C186` exit handshake), the banner's five `$24150A`
+   resource installs, and `$253794` the option-pod teardown. Force `$242952`
+   headlessly and read the counted gaps -- that measurement is what scoped W232.
+2. **The rest of D3/D4.** `$27F8F8`'s bullet death effect is the next producer on
+   the sweep's counted-gap list. D4's stage-2 mid boss needs the sweep run DURING
+   stage 2 rather than an assumption that it shares a cause.
+3. **The stale `$240DC2` call sites** in `items.js` (five of them). The printer is
+   ported; each site needs its own register-setup transcription. This is also the
+   likely route to D7's gauges.
 4. **Object dispatch `[4]` `$260B30`**, unported and running twice a frame.
 5. **Resume W225**, Stage-4 boss A4/F5 `$2A0CF6`, recon banked in its worklog.
-6. **Stage 5, then the loops.** Only after a credit reaches them.
+6. **Stage 5, then the loops.**
 
 D8, D10 and D12 are presentation or documentation and can be slotted in between.
 
