@@ -78,9 +78,13 @@ between the above whenever a natural gap appears.
 ## Verification commands
 
 - One slice: `node --test games/ddpdoj/tests/<the focused file>.test.js`
-- Full suite: `node --test games/ddpdoj/tests/` -- currently 1611/1616 with the
-  five stale censuses above as the only failures. Do not pipe it through `tail`;
-  that discards the failure detail.
+- Full suite: `node --test games/ddpdoj/tests/` -- currently 1620/1620, green.
+  Keep it that way: W229 had to close five censuses that had been red since the
+  Stage-4 waves, and while they were red they could not catch anything. Do not
+  pipe the run through `tail`; that discards the failure detail.
+- The sprite question: `node games/ddpdoj/tools/w230descriptorsweep.mjs`, which
+  reports every descriptor the port draws that the bundle cannot resolve, plus the
+  display-list drops and the counted gaps. Currently zero missing.
 - After any change to `tools/export-tables.py`, run `python export-tables.py`,
   and run `node export-web.mjs` before any publish so the site does not serve
   stale assets.
@@ -125,7 +129,7 @@ only authored source/exporter/test/worklog files. Never use `git add -A`.
 
 ## Worklog numbering
 
-Live numbers: 227 is the highest and is COMPLETE. 225 is PAUSED with its recon
-banked. Reserve the next number with an `apply_patch` Add File for
+Live numbers: 230 is the highest and is COMPLETE. 225 is PAUSED with its recon
+banked; every other number through 230 is COMPLETE. Reserve the next number with an `apply_patch` Add File for
 `<N>-RESERVED.md`, then rename it immediately to the real `IN PROGRESS` worklog
 as `AGENTS.md` requires.
