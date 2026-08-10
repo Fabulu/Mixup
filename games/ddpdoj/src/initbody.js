@@ -1839,6 +1839,72 @@ BODY.set(0x2a37e4, (ram, rom, a5, a6) => {
   ram.setU16(a5 + R.rec20, 0);
 });
 
+// --- type $42 ($2A3952): the Stage-4 boss's CHILDREN, spawned in formations by
+// A1 9 ($2A30DC) and A1 11 ($2A31BA) and by nothing else in the image.
+//
+// `$2A394A` is a two-instruction runLen stub (`move.w #$4,$4(a5) / rts`), so the
+// body proper is 8 bytes past the table's init pointer -- the same shape type $41
+// has, whose BODY is keyed at `$2A37E4` for `$2A37DC`.
+//
+// TWO fields the spawner puts in the queue entry decide everything downstream:
+//   `$21(a5)` -> `$3C(a6)`, THE ROLE.  A1 9 writes `$FF` as a constant; A1 11
+//     writes 0..7 and `$70`/`$71` out of its own list.  See worklog 253.
+//   `$1C(a5)`, THE PARENT.  A1 9 stores the boss's sub-record there, and the
+//     position below is computed RELATIVE to it, which is what keeps a formation
+//     attached to the pod that launched it.
+//
+// The six angles that raise `$8D(a6)` -- `$10 $65 $BB $F0 $45 $9B` -- are exactly
+// six of the nine in A1 9's two clustered formations (`$2A3152`, `$2A315D`), and
+// none of the eight in its two rings.  So that flag marks a cluster member.
+BODY.set(0x2a3952, (ram, rom, a5, a6, _unported, tables) => {
+  loadSubProto(ram, rom, a5, a6, 0x2a3a6a);             // $2A3952..$2A3958
+  ram.setU32(a6 + S.posX, ram.u32(a5 + R.rec16));       // $2A395E
+  ram.setU8(a6 + S.speed, 0);                           // $2A3964
+  ram.setU8(a5 + R.rec16, 0);                           // $2A396A clr.b only
+  ram.setU8(a5 + R.rec17, 0);                           // $2A396E
+  ram.setU8(a6 + 0x3c, ram.u8(a5 + R.rec21));           // $2A3974 -- THE ROLE
+
+  // $2A397A..$2A39A0 -- the speed byte, SIGN-EXTENDED into three words, and $6C(a6)
+  // is set only when it came out negative. A1 9's lists carry $0E and $F2, so this
+  // is where +14 and -14 become "down" and "up".
+  const speed = (ram.u8(a5 + R.rec1A) << 24) >> 24;     // $2A397C/$2A3980 ext.w
+  ram.setU16(a6 + 0x26, u16(speed));
+  ram.setU16(a6 + 0x38, ram.u16(a6 + 0x26));            // $2A3986
+  ram.setU16(a6 + 0x48, ram.u16(a6 + 0x26));            // $2A398C
+  ram.setU16(a6 + 0x6c, i16(ram.u16(a6 + 0x26)) < 0 ? 1 : 0);  // $2A3992..$2A39A0
+
+  const angle = ram.u8(a5 + R.rec1B);                   // $2A39A8/$2A39AC
+  if ([0x10, 0x65, 0xbb, 0xf0, 0x45, 0x9b].includes(angle)) {
+    ram.setU8(a6 + 0x8d, 1);                            // $2A39E4 -- a CLUSTER member
+  }
+  ram.setU16(a6 + 0x28, u16(angle << 4));               // $2A39EA asl.w #$4
+  ram.setU8(a5 + R.rec19, 0);                           // $2A39F0
+  ram.setU8(a5 + R.rec1A, ram.u8(a5 + R.rec20));        // $2A39F6
+
+  // $2A39FC..$2A3A2E -- the launch vector through `$241D34`, scaled up by 8, then
+  // offset from THE PARENT's own $22/$24 pair. `$20(a5)` is written and immediately
+  // read back, so the `- $2000` is on the long axis only.
+  const v = tables.shotVector(ram.u8(a5 + R.rec1A),
+    ram.u16(a6 + 0x28) >> 4);                           // $2A3A02/$2A3A06 asr.w #$4
+  ram.setU16(a5 + R.rec20, 0x2000);                     // $2A3A12/$2A3A16
+  const parent = ram.u32(a5 + R.rec1C);                 // $2A3A1A movea.l $1c(a5),a0
+  ram.setU16(a6 + S.posX,                               // $2A3A1E..$2A3A2A
+    u16((v.dy << 3) + ram.u16(parent + 0x22) - ram.u16(a5 + R.rec20)));
+  ram.setU16(a6 + S.posY,                               // $2A3A26/$2A3A2E
+    u16((v.dx << 3) + ram.u16(parent + 0x24)));
+
+  ram.setU16(a5 + R.rec22, 0x0404);                     // $2A3A32
+  ram.setU8(a5 + R.rec3A, 0);                           // $2A3A38
+  ram.setU8(a5 + 0x3b, 0x18);                           // $2A3A3E
+  ram.setU16(a5 + 0x3c, 0);                             // $2A3A44
+  ram.setU16(a5 + 0x3e, 0);                             // $2A3A4A
+  // $2A3A50..$2A3A64 -- roles $70 and $71 skip the mark. Every other role, INCLUDING
+  // A1 9's $FF, gets it.
+  if (ram.u8(a6 + 0x3c) !== 0x70 && ram.u8(a6 + 0x3c) !== 0x71) {
+    ram.setU16(a6 + S.flags, 0x8000);                   // $2A3A64 move.w #$8000,(a6)
+  }
+});
+
 // --- type $A3 ($27D404): Stage 4's oscillating linked carrier.
 // Movement owns the root X; the body replaces both Y positions, mirrors the
 // initial oscillation direction from shared RNG, and rank-adjusts the two byte

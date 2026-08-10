@@ -578,6 +578,20 @@ SHOT_WINDOWS.extend([
     # $2A33E2, which is $2A33C2 + $20, so the table says where it stops.
     (0x2A33B2, 0x0030, "W252: Stage-4 boss A1 10's four muzzle biases and eight "
                        "fan-dispatch pointers, ending at the first fan's code"),
+    # W254: type $42's stub, body and prototype as ONE window, the way type $41's
+    # $2A37DC+$16C already is. Three things need to be readable here and only the third
+    # is obvious:
+    #   $2A394C  the runLen IMMEDIATE. `$263610`-side dispatch does `rom.u16(init + 2)`
+    #            to recover the #N of `move.w #$N,$4(a5)`, so the stub is DATA even
+    #            though it is code.
+    #   $2A3952  the body, whose own `lea $2A3A6A` is why the prototype is reachable.
+    #   $2A3A6A  the prototype, walked the way `$2637A2` walks it: with that runLen of
+    #            4 and therefore FIVE iterations, five LONG-form entries (flags $8000)
+    #            of 28 bytes each at $2A3A6A $2A3A86 $2A3AA2 $2A3ABE $2A3ADA.
+    # The far end is pinned exactly: the prototype's last entry ends at $2A3AF6, which
+    # is the HANDLER's own first instruction, with zero bytes between them.
+    (0x2A394A, 0x01AC, "W254: type $42's runLen stub, init body and five-entry "
+                       "prototype, ending exactly at its handler $2A3AF6"),
     (0x2A019E, 0x037C, "W224: Stage-4 boss A4/F1 destruction transition and "
                        "four exact effect tables"),
     (0x29F80A, 0x00C2, "W224: Stage-4 boss MAIN2/MAIN3 movement through target"),
