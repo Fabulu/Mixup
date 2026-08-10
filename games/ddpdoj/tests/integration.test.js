@@ -245,7 +245,7 @@ test('the handler adapter covers every address in handlerMap(), and only those',
   { skip: SKIP }, () => {
     const m = enemyHandlerMap(ROM);
     assert.deepEqual([...m.keys()].sort(), [...HANDLER_ADDRESSES].sort());
-    assert.equal(m.size, 37, 'W25 ported six of stage 1\'s nineteen SCRIPT '
+    assert.equal(m.size, 38, 'W25 ported six of stage 1\'s nineteen SCRIPT '
       + 'handlers; W30 added $275914, $2739C0 and $276702 -- the three that '
       + 'BLOCKED the fly-around gate -- W31 added $26B6FA, the MIDMOSS, the '
       + 'fourth, W33 added $272AAC, the scripted carrier, and W36 added the '
@@ -265,7 +265,7 @@ test('the handler adapter covers every address in handlerMap(), and only those',
       + 'handler $279F4A, and W183 adds the stage-2 boss entry wrapper '
       + '$297398, W185 adds the type $4D satellite handler $29BB64, and W192 '
       + 'adds the Stage-3 type $3E handler $265486, and W193 adds type $36 '
-      + '$263C7C, so the map has 37 '
+      + '$263C7C, and W194 adds type $37 $2647A6, so the map has 38 '
       + 'entries against the stage-1 script denominator of 19/19');
   });
 
@@ -312,7 +312,7 @@ test('$2634F4 walks the SPAWN SCRIPT before the 58-slot driver',
 // ===========================================================================
 // type 5 itself: the three calls must RUN, not be counted.
 // ===========================================================================
-test('TYPE5_PORTED is EIGHTEEN of the twenty-three, and the list is the ROM\'s', () => {
+test('TYPE5_PORTED is NINETEEN of the twenty-three, and the list is the ROM\'s', () => {
   assert.equal(TYPE5.calls.length, 23, '$28B5E6..$28B66A');
   // W33 added call #3, `$28AD54`'s sub-record reaper. W173 adds its inseparable
   // `$28AD70` fall-through for type `$84`'s bounded cue descriptor family.
@@ -327,8 +327,8 @@ test('TYPE5_PORTED is EIGHTEEN of the twenty-three, and the list is the ROM\'s',
   // gives about a pool with a producer and no consumer.
   // W54 added #5 `$288E4E`, THE DEATH EXPLOSION -- pool B's driver, in the
   // same commit as its allocator `$289004` (src/effects.js), which ~25 death
-  // arms in src/handlers.js and src/midboss.js now call.  #6 `$2890F2` is
-  // DELIBERATELY still counted: pool D is refused rather than half-ported.
+  // arms in src/handlers.js and src/midboss.js now call. W191 added #6
+  // `$2890F2`, pool D's complete secondary-debris driver.
   // W61 added #18 `$27E99E`, THE ITEM's driver -- the call recon 59 §7 found
   // LISTED in `calls` since wave 8 and never made.  It ships in the same commit
   // as its allocator `$27E812` (src/items.js spawnItem, called from
@@ -343,7 +343,11 @@ test('TYPE5_PORTED is EIGHTEEN of the twenty-three, and the list is the ROM\'s',
   // as its allocator `$27F92A` (src/bee.js allocBee27F92A, called from
   // handlers.js deathSeq8A) and its clear `$27F87C`, for the same W33 sec 4
   // reason: a pool with a producer and no consumer is a leak.
-  assert.equal(TYPE5_PORTED.size, 18);
+  // W194 adds #1 `$289B80` with type `$37`'s directly reached pool-C kind-4
+  // allocator, so its death satellite is consumed rather than leaked.
+  assert.equal(TYPE5_PORTED.size, 19);
+  assert.ok(TYPE5_PORTED.has(TYPE5.poolCDriver));
+  assert.equal(TYPE5.calls.indexOf(TYPE5.poolCDriver), 0);
   assert.ok(TYPE5_PORTED.has(TYPE5.bombDriver));
   assert.equal(TYPE5.calls.indexOf(TYPE5.bombDriver), 6, '$28B5F8 is call #7');
   assert.ok(TYPE5_PORTED.has(TYPE5.itemDriver));
@@ -412,7 +416,7 @@ test('one type-5 pass RUNS $2634F4/$281D9A/$25354C instead of counting them',
       assert.ok(!keys.some((k) => k.startsWith(pre)),
         `$${a.toString(16)} must RUN, not be noted`);
     }
-    // ...while the fourteen that are still unported ARE all counted, by address.
+    // ...while the remaining unported calls ARE all counted, by address.
     for (const a of TYPE5.calls) {
       if (TYPE5_PORTED.has(a)) continue;
       const pre = `$${a.toString(16).toUpperCase()} `;

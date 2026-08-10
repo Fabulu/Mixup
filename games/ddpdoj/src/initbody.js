@@ -510,6 +510,18 @@ BODY.set(0x263A58, (ram, rom, a5, a6, unported) => {
   ram.setU16(G.f2, 1);
 });
 
+// --- type $37 ($264740): Stage-3's rotating three-shot fighter. The stub's
+// run length is zero, so the single long-form prototype ends exactly where the
+// shared `$2647A6` handler begins. Its initial position is biased after the
+// movement stream has supplied the spawn coordinates.
+BODY.set(0x264740, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x26478a);            // $264740..$26474C
+  loadRecordProto(ram, rom, a5, 0x26476e, 0x0d);      // $26474C..$26475A
+  readInitPosition(ram, rom, a5, unported);            // $264760
+  ram.setU16(a6 + S.posY, u16(ram.u16(a6 + S.posY) - 0x0280)); // $264766
+  ram.setU16(a6 + S.posX, u16(ram.u16(a6 + S.posX) - 0x0080)); // $26476A
+});
+
 // --- type $24 ($296FB0): boss-approach prop.  Sub-proto, resource install,
 // record clears, position.  The resource install ($24150A) is noted (data).
 BODY.set(0x296FB0, (ram, rom, a5, a6, unported, tables, palette) => {

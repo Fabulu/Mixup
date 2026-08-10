@@ -24,11 +24,11 @@
 //
 //   A IMPACT     $8171BE  $2C x 80   $27F8F8/$27F92A  driver $27F95A   E4/E7's
 //   B EFFECT     $81B732  $38 x 80   $289004          driver $288E4E   ***THIS***
-//   C sub-record $81CDEE  $30 x 48   (not located)    driver $289B80
+//   C sub-record $81CDEE  $30 x 30   $289B50          driver $289B80   W194
 //   D SUB-EFFECT $81C8EC  $40 x 20   $289098          driver $2890F2   W191, ported
 //   E SHOT SPARK $81D394  $22 x 60   $289F54          driver $28A098   W53, ported
 //
-// This file owns pool B and pool D, including both allocators and drivers. Pool B's
+// This file owns pools B, C and D, including their allocators and drivers. Pool B's
 // allocator AND its driver are both here, in one commit, because a pool with a
 // producer and no consumer is W33 §4's leak -- 100 of 100 slots consumed by
 // logic frame 2906 and every later spawn silently discarded, through four
@@ -125,7 +125,7 @@ import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueThroughStub } from './spritequeue.js';
 import {
-  drawByte242B3C, drawByte242E24, drawByte2431F4, drawLong24397A,
+  drawByte242B3C, drawByte242E24, drawByte24311A, drawByte2431F4, drawLong24397A,
   drawSigned242CAC, drawSigned242FDE, drawWord242EC2,
 } from './rng.js';
 
@@ -157,6 +157,25 @@ export const POOL_D = {
   clearWords: 0x281,       // $28908A move.w #$280,D0 + the dbra's own pass
   allocator: 0x289098,
   driver: 0x2890f2,        // type-5 call #6
+};
+
+export const POOL_C = {
+  base: 0x81cdee,
+  stride: 0x30,
+  slots: 30,
+  slotsNarrow: 15,
+  count: 0x81d38e,
+  allocator: 0x289b50,
+  driver: 0x289b80,
+  templateTable: 0x289dea,
+};
+
+/** Pool-C's `$30`-byte satellite/explosion record. */
+export const C = {
+  status: 0x00, pos: 0x02, offs: 0x06, descriptor: 0x0a, size: 0x0e,
+  cursor: 0x10, wrap: 0x12, list: 0x14, template18: 0x18,
+  attr: 0x1c, palette: 0x1d, bucket: 0x1e, marker: 0x1f,
+  cull: 0x20,
 };
 
 /** Pool-D's `$40`-byte secondary-debris record. */
@@ -695,6 +714,148 @@ export function subSpawn288ED0(ram, ctx, a6) {
   spawnSubEffect289098(ram, ctx.rom, ctx, packed, a6, 0x288ef0);
   ram.setU16(a6 + B.sub12, 0xffff);                      // $288EFA -- the one-shot
   return true;
+}
+
+function poolCDistance(y0, x0, y1, x1) {
+  let dy = u16(y0 - y1);
+  if (i16(dy) < 0) dy = u16(-dy);
+  dy = u16(dy - (dy >>> 2));
+  let dx = u16(x0 - x1);
+  if (i16(dx) < 0) dx = u16(-dx);
+  if (dy < dx) [dy, dx] = [dx, dy];
+  return u16(dy + (dx >>> 1));
+}
+
+function poolCCollision289C54(ram, slot) {
+  if (ram.u16(0x813092) === 4 && (ram.u8(0x8130f8) & 0x40) !== 0)
+    return true;
+
+  const y = ram.u16(slot + C.pos), x = ram.u16(slot + C.pos + 2);
+  ram.setU16(slot + C.pos, u16(y + 0x4400));            // exclude candidate itself
+  const narrow = ram.u16(0x813098) !== 0 || ram.u16(0x81308c) === 0;
+  const limit = narrow ? POOL_C.slotsNarrow : POOL_C.slots;
+  let sameX = 2, rankKind4 = 10;
+  ram.setU16(0x81d390, sameX);
+  ram.setU16(0x81d392, rankKind4);
+  for (let n = 0; n < limit; n++) {
+    const q = POOL_C.base + n * POOL_C.stride;
+    if (ram.u16(q + C.status) === 0) continue;
+    if (ram.u16(q + C.pos + 2) === x) {
+      if (sameX === 0) { ram.setU16(slot + C.status, 0); return false; }
+      sameX--; ram.setU16(0x81d390, sameX);
+    }
+    const kind4 = ram.u16(0x813098) !== 0
+      && (ram.u16(q + C.status) & 0x3c) === 4;
+    if (kind4) {
+      rankKind4--; ram.setU16(0x81d392, rankKind4);
+      if (rankKind4 < 0) { ram.setU16(slot + C.status, 0); return false; }
+    }
+    const distance = poolCDistance(ram.u16(q + C.pos),
+      ram.u16(q + C.pos + 2), y, x);
+    if (distance < (kind4 ? 0x0a00 : 0x0800)) {
+      ram.setU16(slot + C.status, 0); return false;
+    }
+  }
+  ram.setU16(slot + C.pos, y);
+  ram.setU16(slot + C.pos + 2, x);
+  return true;
+}
+
+/**
+ * `$289B50`, pool-C's absolute-position allocator. W194's type `$37` reaches
+ * kind 4 directly on death; the other table entries remain guarded until a
+ * translated caller makes their templates runtime dependencies.
+ */
+export function spawnPoolC289B50(ram, rom, ctx, kind, bucket, position,
+  siteAddr = 0x289b50) {
+  if ((kind & 0x3c) !== 4) {
+    unreached(siteAddr, `pool C absolute allocator kind $${kind.toString(16)} `
+      + `is not the translated kind-4 template selected by type $37`);
+  }
+  const narrow = ram.u16(0x813098) !== 0 || ram.u16(0x81308c) === 0;
+  const limit = narrow ? POOL_C.slotsNarrow : POOL_C.slots;
+  let slot = -1;
+  for (let n = 0; n < limit; n++) {
+    const q = POOL_C.base + n * POOL_C.stride;
+    if (ram.u16(q + C.status) === 0) { slot = q; break; }
+  }
+  if (slot < 0) { ctx?.poolCDrop?.(kind, siteAddr); return 0; }
+
+  const template = rom.u32(POOL_C.templateTable + (kind & 0x3c));
+  ram.setU8(slot + C.marker, 0x1f);
+  ram.setU16(slot + C.status, rom.u16(template));
+  ram.setU32(slot + C.pos, position);
+  if (!poolCCollision289C54(ram, slot)) {
+    ctx?.poolCDrop?.(kind, siteAddr); return 0;
+  }
+
+  ram.setU32(slot + C.offs, rom.u32(template + 2));
+  ram.setU8(slot + C.attr, drawSigned242FDE(ram, rom) === 0 ? 0x20 : 0);
+  ram.setU16(slot + C.size, rom.u16(template + 6));
+  ram.setU16(slot + C.template18, rom.u16(template + 8));
+  ram.setU8(slot + C.palette, 0x1e);
+  const cursor = drawByte24311A(ram, rom) * 4;
+  ram.setU16(slot + C.cursor, cursor);
+  ram.setU16(slot + C.wrap, rom.u16(template + 10));
+  ram.setU8(slot + C.bucket, bucket);
+  ram.setU16(slot + C.cull, rom.u16(template + 12));
+  const selector = i16(rom.u16(template + 14));
+  const listPick = selector < 0 ? drawSigned242FDE(ram, rom)
+    : selector === 0 ? drawByte24311A(ram, rom) : drawByte2431F4(ram, rom);
+  const list = rom.u32(template + 16 + listPick * 4);
+  ram.setU32(slot + C.list, list);
+  ram.setU32(slot + C.descriptor, rom.u32(list + cursor));
+  ram.setU8(slot + C.marker, 0);
+  ram.setU16(POOL_C.count, u16(ram.u16(POOL_C.count) + 1));
+  ctx?.poolCSpawn?.(slot, kind, bucket);
+  return slot;
+}
+
+/** `$289B80`, animate, cull and emit the live pool-C records. */
+export function runPoolCDriver(ram, rom, ctx) {
+  let remaining = ram.u16(POOL_C.count);
+  const initial = remaining;
+  let emitted = 0, freed = 0, found = 0;
+  if (remaining === 0) return { live: 0, emitted, freed };
+  const animate = (ram.u16(0x80390c) & 1) === 0;
+  for (let n = 0; n < POOL_C.slots && remaining > 0; n++) {
+    const slot = POOL_C.base + n * POOL_C.stride;
+    if ((ram.u16(slot + C.status) & 0x8000) === 0) continue;
+    found++; remaining--;
+    if (animate) {
+      let cursor = ram.u16(slot + C.cursor);
+      ram.setU32(slot + C.descriptor,
+        rom.u32(ram.u32(slot + C.list) + cursor));
+      cursor = u16(cursor - 4);
+      if ((cursor & 0x8000) !== 0) cursor = ram.u16(slot + C.wrap);
+      ram.setU16(slot + C.cursor, cursor);
+    }
+    if (ram.u16(POOL_B.bgFreeze) === 0) {
+      ram.setU16(slot + C.pos, u16(ram.u16(slot + C.pos)
+        + i16(ram.u16(POOL_B.scrollB03C))));
+    }
+    ram.setU16(slot + C.pos + 2,
+      u16(ram.u16(slot + C.pos + 2) - ram.u16(POOL_B.scroll)));
+    if (ram.u16(0x803912) === 0
+        && i16(ram.u16(slot + C.pos)) < i16(ram.u16(slot + C.cull))) {
+      ram.setU16(slot + C.status, 0);
+      ram.setU16(POOL_C.count, u16(ram.u16(POOL_C.count) - 1));
+      freed++; continue;
+    }
+    const selector = ram.u8(slot + C.bucket);
+    const stub = EMIT_STUB[selector];
+    if (stub === undefined) {
+      unreached(0x289c04, `pool C emitter selector $${selector.toString(16)} `
+        + `is not one of 0, 4, 8, $C or $10`);
+    }
+    enqueueThroughStub(ram, rom, stub, slot);
+    emitted++;
+  }
+  if (remaining !== 0) {
+    unreached(0x289c0e, `pool C live count ${initial} exceeds the ${found} `
+      + `allocated records found in its 30 slots`);
+  }
+  return { live: initial, emitted, freed };
 }
 
 function animateSubEffect289610(ram, rom, a6) {

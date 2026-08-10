@@ -502,6 +502,12 @@ SHOT_WINDOWS.extend([
     (0x263A50, 0x0CE8, "W193: complete stage-3 type $36 closure: run-length "
                        "stub, init, record/seven-sub prototypes, cue/death "
                        "tables, and handler through the type $37 stub"),
+    (0x264738, 0x04DC, "W194: complete stage-3 type $37 closure: run-length "
+                       "stub, init, prototypes, shared handler, 128-entry "
+                       "animation table, muzzle vectors and death row"),
+    (0x289B50, 0x038A, "W194: type-$37 pool-C dependency: absolute allocator, "
+                       "driver, collision-aware fill, kind-4 template and "
+                       "all three four-frame descriptor lists"),
     (0x27307A, 0x0100, "W193: type $36 exact 64-long paired bullet-vector "
                        "table used by its upper and lower batteries"),
     (0x272CFA, 0x0080, "W193: type $36 exact 32-long upper-attachment sprite "
@@ -2167,6 +2173,21 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if hashlib.sha256(d[0x272CFA:0x272D7A]).hexdigest() != (
             "9f267e93f70e90ad3351fbc7707fd4c253c46d070d1187e322f43300fedea696"):
         raise SystemExit("W193: type $36 upper-attachment art table drifted")
+    if d[0x234502:0x23450A] != bytes.fromhex("003b00003701100d"):
+        raise SystemExit("W194: stage-3 type $37 occurrence drifted")
+    if d[0x23518E:0x235194] != bytes.fromhex("7c801a804000"):
+        raise SystemExit("W194: type $37 movement stream drifted")
+    if d[0x2679DC:0x2679E4] != bytes.fromhex("00264738002647a6"):
+        raise SystemExit("W194: type $37 registry row drifted")
+    if hashlib.sha256(d[0x264738:0x264C14]).hexdigest() != (
+            "9366c6e59a7a88bfb998efadec25226803fa0a37622c6323075d4ac40fffd08f"):
+        raise SystemExit("W194: stage-3 type $37 closure drifted")
+    if hashlib.sha256(d[0x289B50:0x289EDA]).hexdigest() != (
+            "234d3695f6acb9e707db03410085fdb42c49645756666882037a4ae1830eec1d"):
+        raise SystemExit("W194: pool-C kind-4 dependency closure drifted")
+    if d[0x289E26:0x289E42] != bytes.fromhex(
+            "8004fa00fc0006200001000cf400000000289eaa00289eba00289eca"):
+        raise SystemExit("W194: pool-C kind-4 template drifted")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and

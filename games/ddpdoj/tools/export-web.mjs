@@ -113,7 +113,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 import { BGELEM_HANDLERS } from '../src/background.js';
 import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE90_ART, TYPE91_ART, TYPE92_ART,
   TYPE93_ART, TYPE94_ART, TYPE95_ART, TYPE96_ART, TYPE97_ART,
-  TYPE3E_ART, TYPE36_ART } from '../src/handlers.js';
+  TYPE3E_ART, TYPE36_ART, TYPE37_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -283,6 +283,20 @@ if (u17.length !== SOUND.fileSize) {
 //
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
+  [17, TYPE37_ART.table, TYPE37_ART.frames, 4,
+    TYPE37_ART.frames, 0x264b86,
+    'stage-3 type $37 rotating body. Rounded heading selects one of 32 groups '
+      + 'and the four-phase animation reaches exactly 128 pointers before the '
+      + 'packed muzzle-vector table begins'],
+  [17, 0x289eaa, 4, 4, 36, 0x289f3a,
+    'pool-C kind-4 death satellite animation list 0; the valid stream run '
+      + 'continues through adjacent pool-C families'],
+  [17, 0x289eba, 4, 4, 32, 0x289f3a,
+    'pool-C kind-4 death satellite animation list 1; the valid run continues '
+      + 'through the byte-identical third list and adjacent pool-C families'],
+  [17, 0x289eca, 4, 4, 28, 0x289f3a,
+    'pool-C kind-4 death satellite animation list 2, duplicating list 1; the '
+      + 'remaining valid-pointer run belongs to adjacent pool-C families'],
   [17, TYPE36_ART.upperTable, TYPE36_ART.headings, 4,
     192, 0x272ffa,
     'stage-3 type $36 upper attachments. Heading is rounded to one of 32 '
@@ -689,6 +703,8 @@ const ITEM_SHARD = 12;
  *
  *  `[shard, offs, why]`. */
 const W81_IMMEDIATES = Object.freeze([
+  [17, TYPE37_ART.body,
+    'TYPE $37 fixed hull, emitted directly by $264920 at size $1060'],
   [17, TYPE36_ART.body,
     'TYPE $36 fixed carrier hull, emitted directly by $26453E at size $2450'],
   [15, 0x1735fc,

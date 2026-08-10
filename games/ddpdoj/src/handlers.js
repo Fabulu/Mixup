@@ -103,7 +103,7 @@ import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
   EMIT_TABLE } from './spritequeue.js';
 import { armScreenClear, armScreenClear243E02, handlerMidboss } from './midboss.js';
 import { scoreHit, scoreKill } from './score.js';
-import { spawnEffect, remapBucket, REMAP, B } from './effects.js';
+import { spawnEffect, spawnPoolC289B50, remapBucket, REMAP, B } from './effects.js';
 import { spawnItem } from './items.js';
 import { allocBee27F92A } from './bee.js';
 import { drawByte242B3C, drawByte2431F4, drawSigned242FFC,
@@ -131,7 +131,7 @@ const R = {
   // is a death flag while it is being decremented as a counter.
   rec17: 0x17, rec18: 0x18, rec19: 0x19,
   rec1A: 0x1a, rec1B: 0x1b, rec1C: 0x1c, rec1D: 0x1d, rec1E: 0x1e,
-  rec21: 0x21, rec22: 0x22, rec23: 0x23, rec24: 0x24,
+  rec20: 0x20, rec21: 0x21, rec22: 0x22, rec23: 0x23, rec24: 0x24,
   salvo: 0x20, cadence22: 0x22,
   // W30: the SPRITE-EMITTER pair the init copies out of `$267F70` -- a RECORD-
   // convention stub and a REGISTER-convention one.  They were called
@@ -3363,6 +3363,13 @@ export const TYPE36_ART = Object.freeze({
   body: 0x178c8c, upperTable: 0x272cfa, lowerTable: 0x272dfa, headings: 32,
 });
 
+// Stage-3 type $37 selects one of four animation phases for each of its 32
+// even headings. The 128th pointer ends exactly where the packed muzzle-vector
+// table begins.
+export const TYPE37_ART = Object.freeze({
+  body: 0x2a60f8, table: 0x264986, frames: 128,
+});
+
 function addPackedWords(pos, high, low) {
   return ((u16((pos >>> 16) + high) << 16) | u16((pos & 0xffff) + low)) >>> 0;
 }
@@ -5366,6 +5373,126 @@ function handler36(ram, rom, a5, ctx) {
 }
 
 // ############################################################################
+// # W194: TYPE $37, STAGE-3 ROTATING THREE-SHOT FIGHTER                      #
+// ############################################################################
+
+function stageAxisGate24260A(ram, rom, a6) {
+  const bounds = rom.u32(0x242562 + ram.u16(0x813096));
+  const shifted = u16(ram.u16(a6 + S.posX) - (bounds & 0xffff));
+  return shifted + (bounds >>> 16) > 0xffff;            // carry from $242624
+}
+
+function emitEffectRows263A0E(ram, rom, ctx, table, position, bucket) {
+  for (let p = table; ; p += 12) {
+    const delay = rom.u16(p);
+    if (delay === 0xffff) return;
+    const e = spawnEffect(ram, ctx, rom.u16(p + 2), 0x263a1a);
+    ram.setU8(e + B.f1c, rom.u16(p + 4));
+    ram.setU16(e + B.delay, delay);
+    ram.setU32(e + B.nudge, rom.u32(p + 6));
+    ram.setU32(e + B.pos, position);
+    ram.setU16(e + B.bucket, bucket);
+    ram.setU16(e + B.hook, 2);
+    ram.setU16(e + B.sub12, 0);
+    ram.setU16(e + B.sub14, 0);
+    ram.setU16(e + B.speed, rom.u16(p + 10));
+  }
+}
+
+function bullet37(ram, rom, a5, ctx, site, entry, d0, d1, d2, d3) {
+  ctx.bulletSpawn?.(site, fireBullet({ ram, rom, log: new WriteLog(ram) },
+    entry, { d0, d1, d2, d3, d4: 0, d5: 0, a5 }));
+}
+
+function death37(ram, rom, a5, a6, ctx, hit) {
+  scoreKill(ram, rom, ctx, 0x47, hit);                 // $2647F4
+  ram.setU16(a6, 0x8000);
+  ram.setU8(a5 + R.rec1E, 1);
+  const origin = u32(ram.u32(a6 + S.posX) + ram.u32(a6 + 0x06));
+  emitEffectRows263A0E(ram, rom, ctx, 0x264c06, origin, 0x0c);
+  spawnPoolC289B50(ram, rom, ctx, 4, 0x0c,
+    u32(origin + 0xfc000000), 0x264830);
+  ctx.soundPost?.(0x28c2c2);
+  ram.setU8(a5 + R.rec1B, ram.u8(a5 + R.rec1C));       // $26483C fall-through
+}
+
+function draw37(ram, rom, a5, a6) {
+  enqueueRegistersThroughStub(ram, rom, 0x23e020,
+    u32(ram.u32(a6 + S.posX) + ram.u32(a5 + 0x2c)),
+    ram.u32(a5 + 0x28), ram.u16(a5 + 0x26), 0x15);
+  if (ram.u8(a5 + R.rec1E) !== 0) return;
+  const anim = (ram.u16(a5 + 0x30) + 4) & 0x0f;
+  ram.setU16(a5 + 0x30, anim);
+  const heading = (ram.u8(a5 + R.rec1A) + 1) & 0x3e;
+  enqueueRegistersThroughStub(ram, rom, 0x23e08c,
+    u32(ram.u32(a6 + S.posX) + ram.u32(a6 + 0x06) + 0xf400f600),
+    rom.u32(TYPE37_ART.table + heading * 8 + anim), 0x0c50,
+    ram.u8(a5 + R.rec1B));
+}
+
+function handler37(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  if (i16(ram.u16(a6 + S.posX)) < -0x1800) {
+    if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; }
+  } else ram.setU8(a5 + R.onScreen, 1);
+  scrollCompensate(ram, a5);                           // $2647C4
+
+  const hit = ram.u8(a6) & 0x5c;
+  if (hit !== 0) {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);
+    scoreHit(ram, ctx, a6, hit);
+    ram.setU8(a5 + R.rec1B,
+      ram.u8(a5 + R.rec1B) ^ ram.u8(a5 + R.rec1D));
+    if (i16(ram.u16(a6 + S.hp)) < 0) death37(ram, rom, a5, a6, ctx, hit);
+  } else {
+    ram.setU8(a5 + R.rec1B, ram.u8(a5 + R.rec1C));
+  }
+
+  if (ram.u8(a5 + R.rec1E) === 0) {
+    const offset = ram.u32(a6 + 0x06);
+    const aimed = aim64FromCaller(aimTables(rom), ram, a5,
+      u16(ram.u16(a6 + S.posX) + (offset >>> 16)),
+      u16(ram.u16(a6 + S.posY) + (offset & 0xffff)));
+    if (!aimed.carry) {
+      ram.setU8(a5 + R.rec1A, slew64(ram.u8(a5 + R.rec1A), aimed.dir));
+      let runInner = ram.u8(a5 + R.rec24) !== 0;
+      if (!runInner) {
+        const old = ram.u8(a5 + R.rec20);
+        ram.setU8(a5 + R.rec20, old - 1);
+        if (old === 0) {
+          ram.setU8(a5 + R.rec20, u16(0x18 - ram.u16(G.bc)));
+          ram.setU8(a5 + R.rec24, u16(4 - (ram.u16(G.bc) >>> 3)));
+          ram.setU8(a5 + 0x1f, ram.u8(a5 + R.rec1A));
+          runInner = true;
+        }
+      }
+      if (runInner) {
+        const old = ram.u8(a5 + R.rec22);
+        ram.setU8(a5 + R.rec22, old - 1);
+        if (old === 0) {
+          ram.setU8(a5 + R.rec22, ram.u8(a5 + R.rec23));
+          if (!stageAxisGate24260A(ram, rom, a6)) {
+            const face = ram.u8(a5 + R.rec1A);
+            const rounded = (face + 1) & 0x3e;
+            const d3 = u32(rom.u32(0x264b86 + rounded * 2) + offset);
+            const d1 = rounded * 4;
+            const d2 = ram.u32(a6 + S.posX);
+            bullet37(ram, rom, a5, ctx, 0x2648f6, 0x2816f6,
+              0x000a0016, d1, d2, d3);
+            bullet37(ram, rom, a5, ctx, 0x2648fe, 0x281764,
+              0x000a0016, d1 + 2, d2, d3);
+            bullet37(ram, rom, a5, ctx, 0x264906, 0x281764,
+              0x000a0016, d1 - 2, d2, d3);
+            ram.setU8(a5 + R.rec24, ram.u8(a5 + R.rec24) - 1);
+          }
+        }
+      }
+    }
+  }
+  draw37(ram, rom, a5, a6);
+}
+
+// ############################################################################
 // # W192: TYPE $3E, STAGE-3 OPENING TWO-HITBOX FIGHTER                       #
 // ############################################################################
 
@@ -5549,6 +5676,7 @@ const HANDLERS = new Map([
   [0x279f4a, handler93],       // W181: stage-2 type $93
   [0x265486, handler3E],       // W192: stage-3 opening type $3E
   [0x263c7c, handler36],       // W193: stage-3 seven-part carrier type $36
+  [0x2647a6, handler37],       // W194: stage-3 rotating three-shot type $37
   [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 

@@ -10,7 +10,7 @@
 //           $252bd0   $281d9a   $25354c   $25292a   $252a52
 //   28b670: tst.w $81308c / beq $28b730 ...
 //
-// **THIS FILE RUNS EIGHTEEN OF THE TWENTY-THREE AND COUNTS THE OTHER FIVE.**
+// **THIS FILE RUNS NINETEEN OF THE TWENTY-THREE AND COUNTS THE OTHER FOUR.**
 // (W45 added #10 `$254680` and #11 `$255042`, the beam's segment driver and its
 // draw.  Both were counted as "three of the thirteen unported calls, with no
 // indication that they are the laser" -- `37-recon-laser.md` §5.)
@@ -130,7 +130,7 @@ import { runType5Tail } from './damage.js';
 import { notePerFrameLedger } from './score.js';
 import { runSegmentDriver, runBeamDraw } from './laser.js';
 import { runSparkDriver } from './spark.js';
-import { runEffectDriver, runSubEffectDriver } from './effects.js';
+import { runEffectDriver, runPoolCDriver, runSubEffectDriver } from './effects.js';
 import { runItemDriver } from './items.js';
 import { runPoolADriver } from './bee.js';
 import { bombDriver255DD8 } from './bomb.js';
@@ -140,6 +140,7 @@ export const TYPE5 = {
   handler: 0x28b5e0,
   entryTest: 0x28b5e0,      // tst.b ($2,A5)
   notStarted: 0x28b5a8,
+  poolCDriver: 0x289b80,    // $28B5E6 -- pool-C death satellites        (W194)
   enemyFrame: 0x2634f4,     // $28B5EC -- the spawn walker + the 58-slot driver
   subReaper: 0x28ad54,      // $28B5F2 -- reaper plus cue driver fall-through (W173)
   bulletDriver: 0x281d9a,   // $28B658 -- the screen clear + THE MOVER
@@ -195,6 +196,7 @@ export function laserRampWouldMove(held, speedIdx, laserFloor) {
  *  timer that arms #20's screen clear; porting it with #20 keeps that one
  *  machine whole rather than half-wired. */
 export const TYPE5_PORTED = new Set([
+  0x289b80,   // #1  POOL C: satellite/death-effect driver             (W194)
   0x2634f4,   // #2  THE ENEMY SUBSYSTEM: spawn walk + deferred drain + driver (W29)
   0x28ad54,   // #3  SUB-RECORD REAPER (W33) + cue driver fall-through (W173)
   0x253a70,   // #8  the player-shot driver (wave 8)
@@ -262,6 +264,10 @@ export function makeType5(rom) {
     }
     for (const c of TYPE5.calls) {
       switch (c) {
+        case TYPE5.poolCDriver:                         // $28B5E6 -> $289B80
+          ctx.poolCFrame = runPoolCDriver(ram, rom, ctx);
+          ctx.poolCSink?.(ctx.poolCFrame);
+          break;
         case TYPE5.enemyFrame:                          // $28B5EC -> $2634F4
           ctx.enemyFrame = runEnemyFrame(ram, rom, ctx, enemyHandlers);
           break;
