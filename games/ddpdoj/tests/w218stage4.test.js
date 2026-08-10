@@ -80,8 +80,8 @@ test('W218 pins the type-$9F/$A4 closures and complete live art set',
       assert.equal(h.entries, entries);
       assert.equal(h.distinct, entries);
     }
-    assert.equal(manifest.spr.streamCount, 3822,
-      '18 new structure streams; all 24 fragment frames reuse bomb/hyper art');
+    assert.equal(manifest.spr.streamCount, 3838,
+      'W219 adds 16 Stage-4 boss-arrival streams after the W218 structure art');
   });
 
 test('W218 real clock-$266 spawn damages, sheds a live fragment, and draws it',

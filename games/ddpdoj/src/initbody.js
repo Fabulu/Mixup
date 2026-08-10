@@ -1213,6 +1213,34 @@ BODY.set(0x29bbfc, (ram, rom, a5, a6, unported, tables, palette) => {
   if (ram.u16(G.rank98) !== 0) ram.setU16(0x81b418, 1); // $29BCF6..$29BD08
 });
 
+// --- type $40 ($29EC82): THE STAGE-4 BOSS arrival bootstrap. W219.
+BODY.set(0x29ec82, (ram, rom, a5, a6, unported, _tables, palette) => {
+  loadSubProto(ram, rom, a5, a6, 0x29ed9e);            // thirteen subrecords
+  loadRecordProto(ram, rom, a5, 0x29ed96, 0x03);       // four record words
+  ram.setU32(a6 + S.posX, 0xc8001c00);
+  installScripts(ram, rom, {
+    a0: 0x29f498, a1: 0x2a1608, a2: 0x29ef54,
+    a3: 0x2a1370, a4: 0x2a0088,
+  });
+  a4Start25980C(ram, 0);
+  for (const [bank, src, site] of [
+    [0x13, 0x222f38, 0x29ecdc], [0x14, 0x222f78, 0x29ecec],
+    [0x12, 0x246bf8, 0x29ecfc],
+  ]) installBank(ram, rom, palette, unported, bank, src, site,
+    'the Stage-4 boss palette install');
+  ram.setU16(0x81b6e4, 1);
+  ram.setU16(0x803934, 0); ram.setU16(0x803936, 1);    // $23C4D0
+  ram.setU16(0x81b414, 1); ram.setU16(0x81b416, 1);
+  if (ram.u16(G.rank98) !== 0) ram.setU16(0x81b418, 1);
+  ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x05);
+  ram.setU8(0x8130f9, ram.u8(0x8130f9) | 0x01);
+  for (const at of [0x8130f0, 0x8130e4, 0x8130e6, 0x8130e8,
+                    0x8130ea, 0x8130e2]) ram.setU16(at, 0);
+  ram.setU32(0x81b626, 0x00000500);
+  ram.setU32(0x81b62a, a5 + R.rec16);
+  ram.setU16(a6 + 0x168, 1);                          // $2A0014
+});
+
 // Type `$99` is the live mirrored child pair created by the Stage-3 boss's
 // low-HP E0 script. Its body falls directly into the handler, so the shared
 // child module performs the first movement/opening/draw call here as well.

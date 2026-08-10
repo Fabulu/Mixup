@@ -59,7 +59,7 @@ test('W215 exact type-$9D/$9E closures and 56 visible streams', { skip: SKIP }, 
   }
   const attached = manifest.spr.harvest.find((x) => x.at === '$27B396');
   assert.deepEqual([attached.entries, attached.distinct, attached.added], [4, 4, 4]);
-  assert.equal(manifest.spr.streamCount, 3822);
+  assert.equal(manifest.spr.streamCount, 3838);
 });
 
 test('W215 real clock-$1D8 carrier draws and launches a live type-$9E child',

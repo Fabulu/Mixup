@@ -2415,6 +2415,14 @@ function harvestStage4Arithmetic(base, entries, stride, why) {
     + '24 later bomb references dedupe');
 }
 
+// W219: the Stage-4 boss arrival exposes A2 object 10 immediately. MAIN0
+// indexes all sixteen frames while the body descends into the playfield.
+{
+  const art = harvestStage4Type9DTable(0x29f414, 16,
+    'W219 Stage-4 Type $40 boss arrival body');
+  console.log(`  Stage-4 boss arrival: 16 streams, ${art.added} new`);
+}
+
 // ------------------------------------------------------------------- WAVE 66
 // 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
 // bomb, and NEITHER HAS A PICTURE: W64 §8.3 counted 174 bucket-13 records with

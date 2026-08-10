@@ -525,6 +525,12 @@ SHOT_WINDOWS.extend([
                        "and animation tables"),
     (0x27DA70, 0x0184, "W218: complete live deferred type $A4 stub, init, "
                        "prototype, arithmetic art bounds, and handler"),
+    (0x29EC7A, 0x0B16, "W219: Stage-4 Type $40 boss init, thirteen prototypes, "
+                       "wrapper, A2 arrival objects, MAIN table, placement, "
+                       "MAIN0, and its palette-animation data"),
+    (0x29FB5A, 0x052E, "W219: Stage-4 boss linked damage controller and shared "
+                       "phase/death helper envelope through the A4 table"),
+    (0x2A0088, 0x0116, "W219: Stage-4 boss A4 table through F0 init and step"),
     (0x23EBA0, 0x003C, "W216: Pool-A kinds 18/19 record-convention emitter "
                        "through its exact RTS boundary"),
     (0x2358B0, 0x20C8, "W211: complete STAGE-4 spawn dependency span: 382 "
