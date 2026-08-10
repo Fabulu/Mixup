@@ -82,7 +82,18 @@ with the banner pictures, so harvest them in the same commit and re-run
 ## One thing to resolve while writing it
 
 `$27FC24` writes the popup descriptor to `($10,A6)`, which the bee record map in
-`bee.js` calls `hitLongA`. Nothing in `$28112C` reads `+$10` directly, so it is
-either consumed by `$23DBCA`'s record convention or the field is reused for the
-collected state. Settle that from the emitter's own reads before pinning a test on
-it, and correct the field's name or document the reuse.
+`bee.js` calls `hitLongA`, and NOTHING in the arm reads it back.
+
+Narrowed: it is not the zoomed emitter either. `enqueueZoomedRequest` reads
+`+$2/$4/$6/$8` (position), `+$a/$c` (the descriptor long), `+$e` (size) and
+`+$1c` (attribute) -- checked against `spritequeue.js` -- so `+$10` is not consumed
+by `$23DBCA`.
+
+That leaves two readings and they must be settled from the cartridge before a test
+pins anything on the field: either a consumer outside `$28112C` reads it (the arm
+is reached from the pool-A driver, so look at what else walks a collected record),
+or the field is dead on this path and the write is the cartridge keeping a value it
+does not use. Do not guess: the write itself is two instructions and can be
+transcribed either way, but the FIELD NAME in `bee.js` should not be changed on a
+hunch, and a test that asserts a popup value out of `+$10` would be asserting the
+port's own invention if nothing reads it.
