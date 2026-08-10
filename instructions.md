@@ -356,9 +356,11 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W210 translates the final Stage-3 boss-death F1 phase and reaches Stage 4.
-Stage 3 is complete at 414/414 spawn records, 28/28 script types, and 70/70
-live boss scheduler entries. All 1,578 tests, the web bundle, fetch gate, ROM
-leak guard, and deployment confirmation are green. The next work is the
-Stage-4 install/census at `$2358B0/$2364A8/$2365E2`; the full-game goal remains
-active after every wave.
+W211 installs and opens Stage 4 from the real Stage-3 transition. The full
+Stage-4 terrain, 382-record spawn script, 157-entry auxiliary table, movement
+resource, clock-zero BGELEM id 5, and clock-one type `$A6` pulse controller are
+live. Stage 4 now covers 346/382 records and 21/29 types. All 1,580 tests, the
+web bundle, fetch gate, ROM-leak guard, and deployment confirmation are green
+as build `20260810072640`. The next live frontier is type `$9B` at `$2358E0`,
+body `$27AC4A`, handler `$27ACE4`; the full-game goal remains active after
+every wave.
