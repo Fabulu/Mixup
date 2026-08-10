@@ -569,6 +569,15 @@ SHOT_WINDOWS.extend([
     # table at $29F498.
     (0x29FA7A, 0x0010, "W251: Stage-4 boss MAIN7's four waypoints, ending at "
                        "$29FA8A's MAIN8 entry"),
+    # W252: A1 10's two tables, contiguous and pinned by each other's contents. The
+    # FOUR muzzle biases at $2A33B2 are indexed by `$C(a4)`, which `$2A32E4 andi.w #$F`
+    # bounds at four longwords, so they end where the dispatch table begins. The EIGHT
+    # dispatch longwords at $2A33C2 are indexed by `$C(a4) + $19C(a6)`, and `$2A33A2
+    # cmpi.w #$10,$19c(a6)` bounds that second index at $10, so the largest reachable
+    # index is $C + $10 = $1C -- exactly the last entry. Its own first entry is
+    # $2A33E2, which is $2A33C2 + $20, so the table says where it stops.
+    (0x2A33B2, 0x0030, "W252: Stage-4 boss A1 10's four muzzle biases and eight "
+                       "fan-dispatch pointers, ending at the first fan's code"),
     (0x2A019E, 0x037C, "W224: Stage-4 boss A4/F1 destruction transition and "
                        "four exact effect tables"),
     (0x29F80A, 0x00C2, "W224: Stage-4 boss MAIN2/MAIN3 movement through target"),

@@ -1931,8 +1931,154 @@ registerScript(0x2a2d70, a1_6Init2A2D70);
 registerScript(0x2a2d8e, a1_6Step2A2D8E);
 registerScript(0x2a2e8c, a1_7Init2A2E8C);
 registerScript(0x2a2e9e, a1_7Step2A2E9E);
+/**
+ * `$2A320E` / `$2A323E` -- A1 10, the pod barrage, and the one script in this boss with
+ * an INDIRECT dispatch: `$2A32C6 lea $2A33C2 / adda.w $C(a4) / adda.w $19C(a6) /
+ * movea.l (a0),a0 / jsr (a0)`. Two indices into eight longwords, and the four routines
+ * they resolve to are fans of ONE, TWO, THREE and FOUR shots:
+ *
+ *     $2A33E2   d1                                one shot
+ *     $2A33EA   d1-$A, d1+$A                      two
+ *     $2A3400   d1, d1+$E, d1-$E                  three
+ *     $2A341C   d1-9, d1-$1B, d1+9, d1+$1B        four
+ *
+ * every one of them through `$281708`, which the port already has. The angles are
+ * reached by RELATIVE steps (`subi.b #$A` then `addi.b #$14`, and so on), all byte-wide,
+ * so a base near the wrap folds.
+ *
+ * `$19C(a6)` IS A DIFFICULTY RATCHET. `$2A33AC addq.w #$8` bumps it once per run of the
+ * script and `$2A33A2 cmpi.w #$10 / beq` stops it at `$10`, so it takes the values 0, 8,
+ * `$10` and no others. Paired with `$C(a4)`'s four steps that walks the whole table:
+ *
+ *     $19C = 0     fans of 1, 1, 2, 2
+ *     $19C = 8     fans of 2, 2, 3, 3
+ *     $19C = $10   fans of 3, 3, 4, 4
+ *
+ * so the barrage thickens each time the boss reaches this attack, and the table's eight
+ * entries are exactly the reachable index set: `$C + $10` is `$1C`, the last one.
+ */
+const A1_10_BIASES = 0x2a33b2;                            // four longwords
+const A1_10_DISPATCH = 0x2a33c2;                          // eight longwords
+const A1_10_FANS = {
+  0x2a33e2: { offs: [0], sites: [0x2a33e2] },
+  0x2a33ea: { offs: [-0x0a, 0x0a], sites: [0x2a33ee, 0x2a33f8] },
+  0x2a3400: { offs: [0, 0x0e, -0x0e], sites: [0x2a3400, 0x2a340a, 0x2a3414] },
+  0x2a341c: { offs: [-9, -0x1b, 9, 0x1b],
+    sites: [0x2a3420, 0x2a342a, 0x2a3434, 0x2a343e] },
+};
+
+function a1_10Fan(ram, rom, ctx, a5, entry, d0, base, d2, d3) {
+  const fan = A1_10_FANS[entry];
+  if (!fan) {
+    unreached(0x2a32d6, `$2A33C2's dispatch resolved to $${entry.toString(16)
+      .toUpperCase()}, which is not one of the four fans at $2A33E2, $2A33EA, `
+      + `$2A3400 and $2A341C. Either $19C(A6) left the 0/8/$10 set $2A33A2 bounds `
+      + `it to, or $C(a4) escaped $2A32E4's andi.w #$F`);
+  }
+  for (let i = 0; i < fan.offs.length; i++) {
+    shootBoss4(ram, rom, ctx, fan.sites[i], 0x281708,
+      regsBoss4(a5, d0, (base + fan.offs[i]) & 0xff, d2, d3));
+  }
+}
+
+/** `$2A32A0`/`$2A3374` -- `ext.w` a byte into the HIGH word with `$13` in the low one. */
+const a1_10D0 = (ram, slot) =>
+  ((((ram.u8(slot + 0x0a) << 24) >> 24) << 16) | 0x13) >>> 0;
+
+/** `$2A326E` and `$2A3306`/`$2A3352` -- aim from the body position, optionally biased by
+ *  one of the four muzzles, then jitter the answer with a `$242B3C` byte. */
+function a1_10Aim(ram, rom, ctx, slot, bias) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  let selfY = ram.u16(a6 + 0x22), selfX = ram.u16(a6 + 0x24);
+  if (bias !== null) {
+    selfY = u16(selfY + rom.u16(bias));                   // $2A3274 add.w (a0)+,d0
+    selfX = u16(selfX + rom.u16(bias + 2));               // $2A3276 add.w (a0),d1
+  }
+  const aimed = aim256FromCaller(aimTables(rom), ram, a5, selfY, selfX);
+  ram.setU8(slot + 0x0b, aimed.carry ? selfX & 0xff : aimed.dir);   // $2A327E
+  ram.setU8(slot + 0x0b,                                 // $2A3282/$2A3288 add.b
+    (ram.u8(slot + 0x0b) + drawByte242B3C(ram, rom)) & 0xff);
+}
+
+export function a1_10Step2A323E(ram, rom, ctx, slot) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+
+  state0: if (ram.u8(slot + 0x02) === 0) {                // $2A323E cmpi.b #$0/bne
+    if (ram.u8(slot + 0x08) === 0) {                      // $2A3248 tst.b/bne
+      if (!due8(ram, slot + 0x04)) break state0;          // $2A3250 subq.b/bcc
+      ram.setU8(slot + 0x04, ram.u8(slot + 0x05));        // $2A3258
+      ram.setU8(slot + 0x08, ram.u8(slot + 0x09));        // $2A325E arm the burst
+      a1_10Aim(ram, rom, ctx, slot, A1_10_BIASES + ram.u16(slot + 0x0c));  // $2A3264
+      ram.setU8(slot + 0x0a, 0);                          // $2A328C
+    }
+    if (!due8(ram, slot + 0x06)) break state0;            // $2A3292 subq.b/bcc
+    ram.setU8(slot + 0x06, ram.u8(slot + 0x07));          // $2A329A
+    const cursor = ram.u16(slot + 0x0c);
+    a1_10Fan(ram, rom, ctx, a5,                           // $2A32C6..$2A32D6
+      rom.u32(A1_10_DISPATCH + cursor + ram.u16(a6 + 0x19c)),
+      a1_10D0(ram, slot), ram.u8(slot + 0x0b),
+      ram.u32(a6 + 0x22), rom.u32(A1_10_BIASES + cursor));
+    ram.setU8(slot + 0x08, ram.u8(slot + 0x08) - 1);      // $2A32D8 subq.b
+    if (ram.u8(slot + 0x08) !== 0) break state0;          // $2A32DC bne
+    ram.setU16(slot + 0x0c, u16(cursor + 4) & 0x000f);    // $2A32E0/$2A32E4
+    if (ram.u16(slot + 0x0c) !== 0) break state0;         // $2A32EA bne
+
+    // $2A32EE -- the cursor came round, so hand over to state 1. `$8(a4)` is a BYTE
+    // counter above and a WORD one below, and this is where it changes hands.
+    ram.setU16(slot + 0x04, 0x3002);                      // $2A32EE
+    ram.setU16(slot + 0x08, 0x000a);                      // $2A32F4 -- ten volleys
+    ram.setU8(slot + 0x0a, 8);                            // $2A32FA
+    ram.setU8(slot + 0x02, 1);                            // $2A3300
+    a1_10Aim(ram, rom, ctx, slot, null);                  // $2A3306..$2A331C
+    ram.bchg8(a5 + 0x03, 0);                              // $2A3320 bchg #$0,$3(a5)
+  }
+
+  if (ram.u8(slot + 0x02) !== 1) return;                  // $2A3326 cmpi.b #$1/bne
+  if (!due8(ram, slot + 0x04)) return;                    // $2A3330 subq.b/bcc
+  ram.setU8(slot + 0x04, ram.u8(slot + 0x05));            // $2A3338
+  if (ram.u16(slot + 0x0e) === 0) {                       // $2A333E tst.w/bne
+    ram.bchg8(a5 + 0x03, 0);                              // $2A3346
+    ram.setU16(slot + 0x0e, 1);                           // $2A334C -- once only
+    // $2A3352 aims WITHOUT the jitter draw the other two sites make.
+    const aimed = aim256FromCaller(aimTables(rom), ram, a5,
+      ram.u16(a6 + 0x22), ram.u16(a6 + 0x24));
+    ram.setU8(slot + 0x0b,
+      aimed.carry ? ram.u16(a6 + 0x24) & 0xff : aimed.dir);   // $2A335E
+  }
+  // $2A3362..$2A3394 -- TWO fans, from muzzles 2 and 3 ($2A33BA) and dispatch entries
+  // 8 and $C past the base, both shifted by the same `$19C(a6)` ratchet.
+  for (let i = 0; i < 2; i++) {
+    a1_10Fan(ram, rom, ctx, a5,
+      rom.u32(A1_10_DISPATCH + 8 + i * 4 + ram.u16(a6 + 0x19c)),
+      a1_10D0(ram, slot), ram.u8(slot + 0x0b),
+      ram.u32(a6 + 0x22), rom.u32(A1_10_BIASES + 8 + i * 4));
+  }
+  ram.setU16(slot + 0x08, u16(ram.u16(slot + 0x08) - 1));  // $2A3398 subq.w
+  if (ram.u16(slot + 0x08) !== 0) return;                  // $2A339C bne
+  ram.setU16(slot, 0);                                     // $2A33A0 clr.w (a4)
+  if (ram.u16(a6 + 0x19c) === 0x10) return;                // $2A33A2 cmpi.w/beq
+  ram.setU16(a6 + 0x19c, u16(ram.u16(a6 + 0x19c) + 8));    // $2A33AC -- the RATCHET
+}
+
+/** `$2A320E` -- A1 10's INIT, eight literals and a FALL-THROUGH (`$2A3238` ends at
+ *  `$2A323E`). `$8(a4)` arrives as the word `$000A`, whose low byte is the ZERO state 0
+ *  tests and whose high byte is the `$A` it arms the burst from. */
+export function a1_10Init2A320E(ram, rom, ctx, slot) {
+  ram.setU8(slot + 0x02, 0);                              // $2A320E
+  ram.setU16(slot + 0x04, 0x4008);                        // $2A3214 -- $40, period 8
+  ram.setU16(slot + 0x06, 0x0004);                        // $2A321A -- 0, period 4
+  ram.setU16(slot + 0x08, 0x000a);                        // $2A3220
+  ram.setU8(slot + 0x0a, 8);                              // $2A3226
+  ram.setU8(slot + 0x0b, 0);                              // $2A322C
+  ram.setU16(slot + 0x0c, 0);                             // $2A3232 -- the cursor
+  ram.setU16(slot + 0x0e, 0);                             // $2A3238
+  a1_10Step2A323E(ram, rom, ctx, slot);                   // falls through
+}
+
 registerScript(0x29f9b4, main7Init29F9B4);
 registerScript(0x29f9cc, main7Step29F9CC);
+registerScript(0x2a320e, a1_10Init2A320E);
+registerScript(0x2a323e, a1_10Step2A323E);
 // A3 3..8, the six-instance ramp family. The STEP sits `$6` past its INIT in every
 // one of them, which is the same `$2E`-stride regularity the bodies have.
 for (const a of [0x2a14aa, 0x2a14d8, 0x2a1506, 0x2a1534, 0x2a1562, 0x2a1590]) {
