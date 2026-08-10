@@ -1,8 +1,9 @@
 // Stage-4 Type $40 boss entry and arrival bootstrap.
 //
 // This slice owns the spawn wrapper, the live no-hit/damage controller, F0,
-// MAIN0/MAIN1, D9/D10, the first seven visible A2 objects, and A4/F3's first
-// attack conductor. The next normal-play frontier is A1/E1 at $2A17E6.
+// MAIN0/MAIN1, D9/D10, the first seven visible A2 objects, A4/F3, and its
+// mirrored A1/E1 and E2 attack families. The next live frontier is A4/F4 at
+// $2A0BCC.
 
 import { asr, i16, i32, u16 } from './ram.js';
 import { unreached } from './unported.js';
@@ -12,9 +13,10 @@ import { livePlayers2428A6 } from './boss.js';
 import { applyVelocity } from './movement.js';
 import { install24150A } from './palette.js';
 import { loadAnimObjects246410 } from './animobjects.js';
-import { AimTables, aim64, aim64FromCaller, slew64 } from './aim.js';
-import { drawWord242EC2 } from './rng.js';
+import { AimTables, aim64, aim64FromCaller, aim256FromCaller, slew64 } from './aim.js';
+import { drawByte242B3C, drawWord242EC2 } from './rng.js';
 import { dist242494 } from './bossscripts.js';
+import { fire as fireBullet, WriteLog } from './bullets.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { runStageAdvance242952 } from './stageend.js';
 import {
@@ -348,6 +350,32 @@ function decE6_2A174C(ram, a6) {
   ram.setU16(a6 + 0xe6, i16(next) < 0 ? 0x17 : next);
 }
 
+function decC6_2A1736(ram, a6) {
+  const next = u16(ram.u16(a6 + 0xc6) - 1);
+  ram.setU16(a6 + 0xc6, i16(next) < 0 ? 0x17 : next);
+}
+
+function incE6_2A1762(ram, a6) {
+  const next = u16(ram.u16(a6 + 0xe6) + 1);
+  ram.setU16(a6 + 0xe6, next === 0x18 ? 0 : next);
+}
+
+function boss4Point(rom, index) {
+  let i = u16(index);
+  if (i > 0x17) i = u16(i - 0x18);
+  return { angle: rom.u8(0x2a1708 + i), vector: rom.u32(0x2a16a4 + i * 4) };
+}
+
+function shootBoss4(ram, rom, ctx, site, entry, regs) {
+  const result = fireBullet({ ram, rom, log: new WriteLog(ram) }, entry, regs);
+  ctx.bulletSpawn?.(site, result);
+}
+
+function regsBoss4(a5, d0, d1, d2, d3) {
+  return { d0: d0 >>> 0, d1: d1 & 0xff, d2: d2 >>> 0, d3: d3 >>> 0,
+    d4: 0, d5: 0, a5 };
+}
+
 function startF3Attack(ram, id, parameter) {
   const child = a1Start259A18(ram, id);
   ram.setU16(child + 0x02, parameter);
@@ -504,6 +532,208 @@ function main1Init29F790(ram, rom, ctx, slot) {
   main1Step29F7A2(ram, rom, ctx, slot);
 }
 
+const E_SIDE = {
+  1: { selector: 0xc6, pos: 0xc2, counter: 0x186,
+    advance: incC6_2A1720, retreat: decC6_2A1736,
+    fixedSites: [[0x2a1896, 0x2a18da], [0x2a1924, 0x2a1968],
+      [0x2a19b4, 0x2a19f8]], wideSites: [0x2a1a8e, 0x2a1ad6, 0x2a1b20],
+    closeSites: [[0x2a1ffa, 0x2a200e], [0x2a2034, 0x2a2048],
+      [0x2a2070, 0x2a2084]] },
+  2: { selector: 0xe6, pos: 0xe2, counter: 0x187,
+    advance: decE6_2A174C, retreat: incE6_2A1762,
+    fixedSites: [[0x2a2158, 0x2a219c], [0x2a21e6, 0x2a222a],
+      [0x2a2276, 0x2a22ba]], wideSites: [0x2a2350, 0x2a2398, 0x2a23e2],
+    closeSites: [[0x2a275e, 0x2a2772], [0x2a2798, 0x2a27ac],
+      [0x2a27d4, 0x2a27e8]] },
+};
+
+function eInitShort(ram, ctx, slot, side) {
+  const a6 = ctx.bossSubRec, cfg = E_SIDE[side];
+  ram.setU16(slot + 0x04, 0);
+  ram.setU16(slot + 0x06, 1);
+  ram.setU16(slot + 0x08, 0);
+  ram.setU16(slot + 0x0a, 0);
+  ram.setU8(a6 + cfg.counter, ram.u8(a6 + cfg.counter) + 1);
+}
+
+function fireFive(ram, rom, ctx, site, a5, d0, base, d2, d3, wide,
+  firstEntry, laterEntry) {
+  const delta = wide ? 10 : 3;
+  const angles = [base, base + delta, base + delta * 2, base - delta, base - delta * 2];
+  for (let i = 0; i < angles.length; i++)
+    shootBoss4(ram, rom, ctx, site + i * 0x0a, i === 0 ? firstEntry : laterEntry,
+      regsBoss4(a5, d0, angles[i], d2, d3));
+}
+
+function eStepFixed(ram, rom, ctx, slot, side, mode) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec, cfg = E_SIDE[side];
+  if (!due8(ram, slot + 0x04)) return;
+  ram.setU8(slot + 0x04, ram.u8(slot + 0x05));
+  cfg.advance(ram, a6);
+  const baseSelector = ram.u16(a6 + cfg.selector);
+  const d2 = ram.u32(a6 + cfg.pos);
+  const speed = ((ram.u16(slot + 0x08) << 16) | 4) >>> 0;
+  for (let group = 0; group < 3; group++) {
+    const point = boss4Point(rom, baseSelector + group * 8);
+    if (mode === 0) {
+      fireFive(ram, rom, ctx, cfg.fixedSites[group][0],
+        a5, speed, point.angle, d2, point.vector, false, 0x2817b8, 0x2817b8);
+      fireFive(ram, rom, ctx, cfg.fixedSites[group][1],
+        a5, (speed - 0x00010000) >>> 0, point.angle + 0x20,
+        d2, point.vector, false, 0x2817b8, 0x2817b8);
+    } else {
+      fireFive(ram, rom, ctx, cfg.wideSites[group],
+        a5, speed, point.angle, d2, point.vector, true,
+        group === 2 ? 0x281708 : 0x2817b8, 0x281708);
+    }
+  }
+  ram.setU16(slot + 0x0a, (ram.u16(slot + 0x0a) + 1) % 3);
+  const remaining = u16(ram.u16(slot + 0x06) - 1);
+  ram.setU16(slot + 0x06, remaining);
+  if (remaining === 0) ram.setU16(slot, 0);
+}
+
+function eInitAimed(ram, slot) {
+  ram.setU16(slot + 0x04, 0x2020);
+  ram.setU16(slot + 0x06, 5);
+  ram.setU16(slot + 0x08, 4);
+  ram.setU8(slot + 0x0a, 0);
+}
+
+function fireDescending(ram, rom, ctx, site, entry, a5, d0, d1, d2, d3) {
+  let speed = d0 >>> 0;
+  for (let i = 0; i < 4; i++) {
+    shootBoss4(ram, rom, ctx, site + i * 0x0c, entry,
+      regsBoss4(a5, speed, d1, d2, d3));
+    speed = (speed - 0x00020000) >>> 0;
+  }
+}
+
+function fireRandomAimedPattern(ram, rom, ctx, slot, side, point) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec, cfg = E_SIDE[side];
+  const py = ram.u16(a6 + cfg.pos), px = ram.u16(a6 + cfg.pos + 2);
+  const vy = point.vector >>> 16, vx = point.vector & 0xffff;
+  const sy = u16(py + vy), sx = u16(px + vx);
+  const aimed = aim256FromCaller(aimTables(rom), ram, a5, sy, sx);
+  const angle = ((aimed.carry ? sx : aimed.dir) + drawByte242B3C(ram, rom)) & 0xff;
+  const pattern = drawWord242EC2(ram, rom) & 3;
+  const d0 = ((ram.u16(slot + 0x08) << 16) | 0x000b) >>> 0;
+  const d2 = ram.u32(a6 + cfg.pos);
+  if (pattern === 0 || pattern === 3) {
+    fireDescending(ram, rom, ctx, 0x2a1ce4, 0x281744,
+      a5, d0, angle, d2, point.vector);
+  } else if (pattern === 1) {
+    const spread = (drawWord242EC2(ram, rom) & 7) + 3;
+    fireDescending(ram, rom, ctx, 0x2a1d26, 0x281744,
+      a5, d0, angle - spread, d2, point.vector);
+    fireDescending(ram, rom, ctx, 0x2a1d56, 0x281744,
+      a5, d0, angle + spread, d2, point.vector);
+  } else {
+    const spread = (drawWord242EC2(ram, rom) & 0x0f) + 6;
+    fireDescending(ram, rom, ctx, 0x2a1d98, 0x281764,
+      a5, d0, angle, d2, point.vector);
+    fireDescending(ram, rom, ctx, 0x2a1dc6, 0x281764,
+      a5, d0, angle - spread, d2, point.vector);
+    fireDescending(ram, rom, ctx, 0x2a1df6, 0x281764,
+      a5, d0, angle + spread, d2, point.vector);
+  }
+}
+
+function eStepAimed(ram, rom, ctx, slot, side) {
+  const a6 = ctx.bossSubRec, cfg = E_SIDE[side];
+  cfg.advance(ram, a6);
+  if (!due8(ram, slot + 0x04)) return;
+  ram.setU8(slot + 0x04, ram.u8(slot + 0x05));
+  const phase = ram.u8(slot + 0x0a);
+  fireRandomAimedPattern(ram, rom, ctx, slot, side,
+    boss4Point(rom, ram.u16(a6 + cfg.selector) + phase * 8));
+  ram.setU8(slot + 0x0a, phase === 2 ? 0 : phase + 1);
+  const remaining = u16(ram.u16(slot + 0x06) - 1);
+  ram.setU16(slot + 0x06, remaining);
+  if (remaining === 0) ram.setU16(slot, 0);
+}
+
+function eInitClosing(ram, rom, ctx, slot, side) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec, cfg = E_SIDE[side];
+  ram.setU16(slot + 0x04, 0x4000);
+  ram.setU16(slot + 0x06, 0x50);
+  ram.setU16(slot + 0x08, 0xfffc);
+  ram.setU16(slot + 0x0a, 0x40);
+  ram.setU16(slot + 0x0c, 2);
+  ram.setU16(slot + 0x10, 0);
+  ram.setU16(slot + 0x12, 0x0c);
+  ram.setU16(slot + 0x14, 5);
+  ram.setU8(slot + 0x16, 0);
+  ram.setU8(slot + 0x17, side === 1 ? 0xff : 1);
+  ram.setU8(slot + 0x18, 1);
+  ram.setU16(slot + 0x1a, 0x0808);
+  const py = ram.u16(a6 + cfg.pos), px = ram.u16(a6 + cfg.pos + 2);
+  const aimed = aim256FromCaller(aimTables(rom), ram, a5, py, px);
+  const direction = aimed.carry ? px : aimed.dir;
+  ram.setU8(slot + 0x0e,
+    direction - ((ram.u8(slot + 0x17) << 4) & 0xff));
+}
+
+function eStepClosing(ram, rom, ctx, slot, side) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec, cfg = E_SIDE[side];
+  if (ram.u8(slot + 0x16) === 0) {
+    if (i16(ram.u16(slot + 0x0a)) > 0x10) cfg.retreat(ram, a6);
+    const travel = u16(ram.u16(slot + 0x0a) - 1);
+    ram.setU16(slot + 0x0a, travel);
+    if (travel === 0) ram.setU8(slot + 0x16, 1);
+  }
+  if (ram.u8(slot + 0x16) !== 1) return;
+  ram.setU8(slot + 0x18, ram.u8(slot + 0x18) + 1);
+  if (!due8(ram, slot + 0x04)) return;
+  ram.setU8(slot + 0x04, ram.u8(slot + 0x05));
+  const spread = ram.u8(slot + 0x18);
+  const d2 = ram.u32(a6 + cfg.pos);
+  for (let group = 0; group < 3; group++) {
+    const point = boss4Point(rom, ram.u16(a6 + cfg.selector) + group * 8);
+    const speed = ram.u16(slot + 0x08);
+    shootBoss4(ram, rom, ctx, cfg.closeSites[group][0], 0x2817b8,
+      regsBoss4(a5, ((speed << 16) | 4) >>> 0,
+        point.angle - spread, d2, point.vector));
+    shootBoss4(ram, rom, ctx, cfg.closeSites[group][1], 0x2817b8,
+      regsBoss4(a5, ((((speed - 4) & 0xffff) << 16) | 9) >>> 0,
+        point.angle + spread, d2, point.vector));
+  }
+  if (due8(ram, slot + 0x1a)) {
+    ram.setU8(slot + 0x1a, ram.u8(slot + 0x1b));
+    ram.setU16(slot + 0x08, ram.u16(slot + 0x08) + 1);
+  }
+  const remaining = u16(ram.u16(slot + 0x06) - 1);
+  ram.setU16(slot + 0x06, remaining);
+  if (remaining === 0) ram.setU16(slot, 0);
+}
+
+function eAttackStep(ram, rom, ctx, slot, side) {
+  switch (ram.u16(slot + 0x02)) {
+    case 0: eStepFixed(ram, rom, ctx, slot, side, 0); break;
+    case 1: eStepFixed(ram, rom, ctx, slot, side, 1); break;
+    case 2: eStepAimed(ram, rom, ctx, slot, side); break;
+    case 3: eStepClosing(ram, rom, ctx, slot, side); break;
+    default: unreached(side === 1 ? 0x2a17f8 : 0x2a20ba,
+      `Stage-4 boss E${side} parameter is outside 0..3`);
+  }
+}
+
+function eAttackInit(ram, rom, ctx, slot, side) {
+  switch (ram.u16(slot + 0x02)) {
+    case 0: case 1: eInitShort(ram, ctx, slot, side); break;
+    case 2: eInitAimed(ram, slot); break;
+    case 3: eInitClosing(ram, rom, ctx, slot, side); break;
+    default: unreached(side === 1 ? 0x2a17e6 : 0x2a20a8,
+      `Stage-4 boss E${side} parameter is outside 0..3`);
+  }
+  eAttackStep(ram, rom, ctx, slot, side);
+}
+
+function e1Init2A17E6(ram, rom, ctx, slot) { eAttackInit(ram, rom, ctx, slot, 1); }
+function e1Step2A17F8(ram, rom, ctx, slot) { eAttackStep(ram, rom, ctx, slot, 1); }
+function e2Init2A20A8(ram, rom, ctx, slot) { eAttackInit(ram, rom, ctx, slot, 2); }
+function e2Step2A20BA(ram, rom, ctx, slot) { eAttackStep(ram, rom, ctx, slot, 2); }
+
 registerScript(0x2a017a, f0_2A017A);
 registerScript(0x2a019a, f0Step2A019A);
 registerScript(0x29f5bc, main0Init29F5BC);
@@ -521,3 +751,7 @@ registerScript(0x2a092c, f3Init2A092C);
 registerScript(0x2a0984, f3Step2A0984);
 registerScript(0x29f790, main1Init29F790);
 registerScript(0x29f7a2, main1Step29F7A2);
+registerScript(0x2a17e6, e1Init2A17E6);
+registerScript(0x2a17f8, e1Step2A17F8);
+registerScript(0x2a20a8, e2Init2A20A8);
+registerScript(0x2a20ba, e2Step2A20BA);

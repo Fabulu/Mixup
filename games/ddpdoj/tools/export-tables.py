@@ -538,6 +538,9 @@ SHOT_WINDOWS.extend([
     (0x2A1608, 0x0078, "W221: complete Stage-4 boss A1 pointer table"),
     (0x2A1720, 0x0058, "W221: Stage-4 boss paired 24-position helpers"),
     (0x29F790, 0x007A, "W221: Stage-4 boss MAIN1 waypoint movement and table"),
+    (0x2A16A4, 0x007C, "W222: Stage-4 boss 24-point vector and heading tables"),
+    (0x2A1778, 0x0020, "W222: Stage-4 boss point lookup helper"),
+    (0x2A17E6, 0x1026, "W222: complete Stage-4 boss A1/E1 and E2 attack pair"),
     (0x23EBA0, 0x003C, "W216: Pool-A kinds 18/19 record-convention emitter "
                        "through its exact RTS boundary"),
     (0x2358B0, 0x20C8, "W211: complete STAGE-4 spawn dependency span: 382 "
