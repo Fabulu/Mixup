@@ -95,6 +95,39 @@ export function applyVelocity(ram, tables, a5) {
 }
 
 /**
+ * `$241E34` -- `$2417DE`'s SHOT-SIDE TWIN, and the difference is which vector
+ * routine it calls.  Same shape: (speed, heading) out of the sub-record, freeze
+ * gate, apply D2 to +$02 and D3 to +$04, return the pair.
+ *
+ *   241e34: moveq #$0,D0 / move.b ($1a,A6),D0
+ *   241e3a: moveq #$0,D1 / move.b ($1b,A6),D1      <-- NO `and.b #$3f`
+ *   241e40: tst.w $8130D2 / bne $241E56            the same freeze gate
+ *   241e48: bsr $241D34                            <-- shotVector, NOT $241812
+ *   241e4c: add.w D2,($2,A6) / add.w D3,($4,A6)
+ *   241e56: moveq #$0,D2 / moveq #$0,D3 / rts      frozen: {0,0} and NO apply
+ *
+ * TWO differences from `$2417DE` a port must not collapse, and they compound:
+ * the heading is the WHOLE byte rather than `& $3F`, and `$241D34` folds the
+ * whole byte with its own table (see `vectors.js`, which spells out why it is
+ * not `$241812`).  Handing this routine's heading to `$241812` would put the
+ * shot in a different quadrant, not merely at a different angle.
+ *
+ * Type `$42`'s handler is the caller this was translated for (`$2A3CDC`).
+ * @returns {{dy:number, dx:number}} D2 and D3.
+ */
+export function applyShotVelocity241E34(ram, tables, a6) {
+  const speed = ram.u8(a6 + SUB.speed);                  // $241E36
+  const heading = ram.u8(a6 + SUB.heading);              // $241E3C -- unmasked
+  if (ram.u16(GL.freeze) !== 0) return { dy: 0, dx: 0 }; // $241E40/$241E46 bne
+  const v = tables.shotVector(speed, heading);           // $241E48 bsr $241D34
+  ram.setU16(a6 + SUB.posX,                              // $241E4C add.w D2,($2,A6)
+    u16(i16(ram.u16(a6 + SUB.posX)) + v.dy));
+  ram.setU16(a6 + SUB.posY,                              // $241E50 add.w D3,($4,A6)
+    u16(i16(ram.u16(a6 + SUB.posY)) + v.dx));
+  return v;
+}
+
+/**
  * `$24179E` -- the scroll-locked cross-axis compensation.  Reads the longword
  *  at `$80B03C` (writer `$240C7C`, W17), swaps the halves, adds the low word
  *  (the former high) to sub-record +$02.  Skipped when frozen.  Called from the

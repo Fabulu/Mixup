@@ -592,6 +592,22 @@ SHOT_WINDOWS.extend([
     # is the HANDLER's own first instruction, with zero bytes between them.
     (0x2A394A, 0x01AC, "W254: type $42's runLen stub, init body and five-entry "
                        "prototype, ending exactly at its handler $2A3AF6"),
+    # W255: type $42's handler's TWO TABLES, contiguous, both pinned by code.
+    #   $2A4252  EIGHT sprite descriptors. `$2A41F0 addq.w #$4,$3c(a5)` with
+    #            `$2A41F4 andi.w #$1F` bounds the cursor at eight longwords, and they
+    #            step uniformly by $64 ($E8458, $E84BC, ... $E8714), so the run is its
+    #            own witness. $2A4252 + $20 is $2A4272, the next table.
+    #   $2A4272  the DISTANCE -> SPEED ladder `$2A3CC2` walks until $FFFF: 24 word
+    #            pairs, distance $40*n mapping to speed 2n, terminator at $2A42D2.
+    # The handler's own `rts` is at $2A4250, so the first table starts one word later.
+    (0x2A4252, 0x0082, "W255: type $42's eight sprite descriptors and its 24-step "
+                       "distance-to-speed ladder, ending at the $FFFF terminator"),
+    # W255: `$23F7C6`, the plain register-convention sprite enqueue type $42's mode-1
+    # draw tail jumps to. NOT new code -- `resolveEmitStub` decodes the stub out of the
+    # ROM, so all it needed was to be readable. Twelve instructions, $23F7C6..$23F7F3,
+    # and $23F7F4 is the next stub's own `move.l A0,-(A7)` prologue.
+    (0x23F7C6, 0x002E, "W255: $23F7C6, the plain sprite enqueue stub for bucket 22, "
+                       "ending at $23F7F4's own prologue"),
     (0x2A019E, 0x037C, "W224: Stage-4 boss A4/F1 destruction transition and "
                        "four exact effect tables"),
     (0x29F80A, 0x00C2, "W224: Stage-4 boss MAIN2/MAIN3 movement through target"),
