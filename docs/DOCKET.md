@@ -88,8 +88,11 @@ already counted by address:
 - the banner's five `$24150A` resource installs plus the slide-out's -- **PORTED
   in W236**, and `$24150A` had been ported since W91; the note calling it "data"
   had simply stopped being true,
-- the RESULT SCREEN: `$23C638` palette cue, `$246410` animation-object load,
-  `$28D77C` sixteen longwords of palette RAM, `$28DE72`/`$28C186` exit handshake,
+- the RESULT SCREEN: `$23C638` turned out to be the $900000 TILEMAP RING clear, not
+  a palette cue -- that is what takes the ground away, and W240 ported it (the ring
+  empties on frame 67 of a forced transition and rebuilds by 400). `$246410` was
+  already ported. What is left is `$28C186`/`$28D6FC`, and `$28D77C`, which writes
+  palette RAM this port does not model at all,
 - `$253794`, the option-pod teardown.
 
 So this is three presentation tiers on a working machine, not one missing engine.

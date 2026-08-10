@@ -1950,11 +1950,17 @@ function bannerClear284B6C(ram, rom, ctx) {
     ram.setU16(HUDRAM.popupTimerP2, 0);                 // $284C88 clr.w $81B5EC
     ram.setU16(HUDRAM.p1.popup, 0);                     // $284C8E clr.w $81B5C8
     panel2851D2(ram, rom, ctx);                              // $284C94 bsr $2851D2
+    // W240: both of these were counted and both were available -- `bombStock287ABE`
+    // covers $287ABE and $287AF0 (W118) and `txPrint240DC2` covers $240DC2 (W116).
+    // The text's registers are the cartridge's own, and the two sides differ only in
+    // their column: $284CAA #$200 against $284CD6 #$1400.
     if (i16(ram.u16(HUDRAM.aliveP1)) >= 0) {            // $284C98 / $284C9E bmi
-      draw(ctx, 0x287abe); draw(ctx, 0x240dc2);         // $284CA0 / $284CBC
+      bombStock287ABE(ram, rom, ctx, 0);                // $284CA0 jsr $287ABE
+      txPrint240DC2(ram, 0x00d4, 0x0200, 0x0002, 0x0005, 0x054f000a);  // $284CA6..$284CBC
     }
     if (i16(ram.u16(HUDRAM.aliveP2)) >= 0) {            // $284CC2 / $284CC8 bmi
-      draw(ctx, 0x287af0); draw(ctx, 0x240dc2);         // $284CCC / $284CE8
+      bombStock287ABE(ram, rom, ctx, 1);                // $284CCC jsr $287AF0
+      txPrint240DC2(ram, 0x00d4, 0x1400, 0x0002, 0x0005, 0x054f000a);  // $284CD2..$284CE8
     }
     return null;
   }

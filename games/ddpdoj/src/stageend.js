@@ -504,7 +504,14 @@ export function result28D9AA(ram, rom, ctx, a5) {
   if ((ph() & 0x04) === 0) {                                // $28DA42 btst #2
     ram.setU8(a6 + RF.phase, ph() | 0x04);                  // $28DA4C bset #2
     ram.setU16(a6 + RF.f1cnt, 1);                           // $28DA52 $4 := 1
-    note(ctx, 0x23c638, '$28DA58 jsr $23C638 -- result-screen palette cue. R2b');
+    // W240: $23C638 is not a "palette cue" -- it is `lea $900000` and 4096 longword
+    // clears, i.e. the BG TILEMAP RING, which this port models as a 64x16 window.
+    // Clearing it is what takes the ground away on a stage clear.
+    if (ctx.vram) ctx.vram.clear23C638();                     // $28DA58 jsr $23C638
+    else note(ctx, 0x23c638, '$28DA58 jsr $23C638 -- the $900000 ring clear; no '
+      + 'ctx.vram in this fixture, so counted');
+    note(ctx, 0x23c63e, '$23C638 clears $4000 bytes of $900000 and this ring models '
+      + 'the $1000-byte 64x16 window; the remainder is outside what the port reads');
     return;                                                 // $28DA5E rts
   }
   // ---- F2 SPRITE-INIT (one frame, when $4(a6) drains 1->0)

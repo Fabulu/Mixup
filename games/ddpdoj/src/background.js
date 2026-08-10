@@ -206,6 +206,15 @@ export class BgVram {
     this.streamPtr = 0;
   }
   /** `$240D9A move.l D4,(A0)` with A0 = $900000 + ((row<<6)+col)*4. */
+  /** `$23C638` -- `lea $900000,A0 / move.w #$FFF,D0 / move.l #$0,(A0)+ / dbra`:
+   *  FOUR THOUSAND NINETY-SIX longwords, which is $4000 bytes. This ring models the
+   *  64x16 window, $1000 bytes of that, so what is cleared here is the OBSERVABLE
+   *  subset and the rest is outside anything this port reads. The caller counts the
+   *  remainder by address rather than pretending the whole $4000 is modelled. */
+  clear23C638() {
+    this.w.fill(0);
+  }
+
   setLong(row, col, v) {
     const i = (((row << 6) + col) & 0x3ff) * 2;
     this.w[i] = (v >>> 16) & 0xffff;
