@@ -2067,6 +2067,7 @@ SHOT_WINDOWS.append(
 # each as one runtime window so src/rom.js throws by address on any unexported
 # read, while the closure hashes below pin the decrypted image's exact bytes.
 SHOT_WINDOWS.extend([
+    (0x243ABE, 0x0100, "W209: $243A9C packed-long RNG table $243ABE..$243BBE"),
     (0x265A54, 0x0198, "W198: Stage-3 type $14 closure $265A54..$265BEC"),
     (0x26C266, 0x1488, "W198: Stage-3 types $12/$13 closure $26C266..$26D6EE"),
     (0x265798, 0x0244, "W199: Stage-3 type $3F local closure $265798..$2659DC"),
@@ -2078,6 +2079,7 @@ SHOT_WINDOWS.extend([
     (0x29D010, 0x1006, "W205: Stage-3 boss F2/MAIN1/E6/E7 runtime closure $29D010..$29E016"),
     (0x29E016, 0x0340, "W206: Stage-3 boss E5 data/code closure $29E016..$29E356"),
     (0x29E356, 0x0222, "W208: Stage-3 boss E8 init/step closure $29E356..$29E578"),
+    (0x29E578, 0x048A, "W209: Stage-3 boss child type $99 closure $29E578..$29EA02"),
     (0x29EADA, 0x0010, "W207: Stage-3 boss requested type $9A self-free proof $29EADA..$29EAEA"),
 ])
 
@@ -2436,6 +2438,47 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if hashlib.sha256(d[0x29D100:0x29D138]).hexdigest() != (
             "3b1744e1757c4d305d66e8b1eaccaefd6233011978609fc04ac7590e35dac232"):
         raise SystemExit("W208: F7 init/step closure drifted")
+    if hashlib.sha256(d[0x243ABE:0x243BBE]).hexdigest() != (
+            "afb0549bc34023fcc2d6a6500a86182523cbaf89755b05dbfdc56614dfe84e3f"):
+        raise SystemExit("W209: $243A9C packed-long RNG table drifted")
+    if hashlib.sha256(d[0x29D16E:0x29D248]).hexdigest() != (
+            "5a47eb4c33052c39e6a2d1e31f7267dbea4e47d034e7914d459d030f89cce4eb"):
+        raise SystemExit("W209: F9 init/step/effect-kind closure drifted")
+    if hashlib.sha256(d[0x29D138:0x29D16E]).hexdigest() != (
+            "3f3e498708c2fbe252c4ce306481fb2cbdffa162910a0429f022944dc38ab9e4"):
+        raise SystemExit("W209: F8 init/step closure drifted")
+    if hashlib.sha256(d[0x29C5F6:0x29C660]).hexdigest() != (
+            "eb89945a530bd8fd3b69ee2480c7b3504609f32223d2ec03f28a77635188d0da"):
+        raise SystemExit("W209: D2 geometry script drifted")
+    if hashlib.sha256(d[0x29C660:0x29C6CE]).hexdigest() != (
+            "2ae9a168836be45766799fe81d5ad2e601b23e5bfae112fe6633c59a26a7af28"):
+        raise SystemExit("W209: D3 geometry script drifted")
+    if hashlib.sha256(d[0x29C6CE:0x29C762]).hexdigest() != (
+            "532a7aca4d1b90e3c2c9dcf2fc7da882e4e9f4cdcff2fbac608d5dfb03b1470b"):
+        raise SystemExit("W209: D2/D3 geometry table drifted")
+    if hashlib.sha256(d[0x29D296:0x29D32C]).hexdigest() != (
+            "046d007e60b2ebb22a67bacb76e11bf12c9804ce11c3e322bf1677704b8a4521"):
+        raise SystemExit("W209: E0 child-spawner closure drifted")
+    if hashlib.sha256(d[0x29D340:0x29D400]).hexdigest() != (
+            "8b7967aa9433cf8bd1f8deec852510b79430471ccc4c7c9d551ae5d6950d8e7b"):
+        raise SystemExit("W209: E1 parameter data drifted")
+    if hashlib.sha256(d[0x29D400:0x29D4DC]).hexdigest() != (
+            "d27b1a428a7b8de1d79cd8d76c53d48318dadf6d9d9f299179d0cae6235309ea"):
+        raise SystemExit("W209: E1 init/step closure drifted")
+    if hashlib.sha256(d[0x29D4E6:0x29D556]).hexdigest() != (
+            "b479f1ea695bf5dae8164bb203323a97d8d6bfcb041643e0370a156a7d7ca6dc"):
+        raise SystemExit("W209: E2 parameter data drifted")
+    if hashlib.sha256(d[0x29D556:0x29D79C]).hexdigest() != (
+            "6dea0b17733ebc033548e393750124a4a6e4aab1b4ae0c874792c3b770665fa6"):
+        raise SystemExit("W209: E2 init/step closure drifted")
+    if d[0x27E4DA:0x27E4E2] != bytes.fromhex("0029e5780029e6b0"):
+        raise SystemExit("W209: type $99 registry row drifted")
+    if hashlib.sha256(d[0x29E578:0x29EA02]).hexdigest() != (
+            "cffc33db42dfe5a934909a51bd099dd98ae872a31e675bf3ab263c2c9e0d8d49"):
+        raise SystemExit("W209: type $99 closure drifted")
+    if hashlib.sha256(d[0x29E976:0x29E996]).hexdigest() != (
+            "83d937ac62ae75e004f2347afdf1776b26b68c2c8a8dbbe5ad1de988c830f397"):
+        raise SystemExit("W209: type $99 active art table drifted")
     if d[0x29D27A:0x29D28A] != bytes.fromhex(
             "0029dcee0029dd3e0029deca0029df26"):
         raise SystemExit("W205: A1 E6/E7 pointer rows drifted")

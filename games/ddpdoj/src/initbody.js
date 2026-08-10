@@ -40,6 +40,7 @@ import { install24150A } from './palette.js';
 import { AimTables, aim64AtTarget, aim64FromCaller, aim256, targetSelect } from './aim.js';
 import { drawByte242B3C, drawWord242EC2, drawWord24328E } from './rng.js';
 import { loadAnimObjects246410 } from './animobjects.js';
+import { initType99_29E580 } from './boss3type99.js';
 
 // ----------------------------------------------------------- the record layout
 // A5 = enemy record, A6 = sub-record (= ($6,A5)).  The offsets the init bodies
@@ -1206,6 +1207,13 @@ BODY.set(0x29bbfc, (ram, rom, a5, a6, unported, tables, palette) => {
   ram.setU16(0x81b414, 1);                            // $29BCE6
   ram.setU16(0x81b416, 1);                            // $29BCEE
   if (ram.u16(G.rank98) !== 0) ram.setU16(0x81b418, 1); // $29BCF6..$29BD08
+});
+
+// Type `$99` is the live mirrored child pair created by the Stage-3 boss's
+// low-HP E0 script. Its body falls directly into the handler, so the shared
+// child module performs the first movement/opening/draw call here as well.
+BODY.set(0x29e580, (ram, rom, a5, a6, unported, tables, _palette, soundPost) => {
+  initType99_29E580(ram, rom, a5, a6, { unported, tables, soundPost });
 });
 
 // Type `$9A` is requested by the Stage-3 boss E3 leaf, but this registry row's

@@ -362,6 +362,10 @@ const HARVEST = Object.freeze([
     'stage-3 boss A2 object 5, eight frames'],
   [17, 0x29c052, 7, 4, 7, 0x29c06e,
     'stage-3 boss A2 object 8, seven frames'],
+  // W209. The low-HP E0 pair uses the existing opening family at $29BF6A,
+  // then switches to this complete reverse eight-frame active table.
+  [17, 0x29e976, 8, 4, 9, 0x29e99a,
+    'stage-3 boss live type $99 child, eight active animation frames'],
   [18, 0x289820, 32, 4, 32, 0x2898a0,
     'pool-D debris template 0 descriptor list'],
   [18, 0x2898b0, 32, 4, 32, 0x289930,
@@ -1148,10 +1152,10 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
     || r.base === 0x267160);
   if (unique.size !== 64 || [...unique].some((a) => !chain.has(a))
       || w203Rows.length !== 2 || w203Rows.some((r) => r.added !== 32 || r.already !== 0)
-      || w203StreamsBefore !== 166 || streams.size !== 1967) {
+      || w203StreamsBefore !== 166 || streams.size !== 1975) {
     throw new Error(`W203 type $16 art harvest drifted: ${unique.size} distinct `
       + `pointers, ${w203StreamsBefore} pre-harvest streams, ${streams.size} total; `
-      + 'expected 64 on the $F4 chain, 166 before, and 1967 after this harvest');
+      + 'expected 64 on the $F4 chain, 166 before, and 1975 after this harvest');
   }
 }
 // W205 A2 object 1 carries its fixed hull as an immediate rather than a table.

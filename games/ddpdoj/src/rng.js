@@ -358,3 +358,13 @@ export function drawLong24397A(ram, rom) {
   const i = u16(ram.u16(RNG.state)) & 0x3f;
   return rom.u32(RNG_24397A.table + i * 4);
 }
+
+/** `$243A9C`'s 64 packed offsets at `$243ABE..$243BBD`. */
+export const RNG_243A9C = { table: 0x243abe, entries: 64 };
+
+/** `$243A9C` -- the adjacent packed-long RNG used by the Stage-3 boss F9 debris. */
+export function drawLong243A9C(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);
+  const i = u16(ram.u16(RNG.state)) & 0x3f;
+  return rom.u32(RNG_243A9C.table + i * 4);
+}

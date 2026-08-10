@@ -131,7 +131,9 @@ test('the stage-1, Stage-2, and W203 Stage-3 bodies are dispatched', () => {
     'W204: Stage-3 boss type $A0 body $29BBFC');
   assert.ok(INIT_BODY_ADDRESSES.includes(0x29eae2),
     'W207: Stage-3 boss-requested type $9A self-free body $29EAE2');
-  assert.equal(INIT_BODY_ADDRESSES.length, 56,
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x29e580),
+    'W209: Stage-3 boss low-HP child type $99 body $29E580');
+  assert.equal(INIT_BODY_ADDRESSES.length, 57,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
     + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
     + `W170's $277836, W171's $276946, W172's $27751C, W173's $275154, `
@@ -142,7 +144,7 @@ test('the stage-1, Stage-2, and W203 Stage-3 bodies are dispatched', () => {
     + `W197's $264C1C/$264C84/$264CEC, and W198's `
     + `$26C26E/$26D446/$265A5C, W199's $2657A0, and W200's `
     + `$265BF4/$265DF0/$266324, W201's $2671E8, W202's $274B74, and `
-    + `W203's $266D36 and W207's $29EAE2`);
+    + `W203's $266D36, W207's $29EAE2, and W209's $29E580`);
 });
 
 test('runInitBodyAddr throws on an unknown body address', () => {
