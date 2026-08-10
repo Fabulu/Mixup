@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-10, after W197 publication.
+Last updated: 2026-08-10, after W198 publication.
 
 ## Current directive
 
@@ -14,11 +14,11 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The old W175 pause is resolved. W176 through W197 are live. W188 fixes the
+The old W175 pause is resolved. W176 through W198 are live. W188 fixes the
 reported stage-1 tank-death and hyper defects. W189 completes the directly
 reachable F1, F2, and F8 stage-2 boss phases, including the primary death
 presentation and screen shake. W191 closes Stage 2, and W192 opens Stage 3
-with its real terrain and first enemy families. Do not repeat W175 through W197.
+with its real terrain and first enemy families. Do not repeat W175 through W198.
 
 ## Exact repository and deployment state
 
@@ -48,6 +48,7 @@ At handoff:
 - W195 is committed, pushed, and deployed
 - W196 is committed, pushed, and deployed
 - W197 is committed, pushed, and deployed
+- W198 is committed, pushed, and deployed
 - W175 live build: `20260809081027`
 - W176 live build: `20260809092221`
 - W177 live build: `20260809095334`
@@ -71,6 +72,7 @@ At handoff:
 - W195 live build: `20260810004205`
 - W196 live build: `20260810010717`
 - W197 live build: `20260810012425`
+- W198 live build: `20260810021530`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
 - no agent or command is running now
 
@@ -94,16 +96,16 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W197 is complete and live as build `20260810012425`:
+W198 is complete and live as build `20260810021530`:
 
-- latest worklog: `docs/worklog/ddpdoj/197-impl-stage3-type38.md`
+- latest worklog: `docs/worklog/ddpdoj/198-impl-stage3-type12.md`
 - stage-2 boss baseline: `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
 - stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
 - init stub/body: `$297118` / `$297120`; handler: `$297398`
 - the complete `$298310` multi-part controller, A4 bootstrap, arrival MAIN 0,
   initially armed A3 scripts, all eleven A2 objects, and type `$4D` are included
 - stage-2 coverage is 332/332 records with 0 unknown
-- enemy-type coverage is 52/256
+- enemy-type coverage is 55/256
 - the complete F3 attack cycle is translated: A1/E6 through E11, including
   aim, RNG, timer, freeze, bullet-generator, and self-retirement behavior
 - the seeded boot consumes all 332 records, materializes 327 allocations, runs
@@ -133,7 +135,7 @@ W197 is complete and live as build `20260810012425`:
   verbatim ROM slice
 - Stage 3 installs from script `$2342BA`, aux `$234FB2`, and resource `$2350A8`
 - the complete 414-record Stage-3 script and 123 movement streams are statically
-  owned; coverage is 273/414 records and 21/28 types
+  owned; coverage is 274/414 records and 22/28 types
 - Stage-3 opening type `$3E` is translated at init `$2653EE`, handler `$265486`;
   all 70 occurrences, both linked hitboxes, bullets, death, and 64 art streams
   are live
@@ -152,20 +154,25 @@ W197 is complete and live as build `20260810012425`:
 - Stage-3 types `$38`, `$39`, and `$3A` are translated at init `$264C1C`,
   `$264C84`, and `$264CEC`, sharing handler `$2647A6`; their three distinct
   fixed hulls and existing rotating attack/death path are live
-- the browser bundle contains 3,395 sprite streams and now includes the missing
+- Stage-3 type `$12` is translated at init `$26C26E`, handler `$26C3E2`, with
+  its seven-part carrier state machine and directly spawned type `$13` and
+  `$14` children at `$26D446/$26D4B4` and `$265A5C/$265ADC`
+- all five parent draw families and both child families are shipped as 60 new
+  sprite streams
+- the browser bundle contains 3,455 sprite streams and now includes the missing
   1,404-tile Stage-2 and 252-tile Stage-3 background families as deferred shards
 
-The next honest gameplay frontier is Stage-3 type `$12` at record `$2348B2`,
-clock `$00E0`, body `$26C26E`, handler `$26C3E2`.
+The next honest gameplay frontier is Stage-3 type `$3F` at record `$2348BA`,
+clock `$00EA`, body `$2657A0`, handler `$265850`.
 
-Reserve the next immutable worklog number, statically map type `$12` and its
-direct dependencies once, translate it, and continue through the ordered
+Reserve the next immutable worklog number, use the completed static map for
+type `$3F`, translate it, and continue through the ordered
 Stage-3 frontier without redoing W192's complete census.
 
 Useful current tests and tools:
 
 ```powershell
-node --test games/ddpdoj/tests/w197type38family.test.js
+node --test games/ddpdoj/tests/w198type12.test.js
 python games/ddpdoj/tools/export-tables.py
 python games/ddpdoj/tools/dojcoverage.py
 node tools/publish.mjs --only ddpdoj --dry
@@ -194,11 +201,11 @@ Important completed work:
 - W165: replay parity and the obstructive recording/help tooltip behavior
 - W166: bee chain/rank/hyper feed
 - W167: reusable bidirectional static/dynamic coverage
-- W168-W197: stage-2 background elements, stage install, and enemy types `$95`,
+- W168-W198: stage-2 background elements, stage install, and enemy types `$95`,
   `$8D`, `$8F`, `$84`, `$90`, `$96`, `$8C`, `$91`, `$92`, `$97`, `$94`, `$93`,
   and `$86`, the complete Stage-2 boss/death closure, and the Stage-3 install,
   terrain, census, and opening types `$3E`, `$36`, `$37`, `$3C`, `$3B`, `$38`,
-  `$39`, and `$3A`
+  `$39`, `$3A`, `$12`, `$13`, and `$14`
 - Gradius commit `21fed98`: restored title/menu nametable after demo return
 
 The owner reported that sound became very good after the duration fix, while
@@ -287,10 +294,11 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W197 translates the adjacent Stage-3 type `$38`, `$39`, and `$3A` variants in
-one delivery. Their three init/prototype blocks now feed the already translated
-shared rotating attack/death handler and three new fixed hulls. Stage 3 is now
-273/414 records and 21/28 enemy types. The focused Stage-3 smokes, coverage,
-full release gate, web bundle gate, fetch gate, and deployment confirmation are
-green. Continue with type `$12` at record `$2348B2`, clock `$00E0`; the
-full-game goal remains active after every wave.
+W198 translates the Stage-3 type `$12` seven-part carrier and both of its direct
+child families, types `$13` and `$14`. The complete entry, attack, damage,
+deferred spawn, death, palette, unfreeze, and draw paths are live with 60 new
+sprite streams. Stage 3 is now 274/414 records and 22/28 enemy types. The
+focused Stage-3 smokes, 1,556-test release gate, web bundle gate, fetch gate,
+ROM leak guard, and deployment confirmation are green. Continue with type
+`$3F` at record `$2348BA`, clock `$00EA`; the full-game goal remains active
+after every wave.
