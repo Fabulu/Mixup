@@ -1,6 +1,6 @@
 # W195: Stage-3 type $3C
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 ## Scope
 
@@ -65,3 +65,11 @@ families, retract, explode, and draw with complete art. The next chronological
 unsupported record is type `$3B` at `$23453A`, clock `$0048`, with body
 `$264D5A` and handler `$264E82`. Stage 3 has 267/414 translated records,
 leaving 147 records across 11 unsupported types.
+
+## Release
+
+- implementation commit: `9d130d0`
+- production build: `20260810004205`
+- release gate: 1,550/1,550 tests, bundle render, web fetch, and ROM leak guard
+- deployment: `https://gbtman.pages.dev/games/ddpdoj/`
+- confirmation: three consecutive production polls returned the new build
