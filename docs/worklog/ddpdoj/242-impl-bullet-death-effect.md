@@ -51,6 +51,20 @@ suite is unchanged at **1661/1661** -- which is the point: a note is documentati
 and documentation that names the wrong obstacle costs a future wave more than a
 missing feature does.
 
+## A mistake I made in this wave, recorded
+
+The first commit of this note, `f182d54`, had backticks inside a template literal --
+`(\`allocPoolA27F8F0\`, ...)` -- which terminated the string and left
+`bulletdriver.js` unparseable. I committed it before running the suite, and the suite
+then showed 97 FILE-LEVEL failures: every test that imports anything downstream of
+that module. Fixed in the following commit, and the suite is 1661/1661 again.
+
+Two things worth keeping from it. Run the suite BEFORE the commit, not after -- the
+only reason this was caught in one minute rather than one wave is that the run
+happened at all. And the failure mode is worth recognising on sight: dozens of
+file-level `not ok` lines naming whole test files, rather than named assertions, is a
+module that will not parse, not a behaviour change.
+
 ## Why this is not "no progress"
 
 Every one of the last eleven waves started by checking a note's premise, and nine of

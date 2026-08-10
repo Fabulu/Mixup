@@ -200,7 +200,8 @@ export function runScreenClear(ctx) {
     ctx.unportedLog?.note(BULLET_DRIVER.clearEffect,
       `$281D2E jsr $27F8F8 (D0=$${mode.toString(16).toUpperCase()}) -- the `
       + `screen clear's per-bullet effect. The allocator and the pool driver are `
-      + `both ported (`allocPoolA27F8F0`, `runPoolADriver`); what is missing is `
+      + `both ported over the impact pool $8171BE (allocPoolA27F8F0, `
+      + `runPoolADriver); what is missing is `
       + `kind $${mode.toString(16).toUpperCase()}'s template, which $280B3E reads `
       + `out of $280E4A and no window exports. The two writes that clear the `
       + `bullet ($281D36/$281D38) ARE ported, so the only thing absent is the `
