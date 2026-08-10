@@ -515,6 +515,11 @@ SHOT_WINDOWS.extend([
                        "and live art tables through the type $9E stub"),
     (0x27C286, 0x027A, "W215: live Stage-4 child type $9E stub, init, prototype, "
                        "handler, and exact 32-entry animation table"),
+    (0x27D3FC, 0x0674, "W216: complete Stage-4 type $A3 stub, init, two-sub "
+                       "prototypes, linked-carrier handler, attacks, cleanup, "
+                       "and exact eight-entry animation table"),
+    (0x23EBA0, 0x003C, "W216: Pool-A kinds 18/19 record-convention emitter "
+                       "through its exact RTS boundary"),
     (0x2358B0, 0x20C8, "W211: complete STAGE-4 spawn dependency span: 382 "
                        "records + terminator, 157-word aux table, and 157 "
                        "movement streams ($2358B0..$237978)"),

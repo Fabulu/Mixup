@@ -39,19 +39,19 @@
 // from the ladder `$27FD22` indexed by the cursor `$817F82` (BCD $100 on a
 // fresh stage-1 cursor).
 //
-// ============ THE REFUSAL: 18 NON-BEE KINDS ARE NOT ALLOCATED ================
+// =========== THE GENERAL POOL: KINDS 18/19, PLUS LOUD REMAINING GAPS =========
 //
-// Pool A has 20 kind bodies (dispatch table `$27F99E`).  Only kind 1 (the bee)
-// and kind 16 (the bee's flying variant) route through `$27F92A`'s reserved
-// ten.  The other 18 come from the general allocators `$27F8EE`/`$27F8F8`,
-// which take D0 from registers this port has not traced.  Attributing them is
-// the walker-extension job (W105 sec 5.3) and out of scope for a bee port.
+// Pool A has 20 kind bodies (dispatch table `$27F99E`). Kind 1 (the bee) and
+// kind 16 (the bee's flying variant) route through `$27F92A`'s reserved ten.
+// W216 adds the live general-pool kinds 18 and 19 used by Stage-4 Type A3,
+// including their fill hooks, ordinary bodies, collection transforms and
+// zoomed collected animations. The remaining bodies stay loud until a live
+// caller owns their allocator inputs and lifecycle.
 //
 // `allocBee27F92A` REFUSES any kind that is not 1 (`$04`) or 16 (`$40`): no
 // record of any other kind can exist through this allocator.  The dispatch
-// entries for the other 18 are still present and still range-checked; reaching
-// one is a LOUD NAMED THROW, because it would mean a record exists the
-// allocator says cannot.
+// remaining dispatch entries are still present and range-checked; reaching one
+// is a LOUD NAMED THROW rather than an invented generic implementation.
 //
 //   Also REFUSED (loud named note, like W61's hyper-stock refusal):
 //   * the kind-16 FLYING arm `$27FCEA`.  Stage-1 use unknown; the thrown path
@@ -91,12 +91,14 @@
 //  +$1E w  hit count / animation cursor ($9601 from fill hook $280CEE).
 //  +$28 l  layer emitter pointer (from layer table $280BB6, indexed by layer).
 
-import { u16 } from './ram.js';
+import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
-import { enqueueThroughStub } from './spritequeue.js';
+import { enqueueThroughStub, enqueueZoomedThroughStub } from './spritequeue.js';
 import { scoreByMask } from './score.js';
 import { bcd242AC6 } from './items.js';
 import { grantHyper287682 } from './hyper.js';
+import { drawByte242B3C, drawByte2431F4, drawSigned242FDE,
+  drawWord242EC2 } from './rng.js';
 
 // ============================== THE GEOMETRY ================================
 
@@ -156,6 +158,10 @@ export const POOL_A = Object.freeze({
   hyperP2: 0x81b640,         // $27FB1C tst.w
   soundCue: 0x28c62a,        // $27FC6C jsr -- the collect sound (noted)
   twoPlayer: 0x8130f8,       // $27FB7E btst #$1 -- 2P mode flag
+  collisionPhase: 0x80390c,
+  pause: 0x803912,
+  collectP1Total: 0x817f86,
+  collectP2Total: 0x817f8a,
 });
 
 /** Deliberate-red seam used only by W166's causal regression. */
@@ -187,6 +193,33 @@ export const B = Object.freeze({
 export const KIND = Object.freeze({
   bee: 0x04,                 // kind index 1 ($01 << 2)
   beeFlying: 0x40,           // kind index 16 ($10 << 2)
+  stage4Impact18: 0x48,      // kind index 18, normalized by its fill hook to $18
+  stage4Impact19: 0x4c,      // kind index 19, normalized by its fill hook to $1C
+});
+
+const IMPACT_KIND = Object.freeze({
+  [KIND.stage4Impact18]: Object.freeze({
+    status: 0x18, spriteOff: 0xfa00fc00, sprite: 0x001bd04c,
+    size: 0x0620, hitA: 0x08000800, hitB: 0x06800680,
+    animWord: 0x0101, tpl1C: 0x001c, step: 0x0064,
+    end: 0x001bd68c, collectScore: 0x00000500, collectAdd: 4,
+    collectSelector: 0x00050004, collectSprite: 0x001e2f5c,
+    collectOff: 0xfc00fb00, collectSize: 0x0428,
+    collectSound: 0x28c5e4, cull: 0xfc00,
+    hookOffsets: Object.freeze([0x0000, 0x00c8, 0x0190, 0x0258,
+      0x0320, 0x03e8, 0x04b0, 0x0578]),
+  }),
+  [KIND.stage4Impact19]: Object.freeze({
+    status: 0x1c, spriteOff: 0xf800fa00, sprite: 0x001bd68c,
+    size: 0x0830, hitA: 0x09800980, hitB: 0x07800780,
+    animWord: 0x0101, tpl1C: 0x001c, step: 0x00c4,
+    end: 0x001be2cc, collectScore: 0x00001000, collectAdd: 8,
+    collectSelector: 0x00010008, collectSprite: 0x001e3f9c,
+    collectOff: 0xfc00fa00, collectSize: 0x0430,
+    collectSound: 0x28c610, cull: 0xfa00,
+    hookOffsets: Object.freeze([0x0000, 0x0188, 0x0310, 0x0498,
+      0x0620, 0x07a8, 0x0930, 0x0ab8]),
+  }),
 });
 
 /** `$27F99E`, the 20-entry kind dispatch, as ROM addresses.  [M] kind[1] and
@@ -317,6 +350,77 @@ export function allocBee27F92A(ram, rom, ctx, kind, layer, carrierA6) {
       * POOL_A.stride).toString(16).toUpperCase()} (one past the end); no `
     + `caller tests either.`);
   return null;
+}
+
+/** `$27F8F0` -- allocate one of Stage 4 Type A3's proven general Pool-A
+ * impacts. D1 is a zero-extended packed-position offset and D2 is the display
+ * layer byte. Unlike the bee allocator this scans the first seventy slots. */
+export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) {
+  const spec = IMPACT_KIND[kind];
+  if (!spec) {
+    unreached(0x27f8f0, `$27F8F0 general Pool-A allocator received unported kind $${
+      (kind >>> 0).toString(16).toUpperCase()}`);
+  }
+  const d2 = u16((layer & 0xff) << 2);
+  if ((d2 >> 2) >= POOL_A.layerEntries) {
+    unreached(0x27f8f0, `$27F8F0 layer ${layer & 0xff} indexes past the ${
+      POOL_A.layerEntries} live emitter rows`);
+  }
+  for (let i = 0; i < POOL_A.generalSlots; i++) {
+    const slot = POOL_A.base + i * POOL_A.stride;
+    if (ram.u16(slot) === 0)
+      return fillGeneralImpact280B3E(ram, rom, ctx, slot, kind,
+        offset, d2, carrierA6, spec);
+  }
+  note(ctx, 0x27f8f0, '$27F8F0 general Pool-A allocation dropped: all 70 slots full');
+  return null;
+}
+
+function fillGeneralImpact280B3E(ram, rom, ctx, slot, kind, offset, d2,
+  carrierA6, spec) {
+  ram.setU16(POOL_A.liveCount, u16(ram.u16(POOL_A.liveCount) + 1));
+  ram.setU16(slot + B.status, kind | 0x8000);
+
+  // D1 begins as the caller's zero-extended word and ADD.L carries across the
+  // two packed position halves. The following ADD.W scroll does not.
+  let pos = (ram.u32(carrierA6 + B.pos) + (offset & 0xffff)) >>> 0;
+  pos = ((pos & 0xffff0000)
+    | u16((pos & 0xffff) + ram.u16(POOL_A.scrollShort))) >>> 0;
+  ram.setU32(slot + B.pos, pos);
+  let t = u16((pos & 0xffff) + 0x0e00);
+  t = u16(t + ram.u16(0x813172));
+  t = u16(t + 0xac00);
+  if (t < 0xac00) return fillAbort280B2A(ram, slot);
+  let tx = u16((pos >>> 16) + 0x0800);
+  tx = u16(tx + 0x6000);
+  if (tx < 0x6000) return fillAbort280B2A(ram, slot);
+
+  ram.setU32(slot + B.spriteOff, spec.spriteOff);
+  ram.setU32(slot + B.sprite, spec.sprite);
+  ram.setU16(slot + B.size, spec.size);
+  ram.setU32(slot + B.hitLongA, spec.hitA);
+  ram.setU32(slot + B.hitShortA, spec.hitB);
+  ram.setU16(slot + B.blinkTimer, spec.animWord);
+  ram.setU16(slot + B.tpl1C, spec.tpl1C);
+  ram.setU32(slot + B.layerEmitter, LAYER_EMITTERS[d2 >> 2]);
+
+  // `$280DEA/$280E1A`: initial even animation phase, then the shared random
+  // speed/angle hook and cached `$241812` velocity.
+  ram.setU16(slot + B.speed, 0x0420);
+  const phase = (drawWord242EC2(ram, rom) & 0x0e) >> 1;
+  ram.setU32(slot + B.sprite,
+    (ram.u32(slot + B.sprite) + spec.hookOffsets[phase]) >>> 0);
+  ram.setU8(slot + B.speed,
+    ram.u8(slot + B.speed) + (drawByte2431F4(ram, rom) >> 1));
+  const spread = drawSigned242FDE(ram, rom) + 1;
+  ram.setU8(slot + B.angle,
+    ram.u8(slot + B.angle) + drawByte2431F4(ram, rom) - spread);
+  const v = ctx.tables.vector(ram.u8(slot + B.speed), ram.u8(slot + B.angle));
+  ram.setU16(slot + B.waypoint, v.dy);
+  ram.setU16(slot + B.waypoint + 2, v.dx);
+  ram.setU16(slot + B.status,
+    (ram.u16(slot + B.status) & 0xff83) | spec.status);
+  return slot;
 }
 
 /**
@@ -465,18 +569,14 @@ export function runPoolADriver(ram, rom, ctx) {
     // $27F97E/$27F980: 5-bit kind index = status & $7C (a byte offset into
     // the stride-4 table at $27F99E, NOT a plain index).
     const d0 = d1 & 0x7c;                                 // $27F97E/$27F980
-    // $27F982 tst.b D1 / bmi $2810CA: bit 7 of the low byte selects a second,
-    // higher-priority arm.  For the bee (kind 1, low byte $04) this is CLEAR,
-    // so it falls through.  $2810CA is NOT ported (no allocated record has bit
-    // 7 set through this allocator); reaching it is a throw.
+    // $27F982 tst.b D1 / bmi $2810CA: bit 7 selects the collected animation.
+    // Type A3's kinds 18/19 set it through `$280FDC` on their collision frame.
     if ((d1 & 0x80) !== 0) {
-      unreached(0x2810ca, `$27F982 tst.b D1 / bmi $2810CA -- a live pool-A `
-        + `record carries status $${d1.toString(16).toUpperCase()}, whose low `
-        + `byte has bit 7 set. This routes to $2810CA, a higher-priority arm `
-        + `this port does not have. The bee (kind 1) always has bit 7 clear; `
-        + `bit 7 of the low byte is set by kind indices >= 32, which the `
-        + `dispatch table does not hold. Record at $${
-          a6.toString(16).toUpperCase()}`);
+      const r = collectedImpact2810CA(ram, rom, a6);
+      if (r?.emitted) t.emitted++;
+      if (r?.freed) t.freed++;
+      if (r?.collected) t.collected++;
+      continue;
     }
     // Range-check the dispatch table to 20 entries.  $27F99E has 20 longs;
     // indices 20..31 (status & $7C = $A0..$FC) run off the end into code.
@@ -492,7 +592,7 @@ export function runPoolADriver(ram, rom, ctx) {
     }
     // $27F988..$27F992: lea table / adda D0 / movea.l (A0),A0 / jsr (A0).
     const body = DISPATCH[idx];                           // $27F990 movea.l (A0),A0
-    const r = runBody(ram, rom, ctx, a6, d1, body);       // $27F992 jsr (A0)
+    const r = runBody(ram, rom, ctx, a6, d1, body, d7 - n); // $27F992 jsr (A0)
     if (r?.emitted) t.emitted++;
     if (r?.freed) t.freed++;
     if (r?.collected) t.collected++;
@@ -504,17 +604,118 @@ export function runPoolADriver(ram, rom, ctx) {
 
 /**
  * Run one pool-A body by its dispatch address.  Only `$27FACC` (kinds 1 and 16,
- * the bee) is ported; the other 18 are loud named throws.
+ * the bee plus Stage-4 kinds 18/19 are ported; remaining bodies are loud named
+ * throws.
  * @returns {{emitted?:boolean,freed?:boolean,collected?:boolean}|void}
  */
-function runBody(ram, rom, ctx, a6, d1, body) {
+function runBody(ram, rom, ctx, a6, d1, body, remaining) {
   if (body === POOL_A.body) return beeBody27FACC(ram, rom, ctx, a6, d1);
+  if (body === 0x280082)
+    return stage4ImpactBody(ram, rom, ctx, a6, d1,
+      IMPACT_KIND[KIND.stage4Impact18], remaining);
+  if (body === 0x28016a)
+    return stage4ImpactBody(ram, rom, ctx, a6, d1,
+      IMPACT_KIND[KIND.stage4Impact19], remaining);
   unreached(body, `$27F992 jsr (A0) -- the kind dispatch sent a live pool-A `
     + `record to $${body.toString(16).toUpperCase()}, which is not the bee body `
-    + `($27FACC). The 18 non-bee pool-A kinds are NOT ported (W110 sec 3); their `
+    + `($27FACC) or Stage-4 kind 18/19. This remaining pool-A kind is not ported; its `
     + `D0 sources at the eleven general-allocator call sites are unattributed. `
     + `Record at $${a6.toString(16).toUpperCase()}, status $${
       d1.toString(16).toUpperCase()}`);
+}
+
+function freePoolA(ram, a6) {
+  ram.setU16(a6 + B.status, 0);
+  ram.setU16(a6 + B.pos, 0);
+  ram.setU16(POOL_A.liveCount, u16(ram.u16(POOL_A.liveCount) - 1));
+  return { freed: true };
+}
+
+function collectStage4Impact(ram, rom, ctx, a6, d1, spec) {
+  const total = (d1 & 0x1000) !== 0
+    ? POOL_A.collectP1Total : POOL_A.collectP2Total;
+  ram.setU16(total, Math.min(0x03e7, ram.u16(total) + spec.collectAdd));
+  ram.setU32(a6 + B.hitLongA, spec.collectSelector);
+  scoreByMask(ram, spec.collectScore, ram.u8(a6 + B.status));
+  ctx.soundPost?.(spec.collectSound);
+  ram.setU8(a6 + 1, 0x84);
+
+  ram.setU16(a6 + B.status, ram.u16(a6 + B.status) & 0xf8df);
+  ram.setU32(a6 + B.pos, (ram.u32(a6 + B.pos) + 0x06000000) >>> 0);
+  ram.setU32(a6 + B.spriteOff, spec.collectOff);
+  ram.setU32(a6 + B.sprite, spec.collectSprite);
+  ram.setU16(a6 + B.size, spec.collectSize);
+  ram.setU16(a6 + B.hitLongB, 0x0010);
+  ram.setU16(a6 + B.hitShortA, 0x0202);
+  ram.setU16(a6 + B.hitShortB, spec.step);
+  ram.setU8(a6 + B.blinkTimer, 0x07);
+  ram.setU8(a6 + B.blinkTimer + 1, 0x0f);
+  ram.setU16(a6 + B.tpl1C, 0x001d);
+
+  const position = u16(ram.u16(POOL_A.scrollShort) + ram.u16(a6 + B.posX));
+  const direction = position >= 0x1c00 ? 0x30 : 0x10;
+  let speed = drawByte242B3C(ram, rom);
+  speed = (speed << 24) >> 24;
+  if (speed < 0) speed = -speed;
+  speed = (speed & 6) + 6;
+  const v = ctx.tables.vector(speed, direction);
+  ram.setU16(a6 + B.speed, v.dx);
+  return { collected: true };
+}
+
+function stage4ImpactBody(ram, rom, ctx, a6, d1, spec, remaining) {
+  if ((d1 & 0x1800) !== 0)
+    return collectStage4Impact(ram, rom, ctx, a6, d1, spec);
+
+  const oldAnim = ram.u8(a6 + B.blinkTimer);
+  ram.setU8(a6 + B.blinkTimer, oldAnim - 1);
+  if (oldAnim === 0) {
+    ram.setU8(a6 + B.blinkTimer, ram.u8(a6 + B.blinkTimer + 1));
+    let sprite = (ram.u32(a6 + B.sprite) + spec.step) >>> 0;
+    if (sprite === spec.end) sprite = spec.sprite;
+    ram.setU32(a6 + B.sprite, sprite);
+  }
+
+  if (ram.u16(POOL_A.pause) === 0) {
+    if (ram.u16(POOL_A.freeze) === 0)
+      ram.setU8(a6 + B.speed, ram.u8(a6 + B.speed) + 1);
+    const v = ctx.tables.vector(ram.u8(a6 + B.speed), ram.u8(a6 + B.angle));
+    ram.setU16(a6 + B.waypoint, v.dy);
+    ram.setU16(a6 + B.waypoint + 2, v.dx);
+  }
+  ram.setU16(a6 + B.posX,
+    ram.u16(a6 + B.posX) + ram.u16(a6 + B.waypoint + 2));
+  ram.setU16(a6 + B.pos,
+    ram.u16(a6 + B.pos) + ram.u16(a6 + B.waypoint));
+  if (i16(ram.u16(a6 + B.pos)) < i16(spec.cull)) return freePoolA(ram, a6);
+
+  if (ram.u16(POOL_A.liveCount) < 0x3c
+      || ((remaining & 1) !== ram.u16(POOL_A.collisionPhase))) {
+    enqueueThroughStub(ram, rom, 0x23eba0, a6);
+    return { emitted: true };
+  }
+  return undefined;
+}
+
+function collectedImpact2810CA(ram, rom, a6) {
+  ram.setU16(a6 + B.posX, ram.u16(a6 + B.posX) + ram.u16(a6 + B.speed));
+  const timer = u16(ram.u8(a6 + B.hitShortA) - 1) & 0xff;
+  ram.setU8(a6 + B.hitShortA, timer);
+  if (timer === 0) {
+    ram.setU8(a6 + B.hitShortA, ram.u8(a6 + B.hitShortA + 1));
+    const step = ram.u16(a6 + B.hitShortB);
+    const life = u16(ram.u8(a6 + B.blinkTimer + 1) - 1) & 0xff;
+    ram.setU8(a6 + B.blinkTimer + 1, life);
+    if (life === 0) return freePoolA(ram, a6);
+    const phase = u16(ram.u8(a6 + B.blinkTimer) - 1) & 0xff;
+    ram.setU8(a6 + B.blinkTimer, phase);
+    if (phase === 0) ram.setU8(a6 + B.hitShortA, 0x28);
+    ram.setU32(a6 + B.sprite, phase >= 0x80
+      ? (ram.u32(a6 + B.sprite) - step) >>> 0
+      : (ram.u32(a6 + B.sprite) + step) >>> 0);
+  }
+  enqueueZoomedThroughStub(ram, rom, 0x23dbca, a6, 0x40004000);
+  return { emitted: true, collected: true };
 }
 
 /**

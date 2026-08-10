@@ -103,7 +103,8 @@ const WRAPPERS = {
   0x28C576: { id: 0x14, pan: 0xFF, ch: 0x28, entry: 0x28C02A },
   0x28C5B0: { id: 0x17, pan: 0xFF, ch: 0x00, entry: 0x28C02A },
   0x28C5CA: { id: 0x1D, pan: 0xE4, ch: 0x01, entry: 0x28C02A }, // item pickup
-  0x28C5E4: { id: 0x1E, pan: 0xFF, ch: 0x01, entry: 0x28C0AE, deb: [SOUND.debounceA, 2] },
+  0x28C5E4: { id: 0x1E, pan: 0xFF, ch: 0x01, entry: 0x28C0AE,
+    deb: [SOUND.debounceA, 2], debAlways: true },
   0x28C610: { id: 0x1E, pan: 0xFF, ch: 0x01, entry: 0x28C02A },
   0x28C62A: { id: 0x1F, pan: 0xFF, ch: 0x01, entry: 0x28C02A },
   0x28C644: { id: 0x20, pan: 0xFF, ch: 0x01, entry: 0x28C02A },
@@ -329,7 +330,9 @@ export function postWrapper(ram, sound, wrapperAddr) {
     const [addr, val] = w.deb;
     if (ram.u8(addr) !== 0) return false;   // still debouncing -> suppressed
     const posted = postEntry(ram, sound, w.entry, w.id, w.pan, w.ch);
-    if (posted) ram.setU8(addr, val);       // arm the guard; the drain ticks it down
+    // `$28C5E4` writes its guard after the attempted `$28C0AE` call even when
+    // the sound ring is full. Other guarded wrappers arm only on a real post.
+    if (posted || w.debAlways) ram.setU8(addr, val);
     return posted;
   }
   return postEntry(ram, sound, w.entry, w.id, w.pan, w.ch);

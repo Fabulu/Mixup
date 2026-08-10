@@ -1749,6 +1749,28 @@ BODY.set(0x27cfac, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + R.rec1B, rom.u8(pal + 1));
 });
 
+// --- type $A3 ($27D404): Stage 4's oscillating linked carrier.
+// Movement owns the root X; the body replaces both Y positions, mirrors the
+// initial oscillation direction from shared RNG, and rank-adjusts the two byte
+// timers exactly once at construction.
+BODY.set(0x27d404, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x27d498);             // $27D404..$27D410
+  loadRecordProto(ram, rom, a5, 0x27d470, 0x13);       // $27D410..$27D41E
+  readInitPosition(ram, rom, a5, unported);             // $27D41E
+
+  ram.setU16(a6 + S.posY,
+    u16(0x1c00 - ram.u16(G.scrollDelta)));              // $27D428..$27D432
+  const linkedY = i16(drawWord24328E(ram, rom)) >> 1;
+  ram.setU16(a5 + R.rec2C, linkedY);                    // $27D436..$27D43E
+  ram.setU16(a6 + 0x24, u16(linkedY + 0x1c00));         // $27D442..$27D446
+  if (i16(drawWord242EC2(ram, rom)) < 0)
+    ram.setU16(a5 + R.rec2A, u16(-ram.u16(a5 + R.rec2A))); // $27D44A..$27D452
+  const spread = (drawByte242B3C(ram, rom) + 7) * 2;
+  ram.setU8(a5 + R.rec1C, ram.u8(a5 + R.rec1C) - spread); // $27D456..$27D460
+  ram.setU8(a5 + R.rec1D,
+    ram.u8(a5 + R.rec1D) - ram.u16(G.b6));              // $27D464..$27D46A
+});
+
 // ============================================================ the entry point
 /** Run the init+8 body at `addr`.  Replaces spawn.js's throwing stub.  Returns
  *  FREED if the body freed the enemy (a stage-kill gate fired); otherwise

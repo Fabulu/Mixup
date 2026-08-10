@@ -2338,6 +2338,52 @@ function harvestStage4Type9DTable(base, entries, why) {
     + `${root.added + overlay.added + child.added + attachedAdded} new`);
 }
 
+// W216: type $A3 draws a fixed root and one of eight linked-part frames. Its
+// death/cleanup allocates Pool-A kinds 18 and 19: sixteen live frames per kind,
+// followed after collection by two eight-frame zoomed animations. These are
+// address-arithmetic families in the cartridge, not speculative run-lengths.
+function harvestStage4Arithmetic(base, entries, stride, why) {
+  const seen = new Set();
+  let added = 0, already = 0;
+  for (let i = 0; i < entries; i++) {
+    const offs = base + i * stride;
+    // romExtent validates the sprite header and exact mask/colour extent.
+    const extent = romExtent(offs);
+    seen.add(offs);
+    if (streams.has(offs)) already++;
+    else {
+      streams.set(offs, extent);
+      shardOfStream.set(offs, STRUCT_SHARD);
+      added++;
+    }
+  }
+  harvested += added;
+  harvestAlready += already;
+  harvestReport.push({ shard: STRUCT_SHARD, base, entries, stride,
+    runsTo: entries, endsAt: base + entries * stride, distinct: seen.size,
+    added, already, why });
+  return { added, already };
+}
+
+{
+  const linked = harvestStage4Type9DTable(0x27da40, 8,
+    'W216 Stage-4 type $A3 linked-part eight-frame animation');
+  const fixed = harvestStage4Arithmetic(0x186fd8, 1, 0,
+    'W216 Stage-4 type $A3 fixed root descriptor');
+  const impact18 = harvestStage4Arithmetic(0x1bd04c, 16, 0x64,
+    'W216 Pool-A kind 18 live impact animation');
+  const impact19 = harvestStage4Arithmetic(0x1bd68c, 16, 0xc4,
+    'W216 Pool-A kind 19 live impact animation');
+  const collect18 = harvestStage4Arithmetic(0x1e2f5c, 8, 0x54,
+    'W216 Pool-A kind 18 collected zoom animation');
+  const collect19 = harvestStage4Arithmetic(0x1e3f9c, 8, 0x64,
+    'W216 Pool-A kind 19 collected zoom animation');
+  const totalAdded = linked.added + fixed.added + impact18.added
+    + impact19.added + collect18.added + collect19.added;
+  console.log(`  Stage-4 type $A3 and Pool-A 18/19: 57 streams, `
+    + `${totalAdded} new`);
+}
+
 // ------------------------------------------------------------------- WAVE 66
 // 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
 // bomb, and NEITHER HAS A PICTURE: W64 §8.3 counted 174 bucket-13 records with
