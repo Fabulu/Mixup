@@ -5889,6 +5889,110 @@ function handler3E(ram, rom, a5, ctx) {
 }
 
 // ############################################################################
+// # W199: TYPE $3F, DENSE STAGE-3 TWO-HITBOX WAVE                            #
+// ############################################################################
+
+function bullet3F(ram, rom, a5, ctx, site, entry, d0, d1) {
+  const regs = { d0, d1, d2: ram.u32(ram.u32(a5 + 0x06) + S.posX),
+    d3: 0, d4: 0, d5: 0, a5 };
+  ctx.bulletSpawn?.(site,
+    fireBullet({ ram, rom, log: new WriteLog(ram) }, entry, regs));
+}
+
+function death3F(ram, rom, a5, a6, ctx, d1) {
+  scoreKill(ram, rom, ctx, 0x19, d1);                 // $265904
+  const e = spawnEffect(ram, ctx, 0x82, 0x265910);
+  ram.setU32(e + B.pos, ram.u32(a6 + S.posX));
+  ram.setU16(e + B.bucket, 0x10);
+  ram.setU16(e + B.sub12, 0);
+  ram.setU16(e + B.sub14, 0);
+  ram.setU8(e + B.speed, ram.u8(a6 + S.speed));
+  ram.setU8(e + B.angle, ram.u8(a6 + S.heading) * 4);
+  ctx.soundPost?.(0x28c2a8);                          // $265940
+  if (ram.u16(a6 + S.posX) >= 0x3200) {               // $265946 unsigned
+    const sel = targetSelect(ram, a5);
+    if (!sel.carry) {
+      const dir = aim256(aimTables(rom), ram.u16(a6 + S.posX),
+        ram.u16(a6 + S.posY), ram.u16(sel.addr + 2), ram.u16(sel.addr + 4));
+      bullet3F(ram, rom, a5, ctx, 0x265962, 0x2816f6, 0x0001000c, dir);
+    }
+  }
+  freeEnemy(ram, a5);                                 // $265968
+}
+
+function draw3F(ram, rom, a5, a6) {
+  if (ram.u8(G.mirror) !== 0)
+    ram.setU16(a5 + R.rec28, (ram.u16(a5 + R.rec28) + 4) & 7);
+  const heading = (ram.u8(a6 + S.heading) + 1) & 0x3e;
+  const artOff = heading * 4 + ram.u16(a5 + R.rec28);
+  enqueueRegistersThroughStub(ram, rom, 0x23df86,
+    u32(ram.u32(a6 + S.posX) + 0xfa00fb00),
+    rom.u32(TYPE3E_ART.table + artOff), 0x0628,
+    ram.u8(a6 + S.palette));                           // $265648 shared tail
+}
+
+function handler3F(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  if (onScreen242684(ram, a6)) {                      // $265850
+    if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; }
+  } else {
+    ram.setU8(a5 + R.onScreen, 1);                    // $265868
+  }
+  applyVelocity(ram, ctx.tables, a5);                 // $26586E
+  if (ram.u16(a5 + R.rec1C) !== 0 && ram.u16(G.freeze) === 0) {
+    ram.setU16(a5 + R.rec1C, ram.u16(a5 + R.rec1C) - 1);
+    const old = ram.u8(a5 + R.rec1A);
+    ram.setU8(a5 + R.rec1A, old - 1);
+    if (old === 0) {
+      ram.setU8(a5 + R.rec1A, ram.u8(a5 + R.rec1B));
+      aim64TurnStore(aimTables(rom), ram, a5, a6);    // $265898
+    }
+  }
+
+  ram.setU32(a6 + 0x22, ram.u32(a6 + S.posX));
+  const d1 = (ram.u8(a6) | ram.u8(a6 + 0x20)) & 0x5c;
+  if (d1 !== 0) {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);
+    ram.setU8(a6 + 0x20, ram.u8(a6 + 0x20) & 0xa3);
+    scoreHit(ram, ctx, a6, d1);
+    ram.setU8(a6 + S.palette,
+      ram.u8(a5 + R.rec18) ^ ram.u8(a5 + R.rec19));
+    const damage = Math.max(
+      u16(0x7fff - ram.u16(a6 + S.hp)),
+      u16(0x7fff - ram.u16(a6 + 0x38)));
+    ram.setU32(a5 + R.rec24, u32(ram.u32(a5 + R.rec24) - damage));
+    ram.setU16(a6 + S.hp, 0x7fff);
+    ram.setU16(a6 + 0x38, 0x7fff);
+    if ((ram.u32(a5 + R.rec24) & 0x80000000) !== 0) {
+      death3F(ram, rom, a5, a6, ctx, d1); return;
+    }
+  } else {
+    ram.setU8(a6 + S.palette, ram.u8(a5 + R.rec18));  // $265970
+  }
+
+  const old = ram.u8(a5 + R.rec20);
+  ram.setU8(a5 + R.rec20, old - 1);                   // $265976
+  if (old === 0) {
+    ram.setU8(a5 + R.rec20, ram.u8(a5 + R.rec21));
+    if (!stageAxisGate24260A(ram, rom, a6)) {
+      const heading = ram.u8(a6 + S.heading);
+      if (ram.u16(G.stage) === 4) {
+        bullet3F(ram, rom, a5, ctx, 0x2659c2, 0x281442,
+          0xfffc000c, heading);
+        bullet3F(ram, rom, a5, ctx, 0x2659ca, 0x281402,
+          0xfffc000c, u16(heading + 2));
+        bullet3F(ram, rom, a5, ctx, 0x2659d2, 0x281442,
+          0xfffc000c, u16(heading - 2));
+      } else {
+        bullet3F(ram, rom, a5, ctx, 0x2659ac, 0x281484,
+          0x0001000c, heading);
+      }
+    }
+  }
+  draw3F(ram, rom, a5, a6);                           // $2659D8 -> $265648
+}
+
+// ############################################################################
 // # W185: TYPE $4D, STAGE-2 BOSS SATELLITE                                  #
 // ############################################################################
 
@@ -5969,6 +6073,7 @@ const HANDLERS = new Map([
   [0x27a1b4, handler94],       // W180: stage-2 type $94
   [0x279f4a, handler93],       // W181: stage-2 type $93
   [0x265486, handler3E],       // W192: stage-3 opening type $3E
+  [0x265850, handler3F],       // W199: dense stage-3 two-hitbox type $3F
   [0x263c7c, handler36],       // W193: stage-3 seven-part carrier type $36
   [0x2647a6, handler37],       // W194: stage-3 rotating three-shot type $37
   [0x2669e2, handler3C],       // W195: stage-3 six-muzzle formation type $3C

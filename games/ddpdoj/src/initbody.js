@@ -38,7 +38,7 @@ import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
 import { install24150A } from './palette.js';
 import { AimTables, aim64AtTarget, aim64FromCaller, aim256, targetSelect } from './aim.js';
-import { drawByte242B3C, drawWord242EC2 } from './rng.js';
+import { drawByte242B3C, drawWord242EC2, drawWord24328E } from './rng.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 
 // ----------------------------------------------------------- the record layout
@@ -478,6 +478,26 @@ BODY.set(0x2653EE, (ram, rom, a5, a6, unported) => {
     freeEnemy(ram, a5);                                // $265430 jmp $263762
     return FREED;
   }
+});
+
+// --- type $3F ($2657A0): the dense Stage-3 two-hitbox wave. Its two
+// prototypes feed the type-$3E draw table. Stage 5 replaces the script position
+// with a fixed X; every stage then uses one cartridge RNG draw for Y.
+BODY.set(0x2657A0, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x265818);            // $2657A0..$2657AC
+  loadRecordProto(ram, rom, a5, 0x265804, 0x09);       // $2657AC..$2657BA
+  if (ram.u16(G.stage) === 4) {                        // $2657BA
+    ram.setU8(a5 + R.rec18, 0x0f);                    // $2657C6
+    ram.setU8(a5 + R.rec19, 0x10);                    // $2657CC
+    ram.setU32(a6 + S.posX, 0x74001c00);              // $2657D2
+    ram.setU16(a6 + S.posY,
+      u16(ram.u16(a6 + S.posY) - ram.u16(G.scrollDelta))); // $2657DA
+  } else {
+    readInitPosition(ram, rom, a5, unported);          // $2657E8
+  }
+  ram.setU16(a6 + S.posY,
+    u16(drawWord24328E(ram, rom) + 0x1c00));           // $2657EE..$2657F8
+  ram.setU16(a6 + S.speed, 0x2820);                    // $2657FC
 });
 
 // --- type $36 ($263A58): Stage-3's seven-part carrier. All seven long-form

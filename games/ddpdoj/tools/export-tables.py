@@ -2069,6 +2069,7 @@ SHOT_WINDOWS.append(
 SHOT_WINDOWS.extend([
     (0x265A54, 0x0198, "W198: Stage-3 type $14 closure $265A54..$265BEC"),
     (0x26C266, 0x1488, "W198: Stage-3 types $12/$13 closure $26C266..$26D6EE"),
+    (0x265798, 0x0244, "W199: Stage-3 type $3F local closure $265798..$2659DC"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
@@ -2295,6 +2296,21 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W198: type $12/$13/$14 registry rows drifted")
     if d[0x2348BA:0x2348C2] != bytes.fromhex("00ea00003f00002d"):
         raise SystemExit("W198: next Stage-3 frontier is not type $3F at $2348BA")
+    type3f_records = [d[a:a + 8] for a in range(script3, cursor3, 8)
+                      if d[a + 4] == 0x3F]
+    if len(type3f_records) != 84 or hashlib.sha256(
+            b"".join(type3f_records)).hexdigest() != (
+            "64d028154e95551f5adf26328ea85fcf8f4c1f4c4b649805623be1e9aaf9758d"):
+        raise SystemExit("W199: type $3F 84-record occurrence set drifted")
+    if hashlib.sha256(d[0x265798:0x2659DC]).hexdigest() != (
+            "c54df4cfcfb217cbcbfdc79d20009ba21fbc323c342fdf240c5c42c15f9ad6ca"):
+        raise SystemExit("W199: type $3F local closure drifted")
+    if d[0x267A1C:0x267A24] != bytes.fromhex("0026579800265850"):
+        raise SystemExit("W199: type $3F registry row drifted")
+    if d[0x2353AE:0x2353B8] != bytes.fromhex("748024008901c0102000"):
+        raise SystemExit("W199: type $3F census-owned movement stream drifted")
+    if d[0x234AF2:0x234AFA] != bytes.fromhex("010d000015000029"):
+        raise SystemExit("W199: next Stage-3 frontier is not type $15 at $234AF2")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and
