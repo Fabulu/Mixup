@@ -44,6 +44,7 @@
 import { RAM } from './machine.js';
 import { unreached } from './unported.js';
 import { queueKill, ALLOC } from './objalloc.js';
+import { respawn25FFA8 } from './player.js';
 
 /** ROM and RAM addresses the rank object speaks in, each cited at the line that
  *  implements it. */
@@ -191,6 +192,11 @@ function fanOut260984(ram, r) {
 
 // --------------------------------------------- the computed-call dispatchers
 
+/** `$25FF52`, the jump table `$25FF7A` indexes: `[0] $00000000`,
+ *  `[1] $0025FFA8` (the respawn, W228), `[2] $260056`, `[3] $26010E`. Only the
+ *  ported entries appear here; the others still throw by the jsr site. */
+const DISP_25FF7A_TARGETS = Object.freeze({ 1: respawn25FFA8 });
+
 /**
  * The shared body of `$25FF7A` and `$288610`: walk a 2-entry RAM table, read
  *  each entry's index word, SKIP on 0, otherwise index a ROM jump table (idx*4)
@@ -200,13 +206,19 @@ function fanOut260984(ram, r) {
  *  corpus never produces, so it throws `unreached()` by the jsr site rather than
  *  calling an untranslated target.
  */
-function computedDispatch(ram, ctx, tableAddr, stride, jumpTable, jsrSite) {
+function computedDispatch(ram, ctx, tableAddr, stride, jumpTable, jsrSite,
+  targets = null) {
   for (let e = 0; e < 2; e++) {             // $288616 moveq #$1,D7 ; dbra D7
     const entry = tableAddr + e * stride;   // $28862E/$288632 lea ($16,A4),A4
     const idx = ram.u16(entry);             // $288618 move.w (A4),D0
     if (idx === 0) continue;                // $28861A beq (skip this entry)
     // $288624 add.w D0,D0 ; $288626 add.w D0,D0 (idx*4) ; $288628 adda.w D0,A0
-    // ; $28862A movea.l (A0),A0 ; $28862C jsr (A0).  Targets not ported (Tier 2).
+    // ; $28862A movea.l (A0),A0 ; $28862C jsr (A0).
+    // W228: `$25FF7A`'s entry 1 IS ported now -- it is the respawn, and a death
+    // arms it through `$24A210`, so this stopped being a corpus no-op the moment
+    // the player could die.  The rest stay a throw by the jsr site.
+    const target = targets?.[idx];
+    if (target) { target(ram, ctx, entry); continue; }
     unreached(jsrSite, `$${jsrSite.toString(16).toUpperCase()} computed-call `
       + `dispatcher: entry $${entry.toString(16).toUpperCase()} index `
       + `$${idx.toString(16)} is nonzero, so it would jsr the jump-table `
@@ -294,7 +306,8 @@ export function makeRankObject(rom) {
     // state 1: `$2607A4 jsr ($25FF7A,PC)` -- a computed-call dispatcher (corpus
     // no-op, same shape as $288610), THEN the per-frame body.
     computedDispatch(ram, ctx, RANK.disp25FF7ATable, RANK.disp25FF7AStride,
-      RANK.disp25FF7AJump, RANK.disp25FF7A);      // $2607A4
+      RANK.disp25FF7AJump, RANK.disp25FF7A,       // $2607A4
+      DISP_25FF7A_TARGETS);
     perFrame2607A8(ram, rom, ctx);                // $2607A8..$260808
   };
 }

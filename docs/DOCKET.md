@@ -48,6 +48,20 @@ there: the reset arms `$8130FA` = 1 and the `$25FF7A` dispatcher then wants
 `$25FFA8`, which opens `jsr $23C668`. Neither is translated, so a death now stops
 at frame 495 instead of 425. Next slice, and still the top of this docket.
 
+## D11: stage transitions are wrong and the ship disappears
+
+The owner's words: stage transitions are not right, your ship disappears, and
+there may be no score totalling either (none is visible). W228 found the likely
+cause of the disappearing ship: `$2491C0`'s one-time INIT arm, everything from
+`bset #0,$3(a5)` to `$2494FA`, is not translated. A newly created player object
+therefore never gets its record filled or its position set, and a respawned ship
+provably sits at `posY` 0, below its own `$800` clamp. A stage transition that
+re-creates the player object would look exactly like this.
+
+The score totalling is a separate question and needs its own look: find whether
+the stage-end tally runs at all (`src/stageend.js` into `src/score.js`) or only
+its presentation is missing, which is the same fork as D6 and D7.
+
 ## D3: missing explosions in stages 1 and 2
 
 Some enemy deaths have no explosion. Suspect effect kinds whose descriptor was

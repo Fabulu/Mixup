@@ -37,7 +37,7 @@ import { spawnItem } from './items.js';
 import { BEAM, wipeSegmentPool } from './laser.js';
 import { hyperStock286ED6 } from './hud.js';
 import { install2415A2 } from './palette.js';
-import { ALLOC, queueKill } from './objalloc.js';
+import { ALLOC, queueKill, stageCreate } from './objalloc.js';
 
 // Globals the player reads and the port does not write.  Seeded once and
 // FROZEN for the run.  Listed by name so the runner can print them and a
@@ -279,6 +279,69 @@ export function playerDead24A130(ram, slot, rec, ctx, p2 = false) {
   queueKill(ram, ram.u32(slot + ALLOC.idOff));           // $24A21A -> $241292
   ctx.deathEvent?.('reset', p2 ? 2 : 1, keep20, keep22, keep25);
   return 'reset';
+}
+
+/**
+ * `$25FFA8` -- the RESPAWN, jump-table entry 1 of the `$25FF7A` dispatcher.
+ *
+ * W227 made a death survive the option object; this is the link after it.
+ * `$24A210` writes the entry's index word, so the very next rank pass runs this,
+ * and it is the routine that decides between another life and a game over:
+ *
+ *   25FFA8: jsr $23C668                  clear $907000, 256 longwords
+ *   25FFAE: move.l #$0,$18(a6)
+ *   25FFB6: move.w #$78,$8130D4
+ *   25FFBE: jsr $261116                  $81316C = 1, $81316A = 0
+ *   25FFC4: movea.l $8(a6),a0 / subq.w #$1,(a0) / tst.w (a0) / bpl $26000C
+ *
+ * The entry is `$24` bytes and the fields it reads are the board's own:
+ * `$8(a6)` POINTS AT the count (MEASURED `$8130BE` for P1 and `$8130C0` for P2),
+ * `$14(a6)` is the object type to create (2 and 3), `$17(a6)` is the side, and
+ * `$C(a6)`/`$E(a6)` are the position the new object starts at.
+ *
+ * @param a6 the dispatcher table entry, `$8130FA` or `$81311E`
+ */
+export function respawn25FFA8(ram, ctx, a6) {
+  // $23C668 is ten instructions and all ten write $907000..$907400, a text-layer
+  // plane this port does not model (`TxVram` is $904000 + $2000). Counted, not
+  // invented: nothing the port reads can see it.
+  ctx?.unportedLog?.note(0x23c668, '$25FFA8 jsr $23C668 -- clears 256 longwords '
+    + 'of $907000, outside the $904000 TxVram this port models');
+  ram.setU32(a6 + 0x18, 0);                          // $25FFAE
+  ram.setU16(0x8130d4, 0x78);                        // $25FFB6
+  ram.setU16(0x81316c, 1);                           // $261116, two writes
+  ram.setU16(0x81316a, 0);                           // $26111E
+  const count = ram.u32(a6 + 0x08);                  // $25FFC4 movea.l ($8,A6),A0
+  ram.setU16(count, u16(ram.u16(count) - 1));        // $25FFC8 subq.w #$1,(A0)
+  const p2 = ram.u8(a6 + 0x17) !== 0;                // $25FFD0 / $26000C tst.b
+  if (i16(ram.u16(count)) < 0) {                     // $25FFCC tst.w (A0) / bpl
+    // $25FFD8 / $25FFF0 -- the side's three words, then state 2, the teardown
+    // the rank object's own state-2 arm already routes to $2603DA.
+    ram.setU16(p2 ? 0x812932 : 0x812930, 0);
+    ram.setU16(p2 ? 0x812936 : 0x812934, 1);
+    ram.setU16(p2 ? 0x81293a : 0x812938, 0);
+    ram.setU16(a6, 2);                               // $260004
+    ctx?.deathEvent?.('game-over', p2 ? 2 : 1, ram.u16(count));
+  } else {
+    // $260014 / $26001E -- the side's LIVES row, one of hud.js's counted draws.
+    ctx?.unportedLog?.note(p2 ? 0x28795c : 0x2878cc, `$25FFA8 redraws the `
+      + `${p2 ? 'P2' : 'P1'} LIVES row on a respawn (37 instructions, ZERO RAM `
+      + 'writes), the same counted draw hud.js takes on an extend');
+    const type = ram.u16(a6 + 0x14);                 // $260024 move.w ($14,A6),D0
+    const r = stageCreate(ram, type,                 // $260028 jsr $241182
+      (t) => ctx.rom.u16(ROM.objDispatch + t * 8 + 4));
+    // $26002E move.l D0,($18,A6): D0 is the ID the allocator just minted. On the
+    // full-queue arm $2411D4 there is no ID, and this port keeps stageend.js's
+    // convention of storing zero rather than inventing the register's contents.
+    ram.setU32(a6 + 0x18, r.ok ? ram.u32(r.addr + ALLOC.idOff) : 0);
+    ram.setU8(r.addr + 0x06, 0);                     // $260032
+    ram.setU8(r.addr + 0x07, ram.u8(a6 + 0x17));     // $260038
+    ram.setU16(r.addr + 0x08, ram.u16(a6 + 0x0c));   // $26003E
+    ram.setU16(r.addr + 0x0a, ram.u16(a6 + 0x0e));   // $260044
+    ram.setU16(a6, 0);                               // $26004A
+    ctx?.deathEvent?.('respawn', p2 ? 2 : 1, ram.u16(count), r.result);
+  }
+  ram.setU16(a6 + 0x02, 0);                          // $26004E
 }
 
 /**
