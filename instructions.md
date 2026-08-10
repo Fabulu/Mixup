@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-10, after W209 publication.
+Last updated: 2026-08-10, after W210 publication.
 
 ## Current directive
 
@@ -14,7 +14,7 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The old W175 pause is resolved. W176 through W209 are live. W188 fixes the
+The old W175 pause is resolved. W176 through W210 are live. W188 fixes the
 reported stage-1 tank-death and hyper defects. W189 completes the directly
 reachable F1, F2, and F8 stage-2 boss phases, including the primary death
 presentation and screen shake. W191 closes Stage 2, and W192 opens Stage 3
@@ -60,6 +60,7 @@ At handoff:
 - W207 is committed, pushed, and deployed
 - W208 is committed, pushed, and deployed
 - W209 is committed, pushed, and deployed
+- W210 is committed, pushed, and deployed
 - W175 live build: `20260809081027`
 - W176 live build: `20260809092221`
 - W177 live build: `20260809095334`
@@ -95,9 +96,10 @@ At handoff:
 - W207 live build: `20260810053647`
 - W208 live build: `20260810055153`
 - W209 live build: `20260810063544`
+- W210 live build: `20260810065432`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
-- the full-game goal remains active; W210 starts at the Stage-3 boss death
-  A4/F1 frontier `$29CC34/$29CC64`
+- the full-game goal remains active; W211 starts with the Stage-4 install and
+  static census at script `$2358B0`, aux `$2364A8`, resource `$2365E2`
 
 The worktree contains these three untracked owner files plus the untracked
 `NUL` entry. They are permanent user work and must never be staged, edited,
@@ -119,9 +121,9 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W209 is complete and live as build `20260810063544`:
+W210 is complete and live as build `20260810065432`:
 
-- latest worklog: `docs/worklog/ddpdoj/208-impl-stage3-boss-f5.md`
+- latest worklog: `docs/worklog/ddpdoj/210-impl-stage3-boss-death.md`
 - stage-2 boss baseline: `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
 - stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
 - init stub/body: `$297118` / `$297120`; handler: `$297398`
@@ -214,22 +216,25 @@ W209 is complete and live as build `20260810063544`:
   one mirrored pair of live type `$99` children
 - type `$99` runs linked damage, opening and active animation, aimed fire, and
   death effects through init `$29E580` and handler `$29E6B0`
-- enemy-family coverage is 64/256 and boss scheduler coverage is 68/70
+- enemy-family coverage is 64/256 and Stage-3 boss scheduler coverage is 70/70
 - the browser bundle contains 3,653 sprite streams and now includes the missing
   1,404-tile Stage-2 and 252-tile Stage-3 background families as deferred shards
+- the final A4/F1 death phase runs its exact palette chains, 16-row debris
+  sequence, randomized bursts, fade, 39-effect blast, shake, suspension, and
+  next-frame stage advance
 
-The next honest gameplay frontier is the Stage-3 boss death A4/F1 init
-`$29CC34`, step `$29CC64`. These are the final two unsupported entries in the
-installed Stage-3 boss scheduler graph.
+The next honest gameplay frontier is the Stage-4 install triple at `$263366`:
+script `$2358B0`, aux `$2364A8`, resource `$2365E2`. Its first record is type
+`$A6` at clock 1, with init/body `$278962/$27896A` and handler `$278994`.
 
-Reserve the next immutable worklog number, make one targeted static map for
-the `$29CC34/$29CC64` death phase, translate its direct stage-advance closure,
-and continue into Stage 4 without redoing the completed Stage-3 spawn census.
+Reserve the next immutable worklog number, statically census the complete
+Stage-4 script/aux/resource bounds once, then translate dependency-complete
+chronological slices without reopening the completed Stage-3 work.
 
 Useful current tests and tools:
 
 ```powershell
-node --test games/ddpdoj/tests/w209boss3lowhp.test.js
+node --test games/ddpdoj/tests/w210boss3death.test.js
 python games/ddpdoj/tools/export-tables.py
 python games/ddpdoj/tools/dojcoverage.py
 node tools/publish.mjs --only ddpdoj --dry
@@ -351,8 +356,9 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W209 translates the Stage-3 boss low-HP F9/F8 transition, D2/D3 geometry loop,
-E0/E1/E2 leaves, and live type `$99` child pair. The next new branch is the
-boss-death F1 frontier `$29CC34/$29CC64`; 1,576 tests, the web bundle, fetch
-gate, ROM leak guard, and deployment confirmation are green. The full-game
-goal remains active after every wave.
+W210 translates the final Stage-3 boss-death F1 phase and reaches Stage 4.
+Stage 3 is complete at 414/414 spawn records, 28/28 script types, and 70/70
+live boss scheduler entries. All 1,578 tests, the web bundle, fetch gate, ROM
+leak guard, and deployment confirmation are green. The next work is the
+Stage-4 install/census at `$2358B0/$2364A8/$2365E2`; the full-game goal remains
+active after every wave.
