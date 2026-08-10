@@ -183,17 +183,29 @@ export function runScreenClear(ctx) {
     // $281D28 move.w $81B412,D0 ; $281D2E jsr $27F8F8 -- the impact/effect pool
     // ($8171BE, 70 slots of $2C, driven by type-5 call #4 $27F95A, unported).
     // COUNTED, never allocated -- see this file's header for both reasons.
+    // W242 CORRECTS THIS NOTE. It used to say the pool's "only driver is $27F95A,
+    // type-5 call #4, UNPORTED" and that allocating without a driver would be W33's
+    // leak. Both halves stopped being true in W111: `runPoolADriver` IS $27F95A and
+    // `allocPoolA27F8F0` IS this allocator's sibling entry ($27F8F0 computes D2 from
+    // the layer and falls into the same $8171BE scan that $27F8F8 enters with
+    // D1 = D2 = 0).
+    //
+    // What actually blocks it is narrower and is worth naming precisely: the fill
+    // $280B3E is TABLE-DRIVEN -- `lea ($280E4A,PC),A3 / movea.l (A3,D0.w),A3` with
+    // D0 the kind as a byte offset -- and $280E4A is in no exported window, because
+    // W111 hand-transcribed the four kinds it measured into `IMPACT_KIND` instead.
+    // The screen clear's kind is $81B412, which is $0 here, and kind $0 is not one
+    // of those four. So porting this needs the $280E4A window plus a measured spec
+    // for kind $0 -- not a driver.
     ctx.unportedLog?.note(BULLET_DRIVER.clearEffect,
       `$281D2E jsr $27F8F8 (D0=$${mode.toString(16).toUpperCase()}) -- the `
-      + `screen clear's per-bullet effect. $27F8F8 is a slot ALLOCATOR over the `
-      + `impact pool $8171BE (moveq #$45,D7 = 70 x $2C, free test tst.w (A0), `
-      + `filled at $280B3E which also bumps the live count $817F7E), and its `
-      + `only driver is $27F95A, type-5 call #4, UNPORTED. Allocating without a `
-      + `driver is W33's leak one level down (50-recon-effects), so this port `
-      + `allocates nothing. The caller reads neither A0 nor the carry, and the `
-      + `two writes that clear the bullet ($281D36/$281D38) ARE ported, so the `
-      + `only thing absent is the visual effect. Reached because W51's beam can `
-      + `kill the midboss, whose death arms $81B410 through $243E7C`);
+      + `screen clear's per-bullet effect. The allocator and the pool driver are `
+      + `both ported (`allocPoolA27F8F0`, `runPoolADriver`); what is missing is `
+      + `kind $${mode.toString(16).toUpperCase()}'s template, which $280B3E reads `
+      + `out of $280E4A and no window exports. The two writes that clear the `
+      + `bullet ($281D36/$281D38) ARE ported, so the only thing absent is the `
+      + `visual pop. Reached because W51's beam can kill the midboss, whose death `
+      + `arms $81B410 through $243E7C`);
     ram.setU16(base, 0);                                // $281D36 clr.w (A6)
     ram.setU16(base + CLR.posA, 0xffff);                // $281D38 move.w #$FFFF
     hit++;
