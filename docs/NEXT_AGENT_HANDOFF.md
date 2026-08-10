@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-10
+Updated: 2026-08-11
 
 ## Objective
 
@@ -28,21 +28,28 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is `3a0291d ddpdoj: spawn the secondary explosion`.
-- Suite: `node --test games/ddpdoj/tests/` is **1634/1634**, green, no skips.
+- HEAD is `f281abc ddpdoj: thicken the stage-4 boss barrage`.
+- Suite: `node --test games/ddpdoj/tests/` is **1725/1725**, green, no skips.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
   closed at 414/414 script records and 28/28 script types.
-- The Stage-4 enemy section is translated through its boss spawn, and the Stage-4
-  boss through its first damage-driven destruction transition (W224).
+- **The Stage-4 boss's SECOND PHASE is translated except for one routine.** W246
+  through W252 landed F5 (`$2A0D16`, a seven-arm bit machine), MAIN4, MAIN7, the
+  A3 3..8 ramp family, and A1 6, 7, 8, 9 and 10. Everything F5 arms is ported
+  except the type `$42` children A1 9 spawns, and
+  [worklog 253](worklog/ddpdoj/253-recon-type42.md) is a complete bound and spec
+  for that.
 - **A death works end to end** (W227, W228, W231): the animation, the reset, the
   life spent, a fresh player object placed where its respawn entry says, `$F0`
   frames of invulnerability, and the pods deploying to the exact `$24C928` target.
-- The stage transition MACHINE works and its banner picture draws (W232); the rest
-  of its presentation is the gap.
+- The stage transition MACHINE works, its banner picture draws (W232), its
+  palettes install (W236), both panels paint (W238, W239) and the `$900000` ring
+  clears (W240); the rest of its presentation is the gap.
 - The bee popup works (W234), and the secondary explosion spawns (W235).
 - Sprite streams 3985. `w230descriptorsweep.mjs` draws 718 distinct descriptors
   with ZERO unresolvable.
-- Stage 5 has not started, and no loop-2 work has started.
+- **Two loop-2 rules exist**: W241's zero-lives extend (`$253794`) and W250's A1 6,
+  which changes both its shot count and its generator on `$813098`. Stage 5 has
+  not started.
 
 ## An hourly cron is running
 
@@ -64,30 +71,39 @@ instrument (W230), and D11's banner picture (W232).
 
 ## Work order toward the goal
 
-1. **The rest of D11's transition presentation.** The result screen (`$23C638`
-   palette cue, `$246410` animation-object load, `$28D77C` sixteen longwords of
-   palette RAM, `$28DE72`/`$28C186` exit handshake), the banner's five `$24150A`
-   resource installs, and `$253794` the option-pod teardown. Force `$242952`
-   headlessly and read the counted gaps -- that measurement is what scoped W232.
-2. **The rest of D3/D4.** `$27F8F8`'s bullet death effect is the next producer on
-   the sweep's counted-gap list. D4's stage-2 mid boss needs the sweep run DURING
-   stage 2 rather than an assumption that it shares a cause.
-3. **The stale `$240DC2` call sites** in `items.js` (five of them). The printer is
-   ported; each site needs its own register-setup transcription. This is also the
-   likely route to D7's gauges.
-4. **Object dispatch `[4]` `$260B30`**, unported and running twice a frame.
-5. **Stage-4 boss A4/F5** `$2A0CF6`. [Worklog 244](worklog/ddpdoj/244-impl-boss4-f5.md)
-   is a complete instruction-level spec with every dependency confirmed present, and
-   it names the order: MAIN4 first (F5's INIT starts it), then F5's four arms, then
-   D5/D7/E8. W225 is superseded by it.
-6. **Stage 5, then the loops.**
+1. **Type `$42`, the Stage-4 boss's children.** The last routine between F5 and its
+   second phase running end to end.
+   [Worklog 253](worklog/ddpdoj/253-recon-type42.md) holds the measured bound, and
+   the bound is the useful part: `$3C(a6)` selects among roles `$FF`, 0..7, `$70`
+   and `$71`, but only TWO spawners of type `$42` exist in the whole image, and the
+   one F5 reaches (A1 9) writes `$FF` as a constant. Roles 0..7 and `$70`/`$71` come
+   from A1 11, which A4 id6 starts, so they are honestly unreachable until A4 id6
+   lands. Port the role-`$FF` path and `unreached()` by role on the rest.
+2. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
+   `$28D6FC` the animation chain; `$28D77C` writes palette RAM the port does not
+   model, and the four `$25FD38` resets are W62's scope line.
+3. **The rest of D3/D4.** `$27F8F8`'s visual pop needs a `$280E4A` window and a
+   kind-`$0` spec, or the better refactor of making `fillGeneralImpact280B3E` read
+   the cartridge's table. D4's stage-2 mid boss needs the sweep run DURING stage 2
+   rather than an assumption that it shares a cause.
+4. **The stale `$240DC2` call sites** in `items.js`. The printer is ported and W237
+   added two sites; each remaining one needs its own register-setup transcription.
+   This is also the likely route to D7's gauges.
+5. **Register object dispatch `[4]`.** `announce260B30` is written and tested (W243)
+   but its `main.js` entry is COMMENTED OUT on purpose: `.replay` fixtures embed
+   frozen tables, so registering it turns five gates red until
+   `tools/oracle/out/w69/fly-around` is rebuilt from the oracle. Rebuild, then
+   uncomment.
+6. **A4 id6 `$2A11D4`**, the Stage-4 boss's third phase, which is what makes type
+   `$42`'s other roles reachable.
+7. **Stage 5, then the loops.**
 
 D8, D10 and D12 are presentation or documentation and can be slotted in between.
 
 ## Verification commands
 
 - One slice: `node --test games/ddpdoj/tests/<the focused file>.test.js`
-- Full suite: `node --test games/ddpdoj/tests/` -- currently 1629/1629, green.
+- Full suite: `node --test games/ddpdoj/tests/` -- currently 1725/1725, green.
   Keep it that way: W229 had to close five censuses that had been red since the
   Stage-4 waves, and while they were red they could not catch anything. Do not
   pipe the run through `tail`; that discards the failure detail.
@@ -114,6 +130,35 @@ Stage-4 boss (W224), all proved by `w224stage4boss.test.js`:
   every third call and terminates on exact equality with `$003C`.
 - The Stage-4 boss linked main-hit damage aggregation uses the maximum damage
   delta, not the sum or minimum.
+
+Stage-4 boss second phase (W246..W252):
+
+- **EVERY INIT IN THIS BOSS FALLS THROUGH INTO ITS STEP.** F5, MAIN4, MAIN7, all six
+  A3 ramps, and A1 6, 7, 8, 9 and 10 -- checked one by one against the image, not
+  assumed. Worklog 244's spec claimed F5's did not, and it does.
+- **The old-zero borrow caught a prediction in four separate waves.** `subq.b #1 / bcc`
+  reloads on the frame the counter was ALREADY zero. So a reload value of 1 fires every
+  SECOND frame (a ramp of n steps takes 2n-1 frames, W247), a counter arriving at `$40`
+  is `$41` frames from firing (W250, W252), and a counter arriving at zero fires
+  immediately (W246's arm 6). Predict the frame number in the test; it is what finds
+  this.
+- **F5's arms all re-read `$2(a4)`**, so an arm that hands its bit on lets the next arm
+  run on the SAME frame. Its latch writes `$4(a4)` and `$C(a4)` as `$10` and the frame
+  ends with both at `$0F`.
+- **Word literals that are really two byte fields**: `$10(a4)`/`$11(a4)` and
+  `$14(a4)`/`$15(a4)` in F5 and A1 8, and A1 10's `$8(a4)` which is a BYTE counter in
+  its state 0 and a WORD counter in its state 1.
+- **This boss is full of vestigial writes and they must be kept.** A1 8 accumulates two
+  angles, reads them into D1, and overwrites D1 with a constant on the next instruction;
+  it also loads D7 from a field the shot template overwrites. A1 9's INIT clobbers the
+  0/1 side selector F5's arm 6 writes into `$6(a4)`. The stored bytes are observable even
+  when the values are not.
+- **Limits are PINNED, not compared for equality.** The A3 ramps and MAIN7's speed floor
+  both overshoot and then get written back to the limit; an `=== limit` test leaves
+  `$FFFE` in an animation cursor.
+- **A1 9's rendezvous is a closed loop through the child's parent pointer.** `$19E(a6)`
+  is incremented at `$2A3D5A` through `movea.l $1c(a5),a0`, so a scan for `(d16,A6)`
+  finds only two sites and supports the WRONG conclusion. Scan `(d16,An)` for every An.
 
 Elsewhere:
 
@@ -148,7 +193,7 @@ only authored source/exporter/test/worklog files. Never use `git add -A`.
 
 ## Worklog numbering
 
-Live numbers: 232 is the highest and is COMPLETE. 225 is PAUSED with its recon
-banked; every other number through 232 is COMPLETE. Reserve the next number with an `apply_patch` Add File for
-`<N>-RESERVED.md`, then rename it immediately to the real `IN PROGRESS` worklog
-as `AGENTS.md` requires.
+Live numbers: **253 is the highest**. 253 is a SPEC (type `$42`, no code yet) and
+225 is SUPERSEDED by 244; every other number through 252 is COMPLETE. Reserve the
+next number by creating `<N>-RESERVED.md`, then rename it immediately to the real
+`IN PROGRESS` worklog as `AGENTS.md` requires. Numbers are never reused.
