@@ -563,6 +563,12 @@ SHOT_WINDOWS.extend([
     # entry 10. Both ends pinned, neither guessed.
     (0x2A3132, 0x004A, "W249: Stage-4 boss A1 9's eight-entry list selector and "
                        "its four spawn lists, ending at A1 11's INIT"),
+    # W251: MAIN7's four waypoints, the same shape as MAIN4's at $29F972 and pinned the
+    # same way twice over: `$29FA56 andi.w #$F,$6(a4)` bounds the cursor at four
+    # two-word entries, and $29FA7A + $10 is $29FA8A -- MAIN8's own INIT in the A0
+    # table at $29F498.
+    (0x29FA7A, 0x0010, "W251: Stage-4 boss MAIN7's four waypoints, ending at "
+                       "$29FA8A's MAIN8 entry"),
     (0x2A019E, 0x037C, "W224: Stage-4 boss A4/F1 destruction transition and "
                        "four exact effect tables"),
     (0x29F80A, 0x00C2, "W224: Stage-4 boss MAIN2/MAIN3 movement through target"),

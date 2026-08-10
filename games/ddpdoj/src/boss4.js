@@ -1207,11 +1207,22 @@ function d0Init2A13CC(ram, rom, ctx, slot) {
  * code, not by a run length.
  */
 const MAIN4_WAYPOINTS = 0x29f972;
+const MAIN7_WAYPOINTS = 0x29fa7a;
 
-export function main4Step29F8F0(ram, rom, ctx, slot) {
-  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+/**
+ * The WAYPOINT WALKER, shared by MAIN4 (`$29F8F0`) and MAIN7 (`$29F9CC`). The two
+ * bodies are the same instructions in the same order and differ in exactly two
+ * operands: the waypoint base and the arrival threshold (`$400` against `$200`). MAIN7
+ * adds a speed ramp ahead of it and nothing else.
+ *
+ * The cursor mask is `$F` in both, which is what bounds each table at four two-word
+ * entries, and both tails put the vector into the PART offsets rather than the
+ * position, so what walks is the opened pods.
+ */
+function bossWalk(ram, rom, ctx, slot, waypoints, threshold) {
+  const a6 = ctx.bossSubRec;
   const cursor = ram.u16(slot + 0x06);                    // $29F8F6 adda.w $6(a4)
-  const wp = MAIN4_WAYPOINTS + cursor;
+  const wp = waypoints + cursor;
   const d2 = rom.u16(wp), d3 = rom.u16(wp + 2);           // $29F8FA movem.w (a0)
 
   // $29F8FE..$29F908 -- the boss's own position plus the two part offsets F5 is
@@ -1219,24 +1230,24 @@ export function main4Step29F8F0(ram, rom, ctx, slot) {
   const selfY = u16(ram.u16(a6 + 0x02) + ram.u16(a6 + 0x194));
   const selfX = u16(ram.u16(a6 + 0x04) + ram.u16(a6 + 0x196));
 
-  aim64(aimTables(rom), selfY, selfX, d2, d3);            // $29F90C jsr $24203E
-  ram.setU8(a6 + 0x3b, slew64(ram.u8(a6 + 0x3b),          // $29F912..$29F91C
-    aim64(aimTables(rom), selfY, selfX, d2, d3)));
+  // $29F90C jsr $24203E -> the target heading, then $242190 slews ($3B,A6) towards it.
+  const want = aim64(aimTables(rom), selfY, selfX, d2, d3);
+  ram.setU8(a6 + 0x3b, slew64(ram.u8(a6 + 0x3b), want));  // $29F912..$29F91C
 
-  // $29F920..$29F94E -- the SAME waypoint again, this time for the distance test:
-  // within $400 and the cursor advances, masked to four entries.
-  if (i16(dist242494(selfY, selfX, d2, d3)) <= 0x400) {   // $29F942 cmpi.w #$400/bgt
+  // $29F920..$29F94E -- the SAME waypoint again, this time for the distance test.
+  if (i16(dist242494(selfY, selfX, d2, d3)) <= threshold) {  // $29F942 cmpi.w/bgt
     ram.setU16(slot + 0x06, u16(cursor + 4) & 0x000f);    // $29F94A/$29F94E
   }
 
-  // $29F954..$29F96E -- speed from ($3a,A6), heading from ($3b,A6), and the vector
-  // goes into the part offsets rather than the position: F5 opened the pods and MAIN4
-  // moves them.
+  // $29F954..$29F96E -- speed from ($3a,A6), heading from ($3b,A6).
   const v = ctx.tables.vector(ram.u8(a6 + 0x3a), ram.u8(a6 + 0x3b));
   ram.setU16(a6 + 0x194, u16(ram.u16(a6 + 0x194) + v.dy));  // $29F966
   ram.setU16(a6 + 0x196, u16(ram.u16(a6 + 0x196) + v.dx));  // $29F96A
   placeBoss4Parts29F50E(ram, ctx, slot);                  // $29F96E bra $29F50E
-  void a5;
+}
+
+export function main4Step29F8F0(ram, rom, ctx, slot) {
+  bossWalk(ram, rom, ctx, slot, MAIN4_WAYPOINTS, 0x400);
 }
 
 export function main4Init29F8CC(ram, rom, ctx, slot) {
@@ -1248,6 +1259,45 @@ export function main4Init29F8CC(ram, rom, ctx, slot) {
   ram.setU16(slot + 0x06, 0);                             // $29F8E4
   ram.setU8(a6 + 0x3a, 6);                                // $29F8EA -- the SPEED
   main4Step29F8F0(ram, rom, ctx, slot);                   // falls through
+}
+
+/**
+ * `$29F9B4` / `$29F9CC` -- MAIN7, which F5's arm 5 calls in, and it is MAIN4's twin: the
+ * same waypoint walker with a tighter arrival threshold (`$200`) and its own four
+ * waypoints, PLUS one thing MAIN4 does not have.
+ *
+ * THE SPEED RAMP. Every ninth frame (`$8(a4)` = 8 with a period of 8, old-zero borrow)
+ * it takes one off `$3A(A6)`, the walk speed, and floors it at 2 -- checked twice, once
+ * before the decrement so an already-floored speed costs nothing, and once after with
+ * `bgt` so an overshoot is pinned rather than wrapped. So the boss's final phase closes
+ * in slower and slower, and never stops.
+ *
+ * MAIN4 sets that speed to 6 in its own INIT, so a cycle that runs MAIN4 then MAIN7
+ * (bit 5 restarts MAIN4, bit 3 calls MAIN7 back) resets the ramp every lap.
+ */
+export function main7Step29F9CC(ram, rom, ctx, slot) {
+  const a6 = ctx.bossSubRec;
+  if (due8(ram, slot + 0x08)) {                           // $29F9CC subq.b/bcc
+    ram.setU8(slot + 0x08, ram.u8(slot + 0x09));          // $29F9D4 the reload
+    if (ram.u8(a6 + 0x3a) !== 2) {                        // $29F9DA cmpi.b #$2/beq
+      ram.setU8(a6 + 0x3a, ram.u8(a6 + 0x3a) - 1);        // $29F9E4 subq.b
+      if (i16(ram.u8(a6 + 0x3a)) <= 2) {                  // $29F9E8 cmpi.b #$2/bgt
+        ram.setU8(a6 + 0x3a, 2);                          // $29F9F2 -- the FLOOR
+      }
+    }
+  }
+  bossWalk(ram, rom, ctx, slot, MAIN7_WAYPOINTS, 0x200);  // $29F9F8..$29FA76
+}
+
+/** `$29F9B4` -- MAIN7's INIT, and it FALLS THROUGH (`$29F9C6` ends at `$29F9CC`). It
+ *  does NOT touch `$3A(A6)`: the ramp starts from whatever speed the previous MAIN
+ *  left, which is MAIN4's 6. */
+export function main7Init29F9B4(ram, rom, ctx, slot) {
+  ram.setU8(slot + 0x02, 0);                              // $29F9B4
+  ram.setU16(slot + 0x04, 0);                             // $29F9BA
+  ram.setU16(slot + 0x06, 0);                             // $29F9C0 -- the cursor
+  ram.setU16(slot + 0x08, 0x0808);                        // $29F9C6 -- 8, period 8
+  main7Step29F9CC(ram, rom, ctx, slot);                   // falls through
 }
 
 /**
@@ -1881,6 +1931,8 @@ registerScript(0x2a2d70, a1_6Init2A2D70);
 registerScript(0x2a2d8e, a1_6Step2A2D8E);
 registerScript(0x2a2e8c, a1_7Init2A2E8C);
 registerScript(0x2a2e9e, a1_7Step2A2E9E);
+registerScript(0x29f9b4, main7Init29F9B4);
+registerScript(0x29f9cc, main7Step29F9CC);
 // A3 3..8, the six-instance ramp family. The STEP sits `$6` past its INIT in every
 // one of them, which is the same `$2E`-stride regularity the bodies have.
 for (const a of [0x2a14aa, 0x2a14d8, 0x2a1506, 0x2a1534, 0x2a1562, 0x2a1590]) {
