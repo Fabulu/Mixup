@@ -8,10 +8,13 @@ import { freeEnemy } from './initbody.js';
 import { scoreHit } from './score.js';
 import { livePlayers2428A6 } from './boss.js';
 import { applyVelocity } from './movement.js';
-import { AimTables, aim64, aim256FromCaller, slew64, targetSelect } from './aim.js';
+import {
+  AimTables, aim64, aim256, aim256FromCaller, slew64, targetSelect,
+} from './aim.js';
 import { drawByte242B3C, drawWord242EC2 } from './rng.js';
 import { fire as fireBullet, WriteLog } from './bullets.js';
 import { loadAnimObjects246410 } from './animobjects.js';
+import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { runStageAdvance242952 } from './stageend.js';
 import {
@@ -476,6 +479,209 @@ function f3Init29D03E(ram, rom, ctx, a4) {
   f3Step29D068(ram, rom, ctx, a4);                    // INIT falls through
 }
 
+// --------------------------------------------------------------------- W207
+// F4 runs MAIN3 and the paired E3/E4 leaves. E3's type-$9A requests are real,
+// but that registry row's mandatory init body immediately frees each record.
+
+function main3Step29C488(ram, rom, ctx, slot) {
+  const a6 = ctx.bossSubRec;
+  applyVelocity(ram, ctx.tables, ctx.bossRec);
+
+  if (ram.u8(slot + 1) !== 0) {
+    const facing = slew64(ram.u8(a6 + 0x1b), ram.u8(slot));
+    ram.setU8(a6 + 0x1b, facing);
+    if (facing === ram.u8(slot)) ram.setU8(slot + 1, 0);
+  }
+
+  let target = drawByte242B3C(ram, rom);
+  const x = u16(ram.u16(a6 + 0x04) + 0x2800);
+  if (x < 0x3c00) target = (target + 0x10) & 0xff;
+  else if (x >= 0x4c00) target = (target + 0x30) & 0xff;
+  else {
+    const y = ram.u16(a6 + 0x02);
+    if (y >= 0x6600) target = (target + 0x20) & 0xff;
+    else if (y >= 0x5e00) {
+      placeBoss3Parts29C300(ram, a6);
+      return;
+    }
+  }
+  ram.setU8(slot, target & 0x3f);
+  ram.setU8(slot + 1, 1);
+  placeBoss3Parts29C300(ram, a6);
+}
+
+function main3Init29C480(ram, rom, ctx, slot) {
+  ram.setU16(slot, 0);
+  main3Step29C488(ram, rom, ctx, slot);                // INIT falls through
+}
+
+function enqueueE3Dummy29D860(ram, ctx, a4, right) {
+  const a6 = ctx.bossSubRec;
+  const q = enqueueDeferred(ram, 0x9a, DEFQ_D1.FIXED00);
+  const y = u16(ram.u16(a6 + 0x02) + 0xdc80);
+  const x = u16(ram.u16(a6 + 0x04) + (right ? 0x0800 : 0xf800));
+  ram.setU32(q.addr + 0x16, ((y << 16) | x) >>> 0);
+  ram.setU8(q.addr + 0x1a, 0x0d + ram.u8(a6 + 0x10b));
+  ram.setU8(q.addr + 0x1b, 0x80);
+  ram.setU16(q.addr + 0x1c, ram.u16(a4 + 0x0c));
+  const old = ram.u16(a4 + 0x0c);
+  ram.setU16(a4 + 0x0c, u16(old - 4));
+  if (old < 4) ram.setU16(a4 + 0x0c, 8);
+}
+
+function e3Step29D852(ram, _rom, ctx, a4) {
+  if (due8(ram, a4 + 0x02)) {
+    ram.setU8(a4 + 0x02, ram.u8(a4 + 0x0a));
+    enqueueE3Dummy29D860(ram, ctx, a4, false);
+    if (due8(ram, a4 + 0x04)) {
+      ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));
+      ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+    }
+  }
+  if (!due8(ram, a4 + 0x06)) return;
+  ram.setU8(a4 + 0x06, ram.u8(a4 + 0x0a));
+  enqueueE3Dummy29D860(ram, ctx, a4, true);
+  if (due8(ram, a4 + 0x08)) {
+    ram.setU8(a4 + 0x08, ram.u8(a4 + 0x09));
+    ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));
+  }
+}
+
+function e3Init29D80A(ram, rom, ctx, a4) {
+  const row = rom.u32(0x29d7a4 + spread2595F2() * 4);
+  for (let i = 0; i < 4; i++)
+    ram.setU16(a4 + 0x02 + i * 2, rom.u16(row + i * 2));
+  for (let i = 0; i < 3; i++)
+    ram.setU16(a4 + 0x0a + i * 2, rom.u16(0x29d804 + i * 2));
+  const a6 = ctx.bossSubRec;
+  ram.setU8(a4 + 0x03, ram.u8(a4 + 0x03) - ram.u8(a6 + 0x10a));
+  const bias = (ram.u8(a6 + 0x12b) << 1) & 0xff;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x02) + bias);
+  ram.setU8(a4 + 0x06, ram.u8(a4 + 0x06) + bias);
+}
+
+function e4Shoot(ram, rom, ctx, site, entry, d0, d1, d3) {
+  shoot(ram, rom, ctx, site, entry, {
+    d0: d0 >>> 0, d1: d1 & 0xff, d2: ram.u32(ctx.bossSubRec + 0x02),
+    d3: d3 >>> 0, d4: 0, d5: 0, a5: ctx.bossRec,
+  });
+}
+
+function e4Bounce(ram, valueAddr, deltaAddr) {
+  let value = (ram.u8(valueAddr) - ram.u8(deltaAddr)) & 0xff;
+  let reverse = false;
+  if (value > 0xc0) { value = 0xc0; reverse = true; }
+  else if (value < 0x40) { value = 0x40; reverse = true; }
+  ram.setU8(valueAddr, value);
+  if (reverse) ram.setU8(deltaAddr, -ram.u8(deltaAddr));
+}
+
+function e4Step29DA52(ram, rom, ctx, a4) {
+  if (!due8(ram, a4 + 0x02)) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x06));
+
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  const target = targetSelect(ram, a5);
+  if (!target.carry) {
+    const ty = ram.u16(target.addr + 0x02), tx = ram.u16(target.addr + 0x04);
+    let direction = aim256(aimTables(rom), u16(ram.u16(a6 + 0x02) + 0x0400),
+      u16(ram.u16(a6 + 0x04) + 0xfd00), ty, tx);
+    e4Shoot(ram, rom, ctx, 0x29daae, 0x281726,
+      ram.u32(a4 + 0x08), direction, 0x0400fd00);
+    direction = aim256(aimTables(rom), u16(ram.u16(a6 + 0x02) + 0x0400),
+      u16(ram.u16(a6 + 0x04) + 0x0300), ty, tx);
+    e4Shoot(ram, rom, ctx, 0x29dadc, 0x281726,
+      ram.u32(a4 + 0x08), direction, 0x04000300);
+    ram.setU8(a5 + 0x03, ram.u8(a5 + 0x03) ^ 1);     // $29DAE2
+
+    const speedA = ram.u32(a4 + 0x0c), speedB = ram.u32(a4 + 0x10);
+    let d1 = ram.u8(a4 + 0x18);
+    const saved = d1;
+    e4Shoot(ram, rom, ctx, 0x29dafe, 0x281764, speedA, d1, 0xfe00fd00);
+    d1 = (d1 + 4) & 0xff;
+    e4Shoot(ram, rom, ctx, 0x29db0a, 0x281764, speedB, d1, 0xfe00fd00);
+    d1 = (d1 + 4) & 0xff;
+    e4Shoot(ram, rom, ctx, 0x29db1c, 0x281764,
+      (speedA - 0x00080000) >>> 0, d1, 0xfe00fd00);
+    d1 = (d1 + 4) & 0xff;
+    e4Shoot(ram, rom, ctx, 0x29db2e, 0x281764,
+      (speedB - 0x00080000) >>> 0, d1, 0xfe00fd00);
+
+    d1 = (-saved) & 0xff;
+    e4Shoot(ram, rom, ctx, 0x29db40, 0x281764, speedA, d1, 0xfe000300);
+    d1 = (d1 - 4) & 0xff;
+    e4Shoot(ram, rom, ctx, 0x29db4c, 0x281764, speedB, d1, 0xfe000300);
+    d1 = (d1 - 4) & 0xff;
+    e4Shoot(ram, rom, ctx, 0x29db5e, 0x281764,
+      (speedA - 0x00080000) >>> 0, d1, 0xfe000300);
+    d1 = (d1 - 4) & 0xff;
+    e4Shoot(ram, rom, ctx, 0x29db70, 0x281764,
+      (speedB - 0x00080000) >>> 0, d1, 0xfe000300);
+
+    const fanSpeed = ram.u32(a4 + 0x14);
+    d1 = ram.u8(a4 + 0x19);
+    e4Shoot(ram, rom, ctx, 0x29db88, 0x2817a8, fanSpeed, d1, 0xf800fd00);
+    d1 = (d1 - 0x10) & 0xff;
+    e4Shoot(ram, rom, ctx, 0x29db92, 0x2817a8, fanSpeed, d1, 0xf800fd00);
+    d1 = (d1 - 0x10) & 0xff;
+    e4Shoot(ram, rom, ctx, 0x29db9c, 0x2817a8, fanSpeed, d1, 0xf800fd00);
+    d1 = (-d1) & 0xff;
+    e4Shoot(ram, rom, ctx, 0x29dba8, 0x2817a8, fanSpeed, d1, 0xf8000300);
+    d1 = (d1 - 0x10) & 0xff;
+    e4Shoot(ram, rom, ctx, 0x29dbb2, 0x2817a8, fanSpeed, d1, 0xf8000300);
+    d1 = (d1 - 0x10) & 0xff;
+    e4Shoot(ram, rom, ctx, 0x29dbbc, 0x2817a8, fanSpeed, d1, 0xf8000300);
+
+    e4Bounce(ram, a4 + 0x18, a4 + 0x1c);
+    e4Bounce(ram, a4 + 0x19, a4 + 0x1d);
+  }
+
+  if (!due8(ram, a4 + 0x04)) return;
+  if (ram.u8(a6 + 0x106) < 0x60)
+    ram.setU8(a6 + 0x106, ram.u8(a6 + 0x106) + 0x10);
+  if (ram.u8(a6 + 0x107) < 4)
+    ram.setU8(a6 + 0x107, ram.u8(a6 + 0x107) - 2);
+  if (ram.u16(a6 + 0x108) < 5)
+    ram.setU16(a6 + 0x108, ram.u16(a6 + 0x108) + 1);
+  if (ram.u8(a6 + 0x10a) < 0x0a)
+    ram.setU8(a6 + 0x10a, ram.u8(a6 + 0x10a) + 2);
+  a1Stop259B08(ram, 4);
+  a1Stop259B08(ram, 3);
+}
+
+function e4Init29D9E4(ram, rom, ctx, a4) {
+  for (let i = 0; i < 2; i++)
+    ram.setU16(a4 + 0x02 + i * 2, rom.u16(0x29d9da + i * 2));
+  const row = rom.u32(0x29d92a + spread2595F2() * 4);
+  for (let i = 0; i < 9; i++)
+    ram.setU16(a4 + 0x06 + i * 2, rom.u16(row + i * 2));
+  for (let i = 0; i < 3; i++)
+    ram.setU16(a4 + 0x18 + i * 2, rom.u16(0x29d9de + i * 2));
+
+  const a6 = ctx.bossSubRec;
+  ram.setU8(a4 + 0x04, ram.u8(a4 + 0x04) + ram.u8(a6 + 0x106));
+  ram.setU8(a4 + 0x06, ram.u8(a4 + 0x06) - ram.u8(a6 + 0x107));
+  const speed = ram.u16(a6 + 0x108);
+  for (const off of [0x08, 0x0c, 0x10, 0x14])
+    ram.setU16(a4 + off, u16(ram.u16(a4 + off) + speed));
+  ram.setU8(a4 + 0x02,
+    ram.u8(a4 + 0x02) + ((ram.u8(a6 + 0x12b) << 3) & 0xff));
+  e4Step29DA52(ram, rom, ctx, a4);                    // INIT falls through
+}
+
+function f4Step29D0BE(ram, _rom, _ctx, a4) {
+  if (a1Running259A4A(ram, 4)) return;
+  a4Start25980C(ram, 5);
+  ram.setU16(a4, 0);
+}
+
+function f4Init29D0A6(ram, rom, ctx, a4) {
+  seqStart2598D0(ram, 3);
+  a1Start259A18(ram, 3);
+  a1Start259A18(ram, 4);
+  f4Step29D0BE(ram, rom, ctx, a4);                    // INIT falls through
+}
+
 function d0Step29C53E(ram, _rom, ctx, a4) {
   const a6 = ctx.bossSubRec;
   if (ram.u8(a6 + 0x8c) === 0) {
@@ -684,3 +890,11 @@ registerScript(0x29e14c, e5Step29E14C);
 registerScript(0x29c782, d5Init29C782);
 registerScript(0x29c788, d5Step29C788);
 registerScript(0x29d086, f6_29D086);
+registerScript(0x29d0a6, f4Init29D0A6);
+registerScript(0x29d0be, f4Step29D0BE);
+registerScript(0x29c480, main3Init29C480);
+registerScript(0x29c488, main3Step29C488);
+registerScript(0x29d80a, e3Init29D80A);
+registerScript(0x29d852, e3Step29D852);
+registerScript(0x29d9e4, e4Init29D9E4);
+registerScript(0x29da52, e4Step29DA52);

@@ -1208,6 +1208,14 @@ BODY.set(0x29bbfc, (ram, rom, a5, a6, unported, tables, palette) => {
   if (ram.u16(G.rank98) !== 0) ram.setU16(0x81b418, 1); // $29BCF6..$29BD08
 });
 
+// Type `$9A` is requested by the Stage-3 boss E3 leaf, but this registry row's
+// mandatory init+8 body is only `jmp $263762`. The adjacent handler belongs to
+// a dead alternate entry and is not reachable through type `$9A` in build B.
+BODY.set(0x29eae2, (ram, _rom, a5) => {
+  freeEnemy(ram, a5);
+  return FREED;
+});
+
 // --- type $95 ($277836): THE FIRST STAGE-2-ONLY BODY.  W170.
 //
 // The 8-byte table entry at $27782E says run length 1, so $2637A2 consumes the
