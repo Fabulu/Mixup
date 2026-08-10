@@ -330,7 +330,7 @@ function init28EC86(ram) {
 export function bannerStep28ECCE(ram, ctx) {
   if (ram.u16(SE.e024) === 0) {                        // $28ECCE cmpi.w #$0
     ram.setU16(SE.e024, 1);                            // $28ECDA
-    loadBannerArt(ram, ctx);                           // $28ECE2..$28ECF6
+    loadBannerArt(ram, ctx);                      // $28ECE2..$28ECF6
   }
   if (ram.u16(SE.e024) === 1) {                        // $28ECFC
     ram.setU16(SE.e028, u16(ram.u16(SE.e028) - 1));    // $28ED08 subq.w
@@ -340,7 +340,7 @@ export function bannerStep28ECCE(ram, ctx) {
       ram.setU8(SE.e026, ram.u8(SE.e026 + 1));         // $28ED18 -- from $81E027
       ram.setU16(SE.e028, 7);                          // $28ED22
       ram.setU16(SE.e02a, u16(ram.u16(SE.e02a) - 1));  // $28ED2A
-      loadBannerArt(ram, ctx);                         // $28ED30..$28ED44
+      loadBannerArt(ram, ctx);                    // $28ED30..$28ED44
       if (ram.u16(SE.e02a) === 0) {                    // $28ED4A tst.w/bne
         ram.setU8(SE.e026, 0x20);                      // $28ED54
         ram.setU16(SE.e024, 2);                        // $28ED5C
@@ -369,9 +369,20 @@ function loadBannerArt(ram, ctx) {
   const listBase = 0x81dffc;                           // $28EDA2[0]
   const list = listBase + (ram.u16(SE.stageX4) >> 2) * 8;
   const d0 = ram.u8(list + 7 - ram.u16(SE.e02a));      // $28ECC2/$28ECC4/$28ECCA
-  note(ctx, 0x24150a, `$28ECF6/$28ED44 jsr $24150A -- the stage-clear BANNER's `
-    + `resource install, entry [${d0}] of $28EE1E (data; $24150A is counted `
-    + `everywhere in this port)`);
+  // $28ECE4..$28ECF6, and the same five instructions again at $28ED32..$28ED44:
+  // `lsl.w #$3,D0` into $28EE1E, `movea.l $4(a0),a0` -- the pair's SECOND longword,
+  // which is a 64-byte PALETTE -- and `move.w #$17,D0`, the bank.
+  //
+  // W236: $24150A is `install24150A`, which this port has had since W91. The note
+  // that stood here called it "data" and counted it; it is a palette install and
+  // the installer was already imported in this file, so the banner's colours land.
+  // `ctx.rom`, not a `rom` parameter: `bannerStep28ECCE` is exported and its two
+  // callers do not pass one.
+  const src = ctx.rom.u32(0x28ee1e + (d0 << 3) + 4);   // $28ECEE movea.l $4(a0)
+  if (ctx.palette) {
+    install24150A(ram, ctx.palette, 0x17, ctx.rom.bytes(src, 64), 0x28ecf6,
+      `the stage-clear banner's palette, entry [${d0}] of $28EE1E`);
+  }
 }
 
 // ------------------------------------------------------------- the deviation
@@ -1264,8 +1275,17 @@ function bannerSlideOutStep(ram, ctx) {
     }
     ram.setU16(BANNER.dfec, ctx.rom.u16(RESULT_ROM.bannerDfecOut));      // $28EA22
     ram.setU16(BANNER.dfec + 2, ctx.rom.u16(RESULT_ROM.bannerDfecOut + 2));
-    // $28EA28..$28EA40 -- per-stage art byte + jsr $24150A (noted)
-    note(ctx, 0x24150a, '$28EA40 jsr $24150A -- banner slide-out art install. R2b');
+    // $28EA28..$28EA40 -- the per-stage BANK, then the install. W236 runs it: the
+    // bank is a word out of $28EA4A indexed by $813094 ([M] all five are $17, the
+    // same bank the banner's own art uses), the SAME byte lands in both sprites'
+    // attribute low bytes, and the source is the fixed 64 bytes at $246BF8.
+    const bank = ctx.rom.u16(0x28ea4a + ram.u16(0x813094));   // $28EA28/$28EA2E
+    ram.setU8(a6 + 0x1d, bank & 0xff);                        // $28EA32
+    ram.setU8(a6 + 0x3d, bank & 0xff);                        // $28EA36
+    if (ctx.palette) {
+      install24150A(ram, ctx.palette, bank, ctx.rom.bytes(0x246bf8, 64),
+        0x28ea40, 'the banner slide-out palette');            // $28EA3A/$28EA40
+    }
   }
   // motion for both sprites (banner+0 and banner+$20), via `$28EB62 lea $20(a6)`
   for (let sub = 0; sub < 2; sub++) {

@@ -82,7 +82,9 @@ already counted by address:
   could not have drawn even with the emitter),
 - the TX TEXT printers `$240DC2` and `$240EBC`, 60 calls per transition, a
   subsystem no wave has touched,
-- the banner's five `$24150A` resource installs plus the slide-out's,
+- the banner's five `$24150A` resource installs plus the slide-out's -- **PORTED
+  in W236**, and `$24150A` had been ported since W91; the note calling it "data"
+  had simply stopped being true,
 - the RESULT SCREEN: `$23C638` palette cue, `$246410` animation-object load,
   `$28D77C` sixteen longwords of palette RAM, `$28DE72`/`$28C186` exit handshake,
 - `$253794`, the option-pod teardown.

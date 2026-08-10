@@ -1015,6 +1015,19 @@ SHOT_WINDOWS.extend([
                        "ship arm's upper powers, the whole formation arm, and "
                        "the shared HYPER strip $24BAE2) plus the twenty pairs "
                        "$24BB0A..$24BBAA seam-free"),
+    # W236 (docket D11): the stage-clear banner's five PALETTES. $28EE1E is five
+    # (picture, palette) PAIRS -- W232 harvested the pictures as sprite streams, and
+    # this is the other longword of each pair, handed to $24150A with bank $17 at
+    # `$28ECF6` and `$28ED44`. Five banks of 64 bytes, contiguous at stride $40, and
+    # $2256B8 + 5*$40 is $2257F8.
+    (0x2256B8, 0x0140, "W236 the five stage-clear banner palettes, $28EE1E's "
+                       "second longwords, installed into bank $17"),
+    # W236: the slide-out's BANK table, `$28EA2E move.w ($28EA4A,PC,D0.w),D0` with
+    # D0 = $813094. FIVE words, one per stage, and its far end is pinned by data the
+    # port already reads: $28EA54 is `bannerDfecOut`, the two-word $81DFEC seed.
+    # [M] all five are $0017, the same bank the banner's own install uses.
+    (0x28EA4A, 0x000A, "W236 the banner slide-out's five per-stage palette banks, "
+                       "ending where $28EA54's DFEC seed begins"),
     # W234 (docket D6): the bee popup's two tables, each bounded by its own cursor
     # rather than by a run length. $27FD4A is the popup ladder `$27FC24 lea /
     # move.l (A0,D1),($10,A6)` reads with the $817F82 cursor, which steps by 4 and
