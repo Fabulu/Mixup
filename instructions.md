@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-10, after W206 publication.
+Last updated: 2026-08-10, after W207 publication.
 
 ## Current directive
 
@@ -14,7 +14,7 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The old W175 pause is resolved. W176 through W205 are live. W188 fixes the
+The old W175 pause is resolved. W176 through W207 are live. W188 fixes the
 reported stage-1 tank-death and hyper defects. W189 completes the directly
 reachable F1, F2, and F8 stage-2 boss phases, including the primary death
 presentation and screen shake. W191 closes Stage 2, and W192 opens Stage 3
@@ -57,6 +57,7 @@ At handoff:
 - W204 is committed, pushed, and deployed
 - W205 is committed, pushed, and deployed
 - W206 is committed, pushed, and deployed
+- W207 is committed, pushed, and deployed
 - W175 live build: `20260809081027`
 - W176 live build: `20260809092221`
 - W177 live build: `20260809095334`
@@ -89,9 +90,10 @@ At handoff:
 - W204 live build: `20260810042615`
 - W205 live build: `20260810045925`
 - W206 live build: `20260810051650`
+- W207 live build: `20260810053647`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
-- the full-game goal remains active; W207 starts at the Stage-3 boss A4/F4
-  frontier `$29D0A6`
+- the full-game goal remains active; W208 starts at the Stage-3 boss A4/F5
+  frontier `$29D0D4`
 
 The worktree contains these three untracked owner files plus the untracked
 `NUL` entry. They are permanent user work and must never be staged, edited,
@@ -113,9 +115,9 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W206 is complete and live as build `20260810051650`:
+W207 is complete and live as build `20260810053647`:
 
-- latest worklog: `docs/worklog/ddpdoj/206-impl-stage3-boss-f3.md`
+- latest worklog: `docs/worklog/ddpdoj/207-impl-stage3-boss-f4.md`
 - stage-2 boss baseline: `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
 - stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
 - init stub/body: `$297118` / `$297120`; handler: `$297398`
@@ -197,21 +199,24 @@ W206 is complete and live as build `20260810051650`:
   the natural arrival smoke reaches both aimed singles and bilateral fan leaves
 - F3, MAIN2, D4, E5, D5, and F6 are live; the natural boss path runs all six
   E5 muzzle generators and closes the centre assembly before reaching F4
+- F4, MAIN3, E3, and E4 are live; the natural boss path drains the requested
+  self-freeing type `$9A` records, observes all sixteen E4 bullet sites, and
+  reaches F5
 - the browser bundle contains 3,645 sprite streams and now includes the missing
   1,404-tile Stage-2 and 252-tile Stage-3 background families as deferred shards
 
-The next honest gameplay frontier is the Stage-3 boss A4/F4 init `$29D0A6`.
+The next honest gameplay frontier is the Stage-3 boss A4/F5 init `$29D0D4`.
 The complete boss graph is statically mapped; live type `$99` is a later child,
 while requested type `$9A` frees itself immediately at init.
 
 Reserve the next immutable worklog number, make one targeted static map for
-the `$29D03E` phase, translate it, and continue through the installed boss
+the `$29D0D4` phase, translate it, and continue through the installed boss
 scheduler graph without redoing the completed Stage-3 spawn census.
 
 Useful current tests and tools:
 
 ```powershell
-node --test games/ddpdoj/tests/w206boss3f3.test.js
+node --test games/ddpdoj/tests/w207boss3f4.test.js
 python games/ddpdoj/tools/export-tables.py
 python games/ddpdoj/tools/dojcoverage.py
 node tools/publish.mjs --only ddpdoj --dry
@@ -333,9 +338,9 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W206 translates the Stage-3 boss F3 phase, same-pass MAIN2 and D4, the complete
-six-muzzle E5 attack, D5 closure, and F6 rendezvous. It also exports E5's exact
-runtime ROM window and preserves `$259962`'s returned A3 slot semantics. The
-natural boss path reaches the next honest F4 frontier `$29D0A6`; 1,573 tests,
-the web bundle, fetch gate, ROM leak guard, and deployment confirmation are
-green. The full-game goal remains active after every wave.
+W207 translates the Stage-3 boss F4 phase, same-pass MAIN3, and the complete E3
+and E4 attack pair. Requested type `$9A` records now execute the cartridge's
+mandatory init+8 self-free body instead of exposing the dead alternate handler.
+The natural boss path reaches the next honest F5 frontier `$29D0D4`; 1,574
+tests, the web bundle, fetch gate, ROM leak guard, and deployment confirmation
+are green. The full-game goal remains active after every wave.
