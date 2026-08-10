@@ -1,108 +1,128 @@
 # Player-observed defect docket
 
 Defects seen while playing the live build, in the owner's words, with the
-port-side finding underneath. Nothing counts as fixed until a worklog says so
-and a focused smoke proves it.
+port-side finding underneath. Nothing counts as fixed until a worklog says so and
+a focused smoke proves it.
 
 Opened 2026-08-10 from a play session on the shipped web build.
 
-## D1: firing the hyper crashes -- FIXED in W226
+## Fixed
 
-Reported as a crash; it was the port's honest `Unreached`, reading a longword at
-`$24BAF6` on the second frame of a hyper beam.
+### D1: firing the hyper crashes -- FIXED in W226
 
-Diagnosis: not a logic bug. All twenty `$24BB0A` (offset, pointer) pairs carry
-offset `$001E` and point at a `$28`-byte strip that `$2550A0` walks DOWN by
-`$A`, so the twenty strips span `$24B7EA..$24BB0A`. The exporter's
-`$24A800+$1100` window stops at `$24B900`, so every strip above that was
-outside every window: the shared HYPER strip `$24BAE2`, the ship arm's upper
-powers, and the whole formation arm. Normal play survived only because TYPE-A
-with formation 2 takes the `+$0` arm, whose strips end at `$24B8B2`.
+Reported as a crash; it was the port's honest `Unreached` on a longword at
+`$24BAF6`, the second frame of a hyper beam. The arithmetic was right and the ROM
+window was short: the twenty `$24BB0A` pairs point at `$28`-byte strips that
+`$2550A0` walks DOWN, so they span `$24B7EA..$24BB0A` while `$24A800+$1100` stops
+at `$24B900`. The shared hyper strip `$24BAE2`, the ship arm's upper powers and
+the whole formation arm were outside every window. Normal play survived only
+because TYPE-A with formation 2 takes the `+$0` arm. Fix: one window,
+`$24B900+$02AA`, which also carries the pair table seam-free.
 
-Fix: one new ROM window `$24B900+$0200` in `tools/export-tables.py`.
+### D2: hyper pickups move far too fast -- FIXED in W226
 
-## D2: hyper pickups move far too fast -- FIXED in W226
+`$27F0E8 movem.w ($1a,A6),D0-D1` reads two words, at `$1A` and `$1C`. The port
+read one word at `$1B`, straddling the pair, so the row `$FFF4001F` moved the
+short axis by `$F400` (-3072) instead of `$001F` (+31). Same body: the two draw
+biases were swapped, and the animation advance ran after the draws instead of
+before, with the borrow inverted.
 
-The item body read a WORD at `$1B` for the short-axis step, but `$27F0E8
-movem.w ($1a,A6),D0-D1` reads two words at `$1A` and `$1C`. The `I.angle` name
-is the byte convention other item kinds use; here it straddled the pair's two
-halves, so the row `$FFF4001F` moved the item by `$F400` (-3072) per step
-instead of `$001F` (+31).
+### D7 (partly) and the rank icons -- FIXED in W230
 
-Also fixed in the same body: the draw-1 axis biases were swapped (`$27F00A`
-adds D5's LOW word `$FA00` to the long axis and `$F900` to the short axis after
-the `swap`), and the frame/animation advance ran AFTER the three draws when
-`$27EFF4` runs it BEFORE them, reloading on the `subq.b` borrow (counter already
-zero) rather than when the counter reaches zero.
+The rank-icon tables `$2882A6` (P1) and `$288326` (P2), eight longwords each, had
+never been harvested into the sprite bundle, so the port enqueued a rank icon
+every frame and the page had nothing to draw. Found by the new descriptor sweep.
 
-## D9: any player death stops the port -- FIRST LINK FIXED in W227, still OPEN
+## Open, in priority order
 
-Found while verifying D1. `playerHit249F8A` sets bit 0 of the player's state
-byte; the next option-handler pass tests that bit at `$24C14A` and lands on
-`$24CA60`, which is not translated. Reproduced headlessly at frame 424 from
-`rip/web/seed.bin` holding button 1.
+### D9: a death is survivable now, but the respawn has no position
 
-W227 translated `$24CA60` (it clears fifty words of the option block), so the
-death animation and the `$24A172..$24A21A` reset now run. The chain does not end
-there: the reset arms `$8130FA` = 1 and the `$25FF7A` dispatcher then wants
-`$25FFA8`, which opens `jsr $23C668`. Neither is translated, so a death now stops
-at frame 495 instead of 425. Next slice, and still the top of this docket.
+W227 translated `$24CA60` (it clears fifty words of the option block) and W228
+translated `$25FFA8` (the respawn/game-over fork). A death now runs its animation
+and reset, spends a life, creates a fresh player object and answers the stick.
 
-## D11: stage transitions are wrong and the ship disappears
+What is left: `$2491C0` and its P2 twin `$249246` have a ONE-TIME INIT arm the
+port does not translate at all, everything from `bset #0,$3(a5)` to `$2494FA`. So
+a newly created player object never gets its record filled, and a respawned ship
+provably sits at `posY` 0, below its own `$800` clamp. The arm is mapped: a
+48-word template copy from `$24915E` (needs a ROM window), the `$2551FA` byte
+pair, `$253A1E` (clears `$81B5B8..$81B5E0`), the `+6`-keyed fresh-start arm, five
+`$2530BE` calls behind the `$803926` gate, `$25FF38`/`$260846` arming dispatcher
+request 9, and `$2603B0` into `$2534F8`/`$253522`. `$249426` is the instruction
+that copies the object's `+8`/`+A` into the record's position.
 
-The owner's words: stage transitions are not right, your ship disappears, and
-there may be no score totalling either (none is visible). W228 found the likely
-cause of the disappearing ship: `$2491C0`'s one-time INIT arm, everything from
-`bset #0,$3(a5)` to `$2494FA`, is not translated. A newly created player object
-therefore never gets its record filled or its position set, and a respawned ship
-provably sits at `posY` 0, below its own `$800` clamp. A stage transition that
-re-creates the player object would look exactly like this.
+### D11: the stage transition is abrupt and the ship vanishes mid-transition
 
-The score totalling is a separate question and needs its own look: find whether
-the stage-end tally runs at all (`src/stageend.js` into `src/score.js`) or only
-its presentation is missing, which is the same fork as D6 and D7.
+The owner's words: finishing a level, the ground goes, then the ship disappears,
+then it reappears in the new level, and it is far too abrupt -- the real game runs
+a big transition sequence there. Possibly no score totalling either; none is
+visible.
 
-## D3: missing explosions in stages 1 and 2
+NOT the same thing as D9's missing player init, which is a respawn defect. The
+lead is that the object dispatch table `$240F62` has two entries the port does not
+implement at all, and the descriptor sweep sees both running every frame of
+ordinary play:
 
-Some enemy deaths have no explosion. Suspect effect kinds whose descriptor was
-never harvested, so the record is enqueued but the web renderer has no stream.
-Compare the effect kinds `src/effects.js` can spawn against the harvested
-streams in `assets/manifest.json`.
+- entry `[11]` = `$25DBB4`, priority `$0A`, called once per frame. It is a state
+  machine that reads `$813098` (the loop flag) and `$813092` (the stage number)
+  and calls `$28D53C` and `$23C932`. A stage-level sequencer is exactly the shape
+  of the transition engine.
+- entry `[4]` = `$260B30`, priority `$09`, called TWICE per frame (once per side:
+  it reads `$7(a5)`), dispatching through a jump table at `$260B6A` by `$4(a5)`.
 
-## D4: stage 2 mid boss is mostly invisible
+Both are counted as `object dispatch entry [N] -- handler not ported in wave 4`,
+1800 and 900 times in a 900-frame run. Whatever the transition should look like,
+it cannot happen while these two are no-ops. Start with `[11]`.
 
-Only two small turrets draw; the body does not. Same shape as D3 but for a boss:
-either its A2 object draws are not translated or their sprite tables are not in
-the web bundle. See `src/midboss.js` and the stage-2 harvest in
-`tools/export-web.mjs`.
+### D3 and D4: missing explosions in stages 1 and 2, and the stage-2 mid boss
 
-## D5: hidden and missing sprites in general
+The descriptor sweep settles what these are NOT. Over 900 frames of stage-1 play,
+after the rank-icon fix, **every descriptor the port draws is in the bundle** and
+the display list drops nothing. So a missing explosion is not a missing stream
+and not a dropped record: its PRODUCER is not running.
 
-D3, D4, D7 and D8 are probably instances of one systemic gap. Worth one sweep
-that joins every draw site the port can reach against the harvested stream set
-and reports the draws whose descriptor is absent from the bundle. That sweep is
-the deliverable, not a list of guesses.
+The counted gaps from the same run name the candidates, and the effect ones are
+`$289AF4` (the secondary effect spawn, "D0=$4 secondary", W26) and `$27F8F8`
+(the bullet death effect). Next step for D3 is to run the sweep and read the
+counted-gap list rather than to guess: the instrument is
+`tools/w230descriptorsweep.mjs`.
 
-## D6: bees give no score popup and no collect feedback
+### D5: the systemic sprite question -- INSTRUMENT DELIVERED in W230
 
-Bees can be collected but nothing indicates it: no popup, no sound, no HUD
-change. Check whether the collect credits score at all or only the presentation
-is missing. See `src/bee.js` into `src/score.js` / `src/hud.js`.
+`tools/w230descriptorsweep.mjs` answers "which sprites cannot draw" mechanically:
+it takes the display list the port actually builds and checks every descriptor
+against the bundle's own stream table. Bundle-wide it now reports zero. Re-run it
+per stage and per boss as coverage grows; a missing sprite that is not in its
+output is a producer problem, not a bundle problem.
 
-## D7: the hyper gauges are not painted in the UI
+### D6: bees give no score popup and no collect feedback
 
-Unknown whether the gauge logic runs at all. The gauge word does count
-(`$81B642` steps down by 2 per frame while hyper is up, verified headlessly in
-W226), so this is likely presentation only. See `src/hud.js`.
+Check whether the collect credits score at all or only the presentation is
+missing. `src/bee.js` into `src/score.js` / `src/hud.js`.
 
-## D8: the ship may be missing its large exhausts
+### D7: the hyper gauges are not painted
 
-Only tiny exhausts draw. Check whether the ship has further parts the port never
-enqueues, or whether their streams are missing from the bundle. Related to D5.
+The gauge word does count (`$81B642` steps down by 2 per frame while hyper is up,
+verified headlessly in W226), so this is likely presentation. The rank icons under
+"Fixed" were one instance of the same family; the gauge needs its own look.
 
-## D10: mobile landscape wastes most of the screen on the browser bar
+### D8: the ship may be missing its large exhausts
 
-On a phone in landscape the browser chrome takes most of the viewport. Look at
-the page shell in `src/web/` -- a fullscreen request on first input plus
-`viewport-fit=cover` and dynamic viewport units (`100dvh`) is the usual fix.
-Presentation only, no simulation risk.
+Only tiny exhausts draw. Since the sweep says nothing the port draws is missing
+from the bundle, the exhaust is either a draw the port never makes or a part of
+the ship record it never fills. Check `src/shipsprite.js` against the ROM.
+
+### D10: mobile landscape wastes most of the screen on the browser bar
+
+Presentation only, no simulation risk. The page shell in `src/web/` wants a
+fullscreen request on first input plus `viewport-fit=cover` and `100dvh`.
+
+### D12: the repo documentation is well behind the code
+
+`docs/` still describes the project as it was several waves ago:
+`00-MASTER-REFERENCE.md`, `01-PORT-PLAN.md` and the `recon-*` documents predate
+stages 3 and 4 entirely, and nothing in `docs/` except this docket and
+`NEXT_AGENT_HANDOFF.md` mentions the Stage-4 boss, the hyper, the death chain or
+the web bundle's shard layout. Worth one pass that brings the top-level documents
+up to the code, states where the port actually is stage by stage, and points at
+the worklogs for detail rather than restating them.

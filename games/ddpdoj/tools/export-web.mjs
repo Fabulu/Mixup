@@ -1371,6 +1371,23 @@ if (new Set(popupSuffixStreams).size !== 12) {
 addHudStreamGroup('popup suffix', popupSuffixStreams,
   '$285784 twelve suffix zoom entries');
 
+// W230 (docket D5): THE RANK ICONS. `src/hud.js` reads $2882A6 (P1) and $288326
+// (P2), eight longwords each, at $285D64/$285DC4 and $285EDA/$285F3E. Neither
+// table had ever been harvested, so the port enqueued a rank icon every frame and
+// the page had no stream to draw: the descriptor sweep
+// (tools/w230descriptorsweep.mjs) found these five of $2882A6's eight live in a
+// 900-frame stage-1 run and NOTHING else missing bundle-wide.
+for (const [base, who] of [[0x2882a6, 'P1'], [0x288326, 'P2']]) {
+  const icons = [];
+  for (let i = 0; i < 8; i++) icons.push(romBe32(base + i * 4));
+  if (new Set(icons).size !== 8) {
+    throw new Error(`W230 the ${who} rank-icon table $${base.toString(16)} `
+      + `resolves ${new Set(icons).size} streams, not eight distinct entries`);
+  }
+  addHudStreamGroup(`rank icons ${who}`, icons,
+    `$${base.toString(16).toUpperCase()} eight rank-icon frames`);
+}
+
 // ------------------------------------------------------------------- WAVE 52
 // 1b. THE PLAYER'S SHOTS, and 1c. THE ENEMY BULLETS.
 //
