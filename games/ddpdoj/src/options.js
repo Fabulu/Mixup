@@ -109,10 +109,21 @@ function runOneBlock(ram, ctx, b) {
     unreached(0x24caa4, `bit 9 of the option block's state word sends $24C146 to `
       + `$24CAA4. MEASURED 0 on every sampled frame of fly-around`);
   }
-  if (ram.btst8(player + P.state, 0)) {                     // $24C14A btst #0,(A4)
-    unreached(0x24ca60, `bit 0 of the PLAYER's state byte sends $24C14E to `
-      + `$24CA60 -- the same bit player.js already throws on at $249500 (the `
-      + `death/respawn arm). The option object has its own arm for it`);
+  // $24C14A btst #0,(A4) / bne $24CA60 -- THE PLAYER IS DYING.  W226's docket D9:
+  // `playerHit249F8A` sets this bit and the very next option pass landed here, so
+  // no death could survive a live option block.  The arm itself is five
+  // instructions and holds nothing back:
+  //
+  //   24CA60: moveq #$31,d0 / moveq #$0,d1 / movea.l a6,a0
+  //   24CA66: move.w d1,(a0)+ / dbra d0,$24CA66     FIFTY words from the block
+  //   24CA6C: lea $20(a6),a6 / dbra d7,$24C0B0      ...and on to the next block
+  //
+  // Fifty words is $64, and `$81050E - $8104AA` is exactly $64, so the clear
+  // covers this block and stops at the next player's -- the stride in the `lea`
+  // is dead, because `$24C0B0` re-loads A6 with an absolute address anyway.
+  if (ram.btst8(player + P.state, 0)) {
+    for (let n = 0; n < 50; n++) ram.setU16(opt + n * 2, 0);
+    return;
   }
   if ((st & 0x0002) === 0) {                                // $24C152 btst #1
     unreached(0x24c934, `bit 1 of the option block's state word is CLEAR, which `

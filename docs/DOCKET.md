@@ -35,14 +35,18 @@ the `swap`), and the frame/animation advance ran AFTER the three draws when
 `$27EFF4` runs it BEFORE them, reloading on the `subq.b` borrow (counter already
 zero) rather than when the counter reaches zero.
 
-## D9: any player death reaches unported `$24CA60` -- OPEN, highest severity
+## D9: any player death stops the port -- FIRST LINK FIXED in W227, still OPEN
 
 Found while verifying D1. `playerHit249F8A` sets bit 0 of the player's state
 byte; the next option-handler pass tests that bit at `$24C14A` and lands on
-`$24CA60`, which is not translated. `player.js` throws on the same bit at
-`$249500`. So the port cannot survive a player death, which outranks everything
-else on this docket. Reproduced headlessly in ~424 frames from `rip/web/seed.bin`
-holding button 1.
+`$24CA60`, which is not translated. Reproduced headlessly at frame 424 from
+`rip/web/seed.bin` holding button 1.
+
+W227 translated `$24CA60` (it clears fifty words of the option block), so the
+death animation and the `$24A172..$24A21A` reset now run. The chain does not end
+there: the reset arms `$8130FA` = 1 and the `$25FF7A` dispatcher then wants
+`$25FFA8`, which opens `jsr $23C668`. Neither is translated, so a death now stops
+at frame 495 instead of 425. Next slice, and still the top of this docket.
 
 ## D3: missing explosions in stages 1 and 2
 
