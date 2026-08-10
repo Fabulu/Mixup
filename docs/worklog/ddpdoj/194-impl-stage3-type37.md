@@ -1,6 +1,6 @@
 # W194: Stage-3 type $37
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 ## Scope
 
@@ -69,3 +69,12 @@ fixed wreck visible, and runs its pool-C death satellite with complete art. The
 next chronological unsupported record is type `$3C` at `$234512`, clock
 `$003B`, with body `$266968` and handler `$2669E2`. Stage 3 has 259/414
 translated records, leaving 155 records across 12 unsupported types.
+
+## Release
+
+- implementation commit: `4b7305b`
+- registry expectation correction: `6560d8a`
+- production build: `20260810002237`
+- release gate: 1,548/1,548 tests, bundle render, web fetch, and ROM leak guard
+- deployment: `https://gbtman.pages.dev/games/ddpdoj/`
+- confirmation: three consecutive production polls returned the new build
