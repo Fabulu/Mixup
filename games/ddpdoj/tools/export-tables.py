@@ -997,6 +997,24 @@ SHOT_WINDOWS.extend([
                        "scripts, all five template families ($24A932 x25x$26, "
                        "$24AF68 x20x$0E, $24B0A0/$24B1E0/$24B320 x$20) and "
                        "every anim table and sub-template they point at"),
+    # W226 (docket D1): the twenty $24BB0A pairs all carry offset $001E and point
+    # at a $28-byte strip the DRAW walks DOWN by $A ($2550A0 subi.w #$A), so each
+    # strip spans ptr..ptr+$28 and the twenty strips together span
+    # $24B7EA..$24BB0A.  $24A800+$1100 stops at $24B900, so every strip from
+    # $24B900 up was OUTSIDE every window: the four hyper pairs (+$78, all five
+    # powers, all pointing at ONE strip $24BAE2) threw at $24BAF6 the moment a
+    # hyper beam reached its second frame, and the ship/formation arms would have
+    # thrown the same way.  Normal play survived only because TYPE-A + formation
+    # 2 takes the +$0 arm, whose strips stop at $24B8B2.
+    # The length also has to carry the PAIR TABLE itself, $24BB0A..$24BBAA, in
+    # ONE window: $24BB00+$00A0 ends at $24BBA0 and $24BBA0+$04E0 begins there,
+    # so the hyper pair at $24BB9A (laser power 6) has its first longword in the
+    # first window and its POINTER longword straddling the seam -- and a read is
+    # served only by a window that contains it WHOLE (src/rom.js `#at`).
+    (0x24B900, 0x02AA, "W226 THE BEAM: the $24BB0A strips above $24B900 (the "
+                       "ship arm's upper powers, the whole formation arm, and "
+                       "the shared HYPER strip $24BAE2) plus the twenty pairs "
+                       "$24BB0A..$24BBAA seam-free"),
     (0x24BB00, 0x00A0, "W45 THE BEAM: $24BB0A, the (offset, pointer) pairs "
                        "$254FE6 puts in $811F32 and $255042 walks"),
     (0x24CFB0, 0x0180, "W45 THE BEAM: the five pointer tables $24CFBA (25), "

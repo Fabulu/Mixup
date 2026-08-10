@@ -1009,12 +1009,32 @@ function bodyHyperItem(ram, rom, ctx, a6, d1, p2) {
       ram.setU16(a6 + I.tick, rom.u16(0x27f0fa + off));
       ram.setU32(a6 + I.speed, rom.u32(0x27f0fc + off));
     }
-    ram.setU16(a6 + I.pos, u16(ram.u16(a6 + I.pos) + ram.u16(a6 + I.speed)));
-    ram.setU16(a6 + I.posX, u16(ram.u16(a6 + I.posX) + ram.u16(a6 + I.angle)));
+    // $27F0E8 `movem.w ($1a,A6),D0-D1` -- TWO WORDS, at $1A and $1C, the pair
+    // the $27F0FA row loads as one longword.  This body does NOT use the
+    // byte-wide speed/angle convention `I.speed`/`I.angle` name at $1A/$1B, and
+    // reading a word at $1B straddles the two halves: with the row's $FFF4001F
+    // the short axis moved by $F400 (-3072) instead of $001F (+31), which is
+    // why the item crossed the screen almost too fast to see (docket D2).
+    ram.setU16(a6 + I.pos, u16(ram.u16(a6 + I.pos) + ram.u16(a6 + 0x1a)));
+    ram.setU16(a6 + I.posX, u16(ram.u16(a6 + I.posX) + ram.u16(a6 + 0x1c)));
   }
+
+  // $27EFF4..$27F004 -- the frame counter and the animation cursor, and they
+  // step BEFORE the three draws: $27F06E leaves through `jmp $23EB06`, so
+  // nothing can run after the last one.  `subq.b #1 / bcc` reloads on the
+  // BORROW, i.e. when the counter was already zero, not when it reaches zero.
+  const frame = ram.u8(a6 + I.frame);
+  ram.setU8(a6 + I.frame, (frame - 1) & 0xff);
+  if (frame === 0) {
+    ram.setU8(a6 + I.frame, ram.u8(a6 + I.reload));    // $27EFFA move.b ($d,A6)
+    ram.setU16(a6 + I.anim, (ram.u16(a6 + I.anim) + 4) & 0x3f);  // $27F000/$27F004
+  }
+
   const base = p2 ? 0x001b8bd4 : 0x001b8b28;
-  const long = u16(ram.u16(a6 + I.pos) - 0x0700);
-  const short = u16(ram.u16(a6 + I.posX) - 0x0600);
+  // $27F00A..$27F018 -- D5 is $F900FA00 and the LOW word is added first, so the
+  // long axis takes $FA00 and the short axis takes $F900 after the `swap`.
+  const long = u16(ram.u16(a6 + I.pos) - 0x0600);
+  const short = u16(ram.u16(a6 + I.posX) - 0x0700);
   enqueueRegistersThroughStub(ram, rom, ITEM.emitStub,
     ((long << 16) | short) >>> 0, base, 0x0638, 5);
   if (ram.u16(0x80390c) !== 0) {
@@ -1028,12 +1048,6 @@ function bodyHyperItem(ram, rom, ctx, a6, d1, p2) {
   enqueueRegistersThroughStub(ram, rom, ITEM.emitStub,
     ((l3 << 16) | s3) >>> 0, rom.u32(0x27ef10 + ram.u16(a6 + I.anim)),
     0x0418, 5);
-  const frame = (ram.u8(a6 + I.frame) - 1) & 0xff;
-  ram.setU8(a6 + I.frame, frame);
-  if (frame === 0) {
-    ram.setU8(a6 + I.frame, ram.u8(a6 + I.reload));
-    ram.setU16(a6 + I.anim, (ram.u16(a6 + I.anim) + 4) & 0x3f);
-  }
   return { emitted: true };
 }
 
