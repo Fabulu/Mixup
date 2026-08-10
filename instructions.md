@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-10, after W214 publication.
+Last updated: 2026-08-10, after W215 publication.
 
 ## Current directive
 
@@ -356,11 +356,11 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W214 translates all eleven Stage-4 type `$9C` records, their eleven movement
-streams, root controller, normal and mirrored paired satellites, damage,
-firing, death, presentation, and four new live sprite streams. Stage 4 now
-covers 370/382 records and 24/29 types. All 1,586 tests, the web bundle, fetch
-gate, ROM-leak guard, and deployment confirmation are green as build
-`20260810085716`. The next live frontier is type `$9D` at `$235FF0`, body
-`$27B2FE`, handler `$27B78A`, and movement `$2367CE..$2367D4`; the full-game
+W215 translates the Stage-4 Type `$9D` three-part carrier and its directly
+spawned live Type `$9E` child, including attacks, linked damage, death and item
+presentation, and 56 newly reachable sprite streams. Stage 4 now covers
+371/382 records and 25/29 types. All 1,588 tests, the web bundle, fetch gate,
+ROM-leak guard, and deployment confirmation are green as build
+`20260810093032`. The next live frontier is Type `$A3` at `$2360D0`, body
+`$27D404`, handler `$27D674`, and movement `$2370D8..$23712E`; the full-game
 goal remains active after every wave.
