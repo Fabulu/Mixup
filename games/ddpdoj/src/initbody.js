@@ -522,6 +522,15 @@ BODY.set(0x264740, (ram, rom, a5, a6, unported) => {
   ram.setU16(a6 + S.posX, u16(ram.u16(a6 + S.posX) - 0x0080)); // $26476A
 });
 
+// --- type $3C ($266968): Stage-3's opening/closing six-muzzle formation.
+// The zero run length selects one sub-record. Everything else is data-driven:
+// one long prototype, 18 record words, then the shared movement initializer.
+BODY.set(0x266968, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x2669ae);            // $266968..$266974
+  loadRecordProto(ram, rom, a5, 0x26698a, 0x11);      // $266974..$266982
+  readInitPosition(ram, rom, a5, unported);            // $266982
+});
+
 // --- type $24 ($296FB0): boss-approach prop.  Sub-proto, resource install,
 // record clears, position.  The resource install ($24150A) is noted (data).
 BODY.set(0x296FB0, (ram, rom, a5, a6, unported, tables, palette) => {

@@ -99,7 +99,7 @@ test('W194/1 type-$37 preserves burst cadence and death runs visible pool C',
   assert.equal(dead.u16(POOL_B.base + B.status), 0x8084);
 });
 
-test('W194/2 real clock-$3B record spawns $37 before the honest type-$3C frontier',
+test('W194/2 real clock-$3B record still spawns $37 after type $3C is closed',
   { skip: SKIP }, () => {
   const ram = new Ram();
   ram.setU16(0x813092, 2);
@@ -108,7 +108,8 @@ test('W194/2 real clock-$3B record spawns $37 before the honest type-$3C frontie
   ram.setU16(SPAWN.DISTANCE_CLOCK, 0x3b);
   resetAndInstallStage26331E(ram, ROM, new UnportedLog());
   ram.setU32(SPAWN.LIVE_CURSOR, 0x234502);
-  assert.throws(() => runSpawnWalker(ram, ROM, new UnportedLog(), MT), /\$266962/i);
+  assert.deepEqual(runSpawnWalker(ram, ROM, new UnportedLog(), MT),
+    { script: 3, deferred: 0 });
   let rec = 0;
   for (let i = 0; i < ENEMY.slots; i++) {
     const at = ENEMY.table + i * ENEMY.stride;
@@ -116,6 +117,5 @@ test('W194/2 real clock-$3B record spawns $37 before the honest type-$3C frontie
   }
   assert.notEqual(rec, 0);
   assert.equal(ram.u8(rec + 0x0c), 0x37);
-  assert.equal(ram.u32(SPAWN.LIVE_CURSOR), 0x234502,
-    'the walker commits its cursor only after the same-clock batch completes');
+  assert.equal(ram.u32(SPAWN.LIVE_CURSOR), 0x23451a);
 });

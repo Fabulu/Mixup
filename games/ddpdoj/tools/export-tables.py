@@ -505,6 +505,9 @@ SHOT_WINDOWS.extend([
     (0x264738, 0x04DC, "W194: complete stage-3 type $37 closure: run-length "
                        "stub, init, prototypes, shared handler, 128-entry "
                        "animation table, muzzle vectors and death row"),
+    (0x266960, 0x03CE, "W195: complete stage-3 type $3C closure: run-length "
+                       "stub, init, record/sub prototypes, muzzle offsets, "
+                       "state machine, bullet patterns and death rows"),
     (0x289B50, 0x038A, "W194: type-$37 pool-C dependency: absolute allocator, "
                        "driver, collision-aware fill, kind-4 template and "
                        "all three four-frame descriptor lists"),
@@ -2188,6 +2191,39 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if d[0x289E26:0x289E42] != bytes.fromhex(
             "8004fa00fc0006200001000cf400000000289eaa00289eba00289eca"):
         raise SystemExit("W194: pool-C kind-4 template drifted")
+    type3c_records = (
+        0x234512, 0x2345CA, 0x23477A, 0x2347B2,
+        0x2347DA, 0x234D82, 0x234D8A, 0x234D92,
+    )
+    if b"".join(d[a:a + 8] for a in type3c_records) != bytes.fromhex(
+            "003b00103c00001c006300003c00001c009d00153c00001c"
+            "00a2000a3c00001c00a700003c00001c017000003c000023"
+            "017200133c00001c0172ffff3c00001c"):
+        raise SystemExit("W195: stage-3 type $3C occurrences drifted")
+    if d[0x267A04:0x267A0C] != bytes.fromhex("00266960002669e2"):
+        raise SystemExit("W195: type $3C registry row drifted")
+    if hashlib.sha256(d[0x235298:0x2352C2]).hexdigest() != (
+            "e83f635dd9c4268f81a15992f730f89d2cfb2272202402e49d4613b108f1d127"):
+        raise SystemExit("W195: type $3C movement index $01C drifted")
+    if hashlib.sha256(d[0x2352FA:0x235324]).hexdigest() != (
+            "27c2702d61387487d3ef43fb3af5e7139979e2dc8edf9e8427bf38a6b032585b"):
+        raise SystemExit("W195: type $3C movement index $023 drifted")
+    if hashlib.sha256(d[0x266960:0x266D2E]).hexdigest() != (
+            "01bd1c76f9d4ede376b88b64c960b3384e677d434c196aea66e43553971865cd"):
+        raise SystemExit("W195: stage-3 type $3C closure drifted")
+    if d[0x26698A:0x2669AE] != bytes.fromhex(
+            "0000110e000040100008050500000000000000000000000000000000"
+            "0000000000000100"):
+        raise SystemExit("W195: type $3C record prototype drifted")
+    if d[0x2669AE:0x2669CA] != bytes.fromhex(
+            "a0010000000000000000000008800880080008000c00100000000000"):
+        raise SystemExit("W195: type $3C sub-record prototype drifted")
+    if d[0x266D08:0x266D2E] != bytes.fromhex(
+            "0000008500000400fb0002c0000000850000040005000240"
+            "0000000d0000f60000000280ffff"):
+        raise SystemExit("W195: type $3C death-effect rows drifted")
+    if d[0x23453A:0x234542] != bytes.fromhex("004800003b811016"):
+        raise SystemExit("W195: next Stage-3 frontier is not type $3B at $23453A")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and

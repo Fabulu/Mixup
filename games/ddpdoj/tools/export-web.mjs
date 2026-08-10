@@ -113,7 +113,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 import { BGELEM_HANDLERS } from '../src/background.js';
 import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE90_ART, TYPE91_ART, TYPE92_ART,
   TYPE93_ART, TYPE94_ART, TYPE95_ART, TYPE96_ART, TYPE97_ART,
-  TYPE3E_ART, TYPE36_ART, TYPE37_ART } from '../src/handlers.js';
+  TYPE3E_ART, TYPE36_ART, TYPE37_ART, TYPE3C_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -703,6 +703,12 @@ const ITEM_SHARD = 12;
  *
  *  `[shard, offs, why]`. */
 const W81_IMMEDIATES = Object.freeze([
+  [17, TYPE3C_ART.centre,
+    'TYPE $3C centre body, emitted directly by $266B8E at size $0E38'],
+  [17, TYPE3C_ART.left,
+    'TYPE $3C left opening arm, emitted directly by $266BC2 at size $0E28'],
+  [17, TYPE3C_ART.right,
+    'TYPE $3C right opening arm, emitted directly by $266BF6 at size $0E28'],
   [17, TYPE37_ART.body,
     'TYPE $37 fixed hull, emitted directly by $264920 at size $1060'],
   [17, TYPE36_ART.body,
