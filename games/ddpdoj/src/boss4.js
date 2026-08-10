@@ -1566,8 +1566,115 @@ registerScript(0x2a13cc, d0Init2A13CC);
 registerScript(0x2a13e8, d0Step2A13E8);
 registerScript(0x29f8cc, main4Init29F8CC);
 registerScript(0x29f8f0, main4Step29F8F0);
+/**
+ * `$2A3048` -- A1 8's FAN, four shots off one base angle, and the ORDER is the slot
+ * order, which is observable in draw order and in the bomb's cancel loop:
+ *
+ *     +$4, +$C, -$4, -$C        (`addi.b #4` then `#8`, restore, `subi.b #4` then `#8`)
+ *
+ * all byte-wide, so a base near the wrap folds rather than saturating. `$2817B8` is
+ * already the port's fan generator and the four `jsr` sites are passed through as the
+ * attribution addresses the way `fireFive` passes its own.
+ */
+const A1_8_FAN_SITES = [0x2a3050, 0x2a305a, 0x2a3066, 0x2a3070];
+
+function a1_8Fan2A3048(ram, rom, ctx, a5, d0, base, d2, d3) {
+  const angles = [base + 4, base + 0x0c, base - 4, base - 0x0c];
+  for (let i = 0; i < 4; i++) {
+    shootBoss4(ram, rom, ctx, A1_8_FAN_SITES[i], 0x2817b8,
+      regsBoss4(a5, d0, angles[i] & 0xff, d2, d3));
+  }
+}
+
+/**
+ * `$2A2F1E` / `$2A2F72` -- A1 8, which F5's `$3(A4)` chain starts once the pod pair
+ * retires. TWO BARRELS, one per pod, each a burst counter over a cadence counter:
+ *
+ *     barrel 1   $2(a4) outer / $4(a4) inner / $6(a4) burst   fires from `$82(a6)`
+ *     barrel 2   $8(a4) outer / $A(a4) inner / $C(a4) burst   fires from `$A2(a6)`
+ *
+ * The outer counter is consulted ONLY while the burst counter is zero (`tst.b $6(a4)`
+ * / `bne`), so a burst in progress bypasses it and empties at the inner cadence. Each
+ * `subq.b`/`bcc` pair is the old-zero borrow, and every reload comes from the byte
+ * immediately above its counter.
+ *
+ * THREE OF ITS REGISTER LOADS ARE DEAD, and reproducing that is the point. Both
+ * barrels accumulate an angle -- `$12(a4) += $13(a4)` and `$14(a4) += $15(a4)` -- read
+ * it into D1, and then immediately overwrite D1 with a CONSTANT (`$40` and `$C0`); and
+ * both load `$16(a4)`/`$17(a4)` into D7, which `$281576` overwrites out of the shot
+ * template. So the accumulators run and are stored (observable) while the angles they
+ * feed are fixed (also observable), and a port that "tidied" either half would aim
+ * this attack somewhere the board never aims it.
+ *
+ * Barrel 2 also calls `$24226E` -- `aim256FromCaller`, the nearer-player aim -- and
+ * DISCARDS the result on the next instruction. Transcribed as a call rather than
+ * dropped, because target selection is the one part of it that can fail.
+ */
+const A1_8_INIT_WORDS = [
+  [0x02, 0x040d], [0x04, 0x0040], [0x06, 0x0001],        // $2A2F1E..$2A2F2A
+  [0x08, 0x0410], [0x0a, 0x0010], [0x0c, 0x0001],        // $2A2F30..$2A2F3C
+];
+const A1_8_INIT_BYTES = [
+  [0x10, 0x00], [0x11, 0x00], [0x12, 0x00], [0x13, 0x18],  // $2A2F42..$2A2F54
+  [0x14, 0x00], [0x15, 0xec], [0x16, 0x00], [0x17, 0x00],  // $2A2F5A..$2A2F6C
+];
+
+/** `$2A2FBC` and `$2A3030` -- `ext.w` a byte into the HIGH word and 5 in the low one.
+ *  The sign extension is what makes a byte of `$80` or more a NEGATIVE bias. */
+const a1_8D0 = (ram, slot, off) =>
+  ((((ram.u8(slot + off) << 24) >> 24) << 16) | 5) >>> 0;
+
+export function a1_8Step2A2F72(ram, rom, ctx, slot) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+
+  barrel1: {
+    if (ram.u8(slot + 0x06) === 0) {                      // $2A2F72 tst.b/bne
+      if (!due8(ram, slot + 0x02)) break barrel1;         // $2A2F7A subq.b/bcc
+      ram.setU8(slot + 0x02, ram.u8(slot + 0x03));        // $2A2F82
+      ram.setU8(slot + 0x06, ram.u8(slot + 0x07));        // $2A2F88 arm the burst
+    }
+    if (!due8(ram, slot + 0x04)) break barrel1;           // $2A2F8E subq.b/bcc
+    ram.setU8(slot + 0x04, ram.u8(slot + 0x05));          // $2A2F96
+    ram.setU8(slot + 0x12,                                // $2A2F9C/$2A2FA0 add.b
+      (ram.u8(slot + 0x12) + ram.u8(slot + 0x13)) & 0xff);
+    // $2A2FA4 reads $12(a4) into D1 and $2A2FA8 throws it away. See the header.
+    a1_8Fan2A3048(ram, rom, ctx, a5, a1_8D0(ram, slot, 0x10), 0x40,
+      ram.u32(a6 + 0x82), 0xf9400200);                    // $2A2FA8..$2A2FCA
+    ram.setU8(slot + 0x06, ram.u8(slot + 0x06) - 1);      // $2A2FCE subq.b
+  }
+
+  if (ram.u8(slot + 0x0c) === 0) {                        // $2A2FD2 tst.b/bne
+    if (!due8(ram, slot + 0x08)) return;                  // $2A2FDA subq.b/bcc
+    ram.setU8(slot + 0x08, ram.u8(slot + 0x09));          // $2A2FE2
+    ram.setU8(slot + 0x0c, ram.u8(slot + 0x0d));          // $2A2FE8
+    ram.setU8(slot + 0x14,                                // $2A2FEE/$2A2FF2 add.b
+      (ram.u8(slot + 0x14) + ram.u8(slot + 0x15)) & 0xff);
+  }
+  if (!due8(ram, slot + 0x0a)) return;                    // $2A2FF6 subq.b/bcc
+  ram.setU8(slot + 0x0a, ram.u8(slot + 0x0b));            // $2A2FFE
+  // $2A3004..$2A3012 -- aimed at the nearer player from pod 2's biased position, and
+  // $2A3018/$2A301C discard the answer immediately.
+  aim256FromCaller(aimTables(rom), ram, a5,
+    u16(ram.u16(a6 + 0xa2) + 0xf940), u16(ram.u16(a6 + 0xa4) + 0xfe00));
+  a1_8Fan2A3048(ram, rom, ctx, a5, a1_8D0(ram, slot, 0x11), 0xc0,
+    ram.u32(a6 + 0xa2), 0xf93ffe00);                      // $2A301C..$2A303E
+  ram.setU8(slot + 0x0c, ram.u8(slot + 0x0c) - 1);        // $2A3042 subq.b
+}
+
+/** `$2A2F1E` -- A1 8's INIT, fourteen literals and then it FALLS THROUGH: `$2A2F6C`
+ *  ends exactly at `$2A2F72`. Every counter arrives at a value its own `subq.b` can
+ *  borrow out of, and `$6(a4)`/`$C(a4)` arrive at ZERO so the first frame consults the
+ *  outer cadence rather than a burst. */
+export function a1_8Init2A2F1E(ram, rom, ctx, slot) {
+  for (const [off, v] of A1_8_INIT_WORDS) ram.setU16(slot + off, v);
+  for (const [off, v] of A1_8_INIT_BYTES) ram.setU8(slot + off, v);
+  a1_8Step2A2F72(ram, rom, ctx, slot);                    // falls through
+}
+
 registerScript(0x2a0cf6, f5Init2A0CF6);
 registerScript(0x2a0d16, f5Step2A0D16);
+registerScript(0x2a2f1e, a1_8Init2A2F1E);
+registerScript(0x2a2f72, a1_8Step2A2F72);
 // A3 3..8, the six-instance ramp family. The STEP sits `$6` past its INIT in every
 // one of them, which is the same `$2E`-stride regularity the bodies have.
 for (const a of [0x2a14aa, 0x2a14d8, 0x2a1506, 0x2a1534, 0x2a1562, 0x2a1590]) {
