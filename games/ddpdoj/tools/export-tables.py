@@ -493,6 +493,16 @@ SHOT_WINDOWS.extend([
     (0x22A5F8, 0x0BF0, "W192: STAGE-3 background dependency span: 28 columns "
                        "x 36 bytes followed by 32 palette banks, ending "
                        "exactly at Stage 4's column stream $22B1E8"),
+    (0x22B1E8, 0x2588, "W211: STAGE-4 background dependency span: 210 columns "
+                       "x 36 bytes followed by 32 palette banks, ending "
+                       "exactly at Stage 5's column stream $22D770"),
+    (0x278962, 0x008C, "W211: Stage-4 opening type $A6 stub, init, prototype, "
+                       "and invisible pulse handler through $2789EE"),
+    (0x263180, 0x0054, "W211: Stage-4 clock-zero BGELEM id 5 constructor, "
+                       "updater, and immediate art descriptor"),
+    (0x2358B0, 0x20C8, "W211: complete STAGE-4 spawn dependency span: 382 "
+                       "records + terminator, 157-word aux table, and 157 "
+                       "movement streams ($2358B0..$237978)"),
     (0x2342BA, 0x15F6, "W192: complete STAGE-3 spawn dependency span: 414 "
                        "records + terminator, 123-word aux table, and 123 "
                        "movement streams ($2342BA..$2358B0)"),

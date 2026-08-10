@@ -2136,6 +2136,45 @@ const STAGE2_BGELEM_TABLE = 0x26227e;
     + `${seen.size} distinct streams, ${added} new`);
 }
 
+// ------------------------------------------------------------------ WAVE 211
+// Stage 4's clock-0 script requests BGELEM id 5 before its first enemy. Keep
+// the opening harvest tied to the live constructor registry and to the exact
+// id-5 table cell; later Stage-4 elements remain named frontiers rather than
+// being speculatively bundled.
+const STAGE4_BGELEM_ID5 = 0x2622d6 + 5 * 4;
+{
+  const handlers = BGELEM_HANDLERS.filter((h) => h.stage === 3);
+  if (handlers.length !== 1 || handlers[0].id !== 5) {
+    throw new Error(`Stage-4 opening BGELEM registry has ${handlers.length} rows; `
+      + 'W211 owns exactly id 5 at clock 0');
+  }
+  const h = handlers[0];
+  if (romBe32(STAGE4_BGELEM_ID5) !== h.ctor) {
+    throw new Error(`Stage-4 BGELEM id 5 table names $${
+      romBe32(STAGE4_BGELEM_ID5).toString(16)} but the live registry names $${
+      h.ctor.toString(16)}`);
+  }
+  if (romBe16(h.ctor) !== 0x2d7c || romBe16(h.ctor + 6) !== 0x0010
+      || romBe32(h.ctor + 2) !== h.data) {
+    throw new Error('Stage-4 BGELEM id 5 constructor no longer writes its '
+      + 'registry descriptor to ($10,A6)');
+  }
+  const already = streams.has(h.data) ? 1 : 0;
+  if (!already) {
+    streams.set(h.data, romExtent(h.data));
+    shardOfStream.set(h.data, STRUCT_SHARD);
+  }
+  const added = already ? 0 : 1;
+  harvested += added;
+  harvestAlready += already;
+  harvestReport.push({ shard: STRUCT_SHARD, base: STAGE4_BGELEM_ID5,
+    entries: 1, stride: 4, runsTo: 1, endsAt: STAGE4_BGELEM_ID5 + 4,
+    distinct: 1, added, already,
+    why: 'W211 Stage-4 clock-0 BGELEM id 5: constructor $263180 immediate '
+      + 'descriptor $2CCC74, before the first enemy record' });
+  console.log(`  Stage-4 opening background element: 1 stream, ${added} new`);
+}
+
 // ------------------------------------------------------------------- WAVE 66
 // 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
 // bomb, and NEITHER HAS A PICTURE: W64 §8.3 counted 174 bucket-13 records with
@@ -2434,6 +2473,9 @@ const STAGE2 = Object.freeze({
 const STAGE3 = Object.freeze({
   cols: 0x22a5f8, ncols: 28, tileBase: 0x1aa9,
 });
+const STAGE4 = Object.freeze({
+  cols: 0x22b1e8, ncols: 210, tileBase: 0x1ea9,
+});
 const COL_BYTES = 36;                    // 9 longwords, $26135A's `dbra D6`, D6=8
 const COL_ROWS = 9;
 
@@ -2457,6 +2499,7 @@ const stageMap = decodeMap(STAGE1.cols, STAGE1.ncols, STAGE1.tileBase);
 const secondMap = decodeMap(STAGE1.smap, STAGE1.nsmap, STAGE1.smapBase);
 const stage2Map = decodeMap(STAGE2.cols, STAGE2.ncols, STAGE2.tileBase);
 const stage3Map = decodeMap(STAGE3.cols, STAGE3.ncols, STAGE3.tileBase);
+const stage4Map = decodeMap(STAGE4.cols, STAGE4.ncols, STAGE4.tileBase);
 
 // CHECK 1 -- the attribute word.  Recon §1b: no BG map entry in the whole game
 // sets a flip bit ($C0) or any bit outside $3E; the attribute is a pure 5-bit
@@ -2464,7 +2507,7 @@ const stage3Map = decodeMap(STAGE3.cols, STAGE3.ncols, STAGE3.tileBase);
 // half turns this into noise, so it is the cheapest way to catch all three.
 {
   const bad = [];
-  for (const map of [stageMap, secondMap, stage2Map, stage3Map]) {
+  for (const map of [stageMap, secondMap, stage2Map, stage3Map, stage4Map]) {
     for (const col of map) for (const [, a] of col) if (a & ~0x3e) bad.push(a);
   }
   if (bad.length) {
@@ -2483,6 +2526,8 @@ const stage2Tiles = new Set();
 for (const col of stage2Map) for (const [t] of col) stage2Tiles.add(t);
 const stage3Tiles = new Set();
 for (const col of stage3Map) for (const [t] of col) stage3Tiles.add(t);
+const stage4Tiles = new Set();
+for (const col of stage4Map) for (const [t] of col) stage4Tiles.add(t);
 
 // CHECK 2 -- the counts and the ranges the recon measured.
 {
@@ -2509,6 +2554,12 @@ for (const col of stage3Map) for (const [t] of col) stage3Tiles.add(t);
     throw new Error(`stage 3 holds ${stage3Tiles.size} distinct BG tiles `
       + `$${s3lo.toString(16)}..$${s3hi.toString(16)}; the ROM-owned map `
       + 'measures 252 in $1AAA..$1BA5');
+  }
+  const s4lo = Math.min(...stage4Tiles), s4hi = Math.max(...stage4Tiles);
+  if (stage4Tiles.size !== 1890 || s4lo !== 0x1eaa || s4hi !== 0x260b) {
+    throw new Error(`stage 4 holds ${stage4Tiles.size} distinct BG tiles `
+      + `$${s4lo.toString(16)}..$${s4hi.toString(16)}; the ROM-owned map `
+      + 'measures 1,890 in $1EAA..$260B');
   }
 }
 
@@ -2548,16 +2599,18 @@ let palAgree = 0;
 // TX: one sheet, from the capture, unchanged -- it is the HUD and it does not
 // scroll with the stage.
 //
-// BG: EIGHT SHARDS.  Shard s in 0..6 is map columns [32s, 32s+32); shard 7 is
-// the second map.  A tile is assigned to the FIRST shard that uses it, so the
+// BG: stage-owned shards.  Shard s in 0..6 is map columns [32s, 32s+32);
+// shard 7 is the second map and later shards own later stage maps.  A tile is
+// assigned to the FIRST shard that uses it, so the
 // shards are disjoint by construction and the shard holding a tile is always
 // the earliest one that needs it.  Slots are contiguous across shards in shard
 // order, so ONE `bg.tileno.u16` describes every slot and the loader can build
 // its tile->slot table before a single shard body has arrived.
-const BG_SHARDS = 10;
+const BG_SHARDS = 11;
 const SMAP_SHARD = 7;
 const STAGE2_SHARD = 8;
 const STAGE3_SHARD = 9;
+const STAGE4_SHARD = 10;
 const BOOT_SHARDS = [0, 1];
 const SHARD_COLS = 32;
 
@@ -2571,6 +2624,7 @@ for (let s = 0; s < SMAP_SHARD; s++) {
 for (const t of smapTiles) if (!shardOfTile.has(t)) shardOfTile.set(t, SMAP_SHARD);
 for (const t of stage2Tiles) if (!shardOfTile.has(t)) shardOfTile.set(t, STAGE2_SHARD);
 for (const t of stage3Tiles) if (!shardOfTile.has(t)) shardOfTile.set(t, STAGE3_SHARD);
+for (const t of stage4Tiles) if (!shardOfTile.has(t)) shardOfTile.set(t, STAGE4_SHARD);
 
 // THE CAPTURE'S OWN TILES ARE NOT NEGOTIABLE.  `verifyCoverage` throws at load
 // for any BG tile the recording uses and the sheet lacks, and that check must
@@ -2609,11 +2663,13 @@ for (let s = 0; s < BG_SHARDS; s++) {
     i: s,
     kind: s === SMAP_SHARD ? 'secondmap'
       : s === STAGE2_SHARD ? 'stage2'
-        : s === STAGE3_SHARD ? 'stage3' : 'scroll',
+        : s === STAGE3_SHARD ? 'stage3'
+          : s === STAGE4_SHARD ? 'stage4' : 'scroll',
     cols: s === SMAP_SHARD ? null
       : s === STAGE2_SHARD ? [0, STAGE2.ncols - 1]
         : s === STAGE3_SHARD ? [0, STAGE3.ncols - 1]
-          : [s * SHARD_COLS, Math.min((s + 1) * SHARD_COLS, STAGE1.ncols) - 1],
+          : s === STAGE4_SHARD ? [0, STAGE4.ncols - 1]
+            : [s * SHARD_COLS, Math.min((s + 1) * SHARD_COLS, STAGE1.ncols) - 1],
     firstSlot,
     tiles: shardTiles[s].length,
   });

@@ -130,6 +130,7 @@ const R = {
   sprite22: 0x22, hpReload: 0x26, fireCtr: 0x28,
   facing: 0x33, pal34: 0x34, palCycle: 0x35,
   handler: 0x4c, runLen: 0x04, movement: 0x12, flags: 0x02, classByte: 0x0d,
+  subRec: 0x06,
   // W30, for `$275914`.  The SAME BYTES the names above cover, named again for
   // the type that uses them differently -- `($20,A5)` is `deathFlag` in $10/$11
   // and a SALVO COUNTER in $85, `($22,A5)` is a sprite scratch in $82 and an
@@ -181,6 +182,7 @@ const S = {
 const G = {
   freeze: 0x8130d2, scroll: 0x813172, rank98: 0x813098, stage: 0x813092,
   clock: 0x8130ce, midbossD8: 0x8130d8, aa: 0x8130aa, ba: 0x8130ba,
+  bulletBias: 0x812950, pulseDA: 0x8130da,
   rank9E: 0x81309e,
   stage96: 0x813096, scrollClockOdo: 0x8130d0,
   mirror: 0x80390b, mirror2: 0x80390c,
@@ -6043,6 +6045,30 @@ function handler19(ram, _rom, a5) {
   ram.setU8(a5 + 0x16, 0x10);                         // $267252
 }
 
+// `$278994`: Stage-4 type $A6. This invisible controller pulses `$8130DA`
+// on an old-zero word-timer borrow and alternates +1/-1 by toggling subrecord
+// status bit 6. Pause preserves the previous pulse exactly; ordinary active
+// frames explicitly clear it.
+function handlerA6(ram, _rom, a5) {
+  if (ram.u16(G.clock) >= 0x02e0) {                    // $278994..$2789A2
+    freeEnemy(ram, a5);
+    return;
+  }
+  if (ram.u16(G.freeze) !== 0) return;                 // $2789A6
+  ram.setU16(G.pulseDA, 0);                            // $2789AE
+  const a6 = ram.u32(a5 + R.subRec);
+  const old = ram.u16(a6 + 0x06);
+  ram.setU16(a6 + 0x06, old - 1);                      // $2789B6
+  if (old !== 0) return;                               // $2789BA bcc
+  const bias = ram.u16(G.bulletBias);
+  ram.setU16(a6 + 0x06, bias === 0
+    ? 7 : u16(6 - Math.floor(bias / 7)));              // $2789BE..$2789D2
+  ram.setU16(G.pulseDA, 1);                            // $2789D6
+  const flags = ram.u8(a6 + 1);
+  ram.setU8(a6 + 1, flags ^ 0x40);                     // $2789DE bchg #6
+  if (flags & 0x40) ram.setU16(G.pulseDA, 0xffff);     // $2789E2..$2789EA
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
@@ -6111,6 +6137,7 @@ const HANDLERS = new Map([
   [0x266e34, handler16],       // W203: Stage-3 wobbling paired-shot type $16
   [0x29be28, handlerBoss29BE28], // W204: Stage-3 boss type $A0 entry/arrival
   [0x29e6b0, handler99_29E6B0],  // W209: Stage-3 boss low-HP child type $99
+  [0x278994, handlerA6],          // W211: Stage-4 alternating pulse type $A6
   [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 

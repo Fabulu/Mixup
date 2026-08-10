@@ -1568,6 +1568,14 @@ BODY.set(0x27a0e8, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + R.rec1B, rom.u8(pal + 1));
 });
 
+// --- type $A6 ($27896A): Stage 4's invisible alternating pulse controller.
+// The movement pointer is installed by the generic spawn path but this body
+// deliberately never consumes it. The one long-form prototype ends exactly at
+// the handler entry $278994.
+BODY.set(0x27896a, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x278978);             // $27896A..$278976
+});
+
 // ============================================================ the entry point
 /** Run the init+8 body at `addr`.  Replaces spawn.js's throwing stub.  Returns
  *  FREED if the body freed the enemy (a stage-kill gate fired); otherwise

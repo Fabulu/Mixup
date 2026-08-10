@@ -482,6 +482,13 @@ export const BGELEM_HANDLERS = [
   { stage: 1, ctor: 0x262912, upd: 0x2628DE, data: 0x235BB8, yPos: 0x2A50, kind: 0x52, thr: 0x5400, v: 'lbge', gate: false, emit: 0x23DF2A, kindWord: true },
   { stage: 1, ctor: 0x262930, upd: 0x26294E, data: 0x27B49C, yPos: 0x1220, kind: 0x15, thr: 0x2400, v: 'lbge', gate: false, emit: 0x23DF2A },
   { stage: 1, ctor: 0x262982, upd: 0x2629AE, complex: 'stage2-pair', animTable: 0x262A4C, animPairs: 32 },
+
+  // W211. Internal stage index 3, human Stage 4. Script 0 requests id 5 at
+  // clock 0, before the first enemy record. The other Stage-4 rows stay loud
+  // until their chronological scroll-script clocks are delivered.
+  { stage: 3, id: 5, ctor: 0x263180, upd: 0x26319E, data: 0x2CCC74,
+    yPos: 0x2F20, kind: 0x16, thr: 0x5C00, v: 'lbge', gate: false,
+    emit: 0x23DF2A },
 ];
 const BGELEM_BY_CTOR = new Map(BGELEM_HANDLERS.map((h) => [h.ctor, h]));
 const BGELEM_BY_UPD = new Map(BGELEM_HANDLERS.map((h) => [h.upd, h]));
@@ -501,7 +508,7 @@ function elemSpawn(ram, rom, ctx, id, arg, mut) {
     const h = BGELEM_BY_CTOR.get(ctorAddr);
     if (!h) {
       unreached(ctorAddr, `$${ctorAddr.toString(16).toUpperCase()} is not one `
-        + `of the ${BGELEM_HANDLERS.length} ported stage-1/stage-2 BGELEM `
+        + `of the ${BGELEM_HANDLERS.length} ported BGELEM `
         + `constructors (id ${id})`);
       return;
     }
@@ -551,7 +558,7 @@ function elemDriver(ram, rom, ctx) {
     const h = BGELEM_BY_UPD.get(updAddr);
     if (!h) {
       unreached(updAddr, `element updater $${updAddr.toString(16)
-        .toUpperCase()} is not one of the ported stage-1/stage-2 handlers`);
+        .toUpperCase()} is not one of the ported BGELEM handlers`);
       continue;
     }
     elemUpdate(ram, rom, ctx, slot, h);                     // $262358 jsr (A1)
