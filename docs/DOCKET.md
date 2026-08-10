@@ -104,10 +104,23 @@ against the bundle's own stream table. Bundle-wide it now reports zero. Re-run i
 per stage and per boss as coverage grows; a missing sprite that is not in its
 output is a producer problem, not a bundle problem.
 
-### D6: bees give no score popup and no collect feedback
+### D6: bees give no score popup -- FULLY MAPPED in W233, ready to implement
 
-Check whether the collect credits score at all or only the presentation is
-missing. `src/bee.js` into `src/score.js` / `src/hud.js`.
+The score is NOT the problem: the award runs (`$27FC72` sets bit 0). Two gaps, both
+in `bee.js`, both measured in [worklog 233](worklog/ddpdoj/233-impl-tx-text.md):
+
+1. `$27FC24`, two instructions, the popup descriptor write. Its ten-longword
+   ladder `$27FD4A` needs a ROM window.
+2. `$28112C`, the collected-animation arm -- the popup itself. Bounded: a byte
+   timer, a lifetime byte that frees the slot and decrements the `$817F7E` census,
+   a rise-then-fall on `$a(a6)`, a draw through `$23DBCA` the port already makes
+   elsewhere, and the digits through a new emitter `$23EC20` plus the x2 arm
+   `$28129E`.
+
+Note for whoever takes it: `$240DC2` is NOT the blocker. W116 ported the whole TX
+defer path (`txDeferGrid`, `flushTextDefer141258`, wired in `isr.js`). Several
+call sites still say it is unported, on a premise that expired two waves earlier;
+those notes are stale and are the sixty counted calls W232 saw per transition.
 
 ### D7: the hyper gauges are not painted
 
