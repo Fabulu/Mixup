@@ -147,7 +147,8 @@ test('the ported handler addresses are registered through W223 type $41', () => 
       // W229 catches the list up with the Stage-4 waves it fell behind:
       // $27C81A and $27DB30 are W218's last two stage-4 enemy handlers,
       // $29EF0A is W219's Type-$40 BOSS, and $2A3840 is W223's emitted type $41.
-      0x27c81a, 0x27db30, 0x29ef0a, 0x2a3840,
+      // W256 adds the type $42 children A1 9 spawns in formations.
+      0x27c81a, 0x27db30, 0x29ef0a, 0x2a3840, 0x2a3af6,
     ].sort((a, b) => a - b));
 });
 

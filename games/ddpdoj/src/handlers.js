@@ -122,6 +122,7 @@ import { handlerA3 } from './stage4typea3.js';
 import { handlerA1 } from './stage4typea1.js';
 import { handler9F, handlerA4 } from './stage4type9f.js';
 import { handler41 } from './stage4type41.js';
+import { handler42 } from './stage4type42.js';
 import { handlerBoss29EF0A } from './boss4.js';
 
 /** `addi.l` -- a 32-bit add, where the low half's carry REACHES the high half.
@@ -6641,6 +6642,7 @@ const HANDLERS = new Map([
   [0x27db30, handlerA4],          // W218: type-$9F deferred fragment $A4
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
+  [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42
   [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 

@@ -69,7 +69,7 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   assert.match(got.stdout, /type5_calls: 19\/23 ported/);
   // W229: 72 -> 76 ported and 54 -> 50 unknown, the four the Stage-4 waves added
   // after W217 (W218's $27C81A and $27DB30, W219's Type-$40 boss, W223's $41).
-  assert.match(got.stdout, /enemy_types: 76\/256 ported, 50 unknown, 130 null/);
+  assert.match(got.stdout, /enemy_types: 77\/256 ported, 49 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
   assert.match(got.stdout, /stage3_spawn_script: 414\/414 ported, 0 unknown, 0 null/);
