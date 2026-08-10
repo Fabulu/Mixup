@@ -137,7 +137,7 @@ export class MoveTables {
    *
    * @returns {{dy:number,dx:number}} D2 (long axis) and D3 (short axis).
    */
-  shotVector(speedIndex, angleByte) {
+  shotVectorShift(speedIndex, angleByte, shift = 4) {
     const a = angleByte & 0xff;
     const foldBytes = this.shotFold[a];          // $241D4A, word index = angle
     if (foldBytes & 7 || foldBytes > (this.entries - 1) * 8) {
@@ -145,13 +145,17 @@ export class MoveTables {
         + `8-byte-aligned offset inside the 65-entry quadrant`);
     }
     const e = this.quad(speedIndex, 0x241d3e)[foldBytes >> 3];
-    let dy = asr(e[0], 4);                       // $241D52 asr.l #4,D2
-    let dx = asr(e[1], 4);                       // $241D54 asr.l #4,D3
+    let dy = asr(e[0], shift);                   // $241D52 / $241E5C / $241E82
+    let dx = asr(e[1], shift);
     const q = a & 0xc0;                          // $241D56 andi.w #$c0,D1
     if (q === 0x40) dy = -dy;                    // $241DA6
     else if (q === 0x80) { dy = -dy; dx = -dx; } // $241DE6
     else if (q === 0xc0) dx = -dx;               // $241E26
     return { dy: i16(dy), dx: i16(dx) };
+  }
+
+  shotVector(speedIndex, angleByte) {
+    return this.shotVectorShift(speedIndex, angleByte, 4);
   }
 
   /** $249E4E: the tilt-indexed pair -- the ship's IMAGE long ($25533A) and its

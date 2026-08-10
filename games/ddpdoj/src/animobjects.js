@@ -119,7 +119,7 @@ export function loadAnimObjects246410(ram, rom, table) {
 /** `$246520`, the no-fill palette-animation loader used by the stage-2 boss
  * death. Entries omit `$246410`'s fill word and snapshot the live palette
  * instead of overwriting it before the fade begins. */
-export function loadAnimObjects246520(ram, rom, table) {
+function loadAnimObjectsNoFill(ram, rom, table, rootMode, site) {
   let root = 0;
   for (let i = 0; i < ANIM_OBJECT.rootSlots; i++) {
     const at = ANIM_OBJECT.roots + i * ANIM_OBJECT.rootStride;
@@ -128,7 +128,7 @@ export function loadAnimObjects246520(ram, rom, table) {
   if (root === 0) return 0;
 
   ram.setU16(root + N.status, 0x8000);
-  ram.setU16(root + N.mode, 1);
+  ram.setU16(root + N.mode, rootMode);
   ram.setU32(root + N.next, 0);
   let previous = root;
   let left = rom.u16(table); table += 2;
@@ -153,7 +153,7 @@ export function loadAnimObjects246520(ram, rom, table) {
     const targetFamily = TARGETS[family];
     if (!targetFamily) {
       clearChain(ram, root);
-      unreached(0x246588, `$246520 target-family byte offset $${family
+      unreached(site, `$${site.toString(16).toUpperCase()} target-family byte offset $${family
         .toString(16).toUpperCase()} is outside the three-entry $24627A table`);
     }
     const current = targetFamily.current + rom.i16(table); table += 2;
@@ -176,6 +176,22 @@ export function loadAnimObjects246520(ram, rom, table) {
     left--;
   }
   return root;
+}
+
+/** `$24652A`, the mode-zero direct entry into the no-fill loader. Mode-zero
+ * roots are not auto-retired by `$24683E`; their owner keeps the returned
+ * handle and explicitly frees the chain through `$246800`. */
+export function loadAnimObjects24652A(ram, rom, table) {
+  return loadAnimObjectsNoFill(ram, rom, table, 0, 0x246588);
+}
+
+export function loadAnimObjects246520(ram, rom, table) {
+  return loadAnimObjectsNoFill(ram, rom, table, 1, 0x246588);
+}
+
+/** `$246800`, free one animation-object root and its linked node chain. */
+export function freeAnimObjects246800(ram, root) {
+  if (root !== 0) clearChain(ram, root);
 }
 
 function moveChannel(current, target) {

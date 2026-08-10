@@ -120,6 +120,7 @@ import { handler16 } from './stage3type16.js';
 import { handler9D, handler9E } from './stage4type9d.js';
 import { handlerA3 } from './stage4typea3.js';
 import { handlerA1 } from './stage4typea1.js';
+import { handler9F, handlerA4 } from './stage4type9f.js';
 
 /** `addi.l` -- a 32-bit add, where the low half's carry REACHES the high half.
  *  Named because the port also has `addi.w` pairs around a `swap`, which do
@@ -6629,6 +6630,8 @@ const HANDLERS = new Map([
   [0x27c2fc, handler9E],          // W215: type-$9D spawned child type $9E
   [0x27d674, handlerA3],          // W216: Stage-4 oscillating linked carrier $A3
   [0x27cf0c, handlerA1],          // W217: Stage-4 reverse-animated structure $A1
+  [0x27c81a, handler9F],          // W218: Stage-4 final pre-boss structure $9F
+  [0x27db30, handlerA4],          // W218: type-$9F deferred fragment $A4
   [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 

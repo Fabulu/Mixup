@@ -39,7 +39,8 @@ import { readMovementInit } from './movement.js';
 import { install24150A } from './palette.js';
 import { AimTables, aim64AtTarget, aim64FromCaller, aim256, targetSelect } from './aim.js';
 import { drawByte242B3C, drawByte242E24, drawWord242EC2,
-  drawWord24328E } from './rng.js';
+  drawWord24328E, drawByte24311A, drawByte2431F4,
+  drawLong243A9C } from './rng.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 import { initType99_29E580 } from './boss3type99.js';
 
@@ -1728,6 +1729,41 @@ BODY.set(0x27ceb4, (ram, rom, a5, a6, unported, _tables, palette) => {
   readInitPosition(ram, rom, a5, unported);             // $27CED2
   installBank(ram, rom, palette, unported, 0x12, 0x224cf8, 0x27ced8,
     'Stage-4 type $A1 structure palette');
+});
+
+// --- type $9F ($27C5BE): Stage 4's final pre-boss structure sequence.
+// Three linked subrecords share the opening animation, threshold cues, death
+// presentation, and the live deferred type-$A4 debris emitted during state 2.
+BODY.set(0x27c5be, (ram, rom, a5, a6, unported, _tables, palette) => {
+  const end = loadSubProto(ram, rom, a5, a6, 0x27c63a); // $27C5BE..$27C5CA
+  ram.setU32(a5 + R.rec44, end);                        // $27C5CA
+  loadRecordProto(ram, rom, a5, 0x27c614, 0x12);       // $27C5CE..$27C5DA
+  readInitPosition(ram, rom, a5, unported);             // $27C5DC
+  installBank(ram, rom, palette, unported, 0x13, 0x224cf8, 0x27c5ec,
+    'Stage-4 type $9F root palette');
+  installBank(ram, rom, palette, unported, 0x14, 0x224d38, 0x27c5fc,
+    'Stage-4 type $9F overlay palette');
+  installBank(ram, rom, palette, unported, 0x15, 0x224c78, 0x27c60c,
+    'Stage-4 type $9F linked-part palette');
+});
+
+// --- type $A4 ($27DA78): the live structure fragment spawned by type $9F.
+// Its parent pointer and packed offsets arrive through the deferred record;
+// all remaining motion and animation selection comes from the shared RNG.
+BODY.set(0x27da78, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x27db14);             // $27DA78..$27DA84
+  loadRecordProto(ram, rom, a5, 0x27db06, 0x06);       // $27DA84..$27DA92
+  ram.setU32(a6 + S.posX, 0x00001c00);                  // $27DA92
+  ram.setU16(a5 + R.rec20, drawLong243A9C(ram, rom));  // $27DA9A
+  ram.setU8(a6 + S.speed,
+    ((drawByte242B3C(ram, rom) << 1) + 0x70) & 0xff);  // $27DAA4
+  ram.setU8(a6 + S.heading,
+    ((drawWord242EC2(ram, rom) & 0x7f) + 0x40) & 0xff);// $27DAB4
+  const row = 0x27daee + drawByte24311A(ram, rom) * 8;
+  ram.setU32(a6 + S.sprite0a, rom.u32(row));             // $27DAD6
+  ram.setU32(a5 + R.rec16, rom.u32(row + 4));           // $27DADA
+  ram.setU32(a6 + S.sprite0a,
+    ram.u32(a6 + S.sprite0a) + drawByte2431F4(ram, rom) * 0x34);
 });
 
 // --- type $A2 ($27CFAC): Stage 4's opening/rotating gun pod.

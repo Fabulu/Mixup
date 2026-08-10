@@ -2392,6 +2392,29 @@ function harvestStage4Arithmetic(base, entries, stride, why) {
   console.log(`  Stage-4 type $A1 structure: 16 streams, ${art.added} new`);
 }
 
+// W218: Type $9F owns fifteen table-selected linked-structure frames plus its
+// root, death, and overlay immediates. Its live deferred Type $A4 selects one
+// of three eight-frame arithmetic runs. All 24 fragment frames also appear in
+// the later bomb shard; harvesting them here makes the live range explicit and
+// the final address-level deduplication still stores only one copy.
+{
+  const linked = harvestStage4Type9DTable(0x27cb7a, 15,
+    'W218 Stage-4 type $9F linked-structure animation');
+  const root = harvestStage4Arithmetic(0x2ef328, 1, 0,
+    'W218 Stage-4 type $9F root prototype descriptor');
+  const death = harvestStage4Arithmetic(0x2f12ac, 1, 0,
+    'W218 Stage-4 type $9F terminal death descriptor');
+  const overlay = harvestStage4Arithmetic(0x2f3230, 1, 0,
+    'W218 Stage-4 type $9F opening overlay descriptor');
+  const fragments = [0x052c1c, 0x052dbc, 0x052f5c].map((base, i) =>
+    harvestStage4Arithmetic(base, 8, 0x34,
+      `W218 Stage-4 type $A4 fragment animation row ${i}`));
+  const added = linked.added + root.added + death.added + overlay.added
+    + fragments.reduce((n, r) => n + r.added, 0);
+  console.log(`  Stage-4 type $9F/$A4: 42 reachable references, ${added} claimed here; `
+    + '24 later bomb references dedupe');
+}
+
 // ------------------------------------------------------------------- WAVE 66
 // 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
 // bomb, and NEITHER HAS A PICTURE: W64 §8.3 counted 174 bucket-13 records with
