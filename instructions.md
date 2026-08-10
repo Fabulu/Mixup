@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-10, after W210 publication.
+Last updated: 2026-08-10, after W212 publication.
 
 ## Current directive
 
@@ -356,11 +356,11 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W211 installs and opens Stage 4 from the real Stage-3 transition. The full
-Stage-4 terrain, 382-record spawn script, 157-entry auxiliary table, movement
-resource, clock-zero BGELEM id 5, and clock-one type `$A6` pulse controller are
-live. Stage 4 now covers 346/382 records and 21/29 types. All 1,580 tests, the
-web bundle, fetch gate, ROM-leak guard, and deployment confirmation are green
-as build `20260810072640`. The next live frontier is type `$9B` at `$2358E0`,
-body `$27AC4A`, handler `$27ACE4`; the full-game goal remains active after
-every wave.
+W212 translates all five Stage-4 type `$9B` records, their four movement
+streams, linked two-body hit behavior, scroll/X-region lifetime latch, expanding
+separation, palette selection, and both direct sprite streams. Stage 4 now
+covers 351/382 records and 22/29 types. All 1,582 tests, the web bundle, fetch
+gate, ROM-leak guard, and deployment confirmation are green as build
+`20260810074943`. The next live frontier is type `$A2` at `$235930`, body
+`$27CFAC`, handler `$27D072`, and movement `$236B66..$236B6E`; the full-game
+goal remains active after every wave.
