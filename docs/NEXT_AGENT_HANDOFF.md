@@ -28,16 +28,21 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is `62c0a80 ddpdoj: sweep every drawn descriptor against the bundle`.
-- Suite: `node --test games/ddpdoj/tests/` is **1620/1620**, green, no skips.
+- HEAD is `35cdeee ddpdoj: draw the stage-clear banner, and measure the rest of D11`.
+- Suite: `node --test games/ddpdoj/tests/` is **1629/1629**, green, no skips.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
   closed at 414/414 script records and 28/28 script types.
 - The Stage-4 enemy section is translated through its boss spawn, and the Stage-4
   boss through its first damage-driven destruction transition (W224).
-- A player death is survivable: W227 the option arm, W228 the respawn.
-- Sprite stream total is 3974, and the descriptor sweep reports zero
-  unresolvable descriptors bundle-wide.
-- Stage 5 has not started.
+- **A death is fully survivable.** W227 the option arm, W228 the respawn, W231 the
+  player object INIT and the pods' deploy. The headless scenario takes three
+  deaths and two full respawns; the ship comes back at the position its respawn
+  entry carries, with `$F0` frames of invulnerability, and its pods deploy to the
+  exact target `$24C928` names.
+- The stage transition MACHINE works; its presentation is the gap (see D11).
+- Sprite stream total is 3979, and the descriptor sweep reports zero unresolvable
+  descriptors bundle-wide.
+- Stage 5 has not started, and no loop-2 work has started.
 
 ## The docket comes first
 
@@ -46,39 +51,32 @@ shipped build, each with the port-side finding underneath. Player-visible defect
 in stages the player actually reaches outrank Stage-4 boss interiors, which is why
 W225 is paused.
 
-Fixed: D1 and D2 (W226), the first two links of D9 (W227, W228), the rank icons
-and the D5 instrument (W230).
+Fixed: D1, D2 (W226), D9 entirely (W227, W228, W231), the rank icons and the D5
+instrument (W230), and D11's banner picture (W232).
 
 ## Work order toward the goal
 
-1. **Finish D9: the player object INIT.** `$2491C0` and `$249246` have a one-time
-   init arm the port does not translate at all, so a newly created player object
-   has no position -- a respawned ship provably sits at `posY` 0. Fully mapped in
-   DOCKET.md D9: the `$24915E` 48-word template (needs a ROM window), `$2551FA`,
-   `$253A1E`, the `+6`-keyed fresh-start arm, the `$803926`-gated five `$2530BE`
-   calls, `$25FF38`/`$260846` arming dispatcher request 9, and `$2603B0` into
-   `$2534F8`/`$253522`. `$249426` is the instruction that copies the object's
-   `+8`/`+A` into the record's position.
-2. **D11: the stage transition.** Object dispatch `$240F62` entry `[11]`
-   `$25DBB4` (900 calls per 900 frames, reads the stage number and loop flag) and
-   entry `[4]` `$260B30` (1800 calls, once per side) are not implemented, and the
-   transition cannot look like the cartridge's while they are no-ops. Start with
-   `[11]`.
-3. **D3/D4: the missing explosions.** The sweep proves these are producer
-   problems, not bundle problems. Run
+1. **The TX TEXT layer, `$240DC2` and `$240EBC`.** No wave has touched it. It is 60
+   calls per stage transition, and it is very likely what D6's score popup and
+   D7's hyper gauges are waiting on too, so it pays three docket items at once.
+2. **The rest of D11**: the result screen (`$23C638`, `$246410`, `$28D77C`,
+   `$28DE72`/`$28C186`), the banner's `$24150A` resource installs, and
+   `$253794`, the option-pod teardown. All are counted by address today, so the
+   transition runs but shows almost nothing.
+3. **D3/D4, the missing explosions.** The sweep proves these are producer
+   problems, not bundle problems: run
    `node games/ddpdoj/tools/w230descriptorsweep.mjs` and work its counted-gap
-   list; `$289AF4` (the secondary effect spawn) is the first candidate.
-4. **Resume W225**, Stage-4 boss A4/F5 `$2A0CF6`, whose recon is banked in its
-   worklog. Do not repeat that recon.
-5. **Stage 5.** Only after a credit reaches it.
+   list. `$289AF4`, the secondary effect spawn, is the first candidate.
+4. **Object dispatch `[4]` `$260B30`**, unported and running twice a frame.
+5. **Resume W225**, Stage-4 boss A4/F5 `$2A0CF6`, recon banked in its worklog.
+6. **Stage 5, then the loops.** Only after a credit reaches them.
 
-D6, D7, D8, D10 and D12 are presentation or documentation and can be slotted in
-between the above whenever a natural gap appears.
+D8, D10 and D12 are presentation or documentation and can be slotted in between.
 
 ## Verification commands
 
 - One slice: `node --test games/ddpdoj/tests/<the focused file>.test.js`
-- Full suite: `node --test games/ddpdoj/tests/` -- currently 1620/1620, green.
+- Full suite: `node --test games/ddpdoj/tests/` -- currently 1629/1629, green.
   Keep it that way: W229 had to close five censuses that had been red since the
   Stage-4 waves, and while they were red they could not catch anything. Do not
   pipe the run through `tail`; that discards the failure detail.
@@ -114,6 +112,16 @@ Elsewhere:
 - The hyper item body uses `movem.w ($1a,A6),D0-D1`, two words at `$1A` and
   `$1C`, not the byte speed/angle convention the `I.speed`/`I.angle` names carry.
 
+- NEVER edit source with `sed -i` over a glob, or with a Python script that writes
+  in text mode, on this machine: both rewrite whole files as CRLF. Two tests read
+  the shipped source AS TEXT (`fire.test.js` splits `options.js` on `
+}
+`, four
+  exporter-assertion tests match `def build(...) -> dict:
+\s*check_...`) and go
+  red for that reason alone, and a `sed -i` over `tests/*.js` churns every file it
+  touches. Write bytes, with LF.
+
 ## Protected and generated files
 
 Do not touch, delete, stage, or commit these user-owned/untracked files:
@@ -129,7 +137,7 @@ only authored source/exporter/test/worklog files. Never use `git add -A`.
 
 ## Worklog numbering
 
-Live numbers: 230 is the highest and is COMPLETE. 225 is PAUSED with its recon
-banked; every other number through 230 is COMPLETE. Reserve the next number with an `apply_patch` Add File for
+Live numbers: 232 is the highest and is COMPLETE. 225 is PAUSED with its recon
+banked; every other number through 232 is COMPLETE. Reserve the next number with an `apply_patch` Add File for
 `<N>-RESERVED.md`, then rename it immediately to the real `IN PROGRESS` worklog
 as `AGENTS.md` requires.
