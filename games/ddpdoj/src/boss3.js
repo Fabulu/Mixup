@@ -6,18 +6,19 @@
 import { u16, i16, i32 } from './ram.js';
 import { freeEnemy } from './initbody.js';
 import { scoreHit } from './score.js';
-import { livePlayers2428A6 } from './boss.js';
+import { livePlayers2428A6, bigBurst28B34A } from './boss.js';
+import { finalBlast2440E0 } from './boss2.js';
 import { applyVelocity } from './movement.js';
 import {
   AimTables, aim64, aim256, aim256FromCaller, slew64, targetSelect,
 } from './aim.js';
 import {
   drawByte242B3C, drawByte242E24, drawSigned242FDE, drawWord242EC2,
-  drawLong243A9C,
+  drawLong243A9C, drawWord24328E,
 } from './rng.js';
 import { fire as fireBullet, WriteLog } from './bullets.js';
 import { spawnEffect } from './effects.js';
-import { loadAnimObjects246410 } from './animobjects.js';
+import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { enqueueRegistersThroughStub, enqueueThroughStub } from './spritequeue.js';
 import { runStageAdvance242952 } from './stageend.js';
@@ -27,6 +28,7 @@ import {
   a3Running2599B4, a3Stop2599EC, a4Start25980C, a4Clear2598A2,
   a4Stop259876, a1Clear259B34, a2Run2598E6, a2Stop25994A,
   a1Start259A18, a1Running259A4A, a1Stop259B08, spread2595F2,
+  a2StopAll259924, fadeArm259B7E, fadeDone259B9E, suspend2595E8,
 } from './scheduler.js';
 
 const note = (ctx, addr, what) => (ctx.unportedLog ?? ctx.unported)?.note(addr, what);
@@ -1067,6 +1069,138 @@ function e2Init29D556(ram, rom, ctx, a4) {
   void ctx;
 }
 
+// --------------------------------------------------------------------- W210
+// The final Stage-3 boss conductor is the cartridge's four-state death
+// presentation. It drains the 16-row effect table, runs the accelerating
+// debris phase, fades the boss parts, triggers the shared final blast, and
+// finally suspends the scheduler so the wrapper advances into Stage 4.
+
+function f1SpawnRow29CE86(ram, rom, ctx, a6, cursor, withSubs, site) {
+  const row = 0x29ce86 + cursor;
+  const e = spawnEffect(ram, ctx, rom.u16(row), site);
+  ram.setU8(e + 0x1c, rom.u16(row + 2));
+  ram.setU32(e + 0x26, rom.u32(row + 4));
+  ram.setU32(e + 0x02, ram.u32(a6 + 0x02));
+  ram.setU16(e + 0x1e, 8);
+  if (withSubs) {
+    ram.setU16(e + 0x12, 0);
+    ram.setU16(e + 0x14, 0);
+  }
+  return e;
+}
+
+function f1RandomSound29CE10(ram, rom, ctx) {
+  ctx.soundPost?.((drawWord242EC2(ram, rom) & 0x8000) !== 0
+    ? 0x28c28e : 0x28c274);
+}
+
+function f1Step29CC64(ram, rom, ctx, a4) {
+  const a6 = ctx.bossSubRec;
+  const state = ram.u16(a4 + 0x02);
+
+  if (state === 4) {
+    const timer = u16(ram.u16(a4 + 0x04) - 1);
+    ram.setU16(a4 + 0x04, timer);
+    if (timer === 0) {
+      suspend2595E8(ram);
+      ram.setU16(a4, 0);
+    }
+    return;
+  }
+
+  if (state === 3) {
+    const timer = u16(ram.u16(a4 + 0x04) - 1);
+    ram.setU16(a4 + 0x04, timer);
+    if (timer === 0) {
+      finalBlast2440E0(ram, rom, ctx, a6);
+      ram.setU16(a4 + 0x04, 0x0080);
+      ram.setU16(a4 + 0x02, 4);
+      ctx.soundPost?.(0x28c392);
+    }
+    return;
+  }
+
+  if (state === 2) {
+    if (fadeDone259B9E(ram)) return;
+    loadAnimObjects246410(ram, rom, 0x29cf08);
+    a2StopAll259924(ram);
+    ram.setU16(a4 + 0x0a, 1);
+    ram.setU16(a4 + 0x02, 3);
+    ram.setU16(a4 + 0x04, 8);
+    return;
+  }
+
+  if (state === 1) {
+    if (due8(ram, a4 + 0x10)) {
+      ram.setU8(a4 + 0x10, ram.u8(a4 + 0x11));
+      const angle = drawWord242EC2(ram, rom) & 0xff;
+      const dx = i16(drawWord24328E(ram, rom)) >> 2;
+      const dy = (i16(drawWord24328E(ram, rom)) >> 1) - 0x1000;
+      const root = ram.u32(a6 + 0x02);
+      const pos = ((u16((root >>> 16) + dy) << 16)
+        | u16((root & 0xffff) + dx)) >>> 0;
+      bigBurst28B34A(ram, rom, ctx, pos, angle, 8, 0x29cd24);
+      if (ram.u8(a4 + 0x07) !== 2) ctx.soundPost?.(0x28c2c2);
+    }
+    if (due8(ram, a4 + 0x0e)) {
+      ram.setU8(a4 + 0x0e, ram.u8(a4 + 0x0f));
+      if (ram.u8(a4 + 0x07) !== 2) {
+        ram.setU8(a4 + 0x07, ram.u8(a4 + 0x07) - 1);
+        ram.setU8(a4 + 0x0c, ram.u8(a4 + 0x0c) + 1);
+      }
+    }
+    if (!due8(ram, a4 + 0x06)) return;
+    ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));
+    if (ram.u8(a4 + 0x07) !== 2 && due8(ram, a4 + 0x13)) {
+      ram.setU8(a4 + 0x13, 4);
+      ctx.soundPost?.(0x28c28e);
+    }
+    const cursor = ram.u16(a4 + 0x08);
+    const e = f1SpawnRow29CE86(ram, rom, ctx, a6, cursor, false, 0x29cd88);
+    const random = (drawByte242B3C(ram, rom) << 24) >> 24;
+    ram.setU8(e + 0x1a, (random >> 2) + 2 + (ram.i8(a4 + 0x0c) >> 1));
+    ram.setU8(e + 0x1b, drawWord242EC2(ram, rom));
+    const next = cursor + 8;
+    ram.setU16(a4 + 0x08, next < 0x80 ? next : 0);
+    if (next >= 0x80 && ram.u8(a4 + 0x07) === 2) {
+      fadeArm259B7E(ram, 0x0a);
+      ram.setU16(a4 + 0x02, 2);
+    }
+    return;
+  }
+
+  if (state === 0) {
+    if (!due8(ram, a4 + 0x06)) return;
+    ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));
+    const oldSoundToggle = ram.u8(a4 + 0x12);
+    ram.setU8(a4 + 0x12, oldSoundToggle ^ 1);
+    if ((oldSoundToggle & 1) === 0) f1RandomSound29CE10(ram, rom, ctx);
+    const cursor = ram.u16(a4 + 0x08);
+    f1SpawnRow29CE86(ram, rom, ctx, a6, cursor, true, 0x29ce32);
+    const next = cursor + 8;
+    if (next < 0x80) { ram.setU16(a4 + 0x08, next); return; }
+    ram.setU16(a4 + 0x08, 0);
+    const passes = u16(ram.u16(a4 + 0x0a) - 1);
+    ram.setU16(a4 + 0x0a, passes);
+    if (passes !== 0) return;
+    ram.setU16(a4 + 0x06, 0x2010);
+    ram.setU16(a4 + 0x0e, 0x1111);
+    ram.setU16(a4 + 0x02, 1);
+  }
+}
+
+function f1Init29CC34(ram, rom, ctx, a4) {
+  loadAnimObjects246520(ram, rom, 0x29cfea);
+  ram.setU16(a4 + 0x02, 0);
+  ram.setU16(a4 + 0x06, 0x0101);
+  ram.setU16(a4 + 0x08, 0);
+  ram.setU16(a4 + 0x0a, 1);
+  ram.setU8(a4 + 0x0c, 0);
+  ram.setU16(a4 + 0x10, 0x2020);
+  ram.setU16(a4 + 0x12, 0);
+  f1Step29CC64(ram, rom, ctx, a4);                    // INIT falls through
+}
+
 function d0Step29C53E(ram, _rom, ctx, a4) {
   const a6 = ctx.bossSubRec;
   if (ram.u8(a6 + 0x8c) === 0) {
@@ -1303,3 +1437,5 @@ registerScript(0x29d400, e1Init29D400);
 registerScript(0x29d460, e1Step29D460);
 registerScript(0x29d556, e2Init29D556);
 registerScript(0x29d5c6, e2Step29D5C6);
+registerScript(0x29cc34, f1Init29CC34);
+registerScript(0x29cc64, f1Step29CC64);

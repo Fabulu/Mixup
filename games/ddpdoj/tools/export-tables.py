@@ -2076,6 +2076,7 @@ SHOT_WINDOWS.extend([
     (0x274B6C, 0x05E0, "W202: Stage-3 type $83 closure $274B6C..$27514C"),
     (0x266D2E, 0x04B2, "W203: Stage-3 type $16 runtime closure $266D2E..$2671E0"),
     (0x29BBF4, 0x1040, "W204: Stage-3 type $A0 entry/arrival runtime closure $29BBF4..$29CC34"),
+    (0x29CC34, 0x03DC, "W210: Stage-3 boss F1 death closure $29CC34..$29D010"),
     (0x29D010, 0x1006, "W205: Stage-3 boss F2/MAIN1/E6/E7 runtime closure $29D010..$29E016"),
     (0x29E016, 0x0340, "W206: Stage-3 boss E5 data/code closure $29E016..$29E356"),
     (0x29E356, 0x0222, "W208: Stage-3 boss E8 init/step closure $29E356..$29E578"),
@@ -2426,6 +2427,9 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if hashlib.sha256(d[0x29E356:0x29E578]).hexdigest() != (
             "a8bbab55ba8241b22a14387710da6bbcab52ac059fd7ca7ed215c2a1141e1e61"):
         raise SystemExit("W208: E8 init/step closure drifted")
+    if hashlib.sha256(d[0x29CC34:0x29D010]).hexdigest() != (
+            "4c29a54ba9bc6b0107809cf08a87a21dd93550c1b9e297e0c796711fe45b9116"):
+        raise SystemExit("W210: Stage-3 boss F1 death closure drifted")
     if d[0x29CBF8:0x29CC00] != bytes.fromhex("0029d0d40029d0e2"):
         raise SystemExit("W208: A4/F5 pointer row drifted")
     if d[0x29CC08:0x29CC10] != bytes.fromhex("0029d1000029d104"):

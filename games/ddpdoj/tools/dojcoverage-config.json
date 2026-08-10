@@ -94,7 +94,7 @@
       "status": "COMPLETE",
       "field_order": ["record", "trigger", "type", "init_body", "handler", "movement_index", "movement_start", "movement_end_exclusive"],
       "derive_from": "stage3_spawn_script.live_rom_aux_resource",
-      "reason": "W204 closes the final Stage-3 spawn record, type $A0 at $234FA2, with init $29BBFC and handler $29BE28. The 414-record Stage-3 spawn script is complete; the next dependency is the boss scheduler at A4/F2 $29CC34."
+      "reason": "W204 closes the final Stage-3 spawn record, type $A0 at $234FA2, with init $29BBFC and handler $29BE28. W210 closes the final live Stage-3 boss scheduler entry at A4/F1 $29CC34/$29CC64 and reaches stage advance. The next dependency is the Stage-4 install triple at $263366."
     },
     {
       "name": "stage3_to_stage5_spawn_scripts",

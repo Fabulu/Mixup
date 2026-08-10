@@ -634,8 +634,8 @@ function f2SpawnRow(ram, rom, ctx, a6, cursor, withSubs) {
   return e;
 }
 
-/** `$2440E0`, clear pool B and seed the 39-row final boss blast. */
-function f2FinalBlast2440E0(ram, rom, ctx, a6) {
+/** `$2440E0`, clear pool B and seed the shared 39-row final boss blast. */
+export function finalBlast2440E0(ram, rom, ctx, a6) {
   clearEffectPool(ram);
   ram.setU16(0x803930, 0x0014);
   for (let row = 0x244ace; row < 0x244d3e; row += 16) {
@@ -676,7 +676,7 @@ function f2Step298E02(ram, rom, ctx, a4) {
     const timer = u16(ram.u16(a4 + 0x04) - 1);
     ram.setU16(a4 + 0x04, timer);
     if (timer === 0) {
-      f2FinalBlast2440E0(ram, rom, ctx, a6);
+      finalBlast2440E0(ram, rom, ctx, a6);
       const e = spawnEffect(ram, ctx, 0x1e, 0x298fee);
       ram.setU32(e + B.pos, ram.u32(a6 + 0x02));
       ram.setU32(e + B.nudge, 0xf4000000);

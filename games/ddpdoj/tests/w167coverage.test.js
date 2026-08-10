@@ -27,7 +27,7 @@ function run(...args) {
   });
 }
 
-test('W204 config is a machine-readable family map with an exact backlog', () => {
+test('W210 config is a machine-readable family map with an exact backlog', () => {
   const config = JSON.parse(readFileSync(configPath, 'utf8'));
   assert.equal(config.schema, 1);
   assert.deepEqual(config.families.map((x) => x.name), [
@@ -49,7 +49,8 @@ test('W204 config is a machine-readable family map with an exact backlog', () =>
   assert.equal(stage3.derived_type_count, 28);
   assert.equal(stage3.derived_ported_type_count, 28);
   assert.equal(config.backlog[1].status, 'COMPLETE');
-  assert.match(config.backlog[1].reason, /boss scheduler at A4\/F2 \$29CC34/);
+  assert.match(config.backlog[1].reason,
+    /W210 closes the final live Stage-3 boss scheduler entry.*Stage-4 install triple at \$263366/);
   assert.equal(config.backlog[1].derive_from,
     'stage3_spawn_script.live_rom_aux_resource');
   assert.ok(config.backlog.every((x) => x.status && x.reason));
