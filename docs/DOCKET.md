@@ -53,28 +53,35 @@ unported `$25DBB4` that D11 is about, so the two meet there.
 
 ## Open, in priority order
 
-### D11: the stage transition is abrupt and the ship vanishes mid-transition
+### D11: the stage transition is abrupt -- DIAGNOSED, first piece landed in W232
 
 The owner's words: finishing a level, the ground goes, then the ship disappears,
-then it reappears in the new level, and it is far too abrupt -- the real game runs
-a big transition sequence there. Possibly no score totalling either; none is
-visible.
+then it reappears in the new level, far too abrupt -- the real game runs a big
+transition sequence there.
 
-NOT the same thing as D9's missing player init, which is a respawn defect. The
-lead is that the object dispatch table `$240F62` has two entries the port does not
-implement at all, and the descriptor sweep sees both running every frame of
-ordinary play:
+W232 forced `$242952` headlessly and measured it. The stage machine WORKS: the
+type-6 object runs, the clearing flag sets, the stage word steps, the player parks
+and the object retires. What is missing is the presentation, and all of it was
+already counted by address:
 
-- entry `[11]` = `$25DBB4`, priority `$0A`, called once per frame. It is a state
-  machine that reads `$813098` (the loop flag) and `$813092` (the stage number)
-  and calls `$28D53C` and `$23C932`. A stage-level sequencer is exactly the shape
-  of the transition engine.
-- entry `[4]` = `$260B30`, priority `$09`, called TWICE per frame (once per side:
-  it reads `$7(a5)`), dispatching through a jump table at `$260B6A` by `$4(a5)`.
+- the banner's zooming ENTRY picture `$23F82A` -- **PORTED in W232**, and its five
+  per-stage pictures are in the sprite bundle now (they never were, so the banner
+  could not have drawn even with the emitter),
+- the TX TEXT printers `$240DC2` and `$240EBC`, 60 calls per transition, a
+  subsystem no wave has touched,
+- the banner's five `$24150A` resource installs plus the slide-out's,
+- the RESULT SCREEN: `$23C638` palette cue, `$246410` animation-object load,
+  `$28D77C` sixteen longwords of palette RAM, `$28DE72`/`$28C186` exit handshake,
+- `$253794`, the option-pod teardown.
 
-Both are counted as `object dispatch entry [N] -- handler not ported in wave 4`,
-1800 and 900 times in a 900-frame run. Whatever the transition should look like,
-it cannot happen while these two are no-ops. Start with `[11]`.
+So this is three presentation tiers on a working machine, not one missing engine.
+The text layer is next and pays for itself three times: D6's score popup and D7's
+gauges are likely waiting on the same printers.
+
+Correction to the earlier lead: `[11]` `$25DBB4` is NOT the transition. Its state 0
+picks a per-player table, arms a `$4B0` timer, and its body watches `$23C932` and
+`$803808` -- it is the credit/start/continue controller, which is why `$260056`
+creates it. `[4]` `$260B30` is still unported and still runs twice a frame.
 
 ### D3 and D4: missing explosions in stages 1 and 2, and the stage-2 mid boss
 

@@ -82,6 +82,7 @@ import { bcdAdd, scoreByMask } from './score.js';
 import { enqueueRegistersThroughStub, enqueueRegisters, enqueueRequest } from './spritequeue.js';
 import { install24150A } from './palette.js';
 import { clearEffectPool, clearSubEffectPool } from './effects.js';
+import { emit23F82A } from './bossarrival.js';
 
 export const SE = {
   stage: 0x813092, stageX2: 0x813094, stageX4: 0x813096,   // $25FD0C
@@ -749,7 +750,7 @@ function f8Exit28DE1E(ram, rom, ctx, a5) {
 // enqueues inherit the previous D4).  D1 is PACKED: hi word = long axis, lo
 // word = short axis; `addi.w`/`add.w`/`sub.w` touch only the low word, `swap`
 // exchanges the halves, `move.w -> Dn` leaves the high word UNCHANGED.  The
-// two helpers below keep that arithmetic faithful.  See W123 §6 (R2b) and the
+// two helpers below keep that arithmetic faithful.  See W123 Ã‚Â§6 (R2b) and the
 // `123-recon` SS for the per-block sprite census.
 
 /** Pack / mutate a 32-bit D1 the way the 68000 does: `add.w` and `addi.w`
@@ -1234,8 +1235,11 @@ function bannerDraw28EDC0(ram, rom, ctx) {
   // (a ZOOMING enqueue on the $23E78C scale table, bucket 22 -- NOT $23D9E2's
   // family, which `enqueueZoomedRequest` covers).  Its own scale dispatch is
   // presentation tier; noted rather than half-ported.
-  note(ctx, 0x23f82a, '$28EE0E jsr $23F82A -- the banner ENTRY picture (zooming '
-    + 'enqueue on the $23E78C scale table, bucket 22; distinct from $23D9E2). R2b');
+  // W232: $23F82A is the same emitter `emitScaled` already is, on bucket 22 --
+  // see the EMITTER_BUCKET map in bossarrival.js. So the banner's entry picture
+  // draws now instead of being counted.
+  const d6 = rom.u32(0x28ee46 + u16(ram.u16(SE.e028) * 4));   // $28EDFA..$28EE0C
+  emit23F82A(ram, rom, d1, d2, d3, d4, d6);                   // $28EE0E
 }
 
 /** `$28ECB2` -- the per-stage art byte.  `$28EDA2[stageX4]` is a longword RAM

@@ -8,17 +8,17 @@
 // ============================================================================
 // WHY THIS SET AND NOT "THE FIFTEEN ARRIVAL RUNGS"
 // ============================================================================
-// W94 §3B and the brief that produced this wave both size the arrival as
+// W94 Â§3B and the brief that produced this wave both size the arrival as
 // **15 rungs, lf8,250..11,750**.  `[M]` that is the right POPULATION and the
 // wrong WAVE.  Out of the unmutated BEFORE sweep, what each of the fifteen is
 // actually blocked on, on the FIRST FRAME of its own segment:
 //
-//     $241D3E  7 rungs   the unexported speed level (W95 §3)
+//     $241D3E  7 rungs   the unexported speed level (W95 Â§3)
 //     $294FA6  1 rung    F script 0's STEP           <- THIS FILE
 //     $295304  5 rungs   **F script 2's STEP**
 //     $295432  2 rungs   **F script 3's STEP**
 //
-// **F 2 and F 3 are W95 §7's own list of what the STEADY STATE still needs.**
+// **F 2 and F 3 are W95 Â§7's own list of what the STEADY STATE still needs.**
 // They start D 8/9/12..19, MAIN 8 and E 8, and they need `$2599B4`, the fifth
 // scheduler accessor W62 did not ship.  Seven of the "arrival" rungs are
 // therefore waiting on the steady state's remainder, not on the arrival, and
@@ -66,12 +66,12 @@
 //  2. **MAIN 0's INIT IS A WORD AND MEANS SPEED $1E, FACING $20.**  `$293204
 //     move.w #$1E20,$1a(a6)` writes BOTH bytes -- `($1A,A6)` is the speed and
 //     `($1B,A6)` the facing (`$2417E0`/`$2417E4`).  This is the same trap W95
-//     §2.1 found in MAIN 2's init one entry down, where the identical-looking
+//     Â§2.1 found in MAIN 2's init one entry down, where the identical-looking
 //     `move.w #$20,$1a(a6)` means speed **0**, facing $20.  The two are three
 //     bytes apart and one of them is the arrival's whole descent speed.
 //
 //  3. **MAIN 0's INIT FALLS THROUGH TOO** -- `$29321C` is the next address
-//     after `$293216`, with no `rts`.  Recon 48 §2.2's house style again.
+//     after `$293216`, with no `rts`.  Recon 48 Â§2.2's house style again.
 //
 //  4. **THE TARGET'S X IS SCROLL-RELATIVE AND ITS Y IS NOT.**  `$293220
 //     move.w #$1C00,d3 / $293224 sub.w $813172,d3` -- `$813172` is the scroll
@@ -94,7 +94,7 @@
 //     all 81 MAIN 0 frames of `stage1-sweep` segment lf8,250**, in `($11A,A6)`,
 //     the phase byte, the speed byte and the boss's position longword.
 //     **What IS load-bearing is that the boss's own position is read at the
-//     point of use on both paths**, which it is.  This is W94 §2.1's
+//     point of use on both paths**, which it is.  This is W94 Â§2.1's
 //     `main7-stale-target` a second time, in a different script, and it is
 //     declared EXPECTED-GREEN with that measurement rather than deleted.
 //
@@ -127,11 +127,11 @@
 //     EXPORT HAD TO SHIP IN THIS WAVE.**  Every MAIN 0 frame ends in the tail
 //     W94 shipped, whose `$29319E jsr $241D34` passes `($4A,A6)` = **$82**, a
 //     level `tools/export-tables.py` did not export.  So the page throws on
-//     the boss's FIRST arrival frame without it.  W95 §3 met the same throw
+//     the boss's FIRST arrival frame without it.  W95 Â§3 met the same throw
 //     from the ladder and left it "deliberately"; from the page it is not
 //     optional.  The exporter's fix and its derivation are in
 //     `boss_part_speed_indices` -- and W95's stated reason for the band it
-//     would have exported is measurably false, see the worklog §0.4.
+//     would have exported is measurably false, see the worklog Â§0.4.
 //
 // ============================================================================
 // THE TWO EMITTERS, AND ONE OF THEM IS NOT IN BUCKET 2
@@ -142,7 +142,7 @@
 // `stage1-sweep` trace has a `sprq2` column and **no bucket-7 column**, so the
 // oracle the brief names -- "through the bucket 2 trace" -- is structurally
 // blind to the largest sprite this wave produces.  That is stated here rather
-// than discovered later; W85 §8 note 3 already listed bucket 7 as one of the
+// than discovered later; W85 Â§8 note 3 already listed bucket 7 as one of the
 // four that are "the same job and the same three-file change".
 //
 // OBJECT 0 and 1 DO write bucket 2, through `$23E3E2`, so the parts ARE
@@ -181,7 +181,7 @@
 // WHAT IS NOT HERE
 // ============================================================================
 // F 2 (`$295304`), F 3 (`$295432`), MAIN 4 (`$293506`), MAIN 8 (`$2936BE`),
-// D 10/11/14/15/16/17 and E 5/6/14 -- the seven rungs of §0.1 above.  Every one
+// D 10/11/14/15/16/17 and E 5/6/14 -- the seven rungs of Â§0.1 above.  Every one
 // is a LOUD NAMED THROW by address.  **Nothing here is clamped or stubbed to
 // stop a throw.**
 
@@ -397,6 +397,12 @@ const EMITTER_BUCKET = new Map([
   [0x23e3e2, 2],                  // $805CC8 / $80AFC4
   [0x23e36a, 1],                  // $805104 / $80AFC2
   [0x23e45a, 3],                  // $80688C / $80AFC6
+  // W232: $23F82A is the FOURTH of the family and it is instruction-for-
+  // instruction the same body -- $23E78C on both axes, the same D7 assembly, the
+  // same `andi.l #$7FF03FF / or.l D6` -- writing $809274 / $80AFE0, which is
+  // BUCKET 22. The stage-clear banner's entry picture is its only caller
+  // ($28EE0E), which is why nothing needed it until the transition ran.
+  [0x23f82a, 22],                 // $809274 / $80AFE0
 ]);
 
 /** The shared extent-scaled emit body.  `$23E3E2` / `$23E36A` / `$23E45A` are
@@ -681,7 +687,7 @@ const tail = (ram, ctx, a6) => bodyTail29314C(ram, ctx, a6);
 // that is also the wrong size on one axis.
 //
 // **AND THE TWO SEEDS ARE TWO SEPARATE RNG DRAWS**, each stepping `$803917`,
-// which the whole game shares -- exactly the shape W94 §2 item 5 recorded for
+// which the whole game shares -- exactly the shape W94 Â§2 item 5 recorded for
 // `$2933DE`.  Collapsing them desynchronises every later consumer.
 function dWobbleInit(ram, rom, a4) {
   ram.setU8(a4 + 4, u8(drawWord242EC2(ram, rom)));       // $2937B6/$2937BC
@@ -718,7 +724,7 @@ const D1F = { dead: AR.p2Dead, y: AR.wobY2, x: AR.wobX2 };
 // why `($2A,A6)` advances EVERY FRAME.  This is the THIRD word/byte trap in one
 // wave (MAIN 0's `$293204` and its two `move.w #$101`s are the others), and the
 // first draft of this comment had it as a `$3(a4)` SLOT RESIDUE read, by analogy
-// with W95 §2 item 6's E 1 -- `tests/w96boss.test.js` drove the init with a
+// with W95 Â§2 item 6's E 1 -- `tests/w96boss.test.js` drove the init with a
 // residue planted and the word write flattened it. **A port that read this as a
 // byte would leave the period at whatever the last occupant left and animate
 // both parts at the wrong rate**, which is the same defect as the fall-through
@@ -773,8 +779,8 @@ registerScript(0x29321c, (ram, rom, ctx, a4) =>
   main0Step29321C(ram, rom, ctx, a4, A5(ctx, 0x29321c), A6(ctx, 0x29321c)));
 
 // **ALL FOUR OF D 0..3's INITs END IN `rts`, AND THE ORACLE IS WHAT SAID SO.**
-// The first version of this file made them fall through, because W95 §2.1
-// established that eight of the steady state's ten do and recon 48 §2.2 calls
+// The first version of this file made them fall through, because W95 Â§2.1
+// established that eight of the steady state's ten do and recon 48 Â§2.2 calls
 // the fall-through the table's house style.  `[M]` `$2937CA`, `$293814`,
 // `$293850` and `$293882` are each a literal `4E75` sitting between the two
 // pointers, and D 0..3 are therefore FOUR MORE EXCEPTIONS to a rule that had
@@ -813,6 +819,11 @@ registerScript(0x29387c, (ram, rom, ctx, a4) => {       // D 3 INIT -- `rts`
 });
 registerScript(0x293884, (ram, rom, ctx, a4) =>
   dAnimStep(ram, a4, A6(ctx, 0x293884), D3F));
+
+/** `$23F82A` -- the family's bucket-22 wrapper, the stage-clear banner's. */
+export function emit23F82A(ram, rom, d1, d2, d3, d4, d6) {
+  return emitScaled(ram, rom, 22, d1, d2, d3, d4, d6);
+}
 
 export { emit23E08C, emit23E3E2, emit23E36A, emit23E45A, emitScaled,
   sizeScale23E78C, objPart, obj6_292F4A,

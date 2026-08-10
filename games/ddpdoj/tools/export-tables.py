@@ -2105,9 +2105,15 @@ SHOT_WINDOWS.extend([
     # 0..4, $28ECB2's output), so the table runs $28EE1E..$28EE3E; the window
     # also covers the alternate pointer at $28EE46 ($28EDFA lea, the
     # counter-nonzero branch).  $40 bytes, 8 entries x 8.
-    (0x28EE1E, 0x0040, "W125: the banner-picture art-pointer table $28EE1E (read "
+    # W232 widens this by $8. `$28EE46` is not one "alt pointer": it is EIGHT
+    # longwords, the zoom parameters `$28EE0E jsr $23F82A` reads as
+    # `$28EE46 + $81E028*4`, and `$81E028` is loaded with 7 (`$28ECA2`/`$28ED24`)
+    # and counted down to zero, so entry 7 at $28EE62 is live. W125 never saw it
+    # because the entry picture was a counted note until the emitter was ported.
+    (0x28EE1E, 0x0048, "W125: the banner-picture art-pointer table $28EE1E (read "
                        "by $28EDC0's `move.l (A0),D2` after `bsr $28ECB2`; 5 per-"
-                       "stage entries) + the alt pointer $28EE46"),
+                       "stage entries) + W232 the EIGHT zoom longwords $28EE46, "
+                       "indexed by $81E028 which runs 7 down to 0"),
 ])
 
 # ==================== W127 (Wave A): THE RANK BASE TABLE =======================

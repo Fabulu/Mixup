@@ -6,7 +6,7 @@
 // WHAT PROBLEM THIS SOLVES.  Wave 6's page fetched `rip/` directly: the whole
 // IGS023 tile region plus both sprite regions, 58 MiB, plus a 4.0 MiB board
 // capture.  That is not a thing anybody serves to a phone, and wave 6 said so
-// (`06-impl-pixel-slice.md` §"What I could not do" item 4: "cannot be trimmed
+// (`06-impl-pixel-slice.md` Â§"What I could not do" item 4: "cannot be trimmed
 // to what this capture uses without a second measurement").
 //
 // THIS IS THAT SECOND MEASUREMENT.  The page draws exactly 161 captured frames
@@ -36,10 +36,10 @@
 // stream `$000000`'s, and moved nothing else.
 //
 // AND THE PROVENANCE OF THE ATLAS IS STILL THE RECORDING, WHICH IS THE POINT
-// W28 §6 MADE: 150 of the 166 exist because they appeared in a 161-frame
+// W28 Â§6 MADE: 150 of the 166 exist because they appeared in a 161-frame
 // capture. `tools/w35atlas.mjs` enumerates the same thing from the cartridge --
 // **1,150 streams for stage 1** out of the ROM's own **8,073** -- and
-// `docs/worklog/ddpdoj/35-recon-sprite-atlas.md` §7 states what it would cost to
+// `docs/worklog/ddpdoj/35-recon-sprite-atlas.md` Â§7 states what it would cost to
 // ship that list instead.
 //
 // AND THE OUTPUT IS NOT A SLICE OF THE CARTRIDGE.
@@ -79,7 +79,7 @@
 //            tile base $0AA9 added to the WHOLE longword by $240D86
 //   $227AF8  a SECOND, SEPARATE 23-column map with tile base $32A9, painted in
 //            one shot by object type $1C's handler $26C20C -- 23 of the 24
-//            columns `20-recon-scroll-engine.md` §9.3 called unreachable.  They
+//            columns `20-recon-scroll-engine.md` Â§9.3 called unreachable.  They
 //            are not unreachable, they are a second map with a different tile
 //            base, and a port that ships only the scrolling columns renders a
 //            hole where a background structure should be.
@@ -92,7 +92,7 @@
 // are DISJOINT BY CONSTRUCTION -- a tile is assigned to the FIRST shard whose
 // columns use it -- which costs almost nothing here because the DoJ background
 // is a painted strip and not a tile set: 88.4 % of stage 1's tiles appear in
-// exactly one map column (recon §2).  BOOT LOADS SHARDS 0 AND 1 ONLY; the rest
+// exactly one map column (recon Â§2).  BOOT LOADS SHARDS 0 AND 1 ONLY; the rest
 // are queued from boot and promoted by the scroll position the VM already
 // computes (`src/web/assets.js`, `src/web/app.js`).
 
@@ -206,7 +206,7 @@ if (u17.length !== SOUND.fileSize) {
 // 35.9 % of every miss in the port's longest run.**  The art is 27.1 KiB gz.
 //
 // SO THE HARVEST BELOW IS BY ROM ADDRESS -- exactly the mechanism the ship's 17
-// tilts already use (§WAVE 12) -- and it takes each table to its FULL EXTENT out
+// tilts already use (Â§WAVE 12) -- and it takes each table to its FULL EXTENT out
 // of the cartridge rather than to the entries some recording happened to index.
 // That is `docs/knowledge/09`: the ROM is the inventory.
 //
@@ -216,7 +216,7 @@ if (u17.length !== SOUND.fileSize) {
 // sized off a comment would ship a quarter of the hull art and leave the owner's
 // bug exactly where it is.
 //
-// AND BOOT MUST NOT GET SLOWER (HANDOVER §8.8).  So the sheet becomes SHARDS
+// AND BOOT MUST NOT GET SLOWER (HANDOVER Â§8.8).  So the sheet becomes SHARDS
 // over ONE packed address space: shard 0 is what the bundle already shipped,
 // and the harvest is DEFERRED, queued from boot and promoted by the page's own
 // miss guard the moment a record asks for it.  A record whose shard has not
@@ -243,7 +243,7 @@ if (u17.length !== SOUND.fileSize) {
 //                HANDLER'S OWN WRAP: phase 2 frees the record at cursor $230 and
 //                `$26990E + $230 == $269B3E`, which is the shared draw block --
 //                i.e. instructions.  [M] 70 entries, 70 distinct streams.
-//                (46-diag §6 priced this at 24 entries / 37.3 KiB and §10.2 said
+//                (46-diag Â§6 priced this at 24 entries / 37.3 KiB and Â§10.2 said
 //                it had not found the end; it is 70 / 116.7 KiB.)
 //   $2970D8  16  type $24's own table.  $2970D4 is the handler's last
 //                instruction and $297118 is the next init stub, so both ends are
@@ -255,7 +255,7 @@ if (u17.length !== SOUND.fileSize) {
 // WAVE 81 CLOSED THE ONE DEFERRAL THIS BLOCK NAMED.  `$268594` used to be here
 // under "WHAT IS DELIBERATELY NOT HARVESTED: enemy type $10's 96-entry table
 // (90 missing, 51.8 KiB); no ported code reads it".  It is harvested now -- as
-// TWO tables, not one -- and `src/handlers.js` reads both.  See §WAVE 81.
+// TWO tables, not one -- and `src/handlers.js` reads both.  See Â§WAVE 81.
 
 // A TABLE'S EXTENT IS A CLAIM, AND EACH ONE IS PINNED TWICE.
 //
@@ -526,7 +526,7 @@ const HARVEST = Object.freeze([
     + 'WRAP: phase 2 frees the record when the cursor reaches $230, and '
     + '$26990E+$230 == $269B3E, which is the damage-first family\'s shared draw '
     + 'block -- instructions. [M] the run stops there too, at 70. '
-    + '(46-diag §6 priced 24 entries / 37.3 KiB and §10.2 said it had not found '
+    + '(46-diag Â§6 priced 24 entries / 37.3 KiB and Â§10.2 said it had not found '
     + 'the end; it is 70 / 116.7 KiB.) [M] first needed lf8106, and it is 116.7 '
     + 'KiB for 120 records in the whole run -- hence the LAST shard'],
   // ------------------------------------------------------------- WAVE 53 E5a
@@ -558,7 +558,7 @@ const HARVEST = Object.freeze([
   //   the sixteen-frame one ($27EF10): kinds $0C/$14's `andi.w #$3F` -- and
   //     those two kinds are REFUSED by `src/items.js`, so nothing in this port
   //     can ask for its art.  IT IS HARVESTED ANYWAY, for `docs/knowledge/09`'s
-  //     reason and W58 §2.1b's precedent: the table's own extent is the claim,
+  //     reason and W58 Â§2.1b's precedent: the table's own extent is the claim,
   //     not what a run reaches, and wave I3 must not find a hole.
   //   the collected animations: `$27F64A cmpi.w #$78,($a,A6) / bge` -> 30, and
   //     `$27F6A2 cmpi.w #$44` -> 17.  Both are the STEPPER'S OWN bound.
@@ -594,7 +594,7 @@ const HARVEST = Object.freeze([
   // THE FIGHTER, THE MECH AND THE TWIN TURRET -- the three types W80 measured
   // as ART waves rather than emission waves.  Every extent below is pinned by
   // the INDEX ARITHMETIC in the handler, and W80's own figures are refused by
-  // it in three places (docs/worklog/ddpdoj/81-impl-fighter-mech-art.md §1):
+  // it in three places (docs/worklog/ddpdoj/81-impl-fighter-mech-art.md Â§1):
   //
   //  * TYPE $82's art is NOT "57 descriptors" and NOT one table.  Its body
   //    descriptor is the CONSTANT $1735FC in the sub-record prototype at
@@ -648,14 +648,14 @@ const HARVEST = Object.freeze([
   // subq.w #4` and `$28A164 bcs` frees the slot on the borrow, so a record
   // walks entries 35..1 and never 0. Trimming it would make the harvested
   // length a consequence of a control-flow argument rather than of the
-  // template's own field, and W86 §0.2 is what happens when a list's extent
+  // template's own field, and W86 Â§0.2 is what happens when a list's extent
   // stops being the cartridge's.
   [8, 0x28a51c, 36, 4, 36, 0x28a5ac,
     'THE LASER\'S IMPACT EFFECT, $289FC0/$289FDA (src/spark.js, W90). The '
     + 'flash where the BEAM connects, against the row below\'s flash where a '
     + 'BULLET connects -- different template, different list, same 60-slot '
-    + 'pool E and same driver $28A098. $22C6BC..$22C860 step $C. [M] W53 §6 '
-    + 'named these as deliberately absent and W86 §6.3 as the owner\'s '
+    + 'pool E and same driver $28A098. $22C6BC..$22C860 step $C. [M] W53 Â§6 '
+    + 'named these as deliberately absent and W86 Â§6.3 as the owner\'s '
     + '"the laser shoots through them"; the records were always emitted '
     + 'correctly and there was no picture at the end of them. '
     + 'NOTE $289F96 -- the beam\'s SEGMENT producer -- shares this template '
@@ -681,7 +681,7 @@ const HARVEST = Object.freeze([
   // cartridge; it ships the pictures the windows already name.
   //
   // AND THE COUNT IS THE PREMISE CHECK.  The brief said "the boss's art"; the
-  // census said 58 streams.  [M] THE TABLES HOLD 244, and the gap is W81 §1.1's
+  // census said 58 streams.  [M] THE TABLES HOLD 244, and the gap is W81 Â§1.1's
   // lesson from the other side: 58 is what a 559-frame life happens to index,
   // and the boss's animation cursors ($2A,A6), ($6A,A6), ($AC,A6), ($C6,A6) and
   // ($11A,A6) each sweep their whole table over a fight that runs to the end.
@@ -711,7 +711,7 @@ const HARVEST = Object.freeze([
     + 'instruction, and the cartridge\'s run of consecutive stream starts is '
     + '120 too. [M] the row cursor wraps at $1C so the EIGHTH longword of each '
     + 'row is unreachable through this lea -- 15 of the 120. They ship anyway, '
-    + 'for W58 §2.1b\'s reason and W84\'s: "the index cannot reach them" is a '
+    + 'for W58 Â§2.1b\'s reason and W84\'s: "the index cannot reach them" is a '
     + 'statement about ONE lea. [M] W96 drew 7, i.e. one row'],
   [17, 0x292e32, 3, 4, 3, 0x292e3e,
     'OBJECT 4 -- three longwords of which $292E10 `move.l (A2),D2` can only '
@@ -737,7 +737,7 @@ const HARVEST = Object.freeze([
 ]);
 
 /** W45's beam art: the pod muzzle `$24C906` forces onto `($a,A6)` and four of
- *  the ten segment images at `$24ACE8`.  `45-impl-laser-beam.md` §6 measured
+ *  the ten segment images at `$24ACE8`.  `45-impl-laser-beam.md` Â§6 measured
  *  that not one of them is in the 166-stream sheet, so every beam record is a
  *  named skip.
  *
@@ -781,7 +781,7 @@ const W81_IMMEDIATES = Object.freeze([
     + 'it at +6, which `loadSubProto` copies to ($a,A6) (initbody.js:496), and '
     + '$274A28 `jsr $23DBCA` emits ($a,A6) unchanged. [M] size word $274770+$A '
     + '= $0C58 = 96x88 px, 530 mask words -- the blue forward-swept-wing '
-    + 'fighter W75 §3.1 photographed off the board\'s framebuffer'],
+    + 'fighter W75 Â§3.1 photographed off the board\'s framebuffer'],
   [15, 0x173810,
     'TYPE $82\'s THIRD RECORD, the one that goes to a DIFFERENT BUCKET. '
     + '$274A70 `move.l #$173810,D2` / $274A76 `move.w #$628,D3` (6x40) / '
@@ -791,7 +791,7 @@ const W81_IMMEDIATES = Object.freeze([
   [16, 0x17d480,
     'TYPE $88\'s BODY. The prototype at $275ECC+6 (initbody.js:552), size word '
     + '$0C60 = 96x96 px, 578 mask words. [M] This is the stream the live page '
-    + 'named at 55 s and 65 s and 80 s in W68 §6 -- `NO ART $17D480` -- for a '
+    + 'named at 55 s and 65 s and 80 s in W68 Â§6 -- `NO ART $17D480` -- for a '
     + 'type that has been emitting 12 of 12 records since W36'],
   // ------------------------------------------------------------------ WAVE 98
   // TWO MORE, AND THE SECOND ONE IS NOT THE BOSS'S.
@@ -807,7 +807,7 @@ const W81_IMMEDIATES = Object.freeze([
     + 'harvested since W47, so the type shipped with half its art and nobody '
     + 'noticed. [M] 523 records -- **the single largest missing stream in the '
     + 'whole census, larger than any of the boss\'s** -- first needed lf7,521. '
-    + 'This is W81 §1.1\'s immediate-vs-table lesson a third time'],
+    + 'This is W81 Â§1.1\'s immediate-vs-table lesson a third time'],
 ]);
 
 // W200. Type $15 carries four direct display-list stream descriptors in its
@@ -884,7 +884,7 @@ const SPR_SHARDS = Object.freeze([
   // The `why` is what the page prints in "SPRITE SHARD n DID NOT LOAD -- it
   // holds N streams -- ...", and `manifest.json` is the one body served
   // UNCOMPRESSED, so every character of it is a boot byte. [M] W66: the first
-  // draft of this string cost 329 B and the shipped one costs 174 (E3 §3's
+  // draft of this string cost 329 B and the shipped one costs 174 (E3 Â§3's
   // trim-after-measuring, for the same reason).
   [13, 'bomb', 'THE BOMB, LASER BOMB, AND HYPER AURA: $255E3E\'s three phase scripts, '
     + 'the laser bomb\'s data block $256662..$256986, pool E\'s $28A464, the '
@@ -894,10 +894,10 @@ const SPR_SHARDS = Object.freeze([
     + 'table. The owner\'s "tanks on the golden terrain" (W81)'],
   [15, 'type82', 'THE FIGHTER: type $82\'s body $1735FC (96x88) and its '
     + 'bucket-3 record $173810. The largest invisible object in the stage, and '
-    + 'it arrives on the rung the midboss dies (W75 §4, W81)'],
+    + 'it arrives on the rung the midboss dies (W75 Â§4, W81)'],
   [16, 'type88', 'THE TWIN TURRET: type $88\'s body $17D480, its four-frame '
     + '$2763D8 and both barrels\' $272D7A. Already emitting 12 of 12 records '
-    + 'with no picture for any (W80 §5, W81)'],
+    + 'with no picture for any (W80 Â§5, W81)'],
   // The `why` below is what the page prints when the shard has not landed, and
   // `manifest.json` is served UNCOMPRESSED, so every character is a boot byte.
   [17, 'boss', 'THE STAGE-1 BATTLESHIP: its hull $292F84 and the six OBJECT '
@@ -942,8 +942,8 @@ const SPR_BOOT = [0];
 // of the queue on the frame Button 2 is pressed, exactly as it has since W47,
 // and until it lands the page NAMES it rather than drawing pen 0.
 // W81: the three new shards go AHEAD of shard 1, and the clock that says so is
-// the BOARD's, not the port's -- `75-diag` §3's per-type first..last logic frame
-// over a 210-rung ladder of the whole stage. [M, cited W75 §3] type $10 is on
+// the BOARD's, not the port's -- `75-diag` Â§3's per-type first..last logic frame
+// over a 210-rung ladder of the whole stage. [M, cited W75 Â§3] type $10 is on
 // screen from lf2,200 and type $88 from lf2,500 (measured here off the same
 // ladder), against shard 1's own first need at +7.7 s = lf~2,456 (W47). Type
 // $82 arrives at lf3,825 -- 30 s of slack on 2.7 KiB -- and goes behind them.
@@ -983,7 +983,7 @@ let records = 0;
 // Until this wave a stream's extent was `2 + record.width * record.height`,
 // i.e. it was read off the display-list record that drew it -- and the only
 // records this file has are `capture.bin`'s.  So the published sheet's SIZES
-// had the recording as their provenance, which is half of what W28 §6 named as
+// had the recording as their provenance, which is half of what W28 Â§6 named as
 // the thing gating deleting the capture.
 //
 // `src/render/spritedir.js` derives them from the cartridge instead: the mask
@@ -1248,7 +1248,7 @@ for (const offs of [TYPE96_ART.death]) {
 // W61: the item's LAST THREE streams are IMMEDIATES, not a table -- `move.l
 // #$1B8B28,D2` at $27EFBE, `#$1B8C80` at $27F03E and `#$1B8BD4` at $27F2C2,
 // inside kinds $0C/$14's bodies.  Those kinds are REFUSED by `src/items.js`, so
-// nothing in this port can ask for them; they are here so that recon 59 §6's
+// nothing in this port can ask for them; they are here so that recon 59 Â§6's
 // 139 is 139 and wave I3 finds no hole.  Three immediates cannot be a "run",
 // which is why they are a list and not a HARVEST row.
 const ITEM_STREAMS = Object.freeze([0x1b8b28, 0x1b8c80, 0x1b8bd4]);
@@ -1370,6 +1370,23 @@ if (new Set(popupSuffixStreams).size !== 12) {
 }
 addHudStreamGroup('popup suffix', popupSuffixStreams,
   '$285784 twelve suffix zoom entries');
+
+// W232 (docket D11): THE STAGE-CLEAR BANNER PICTURES. `$28EDC0` reads the art
+// pointer as `$28EE1E[artbyte*8]` and hands it to $23DECE for the settled banner
+// or, on the entry frames, to the zooming $23F82A this wave ported. Five entries,
+// one per stage, and none of them had ever been harvested: the banner could not
+// draw even once the emitter ran. $24150A installs their palette and stays
+// counted -- that is the palette tier, not a stream.
+{
+  const banners = [];
+  for (let i = 0; i < 5; i++) banners.push(romBe32(0x28ee1e + i * 8));
+  if (new Set(banners).size !== 5) {
+    throw new Error('W232 the banner art table $28EE1E resolves '
+      + `${new Set(banners).size} streams, not five distinct per-stage pictures`);
+  }
+  addHudStreamGroup('stage-clear banners', banners,
+    '$28EE1E five per-stage banner pictures, read by $28EDC0');
+}
 
 // W230 (docket D5): THE RANK ICONS. `src/hud.js` reads $2882A6 (P1) and $288326
 // (P2), eight longwords each, at $285D64/$285DC4 and $285EDA/$285F3E. Neither
@@ -1561,8 +1578,8 @@ const BULLET_RANGES = Object.freeze([
 // RAM writes removed.
 //
 // **ALL 269 STREAMS SHIP, NOT THE 204 THE PORT'S KINDS REACH.**  That is a
-// decision and here is its reason, which is W53 §1.3's applied one level up:
-//   * [M] `50-recon` §2.4 measured "EIGHT distinct kinds on the port's damage
+// decision and here is its reason, which is W53 Â§1.3's applied one level up:
+//   * [M] `50-recon` Â§2.4 measured "EIGHT distinct kinds on the port's damage
 //     path" from a RUN.  [M] enumerating the port's own ported arms out of the
 //     listing gives ELEVEN ($1 $2 $3 $4 $5 $7 $9 $C $D $84 $85) -- `$4` is type
 //     $10's death ($2681D6, which the port's own comment called $7 until W54),
@@ -1631,7 +1648,7 @@ function walkEffectScript(desc, dur) {
   if (scripts.size !== 23 || seen.size !== 269) {
     throw new Error(`the ${entries} effect entries resolve to ${scripts.size} `
       + `distinct scripts over ${seen.size} distinct streams; W54 measured 23 `
-      + `and 269 (reproducing 50-recon-effects §5.1 exactly). A wrong count `
+      + `and 269 (reproducing 50-recon-effects Â§5.1 exactly). A wrong count `
       + `means the tables or the walk have moved.`);
   }
   harvested += added; harvestAlready += already;
@@ -1662,7 +1679,7 @@ function walkEffectScript(desc, dur) {
 // minority of its own steps and vanishes on the rest.
 //
 // (1e) THE LASER, ENUMERATED FROM THE CARTRIDGE RATHER THAN FROM THE RUN.
-// `55-diag` §10's W56 shopping list is the 29 addresses ONE scenario reached at
+// `55-diag` Â§10's W56 shopping list is the 29 addresses ONE scenario reached at
 // ONE power level.  [M] The beam's descriptor comes from `$24BB0A`, a table of
 // twenty (startOffset, pointer) pairs indexed by
 // `($22,A5)*4 + {0,$28,$50,$78}` (`$254FF6..$255036`, `laser.js beamRequest`),
@@ -1709,7 +1726,7 @@ function walkEffectScript(desc, dur) {
 //     -- which is more informative than a NO ART skip.  Widening that window
 //     WITHOUT this art would turn a loud throw into a quiet blank; the two must
 //     move together and neither moves in this wave.
-//   * the LASER's own impact spark `$22C6BC..$22C860` -- W53 §6's, still behind
+//   * the LASER's own impact spark `$22C6BC..$22C860` -- W53 Â§6's, still behind
 //     the unported `$289F96`/`$289FC0`/`$289FDA`.
 //
 // (1f) THE BIG MID-SCREEN STRUCTURES -- buckets 2, 3 and 7.
@@ -1718,7 +1735,7 @@ function walkEffectScript(desc, dur) {
 // playfield.  THIS LIST IS A MEASURED FLOOR AND IT IS SAID SO HERE rather than
 // dressed up as an enumeration: they are reached from BACKGROUND-ELEMENT
 // IMMEDIATES ($2623A6..$262760) and from tables no ported handler indexes, so
-// there is no table for this file to walk to an extent.  `55-diag` §10's W59
+// there is no table for this file to walk to an extent.  `55-diag` Â§10's W59
 // asks for exactly this list and this is it, from a 3,000-frame playing run.
 // [M] 111 streams, 256.7 KiB gz, DEFERRED and promoted by the page's own miss
 // guard the moment a record asks -- which [M] is +5.3 s from the seed.
@@ -1767,7 +1784,7 @@ const B16_MEASURED = Object.freeze([
 
 /** bucket 0's last four, a chain run pinned from above by W53's own boundary:
  *  [M] $22C59C..$22C6BC, and $22C6BC is exactly where the LASER's impact-spark
- *  list ($28A51C, W53 §6) begins. */
+ *  list ($28A51C, W53 Â§6) begins. */
 const B0_RUN = Object.freeze([0x22c59c, 0x22c6bc]);
 
 {
@@ -1895,7 +1912,7 @@ const STRUCTURE_RANGES = Object.freeze([
     + 'being stride 68. ($12D430 is the port\'s single most-emitted missing '
     + 'stream -- [M] 3,600 records in 3,000 frames -- and it is NOT in this run; '
     + 'it is the first frame of the next family, which the row below walks.) '
-    + '55-diag §2.2 calls this "a 38-frame run $12C7B0..$12D3CC"; [M] it is 32'],
+    + '55-diag Â§2.2 calls this "a 38-frame run $12C7B0..$12D3CC"; [M] it is 32'],
   // ------------------------------------------------------------------ WAVE 66
   // AND THE FAMILY W58's OWN NOTE POINTED AT AND DID NOT WALK.  The row above
   // says "$12D430 ... is the first frame of the next family" and stops there.
@@ -1907,11 +1924,11 @@ const STRUCTURE_RANGES = Object.freeze([
   // "zero missing streams" that only holds while the player holds fire is not
   // the claim.
   [0x12d430, 0x12d650, 8, '3x32-ish, stride 68. [M] 8 streams, closed by '
-    + '$12D650 being stride 1084. W58 §2.2 identified $12D430 as "the first '
+    + '$12D650 being stride 1084. W58 Â§2.2 identified $12D430 as "the first '
     + 'frame of the next family" and shipped only that one frame'],
   [0x151e10, 0x152a90, 32, '3x32, stride 100. [M] 32 streams, closed by stride 228'],
   [0x155c34, 0x156bb4, 32, '3x40 c12, stride 124. [M] 32 streams, closed by $156BB4 '
-    + 'being stride 484. 55-diag §2.2 calls this "a 16-frame 3x40 c12 run '
+    + 'being stride 484. 55-diag Â§2.2 calls this "a 16-frame 3x40 c12 run '
     + '$155D2C..$1569C4"; [M] it is 32, and it starts $DC lower'],
 ]);
 
@@ -1939,7 +1956,7 @@ const STRUCTURE_RANGES = Object.freeze([
  *
  *  All thirteen are now enumerated from `BGELEM_HANDLERS` below, which is the
  *  port's own table, so the art and the code that asks for it cannot drift.
- *  `46-diag`'s tank hulls and W81 §1.3's `$272D7A` are the same lesson; this is
+ *  `46-diag`'s tank hulls and W81 Â§1.3's `$272D7A` are the same lesson; this is
  *  the third time and the first where the correct extent was already written
  *  down in the file that got it wrong. */
 const STRUCTURE_STREAMS = Object.freeze([
@@ -1996,8 +2013,8 @@ const STRUCTURE_STREAMS = Object.freeze([
 // (1g) **THE BACKGROUND ELEMENTS' OWN SPRITES -- THE BLACK TERRAIN.**
 //
 // THE OWNER, on the live build: *"some terrain starts being black after the
-// golden terrain"*.  `[cited: W68 §5.2]` named the cause as bucket 2's five
-// missing streams and `[cited: W75 §3.4]` tied one of them, `$232578`, to the
+// golden terrain"*.  `[cited: W68 Â§5.2]` named the cause as bucket 2's five
+// missing streams and `[cited: W75 Â§3.4]` tied one of them, `$232578`, to the
 // invisible `$8B` hitbox lattice sitting on the gold crystal -- *"the invisible
 // enemy and the black terrain are the same object"*.
 //
@@ -2468,17 +2485,17 @@ harvestStage4Arithmetic(0x000dafc4, 1, 0,
 
 // ------------------------------------------------------------------- WAVE 66
 // 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
-// bomb, and NEITHER HAS A PICTURE: W64 §8.3 counted 174 bucket-13 records with
-// no shard behind them and W65 §7.3 named three missing streams off the page's
+// bomb, and NEITHER HAS A PICTURE: W64 Â§8.3 counted 174 bucket-13 records with
+// no shard behind them and W65 Â§7.3 named three missing streams off the page's
 // own top-3 line.  [M] W66: the ordinary bomb asks for SIXTEEN distinct streams
 // and the laser bomb for SEVENTY-FIVE, over six different producers, in two
 // completely disjoint address ranges.
 //
 // EVERY SET BELOW IS DERIVED FROM THE CARTRIDGE AND THEN CHECKED AGAINST THE
 // MEASUREMENT, never sized off it (`docs/knowledge/09`; `46-diag`'s tank hulls
-// and W58 §2.2's four families are what a measured floor costs).
+// and W58 Â§2.2's four families are what a measured floor costs).
 //
-// **NONE OF IT IS IN OR BEHIND E3's HOLE.**  W58 §7.1 left `$24B900..$24BB0A`
+// **NONE OF IT IS IN OR BEHIND E3's HOLE.**  W58 Â§7.1 left `$24B900..$24BB0A`
 // unexported on purpose, because the beam's animation blocks for `$24BB0A`
 // entries 7..19 live there and "the window and the art must move together".
 // [M] W66: every address this wave harvests is named by a table inside a window
@@ -2507,7 +2524,7 @@ const BOMB_PHASES = Object.freeze([
 ]);
 
 /** (b)..(f), each a `[from, to, why]` scan for MASK-ROM DIRECTORY entries --
- *  E3 §2.1(b)'s mechanism, and the same completeness argument: the port cannot
+ *  E3 Â§2.1(b)'s mechanism, and the same completeness argument: the port cannot
  *  ask for a stream outside these blocks, because the only code that writes
  *  these records' `($a,A6)` reads them out of exactly these bytes. */
 const BOMB_BLOCKS = Object.freeze([
@@ -2553,7 +2570,7 @@ const TYPE_8A = Object.freeze({ proto: 0x2766e6, animAt: 6, eor: 0xb4 });
  *  it was the 91 addresses a run measured MISSING before the shard existed, and
  *  [M] a mutant that cut the laser bomb's block at $256802 SURVIVED it -- all
  *  91 were below that address, because the beam's forty-one segments were not
- *  emitting a record at all (§4).  A fixture that sits where two readings agree
+ *  emitting a record at all (Â§4).  A fixture that sits where two readings agree
  *  is not a check (`docs/knowledge/03`), for the sixth wave running.
  *
  *  THE HARVEST ABOVE MUST CONTAIN EVERY ONE.  This is
@@ -2738,7 +2755,7 @@ console.log(`  sprite EXTENTS from the ROM chain (src/render/spritedir.js): `
 //
 // The capture bounds the SPRITES and the TX layer.  It does not bound the
 // BACKGROUND any more -- the map does.  Every address here is a measured one
-// from `20-recon-level-data.md` §0/§1/§3b; every one of the checks below fails
+// from `20-recon-level-data.md` Â§0/Â§1/Â§3b; every one of the checks below fails
 // loudly if it is wrong, and several of them were seen to fail while this was
 // being written (see the worklog's RED table).
 
@@ -2792,7 +2809,7 @@ const stage2Map = decodeMap(STAGE2.cols, STAGE2.ncols, STAGE2.tileBase);
 const stage3Map = decodeMap(STAGE3.cols, STAGE3.ncols, STAGE3.tileBase);
 const stage4Map = decodeMap(STAGE4.cols, STAGE4.ncols, STAGE4.tileBase);
 
-// CHECK 1 -- the attribute word.  Recon §1b: no BG map entry in the whole game
+// CHECK 1 -- the attribute word.  Recon Â§1b: no BG map entry in the whole game
 // sets a flip bit ($C0) or any bit outside $3E; the attribute is a pure 5-bit
 // palette-bank select.  A wrong stride, a wrong base or a swapped tile/attr
 // half turns this into noise, so it is the cheapest way to catch all three.
@@ -2803,7 +2820,7 @@ const stage4Map = decodeMap(STAGE4.cols, STAGE4.ncols, STAGE4.tileBase);
   }
   if (bad.length) {
     throw new Error(`${bad.length} BG map attribute words have a bit outside `
-      + `$3E (first $${bad[0].toString(16)}). Recon §1b measured ZERO in all `
+      + `$3E (first $${bad[0].toString(16)}). Recon Â§1b measured ZERO in all `
       + '8,142 entries of all five stages -- so the column stride, the tile '
       + 'base or the tile/attr halves are being read wrongly.');
   }
@@ -2825,13 +2842,13 @@ for (const col of stage4Map) for (const [t] of col) stage4Tiles.add(t);
   const lo = Math.min(...mapTiles), hi = Math.max(...mapTiles);
   if (mapTiles.size !== 1820 || lo !== 0x0aa9 || hi !== 0x11c6) {
     throw new Error(`stage 1's 224 columns hold ${mapTiles.size} distinct tiles `
-      + `$${lo.toString(16)}..$${hi.toString(16)}; recon §1/§2 measured 1,820 `
+      + `$${lo.toString(16)}..$${hi.toString(16)}; recon Â§1/Â§2 measured 1,820 `
       + 'in $0AA9..$11C6. The stream bound or the tile base has moved.');
   }
   const slo = Math.min(...smapTiles), shi = Math.max(...smapTiles);
   if (smapTiles.size !== 205 || slo !== 0x32a9 || shi !== 0x3381) {
     throw new Error(`the second map holds ${smapTiles.size} distinct tiles `
-      + `$${slo.toString(16)}..$${shi.toString(16)}; recon §3b measured 205 in `
+      + `$${slo.toString(16)}..$${shi.toString(16)}; recon Â§3b measured 205 in `
       + '$32A9..$3381.');
   }
   const s2lo = Math.min(...stage2Tiles), s2hi = Math.max(...stage2Tiles);
@@ -2856,14 +2873,14 @@ for (const col of stage4Map) for (const [t] of col) stage4Tiles.add(t);
 
 // THE PALETTE BLOCK.  Big-endian xRGB555 -- and bit 15 is the check, because a
 // block of map entries read as colours has bit 15 set on a third of its words
-// and a byte-swapped read scatters them.  Recon §1a measured 0 of 1024.
+// and a byte-swapped read scatters them.  Recon Â§1a measured 0 of 1024.
 const bgPal = new Uint16Array(STAGE1.palWords);
 for (let i = 0; i < STAGE1.palWords; i++) bgPal[i] = be16(STAGE1.pal + i * 2);
 {
   const set = [...bgPal].filter((w) => w & 0x8000).length;
   if (set !== 0) {
     throw new Error(`${set} of ${STAGE1.palWords} words at $227E58 have bit 15 `
-      + 'set. xRGB555 never does; recon §1a measured 0. This is not the palette '
+      + 'set. xRGB555 never does; recon Â§1a measured 0. This is not the palette '
       + 'block, or it is not being read big-endian.');
   }
 }
@@ -3527,7 +3544,7 @@ const manifest = {
         //
         //   "THE PAINTER IS UNPORTED: nothing in this bundle draws these yet,
         //    and shard 7 therefore ships pixels no frame currently asks for.
-        //    What spawns type $1C is named-not-found (recon §8.5)."
+        //    What spawns type $1C is named-not-found (recon Â§8.5)."
         //   ...and "ring columns 47.. (or 41 when $803926 is 0)"
         //
         // BOTH HALVES WERE FALSE, and had been since W57, five waves before the
@@ -3604,7 +3621,7 @@ const manifest = {
     // own display list at $800000 carries CARTRIDGE stream addresses in words 2
     // and 3, and 301 of the 302 it emits index the packed mask array at
     // `offs & (16384-1)` and draw somebody else's picture if they are not
-    // translated (40-recon-emission-path.md §4 step 2, measured).
+    // translated (40-recon-emission-path.md Â§4 step 2, measured).
     //
     // So the entry is now `[romOffs, packedBase, maskWords]` and
     // `src/web/app.js portSpriteList()` builds `romOffs -> packedBase` out of
@@ -3612,7 +3629,7 @@ const manifest = {
     // `spr.streams` 1,706 -> 2,825 COMPACT JSON bytes, but manifest.json goes
     // 10,112 -> 12,272 B = **+2,160 B**, not +1,119.  `JSON.stringify(manifest,
     // null, 1)` writes this file PRETTY, so a third array element costs a whole
-    // indented line per stream, not a comma and a number.  (43-plan §3.1(a)
+    // indented line per stream, not a comma and a number.  (43-plan Â§3.1(a)
     // predicted +1,328 B by measuring the compact delta and applying it to the
     // pretty file.  Same decision, 832 B more.)  Boot 470.0 -> 472.1 KiB.
     //
@@ -3720,13 +3737,13 @@ const manifest = {
 // WAVE 53 -- **THE MANIFEST IS WRITTEN COMPACT NOW**, and it is worth a
 // paragraph because it is a 2.5 KiB boot saving for no lost information.
 //
-// W47 §2.4 established the rule this is an application of: `manifest.json` is
+// W47 Â§2.4 established the rule this is an application of: `manifest.json` is
 // THE ONE BODY SERVED UNCOMPRESSED, so every byte of it is a boot byte -- which
 // is why W47 moved the 378-triple stream table out of it and into
 // `spr/streams.u32.gz`.  [M] The remaining object is 10,282 B pretty-printed at
 // one space per level and 7,722 B with the whitespace gone: **25 % of this file
 // is indentation the browser parses and throws away.**  Not one `note`, `why`
-// or number is dropped -- the prose W47 §2.3 needs for "SPRITE SHARD 1 DID NOT
+// or number is dropped -- the prose W47 Â§2.3 needs for "SPRITE SHARD 1 DID NOT
 // LOAD ... it holds 67 streams" is all still here, and any JSON formatter puts
 // the indentation back for a human.
 //
