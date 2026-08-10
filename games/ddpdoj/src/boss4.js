@@ -1,8 +1,8 @@
 // Stage-4 Type $40 boss entry and arrival bootstrap.
 //
 // This slice owns the spawn wrapper, the live no-hit/damage controller, F0,
-// MAIN0, D9/D10, and the first seven visible A2 objects. The next normal-play
-// frontier is A4/F3 on the scheduler pass after MAIN0's handoff.
+// MAIN0/MAIN1, D9/D10, the first seven visible A2 objects, and A4/F3's first
+// attack conductor. The next normal-play frontier is A1/E1 at $2A17E6.
 
 import { asr, i16, i32, u16 } from './ram.js';
 import { unreached } from './unported.js';
@@ -12,13 +12,15 @@ import { livePlayers2428A6 } from './boss.js';
 import { applyVelocity } from './movement.js';
 import { install24150A } from './palette.js';
 import { loadAnimObjects246410 } from './animobjects.js';
-import { AimTables, aim64FromCaller, slew64 } from './aim.js';
+import { AimTables, aim64, aim64FromCaller, slew64 } from './aim.js';
+import { drawWord242EC2 } from './rng.js';
+import { dist242494 } from './bossscripts.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { runStageAdvance242952 } from './stageend.js';
 import {
   runScheduler25962E, registerScript, seqStart2598D0, a2Run2598E6,
   a2Stop25994A, a4Start25980C, a4Clear2598A2, a1Clear259B34,
-  a3Start259962,
+  a3Start259962, a1Start259A18, a1Running259A4A,
 } from './scheduler.js';
 
 const due8 = (ram, addr) => {
@@ -336,6 +338,172 @@ function d10_2A15DE(ram, _rom, ctx) {
     ram.setU16(a6 + off, (ram.u16(a6 + off) + 4) & 0x1f);
 }
 
+function incC6_2A1720(ram, a6) {
+  const next = u16(ram.u16(a6 + 0xc6) + 1);
+  ram.setU16(a6 + 0xc6, next === 0x18 ? 0 : next);
+}
+
+function decE6_2A174C(ram, a6) {
+  const next = u16(ram.u16(a6 + 0xe6) - 1);
+  ram.setU16(a6 + 0xe6, i16(next) < 0 ? 0x17 : next);
+}
+
+function startF3Attack(ram, id, parameter) {
+  const child = a1Start259A18(ram, id);
+  ram.setU16(child + 0x02, parameter);
+}
+
+export function f3Step2A0984(ram, _rom, ctx, slot) {
+  const a6 = ctx.bossSubRec;
+
+  if (ram.u8(slot + 0x02) === 0) {
+    let moving = false;
+    if (ram.u16(a6 + 0xc6) !== ram.u16(slot + 0x08)) {
+      incC6_2A1720(ram, a6);
+      moving = true;
+    }
+    if (ram.u16(a6 + 0xe6) !== ram.u16(slot + 0x0a)) {
+      decE6_2A174C(ram, a6);
+      moving = true;
+    }
+    if (!moving) ram.setU8(slot + 0x02, 1);
+  }
+
+  if (ram.u8(slot + 0x02) === 1 && due8(ram, slot + 0x04)) {
+    ram.setU8(slot + 0x04, ram.u8(slot + 0x05));
+    const cadenceDue = due8(ram, slot + 0x0c);
+    let holdDuration = false;
+    if (cadenceDue) {
+      ram.setU8(slot + 0x0c, ram.u8(slot + 0x0d));
+      if (ram.u8(slot + 0x05) !== 6) {
+        ram.setU8(slot + 0x05, ram.u8(slot + 0x05) - 1);
+        holdDuration = true;
+      }
+    }
+    if (!holdDuration) {
+      const remaining = u16(ram.u16(slot + 0x0e) - 1);
+      ram.setU16(slot + 0x0e, remaining);
+      if (remaining === 0) {
+        ram.setU8(slot + 0x02, 2);
+        ram.setU8(slot + 0x15, 0x60);
+      }
+    }
+    const ids = [1, 2];
+    startF3Attack(ram, ids[ram.u16(slot + 0x06) >>> 1], 0);
+    ram.setU16(slot + 0x06, (ram.u16(slot + 0x06) + 2) & 3);
+  }
+
+  if (ram.u8(slot + 0x02) === 2) {
+    if (ram.u8(slot + 0x15) !== 0) {
+      ram.setU8(slot + 0x15, ram.u8(slot + 0x15) - 1);
+    } else if (!a1Running259A4A(ram, 1)) {
+      if (due8(ram, slot + 0x04)) {
+        ram.setU8(slot + 0x04, ram.u8(slot + 0x05));
+        startF3Attack(ram, 1, 1);
+      }
+      if (!a1Running259A4A(ram, 2) && due8(ram, slot + 0x10)) {
+        ram.setU8(slot + 0x10, ram.u8(slot + 0x11));
+        const left = u16(ram.u8(slot + 0x12) - 1) & 0xff;
+        ram.setU8(slot + 0x12, left);
+        if (left === 0) {
+          ram.setU8(slot + 0x12, 2);
+          ram.setU8(slot + 0x02, 3);
+          const cycles = u16(ram.u8(slot + 0x14) - 1) & 0xff;
+          ram.setU8(slot + 0x14, cycles);
+          if (cycles === 0) {
+            ram.setU8(slot + 0x02, 4);
+            ram.setU8(slot + 0x15, 0x10);
+          }
+        } else {
+          startF3Attack(ram, 2, 2);
+        }
+      }
+    }
+  }
+
+  if (ram.u8(slot + 0x02) === 3) {
+    if (ram.u8(slot + 0x15) !== 0) {
+      ram.setU8(slot + 0x15, ram.u8(slot + 0x15) - 1);
+    } else {
+      if (due8(ram, slot + 0x04)) {
+        ram.setU8(slot + 0x04, ram.u8(slot + 0x05));
+        startF3Attack(ram, 2, 1);
+      }
+      if (!a1Running259A4A(ram, 1) && due8(ram, slot + 0x10)) {
+        ram.setU8(slot + 0x10, ram.u8(slot + 0x11));
+        const left = u16(ram.u8(slot + 0x13) - 1) & 0xff;
+        ram.setU8(slot + 0x13, left);
+        if (left === 0) {
+          ram.setU8(slot + 0x13, 2);
+          ram.setU8(slot + 0x02, 2);
+          const cycles = u16(ram.u8(slot + 0x14) - 1) & 0xff;
+          ram.setU8(slot + 0x14, cycles);
+          if (cycles === 0) {
+            ram.setU8(slot + 0x02, 4);
+            ram.setU8(slot + 0x15, 0x10);
+          }
+        } else {
+          startF3Attack(ram, 1, 2);
+        }
+      }
+    }
+  }
+
+  if (ram.u8(slot + 0x02) === 4) {
+    const wait = u16(ram.u8(slot + 0x15) - 1) & 0xff;
+    ram.setU8(slot + 0x15, wait);
+    if (wait === 0) {
+      ram.setU8(slot + 0x02, 5);
+      startF3Attack(ram, 1, 3);
+      startF3Attack(ram, 2, 3);
+    }
+  }
+
+  if (ram.u8(slot + 0x02) === 5
+      && !a1Running259A4A(ram, 1) && !a1Running259A4A(ram, 2)) {
+    ram.setU16(slot, 0);
+    a4Start25980C(ram, 4);
+  }
+}
+
+export function f3Init2A092C(ram, rom, ctx, slot) {
+  ram.setU8(slot + 0x02, 0);
+  ram.setU16(slot + 0x04, 0x200c);
+  ram.setU16(slot + 0x06, 0);
+  ram.setU16(slot + 0x08, drawWord242EC2(ram, rom) & 0x0f);
+  ram.setU16(slot + 0x0a, drawWord242EC2(ram, rom) & 0x0f);
+  ram.setU16(slot + 0x0c, 0x0101);
+  ram.setU16(slot + 0x0e, 0x0020);
+  ram.setU16(slot + 0x10, 0x0808);
+  ram.setU8(slot + 0x12, 2);
+  ram.setU8(slot + 0x13, 2);
+  ram.setU8(slot + 0x14, 2);
+  ram.setU8(slot + 0x15, 0x10);
+  f3Step2A0984(ram, rom, ctx, slot);
+}
+
+function main1Step29F7A2(ram, rom, ctx, slot) {
+  const a6 = ctx.bossSubRec;
+  const waypoints = [[0x7800, 0x1c00], [0x7600, 0x1e00],
+    [0x7400, 0x1600], [0x7200, 0x1800]];
+  const target = waypoints[ram.u16(slot + 0x06) >>> 2];
+  const wanted = aim64(aimTables(rom), ram.u16(a6 + 0x02), ram.u16(a6 + 0x04),
+    target[0], target[1]);
+  ram.setU8(a6 + 0x1b, slew64(ram.u8(a6 + 0x1b), wanted));
+  const distance = dist242494(ram.u16(a6 + 0x02), ram.u16(a6 + 0x04),
+    target[0], target[1]);
+  if (i16(distance) <= 0x0200)
+    ram.setU16(slot + 0x06, (ram.u16(slot + 0x06) + 4) & 0x0f);
+  placeBoss4Parts29F50E(ram, ctx, slot);
+}
+
+function main1Init29F790(ram, rom, ctx, slot) {
+  ram.setU8(slot + 0x02, 4);
+  ram.setU16(slot + 0x04, 0);
+  ram.setU16(slot + 0x06, 0);
+  main1Step29F7A2(ram, rom, ctx, slot);
+}
+
 registerScript(0x2a017a, f0_2A017A);
 registerScript(0x2a019a, f0Step2A019A);
 registerScript(0x29f5bc, main0Init29F5BC);
@@ -349,3 +517,7 @@ registerScript(0x29f1fa, object4_29F1FA);
 registerScript(0x29f228, object5_29F228);
 registerScript(0x2a15be, d9_2A15BE);
 registerScript(0x2a15de, d10_2A15DE);
+registerScript(0x2a092c, f3Init2A092C);
+registerScript(0x2a0984, f3Step2A0984);
+registerScript(0x29f790, main1Init29F790);
+registerScript(0x29f7a2, main1Step29F7A2);
