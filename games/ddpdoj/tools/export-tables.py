@@ -2072,6 +2072,7 @@ SHOT_WINDOWS.extend([
     (0x265798, 0x0244, "W199: Stage-3 type $3F local closure $265798..$2659DC"),
     (0x265BEC, 0x0D74, "W200: Stage-3 type $15 closure $265BEC..$266960"),
     (0x2671E0, 0x007A, "W201: Stage-3 type $19 local closure $2671E0..$26725A"),
+    (0x274B6C, 0x05E0, "W202: Stage-3 type $83 closure $274B6C..$27514C"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
@@ -2343,6 +2344,26 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W201: type $19 local closure drifted")
     if d[0x234C1A:0x234C22] != bytes.fromhex("011d00148300006b"):
         raise SystemExit("W201: next Stage-3 frontier is not type $83 at $234C1A")
+    type83_records = (0x234C1A, 0x234C52, 0x234C8A, 0x234CDA,
+                      0x234CF2, 0x234D02, 0x234D5A, 0x234D72, 0x234EEA)
+    if b"".join(d[a:a + 8] for a in type83_records) != bytes.fromhex(
+            "011d00148300006b012e00038300006b013b00148300006b"
+            "014400158300006b014dfffc8300006b015400168300006b"
+            "015c00088300006b016300008300006b018a000b83000025"):
+        raise SystemExit("W202: type $83 nine-record occurrence set drifted")
+    if hashlib.sha256(d[0x2356EA:0x235720]).hexdigest() != (
+            "f39311a5f2e0bf6909b794b8c1a6b52749e23a23b305b0311369800dfa402dfc"):
+        raise SystemExit("W202: type $83 movement family A drifted")
+    if hashlib.sha256(d[0x23532C:0x235352]).hexdigest() != (
+            "dca23265a93985b9f1f95f35d65a196615313c6b15e312d7212b5b46acaf0889"):
+        raise SystemExit("W202: type $83 movement family B drifted")
+    if d[0x27E42A:0x27E432] != bytes.fromhex("00274b6c00274c90"):
+        raise SystemExit("W202: type $83 registry row drifted")
+    if hashlib.sha256(d[0x274B6C:0x27514C]).hexdigest() != (
+            "435fcab41c45cdfecf3893d7aa3a00275bebe794047d102cfe2b8d217a1b56d2"):
+        raise SystemExit("W202: type $83 closure drifted")
+    if d[0x234C92:0x234C9A] != bytes.fromhex("013d000016011046"):
+        raise SystemExit("W202: next Stage-3 frontier is not type $16 at $234C92")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and

@@ -648,6 +648,28 @@ BODY.set(0x264d5a, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + R.rec38, i16(drawWord242EC2(ram, rom)) < 0 ? 2 : 0xfe);
 });
 
+// --- type $83 ($274B74): Stage-3's linked-hitbox aimed-ring enemy. W202.
+BODY.set(0x274b74, (ram, rom, a5, a6, unported) => {
+  const cue = loadSubProto(ram, rom, a5, a6, 0x274c2c);
+  ram.setU32(a5 + R.rec44, cue);                       // $274B80
+  loadRecordProto(ram, rom, a5, 0x274c0e, 0x0e);
+  readInitPosition(ram, rom, a5, unported);
+
+  const pal = 0x274c04 + ram.u16(G.stageX2);
+  ram.setU8(a6 + S.palette, rom.u8(pal));
+  ram.setU8(a5 + R.rec1C, rom.u8(pal));
+  ram.setU8(a5 + R.rec1D, rom.u8(pal + 1));
+  if (ram.u16(G.rank98) === 0 && ram.u16(G.stage) <= 3) {
+    ram.setU8(a5 + R.rec30, 0x18);
+    ram.setU8(a5 + R.rec31, 0x10);
+  } else {
+    ram.setU8(a5 + R.rec30, 0x10);
+    ram.setU8(a5 + R.rec31, 0x10);
+  }
+  if (ram.u16(G.stage) === 4)
+    ram.setU16(a6 + S.hp, ram.u16(G.scrollClock) > 0x02e0 ? 0x0e80 : 0x1000);
+});
+
 // --- type $12 ($26C26E): Stage 3's seven-part carrier. W198.
 //
 // Unlike ordinary script enemies, the carrier ignores its movement pointer and

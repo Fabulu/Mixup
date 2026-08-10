@@ -792,6 +792,13 @@ const W200_IMMEDIATES = Object.freeze([
   [17, 0x29060c, 'TYPE $15 immediate body stream 3'],
 ]);
 
+// W202. Type $83 visibly emits these two immediate streams. The adjacent
+// $173F24 descriptor is unreachable and intentionally remains unharvested.
+const W202_IMMEDIATES = Object.freeze([
+  [15, 0x17388c, 'TYPE $83 visible immediate body stream 0'],
+  [15, 0x173c80, 'TYPE $83 visible immediate body stream 1'],
+]);
+
 /** Shard metadata.  `boot` is awaited by `loadBundle`; the rest are queued from
  *  boot and promoted by the page's miss guard. */
 // ------------------------------------------------------------------- WAVE 52
@@ -1219,6 +1226,13 @@ for (const [shard, offs, why] of W81_IMMEDIATES) {
   void why;
 }
 for (const [shard, offs, why] of W200_IMMEDIATES) {
+  if (streams.has(offs)) { harvestAlready++; continue; }
+  streams.set(offs, romExtent(offs));
+  shardOfStream.set(offs, shard);
+  harvested++;
+  void why;
+}
+for (const [shard, offs, why] of W202_IMMEDIATES) {
   if (streams.has(offs)) { harvestAlready++; continue; }
   streams.set(offs, romExtent(offs));
   shardOfStream.set(offs, shard);

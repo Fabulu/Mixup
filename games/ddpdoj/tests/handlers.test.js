@@ -110,7 +110,7 @@ const STUB_ROM = {
   u32: (a) => STUB_LONGS.get(a) ?? 0,
 };
 
-test('the ported handler addresses are registered through W201 type $19', () => {
+test('the ported handler addresses are registered through W202 type $83', () => {
   // W31 adds `$26B6FA` (type $0D, the MIDBOSS), which lives in src/midboss.js
   // and is NOT in SIX -- the `runs on a live record` test below drives SIX
   // against a STUB rom, and the midboss reads four real ROM tables.
@@ -142,7 +142,7 @@ test('the ported handler addresses are registered through W201 type $19', () => 
       0x27a1b4, 0x279f4a, 0x297398, 0x29bb64, 0x265486, 0x263c7c,
       0x2647a6, 0x2669e2, 0x264e82, 0x26c3e2, 0x26d4b4, 0x265adc, 0x265850,
       0x265ca0, 0x265e84, 0x2663e0,
-      0x267226,
+      0x267226, 0x274c90,
     ].sort((a, b) => a - b));
 });
 
