@@ -111,6 +111,7 @@ import { drawByte242B3C, drawByte2431F4, drawSigned242FFC,
 import { spawnCues28AC72, spawnCues28AC86 } from './cues.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 import { handler12, handler13, handler14 } from './stage3carrier.js';
+import { handler15, handler17, handler18 } from './stage3drop.js';
 
 /** `addi.l` -- a 32-bit add, where the low half's carry REACHES the high half.
  *  Named because the port also has `addi.w` pairs around a `swap`, which do
@@ -6081,6 +6082,9 @@ const HANDLERS = new Map([
   [0x26c3e2, handler12],       // W198: stage-3 seven-part carrier type $12
   [0x26d4b4, handler13],       // W198: hatch-spawned satellite type $13
   [0x265adc, handler14],       // W198: entrance curtain type $14
+  [0x265ca0, handler15],       // W200: stage-3 carrier type $15
+  [0x265e84, handler17],       // W200: type-$15 spawned two-sub child $17
+  [0x2663e0, handler18],       // W200: clock-$0168 four-sub child $18
   [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 

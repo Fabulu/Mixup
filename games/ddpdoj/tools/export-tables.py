@@ -2070,6 +2070,7 @@ SHOT_WINDOWS.extend([
     (0x265A54, 0x0198, "W198: Stage-3 type $14 closure $265A54..$265BEC"),
     (0x26C266, 0x1488, "W198: Stage-3 types $12/$13 closure $26C266..$26D6EE"),
     (0x265798, 0x0244, "W199: Stage-3 type $3F local closure $265798..$2659DC"),
+    (0x265BEC, 0x0D74, "W200: Stage-3 type $15 closure $265BEC..$266960"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
@@ -2311,6 +2312,24 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W199: type $3F census-owned movement stream drifted")
     if d[0x234AF2:0x234AFA] != bytes.fromhex("010d000015000029"):
         raise SystemExit("W199: next Stage-3 frontier is not type $15 at $234AF2")
+    type15_records = (0x234AF2, 0x234C4A, 0x234C72, 0x234CFA,
+                      0x234D7A, 0x234DC2, 0x234DCA)
+    if b"".join(d[a:a + 8] for a in type15_records) != bytes.fromhex(
+            "010d000015000029012700031500002e013600001500002a"
+            "014f00101500002e016800001500002c017e000c1500002c"
+            "017efff41500002c"):
+        raise SystemExit("W200: type $15 seven-record occurrence set drifted")
+    if d[0x2678CC:0x2678D4] != bytes.fromhex("00265bec00265ca0"):
+        raise SystemExit("W200: type $15 registry row drifted")
+    if d[0x2678DC:0x2678E4] != bytes.fromhex("00265de800265e84"):
+        raise SystemExit("W200: type $17 registry row drifted")
+    if d[0x2678E4:0x2678EC] != bytes.fromhex("0026631c002663e0"):
+        raise SystemExit("W200: type $18 registry row drifted")
+    if hashlib.sha256(d[0x265BEC:0x266960]).hexdigest() != (
+            "713f2ba066e0eacb0f28c98d51f616e9d4ea082ed06585bc7919d22d9395e13b"):
+        raise SystemExit("W200: type $15 closure drifted")
+    if d[0x234B32:0x234B3A] != bytes.fromhex("011000001900005d"):
+        raise SystemExit("W200: next Stage-3 frontier is not type $19 at $234B32")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and

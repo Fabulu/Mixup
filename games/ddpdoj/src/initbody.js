@@ -500,6 +500,51 @@ BODY.set(0x2657A0, (ram, rom, a5, a6, unported) => {
   ram.setU16(a6 + S.speed, 0x2820);                    // $2657FC
 });
 
+// `$263678/$263690`, kept local to avoid making initbody.js and spawn.js import
+// each other. This is the same 40-entry deferred queue the spawn walker drains.
+function enqueueType15Child(ram, type, flags) {
+  const countAt = 0x815ea8, base = 0x815eaa, dummy = 0x816b2a;
+  const count = ram.u16(countAt);
+  if (count === 0x0c80) return dummy;
+  const q = base + count;
+  ram.setU16(q + 2, type);
+  ram.setU16(q + 4, flags);
+  ram.setU32(q + 0x12, 0);
+  ram.setU16(countAt, count + 0x50);
+  return q;
+}
+
+// --- type $15 ($265BF4): four-piece carrier that creates one live type-$17
+// child per entry, except clock $0168 which selects the four-sub type-$18.
+BODY.set(0x265BF4, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x265c84);            // $265BF4..$265C00
+  loadRecordProto(ram, rom, a5, 0x265c62, 0x10);       // $265C00..$265C0E
+  readInitPosition(ram, rom, a5, unported);            // $265C0E
+  const child18 = ram.u16(G.scrollClock) === 0x0168;
+  const q = enqueueType15Child(ram, child18 ? 0x18 : 0x17,
+    child18 ? 0x80 : 0x20);                            // $265C20/$265C46
+  ram.setU32(q + 0x16, (ram.u32(a6 + S.posX) + 0x10000400) >>> 0);
+  ram.setU32(q + 0x1a, ram.u32(a6 + S.speed));         // $265C28..$265C5A
+});
+
+// --- type $17 ($265DF0): two-sub child spawned by type $15.
+BODY.set(0x265DF0, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x265e4c);
+  ram.setU32(a6 + S.posX, ram.u32(a5 + 0x16));
+  ram.setU16(a6 + S.speed, ram.u16(a5 + 0x1a));
+  loadRecordProto(ram, rom, a5, 0x265e28, 0x11);
+  ram.setU16(0x81b414, 1);
+  ram.setU16(0x803934, 1);
+});
+
+// --- type $18 ($266324): four-sub child selected by the clock-$0168 carrier.
+BODY.set(0x266324, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x266370);
+  ram.setU32(a6 + S.posX, ram.u32(a5 + 0x16));
+  ram.setU16(a6 + S.speed, ram.u16(a5 + 0x1a));
+  loadRecordProto(ram, rom, a5, 0x26634c, 0x11);
+});
+
 // --- type $36 ($263A58): Stage-3's seven-part carrier. All seven long-form
 // prototypes are contiguous, and A0 after the load is the long-threshold cue
 // cursor consumed by $28AC86 in the handler.

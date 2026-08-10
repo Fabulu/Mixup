@@ -332,6 +332,13 @@ const HARVEST = Object.freeze([
     'stage-3 type $13 sprite table, sixteen stride-4 pointers'],
   [17, 0x265bdc, 4, 4, 4, 0x265bec,
     'stage-3 type $14 sprite table, four stride-4 pointers'],
+  // W200. Type $15's two 16-entry pointer tables are complete, exact runs.
+  // They share the existing deferred late-family shard with the adjacent
+  // Stage-3 art and add 32 distinct streams.
+  [17, 0x26605a, 16, 4, 16, 0x26609a,
+    'stage-3 type $15 sprite table 0, sixteen stride-4 pointers'],
+  [17, 0x2665aa, 16, 4, 16, 0x2665ea,
+    'stage-3 type $15 sprite table 1, sixteen stride-4 pointers'],
   [18, 0x289820, 32, 4, 32, 0x2898a0,
     'pool-D debris template 0 descriptor list'],
   [18, 0x2898b0, 32, 4, 32, 0x289930,
@@ -776,6 +783,15 @@ const W81_IMMEDIATES = Object.freeze([
     + 'This is W81 §1.1\'s immediate-vs-table lesson a third time'],
 ]);
 
+// W200. Type $15 carries four direct display-list stream descriptors in its
+// local closure. They are not entries in either pointer table above.
+const W200_IMMEDIATES = Object.freeze([
+  [17, 0x28ea40, 'TYPE $15 immediate body stream 0'],
+  [17, 0x28f3a4, 'TYPE $15 immediate body stream 1'],
+  [17, 0x28fd08, 'TYPE $15 immediate body stream 2'],
+  [17, 0x29060c, 'TYPE $15 immediate body stream 3'],
+]);
+
 /** Shard metadata.  `boot` is awaited by `loadBundle`; the rest are queued from
  *  boot and promoted by the page's miss guard. */
 // ------------------------------------------------------------------- WAVE 52
@@ -1196,6 +1212,13 @@ for (let i = 0; i < HYPER_AURA.frames; i++) {
 // stream start, which is the whole check an immediate can have -- there is no
 // run and no neighbour to pin it against.
 for (const [shard, offs, why] of W81_IMMEDIATES) {
+  if (streams.has(offs)) { harvestAlready++; continue; }
+  streams.set(offs, romExtent(offs));
+  shardOfStream.set(offs, shard);
+  harvested++;
+  void why;
+}
+for (const [shard, offs, why] of W200_IMMEDIATES) {
   if (streams.has(offs)) { harvestAlready++; continue; }
   streams.set(offs, romExtent(offs));
   shardOfStream.set(offs, shard);
