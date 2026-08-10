@@ -6,8 +6,8 @@
 // normal first-phase loop, the damage-driven F1 destruction transition, and the
 // second phase it hands to: MAIN4 and the seven-arm F5 conductor.
 //
-// The next live frontier is F5's descendants -- A3 3/4/5/6/7/8, A1 6/7/8/9/10
-// and MAIN7 -- every one of which F5 arms and none of which is registered yet.
+// F5's A3 descendants (3..8, one routine six times) came with it. The next live
+// frontier is the rest of what F5 arms: A1 6/7/8/9/10 and MAIN7.
 
 import { asr, i16, i32, u16 } from './ram.js';
 import { unreached } from './unported.js';
@@ -888,6 +888,69 @@ function d2Init2A1486(ram, rom, ctx, slot) {
   d2Step2A148C(ram, rom, ctx, slot);
 }
 
+/**
+ * A3 3..8 -- SIX SCRIPTS, ONE ROUTINE, and the ROM says so out loud: their INIT
+ * addresses are `$2A14AA`, `$2A14D8`, `$2A1506`, `$2A1534`, `$2A1562`, `$2A1590`, a
+ * perfectly uniform `$2E` stride, and the bodies differ only in an offset, a sign and
+ * a limit. D1 and D2 above are the same shape on a `$24` stride, which is why they were
+ * already here: this family is those two with a third pair of parameters.
+ *
+ *     move.w #$1,$2(a4)              INIT, and it FALLS THROUGH
+ *     subq.b #1,$2(a4) / bcc rts     the OLD-ZERO BORROW
+ *     move.b $3(a4),$2(a4)           reload the period
+ *     addq.w/subq.w #$4,OFF(a6)      the ramp
+ *     cmpi.w #LIMIT,OFF(a6) / blt|bgt rts
+ *     move.w #LIMIT,OFF(a6)
+ *     bra $2A13C8                    `clr.w (a4) / rts` -- it RETIRES ITSELF
+ *
+ * `move.w #$1` makes the byte at `$2` zero and the byte at `$3` ONE, and those are two
+ * different things. The zero means the borrow fires on the very first step, on the
+ * arming frame. The one means the reload leaves 1 behind, which the next frame spends
+ * getting to zero without firing, so every step after the first lands on every SECOND
+ * frame. A ramp of n steps therefore takes 2n-1 frames, not n.
+ *
+ * The three offsets are ANIMATION CURSORS the port already draws, which is what makes
+ * this family visible rather than bookkeeping:
+ *
+ *     $88(a6), $A8(a6)   -> `$29F356`, the two pods' frames, 0..$20   (objects 7 and 8)
+ *     $106(a6)           -> `$29F002` and `$29F096`, 0..$3C           (objects 9 and 0)
+ *
+ * so 5 and 7 OPEN the pods, 6 and 8 close them, and 3 and 4 run the body's own cursor
+ * the way D0 already does. Every descriptor at every step of all three ramps already
+ * resolves; no window needed widening.
+ */
+const A3_RAMPS = {
+  0x2a14aa: { off: 0x106, up: true, limit: 0x003c },     // A3 3, and D0's own cursor
+  0x2a14d8: { off: 0x106, up: false, limit: 0x0000 },    // A3 4
+  0x2a1506: { off: 0x088, up: true, limit: 0x0020 },     // A3 5, pod 1 opening
+  0x2a1534: { off: 0x088, up: false, limit: 0x0000 },    // A3 6, pod 1 closing
+  0x2a1562: { off: 0x0a8, up: true, limit: 0x0020 },     // A3 7, pod 2 opening
+  0x2a1590: { off: 0x0a8, up: false, limit: 0x0000 },    // A3 8, pod 2 closing
+};
+
+function a3RampStep(ram, ctx, slot, p) {
+  if (!due8(ram, slot + 0x02)) return;                   // $2A14B0 subq.b/bcc
+  ram.setU8(slot + 0x02, ram.u8(slot + 0x03));           // $2A14B8 the reload
+  const a = ctx.bossSubRec + p.off;
+  const next = u16(ram.u16(a) + (p.up ? 4 : -4));         // $2A14BE addq.w / subq.w
+  ram.setU16(a, next);
+  // $2A14C2 cmpi.w / blt -- SIGNED, and the pin happens only on the far side of it.
+  if (p.up ? i16(next) < p.limit : i16(next) > p.limit) return;
+  ram.setU16(a, p.limit);                                // $2A14CC move.w #LIMIT
+  ram.setU16(slot, 0);                                   // $2A13C8 clr.w (a4)
+}
+
+/** Exported for W247's test, which drives all six through their own parameters. */
+export function a3Ramp(addr) {
+  const p = A3_RAMPS[addr];
+  const step = (ram, rom, ctx, slot) => a3RampStep(ram, ctx, slot, p);
+  const init = (ram, rom, ctx, slot) => {
+    ram.setU16(slot + 0x02, 0x0001);                     // $2A14AA move.w #$1,$2(a4)
+    step(ram, rom, ctx, slot);                           // falls through
+  };
+  return { init, step };
+}
+
 function e3Step2A282E(ram, rom, ctx, slot) {
   const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
   if (!due8(ram, slot + 0x04)) return;
@@ -1505,3 +1568,10 @@ registerScript(0x29f8cc, main4Init29F8CC);
 registerScript(0x29f8f0, main4Step29F8F0);
 registerScript(0x2a0cf6, f5Init2A0CF6);
 registerScript(0x2a0d16, f5Step2A0D16);
+// A3 3..8, the six-instance ramp family. The STEP sits `$6` past its INIT in every
+// one of them, which is the same `$2E`-stride regularity the bodies have.
+for (const a of [0x2a14aa, 0x2a14d8, 0x2a1506, 0x2a1534, 0x2a1562, 0x2a1590]) {
+  const { init, step } = a3Ramp(a);
+  registerScript(a, init);
+  registerScript(a + 6, step);
+}
