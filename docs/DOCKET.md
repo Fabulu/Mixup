@@ -80,8 +80,10 @@ already counted by address:
 - the banner's zooming ENTRY picture `$23F82A` -- **PORTED in W232**, and its five
   per-stage pictures are in the sprite bundle now (they never were, so the banner
   could not have drawn even with the emitter),
-- the TX TEXT printers `$240DC2` and `$240EBC`, 60 calls per transition, a
-  subsystem no wave has touched,
+- the TX TEXT printers: the printer itself was ported in W116 and W237 ported the
+  SET-item icon row and progress cue that call it. The sixty calls per transition
+  come from `panel2851D2`, the stage-clear banner's PANEL, whose body is not
+  translated -- that is the banner TEXT, and it is the next slice,
 - the banner's five `$24150A` resource installs plus the slide-out's -- **PORTED
   in W236**, and `$24150A` had been ported since W91; the note calling it "data"
   had simply stopped being true,

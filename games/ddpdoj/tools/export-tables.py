@@ -1022,6 +1022,13 @@ SHOT_WINDOWS.extend([
     # $2256B8 + 5*$40 is $2257F8.
     (0x2256B8, 0x0140, "W236 the five stage-clear banner palettes, $28EE1E's "
                        "second longwords, installed into bank $17"),
+    # W237 (docket D11/D7): the SET-item icon row's six tile longwords. `$2534CA lea
+    # ($2534E0,PC) / move.l (A0,D4.w),D4` with D4 = (target-1)*4, and $2534F8 is
+    # CODE -- `tst.w $81B65C`, the head of $2534F8 -- so SIX is the extent, pinned
+    # the same way. [M] the first words ramp $02DE, $0302, $0326 then saturate at
+    # $034A for the last three.
+    (0x2534E0, 0x0018, "W237 the set-item icon row's six tile longwords, ending "
+                       "at $2534F8's code"),
     # W236: the slide-out's BANK table, `$28EA2E move.w ($28EA4A,PC,D0.w),D0` with
     # D0 = $813094. FIVE words, one per stage, and its far end is pinned by data the
     # port already reads: $28EA54 is `bannerDfecOut`, the two-word $81DFEC seed.

@@ -106,6 +106,7 @@
 
 import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
+import { txPrint240DC2 } from './hud.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { drawByte242E24, RNG } from './rng.js';
 import { aim64, AimTables } from './aim.js';
@@ -1434,6 +1435,47 @@ export function collect252FAC(ram, rom, ctx) {
   return setItem(ram, rom, ctx, 1);
 }
 
+/**
+ * `$25349A` (P1) and `$2534AC` (P2) -- THE SET-ITEM ICON ROW.
+ *
+ * W237. These were counted with the words "$240DC2 ... that text/sprite subsystem
+ * is unported", which stopped being true in W116: `txPrint240DC2` in `hud.js` IS
+ * `$240DC2`, cell increment and all. The two routines differ only in their base
+ * column and which player's TARGET byte they read:
+ *
+ *   25349A: move.w #$100,D1 / moveq #$0,D4 / move.b $81040B,D4    (P1)
+ *   2534AC: move.w #$F00,D1 / moveq #$0,D4 / move.b $81046D,D4    (P2)
+ *   2534BC: move.w #$8,D0 / moveq #$2,D2 / moveq #$B,D3
+ *           subq.w #$1,D4 / add.w D4,D4 / add.w D4,D4
+ *           lea ($2534E0,PC),A0 / move.l (A0,D4.w),D4 / jsr $240DC2
+ *
+ * The `subq.w #1` then two doublings make the index `(target - 1) * 4`, and
+ * `$2534E0` is six longwords whose far end is `$2534F8`, code.
+ */
+function setItemRow25349A(ram, rom, who) {
+  const d1 = who === 0 ? 0x0100 : 0x0f00;              // $25349E / $2534B0
+  const target = ram.u8(who === 0 ? POWER.setTargetP1 : POWER.setTargetP2);
+  const d4idx = u16(u16(u16(target - 1) * 2) * 2);     // $2534C4..$2534C8
+  const d4 = rom.u32(0x2534e0 + d4idx);                // $2534D0 move.l (A0,D4.w)
+  txPrint240DC2(ram, 0x0008, d1, 0x0002, 0x000b, d4);  // $2534BC../$2534D4
+}
+
+/**
+ * `$2533C8` (P1) and `$2533D4` (P2) -- the SET-item PROGRESS cue, one cell that
+ * slides as the set fills. D6 is the caller's own current set byte, and the shared
+ * tail `$2533E0` shifts it left NINE and adds it to the base column:
+ *
+ *   2533C8: move.w #$100,D1  / move.l #$2CC000A,D4 / bra $2533E0     (P1)
+ *   2533D4: move.w #$1900,D1 / move.l #$2CC000A,D4 / neg.w D6        (P2)
+ *   2533E0: moveq #$9,D2 / asl.w D2,D6 / add.w D6,D1
+ *           move.w #$8,D0 / moveq #$2,D2 / moveq #$1,D3 / jmp $240DC2
+ */
+function setItemCue2533C8(ram, who, d6) {
+  const v = who === 0 ? u16(d6) : u16(-d6);            // $2533DE neg.w D6 (P2 only)
+  const d1 = u16((who === 0 ? 0x0100 : 0x1900) + u16(v << 9));  // $2533E2/$2533E4
+  txPrint240DC2(ram, 0x0008, d1, 0x0002, 0x0001, 0x02cc000a);
+}
+
 function setItem(ram, rom, ctx, who) {
   const S = who === 0
     ? { cur: POWER.setP1, tgt: POWER.setTargetP1, rec: 0x8103e6, rec1: 0x8103e7,
@@ -1457,17 +1499,14 @@ function setItem(ram, rom, ctx, who) {
       }
     }
     bcdTriple(ram, rom, S);                            // $252F6E..$252FA2
-    note(ctx, S.hud, `$${S.at.toString(16).toUpperCase()}'s HUD draw `
-      + `$${S.hud.toString(16).toUpperCase()} -- the set-item icon row, through `
-      + `$240DC2. That text/sprite subsystem is unported`);
+    setItemRow25349A(ram, rom, who);                   // $252FA8 jsr S.hud
     return false;
   }
   const d5 = (d6 + 1) & 0xff;                          // $252EAC addq.b #1,D5
   ram.setU8(S.cur, d5);                                // $252EAE move.b D5
   if (d5 !== ram.u8(S.tgt)) {                          // $252EB4 cmp.b / bne $252F22
     if (ram.u16(S.stock) === 0) {                      // $252F22 tst.w $81B65C
-      note(ctx, S.cue, `$252F2A jsr ($2533C8,PC) -- the set-item PROGRESS cue, `
-        + `through $240DC2. Unported`);
+      setItemCue2533C8(ram, who, d6);                  // $252F2A jsr S.cue
     }
     return false;                                      // $252F30 move.w D0,D0
   }
@@ -1478,8 +1517,7 @@ function setItem(ram, rom, ctx, who) {
   ram.setU16(S.bonus, u16(ram.u16(S.bonus) + 0x4d));   // $252ED6 addi.w #$4D
   ram.setU16(S.count, u16(ram.u16(S.count) + 1));      // $252EDE addq.w #1
   bcdTriple(ram, rom, S);                              // $252EE4..$252F18
-  note(ctx, S.hud, `$${S.at.toString(16).toUpperCase()}'s completion HUD draw `
-    + `$${S.hud.toString(16).toUpperCase()}, through $240DC2. Unported`);
+  setItemRow25349A(ram, rom, who);                     // $252F1E jsr S.hud
   return false;
 }
 
