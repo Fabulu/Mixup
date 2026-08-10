@@ -44,7 +44,22 @@ function ledgerRom() {
     { base: '$267fa0', len: 36, why: 'W54 the $267FA0 remap rows',
       hex: '0000000000040008000c0010'      // $267FA0 the DEATH row
          + '000400040008000c00100010'      // $267FAC the HIT row
-         + '0000000000040008000c0010' }],  // $267FB8 $289AF4's row
+         + '0000000000040008000c0010' },   // $267FB8 $289AF4's row
+    // W235: $289AF4 is PORTED now, so type $11's death actually allocates its
+    // secondary explosion and reads the cartridge on the way. These are the exact
+    // addresses it touches with this fixture's zeroed RNG state, and the bytes are
+    // the cartridge's own -- measured, then pasted, the same way the remap rows
+    // above were. w234beepopup/w54effects check the same tables against the ROM.
+    { base: '$289dec', len: 8, why: 'W235 the kind-4 pool-C template pointer',
+      hex: '9e0a00289e260028' },
+    { base: '$289e26', len: 20, why: 'W235 the kind-4 template',
+      hex: '8004fa00fc0006200001000cf400000000289eaa' },
+    { base: '$289eac', len: 6, why: 'W235 its list entry at cursor 0',
+      hex: 'a0a80022a044' },
+    { base: '$24301a', len: 2, why: 'W235 the RNG byte $24301B draws',
+      hex: '0100' },
+    { base: '$243176', len: 2, why: 'W235 the RNG bytes $243176/$243177 draw',
+      hex: '0100' }],
   });
 }
 

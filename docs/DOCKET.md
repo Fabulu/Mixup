@@ -96,18 +96,22 @@ picks a per-player table, arms a `$4B0` timer, and its body watches `$23C932` an
 `$803808` -- it is the credit/start/continue controller, which is why `$260056`
 creates it. `[4]` `$260B30` is still unported and still runs twice a frame.
 
-### D3 and D4: missing explosions in stages 1 and 2, and the stage-2 mid boss
+### D3 and D4: missing explosions -- ONE PRODUCER LANDED in W235, more to go
 
-The descriptor sweep settles what these are NOT. Over 900 frames of stage-1 play,
-after the rank-icon fix, **every descriptor the port draws is in the bundle** and
-the display list drops nothing. So a missing explosion is not a missing stream
-and not a dropped record: its PRODUCER is not running.
+W230's sweep proved these are not bundle problems: every descriptor the port draws
+resolves. So a missing explosion means its producer is not running, and the sweep's
+counted-gap list names them.
 
-The counted gaps from the same run name the candidates, and the effect ones are
-`$289AF4` (the secondary effect spawn, "D0=$4 secondary", W26) and `$27F8F8`
-(the bullet death effect). Next step for D3 is to run the sweep and read the
-counted-gap list rather than to guess: the instrument is
-`tools/w230descriptorsweep.mjs`.
+W235 landed the first: `$289AF4`, the SECONDARY explosion, at both of its kind-4
+sites. It turned out to be a thin sibling of pool C's already-ported allocator --
+three allocators share the same fourteen-instruction scan and differ only in their
+fill, and this fill differs only in taking its position from the caller's record.
+The sweep now draws 718 distinct descriptors over the same 900 frames, up from 713.
+
+Still open: the two kind-`$8` sites (their template's lists resolve to zero entries,
+so porting them would be invention), `$27F8F8`'s bullet death effect, and whatever
+else the sweep's counted-gap list holds. D4's stage-2 mid boss needs its own look --
+run the sweep during stage 2 rather than assuming it is the same cause.
 
 ### D5: the systemic sprite question -- INSTRUMENT DELIVERED in W230
 

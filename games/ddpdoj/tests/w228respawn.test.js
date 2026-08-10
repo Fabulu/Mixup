@@ -116,16 +116,16 @@ test('W228 a real death respawns and keeps running',
 
     let died = 0;
     // With W231's init and pod deploy in, this scenario now survives THREE deaths
-    // and two full respawns: it dies at 424, 857 and 1184, spends the seed's two
-    // lives at 495 and 928, and at 1255 the third death exhausts the count and arms
+    // and two full respawns: it dies at 426, 767 and 1207, spends the seed's two
+    // lives at 497 and 838, and at 1278 the third death exhausts the count and arms
     // request 2 -- $260056, the credit/continue entry, which is the next frontier.
-    // 700 is inside the first respawn's life, after its reset at 495 and before the
-    // second death at 857, so the count below is exactly one and the player is alive.
+    // 700 is inside the first respawn's life, after its reset at 497 and before the
+    // second death at 767, so the count below is exactly one and the player is alive.
     for (let f = 92; f <= 700; f++) {
       g.step(shot);                  // stopped at $24CA60, then $25FFA8, then $24C934
       if (!died && (g.ram.u8(RAM.player1) & 1) !== 0) died = f;
     }
-    assert.equal(died, 424);
+    assert.equal(died, 426);
     assert.equal(g.ram.u16(COUNT), 1, 'one life spent');
     assert.equal(g.ram.u16(ENTRY), 0, 'and the dispatcher is idle again');
     assert.equal(g.ram.u8(RAM.player1) & 1, 0, 'the death bit is clear');
@@ -134,7 +134,7 @@ test('W228 a real death respawns and keeps running',
     // $2491C0's init takes the position from the object record the respawn filled.
     // w231playerinit.test.js pins that exactly; here it is enough that it is set.
     const left = portWordFromBits([BIT.left]);
-    for (let n = 0; n < 100; n++) g.step(left);   // ...and 800 < 857
+    for (let n = 0; n < 60; n++) g.step(left);    // ...and 760 < 767
     assert.equal(g.ram.u16(RAM.player1 + P.posX), 0x300);
     assert.notEqual(g.ram.u16(RAM.player1 + P.posY), 0);
   });

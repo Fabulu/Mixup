@@ -105,7 +105,7 @@ import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
   EMIT_TABLE } from './spritequeue.js';
 import { armScreenClear, armScreenClear243E02, handlerMidboss } from './midboss.js';
 import { scoreByMask, scoreHit, scoreKill } from './score.js';
-import { spawnEffect, spawnPoolC289B50, remapBucket, REMAP, B } from './effects.js';
+import { spawnEffect, spawnPoolC289B50, spawnPoolC289AF4, remapBucket, REMAP, B } from './effects.js';
 import { spawnItem } from './items.js';
 import { allocBee27F92A } from './bee.js';
 import { drawByte242B3C, drawByte24311A, drawByte2431F4, drawSigned242FDE,
@@ -646,8 +646,11 @@ function deathSeq11(ram, rom, a5, a6, ctx, d1) {
   // $26889E btst #0,$815EA5 -> beq skips $289AF4 when bit 0 is CLEAR, so $289AF4
   // is called only when the cap bit is SET (W25b F6 -- the note was unconditional
   // before; the cap test + spawn are W26-owned, the gating is faithful now).
-  if ((ram.u8(0x815ea5) & 1) !== 0)                    // $26889E btst #0,$815EA5 (set -> call)
-    noteEffect(u, 0x289af4, a5, 'D0=$4 secondary');    // $2688BA (ea5 bit 0 SET)
+  // $26889E btst #0,$815EA5 -- set means the secondary explosion runs. W235 ports
+  // it: `$2688A8 moveq #$4,D0` and D1 = `$267FB8[($1f,A6)*2]`, then $289AF4.
+  if ((ram.u8(0x815ea5) & 1) !== 0) {                  // $26889E (set -> call)
+    spawnPoolC289AF4(ram, rom, ctx, 0x04, a6, REMAP.secondary267FB8);  // $2688BA
+  }
   ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst          // $2688C0
   freeEnemy(ram, a5);                                  // $2688C6 jmp $263762
 }
@@ -961,7 +964,9 @@ function deathSeq10(ram, rom, a5, a6, ctx, d1) {
   // Kind $4 is not even in `50-recon` 2.4's measured eight; it reached
   // 137 x $7 because type $11's death arm IS $7 and type $10's is not.
   effectArmNine(ram, rom, ctx, a6, 0x04, REMAP.death267FA0, 0x2681dc);
-  noteEffect(u, 0x289af4, a5, 'D0=$4 secondary');
+  // $26820C..$26821E -- the same six instructions and the same secondary as the
+  // type-$11 death above.
+  spawnPoolC289AF4(ram, rom, ctx, 0x04, a6, REMAP.secondary267FB8);
   ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst
   freeEnemy(ram, a5);                                  // jmp $263762
 }

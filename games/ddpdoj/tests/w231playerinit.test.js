@@ -174,12 +174,12 @@ test('W231 a real respawn puts the ship back and deploys its pods',
     g.step(portWordFromBits([BIT.b1, BIT.b2]));
 
     const opt = RAM.p1Options;
-    for (let f = 92; f <= 495; f++) g.step(shot);
-    // frame 494 is the reset: the record is cleared and the respawn is armed
+    for (let f = 92; f <= 497; f++) g.step(shot);
+    // frame 497 is the reset: the record is cleared and the respawn is armed
     assert.deepEqual([g.ram.u16(RAM.player1 + P.posY),
       g.ram.u16(RAM.player1 + P.posX)], [0, 0]);
 
-    g.step(shot);                            // 496: the new object runs its INIT
+    g.step(shot);                            // 498: the new object runs its INIT
     assert.deepEqual([g.ram.u16(RAM.player1 + P.posY),
       g.ram.u16(RAM.player1 + P.posX)], [0x1000, 0x0e00],
     'the ship is back where the respawn entry said, not at zero');
@@ -188,7 +188,8 @@ test('W231 a real respawn puts the ship back and deploys its pods',
       'the option block was reset by $2492C8, so its pods start stowed');
     assert.equal(g.ram.u8(opt + OPT.speedIdx), 8, 'and the deploy has begun');
 
-    for (let f = 497; f <= 560; f++) g.step(shot);
+    // $E0 / 8 is 28 passes, so the deploy finishes on 525.
+    for (let f = 499; f <= 525; f++) g.step(shot);
     assert.equal(g.ram.u8(opt + OPT.speedIdx), 0xe0,
       '$24C928[0] is $E0 and the deploy stops exactly there');
     assert.equal(g.ram.u16(opt + OPT.state) & 0x0002, 0x0002, 'the pods are out');

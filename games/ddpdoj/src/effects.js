@@ -811,6 +811,26 @@ export function spawnPoolC289B50(ram, rom, ctx, kind, bucket, position,
   return slot;
 }
 
+/**
+ * `$289AF4` -- the SAME scan and the SAME fill as `$289B50`. There are THREE
+ * allocators into pool C (`$289AF4`, `$289B22`, `$289B50`) and their scans are the
+ * same fourteen instructions on the same $81CDEE table with the same
+ * `$813098`/`$81308C` narrow test; they differ only in which fill they branch to.
+ * This one is `$289C3A`, and the one thing it does differently is take the
+ * position from the CALLER's record -- `$289C50 move.l $2(a6),$2(a0)` -- instead of
+ * from a register the caller loaded.
+ *
+ * The bucket is the caller's own row of `$267FB8`, read as a WORD at
+ * `(A0,D1.w)` with D1 = `($1f,A6) * 2` (`$2688AC..$2688B6` and `$268210..$26821A`,
+ * which are the same six instructions twice). W234's docket-D3 note: this is the
+ * SECONDARY explosion, and it was a counted call at both of its kind-4 sites.
+ */
+export function spawnPoolC289AF4(ram, rom, ctx, kind, caller, remapTable) {
+  const bucket = rom.u16(remapTable + ram.u8(caller + 0x1f) * 2);
+  return spawnPoolC289B50(ram, rom, ctx, kind, bucket,
+    ram.u32(caller + 0x02), 0x289af4);
+}
+
 /** `$289B80`, animate, cull and emit the live pool-C records. */
 export function runPoolCDriver(ram, rom, ctx) {
   let remaining = ram.u16(POOL_C.count);

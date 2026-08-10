@@ -64,11 +64,11 @@ test('W227 a real death runs its animation and reset instead of stopping',
     // the player killed on a fixed frame.  Before this wave the very next option
     // pass stopped the port at $24CA60.
     let died = 0;
-    for (let f = 92; f <= 494; f++) {
+    for (let f = 92; f <= 496; f++) {
       g.step(shot);
       if (!died && (g.ram.u8(RAM.player1 + P.state) & 1) !== 0) died = f;
     }
-    assert.equal(died, 424, 'the player dies where it always did');
+    assert.equal(died, 426, 'the player dies where it always did');
     assert.equal(g.ram.u16(OPTION_BLOCKS[0].opt), 0,
       'and its option block is cleared, not stepped');
     assert.equal(g.ram.u16(0x8130fa), 1,
