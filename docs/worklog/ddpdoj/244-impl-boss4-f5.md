@@ -1,6 +1,11 @@
 # W244: Stage-4 boss A4/F5
 
-Status: SPEC COMPLETE, implementation not started
+Status: IMPLEMENTED BY W246, WITH THREE CORRECTIONS TO THIS SPEC
+
+W246 translated F5 and found three things below to be wrong: INIT DOES fall through,
+the STEP has seven arms and not four, and arm 4's gate is A3 4 rather than A1 4. Read
+[246-impl-boss4-f5-step.md](246-impl-boss4-f5-step.md) alongside this file; the rest of
+the spec held, including that nothing in F5 needed a new helper.
 
 W225 reserved this and banked its opening recon. This wave finished the recon and
 confirmed every dependency, which changed the estimate: nothing in F5 needs a new

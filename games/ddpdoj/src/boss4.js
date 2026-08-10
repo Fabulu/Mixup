@@ -3,8 +3,11 @@
 // This slice owns the spawn wrapper, the live no-hit/damage controller, F0,
 // MAIN0/MAIN1, D9/D10, the first seven visible A2 objects, A4/F3, and its
 // mirrored A1/E1 and E2 attack families, the F4/E3/E5 bridge which closes the
-// normal first-phase loop, and the damage-driven F1 destruction transition.
-// The next live frontier is F5, which MAIN3 starts when that transition lands.
+// normal first-phase loop, the damage-driven F1 destruction transition, and the
+// second phase it hands to: MAIN4 and the seven-arm F5 conductor.
+//
+// The next live frontier is F5's descendants -- A3 3/4/5/6/7/8, A1 6/7/8/9/10
+// and MAIN7 -- every one of which F5 arms and none of which is registered yet.
 
 import { asr, i16, i32, u16 } from './ram.js';
 import { unreached } from './unported.js';
@@ -25,7 +28,7 @@ import { runStageAdvance242952 } from './stageend.js';
 import {
   runScheduler25962E, registerScript, seqStart2598D0, a2Run2598E6,
   a2Stop25994A, a4Start25980C, a4Clear2598A2, a1Clear259B34,
-  a3Start259962, a1Start259A18, a1Running259A4A, a1Stop259B08,
+  a3Start259962, a3Running2599B4, a1Start259A18, a1Running259A4A, a1Stop259B08,
   seqStop2598BE,
 } from './scheduler.js';
 
@@ -1184,6 +1187,277 @@ export function main4Init29F8CC(ram, rom, ctx, slot) {
   main4Step29F8F0(ram, rom, ctx, slot);                   // falls through
 }
 
+/**
+ * `$2A0D76`, `$2A0DEE`, `$2A0F6E` and `$2A0FE6` -- THE POD AIM, the same seven
+ * instructions FOUR times: once per pod inside arm 1's latch, and once per pod again
+ * every frame of arm 3's patrol. Each copy is ONE AXIS wide, and it is the long axis
+ * throughout:
+ *
+ *   velocity  `$198(a6)` / `$19A(a6)`
+ *   offset    `$18C(a6)` / `$190(a6)`   which `placeBoss4Parts29F50E` ADDS into
+ *   position  `$82(a6)`  / `$A2(a6)`    the placer's own output, which the gate reads
+ *
+ * so the loop closes through the placer and the pods patrol between `$5A00` and
+ * `$6400`. Arm 1 drives `$18E`/`$192` instead, which the placer adds into `$84`/`$A4`
+ * -- the SHORT axis. Four separate offset words, two axes, and mixing them up would
+ * spread the pods along the direction they are supposed to patrol.
+ *
+ *   d0 = velocity   zero  -> draw a byte and let its SIGN pick the heading, then draw
+ *                            AGAIN for the speed. TWO draws, not one.
+ *                   minus -> re-aims only once pos <= $5A00, heading $00
+ *                   plus  -> re-aims only once pos >= $6400, heading $80
+ *   d0 = (draw >> 1) + 4  the SPEED index, and `asr.b`/`addi.b` keep it a BYTE
+ *   $241D34(d0, d1)       and D2, the long-axis half, becomes the new velocity
+ *
+ * A pod already moving therefore holds its heading until it reaches its own side's
+ * limit; only a stationary one picks a side at random. `$241D34` is
+ * `MoveTables.shotVector` -- `vectors.js` names the address and spells out that it is
+ * NOT `$241812`, which folds the angle differently.
+ */
+function aimPod2A0D76(ram, rom, ctx, velOff, posOff) {
+  const a6 = ctx.bossSubRec;
+  const vel = ram.u16(a6 + velOff);                       // $2A0D76 move.w $198(a6),d0
+  let d1;
+  if (vel === 0) {                                        // $2A0D7A beq
+    // $2A0DBE..$2A0DCC -- a draw spent purely on `tst.b`, then the real one below.
+    d1 = (drawByte242B3C(ram, rom) & 0x80) !== 0 ? 0x80 : 0x00;
+  } else if (i16(vel) < 0) {                              // $2A0D7E bpl
+    if (i16(ram.u16(a6 + posOff)) > 0x5a00) return;       // $2A0D82 cmpi.w/bgt
+    d1 = 0x00;                                            // $2A0D8C move.b #$0,d1
+  } else {
+    if (i16(ram.u16(a6 + posOff)) < 0x6400) return;       // $2A0DA0 cmpi.w/blt
+    d1 = 0x80;                                            // $2A0DAA move.b #$80,d1
+  }
+  const drawn = (drawByte242B3C(ram, rom) << 24) >> 24;   // $2A0D90 jsr $242B3C
+  const d0 = ((drawn >> 1) + 4) & 0xff;                   // $2A0D96 asr.b / $2A0D98 addi.b
+  ram.setU16(a6 + velOff,                                 // $2A0DEA move.w d2,$198(a6)
+    u16(ctx.tables.shotVector(d0, d1).dy));               // $2A0DE4 jsr $241D34
+}
+
+/**
+ * `$2A0D16` arm 1, bit 0 of `$2(a4)` -- THE PODS OPEN, and the latch that ends it.
+ *
+ * `$6(a4)` grows by 4 a frame and is then applied, so the spread ACCELERATES rather
+ * than moving at a constant rate. `$18E(a6)` goes down while `$192(a6)` goes up, which
+ * is what drives the two pods apart through the placer.
+ */
+function f5OpenPods2A0D16(ram, rom, ctx, slot) {
+  const a6 = ctx.bossSubRec;
+  if (ram.u16(a6 + 0x18e) === 0xf000) return;             // $2A0D20 cmpi.w/beq
+  ram.setU16(slot + 0x06, u16(ram.u16(slot + 0x06) + 4)); // $2A0D2A addi.w #$4
+  const step = ram.u16(slot + 0x06);                      // $2A0D30 move.w $6(a4),d0
+  ram.setU16(a6 + 0x18e, u16(ram.u16(a6 + 0x18e) - step));  // $2A0D34 sub.w
+  ram.setU16(a6 + 0x192, u16(ram.u16(a6 + 0x192) + step));  // $2A0D38 add.w
+  if (i16(ram.u16(a6 + 0x192)) < 0x0e00) return;          // $2A0D3C cmpi.w/blt
+
+  // $2A0D46 -- THE LATCH: both offsets pinned, bit 0 traded for bits 1 AND 2, so the
+  // patrol and the attack cycle both come alive on this one frame.
+  ram.setU16(a6 + 0x192, 0x0e00);                         // $2A0D46
+  ram.setU16(a6 + 0x18e, 0xf200);                         // $2A0D4C
+  ram.setU8(slot + 0x02, (ram.u8(slot + 0x02) & ~0x01) | 0x06);  // $2A0D52..$2A0D5E
+  ram.setU16(a6 + 0x198, 0);                              // $2A0D64
+  ram.setU16(a6 + 0x19a, 0);                              // $2A0D6A
+  ram.setU16(slot + 0x0a, 0);                             // $2A0D70
+  aimPod2A0D76(ram, rom, ctx, 0x198, 0x82);               // $2A0D76
+  aimPod2A0D76(ram, rom, ctx, 0x19a, 0xa2);               // $2A0DEE
+
+  // $2A0E66 -- the tail, which BOTH aim blocks' position gates branch straight to, so
+  // it runs whether or not either pod re-aimed. `$10` and `$14` are WORDS here and
+  // BYTES in arms 5 and 6: `$10`/`$11` and `$14`/`$15` are a value and its period.
+  ram.setU16(slot + 0x04, 0x0010);                        // $2A0E66
+  ram.setU16(slot + 0x0c, 0x0010);                        // $2A0E6C
+  ram.setU16(slot + 0x10, 0x0808);                        // $2A0E72
+  ram.setU16(slot + 0x12, 0x0000);                        // $2A0E78
+  ram.setU16(slot + 0x14, 0x0004);                        // $2A0E7E
+}
+
+/**
+ * `$2A0E84` arm 2 -- THE DESCENDANTS, four gates on the bits of `$3(a4)`. Every one
+ * refuses while the scripts it would replace are still running, which is what keeps
+ * the limb scripts from being double-started, and hands its bit to the next gate so
+ * the chain advances at most one step per call... except that each gate re-reads
+ * `$3(a4)`, so bit 0 handing off to bit 1 lets bit 1 run on the SAME frame.
+ *
+ * Bits 0 and 2 are the same gate with a different successor: this is a ping-pong that
+ * restarts A3 5 and A3 7 twice per attack cycle.
+ */
+function f5Descendants2A0E84(ram, slot) {
+  const bit = (m) => (ram.u8(slot + 0x03) & m) !== 0;
+  const swap = (clear, set) =>
+    ram.setU8(slot + 0x03, (ram.u8(slot + 0x03) & ~clear) | set);
+
+  if (bit(0x01)) {                                        // $2A0E84 btst #$0,$3(a4)
+    if (!a3Running2599B4(ram, 6) && !a3Running2599B4(ram, 8)) {   // $2A0E8E/$2A0E9A
+      a3Start259962(ram, 5);                              // $2A0EA6
+      a3Start259962(ram, 7);                              // $2A0EAE
+      swap(0x01, 0x02);                                   // $2A0EB6/$2A0EBC
+    }
+  }
+  if (bit(0x02)) {                                        // $2A0EC2
+    if (!a3Running2599B4(ram, 5) && !a3Running2599B4(ram, 7)) {   // $2A0ECC/$2A0ED8
+      a1Start259A18(ram, 8);                              // $2A0EE4
+      swap(0x02, 0x00);                                   // $2A0EEC bclr only
+    }
+  }
+  if (bit(0x04)) {                                        // $2A0EF2
+    if (!a3Running2599B4(ram, 6) && !a3Running2599B4(ram, 8)) {   // $2A0EFC/$2A0F08
+      a3Start259962(ram, 5);                              // $2A0F14
+      a3Start259962(ram, 7);                              // $2A0F1C
+      swap(0x04, 0x08);                                   // $2A0F24/$2A0F2A
+    }
+  }
+  if (bit(0x08)) {                                        // $2A0F30
+    if (!a3Running2599B4(ram, 5) && !a3Running2599B4(ram, 7)) {   // $2A0F3A/$2A0F46
+      swap(0x08, 0x00);                                   // $2A0F52
+    }
+  }
+}
+
+/**
+ * `$2A0F58` arm 3, bit 1 of `$2(a4)` -- THE PATROL, and it never turns off: arm 1's
+ * latch sets bit 1 and nothing in F5 clears it, so the pods keep sweeping the long
+ * axis for the rest of the fight while the attack cycle runs beside them.
+ *
+ * `$4(a4)` counts down and floors at zero and NOTHING here gates on it -- both sides
+ * of `tst.w/beq` reach the aim. Not a mistake to tidy up: the aim's own position gates
+ * are what pace the re-aiming.
+ */
+function f5Patrol2A0F58(ram, rom, ctx, slot) {
+  const a6 = ctx.bossSubRec;
+  if (ram.u16(slot + 0x04) !== 0) {                       // $2A0F62 tst.w/beq
+    ram.setU16(slot + 0x04, u16(ram.u16(slot + 0x04) - 1));  // $2A0F6A subq.w
+  }
+  aimPod2A0D76(ram, rom, ctx, 0x198, 0x82);               // $2A0F6E
+  aimPod2A0D76(ram, rom, ctx, 0x19a, 0xa2);               // $2A0FE6
+  // $2A105E -- the integration, and it is the LONG-axis offsets, not arm 1's.
+  ram.setU16(a6 + 0x18c, u16(ram.u16(a6 + 0x18c) + ram.u16(a6 + 0x198)));  // $2A1062
+  ram.setU16(a6 + 0x190, u16(ram.u16(a6 + 0x190) + ram.u16(a6 + 0x19a)));  // $2A106A
+}
+
+/**
+ * `$2A106E` arm 4, bit 2 of `$2(a4)` -- the attack cycle's first beat. Two halves in
+ * one arm: a one-shot on `$C(a4)` reaching zero that retires A1 8 and starts A1 6 and
+ * A1 10, and then a rendezvous that waits for A1 10 to finish before handing over to
+ * bit 3.
+ *
+ * The gate is `$2599B4` with D0 = 4, so it is A3 4 and NOT A1 4.
+ */
+function f5Salvo2A106E(ram, slot) {
+  if (a3Running2599B4(ram, 4)) return;                    // $2A1078 jsr $2599B4/bcs
+  if (ram.u16(slot + 0x0c) !== 0) {                       // $2A1084 tst.w/beq
+    ram.setU16(slot + 0x0c, u16(ram.u16(slot + 0x0c) - 1));  // $2A108C subq.w
+    if (ram.u16(slot + 0x0c) !== 0) return;               // $2A1090 bne -- fires once
+    a1Stop259B08(ram, 8);                                 // $2A1094
+    a1Start259A18(ram, 6);                                // $2A109C
+    a1Start259A18(ram, 0x0a);                             // $2A10A4
+    ram.setU8(slot + 0x03, ram.u8(slot + 0x03) | 0x04);   // $2A10AC bset #$2,$3(a4)
+  }
+  if (a1Running259A4A(ram, 0x0a)) return;                 // $2A10B2 jsr $259A4A/bcs
+  a1Stop259B08(ram, 6);                                   // $2A10BE
+  a1Stop259B08(ram, 7);                                   // $2A10C6
+  a3Start259962(ram, 6);                                  // $2A10CE
+  a3Start259962(ram, 8);                                  // $2A10D6
+  ram.setU8(slot + 0x02, (ram.u8(slot + 0x02) & ~0x04) | 0x08);  // $2A10DE/$2A10E4
+  ram.setU16(slot + 0x0c, 0x0040);                        // $2A10EA
+}
+
+/**
+ * `$2A10F0` arm 5, bit 3 of `$2(a4)` -- the beat that calls MAIN7 in. `subq.w` with no
+ * `tst.w` first, so a counter that is already zero WRAPS to `$FFFF` and the arm waits
+ * another $FFFF frames; arm 4 always leaves `$40` behind, which is why that never
+ * happens in practice.
+ *
+ * `$11(a4)` is a difficulty ramp that arm 1 already leaves saturated: the tail writes
+ * `$10(a4) = $0808`, so the byte at `$11` is 8, `cmpi.b #$8` matches on the first pass
+ * and the `addq.b` never runs. Transcribed as-is rather than "simplified" away -- a
+ * later loop may well arrive with a smaller value.
+ */
+function f5Volley2A10F0(ram, slot) {
+  ram.setU16(slot + 0x0c, u16(ram.u16(slot + 0x0c) - 1));  // $2A10FA subq.w
+  if (ram.u16(slot + 0x0c) !== 0) return;                 // $2A10FE bne
+  ram.setU8(slot + 0x03, ram.u8(slot + 0x03) | 0x01);     // $2A1102 bset #$0,$3(a4)
+  a3Start259962(ram, 3);                                  // $2A1108
+  seqStart2598D0(ram, 7);                                 // $2A1110 -- MAIN7
+  ram.setU8(slot + 0x02, (ram.u8(slot + 0x02) & ~0x08) | 0x10);  // $2A1118/$2A111E
+  ram.setU8(slot + 0x10, ram.u8(slot + 0x11));            // $2A1124
+  if (ram.u8(slot + 0x11) !== 8) {                        // $2A112A cmpi.b #$8/beq
+    ram.setU8(slot + 0x11, (ram.u8(slot + 0x11) + 1) & 0xff);  // $2A1134 addq.b
+  }
+}
+
+/**
+ * `$2A1138` arm 6, bit 4 of `$2(a4)` -- the repeating shot, and the one place in F5
+ * that writes THROUGH the started slot: `$259A18` returns A0 and `$6(a0)` takes
+ * `$12(a4)`, which toggles 0/1, so consecutive A1 9 starts alternate sides.
+ *
+ * `subq.b #1,$14(a4) / bcc` is the OLD-ZERO BORROW: it reloads on the frame the
+ * counter was ALREADY zero, not the frame it reaches zero. Arm 1's tail wrote the WORD
+ * `$14(a4) = $0004`, so the byte at `$14` starts at 0 and the byte at `$15` is 4 --
+ * counter and period in one word, and the very first pass borrows.
+ */
+function f5Sweep2A1138(ram, slot) {
+  if (a3Running2599B4(ram, 3)) return;                    // $2A1142
+  if (a1Running259A4A(ram, 9)) return;                    // $2A114E
+  if (!due8(ram, slot + 0x14)) return;                    // $2A115A subq.b/bcc
+  ram.setU8(slot + 0x14, ram.u8(slot + 0x15));            // $2A1162 the RELOAD
+  const a0 = a1Start259A18(ram, 9);                       // $2A1168
+  ram.setU16(a0 + 0x06, ram.u16(slot + 0x12));            // $2A1170 move.w d0,$6(a0)
+  ram.setU16(slot + 0x12, u16(ram.u16(slot + 0x12) + 1) & 1);  // $2A1176/$2A117A
+  ram.setU8(slot + 0x02, (ram.u8(slot + 0x02) & ~0x10) | 0x20);  // $2A1180/$2A1186
+  ram.setU16(slot + 0x0c, 0x00e0);                        // $2A118C
+}
+
+/**
+ * `$2A1192` arm 7, bit 5 of `$2(a4)` -- THE CYCLE CLOSES. It restarts MAIN4 and A3 4
+ * and hands the bit back to 2, so bits 2 -> 3 -> 4 -> 5 -> 2 is F5's attack loop and
+ * the fight repeats until the boss dies.
+ */
+function f5Rearm2A1192(ram, slot) {
+  if (a1Running259A4A(ram, 9)) return;                    // $2A119C
+  ram.setU16(slot + 0x0c, u16(ram.u16(slot + 0x0c) - 1));  // $2A11A8 subq.w
+  if (ram.u16(slot + 0x0c) !== 0) return;                 // $2A11AC bne
+  seqStart2598D0(ram, 4);                                 // $2A11B0 -- MAIN4 again
+  a3Start259962(ram, 4);                                  // $2A11B8
+  ram.setU8(slot + 0x02, (ram.u8(slot + 0x02) & ~0x20) | 0x04);  // $2A11C0/$2A11C6
+  ram.setU16(slot + 0x0c, 0x0040);                        // $2A11CC
+}
+
+/**
+ * `$2A0D16` -- F5's STEP, the Stage-4 boss's second-phase conductor, and it is a BIT
+ * machine rather than a state index: SEVEN arms, each gated on its own bit of
+ * `$2(a4)`, all reached in one call and all re-reading the byte. An arm that hands its
+ * bit to the next therefore lets that arm run on the SAME frame, and arms 1 and 3 are
+ * both live at once for the whole fight.
+ *
+ * Nothing here needed a new helper. Every scheduler call it makes was already exported
+ * -- `$2598D0`, `$2599B4`, `$259962`, `$259A18`, `$259A4A`, `$259B08` -- and both aim
+ * blocks resolve to `MoveTables.shotVector`. What is still missing is only the SCRIPTS
+ * it arms: A3 3/4/5/6/7/8, A1 6/7/8/9/10 and MAIN7. Those are unregistered, so the
+ * next scheduler walk throws by address, which is the next wave's inventory.
+ */
+export function f5Step2A0D16(ram, rom, ctx, slot) {
+  const arm = (m) => (ram.u8(slot + 0x02) & m) !== 0;
+  if (arm(0x01)) f5OpenPods2A0D16(ram, rom, ctx, slot);   // $2A0D16
+  f5Descendants2A0E84(ram, slot);                         // $2A0E84 -- ungated
+  if (arm(0x02)) f5Patrol2A0F58(ram, rom, ctx, slot);     // $2A0F58
+  if (arm(0x04)) f5Salvo2A106E(ram, slot);                // $2A106E
+  if (arm(0x08)) f5Volley2A10F0(ram, slot);               // $2A10F0
+  if (arm(0x10)) f5Sweep2A1138(ram, slot);                // $2A1138
+  if (arm(0x20)) f5Rearm2A1192(ram, slot);                // $2A1192
+}
+
+/** `$2A0CF6` -- F5's INIT, and it FALLS THROUGH: `$2A0D10`'s last word ends exactly at
+ *  `$2A0D16` with no `rts` between them, so the arming frame also spends its first
+ *  spread step. The same trap W224 documented for F1. */
+export function f5Init2A0CF6(ram, rom, ctx, slot) {
+  seqStart2598D0(ram, 4);                                 // $2A0CF8 -- MAIN4
+  ram.setU8(slot + 0x02, 1);                              // $2A0CFE
+  ram.setU8(slot + 0x03, 0);                              // $2A0D04
+  ram.setU16(slot + 0x04, 0);                             // $2A0D0A
+  ram.setU16(slot + 0x06, 0);                             // $2A0D10
+  f5Step2A0D16(ram, rom, ctx, slot);                      // falls through
+}
+
 registerScript(0x2a017a, f0_2A017A);
 registerScript(0x2a019a, f0Step2A019A);
 registerScript(0x29f5bc, main0Init29F5BC);
@@ -1229,3 +1503,5 @@ registerScript(0x2a13cc, d0Init2A13CC);
 registerScript(0x2a13e8, d0Step2A13E8);
 registerScript(0x29f8cc, main4Init29F8CC);
 registerScript(0x29f8f0, main4Step29F8F0);
+registerScript(0x2a0cf6, f5Init2A0CF6);
+registerScript(0x2a0d16, f5Step2A0D16);
