@@ -3374,6 +3374,10 @@ export const TYPE37_ART = Object.freeze({
   body: 0x2a60f8, table: 0x264986, frames: 128,
 });
 
+export const TYPE38_FAMILY_ART = Object.freeze([
+  0x2a63fc, 0x2a67c0, 0x2a6a94,
+]);
+
 export const TYPE3C_ART = Object.freeze({
   centre: 0x174040, left: 0x1741cc, right: 0x1742e8,
 });

@@ -113,7 +113,8 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 import { BGELEM_HANDLERS } from '../src/background.js';
 import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE90_ART, TYPE91_ART, TYPE92_ART,
   TYPE93_ART, TYPE94_ART, TYPE95_ART, TYPE96_ART, TYPE97_ART,
-  TYPE3E_ART, TYPE36_ART, TYPE37_ART, TYPE3C_ART, TYPE3B_ART } from '../src/handlers.js';
+  TYPE3E_ART, TYPE36_ART, TYPE37_ART, TYPE38_FAMILY_ART,
+  TYPE3C_ART, TYPE3B_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -708,6 +709,9 @@ const ITEM_SHARD = 12;
  *
  *  `[shard, offs, why]`. */
 const W81_IMMEDIATES = Object.freeze([
+  ...TYPE38_FAMILY_ART.map((offs, i) => [17, offs,
+    `TYPE $${(0x38 + i).toString(16).toUpperCase()} fixed hull, copied from `
+      + `record prototype +$28 and emitted by shared handler $2647A6`]),
   [17, TYPE3C_ART.centre,
     'TYPE $3C centre body, emitted directly by $266B8E at size $0E38'],
   [17, TYPE3C_ART.left,

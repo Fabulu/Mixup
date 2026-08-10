@@ -523,6 +523,29 @@ BODY.set(0x264740, (ram, rom, a5, a6, unported) => {
   ram.setU16(a6 + S.posX, u16(ram.u16(a6 + S.posX) - 0x0080)); // $26476A
 });
 
+// --- types $38/$39/$3A ($264C1C/$264C84/$264CEC): three data variants of
+// type $37's shared rotating-body handler. Each owns one fixed hull and one
+// long-form hitbox prototype; only the post-movement position bias differs.
+function init37Variant(ram, rom, a5, a6, unported,
+  subProto, recordProto, xBias, yBias = 0) {
+  loadSubProto(ram, rom, a5, a6, subProto);
+  loadRecordProto(ram, rom, a5, recordProto, 0x0d);
+  readInitPosition(ram, rom, a5, unported);
+  if (yBias !== 0)
+    ram.setU16(a6 + S.posY, u16(ram.u16(a6 + S.posY) - yBias));
+  ram.setU16(a6 + S.posX, u16(ram.u16(a6 + S.posX) - xBias));
+}
+
+BODY.set(0x264c1c, (ram, rom, a5, a6, unported) =>
+  init37Variant(ram, rom, a5, a6, unported,
+    0x264c60, 0x264c44, 0x0180));
+BODY.set(0x264c84, (ram, rom, a5, a6, unported) =>
+  init37Variant(ram, rom, a5, a6, unported,
+    0x264cc8, 0x264cac, 0x0400));
+BODY.set(0x264cec, (ram, rom, a5, a6, unported) =>
+  init37Variant(ram, rom, a5, a6, unported,
+    0x264d36, 0x264d1a, 0x0600, 0x0400));
+
 // --- type $3C ($266968): Stage-3's opening/closing six-muzzle formation.
 // The zero run length selects one sub-record. Everything else is data-driven:
 // one long prototype, 18 record words, then the shared movement initializer.

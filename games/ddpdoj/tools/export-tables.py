@@ -505,6 +505,8 @@ SHOT_WINDOWS.extend([
     (0x264738, 0x04DC, "W194: complete stage-3 type $37 closure: run-length "
                        "stub, init, prototypes, shared handler, 128-entry "
                        "animation table, muzzle vectors and death row"),
+    (0x264C14, 0x013E, "W197: complete adjacent stage-3 type $38/$39/$3A "
+                       "init/prototype trio through the type $3B stub"),
     (0x266960, 0x03CE, "W195: complete stage-3 type $3C closure: run-length "
                        "stub, init, record/sub prototypes, muzzle offsets, "
                        "state machine, bullet patterns and death rows"),
@@ -2255,6 +2257,24 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W196: type $3B death-effect rows drifted")
     if d[0x2345D2:0x2345DA] != bytes.fromhex("0064000038011013"):
         raise SystemExit("W196: next Stage-3 frontier is not type $38 at $2345D2")
+    trio_records = (0x2345D2, 0x23469A, 0x23480A)
+    if b"".join(d[a:a + 8] for a in trio_records) != bytes.fromhex(
+            "0064000038011013008300003901101400bf00003a011015"):
+        raise SystemExit("W197: stage-3 type $38/$39/$3A occurrences drifted")
+    if d[0x2679E4:0x2679FC] != bytes.fromhex(
+            "00264c14002647a600264c7c002647a600264ce4002647a6"):
+        raise SystemExit("W197: type $38/$39/$3A registry rows drifted")
+    if hashlib.sha256(d[0x23525C:0x23526E]).hexdigest() != (
+            "e5e5ca43932f82292693843c5f0402861cf291cc7a612ecf2ed3b1f3e99769af"):
+        raise SystemExit("W197: type $38/$39/$3A movement streams drifted")
+    if hashlib.sha256(d[0x264C14:0x264D52]).hexdigest() != (
+            "9d8558a5cac614b16ffafe3a110a29c7a89ecf7b71d89b25d485209aef02fff8"):
+        raise SystemExit("W197: type $38/$39/$3A init/prototype closure drifted")
+    if b"".join(d[a:a + 4] for a in (0x264C56, 0x264CBE, 0x264D2C)) != (
+            bytes.fromhex("002a63fc002a67c0002a6a94")):
+        raise SystemExit("W197: type $38/$39/$3A fixed hull pointers drifted")
+    if d[0x2348B2:0x2348BA] != bytes.fromhex("00e0000012800028"):
+        raise SystemExit("W197: next Stage-3 frontier is not type $12 at $2348B2")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and
