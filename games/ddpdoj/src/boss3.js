@@ -9,13 +9,14 @@ import { scoreHit } from './score.js';
 import { livePlayers2428A6 } from './boss.js';
 import { applyVelocity } from './movement.js';
 import { AimTables, aim64, aim256FromCaller, slew64, targetSelect } from './aim.js';
-import { drawByte242B3C } from './rng.js';
+import { drawByte242B3C, drawWord242EC2 } from './rng.js';
 import { fire as fireBullet, WriteLog } from './bullets.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { runStageAdvance242952 } from './stageend.js';
 import {
   runScheduler25962E, registerScript, seqStart2598D0, a3Start259962,
+  a3StartSlot259962,
   a3Running2599B4, a3Stop2599EC, a4Start25980C, a4Clear2598A2,
   a4Stop259876, a1Clear259B34, a2Run2598E6, a2Stop25994A,
   a1Start259A18, a1Running259A4A, a1Stop259B08, spread2595F2,
@@ -327,6 +328,154 @@ function f2Init29D010(ram, rom, ctx, a4) {
   f2Step29D028(ram, rom, ctx, a4);                    // INIT falls through
 }
 
+// --------------------------------------------------------------------- W206
+// F3 steers the boss through MAIN2 while D4 opens the centre assembly.  Its
+// E5 leaf runs a six-muzzle volley cycle, D5 closes the assembly, and F6
+// hands off to the still-loud F4 frontier.
+
+function main2Step29C41A(ram, rom, ctx, slot) {
+  const a6 = ctx.bossSubRec;
+  applyVelocity(ram, ctx.tables, ctx.bossRec);
+
+  if (ram.u8(slot + 1) !== 0) {
+    const facing = slew64(ram.u8(a6 + 0x1b), ram.u8(slot));
+    ram.setU8(a6 + 0x1b, facing);
+    if (facing === ram.u8(slot)) ram.setU8(slot + 1, 0);
+  }
+
+  let target = drawByte242B3C(ram, rom);
+  const x = u16(ram.u16(a6 + 0x04) + 0x2800);
+  if (x < 0x3600) target = (target + 0x10) & 0xff;
+  else if (x >= 0x5200) target = (target + 0x30) & 0xff;
+  else {
+    const y = ram.u16(a6 + 0x02);
+    if (y >= 0x6a00) target = (target + 0x20) & 0xff;
+    else if (y >= 0x6600) {
+      placeBoss3Parts29C300(ram, a6);
+      return;
+    }
+  }
+  ram.setU8(slot, target & 0x3f);
+  ram.setU8(slot + 1, 1);
+  placeBoss3Parts29C300(ram, a6);
+}
+
+function main2Init29C412(ram, rom, ctx, slot) {
+  ram.setU16(slot, 0);
+  main2Step29C41A(ram, rom, ctx, slot);                // INIT falls through
+}
+
+function d4_29C766(ram, _rom, ctx, a4) {
+  if (!due8(ram, a4 + 0x02)) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+  const a6 = ctx.bossSubRec;
+  ram.setU16(a6 + 0xa8, u16(ram.u16(a6 + 0xa8) + 4));
+  if (ram.u16(a6 + 0xa8) === 0x18) ram.setU16(a4, 0);
+}
+
+function d5Step29C788(ram, _rom, ctx, a4) {
+  if (!due8(ram, a4 + 0x02)) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+  const a6 = ctx.bossSubRec;
+  ram.setU16(a6 + 0xa8, u16(ram.u16(a6 + 0xa8) - 4));
+  if (ram.u16(a6 + 0xa8) === 0) ram.setU16(a4, 0);
+}
+
+function d5Init29C782(ram, rom, ctx, a4) {
+  ram.setU16(a4 + 0x02, 1);
+  d5Step29C788(ram, rom, ctx, a4);                    // INIT falls through
+}
+
+function e5Step29E14C(ram, rom, ctx, a4) {
+  if (!due8(ram, a4 + 0x02)) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x06));
+
+  const first = (ram.u8(a4 + 0x1f) & 1) === 0;
+  ram.setU8(a4 + 0x1f, ram.u8(a4 + 0x1f) | 1);
+  if (first) {
+    let direction = drawWord242EC2(ram, rom) & 0xff;
+    if ((direction & 0x80) === 0) direction = (-direction) & 0xff;
+    ram.setU8(a4 + 0x1e, direction);
+  }
+
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  const d2 = ram.u32(a6 + 0x02), d4 = 0, d6 = ram.u8(a4 + 0x08);
+  let d1 = ram.u8(a4 + 0x1e);
+  const vectors = [0xfb40f780, 0xf540f640, 0xf100f9c0,
+    0xfb400880, 0xf54009c0, 0xf1000640];
+  d1 = (d1 + d6) & 0xff;
+  shoot(ram, rom, ctx, 0x29e18a, 0x2816f6,
+    { d0: ram.u32(a4 + 0x0e), d1, d2, d3: vectors[0], d4, d5: 0, a5 });
+  d1 = (d1 - d6) & 0xff;
+  shoot(ram, rom, ctx, 0x29e198, 0x2817a8,
+    { d0: ram.u32(a4 + 0x12), d1, d2, d3: vectors[1], d4, d5: 0, a5 });
+  d1 = (d1 - d6) & 0xff;
+  shoot(ram, rom, ctx, 0x29e1a6, 0x281764,
+    { d0: ram.u32(a4 + 0x0e), d1, d2, d3: vectors[2], d4, d5: 0, a5 });
+  d1 = (d1 + 0x80) & 0xff;
+  shoot(ram, rom, ctx, 0x29e1b2, 0x2816f6,
+    { d0: ram.u32(a4 + 0x0e), d1, d2, d3: vectors[3], d4, d5: 0, a5 });
+  d1 = (d1 + d6) & 0xff;
+  shoot(ram, rom, ctx, 0x29e1c0, 0x2817a8,
+    { d0: ram.u32(a4 + 0x12), d1, d2, d3: vectors[4], d4, d5: 0, a5 });
+  d1 = (d1 + d6) & 0xff;
+  shoot(ram, rom, ctx, 0x29e1ce, 0x281764,
+    { d0: ram.u32(a4 + 0x0e), d1, d2, d3: vectors[5], d4, d5: 0, a5 });
+  ram.setU8(a4 + 0x1e, ram.u8(a4 + 0x1e) + ram.u8(a4 + 0x09));
+
+  if (!due8(ram, a4 + 0x04)) return;
+  ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));
+  ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x0c));
+  ram.setU8(a4 + 0x09, -ram.u8(a4 + 0x09));
+  ram.setU8(a4 + 0x1f, ram.u8(a4 + 0x1f) & 0xfe);
+  const speedStep = ram.u16(a4 + 0x1a);
+  ram.setU16(a4 + 0x0e, u16(ram.u16(a4 + 0x0e) + speedStep));
+  ram.setU16(a4 + 0x12, u16(ram.u16(a4 + 0x12) + speedStep));
+
+  if (!due8(ram, a4 + 0x0a)) return;
+  ram.setU16(a6 + 0x112, Math.min(0x0c,
+    u16(ram.u16(a6 + 0x112) + ram.u16(a4 + 0x1c))));
+  a1Stop259B08(ram, 5);
+  a3Start259962(ram, 5);
+}
+
+function e5Init29E100(ram, rom, ctx, a4) {
+  ram.setU16(a4 + 0x02, rom.u16(0x29e0fc));
+  const row = rom.u32(0x29e02c + spread2595F2() * 4);
+  for (let i = 0; i < 11; i++)
+    ram.setU16(a4 + 0x04 + i * 2, rom.u16(row + i * 2));
+  ram.setU16(a4 + 0x1a, rom.u16(0x29e0fe));
+  const bias = ram.u16(ctx.bossSubRec + 0x112);
+  ram.setU16(a4 + 0x0e, u16(ram.u16(a4 + 0x0e) + bias));
+  ram.setU16(a4 + 0x12, u16(ram.u16(a4 + 0x12) + bias));
+  e5Step29E14C(ram, rom, ctx, a4);                    // INIT falls through
+}
+
+function f6_29D086(ram, _rom, _ctx, a4) {
+  if (a1Running259A4A(ram, 5) || a3Running2599B4(ram, 5)) return;
+  a4Start25980C(ram, 4);
+  ram.setU16(a4, 0);
+}
+
+function f3Step29D068(ram, _rom, _ctx, a4) {
+  if (a3Running2599B4(ram, 4)) return;
+  a1Start259A18(ram, 5);
+  a4Start25980C(ram, 6);
+  ram.setU16(a4, 0);
+}
+
+function f3Init29D03E(ram, rom, ctx, a4) {
+  const a6 = ctx.bossSubRec;
+  seqStart2598D0(ram, 2);
+  const d4 = a3StartSlot259962(ram, 4);
+  ram.setU8(d4 + 0x02, ram.u8(a6 + 0x114));
+  ram.setU8(d4 + 0x03, 1);
+  if (ram.u8(a6 + 0x114) > 0x10)
+    ram.setU8(a6 + 0x114, ram.u8(a6 + 0x114) - 0x30);
+  f3Step29D068(ram, rom, ctx, a4);                    // INIT falls through
+}
+
 function d0Step29C53E(ram, _rom, ctx, a4) {
   const a6 = ctx.bossSubRec;
   if (ram.u8(a6 + 0x8c) === 0) {
@@ -525,3 +674,13 @@ registerScript(0x29bfd8, (ram, rom, ctx) => object45(ram, rom, ctx, true));
 registerScript(0x29c06e, (ram, rom, ctx) => object67(ram, rom, ctx, false));
 registerScript(0x29c0a6, (ram, rom, ctx) => object67(ram, rom, ctx, true));
 registerScript(0x29c026, object8_29C026);
+registerScript(0x29d03e, f3Init29D03E);
+registerScript(0x29d068, f3Step29D068);
+registerScript(0x29c412, main2Init29C412);
+registerScript(0x29c41a, main2Step29C41A);
+registerScript(0x29c766, d4_29C766);
+registerScript(0x29e100, e5Init29E100);
+registerScript(0x29e14c, e5Step29E14C);
+registerScript(0x29c782, d5Init29C782);
+registerScript(0x29c788, d5Step29C788);
+registerScript(0x29d086, f6_29D086);

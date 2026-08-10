@@ -191,23 +191,27 @@ export function a2StopAll259924(ram) {
   }
 }
 
-/** `$259962` -- START A3 SCRIPT D0.  If a slot already carries it, return the
- *  slot's parameter block ($812BB4, which the ROM hands back in A0 and the
- *  stage-1 boss's caller ignores); otherwise claim the first EMPTY slot and
- *  write `$8000 | D0`.  Ten slots; a full table is a SILENT DROP. */
-export function a3Start259962(ram, d0) {
+/** `$259962` -- START A3 SCRIPT D0 and return A0 exactly as the ROM does.
+ * A duplicate or full table returns the overflow block `$812BB4`; a fresh
+ * claim returns its real slot.  F3 `$29D03E` writes parameters through A0. */
+export function a3StartSlot259962(ram, d0) {
   for (let i = 0; i < SCHED.a3Slots; i++) {            // $25996C moveq #$9
     const a = SCHED.a3Base + i * SCHED.a3Stride;
     const s = ram.u16(a);                              // $25996E
-    if (s !== 0 && (s & 0xff) === u16(d0)) return false; // $259978 cmp.w/beq
+    if (s !== 0 && (s & 0xff) === u16(d0)) return SCHED.a3Overflow;
   }
   for (let i = 0; i < SCHED.a3Slots; i++) {            // $25998C moveq #$9
     const a = SCHED.a3Base + i * SCHED.a3Stride;
     if (ram.u16(a) !== 0) continue;                    // $25998E tst.w/bne
     ram.setU16(a, u16(d0 | 0x8000));                   // $259994/$259998
-    return true;
+    return a;
   }
-  return false;                                        // ten slots, all taken
+  return SCHED.a3Overflow;                              // $2599A8
+}
+
+/** Boolean compatibility wrapper used by callers that ignore A0. */
+export function a3Start259962(ram, d0) {
+  return a3StartSlot259962(ram, d0) !== SCHED.a3Overflow;
 }
 
 /** `$2599EC` -- stop every A3 slot carrying script D0. */

@@ -2076,6 +2076,7 @@ SHOT_WINDOWS.extend([
     (0x266D2E, 0x04B2, "W203: Stage-3 type $16 runtime closure $266D2E..$2671E0"),
     (0x29BBF4, 0x1040, "W204: Stage-3 type $A0 entry/arrival runtime closure $29BBF4..$29CC34"),
     (0x29D010, 0x1006, "W205: Stage-3 boss F2/MAIN1/E6/E7 runtime closure $29D010..$29E016"),
+    (0x29E016, 0x0340, "W206: Stage-3 boss E5 data/code closure $29E016..$29E356"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
@@ -2412,6 +2413,9 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if hashlib.sha256(d[0x29D010:0x29E016]).hexdigest() != (
             "60f53b0359f33f730e8912b52bf284e092e5c74fc6a7019dde9be4380b785e8c"):
         raise SystemExit("W205: F2/MAIN1/E6/E7 runtime closure drifted")
+    if hashlib.sha256(d[0x29E016:0x29E356]).hexdigest() != (
+            "045a636e003de6adc6a0dc461dce82b6db42ca8cad8e3da4a805dda02ec92a01"):
+        raise SystemExit("W206: E5 data/code closure drifted")
     if d[0x29D27A:0x29D28A] != bytes.fromhex(
             "0029dcee0029dd3e0029deca0029df26"):
         raise SystemExit("W205: A1 E6/E7 pointer rows drifted")
