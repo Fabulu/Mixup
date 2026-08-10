@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-10, after W212 publication.
+Last updated: 2026-08-10, after W213 publication.
 
 ## Current directive
 
@@ -356,11 +356,11 @@ These are also in `PROMPT.md` and `AGENTS.md`, but they are load-bearing:
 
 ## Latest completed delivery
 
-W212 translates all five Stage-4 type `$9B` records, their four movement
-streams, linked two-body hit behavior, scroll/X-region lifetime latch, expanding
-separation, palette selection, and both direct sprite streams. Stage 4 now
-covers 351/382 records and 22/29 types. All 1,582 tests, the web bundle, fetch
-gate, ROM-leak guard, and deployment confirmation are green as build
-`20260810074943`. The next live frontier is type `$A2` at `$235930`, body
-`$27CFAC`, handler `$27D072`, and movement `$236B66..$236B6E`; the full-game
-goal remains active after every wave.
+W213 translates all eight Stage-4 type `$A2` records, their two movement
+variants, exact opening/fire/closing state machine, mirrored bullet program,
+damage and palette behavior, death effects, lingering cleanup, and 23 live
+sprite streams. Stage 4 now covers 359/382 records and 23/29 types. All 1,584
+tests, the web bundle, fetch gate, ROM-leak guard, and deployment confirmation
+are green as build `20260810082124`. The next live frontier is type `$9C` at
+`$235B48`, body `$27AD96`, handler `$27AEE0`, and movement
+`$236804..$23680E`; the full-game goal remains active after every wave.
