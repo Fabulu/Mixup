@@ -1120,6 +1120,70 @@ function d0Init2A13CC(ram, rom, ctx, slot) {
   d0Step2A13E8(ram, rom, ctx, slot);
 }
 
+/**
+ * `$29F8CC` / `$29F8F0` -- MAIN4, which F5's INIT starts with `seqStart2598D0(4)`.
+ * It walks the boss around FOUR waypoints, aiming and slewing at each, and hands the
+ * result to the same `placeBoss4Parts29F50E` every other MAIN uses.
+ *
+ * Every helper it needs was already in the port, which is the whole reason this is
+ * short:
+ *
+ *   $24203E  the aim64 CORE, self in D0/D1 and target in D2/D3   -> `aim64`
+ *   $242190  the one-step slew                                    -> `slew64`
+ *   $24249A  the distance body -- `$242494` loads D0/D1 from ($2,A6) and falls into
+ *            it, and MAIN4 enters at $24249A precisely because it has already put
+ *            its OWN values there                                 -> `dist242494`
+ *   $241812  the ship's vector routine                            -> `tables.vector`
+ *   $29F50E  the part placer                                      -> already here
+ *
+ * `$29F972` is FOUR waypoints of two words, which `andi.w #$F,$6(a4)` bounds, and
+ * $29F972 + $10 is $29F982 -- MAIN5's own entry in the A0 table at $29F498. Pinned by
+ * code, not by a run length.
+ */
+const MAIN4_WAYPOINTS = 0x29f972;
+
+export function main4Step29F8F0(ram, rom, ctx, slot) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  const cursor = ram.u16(slot + 0x06);                    // $29F8F6 adda.w $6(a4)
+  const wp = MAIN4_WAYPOINTS + cursor;
+  const d2 = rom.u16(wp), d3 = rom.u16(wp + 2);           // $29F8FA movem.w (a0)
+
+  // $29F8FE..$29F908 -- the boss's own position plus the two part offsets F5 is
+  // driving, which is what makes the walk track the opened pods.
+  const selfY = u16(ram.u16(a6 + 0x02) + ram.u16(a6 + 0x194));
+  const selfX = u16(ram.u16(a6 + 0x04) + ram.u16(a6 + 0x196));
+
+  aim64(aimTables(rom), selfY, selfX, d2, d3);            // $29F90C jsr $24203E
+  ram.setU8(a6 + 0x3b, slew64(ram.u8(a6 + 0x3b),          // $29F912..$29F91C
+    aim64(aimTables(rom), selfY, selfX, d2, d3)));
+
+  // $29F920..$29F94E -- the SAME waypoint again, this time for the distance test:
+  // within $400 and the cursor advances, masked to four entries.
+  if (i16(dist242494(selfY, selfX, d2, d3)) <= 0x400) {   // $29F942 cmpi.w #$400/bgt
+    ram.setU16(slot + 0x06, u16(cursor + 4) & 0x000f);    // $29F94A/$29F94E
+  }
+
+  // $29F954..$29F96E -- speed from ($3a,A6), heading from ($3b,A6), and the vector
+  // goes into the part offsets rather than the position: F5 opened the pods and MAIN4
+  // moves them.
+  const v = ctx.tables.vector(ram.u8(a6 + 0x3a), ram.u8(a6 + 0x3b));
+  ram.setU16(a6 + 0x194, u16(ram.u16(a6 + 0x194) + v.dy));  // $29F966
+  ram.setU16(a6 + 0x196, u16(ram.u16(a6 + 0x196) + v.dx));  // $29F96A
+  placeBoss4Parts29F50E(ram, ctx, slot);                  // $29F96E bra $29F50E
+  void a5;
+}
+
+export function main4Init29F8CC(ram, rom, ctx, slot) {
+  const a6 = ctx.bossSubRec;
+  ram.setU8(a6 + 0x1a, 0);                                // $29F8CC
+  ram.setU8(a6 + 0x1b, 0x20);                             // $29F8D2
+  ram.setU8(slot + 0x02, 0);                              // $29F8D8
+  ram.setU16(slot + 0x04, 0);                             // $29F8DE
+  ram.setU16(slot + 0x06, 0);                             // $29F8E4
+  ram.setU8(a6 + 0x3a, 6);                                // $29F8EA -- the SPEED
+  main4Step29F8F0(ram, rom, ctx, slot);                   // falls through
+}
+
 registerScript(0x2a017a, f0_2A017A);
 registerScript(0x2a019a, f0Step2A019A);
 registerScript(0x29f5bc, main0Init29F5BC);
@@ -1163,3 +1227,5 @@ registerScript(0x29f826, main3Init29F826);
 registerScript(0x29f840, main3Step29F840);
 registerScript(0x2a13cc, d0Init2A13CC);
 registerScript(0x2a13e8, d0Step2A13E8);
+registerScript(0x29f8cc, main4Init29F8CC);
+registerScript(0x29f8f0, main4Step29F8F0);

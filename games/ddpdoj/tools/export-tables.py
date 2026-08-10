@@ -549,6 +549,11 @@ SHOT_WINDOWS.extend([
     (0x2A37DC, 0x016C, "W223: Type-$41 stub, body, overlapping prototype, handler"),
     (0x29EC22, 0x0058, "W223: Type-$41 screen-clear impact gate"),
     (0x283D0C, 0x0040, "W223: Type-$41 direction attribute table"),
+    # W245: MAIN4's FOUR waypoints, two words each. `$29F8F6 adda.w $6(a4)` with the
+    # cursor masked by `andi.w #$F` bounds it at four, and $29F972 + $10 is $29F982 --
+    # MAIN5's own entry in the A0 table at $29F498. Pinned by code twice over.
+    (0x29F972, 0x0010, "W245 Stage-4 boss MAIN4's four waypoints, ending at "
+                       "$29F982's MAIN5 entry"),
     (0x2A019E, 0x037C, "W224: Stage-4 boss A4/F1 destruction transition and "
                        "four exact effect tables"),
     (0x29F80A, 0x00C2, "W224: Stage-4 boss MAIN2/MAIN3 movement through target"),
