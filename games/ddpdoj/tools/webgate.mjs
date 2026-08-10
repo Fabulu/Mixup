@@ -1197,7 +1197,10 @@ try {
         // using its movement-heading fallback, so this deterministic input
         // selects four fewer heading-art variants. The ROM-exact aim path is
         // pinned directly by w182type86.test.js.
-        11: { streams: 297, records: 12805, distinct: 97, first: 315,
+        // W216: 297 -> 346. Type $A3 and its Pool-A impact families add 49
+        // structure-shard streams. This Stage-1 scenario cannot execute those
+        // Stage-4 paths, so records, distinct images and first frame stay put.
+        11: { streams: 346, records: 12805, distinct: 97, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };
