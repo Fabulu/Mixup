@@ -1436,14 +1436,46 @@ export function makeStageClear(rom) {
   };
 }
 
+/**
+ * `$253794` (P1) / `$2537E4` (P2) -- and it is NOT the "option-pod teardown" the
+ * note here called it. It is the LOOP's zero-lives EXTEND:
+ *
+ *   253798: tst.w $813098  / beq exit      <- only on the LOOP
+ *   2537A2: tst.w $812934  / bne exit
+ *   2537AC: tst.w $81293C  / bne exit
+ *   2537B6: tst.w $8130BE  / bne exit      <- only at ZERO lives
+ *   2537C0: cmpi.w #$14,$8130BE / beq exit
+ *   2537CC: addq.w #$1,$8130BE             <- one free life
+ *   2537D2: jsr $2878CC                    <- that side's LIVES row
+ *   2537D8: jsr $28C678                    <- the extend jingle
+ *
+ * The `cmpi.w #$14` is DEAD as written: $8130BE has already been proved zero two
+ * instructions earlier, so it can never equal $14. Transcribed anyway -- this port
+ * does not tidy the cartridge's redundancies, it records them.
+ */
+function loopExtend253794(ram, ctx, p2) {
+  const lives = p2 ? 0x8130c0 : 0x8130be;
+  if (ram.u16(0x813098) === 0) return;                 // $253798 / $2537E8
+  if (ram.u16(p2 ? 0x812936 : 0x812934) !== 0) return; // $2537A2 / $2537F2
+  if (ram.u16(p2 ? 0x81293e : 0x81293c) !== 0) return; // $2537AC / $2537FC
+  if (ram.u16(lives) !== 0) return;                    // $2537B6 / $253806
+  if (ram.u16(lives) === 0x14) return;                 // $2537C0 / $25380E -- dead
+  ram.setU16(lives, u16(ram.u16(lives) + 1));          // $2537CC / $25381A
+  note(ctx, p2 ? 0x28795c : 0x2878cc, `$${p2 ? '2537D8' : '2537D2'} jsr $${
+    p2 ? '28795C' : '2878CC'} -- that side's LIVES row after the loop extend, the `
+    + `same counted zero-RAM-write draw hud.js defers`);
+  ctx?.soundPost?.(0x28c678);                          // $2537D8 / $253826
+  ctx?.stageEndEvent?.('loop-extend', p2 ? 2 : 1, ram.u16(lives));
+}
+
 /** `$25313E` (P1) / `$25318E` (P2) -- the power/option reset a stage clear
  *  runs.  The top level is transcribed; its four sub-calls are counted. */
-function resetPower25313E(ram, ctx, base, addr) {
+/** Exported for `w241loop-extend.test.js`: its caller is one arm of the result
+ *  screen's own state machine. */
+export function resetPower25313E(ram, ctx, base, addr) {
   const p2 = addr === 0x25318e;
   if ((ram.u16(base) & 0x8000) === 0) return;          // $25313E tst.w/bpl
-  note(ctx, p2 ? 0x2537e4 : 0x253794, `$${(p2 ? 0x253796 : 0x253146).toString(16)
-    .toUpperCase()} bsr $${(p2 ? 0x2537e4 : 0x253794).toString(16).toUpperCase()
-    } -- the option-pod teardown, counted`);
+  loopExtend253794(ram, ctx, p2);                      // $253146 / $253796 bsr
   ram.setU16(p2 ? 0x81293e : 0x81293c, 0);             // $25314A / $25319A
   ram.setU16(p2 ? 0x812946 : 0x812944, 0);             // $253150 / $2531A0
   if ((ram.u8(base) & 0x40) !== 0) return;             // $253156 btst #6/bne
