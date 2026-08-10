@@ -1720,6 +1720,16 @@ BODY.set(0x27c28e, (ram, rom, a5, a6) => {
   }
 });
 
+// --- type $A1 ($27CEB4): Stage 4's large reverse-animated structure.
+BODY.set(0x27ceb4, (ram, rom, a5, a6, unported, _tables, palette) => {
+  const end = loadSubProto(ram, rom, a5, a6, 0x27cef0); // $27CEB4..$27CEC0
+  ram.setU32(a5 + R.rec44, end);                        // $27CEC0
+  loadRecordProto(ram, rom, a5, 0x27ceea, 0x02);       // $27CEC4..$27CED2
+  readInitPosition(ram, rom, a5, unported);             // $27CED2
+  installBank(ram, rom, palette, unported, 0x12, 0x224cf8, 0x27ced8,
+    'Stage-4 type $A1 structure palette');
+});
+
 // --- type $A2 ($27CFAC): Stage 4's opening/rotating gun pod.
 // Its movement variant mirrors three packed muzzle offsets; the record's
 // +$24 long is converted from the prototype-relative +$16 into a live pointer

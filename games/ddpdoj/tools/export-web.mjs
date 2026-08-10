@@ -2384,6 +2384,14 @@ function harvestStage4Arithmetic(base, entries, stride, why) {
     + `${totalAdded} new`);
 }
 
+// W217: Type $A1 selects all sixteen entries of `$27CF64` in reverse order,
+// starting at offset $3C and wrapping after offset zero.
+{
+  const art = harvestStage4Type9DTable(0x27cf64, 16,
+    'W217 Stage-4 type $A1 reverse 16-frame structure animation');
+  console.log(`  Stage-4 type $A1 structure: 16 streams, ${art.added} new`);
+}
+
 // ------------------------------------------------------------------- WAVE 66
 // 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
 // bomb, and NEITHER HAS A PICTURE: W64 §8.3 counted 174 bucket-13 records with

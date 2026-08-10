@@ -518,6 +518,8 @@ SHOT_WINDOWS.extend([
     (0x27D3FC, 0x0674, "W216: complete Stage-4 type $A3 stub, init, two-sub "
                        "prototypes, linked-carrier handler, attacks, cleanup, "
                        "and exact eight-entry animation table"),
+    (0x27CEAC, 0x00F8, "W217: complete Stage-4 type $A1 stub, init, prototype, "
+                       "handler, and exact 16-entry reverse animation table"),
     (0x23EBA0, 0x003C, "W216: Pool-A kinds 18/19 record-convention emitter "
                        "through its exact RTS boundary"),
     (0x2358B0, 0x20C8, "W211: complete STAGE-4 spawn dependency span: 382 "
