@@ -269,6 +269,15 @@ export function a4Running25983E(ram, d0) {
   return false;                                        // $259870
 }
 
+/** `$259876` -- clear every active A4 slot whose low-byte id equals D0. */
+export function a4Stop259876(ram, d0) {
+  for (let i = 0; i < SCHED.a4Slots; i++) {
+    const a = SCHED.a4Base + i * SCHED.a4Stride;
+    if (ram.u16(a) !== 0 && (ram.u16(a) & 0xff) === (u16(d0) & 0xff))
+      ram.setU16(a, 0);
+  }
+}
+
 /** `$2598A2` -- clear all five A4 slots. */
 export function a4Clear2598A2(ram) {
   for (let i = 0; i < SCHED.a4Slots; i++) ram.setU16(SCHED.a4Base + i * SCHED.a4Stride, 0);

@@ -2074,6 +2074,7 @@ SHOT_WINDOWS.extend([
     (0x2671E0, 0x007A, "W201: Stage-3 type $19 local closure $2671E0..$26725A"),
     (0x274B6C, 0x05E0, "W202: Stage-3 type $83 closure $274B6C..$27514C"),
     (0x266D2E, 0x04B2, "W203: Stage-3 type $16 runtime closure $266D2E..$2671E0"),
+    (0x29BBF4, 0x1040, "W204: Stage-3 type $A0 entry/arrival runtime closure $29BBF4..$29CC34"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
@@ -2394,6 +2395,19 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if hashlib.sha256(movement_concat).hexdigest() != (
             "879fed4e013711f1eaa0b56e23911d54b4abf144bd69c8958cc8a72b9058ae83"):
         raise SystemExit("W203: type $16 14-movement concat drifted")
+    # W204. The unsupported type-$A0 record is the sole owner of the complete
+    # entry/arrival family through its A4/F0 controller.  The runtime window
+    # stops at the next routine; the wider physical closure is pinned here so
+    # a relocated family cannot silently invalidate the static owner map.
+    if d[0x27E512:0x27E51A] != bytes.fromhex("0029bbf40029be28"):
+        raise SystemExit("W204: type $A0 registry row drifted")
+    if d[0x234FA2:0x234FAA] != bytes.fromhex("01a70000a0800067"):
+        raise SystemExit("W204: sole type $A0 Stage-3 record drifted")
+    if d[0x2356B0:0x2356B6] != bytes.fromhex("000000004000"):
+        raise SystemExit("W204: type $A0 movement index $67 drifted")
+    if hashlib.sha256(d[0x29BBF4:0x29EC7A]).hexdigest() != (
+            "b09b568d901f5f894403e2d49f1ea57bae4efd5ff0be2f9fade53c848d60c6ce"):
+        raise SystemExit("W204: type $A0 physical family closure drifted")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and

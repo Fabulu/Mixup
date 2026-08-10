@@ -127,7 +127,9 @@ test('the stage-1, Stage-2, and W203 Stage-3 bodies are dispatched', () => {
     'W202: Stage-3 linked-hitbox aimed-ring body $274B74');
   assert.ok(INIT_BODY_ADDRESSES.includes(0x266d36),
     'W203: Stage-3 wobbling paired-shot body $266D36');
-  assert.equal(INIT_BODY_ADDRESSES.length, 54,
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x29bbfc),
+    'W204: Stage-3 boss type $A0 body $29BBFC');
+  assert.equal(INIT_BODY_ADDRESSES.length, 55,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
     + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
     + `W170's $277836, W171's $276946, W172's $27751C, W173's $275154, `

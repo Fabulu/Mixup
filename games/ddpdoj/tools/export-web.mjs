@@ -345,6 +345,10 @@ const HARVEST = Object.freeze([
     'stage-3 type $16 sprite table 0, thirty-two stride-4 pointers'],
   [17, 0x267160, 32, 4, 32, 0x2671e0,
     'stage-3 type $16 sprite table 1, thirty-two stride-4 pointers'],
+  // W204. The A2 object-9 arrival rows are twelve bytes each; only row +$0
+  // is a sprite pointer. Their 40 pointers form a complete run in shard17.
+  [17, 0x29c100, 40, 12, 43, 0x29c304,
+    'stage-3 type $A0 A2 object 9, forty 12-byte rows'],
   [18, 0x289820, 32, 4, 32, 0x2898a0,
     'pool-D debris template 0 descriptor list'],
   [18, 0x2898b0, 32, 4, 32, 0x289930,
@@ -1131,10 +1135,10 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
     || r.base === 0x267160);
   if (unique.size !== 64 || [...unique].some((a) => !chain.has(a))
       || w203Rows.length !== 2 || w203Rows.some((r) => r.added !== 32 || r.already !== 0)
-      || w203StreamsBefore !== 166 || streams.size !== 1880) {
+      || w203StreamsBefore !== 166 || streams.size !== 1920) {
     throw new Error(`W203 type $16 art harvest drifted: ${unique.size} distinct `
       + `pointers, ${w203StreamsBefore} pre-harvest streams, ${streams.size} total; `
-      + 'expected 64 on the $F4 chain, 166 before, and 1880 after this harvest');
+      + 'expected 64 on the $F4 chain, 166 before, and 1920 after this harvest');
   }
 }
 for (const offs of LASER_STREAMS) {

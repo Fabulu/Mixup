@@ -419,6 +419,21 @@ test('every registered script address is in an installed boss scheduler table',
     for (let i = 0; i < 11; i++) legal.push(ROM.u32(0x297432 + i * 4)); // A2
     assert.strictEqual(ROM.u32(0x297432 + 11 * 4) >>> 0, 0xffffffff,
       'the stage-2 A2 list is eleven longwords and a $FFFFFFFF terminator');
+    // W204 installs the Stage-3 boss tables and registers its exact arrival
+    // bootstrap: F0, MAIN0, D7, and A2 object9. Carry the complete installed
+    // A0/A3/A4/A2 pointer domains so every address still has a ROM witness.
+    for (let i = 0; i < 4; i++) {                       // A0, $29C2E0
+      legal.push(ROM.u32(0x29c2e0 + i * 8), ROM.u32(0x29c2e0 + i * 8 + 4));
+    }
+    for (let i = 0; i < 8; i++) {                       // A3, $29C4EE
+      legal.push(ROM.u32(0x29c4ee + i * 8), ROM.u32(0x29c4ee + i * 8 + 4));
+    }
+    for (let i = 0; i < 10; i++) {                      // A4, $29CBD0
+      legal.push(ROM.u32(0x29cbd0 + i * 8), ROM.u32(0x29cbd0 + i * 8 + 4));
+    }
+    for (let i = 0; i < 10; i++) legal.push(ROM.u32(0x29be46 + i * 4));
+    assert.strictEqual(ROM.u32(0x29be46 + 10 * 4) >>> 0, 0xffffffff,
+      'the Stage-3 A2 list is ten longwords and a $FFFFFFFF terminator');
     for (const s of scriptAddresses()) {
       if (s === 0x111111 || s === 0x222222) continue;   // this file's own fake
       assert.ok(legal.includes(s),

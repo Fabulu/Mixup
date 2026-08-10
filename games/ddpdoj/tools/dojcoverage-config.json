@@ -51,7 +51,7 @@
       "stage": 2,
       "stage_table": 2503478,
       "derived_type_count": 28,
-      "derived_ported_type_count": 27,
+      "derived_ported_type_count": 28,
       "ported_from": "enemy_types live source registries",
       "dynamic_from": null
     },
@@ -91,10 +91,10 @@
     {
       "name": "stage3_enemy_frontier",
       "shape": "ordered_record_dependency_backlog",
-      "status": "OPEN",
+      "status": "COMPLETE",
       "field_order": ["record", "trigger", "type", "init_body", "handler", "movement_index", "movement_start", "movement_end_exclusive"],
       "derive_from": "stage3_spawn_script.live_rom_aux_resource",
-      "reason": "The 414-record Stage-3 script is ROM-owned at stage index 2; unsupported rows are derived in script order from its live movement aux/resource table. No execution corpus is claimed."
+      "reason": "W204 closes the final Stage-3 spawn record, type $A0 at $234FA2, with init $29BBFC and handler $29BE28. The 414-record Stage-3 spawn script is complete; the next dependency is the boss scheduler at A4/F2 $29CC34."
     },
     {
       "name": "stage3_to_stage5_spawn_scripts",

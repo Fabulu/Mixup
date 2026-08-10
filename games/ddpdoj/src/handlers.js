@@ -92,6 +92,7 @@ import { u16, i16 } from './ram.js';
 import { freeEnemy } from './initbody.js';
 import { handlerBoss292902 } from './boss.js';
 import { handlerBoss297398 } from './boss2.js';
+import { handlerBoss29BE28 } from './boss3.js';
 import { handler1E_296DD6 } from './bossf23.js';
 import { stepMovement, scrollCompensate, applyVelocity } from './movement.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
@@ -6107,6 +6108,7 @@ const HANDLERS = new Map([
   [0x267226, handler19],       // W201: Stage-3 invisible pulse controller $19
   [0x274c90, handler83],       // W202: Stage-3 linked-hitbox aimed-ring type $83
   [0x266e34, handler16],       // W203: Stage-3 wobbling paired-shot type $16
+  [0x29be28, handlerBoss29BE28], // W204: Stage-3 boss type $A0 entry/arrival
   [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 

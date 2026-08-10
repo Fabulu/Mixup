@@ -1174,6 +1174,40 @@ BODY.set(0x29bb26, (ram, rom, a5, a6) => {
   ram.setU16(a5 + 0x20, 0);                            // $29BB42
 });
 
+// --- type $A0 ($29BBFC): THE STAGE-3 BOSS (runLen 9). W204.
+// Installs its five scheduler tables, arms only draw object 9 and F0, uploads
+// the six boss palettes, and seeds the linked damage controller. `boss3.js`
+// owns the per-frame wrapper and the first live arrival scripts.
+BODY.set(0x29bbfc, (ram, rom, a5, a6, unported, tables, palette) => {
+  void tables;
+  loadSubProto(ram, rom, a5, a6, 0x29bd10);            // $29BBFC..$29BC08
+  loadRecordProto(ram, rom, a5, 0x29bd0a, 0x02);       // $29BC08..$29BC18
+  ram.setU32(a6 + S.posX, 0x38001c00);                 // $29BC18
+  installScripts(ram, rom, {
+    a0: 0x29c2e0, a1: 0x29d24a, a2: 0x29be46,
+    a3: 0x29c4ee, a4: 0x29cbd0,
+  });                                                  // $29BC20..$29BC44
+  a2Run2598E6(ram, 9);                                 // $29BC44
+  a4Start25980C(ram, 0);                               // $29BC4C
+
+  for (const [bank, src, site] of [
+    [0x10, 0x222df8, 0x29bc54], [0x11, 0x222e38, 0x29bc64],
+    [0x12, 0x222e78, 0x29bc74], [0x13, 0x222eb8, 0x29bc84],
+    [0x14, 0x222ef8, 0x29bc94], [0x0a, 0x246bf8, 0x29bca4],
+  ]) installBank(ram, rom, palette, unported, bank, src, site,
+    'the STAGE-3 BOSS palette install');
+
+  ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x05);       // $29BCB4..$29BCC4
+  ram.setU8(0x8130f9, ram.u8(0x8130f9) | 0x01);       // $29BCC4
+  ram.setU32(0x81b626, 0x000004a0);                   // $29BCCC
+  ram.setU32(0x81b62a, a5 + R.rec16);                 // $29BCD6
+  for (const off of [0x00, 0x20, 0x40, 0xc0, 0xe0])
+    ram.setU16(a6 + off, 0x8000);                      // $29BCE0 -> $29CB62
+  ram.setU16(0x81b414, 1);                            // $29BCE6
+  ram.setU16(0x81b416, 1);                            // $29BCEE
+  if (ram.u16(G.rank98) !== 0) ram.setU16(0x81b418, 1); // $29BCF6..$29BD08
+});
+
 // --- type $95 ($277836): THE FIRST STAGE-2-ONLY BODY.  W170.
 //
 // The 8-byte table entry at $27782E says run length 1, so $2637A2 consumes the
