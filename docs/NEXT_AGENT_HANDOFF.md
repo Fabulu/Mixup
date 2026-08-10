@@ -28,16 +28,17 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is `f281abc ddpdoj: thicken the stage-4 boss barrage`.
-- Suite: `node --test games/ddpdoj/tests/` is **1725/1725**, green, no skips.
+- HEAD is `635dbee ddpdoj: close the stage-4 boss second phase`.
+- Suite: `node --test games/ddpdoj/tests/` is **1751/1751**, green, no skips.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
   closed at 414/414 script records and 28/28 script types.
-- **The Stage-4 boss's SECOND PHASE is translated except for one routine.** W246
-  through W252 landed F5 (`$2A0D16`, a seven-arm bit machine), MAIN4, MAIN7, the
-  A3 3..8 ramp family, and A1 6, 7, 8, 9 and 10. Everything F5 arms is ported
-  except the type `$42` children A1 9 spawns, and
-  [worklog 253](worklog/ddpdoj/253-recon-type42.md) is a complete bound and spec
-  for that.
+- **THE STAGE-4 BOSS'S SECOND PHASE RUNS END TO END.** W246 through W256 landed
+  F5 (`$2A0D16`, a seven-arm bit machine), MAIN4, MAIN7, the A3 3..8 ramp family,
+  A1 6, 7, 8, 9 and 10, and type `$42`'s body and handler. Every script F5 arms is
+  translated, and `w256type42handler.test.js` drives the whole chain in one test:
+  arm 6 starts A1 9, A1 9 spawns a formation, each child homes and counts itself
+  back on arrival, A1 9 retires, and its retirement flips every survivor into its
+  second mode.
 - **A death works end to end** (W227, W228, W231): the animation, the reset, the
   life spent, a fresh player object placed where its respawn entry says, `$F0`
   frames of invulnerability, and the pods deploying to the exact `$24C928` target.
@@ -71,14 +72,13 @@ instrument (W230), and D11's banner picture (W232).
 
 ## Work order toward the goal
 
-1. **Type `$42`, the Stage-4 boss's children.** The last routine between F5 and its
-   second phase running end to end.
-   [Worklog 253](worklog/ddpdoj/253-recon-type42.md) holds the measured bound, and
-   the bound is the useful part: `$3C(a6)` selects among roles `$FF`, 0..7, `$70`
-   and `$71`, but only TWO spawners of type `$42` exist in the whole image, and the
-   one F5 reaches (A1 9) writes `$FF` as a constant. Roles 0..7 and `$70`/`$71` come
-   from A1 11, which A4 id6 starts, so they are honestly unreachable until A4 id6
-   lands. Port the role-`$FF` path and `unreached()` by role on the rest.
+1. **A4 id6 `$2A11D4`, the Stage-4 boss's THIRD phase.** F5's arm 5 hands to it, and
+   it is what makes `$8130F4 = 2`, A1 11, and type `$42`'s roles 0..7 and `$70`/`$71`
+   reachable. Its first two instructions are known (`move.w #$2,$8130F4 / clr.w
+   $8130F0`) and it starts A1 11 at `$2A128A`. Then A1 11 `$2A317C`/`$2A31A0`, which
+   is A1 9's sibling with a per-child role list at `$2A31EC`. Then the
+   `$2A3E1E..$2A4115` half of type `$42`'s handler those two unlock, replacing the
+   three `unreached()` gates `src/stage4type42.js` carries by address.
 2. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
    `$28D6FC` the animation chain; `$28D77C` writes palette RAM the port does not
    model, and the four `$25FD38` resets are W62's scope line.
@@ -103,7 +103,7 @@ D8, D10 and D12 are presentation or documentation and can be slotted in between.
 ## Verification commands
 
 - One slice: `node --test games/ddpdoj/tests/<the focused file>.test.js`
-- Full suite: `node --test games/ddpdoj/tests/` -- currently 1725/1725, green.
+- Full suite: `node --test games/ddpdoj/tests/` -- currently 1751/1751, green.
   Keep it that way: W229 had to close five censuses that had been red since the
   Stage-4 waves, and while they were red they could not catch anything. Do not
   pipe the run through `tail`; that discards the failure detail.
@@ -160,6 +160,13 @@ Stage-4 boss second phase (W246..W252):
   is incremented at `$2A3D5A` through `movea.l $1c(a5),a0`, so a scan for `(d16,A6)`
   finds only two sites and supports the WRONG conclusion. Scan `(d16,An)` for every An.
 
+- **Type `$42` cannot be killed by damage**, and the port throws by address if it
+  ever is. `$2A3B82` restores `$18(A6)` to `$7FFF` unconditionally two instructions
+  before `$2A3B96` tests it. Its children die by ARRIVING, which is also how they
+  count themselves back to A1 9 through the parent pointer in `$1C(A5)`.
+- **A branch target can be 470 bytes behind the branch.** `$2A3DD4 bgt $2A3C1C` is a
+  FREE, not a clamp, and reads as a clamp unless the target is resolved.
+
 Elsewhere:
 
 - `src/rom.js` serves a read only from a window that contains it WHOLE, so a
@@ -193,7 +200,8 @@ only authored source/exporter/test/worklog files. Never use `git add -A`.
 
 ## Worklog numbering
 
-Live numbers: **253 is the highest**. 253 is a SPEC (type `$42`, no code yet) and
-225 is SUPERSEDED by 244; every other number through 252 is COMPLETE. Reserve the
+Live numbers: **256 is the highest and is COMPLETE**. 253 is a SPEC that W254/W255
+implemented, and 225 is SUPERSEDED by 244; every other number through 256 is
+COMPLETE. Reserve the
 next number by creating `<N>-RESERVED.md`, then rename it immediately to the real
 `IN PROGRESS` worklog as `AGENTS.md` requires. Numbers are never reused.
