@@ -72,7 +72,7 @@ test('W219 pins the final Stage-4 record, arrival closure, and 16 live streams',
       '0029ec7a0029ef0a');
     const h = manifest.spr.harvest.find((x) => x.at === '$29F414');
     assert.deepEqual([h.entries, h.distinct, h.added], [16, 16, 16]);
-    assert.equal(manifest.spr.streamCount, 3902);
+    assert.equal(manifest.spr.streamCount, 3958);
   });
 
 test('W219 real clock-$2E8 spawn runs F0, MAIN0, and the visible body same pass',

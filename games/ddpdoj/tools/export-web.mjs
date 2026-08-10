@@ -2435,6 +2435,20 @@ for (const [at, entries, why] of [
   [0x29f25e, 32, 'Stage-4 boss aimed turret'],
 ]) harvestStage4Type9DTable(at, entries, `W220 ${why}`);
 
+// W224: the first damage transition replaces the intact central hull with A2
+// object 6, then exposes objects 7 through 9 when D0 finishes the part swap.
+// The second pod overlay table is shared by objects 7 and 8 and is harvested
+// once. Object 9's second draw is a direct descriptor rather than a table row.
+for (const [at, entries, why] of [
+  [0x29f002, 15, 'Stage-4 boss opening damaged hull'],
+  [0x29f096, 16, 'Stage-4 boss settled damaged hull'],
+  [0x29f336, 8, 'Stage-4 boss left linked part'],
+  [0x29f356, 8, 'Stage-4 boss shared linked overlay'],
+  [0x29f3d0, 8, 'Stage-4 boss right linked part'],
+]) harvestStage4Type9DTable(at, entries, `W224 ${why}`);
+harvestStage4Arithmetic(0x000dafc4, 1, 0,
+  'W224 Stage-4 boss damaged-hull fixed overlay');
+
 // ------------------------------------------------------------------- WAVE 66
 // 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
 // bomb, and NEITHER HAS A PICTURE: W64 §8.3 counted 174 bucket-13 records with

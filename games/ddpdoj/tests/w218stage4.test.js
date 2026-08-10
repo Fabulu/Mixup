@@ -80,7 +80,7 @@ test('W218 pins the type-$9F/$A4 closures and complete live art set',
       assert.equal(h.entries, entries);
       assert.equal(h.distinct, entries);
     }
-    assert.equal(manifest.spr.streamCount, 3902,
+    assert.equal(manifest.spr.streamCount, 3958,
       'W220 adds 64 live boss-part streams after the arrival body');
   });
 
