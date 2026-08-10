@@ -554,6 +554,15 @@ SHOT_WINDOWS.extend([
     # MAIN5's own entry in the A0 table at $29F498. Pinned by code twice over.
     (0x29F972, 0x0010, "W245 Stage-4 boss MAIN4's four waypoints, ending at "
                        "$29F982's MAIN5 entry"),
+    # W249: A1 9's spawn lists. `$2A30BE andi.w #$7` then two `add.w D0,D0` makes the
+    # selector table EIGHT longwords, and its first entry is $2A3152 -- exactly
+    # $2A3132 + $20, so the table's own contents pin its end. The four lists follow
+    # contiguously, each self-describing (byte 1 is the count), and the last ends at
+    # $2A317C, which is A1 ELEVEN's own INIT (`move.w #$820,$2(a4)`): the A1 table is
+    # not in address order, so entry 11's body sits between entry 9's data and
+    # entry 10. Both ends pinned, neither guessed.
+    (0x2A3132, 0x004A, "W249: Stage-4 boss A1 9's eight-entry list selector and "
+                       "its four spawn lists, ending at A1 11's INIT"),
     (0x2A019E, 0x037C, "W224: Stage-4 boss A4/F1 destruction transition and "
                        "four exact effect tables"),
     (0x29F80A, 0x00C2, "W224: Stage-4 boss MAIN2/MAIN3 movement through target"),

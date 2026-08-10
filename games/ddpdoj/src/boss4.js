@@ -1671,10 +1671,96 @@ export function a1_8Init2A2F1E(ram, rom, ctx, slot) {
   a1_8Step2A2F72(ram, rom, ctx, slot);                    // falls through
 }
 
+/**
+ * `$2A307A` / `$2A30A8` -- A1 9, and it is a SPAWNER rather than an emitter: it waits
+ * eight frames, draws one of four formations, and enqueues a ring of type `$42`
+ * children through `$263684`. F5's arm 6 starts it once per attack cycle.
+ *
+ * `$2A3132` is EIGHT selector longwords resolving to FOUR lists, each appearing twice,
+ * so `andi.w #$7` gives every formation a 2-in-8 chance. Each list is self-describing:
+ *
+ *     $2A3152   $0E   9 angles   $00 $F0 $E0  $55 $45 $35  $AB $9B $8B
+ *     $2A315D   $F2   9 angles   $00 $10 $20  $55 $65 $75  $AB $BB $CB
+ *     $2A3168   $0E   8 angles   $00 $20 $40 $60 $80 $A0 $C0 $E0
+ *     $2A3172   $F2   8 angles   $00 $20 $40 $60 $80 $A0 $C0 $E0
+ *
+ * The first byte goes into every child's `$1A` and is SIGNED -- `$0E` and `$F2` are
+ * +14 and -14 -- so two formations travel one way and two the other. The nines are
+ * three clusters of three and the eights are an even ring.
+ *
+ * THE PARENT POINTER IS THE INTERESTING FIELD. `$2A30F4 move.l a6,$1c(a0)` hands each
+ * child the boss's sub-record, and `$2A3D5A movea.l $1c(a5),a0 / addq.w #$1,$19e(a0)`
+ * in type `$42`'s handler is how a dying child counts itself back. `$19E(a6)` has
+ * exactly FOUR references in the whole 6 MB image -- this script's `clr.w` and read,
+ * one piece of table data, and that one increment -- so the rendezvous at `$2A3108` is
+ * a closed loop between this script and its own children and nothing else.
+ *
+ * Which means A1 9 CANNOT RETIRE until type `$42` is ported, and F5's arms 6 and 7
+ * both wait on `a1Running(9)`. That is the honest shape of the frontier, not a defect
+ * here: the script is right and its children do not exist yet.
+ */
+const A1_9_SELECTOR = 0x2a3132;
+const BOSS_F4 = 0x8130f4;                                 // $2A3098 clr.w $8130F4
+
+export function a1_9Step2A30A8(ram, rom, ctx, slot) {
+  const a6 = ctx.bossSubRec;
+  if (ram.u8(slot + 0x02) !== 0) {                        // $2A30A8 tst.b/beq
+    ram.setU8(slot + 0x02, ram.u8(slot + 0x02) - 1);      // $2A30B0 subq.b
+    if (ram.u8(slot + 0x02) === 0) {                      // $2A30B4 bne -- ONE frame
+      // $2A30BE `andi.w #$7` then two `add.w D0,D0`: a longword index into eight.
+      let p = rom.u32(A1_9_SELECTOR + (drawWord242EC2(ram, rom) & 7) * 4);
+      const speed = rom.u8(p++);                          // $2A30D0 move.b (a3)+,d6
+      const count = rom.u8(p++);                          // $2A30D4 move.b (a3)+,d7
+      ram.setU16(slot + 0x04, count);                     // $2A30D6 -- the rendezvous
+      // $2A30DA `subq.w #$1,d7` then `dbra` at $2A3104, so exactly `count` passes.
+      for (let i = 0; i < count; i++) {
+        const q = enqueueDeferred(ram, 0x42, DEFQ_D1.FIXED00);   // $2A30DC/$2A30DE
+        ram.setU32(q.addr + 0x16, ram.u32(a6 + 0x22));    // $2A30E4/$2A30E8
+        ram.setU8(q.addr + 0x1a, speed);                  // $2A30EC -- shared, signed
+        ram.setU8(q.addr + 0x1b, rom.u8(p++));            // $2A30F0 -- its own angle
+        ram.setU32(q.addr + 0x1c, a6);                    // $2A30F4 -- the parent
+        ram.setU8(q.addr + 0x20, ram.u8(slot + 0x09));    // $2A30F8
+        ram.setU8(q.addr + 0x21, 0xff);                   // $2A30FE
+      }
+    }
+  }
+
+  // $2A3108 -- the rendezvous, and all three gates have to hold on the same frame.
+  if (ram.u16(a6 + 0x19e) !== ram.u16(slot + 0x04)) return;  // $2A310C cmp.w/bne
+  if (ram.u16(BOSS_F4) !== 0) return;                        // $2A3114 tst.w/bne
+  ram.setU16(slot + 0x10, u16(ram.u16(slot + 0x10) - 1));    // $2A311E subq.w
+  if (ram.u16(slot + 0x10) !== 0) return;                    // $2A3122 bne
+  ram.setU16(BOSS_F4, 1);                                    // $2A3126
+  ram.setU16(slot, 0);                                       // $2A312E clr.w (a4)
+}
+
+/**
+ * `$2A307A` -- A1 9's INIT, and it FALLS THROUGH (`$2A30A4` ends at `$2A30A8`).
+ *
+ * `$6(a4)` is where F5's arm 6 puts its 0/1 side selector, and this line OVERWRITES it
+ * with `$C` before anything reads it. `$8(a4)` = 3 is likewise never read. So F5's one
+ * parameter to a child is dead, which is the fourth vestigial write this boss has
+ * shown: A1 8 has three of its own. Transcribed rather than tidied, because the stored
+ * bytes are observable even when the values they were meant to carry are not.
+ */
+export function a1_9Init2A307A(ram, rom, ctx, slot) {
+  ram.setU16(slot + 0x02, 0x0820);                        // $2A307A -- 8, period $20
+  ram.setU16(slot + 0x04, 0);                             // $2A3080
+  ram.setU16(slot + 0x06, 0x000c);                        // $2A3086 -- clobbers F5's
+  ram.setU8(slot + 0x08, 0x03);                           // $2A308C -- never read
+  ram.setU8(slot + 0x09, 0x48);                           // $2A3092 -- into each child
+  ram.setU16(BOSS_F4, 0);                                 // $2A3098
+  ram.setU16(slot + 0x10, 0x0050);                        // $2A309E -- the retire hold
+  ram.setU16(ctx.bossSubRec + 0x19e, 0);                  // $2A30A4
+  a1_9Step2A30A8(ram, rom, ctx, slot);                    // falls through
+}
+
 registerScript(0x2a0cf6, f5Init2A0CF6);
 registerScript(0x2a0d16, f5Step2A0D16);
 registerScript(0x2a2f1e, a1_8Init2A2F1E);
 registerScript(0x2a2f72, a1_8Step2A2F72);
+registerScript(0x2a307a, a1_9Init2A307A);
+registerScript(0x2a30a8, a1_9Step2A30A8);
 // A3 3..8, the six-instance ramp family. The STEP sits `$6` past its INIT in every
 // one of them, which is the same `$2E`-stride regularity the bodies have.
 for (const a of [0x2a14aa, 0x2a14d8, 0x2a1506, 0x2a1534, 0x2a1562, 0x2a1590]) {
