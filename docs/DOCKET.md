@@ -104,18 +104,24 @@ against the bundle's own stream table. Bundle-wide it now reports zero. Re-run i
 per stage and per boss as coverage grows; a missing sprite that is not in its
 output is a producer problem, not a bundle problem.
 
-### D6: bees give no score popup -- FULLY MAPPED in W233, ready to implement
+### D6: bees give no score popup -- SPEC COMPLETE in W234, shovel-ready
 
 The score is NOT the problem: the award runs (`$27FC72` sets bit 0). Two gaps, both
-in `bee.js`, both measured in [worklog 233](worklog/ddpdoj/233-impl-tx-text.md):
+in `bee.js`, specified instruction by instruction in
+[worklog 234](worklog/ddpdoj/234-impl-bee-popup.md):
 
 1. `$27FC24`, two instructions, the popup descriptor write. Its ten-longword
    ladder `$27FD4A` needs a ROM window.
 2. `$28112C`, the collected-animation arm -- the popup itself. Bounded: a byte
    timer, a lifetime byte that frees the slot and decrements the `$817F7E` census,
    a rise-then-fall on `$a(a6)`, a draw through `$23DBCA` the port already makes
-   elsewhere, and the digits through a new emitter `$23EC20` plus the x2 arm
-   `$28129E`.
+   elsewhere, and the digits plus the x2 arm `$28129E` through `$23EC20` -- which
+   is FREE: it is `enqueueRegisters` on bucket 8, the same way W232's $23F82A
+   turned out to be `emitScaled` on bucket 22.
+
+It also needs two ROM windows (`$27FD4A+$28`, `$2812D4+$14`, both bounded by their
+own cursors) and SIX sprite streams that are not in the bundle today. Harvest them
+in the same commit or the popup draws nothing even once the code runs.
 
 Note for whoever takes it: `$240DC2` is NOT the blocker. W116 ported the whole TX
 defer path (`txDeferGrid`, `flushTextDefer141258`, wired in `isr.js`). Several
