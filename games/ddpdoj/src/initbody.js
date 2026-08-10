@@ -1681,6 +1681,45 @@ BODY.set(0x27ad96, (ram, rom, a5, a6, unported, _tables, palette) => {
     init9CSatellite(ram, rom, a5, a6, child, row, family11);
 });
 
+// --- type $9D ($27B2FE): Stage 4's three-part carrier.
+// The root and its two attached hitboxes are one allocation. The post-loader
+// cue pointer and all three palette uploads are live dependencies of the
+// handler's threshold effects and death presentation.
+BODY.set(0x27b2fe, (ram, rom, a5, a6, unported, _tables, palette) => {
+  const cue = loadSubProto(ram, rom, a5, a6, 0x27b396); // $27B2FE..$27B30A
+  ram.setU32(a5 + R.rec44, cue);                       // $27B30A
+  loadRecordProto(ram, rom, a5, 0x27b376, 0x0f);      // $27B30E..$27B31C
+  readInitPosition(ram, rom, a5, unported);            // $27B31C
+  ram.setU8(a5 + R.rec1D,
+    u16(ram.u8(a5 + R.rec1D) - ram.u16(G.b2)) & 0xff);// $27B322..$27B32C
+  ram.setU16(G.d8, 1);
+  ram.setU16(G.dc, 1);
+  ram.setU16(0x81b414, 1);
+  installBank(ram, rom, palette, unported, 0x0f, 0x224af8, 0x27b34e,
+    'Stage-4 type $9D root palette');
+  installBank(ram, rom, palette, unported, 0x10, 0x224bf8, 0x27b35e,
+    'Stage-4 type $9D effect palette');
+  installBank(ram, rom, palette, unported, 0x11, 0x224c38, 0x27b36e,
+    'Stage-4 type $9D overlay palette');
+});
+
+// --- type $9E ($27C28E): the live child launched by type $9D.
+// It has no movement script. Its position is the parent's deferred +$16 long,
+// and the two shared RNG draws choose lateral drift and mirroring.
+BODY.set(0x27c28e, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x27c2e0);           // $27C28E..$27C29A
+  ram.setU32(a6 + S.posX, ram.u32(a5 + R.rec16));     // $27C29A
+  loadRecordProto(ram, rom, a5, 0x27c2d0, 0x07);     // $27C2A0..$27C2AE
+  const random = drawByte242B3C(ram, rom);
+  const signed = (random << 24) >> 24;
+  ram.setU16(a5 + R.rec1C,
+    u16(ram.u16(a5 + R.rec1C) + signed * 8));         // $27C2AE..$27C2BC
+  if (i16(drawWord242EC2(ram, rom)) < 0) {            // $27C2BC..$27C2CE
+    ram.setU8(a6 + S.f1c, 0x40);
+    ram.setU16(a5 + R.rec1C, u16(-ram.u16(a5 + R.rec1C)));
+  }
+});
+
 // --- type $A2 ($27CFAC): Stage 4's opening/rotating gun pod.
 // Its movement variant mirrors three packed muzzle offsets; the record's
 // +$24 long is converted from the prototype-relative +$16 into a live pointer

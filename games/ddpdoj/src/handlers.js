@@ -117,6 +117,7 @@ import { handler12, handler13, handler14 } from './stage3carrier.js';
 import { handler15, handler17, handler18 } from './stage3drop.js';
 import { handler83 } from './stage3type83.js';
 import { handler16 } from './stage3type16.js';
+import { handler9D, handler9E } from './stage4type9d.js';
 
 /** `addi.l` -- a 32-bit add, where the low half's carry REACHES the high half.
  *  Named because the port also has `addi.w` pairs around a `swap`, which do
@@ -6622,6 +6623,8 @@ const HANDLERS = new Map([
   [0x27ace4, handler9B],          // W212: Stage-4 linked structure type $9B
   [0x27d072, handlerA2],          // W213: Stage-4 opening/rotating gun pod $A2
   [0x27aee0, handler9C],          // W214: Stage-4 root ship and satellite array
+  [0x27b78a, handler9D],          // W215: Stage-4 three-part carrier type $9D
+  [0x27c2fc, handler9E],          // W215: type-$9D spawned child type $9E
   [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 

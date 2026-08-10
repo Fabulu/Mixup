@@ -510,6 +510,11 @@ SHOT_WINDOWS.extend([
                        "prototypes, handler, root art, and death effects"),
     (0x27DBF4, 0x080E, "W214: type $9C paired-satellite init/handler closure, "
                        "shared transformed-death art, and free stubs"),
+    (0x27B2F6, 0x0F90, "W215: complete Stage-4 type $9D stub, init, three-sub "
+                       "prototypes, handler, attacks, death presentation, "
+                       "and live art tables through the type $9E stub"),
+    (0x27C286, 0x027A, "W215: live Stage-4 child type $9E stub, init, prototype, "
+                       "handler, and exact 32-entry animation table"),
     (0x2358B0, 0x20C8, "W211: complete STAGE-4 spawn dependency span: 382 "
                        "records + terminator, 157-word aux table, and 157 "
                        "movement streams ($2358B0..$237978)"),

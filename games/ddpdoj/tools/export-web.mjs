@@ -2279,6 +2279,65 @@ const TYPE9C_ROOT_ART = 0x27b07c;
   console.log(`  Stage-4 type $9C root ship: ${seen.size} streams, ${added} new`);
 }
 
+// W215: type $9D's carrier has a 16-frame root animation, four overlay frames,
+// and two attached parts whose prototype and terminal-death descriptors are all
+// visible. Its directly spawned type $9E child owns a 32-frame table. None of
+// these streams belongs to the adjacent type $9F closure.
+const TYPE9D_ROOT_ART = 0x27c1c4;
+const TYPE9D_OVERLAY_ART = 0x27c204;
+const TYPE9E_ART = 0x27c480;
+const TYPE9D_ATTACHED_ART = [0x2c5de4, 0x2c67e8, 0x2c71ec, 0x2c7bf0];
+
+function harvestStage4Type9DTable(base, entries, why) {
+  const seen = new Set();
+  let added = 0, already = 0;
+  for (let i = 0; i < entries; i++) {
+    const offs = romBe32(base + i * 4);
+    seen.add(offs);
+    if (streams.has(offs)) already++;
+    else {
+      streams.set(offs, romExtent(offs));
+      shardOfStream.set(offs, STRUCT_SHARD);
+      added++;
+    }
+  }
+  if (seen.size !== entries)
+    throw new Error(`W215 art table $${base.toString(16)} has duplicate streams`);
+  harvested += added;
+  harvestAlready += already;
+  harvestReport.push({ shard: STRUCT_SHARD, base, entries, stride: 4,
+    runsTo: entries, endsAt: base + entries * 4, distinct: seen.size,
+    added, already, why });
+  return { added, already };
+}
+
+{
+  const root = harvestStage4Type9DTable(TYPE9D_ROOT_ART, 16,
+    'W215 Stage-4 type $9D root animation');
+  const overlay = harvestStage4Type9DTable(TYPE9D_OVERLAY_ART, 4,
+    'W215 Stage-4 type $9D closing overlay animation');
+  const child = harvestStage4Type9DTable(TYPE9E_ART, 32,
+    'W215 Stage-4 type $9D live child $9E animation');
+  let attachedAdded = 0, attachedAlready = 0;
+  for (const offs of TYPE9D_ATTACHED_ART) {
+    if (streams.has(offs)) attachedAlready++;
+    else {
+      streams.set(offs, romExtent(offs));
+      shardOfStream.set(offs, STRUCT_SHARD);
+      attachedAdded++;
+    }
+  }
+  harvested += attachedAdded;
+  harvestAlready += attachedAlready;
+  harvestReport.push({ shard: STRUCT_SHARD, base: 0x27b396,
+    entries: TYPE9D_ATTACHED_ART.length, stride: 0, runsTo: 0,
+    endsAt: 0x27b396, distinct: new Set(TYPE9D_ATTACHED_ART).size,
+    added: attachedAdded, already: attachedAlready,
+    why: 'W215 Stage-4 type $9D attached-part prototype and terminal-death art' });
+  console.log(`  Stage-4 type $9D/$9E: ${16 + 4 + 32 + 4} streams, `
+    + `${root.added + overlay.added + child.added + attachedAdded} new`);
+}
+
 // ------------------------------------------------------------------- WAVE 66
 // 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
 // bomb, and NEITHER HAS A PICTURE: W64 §8.3 counted 174 bucket-13 records with
