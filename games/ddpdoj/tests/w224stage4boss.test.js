@@ -123,7 +123,7 @@ test('W224 pins the F1/MAIN2/MAIN3/D0 slice, its dispatch entries, and its asset
       assert.deepEqual([h.entries, h.distinct, h.added], [entries, entries, entries],
         `${at} harvested`);
     }
-    assert.equal(manifest.spr.streamCount, 3979);
+    assert.equal(manifest.spr.streamCount, 3985);
   });
 
 test('W224 the $23000 threshold destroys the body and D0 swaps the damaged one in',

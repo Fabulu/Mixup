@@ -307,8 +307,14 @@ test('the x2 is the BCD overflow bug: count==10 AND no-miss doubles the base',
   const a6 = seedBee(ram, 0, { status: KIND.bee | 0x8000 | 0x1000 });
   ram.setU32(LEDGER.p1.pendingEnd - 4, 0);
   runPoolADriver(ram, ROM, ctx);
-  // The x2 set bit 5 of the status word.
-  assert.equal(ram.u16(a6 + B.status) & 0x0020, 0x0020, 'x2 flag (bit 5) set');
+  // W234 CORRECTS THIS. $27FC08 is `bset #$5,(A6)`, and `bset` on a MEMORY operand
+  // is BYTE-sized, so it sets bit 5 of the byte at +0 -- $2000 of the status WORD,
+  // not $0020. Three things agree: $28112C tests `btst #$D,D1` with D1 = the status
+  // word, $2811A2 tests `btst #$5,(A6)` on the same byte, and the KIND is
+  // `d1 & $7C` (bits 6..2), which bit 5 of the word is inside -- a flag there would
+  // corrupt the kind. The port set $0020 and this test asserted it, so the x2
+  // popup and its flicker could never have appeared.
+  assert.equal(ram.u16(a6 + B.status) & 0x2000, 0x2000, 'x2 flag (bit 13) set');
   // The cursor ratcheted +4.
   assert.equal(ram.u16(POOL_A.cursor), 36, 'cursor ratcheted +4');
   // The award: binary-doubled $1200 -> abcd -> $001200.  Correct would be $1800.

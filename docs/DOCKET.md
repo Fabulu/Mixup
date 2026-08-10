@@ -51,6 +51,19 @@ game-over arm arms dispatcher request 2, which is `$260056`, the credit/continue
 entry. That creates object types `$D` and `$B`, and type `$B` is the same
 unported `$25DBB4` that D11 is about, so the two meet there.
 
+### D6: bees give no score popup -- FIXED in W234
+
+The award was never the problem (`$27FC72` sets bit 0). What was missing was
+`$28112C`, the collected-animation arm, whose body turned out to be the same
+instructions as `$2810CA` that W111 already ported. Plus `$2811BE` (the digits),
+`$28129E` (the x2 indicator and its five-tile cursor), and `$27FC24`'s descriptor
+write. `$23EC20` cost nothing: it is `enqueueRegisters` on bucket 8.
+
+It also uncovered a defect: `$27FC08 bset #$5,(A6)` is byte-sized, so the x2 flag
+is `$2000` of the status word, not `$0020` -- and bit 5 of the word is inside the
+kind field (`d1 & $7C`), so the flag could never be read and the x2 popup could
+never have appeared. Code and test both corrected.
+
 ## Open, in priority order
 
 ### D11: the stage transition is abrupt -- DIAGNOSED, first piece landed in W232
@@ -103,30 +116,6 @@ it takes the display list the port actually builds and checks every descriptor
 against the bundle's own stream table. Bundle-wide it now reports zero. Re-run it
 per stage and per boss as coverage grows; a missing sprite that is not in its
 output is a producer problem, not a bundle problem.
-
-### D6: bees give no score popup -- SPEC COMPLETE in W234, shovel-ready
-
-The score is NOT the problem: the award runs (`$27FC72` sets bit 0). Two gaps, both
-in `bee.js`, specified instruction by instruction in
-[worklog 234](worklog/ddpdoj/234-impl-bee-popup.md):
-
-1. `$27FC24`, two instructions, the popup descriptor write. Its ten-longword
-   ladder `$27FD4A` needs a ROM window.
-2. `$28112C`, the collected-animation arm -- the popup itself. Bounded: a byte
-   timer, a lifetime byte that frees the slot and decrements the `$817F7E` census,
-   a rise-then-fall on `$a(a6)`, a draw through `$23DBCA` the port already makes
-   elsewhere, and the digits plus the x2 arm `$28129E` through `$23EC20` -- which
-   is FREE: it is `enqueueRegisters` on bucket 8, the same way W232's $23F82A
-   turned out to be `emitScaled` on bucket 22.
-
-It also needs two ROM windows (`$27FD4A+$28`, `$2812D4+$14`, both bounded by their
-own cursors) and SIX sprite streams that are not in the bundle today. Harvest them
-in the same commit or the popup draws nothing even once the code runs.
-
-Note for whoever takes it: `$240DC2` is NOT the blocker. W116 ported the whole TX
-defer path (`txDeferGrid`, `flushTextDefer141258`, wired in `isr.js`). Several
-call sites still say it is unported, on a premise that expired two waves earlier;
-those notes are stale and are the sixty counted calls W232 saw per transition.
 
 ### D7: the hyper gauges are not painted
 

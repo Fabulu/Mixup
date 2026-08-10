@@ -1,99 +1,68 @@
 # W234: the bee popup (docket D6)
 
-Status: SPEC COMPLETE, implementation not started
+Status: COMPLETE
 
-Everything needed is measured. This is a shovel-ready slice; nothing below is a
-guess about what the routines do.
+## Scope
+
+Docket D6: bees can be collected but nothing indicates it. The award was never the
+problem -- the collect arm sets bit 0 at `$27FC72`. What was missing was everything
+the player sees.
 
 ## Starting state
 
-HEAD `1e81007`, suite 1629/1629, streams 3979. W233 established that `$240DC2` is
-NOT the blocker (W116 ported the TX defer path) and that D6 is two gaps in
-`bee.js`.
+W233 is committed at `1e81007`, suite 1629/1629, streams 3979.
 
-## What to write
+## Delivered
 
-### 1. `$27FC24`, two instructions
+- Translated `$28112C`, the collected-animation arm, replacing the `note()` in
+  `beeBody27FACC`. Its body from `$281140` is the SAME INSTRUCTIONS as `$2810CA`,
+  which W111 already ported as `collectedImpact2810CA` -- the same fields, the same
+  borrow semantics, the same `$23DBCA` zoomed draw -- so this routine is that one
+  plus three things, and it calls it rather than repeating it.
+- `$2811BE`, the digits: the two-axis bias across the swap, then the fixed
+  `$20168C` tile. It RETURNS its D1, because `$2811A8 bra $28129E` runs on the D1
+  this routine modified and the biases compound.
+- `$28129E`, the x2 indicator, and its five-tile cursor at `($12,A6)` running `$10`
+  down to 0 with the borrow reloading `$10`.
+- `$27FC24`, the popup descriptor write. The ladder turns out to hold packed values
+  (`$10004`, `$20004`, ... `$10008`) rather than descriptors, and nothing in the arm
+  reads `($10,A6)` back, so the write is transcribed and NOTHING asserts a meaning
+  for the field. W233's open question stays open and stays honest.
+- `$23EC20` cost nothing, exactly as the spec predicted: it is
+  `enqueueRegisters(ram, 8, ...)`, bucket 8, with `NO_ZOOM_OR` and `ENQUEUE_MASK`
+  already the two constants it ors and masks with. That is the second time this
+  session a "new emitter" was a family member, after `$23F82A` = `emitScaled` on
+  bucket 22 in W232.
 
-Replace the `note()` in the collect arm with the write it describes:
+### A defect this uncovered
 
-    $27FC24  lea ($27FD4A,PC),A0
-    $27FC2A  move.l (A0,D1),($10,A6)      D1 is the SAME $817F82 cursor the base
-                                          ladder used at $27FC18
+`$27FC08 bset #$5,(A6)` is BYTE-sized on a memory operand, so it sets bit 5 of the
+byte at +0 -- `$2000` of the status WORD. The port set `$0020` and
+`w111bee.test.js` asserted it. Three things say `$2000`: `$28112C` tests
+`btst #$D,D1` with D1 = the status word, `$2811A2` tests `btst #$5,(A6)` on the same
+byte, and the KIND index is `d1 & $7C` (bits 6..2), which bit 5 of the word sits
+inside -- a flag there would corrupt the kind. So the x2 flag could never be read,
+and the x2 popup and its flicker could never have appeared. Both the code and the
+test are corrected, with the reasoning in both.
 
-### 2. `$28112C`, the collected-animation arm
+## The data
 
-Replace the `note()` in `beeBody27FACC`. Measured, instruction by instruction:
+Two ROM windows, each bounded by its own cursor rather than by a run length:
+`$27FD4A+$28` (ten longwords; the `$817F82` cursor steps by 4 and the bee count
+caps at ten) and `$2812D4+$14` (five longwords; `($12,A6)` runs `$10` to 0).
 
-- `$28112C` when D1 bit 13 is set AND `$80390C` is non-zero: `eori.b #$10,$1d(a6)`
-  -- the popup FLICKERS on the phase word, one frame on, one off.
-- `$281140` `$4(a6) += $1a(a6)` -- the short-axis drift.
-- `$281148` `subq.b #1,$14(a6)`; when it hits zero, reload from `$15(a6)`, take
-  `d0 = $16(a6)`, then:
-  - `$28115A` `subq.b #1,$19(a6)`; ZERO means the LIFETIME is over, jump to
-    `$2811AE`: clear `(a6)` and `$2(a6)` and `subq.w #1,$817F7E`, the pool census.
-  - `$281160` `subq.b #1,$18(a6)`: MINUS subtracts `d0` from the long at `$a(a6)`,
-    ZERO also writes `$14(a6) = $28` first, otherwise ADDS `d0`. That is the
-    popup's rise and then fall.
-- `$281178` push D6, `d6 = $40004000`, `jsr $23DBCA`, pop -- which the port already
-  makes as `enqueueZoomedThroughStub(ram, rom, 0x23dbca, a6, 0x40004000)` at
-  `bee.js:717`.
-- `$281188` the DIGITS only when `$14(a6) >= 3` (`cmpi.b #$3 / bcs`), then
-  `$281190` builds D1 from `$2(a6)` with `- $8(a6)` on the long axis and
-  `+ $6(a6)` on the short, and calls `$2811BE`.
-- `$2811A2` if bit 5 of `(a6)` is set (the x2 flag the collect arm sets at
-  `$27FC08`), fall on to `$28129E`.
+Six sprite streams harvested -- the digits tile and the five x2 tiles -- because
+none was in the bundle and the popup would have drawn nothing without them, which
+is the trap the banner pictures set in W232. Stream total 3979 to 3985.
 
-### 3. `$2811BE`, the digits
+## Verification
 
-`d1 += $FDC0` on the low word and `+$200` on the high after the swap, `d2 =
-$20168C`, `d3 = $210`, `d4 = $1D`, then `$23EC20`.
+`node --test games/ddpdoj/tests/w234beepopup.test.js` -> 5/5: the digits enqueued
+into bucket 8 with their exact tile, D3 and D4; the timer floor suppressing them;
+the lifetime byte clearing the slot and dropping the `$817F7E` census; the x2 flag
+drawing the indicator AND toggling the attribute byte only on the `$80390C` phase,
+which is what makes it flicker; the cursor cycling all five tiles and reloading;
+and all six tiles shipped.
 
-### 4. `$28129E`, the x2 indicator
-
-`d1 += $400`/`+$40` across the swap, `d2 = [$2812D4 + $12(a6)]`, `d3 = $420`,
-`d4 = $1D`, `$23EC20`, then `subq.w #4,$12(a6)` reloading `$10` on the borrow.
-
-### 5. `$23EC20` is FREE
-
-It is `lea $808014 / adda.w $80AFCA / addi.w #$C`, then `asr.l #6`, `andi.l
-#$7FF03FF`, `ori.l #$80008000`, then D0/D2/D3/D4 -- which is exactly
-`enqueueRegisters(ram, 8, d1, d2, d3, d4)`, on BUCKET 8. `NO_ZOOM_OR` and
-`ENQUEUE_MASK` in `spritequeue.js` are already those two constants. No new
-emitter, the same way `$23F82A` turned out to be `emitScaled` on bucket 22 in
-W232. Check the family FIRST.
-
-## The data it needs
-
-Two ROM windows, both bounded by their own cursors rather than by a run length:
-
-- `$27FD4A + $28` -- ten longwords, the popup ladder. The cursor `$817F82` steps
-  by 4 and the bee count caps at ten (`$27FBFA cmpi.w #$A`).
-- `$2812D4 + $14` -- five longwords, the x2 tiles. `$12(a6)` runs `$10` down to 0
-  in steps of 4 and reloads `$10` on the borrow.
-
-And SIX sprite streams, none of which is in the bundle today (checked against
-`assets/spr/streams.u32.gz`): the digits tile `$20168C` and the five x2 tiles
-`$201648`, `$201604`, `$2015C0` and the remaining two of `$2812D4`. Without them
-the popup will draw nothing even once the code runs -- exactly the trap W232 hit
-with the banner pictures, so harvest them in the same commit and re-run
-`tools/w230descriptorsweep.mjs` to confirm zero.
-
-## One thing to resolve while writing it
-
-`$27FC24` writes the popup descriptor to `($10,A6)`, which the bee record map in
-`bee.js` calls `hitLongA`, and NOTHING in the arm reads it back.
-
-Narrowed: it is not the zoomed emitter either. `enqueueZoomedRequest` reads
-`+$2/$4/$6/$8` (position), `+$a/$c` (the descriptor long), `+$e` (size) and
-`+$1c` (attribute) -- checked against `spritequeue.js` -- so `+$10` is not consumed
-by `$23DBCA`.
-
-That leaves two readings and they must be settled from the cartridge before a test
-pins anything on the field: either a consumer outside `$28112C` reads it (the arm
-is reached from the pool-A driver, so look at what else walks a collected record),
-or the field is dead on this path and the write is the cartridge keeping a value it
-does not use. Do not guess: the write itself is two instructions and can be
-transcribed either way, but the FIELD NAME in `bee.js` should not be changed on a
-hunch, and a test that asserts a popup value out of `+$10` would be asserting the
-port's own invention if nothing reads it.
+Full suite -> **1634/1634**. `w230descriptorsweep.mjs` -> zero unresolvable
+descriptors.

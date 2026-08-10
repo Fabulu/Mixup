@@ -208,7 +208,7 @@ SHOT_WINDOWS = [
     #            deliberately NOT exported: this wave validated stage 1 and a
     #            read of another stage's stream must be a LOUD THROW BY ADDRESS
     #            rather than a plausible picture.  The next four streams run
-    #            $228658/$22A5F8/$22B1E8/$22D770 (recon §2) and are W15's.
+    #            $228658/$22A5F8/$22B1E8/$22D770 (recon Â§2) and are W15's.
     (0x225B78, 0x22E0, "WAVE 13: the STAGE-1 BG column stream, 248 columns "
                        "x 36 B = 8,928 B ($2611D6 -> $26135A)"),
     # ------------------------------------------------------------- WAVE 20
@@ -221,7 +221,7 @@ SHOT_WINDOWS = [
     #   $2420E6  8 words   the octant BASE ($242092)
     #   $2420F6  129 bytes THE ARCTAN LUT ($242088).  NOT formula-reconstructible:
     #                      it deviates from a true arctan by +1.65 units of 512
-    #                      at index 10 (20-recon-aiming §2), in the near-axis
+    #                      at index 10 (20-recon-aiming Â§2), in the near-axis
     #                      band, which is where most shots live.  Ship the bytes.
     (0x2420C0, 0x0100, "WAVE 20: aim64's three tables -- $2420C6 octant signs, "
                        "$2420E6 octant bases, $2420F6 the 129-byte arctan LUT"),
@@ -971,8 +971,8 @@ SHOT_WINDOWS.append(
                        "(by $81043E/$8104A0, read at $2862D4/$286484)"))
 
 # ---------------------------------------------------------------- WAVE 45
-# THE BEAM.  `37-recon-laser.md` §2.3 measured that wave 8's 107 windows cover
-# the BOMB-LASER's templates and NOTHING of the beam's, and §9.1 asks for these
+# THE BEAM.  `37-recon-laser.md` Â§2.3 measured that wave 8's 107 windows cover
+# the BOMB-LASER's templates and NOTHING of the beam's, and Â§9.1 asks for these
 # first because every routine in the subsystem reads through them.  Widths are
 # generous on purpose -- `export-tables.py`'s own rule is "wider than measured
 # fails at the export, narrower than used fails on the player's machine".
@@ -1015,6 +1015,17 @@ SHOT_WINDOWS.extend([
                        "ship arm's upper powers, the whole formation arm, and "
                        "the shared HYPER strip $24BAE2) plus the twenty pairs "
                        "$24BB0A..$24BBAA seam-free"),
+    # W234 (docket D6): the bee popup's two tables, each bounded by its own cursor
+    # rather than by a run length. $27FD4A is the popup ladder `$27FC24 lea /
+    # move.l (A0,D1),($10,A6)` reads with the $817F82 cursor, which steps by 4 and
+    # whose bee count caps at ten (`$27FBFA cmpi.w #$A`) -- TEN longwords. $2812D4
+    # is the x2 indicator's tiles, read by `$2812B6 move.l (A0),D2` with ($12,A6),
+    # which `$2812C6 subq.w #$4 / bcc` runs $10 down to 0 and reloads at $10 --
+    # FIVE longwords.
+    (0x27FD4A, 0x0028, "W234 the bee popup ladder: ten longwords, indexed by the "
+                       "$817F82 cursor the base ladder shares"),
+    (0x2812D4, 0x0014, "W234 the bee x2 indicator tiles: five longwords, cycled "
+                       "by ($12,A6) from $10 down to 0"),
     # W231: the player object's INIT template, $24915E. `$2492E0 lea $24915E(pc)`
     # reads ONE word into the state-word OR, then `$2492FE moveq #$2F` copies
     # FORTY-EIGHT more into the record. 49 words is $62 bytes, and $24915E+$62 is
@@ -1168,7 +1179,7 @@ SHOT_WINDOWS.extend([
 # ======= W57 (M1): ENEMY TYPE $1C -- WHAT THE MIDBOSS'S DEATH SPAWNS =========
 #
 # `$26B7E0 moveq #$1C,D0 / $26B7E2 jsr $263684` is the ONLY enqueuer of type
-# $1C in build B (W56 §2.2 scanned all 44 absolute-long call sites of the two
+# $1C in build B (W56 Â§2.2 scanned all 44 absolute-long call sites of the two
 # deferred-spawn entries), and the type table's LO entry $267904 is
 # (init $26C1C2, handler $26C20C).  Every byte the port reads for it lives in
 # ONE window, and BOTH ENDS ARE PINNED BY SOMETHING THAT IS NOT A READING:
@@ -1268,7 +1279,7 @@ SHOT_WINDOWS.extend([
     # sooner, the boss arrives sooner, and `$2596F4 movea.l (A0,D0.w),A0`
     # asked for [5] at logic frame 9,153, where a run that does not bomb had
     # never got past lf 19,533's `$228658`. A SHORT WINDOW IS NOT CAUGHT AT THE
-    # EXPORT -- it is caught by `src/rom.js` on a player's machine (W54 §6.2),
+    # EXPORT -- it is caught by `src/rom.js` on a player's machine (W54 Â§6.2),
     # and this is that lesson arriving for the third time.
     (0x294F68, 0x0038, "W62/W64: the stage-1 boss's A4 script table $294F68 -- "
                        "SEVEN {init,step} pairs (W62 said five; [7] is the "
@@ -1650,7 +1661,7 @@ SHOT_WINDOWS.extend([
 # 1024) is the BACKGROUND third, and `$24150A` -- the 64-byte bank upload into
 # the staging area $80E886 -- was a counted note in six files.  So every sprite
 # on the page was coloured by one frozen instant of `capture.bin`, which is why
-# the owner's bomb was grey (`90-impl` §2, `91-impl` §2).
+# the owner's bomb was grey (`90-impl` Â§2, `91-impl` Â§2).
 #
 # EVERY BLOCK IS 64 BYTES = 32 xRGB555 ENTRIES = ONE BANK, and both extents
 # below are pinned by a block rather than rounded:
@@ -1660,7 +1671,7 @@ SHOT_WINDOWS.extend([
 #            ($26157A), the last `$22xxxx` block any ported site names
 #
 # and the second window is exactly the two blocks in the $24xxxx CODE segment
-# that call sites name as data (`18-impl` §1 classified them: both disassemble
+# that call sites name as data (`18-impl` Â§1 classified them: both disassemble
 # as 64 zero bytes, a BLANK bank, not an executable routine).
 SHOT_WINDOWS.extend([
     (0x222A78, 0x2880, "W91: the SPRITE palette colour blocks. 64 bytes each; "
@@ -1753,7 +1764,7 @@ SHOT_WINDOWS.extend([
 
 # ============ W95: THE STEADY STATE'S NINE TABLES ============================
 #
-# `src/bossphase.js` ports the ten script ids of W94 §3A's closed set, and
+# `src/bossphase.js` ports the ten script ids of W94 Â§3A's closed set, and
 # every constant they use comes out of the CARTRIDGE at the address the
 # instruction computes (recon 48's work-list item 4) rather than out of a JS
 # literal, so a table that moves throws by address instead of firing a wrong
@@ -2090,7 +2101,7 @@ SHOT_WINDOWS.extend([
 # one 64-byte block -- except the four contiguous sources $2255B8/$2255F8/
 # $225638/$225678, which abut exactly ($40 apart) and share one 256-byte window.
 # `$2254B8` (bank $11) and `$225878` (bank $16) are isolated by gaps on both
-# sides, so they are their own windows.  (W123 §6 R2b; F0 disasm $28D9C4..$28DA3A.)
+# sides, so they are their own windows.  (W123 Â§6 R2b; F0 disasm $28D9C4..$28DA3A.)
 SHOT_WINDOWS.extend([
     (0x2254B8, 0x0040, "W125: result-screen art bank $11 source $2254B8 -- "
                        "16 longwords copied by $24150A at $28D9DA (F0 art install)"),
@@ -4052,7 +4063,7 @@ def speed_index_set(d: bytes) -> list[int]:
     # above can see, because it is neither a template nor a stream nor an
     # in-code constant -- it is a RAMPED BYTE inside the boss's own sub-record.
     # `$29319E jsr $241D34` (the MAIN tail `$29314C`, W94's) passes `($4A,A6)`
-    # and `($8A,A6)`; W95 §3 met the throw and left it, deriving a "$82 +- 44"
+    # and `($8A,A6)`; W95 Â§3 met the throw and left it, deriving a "$82 +- 44"
     # band from a LOCKSTEP with `($2A,A6)` that DOES NOT EXIST -- see
     # `boss_part_speed_indices` for the two sites that break it.
     s.update(boss_part_speed_indices(d))
@@ -4333,7 +4344,7 @@ def check_pool_e_extents(d: bytes) -> None:
 
     Three arithmetics close exactly on a landmark that is not a reading; if any
     of them stops closing, the block has moved and the export must STOP rather
-    than ship 1,498 bytes of something else.  W47 §4.3's precedent, applied to a
+    than ship 1,498 bytes of something else.  W47 Â§4.3's precedent, applied to a
     table whose extent is pinned by CODE rather than by a chain.
     """
     PTRS, N_PTRS = 0x28A786, 256
@@ -4575,7 +4586,7 @@ def check_item_extents(d: bytes) -> None:
     #    pointers holds exactly those twelve addresses.  This is what makes
     #    "five power levels" a fact about the cartridge and not a reading.
     #
-    # AND THE ARRAY IS **INTERLEAVED**, which recon 59 §9.6 could not settle and
+    # AND THE ARRAY IS **INTERLEAVED**, which recon 59 Â§9.6 could not settle and
     # which this check found by being wrong first.  The twelve pointers are NOT
     # $25523C..$2552AA in order: entry [2n] is the SHOT list (the first six,
     # $25523C + 10n) and entry [2n+1] is the LASER list (the second six,
@@ -5237,7 +5248,7 @@ PALETTE_FLUSH = [
 # families the port EXECUTES today -- the bomb's shared tail and the scroll VM's
 # object stream (which has no absolute-long site and is checked separately
 # below) -- and the rest are still COUNTED NOTES with the plumbing they need
-# named in `91-impl` §5.  A site whose bank comes out of a table has `None` for
+# named in `91-impl` Â§5.  A site whose bank comes out of a table has `None` for
 # it and is checked for the `lea` alone.
 PALETTE_SITES = [
     # The two bomb heads FALL THROUGH into one shared `move.w #$6,D0 / jmp`,
@@ -5270,7 +5281,7 @@ PALETTE_BOMB_HEADS = [
 # `src/palette.js catchUpObjectStream` replays.  Its head is not typed in: it is
 # read through the per-stage pair table the cartridge publishes.
 # The two CONSTANT banks in the $24xxxx code segment that call sites name as
-# data.  `18-impl` §1 classified $246BB8 and read it as "64 zero bytes"; [M]
+# data.  `18-impl` Â§1 classified $246BB8 and read it as "64 zero bytes"; [M]
 # THAT IS ONLY HALF THE PAIR, and the other half is the more interesting one:
 #   [M] $246BB8  32 x $0000 -- BLACK.   $24636C blacks out all 79 banks with it
 #   [M] $246BF8  32 x $7FFF -- WHITE.   $2463A6 whites out all 79 banks with it
@@ -5455,7 +5466,7 @@ def check_palette_upload_family(d: bytes) -> None:
                 raise SystemExit(
                     f"${src:06X} is named by {what} as data, and it is one of "
                     f"the two CONSTANT banks the $24xxxx code segment holds "
-                    f"(`18-impl` §1 classified them). It should be 32 x "
+                    f"(`18-impl` Â§1 classified them). It should be 32 x "
                     f"${want:04X} and it is "
                     f"{sorted(f'${w:04X}' for w in set(blk))}.")
         elif not (blk_lo <= src and src + 64 <= blk_hi):
@@ -5804,7 +5815,7 @@ def check_text_palette_obj0A(d: bytes) -> None:
     """W93.  The chain main loop -> `$2410BC` -> `$240F62[$0A]` -> `$260794`
     -> `beq.w $2605C8`, and the ten installs at the end of it.
 
-    THE POINT OF THIS CHECK.  `92-impl` §5.2 refused these ten banks because
+    THE POINT OF THIS CHECK.  `92-impl` Â§5.2 refused these ten banks because
     `$2605C8`'s ENTRY could not be named, and this wave names it.  Everything
     below is a link in that chain: if any one breaks, the port is replaying a
     routine it can no longer show the board reaches, and the build stops.
@@ -6017,7 +6028,7 @@ def build(d: bytes) -> dict:
                     "words": [u16(d, a + 2 * i) for i in range(n)]}
                 for k, (a, n) in GOV_TABLES.items()},
         # WAVE 12 -- `b` KEPT ITS KEY AND LOST ITS NAME.  $2553CA -> $2553F2 is
-        # the ship's X HALF-EXTENTS indexed by the tilt (10-recon-combat §3,
+        # the ship's X HALF-EXTENTS indexed by the tilt (10-recon-combat Â§3,
         # `$2459D0 add.w ($14,A4),D2 / sub.w ($16,A4),D3`), not a second
         # animation table.  It is emitted TWICE for one release -- under the old
         # `b` so an unregenerated rip/ still loads, and under `hitX`, which is

@@ -93,7 +93,7 @@
 
 import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
-import { enqueueThroughStub, enqueueZoomedThroughStub } from './spritequeue.js';
+import { enqueueThroughStub, enqueueZoomedThroughStub, enqueueRegisters } from './spritequeue.js';
 import { scoreByMask } from './score.js';
 import { bcd242AC6 } from './items.js';
 import { grantHyper287682 } from './hyper.js';
@@ -310,7 +310,7 @@ export function clearPoolA(ram) {
  *   the spawn position was off-screen (the ROM sets carry; callers ignore it).
  */
 export function allocBee27F92A(ram, rom, ctx, kind, layer, carrierA6) {
-  // --------------------------------------------------- §THE REFUSAL (header)
+  // --------------------------------------------------- Â§THE REFUSAL (header)
   if (kind !== KIND.bee && kind !== KIND.beeFlying) {
     unreached(POOL_A.alloc, `$27F92A -- the caller passed kind index $${
       (kind >> 2).toString(16).toUpperCase()} (D0=$${kind.toString(16)
@@ -718,6 +718,84 @@ function collectedImpact2810CA(ram, rom, a6) {
   return { emitted: true, collected: true };
 }
 
+// The two 68000 register idioms this popup uses, the same pair `stageend.js` keeps
+// for the result screen: `swap D1` and an `addi.w` that must not carry into the
+// high word.
+const d1Swap = (d) => (((d & 0xffff) << 16) | ((d >>> 16) & 0xffff)) >>> 0;
+const d1AddLo = (d, v) => (((d & 0xffff0000) | ((d + v) & 0xffff)) >>> 0);
+
+/** `$2811BE` -- the popup's DIGITS. Biases D1 on both axes across the swap, then
+ *  the fixed `$20168C` tile through `$23EC20`, which is `enqueueRegisters` on
+ *  BUCKET 8: `lea $808014 / adda.w $80AFCA / addi.w #$C`, then `asr.l #6`,
+ *  `andi.l #$7FF03FF`, `ori.l #$80008000` and D0/D2/D3/D4 -- the same twelve bytes
+ *  `enqueueRegisters` writes, with `NO_ZOOM_OR` and `ENQUEUE_MASK` already those
+ *  two constants. Returns D1 AS MODIFIED, because `$2811A8 bra $28129E` runs on
+ *  this routine's D1 and its biases compound. */
+function popupDigits2811BE(ram, d1) {
+  let d = d1AddLo(d1, 0xfdc0);                             // $2811BE addi.w #$FDC0
+  d = d1Swap(d);                                           // $2811C2
+  d = d1AddLo(d, 0x0200);                                  // $2811C4 addi.w #$200
+  d = d1Swap(d);                                           // $2811C8
+  enqueueRegisters(ram, 8, d, 0x0020168c, 0x0210, 0x001d); // $2811CA..$2811D8
+  return d;
+}
+
+/** `$28129E` -- the x2 indicator, drawn only when the x2 flag is set. Its tile
+ *  comes from `$2812D4` indexed by `($12,A6)`, which runs `$10` down to 0 in
+ *  fours and reloads `$10` on the borrow -- five entries, and that cursor is what
+ *  bounds the table. */
+function popupX2_28129E(ram, rom, a6, d1) {
+  let d = d1AddLo(d1, 0x0400);                             // $28129E addi.w #$400
+  d = d1Swap(d);                                           // $2812A2
+  d = d1AddLo(d, 0x0040);                                  // $2812A4 addi.w #$40
+  d = d1Swap(d);                                           // $2812A8
+  const cursor = ram.u16(a6 + B.hitLongB);                 // $2812AA move.w ($12,A6)
+  const tile = rom.u32(0x2812d4 + cursor);                 // $2812B6 move.l (A0),D2
+  enqueueRegisters(ram, 8, d, tile, 0x0420, 0x001d);       // $2812B8..$2812C0
+  // $2812C6 subq.w #$4 / bcc -- the borrow reloads, so the five tiles cycle.
+  const next = u16(cursor - 4);
+  ram.setU16(a6 + B.hitLongB, cursor < 4 ? 0x0010 : next); // $2812CA/$2812CC
+}
+
+/**
+ * `$28112C` -- THE BEE'S COLLECTED ANIMATION, and the "500" popup docket D6 is
+ * about. The award itself never needed it (the collect arm sets bit 0 at
+ * `$27FC72`); this is the whole of what the player sees.
+ *
+ * Its body from `$281140` is the SAME INSTRUCTIONS as `$2810CA`'s, which W111
+ * already ported as `collectedImpact2810CA`: the short-axis drift by `($1a,A6)`,
+ * the `($14,A6)` timer reloading from `($15,A6)`, the `($19,A6)` LIFETIME that
+ * frees the slot, the `($18,A6)` sign that makes `($a,A6)` rise and then fall, and
+ * the `$23DBCA` zoomed draw with D6 = `$40004000`. So this routine is that one
+ * plus three things: the flicker at its head, the digits, and the x2 arm.
+ */
+function beeCollected28112C(ram, rom, ctx, a6, d1) {
+  // $28112C btst #$D,D1 / beq -- bit 13 of the status word is the x2 flag (see
+  // the collect arm), and $281132 gates the toggle on the $80390C phase, so an x2
+  // popup FLICKERS one frame on and one off. $1D is the low byte of the attribute
+  // word the emitter reads at +$1C, so the flicker is a colour flicker.
+  if ((d1 & 0x2000) !== 0 && ram.u16(0x80390c) !== 0) {     // $28112C/$281132
+    ram.setU8(a6 + 0x1d, ram.u8(a6 + 0x1d) ^ 0x10);         // $28113A eori.b #$10
+  }
+  const r = collectedImpact2810CA(ram, rom, a6);            // $281140..$281186
+  if (r.freed) return r;                                    // $2811AE, freePoolA
+  // $281188 cmpi.b #$3,($14,A6) / bcs $2811AC -- no digits below the timer floor.
+  if (ram.u8(a6 + B.hitShortA) < 3) return r;
+  // $281190..$28119E -- D1 out of the record's own position pair and its two
+  // sprite offsets: the long axis gains ($6,A6) and the short axis loses ($8,A6).
+  let d = ram.u32(a6 + B.pos);                              // $281190 move.l ($2,A6)
+  d = d1AddLo(d, u16(-ram.u16(a6 + B.spriteOff + 2)));      // $281194 sub.w ($8,A6)
+  d = d1Swap(d);                                            // $281198
+  d = d1AddLo(d, ram.u16(a6 + B.spriteOff));                // $28119A add.w ($6,A6)
+  d = d1Swap(d);                                            // $28119E
+  d = popupDigits2811BE(ram, d);                            // $2811A0 bsr
+  // $2811A2 btst #$5,(A6) -- the BYTE at +0, so bit 13 of the status word again.
+  if ((ram.u8(a6 + B.status) & 0x20) !== 0) {               // $2811A2/$2811A6
+    popupX2_28129E(ram, rom, a6, d);                        // $2811A8 bra $28129E
+  }
+  return r;
+}
+
 /**
  * `$27FACC` -- the bee body (kinds 1 and 16).  Dispatches on the collected,
  * P1-touch and P2-touch bits, then either collects or idles.
@@ -725,16 +803,7 @@ function collectedImpact2810CA(ram, rom, a6) {
 function beeBody27FACC(ram, rom, ctx, a6, d1) {
   // $27FACC btst #0,D1: already collected?
   if ((d1 & 0x0001) !== 0) {                              // $27FAD0 bne $28112C
-    // The collected-animation arm $28112C is not ported in this wave.  It
-    // plays the pickup animation and frees the slot.  NOTE it: the bee has
-    // already scored (the collect arm set bit 0 at $27FC72), so the only
-    // consequence of not running it is the absence of the fading "500" popup.
-    note(ctx, 0x28112c, `$27FAD0 bne $28112C -- the bee's collected-animation `
-      + `arm. The award already ran (bit 0 was set at $27FC72); this arm plays `
-      + `the fading popup and frees the slot. Not ported in W111; the slot `
-      + `stays allocated with bit 0 set, which is a cosmetic delay, not a `
-      + `score error`);
-    return { collected: true };
+    return beeCollected28112C(ram, rom, ctx, a6, d1);     // W234, docket D6
   }
   // $27FAD6 btst #$C,D1: P1 touching? -> P1 collect arm
   if ((d1 & 0x1000) !== 0) {                              // $27FADA bne $27FB6C
@@ -840,7 +909,12 @@ function scoreAward27FBEE(ram, rom, ctx, a6, d3, d4, d5) {
   if (ram.u16(POOL_A.beeCount) === 10) {                  // $27FBFA cmpi.w #$A
     if (d3 === 0) {                                       // $27FC04 tst.w D3
       x2 = true;                                          // $27FC08 bset #$5
-      ram.setU16(a6 + B.status, ram.u16(a6 + B.status) | 0x0020); // bit 5
+      // W234: `bset #$5,(A6)` is BYTE-sized on the byte at +0, so it sets $2000
+      // of the status WORD -- bit 13, which is what $28112C's `btst #$D,D1` and
+      // $2811A2's `btst #$5,(A6)` both test. This line set $0020, and bit 5 of the
+      // word is INSIDE the kind field (bits 6..2), so the flag could never be read
+      // and the x2 popup and its flicker could never appear.
+      ram.setU16(a6 + B.status, ram.u16(a6 + B.status) | 0x2000);
       ram.setU16(POOL_A.cursor, u16(ram.u16(POOL_A.cursor) + 4)); // $27FC0C
     }
   }
@@ -860,11 +934,12 @@ function scoreAward27FBEE(ram, rom, ctx, a6, d3, d4, d5) {
     d0 = (d0 + d0) >>> 0;                                 // $27FC22 add.l D0,D0 (THE BUG)
   }
 
-  // $27FC24..$27FC2A: popup descriptor from the popup ladder.  Noted, not
-  // ported (the popup draw subsystem $240DC2 is unported).
-  note(ctx, 0x27fc24, `$27FC24 lea ($27FD4A,PC),A0 / move.l (A0,D1),($10,A6) `
-    + `-- the popup descriptor write. The draw routine $240DC2 is not ported, `
-    + `so the "500" popup does not appear. The award itself runs.`);
+  // $27FC24..$27FC2A -- the popup descriptor, off the ten-longword ladder at
+  // $27FD4A with the SAME cursor the base ladder used. W234 transcribes the write;
+  // no routine in the collected arm reads ($10,A6) back and `enqueueZoomedRequest`
+  // does not either (it reads +$2/$4/$6/$8, +$a/$c, +$e and +$1c), so nothing
+  // here asserts a meaning for the field beyond the two instructions.
+  ram.setU32(a6 + B.hitLongA, rom.u32(POOL_A.popupLadder + d1cursor));
 
   // $27FC30..$27FC38: chain gate.  D4 (meter) and D5 (hits) must both be
   // non-zero and D5 positive for the digit-multiply; otherwise the flat path.

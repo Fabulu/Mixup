@@ -75,7 +75,7 @@ test('W211 static Stage-4 census, resource, terrain, and opening closure',
   const art = manifest.spr.harvest.find((h) => h.at === '$2622EA');
   assert.ok(art, 'clock-0 Stage-4 BGELEM id-5 art harvest');
   assert.deepEqual([art.entries, art.distinct], [1, 1]);
-  assert.equal(manifest.spr.streamCount, 3979);
+  assert.equal(manifest.spr.streamCount, 3985);
 });
 
 test('W211 real Stage-4 opening installs terrain, draws id 5, and pulses A6',
