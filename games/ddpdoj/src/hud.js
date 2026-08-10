@@ -1468,6 +1468,96 @@ export function panelLabelInline(ram, rom, ctx, who) {
  *  -- `$284FD2` gates on `$81B61E` and decrements `$81B622` then `$81B624`,
  *  `$2851D2` gates on `$81B61F` and decrements `$81B624` then `$81B622`.  Read
  *  as one routine with a parameter they would be wrong. */
+// The two 68000 register idioms the panel needs: `swap D1` and an `addi.w` that must
+// not carry into the high word. THIRD copy in this port (`stageend.js` and `bee.js`
+// have the same pair); a FOURTH should move them into `ram.js` instead.
+const d1Swap = (d) => (((d & 0xffff) << 16) | ((d >>> 16) & 0xffff)) >>> 0;
+const d1AddLo = (d, v) => (((d & 0xffff0000) | ((d + v) & 0xffff)) >>> 0);
+
+/** `$23FA96` and `$23FAC4` -- BUCKET 25, and both are `enqueueRegisters`. The only
+ *  difference between them is register discipline: `$23FAC4` pushes A0 and D0 and
+ *  pops them, `$23FA96` does not, which is why the caller uses `$23FAC4` inside a
+ *  `dbra D0` loop and `$23FA96` outside one. In this port that distinction has no
+ *  effect -- JS has no caller-clobbered registers -- so both are one call, and the
+ *  ROM addresses stay on the two wrappers so a reader can still find them. */
+function emit23FA96(ram, d1, d2, d3, d4) {
+  return enqueueRegisters(ram, 25, d1, d2, d3, d4);      // $23FA96..$23FAC2
+}
+function emit23FAC4(ram, d1, d2, d3, d4) {
+  return enqueueRegisters(ram, 25, d1, d2, d3, d4);      // $23FAC4..$23FAEE
+}
+
+/** The four 8-byte tables at `$2881D2`, read as LONGWORDS at a stride of TWO
+ *  (`move.w <weapon>,D2 / add.w D2,D2 / move.l (A0,D2.w),D2`), so entries overlap.
+ *  Their far end is `$2881F2`, which is a window this port already had. */
+const PANEL_ART = {
+  livesP1: 0x2881d2, livesP2: 0x2881da,
+  bombP1: 0x2881e2, bombP2: 0x2881ea,
+  stock: 0x2883ce,          // stock*4, six longwords, ending at $2883E6's window
+};
+
+/**
+ * One player's half of `$2851D2`: the LIVES icons, the hyper STOCK icon, and the
+ * bomb row's text. `$285206..$2852EA` is P1 and `$2852EA..$2853C0` is P2, and they
+ * are mirror images -- the icon loop steps the column the other way, the hyper bias
+ * differs, and each reads its own weapon word and its own art table.
+ */
+function panelBlock(ram, rom, ctx, s, d6) {
+  // $28520E / $2852EA -- the LIVES word, and a negative one skips the whole block.
+  const alive = ram.u16(s.alive);
+  if (i16(alive) < 0) return;
+  // $285218..$285224 -- `subq.w #1` then clamp to five: `bcs` takes a zero straight
+  // past the loop with D0 = $FFFF, and `bls` leaves anything above five at five.
+  let d0 = u16(alive - 1);
+  if (i16(d0) >= 0 && d0 > 5) d0 = 5;                    // $28521E/$285224
+  const d7 = d0;                                         // $285226 move.w D0,D7
+
+  let d1 = u16(s.iconBase + (s.iconMinus ? u16(-d6) : d6));  // $285228/$28522C
+  const d5 = d1;                                         // $285238 move.l D1,D5
+  if (i16(d0) >= 0) {                                    // $285234 tst.w/bmi
+    // $28523A..$285244 -- the icon's own two-axis bias, applied across the swap.
+    d1 = d1AddLo(d1, s.iconLoBias);
+    d1 = d1Swap(d1);
+    d1 = d1AddLo(d1, s.iconHiBias);
+    d1 = d1Swap(d1);
+    const w = ram.u16(s.weapon);                         // $285246 move.w
+    const d2 = rom.u32(s.livesArt + u16(w * 2));         // $28524C/$285254
+    for (let n = 0; n <= d0; n++) {                      // $285266 dbra D0
+      emit23FAC4(ram, d1, d2, 0x0208, s.iconAttr);       // $28525C jsr $23FAC4
+      d1 = d1AddLo(d1, s.iconStep);                      // $285262 addi.w #$200
+    }
+    d1 = d5;                                             // $28526A move.l D5,D1
+  }
+
+  // $28526C / $285344 -- the hyper STOCK icon, only while the hyper is NOT up.
+  if (ram.u16(s.hyper) === 0) {
+    let h = d1AddLo(d1, s.stockLoBias);                  // $285274 / $28534C
+    h = d1Swap(h);
+    h = d1AddLo(h, 0x0100);                              // $28527A / $285352
+    h = d1Swap(h);
+    const idx = u16(u16(ram.u16(s.stockIdx) * 2) * 2);   // $28528E/$285290
+    emit23FA96(ram, h, rom.u32(PANEL_ART.stock + idx), 0x0430, 0x0009);  // $28529C
+  }
+
+  // $2852A4 / $28537A -- bit 7 of the clear flags gates the REST of the block, and
+  // the `bpl` jumps past the stock-icon call too, not just the text.
+  if ((ram.u8(HUDRAM.bannerFlagsClear) & 0x80) === 0) return;
+  // $2852B4 tst.w D7 / bmi -- a negative count skips only the text LOOP; the
+  // `bmi` target is the stock call below.
+  if (i16(d7) >= 0) {
+    let t = s.textBase;                                  // $2852B0 / $285386
+    const w = ram.u16(s.weapon);                         // $2852C0 / $285396
+    const d4 = rom.u32(s.bombArt + u16(w * 2));          // $2852C6/$2852CE
+    for (let n = 0; n <= d7; n++) {                      // $2852DE / $2853B4 dbra D7
+      txPrint240DC2(ram, 0x00bc, t, 0x0001, 0x0000, d4); // $2852D4 / $2853AA
+      t = u16(t + s.textStep);                           // $2852DA addi / $2853B0 subi
+    }
+  }
+  // $2852E4 jsr $286ED6 and $2853BA jsr $286F3E -- each block calls ITS OWN, and
+  // `hyperStock286ED6` has covered both since W118.
+  hyperStock286ED6(ram, rom, ctx, s.who);
+}
+
 function panel284FD2(ram, ctx) {
   if ((ram.u8(HUDRAM.bannerFlagsBoss) & 0x08)           // $284FDE btst #$3,$81B61E
     && ram.u16(HUDRAM.bannerTimer) <= 0x0c) {           // $284FE8 cmpi.w #$C / bhi
@@ -1478,12 +1568,38 @@ function panel284FD2(ram, ctx) {
 }
 
 /** `$2851D2` -- the STAGE-CLEAR banner's panels.  See `panel284FD2`. */
-function panel2851D2(ram, ctx) {
+/** Exported for `w238banner-panel.test.js`: its three callers are deep inside the
+ *  banner state machine and a test that drove them would be testing the machine. */
+export function panel2851D2(ram, rom, ctx) {
   if ((ram.u8(HUDRAM.bannerFlagsClear) & 0x08)          // $2851E2 btst #$3,$81B61F
     && ram.u16(HUDRAM.bannerTimer) <= 0x10) {           // $2851EE cmpi.w #$10 / bhi
     subqFloor(ram, HUDRAM.bannerSubB);                  // $2851F8 subq.w / $285200 clr.w
   }
-  draw(ctx, 0x23fac4); draw(ctx, 0x240dc2); draw(ctx, 0x286f3e);
+  // W238 runs the body. Its three draws were counted and all three were available:
+  // `$240DC2` since W116, `$286ED6`/`$286F3E` as `hyperStock286ED6` since W118, and
+  // `$23FAC4`/`$23FA96` are `enqueueRegisters` on bucket 25.
+  //
+  // $2851D2..$285206 build the SLIDE offset the two blocks share: the panel's own
+  // column plus `$81B622 << 6`, and D6 is `$81B624 << 6`.
+  const d6 = u16(ram.u16(HUDRAM.bannerSubB) << 6);      // $285206/$28520C
+  panelBlock(ram, rom, ctx, {
+    alive: HUDRAM.aliveP1, weapon: 0x81043e,
+    hyper: HUDRAM.hyperActiveP1, stockIdx: HUDRAM.hyperStockIdxP1,
+    livesArt: PANEL_ART.livesP1, bombArt: PANEL_ART.bombP1,
+    iconBase: 0x0500, iconMinus: true,                  // $285228 #$500 / $28522C sub
+    iconLoBias: 0xff00, iconHiBias: 0xfe00,             // $28523A / $285240
+    iconStep: 0x0200, iconAttr: 0x0000,                 // $285262 / $285258
+    stockLoBias: 0xff00, textBase: 0x0200, textStep: 0x0100, who: 0,
+  }, d6);
+  panelBlock(ram, rom, ctx, {
+    alive: HUDRAM.aliveP2, weapon: 0x8104a0,
+    hyper: HUDRAM.hyperActiveP2, stockIdx: HUDRAM.hyperStockIdxP2,
+    livesArt: PANEL_ART.livesP2, bombArt: PANEL_ART.bombP2,
+    iconBase: 0x3300, iconMinus: false,                 // $285302 #$3300 / $285306 add
+    iconLoBias: 0xff00, iconHiBias: 0xfe00,             // $285312 / $285318
+    iconStep: 0xfe00, iconAttr: 0x0001,                 // $28533A subi #$200 / $285330
+    stockLoBias: 0xf500, textBase: 0x1900, textStep: 0xff00, who: 1,
+  }, d6);
   subqFloor(ram, HUDRAM.bannerSubA);                    // $2853C0 subq.w / $2853C8 clr.w
 }
 
@@ -1779,7 +1895,7 @@ function bannerClear284B6C(ram, rom, ctx) {
         bannerPanel284F72(ram, rom, ctx, d6);           // $284C6A bsr
         bannerPanel284FA2(ram, rom, ctx, d6);           // $284C6E bsr
       }
-      panel2851D2(ram, ctx);                            // $284C72 bsr $2851D2
+      panel2851D2(ram, rom, ctx);                            // $284C72 bsr $2851D2
       return null;
     }
     // ---- $284C7A: the banner is FINISHED.
@@ -1787,7 +1903,7 @@ function bannerClear284B6C(ram, rom, ctx) {
     ram.setU16(HUDRAM.popupTimerP1, 0);                 // $284C82 clr.w $81B5C2
     ram.setU16(HUDRAM.popupTimerP2, 0);                 // $284C88 clr.w $81B5EC
     ram.setU16(HUDRAM.p1.popup, 0);                     // $284C8E clr.w $81B5C8
-    panel2851D2(ram, ctx);                              // $284C94 bsr $2851D2
+    panel2851D2(ram, rom, ctx);                              // $284C94 bsr $2851D2
     if (i16(ram.u16(HUDRAM.aliveP1)) >= 0) {            // $284C98 / $284C9E bmi
       draw(ctx, 0x287abe); draw(ctx, 0x240dc2);         // $284CA0 / $284CBC
     }
@@ -1810,7 +1926,7 @@ function bannerClear284B6C(ram, rom, ctx) {
     if (had1 && had2) draw(ctx, 0x240ebc);              // $284BC4 jsr
     else setF(F() & ~0x01);                             // $284BCC bclr #$0
   }
-  panel2851D2(ram, ctx);                                // $284BD4 bsr $2851D2
+  panel2851D2(ram, rom, ctx);                                // $284BD4 bsr $2851D2
   draw(ctx, 0x23fa96);                                  // $284BFA
   bothScoreRows(ram, rom, ctx);                         // $284C12 / $284C26
   const t = u16(ram.u16(HUDRAM.bannerTimer) - 1);       // $284C2A subq.w #$1

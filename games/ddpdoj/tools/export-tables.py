@@ -1022,6 +1022,17 @@ SHOT_WINDOWS.extend([
     # $2256B8 + 5*$40 is $2257F8.
     (0x2256B8, 0x0140, "W236 the five stage-clear banner palettes, $28EE1E's "
                        "second longwords, installed into bank $17"),
+    # W238 (docket D11): the banner PANEL's art. $2881D2 is FOUR 8-byte tables --
+    # P1 lives icon, P2 lives icon, P1 bomb text, P2 bomb text -- each read as a
+    # LONGWORD at a stride of TWO (`move.w <weapon>,D2 / add.w D2,D2 / move.l
+    # (A0,D2.w),D2`), so their entries deliberately overlap. $2881D2 + $20 is
+    # $2881F2, which W113 already exports, so the extent abuts a window this port
+    # already had rather than resting on a run length. $2883CE is the stock icon,
+    # six longwords at stock*4, ending at $2883E6 -- also an existing window.
+    (0x2881D2, 0x0020, "W238 the banner panel's four art tables, ending at "
+                       "$2881F2's window"),
+    (0x2883CE, 0x0018, "W238 the banner panel's six hyper-stock icons, ending at "
+                       "$2883E6's window"),
     # W237 (docket D11/D7): the SET-item icon row's six tile longwords. `$2534CA lea
     # ($2534E0,PC) / move.l (A0,D4.w),D4` with D4 = (target-1)*4, and $2534F8 is
     # CODE -- `tst.w $81B65C`, the head of $2534F8 -- so SIX is the extent, pinned
