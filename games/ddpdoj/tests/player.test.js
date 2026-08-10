@@ -209,6 +209,11 @@ function pinnedGame(pos, dirBit) {
   const r = g.ram;
   r.setU16(RAM.objTable, 0x0002);          // slot 0 = the P1 player type
   r.setU8(RAM.objTable + 7, 0);            // ($7,A5) = player index
+  // W231: bit 0 of ($3,A5) is $2491D4's one-time-init latch, and every LIVE
+  // player object carries it set (the seed's does). This fixture is about the
+  // wall, so it starts from a player that has already initialised -- without the
+  // bit, $2491C0's INIT arm runs and takes its position from the object record.
+  r.setU8(RAM.objTable + 3, 1);
   r.setU16(RAM.player1 + P.posY, pos.y);
   r.setU16(RAM.player1 + P.posX, pos.x);
   r.setU8(RAM.player1 + P.speedIdx, 22);
@@ -264,6 +269,7 @@ test('a conflicting stick skips the clamps entirely ($2495C6 bra $24969C)',
     const g = new Game(seed, JSON.parse(readFileSync(TABLES, 'utf8')));
     const r = g.ram;
     r.setU16(RAM.objTable, 0x0002);
+    r.setU8(RAM.objTable + 3, 1);                       // already initialised
     r.setU16(RAM.player1 + P.posY, CLAMP.yMax + 500);   // deliberately outside
     r.setU8(RAM.player1 + P.speedIdx, 22);
     r.setU8(RAM.player1 + P.invuln, 0xff);

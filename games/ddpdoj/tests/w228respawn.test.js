@@ -85,7 +85,8 @@ test('W228 the last life falls through to the game-over arm', { skip: SKIP }, ()
     respawn25FFA8(ram, ctx, a6);
 
     assert.equal(ram.u16(COUNT), 0xffff, 'the count goes NEGATIVE, which is the test');
-    assert.equal(ram.u16(a6), 2, '$260004: state 2, the rank object tears down');
+    assert.equal(ram.u16(a6), 2,
+      '$260004 arms request 2, and $25FF52[2] is $260056, the continue entry');
     assert.deepEqual([ram.u16(0x812930), ram.u16(0x812934), ram.u16(0x812938)],
       [0, 1, 0], '$25FFD8, P1 side');
     assert.equal(ram.u16(ALLOC.createStage), 0, 'and NO object was created');
@@ -102,7 +103,7 @@ test('W228 the P2 arm writes the other three words', { skip: SKIP }, () => {
     [0, 0, 0], "and P1's are untouched");
 });
 
-test('W228 a real death respawns and keeps running for 1400 frames',
+test('W228 a real death respawns and keeps running',
   { skip: SKIP_SEED }, () => {
     const g = new Game(new Uint8Array(readFileSync(seedPath)), json,
       { palCatchUp: false });
@@ -114,8 +115,14 @@ test('W228 a real death respawns and keeps running for 1400 frames',
     assert.equal(g.ram.u16(COUNT), 2, 'the seed carries two in reserve');
 
     let died = 0;
-    for (let f = 92; f <= 1400; f++) {
-      g.step(shot);                  // stopped at $24CA60, then at $25FF7A
+    // With W231's init and pod deploy in, this scenario now survives THREE deaths
+    // and two full respawns: it dies at 424, 857 and 1184, spends the seed's two
+    // lives at 495 and 928, and at 1255 the third death exhausts the count and arms
+    // request 2 -- $260056, the credit/continue entry, which is the next frontier.
+    // 700 is inside the first respawn's life, after its reset at 495 and before the
+    // second death at 857, so the count below is exactly one and the player is alive.
+    for (let f = 92; f <= 700; f++) {
+      g.step(shot);                  // stopped at $24CA60, then $25FFA8, then $24C934
       if (!died && (g.ram.u8(RAM.player1) & 1) !== 0) died = f;
     }
     assert.equal(died, 424);
@@ -123,12 +130,11 @@ test('W228 a real death respawns and keeps running for 1400 frames',
     assert.equal(g.ram.u16(ENTRY), 0, 'and the dispatcher is idle again');
     assert.equal(g.ram.u8(RAM.player1) & 1, 0, 'the death bit is clear');
 
-    // the respawned player answers the stick: $300 is posX's own low clamp
+    // The respawned player answers the stick, and W231 gave it a long axis too:
+    // $2491C0's init takes the position from the object record the respawn filled.
+    // w231playerinit.test.js pins that exactly; here it is enough that it is set.
     const left = portWordFromBits([BIT.left]);
-    for (let n = 0; n < 120; n++) g.step(left);
+    for (let n = 0; n < 100; n++) g.step(left);   // ...and 800 < 857
     assert.equal(g.ram.u16(RAM.player1 + P.posX), 0x300);
-    // ...but its LONG axis is still zero, because $2491C0's one-time INIT arm
-    // (`bset #0,$3(a5)`, everything before $2494FA) is not translated yet. That
-    // is the next link, and the reason a fresh player object has no position.
-    assert.equal(g.ram.u16(RAM.player1 + P.posY), 0);
+    assert.notEqual(g.ram.u16(RAM.player1 + P.posY), 0);
   });

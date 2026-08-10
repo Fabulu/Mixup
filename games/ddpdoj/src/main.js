@@ -33,7 +33,7 @@ import { irq6 } from './isr.js';
 import { WorkBudget } from './budget.js';
 import { frameSync } from './framesync.js';
 import { runObjectDriver, ObjOrder } from './objdriver.js';
-import { updatePlayer, FROZEN_GLOBALS } from './player.js';
+import { playerObject2491C0, FROZEN_GLOBALS } from './player.js';
 import { UnportedLog, unreached } from './unported.js';
 import { MoveTables } from './vectors.js';
 import { RomWindows } from './rom.js';
@@ -109,8 +109,8 @@ export function defaultHandlers(rom, vram, opts = {}) {
     // what makes $813176 and $8130CE move on every existing gate -- both were
     // in player.js's FROZEN_GLOBALS until this wave.
     [1, makeBackground(rom, vram, opts)],
-    [2, updatePlayer],    // $240F62[2] = $2491C0, P1
-    [3, updatePlayer],    // $240F62[3] = $249246, P2
+    [2, playerObject2491C0],    // $240F62[2] = $2491C0, P1
+    [3, playerObject2491C0],    // $240F62[3] = $249246, P2
     // $240F62[5] = $28B5E0, PARTIAL: 10 of its 23 jsr targets (`TYPE5_PORTED`
     // is the authority and says so itself).  W29: this entry
     // is now the one that drives the ENEMIES and the BULLET POOL, so a frame

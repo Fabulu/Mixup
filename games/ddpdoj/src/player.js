@@ -33,7 +33,7 @@ import {
   HYPER, endHyper285AF2, grantHyper287682, requestHyper249868,
   resetHyper25392E,
 } from './hyper.js';
-import { spawnItem } from './items.js';
+import { spawnItem, collectHyperStock, POWER } from './items.js';
 import { BEAM, wipeSegmentPool } from './laser.js';
 import { hyperStock286ED6 } from './hud.js';
 import { install2415A2 } from './palette.js';
@@ -282,6 +282,203 @@ export function playerDead24A130(ram, slot, rec, ctx, p2 = false) {
 }
 
 /**
+ * The two player OBJECTS, `$240F62[2]` = `$2491C0` and `[3]` = `$249246`. Two
+ * routines, identical in shape, differing only in the constants below, which is
+ * why they are a table here rather than two functions.
+ */
+const PLAYER_OBJECT = [
+  { p2: false, rec: RAM.player1, opt: RAM.p1Options,
+    liveBit: 1,                 // $2491CC ori.w #$1,$813090
+    bonus: 0x8128f4,            // A3
+    powerList: 0x8127e4,        // A4
+    d4: 0x812930, d6: 0x81292c, // $2491F0 / $2491F6
+    srcA: 0x813084, srcB: 0x813088,          // -> ($58,A6) / ($5a,A6)
+    chainFrom: 0x81b5b8, chainTo: 0x81b5e0,  // $253A1E
+    fresh: [[0x812910, 0], [0x812914, 2], [0x812916, 2]],
+    freshLong: 0x81291c, freshWord: 0x812924 },
+  { p2: true, rec: RAM.player2, opt: RAM.p2Options,
+    liveBit: 2,                 // $249252 ori.w #$2
+    bonus: 0x812902,
+    powerList: 0x8127ec,
+    d4: 0x812932, d6: 0x81292e,
+    srcA: 0x813086, srcB: 0x81308a,
+    chainFrom: 0x81b5e2, chainTo: 0x81b60a,  // $253A3A
+    fresh: [[0x812912, 0], [0x812918, 2], [0x81291a, 2]],
+    freshLong: 0x812920, freshWord: 0x812926 },
+];
+
+/** `$2603B0`, jump-table entry 9 of `$25FF7A`: the SET/bonus panel, which the
+ *  player object's own INIT arms through `$260846`. `$2534F8`/`$253522` fork on
+ *  the stock, the record's bit 6 and the bonus word, and BOTH arms reach
+ *  `$2532B6` -- a `$240E1A` plus four `$240DC2` calls, i.e. the DEFERRED text
+ *  path, which is why it is counted here rather than invented. */
+export function setPanel2603B0(ram, ctx, a6) {
+  const p2 = ram.u8(a6 + 0x17) !== 0;                 // $2603B0 tst.b ($17,A6)
+  const c = PLAYER_OBJECT[p2 ? 1 : 0];
+  const stock = p2 ? 0x81b65e : 0x81b65c;             // $2534F8 / $253522
+  const both = ram.u16(stock) !== 0                   // $2534FE bne
+    || (!ram.btst8(c.rec, 6) && ram.u16(c.bonus) !== 0);  // $253500 / $253508
+  ctx?.unportedLog?.note(0x2532b6, '$2603B0 -> $2532B6, the SET/bonus panel: one '
+    + '$240E1A and four $240DC2 calls, which is the deferred TEXT path '
+    + '($240DC2 printer + $141258 flush), counted, not run');
+  if (both) {
+    ctx?.unportedLog?.note(p2 ? 0x2534ac : 0x25349a, '$253516 also takes the '
+      + 'SET-item HUD row, the same counted draw items.js defers');
+  }
+  ram.setU16(a6, 0);                                  // $2603C8
+  ram.setU16(a6 + 0x02, 0);                           // $2603CC
+}
+
+/**
+ * `$2491C0` / `$249246` -- ONE FRAME OF THE PLAYER OBJECT, including the
+ * ONE-TIME INIT the port did not have until W231.
+ *
+ * `$2491D4 bset #0,$3(a5) / bne $2494FA` is the whole gate: a player object runs
+ * this init on its FIRST frame and `updatePlayer` on every frame after. The
+ * seeded corpus never needed it (the seed's own player object already has the bit
+ * set and its record filled) but a NEWLY CREATED one does, and W228 made those
+ * real: a respawn stages a fresh type-2 object whose record was left with no
+ * position at all, `posY` 0, below its own `$800` clamp.
+ *
+ * The init ends `$2494DC bra $249E4E`, the TAIL and not the movement: on its
+ * first frame a player object sets its record up and draws, and does not move.
+ */
+export function playerObject2491C0(ram, slot, slotIndex, ctx) {
+  const c = PLAYER_OBJECT[ram.u8(slot + 0x07) !== 0 ? 1 : 0];
+  const rec = c.rec;
+  ram.setU16(0x813090, ram.u16(0x813090) | c.liveBit);   // $2491CC ori.w
+  if (ram.bset8(slot + 0x03, 0)) {                       // $2491D4 bset/bne
+    return updatePlayer(ram, slot, slotIndex, ctx);      // $2494FA
+  }
+  const rom = ctx.rom;
+  const fresh = ram.u8(slot + 0x06) === 0;               // $249212 tst.b ($6,A5)
+  ram.setU16(rec + 0x58, ram.u16(c.srcA));               // $2491FC
+  ram.setU16(rec + 0x5a, ram.u16(c.srcB));               // $249204
+  for (let a = c.chainFrom; a < c.chainTo; a += 2) ram.setU16(a, 0);  // $253A1E
+
+  if (fresh) {                                           // $249216 bne $2492C8
+    for (const [at, v] of c.fresh) ram.setU16(at, v);    // $24921A..$249228
+    ram.setU32(c.freshLong, 0x001c3c5c);                 // $249230
+    ram.setU16(c.freshWord, 0x0101);                     // $24923A
+  }
+
+  // ---- $2492C8, and from here the two routines are the same instructions.
+  ram.setU16(c.opt, 0x8000);                             // $2492C8 move.w #$8000
+  for (const at of [0x812970, 0x81296e, 0x812972]) ram.setU16(at, 0);  // $2492CC..
+  // $2492E0: the template's FIRST word is OR-ed into the state word; its other
+  // forty-eight are copied only on a fresh object.
+  ram.setU16(rec, ram.u16(rec) | rom.u16(0x24915e));     // $2492E4/$2492E8
+  const keep58 = ram.u32(rec + 0x58);                    // $2492EA move.l
+  const keep20 = ram.u32(rec + 0x20);                    // $2492EE
+  const keep25 = ram.u8(rec + 0x25);                     // $2492F2
+  if (fresh) {                                           // $2492F6 tst.b/bne
+    for (let w = 0; w < 48; w++) {                       // $2492FE moveq #$2F
+      ram.setU16(rec + 0x02 + w * 2, rom.u16(0x249160 + w * 2));
+    }
+  }
+  ram.setU32(rec + 0x58, keep58);                        // $249306
+  ram.setU8(rec + 0x57, ram.u8(slot + 0x07));            // $24930A
+
+  let skipRest = !fresh;                                 // $249310 tst.b/bne
+  if (fresh) {
+    ram.setU16(c.bonus + 0x00, 0);                       // $24931A
+    ram.setU32(c.bonus + 0x02, 0);                       // $24931E
+    ram.setU32(c.bonus + 0x06, 0);                       // $249322
+    ram.setU16(c.bonus + 0x0a, 0);                       // $249326
+    ram.setU16(c.bonus + 0x0c, 0);                       // $24932A
+    const pair = 0x2551fa + i16(u16(ram.u16(rec + 0x5a) - 2));  // $24932E..$249334
+    const byte0 = rom.u8(pair);                          // $24933C move.b (a0)+,d0
+    ram.setU8(rec + 0x24, byte0);                        // $24933E
+    ram.setU8(rec + 0x25, rom.u8(pair + 1));             // $249342
+    if (ram.u16(c.d6) !== 0) {                           // $249346 tst.w d6/beq
+      ram.setU32(rec + 0x20, keep20);                    // $24934A
+      ram.setU8(rec + 0x24, keep25);                     // $24934E
+      ram.setU8(rec + 0x25, keep25);                     // $249352
+      skipRest = ram.u16(c.d4) !== 0;                    // $249356 tst.w d4/bne
+    }
+    if (!skipRest) {
+      ram.setU8(rec + 0x24, byte0);                      // $24935A
+      ram.setU8(rec + 0x25, byte0);                      // $24935E
+      ram.setU32(rec + 0x20, 0);                         // $249362/$249364
+      const off = powerListOffset(ram, rec);             // $249368..$249376
+      ram.setU32(c.powerList, rom.u32(POWER.lists + off));         // $24937E
+      ram.setU32(c.powerList + 4, rom.u32(POWER.lists + off + 4)); // $249382
+    }
+  }
+
+  // ---- $249388, common again: arm dispatcher request 9 for this side.
+  armRequest25FF38(ram, ram.u8(slot + 0x07), 9);         // $24938E jsr $260846
+  if (ram.u16(0x803926) !== 0) {                         // $249394 tst.w/beq
+    // $24939E: the config arm. Untaken on the corpus ($803926 is 0) and
+    // translated as written: the $812E8E word lands in BOTH power words and is
+    // ADDED to the two list cursors, then five stock grants -- and all five go to
+    // the P1 routine $2530BE even on P2, which is the cartridge's own asymmetry.
+    const d1 = ram.u16(0x812e8e);                        // $2493A0
+    ram.setU16(rec + 0x20, d1);                          // $2493A6
+    ram.setU16(rec + 0x22, d1);                          // $2493AA
+    const off = powerListOffset(ram, rec);               // $2493AE..$2493BC
+    ram.setU32(c.powerList, (rom.u32(POWER.lists + off) + d1) >>> 0);
+    ram.setU32(c.powerList + 4, (rom.u32(POWER.lists + off + 4) + d1) >>> 0);
+    for (let n = 0; n < 5; n++) collectHyperStock(ram, ctx, false);  // $2493D4..
+  }
+
+  ram.setU8(rec + P.invuln, 0xf0);                       // $2493F2 move.b #$F0
+  // $2493F8: the four-field opener, chosen by the OBJECT's own side byte.
+  const open = ram.u8(slot + 0x07) === 0 ? 0x2551da : 0x2551e2;
+  ram.setU32(rec + 0x02, rom.u32(open));                 // $24940A
+  ram.setU16(rec + 0x1c, rom.u16(open + 4));             // $24940E
+  ram.setU8(rec + 0x54, rom.u8(open + 6));               // $249412
+  ram.setU8(rec + 0x55, rom.u8(open + 7));               // $249416
+  ram.setU8(rec + 0x3b, ram.u8(rec + P.dirLatch));       // $24941A
+  ram.setU8(rec + 0x56, ram.u8(rec + 0x54));             // $249420
+  // $249426/$24942C -- THE POSITION, and the whole reason a respawned ship had
+  // none: it comes from the OBJECT record its creator filled, not the template.
+  ram.setU16(rec + P.posY, ram.u16(slot + 0x08));        // $249426
+  ram.setU16(rec + P.posX, ram.u16(slot + 0x0a));        // $24942C
+  const anim = 0x2551ea + u16(ram.u16(rec + 0x58) * 4);  // $249432..$249440
+  ram.setU32(rec + P.animA, rom.u32(anim));              // $249442
+  ram.setU32(rec + 0x10, rom.u32(anim + 4));             // $249446
+
+  // ---- $24944A..$2494A6 -- THE $500000 LATCH, and it chooses the ship's SPEED.
+  const d0 = u16(ram.u16(rec + 0x5a) - 2);               // $24944A/$24944E
+  ctx.prot.setSlot(3, d0);                               // $249460 $246D04(3, d0)
+  ctx.prot.setSlot(4, d0);                               // $249474 $246D04(4, d0)
+  ctx.prot.sum(3, 4, 4);                                 // $249490 $246EA4(3,4,4)
+  const got = ctx.prot.readSlot(4);                      // $2494A0 $246CAC(4)
+  const short = ram.u16(rec + 0x58);                     // $2494AE move.w
+  const iSpeed = u16(got + short);                       // $2494B2 add.w d2,d0
+  const iRamp = u16(u16(got * 2) + u16(short * 2));      // $2494AC/$2494B4/$2494B6
+  // $2494C0: the SAME byte reaches ($1a,A6) and ($39,A6) -- `move.b (a0),$1a`
+  // does not advance the pointer and `move.b (a0)+,$39` does.
+  ram.setU8(rec + P.speedIdx, rom.u8(0x255200 + iSpeed));       // $2494C0
+  ram.setU8(rec + P.baseSpeed, rom.u8(0x255200 + iSpeed));      // $2494C4
+  ram.setU8(rec + P.laserFloor, rom.u8(0x255200 + iSpeed + 1)); // $2494C8
+  ram.setU16(rec + 0x2c, rom.u16(0x2552c4 + iRamp));     // $2494D4
+  ram.setU16(rec + 0x36, rom.u16(0x2552c4 + iRamp + 2)); // $2494D8
+
+  ctx.deathEvent?.('player-init', c.p2 ? 2 : 1,
+    ram.u16(rec + P.posY), ram.u16(rec + P.posX));
+  return tail249E4E(ram, rec, ctx);                      // $2494DC bra $249E4E
+}
+
+/** `$249368..$249376` and `$2493AE..$2493BC`, the same six instructions twice:
+ *  `((($5a,A6) - 2) * 2 + ($58,A6))` and then times four -- a longword PAIR index
+ *  into `$25520C`'s twelve entries. */
+function powerListOffset(ram, rec) {
+  let d0 = u16(u16(ram.u16(rec + 0x5a) - 2) * 2);
+  d0 = u16(d0 + ram.u16(rec + 0x58));
+  return u16(u16(d0 * 2) * 2);
+}
+
+/** `$25FF38` -- write request D1 into the side's `$25FF7A` table entry and clear
+ *  its `+2`. `$260846` is `move.w #$9,D1 / jmp $25FF38`, nothing else. */
+export function armRequest25FF38(ram, side, request) {
+  const entry = side === 0 ? 0x8130fa : 0x81311e;        // $25FF38 / $25FF44
+  ram.setU16(entry, u16(request));                       // $25FF4A
+  ram.setU16(entry + 0x02, 0);                           // $25FF4C
+}
+
+/**
  * `$25FFA8` -- the RESPAWN, jump-table entry 1 of the `$25FF7A` dispatcher.
  *
  * W227 made a death survive the option object; this is the link after it.
@@ -315,8 +512,11 @@ export function respawn25FFA8(ram, ctx, a6) {
   ram.setU16(count, u16(ram.u16(count) - 1));        // $25FFC8 subq.w #$1,(A0)
   const p2 = ram.u8(a6 + 0x17) !== 0;                // $25FFD0 / $26000C tst.b
   if (i16(ram.u16(count)) < 0) {                     // $25FFCC tst.w (A0) / bpl
-    // $25FFD8 / $25FFF0 -- the side's three words, then state 2, the teardown
-    // the rank object's own state-2 arm already routes to $2603DA.
+    // $25FFD8 / $25FFF0 -- the side's three words, then TWO in the entry's own
+    // index word. W231 corrects what W228 wrote here: 2 is not a "state" the rank
+    // object reads, it is the next REQUEST for this same dispatcher, and
+    // $25FF52[2] is $260056 -- the credit/continue entry, which creates object
+    // types $D and $B. So running out of lives hands off to the continue path.
     ram.setU16(p2 ? 0x812932 : 0x812930, 0);
     ram.setU16(p2 ? 0x812936 : 0x812934, 1);
     ram.setU16(p2 ? 0x81293a : 0x812938, 0);

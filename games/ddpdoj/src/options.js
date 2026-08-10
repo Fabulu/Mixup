@@ -126,9 +126,7 @@ function runOneBlock(ram, ctx, b) {
     return;
   }
   if ((st & 0x0002) === 0) {                                // $24C152 btst #1
-    unreached(0x24c934, `bit 1 of the option block's state word is CLEAR, which `
-      + `sends $24C156 to $24C934 -- the pods' not-yet-deployed path. MEASURED `
-      + `set ($8003) on every sampled frame of fly-around`);
+    return podsDeploy24C934(ram, ctx, b);                   // $24C156
   }
 
   // $24C15A btst #5,(A4) / beq $24C164 ; $24C160 clr.w ($40,A6)
@@ -306,27 +304,89 @@ function rampUp(ram, player) {
  * `$24C390` -- FORMATION 2, the only one the corpus runs.  Advances the pods'
  * shared animation, moves each pod, and draws their two shadows.
  */
+/**
+ * `$24C934..$24CA5E` -- THE PODS DEPLOYING, the arm `$24C152 btst #1,(A6)` takes
+ * when the option block's state word says they are not out yet.
+ *
+ * W231 makes this real. It was a throw for the right reason -- every sampled
+ * frame of the corpus had the bit set, because the seed's pods are already out --
+ * and it became reachable the moment a player object could be CREATED: `$2492C8
+ * move.w #$8000,(a2)` resets the block, bit 1 included, so a respawn starts with
+ * its pods stowed and has to deploy them.
+ *
+ *   24c934: addq.b #$8,$1a(a6)              the deploy speed, eight per frame
+ *   24c938: move.w ($58,A4),D1 / beq / moveq #$6,D1
+ *   24c940: move.w ($5a,A4),D0 / subi.w #$2 / add.w D1,D0
+ *   24c94a: lea ($24C928,PC),A0 / move.w (A0,D0.w),D0
+ *   24c952: cmp.b ($1a,A6),D0 / bne / move.b #$3,($1,A6)      ARRIVED
+ *
+ * `$24C928` is SIX words and its end is pinned by code: `$24C934` is the `addq.b`
+ * above, so the table cannot be longer. Six is (formation 2/4/6) x (two ship
+ * selects), which is the index `($5a,A4)-2 + (($58,A4) ? 6 : 0)` produces.
+ */
+function podsDeploy24C934(ram, ctx, b) {
+  const { opt, player } = b;
+  ram.setU8(opt + OPT.speedIdx, (ram.u8(opt + OPT.speedIdx) + 8) & 0xff);  // $24C934
+  const sel = ram.u16(player + P.shipSel) !== 0 ? 6 : 0;   // $24C938/$24C93E
+  const idx = u16(u16(ram.u16(player + P.optFormation) - 2) + sel);  // $24C940..
+  const target = ctx.rom.u16(0x24c928 + i16(idx));         // $24C94E (A0,D0.w)
+  if ((target & 0xff) === ram.u8(opt + OPT.speedIdx)) {     // $24C952 cmp.b
+    ram.setU8(opt + OPT.flags1, 3);                        // $24C958 move.b #$3
+  }
+  ram.setU8(opt + 0x3a, ram.u8(opt + OPT.speedIdx));       // $24C95E
+
+  // $24C964: formation 4 skips the animation entirely.
+  if (ram.u16(player + P.optFormation) !== 4) {            // $24C964 cmpi.w #$4
+    stepPodAnim(ram, ctx, opt);                            // $24C96C..$24C9A6
+  }
+
+  // $24C9A8 -- while they are deploying BOTH pods sit on the ship's own position.
+  const pos = ram.u32(player + P.posY);                    // $24C9A8 move.l ($2,A4)
+  ram.setU32(opt + OPT.posY, pos);                         // $24C9AC
+  ram.setU32(opt + OPT.posY2, pos);                        // $24C9B0
+
+  // $24C9B4..$24C9DA -- the same four gates, in the same order, as formation 2's
+  // shadows, and they do not return: every one of them branches to $24CA4E, where
+  // the two pod moves are.
+  if (ram.u16(0x812970) === 0 && ram.u16(0x80390c) === 0    // $24C9B4/$24C9BE
+      && ram.u16(0x813098) === 0 && ram.u16(0x813092) !== 2) {  // $24C9C8/$24C9D2
+    if (SHIP_MUTATE.value !== 'no-shadow') {
+      podShadow(ram, opt, OPT.posY, OPT.flipColour, OPT.shadow0);   // $24C9DE
+      podShadow(ram, opt, OPT.posY2, OPT.pod + OPT.flipColour, OPT.shadow1);  // $24CA16
+    }
+  }
+  movePod(ram, ctx, b, opt);                               // $24CA4E bsr $24D12E
+  movePod(ram, ctx, b, opt + OPT.pod);                     // $24CA52/$24CA56
+}
+
+/**
+ * `$24C390..$24C3CA` and `$24C96C..$24C9A6` -- THE SAME TEN INSTRUCTIONS, once in
+ * formation 2's per-frame body and once in the deploy. One animation delay that
+ * reloads on its BORROW, one sprite long into both pods, one shadow long into
+ * both, and a `subq.w #4` cursor that reloads from `($4c,A6)` on ITS borrow.
+ */
+function stepPodAnim(ram, ctx, opt) {
+  const d = (ram.u8(opt + OPT.animDelay) - 1) & 0xff;      // $24C390/$24C96C
+  ram.setU8(opt + OPT.animDelay, d);
+  if (d !== 0xff) return;                                  // the `bcc` = no borrow
+  ram.setU8(opt + OPT.animDelay, ram.u8(opt + OPT.animReload));   // $24C396
+  const idx = ram.u16(opt + OPT.animIdx);                  // $24C39C ($44,A6)
+  const sprite = ctx.rom.u32(ram.u32(opt + OPT.animTable) + idx);  // $24C3A0/$24C3A4
+  ram.setU32(opt + OPT.anim, sprite);                      // $24C3A8 ($a,A6)
+  ram.setU32(opt + OPT.pod + OPT.anim, sprite);            // $24C3AC ($2a,A6)
+  const shadow = ctx.rom.u32(ram.u32(opt + OPT.shadowTable) + idx);  // $24C3B0/$24C3B4
+  ram.setU32(opt + OPT.shadow0, shadow);                   // $24C3B8 ($5c,A6)
+  ram.setU32(opt + OPT.shadow1, shadow);                   // $24C3BC ($60,A6)
+  ram.setU16(opt + OPT.animIdx,
+    idx < 4 ? ram.u16(opt + OPT.animIdxReload) : u16(idx - 4));    // $24C3C0/$24C3C6
+}
+
 function formation2(ram, ctx, b) {
   const { opt, player } = b;
-  // $24C390 subq.b #1,($42,A6) / bcc $24C3CC -- an ANIMATION delay, not a frame
-  // counter: when it borrows, the sprite long steps and reloads from ($43,A6).
-  const d = (ram.u8(opt + OPT.animDelay) - 1) & 0xff;
-  ram.setU8(opt + OPT.animDelay, d);
-  if (ram.u8(opt + OPT.animDelay) === 0xff) {              // the `bcc` = no borrow
-    ram.setU8(opt + OPT.animDelay, ram.u8(opt + OPT.animReload));   // $24C396
-    const idx = ram.u16(opt + OPT.animIdx);               // $24C39C ($44,A6)
-    const spriteTbl = ram.u32(opt + OPT.animTable);       // $24C3A0 ($46,A6)
-    const sprite = ctx.rom.u32(spriteTbl + idx);          // $24C3A4 (A0,D0.w)
-    ram.setU32(opt + OPT.anim, sprite);                   // $24C3A8 ($a,A6)
-    ram.setU32(opt + OPT.pod + OPT.anim, sprite);         // $24C3AC ($2a,A6)
-    const shadowTbl = ram.u32(opt + OPT.shadowTable);     // $24C3B0 ($58,A6)
-    const shadow = ctx.rom.u32(shadowTbl + idx);          // $24C3B4
-    ram.setU32(opt + OPT.shadow0, shadow);                // $24C3B8 ($5c,A6)
-    ram.setU32(opt + OPT.shadow1, shadow);                // $24C3BC ($60,A6)
-    // $24C3C0 subq.w #4,($44,A6) / bcc -- the UNSIGNED borrow again.
-    ram.setU16(opt + OPT.animIdx,
-      idx < 4 ? ram.u16(opt + OPT.animIdxReload) : u16(idx - 4));  // $24C3C6
-  }
+  // $24C390..$24C3CA -- the animation delay and the two sprite/shadow longs. W231
+  // found the deploy at $24C96C running the SAME ten instructions, so they live in
+  // `stepPodAnim` now and both sites cite both addresses.
+  stepPodAnim(ram, ctx, opt);
 
   movePod(ram, ctx, b, opt);                               // $24C3CC bsr $24D12E
   movePod(ram, ctx, b, opt + OPT.pod);                     // $24C3D0/$24C3D4

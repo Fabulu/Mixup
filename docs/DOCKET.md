@@ -33,23 +33,25 @@ The rank-icon tables `$2882A6` (P1) and `$288326` (P2), eight longwords each, ha
 never been harvested into the sprite bundle, so the port enqueued a rank icon
 every frame and the page had nothing to draw. Found by the new descriptor sweep.
 
+### D9: CLOSED in W231 -- a death, a respawn and the pods all work
+
+W227 translated `$24CA60` (it clears fifty words of the option block), W228
+translated `$25FFA8` (the respawn/game-over fork) and W231 translated the player
+object's one-time INIT `$2491C0`/`$249246`, the SET/bonus panel `$2603B0` behind
+it, and the pods' deploy `$24C934` it makes reachable.
+
+A death now runs its animation and reset, spends a life, creates a fresh player
+object, puts the ship back at the position the respawn entry carries, gives it
+`$F0` frames of invulnerability, and deploys its pods to exactly the target
+`$24C928` names. The headless scenario survives three deaths and two full
+respawns.
+
+What remains is not a defect but the next frontier: when the LAST life goes, the
+game-over arm arms dispatcher request 2, which is `$260056`, the credit/continue
+entry. That creates object types `$D` and `$B`, and type `$B` is the same
+unported `$25DBB4` that D11 is about, so the two meet there.
+
 ## Open, in priority order
-
-### D9: a death is survivable now, but the respawn has no position
-
-W227 translated `$24CA60` (it clears fifty words of the option block) and W228
-translated `$25FFA8` (the respawn/game-over fork). A death now runs its animation
-and reset, spends a life, creates a fresh player object and answers the stick.
-
-What is left: `$2491C0` and its P2 twin `$249246` have a ONE-TIME INIT arm the
-port does not translate at all, everything from `bset #0,$3(a5)` to `$2494FA`. So
-a newly created player object never gets its record filled, and a respawned ship
-provably sits at `posY` 0, below its own `$800` clamp. The arm is mapped: a
-48-word template copy from `$24915E` (needs a ROM window), the `$2551FA` byte
-pair, `$253A1E` (clears `$81B5B8..$81B5E0`), the `+6`-keyed fresh-start arm, five
-`$2530BE` calls behind the `$803926` gate, `$25FF38`/`$260846` arming dispatcher
-request 9, and `$2603B0` into `$2534F8`/`$253522`. `$249426` is the instruction
-that copies the object's `+8`/`+A` into the record's position.
 
 ### D11: the stage transition is abrupt and the ship vanishes mid-transition
 

@@ -44,7 +44,7 @@
 import { RAM } from './machine.js';
 import { unreached } from './unported.js';
 import { queueKill, ALLOC } from './objalloc.js';
-import { respawn25FFA8 } from './player.js';
+import { respawn25FFA8, setPanel2603B0 } from './player.js';
 
 /** ROM and RAM addresses the rank object speaks in, each cited at the line that
  *  implements it. */
@@ -195,7 +195,10 @@ function fanOut260984(ram, r) {
 /** `$25FF52`, the jump table `$25FF7A` indexes: `[0] $00000000`,
  *  `[1] $0025FFA8` (the respawn, W228), `[2] $260056`, `[3] $26010E`. Only the
  *  ported entries appear here; the others still throw by the jsr site. */
-const DISP_25FF7A_TARGETS = Object.freeze({ 1: respawn25FFA8 });
+const DISP_25FF7A_TARGETS = Object.freeze({
+  1: respawn25FFA8,        // $25FFA8, the respawn (W228)
+  9: setPanel2603B0,       // $2603B0, the SET/bonus panel (W231)
+});
 
 /**
  * The shared body of `$25FF7A` and `$288610`: walk a 2-entry RAM table, read

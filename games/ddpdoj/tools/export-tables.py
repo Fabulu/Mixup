@@ -1015,6 +1015,19 @@ SHOT_WINDOWS.extend([
                        "ship arm's upper powers, the whole formation arm, and "
                        "the shared HYPER strip $24BAE2) plus the twenty pairs "
                        "$24BB0A..$24BBAA seam-free"),
+    # W231: the player object's INIT template, $24915E. `$2492E0 lea $24915E(pc)`
+    # reads ONE word into the state-word OR, then `$2492FE moveq #$2F` copies
+    # FORTY-EIGHT more into the record. 49 words is $62 bytes, and $24915E+$62 is
+    # $2491C0 -- the handler's own first instruction, so the far end is pinned by
+    # CODE rather than by a run length.
+    # W231: the pods' DEPLOY target table, $24C928. `$24C94A lea ($24C928,PC) /
+    # move.w (A0,D0.w),D0` with the index `(($5a,A4)-2) + (($58,A4) ? 6 : 0)`, so
+    # SIX words -- three formations by two ship selects -- and $24C928+$C is
+    # $24C934, the routine's own first instruction, so the far end is CODE.
+    (0x24C928, 0x000C, "W231 the pods' deploy target table: six words, ending at "
+                       "$24C934"),
+    (0x24915E, 0x0062, "W231 the player object INIT template: one state-word OR "
+                       "plus 48 record words, ending exactly at $2491C0"),
     (0x24BB00, 0x00A0, "W45 THE BEAM: $24BB0A, the (offset, pointer) pairs "
                        "$254FE6 puts in $811F32 and $255042 walks"),
     (0x24CFB0, 0x0180, "W45 THE BEAM: the five pointer tables $24CFBA (25), "
