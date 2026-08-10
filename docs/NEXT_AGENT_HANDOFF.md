@@ -76,7 +76,10 @@ instrument (W230), and D11's banner picture (W232).
    ported; each site needs its own register-setup transcription. This is also the
    likely route to D7's gauges.
 4. **Object dispatch `[4]` `$260B30`**, unported and running twice a frame.
-5. **Resume W225**, Stage-4 boss A4/F5 `$2A0CF6`, recon banked in its worklog.
+5. **Stage-4 boss A4/F5** `$2A0CF6`. [Worklog 244](worklog/ddpdoj/244-impl-boss4-f5.md)
+   is a complete instruction-level spec with every dependency confirmed present, and
+   it names the order: MAIN4 first (F5's INIT starts it), then F5's four arms, then
+   D5/D7/E8. W225 is superseded by it.
 6. **Stage 5, then the loops.**
 
 D8, D10 and D12 are presentation or documentation and can be slotted in between.

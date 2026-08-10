@@ -1,6 +1,9 @@
 # W225: Stage-4 boss F5 arrival attack
 
-Status: PAUSED
+Status: SUPERSEDED by worklog 244
+
+W244 finished this recon and holds the complete spec, including the finding that
+`$241D34` is already `MoveTables.shotVector`. Read 244, not this.
 
 Paused deliberately, with no code written, because the owner opened
 [../../DOCKET.md](../../DOCKET.md) with player-visible defects in stages the
