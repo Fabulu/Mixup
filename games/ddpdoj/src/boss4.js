@@ -1759,8 +1759,128 @@ registerScript(0x2a0cf6, f5Init2A0CF6);
 registerScript(0x2a0d16, f5Step2A0D16);
 registerScript(0x2a2f1e, a1_8Init2A2F1E);
 registerScript(0x2a2f72, a1_8Step2A2F72);
+/**
+ * `$2A2D70` / `$2A2D8E` -- A1 6, and it is THE SECOND LOOP-SPECIFIC RULE this port has
+ * translated (W241's zero-lives extend was the first). `$813098` is the loop word, and
+ * it changes both the shot count and the GENERATOR:
+ *
+ *     loop 1   three shots through `$2817B8`, `$55` apart   (a wide three-way)
+ *     loop 2   FOUR shots through `$281708`, `$40` apart    (a full ring)
+ *
+ * Both barrels do it, one per pod, and the two counter-rotate: `$10(a4)` loses 4 while
+ * `$11(a4)` gains 4 after every volley, and then AGAIN on every seventh (`$6(a4)`
+ * period 6 through the old-zero borrow). So the two rings drift apart at one rate and
+ * jump at another, which is what stops the pattern from repeating.
+ */
+const A1_6_LOOP1 = [0x2a2dbe, 0x2a2dc8, 0x2a2dd2];
+const A1_6_LOOP2 = [0x2a2ddc, 0x2a2de6, 0x2a2df0, 0x2a2dfa];
+const A1_6_LOOP1_B = [0x2a2e22, 0x2a2e2c, 0x2a2e36];
+const A1_6_LOOP2_B = [0x2a2e40, 0x2a2e4a, 0x2a2e54, 0x2a2e5e];
+const LOOP_WORD = 0x813098;                               // $2A2DB4 tst.w $813098
+
+function a1_6Barrel(ram, rom, ctx, a5, base, d2, d3, sites1, sites2) {
+  const loop2 = ram.u16(LOOP_WORD) !== 0;                 // $2A2DB4/$2A2E18
+  const sites = loop2 ? sites2 : sites1;
+  const stride = loop2 ? 0x40 : 0x55;                     // $2A2DE2 vs $2A2DC4
+  const entry = loop2 ? 0x281708 : 0x2817b8;
+  for (let i = 0; i < sites.length; i++) {
+    shootBoss4(ram, rom, ctx, sites[i], entry,
+      regsBoss4(a5, 0xfffc0016, (base + i * stride) & 0xff, d2, d3));
+  }
+}
+
+export function a1_6Step2A2D8E(ram, rom, ctx, slot) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  if (!due8(ram, slot + 0x04)) return;                    // $2A2D8E subq.b/bcc
+  ram.setU8(slot + 0x04, ram.u8(slot + 0x05));            // $2A2D96
+  a1_6Barrel(ram, rom, ctx, a5, ram.u8(slot + 0x10),      // $2A2D9C..$2A2DFA
+    ram.u32(a6 + 0x82), 0xf94001c0, A1_6_LOOP1, A1_6_LOOP2);
+  a1_6Barrel(ram, rom, ctx, a5, ram.u8(slot + 0x11),      // $2A2E00..$2A2E5E
+    ram.u32(a6 + 0xa2), 0xf93ffe40, A1_6_LOOP1_B, A1_6_LOOP2_B);
+  // $2A2E64 -- the counter-rotation, once per volley...
+  ram.setU8(slot + 0x10, (ram.u8(slot + 0x10) - 4) & 0xff);
+  ram.setU8(slot + 0x11, (ram.u8(slot + 0x11) + 4) & 0xff);
+  if (!due8(ram, slot + 0x06)) return;                    // $2A2E70 subq.b/bcc
+  ram.setU8(slot + 0x06, ram.u8(slot + 0x07));            // $2A2E78
+  // ...and AGAIN on every seventh, which is a second rate rather than a bigger step.
+  ram.setU8(slot + 0x10, (ram.u8(slot + 0x10) - 4) & 0xff);   // $2A2E7E
+  ram.setU8(slot + 0x11, (ram.u8(slot + 0x11) + 4) & 0xff);   // $2A2E84
+}
+
+/** `$2A2D70` -- A1 6's INIT, and it FALLS THROUGH (`$2A2D88` ends at `$2A2D8E`), so the
+ *  arming frame fires: `$4(a4)` arrives at 3 and `due8` borrows only out of zero, so
+ *  actually it does NOT -- the first volley is three frames later. `$2(a4)` = 0 is
+ *  written and never read, one more of this boss's vestigial stores. */
+export function a1_6Init2A2D70(ram, rom, ctx, slot) {
+  ram.setU8(slot + 0x02, 0);                              // $2A2D70 -- never read
+  ram.setU16(slot + 0x04, 0x0303);                        // $2A2D76
+  ram.setU16(slot + 0x06, 0x0606);                        // $2A2D7C
+  ram.setU8(slot + 0x10, 0);                              // $2A2D82
+  ram.setU8(slot + 0x11, 0);                              // $2A2D88
+  a1_6Step2A2D8E(ram, rom, ctx, slot);                    // falls through
+}
+
+/**
+ * `$2A2E8C` / `$2A2E9E` -- A1 7, the AIMED five-shot fan, and the one place in this
+ * family where `$24226E`'s answer is actually USED: D1 comes back as the direction and
+ * the fan is built on it. A1 8 makes the same call and throws it away.
+ *
+ * The fan is `base`, `+6`, `+$C`, `-6`, `-$C` -- exactly `fireFive`'s shape with a
+ * delta of 6, reached by `+6 +6 -$12 -6` rather than by absolute offsets.
+ *
+ * `$9F(a6)` is its kill switch: any nonzero value and it retires itself before doing
+ * anything else, which is how arm 4's `a1Stop` pair and the pod's own state can end it
+ * mid-burst.
+ */
+const A1_7_SITES = [0x2a2eda, 0x2a2ee4, 0x2a2eee, 0x2a2ef8, 0x2a2f02];
+
+export function a1_7Step2A2E9E(ram, rom, ctx, slot) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  if (ram.u8(a6 + 0x9f) !== 0) {                          // $2A2E9E tst.b/beq
+    ram.setU16(slot, 0);                                  // $2A2EA6 clr.w (a4)
+    return;
+  }
+  if (!due8(ram, slot + 0x04)) return;                    // $2A2EAA subq.b/bcc
+  ram.setU8(slot + 0x04, ram.u8(slot + 0x05));            // $2A2EB2
+  // $2A2EB8..$2A2EC6 -- self is pod 2's position biased into the muzzle, and on a
+  // carry (no live target) the ROM leaves D1 holding that biased X, which is what
+  // `aimed.carry` selects here. Same convention E3 already uses.
+  const selfY = u16(ram.u16(a6 + 0xa2) + 0xf940);
+  const selfX = u16(ram.u16(a6 + 0xa4) + 0xfe40);
+  const aimed = aim256FromCaller(aimTables(rom), ram, a5, selfY, selfX);
+  const base = aimed.carry ? selfX & 0xff : aimed.dir;
+  const d2 = ram.u32(a6 + 0xa2), d3 = 0xf93ffe40;
+  const angles = [base, base + 6, base + 0x0c, base - 6, base - 0x0c];
+  for (let i = 0; i < 5; i++) {                           // $2A2EDA..$2A2F02
+    shootBoss4(ram, rom, ctx, A1_7_SITES[i], 0x2817b8,
+      regsBoss4(a5, 4, angles[i] & 0xff, d2, d3));
+  }
+  // $2A2F08 -- `subq.b` with `bne`, NOT `bcc`: this one fires on reaching zero, and
+  // when it does it shortens the cadence from $20 to $40... which is LONGER. The
+  // burst slows down as it goes.
+  ram.setU8(slot + 0x06, ram.u8(slot + 0x06) - 1);
+  if (ram.u8(slot + 0x06) !== 0) return;
+  ram.setU8(slot + 0x06, ram.u8(slot + 0x07));            // $2A2F10
+  ram.setU8(slot + 0x04, 0x40);                           // $2A2F16
+}
+
+/** `$2A2E8C` -- A1 7's INIT, and `$2A2E92` is the odd one: it writes `$1020` and then
+ *  ADDS `$40` to the low byte, so `$4(a4)` starts at `$5020` rather than `$1020`. Two
+ *  instructions where one would do, and a port that folded them would start the first
+ *  volley $40 frames early. It FALLS THROUGH too (`$2A2E98` ends at `$2A2E9E`). */
+export function a1_7Init2A2E8C(ram, rom, ctx, slot) {
+  ram.setU16(slot + 0x04, 0x1020);                        // $2A2E8C
+  ram.setU8(slot + 0x04, (ram.u8(slot + 0x04) + 0x40) & 0xff);  // $2A2E92 addi.b
+  ram.setU16(slot + 0x06, 0x0202);                        // $2A2E98
+  a1_7Step2A2E9E(ram, rom, ctx, slot);                    // falls through
+}
+
 registerScript(0x2a307a, a1_9Init2A307A);
 registerScript(0x2a30a8, a1_9Step2A30A8);
+registerScript(0x2a2d70, a1_6Init2A2D70);
+registerScript(0x2a2d8e, a1_6Step2A2D8E);
+registerScript(0x2a2e8c, a1_7Init2A2E8C);
+registerScript(0x2a2e9e, a1_7Step2A2E9E);
 // A3 3..8, the six-instance ramp family. The STEP sits `$6` past its INIT in every
 // one of them, which is the same `$2E`-stride regularity the bodies have.
 for (const a of [0x2a14aa, 0x2a14d8, 0x2a1506, 0x2a1534, 0x2a1562, 0x2a1590]) {
