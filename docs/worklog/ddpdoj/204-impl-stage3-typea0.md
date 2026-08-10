@@ -38,5 +38,5 @@ frontier for the later boss phases and child family.
 
 - Implementation commit: `eb781eb` (`ddpdoj: translate stage 3 boss entry`)
 - Live build: `20260810042615`
-- Next live frontier: Stage-3 boss A4/F2 init `$29CC34`, followed by its
+- Next live frontier: Stage-3 boss A4/F2 init `$29D010`, followed by its
   remaining installed scheduler graph and type `$99` child.

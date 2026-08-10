@@ -1,6 +1,6 @@
 # Handoff for the next AI
 
-Last updated: 2026-08-10, after W204 publication.
+Last updated: 2026-08-10, after W205 publication.
 
 ## Current directive
 
@@ -14,7 +14,7 @@ Label Version-B as readable JavaScript verified against the ROM, including all
 stages, bosses, loops, systems, presentation, sound, authentic timing, and
 slowdown. Individual waves are milestones, not the finish line.
 
-The old W175 pause is resolved. W176 through W204 are live. W188 fixes the
+The old W175 pause is resolved. W176 through W205 are live. W188 fixes the
 reported stage-1 tank-death and hyper defects. W189 completes the directly
 reachable F1, F2, and F8 stage-2 boss phases, including the primary death
 presentation and screen shake. W191 closes Stage 2, and W192 opens Stage 3
@@ -55,6 +55,7 @@ At handoff:
 - W202 is committed, pushed, and deployed
 - W203 is committed, pushed, and deployed
 - W204 is committed, pushed, and deployed
+- W205 is committed, pushed, and deployed
 - W175 live build: `20260809081027`
 - W176 live build: `20260809092221`
 - W177 live build: `20260809095334`
@@ -85,9 +86,10 @@ At handoff:
 - W202 live build: `20260810033630`
 - W203 live build: `20260810035612`
 - W204 live build: `20260810042615`
+- W205 live build: `20260810045925`
 - live URL: `https://gbtman.pages.dev/games/ddpdoj/`
-- the full-game goal remains active; W205 starts at the Stage-3 boss A4/F2
-  frontier `$29CC34`
+- the full-game goal remains active; W206 starts at the Stage-3 boss A4/F3
+  frontier `$29D03E`
 
 The worktree contains these three untracked owner files plus the untracked
 `NUL` entry. They are permanent user work and must never be staged, edited,
@@ -109,9 +111,9 @@ git rev-parse origin/main
 
 ## Where DOJ currently stops
 
-W204 is complete and live as build `20260810042615`:
+W205 is complete and live as build `20260810045925`:
 
-- latest worklog: `docs/worklog/ddpdoj/204-impl-stage3-typea0.md`
+- latest worklog: `docs/worklog/ddpdoj/205-impl-stage3-boss-f2.md`
 - stage-2 boss baseline: `docs/worklog/ddpdoj/187-impl-stage2-boss-e6-e11.md`
 - stage-2 type `$30` is ported at record `$233020`, clock `$01DC`
 - init stub/body: `$297118` / `$297120`; handler: `$297398`
@@ -188,16 +190,18 @@ W204 is complete and live as build `20260810042615`:
   32-stream animation tables are live
 - Stage-3 boss type `$A0` is live at init `$29BBFC`, handler `$29BE28`; its
   ten prototypes, controller, F0/MAIN0/D7 arrival bootstrap, and A2 object-9
-  draw path are translated. The later boss scheduler remains the live frontier
-- the browser bundle contains 3,597 sprite streams and now includes the missing
+  draw path are translated
+- F2, MAIN1, E6/E7, D0/D1/D6, and all remaining A2 arrival objects are live;
+  the natural arrival smoke reaches both aimed singles and bilateral fan leaves
+- the browser bundle contains 3,645 sprite streams and now includes the missing
   1,404-tile Stage-2 and 252-tile Stage-3 background families as deferred shards
 
-The next honest gameplay frontier is the Stage-3 boss A4/F2 init `$29CC34`.
+The next honest gameplay frontier is the Stage-3 boss A4/F3 init `$29D03E`.
 The complete boss graph is statically mapped; live type `$99` is a later child,
 while requested type `$9A` frees itself immediately at init.
 
 Reserve the next immutable worklog number, make one targeted static map for
-the `$29CC34` phase, translate it, and continue through the installed boss
+the `$29D03E` phase, translate it, and continue through the installed boss
 scheduler graph without redoing the completed Stage-3 spawn census.
 
 Useful current tests and tools:
