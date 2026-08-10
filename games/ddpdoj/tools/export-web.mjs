@@ -2246,6 +2246,39 @@ const TYPEA2_ART_TABLE = 0x27d39c;
     + `${added} new`);
 }
 
+// W214: type $9C's root cycles four direct descriptors backwards through this
+// table. Its ten possible satellite subrecords reuse the already harvested
+// type-$10/$11 hull/turret tables and Pool-C transformed-death lists.
+const TYPE9C_ROOT_ART = 0x27b07c;
+{
+  const expected = [0x2b3780, 0x2b2f5c, 0x2b2738, 0x2b1f14];
+  const seen = new Set();
+  let added = 0, already = 0;
+  for (let i = 0; i < expected.length; i++) {
+    const offs = romBe32(TYPE9C_ROOT_ART + i * 4);
+    if (offs !== expected[i]) {
+      throw new Error(`type $9C root-art row ${i} names $$${offs.toString(16)}, `
+        + `expected $$${expected[i].toString(16)}`);
+    }
+    seen.add(offs);
+    if (streams.has(offs)) already++;
+    else {
+      streams.set(offs, romExtent(offs));
+      shardOfStream.set(offs, STRUCT_SHARD);
+      added++;
+    }
+  }
+  harvested += added;
+  harvestAlready += already;
+  harvestReport.push({ shard: STRUCT_SHARD, base: TYPE9C_ROOT_ART,
+    entries: expected.length, stride: 4, runsTo: expected.length,
+    endsAt: TYPE9C_ROOT_ART + expected.length * 4, distinct: seen.size,
+    added, already,
+    why: 'W214 Stage-4 type $9C four-frame root animation; paired satellite '
+      + 'and transformed-death art is already shared' });
+  console.log(`  Stage-4 type $9C root ship: ${seen.size} streams, ${added} new`);
+}
+
 // ------------------------------------------------------------------- WAVE 66
 // 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
 // bomb, and NEITHER HAS A PICTURE: W64 §8.3 counted 174 bucket-13 records with

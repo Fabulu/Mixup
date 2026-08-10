@@ -54,7 +54,7 @@ test('W212 exact type-$9B closure, five occurrences, and two live streams',
   const art = manifest.spr.harvest.find((h) => h.at === '$27ACB2');
   assert.ok(art, 'two direct type-$9B prototype streams');
   assert.deepEqual([art.entries, art.distinct, art.added], [2, 2, 2]);
-  assert.equal(manifest.spr.streamCount, 3679);
+  assert.equal(manifest.spr.streamCount, 3683);
 });
 
 test('W212 real clock-$19 spawn draws both parts, then hides and retires them',

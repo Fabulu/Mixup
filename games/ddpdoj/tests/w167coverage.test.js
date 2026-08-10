@@ -62,12 +62,12 @@ test('W210 config is a machine-readable family map with an exact backlog', () =>
   assert.deepEqual(frontier.remaining_records, []);
 });
 
-test('W213 reusable coverage derives the current closed-family totals', { skip: !evidence }, () => {
+test('W214 reusable coverage derives the current closed-family totals', { skip: !evidence }, () => {
   const got = run();
   assert.equal(got.status, 0, got.stdout + got.stderr);
   assert.match(got.stdout, /top_objects: 7\/20 ported/);
   assert.match(got.stdout, /type5_calls: 19\/23 ported/);
-  assert.match(got.stdout, /enemy_types: 67\/256 ported, 59 unknown, 130 null/);
+  assert.match(got.stdout, /enemy_types: 68\/256 ported, 58 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
   assert.match(got.stdout, /stage3_spawn_script: 414\/414 ported, 0 unknown, 0 null/);

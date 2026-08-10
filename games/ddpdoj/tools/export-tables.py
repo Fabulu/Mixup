@@ -506,6 +506,10 @@ SHOT_WINDOWS.extend([
                        "cleanup, handler, and death tail through $27D330"),
     (0x27D39C, 0x005C, "W213: exact 23-entry live Stage-4 type $A2 art table; "
                        "the adjacent 24th pointer is unreachable"),
+    (0x27AD8E, 0x0568, "W214: complete Stage-4 type $9C root stub, init, "
+                       "prototypes, handler, root art, and death effects"),
+    (0x27DBF4, 0x080E, "W214: type $9C paired-satellite init/handler closure, "
+                       "shared transformed-death art, and free stubs"),
     (0x2358B0, 0x20C8, "W211: complete STAGE-4 spawn dependency span: 382 "
                        "records + terminator, 157-word aux table, and 157 "
                        "movement streams ($2358B0..$237978)"),

@@ -110,7 +110,7 @@ const STUB_ROM = {
   u32: (a) => STUB_LONGS.get(a) ?? 0,
 };
 
-test('the ported handler addresses are registered through W213 Stage-4 type $A2', () => {
+test('the ported handler addresses are registered through W214 Stage-4 type $9C', () => {
   // W31 adds `$26B6FA` (type $0D, the MIDBOSS), which lives in src/midboss.js
   // and is NOT in SIX -- the `runs on a live record` test below drives SIX
   // against a STUB rom, and the midboss reads four real ROM tables.
@@ -143,7 +143,7 @@ test('the ported handler addresses are registered through W213 Stage-4 type $A2'
       0x2647a6, 0x2669e2, 0x264e82, 0x26c3e2, 0x26d4b4, 0x265adc, 0x265850,
       0x265ca0, 0x265e84, 0x2663e0,
       0x267226, 0x274c90, 0x266e34, 0x29be28, 0x29e6b0, 0x278994, 0x27ace4,
-      0x27d072,
+      0x27d072, 0x27aee0,
     ].sort((a, b) => a - b));
 });
 

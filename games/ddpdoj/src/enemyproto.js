@@ -84,8 +84,10 @@ export function loadRecordProto(ram, rom, a5, table, d0) {
  *
  * @param a6 the sub-record base (the record's `($6,A5)`).
  */
-export function loadSubProto(ram, rom, a5, a6, table) {
-  const d7 = ram.u16(a5 + PROTO.runLenOff);          // $2637A2 move.w ($4,A5),D7
+export function loadSubProto(ram, rom, a5, a6, table, runLen = undefined) {
+  const d7 = runLen === undefined
+    ? ram.u16(a5 + PROTO.runLenOff)                  // $2637A2 move.w ($4,A5),D7
+    : runLen;                                        // callers entering at $2637A6
   let a0 = table;
   let a1 = a6;                                       // $2637A6 movea.l A6,A1
   for (let n = 0; n <= (d7 & 0xffff); n++) {         // $2637BC dbra D7

@@ -38,7 +38,8 @@ import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
 import { install24150A } from './palette.js';
 import { AimTables, aim64AtTarget, aim64FromCaller, aim256, targetSelect } from './aim.js';
-import { drawByte242B3C, drawWord242EC2, drawWord24328E } from './rng.js';
+import { drawByte242B3C, drawByte242E24, drawWord242EC2,
+  drawWord24328E } from './rng.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 import { initType99_29E580 } from './boss3type99.js';
 
@@ -61,7 +62,8 @@ const R = {
 };
 // sub-record (A6)
 const S = {
-  flags: 0x00, posX: 0x02, posY: 0x04, f06: 0x06, hit10: 0x10, hp: 0x18,
+  flags: 0x00, posX: 0x02, posY: 0x04, f06: 0x06, sprite0a: 0x0a,
+  hit10: 0x10, hp: 0x18,
   speed: 0x1a, heading: 0x1b, f1c: 0x1c, palette: 0x1d, anim: 0x1e,
   f1f: 0x1f, f08: 0x08,
   f31: 0x31, f2e: 0x2e, hit14: 0x14, hit16: 0x16, f38: 0x38,
@@ -1591,6 +1593,92 @@ BODY.set(0x27ac4a, (ram, rom, a5, a6, unported, _tables, palette) => {
   const bank = ram.u16(G.scrollClock) === 0x0019 ? 0x14 : 0x16;
   installBank(ram, rom, palette, unported, bank, 0x224cb8, 0x27aca0,
     'Stage-4 type $9B linked-structure palette');
+});
+
+// `$27DBF4` / `$27E000`: initialize one paired satellite attached to the
+// Stage-4 type $9C root. The ROM enters the prototype loader at `$2637A6`
+// with D7=1, so the optional run-length argument deliberately ignores the
+// root record's eleven-subrecord allocation count.
+function init9CSatellite(ram, rom, a5, root, child, row, family11) {
+  loadSubProto(ram, rom, a5, child,
+    family11 ? 0x27dcc8 : 0x27e0d2, 1);
+  ram.setU32(child + 0x3a, rom.u32(row));
+  ram.setU16(child + S.speed, rom.u16(row + 4));
+
+  if (family11) {
+    const cadence = (ram.u16(G.stage) >>> 1) + 2;
+    ram.setU8(child + 0x2a, cadence);
+    ram.setU8(child + 0x2b, cadence);
+    ram.setU8(child + 0x2e,
+      u16(ram.u8(child + 0x2e) - ram.u16(G.b4)) & 0xff);
+    ram.setU8(child + 0x27,
+      u16(ram.u8(child + 0x27) - (ram.u16(G.bc) >>> 4)) & 0xff);
+  } else {
+    const rank = ram.u16(G.b2);
+    ram.setU8(child + 0x2e, u16(ram.u8(child + 0x2e) - rank) & 0xff);
+    ram.setU8(child + 0x28, u16(ram.u8(child + 0x28) - rank) & 0xff);
+    ram.setU8(child + 0x2e,
+      ram.u8(child + 0x2e) + (drawByte242E24(ram, rom) >>> 1));
+    ram.setU8(child + 0x26,
+      u16(ram.u8(child + 0x26) - (ram.u16(G.bc) >>> 4)) & 0xff);
+  }
+
+  ram.setU16(child + S.posX,
+    ram.u16(root + S.posX) + ram.u16(child + 0x3a));
+  ram.setU16(child + S.posY,
+    ram.u16(root + S.posY) + ram.u16(child + 0x3c));
+
+  const emitter = 0x267f70 + ram.u8(root + S.f1f) * 8;
+  ram.setU32(child + 0x30, rom.u32(emitter));
+  ram.setU32(child + 0x34, rom.u32(emitter + 4));
+  const selector = ram.u8(child + S.anim) || ram.u8(root + S.f1f);
+  ram.setU8(child + S.anim, selector * 2);
+
+  const heading = ram.u8(child + S.heading);
+  const h = heading & 0x3e;
+  ram.setU32(child + S.sprite0a,
+    rom.u32((family11 ? 0x268594 : 0x268b9e) + h * 4));
+  ram.setU8(child + 0x3e, heading);
+  ram.setU32(child + 0x22,
+    rom.u32((family11 ? 0x268694 : 0x268c9e) + h * 2));
+
+  const pal = (family11 ? 0x27dcbe : 0x27e0c8) + ram.u16(G.stageX2);
+  ram.setU8(child + S.palette, rom.u8(pal));
+  ram.setU8(child + 0x38, rom.u8(pal));
+  ram.setU8(child + 0x39, rom.u8(pal + 1));
+}
+
+// --- type $9C ($27AD96): Stage 4's root ship and paired satellite array.
+// Movement animation selects the five-pair normal layout or the mirrored
+// two-pair layout. The remaining allocated subrecords are explicitly disabled
+// in the mirrored form, matching the root handler's two-vs-five dispatch.
+BODY.set(0x27ad96, (ram, rom, a5, a6, unported, _tables, palette) => {
+  loadSubProto(ram, rom, a5, a6, 0x27aeae, 0);         // $27AD96..$27ADA4
+  loadRecordProto(ram, rom, a5, 0x27ae96, 0x0b);      // $27ADA4..$27ADB2
+  readInitPosition(ram, rom, a5, unported);            // $27ADB2
+  ram.setU16(a6 + S.posX, ram.u16(a6 + S.posX) - 0x1440);
+  ram.setU16(a6 + S.posY, ram.u16(a6 + S.posY) - 0x1d40);
+  installBank(ram, rom, palette, unported, 0x17, 0x224b38, 0x27adce,
+    'Stage-4 type $9C root palette');
+  if (i16(drawWord242EC2(ram, rom)) < 0)
+    ram.setU8(a6 + 1, ram.u8(a6 + 1) | 0x40);
+
+  let count = 5, row = 0x27ae4e, family11 = false;
+  if ((ram.u8(a6 + S.f1f) & 0x80) !== 0) {
+    ram.setU8(a6 + S.f1f, (~ram.u8(a6 + S.f1f)) & 0xff);
+    ram.setU8(a6 + S.f1c, 0x40);
+    ram.setU16(a5 + R.rec1A, u16(-ram.u16(a5 + R.rec1A)));
+    ram.setU16(a5 + R.rec2C, u16(-ram.u16(a5 + R.rec2C)));
+    ram.setU8(a5 + R.rec2B, (-ram.u8(a5 + R.rec2B)) & 0xff);
+    ram.setU16(a6 + S.posY, ram.u16(a6 + S.posY) + 0x3a80);
+    ram.setU16(a5 + R.runLen, ram.u16(a5 + R.runLen) - 6);
+    for (const off of [0xa0, 0xc0, 0xe0, 0x100, 0x120, 0x140])
+      ram.setU16(a6 + off, 0);
+    count = 2; row = 0x27ae6c; family11 = true;
+  }
+  let child = a6 + 0x20;
+  for (let i = 0; i < count; i++, child += 0x40, row += 6)
+    init9CSatellite(ram, rom, a5, a6, child, row, family11);
 });
 
 // --- type $A2 ($27CFAC): Stage 4's opening/rotating gun pod.

@@ -1197,7 +1197,7 @@ try {
         // using its movement-heading fallback, so this deterministic input
         // selects four fewer heading-art variants. The ROM-exact aim path is
         // pinned directly by w182type86.test.js.
-        11: { streams: 237, records: 12805, distinct: 97, first: 315,
+        11: { streams: 241, records: 12805, distinct: 97, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };
