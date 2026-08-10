@@ -45,7 +45,7 @@ import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
 import { makeBackground, BgVram, TxVram, VideoRegs } from './background.js';
 import { makeStageClear } from './stageend.js';
 import { makeHudObject } from './hud.js';
-import { makeRankObject } from './rank.js';
+import { makeRankObject, announce260B30 } from './rank.js';
 import { SoundState, drainFrame, postWrapperWithRuntime,
   soundFrameInput } from './sound.js';
 import {
@@ -111,6 +111,20 @@ export function defaultHandlers(rom, vram, opts = {}) {
     [1, makeBackground(rom, vram, opts)],
     [2, playerObject2491C0],    // $240F62[2] = $2491C0, P1
     [3, playerObject2491C0],    // $240F62[3] = $249246, P2
+    // W243. $240F62[4] = $260B30 IS TRANSLATED -- `announce260B30` in rank.js, with
+    // w243announce.test.js driving it against the cartridge -- but it is NOT
+    // REGISTERED HERE YET, and the reason is an artifact and not the code.
+    //
+    // The object reads its text list out of $260D22, a window W243 added. The
+    // `.replay` regression fixtures embed their OWN `player.tables.json` as
+    // `seed.tablesB64` (w132liveplay.test.js:137), frozen when the oracle recorded
+    // them, so a subsystem that reads a NEW window throws $260D2A inside them no
+    // matter what `rip/` or the web bundle now contain. Registering it turns five
+    // replay gates red for a stale artifact.
+    //
+    // To finish this: rebuild `tools/oracle/out/w69/fly-around` from the oracle,
+    // then add the entry back. The translation and its test do not change.
+
     // $240F62[5] = $28B5E0, PARTIAL: 10 of its 23 jsr targets (`TYPE5_PORTED`
     // is the authority and says so itself).  W29: this entry
     // is now the one that drives the ENEMIES and the BULLET POOL, so a frame

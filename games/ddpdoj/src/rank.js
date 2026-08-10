@@ -45,6 +45,8 @@ import { RAM } from './machine.js';
 import { unreached } from './unported.js';
 import { queueKill, ALLOC } from './objalloc.js';
 import { respawn25FFA8, setPanel2603B0 } from './player.js';
+import { txPrint240DC2, txPrint240EBC } from './hud.js';
+import { u16, i16 } from './ram.js';
 
 /** ROM and RAM addresses the rank object speaks in, each cited at the line that
  *  implements it. */
@@ -313,4 +315,145 @@ export function makeRankObject(rom) {
       DISP_25FF7A_TARGETS);
     perFrame2607A8(ram, rom, ctx);                // $2607A8..$260808
   };
+}
+
+// ===========================================================================
+// $260B30 -- OBJECT DISPATCH ENTRY [4], THE PER-SIDE ANNOUNCEMENT
+// ===========================================================================
+//
+// W243. The descriptor sweep counted this 1800 times per 900 frames -- twice a
+// frame, because it runs once per side -- and it was `handler not ported in wave 4`
+// for the whole project's life. It is the announcement text: a four-state machine
+// that blanks its own strip and then prints a message one cell at a time.
+//
+// Its MAILBOX is what makes it look mysterious. `$260A20` picks $813162 for P1 and
+// $813166 for P2, and the `$26080A` family (see the `$25FF38` note above) posts a
+// (flag, state) pair there. Each frame this object reads the flag, clears it, and
+// when the STATE word differs from the one it is running it drops the per-state
+// latch and switches.
+//
+// Every dependency was already in the port: `$240DC2` and `$240EBC` are
+// `txPrint240DC2`/`txPrint240EBC` (W116), and the two `$2872xx` calls are nine words
+// of RAM each.
+
+/** `$260A20` -- the side's mailbox longword: flag at +0, state at +2. */
+const OBJ4_MAILBOX = [0x813162, 0x813166];
+
+/** `$260B6A` -- FOUR longwords, and the table's far end is its own first target
+ *  `$260B7A`, so four is pinned by code and not by a run length. */
+const OBJ4_STATES = [0x260b7a, 0x260b94, 0x260c68, 0x260d62];
+
+/** `$260D22` (P1) and `$260D42` (P2) -- EIGHT longwords each, which is what the
+ *  cursor's own `cmpi.w #$20,$c(a5) / blt` bounds, and `$260D62` after them is state
+ *  3's code. */
+const OBJ4_TEXT = [0x260d22, 0x260d42];
+
+/** `$260A34` -- blank the side's announcement strip: `$240EBC`, the FILL variant, so
+ *  every cell of a 2x14 block takes the same tile. */
+function obj4Blank260A34(ram, side) {
+  txPrint240EBC(ram, 0x00dc, side ? 0x0e00 : 0x0000, 0x0001, 0x000d);
+}
+
+/** `$2872D8` (P1) / `$2872FE` (P2) -- nine words of `1` at stride `$A`, then one
+ *  more. Pure RAM, no dependency, and state 2 is its only caller here. */
+function obj4Arm2872D8(ram, side) {
+  const base = side ? 0x81b514 : 0x81b4c8;      // $2872DC / $287302
+  for (let n = 0; n <= 8; n++) ram.setU16(base + n * 0x0a, 1);   // $2872E4 dbra
+  ram.setU16(side ? 0x81b57e : 0x81b57c, 1);    // $2872F0 / $287316
+}
+
+/** The one-time work each state does when `$3(a5)` is still clear. States 1, 2 and 3
+ *  all arm the same scroller and differ only in their constants; state 0 blanks and
+ *  stops, which is what an idle announcement looks like. */
+const OBJ4_ENTER = [
+  null,                                                    // $260B7A: blank only
+  { timer: 0x0202, pos: [0x00dc0100, 0x00dc0f00],          // $260BAC..$260BCE
+    wrap: 0x40, list: 0x260c28, d2: 0x0001, d3: 0x000b },  // $260BEE / $260C08..$260C1C
+  { timer: 0x0101, pos: [0x00dc0100, 0x00dc1200],          // $260C98..$260CCA
+    wrap: 0x20, fromSlot: true, arm: true,                 // $260CEA / $260D04
+    d2: 0x0000, d3: 0x0006 },                              // $260D14/$260D16
+  { timer: 0x0202, pos: [0x00dc0200, 0x00dc0200],          // $260D7A..$260D8C
+    wrap: 0x40, list: 0x260df6, d2: 0x0001, d3: 0x0009 },  // $260DBC / $260DD6..$260DEA
+];
+
+// The three tails are SEPARATE COPIES in the cartridge -- $260BD6, $260CD2 and
+// $260DA4 -- and they are not identical, which a single shared implementation would
+// have got wrong in two places out of three. The timer, the reload and the "advance"
+// flag are the same in all three; what differs is the CURSOR WRAP and where the tile
+// comes from:
+//
+//   state 1: cmpi.w #$40 (SIXTEEN entries), list PC-relative at $260C28, D2/D3 = 1/$B
+//   state 2: cmpi.w #$20 (EIGHT),           list from ($10,A5),          D2/D3 = 0/6
+//   state 3: cmpi.w #$40 (SIXTEEN),         list PC-relative at $260DF6, D2/D3 = 1/9
+//
+// Only state 2 uses the `$10(a5)` pointer, which is why only state 2 sets it.
+
+/**
+ * `$260B30` -- one frame of the announcement, for the side in `$7(a5)`.
+ */
+export function announce260B30(ram, slot, slotIndex, ctx) {
+  const side = ram.u8(slot + 0x07) !== 0 ? 1 : 0;
+  if (ram.u8(slot + 0x02) === 0) {                         // $260B30 tst.b/beq
+    // $260B10 -- the INIT, and it clears the mailbox rather than reading it.
+    ram.setU8(slot + 0x02, 1);                             // $260B10
+    ram.setU8(slot + 0x03, 0);                             // $260B16
+    ram.setU16(slot + 0x04, 0);                            // $260B1A
+    ram.setU32(OBJ4_MAILBOX[side], 0);                     // $260B28
+    return;
+  }
+  const box = OBJ4_MAILBOX[side];                          // $260B36/$260B3A bsr
+  if (ram.u16(box) !== 0) {                                // $260B3E tst.w (A4)
+    ram.setU16(box, 0);                                    // $260B44 clr.w (A4)
+    const want = ram.u16(box + 0x02);                      // $260B46 move.w $2(A4)
+    if (want !== ram.u16(slot + 0x04)) {                   // $260B4A cmp.w $4(A5)
+      ram.setU8(slot + 0x03, 0);                           // $260B52 clr.b $3(A5)
+      ram.setU16(slot + 0x04, want);                       // $260B56 move.w D0
+    }
+  }
+  // $260B5A..$260B66 -- `lea ($260B6A,PC),A0 / adda.w $4(a5) / movea.l (A0),A0 / jmp`
+  const state = ram.u16(slot + 0x04) >> 2;
+  if (state >= OBJ4_STATES.length) {
+    unreached(0x260b5a, `$260B5A indexed $260B6A with $4(A5) = $${
+      ram.u16(slot + 0x04).toString(16)}, which is past the four longwords the `
+      + `table holds -- its own first target $260B7A is what bounds it`);
+  }
+
+  if (ram.u8(slot + 0x03) === 0) {                         // every state's opener
+    ram.setU8(slot + 0x03, 1);
+    obj4Blank260A34(ram, side);                            // the shared bsr $260A34
+    const e = OBJ4_ENTER[state];
+    if (e) {
+      if (e.arm) obj4Arm2872D8(ram, side);                 // $260C80 / $260C8A
+      ram.setU8(slot + 0x06, 1);                           // $260C98 etc
+      ram.setU16(slot + 0x0c, 0);
+      ram.setU16(slot + 0x0e, e.timer);
+      ram.setU32(slot + 0x08, e.pos[side]);
+      // $260CB2 / $260CC2 -- ONLY state 2 writes the pointer, because only state 2's
+      // tail reads it; states 1 and 3 carry their lists PC-relative.
+      if (e.fromSlot) ram.setU32(slot + 0x10, OBJ4_TEXT[side]);
+    }
+    if (!e) return;                                        // $260B92 rts
+  }
+
+  // $260BD6 / $260CD2 / $260DA4 -- this state's own tail. See the note above the
+  // config for what the three copies do and do not share.
+  const e = OBJ4_ENTER[state];
+  if (!e) return;
+  const t = ram.u8(slot + 0x0e);
+  ram.setU8(slot + 0x0e, (t - 1) & 0xff);                  // subq.b #$1,$e(a5)
+  if (t === 0) {                                           // the `bcc` = no borrow
+    ram.setU8(slot + 0x0e, ram.u8(slot + 0x0f));           // reload from $f(a5)
+    ram.setU8(slot + 0x06, 1);
+    const c = u16(ram.u16(slot + 0x0c) + 4);               // addq.w #$4,$c(a5)
+    ram.setU16(slot + 0x0c, i16(c) < e.wrap ? c : 0);      // cmpi.w #wrap / blt / clr
+  }
+  if (ram.u8(slot + 0x06) === 0) return;                   // tst.b $6(a5) / beq
+  ram.setU8(slot + 0x06, 0);
+  const list = e.fromSlot ? ram.u32(slot + 0x10) : e.list;
+  if (list === 0) return;                                  // no list armed yet
+  const d4 = ctx.rom.u32(list + ram.u16(slot + 0x0c));
+  const d0 = ram.u16(slot + 0x08);                         // movem.w $8(a5),d0-d1
+  const d1 = ram.u16(slot + 0x0a);
+  txPrint240DC2(ram, d0, d1, e.d2, e.d3, d4);
+  void slotIndex;
 }

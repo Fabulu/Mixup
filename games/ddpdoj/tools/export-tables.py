@@ -1022,6 +1022,19 @@ SHOT_WINDOWS.extend([
     # $2256B8 + 5*$40 is $2257F8.
     (0x2256B8, 0x0140, "W236 the five stage-clear banner palettes, $28EE1E's "
                        "second longwords, installed into bank $17"),
+    # W243: object [4]'s two announcement TEXT lists, $260D22 (P1) and $260D42 (P2).
+    # `$260D04 movea.l ($10,A5),A0 / adda.w ($c,A5),A0 / move.l (A0),D4` with the
+    # cursor stepping four and wrapping at `cmpi.w #$20,$c(a5)`, so EIGHT longwords
+    # each, and $260D22 + $40 is $260D62 -- state 3's own code. Pinned twice over.
+    (0x260D22, 0x0040, "W243 object [4]'s state-2 announcement text lists, eight "
+                       "longwords each, ending at $260D62's code"),
+    # W243: states 1 and 3 do NOT use the ($10,A5) pointer -- each reads its own
+    # PC-relative list (`$260C08 lea ($260C28,PC)` and `$260DD6 lea ($260DF6,PC)`)
+    # and each wraps its cursor at `cmpi.w #$40`, so SIXTEEN longwords apiece.
+    # $260C28 + $40 is $260C68, which is state 2's own code.
+    (0x260C28, 0x0040, "W243 object [4] state 1's sixteen text longwords, ending "
+                       "at $260C68's code"),
+    (0x260DF6, 0x0040, "W243 object [4] state 3's sixteen text longwords"),
     # W238 (docket D11): the banner PANEL's art. $2881D2 is FOUR 8-byte tables --
     # P1 lives icon, P2 lives icon, P1 bomb text, P2 bomb text -- each read as a
     # LONGWORD at a stride of TWO (`move.w <weapon>,D2 / add.w D2,D2 / move.l
