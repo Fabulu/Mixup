@@ -2062,6 +2062,15 @@ SHOT_WINDOWS.append(
                        "named as the remaining stage-1-tail gap.  Abuts the W124 "
                        "palette block: $228658 + $17A0 == $229DF8"))
 
+# ==================== W198: STAGE-3 TYPES $12/$13/$14 ========================
+# The three next Stage-3 enemy families read two exact code/data unions.  Keep
+# each as one runtime window so src/rom.js throws by address on any unexported
+# read, while the closure hashes below pin the decrypted image's exact bytes.
+SHOT_WINDOWS.extend([
+    (0x265A54, 0x0198, "W198: Stage-3 type $14 closure $265A54..$265BEC"),
+    (0x26C266, 0x1488, "W198: Stage-3 types $12/$13 closure $26C266..$26D6EE"),
+])
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
@@ -2275,6 +2284,17 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W197: type $38/$39/$3A fixed hull pointers drifted")
     if d[0x2348B2:0x2348BA] != bytes.fromhex("00e0000012800028"):
         raise SystemExit("W197: next Stage-3 frontier is not type $12 at $2348B2")
+    if hashlib.sha256(d[0x265A54:0x265BEC]).hexdigest() != (
+            "3ce42bb43554d5a39eb438b190b8d516de6610843663a5d3df80c1af19a45f22"):
+        raise SystemExit("W198: type $14 closure drifted")
+    if hashlib.sha256(d[0x26C266:0x26D6EE]).hexdigest() != (
+            "a903f8a5a87010d9e61c81097d213e79fa255b6b6ba4af865d6c7f179b950e2f"):
+        raise SystemExit("W198: type $12/$13 closure drifted")
+    if d[0x2678B4:0x2678CC] != bytes.fromhex(
+            "0026c2660026c3e20026d43e0026d4b400265a5400265adc"):
+        raise SystemExit("W198: type $12/$13/$14 registry rows drifted")
+    if d[0x2348BA:0x2348C2] != bytes.fromhex("00ea00003f00002d"):
+        raise SystemExit("W198: next Stage-3 frontier is not type $3F at $2348BA")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and

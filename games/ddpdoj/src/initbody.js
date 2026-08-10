@@ -38,7 +38,7 @@ import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
 import { install24150A } from './palette.js';
 import { AimTables, aim64AtTarget, aim64FromCaller, aim256, targetSelect } from './aim.js';
-import { drawWord242EC2 } from './rng.js';
+import { drawByte242B3C, drawWord242EC2 } from './rng.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 
 // ----------------------------------------------------------- the record layout
@@ -572,6 +572,61 @@ BODY.set(0x264d5a, (ram, rom, a5, a6, unported) => {
     ram.setU16(a6 + S.posY, u16(ram.u16(a6 + S.posY) - 0x0100));
   }
   ram.setU8(a5 + R.rec38, i16(drawWord242EC2(ram, rom)) < 0 ? 2 : 0xfe);
+});
+
+// --- type $12 ($26C26E): Stage 3's seven-part carrier. W198.
+//
+// Unlike ordinary script enemies, the carrier ignores its movement pointer and
+// enters from a fixed position. Its two child families are deferred records,
+// so their init bodies live beside it below.
+BODY.set(0x26c26e, (ram, rom, a5, a6, unported, tables, palette) => {
+  void unported; void tables;
+  const tail = loadSubProto(ram, rom, a5, a6, 0x26c30e); // seven long records
+  ram.setU32(a5 + R.rec44, tail);                         // $26C286
+  loadRecordProto(ram, rom, a5, 0x26c2f0, 0x0e);        // fifteen words
+  ram.setU32(a6 + S.posX, 0xf0001c00);                  // fixed entrance
+
+  // `$81585C` is a ten-position history. The init clears the interleaved
+  // scratch longs too, even though the handler later shifts only the first ten.
+  for (let n = 0; n < 10; n++) {
+    ram.setU32(0x81585c + n * 8, 0xf0001c00);
+    ram.setU32(0x815860 + n * 8, 0);
+  }
+  ram.setU16(G.f4, 1);
+  ram.setU16(G.e0, 1);
+  installBank(ram, rom, palette, unported, 0x12, 0x2234b8, 0x26c2b0,
+    'type $12 root palette');
+  installBank(ram, rom, palette, unported, 0x13, 0x2234f8, 0x26c2c2,
+    'type $12 side palette');
+  installBank(ram, rom, palette, unported, 0x0a, 0x223538, 0x26c2d4,
+    'type $12 child palette');
+});
+
+// --- type $13 ($26D446): hatch-spawned expanding satellite. W198.
+BODY.set(0x26d446, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x26d49a);
+  ram.setU32(a6 + S.posX, ram.u32(a5 + R.rec16));
+  ram.setU16(a6 + S.speed, ram.u16(a5 + R.rec1A));
+  ram.setU8(a6 + S.heading,
+    ram.u8(a6 + S.heading) + ((drawByte242B3C(ram, rom) * 2) & 0xff));
+  ram.setU16(a5 + R.rec18, 0x0408);
+  ram.setU16(a5 + R.rec1A, 0x0002);
+  ram.setU16(a5 + R.rec1E, 0);
+  ram.setU16(a5 + R.rec20, 0);
+  ram.setU16(a5 + R.rec22, 0x0101);
+  ram.setU16(a5 + R.rec24, 0);
+  ram.setU8(a5 + R.rec26, 6);
+  ram.setU8(a5 + R.rec16, 0);
+});
+
+// --- type $14 ($265A5C): the two-slot entrance curtain. W198.
+BODY.set(0x265a5c, (ram, rom, a5, a6) => {
+  loadRecordProto(ram, rom, a5, 0x265a96, 0x06);
+  loadSubProto(ram, rom, a5, a6, 0x265aa4);
+  const pos = u16(-0x0800 - ram.u16(0x813170));
+  ram.setU16(a6 + S.posX, 0x7000);
+  ram.setU16(a6 + S.posY, pos);
+  ram.setU32(a6 + 0x22, ram.u32(a6 + S.posX));
 });
 
 // --- type $24 ($296FB0): boss-approach prop.  Sub-proto, resource install,

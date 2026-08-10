@@ -27,7 +27,7 @@ function run(...args) {
   });
 }
 
-test('W197 config is a machine-readable family map with an exact backlog', () => {
+test('W198 config is a machine-readable family map with an exact backlog', () => {
   const config = JSON.parse(readFileSync(configPath, 'utf8'));
   assert.equal(config.schema, 1);
   assert.deepEqual(config.families.map((x) => x.name), [
@@ -47,7 +47,7 @@ test('W197 config is a machine-readable family map with an exact backlog', () =>
   assert.equal(stage3.stage, 2);
   assert.equal(stage3.stage_table, 0x263336);
   assert.equal(stage3.derived_type_count, 28);
-  assert.equal(stage3.derived_ported_type_count, 21);
+  assert.equal(stage3.derived_ported_type_count, 22);
   assert.equal(config.backlog[1].derive_from,
     'stage3_spawn_script.live_rom_aux_resource');
   assert.ok(config.backlog.every((x) => x.status && x.reason));
@@ -59,20 +59,20 @@ test('W197 config is a machine-readable family map with an exact backlog', () =>
   assert.deepEqual(frontier.remaining_records, []);
 });
 
-test('W197 reusable coverage derives the current closed-family totals', { skip: !evidence }, () => {
+test('W198 reusable coverage derives the current closed-family totals', { skip: !evidence }, () => {
   const got = run();
   assert.equal(got.status, 0, got.stdout + got.stderr);
   assert.match(got.stdout, /top_objects: 7\/20 ported/);
   assert.match(got.stdout, /type5_calls: 19\/23 ported/);
-  assert.match(got.stdout, /enemy_types: 52\/256 ported, 74 unknown, 130 null/);
+  assert.match(got.stdout, /enemy_types: 55\/256 ported, 71 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
-  assert.match(got.stdout, /stage3_spawn_script: 273\/414 ported, 141 unknown, 0 null/);
-  assert.match(got.stdout, /stage3_enemy_frontier: 141 ordered records/);
-  assert.match(got.stdout, /stage3_enemy_types: 21\/28 covered types/);
+  assert.match(got.stdout, /stage3_spawn_script: 274\/414 ported, 140 unknown, 0 null/);
+  assert.match(got.stdout, /stage3_enemy_frontier: 140 ordered records/);
+  assert.match(got.stdout, /stage3_enemy_types: 22\/28 covered types/);
   const romBytes = readFileSync(rom);
-  assert.equal(romBytes[0x2348B2 + 4], 0x12,
-    'next unsupported Stage-3 record is type $12 at $2348B2');
+  assert.equal(romBytes[0x2348BA + 4], 0x3F,
+    'next unsupported Stage-3 record is type $3F at $2348BA');
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported, 0 unknown, 0 null/);
   assert.match(got.stdout, /stage2_spawn_script:[\s\S]*static-minus-dynamic: 304/);
   assert.match(got.stdout, /stage1_bgelem: 13\/13 ported/);
@@ -83,7 +83,7 @@ test('W197 reusable coverage derives the current closed-family totals', { skip: 
   assert.match(got.stdout, /OK inventory/);
 });
 
-test('W197 both regression conditions demonstrably go red', { skip: !evidence }, () => {
+test('W198 both regression conditions demonstrably go red', { skip: !evidence }, () => {
   const coverage = run('--break-coverage');
   assert.equal(coverage.status, 1, coverage.stdout + coverage.stderr);
   assert.match(coverage.stdout, /FAIL coverage: lost 1 registry entries/);

@@ -905,8 +905,8 @@ function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut) {
       // the port sit in the lock silently.  W19 censused all three:
       //   $261142  ext-unfreeze ($81317E := 2) -- TWO callers in the whole of
       //            build B, $26C7F4 and $26D254, both ENEMY state machines,
-      //            each paired with `clr.w $8130F4`.  $261138 (freeze ON) has
-      //            no caller at all.
+      //            each paired with `clr.w $8130F4`. W198 ports both live
+      //            type-$12 calls. $261138 (freeze ON) has no caller at all.
       //   $261100  the external speed push -- 9 callers, one of which is the
       //            stage-1 midboss at $26B73A (D0 = D1 = $0020).
       //   $8130D2  the global pause -- exactly TWO writers, $25FD82 / $25FD8C.
@@ -915,8 +915,8 @@ function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut) {
           + `at t=$${recTime.toString(16).toUpperCase().padStart(4, '0')} `
           + 'latched a freeze whose op-$04 partner armed loops=$FFFF, so the '
           + 'VM can never release it. The board is released by an ENEMY '
-          + '($26C7F4 / $26D254, both `jsr $261142` + `clr.w $8130F4`) and no '
-          + 'enemy is ported, so the port HOLDS here -- correctly. W19 §2');
+          + '($26C7F4 / $26D254, both `jsr $261142` + `clr.w $8130F4`). W198 '
+          + 'ports that carrier release; this note remains until its handler runs.');
       }
       return a1;
     }

@@ -51,7 +51,7 @@ function freshEnemy(ram, type, classByte = 0) {
   return { rec, sub };
 }
 
-test('the stage-1, Stage-2, and W197 Stage-3 bodies are dispatched', () => {
+test('the stage-1, Stage-2, and W198 Stage-3 bodies are dispatched', () => {
   // the addresses the spawn walker resolves for the 21 stage-1 types (census).
   const want = new Set([
     0x269bce, 0x26a1ea, 0x26a4bc, 0x26a794, 0x26aba0, 0x26871c, 0x2680b8,
@@ -113,7 +113,10 @@ test('the stage-1, Stage-2, and W197 Stage-3 bodies are dispatched', () => {
   for (const body of [0x264c1c, 0x264c84, 0x264cec])
     assert.ok(INIT_BODY_ADDRESSES.includes(body),
       `W197: shared-handler variant body $${body.toString(16)}`);
-  assert.equal(INIT_BODY_ADDRESSES.length, 44,
+  for (const body of [0x26c26e, 0x26d446, 0x265a5c])
+    assert.ok(INIT_BODY_ADDRESSES.includes(body),
+      `W198: carrier/child body $${body.toString(16)}`);
+  assert.equal(INIT_BODY_ADDRESSES.length, 47,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
     + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
     + `W170's $277836, W171's $276946, W172's $27751C, W173's $275154, `
@@ -121,7 +124,8 @@ test('the stage-1, Stage-2, and W197 Stage-3 bodies are dispatched', () => {
     + `W178's $279CD0, W179's $277DE8, W180's $27A0E8, W181's $279EC2, and `
     + `W182's $275BB6, W183's $297120, W185's $29BB26, W192's $2653EE, and `
     + `W193's $263A58, W194's $264740, W195's $266968, W196's $264D5A, and `
-    + `W197's $264C1C/$264C84/$264CEC`);
+    + `W197's $264C1C/$264C84/$264CEC, and W198's `
+    + `$26C26E/$26D446/$265A5C`);
 });
 
 test('runInitBodyAddr throws on an unknown body address', () => {

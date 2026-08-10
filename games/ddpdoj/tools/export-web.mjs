@@ -312,6 +312,26 @@ const HARVEST = Object.freeze([
     'stage-3 type $3E heading/mirror animation. The heading selects each even '
       + 'pointer and record +$28 selects its adjacent mirror frame, reaching '
       + 'all 64 longwords before the next type stub at $265798'],
+  // W198. Stage-3 types $12, $13, and $14 each use stride-4 pointer tables.
+  // The two adjacent pairs have a longer valid-pointer run, but each row owns
+  // only the entries its handler indexes. All 60 pointers are distinct and
+  // belong to the existing deferred late-family shard 17.
+  [17, 0x26d2c6, 8, 4, 8, 0x26d2e6,
+    'stage-3 type $12 sprite table 0, eight stride-4 pointers'],
+  [17, 0x26d362, 8, 4, 16, 0x26d3a2,
+    'stage-3 type $12 sprite table 1, eight indexed pointers in a 16-entry '
+      + 'valid run shared with the adjacent table'],
+  [17, 0x26d382, 8, 4, 8, 0x26d3a2,
+    'stage-3 type $12 sprite table 2, eight stride-4 pointers'],
+  [17, 0x26d3fe, 8, 4, 16, 0x26d43e,
+    'stage-3 type $12 sprite table 3, eight indexed pointers in a 16-entry '
+      + 'valid run shared with the adjacent table'],
+  [17, 0x26d41e, 8, 4, 8, 0x26d43e,
+    'stage-3 type $12 sprite table 4, eight stride-4 pointers'],
+  [17, 0x26d64e, 16, 4, 16, 0x26d68e,
+    'stage-3 type $13 sprite table, sixteen stride-4 pointers'],
+  [17, 0x265bdc, 4, 4, 4, 0x265bec,
+    'stage-3 type $14 sprite table, four stride-4 pointers'],
   [18, 0x289820, 32, 4, 32, 0x2898a0,
     'pool-D debris template 0 descriptor list'],
   [18, 0x2898b0, 32, 4, 32, 0x289930,
