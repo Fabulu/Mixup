@@ -51,6 +51,6 @@ types. The boss is visible and running its authentic arrival rather than
 stopping at the final spawn record.
 
 This is not yet the complete Stage-4 boss. MAIN0 eventually arms A3/D9 and
-D10; scheduler order reaches D9 init `$2A1506` and step `$2A150C` in that same
+D10; scheduler order reaches D9 `$2A15BE` in that same
 walk. W220 owns that first live arrival scheduler closure and continues toward
 the normal attack, low-HP, death, and Stage-5 transition graph.

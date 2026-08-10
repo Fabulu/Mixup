@@ -1,8 +1,8 @@
 // Stage-4 Type $40 boss entry and arrival bootstrap.
 //
 // This slice owns the spawn wrapper, the live no-hit/damage controller, F0,
-// MAIN0, and the initially visible A2 object 10. The next normal-play frontier
-// is A3/D9, reached later in the same scheduler walk as MAIN0's handoff.
+// MAIN0, D9/D10, and the first seven visible A2 objects. The next normal-play
+// frontier is A4/F3 on the scheduler pass after MAIN0's handoff.
 
 import { asr, i16, i32, u16 } from './ram.js';
 import { unreached } from './unported.js';
@@ -12,6 +12,7 @@ import { livePlayers2428A6 } from './boss.js';
 import { applyVelocity } from './movement.js';
 import { install24150A } from './palette.js';
 import { loadAnimObjects246410 } from './animobjects.js';
+import { AimTables, aim64FromCaller, slew64 } from './aim.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { runStageAdvance242952 } from './stageend.js';
 import {
@@ -25,6 +26,17 @@ const due8 = (ram, addr) => {
   ram.setU8(addr, old - 1);
   return old === 0;
 };
+
+const AIM_TABLES = new WeakMap();
+function aimTables(rom) {
+  let tables = AIM_TABLES.get(rom);
+  if (!tables) { tables = new AimTables(rom); AIM_TABLES.set(rom, tables); }
+  return tables;
+}
+
+function spriteAttr(ram, a6, attrOff, paletteOff) {
+  return (ram.u16(a6 + attrOff) & 0xff00) | ram.u8(a6 + paletteOff);
+}
 
 function phaseDeathNotYet() {
   unreached(0x29fe8a,
@@ -228,7 +240,7 @@ function main0Step29F5FE(ram, rom, ctx, slot) {
       a4Start25980C(ram, 3);
       a3Start259962(ram, 9);
       a3Start259962(ram, 10);
-      // D9 is reached later in this scheduler walk and is the next frontier.
+      // D9 and D10 run later in this scheduler walk, before the A2 objects.
       for (let id = 0; id <= 5; id++) a2Run2598E6(ram, id);
       for (const off of [0x20, 0x40, 0x60]) ram.setU16(a6 + off, 0xa001);
       loadAnimObjects246410(ram, rom, 0x29f756);
@@ -261,8 +273,79 @@ function object10_29F3F0(ram, rom, ctx) {
     sprite, 0x28c0, 0x0015);
 }
 
+function object0_29EF88(ram, rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  enqueueRegistersThroughStub(ram, rom, 0x23e056,
+    (ram.u32(a6 + 0x22) + 0xee00ee00) >>> 0,
+    rom.u32(0x29efb2 + ram.u16(a6 + 0x26)), 0x1290,
+    spriteAttr(ram, a6, 0x3c, 0x146));
+}
+
+function object1_29F0D6(ram, rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  enqueueRegistersThroughStub(ram, rom, 0x23e056,
+    (ram.u32(a6 + 0x42) + 0xe800ec00) >>> 0,
+    rom.u32(0x29f100 + ram.u16(a6 + 0x46)), 0x18a0,
+    spriteAttr(ram, a6, 0x5c, 0x147));
+}
+
+function object2_29F120(ram, rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  enqueueRegistersThroughStub(ram, rom, 0x23e056,
+    (ram.u32(a6 + 0x62) + 0xf600fa00) >>> 0,
+    rom.u32(0x29f14a + ram.u16(a6 + 0x66)), 0x0a30,
+    spriteAttr(ram, a6, 0x7c, 0x148));
+}
+
+function object3_29F16A(ram, rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  enqueueRegistersThroughStub(ram, rom, 0x23e056,
+    (ram.u32(a6 + 0xc2) + 0xf800fa00) >>> 0,
+    rom.u32(0x29f19a + ram.u16(a6 + 0xc6) * 4), 0x0830,
+    spriteAttr(ram, a6, 0xdc, 0x149));
+}
+
+function object4_29F1FA(ram, rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  enqueueRegistersThroughStub(ram, rom, 0x23e056,
+    (ram.u32(a6 + 0xe2) + 0xf800fa00) >>> 0,
+    rom.u32(0x29f19a + ram.u16(a6 + 0xe6) * 4), 0x0830,
+    spriteAttr(ram, a6, 0xfc, 0x14a));
+}
+
+function object5_29F228(ram, rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  const headingOff = ((ram.u8(a6 + 0x11b) + 1) & 0x3e) << 1;
+  enqueueRegistersThroughStub(ram, rom, 0x23e056,
+    (ram.u32(a6 + 0x102) + 0xfa00fb00) >>> 0,
+    rom.u32(0x29f25e + headingOff), 0x0628,
+    spriteAttr(ram, a6, 0x11c, 0x14b));
+}
+
+function d9_2A15BE(ram, rom, ctx) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  const aimed = aim64FromCaller(aimTables(rom), ram, a5,
+    ram.u16(a6 + 0x102), ram.u16(a6 + 0x104));
+  if (!aimed.carry)
+    ram.setU8(a6 + 0x11b, slew64(ram.u8(a6 + 0x11b), aimed.dir));
+}
+
+function d10_2A15DE(ram, _rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  for (const off of [0x26, 0x46, 0x86, 0xa6])
+    ram.setU16(a6 + off, (ram.u16(a6 + off) + 4) & 0x1f);
+}
+
 registerScript(0x2a017a, f0_2A017A);
 registerScript(0x2a019a, f0Step2A019A);
 registerScript(0x29f5bc, main0Init29F5BC);
 registerScript(0x29f5fe, main0Step29F5FE);
 registerScript(0x29f3f0, object10_29F3F0);
+registerScript(0x29ef88, object0_29EF88);
+registerScript(0x29f0d6, object1_29F0D6);
+registerScript(0x29f120, object2_29F120);
+registerScript(0x29f16a, object3_29F16A);
+registerScript(0x29f1fa, object4_29F1FA);
+registerScript(0x29f228, object5_29F228);
+registerScript(0x2a15be, d9_2A15BE);
+registerScript(0x2a15de, d10_2A15DE);

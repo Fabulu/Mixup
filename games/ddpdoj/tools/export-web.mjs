@@ -2423,6 +2423,18 @@ function harvestStage4Arithmetic(base, entries, stride, why) {
   console.log(`  Stage-4 boss arrival: 16 streams, ${art.added} new`);
 }
 
+// W220: MAIN0's terminal handoff arms A2 objects 0..5 in the same pass as
+// D9/D10. Object 3/4 share a physical 24-entry table made from the same eight
+// pointers repeated three times, so harvesting its first distinct block ships
+// the complete visible dependency.
+for (const [at, entries, why] of [
+  [0x29efb2, 8, 'Stage-4 boss central hull'],
+  [0x29f100, 8, 'Stage-4 boss lower hull'],
+  [0x29f14a, 8, 'Stage-4 boss bridge'],
+  [0x29f19a, 8, 'Stage-4 boss mirrored pods'],
+  [0x29f25e, 32, 'Stage-4 boss aimed turret'],
+]) harvestStage4Type9DTable(at, entries, `W220 ${why}`);
+
 // ------------------------------------------------------------------- WAVE 66
 // 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
 // bomb, and NEITHER HAS A PICTURE: W64 §8.3 counted 174 bucket-13 records with
