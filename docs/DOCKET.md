@@ -82,8 +82,9 @@ already counted by address:
   could not have drawn even with the emitter),
 - the TX TEXT: **DONE**. The printer was W116, W237 ported the SET-item icon row and
   progress cue, and W238 ported `panel2851D2` -- the stage-clear banner's panel, so
-  its lives icons, hyper-stock icon and bomb-row text all draw. Its BOSS-banner twin
-  `panel284FD2` is still noted,
+  its lives icons, hyper-stock icon and bomb-row text all draw, and W239 ported its
+  BOSS-banner twin `panel284FD2` -- which also caught W238 dropping D1's high word,
+  so neither panel had a vertical position until W239,
 - the banner's five `$24150A` resource installs plus the slide-out's -- **PORTED
   in W236**, and `$24150A` had been ported since W91; the note calling it "data"
   had simply stopped being true,
