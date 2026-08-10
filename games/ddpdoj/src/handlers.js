@@ -6069,6 +6069,50 @@ function handlerA6(ram, _rom, a5) {
   if (flags & 0x40) ram.setU16(G.pulseDA, 0xffff);     // $2789E2..$2789EA
 }
 
+// `$27ACE4`: Stage-4 type $9B. Two linked structure sprites share X and hit
+// scoring, then spread vertically for a bounded lifetime once movement sets
+// their animation byte. They are one enemy allocation, not child records.
+function handler9B(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + R.subRec);
+  if (stepMovement(ram, rom, a5, ctx.tables, ctx.unported)) return;
+
+  const x = ram.u16(a6 + S.posX);
+  const afterFirstAdd = u16(x + 0x2000);
+  const inside = afterFirstAdd + 0x5000 > 0xffff;       // $27ACF0..$27ACFA
+  if (!inside) ram.setU8(a5 + R.onScreen, 1);
+  else if (ram.u8(a5 + R.onScreen) !== 0) {
+    freeEnemy(ram, a5);
+    return;
+  }
+
+  ram.setU16(a6 + 0x22, x);                            // $27AD0C
+  ram.setU16(a6 + 0x24, ram.u16(a6 + 0x24) - ram.u16(0x813176));
+
+  const hit = (ram.u8(a6) | ram.u8(a6 + 0x20)) & 0x5c;
+  if (hit !== 0) {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);
+    ram.setU8(a6 + 0x20, ram.u8(a6 + 0x20) & 0xa3);
+    scoreHit(ram, ctx, a6, hit);                       // $27AD32 jsr $286096
+    ram.setU16(a6 + S.hp, 0x7fff);
+    ram.setU16(a6 + 0x38, 0x7fff);
+  }
+
+  if (ram.u16(G.freeze) === 0 && ram.u8(a6 + S.anim) !== 0) {
+    ram.setU16(a6 + S.posY, ram.u16(a6 + S.posY) + 0x40);
+    ram.setU16(a6 + 0x24, ram.u16(a6 + 0x24) - 0x40);
+    const spread = u16(ram.u16(a5 + R.rec18) + 0x40);
+    ram.setU16(a5 + R.rec18, spread);
+    if (spread >= 0x2a80) {
+      freeEnemy(ram, a5);
+      return;
+    }
+  }
+
+  enqueueThroughStub(ram, rom, 0x23d79e, a6);          // $27AD76
+  if (ram.u16(a5 + R.rec18) < 0x2680)
+    enqueueThroughStub(ram, rom, 0x23d79e, a6 + 0x20); // $27AD8A
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
@@ -6138,6 +6182,7 @@ const HANDLERS = new Map([
   [0x29be28, handlerBoss29BE28], // W204: Stage-3 boss type $A0 entry/arrival
   [0x29e6b0, handler99_29E6B0],  // W209: Stage-3 boss low-HP child type $99
   [0x278994, handlerA6],          // W211: Stage-4 alternating pulse type $A6
+  [0x27ace4, handler9B],          // W212: Stage-4 linked structure type $9B
   [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 

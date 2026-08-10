@@ -1576,6 +1576,22 @@ BODY.set(0x27896a, (ram, rom, a5, a6) => {
   loadSubProto(ram, rom, a5, a6, 0x278978);             // $27896A..$278976
 });
 
+// --- type $9B ($27AC4A): Stage 4's linked upper/lower structure pair.
+// Both parts share X, separate vertically after their movement animation starts,
+// and install the palette bank selected by the first-vs-later spawn clock.
+BODY.set(0x27ac4a, (ram, rom, a5, a6, unported, _tables, palette) => {
+  loadSubProto(ram, rom, a5, a6, 0x27acac);             // $27AC4A..$27AC56
+  loadRecordProto(ram, rom, a5, 0x27aca8, 0x01);       // $27AC56..$27AC64
+  readInitPosition(ram, rom, a5, unported);            // $27AC64 jsr $263808
+  ram.setU32(a6 + 0x22, ram.u32(a6 + S.posX));         // $27AC6A
+  ram.setU16(a6 + S.posY, ram.u16(a6 + S.posY) + 0x1600); // $27AC70
+  ram.setU16(a6 + 0x24, ram.u16(a6 + 0x24) - 0x0800); // $27AC76
+  ram.setU16(a6 + 0x24, ram.u16(a6 + 0x24) - ram.u16(G.scrollDelta));
+  const bank = ram.u16(G.scrollClock) === 0x0019 ? 0x14 : 0x16;
+  installBank(ram, rom, palette, unported, bank, 0x224cb8, 0x27aca0,
+    'Stage-4 type $9B linked-structure palette');
+});
+
 // ============================================================ the entry point
 /** Run the init+8 body at `addr`.  Replaces spawn.js's throwing stub.  Returns
  *  FREED if the body freed the enemy (a stage-kill gate fired); otherwise

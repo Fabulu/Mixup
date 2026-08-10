@@ -500,6 +500,8 @@ SHOT_WINDOWS.extend([
                        "and invisible pulse handler through $2789EE"),
     (0x263180, 0x0054, "W211: Stage-4 clock-zero BGELEM id 5 constructor, "
                        "updater, and immediate art descriptor"),
+    (0x27AC42, 0x014C, "W212: complete Stage-4 type $9B stub, init, record and "
+                       "two-sub prototypes, and linked-structure handler"),
     (0x2358B0, 0x20C8, "W211: complete STAGE-4 spawn dependency span: 382 "
                        "records + terminator, 157-word aux table, and 157 "
                        "movement streams ($2358B0..$237978)"),

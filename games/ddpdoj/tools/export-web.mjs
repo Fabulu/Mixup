@@ -2175,6 +2175,41 @@ const STAGE4_BGELEM_ID5 = 0x2622d6 + 5 * 4;
   console.log(`  Stage-4 opening background element: 1 stream, ${added} new`);
 }
 
+// W212: type $9B stores its two direct sprite descriptors in consecutive
+// long-form sub-prototypes. The pointer cells are $1C bytes apart; both parts
+// are visible on the spawn frame and therefore share the Stage-4 opening
+// structures shard deadline.
+const TYPE9B_ART_CELLS = 0x27acb2;
+{
+  const expected = [0x2af6cc, 0x2aecc8];
+  const seen = new Set();
+  let added = 0, already = 0;
+  for (let i = 0; i < expected.length; i++) {
+    const cell = TYPE9B_ART_CELLS + i * 0x1c;
+    const offs = romBe32(cell);
+    if (offs !== expected[i]) {
+      throw new Error(`type $9B prototype cell $$${cell.toString(16)} names `
+        + `$$${offs.toString(16)}, expected $$${expected[i].toString(16)}`);
+    }
+    seen.add(offs);
+    if (streams.has(offs)) already++;
+    else {
+      streams.set(offs, romExtent(offs));
+      shardOfStream.set(offs, STRUCT_SHARD);
+      added++;
+    }
+  }
+  harvested += added;
+  harvestAlready += already;
+  harvestReport.push({ shard: STRUCT_SHARD, base: TYPE9B_ART_CELLS,
+    entries: 2, stride: 0x1c, runsTo: 2,
+    endsAt: TYPE9B_ART_CELLS + 2 * 0x1c, distinct: seen.size, added, already,
+    why: 'W212 Stage-4 type $9B linked upper/lower structure prototypes: '
+      + 'direct streams $2AF6CC and $2AECC8' });
+  console.log(`  Stage-4 type $9B linked structure: ${seen.size} streams, `
+    + `${added} new`);
+}
+
 // ------------------------------------------------------------------- WAVE 66
 // 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
 // bomb, and NEITHER HAS A PICTURE: W64 §8.3 counted 174 bucket-13 records with
