@@ -349,6 +349,19 @@ const HARVEST = Object.freeze([
   // is a sprite pointer. Their 40 pointers form a complete run in shard17.
   [17, 0x29c100, 40, 12, 43, 0x29c304,
     'stage-3 type $A0 A2 object 9, forty 12-byte rows'],
+  // W205. D0/D6 animate the exact A2 0..8 tables during the normal boss
+  // arrival. Objects 6/7 reuse the already-shipped `$272D7A` family; these
+  // five tables contain the 47 remaining table-selected streams.
+  [17, 0x29bea0, 16, 4, 16, 0x29bee0,
+    'stage-3 boss A2 object 0, sixteen selector frames'],
+  [17, 0x29bf6a, 8, 4, 8, 0x29bf8a,
+    'stage-3 boss A2 objects 2/3, eight shared frames'],
+  [17, 0x29bfb8, 8, 4, 8, 0x29bfd8,
+    'stage-3 boss A2 object 4, eight frames'],
+  [17, 0x29c006, 8, 4, 8, 0x29c026,
+    'stage-3 boss A2 object 5, eight frames'],
+  [17, 0x29c052, 7, 4, 7, 0x29c06e,
+    'stage-3 boss A2 object 8, seven frames'],
   [18, 0x289820, 32, 4, 32, 0x2898a0,
     'pool-D debris template 0 descriptor list'],
   [18, 0x2898b0, 32, 4, 32, 0x289930,
@@ -1135,11 +1148,19 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
     || r.base === 0x267160);
   if (unique.size !== 64 || [...unique].some((a) => !chain.has(a))
       || w203Rows.length !== 2 || w203Rows.some((r) => r.added !== 32 || r.already !== 0)
-      || w203StreamsBefore !== 166 || streams.size !== 1920) {
+      || w203StreamsBefore !== 166 || streams.size !== 1967) {
     throw new Error(`W203 type $16 art harvest drifted: ${unique.size} distinct `
       + `pointers, ${w203StreamsBefore} pre-harvest streams, ${streams.size} total; `
-      + 'expected 64 on the $F4 chain, 166 before, and 1920 after this harvest');
+      + 'expected 64 on the $F4 chain, 166 before, and 1967 after this harvest');
   }
+}
+// W205 A2 object 1 carries its fixed hull as an immediate rather than a table.
+for (const offs of [0x000a3514]) {
+  if (!streams.has(offs)) {
+    streams.set(offs, romExtent(offs));
+    shardOfStream.set(offs, 17);
+    harvested++;
+  } else harvestAlready++;
 }
 for (const offs of LASER_STREAMS) {
   if (streams.has(offs)) { harvestAlready++; continue; }

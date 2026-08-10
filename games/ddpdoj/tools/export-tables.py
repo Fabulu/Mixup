@@ -2075,6 +2075,7 @@ SHOT_WINDOWS.extend([
     (0x274B6C, 0x05E0, "W202: Stage-3 type $83 closure $274B6C..$27514C"),
     (0x266D2E, 0x04B2, "W203: Stage-3 type $16 runtime closure $266D2E..$2671E0"),
     (0x29BBF4, 0x1040, "W204: Stage-3 type $A0 entry/arrival runtime closure $29BBF4..$29CC34"),
+    (0x29D010, 0x1006, "W205: Stage-3 boss F2/MAIN1/E6/E7 runtime closure $29D010..$29E016"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
@@ -2408,6 +2409,12 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if hashlib.sha256(d[0x29BBF4:0x29EC7A]).hexdigest() != (
             "b09b568d901f5f894403e2d49f1ea57bae4efd5ff0be2f9fade53c848d60c6ce"):
         raise SystemExit("W204: type $A0 physical family closure drifted")
+    if hashlib.sha256(d[0x29D010:0x29E016]).hexdigest() != (
+            "60f53b0359f33f730e8912b52bf284e092e5c74fc6a7019dde9be4380b785e8c"):
+        raise SystemExit("W205: F2/MAIN1/E6/E7 runtime closure drifted")
+    if d[0x29D27A:0x29D28A] != bytes.fromhex(
+            "0029dcee0029dd3e0029deca0029df26"):
+        raise SystemExit("W205: A1 E6/E7 pointer rows drifted")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and
