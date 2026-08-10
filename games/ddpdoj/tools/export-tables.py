@@ -2071,6 +2071,7 @@ SHOT_WINDOWS.extend([
     (0x26C266, 0x1488, "W198: Stage-3 types $12/$13 closure $26C266..$26D6EE"),
     (0x265798, 0x0244, "W199: Stage-3 type $3F local closure $265798..$2659DC"),
     (0x265BEC, 0x0D74, "W200: Stage-3 type $15 closure $265BEC..$266960"),
+    (0x2671E0, 0x007A, "W201: Stage-3 type $19 local closure $2671E0..$26725A"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
@@ -2330,6 +2331,18 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W200: type $15 closure drifted")
     if d[0x234B32:0x234B3A] != bytes.fromhex("011000001900005d"):
         raise SystemExit("W200: next Stage-3 frontier is not type $19 at $234B32")
+    if d[0x235656:0x23565C] != bytes.fromhex("3e4023404000"):
+        raise SystemExit("W201: type $19 movement stream drifted")
+    if d[0x2678EC:0x2678F4] != bytes.fromhex("002671e000267226"):
+        raise SystemExit("W201: type $19 registry row drifted")
+    if hashlib.sha256(d[0x26720A:0x267226]).hexdigest() != (
+            "389c21aa2a10cb1b9183307b9baa69a84a1893c242835db75ce930c2f01144ae"):
+        raise SystemExit("W201: type $19 prototype drifted")
+    if hashlib.sha256(d[0x2671E0:0x26725A]).hexdigest() != (
+            "cce454ced9cbd0480cd1d86803d9b8fbaabb75e05c1565d15d6df6f00bb4d91d"):
+        raise SystemExit("W201: type $19 local closure drifted")
+    if d[0x234C1A:0x234C22] != bytes.fromhex("011d00148300006b"):
+        raise SystemExit("W201: next Stage-3 frontier is not type $83 at $234C1A")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and

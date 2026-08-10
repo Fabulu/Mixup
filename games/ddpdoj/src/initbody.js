@@ -545,6 +545,15 @@ BODY.set(0x266324, (ram, rom, a5, a6) => {
   loadRecordProto(ram, rom, a5, 0x26634c, 0x11);
 });
 
+// --- type $19 ($2671E8): invisible Stage-3 pulse controller. The script's
+// movement index is structural only; this body fixes the controller position.
+BODY.set(0x2671E8, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x26720a);
+  ram.setU32(a6 + S.posX, 0x38001c00);
+  ram.setU16(a5 + R.rec16, 0x0004);
+  ram.setU16(a5 + R.rec18, 0x0303);
+});
+
 // --- type $36 ($263A58): Stage-3's seven-part carrier. All seven long-form
 // prototypes are contiguous, and A0 after the load is the long-threshold cue
 // cursor consumed by $28AC86 in the handler.

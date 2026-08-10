@@ -6022,6 +6022,23 @@ function handler4D(ram, rom, a5, ctx) {
     rom.u32(0x29bbd4 + ram.u16(a5 + 0x20)), 0x0620, 0x17);
 }
 
+// `$267226`: Stage-3 type $19's invisible global pulse controller. The two
+// byte SUBQ/BCC timers produce three five-call gaps followed by one 17-call
+// gap, while `$8130E8` is explicitly cleared on every non-pulse call.
+function handler19(ram, _rom, a5) {
+  ram.setU16(0x8130e8, 0);                             // $267226
+  let old = ram.u8(a5 + 0x16);
+  ram.setU8(a5 + 0x16, old - 1);                      // $26722E
+  if (old !== 0) return;                               // $267232 bcc.w
+  ram.setU8(a5 + 0x16, ram.u8(a5 + 0x17));            // $267236
+  ram.setU16(0x8130e8, 1);                            // $26723C
+  old = ram.u8(a5 + 0x18);
+  ram.setU8(a5 + 0x18, old - 1);                      // $267244
+  if (old !== 0) return;                               // $267248 bcc.w
+  ram.setU8(a5 + 0x18, ram.u8(a5 + 0x19));            // $26724C
+  ram.setU8(a5 + 0x16, 0x10);                         // $267252
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
@@ -6085,6 +6102,7 @@ const HANDLERS = new Map([
   [0x265ca0, handler15],       // W200: stage-3 carrier type $15
   [0x265e84, handler17],       // W200: type-$15 spawned two-sub child $17
   [0x2663e0, handler18],       // W200: clock-$0168 four-sub child $18
+  [0x267226, handler19],       // W201: Stage-3 invisible pulse controller $19
   [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 
