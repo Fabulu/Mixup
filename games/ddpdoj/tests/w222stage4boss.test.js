@@ -90,17 +90,12 @@ test('W222 natural F3 cadence emits the first mirrored E1 and E2 volleys',
 test('W222 all four E1/E2 modes retire F3 at the authentic F4 frontier',
   { skip: SKIP }, () => {
     const { ram, a5, ctx } = firstAttackFixture();
-    let stopped = null;
-    for (let frame = 0; frame < 2400 && !stopped; frame++) {
-      try { stepBossFrame(ram, a5, ctx); }
-      catch (error) { error.frame = frame; stopped = error; }
+    let reached = false;
+    for (let frame = 0; frame < 2400 && !reached; frame++) {
+      stepBossFrame(ram, a5, ctx);
+      reached = Array.from({ length: SCHED.a4Slots }, (_, n) =>
+        ram.u16(SCHED.a4Base + n * SCHED.a4Stride) & 0xff).includes(4);
     }
-    assert.ok(stopped, 'the natural attack cycle reaches its next frontier');
-    if (!/\$2A0BCC/i.test(stopped.message)) {
-      stopped.message += ` frame=${stopped.frame} ptrA0=${ram.u32(SCHED.ptrA0).toString(16)}`
-        + ` cursor=${ram.u16(SCHED.seqCursor).toString(16)}`
-        + ` sub=${ram.u16(SCHED.seqSub).toString(16)}`;
-      throw stopped;
-    }
-    assert.match(stopped.message, /\$2A0BCC/i);
+    assert.ok(reached, 'the natural attack cycle arms F4');
+    assert.ok(scriptAddresses().includes(0x2a0bcc), 'the W223 frontier is now registered');
   });

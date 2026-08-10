@@ -1823,6 +1823,22 @@ BODY.set(0x27cfac, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + R.rec1B, rom.u8(pal + 1));
 });
 
+// --- type $41 ($2A37E4): Stage-4 boss A1/E5 missile.
+// The 28-byte prototype deliberately overlaps the first word of its handler;
+// loadSubProto reproduces that legal cartridge layout verbatim.
+BODY.set(0x2a37e4, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x2a3826);
+  ram.setU32(a6 + S.posX, ram.u32(a5 + R.rec16));
+  ram.setU16(a6 + S.speed, ram.u16(a5 + R.rec1A));
+  ram.setU8(a5 + R.rec16, 0);
+  ram.setU8(a5 + R.rec17, 0);
+  ram.setU16(a5 + R.rec18, 0);
+  ram.setU8(a5 + R.rec1A, ram.u8(a6 + S.heading));
+  ram.setU16(a5 + R.rec1C, 0x0804);
+  ram.setU16(a5 + R.rec1E, 2);
+  ram.setU16(a5 + R.rec20, 0);
+});
+
 // --- type $A3 ($27D404): Stage 4's oscillating linked carrier.
 // Movement owns the root X; the body replaces both Y positions, mirrors the
 // initial oscillation direction from shared RNG, and rank-adjusts the two byte

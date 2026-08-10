@@ -541,6 +541,14 @@ SHOT_WINDOWS.extend([
     (0x2A16A4, 0x007C, "W222: Stage-4 boss 24-point vector and heading tables"),
     (0x2A1778, 0x0020, "W222: Stage-4 boss point lookup helper"),
     (0x2A17E6, 0x1026, "W222: complete Stage-4 boss A1/E1 and E2 attack pair"),
+    (0x2A0BCC, 0x012A, "W223: Stage-4 boss A4/F4 conductor and five E5 rows"),
+    (0x2A1462, 0x0048, "W223: Stage-4 boss A3/D1 opening and D2 closing"),
+    (0x2A1684, 0x0020, "W223: Stage-4 boss E5 mirrored spawn vectors"),
+    (0x2A280C, 0x00F4, "W223: Stage-4 boss A1/E3 nineteen-shot fan"),
+    (0x2A2CC2, 0x00AE, "W223: Stage-4 boss A1/E5 type-$41 emitter"),
+    (0x2A37DC, 0x016C, "W223: Type-$41 stub, body, overlapping prototype, handler"),
+    (0x29EC22, 0x0058, "W223: Type-$41 screen-clear impact gate"),
+    (0x283D0C, 0x0040, "W223: Type-$41 direction attribute table"),
     (0x23EBA0, 0x003C, "W216: Pool-A kinds 18/19 record-convention emitter "
                        "through its exact RTS boundary"),
     (0x2358B0, 0x20C8, "W211: complete STAGE-4 spawn dependency span: 382 "

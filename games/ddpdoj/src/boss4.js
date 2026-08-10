@@ -2,8 +2,9 @@
 //
 // This slice owns the spawn wrapper, the live no-hit/damage controller, F0,
 // MAIN0/MAIN1, D9/D10, the first seven visible A2 objects, A4/F3, and its
-// mirrored A1/E1 and E2 attack families. The next live frontier is A4/F4 at
-// $2A0BCC.
+// mirrored A1/E1 and E2 attack families, and the F4/E3/E5 bridge which closes
+// the normal first-phase loop. The next live frontier is the low-HP transition
+// at $29FE52.
 
 import { asr, i16, i32, u16 } from './ram.js';
 import { unreached } from './unported.js';
@@ -18,11 +19,12 @@ import { drawByte242B3C, drawWord242EC2 } from './rng.js';
 import { dist242494 } from './bossscripts.js';
 import { fire as fireBullet, WriteLog } from './bullets.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
+import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { runStageAdvance242952 } from './stageend.js';
 import {
   runScheduler25962E, registerScript, seqStart2598D0, a2Run2598E6,
   a2Stop25994A, a4Start25980C, a4Clear2598A2, a1Clear259B34,
-  a3Start259962, a1Start259A18, a1Running259A4A,
+  a3Start259962, a1Start259A18, a1Running259A4A, a1Stop259B08,
 } from './scheduler.js';
 
 const due8 = (ram, addr) => {
@@ -734,6 +736,171 @@ function e1Step2A17F8(ram, rom, ctx, slot) { eAttackStep(ram, rom, ctx, slot, 1)
 function e2Init2A20A8(ram, rom, ctx, slot) { eAttackInit(ram, rom, ctx, slot, 2); }
 function e2Step2A20BA(ram, rom, ctx, slot) { eAttackStep(ram, rom, ctx, slot, 2); }
 
+// ---------------------------------------------------------------------------
+// `$2A0BCC`: F4, the bridge from the first mirrored attack cycle back to F3.
+
+const F4_E5_ROWS = Object.freeze([
+  [0x0100, 0x0004, 0x1002], [0x0200, 0x0008, 0x0c02],
+  [0x0100, 0x000c, 0x0802], [0x0200, 0x0010, 0x0402],
+  [0x0300, 0x0020, 0x4002],
+]);
+
+export function f4Step2A0BDE(ram, _rom, _ctx, slot) {
+  let state = ram.u8(slot + 0x02);
+  if (state === 0) {
+    const wait = u16(ram.u16(slot + 0x04) - 1);
+    ram.setU16(slot + 0x04, wait);
+    if (wait === 0) {
+      ram.setU8(slot + 0x02, 1);
+      ram.setU16(slot + 0x04, 0x20);
+      a1Start259A18(ram, 3);
+      state = 1;
+    }
+  }
+  if (state === 1) {
+    const wait = u16(ram.u16(slot + 0x04) - 1);
+    ram.setU16(slot + 0x04, wait);
+    if (wait === 0) {
+      a3Start259962(ram, 1);
+      ram.setU8(slot + 0x02, 2);
+      ram.setU16(slot + 0x04, 0x10);
+      state = 2;
+    }
+  }
+  if (state === 2) {
+    let ready = ram.u16(slot + 0x04) === 0;
+    if (!ready) {
+      const wait = u16(ram.u16(slot + 0x04) - 1);
+      ram.setU16(slot + 0x04, wait);
+      ready = wait === 0;
+    }
+    if (ready && !a1Running259A4A(ram, 5)) {
+      const child = a1Start259A18(ram, 5);
+      const row = F4_E5_ROWS[ram.u16(slot + 0x06) / 6];
+      ram.setU16(child + 0x02, row[0]);
+      ram.setU16(child + 0x08, row[1]);
+      ram.setU16(child + 0x04, row[2]);
+      const cursor = u16(ram.u16(slot + 0x06) + 6);
+      ram.setU16(slot + 0x06, cursor);
+      if (cursor === 0x1e) {
+        ram.setU8(slot + 0x02, 3);
+        state = 3;
+      }
+    }
+  }
+  if (state === 3 && !a1Running259A4A(ram, 5)) {
+    a1Stop259B08(ram, 3);
+    ram.setU8(slot + 0x02, 4);
+    ram.setU16(slot + 0x04, 0x80);
+    a3Start259962(ram, 2);
+    state = 4;
+  }
+  if (state === 4) {
+    const wait = u16(ram.u16(slot + 0x04) - 1);
+    ram.setU16(slot + 0x04, wait);
+    if (wait === 0) {
+      ram.setU16(slot, 0);
+      a4Start25980C(ram, 3);
+    }
+  }
+}
+
+export function f4Init2A0BCC(ram, rom, ctx, slot) {
+  ram.setU8(slot + 0x02, 0);
+  ram.setU16(slot + 0x04, 0x20);
+  ram.setU16(slot + 0x06, 0);
+  f4Step2A0BDE(ram, rom, ctx, slot);
+}
+
+function d1Step2A1468(ram, _rom, ctx, slot) {
+  if (!due8(ram, slot + 0x02)) return;
+  ram.setU8(slot + 0x02, ram.u8(slot + 0x03));
+  const next = u16(ram.u16(ctx.bossSubRec + 0x66) + 4);
+  ram.setU16(ctx.bossSubRec + 0x66, next);
+  if (next === 0x1c) ram.setU16(slot, 0);
+}
+function d1Init2A1462(ram, rom, ctx, slot) {
+  ram.setU16(slot + 0x02, 0x0202);
+  d1Step2A1468(ram, rom, ctx, slot);
+}
+function d2Step2A148C(ram, _rom, ctx, slot) {
+  if (!due8(ram, slot + 0x02)) return;
+  ram.setU8(slot + 0x02, ram.u8(slot + 0x03));
+  const next = u16(ram.u16(ctx.bossSubRec + 0x66) - 4);
+  ram.setU16(ctx.bossSubRec + 0x66, next);
+  if (next === 0) ram.setU16(slot, 0);
+}
+function d2Init2A1486(ram, rom, ctx, slot) {
+  ram.setU16(slot + 0x02, 0x0202);
+  d2Step2A148C(ram, rom, ctx, slot);
+}
+
+function e3Step2A282E(ram, rom, ctx, slot) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  if (!due8(ram, slot + 0x04)) return;
+  ram.setU8(slot + 0x04, ram.u8(slot + 0x05));
+  if (ram.u16(0x8130d4) !== 0) return;
+  const aimed = aim256FromCaller(aimTables(rom), ram, a5,
+    ram.u16(a6 + 0x102), ram.u16(a6 + 0x104));
+  const base = aimed.carry ? ram.u16(a6 + 0x104) & 0xff : aimed.dir;
+  ram.setU8(slot + 0x07, base);
+  const signedQuarter = asr((base << 24) >> 24, 2);
+  const vector = rom.u32(0x27327a + (((signedQuarter + 1) & 0x3e) << 1));
+  const d2 = ram.u32(a6 + 0x102);
+  const fire = (site, d0, angle) => shootBoss4(ram, rom, ctx, site, 0x2817b8,
+    regsBoss4(a5, d0, angle, d2, vector));
+  let angle = base;
+  fire(0x2a2882, 0xfffc000b, angle);
+  for (let i = 0; i < 3; i++) { angle += ram.u8(slot + 0x06); fire(0x2a288e, 0xfffc000b, angle); }
+  angle += ram.u8(slot + 0x06) * 3;
+  for (let i = 0; i < 6; i++) { angle += ram.u8(slot + 0x08); fire(0x2a28b4, 0xfff8000b, angle); }
+  angle = base;
+  for (let i = 0; i < 3; i++) { angle -= ram.u8(slot + 0x06); fire(0x2a28ce, 0xfffc000b, angle); }
+  angle -= ram.u8(slot + 0x06) * 3;
+  for (let i = 0; i < 6; i++) { angle -= ram.u8(slot + 0x08); fire(0x2a28f4, 0xfff8000b, angle); }
+}
+
+function e3Init2A280C(ram, rom, ctx, slot) {
+  ram.setU16(slot + 0x04, 0x0c20);
+  ram.setU8(slot + 0x06, 3);
+  ram.setU8(slot + 0x08, 8);
+  const a6 = ctx.bossSubRec;
+  const aimed = aim256FromCaller(aimTables(rom), ram, ctx.bossRec,
+    ram.u16(a6 + 0x102), ram.u16(a6 + 0x104));
+  ram.setU8(slot + 0x07, aimed.carry ? ram.u16(a6 + 0x104) : aimed.dir);
+  e3Step2A282E(ram, rom, ctx, slot);
+}
+
+const E5_VECTORS = Object.freeze({
+  1: [0x0780fe40, 0x0380fe40, 0xffc0fe40, 0xfbc0fe40],
+  2: [0x078001c0, 0x038001c0, 0xffc001c0, 0xfbc001c0],
+});
+
+function spawnE5Type41(ram, rom, ctx, slot, bit, headingBase) {
+  const q = enqueueDeferred(ram, 0x41, DEFQ_D1.FIXED00);
+  const vector = E5_VECTORS[bit][ram.u16(slot + 0x06) >>> 2];
+  ram.setU32(q.addr + 0x16, (ram.u32(ctx.bossSubRec + 0x62) + vector) >>> 0);
+  ram.setU8(q.addr + 0x1a, drawByte242B3C(ram, rom) + 0x20);
+  ram.setU8(q.addr + 0x1b, drawByte242B3C(ram, rom) + headingBase);
+}
+
+function e5Step2A2CC8(ram, rom, ctx, slot) {
+  if (!due8(ram, slot + 0x04)) return;
+  ram.setU8(slot + 0x04, ram.u8(slot + 0x05));
+  const mode = ram.u8(slot + 0x02);
+  if (mode & 1) spawnE5Type41(ram, rom, ctx, slot, 1, 0x30);
+  if (mode & 2) spawnE5Type41(ram, rom, ctx, slot, 2, 0x10);
+  ram.setU16(slot + 0x06, (ram.u16(slot + 0x06) + 4) & 0x0f);
+  const remaining = u16(ram.u16(slot + 0x08) - 1);
+  ram.setU16(slot + 0x08, remaining);
+  if (remaining === 0) ram.setU16(slot, 0);
+}
+
+function e5Init2A2CC2(ram, rom, ctx, slot) {
+  ram.setU16(slot + 0x06, 0);
+  e5Step2A2CC8(ram, rom, ctx, slot);
+}
+
 registerScript(0x2a017a, f0_2A017A);
 registerScript(0x2a019a, f0Step2A019A);
 registerScript(0x29f5bc, main0Init29F5BC);
@@ -755,3 +922,13 @@ registerScript(0x2a17e6, e1Init2A17E6);
 registerScript(0x2a17f8, e1Step2A17F8);
 registerScript(0x2a20a8, e2Init2A20A8);
 registerScript(0x2a20ba, e2Step2A20BA);
+registerScript(0x2a0bcc, f4Init2A0BCC);
+registerScript(0x2a0bde, f4Step2A0BDE);
+registerScript(0x2a1462, d1Init2A1462);
+registerScript(0x2a1468, d1Step2A1468);
+registerScript(0x2a1486, d2Init2A1486);
+registerScript(0x2a148c, d2Step2A148C);
+registerScript(0x2a280c, e3Init2A280C);
+registerScript(0x2a282e, e3Step2A282E);
+registerScript(0x2a2cc2, e5Init2A2CC2);
+registerScript(0x2a2cc8, e5Step2A2CC8);
