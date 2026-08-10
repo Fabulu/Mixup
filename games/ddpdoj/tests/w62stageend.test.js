@@ -437,6 +437,24 @@ test('every registered script address is in an installed boss scheduler table',
     for (let i = 0; i < 10; i++) legal.push(ROM.u32(0x29be46 + i * 4));
     assert.strictEqual(ROM.u32(0x29be46 + 10 * 4) >>> 0, 0xffffffff,
       'the Stage-3 A2 list is ten longwords and a $FFFFFFFF terminator');
+    // W229 carries the Stage-4 boss tables, installed by W219's arrival and grown
+    // through W224.  The extents are MEASURED off the image the same way: the
+    // first entry that is not a $2xxxxx address ends each pointer table.
+    for (let i = 0; i < 9; i++) {                       // A0, $29F498
+      legal.push(ROM.u32(0x29f498 + i * 8), ROM.u32(0x29f498 + i * 8 + 4));
+    }
+    for (let i = 0; i < 11; i++) {                      // A3, $2A1370
+      legal.push(ROM.u32(0x2a1370 + i * 8), ROM.u32(0x2a1370 + i * 8 + 4));
+    }
+    for (let i = 0; i < 7; i++) {                       // A4, $2A0088
+      legal.push(ROM.u32(0x2a0088 + i * 8), ROM.u32(0x2a0088 + i * 8 + 4));
+    }
+    for (let i = 0; i < 15; i++) {                      // A1, $2A1608
+      legal.push(ROM.u32(0x2a1608 + i * 8), ROM.u32(0x2a1608 + i * 8 + 4));
+    }
+    for (let i = 0; i < 12; i++) legal.push(ROM.u32(0x29ef54 + i * 4));
+    assert.strictEqual(ROM.u32(0x29ef54 + 12 * 4) >>> 0, 0xffffffff,
+      'the Stage-4 A2 list is twelve longwords and a $FFFFFFFF terminator');
     for (const s of scriptAddresses()) {
       if (s === 0x111111 || s === 0x222222) continue;   // this file's own fake
       assert.ok(legal.includes(s),

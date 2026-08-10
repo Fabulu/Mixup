@@ -110,7 +110,7 @@ const STUB_ROM = {
   u32: (a) => STUB_LONGS.get(a) ?? 0,
 };
 
-test('the ported handler addresses are registered through W217 Stage-4 type $A1', () => {
+test('the ported handler addresses are registered through W223 type $41', () => {
   // W31 adds `$26B6FA` (type $0D, the MIDBOSS), which lives in src/midboss.js
   // and is NOT in SIX -- the `runs on a live record` test below drives SIX
   // against a STUB rom, and the midboss reads four real ROM tables.
@@ -144,6 +144,10 @@ test('the ported handler addresses are registered through W217 Stage-4 type $A1'
       0x265ca0, 0x265e84, 0x2663e0,
       0x267226, 0x274c90, 0x266e34, 0x29be28, 0x29e6b0, 0x278994, 0x27ace4,
       0x27d072, 0x27aee0, 0x27b78a, 0x27c2fc, 0x27d674, 0x27cf0c,
+      // W229 catches the list up with the Stage-4 waves it fell behind:
+      // $27C81A and $27DB30 are W218's last two stage-4 enemy handlers,
+      // $29EF0A is W219's Type-$40 BOSS, and $2A3840 is W223's emitted type $41.
+      0x27c81a, 0x27db30, 0x29ef0a, 0x2a3840,
     ].sort((a, b) => a - b));
 });
 
