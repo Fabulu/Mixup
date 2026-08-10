@@ -502,6 +502,10 @@ SHOT_WINDOWS.extend([
                        "updater, and immediate art descriptor"),
     (0x27AC42, 0x014C, "W212: complete Stage-4 type $9B stub, init, record and "
                        "two-sub prototypes, and linked-structure handler"),
+    (0x27CFA4, 0x038C, "W213: live Stage-4 type $A2 stub, init, prototypes, "
+                       "cleanup, handler, and death tail through $27D330"),
+    (0x27D39C, 0x005C, "W213: exact 23-entry live Stage-4 type $A2 art table; "
+                       "the adjacent 24th pointer is unreachable"),
     (0x2358B0, 0x20C8, "W211: complete STAGE-4 spawn dependency span: 382 "
                        "records + terminator, 157-word aux table, and 157 "
                        "movement streams ($2358B0..$237978)"),

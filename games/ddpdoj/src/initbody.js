@@ -62,7 +62,8 @@ const R = {
 // sub-record (A6)
 const S = {
   flags: 0x00, posX: 0x02, posY: 0x04, f06: 0x06, hit10: 0x10, hp: 0x18,
-  speed: 0x1a, heading: 0x1b, palette: 0x1d, anim: 0x1e, f1f: 0x1f, f08: 0x08,
+  speed: 0x1a, heading: 0x1b, f1c: 0x1c, palette: 0x1d, anim: 0x1e,
+  f1f: 0x1f, f08: 0x08,
   f31: 0x31, f2e: 0x2e, hit14: 0x14, hit16: 0x16, f38: 0x38,
 };
 
@@ -1590,6 +1591,35 @@ BODY.set(0x27ac4a, (ram, rom, a5, a6, unported, _tables, palette) => {
   const bank = ram.u16(G.scrollClock) === 0x0019 ? 0x14 : 0x16;
   installBank(ram, rom, palette, unported, bank, 0x224cb8, 0x27aca0,
     'Stage-4 type $9B linked-structure palette');
+});
+
+// --- type $A2 ($27CFAC): Stage 4's opening/rotating gun pod.
+// Its movement variant mirrors three packed muzzle offsets; the record's
+// +$24 long is converted from the prototype-relative +$16 into a live pointer
+// to the subrecord flag/HP area used by the handler.
+BODY.set(0x27cfac, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x27d046);             // $27CFAC..$27CFB8
+  loadRecordProto(ram, rom, a5, 0x27d028, 0x0e);       // $27CFB8..$27CFC6
+  readInitPosition(ram, rom, a5, unported);             // $27CFC6
+
+  ram.setU8(a5 + R.rec1C,
+    u16(ram.u8(a5 + R.rec1C) - ram.u16(G.b8)) & 0xff); // $27CFCC..$27CFD6
+  ram.setU8(a5 + R.rec1D,
+    u16(ram.u8(a5 + R.rec1D) - ram.u16(G.b6)) & 0xff); // $27CFD6..$27CFE0
+  if (ram.u8(a6 + S.anim) !== 0) {                     // $27CFE0..$27CFFC
+    ram.setU8(a6 + S.anim, 0);
+    ram.setU8(a6 + S.f1c, ram.u8(a6 + S.f1c) | 0x40);
+    ram.setU16(a5 + R.rec28, u16(-ram.u16(a5 + R.rec28)));
+    ram.setU16(a5 + R.rec2A, u16(-ram.u16(a5 + R.rec2A)));
+    ram.setU16(a5 + R.rec2C, u16(-ram.u16(a5 + R.rec2C)));
+  }
+  ram.setU32(a5 + R.rec24,
+    (ram.u32(a5 + R.rec24) + a6) >>> 0);                // $27CFFC
+
+  const pal = 0x27d01e + ram.u16(G.stageX2);           // $27D002..$27D01C
+  ram.setU8(a6 + S.palette, rom.u8(pal));
+  ram.setU8(a5 + R.rec1A, rom.u8(pal));
+  ram.setU8(a5 + R.rec1B, rom.u8(pal + 1));
 });
 
 // ============================================================ the entry point

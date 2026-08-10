@@ -2210,6 +2210,42 @@ const TYPE9B_ART_CELLS = 0x27acb2;
     + `${added} new`);
 }
 
+// W213: type $A2 walks exactly 23 longword descriptors while opening, holding,
+// and partially closing. The physically adjacent 24th pointer is not indexed
+// by the live state machine and is deliberately not harvested.
+const TYPEA2_ART_TABLE = 0x27d39c;
+{
+  const entries = 23;
+  const seen = new Set();
+  let added = 0, already = 0;
+  for (let i = 0; i < entries; i++) {
+    const offs = romBe32(TYPEA2_ART_TABLE + i * 4);
+    const expected = 0x17ec18 + i * 0x4d4;
+    if (offs !== expected) {
+      throw new Error(`type $A2 art row ${i} names $$${offs.toString(16)}, `
+        + `expected $$${expected.toString(16)}`);
+    }
+    seen.add(offs);
+    if (streams.has(offs)) already++;
+    else {
+      streams.set(offs, romExtent(offs));
+      shardOfStream.set(offs, STRUCT_SHARD);
+      added++;
+    }
+  }
+  if (romBe32(TYPEA2_ART_TABLE + entries * 4) !== 0x185b24)
+    throw new Error('type $A2 unreachable 24th art pointer boundary changed');
+  harvested += added;
+  harvestAlready += already;
+  harvestReport.push({ shard: STRUCT_SHARD, base: TYPEA2_ART_TABLE,
+    entries, stride: 4, runsTo: entries,
+    endsAt: TYPEA2_ART_TABLE + entries * 4, distinct: seen.size, added, already,
+    why: 'W213 Stage-4 type $A2 live 23-frame opening/firing/closing art table; '
+      + 'the adjacent 24th stream is unreachable' });
+  console.log(`  Stage-4 type $A2 rotating gun pod: ${seen.size} streams, `
+    + `${added} new`);
+}
+
 // ------------------------------------------------------------------- WAVE 66
 // 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
 // bomb, and NEITHER HAS A PICTURE: W64 §8.3 counted 174 bucket-13 records with

@@ -140,7 +140,8 @@ const R = {
   rec1A: 0x1a, rec1B: 0x1b, rec1C: 0x1c, rec1D: 0x1d, rec1E: 0x1e,
   rec1F: 0x1f, rec20: 0x20, rec21: 0x21, rec22: 0x22, rec23: 0x23,
   rec24: 0x24, rec25: 0x25, rec26: 0x26, rec27: 0x27,
-  rec30: 0x30, rec32: 0x32, rec34: 0x34, rec36: 0x36, rec38: 0x38,
+  rec2E: 0x2e, rec30: 0x30, rec31: 0x31, rec32: 0x32, rec33: 0x33,
+  rec34: 0x34, rec36: 0x36, rec38: 0x38,
   rec3A: 0x3a, rec3C: 0x3c, rec3E: 0x3e,
   salvo: 0x20, cadence22: 0x22,
   // W30: the SPRITE-EMITTER pair the init copies out of `$267F70` -- a RECORD-
@@ -6113,6 +6114,158 @@ function handler9B(ram, rom, a5, ctx) {
     enqueueThroughStub(ram, rom, 0x23d79e, a6 + 0x20); // $27AD8A
 }
 
+// `$27D072`: Stage-4 type $A2. The gun opens through 23 cartridge frames,
+// holds the final frame while alternating its muzzle and shot direction, then
+// closes only to frame 14 before beginning the next cycle.
+function handlerA2(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + R.subRec);
+  if (stepMovement(ram, rom, a5, ctx.tables, ctx.unported)) return;
+
+  const x = ram.u16(a6 + S.posX);
+  const afterFirstAdd = u16(x + 0x1c00);
+  const inside = afterFirstAdd + 0x5800 > 0xffff;       // $27D078..$27D084
+  if (!inside) ram.setU8(a5 + R.onScreen, 1);
+  else if (ram.u8(a5 + R.onScreen) !== 0) {
+    freeEnemy(ram, a5);
+    return;
+  }
+
+  const draw = () => enqueueThroughStub(ram, rom, 0x23d7da, a6);
+  if ((ram.u8(a6 + 1) & 0x80) !== 0) {                // $27D09A / death linger
+    const old = ram.u16(a5 + R.rec2E);
+    ram.setU16(a5 + R.rec2E, u16(old - 1));
+    if (old === 0) { freeEnemy(ram, a5); return; }
+    draw();
+    return;
+  }
+
+  const hit = ram.u8(a6) & 0x5c;
+  let palette;
+  if (hit === 0) {
+    palette = ram.u8(a5 + R.rec1A);
+    if (ram.u16(a6 + S.hp) < 0x0580 && ram.u16(G.ca) === 0) palette = 0x19;
+  } else {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);
+    scoreHit(ram, ctx, a6, hit);                       // $27D0C2
+    palette = ram.u8(a6 + S.palette);
+    if (palette === 0x19) palette = ram.u8(a5 + R.rec1A);
+    palette ^= ram.u8(a5 + R.rec1B);
+    if (i16(ram.u16(a6 + S.hp)) < 0) {
+      ctx.soundPost?.(0x28c2dc);                       // $27D278
+      scoreKill(ram, rom, ctx, 0x46, hit);             // $27D27E
+      ram.setU16(a6, 0x8080);
+      ram.setU8(a6 + S.palette, ram.u8(a5 + R.rec1A));
+      for (const [kind, nudge, site] of [
+        [0x0d, 0xec00, 0x27d294], [0x0d, 0xfc00, 0x27d2c8],
+        [0x85, 0x0c00, 0x27d2fc],
+      ]) {
+        const e = spawnEffect(ram, ctx, kind, site);
+        ram.setU32(e + B.pos, ram.u32(a6 + S.posX));
+        ram.setU16(e + B.bucket, 0x10);
+        ram.setU16(e + B.hook, 1);
+        ram.setU16(e + B.sub12, 1);
+        ram.setU16(e + B.sub14, 0);
+        ram.setU16(e + B.nudge, nudge);
+        ram.setU16(e + B.nudge + 2, 0);
+      }
+      const old = ram.u16(a5 + R.rec2E);               // same-pass cleanup
+      ram.setU16(a5 + R.rec2E, u16(old - 1));
+      if (old === 0) { freeEnemy(ram, a5); return; }
+      draw();
+      return;
+    }
+  }
+  ram.setU8(a6 + S.palette, palette);                  // $27D0E4
+
+  if (ram.u16(G.freeze) !== 0 || i16(x) < 0x1000) { draw(); return; }
+  const state = ram.u16(a5 + R.rec18);
+  let updateArt = false;
+  if (state === 0) {
+    const old = ram.u8(a5 + R.rec1C);
+    ram.setU8(a5 + R.rec1C, old - 1);
+    if (old === 0) {
+      ram.setU8(a5 + R.rec1C, 0x10);
+      ram.setU16(a5 + R.rec18, 1);
+    }
+  } else if (state === 1) {
+    const old = ram.u8(a5 + R.rec22);
+    ram.setU8(a5 + R.rec22, old - 1);
+    if (old === 0) {
+      ram.setU8(a5 + R.rec22, ram.u8(a5 + R.rec23));
+      const cursor = u16(ram.u16(a5 + R.rec20) + 4);
+      ram.setU16(a5 + R.rec20, cursor);
+      if (cursor === 0x58) ram.setU16(a5 + R.rec18, 2);
+      updateArt = true;
+    }
+  } else if (state === 2) {
+    const old = ram.u8(a5 + R.rec1C);
+    ram.setU8(a5 + R.rec1C, old - 1);
+    if (old === 0) {
+      ram.setU8(a5 + R.rec1C, ram.u8(a5 + R.rec17));
+      const flags = ram.u8(a6 + 1);
+      let d3 = (((flags & 0x40) !== 0 ? 0xf300 : 0xf100) << 16)
+        | ram.u16(a5 + ((flags & 0x40) !== 0 ? R.rec28 : R.rec2A));
+      d3 >>>= 0;
+      let delta = (ram.u8(a5 + R.rec30) << 3) & 0xff;
+      if (flags & 0x20) delta = (ram.u8(a5 + R.rec32) * 2 + 0x10) & 0xff;
+      let direction = 0x40;
+      if (ram.u8(a6 + S.f1c) === 0x40) {
+        direction = 0xc0;
+        delta = (-delta) & 0xff;
+      }
+      ram.setU8(a6 + 1, flags ^ 0x40);
+      if ((flags & 0x40) === 0) delta = (-delta) & 0xff;
+      direction = (direction + delta) & 0xff;
+      bullet3C(ram, rom, a5, ctx, 0x27d1c0, 0x281764, {
+        d0: 5, d1: direction, d2: ram.u32(a6 + S.posX), d3, d4: 0, d5: 0,
+      });
+
+      if (flags & 0x20) {
+        const sweep = ram.u8(a5 + R.rec32);
+        ram.setU8(a5 + R.rec32, sweep - 1);
+        if (sweep === 0) {
+          ram.setU8(a5 + R.rec32, ram.u8(a5 + R.rec33));
+          ram.setU8(a6 + 1, ram.u8(a6 + 1) & 0xdf);
+          ram.setU8(a5 + R.rec30, 0);
+          ram.setU8(a5 + R.rec1C, 0x10);
+          ram.setU16(a5 + R.rec18, 3);
+        }
+      } else if (ram.u8(a5 + R.rec1E) !== 0) {
+        ram.setU8(a5 + R.rec1E, ram.u8(a5 + R.rec1E) - 1);
+      } else {
+        ram.setU8(a5 + R.rec1E, ram.u8(a5 + R.rec1F));
+        ram.setU8(a5 + R.rec1C, 4);
+        const phase = (ram.u8(a5 + R.rec30) + 1) & 0xff;
+        ram.setU8(a5 + R.rec30, phase);
+        if (phase === ram.u8(a5 + R.rec31)) {
+          ram.setU8(a5 + R.rec1C, 0x10);
+          ram.setU8(a6 + 1, ram.u8(a6 + 1) | 0x20);
+        }
+      }
+    }
+  } else {
+    if (ram.u8(a5 + R.rec1C) !== 0) {
+      ram.setU8(a5 + R.rec1C, ram.u8(a5 + R.rec1C) - 1);
+    } else {
+      const old = ram.u8(a5 + R.rec22);
+      ram.setU8(a5 + R.rec22, old - 1);
+      if (old === 0) {
+        ram.setU8(a5 + R.rec22, ram.u8(a5 + R.rec23));
+        const cursor = u16(ram.u16(a5 + R.rec20) - 4);
+        ram.setU16(a5 + R.rec20, cursor);
+        if (cursor === 0x38) {
+          ram.setU8(a5 + R.rec1C, u16(0x40 - ram.u16(G.b6)) & 0xff);
+          ram.setU16(a5 + R.rec18, 0);
+        }
+        updateArt = true;
+      }
+    }
+  }
+  if (updateArt)
+    ram.setU32(a6 + S.sprite0a, rom.u32(0x27d39c + ram.u16(a5 + R.rec20)));
+  draw();
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
@@ -6183,6 +6336,7 @@ const HANDLERS = new Map([
   [0x29e6b0, handler99_29E6B0],  // W209: Stage-3 boss low-HP child type $99
   [0x278994, handlerA6],          // W211: Stage-4 alternating pulse type $A6
   [0x27ace4, handler9B],          // W212: Stage-4 linked structure type $9B
+  [0x27d072, handlerA2],          // W213: Stage-4 opening/rotating gun pod $A2
   [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 
