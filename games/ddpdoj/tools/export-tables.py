@@ -2073,6 +2073,7 @@ SHOT_WINDOWS.extend([
     (0x265BEC, 0x0D74, "W200: Stage-3 type $15 closure $265BEC..$266960"),
     (0x2671E0, 0x007A, "W201: Stage-3 type $19 local closure $2671E0..$26725A"),
     (0x274B6C, 0x05E0, "W202: Stage-3 type $83 closure $274B6C..$27514C"),
+    (0x266D2E, 0x04B2, "W203: Stage-3 type $16 runtime closure $266D2E..$2671E0"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
@@ -2364,6 +2365,35 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W202: type $83 closure drifted")
     if d[0x234C92:0x234C9A] != bytes.fromhex("013d000016011046"):
         raise SystemExit("W202: next Stage-3 frontier is not type $16 at $234C92")
+    # W203. Type $16 is the next Stage-3 family.  Its static occurrence set is
+    # the 38 records in the known Stage-3 resource (the earlier five records
+    # are shared-resource appearances); keep the complete runtime dependency
+    # body in one window, including local bullet offsets and art tables.
+    type16_records = [d[a:a + 8] for a in range(0x234C92, 0x234F92, 8)
+                      if d[a + 4] == 0x16]
+    if len(type16_records) != 38 or hashlib.sha256(b"".join(type16_records)).hexdigest() != (
+            "23325ac3b66a71a21825ad423c21facd917412695687e30f4f7b747b41f0f017"):
+        raise SystemExit("W203: type $16 38-record occurrence set drifted")
+    if d[0x2678D4:0x2678DC] != bytes.fromhex("00266d2e00266e34"):
+        raise SystemExit("W203: type $16 registry row drifted")
+    if hashlib.sha256(d[0x266D2E:0x2671E0]).hexdigest() != (
+            "f1e647c57939ca31bfa13d0d7c71d5aa5be28bc3a24ccc8f24b92ed3fff7e288"):
+        raise SystemExit("W203: type $16 local closure drifted")
+    if d[0x234FA2:0x234FAA] != bytes.fromhex("01a70000a0800067"):
+        raise SystemExit("W203: next Stage-3 frontier is not type $A0 at $234FA2")
+    if d[0x27E512:0x27E51A] != bytes.fromhex("0029bbf40029be28"):
+        raise SystemExit("W203: type $A0 registry row drifted")
+    if d[0x2356B0:0x2356B6] != bytes.fromhex("000000004000"):
+        raise SystemExit("W203: type $A0 movement index $67 drifted")
+    movement_indices = (38, 63, 65, 69, 70, 71, 72, 73, 89, 118, 119, 120, 121, 122)
+    aux3, resource3 = 0x234FB2, 0x2350A8
+    movement_offsets = [u16(d, aux3 + i * 2) for i in range(123)] + [0x0808]
+    movement_concat = b"".join(
+        d[resource3 + movement_offsets[i]:resource3 + movement_offsets[i + 1]]
+        for i in movement_indices)
+    if hashlib.sha256(movement_concat).hexdigest() != (
+            "879fed4e013711f1eaa0b56e23911d54b4abf144bd69c8958cc8a72b9058ae83"):
+        raise SystemExit("W203: type $16 14-movement concat drifted")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and

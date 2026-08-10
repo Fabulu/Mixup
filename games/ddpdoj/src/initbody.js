@@ -670,6 +670,23 @@ BODY.set(0x274b74, (ram, rom, a5, a6, unported) => {
     ram.setU16(a6 + S.hp, ram.u16(G.scrollClock) > 0x02e0 ? 0x0e80 : 0x1000);
 });
 
+// --- type $16 ($266D36): Stage-3's wobbling paired-shot formation. W203.
+const TYPE16_AIM_TABLES = new WeakMap();
+BODY.set(0x266d36, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x266d98);
+  loadRecordProto(ram, rom, a5, 0x266d82, 0x0a);
+  readInitPosition(ram, rom, a5, unported);
+  let tables = TYPE16_AIM_TABLES.get(rom);
+  if (!tables) { tables = new AimTables(rom); TYPE16_AIM_TABLES.set(rom, tables); }
+  const aimed = aim64AtTarget(tables, ram, a5, a6);
+  ram.setU8(a5 + R.rec22, aimed.carry ? ram.u8(a6 + S.heading) : aimed.dir);
+  if (ram.u16(G.stage) === 4) {
+    ram.setU16(a6, 0xa200);
+    ram.setU8(a5 + R.rec18, 0x0f);
+    ram.setU8(a5 + R.rec19, 0x10);
+  }
+});
+
 // --- type $12 ($26C26E): Stage 3's seven-part carrier. W198.
 //
 // Unlike ordinary script enemies, the carrier ignores its movement pointer and

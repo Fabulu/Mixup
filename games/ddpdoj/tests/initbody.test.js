@@ -51,7 +51,7 @@ function freshEnemy(ram, type, classByte = 0) {
   return { rec, sub };
 }
 
-test('the stage-1, Stage-2, and W202 Stage-3 bodies are dispatched', () => {
+test('the stage-1, Stage-2, and W203 Stage-3 bodies are dispatched', () => {
   // the addresses the spawn walker resolves for the 21 stage-1 types (census).
   const want = new Set([
     0x269bce, 0x26a1ea, 0x26a4bc, 0x26a794, 0x26aba0, 0x26871c, 0x2680b8,
@@ -125,7 +125,9 @@ test('the stage-1, Stage-2, and W202 Stage-3 bodies are dispatched', () => {
     'W201: Stage-3 pulse-controller body $2671E8');
   assert.ok(INIT_BODY_ADDRESSES.includes(0x274b74),
     'W202: Stage-3 linked-hitbox aimed-ring body $274B74');
-  assert.equal(INIT_BODY_ADDRESSES.length, 53,
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x266d36),
+    'W203: Stage-3 wobbling paired-shot body $266D36');
+  assert.equal(INIT_BODY_ADDRESSES.length, 54,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
     + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
     + `W170's $277836, W171's $276946, W172's $27751C, W173's $275154, `
@@ -135,7 +137,8 @@ test('the stage-1, Stage-2, and W202 Stage-3 bodies are dispatched', () => {
     + `W193's $263A58, W194's $264740, W195's $266968, W196's $264D5A, and `
     + `W197's $264C1C/$264C84/$264CEC, and W198's `
     + `$26C26E/$26D446/$265A5C, W199's $2657A0, and W200's `
-    + `$265BF4/$265DF0/$266324, W201's $2671E8, and W202's $274B74`);
+    + `$265BF4/$265DF0/$266324, W201's $2671E8, W202's $274B74, and `
+    + `W203's $266D36`);
 });
 
 test('runInitBodyAddr throws on an unknown body address', () => {

@@ -339,6 +339,12 @@ const HARVEST = Object.freeze([
     'stage-3 type $15 sprite table 0, sixteen stride-4 pointers'],
   [17, 0x2665aa, 16, 4, 16, 0x2665ea,
     'stage-3 type $15 sprite table 1, sixteen stride-4 pointers'],
+  // W203. Type $16 owns two complete 32-entry art tables.  Both resolve to
+  // the uniform late-family $F4 stream chain and add exactly 64 new streams.
+  [17, 0x2670e0, 32, 4, 64, 0x2671e0,
+    'stage-3 type $16 sprite table 0, thirty-two stride-4 pointers'],
+  [17, 0x267160, 32, 4, 32, 0x2671e0,
+    'stage-3 type $16 sprite table 1, thirty-two stride-4 pointers'],
   [18, 0x289820, 32, 4, 32, 0x2898a0,
     'pool-D debris template 0 descriptor list'],
   [18, 0x2898b0, 32, 4, 32, 0x289930,
@@ -1093,6 +1099,7 @@ function checkTableExtent(base, n, stride, runsTo, endsAt, why) {
 
 let harvested = 0, harvestAlready = 0;
 const harvestReport = [];
+const w203StreamsBefore = streams.size;
 for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
   checkTableExtent(base, n, stride, runsTo, endsAt, why);
   let added = 0, already = 0;
@@ -1108,6 +1115,27 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
   harvested += added; harvestAlready += already;
   harvestReport.push({ shard, base, entries: n, stride, runsTo, endsAt,
     distinct: seen.size, added, already, why });
+}
+// W203's two tables are a deliberately exact 64-stream family: the pointers
+// interleave, but their union is the single uniform $F4 chain.  Keep this
+// check beside the harvest so a table truncation or accidental duplicate is
+// visible before the packed bundle is written.
+{
+  const ptrs = [];
+  for (const base of [0x2670e0, 0x267160]) {
+    for (let i = 0; i < 32; i++) ptrs.push(romBe32(base + i * 4) & 0x7fffff);
+  }
+  const unique = new Set(ptrs);
+  const chain = new Set(Array.from({ length: 64 }, (_, i) => 0x174f40 + i * 0xf4));
+  const w203Rows = harvestReport.filter((r) => r.base === 0x2670e0
+    || r.base === 0x267160);
+  if (unique.size !== 64 || [...unique].some((a) => !chain.has(a))
+      || w203Rows.length !== 2 || w203Rows.some((r) => r.added !== 32 || r.already !== 0)
+      || w203StreamsBefore !== 166 || streams.size !== 1880) {
+    throw new Error(`W203 type $16 art harvest drifted: ${unique.size} distinct `
+      + `pointers, ${w203StreamsBefore} pre-harvest streams, ${streams.size} total; `
+      + 'expected 64 on the $F4 chain, 166 before, and 1880 after this harvest');
+  }
 }
 for (const offs of LASER_STREAMS) {
   if (streams.has(offs)) { harvestAlready++; continue; }
