@@ -54,7 +54,8 @@ const R = {
   rec2C: 0x2c, rec2D: 0x2d,
   rec2E: 0x2e, rec2F: 0x2f, rec30: 0x30, rec31: 0x31, rec32: 0x32,
   rec33: 0x33, rec34: 0x34,
-  rec35: 0x35, rec36: 0x36, rec44: 0x44, handler: 0x4c, runLen: 0x04,
+  rec35: 0x35, rec36: 0x36, rec38: 0x38, rec3A: 0x3a,
+  rec44: 0x44, handler: 0x4c, runLen: 0x04,
   subRec: 0x06, movement: 0x12, typeByte: 0x0c, classByte: 0x0d,
 };
 // sub-record (A6)
@@ -529,6 +530,25 @@ BODY.set(0x266968, (ram, rom, a5, a6, unported) => {
   loadSubProto(ram, rom, a5, a6, 0x2669ae);            // $266968..$266974
   loadRecordProto(ram, rom, a5, 0x26698a, 0x11);      // $266974..$266982
   readInitPosition(ram, rom, a5, unported);            // $266982
+});
+
+// --- type $3B ($264D5A): Stage-3's four-satellite orbit formation.
+BODY.set(0x264d5a, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x264e30);            // $264D5A..$264D66
+  loadRecordProto(ram, rom, a5, 0x264e06, 0x14);      // $264D66..$264D74
+  readInitPosition(ram, rom, a5, unported);            // $264D74
+  ram.setU16(0x81b414, 1);
+  const clock = ram.u16(G.scrollClock);
+  ram.setU16(a5 + R.rec3A, clock);
+  if (clock === 0x0048) {
+    ram.setU16(G.d8, 1); ram.setU16(G.da, 1); ram.setU16(G.dc, 1);
+  } else if (clock === 0x008d) ram.setU16(G.da, 1);
+  else if (clock === 0x00ac) ram.setU16(G.dc, 1);
+  if (clock === 0x0048 || clock === 0x008d || clock === 0x00ac) {
+    ram.setU16(a6 + S.posX, u16(ram.u16(a6 + S.posX) + 0x0900));
+    ram.setU16(a6 + S.posY, u16(ram.u16(a6 + S.posY) - 0x0100));
+  }
+  ram.setU8(a5 + R.rec38, i16(drawWord242EC2(ram, rom)) < 0 ? 2 : 0xfe);
 });
 
 // --- type $24 ($296FB0): boss-approach prop.  Sub-proto, resource install,

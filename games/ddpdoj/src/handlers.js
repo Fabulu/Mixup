@@ -132,7 +132,9 @@ const R = {
   rec17: 0x17, rec18: 0x18, rec19: 0x19,
   rec1A: 0x1a, rec1B: 0x1b, rec1C: 0x1c, rec1D: 0x1d, rec1E: 0x1e,
   rec1F: 0x1f, rec20: 0x20, rec21: 0x21, rec22: 0x22, rec23: 0x23,
-  rec24: 0x24, rec26: 0x26,
+  rec24: 0x24, rec25: 0x25, rec26: 0x26, rec27: 0x27,
+  rec30: 0x30, rec32: 0x32, rec34: 0x34, rec36: 0x36, rec38: 0x38,
+  rec3A: 0x3a, rec3C: 0x3c, rec3E: 0x3e,
   salvo: 0x20, cadence22: 0x22,
   // W30: the SPRITE-EMITTER pair the init copies out of `$267F70` -- a RECORD-
   // convention stub and a REGISTER-convention one.  They were called
@@ -173,6 +175,7 @@ const S = {
 const G = {
   freeze: 0x8130d2, scroll: 0x813172, rank98: 0x813098, stage: 0x813092,
   clock: 0x8130ce, midbossD8: 0x8130d8, aa: 0x8130aa, ba: 0x8130ba,
+  rank9E: 0x81309e,
   stage96: 0x813096, scrollClockOdo: 0x8130d0,
   mirror: 0x80390b, mirror2: 0x80390c,
   ca: 0x8130ca,   // W30: $275954 -- the gate that picks $85's palette index
@@ -3375,6 +3378,10 @@ export const TYPE3C_ART = Object.freeze({
   centre: 0x174040, left: 0x1741cc, right: 0x1742e8,
 });
 
+export const TYPE3B_ART = Object.freeze({
+  hullTable: 0x2652d0, hullFrames: 16, satellite: 0x19271c,
+});
+
 function addPackedWords(pos, high, low) {
   return ((u16((pos >>> 16) + high) << 16) | u16((pos & 0xffff) + low)) >>> 0;
 }
@@ -5651,6 +5658,130 @@ function handler3C(ram, rom, a5, ctx) {
 }
 
 // ############################################################################
+// # W196: TYPE $3B, STAGE-3 FOUR-SATELLITE ORBIT FORMATION                  #
+// ############################################################################
+
+function clearClockLatch3B(ram, a5) {
+  const clock = ram.u16(a5 + R.rec3A);
+  if (clock === 0x0048) ram.setU16(0x8130d8, 0);
+  else if (clock === 0x008d) ram.setU16(0x8130da, 0);
+  else if (clock === 0x00ac) ram.setU16(0x8130dc, 0);
+}
+
+function orbit3B(ram, ctx, a5, angle, field) {
+  const v = ctx.tables.shotVector(0x40, angle);
+  ram.setU16(a5 + field, u16((v.dy << 2) + 0x0400));
+  ram.setU16(a5 + field + 2, u16(v.dx << 2));
+}
+
+function fire3B(ram, rom, a5, a6, ctx) {
+  let d1 = ram.u8(a5 + R.rec17);
+  const d2 = ram.u32(a6 + S.posX);
+  const step = (ram.u8(a5 + R.rec38) & 0x80) !== 0 ? -0x40 : 0x40;
+  const rankBoost = ram.u16(G.rank98) !== 0 ? 0x00020000 : 0;
+  const fields = [R.rec28, R.rec2C, R.rec30, R.rec34];
+  const sites = [
+    [0x265132, 0x265154], [0x26517c, 0x26519e],
+    [0x2651c6, 0x2651e8], [0x265210, 0x265232],
+  ];
+  for (let n = 0; n < fields.length; n++) {
+    const field = fields[n];
+    const d3 = ram.u32(a5 + field);
+    bullet3C(ram, rom, a5, ctx, sites[n][0], 0x2816f6, {
+      d0: u32(0x00020004 + rankBoost), d1, d2, d3, d4: 0, d5: u16(step),
+    });
+    d1 = u16(d1 + step) & 0xff;
+    bullet3C(ram, rom, a5, ctx, sites[n][1], 0x281764, {
+      d0: u32(0x00000004 + rankBoost), d1, d2, d3, d4: 0, d5: u16(step),
+    });
+  }
+}
+
+function draw3B(ram, rom, a5, a6) {
+  const pos = ram.u32(a6 + S.posX);
+  const palette = ram.u8(a5 + R.rec1B);
+  const cursor = (ram.u16(a5 + R.rec3C) + 4) & 0x3c;
+  ram.setU16(a5 + R.rec3C, cursor);
+  enqueueRegistersThroughStub(ram, rom, 0x23e020,
+    u32(pos + 0xde00eb00), rom.u32(TYPE3B_ART.hullTable + cursor),
+    0x22a8, palette);
+  for (const field of [R.rec28, R.rec2C, R.rec30, R.rec34]) {
+    enqueueRegistersThroughStub(ram, rom, 0x23e056,
+      u32(pos + ram.u32(a5 + field) + 0xfc00fd00), TYPE3B_ART.satellite,
+      0x0418, palette);
+  }
+}
+
+function handler3B(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  if (i16(ram.u16(a6 + S.posX)) < -0x2200) {
+    if (ram.u8(a5 + R.onScreen) !== 0) {
+      clearClockLatch3B(ram, a5); freeEnemy(ram, a5); return;
+    }
+  } else ram.setU8(a5 + R.onScreen, 1);
+  scrollCompensate(ram, a5);                          // $264EA2
+
+  if (i16(ram.u16(a5 + R.rec3E)) >= 0) {
+    ram.setU16(a6 + S.hp, 0x7fff);
+    const amount = ram.u16(0x811f72) !== 0 ? 2 : 1;
+    const old = ram.u16(a5 + R.rec3E);
+    ram.setU16(a5 + R.rec3E, u16(old - amount));
+    if (old < amount) ram.setU16(a6 + S.hp, 0x1c00);
+  }
+
+  const hit = ram.u8(a6) & 0x5c;
+  if (hit !== 0) {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);
+    scoreHit(ram, ctx, a6, hit);
+    ram.setU8(a5 + R.rec1B,
+      ram.u8(a5 + R.rec1B) ^ ram.u8(a5 + R.rec1D));
+    if (i16(ram.u16(a6 + S.hp)) < 0) {
+      scoreKill(ram, rom, ctx, 0x632, hit);
+      clearClockLatch3B(ram, a5);
+      emitEffectRows263A0E(ram, rom, ctx, 0x26539c,
+        ram.u32(a6 + S.posX), 0x0c);
+      ctx.soundPost?.(0x28c2dc);
+      freeEnemy(ram, a5);
+      return;
+    }
+  } else ram.setU8(a5 + R.rec1B, ram.u8(a5 + R.rec1C));
+
+  const phase = (ram.u8(a5 + R.rec1A) + 1) & 0xff;
+  ram.setU8(a5 + R.rec1A, phase);
+  ram.setU8(a5 + R.rec17,
+    ram.u8(a5 + R.rec17) + ram.u8(a5 + R.rec38));
+  orbit3B(ram, ctx, a5, phase, R.rec28);
+  orbit3B(ram, ctx, a5, phase + 0x40, R.rec2C);
+  orbit3B(ram, ctx, a5, phase + 0x80, R.rec30);
+  orbit3B(ram, ctx, a5, phase + 0xc0, R.rec34);
+
+  let active = ram.u8(a5 + R.rec26) !== 0;
+  if (!active) {
+    const old = ram.u8(a5 + R.rec1E);
+    ram.setU8(a5 + R.rec1E, old - 1);
+    if (old === 0) {
+      ram.setU8(a5 + R.rec1E, ram.u8(a5 + R.rec1F));
+      ram.setU8(a5 + R.rec26, ram.u8(a5 + R.rec27));
+      const rank = ram.u16(G.rank9E);
+      ram.setU8(a5 + R.rec25, rank >= 0x00e0 ? 2 : rank >= 0x00c0 ? 3 : 4);
+      active = true;
+    }
+  }
+  if (active) {
+    const old = ram.u8(a5 + R.rec24);
+    ram.setU8(a5 + R.rec24, old - 1);
+    if (old === 0) {
+      ram.setU8(a5 + R.rec24, ram.u8(a5 + R.rec25));
+      if (i16(ram.u16(a6 + S.posX)) > 0x1800) {
+        fire3B(ram, rom, a5, a6, ctx);
+        ram.setU8(a5 + R.rec26, ram.u8(a5 + R.rec26) - 1);
+      }
+    }
+  }
+  draw3B(ram, rom, a5, a6);
+}
+
+// ############################################################################
 // # W192: TYPE $3E, STAGE-3 OPENING TWO-HITBOX FIGHTER                       #
 // ############################################################################
 
@@ -5836,6 +5967,7 @@ const HANDLERS = new Map([
   [0x263c7c, handler36],       // W193: stage-3 seven-part carrier type $36
   [0x2647a6, handler37],       // W194: stage-3 rotating three-shot type $37
   [0x2669e2, handler3C],       // W195: stage-3 six-muzzle formation type $3C
+  [0x264e82, handler3B],       // W196: stage-3 four-satellite formation type $3B
   [0x29bb64, handler4D],       // W185: stage-2 boss satellite type $4D
 ]);
 

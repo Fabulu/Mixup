@@ -508,6 +508,10 @@ SHOT_WINDOWS.extend([
     (0x266960, 0x03CE, "W195: complete stage-3 type $3C closure: run-length "
                        "stub, init, record/sub prototypes, muzzle offsets, "
                        "state machine, bullet patterns and death rows"),
+    (0x264D52, 0x05C2, "W196: dependency-exact stage-3 type $3B span: stub, "
+                       "init, prototypes, handler and 17 live art pointers"),
+    (0x26539C, 0x004A, "W196: type $3B six-row death-effect table and "
+                       "$FFFF terminator"),
     (0x289B50, 0x038A, "W194: type-$37 pool-C dependency: absolute allocator, "
                        "driver, collision-aware fill, kind-4 template and "
                        "all three four-frame descriptor lists"),
@@ -2224,6 +2228,33 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W195: type $3C death-effect rows drifted")
     if d[0x23453A:0x234542] != bytes.fromhex("004800003b811016"):
         raise SystemExit("W195: next Stage-3 frontier is not type $3B at $23453A")
+    type3b_records = (0x23453A, 0x23471A, 0x2347F2)
+    if b"".join(d[a:a + 8] for a in type3b_records) != bytes.fromhex(
+            "004800003b811016008d00003b81101700ac00003b811018"):
+        raise SystemExit("W196: stage-3 type $3B occurrences drifted")
+    if d[0x2679FC:0x267A04] != bytes.fromhex("00264d5200264e82"):
+        raise SystemExit("W196: type $3B registry row drifted")
+    if hashlib.sha256(d[0x23526E:0x235280]).hexdigest() != (
+            "9a22bf5369a9bc65caf2f8ab3ee53a991d7f2dc4b020248a1288a433695fb7aa"):
+        raise SystemExit("W196: type $3B movement streams drifted")
+    if hashlib.sha256(d[0x264D52:0x265314]).hexdigest() != (
+            "806afa9d40998d88b679f437f588c67459bc7b2918a41cb412e84da8e19dfc79"):
+        raise SystemExit("W196: type $3B live dependency span drifted")
+    if hashlib.sha256(d[0x26539C:0x2653E6]).hexdigest() != (
+            "98eb461f36a72efe7924a62f5986de40046bb9693b4e6c7af4f255b114c25e8d"):
+        raise SystemExit("W196: type $3B death rows drifted")
+    if d[0x2652D0:0x265314] != bytes.fromhex(
+            "0018745c00187f8800188ab4001895e00018a10c0018ac380018b7640018c290"
+            "0018cdbc0018d8e80018e4140018ef400018fa6c00190598001910c400191bf0"
+            "0019271c"):
+        raise SystemExit("W196: type $3B live art table drifted")
+    if d[0x26539C:0x2653E6] != bytes.fromhex(
+            "0000008d0000f200f80000000001000d0000fc000c0000000002008d00000200"
+            "000000000003008d0000ee000e0000000004008d0000e200060000000005008d"
+            "0000e600f6000000ffff"):
+        raise SystemExit("W196: type $3B death-effect rows drifted")
+    if d[0x2345D2:0x2345DA] != bytes.fromhex("0064000038011013"):
+        raise SystemExit("W196: next Stage-3 frontier is not type $38 at $2345D2")
     if d[0x27782E:0x277836] != bytes.fromhex("3b7c000100044e75"):
         raise SystemExit("W169: type $95 run-length stub is not the exact 8-byte form")
     # W170. The two loader LEAs pin the prototype starts; the next routine and

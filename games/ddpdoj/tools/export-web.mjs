@@ -113,7 +113,7 @@ import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 import { BGELEM_HANDLERS } from '../src/background.js';
 import { TYPE84_ART, TYPE8D_ART, TYPE8F_ART, TYPE90_ART, TYPE91_ART, TYPE92_ART,
   TYPE93_ART, TYPE94_ART, TYPE95_ART, TYPE96_ART, TYPE97_ART,
-  TYPE3E_ART, TYPE36_ART, TYPE37_ART, TYPE3C_ART } from '../src/handlers.js';
+  TYPE3E_ART, TYPE36_ART, TYPE37_ART, TYPE3C_ART, TYPE3B_ART } from '../src/handlers.js';
 import { parseScoreGroups, scoreToJson } from '../src/bgmscore.js';
 import { driverParamsToJson } from '../src/driverparams.js';
 
@@ -283,6 +283,11 @@ if (u17.length !== SOUND.fileSize) {
 //
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
+  [17, TYPE3B_ART.hullTable, TYPE3B_ART.hullFrames + 1, 4,
+    30, 0x265348,
+    'stage-3 type $3B hull animation plus its fixed satellite. The handler '
+      + 'reaches the first 17 pointers; the valid stream-shaped run continues '
+      + 'through 13 adjacent pointers owned by unreachable local code'],
   [17, TYPE37_ART.table, TYPE37_ART.frames, 4,
     TYPE37_ART.frames, 0x264b86,
     'stage-3 type $37 rotating body. Rounded heading selects one of 32 groups '

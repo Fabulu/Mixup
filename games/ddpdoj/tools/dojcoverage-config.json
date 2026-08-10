@@ -51,7 +51,7 @@
       "stage": 2,
       "stage_table": 2503478,
       "derived_type_count": 28,
-      "derived_ported_type_count": 17,
+      "derived_ported_type_count": 18,
       "ported_from": "enemy_types live source registries",
       "dynamic_from": null
     },
