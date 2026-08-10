@@ -2077,6 +2077,7 @@ SHOT_WINDOWS.extend([
     (0x29BBF4, 0x1040, "W204: Stage-3 type $A0 entry/arrival runtime closure $29BBF4..$29CC34"),
     (0x29D010, 0x1006, "W205: Stage-3 boss F2/MAIN1/E6/E7 runtime closure $29D010..$29E016"),
     (0x29E016, 0x0340, "W206: Stage-3 boss E5 data/code closure $29E016..$29E356"),
+    (0x29E356, 0x0222, "W208: Stage-3 boss E8 init/step closure $29E356..$29E578"),
     (0x29EADA, 0x0010, "W207: Stage-3 boss requested type $9A self-free proof $29EADA..$29EAEA"),
 ])
 
@@ -2420,6 +2421,21 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if hashlib.sha256(d[0x29EADA:0x29EAEA]).hexdigest() != (
             "6d2b2b5b4570accf3e74872ede1eb0e72b585b244e4f0152bb9fbd7ed847437a"):
         raise SystemExit("W207: type $9A self-free proof drifted")
+    if hashlib.sha256(d[0x29E356:0x29E578]).hexdigest() != (
+            "a8bbab55ba8241b22a14387710da6bbcab52ac059fd7ca7ed215c2a1141e1e61"):
+        raise SystemExit("W208: E8 init/step closure drifted")
+    if d[0x29CBF8:0x29CC00] != bytes.fromhex("0029d0d40029d0e2"):
+        raise SystemExit("W208: A4/F5 pointer row drifted")
+    if d[0x29CC08:0x29CC10] != bytes.fromhex("0029d1000029d104"):
+        raise SystemExit("W208: A4/F7 pointer row drifted")
+    if d[0x29D28A:0x29D292] != bytes.fromhex("0029e3560029e3ba"):
+        raise SystemExit("W208: A1/E8 pointer row drifted")
+    if hashlib.sha256(d[0x29D0D4:0x29D100]).hexdigest() != (
+            "1539902b6c6a639a7fa6f2f263715a72ab19fdd43c9da4717b9ca9b2394585ec"):
+        raise SystemExit("W208: F5 init/step closure drifted")
+    if hashlib.sha256(d[0x29D100:0x29D138]).hexdigest() != (
+            "3b1744e1757c4d305d66e8b1eaccaefd6233011978609fc04ac7590e35dac232"):
+        raise SystemExit("W208: F7 init/step closure drifted")
     if d[0x29D27A:0x29D28A] != bytes.fromhex(
             "0029dcee0029dd3e0029deca0029df26"):
         raise SystemExit("W205: A1 E6/E7 pointer rows drifted")

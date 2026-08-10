@@ -1,4 +1,4 @@
-// W207: Stage-3 boss F4 -> MAIN3/E3/E4, stopping at F5.
+// W208: Stage-3 boss F5 -> D4/E8/D5/F7 -> the existing F2 cycle.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,6 +23,14 @@ const ROM = HAVE ? new RomWindows(json.rom) : null;
 const MT = HAVE ? new MoveTables(json, ROM) : null;
 const SKIP = HAVE ? false : 'ROM export absent; this is a skip, not a pass';
 
+function hasSlot(ram, base, slots, stride, id) {
+  for (let i = 0; i < slots; i++) {
+    const a = base + i * stride;
+    if (ram.u16(a) !== 0 && ram.u8(a + 1) === id) return true;
+  }
+  return false;
+}
+
 function liveBoss() {
   const ram = new Ram();
   ram.setU16(0x813092, 2);
@@ -42,51 +50,46 @@ function liveBoss() {
   return { ram, a5 };
 }
 
-function hasSlot(ram, base, slots, stride, id) {
-  for (let i = 0; i < slots; i++) {
-    const a = base + i * stride;
-    if (ram.u16(a) !== 0 && ram.u8(a + 1) === id) return true;
-  }
-  return false;
-}
-
-test('W207 natural Stage-3 boss path reaches F5 after MAIN3/E3/E4',
+test('W208 natural Stage-3 boss path closes F5 back into F2',
   { skip: SKIP }, () => {
   const { ram, a5 } = liveBoss();
-  const seen = { main3: false, e3: false, e4: false, dummy9a: 0,
-    e4Sites: new Set() };
-  let stop = 0, reachedF5 = false;
+  const seen = { f5: false, d4: false, e8: false, d5: false, f7: false,
+    returnedF2: false, e8Sites: new Set() };
+  let stop = 0;
 
-  for (let frame = 0; frame < 6000 && stop === 0 && !reachedF5; frame++) {
+  for (let frame = 0; frame < 9000 && stop === 0 && !seen.returnedF2; frame++) {
     for (const b of BUCKETS) ram.setU16(b.counter, 0);
     const log = new UnportedLog();
     const ctx = { ram, rom: ROM, tables: MT, unported: log, unportedLog: log,
       soundPost() {}, effectSpawn() {},
-      bulletSpawn(site) { if (site >= 0x29daae && site <= 0x29dbbc) seen.e4Sites.add(site); } };
+      bulletSpawn(site) {
+        if (site >= 0x29e446 && site <= 0x29e4c8) seen.e8Sites.add(site);
+      } };
     try { runHandler(0x29be28, ram, ROM, a5, ctx); }
     catch (e) {
       if (!(e instanceof Unreached)) throw e;
       stop = e.romAddress;
     }
     if (stop !== 0) break;
-    processDeferred(ram, ROM, log, MT,
-      (kind, type) => { if (kind === 'deferred' && type === 0x9a) seen.dummy9a++; });
-    seen.main3 ||= ram.u16(SCHED.seqCursor) === 3;
-    seen.e3 ||= hasSlot(ram, SCHED.a1Base, SCHED.a1Slots, SCHED.a1Stride, 3);
-    seen.e4 ||= hasSlot(ram, SCHED.a1Base, SCHED.a1Slots, SCHED.a1Stride, 4);
-    reachedF5 ||= hasSlot(ram, SCHED.a4Base, SCHED.a4Slots, SCHED.a4Stride, 5);
+    processDeferred(ram, ROM, log, MT);
+
+    const f5 = hasSlot(ram, SCHED.a4Base, SCHED.a4Slots, SCHED.a4Stride, 5);
+    const d4 = hasSlot(ram, SCHED.a3Base, SCHED.a3Slots, SCHED.a3Stride, 4);
+    const e8 = hasSlot(ram, SCHED.a1Base, SCHED.a1Slots, SCHED.a1Stride, 8);
+    const d5 = hasSlot(ram, SCHED.a3Base, SCHED.a3Slots, SCHED.a3Stride, 5);
+    const f7 = hasSlot(ram, SCHED.a4Base, SCHED.a4Slots, SCHED.a4Stride, 7);
+    seen.f5 ||= f5;
+    seen.d4 ||= seen.f5 && d4;
+    seen.e8 ||= seen.f5 && e8;
+    seen.d5 ||= seen.e8 && d5;
+    seen.f7 ||= seen.e8 && f7;
+    seen.returnedF2 ||= seen.f7 && !e8 && !d5
+      && hasSlot(ram, SCHED.a4Base, SCHED.a4Slots, SCHED.a4Stride, 2);
   }
 
-  assert.equal(stop, 0, 'the translated path reaches F5 without an earlier loud stop');
-  assert.equal(reachedF5, true);
-  assert.deepEqual([seen.main3, seen.e3, seen.e4], [true, true, true]);
-  assert.ok(seen.dummy9a > 0, 'E3 requested and drained the self-freeing type $9A');
-  assert.equal(Array.from({ length: ENEMY.slots }, (_, n) => ENEMY.table + n * ENEMY.stride)
-    .filter((p) => ram.u16(p) !== 0 && ram.u8(p + 0x0c) === 0x9a).length, 0);
-  assert.deepEqual([...seen.e4Sites].sort((a, b) => a - b), [
-    0x29daae, 0x29dadc,
-    0x29dafe, 0x29db0a, 0x29db1c, 0x29db2e,
-    0x29db40, 0x29db4c, 0x29db5e, 0x29db70,
-    0x29db88, 0x29db92, 0x29db9c, 0x29dba8, 0x29dbb2, 0x29dbbc,
-  ]);
+  assert.equal(stop, 0);
+  assert.deepEqual([seen.f5, seen.d4, seen.e8, seen.d5, seen.f7, seen.returnedF2],
+    [true, true, true, true, true, true]);
+  assert.deepEqual([...seen.e8Sites].sort((a, b) => a - b),
+    [0x29e446, 0x29e476, 0x29e488, 0x29e498, 0x29e4aa]);
 });
