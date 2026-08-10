@@ -13,47 +13,67 @@ rule is delivery first: spend at least 90 percent of effort on playable product
 implementation, use one focused smoke for a meaningful change, and do not
 restart broad reconnaissance or build reviewer/test-agent chains.
 
+## THE GOAL: one credit from stage 1 to stage 5 with no Unreached
+
+The milestone to drive at, stated so it can be checked rather than felt: a single
+credit plays from the stage-1 start through the stage-4 boss and into stage 5,
+including at least one death and every stage transition, without the port
+reaching one `Unreached`, and with nothing on screen that the cartridge would
+draw and the port does not.
+
+It is worth stating because the objective "translate the whole game" gives no
+order, and this one does: everything below is ordered by what that run hits
+first, and every item is a defect the owner can see rather than an interior the
+owner cannot.
+
 ## Current product state
 
-- HEAD is `2ae418e ddpdoj: let a player death survive the option object`.
+- HEAD is `62c0a80 ddpdoj: sweep every drawn descriptor against the bundle`.
+- Suite: `node --test games/ddpdoj/tests/` is **1620/1620**, green, no skips.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
   closed at 414/414 script records and 28/28 script types.
-- The Stage 4 enemy section is translated through its boss spawn, and the Stage 4
-  boss is translated through its first damage-driven destruction transition
-  (W224): A4/F1, MAIN2/MAIN3, A3/D0 and A2 objects 6 through 9.
+- The Stage-4 enemy section is translated through its boss spawn, and the Stage-4
+  boss through its first damage-driven destruction transition (W224).
+- A player death is survivable: W227 the option arm, W228 the respawn.
+- Sprite stream total is 3974, and the descriptor sweep reports zero
+  unresolvable descriptors bundle-wide.
 - Stage 5 has not started.
-- Sprite stream total is 3958.
 
 ## The docket comes first
 
-[DOCKET.md](DOCKET.md) holds ten defects the owner reported from playing the
-shipped web build, each with the port-side finding underneath. Player-visible
-defects in stages the player actually reaches outrank Stage-4 boss interiors,
-which is why W225 is paused.
+[DOCKET.md](DOCKET.md) holds twelve defects the owner reported from playing the
+shipped build, each with the port-side finding underneath. Player-visible defects
+in stages the player actually reaches outrank Stage-4 boss interiors, which is why
+W225 is paused.
 
-Fixed so far: D1 (the hyper beam's missing strip window) and D2 (the hyper item's
-motion, draw bias and animation order) in W226; the first link of D9 in W227.
+Fixed: D1 and D2 (W226), the first two links of D9 (W227, W228), the rank icons
+and the D5 instrument (W230).
 
-## Immediate next actions, in priority order
+## Work order toward the goal
 
-1. **Finish D9, the death chain.** A death now runs its animation and reset and
-   then stops at `$25FFA8`, reached through the `$25FF7A` computed dispatcher
-   with `$8130FA` = 1. Translate `$25FFA8` and its `jsr $23C668`, then decide
-   whether jump-table entries 2 (`$260056`) and 3 (`$26010E`) are reachable.
-   Reproduce with the headless scenario in `tests/w227death.test.js`: it kills
-   the player on frame 424 and the stop is at 495.
-2. **Close the five stale census tests.** They fail at `6d19202` too, so they are
-   debt from the Stage-4 waves, not a regression. All five want the Stage-4 boss
-   tables and handler set added to lists they already keep for stages 1 to 3:
-   `handlers.test.js:113`, `initbody.test.js:54`, `integration.test.js:244`,
-   `w167coverage.test.js:65`, `w62stageend.test.js:369`. The last fails on
-   `$2A017A`, registered back in W219. A green suite protects everything after.
-3. **D5, the sprite sweep.** D3, D4, D7 and D8 are probably one systemic gap.
-   One sweep joining every reachable draw site against the harvested stream set,
-   reporting draws whose descriptor is absent from the bundle, is worth more than
-   four separate guesses.
-4. **Resume W225**, Stage-4 boss A4/F5 `$2A0CF6`, whose recon is already banked
-   in its worklog. Do not repeat that recon.
+1. **Finish D9: the player object INIT.** `$2491C0` and `$249246` have a one-time
+   init arm the port does not translate at all, so a newly created player object
+   has no position -- a respawned ship provably sits at `posY` 0. Fully mapped in
+   DOCKET.md D9: the `$24915E` 48-word template (needs a ROM window), `$2551FA`,
+   `$253A1E`, the `+6`-keyed fresh-start arm, the `$803926`-gated five `$2530BE`
+   calls, `$25FF38`/`$260846` arming dispatcher request 9, and `$2603B0` into
+   `$2534F8`/`$253522`. `$249426` is the instruction that copies the object's
+   `+8`/`+A` into the record's position.
+2. **D11: the stage transition.** Object dispatch `$240F62` entry `[11]`
+   `$25DBB4` (900 calls per 900 frames, reads the stage number and loop flag) and
+   entry `[4]` `$260B30` (1800 calls, once per side) are not implemented, and the
+   transition cannot look like the cartridge's while they are no-ops. Start with
+   `[11]`.
+3. **D3/D4: the missing explosions.** The sweep proves these are producer
+   problems, not bundle problems. Run
+   `node games/ddpdoj/tools/w230descriptorsweep.mjs` and work its counted-gap
+   list; `$289AF4` (the secondary effect spawn) is the first candidate.
+4. **Resume W225**, Stage-4 boss A4/F5 `$2A0CF6`, whose recon is banked in its
+   worklog. Do not repeat that recon.
+5. **Stage 5.** Only after a credit reaches it.
+
+D6, D7, D8, D10 and D12 are presentation or documentation and can be slotted in
+between the above whenever a natural gap appears.
 
 ## Verification commands
 
