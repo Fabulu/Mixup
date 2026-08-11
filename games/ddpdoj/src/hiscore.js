@@ -56,6 +56,7 @@
 // `addq` gives 0 -- index 0, the top. The two ends fall out of the same arithmetic.
 
 import { i16, u16 } from './ram.js';
+import { unreached } from './unported.js';
 
 export const HISCORE = Object.freeze({
   // `lea $803838,A1` and `lea $8038BA,A3` are the ENDS; `-(A1)` is what makes them so.
@@ -399,6 +400,136 @@ export function hiscoreDefaults28841E(ram, rom) {
       ram.setU32(HISCORE_DEFAULTS.hiScore, ram.u32(HISCORE.scoresBase));
     }
   }
+}
+
+// ===========================================================================
+// W304 -- THE TAG IS A SEARCH KEY, AND THAT IS WHY THE SLOT POINTER HAS NO READERS
+// ===========================================================================
+// W300 called `$FF`/`$FE` a "not entered yet" sentinel. W302 found it could never reach the
+// display's character table. W303's worklog named finding its reader as the next job. It has
+// two, and they settle what the tag is FOR:
+//
+//   $28F6E2 / $28F6EA -> $28F6F4    find the tagged row and gather every field of it
+//   $28F7C8           -> $28F7D2    write three initials INTO the tagged row
+//
+// Both search the 12-byte array for an entry whose FIRST LONG equals the tag. So the tag is a
+// **search key**: the insert stamps it so that later code can find the row again without
+// carrying a pointer. Which is exactly why `$81B42C`/`$81B43C` -- the absolute forms of the
+// `($C,A4)` slot pointer -- have ZERO references in the build. That pointer is internal to
+// `$287C3E`, which reads it back at `$287C7A` only to stamp the tag through it. W302 spent a
+// search on the assumption that a pointer written is a pointer read; it was not.
+//
+// ## AND THE TAG VALUES ARE NOT ARBITRARY
+//
+//     28f7c8  moveq #$0,D0
+//     28f7ca  move.w ($2C,A4),D0      the SIDE, 0 or 1
+//     28f7ce  not.b D0                -> $FF or $FE
+//
+// `$FF` is `~0` and `$FE` is `~1`. So `$287BD2`'s `move.l #$FF,D6` and `$287C08`'s `#$FE` are
+// not two magic numbers, they are **side 0 and side 1 complemented**, and this is the routine
+// that reconstructs them from a record field. Three waves treated the pair as opaque
+// constants; the complement is checkable and it is checked below.
+//
+// The complement also explains W302's finding from the other end: the display indexes its
+// character font with the stored value UNSCALED, so a valid character is a small multiple of
+// four. `~0` and `~1` are the two largest bytes there are, so no side index can produce a
+// value that looks like a character. The tag being out of band is a property of `not.b`, not
+// a coincidence.
+const TAG = Object.freeze({
+  lookup: Object.freeze([0x28f6e2, 0x28f6ea]),   // move.l #$FF,D0 / #$FE,D0
+  body: 0x28f6f4,
+  writer: 0x28f7c8,
+  writerBody: 0x28f7d2,
+  sideField: 0x2c,                               // $28F7CA move.w ($2C,A4),D0
+  chars: 3,                                      // $28F7DE moveq #$2,D7 -- THREE longs
+});
+
+/** `not.b` on the side index: side 0 -> `$FF`, side 1 -> `$FE`. */
+export function tagForSide(side) {
+  return (~side) & 0xff;                                   // $28F7CE not.b D0
+}
+
+/**
+ * `$28F6F4` -- find the row carrying `tag` and hand back everything about it.
+ *
+ * The heads `$28F6E2`/`$28F6EA` supply the tag and `$28F6F0` supplies `D1 = 0` and
+ * `D4 = 4`, so the scan is five entries from the base. On a miss the ROM returns
+ * `D0.w = $FFFF` (`moveq #$0,D0 / subq.w #1,D0`) and nothing else is set.
+ *
+ * On a hit it returns SIX addresses and two packed longs, which between them cover eight of
+ * the nine arrays -- everything except the 12-byte entry it just matched. The two `swap`
+ * pairs are the interesting part: `D2` is `overflow << 16 | digits` and `D3` is
+ * `style << 16 | ship`, each built by loading the HIGH half first and swapping.
+ */
+export function tagLookup28F6F4(ram, tag) {
+  let a0 = HS_LAYOUT.bigEnd - HISCORE.entries * HS_LAYOUT.bigStride;   // $28F6F4 lea $803838
+  let index = 0;                                           // $28F6F0 moveq #$0,D1
+  let hit = false;
+  for (let n = 0; n < HISCORE.entries; n++) {               // $28F6F2 moveq #$4,D4 / dbra
+    if (ram.u32(a0) === (tag >>> 0)) { hit = true; break; } // $28F6FA cmp.l (A0),D0 / beq
+    index++;                                               // $28F6FE addq.w #1,D1
+    a0 += HS_LAYOUT.bigStride;                             // $28F700 adda.w #$C,A0
+  }
+  if (!hit) return { found: false };                       // $28F708 moveq #0 / subq.w #1
+
+  const w = index * 2;                                     // $28F710 add.w D0,D0
+  const l = index * 4;                                     // $28F74E add.w D0,D0 again
+  const digits = 0x8038a6 + w;                             // $28F712 / $28F72A adda.w
+  const overflow = 0x8038b0 + w;                           // $28F718 / $28F72C
+  const ship = 0x803888 + w;                               // $28F71E / $28F72E
+  const style = 0x803892 + w;                              // $28F724 / $28F730
+  return {
+    found: true,
+    index,
+    entry: a0,                                             // the 12-byte row that matched
+    digits, overflow, ship, style,
+    loop: 0x803874 + w,                                    // $28F73E / $28F74A -- A2 REUSED
+    chain: 0x80389c + w,                                   // $28F744 / $28F74C -- A3 REUSED
+    score: HISCORE.scoresBase + l,                         // $28F750 / $28F756 adda.w
+    // $28F732..$28F736: high half first, then swap, so the OVERFLOW is the high word.
+    d2: (((ram.u16(overflow) << 16) | ram.u16(digits)) >>> 0),
+    // $28F738..$28F73C: the same shape, style over ship.
+    d3: (((ram.u16(style) << 16) | ram.u16(ship)) >>> 0),
+  };
+}
+
+/** `$28F6E2` and `$28F6EA` -- the two heads, which are the two tags. */
+export function tagLookupForSide(ram, side) {
+  return tagLookup28F6F4(ram, tagForSide(side));
+}
+
+/**
+ * `$28F7C8` -- write three initials into the row the side's tag marks.
+ *
+ * @param a4 the record whose `($2C)` holds the side; `not.b` turns it into the tag
+ * @param a0 a THREE-LONG source, the entered name
+ * @returns {boolean} whether a tagged row was found. The ROM has no return value here: it
+ *   falls out of the `dbra` either way, so a miss is a silent no-op on the board too.
+ *
+ * **This is what finally writes the 12-byte entry**, and it does so without the slot pointer.
+ * `move.w #$2,D7` with `dbra` is THREE longs -- the same n+1 the port has been bitten by
+ * twice -- and `$28F7EA adda.w #$C,A1` is the miss step, so the walk is by ENTRY and not by
+ * long.
+ */
+export function tagWrite28F7C8(ram, a4, a0) {
+  const side = ram.u16(a4 + TAG.sideField);                // $28F7CA move.w ($2C,A4),D0
+  const tag = tagForSide(side);                            // $28F7CE not.b D0
+  if (side > 1) {
+    unreached(0x28f7ce, `$28F7C8 read side ${side} from ($2C,A4). not.b makes the tag `
+      + `$${tag.toString(16)}, and only $FF and $FE are stamped by $287C3E, so no row can `
+      + `ever match`);
+  }
+  let a1 = HS_LAYOUT.bigEnd - HISCORE.entries * HS_LAYOUT.bigStride;   // $28F7D2 lea $803838
+  for (let n = 0; n < HISCORE.entries; n++) {               // $28F7D0 moveq #$4,D5 / dbra
+    if (ram.u32(a1) === tag) {                             // $28F7D8 cmp.l (A1),D0 / bne
+      for (let k = 0; k < TAG.chars; k++) {                // $28F7DE moveq #$2,D7 -- THREE
+        ram.setU32(a1 + k * 4, ram.u32(a0 + k * 4));       // $28F7E2 move.l (A2)+,(A1)+
+      }
+      return true;
+    }
+    a1 += HS_LAYOUT.bigStride;                             // $28F7EA adda.w #$C,A1
+  }
+  return false;
 }
 
 /** `$287BD2` -- the P1 head. */
