@@ -28,8 +28,16 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W315, `ddpdoj: the family check comes back negative`.
-- Suite: `node --test games/ddpdoj/tests/` is **2288/2288**, green, no skips. 405 ROM windows.
+- HEAD is W319, `ddpdoj: type $8E, and the Hibachi trap found while looking at $B0`.
+- Suite: `node --test games/ddpdoj/tests/` is **2315/2315**, green, no skips. 411 ROM windows.
+  `dojcoverage.py` reports 80/256 enemy types ported.
+- **READ `HIBACHI CLOSURE RULE` BELOW BEFORE TOUCHING TYPE `$B0`.** It is the one place where every
+  measurement this repo has would report a finished stage 5 that has no boss in it.
+- **A hand-built `ctx` in a test can agree with a wrong port.** W316 called
+  `aim64AtTarget(ctx.tables, ...)` -- and in the live game `ctx.tables` is the MoveTables, not the
+  AimTables. Its test passed because the fixture put an AimTables there, so test and port were wrong
+  together. W319 corrected both sites to `aimTables(rom)`. Where `main.js` builds a real ctx, prefer
+  that shape in fixtures.
 - **STAGE 5 HAS STARTED AND IS SCOPED EXACTLY.** W313 windowed its spawn span
   (`$237978 + $2640`, the one stage whose far end is its last movement stream's terminator rather
   than the next stage's script) and W314/W315 censused it: **fifteen enemy types have no handler,
@@ -266,11 +274,80 @@ The remote is `origin` -> `https://github.com/Fabulu/Mixup.git` and the branch i
 `tools/publish.mjs`: that gates the Batman suite, builds `dist/` and deploys to
 Cloudflare Pages. Pushing does not publish and publishing does not push.
 
+## HIBACHI CLOSURE RULE -- read this before touching type $B0
+
+**Do NOT declare stage 5 complete because** all 770 records initialise, all 35 top-level types have
+handlers, the missing-handler census reaches zero, or `$2A4614` reaches the generic stage-advance.
+**None of those measurements proves the boss graph**, and the project has already disproved the
+weaker version of the same reasoning: W313 walked 770/770 records with no `Unreached` and W314 then
+showed spawning and per-frame behaviour are DIFFERENT table entries, so a type can spawn perfectly
+and have nothing to run. Stage 5 even contains one type-`$00` record that legitimately appears and
+frees itself on its first frame without ever becoming a visible enemy.
+
+**Type `$B0` is not an ordinary enemy.** One script record, and W317 mislabelled it "standalone".
+Its handler is about 28 bytes:
+
+    2a4606  jsr $2A6B94        UNPORTED -- this is what owns the boss
+    2a460c  jsr $25962E        ported
+    2a4612  bcc $2A4622        the carry decides
+    2a4614  jsr $242952        THE STAGE ADVANCE
+    2a461a  jmp $263762        freeEnemy
+
+`src/stageend.js` has documented `$2A4614` since long before stage 5 started, as **one of the five
+`$242952` callers that are the five bosses** (`$292922` stage 1, `$2973A8`, `$29BE36`, `$29EF14`,
+`$2A4614`). That fact and the type census lived in different files, which is why nobody joined them.
+
+So `$B0` is a **completion GATE** and `$2A6B94` is the boss machinery. `$2A6B94` opens
+`tst.w ($106,A6) / tst.b ($10E,A6) / bne $2A6F12` -- record offsets past 256 bytes and a branch
+`$370` forward, i.e. a boss-sized record and a large routine.
+
+**The trap, exactly:** port `$B0`'s 28 bytes, watch the census reach zero, watch `$242952` fire and
+the stage number advance -- and no boss ever existed. Every measurement this repo currently has would
+report success.
+
+Treat `$B0` (init `$2A42D4`, handler `$2A4606`) as the stage-5 boss-route ROOT until disproven. Read
+its complete init body and handler and recursively enumerate every direct call, indirect table call,
+object allocation, deferred spawn, scheduler/script-VM entry and mode/loop branch. Pin concrete ROM
+addresses and runtime-created object roots. **A name inferred from graphics, a stage counter moving,
+or the absence of `Unreached` is not proof.**
+
+**And Black Label has TWO routes, so "check the loop counter" is not enough.** In 1-Loop mode,
+beating the normal stage-5 boss leads straight into Hibachi. In 2-Loop mode the game takes the
+two-loop route and Hibachi belongs to the end of it. A correct implementation needs a MODE branch as
+well as loop state. "Stage 5's boss and end sequence" in any earlier work order is underspecified; it
+means all five of:
+
+1. the normal stage-5 boss;
+2. the post-boss route decision;
+3. Hibachi in 1-Loop mode;
+4. the loop transition in 2-Loop mode;
+5. Hibachi after the second-loop stage-5 route.
+
+Require a separate executable witness for each, plus Hibachi visibly drawing, carrying
+cartridge-derived HP, taking multiple attack-script transitions, dying, and reaching the right
+ending. A useful oracle trace starts at `$2A42D4`, logs every allocation and indirect call, and
+breakpoints `$2A4606` and `$2A4614` under BOTH mode selections -- that shows whether `$B0` creates
+the normal boss, launches another scheduler, branches to Hibachi, or merely observes completion.
+
 ## Work order toward the goal
 
-1. **STAGE 5'S FIFTEEN TYPES, in the order `tests/w314stage5scope.test.js` pins.** `$45` (21
-   records), `$46` (13) and `$8E` (6) are 40 of the 65 between them. Per-type waves; the addresses
-   are in that test and the three false shortcuts are in the state section above.
+1. **STAGE 5'S REMAINING TWELVE TYPES.** W316 took `$45` (21 records), W317 `$59`, W319 `$8E` -- so
+   the census is **twelve types over 37 records**, pinned with every address in
+   `tests/w314stage5scope.test.js`.
+
+   **Do not order them by record count.** W317 scanned for the three deferred-spawn entry points and
+   found four of them pull in an UNPORTED CHILD TYPE:
+
+       $55 before $46      $54 before $48      $44 before $43
+       $4E, $50, $52 and $58 before $4C     <- four children; leave $4C last
+
+   So "twelve left" understates it: those twelve expose seven more child types, at least nineteen
+   handler types before anything found deeper. The order is **`$1B` (5 records) then `$81` (3)** --
+   the two whose every `jsr` target the port already implements and which spawn nothing -- then
+   `$1A`, then `$49`/`$4A`/`$4B`, then `$47`, then the bundles.
+
+   **`$B0` is NOT in this queue.** It is the head of boss reconnaissance; see HIBACHI CLOSURE RULE
+   above.
 
 1b. **THE NAME-ENTRY CHARACTER GRID** -- superseded by W307/W311 except for the two panel draws,
    which are gated on `$23E45A`. Kept below for the emitter's description:
