@@ -480,25 +480,35 @@ picture. The center-pan gain and exact sample endpoint use two permanently
 labelled owner-approved approximations because no physical PGM capture is
 available. What the fire buttons actually do, which is three different things:</p>
 <ul>
-  <li><b>TAP shot</b> &mdash; really runs the ported cadence machine
+  <li><b>TAP shot</b> &mdash; runs the ported cadence machine
     (<code>$249B2C..$249BE2</code>), the ported spawn (<code>$249BFC</code>),
     the 36-slot shot driver (<code>$253A70</code>) and the sprite enqueue
     (<code>$23F3AE</code>), all verified 0-divergent against the board over 125
-    logic frames on 52 columns. <b>You will not see it.</b> None of the nine
-    shot sprite streams is in the shipped sheet, so a shot the port really
-    computed still has no picture &mdash; and after wave&nbsp;44 the status line
-    says so by address rather than leaving you to guess. The enemies it would
-    hit <em>are</em> real objects now, and they are the ones on the screen.</li>
+    logic frames on 52 columns. <b>And you can now see it.</b> Through
+    wave&nbsp;271 this said you could not, because none of the shot sprite
+    streams was in the shipped sheet; the bundle work of waves&nbsp;265&ndash;267
+    put them there. Tapping from the stage-1 rung stages 7,203 shot records over
+    400 frames across <b>twenty</b> distinct streams, and all twenty are in the
+    sheet.</li>
   <li><b>HOLD shot</b> &mdash; on the board this is the <b>laser</b>, and it
-    also ramps the ship's speed down from index 22 to 12. Neither is ported: the
-    ramp lives inside the option object at <code>$24C8BE</code>. Holding for
-    four frames <b>stops the loop</b> with that address. Before wave&nbsp;9 it
-    did nothing at all and said nothing, which was worse.</li>
-  <li><b>BOMB</b> &mdash; reaches a named throw at <code>$249814</code> and
-    stops the loop.</li>
+    also ramps the ship's speed down from index 22 to 12. <b>Both are ported</b>
+    (<code>src/laser.js</code>, and the ramp at <code>$24C8BE</code> inside the
+    option object). Through wave&nbsp;271 this said holding for four frames
+    stopped the loop; it has not since the option object landed. Holding from
+    the board's own lf2000 walks the index 22&rarr;12 in 100 frames, which is
+    the value the board itself holds at lf2100.
+    <b>Hold it while you move</b>: the laser is what raises the ship's
+    afterimage trail (<code>$253604</code>), the five 3&times;32 records that
+    read as the big exhaust plume. A motionless ship has no trail, by
+    construction.</li>
+  <li><b>BOMB</b> &mdash; <code>$249814</code> is one button with two weapons on
+    it, and both arms are ported (<code>src/bomb.js</code>). Through
+    wave&nbsp;271 this said it reached a named throw and stopped the loop; it
+    does not.</li>
   <li><b>AUTO</b> &mdash; Button&nbsp;3 is not a third weapon; the board
     synthesises a shot edge on alternate frames. It does not touch the speed
-    ramp, so it is the one way to keep firing without stopping the port.</li>
+    ramp, so it is the one way to keep firing without the laser slowing you
+    down.</li>
 </ul>
 
 <p><b>A red box naming a <code>$</code> address is not a crash.</b> It is the

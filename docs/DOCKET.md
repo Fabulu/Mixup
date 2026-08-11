@@ -6,6 +6,16 @@ a focused smoke proves it.
 
 Opened 2026-08-10 from a play session on the shipped web build.
 
+**Standing as of W272: eleven of twelve closed.** D11's remainder -- the
+animation-object execution engine -- is the only open item. The section headings below
+still read "Fixed" and "Open, in priority order" from the day the docket was opened;
+the per-item markers are authoritative, and D12 covers that drift.
+
+    D1  W226   D2  W226   D3  W264/265/266   D4  W265/266/267
+    D5  W230   D6  W234   D7  W271           D8  W272 (no draw was missing)
+    D9  W227/228/231      D10 W268           D12 W253/263
+    D11 partly landed (W232); the execution engine remains
+
 ## Fixed
 
 ### D1: firing the hyper crashes -- FIXED in W226
@@ -139,17 +149,36 @@ against the bundle's own stream table. Bundle-wide it now reports zero. Re-run i
 per stage and per boss as coverage grows; a missing sprite that is not in its
 output is a producer problem, not a bundle problem.
 
-### D7: the hyper gauges are not painted
+### D7: the hyper gauges are not painted -- FIXED (W271)
 
-The gauge word does count (`$81B642` steps down by 2 per frame while hyper is up,
-verified headlessly in W226), so this is likely presentation. The rank icons under
-"Fixed" were one instance of the same family; the gauge needs its own look.
+Not presentation and not counting: `hyperStock286ED6` had been complete in `hud.js`
+since W113 and `livesRow2878CC` since W116, and **nothing called either one**.
+`slideIn284CF2`'s `flags9` bit-0 arm still called the `note()` those transcriptions
+replaced everywhere else. A routine that is written but not called leaves no gap of
+any kind, which is why W269's hunt through the hyper subsystem came up empty. The
+generalisation now runs on every suite pass: any `draw(ctx, $X)` in `hud.js` where a
+body named `$X` exists in the same file is the same defect.
 
-### D8: the ship may be missing its large exhausts
+### D8: the ship may be missing its large exhausts -- CLOSED (W272), no draw was missing
 
-Only tiny exhausts draw. Since the sweep says nothing the port draws is missing
-from the bundle, the exhaust is either a draw the port never makes or a part of
-the ship record it never fills. Check `src/shipsprite.js` against the ROM.
+The port draws every record the cartridge draws, byte for byte. Booted from the
+board's own main RAM at lf2200 of `stage1-laser-hold` and run 100 frames on the
+ladder's own input, the port's three bucket-19 ship records (the 5x40 aura, the 3x32
+ship, the 1x32 glow) and its five bucket-12 trail records match the board's lf2300
+checkpoint exactly. The board stages no fourth record on any rung, and the four
+unrun enqueue sites at `$24A6B4` are unreachable: no instruction anywhere in
+`$240000..$2A6000` sets bit 8 of the player state word.
+
+What was actually broken was the shipped page. Its fire-button section, unchanged
+since wave 9, told the player that holding shot stopped the loop at `$24C8BE`, that
+the bomb stopped it at `$249814`, and that shots had no picture. All three had become
+false, and each steered the player off an input that works -- so a player following
+the page never held the laser and therefore never saw the afterimage trail, the five
+3x32 records that read as the big plume and which `$253604` raises only while the
+laser is up AND the ship is moving. The text is fixed and pinned by a test.
+
+The 5x40 aura is the invulnerability blink (spawn, bomb, hyper), not an exhaust. The
+always-on exhaust is the 1x32 glow, and it is the small one.
 
 ### D10: mobile landscape wastes most of the screen on the browser bar -- FIXED (W268)
 

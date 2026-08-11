@@ -28,8 +28,8 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is `3f07c2c ddpdoj: make the stage-4 boss third phase reachable`.
-- Suite: `node --test games/ddpdoj/tests/` is **1806/1806**, green, no skips.
+- HEAD is W272, `ddpdoj: settle the ship's exhausts against the board (docket D8)`.
+- Suite: `node --test games/ddpdoj/tests/` is **1851/1851**, green, no skips.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
   closed at 414/414 script records and 28/28 script types.
 - **THE STAGE-4 BOSS IS COMPLETE FOR EVERY REACHABLE PATH.** W246 through W263
@@ -56,11 +56,21 @@ owner cannot.
   palettes install (W236), both panels paint (W238, W239) and the `$900000` ring
   clears (W240); the rest of its presentation is the gap.
 - The bee popup works (W234), and the secondary explosion spawns (W235).
-- Sprite streams 3985. `w230descriptorsweep.mjs` draws 718 distinct descriptors
-  with ZERO unresolvable.
-- **Two loop-2 rules exist**: W241's zero-lives extend (`$253794`) and W250's A1 6,
-  which changes both its shot count and its generator on `$813098`. Stage 5 has
-  not started.
+- Sprite streams **4194**. `w230descriptorsweep.mjs` draws 718 distinct descriptors
+  from the shipped seed and 783 from the stage-2 rung (`--lf 19500 --frames 1800`),
+  with ZERO unresolvable in both.
+- **FIVE loop-2 rules exist**: W241's zero-lives extend (`$253794`), W250's A1 6
+  (which changes both its shot count and its generator), A4 id6's two (`$2A1250`,
+  `$2A1346`) and W270's `$260ACA` announcement choice. All read `$813098`. Stage 5
+  has not started.
+- **The announcement pipeline is closed end to end**: the consumer `announce260B30`
+  is registered as object dispatch `[4]` (W269, via `adoptCurrentWindows` in
+  `src/rom.js` -- a replay fixture's frozen ROM WINDOW LIST is a port artifact, not
+  game state, so it can be substituted once proven a byte-superset), and W270 landed
+  the four producers at `$260A20`/`$260A88`/`$260A9A`/`$260AB6`/`$260AF2`.
+- **The ship's draw path is verified against the board byte for byte** (W272): three
+  bucket-19 records and five bucket-12 trail records, 100 frames out from the
+  cartridge's own RAM. See D8 -- there was no missing draw.
 
 ## An hourly cron is running
 
@@ -77,34 +87,51 @@ shipped build, each with the port-side finding underneath. Player-visible defect
 in stages the player actually reaches outrank Stage-4 boss interiors, which is why
 W225 is paused.
 
-Fixed: D1, D2 (W226), D9 entirely (W227, W228, W231), the rank icons and the D5
-instrument (W230), and D11's banner picture (W232).
+**ELEVEN OF TWELVE ARE CLOSED.** D1, D2 (W226); D9 entirely (W227, W228, W231); the
+rank icons and the D5 instrument (W230); D3 (W264/265/266); D4 (W265/266/267); D10
+(W268); D7 (W271); D8 (W272); D12 (W253/263). D11's banner picture landed in W232 and
+its remainder is the only open docket item.
+
+**Two of the last three closed the same way, and it is worth expecting a third.** D7
+and D8 were both routines and records that already existed: D7 was `hyperStock286ED6`
+and `livesRow2878CC`, complete since W113/W116 and called by nobody; D8 was a draw
+path that already matched the board byte for byte behind a page that told the player
+not to press the button. **Before assuming a player-visible gap is untranslated code,
+check whether the body exists and is uncalled, and whether the shipped page is lying
+about it.** `w271hyperstock.test.js` has the mechanical form of the first check.
 
 ## Work order toward the goal
 
-1. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
+1. **`$2600D8`, then object dispatch `[11]` `$25DBB4`.** THE FIRST UNFINISHED ITEM,
+   deferred by W271 and W272. It is the stage-clear SCORE TALLY -- eight bonus-line
+   routines per side -- which is the other half of the owner's "maybe even score
+   totalling, which I see none of", and it is 900 counted notes a run. W270 recon'd
+   `[11]` down to ONE unread routine: of its six dependencies, `$2533F6`, `$253448`
+   and `$241292` are ported, `$28D53C` (6 instructions) and `$23C932` (9) are
+   trivial, and `$2600D8` is the descriptor walker nobody has read. Read that first.
+2. **The four other announcement-poster caller regions** -- `$25CDxx`, `$25D5xx`,
+   `$2601xx`, `$288A02`. They share the protocol W270 landed, so none of them has to
+   re-derive it.
+3. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
    `$28D6FC` the animation chain. `$28D77C` writes palette RAM the port does not
    model and the four `$25FD38` resets are W62's scope line, so those two stay
-   counted. Force `$242952` headlessly and read the counted gaps -- that
-   measurement is what scoped W232 and it is still the right way in.
-2. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
-   `$28D6FC` the animation chain; `$28D77C` writes palette RAM the port does not
-   model, and the four `$25FD38` resets are W62's scope line.
-3. **The rest of D3/D4.** `$27F8F8`'s visual pop needs a `$280E4A` window and a
-   kind-`$0` spec, or the better refactor of making `fillGeneralImpact280B3E` read
-   the cartridge's table. D4's stage-2 mid boss needs the sweep run DURING stage 2
-   rather than an assumption that it shares a cause.
-4. **The stale `$240DC2` call sites** in `items.js`. The printer is ported and W237
-   added two sites; each remaining one needs its own register-setup transcription.
-   This is also the likely route to D7's gauges.
-5. **Register object dispatch `[4]`.** `announce260B30` is written and tested (W243)
-   but its `main.js` entry is COMMENTED OUT on purpose: `.replay` fixtures embed
-   frozen tables, so registering it turns five gates red until
-   `tools/oracle/out/w69/fly-around` is rebuilt from the oracle. Rebuild, then
-   uncomment.
-6. **Stage 5, then the loops.** The Stage-4 boss no longer blocks this. FOUR
-   loop-specific rules are translated so far (W241's zero-lives extend, W250's A1 6
-   ring, and A4 id6's two at `$2A1250`/`$2A1346`), all reading `$813098`.
+   counted. Force `$242952` headlessly and read the counted gaps -- that measurement
+   is what scoped W232 and it is still the right way in. The remainder is the
+   animation-object EXECUTION ENGINE, the per-frame machine that walks the `$810346`
+   chain and decrements each node's `$18`; the way in is the node code pointers at
+   `$24627A`, NOT the chain root `$810346`, whose six references are all loaders or
+   the clear. `$28C186` is a BGM command and correctly a counted sound gap.
+4. **Stage 5, then the loops.** Nothing blocks this any more: the Stage-4 boss is
+   complete for every reachable path and the docket is down to one item. Five
+   loop-specific rules are translated so far; see the loop-2 bullet above.
+
+## Comment drift found and deliberately not fixed
+
+`src/type5.js`'s header still says `$24C096` is "ONE OF THE 22 THIS FILE COUNTS AND
+DOES NOT RUN" and that the port throws on the fourth consecutive held-fire frame.
+`src/options.js` ports that object and W272 measured the ramp running and landing on
+the board's own value. Comment only, no behaviour. Fix it in a wave that touches
+`type5.js` for another reason.
 
 D8, D10 and D12 are presentation or documentation and can be slotted in between.
 
