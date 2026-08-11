@@ -2491,6 +2491,16 @@ SHOT_WINDOWS.extend([
                        "NULL at offset $6C; row 1 uses $25B7E6, rows 2..5 use $25B85A"),
     (0x25B984, 0x0050, "W302: the score/digit fonts, TEN longs each stride $C; row 1 uses "
                        "$25B984 and rows 2..5 use $25B9AC, shared by $25B8CE and $25B944"),
+    # W303: the last two of `$25B492`'s eleven `bsr`s.
+    # `$25B54C move.l ($18,PC,D6.w),D2` has its extension word at $25B560, so the base is
+    # $25B560 + $18 = $25B578 -- and $25B58C is the next routine, which pins it at FIVE.
+    (0x25B578, 0x0014, "W303: $25B54C's FIVE row-label longs (1ST..5TH); pinned at five by "
+                       "$25B58C being the next routine"),
+    # `$25B454 lea ($25BAAA,PC),A0 / jsr $246710` -- the animation-object chain script. Its
+    # first word is the node count (8) and `$246710` reads FOUR words per node, so the run is
+    # 2 + 8*8 = $42 bytes exactly.
+    (0x25BAAA, 0x0042, "W303: $25B412's anim-object chain script, EIGHT nodes of four words "
+                       "after the count word"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

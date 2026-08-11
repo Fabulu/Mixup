@@ -66,6 +66,7 @@
 import { u16, u32 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
+import { chainCheck24681A, chainFree246800, chainLoader246710 } from './stageend.js';
 
 const EMIT = 0x23dfb4;                  // the register-convention emitter, W30's family
 const ROW_STEP = 0x11c0;                // subi.w #$11C0 -- the same in all nine routines
@@ -399,12 +400,68 @@ export function drawDigits25B944(ram, rom) {
   }
 }
 
+// ===========================================================================
+// 9. `$25B4D6` -- THE FRAME, ON A SECOND EMITTER AND WITH A BLINK
+// ===========================================================================
+// Four requests with nothing but immediates, through `$23DECE` rather than `$23DFB4`. Both
+// are register-convention stubs the port already resolves, and **they resolve to the SAME
+// bucket** -- measured, because the natural assumption is that two stub addresses mean two
+// draw layers and they do not. Which is worth knowing for a reason: with all eleven `bsr`s
+// feeding one bucket, **the `bsr` order IS the draw order**, and that is why the frame and
+// the row labels are called first -- they have to be under the data.
+//
+// The third element is GATED: `$25B50A tst.w $80390C / beq $25B52C`. `$80390C` is the global
+// phase word `bee.js` calls `collisionPhase` and `bomb.js` calls `phase`, so this element is
+// drawn on some frames and not others -- **the screen has a blinking element**, which a port
+// that dropped the gate would render as permanently lit.
+//
+// And `$25B4EC bsr $25B54A` calls an immediate `rts`. There are THREE bare `rts` bytes in a
+// row at `$25B546`, `$25B548` and `$25B54A`: the first is this routine's own exit and the
+// other two are spares. So the call is live and the callee does nothing -- a stubbed-out
+// feature, not a missing routine, and worth saying so rather than counting it as a gap.
+const FRAME_PARTS = Object.freeze([
+  Object.freeze({ site: 0x25b4d6, d1: 0x00000000, art: 0x3216c0, d3: 0x38e0, d4: 7 }),
+  Object.freeze({ site: 0x25b4f0, d1: 0x5f000400, art: 0x3326a8, d3: 0x08c0, d4: 6 }),
+  // $25B512 -- ONLY when the phase word is non-zero.
+  Object.freeze({ site: 0x25b512, d1: 0x63000800, art: 0x333e54, d3: 0x04a0, d4: 5,
+    gate: 0x80390c }),
+  Object.freeze({ site: 0x25b52c, d1: 0x05c00000, art: 0x3329ac, d3: 0x2ee0, d4: 6 }),
+]);
+const FRAME_EMIT = 0x23dece;            // a different STUB from $23DFB4, the same bucket
+export const FRAME_STUB_RTS = 0x25b54a; // $25B4EC bsr -- an immediate rts
+
+export function drawFrame25B4D6(ram, rom) {
+  for (const p of FRAME_PARTS) {
+    if (p.gate !== undefined && ram.u16(p.gate) === 0) continue;   // $25B510 beq
+    enqueueRegistersThroughStub(ram, rom, FRAME_EMIT, p.d1, p.art, p.d3, p.d4);
+  }
+}
+
+// ===========================================================================
+// 10. `$25B54C` -- THE ROW LABELS, INDEXED BY THE ROW ITSELF
+// ===========================================================================
+// The tenth column and the only one that reads no RAM at all yet still varies per row:
+// `move.l ($18,PC,D6.w),D2` with `addq.w #4,D6`. The extension word sits at `$25B560`, so
+// the table base is `$25B560 + $18 = $25B578` -- five longs, and `$25B58C` is the next
+// routine, which pins it at exactly five. These are the 1ST..5TH markers.
+export const LABEL_TABLE = 0x25b578;
+
+export function drawRowLabels25B54C(ram, rom) {
+  let d1 = 0x538004c0;                                   // $25B54C
+  for (let row = 0; row < ROWS; row++) {                 // $25B55C moveq #$4,D7
+    enqueueRegistersThroughStub(ram, rom, EMIT, d1,
+      rom.u32(LABEL_TABLE + row * 4), 0x610, 5);         // $25B55E / $25B562
+    d1 = stepRow(d1);                                    // $25B56A..$25B570
+  }
+}
+
 /**
- * `$25B492`'s nine column routines, in the ROM's own `bsr` order. The two remaining `bsr`s
- * -- `$25B4D6` (the frame) and `$25B54C` (the 1ST..5TH row labels) -- are screen furniture
- * that reads no part of the table and are not in this wave.
+ * `$25B492`'s ELEVEN column routines, in the ROM's own `bsr` order. `$25B4D6` and `$25B54C`
+ * come first because the frame and the labels are drawn under the data.
  */
 export const SCREEN_COLUMNS = Object.freeze([
+  Object.freeze({ site: 0x25b4d6, draw: drawFrame25B4D6 }),
+  Object.freeze({ site: 0x25b54c, draw: drawRowLabels25B54C }),
   Object.freeze({ site: 0x25b58c, draw: drawShips25B58C }),
   Object.freeze({ site: 0x25b5e2, draw: drawStyles25B5E2 }),
   Object.freeze({ site: 0x25b626, draw: drawStatic25B626 }),
@@ -416,7 +473,78 @@ export const SCREEN_COLUMNS = Object.freeze([
   Object.freeze({ site: 0x25b944, draw: drawDigits25B944 }),
 ]);
 
-/** The nine, in order. `$25B492`'s other two `bsr`s are counted by the caller, not here. */
+/** All eleven of `$25B492`'s `bsr.w`s, in order. */
 export function drawHiscoreColumns(ram, rom) {
   for (const c of SCREEN_COLUMNS) c.draw(ram, rom);
+}
+
+// ===========================================================================
+// 11. `$25B412` -- THE SCREEN AS A STATE ROUTINE, AND THE CARRY IT RETURNS
+// ===========================================================================
+// One caller, `$25A938 jsr $25B412`. Three states on `$812E5C`, each falling THROUGH into the
+// next state's test rather than branching away, so a single call can advance twice:
+//
+//   state 0   chainCheck($812E60) -- when the chain has finished, free it and go to state 1
+//   state 1   subq.w #1,$812E5E -- a countdown; at zero, load the chain script at $25BAAA
+//             through `$246710`, keep the handle in `$812E60`, and go to state 2
+//   state 2   chainCheck again; when THAT chain finishes, free it and take the other exit
+//
+// **THE TWO EXITS DIFFER ONLY IN THE CARRY, and both of them are idioms rather than flags:**
+//
+//   25b4c2  ori #$1,SR       after the draw       -> carry SET   = still running
+//   25b4d2  move.w D0,D0     after $28C170        -> carry CLEAR = finished
+//
+// `move.w D0,D0` looks like a no-op and is there to CLEAR the carry, which `ori` is there to
+// set. A port that treated `$25B4D2` as dead code would return whatever carry the last call
+// left, and the caller would never see the screen end.
+//
+// The draw at `$25B492` runs in every state EXCEPT the frame on which state 2's chain
+// finishes -- states 0 and 1 reach it by falling past both `cmpi`s, and state 2 reaches it
+// while its chain is still alive. So the screen draws continuously and then, on one frame,
+// frees the chain, fires the `$28C170` cue and reports finished without drawing.
+export const SCREEN_STATE = Object.freeze({
+  site: 0x25b412,
+  caller: 0x25a938,
+  state: 0x812e5c,          // $25B416/$25B440/$25B46E cmpi.w
+  timer: 0x812e5e,          // $25B44C subq.w #1
+  handle: 0x812e60,         // $25B460 move.l D0
+  script: 0x25baaa,         // $25B454 lea ($25BAAA,PC),A0 -- EIGHT nodes, $42 bytes
+  scriptNodes: 8,
+  endCue: 0x28c170,         // $25B4C8 -- already a known cue in tally.js
+});
+
+/**
+ * `$25B412` -- one frame of the high-score screen.
+ *
+ * @returns {boolean} the CARRY: `true` (set) means still running, `false` (clear) means the
+ *   screen has finished. Named as a boolean rather than returned as a flag because the two
+ *   exits are the only difference between them.
+ */
+export function hiscoreScreen25B412(ram, rom, ctx) {
+  if (ram.u16(SCREEN_STATE.state) === 0) {                  // $25B416 cmpi.w #$0
+    if (chainCheck24681A(ram, ram.u32(SCREEN_STATE.handle)) === 0) {  // $25B428 jsr / bne
+      chainFree246800(ram, ram.u32(SCREEN_STATE.handle));   // $25B432 jsr $246800
+      ram.setU16(SCREEN_STATE.state, 1);                    // $25B438
+    }
+  }
+  if (ram.u16(SCREEN_STATE.state) === 1) {                  // $25B440 -- FALLS THROUGH
+    const t = u16(ram.u16(SCREEN_STATE.timer) - 1);         // $25B44C subq.w #1
+    ram.setU16(SCREEN_STATE.timer, t);
+    if (t === 0) {                                          // $25B452 bne
+      const handle = chainLoader246710(ram, rom, SCREEN_STATE.script, ctx);  // $25B45A
+      ram.setU32(SCREEN_STATE.handle, handle >>> 0);        // $25B460
+      ram.setU16(SCREEN_STATE.state, 2);                    // $25B466
+    }
+  }
+  if (ram.u16(SCREEN_STATE.state) === 2) {                  // $25B46E
+    if (chainCheck24681A(ram, ram.u32(SCREEN_STATE.handle)) === 0) {  // $25B480 / $25B486
+      chainFree246800(ram, ram.u32(SCREEN_STATE.handle));   // $25B488
+      // $25B48E bra $25B4C8 -- the ONLY path that skips the draw.
+      ctx?.unportedLog?.note(SCREEN_STATE.endCue,
+        '$25B4C8 jsr $28C170 -- the screen-end BGM cue, the same one tally.js names as cueA');
+      return false;                                         // $25B4D2 move.w D0,D0
+    }
+  }
+  drawHiscoreColumns(ram, rom);                             // $25B492, eleven bsr.w
+  return true;                                              // $25B4C2 ori #$1,SR
 }

@@ -51,10 +51,14 @@ const arts = (ram) => emitted(ram).map((r) => r.art);
 
 // ==================== 1. THE FAMILY'S SHAPE
 
-test('W302 all nine columns draw, and each is five rows or more', { skip: SKIP }, () => {
+test('W302 every per-row column draws FIVE rows or more', { skip: SKIP }, () => {
   // `moveq #$4,D7` with `dbra` is FIVE, the fact W297 got wrong once. A column that emitted
   // four rows would leave the last high-score line blank and look like a data problem.
+  //
+  // `$25B4D6` is excluded because it is the FRAME (W303): four requests with immediates and
+  // no row loop at all, so "five rows" is not a claim about it.
   for (const c of SCREEN_COLUMNS) {
+    if (c.site === 0x25b4d6) continue;
     const ram = factory();
     c.draw(ram, ROM);
     const n = emitted(ram).length;
@@ -343,9 +347,10 @@ test('W302 the style index is `(value - 2) * 2` over THREE longs', { skip: SKIP 
 
 // ==================== 8. THE WHOLE SCREEN
 
-test('W302 the nine columns together draw the factory table', { skip: SKIP }, () => {
+test('W302 the columns together draw the factory table, and the sum is exact', { skip: SKIP }, () => {
   // The sum is a real check: it is the count that changes if any single routine loses a row
-  // or a suppression arm.
+  // or a suppression arm. The frame's contribution depends on `$80390C`, so this drives it
+  // with the phase word at its `new Ram()` value and the nine data columns behind it.
   const ram = factory();
   drawHiscoreColumns(ram, ROM);
   const total = emitted(ram).length;
@@ -354,16 +359,18 @@ test('W302 the nine columns together draw the factory table', { skip: SKIP }, ()
     c.draw(one, ROM);
     return emitted(one).length;
   });
-  assert.equal(total, parts.reduce((a, b) => a + b, 0), 'nine independent columns');
-  assert.equal(total, 5 + 5 + 5 + 5 + 5 + 15 + 15 + 31 + 5);
+  assert.equal(total, parts.reduce((a, b) => a + b, 0), 'eleven independent routines');
+  // frame 3 (the blink is off) + labels 5 + ship 5 + style 5 + static 5 + loop/stage 5 +
+  // static 5 + chain 15 + initials 15 + score 31 + digits 5
+  assert.equal(total, 3 + 5 + 5 + 5 + 5 + 5 + 5 + 15 + 15 + 31 + 5);
 });
 
-test('W302 the driver order is the ROM\'s `bsr` order', { skip: SKIP }, () => {
-  // `$25B492` is eleven consecutive `bsr.w`s. The nine here are in that order; the other two
-  // are `$25B4D6` (the frame) and `$25B54C` (the 1ST..5TH labels), which read no part of the
-  // table and are not in this wave.
+test('W302 the driver order is the ROM\'s `bsr` order, all ELEVEN', { skip: SKIP }, () => {
+  // `$25B492` is eleven consecutive `bsr.w`s and the port has all of them (W302 did nine,
+  // W303 added the frame and the labels). The frame and the labels come FIRST because they
+  // are drawn under the data.
   assert.deepEqual(SCREEN_COLUMNS.map((c) => c.site),
-    [0x25b58c, 0x25b5e2, 0x25b626, 0x25b650, 0x25b700,
+    [0x25b4d6, 0x25b54c, 0x25b58c, 0x25b5e2, 0x25b626, 0x25b650, 0x25b700,
       0x25b72a, 0x25b7a0, 0x25b8ce, 0x25b944]);
   for (let i = 1; i < SCREEN_COLUMNS.length; i++) {
     assert.ok(SCREEN_COLUMNS[i].site > SCREEN_COLUMNS[i - 1].site, 'ascending, as bsr\'d');

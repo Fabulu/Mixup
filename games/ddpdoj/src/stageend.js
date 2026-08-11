@@ -1119,6 +1119,41 @@ const CHAIN = {
  *  driver `$246410` dispatches on; it is NOT ported here and the node-count word
  *  is the only script byte the loader reads.  See `PRESENTATION_DEVIATION[0x28d6fc]`. */
 export function chainLoader24652A(ram, rom, scriptAddr) {
+  return chainLoaderBody(ram, rom, scriptAddr, CHAIN_LOADERS[0]);
+}
+
+/**
+ * `$246710` -- the SIBLING loader, and it is one constant away from `$24652A`.
+ *
+ * Same prologue to the byte (`movem.l D1-D7/A0-A4` / `move.w #$0,D6` /
+ * `lea $810346,A1` / `moveq #$2,D7`), the same three-slot player scan at stride `$30`, the
+ * same twenty-slot pool at `$80FA86` stride `$70`, the same `($2C)` link, the same
+ * `$FFFF0000` lifetime, the same `$FFFFFFFF` on failure and the same free-and-bail through
+ * `$246800`. **The whole difference in the pool lifecycle is `($1E,node)`: `$246762` writes
+ * `#$1` where `$246576` writes `#$0`.** (The two also swap the order of the `($2,node)` and
+ * `($1E,node)` stores, which changes nothing.)
+ *
+ * Its per-node CONTENT seeding is larger -- it reads four script words per node instead of
+ * none and walks the `$24627A` code-pointer table and the `$246B38` anim-data table -- but
+ * that is the SAME presentation tier `$24652A`'s own comment above declares out of scope for
+ * the same reason, so it is counted here rather than invented. See
+ * `PRESENTATION_DEVIATION[0x28d6fc]`.
+ */
+export function chainLoader246710(ram, rom, scriptAddr, ctx) {
+  ctx?.unportedLog?.note(0x24676a, '$246710 per-node CONTENT seeding -- the $24627A '
+    + 'code-pointer table, the $246B38 anim-data table and the $30(node) script copy. The '
+    + 'same presentation tier $24652A declares out of scope; the pool lifecycle above is '
+    + 'ported byte for byte and the node count is the only script word it reads');
+  return chainLoaderBody(ram, rom, scriptAddr, CHAIN_LOADERS[1]);
+}
+
+/** `$24652A` and `$246710`, which differ in exactly one node field. */
+const CHAIN_LOADERS = Object.freeze([
+  Object.freeze({ site: 0x24652a, field1e: 0 }),   // $246576 move.w #$0,($1E,A2)
+  Object.freeze({ site: 0x246710, field1e: 1 }),   // $246762 move.w #$1,($1E,A2)
+]);
+
+function chainLoaderBody(ram, rom, scriptAddr, spec) {
   for (let s = 0; s < CHAIN.playerSlots; s++) {             // $246538 moveq #2,d7
     const slot = CHAIN.playerList + s * CHAIN.playerStride;
     if ((ram.u16(slot) & 0x8000) !== 0) continue;           // $24653C bmi next
@@ -1139,8 +1174,8 @@ export function chainLoader24652A(ram, rom, scriptAddr) {
       ram.setU32(node + CHAIN.linkOff, 0);                  // $246568
       ram.setU32(tail + CHAIN.linkOff, node >>> 0);         // $246570 link prev
       tail = node;                                          // $246574 a1 := a2
-      ram.setU16(node + 0x1e, 0);                           // $246576
-      ram.setU16(node + 0x02, 0);                           // $24657C
+      ram.setU16(node + 0x1e, spec.field1e);                // $246576 / $246762 -- the ONE
+      ram.setU16(node + 0x02, 0);                           // $24657C / $24675C
       ram.setU32(node + CHAIN.lifeOff, 0xffff0000);         // $2465C0 the lifetime
       built++;
     }
