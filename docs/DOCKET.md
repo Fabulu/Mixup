@@ -497,10 +497,37 @@ the condition it described, and a docket item built on one inherits the stalenes
 
 D7 painted the hyper gauges (W271) and D16 made the level show when not hypering (W283), so
 this is the residue of both. It is SMALL and NEAR the hyper counter, which is `src/hud.js`'s
-territory. Likely candidates in order: a hyper STOCK icon distinct from the bar, the legend
-itself, or one of the `$240F62` top-level objects that paints a HUD decoration. Ask for a
-screenshot if a sweep does not name it -- a small missing element is exactly the case where
-one picture is worth a wave.
+territory.
+
+**W324's recon eliminated the two easy explanations and produced a concrete list.** Not a
+missing draw: every one of `hud.js`'s ~29 `DRAWS` entries has a real implementation, including
+all the hyper-adjacent ones -- `$285FA6` the hyper label flash, `$286ED6`/`$286F3E` the hyper
+STOCK icons, `$2859DC` the chain bar, `$2857B4` the item row. Each has a live body with an
+`if (!rom)` fallback, so none is note-only. And not missing ART either: the descriptor sweep
+reports 0 not-in-bundle over 900 frames, 4244 of 4244 streams.
+
+**So the element belongs to one of the ELEVEN unported `$240F62` top-level objects.** The table,
+read from the image (`addr`, `priority`, and whether `main.js` registers it):
+
+     0 $28D520 $0009 yes    10 $260794 $001F yes
+     1 $26127A $001A yes    11 $25DBB4 $000A yes
+     2 $2491C0 $001C yes    12 $28F3AC $0009 NO   <- name entry (W305..W311's routines)
+     3 $249246 $001B yes    13 $288A60 $000B NO   <- **$288xxx = the HUD/score family**
+     4 $260B30 $0009 yes    14 $288C6C $0014 NO   <- **likewise**
+     5 $28B5E0 $0018 yes    15 $291F66 $001E NO
+     6 $28D63C $000A yes    16 $256E7A $001E NO
+     7 $290BE8 $001E NO     17 $25CEB8 $000A NO
+     8 $25A770 $000A NO     18 $24902A $000A NO
+     9 $25CACA $000A NO     19 $28EE88 $001E NO
+
+**Start at 13 and 14.** Both are in `$288xxx`, which is where every HUD table this port already
+uses lives (`$2881F2` the panel tiles, `$2883E6` the hyper-stock icons, `$28840E`, `$287DF8`).
+Both open the same way -- `tst.b ($2,A5) / beq` then `cmpi.b #$2,($2,A5)`, an object state
+machine on a state byte -- and both run at gameplay priorities ($000B and $0014) rather than
+menu ones. That is the profile of a small thing painted next to the other small things.
+
+A screenshot would still cut this in half, and asking is cheaper than reading two objects: mark
+on it what is missing and which of the two candidates it sits next to.
 
 ### D22: MEDALS MAKE NO SOUND WHEN COLLECTED
 
