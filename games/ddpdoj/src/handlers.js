@@ -1748,6 +1748,194 @@ function deathSeq85(ram, rom, a5, a6, ctx, d1) {
   freeEnemy(ram, a5);                                  // $275BA6 jmp $263762
 }
 
+// ============================================ TYPE $8E (W319) ============
+// Six of stage 5's records, `$2764D2..$2766A5`, and W318 read it end to end before writing any of
+// it -- because the two things it needed were a table entry to RESOLVE and a table to BOUND, and
+// both go wrong when guessed.
+//
+// ## `$2782CC` IS THE ZOOM FAMILY'S SUB-TABLE, AND THAT WAS WORTH RESOLVING
+//
+// The draw is `move.w ($1E,A6),D0 / add.w D0,D0 x2 / lea ($2782CC,PC),A0 / movea.l (A0,D0.w),A0 /
+// jsr (A0)` with `D6 = $F800F800`. `$2782CC` is **entry 12 of the 18-entry primary emitter table
+// `$27829C`**, and entries 12..17 are exactly the five zoom members `spritequeue.js` documents plus
+// the duplicate at 12/13:
+//
+//     [12] $23D9E2   [13] $23D9E2   [14] $23DA5C   [15] $23DAD6   [16] $23DB50   [17] $23DBCA
+//
+// So `($1E,A6)` selects a ZOOM bucket, not a plain stub, and the port already has the wrapper:
+// `enqueueZoomedThroughStub`, which runs the entry through `resolveZoomStub` -- the check that a
+// routine merely starting with the same four opcodes cannot pass as a family member. D6 is the
+// flags longword that wrapper documents: high word the long axis, low word the short.
+//
+// **Nothing in the ROM bounds `($1E,A6)`.** At index 6 the `movea.l` reads `$2782E4`, the first of
+// the TWELVE register-convention entries after the zoom six -- a valid-looking pointer that would
+// be dispatched as if it were a zoom member. The port throws instead, naming the six.
+//
+// ## AND `$278314` IS SIX WORDS, BOUNDED BY A SECOND RUN OF THE SAME SHAPE
+//
+// The death arm reads `($1E,A6)*2` from it, the same index the draw uses, so 0..5 -> words at
+// 0..$A. The words are `0000 0000 0004 0008 000C 0010`, and `$278320` starts another run beginning
+// `0000 0000 0004 0008` -- so six words is where this table ends and the next begins.
+//
+// ## ONE COUNTED GAP, AND IT IS ONE THE PORT ALREADY COUNTS
+//
+// `$27F8EE` with `D0 = 8` and `D2 = ($1E,A6)` is the death routine `handlers.js` already counts at
+// three sites, including **type `$89`'s with the identical registers** (`$27F8EE $89 death routine
+// (D0=$8, D2=($1E,A6))`). So this is the same deferral the port has already made twice, not a new
+// one, and it is worded to say so.
+//
+// ## THE FIVE-STAGE PARAMETER TABLE
+//
+// `$276484 move.w $813094,D0 / lea ($2764A0,PC),A0 / adda.w D0,A0` -- `$813094` is stage*2, so the
+// table is five 2-byte rows and the stage picks one. `10 0F | 00 1E | 00 1E | 00 1E | 11 0E`, and
+// the three reads are `(A0)` then `(A0)+` twice, so `($1D,A6)` and `($18,A5)` BOTH take the row's
+// first byte and `($19,A5)` takes the second. Stage 5's row is `$11,$0E`.
+const T8E = Object.freeze({
+  init: 0x276404, initBody: 0x27640c, handler: 0x2764d2,
+  recordProto: 0x2764aa, recordWords: 6,     // $27641E moveq #$5,D0 -- D0+1
+  subProto: 0x2764b6,
+  stageRows: 0x2764a0, stageRowBytes: 2,
+  dirSprites: 0x272d7a,                      // 32 longs, already inside $272D70+$190
+  muzzle: 0x27327a,                          // the 32-entry muzzle table, already windowed
+  zoomTable: 0x2782cc, zoomEntries: 6,       // entries 12..17 of $27829C
+  deathWords: 0x278314, deathEntries: 6,
+  zoomFlags: 0xf800f800,                     // $276612 move.l #$F800F800,D6
+  hpFull: 0x140,                             // $2764FE cmpi.w #$140,($18,A6) / bcc
+  lowHpPalette: 0x19,                        // $27650E moveq #$19,D0
+  lowHpGate: 0x8130ca,                       // $276506 tst.w $8130CA / bne
+  hitMask: 0x5c, hitClear: 0xa3,
+  fireX: 0x1000,                             // $2765AC cmpi.w #$1000,($2,A6) / blt
+  shotBias: 0x80000,                         // $2765DE addi.l #$80000,D3
+  killScore: 0x20,                           // $27662E moveq #$20,D0
+  deathCue: 0x28c25a,
+  deathEffect: 0x0c,                         // $276660 moveq #$C,D0 -> $289004
+  cadenceBase: 0x40,                          // $276602 move.w #$40,D0 - $8130BA
+});
+
+/** `$276612..$27662C` -- the draw, through the ZOOM family rather than a fixed stub. */
+function draw8E(ram, rom, a6) {
+  const idx = ram.u16(a6 + 0x1e);                        // $276618 move.w ($1E,A6),D0
+  if (idx >= T8E.zoomEntries) {
+    unreached(0x276626, `type $8E's ($1E,A6) is ${idx}; $2782CC is entry 12 of the 18-entry `
+      + `primary emitter table and entries 12..17 are the SIX zoom members, so index 6 would `
+      + `dispatch $2782E4 -- the first register-convention entry -- as if it were one of them`);
+  }
+  const stub = rom.u32(T8E.zoomTable + idx * 4);         // $276626 movea.l (A0,D0.w),A0
+  enqueueZoomedThroughStub(ram, rom, stub, a6, T8E.zoomFlags);   // $27662A jsr (A0)
+}
+
+function handler8E(ram, rom, a5, ctx) {
+  const { tables, unported: u } = ctx;
+  const a6 = ram.u32(a5 + 0x06);
+  if (stepMovement(ram, rom, a5, tables, u)) return;    // $2764D2 jsr $2638A6
+
+  // $2764D8 -- `bcc $2764EE`, and the helper returns TRUE for off-screen (carry set).
+  if (onScreen242684(ram, a6)) {                        // off-screen
+    if (ram.u8(a5 + 0x16) !== 0) {                      // $2764E0 tst.b / beq $2764F4
+      freeEnemy(ram, a5);                               // $2764E6 jmp $263762
+      return;
+    }
+  } else {
+    ram.setU8(a5 + 0x16, 1);                            // $2764EE -- it has been seen
+  }
+
+  let pal;
+  if ((ram.u8(a6) & T8E.hitMask) === 0) {               // $2764F4/$2764F8 bne $276512
+    // $2764FA..$276510, and it is one decision written as two early-outs:
+    //   D0 = ($18,A5); HP >= $140 -> store D0; $8130CA set -> store D0; else D0 = $19.
+    pal = ram.u8(a5 + 0x18);                            // $2764FA
+    if (ram.u16(a6 + 0x18) < T8E.hpFull                 // $2764FE cmpi.w #$140 / bcc
+        && ram.u16(T8E.lowHpGate) === 0) {              // $276506 tst.w $8130CA / bne
+      pal = T8E.lowHpPalette;                           // $27650E moveq #$19,D0
+    }
+  } else {
+    ram.setU8(a6, ram.u8(a6) & T8E.hitClear);           // $276512 andi.b #$A3,(A6)
+    scoreHit(ram, ctx, a6, 0);                          // $276516 jsr $286096
+    pal = ram.u8(a6 + 0x1d);                            // $27651C
+    // $276520 -- if it was ALREADY the low-HP palette, start the flash from the base instead, or
+    // the XOR would toggle away from $19 and back rather than around the real colour.
+    if (pal === T8E.lowHpPalette) pal = ram.u8(a5 + 0x18);   // $276526
+    pal ^= ram.u8(a5 + 0x19);                           // $27652A/$27652E eor.b D2,D0
+    if ((ram.u16(a6 + 0x18) & 0x8000) !== 0) {          // $276530 tst.w / bmi $27662E
+      death8E(ram, rom, a5, a6, ctx);
+      return;
+    }
+  }
+  ram.setU8(a6 + 0x1d, pal & 0xff);                     // $276538 move.b D0,($1D,A6)
+
+  // $27653C `tst.l $8130D2` -- a LONGWORD over the freeze word AND $8130D4 together, the same
+  // shape as W308's `tst.w $81E0D8`. A `.w` reading would ignore $8130D4 entirely.
+  if (ram.u32(G.freeze) !== 0) { draw8E(ram, rom, a6); return; }   // $276542 bne $276612
+
+  if (due8(ram, a5 + 0x1e)) {                            // $276546 subq.b #1 / bcc $2765AC
+    ram.setU8(a5 + 0x1e, ram.u8(a5 + 0x1f));             // $27654C
+    if (ram.u8(a5 + 0x1c) === ram.u8(a5 + 0x1d)) {       // $276552/$276556 cmp.b / bne
+      // $27655C..$276578 -- pick the nearer LIVE player. `exg` on ($3,A5) swaps which is tried
+      // first, then `bmi`/`bpl` on each record's status word: a negative word is a live player.
+      let a0 = 0x8103e6;
+      let a1 = 0x810448;
+      if (ram.u8(a5 + 0x03) !== 0) { const t = a0; a0 = a1; a1 = t; }   // $27656E exg
+      let target = null;
+      if ((ram.u16(a0) & 0x8000) !== 0) target = a0;      // $276570 tst.w / bmi
+      else if ((ram.u16(a1) & 0x8000) !== 0) target = a1; // $276574 tst.w / bpl -> none
+      if (target !== null) {
+        const dir = aim64(aimTables(rom), ram.u16(a6 + 0x02), ram.u16(a6 + 0x04),
+          ram.u16(target + 0x02), ram.u16(target + 0x04));   // $276586 jsr $24203E
+        const d1 = slew64(ram.u16(a5 + 0x20), dir);       // $276590 jsr $242190
+        ram.setU16(a5 + 0x20, u16(d1));                   // $276596
+        const idx = u16((d1 & 0x3e) * 2);                 // $27659A/$27659E
+        ram.setU32(a6 + 0x0a, rom.u32(T8E.dirSprites + idx));   // $2765A6
+      }
+    }
+  }
+
+  // $2765AC -- the fire arm, gated on X and on the octagonal player distance.
+  if (i16(ram.u16(a6 + 0x02)) >= T8E.fireX && due8(ram, a5 + 0x1a)) {
+    ram.setU8(a5 + 0x1a, ram.u8(a5 + 0x17));             // $2765BA
+    // $2765C0 jsr $268018 / $2765C6 bcs $276612 -- the helper returns `{carry}` and a SET carry
+    // means DO NOT FIRE, so the near-player test gates the shot rather than enabling it.
+    if (!playerDist268018(ram, rom, a6).carry) {
+      const d1 = ram.u16(a5 + 0x20);                      // $2765CE
+      const off = u16((d1 & 0x3e) * 2);                   // $2765D2/$2765D8
+      const d3 = u32(rom.u32(T8E.muzzle + off) + T8E.shotBias);   // $2765DA/$2765DE
+      const regs = { d0: 0x00020006, d1: 0, d2: ram.u32(a6 + 0x02), d3, d4: 0, d5: 0, a5 };
+      const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x2813f0, regs);
+      ctx.bulletSpawn?.(0x2765f0, res);
+      if (due8(ram, a5 + 0x1c)) {                         // $2765F6 subq.b #1 / bcc
+        ram.setU8(a5 + 0x1c, ram.u8(a5 + 0x1d));          // $2765FC
+        // $276602 move.w #$40,D0 / sub.w $8130BA,D0 -- the RANK shortens the cadence.
+        ram.setU8(a5 + 0x1a, u16(T8E.cadenceBase - ram.u16(G.ba)) & 0xff);
+      }
+    }
+  }
+  draw8E(ram, rom, a6);                                   // $276612
+}
+
+/** `$27662E..$276672` -- the death arm. */
+function death8E(ram, rom, a5, a6, ctx) {
+  scoreKill(ram, rom, ctx, T8E.killScore, 0);            // $276630 jsr $28615E
+  ctx.soundPost?.(T8E.deathCue);                         // $276636 jsr $28C25A
+  const idx = ram.u16(a6 + 0x1e);
+  if (idx >= T8E.deathEntries) {
+    unreached(0x276648, `type $8E's death reads ($1E,A6)*2 from $278314, which is SIX words `
+      + `(0, 0, 4, 8, $C, $10) with a second run of the same shape starting at $278320; `
+      + `index ${idx} would read into it`);
+  }
+  // $276648 move.w (A0,D0.w),D1 -- and note this type computes the BUCKET itself rather than
+  // going through the `($1F,caller)` remap table `spawnPoolC289AF4` wraps, so the right helper is
+  // the one underneath it. Using the wrapper would index a remap table this call site never names.
+  const d1 = rom.u16(T8E.deathWords + idx * 2);
+  spawnPoolC289B50(ram, rom, ctx, 8, d1, ram.u32(a6 + 0x02), 0x289af4);   // $27664E, D0 = 8
+  // $27665A jsr $27F8EE with D0 = 8 and D2 = ($1E,A6) -- the death routine `handlers.js` already
+  // counts at three sites, one of them type $89's with these exact registers. The same deferral,
+  // not a new one.
+  ctx.unported?.note(0x27f8ee, `$27F8EE $8E death routine (D0=$8, D2=($1E,A6)=${idx}) -- the `
+    + `same routine and the same registers type $89 counts at $2A2xxx; deferred alike`);
+  const eff = spawnEffect(ram, ctx, T8E.deathEffect);    // $276662 jsr $289004, D0 = $C
+  if (eff) ram.setU32(eff + 0x02, ram.u32(a6 + 0x02));   // $276668
+  freeEnemy(ram, a5);
+}
+
 // ============================================ TYPE $59 (W317) ============
 // The CHEAPEST of stage 5's remaining types: `$265A14..$265A52`, sixty-four bytes, and its init
 // body is twenty. One record in the script, and it is not really an enemy at all -- it is a timed
@@ -1926,7 +2114,10 @@ function handler45(ram, rom, a5, ctx) {
       ram.setU16(a5 + 0x1e, ramp);
       if (i16(ramp) >= T45.rampMax) {                    // $270F02 cmpi.w #$1C / blt $270F3E
         ram.setU16(a5 + 0x1e, T45.rampMax);              // $270F0C clamp
-        const r = aim64AtTarget(tables, ram, a5, a6);    // $270F12 jsr $24202C
+        // W319 CORRECTION: `aimTables(rom)`, not `ctx.tables`. W316 passed `ctx.tables` here, and
+        // in the live game that is the MoveTables -- `aim64AtTarget` wants the AimTables. The W316
+        // test passed only because its fixture put an AimTables in `ctx.tables`.
+        const r = aim64AtTarget(aimTables(rom), ram, a5, a6);   // $270F12 jsr $24202C
         if (!r.carry) {                                  // $270F18 bcs $270F3E
           // $270F1C addq.b #2 then $270F1E andi.w #$3C -- byte add, WORD mask, as in type $11.
           ram.setU8(a5 + 0x26, ((r.dir + 2) & 0xff) & T45.aimMask);
@@ -1962,7 +2153,7 @@ function handler45(ram, rom, a5, ctx) {
       // $270F9C subq.b #1,($24,A5) / bne $270FB2 -- at zero the angle is refreshed.
       ram.setU8(a5 + 0x24, (ram.u8(a5 + 0x24) - 1) & 0xff);
       if (ram.u8(a5 + 0x24) === 0) {
-        const r = aim64AtTarget(tables, ram, a5, a6);    // $270FA8 jsr $24202C
+        const r = aim64AtTarget(aimTables(rom), ram, a5, a6);   // $270FA8 jsr $24202C
         ram.setU8(a5 + 0x26, r.dir & 0xff);              // $270FAE move.b D1,($26,A5)
       }
     }
@@ -6876,6 +7067,7 @@ const HANDLERS = new Map([
   [0x27db30, handlerA4],          // W218: type-$9F deferred fragment $A4
   [0x270e36, handler45],          // W316: Stage-5 ramped four-state turret $45
   [0x265a14, handler59],          // W317: Stage-5 timed type-$3F spawner $59
+  [0x2764d2, handler8E],          // W319: Stage-5 zoom-drawn tracking turret $8E
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
   [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42

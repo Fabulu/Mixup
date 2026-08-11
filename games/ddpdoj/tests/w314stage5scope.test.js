@@ -89,7 +89,7 @@ function nullOf(script) {
 
 // ==================== 1. THE WORK LIST
 
-test('W314/W316 stage 5 has FOURTEEN types with no handler, over 44 of its 770 records',
+test('W314/W319 stage 5 has TWELVE types with no handler, over 37 of its 770 records',
   { skip: SKIP_IMG }, () => {
     // The measurement this file exists for. `enemyHandlerMap` is built from the cartridge, and
     // `runEnemyDriver`'s `handlers.get(h)` miss is where a missing handler is reported -- but
@@ -98,17 +98,17 @@ test('W314/W316 stage 5 has FOURTEEN types with no handler, over 44 of its 770 r
     // and 65.
     const map = enemyHandlerMap(ROM);
     const miss = missingOf(SCRIPTS[5], map);
-    assert.equal(miss.length, 13, `thirteen types, got ${miss.map((m) => m.type.toString(16))}`);
-    assert.equal(miss.reduce((a, m) => a + m.records, 0), 43, 'across 43 records');
+    assert.equal(miss.length, 12, `twelve types, got ${miss.map((m) => m.type.toString(16))}`);
+    assert.equal(miss.reduce((a, m) => a + m.records, 0), 37, 'across 37 records');
     // Ranked by record count. **W317 found this is NOT the order to port them in** -- see the
     // dependency test below. `$46` is the biggest and needs an unported 1130-byte child first,
     // while `$8E` is six records and standalone.
     const ranked = [...miss].sort((a, b) => b.records - a.records || a.type - b.type);
     assert.deepEqual(ranked.map((m) => m.type),
-      [0x46, 0x8e, 0x1b, 0x1a, 0x81, 0x48, 0x49, 0x4a, 0x4b,
+      [0x46, 0x1b, 0x1a, 0x81, 0x48, 0x49, 0x4a, 0x4b,
         0x43, 0x47, 0x4c, 0xb0]);
-    assert.deepEqual(ranked.slice(0, 2).map((m) => m.records), [13, 6],
-      '$46 and $8E are the two biggest left; W316 took $45 and W317 took $59');
+    assert.deepEqual(ranked.slice(0, 2).map((m) => m.records), [13, 5],
+      '$46 is the biggest left but wants $55 first; $1B is the biggest CLEAN one');
   });
 
 test('W315 stage 5\'s one type-$00 record points at a NULL handler', { skip: SKIP_IMG }, () => {
@@ -140,14 +140,14 @@ test('W314 each missing type\'s init and handler come from the cartridge\'s own 
       [0x49, [0x27159e, 0x271640]], [0x4a, [0x2719ae, 0x271a64]],
       [0x4b, [0x271c92, 0x271d48]], [0x4c, [0x26f4da, 0x26f5f2]],
       [0x81, [0x273f06, 0x274076]],
-      [0x8e, [0x276404, 0x2764d2]], [0xb0, [0x2a42d4, 0x2a4606]],
+      [0xb0, [0x2a42d4, 0x2a4606]],
     ]);
     for (const [t, [init, handler]] of want) {
       const e = typeEntry(t);
       assert.equal(e.init, init, `type $${t.toString(16)} init`);
       assert.equal(e.handler, handler, `type $${t.toString(16)} handler`);
     }
-    assert.equal(want.size, 13);
+    assert.equal(want.size, 12);
   });
 
 test('W317 FOUR of the thirteen spawn an UNPORTED child, so record count is the wrong order',
@@ -189,9 +189,12 @@ test('W317 FOUR of the thirteen spawn an UNPORTED child, so record count is the 
         assert.ok(!map.has(typeEntry(k).handler), `and $${k.toString(16)} is unported`);
       }
     }
-    // `$8E` is the biggest STANDALONE one left, which makes it the next target rather than `$46`.
+    // `$8E` was the biggest standalone one and W319 took it, so `$1B` (5 records) is now the
+    // biggest clean target. Kept as an assertion that the scan still agrees it spawns nothing.
     assert.equal(spawnsOf(typeEntry(0x8e).handler, 0x1d4).size, 0, '$8E spawns nothing');
-    assert.ok(!map.has(typeEntry(0x8e).handler), 'and it is still unported');
+    assert.ok(map.has(typeEntry(0x8e).handler), 'and W319 ported it');
+    assert.equal(spawnsOf(typeEntry(0x1b).handler, 0x3fc).size, 0, '$1B spawns nothing either');
+    assert.ok(!map.has(typeEntry(0x1b).handler), 'and it is the next clean one');
     // And W317's own type spawned an ALREADY-ported child, which is why it was the cheap one.
     assert.ok(map.has(typeEntry(0x3f).handler), 'type $3F, W199, is ported');
   });

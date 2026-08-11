@@ -2550,6 +2550,20 @@ SHOT_WINDOWS.extend([
     # handler $265A14. The type draws nothing of its own -- it is a timed spawner -- so this one
     # window is the whole of its data.
     (0x2659F8, 0x001C, "W317: type $59's sub-record prototype, ending at its handler $265A14"),
+    # W319: type $8E. Three windows, and the middle one is the interesting extent.
+    #   $2764A0 + $32   the FIVE two-byte stage rows, the 6-word record prototype and the sub
+    #                   prototype back to back, $2764A0..$2764D1, ending at the handler $2764D2.
+    #   $2782CC + $18   entries 12..17 of the 18-entry primary emitter table $27829C -- the SIX
+    #                   zoom-family members, ending at $2782E4 where the register-convention
+    #                   twelve begin.
+    #   $278314 + $0C   the death arm's SIX words (0, 0, 4, 8, $C, $10). $278320 starts a second
+    #                   run beginning with the same four values, which is what bounds this one.
+    (0x2764A0, 0x0032, "W319: type $8E's five stage rows and its two prototypes, "
+                       "$2764A0..$2764D1, ending at its handler"),
+    (0x2782CC, 0x0018, "W319: the SIX zoom-family entries 12..17 of $27829C, which type $8E's "
+                       "draw indexes by ($1E,A6); ends at $2782E4"),
+    (0x278314, 0x000C, "W319: type $8E's death-arm words, SIX of them; $278320 begins a second "
+                       "run of the same shape"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

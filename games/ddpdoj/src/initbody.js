@@ -1762,6 +1762,41 @@ BODY.set(0x27ceb4, (ram, rom, a5, a6, unported, _tables, palette) => {
 // --- type $9F ($27C5BE): Stage 4's final pre-boss structure sequence.
 // Three linked subrecords share the opening animation, threshold cues, death
 // presentation, and the live deferred type-$A4 debris emitted during state 2.
+const TYPE8E_AIM_TABLES = new WeakMap();
+// --- type $8E ($27640C): stage 5's second-largest by record count, W319. Two prototypes, the
+// shared position read, and then two stage-conditional writes and a five-row parameter table.
+//
+// `$276484 move.w $813094,D0 / lea ($2764A0,PC),A0 / adda.w D0,A0` -- `$813094` is stage*2, so the
+// table is FIVE two-byte rows and the stage picks one: `10 0F | 00 1E | 00 1E | 00 1E | 11 0E`. The
+// three reads are `(A0)` then `(A0)+` twice, so `($1D,A6)` and `($18,A5)` BOTH take the row's first
+// byte and only `($19,A5)` takes the second.
+BODY.set(0x27640c, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x2764b6);             // $276412 jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x2764aa, 0x05);        // $276420 jsr $26377A -- D0+1 = 6 words
+  readInitPosition(ram, rom, a5, unported);             // $276426 jsr $263808
+  // $27642C -- STAGE 1 only, and only once the scroll clock has passed $156: a tougher HP.
+  if (ram.u16(0x813092) === 0 && ram.u16(0x8130ce) >= 0x156) {
+    ram.setU16(a6 + 0x18, 0x0500);                      // $27643E move.w #$500,($18,A6)
+  }
+  // $276444 -- aim once at spawn, keep the raw result, and pick the directional sprite from it.
+  // The AimTables are memoised per ROM, the same way types $16, $85/$86 and $8D do it in this file.
+  let at = TYPE8E_AIM_TABLES.get(rom);
+  if (!at) { at = new AimTables(rom); TYPE8E_AIM_TABLES.set(rom, at); }
+  const r = aim64AtTarget(at, ram, a5, a6);
+  const dir = r.carry ? 0 : r.dir;                      // $276448 -- both players dead: no aim
+  ram.setU8(a5 + 0x21, dir & 0xff);                     // $276454 move.b D1,($21,A5)
+  ram.setU32(a6 + 0x0a,                                 // $27645E move.l (A0,D1.w),($A,A6)
+    rom.u32(0x272d7a + u16((dir & 0x3e) * 2)));
+  // $276464/$276472 -- both arms of the second stage test write 4, so it is 4 either way.
+  ram.setU8(a5 + 0x17, 4);                              // $276476 move.b D0,($17,A5)
+  ram.setU8(a5 + 0x1a,                                  // $27647A/$276480 sub.b D0,($1A,A5)
+    (ram.u8(a5 + 0x1a) - ram.u16(0x8130b4)) & 0xff);
+  const row = 0x2764a0 + u16(ram.u16(0x813094));        // $276484/$276490 adda.w D0,A0
+  ram.setU8(a6 + 0x1d, rom.u8(row));                    // $276492 move.b (A0),($1D,A6)
+  ram.setU8(a5 + 0x18, rom.u8(row));                    // $276496 move.b (A0)+,($18,A5)
+  ram.setU8(a5 + 0x19, rom.u8(row + 1));                // $27649A move.b (A0)+,($19,A5)
+});
+
 // --- type $59 ($2659E4): the cheapest of stage 5's remaining types, W317. One prototype and one
 // word. `move.w #$6,($18,A5)` is TWO byte fields: the counter at $18 becomes zero and its reload at
 // $19 becomes 6, so `$265A3C subq.b #1,($18,A5)` borrows on the very first frame and the type's

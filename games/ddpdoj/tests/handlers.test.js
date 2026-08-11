@@ -153,7 +153,9 @@ test('the ported handler addresses are registered through W223 type $41', () => 
       // `tests/w314stage5scope.test.js` ranks, and the biggest by record count (21 of 770).
       // W317 adds $265A14, type $59 -- the CHEAPEST of them at sixty-four bytes, and a timed
       // deferred-spawn source rather than an enemy.
-      0x270e36, 0x265a14,
+      // W319 adds $2764D2, type $8E -- the second-biggest of stage 5's by record count and the
+      // first in the port whose DRAW goes through the zoom family rather than a fixed stub.
+      0x270e36, 0x265a14, 0x2764d2,
     ].sort((a, b) => a - b));
 });
 
