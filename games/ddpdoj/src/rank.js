@@ -339,6 +339,94 @@ export function makeRankObject(rom) {
 /** `$260A20` -- the side's mailbox longword: flag at +0, state at +2. */
 const OBJ4_MAILBOX = [0x813162, 0x813166];
 
+/**
+ * W270 -- THE PRODUCER SIDE OF THE ANNOUNCEMENT, and it is four one-line routines.
+ *
+ * `announce260B30` below is the CONSUMER: object dispatch `[4]`, registered in W269, which
+ * reads a flag and a state out of `$813162`/`$813166` twice a frame. This is what writes
+ * them. Every one of the four does the same three things -- select the side's mailbox, set
+ * the flag, set the state -- and they differ only in which state and whether they refuse
+ * to overwrite it:
+ *
+ *     $260A88   state 0                      unconditional
+ *     $260A9A   state $4    unless already $4
+ *     $260AB6   state $8                     unconditional
+ *     $260AF2   state $C    unless already $C
+ *
+ * and the four states are EXACTLY the four entries `OBJ4_STATES` covers, which is how
+ * producer and consumer are known to agree rather than assumed to.
+ *
+ * `$260A20` is the selector: `$813162` when D0 is zero and `$813166` otherwise, matching
+ * `OBJ4_MAILBOX`. It is two `lea`s and a `tst.b`.
+ *
+ * THE CALLERS ARE ALL STILL UNPORTED -- `$25CD6A`, `$25D52A`, `$25DB64`, `$25DC08`,
+ * `$2601DE`, `$288A02` and five more, scanned over the whole image. Object dispatch `[11]`
+ * (`$25DBB4`) is the nearest and is recon'd in worklog 270; it needs `$2600D8`, which no
+ * wave has read. This lands the protocol those callers share so none of them has to
+ * re-derive it, and so the pairing with W269's consumer is pinned by a test now rather
+ * than discovered later.
+ */
+const ANNOUNCE_POST = Object.freeze({
+  0x260a88: Object.freeze({ state: 0x00, guard: false }),
+  0x260a9a: Object.freeze({ state: 0x04, guard: true }),
+  0x260ab6: Object.freeze({ state: 0x08, guard: false }),
+  0x260af2: Object.freeze({ state: 0x0c, guard: true }),
+});
+
+/** `$260A20` -- the side's mailbox. D0 zero is P1. */
+export function announceBox260A20(side) {
+  return OBJ4_MAILBOX[side === 0 ? 0 : 1];                 // $260A20/$260A2C
+}
+
+/**
+ * One of the four posters, named by its own ROM address so a caller reads as the listing
+ * does. The GUARDED two refuse to re-post a state that is already set, which matters:
+ * re-posting would restart the consumer's scroll from its first cell.
+ * @param site one of `$260A88`, `$260A9A`, `$260AB6`, `$260AF2`
+ */
+export function announcePost(ram, site, side) {
+  const p = ANNOUNCE_POST[site];
+  if (!p) {
+    unreached(site, `$${site.toString(16).toUpperCase()} is not one of the four `
+      + `announcement posters. They are $260A88 (state 0), $260A9A ($4), $260AB6 ($8) `
+      + `and $260AF2 ($C), and those four states are exactly $260B6A's four entries`);
+  }
+  const box = announceBox260A20(side);
+  if (p.guard && ram.u16(box + 0x02) === p.state) return false;   // $260A9E/$260AF8
+  ram.setU16(box, 1);                                     // $260AA8/$260B02
+  ram.setU16(box + 0x02, p.state);                        // $260AAC/$260B06
+  return true;
+}
+
+/**
+ * `$260ACA` -- WHICH announcement, and it is the FIFTH loop-specific rule this port has.
+ *
+ *     cmpi.b #$9,$803808 / bge   -> state 0     the config byte at or past 9
+ *     cmpi.b #$1,$80380B / beq   -> state 0
+ *     tst.w $813098 / beq        \  LOOP 2 **and** stage 4 -> state $4
+ *     cmpi.w #$4,$813092 / beq   /
+ *     otherwise                  -> state $C
+ *
+ * So the second loop's stage-4 clear says something the first loop's does not, and it is
+ * the only place in this decision that reads `$813098`.
+ */
+export function announceChoose260ACA(ram, side) {
+  // `cmpi.b #$9,D0 / bge` is a BYTE compare and it is SIGNED, so $80 and up are
+  // NEGATIVE and fall through to the loop rule. `i16` of a byte would read $F0 as
+  // 240 and send every high config byte to state 0.
+  if (((ram.u8(0x803808) << 24) >> 24) >= 9) {            // $260ACA cmpi.b/bge
+    return announcePost(ram, 0x260a88, side);
+  }
+  if (ram.u8(0x80380b) === 1) {                           // $260AD4 cmpi.b/beq
+    return announcePost(ram, 0x260a88, side);
+  }
+  if (ram.u16(0x813098) !== 0                             // $260ADE tst.w/beq
+    && ram.u16(0x813092) === 4) {                         // $260AE8 cmpi.w/beq
+    return announcePost(ram, 0x260a9a, side);             // $260AF0 -> state $4
+  }
+  return announcePost(ram, 0x260af2, side);               // $260AF2 -> state $C
+}
+
 /** `$260B6A` -- FOUR longwords, and the table's far end is its own first target
  *  `$260B7A`, so four is pinned by code and not by a run length. */
 const OBJ4_STATES = [0x260b7a, 0x260b94, 0x260c68, 0x260d62];
