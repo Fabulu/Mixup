@@ -1498,8 +1498,26 @@ try {
         // and both still pass: ADJACENT-FRAME entries 0 and WRONG-PHASE entries
         // 0, which is what says the effect still fires on at most every other
         // frame.
-        const EXP90 = { frames: 1500, entries: 521, records: 17385,
-          distinct: 35, first: 31, beamLive: 1041 };
+        //
+        // W324: beamLive 1041 -> 1039, entries 521 -> 520, records 17385 ->
+        // 17281, `distinct` 35 and `first` 31 held again. **THIS ONE HAS A
+        // MECHANISM, NOT JUST A DRIFT.** W324 wired `$25485E jsr $289F96`, the
+        // beam-BODY effect, which had been a counted note since W34 -- and it
+        // fills FROM THE SAME POOL E, through the same `$28A506` template and the
+        // same `poolETail`. So the body and the impact now COMPETE for the
+        // player's thirty slots, exactly as they do on the board, and the impact
+        // gets fewer of them: 104 records fewer over 1500 frames.
+        //
+        // `fillSlot` also draws the shared RNG at `$28A204`, which is why
+        // `beamLive` and `entries` moved as well rather than only `records`.
+        // Those two landing back on 1039/520 -- W321's own pre-refresh pair -- is
+        // arithmetic and not significance; do not read a restoration into it.
+        //
+        // The two assertions that carry the wave's meaning are STILL untouched
+        // and still pass. That is the point: the effect's cadence rule survives a
+        // change that moved every count around it.
+        const EXP90 = { frames: 1500, entries: 520, records: 17281,
+          distinct: 35, first: 31, beamLive: 1039 };
         const runW90 = (frames, drop) => {
           const g = new Game(bundle.seed, bundle.tables, {
             logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
