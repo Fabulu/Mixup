@@ -6,15 +6,25 @@ a focused smoke proves it.
 
 Opened 2026-08-10 from a play session on the shipped web build.
 
-**Standing as of W272: eleven of twelve closed.** D11's remainder -- the
-animation-object execution engine -- is the only open item. The section headings below
-still read "Fixed" and "Open, in priority order" from the day the docket was opened;
-the per-item markers are authoritative, and D12 covers that drift.
+**Standing as of W279: eleven of the first twelve closed, FIVE NEW ITEMS OPEN.**
+The section headings below still read "Fixed" and "Open, in priority order" from the
+day the docket was opened; the per-item markers are authoritative, and D12 covers
+that drift.
 
     D1  W226   D2  W226   D3  W264/265/266   D4  W265/266/267
     D5  W230   D6  W234   D7  W271           D8  W272 (no draw was missing)
     D9  W227/228/231      D10 W268           D12 W253/263
     D11 partly landed (W232); the execution engine remains
+
+    D13 orientation, portrait + landscape, mobile + desktop     OPEN
+    D14 make it a PWA                                          OPEN
+    D15 a user option to LOCK the orientation                   OPEN
+    D16 the hyper bar should show the level when NOT hypering   OPEN
+    D17 the in-stage medals are missing                         OPEN
+
+D13, D14 and D15 are PRESENTATION AND PACKAGING and share one file, `index.html`;
+they are the only items in this docket that need no ROM reading at all, so they are
+the cheapest player-visible wins left. D16 and D17 are translation.
 
 ## Fixed
 
@@ -212,3 +222,77 @@ stages 3 and 4 entirely, and nothing in `docs/` except this docket and
 the web bundle's shard layout. Worth one pass that brings the top-level documents
 up to the code, states where the port actually is stage by stage, and points at
 the worklogs for detail rather than restating them.
+
+## Added 2026-08-11 from a second play session
+
+### D13: orientation support is thin -- portrait, landscape, mobile and desktop
+
+The owner wants the picture to work properly in BOTH orientations on BOTH form
+factors, not just to survive them. D10 (W268) fixed the specific case of the mobile
+browser bar eating a landscape viewport, and it added a `FULL` button; it did not
+make orientation a first-class thing. `pickScale` picks an INTEGER scale for the box
+it is given and `fit()` re-runs on `fullscreenchange`, so the machinery is there --
+what is missing is deliberate handling of the four cases and of the rotation event
+itself.
+
+The game is a TATE (vertical) shooter, so portrait is the native orientation and
+landscape is the one that needs a decision: letterbox, or rotate the canvas.
+
+### D14: it should be a PWA
+
+Installable, with a manifest, an icon set, a service worker and offline capability.
+The bundle is already static and self-contained (`assets/` plus `index.html`), which
+is most of the work; what is missing is the manifest, the worker and the install
+affordance. Worth checking the shard layout against a cache-first strategy -- the
+sprite sheet is sharded and deferred, so a naive precache would download everything.
+
+### D15: an option to stop the screen from rotating
+
+Separate from D13 and asked for separately: the player should be able to LOCK the
+orientation. W268 already calls `screen.orientation.lock` inside its own `try` on the
+fullscreen path and deliberately ignores failure, so the API contact exists -- this
+is about exposing it as a user setting that persists, and about being honest on
+engines where it cannot work (it needs fullscreen on most, and iPhone Safari has no
+`Element.requestFullscreen` at all).
+
+### D16: the hyper bar should show the level even when NOT hypering
+
+**The owner's words: "hyper bar shows you how much hyper you have even when not
+hypering."** MEASURED this session, by calling `scoreRow285C62` directly:
+
+    not hypering            bucket-25 records: 0
+    hypering, gauge $40     bucket-25 records: 1   tile $1CBF34
+    hypering, gauge $200    bucket-25 records: 1   tile $1CBC14
+
+So the bar EXISTS, it is ported, and its tile really tracks the gauge -- `$285C86`
+indexes `$2881F2` by `gauge * $16 / $4B0`. But it draws only on the HYPER arm, and
+the port is faithful there: `$285D74..$285DD6`, the non-hyper arm, draws icons and
+the rank icon and NO panel. `codexref 2881F2` finds exactly two readers, `$285C86`
+and `$285E00`, and both are the two sides' hyper arms.
+
+So the always-visible bar is NOT this record, and the next wave has to find what
+draws it. `$81B63E`/`$81B640` -- which `hud.js` calls `hyperActiveP1`/`P2` and which
+gate the panel -- have **92 references in build B**, so the name may be wrong and the
+word may mean "the gauge is armed" rather than "a hyper is running". That is the first
+thing to settle, because if it is the former the port already draws the bar correctly
+and the gap is whatever maintains the word.
+
+Do not assume it is a missing draw. D7 and D8 both looked like missing draws and were
+not.
+
+### D17: the in-stage medals are missing
+
+The owner reports the stage medals do not appear. What the port already has, so the
+next wave does not re-derive it:
+
+* `src/bee.js` (W111) -- "the medal IS the bee", kind index 1 (and 16) of pool A, and
+  its header says the owner reported the yellow 500-point medals once before;
+* `src/hud.js` (W124) -- the medal ACCUMULATOR `$81B61A`/`$81B616` and the tally body
+  `$285400`, which drains `$81B610` through the `$32/$64/$96` medal tiers;
+* the gate that body needs, `$8130F9` bit 2, DOES have a writer in this port:
+  `src/stageend.js:735` at `$28DE16 bset #$2,$8130F9`. So the tally is reachable.
+
+Which means the gap is upstream of the tally -- the in-stage medal ITEM itself, its
+spawn, or its art -- and the way in is a sweep of what the medal pool emits during
+play rather than a reading of the bonus screen. Note that the chaining medal value is
+the thing a player notices, so check the VALUE progression as well as the picture.
