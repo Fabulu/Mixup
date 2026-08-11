@@ -24,6 +24,7 @@ import { PaletteState } from '../src/palette.js';
 import { ALLOC, resolveHandle241298 } from '../src/objalloc.js';
 import { RAM as MACHINE } from '../src/machine.js';
 import { setPanelBody2532B6 } from '../src/player.js';
+import { HISCORE, HISCORE_SIDES } from '../src/hiscore.js';
 import {
   SCREEN11, menuCarry28D53C, menuDips23C932, screenHeader2533F6,
   screenState0_25DB30, screenState2_25DB7C, tallyScreen25DBB4,
@@ -633,21 +634,47 @@ test('W290 the $803926 gate does nothing but re-post', { skip: SKIP }, () => {
   assert.equal(f.ram.u16(TALLY.side0 + 0x00), 0, 'but it re-posted');
 });
 
-test('W290 the HIGH-SCORE check is one counted gap, named per side', { skip: SKIP }, () => {
-  // $287BD2 / $287C08. Deferred because they share $287C3E, which writes the loop and
-  // stage, calls $287CEE for a slot and compares overflow words -- a high-score TABLE
-  // INSERT, which is a subsystem and not a routine. Its carry sets one bit of $8130CC
-  // and affects nothing else in this line.
-  for (const [side, addr] of [[0, '$287BD2'], [1, '$287C08']]) {
+test('W290/W300 the HIGH-SCORE check RUNS, and the right side gets the bit', { skip: SKIP }, () => {
+  // This was a counted gap from W290 until W300 built the subsystem. `$287BD2`/`$287C08`
+  // now run for real, so what this asserts is the wiring: the ROW byte picks the side, and
+  // the side's own bit of `$8130CC` is set. Bit 0 is P1 and bit 1 is P2, from two separate
+  // `ori.b` instructions, so a boolean would have lost one of them.
+  for (const [side, bit] of [[0, 0x01], [1, 0x02]]) {
     const f = world();
     f.ram.setU16(0x803926, 0);
     f.ram.setU8(TALLY.side0 + TALLY.row, side);
+    f.ram.setU8(0x8130cc, 0);
+    f.ram.setU32(HISCORE_SIDES[side].total, 0x00123456);   // beats an empty table
     bonusLine2260056(f.ram, ROM, f.ctx, TALLY.side0);
-    const hit = f.log.report().find((r) => r.includes(addr));
-    assert.ok(hit, `side ${side} counts ${addr}`);
-    assert.match(hit, /HIGH-SCORE/, 'and says what it is');
-    assert.match(hit, /\$287C3E/, 'and names the shared body');
+    assert.equal(f.ram.u8(0x8130cc), bit, `side ${side} sets bit ${bit}`);
+    assert.equal(f.ram.u32(HISCORE.scoresBase), 0x00123456, 'and the score went in at 0');
   }
+});
+
+test('W290/W300 the carry sense: a losing score sets NO bit', { skip: SKIP }, () => {
+  // `$260078 bcs $26009A` SKIPS the `ori`, and `$287CE8 ori #$1,SR` is the failure exit.
+  // Reading that backwards flags the losing side, which is why it gets its own test rather
+  // than riding along with the case above.
+  const f = world();
+  f.ram.setU16(0x803926, 0);
+  f.ram.setU8(TALLY.side0 + TALLY.row, 0);
+  f.ram.setU8(0x8130cc, 0);
+  // An empty table plus a zero score: the tie at the last entry exits with the borrow.
+  f.ram.setU32(HISCORE_SIDES[0].total, 0);
+  bonusLine2260056(f.ram, ROM, f.ctx, TALLY.side0);
+  assert.equal(f.ram.u8(0x8130cc), 0, 'no bit for a score that did not get in');
+});
+
+test('W290/W300 line 2 still creates both objects when the score loses', { skip: SKIP }, () => {
+  // `$260078 bcs $26009A` lands on the object creation, not on the tail, so the high-score
+  // outcome must not gate the tally screen coming into existence.
+  const f = world();
+  f.ram.setU16(0x803926, 0);
+  f.ram.setU8(TALLY.side0 + TALLY.row, 0);
+  f.ram.setU32(HISCORE_SIDES[0].total, 0);
+  const r = bonusLine2260056(f.ram, ROM, f.ctx, TALLY.side0);
+  assert.ok(r.objA, 'the type $D object exists');
+  assert.ok(r.objB, 'and object [11], the tally screen');
 });
 
 test('W290 line 2 recounts the live sides on the way in', { skip: SKIP }, () => {

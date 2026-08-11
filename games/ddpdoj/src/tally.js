@@ -57,6 +57,7 @@ import {
 import { announcePost } from './rank.js';
 import { paletteSet241688 } from './palette.js';
 import { setPanel2603B0 } from './player.js';
+import { hiscoreBody287C3E, HISCORE_SIDES } from './hiscore.js';
 
 /** The two tally records, `$260104 lea $8130FA,A6` and `$2600EE lea $81311E,A6`. */
 const DISPATCH = 0x240f62;   // $241198 lea ($240F62,PC),A0 -- the object table
@@ -193,22 +194,22 @@ export function bonusLine125FFA8(ram, rom, ctx, a6) {
 // keeps one at `($18,A6)`. Three different fields for three different objects, so a
 // port that reused one would silently drop a handle.
 //
-// **THE HIGH-SCORE CHECK IS ONE COUNTED GAP.** `$287BD2`/`$287C08` are a P1/P2 pair that
-// each load a side's score state -- `$81B440`/`$81B444` (the totals), `$81B44C`/`$81B44E`
-// (the overflows), `$813084`/`$813088` (the words `$2600D8` posts), `$81B632`/`$81B634`
-// (the chain high-waters) and `$81B49A`/`$81B49E` (the digit states), all already named
-// in `hud.js` -- into `$81B420`/`$81B430` and then share `$287C3E`, which writes the loop
-// and stage, calls `$287CEE` to find a slot, and compares overflow words. That is a
-// high-score TABLE INSERT and it is a subsystem, not a routine: it wants its own wave and
-// BCD care rather than the tail of this one.
+// **THE HIGH-SCORE CHECK IS NOW PORTED** (W300, `src/hiscore.js`). It was a counted gap
+// from this line's own wave until the subsystem behind it existed: `$287BD2`/`$287C08` load
+// a side's score state -- the totals, the overflows, the ship-select pair, the chain
+// high-waters and the digit states, all already named in `hud.js` -- into
+// `$81B420`/`$81B430`, share `$287C3E`, and go through `$287CEE`'s nine-array insert.
 //
-// The carry it returns decides one bit of `$8130CC` and nothing else in this line, so
-// deferring it costs exactly that bit -- which is why the line is worth landing now with
-// the gap named.
+// The carry decides one bit of `$8130CC` and nothing else in this line, and the sense is
+// worth naming here because it is invertible: `$260078 bcs $26009A` SKIPS the `ori`, and
+// `$287CDA andi #$FFFE,SR` is the success exit, so **the bit is set when the side MADE the
+// table.** A port that read the carry the other way would flag the losing side.
 const BONUS2 = Object.freeze({
   site: 0x260056,
   gate: 0x803926,                 // $260060 tst.w
   flags: 0x8130cc,                // $26007C/$260092 ori.b -- bit 0 P1, bit 1 P2
+  // $260072 / $260088 -- the two heads, kept here as the call sites they are. The bodies
+  // live in `hiscore.js` as `HISCORE_SIDES`, indexed the same way.
   hiScore: Object.freeze([0x287bd2, 0x287c08]),
   objA: Object.freeze({ type: 0x0d, handle: 0x20 }),   // $26009A
   objB: Object.freeze({ type: 0x0b, handle: 0x1c }),   // $2600AE -- object [11]
@@ -226,17 +227,14 @@ export function bonusLine2260056(ram, rom, ctx, a6) {
     return null;
   }
 
+  // $26006A tst.b ($17,A6) / bne $260088 -- the ROW byte picks the side, so this is the
+  // same one-record-per-side walk the rest of the tally uses.
   const side = ram.u8(a6 + TALLY.row) !== 0 ? 1 : 0;
-  // $26006A..$260098 -- the high-score check, and the ONE thing this line defers.
-  ctx?.unportedLog?.note(BONUS2.hiScore[side], `$${
-    BONUS2.hiScore[side].toString(16).toUpperCase()} -- the side-${side} HIGH-SCORE `
-    + `CHECK. It loads the side's totals ($81B440/$81B444), overflows ($81B44C/$81B44E), `
-    + `the words $2600D8 posted ($813084/$813088), the chain high-waters ($81B632/`
-    + `$81B634) and the digit states ($81B49A/$81B49E) into $81B420/$81B430, then shares `
-    + `$287C3E -- which writes the loop and stage, calls $287CEE for a slot and compares `
-    + `overflow words. That is a high-score TABLE INSERT and wants its own wave. Its `
-    + `carry would set bit ${side} of $8130CC and affects nothing else here, so this `
-    + `line runs without it`);
+  const spec = HISCORE_SIDES[side];
+  const hi = hiscoreBody287C3E(ram, spec);                 // $260072 / $260088 jsr
+  if (hi.made) {                                           // bcs SKIPS the ori
+    ram.setU8(BONUS2.flags, ram.u8(BONUS2.flags) | spec.flagBit);  // $26007C / $260092
+  }
 
   // $26009A / $2600AE -- BOTH objects, and the handles land in different fields.
   for (const o of [BONUS2.objA, BONUS2.objB]) {
