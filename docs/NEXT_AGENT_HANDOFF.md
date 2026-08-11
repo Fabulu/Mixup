@@ -28,8 +28,46 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W306, `ddpdoj: the banned-name filter`.
-- Suite: `node --test games/ddpdoj/tests/` is **2176/2176**, green, no skips. 402 ROM windows.
+- HEAD is W315, `ddpdoj: the family check comes back negative`.
+- Suite: `node --test games/ddpdoj/tests/` is **2288/2288**, green, no skips. 405 ROM windows.
+- **STAGE 5 HAS STARTED AND IS SCOPED EXACTLY.** W313 windowed its spawn span
+  (`$237978 + $2640`, the one stage whose far end is its last movement stream's terminator rather
+  than the next stage's script) and W314/W315 censused it: **fifteen enemy types have no handler,
+  over 65 of its 770 script records.** Stages 1..4 have zero missing. The ordered list, by how
+  much of the stage each buys, with every init and handler address, is pinned in
+  `tests/w314stage5scope.test.js` -- start there, do not re-derive it:
+
+      $45 x21  $46 x13  $8E x6  $1B x5  $1A x4  $81 x3
+      $48 $49 $4A $4B x2 each   $43 $47 $4C $59 $B0 x1 each
+
+  `$45`'s handler is `$270E36..$27102B` -- **502 bytes**, comparable to the stage-4 types that each
+  took a wave (W211..W218). Expect per-type waves, not table rows.
+- **THREE THINGS THAT LOOK LIKE SHORTCUTS TO STAGE 5 AND ARE NOT.**
+  1. A bare `new Ram()` cannot drive ANY stage: all five throw on garbage pointers, including
+     stage 1, which plays end to end. Seeding it and re-installing the stage still throws, because
+     `runEnemyFrame` is one of the seven calls a frame makes. Asserted in W314's test.
+  2. Absence from `enemyHandlerMap` is NOT the same as unported. `dojcoverage.py` line 120 declares
+     `NULL_HANDLERS = {0x26781C, 0x27E40A}` -- the reason 130 of 256 types report as `null`. W314
+     counted type `$00` as missing and W315 corrected it.
+  3. `$48`/`$49`/`$4A`/`$4B` are NOT one family. Consecutive types, consecutive inits, two records
+     each -- the exact shape that paid off in W286, W287, W298 and W312 -- and W315 diffed them:
+     seven shared bytes for one pair, forty-seven for the other, then real divergence. Fifteen real
+     routines.
+- **RUN `python games/ddpdoj/tools/dojcoverage.py`, not just the suite.** Its inventory check
+  compares the live source registries against a ROM-derived inventory and rejects a handler
+  registration the ROM does not agree is a handler. It is what caught W315's error.
+- **`$280BCE` IS DONE at eighteen of twenty** (W312 added hooks 2, 3 and 17). The two left are
+  indices 1 and 16, which are both `$280CEE` and belong to `allocBee27F92A`, so this dispatch will
+  never translate them. Hooks 2 and 3 are the same twenty-four bytes at two addresses and do NONE
+  of the shared speed work, which is why `fillGeneralImpact280B3E` gates it on `sharedSpeedBody`.
+- **THE HIGH-SCORE SUBSYSTEM IS COMPLETE** (W300..W311), including the name entry end to end:
+  search, insert, entry, factory table, the display screen's eleven `bsr`s and its state routine,
+  the tag lookup and writer, the arms, the work list, the banned-name filter, the cursor, the input
+  decode, the finish, and the countdown. What is left of it is presentation only:
+  `$28F7F4..$28F8AA` and `$28FAF4`, both gated on `$23E45A` -- a SIXTH member of the zooming
+  emitter family (`movem.l D4/D7/A0`, its own table at `$23E78C`, extent from D3 rather than
+  `($E,A6)`), which `resolveZoomStub` does not accept and which needs the emit-stub window widened
+  past `$23E0C2`.
 - **THE HIGH-SCORE SUBSYSTEM IS ESSENTIALLY COMPLETE.** W300..W306 took it from one measured
   ordering fact to the whole thing:
   - `src/hiscore.js` -- the search `$287D96`, the insert `$287CEE`, the entry
@@ -230,8 +268,12 @@ Cloudflare Pages. Pushing does not publish and publishing does not push.
 
 ## Work order toward the goal
 
-1. **THE NAME-ENTRY CHARACTER GRID**, the last unported part of the high-score subsystem and
-   the only piece of it that is pure presentation:
+1. **STAGE 5'S FIFTEEN TYPES, in the order `tests/w314stage5scope.test.js` pins.** `$45` (21
+   records), `$46` (13) and `$8E` (6) are 40 of the 65 between them. Per-type waves; the addresses
+   are in that test and the three false shortcuts are in the state section above.
+
+1b. **THE NAME-ENTRY CHARACTER GRID** -- superseded by W307/W311 except for the two panel draws,
+   which are gated on `$23E45A`. Kept below for the emitter's description:
    - `$28FCAA..$28FD2A` -- the cursor/grid draw. Straight-line `jsr $23DECE` calls built from
      immediates, the same shape as `$25B4D6` which W303 ported, so it is a transcription and not
      a puzzle. Gated on `($2E,A4)` being non-zero at `$28F4C4`.
