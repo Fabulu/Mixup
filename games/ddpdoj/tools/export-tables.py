@@ -622,6 +622,28 @@ SHOT_WINDOWS.extend([
     # exactly adjacent.
     (0x29FB3A, 0x0020, "W262: Stage-4 boss MAIN8's eight waypoints, ending where the "
                        "$29FB5A window already begins"),
+    # W264 (DOCKET D3): the impact pool's TEMPLATE table and every template it points at.
+    # `$280B44 lea $280E4A(PC),A3 / $280B4A movea.l (a3,d0.w),a3` indexes with D0 as a
+    # BYTE OFFSET, and `$280BCE`'s parallel dispatch has TWENTY entries (D0 = 0, 4, ...
+    # $4C), so this table is twenty longwords: $280E4A..$280E99. Its own end is the pin --
+    # $280E4A + $50 is $280E9A, which is the FIRST TEMPLATE. The twenty pointers resolve
+    # to SEVEN distinct templates ($280E9A $280EB0 $280EC6 $280EDC $280EF2 $280F08
+    # $280F1E), each read as move.l/move.l/move.w/move.l/move.l/move.w plus one more
+    # move.w without post-increment: 22 bytes, so they end at $280F34.
+    #
+    # W29..W263 hard-coded two of the twenty from measurement and threw on the rest, which
+    # is DOCKET D3: the screen clear is D0 = 0 and had no template, so no explosion. Both
+    # hard-coded sets are byte-for-byte templates 18 and 19, which the test asserts.
+    (0x280E4A, 0x00EA, "W264: the impact pool's twenty template pointers and the "
+                       "seven 22-byte templates they resolve to"),
+    # ...and the three per-kind HOOK TABLES the finish routines index with `(rnd & $E)`.
+    # `$280DEA`, `$280E1A` and `$280C5E` are one routine three times, differing in this
+    # table and in the status they normalise to. Eight words each, contiguous, and
+    # $280C2E + $30 is $280C5E -- the first of those three routines, so the run pins
+    # itself. The port carried two of the three as literal arrays; they match the
+    # cartridge exactly, which the test asserts before trusting the read.
+    (0x280C2E, 0x0030, "W264: the impact pool's three eight-word animation hook "
+                       "tables, ending at the first finish routine"),
     # W255: type $42's handler's TWO TABLES, contiguous, both pinned by code.
     #   $2A4252  EIGHT sprite descriptors. `$2A41F0 addq.w #$4,$3c(a5)` with
     #            `$2A41F4 andi.w #$1F` bounds the cursor at eight longwords, and they

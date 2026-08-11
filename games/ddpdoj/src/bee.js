@@ -355,12 +355,97 @@ export function allocBee27F92A(ram, rom, ctx, kind, layer, carrierA6) {
 /** `$27F8F0` -- allocate one of Stage 4 Type A3's proven general Pool-A
  * impacts. D1 is a zero-extended packed-position offset and D2 is the display
  * layer byte. Unlike the bee allocator this scans the first seventy slots. */
-export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) {
-  const spec = IMPACT_KIND[kind];
-  if (!spec) {
-    unreached(0x27f8f0, `$27F8F0 general Pool-A allocator received unported kind $${
-      (kind >>> 0).toString(16).toUpperCase()}`);
+/**
+ * `$280B44` / `$280B4A` -- THE TEMPLATE, READ OUT OF THE CARTRIDGE.
+ *
+ *     280b44: lea ($280E4A,PC),A3
+ *     280b4a: movea.l (a3,d0.w),a3       <-- D0 is a BYTE OFFSET, not a kind number
+ *
+ * so the reachable D0 values are 0, 4, ... `$1C` and the table is eight longwords. Each
+ * template is then copied field by field:
+ *
+ *     280b80: move.l (a3)+   the sprite OFFSET
+ *     280b82: move.l (a3)+   the sprite
+ *     280b84: move.w (a3)+   the size
+ *     280b86: move.l (a3)+   hit box A
+ *     280b88: move.l (a3)+   hit box B
+ *     280b8a: move.w (a3)+   the animation word
+ *     280b8c: addq.w #$2,a0  <-- a two-byte HOLE in the record, not in the template
+ *     280b8e: move.w (a3)    ...and the last word, WITHOUT a post-increment
+ *
+ * W29..W263 carried two of these eight as measured literals and threw on the other six,
+ * which is DOCKET D3: the screen clear's effect is D0 = 0 and had no template, so no
+ * explosion appeared. The eight are the cartridge's own data, so reading them covers
+ * every one -- and the two that were hard-coded are byte-for-byte templates 6 and 7,
+ * which the test asserts so the refactor is provably not a re-measurement.
+ */
+const IMPACT_TEMPLATES = 0x280e4a;
+const IMPACT_TEMPLATE_ENTRIES = 20;       // $280BCE's parallel dispatch has twenty
+
+function impactTemplate280B4A(rom, d0) {
+  if ((d0 & 3) !== 0 || d0 < 0 || d0 >= IMPACT_TEMPLATE_ENTRIES * 4) {
+    unreached(0x280b4a, `$280B4A movea.l (a3,d0.w),a3 with D0 = $${
+      (d0 >>> 0).toString(16).toUpperCase()} -- $280E4A holds ${
+      IMPACT_TEMPLATE_ENTRIES} longwords and D0 is a BYTE OFFSET into them, so it must `
+      + `be a multiple of 4 below $${(IMPACT_TEMPLATE_ENTRIES * 4).toString(16)
+        .toUpperCase()}. A caller passing a kind NUMBER rather than an offset lands here`);
   }
+  const t = rom.u32(IMPACT_TEMPLATES + d0);
+  return {
+    spriteOff: rom.u32(t), sprite: rom.u32(t + 4), size: rom.u16(t + 8),
+    hitA: rom.u32(t + 10), hitB: rom.u32(t + 14),
+    animWord: rom.u16(t + 18), tpl1C: rom.u16(t + 20),
+  };
+}
+
+/**
+ * `$280BCE` -- THE FINISH DISPATCH, twenty entries, and three of them are ONE ROUTINE
+ * with two parameters. `$280C5E` (D0 = 0), `$280DEA` (D0 = `$48`) and `$280E1A`
+ * (D0 = `$4C`) are the same instructions in the same order:
+ *
+ *     move.w #$420,$1A(a0)                  the speed floor
+ *     $242EC2 & $E -> a HOOK TABLE word     added into $A(a0), the sprite
+ *     $2431F4 >> 1                          added into the speed
+ *     $242FDE + 1 then $2431F4 - that       the angle spread
+ *     $241812 -> $20(a0)/$22(a0)            the cached velocity
+ *
+ * and they differ in exactly two things: which eight-word hook table they index, and the
+ * status they normalise `(a0)` to afterwards. `$280C5E` inlines the shared tail rather
+ * than `bsr`-ing it, and does NOT normalise -- which is why the port's `spec.status` has
+ * no value for D0 = 0 and why that had to be modelled rather than defaulted.
+ *
+ * The other seventeen entries are real routines this wave did not read. They now throw
+ * naming their OWN address out of the dispatch, which is a strictly better diagnosis
+ * than the old "unported kind": it says which routine to port.
+ */
+const IMPACT_FINISH = Object.freeze({
+  0x00: Object.freeze({ hooks: 0x280c4e, status: null, site: 0x280c5e }),
+  0x48: Object.freeze({ hooks: 0x280c2e, status: 0x18, site: 0x280dea }),
+  0x4c: Object.freeze({ hooks: 0x280c3e, status: 0x1c, site: 0x280e1a }),
+});
+const IMPACT_FINISH_DISPATCH = 0x280bce;
+
+export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) {
+  const finish = IMPACT_FINISH[kind];
+  if (!finish) {
+    // The message must NOT read the ROM: $280BCE is code and in no window, so building
+    // the diagnosis out of it would throw a DIFFERENT error than the one being reported.
+    unreached(0x280bce, `$280BCE's finish dispatch has no translated entry for `
+      + `D0 = $${(kind >>> 0).toString(16).toUpperCase()}. Three of its twenty are `
+      + `translated -- $280C5E (D0 = 0), $280DEA ($48) and $280E1A ($4C), one routine `
+      + `with a hook table and a status apiece. Read $280BCE + $${
+        (kind >>> 0).toString(16).toUpperCase()} out of the image to see which routine `
+      + `this D0 wants, and port THAT rather than widening a window here`);
+  }
+  // The template half comes from the cartridge for EVERY kind; `IMPACT_KIND` keeps only
+  // the fields that are not in it (the step, the end sprite and the collect behaviour),
+  // and those belong to the per-kind body rather than to this fill.
+  const spec = {
+    ...(IMPACT_KIND[kind] ?? {}),
+    ...impactTemplate280B4A(rom, kind),
+    status: finish.status,
+    hookOffsets: Array.from({ length: 8 }, (_, i) => rom.u16(finish.hooks + i * 2)),
+  };
   const d2 = u16((layer & 0xff) << 2);
   if ((d2 >> 2) >= POOL_A.layerEntries) {
     unreached(0x27f8f0, `$27F8F0 layer ${layer & 0xff} indexes past the ${
@@ -418,8 +503,13 @@ function fillGeneralImpact280B3E(ram, rom, ctx, slot, kind, offset, d2,
   const v = ctx.tables.vector(ram.u8(slot + B.speed), ram.u8(slot + B.angle));
   ram.setU16(slot + B.waypoint, v.dy);
   ram.setU16(slot + B.waypoint + 2, v.dx);
-  ram.setU16(slot + B.status,
-    (ram.u16(slot + B.status) & 0xff83) | spec.status);
+  // $280E10/$280E40 -- the two `bsr $280C84` variants normalise the status afterwards.
+  // $280C5E INLINES that tail instead and does NOT normalise, so a null status here is
+  // the ROM's own behaviour rather than a missing measurement.
+  if (spec.status !== null) {
+    ram.setU16(slot + B.status,
+      (ram.u16(slot + B.status) & 0xff83) | spec.status);
+  }
   return slot;
 }
 

@@ -132,6 +132,7 @@ import { unreached } from './unported.js';
 import { u16, i16 } from './ram.js';
 import { BUL } from './bullets.js';
 import { runMover, moverIterCount, MOVER } from './mover.js';
+import { allocPoolA27F8F0 } from './bee.js';
 
 export const BULLET_DRIVER = {
   entry: 0x281d9a,          // type-5 call #20, `$28B658 jsr $281D9A`
@@ -197,16 +198,13 @@ export function runScreenClear(ctx) {
     // The screen clear's kind is $81B412, which is $0 here, and kind $0 is not one
     // of those four. So porting this needs the $280E4A window plus a measured spec
     // for kind $0 -- not a driver.
-    ctx.unportedLog?.note(BULLET_DRIVER.clearEffect,
-      `$281D2E jsr $27F8F8 (D0=$${mode.toString(16).toUpperCase()}) -- the `
-      + `screen clear's per-bullet effect. The allocator and the pool driver are `
-      + `both ported over the impact pool $8171BE (allocPoolA27F8F0, `
-      + `runPoolADriver); what is missing is `
-      + `kind $${mode.toString(16).toUpperCase()}'s template, which $280B3E reads `
-      + `out of $280E4A and no window exports. The two writes that clear the `
-      + `bullet ($281D36/$281D38) ARE ported, so the only thing absent is the `
-      + `visual pop. Reached because W51's beam can kill the midboss, whose death `
-      + `arms $81B410 through $243E7C`);
+    // W264 (DOCKET D3) WIRES IT. `$27F8F8` is the sibling entry that enters the same
+    // $8171BE scan with D1 = D2 = 0, so it is `allocPoolA27F8F0` with offset 0 and
+    // layer 0, and A6 is the BULLET's own record. What blocked it was never a driver:
+    // it was that $280B3E's template came from a hand-transcribed map instead of from
+    // $280E4A, so kind $0 -- the screen clear's own kind -- had no entry. The template
+    // and the animation hooks now come out of the cartridge for all twenty kinds.
+    allocPoolA27F8F0(ram, ctx.rom, ctx, mode, 0, 0, base);  // $281D2E jsr $27F8F8
     ram.setU16(base, 0);                                // $281D36 clr.w (A6)
     ram.setU16(base + CLR.posA, 0xffff);                // $281D38 move.w #$FFFF
     hit++;

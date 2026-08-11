@@ -148,20 +148,37 @@ test('$281CD6 with $81B412 NEGATIVE takes the TRANSFORM arm ($281D48)', () => {
 // assertion is therefore the OPPOSITE one and is still a real check: the bullet
 // must be cleared exactly as `$281D36`/`$281D38` clear it, and the address must
 // still be named in the log rather than vanishing.
-test('$281CD6 with $81B412 POSITIVE clears the bullet and NAMES $27F8F8', () => {
+// W264 (DOCKET D3): this used to assert $27F8F8 was COUNTED. It is now WIRED, so the
+// assertion is that the effect really lands in the impact pool. The mode is $0 and not
+// the arbitrary $0001 this test used to pass: $81B412 holds a D0 BYTE OFFSET into
+// $280BCE's twenty-entry dispatch, so an odd value was never a reachable kind.
+test('$281CD6 with $81B412 POSITIVE clears the bullet and POPS an impact', () => {
   const ram = new Ram();
   const live = liveBullet(ram, 0);
   ram.setU16(BULLET_DRIVER.armWord, 1);
-  ram.setU16(BULLET_DRIVER.modeWord, 0x0001);
+  ram.setU16(BULLET_DRIVER.modeWord, 0x0000);
   const c = ctxOf(ram);
+  const before = ram.u16(0x817f7e);         // POOL_A.liveCount, $280B3E addq.w
   assert.equal(runScreenClear(c), 1, 'the live slot is acted on');
   assert.equal(ram.u16(live), 0, '$281D36 clr.w (A6)');
   assert.equal(ram.u16(live + 0x02), 0xffff, '$281D38 move.w #$FFFF,($2,A6)');
-  const named = [...c.unportedLog.calls.keys()]
-    .filter((k) => k.startsWith('$27F8F8 '));
-  assert.equal(named.length, 1, '$27F8F8 is COUNTED under its own address');
-  assert.match(named[0], /\$8171BE/, 'and it names the pool it does NOT allocate from');
+  assert.ok(ram.u16(0x817f7e) > before,
+    '$281D2E jsr $27F8F8 -- the impact pool count really went up');
+  assert.deepEqual(c.unportedLog.report(), [],
+    'and nothing about it is counted any more');
   assert.equal(BULLET_DRIVER.clearEffect, 0x27f8f8);
+});
+
+// A D0 the port has not read is a loud throw naming the DISPATCH ENTRY to port, which is
+// a better diagnosis than the old "unported kind": $280BCE has twenty entries and three
+// are translated.
+test('$281CD6 with an unread $81B412 names $280BCE and not a window', () => {
+  const ram = new Ram();
+  liveBullet(ram, 0);
+  ram.setU16(BULLET_DRIVER.armWord, 1);
+  ram.setU16(BULLET_DRIVER.modeWord, 0x0008);
+  assert.throws(() => runScreenClear(ctxOf(ram)), (e) => e.name === 'Unreached'
+    && e.romAddress === 0x280bce && /\$280C5E/.test(e.message));
 });
 
 // The cascade is the mover's own (`moverIterCount`, exported for exactly this
