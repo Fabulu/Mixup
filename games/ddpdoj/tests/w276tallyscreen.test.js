@@ -18,7 +18,8 @@ import { deferReset } from '../src/background.js';
 import { HUDRAM } from '../src/hud.js';
 import { TALLY, tally2600D8, bonusLine125FFA8, bonusLine2260056,
   bonusLine326010E, bonusLine42601F4, bonusLine52602B6,
-  bonusLine6260348, bonusLine726035A } from '../src/tally.js';
+  bonusLine6260348, bonusLine726035A, bonusLine826037C,
+  tallyDriver25FF7A } from '../src/tally.js';
 import { PaletteState } from '../src/palette.js';
 import { ALLOC, resolveHandle241298 } from '../src/objalloc.js';
 import { RAM as MACHINE } from '../src/machine.js';
@@ -1003,4 +1004,83 @@ test('W295 $241298 skips slot-0 ids, so a DROPPED handle reads as gone', { skip:
   f.ram.setU32(slot0 + ALLOC.idOff, 0);          // free
   assert.equal(resolveHandle241298(f.ram, 0).found, false, 'handle 0 matches nothing');
   assert.equal(resolveHandle241298(f.ram, 0).rec, ALLOC.createDummy);
+});
+
+// ======== 16. W296: BONUS LINE 8, AND THE DRIVER -- ALL NINE LINES REACHABLE
+
+test('W296 line 8 clears ($5) on BOTH sides\' type-$D objects', { skip: SKIP }, () => {
+  // The FOURTH wave to use line 2's ($20,A6): W290 stored it, W293 killed it, W295 read
+  // it, this clears a byte through it.
+  const f = world();
+  const s3 = ALLOC.table + 3 * ALLOC.stride;
+  const s4 = ALLOC.table + 4 * ALLOC.stride;
+  f.ram.setU32(s3 + ALLOC.idOff, 0x11);
+  f.ram.setU32(s4 + ALLOC.idOff, 0x22);
+  f.ram.setU32(TALLY.side0 + 0x20, 0x11);
+  f.ram.setU32(TALLY.side1 + 0x20, 0x22);
+  f.ram.setU8(s3 + 0x05, 0xff);
+  f.ram.setU8(s4 + 0x05, 0xff);
+  bonusLine826037C(f.ram, TALLY.side0);
+  assert.equal(f.ram.u8(s3 + 0x05), 0, 'side 0\'s object');
+  assert.equal(f.ram.u8(s4 + 0x05), 0, 'side 1\'s object');
+});
+
+test('W296 the driver runs ALL NINE requests without throwing', { skip: SKIP }, () => {
+  // The point of the wave: every entry of `$25FF52` now has a body. Request 0 is idle.
+  for (let req = 0; req <= 9; req++) {
+    const f = world();
+    f.ctx.palette = new PaletteState();
+    f.ctx.soundPost = () => {};
+    f.ram.setU16(TALLY.side0 + 0x00, req);
+    f.ram.setU32(TALLY.side0 + TALLY.ptr, 0x81fc00);
+    f.ram.setU16(0x81fc00, 3);
+    f.ram.setU16(TALLY.side0 + TALLY.type, 6);
+    assert.doesNotThrow(() => tallyDriver25FF7A(f.ram, ROM, f.ctx, A5),
+      `request ${req} has a body`);
+  }
+});
+
+test('W296 request 0 is IDLE, and the guard is the CODE not the table', { skip: SKIP }, () => {
+  // `$25FF52[0]` really is $00000000; `$25FF84 cmpi.w #$0,D0 / beq` is what stops a
+  // request of 0 jumping to address 0. So the null entry is real data -- W279's window
+  // covers it deliberately -- and the port must test the REQUEST.
+  assert.equal(ROM.u32(0x25ff52), 0, 'entry 0 is null in the cartridge');
+  const f = world();
+  f.ram.setU16(TALLY.side0 + 0x00, 0);
+  f.ram.setU16(TALLY.counter, 0x1234);
+  const ran = tallyDriver25FF7A(f.ram, ROM, f.ctx, A5);
+  assert.deepEqual(ran, [0, 0], 'both records idle');
+  assert.equal(f.ram.u16(TALLY.counter), 0x1234, 'and nothing ran');
+});
+
+test('W296 a request PAST 9 throws by address rather than jumping into code',
+  { skip: SKIP }, () => {
+    // The table is TEN longwords, so request 10 would read $25FF7A itself -- the driver's
+    // own `lea` -- and jump into it.
+    const f = world();
+    f.ram.setU16(TALLY.side0 + 0x00, 10);
+    assert.throws(() => tallyDriver25FF7A(f.ram, ROM, f.ctx, A5),
+      (e) => e.name === 'Unreached' && e.romAddress === 0x25ff92);
+  });
+
+test('W296 the driver walks BOTH records, at stride $24', { skip: SKIP }, () => {
+  // `lea ($24,A6),A6 / dbra D7` with D7 = 1. Two records, and the second is side 1.
+  const f = world();
+  f.ram.setU16(TALLY.side0 + 0x00, 7);
+  f.ram.setU16(TALLY.side1 + 0x00, 7);
+  f.ram.setU16(TALLY.counter, 0);
+  const ran = tallyDriver25FF7A(f.ram, ROM, f.ctx, A5);
+  assert.deepEqual(ran, [7, 7], 'both records ran');
+  // Line 7 returns the lease once per record, so two records give two.
+  assert.equal(f.ram.u16(TALLY.counter), 2, 'the lease came back twice');
+  assert.equal(TALLY.side1 - TALLY.side0, TALLY.stride, 'and the stride is $24');
+});
+
+test('W296 line 9 was ALREADY ported, and player.js said so', () => {
+  // `setPanel2603B0` describes itself as "jump-table entry 9 of `$25FF7A`" in its own
+  // words. The connection was recorded and the table that needed it did not exist yet --
+  // the same shape as W291's find, where W273 had noted an entry point nobody used.
+  const src = readFileSync(path.join(R, 'src', 'player.js'), 'utf8');
+  assert.match(src, /jump-table entry 9 of `\$25FF7A`/);
+  assert.match(src, /export function setPanel2603B0/);
 });

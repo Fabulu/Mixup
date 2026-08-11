@@ -56,6 +56,7 @@ import {
 } from './hud.js';
 import { announcePost } from './rank.js';
 import { paletteSet241688 } from './palette.js';
+import { setPanel2603B0 } from './player.js';
 
 /** The two tally records, `$260104 lea $8130FA,A6` and `$2600EE lea $81311E,A6`. */
 const DISPATCH = 0x240f62;   // $241198 lea ($240F62,PC),A0 -- the object table
@@ -507,6 +508,111 @@ export function bonusLine726035A(ram, a6) {
   ram.setU16(a6 + 0x00, 0);                                       // $260370
   ram.setU16(a6 + 0x02, 0);                                       // $260374
   return r;
+}
+
+// ===========================================================================
+// W296 -- `$26037C`, BONUS LINE 8, AND THE DRIVER `$25FF7A`
+// ===========================================================================
+//   26037c  lea $8130FA,A2 / lea $81311E,A3       <- BOTH records, like line 5
+//   260388  D0 = ($20,A2) / jsr $241298 / clr.b ($5,A0)
+//   260396  D0 = ($20,A3) / jsr $241298 / clr.b ($5,A0)
+//   2603a4  (A6) = 0 / ($2,A6) = 0 / rts
+//
+// The FOURTH wave to use line 2's `($20,A6)`: W290 stored it, W293 killed it, W295 read
+// it, and this clears a byte on both sides' objects through it.
+//
+// Like line 7, the write lands on `ALLOC.createDummy` when a handle no longer resolves,
+// and that is the cartridge's behaviour rather than an error -- see
+// `resolveHandle241298`.
+const BONUS8 = Object.freeze({
+  site: 0x26037c,
+  handleField: 0x20,
+  clearOff: 0x05,                  // $260392 / $2603A0 clr.b ($5,A0)
+});
+
+/** `$26037C` -- bonus line 8. Clears `($5,A0)` on BOTH sides' type-`$D` objects. */
+export function bonusLine826037C(ram, a6) {
+  const hit = [];
+  for (const rec of [TALLY.side0, TALLY.side1]) {            // A2 then A3
+    const r = resolveHandle241298(ram, ram.u32(rec + BONUS8.handleField));
+    ram.setU8(r.rec + BONUS8.clearOff, 0);                   // $260392 / $2603A0
+    hit.push(r);
+  }
+  ram.setU16(a6 + 0x00, 0);                                  // $2603A4
+  ram.setU16(a6 + 0x02, 0);                                  // $2603A8
+  return hit;
+}
+
+// ===========================================================================
+// `$25FF7A` -- THE DRIVER, AND ALL NINE LINES ARE NOW REACHABLE
+// ===========================================================================
+//   25ff7a  lea $8130FA,A6 / moveq #$1,D7        TWO records, via dbra
+//   25ff82  move.w (A6),D0 / cmpi.w #$0,D0 / beq $25FF9E
+//   25ff8c  add.w D0,D0 / add.w D0,D0            the request, *4
+//   25ff92  lea ($25FF52,PC),A0 / adda.w D0,A0 / movea.l (A0),A0 / jsr (A0)
+//   25ff9e  lea ($24,A6),A6 / dbra D7,$25FF82
+//
+// **ENTRY 0 IS NULL AND THE GUARD IS THE CODE, NOT THE TABLE.** `$25FF52[0]` really is
+// `$00000000`; `$25FF84 cmpi.w #$0,D0 / beq` is what stops a request of 0 jumping to
+// address 0. So the null entry is real data -- W279's window covers it deliberately --
+// and the port must test the request rather than the table.
+//
+// THE NINE LINES, and where each one lives:
+//
+//   1  $25FFA8  bonusLine125FFA8      W289  the counter, the freeze, the lives row
+//   2  $260056  bonusLine2260056      W290  CREATES the type-$D and type-$B objects
+//   3  $26010E  bonusLine326010E      W291  $2600D8's SECOND ENTRY POINT
+//   4  $2601F4  bonusLine42601F4      W292  two loop-2 rules
+//   5  $2602B6  bonusLine52602B6      W293  the teardown -- nine kills
+//   6  $260348  bonusLine6260348      W294  advances the CALLER through A5
+//   7  $26035A  bonusLine726035A      W295  returns the lease, advances type-$D
+//   8  $26037C  bonusLine826037C      W296  clears a byte on both type-$D objects
+//   9  $2603B0  setPanel2603B0        (player.js, earlier) the SET/bonus panel
+//
+// Line 9 was already ported and nobody had noticed it was a bonus line: `player.js`
+// describes it as "jump-table entry 9 of `$25FF7A`" in its own words, so the connection
+// was recorded and the table that needed it did not exist yet.
+//
+// **LINES 6 AND 7 NEED THINGS THE DRIVER DOES NOT HAVE.** Line 6 needs A5, the caller's
+// object record, which `$25FF7A` never sets (W294); line 9 needs a ctx for its counted
+// note. So the driver takes both and passes them on, rather than pretending the ROM's
+// register state is reconstructible from the record alone.
+const LINE_COUNT = 9;
+
+/**
+ * `$25FF7A` -- run one frame of the tally for BOTH records.
+ *
+ * @param a5 the caller's object record. `$25FF7A` does not set A5 and line 6 writes
+ *   through it, so it is threaded rather than guessed. See `bonusLine6260348`.
+ * @returns the request each record ran, `[side0, side1]`, 0 meaning idle.
+ */
+export function tallyDriver25FF7A(ram, rom, ctx, a5) {
+  const ran = [];
+  for (const a6 of [TALLY.side0, TALLY.side1]) {             // $25FF7A / $25FF9E, dbra
+    const req = ram.u16(a6 + 0x00);                          // $25FF82 move.w (A6),D0
+    ran.push(req);
+    if (req === 0) continue;                                 // $25FF84 cmpi.w #$0 / beq
+    if (req > LINE_COUNT) {
+      // $25FF92's table is ten longwords and entry 0 is null, so a request past 9 reads
+      // `$25FF7A`'s own `lea` as a pointer and jumps into it. The port refuses instead.
+      unreached(0x25ff92, `$25FF92 indexes $25FF52 by request ${req}, and the table is `
+        + `TEN longwords whose entry 0 is null -- so ${req} would read $${
+          (0x25ff52 + req * 4).toString(16).toUpperCase()}, which is $25FF7A's own code. `
+        + `Only requests 1..${LINE_COUNT} are lines`);
+    }
+    switch (req) {
+      case 1: bonusLine125FFA8(ram, rom, ctx, a6); break;
+      case 2: bonusLine2260056(ram, rom, ctx, a6); break;
+      case 3: bonusLine326010E(ram, rom, ctx, a6); break;
+      case 4: bonusLine42601F4(ram, rom, ctx, a6); break;
+      case 5: bonusLine52602B6(ram, rom, ctx, a6); break;
+      case 6: bonusLine6260348(ram, a6, a5); break;
+      case 7: bonusLine726035A(ram, a6); break;
+      case 8: bonusLine826037C(ram, a6); break;
+      default: setPanel2603B0(ram, ctx, a6); break;          // 9
+    }
+  }
+  return ran;
 }
 
 /** `$25FD94` -- HOW MANY SIDES ARE STILL IN THE TALLY, minus one.

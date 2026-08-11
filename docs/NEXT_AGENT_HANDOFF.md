@@ -28,8 +28,13 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W295, `ddpdoj: bonus line 7, and $813142 is a lease`.
-- Suite: `node --test games/ddpdoj/tests/` is **2028/2028**, green, no skips.
+- HEAD is W296, `ddpdoj: the tally driver -- all nine bonus lines reachable`.
+- Suite: `node --test games/ddpdoj/tests/` is **2034/2034**, green, no skips.
+- **THE SCORE TALLY'S SPINE IS COMPLETE.** `$25FF7A` walks both records and all NINE of
+  `$25FF52`'s real entries have bodies. Line 9 turned out to be already ported --
+  `player.js`'s `setPanel2603B0` calls itself "jump-table entry 9 of `$25FF7A`" -- so two
+  of the nine cost nothing because an earlier wave wrote down something it could not use
+  yet. What remains inside it: one note (`$2532B6`) and the HIGH-SCORE INSERT.
 - **SEVEN of the nine bonus lines are in.** Line 8 is `$26037C`, whose head is the same
   both-records shape as line 5 (`lea $8130FA,A2 / lea $81311E,A3`), so read it alongside
   `$2602B6` rather than fresh.
