@@ -605,9 +605,34 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
    worth knowing before someone assumes the dispatcher must be pre-loading them: the sibling that
    does the same thing properly is right here.
 
-   Still to read: state 3+ at `$27425E`, the draw at `$274286`/`$27432C`, and the death arm at
-   `$27449C`. The handler is roughly 1,030 bytes, so budget it like `$1B` (one wave), and note that
-   everything read so far needs NO new primitive.
+   #### THE VOLLEY TAIL AND STATE 3: THE CYCLE CLOSES, 0 -> 1 -> 2 -> 3 -> 0
+
+       -- after the four shots, and ALSO the arm reached when nobody is alive ($27423C) --
+       27423c  ($20,A5) volley counter ; on borrow reload from ($21,A5)
+       274248  D0 = $40 - $8130B6 ; ($1E,A5) = D0
+               **the RANK-shortened cadence**, the same idiom as $8E's `$276602 move.w #$40,D0 /
+               sub.w $8130BA,D0` -- a different rank byte, the same construction
+       274256  ($38,A6) = 3                                                          -> state 3
+       -- STATE 3, the RAMP DOWN --
+       27425e  ($3A,A6)/($3B,A6) cadence
+       27426a  ($36,A6) -= 4 ; **on the BORROW `clr.w ($38,A6)`**                     -> state 0
+       274276  otherwise index $27460A again and carry on down
+
+   So the machine is a closed four-state cycle: delay, ramp up to `$14`, loop `$10..$14` while
+   firing rank-paced volleys, ramp down, repeat. `$1B`'s is the same four states with a ramp-down
+   that walks to zero; `$45`'s is the same again on a different field. **Four members now**, and
+   they differ in the state field, the table, the entry count, the tail and the cadence source --
+   which is the argument for four transcriptions rather than one driver, recorded so the question
+   does not get reopened from scratch.
+
+   **`$274286` IS NOT THE DRAW.** It is a further cadence -- `subq.b #1,($26,A5) / bcc $27432C`,
+   reloading from `($27,A5)` -- and `$27432C` is where the draw actually begins. So there is one
+   more animation/behaviour block at `$274292..$27432C` between the state machine and the emit.
+
+   Still to read, and it is now a short list: `$274292..$27432C` (that block), the draw from
+   `$27432C`, and the death arm at `$27449C`. **Everything read so far needs NO new primitive** --
+   `aim256`, `$281764`, `damageArm5C`, `spawnCues28AC72`, `stepMovement` and the player-select idiom
+   are all in the port already.
 
    #### THE RAMP TABLE'S EXTENT IS PINNED BY CODE, AND IT EXPLAINS THE WRAP
 
