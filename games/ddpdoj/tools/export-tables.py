@@ -666,6 +666,17 @@ SHOT_WINDOWS.extend([
     (0x2A13C8, 0x009A, "W224: Stage-4 boss A3/D0 part-swap driver"),
     (0x23EBA0, 0x003C, "W216: Pool-A kinds 18/19 record-convention emitter "
                        "through its exact RTS boundary"),
+    # W313: STAGE 5, and the first of the five whose span is NOT closed by the next stage's
+    # script -- there is no stage 6. The three sections still tile exactly:
+    #   script  $237978  770 records x 8 bytes, $FFFF terminator at $239188, then 6 bytes of pad
+    #   aux     $239190  259 words (max index 258), and $239190 + $206 == $239396, the resource
+    #   res     $239396  the movement streams, last one at res+$0BF6 = $239F8C, 42 bytes
+    # The last stream ends `20 00 00 00` at $239FB4, exactly as stage 4's last does, and $239FB8
+    # begins unrelated data (`4C 00 18 01`). So the span is $237978..$239FB7.
+    (0x237978, 0x2640, "W313: complete STAGE-5 spawn dependency span: 770 script records, a "
+                       "259-word aux table and its movement streams ($237978..$239FB7); the "
+                       "only stage whose end is its last stream's terminator rather than the "
+                       "next stage's script"),
     (0x2358B0, 0x20C8, "W211: complete STAGE-4 spawn dependency span: 382 "
                        "records + terminator, 157-word aux table, and 157 "
                        "movement streams ($2358B0..$237978)"),
@@ -2612,6 +2623,40 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W192: stage-3 movement stream starts are not exact")
     if resource3 + 0x0808 != rows[3][0]:
         raise SystemExit("W192: stage-3 resource does not end at stage-4 script")
+
+    # W313: STAGE 5. The same three checks as stages 2 and 3, plus the one thing that differs --
+    # nothing follows it, so the span's far end is its LAST STREAM'S terminator instead of the
+    # next stage's script. Both are asserted, because a mis-sized window here would read the
+    # unrelated data at $239FB8 as movement.
+    script5, aux5, resource5, _ = rows[4]
+    cursor5 = script5
+    indices5 = []
+    while u16(d, cursor5) != 0xFFFF:
+        indices5.append(u16(d, cursor5 + 6) & 0x0FFF)
+        cursor5 += 8
+        if len(indices5) > 4096:
+            raise SystemExit("W313: stage-5 spawn script has no bounded terminator")
+    if len(indices5) != 770 or cursor5 != 0x239188:
+        raise SystemExit(
+            f"W313: stage-5 script is {len(indices5)} records ending "
+            f"${cursor5:06X}, expected 770 ending $239188")
+    if max(indices5) != 258 or len(set(indices5)) != 256:
+        raise SystemExit("W313: stage-5 aux use is not max index 258 / 256 used")
+    offsets5 = [u16(d, aux5 + i * 2) for i in range(259)]
+    if aux5 + len(offsets5) * 2 != resource5:
+        raise SystemExit("W313: 259-word aux table does not abut resource #$1F")
+    if offsets5 != sorted(set(offsets5)) or offsets5[0] != 0 \
+            or offsets5[-1] != 0x0BF6:
+        raise SystemExit("W313: stage-5 movement stream starts are not exact")
+    # The last stream ends with the word $2000 and then $0000, the same close as stage 4's.
+    last5 = resource5 + offsets5[-1]
+    if d[last5 + 0x28:last5 + 0x2C] != bytes.fromhex("20000000"):
+        raise SystemExit("W313: stage-5's last movement stream does not end $2000 $0000")
+    if last5 + 0x2C != 0x239FB8:
+        raise SystemExit(f"W313: stage-5 span ends ${last5 + 0x2C:06X}, expected $239FB8")
+    if d[0x239FB8:0x239FBC] != bytes.fromhex("4c001801"):
+        raise SystemExit("W313: the data after stage 5's span drifted; the window may now "
+                         "cover something that is not a movement stream")
     if d[script3:script3 + 8] != bytes.fromhex("000600043e000021"):
         raise SystemExit("W192: first stage-3 record is no longer type $3E")
     if d[0x2352E8:0x2352F2] != bytes.fromhex("7a4014808901c0102000"):
