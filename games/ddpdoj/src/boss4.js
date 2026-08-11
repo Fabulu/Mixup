@@ -1210,16 +1210,24 @@ const MAIN4_WAYPOINTS = 0x29f972;
 const MAIN7_WAYPOINTS = 0x29fa7a;
 
 /**
- * The WAYPOINT WALKER, shared by MAIN4 (`$29F8F0`) and MAIN7 (`$29F9CC`). The two
- * bodies are the same instructions in the same order and differ in exactly two
- * operands: the waypoint base and the arrival threshold (`$400` against `$200`). MAIN7
- * adds a speed ramp ahead of it and nothing else.
+ * The WAYPOINT WALKER, shared by MAIN4 (`$29F8F0`), MAIN7 (`$29F9CC`) and MAIN8
+ * (`$29FAAE`). All three are the same instructions in the same order and differ only in
+ * their operands:
  *
- * The cursor mask is `$F` in both, which is what bounds each table at four two-word
- * entries, and both tails put the vector into the PART offsets rather than the
- * position, so what walks is the opened pods.
+ *            waypoints   threshold   cursor bound        entries
+ *   MAIN4    $29F972     $400        `andi.w #$F`        four
+ *   MAIN7    $29FA7A     $200        `andi.w #$F`        four
+ *   MAIN8    $29FB3A     $400        `cmpi.w #$1C/ble`   EIGHT
+ *
+ * MAIN8's bound is the one that is not a mask: `$29FB0C cmpi.w #$1C,$6(a4) / ble` with a
+ * `move.w #$0` reset, which admits `$1C` and resets on anything past it. Collapsing it
+ * into `andi.w #$1F` would look equivalent and is not -- a mask would let the cursor
+ * reach a ninth entry that does not exist.
+ *
+ * All three tails put the vector into the PART offsets rather than the position, so what
+ * walks is the opened pods.
  */
-function bossWalk(ram, rom, ctx, slot, waypoints, threshold) {
+function bossWalk(ram, rom, ctx, slot, waypoints, threshold, wrap = 'mask-f') {
   const a6 = ctx.bossSubRec;
   const cursor = ram.u16(slot + 0x06);                    // $29F8F6 adda.w $6(a4)
   const wp = waypoints + cursor;
@@ -1236,7 +1244,13 @@ function bossWalk(ram, rom, ctx, slot, waypoints, threshold) {
 
   // $29F920..$29F94E -- the SAME waypoint again, this time for the distance test.
   if (i16(dist242494(selfY, selfX, d2, d3)) <= threshold) {  // $29F942 cmpi.w/bgt
-    ram.setU16(slot + 0x06, u16(cursor + 4) & 0x000f);    // $29F94A/$29F94E
+    const next = u16(cursor + 4);                         // $29F94A/$29FB08 addq.w #$4
+    if (wrap === 'mask-f') {
+      ram.setU16(slot + 0x06, next & 0x000f);             // $29F94E andi.w #$F
+    } else {
+      // $29FB0C cmpi.w #$1C / ble -- a COMPARE, not a mask. $1C is admitted.
+      ram.setU16(slot + 0x06, i16(next) > 0x1c ? 0 : next);
+    }
   }
 
   // $29F954..$29F96E -- speed from ($3a,A6), heading from ($3b,A6).
@@ -2383,8 +2397,39 @@ export function a1_13Init2A34CA(ram, rom, ctx, slot) {
 
 registerScript(0x2a36ea, a1_14Init2A36EA);
 registerScript(0x2a3714, a1_14Step2A3714);
+/**
+ * `$29FA8A` / `$29FAAE` -- MAIN8, which A4 id6's INIT calls in, and the third instance of
+ * the waypoint walker. EIGHT waypoints rather than four, bounded by a compare rather than
+ * a mask, and a walk speed of 4 -- slower than MAIN4's 6 and above MAIN7's floor of 2.
+ *
+ * Its eight waypoints weave tighter than either sibling's: `$5E00..$6600` on the long
+ * axis where MAIN4 spans `$5A00..$6000` and MAIN7 `$6200..$6800`, so the third phase
+ * circles in the middle of the space the first two swept through.
+ */
+const MAIN8_WAYPOINTS = 0x29fb3a;
+
+export function main8Step29FAAE(ram, rom, ctx, slot) {
+  bossWalk(ram, rom, ctx, slot, MAIN8_WAYPOINTS, 0x400, 'compare-1c');
+}
+
+/** `$29FA8A` -- MAIN8's INIT, and it FALLS THROUGH (`$29FAA8` ends at `$29FAAE`). Unlike
+ *  MAIN7 it DOES set the walk speed, so A4 id6's phase starts at 4 whatever MAIN7's ramp
+ *  had worn it down to. */
+export function main8Init29FA8A(ram, rom, ctx, slot) {
+  const a6 = ctx.bossSubRec;
+  ram.setU8(a6 + 0x1a, 0);                                // $29FA8A
+  ram.setU8(a6 + 0x1b, 0x20);                             // $29FA90
+  ram.setU8(slot + 0x02, 0);                              // $29FA96
+  ram.setU16(slot + 0x04, 0);                             // $29FA9C
+  ram.setU16(slot + 0x06, 4);                             // $29FAA2 -- cursor at ONE
+  ram.setU8(a6 + 0x3a, 4);                                // $29FAA8 -- the SPEED
+  main8Step29FAAE(ram, rom, ctx, slot);                   // falls through
+}
+
 registerScript(0x2a34ca, a1_13Init2A34CA);
 registerScript(0x2a34ee, a1_13Step2A34EE);
+registerScript(0x29fa8a, main8Init29FA8A);
+registerScript(0x29faae, main8Step29FAAE);
 // A3 3..8, the six-instance ramp family. The STEP sits `$6` past its INIT in every
 // one of them, which is the same `$2E`-stride regularity the bodies have.
 for (const a of [0x2a14aa, 0x2a14d8, 0x2a1506, 0x2a1534, 0x2a1562, 0x2a1590]) {

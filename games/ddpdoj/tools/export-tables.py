@@ -615,6 +615,13 @@ SHOT_WINDOWS.extend([
     # it stops. The conductor's `rts` is at $2A3554, one word before it.
     (0x2A3556, 0x0008, "W261: A1 13's two-entry fan dispatch, ending at the first "
                        "fan's own code"),
+    # W262: MAIN8's EIGHT waypoints. MAIN4 and MAIN7 bound their four with
+    # `andi.w #$F`; this one uses `$29FB0C cmpi.w #$1C,$6(a4) / ble` and a reset, so the
+    # last reachable cursor is $1C and the run is eight two-word entries. It ends at
+    # $29FB5A, which is the first byte of an already-exported window, so the two are
+    # exactly adjacent.
+    (0x29FB3A, 0x0020, "W262: Stage-4 boss MAIN8's eight waypoints, ending where the "
+                       "$29FB5A window already begins"),
     # W255: type $42's handler's TWO TABLES, contiguous, both pinned by code.
     #   $2A4252  EIGHT sprite descriptors. `$2A41F0 addq.w #$4,$3c(a5)` with
     #            `$2A41F4 andi.w #$1F` bounds the cursor at eight longwords, and they
