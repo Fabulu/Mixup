@@ -161,7 +161,9 @@ test('the Stage-1 through W223 Stage-4 bodies are dispatched', () => {
     'W223: the emitted type-$41 body $2A37E4');
   assert.ok(INIT_BODY_ADDRESSES.includes(0x2a3952),
     'W254: the type-$42 body $2A3952, the Stage-4 boss children');
-  assert.equal(INIT_BODY_ADDRESSES.length, 70,
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x270dd8),
+    'W316: type $45 body $270DD8 -- the first of stage 5 fifteen missing types');
+  assert.equal(INIT_BODY_ADDRESSES.length, 71,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
     + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
     + `W170's $277836, W171's $276946, W172's $27751C, W173's $275154, `

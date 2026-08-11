@@ -89,7 +89,7 @@ function nullOf(script) {
 
 // ==================== 1. THE WORK LIST
 
-test('W314/W315 stage 5 has FIFTEEN types with no handler, over 65 of its 770 records',
+test('W314/W316 stage 5 has FOURTEEN types with no handler, over 44 of its 770 records',
   { skip: SKIP_IMG }, () => {
     // The measurement this file exists for. `enemyHandlerMap` is built from the cartridge, and
     // `runEnemyDriver`'s `handlers.get(h)` miss is where a missing handler is reported -- but
@@ -98,15 +98,15 @@ test('W314/W315 stage 5 has FIFTEEN types with no handler, over 65 of its 770 re
     // and 65.
     const map = enemyHandlerMap(ROM);
     const miss = missingOf(SCRIPTS[5], map);
-    assert.equal(miss.length, 15, `fifteen types, got ${miss.map((m) => m.type.toString(16))}`);
-    assert.equal(miss.reduce((a, m) => a + m.records, 0), 65, 'across 65 records');
+    assert.equal(miss.length, 14, `fourteen types, got ${miss.map((m) => m.type.toString(16))}`);
+    assert.equal(miss.reduce((a, m) => a + m.records, 0), 44, 'across 44 records');
     // Ranked by how much of the stage each one buys, which is the order to port them in.
     const ranked = [...miss].sort((a, b) => b.records - a.records || a.type - b.type);
     assert.deepEqual(ranked.map((m) => m.type),
-      [0x45, 0x46, 0x8e, 0x1b, 0x1a, 0x81, 0x48, 0x49, 0x4a, 0x4b,
+      [0x46, 0x8e, 0x1b, 0x1a, 0x81, 0x48, 0x49, 0x4a, 0x4b,
         0x43, 0x47, 0x4c, 0x59, 0xb0]);
-    assert.deepEqual(ranked.slice(0, 3).map((m) => m.records), [21, 13, 6],
-      '$45, $46 and $8E are a third of the missing records between them');
+    assert.deepEqual(ranked.slice(0, 2).map((m) => m.records), [13, 6],
+      '$46 and $8E are the two biggest left; W316 took $45 and its 21');
   });
 
 test('W315 stage 5\'s one type-$00 record points at a NULL handler', { skip: SKIP_IMG }, () => {
@@ -133,7 +133,7 @@ test('W314 each missing type\'s init and handler come from the cartridge\'s own 
     const want = new Map([
       [0x1a, [0x268d1e, 0x268e6c]],
       [0x1b, [0x269256, 0x269350]], [0x43, [0x26dda4, 0x26de32]],
-      [0x45, [0x270dd0, 0x270e36]], [0x46, [0x27102c, 0x2710e2]],
+      [0x46, [0x27102c, 0x2710e2]],
       [0x47, [0x26d6ee, 0x26d7d0]], [0x48, [0x271284, 0x27133a]],
       [0x49, [0x27159e, 0x271640]], [0x4a, [0x2719ae, 0x271a64]],
       [0x4b, [0x271c92, 0x271d48]], [0x4c, [0x26f4da, 0x26f5f2]],
@@ -145,7 +145,7 @@ test('W314 each missing type\'s init and handler come from the cartridge\'s own 
       assert.equal(e.init, init, `type $${t.toString(16)} init`);
       assert.equal(e.handler, handler, `type $${t.toString(16)} handler`);
     }
-    assert.equal(want.size, 15);
+    assert.equal(want.size, 14);
   });
 
 // ==================== 2. THE CONTRAST THAT MAKES IT A GAP

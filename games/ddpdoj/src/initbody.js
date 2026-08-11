@@ -1762,6 +1762,21 @@ BODY.set(0x27ceb4, (ram, rom, a5, a6, unported, _tables, palette) => {
 // --- type $9F ($27C5BE): Stage 4's final pre-boss structure sequence.
 // Three linked subrecords share the opening animation, threshold cues, death
 // presentation, and the live deferred type-$A4 debris emitted during state 2.
+// --- type $45 ($270DD8): the first of stage 5's fifteen missing types, W316. Two prototypes,
+// the shared position read, the palette byte copied into the sub-record, and one global. Every
+// primitive was already here, which is why this type could be the first one ported.
+//
+// `moveq #$8,D0` before `$26377A` is D0+1 = NINE words, and the block at `$270E08` is exactly
+// eighteen bytes -- it ends where `$270E1A`, the sub prototype, begins. Both are covered by the
+// one window `$270E08 + $2E`, which in turn ends at `$270E36`, the handler.
+BODY.set(0x270dd8, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x270e1a);             // $270DDE jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x270e08, 0x08);        // $270DEC jsr $26377A -- D0+1 = 9 words
+  readInitPosition(ram, rom, a5, unported);             // $270DF2 jsr $263808
+  ram.setU8(a6 + 0x1d, ram.u8(a5 + 0x18));              // $270DF8 move.b ($18,A5),($1D,A6)
+  ram.setU16(0x81b414, 1);                              // $270DFE move.w #$1,$81B414
+});
+
 BODY.set(0x27c5be, (ram, rom, a5, a6, unported, _tables, palette) => {
   const end = loadSubProto(ram, rom, a5, a6, 0x27c63a); // $27C5BE..$27C5CA
   ram.setU32(a5 + R.rec44, end);                        // $27C5CA

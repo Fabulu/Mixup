@@ -2536,6 +2536,16 @@ SHOT_WINDOWS.extend([
     # the first adjacency table's data, and `$2901E0` is `tst.w $813098` -- code.
     (0x28FED0, 0x0310, "W310: the name-entry cursor's pointer, adjacency and position tables, "
                        "28 cells each, $28FED0..$2901DF"),
+    # W316: STAGE-5 TYPE $45, the first of its fifteen missing types. Two windows and both are
+    # bounded on both sides by code:
+    #   $270E08 + $2E   the record prototype (9 words, $270E08..$270E19) and the sub prototype
+    #                   ($270E1A..$270E35) back to back, ending at $270E36 -- the handler.
+    #   $27100C + $20   the EIGHT sprite longwords `$270FEA adda.w ($1E,A5),A0` indexes, ending
+    #                   at $27102C -- type $46's init stub.
+    (0x270E08, 0x002E, "W316: type $45's record and sub prototypes, $270E08..$270E35, ending at "
+                       "its handler"),
+    (0x27100C, 0x0020, "W316: type $45's EIGHT sprite longwords, indexed by the ($1E,A5) ramp; "
+                       "ends at $27102C, type $46's init"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

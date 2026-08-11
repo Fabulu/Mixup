@@ -107,7 +107,7 @@ import { armScreenClear, armScreenClear243E02, handlerMidboss } from './midboss.
 import { scoreByMask, scoreHit, scoreKill } from './score.js';
 import { spawnEffect, spawnPoolC289B50, spawnPoolC289AF4, remapBucket, REMAP, B } from './effects.js';
 import { spawnItem } from './items.js';
-import { allocBee27F92A } from './bee.js';
+import { allocBee27F92A, allocPoolA27F8F0 } from './bee.js';
 import { drawByte242B3C, drawByte24311A, drawByte2431F4, drawSigned242FDE,
   drawSigned242FFC,
   drawWord242EC2 } from './rng.js';
@@ -1746,6 +1746,190 @@ function deathSeq85(ram, rom, a5, a6, ctx, d1) {
   }
   ctx.soundPost?.(0x28c274);                       // WAVE A: SFX id=1, death burst          // $275BA0 jsr $28C274
   freeEnemy(ram, a5);                                  // $275BA6 jmp $263762
+}
+
+// ============================================ TYPE $45 (W316) ============
+// The first of stage 5's fifteen missing types, and the biggest by record count: 21 of its 770
+// script records. `$270DD8` the init body, `$270E36..$27100A` the handler, and the 8-entry sprite
+// table `$27100C..$27102B` -- which ends exactly at `$27102C`, type `$46`'s init, so the whole type
+// is bounded on both sides without a guess.
+//
+// **NOT ONE NEW PRIMITIVE.** Every routine it calls the port already had, which is the whole reason
+// it could be the first: `$2637A2` and `$26377A` are `loadSubProto`/`loadRecordProto`, `$263808` is
+// `readMovementInit`, `$24179E` is `scrollCompensate`, `$286096`/`$28615E` are `scoreHit`/
+// `scoreKill`, `$289004` is `spawnEffect`, `$24202C` is `aim64AtTarget`, `$281402` is the bullet
+// fan, `$28C25A` is a cue and `$263762` is `freeEnemy`.
+//
+// And `$270EB4 jsr $27F8F0` with `D0 = 8` is **`allocPoolA27F8F0` at kind `$08`** -- one of the two
+// hooks W312 added four waves ago. Without W312 this handler's death arm would have thrown, so the
+// order those two waves happened in was load-bearing rather than incidental.
+//
+// ## THE SHAPE: A FOUR-STATE MACHINE ON `($17,A5)` WITH A RAMPED SPRITE
+//
+//   state 0  a delay on `($1A)`/`($1B)`                              -> state 1
+//   state 1  a delay on `($1C)`/`($1D)`, then RAMP `($1E)` up by 4 and clamp at $1C; at the clamp
+//            aim once, store `(dir & $3C)` in `($26)`, load the burst counters -> state 2
+//   state 2  below X $1400 -> state 3.  Otherwise a two-level burst on `($20)`/`($22)` firing
+//            `$281402` at the STORED angle, and re-aiming when `($24)` runs out
+//   state 3  a delay, then RAMP `($1E)` back DOWN by 4 to zero                -> state 4
+//
+// `($1E,A5)` is both the ramp and the sprite index: `$270FEA adda.w ($1E,A5),A0` indexes
+// `$27100C` by it directly, so the eight entries are the open-and-close animation and the ramp IS
+// the frame counter. Two of the four states exist only to drive it, which is why the state machine
+// looks larger than the behaviour.
+//
+// The states are tested with four INDEPENDENT `cmpi.b`s in ascending order, not a switch, so a
+// state set inside one arm falls into the next arm's test on the SAME frame. State 1 setting state
+// 2 at `$270F26` is immediately re-read at `$270F3E`, and that is how the aim frame also fires.
+/** `subq.b #1 / bcc` -- the OLD-ZERO BORROW: it reloads on the frame the counter was ALREADY
+ *  zero, not the frame it reaches zero. The same three lines `bee.js`, `boss2attacks.js` and
+ *  `stage4type41.js` each carry; kept local here for the same reason they did. */
+function due8(ram, addr) {
+  const old = ram.u8(addr);
+  ram.setU8(addr, (old - 1) & 0xff);
+  return old === 0;
+}
+
+const T45 = Object.freeze({
+  init: 0x270dd0, initBody: 0x270dd8, handler: 0x270e36,
+  recordProto: 0x270e08, recordWords: 9,      // $270DEA moveq #$8,D0 -- D0+1 words
+  subProto: 0x270e1a,
+  sprites: 0x27100c, spriteEntries: 8,
+  offX: -0x800,                // $270E36 cmpi.w #-$800,($2,A6) / bgt
+  hitMask: 0x5c,               // $270E4E moveq #$5C,D1 / and.b (A6),D1
+  hitClear: 0xa3,              // $270E56 move.b #$A3,D0 / and.b D0,(A6)
+  killScore: 0x34,             // $270E78 moveq #$34,D0
+  deathEffect: 0x88,           // $270E80 move.w #$88,D0
+  deathCue: 0x28c25a,
+  deathImpactKind: 0x08,       // $270EAE moveq #$8,D0 -> $27F8F0
+  rampStep: 4, rampMax: 0x1c,  // $270EFE addq.w #4 / $270F02 cmpi.w #$1C
+  aimMask: 0x3c,               // $270F1E andi.w #$3C,D1
+  stateXGate: 0x1400,          // $270F48 cmpi.w #$1400,($2,A6) / bge
+  drawBias: -0x3ff0400,        // $270FF4 addi.l
+  drawAttr: 0x420,             // $270FFA move.w #$420,D3
+  drawStub: 0x23dece,
+});
+
+/** `$270FE4..$27100A` -- the draw, whose sprite index IS the ramp at `($1E,A5)`. */
+function draw45(ram, rom, a5, a6) {
+  const idx = ram.u16(a5 + 0x1e);                        // $270FEA adda.w ($1E,A5),A0
+  if ((idx & 3) !== 0 || idx > T45.rampMax) {
+    unreached(0x270fea, `type $45's sprite index ($1E,A5) is $${idx.toString(16)}; the ramp moves `
+      + `in steps of 4 between 0 and $${T45.rampMax.toString(16)}, so the ${T45.spriteEntries} `
+      + `longwords at $27100C are the whole table and this would read past it`);
+  }
+  const d1 = u32(ram.u32(a6 + 0x02) + T45.drawBias);     // $270FF0/$270FF4 addi.l
+  enqueueRegistersThroughStub(ram, rom, T45.drawStub, d1,  // $271004 jsr $23DECE
+    rom.u32(T45.sprites + idx), T45.drawAttr, ram.u8(a6 + 0x1d));
+}
+
+function handler45(ram, rom, a5, ctx) {
+  const { tables, unported: u } = ctx;
+  const a6 = ram.u32(a5 + 0x06);
+
+  // $270E36 -- the off-screen test is on the SUB-record's X and it is SIGNED (`bgt`).
+  if (i16(ram.u16(a6 + 0x02)) <= T45.offX) {             // $270E3C bgt $270E48
+    freeEnemy(ram, a5);                                  // $270E40 jmp $263762
+    return;
+  }
+  scrollCompensate(ram, a5);                             // $270E48 jsr $24179E
+
+  if ((ram.u8(a6) & T45.hitMask) !== 0) {                // $270E4E/$270E52 beq $270EC2
+    ram.setU8(a6, ram.u8(a6) & T45.hitClear);            // $270E5A and.b D0,(A6)
+    scoreHit(ram, ctx, a6, 0);                           // $270E5C jsr $286096
+    // $270E62..$270E6C -- the palette byte is XORed with ($19,A5), a flash rather than a set.
+    ram.setU8(a6 + 0x1d, ram.u8(a6 + 0x1d) ^ ram.u8(a5 + 0x19));
+
+    if ((ram.u16(a6 + 0x18) & 0x8000) !== 0) {           // $270E70 tst.w / $270E74 bpl $270EC8
+      // $270E78..$270EBE -- the death arm.
+      scoreKill(ram, rom, ctx, T45.killScore, 0);        // $270E7A jsr $28615E
+      const eff = spawnEffect(ram, ctx, T45.deathEffect);  // $270E84 jsr $289004
+      if (eff) {
+        ram.setU32(eff + 0x02, ram.u32(a6 + 0x02));      // $270E8A move.l ($2,A6),($2,A0)
+        ram.setU16(eff + 0x1e, 4);                       // $270E90
+        ram.setU16(eff + 0x12, 0);                       // $270E96
+        ram.setU16(eff + 0x14, 0);                       // $270E9C
+        ram.setU16(eff + 0x10, 2);                       // $270EA2
+      }
+      ctx.soundPost?.(T45.deathCue);                     // $270EA8 jsr $28C25A
+      // $270EAE..$270EB4 -- D0 = 8, D1 = 0, D2 = 1: W312's hook 2.
+      allocPoolA27F8F0(ram, rom, ctx, T45.deathImpactKind, 0, 1, a6);
+      freeEnemy(ram, a5);                                // $270EBA jmp $263762
+      return;
+    }
+  } else {
+    ram.setU8(a6 + 0x1d, ram.u8(a5 + 0x18));             // $270EC2 -- restore, no flash
+  }
+
+  // The four state tests are INDEPENDENT and ascending, so an arm that advances the state falls
+  // into the next arm on the same frame. That is not tidy and it is what the ROM does.
+  if (ram.u8(a5 + 0x17) === 0) {                         // $270EC8 cmpi.b #$0 / bne $270EE6
+    if (due8(ram, a5 + 0x1a)) {                          // $270ED2 subq.b #1 / bcc $270EE6
+      ram.setU8(a5 + 0x1a, ram.u8(a5 + 0x1b));           // $270EDA
+      ram.setU8(a5 + 0x17, 1);                           // $270EE0
+    }
+  }
+  if (ram.u8(a5 + 0x17) === 1) {                         // $270EE6
+    if (due8(ram, a5 + 0x1c)) {                          // $270EF0 subq.b #1 / bcc $270F3E
+      ram.setU8(a5 + 0x1c, ram.u8(a5 + 0x1d));           // $270EF8
+      const ramp = u16(ram.u16(a5 + 0x1e) + T45.rampStep);  // $270EFE addq.w #4
+      ram.setU16(a5 + 0x1e, ramp);
+      if (i16(ramp) >= T45.rampMax) {                    // $270F02 cmpi.w #$1C / blt $270F3E
+        ram.setU16(a5 + 0x1e, T45.rampMax);              // $270F0C clamp
+        const r = aim64AtTarget(tables, ram, a5, a6);    // $270F12 jsr $24202C
+        if (!r.carry) {                                  // $270F18 bcs $270F3E
+          // $270F1C addq.b #2 then $270F1E andi.w #$3C -- byte add, WORD mask, as in type $11.
+          ram.setU8(a5 + 0x26, ((r.dir + 2) & 0xff) & T45.aimMask);
+          ram.setU8(a5 + 0x17, 2);                       // $270F26
+          ram.setU16(a5 + 0x20, 0x0808);                 // $270F2C
+          ram.setU16(a5 + 0x22, 0x0003);                 // $270F32
+          ram.setU16(a5 + 0x24, 0x0003);                 // $270F38
+        }
+      }
+    }
+  }
+  if (ram.u8(a5 + 0x17) === 2) {                         // $270F3E
+    if (i16(ram.u16(a6 + 0x02)) < T45.stateXGate) {      // $270F48 cmpi.w #$1400 / bge $270F58
+      ram.setU8(a5 + 0x17, 3);                           // $270F52
+    }
+    let fire = true;
+    if (ram.u8(a5 + 0x24) === 0) {                       // $270F58 tst.b / $270F5C bne $270F74
+      if (!due8(ram, a5 + 0x20)) fire = false;           // $270F60 subq.b #1 / bcc $270FB2
+      else {
+        ram.setU8(a5 + 0x20, ram.u8(a5 + 0x21));         // $270F68
+        ram.setU8(a5 + 0x24, ram.u8(a5 + 0x25));         // $270F6E
+      }
+    }
+    if (fire && due8(ram, a5 + 0x22)) {                  // $270F74 subq.b #1 / bcc $270FB2
+      ram.setU8(a5 + 0x22, ram.u8(a5 + 0x23));           // $270F7C
+      // $270F82..$270F96 -- the stored angle, not a fresh aim.
+      const regs = {
+        d0: 0xfffe0006, d1: ram.u8(a5 + 0x26), d2: ram.u32(a6 + 0x02),
+        d3: 0, d4: 0, d5: 0, a5,
+      };
+      const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281402, regs);
+      ctx.bulletSpawn?.(0x270f96, res);
+      // $270F9C subq.b #1,($24,A5) / bne $270FB2 -- at zero the angle is refreshed.
+      ram.setU8(a5 + 0x24, (ram.u8(a5 + 0x24) - 1) & 0xff);
+      if (ram.u8(a5 + 0x24) === 0) {
+        const r = aim64AtTarget(tables, ram, a5, a6);    // $270FA8 jsr $24202C
+        ram.setU8(a5 + 0x26, r.dir & 0xff);              // $270FAE move.b D1,($26,A5)
+      }
+    }
+  }
+  if (ram.u8(a5 + 0x17) === 3) {                         // $270FB2
+    if (due8(ram, a5 + 0x1c)) {                          // $270FBC subq.b #1 / bcc $270FE4
+      ram.setU8(a5 + 0x1c, ram.u8(a5 + 0x1d));           // $270FC4
+      const ramp = u16(ram.u16(a5 + 0x1e) - T45.rampStep);  // $270FCA subq.w #4
+      ram.setU16(a5 + 0x1e, ramp);
+      if (i16(ramp) <= 0) {                              // $270FCE cmpi.w #$0 / bgt $270FE4
+        ram.setU16(a5 + 0x1e, 0);                        // $270FD8
+        ram.setU8(a5 + 0x17, 4);                         // $270FDE
+      }
+    }
+  }
+  draw45(ram, rom, a5, a6);                              // $270FE4..$27100A
+  if (u) { /* every primitive above is ported; nothing to count */ }
 }
 
 // ================================================= TYPE $80 (W30) =========
@@ -6640,6 +6824,7 @@ const HANDLERS = new Map([
   [0x27cf0c, handlerA1],          // W217: Stage-4 reverse-animated structure $A1
   [0x27c81a, handler9F],          // W218: Stage-4 final pre-boss structure $9F
   [0x27db30, handlerA4],          // W218: type-$9F deferred fragment $A4
+  [0x270e36, handler45],          // W316: Stage-5 ramped four-state turret $45
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
   [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42
