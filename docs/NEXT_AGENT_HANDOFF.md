@@ -405,9 +405,30 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
    So "twelve left" understates it: those twelve expose seven more child types, at least nineteen
    handler types before anything found deeper.
 
-   The order is **`$1B` (5 records) then `$81` (3)** -- the two whose every `jsr` target the port
-   already implements and which spawn nothing -- then `$1A`, then `$49`/`$4A`/`$4B`, then `$47`,
-   then the bundles.
+   **`$1B` IS DONE (W323).** The census is now **ELEVEN types over 32 records**. The order from
+   here is **`$1A` (4 records) then `$81` (3)**, then `$49`/`$4A`/`$4B`, then `$47`, then the
+   bundles, leaving `$4C` last.
+
+   ### `$1A` IS A SIBLING OF `$1B`, MEASURED IN W324 -- START THERE
+
+   `$1A` is the biggest CLEAN stage-5 type left and W324 read its init body read-only. **It is
+   the same shape as the `$1B` that W323 just ported**, so it should be cheap, and `damageArm5C`
+   may well take a third caller:
+
+       268d1e  move.w #$1,($4,A5) / rts            the init STUB, identical shape to $1B's
+       268d26  lea ($268DFA,PC),A0 / jsr $2637A2 / move.l A0,($44,A5)
+                                                   the SAME ($44,A5) table-advance idiom
+       268d36  lea ($268DDC,PC),A0 / moveq #$E,D0 / jsr $26377A
+                                                   15 words, the SAME count as $1B
+       268d44  D0 = 4, D1 = 4, D2 = 2; `cmpi.w #$1,$813092 / bls` keeps them on stages 0 AND 1,
+               and stage 2 on takes 3, 6, 1  <- THREE bytes here, and D1 is 6, NOT 0
+       268d66  ($2A,A5) = D0 ; ($2B,A5) = D1 ; ($30,A6) = D2   -- different offsets from $1B's,
+               and the third one lands on the SUB-RECORD (A6) rather than the record
+       268d72  jsr $263808                         a JSR, not $1B's tail JMP: more follows it
+       268d78  lea $272C7A,A0                      and $272C7A + $80 is ALREADY A WINDOW
+
+   Spans from the type table, for planning: `$1A` $14E, `$81` $4C, `$49` $A2, `$4A` $B6,
+   `$4B` $B6, `$47` $E2.
 
    ### W322 CLAIMED `$1B` WAS BLOCKED ON `$24226E`. IT IS NOT, AND THE WAY THAT ERROR HAPPENED IS
    ### THE MOST REUSABLE THING IN THIS SECTION
