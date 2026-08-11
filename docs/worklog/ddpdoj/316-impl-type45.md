@@ -89,6 +89,28 @@ flash permanent; the XOR is what makes it alternate while the hit bit keeps bein
   (70 -> 71), `enemy_types` (77/49 -> 78/48), and **W314's work list from fifteen/65 to
   fourteen/44** -- which is the mechanism that file was built for.
 
+## A DEFECT IN THIS WAVE'S OWN DIFF, stated because the commit is misleading
+
+`8760577` shows 571, 676 and 926 changed lines in `handlers.test.js`, `initbody.test.js` and
+`integration.test.js`. **Those are line-ending conversions, not content.** Three files were CRLF and
+I edited them with `python ... open(p,'w',newline='\n')`, which rewrote each one whole. The actual
+content change in the three is six lines, verifiable with
+`git diff --ignore-cr-at-eol 8760577~1 8760577`:
+
+    handlers.test.js     + 0x270e36 and its two comment lines
+    initbody.test.js     + the $270DD8 assertion, and 70 -> 71
+    integration.test.js    65 -> 66, and one narrative string
+
+LF is what the project wants, so the files are more compliant than they were -- but burying a
+three-line change in a two-thousand-line diff makes the commit unreviewable, and I had already told
+myself this session to preserve a file's existing convention. It is recorded here rather than
+rewritten, because the commit is pushed and rewriting shared history to tidy a diff is worse than a
+noisy diff with a note against it.
+
+**The rule for next time is narrower than "write LF":** use `Edit` on files you have not read the
+line endings of. Four separate heredoc accidents this session -- three lost `\'` escapes and this
+conversion -- all of them avoidable the same way.
+
 ## Order for the next wave
 
 1. **TYPE `$46` (13 records), then `$8E` (6)** -- the two biggest left, 19 of the 44 remaining. Then
