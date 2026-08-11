@@ -44,6 +44,69 @@ const due16 = (ram, addr) => {
   return old === 0;
 };
 
+/**
+ * `$2A00C0` -- THE EFFECT-ROW WALKER. `A1` points at a table of 12-byte rows terminated
+ * by `$FFFF`, and each row spawns one effect through `$289004` and then writes five
+ * fields into it plus two taken from the boss's own sub-record:
+ *
+ *     +$0  D1, the row index, straight into `$18(a0)`
+ *     +$2  the KIND passed to `$289004`
+ *     +$4  a word whose LOW BYTE lands in `$1C(a0)`
+ *     +$6  a longword into `$26(a0)` -- a position bias
+ *     +$A  TWO BYTES THE ROM SKIPS (`$2A0108 addq.w #$2,a1`)
+ *
+ * The skipped pair is not padding: it holds plausible-looking values (`$04A0`, `$0450`,
+ * `$0200`) that this build steps over. Transcribed as a skip rather than tidied into a
+ * 10-byte stride, because a 10-byte stride would walk the rows out of alignment.
+ *
+ * `$1B(a6)` is doubled TWICE on the way into `$1B(a0)`, byte-wide, so the effect's
+ * heading is four times the boss's.
+ */
+function effectRow2A00C0(ram, rom, ctx, a6, table, d2) {
+  for (let a = table; ; a += 12) {
+    const d1 = rom.u16(a);                               // $2A00C0 move.w (a1)+,d1
+    if (d1 === 0xffff) return;                           // $2A00C2 cmpi.w #$FFFF/beq
+    const slot = spawnEffect(ram, ctx, rom.u16(a + 2));  // $2A00CA/$2A00CC
+    ram.setU8(slot + 0x1c, rom.u16(a + 4) & 0xff);       // $2A00D2/$2A00D4
+    ram.setU16(slot + 0x18, d1);                         // $2A00D8
+    ram.setU32(slot + 0x26, rom.u32(a + 6));             // $2A00DC
+    ram.setU32(slot + 0x02, d2 >>> 0);                   // $2A00E0
+    ram.setU16(slot + 0x1e, 0x0010);                     // $2A00E4
+    ram.setU16(slot + 0x12, 0);                          // $2A00EA
+    ram.setU16(slot + 0x14, 0);                          // $2A00F0
+    ram.setU8(slot + 0x1a, ram.u8(a6 + 0x1a));           // $2A00F6
+    ram.setU8(slot + 0x1b, (ram.u8(a6 + 0x1b) * 4) & 0xff);  // $2A00FC..$2A0104
+  }
+}
+
+/**
+ * `$29FF14` and `$29FF94` -- THE TWO PODS BLOWING UP, one routine twice. Every field is
+ * the same offset plus `$20`, the A2 object id is 7 then 8, and the effect table is
+ * `$29FF6E` then `$29FFEE`. Each is a one-shot behind its own `$9F`/`$BF` latch -- and
+ * `$9F(a6)` is exactly the kill switch A1 7 checks first (`$2A2E9E`), so destroying the
+ * left pod also retires its attack.
+ */
+const POD_LEFT = { latch: 0x9f, hp: 0x98, sel: 0x80, anim: 0x14c,
+  object: 7, table: 0x29ff6e, pos: 0x82 };
+const POD_RIGHT = { latch: 0xbf, hp: 0xb8, sel: 0xa0, anim: 0x14d,
+  object: 8, table: 0x29ffee, pos: 0xa2 };
+
+function podDestroy29FF14(ram, rom, ctx, a6, p) {
+  if (ram.u8(a6 + p.latch) !== 0) return;                // $29FF14 tst.b/bne
+  ram.setU16(a6 + p.hp, 0xffff);                         // $29FF1C
+  ram.setU8(a6 + p.latch, 1);                            // $29FF22
+  ram.setU16(a6 + p.sel, 0x8000);                        // $29FF28
+  ram.setU8(a6 + p.anim, 0x13);                          // $29FF2E
+  a2Stop25994A(ram, p.object);                           // $29FF34/$29FF36
+  ctx.soundPost?.(0x28c2c2);                             // $29FF3C
+  effectRow2A00C0(ram, rom, ctx, a6, p.table, ram.u32(a6 + p.pos));  // $29FF42..$29FF4C
+  // $29FF52..$29FF66 -- and one big burst on a drawn heading. D0 is the shift (0 here,
+  // as at the boss's other site) and D3 is the BUCKET, which is `$10` rather than the
+  // `$C` boss.js's own call uses -- the pod burst goes into a different sprite list.
+  const d1 = drawWord242EC2(ram, rom) & 0xff;             // $29FF52/$29FF58
+  bigBurst28B4BE(ram, rom, ctx, ram.u32(a6 + p.pos), d1, 0, 0x0010, 0x29ff66);
+}
+
 const AIM_TABLES = new WeakMap();
 function aimTables(rom) {
   let tables = AIM_TABLES.get(rom);
@@ -107,7 +170,7 @@ function resetBoss4Palettes(ram, a6) {
 }
 
 /** `$29FB5C`, translated through the first live phase threshold. */
-export function boss4Damage29FB5C(ram, _rom, a5, a6, ctx) {
+export function boss4Damage29FB5C(ram, rom, a5, a6, ctx) {
   if (ram.u16(a6 + 0x166) !== 0) return;
   ram.setU16(0x8130e6, 0);
 
@@ -184,9 +247,21 @@ export function boss4Damage29FB5C(ram, _rom, a5, a6, ctx) {
       ctx.bossEvent?.('phase-1', ram.u16(0x8130ce));
     }
   }
+  // $29FE46 -- THE LOW-HP TRANSITION, and it is what starts the third phase. W219 left
+  // this a throw; W263 translated it once A4 id6 and everything under it existed.
   if (ram.u8(a6 + 0x16d) === 0 && ram.u32(a5 + 0x16) < 0x0000c400) {
-    unreached(0x29fe52,
-      'Stage-4 boss low-HP transition is beyond the W219 arrival slice');
+    ram.setU8(a6 + 0x16d, 1);                            // $29FE52 -- once
+    // $8130F0 is the word type $42's handler FREES on, so raising it here is what
+    // clears the second phase's children off the screen (see stage4type42.js).
+    ram.setU16(BOSS_F0, 1);                              // $29FE58
+    a1Clear259B34(ram);                                  // $29FE60
+    a4Clear2598A2(ram);                                  // $29FE66
+    a4Start25980C(ram, 6);                               // $29FE6C -- THE THIRD PHASE
+    podDestroy29FF14(ram, rom, ctx, a6, POD_LEFT);       // $29FE74 bsr
+    podDestroy29FF14(ram, rom, ctx, a6, POD_RIGHT);      // $29FE78 bsr
+    ctx.unported?.note(0x243dd0, '$29FE7C jsr $243DD0 -- the hit-stop / screen-shake, '
+      + 'which src/boss.js also counts rather than models');
+    ctx.bossEvent?.('phase-3', ram.u16(0x8130ce));
   }
 
   if (ram.u16(0x8130d2) === 0 && ram.u8(a6 + 0x16c) !== 0) {
