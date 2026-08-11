@@ -21,7 +21,7 @@ that drift.
     D14 make it a PWA                                          W280
     D15 a user option to LOCK the orientation                   W279
     D16 the hyper bar should show the level when NOT hypering   W283 (correct as-is)
-    D17 the in-stage medals are missing                         OPEN
+    D17 the in-stage medals are missing                         W284/W285 -> publish
     D18 commit AND PUSH every wave, not just commit             STANDING RULE
     D19 record the DEPLOYED BUILD ID with every report          STANDING RULE
 
@@ -329,7 +329,7 @@ pins the whole display chain so no further wave looks there, and it also pins th
 `spawnItem`'s `REFUSED_KINDS` branch -- which reads exactly like the cause -- has been
 DEAD since W163.
 
-### D17: the in-stage medals are missing -- UNREPRODUCED on main (W284)
+### D17: the in-stage medals are missing -- MECHANISM PROVEN (W284, W285)
 
 The owner reports the stage medals do not appear. What the port already has, so the
 next wave does not re-derive it:
@@ -361,8 +361,20 @@ and it throws AFTER claiming the slot, so a caller that swallowed it would leak 
 the ten per attempt.
 
 **And the symptom is `bee.js`'s own header verbatim** -- the report W110 recon'd and W111
-fixed. See D19. The way to settle this is to KILL A CARRIER (a sweeping scenario, or a
-forced HP zero), which is one measurement and is the next wave's first move.
+fixed. See D19.
+
+**W285 did the one measurement.** Boot the laser-hold rung, find a live carrier, drive
+`$276744`'s two death conditions -- a hit bit and the HP SIGN -- and step one frame:
+reserved ten goes 0 -> 1 and pool A's live count goes to 1. **The medal appears**, inside
+a running game, with nothing forced except the two bits that mean "this enemy just died".
+
+So the mechanism is complete on `main` and the same test pins both halves of the
+explanation: carriers are plentiful, and none dies unaided. It also pins that the gate is
+the HP SIGN and not zero (`$27674E tst.w / $276752 bmi`) -- a port that tested `=== 0`
+would drop nothing whenever a hit took HP negative, which for a laser is the normal case.
+
+**The next step for this item is a PUBLISH and a second look, not another wave.** That is
+D19's whole point and D17 is the first item it applies to.
 
 ### D18: commit AND PUSH intermittently, not just commit
 

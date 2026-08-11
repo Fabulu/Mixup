@@ -28,8 +28,8 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W284, `ddpdoj: prove the medal chain and file D19`.
-- Suite: `node --test games/ddpdoj/tests/` is **1984/1984**, green, no skips.
+- HEAD is W285, `ddpdoj: kill a carrier and the medal appears`.
+- Suite: `node --test games/ddpdoj/tests/` is **1987/1987**, green, no skips.
 - **THE LIVE BUILD IS STALE AND NOBODY IS TRACKING IT (D19).** `git push` is not
   `tools/publish.mjs`. This session closed six docket items and moved the bundle
   4194 -> 4244 streams with no publish, and THREE of those items turned out to be
@@ -142,21 +142,29 @@ Cloudflare Pages. Pushing does not publish and publishing does not push.
 
 ## Work order toward the goal
 
-1. **KILL A CARRIER -- one measurement settles D17.** W284 proved the medal chain is
-   complete for kind 1: stage 1 holds TEN type-`$8A` carriers, all ten spawn,
-   `deathSeq8A` calls `allocBee27F92A` at `$2767E6`, and forced by hand kind 1
-   allocates a reserved slot with zero counted notes. The reserved ten is never
-   occupied only because **no scenario in the tree kills a carrier** -- the laser-hold
-   ladder parks the ship at the bottom centre by design. So: a scenario that SWEEPS
-   horizontally, or a forced HP zero on a live `$8A`. Either answers it.
+1. **PUBLISH, then ask the owner to look again at D16 and D17.** This is the cheapest
+   next move for the docket and it is D19's whole point.
 
-   Then **`$280CEE`**: kind 16, the bee's flying variant, throws there, and it throws
-   AFTER claiming a reserved slot, so a caller that swallowed it would leak one of the
-   ten per attempt. It is a named gap in the `$280Cxx` family W264/W266 already know.
+   W285 settled D17's mechanism with one measurement: drive `$276744`'s two death
+   conditions on a live type-`$8A` carrier mid-run and the reserved ten goes 0 -> 1 the
+   next frame. **The medal appears.** So the chain is complete on `main`, and the reason
+   it was never seen is that no scenario in the tree kills a carrier.
 
-   And read D19 before spending a wave: D17's symptom is `bee.js`'s header VERBATIM,
-   describing the report W111 fixed.
-2. **`$280BCE`'s finish routines**, or enough of them to drive a run past frame 6482.
+   Six docket items have been closed since the last deploy and THREE of them turned out
+   to be things that already worked. So:
+
+       node games/ddpdoj/tools/export-web.mjs      # FIRST -- this session added windows
+       node tools/publish.mjs
+
+   **`export-web.mjs` before `publish.mjs`, always** -- a wave that adds ROM windows and
+   publishes without regenerating serves a stale bundle. `publish.mjs` gates on the
+   Batman suite being ALL GREEN with 0 skipped, builds `dist/`, deploys, and then
+   CONFIRMS the build id landed on several consecutive polls.
+2. **`$280CEE`** -- kind 16, the bee's flying variant, throws there, and it throws AFTER
+   claiming a reserved slot, so a swallowed throw leaks one of the ten per attempt. A
+   named gap in the `$280Cxx` family W264/W266 already know. Nothing reaches it today
+   because the carrier passes kind 1.
+3. **`$280BCE`'s finish routines**, or enough of them to drive a run past frame 6482.
    A long census run from the laser-hold rung throws `Unreached $280BCE` there --
    seventeen of its twenty finish routines are unported, already docketed under D3's
    neighbourhood -- and **that is what stands between the port and observing the whole
