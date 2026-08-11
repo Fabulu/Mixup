@@ -849,8 +849,22 @@ into bucket 26's ten.
     25debc  subq.b #1,D7 / bge / else D7 = 2       **DOWNWARD**, wrapping at 2
 
 `$25DA94` walks the same three entries **UPWARD** (`addq.b`, limit 2, wrap to 0). So the pair is the
-**Y cursor's up and down halves** over `SCREEN11.yEntries = 3`, not two unrelated routines -- and
-`$25DEAE`'s TAIL is where the value rows are drawn. That is the one thing still unread.
+**Y cursor's up and down halves** over `SCREEN11.yEntries = 3`, not two unrelated routines.
+
+**AND `$25DEAE` IS THE Y CURSOR, STRUCTURALLY PARALLEL TO `$25DD0C`'s X CURSOR.** Its tail:
+
+    25deca  movea.l ($8,A4),A0 / jsr (A0)     the SAME edge read $25DD0C uses
+    25ded0  moveq #$0,D7 / move.b ($F,A5),D7  the Y cursor ($F,A5), where $25DD0C took ($E,A5)
+    25ded6  move.w D7,D6                      saved, so the picker can be retried
+    25ded8  btst #$2,D0 / beq $25DEF6         the SAME bit 2 / bit 3 pair
+
+So **the screen has TWO cursors and they are the same routine twice**, over `xEntries: 2` and
+`yEntries: 3` -- which is why `SCREEN11` has carried both counts since W276 and why the clamp
+differs (`andi.b #$1` for two entries, the `$25DA94`/`$25DEAE` picker for three, because three is
+not a power of two and cannot be masked).
+
+That is the shape to port next: `$25DEAE` mirrors `tallyCursor25DD0C`, with the picker in place of
+the mask, and the value rows at its tail are the three remaining emit sites.
 
 **AND TWO OF THE FIVE "MISSING" ROUTINES BELONG TO THE CURSOR HALF, NOT THE TALLY.** `$25DA94` is
 
