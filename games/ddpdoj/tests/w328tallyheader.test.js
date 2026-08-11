@@ -73,7 +73,14 @@ test('W328 bucket 26 IS $24018C\'s buffer/counter pair', { skip: SKIP_IMG }, () 
 
 test('W328 each side draws the HEADER and its OWN two labels', { skip: SKIP_IMG }, () => {
   // The immediates, quoted from the image so the test's idea of them is the listing's.
-  assert.equal(IMG.readUInt32BE(0x25dd82), 0x5bc02c00, '$25DD80 the header position');
+  // THE HEADER POSITION IS PER-SIDE and the side-0 constant lives TWO INSTRUCTIONS ABOVE the one
+  // that looks like "the" header position. W328 shipped $5BC02C00 for both sides before reading
+  // $25DD72, so this asserts both and the branch between them.
+  assert.equal(IMG.readUInt32BE(0x25dd74), 0x5bc00000, '$25DD72 -- SIDE 0 keeps this');
+  // no `+2` here: `tst.b ($7,A5)` IS the instruction at $25DD78, whereas the `move.l #imm`
+  // assertions above skip their two opcode bytes.
+  assert.equal(IMG.readUInt32BE(0x25dd78), 0x4a2d0007, '$25DD78 tst.b ($7,A5)');
+  assert.equal(IMG.readUInt32BE(0x25dd82), 0x5bc02c00, '$25DD80 -- side 1 only');
   assert.equal(IMG.readUInt32BE(0x25dd8a), 0x00334300, '$25DD88 the header descriptor');
   assert.equal(IMG.readUInt16BE(0x25dd90), 0x0630, '$25DD8E the header D3');
   assert.equal(IMG.readUInt32BE(0x25dda8), 0x04000100, '$25DDA6 the first label offset');
@@ -84,14 +91,15 @@ test('W328 each side draws the HEADER and its OWN two labels', { skip: SKIP_IMG 
   assert.equal(IMG.readUInt32BE(0x25ddea), 0x003343dc, 'side 1 label A');
   assert.equal(IMG.readUInt32BE(0x25de06), 0x00334400, 'side 1 label B');
 
-  for (const [side, a, b] of [[0, 0x00334394, 0x003343b8], [1, 0x003343dc, 0x00334400]]) {
+  for (const [side, a, b, hdr] of [[0, 0x00334394, 0x003343b8, 0x5bc00000],
+    [1, 0x003343dc, 0x00334400, 0x5bc02c00]]) {
     const ram = world();
     assert.equal(drawTallyHeader25DD80(ram, A4, side), 3, 'THREE records, always');
     assert.equal(ram.u16(B.counter), 3 * RECORD_BYTES, 'and the counter moved by three');
 
-    // The header is common to both sides.
+    // The header position differs by side; the DESCRIPTOR and D3 do not.
     const h = record(ram, 0);
-    assert.equal(h.d0, packed(0x5bc02c00), 'the header position, packed');
+    assert.equal(h.d0, packed(hdr), `side ${side}'s own header position, packed`);
     assert.equal(h.d2, 0x00334300);
     assert.equal(h.d3, 0x0630);
     assert.equal(h.d4, PALETTE, 'and D4 comes from ($14,A4), the DESCRIPTOR');
@@ -102,8 +110,8 @@ test('W328 each side draws the HEADER and its OWN two labels', { skip: SKIP_IMG 
     assert.equal(l2.d2, b, `side ${side} label B`);
     assert.equal(l1.d3, 0x0410);
     assert.equal(l2.d3, 0x0410);
-    assert.equal(l1.d0, packed(0x5bc02c00 + 0x04000100), 'label A is header + $04000100');
-    assert.equal(l2.d0, packed(0x5bc02c00 + 0x04000100 + 0x600), 'and label B is +$600 past it');
+    assert.equal(l1.d0, packed(hdr + 0x04000100), 'label A is THIS side header + $04000100');
+    assert.equal(l2.d0, packed(hdr + 0x04000100 + 0x600), 'and label B is +$600 past it');
   }
 });
 

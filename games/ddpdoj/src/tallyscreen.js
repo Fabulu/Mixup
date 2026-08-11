@@ -392,7 +392,9 @@ export function screenState2_25DB7C(ram, rom, ctx, a5) {
  * D30/W328. The owner's report was "Stage transition looks good but is busted. 0's, some pictures
  * of medals" and, earlier, "labels too I think". This is the labels.
  *
- *   25dd80  move.l #$5BC02C00,D1 / move.l D1,D7    the HEADER's position, and it is SAVED
+ *   25dd72  move.l #$5BC00000,D1                    side 0's HEADER position
+ *   25dd78  tst.b ($7,A5) / beq $25DD86             ... and side 0 KEEPS it
+ *   25dd80  move.l #$5BC02C00,D1                    side 1's, and $25DD86 saves it in D7
  *   25dd88  move.l #$334300,D2 / move.w #$630,D3
  *   25dd92  moveq #$0,D4 / move.w ($14,A4),D4      the palette, out of the DESCRIPTOR
  *   25dd98  jsr $24018C                            -> enqueueRegisters on BUCKET 26
@@ -422,7 +424,11 @@ export function screenState2_25DB7C(ram, rom, ctx, a5) {
  */
 export function drawTallyHeader25DD80(ram, a4, side) {
   const d4 = ram.u16(a4 + 0x14);                  // $25DD94 move.w ($14,A4),D4
-  let d1 = 0x5bc02c00;                            // $25DD80
+  // $25DD72 loads $5BC00000 and $25DD78 `tst.b ($7,A5) / beq $25DD86` KEEPS it for side 0; only
+  // side 1 reaches $25DD80's $5BC02C00. **THE HEADER POSITION IS PER-SIDE**, and W328 first shipped
+  // the side-1 constant for both -- caught by reading $25DD72, which is two instructions ABOVE
+  // where the constant that looked like "the" header position lives.
+  let d1 = side !== 0 ? 0x5bc02c00 : 0x5bc00000;  // $25DD80 / $25DD72
   enqueueRegisters(ram, TALLY_BUCKET, d1, 0x00334300, 0x0630, d4);   // $25DD98
   // $25DD9E `tst.b ($7,A5) / bne` -- each side has its OWN pair of descriptors.
   const pair = side !== 0
