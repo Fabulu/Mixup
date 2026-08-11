@@ -834,6 +834,22 @@ Two consequences for whoever writes it:
   different path through the screen than stages 1..4 do. Any test of this screen has to say which
   stage it is standing in.
 
+**AND TWO OF THE FIVE "MISSING" ROUTINES BELONG TO THE CURSOR HALF, NOT THE TALLY.** `$25DA94` is
+
+    25da94  moveq #$0,D7 / move.b ($F,A5),D7
+    25da9a  bsr $25DAEA          <- and `tallyscreen.js` ALREADY documents $25DAEA:
+                                    "IS THE OTHER PLAYER ALREADY ON THIS ENTRY?"
+    25da9e  bcc -> done ; else addq.b #1,D7 ; cmpi.b #$2,D7 / ble -> loop ; else D7 = 0
+
+i.e. a walk over up to THREE entries looking for one the other player is not on, wrapping to 0.
+`$25DEAE` opens with the same two instructions, so the pair is the selection screen's
+entry-picker. **Neither is a digit formatter**, which is what the zeros needed.
+
+So the tally half narrows further: `$25FF38` writes the record at `$8130FA`/`$81311E` (called ONCE,
+from `$25DCB4`), and the nine `enqueueRegisters` sites draw from it. `$25DA60`, `$25DA94`,
+`$25DEAE` and `$25E0EA` can all be left to a later cursor wave. **That is the whole remaining
+scope of the visible defect**, and it is small.
+
 The five other routines the old note named are also now sized: `$25DA60` starts
 `move.w $813084,D6`; `$25DA94` and `$25DEAE` **share their first two instructions**
 (`moveq #$0,D7 / move.b ($F,A5),D7`) and so are probably a family of two; `$25DFF6` opens with a
