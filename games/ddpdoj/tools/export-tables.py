@@ -2506,6 +2506,12 @@ SHOT_WINDOWS.extend([
     # in only two of the twelve words: an X ($0A40 vs $1000) and a flag (0 vs 1).
     (0x28F97C, 0x0030, "W305: the name-entry screen's TWO twelve-word setup blocks, "
                        "$28F97C (P1) and $28F994 (P2), adjacent"),
+    # W306: the BANNED-NAME table `$28F674` scans. Seventeen 12-byte entries ($CC) and then a
+    # FOUR-byte `$FFFFFFFF` sentinel at $28F978 -- the `beq` fires on the first long, so the
+    # sentinel is not a whole entry and $28F97C (the W305 window above) starts immediately
+    # after it. Sizing this to whole entries would overlap that block.
+    (0x28F8AC, 0x00D0, "W306: $28F674's seventeen banned names plus the four-byte $FFFFFFFF "
+                       "sentinel at $28F978; abuts $28F97C seam-free"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

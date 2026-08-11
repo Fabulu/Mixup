@@ -168,3 +168,124 @@ export const NAME_ARMS = Object.freeze([
   Object.freeze({ site: 0x28f428, side: 0, tag: tagForSide(0), lookup: 0x28f6e2 }),
   Object.freeze({ site: 0x28f482, side: 1, tag: tagForSide(1), lookup: 0x28f6ea }),
 ]);
+
+// ===========================================================================
+// W306 -- THE BANNED-NAME FILTER, AND THE ALPHABET IT PROVES
+// ===========================================================================
+// `$28F674 lea ($28F8AC,PC),A1` and then a loop with no counter:
+//
+//     28f67a  movea.l ($30,A4),A0        the player's OWN row, every iteration
+//     28f67e  move.l (A1),D0
+//     28f680  cmpi.l #$FFFFFFFF,D0
+//     28f686  beq $28F6A8                the TERMINATOR -> the name is allowed, commit
+//     28f688  cmp.l (A0),D0              character 0
+//     28f68a  bne $28F6A2
+//     28f68c  move.l ($4,A1),D0 / cmp.l ($4,A0),D0 / bne $28F6A2       character 1
+//     28f696  move.l ($8,A1),D0 / cmp.l ($8,A0),D0 / beq $28F59E       character 2 -> REJECT
+//     28f6a2  adda.w #$C,A1 / bra $28F67A
+//
+// So the table is 12-byte entries -- three character longs, the same shape as a high-score
+// name -- ending in a `$FFFFFFFF` sentinel rather than a count. **And the sentinel is only its
+// FIRST long**: `$28F978` holds `$FFFFFFFF` and `$28F97C` is already the P1 setup block W305
+// windowed. The `beq` fires on the first long, so the other eight bytes of that "entry" are
+// somebody else's data. Sizing the window to whole entries would overlap the block.
+//
+// ## THE TABLE DECODES AS WORDS, WHICH VERIFIES THREE WAVES OF INFERENCE
+//
+// W301 inferred from the factory data that a stored character is an index times four. W302
+// found the instruction that requires it (`move.l (A0,D2.w),D2`, unscaled, over a table of
+// longs). W304 showed the tag cannot collide with one. None of that said what index 0 IS.
+//
+// Divide each value by four and read 0 as 'A':
+//
+//     AAA  AHO  ASS  AUM  DIE  ETA  FUC  FUK  HIV  IRA  KKK  PEE  PIS  PLO  SEX  <28><28><28>
+//
+// Fourteen of the seventeen are recognisable English or Japanese, and `SEX` = 18,4,23 and
+// `KKK` = 10,10,10 fix the mapping exactly. **It is a profanity filter**, and a natural-language
+// decode is about as independent a check on an index convention as this port can get.
+//
+// The seventeenth is index 28 three times, which is the glyph AFTER the font's null hole at 27
+// (W302). So the alphabet is A..Z at 0..25 and three more slots at 26, 27 and 28, of which 27
+// is unused -- and the font's 29 entries with a hole are exactly that shape.
+//
+// ## AND THE REJECTION IS A SUBSTITUTION, NOT A RETRY
+//
+//     28f59e  movea.l ($30,A4),A0 / movea.l A0,A1
+//     28f5a4  move.l #$C,(A1)+           index 3
+//     28f5aa  move.l #$C,(A1)+           index 3
+//     28f5b0  move.l #$3C,(A1)+          index 15
+//     28f5b6  move.w #$3,($16,A4)        mark the name complete
+//     28f5bc  bra $28F6A8                and COMMIT it
+//
+// 3, 3, 15 is **`DDP`** -- the game's own initials. A banned name is silently replaced and
+// entered anyway; the player is never asked again. That is a third independent confirmation of
+// the alphabet, from two constants in the code rather than from a table.
+export const NAME_ALPHA = Object.freeze({
+  scale: 4,                    // a stored character is its index times four
+  letterA: 0,                  // index 0 is 'A', fixed by SEX and KKK decoding
+  letters: 26,
+  hole: 27,                    // W302: `$00000000` in both fonts at offset $6C
+  last: 28,
+  table: 0x28f8ac,             // $28F674 lea ($28F8AC,PC),A1
+  entries: 17,
+  sentinel: 0x28f978,          // holds $FFFFFFFF; only the FIRST long is the terminator
+  stride: 12,
+  countField: 0x16,            // $28F66A cmpi.w #$3,($16,A4) -- characters entered
+  chars: 3,
+  replacement: Object.freeze([0x0c, 0x0c, 0x3c]),   // $28F5A4/$28F5AA/$28F5B0 -- D, D, P
+  rejectSite: 0x28f59e,
+  scanSite: 0x28f674,
+});
+
+/** A stored character value as a letter, for messages and tests. Not a ROM routine. */
+export function charName(value) {
+  const i = value / NAME_ALPHA.scale;
+  if (!Number.isInteger(i) || i < 0 || i > NAME_ALPHA.last) return `<$${value.toString(16)}>`;
+  if (i < NAME_ALPHA.letters) return String.fromCharCode(65 + i);
+  return `<${i}>`;
+}
+
+/** The seventeen banned names, read out of the ROM rather than restated here. */
+export function bannedNames(rom) {
+  return Array.from({ length: NAME_ALPHA.entries }, (_, i) =>
+    [0, 1, 2].map((k) => rom.u32(NAME_ALPHA.table + i * NAME_ALPHA.stride + k * 4)));
+}
+
+/**
+ * `$28F664`'s gate plus `$28F674..$28F6A8` -- check the entered name and commit it.
+ *
+ * @returns {'incomplete'|'allowed'|'replaced'} `incomplete` is `$28F670 bcs $28F6C6`, the bare
+ *   `rts`: fewer than three characters entered and nothing happens at all.
+ *
+ * The scan has NO counter -- it runs until the sentinel or a full three-long match -- so a
+ * table without its `$FFFFFFFF` would walk into the setup block and then into code. That is
+ * worth saying because the sentinel is the only thing bounding it.
+ */
+export function nameFilter28F674(ram, rom, a4) {
+  if (ram.u16(a4 + NAME_ALPHA.countField) < NAME_ALPHA.chars) {   // $28F66A cmpi / $28F670 bcs
+    return 'incomplete';
+  }
+  const row = ram.u32(a4 + NAME_REC.entry);                       // $28F67A movea.l ($30,A4)
+  const entered = [0, 1, 2].map((k) => ram.u32(row + k * 4));
+
+  let a1 = NAME_ALPHA.table;                                      // $28F674 lea
+  for (;;) {
+    if (a1 > NAME_ALPHA.sentinel) {
+      unreached(NAME_ALPHA.scanSite, `$28F674's scan passed $${
+        NAME_ALPHA.sentinel.toString(16).toUpperCase()} without meeting $FFFFFFFF. The loop `
+        + `has no counter, so the sentinel is the only thing bounding it -- past it lie the `
+        + `setup blocks and then code`);
+    }
+    if (rom.u32(a1) === 0xffffffff) return 'allowed';              // $28F67E / $28F686 beq
+    const banned = [0, 1, 2].map((k) => rom.u32(a1 + k * 4));
+    // $28F688 / $28F690 / $28F69A -- three compares, any mismatch skips to the next entry.
+    if (banned[0] === entered[0] && banned[1] === entered[1] && banned[2] === entered[2]) {
+      for (const [k, c] of NAME_ALPHA.replacement.entries()) {     // $28F5A4..$28F5B0
+        ram.setU32(row + k * 4, c);
+      }
+      ram.setU16(a4 + NAME_ALPHA.countField, NAME_ALPHA.chars);    // $28F5B6 move.w #$3
+      return 'replaced';                                          // $28F5BC bra $28F6A8
+    }
+    a1 += NAME_ALPHA.stride;                                      // $28F6A2 adda.w #$C
+  }
+}
