@@ -2598,6 +2598,19 @@ SHOT_WINDOWS.extend([
     # sixteen bytes against the ROM IMAGE so a hand-copied table cannot drift unnoticed.
     (0x267C50, 0x0020, "W325: type $01's 2-word record prototype and its sub prototype, "
                        "$267C50..$267C6F, ending at its handler $267C70"),
+    # W326: the REAL type $81. TWO windows and BOTH far ends are pinned by CODE.
+    #   $273FE4 + $92   the five two-byte stage rows (11 0E four times then 0D 12 -- NOT all the
+    #                   same, unlike $1A's and $1B's), the 11-word record prototype at $273FEE, and
+    #                   the sub prototype at $274004, running to the handler at $274076.
+    #   $27460A + $18   the ($36,A6) ramp: SIX longwords $1732E0..$173484, ascending by exactly
+    #                   $54. The longword at index $18 is $3B7C0001 -- an INSTRUCTION -- which is
+    #                   why the ROM wraps $18 -> $10 in state 2 rather than reading on, and why the
+    #                   port throws on an out-of-range index instead of clamping.
+    # Its aim table $272DFA needs nothing: it is already inside W36's $272D70 + $190.
+    (0x273FE4, 0x0092, "W326: type $81's five stage rows, 11-word record prototype and sub "
+                       "prototype, $273FE4..$274075, ending at its handler $274076"),
+    (0x27460A, 0x0018, "W326: type $81's ($36,A6) ramp -- SIX longwords; index $18 is CODE "
+                       "($3B7C0001), which is what bounds it"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

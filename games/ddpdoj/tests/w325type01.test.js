@@ -79,8 +79,10 @@ test('W325 $267C24/$267C70 is type $01 -- and $81 is $273F06/$274076, still unpo
     assert.equal(IMG.readUInt32BE(LO + 0x01 * 8 + 4), HANDLER, 'type $01 handler');
     assert.equal(IMG.readUInt32BE(HI + 0x01 * 8), 0x273f06, 'type $81 init, HIGH table');
     assert.equal(IMG.readUInt32BE(HI + 0x01 * 8 + 4), 0x274076, 'type $81 handler');
-    assert.ok(!HANDLER_ADDRESSES.includes(0x274076),
-      'and type $81 is NOT registered -- this wave did not port it');
+    // W326 ported the real $81, so this asserts the PAIR is distinct and both are registered
+    // rather than that one is missing. The mislabel is what this test exists to prevent.
+    assert.ok(HANDLER_ADDRESSES.includes(0x274076),
+      'type $81 was ported in W326, and it is a DIFFERENT address from type $01');
     assert.ok(HANDLER_ADDRESSES.includes(HANDLER), 'type $01 is');
     assert.ok(INIT_BODY_ADDRESSES.includes(INITBODY), 'both halves');
   });

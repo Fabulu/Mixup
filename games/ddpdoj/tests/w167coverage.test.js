@@ -75,7 +75,7 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   // after W217 (W218's $27C81A and $27DB30, W219's Type-$40 boss, W223's $41).
   // W323: 80 -> 81 ported and 46 -> 45 unknown, type $1B ($269350). The 130 nulls do not
   // move -- a null handler was never a porting target (W315).
-  assert.match(got.stdout, /enemy_types: 82\/256 ported, 44 unknown, 130 null/);
+  assert.match(got.stdout, /enemy_types: 83\/256 ported, 43 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
   assert.match(got.stdout, /stage3_spawn_script: 414\/414 ported, 0 unknown, 0 null/);

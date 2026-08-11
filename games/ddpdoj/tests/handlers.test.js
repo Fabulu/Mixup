@@ -162,7 +162,9 @@ test('the ported handler addresses are registered through W223 type $41', () => 
       // table with a masked index. It is the first handler here driven by PLAYER TWO's stick:
       // it moves on p2RAW and allocates an ITEM on p2EDGE, kind range-checked 0..4 and x4.
       // No stage script spawns type $01, so this is translated code and not census progress.
-      0x270e36, 0x265a14, 0x2764d2, 0x269350, 0x267c70,
+      // W326 adds $274076, the REAL type $81: an ARMOURED four-state twin-muzzle turret whose
+      // armour the laser strips twice as fast as shots do, and damageArm5C's THIRD caller.
+      0x270e36, 0x265a14, 0x2764d2, 0x269350, 0x267c70, 0x274076,
     ].sort((a, b) => a - b));
 });
 

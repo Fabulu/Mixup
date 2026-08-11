@@ -2034,6 +2034,253 @@ function handler59(ram, _rom, a5, ctx) {
   ctx?.spawnEvent?.('deferred', T59.spawnType, r);
 }
 
+// ============================================ TYPE $81 (W326) ============
+// The REAL type `$81`, out of the HIGH type table: init `$273F06`, handler `$274076`, three of
+// stage 5's 770 records. W325 mislabelled type `$01` as this one; see that block below.
+//
+// **NOT ONE NEW PRIMITIVE.** Every routine it calls the port already had, which is what made a
+// ~1,030-byte handler one wave: `stepMovement`, `damageArm5C` (its THIRD caller), the inline bounds
+// idiom, `spawnCues28AC72`, `aim256`, `$281764` through `fireBullet`, the player-select idiom
+// (TWICE), `scoreKill`, `soundPost`, `spawnEffect`, and two emitter stubs into bucket 7.
+//
+// ## THE ARMOUR TIMER, WHICH IS THIS TYPE'S OWN MECHANISM
+//
+//   27409e  tst.w ($2A,A5) / bmi          the timer, SIGNED
+//   2740a4  ($18,A6) = $7FFF              HP PINNED AT MAX while it runs
+//   2740aa  D0 = 1 ; tst.w $811F72 / bpl ; else D0 = 2
+//   2740b6  ($2A,A5) -= D0                **DOUBLE drain while $811F72 is negative**
+//   2740ba  on the borrow, ($18,A6) = $2600   the real HP once the armour is gone
+//
+// `$811F72` is the BEAM word -- `spark.js` reads `$811F73` bit 7 out of the same longword to pick
+// pool E's half. So **the laser strips this type's armour twice as fast as shots do**, and until
+// it is stripped the HP is unkillable by construction rather than merely high.
+//
+// ## A FOUR-STATE CYCLE ON ($38,A6), THE FOURTH MEMBER OF THE $45/$1B RAMP FAMILY
+//
+//   state 0  an ($1E,A5) delay reloading from ($28,A5)                        -> 1
+//   state 1  a ($3A,A6)/($3B,A6) delay, then RAMP ($36,A6) up by 4 through $27460A; at $14 -> 2
+//   state 2  the same delay, but the ramp WRAPS $18 -> $10 so it oscillates over the last two
+//            entries; fires a symmetric pair from each of TWO muzzles; a volley counter on
+//            ($20,A5) ends the burst and sets a RANK-paced ($1E,A5)            -> 3
+//   state 3  the same delay, ramp DOWN by 4; on the BORROW `clr.w ($38,A6)`    -> 0
+//
+// **THE WRAP AT $18 IS NOT COSMETIC.** `$27460A` holds SIX longwords ascending by $54
+// ($1732E0..$173484) and index `$18` is `$3B7C0001` -- an INSTRUCTION. The wrap is what stops the
+// ROM indexing into its own code, so the guard IS the semantics and an out-of-range index is an
+// `unreached` rather than a clamp.
+const T81 = Object.freeze({
+  init: 0x273f06, initBody: 0x273f0e, handler: 0x274076,
+  stageRows: 0x273fe4, recordProto: 0x273fee, subProto: 0x274004,
+  ramp: 0x27460a, rampEntries: 6,             // SIX longs; index $18 is CODE
+  aimTable: 0x272dfa,                         // inside the existing $272D70 + $190 window
+  damage: Object.freeze({ hpFull: 0x980, base: 0x1c, xor: 0x1d }),
+  boundsA: 0xe00, boundsB: 0x7a00,            // $274080/$274084, TWO separate addi.w
+  armourHp: 0x7fff, hpAfterArmour: 0x2600,    // $2740A4 / $2740BC
+  beamWord: 0x811f72,                         // $2740AC tst.w -- negative doubles the drain
+  fireX: 0x1000,                              // $27411A cmpi.w #$1000,($2,A6) / blt
+  rampStep: 4, rampClamp: 0x14, rampWrap: 0x18, rampWrapTo: 0x10,
+  aimBias: -0x880,                            // $2741EE addi.w #$F780,D0
+  muzzles: [0xf7800380, 0xf780fc80],          // $2741FE / $274220
+  fanD0: 0xfffd0005,                          // $274206 move.l #$FFFD0005,D0
+  spreadA: 0xa, spreadB: -0x14,               // $27420C addi.w #$A / $274216 subi.w #$14
+  cadenceBase: 0x40, cadenceRank: 0x8130b6,   // $274248 move.w #$40,D0 / sub.w $8130B6,D0
+  killScore: 0x271,                           // $27449C move.l #$271,D0 -- a move.l, not a moveq
+  deathCue: 0x28c2dc,                         // $2744A8 -- already posted elsewhere in this file
+  deathEffect: 0x0d,                          // $2744AE moveq #$D,D0
+  emitRecord: 0x23d852, emitRegister: 0x23df86,   // both BUCKET 7
+});
+
+/** `$27432C..$274386` -- the draw. ONE bucket through BOTH conventions, as `$1B`'s draw does with
+ *  bucket 3.
+ *
+ *  **THE THIRD EMIT DEPENDS ON THE SECOND'S REGISTERS AND THAT IS TRANSCRIBED, NOT TIDIED.**
+ *  `$274376 move.w ($4,A6),D1` sets only D1's LOW word, so D1's HIGH word is still the
+ *  `($2,A6) - $40` the second emit's swap sandwich left there -- and D3/D4 are the second emit's
+ *  too. Rebuilding D1 from scratch for the third emit would put it somewhere else entirely. */
+function draw81(ram, rom, a5, a6) {
+  void a5;
+  enqueueThroughStub(ram, rom, T81.emitRecord, a6);       // $27432C jsr $23D852
+  // $274332..$274340 -- one bias per half, applied around a `swap`: high = pos - $C00 ... except
+  // the ROM's order is low first, so read it exactly: low += -$500, swap, low += -$C00, swap.
+  const d1a = u32((((u16(ram.u16(a6 + 0x02) - 0xc00)) << 16)
+    | u16(ram.u16(a6 + 0x04) - 0x500)) >>> 0);
+  enqueueRegistersThroughStub(ram, rom, T81.emitRegister, d1a,
+    ram.u32(a6 + 0x32), 0x428, ram.u16(a6 + 0x1c));       // $27434E
+  // $274354..$274362 -- the second register emit: low += $640, swap, low += -$40, swap.
+  const hi2 = u16(ram.u16(a6 + 0x02) - 0x40);
+  const d1b = u32(((hi2 << 16) | u16(ram.u16(a6 + 0x04) + 0x640)) >>> 0);
+  enqueueRegistersThroughStub(ram, rom, T81.emitRegister, d1b,
+    ram.u32(a6 + 0x26), 0x620, ram.u16(a6 + 0x1c));       // $274370
+  // $274376 -- ONLY the low word is rewritten; `hi2`, $620 and ($1C,A6) all carry over.
+  const d1c = u32(((hi2 << 16) | u16(ram.u16(a6 + 0x04) - 0xe00)) >>> 0);
+  enqueueRegistersThroughStub(ram, rom, T81.emitRegister, d1c,
+    ram.u32(a6 + 0x2c), 0x620, ram.u16(a6 + 0x1c));       // $274382
+}
+
+/** `$2741C0..$2741E0` and `$2742A0..$2742C0` -- "pick the nearer LIVE player", the idiom
+ *  `handler8E` uses at `$27655C`. `($3,A5)` decides which record is tried FIRST (`exg`), and a
+ *  NEGATIVE status word means alive. Returns the chosen record address, or null if both are dead. */
+function pickPlayer81(ram, a5) {
+  let a0 = 0x8103e6, a1 = 0x810448;                       // $2741C0/$2741C6 lea
+  if (ram.u8(a5 + 0x03) !== 0) { const t = a0; a0 = a1; a1 = t; }   // $2741CC/$2741D2 exg
+  if ((ram.u16(a0) & 0x8000) !== 0) return a0;            // $2741D4 tst.w / bmi
+  if ((ram.u16(a1) & 0x8000) !== 0) return a1;            // $2741DA tst.w / bpl -> none
+  return null;
+}
+
+/** `$2741B2..$27425C` -- state 2's fire arm and the volley counter that ends it. */
+function fire81(ram, rom, a5, a6, ctx) {
+  if (due8(ram, a5 + 0x1e)) {                             // $2741B2 subq.b #1 / bcc
+    ram.setU8(a5 + 0x1e, ram.u8(a5 + 0x28));              // $2741BA reload from ($28,A5)
+    const target = pickPlayer81(ram, a5);
+    if (target !== null) {                                // $2741DC bpl -> $27423C, no shot
+      // $2741E2/$2741E8 -- target out of the SELECTED record, self out of the sub-record.
+      const dir = aim256(aimTables(rom),
+        u16(ram.u16(a6 + 0x02) + T81.aimBias), ram.u16(a6 + 0x04),
+        ram.u16(target + 0x02), ram.u16(target + 0x04));  // $2741F2 jsr $2422A2
+      // $2741F8 `move.w D1,D6` -- the aim is SAVED, because the second muzzle restores it from D6
+      // at $274226 rather than re-aiming. Two muzzles, one aim.
+      for (const d3 of T81.muzzles) {
+        for (const step of [T81.spreadA, T81.spreadB]) {
+          const d1 = u16(dir + (step === T81.spreadA ? step : T81.spreadA + step));
+          const regs = { d0: T81.fanD0, d1, d2: ram.u32(a6 + 0x02), d3, d4: 0, d5: 0, a5 };
+          const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281764, regs);
+          ctx.bulletSpawn?.(0x274210, res);
+        }
+      }
+    }
+    // $27423C -- the volley counter, and this arm is ALSO where the no-live-player path lands.
+    if (due8(ram, a5 + 0x20)) {                           // $27423C subq.b #1 / bcc
+      ram.setU8(a5 + 0x20, ram.u8(a5 + 0x21));            // $274242
+      // $274248 -- the RANK-shortened cadence, the same construction as $8E's $276602.
+      ram.setU8(a5 + 0x1e,
+        u16(T81.cadenceBase - ram.u16(T81.cadenceRank)) & 0xff);
+      ram.setU16(a6 + 0x38, 3);                           // $274256 move.w #$3,($38,A6)
+    }
+  }
+}
+
+/** `$27449C..$2744C8` -- the death arm. The canonical `$289004` + SEVEN writes family shape. */
+function death81(ram, rom, a5, a6, ctx) {
+  scoreKill(ram, rom, ctx, T81.killScore, 0);             // $2744A2 jsr $28615E, D0 = $271
+  ctx.soundPost?.(T81.deathCue);                          // $2744A8 jsr $28C2DC
+  const eff = spawnEffect(ram, ctx, T81.deathEffect);     // $2744B0 jsr $289004, D0 = $D
+  if (eff) {
+    ram.setU32(eff + 0x02, ram.u32(a6 + 0x02));           // $2744B6
+    ram.setU16(eff + 0x1e, 0x10);                         // $2744BC
+  }
+  freeEnemy(ram, a5);
+}
+
+/** `$274292..$27432A` -- the SPRITE-FACING update, behind a two-byte equality gate. `$8E`'s shape:
+ *  `cmp.b` two adjacent record bytes and do nothing unless they agree. */
+function facing81(ram, rom, a5, a6, ctx) {
+  if (!due8(ram, a5 + 0x26)) return;                      // $274286 subq.b #1 / bcc $27432C
+  ram.setU8(a5 + 0x26, ram.u8(a5 + 0x27));                // $27428E
+  if (ram.u8(a5 + 0x24) !== ram.u8(a5 + 0x25)) return;    // $274294/$274298 cmp.b / bne
+  const target = pickPlayer81(ram, a5);                   // $2742A0 -- the idiom, a SECOND time
+  if (target === null) return;                            // $2742BA bpl $27432C
+  // $2742C0 -- the aim result is stored, not fired; the draw reads ($32,A6) every frame.
+  const dir = aim256(aimTables(rom), ram.u16(a6 + 0x02), ram.u16(a6 + 0x04),
+    ram.u16(target + 0x02), ram.u16(target + 0x04));
+  ctx.unported?.note(0x2742c0, `$2742C0 type $81's facing update aimed to ${dir & 0xff} -- the `
+    + `arm past the aim ($2742C0..$27432A) is the sprite/store tail and is NOT yet transcribed; `
+    + `the draw still reads ($32,A6), which state 1/2/3 maintain`);
+}
+
+function handler81(ram, rom, a5, ctx) {
+  const { tables, unported: u } = ctx;
+  const a6 = ram.u32(a5 + 0x06);
+  if (stepMovement(ram, rom, a5, tables, u)) return;      // $274076 jsr $2638A6
+
+  // $27407C..$274088 -- the inline bounds test. TWO SEPARATE `addi.w`s, so the deciding carry is
+  // the SECOND one's alone. Unlike $1B this type does NOT touch $8130D8 on the free path.
+  const t = u16(ram.u16(a6 + 0x02) + T81.boundsA);        // $274080 addi.w #$E00
+  if ((t + T81.boundsB) > 0xffff) {                       // $274084 addi.w #$7A00 / bcc
+    if (ram.u8(a5 + 0x16) !== 0) { freeEnemy(ram, a5); return; }   // $27408A/$274090
+  } else {
+    ram.setU8(a5 + 0x16, 1);                              // $274098 move.b #$1,($16,A5)
+  }
+
+  // $27409E -- THE ARMOUR TIMER. `bmi` is signed, so it runs while the word is non-negative.
+  if ((ram.u16(a5 + 0x2a) & 0x8000) === 0) {
+    ram.setU16(a6 + 0x18, T81.armourHp);                  // $2740A4 move.w #$7FFF,($18,A6)
+    // $2740AC -- the BEAM word. Negative doubles the drain, so the laser strips armour twice as
+    // fast as shots do.
+    const drain = (ram.u16(T81.beamWord) & 0x8000) !== 0 ? 2 : 1;
+    const next = ram.u16(a5 + 0x2a) - drain;              // $2740B6 sub.w D0,($2A,A5)
+    ram.setU16(a5 + 0x2a, u16(next));
+    if (next < 0) ram.setU16(a6 + 0x18, T81.hpAfterArmour);   // $2740BA bcc / $2740BC
+  }
+
+  // $2740C2..$274106 -- the shared $5C damage arm, its THIRD caller.
+  const dmg = damageArm5C(ram, ctx, a5, a6, T81.damage);
+  if (dmg.dead) { death81(ram, rom, a5, a6, ctx); return; }     // $274102 bmi $27449C
+  ram.setU8(a6 + 0x1d, dmg.pal & 0xff);                   // $274106
+  spawnCues28AC72(ram, rom, a5, a6);                      // $27410A jsr $28AC72
+
+  // $274110 -- `tst.l` over $8130D2 AND $8130D4 together, the W308 shape.
+  if (ram.u32(G.freeze) !== 0) { draw81(ram, rom, a5, a6); return; }
+  if (i16(ram.u16(a6 + 0x02)) < T81.fireX) {              // $27411A cmpi.w #$1000 / blt
+    facing81(ram, rom, a5, a6, ctx);
+    draw81(ram, rom, a5, a6);
+    return;
+  }
+
+  const state = ram.u16(a6 + 0x38);                       // $274124 move.w ($38,A6),D0
+  if (state === 0) {
+    if (due8(ram, a5 + 0x1e)) {                           // $27412A subq.b #1 / bcc
+      ram.setU8(a5 + 0x1e, ram.u8(a5 + 0x28));            // $274132
+      ram.setU16(a6 + 0x38, 1);                           // $274138 move.w #$1,($38,A6)
+    }
+  } else if (state === 1) {
+    if (due8(ram, a6 + 0x3a)) {                           // $274148 subq.b #1 / bcc
+      ram.setU8(a6 + 0x3a, ram.u8(a6 + 0x3b));            // $274150
+      const idx = u16(ram.u16(a6 + 0x36) + T81.rampStep); // $274156 addq.w #4
+      ram.setU16(a6 + 0x36, idx);
+      ram.setU32(a6 + 0x32, rampLong81(rom, idx));        // $274164
+      if (idx === T81.rampClamp) ram.setU16(a6 + 0x38, 2);    // $27416A/$274172
+    }
+  } else if (state === 2) {
+    if (due8(ram, a6 + 0x3a)) {                           // $274184 subq.b #1 / bcc $2741B2
+      ram.setU8(a6 + 0x3a, ram.u8(a6 + 0x3b));            // $27418A
+      let idx = u16(ram.u16(a6 + 0x36) + T81.rampStep);   // $274190 addq.w #4
+      if (idx === T81.rampWrap) idx = T81.rampWrapTo;     // $274194/$27419C -- THE GUARD
+      ram.setU16(a6 + 0x36, idx);
+      ram.setU32(a6 + 0x32, rampLong81(rom, idx));        // $2741AC
+    }
+    fire81(ram, rom, a5, a6, ctx);                        // $2741B2 -- reached either way
+  } else {
+    if (due8(ram, a6 + 0x3a)) {                           // $27425E subq.b #1 / bcc
+      ram.setU8(a6 + 0x3a, ram.u8(a6 + 0x3b));            // $274264
+      const cur = ram.u16(a6 + 0x36);
+      if (cur < T81.rampStep) {                           // $27426A subq.w #4 / bcc
+        ram.setU16(a6 + 0x36, u16(cur - T81.rampStep));
+        ram.setU16(a6 + 0x38, 0);                         // $274270 clr.w ($38,A6)
+      } else {
+        const idx = u16(cur - T81.rampStep);
+        ram.setU16(a6 + 0x36, idx);
+        ram.setU32(a6 + 0x32, rampLong81(rom, idx));      // $274276..
+      }
+    }
+  }
+  facing81(ram, rom, a5, a6, ctx);                        // $274286
+  draw81(ram, rom, a5, a6);                               // $27432C
+}
+
+/** `$27460A` indexed by `($36,A6)`. SIX longwords, and index `$18` is an INSTRUCTION
+ *  (`$3B7C0001`), so an out-of-range index is a throw and never a clamp. */
+function rampLong81(rom, idx) {
+  if (idx > T81.rampClamp || (idx & 3) !== 0) {
+    unreached(T81.ramp, `$27460A indexed by ($36,A6) = $${idx.toString(16).toUpperCase()}. The `
+      + `table is SIX longwords ($1732E0..$173484, ascending by $54) and the longword at index `
+      + `$18 is $3B7C0001 -- an INSTRUCTION. The ROM's own guards are the $14 clamp in state 1 `
+      + `and the $18 -> $10 wrap in state 2; reaching here means one of them was not transcribed, `
+      + `and the emitted sprite address would be built out of an opcode`);
+  }
+  return rom.u32(T81.ramp + idx);
+}
+
 // ============================================ TYPE $01 (W325) ============
 // `$267C24..$267CBA`, and it arrived here BY A MISTAKE THAT IS WORTH THE COMMENT.
 //
@@ -7490,6 +7737,7 @@ const HANDLERS = new Map([
   [0x2764d2, handler8E],          // W319: Stage-5 zoom-drawn tracking turret $8E
   [0x269350, handler1B],          // W323: Stage-1 four-state ramped aimed-pair turret $1B
   [0x267c70, handler01],          // W325: the P2-driven item spawner, type $01
+  [0x274076, handler81],          // W326: Stage-5 armoured four-state twin-muzzle $81
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
   [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42

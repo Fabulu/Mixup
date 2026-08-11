@@ -171,7 +171,9 @@ test('the Stage-1 through W223 Stage-4 bodies are dispatched', () => {
     'W323: type $1B body $26925E -- the $8130D8 refcount and the ($44,A5) table advance');
   assert.ok(INIT_BODY_ADDRESSES.includes(0x267c2c),
     'W325: type $01 body $267C2C (NOT $81) -- the one body with NO $263808, a literal position');
-  assert.equal(INIT_BODY_ADDRESSES.length, 75,
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x273f0e),
+    'W326: the REAL type $81 body $273F0E -- two spawn-time aims and a per-stage row');
+  assert.equal(INIT_BODY_ADDRESSES.length, 76,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
     + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
     + `W170's $277836, W171's $276946, W172's $27751C, W173's $275154, `

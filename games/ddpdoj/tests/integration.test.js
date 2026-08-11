@@ -263,7 +263,7 @@ test('the handler adapter covers every address in handlerMap(), and only those',
   { skip: SKIP }, () => {
     const m = enemyHandlerMap(ROM);
     assert.deepEqual([...m.keys()].sort(), [...HANDLER_ADDRESSES].sort());
-    assert.equal(m.size, 70, 'W25 ported six of stage 1\'s nineteen SCRIPT '
+    assert.equal(m.size, 71, 'W25 ported six of stage 1\'s nineteen SCRIPT '
       + 'handlers; W30 added $275914, $2739C0 and $276702 -- the three that '
       + 'BLOCKED the fly-around gate -- W31 added $26B6FA, the MIDMOSS, the '
       + 'fourth, W33 added $272AAC, the scripted carrier, and W36 added the '
@@ -305,7 +305,8 @@ test('the handler adapter covers every address in handlerMap(), and only those',
       + 'W317 adds the type $59 spawner $265A14 for 67, and W319 adds the '
       + 'zoom-drawn type $8E $2764D2 for 68, and W323 adds the four-state '
       + 'ramped aimed-pair turret $1B $269350 for 69, and W325 adds the '
-      + 'P2-driven item spawner $01 $267C70 for 70, '
+      + 'P2-driven item spawner $01 $267C70 for 70, and W326 adds the REAL '
+      + 'type $81, the armoured twin-muzzle $274076, for 71, '
       + 'against the stage-1 '
       + 'script denominator of 19/19');
   });

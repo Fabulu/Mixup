@@ -89,7 +89,7 @@ function nullOf(script) {
 
 // ==================== 1. THE WORK LIST
 
-test('W323 stage 5 has ELEVEN types with no handler, over 32 of its 770 records',
+test('W326 stage 5 has TEN types with no handler, over 29 of its 770 records',
   { skip: SKIP_IMG }, () => {
     // The measurement this file exists for. `enemyHandlerMap` is built from the cartridge, and
     // `runEnemyDriver`'s `handlers.get(h)` miss is where a missing handler is reported -- but
@@ -98,18 +98,21 @@ test('W323 stage 5 has ELEVEN types with no handler, over 32 of its 770 records'
     // and 65.
     // W323: TWELVE and 37 -> ELEVEN and 32. Type $1B is ported, and it was the biggest CLEAN one
     // at five records -- `$46` is still bigger at thirteen and still wants `$55` first.
+    // W326: ELEVEN and 32 -> TEN and 29, type $81 (3 records). `$1A` is the only remaining type
+    // that is neither a dependency bundle nor a boss, and it is blocked on register provenance at
+    // `$268D8C` rather than on reading -- see the worklog.
     const map = enemyHandlerMap(ROM);
     const miss = missingOf(SCRIPTS[5], map);
-    assert.equal(miss.length, 11, `eleven types, got ${miss.map((m) => m.type.toString(16))}`);
-    assert.equal(miss.reduce((a, m) => a + m.records, 0), 32, 'across 32 records');
+    assert.equal(miss.length, 10, `ten types, got ${miss.map((m) => m.type.toString(16))}`);
+    assert.equal(miss.reduce((a, m) => a + m.records, 0), 29, 'across 29 records');
     // Ranked by record count. **W317 found this is NOT the order to port them in** -- see the
     // dependency test below. `$46` is the biggest and needs an unported 1130-byte child first.
     const ranked = [...miss].sort((a, b) => b.records - a.records || a.type - b.type);
     assert.deepEqual(ranked.map((m) => m.type),
-      [0x46, 0x1a, 0x81, 0x48, 0x49, 0x4a, 0x4b,
+      [0x46, 0x1a, 0x48, 0x49, 0x4a, 0x4b,
         0x43, 0x47, 0x4c, 0xb0]);
     assert.deepEqual(ranked.slice(0, 2).map((m) => m.records), [13, 4],
-      '$46 is the biggest left but wants $55 first; $1A is now the biggest CLEAN one');
+      '$46 is the biggest left but wants $55 first; $1A is next but is BLOCKED on D2/D3');
   });
 
 test('W315 stage 5\'s one type-$00 record points at a NULL handler', { skip: SKIP_IMG }, () => {
@@ -238,16 +241,20 @@ test('W314 the walker and the driver are different tables', { skip: SKIP_IMG }, 
   // perfectly and have nothing to run afterwards, which is exactly the state 16 of stage 5's types
   // are in.
   const map = enemyHandlerMap(ROM);
-  const e = typeEntry(0x81);
-  assert.equal(e.init, 0x273f06, 'type $81\'s init stub');
+  // **THE WORKED EXAMPLE MOVED IN W326.** This test used type `$81` to show a type that spawns
+  // perfectly and has no handler -- and W326 ported `$81`, so the example had to become a type that
+  // is still in that state. `$1A` is, and it is the next one in the queue (blocked on the D2/D3
+  // provenance at `$268D8C`, not on reading). The point of the test is unchanged.
+  const e = typeEntry(0x1a);
+  assert.equal(e.init, 0x268d1e, 'type $1A\'s init stub');
   assert.equal(IMG.readUInt16BE(e.init), 0x3b7c, 'and it IS the 8-byte `move.w #N,($4,A5)` stub');
   assert.equal(IMG.readUInt16BE(e.init + 6), 0x4e75, 'ending in rts');
   assert.equal(IMG.readUInt16BE(e.init + 2), 1, 'with run length 1');
   assert.ok(!map.has(e.handler), 'but its handler is absent');
-  // `handlers.js` already names `$273F06` -- as the far boundary of type $80's span, which is how
-  // the port came to know the address without ever porting the type.
-  const src = readFileSync(path.join(R, 'src', 'handlers.js'), 'utf8');
-  assert.match(src, /\$273F06. is type \$81's init stub/);
+  // And the type W326 DID port is registered on both halves, which is the contrast that makes the
+  // assertion above mean something rather than merely being true of everything.
+  assert.ok(map.has(typeEntry(0x81).handler), 'W326: type $81\'s handler IS registered now');
+  assert.equal(typeEntry(0x81).init, 0x273f06, 'out of the HIGH table, not the low one');
 });
 
 test('W314 the first live throw is type $81\'s run-length read', { skip: SKIP }, () => {

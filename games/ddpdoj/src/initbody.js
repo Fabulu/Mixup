@@ -676,6 +676,24 @@ BODY.set(0x274b74, (ram, rom, a5, a6, unported) => {
 });
 
 // --- type $16 ($266D36): Stage-3's wobbling paired-shot formation. W203.
+/** W326. `AimTables` validates five ROM tables in its constructor, so it must not be built once
+ *  per spawn. Keyed on the ROM object, the same way this file's other five per-type maps are and
+ *  for the same reason: it makes the tables a pure derivation of immutable input. */
+const TYPE81_AIM_TABLES = new WeakMap();
+function aimTablesFor(rom) {
+  let t = TYPE81_AIM_TABLES.get(rom);
+  if (!t) { t = new AimTables(rom); TYPE81_AIM_TABLES.set(rom, t); }
+  return t;
+}
+
+/** W326. Type `$81`'s TWO spawn-time aim blocks: `$273F38..$273F60` and `$273F62..$273F8A`. The
+ *  same nine instructions twice, with the X bias, the angle byte and the table longword changed.
+ *  `biasX` is `+$A40` then `-$A00` (`addi.w #$F600`), which is why the pair is not symmetric. */
+const TYPE81_AIMS = Object.freeze([
+  { biasY: 0x5c0, biasX: 0x0a40, angleOff: 0x2b, longOff: 0x26 },   // $273F3E/$273F42/$273F52
+  { biasY: 0x5c0, biasX: -0xa00, angleOff: 0x31, longOff: 0x2c },   // $273F68/$273F6C/$273F7C
+]);
+
 const TYPE16_AIM_TABLES = new WeakMap();
 BODY.set(0x266d36, (ram, rom, a5, a6, unported) => {
   loadSubProto(ram, rom, a5, a6, 0x266d98);
@@ -1819,6 +1837,54 @@ BODY.set(0x270dd8, (ram, rom, a5, a6, unported) => {
   readInitPosition(ram, rom, a5, unported);             // $270DF2 jsr $263808
   ram.setU8(a6 + 0x1d, ram.u8(a5 + 0x18));              // $270DF8 move.b ($18,A5),($1D,A6)
   ram.setU16(0x81b414, 1);                              // $270DFE move.w #$1,$81B414
+});
+
+// --- type $81 ($273F0E), W326. The REAL $81, out of the HIGH type table `$27E412` -- W325 read
+// the LOW table with a masked index and translated type $01 by mistake; see that block below.
+//
+// Its two AIM BLOCKS go through `$24200A` -- `aim64FromCaller`, which does its own `targetSelect`
+// and returns a real carry. **On carry the ROM falls back to the sub-record's own `($1B,A6)` angle
+// rather than skipping**, so the no-player case is a VALUE substitution and not a branch around the
+// work. Type `$1A` calls the raw core `$24203E` with D2/D3 never set; this one is the sibling that
+// does it properly, and the contrast is why `$1A` is still blocked.
+//
+// And its FIVE STAGE ROWS ARE NOT ALL THE SAME, unlike types `$1A` and `$1B`: `11 0E` four times
+// then `0D 12`, so stage index 4 -- stage 5, the only stage that spawns this type -- takes the
+// different pair. Folding the indexed read to a constant would be wrong in exactly the stage that
+// matters.
+BODY.set(0x273f0e, (ram, rom, a5, a6, unported) => {
+  const end = loadSubProto(ram, rom, a5, a6, 0x274004);   // $273F14 jsr $2637A2
+  ram.setU32(a5 + R.rec44, end);                          // $273F1A move.l A0,($44,A5)
+  loadRecordProto(ram, rom, a5, 0x273fee, 0x0a);          // $273F26 jsr $26377A -- D0+1 = 11 words
+  readInitPosition(ram, rom, a5, unported);               // $273F2C jsr $263808 -- a JSR
+  // $273F38..$273F8A -- the two aim blocks. A2 = $272DFA, already inside the $272D70 + $190 window.
+  const at = aimTablesFor(rom);
+  for (const b of TYPE81_AIMS) {
+    const selfY = u16(ram.u16(a6 + 0x02) + b.biasY);      // $273F3E / $273F68 addi.w
+    const selfX = u16(ram.u16(a6 + 0x04) + b.biasX);      // $273F42 / $273F6C addi.w
+    const r = aim64FromCaller(at, ram, a5, selfY, selfX); // $273F46 / $273F70 jsr $24200A
+    // $273F4C `bcc` -- on CARRY (both players dead) D1 keeps the record's own angle byte.
+    const d1 = r.carry ? ram.u8(a6 + 0x1b) : r.dir;       // $273F4E / $273F78
+    ram.setU8(a6 + b.angleOff, d1 & 0xff);                // $273F52 / $273F7C
+    // $273F56 `andi.w #$3E` then `add.w D1,D1` -- the mask is $3E and the double makes it a BYTE
+    // offset, so the index is (angle & $3E) * 2 and can never straddle a longword boundary.
+    ram.setU32(a6 + b.longOff, rom.u32(0x272dfa + u16((d1 & 0x3e) * 2)));
+  }
+  // $273F8C..$273FA4 -- `cmpi.w #$1,$813092 / bls`, and BOTH ARMS WRITE $10/$8, so it is $10/$8 on
+  // every stage. W319 recorded type $8E's identical shape the same way: the branch is transcribed
+  // as a comment rather than as code, because a reader checking the listing will see two arms.
+  ram.setU8(a5 + 0x28, 0x10);                             // $273FA6 move.b D0,($28,A5)
+  ram.setU8(a5 + 0x29, 0x08);                             // $273FAA move.b D1,($29,A5)
+  // $273FAE -- a RANK adjustment, and it is a BYTE subtract of a WORD read.
+  ram.setU8(a5 + 0x1e, (ram.u8(a5 + 0x1e) - ram.u16(0x8130b0)) & 0xff);
+  // $273FB8 -- $813094 is the stage index DOUBLED. **$273FC6 does NOT post-increment**, so
+  // ($1D,A6) and ($1C,A5) BOTH take byte 0 and only ($1D,A5) takes byte 1.
+  const row = 0x273fe4 + u16(ram.u16(0x813094));          // $273FC4 adda.w D0,A0
+  ram.setU8(a6 + 0x1d, rom.u8(row));                      // $273FC6 move.b (A0),($1D,A6)
+  ram.setU8(a5 + 0x1c, rom.u8(row));                      // $273FCA move.b (A0)+,($1C,A5)
+  ram.setU8(a5 + 0x1d, rom.u8(row + 1));                  // $273FCE move.b (A0)+,($1D,A5)
+  ram.setU16(0x81b414, 1);                                // $273FD2
+  ram.setU16(0x81b416, 1);                                // $273FDA
 });
 
 // --- type $01 ($267C2C), W325. NOT type $81: the reconnaissance masked the type index with `& $7F`
