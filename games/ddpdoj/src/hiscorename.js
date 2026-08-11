@@ -446,6 +446,144 @@ export function drawGridFrame28F4C4(ram, rom, a4, a5) {
 }
 
 // ===========================================================================
+// W309 -- THE INPUT DECODE, AND THE ROUTINE THAT MAKES A CHARACTER VALUE
+// ===========================================================================
+// `($36,A4)` is `readInput23D186`'s word (W305). Four things are read out of it, and the port
+// already knows the cue every press fires -- `$28C6E0` is SFX id `$1A` in `sound.js`.
+//
+//     btst #$F        the FINISH button
+//     $20             BACKSPACE
+//     $50             SELECT (bits 4 and 6, either one)
+//     low nibble      the directions, which move the cursor
+//
+// ## `D0 = grid position * 4` IS WHERE A CHARACTER VALUE COMES FROM
+//
+//     28f652  move.w ($16,A4),D1       the count BEFORE the increment
+//     28f656  addq.w #1,($16,A4)
+//     28f65a  add.w D0,D0
+//     28f65c  add.w D0,D0              D0 = the grid position, times four
+//     28f65e  movea.l ($30,A4),A0
+//     28f662  add.w D1,D1 / add.w D1,D1
+//     28f666  move.l D0,(A0,D1.w)
+//
+// **This is the fourth independent confirmation of the alphabet, and the first that is causal.**
+// W301 inferred index-times-four from the factory data, W302 found the instruction that requires
+// it, W306 decoded seventeen banned names as words -- and this is the routine that MAKES the
+// values in the first place. The grid position is the index, and `add.w D0,D0` twice is the
+// scale. Nothing is left to infer.
+//
+// ## THE GRID IS 27 CELLS AND THEN "END"
+//
+// `$28F5DC cmpi.w #$1B,D0 / bcs $28F652`: positions 0..26 are characters and `$1B` or above is
+// the END cell. Choosing END writes character `$70` -- index 28 -- into every remaining slot:
+//
+//     28f5e8  moveq #$70,D0
+//     28f5ea  move.w ($16,A4),D1 / add.w D1,D1 x2 / move.l D0,(A0,D1.w)
+//     28f5f6  addq.w #1,($16,A4) / cmpi.w #$3,($16,A4) / bne $28F5EA
+//
+// **So W306's seventeenth banned entry, `$70 $70 $70`, is the name you get by pressing END
+// straight away.** It is not an arbitrary triple of the last glyph; it is the all-END name, and
+// it is banned for the same reason `AAA` is. And the counts finally close: 27 selectable
+// characters (0..26), the font's `$00000000` hole at 27 that nothing can reach, and END's glyph
+// at 28. The 29-entry font W302 had to size a window around is exactly that.
+//
+// ## AND `DDP` IS THE DEFAULT NAME, NOT ONLY THE PUNISHMENT
+//
+// W306 read `$28F59E` as the banned-name replacement, which it is -- but it has a SECOND caller:
+//
+//     28f592  jsr $28C6E0              the finish button's cue
+//     28f598  tst.w ($16,A4)
+//     28f59c  bne $28F606              something entered -> the filter and commit
+//     28f59e  ...                      NOTHING entered -> falls through into the DDP write
+//
+// So pressing finish with an empty name gives `DDP` directly, without consulting the banned
+// list. W306's reading was right and incomplete: `DDP` is the default, and being caught by the
+// filter is just the other way to get it.
+//
+// Backspace lands in the same territory. `$28F64E moveq #$0,D0` writes character **0** into the
+// slot it frees, so backspacing all three leaves `A A A` -- and `AAA` is banned entry 0. The two
+// "the player did not really enter a name" outcomes are both in the list, one per route.
+const INPUT = Object.freeze({
+  word: 0x36,               // ($36,A4) -- readInput23D186's word
+  finishBit: 0x8000,        // $28F58C btst #$F
+  backspaceMask: 0x20,      // $28F5C4 moveq #$20,D3 / and.w D0,D3
+  selectMask: 0x50,         // $28F5CA andi.w #$50,D0 -- bits 4 and 6, either
+  cue: 0x28c6e0,            // sound.js: SFX id $1A
+  gridPos: 0x18,            // ($18,A4) -- the cursor's grid cell
+  count: 0x16,              // ($16,A4) -- characters entered
+  endCell: 0x1b,            // $28F5DC cmpi.w #$1B -- 27 characters, then END
+  endChar: 0x70,            // $28F5E8 moveq #$70 -- index 28
+  blankChar: 0x00,          // $28F64E moveq #$0 -- backspace writes 'A'
+  chars: 3,
+  commitSite: 0x28f65e,     // the write both arms share
+  defaultSite: 0x28f59e,    // the DDP write, reached from the filter AND from an empty finish
+  afterEntry: 0x28f606,     // where a non-empty finish goes
+});
+
+/** `$28F65E` -- the write both the character and the backspace arms reach. */
+function writeChar(ram, a4, slot, value) {
+  const row = ram.u32(a4 + NAME_REC.entry);              // $28F65E movea.l ($30,A4),A0
+  ram.setU32(row + slot * 4, value);                     // $28F662 add.w D1,D1 x2 / move.l
+}
+
+/**
+ * `$28F588..$28F666` -- one frame of button handling.
+ *
+ * @returns {'finish-empty'|'finish'|'backspace'|'char'|'end'|'idle'}
+ *   `finish-empty` has already written `DDP`; `finish` means `$28F606` takes over.
+ *
+ * The order matters and is the ROM's: finish is tested first and returns, then backspace, then
+ * select. A port that tested select first would commit a character on the frame the player
+ * finished.
+ */
+export function nameButtons28F588(ram, a4, ctx) {
+  const d0 = ram.u16(a4 + INPUT.word);
+
+  if ((d0 & INPUT.finishBit) !== 0) {                    // $28F58C btst #$F / $28F590 beq
+    ctx?.unportedLog?.note(INPUT.cue,
+      '$28F592 jsr $28C6E0 -- SFX id $1A, already in sound.js');
+    if (ram.u16(a4 + INPUT.count) !== 0) return 'finish'; // $28F598 tst.w / $28F59C bne
+    // $28F59E -- falls THROUGH into the same write W306 ported as the banned-name replacement.
+    const row = ram.u32(a4 + NAME_REC.entry);
+    for (const [k, c] of NAME_ALPHA.replacement.entries()) ram.setU32(row + k * 4, c);
+    ram.setU16(a4 + INPUT.count, INPUT.chars);            // $28F5B6 move.w #$3
+    return 'finish-empty';
+  }
+
+  if ((d0 & INPUT.backspaceMask) !== 0) {                // $28F5C4/$28F5C8 bne $28F63C
+    const n = ram.u16(a4 + INPUT.count);                  // $28F63E move.w ($16,A4),D1
+    if (n === 0) return 'idle';                           // $28F642 beq $28F6C6 -- a bare rts
+    ram.setU16(a4 + INPUT.count, u16(n - 1));             // $28F646 subq.w #1
+    writeChar(ram, a4, n - 1, INPUT.blankChar);           // $28F64A/$28F64E moveq #$0,D0
+    return 'backspace';
+  }
+
+  if ((d0 & INPUT.selectMask) === 0) return 'idle';      // $28F5CA andi.w #$50 / beq $28F6C6
+  ctx?.unportedLog?.note(INPUT.cue, '$28F5D2 jsr $28C6E0 -- SFX id $1A on the select');
+
+  const pos = ram.u16(a4 + INPUT.gridPos);               // $28F5D8 move.w ($18,A4),D0
+  if (pos >= INPUT.endCell) {                            // $28F5DC cmpi.w #$1B / bcs
+    // $28F5E8..$28F600 -- pad EVERY remaining slot with index 28, not just the next one.
+    for (let n = ram.u16(a4 + INPUT.count); n < INPUT.chars; n++) {
+      writeChar(ram, a4, n, INPUT.endChar);
+      ram.setU16(a4 + INPUT.count, u16(n + 1));           // $28F5F6 addq.w #1
+    }
+    return 'end';
+  }
+  if (ram.u16(a4 + INPUT.count) >= INPUT.chars) {
+    unreached(0x28f652, `$28F652 would write character ${ram.u16(a4 + INPUT.count)} of `
+      + `${INPUT.chars}. Nothing here bounds the count -- the END arm caps it at three and the `
+      + `finish button consumes it, so a select with three already entered means an arm above `
+      + `this one was skipped`);
+  }
+  const slot = ram.u16(a4 + INPUT.count);                // $28F652 move.w ($16,A4),D1
+  ram.setU16(a4 + INPUT.count, u16(slot + 1));           // $28F656 addq.w #1
+  // $28F65A/$28F65C -- the grid position TIMES FOUR is the stored character value.
+  writeChar(ram, a4, slot, u16(pos * 4));
+  return 'char';
+}
+
+// ===========================================================================
 // W306 -- THE BANNED-NAME FILTER, AND THE ALPHABET IT PROVES
 // ===========================================================================
 // `$28F674 lea ($28F8AC,PC),A1` and then a loop with no counter:
