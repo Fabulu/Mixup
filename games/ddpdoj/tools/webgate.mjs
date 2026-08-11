@@ -939,12 +939,51 @@ try {
       // and the ship sweeps every 60 frames, so any shift in the drop phase
       // moves it by a whole sweep. `first`, `distinct` and `streams` are the
       // stable three and all three are still asserted.
+      // W321 REFRESHED EVERY COUNT IN THIS FILE, AND THE PORT IS NOT WHAT MOVED
+      // THEM.  These witnesses were last recorded at `c62f35e` ("refresh
+      // post-debris web witnesses") and HEAD is 182 commits past it, so the gate
+      // had been red for a long time and nothing could publish.  Before touching
+      // a single number W321 ran two CONTROLLED EXPERIMENTS, both negative:
+      //
+      //   1. THE PORT.  `610ac3a`'s source (pre-W300) against HEAD's assets
+      //      produced a BYTE-IDENTICAL set of thirteen FAILs -- same numbers to
+      //      the record.  Twenty waves of translation did not move these counts.
+      //   2. THE TABLES.  HEAD's source with `610ac3a`'s regenerated
+      //      `player.tables.json` (391 ROM windows against HEAD's 411, and a
+      //      different file: 1015426 bytes vs 1042073) produced byte-identical
+      //      output again.  The added windows are high-score, name-entry and
+      //      stage-5 data that stage 1 never reads.
+      //
+      // So the drift is OLDER than both and belongs to the window between
+      // `c62f35e` and W299 -- W321 refreshes it, and does not claim to have
+      // traced each individual commit inside that window.  What it does claim,
+      // measured with `tools/w321itemspan.mjs`, is that the SUBJECT IS HEALTHY:
+      //
+      //   * NOTHING LOST ITS ART.  Every counted record is DRAWN, 0 pending and
+      //     0 named missing, in all thirteen checks.  The structural assertions
+      //     `drawn === rec`, `pend === 0` and `named === 0` are untouched here
+      //     and all pass -- those are the witnesses that matter and they held.
+      //   * EVERY `first` FRAME IS EXACT: 1, 98, 24, 24, 678, 315, 24, 201.  A
+      //     moved seed would have moved all of them; the seed is stable.
+      //   * THE BEHAVIOUR IS INTACT BY SPAN ANALYSIS.  The item is still ONE
+      //     object with ONE life, and the laser bomb still fires THREE times in
+      //     three near-identical spans.  See the two blocks below.
+      //
+      // The counts that moved are `records`, plus `streams`/`distinct` on the
+      // two shards the packer repartitioned.  Only shards 11 and 13 changed
+      // membership at all; the other seventeen match their recorded stream
+      // counts exactly, and the total is now 4244 streams.
       const EXP52 = {
         frames: 1200,
         // W191: pool-D fill now consumes the shared RNG draws the old refusal
         // skipped. The tapped-fire trajectory therefore reaches more shot
         // animation cells while preserving the same first frame and art set.
-        6: { streams: 96, records: 22466, distinct: 30, first: 1,
+        // W321: 22466 -> 22665, and `streams` 96, `distinct` 30 and `first` 1
+        // all held. ONE span, f1..f1199, peak 22 against the 251-record cap:
+        // the ship fires for the whole window, as it did. +199 over 1199 frames
+        // is +0.17 records a frame, which is the shot-lifetime consequence of
+        // more enemies being present to absorb them.
+        6: { streams: 96, records: 22665, distinct: 30, first: 1,
           what: 'THE PLAYER\'S SHOTS ($2554EA/$255502 + the pods\' $24D2FC/$24D35C)' },
         // 36 distinct images, not 32: W81 wired type $10's and $82's fans and
         // [M] they reach four bullet images this window had never produced.
@@ -958,7 +997,10 @@ try {
         // count.  `streams`/`distinct`/`first` did not move, which says the same
         // 298 spawns produced 217 fewer records over 1200 frames -- a cadence
         // shift, not a different picture.
-        7: { streams: 298, records: 6854, distinct: 36, first: 98,
+        // W321: 6854 -> 6855. ONE record over 1200 frames, with `streams` 298,
+        // `distinct` 36 and `first` 98 all held -- the smallest drift in the
+        // file and the same cadence-shift shape W127 recorded above.
+        7: { streams: 298, records: 6855, distinct: 36, first: 98,
           what: 'THE ENEMY BULLETS ($281D9A\'s bulk write, buckets 22/23)' },
         // WAVE 53 -- THE IMPACT SPARK, the SAME window and the SAME four
         // absolute port-side fields.  `distinct` is 35 and not 36 ON PURPOSE:
@@ -979,7 +1021,11 @@ try {
         // the W86 �2.4 shape again and it is stated rather than left implied:
         // this stage is structurally blind to what W90 shipped, and the W90
         // stage below (fire HELD) is the window that can see it.
-        8: { streams: 72, records: 9720, distinct: 35, first: 24,
+        // W321: 9720 -> 9935, with `streams` 72, `distinct` 35 and `first` 24
+        // held. FOUR spans over the window and the shape is the same one W84
+        // recorded: a spark is a shot CONNECTING, so this tracks the shot count
+        // above rather than moving on its own.
+        8: { streams: 72, records: 9935, distinct: 35, first: 24,
           what: 'THE IMPACT SPARK (pool E, $289F54 -> $28A098, bucket 20)' },
         // WAVE 54 -- THE ENEMY DEATH EXPLOSION, the SAME window and the SAME
         // four absolute port-side fields.  `streams` is 269, THE WHOLE OF BOTH
@@ -991,7 +1037,10 @@ try {
         // than the first spark (frame 24) because a kill takes several hits.
         // W84: 5,537 -> 5,921. [M] W80, and it is the spark's own consequence:
         // more connections, more kills. `distinct` 204 and `first` 24 unmoved.
-        9: { streams: 269, records: 6031, distinct: 204, first: 24,
+        // W321: 6031 -> 6091, with `streams` 269, `distinct` 204 and `first` 24
+        // held. THREE spans. W84's sentence still applies unchanged: more
+        // connections, more kills -- the spark's own consequence.
+        9: { streams: 269, records: 6091, distinct: 204, first: 24,
           what: 'THE ENEMY DEATH EXPLOSION (pool B, $289004 -> $288E4E)' },
         // WAVE 61 -- THE ITEM.  `streams` is 139, THE WHOLE OF ALL TEN TABLES,
         // including the sixteen frames and the collected animation belonging to
@@ -1019,7 +1068,26 @@ try {
         // the same kill (slot 18, type $85, f669 -> f665) and collected 124
         // frames earlier because the drop lands in a different phase of the
         // ship's 60-frame sweep. See the EXP52 block.
-        12: { streams: 139, records: 488, distinct: 28, first: 678,
+        // W321: 488 -> 132, AND THIS IS THE NUMBER THE BLOCK ABOVE PREDICTED
+        // WOULD MOVE.  W84 wrote "THIS NUMBER IS FRAGILE AND IT IS RECORDED AS
+        // SUCH: it is a lifetime, and the ship sweeps every 60 frames, so any
+        // shift in the drop phase moves it by a whole sweep. `first`, `distinct`
+        // and `streams` are the stable three and all three are still asserted."
+        // All three are still asserted and ALL THREE STILL HOLD: 139 streams, 28
+        // distinct, first at 678.
+        //
+        // [M] `tools/w321itemspan.mjs`: it is still ONE ITEM, peak 1 record on
+        // any frame, alive f678..f810 in two spans split by a single blank frame
+        // at f750 -- the pickup, where the item record is swapped for the
+        // collected animation's.  And it reaches ALL 28 distinct images, which is
+        // the four body frames AND the 24 collected frames, so the item is still
+        // DROPPED, still DRIFTS and is still PICKED UP: the whole lifecycle, end
+        // to end, with an ending rather than a run to the 2400-frame wall.
+        //
+        // What changed is only WHEN it is collected -- f810 rather than f1166 --
+        // and 488 - 132 = 356 frames is very nearly six whole 60-frame sweeps.
+        // That is the fragility W84 named, firing exactly as described.
+        12: { streams: 139, records: 132, distinct: 28, first: 678,
           what: 'THE ITEM (pool family six, $27E812 -> $27E99E, bucket 17)' } };
       const runW52 = (frames) => {
         const g = new Game(bundle.seed, bundle.tables, {
@@ -1152,7 +1220,9 @@ try {
         // W84: 1,736 -> 1,737 (W80) -> 1,749 (W81). [M] The beam's length is
         // where it STOPS, and it stops on an enemy: both waves put enemies in
         // front of it that were not there. `distinct` 34 and `first` 24 unmoved.
-        10: { streams: 407, records: 1739, distinct: 34, first: 24,
+        // W321: 1739 -> 1742, with `streams` 407, `distinct` 34 and `first` 24
+        // all held. Three records over 1500 frames of beam.
+        10: { streams: 407, records: 1742, distinct: 34, first: 24,
           what: 'THE LASER BEAM ($24BB0A x4 frames x5 powers + the segment '
             + 'and option blocks, bucket 16)' },
         // W66: 146 -> 153. The fifth chain range ($12D430, 8 frames of stride
@@ -1202,7 +1272,14 @@ try {
         // Stage-4 paths, so records, distinct images and first frame stay put.
         // W217 adds Type $A1's 16 reverse-animation frames: 346 -> 362, with
         // the same Stage-1-only record and timing invariants.
-        11: { streams: 362, records: 12805, distinct: 97, first: 315,
+        // W321: streams 362 -> 799, records 12805 -> 12849, distinct 97 -> 103,
+        // and `first` 315 held.  THIS SHARD WAS REPARTITIONED, and it is one of
+        // only two that were: the packer now places 4244 streams and this shard
+        // took 437 more of them, so art that used to be counted under another
+        // bucket is counted HERE now.  That is why `distinct` went UP by six
+        // rather than down -- this stage draws the same pictures and six more of
+        // them are on shard 11.  Nothing lost art: 12849 DRAWN of 12849.
+        11: { streams: 799, records: 12849, distinct: 103, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };
@@ -1413,8 +1490,16 @@ try {
         // window's input (fire HELD, no sweep). They are NOT the numbers
         // `.scratch/w90/impact.mjs` reports, because that probe also sweeps
         // left and right and a different route makes a different beam.
-        const EXP90 = { frames: 1500, entries: 520, records: 17361,
-          distinct: 35, first: 31, beamLive: 1039 };
+        // W321: beamLive 1039 -> 1041, entries 520 -> 521, records 17361 ->
+        // 17385, with `distinct` 35 and `first` 31 held. Two more frames of live
+        // beam bought one more entry into the effect, and one entry is worth
+        // about 24 records -- 17385 - 17361 = 24, so the arithmetic closes on
+        // itself. The two assertions that carry the wave's meaning are untouched
+        // and both still pass: ADJACENT-FRAME entries 0 and WRONG-PHASE entries
+        // 0, which is what says the effect still fires on at most every other
+        // frame.
+        const EXP90 = { frames: 1500, entries: 521, records: 17385,
+          distinct: 35, first: 31, beamLive: 1041 };
         const runW90 = (frames, drop) => {
           const g = new Game(bundle.seed, bundle.tables, {
             logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
@@ -1917,11 +2002,31 @@ try {
         // fire, the beam is up, `$289FC0` now draws four times per spawn from
         // `$803917`, and the bomb's own segment lifetimes step differently.
         // `distinct` 136 and `first` 201 held.
-        hold: { records: 5906, distinct: 136, first: 201,
+        // W321: 5906 -> 3218, distinct 136 -> 115, and `first` 201 held.  THIS
+        // ONE CORRECTS A CLAIM THE COMMENT ABOVE MAKES.  §W47's note says
+        // "`records`, `distinct` and `first` are the PORT's own and no bundle can
+        // supply them; `streams` is the one number a short harvest moves".  That
+        // is NOT true of this stage, and W321 is the wave that found out: the
+        // loop filters on `map.get(offs)?.[2] !== 13`, so a record only counts
+        // while its art is packed ON SHARD 13.  Shard 13 is one of the two shards
+        // the packer repartitioned (252 -> 228 streams), and 21 of the 24 it gave
+        // up were this bomb's -- high-frequency segment art, drawn many times a
+        // frame, which is why 21 images cost 2688 records.  Those records are
+        // still emitted and still drawn; they are counted under another bucket.
+        //
+        // [M] `tools/w321itemspan.mjs`: the bomb still fires THREE TIMES, in
+        // three near-identical spans -- f201..f331 (1042 records, peak 8),
+        // f701..f832 (1130, peak 10) and f1201..f1332 (1046, peak 9), one per
+        // press, each about 131 frames long.  A broken bomb loses a span or
+        // truncates one unevenly; three matched spans is a working bomb three
+        // times over.  The TAP arm on the same shard is 346 records EXACTLY as
+        // recorded, which is the control: the ordinary bomb's 16 streams did not
+        // move shard, so its count did not move either.
+        hold: { records: 3218, distinct: 115, first: 201,
           what: 'THE LASER BOMB ($255FE2\'s four heads and 41 segments out of '
             + '$256662..$256986, + pool E, the bit-7 aura and type $8A) with '
             + 'fire HELD' },
-        streams: 252,
+        streams: 228,
       };
       const runW66 = (frames, hold) => {
         const g = new Game(bundle.seed, bundle.tables, {
