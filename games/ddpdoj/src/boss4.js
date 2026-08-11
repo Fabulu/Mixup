@@ -2175,8 +2175,64 @@ export function a4id6Init2A11D4(ram, rom, ctx, slot) {
 
 registerScript(0x2a320e, a1_10Init2A320E);
 registerScript(0x2a323e, a1_10Step2A323E);
+/**
+ * `$2A317C` / `$2A31A0` -- A1 11, A1 9's sibling and the one that makes type `$42`'s
+ * aimer-and-fan design do anything. Same shape as A1 9: wait, draw a list, enqueue a
+ * ring of type `$42` children through `$263684`. Three differences, and the third is
+ * the whole point:
+ *
+ *   1. ONE list, not eight. `$2A31AA lea / movea.l (a3),a3` with no index at all,
+ *      where A1 9 picks with `andi.w #$7`.
+ *   2. It RETIRES ITSELF the moment the volley is out (`$2A31E4 clr.w (a4)`), so there
+ *      is no rendezvous and no `$19E` counting. A4 id6's own state 0 is what waits.
+ *   3. Its list carries TWO bytes per child -- an angle AND A ROLE -- and
+ *      `$2A31DC move.b (a3)+,$21(a0)` is what puts the role in the queue entry. A1 9
+ *      writes `$FF` there as a constant; this is the only producer of roles 0..7 and
+ *      `$70`/`$71` in the whole image, so it is the only thing that ever creates the
+ *      two invisible aimers and the eight children that fire along them.
+ *
+ * `$4(a4)`, `$6(a4)` and `$9(a4)` are written by the INIT and never read, the same
+ * vestigial shape A1 9 has.
+ */
+const A1_11_LIST = 0x2a31e8;
+
+export function a1_11Step2A31A0(ram, rom, ctx, slot) {
+  const a6 = ctx.bossSubRec;
+  ram.setU8(slot + 0x02, ram.u8(slot + 0x02) - 1);        // $2A31A0 subq.b
+  if (ram.u8(slot + 0x02) !== 0) return;                  // $2A31A4 beq/rts
+
+  let p = rom.u32(A1_11_LIST);                            // $2A31AA/$2A31B0
+  const speed = rom.u8(p++);                              // $2A31B2 move.b (a3)+,d6
+  const count = rom.u8(p++);                              // $2A31B6 move.b (a3)+,d7
+  for (let i = 0; i < count; i++) {                       // $2A31E0 dbra
+    const q = enqueueDeferred(ram, 0x42, DEFQ_D1.FIXED00);  // $2A31BA/$2A31BC
+    ram.setU32(q.addr + 0x16, ram.u32(a6 + 0x22));        // $2A31C2/$2A31C6
+    ram.setU8(q.addr + 0x1a, speed);                      // $2A31CA -- shared, signed
+    ram.setU8(q.addr + 0x1b, rom.u8(p++));                // $2A31CE -- its own angle
+    ram.setU32(q.addr + 0x1c, a6);                        // $2A31D2 -- the parent
+    ram.setU8(q.addr + 0x20, ram.u8(slot + 0x08));        // $2A31D6
+    ram.setU8(q.addr + 0x21, rom.u8(p++));                // $2A31DC -- ITS OWN ROLE
+  }
+  ram.setU16(slot, 0);                                    // $2A31E4 clr.w (a4)
+}
+
+/** `$2A317C` -- A1 11's INIT, and it FALLS THROUGH (`$2A319A` ends at `$2A31A0`), so the
+ *  eight-frame wait is already one frame in when the arming frame ends. `$2A319A` clears
+ *  `$8130F0`, which is the word type `$42`'s handler frees on. */
+export function a1_11Init2A317C(ram, rom, ctx, slot) {
+  ram.setU16(slot + 0x02, 0x0820);                        // $2A317C -- 8 frames
+  ram.setU16(slot + 0x04, 0x0004);                        // $2A3182 -- never read
+  ram.setU16(slot + 0x06, 0x000c);                        // $2A3188 -- never read
+  ram.setU8(slot + 0x08, 0x48);                           // $2A318E -- into each child
+  ram.setU8(slot + 0x09, 0xa0);                           // $2A3194 -- never read
+  ram.setU16(BOSS_F0, 0);                                 // $2A319A
+  a1_11Step2A31A0(ram, rom, ctx, slot);                   // falls through
+}
+
 registerScript(0x2a11d4, a4id6Init2A11D4);
 registerScript(0x2a1274, a4id6Step2A1274);
+registerScript(0x2a317c, a1_11Init2A317C);
+registerScript(0x2a31a0, a1_11Step2A31A0);
 // A3 3..8, the six-instance ramp family. The STEP sits `$6` past its INIT in every
 // one of them, which is the same `$2E`-stride regularity the bodies have.
 for (const a of [0x2a14aa, 0x2a14d8, 0x2a1506, 0x2a1534, 0x2a1562, 0x2a1590]) {

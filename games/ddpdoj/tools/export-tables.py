@@ -592,6 +592,17 @@ SHOT_WINDOWS.extend([
     # is the HANDLER's own first instruction, with zero bytes between them.
     (0x2A394A, 0x01AC, "W254: type $42's runLen stub, init body and five-entry "
                        "prototype, ending exactly at its handler $2A3AF6"),
+    # W259: A1 11's list, and it is what finally feeds type $42's aimer-and-fan design.
+    # ONE selector longword at $2A31E8 (`$2A31AA lea / movea.l (a3),a3` with NO index,
+    # unlike A1 9's eight-entry `andi.w #$7` pick), pointing at $2A31EC -- which is
+    # $2A31E8 + 4, so the table's own contents pin its end. The list is self-describing:
+    # a shared direction byte, a count of 10, then TEN (angle, role) PAIRS, ending at
+    # $2A3202. Its far end is pinned by data rather than code, and deliberately: $2A3202
+    # is another table of the same shape ($2A3206, speed $F6, three pairs, ending at A1
+    # 10's INIT) with NO `lea` reference anywhere in the boss's bank, so it is left
+    # unexported until a reader for it is found.
+    (0x2A31E8, 0x001A, "W259: A1 11's selector and its ten (angle, role) pairs, "
+                       "ending where the next unreferenced table begins"),
     # W255: type $42's handler's TWO TABLES, contiguous, both pinned by code.
     #   $2A4252  EIGHT sprite descriptors. `$2A41F0 addq.w #$4,$3c(a5)` with
     #            `$2A41F4 andi.w #$1F` bounds the cursor at eight longwords, and they
