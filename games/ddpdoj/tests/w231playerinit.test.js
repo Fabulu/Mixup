@@ -174,12 +174,17 @@ test('W231 a real respawn puts the ship back and deploys its pods',
     g.step(portWordFromBits([BIT.b1, BIT.b2]));
 
     const opt = RAM.p1Options;
-    for (let f = 92; f <= 497; f++) g.step(shot);
-    // frame 497 is the reset: the record is cleared and the respawn is armed
+    // W324: 497 -> 495 and 498 -> 496, the same two-frame shift w227death.test.js records and
+    // for the same reason -- the beam-BODY effect `$289F96` is wired now, and pool E's
+    // `fillSlot` draws the shared RNG, so every later event happens two frames earlier. The
+    // SHAPE of the assertion is untouched: one frame clears the record and the NEXT one runs
+    // the respawn's init, which is the thing this test exists to pin.
+    for (let f = 92; f <= 495; f++) g.step(shot);
+    // frame 495 is the reset: the record is cleared and the respawn is armed
     assert.deepEqual([g.ram.u16(RAM.player1 + P.posY),
       g.ram.u16(RAM.player1 + P.posX)], [0, 0]);
 
-    g.step(shot);                            // 498: the new object runs its INIT
+    g.step(shot);                            // 496: the new object runs its INIT
     assert.deepEqual([g.ram.u16(RAM.player1 + P.posY),
       g.ram.u16(RAM.player1 + P.posX)], [0x1000, 0x0e00],
     'the ship is back where the respawn entry said, not at zero');

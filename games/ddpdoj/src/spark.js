@@ -508,14 +508,61 @@ export function spawnBeamImpact289FC0(ram, rom, ctx, spawner, at) {
   const head = BEAM_IMPACT.find((h) => h.at === at);
   if (!head) {
     unreached(at, `the laser impact effect was entered at $${(at >>> 0)
-      .toString(16).toUpperCase()}, and the cartridge has exactly TWO heads: `
+      .toString(16).toUpperCase()}, and the cartridge has exactly TWO heads here: `
       + `$289FC0 (D7 = 0, P1's $81D394 and $810408) and $289FDA (D7 = 1, P2's `
-      + `$81D790 and $81046A). $289F96 -- the beam's SEGMENT producer, which `
-      + `shares this template -- is a THIRD head and is unported: it allocates `
-      + `TWO records and picks its half from ($1A,A6)`);
+      + `$81D790 and $81046A). The THIRD head into this template, $289F96, has its `
+      + `own entry point -- \`spawnBeamBody289F96\` -- because it picks its half `
+      + `from ($1A,A6) rather than being fixed per player`);
   }
   return poolETail(ram, rom, ctx, head.base, SPARK.beamImpactTpl, spawner,
     0, head.d7, head.at);                         // $289FCC moveq #$0,D0
+}
+
+/**
+ * `$289F96` -- THE BEAM-BODY EFFECT, and the third head into the `$28A506` template W90
+ * ported the other two of. Docket D24: the owner reported "hyper when it hits just cuts
+ * off, it's missing all the hit sprites", and this is the one member of that family the
+ * port had left as a COUNTED NOTE rather than a call.
+ *
+ *   289f96: movem.l D0-D7/A0-A6,-(A7)
+ *   289f9a: moveq #$1,D1              <- TWO RECORDS, not one.  The ONLY head that does
+ *   289f9c: lea ($28a506,PC),A2          the SAME template as $289FC0/$289FDA
+ *   289fa2: moveq #$0,D0                 kind 0, the same fill tail
+ *   289fa4: lea $81D394,A0           }
+ *   289faa: moveq #$0,D7             }  P1's half...
+ *   289fac: tst.w ($1a,A6) / bne     }  ...if ($1A,A6) is NON-ZERO
+ *   289fb4: lea $81D790,A0           }
+ *   289fba: moveq #$1,D7             }  P2's half otherwise
+ *   289fbc: bra $28a060                 the same shared tail
+ *
+ * **THE PLAYER HALF COMES FROM THE RECORD, NOT FROM THE ENTRY POINT.** That is the whole
+ * reason this needs its own function instead of a third `BEAM_IMPACT` row: `$289FC0` and
+ * `$289FDA` are two addresses that each hard-code a half, while this is ONE address that
+ * reads `($1A,A6)`. A third row keyed on `at` would have had nothing to key on.
+ *
+ * **AND THE SENSE IS THE OPPOSITE OF THE OBVIOUS ONE**: `bne` on `($1A,A6)` keeps the
+ * FIRST pair, so a NON-ZERO `($1A,A6)` selects P1 (`$81D394`, D7 = 0) and zero selects P2.
+ * `laser.js`'s own `BEAM[].d7` is 1 for P1, so this is the third distinct convention
+ * meeting in one subsystem; see `spawnBeamImpact289FC0`'s note on the other two.
+ *
+ * There is no gate inside here at all, exactly as with the other two heads. Everything
+ * that decides whether the body flashes is at the call site `$254846..$25485E`: the
+ * `$81308C` collision-pass word and a `($26,A6)`/`($27,A6)` divider.
+ *
+ * @param spawner the ROM's A6 at the `jsr` -- the SEGMENT record, which is also what
+ *        `($1A,A6)` is read from, so the caller passes one address and not two.
+ * @returns {boolean} false on the "no free slot" failure return.
+ */
+export function spawnBeamBody289F96(ram, rom, ctx, spawner) {
+  // $289FAC tst.w ($1A,A6) / $289FB0 bne $28A060 -- non-zero KEEPS P1's pair.
+  const p1 = ram.u16(spawner + 0x1a) !== 0;
+  return poolETail(ram, rom, ctx,
+    p1 ? SPARK.p1Base : SPARK.p2Base,             // $289FA4 / $289FB4
+    SPARK.beamImpactTpl, spawner,
+    0,                                            // $289FA2 moveq #$0,D0
+    p1 ? 0 : 1,                                   // $289FAA / $289FBA moveq D7
+    0x289f96,
+    1);                                           // $289F9A moveq #$1,D1 -- TWO records
 }
 
 /**
@@ -611,11 +658,15 @@ export function spawnSpark(ram, rom, ctx, spawner, player, d0 = SPARK.kindSpark)
  * @param d7 the head's D7 -- 0 from `$289F54`, `$FFFF` from `$289FF4`.
  * @returns {boolean} false on the `$28A078` "no free slot" failure return.
  */
-function poolETail(ram, rom, ctx, base, tpl, spawner, d0, d7, site) {
+function poolETail(ram, rom, ctx, base, tpl, spawner, d0, d7, site, d1In = 0) {
   let a0 = base;
   let d2 = ram.u16(SPARK.gateWidth) !== 0                // $28A062/$28A068
     ? SPARK.perPlayer - 1 : SPARK.perPlayerNarrow - 1;   // $28A060/$28A06A moveq
-  let d1 = 0;                                            // $289F60/$289FF8 moveq
+  // D1 IS THE EXTRA-RECORD COUNTER, AND IT IS NOT ALWAYS ZERO. `$289F60`, `$289FF8` and
+  // `$289FC4` all `moveq #$0,D1`, which is why this was a constant until W324 -- but
+  // `$289F9A moveq #$1,D1` is the fourth head into this same tail, and one extra pass of the
+  // loop below is the whole difference between one record and TWO. See `spawnBeamBody289F96`.
+  let d1 = d1In;
   for (;;) {
     if (ram.u16(a0 + E.status) === 0) {                  // $28A06C tst.w (A0)
       a0 = fillSlot(ram, rom, ctx, a0, tpl, spawner, d0, d7);  // $28A082 bsr

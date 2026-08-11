@@ -64,11 +64,25 @@ test('W227 a real death runs its animation and reset instead of stopping',
     // the player killed on a fixed frame.  Before this wave the very next option
     // pass stopped the port at $24CA60.
     let died = 0;
-    for (let f = 92; f <= 496; f++) {
+    // W324: the window's end moves with the death, 496 -> 494. It has to: the reset used to
+    // land at 497 and now lands at 495, so stopping at 496 would step PAST the reset and find
+    // the option block re-armed at $8001 by the respawn instead of cleared by the death.
+    for (let f = 92; f <= 494; f++) {
       g.step(shot);
       if (!died && (g.ram.u8(RAM.player1 + P.state) & 1) !== 0) died = f;
     }
-    assert.equal(died, 426, 'the player dies where it always did');
+    // W324: 426 -> 424, and the CAUSE is a fidelity gain rather than a regression. This
+    // scenario holds Button 1 WITH the hyper on, so it runs the beam -- and W324 wired
+    // `$25485E jsr $289F96`, the beam-BODY effect, which had been a counted note since W34.
+    // Pool E's `fillSlot` draws the shared RNG at `$28A204 jsr $242FFC`, so a port that
+    // skipped the call also skipped its draws and every later draw came out one step early.
+    // Running it consumes what the board consumes and the death lands two frames sooner.
+    //
+    // **THE NEW NUMBER IS NOT BOARD-VERIFIED**, and that is stated rather than implied: 424
+    // is this port with the draws, 426 was this port without them, and only an oracle trace
+    // of the death frame can say which matches the machine. What IS established is that the
+    // board makes the call, so making it is the more faithful of the two.
+    assert.equal(died, 424, 'the player dies where the RNG draws now put it');
     assert.equal(g.ram.u16(OPTION_BLOCKS[0].opt), 0,
       'and its option block is cleared, not stepped');
     assert.equal(g.ram.u16(0x8130fa), 1,

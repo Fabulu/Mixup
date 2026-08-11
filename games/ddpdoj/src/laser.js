@@ -98,8 +98,12 @@
 //   $28C408 $28C422 $28C468 $28C482 $28C4C8 $28C4E2 $28C43C  -- SOUND requests
 //            through `$28C074`/`$28C0E8` (D0/D1/D2 = id/pan/channel).  Sound is
 //            item 6 of `39-OWNER-visible-play-before-sound.md`, i.e. last.
-//   $289F96 $289FC0 $289FDA  -- the effect family, unported for W34 §1.6's
-//            reason.
+//   $289F96 $289FC0 $289FDA  -- the effect family, and ALL THREE NOW RUN. W90 took
+//            $289FC0/$289FDA (the beam IMPACT, the two per-player heads) and W324 took
+//            $289F96 (the beam BODY, which reads its player half out of ($1A,A6) and
+//            allocates TWO records instead of one). This line said "unported for W34
+//            §1.6's reason" for many waves; it is kept, corrected, because the reason it
+//            gave was real at the time and the note it justified is now a call.
 //
 // A NOTE IS NOT A THROW AND THE DIFFERENCE IS DELIBERATE (`src/unported.js`):
 // a throw is for a BRANCH whose absence invents every later value; a note is
@@ -110,7 +114,7 @@ import { P, RAM, OPT } from './machine.js';
 import { i16, u16 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueThroughStub } from './spritequeue.js';
-import { spawnBeamImpact289FC0 } from './spark.js';
+import { spawnBeamImpact289FC0, spawnBeamBody289F96 } from './spark.js';
 
 // --------------------------------------------------------------- ADDRESSES
 export const LASER = {
@@ -702,10 +706,11 @@ function hBody(ram, ctx, b, a6) {
       ram.setU8(a6 + 0x26, c);
       if (c === 0xff) {                                     // $254856 bcc
         ram.setU8(a6 + 0x26, ram.u8(a6 + 0x27));            // $254858 move.b
-        ctx.unportedLog.note(LASER.fxLaserFire, `$25485E jsr $289F96 -- the `
-          + `beam-body effect. The $289xxx effect family is unported for W34 `
-          + `§1.6's reason and is COUNTED here rather than thrown, because it `
-          + `fires on a divider inside a reachable handler`);
+        // W324 RUNS IT. This was a counted note for as long as the `$289xxx` effect family
+        // was unported; W53 and W90 ported three of its four heads, and this is the fourth.
+        // A6 here is the SEGMENT record, which is both the spawner and the source of the
+        // `($1A,A6)` the head picks its player half from -- so one argument, not two.
+        spawnBeamBody289F96(ram, ctx.rom, ctx, a6);          // $25485E jsr $289F96
       }
     }
     // $254864 cmpi.w #$7800,($2,A6) / bcc $254894 -> $254E04

@@ -424,3 +424,179 @@ the symptom, and check it against `main` before spending a wave.**
 
 A useful corollary: when a report cannot be reproduced on `main`, "publish and ask the
 owner to look again" is a cheaper next step than a translation wave.
+
+## Added 2026-08-11 from a third play session, on build 20260811171409
+
+The owner played the DEPLOYED build, and D19 worked as intended: the report names the build
+it came from, and that build was an hour old rather than a session stale. D17 is the
+headline -- **the medals appear.** "First mid boss drops the first medals, awesome!" So
+W284/W285's mechanism is confirmed IN PLAY and not merely under test, and D17 closes as
+written. Everything below is new ground the sighting opened up.
+
+### D20: FAR FEWER MEDALS SPAWN THAN THE REAL GAME
+
+> "I remember this game having much more medals spawn. You might have to check a game on
+> MAME."
+
+D17 proved kind 1 allocates and appears. D20 is about the COUNT, which is a different claim
+needing a different measurement. What makes it tractable rather than vague:
+
+* `src/bee.js` is the medal pool and W312 took it to EIGHTEEN of twenty `$280BCE` kinds;
+  indices 1 and 16 are both `$280CEE` and belong to `allocBee27F92A`.
+* **kind 16 (`$40`, the flying variant) still throws `Unreached $280CEE`** (D17, W284), and
+  it throws AFTER claiming a slot. If anything in normal play asks for kind 16, that is both
+  a missing medal AND a leaked slot -- the single most likely cause of "far fewer".
+  **Start here.**
+* The RESERVED TEN are carrier-death-only slots. W285 showed no scenario in the tree kills a
+  carrier unaided, so the port's own measurements have never seen the reserved ten fill. A
+  count claim needs a scenario in which enemies actually die in numbers.
+
+The owner's MAME suggestion is the right instinct, and the repo has the better tool: the
+ORACLE. Do not eyeball a video -- trace the real machine's medal allocations across a stage
+and compare counts per source. `tools/oracle/` is the only thing here that can say "the
+board allocated N and the port allocated M" rather than "it feels sparse".
+
+### D21: THE HUD IS MISSING A SMALL ELEMENT NEAR THE HYPER COUNTER
+
+> "the hud at the top is still missing some kinda small element near the hyper counter."
+
+D7 painted the hyper gauges (W271) and D16 made the level show when not hypering (W283), so
+this is the residue of both. It is SMALL and NEAR the hyper counter, which is `src/hud.js`'s
+territory. Likely candidates in order: a hyper STOCK icon distinct from the bar, the legend
+itself, or one of the `$240F62` top-level objects that paints a HUD decoration. Ask for a
+screenshot if a sweep does not name it -- a small missing element is exactly the case where
+one picture is worth a wave.
+
+### D22: MEDALS MAKE NO SOUND WHEN COLLECTED
+
+> "the medals don't make sounds when collecting."
+
+A CUE and not a sprite, so a different subsystem from D20 and doable independently of it.
+The port has a real sound runtime (`src/soundruntime.js`, `APPROVED_SOUND_POLICIES`) and the
+web gate already proves deferred sound fetches and cue advancement work (W158). So this is
+"find the medal pickup's cue site and post it", in the shape of the `ctx.soundPost?.(...)`
+calls the enemy death arms already make. The pickup path is the one D17/W285 exercised, so a
+test scenario for it exists already.
+
+### D23: BIGGER MEDALS EXIST AND HAVE NOT BEEN SEEN
+
+> "Some things also drop bigger medals, haven't seen these yet."
+
+`src/hud.js` (W124) drains `$81B610` through the `$32/$64/$96` medal TIERS, so the port
+already knows tiers exist. Two readings need separating: a bigger medal may be a different
+KIND out of pool A (see kind 16 in D20, the flying variant), or the same kind with a higher
+VALUE and a different picture. D17's note applies verbatim -- **check the VALUE progression
+as well as the picture**, because the chaining medal value is what a player notices.
+Probably one wave together with D20, since both ask "which kinds does pool A really emit".
+
+### D24: THE HYPER LASER HAS NO IMPACT SPRITES AT ALL
+
+> "Hyper when it hits just cuts off, it's missing all the hit sprites. Might be similar to
+> laser. Err, I mean the laser hyper, not the normal hyper bullets, though those feel a bit
+> off."
+
+**The owner's own diagnosis is almost certainly right, and it names the family.** W90 is
+`THE LASER'S IMPACT EFFECT`: `$289FC0`/`$289FDA` into pool E, template `$28A506`, list
+`$28A51C`, 36 streams, still asserted by the web gate (17385 records over 35 distinct
+images, ADJACENT-FRAME entries 0). "It just cuts off" is precisely what the beam looked like
+BEFORE W90, and the gate's own `--break drop-impact-art` mutation reproduces it exactly:
+"the records were always right and there was no picture at the end of them".
+
+So: find the HYPER laser's analogue of `$289FC0`/`$28A51C`. That is a family lookup, not an
+investigation, and W90's worklog is the template for the whole wave. **Highest-value item on
+this list**: a big visible break, localised by the owner, and the port has already solved
+the same problem once.
+
+The second half -- "the normal hyper bullets feel a bit off" -- is a SEPARATE and much
+vaguer item. Do not bundle it. Ask what "off" means (speed? density? colour? angle?) or
+compare against the oracle once D24 proper is done.
+
+### D25: THE SCENE TRANSITION MAY CUT EARLY
+
+> "Scene transition looks fucking awesome now but it feels like it cuts early? Might check
+> that with oracle."
+
+D11's successor, and again the owner names the right tool. D11 was "the stage transition is
+abrupt", diagnosed with its first piece landed in W232; W276 and the tally/stage-clear waves
+built the rest, including `chainLoader246710` and `chainLoader246704`. So the sequence now
+RUNS and the open question is its LENGTH -- a frame count, exactly what an oracle trace can
+settle and eyeballing cannot. Trace the board from the stage-clear trigger to the first
+frame of the next stage, count frames, compare with the port. A "cuts early" symptom with a
+real sequence behind it is usually one loop terminator read a frame short or one chain
+loader's count off by one, and `stageend.js` has three chain loaders now.
+
+### D26: THE SECOND SHIP AND THE OTHER TWO PILOTS
+
+> "you do know there's 1 more player ship and 2 more pilots, right? Those will be a
+> significant job with all these sprites, particularly since we still seem to be missing
+> stuff for this pilot ship combo alone."
+
+Recorded because the owner is right on all three counts, and this belongs in the plan rather
+than arriving as a surprise: there is another ship, there are two more pilots, it is a large
+sprite job, and **the current combination is not finished yet** -- which is the argument for
+sequencing it after the current one is clean, not for skipping it.
+
+This is a PLANNING item, not a next wave. The honest position: the goal is one credit from
+stage 1 to stage 5 with no Unreached, for the ship the port flies today. Other ship/pilot
+combinations multiply the ART and the per-combination tables, and every item above
+(D20..D24) is a gap in the combination already flown. Finish those first, then scope D26
+with a real census of what is per-combination and what is SHARED -- because if most of it is
+shared, D26 is far smaller than it looks, and that census is the wave that finds out.
+
+### D28: MODS, AFTER THE GAME IS DONE -- FLY BOTH SHIPS, THEN ALL THREE PILOTS
+
+> "I think the first mod for this game I want is to play while flying all 3 ships side by
+> side. We'll put that in after the game is actually done, not now."
+> "sorry, there's only 2 ships. So both ships. And then another mod for all 3 pilots each
+> piloting a ship."
+
+So TWO mods, in this order:
+
+* **D28a -- fly BOTH ships side by side.** Two simultaneous player-controlled ships.
+* **D28b -- all THREE pilots, each piloting a ship.** Three simultaneous ships, one per pilot.
+
+D28a needs a second player-controlled ship, which the two-sided machinery may nearly give
+already. D28b needs a THIRD, which is where the pool sizing question below actually bites.
+
+**The counts are the owner's from memory and are NOT yet a measurement.** D26's census settles
+them from the ROM: how many ship entries the player tables really hold and how many pilots
+index them. Take that number from the cartridge rather than from either party's recollection,
+and if it disagrees with two-and-three, the census wins and this item gets corrected.
+
+**Explicitly deferred by the owner. Do not start this before the game is finished.** Recorded
+now so it is not lost and so the waves before it can avoid painting it into a corner.
+
+It is a MOD and not a translation, which makes it the first item in this docket that is
+allowed to depart from the ROM. That distinction matters: everything else here is "make the
+port agree with the board", and this one is "make the port do something the board never did".
+It therefore must not be built by loosening any ROM-fidelity rule -- it goes ON TOP of a
+faithful port, not through it.
+
+What the port would need, and why the ordering the owner chose is the right one:
+
+* **D26 first, necessarily.** Flying every ship at once means every ship exists, which is
+  D26's job (the second ship and the other two pilots). D28 is D26 plus a player count.
+* The player machinery is already TWO-sided everywhere -- `$8103E6` and `$810448` are P1's
+  and P2's records, `laser.js` carries a per-player beam block with `d7` picking the pool
+  half, `targetSelect` walks both and `exg` decides which is tried first. So the port already
+  thinks in terms of N players rather than one. A THIRD is not obviously a rewrite, but the
+  pools are sized for two (`$811F32`/`$811F52`, the 32-slot-per-player segment pool), so the
+  real question is which pools are per-player and which are shared.
+* That question is the SAME census D26 needs. So when D26 scopes what is per-combination and
+  what is shared, it should record the per-PLAYER answer at the same time -- one reading,
+  two items served.
+
+No wave should touch this until the goal is met. Its value here is as a constraint on the
+waves before it: when a wave finds a two-element array or a `d7` that means "which player",
+it costs nothing to write down whether the surrounding pool is sized 2 or sized N.
+
+### D27: PUBLISH INTERMITTENTLY -- BUT NOT ON EVERY WAVE
+
+> "Publish intermittently so you catch these mistakes, but not on every wave."
+
+The standing instruction, refined. D19 said record the build id; D18 said push and not just
+commit. This adds the CADENCE: publish often enough that reports land against something
+recent, and not so often that a roughly 40-minute three-game gate run eats the session. A
+batch of waves, suite green, then publish. W321 is why this matters in both directions --
+the web gate is only ever run BY `tools/publish.mjs`, so not publishing lets the gate rot
+until it blocks the publish that would have caught it.

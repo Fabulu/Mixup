@@ -125,7 +125,14 @@ test('W228 a real death respawns and keeps running',
       g.step(shot);                  // stopped at $24CA60, then $25FFA8, then $24C934
       if (!died && (g.ram.u8(RAM.player1) & 1) !== 0) died = f;
     }
-    assert.equal(died, 426);
+    // W324: 426 -> 424. The same two-frame shift w227death.test.js records, from the same
+    // cause: this scenario holds the beam with the hyper on, W324 wired the beam-BODY effect
+    // `$25485E jsr $289F96` that had been a counted note since W34, and pool E's `fillSlot`
+    // draws the shared RNG. Consuming the draws the board consumes moves every later event
+    // two frames earlier. The 767/1207/497/838/1278 frames in the comment above are from the
+    // pre-W324 port and will each have shifted too; only 424 and the invariants below are
+    // asserted, so they are left as the narrative they are rather than re-measured here.
+    assert.equal(died, 424);
     assert.equal(g.ram.u16(COUNT), 1, 'one life spent');
     assert.equal(g.ram.u16(ENTRY), 0, 'and the dispatcher is idle again');
     assert.equal(g.ram.u8(RAM.player1) & 1, 0, 'the death bit is clear');
