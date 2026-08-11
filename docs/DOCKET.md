@@ -104,22 +104,32 @@ picks a per-player table, arms a `$4B0` timer, and its body watches `$23C932` an
 `$803808` -- it is the credit/start/continue controller, which is why `$260056`
 creates it. `[4]` `$260B30` is still unported and still runs twice a frame.
 
-### D3 and D4: missing explosions -- ONE PRODUCER LANDED in W235, more to go
+### D3 and D4: missing explosions -- BOTH FIXED (W264..W267)
 
-W230's sweep proved these are not bundle problems: every descriptor the port draws
-resolves. So a missing explosion means its producer is not running, and the sweep's
-counted-gap list names them.
+They had DIFFERENT causes, and assuming they shared one is what kept D4 open.
 
-W235 landed the first: `$289AF4`, the SECONDARY explosion, at both of its kind-4
-sites. It turned out to be a thin sibling of pool C's already-ported allocator --
-three allocators share the same fourteen-instruction scan and differ only in their
-fill, and this fill differs only in taking its position from the caller's record.
-The sweep now draws 718 distinct descriptors over the same 900 frames, up from 713.
+**D3 was a producer**, and the producer was blocked by a hand-transcribed table.
+`$280B3E` reads its template out of `$280E4A` and W29 had transcribed the two kinds
+it measured instead, so the screen clear's own kind `$0` had no entry and the
+allocator threw. W264 made the templates and the animation hooks come from the
+cartridge for all twenty kinds and wired `$27F8F8`; W265 added kind 0's body
+`$27FA30`, which the driver then reached; W266 shipped its sixteen-frame animation.
 
-Still open: the two kind-`$8` sites (their template's lists resolve to zero entries,
-so porting them would be invention), `$27F8F8`'s bullet death effect, and whatever
-else the sweep's counted-gap list holds. D4's stage-2 mid boss needs its own look --
-run the sweep during stage 2 rather than assuming it is the same cause.
+**D4 was the BUNDLE after all** -- but only outside stage 1. W230's sweep only ever
+ran the shipped seed, so "every descriptor resolves" was a stage-1 fact being read
+as a claim about the game. W265 taught the sweep to boot from a checkpoint rung; run
+into stage 2 it named 129 streams the page could not resolve. W266 and W267 sized
+nineteen families out of the cartridge's own chain and shipped them.
+
+Both sweep forms now report ZERO missing:
+
+    node tools/w230descriptorsweep.mjs                      stage 1: 0
+    node tools/w230descriptorsweep.mjs --lf 19500 --frames 9000   stage 2: 0
+
+Still open in the same neighbourhood, and NOT part of D3 or D4: the two kind-`$8`
+sites (their template's lists resolve to zero entries, so porting them would be
+invention) and seventeen of `$280BCE`'s twenty finish routines, each of which now
+throws naming its own address rather than "unported kind".
 
 ### D5: the systemic sprite question -- INSTRUMENT DELIVERED in W230
 
@@ -141,10 +151,28 @@ Only tiny exhausts draw. Since the sweep says nothing the port draws is missing
 from the bundle, the exhaust is either a draw the port never makes or a part of
 the ship record it never fills. Check `src/shipsprite.js` against the ROM.
 
-### D10: mobile landscape wastes most of the screen on the browser bar
+### D10: mobile landscape wastes most of the screen on the browser bar -- FIXED (W268)
 
-Presentation only, no simulation risk. The page shell in `src/web/` wants a
-fullscreen request on first input plus `viewport-fit=cover` and `100dvh`.
+The layout was already doing the only thing CSS can do: the page is sized in
+`100dvh`, which FOLLOWS the URL bar, so nothing ever goes under the fold. What that
+cannot do is get the bar off the screen -- in landscape on a phone it is a large
+fraction of a short viewport, so `dvh` correctly shrinks the picture instead, which
+is exactly what the owner saw.
+
+Only the Fullscreen API removes browser chrome, and every engine gates it on a user
+gesture, so W268 added a **FULL** button to the bar. Three details it gets right and
+`w268fullscreen.test.js` pins:
+
+* iPhone Safari has no `Element.requestFullscreen` at all. The button HIDES itself
+  rather than offering something that cannot work, feature-detected on the element
+  and never sniffed from a UA string. There `100dvh` remains the best available.
+* `screen.orientation.lock` throws on engines that have it but are not yet in
+  fullscreen. It is attempted in its own `try` and its failure ignored on purpose --
+  locking is a bonus, not the feature.
+* the label repaints from `fullscreenchange`, not from the click, because the user
+  can leave fullscreen with the system gesture and a click-painted label would then
+  be wrong. Both transitions re-fit the canvas, since `pickScale` picks an INTEGER
+  scale for the box it was given.
 
 ### D12: the repo documentation is well behind the code
 

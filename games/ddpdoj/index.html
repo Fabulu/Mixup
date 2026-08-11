@@ -285,6 +285,7 @@
   <span id="sound-state" role="status" aria-live="polite">sound locked</span>
   <button id="sound" type="button" aria-pressed="false"
     aria-label="Enable or mute game sound">SOUND</button>
+  <button id="full" type="button" aria-label="Enter or leave fullscreen" aria-pressed="false" data-help="FULL hides the browser's own bars, which on a phone in landscape take most of the screen. It needs a tap: browsers only grant fullscreen from a real gesture.">FULL</button>
   <button id="rot" type="button" aria-label="Switch between TATE portrait and WIDE landscape picture" aria-pressed="true" data-help="TATE shows the cabinet's 224x448 portrait picture. WIDE shows the raw 448x224 board buffer.">TATE</button>
   <button id="ctrl" type="button" aria-label="Cycle touch control scheme" aria-pressed="false" data-help="CTRL cycles AUTO, FIXED 8-way D-pad, and FLOATING stick.">CTRL</button>
   <button id="rec" type="button" aria-label="Record or stop a replay" aria-pressed="false" data-help="REC arms a replay at the current frame. Press again to stop and save; while armed it becomes STOP REC.">REC</button>
@@ -702,6 +703,70 @@ const paintRot = () => {
 };
 paintRot();
 fit();
+
+// ---------------------------------------------------------------------------
+// DOCKET D10 -- "on mobile in landscape the browser bar takes up most of the
+// screen real estate".
+//
+// The layout was already doing the only thing CSS can do about it: the page is
+// sized in `100dvh`, which FOLLOWS the URL bar, so nothing ever goes under the
+// fold. What that cannot do is get the bar off the screen, and in landscape on a
+// phone the bar is a large fraction of a short viewport -- so `dvh` correctly
+// shrinks the picture instead, which is what the owner sees.
+//
+// The only thing that removes browser chrome is the Fullscreen API, and it is
+// gesture-gated by every engine, so it has to be a BUTTON and cannot be
+// automatic. Three details this needs to get right:
+//
+//   * iOS Safari has no `Element.requestFullscreen` on iPhone at all. There is
+//     no polyfill for that; the button hides itself rather than lying, and the
+//     `dvh` layout remains the best available there.
+//   * `screen.orientation.lock` throws on any engine that has it but is not in
+//     fullscreen, and rejects as an unhandled promise if left unguarded. It is
+//     attempted and its failure ignored ON PURPOSE -- locking is a bonus, not the
+//     feature.
+//   * the button's state must come from `fullscreenchange`, not from the click,
+//     because the user can leave fullscreen with the system gesture and the label
+//     would then be wrong.
+const fullBtn = document.getElementById('full');
+const fullEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+const canFull = !!(document.documentElement.requestFullscreen
+  || document.documentElement.webkitRequestFullscreen);
+
+const paintFull = () => {
+  const on = !!fullEl();
+  fullBtn.textContent = on ? 'EXIT' : 'FULL';
+  fullBtn.setAttribute('aria-pressed', String(on));
+};
+
+if (!canFull) {
+  // iPhone Safari. Say nothing and take no space rather than offering a button
+  // that cannot work.
+  fullBtn.style.display = 'none';
+} else {
+  fullBtn.addEventListener('click', async () => {
+    try {
+      if (fullEl()) {
+        await (document.exitFullscreen?.() ?? document.webkitExitFullscreen?.());
+      } else {
+        const el = document.documentElement;
+        await (el.requestFullscreen?.({ navigationUI: 'hide' })
+          ?? el.webkitRequestFullscreen?.());
+        // Bonus, never required: lock to the orientation the picture wants.
+        try {
+          await screen.orientation?.lock?.(mode === 'tate' ? 'portrait' : 'landscape');
+        } catch { /* not supported, or the engine refuses -- the picture still fits */ }
+      }
+    } catch { /* the engine refused the gesture; the label stays honest below */ }
+    paintFull();
+    fit();
+  });
+  // The system gesture out of fullscreen does not click our button.
+  for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) {
+    document.addEventListener(ev, () => { paintFull(); fit(); });
+  }
+  paintFull();
+}
 
 infoBtn.addEventListener('click', () => {
   const on = infoEl.classList.toggle('on');
