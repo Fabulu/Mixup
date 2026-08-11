@@ -43,7 +43,7 @@ import { u16 } from './ram.js';
 import { queueKill } from './objalloc.js';
 import { txPrint240DC2, txPrint240E1A } from './hud.js';
 import { announcePost } from './rank.js';
-import { tally2600D8 } from './tally.js';
+import { tally2600D8, TALLY } from './tally.js';
 
 export const SCREEN11 = Object.freeze({
   entry: 0x25dbb4,
@@ -123,6 +123,106 @@ export function screenHeader2533F6(ram, who) {
     d1 = u16(d1 + h.step);                         // $25342E / $253480
   }
   txPrint240DC2(ram, 8, d1, 2, 1, HEADER_END);     // $25343C / $25348E
+}
+
+/**
+ * `$25FF38` -- POST A REQUEST INTO THE SIDE'S TALLY RECORD.
+ *
+ *   lea $8130FA,A0 / tst.w D0 / beq / lea $81311E,A0
+ *   move.w D1,(A0) / clr.w ($2,A0) / rts
+ *
+ * The same two words `$2600D8` clears on its way out (`$2601D0`/`$2601D4`), and the
+ * same `(request, state)` shape `announce260B30`'s mailbox at `$813162` uses. So the
+ * tally record's head is a MAILBOX and this is its poster.
+ *
+ * `$25DCB0 move.w #$7,D1 / jsr $25FF38` is state 1's one call, so 7 is a request id --
+ * and `$25FF52` is the table it selects from: nine longwords starting `$00000000`,
+ * `$0025FFA8`, `$00260056`, `$0026010E`, `$002601F4`, `$002602B6`, `$00260348`,
+ * `$0026035A`, `$0026037C`. Those are CODE, they are the bonus lines W270 counted as
+ * "eight bonus-line routines per side", and `$25FF92 lea ($25FF52,PC)` is the ONE
+ * place that reads the table. **None of the nine is ported and none is called from
+ * here**; posting the request is all this routine does.
+ */
+export function tallyRequest25FF38(ram, d0, d1) {
+  const rec = (d0 & 0xffff) !== 0 ? 0x81311e : 0x8130fa;   // $25FF3E tst.w / $25FF44
+  ram.setU16(rec + 0x00, u16(d1));                         // $25FF4A move.w D1,(A0)
+  ram.setU16(rec + 0x02, 0);                               // $25FF4C clr.w ($2,A0)
+  return rec;
+}
+
+/**
+ * `$25D9E6` -- TURN THE POSTED VALUES BACK INTO TABLE INDICES.
+ *
+ * This is the exact inverse of state 2's lookup, and having both makes the design
+ * plain: the cursors live in the record as INDICES, `$2600D8` posts the table VALUES
+ * into `$81308x`, and this reads them back as indices again.
+ *
+ *   cmpi.w #$FF,D6 / bne $25DA10          $FF means "nothing saved"
+ *     D5 == 0 -> (D6,D7) = (0, 0)         side 0's defaults
+ *     D5 != 0 -> (D6,D7) = (1, 2)         side 1's
+ *     ...then $25DA56, which pops and `ori #$1,SR` -- CARRY SET
+ *   $25DA10: moveq #$1,D0 / lea ($25D986,PC),A0 ... dbra D0
+ *   $25DA2E: moveq #$2,D0 / lea ($25D98A,PC),A0 ... dbra D0
+ *     ...then $25DA4C, which pops and `andi #$FFFE,SR` -- CARRY CLEAR
+ *
+ * **THE TWO `dbra` COUNTS CONFIRM THE TABLE SIZES A THIRD TIME.** `moveq #$1,D0` with
+ * `dbra` walks indices 1 then 0 -- two entries; `moveq #$2,D0` walks 2, 1, 0 -- three.
+ * That agrees with `$25DD42 andi.b #$1,($e,A5)` and with the window's own far end at
+ * `$25D990`, from three independent directions.
+ *
+ * AND THE SEARCH IS DOWNWARD, so a value present twice would resolve to the LOWER
+ * index. Neither table has a duplicate, but the direction is the ROM's and is kept.
+ *
+ * A value in neither table leaves D6/D7 AS THEY WERE -- the `dbra` just falls through
+ * without storing. So the raw posted value ends up in the cursor, and state 2's own
+ * bound is what catches it. Faithful, and the reason that bound is a note and not a
+ * clamp.
+ *
+ * @returns {{x:number, y:number, defaulted:boolean}} `defaulted` is the C flag.
+ */
+export function cursorsFromPosted25D9E6(rom, d5, d6, d7) {
+  if (u16(d6) === 0x00ff) {                                // $25D9EA cmpi.w #$FF,D6
+    return (d5 & 0xffff) !== 0
+      ? { x: 1, y: 2, defaulted: true }                    // $25DA04/$25DA08
+      : { x: 0, y: 0, defaulted: true };                   // $25D9F8/$25D9FC
+  }
+  let x = u16(d6);
+  for (let i = SCREEN11.xEntries - 1; i >= 0; i--) {       // $25DA10 moveq #$1 / dbra
+    if (rom.u16(SCREEN11.xTable + i * 2) === u16(d6)) { x = i; break; }
+  }
+  let y = u16(d7);
+  for (let i = SCREEN11.yEntries - 1; i >= 0; i--) {       // $25DA2E moveq #$2 / dbra
+    if (rom.u16(SCREEN11.yTable + i * 2) === u16(d7)) { y = i; break; }
+  }
+  return { x, y, defaulted: false };                       // $25DA50 andi #$FFFE,SR
+}
+
+/**
+ * `$25DA60` -- RESTORE THE CURSORS FROM WHAT THE TALLY POSTED.
+ *
+ *   move.w $813084,D6 / move.w $813088,D7        side 0
+ *   tst.b ($7,A5) / beq
+ *   move.w $813086,D6 / move.w $81308A,D7        side 1
+ *   moveq #0,D5 / move.b ($7,A5),D5 / bsr $25D9E6
+ *   move.b D6,($e,A5) / move.b D7,($f,A5) / rts
+ *
+ * **THE PAIR IT READS IS THE PAIR `$2600D8` WROTE.** `TALLY.postD0`/`postD1` are the
+ * same four words, so the screen and the tally are a round trip: state 2 posts the
+ * table values, this reads them back as indices, and state 2 posts them again. That
+ * closes the loop W273 landed one half of.
+ *
+ * `move.b D6,($e,A5)` stores only the LOW BYTE of a word `$25D9E6` may have left as a
+ * raw posted value, so a value above $FF truncates here rather than there.
+ */
+export function restoreCursors25DA60(ram, rom, a5) {
+  const side = ram.u8(a5 + SCREEN11.side) !== 0 ? 1 : 0;   // $25DA6C tst.b / beq
+  const d6 = ram.u16(TALLY.postD0[side]);                  // $25DA60 / $25DA74
+  const d7 = ram.u16(TALLY.postD1[side]);                  // $25DA66 / $25DA7A
+  const d5 = ram.u8(a5 + SCREEN11.side);                   // $25DA82 move.b ($7,A5),D5
+  const c = cursorsFromPosted25D9E6(rom, d5, d6, d7);      // $25DA86 bsr $25D9E6
+  ram.setU8(a5 + SCREEN11.xCur, c.x & 0xff);               // $25DA8A move.b D6,($e,A5)
+  ram.setU8(a5 + SCREEN11.yCur, c.y & 0xff);               // $25DA8E move.b D7,($f,A5)
+  return c;
 }
 
 /**

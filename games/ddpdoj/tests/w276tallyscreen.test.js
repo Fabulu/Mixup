@@ -21,6 +21,7 @@ import { ALLOC } from '../src/objalloc.js';
 import {
   SCREEN11, menuCarry28D53C, menuDips23C932, screenHeader2533F6,
   screenState0_25DB30, screenState2_25DB7C, tallyScreen25DBB4,
+  tallyRequest25FF38, cursorsFromPosted25D9E6, restoreCursors25DA60,
 } from '../src/tallyscreen.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -279,4 +280,110 @@ test('W276 object dispatch [11] is registered in main.js', () => {
   // And it says it is partial, which matters for an entry whose state 1 is a note.
   const at = src.indexOf('[11, tallyScreen25DBB4]');
   assert.match(src.slice(Math.max(0, at - 900), at), /PARTIAL AND IT SAYS SO/);
+});
+
+// ============================ 7. W277: THE ROUND TRIP WITH THE TALLY
+//
+// State 1's dependencies, taken dependency-first as worklog 276's order says.
+// `$25FF38` writes the tally records, so it came first; `$25D9E6` is the exact
+// inverse of state 2's table lookup; `$25DA60` is what calls it.
+
+test('W277 $25FF38 posts a request into the side\'s tally mailbox', { skip: SKIP }, () => {
+  // `move.w D1,(A0) / clr.w ($2,A0)` on $8130FA or $81311E -- the same two words
+  // $2600D8 clears at $2601D0/$2601D4, so the record's head is a mailbox.
+  const f = world();
+  f.ram.setU16(TALLY.side0 + 0x02, 0xbeef);
+  assert.equal(tallyRequest25FF38(f.ram, 0, 7), TALLY.side0);
+  assert.equal(f.ram.u16(TALLY.side0 + 0x00), 7, 'the request');
+  assert.equal(f.ram.u16(TALLY.side0 + 0x02), 0, 'and the state is cleared');
+  assert.equal(f.ram.u16(TALLY.side1 + 0x00), 0, 'the other side untouched');
+
+  // `tst.w D0` is a WORD test, so a high half alone still means side 0.
+  assert.equal(tallyRequest25FF38(f.ram, 0x10000, 3), TALLY.side0);
+  assert.equal(tallyRequest25FF38(f.ram, 1, 3), TALLY.side1);
+  assert.equal(f.ram.u16(TALLY.side1 + 0x00), 3);
+});
+
+test('W277 $25D9E6 turns POSTED VALUES back into INDICES -- the inverse of state 2',
+  { skip: SKIP }, () => {
+    // The two together are the round trip: state 2 posts the table VALUES and this
+    // reads them back as indices. x table (0,2), y table (2,4,6).
+    for (const [xi, yi] of [[0, 0], [0, 1], [1, 2], [1, 0]]) {
+      const d6 = ROM.u16(SCREEN11.xTable + xi * 2);
+      const d7 = ROM.u16(SCREEN11.yTable + yi * 2);
+      const got = cursorsFromPosted25D9E6(ROM, 0, d6, d7);
+      assert.deepEqual([got.x, got.y], [xi, yi],
+        `posted ($${d6.toString(16)}, $${d7.toString(16)}) -> indices (${xi}, ${yi})`);
+      assert.equal(got.defaulted, false, 'and the carry is clear');
+    }
+  });
+
+test('W277 $FF in D6 takes the DEFAULTS, and the two sides differ', { skip: SKIP }, () => {
+  // $25D9EA cmpi.w #$FF,D6 / bne. Side 0 -> (0,0), side 1 -> (1,2), then $25DA56 pops
+  // and `ori #$1,SR` -- CARRY SET, which is how the caller knows.
+  const a = cursorsFromPosted25D9E6(ROM, 0, 0xff, 0x1234);
+  assert.deepEqual([a.x, a.y, a.defaulted], [0, 0, true], 'side 0');
+  const b = cursorsFromPosted25D9E6(ROM, 1, 0xff, 0x1234);
+  assert.deepEqual([b.x, b.y, b.defaulted], [1, 2, true], 'side 1');
+  // D7 is IGNORED on this arm -- both defaults are written unconditionally.
+  const c = cursorsFromPosted25D9E6(ROM, 1, 0xff, 0);
+  assert.deepEqual([c.x, c.y], [1, 2]);
+});
+
+test('W277 the two dbra counts confirm the table sizes a THIRD time', { skip: SKIP }, () => {
+  // `moveq #$1,D0 / dbra` walks indices 1 then 0 -- TWO entries. `moveq #$2,D0` walks
+  // 2, 1, 0 -- THREE. That agrees with `$25DD42 andi.b #$1,($e,A5)` and with the
+  // window's far end at $25D990, from three independent directions.
+  assert.equal(SCREEN11.xEntries, 2);
+  assert.equal(SCREEN11.yEntries, 3);
+  assert.equal(SCREEN11.xTable + SCREEN11.xEntries * 2, SCREEN11.yTable);
+  assert.equal(SCREEN11.yTable + SCREEN11.yEntries * 2, 0x25d990);
+});
+
+test('W277 a value in NEITHER table is left RAW, not clamped', { skip: SKIP }, () => {
+  // The `dbra` falls through without storing, so D6/D7 keep the posted value and
+  // state 2's own bound is what catches it. That is why that bound is a note.
+  const got = cursorsFromPosted25D9E6(ROM, 0, 0x1234, 0x5678);
+  assert.deepEqual([got.x, got.y], [0x1234, 0x5678], 'passed straight through');
+  assert.equal(got.defaulted, false);
+});
+
+test('W277 $25DA60 reads back the pair $2600D8 WROTE -- the loop closes',
+  { skip: SKIP }, () => {
+    // The words $25DA60 reads are TALLY.postD0/postD1, which is what state 2 posts.
+    // So: run state 2, then restore, and the cursors must come back unchanged.
+    const f = world();
+    f.ram.setU32(A5 + SCREEN11.id, 0);
+    f.ram.setU8(A5 + SCREEN11.xCur, 1);
+    f.ram.setU8(A5 + SCREEN11.yCur, 2);
+    f.ram.setU32(TALLY.side0 + TALLY.ptr, 0x81e500);
+    screenState2_25DB7C(f.ram, ROM, f.ctx, A5);
+    // state 2 posted the table values; wipe the cursors and restore them
+    f.ram.setU8(A5 + SCREEN11.xCur, 0xff);
+    f.ram.setU8(A5 + SCREEN11.yCur, 0xff);
+    const got = restoreCursors25DA60(f.ram, ROM, A5);
+    assert.deepEqual([got.x, got.y], [1, 2], 'the round trip is lossless');
+    assert.equal(f.ram.u8(A5 + SCREEN11.xCur), 1, '$25DA8A move.b D6,($e,A5)');
+    assert.equal(f.ram.u8(A5 + SCREEN11.yCur), 2, '$25DA8E');
+  });
+
+test('W277 $25DA60 reads the SIDE\'s own pair of words', { skip: SKIP }, () => {
+  // $25DA6C tst.b ($7,A5) / beq -- side 1 reads $813086/$81308A, not $813084/$813088.
+  const f = world();
+  f.ram.setU8(A5 + SCREEN11.side, 1);
+  f.ram.setU16(TALLY.postD0[1], 2);      // x table value for index 1
+  f.ram.setU16(TALLY.postD1[1], 6);      // y table value for index 2
+  f.ram.setU16(TALLY.postD0[0], 0);      // side 0's would give index 0
+  f.ram.setU16(TALLY.postD1[0], 2);
+  const got = restoreCursors25DA60(f.ram, ROM, A5);
+  assert.deepEqual([got.x, got.y], [1, 2], 'side 1\'s words were used');
+});
+
+test('W277 $25DA60 stores only the LOW BYTE of a raw pass-through', { skip: SKIP }, () => {
+  // `move.b D6,($e,A5)` on a word $25D9E6 left raw, so the truncation happens here.
+  const f = world();
+  f.ram.setU16(TALLY.postD0[0], 0x1234);
+  f.ram.setU16(TALLY.postD1[0], 2);
+  restoreCursors25DA60(f.ram, ROM, A5);
+  assert.equal(f.ram.u8(A5 + SCREEN11.xCur), 0x34, 'truncated at the store');
 });
