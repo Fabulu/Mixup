@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-11
+Updated: 2026-08-11 (late)
 
 ## Objective
 
@@ -28,17 +28,27 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is `635dbee ddpdoj: close the stage-4 boss second phase`.
-- Suite: `node --test games/ddpdoj/tests/` is **1751/1751**, green, no skips.
+- HEAD is `3f07c2c ddpdoj: make the stage-4 boss third phase reachable`.
+- Suite: `node --test games/ddpdoj/tests/` is **1806/1806**, green, no skips.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
   closed at 414/414 script records and 28/28 script types.
-- **THE STAGE-4 BOSS'S SECOND PHASE RUNS END TO END.** W246 through W256 landed
-  F5 (`$2A0D16`, a seven-arm bit machine), MAIN4, MAIN7, the A3 3..8 ramp family,
-  A1 6, 7, 8, 9 and 10, and type `$42`'s body and handler. Every script F5 arms is
-  translated, and `w256type42handler.test.js` drives the whole chain in one test:
-  arm 6 starts A1 9, A1 9 spawns a formation, each child homes and counts itself
-  back on arrival, A1 9 retires, and its retirement flips every survivor into its
-  second mode.
+- **THE STAGE-4 BOSS IS COMPLETE FOR EVERY REACHABLE PATH.** W246 through W263
+  landed all three phases and the damage-controller edge that drives them:
+  - phase 1 was already there (F0/F3/F4, MAIN0/MAIN1, D0/D9/D10, E1/E2/E3/E5).
+  - phase 2: F5 (`$2A0D16`, a seven-arm bit machine), MAIN4, the A3 3..8 ramp
+    family, A1 6/7/8/9/10, and type `$42`'s body and handler.
+  - phase 3: A4 id6, MAIN7, MAIN8, A1 11/13/14, and type `$42`'s `$8130F4 == 2`
+    half. W263 translated the low-HP transition that STARTS it, which W219 had
+    left as a throw.
+  - `w256type42handler.test.js` drives a whole phase-2 cycle in one test: F5's
+    arm 6 starts A1 9, A1 9 spawns a formation, each child homes and counts itself
+    back on arrival, A1 9 retires, and its retirement flips every survivor into its
+    second mode.
+- **Deliberately unreachable and left as such**, each pinned by a census rather
+  than assumed: A4 id2, MAIN5 and MAIN6 (no `a4Start`/`seqStart` in the bank
+  reaches them); the `$281744` twins of A1 13's two fans (21 call sites behind a
+  `bra`); type `$42`'s three call-site-less emitters; and `$2A3AFE` (a role-`$FF`
+  child meeting `$8130F4 == 2`, which no translated path produces).
 - **A death works end to end** (W227, W228, W231): the animation, the reset, the
   life spent, a fresh player object placed where its respawn entry says, `$F0`
   frames of invulnerability, and the pods deploying to the exact `$24C928` target.
@@ -72,13 +82,11 @@ instrument (W230), and D11's banner picture (W232).
 
 ## Work order toward the goal
 
-1. **A4 id6 `$2A11D4`, the Stage-4 boss's THIRD phase.** F5's arm 5 hands to it, and
-   it is what makes `$8130F4 = 2`, A1 11, and type `$42`'s roles 0..7 and `$70`/`$71`
-   reachable. Its first two instructions are known (`move.w #$2,$8130F4 / clr.w
-   $8130F0`) and it starts A1 11 at `$2A128A`. Then A1 11 `$2A317C`/`$2A31A0`, which
-   is A1 9's sibling with a per-child role list at `$2A31EC`. Then the
-   `$2A3E1E..$2A4115` half of type `$42`'s handler those two unlock, replacing the
-   three `unreached()` gates `src/stage4type42.js` carries by address.
+1. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
+   `$28D6FC` the animation chain. `$28D77C` writes palette RAM the port does not
+   model and the four `$25FD38` resets are W62's scope line, so those two stay
+   counted. Force `$242952` headlessly and read the counted gaps -- that
+   measurement is what scoped W232 and it is still the right way in.
 2. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
    `$28D6FC` the animation chain; `$28D77C` writes palette RAM the port does not
    model, and the four `$25FD38` resets are W62's scope line.
@@ -94,16 +102,16 @@ instrument (W230), and D11's banner picture (W232).
    frozen tables, so registering it turns five gates red until
    `tools/oracle/out/w69/fly-around` is rebuilt from the oracle. Rebuild, then
    uncomment.
-6. **A4 id6 `$2A11D4`**, the Stage-4 boss's third phase, which is what makes type
-   `$42`'s other roles reachable.
-7. **Stage 5, then the loops.**
+6. **Stage 5, then the loops.** The Stage-4 boss no longer blocks this. FOUR
+   loop-specific rules are translated so far (W241's zero-lives extend, W250's A1 6
+   ring, and A4 id6's two at `$2A1250`/`$2A1346`), all reading `$813098`.
 
 D8, D10 and D12 are presentation or documentation and can be slotted in between.
 
 ## Verification commands
 
 - One slice: `node --test games/ddpdoj/tests/<the focused file>.test.js`
-- Full suite: `node --test games/ddpdoj/tests/` -- currently 1751/1751, green.
+- Full suite: `node --test games/ddpdoj/tests/` -- currently 1806/1806, green.
   Keep it that way: W229 had to close five censuses that had been red since the
   Stage-4 waves, and while they were red they could not catch anything. Do not
   pipe the run through `tail`; that discards the failure detail.
@@ -167,6 +175,18 @@ Stage-4 boss second phase (W246..W252):
 - **A branch target can be 470 bytes behind the branch.** `$2A3DD4 bgt $2A3C1C` is a
   FREE, not a clamp, and reads as a clamp unless the target is resolved.
 
+- **`POOL_B.base` IS `0x81b732`**, the address every boss4 test uses for A6. It has
+  never mattered because none of them spawned pool-B effects; the moment one does,
+  the pool scribbles over the sub-record under test. Use an address in the
+  sub-record pool's own range instead (`w263lowhp.test.js` does).
+- **The old-zero borrow corrected a frame-count prediction in SIX of W246..W263's
+  waves.** `subq.b #1 / bcc` reloads on the frame the counter was ALREADY zero. And
+  watch which byte of a word literal the counter lives in: `move.w #$20,$4(a4)`
+  puts the ZERO in `$4` and the period in `$5`, so that one fires immediately.
+- **An out-of-range table read is NOT always a loud throw.** MAIN8's cursor bound is
+  a compare rather than a mask, and `$29FB3A + $20` is the first byte of an
+  already-exported window, so approximating it would silently read unrelated data.
+
 Elsewhere:
 
 - `src/rom.js` serves a read only from a window that contains it WHOLE, so a
@@ -200,8 +220,8 @@ only authored source/exporter/test/worklog files. Never use `git add -A`.
 
 ## Worklog numbering
 
-Live numbers: **256 is the highest and is COMPLETE**. 253 is a SPEC that W254/W255
-implemented, and 225 is SUPERSEDED by 244; every other number through 256 is
+Live numbers: **263 is the highest and is COMPLETE**. 253 is a SPEC that W254/W255
+implemented, and 225 is SUPERSEDED by 244; every other number through 263 is
 COMPLETE. Reserve the
 next number by creating `<N>-RESERVED.md`, then rename it immediately to the real
 `IN PROGRESS` worklog as `AGENTS.md` requires. Numbers are never reused.
