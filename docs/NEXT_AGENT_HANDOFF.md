@@ -629,10 +629,35 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
    reloading from `($27,A5)` -- and `$27432C` is where the draw actually begins. So there is one
    more animation/behaviour block at `$274292..$27432C` between the state machine and the emit.
 
-   Still to read, and it is now a short list: `$274292..$27432C` (that block), the draw from
-   `$27432C`, and the death arm at `$27449C`. **Everything read so far needs NO new primitive** --
-   `aim256`, `$281764`, `damageArm5C`, `spawnCues28AC72`, `stepMovement` and the player-select idiom
-   are all in the port already.
+   #### THE PRE-DRAW BLOCK AND THE DEATH ARM -- THE MAP IS COMPLETE
+
+       -- $274294, the SPRITE-FACING update, and it is $8E's shape again --
+       274294  move.b ($24,A5),D0 / cmp.b ($25,A5),D0 / bne $27432C
+               a two-byte EQUALITY gate before the work, exactly as $8E's
+               `$276552 cmp.b ($1C,A5),($1D,A5) / bne` gates its own facing update
+       2742a0  lea $8103E6,A0 ... the player-select idiom a SECOND time in this handler
+       -- $27449C, the DEATH ARM --
+       27449c  move.l #$271,D0 / jsr $28615E     `scoreKill` -- note a move.l, not a moveq
+       2744a8  jsr $28C2DC                       a KNOWN cue: `ctx.soundPost?.(0x28c2dc)`,
+                                                 already used at handlers.js:2828 ("BGM id=5,
+                                                 death burst") and in boss4.js
+       2744ae  moveq #$D,D0 / jsr $289004        the canonical family shape, kind $D
+       2744b6  ($2,A0) = ($2,A6) ; ($1E,A0) = $10 ; ... the SEVEN writes, as $1B's death arm
+
+   **So the whole handler is mapped and it needs NOT ONE NEW PRIMITIVE.** Everything it calls is in
+   the port: `stepMovement`, the inline bounds idiom, `damageArm5C` (as its third caller),
+   `spawnCues28AC72`, `aim256`, `$281764` via `shoot`, the player-select idiom (twice),
+   `scoreKill`, `soundPost(0x28C2DC)`, `spawnEffect` at kind `$D`, and `enqueue*ThroughStub`.
+
+   Constants to carry in: `killScore` **`$271`** (a `move.l`), `deathCue` `$28C2DC`, `hpFull`
+   `$980`, armour HP `$7FFF` and post-armour HP `$2600`, the fire gate X `$1000`, the ramp clamp
+   `$14` with the wrap `$18 -> $10`, the aim bias `-$880`, the muzzles `$F7800380` and `$F780FC80`,
+   the spread `+$A` then `-$14`, `D0 = $FFFD0005`, and the rank cadence `$40 - $8130B6`.
+
+   Windows: **`(0x273FE4, 0x0092)`** and **`(0x27460A, 0x0018)`**, both bounded by code.
+
+   Only the draw's own instructions from `$27432C` remain unread, and that is a draw -- the family
+   the port has five emitter conventions for. **This type is ready to write.**
 
    #### THE RAMP TABLE'S EXTENT IS PINNED BY CODE, AND IT EXPLAINS THE WRAP
 
