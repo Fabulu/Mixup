@@ -850,6 +850,31 @@ from `$25DCB4`), and the nine `enqueueRegisters` sites draw from it. `$25DA60`, 
 `$25DEAE` and `$25E0EA` can all be left to a later cursor wave. **That is the whole remaining
 scope of the visible defect**, and it is small.
 
+#### THE NINE EMIT SITES, EXTRACTED -- DO NOT RE-DERIVE THESE
+
+Every site is `enqueueRegisters(ram, 26, D1, D2, D3, D4)` with D4 taken from the DESCRIPTOR's
+`($14,A4)` (its palette) rather than an immediate. The immediates, pulled out of the image:
+
+    site      D1 (position)   D2 (descriptor)   D3
+    $25DD98   $5BC02C00       $00334300         $0630     the header
+    $25DDBC   computed        $00334394         $0410  }
+    $25DDD8   computed        $003343B8         $0410  }  FOUR labels, and the
+    $25DDF8   computed        $003343DC         $0410  }  descriptors ascend by
+    $25DE14   computed        $00334400         $0410  }  exactly $24
+    $25DE60   computed        computed          $0618
+    $25DF72   $5BC02600       $00334224         $0648
+    $25DFBA   computed        computed          $0618
+    $25DFE8   computed        $00334424         $0618
+
+`$25DD86 move.l D1,D7` saves the header's position immediately after setting it, and the four label
+sites then derive their own D1 -- so the row is laid out relative to the header rather than by nine
+independent literals. That is the arithmetic the writing wave still has to read (the `computed`
+column), and it is the ONLY thing left unread in the tally half.
+
+**The four ascending-by-$24 descriptors are the labels the owner reported missing**, and the two
+`$0618` sites with computed descriptors are the value rows -- which is consistent with the symptom:
+labels absent, medal pictures present, numbers zero.
+
 The five other routines the old note named are also now sized: `$25DA60` starts
 `move.w $813084,D6`; `$25DA94` and `$25DEAE` **share their first two instructions**
 (`moveq #$0,D7 / move.b ($F,A5),D7`) and so are probably a family of two; `$25DFF6` opens with a
