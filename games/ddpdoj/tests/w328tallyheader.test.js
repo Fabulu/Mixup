@@ -96,8 +96,8 @@ test('W328 each side draws the HEADER and its OWN two labels', { skip: SKIP_IMG 
   for (const [side, a, b, hdr] of [[0, 0x00334394, 0x003343b8, 0x5bc00000],
     [1, 0x003343dc, 0x00334400, 0x5bc02c00]]) {
     const ram = world();
-    assert.equal(drawTallyHeader25DD80(ram, A4, side), 3, 'THREE records, always');
-    assert.equal(ram.u16(B.counter), 3 * RECORD_BYTES, 'and the counter moved by three');
+    assert.equal(drawTallyHeader25DD80(ram, A4, side), 4, 'FOUR records: header, two labels, cursor');
+    assert.equal(ram.u16(B.counter), 4 * RECORD_BYTES, 'and the counter moved by four');
 
     // The header position differs by side; the DESCRIPTOR and D3 do not.
     const h = record(ram, 0);
@@ -153,6 +153,7 @@ test('W328 three records fit bucket 26, which holds ten', { skip: SKIP_IMG }, ()
   assert.equal(B.capBytes / RECORD_BYTES, 10);
   const ram = world();
   drawTallyHeader25DD80(ram, A4, 0);
+  assert.equal(ram.u16(B.counter), 4 * RECORD_BYTES, 'four of the ten used');
   assert.ok(ram.u16(B.counter) <= B.capBytes, 'the counter stays inside the bucket');
 });
 
@@ -238,7 +239,7 @@ test('W329 not confirming DRAWS, and confirming does not', { skip: SKIP_IMG }, (
   drew.setU16(SLOT + 0x12, 0x100);
   drew.setU16(0x803972, 0);
   tallyCursor25DD0C(drew, SLOT, A4, 0, {});
-  assert.equal(drew.u16(B.counter), 3 * RECORD_BYTES, 'three records drawn');
+  assert.equal(drew.u16(B.counter), 4 * RECORD_BYTES, 'four records drawn');
 
   const confirmed = world();
   confirmed.setU32(A4 + 0x10, STORE);
@@ -246,4 +247,44 @@ test('W329 not confirming DRAWS, and confirming does not', { skip: SKIP_IMG }, (
   confirmed.setU16(0x803972, 0);
   tallyCursor25DD0C(confirmed, SLOT, A4, 0, {});
   assert.equal(confirmed.u16(B.counter), 0, 'and a confirming frame draws NOTHING');
+});
+
+test('W329 the cursor HIGHLIGHT blinks on FOUR phases, every OTHER frame', { skip: SKIP_IMG }, () => {
+  // `$25DE42 move.w $80390A,D0 / asr.w #1,D0 / andi.w #$3,D0` -- the shift is BEFORE the mask, so
+  // the phase changes every second frame rather than every frame. Masking first would give a
+  // four-frame cycle of one frame each, which is a visibly faster blink.
+  assert.equal(IMG.readUInt16BE(0x25de48), 0xe240, '$25DE48 asr.w #1,D0');
+  assert.equal(IMG.readUInt32BE(0x25de4a), 0x02400003, '$25DE4A andi.w #$3,D0');
+  const S0 = [0x00333fc4, 0x00334010, 0x0033405c, 0x003340a8];
+  const S1 = [0x003340f4, 0x00334140, 0x0033418c, 0x003341d8];
+  for (let i = 0; i < 4; i++) {
+    assert.equal(IMG.readUInt32BE(0x25de8e + i * 4), S0[i], `side 0 blink ${i}`);
+    assert.equal(IMG.readUInt32BE(0x25de9e + i * 4), S1[i], `side 1 blink ${i}`);
+  }
+  // Two consecutive frame words share a phase; the third moves on.
+  for (const [word, phase] of [[0, 0], [1, 0], [2, 1], [3, 1], [4, 2], [6, 3], [8, 0]]) {
+    const ram = world();
+    ram.setU16(0x80390a, word);
+    drawTallyHeader25DD80(ram, A4, 0, 0);
+    assert.equal(record(ram, 3).d2, S0[phase], `$80390A = ${word} -> phase ${phase}`);
+  }
+  // and the SIDE picks the table
+  const s1 = world();
+  s1.setU16(0x80390a, 0);
+  drawTallyHeader25DD80(s1, A4, 1, 0);
+  assert.equal(record(s1, 3).d2, S1[0], 'side 1 blinks from its OWN table');
+});
+
+test('W329 the highlight sits on the row the cursor is on', { skip: SKIP_IMG }, () => {
+  // `$25DE8A` is two WORDS, $0000 and $0600 -- and $600 is exactly the step between the two labels,
+  // which is what puts the highlight on a label row rather than between them.
+  assert.equal(IMG.readUInt16BE(0x25de8a), 0x0000, 'row offset 0');
+  assert.equal(IMG.readUInt16BE(0x25de8c), 0x0600, 'row offset 1 == the label step');
+  for (const [cursor, off] of [[0, 0x0000], [1, 0x0600]]) {
+    const ram = world();
+    ram.setU16(0x80390a, 0);
+    drawTallyHeader25DD80(ram, A4, 0, cursor);
+    assert.equal(record(ram, 3).d0, packed(0x5bc00000 + off),
+      `cursor ${cursor} highlights its own row`);
+  }
 });

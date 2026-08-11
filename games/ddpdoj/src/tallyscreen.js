@@ -51,6 +51,14 @@ import { tally2600D8, TALLY } from './tally.js';
  *  twelve. Declared in `spritequeue.js` since W30 and unused by anything until W328. */
 const TALLY_BUCKET = 26;
 
+/** `$25DE8A` -- the cursor highlight's two ROW OFFSETS, as words. [M] `0000 0600`, and the $600
+ *  matches the step between the two labels, which is what puts the highlight on a label row. */
+const TALLY_CURSOR_ROWS = Object.freeze([0x0000, 0x0600]);
+/** `$25DE8E` (side 0) and `$25DE9E` (side 1) -- the highlight's FOUR blink descriptors each,
+ *  ascending by `$4C`. [M] read from the image. */
+const TALLY_BLINK_S0 = Object.freeze([0x00333fc4, 0x00334010, 0x0033405c, 0x003340a8]);
+const TALLY_BLINK_S1 = Object.freeze([0x003340f4, 0x00334140, 0x0033418c, 0x003341d8]);
+
 export const SCREEN11 = Object.freeze({
   entry: 0x25dbb4,
   descA: 0x25d952,              // $25DB36 lea ($25D952,PC),A4
@@ -422,13 +430,14 @@ export function screenState2_25DB7C(ram, rom, ctx, a5) {
  * @param side the record's `($7,A5)`.
  * @returns {number} how many records were emitted -- 3, always, and returned so a caller can say so.
  */
-export function drawTallyHeader25DD80(ram, a4, side) {
+export function drawTallyHeader25DD80(ram, a4, side, cursor = 0) {
   const d4 = ram.u16(a4 + 0x14);                  // $25DD94 move.w ($14,A4),D4
   // $25DD72 loads $5BC00000 and $25DD78 `tst.b ($7,A5) / beq $25DD86` KEEPS it for side 0; only
   // side 1 reaches $25DD80's $5BC02C00. **THE HEADER POSITION IS PER-SIDE**, and W328 first shipped
   // the side-1 constant for both -- caught by reading $25DD72, which is two instructions ABOVE
   // where the constant that looked like "the" header position lives.
   let d1 = side !== 0 ? 0x5bc02c00 : 0x5bc00000;  // $25DD80 / $25DD72
+  const d7 = d1;                                  // $25DD86 move.l D1,D7 -- SAVED for the cursor
   enqueueRegisters(ram, TALLY_BUCKET, d1, 0x00334300, 0x0630, d4);   // $25DD98
   // $25DD9E `tst.b ($7,A5) / bne` -- each side has its OWN pair of descriptors.
   const pair = side !== 0
@@ -438,7 +447,29 @@ export function drawTallyHeader25DD80(ram, a4, side) {
   enqueueRegisters(ram, TALLY_BUCKET, d1, pair[0], 0x0410, d4);
   d1 = u32(d1 + 0x00000600);                      // $25DDC2 / $25DDFE addi.l
   enqueueRegisters(ram, TALLY_BUCKET, d1, pair[1], 0x0410, d4);
-  return 3;
+
+  // ==================== $25DE1A..$25DE66 -- THE BLINKING CURSOR HIGHLIGHT
+  //
+  //   25de1a  move.l D7,D1                     back to the HEADER position D7 saved
+  //   25de1c  moveq #$0,D0 / move.b ($E,A5),D0 / add.w D0,D0
+  //   25de24  lea ($25DE8A,PC),A2 / adda.w D0,A2 / add.w (A2),D1
+  //           the ROW OFFSET: two WORDS, $0000 and $0600 -- so the highlight sits on whichever of
+  //           the two label rows the cursor is on, which is why the offsets match the labels' $600
+  //   25de2e  lea ($25DE8E,PC),A2 ; $25DE34 tst.b ($7,A5) / beq ; $25DE3C lea ($25DE9E,PC),A2
+  //   25de42  move.w $80390A,D0 / asr.w #1,D0 / andi.w #$3,D0
+  //           A FOUR-PHASE BLINK off the global frame word, halved -- so it changes every OTHER
+  //           frame, not every frame
+  //   25de4e  add.w D0,D0 / add.w D0,D0 / move.l (A2,D0.w),D2      the phase's descriptor
+  //   25de56  move.w #$618,D3 / D4 = ($14,A4) / jsr $24018C
+  //
+  // **`asr.w #1` BEFORE the mask is what makes it every other frame.** Masking first would give a
+  // four-frame cycle at one frame each; this gives four phases of two frames.
+  const row = TALLY_CURSOR_ROWS[cursor & 0x01];    // $25DE8A -- two words, so one bit
+  d1 = u32(d7 + row);                             // $25DE2C add.w (A2),D1
+  const phase = (ram.u16(0x80390a) >> 1) & 0x03;  // $25DE42..$25DE4A
+  const blink = side !== 0 ? TALLY_BLINK_S1 : TALLY_BLINK_S0;   // $25DE2E / $25DE3C
+  enqueueRegisters(ram, TALLY_BUCKET, d1, blink[phase], 0x0618, d4);  // $25DE60
+  return 4;
 }
 
 /**
@@ -495,7 +526,7 @@ export function tallyCursor25DD0C(ram, slot, a4, side, ctx) {
     return true;                                           // $25DD6C ori #$1,SR
   }
   // $25DD72 -- not confirmed, so DRAW.
-  drawTallyHeader25DD80(ram, a4, side);
+  drawTallyHeader25DD80(ram, a4, side, ram.u8(slot + SCREEN11.xCur));
   return false;
 }
 
