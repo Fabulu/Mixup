@@ -46,6 +46,7 @@ import { makeBackground, BgVram, TxVram, VideoRegs } from './background.js';
 import { makeStageClear } from './stageend.js';
 import { makeHudObject } from './hud.js';
 import { makeRankObject, announce260B30 } from './rank.js';
+import { tallyScreen25DBB4 } from './tallyscreen.js';
 import { SoundState, drainFrame, postWrapperWithRuntime,
   soundFrameInput } from './sound.js';
 import {
@@ -157,6 +158,16 @@ export function defaultHandlers(rom, vram, opts = {}) {
     // reads no chain/score state, so it cannot perturb the frame-exact chain
     // decrement in entry [0].
     [10, makeRankObject(rom)],
+    // W276.  $240F62[11] = $25DBB4, THE STAGE-CLEAR SCREEN, and the score tally is
+    // inside it -- `$25DB7C` state 2's `jsr $2600D8` is the call the owner meant by
+    // "maybe even score totalling, which I see none of".
+    //
+    // PARTIAL AND IT SAYS SO. State 0 and state 2 are transcribed; state 1's gates
+    // and the MENU CURSOR at `$25DD0C` are one counted note naming the six routines
+    // still missing. Registering it is right anyway for the reason entry [5] gives:
+    // this was 900 unattributed notes a run, and now the notes name the state they
+    // came from and the object's two working states actually run.
+    [11, tallyScreen25DBB4],
   ]);
 }
 

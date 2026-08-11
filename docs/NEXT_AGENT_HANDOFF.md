@@ -28,8 +28,10 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W275, `ddpdoj: draw the ship dying`.
-- Suite: `node --test games/ddpdoj/tests/` is **1901/1901**, green, no skips.
+- HEAD is W276, `ddpdoj: run the stage-clear screen`.
+- Suite: `node --test games/ddpdoj/tests/` is **1917/1917**, green, no skips.
+- **`top_objects` coverage is 9/20** -- nine of the twenty top-level dispatch entries
+  are registered in `main.js`. `w167coverage.test.js` pins it.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
   closed at 414/414 script records and 28/28 script types.
 - **THE STAGE-4 BOSS IS COMPLETE FOR EVERY REACHABLE PATH.** W246 through W263
@@ -78,9 +80,12 @@ owner cannot.
   cartridge's own RAM. See D8 -- there was no missing draw. W274 found that
   `drawShipAlt`'s bit-15 compare was INVERTED; W275 fixed it together with the walker
   it reaches, which is the only way it could be fixed.
-- **The stage-clear SCORE TALLY works** (W273, W274): `$2600D8` posts a bonus line,
-  drives all seven HUD rows per side, installs the tally's four palette banks
-  (`$241688`) and recounts the live sides. Its only counted gap left is `$23C668`.
+- **The stage-clear SCORE TALLY works AND IS DRIVEN** (W273, W274, W276): `$2600D8`
+  posts a bonus line, drives all seven HUD rows per side, installs the tally's four
+  palette banks (`$241688`) and recounts the live sides; its only counted gap is
+  `$23C668`. W276 registered object dispatch `[11]` `$25DBB4`, the stage-clear SCREEN
+  the tally lives inside -- states 0 and 2 transcribed, state 1's gates and its menu
+  cursor ONE counted note that NAMES the six routines still missing.
 
 ## An hourly cron is running
 
@@ -112,44 +117,32 @@ about it.** `w271hyperstock.test.js` has the mechanical form of the first check.
 
 ## Work order toward the goal
 
-1. **Object dispatch `[11]` `$25DBB4`.** THE FIRST UNFINISHED ITEM, and **W270's recon
-   of it UNDERESTIMATED IT BADLY -- read this before planning the wave.** W270 said it
-   was "one small routine away from transcribable" and named `$2600D8` as that routine.
-   W273 landed `$2600D8` and W274 closed its last gap, and the object is still not one
-   routine away. Re-read in W276's recon:
+1. **STATE 1 OF OBJECT `[11]`, `$25DBC4..$25DD0A`.** THE FIRST UNFINISHED ITEM. W276
+   landed the object's dispatcher, state 0 and state 2, so the score tally now runs;
+   state 1 is ONE counted note at `$25DBC4` and the note NAMES what is missing, so read
+   it rather than re-deriving. `$28D53C` and `$23C932` are already ported in
+   `src/tallyscreen.js`.
 
-   State 1 alone spans `$25DBB4..$25DD0A`, and its two trivial dependencies really are
-   trivial:
+   Dependency-first order:
+   - **`$25FF38` FIRST.** It does `lea $8130FA,A0` -- it writes the tally records
+     `src/tally.js` owns, so everything else in state 1 is safer once it is known.
+   - then `$25DA60` (reads `$813084`/`$813088`, the tally's own posted words) and
+     `$25DA94` (walks `($f,A5)`);
+   - then `$25DFF6` (another `$28D53C` gate) and `$25DEAE` (`($f,A5)` again, from the
+     `($c,A5) == 2` arm);
+   - then `$25E0EA`, `lea ($25E006,PC),A0 / bra $25E200` -- a table-driven jump.
 
-       $28D53C   `tst.w $81DF20` then set or clear CARRY in the SR. In JS: a boolean.
-       $23C932   returns (D0, D1). DIP `$803808` == $12 -> both 0; else D0 = the byte
-                 `$80395A` and D1 = the byte `$803960`.
-
-   But there are SIX MORE, none of them ported and none of them named by W270:
-
-       $25DA60   reads $813084/$813088 into D6/D7 -- the tally's own posted words
-       $25DA94   walks ($f,A5)
-       $25DFF6   another $28D53C gate, reached from state 1's fall-through
-       $25DEAE   ($f,A5) again, from the `($c,A5) == 2` arm
-       $25E0EA   `lea ($25E006,PC),A0 / bra $25E200` -- a table-driven jump
-       $25FF38   `lea $8130FA,A0` -- IT TOUCHES THE TALLY RECORDS DIRECTLY
-
-   and state 1 also calls `$24150A` with `$225978` (a palette block that may need a
-   window) and `$23C668`, which stays a counted note.
-
-   **AND `$25DD0C` ONWARD IS A MENU CURSOR**, not a tally: `btst #$2,D0` / `subq.b #1,
-   ($e,A5)` and `btst #$3,D0` / `addq.b #1,($e,A5)`, each followed by
-   `move.b #$1,($d,A5)` and `jsr $28C6FA` -- a sound. `andi.b #$1,($e,A5)` then keeps
-   the cursor to two entries. So `[11]` is a SELECTION SCREEN with the score tally
-   inside it, which is why it is 900 counted notes a run.
-
-   Scope it as two or three waves, not one. The natural first cut is `$28D53C` +
-   `$23C932` + state 0 + state 2, which is the tally path and reaches `$2600D8`; state
-   1's six dependencies and the cursor are the second and third.
-
-   Then **the four other announcement-poster caller regions** -- `$25CDxx`, `$25D5xx`,
+   State 1 also installs a palette from `$225978`, which needs a window: run
+   `node tools/export-web.mjs --extent 0x225978` first.
+2. **The menu cursor, `$25DD0C`.** `btst #$2,D0` decrements `($e,A5)` and `btst #$3,D0`
+   increments it, each with `move.b #$1,($d,A5)` and a `$28C6FA` sound, and
+   `andi.b #$1,($e,A5)` keeps it to two entries. **D0 comes from `($8,A4)`** -- one of
+   the descriptor's three code pointers (`$23D186` for side 0, `$23D18E` for side 1) --
+   so that routine is the input read and has to land first. W276's window
+   `$25D952+$3E` already covers both descriptors.
+3. **The four other announcement-poster caller regions** -- `$25CDxx`, `$25D5xx`,
    `$2601xx`, `$288A02` -- which share the protocol W270 landed.
-2. **WHAT ADVANCES `($14,A6)` THROUGH `$255B7C`.** W275 ported the walker and shipped
+4. **WHAT ADVANCES `($14,A6)` THROUGH `$255B7C`.** W275 ported the walker and shipped
    all 49 of its descriptors, but only entries 0..5 of the 39-entry pointer table are
    KNOWN to be reached, because only `$24A120`'s write of `$255B7C` is transcribed.
    The port already walks entry 1 during a real death, so **the advance exists and is
@@ -173,7 +166,7 @@ address.** Build B is `$200000..$2B0000`. W272 scanned it with a base of `$20000
 and read the wrong bytes. When a hand-rolled scan returns zero, first check it finds
 something you already know is there -- `u16($2600D8) == $48E7` is that habit written
 down, and `tests/w274paletteset.test.js` now runs the whole audit every suite pass.
-3. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
+5. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
    `$28D6FC` the animation chain. `$28D77C` writes palette RAM the port does not
    model and the four `$25FD38` resets are W62's scope line, so those two stay
    counted. Force `$242952` headlessly and read the counted gaps -- that measurement
@@ -182,7 +175,7 @@ down, and `tests/w274paletteset.test.js` now runs the whole audit every suite pa
    chain and decrements each node's `$18`; the way in is the node code pointers at
    `$24627A`, NOT the chain root `$810346`, whose six references are all loaders or
    the clear. `$28C186` is a BGM command and correctly a counted sound gap.
-4. **Stage 5, then the loops.** Nothing blocks this any more: the Stage-4 boss is
+6. **Stage 5, then the loops.** Nothing blocks this any more: the Stage-4 boss is
    complete for every reachable path and the docket is down to one item. Five
    loop-specific rules are translated so far; see the loop-2 bullet above.
 

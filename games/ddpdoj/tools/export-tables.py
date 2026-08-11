@@ -2404,6 +2404,23 @@ SHOT_WINDOWS.extend([
     (0x255C18, 0x01C0, "W275: $24A6B4's display programs $255C18..$255DD7, all 38 "
                        "streams walked; far end pinned by the `lea $811F72,A6` at "
                        "$255DD8"),
+    # W276: object dispatch [11]'s four tables, and they are one contiguous block.
+    #
+    #   $25D952  descriptor A, 26 bytes ($1A)   -- $25DB36 lea ($25D952,PC),A4
+    #   $25D96C  descriptor B, 26 bytes         -- $25DB40, taken when ($7,A5) != 0
+    #   $25D986  the ($e,A5) table, TWO words   -- $25DB88, and $25DD42's
+    #                                              `andi.b #$1,($e,A5)` is the bound
+    #   $25D98A  the ($f,A5) table, THREE words -- $25DB98
+    #
+    # $25D952 + $3E is $25D990, and `13 FC 00 FF 00 81 30 08` there is
+    # `move.b #$FF,$813008` -- CODE.  So one window covers all four and the far end
+    # is pinned by the instruction that follows.  Each descriptor's shape, read off
+    # the two of them: w, w, l, l, l, l, w, w, w -- and the three longs are CODE
+    # POINTERS into $23Cxxx/$23Dxxx that state 1 calls through ($4,A4), ($8,A4) and
+    # ($c,A4).  State 2 uses none of them.
+    (0x25D952, 0x003E, "W276: object [11]'s two 26-byte descriptors plus its $e and "
+                       "$f cursor tables; far end pinned by the `move.b #$FF,$813008` "
+                       "at $25D990"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

@@ -65,7 +65,11 @@ test('W210 config is a machine-readable family map with an exact backlog', () =>
 test('W217 reusable coverage derives the current closed-family totals', { skip: !evidence }, () => {
   const got = run();
   assert.equal(got.status, 0, got.stdout + got.stderr);
-  assert.match(got.stdout, /top_objects: 8\/20 ported/);
+  // W276: 8 -> 9. `$240F62[11] = $25DBB4`, the stage-clear screen, is registered in
+  // `main.js` -- states 0 and 2 transcribed, state 1's gates and its menu cursor one
+  // counted note. This is the number that moves when an OBJECT lands, so it is the
+  // one worth pinning: 9 of the 20 top-level dispatch entries now run.
+  assert.match(got.stdout, /top_objects: 9\/20 ported/);
   assert.match(got.stdout, /type5_calls: 19\/23 ported/);
   // W229: 72 -> 76 ported and 54 -> 50 unknown, the four the Stage-4 waves added
   // after W217 (W218's $27C81A and $27DB30, W219's Type-$40 boss, W223's $41).
