@@ -40,7 +40,7 @@
 import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
-import { tagLookupForSide, tagForSide } from './hiscore.js';
+import { tagLookupForSide, tagForSide, tagWrite28F7C8 } from './hiscore.js';
 import { chainLoader246704 } from './stageend.js';
 
 /**
@@ -296,6 +296,7 @@ const TIMEOUT = Object.freeze({
   counter: 0x1e,               // ($1E,A4) -- block word 5, starts 0
   suspend: 0x81e0d8,           // $28F506 tst.w -- spans $81E0D9, and has NO writer of its own
   setupFlagByte: 0x81e0d9,
+  armed: 0x70,                 // $28F6B6 move.w #$70,($1E,A4) -- the commit arms it
   reload: 0x30,                // $28F514/$28F536 cmpi.w #$30
   reloadScript: 0x28fad2,      // $28F520 lea ($28FAD2,PC),A0
   reloadLoader: 0x246704,      // $28F526 jsr -- the D6=1 sibling W308 added
@@ -443,6 +444,143 @@ export function drawGridFrame28F4C4(ram, rom, a4, a5) {
     return 'p2';
   }
   return 'none';                                       // $28F4EC beq $28F4F4
+}
+
+// ===========================================================================
+// W311 -- THE FINISH BUTTON COMMITS THE CHARACTER UNDER THE CURSOR
+// ===========================================================================
+// W309 left `$28F606` as "where a non-empty finish goes". It is not glue: it does work.
+//
+//     28f606  move.w ($18,A4),D0 / add.w D0,D0 x2      the cell the cursor is on RIGHT NOW
+//     28f60e  movea.l ($30,A4),A0
+//     28f612  move.w ($16,A4),D1 / add.w D1,D1 x2
+//     28f61a  cmpi.w #$1B,($18,A4) / bcs $28F628
+//     28f622  moveq #$0,D0 / bra $28F59E               on END -> DDP
+//     28f628  move.l D0,(A0,D1.w)                      otherwise WRITE it
+//     28f62c  addq.w #1,($16,A4)
+//     28f630  cmpi.w #$3,($16,A4) / bne $28F5E8        short -> pad with END glyphs
+//     28f638  bra $28F674                              three -> the filter
+//
+// So pressing finish **adds the character you are pointing at**, then pads whatever is left with
+// index 28, then filters. `SE` with the cursor on `X` finishes as `SEX`; `S` with the cursor on
+// `E` finishes as `S E <28>`. A port that treated finish as a pure commit would drop the last
+// character the player chose, which is the kind of bug that reads as an input-timing problem.
+//
+// And finishing with the cursor ON the END cell goes to `$28F59E` -- the DDP write W306 found and
+// W309 found a second caller for. **That is its third caller**, and the three are the three ways
+// to decline to enter a name: nothing typed, a banned name, or finishing on END.
+//
+// ## THE PADDING LOOP IS SHARED, AND IT FALLS OUT INTO THE FILTER
+//
+// `$28F5E8` has two callers -- W309's select-on-END and this one -- and `$28F600 bne $28F5EA`
+// leaves through `$28F602 bra $28F674`. So every path that completes a name lands on the filter,
+// and the filter's own `cmpi.w #$3,($16,A4)` gate (W306) can only ever see three.
+const FINISH = Object.freeze({
+  site: 0x28f606,
+  padSite: 0x28f5e8,
+  filterSite: 0x28f674,
+  defaultSite: 0x28f59e,
+});
+
+/** `$28F5E8..$28F602` -- pad every remaining slot with the END glyph. Shared by two callers. */
+function padWithEnd(ram, a4) {
+  const row = ram.u32(a4 + NAME_REC.entry);
+  for (let n = ram.u16(a4 + INPUT.count); n < INPUT.chars; n++) {
+    ram.setU32(row + n * 4, INPUT.endChar);              // $28F5F2 move.l D0,(A0,D1.w)
+    ram.setU16(a4 + INPUT.count, u16(n + 1));            // $28F5F6 addq.w #1
+  }
+}
+
+/** `$28F59E` -- the DDP write, which has THREE callers. */
+function writeDefault(ram, a4) {
+  const row = ram.u32(a4 + NAME_REC.entry);
+  for (const [k, c] of NAME_ALPHA.replacement.entries()) ram.setU32(row + k * 4, c);
+  ram.setU16(a4 + INPUT.count, INPUT.chars);             // $28F5B6 move.w #$3
+}
+
+/**
+ * `$28F606` -- the finish button's body, for a name with at least one character already.
+ *
+ * @returns {'default'|'filtered'} `default` means the cursor was on END and `DDP` went in;
+ *   `filtered` means the name is three long and `$28F674` has run.
+ */
+export function nameFinish28F606(ram, rom, a4) {
+  const cell = ram.u16(a4 + CURSOR.cellField);           // $28F606 move.w ($18,A4),D0
+  if (cell >= INPUT.endCell) {                           // $28F61A cmpi.w #$1B / bcs
+    writeDefault(ram, a4);                               // $28F622 moveq #$0,D0 / bra $28F59E
+    return 'default';
+  }
+  const slot = ram.u16(a4 + INPUT.count);
+  if (slot >= INPUT.chars) {
+    unreached(FINISH.site, `$28F606 would write character ${slot} of ${INPUT.chars}. The finish `
+      + `button reaches here only with 1 or 2 entered -- an empty name goes to $28F59E and a `
+      + `full one cannot be added to, so a count of ${slot} means an arm above was skipped`);
+  }
+  const row = ram.u32(a4 + NAME_REC.entry);              // $28F60E movea.l ($30,A4),A0
+  ram.setU32(row + slot * 4, u16(cell * 4));             // $28F628 move.l D0,(A0,D1.w)
+  ram.setU16(a4 + INPUT.count, u16(slot + 1));           // $28F62C addq.w #1
+  if (ram.u16(a4 + INPUT.count) !== INPUT.chars) {       // $28F630 cmpi.w #$3 / bne $28F5E8
+    padWithEnd(ram, a4);
+  }
+  nameFilter28F674(ram, rom, a4);                        // $28F638 / $28F602 bra $28F674
+  return 'filtered';
+}
+
+/**
+ * `$28F6A8..$28F6C2` -- the commit tail, and **the reason the input arms can never see a full
+ * name.**
+ *
+ *     28f6a8  bsr $28F7C8                write the name into the table   (W304)
+ *     28f6ac  move.w ($12,A4),D1
+ *     28f6b0  bclr D1,$81E0D9            release the side's setup bit    (W308)
+ *     28f6b6  move.w #$70,($1E,A4)       ARM THE COUNTDOWN at 112 frames
+ *     28f6bc  moveq #$0,D0 / move.l D0,($1A,A4)
+ *     28f6c2  bra $28F7F4                and draw the panel
+ *
+ * `$28F6B6` is the missing link. `$28F4FC tst.w ($1E,A4)` sends every later frame down the
+ * countdown path (W308), so once a name is committed the input at `$28F542` is unreachable --
+ * which is what makes the count-of-three cases in `$28F606` and `$28F652` genuinely impossible
+ * rather than merely unobserved. Both are `unreached` in this port, and this is the justification.
+ *
+ * It also explains W308's `$30` one-shot: the countdown starts at `$70` and the arm fires 64
+ * frames in, a little over a second before the screen ends.
+ *
+ * **ONE OBSERVATION ABOUT THE `$28F7C8` CALL, offered as an observation.** A0 here is
+ * `($30,A4)`, which `$28F75A` set to the TAGGED ROW ITSELF -- scanned it, one writer and six
+ * readers, all in this screen. The input arms write into that same row, and the first character
+ * lands at offset 0, on top of the tag. So by the time `$28F6A8` runs, the row `$28F7C8` searches
+ * for usually no longer carries a tag, and its search falls through to the silent no-op W304
+ * ported faithfully.
+ *
+ * That is what the instructions say; it is NOT a claim that the call is dead. A path that reaches
+ * the commit with the row still tagged would make it act, and the port reproduces the ROM either
+ * way rather than shortcutting to "this does nothing".
+ */
+export function nameCommitTail28F6A8(ram, a4, ctx) {
+  const wrote = tagWrite28F7C8(ram, a4, ram.u32(a4 + NAME_REC.entry));  // $28F6A8 bsr $28F7C8
+  nameReleaseSetup28F6B0(ram, a4);                       // $28F6AC / $28F6B0
+  ram.setU16(a4 + TIMEOUT.counter, TIMEOUT.armed);       // $28F6B6 move.w #$70,($1E,A4)
+  ram.setU32(a4 + 0x1a, 0);                              // $28F6BC / $28F6BE
+  ctx?.unportedLog?.note(TIMEOUT.drawSite,
+    '$28F6C2 bra $28F7F4 -- the panel draw, on the commit path');
+  return wrote;
+}
+
+/**
+ * The whole finish path, as one call: `$28F588`'s test, `$28F59E` or `$28F606`, the filter, and
+ * the commit tail that arms the countdown.
+ *
+ * @returns {'default'|'filtered'} which of the two ways the name was settled.
+ */
+export function nameCommit(ram, rom, a4, ctx) {
+  const how = ram.u16(a4 + INPUT.count) === 0
+    ? (writeDefault(ram, a4), 'default')                 // $28F598 tst.w / $28F59C bne
+    : nameFinish28F606(ram, rom, a4);
+  // Both paths converge on `$28F674`'s filter and then fall into `$28F6A8`. `nameFinish28F606`
+  // has already run the filter; the empty-name path skips it, exactly as `$28F59E`'s
+  // `bra $28F6A8` does.
+  nameCommitTail28F6A8(ram, a4, ctx);
+  return how;
 }
 
 // ===========================================================================
@@ -710,17 +848,15 @@ function writeChar(ram, a4, slot, value) {
  * select. A port that tested select first would commit a character on the frame the player
  * finished.
  */
-export function nameButtons28F588(ram, a4, ctx) {
+export function nameButtons28F588(ram, rom, a4, ctx) {
   const d0 = ram.u16(a4 + INPUT.word);
 
   if ((d0 & INPUT.finishBit) !== 0) {                    // $28F58C btst #$F / $28F590 beq
     ctx?.unportedLog?.note(INPUT.cue,
       '$28F592 jsr $28C6E0 -- SFX id $1A, already in sound.js');
     if (ram.u16(a4 + INPUT.count) !== 0) return 'finish'; // $28F598 tst.w / $28F59C bne
-    // $28F59E -- falls THROUGH into the same write W306 ported as the banned-name replacement.
-    const row = ram.u32(a4 + NAME_REC.entry);
-    for (const [k, c] of NAME_ALPHA.replacement.entries()) ram.setU32(row + k * 4, c);
-    ram.setU16(a4 + INPUT.count, INPUT.chars);            // $28F5B6 move.w #$3
+    // $28F59E -- falls THROUGH into the DDP write, W311's `writeDefault`. Three callers share it.
+    writeDefault(ram, a4);
     return 'finish-empty';
   }
 
@@ -738,10 +874,14 @@ export function nameButtons28F588(ram, a4, ctx) {
   const pos = ram.u16(a4 + INPUT.gridPos);               // $28F5D8 move.w ($18,A4),D0
   if (pos >= INPUT.endCell) {                            // $28F5DC cmpi.w #$1B / bcs
     // $28F5E8..$28F600 -- pad EVERY remaining slot with index 28, not just the next one.
-    for (let n = ram.u16(a4 + INPUT.count); n < INPUT.chars; n++) {
-      writeChar(ram, a4, n, INPUT.endChar);
-      ram.setU16(a4 + INPUT.count, u16(n + 1));           // $28F5F6 addq.w #1
-    }
+    padWithEnd(ram, a4);
+    // **W311 CORRECTION.** W309 stopped here and returned. The loop leaves through
+    // `$28F602 bra $28F674`, so selecting END runs the FILTER and the commit tail in the same
+    // frame -- which is why the player never gets another input frame with three entered, and
+    // why the count-of-three cases in `$28F606` and `$28F652` are unreachable rather than merely
+    // unobserved. Stopping short left a state the board cannot be in.
+    nameFilter28F674(ram, rom, a4);                      // $28F602 bra $28F674
+    nameCommitTail28F6A8(ram, a4, ctx);                  // and it falls into $28F6A8
     return 'end';
   }
   if (ram.u16(a4 + INPUT.count) >= INPUT.chars) {

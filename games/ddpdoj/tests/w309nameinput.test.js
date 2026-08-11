@@ -58,7 +58,7 @@ const row = (ram) => [0, 1, 2].map((k) => ram.u32(BIG + k * 4));
 function press(ram, bits, pos = 0) {
   ram.setU16(A4 + INPUT_W, bits);
   ram.setU16(A4 + GRIDPOS, pos);
-  return nameButtons28F588(ram, A4, world().ctx);
+  return nameButtons28F588(ram, ROM, A4, world().ctx);
 }
 
 // ==================== 1. THE CHARACTER VALUE IS MADE HERE
@@ -134,7 +134,11 @@ test('W309 the grid is 27 cells and `$1B` up is END', { skip: SKIP }, () => {
 test('W309 END pads EVERY remaining slot, not just the next one', { skip: SKIP }, () => {
   // `$28F5EA..$28F600` loops until the count reaches three. Padding one slot would leave the
   // others holding whatever the insert's shift dragged down.
-  for (const already of [0, 1, 2]) {
+  //
+  // W311 CORRECTION: the arm does not stop at the padding. `$28F602 bra $28F674` runs the filter
+  // and the commit in the same frame, so the padded name is only visible when it SURVIVES the
+  // filter -- which `D <28> <28>` does and the all-END name does not.
+  for (const already of [1, 2]) {
     const ram = entering();
     for (let i = 0; i < already; i++) press(ram, SELECT, 3 + i);
     assert.equal(press(ram, SELECT, 0x1b), 'end');
@@ -145,16 +149,20 @@ test('W309 END pads EVERY remaining slot, not just the next one', { skip: SKIP }
   }
 });
 
-test('W309 pressing END straight away gives W306\'s seventeenth banned name', { skip: SKIP }, () => {
-  // The finding this test exists for. `$70 $70 $70` is not an arbitrary triple of the last
-  // glyph; it is the all-END name, and it is banned for the same reason `AAA` is.
-  const ram = entering();
-  assert.equal(press(ram, SELECT, 0x1b), 'end');
-  assert.deepEqual(row(ram), bannedNames(ROM)[16], 'byte for byte the banned entry');
-  // And the filter duly replaces it.
-  assert.equal(nameFilter28F674(ram, ROM, A4), 'replaced');
-  assert.deepEqual(row(ram), NAME_ALPHA.replacement, 'with DDP');
-});
+test('W309 the all-END name is W306\'s seventeenth entry, so END alone gives DDP',
+  { skip: SKIP }, () => {
+    // The finding this test exists for, in two halves. The DATA half: `$70 $70 $70` is not an
+    // arbitrary triple of the last glyph, it is what padding three empty slots produces. The
+    // BEHAVIOUR half: because the arm falls into the filter, selecting END with nothing entered
+    // comes straight out as `DDP` -- the all-END name never survives a frame.
+    assert.deepEqual(bannedNames(ROM)[16],
+      [0, 1, 2].map(() => NAME_ALPHA.last * NAME_ALPHA.scale), 'index 28 three times');
+    const ram = entering();
+    assert.equal(press(ram, SELECT, 0x1b), 'end');
+    assert.deepEqual(row(ram), NAME_ALPHA.replacement, 'and it comes out as DDP');
+    // The filter has already run, so running it again finds nothing to do.
+    assert.equal(nameFilter28F674(ram, ROM, A4), 'allowed', 'DDP itself is not banned');
+  });
 
 // ==================== 3. BACKSPACE, AND WHY `AAA` IS ON THE LIST
 
@@ -252,7 +260,7 @@ test('W309 every press fires the SFX cue the port already knows', { skip: SKIP }
     const w = world();
     ram.setU16(A4 + INPUT_W, bits);
     ram.setU16(A4 + GRIDPOS, 5);
-    nameButtons28F588(ram, A4, w.ctx);
+    nameButtons28F588(ram, ROM, A4, w.ctx);
     const hit = w.log.report().find((r) => r.includes('$28C6E0'));
     assert.ok(hit, `$${bits.toString(16)} fires the cue`);
     assert.match(hit, /\$1A/, 'and names the id');
