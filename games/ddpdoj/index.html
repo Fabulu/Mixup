@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DoDonPachi DaiOuJou (IGS PGM, Black Label) - Mixup vertical slice</title>
+
+<!-- DOCKET D14 -- the PWA head. `theme-color` matches the page background and the
+     manifest's, so the system chrome does not flash a different colour on launch.
+     `apple-touch-icon` is separate from the manifest on purpose: iOS installs from
+     it and ignores `icons`. -->
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#0b0f14">
+<link rel="icon" href="./icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <!--
   STANDALONE, and DELIBERATELY HONEST ABOUT WHAT IT IS.
 
@@ -876,6 +885,38 @@ if (!canFull) {
     document.addEventListener(ev, () => { paintFull(); fit(); applyLock(); });
   }
   paintFull();
+}
+
+// ---------------------------------------------------------------------------
+// DOCKET D14 -- the service worker.
+//
+// Registered LAST and never awaited, because nothing on this page depends on it:
+// the port boots, runs and renders identically with no worker at all. A
+// registration that blocked the first frame would trade the thing that works for
+// the thing that is a nicety.
+//
+// `file://` has no service workers and neither does an insecure origin, so this is
+// gated on `isSecureContext` -- which is true for localhost as well as https, so
+// local development still exercises it.
+//
+// The scope is asserted rather than assumed. `sw.js` sits at `games/ddpdoj/` and
+// its default scope is therefore `/games/ddpdoj/`; if a later change moves it into
+// `src/` it would register, report success, and control nothing. The console line
+// says which scope it actually got, so that failure is visible instead of silent.
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { scope: './' }).then((reg) => {
+      const scope = new URL(reg.scope).pathname;
+      if (!location.pathname.startsWith(scope)) {
+        console.warn(`[ddpdoj] the worker's scope is ${scope}, which does not cover `
+          + `${location.pathname} -- it controls nothing. sw.js must sit beside `
+          + 'index.html, not under src/.');
+      }
+    }).catch((e) => {
+      // Not fatal and not worth a red box: the page works without it.
+      console.info('[ddpdoj] no service worker:', e.message);
+    });
+  });
 }
 
 infoBtn.addEventListener('click', () => {

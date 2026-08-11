@@ -65,6 +65,15 @@ const INCLUDE = ['index.html', 'games/index.json', 'shared',
                                           `games/${g}/src`, `games/${g}/assets`]),
                  ...PAGES.flatMap((g) => fs.readdirSync(path.join(ROOT, 'games', g))
                    .filter((f) => f.endsWith('.html'))
+                   .map((f) => `games/${g}/${f}`)),
+                 // DOCKET D14 -- the PWA files. These are NOT covered by anything
+                 // above: the flatMap takes `.html` only, and `src`/`assets` are
+                 // the wrong place for both of them. `sw.js` in particular MUST be
+                 // at the game's root, because a worker's default scope is its own
+                 // directory and one under `src/` would not control `index.html`.
+                 ...PAGES.flatMap((g) => ['manifest.webmanifest', 'sw.js',
+                   'icon-192.png', 'icon-512.png', 'icon-maskable-512.png']
+                   .filter((f) => fs.existsSync(path.join(ROOT, 'games', g, f)))
                    .map((f) => `games/${g}/${f}`))];
 
 // assets/ is ROM-DERIVED, and "derived" covers a range. games/batman/assets/
@@ -515,6 +524,23 @@ fs.writeFileSync(path.join(DIST, 'games', g, 'src', 'buildid.js'), [
   const m = JSON.parse(fs.readFileSync(mp, 'utf8'));
   m.buildId = buildId;
   fs.writeFileSync(mp, JSON.stringify(m));
+
+  // DOCKET D14 -- stamp the same build id into the service worker, because THE
+  // CACHE NAME IS THE VERSION. `sw.js` ships `const BUILD = 'dev'` so a dev tree
+  // has a stable name; here it becomes the build id, and changing the name is the
+  // whole eviction mechanism. A worker published with 'dev' would serve the first
+  // build it ever saw, for ever, to everyone -- so this is not cosmetic.
+  const swp = path.join(DIST, 'games', g, 'sw.js');
+  if (fs.existsSync(swp)) {
+    const sw = fs.readFileSync(swp, 'utf8');
+    const stamped = sw.replace(/^const BUILD = 'dev';$/m, `const BUILD = '${buildId}';`);
+    if (stamped === sw) {
+      throw new Error(`games/${g}/sw.js has no \`const BUILD = 'dev';\` line to `
+        + 'stamp. Without the build id the cache name never changes and every '
+        + 'future deploy is invisible to anyone who has visited once.');
+    }
+    fs.writeFileSync(swp, stamped);
+  }
 }
 
 let files = 0, bytes = 0;
