@@ -28,8 +28,14 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W298, `ddpdoj: $280BCE's hooks 4..7`.
-- Suite: `node --test games/ddpdoj/tests/` is **2043/2043**, green, no skips.
+- HEAD is W299, `ddpdoj: the high-score search`.
+- Suite: `node --test games/ddpdoj/tests/` is **2051/2051**, green, no skips.
+- **BEFORE DECIDING A QUESTION NEEDS NEW EVIDENCE, CHECK THE EVIDENCE THE REPO SHIPS.**
+  Three waves deferred the high-score subsystem because the table's ordering was unknown.
+  `rip/web/seed.bin` is a snapshot of the board's main RAM and had the answer in it.
+- **`DBcc` EXITS WHEN ITS CONDITION IS TRUE** -- "decrement and branch if FALSE". So `dbcc`
+  exits on carry CLEAR. Reading it the other way makes `$287D96`'s search run backwards,
+  and both readings look plausible from the instructions alone.
 - `$280BCE` is at **FIFTEEN of twenty** finish hooks translated.
 - **A STATEFUL RNG DRAW CANNOT BE INSPECTED TWICE.** `$242B3C` opens with
   `addq.b #1,$803917`, so calling it again to test the sign desynchronises every later
