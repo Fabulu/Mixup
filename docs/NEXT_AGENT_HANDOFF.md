@@ -28,8 +28,11 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W291, `ddpdoj: bonus line 3 is $2600D8's second entry point`.
-- Suite: `node --test games/ddpdoj/tests/` is **2008/2008**, green, no skips.
+- HEAD is W292, `ddpdoj: bonus line 4 and its two loop-2 rules`.
+- Suite: `node --test games/ddpdoj/tests/` is **2014/2014**, green, no skips.
+- **FOUR of the nine bonus lines are in.** Line 5 is `$2602B6`, and its head takes BOTH
+  records at once (`lea $8130FA,A2 / lea $81311E,A3`) -- a shape none of the first four
+  has, so do not assume the family.
 - **THREE of the nine bonus lines are in** ($25FFA8, $260056, $26010E). Before
   transcribing line 4 (`$2601F4`), check its head against `$2600D8`'s and `$25FFA8`'s --
   three of the first four shared something.
@@ -80,7 +83,9 @@ owner cannot.
   with ZERO unresolvable in both. **Eleven test files pin the stream count exactly**
   and all eleven get bumped together when a wave harvests art; `w218stage4.test.js`
   carries the explanation.
-- **FIVE loop-2 rules exist**: W241's zero-lives extend (`$253794`), W250's A1 6
+- **SEVEN loop-2 rules exist** (W292 added two, both in bonus line 4 `$2601F4`: the
+  pointer word's source and whether `$286FB4` runs -- one `beq` and one `bne` on the
+  same word, so a shared flag would get exactly one backwards). The five before them:: W241's zero-lives extend (`$253794`), W250's A1 6
   (which changes both its shot count and its generator), A4 id6's two (`$2A1250`,
   `$2A1346`) and W270's `$260ACA` announcement choice. All read `$813098`. Stage 5
   has not started.

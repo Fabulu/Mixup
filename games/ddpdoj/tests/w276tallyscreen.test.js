@@ -17,7 +17,8 @@ import { UnportedLog } from '../src/unported.js';
 import { deferReset } from '../src/background.js';
 import { HUDRAM } from '../src/hud.js';
 import { TALLY, tally2600D8, bonusLine125FFA8, bonusLine2260056,
-  bonusLine326010E } from '../src/tally.js';
+  bonusLine326010E, bonusLine42601F4 } from '../src/tally.js';
+import { PaletteState } from '../src/palette.js';
 import { ALLOC } from '../src/objalloc.js';
 import { RAM as MACHINE } from '../src/machine.js';
 import {
@@ -721,3 +722,99 @@ test('W291 the ROM really does fall through from $26010E into $260112',
     // The same two words open $2600D8, which is what makes them two entries to one body.
     assert.equal(u16i(0x2600d8), 0x48e7);
   });
+
+// ============ 12. W292: BONUS LINE 4, AND IT CARRIES TWO LOOP-2 RULES
+//
+// `$2601F4` is `$2600D8`'s shape with two `$813098` gates -- and they are not the same
+// test used twice: one is `beq` and the other `bne`.
+//
+//   loop 1   the pointer gets the DIP word, and `$286FB4` RUNS
+//   loop 2   the pointer gets `$8130C2`/`$8130C4`, and `$286FB4` is SKIPPED
+
+function world4() {
+  const f = world();
+  const palette = new PaletteState();
+  f.palette = palette;
+  f.ctx.palette = palette;
+  f.ram.setU32(TALLY.side0 + TALLY.ptr, 0x81fb00);
+  f.ram.setU16(TALLY.side0 + TALLY.type, 6);
+  return f;
+}
+
+test('W292 LOOP GATE ONE: the pointer gets the DIP word in loop 1 and $8130C2 in loop 2',
+  { skip: SKIP }, () => {
+    const one = world4();
+    one.ram.setU16(0x813098, 0);
+    one.ram.setU16(0x8130c2, 0xbeef);
+    bonusLine42601F4(one.ram, ROM, one.ctx, TALLY.side0);
+    assert.equal(one.ram.u16(0x81fb00), ROM.u16(TALLY.dipWords),
+      'loop 1 writes $2600CE[dip]');
+
+    const two = world4();
+    two.ram.setU16(0x813098, 1);
+    two.ram.setU16(0x8130c2, 0xbeef);
+    bonusLine42601F4(two.ram, ROM, two.ctx, TALLY.side0);
+    assert.equal(two.ram.u16(0x81fb00), 0xbeef, 'loop 2 writes $8130C2 instead');
+  });
+
+test('W292 LOOP GATE ONE picks the SIDE\'s word', { skip: SKIP }, () => {
+  // $26021A vs $260224 -- $8130C2 for side 0, $8130C4 for side 1.
+  const f = world4();
+  f.ram.setU8(TALLY.side0 + TALLY.row, 1);
+  f.ram.setU16(0x813098, 1);
+  f.ram.setU16(0x8130c2, 0x1111);
+  f.ram.setU16(0x8130c4, 0x2222);
+  bonusLine42601F4(f.ram, ROM, f.ctx, TALLY.side0);
+  assert.equal(f.ram.u16(0x81fb00), 0x2222, 'side 1 takes $8130C4');
+});
+
+test('W292 LOOP GATE TWO: $286FB4 runs in loop 1 and is SKIPPED in loop 2',
+  { skip: SKIP }, () => {
+    // `$26028C tst.w $813098 / bne` -- the OPPOSITE sense to gate one, in the same
+    // routine, on the same word. A port that shared one flag between them would get one
+    // of the two backwards.
+    const one = world4();
+    one.ram.setU16(0x813098, 0);
+    bonusLine42601F4(one.ram, ROM, one.ctx, TALLY.side0);
+    assert.notEqual(one.ram.u32(HUDRAM.extendNextP2), 0,
+      'loop 1 seeds P2\'s extend threshold');
+
+    const two = world4();
+    two.ram.setU16(0x813098, 1);
+    bonusLine42601F4(two.ram, ROM, two.ctx, TALLY.side0);
+    assert.equal(two.ram.u32(HUDRAM.extendNextP2), 0, 'loop 2 does not');
+  });
+
+test('W292 $286FB4 is SIDE 1\'s arm, whatever the record says', { skip: SKIP }, () => {
+  // Called unconditionally, not through ($17,A6). Reading it as "the row for this side"
+  // would be wrong twice: wrong arm, and conditional on the loop.
+  const f = world4();
+  f.ram.setU8(TALLY.side0 + TALLY.row, 0);       // a SIDE-0 record
+  f.ram.setU16(0x813098, 0);
+  bonusLine42601F4(f.ram, ROM, f.ctx, TALLY.side0);
+  assert.notEqual(f.ram.u32(HUDRAM.extendNextP2), 0, 'P2\'s threshold was seeded');
+  assert.equal(f.ram.u32(HUDRAM.extendNextP1), 0, 'and P1\'s was NOT');
+});
+
+test('W292 ($6,A0) is the LOW byte of the loop word, not a literal 0', { skip: SKIP }, () => {
+  // $260238 move.b $813099,($6,A0). 68000 is big-endian, so $813099 is the LOW byte of
+  // the word $813098 tst.w reads -- the object is told WHICH LOOP it is in. $2600D8
+  // writes a literal 0 in the same field.
+  for (const loop of [0, 1, 2]) {
+    const f = world4();
+    f.ram.setU16(0x813098, loop);
+    const rec = bonusLine42601F4(f.ram, ROM, f.ctx, TALLY.side0);
+    assert.ok(rec, `loop ${loop} allocated`);
+    assert.equal(f.ram.u8(rec + 0x06), loop, `($6,A0) carries the loop (${loop})`);
+  }
+});
+
+test('W292 line 4 posts announcement state $8 and recounts the sides', { skip: SKIP }, () => {
+  const f = world4();
+  f.ram.setU16(0x813098, 0);
+  f.ram.setU16(HUDRAM.attract, 0x4321);
+  bonusLine42601F4(f.ram, ROM, f.ctx, TALLY.side0);
+  assert.equal(f.ram.u16(0x813162 + 0x02), 0x08, '$2602A0 jsr $260AB6');
+  assert.equal(f.ram.u16(TALLY.side0 + 0x00), 0, 'and it re-posted');
+  assert.notEqual(f.ram.u16(HUDRAM.attract), 0x4321, '$2602B0 jsr $25FD94 ran');
+});

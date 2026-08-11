@@ -250,6 +250,101 @@ export function bonusLine2260056(ram, rom, ctx, a6) {
   return { objA: ram.u32(a6 + BONUS2.objA.handle), objB: ram.u32(a6 + BONUS2.objB.handle) };
 }
 
+// ===========================================================================
+// W292 -- `$2601F4`, BONUS LINE 4, AND IT CARRIES TWO LOOP-2 RULES
+// ===========================================================================
+//   2601f4  movea.l ($8,A6),A0
+//   2601f8  move.b $80380E,D0 / add.w D0,D0 / lea ($2600CE,PC),A1
+//   260204  move.w (A1,D0.w),(A0)          the DIP word, as $2600D8 writes it
+//   260208  tst.w $813098 / beq $26022A    **LOOP GATE ONE**
+//   260212    ($17,A6) ? (A0) = $8130C4 : (A0) = $8130C2
+//   26022a  D0 = ($14,A6) / jsr $241182 / ($18,A6) = D0
+//   260238  ($6,A0) = $813099              a BYTE from RAM, not the literal 0
+//   260240  ($7,A0) = ($17,A6) / ($8,A0) = ($10,A6) / ($a,A0) = ($12,A6)
+//   260254  ($17,A6) ? D1 = $813086 : D1 = $813084
+//   260286  jsr $241688                    the palette set -- ported W274
+//   26028c  tst.w $813098 / bne $26029C    **LOOP GATE TWO**
+//   260296    jsr $286FB4                  the extend seed, side 1's arm
+//   26029c  ($17,A6) -> jsr $260AB6        announcement state $8
+//   2602a6  (A6) = 0 / ($2,A6) = 0
+//   2602b0  jsr $25FD94 / rts
+//
+// **SO THIS LINE BEHAVES DIFFERENTLY IN LOOP 2 IN TWO SEPARATE WAYS**, and they are not
+// the same test used twice -- one is `beq` and the other `bne`:
+//
+//   loop 1   the pointer gets the DIP word, and `$286FB4` RUNS
+//   loop 2   the pointer gets `$8130C2`/`$8130C4`, and `$286FB4` is SKIPPED
+//
+// That takes this port's translated loop-2 rules from five to SEVEN. The other five are
+// W241's zero-lives extend, W250's A1 6 ring, A4 id6's two, and W270's `$260ACA`.
+//
+// AND IT IS NOT THE SEVEN-ROW STACK. `$2600D8` paints all seven HUD rows; this line
+// paints the palette set and then AT MOST ONE row -- `$286FB4`, which is
+// `extendInit286FA6`'s SIDE-1 arm, called regardless of `($17,A6)`. Reading it as "the
+// row for this side" would be wrong twice over: wrong arm, and conditional on the loop.
+//
+// `($6,A0)` also differs: `$2600D8` writes the literal 0 and this writes the BYTE at
+// `$813099`, which is **the LOW byte of the loop word `$813098`** -- 68000 is big-endian,
+// so `$813098` is the high byte and `$813099` the low one. So the object is told WHICH
+// LOOP it is in, and the two gates above test the same word this byte comes out of. A
+// port that read `$813099` as a separate flag would find it moving with the loop and never
+// know why.
+const BONUS4 = Object.freeze({
+  site: 0x2601f4,
+  loop: 0x813098,                          // $260208 / $26028C tst.w
+  loopByte: 0x813099,                      // $260238 -- the loop word's LOW byte
+  loopWord: Object.freeze([0x8130c2, 0x8130c4]),
+});
+
+/** `$2601F4` -- bonus line 4. Returns the object it created, or null. */
+export function bonusLine42601F4(ram, rom, ctx, a6) {
+  const side = ram.u8(a6 + TALLY.row) !== 0 ? 1 : 0;
+  const ptr = ram.u32(a6 + TALLY.ptr);                     // $2601F4 movea.l ($8,A6)
+
+  // $2601F8..$260204 -- the DIP word, then LOOP GATE ONE overwrites it.
+  const dip = ram.u8(TALLY.dip);
+  if (dip >= TALLY.dipWordCount) {
+    ctx?.unportedLog?.note(TALLY.dipWords, `$260200 indexes $2600CE by DIP $80380E = ${
+      dip}, and the table is only ${TALLY.dipWordCount} words ($2600CE + $A IS $2600D8's `
+      + `own movem.l). The same bound $2600D8 carries`);
+  } else {
+    ram.setU16(ptr, rom.u16(TALLY.dipWords + dip * 2));    // $260204
+  }
+  const inLoop2 = ram.u16(BONUS4.loop) !== 0;
+  if (inLoop2) {                                           // $260208 tst.w / beq
+    ram.setU16(ptr, ram.u16(BONUS4.loopWord[side]));       // $26021A / $260224
+  }
+
+  // $26022A -- the allocate, and ($6,A0) is a BYTE FROM RAM here.
+  const made = stageCreate(ram, ram.u16(a6 + TALLY.type),
+    (t) => rom.u16(DISPATCH + t * 8 + 4));                 // $26022E jsr $241182
+  const res = (((0 & 0xffff0000) | (u16(ram.u16(a6 + TALLY.type) | 0x8000))) >>> 0);
+  ram.setU32(a6 + TALLY.result, res);                      // $260234 move.l D0
+  if (made.ok) {
+    ram.setU8(made.addr + 0x06, ram.u8(BONUS4.loopByte));  // $260238 -- NOT a literal 0
+    ram.setU8(made.addr + 0x07, ram.u8(a6 + TALLY.row));   // $260240
+    ram.setU16(made.addr + 0x08, ram.u16(a6 + TALLY.argA));// $260246
+    ram.setU16(made.addr + 0x0a, ram.u16(a6 + TALLY.argB));// $26024C
+  }
+
+  // $260254..$260286 -- the palette set, on the RECORD's row byte as always.
+  if (ctx?.palette) {
+    paletteSet241688(ram, ctx.palette, rom,
+      ram.u8(a6 + TALLY.row), ram.u16(TALLY.postD0[side]));
+  }
+
+  // $26028C -- LOOP GATE TWO. `bne` skips, so loop 2 does NOT seed the extend.
+  if (!inLoop2) {
+    extendInit286FA6(ram, rom, ctx, 1);                    // $260296 jsr $286FB4
+  }
+
+  announcePost(ram, 0x260ab6, ram.u8(a6 + TALLY.row));     // $2602A0 jsr $260AB6
+  ram.setU16(a6 + 0x00, 0);                                // $2602A6
+  ram.setU16(a6 + 0x02, 0);                                // $2602AA
+  liveSides25FD94(ram);                                    // $2602B0 jsr $25FD94
+  return made.ok ? made.addr : null;
+}
+
 /** `$25FD94` -- HOW MANY SIDES ARE STILL IN THE TALLY, minus one.
  *
  *   lea $8130FA,A2 / lea $81311E,A3 / clr.w $81308C
