@@ -22,6 +22,7 @@ that drift.
     D15 a user option to LOCK the orientation                   W279
     D16 the hyper bar should show the level when NOT hypering   OPEN
     D17 the in-stage medals are missing                         OPEN
+    D18 commit AND PUSH every wave, not just commit             STANDING RULE
 
 D13, D14 and D15 are PRESENTATION AND PACKAGING and share one file, `index.html`;
 they are the only items in this docket that need no ROM reading at all, so they are
@@ -307,3 +308,26 @@ Which means the gap is upstream of the tally -- the in-stage medal ITEM itself, 
 spawn, or its art -- and the way in is a sweep of what the medal pool emits during
 play rather than a reading of the bonus screen. Note that the chaining medal value is
 the thing a player notices, so check the VALUE progression as well as the picture.
+
+### D18: commit AND PUSH intermittently, not just commit
+
+**The owner's words: "add to the docket to intermittently commit and push."**
+
+Every wave this session committed and none pushed, so `main` sat **73 commits ahead
+of `origin/main`** by W279. That is not a code defect; it is a delivery one, and it is
+the kind that costs the whole session's work if the machine goes away.
+
+The rule from here: **push at the end of every wave, right after the commit that
+closes it.** A wave is not done until `git rev-list --count origin/main..HEAD` is 0.
+The existing per-wave discipline already runs the suite and the sweep before the
+commit, so the push is the natural last step and adds nothing to verify.
+
+Two things worth writing down, because they are the reason this drifted:
+
+* the remote is `origin` -> `https://github.com/Fabulu/Mixup.git`, and the working
+  branch is `main`, which is also the default branch. So the push is plain
+  `git push origin main` with nothing to infer.
+* `tools/publish.mjs` is a SEPARATE thing and must not be confused with this. It
+  gates on the Batman suite being ALL GREEN with 0 skipped, builds `dist/`, and
+  deploys to Cloudflare Pages -- pushing to GitHub does not publish the site and
+  publishing does not push. D18 is about the git remote only.

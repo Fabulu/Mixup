@@ -120,6 +120,19 @@ not to press the button. **Before assuming a player-visible gap is untranslated 
 check whether the body exists and is uncalled, and whether the shipped page is lying
 about it.** `w271hyperstock.test.js` has the mechanical form of the first check.
 
+## D18: FINISH EVERY WAVE WITH A PUSH
+
+The owner asked for this explicitly. Every wave of this session committed and none
+pushed, so `main` reached **73 commits ahead of `origin/main`**. A wave is not done
+until `git rev-list --count origin/main..HEAD` is 0.
+
+    git push origin main
+
+The remote is `origin` -> `https://github.com/Fabulu/Mixup.git` and the branch is
+`main`, which is also the default, so nothing has to be inferred. This is NOT
+`tools/publish.mjs`: that gates the Batman suite, builds `dist/` and deploys to
+Cloudflare Pages. Pushing does not publish and publishing does not push.
+
 ## Work order toward the goal
 
 1. **D14 -- MAKE IT A PWA.** Manifest, icon set, service worker, registration,
