@@ -800,6 +800,40 @@ enough, and neither is reading its first two instructions.
 26.** No new primitive whatsoever. That is a materially smaller wave than the first pass of this
 analysis claimed, which is the whole reason to do the static analysis before the wave.
 
+### D30, STATE 1's SHAPE -- READ THIS BEFORE WRITING IT, IT IS TWO SCREENS AND NOT ONE
+
+`$25DBC4..$25DC2A` is a GATE CASCADE ending in three mutually exclusive announce calls, all of
+which take `D0 = ($7,A5)` and all three of which are ported in `rank.js`:
+
+    25dbc4  jsr $28D53C / bcs                  -> $25DC20
+    25dbce  tst.b ($C,A5) / bne                -> $25DC2C, the body
+    25dbd6  tst.w $813098 / beq                -> skip the stage test
+    25dbe0  cmpi.w #$4,$813092 / beq           -> $25DC20   (stage index 4 = STAGE 5)
+    25dbec  jsr $23C932 / tst.w D0 / bne       -> $25DC12
+    25dbf8  cmpi.b #$0,$803808 / bne           -> $25DC2C
+    25dc04  D0 = ($7,A5) ; jsr $260ACA ; -> body
+    25dc12  D0 = ($7,A5) ; jsr $260A88 ; -> body
+    25dc20  D0 = ($7,A5) ; jsr $260A9A ; **rts** -- the ONLY early return
+
+Then `$25DC2C` takes `A4 = ($8,A5)`, THE DESCRIPTOR, and calls through **`($4,A4)`** -- the
+descriptor's first code pointer, which `tallyscreen.js` already documents as one of
+`$23D17E`/`$23D18E`/`$23C9F0` and for which `readInput23D186` is the ported helper. It then tests
+`btst #$F,D0`.
+
+**So state 1 is TWO things sharing one state byte**, and the old note said so without the addresses:
+a SELECTION SCREEN driven by the descriptor's input pointers (`$25DD0C` onward, with the
+`($E,A5)` cursor on D0 bits 2 and 3 and a `$28C6FA` cue), and the TALLY drawing, whose emit sites
+are the later ones at `$25DF72`, `$25DFBA` and `$25DFE8`. **The owner's zeros are the tally half.**
+
+Two consequences for whoever writes it:
+
+* **The tally half can be done WITHOUT the cursor half.** The nine `enqueueRegisters` sites and
+  `$25FF38` are what put numbers on the screen; the cursor is what lets a player choose something
+  on it. Splitting them is legitimate and it gets the visible defect fixed first.
+* `$813092 == 4` is tested TWICE in the cascade and it is the STAGE index, so stage 5 takes a
+  different path through the screen than stages 1..4 do. Any test of this screen has to say which
+  stage it is standing in.
+
 The five other routines the old note named are also now sized: `$25DA60` starts
 `move.w $813084,D6`; `$25DA94` and `$25DEAE` **share their first two instructions**
 (`moveq #$0,D7 / move.b ($F,A5),D7`) and so are probably a family of two; `$25DFF6` opens with a
