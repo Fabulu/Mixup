@@ -155,7 +155,10 @@ test('the ported handler addresses are registered through W223 type $41', () => 
       // deferred-spawn source rather than an enemy.
       // W319 adds $2764D2, type $8E -- the second-biggest of stage 5's by record count and the
       // first in the port whose DRAW goes through the zoom family rather than a fixed stub.
-      0x270e36, 0x265a14, 0x2764d2,
+      // W323 adds $269350, type $1B -- a four-state ramped turret that fires a MIRRORED AIMED
+      // PAIR, the SECOND caller of the shared `damageArm5C`, and the first draw arm in the port to
+      // drive one bucket through BOTH emitter conventions ($23DF58 by register, $23D816 by record).
+      0x270e36, 0x265a14, 0x2764d2, 0x269350,
     ].sort((a, b) => a - b));
 });
 

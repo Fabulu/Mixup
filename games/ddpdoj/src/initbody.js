@@ -1821,6 +1821,42 @@ BODY.set(0x270dd8, (ram, rom, a5, a6, unported) => {
   ram.setU16(0x81b414, 1);                              // $270DFE move.w #$1,$81B414
 });
 
+// --- type $1B ($26925E): W320 read it, W322 recorded it, W323 writes it. One of stage 5's twelve
+// remaining types and the second-biggest by record count; it came early because W320 found it
+// sharing type $8E's whole damage arm (now `damageArm5C`).
+//
+// Two things about this body are worth naming. It stores `loadSubProto`'s ADVANCED POINTER into
+// `($44,A5)` (`$26926A move.l A0,($44,A5)`), the table-advance idiom W218's type $9F uses directly
+// below -- the sub prototype's end is whatever `$2637A2` computed, never a constant. And its
+// `$263808` is a `jmp`, not a `jsr`: a TAIL jump, so the position read is the last thing that
+// happens and nothing follows it.
+//
+// The five stage rows at `$2692D2` are ALL `0A 15` (verified by hex dump), so `$813094` -- the stage
+// index DOUBLED -- selects an identical pair every time. Ported as the indexed read the ROM performs
+// rather than as the constant it happens to produce: the sameness is a measurement about this build,
+// not a licence to drop the index.
+BODY.set(0x26925e, (ram, rom, a5, a6, unported) => {
+  const end = loadSubProto(ram, rom, a5, a6, 0x2692fa);   // $269264 jsr $2637A2
+  ram.setU32(a5 + R.rec44, end);                          // $26926A move.l A0,($44,A5)
+  loadRecordProto(ram, rom, a5, 0x2692dc, 0x0e);          // $269276 jsr $26377A -- D0+1 = 15 words
+  // $26927C..$269294 -- `cmpi.w #$1,$813092 / bls` keeps 4/4 on stages 0 AND 1, and only stage 2
+  // onward takes 3/0. Two `move.b`s, so these are byte fields and not a word pair.
+  let d0 = 4, d1 = 4;
+  if (ram.u16(0x813092) > 1) { d0 = 3; d1 = 0; }          // $26928E/$269292
+  ram.setU8(a5 + R.rec2F, d0);                            // $269296 move.b D0,($2F,A5)
+  ram.setU8(a5 + R.rec2E, d1);                            // $26929A move.b D1,($2E,A5)
+  // $26929E -- the four-entry sprite ring, indexed by the ($28,A6) the prototype just installed.
+  ram.setU32(a6 + 0x2a, rom.u32(0x26971c + u16(ram.u16(a6 + 0x28))));   // $2692A8
+  const row = 0x2692d2 + u16(ram.u16(0x813094));          // $2692B4/$2692BA adda.w D0,A0
+  ram.setU8(a5 + 0x1c, rom.u8(row));                      // $2692BC move.b (A0)+,($1C,A5)
+  ram.setU8(a5 + 0x1d, rom.u8(row + 1));                  // $2692C0 move.b (A0)+,($1D,A5)
+  // $2692C4 -- THE REFCOUNT. W320's finding: this type brackets its own lifetime around $8130D8,
+  // incrementing here and decrementing on BOTH exits (the off-screen free and the death arm). The
+  // port's name for the address (`midbossD8`) is wrong and is a pending rename, not a pending fix.
+  ram.setU16(0x8130d8, u16(ram.u16(0x8130d8) + 1));       // $2692C4 addq.w #1,$8130D8
+  readInitPosition(ram, rom, a5, unported);               // $2692CA jmp $263808 -- a TAIL jump
+});
+
 BODY.set(0x27c5be, (ram, rom, a5, a6, unported, _tables, palette) => {
   const end = loadSubProto(ram, rom, a5, a6, 0x27c63a); // $27C5BE..$27C5CA
   ram.setU32(a5 + R.rec44, end);                        // $27C5CA

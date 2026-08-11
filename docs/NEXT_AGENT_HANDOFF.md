@@ -405,24 +405,33 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
    So "twelve left" understates it: those twelve expose seven more child types, at least nineteen
    handler types before anything found deeper.
 
-   **W322 FALSIFIED THIS ORDER'S PREMISE.** It used to read "`$1B` (5 records) then `$81` (3) -- the
-   two whose every `jsr` target the port already implements and which spawn nothing". That is NOT
-   true of `$1B`. Its state-2 fire arm opens `$2694DA jsr $24226E`, and **`$24226E` has no port
-   implementation**: it appears in exactly one place in `src/`, as `[0x24226e, 48]` inside
-   `aim.js`'s `AIM_REFS`, which is the REFERENCE-COUNT map. That entry is a measurement that the
-   routine has 48 callers in the image, not a translation of it. Anyone re-deriving "every target is
-   ported" by grepping the address will hit the same false positive, which is the W318 trap exactly.
+   The order is **`$1B` (5 records) then `$81` (3)** -- the two whose every `jsr` target the port
+   already implements and which spawn nothing -- then `$1A`, then `$49`/`$4A`/`$4B`, then `$47`,
+   then the bundles.
 
-   The corrected order is:
+   ### W322 CLAIMED `$1B` WAS BLOCKED ON `$24226E`. IT IS NOT, AND THE WAY THAT ERROR HAPPENED IS
+   ### THE MOST REUSABLE THING IN THIS SECTION
 
-   1. **`$24226E` on its own.** 48 callers makes it a shared entry point of the player-tracking
-      library, not one type's helper. It goes in `aim.js`, which already names it.
-   2. **`$1B` (5 records)**, which W322 read END TO END -- init body, both exits, the four-state
-      machine (W320 recorded two), the draw arm, the eight-shot fan and the death arm, plus all five
-      tables and the two ROM windows to declare. See `docs/worklog/ddpdoj/322-*.md`: it is a
-      transcription now, not an investigation, and `damageArm5C` is already waiting for it as its
-      second caller.
-   3. Then `$81` (3 records), `$1A`, `$49`/`$4A`/`$4B`, `$47`, then the bundles.
+   W322 read `$2694DA jsr $24226E` in `$1B`'s state-2 fire arm, searched for it, found it only in
+   `aim.js`'s `AIM_REFS` reference-count map, and concluded it was unported. **It is ported**, as
+   `aim256FromCaller`, whose docstring is literally `` `$24226E` -- aim256 at the record's target,
+   self from the CALLER. 48 sites. ``
+
+   The search that produced the wrong answer was `grep 24226e src/*.js` with the `AIM_REFS` line
+   filtered out. It missed the implementation because **`AIM_REFS` spells the address `0x24226e` in
+   lowercase while every docstring spells it `$24226E` in uppercase.** Filtering out the one hit
+   removed the only lowercase occurrence and left the real one invisible to that pattern.
+
+   This repo already had the rule written down -- "`grep 0x2xxxxx` is NOT a test for 'is this
+   ported'; this project names routines after their addresses and cites them as `$2xxxxx` in prose"
+   -- and W322 quoted W318 for it in the same breath as getting it wrong. So:
+
+   **To decide whether `$2xxxxxx` is ported, grep CASE-INSENSITIVELY for the bare hex digits and
+   read every hit, including comments and docstrings.** `grep -ri "24226e"` finds it. Never filter
+   hits out of that search before reading them: in this repo the prose IS where the answer lives.
+
+   `git log -S` on the address and a look at the owning module's export list are the two
+   confirmations worth adding when the answer matters.
 
    **Add a type's ROM windows in the SAME wave as its code, never ahead of it.** W321 established
    why: windows change `player.tables.json`, which changes the asset bytes, which repacks the sprite

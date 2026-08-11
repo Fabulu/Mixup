@@ -167,7 +167,9 @@ test('the Stage-1 through W223 Stage-4 bodies are dispatched', () => {
     'W317: type $59 body $2659E4 -- one prototype and one two-byte-field word');
   assert.ok(INIT_BODY_ADDRESSES.includes(0x27640c),
     'W319: type $8E body $27640C -- five stage rows and a spawn-time aim');
-  assert.equal(INIT_BODY_ADDRESSES.length, 73,
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x26925e),
+    'W323: type $1B body $26925E -- the $8130D8 refcount and the ($44,A5) table advance');
+  assert.equal(INIT_BODY_ADDRESSES.length, 74,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
     + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
     + `W170's $277836, W171's $276946, W172's $27751C, W173's $275154, `
@@ -180,7 +182,8 @@ test('the Stage-1 through W223 Stage-4 bodies are dispatched', () => {
     + `$265BF4/$265DF0/$266324, W201's $2671E8, W202's $274B74, and `
     + `W203's $266D36, W207's $29EAE2, W209's $29E580, W211's $27896A, `
     + `W212's $27AC4A, W213's $27CFAC, W214's $27AD96, W215's `
-    + `$27B2FE/$27C28E, W216's $27D404, and W217's $27CEB4, W218's $27C5BE/$27DA78, W219's $29EC82, and W223's $2A37E4, and W254's $2A3952`);
+    + `$27B2FE/$27C28E, W216's $27D404, and W217's $27CEB4, W218's $27C5BE/$27DA78, W219's $29EC82, and W223's $2A37E4, and W254's $2A3952, `
+    + `W316's $270DD8, W317's $2659E4, W319's $27640C, and W323's $26925E`);
 });
 
 test('runInitBodyAddr throws on an unknown body address', () => {

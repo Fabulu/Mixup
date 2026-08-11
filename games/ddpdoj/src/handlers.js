@@ -98,7 +98,7 @@ import { handler1E_296DD6 } from './bossf23.js';
 import { stepMovement, scrollCompensate, applyVelocity } from './movement.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
 import { AimTables, AIM, aim64, aim256, aim64FromCaller, aim64AtTarget,
-  aim64TurnStore, slew64, targetSelect } from './aim.js';
+  aim64TurnStore, aim256FromCaller, slew64, targetSelect } from './aim.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
   enqueueRegistersThroughStub, enqueueZoomedThroughStub,
@@ -2022,6 +2022,285 @@ function handler59(ram, _rom, a5, ctx) {
   ram.setU8(a5 + 0x18, ram.u8(a5 + 0x19));               // $265A44
   const r = enqueueDeferred(ram, T59.spawnType, DEFQ_D1.FIXED00);  // $265A4A/$265A4C
   ctx?.spawnEvent?.('deferred', T59.spawnType, r);
+}
+
+// ============================================ TYPE $1B (W323) ============
+// The SECOND-BIGGEST of stage 5's remaining types by record count: 1020 bytes, five of stage 5's
+// 770 script records, pinned at `[0x269256, 0x269350]` in `tests/w314stage5scope.test.js`. W320
+// read most of it, W322 read the rest and then wrongly reported it blocked (see that worklog and
+// the handoff: `$24226E` is `aim256FromCaller` and always was). W323 writes it, and it needed NOT
+// ONE NEW PRIMITIVE.
+//
+// It reads `$813092` in its init body and takes a different pair of bytes from stage 2 onward, so
+// it is written to be stage-agnostic rather than stage-5-only.
+//
+// The family checks that made it cheap, all four positive:
+//   * the damage arm is type $8E's -- `damageArm5C` above, this is its SECOND caller
+//   * `$23DF58` is bucket 3 by REGISTER (`enqueueRegistersThroughStub`) and `$23D816` is the SAME
+//     bucket by RECORD (`enqueueThroughStub`). One draw arm drives both conventions
+//   * `$27F8F0` is `allocPoolA27F8F0`, exported by `bee.js` since W312
+//   * `$24226E`/`$242B3C`/`$28AC72`/`$28615E`/`$289004`/`$281708` are all ported
+//
+// ## THE SHAPE: A FOUR-STATE CYCLE, AND IT IS TYPE $45'S SHAPE
+//
+//   state 0  a delay on ($1E,A5)                                          -> state 1
+//   state 1  a delay on ($22)/($23), requires X < $6C00, RAMPS ($24,A5) UP by 4 through the eight
+//            longs at $26972C into ($26,A5); at index $1C arms ($34,A5)   -> state 2
+//   state 2  a delay on ($1E)/($2E), fires a MIRRORED AIMED PAIR, and a burst counter on
+//            ($20)/($21) ends the volley                                  -> state 3
+//   state 3  a delay, RAMPS ($24,A5) back DOWN by 4; at index 0           -> state 0
+//
+// W316's type $45 delays, ramps up by 4 clamped at $1C, fires, then ramps back down by 4. Same
+// states, same step, same clamp, a different field. Two members is a candidate family; the third
+// will say whether it is worth a shared driver.
+//
+// ## ($18,A5) IS READ AS A WORD AND WRITTEN AS A WORD
+//
+// `move.w #$1,($18,A5)` is TWO BYTE FIELDS -- byte $18 becomes 0 and byte $19 becomes 1 -- and the
+// dispatch reads `move.w ($18,A5),D0`, so the word is what matters and the pair is consistent. This
+// is the W273/W316/W317 idiom, and here it is benign rather than load-bearing. It is written as
+// words on both sides so it STAYS benign.
+const T1B = Object.freeze({
+  init: 0x269256, initBody: 0x26925e, handler: 0x269350,
+  stageRows: 0x2692d2, recordProto: 0x2692dc, subProto: 0x2692fa,
+  deathRows: 0x26970c,                       // 4 longs, the allocPoolA27F8F0 rows
+  spriteRing: 0x26971c, ringEntries: 4,      // 4 longs, indexed by ($28,A6) in steps of 4
+  rampTable: 0x26972c, rampEntries: 8,       // 8 longs, indexed by ($24,A5) 0..$1C
+  damage: Object.freeze({ hpFull: 0x380, base: 0x1c, xor: 0x1d }),
+  boundsA: 0xc00, boundsB: 0x7800,           // $26935A/$26935E, TWO separate addi.w
+  ringWrap: 0x10, ringTop: 0x0c,             // $26940A cmpi.w #$10 / $26941E move.w #$C
+  sweepBit: 0x40, sweepStep: 0x20,           // $2693E2 addi.w #$20 / $2693EC andi.w #$40
+  animGate: 0x40,                            // $2693DA cmpi.b #$40,($1B,A6) / bcc
+  baseY: 0xf400,                             // $2693D4 move.w #$F400,($6,A6)
+  fireX: 0x1000,                             // $269448/$2695E0 cmpi.w #$1000,($2,A6)
+  rampX: 0x6c00,                             // $269484 cmpi.w #$6C00,($2,A6) / bge -- SIGNED
+  rampStep: 4, rampClamp: 0x1c,              // $26948E addq.w #4 / $2694A2 cmpi.w #$1C
+  armDelay: 0x10,                            // $269460 move.b #$10,($1E,A5)
+  aimBias: 0xa80,                            // $2694D6 addi.w #$A80,D0
+  pairD3: [0x0a800400, 0x0a7ffc00],          // $2694F0 / $269518 -- the mirrored muzzles
+  pairAngleLow: 0x13,                        // $2694FE/$269526 move.w #$13,D0 after the swap
+  fanBase: 0x6b, fanStep: 7, fanCount: 8,    // $26960A moveq #$7,D7 + dbra = EIGHT
+  fanD0: 0xfffe0004, fanD3: 0xfe000000,      // $2695F4 / $2695FE
+  drawD3: [0x230, 0x430],                    // $269596 / $2695C8
+  drawBiasA: -0x600, drawBiasB: -0xe00,      // $269586 / $26958C
+  drawBiasC: 0x800,                          // $2695B4 addi.w #$800
+  killScore: 0x130,                          // $26962E move.l #$130,D0
+  deathCue: 0x28c28e,
+  // $269640 moveq #$C,D0 / move.w #$8,D1 / jsr $289B22 -- the effect subsystem handlers.js
+  // already NOTES at three sites with D0 = $C. The same deferral, not a new one.
+  noteEffect: 0x289b22,
+  // The THREE $289004 spawns, each followed by the family's seven writes. The third uses
+  // `move.l #$84,D0` and NOT a moveq, and `spawnEffect` masks D0 & $7F, so it spawns kind 4.
+  deathSpawns: [
+    { kind: 0x0d, f14: 0x400, f26: 0x400, f28: 0x0000 },   // $26964C
+    { kind: 0x0c, f14: 0x0000, f26: 0xfa00, f28: 0x0600 }, // $26967E
+    { kind: 0x84, f14: 0x0000, f26: 0xfa00, f28: 0xfa00 }, // $2696B0 move.l, masked to 4
+  ],
+  poolAKind: 8, poolALayer: 3, poolARows: 4,  // $2696EC moveq #$8 / D2 = 3 / moveq #$3,D6 = FOUR
+});
+
+/** `$269582..$2695D4` -- two emits into bucket 3, one by register and one by record. */
+function draw1B(ram, rom, a5, a6) {
+  // $269582..$269590 -- ONE longword with a different bias in each half, applied around a `swap`.
+  const posA = u32(((u16(ram.u16(a6 + 0x02) + T1B.drawBiasB) << 16)
+    | u16(ram.u16(a6 + 0x04) + T1B.drawBiasA)) >>> 0);
+  enqueueRegistersThroughStub(ram, rom, 0x23df58, posA,
+    ram.u32(a6 + 0x2a), T1B.drawD3[0], ram.u16(a6 + 0x1c));   // $26959E
+  // $2695A4 -- the RECORD-convention emitter for the same bucket. `$23D822 lea ($2,A6),A1` is what
+  // says its record is A6 itself, not a table row.
+  enqueueThroughStub(ram, rom, 0x23d816, a6);                 // $2695A4
+  // $2695AA..$2695C2 -- the second emit subtracts the ($2E,A6) sweep's bit 6 from the biased half.
+  const sweep = ram.u16(a6 + 0x2e) & T1B.sweepBit;            // $2695B8/$2695BC
+  const posB = u32(((u16(ram.u16(a6 + 0x02) + T1B.drawBiasB) << 16)
+    | u16(ram.u16(a6 + 0x04) + T1B.drawBiasA + T1B.drawBiasC - sweep)) >>> 0);
+  enqueueRegistersThroughStub(ram, rom, 0x23df58, posB,
+    ram.u32(a5 + 0x26), T1B.drawD3[1], ram.u16(a6 + 0x1c));   // $2695D0
+}
+
+/** `$2695E0..$26962C` -- the EIGHT-shot fan, and a second cadence that swaps the first's period. */
+function fire1B(ram, rom, a5, a6, ctx) {
+  if (i16(ram.u16(a6 + 0x02)) < T1B.fireX) return;            // $2695E0 cmpi.w #$1000 / blt
+  if (!due8(ram, a5 + 0x30)) return;                          // $2695E8 subq.b #1 / bcc
+  ram.setU8(a5 + 0x30, ram.u8(a5 + 0x2f));                    // $2695EE
+  // $2695F4..$269616 -- `moveq #$7,D7` plus `dbra` is EIGHT passes, and D1 steps by 7 each time.
+  for (let n = 0; n < T1B.fanCount; n++) {
+    const regs = { d0: T1B.fanD0, d1: u16(T1B.fanBase + n * T1B.fanStep),
+      d2: ram.u32(a6 + 0x02), d3: T1B.fanD3, d4: 0, d5: 0, a5 };
+    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281708, regs);
+    ctx.bulletSpawn?.(0x26960e, res);
+  }
+  // $26961A -- the SECOND cadence. When it expires it reloads itself from ($33,A5) AND rewrites the
+  // first cadence's period from ($31,A5): a burst-then-rest pattern rather than one rate.
+  if (!due8(ram, a5 + 0x32)) return;                          // $26961A subq.b #1 / bcc
+  ram.setU8(a5 + 0x32, ram.u8(a5 + 0x33));                    // $269620
+  ram.setU8(a5 + 0x30, ram.u8(a5 + 0x31));                    // $269626
+}
+
+/** `$26962E..$269704` -- the death arm: three effect spawns, the refcount, and four pool-A rows. */
+function death1B(ram, rom, a5, a6, ctx) {
+  scoreKill(ram, rom, ctx, T1B.killScore, 0);                 // $269634 jsr $28615E
+  ctx.soundPost?.(T1B.deathCue);                              // $26963A jsr $28C28E
+  ctx.unported?.note(T1B.noteEffect, `$289B22 type $1B death effect (D0=$C, D1=$8) -- the same `
+    + `routine and the same D0 handlers.js already notes at three sites; deferred alike`);
+  // $26964C/$26967E/$2696B0 -- three `jsr $289004`s, each followed by the family's SEVEN writes.
+  // Every `move.w #$1,($12,A0)` here is TWO BYTE FIELDS: byte $12 becomes 0 and byte $13 becomes 1.
+  for (const s of T1B.deathSpawns) {
+    const eff = spawnEffect(ram, ctx, s.kind);
+    if (!eff) continue;                                       // a full pool returns the bit bucket
+    ram.setU32(eff + 0x02, ram.u32(a6 + 0x02));               // move.l ($2,A6),($2,A0)
+    ram.setU16(eff + 0x1e, 0x10);
+    ram.setU16(eff + 0x12, 1);
+    ram.setU16(eff + 0x14, s.f14);
+    ram.setU16(eff + 0x26, s.f26);
+    ram.setU16(eff + 0x28, s.f28);
+    ram.setU16(eff + 0x10, 1);
+  }
+  // $2696E6 -- the refcount's OTHER decrement, the one that pairs with the init body's increment.
+  ram.setU16(G.midbossD8, u16(ram.u16(G.midbossD8) - 1));     // $2696E6 subq.w #1,$8130D8
+  // $2696EC..$269700 -- `lea ($26970C,PC),A4` walked with `(A4)+`, so the `lea` names the BASE (the
+  // display-family convention), and `moveq #$3,D6` + `dbra` is FOUR rows.
+  for (let n = 0; n < T1B.poolARows; n++) {
+    allocPoolA27F8F0(ram, rom, ctx, T1B.poolAKind,
+      rom.u32(T1B.deathRows + n * 4), T1B.poolALayer, a6);    // $2696FA jsr $27F8F0
+  }
+  freeEnemy(ram, a5);                                         // $269704 jmp $263762
+}
+
+function handler1B(ram, rom, a5, ctx) {
+  const { tables, unported: u } = ctx;
+  const a6 = ram.u32(a5 + 0x06);
+  if (stepMovement(ram, rom, a5, tables, u)) return;          // $269350 jsr $2638A6
+
+  // $269356..$269362 -- an INLINE bounds test, NOT a call to $242684. Two SEPARATE `addi.w`s, so
+  // the carry that decides comes from the SECOND add alone and the first add's carry is discarded.
+  // Folding them into one `x + $8400` would test a different quantity.
+  const t = u16(ram.u16(a6 + 0x02) + T1B.boundsA);            // $26935A addi.w #$C00,D0
+  if ((t + T1B.boundsB) > 0xffff) {                           // $26935E addi.w #$7800 / bcc
+    if (ram.u8(a5 + 0x16) !== 0) {                            // $269364 tst.b / beq $26937E
+      ram.setU16(G.midbossD8, u16(ram.u16(G.midbossD8) - 1)); // $26936A subq.w #1,$8130D8
+      freeEnemy(ram, a5);                                     // $269370 jmp $263762
+      return;
+    }
+  } else {
+    ram.setU8(a5 + 0x16, 1);                                  // $269378 move.b #$1,($16,A5)
+  }
+
+  // $26937E..$2693C2 -- the shared $5C damage arm, type $8E's, with $380 and ($1C,A5)/($1D,A5).
+  const dmg = damageArm5C(ram, ctx, a5, a6, T1B.damage);
+  if (dmg.dead) { death1B(ram, rom, a5, a6, ctx); return; }    // $2693BE bmi $26962E
+  ram.setU8(a6 + 0x1d, dmg.pal & 0xff);                       // $2693C2 move.b D0,($1D,A6)
+  spawnCues28AC72(ram, rom, a5, a6);                          // $2693C6 jsr $28AC72
+
+  // $2693CC -- a WORD freeze test here, unlike the two LONGWORD ones at $269434/$26943E below.
+  if (ram.u16(G.freeze) === 0) {                              // $2693CC tst.w $8130D2 / bne
+    ram.setU16(a6 + 0x06, T1B.baseY);                         // $2693D4 move.w #$F400,($6,A6)
+    // $2693DA -- the sweep only runs while the animation byte is under $40.
+    if (ram.u8(a6 + 0x1b) < T1B.animGate) {                   // $2693DA cmpi.b #$40 / bcc
+      ram.setU16(a6 + 0x2e, u16(ram.u16(a6 + 0x2e) + T1B.sweepStep));   // $2693E2
+      ram.setU16(a6 + 0x06,                                   // $2693F0 sub.w D0,($6,A6)
+        u16(ram.u16(a6 + 0x06) - (ram.u16(a6 + 0x2e) & T1B.sweepBit)));
+      if (due8(ram, a6 + 0x26)) {                             // $2693F4 subq.b #1 / bcc
+        ram.setU8(a6 + 0x26, ram.u8(a6 + 0x27));              // $2693FA
+        // $269400 -- ($1B,A6) picks the ring's DIRECTION. Up wraps $10 -> 0; down reloads $C on
+        // the borrow. Four entries, four bytes apart.
+        if (ram.u8(a6 + 0x1b) === 0) {                        // $269400 tst.b / bne $269418
+          const next = u16(ram.u16(a6 + 0x28) + T1B.rampStep);            // $269406 addq.w #4
+          ram.setU16(a6 + 0x28, next === T1B.ringWrap ? 0 : next);        // $26940A/$269412
+        } else {
+          const cur = ram.u16(a6 + 0x28);                     // $269418 subq.w #4 / bcc
+          ram.setU16(a6 + 0x28, cur < T1B.rampStep ? T1B.ringTop : u16(cur - T1B.rampStep));
+        }
+        ram.setU32(a6 + 0x2a,                                 // $26942E move.l (A0,D0.w),($2A,A6)
+          rom.u32(T1B.spriteRing + u16(ram.u16(a6 + 0x28))));
+      }
+    }
+  }
+
+  // $269434 and $26943E -- `tst.l $8130D2` TWICE IN A ROW, both branching to the draw. A LONGWORD
+  // over the freeze word AND $8130D4 together, the same shape as W308's `tst.w $81E0D8`. The
+  // duplication is in the ROM; it is transcribed once because the second test cannot differ.
+  if (ram.u32(G.freeze) !== 0) { draw1B(ram, rom, a5, a6); return; }
+  if (i16(ram.u16(a6 + 0x02)) < T1B.fireX) {                  // $269448 cmpi.w #$1000 / blt
+    draw1B(ram, rom, a5, a6);
+    return;
+  }
+
+  const state = ram.u16(a5 + 0x18);                           // $269452 move.w ($18,A5),D0
+  if (state === 0) {
+    // $269458 -- arm and advance. Both writes are WORDS, so ($19,A5) is the low half of each.
+    if (due8(ram, a5 + 0x1e)) {                               // $269458 subq.b #1 / bcc
+      ram.setU8(a5 + 0x1e, T1B.armDelay);                     // $269460 move.b #$10,($1E,A5)
+      ram.setU16(a5 + 0x18, 1);                               // $269466 move.w #$1,($18,A5)
+    }
+  } else if (state === 1) {
+    // $269476 -- the ramp UP, gated on a SIGNED X compare (`bge`).
+    if (due8(ram, a5 + 0x22)) {                               // $269476 subq.b #1 / bcc
+      ram.setU8(a5 + 0x22, ram.u8(a5 + 0x23));                // $26947E
+      if (i16(ram.u16(a6 + 0x02)) < T1B.rampX) {              // $269484 cmpi.w #$6C00 / bge
+        const idx = u16(ram.u16(a5 + 0x24) + T1B.rampStep);   // $26948E addq.w #4
+        ram.setU16(a5 + 0x24, idx);
+        ram.setU32(a5 + 0x26, rom.u32(T1B.rampTable + idx));  // $26949C move.l (A0,D0.w),($26,A5)
+        if (idx === T1B.rampClamp) {                          // $2694A2 cmpi.w #$1C / bne
+          ram.setU16(a5 + 0x34, 0xfffe);                      // $2694AA move.w #$FFFE,($34,A5)
+          ram.setU16(a5 + 0x18, 2);                           // $2694B0 move.w #$2,($18,A5)
+        }
+      }
+    }
+  } else if (state === 2) {
+    fireState2(ram, rom, a5, a6, ctx);
+  } else {
+    // $269556 -- state 3, the ramp DOWN, and the only arm that returns to state 0.
+    if (due8(ram, a5 + 0x22)) {                               // $269556 subq.b #1 / bcc
+      ram.setU8(a5 + 0x22, ram.u8(a5 + 0x23));                // $26955C
+      const idx = u16(ram.u16(a5 + 0x24) - T1B.rampStep);     // $269562 subq.w #4
+      ram.setU16(a5 + 0x24, idx);
+      ram.setU32(a5 + 0x26, rom.u32(T1B.rampTable + idx));    // $269570
+      if (idx === 0) ram.setU16(a5 + 0x18, 0);                // $269576/$26957E clr.w ($18,A5)
+    }
+  }
+  draw1B(ram, rom, a5, a6);                                   // $269582
+}
+
+/** `$2694BA..$269554` -- state 2: a MIRRORED AIMED PAIR with independent jitter, then the volley
+ *  counter. This is the arm W322 wrongly reported blocked: `$24226E` is `aim256FromCaller`. */
+function fireState2(ram, rom, a5, a6, ctx) {
+  if (!due8(ram, a5 + 0x1e)) return;                          // $2694C2 subq.b #1 / bcc
+  ram.setU8(a5 + 0x1e, ram.u8(a5 + 0x2e));                    // $2694CA
+  // $2694D0/$2694D6 -- `movem.w ($2,A6),D0-D1` then bias D0 by $A80. SELF comes from the caller,
+  // which is exactly why the ROM calls the FROM-CALLER entry and not $242290.
+  const selfY = u16(ram.u16(a6 + 0x02) + T1B.aimBias);        // $2694D6 addi.w #$A80,D0
+  const selfX = ram.u16(a6 + 0x04);                           // ...and D1, which matters below
+  const aimed = aim256FromCaller(aimTables(rom), ram, a5, selfY, selfX);   // $2694DA jsr $24226E
+  // **THERE IS NO `bcs` AFTER THAT `jsr`.** The next instruction is $2694E0 `move.w D1,D7`, and
+  // `$24226E`'s own no-target exit is `$242264 rts` -- six bytes that return with the carry SET and
+  // **D1 UNCHANGED**. So when both players are dead this type does not skip its volley: it fires
+  // with whatever D1 held, which `$2694D0 movem.w ($2,A6),D0-D1` had just loaded as the sub-record's
+  // Y word. Deterministic garbage that the board really does fire, and returning early here instead
+  // would invent a branch the ROM does not have.
+  const baseAngle = aimed.carry ? selfX : aimed.dir;
+  // $2694F8..$26952C -- D0 is assembled by the SWAP TRICK: ($34,A5) becomes the high word and $13
+  // the low. Both shots use the same D0 and the same clean aim, with INDEPENDENT jitter.
+  const d0 = u32((((ram.u16(a5 + 0x34) << 16) | T1B.pairAngleLow) >>> 0));
+  for (const d3 of T1B.pairD3) {
+    // $2694E2/$26950A -- one RNG draw each. `asr.b #1` is an ARITHMETIC shift on a BYTE, so the
+    // draw is sign-extended to 8 bits FIRST and then halved toward -infinity: a draw of $FF is -1
+    // and halves to -1, not to $7F. Getting this wrong biases every jittered shot one way.
+    const jitter = (drawByte242B3C(ram, rom) << 24) >> 24;    // sign-extend the byte
+    const d1 = u16((baseAngle + (jitter >> 1)) & 0xff);        // asr.b #1,D0 / add.b D0,D1
+    const regs = { d0, d1, d2: ram.u32(a6 + 0x02), d3, d4: 0, d5: 0, a5 };
+    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281708, regs);
+    ctx.bulletSpawn?.(0x269502, res);
+  }
+  ram.setU16(a5 + 0x34, u16(ram.u16(a5 + 0x34) + 1));         // $269530 addq.w #1,($34,A5)
+  // $269534 -- the VOLLEY counter. Note `move.b ($21,A5),($20,A5)` then `beq`: the branch tests the
+  // MOVE's result, so a ZERO reload value holds this state instead of advancing.
+  if (!due8(ram, a5 + 0x20)) return;                          // $269534 subq.b #1 / bcc
+  const reload = ram.u8(a5 + 0x21);                           // $26953A move.b ($21,A5),($20,A5)
+  ram.setU8(a5 + 0x20, reload);
+  if (reload === 0) return;                                   // $269540 beq $269582
+  ram.setU8(a5 + 0x1e, ram.u8(a5 + 0x1f));                    // $269542
+  ram.setU16(a5 + 0x18, 3);                                   // $269548 move.w #$3,($18,A5)
+  ram.setU8(a5 + 0x22, T1B.armDelay);                         // $26954E move.b #$10,($22,A5)
 }
 
 // ============================================ TYPE $45 (W316) ============
@@ -7106,6 +7385,7 @@ const HANDLERS = new Map([
   [0x270e36, handler45],          // W316: Stage-5 ramped four-state turret $45
   [0x265a14, handler59],          // W317: Stage-5 timed type-$3F spawner $59
   [0x2764d2, handler8E],          // W319: Stage-5 zoom-drawn tracking turret $8E
+  [0x269350, handler1B],          // W323: Stage-1 four-state ramped aimed-pair turret $1B
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
   [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42

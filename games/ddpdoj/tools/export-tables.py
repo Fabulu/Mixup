@@ -2564,6 +2564,30 @@ SHOT_WINDOWS.extend([
                        "draw indexes by ($1E,A6); ends at $2782E4"),
     (0x278314, 0x000C, "W319: type $8E's death-arm words, SIX of them; $278320 begins a second "
                        "run of the same shape"),
+    # W323: type $1B. TWO windows, and both extents are bounded by CODE rather than by a count,
+    # which is what makes them safe to state.
+    #   $2692D2 + $7E   the whole data block between the init body's `jmp $263808` tail (which ends
+    #                   at $2692D0) and the handler at $269350 -- whose first bytes are `4e b9`,
+    #                   confirmed by hex dump. It holds the FIVE two-byte stage rows (all `0A 15`,
+    #                   asserted in the test so a later reader does not hunt for a per-stage
+    #                   difference that is not there), the 15-word record prototype
+    #                   $2692DC..$2692FA, and the sub prototype $2692FA onward. The sub
+    #                   prototype's own end is whatever `$2637A2` computes, so it gets no length
+    #                   of its own here; the window ends where the CODE does.
+    #   $26970C + $40   THREE contiguous tables in one window, $26970C..$26974C:
+    #                     $26970C  4 longs  the death arm's `allocPoolA27F8F0` rows
+    #                     $26971C  4 longs  the sprite ring, indexed by ($28,A6)
+    #                     $26972C  8 longs  the ($24,A5) ramp, indexed UP by state 1 and DOWN by
+    #                                       state 3, indices 0..$1C
+    #                   This deliberately OVERLAPS W23's `$269740 + $20` type-$31 init stub window
+    #                   over $269740..$26974C. Overlap is fine and is already used on purpose in
+    #                   this file (see the $2881D2 note); what is NOT fine is widening an existing
+    #                   window, so a new one is declared instead of stretching that one.
+    (0x2692D2, 0x007E, "W323: type $1B's five stage rows, 15-word record prototype and sub "
+                       "prototype, $2692D2..$26934F, ending at its handler $269350"),
+    (0x26970C, 0x0040, "W323: type $1B's three tables back to back -- the death arm's four rows "
+                       "$26970C, the four-entry sprite ring $26971C, and the eight-long ($24,A5) "
+                       "ramp $26972C; ends at $26974C"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
