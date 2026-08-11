@@ -42,6 +42,7 @@
 // wrong the moment a side-1 record carries selector 0.
 
 import { u16 } from './ram.js';
+import { unreached } from './unported.js';
 import { stageCreate, queueKill } from './objalloc.js';
 import {
   HUDRAM,
@@ -407,6 +408,59 @@ export function bonusLine52602B6(ram, rom, ctx, a6) {
   ram.setU16(a6 + 0x00, 0);                                 // $26033C move.w #$0,(A6)
   ram.setU16(a6 + 0x02, 0);                                 // $260340
   return made.ok ? made.addr : null;
+}
+
+// ===========================================================================
+// W294 -- `$260348`, BONUS LINE 6: FOUR INSTRUCTIONS, AND ONE OF THEM USES A5
+// ===========================================================================
+//   260348  move.b #$2,($2,A5)      <- the CALLER's object, not the tally record
+//   26034e  move.w #$0,(A6)
+//   260352  move.w #$0,($2,A6)
+//   260358  rts
+//
+// **THE DRIVER NEVER SETS A5.** `$25FF7A lea $8130FA,A6 / moveq #$1,D7` sets A6 and D7 and
+// nothing else, so A5 at entry is whatever the call chain left -- and `$25FF7A`'s three
+// callers (`$26059E`, `$2605C2`, `$2607A4`) reach it by `bsr` from inside routines that
+// have one. For an object handler that is the object's own record.
+//
+// So `($2,A5)` is **the caller's object state byte**, and `$2` is exactly the offset
+// `SCREEN11.state` uses -- object `[11]`'s state, whose value 2 is `screenState2_25DB7C`,
+// the tally call itself. So line 6's whole job is: *tell the object that posted this
+// request to advance to its tally state.*
+//
+// W288 stopped on an A5/A0 question and reverted a finished body. This one is deliberately
+// NOT that situation, and the difference is worth stating because it is the judgement call:
+//
+//   $280252   A0 fed `movem.w ($2,A0),D2-D3` -- a TARGET POSITION read through it. A wrong
+//             A0 yields plausible coordinates and plausible motion, silently.
+//   $260348   A5 feeds one unconditional `move.b #$2` into a known state offset. A wrong
+//             A5 puts a 2 somewhere it does not belong, which is loud, and no arithmetic
+//             is derived from it.
+//
+// So A5 is an explicit PARAMETER here rather than a guess, and the caller supplies it the
+// way every object handler in this port already threads its own record.
+const BONUS6 = Object.freeze({
+  site: 0x260348,
+  callerState: 0x02,               // == SCREEN11.state, and value 2 is the tally state
+});
+
+/**
+ * `$260348` -- bonus line 6.
+ *
+ * @param a6 the tally record
+ * @param a5 THE CALLER'S OBJECT RECORD. The driver does not set A5, so this cannot be
+ *   defaulted; a caller with no object of its own has no business running this line.
+ */
+export function bonusLine6260348(ram, a6, a5) {
+  if (a5 === undefined || a5 === null) {
+    unreached(BONUS6.site, '$260348 move.b #$2,($2,A5) writes the CALLER\'s object state '
+      + 'byte, and $25FF7A never sets A5 -- so the caller must supply it. Passing nothing '
+      + 'would write a 2 into $0002, which is neither a record nor an error the drain '
+      + 'would catch');
+  }
+  ram.setU8(a5 + BONUS6.callerState, 2);                    // $260348
+  ram.setU16(a6 + 0x00, 0);                                 // $26034E
+  ram.setU16(a6 + 0x02, 0);                                 // $260352
 }
 
 /** `$25FD94` -- HOW MANY SIDES ARE STILL IN THE TALLY, minus one.

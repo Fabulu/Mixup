@@ -17,7 +17,8 @@ import { UnportedLog } from '../src/unported.js';
 import { deferReset } from '../src/background.js';
 import { HUDRAM } from '../src/hud.js';
 import { TALLY, tally2600D8, bonusLine125FFA8, bonusLine2260056,
-  bonusLine326010E, bonusLine42601F4, bonusLine52602B6 } from '../src/tally.js';
+  bonusLine326010E, bonusLine42601F4, bonusLine52602B6,
+  bonusLine6260348 } from '../src/tally.js';
 import { PaletteState } from '../src/palette.js';
 import { ALLOC } from '../src/objalloc.js';
 import { RAM as MACHINE } from '../src/machine.js';
@@ -888,4 +889,49 @@ test('W293 line 5 re-posts, like every other line', { skip: SKIP }, () => {
   bonusLine52602B6(f.ram, ROM, f.ctx, TALLY.side0);
   assert.equal(f.ram.u16(TALLY.side0 + 0x00), 0, '$26033C');
   assert.equal(f.ram.u16(TALLY.side0 + 0x02), 0, '$260340');
+});
+
+// ============ 14. W294: BONUS LINE 6 -- FOUR INSTRUCTIONS, AND ONE USES A5
+
+test('W294 line 6 advances the CALLER\'s object to its tally state', { skip: SKIP }, () => {
+  // `$260348 move.b #$2,($2,A5)`. $2 is exactly SCREEN11.state, and value 2 is
+  // screenState2_25DB7C -- the tally call. So the line's whole job is to tell the object
+  // that posted this request to advance to its tally state.
+  const f = world();
+  bonusLine6260348(f.ram, TALLY.side0, A5);
+  assert.equal(f.ram.u8(A5 + SCREEN11.state), 2, 'the caller is in state 2');
+  assert.equal(f.ram.u16(TALLY.side0 + 0x00), 0, '$26034E');
+  assert.equal(f.ram.u16(TALLY.side0 + 0x02), 0, '$260352');
+});
+
+test('W294 the offset it writes IS object [11]\'s state field', { skip: SKIP }, () => {
+  // Not a coincidence worth leaving implicit: if these two ever diverge, line 6 would be
+  // advancing something else and the tally would stall with no error.
+  assert.equal(SCREEN11.state, 0x02);
+});
+
+test('W294 a MISSING A5 throws by address rather than writing to $0002', { skip: SKIP }, () => {
+  // `$25FF7A` never sets A5 -- it sets A6 and D7 and nothing else -- so the caller must
+  // supply it. Defaulting to 0 would put a 2 at $0002, which is neither a record nor
+  // anything the kill drain or any gate would catch.
+  const f = world();
+  assert.throws(() => bonusLine6260348(f.ram, TALLY.side0, undefined),
+    (e) => e.name === 'Unreached' && e.romAddress === 0x260348,
+    'it refuses rather than guessing');
+  assert.throws(() => bonusLine6260348(f.ram, TALLY.side0, null));
+});
+
+test('W294 the A5 parameter is DELIBERATE, and the source says why', () => {
+  // W288 reverted a finished body over an A5/A0 question. This one is not that situation
+  // and the difference is the judgement: $280252's A0 fed `movem.w ($2,A0),D2-D3` -- a
+  // target POSITION, where a wrong register yields plausible motion silently -- while
+  // line 6's A5 feeds one unconditional `move.b #$2` into a known state offset, where a
+  // wrong register is loud and nothing is derived from it. Asserted because the next
+  // reader will otherwise wonder why one was deferred and the other was not.
+  const src = readFileSync(path.join(R, 'src', 'tally.js'), 'utf8');
+  const block = src.slice(src.indexOf('W294 -- `$260348`'));
+  const head = block.slice(0, block.indexOf('const BONUS6'));
+  assert.match(head, /THE DRIVER NEVER SETS A5/);
+  assert.match(head, /plausible coordinates and plausible motion, silently/);
+  assert.match(head, /loud, and no arithmetic/);
 });

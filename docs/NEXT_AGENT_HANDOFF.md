@@ -28,8 +28,14 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W293, `ddpdoj: bonus line 5, the teardown`.
-- Suite: `node --test games/ddpdoj/tests/` is **2019/2019**, green, no skips.
+- HEAD is W294, `ddpdoj: bonus line 6 and the A5 judgement`.
+- Suite: `node --test games/ddpdoj/tests/` is **2023/2023**, green, no skips.
+- **SIX of the nine bonus lines are in.** Line 7 is `$26035A`, whose head is
+  `addq.w #1,$813142` -- the same counter `$2600D8` DECREMENTS at `$260112`, going the
+  other way, so read the pair together.
+- **A RULE WORTH KEEPING (W294):** a register the driver does not set needs MEASURING when
+  it feeds arithmetic, and can be a PARAMETER when it feeds one unconditional store into a
+  known field. That is why `$280252`'s A0 is still blocked and `$260348`'s A5 shipped.
 - **FIVE of the nine bonus lines are in.** Line 6 is `$260348`, and its head writes an
   OBJECT's state byte through **A5** -- which none of the first five does, so A5 must be
   live at entry. **CHECK THAT FIRST**: it is the same class of question that stopped
