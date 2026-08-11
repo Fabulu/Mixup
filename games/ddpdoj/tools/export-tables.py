@@ -2501,6 +2501,11 @@ SHOT_WINDOWS.extend([
     # 2 + 8*8 = $42 bytes exactly.
     (0x25BAAA, 0x0042, "W303: $25B412's anim-object chain script, EIGHT nodes of four words "
                        "after the count word"),
+    # W305: `$28F796..$28F7C2` copies TWELVE words per side out of two adjacent blocks --
+    # $28F97C for P1 and $28F994 for P2, and $28F97C + $18 == $28F994 exactly. The two differ
+    # in only two of the twelve words: an X ($0A40 vs $1000) and a flag (0 vs 1).
+    (0x28F97C, 0x0030, "W305: the name-entry screen's TWO twelve-word setup blocks, "
+                       "$28F97C (P1) and $28F994 (P2), adjacent"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
