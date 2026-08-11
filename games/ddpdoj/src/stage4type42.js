@@ -18,17 +18,26 @@
 // is left as a loud named throw rather than transcribed: if it ever runs, either the
 // reading above is wrong or something the port does not model wrote `$18(A6)`.
 //
-// TWO BOUNDS keep the reachable body to roughly half the routine, both measured in
-// worklog 255:
+// `$8130F4` SPLITS THE ROUTINE IN THREE. A1 9 writes 0 at INIT and 1 on retirement;
+// A4 id6 (`$2A11D4`) writes 2. So:
 //
-//   * `$8130F4 == 2` gates `$2A3AF6`, `$2A3E16` and `$2A3E92`. Only A4 id6
-//     (`$2A11D4`) ever writes 2; A1 9 writes 0 at INIT and 1 on retirement. So while
-//     F5's phase runs that value is impossible and `$2A3E1E..$2A4115` is dead.
-//   * the ROLE `$3C(A6)` comes from the spawner. A1 9 writes `$FF` as a constant;
-//     0..7 and `$70`/`$71` come only from A1 11, which A4 id6 starts.
+//   0 or 1   F5's phase: the homing body below, `$2A3B50..$2A3E15`
+//   2        A4 id6's phase, and `$6C(A6)` -- the SIGN of the list's direction byte --
+//            picks which half a child runs: `$2A3E16` for a negative one and
+//            `$2A3E92` for a positive one. Both are translated (W257).
 //
-// Both are transcribed as gates that THROW, so the port stops loudly the moment A4
-// id6 lands rather than inventing behaviour for a path nobody has read.
+// The one arm still unread is `$2A3AFE`: a role-`$FF` child meeting `$8130F4 == 2`
+// frees itself at once, and no translated path puts those two together, so it stays a
+// loud throw rather than a guess.
+//
+// THE ROLES COME FROM THE SPAWNER and they are what `$2A3E92`'s half is built around:
+// `$70` and `$71` are INVISIBLE aimers that publish a heading into `$8130E4`/`$8130E5`,
+// and 0..7 fire a wide fan along it. A1 9 writes `$FF` as a constant, so F5's own
+// formations have no aimers and no fan; A1 11's list is where 0..7 and `$70`/`$71`
+// come from.
+//
+// THREE OF THAT HALF'S FOUR EMITTERS HAVE NO CALL SITE in this build. See
+// `deadEmitter` below -- checked over the bytes, and counted rather than dropped.
 //
 // THE MODE FLIP IS THE PARENT FINISHING. `$2A3DE6 cmpi.w #$1,$8130F4` sets
 // `$3A(A5) = 1`, and `$8130F4` becomes 1 exactly when A1 9 retires. So a child's
@@ -55,6 +64,7 @@ function aimTables(rom) {
 const G = {
   f0: 0x8130f0, f4: 0x8130f4, freeze: 0x8130d2,
   maxDamage: 0x8130e8, maxDamageD1: 0x8130ea,
+  f2: 0x8130f2, aimA: 0x8130e4, aimB: 0x8130e5,
   scrollY: 0x813176, frameAlt: 0x80390a,
 };
 
@@ -76,13 +86,17 @@ const DESCRIPTORS = 0x2a4252;
 /** The two draw tails: `$2A4240` for mode 0 and `$2A4248` once `$71(A6)` latches. */
 const DRAW_NORMAL = 0x23df2a, DRAW_LATCHED = 0x23f7c6;
 
-/** `$2A3AF6`, `$2A3E16` and `$2A3E92` -- the gate that says "A4 id6 is running". */
-function f4IsTwo(ram, site) {
-  if (ram.u16(G.f4) !== 2) return false;
-  unreached(site, `$8130F4 is 2, which only A4 id6 ($2A11D4) writes. This wave `
-    + `translated type $42 for F5's phase, where A1 9 leaves that word 0 or 1, and `
-    + `the $2A3E1E..$2A4115 body this value unlocks has not been read. Port A4 id6 `
-    + `and this arm together; do NOT smooth`);
+/** `$2A3AF6` -- the ONLY `$8130F4 == 2` arm still unread: a role-`$FF` child that
+ *  meets A4 id6 frees itself immediately, and no path this port has translated puts a
+ *  role-`$FF` child and that flag together, so it stays a loud throw. `$2A3E16` and
+ *  `$2A3E92`'s arms ARE translated now (W257). */
+function f4IsTwo(ram, site, role) {
+  if (ram.u16(G.f4) !== 2 || role !== 0xff) return false;
+  unreached(site, `$8130F4 is 2 (A4 id6 is running) AND this child's role is $FF, so `
+    + `$2A3AFE would free it immediately. A1 9 is the only spawner that writes role `
+    + `$FF and A4 id6 stops A1 9 before raising this flag, so no translated path puts `
+    + `the two together. Reaching here means A4 id6's own order is not what W257 read; `
+    + `re-read $2A11D4, do NOT smooth`);
   return true;
 }
 
@@ -93,7 +107,7 @@ function f4IsTwo(ram, site) {
 export function handler42(ram, rom, a5, ctx) {
   const a6 = ram.u32(a5 + 0x06);
 
-  f4IsTwo(ram, 0x2a3afe);                                 // $2A3AF6/$2A3AFE
+  f4IsTwo(ram, 0x2a3afe, ram.u8(a6 + 0x3c));              // $2A3AF6/$2A3AFE
 
   // $2A3B0C -- the OTHER global arm. A4 id6 and A1 11's INIT both clear $8130F0, so
   // during F5's phase this is zero; transcribed both ways because it is four lines.
@@ -161,12 +175,188 @@ export function handler42(ram, rom, a5, ctx) {
   // $2A3C2A -- the death pause freezes everything but the draw.
   if (ram.u16(G.freeze) === 0) {                          // $2A3C2A tst.w/bne
     if (moveAndHome(ram, rom, ctx, a5, a6)) return true;  // $2A3C34..$2A3E15
-    f4IsTwo(ram, 0x2a3e16);                               // $2A3E16
-    f4IsTwo(ram, 0x2a3e92);                               // $2A3E92
-    shoot(ram, rom, ctx, a5, a6);                         // $2A4116..$2A41E1
+    // $2A3E16 / $2A3E92 -- the two halves A4 id6's `$8130F4 = 2` unlocks, and
+    // `$6C(A6)` picks which. The init sets that word from the SIGN of the list's
+    // direction byte, so a `$F2` child runs one and an `$0E` child the other.
+    if (ram.u16(G.f4) === 2) {
+      if (ram.u16(a6 + 0x6c) !== 0) phase3Negative(ram, ctx, a6);   // $2A3E22 bne
+      else phase3Positive(ram, rom, ctx, a5, a6);                   // $2A3E9E bne
+    }
+    // $2A4116 cmpi.w #$2,$8130F4 / beq $2A41E2 -- the mode-0/1 shot section is
+    // SKIPPED entirely while A4 id6 runs. Its phase has its own emitters above.
+    if (ram.u16(G.f4) !== 2) shoot(ram, rom, ctx, a5, a6);   // $2A4116..$2A41E1
   }
   draw(ram, rom, ctx, a5, a6);                            // $2A41E2..$2A4250
   return false;
+}
+
+/** `subq.b #1 / bcc` -- the OLD-ZERO BORROW this boss uses everywhere. */
+function due8(ram, addr) {
+  const old = ram.u8(addr);
+  ram.setU8(addr, old - 1);
+  return old === 0;
+}
+
+/**
+ * THREE OF THIS HALF'S FOUR EMITTERS HAVE NO CALL SITE. `$2A3E40`, `$2A3E76` and
+ * `$2A40FE` each assemble a complete shot -- the angle out of `$28(A6)`, the position
+ * out of `$2(A6)`, its own speed/kind longword -- and then fall straight into the next
+ * cadence. There is no `4EB9` and no `4EF9` between the last `moveq` and the following
+ * instruction, checked over the BYTES rather than read off a listing. This build has
+ * them disabled and the cadences that paced them still run.
+ *
+ * The port keeps the cadences, which are observable in RAM, and COUNTS each dead setup
+ * by address rather than dropping it: a shot that stops being mentioned is how a
+ * missing emitter survives a green suite.
+ */
+function deadEmitter(ctx, site, which) {
+  ctx.unported?.note(site, `${which} assembles a full shot and has NO call site in `
+    + `this build -- no 4EB9/4EF9 between its last moveq and the next cadence. The `
+    + `port runs the cadence and counts the shot that never happens`);
+}
+
+/** `$2A3E16` -- the half a NEGATIVE-direction child runs. Two cadences, both of whose
+ *  emitters are absent, so today it keeps time and nothing else. */
+function phase3Negative(ram, ctx, a6) {
+  if (due8(ram, a6 + 0x74)) {                             // $2A3E2A subq.b/bcc
+    ram.setU8(a6 + 0x74, ram.u8(a6 + 0x75));              // $2A3E32
+    if (ram.u8(a6 + 0x1f) !== 0) {                        // $2A3E38 tst.b/beq
+      deadEmitter(ctx, 0x2a3e40, '$2A3E40 (the $74 cadence, D0 = $00020003)');
+    }
+  }
+  if (due8(ram, a6 + 0x5e)) {                             // $2A3E60 subq.b/bcc
+    ram.setU8(a6 + 0x5e, ram.u8(a6 + 0x5f));              // $2A3E68
+    if (ram.u8(a6 + 0x1f) !== 0) {                        // $2A3E6E tst.b/beq
+      deadEmitter(ctx, 0x2a3e76, '$2A3E76 (the $5E cadence, D0 = $FFFA0023)');
+    }
+  }
+}
+
+/**
+ * `$2A3EA6..$2A3F1A` -- the OSCILLATOR. `$8C(A6)` is a signed step added to the
+ * record's speed byte, and it is NEGATED at either end of a `$20..$60` band, so the
+ * child breathes in and out rather than settling. `$86(A6)` gates it and `$8A`/`$8B`
+ * is the delay before each swing.
+ */
+function phase3Oscillator(ram, a5, a6) {
+  if (ram.u16(a6 + 0x86) === 0) {                         // $2A3EA6 cmpi.w #$0
+    if (due8(ram, a6 + 0x8a)) {                           // $2A3EB0 subq.b/bcc
+      ram.setU8(a6 + 0x8a, ram.u8(a6 + 0x8b));            // $2A3EB8
+      ram.setU16(a6 + 0x86, 1);                           // $2A3EBE
+    }
+  }
+  if (ram.u16(a6 + 0x86) !== 1) return;                   // $2A3EC4 cmpi.w #$1/bne
+  if (!due8(ram, a6 + 0x88)) return;                      // $2A3ECE subq.b/bcc
+  ram.setU8(a6 + 0x88, ram.u8(a6 + 0x89));                // $2A3ED6
+  ram.setU8(a5 + 0x1a,                                    // $2A3EDC/$2A3EE0 add.b
+    (ram.u8(a5 + 0x1a) + ram.u8(a6 + 0x8c)) & 0xff);
+  // $2A3EE4 tst.b $8c(a6) / bpl -- which END of the band this step is walking towards.
+  const speed = ram.u8(a5 + 0x1a);                        // read UNSIGNED, as `moveq`
+  if ((ram.u8(a6 + 0x8c) & 0x80) !== 0) {                 // negative step
+    if (speed > 0x20) return;                             // $2A3EF2 cmpi.w #$20/bgt
+  } else if (speed < 0x60) return;                        // $2A3F0E cmpi.w #$60/blt
+  ram.setU8(a6 + 0x8c, (-ram.u8(a6 + 0x8c)) & 0xff);      // $2A3EFA/$2A3F16 neg.b
+  ram.setU16(a6 + 0x86, 0);                               // $2A3EFE/$2A3F1A
+}
+
+/**
+ * `$2A3F20..$2A3FC0` -- the SWEEP, three states over the turn rate `$38(A6)`:
+ *
+ *   0  waits for `$8130F2`, which A4 id6 raises at `$2A12B2`, then arms and sets `$7C`
+ *   1  takes `$6A(A6)` off `$38(A6)` on the `$6E` tick until `$38 <= 4`, then state 2
+ *      with a fresh `$6E` of `$60`
+ *   2  keeps taking it off until `|$38|` reaches `$78(A6)`, then back to 0 with `$6A`
+ *      NEGATED and `$78` widened by 2, capped at `$10`
+ *
+ * So the turn sweeps out and back, a little wider each pass, and `$78` is the only
+ * thing that grows.
+ */
+function phase3Sweep(ram, a6) {
+  if (ram.u16(a6 + 0x66) === 0) {                         // $2A3F20 cmpi.w #$0
+    if (ram.u16(G.f2) !== 0) {                            // $2A3F2A tst.w/beq
+      ram.setU16(a6 + 0x66, 1);                           // $2A3F34
+      ram.setU16(a6 + 0x7c, 1);                           // $2A3F3A
+    }
+  }
+  if (ram.u16(a6 + 0x66) === 1 && due8(ram, a6 + 0x6e)) { // $2A3F40/$2A3F4A
+    ram.setU8(a6 + 0x6e, ram.u8(a6 + 0x6f));              // $2A3F52
+    ram.setU16(a6 + 0x38,                                 // $2A3F58/$2A3F5C sub.w
+      u16(ram.u16(a6 + 0x38) - ram.u16(a6 + 0x6a)));
+    if (i16(ram.u16(a6 + 0x38)) <= 4) {                   // $2A3F60 cmpi.w #$4/bgt
+      ram.setU16(a6 + 0x66, 2);                           // $2A3F6A
+      ram.setU8(a6 + 0x6e, 0x60);                         // $2A3F70
+    }
+  }
+  if (ram.u16(a6 + 0x66) === 2 && due8(ram, a6 + 0x6e)) { // $2A3F76/$2A3F80
+    ram.setU8(a6 + 0x6e, ram.u8(a6 + 0x6f));              // $2A3F88
+    ram.setU16(a6 + 0x38,                                 // $2A3F8E/$2A3F92
+      u16(ram.u16(a6 + 0x38) - ram.u16(a6 + 0x6a)));
+    const mag = Math.abs(i16(ram.u16(a6 + 0x38)));        // $2A3F96..$2A3F9E bpl/neg
+    if (mag >= i16(ram.u16(a6 + 0x78))) {                 // $2A3FA4 cmp.w/blt
+      ram.setU16(a6 + 0x66, 0);                           // $2A3FAA
+      ram.setU16(a6 + 0x6a, u16(-i16(ram.u16(a6 + 0x6a))));  // $2A3FB0 neg.w
+      if (ram.u16(a6 + 0x78) !== 0x10) {                  // $2A3FB4 cmpi.w #$10/beq
+        ram.setU16(a6 + 0x78, u16(ram.u16(a6 + 0x78) + 2));  // $2A3FBE addq.w #$2
+      }
+    }
+  }
+}
+
+/**
+ * `$2A402E..$2A40E2` -- THE ROLE FAN, the only emitter in this half with a call site,
+ * and the reason roles `$70`/`$71` exist at all.
+ *
+ *   `$2A3FC2`  roles $70 and $71 PUBLISH their own heading into `$8130E5`/`$8130E4`
+ *   `$2A402E`  roles 0..3 read `$8130E4` and 4..7 read `$8130E5`, then `+$80`
+ *   spread     0/4 -> -$10   1/5 -> -$4   2/6 -> +$4   3/7 -> +$10
+ *   D6         set for the four `$10` roles, and D6 PICKS THE GENERATOR:
+ *              `$2816F6` when zero, `$281764` when not
+ *
+ * So two invisible siblings aim and eight visible ones fire a wide fan along it, with
+ * the outer pairs firing a different bullet class from the inner pairs. Publishing
+ * through a global is what lets a child fire along a heading it never computed.
+ */
+const ROLE_FAN = {
+  0: { d1: -0x10, d6: 1 }, 1: { d1: -0x04, d6: 0 },
+  2: { d1: +0x04, d6: 0 }, 3: { d1: +0x10, d6: 1 },
+  4: { d1: -0x10, d6: 1 }, 5: { d1: -0x04, d6: 0 },
+  6: { d1: +0x04, d6: 0 }, 7: { d1: +0x10, d6: 1 },
+};
+
+/** `$2A3E92` -- the half a POSITIVE-direction child runs. */
+function phase3Positive(ram, rom, ctx, a5, a6) {
+  phase3Oscillator(ram, a5, a6);                          // $2A3EA6..$2A3F1A
+  phase3Sweep(ram, a6);                                   // $2A3F20..$2A3FC0
+
+  // $2A3FC2 -- the AIMERS. Both are invisible ($2A4202 skips their draw) and this is
+  // their whole job.
+  const role = ram.u8(a6 + 0x3c);
+  if (role === 0x70 || role === 0x71) {
+    const d1 = ((ram.u16(a6 + 0x28) >> 4) & 0xff) + ram.u8(a6 + 0x5a);  // $2A3FD6..$2A3FE0
+    ram.setU8(role === 0x70 ? G.aimA : G.aimB, d1 & 0xff);  // $2A3FEC/$2A3FF6
+  }
+
+  // $2A4000 -- the fan's cadence, which the aimers themselves skip.
+  if (due8(ram, a6 + 0x8e)) {                             // $2A4000 subq.b/bcc
+    ram.setU8(a6 + 0x8e, ram.u8(a6 + 0x8f));              // $2A4008
+    if (role !== 0x70 && role !== 0x71                    // $2A400E..$2A4022
+      && ram.u8(a6 + 0x1f) !== 0) {                       // $2A4026 tst.b/beq
+      const spread = ROLE_FAN[role];
+      if (spread) {
+        const base = role <= 3 ? ram.u8(G.aimA) : ram.u8(G.aimB);  // $2A4030/$2A4040
+        const d1 = (base + 0x80 + spread.d1) & 0xff;      // $2A4046 + the spread
+        shoot42(ram, rom, ctx, spread.d6 !== 0 ? 0x2a40e2 : 0x2a40d8,
+          spread.d6 !== 0 ? 0x281764 : 0x2816f6,          // $2A40D2 tst.w D6/bne
+          a5, 0xfffd0007, d1, ram.u32(a6 + 0x02));        // $2A404A/$2A4050
+      }
+    }
+  }
+
+  // $2A40E8 -- and the third disabled emitter's cadence.
+  if (ram.u8(a6 + 0x1f) !== 0 && due8(ram, a6 + 0x58)) {  // $2A40E8/$2A40F0
+    ram.setU8(a6 + 0x58, ram.u8(a6 + 0x59));              // $2A40F8
+    deadEmitter(ctx, 0x2a40fe, '$2A40FE (the $58 cadence, D0 = $FFFE000B)');
+  }
 }
 
 /** `$242684` -- the onscreen test, whose CARRY says "off". Transcribed here rather
