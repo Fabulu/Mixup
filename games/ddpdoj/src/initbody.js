@@ -1762,6 +1762,15 @@ BODY.set(0x27ceb4, (ram, rom, a5, a6, unported, _tables, palette) => {
 // --- type $9F ($27C5BE): Stage 4's final pre-boss structure sequence.
 // Three linked subrecords share the opening animation, threshold cues, death
 // presentation, and the live deferred type-$A4 debris emitted during state 2.
+// --- type $59 ($2659E4): the cheapest of stage 5's remaining types, W317. One prototype and one
+// word. `move.w #$6,($18,A5)` is TWO byte fields: the counter at $18 becomes zero and its reload at
+// $19 becomes 6, so `$265A3C subq.b #1,($18,A5)` borrows on the very first frame and the type's
+// first deferred spawn is immediate.
+BODY.set(0x2659e4, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x2659f8);             // $2659EA jsr $2637A2
+  ram.setU16(a5 + 0x18, 6);                             // $2659F0 move.w #$6,($18,A5)
+});
+
 // --- type $45 ($270DD8): the first of stage 5's fifteen missing types, W316. Two prototypes,
 // the shared position read, the palette byte copied into the sub-record, and one global. Every
 // primitive was already here, which is why this type could be the first one ported.

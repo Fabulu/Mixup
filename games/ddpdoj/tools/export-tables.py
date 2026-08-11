@@ -2546,6 +2546,10 @@ SHOT_WINDOWS.extend([
                        "its handler"),
     (0x27100C, 0x0020, "W316: type $45's EIGHT sprite longwords, indexed by the ($1E,A5) ramp; "
                        "ends at $27102C, type $46's init"),
+    # W317: type $59's single sub-record prototype, $2659F8..$265A13, ending exactly at its
+    # handler $265A14. The type draws nothing of its own -- it is a timed spawner -- so this one
+    # window is the whole of its data.
+    (0x2659F8, 0x001C, "W317: type $59's sub-record prototype, ending at its handler $265A14"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

@@ -1748,6 +1748,56 @@ function deathSeq85(ram, rom, a5, a6, ctx, d1) {
   freeEnemy(ram, a5);                                  // $275BA6 jmp $263762
 }
 
+// ============================================ TYPE $59 (W317) ============
+// The CHEAPEST of stage 5's remaining types: `$265A14..$265A52`, sixty-four bytes, and its init
+// body is twenty. One record in the script, and it is not really an enemy at all -- it is a timed
+// SPAWNER that enqueues type `$3F` on a cadence and then deletes itself.
+//
+//   265a14  cmpi.w #$9C,$8130CE / blt      the SCROLL CLOCK, signed: under $9C it lives
+//   265a20  jmp $263762                    at or past $9C it frees itself
+//   265a28  tst.w $8130D2 / bne            the motion freeze -- do nothing this frame
+//   265a32  tst.w $8130D8 / bne            and the midboss gate, likewise
+//   265a3c  subq.b #1,($18,A5) / bcc       the cadence
+//   265a44  move.b ($19,A5),($18,A5)       reload
+//   265a4a  moveq #$3F,D0 / jsr $263684    ENQUEUE a deferred type $3F
+//
+// **`$263684` IS ALREADY PORTED**, as `enqueueDeferred(ram, type, DEFQ_D1.FIXED00)` -- W21's
+// deferred queue, `$815EAA` with stride `$50` and a 40-entry cap. `src/mover.js`'s `unreached` at
+// `$263684` still says "the enemy subsystem is not ported", which was true when it was written and
+// is not now. Left alone here because fixing it means porting mover kind 18's spawn arm, which is a
+// different wave; recorded so that wave knows the primitive is waiting for it.
+//
+// And type `$3F` is `$265850`, ported in W199. So this type is a leaf: no unported dependency.
+//
+// ## THE TWO-BYTE-FIELDS IDIOM, AND HERE IT IS LOAD-BEARING
+//
+// The init body's `move.w #$6,($18,A5)` writes a WORD, so the byte at `$18` becomes **zero** and
+// the byte at `$19` becomes 6. The handler's `subq.b #1,($18,A5)` reads that zero, borrows on the
+// first frame, and reloads from `($19,A5)`. So the first spawn is immediate and the cadence is
+// every seven frames afterwards -- not "wait six frames, then spawn". Reading the word as a single
+// counter of 6 gets both the first spawn and the period wrong.
+const T59 = Object.freeze({
+  init: 0x2659dc, initBody: 0x2659e4, handler: 0x265a14,
+  subProto: 0x2659f8,
+  clockLimit: 0x9c,            // $265A14 cmpi.w #$9C / blt -- SIGNED
+  cadenceInit: 6,              // $2659F0 move.w #$6,($18,A5) -- byte $18 = 0, byte $19 = 6
+  spawnType: 0x3f,             // $265A4A moveq #$3F,D0
+});
+
+function handler59(ram, _rom, a5, ctx) {
+  // $265A14 -- `blt` is SIGNED, and the clock only rises, so this is a lifetime not a window.
+  if (i16(ram.u16(G.clock)) >= T59.clockLimit) {
+    freeEnemy(ram, a5);                                  // $265A20 jmp $263762
+    return;
+  }
+  if (ram.u16(G.freeze) !== 0) return;                   // $265A28 tst.w $8130D2 / bne
+  if (ram.u16(G.midbossD8) !== 0) return;                // $265A32 tst.w $8130D8 / bne
+  if (!due8(ram, a5 + 0x18)) return;                     // $265A3C subq.b #1 / bcc
+  ram.setU8(a5 + 0x18, ram.u8(a5 + 0x19));               // $265A44
+  const r = enqueueDeferred(ram, T59.spawnType, DEFQ_D1.FIXED00);  // $265A4A/$265A4C
+  ctx?.spawnEvent?.('deferred', T59.spawnType, r);
+}
+
 // ============================================ TYPE $45 (W316) ============
 // The first of stage 5's fifteen missing types, and the biggest by record count: 21 of its 770
 // script records. `$270DD8` the init body, `$270E36..$27100A` the handler, and the 8-entry sprite
@@ -6825,6 +6875,7 @@ const HANDLERS = new Map([
   [0x27c81a, handler9F],          // W218: Stage-4 final pre-boss structure $9F
   [0x27db30, handlerA4],          // W218: type-$9F deferred fragment $A4
   [0x270e36, handler45],          // W316: Stage-5 ramped four-state turret $45
+  [0x265a14, handler59],          // W317: Stage-5 timed type-$3F spawner $59
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
   [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42

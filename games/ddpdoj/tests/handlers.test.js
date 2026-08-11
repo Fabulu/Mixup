@@ -151,7 +151,9 @@ test('the ported handler addresses are registered through W223 type $41', () => 
       0x27c81a, 0x27db30, 0x29ef0a, 0x2a3840, 0x2a3af6,
       // W316 opens STAGE 5: $270E36 is type $45, the first of the fifteen types
       // `tests/w314stage5scope.test.js` ranks, and the biggest by record count (21 of 770).
-      0x270e36,
+      // W317 adds $265A14, type $59 -- the CHEAPEST of them at sixty-four bytes, and a timed
+      // deferred-spawn source rather than an enemy.
+      0x270e36, 0x265a14,
     ].sort((a, b) => a - b));
 });
 

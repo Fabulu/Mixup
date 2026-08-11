@@ -98,15 +98,17 @@ test('W314/W316 stage 5 has FOURTEEN types with no handler, over 44 of its 770 r
     // and 65.
     const map = enemyHandlerMap(ROM);
     const miss = missingOf(SCRIPTS[5], map);
-    assert.equal(miss.length, 14, `fourteen types, got ${miss.map((m) => m.type.toString(16))}`);
-    assert.equal(miss.reduce((a, m) => a + m.records, 0), 44, 'across 44 records');
-    // Ranked by how much of the stage each one buys, which is the order to port them in.
+    assert.equal(miss.length, 13, `thirteen types, got ${miss.map((m) => m.type.toString(16))}`);
+    assert.equal(miss.reduce((a, m) => a + m.records, 0), 43, 'across 43 records');
+    // Ranked by record count. **W317 found this is NOT the order to port them in** -- see the
+    // dependency test below. `$46` is the biggest and needs an unported 1130-byte child first,
+    // while `$8E` is six records and standalone.
     const ranked = [...miss].sort((a, b) => b.records - a.records || a.type - b.type);
     assert.deepEqual(ranked.map((m) => m.type),
       [0x46, 0x8e, 0x1b, 0x1a, 0x81, 0x48, 0x49, 0x4a, 0x4b,
-        0x43, 0x47, 0x4c, 0x59, 0xb0]);
+        0x43, 0x47, 0x4c, 0xb0]);
     assert.deepEqual(ranked.slice(0, 2).map((m) => m.records), [13, 6],
-      '$46 and $8E are the two biggest left; W316 took $45 and its 21');
+      '$46 and $8E are the two biggest left; W316 took $45 and W317 took $59');
   });
 
 test('W315 stage 5\'s one type-$00 record points at a NULL handler', { skip: SKIP_IMG }, () => {
@@ -137,7 +139,7 @@ test('W314 each missing type\'s init and handler come from the cartridge\'s own 
       [0x47, [0x26d6ee, 0x26d7d0]], [0x48, [0x271284, 0x27133a]],
       [0x49, [0x27159e, 0x271640]], [0x4a, [0x2719ae, 0x271a64]],
       [0x4b, [0x271c92, 0x271d48]], [0x4c, [0x26f4da, 0x26f5f2]],
-      [0x59, [0x2659dc, 0x265a14]], [0x81, [0x273f06, 0x274076]],
+      [0x81, [0x273f06, 0x274076]],
       [0x8e, [0x276404, 0x2764d2]], [0xb0, [0x2a42d4, 0x2a4606]],
     ]);
     for (const [t, [init, handler]] of want) {
@@ -145,7 +147,53 @@ test('W314 each missing type\'s init and handler come from the cartridge\'s own 
       assert.equal(e.init, init, `type $${t.toString(16)} init`);
       assert.equal(e.handler, handler, `type $${t.toString(16)} handler`);
     }
-    assert.equal(want.size, 14);
+    assert.equal(want.size, 13);
+  });
+
+test('W317 FOUR of the thirteen spawn an UNPORTED child, so record count is the wrong order',
+  { skip: SKIP_IMG }, () => {
+    // W314 ranked the list by how many records each type covers. W317 scanned every remaining
+    // handler for the three deferred-spawn entries (`$263678`/`$263684`/`$263690`) and read the
+    // `moveq #TYPE` before each, which changes the order completely: the biggest type by records
+    // costs the most, and one of them costs four children.
+    //
+    //   $46 x13 ~418B   spawns $55, UNPORTED and 1130 bytes  -> ~1550B for 13 records
+    //   $48 x2  ~612B   spawns $54, UNPORTED
+    //   $43 x1  ~270B   spawns $44, UNPORTED
+    //   $4C x1  ~3044B  spawns $4E, $50, $52 and $58 -- ALL FOUR UNPORTED
+    //   the other nine are standalone, and `$8E` (6 records, ~468B) is the best of them
+    //
+    // Asserted as the dependency edges rather than as byte counts, because the edges are what the
+    // ROM says and the byte counts are bounded by the next table entry rather than measured.
+    const map = enemyHandlerMap(ROM);
+    const spawnsOf = (handler, span) => {
+      const out = new Set();
+      for (let a = handler; a < handler + span - 5; a += 2) {
+        if (IMG.readUInt16BE(a) !== 0x4eb9) continue;
+        const tgt = IMG.readUInt32BE(a + 2);
+        if (tgt !== 0x263678 && tgt !== 0x263684 && tgt !== 0x263690) continue;
+        for (let b = a - 2; b >= a - 16; b -= 2) {
+          const w = IMG.readUInt16BE(b);
+          if ((w & 0xff00) === 0x7000) { out.add(w & 0xff); break; }       // moveq #imm,D0
+          if (w === 0x303c) { out.add(IMG.readUInt16BE(b + 2) & 0xff); break; } // move.w #imm,D0
+        }
+      }
+      return out;
+    };
+    // The four with an unported child, and which child.
+    for (const [t, span, kids] of [[0x46, 0x1a2, [0x55]], [0x48, 0x264, [0x54]],
+      [0x43, 0x10e, [0x44]], [0x4c, 0xbe4, [0x4e, 0x50, 0x52, 0x58]]]) {
+      const got = spawnsOf(typeEntry(t).handler, span);
+      for (const k of kids) {
+        assert.ok(got.has(k), `type $${t.toString(16)} spawns $${k.toString(16)}`);
+        assert.ok(!map.has(typeEntry(k).handler), `and $${k.toString(16)} is unported`);
+      }
+    }
+    // `$8E` is the biggest STANDALONE one left, which makes it the next target rather than `$46`.
+    assert.equal(spawnsOf(typeEntry(0x8e).handler, 0x1d4).size, 0, '$8E spawns nothing');
+    assert.ok(!map.has(typeEntry(0x8e).handler), 'and it is still unported');
+    // And W317's own type spawned an ALREADY-ported child, which is why it was the cheap one.
+    assert.ok(map.has(typeEntry(0x3f).handler), 'type $3F, W199, is ported');
   });
 
 // ==================== 2. THE CONTRAST THAT MAKES IT A GAP
