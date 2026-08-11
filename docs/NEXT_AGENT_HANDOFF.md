@@ -28,9 +28,10 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W287, `ddpdoj: port eight of $280BCE's finish hooks as one family`.
+- HEAD is W288, `ddpdoj: record why $280252 is not transcribable yet`.
 - Suite: `node --test games/ddpdoj/tests/` is **1993/1993**, green, no skips.
-- A long census run now reaches **frame 6483** (was 6482) and stops at `$280252`.
+- A long census run reaches **frame 6483** and stops at `$280252`, whose body is READ
+  but NOT portable until one register is measured -- see work-order item 1.
 - **THE LIVE BUILD IS STALE AND NOBODY IS TRACKING IT (D19).** `git push` is not
   `tools/publish.mjs`. This session closed six docket items and moved the bundle
   4194 -> 4244 streams with no publish, and THREE of those items turned out to be
@@ -161,15 +162,30 @@ Cloudflare Pages. Pushing does not publish and publishing does not push.
    publishes without regenerating serves a stale bundle. `publish.mjs` gates on the
    Batman suite being ALL GREEN with 0 skipped, builds `dist/`, deploys, and then
    CONFIRMS the build id landed on several consecutive polls.
-2. **`$280252`** -- the new stopping point of a long run, one frame past the old one.
-   W287 took `$280BCE` from three of twenty translated to ELEVEN by noticing that
-   indices 8..15 are ONE BODY over two parameters (a hook block cycling
-   `$C4E/$C1E/$C2E/$C3E`, and P1 for 8..11 / P2 for 12..15). **Ask the same question
-   first: read the table entry before writing the routine.** W275, W286 and W287 all
-   found work that had already been done or shared.
+2. **MEASURE A0 AT `$28029A`, then port `$280252`.** W288 read the whole body and
+   **backed a finished transcription out** rather than ship it, for one reason:
 
-   Of `$280BCE`'s remaining nine, **5, 6 and 7 all point at `$280D34`** -- three more
-   entries, one body, the same trick.
+       242290: bsr $24270A              the target select -- SETS A0
+       242294: bcs $242264
+       242296: movem.w ($2,A0),D2-D3    <- the entry point these bodies use
+
+   Eight sites enter `$242296` directly, skipping the `bsr` that sets A0, and all eight
+   are in this family (indices 8..11). But `$27F990 movea.l (A0),A0 / jsr (A0)` leaves
+   **A0 = the body's own address**, and nothing on the not-collected path changes it --
+   so taken literally the pickup would chase coordinates made of its own opcodes.
+
+   Three possibilities, all testable and only one true: the driver differs from that
+   reading; something between `$27F992` and `$28029A` sets A0; or the family really does
+   read its own code. **The oracle can answer this and reasoning cannot** -- `w69`'s
+   ladders carry full RAM but not registers, so it wants a register capture at a
+   breakpoint.
+
+   Two things W288 established that survive regardless: `($24,A6)` is the player record
+   W287's finish family writes (the body frees itself when that player's bit 15 goes, so
+   the two waves confirm each other), and the draw gate has **two different** exemptions
+   from the half rate -- a quiet pool draws everything, and a busy pool still draws a
+   pickup within `$600` of its OWNER, so the sprite about to be collected keeps full
+   frame rate.
 3. **`$280BCE`'s finish routines**, or enough of them to drive a run past frame 6482.
    A long census run from the laser-hold rung throws `Unreached $280BCE` there --
    seventeen of its twenty finish routines are unported, already docketed under D3's
