@@ -834,6 +834,24 @@ Two consequences for whoever writes it:
   different path through the screen than stages 1..4 do. Any test of this screen has to say which
   stage it is standing in.
 
+#### W328..W330 LANDED THE WHOLE INTERACTIVE DRAW. WHAT IS LEFT IS THE VALUE ROWS.
+
+`$25DD0C` is **complete** -- it ends at `$25DE66 moveq #$0,D0 / rts` and `$25DE6A` onward is text
+data. Ported and pinned by twelve tests: the gate cascade, the per-side header, both per-side label
+pairs, the cursor's input/clamp/store/confirm, and the four-phase blinking highlight. Four records
+into bucket 26's ten.
+
+**The three remaining emit sites (`$25DF72`, `$25DFBA`, `$25DFE8`) are in a DIFFERENT routine:
+`$25DEAE`.** And `$25DEAE` is not what the old note implied either --
+
+    25deae  moveq #$0,D7 / move.b ($F,A5),D7      the SAME two instructions as $25DA94
+    25deb4  bsr $25DAEA                            the same "is the other player here?" check
+    25debc  subq.b #1,D7 / bge / else D7 = 2       **DOWNWARD**, wrapping at 2
+
+`$25DA94` walks the same three entries **UPWARD** (`addq.b`, limit 2, wrap to 0). So the pair is the
+**Y cursor's up and down halves** over `SCREEN11.yEntries = 3`, not two unrelated routines -- and
+`$25DEAE`'s TAIL is where the value rows are drawn. That is the one thing still unread.
+
 **AND TWO OF THE FIVE "MISSING" ROUTINES BELONG TO THE CURSOR HALF, NOT THE TALLY.** `$25DA94` is
 
     25da94  moveq #$0,D7 / move.b ($F,A5),D7
