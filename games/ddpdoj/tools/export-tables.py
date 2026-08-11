@@ -2517,6 +2517,14 @@ SHOT_WINDOWS.extend([
     # 2 + 4*8 = $22, ending exactly at `$28FAF4` which is the next routine `$28F580` calls.
     (0x28FAD2, 0x0022, "W308: $28F520's anim-object chain script, FOUR nodes; ends at $28FAF4, "
                        "the routine $28F580 bsr's"),
+    # W310: the name-entry CURSOR's three tables, contiguous and all 28 cells long:
+    #   $28FED0 + $70    28 pointers, consecutive `$28FF40 + i*$14`
+    #   $28FF40 + $230   28 adjacency tables of TEN words (index = direction bits - 1)
+    #   $290170 + $70    28 packed Y/X longs, the cursor's screen position per cell
+    # 28 is pinned from both sides: the pointer table's 29th longword reads `$FFFF0007`, which is
+    # the first adjacency table's data, and `$2901E0` is `tst.w $813098` -- code.
+    (0x28FED0, 0x0310, "W310: the name-entry cursor's pointer, adjacency and position tables, "
+                       "28 cells each, $28FED0..$2901DF"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

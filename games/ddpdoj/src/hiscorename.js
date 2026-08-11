@@ -37,7 +37,7 @@
 // `move.w D0,D0`). Worth keeping as the habit W303 named: in this cartridge, check how a
 // routine leaves the carry before deciding it returns nothing.
 
-import { u16 } from './ram.js';
+import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { tagLookupForSide, tagForSide } from './hiscore.js';
@@ -443,6 +443,180 @@ export function drawGridFrame28F4C4(ram, rom, a4, a5) {
     return 'p2';
   }
   return 'none';                                       // $28F4EC beq $28F4F4
+}
+
+// ===========================================================================
+// W310 -- THE CURSOR: A 7x4 GRID WITH AN ADJACENCY TABLE PER CELL
+// ===========================================================================
+// `$28FE7A` is the move, and it is table-driven twice over:
+//
+//     28fe82  move.w ($18,A4),D0 / add.w D0,D0 x2
+//     28fe8a  lea ($28FED0,PC),A0 / movea.l (A0,D0.w),A0     a POINTER per cell
+//     28fe94  move.w ($2A,A4),D0 / clr.w ($2A,A4)            the accumulated direction bits
+//     28fe9c  subq.w #1,D0 / bcs                             zero bits -> no move
+//     28fea0  cmpi.w #$A,D0 / bcc                            past ten -> no move
+//     28fea6  add.w D0,D0 / move.w (A0,D0.w),D0              the destination cell
+//     28feac  bmi                                            NEGATIVE -> blocked
+//     28feae  move.w D0,($18,A4)
+//     28feb6  lea ($290170,PC),A0 / move.l (A0,D0.w),($6,A4) the cursor's SCREEN position
+//
+// **There are exactly 28 cells**, and three tables tile `$28FED0..$2901DF` with no gap:
+//
+//     $28FED0 + $70    28 pointers, and they are consecutive `$28FF40 + i*$14`
+//     $28FF40 + $230   28 tables of TEN words -- the adjacency graph
+//     $290170 + $70    28 longs -- the cursor's packed Y/X per cell
+//
+// The pointer table's "29th entry" reads `$FFFF0007`, which is the first destination table's
+// data, so 28 is pinned from above as well as below. And `$2901E0` is `tst.w $813098` -- code.
+//
+// ## THE INDEX IS `direction bits - 1`, SO TEN ENTRIES COVER ALL OF IT
+//
+// `$28FDB0` accumulates 1 = up, 2 = down, 4 = left, 8 = right into `($2A,A4)`, so the reachable
+// values are 1..10 and `subq.w #1 / cmpi.w #$A / bcc` bounds them to indices 0..9 exactly.
+// Indices 2 (up+down) and 6 (up+down+left) are `-1` in every cell -- impossible inputs, blocked
+// by data rather than by code.
+//
+// ## THE GRID IS SEVEN WIDE, AND BOTH TABLES SAY SO INDEPENDENTLY
+//
+// Cell 0's DOWN is 7 and cell 27's UP is 20; cell 26's RIGHT is 27 and its LEFT is 25. And the
+// position table has cell 0 at `$35000A40`, cell 1 at `$35001000` (same Y, X + $5C0) and cell 7
+// at `$2DC00A40` (Y - $740, X back to the start). **Four rows of seven, with END at cell 27**,
+// which is exactly W309's `cmpi.w #$1B,D0 / bcs` -- 27 characters then END.
+//
+// ## AND IT EXPLAINS W305'S TWO DIFFERING BLOCK WORDS
+//
+// W305 found the two per-side setup blocks differ in exactly two of their twelve words and could
+// only call them "an X and a flag". The blocks fill `($6)`, `($8)`, `($14)`, `($16)`, `($18)`...
+// in that order, so word 1 is `($8,A4)` and word 4 is `($18,A4)`:
+//
+//     word 1   $0A40 vs $1000     the cursor's X -- and `$290170[0]` is `$35000A40` exactly
+//     word 4   0 vs 1             the starting GRID CELL
+//
+// **P1 starts on cell 0 and P2 on cell 1**, and the "X" is just cell 0's and cell 1's X from the
+// same position table. One difference, expressed twice, and neither word was a flag.
+export const CURSOR = Object.freeze({
+  move: 0x28fe7a,
+  held: 0x28fdb0,
+  cells: 28,
+  width: 7,                    // both tables agree: cell 0 DOWN is 7, and Y steps per 7 cells
+  endCell: 0x1b,               // W309: `cmpi.w #$1B,D0 / bcs` -- cell 27 is END
+  pointers: 0x28fed0,          // 28 longs
+  graph: 0x28ff40,             // 28 x 10 words
+  graphStride: 0x14,
+  dirs: 10,                    // `cmpi.w #$A / bcc` -- indices 0..9
+  positions: 0x290170,         // 28 longs, packed Y/X
+  posField: 0x06,              // $28FEBC move.l (A0,D0.w),($6,A4)
+  cellField: 0x18,             // ($18,A4)
+  bitsField: 0x2a,             // ($2A,A4) -- 1 up, 2 down, 4 left, 8 right
+  axesField: 0x20,             // ($20,A4) -- how many AXES are engaged
+  delayField: 0x21,            // ($21,A4)
+  delay: 4,                    // $28FE08 move.b #$4,($21,A4)
+  cue: 0x28c6fa,               // sound.js: SFX id $1B
+  diagonal: 2,                 // $28FE00 cmpi.b #$2,($20,A4) -- both axes: move at once
+});
+
+/**
+ * `$28FE7A` -- move the cursor by the accumulated direction bits.
+ *
+ * @returns {boolean} whether the cursor moved. A blocked direction is a `-1` in the graph, so
+ *   "no move" is data and not an error.
+ *
+ * `clr.b ($20)` and `clr.b ($21)` come FIRST, so a move always disarms the repeat -- which is
+ * what makes the repeat one shot per fire rather than a free run.
+ */
+export function cursorMove28FE7A(ram, rom, a4, ctx) {
+  ram.setU8(a4 + CURSOR.axesField, 0);                   // $28FE7A clr.b ($20,A4)
+  ram.setU8(a4 + CURSOR.delayField, 0);                  // $28FE7E clr.b ($21,A4)
+
+  const cell = ram.u16(a4 + CURSOR.cellField);           // $28FE82 move.w ($18,A4),D0
+  if (cell >= CURSOR.cells) {
+    unreached(CURSOR.move, `$28FE7A read cell ${cell}; the pointer table at $28FED0 has `
+      + `${CURSOR.cells} entries and the 29th longword is the first destination table's data`);
+  }
+  const table = rom.u32(CURSOR.pointers + cell * 4);     // $28FE90 movea.l (A0,D0.w),A0
+
+  const bits = ram.u16(a4 + CURSOR.bitsField);           // $28FE94 move.w ($2A,A4),D0
+  ram.setU16(a4 + CURSOR.bitsField, 0);                  // $28FE98 clr.w ($2A,A4)
+  const idx = u16(bits - 1);                             // $28FE9C subq.w #1,D0
+  if (bits === 0 || idx >= CURSOR.dirs) return false;    // $28FE9E bcs / $28FEA4 bcc
+
+  const dest = i16(rom.u16(table + idx * 2));            // $28FEA8 move.w (A0,D0.w),D0
+  if (dest < 0) return false;                            // $28FEAC bmi -- blocked by DATA
+
+  ram.setU16(a4 + CURSOR.cellField, dest);               // $28FEAE move.w D0,($18,A4)
+  // $28FEB6/$28FEBC -- the new cell's screen position, as ONE long into ($6,A4).
+  ram.setU32(a4 + CURSOR.posField, rom.u32(CURSOR.positions + dest * 4));
+  ctx?.unportedLog?.note(CURSOR.cue, '$28FEC2 jsr $28C6FA -- SFX id $1B, already in sound.js');
+  return true;
+}
+
+/**
+ * `$28FDB0` -- a direction is held: accumulate it, or tick the repeat delay.
+ *
+ * @param d0 the input word's low nibble
+ * @returns {'first'|'diagonal'|'waiting'|'repeat'}
+ *
+ * Two things about `($20,A4)`. The vertical arms **set** it to 1 and the horizontal arms
+ * **increment** it, so it counts ENGAGED AXES rather than presses -- and reaching 2 means a
+ * diagonal, which moves immediately without waiting out the delay. And if it is already 1 on
+ * entry, the routine jumps straight to the delay branch and never looks at the nibble, so the
+ * direction is captured on the FIRST frame only and `($2A,A4)` holds it for the repeat.
+ */
+export function cursorHeld28FDB0(ram, rom, a4, d0, ctx) {
+  if (ram.u8(a4 + CURSOR.axesField) === 1) {             // $28FDB0 cmpi.b #$1 / beq $28FE10
+    const left = (ram.u8(a4 + CURSOR.delayField) - 1) & 0xff;   // $28FE10 subq.b #1
+    ram.setU8(a4 + CURSOR.delayField, left);
+    if (left === 0) {                                    // $28FE14 beq $28FE7A
+      cursorMove28FE7A(ram, rom, a4, ctx);
+      return 'repeat';
+    }
+    return 'waiting';
+  }
+
+  // $28FDB8..$28FDD8 -- the VERTICAL pair SETS the axis count, and they are exclusive.
+  if ((d0 & 0x01) !== 0) {                               // $28FDB8 btst #$0 -- up
+    ram.setU8(a4 + CURSOR.axesField, 1);
+    ram.setU16(a4 + CURSOR.bitsField, 1);
+  } else if ((d0 & 0x02) !== 0) {                        // $28FDCC btst #$1 -- down
+    ram.setU8(a4 + CURSOR.axesField, 1);
+    ram.setU16(a4 + CURSOR.bitsField, 2);
+  }
+  // $28FDDE..$28FDFA -- the HORIZONTAL pair INCREMENTS it and ORs its bit in.
+  if ((d0 & 0x04) !== 0) {                               // $28FDDE btst #$2 -- left
+    ram.setU8(a4 + CURSOR.axesField, (ram.u8(a4 + CURSOR.axesField) + 1) & 0xff);
+    ram.setU16(a4 + CURSOR.bitsField, ram.u16(a4 + CURSOR.bitsField) | 4);
+  } else if ((d0 & 0x08) !== 0) {                        // $28FDF0 btst #$3 -- right
+    ram.setU8(a4 + CURSOR.axesField, (ram.u8(a4 + CURSOR.axesField) + 1) & 0xff);
+    ram.setU16(a4 + CURSOR.bitsField, ram.u16(a4 + CURSOR.bitsField) | 8);
+  }
+
+  if (ram.u8(a4 + CURSOR.axesField) === CURSOR.diagonal) {   // $28FE00 cmpi.b #$2 / beq
+    cursorMove28FE7A(ram, rom, a4, ctx);
+    return 'diagonal';
+  }
+  ram.setU8(a4 + CURSOR.delayField, CURSOR.delay);       // $28FE08 move.b #$4,($21,A4)
+  return 'first';                                        // $28FE0E rts
+}
+
+/**
+ * `$28F55E..$28F57E` -- the caller: a held direction goes to `$28FDB0`, and a RELEASED one still
+ * ticks the delay so an armed repeat can fire.
+ *
+ * `$28F566 tst.b ($20,A4) / beq` is what makes the release case conditional: the repeat only
+ * keeps running if an axis was engaged, and `$28FE7A` clears that on every move.
+ */
+export function cursorFrame28F55E(ram, rom, a4, ctx) {
+  const d0 = ram.u16(a4 + INPUT.word) & 0x0f;            // $28F55E moveq #$F / and.w ($36,A4)
+  if (d0 !== 0) {                                        // $28F564 bne $28F578
+    ram.setU16(a4 + 0x14, 0);                            // $28F578 clr.w ($14,A4)
+    return cursorHeld28FDB0(ram, rom, a4, d0, ctx);      // $28F57C bsr $28FDB0
+  }
+  if (ram.u8(a4 + CURSOR.axesField) === 0) return 'idle'; // $28F566 tst.b / $28F56A beq
+  const left = (ram.u8(a4 + CURSOR.delayField) - 1) & 0xff;    // $28F56C subq.b #1
+  ram.setU8(a4 + CURSOR.delayField, left);
+  if (left !== 0) return 'waiting';                      // $28F570 bne $28F580
+  cursorMove28FE7A(ram, rom, a4, ctx);                   // $28F572 bsr $28FE7A
+  return 'released-repeat';
 }
 
 // ===========================================================================
