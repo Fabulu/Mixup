@@ -1941,6 +1941,34 @@ const STRUCTURE_RANGES = Object.freeze([
   [0x12d430, 0x12d650, 8, '3x32-ish, stride 68. [M] 8 streams, closed by '
     + '$12D650 being stride 1084. W58 Ã‚Â§2.2 identified $12D430 as "the first '
     + 'frame of the next family" and shipped only that one frame'],
+  // ------------------------------------------------------------------ WAVE 266
+  // THE IMPACT POOL'S ANIMATIONS (docket D4 and the visible half of D3).  W265's
+  // sweep, run from the lf19500 rung so it reaches STAGE 2, named 129 streams the
+  // page cannot resolve.  Three of the runs are impact animations, and they are
+  // sized by the cartridge rather than by that run:
+  //
+  //   [M] EVERY consecutive pair of sprites in $280E4A's templates is EXACTLY
+  //   16 x a stride --
+  //       $1BCACC -> $1BCD0C   16 x $24        $1BD04C -> $1BD68C   16 x $64
+  //       $1BCD0C -> $1BD04C   16 x $34        $1BD68C -> $1BE2CC   16 x $C4
+  //       $1BE2CC -> $1BE94C   16 x $68  (which is TWO stride-$34 families)
+  //   -- so an impact animation is SIXTEEN frames and its end is the next
+  //   template's own sprite.  The port already carried two of these strides as
+  //   `IMPACT_KIND[...].step` ($64 and $C4) and the ends as `.end`, and never used
+  //   either for the harvest.
+  //
+  // $1BCACC's end is pinned TWICE: it is template 5's sprite AND it is
+  // `$27FA4C cmpi.l #$1BCD0C`, the wrap constant kind 0's own body compares against.
+  [0x1bcacc, 0x1bcd0c, 16, 'W266: pool-A kind 0 own animation, stride $24. Pinned '
+    + 'twice -- $27FA4C\'s wrap constant AND template 5\'s sprite. This is the '
+    + 'screen clear explosion, which W264/W265 made the port PRODUCE and which '
+    + 'still drew nothing because these sixteen frames were not shipped'],
+  [0x1bcd0c, 0x1bd04c, 16, 'W266: the impact animation from template 5\'s sprite to '
+    + 'template 6\'s, stride $34. $340 is exactly 16 x $34'],
+  [0x1be60c, 0x1be94c, 16, 'W266: the SECOND stride-$34 family inside template 2\'s '
+    + '$680 gap ($1BE2CC + $340), ending at template 3\'s sprite. The first half was '
+    + 'already shipped; a harvest that assumed one family per template gap missed '
+    + 'this one'],
   [0x151e10, 0x152a90, 32, '3x32, stride 100. [M] 32 streams, closed by stride 228'],
   [0x155c34, 0x156bb4, 32, '3x40 c12, stride 124. [M] 32 streams, closed by $156BB4 '
     + 'being stride 484. 55-diag Ã‚Â§2.2 calls this "a 16-frame 3x40 c12 run '
@@ -1979,12 +2007,13 @@ const STRUCTURE_STREAMS = Object.freeze([
   0x1727c4, 0x172d18, 0x1928bc, 0x192a48,
 ]);
 {
-  if (STRUCTURE_STREAMS.length !== 10 || STRUCTURE_RANGES.length !== 5) {
+  if (STRUCTURE_STREAMS.length !== 10 || STRUCTURE_RANGES.length !== 8) {
     throw new Error(`STRUCTURE_STREAMS holds ${STRUCTURE_STREAMS.length} `
       + `addresses and there are ${STRUCTURE_RANGES.length} chain ranges; `
       + 'W58 measured 18 and 4, W66 added the fifth ($12D430, 8 frames), and '
       + 'W86 moved the EIGHT background-element immediates out of the list and '
-      + 'into BGELEM_ART below, which enumerates all thirteen.');
+      + 'into BGELEM_ART below, which enumerates all thirteen. W266 added THREE '
+      + 'impact-pool animations, each sixteen frames ending on a template sprite.');
   }
   let added = 0, already = 0, chained = 0;
   for (const [base, endsAt, count, why] of STRUCTURE_RANGES) {

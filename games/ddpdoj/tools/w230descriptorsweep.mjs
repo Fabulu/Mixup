@@ -120,7 +120,30 @@ if (threw) {
 }
 console.log('NOT in the bundle:', missing.length,
   'accounting for', missing.reduce((a, [, n]) => a + n, 0), 'draws');
-for (const [d, n] of missing.slice(0, 30)) console.log('  ', hx(d), 'drawn', n);
+const showAll = argv.includes('--all');
+for (const [d, n] of missing.slice(0, showAll ? missing.length : 30)) {
+  console.log('  ', hx(d), 'drawn', n);
+}
+// W266: and GROUPED BY STRIDE, because a harvest is added per FAMILY, not per
+// descriptor. Any two missing descriptors closer together than $2000 are put in the same
+// run and the run's own stride is reported, so a uniform family shows up as one line with
+// a count. That count is a FLOOR from this scenario -- the extent still has to be pinned
+// by code or by the stride the cartridge sizes it with, never by what a run drew.
+if (showAll && missing.length) {
+  const addrs = missing.map(([d]) => d).sort((a, b) => a - b);
+  const runs = [[addrs[0]]];
+  for (let i = 1; i < addrs.length; i++) {
+    if (addrs[i] - addrs[i - 1] <= 0x2000) runs[runs.length - 1].push(addrs[i]);
+    else runs.push([addrs[i]]);
+  }
+  console.log('\n=== grouped into runs (a FLOOR, not an extent) ===');
+  for (const r of runs) {
+    const gaps = [...new Set(r.slice(1).map((v, i) => v - r[i]))];
+    console.log('  ', hx(r[0]), '..', hx(r[r.length - 1]),
+      `${r.length} seen`, gaps.length === 1 ? `stride ${hx(gaps[0])}` : `gaps ${
+        gaps.map(hx).join(',')}`);
+  }
+}
 
 console.log('\n=== display-list drops on the last frame ===');
 for (const k of ['droppedBucket20', 'dropped6and9', 'overBudgetBytes',
