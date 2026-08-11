@@ -308,6 +308,99 @@ export function hiscoreBody287C3E(ram, spec) {
   return { made: true, index: ins.index, slot };      // $287CDA andi #$FFFE,SR -- carry CLEAR
 }
 
+// ===========================================================================
+// W301 -- `$28841E`, THE FACTORY TABLE, AND WHAT ITS DEFAULTS PROVE
+// ===========================================================================
+// Nine `lea` pairs and nine `dbra` copies, straight out of one contiguous ROM run into the
+// nine arrays. Two things make it worth more than its size.
+//
+// ## IT CONFIRMS THE COLUMN ASSIGNMENT WITH DATA, NOT WITH READING
+//
+// W300 derived which of the six word arrays gets which of `$287D7A`'s six source words from
+// the ROM's register order -- A1, A2, A3, A0, A5, A6, with **A0 fourth**. The factory
+// defaults are an independent check on that, because a wrong assignment puts recognisable
+// data in the wrong column:
+//
+//   $803874  0 0 0 0 0            the LOOP      -- a factory table has cleared no loop
+//   $80387E  3 2 2 1 1            the STAGE     -- DESCENDING with the scores, as it must
+//   $803888  0 6 2 2 2            the SHIP      -- 6 is in P2's 4..7 range, see the `+4`
+//   $803892  6 4 6 4 4            the STYLE
+//   $80389C  $0719 x4, $0720      the CHAIN     -- BCD 719 and 720, unmistakable
+//   $8038A6  4 4 2 0 6            the DIGITS    -- and a digit state is capped at 9
+//
+// Had the six been paired in address order (A0 first), the LOOP would land in the column
+// holding BCD `$0719` and the chain in the all-zero one. It does not. The stage column
+// descending in step with the scores is the second independent check on the same thing.
+//
+// ## THE 12-BYTE ENTRY IS THREE INITIALS, ONE LONG PER CHARACTER
+//
+// W300 could only say the slot was "the initials/name slot" from how `$287C3E` stamps a tag
+// into it. The defaults settle it -- five entries of three longs, every value small and a
+// multiple of four:
+//
+//   $00000038 $00000048 $0000000C      $00000028 $00000058 $00000048
+//   $00000020 $00000048 $00000038      $00000020 $00000030 $00000028
+//   $00000028 $00000030 $0000004C
+//
+// **Three characters per name, one longword each, each a character index times four.** So
+// `$287C7E move.l D6,(A4)` writes `$FF`/`$FE` into the FIRST character, which makes the tag
+// an out-of-range character code meaning "not entered yet" that also says which side owes
+// the entry. That is why the insert leaves the other eight bytes alone.
+//
+// ## AND IT EXPLAINS WHERE W299'S MEASUREMENT CAME FROM
+//
+// The five default score longs are `$01182223 $00846001 $00816579 $00775305 $00699653` --
+// **byte for byte the five W299 read out of `rip/web/seed.bin`.** So the shipped seed holds
+// the FACTORY table, not a played one, and W299's ordering measurement was reading the
+// cartridge's own defaults. The conclusion stands and is now sourced twice.
+//
+// It is also why the port needs no catch-up call here, unlike W92's object stream and W93's
+// text banks. `$28841E` runs once in the cold-boot path -- `$23BF74 jsr $28841E`, in the
+// reset routine `palette.js` maps as `$23BF20..$23C010`, four calls before the five palette
+// installs and the `bra` into the main loop -- and the seed carries its result exactly.
+// Replaying it would be redundant rather than restorative, and the test says so by
+// asserting the seed already equals what this installs.
+export const HISCORE_DEFAULTS = Object.freeze({
+  site: 0x28841e,
+  hiScore: 0x81b448,               // $288432 move.l $803824,$81B448 -- HUDRAM.hiScore
+  // The nine copies in the ROM's own order. `size` is the element width and `longs` is how
+  // many of them per entry, which is 3 only for the 12-byte array. `moveq #$4,D0` with
+  // `dbra` is FIVE passes, not four.
+  blocks: Object.freeze([
+    Object.freeze({ src: 0x287df8, dst: 0x803824, size: 4, longs: 1 }),  // $28841E scores
+    Object.freeze({ src: 0x287e0c, dst: 0x8038b0, size: 2, longs: 1 }),  // $28843C overflow
+    Object.freeze({ src: 0x287e16, dst: 0x803838, size: 4, longs: 3 }),  // $288450 initials
+    Object.freeze({ src: 0x287e52, dst: 0x80389c, size: 2, longs: 1 }),  // $288468 chain
+    Object.freeze({ src: 0x287e5c, dst: 0x803888, size: 2, longs: 1 }),  // $28847C ship
+    Object.freeze({ src: 0x287e66, dst: 0x803892, size: 2, longs: 1 }),  // $288490 style
+    Object.freeze({ src: 0x287e70, dst: 0x8038a6, size: 2, longs: 1 }),  // $2884A4 digits
+    Object.freeze({ src: 0x287e7a, dst: 0x803874, size: 2, longs: 1 }),  // $2884B8 loop
+    Object.freeze({ src: 0x287e84, dst: 0x80387e, size: 2, longs: 1 }),  // $2884CC stage
+  ]),
+});
+
+/**
+ * `$28841E` -- install the factory high-score table and publish its top entry as the HI.
+ *
+ * The `move.l $803824,$81B448` between the first and second copy is not incidental: it is
+ * what makes the HUD's HI score the table's index 0, so the two can never disagree at boot.
+ */
+export function hiscoreDefaults28841E(ram, rom) {
+  for (const b of HISCORE_DEFAULTS.blocks) {
+    for (let i = 0; i < HISCORE.entries; i++) {          // moveq #$4,D0 / dbra -- FIVE
+      for (let k = 0; k < b.longs; k++) {                // three move.l for the 12-byte one
+        const off = (i * b.longs + k) * b.size;
+        if (b.size === 4) ram.setU32(b.dst + off, rom.u32(b.src + off));
+        else ram.setU16(b.dst + off, rom.u16(b.src + off));
+      }
+    }
+    // $288432 -- between the scores and the overflows, exactly where the ROM has it.
+    if (b.dst === HISCORE.scoresBase) {
+      ram.setU32(HISCORE_DEFAULTS.hiScore, ram.u32(HISCORE.scoresBase));
+    }
+  }
+}
+
 /** `$287BD2` -- the P1 head. */
 export function hiscoreCheck287BD2(ram) { return hiscoreBody287C3E(ram, HISCORE_SIDES[0]); }
 

@@ -2453,6 +2453,25 @@ SHOT_WINDOWS.extend([
     # W264's and the pair covers all four blocks seam-free.
     (0x280C1E, 0x0010, "W287: $280BCE hook block 1 of 4, EIGHT words; abuts W264's "
                        "$280C2E+$30, which covers the other three"),
+    # W301: the FACTORY high-score table.  `$28841E` copies nine blocks out of one
+    # contiguous run into the nine parallel arrays at `$803824..$8038B9`:
+    #
+    #   $287DF8  5 longs   -> $803824  the scores
+    #   $287E0C  5 words   -> $8038B0  the overflows
+    #   $287E16  15 longs  -> $803838  the 12-byte entries (three longs each)
+    #   $287E52  5 words   -> $80389C  the chain high-waters
+    #   $287E5C  5 words   -> $803888  the ships
+    #   $287E66  5 words   -> $803892  the styles
+    #   $287E70  5 words   -> $8038A6  the digit states
+    #   $287E7A  5 words   -> $803874  the loops
+    #   $287E84  5 words   -> $80387E  the stages
+    #
+    # The last block ends at $287E8D, so $96 covers the run exactly and nothing else.
+    # The window is one range because the ROM stores it as one: the nine `lea`s in
+    # `$28841E` are consecutive and their sources are contiguous even though their
+    # DESTINATIONS are not in address order.
+    (0x287DF8, 0x0096, "W301: $28841E's FACTORY high-score table, nine blocks in one "
+                       "contiguous run $287DF8..$287E8D"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

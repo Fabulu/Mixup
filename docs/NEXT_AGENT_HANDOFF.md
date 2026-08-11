@@ -28,11 +28,26 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W299, `ddpdoj: the high-score search`.
-- Suite: `node --test games/ddpdoj/tests/` is **2051/2051**, green, no skips.
+- HEAD is W301, `ddpdoj: the factory high-score table`.
+- Suite: `node --test games/ddpdoj/tests/` is **2091/2091**, green, no skips.
+- **THE HIGH-SCORE SUBSYSTEM IS COMPLETE FROM THE TALLY LINE DOWN.** `$287BD2`, `$287C08`,
+  `$287C3E`, `$287CEE`, `$287D96` and `$28841E` are all in `src/hiscore.js` with no counted
+  gap inside any of them, and bonus line 2 calls them instead of noting them. What remains is
+  the DISPLAY and the name entry, not the arithmetic. Layout, for the next reader: **nine
+  parallel arrays tiling `$803824..$8038B9`** -- five score longs, five 12-byte name entries
+  (three longs, one character each), six arrays of five words (loop, stage, ship, style,
+  chain, digits), five overflow words. **Every `lea` in the family names an END**, which is
+  what makes every walk a `-(An)` climb.
+- **WHEN A SUBSYSTEM IS PARALLEL ARRAYS, SCAN THE ADDRESS RANGE, NOT ONE POINTER FIELD.**
+  W301 wasted a search chasing `($C,A4)` -- whose absolute forms `$81B42C`/`$81B43C` have zero
+  references -- and then found all four caller families in one scan for absolute longs landing
+  anywhere in `$803824..$8038BA`. The family that touches every column is the one that
+  understands the layout.
 - **BEFORE DECIDING A QUESTION NEEDS NEW EVIDENCE, CHECK THE EVIDENCE THE REPO SHIPS.**
   Three waves deferred the high-score subsystem because the table's ordering was unknown.
-  `rip/web/seed.bin` is a snapshot of the board's main RAM and had the answer in it.
+  `rip/web/seed.bin` is a snapshot of the board's main RAM and had the answer in it. W301
+  then found the same five scores in the ROM at `$287DF8`: **the shipped seed carries the
+  FACTORY table**, so no boot catch-up is needed and a test asserts that.
 - **`DBcc` EXITS WHEN ITS CONDITION IS TRUE** -- "decrement and branch if FALSE". So `dbcc`
   exits on carry CLEAR. Reading it the other way makes `$287D96`'s search run backwards,
   and both readings look plausible from the instructions alone.
@@ -188,8 +203,21 @@ Cloudflare Pages. Pushing does not publish and publishing does not push.
 
 ## Work order toward the goal
 
-1. **PUBLISH, then ask the owner to look again at D16 and D17.** This is the cheapest
-   next move for the docket and it is D19's whole point.
+1. **`$25B58E..$25B946`, THE HIGH-SCORE DISPLAY.** The one caller family that touches all
+   nine columns and has not been read yet, so it is the routine that reads back everything
+   W299/W300/W301 wrote, and it is what the player actually sees. Its column addresses are
+   already known and named; start from the scan in the W301 worklog rather than repeating it.
+   After it, `$28F6F6..$28F7D4` (the result screen, eight of the nine columns) and the
+   `$28F32x` head that is the SECOND caller of `$287BD2`/`$287C08`.
+
+   Still open in the subsystem: whatever writes the three character longs through `($C,A4)`.
+   The slot is allocated and pointed at, and its first long holds the `$FF`/`$FE` "not entered
+   yet" tag. `$81B42C`/`$81B43C` have zero absolute references, so do not search for them.
+
+1b. **PUBLISH, then ask the owner to look again at D16 and D17.** This is the cheapest
+   next move for the docket and it is D19's whole point. **It is outward-facing and D18 does
+   not cover it** ("`git push` is not `tools/publish.mjs`"), so it needs the owner's
+   go-ahead; every wave so far has raised it and left it unrun.
 
    W285 settled D17's mechanism with one measurement: drive `$276744`'s two death
    conditions on a live type-`$8A` carrier mid-run and the reserved ten goes 0 -> 1 the
