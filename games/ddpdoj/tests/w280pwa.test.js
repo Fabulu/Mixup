@@ -130,7 +130,7 @@ test('W280 the worker NEVER precaches assets/ -- the shards stay deferred', () =
   }
 });
 
-test('W280 assets are NETWORK-first and the shell is CACHE-first', () => {
+test('W280 assets are NETWORK-first, and W327 makes NAVIGATIONS network-first too', () => {
   // Online: fresh art, and the shard cost is paid when assets.js decided to pay it.
   // Offline: whatever has been seen. The two routes must not be swapped.
   assert.match(SW, /const isAsset = \(url\) => url\.pathname\.includes\('\/games\/ddpdoj\/assets\/'\)/);
@@ -138,9 +138,46 @@ test('W280 assets are NETWORK-first and the shell is CACHE-first', () => {
   const head = assetArm.slice(0, assetArm.indexOf('return;'));
   assert.ok(head.indexOf('await fetch(req)') < head.indexOf('caches.match(req)'),
     'the asset arm tries the network BEFORE the cache');
-  const shellArm = SW.slice(SW.indexOf('// THE SHELL: cache-first'));
-  assert.ok(shellArm.indexOf('caches.match(req') < shellArm.indexOf('await fetch(req)'),
-    'and the shell arm tries the cache first');
+  // W327: the shell is still cache-first for SUB-RESOURCES -- they are a handful of small files
+  // that only change with the build id -- but the NAVIGATION is network-first now. Cache-first on
+  // the document meant a deployed build was not picked up until the old worker had been replaced
+  // and its cache deleted, which is how the owner got a stale page on one device and ERR_FAILED on
+  // another. The guard is the `if (!isNav)` around the first lookup.
+  const shellArm = SW.slice(SW.indexOf('// THE SHELL.'));
+  assert.match(shellArm, /const isNav = req\.mode === 'navigate'/);
+  assert.match(shellArm, /if \(!isNav\) \{\s*\n\s*const hit = await caches\.match\(/,
+    'the cache-first lookup is SKIPPED for navigations');
+  const subOnly = shellArm.slice(shellArm.indexOf('if (!isNav)'));
+  assert.ok(subOnly.indexOf('caches.match(req') < subOnly.indexOf('await fetch(req)'),
+    'and a sub-resource still tries the cache first');
+});
+
+test('W327 the shell handler NEVER throws, because a throw is ERR_FAILED', () => {
+  // THE RELEASE BUG THIS TEST EXISTS FOR. `e.respondWith()` with a rejected promise makes the
+  // browser report the page as UNREACHABLE -- the owner saw "Die Website ist nicht erreichbar ...
+  // ERR_FAILED" while the origin was serving 200, and Ctrl+Shift+R cleared it. The old handler
+  // ended its offline path in `throw new Error('offline')`. One transient fetch failure was enough.
+  // Comment lines are stripped first: the block above the handler QUOTES the old
+  // `throw new Error('offline')` while explaining why it was wrong, and a check that matched its
+  // own documentation would be a test of the prose rather than of the code.
+  const shellArm = SW.slice(SW.indexOf('// THE SHELL.'))
+    .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  assert.ok(!/throw new Error/.test(shellArm),
+    'the shell arm must resolve to a Response on every path, never reject');
+  // And the offline navigation answers with a page that says so, rather than nothing.
+  assert.match(shellArm, /status: 503, statusText: 'Offline'/);
+});
+
+test('W327 every cache lookup names ITS OWN cache, not every cache on the origin', () => {
+  // `caches.match(req)` with no `cacheName` searches EVERY cache in the origin. `activate` deletes
+  // the previous `ddpdoj-*` caches, but until it has, a cache-first shell lookup can be answered
+  // out of the PREVIOUS build. Both shell lookups are pinned to SHELL_CACHE.
+  const shellArm = SW.slice(SW.indexOf('// THE SHELL.'));
+  const lookups = shellArm.match(/caches\.match\([^)]*\)/g) ?? [];
+  assert.ok(lookups.length >= 3, `expected the shell arm to look up at least 3 times, saw ${lookups.length}`);
+  for (const l of lookups) {
+    assert.match(l, /cacheName: SHELL_CACHE/, `unscoped cache lookup: ${l}`);
+  }
 });
 
 test('W280 a never-cached asset offline 504s rather than returning an empty 200', () => {

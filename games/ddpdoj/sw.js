@@ -116,11 +116,29 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // THE SHELL: cache-first. It is a handful of small files and they only change
-  // when the build id does.
+  // THE SHELL.  **NAVIGATIONS ARE NETWORK-FIRST AND EVERYTHING ELSE IS CACHE-FIRST**, and the
+  // split is the fix for the release bug the owner hit on 2026-08-11: "Die Website ist nicht
+  // erreichbar ... ERR_FAILED", cleared by Ctrl+Shift+R. Three things were wrong here and all
+  // three are release bugs rather than gameplay ones.
+  //
+  //  1. **A THROW IN `respondWith` IS `ERR_FAILED`.** The old `catch` ended in
+  //     `throw new Error('offline')`, and a rejected `respondWith` makes the browser report the
+  //     page as unreachable -- indistinguishable, to the person looking at it, from the site being
+  //     down. One transient fetch failure on a phone handing over between cells was enough. It now
+  //     always resolves to a real Response.
+  //  2. **`caches.match` WITHOUT `cacheName` SEARCHES EVERY CACHE ON THE ORIGIN**, not just this
+  //     build's. `activate` deletes the previous `ddpdoj-*` caches, but until it has, a cache-first
+  //     shell can be answered out of the OLD build. Both lookups are now pinned to `SHELL_CACHE`.
+  //  3. **CACHE-FIRST ON THE NAVIGATION MEANT A NEW BUILD WAS NOT PICKED UP** until the old SW
+  //     was replaced and its cache deleted, which is why the owner's phone showed a stale page
+  //     while the desktop failed outright. The document is one small file; fetching it first and
+  //     falling back to the cache costs nothing and makes a deploy visible on the next load.
+  const isNav = req.mode === 'navigate';
   e.respondWith((async () => {
-    const hit = await caches.match(req, { ignoreSearch: true });
-    if (hit) return hit;
+    if (!isNav) {
+      const hit = await caches.match(req, { ignoreSearch: true, cacheName: SHELL_CACHE });
+      if (hit) return hit;
+    }
     try {
       const r = await fetch(req);
       if (r.ok && r.type === 'basic') {
@@ -129,13 +147,24 @@ self.addEventListener('fetch', (e) => {
       }
       return r;
     } catch {
-      // A navigation with nothing cached is the only case worth a special answer:
-      // hand back the page itself if we have it, so a deep link still boots.
-      if (req.mode === 'navigate') {
-        const page = await caches.match('./index.html', { ignoreSearch: true });
+      // Offline. Answer from OUR cache if we can, and otherwise hand back a page that SAYS so.
+      const hit = await caches.match(req, { ignoreSearch: true, cacheName: SHELL_CACHE });
+      if (hit) return hit;
+      if (isNav) {
+        const page = await caches.match('./index.html',
+          { ignoreSearch: true, cacheName: SHELL_CACHE });
         if (page) return page;
+        return new Response(
+          '<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width">'
+          + '<title>Offline</title><body style="font:16px system-ui;padding:2rem">'
+          + '<h1>Offline</h1><p>This build has not been cached yet, so there is nothing to play '
+          + 'from here. Reconnect and reload.</p>',
+          { status: 503, statusText: 'Offline',
+            headers: { 'content-type': 'text/html; charset=utf-8' } });
       }
-      throw new Error('offline');
+      return new Response('offline and this shell file was never cached', {
+        status: 504, statusText: 'Gateway Timeout',
+      });
     }
   })());
 });
