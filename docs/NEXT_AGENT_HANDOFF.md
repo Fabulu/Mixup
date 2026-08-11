@@ -551,9 +551,54 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
    this type's armour twice as fast as shots do**, which is a real gameplay behaviour and the kind
    of thing worth a test rather than a comment.
 
-   Still to read: `$274116..$27449C` (the body between the freeze test and the death arm), the
-   draw at `$27432C`, and the death arm at `$27449C`. The handler is roughly 1,030 bytes, so budget
-   it like `$1B` (one wave) rather than like `$59`.
+   #### AND ITS STATE MACHINE, TO STATE 2 -- ANOTHER MEMBER OF THE `$45`/`$1B` RAMP FAMILY
+
+   The state word is **`($38,A6)`**, on the SUB-RECORD, where `$1B` uses `($18,A5)` on the record.
+   Read it as a word and write it as a word, as everywhere else in this family.
+
+       27411a  cmpi.w #$1000,($2,A6) / blt $274286     below the fire X -> just draw
+       274124  move.w ($38,A6),D0 / bne                the dispatch
+       -- STATE 0 --
+       27412a  ($1E,A5) cadence ; on borrow ($1E,A5) = ($28,A5) -- the $10 the init body wrote --
+               and ($38,A6) = 1                                                     -> state 1
+       -- STATE 1, the RAMP UP --
+       274148  ($3A,A6)/($3B,A6) cadence
+       274156  ($36,A6) += 4 ; indexes $27460A -> ($32,A6) ; at index $14 -> ($38,A6) = 2
+               **SIX entries** (0,4,8,$C,$10,$14), where $1B's ramp has eight and clamps at $1C
+       -- STATE 2, and it does NOT ramp to a clamp: it LOOPS --
+       274184  ($3A,A6)/($3B,A6) cadence
+       274190  ($36,A6) += 4 ; **if it reaches $18 it is reset to $10**, so the animation
+               oscillates over the last two entries instead of stopping. That wrap is the
+               difference from $1B's state 3, which walks back DOWN to zero
+       2741a2  ($36,A6) indexes the table again ...
+
+   So this is a fourth member of the `$45`/`$1B` ramp family (delay, ramp up, act) with a LOOPING
+   tail rather than a ramp-down one. Worth noting for the shared-driver question W323 raised: the
+   members now differ in the state field, the table, the entry count AND the tail behaviour, which
+   argues for keeping them as separate transcriptions a while longer.
+
+   Still to read: state 2's tail from `$2741A2`, state 3+ at `$27425E`, the draw at
+   `$274286`/`$27432C`, and the death arm at `$27449C`. The handler is roughly 1,030 bytes, so
+   budget it like `$1B` (one wave) rather than like `$59`.
+
+   #### THE RAMP TABLE'S EXTENT IS PINNED BY CODE, AND IT EXPLAINS THE WRAP
+
+   Read from the image at `$27460A`:
+
+       [00] $001732E0   [04] $00173334   [08] $00173388   [0C] $001733DC
+       [10] $00173430   [14] $00173484   [18] $3B7C0001   <- CODE, `move.w #$1,...`
+
+   Six `$0017xxxx` sprite descriptors ascending by exactly `$54`, and then **index `$18` is an
+   INSTRUCTION**. So state 2's `cmpi.w #$18 / move.w #$10` wrap is not a stylistic choice: it is
+   what stops the ROM indexing into its own code, and the table is exactly six longwords with its
+   far end bounded by code rather than by a count.
+
+   That also settles the window: **`(0x27460A, 0x0018)`**, plus **`(0x273FE4, 0x0092)`** for the
+   prototypes and stage rows. Two windows, both extents pinned by code on the far side.
+
+   A port that ramped one entry further would emit an address built from `$3B7C0001` -- so this is
+   a case where the guard IS the semantics, and it needs the `unreached` treatment if the index can
+   ever arrive out of range.
 
    ### W322 CLAIMED `$1B` WAS BLOCKED ON `$24226E`. IT IS NOT, AND THE WAY THAT ERROR HAPPENED IS
    ### THE MOST REUSABLE THING IN THIS SECTION
