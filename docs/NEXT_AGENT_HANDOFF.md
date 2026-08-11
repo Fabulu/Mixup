@@ -28,9 +28,12 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W322, `ddpdoj: the $5C damage arm becomes one routine, and type $1B is not a leaf`.
-- Suite: `node --test games/ddpdoj/tests/` is **2315/2315**, green, no skips. 411 ROM windows.
-  `dojcoverage.py` reports 80/256 enemy types ported.
+- HEAD is W325, `ddpdoj: type $01, two shared library routines, and a wrong-table error`.
+- Live build: **20260811184328**, deployed and confirmed (W321..W324). W325 is NOT yet live.
+- Suite: `node --test games/ddpdoj/tests/` is **2345/2345**, green, no skips. 414 ROM windows.
+  `dojcoverage.py` reports **82/256** enemy types ported. Web gate 31 of 31, exit 0.
+- Stage 5's census is **ELEVEN types over 32 records** (W323 took `$1B`). Note that W325's
+  82nd type is `$01`, which NO stage script spawns, so it is not one of the eleven.
 - **THE WEB GATE IS GREEN AGAIN AND THE GAME PUBLISHES.** W321 found it had been red for **182
   commits** and that nothing was broken: the expectations were last recorded at `c62f35e` and the
   gate is only ever run BY `publish.mjs`, so it goes stale exactly as long as nobody publishes and
@@ -409,11 +412,32 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
    here is **`$1A` (4 records) then `$81` (3)**, then `$49`/`$4A`/`$4B`, then `$47`, then the
    bundles, leaving `$4C` last.
 
-   ### `$1A` IS A SIBLING OF `$1B`, MEASURED IN W324 -- START THERE
+   ### `$1A` IS BLOCKED ON REGISTER PROVENANCE -- DO NOT START THERE
 
-   `$1A` is the biggest CLEAN stage-5 type left and W324 read its init body read-only. **It is
-   the same shape as the `$1B` that W323 just ported**, so it should be cheap, and `damageArm5C`
-   may well take a third caller:
+   **W325 corrects W324's "it should be cheap".** Reading past the init body's opening found:
+
+       268d7e  movem.w ($2,A6),D0-D1        D0 = X, D1 = Y
+       268d84  addi.w #$B00,D0
+       268d88  addi.w #$0,D1                a no-op add that is IN THE LISTING
+       268d8c  jsr $24203E                  <-- THE BLOCKER
+       268d92  bcc $268D98                  and it branches on the CARRY
+       268d94  move.b ($1B,A6),D1           the carry arm: use the record's own angle
+
+   `$24203E` is `aim.js`'s `core64` and it is **PURE**: `move.w #$1800,D4 / add.w D4,D0..D3`, self
+   in D0/D1 and **target in D2/D3**. Type `$1A` never sets D2 or D3 -- D2 is a stage byte from
+   `$268D4C` and D3 is untouched -- and `$263808` does not set them either (it reads `($12,A5)`,
+   tests bits and writes `($2,A6)`).
+
+   So the aimed angle depends on **whatever the enemy init dispatcher left in D2/D3**, and the
+   `bcc` depends on a carry out of the core's own internal arithmetic. Both are answerable only by
+   measuring the dispatcher's register state at `$268D8C`. **This is the same class of blocker as
+   `$280252`, which W288 left pending "measuring A0 at `$28029A`", and it must be measured rather
+   than guessed** -- an invented target would put every one of this type's shots in a plausible
+   wrong direction, which no record count would show.
+
+   The rest of `$1A` is read and recorded below; only the aim is blocked.
+
+   The init body, for the wave that measures D2/D3 and then writes it:
 
        268d1e  move.w #$1,($4,A5) / rts            the init STUB, identical shape to $1B's
        268d26  lea ($268DFA,PC),A0 / jsr $2637A2 / move.l A0,($44,A5)
@@ -427,8 +451,29 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
        268d72  jsr $263808                         a JSR, not $1B's tail JMP: more follows it
        268d78  lea $272C7A,A0                      and $272C7A + $80 is ALREADY A WINDOW
 
-   Spans from the type table, for planning: `$1A` $14E, `$81` $4C, `$49` $A2, `$4A` $B6,
-   `$4B` $B6, `$47` $E2.
+   ### AND READ THE TYPE TABLE WITH BOTH BASES -- W325 GOT THIS WRONG AND LOST A WAVE
+
+   There are TWO tables: **`$267824` for types `$00..$7F` and `$27E412` for `$80..$FF`**, indexed
+   by `(t & $7F) * 8`. `tests/w314stage5scope.test.js typeEntry` is the correct form; copy it:
+
+       const tab = t < 0x80 ? TYPE_LO : TYPE_HI;
+       const off = (t & 0x7f) * SPAWN.TYPE_STRIDE;
+
+   W325 copied the MASK and not the BASE (`0x267824 + (t & 0x7f) * 8`), so asking for `$81` got
+   entry 1 of the low table and it translated **type `$01`** instead. The code it wrote is fine and
+   is committed, but it is not one of stage 5's eleven and the census did not move.
+
+   **The thing that caught it was the census refusing to move**, not the suite: 2334 tests went
+   green and `enemy_types` rose 81 -> 82, while `w314stage5scope.test.js` still said ELEVEN types
+   over 32 records. A wave that ports one of the eleven MUST move that number. If it does not,
+   suspect the wave before the test -- `enemyHandlerMap` is built from the port's own
+   `handlerMap()`, so it does see new registrations.
+
+   Spans from the type table (correctly read): `$1A` $14E, the REAL `$81` at `$273F06`/`$274076`,
+   `$49` $A2, `$4A` $B6, `$4B` $B6, `$47` $E2.
+
+   Next, in order: **the real `$81`** (3 records), then `$49`/`$4A`/`$4B`, then `$47`, then the
+   dependency bundles, leaving `$4C` last. `$1A` re-enters the queue once D2/D3 are measured.
 
    ### W322 CLAIMED `$1B` WAS BLOCKED ON `$24226E`. IT IS NOT, AND THE WAY THAT ERROR HAPPENED IS
    ### THE MOST REUSABLE THING IN THIS SECTION
