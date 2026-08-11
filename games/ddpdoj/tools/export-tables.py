@@ -2350,6 +2350,23 @@ SHOT_WINDOWS.extend([
     (0x29E356, 0x0222, "W208: Stage-3 boss E8 init/step closure $29E356..$29E578"),
     (0x29E578, 0x048A, "W209: Stage-3 boss child type $99 closure $29E578..$29EA02"),
     (0x29EADA, 0x0010, "W207: Stage-3 boss requested type $9A self-free proof $29EADA..$29EAEA"),
+    # W273: `$2600D8`'s own DIP word table.  `$260124 lea ($2600CE,PC),A1 /
+    # adda.w D0,A1 / move.w (A1),(A0)` with D0 = `$80380E` doubled, so the
+    # entries are WORDS -- and the extent needs no guess at all, because
+    # `$2600CE + $A` IS `$2600D8`, the routine that reads it.  Its first word
+    # disassembles as `movem.l D0-D7/A0-A6,-(A7)` ($48E7), i.e. CODE.
+    (0x2600CE, 0x000A, "W273: $2600D8's five DIP words $2600CE..$2600D8, far "
+                       "end pinned by $2600D8's own movem.l"),
+    # W273: `$286FA6`'s FIRST-threshold table.  W63 documented the address and
+    # the $10 extent (`check_hud_extents` asserts $2883FE + $10 == $28840E on
+    # every export) but never gave it a window, because W63 only ported the
+    # STEP `$286FDA` and not the seed.  The two neighbouring windows leave an
+    # EIGHT-BYTE HOLE at $288406..$28840D: `$2883E6+$20` ends at $288405 and
+    # `$28840E+$10` starts past it, so DIP options 0 and 1 resolved and 2 and 3
+    # threw.  This window is what makes all four readable.
+    (0x2883FE, 0x0010, "W273: $286FA6's FOUR first-extend-threshold longwords, "
+                       "DIP $80380D * 4; abuts $28840E, and $2883E6+$20 covered "
+                       "only the first two"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

@@ -190,6 +190,11 @@ export const HUD = {
   scoreMarkP1: 0x185e16, scoreMarkP2: 0x185e3c,  // "mark all 9 dirty" arms
   extendStep: 0x286fda,
   extendTable: 0x28840e,    // $286FDE lea -- FOUR longwords, then $FFFFFFFF
+  // W273: the FIRST-threshold table `$286FCC lea $2883FE,A2`, indexed by the
+  // same DIP byte and abutting `extendTable` from below ($2883FE + $10). Four
+  // longwords, and `check_hud_extents` already asserts that adjacency on every
+  // export, so this needs no window of its own.
+  firstThresholdTable: 0x2883fe,
   romPoke: 0x287020,
   perFrame: 0x28444e,       // $28D534 jsr
   cursorA: 0x285f8a, cursorB: 0x285f52,          // $28444E / $284452 bsr
@@ -302,6 +307,13 @@ export const HUDRAM = {
   pendingP1: 0x81b4c0, pendingP2: 0x81b4c4,
   extendNextP1: 0x81b4ac, extendNextP2: 0x81b4b0,
   extendIdxP1: 0x81b4b4, extendIdxP2: 0x81b4b6,
+  // W273: the SECOND total/overflow pair, `$287148`/`$287198`'s other two
+  // clears. The names are INFERRED from the pairing -- `$81B4A0` is a long and
+  // `$81B4A8` a word, exactly the shape of `totalP1`/`ovfP1` four words below,
+  // and the reset zeroes both pairs together. No routine that READS them is
+  // ported yet, so the inference is unconfirmed and labelled as such.
+  total2P1: 0x81b4a0, total2P2: 0x81b4a4,
+  ovf2P1: 0x81b4a8, ovf2P2: 0x81b4aa,
   savedTotal: 0x81b590,     // $284312 move.l -$4(A0),$81B590
   savedOvf: 0x81b594,       // $284318 move.w (A6),$81B594
   digitsP1: 0x81b4c8, digitsP2: 0x81b522,   // 9 records of stride $A
@@ -2302,6 +2314,169 @@ export function makeHudObject(rom) {
     perFrame28444E(ram, rom, ctx);                      // $28D534 jsr $28444E
     void slot;
   };
+}
+
+// ===========================================================================
+// W273 -- `$2600D8`'S SEVEN ROWS PER SIDE
+//
+// `$2600D8` is the stage-clear score tally's poster, and its two arms call SEVEN
+// routines each. TWO of the seven were already here and W271 discovered they had
+// never been called:
+//
+//   $286FA6 / $286FB4   the EXTEND THRESHOLD seed          this section
+//   $287148 / $287198   the SCORE DRAIN reset              this section
+//   $2871E8 / $287210   the CHAIN METER clear              this section
+//   $287238 / $28725E   the DIGIT-STATE bump, capped at 9  this section
+//   $287AAA / $287ADC   the tally's own TEXT ROW           this section
+//   $286ED6 / $286F3E   the hyper stock row                W113, called W271
+//   $2878CC / $28795C   the lives row                      W116, called W271
+//
+// EVERY RAM ADDRESS THE FIVE TOUCH WAS ALREADY NAMED IN `HUDRAM`, which is what
+// says they are the same family: `digitsP1` is documented "9 records of stride
+// $A" and `$287148` is the loop that SEEDS those nine; `digitStateP1` and
+// `$287238`'s counter are the same word; `$2871E8`'s 40-byte sweep is exactly
+// the `p1` chain-meter block from `accA` through `chain`; `extendNextP1` and
+// `extendIdxP1` are `$286FA6`'s two destinations. The port has been drawing all
+// of it and initialising none of it.
+//
+// All five are two-arm bodies that differ only in their bases, so each is one
+// body over a side table -- the shape `hyperStock286ED6` and `livesRow2878CC`
+// already use.
+
+/** `$286FA6` (P1) / `$286FB4` (P2) -- SEED THE EXTEND THRESHOLD FROM THE DIP.
+ *
+ *   286fa6: lea $81B4AC,A0 / lea $81B4B4,A1 / bra $286FC0
+ *   286fb4: lea $81B4B0,A0 / lea $81B4B6,A1
+ *   286fc0: moveq #0,D0 / move.b $80380D,D0 / add.w D0,D0 / add.w D0,D0
+ *   286fcc: lea $2883FE,A2 / move.l (A2,D0.w),(A0) / move.w D0,(A1) / rts
+ *
+ * `extendStep286FDA` above is the STEP and has been ported since W63; this is
+ * the seed it steps from, and W63's own comment says so ("`$286FA6`, the INIT
+ * that seeds `$81B4AC`/`$81B4B4` from DIP `$80380D`, is NOT in this closure and
+ * is not ported").
+ *
+ * **THE CURSOR IS THE BYTE OFFSET, NOT THE DIP.** `move.w D0,(A1)` stores D0
+ * AFTER both `add.w`, so option 1 leaves `4` in `extendIdx`, not `1` -- which is
+ * exactly what `extendStep286FDA` then wants, because it uses the same word as a
+ * `(A5,D0.w)` byte index into `extendTable`. A port that stored the DIP would
+ * read the wrong interval on every extend after the first.
+ */
+export function extendInit286FA6(ram, rom, ctx, who) {
+  const addr = who === 0 ? 0x286fa6 : 0x286fb4;
+  if (!rom) { note(ctx, addr, '$286FA6 the extend-threshold seed'); return; }
+  const thr = who === 0 ? HUDRAM.extendNextP1 : HUDRAM.extendNextP2;
+  const idx = who === 0 ? HUDRAM.extendIdxP1 : HUDRAM.extendIdxP2;
+  // $286FC2 move.b $80380D,D0 -- a BYTE read, zero-extended by the `moveq #0`
+  // before it, so no sign extension: this is not W270's trap.
+  const d0 = (ram.u8(0x80380d) * 4) & 0xffff;             // $286FC8/$286FCA add.w twice
+  ram.setU32(thr, rom.u32(HUD.firstThresholdTable + d0)); // $286FD2 move.l (A2,D0.w),(A0)
+  ram.setU16(idx, d0);                                    // $286FD6 move.w D0,(A1)
+}
+
+/** `$287148` (P1) / `$287198` (P2) -- RESET THE SCORE DRAIN.
+ *
+ * Seeds the nine `stride $A` digit records `HUDRAM.digitsP1` already names, then
+ * zeroes both total/overflow pairs and the hyper-shown byte:
+ *
+ *   moveq #0,D0 / move.l #$9040D8,D1 / moveq #0,D2 / moveq #0,D3
+ *   lea $81B4C8,A0 / moveq #$8,D7
+ *   28715c: move.w D0,(A0)+ / move.l D1,(A0)+ / move.w D2,(A0)+ / move.w D3,(A0)+
+ *           addi.w #$100,D1 / dbra D7
+ *
+ * `moveq #$8,D7` with `dbra` is NINE passes, one per record, and $A bytes each
+ * lands exactly on `extraRecA` ($81B4C8 + 9*$A == $81B57C) -- the adjacency
+ * `HUDRAM`'s own comment records. `addi.w #$100,D1` is a WORD add on a longword
+ * register, so the destination column steps and the high half never carries.
+ */
+export function scoreDrainReset287148(ram, who) {
+  const p = who === 0
+    ? { digits: HUDRAM.digitsP1, dest: 0x9040d8, extra: HUDRAM.extraRecA,
+      total: HUDRAM.totalP1, total2: HUDRAM.total2P1,
+      ovf: HUDRAM.ovfP1, ovf2: HUDRAM.ovf2P1, shown: HUDRAM.p1.hyperShown }
+    : { digits: HUDRAM.digitsP2, dest: 0x9051d8, extra: HUDRAM.extraRecB,
+      total: HUDRAM.totalP2, total2: HUDRAM.total2P2,
+      ovf: HUDRAM.ovfP2, ovf2: HUDRAM.ovf2P2, shown: HUDRAM.p2.hyperShown };
+  let a0 = p.digits;
+  let d1 = p.dest >>> 0;
+  for (let n = 0; n < 9; n++) {                         // moveq #$8,D7 / dbra
+    ram.setU16(a0, 0);                                  // move.w D0,(A0)+  the dirty flag
+    ram.setU32(a0 + 2, d1);                             // move.l D1,(A0)+  the destination
+    ram.setU16(a0 + 6, 0);                              // move.w D2,(A0)+
+    ram.setU16(a0 + 8, 0);                              // move.w D3,(A0)+
+    a0 += 10;
+    d1 = ((d1 & 0xffff0000) | u16((d1 & 0xffff) + 0x100)) >>> 0;  // addi.w #$100,D1
+  }
+  ram.setU16(p.extra, 1);                               // $287172 move.w #$1,(A0)+
+  ram.setU32(p.total, 0);                               // $287178
+  ram.setU32(p.total2, 0);                              // $28717E
+  ram.setU16(p.ovf, 0);                                 // $287184
+  ram.setU16(p.ovf2, 0);                                // $28718A
+  ram.setU8(p.shown, 0);                                // $287190
+}
+
+/** `$2871E8` (P1) / `$287210` (P2) -- CLEAR THE CHAIN METER.
+ *
+ *   lea $81B5B8,A0 / moveq #0,D0
+ *   2871f4: move.w D0,(A0)+ / cmpa.l #$81B5E0,A0 / bne $2871F4
+ *           move.w D0,$81B632 / move.l D0,$81B5BC / rts
+ *
+ * The sweep is `$81B5B8..$81B5DE` as words -- 40 bytes, the whole `HUDRAM.p1`
+ * meter block from `accA` through `chain`. `$81B5BC` is INSIDE that range, so the
+ * trailing `move.l` is redundant on the board too; it is kept because dropping a
+ * write is how a port stops being a translation.
+ */
+export function chainMeterClear2871E8(ram, who) {
+  const p = who === 0
+    ? { from: 0x81b5b8, to: 0x81b5e0, hi: HUDRAM.chainHiWaterP1, again: 0x81b5bc }
+    : { from: 0x81b5e2, to: 0x81b60a, hi: HUDRAM.chainHiWaterP2, again: 0x81b5e6 };
+  for (let a = p.from; a !== p.to; a += 2) ram.setU16(a, 0);  // $2871F4 / cmpa.l / bne
+  ram.setU16(p.hi, 0);                                   // $2871FE move.w D0,$81B632
+  ram.setU32(p.again, 0);                                // $287204 move.l D0,$81B5BC
+}
+
+/** `$287238` (P1) / `$28725E` (P2) -- BUMP THE DIGIT STATE, CAPPED AT 9.
+ *
+ *   cmpi.w #$9,$81B49A / beq $28725C   -- AT nine, not past it: the cap is a
+ *   addq.w #$1,$81B49A                    `beq`, so a state that somehow got
+ *   lea $81B57C,A0                        past 9 would keep counting
+ *   addi.w #$1,($6,A0) / move.w #$1,(A0)
+ *
+ * `($6,A0)` is the third word of `extraRecA`'s $A-byte record and `(A0)` is its
+ * dirty flag, so this is "advance the standalone record's frame and mark it
+ * dirty" -- the same (dirty, dest, tile) shape `HUDRAM` documents for the two
+ * standalone records.
+ */
+export function digitStateBump287238(ram, who) {
+  const state = who === 0 ? HUDRAM.digitStateP1 : HUDRAM.digitStateP2;
+  const rec = who === 0 ? HUDRAM.extraRecA : HUDRAM.extraRecB;
+  if (ram.u16(state) === 9) return;                      // $287238 cmpi.w #$9 / beq
+  ram.setU16(state, u16(ram.u16(state) + 1));            // $287242 addq.w #$1
+  ram.setU16(rec + 0x06, u16(ram.u16(rec + 0x06) + 1));  // $287250 addi.w #$1,($6,A0)
+  ram.setU16(rec, 1);                                    // $287256 move.w #$1,(A0)
+}
+
+/** `$287AAA` (P1) / `$287ADC` (P2) -- THE TALLY'S OWN TEXT ROW.
+ *
+ *   btst #$0,$8130F9 / beq $287ABE      the banner gate, same pair as
+ *   tst.b $81B61F / bmi $287ABE         `hyperStock286ED6` and `livesRow2878CC`
+ *   rts                                 use, and the same sense
+ *   287abe: move.w #$D4,D0 / move.w #$0,D1 / move.w #$7,D2 / move.w #$1,D3
+ *           move.l #$404000A,D4 / jmp $240DC2
+ *
+ * A 8-wide-by-2-tall grid at column 0 (P1) or $1A00 (P2), and the two sides use
+ * DIFFERENT tiles -- `$0404000A` against `$03EE000A` -- which is the ROM's own
+ * asymmetry and not a mirror. This is one of the `$240DC2` call sites W271's
+ * worklog left counted for want of a transcribed register setup; the setup is
+ * these six immediates.
+ */
+export function tallyRow287AAA(ram, rom, ctx, who) {
+  const addr = who === 0 ? 0x287aaa : 0x287adc;
+  if (!rom) { note(ctx, addr, '$287AAA the stage-clear tally row'); return; }
+  // $287AAA btst #$0 / beq -> DRAW; $287AB4 tst.b / bmi -> DRAW; else rts.
+  if ((ram.u8(HUDRAM.flags9) & 0x01)
+    && (ram.u8(HUDRAM.bannerFlagsClear) & 0x80) === 0) return;   // $287ABC rts
+  txPrint240DC2(ram, 0xd4, who === 0 ? 0x0000 : 0x1a00, 7, 1,
+    who === 0 ? 0x0404000a : 0x03ee000a);                        // $287AD4 jmp $240DC2
 }
 
 /** The slot indices the frame-order claim in this file's header is about, read

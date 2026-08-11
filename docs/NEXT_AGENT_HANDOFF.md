@@ -28,8 +28,8 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W272, `ddpdoj: settle the ship's exhausts against the board (docket D8)`.
-- Suite: `node --test games/ddpdoj/tests/` is **1851/1851**, green, no skips.
+- HEAD is W273, `ddpdoj: post the stage-clear score tally`.
+- Suite: `node --test games/ddpdoj/tests/` is **1876/1876**, green, no skips.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
   closed at 414/414 script records and 28/28 script types.
 - **THE STAGE-4 BOSS IS COMPLETE FOR EVERY REACHABLE PATH.** W246 through W263
@@ -102,17 +102,28 @@ about it.** `w271hyperstock.test.js` has the mechanical form of the first check.
 
 ## Work order toward the goal
 
-1. **`$2600D8`, then object dispatch `[11]` `$25DBB4`.** THE FIRST UNFINISHED ITEM,
-   deferred by W271 and W272. It is the stage-clear SCORE TALLY -- eight bonus-line
-   routines per side -- which is the other half of the owner's "maybe even score
-   totalling, which I see none of", and it is 900 counted notes a run. W270 recon'd
-   `[11]` down to ONE unread routine: of its six dependencies, `$2533F6`, `$253448`
-   and `$241292` are ported, `$28D53C` (6 instructions) and `$23C932` (9) are
-   trivial, and `$2600D8` is the descriptor walker nobody has read. Read that first.
-2. **The four other announcement-poster caller regions** -- `$25CDxx`, `$25D5xx`,
-   `$2601xx`, `$288A02`. They share the protocol W270 landed, so none of them has to
-   re-derive it.
-3. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
+1. **A PC-RELATIVE XREF PASS**, extending `tools/hard/absxref.py` or sitting beside it.
+   THE FIRST UNFINISHED ITEM, and it is an instrument, not a routine -- read the
+   justification before deciding it is process work. `absxref.py` walks
+   `jsr/jmp <abs>.l` ONLY, so every `jsr (<target>,PC)` is invisible to it, and TWO
+   documented claims in `src/` are already wrong because of that:
+   - `src/palette.js`: "[M] bank 9 (`$2226F8`) has NO installer anywhere in the image
+     at all." `$2416C0 lea $2226F8,A0 / moveq #$9,D0 / jsr ($2414BE,PC)` is one.
+   - `src/type5.js`: `$24C8BE` "has no absolute-long caller (checked: it is reached
+     PC-relative from inside `$24C096`)" -- the same blind spot, noticed per-site and
+     never fixed at the instrument.
+   Both were found by accident, which is the point. Every "[M] nothing calls this"
+   claim in the tree rests on this scan, including ones this session relied on.
+2. **`$241688`**, the tally's palette set and `$2600D8`'s one remaining counted gap:
+   four arms on (D0, D1), each installing three sprite banks through `$24150A` plus
+   one text bank through `$2414BE`. Twelve source blocks, each needing its own ROM
+   window. Arm 0's fourth load closes `palette.js`'s open question about `$2226F8`.
+3. **Object dispatch `[11]` `$25DBB4` end to end.** W273 landed `$2600D8`, so `[11]`
+   now needs only `$28D53C` (6 instructions) and `$23C932` (9), both trivial;
+   `$2533F6`, `$253448` and `$241292` were already ported. It is 900 counted notes a
+   run. Then **the four other announcement-poster caller regions** -- `$25CDxx`,
+   `$25D5xx`, `$2601xx`, `$288A02` -- which share the protocol W270 landed.
+4. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
    `$28D6FC` the animation chain. `$28D77C` writes palette RAM the port does not
    model and the four `$25FD38` resets are W62's scope line, so those two stay
    counted. Force `$242952` headlessly and read the counted gaps -- that measurement
@@ -121,7 +132,7 @@ about it.** `w271hyperstock.test.js` has the mechanical form of the first check.
    chain and decrements each node's `$18`; the way in is the node code pointers at
    `$24627A`, NOT the chain root `$810346`, whose six references are all loaders or
    the clear. `$28C186` is a BGM command and correctly a counted sound gap.
-4. **Stage 5, then the loops.** Nothing blocks this any more: the Stage-4 boss is
+5. **Stage 5, then the loops.** Nothing blocks this any more: the Stage-4 boss is
    complete for every reachable path and the docket is down to one item. Five
    loop-specific rules are translated so far; see the loop-2 bullet above.
 
