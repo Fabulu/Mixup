@@ -54,6 +54,7 @@ import {
   tallyRow287AAA,
 } from './hud.js';
 import { announcePost } from './rank.js';
+import { paletteSet241688 } from './palette.js';
 
 /** The two tally records, `$260104 lea $8130FA,A6` and `$2600EE lea $81311E,A6`. */
 const DISPATCH = 0x240f62;   // $241198 lea ($240F62,PC),A0 -- the object table
@@ -180,16 +181,18 @@ export function tally2600D8(ram, rom, ctx, d0, d1, d2) {
 
   // $260152..$26015C -- the ROW SELECTOR is the RECORD's byte, not D2.
   const who = ram.u8(a6 + TALLY.row) === 0 ? 0 : 1;
-  // $260160/$26019A move.w $813084,D1 then $241688 -- the palette set for the
-  // tally's own text. Deferred with its address: $241688 is four arms of three
-  // sprite banks plus one TEXT bank each, and every one of its twelve source
-  // blocks needs its own ROM window. See the worklog: arm 0 installs TEXT bank
-  // 9 from $2226F8, which palette.js currently records as having NO installer
-  // anywhere in the image.
-  ctx?.unportedLog?.note(0x241688, `$241688 the tally's palette set, chosen by `
-    + `(D0, D1) = (${side}, $${(ram.u16(TALLY.postD0[side])).toString(16)
-      .toUpperCase()}). Twelve source blocks across four arms, each needing its `
-    + `own window; arm 0's fourth load is TEXT bank 9 from $2226F8`);
+  // $260160/$26019A -- THE PALETTE SET. D0 is the ROW SELECTOR (`who`, already
+  // computed) and D1 is re-read from the side's own $81308x word rather than
+  // passed down, which is why `$260160` and `$26019A` differ only in which word
+  // they load. Ported in W274; arm 0's fourth load is TEXT bank 9 from $2226F8,
+  // which `palette.js` had recorded as having no installer anywhere.
+  // D0 is the RAW row byte, not a 0/1 -- `$260154 moveq #0,D0 / move.b ($17,A6),D0`
+  // then `$241688 tst.w D0`. Both tests are nonzero tests so the arm is the same,
+  // but the value handed over is the byte the record carries.
+  const d1Set = ram.u16(TALLY.postD0[who]);                // $260160 / $26019A
+  if (ctx?.palette) {
+    paletteSet241688(ram, ctx.palette, rom, ram.u8(a6 + TALLY.row), d1Set);
+  }
 
   rowStack(ram, rom, ctx, who);
 

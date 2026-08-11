@@ -706,6 +706,72 @@ export function install2414BE(ram, pal, d0, src, site, why) {
   pal.installCount++;
 }
 
+// ===========================================================================
+// W274 -- `$241688`, THE TALLY'S PALETTE SET
+//
+// `$2600D8` (`src/tally.js`) calls this on both its arms and it was that
+// routine's last counted gap. Four arms on (D0, D1), each installing three
+// SPRITE banks through `$24150A` and one TEXT bank through `$2414BE`:
+//
+//        D0  D1     spr           spr           spr           tx
+//   $241696  0   0  0 <- $222878  2 <- $222978  4 <- $2229F8   9 <- $2226F8
+//   $2416D0  0  !0  0 <- $2228B8  2 <- $2229B8  4 <- $222A38   9 <- $222738
+//   $241710 !0   0  1 <- $2228F8  3 <- $222978  4 <- $2229F8  $A <- $222718
+//   $24174A !0  !0  1 <- $222938  3 <- $2229B8  4 <- $222A38  $A <- $222758
+//
+// Read down the columns and the structure is plain: **D1 picks the SOURCE and D0
+// picks the DESTINATION BANK.** The two D1=0 arms share `$222978`/`$2229F8` and
+// the two D1!=0 arms share `$2229B8`/`$222A38`, while D0 shifts the sprite banks
+// from (0,2) to (1,3) and the text bank from 9 to $A. Only the FIRST sprite
+// block differs per arm outright.
+//
+// Bank 4 is installed by all four arms and is never shifted, which is why it
+// reads as the shared one.
+//
+// THE TWELVE SOURCE BLOCKS NEEDED TWO WINDOWS AND NEITHER EXTENT IS A GUESS.
+// The eight sprite blocks are $40 apart from `$222878` and `$222A38 + $40` is
+// `$222A78`, where W91's palette-family window starts -- so `$222878 + $200` is
+// exactly eight blocks and abuts it. The four text blocks are $20 apart from
+// `$2226F8`, `$222638 + $C0` ends AT `$2226F8`, and `$222758 + $20` is
+// `$222778` where another existing window starts -- so `$2226F8 + $80` fills
+// the hole between two windows exactly. See `tools/export-tables.py`.
+
+/** The four arms as data, in the ROM's own order. */
+const SET241688 = Object.freeze([
+  // [ site, sprBankA, srcA, sprBankB, srcB, sprBankC, srcC, txBank, txSrc ]
+  Object.freeze({ site: 0x241696, spr: [[0, 0x222878], [2, 0x222978], [4, 0x2229f8]],
+    tx: [9, 0x2226f8] }),
+  Object.freeze({ site: 0x2416d0, spr: [[0, 0x2228b8], [2, 0x2229b8], [4, 0x222a38]],
+    tx: [9, 0x222738] }),
+  Object.freeze({ site: 0x241710, spr: [[1, 0x2228f8], [3, 0x222978], [4, 0x2229f8]],
+    tx: [0x0a, 0x222718] }),
+  Object.freeze({ site: 0x24174a, spr: [[1, 0x222938], [3, 0x2229b8], [4, 0x222a38]],
+    tx: [0x0a, 0x222758] }),
+]);
+
+/**
+ * `$241688` -- install the tally's four palette banks.
+ *
+ * @param ram
+ * @param pal  the PaletteState
+ * @param rom  the RomWindows, for the twelve source blocks
+ * @param d0   `$241688 tst.w D0 / bne` -- a WORD test
+ * @param d1   `$24168E cmpi.w #$0,D1 / bne` -- also a WORD compare
+ * @returns the arm index 0..3 that ran, so a caller or a test can name it
+ */
+export function paletteSet241688(ram, pal, rom, d0, d1) {
+  // Both tests are on WORDS, so a high half never selects an arm.
+  const arm = ((d0 & 0xffff) !== 0 ? 2 : 0) + ((d1 & 0xffff) !== 0 ? 1 : 0);
+  const a = SET241688[arm];
+  const why = `$241688 arm ${arm} (D0 ${(d0 & 0xffff) !== 0 ? '!=' : '=='} 0, `
+    + `D1 ${(d1 & 0xffff) !== 0 ? '!=' : '=='} 0) -- the stage-clear tally's set`;
+  for (const [bank, src] of a.spr) {
+    install24150A(ram, pal, bank, rom.bytes(src, 64), a.site, why);
+  }
+  install2414BE(ram, pal, a.tx[0], rom.bytes(a.tx[1], 32), a.site, why);
+  return arm;
+}
+
 /**
  * THE BOOT TEXT INSTALLS -- `$23BF86..$23BFCC`, five banks, and this is the
  * ONE palette catch-up in this port whose code path is the RESET PATH.
@@ -762,6 +828,15 @@ export function install2414BE(ram, pal, d0, src, site, why) {
  * this one -- `TX_OBJ0A_INSTALLS` below.  The four that are NOT taken are:
  *
  *   [M] bank 9 ($2226F8) has NO installer anywhere in the image at all.
+ *       **W274 CORRECTION: IT HAS ONE, AND IT IS NOW PORTED.** `$2416C0 lea
+ *       $2226F8,A0 / moveq #$9,D0 / jsr ($2414BE,PC)` is arm 0 of `$241688`, the
+ *       tally's palette set -- see `paletteSet241688` below. The claim above was
+ *       made with `tools/hard/absxref.py`, which histograms operands landing in
+ *       MAIN RAM ($800000..$81FFFF) and therefore cannot see a reference to a
+ *       ROM block at all; `python tools/rosetta.py codexref 2226F8` finds it in
+ *       one line and always could have. The sentence is left standing above
+ *       because the correction is the interesting part: an absence is only ever
+ *       as strong as the scan behind it, and this one names its scan.
  *   [M] bank 13 ($222818) has one, `$288590`, whose reachability this wave did
  *       not establish.  It stays the recording's.
  *   [M] banks 10, 12, 14 are ZERO in the seed, and bank 12's only named site

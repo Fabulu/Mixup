@@ -392,7 +392,35 @@ export function drawShip(ram, rec, ctx) {
  *   24a46a: rts
  */
 export function drawShipAlt(ram, rec) {
-  if ((ram.u16(rec + P.state) & 0x8000) === 0) return;    // $24A45E bmi -> rts
+  // ==========================================================================
+  // W274: **THIS LINE IS INVERTED AND IT IS DELIBERATELY LEFT THAT WAY. READ ON
+  // BEFORE "FIXING" IT, AND FIX IT ONLY TOGETHER WITH `$24A6B4`.**
+  // ==========================================================================
+  // The two entries are twelve bytes apart and read the same word with OPPOSITE
+  // senses, which is why one line got copied into both:
+  //
+  //   24a448: bmi $24A482    <- $24A440 drawShip:  negative CONTINUES to the draw
+  //   24a460: bmi $24A46A    <- $24A458 this one:  **$24A46A IS THE RTS**
+  //
+  // So the cartridge returns here when bit 15 is SET, and tests bit 8 when bit 15
+  // is CLEAR. The port has it the other way round, which makes this arm dead by
+  // construction because a live player always carries bit 15.
+  //
+  // AND BIT 8 HAS A WRITER, on the DEATH PATH. `$24A118 andi.w #$2000,(A6) /
+  // $24A11C bset #$0,(A6)` leaves the state word at exactly `$2100` -- bit 15
+  // CLEAR, bit 8 SET -- and then writes `($14,A6) = $255B7C` and `($18,A6) = 6`,
+  // which are the walker's own program pointer and counter. Flipping the compare
+  // was tried in W274 and it turns W227/W228/W231 -- the three real-death tests --
+  // straight into `$24A6B4` throws. So the correct compare is not shippable until
+  // the walker is ported, and the port keeps a KNOWN-WRONG line rather than a
+  // known-broken death.
+  //
+  // W272's worklog claimed no instruction in `$240000..$2A6000` sets bit 8. That
+  // scan was run against `rip/sound/maincpu.bin` with a base of `$200000` when the
+  // file is offset-addressed, so it read the wrong bytes; **the claim is
+  // withdrawn.** `tools/rosetta.py codexref` and the audit in
+  // `tests/w274paletteset.test.js` are the instruments that hold.
+  if ((ram.u16(rec + P.state) & 0x8000) === 0) return;    // $24A460 bmi -- SEE ABOVE
   if (ram.u16(rec + P.state) & 0x0100) {                  // $24A462 btst #8,D0
     unreached(ROM.shipBit8, `bit 8 of the player state word is set, which sends `
       + `$24A458 into the script-driven display walker at $24A6B4: it follows `

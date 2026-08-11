@@ -2367,6 +2367,24 @@ SHOT_WINDOWS.extend([
     (0x2883FE, 0x0010, "W273: $286FA6's FOUR first-extend-threshold longwords, "
                        "DIP $80380D * 4; abuts $28840E, and $2883E6+$20 covered "
                        "only the first two"),
+    # W274: `$241688`'s twelve palette source blocks, and BOTH ends of BOTH
+    # windows are pinned by windows that already exist -- no extent is guessed.
+    #
+    #   SPRITE, 64 bytes each, eight of them at stride $40:
+    #     $222878 $2228B8 $2228F8 $222938   $222978 $2229B8 $2229F8 $222A38
+    #   and $222A38 + $40 == $222A78, where W91's existing palette-family
+    #   window starts.  So $222878 + $200 is exactly the eight blocks and it
+    #   abuts that window.
+    #
+    #   TEXT, 32 bytes each, four of them at stride $20:
+    #     $2226F8 $222718 $222738 $222758
+    #   and $222758 + $20 == $222778, where an existing window starts, while
+    #   $222638 + $C0 ends AT $2226F8.  So $2226F8 + $80 fills the hole between
+    #   two existing windows exactly.
+    (0x222878, 0x0200, "W274: $241688's EIGHT sprite palette blocks (8 x 64), "
+                       "far end pinned by W91's $222A78 window"),
+    (0x2226F8, 0x0080, "W274: $241688's FOUR text palette blocks (4 x 32), "
+                       "filling the hole between $222638+$C0 and $222778"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

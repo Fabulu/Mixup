@@ -396,16 +396,21 @@ test('W273 $2600D8 clears the record\'s head, posts announcement state $8 and '
   assert.notEqual(f.ram.u32(TALLY.side0 + TALLY.result), 0, 'because +$18 was set');
 });
 
-test('W273 $2600D8 counts its two deferred subsystems and nothing else',
+test('W273 $2600D8 counts ONE deferred subsystem and nothing else',
   { skip: SKIP }, () => {
-    // $241688 (the palette set) and $23C668 (the 256-longword clear). Both are
-    // named by address; neither is silent.
+    // $23C668, the 256-longword clear of a staging area this port does not model
+    // -- the same note player.js carries for $25FFA8's call to it.
+    //
+    // $241688, the palette set, was the second one when this wave landed and was
+    // ported in W274; `w274paletteset.test.js` covers it. This world supplies no
+    // ctx.palette, so the install is skipped rather than counted -- which is the
+    // convention every other palette caller in the port uses.
     const f = world();
     f.ram.setU32(TALLY.side0 + TALLY.ptr, 0x81f700);
     tally2600D8(f.ram, ROM, f.ctx, 0, 0, 0);
     const addrs = f.log.report().map((r) => r.replace(/^\s*\d+ x (\$[0-9A-F]+) .*$/s, '$1'))
       .sort();
-    assert.deepEqual(addrs, ['$23C668', '$241688'], 'exactly the two, and both counted');
+    assert.deepEqual(addrs, ['$23C668'], 'exactly the one, and it is counted');
   });
 
 test('W273 the tally counter decrement is UNGUARDED and wraps', { skip: SKIP }, () => {

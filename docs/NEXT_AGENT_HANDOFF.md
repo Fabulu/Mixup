@@ -28,8 +28,8 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W273, `ddpdoj: post the stage-clear score tally`.
-- Suite: `node --test games/ddpdoj/tests/` is **1876/1876**, green, no skips.
+- HEAD is W274, `ddpdoj: install the tally palette set and audit the no-caller claims`.
+- Suite: `node --test games/ddpdoj/tests/` is **1889/1889**, green, no skips.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
   closed at 414/414 script records and 28/28 script types.
 - **THE STAGE-4 BOSS IS COMPLETE FOR EVERY REACHABLE PATH.** W246 through W263
@@ -70,7 +70,12 @@ owner cannot.
   the four producers at `$260A20`/`$260A88`/`$260A9A`/`$260AB6`/`$260AF2`.
 - **The ship's draw path is verified against the board byte for byte** (W272): three
   bucket-19 records and five bucket-12 trail records, 100 frames out from the
-  cartridge's own RAM. See D8 -- there was no missing draw.
+  cartridge's own RAM. See D8 -- there was no missing draw. **But W274 found that
+  `drawShipAlt`'s bit-15 compare is INVERTED and left it that way on purpose** --
+  work-order item 1 explains why and what has to land with the fix.
+- **The stage-clear SCORE TALLY works** (W273, W274): `$2600D8` posts a bonus line,
+  drives all seven HUD rows per side, installs the tally's four palette banks
+  (`$241688`) and recounts the live sides. Its only counted gap left is `$23C668`.
 
 ## An hourly cron is running
 
@@ -102,28 +107,46 @@ about it.** `w271hyperstock.test.js` has the mechanical form of the first check.
 
 ## Work order toward the goal
 
-1. **A PC-RELATIVE XREF PASS**, extending `tools/hard/absxref.py` or sitting beside it.
-   THE FIRST UNFINISHED ITEM, and it is an instrument, not a routine -- read the
-   justification before deciding it is process work. `absxref.py` walks
-   `jsr/jmp <abs>.l` ONLY, so every `jsr (<target>,PC)` is invisible to it, and TWO
-   documented claims in `src/` are already wrong because of that:
-   - `src/palette.js`: "[M] bank 9 (`$2226F8`) has NO installer anywhere in the image
-     at all." `$2416C0 lea $2226F8,A0 / moveq #$9,D0 / jsr ($2414BE,PC)` is one.
-   - `src/type5.js`: `$24C8BE` "has no absolute-long caller (checked: it is reached
-     PC-relative from inside `$24C096`)" -- the same blind spot, noticed per-site and
-     never fixed at the instrument.
-   Both were found by accident, which is the point. Every "[M] nothing calls this"
-   claim in the tree rests on this scan, including ones this session relied on.
-2. **`$241688`**, the tally's palette set and `$2600D8`'s one remaining counted gap:
-   four arms on (D0, D1), each installing three sprite banks through `$24150A` plus
-   one text bank through `$2414BE`. Twelve source blocks, each needing its own ROM
-   window. Arm 0's fourth load closes `palette.js`'s open question about `$2226F8`.
-3. **Object dispatch `[11]` `$25DBB4` end to end.** W273 landed `$2600D8`, so `[11]`
-   now needs only `$28D53C` (6 instructions) and `$23C932` (9), both trivial;
-   `$2533F6`, `$253448` and `$241292` were already ported. It is 900 counted notes a
-   run. Then **the four other announcement-poster caller regions** -- `$25CDxx`,
-   `$25D5xx`, `$2601xx`, `$288A02` -- which share the protocol W270 landed.
-4. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
+1. **`$24A6B4`, THE SCRIPT-DRIVEN DISPLAY WALKER, AND THEN FLIP `$24A458`'s COMPARE.**
+   THE FIRST UNFINISHED ITEM. These are ONE job: the flip alone turns W227/W228/W231 --
+   the three real-death tests -- straight into `$24A6B4` throws, so the wave is not
+   done until the walker is in AND the flip is in AND those three are green.
+
+   `src/shipsprite.js:drawShipAlt` carries the full diagnosis at the line. In short:
+   `$24A448 bmi` continues to the draw and `$24A460 bmi` goes to the RTS, so the two
+   entries read the same word with OPPOSITE senses and the port has `drawShip`'s line
+   in both. Bit 8 has a writer on the DEATH path -- `$24A118 andi.w #$2000,(A6) /
+   $24A11C bset #$0,(A6)` leaves the state at exactly `$2100` and then writes
+   `($14,A6) = $255B7C` and `($18,A6) = 6`, the walker's own pointer and counter.
+
+   The walker's shape is read already; see worklog 274 for the opcode loop. Still
+   needed: the rest of op 1 past `$24A724`, a ROM window for the program at `$255B7C`
+   (whose first long is itself a pointer -- `movea.l (A2),A2`), and a check of
+   `$23F294`'s port. **This is player-visible: it is on the death path.**
+2. **Object dispatch `[11]` `$25DBB4` end to end.** W273 landed `$2600D8` and W274
+   closed its last gap, so `[11]` now needs only `$28D53C` (6 instructions) and
+   `$23C932` (9), both trivial; `$2533F6`, `$253448` and `$241292` were already
+   ported. It is 900 counted notes a run. Then **the four other announcement-poster
+   caller regions** -- `$25CDxx`, `$25D5xx`, `$2601xx`, `$288A02` -- which share the
+   protocol W270 landed.
+
+### A rule this session paid for twice
+
+Two claims went in wrong and both were ABSENCES: "nothing sets this bit" (W272) and
+"nothing calls this block" (W273's diagnosis). Each came from a scan whose base or
+range was not checked against the instrument that already existed.
+
+**`tools/rosetta.py codexref <addr>` is the instrument.** It handles all six
+encodings that carry a code address, including `jsr (d16,PC)`, and has since it was
+written. `tools/hard/absxref.py` is NOT a caller xref -- it histograms operands
+landing in MAIN RAM, so it cannot see a reference to a ROM block at all.
+
+**The image `rip/sound/maincpu.bin` is OFFSET-ADDRESSED: file offset IS the 68000
+address.** Build B is `$200000..$2B0000`. W272 scanned it with a base of `$200000`
+and read the wrong bytes. When a hand-rolled scan returns zero, first check it finds
+something you already know is there -- `u16($2600D8) == $48E7` is that habit written
+down, and `tests/w274paletteset.test.js` now runs the whole audit every suite pass.
+3. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
    `$28D6FC` the animation chain. `$28D77C` writes palette RAM the port does not
    model and the four `$25FD38` resets are W62's scope line, so those two stay
    counted. Force `$242952` headlessly and read the counted gaps -- that measurement
@@ -132,7 +155,7 @@ about it.** `w271hyperstock.test.js` has the mechanical form of the first check.
    chain and decrements each node's `$18`; the way in is the node code pointers at
    `$24627A`, NOT the chain root `$810346`, whose six references are all loaders or
    the clear. `$28C186` is a BGM command and correctly a counted sound gap.
-5. **Stage 5, then the loops.** Nothing blocks this any more: the Stage-4 boss is
+4. **Stage 5, then the loops.** Nothing blocks this any more: the Stage-4 boss is
    complete for every reachable path and the docket is down to one item. Five
    loop-specific rules are translated so far; see the loop-2 bullet above.
 
