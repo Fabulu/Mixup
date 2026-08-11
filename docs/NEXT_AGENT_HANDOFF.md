@@ -28,8 +28,11 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W290, `ddpdoj: port bonus line 2, which creates the tally screen`.
-- Suite: `node --test games/ddpdoj/tests/` is **2005/2005**, green, no skips.
+- HEAD is W291, `ddpdoj: bonus line 3 is $2600D8's second entry point`.
+- Suite: `node --test games/ddpdoj/tests/` is **2008/2008**, green, no skips.
+- **THREE of the nine bonus lines are in** ($25FFA8, $260056, $26010E). Before
+  transcribing line 4 (`$2601F4`), check its head against `$2600D8`'s and `$25FFA8`'s --
+  three of the first four shared something.
 - **D9's old note is closed**: `$260056` creates object types `$D` and `$B`, and `$B` is
   the `$25DBB4` W276 ported -- the creator and the created are both in the tree.
 - A long census run reaches **frame 6483** and stops at `$280252`, whose body is READ

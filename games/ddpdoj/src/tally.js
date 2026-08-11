@@ -311,7 +311,32 @@ export function tally2600D8(ram, rom, ctx, d0, d1, d2) {
   ram.setU16(TALLY.postD0[side], u16(d0));                 // $2600E2 / $2600F8
   ram.setU16(TALLY.postD1[side], u16(d1));                 // $2600E8 / $2600FE
   const a6 = side === 1 ? TALLY.side1 : TALLY.side0;       // $2600EE / $260104
+  return tallyBody260112(ram, rom, ctx, a6, d0);
+}
 
+/**
+ * `$26010E` -- **BONUS LINE 3, AND IT IS `$2600D8`'S SECOND ENTRY POINT.**
+ *
+ *   26010e: movem.l D0-D7/A0-A6,-(A7)      <- and then FALLS INTO $260112
+ *
+ * W273 read this and wrote it down -- "`$26010E` is a distinct entry that skips the side
+ * setup" -- without knowing what used it. `$25FF52[3]` is what uses it: bonus line 3 is
+ * the same body as `$2600D8` with the side selection skipped, because `$25FF7A`'s driver
+ * has ALREADY put the record in A6 and walks both of them itself.
+ *
+ * So line 3 needed no new code, only the entry exposed. Fourth time this session after
+ * `$23F294` = `$23F1FA` (W275), kind 16's hook (W286) and the eight finish hooks (W287) --
+ * and the only one of the four that a previous wave had already half-noticed.
+ *
+ * @param a6 the record the DRIVER chose, not one this routine picks
+ * @param d0 the caller's D0, whose high word survives into `+$18` (see the body)
+ */
+export function bonusLine326010E(ram, rom, ctx, a6, d0 = 0) {
+  return tallyBody260112(ram, rom, ctx, a6, d0);
+}
+
+/** `$260112..$2601F2` -- the body both entry points share. */
+function tallyBody260112(ram, rom, ctx, a6, d0) {
   // $260112 subq.w #1,$813142 -- an UNGUARDED decrement, so it wraps past zero.
   ram.setU16(TALLY.counter, u16(ram.u16(TALLY.counter) - 1));
 

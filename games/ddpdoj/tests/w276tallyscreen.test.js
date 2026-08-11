@@ -16,7 +16,8 @@ import { RomWindows } from '../src/rom.js';
 import { UnportedLog } from '../src/unported.js';
 import { deferReset } from '../src/background.js';
 import { HUDRAM } from '../src/hud.js';
-import { TALLY, bonusLine125FFA8, bonusLine2260056 } from '../src/tally.js';
+import { TALLY, tally2600D8, bonusLine125FFA8, bonusLine2260056,
+  bonusLine326010E } from '../src/tally.js';
 import { ALLOC } from '../src/objalloc.js';
 import { RAM as MACHINE } from '../src/machine.js';
 import {
@@ -32,6 +33,10 @@ const tablesPath = path.join(R, 'rip', 'port', 'player.tables.json');
 const HAVE = existsSync(tablesPath);
 const ROM = HAVE ? new RomWindows(JSON.parse(readFileSync(tablesPath, 'utf8')).rom) : null;
 const SKIP = HAVE ? false : 'generated ROM tables absent; skip, not pass';
+
+const IMAGE = path.join(R, 'rip', 'sound', 'maincpu.bin');
+const HAVE_IMG = existsSync(IMAGE);
+const IMG = HAVE_IMG ? readFileSync(IMAGE) : null;
 
 const A5 = 0x81f000;      // a scratch object record, clear of every pool
 const TX = { head: 0x80b058, cursor: 0x80c8d8 };
@@ -653,3 +658,66 @@ test('W290 line 2 recounts the live sides on the way in', { skip: SKIP }, () => 
       `gate ${gate}: no side is live, so the count is $FFFF`);
   }
 });
+
+// ============ 11. W291: BONUS LINE 3 IS $2600D8'S SECOND ENTRY POINT
+//
+// `$26010E: movem.l D0-D7/A0-A6,-(A7)` and then it FALLS INTO `$260112`. W273 read that
+// and wrote it down without knowing what used it; `$25FF52[3]` is what uses it. So bonus
+// line 3 is the same body with the side selection skipped, because `$25FF7A`'s driver has
+// already put the record in A6 and walks both itself.
+
+test('W291 line 3 takes the DRIVER\'s record, not one it picks itself', { skip: SKIP }, () => {
+  // The whole difference between the two entry points. `$2600D8` chooses from D2; this
+  // one is handed A6. Driving side 1's record proves the choice is the caller's.
+  const f = world();
+  f.ram.setU32(TALLY.side1 + TALLY.ptr, 0x81f600);
+  f.ram.setU16(TALLY.side1 + TALLY.type, 6);
+  bonusLine326010E(f.ram, ROM, f.ctx, TALLY.side1);
+  assert.notEqual(f.ram.u32(TALLY.side1 + TALLY.result), 0, 'side 1\'s record ran');
+  assert.equal(f.ram.u32(TALLY.side0 + TALLY.result), 0, 'and side 0\'s did not');
+  // And it does NOT post the two $81308x words, because $2600E2/$2600F8 are above the
+  // entry point -- that is exactly what the second entry skips.
+  assert.equal(f.ram.u16(TALLY.postD0[0]), 0, 'no D0 posted for side 0');
+  assert.equal(f.ram.u16(TALLY.postD0[1]), 0, 'nor for side 1');
+});
+
+test('W291 line 3 runs the SAME body as $2600D8 -- same rows, same counter, same posts',
+  { skip: SKIP }, () => {
+    // If the split had changed behaviour, the two entries would diverge. Drive them
+    // against the same record and compare the observable effects.
+    const viaFull = world();
+    viaFull.ram.setU32(TALLY.side0 + TALLY.ptr, 0x81f700);
+    viaFull.ram.setU16(TALLY.side0 + TALLY.type, 6);
+    tally2600D8(viaFull.ram, ROM, viaFull.ctx, 0, 0, 0);
+
+    const viaEntry = world();
+    viaEntry.ram.setU32(TALLY.side0 + TALLY.ptr, 0x81f700);
+    viaEntry.ram.setU16(TALLY.side0 + TALLY.type, 6);
+    bonusLine326010E(viaEntry.ram, ROM, viaEntry.ctx, TALLY.side0);
+
+    for (const [what, a] of [['the digit records', HUDRAM.digitsP1 + 2],
+      ['the extend threshold', HUDRAM.extendNextP1]]) {
+      assert.equal(viaEntry.ram.u32(a), viaFull.ram.u32(a), `${what} match`);
+    }
+    assert.equal(viaEntry.ram.u16(HUDRAM.digitStateP1),
+      viaFull.ram.u16(HUDRAM.digitStateP1), 'the digit state matches');
+    assert.equal(viaEntry.ram.u16(TALLY.counter),
+      viaFull.ram.u16(TALLY.counter), 'and the $813142 decrement matches');
+    assert.equal(cells(viaEntry.ram), cells(viaFull.ram), 'and the same rows drew');
+  });
+
+test('W291 the ROM really does fall through from $26010E into $260112',
+  { skip: HAVE_IMG ? false : 'the decrypted image is absent' }, () => {
+    // The claim the whole wave rests on, read out of the image: $26010E is a movem.l and
+    // the very next instruction is $260112, which is $2600D8's own body. If there were a
+    // branch between them, line 3 would be a different routine.
+    const u16i = (a) => (IMG[a] << 8) | IMG[a + 1];
+    assert.equal(u16i(0x26010e), 0x48e7, '$26010E is movem.l ...,-(A7)');
+    assert.equal(u16i(0x260110), 0xfffe, 'saving D0-D7/A0-A6');
+    // $260112 is `subq.w #1,$813142` -- 0x5379 then the absolute long.
+    assert.equal(u16i(0x260112), 0x5379, 'and $260112 is the body\'s first instruction');
+    assert.equal(((u16i(0x260114) << 16) | u16i(0x260116)) >>> 0, 0x00813142,
+      'decrementing $813142');
+    // The same two words open $2600D8, which is what makes them two entries to one body.
+    assert.equal(u16i(0x2600d8), 0x48e7);
+  });
