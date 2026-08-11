@@ -698,8 +698,76 @@ export function runPoolADriver(ram, rom, ctx) {
  * throws.
  * @returns {{emitted?:boolean,freed?:boolean,collected?:boolean}|void}
  */
+/** `subq.b #1 / bcc` -- the OLD-ZERO BORROW: it reloads on the frame the counter was
+ *  ALREADY zero, not the frame it reaches zero. */
+function due8(ram, addr) {
+  const old = ram.u8(addr);
+  ram.setU8(addr, old - 1);
+  return old === 0;
+}
+
+/**
+ * `$27FA30` -- POOL-A KIND 0'S BODY, which is what the screen clear's own effect runs.
+ * W264 wired the allocator and the driver then reached this, so D3 needs both halves.
+ * It is short and it is all one shape: an animation cursor, a velocity recompute, one
+ * position step, an off-screen free, and a parity-gated draw.
+ *
+ *     27fa30: andi.w #$1800,D1 / bne      bits 11 or 12 set and it does NOTHING at all
+ *     27fa36: subq.b #$1,$18(a6) / bcc    the OLD-ZERO BORROW on the anim timer
+ *     27fa42: addi.l #$24,$A(a6)          ...and the sprite steps $24
+ *     27fa4c: cmpi.l #$1BCD0C / bne       WRAPPING at an exact value, not a count
+ *     27fa54: move.l #$1BCACC,$A(a6)
+ *     27fa5a: tst.w $803912 / bne         paused: keep the cached velocity
+ *     27fa62: tst.w $8130D2 / bne         frozen: do not ramp the speed
+ *     27fa6a: addq.b #$1,$1A(a6)          the speed ramps every unfrozen frame
+ *     27fa7a: jsr $241812                 and the velocity is RECOMPUTED, then cached
+ *     27fa88: $20(a6) added to $4/$2      one step, short axis then long
+ *     27fa96: bmi                         a NEGATIVE long axis is the free
+ *     27fa98: cmpi.w #$3C,$817F7E / bcs   under $3C live and it always draws
+ *     27faa4: 1 & D7 vs $80390C / beq     at or over it, it draws every OTHER frame,
+ *                                         alternating by the record's own walk index
+ *
+ * That last gate is the interesting one: the pool THINS ITSELF when it is busy, by
+ * parity on the walk position rather than by dropping records. `remaining` is D7, the
+ * dbra counter, which is why the driver threads it through.
+ */
+function poolAKind0Body27FA30(ram, rom, ctx, a6, d1, remaining) {
+  if ((d1 & 0x1800) !== 0) return undefined;              // $27FA30/$27FA34 bne
+  if (due8(ram, a6 + 0x18)) {                             // $27FA36 subq.b/bcc
+    ram.setU8(a6 + 0x18, ram.u8(a6 + 0x19));              // $27FA3C
+    const next = (ram.u32(a6 + B.sprite) + 0x24) >>> 0;   // $27FA46 addi.l #$24
+    ram.setU32(a6 + B.sprite, next === 0x001bcd0c ? 0x001bcacc : next);  // $27FA4C
+  }
+  if (ram.u16(POOL_A.pause) === 0) {                      // $27FA5A tst.w/bne
+    if (ram.u16(POOL_A.freeze) === 0) {                   // $27FA62 tst.w/bne
+      ram.setU8(a6 + B.speed, (ram.u8(a6 + B.speed) + 1) & 0xff);  // $27FA6A addq.b
+    }
+    const v = ctx.tables.vector(ram.u8(a6 + B.speed),     // $27FA7A jsr $241812
+      ram.u8(a6 + B.angle) & 0x3f);                       // $27FA76 and.b #$3F
+    ram.setU16(a6 + 0x20, v.dy);                          // $27FA80
+    ram.setU16(a6 + 0x22, v.dx);                          // $27FA84
+  }
+  // $27FA88..$27FA92 -- D2 is the cached pair: its LOW half moves the short axis and
+  // its HIGH half, after the swap, the long one.
+  ram.setU16(a6 + B.posX, u16(ram.u16(a6 + B.posX) + ram.u16(a6 + 0x22)));
+  ram.setU16(a6 + B.pos, u16(ram.u16(a6 + B.pos) + ram.u16(a6 + 0x20)));
+  if ((ram.u16(a6 + B.pos) & 0x8000) !== 0) {             // $27FA96 bmi
+    return freePoolA(ram, a6);                            // $27FABC..$27FAC4
+  }
+  // $27FA98 -- busy pool: draw on alternating walk positions instead of dropping.
+  if (ram.u16(POOL_A.liveCount) >= 0x3c
+    && (remaining & 1) === ram.u16(0x80390c)) {
+    return undefined;                                     // $27FABA rts
+  }
+  enqueueThroughStub(ram, rom, 0x23eba0, a6);             // $27FAB2 jmp $23EBA0
+  return undefined;
+}
+
 function runBody(ram, rom, ctx, a6, d1, body, remaining) {
   if (body === POOL_A.body) return beeBody27FACC(ram, rom, ctx, a6, d1);
+  // Kinds 0 and 4 share $27FA30 -- DISPATCH[0] and DISPATCH[4] are the same address.
+  if (body === 0x27fa30)
+    return poolAKind0Body27FA30(ram, rom, ctx, a6, d1, remaining);
   if (body === 0x280082)
     return stage4ImpactBody(ram, rom, ctx, a6, d1,
       IMPACT_KIND[KIND.stage4Impact18], remaining);

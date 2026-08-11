@@ -45,13 +45,62 @@ for (let i = 0; i < n; i++) { acc = (acc + flat[i]) >>> 0; harvested.add(acc); }
 console.log('streams in the bundle:', harvested.size, 'of', n);
 
 // ---- the run
-const g = new Game(new Uint8Array(readFileSync(R + 'rip/web/seed.bin')), tables,
-  { palCatchUp: false });
+//
+// W265 (DOCKET D4): this used to run only the shipped seed, which never leaves stage 1.
+// The owner reported the STAGE-2 mid boss mostly invisible, and "assume it shares stage
+// 1's cause" is exactly the guess this instrument exists to replace. So it takes a
+// checkpoint rung and a frame count:
+//
+//   node tools/w230descriptorsweep.mjs                      the shipped seed, 900 frames
+//   node tools/w230descriptorsweep.mjs --lf 19500 --frames 9000
+//
+// The rung form boots from `tools/oracle/out/w69/stage1-sweep`, the same ladder
+// `w133stage2boot.test.js` uses, and lf19500 is past the stage-1 boss timeout -- so a
+// long enough run from it crosses into stage 2. It also REPORTS which stages it visited
+// and stops cleanly on a throw, because a sweep that dies silently answers nothing.
+const argv = process.argv.slice(2);
+const argOf = (name, dflt) => {
+  const i = argv.indexOf(name);
+  return i >= 0 && argv[i + 1] !== undefined ? Number(argv[i + 1]) : dflt;
+};
+const LF = argOf('--lf', 0);
+const FRAMES = argOf('--frames', 900);
+
+let g;
+if (LF === 0) {
+  g = new Game(new Uint8Array(readFileSync(R + 'rip/web/seed.bin')), tables,
+    { palCatchUp: false });
+} else {
+  const LADDER = R + 'tools/oracle/out/w69/stage1-sweep/';
+  const man = JSON.parse(readFileSync(LADDER + 'manifest.json', 'utf8'));
+  const rung = man.rungs.find((r) => r.lf === LF);
+  if (!rung) {
+    console.error(`no lf${LF} rung in stage1-sweep; have `
+      + man.rungs.map((r) => r.lf).join(' '));
+    process.exit(2);
+  }
+  const bgBytes = new Uint8Array(readFileSync(LADDER + 'ckpt/' + rung.bg));
+  const bgSeed = new Uint16Array(bgBytes.length >> 1);
+  for (let i = 0; i < bgSeed.length; i++) {
+    bgSeed[i] = (bgBytes[i * 2] << 8) | bgBytes[i * 2 + 1];
+  }
+  g = new Game(new Uint8Array(readFileSync(LADDER + 'ckpt/' + rung.ram)), tables,
+    { logicFrame: LF, videoFrame: rung.vf, bgSeed, palCatchUp: false });
+  console.log(`booted from lf${LF} (vf${rung.vf})`);
+}
 const shot = portWordFromBits([BIT.b1]);
 const seen = new Map();          // descriptor -> frames drawn
+const stageSeen = new Set();     // which stage indices the run actually reached
 const q = BUCKETS[0];
-for (let f = 1; f <= 900; f++) {
-  g.step(shot);
+let threw = null;
+for (let f = 1; f <= FRAMES; f++) {
+  try {
+    g.step(shot);
+  } catch (e) {
+    threw = { frame: f, name: e.name, romAddress: e.romAddress, message: e.message };
+    break;
+  }
+  stageSeen.add(g.ram.u16(0x813096) >> 2);
   const n = g.displayList.records;
   for (let i = 0; i < n; i++) {
     const d = g.ram.u32(q.buffer + i * 12 + 4) >>> 0;
@@ -61,7 +110,14 @@ for (let f = 1; f <= 900; f++) {
 }
 const missing = [...seen.entries()].filter(([d]) => !harvested.has(d))
   .sort((a, b) => b[1] - a[1]);
-console.log('distinct descriptors drawn over 900 frames:', seen.size);
+console.log(`distinct descriptors drawn over ${FRAMES} frames:`, seen.size);
+console.log('stage indices visited:',
+  [...stageSeen].sort((a, b) => a - b).join(' ') || '(none)');
+if (threw) {
+  console.log(`STOPPED at frame ${threw.frame}: ${threw.name}`
+    + (threw.romAddress ? ' ' + hx(threw.romAddress) : ''));
+  console.log('  ' + threw.message.split('. ')[0]);
+}
 console.log('NOT in the bundle:', missing.length,
   'accounting for', missing.reduce((a, [, n]) => a + n, 0), 'draws');
 for (const [d, n] of missing.slice(0, 30)) console.log('  ', hx(d), 'drawn', n);
