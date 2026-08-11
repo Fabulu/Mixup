@@ -656,8 +656,43 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
 
    Windows: **`(0x273FE4, 0x0092)`** and **`(0x27460A, 0x0018)`**, both bounded by code.
 
-   Only the draw's own instructions from `$27432C` remain unread, and that is a draw -- the family
-   the port has five emitter conventions for. **This type is ready to write.**
+   #### THE DRAW, `$27432C` -- AND THE MAP IS NOW 100 PERCENT
+
+       27432c  jsr $23D852               the RECORD-convention emitter, **bucket 7** -- the
+                                         damage-first family's own, which W80 resolved out of the
+                                         cartridge (`$23D852 41F9 00807450 / D0F9 0080AFC8`)
+       274332  D1 = ($2,A6) with -$500 on one half and -$C00 on the other, applied around a `swap`
+       274342  D2 = ($32,A6)             the ramped sprite the state machine installed
+       274346  D3 = $428 ; D4 = ($1C,A6)
+       27434e  jsr $23DF86               the REGISTER-convention emitter, **also bucket 7** (arm A;
+                                         `handlers.test.js` names it `EMIT_A`)
+       274354  D1 = ($2,A6) ...          and a second register emit follows
+
+   So the draw drives ONE bucket through BOTH conventions, the same structure `$1B`'s draw has with
+   bucket 3. Both stubs are already in the port.
+
+   **NOTHING IS UNREAD. THIS TYPE IS READY TO WRITE, BOTH HALVES IN ONE WAVE.**
+
+   #### AND WRITE BOTH HALVES TOGETHER -- W326 STARTED THE INIT BODY AND REVERTED IT
+
+   W326 wrote and verified the init body (`BODY.set(0x273f0e, ...)`, bodies 75 -> 76, module loads
+   clean) and then **reverted it**, because registering an init body whose handler is not yet
+   registered is the W322 mistake: `$81` HAS three records in stage 5's script, so the body would
+   run and the handler lookup at `$274076` would then fail. Type `$01` was safe to land alone only
+   because no script spawns it.
+
+   The init body's transcription, for the wave that lands both, since it was written once already:
+
+   * `loadSubProto(0x274004)` with the advanced pointer into `($44,A5)`;
+     `loadRecordProto(0x273fee, 0x0a)` = 11 words; `readInitPosition` (a JSR).
+   * The two aim blocks as a two-row table -- `{biasY: $5C0, biasX: $A40, angleOff: $2B,
+     longOff: $26}` and `{biasY: $5C0, biasX: -$A00, angleOff: $31, longOff: $2C}` -- each
+     `aim64FromCaller`, and **on carry the angle is `($1B,A6)`, a VALUE fallback and not a branch
+     around the work**. The table index is `(d1 & $3E) * 2` into `$272DFA`.
+   * `($28,A5) = $10`, `($29,A5) = $8` (both stage arms agree), the byte-subtract rank adjustment
+     `($1E,A5) -= $8130B0`, then the stage row where `($1D,A6)` and `($1C,A5)` BOTH take byte 0.
+   * `$81B414 = 1` and `$81B416 = 1`.
+   * An `AimTables` WeakMap keyed on the ROM, as this file's other five per-type maps do.
 
    #### THE RAMP TABLE'S EXTENT IS PINNED BY CODE, AND IT EXPLAINS THE WRAP
 
