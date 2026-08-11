@@ -577,9 +577,37 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
    members now differ in the state field, the table, the entry count AND the tail behaviour, which
    argues for keeping them as separate transcriptions a while longer.
 
-   Still to read: state 2's tail from `$2741A2`, state 3+ at `$27425E`, the draw at
-   `$274286`/`$27432C`, and the death arm at `$27449C`. The handler is roughly 1,030 bytes, so
-   budget it like `$1B` (one wave) rather than like `$59`.
+   #### STATE 2's FIRE ARM IS COMPLETE, AND IT SETTLES THE `$1A` QUESTION
+
+       2741a2  ($36,A6) indexes $27460A -> ($32,A6)      the sprite, every frame
+       2741b2  ($1E,A5) cadence ; on borrow reload from ($28,A5)
+       2741c0  lea $8103E6,A0 / lea $810448,A1 / tst.b ($3,A5) / exg A0,A1
+               **the SAME "pick the nearer live player" idiom `handler8E` uses** (W319's
+               $27655C..$276578): `($3,A5)` decides which is TRIED first
+       2741d4  tst.w (A0) / bmi -> use it ; else tst.w (A1) / bpl -> NOBODY ALIVE, skip to $27423C
+               ; else exg and use the second. A negative status word is a LIVE player
+       2741e2  movem.w ($2,A0),D2-D3     **the TARGET, out of the selected player's record**
+       2741e8  movem.w ($2,A6),D0-D1     self ; D0 += -$880
+       2741f2  jsr $2422A2               `aim256` -- the PURE core, and D2/D3 ARE SET
+       2741f8  D6 = D1                   the aimed direction, saved
+       2741fa  D2 = ($2,A6) ; D3 = $F7800380 ; D4 = 0 ; D0 = $FFFD0005
+       27420c  D1 += $A  ; jsr $281764   FIRE
+       274216  D1 -= $14 ; jsr $281764   FIRE again -- net -$A the other side of the aim
+       274220  D3 = $F780FC80            a SECOND muzzle, and the pair repeats
+
+   So it is a symmetric pair off the aim from each of two muzzles. `$281764` is already driven by
+   `boss3.js` through `shoot(...)`, and `$2422A2` is `aim.js`'s `aim256`. Nothing new needed.
+
+   **AND THIS IS THE CONTRAST THAT MAKES `$1A`'s BLOCKER REAL.** Both types call a PURE aim core.
+   `$81` sets D2/D3 from the selected player's record immediately before the call, three
+   instructions away. `$1A` calls `$24203E` with D2/D3 never set at all -- D2 holds a stage byte and
+   D3 is untouched. So the anomaly is `$1A`'s and not a convention this family shares, which is
+   worth knowing before someone assumes the dispatcher must be pre-loading them: the sibling that
+   does the same thing properly is right here.
+
+   Still to read: state 3+ at `$27425E`, the draw at `$274286`/`$27432C`, and the death arm at
+   `$27449C`. The handler is roughly 1,030 bytes, so budget it like `$1B` (one wave), and note that
+   everything read so far needs NO new primitive.
 
    #### THE RAMP TABLE'S EXTENT IS PINNED BY CODE, AND IT EXPLAINS THE WRAP
 
