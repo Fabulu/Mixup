@@ -997,6 +997,55 @@ let records = 0;
 // draws as 1x1 -- is the one stream where they differ, and it differs the safe
 // way round.
 const romExtent = (offs) => streamExtent(sprmask, COLW, offs & (MASKW - 1));
+
+// W267: THE STRIDE-WALK PROBE.  `STRUCTURE_RANGES` is added per FAMILY and a family is
+// closed by its stride CHANGING, so sizing one needs the chain walked until that happens.
+// W266 got `$12D650`'s stride by feeding the range guard a deliberately wrong extent and
+// reading its complaint; this does the same job on purpose:
+//
+//   node tools/export-web.mjs --extent 0x12D650
+//   node tools/export-web.mjs --extent 0x12D650 --extent 0x1CA008
+//
+// It walks from each address, prints every stride change with the run length that ended
+// there, and EXITS without writing the bundle -- so it is safe to run against a shipped
+// tree. The runs it prints are the cartridge's own; what it cannot tell you is which of
+// them a `STRUCTURE_RANGES` row should claim, and that stays a judgement about what the
+// code reads.
+{
+  const hex = (n) => '$' + (n >>> 0).toString(16).toUpperCase();
+  const probes = [];
+  for (let i = 0; i < process.argv.length - 1; i++) {
+    if (process.argv[i] === '--extent') probes.push(Number(process.argv[i + 1]));
+  }
+  if (probes.length) {
+    for (const start of probes) {
+      console.log(`\n=== stride walk from ${hex(start)} ===`);
+      let a = start, runStart = start, runStride = null, n = 0, total = 0;
+      for (; total < 4096; total++) {
+        let w;
+        try {
+          w = romExtent(a);
+        } catch (e) {
+          console.log(`  ${hex(a)} is not a stream start (${e.name}) -- stop`);
+          break;
+        }
+        if (runStride === null) runStride = w.stride;
+        else if (w.stride !== runStride) {
+          console.log(`  ${hex(runStart)} .. ${hex(a)}  ${n} streams, stride `
+            + `${hex(runStride)}   <- closed here, next stride ${hex(w.stride)}`);
+          runStart = a; runStride = w.stride; n = 0;
+        }
+        a += w.stride; n++;
+      }
+      if (n) {
+        console.log(`  ${hex(runStart)} .. ${hex(a)}  ${n} streams, stride `
+          + `${hex(runStride)}   <- still running at the 4096 cap`);
+      }
+    }
+    process.exit(0);
+  }
+}
+
 let extentAgree = 0, extentPrefix = 0;
 
 /** The record's reading, kept ONLY to check the ROM's. `SpriteDrawer` consumes
@@ -1969,6 +2018,40 @@ const STRUCTURE_RANGES = Object.freeze([
     + '$680 gap ($1BE2CC + $340), ending at template 3\'s sprite. The first half was '
     + 'already shipped; a harvest that assumed one family per template gap missed '
     + 'this one'],
+  // ------------------------------------------------------------------ WAVE 267
+  // THE REST OF DOCKET D4.  W266 shipped the three impact animations and left six runs;
+  // W267 built the `--extent` stride-walk probe (see `romExtent` above) and asked the
+  // cartridge where each family closes.  SIXTEEN families, every extent and count read
+  // off the chain and then re-verified by the walker below:
+  //
+  //   node tools/export-web.mjs --extent 0x12D650
+  //
+  // The doctrine is this file's own and it is why these are whole families rather than
+  // the frames W265's stage-2 run happened to draw: "a measured floor going short in the
+  // first thirty seconds of play".  Where a run touched only part of a family the WHOLE
+  // family ships, and where it touched frames already in the sheet the walker counts them
+  // `already` rather than duplicating.
+  [0x12d650, 0x12da8c, 1, 'W267 D4: stride $43C, closed by $514. The stream W266 read '
+    + 'out of the range guard complaint, and the family export-web already NAMED as the '
+    + '$12D430 family bound without harvesting'],
+  [0x12da8c, 0x13032c, 8, 'W267 D4: stride $514, closed by $4D4'],
+  [0x13032c, 0x13770c, 24, 'W267 D4: stride $4D4, closed by $1B4'],
+  [0x13770c, 0x1378c0, 1, 'W267 D4: stride $1B4, closed by $34C'],
+  [0x1ca008, 0x1ca468, 40, 'W267 D4: stride $1C, closed by $64'],
+  [0x1ca468, 0x1ca530, 2, 'W267 D4: stride $64, closed by $104'],
+  [0x1ca530, 0x1ca634, 1, 'W267 D4: stride $104, closed by $64'],
+  [0x1ca634, 0x1cc060, 67, 'W267 D4: stride $64, closed by $44. The stage-2 run drew '
+    + 'only its first two frames; the family is 67 and ships whole'],
+  [0x1ecf58, 0x1f3168, 4, 'W267 D4: stride $1884, closed by $B64. The run drew three of '
+    + 'the four, at $1ECF58, $1F0060 and $1F18E4 -- one family, not two'],
+  [0x326eac, 0x327150, 1, 'W267 D4: stride $2A4, closed by $624'],
+  [0x327150, 0x327774, 1, 'W267 D4: stride $624, closed by $284'],
+  [0x327774, 0x327c7c, 2, 'W267 D4: stride $284, closed by $34'],
+  [0x327c7c, 0x327ce4, 2, 'W267 D4: stride $34, closed by $704. The sweep reported a '
+    + '$68 gap here, which is this family with its middle frame undrawn'],
+  [0x327ce4, 0x3298f4, 4, 'W267 D4: stride $704, closed by $1B4'],
+  [0x3298f4, 0x329c5c, 2, 'W267 D4: stride $1B4, closed by $1884'],
+  [0x33252c, 0x3325a4, 10, 'W267 D4: stride $C, closed by $34'],
   [0x151e10, 0x152a90, 32, '3x32, stride 100. [M] 32 streams, closed by stride 228'],
   [0x155c34, 0x156bb4, 32, '3x40 c12, stride 124. [M] 32 streams, closed by $156BB4 '
     + 'being stride 484. 55-diag Ã‚Â§2.2 calls this "a 16-frame 3x40 c12 run '
@@ -2007,13 +2090,15 @@ const STRUCTURE_STREAMS = Object.freeze([
   0x1727c4, 0x172d18, 0x1928bc, 0x192a48,
 ]);
 {
-  if (STRUCTURE_STREAMS.length !== 10 || STRUCTURE_RANGES.length !== 8) {
+  if (STRUCTURE_STREAMS.length !== 10 || STRUCTURE_RANGES.length !== 24) {
     throw new Error(`STRUCTURE_STREAMS holds ${STRUCTURE_STREAMS.length} `
       + `addresses and there are ${STRUCTURE_RANGES.length} chain ranges; `
       + 'W58 measured 18 and 4, W66 added the fifth ($12D430, 8 frames), and '
       + 'W86 moved the EIGHT background-element immediates out of the list and '
       + 'into BGELEM_ART below, which enumerates all thirteen. W266 added THREE '
-      + 'impact-pool animations, each sixteen frames ending on a template sprite.');
+      + 'impact-pool animations, each sixteen frames ending on a template sprite, and '
+      + 'W267 added SIXTEEN more for the rest of docket D4, every extent read off the '
+      + 'chain with the --extent probe.');
   }
   let added = 0, already = 0, chained = 0;
   for (const [base, endsAt, count, why] of STRUCTURE_RANGES) {
