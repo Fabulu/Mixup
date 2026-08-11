@@ -16,7 +16,7 @@ import { RomWindows } from '../src/rom.js';
 import { UnportedLog } from '../src/unported.js';
 import { deferReset } from '../src/background.js';
 import { HUDRAM } from '../src/hud.js';
-import { TALLY } from '../src/tally.js';
+import { TALLY, bonusLine125FFA8 } from '../src/tally.js';
 import { ALLOC } from '../src/objalloc.js';
 import { RAM as MACHINE } from '../src/machine.js';
 import {
@@ -462,4 +462,115 @@ test('W278 $25DFF6 returns on carry and COUNTS its tail otherwise', { skip: SKIP
   const hit = g.log.report().find((r) => r.includes('$25E0F2'));
   assert.ok(hit, 'the tail is counted at $25E0F2');
   assert.match(hit, /ASCII SPACES/, 'and the note says what $25E006 is');
+});
+
+// ======================= 9. W289: THE FIRST BONUS LINE, `$25FFA8`
+//
+// `$25FF52`'s ten longwords are the tally's bonus lines. Entry 0 is null and guarded by
+// `$25FF84`; this is entry 1, the first real one, and it is the routine the score tally
+// actually spends its frames in.
+
+const CTR = 0x81f900;      // somewhere for ($8,A6) to point
+
+/** Arm side 0's record with a counter the line can decrement. */
+function armLine(f, start) {
+  f.ram.setU32(TALLY.side0 + TALLY.ptr, CTR);
+  f.ram.setU16(CTR, start);
+  f.ram.setU16(TALLY.side0 + TALLY.type, 6);
+}
+
+test('W289 the counter is a POINTER, so the line decrements what ($8,A6) points AT',
+  { skip: SKIP }, () => {
+    // `movea.l ($8,A6),A0 / subq.w #1,(A0)`. A port that decremented ($8,A6) itself
+    // would count down the pointer -- and would keep working for a while, because the
+    // pointer's low word is a plausible counter.
+    const f = world();
+    armLine(f, 5);
+    const ptrBefore = f.ram.u32(TALLY.side0 + TALLY.ptr);
+    bonusLine125FFA8(f.ram, ROM, f.ctx, TALLY.side0);
+    assert.equal(f.ram.u16(CTR), 4, 'the pointed-at word went down');
+    assert.equal(f.ram.u32(TALLY.side0 + TALLY.ptr), ptrBefore, 'and the pointer did not');
+  });
+
+test('W289 the borrow test is bpl, NOT beq -- a counter of 1 runs one more frame',
+  { skip: SKIP }, () => {
+    // `subq.w #1 / tst.w / bpl` continues while the result is zero OR POSITIVE, so the
+    // line finishes at -1 and not at 0. This is the old-zero borrow in its other form,
+    // and it is one frame of the tally either way.
+    const at1 = world();
+    armLine(at1, 1);
+    assert.equal(bonusLine125FFA8(at1.ram, ROM, at1.ctx, TALLY.side0), false,
+      '1 -> 0 keeps going');
+    assert.equal(at1.ram.u16(CTR), 0);
+
+    const at0 = world();
+    armLine(at0, 0);
+    assert.equal(bonusLine125FFA8(at0.ram, ROM, at0.ctx, TALLY.side0), true,
+      '0 -> -1 finishes');
+    assert.equal(at0.ram.u16(CTR), 0xffff, 'and it really is $FFFF, not clamped');
+  });
+
+test('W289 finishing advances the record to state 2 and posts three words',
+  { skip: SKIP }, () => {
+    // $25FFD8..$260004 for side 0. The three words are interleaved by side, so the
+    // wrong side would write P2's set and leave P1's alone.
+    const f = world();
+    armLine(f, 0);
+    bonusLine125FFA8(f.ram, ROM, f.ctx, TALLY.side0);
+    assert.equal(f.ram.u16(TALLY.side0 + 0x00), 2, '$260004 move.w #$2,(A6)');
+    assert.equal(f.ram.u16(TALLY.side0 + 0x02), 0, '$26004E');
+    assert.deepEqual([f.ram.u16(0x812930), f.ram.u16(0x812934), f.ram.u16(0x812938)],
+      [0, 1, 0], 'side 0\'s three words');
+    assert.deepEqual([f.ram.u16(0x812932), f.ram.u16(0x812936), f.ram.u16(0x81293a)],
+      [0, 0, 0], 'and side 1\'s are untouched');
+  });
+
+test('W289 NOT finishing re-posts state 0, so the driver comes back', { skip: SKIP }, () => {
+  // `$26004A move.w #$0,(A6)`. The line runs one frame per driver pass and re-arms
+  // itself; a port that left the request set would run it twice a frame, and one that
+  // cleared it would run it once ever.
+  const f = world();
+  armLine(f, 3);
+  bonusLine125FFA8(f.ram, ROM, f.ctx, TALLY.side0);
+  assert.equal(f.ram.u16(TALLY.side0 + 0x00), 0, 'the request is re-posted');
+});
+
+test('W289 the line FREEZES the game, every frame it runs', { skip: SKIP }, () => {
+  // `$25FFB6 move.w #$78,$8130D4` -- the same freeze word boss2attacks.js, bossf23.js
+  // and bossguns.js all name. It is set unconditionally and on every frame, which is
+  // what a tally screen does: the game is stopped while the bonus counts.
+  for (const start of [3, 0]) {
+    const f = world();
+    armLine(f, start);
+    f.ram.setU16(0x8130d4, 0);
+    bonusLine125FFA8(f.ram, ROM, f.ctx, TALLY.side0);
+    assert.equal(f.ram.u16(0x8130d4), 0x78, `counter ${start} still freezes`);
+  }
+});
+
+test('W289 the running arm paints the LIVES ROW and allocates from ($C,A6)/($E,A6)',
+  { skip: SKIP }, () => {
+    // $260014/$26001E is `livesRow2878CC`, ported W116. And the fill takes ($C,A6) and
+    // ($E,A6) -- NOT $2600D8's ($10,A6)/($12,A6), which is why the two are not one
+    // shared helper however similar they look.
+    const f = world();
+    armLine(f, 3);
+    f.ram.setU16(TALLY.side0 + 0x0c, 0x3333);
+    f.ram.setU16(TALLY.side0 + 0x0e, 0x4444);
+    f.ram.setU16(TALLY.side0 + TALLY.argA, 0xaaaa);   // ($10,A6) must NOT be used
+    f.ram.setU16(TALLY.side0 + TALLY.argB, 0xbbbb);   // ($12,A6) likewise
+    const before = cells(f.ram);
+    bonusLine125FFA8(f.ram, ROM, f.ctx, TALLY.side0);
+    assert.ok(cells(f.ram) > before, 'the lives row drew');
+    assert.equal(f.ram.u16(ALLOC.createStage + 0x08), 0x3333, '($C,A6) -> ($8,A0)');
+    assert.equal(f.ram.u16(ALLOC.createStage + 0x0a), 0x4444, '($E,A6) -> ($a,A0)');
+  });
+
+test('W289 the line counts $23C668 and nothing else', { skip: SKIP }, () => {
+  // The 256-longword clear is the same subsystem player.js and tally.js already note.
+  const f = world();
+  armLine(f, 3);
+  bonusLine125FFA8(f.ram, ROM, f.ctx, TALLY.side0);
+  const addrs = f.log.report().map((r) => r.replace(/^\s*\d+ x (\$[0-9A-F]+) .*$/s, '$1'));
+  assert.deepEqual(addrs, ['$23C668']);
 });

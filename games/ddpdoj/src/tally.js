@@ -76,6 +76,100 @@ export const TALLY = Object.freeze({
   ptr: 0x08, argA: 0x10, argB: 0x12, type: 0x14, row: 0x17, result: 0x18,
 });
 
+// ===========================================================================
+// W289 -- `$25FFA8`, THE FIRST BONUS LINE
+// ===========================================================================
+// `$25FF52`'s ten longwords are the bonus lines, selected by the request word
+// `$25FF38` posts and driven by `$25FF7A` over both records at stride `$24`.
+// Entry 0 is null and guarded by `$25FF84 cmpi.w #$0,D0 / beq`; **this is entry 1**,
+// the first real one.
+//
+//   25ffa8  jsr $23C668                      256 longwords of a staging area
+//   25ffae  move.l #$0,($18,A6)              drop the previous object
+//   25ffb6  move.w #$78,$8130D4              **FREEZE THE GAME FOR 120 FRAMES**
+//   25ffbe  jsr $261116                      $81316C = 1, $81316A = 0
+//   25ffc4  movea.l ($8,A6),A0 / subq.w #1,(A0) / tst.w (A0) / bpl $26000C
+//     the counter BORROWED -- this line is finished:
+//   25ffd0    ($17,A6) picks the side, then three words per side
+//   260004    (A6) = 2                       -> the NEXT state
+//     not finished -- run one more frame of it:
+//   26000c    ($17,A6) ? $28795C : $2878CC   THE LIVES ROW, ported W116
+//   260024    the allocator-fill, and it is $2600D8's shape
+//   26004a    (A6) = 0                       -> re-post, so the driver comes back
+//   26004e  ($2,A6) = 0 / rts
+//
+// **THE COUNTER IS A POINTER, NOT A FIELD.** `movea.l ($8,A6),A0 / subq.w #1,(A0)`
+// decrements a word the RECORD POINTS AT, so two records can share one counter and the
+// tally's own `($8,A6)` is what decides. A port that decremented `($8,A6)` itself would
+// count down the pointer.
+//
+// **AND THE BORROW TEST IS `bpl`, NOT `beq`.** `subq.w #1 / tst.w / bpl` continues while
+// the result is ZERO OR POSITIVE, so a counter of 1 runs one more frame at 0 and only
+// finishes at -1. That is the old-zero borrow this project has been caught by six times,
+// in its other form.
+//
+// `$8130D4` is the FREEZE word `boss2attacks.js`, `bossf23.js` and `bossguns.js` all
+// name. So a bonus line stops the game while it counts -- which is what a tally screen
+// does, and it is why the freeze is set on EVERY frame of the line rather than once.
+const BONUS1 = Object.freeze({
+  site: 0x25ffa8,
+  freeze: 0x8130d4,
+  freezeFrames: 0x78,
+  crossA: 0x81316c, crossB: 0x81316a,          // $261116's two writes
+  // $25FFD8..$25FFFE -- three PAIRS, interleaved by side.
+  doneA: Object.freeze([0x812930, 0x812932]),
+  doneB: Object.freeze([0x812934, 0x812936]),
+  doneC: Object.freeze([0x812938, 0x81293a]),
+});
+
+/**
+ * `$25FFA8` -- bonus line 1. Returns true when the line FINISHED this frame.
+ *
+ * @param a6 the tally record (`$8130FA` or `$81311E`)
+ */
+export function bonusLine125FFA8(ram, rom, ctx, a6) {
+  ctx?.unportedLog?.note(0x23c668, '$25FFA8 jsr $23C668 -- clears 256 longwords of a '
+    + 'staging area this port does not model; the same note player.js and tally.js '
+    + 'both carry for their own callers of it');
+  ram.setU32(a6 + TALLY.result, 0);                        // $25FFAE move.l #$0
+  ram.setU16(BONUS1.freeze, BONUS1.freezeFrames);          // $25FFB6 move.w #$78
+  ram.setU16(BONUS1.crossA, 1);                            // $25FFBE jsr $261116
+  ram.setU16(BONUS1.crossB, 0);
+
+  // $25FFC4 -- the counter lives where ($8,A6) POINTS.
+  const ctr = ram.u32(a6 + TALLY.ptr);
+  ram.setU16(ctr, u16(ram.u16(ctr) - 1));                  // $25FFC8 subq.w #1,(A0)
+  const side = ram.u8(a6 + TALLY.row) !== 0 ? 1 : 0;
+
+  if ((ram.u16(ctr) & 0x8000) !== 0) {                     // $25FFCA tst.w / $25FFCC bpl
+    // Finished. Three words for the side, then state 2.
+    ram.setU16(BONUS1.doneA[side], 0);                     // $25FFD8 / $25FFF0
+    ram.setU16(BONUS1.doneB[side], 1);                     // $25FFDE / $25FFF6
+    ram.setU16(BONUS1.doneC[side], 0);                     // $25FFE6 / $25FFFE
+    ram.setU16(a6 + 0x00, 2);                              // $260004 move.w #$2,(A6)
+    ram.setU16(a6 + 0x02, 0);                              // $26004E
+    return true;
+  }
+
+  // Not finished: paint the side's lives row and re-post.
+  livesRow2878CC(ram, rom, ctx, side);                     // $260014 / $26001E
+  // $260024..$260044 -- the same allocator-fill `$2600D8` does, and the same trap:
+  // `$241182` leaves the staging slot in A0 and does not restore it, so these four
+  // writes go to the NEW record. The SOURCE fields differ though -- ($C,A6)/($E,A6)
+  // here against ($10,A6)/($12,A6) there, which is why this is not one shared helper.
+  const made = stageCreate(ram, ram.u16(a6 + TALLY.type),
+    (t) => rom.u16(DISPATCH + t * 8 + 4));                 // $260028 jsr $241182
+  if (made.ok) {
+    ram.setU8(made.addr + 0x06, 0);                        // $260032
+    ram.setU8(made.addr + 0x07, ram.u8(a6 + TALLY.row));   // $260038
+    ram.setU16(made.addr + 0x08, ram.u16(a6 + 0x0c));      // $26003E ($C,A6)
+    ram.setU16(made.addr + 0x0a, ram.u16(a6 + 0x0e));      // $260044 ($E,A6)
+  }
+  ram.setU16(a6 + 0x00, 0);                                // $26004A move.w #$0,(A6)
+  ram.setU16(a6 + 0x02, 0);                                // $26004E
+  return false;
+}
+
 /** `$25FD94` -- HOW MANY SIDES ARE STILL IN THE TALLY, minus one.
  *
  *   lea $8130FA,A2 / lea $81311E,A3 / clr.w $81308C

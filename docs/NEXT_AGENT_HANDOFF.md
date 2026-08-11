@@ -28,8 +28,8 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W288, `ddpdoj: record why $280252 is not transcribable yet`.
-- Suite: `node --test games/ddpdoj/tests/` is **1993/1993**, green, no skips.
+- HEAD is W289, `ddpdoj: port the tally's first bonus line`.
+- Suite: `node --test games/ddpdoj/tests/` is **2000/2000**, green, no skips.
 - A long census run reaches **frame 6483** and stops at `$280252`, whose body is READ
   but NOT portable until one register is measured -- see work-order item 1.
 - **THE LIVE BUILD IS STALE AND NOBODY IS TRACKING IT (D19).** `git push` is not
