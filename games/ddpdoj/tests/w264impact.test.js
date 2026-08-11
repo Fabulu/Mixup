@@ -10,6 +10,7 @@ import { RomWindows } from '../src/rom.js';
 import { MoveTables } from '../src/vectors.js';
 import { UnportedLog } from '../src/unported.js';
 import { allocPoolA27F8F0, POOL_A, KIND } from '../src/bee.js';
+import { RAM } from '../src/machine.js';
 
 const tablesPath = new URL('../rip/port/player.tables.json', import.meta.url);
 const HAVE = existsSync(tablesPath);
@@ -31,6 +32,9 @@ const MEASURED = {
     hitA: 0x09800980, hitB: 0x07800780, animWord: 0x0101, tpl1C: 0x001c,
     hooks: [0x0000, 0x0188, 0x0310, 0x0498, 0x0620, 0x07a8, 0x0930, 0x0ab8] },
 };
+
+/** W287: run `fn` and hand back the Unreached it threw, or null. */
+const caught = (fn) => { try { fn(); return null; } catch (e) { return e; } };
 
 function world() {
   const ram = new Ram();
@@ -133,4 +137,89 @@ test('W264 a D0 that is not a multiple of 4 is caught as an OFFSET error',
     const f = world();
     assert.throws(() => allocPoolA27F8F0(f.ram, ROM, f.ctx, 0x4d, 0, 0, CARRIER),
       (e) => e.name === 'Unreached');
+  });
+
+// ================ W287: EIGHT MORE FINISH ENTRIES, AND THEY ARE ONE FAMILY
+//
+// Hooks 8..15 of `$280BCE` share a three-instruction head and a tail. The head picks a
+// HOOK BLOCK and a PLAYER RECORD; the tail (`$280D94..$280DB8`) masks D7 to a nibble,
+// draws from `$242EC2`, indexes the block by `andi.l #$E` and ADDS the word to the
+// sprite pointer. So eight entries cost one table.
+
+/** The listing's own mapping, transcribed independently of `bee.js`'s table. */
+const W287_FAMILY = [
+  { idx: 8, site: 0x280d76, hooks: 0x280c4e, owner: RAM.player1 },
+  { idx: 9, site: 0x280d7c, hooks: 0x280c1e, owner: RAM.player1 },
+  { idx: 10, site: 0x280d82, hooks: 0x280c2e, owner: RAM.player1 },
+  { idx: 11, site: 0x280d88, hooks: 0x280c3e, owner: RAM.player1 },
+  { idx: 12, site: 0x280d3e, hooks: 0x280c4e, owner: RAM.player2 },
+  { idx: 13, site: 0x280d4c, hooks: 0x280c1e, owner: RAM.player2 },
+  { idx: 14, site: 0x280d5a, hooks: 0x280c2e, owner: RAM.player2 },
+  { idx: 15, site: 0x280d68, hooks: 0x280c3e, owner: RAM.player2 },
+];
+
+test('W287 all eight of the family allocate, silently', { skip: SKIP }, () => {
+  // Before this wave every one of these threw at $280BCE. They are the indices a long
+  // run reaches -- the census run died on D0 = $20, which is index 8.
+  for (const e of W287_FAMILY) {
+    const f = world();
+    const slot = allocPoolA27F8F0(f.ram, ROM, f.ctx, e.idx * 4, 0, 0, CARRIER);
+    assert.notEqual(slot, null, `index ${e.idx} allocated`);
+    assert.deepEqual(f.log.report(), [], `index ${e.idx} counted nothing`);
+  }
+});
+
+test('W287 the family writes WHICH PLAYER the impact belongs to', { skip: SKIP }, () => {
+  // `$280D8C move.l #$8103E6,($24,A0)` for 8..11 and `$810448` for 12..15. This is the
+  // one field the eight add on top of the shared fill, and the only reason they are
+  // eight entries rather than four.
+  for (const e of W287_FAMILY) {
+    const f = world();
+    const slot = allocPoolA27F8F0(f.ram, ROM, f.ctx, e.idx * 4, 0, 0, CARRIER);
+    assert.equal(f.ram.u32(slot + 0x24), e.owner,
+      `index ${e.idx} belongs to ${e.owner === RAM.player1 ? 'P1' : 'P2'}`);
+  }
+  // And the two halves really are different records, or the split would be untestable.
+  assert.notEqual(RAM.player1, RAM.player2);
+});
+
+test('W287 the hook BLOCK cycles $C4E, $C1E, $C2E, $C3E in both halves',
+  { skip: SKIP }, () => {
+    // Read out of the IMAGE via the windows, so the claim rests on the cartridge. The
+    // four blocks are eight words each and `andi.l #$E` bounds the index to 0..$E, so
+    // the index space is exactly the window.
+    const blocks = [0x280c4e, 0x280c1e, 0x280c2e, 0x280c3e];
+    for (const b of blocks) {
+      for (let i = 0; i < 8; i++) {
+        assert.doesNotThrow(() => ROM.u16(b + i * 2), `${b.toString(16)}[${i}] resolves`);
+      }
+      // The first word of every block is 0 -- the identity offset -- which is what makes
+      // "the hook offsets the sprite" a no-op on phase 0 rather than a displacement.
+      assert.equal(ROM.u16(b), 0, `${b.toString(16)}[0] is the identity`);
+    }
+    // The four are distinct, and the eight entries pair them with the two players.
+    assert.equal(new Set(blocks).size, 4);
+    for (const e of W287_FAMILY) {
+      assert.equal(e.hooks, blocks[(e.idx - 8) % 4], `index ${e.idx}'s block`);
+    }
+  });
+
+test('W287 $280C1E abuts W264\'s window, so all four blocks are seam-free',
+  { skip: SKIP }, () => {
+    // $280C1E + $10 == $280C2E, and W264 covered $280C2E + $30 (2E, 3E, 4E).
+    assert.equal(0x280c1e + 0x10, 0x280c2e);
+    assert.doesNotThrow(() => ROM.u16(0x280c1e + 0x0e), 'the last word of the new block');
+    assert.throws(() => ROM.u16(0x280c1c), 'and nothing below it');
+  });
+
+test('W287 the throw that remains says ELEVEN are translated, not three',
+  { skip: SKIP }, () => {
+    // Nine of the twenty are still unported and the message has to stay honest about
+    // which -- it is the diagnosis a future run gets.
+    const f = world();
+    const e = caught(() => allocPoolA27F8F0(f.ram, ROM, f.ctx, 0x10, 0, 0, CARRIER));
+    assert.ok(e, 'index 4 still throws');
+    assert.equal(e.romAddress, 0x280bce);
+    assert.match(e.message, /ELEVEN of its twenty are/);
+    assert.match(e.message, /indices 8\.\.15/);
   });

@@ -2438,6 +2438,21 @@ SHOT_WINDOWS.extend([
     (0x25FF52, 0x0028, "W279: the score tally's TEN bonus-line longwords "
                        "$25FF52..$25FF79; far end pinned by $25FF7A's own "
                        "`lea $8130FA,A6`"),
+    # W287: the FOURTH animation-hook block of `$280BCE`'s finish family.
+    #
+    # Hooks 8..15 are one body over two parameters -- a hook BLOCK and a PLAYER
+    # record -- and they select from four blocks:
+    #
+    #   $280C1E  <- THIS ONE, and it was the only one outside every window
+    #   $280C2E  }
+    #   $280C3E  }  covered since W264 by `$280C2E + $30`
+    #   $280C4E  }
+    #
+    # Eight words each, read as `move.w (A3,D0.w),D0` with D0 masked to $E, so the
+    # index space is 0..7 exactly.  `$280C1E + $10 == $280C2E`, so this window abuts
+    # W264's and the pair covers all four blocks seam-free.
+    (0x280C1E, 0x0010, "W287: $280BCE hook block 1 of 4, EIGHT words; abuts W264's "
+                       "$280C2E+$30, which covers the other three"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

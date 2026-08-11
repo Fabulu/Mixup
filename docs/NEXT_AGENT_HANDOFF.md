@@ -28,8 +28,9 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W286, `ddpdoj: kind 16 shares kind 1's fill hook`.
-- Suite: `node --test games/ddpdoj/tests/` is **1988/1988**, green, no skips.
+- HEAD is W287, `ddpdoj: port eight of $280BCE's finish hooks as one family`.
+- Suite: `node --test games/ddpdoj/tests/` is **1993/1993**, green, no skips.
+- A long census run now reaches **frame 6483** (was 6482) and stops at `$280252`.
 - **THE LIVE BUILD IS STALE AND NOBODY IS TRACKING IT (D19).** `git push` is not
   `tools/publish.mjs`. This session closed six docket items and moved the bundle
   4194 -> 4244 streams with no publish, and THREE of those items turned out to be
@@ -160,13 +161,15 @@ Cloudflare Pages. Pushing does not publish and publishing does not push.
    publishes without regenerating serves a stale bundle. `publish.mjs` gates on the
    Batman suite being ALL GREEN with 0 skipped, builds `dist/`, deploys, and then
    CONFIRMS the build id landed on several consecutive polls.
-2. **`$280BCE`'s OTHER EIGHTEEN finish routines.** Kind 16 is done -- W286 found
-   `$280BCE[1]` and `$280BCE[16]` are the SAME hook (`$280CEE`), so it needed no new
-   code and the port had simply been refusing a path it already had. **When a dispatch
-   table is involved, read the table entry before writing the routine:** "this kind is
-   unported" and "this kind's table slot points somewhere unported" are different
-   statements, and W284 made the first while the second was false. Same lesson as W275's
-   `$23F294` = `$23F1FA`.
+2. **`$280252`** -- the new stopping point of a long run, one frame past the old one.
+   W287 took `$280BCE` from three of twenty translated to ELEVEN by noticing that
+   indices 8..15 are ONE BODY over two parameters (a hook block cycling
+   `$C4E/$C1E/$C2E/$C3E`, and P1 for 8..11 / P2 for 12..15). **Ask the same question
+   first: read the table entry before writing the routine.** W275, W286 and W287 all
+   found work that had already been done or shared.
+
+   Of `$280BCE`'s remaining nine, **5, 6 and 7 all point at `$280D34`** -- three more
+   entries, one body, the same trick.
 3. **`$280BCE`'s finish routines**, or enough of them to drive a run past frame 6482.
    A long census run from the laser-hold rung throws `Unreached $280BCE` there --
    seventeen of its twenty finish routines are unported, already docketed under D3's

@@ -92,6 +92,7 @@
 //  +$28 l  layer emitter pointer (from layer table $280BB6, indexed by layer).
 
 import { u16, i16 } from './ram.js';
+import { RAM } from './machine.js';
 import { unreached } from './unported.js';
 import { enqueueThroughStub, enqueueZoomedThroughStub, enqueueRegisters } from './spritequeue.js';
 import { scoreByMask } from './score.js';
@@ -418,10 +419,61 @@ function impactTemplate280B4A(rom, d0) {
  * naming their OWN address out of the dispatch, which is a strictly better diagnosis
  * than the old "unported kind": it says which routine to port.
  */
+// W287: **EIGHT MORE, AND THEY ARE ONE BODY OVER TWO PARAMETERS.**
+//
+// Hooks 8..15 of `$280BCE` all have the same three-instruction head and then share a
+// tail. Read down the two columns and the structure is the whole story:
+//
+//   idx  site      lea               ($24,A0) <-   via
+//    8   $280D76   $280C4E           $8103E6       $280D8C
+//    9   $280D7C   $280C1E           $8103E6       $280D8C
+//   10   $280D82   $280C2E           $8103E6       $280D8C
+//   11   $280D88   $280C3E           $8103E6       $280D8C   (falls through)
+//   12   $280D3E   $280C4E           $810448       $280D94
+//   13   $280D4C   $280C1E           $810448       $280D94
+//   14   $280D5A   $280C2E           $810448       $280D94
+//   15   $280D68   $280C3E           $810448       $280D94
+//
+// So the HOOK BLOCK cycles $C4E, $C1E, $C2E, $C3E and the PLAYER RECORD is P1 for
+// 8..11 and P2 for 12..15. `$8103E6` and `$810448` are `RAM.player1`/`player2` -- the
+// field at `($24,A0)` is which player this impact belongs to.
+//
+// THE SHARED TAIL, `$280D94..$280DB8`, and it is why these eight cost almost nothing:
+//
+//   andi.w #$F,D7 / move.b D7,($1a,A0)      the low nibble of D7 is the anim index
+//   clr.b ($1e,A0)
+//   move.l D0,D7 / jsr $242EC2              the RNG ($242EC2, ported in src/rng.js)
+//   andi.l #$E,D0 / move.w (A3,D0.w),D0     one of the block's EIGHT words
+//   add.l D0,($a,A0)                        ADDED to the sprite pointer
+//   move.l D7,D0 / rts                      D0 restored -- the caller's value survives
+//
+// `andi.l #$E` masks to an EVEN offset 0..$E, which is exactly the eight words the
+// window covers, so the index space needs no bound of its own.
+//
+// `($24,A0)` is the only new field, and `add.l D0,($a,A0)` is the same
+// "the hook offsets the sprite" mechanism the three W264 entries already use -- which
+// is why `hookOffsets` below carries them for every kind rather than per entry.
+const FINISH_FAMILY_BLOCKS = Object.freeze([0x280c4e, 0x280c1e, 0x280c2e, 0x280c3e]);
+const FINISH_FAMILY = Object.freeze(Object.fromEntries(
+  Array.from({ length: 8 }, (_, n) => {
+    const idx = 8 + n;                       // dispatch indices 8..15
+    const site = [0x280d76, 0x280d7c, 0x280d82, 0x280d88,
+      0x280d3e, 0x280d4c, 0x280d5a, 0x280d68][n];
+    return [idx * 4, Object.freeze({
+      hooks: FINISH_FAMILY_BLOCKS[n % 4],
+      status: null,                          // none of the eight writes one
+      site,
+      // $280D8C for 8..11, $280D94's own arm for 12..15
+      owner: n < 4 ? RAM.player1 : RAM.player2,
+    })];
+  }),
+));
+
 const IMPACT_FINISH = Object.freeze({
   0x00: Object.freeze({ hooks: 0x280c4e, status: null, site: 0x280c5e }),
   0x48: Object.freeze({ hooks: 0x280c2e, status: 0x18, site: 0x280dea }),
   0x4c: Object.freeze({ hooks: 0x280c3e, status: 0x1c, site: 0x280e1a }),
+  ...FINISH_FAMILY,
 });
 const IMPACT_FINISH_DISPATCH = 0x280bce;
 
@@ -431,9 +483,10 @@ export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) 
     // The message must NOT read the ROM: $280BCE is code and in no window, so building
     // the diagnosis out of it would throw a DIFFERENT error than the one being reported.
     unreached(0x280bce, `$280BCE's finish dispatch has no translated entry for `
-      + `D0 = $${(kind >>> 0).toString(16).toUpperCase()}. Three of its twenty are `
-      + `translated -- $280C5E (D0 = 0), $280DEA ($48) and $280E1A ($4C), one routine `
-      + `with a hook table and a status apiece. Read $280BCE + $${
+      + `D0 = $${(kind >>> 0).toString(16).toUpperCase()}. ELEVEN of its twenty are `
+      + `translated: $280C5E (D0 = 0), $280DEA ($48), $280E1A ($4C), and W287's family `
+      + `of eight at indices 8..15 (one body over a hook block and a player record). `
+      + `Read $280BCE + $${
         (kind >>> 0).toString(16).toUpperCase()} out of the image to see which routine `
       + `this D0 wants, and port THAT rather than widening a window here`);
   }
@@ -444,6 +497,7 @@ export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) 
     ...(IMPACT_KIND[kind] ?? {}),
     ...impactTemplate280B4A(rom, kind),
     status: finish.status,
+    owner: finish.owner,                     // W287: hooks 8..15 only
     hookOffsets: Array.from({ length: 8 }, (_, i) => rom.u16(finish.hooks + i * 2)),
   };
   const d2 = u16((layer & 0xff) << 2);
@@ -509,6 +563,13 @@ function fillGeneralImpact280B3E(ram, rom, ctx, slot, kind, offset, d2,
   if (spec.status !== null) {
     ram.setU16(slot + B.status,
       (ram.u16(slot + B.status) & 0xff83) | spec.status);
+  }
+  // W287: hooks 8..15 also write WHICH PLAYER the impact belongs to.
+  // `$280D8C move.l #$8103E6,($24,A0)` for 8..11 and `$810448` for 12..15 -- the
+  // only field the eight add on top of the shared fill, and the only reason they are
+  // eight entries rather than four.
+  if (spec.owner !== undefined) {
+    ram.setU32(slot + 0x24, spec.owner);
   }
   return slot;
 }
