@@ -9,7 +9,7 @@ import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { MoveTables } from '../src/vectors.js';
 import { UnportedLog } from '../src/unported.js';
-import { allocPoolA27F8F0, POOL_A, KIND } from '../src/bee.js';
+import { allocPoolA27F8F0, POOL_A, KIND, B } from '../src/bee.js';
 import { RAM } from '../src/machine.js';
 
 const tablesPath = new URL('../rip/port/player.tables.json', import.meta.url);
@@ -124,8 +124,11 @@ test('W264 kind $0 does NOT normalise the status, and the other two do',
   });
 
 test('W264 an unread D0 names the DISPATCH ENTRY, not a window', { skip: SKIP }, () => {
+  // W298 ported kinds $10..$1C (hooks 4..7), so this drives $08 -- index 2, whose hook
+  // $280CF8 is still unported. The claim is unchanged: the message names the dispatch
+  // and does not open with a window error.
   const f = world();
-  assert.throws(() => allocPoolA27F8F0(f.ram, ROM, f.ctx, 0x10, 0, 0, CARRIER),
+  assert.throws(() => allocPoolA27F8F0(f.ram, ROM, f.ctx, 0x08, 0, 0, CARRIER),
     (e) => e.name === 'Unreached' && e.romAddress === 0x280bce
       && /\$280C5E/.test(e.message) && !/window/.test(e.message.slice(0, 80)));
 });
@@ -212,14 +215,69 @@ test('W287 $280C1E abuts W264\'s window, so all four blocks are seam-free',
     assert.throws(() => ROM.u16(0x280c1c), 'and nothing below it');
   });
 
-test('W287 the throw that remains says ELEVEN are translated, not three',
+test('W298 the throw that remains says FIFTEEN are translated, not eleven',
   { skip: SKIP }, () => {
-    // Nine of the twenty are still unported and the message has to stay honest about
-    // which -- it is the diagnosis a future run gets.
+    // Five of the twenty are still unported and the message has to stay honest about
+    // which -- it is the diagnosis a future run gets. W264 said three, W287 eleven,
+    // W298 fifteen, and each time the number moved the message moved with it.
     const f = world();
-    const e = caught(() => allocPoolA27F8F0(f.ram, ROM, f.ctx, 0x10, 0, 0, CARRIER));
-    assert.ok(e, 'index 4 still throws');
+    const e = caught(() => allocPoolA27F8F0(f.ram, ROM, f.ctx, 0x08, 0, 0, CARRIER));
+    assert.ok(e, 'index 2 still throws');
     assert.equal(e.romAddress, 0x280bce);
-    assert.match(e.message, /ELEVEN of its twenty are/);
-    assert.match(e.message, /indices 8\.\.15/);
+    assert.match(e.message, /FIFTEEN of its twenty are/);
+    assert.match(e.message, /indices 8\.\.15/, 'and it still names W287 family');
+    assert.match(e.message, /5\/6\/7 are the SAME entry \$280D34/,
+      'and W298 too, including that three of its four share one body');
   });
+
+test('W298 hooks 4..7 allocate, and 5/6/7 are the SAME table entry', { skip: SKIP }, () => {
+  // `$280BCE[5]`, `[6]` and `[7]` are all `$280D34`, so three of the four cost nothing --
+  // the same "read the table entry, not just the routine" that W286 and W287 turned on.
+  for (const kind of [0x10, 0x14, 0x18, 0x1c]) {
+    const f = world();
+    const slot = allocPoolA27F8F0(f.ram, ROM, f.ctx, kind, 0, 0, CARRIER);
+    assert.notEqual(slot, null, `kind $${kind.toString(16)} allocated`);
+    assert.deepEqual(f.log.report(), [], `kind $${kind.toString(16)} counted nothing`);
+  }
+});
+
+test('W298 hooks 4..7 draw the speed from $242B3C, and add FIVE', { skip: SKIP }, () => {
+  // `$280CD4 jsr $242B3C / bpl / neg.b / ext.w / lsr.w #1` where `$280C84` uses
+  // `$2431F4 / lsr.w #1` -- one expression, and then `addq.b #5,($1a,A0)`. The bump is
+  // what separates these four from kind 0 observably.
+  const base = world();
+  const s0 = allocPoolA27F8F0(base.ram, ROM, base.ctx, 0x00, 0, 0, CARRIER);
+  const bumped = world();
+  const s4 = allocPoolA27F8F0(bumped.ram, ROM, bumped.ctx, 0x10, 0, 0, CARRIER);
+  assert.equal(bumped.ram.u8(s4 + B.speed) - base.ram.u8(s0 + B.speed), 5,
+    'the +5 is there and the two draws happen to agree at this RNG state');
+});
+
+test('W298 hook 4 ALONE clears ($1,A0) -- the one instruction separating it from 5/6/7',
+  { skip: SKIP }, () => {
+    // `$280D2A clr.b ($1,A0)`. Without it `($1,A0)` holds the kind, since the status word
+    // is `kind | $8000` and byte 1 is its low half.
+    const four = world();
+    const s = allocPoolA27F8F0(four.ram, ROM, four.ctx, 0x10, 0, 0, CARRIER);
+    assert.equal(four.ram.u8(s + 0x01), 0, 'hook 4 cleared it');
+    for (const kind of [0x14, 0x18, 0x1c]) {
+      const f = world();
+      const t = allocPoolA27F8F0(f.ram, ROM, f.ctx, kind, 0, 0, CARRIER);
+      assert.equal(f.ram.u8(t + 0x01), kind, `kind $${kind.toString(16)} kept it`);
+    }
+  });
+
+test('W298 the RNG is drawn ONCE, not twice to test its sign', { skip: SKIP }, () => {
+  // `$242B3C` bumps `$803917` on every call, so drawing twice to check the sign would
+  // advance the shared counter and desynchronise every later draw in the frame. This was
+  // the first draft's bug.
+  const f = world();
+  const before = f.ram.u8(0x803917);
+  allocPoolA27F8F0(f.ram, ROM, f.ctx, 0x10, 0, 0, CARRIER);
+  const after = f.ram.u8(0x803917);
+  const plain = world();
+  allocPoolA27F8F0(plain.ram, ROM, plain.ctx, 0x00, 0, 0, CARRIER);
+  assert.equal((after - before) & 0xff,
+    (plain.ram.u8(0x803917) - before) & 0xff,
+    'hooks 4..7 advance the counter exactly as much as kind 0 does');
+});

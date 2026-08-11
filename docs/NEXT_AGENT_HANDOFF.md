@@ -28,8 +28,13 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W297, `ddpdoj: the SET/bonus panel's body`.
-- Suite: `node --test games/ddpdoj/tests/` is **2039/2039**, green, no skips.
+- HEAD is W298, `ddpdoj: $280BCE's hooks 4..7`.
+- Suite: `node --test games/ddpdoj/tests/` is **2043/2043**, green, no skips.
+- `$280BCE` is at **FIFTEEN of twenty** finish hooks translated.
+- **A STATEFUL RNG DRAW CANNOT BE INSPECTED TWICE.** `$242B3C` opens with
+  `addq.b #1,$803917`, so calling it again to test the sign desynchronises every later
+  draw in the frame. W298's first draft did exactly that; there is now a test comparing
+  the counter's advance against a known-good kind.
 - **THE NINE BONUS LINES ARE COMPLETE with no counted gap of their own.** W297 ported
   `$2532B6`, which `setPanel2603B0` had been counting as the deferred text path even
   though both its printers landed in W116 -- the only missing part was the arithmetic.

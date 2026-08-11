@@ -469,10 +469,38 @@ const FINISH_FAMILY = Object.freeze(Object.fromEntries(
   }),
 ));
 
+// W298: HOOKS 4, 5, 6 AND 7, and 5/6/7 are literally the same routine.
+//
+//   $280BCE[4] = $280D28   bsr $280CD4 / clr.b ($1,A0) / addq.b #5,($1a,A0) / rts
+//   $280BCE[5] = $280D34   bsr $280CD4 /                 addq.b #5,($1a,A0) / bra rts
+//   $280BCE[6] = $280D34   THE SAME ENTRY
+//   $280BCE[7] = $280D34   THE SAME ENTRY
+//
+// So four dispatch indices are two bodies, and the two differ by ONE instruction --
+// hook 4's `clr.b ($1,A0)`. Three of the four cost nothing at all, the same way W286's
+// kind 16 and W287's eight did: **read the table entry, not just the routine.**
+//
+// And `$280CD4` differs from the ported `$280C84` in ONE expression: the speed draw is
+// `abs($242B3C) >> 1` where `$280C84` uses `$2431F4 >> 1`. It sets `($1A,A0) = $420`
+// first, which the shared fill already does, and then `bra $280C8C` lands in the SAME
+// tail. So this is a parameter, not a routine.
+const FINISH_SPEED_242B3C = Object.freeze({ speedFrom242B3C: true, speedBump: 5 });
+const FINISH_HOOKS_4_TO_7 = Object.freeze({
+  0x10: Object.freeze({ hooks: 0x280c4e, status: null, site: 0x280d28,
+    ...FINISH_SPEED_242B3C, clearByte1: true }),
+  0x14: Object.freeze({ hooks: 0x280c4e, status: null, site: 0x280d34,
+    ...FINISH_SPEED_242B3C }),
+  0x18: Object.freeze({ hooks: 0x280c4e, status: null, site: 0x280d34,
+    ...FINISH_SPEED_242B3C }),
+  0x1c: Object.freeze({ hooks: 0x280c4e, status: null, site: 0x280d34,
+    ...FINISH_SPEED_242B3C }),
+});
+
 const IMPACT_FINISH = Object.freeze({
   0x00: Object.freeze({ hooks: 0x280c4e, status: null, site: 0x280c5e }),
   0x48: Object.freeze({ hooks: 0x280c2e, status: 0x18, site: 0x280dea }),
   0x4c: Object.freeze({ hooks: 0x280c3e, status: 0x1c, site: 0x280e1a }),
+  ...FINISH_HOOKS_4_TO_7,
   ...FINISH_FAMILY,
 });
 const IMPACT_FINISH_DISPATCH = 0x280bce;
@@ -483,9 +511,10 @@ export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) 
     // The message must NOT read the ROM: $280BCE is code and in no window, so building
     // the diagnosis out of it would throw a DIFFERENT error than the one being reported.
     unreached(0x280bce, `$280BCE's finish dispatch has no translated entry for `
-      + `D0 = $${(kind >>> 0).toString(16).toUpperCase()}. ELEVEN of its twenty are `
-      + `translated: $280C5E (D0 = 0), $280DEA ($48), $280E1A ($4C), and W287's family `
-      + `of eight at indices 8..15 (one body over a hook block and a player record). `
+      + `D0 = $${(kind >>> 0).toString(16).toUpperCase()}. FIFTEEN of its twenty are `
+      + `translated: $280C5E (D0 = 0), $280DEA ($48), $280E1A ($4C), W298's hooks 4..7 `
+      + `(two bodies, and 5/6/7 are the SAME entry $280D34), and W287's family of eight `
+      + `at indices 8..15 (one body over a hook block and a player record). `
       + `Read $280BCE + $${
         (kind >>> 0).toString(16).toUpperCase()} out of the image to see which routine `
       + `this D0 wants, and port THAT rather than widening a window here`);
@@ -498,6 +527,9 @@ export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) 
     ...impactTemplate280B4A(rom, kind),
     status: finish.status,
     owner: finish.owner,                     // W287: hooks 8..15 only
+    speedFrom242B3C: finish.speedFrom242B3C,  // W298: hooks 4..7
+    speedBump: finish.speedBump,
+    clearByte1: finish.clearByte1,
     hookOffsets: Array.from({ length: 8 }, (_, i) => rom.u16(finish.hooks + i * 2)),
   };
   const d2 = u16((layer & 0xff) << 2);
@@ -549,8 +581,36 @@ function fillGeneralImpact280B3E(ram, rom, ctx, slot, kind, offset, d2,
   const phase = (drawWord242EC2(ram, rom) & 0x0e) >> 1;
   ram.setU32(slot + B.sprite,
     (ram.u32(slot + B.sprite) + spec.hookOffsets[phase]) >>> 0);
-  ram.setU8(slot + B.speed,
-    ram.u8(slot + B.speed) + (drawByte2431F4(ram, rom) >> 1));
+  // W298: WHICH RNG FEEDS THE SPEED IS THE ONLY THING HOOKS 4..7 CHANGE.
+  //
+  //   $280C84  jsr $2431F4 / lsr.w #1,D0            the path W264 ported
+  //   $280CD4  jsr $242B3C / bpl / neg.b D0 /       hooks 4, 5, 6 and 7
+  //            ext.w D0 / lsr.w #1,D0  -> $280C8C
+  //
+  // `$280CD4` also writes `move.w #$420,($1A,A0)` before the draw, which the line
+  // above already does, and then `bra $280C8C` lands in the SAME tail -- so the two
+  // differ in one expression and nothing else. `abs()` is `bpl / neg.b`, taken on the
+  // BYTE and then `ext.w`-ed, so a draw of $80 becomes $80 and not $FF80.
+  // ONE draw either way -- the RNG is stateful (`$242B3C addq.b #1,$803917`), so
+  // drawing twice to test the sign would advance it and desynchronise every later
+  // draw in the frame.
+  let speedDraw;
+  if (spec.speedFrom242B3C) {
+    const b = drawByte242B3C(ram, rom);                  // $280CDE jsr $242B3C
+    const signed = (b << 24) >> 24;                      // the BYTE's sign
+    const abs = signed < 0 ? ((-b) & 0xff) : b;          // $280CE4 bpl / $280CE6 neg.b
+    speedDraw = ((abs << 24) >> 24) >> 1;                // $280CE8 ext.w / $280CEA lsr.w
+  } else {
+    speedDraw = drawByte2431F4(ram, rom) >> 1;           // $280C84 / $280C8A
+  }
+  ram.setU8(slot + B.speed, ram.u8(slot + B.speed) + speedDraw);
+  // $280D2E / $280D36 addq.b #5,($1a,A0) -- hooks 4..7 only.
+  if (spec.speedBump) {
+    ram.setU8(slot + B.speed, (ram.u8(slot + B.speed) + spec.speedBump) & 0xff);
+  }
+  // $280D2A clr.b ($1,A0) -- hook 4 ALONE, and it is the only thing separating 4 from
+  // 5, 6 and 7, which all share `$280D34`.
+  if (spec.clearByte1) ram.setU8(slot + 0x01, 0);
   const spread = drawSigned242FDE(ram, rom) + 1;
   ram.setU8(slot + B.angle,
     ram.u8(slot + B.angle) + drawByte2431F4(ram, rom) - spread);
