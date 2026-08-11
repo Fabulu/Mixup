@@ -2472,6 +2472,25 @@ SHOT_WINDOWS.extend([
     # DESTINATIONS are not in address order.
     (0x287DF8, 0x0096, "W301: $28841E's FACTORY high-score table, nine blocks in one "
                        "contiguous run $287DF8..$287E8D"),
+    # W302: the high-score SCREEN's glyph tables.  `$25B492` bsr's eleven routines and each
+    # PC-relative table sits immediately after the code that loads it, so every extent below
+    # is pinned on both sides: the previous routine's `rts` and the next routine's first
+    # instruction.  Verified that way rather than assumed.
+    (0x25B5C2, 0x0020, "W302: $25B58C's SHIP table, FOUR 8-byte entries (art long, then "
+                       "D3 and D4); code resumes at $25B5E2"),
+    (0x25B61A, 0x000C, "W302: $25B5E2's STYLE table, THREE longs, indexed (value-2)*2; "
+                       "code resumes at $25B626"),
+    (0x25B6DC, 0x0024, "W302: $25B650's loop/stage DIGIT table, NINE longs stride $C; "
+                       "code resumes at $25B700"),
+    (0x25B778, 0x0028, "W302: $25B72A's chain DIGIT table, TEN longs stride $C -- BCD, so "
+                       "the masked nibble is 0..9 and entry 10 would be code"),
+    # BOTH initials fonts, contiguous.  29 longs each and **entry 27 (offset $6C) is
+    # $00000000 in both** -- a hole, with a valid glyph after it at offset $70.  A window
+    # sized to the 27 real characters would make the last one throw.
+    (0x25B7E6, 0x00E8, "W302: $25B7A0's TWO initials fonts, 29 longs each stride $24 with a "
+                       "NULL at offset $6C; row 1 uses $25B7E6, rows 2..5 use $25B85A"),
+    (0x25B984, 0x0050, "W302: the score/digit fonts, TEN longs each stride $C; row 1 uses "
+                       "$25B984 and rows 2..5 use $25B9AC, shared by $25B8CE and $25B944"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
