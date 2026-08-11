@@ -28,8 +28,8 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W280, `ddpdoj: make the page an installable PWA`.
-- Suite: `node --test games/ddpdoj/tests/` is **1955/1955**, green, no skips.
+- HEAD is W281, `ddpdoj: settle the hyper display and redirect D16 at the producer`.
+- Suite: `node --test games/ddpdoj/tests/` is **1963/1963**, green, no skips.
 - **`top_objects` coverage is 9/20** -- nine of the twenty top-level dispatch entries
   are registered in `main.js`. `w167coverage.test.js` pins it.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
@@ -135,15 +135,27 @@ Cloudflare Pages. Pushing does not publish and publishing does not push.
 
 ## Work order toward the goal
 
-1. **D16 -- the hyper bar should show the level even when NOT hypering.** SETTLE WHAT
-   `$81B63E` MEANS FIRST. `hud.js` calls it `hyperActiveP1` and it has **92 references
-   in build B**, so the name may be wrong and the word may mean "the gauge is armed"
-   rather than "a hyper is running". W279 measured that the bar IS ported and its tile
-   really tracks the gauge through `$2881F2`, but it draws only on the hyper arm -- and
-   the port is FAITHFUL there, because `$285D74` (the non-hyper arm) draws icons and
-   rank and no panel, and `codexref 2881F2` finds exactly two readers, both hyper arms.
-   So the always-visible bar is not that record. **Do not assume a missing draw: D7 and
-   D8 both looked like one and were not.**
+1. **THE ITEM PRODUCER -- it may close BOTH D16 and D17.** W281 settled the D16 draw
+   side completely: `$81B63E` does mean "a hyper is RUNNING", the always-visible
+   indicator is the ICON ROW that `$285D74` draws from `$81B6E0` guarded by `$81B6E4`,
+   and **the port draws it correctly** -- one icon per unit, measured, and
+   `w281hyperdisplay.test.js` pins the whole chain so nobody looks there again.
+
+   The screen is empty because `$81B65C`, `$81B6E0`, `$81B6E4` and `$81B642` are **ZERO
+   on every frame of a 900-frame run on both the shipped seed and the laser-hold rung.**
+   Measure, in this order:
+   - does ANY item spawn in a live run? The item pool (`ITEM.base` `$8181BA`, stride
+     `$40`, 25 slots) and pool A were both empty after 900 frames.
+   - if nothing spawns, that one defect may explain D17 as well, because `bee.js` says
+     "the medal IS the bee" and both come out of the same item family. **PROVE they
+     share a cause rather than assuming it** -- assuming a shared cause is what kept D4
+     open for three waves.
+   - only then go near a draw.
+
+   And do NOT be misled by `spawnItem`'s `REFUSED_KINDS` branch: its note explains that
+   granting a hyper stock early would plant a permanent +16 rank error, it reads exactly
+   like the cause of D16, and it has been DEAD since W163. W281 asserts the list is
+   empty.
 2. **D17 -- the in-stage medals.** The tally IS reachable (`$8130F9` bit 2 has a writer
    at `src/stageend.js:735`), so the gap is upstream: the medal item, its spawn, or its
    art. `src/bee.js` (W111) says "the medal IS the bee"; `src/hud.js` (W124) has the

@@ -20,7 +20,7 @@ that drift.
     D13 orientation, portrait + landscape, mobile + desktop     W279
     D14 make it a PWA                                          W280
     D15 a user option to LOCK the orientation                   W279
-    D16 the hyper bar should show the level when NOT hypering   OPEN
+    D16 the hyper bar should show the level when NOT hypering   W281 -> producer
     D17 the in-stage medals are missing                         OPEN
     D18 commit AND PUSH every wave, not just commit             STANDING RULE
 
@@ -288,7 +288,7 @@ is about exposing it as a user setting that persists, and about being honest on
 engines where it cannot work (it needs fullscreen on most, and iPhone Safari has no
 `Element.requestFullscreen` at all).
 
-### D16: the hyper bar should show the level even when NOT hypering
+### D16: the hyper bar should show the level even when NOT hypering -- REDIRECTED (W281)
 
 **The owner's words: "hyper bar shows you how much hyper you have even when not
 hypering."** MEASURED this session, by calling `scoreRow285C62` directly:
@@ -313,6 +313,21 @@ and the gap is whatever maintains the word.
 Do not assume it is a missing draw. D7 and D8 both looked like missing draws and were
 not.
 
+**W281 SETTLED IT AND IT IS NOT A MISSING DRAW.** `$81B63E` really does mean "a hyper
+is RUNNING" (`$285A30 move.w #$1` is reached only after `$285A1C` finds a request), so
+the fill panel is genuinely hyper-only. **The always-visible indicator is a different
+record: `$285D74`, the non-hyper arm, draws `$81B6E0` ICONS from tile `$1CA008` guarded
+by `$81B6E4`** -- and the port draws it, one icon per unit, measured at 1/2/3/5.
+
+The screen is empty because `$81B65C`, `$81B6E0`, `$81B6E4` and `$81B642` are **ZERO on
+every frame of a 900-frame run on both the shipped seed and the laser-hold rung**. Every
+hyper display correctly draws nothing. Driven by hand they all respond.
+
+So the gap is the item PRODUCER, which is the D3 shape again. `w281hyperdisplay.test.js`
+pins the whole display chain so no further wave looks there, and it also pins that
+`spawnItem`'s `REFUSED_KINDS` branch -- which reads exactly like the cause -- has been
+DEAD since W163.
+
 ### D17: the in-stage medals are missing
 
 The owner reports the stage medals do not appear. What the port already has, so the
@@ -329,6 +344,12 @@ Which means the gap is upstream of the tally -- the in-stage medal ITEM itself, 
 spawn, or its art -- and the way in is a sweep of what the medal pool emits during
 play rather than a reading of the bonus screen. Note that the chaining medal value is
 the thing a player notices, so check the VALUE progression as well as the picture.
+
+**W281 found that D16 lands in the same place**: no item raises the hyper words in a
+900-frame run, and pool A -- which `bee.js` says the medal IS -- was empty too. The
+medals and the hyper items come out of the same item family, so ONE producer defect
+would explain both. **Prove they share a cause rather than assuming it** -- assuming a
+shared cause is exactly what kept D4 open for three waves.
 
 ### D18: commit AND PUSH intermittently, not just commit
 
