@@ -16,7 +16,7 @@ import { RomWindows } from '../src/rom.js';
 import { UnportedLog } from '../src/unported.js';
 import { deferReset } from '../src/background.js';
 import { HUDRAM } from '../src/hud.js';
-import { TALLY, bonusLine125FFA8 } from '../src/tally.js';
+import { TALLY, bonusLine125FFA8, bonusLine2260056 } from '../src/tally.js';
 import { ALLOC } from '../src/objalloc.js';
 import { RAM as MACHINE } from '../src/machine.js';
 import {
@@ -573,4 +573,83 @@ test('W289 the line counts $23C668 and nothing else', { skip: SKIP }, () => {
   bonusLine125FFA8(f.ram, ROM, f.ctx, TALLY.side0);
   const addrs = f.log.report().map((r) => r.replace(/^\s*\d+ x (\$[0-9A-F]+) .*$/s, '$1'));
   assert.deepEqual(addrs, ['$23C668']);
+});
+
+// ====================== 10. W290: BONUS LINE 2, `$260056`
+//
+// The line that CREATES the display objects, and one of them is object dispatch [11] --
+// the stage-clear screen W276 ported. So the creator and the created are both in the
+// tree now, which closes D9's old note that "type $B is the same unported $25DBB4 that
+// D11 is about".
+
+test('W290 line 2 creates BOTH objects, and the handles land in DIFFERENT fields',
+  { skip: SKIP }, () => {
+    // $26009A type $D -> ($20,A6); $2600AE type $B -> ($1C,A6). Line 1 keeps its one
+    // handle at ($18,A6). Three fields for three objects, so reusing one silently drops
+    // a handle -- and nothing would throw.
+    const f = world();
+    f.ram.setU16(0x803926, 0);
+    const r = bonusLine2260056(f.ram, ROM, f.ctx, TALLY.side0);
+    assert.ok(r, 'the line ran');
+    assert.notEqual(r.objA, 0, 'type $D allocated');
+    assert.notEqual(r.objB, 0, 'type $B allocated');
+    assert.notEqual(r.objA, r.objB, 'and they are different records');
+    assert.equal(f.ram.u32(TALLY.side0 + 0x20), r.objA, 'the $D handle is at ($20,A6)');
+    assert.equal(f.ram.u32(TALLY.side0 + 0x1c), r.objB, 'the $B handle is at ($1C,A6)');
+    assert.equal(f.ram.u32(TALLY.side0 + TALLY.result), 0, 'and ($18,A6) is untouched');
+  });
+
+test('W290 type $B is object dispatch [11], the screen W276 ported', { skip: SKIP }, () => {
+  // Worth an assertion rather than a comment: it is the fact that makes this line the
+  // thing that brings the tally screen into existence.
+  const src = readFileSync(path.join(R, 'src', 'main.js'), 'utf8');
+  assert.match(src, /\[11, tallyScreen25DBB4\]/, '[11] is registered');
+  // And the object the line creates carries the SIDE, which is what [11] reads at +$7.
+  const f = world();
+  f.ram.setU16(0x803926, 0);
+  f.ram.setU8(TALLY.side0 + TALLY.row, 1);
+  const r = bonusLine2260056(f.ram, ROM, f.ctx, TALLY.side0);
+  assert.equal(f.ram.u8(r.objB + 0x07), 1, '($7,A0) carries the side into [11]');
+});
+
+test('W290 the $803926 gate does nothing but re-post', { skip: SKIP }, () => {
+  // $260060 tst.w / bne $2600C2 -- straight to the tail. No objects, no high-score
+  // check, and the request still goes back so the driver returns.
+  const f = world();
+  f.ram.setU16(0x803926, 1);
+  const r = bonusLine2260056(f.ram, ROM, f.ctx, TALLY.side0);
+  assert.equal(r, null, 'the line did nothing');
+  assert.equal(f.ram.u32(TALLY.side0 + 0x20), 0, 'no $D handle');
+  assert.equal(f.ram.u32(TALLY.side0 + 0x1c), 0, 'no $B handle');
+  assert.equal(f.ram.u16(TALLY.side0 + 0x00), 0, 'but it re-posted');
+});
+
+test('W290 the HIGH-SCORE check is one counted gap, named per side', { skip: SKIP }, () => {
+  // $287BD2 / $287C08. Deferred because they share $287C3E, which writes the loop and
+  // stage, calls $287CEE for a slot and compares overflow words -- a high-score TABLE
+  // INSERT, which is a subsystem and not a routine. Its carry sets one bit of $8130CC
+  // and affects nothing else in this line.
+  for (const [side, addr] of [[0, '$287BD2'], [1, '$287C08']]) {
+    const f = world();
+    f.ram.setU16(0x803926, 0);
+    f.ram.setU8(TALLY.side0 + TALLY.row, side);
+    bonusLine2260056(f.ram, ROM, f.ctx, TALLY.side0);
+    const hit = f.log.report().find((r) => r.includes(addr));
+    assert.ok(hit, `side ${side} counts ${addr}`);
+    assert.match(hit, /HIGH-SCORE/, 'and says what it is');
+    assert.match(hit, /\$287C3E/, 'and names the shared body');
+  }
+});
+
+test('W290 line 2 recounts the live sides on the way in', { skip: SKIP }, () => {
+  // $26005C jsr $25FD94 -- W277's routine, and it runs BEFORE the gate, so it happens
+  // even on the do-nothing path.
+  for (const gate of [0, 1]) {
+    const f = world();
+    f.ram.setU16(0x803926, gate);
+    f.ram.setU16(HUDRAM.attract, 0x1234);
+    bonusLine2260056(f.ram, ROM, f.ctx, TALLY.side0);
+    assert.equal(f.ram.u16(HUDRAM.attract), 0xffff,
+      `gate ${gate}: no side is live, so the count is $FFFF`);
+  }
 });

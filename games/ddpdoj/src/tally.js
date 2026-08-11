@@ -170,6 +170,86 @@ export function bonusLine125FFA8(ram, rom, ctx, a6) {
   return false;
 }
 
+// ===========================================================================
+// W290 -- `$260056`, BONUS LINE 2, and it is what CREATES the display objects
+// ===========================================================================
+//   260056  jsr $23C668                    COUNTED, as line 1 counts it
+//   26005c  jsr $25FD94                    liveSides25FD94 -- ported W277
+//   260060  tst.w $803926 / bne $2600C2    a gate: set -> do nothing but re-post
+//   26006a  ($17,A6) ? $287C08 : $287BD2   the HIGH-SCORE CHECK, carry = "no"
+//   26007c    carry CLEAR -> ori.b #$1 (or #$2) into $8130CC
+//   26009a  D0 = $D / jsr $241182 / ($20,A6) = D0 / ($7,A0) = ($17,A6)
+//   2600ae  D0 = $B / jsr $241182 / ($1C,A6) = D0 / ($7,A0) = ($17,A6)
+//   2600c2  (A6) = 0 / ($2,A6) = 0 / rts
+//
+// **TYPE `$B` IS OBJECT DISPATCH `[11]`** -- `src/tallyscreen.js`, ported in W276. So
+// this line is what BRINGS THE TALLY SCREEN INTO EXISTENCE, and D9's old note that
+// "type `$B` is the same unported `$25DBB4` that D11 is about" now closes: the creator
+// and the created are both in the tree. Type `$D` is its companion and is separate.
+//
+// Note the record keeps BOTH object handles, at `($20,A6)` and `($1C,A6)`, where line 1
+// keeps one at `($18,A6)`. Three different fields for three different objects, so a
+// port that reused one would silently drop a handle.
+//
+// **THE HIGH-SCORE CHECK IS ONE COUNTED GAP.** `$287BD2`/`$287C08` are a P1/P2 pair that
+// each load a side's score state -- `$81B440`/`$81B444` (the totals), `$81B44C`/`$81B44E`
+// (the overflows), `$813084`/`$813088` (the words `$2600D8` posts), `$81B632`/`$81B634`
+// (the chain high-waters) and `$81B49A`/`$81B49E` (the digit states), all already named
+// in `hud.js` -- into `$81B420`/`$81B430` and then share `$287C3E`, which writes the loop
+// and stage, calls `$287CEE` to find a slot, and compares overflow words. That is a
+// high-score TABLE INSERT and it is a subsystem, not a routine: it wants its own wave and
+// BCD care rather than the tail of this one.
+//
+// The carry it returns decides one bit of `$8130CC` and nothing else in this line, so
+// deferring it costs exactly that bit -- which is why the line is worth landing now with
+// the gap named.
+const BONUS2 = Object.freeze({
+  site: 0x260056,
+  gate: 0x803926,                 // $260060 tst.w
+  flags: 0x8130cc,                // $26007C/$260092 ori.b -- bit 0 P1, bit 1 P2
+  hiScore: Object.freeze([0x287bd2, 0x287c08]),
+  objA: Object.freeze({ type: 0x0d, handle: 0x20 }),   // $26009A
+  objB: Object.freeze({ type: 0x0b, handle: 0x1c }),   // $2600AE -- object [11]
+});
+
+/** `$260056` -- bonus line 2. Returns the two object handles it created, or null. */
+export function bonusLine2260056(ram, rom, ctx, a6) {
+  ctx?.unportedLog?.note(0x23c668, '$260056 jsr $23C668 -- the 256-longword clear, the '
+    + 'same one line 1 and $2600D8 count');
+  liveSides25FD94(ram);                                    // $26005C jsr $25FD94
+
+  if (ram.u16(BONUS2.gate) !== 0) {                        // $260060 tst.w / bne
+    ram.setU16(a6 + 0x00, 0);                              // $2600C2
+    ram.setU16(a6 + 0x02, 0);                              // $2600C6
+    return null;
+  }
+
+  const side = ram.u8(a6 + TALLY.row) !== 0 ? 1 : 0;
+  // $26006A..$260098 -- the high-score check, and the ONE thing this line defers.
+  ctx?.unportedLog?.note(BONUS2.hiScore[side], `$${
+    BONUS2.hiScore[side].toString(16).toUpperCase()} -- the side-${side} HIGH-SCORE `
+    + `CHECK. It loads the side's totals ($81B440/$81B444), overflows ($81B44C/$81B44E), `
+    + `the words $2600D8 posted ($813084/$813088), the chain high-waters ($81B632/`
+    + `$81B634) and the digit states ($81B49A/$81B49E) into $81B420/$81B430, then shares `
+    + `$287C3E -- which writes the loop and stage, calls $287CEE for a slot and compares `
+    + `overflow words. That is a high-score TABLE INSERT and wants its own wave. Its `
+    + `carry would set bit ${side} of $8130CC and affects nothing else here, so this `
+    + `line runs without it`);
+
+  // $26009A / $2600AE -- BOTH objects, and the handles land in different fields.
+  for (const o of [BONUS2.objA, BONUS2.objB]) {
+    const made = stageCreate(ram, o.type, (t) => rom.u16(DISPATCH + t * 8 + 4));
+    ram.setU32(a6 + o.handle, made.ok ? made.addr : 0);    // $2600A4 / $2600B8
+    if (made.ok) {
+      ram.setU8(made.addr + 0x07, ram.u8(a6 + TALLY.row)); // $2600A8 / $2600BC
+    }
+  }
+
+  ram.setU16(a6 + 0x00, 0);                                // $2600C2 move.w #$0,(A6)
+  ram.setU16(a6 + 0x02, 0);                                // $2600C6
+  return { objA: ram.u32(a6 + BONUS2.objA.handle), objB: ram.u32(a6 + BONUS2.objB.handle) };
+}
+
 /** `$25FD94` -- HOW MANY SIDES ARE STILL IN THE TALLY, minus one.
  *
  *   lea $8130FA,A2 / lea $81311E,A3 / clr.w $81308C
