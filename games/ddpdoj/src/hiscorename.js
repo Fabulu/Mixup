@@ -41,6 +41,7 @@ import { u16 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { tagLookupForSide, tagForSide } from './hiscore.js';
+import { chainLoader246704 } from './stageend.js';
 
 /**
  * The name-entry record, `A4`. Every offset here is a store this wave transcribed, so the
@@ -53,7 +54,15 @@ export const NAME_REC = Object.freeze({
   digits: 0x0a,         // $28F762 move.w D2,($A,A4)      -- D2's LOW half
   score: 0x0c,          // $28F75E move.l (A1),($C,A4)    -- the score long itself
   overflow: 0x10,       // $28F768 after swap D2          -- D2's HIGH half
-  live: 0x12,           // $28F41A move.w #$1,($12,A4)
+  // W308 CORRECTION. W305 called this `live` and had the P1 arm write 1 for BOTH sides. It is
+  // the SETUP BIT NUMBER: `$28F41A move.w #$1,($12,A4)` in the P1 block and
+  // `$28F472 move.w #$2,($12,A4)` in the P2 block -- the same 1 and 2 that `$28F77A`/`$28F788`
+  // put in D0 for `bset D0,$81E0D9`, and that `$28F6B0 bclr D1,$81E0D9` takes back out.
+  //
+  // Writing 1 for P2 was a real defect, not a naming slip: `$28F6B0` would clear P1's bit for
+  // a P2 name, P2's would stay set forever, and `$28F506 tst.w $81E0D8` would then freeze the
+  // countdown permanently. W305's test only checked side 0, which is why it passed.
+  setupBit: 0x12,
   side: 0x2c,           // $28F420 clr.w ($2C,A4) -- 0 for P1; W304's `not.b` input
   cursor: 0x2e,         // $28F424 clr.w ($2E,A4)
   entry: 0x30,          // $28F75A move.l A0,($30,A4) -- the matched 12-byte row's ADDRESS
@@ -109,7 +118,8 @@ export function nameCache28F75A(ram, rom, a4, found) {
   ram.setU16(a4 + NAME_REC.ship, found.d3 & 0xffff);       // $28F770 move.w D3
   ram.setU16(a4 + NAME_REC.style, found.d3 >>> 16);        // $28F774 swap / $28F776
 
-  // $28F77A/$28F782/$28F788 -- the side picks BOTH the setup bit and the block.
+  // $28F77A/$28F782/$28F788 -- the side picks BOTH the setup bit and the block. The bit is the
+  // same value the arm put in `($12,A4)`, which is what `$28F6B0` later uses to clear it.
   const side = ram.u16(a4 + NAME_REC.side) !== 0 ? 1 : 0;  // $28F782 tst.w ($2C,A4) / beq
   const bit = NAME_SCREEN.setupBits[side];                 // moveq #$1 / moveq #$2
   const block = NAME_SCREEN.blocks[side];                  // lea ($28F97C) / ($28F994)
@@ -150,8 +160,9 @@ export function nameArm28F428(ram, rom, a4, a5, side) {
     unreached(NAME_SCREEN.p1, `the name-entry arms are a P1/P2 pair, so the side must be 0 `
       + `or 1; ${side} has no tag, since $287C3E only ever stamps $FF and $FE`);
   }
-  // $28F41A/$28F420/$28F424 -- the arm's own setup, before the lookup.
-  ram.setU16(a4 + NAME_REC.live, 1);                       // $28F41A move.w #$1,($12,A4)
+  // $28F41A/$28F420/$28F424 -- the arm's own setup, before the lookup. The setup-bit number is
+  // 1 for P1 and 2 for P2, from two separate `move.w` immediates at $28F41A and $28F472.
+  ram.setU16(a4 + NAME_REC.setupBit, NAME_SCREEN.setupBits[side]);
   ram.setU16(a4 + NAME_REC.side, side);                    // $28F420 clr.w ($2C,A4) for P1
   ram.setU16(a4 + NAME_REC.cursor, 0);                     // $28F424 clr.w ($2E,A4)
 
@@ -245,6 +256,120 @@ const GRID_ROW = Object.freeze({
   animScript: 0x28fa98,          // $28F4B4 lea ($28FA98,PC),A0
   animDriver: 0x246410,          // $28F4BA jsr -- the declared presentation tier
 });
+
+// ===========================================================================
+// W308 -- THE COUNTDOWN, AND A WORD TEST THAT IS REALLY A BYTE TEST
+// ===========================================================================
+// `($1E,A4)` is a countdown, and `$28F532 beq $28F6D8` on it reaching zero lands on the SAME two
+// instructions `$28F6C8` reaches when the work list empties: `move.b #$2,($2,A5)` and `rts`. So
+// **the name entry has two ways to end** -- nobody left to name, and running out of time -- and
+// they share one exit.
+//
+// ## `tst.w $81E0D8` READS THE SETUP-BIT BYTE
+//
+// `$28F506 tst.w $81E0D8 / bne $28F540` suspends the countdown. `$81E0D8` looks like its own
+// flag and is not one: the word spans `$81E0D8` and `$81E0D9`, and **`$81E0D8` has no writer
+// anywhere in the build** -- scanned it. The only things that ever change that word are
+// `$28F790 bset D0,$81E0D9` (W305) and `$28F6B0 bclr D1,$81E0D9`, so the word test reduces
+// exactly to "is any side still being set up".
+//
+// Which is worth writing down because it is fragile in a way the ROM gets away with: anything
+// that ever wrote a non-zero `$81E0D8` would freeze the countdown forever, and nothing does.
+//
+// ## AND THE BIT IS RELEASED BY `($12,A4)`
+//
+// `$28F6AC move.w ($12,A4),D1 / $28F6B0 bclr D1,$81E0D9`, immediately after `$28F6A8 bsr
+// $28F7C8` -- the name writer. So the sequence is: the arm records the side's bit number in
+// `($12,A4)`, `$28F790` sets it, the name is written, and `$28F6B0` clears it. That is the pair
+// W305 saw only half of, and getting `($12,A4)` wrong is what made W305's P2 arm a defect.
+//
+// ## THE FRAME COUNTER HAS TWO THRESHOLDS
+//
+//     28f542  addq.w #1,($2,A4)        the screen's own frame counter
+//     28f54a  cmpi.w #$30,D7 / bcc     below 48 frames -> draw only, no input
+//     28f556  cmpi.w #$738,D7 / bcc    at or past 1848 -> $28F606
+//
+// Both are UNSIGNED (`bcc` is carry-clear, i.e. >=). $30 is a short lead-in during which the
+// screen ignores input, and $738 is 1848 frames -- a little over thirty seconds at 60Hz, which
+// is a name-entry time limit. The countdown at `($1E,A4)` is a separate, shorter one.
+const TIMEOUT = Object.freeze({
+  counter: 0x1e,               // ($1E,A4) -- block word 5, starts 0
+  suspend: 0x81e0d8,           // $28F506 tst.w -- spans $81E0D9, and has NO writer of its own
+  setupFlagByte: 0x81e0d9,
+  reload: 0x30,                // $28F514/$28F536 cmpi.w #$30
+  reloadScript: 0x28fad2,      // $28F520 lea ($28FAD2,PC),A0
+  reloadLoader: 0x246704,      // $28F526 jsr -- the D6=1 sibling W308 added
+  endSite: 0x28f6d8,           // $28F532 beq -- the SAME exit $28F6C8 uses
+  frame: 0x02,                 // ($2,A4)
+  leadIn: 0x30,                // $28F54A cmpi.w #$30 / bcc
+  limit: 0x738,                // $28F556 cmpi.w #$738 / bcc -> $28F606
+  drawSite: 0x28f7f4,          // the shared panel draw, $28F7F4..$28F8AA
+  inputField: 0x36,            // ($36,A4) -- readInput23D186's word, W305
+});
+
+/** `$28F6AC`/`$28F6B0` -- release the side's setup bit after the name is written. */
+export function nameReleaseSetup28F6B0(ram, a4) {
+  const bit = ram.u16(a4 + NAME_REC.setupBit);              // $28F6AC move.w ($12,A4),D1
+  ram.setU8(TIMEOUT.setupFlagByte,                          // $28F6B0 bclr D1,$81E0D9
+    ram.u8(TIMEOUT.setupFlagByte) & ~(1 << (bit & 7)) & 0xff);
+}
+
+/**
+ * `$28F4FC..$28F540` -- the countdown arm, taken whenever `($1E,A4)` is non-zero.
+ *
+ * @returns {'idle'|'suspended'|'nocursor'|'reloaded'|'ticked'|'expired'}
+ *   `idle` means the countdown is not running and the caller should take the input path.
+ */
+export function nameCountdown28F4FC(ram, rom, a4, a5, ctx) {
+  if (ram.u16(a4 + TIMEOUT.counter) === 0) return 'idle';  // $28F4FC tst.w / $28F500 beq
+
+  ctx?.unportedLog?.note(TIMEOUT.drawSite, '$28F502 bsr $28F7F4 -- the name-entry panel draw, '
+    + '$28F7F4..$28F8AA, an emitter chain of immediates that ends exactly where W306\'s '
+    + 'banned-name table begins');
+
+  // $28F506 -- the word spans $81E0D9 and $81E0D8 itself has no writer, so this is exactly
+  // "is any side still being set up".
+  if (ram.u16(TIMEOUT.suspend) !== 0) return 'suspended';   // $28F50C bne $28F540
+  if (ram.u16(a4 + GRID_ROW.cursorField) === 0) return 'nocursor';   // $28F50E tst.w / beq
+
+  if (ram.u16(a4 + TIMEOUT.counter) === TIMEOUT.reload) {   // $28F514 cmpi.w #$30 / bne
+    ram.setU16(a4 + TIMEOUT.counter, u16(ram.u16(a4 + TIMEOUT.counter) - 1));  // $28F51C subq
+    chainLoader246704(ram, rom, TIMEOUT.reloadScript, ctx); // $28F520 lea / $28F526 jsr
+    return 'reloaded';                                     // $28F52C rts
+  }
+
+  const left = u16(ram.u16(a4 + TIMEOUT.counter) - 1);      // $28F52E subq.w #1
+  ram.setU16(a4 + TIMEOUT.counter, left);
+  if (left === 0) {                                        // $28F532 beq $28F6D8
+    ram.setU8(a5 + NAME_OBJ.state, NAME_OBJ.doneState);     // $28F6DA move.b #$2,($2,A5)
+    return 'expired';
+  }
+  // $28F536 cmpi.w #$30 / bne / $28F53E moveq #$20,D2 -- reachable only from $31, and D2 is
+  // never read again on either path. Transcribed as a no-op because that is what it is.
+  return 'ticked';
+}
+
+/**
+ * `$28F542..$28F55C` -- the frame counter's two thresholds.
+ *
+ * @returns {'leadin'|'input'|'over'} `leadin` draws and ignores input, `over` is `$28F606`.
+ */
+export function nameFrameBands28F542(ram, a4, ctx) {
+  const n = u16(ram.u16(a4 + TIMEOUT.frame) + 1);          // $28F542 addq.w #1,($2,A4)
+  ram.setU16(a4 + TIMEOUT.frame, n);
+  if (n < TIMEOUT.leadIn) {                                // $28F54A cmpi.w #$30 / bcc
+    ctx?.unportedLog?.note(TIMEOUT.drawSite,
+      '$28F550 bsr $28F7F4 -- the panel draw, on the lead-in path');
+    return 'leadin';                                       // $28F554 rts
+  }
+  if (n >= TIMEOUT.limit) {                                // $28F556 cmpi.w #$738 / bcc
+    ctx?.unportedLog?.note(0x28f606, '$28F55A bcc $28F606 -- the name-entry TIME LIMIT arm at '
+      + `frame $${TIMEOUT.limit.toString(16)} (${TIMEOUT.limit} frames, just over thirty `
+      + 'seconds at 60Hz); its body is not in this wave');
+    return 'over';
+  }
+  return 'input';
+}
 
 /**
  * `$28F4A6` -- arm the grid: cursor to 1, the global active flag to 1, and hand `$28FA98` to

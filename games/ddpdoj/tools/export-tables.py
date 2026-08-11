@@ -2512,6 +2512,11 @@ SHOT_WINDOWS.extend([
     # after it. Sizing this to whole entries would overlap that block.
     (0x28F8AC, 0x00D0, "W306: $28F674's seventeen banned names plus the four-byte $FFFFFFFF "
                        "sentinel at $28F978; abuts $28F97C seam-free"),
+    # W308: `$28F520 lea ($28FAD2,PC),A0 / jsr $246704` -- the countdown's anim-object chain
+    # script. Same format as W303's `$25BAAA`: a node-count word then FOUR words per node, so
+    # 2 + 4*8 = $22, ending exactly at `$28FAF4` which is the next routine `$28F580` calls.
+    (0x28FAD2, 0x0022, "W308: $28F520's anim-object chain script, FOUR nodes; ends at $28FAF4, "
+                       "the routine $28F580 bsr's"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

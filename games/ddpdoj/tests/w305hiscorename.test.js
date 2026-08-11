@@ -78,7 +78,7 @@ test('W305 the two arms differ only in which tag they search for', { skip: SKIP_
 test('W305 an arm caches the row it found', { skip: SKIP }, () => {
   const ram = owed(0, 0x00820000);            // lands at index 2 in the factory table
   assert.equal(nameArm28F428(ram, ROM, A4, A5, 0), true);
-  assert.equal(ram.u16(A4 + NAME_REC.live), 1, '($12,A4) is set before the lookup');
+  assert.equal(ram.u16(A4 + NAME_REC.setupBit), 1, '($12,A4) is set before the lookup');
   assert.equal(ram.u16(A4 + NAME_REC.side), 0);
   assert.equal(ram.u16(A4 + NAME_REC.cursor), 0);
   assert.equal(ram.u16(A4 + NAME_REC.index), 2, 'the row index');
@@ -93,6 +93,20 @@ test('W305 an arm with no tagged row drops the side instead', { skip: SKIP }, ()
   assert.equal(nameArm28F428(ram, ROM, A4, A5, 0), false);
   assert.equal(ram.u8(A5 + NAME_OBJ.owed), 0x02, 'P1\'s bit is gone, P2\'s remains');
   assert.equal(ram.u16(A4 + NAME_REC.index), 0, 'and nothing was cached');
+});
+
+test('W305/W308 each arm writes ITS OWN setup-bit number to `($12,A4)`', { skip: SKIP }, () => {
+  // The assertion W305 was missing. `$28F41A move.w #$1` in the P1 block and `$28F472 move.w
+  // #$2` in the P2 block, which are the same 1 and 2 `$28F790` puts in D0 for `bset`. W305 wrote
+  // 1 for both sides and only tested side 0, so the P2 case shipped wrong for one wave: with 1
+  // there, `$28F6B0 bclr` would clear P1's bit for a P2 name and P2's would stay set forever.
+  for (const side of [0, 1]) {
+    const ram = owed(side, 0x00820000);
+    assert.equal(nameArm28F428(ram, ROM, A4, A5, side), true);
+    assert.equal(ram.u16(A4 + NAME_REC.setupBit), NAME_SCREEN.setupBits[side],
+      `side ${side} records bit ${NAME_SCREEN.setupBits[side]}`);
+  }
+  assert.notEqual(NAME_SCREEN.setupBits[0], NAME_SCREEN.setupBits[1], 'and they differ');
 });
 
 test('W305 a side above 1 throws, because there is no third tag', { skip: SKIP }, () => {

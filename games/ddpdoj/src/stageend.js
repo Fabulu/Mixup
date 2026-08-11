@@ -1147,18 +1147,45 @@ export function chainLoader246710(ram, rom, scriptAddr, ctx) {
   return chainLoaderBody(ram, rom, scriptAddr, CHAIN_LOADERS[1]);
 }
 
-/** `$24652A` and `$246710`, which differ in exactly one node field. */
+/**
+ * `$246710` -- the D6 = 1 sibling of the above.  W308.
+ *
+ * `$246704 movem.l D1-D7/A0-A4,-(A7) / move.w #$1,D6 / bra $246718` -- it jumps straight into
+ * `$246710`'s body four instructions in, so it is the same two-head-one-body shape yet again,
+ * and **D6 is the value `$24672A move.w D6,($4,A1)` writes into the player slot.** So the axis
+ * is `($4,slot)`, independent of `$246710`'s `($1E,node)`.
+ *
+ * W303 ported `$246710` and hardcoded 0 there because that is what `$246714` loads. That was
+ * correct for `$246710` and left this sibling absent; `$28F526 jsr $246704` is what needs it.
+ */
+export function chainLoader246704(ram, rom, scriptAddr, ctx) {
+  ctx?.unportedLog?.note(0x24676a, '$246704 -> $246710 per-node CONTENT seeding -- the same '
+    + 'presentation tier $24652A declares out of scope; only the D6 that reaches ($4,slot) '
+    + 'differs from $246710');
+  return chainLoaderBody(ram, rom, scriptAddr, CHAIN_LOADERS[2]);
+}
+
+/**
+ * The three ported entry points, on two independent axes: `field1e` is `($1E,node)` and
+ * `field4` is `($4,slot)`, the latter being D6.
+ *
+ * There is a FOURTH pair in this family at `$246610` (D6 = 1) and `$24661A` (D6 = 0), but they
+ * fall into a DIFFERENT body at `$246622`, so they are not variants of these and are not
+ * assumed to be. Named here so the next reader does not have to find them again.
+ */
 const CHAIN_LOADERS = Object.freeze([
-  Object.freeze({ site: 0x24652a, field1e: 0 }),   // $246576 move.w #$0,($1E,A2)
-  Object.freeze({ site: 0x246710, field1e: 1 }),   // $246762 move.w #$1,($1E,A2)
+  Object.freeze({ site: 0x24652a, field1e: 0, field4: 0 }),   // $246576 #$0 / $24652E D6=0
+  Object.freeze({ site: 0x246710, field1e: 1, field4: 0 }),   // $246762 #$1 / $246714 D6=0
+  Object.freeze({ site: 0x246704, field1e: 1, field4: 1 }),   // shares the body / $246708 D6=1
 ]);
+export const CHAIN_OTHER_BODY = Object.freeze([0x246610, 0x24661a, 0x246622]);
 
 function chainLoaderBody(ram, rom, scriptAddr, spec) {
   for (let s = 0; s < CHAIN.playerSlots; s++) {             // $246538 moveq #2,d7
     const slot = CHAIN.playerList + s * CHAIN.playerStride;
     if ((ram.u16(slot) & 0x8000) !== 0) continue;           // $24653C bmi next
     ram.setU16(slot, 0x8000);                               // $246540 claim
-    ram.setU16(slot + CHAIN.subOff, 0);                     // $246544 d6=0
+    ram.setU16(slot + CHAIN.subOff, spec.field4);            // $246544/$24672A move.w D6,($4,A1)
     const nodeCount = rom.u16(scriptAddr);                  // $24654C (A0)+,D0
     let tail = slot;                                        // a1 walks prev -> node
     let built = 0;
