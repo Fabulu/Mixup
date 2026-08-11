@@ -37,9 +37,17 @@ test('W268 it is GESTURE-driven and never automatic', () => {
   // throw on load and, worse, would look like it should work.
   assert.match(MODULE, /fullBtn\.addEventListener\('click'/,
     'the request lives in a click handler');
-  const auto = MODULE.replace(/fullBtn\.addEventListener\('click'[\s\S]*?\n  \}\);/, '');
+  // W279 (D15) added a SECOND gesture that may request fullscreen: turning the
+  // orientation LOCK on needs it, and needs it from inside the same click. The claim
+  // is unchanged -- never automatic -- so BOTH handlers are stripped and the
+  // remainder must still hold no request at all.
+  assert.match(MODULE, /lockBtn\.addEventListener\('click'/,
+    'the lock request also lives in a click handler');
+  const auto = MODULE
+    .replace(/fullBtn\.addEventListener\('click'[\s\S]*?\n  \}\);/, '')
+    .replace(/lockBtn\.addEventListener\('click'[\s\S]*?\n  \}\);/, '');
   assert.ok(!/requestFullscreen\?\.\(|webkitRequestFullscreen\?\.\(/.test(auto),
-    'and there is no request anywhere outside it');
+    'and there is no request anywhere outside the two handlers');
 });
 
 test('W268 where the API does not exist the button HIDES rather than lying', () => {
@@ -60,7 +68,11 @@ test('W268 the label repaints from the PLATFORM event, not from the click', () =
   // The user can leave fullscreen with the system gesture or Escape, which does not
   // click our button. A label painted only in the handler would then be wrong.
   assert.match(MODULE, /for \(const ev of \['fullscreenchange', 'webkitfullscreenchange'\]/);
-  assert.match(MODULE, /document\.addEventListener\(ev, \(\) => \{ paintFull\(\); fit\(\); \}\)/);
+  // W279 (D15): the same handler now also re-asserts the orientation lock, because
+  // leaving fullscreen drops it on the engine's side. paintFull and fit still come
+  // first, and in that order.
+  assert.match(MODULE,
+    /document\.addEventListener\(ev, \(\) => \{ paintFull\(\); fit\(\); applyLock\(\); \}\)/);
   // paintFull reads the CURRENT element rather than a local flag, for the same reason.
   assert.match(MODULE, /const paintFull = \(\) => \{\s*const on = !!fullEl\(\);/);
   assert.ok(!/let\s+isFull|var\s+isFull/.test(MODULE),
@@ -71,13 +83,20 @@ test('W268 the orientation lock can never reject unhandled', () => {
   // `screen.orientation.lock` throws on engines that have it but are not in fullscreen,
   // and an unguarded await surfaces as an unhandled rejection in the console -- which on
   // this page is where the port reports real defects.
-  const lock = MODULE.slice(MODULE.indexOf('screen.orientation?.lock'));
-  assert.match(MODULE, /try \{\s*await screen\.orientation\?\.lock\?\.\(/,
-    'the lock is inside its OWN try');
-  assert.match(lock.slice(0, 400), /\} catch \{/, 'and it is caught');
-  // It also must not be the thing the button reports success by: locking is a bonus.
-  assert.ok(MODULE.indexOf('paintFull();') > MODULE.indexOf('screen.orientation?.lock'),
-    'the paint happens after, regardless of whether the lock took');
+  // W279 (D15) moved the call out of FULL and into `applyLock`, which is now the ONE
+  // place that touches the API. The claim is unchanged and easier to check for it:
+  // every call site is inside that function, and that function catches.
+  const fn = MODULE.slice(MODULE.indexOf('async function applyLock'));
+  const body = fn.slice(0, fn.indexOf('\n}'));
+  assert.match(body, /try \{/, 'the lock is inside a try');
+  assert.match(body, /\} catch \{/, 'and it is caught');
+  assert.match(body, /await screen\.orientation\.lock\(/, 'and that is the call');
+  // No OTHER site may touch it, or a future edit could reintroduce the bare await.
+  const elsewhere = MODULE.replace(/async function applyLock[\s\S]*?\n\}/, '');
+  assert.ok(!/screen\.orientation\.lock\(|screen\.orientation\?\.lock/.test(elsewhere),
+    'applyLock is the only caller');
+  // It also must not be the thing a button reports success by: locking is a bonus.
+  assert.match(body, /return false;/, 'a refused lock is reported, not thrown');
 });
 
 test('W268 entering or leaving fullscreen re-fits the canvas', () => {
@@ -86,7 +105,8 @@ test('W268 entering or leaving fullscreen re-fits the canvas', () => {
   const handler = MODULE.slice(MODULE.indexOf("fullBtn.addEventListener('click'"));
   assert.match(handler.slice(0, 1200), /paintFull\(\);\s*fit\(\);/,
     'the click path re-fits');
-  assert.match(MODULE, /document\.addEventListener\(ev, \(\) => \{ paintFull\(\); fit\(\); \}\)/,
+  assert.match(MODULE,
+    /document\.addEventListener\(ev, \(\) => \{ paintFull\(\); fit\(\); applyLock\(\); \}\)/,
     'and so does the platform-event path');
 });
 

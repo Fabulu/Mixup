@@ -76,16 +76,35 @@
      hidden, so a 100vh page is taller than the screen the moment the bar is
      showing and the pad goes under the fold. dvh follows the bar. The `100vh`
      line before it is the fallback for anything that has not got dvh. */
+  /* DOCKET D13 -- the LEFT and RIGHT insets matter and only the bottom one was
+     here. A notched phone puts its cutout on a SHORT edge, so in PORTRAIT the
+     inset that bites is the top/bottom and in LANDSCAPE it is the left/right --
+     which is exactly the orientation D10 was about. Without the horizontal pair
+     the bar's buttons slide under the cutout when the phone is held with the
+     notch on the left, and `viewport-fit=cover` (line 5) is what makes that
+     possible in the first place: it is opt-IN to drawing under the chrome, so
+     the insets are not optional once it is set.
+
+     The top inset is deliberately NOT padded. #bar is a solid strip with its own
+     border and reads correctly under a status bar; padding it would leave a
+     transparent gap above a dark bar, which looks like a bug rather than safety.
+     The bar's own horizontal padding grows instead, below. */
   body {
     display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
     height: 100vh; height: 100dvh; width: 100%;
-    padding: 0 0 env(safe-area-inset-bottom); gap: 0;
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom)
+                env(safe-area-inset-left);
+    gap: 0;
   }
 
   /* ---- row 1: ONE LINE. ---------------------------------------------------
      Everything that used to be four paragraphs of banner is behind #info. */
+  /* D13: `flex-wrap` so a fourth control cannot push the name off the strip on a
+     narrow phone. The horizontal safe-area insets are on `body`, not here --
+     #bar is INSIDE the padded box, so adding them again would double-count. */
   #bar { display: flex; align-items: center; gap: 8px; padding: 5px 8px;
-         border-bottom: 1px solid var(--line); font-size: 11.5px; min-width: 0; }
+         border-bottom: 1px solid var(--line); font-size: 11.5px; min-width: 0;
+         flex-wrap: wrap; row-gap: 4px; }
   #bar .name { color: #d6e2ee; font-weight: 600; white-space: nowrap;
                overflow: hidden; text-overflow: ellipsis; }
   #bar .spacer { flex: 1 1 auto; min-width: 4px; }
@@ -287,6 +306,7 @@
     aria-label="Enable or mute game sound">SOUND</button>
   <button id="full" type="button" aria-label="Enter or leave fullscreen" aria-pressed="false" data-help="FULL hides the browser's own bars, which on a phone in landscape take most of the screen. It needs a tap: browsers only grant fullscreen from a real gesture.">FULL</button>
   <button id="rot" type="button" aria-label="Switch between TATE portrait and WIDE landscape picture" aria-pressed="true" data-help="TATE shows the cabinet's 224x448 portrait picture. WIDE shows the raw 448x224 board buffer.">TATE</button>
+  <button id="lock" type="button" aria-label="Lock or unlock the screen orientation" aria-pressed="false" data-help="LOCK stops the screen rotating when you tilt the device. It is remembered between visits. Most engines only allow a lock while fullscreen, so turning it on also asks for fullscreen.">LOCK</button>
   <button id="ctrl" type="button" aria-label="Cycle touch control scheme" aria-pressed="false" data-help="CTRL cycles AUTO, FIXED 8-way D-pad, and FLOATING stick.">CTRL</button>
   <button id="rec" type="button" aria-label="Record or stop a replay" aria-pressed="false" data-help="REC arms a replay at the current frame. Press again to stop and save; while armed it becomes STOP REC.">REC</button>
   <label id="play" class="bar-btn" for="play-input" role="button" tabindex="0" aria-label="Play a replay file" data-help="PLAY loads a replay file and checks every recorded input, poke, frame, and digest window.">PLAY</label>
@@ -743,6 +763,82 @@ const fullEl = () => document.fullscreenElement || document.webkitFullscreenElem
 const canFull = !!(document.documentElement.requestFullscreen
   || document.documentElement.webkitRequestFullscreen);
 
+// ---------------------------------------------------------------------------
+// DOCKET D15 -- "an option to stop screen from rotating".
+//
+// W268 already called `screen.orientation.lock` on the way into fullscreen and
+// ignored its failure. That was right as a bonus and wrong as a feature: it was
+// not the player's choice, it did not persist, and there was no way to turn it
+// off without leaving fullscreen. This makes it a SETTING.
+//
+// Three things this has to be honest about, and they are the same three that
+// make the API awkward:
+//
+//   * `screen.orientation.lock` REQUIRES FULLSCREEN on every engine that has it.
+//     So turning the setting on asks for fullscreen too -- and says so in the
+//     button's help text, because a control that silently does a second thing is
+//     worse than one that asks.
+//   * iOS has no `screen.orientation.lock` at all (and iPhone has no
+//     `requestFullscreen`). The button HIDES itself there, the same way FULL
+//     does, rather than offering something that cannot work.
+//   * the WANT and the STATE are different. A persisted `lockWanted = true` on a
+//     fresh load cannot be applied until the player enters fullscreen, so the
+//     button reflects the WANT and re-applies on every `fullscreenchange`. A
+//     button painted from `screen.orientation.type` would read "off" on load and
+//     silently lose the setting.
+const lockBtn = document.getElementById('lock');
+const LOCKSTORE = 'ddpdoj.orientationLock';
+const canLock = !!(screen.orientation && typeof screen.orientation.lock === 'function');
+
+let lockWanted = false;
+try {
+  lockWanted = localStorage.getItem(LOCKSTORE) === '1';
+} catch { /* private mode: default to unlocked, never fail the boot */ }
+
+/** Lock to the orientation the CURRENT picture wants, or release. */
+async function applyLock() {
+  if (!canLock) return false;
+  try {
+    if (lockWanted) {
+      // TATE is the native presentation, so the lock follows the PICTURE and not
+      // the device: a player who chose WIDE wants to stay landscape.
+      await screen.orientation.lock(mode === 'tate' ? 'portrait' : 'landscape');
+    } else {
+      screen.orientation.unlock?.();
+    }
+    return true;
+  } catch {
+    // Not fullscreen, or the engine refuses. The want is kept either way.
+    return false;
+  }
+}
+
+const paintLock = () => {
+  lockBtn.textContent = lockWanted ? 'LOCKED' : 'LOCK';
+  lockBtn.setAttribute('aria-pressed', String(lockWanted));
+};
+
+if (!canLock) {
+  lockBtn.style.display = 'none';
+} else {
+  paintLock();
+  lockBtn.addEventListener('click', async () => {
+    lockWanted = !lockWanted;
+    try { localStorage.setItem(LOCKSTORE, lockWanted ? '1' : '0'); } catch { /* private */ }
+    paintLock();
+    // Locking needs fullscreen. Ask for it from inside this click, because the
+    // gesture is what grants it and a later attempt would be refused.
+    if (lockWanted && !fullEl() && canFull) {
+      const el = document.documentElement;
+      try {
+        await (el.requestFullscreen?.({ navigationUI: 'hide' })
+          ?? el.webkitRequestFullscreen?.());
+      } catch { /* refused; the want is still recorded and applies next time */ }
+    }
+    await applyLock();
+  });
+}
+
 const paintFull = () => {
   const on = !!fullEl();
   fullBtn.textContent = on ? 'EXIT' : 'FULL';
@@ -762,10 +858,11 @@ if (!canFull) {
         const el = document.documentElement;
         await (el.requestFullscreen?.({ navigationUI: 'hide' })
           ?? el.webkitRequestFullscreen?.());
-        // Bonus, never required: lock to the orientation the picture wants.
-        try {
-          await screen.orientation?.lock?.(mode === 'tate' ? 'portrait' : 'landscape');
-        } catch { /* not supported, or the engine refuses -- the picture still fits */ }
+        // D15: the lock is now the USER'S setting, not a side effect of FULL.
+        // Re-applied here because most engines only permit it while fullscreen,
+        // so entering fullscreen is the moment a persisted preference can finally
+        // take effect.
+        if (lockWanted) await applyLock();
       }
     } catch { /* the engine refused the gesture; the label stays honest below */ }
     paintFull();
@@ -773,7 +870,10 @@ if (!canFull) {
   });
   // The system gesture out of fullscreen does not click our button.
   for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) {
-    document.addEventListener(ev, () => { paintFull(); fit(); });
+    // D15: entering fullscreen is the moment a persisted lock can finally be
+    // applied, and LEAVING it drops the lock on the engine's side -- so the want
+    // has to be re-asserted here rather than only on the click.
+    document.addEventListener(ev, () => { paintFull(); fit(); applyLock(); });
   }
   paintFull();
 }
@@ -968,6 +1068,9 @@ try {
     try { localStorage.setItem(STORE, mode); } catch { /* private mode */ }
     paintRot();
     fit();
+    // D15: the lock follows the PICTURE, not the device, so switching TATE/WIDE
+    // while locked has to re-lock to the other orientation.
+    applyLock();
   });
 
   // WAVE 131 -- LIVE-PAGE REC.  A toggle: click to ARM at the current frame

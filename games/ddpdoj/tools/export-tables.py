@@ -2421,6 +2421,23 @@ SHOT_WINDOWS.extend([
     (0x25D952, 0x003E, "W276: object [11]'s two 26-byte descriptors plus its $e and "
                        "$f cursor tables; far end pinned by the `move.b #$FF,$813008` "
                        "at $25D990"),
+    # W279: THE SCORE TALLY'S BONUS-LINE TABLE.  `$25FF92 lea ($25FF52,PC),A0 /
+    # adda.w D0,A0 / movea.l (A0),A0 / jsr (A0)` with D0 = the request word doubled
+    # twice, so the entries are LONGWORDS and they are code addresses.
+    #
+    # TEN entries, $25FF52..$25FF79, and the far end is pinned by the driver itself:
+    # `$25FF7A lea $8130FA,A6` is the next instruction.  Entry 0 is $00000000 and is
+    # unreachable because `$25FF84 cmpi.w #$0,D0 / beq` guards it -- the guard is in
+    # the code, not the table, so the null entry is real data and must be inside the
+    # window rather than excluded from it.
+    #
+    #   [1] $25FFA8  [2] $260056  [3] $26010E  [4] $2601F4  [5] $2602B6
+    #   [6] $260348  [7] $26035A  [8] $26037C  [9] $2603B0
+    #
+    # NINE lines, not the eight worklog 270 counted.
+    (0x25FF52, 0x0028, "W279: the score tally's TEN bonus-line longwords "
+                       "$25FF52..$25FF79; far end pinned by $25FF7A's own "
+                       "`lea $8130FA,A6`"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

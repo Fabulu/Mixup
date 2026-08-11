@@ -28,8 +28,8 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W278, `ddpdoj: lock out the other player's selection`.
-- Suite: `node --test games/ddpdoj/tests/` is **1930/1930**, green, no skips.
+- HEAD is W279, `ddpdoj: pad the landscape insets and make the orientation lock a setting`.
+- Suite: `node --test games/ddpdoj/tests/` is **1942/1942**, green, no skips.
 - **`top_objects` coverage is 9/20** -- nine of the twenty top-level dispatch entries
   are registered in `main.js`. `w167coverage.test.js` pins it.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
@@ -102,10 +102,15 @@ shipped build, each with the port-side finding underneath. Player-visible defect
 in stages the player actually reaches outrank Stage-4 boss interiors, which is why
 W225 is paused.
 
-**ELEVEN OF TWELVE ARE CLOSED.** D1, D2 (W226); D9 entirely (W227, W228, W231); the
-rank icons and the D5 instrument (W230); D3 (W264/265/266); D4 (W265/266/267); D10
+**THE OWNER ADDED FIVE ITEMS ON 2026-08-11: D13..D17.** D13 (orientation/safe-area) and
+D15 (the orientation lock as a setting) are FIXED in W279. **D14 (make it a PWA), D16
+(the hyper bar should show the level when NOT hypering) and D17 (the in-stage medals)
+are OPEN and they are the top of the work order.**
+
+Of the first twelve, eleven are closed: D1, D2 (W226); D9 entirely (W227, W228, W231);
+the rank icons and the D5 instrument (W230); D3 (W264/265/266); D4 (W265/266/267); D10
 (W268); D7 (W271); D8 (W272); D12 (W253/263). D11's banner picture landed in W232 and
-its remainder is the only open docket item.
+its remainder is the only one of the original twelve still open.
 
 **Two of the last three closed the same way, and it is worth expecting a third.** D7
 and D8 were both routines and records that already existed: D7 was `hyperStock286ED6`
@@ -117,40 +122,65 @@ about it.** `w271hyperstock.test.js` has the mechanical form of the first check.
 
 ## Work order toward the goal
 
-1. **`$25DEAE` AND `$25E0EA`**, the last of state 1, then wire state 1 up and delete
-   its note. W277 landed `$25FF38`/`$25D9E6`/`$25DA60` and W278 landed `$25DAEA`,
-   `$25DFF6` and the input read `$23D186`/`$23D18E` -- all in `src/tallyscreen.js`.
+1. **D14 -- MAKE IT A PWA.** Manifest, icon set, service worker, registration,
+   offline. Two things that will bite:
+   - `tools/build-dist.mjs`'s `INCLUDE` copies `games/<g>/*.html`, `game.json`, `src`
+     and `assets`. A `manifest.webmanifest`, `sw.js` or icon file at the game's root
+     would NOT reach `dist/`, so INCLUDE needs the entries adding.
+   - **`sw.js` must sit at `games/ddpdoj/`, NOT under `src/`.** A worker's default
+     scope is its own directory, so one at `games/ddpdoj/src/sw.js` would not cover
+     `games/ddpdoj/index.html`, and widening scope needs a `Service-Worker-Allowed`
+     response header this deploy does not control.
+   - the caching caveat is the SHARDED, DEFERRED sprite sheet: a naive precache pulls
+     every shard. Shell cache-first, shards network-first.
+2. **D16 -- the hyper bar should show the level even when NOT hypering.** SETTLE WHAT
+   `$81B63E` MEANS FIRST. `hud.js` calls it `hyperActiveP1` and it has **92 references
+   in build B**, so the name may be wrong and the word may mean "the gauge is armed"
+   rather than "a hyper is running". W279 measured that the bar IS ported and its tile
+   really tracks the gauge through `$2881F2`, but it draws only on the hyper arm -- and
+   the port is FAITHFUL there, because `$285D74` (the non-hyper arm) draws icons and
+   rank and no panel, and `codexref 2881F2` finds exactly two readers, both hyper arms.
+   So the always-visible bar is not that record. **Do not assume a missing draw: D7 and
+   D8 both looked like one and were not.**
+3. **D17 -- the in-stage medals.** The tally IS reachable (`$8130F9` bit 2 has a writer
+   at `src/stageend.js:735`), so the gap is upstream: the medal item, its spawn, or its
+   art. `src/bee.js` (W111) says "the medal IS the bee"; `src/hud.js` (W124) has the
+   accumulator and the tier drain. Sweep what the medal pool emits during play.
+4. **`$25DEAE` AND `$25E0EA`**, the last of state 1 of object `[11]`, then wire state 1
+   up and delete its note. W277 landed `$25FF38`/`$25D9E6`/`$25DA60` and W278 landed
+   `$25DAEA`, `$25DFF6` and the input read `$23D186`/`$23D18E` -- all in
+   `src/tallyscreen.js`.
    - `$25DEAE` is fully read EXCEPT its draw tail from `$25DF4C` (which loads
      `D1 = $5BC00000` for side 0 and `$5BC02600` for side 1). `$28C6FA` and `$28C6E0`
      are sounds and stay counted. **Its tail at `$25DF48 bra $25DB7C` is how the screen
-     enters the tally** -- see below.
+     enters the tally**, and NOTHING ever writes `($2,A5) = 2` -- that branch skips the
+     dispatcher, which is why `screenState2_25DB7C` is exported separately. Do not
+     "fix" the dispatcher to set the state byte.
    - `$25E0EA` is `lea ($25E006,PC),A0 / bra $25E200`, and `$25E006` is a run of `$20`
-     bytes -- ASCII SPACES -- so it is a text blit. Needs the extent of that text
-     measured and `$25E200` read.
+     bytes -- ASCII SPACES -- so it is a text blit. Needs that text's extent measured
+     and `$25E200` read.
 
    State 1 also installs a palette from `$225978`: run
    `node tools/export-web.mjs --extent 0x225978` first. The state-1 note in
-   `tallyScreen25DBB4` still names all six and is now five names too long -- trim it.
-
-   **NOTHING EVER WRITES `($2,A5) = 2`.** `$25DF48` is a direct `bra` into `$25DB7C`
-   that skips the dispatcher, which is why `screenState2_25DB7C` is exported separately.
-   Do not "fix" the dispatcher to set the state byte.
-2. **THE EIGHT BONUS LINES AT `$25FF52`.** The score tally's actual arithmetic, and the
-   largest single thing left in the subsystem. W277 located the table: nine longwords at
-   `$25FF52`, entry 0 null, the other eight `$25FFA8`, `$260056`, `$26010E`, `$2601F4`,
-   `$2602B6`, `$260348`, `$26035A`, `$26037C`. `codexref 25FF52` finds exactly ONE reader,
-   `$25FF92 lea ($25FF52,PC)`, so that routine is the dispatcher and comes first. The
-   request id that selects a line is posted by `$25FF38`, which is ported -- state 1 posts
-   7.
-3. **The menu cursor, `$25DD0C`.** `btst #$2,D0` decrements `($e,A5)` and `btst #$3,D0`
+   `tallyScreen25DBB4` names all six and is now five names too long -- trim it.
+5. **THE EIGHT BONUS LINES AT `$25FF52`** -- the score tally's actual arithmetic, and
+   the largest single thing left in that subsystem. **The table is already windowed**
+   (`$25FF52+$28`, W279, far end pinned by `$25FF7A`'s own `lea $8130FA,A6`): TEN
+   longwords, entry 0 null and guarded by `$25FF84 cmpi.w #$0,D0 / beq`, then
+   `$25FFA8`, `$260056`, `$26010E`, `$2601F4`, `$2602B6`, `$260348`, `$26035A`,
+   `$26037C`, `$2603B0` -- **NINE lines, not the eight worklog 270 counted.**
+   `$25FF7A` is the per-frame driver: it walks BOTH records at stride `$24` with
+   `moveq #$1,D7 / dbra`, and `$25FF92` is the only reader of the table. Until these
+   land the tally RUNS and its rows PAINT but the figures are not the cartridge's.
+6. **The menu cursor, `$25DD0C`.** `btst #$2,D0` decrements `($e,A5)` and `btst #$3,D0`
    increments it, each with `move.b #$1,($d,A5)` and a `$28C6FA` sound, and
    `andi.b #$1,($e,A5)` keeps it to two entries. **D0 comes from `($8,A4)`** -- one of
    the descriptor's three code pointers (`$23D186` for side 0, `$23D18E` for side 1) --
    so that routine is the input read and has to land first. W276's window
    `$25D952+$3E` already covers both descriptors.
-4. **The four other announcement-poster caller regions** -- `$25CDxx`, `$25D5xx`,
+7. **The four other announcement-poster caller regions** -- `$25CDxx`, `$25D5xx`,
    `$2601xx`, `$288A02` -- which share the protocol W270 landed.
-5. **WHAT ADVANCES `($14,A6)` THROUGH `$255B7C`.** W275 ported the walker and shipped
+8. **WHAT ADVANCES `($14,A6)` THROUGH `$255B7C`.** W275 ported the walker and shipped
    all 49 of its descriptors, but only entries 0..5 of the 39-entry pointer table are
    KNOWN to be reached, because only `$24A120`'s write of `$255B7C` is transcribed.
    The port already walks entry 1 during a real death, so **the advance exists and is
@@ -174,7 +204,7 @@ address.** Build B is `$200000..$2B0000`. W272 scanned it with a base of `$20000
 and read the wrong bytes. When a hand-rolled scan returns zero, first check it finds
 something you already know is there -- `u16($2600D8) == $48E7` is that habit written
 down, and `tests/w274paletteset.test.js` now runs the whole audit every suite pass.
-6. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
+9. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
    `$28D6FC` the animation chain. `$28D77C` writes palette RAM the port does not
    model and the four `$25FD38` resets are W62's scope line, so those two stay
    counted. Force `$242952` headlessly and read the counted gaps -- that measurement
@@ -183,7 +213,7 @@ down, and `tests/w274paletteset.test.js` now runs the whole audit every suite pa
    chain and decrements each node's `$18`; the way in is the node code pointers at
    `$24627A`, NOT the chain root `$810346`, whose six references are all loaders or
    the clear. `$28C186` is a BGM command and correctly a counted sound gap.
-7. **Stage 5, then the loops.** Nothing blocks this any more: the Stage-4 boss is
+10. **Stage 5, then the loops.** Nothing blocks this any more: the Stage-4 boss is
    complete for every reachable path and the docket is down to one item. Five
    loop-specific rules are translated so far; see the loop-2 bullet above.
 

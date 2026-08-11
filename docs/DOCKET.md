@@ -6,7 +6,8 @@ a focused smoke proves it.
 
 Opened 2026-08-10 from a play session on the shipped web build.
 
-**Standing as of W279: eleven of the first twelve closed, FIVE NEW ITEMS OPEN.**
+**Standing as of W279: eleven of the first twelve closed; of the five new items,
+D13 and D15 are FIXED and three remain.**
 The section headings below still read "Fixed" and "Open, in priority order" from the
 day the docket was opened; the per-item markers are authoritative, and D12 covers
 that drift.
@@ -16,9 +17,9 @@ that drift.
     D9  W227/228/231      D10 W268           D12 W253/263
     D11 partly landed (W232); the execution engine remains
 
-    D13 orientation, portrait + landscape, mobile + desktop     OPEN
+    D13 orientation, portrait + landscape, mobile + desktop     W279
     D14 make it a PWA                                          OPEN
-    D15 a user option to LOCK the orientation                   OPEN
+    D15 a user option to LOCK the orientation                   W279
     D16 the hyper bar should show the level when NOT hypering   OPEN
     D17 the in-stage medals are missing                         OPEN
 
@@ -225,7 +226,7 @@ the worklogs for detail rather than restating them.
 
 ## Added 2026-08-11 from a second play session
 
-### D13: orientation support is thin -- portrait, landscape, mobile and desktop
+### D13: orientation support is thin -- portrait, landscape, mobile and desktop -- FIXED (W279)
 
 The owner wants the picture to work properly in BOTH orientations on BOTH form
 factors, not just to survive them. D10 (W268) fixed the specific case of the mobile
@@ -238,6 +239,16 @@ itself.
 The game is a TATE (vertical) shooter, so portrait is the native orientation and
 landscape is the one that needs a decision: letterbox, or rotate the canvas.
 
+**W279 found the concrete defect.** `viewport-fit=cover` is set, which is opt-IN to
+painting under the system chrome -- and only `env(safe-area-inset-bottom)` was
+handled. A notched phone puts its cutout on a SHORT edge, so **in landscape the inset
+that bites is the left/right pair**, and `#bar`'s buttons slid under the notch when
+the phone was held with the cutout on the left. `body` now pads right/bottom/left; the
+TOP is deliberately left unpadded because `#bar` is a solid strip that reads correctly
+under a status bar, and `#bar` must not re-add the horizontal pair because it is inside
+the padded box. `#bar` also wraps now, so D15's fourth control cannot push the name
+off a narrow strip. All four decisions are pinned by `w279orientation.test.js`.
+
 ### D14: it should be a PWA
 
 Installable, with a manifest, an icon set, a service worker and offline capability.
@@ -246,7 +257,7 @@ is most of the work; what is missing is the manifest, the worker and the install
 affordance. Worth checking the shard layout against a cache-first strategy -- the
 sprite sheet is sharded and deferred, so a naive precache would download everything.
 
-### D15: an option to stop the screen from rotating
+### D15: an option to stop the screen from rotating -- FIXED (W279)
 
 Separate from D13 and asked for separately: the player should be able to LOCK the
 orientation. W268 already calls `screen.orientation.lock` inside its own `try` on the
