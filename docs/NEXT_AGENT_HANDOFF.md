@@ -28,8 +28,11 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W281, `ddpdoj: settle the hyper display and redirect D16 at the producer`.
-- Suite: `node --test games/ddpdoj/tests/` is **1963/1963**, green, no skips.
+- HEAD is W282, `ddpdoj: count the item producer`.
+- Suite: `node --test games/ddpdoj/tests/` is **1970/1970**, green, no skips.
+- **`900 FRAMES IS TOO SHORT TO SEE AN ITEM.** Every gate here runs 900 and the item
+  producer's first drop is at frame 2576. If a probe about items, medals or hyper
+  reports zero, check the window before believing it (W282).
 - **`top_objects` coverage is 9/20** -- nine of the twenty top-level dispatch entries
   are registered in `main.js`. `w167coverage.test.js` pins it.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
@@ -135,32 +138,34 @@ Cloudflare Pages. Pushing does not publish and publishing does not push.
 
 ## Work order toward the goal
 
-1. **THE ITEM PRODUCER -- it may close BOTH D16 and D17.** W281 settled the D16 draw
-   side completely: `$81B63E` does mean "a hyper is RUNNING", the always-visible
-   indicator is the ICON ROW that `$285D74` draws from `$81B6E0` guarded by `$81B6E4`,
-   and **the port draws it correctly** -- one icon per unit, measured, and
-   `w281hyperdisplay.test.js` pins the whole chain so nobody looks there again.
+1. **HOW MANY TYPE-`$85` ENEMIES DOES STAGE 1 SEND, and do they reach `deathSeq85`?**
+   That is the question W282's census raises and it is upstream of BOTH D16 and D17.
 
-   The screen is empty because `$81B65C`, `$81B6E0`, `$81B6E4` and `$81B642` are **ZERO
-   on every frame of a 900-frame run on both the shipped seed and the laser-hold rung.**
-   Measure, in this order:
-   - does ANY item spawn in a live run? The item pool (`ITEM.base` `$8181BA`, stride
-     `$40`, 25 slots) and pool A were both empty after 900 frames.
-   - if nothing spawns, that one defect may explain D17 as well, because `bee.js` says
-     "the medal IS the bee" and both come out of the same item family. **PROVE they
-     share a cause rather than assuming it** -- assuming a shared cause is what kept D4
-     open for three waves.
-   - only then go near a draw.
+   Everything downstream is proven complete and pinned by tests -- do not look there:
+   - the DISPLAY (W281): `$285D74` draws one icon per unit of `$81B6E0` guarded by
+     `$81B6E4`, measured at 1/2/3/5;
+   - the ALLOCATOR (W282): all six kinds {0,4,8,$C,$10,$14} return a record and mark a
+     slot live with ZERO counted notes, kind `$C` included.
 
-   And do NOT be misled by `spawnItem`'s `REFUSED_KINDS` branch: its note explains that
-   granting a hyper stock early would plant a permanent +16 rank error, it reads exactly
-   like the cause of D16, and it has been DEAD since W163. W281 asserts the list is
-   empty.
-2. **D17 -- the in-stage medals.** The tally IS reachable (`$8130F9` bit 2 has a writer
+   What the census measured from the laser-hold rung: **900 frames -> ZERO items;
+   5400 frames -> ONE item, kind `$0`, first live at frame 2576.** Kind `$C` -- the
+   hyper stock -- never spawns. So the hyper words being zero is CORRECT for that
+   window, and D16 was never a missing draw.
+
+       node games/ddpdoj/tools/w282itemcensus.mjs --lf 2000 --frames 5400
+
+   ONE item in ninety seconds is the lead. `deathSeq85`'s comment records that the
+   type-`$85` drop is GUARANTEED with no RNG in `$275AF2..$275B20`, so one drop means
+   exactly one type-`$85` death. Stage 1's spawn script is closed at 339/339 records,
+   so this is countable rather than speculative.
+2. **Run the census long enough to settle kind `$C`.** If it never spawns in stage 1 at
+   all, WRITE THAT IN THE DOCKET -- "correct for stage 1" is a legitimate answer and it
+   stops D16 being re-opened by the next person who looks at an empty hyper row.
+3. **D17 -- the in-stage medals.** The tally IS reachable (`$8130F9` bit 2 has a writer
    at `src/stageend.js:735`), so the gap is upstream: the medal item, its spawn, or its
    art. `src/bee.js` (W111) says "the medal IS the bee"; `src/hud.js` (W124) has the
    accumulator and the tier drain. Sweep what the medal pool emits during play.
-3. **`$25DEAE` AND `$25E0EA`**, the last of state 1 of object `[11]`, then wire state 1
+4. **`$25DEAE` AND `$25E0EA`**, the last of state 1 of object `[11]`, then wire state 1
    up and delete its note. W277 landed `$25FF38`/`$25D9E6`/`$25DA60` and W278 landed
    `$25DAEA`, `$25DFF6` and the input read `$23D186`/`$23D18E` -- all in
    `src/tallyscreen.js`.
@@ -177,7 +182,7 @@ Cloudflare Pages. Pushing does not publish and publishing does not push.
    State 1 also installs a palette from `$225978`: run
    `node tools/export-web.mjs --extent 0x225978` first. The state-1 note in
    `tallyScreen25DBB4` names all six and is now five names too long -- trim it.
-4. **THE NINE BONUS LINES AT `$25FF52`** -- the score tally's actual arithmetic, and
+5. **THE NINE BONUS LINES AT `$25FF52`** -- the score tally's actual arithmetic, and
    the largest single thing left in that subsystem. **The table is already windowed**
    (`$25FF52+$28`, W279, far end pinned by `$25FF7A`'s own `lea $8130FA,A6`): TEN
    longwords, entry 0 null and guarded by `$25FF84 cmpi.w #$0,D0 / beq`, then
@@ -186,15 +191,15 @@ Cloudflare Pages. Pushing does not publish and publishing does not push.
    `$25FF7A` is the per-frame driver: it walks BOTH records at stride `$24` with
    `moveq #$1,D7 / dbra`, and `$25FF92` is the only reader of the table. Until these
    land the tally RUNS and its rows PAINT but the figures are not the cartridge's.
-5. **The menu cursor, `$25DD0C`.** `btst #$2,D0` decrements `($e,A5)` and `btst #$3,D0`
+6. **The menu cursor, `$25DD0C`.** `btst #$2,D0` decrements `($e,A5)` and `btst #$3,D0`
    increments it, each with `move.b #$1,($d,A5)` and a `$28C6FA` sound, and
    `andi.b #$1,($e,A5)` keeps it to two entries. **D0 comes from `($8,A4)`** -- one of
    the descriptor's three code pointers (`$23D186` for side 0, `$23D18E` for side 1) --
    so that routine is the input read and has to land first. W276's window
    `$25D952+$3E` already covers both descriptors.
-6. **The four other announcement-poster caller regions** -- `$25CDxx`, `$25D5xx`,
+7. **The four other announcement-poster caller regions** -- `$25CDxx`, `$25D5xx`,
    `$2601xx`, `$288A02` -- which share the protocol W270 landed.
-7. **WHAT ADVANCES `($14,A6)` THROUGH `$255B7C`.** W275 ported the walker and shipped
+8. **WHAT ADVANCES `($14,A6)` THROUGH `$255B7C`.** W275 ported the walker and shipped
    all 49 of its descriptors, but only entries 0..5 of the 39-entry pointer table are
    KNOWN to be reached, because only `$24A120`'s write of `$255B7C` is transcribed.
    The port already walks entry 1 during a real death, so **the advance exists and is
@@ -218,7 +223,7 @@ address.** Build B is `$200000..$2B0000`. W272 scanned it with a base of `$20000
 and read the wrong bytes. When a hand-rolled scan returns zero, first check it finds
 something you already know is there -- `u16($2600D8) == $48E7` is that habit written
 down, and `tests/w274paletteset.test.js` now runs the whole audit every suite pass.
-8. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
+9. **The rest of D11's transition presentation.** `$28C186` the exit handshake and
    `$28D6FC` the animation chain. `$28D77C` writes palette RAM the port does not
    model and the four `$25FD38` resets are W62's scope line, so those two stay
    counted. Force `$242952` headlessly and read the counted gaps -- that measurement
@@ -227,7 +232,7 @@ down, and `tests/w274paletteset.test.js` now runs the whole audit every suite pa
    chain and decrements each node's `$18`; the way in is the node code pointers at
    `$24627A`, NOT the chain root `$810346`, whose six references are all loaders or
    the clear. `$28C186` is a BGM command and correctly a counted sound gap.
-9. **Stage 5, then the loops.** Nothing blocks this any more: the Stage-4 boss is
+10. **Stage 5, then the loops.** Nothing blocks this any more: the Stage-4 boss is
    complete for every reachable path and the docket is down to one item. Five
    loop-specific rules are translated so far; see the loop-2 bullet above.
 
