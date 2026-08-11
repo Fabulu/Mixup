@@ -441,6 +441,64 @@ export function drawTallyHeader25DD80(ram, a4, side) {
   return 3;
 }
 
+/**
+ * `$25DD0C..$25DD70` -- THE STAGE-CLEAR SCREEN'S CURSOR, and it is the routine the header and
+ * label row hang off: when it does NOT confirm it falls straight into the draw at `$25DD72`.
+ *
+ *   25dd0c  movea.l ($8,A4),A0 / jsr (A0)     the descriptor's SECOND code pointer -- the EDGE read
+ *   25dd12  btst #$2,D0 / beq $25DD2A         bit 2 = LEFT
+ *   25dd1a  subq.b #1,($E,A5) / move.b #$1,($D,A5) / jsr $28C6FA
+ *   25dd2a  btst #$3,D0 / beq $25DD42         bit 3 = RIGHT
+ *   25dd32  addq.b #1,($E,A5) / move.b #$1,($D,A5) / jsr $28C6FA
+ *   25dd42  andi.b #$1,($E,A5)                the CLAMP -- two entries, so one bit
+ *   25dd48  movea.l ($10,A4),A0 / move.b ($E,A5),(A0)   store THROUGH the descriptor
+ *   25dd50  subq.w #1,($12,A5) / beq $25DD60  the timeout
+ *   25dd58  andi.w #$70,D0 / beq $25DD72      no button -> DRAW
+ *   25dd60  jsr $28C6E0 / move.w #$4B0,($12,A5) / ori #$1,SR / rts    CONFIRM, carry SET
+ *
+ * **THE LEFT ARM FALLS THROUGH INTO THE RIGHT TEST.** There is no branch after `$28C6FA`, so a
+ * frame with both bits set applies BOTH -- the cursor nets zero and the cue fires twice. Written as
+ * the ROM writes it, because an `else if` would silently make that frame a single step.
+ *
+ * **THE CLAMP IS `andi.b #$1` AND NOT A RANGE CHECK.** `SCREEN11.xEntries` is 2, so one bit is the
+ * whole range and stepping off either end WRAPS rather than sticking. `subq.b` on 0 gives `$FF`,
+ * which the mask turns into 1 -- so left from 0 lands on 1, not on 0.
+ *
+ * **THE TIMEOUT IS `subq.w / beq`, NOT the `bcc` old-zero idiom** the enemy cadences use. It fires
+ * on the frame the word REACHES zero, and `$25DD66` re-arms it to `$4B0` on the way out, so a
+ * confirmed screen leaves a fresh timer behind rather than a zero.
+ *
+ * @param a4 the descriptor (`($8,A5)`); its `($8,A4)` is the input read and `($10,A4)` the store.
+ * @returns {boolean} the CARRY: true when the screen was confirmed, which is `$25DCD8 bcc`.
+ */
+export function tallyCursor25DD0C(ram, slot, a4, side, ctx) {
+  const d0 = readInput23D186(ram, side);                    // $25DD0C jsr ($8,A4)
+  if ((d0 & (1 << 2)) !== 0) {                              // $25DD12 btst #$2
+    ram.setU8(slot + SCREEN11.xCur, (ram.u8(slot + SCREEN11.xCur) - 1) & 0xff);
+    ram.setU8(slot + 0x0d, 1);                              // $25DD1E
+    ctx?.soundPost?.(0x28c6fa);                             // $25DD24
+  }
+  // NO `else` -- $25DD2A is reached from both arms.
+  if ((d0 & (1 << 3)) !== 0) {                              // $25DD2A btst #$3
+    ram.setU8(slot + SCREEN11.xCur, (ram.u8(slot + SCREEN11.xCur) + 1) & 0xff);
+    ram.setU8(slot + 0x0d, 1);                              // $25DD36
+    ctx?.soundPost?.(0x28c6fa);                             // $25DD3C
+  }
+  ram.setU8(slot + SCREEN11.xCur, ram.u8(slot + SCREEN11.xCur) & 0x01);   // $25DD42
+  // $25DD48 -- the descriptor's DATA pointer, so the chosen entry leaves the record.
+  ram.setU8(ram.u32(a4 + 0x10), ram.u8(slot + SCREEN11.xCur));
+  const t = u16(ram.u16(slot + SCREEN11.armA) - 1);         // $25DD50 subq.w #1
+  ram.setU16(slot + SCREEN11.armA, t);
+  if (t === 0 || (d0 & 0x70) !== 0) {                       // $25DD54 beq / $25DD58 andi/beq
+    ctx?.soundPost?.(0x28c6e0);                             // $25DD60
+    ram.setU16(slot + SCREEN11.armA, 0x04b0);               // $25DD66 -- RE-ARMED on the way out
+    return true;                                           // $25DD6C ori #$1,SR
+  }
+  // $25DD72 -- not confirmed, so DRAW.
+  drawTallyHeader25DD80(ram, a4, side);
+  return false;
+}
+
 export function tallyScreen25DBB4(ram, slot, slotIndex, ctx) {
   const st = ram.u8(slot + SCREEN11.state);
   if (st === 0) {                                          // $25DBB4 tst.b / beq
@@ -476,6 +534,28 @@ export function tallyScreen25DBB4(ram, slot, slotIndex, ctx) {
       announceChoose260ACA(ram, side);                     // $25DC08 jsr $260ACA
     }
     // else: $803808 non-zero falls straight through to the body.
+  }
+
+  // ==================== $25DCC0 -- PHASE 1, the cursor. W328 RUNS IT.
+  //
+  //   25dcc0  cmpi.b #$1,($C,A5) / bne $25DCEA
+  //   25dcca  move.b ($7,A5),D0 / jsr $260A88      the announcement, every frame of this phase
+  //   25dcd4  bsr $25DD0C                          the cursor -- and it DRAWS when it does not
+  //   25dcd8  bcc $25DCE8                          not confirmed -> rts
+  //   25dcdc  move.b #$2,($C,A5) / move.b #$1,($D,A5)   confirmed -> advance the phase
+  //   25dce8  rts
+  //
+  // The announcement is re-posted on EVERY frame of the phase, not once on entry, which is what
+  // keeps it on screen while the cursor is up.
+  if (ram.u8(slot + SCREEN11.phase) === 1) {
+    announcePost(ram, 0x260a88, side);                     // $25DCCE
+    const a4 = ram.u32(slot + SCREEN11.desc);
+    if (tallyCursor25DD0C(ram, slot, a4, side, ctx)) {      // $25DCD4 bsr / $25DCD8 bcc
+      ram.setU8(slot + SCREEN11.phase, 2);                 // $25DCDC
+      ram.setU8(slot + 0x0d, 1);                           // $25DCE2
+    }
+    void slotIndex;
+    return;                                                // $25DCE8 rts
   }
 
   // $25DC2C onward -- THE BODY, still counted. The note is narrower than it was: the cascade above

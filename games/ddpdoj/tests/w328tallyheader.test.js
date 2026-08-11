@@ -18,7 +18,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
-import { drawTallyHeader25DD80 } from '../src/tallyscreen.js';
+import { drawTallyHeader25DD80, tallyCursor25DD0C } from '../src/tallyscreen.js';
 import { BUCKETS, ENQUEUE_MASK, NO_ZOOM_OR, RECORD_BYTES } from '../src/spritequeue.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -29,6 +29,8 @@ const SKIP_IMG = IMG ? false : 'the ROM image is absent; skip, not pass';
 const B = BUCKETS[26];
 const A4 = 0x81a000;          // a scratch descriptor
 const PALETTE = 0x1234;       // ($14,A4) -- distinctive, so a wrong source is visible
+const SLOT = 0x80e300;        // a scratch object slot
+const STORE = 0x81a100;       // where ($10,A4) points -- the cursor's real home
 
 /** Read back the `n`th 12-byte record the emitter wrote. */
 function record(ram, n) {
@@ -152,4 +154,96 @@ test('W328 three records fit bucket 26, which holds ten', { skip: SKIP_IMG }, ()
   const ram = world();
   drawTallyHeader25DD80(ram, A4, 0);
   assert.ok(ram.u16(B.counter) <= B.capBytes, 'the counter stays inside the bucket');
+});
+
+// ==================== 3. THE CURSOR, $25DD0C -- FOUR TRAPS
+
+test('W329 LEFT falls THROUGH into the right test, so both bits in one frame net zero',
+  { skip: SKIP_IMG }, () => {
+    // `$25DD24 jsr $28C6FA` is followed by `$25DD2A btst #$3,D0` with NO branch between them, so a
+    // frame carrying both bits applies BOTH steps and fires the cue TWICE. An `else if` would make
+    // that frame a single step -- which is why the port has two independent `if`s.
+    assert.equal(IMG.readUInt32BE(0x25dd2a), 0x08000003, '$25DD2A btst #$3 follows unconditionally');
+    const cues = [];
+    const ram = world();
+    ram.setU32(A4 + 0x10, STORE);
+    ram.setU16(0x803972, (1 << 2) | (1 << 3));       // p1edge: LEFT and RIGHT together
+    ram.setU8(SLOT + 0x0e, 1);
+    ram.setU16(SLOT + 0x12, 0x100);
+    tallyCursor25DD0C(ram, SLOT, A4, 0, { soundPost: (c) => cues.push(c) });
+    assert.equal(ram.u8(SLOT + 0x0e), 1, 'minus one then plus one is where it started');
+    assert.deepEqual(cues, [0x28c6fa, 0x28c6fa], 'and the step cue fired TWICE');
+  });
+
+test('W329 the clamp is `andi.b #$1`, so stepping off either end WRAPS', { skip: SKIP_IMG }, () => {
+  // Two entries means one bit. `subq.b` on 0 gives $FF and the mask turns it into 1, so LEFT from 0
+  // lands on 1 rather than sticking at 0. A range check would stick, and would be wrong.
+  assert.equal(IMG.readUInt32BE(0x25dd42), 0x022d0001, '$25DD42 andi.b #$1,($E,A5)');
+  for (const [from, bit, want] of [[0, 2, 1], [1, 3, 0], [1, 2, 0], [0, 3, 1]]) {
+    const ram = world();
+    ram.setU32(A4 + 0x10, STORE);
+    ram.setU8(SLOT + 0x0e, from);
+    ram.setU16(SLOT + 0x12, 0x100);
+    ram.setU16(0x803972, 1 << bit);
+    tallyCursor25DD0C(ram, SLOT, A4, 0, {});
+    assert.equal(ram.u8(SLOT + 0x0e), want, `from ${from} on bit ${bit} -> ${want}`);
+  }
+});
+
+test('W329 the cursor is stored THROUGH the descriptor\'s ($10,A4)', { skip: SKIP_IMG }, () => {
+  // `$25DD48 movea.l ($10,A4),A0 / move.b ($E,A5),(A0)` -- the chosen entry leaves the record, and
+  // a port that kept it only in the record would lose it the moment the screen self-killed.
+  const ram = world();
+  ram.setU32(A4 + 0x10, STORE);
+  ram.setU8(SLOT + 0x0e, 1);
+  ram.setU16(SLOT + 0x12, 0x100);
+  ram.setU16(0x803972, 0);
+  tallyCursor25DD0C(ram, SLOT, A4, 0, {});
+  assert.equal(ram.u8(STORE), 1, 'the clamped cursor reached the descriptor\'s target');
+});
+
+test('W329 confirm fires on the TIMEOUT reaching zero OR a $70 button, and RE-ARMS',
+  { skip: SKIP_IMG }, () => {
+    // `$25DD50 subq.w #1,($12,A5) / beq` is a REACHES-zero test, not the `bcc` old-zero borrow the
+    // enemy cadences use -- so it fires on the frame the word hits 0 and never wraps through $FFFF.
+    // And `$25DD66 move.w #$4B0,($12,A5)` re-arms on the way OUT, so a confirmed screen leaves a
+    // fresh timer rather than a zero.
+    assert.equal(IMG.readUInt16BE(0x25dd68), 0x04b0, '$25DD66 re-arms to $4B0');
+
+    const byTimeout = world();
+    byTimeout.setU32(A4 + 0x10, STORE);
+    byTimeout.setU16(SLOT + 0x12, 1);            // one frame left
+    byTimeout.setU16(0x803972, 0);               // nothing pressed
+    assert.equal(tallyCursor25DD0C(byTimeout, SLOT, A4, 0, {}), true, 'the timeout confirms');
+    assert.equal(byTimeout.u16(SLOT + 0x12), 0x04b0, 'and it re-armed');
+
+    const byButton = world();
+    byButton.setU32(A4 + 0x10, STORE);
+    byButton.setU16(SLOT + 0x12, 0x100);         // plenty of time left
+    byButton.setU16(0x803972, 0x10);             // a bit inside the $70 mask
+    assert.equal(tallyCursor25DD0C(byButton, SLOT, A4, 0, {}), true, 'a button confirms too');
+
+    const neither = world();
+    neither.setU32(A4 + 0x10, STORE);
+    neither.setU16(SLOT + 0x12, 0x100);
+    neither.setU16(0x803972, 0x80);              // OUTSIDE the $70 mask
+    assert.equal(tallyCursor25DD0C(neither, SLOT, A4, 0, {}), false, 'and $80 is not a confirm');
+    assert.equal(neither.u16(SLOT + 0x12), 0xff, 'the timer just decremented');
+  });
+
+test('W329 not confirming DRAWS, and confirming does not', { skip: SKIP_IMG }, () => {
+  // `$25DD72` is the fall-through, so the draw is what happens when the cursor does NOT confirm.
+  const drew = world();
+  drew.setU32(A4 + 0x10, STORE);
+  drew.setU16(SLOT + 0x12, 0x100);
+  drew.setU16(0x803972, 0);
+  tallyCursor25DD0C(drew, SLOT, A4, 0, {});
+  assert.equal(drew.u16(B.counter), 3 * RECORD_BYTES, 'three records drawn');
+
+  const confirmed = world();
+  confirmed.setU32(A4 + 0x10, STORE);
+  confirmed.setU16(SLOT + 0x12, 1);
+  confirmed.setU16(0x803972, 0);
+  tallyCursor25DD0C(confirmed, SLOT, A4, 0, {});
+  assert.equal(confirmed.u16(B.counter), 0, 'and a confirming frame draws NOTHING');
 });
