@@ -1790,6 +1790,57 @@ function deathSeq85(ram, rom, a5, a6, ctx, d1) {
 // table is five 2-byte rows and the stage picks one. `10 0F | 00 1E | 00 1E | 00 1E | 11 0E`, and
 // the three reads are `(A0)` then `(A0)+` twice, so `($1D,A6)` and `($18,A5)` BOTH take the row's
 // first byte and `($19,A5)` takes the second. Stage 5's row is `$11,$0E`.
+// ===================================== THE $5C DAMAGE ARM, A FAMILY OF TWO ====
+// W320 read type `$1B` and found it running type `$8E`'s damage arm instruction for instruction
+// with two parameters changed. Rather than transcribe it a second time, it is one routine here and
+// both types call it -- the family check the heartbeat asks for, coming back POSITIVE.
+//
+// The shape, in ROM order, is one decision written as two early-outs plus a hit path:
+//
+//   moveq #$5C,D1 / and.b (A6),D1 / bne <hit>    the hit bits
+//   move.b (base,A5),D0                          NOT hit: the base palette
+//   cmpi.w #hpFull,($18,A6) / bcc <store>        HP still full -> keep it
+//   tst.w $8130CA / bne <store>                  the gate is up -> keep it
+//   moveq #$19,D0                                else the LOW-HP palette
+//  <hit>
+//   andi.b #$A3,(A6) / jsr $286096               clear the bits, then scoreHit
+//   move.b ($1D,A6),D0
+//   cmpi.b #$19,D0 / bne                         if it is ALREADY the low-HP palette, flash from
+//   move.b (base,A5),D0                          the BASE instead, or the XOR would toggle away
+//   move.b (xor,A5),D2 / eor.b D2,D0             from $19 and back rather than around the colour
+//   tst.w ($18,A6) / bmi <death>
+//  <store>
+//   move.b D0,($1D,A6)
+//
+// The two parameter sets, and the only two:
+//
+//                 hpFull   base       xor        source
+//   type $8E      $140     ($18,A5)   ($19,A5)   $2764F4..$276538  (W319)
+//   type $1B      $380     ($1C,A5)   ($1D,A5)   $26937E..$2693C2  (W322)
+//
+// Returns `{pal, dead}`. `dead` is the `bmi` and the CALLER runs its own death arm, because the two
+// death arms are genuinely different routines -- this is shared damage, not shared dying.
+const DAMAGE_5C = Object.freeze({
+  hitMask: 0x5c, hitClear: 0xa3, lowHpPalette: 0x19, lowHpGate: 0x8130ca,
+});
+
+function damageArm5C(ram, ctx, a5, a6, spec) {
+  if ((ram.u8(a6) & DAMAGE_5C.hitMask) === 0) {
+    let pal = ram.u8(a5 + spec.base);
+    if (ram.u16(a6 + 0x18) < spec.hpFull
+        && ram.u16(DAMAGE_5C.lowHpGate) === 0) {
+      pal = DAMAGE_5C.lowHpPalette;
+    }
+    return { pal, dead: false };
+  }
+  ram.setU8(a6, ram.u8(a6) & DAMAGE_5C.hitClear);
+  scoreHit(ram, ctx, a6, 0);
+  let pal = ram.u8(a6 + 0x1d);
+  if (pal === DAMAGE_5C.lowHpPalette) pal = ram.u8(a5 + spec.base);
+  pal ^= ram.u8(a5 + spec.xor);
+  return { pal, dead: (ram.u16(a6 + 0x18) & 0x8000) !== 0 };
+}
+
 const T8E = Object.freeze({
   init: 0x276404, initBody: 0x27640c, handler: 0x2764d2,
   recordProto: 0x2764aa, recordWords: 6,     // $27641E moveq #$5,D0 -- D0+1
@@ -1800,6 +1851,8 @@ const T8E = Object.freeze({
   zoomTable: 0x2782cc, zoomEntries: 6,       // entries 12..17 of $27829C
   deathWords: 0x278314, deathEntries: 6,
   zoomFlags: 0xf800f800,                     // $276612 move.l #$F800F800,D6
+  // the shared $5C damage arm's parameters -- see `damageArm5C` above
+  damage: Object.freeze({ hpFull: 0x140, base: 0x18, xor: 0x19 }),
   hpFull: 0x140,                             // $2764FE cmpi.w #$140,($18,A6) / bcc
   lowHpPalette: 0x19,                        // $27650E moveq #$19,D0
   lowHpGate: 0x8130ca,                       // $276506 tst.w $8130CA / bne
@@ -1839,29 +1892,14 @@ function handler8E(ram, rom, a5, ctx) {
     ram.setU8(a5 + 0x16, 1);                            // $2764EE -- it has been seen
   }
 
-  let pal;
-  if ((ram.u8(a6) & T8E.hitMask) === 0) {               // $2764F4/$2764F8 bne $276512
-    // $2764FA..$276510, and it is one decision written as two early-outs:
-    //   D0 = ($18,A5); HP >= $140 -> store D0; $8130CA set -> store D0; else D0 = $19.
-    pal = ram.u8(a5 + 0x18);                            // $2764FA
-    if (ram.u16(a6 + 0x18) < T8E.hpFull                 // $2764FE cmpi.w #$140 / bcc
-        && ram.u16(T8E.lowHpGate) === 0) {              // $276506 tst.w $8130CA / bne
-      pal = T8E.lowHpPalette;                           // $27650E moveq #$19,D0
-    }
-  } else {
-    ram.setU8(a6, ram.u8(a6) & T8E.hitClear);           // $276512 andi.b #$A3,(A6)
-    scoreHit(ram, ctx, a6, 0);                          // $276516 jsr $286096
-    pal = ram.u8(a6 + 0x1d);                            // $27651C
-    // $276520 -- if it was ALREADY the low-HP palette, start the flash from the base instead, or
-    // the XOR would toggle away from $19 and back rather than around the real colour.
-    if (pal === T8E.lowHpPalette) pal = ram.u8(a5 + 0x18);   // $276526
-    pal ^= ram.u8(a5 + 0x19);                           // $27652A/$27652E eor.b D2,D0
-    if ((ram.u16(a6 + 0x18) & 0x8000) !== 0) {          // $276530 tst.w / bmi $27662E
-      death8E(ram, rom, a5, a6, ctx);
-      return;
-    }
+  // $2764F4..$276538 -- the shared $5C damage arm. See `damageArm5C`: type $1B runs the same
+  // routine with $380 and ($1C,A5)/($1D,A5) in place of these three.
+  const dmg = damageArm5C(ram, ctx, a5, a6, T8E.damage);
+  if (dmg.dead) {                                       // $276530 tst.w / bmi $27662E
+    death8E(ram, rom, a5, a6, ctx);
+    return;
   }
-  ram.setU8(a6 + 0x1d, pal & 0xff);                     // $276538 move.b D0,($1D,A6)
+  ram.setU8(a6 + 0x1d, dmg.pal & 0xff);                 // $276538 move.b D0,($1D,A6)
 
   // $27653C `tst.l $8130D2` -- a LONGWORD over the freeze word AND $8130D4 together, the same
   // shape as W308's `tst.w $81E0D8`. A `.w` reading would ignore $8130D4 entirely.
