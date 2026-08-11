@@ -17,7 +17,7 @@ import { UnportedLog } from '../src/unported.js';
 import { deferReset } from '../src/background.js';
 import { HUDRAM } from '../src/hud.js';
 import { TALLY, tally2600D8, bonusLine125FFA8, bonusLine2260056,
-  bonusLine326010E, bonusLine42601F4 } from '../src/tally.js';
+  bonusLine326010E, bonusLine42601F4, bonusLine52602B6 } from '../src/tally.js';
 import { PaletteState } from '../src/palette.js';
 import { ALLOC } from '../src/objalloc.js';
 import { RAM as MACHINE } from '../src/machine.js';
@@ -817,4 +817,75 @@ test('W292 line 4 posts announcement state $8 and recounts the sides', { skip: S
   assert.equal(f.ram.u16(0x813162 + 0x02), 0x08, '$2602A0 jsr $260AB6');
   assert.equal(f.ram.u16(TALLY.side0 + 0x00), 0, 'and it re-posted');
   assert.notEqual(f.ram.u16(HUDRAM.attract), 0x4321, '$2602B0 jsr $25FD94 ran');
+});
+
+// ================== 13. W293: BONUS LINE 5 IS THE TEARDOWN
+//
+// The first line that does not take the record it is handed -- it takes BOTH, because it
+// kills what line 2 built for both sides at once.
+
+test('W293 line 5 queues NINE kills, and the first four are line 2\'s handles',
+  { skip: SKIP }, () => {
+    // ($1C,A2) ($1C,A3) ($20,A2) ($20,A3) then five globals. Line 2 put the type-$B
+    // handle at ($1C,A6) and the type-$D handle at ($20,A6), so the pairing is what makes
+    // both lines legible -- neither field choice looks meaningful alone.
+    const f = world();
+    f.ram.setU32(TALLY.side0 + 0x1c, 0x111);
+    f.ram.setU32(TALLY.side1 + 0x1c, 0x222);
+    f.ram.setU32(TALLY.side0 + 0x20, 0x333);
+    f.ram.setU32(TALLY.side1 + 0x20, 0x444);
+    for (const [i, g] of [0x813148, 0x813144, 0x81314c, 0x813150, 0x813154].entries()) {
+      f.ram.setU32(g, 0x500 + i);
+    }
+    const before = f.ram.u16(ALLOC.killSp);
+    bonusLine52602B6(f.ram, ROM, f.ctx, TALLY.side0);
+    const n = (f.ram.u16(ALLOC.killSp) - before) / ALLOC.stride;
+    assert.equal(n, 9, 'nine kills');
+    const ids = [];
+    for (let i = 0; i < n; i++) ids.push(f.ram.u32(ALLOC.killQueue + before + i * ALLOC.stride));
+    assert.deepEqual(ids, [0x111, 0x222, 0x333, 0x444, 0x500, 0x501, 0x502, 0x503, 0x504],
+      'in the ROM\'s own order: both records per field, then the five globals');
+  });
+
+test('W293 the kill takes a POINTER, so the port must DEREFERENCE', { skip: SKIP }, () => {
+  // `$241252 move.l (A0),(A1)`. Passing the ADDRESS would queue a kill for a handle equal
+  // to a RAM address, which the drain would silently fail to match -- so this asserts the
+  // queued value is the HANDLE and not the field's address.
+  const f = world();
+  f.ram.setU32(TALLY.side0 + 0x1c, 0xabcd);
+  const before = f.ram.u16(ALLOC.killSp);
+  bonusLine52602B6(f.ram, ROM, f.ctx, TALLY.side0);
+  assert.equal(f.ram.u32(ALLOC.killQueue + before), 0xabcd, 'the handle, dereferenced');
+  assert.notEqual(f.ram.u32(ALLOC.killQueue + before), TALLY.side0 + 0x1c,
+    'and NOT the address of the field');
+});
+
+test('W293 line 5 plays BOTH cues and creates ONE type-$E object', { skip: SKIP }, () => {
+  const cues = [];
+  const f = world();
+  f.ctx.soundPost = (id) => cues.push(id);
+  const rec = bonusLine52602B6(f.ram, ROM, f.ctx, TALLY.side0);
+  assert.deepEqual(cues, [0x28c170, 0x28c0fc], '$260326 then $26032C, in that order');
+  assert.notEqual(rec, null, 'type $E allocated');
+  assert.equal(f.ram.u16(rec), (0x0e | 0x8000) >>> 0, '$260332 move.w #$E,D0');
+});
+
+test('W293 the type-$E handle is DROPPED -- the ROM keeps it nowhere', { skip: SKIP }, () => {
+  // Lines 1, 2 and 4 all follow `jsr $241182` with a `move.l D0,(...)`. This one does not:
+  // no field of the record changes. So whatever type $E is, it finds its own way out, and
+  // a port that "helpfully" stored the handle would invent state.
+  const f = world();
+  bonusLine52602B6(f.ram, ROM, f.ctx, TALLY.side0);
+  for (const off of [0x18, 0x1c, 0x20]) {
+    assert.equal(f.ram.u32(TALLY.side0 + off), 0,
+      `($${off.toString(16)},A6) was not written`);
+  }
+});
+
+test('W293 line 5 re-posts, like every other line', { skip: SKIP }, () => {
+  const f = world();
+  f.ram.setU16(TALLY.side0 + 0x00, 5);
+  bonusLine52602B6(f.ram, ROM, f.ctx, TALLY.side0);
+  assert.equal(f.ram.u16(TALLY.side0 + 0x00), 0, '$26033C');
+  assert.equal(f.ram.u16(TALLY.side0 + 0x02), 0, '$260340');
 });

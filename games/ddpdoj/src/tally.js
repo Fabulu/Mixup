@@ -42,7 +42,7 @@
 // wrong the moment a side-1 record carries selector 0.
 
 import { u16 } from './ram.js';
-import { stageCreate } from './objalloc.js';
+import { stageCreate, queueKill } from './objalloc.js';
 import {
   HUDRAM,
   hyperStock286ED6,
@@ -342,6 +342,70 @@ export function bonusLine42601F4(ram, rom, ctx, a6) {
   ram.setU16(a6 + 0x00, 0);                                // $2602A6
   ram.setU16(a6 + 0x02, 0);                                // $2602AA
   liveSides25FD94(ram);                                    // $2602B0 jsr $25FD94
+  return made.ok ? made.addr : null;
+}
+
+// ===========================================================================
+// W293 -- `$2602B6`, BONUS LINE 5: THE TEARDOWN
+// ===========================================================================
+// The first line that does not take the record it is handed. It takes BOTH:
+//
+//   2602b6  lea $8130FA,A2 / lea $81311E,A3
+//   2602c2  nine x { lea <handle>,A0 / jsr $241238 }
+//             ($1C,A2) ($1C,A3)      the type-$B handles line 2 created
+//             ($20,A2) ($20,A3)      the type-$D handles line 2 created
+//             $813148 $813144 $81314C $813150 $813154    five globals
+//   260326  jsr $28C170 / jsr $28C0FC          two cues
+//   260332  move.w #$E,D0 / jsr $241182        ONE new object, type $E
+//   26033c  (A6) = 0 / ($2,A6) = 0 / rts
+//
+// **SO LINE 5 TEARS DOWN WHAT LINE 2 BUILT, FOR BOTH SIDES AT ONCE**, and that is why it
+// reaches past its own record. Line 2 put the type-`$D` handle at `($20,A6)` and the
+// type-`$B` handle at `($1C,A6)`; those are exactly the first four kills here. The pairing
+// is what makes the two lines legible: neither field choice looks meaningful alone.
+//
+// **`$241238` TAKES A POINTER, NOT AN ID.** `$241252 move.l (A0),(A1)` dereferences, so
+// every call site does `lea <field>,A0` first. The port's `queueKill(ram, id)` takes the
+// VALUE -- the same convention `hud.js` uses at `$28D518` -- so each of the nine
+// dereferences here. Passing the ADDRESS would queue a kill for a handle equal to a RAM
+// address, which the drain would silently fail to match.
+//
+// The kill queue is LIFO (`$24126C` subtracts before reading), so the nine are applied in
+// reverse. Nothing here depends on the order, but a later reader should not assume FIFO.
+const BONUS5 = Object.freeze({
+  site: 0x2602b6,
+  // the two per-record handle fields, in the ROM's own order
+  recordFields: Object.freeze([0x1c, 0x20]),
+  // $2602EA..$260320 -- five globals, in the ROM's order (NOT sorted)
+  globals: Object.freeze([0x813148, 0x813144, 0x81314c, 0x813150, 0x813154]),
+  cueA: 0x28c170,
+  cueB: 0x28c0fc,
+  newType: 0x0e,                           // $260332 move.w #$E,D0
+});
+
+/** `$2602B6` -- bonus line 5. Returns the type-`$E` record it created, or null. */
+export function bonusLine52602B6(ram, rom, ctx, a6) {
+  // $2602C2..$260320 -- the nine kills, and the order is the ROM's.
+  for (const field of BONUS5.recordFields) {
+    for (const rec of [TALLY.side0, TALLY.side1]) {         // A2 then A3
+      queueKill(ram, ram.u32(rec + field));                 // $241238, dereferenced
+    }
+  }
+  for (const g of BONUS5.globals) {
+    queueKill(ram, ram.u32(g));
+  }
+
+  ctx?.soundPost?.(BONUS5.cueA);                            // $260326 jsr $28C170
+  ctx?.soundPost?.(BONUS5.cueB);                            // $26032C jsr $28C0FC
+
+  // $260332 -- ONE object, type $E, and its handle is NOT kept anywhere. The ROM drops
+  // D0 on the floor: no `move.l D0,(...)` follows, unlike lines 1, 2 and 4. So whatever
+  // type $E is, it finds its own way out.
+  const made = stageCreate(ram, BONUS5.newType,
+    (t) => rom.u16(DISPATCH + t * 8 + 4));                  // $260336 jsr $241182
+
+  ram.setU16(a6 + 0x00, 0);                                 // $26033C move.w #$0,(A6)
+  ram.setU16(a6 + 0x02, 0);                                 // $260340
   return made.ok ? made.addr : null;
 }
 

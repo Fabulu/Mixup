@@ -28,8 +28,12 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W292, `ddpdoj: bonus line 4 and its two loop-2 rules`.
-- Suite: `node --test games/ddpdoj/tests/` is **2014/2014**, green, no skips.
+- HEAD is W293, `ddpdoj: bonus line 5, the teardown`.
+- Suite: `node --test games/ddpdoj/tests/` is **2019/2019**, green, no skips.
+- **FIVE of the nine bonus lines are in.** Line 6 is `$260348`, and its head writes an
+  OBJECT's state byte through **A5** -- which none of the first five does, so A5 must be
+  live at entry. **CHECK THAT FIRST**: it is the same class of question that stopped
+  `$280252` in W288, and checking it last cost a reverted transcription there.
 - **FOUR of the nine bonus lines are in.** Line 5 is `$2602B6`, and its head takes BOTH
   records at once (`lea $8130FA,A2 / lea $81311E,A3`) -- a shape none of the first four
   has, so do not assume the family.
