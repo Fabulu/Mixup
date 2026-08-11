@@ -439,22 +439,57 @@ written. Everything below is new ground the sighting opened up.
 > MAME."
 
 D17 proved kind 1 allocates and appears. D20 is about the COUNT, which is a different claim
-needing a different measurement. What makes it tractable rather than vague:
+needing a different measurement.
 
-* `src/bee.js` is the medal pool and W312 took it to EIGHTEEN of twenty `$280BCE` kinds;
-  indices 1 and 16 are both `$280CEE` and belong to `allocBee27F92A`.
-* **kind 16 (`$40`, the flying variant) still throws `Unreached $280CEE`** (D17, W284), and
-  it throws AFTER claiming a slot. If anything in normal play asks for kind 16, that is both
-  a missing medal AND a leaked slot -- the single most likely cause of "far fewer".
-  **Start here.**
-* The RESERVED TEN are carrier-death-only slots. W285 showed no scenario in the tree kills a
-  carrier unaided, so the port's own measurements have never seen the reserved ten fill. A
-  count claim needs a scenario in which enemies actually die in numbers.
+**W324 DID THAT MEASUREMENT, READ-ONLY, AND IT CHANGES THE ITEM COMPLETELY.** Two facts from
+the cartridge, both cheap to re-derive:
 
-The owner's MAME suggestion is the right instinct, and the repo has the better tool: the
-ORACLE. Do not eyeball a video -- trace the real machine's medal allocations across a stage
-and compare counts per source. `tools/oracle/` is the only thing here that can say "the
-board allocated N and the port allocated M" rather than "it feels sparse".
+1. **`allocBee27F92A` has EXACTLY ONE CALLER IN THE WHOLE ROM.** `rosetta.py codexref
+   0x27f92a` returns a single site: `$2767E6`, type `$8A`'s death arm. There is no second
+   medal source. The general pool-A allocators `$27F8EE` (seven callers) and `$27F8F8` (four)
+   are not one either -- every site that could be read passes `D0 = $8`, kind index 2, not
+   the medal's `$04` or `$40`.
+2. **EVERY STAGE HOLDS EXACTLY TEN TYPE-`$8A` RECORDS.** Walking all five spawn scripts on the
+   8-byte stride:
+
+       stage 1:  10 of 339      stage 4:  10 of 382
+       stage 2:  10 of 332      stage 5:  10 of 770
+       stage 3:  10 of 414      TOTAL:    50
+
+   Ten per stage, in all five, with no exceptions. That is a designed constant, not a
+   coincidence, and it is the classic ten hidden bees per stage.
+
+**So the port's medal count is bounded at ten per stage BY THE CARTRIDGE**, and if all ten
+carriers die the port is already right. The owner's "much more medals spawn" therefore cannot
+be a missing medal source, because there is only one source and it is ported.
+
+Which makes the next step a QUESTION rather than a wave: what the owner remembers is most
+likely a DIFFERENT object. The candidates, and both are already in this docket:
+
+* **the ITEM** (D23, W61's pool family six `$27E812`), which is a separate pool and a separate
+  picture, and whose own web-gate witness is one item per 2400-frame window;
+* the per-kill score popups or the chain counter, which read as "stuff flying off enemies".
+
+**Ask before spending a wave.** Specifically: are the many medals the owner remembers coming
+off ORDINARY ENEMIES as they die, or appearing from the scenery? If it is the former it is not
+this pool at all. A MAME or video comparison is worth doing only after that question is
+answered, because it decides which object to count.
+
+### D20 CORRECTION: THE LEAD THIS ITEM WAS FILED WITH WAS ALREADY STALE
+
+This item originally said "kind 16 (`$40`, the flying variant) still throws `Unreached
+$280CEE` ... **start here**". That was drawn from W284's note and it is **wrong at HEAD**:
+
+* `$280BCE[1]` and `$280BCE[16]` are BOTH `$280CEE`, and **W286 wired kind 16 through the same
+  two instructions** -- `bee.js:791` accepts either kind;
+* `allocBee27F92A` accepts both kinds by its own contract (`bee.js:315`);
+* `$27F99E[1]` and `$27F99E[16]` are BOTH `$27FACC`, and the port has that body.
+
+So kind 16 is fully served end to end, and the "leaked reserved slot" this item warned about
+cannot happen. The stale comment at `bee.js:774` ("kind 16 would need its own -- but the flying
+bee is REFUSED at the body") is the last trace of it and should be corrected when something
+next touches that file. **The lesson is D19's again**: a note written when it was true outlives
+the condition it described, and a docket item built on one inherits the staleness.
 
 ### D21: THE HUD IS MISSING A SMALL ELEMENT NEAR THE HYPER COUNTER
 
@@ -472,22 +507,78 @@ one picture is worth a wave.
 > "the medals don't make sounds when collecting."
 
 A CUE and not a sprite, so a different subsystem from D20 and doable independently of it.
-The port has a real sound runtime (`src/soundruntime.js`, `APPROVED_SOUND_POLICIES`) and the
-web gate already proves deferred sound fetches and cue advancement work (W158). So this is
-"find the medal pickup's cue site and post it", in the shape of the `ctx.soundPost?.(...)`
-calls the enemy death arms already make. The pickup path is the one D17/W285 exercised, so a
-test scenario for it exists already.
+
+**W324 traced the whole chain read-only, and IT IS ALREADY COMPLETE.** So this is not "find the
+site and post it" -- every link exists:
+
+    bee.js:1326   ctx.soundPost?.(0x28c62a)     the bee-collect cue, at $27FC6C
+    main.js:355   soundPost -> postWrapperWithRuntime(ram, sound, soundSink, addr)
+    sound.js:109  0x28C62A: { id: 0x1F, pan: 0xFF, ch: 0x01, entry: 0x28C02A }
+
+The call is made, the wiring routes it to the real runtime, and the wrapper is a known table
+entry with an id, a pan and a channel. **So the defect is downstream of all three and this item
+needs a MEASUREMENT, not a transcription.** In order, cheapest first:
+
+1. Does `$27FC6C` actually execute when a medal is collected? W285 already has the scenario
+   that puts a live medal on screen, so this is a test, not a wave: collect one and assert a
+   cue was posted.
+2. Does `postWrapperWithRuntime` RETURN TRUE there, or does a gate inside `sound.js` drop it?
+   It returns a boolean precisely so a caller can tell; nothing currently checks it.
+3. Is id `$1F` on channel 1 audible in the deployed build -- is the sample present in the
+   shipped sound assets, and does something else on channel 1 stamp on it?
+
+Note `bee.js:1326`'s own comment calls id `$1F` a **BGM** id, which is worth resolving in step
+3: if `$1F` selects music rather than an effect, the cue may be posting correctly and doing
+something inaudible, and the fix is a wrong-id fix rather than a missing-call one.
 
 ### D23: BIGGER MEDALS EXIST AND HAVE NOT BEEN SEEN
 
 > "Some things also drop bigger medals, haven't seen these yet."
 
-`src/hud.js` (W124) drains `$81B610` through the `$32/$64/$96` medal TIERS, so the port
-already knows tiers exist. Two readings need separating: a bigger medal may be a different
-KIND out of pool A (see kind 16 in D20, the flying variant), or the same kind with a higher
-VALUE and a different picture. D17's note applies verbatim -- **check the VALUE progression
-as well as the picture**, because the chaining medal value is what a player notices.
-Probably one wave together with D20, since both ask "which kinds does pool A really emit".
+`src/hud.js` (W124) drains `$81B610` through the `$32/$64/$96` medal TIERS, so the port already
+knows tiers exist. Two readings needed separating: a different KIND out of pool A, or the same
+kind at a higher VALUE with a different picture.
+
+**W324's read-only recon eliminates the first reading and sharpens the second.**
+
+NOT a missing kind, in either pool:
+
+* pool A: kinds 1 and 16 both dispatch to `$27FACC` and both are served (see the D20
+  correction). There is no third medal kind.
+* the ITEM pool: `runBody` covers **all eight** dispatch indices of `$27E9F8` --
+  `$00` power-up, `$04` full power, `$08` set item, `$0C`/`$14` the hyper item for P1/P2,
+  `$10` the counter, `[6]` the free and `[7]` the ROM's deliberate `rts`. `REFUSED_KINDS` is
+  empty "after W163". Nothing is missing there either.
+
+So it is the VALUE reading, and the ladder is measured and present:
+
+    $27FD22, BASE_LADDER, TEN BCD longs indexed by the cursor $817F82 (byte offset 0,4,8,...):
+        100  200  300  400  500  600  700  800  900  1000
+
+Ten values for ten medals a stage -- the classic sequence, and it is already in `bee.js`.
+
+**And W324 then answered the one open question: the PICTURE does NOT change with the cursor.**
+`rosetta.py sites 0x817f82 --list` gives Build B **four** sites and no more:
+
+    $27F8E6   clr    -- the reset
+    $27FBEE   read   -- the value lookup, BASE_LADDER  (bee.js has it)
+    $27FC0C   addq #4 -- the ratchet                    (bee.js has it)
+    $29023E   read   -- NOT a sprite lookup: it gathers the cursor alongside $812940 (bombs),
+                        $81B49A and $812938, which is the shape of a SNAPSHOT
+
+**Nothing indexes a sprite by the cursor.** `bee.js`'s `BEE_TEMPLATE` is one 22-byte template
+with one descriptor (`$001BCA34` at +$0A), and that is all this build has. So a per-value sprite
+swap is not missing, because it does not exist: the medal keeps one picture and only the SCORE
+climbs, 100 to 1000.
+
+**This item is therefore a closure candidate rather than a wave.** Put it to the owner in those
+terms: in this build the medal looks the same every time and is worth more each time. If what
+they remember as a "bigger medal" is a different SIZE of sprite, it belongs to another object
+(the item pool, D20's question) and this item should be reworded to point there.
+
+One by-product worth its own line: **`$29023E` is unported**, and it collects the bee cursor,
+the bomb count and two other counters together. That is the shape of a state snapshot taken at a
+boundary -- worth a look while doing D25 (the transition) rather than as its own errand.
 
 ### D24: THE HYPER LASER HAS NO IMPACT SPRITES AT ALL
 
