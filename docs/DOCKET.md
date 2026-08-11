@@ -719,6 +719,126 @@ No wave should touch this until the goal is met. Its value here is as a constrai
 waves before it: when a wave finds a two-element array or a `d7` that means "which player",
 it costs nothing to write down whether the surrounding pool is sized 2 or sized N.
 
+## Added 2026-08-11 (late) from a fourth play session, on build 20260811184328
+
+### D29: THE RELEASE ITSELF WAS BROKEN -- FIXED (W327)
+
+> "Die Website ist nicht erreichbar ... ERR_FAILED" ... "I think you really really need to fix
+> release" ... "ctrl shift r somehow worked, it's back"
+
+**The origin was serving 200 the whole time** -- checked from here, all three URLs including the
+exact `/games/ddpdoj/index.html` that failed. The fault was `games/ddpdoj/sw.js`, which is scoped
+to `/games/ddpdoj/` and so intercepts precisely that URL. Three defects, fixed in W327:
+
+1. **A throw inside `respondWith` IS `ERR_FAILED`.** The shell's offline path ended in
+   `throw new Error('offline')`, and a rejected `respondWith` makes the browser report the page as
+   unreachable -- identical, to the person looking at it, to the site being down. One transient
+   fetch failure (a phone handing over between cells) was enough.
+2. **`caches.match` without `cacheName` searches EVERY cache on the origin**, so a cache-first
+   shell could be answered out of the previous build before `activate` had deleted it.
+3. **Cache-first on the NAVIGATION meant a deployed build was not picked up** until the old worker
+   was replaced. That is why one device showed a stale page and the other failed outright.
+
+Navigations are network-first now, sub-resources stay cache-first, nothing throws, and three tests
+pin it. **Ctrl+Shift+R working is what confirmed the diagnosis**: a hard reload bypasses the worker.
+
+### D30: STATIC ANALYSIS OF THE TRANSITION SCREEN -- ASKED FOR, AND IT IS ONE ROUTINE
+
+> "Stage transition looks good but is busted. 0's, some pictures of medals. Must check vs real
+> thing" ... "static analysis of transition screens please."
+
+Done, and the answer is much tighter than the symptom suggests.
+
+**The screen is `$240F62[11] = $25DBB4`, and its STATE 1 -- the actual tally -- is a counted note.**
+`src/tallyscreen.js` registers the object and implements states 0 and 2; state 1 has never been
+written. So the layout draws (which is the "looks good" and the medal pictures) and nothing fills
+in the numbers, which is the zeros. `$25FF38` is named in that note as the routine that writes the
+tally records at `$8130FA`, and it is **twelve bytes**: `lea $8130FA,A0`, `tst.w D0 / beq`,
+`lea $81311E,A0` for the other side, `move.w D1,(A0)`. The zeros are not a hard routine; state 1
+simply does not run.
+
+**Every call state 1 makes, enumerated by scanning `$25DBC4..$25E100` for `jsr abs.l`:**
+
+    $23C668  x1   PORTED (player.js)         $260A88  x4   PORTED (rank.js)
+    $23C932  x2   PORTED (tallyscreen.js)    $260A9A  x1   PORTED (rank.js)
+    $24150A  x1   PORTED (background.js)     $260ACA  x1   PORTED (rank.js)
+    $25FF38  x1   the 12-byte writer above   $28C6E0  x2   PORTED (hiscorename.js)
+    $28D53C  x3   PORTED (tallyscreen.js)    $28C6FA  x3   PORTED (hiscorename.js)
+    $24018C  x9   **THE ONLY MISSING ONE**
+
+**Nine of the ten are already ported. The one that is not is `$24018C`, and it is called NINE
+times -- more than anything else in the arm.** It opens
+
+    24018c  move.l A0,-(A7) / move.l D0,-(A7)
+    240190  lea $80AD14,A0
+    240196  adda.w $80AFEE,A0
+
+which is the buffer-plus-counter QUEUE idiom every sprite emitter in this port uses -- and
+`src/spritequeue.js:94` **already declares that pair**:
+`{ i: 26, buffer: 0x80ad14, counter: 0x80afee, capBytes: 120, site: 0x23d5d4 }`. Bucket 26, ten
+records of twelve. All nine of `$24018C`'s callers in the whole build are inside this one screen,
+so it is the transition screen's own emitter and nothing else depends on it.
+
+**So the wave is: `$24018C` (a small writer into a bucket the port already has), `$25FF38` (twelve
+bytes), and state 1's arm.** Everything else it needs exists. That is the whole reason to do the
+static analysis before the wave rather than after.
+
+The five other routines the old note named are also now sized: `$25DA60` starts
+`move.w $813084,D6`; `$25DA94` and `$25DEAE` **share their first two instructions**
+(`moveq #$0,D7 / move.b ($F,A5),D7`) and so are probably a family of two; `$25DFF6` opens with a
+`jsr $28D53C` that is ALREADY ported; `$25E0EA` is a two-instruction trampoline
+(`lea ($25E006,PC),A0 / bra $25E200`).
+
+**Compare against the real thing when it lands**, as the owner asks -- the oracle can count the
+frames and read the drawn values, which is the only way to check a number is RIGHT rather than
+merely present.
+
+### D31: HYPER STILL HAS NO HIT ANIMATION -- W324 DID NOT FIX IT
+
+> "hyper still has no hit animation" (tested on build 20260811184328, which carries W324)
+
+**An honest negative result.** W324 wired `$289F96`, the beam-BODY effect, on the reasoning that it
+was the one member of the `$28A506` template family still unported and that the owner's "similar to
+laser" named that family. The frame-shift evidence (three pinned counts moving in the hyper
+scenario) showed the new code really does run there. **It was not the missing hit animation.**
+
+So D24 is reopened and the next attempt must not reuse that reasoning. What is now known:
+
+* the effect family `$289F54`/`$289F96`/`$289FC0`/`$289FDA` is COMPLETE, so the gap is not there;
+* the beam's own impact is suppressed during a bomb/hyper BY THE ROM -- `$25505E tst.w $81294C /
+  bne` skips the spawn, verified in the listing, so that suppression is correct and not the bug;
+* therefore the hyper laser's hit visual comes from somewhere the port has not looked. The
+  candidate not yet examined is the HYPER's own object rather than the beam's: `src/hyper.js`
+  contains no impact or effect code at all (`grep -i` finds nothing for impact/laser/`289F`).
+
+**Start at `src/hyper.js` and the hyper object's draw, not at the beam.** And ask the owner for one
+more discrimination first: does the hyper laser show its BEAM correctly and only lack the sparks
+where it lands, or is the whole beam different?
+
+### D32: AN INVISIBLE ENEMY IN STAGE 2, AND STARS/MEDALS ONLY FROM MIDBOSSES
+
+> "First part of stage 2 to the left has an invisible enemy you can hit."
+> "Nothing but mid bosses has stars and medals. There have to be a lot more."
+
+Two reports, and the second sharpens D20 by adding STARS to it.
+
+**The invisible enemy is the more tractable of the two** and is a NEW class of defect: a hittable
+object with no sprite means the handler runs and the draw does not, which is the opposite of every
+missing-art item so far (those had records with no art). Note `w230descriptorsweep.mjs` reports 0
+not-in-bundle over 900 frames, so this is not a missing STREAM -- it is a draw that is not being
+made, or is made into a bucket nothing renders. Stage 2's types are all ported (the census says
+stages 1..4 have no missing handlers), so suspect a draw arm inside one of them, and get the
+position: "first part, to the left" plus the scroll clock would name the record.
+
+**On stars:** D20 measured that the medal has exactly ONE allocator caller in the whole ROM and
+that every stage holds exactly ten type-`$8A` carriers. That measurement stands and it means
+medals are bounded at ten a stage BY THE CARTRIDGE. "Nothing but midbosses has stars and medals"
+is therefore consistent with the port being right about medals and wrong about something else --
+and "stars" may be a different object entirely. **This is the question D20 already asks and it is
+now worth answering before another wave**: are the stars the owner means dropping from ordinary
+enemies as they die? If so they are not the bee pool and not the item pool's power-ups, and the
+thing to find is what an ordinary enemy death emits that the port does not.
+
 ### D27: PUBLISH INTERMITTENTLY -- BUT NOT ON EVERY WAVE
 
 > "Publish intermittently so you catch these mistakes, but not on every wave."
