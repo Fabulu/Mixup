@@ -259,16 +259,28 @@ test('W276 $25DBB4 routes 0 to state 0, 2 to state 2, and everything else is COU
     tallyScreen25DBB4(s2.ram, A5, 0, s2.ctx);
     assert.notEqual(s2.ram.u32(TALLY.side0 + TALLY.result), 0, 'state 2 ran');
 
+    // W328 MOVED THIS NOTE AND SHORTENED ITS LIST, and both changes are the point.
+    //
+    // The note used to sit at `$25DBC4` -- the top of state 1 -- and name six unported routines.
+    // W328 ported the GATE CASCADE at `$25DBC4..$25DC2A`, so the note moved down to `$25DC2C`,
+    // the body. And two of the six named were never missing: **`$25FF38` was already in
+    // `tallyscreen.js` as `tallyRequest25FF38`** (W328 briefly wrote a SECOND, WRONG copy of it
+    // that omitted the `clr.w ($2,A0)`, and deleted it), and `$24018C` -- called nine times and
+    // reported by D30's first pass as the screen's one missing primitive -- is
+    // `enqueueRegisters` on bucket 26. So the list must NOT still claim `$25FF38`.
     const s1 = world();
     s1.ram.setU8(A5 + SCREEN11.state, 1);
     tallyScreen25DBB4(s1.ram, A5, 0, s1.ctx);
-    const hit = s1.log.report().find((r) => r.includes('$25DBC4'));
-    assert.ok(hit, 'state 1 is counted at $25DBC4');
-    // The note must NAME the six, so the next wave does not re-derive them.
-    for (const a of ['$25DA60', '$25DA94', '$25DFF6', '$25DEAE', '$25E0EA', '$25FF38']) {
+    const hit = s1.log.report().find((r) => r.includes('$25DC2C'));
+    assert.ok(hit, 'state 1s BODY is counted at $25DC2C, below the ported cascade');
+    // The note must still NAME what is left, so the next wave does not re-derive it.
+    for (const a of ['$25DA60', '$25DA94', '$25DEAE', '$25E0EA']) {
       assert.ok(hit.includes(a), `the note names ${a}`);
     }
-    assert.match(hit, /SELECTION SCREEN/, 'and says what $25DD0C actually is');
+    assert.ok(!hit.includes('$25FF38'),
+      '$25FF38 is PORTED (tallyRequest25FF38) and must not be listed as missing');
+    assert.match(hit, /CURSOR half/, 'and says what $25DD0C actually is');
+    assert.match(hit, /drawTallyHeader25DD80/, 'and names what W328 landed');
   });
 
 test('W276 state 0 runs ONCE: the second frame is state 1, not state 0 again',

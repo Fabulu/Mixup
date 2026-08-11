@@ -39,12 +39,17 @@
 // and `($c,A4)`; **state 2 uses none of them**, which is why the tally path can land
 // without any of the six.
 
-import { u16 } from './ram.js';
+import { u16, u32 } from './ram.js';
+import { enqueueRegisters } from './spritequeue.js';
 import { RAM } from './machine.js';
 import { queueKill } from './objalloc.js';
 import { txPrint240DC2, txPrint240E1A, HUDRAM } from './hud.js';
-import { announcePost } from './rank.js';
+import { announcePost, announceChoose260ACA } from './rank.js';
 import { tally2600D8, TALLY } from './tally.js';
+
+/** `$24018C`'s bucket: `lea $80AD14,A0 / adda.w $80AFEE,A0` is `BUCKETS[26]`, ten records of
+ *  twelve. Declared in `spritequeue.js` since W30 and unused by anything until W328. */
+const TALLY_BUCKET = 26;
 
 export const SCREEN11 = Object.freeze({
   entry: 0x25dbb4,
@@ -381,6 +386,55 @@ export function screenState2_25DB7C(ram, rom, ctx, a5) {
  * of those writes the tally records at `$8130FA` directly, so guessing it would
  * corrupt the thing this file exists to drive.
  */
+/**
+ * `$25DD80..$25DE18` -- THE STAGE-CLEAR SCREEN'S HEADER AND ITS TWO LABELS.
+ *
+ * D30/W328. The owner's report was "Stage transition looks good but is busted. 0's, some pictures
+ * of medals" and, earlier, "labels too I think". This is the labels.
+ *
+ *   25dd80  move.l #$5BC02C00,D1 / move.l D1,D7    the HEADER's position, and it is SAVED
+ *   25dd88  move.l #$334300,D2 / move.w #$630,D3
+ *   25dd92  moveq #$0,D4 / move.w ($14,A4),D4      the palette, out of the DESCRIPTOR
+ *   25dd98  jsr $24018C                            -> enqueueRegisters on BUCKET 26
+ *   25dd9e  tst.b ($7,A5) / bne $25DDE2            THE SIDE
+ *   25dda6  addi.l #$04000100,D1 ; D2 = $334394 ; D3 = $410 ; emit
+ *   25ddc2  addi.l #$00000600,D1 ; D2 = $3343B8 ; D3 = $410 ; emit
+ *   25ddde  bra $25DE1A                            past the other side's pair
+ *   25dde2  addi.l #$04000100,D1 ; D2 = $3343DC ; D3 = $410 ; emit   } side 1's
+ *   25ddfe  addi.l #$00000600,D1 ; D2 = $334400 ; D3 = $410 ; emit   } own pair
+ *
+ * **TWO LABELS PER SIDE, NOT FOUR IN A ROW.** The four descriptors ascend by exactly `$24`, which
+ * reads like one row of four until the `bra` at `$25DDDE` is accounted for: the first pair is side
+ * 0's and the second pair is side 1's, at the SAME two offsets. A port that drew all four would put
+ * the other player's labels on this player's screen.
+ *
+ * **`$24018C` IS `enqueueRegisters` ON BUCKET 26.** It is the same routine the port transcribed from
+ * `$23EFC6` -- `lea $80AD14,A0 / adda.w $80AFEE,A0`, bump the counter by `$C`, then `asr.l #6` with
+ * `$07FF03FF`/`$80008000` and four writes -- and `BUCKETS[26]` already declares that exact pair.
+ * The first pass of D30's analysis called it the screen's one missing primitive; it never was.
+ *
+ * The positions are packed longs and the emitter shifts them right by 6, so they are written here
+ * as the literals the ROM holds rather than as pixel coordinates.
+ *
+ * @param a4 the DESCRIPTOR (`($8,A5)`), whose `($14,A4)` is the palette every emit shares.
+ * @param side the record's `($7,A5)`.
+ * @returns {number} how many records were emitted -- 3, always, and returned so a caller can say so.
+ */
+export function drawTallyHeader25DD80(ram, a4, side) {
+  const d4 = ram.u16(a4 + 0x14);                  // $25DD94 move.w ($14,A4),D4
+  let d1 = 0x5bc02c00;                            // $25DD80
+  enqueueRegisters(ram, TALLY_BUCKET, d1, 0x00334300, 0x0630, d4);   // $25DD98
+  // $25DD9E `tst.b ($7,A5) / bne` -- each side has its OWN pair of descriptors.
+  const pair = side !== 0
+    ? [0x003343dc, 0x00334400]                    // $25DDE2 / $25DDFE
+    : [0x00334394, 0x003343b8];                   // $25DDA6 / $25DDC2
+  d1 = u32(d1 + 0x04000100);                      // $25DDA6 / $25DDE2 addi.l
+  enqueueRegisters(ram, TALLY_BUCKET, d1, pair[0], 0x0410, d4);
+  d1 = u32(d1 + 0x00000600);                      // $25DDC2 / $25DDFE addi.l
+  enqueueRegisters(ram, TALLY_BUCKET, d1, pair[1], 0x0410, d4);
+  return 3;
+}
+
 export function tallyScreen25DBB4(ram, slot, slotIndex, ctx) {
   const st = ram.u8(slot + SCREEN11.state);
   if (st === 0) {                                          // $25DBB4 tst.b / beq
@@ -391,13 +445,42 @@ export function tallyScreen25DBB4(ram, slot, slotIndex, ctx) {
     screenState2_25DB7C(ram, ctx.rom, ctx, slot);
     return;
   }
-  // $25DBC4 onward. Counted with the list, so the note names what is missing rather
-  // than only where the port stopped.
-  ctx?.unportedLog?.note(0x25dbc4, 'object [11] state 1 -- the stage-clear screen\'s '
-    + 'gates and its MENU CURSOR. $28D53C and $23C932 are ported (src/tallyscreen.js); '
-    + 'still unported: $25DA60, $25DA94, $25DFF6, $25DEAE, $25E0EA and $25FF38 (which '
-    + 'writes the tally records at $8130FA), plus the $225978 palette install. '
-    + '$25DD0C onward decrements and increments ($e,A5) on D0 bits 2 and 3 with a '
-    + '$28C6FA sound, which is a SELECTION SCREEN and not part of the tally');
+  // ==================== $25DBC4..$25DC2A -- STATE 1's GATE CASCADE. W328 RUNS IT.
+  //
+  // Every routine it calls was already ported; what was missing was the CASCADE, so none of the
+  // three announcements the screen makes on entry were happening. All three take the side byte and
+  // exactly one of them can fire.
+  const side = ram.u8(slot + SCREEN11.side);
+  if (menuCarry28D53C(ram)) {                              // $25DBC4 jsr $28D53C / $25DBCA bcs
+    announcePost(ram, 0x260a9a, side);                     // $25DC24 -- and this arm RETURNS
+    return;
+  }
+  // $25DBCE `tst.b ($C,A5) / bne $25DC2C` -- a non-zero phase skips the whole cascade.
+  if (ram.u8(slot + SCREEN11.phase) === 0) {
+    // $25DBD6/$25DBE0 -- the stage test is only reached when $813098 is set, and `$813092 == 4`
+    // is STAGE 5. So stage 5 leaves this screen by a different door than stages 1..4 do.
+    if (ram.u16(0x813098) !== 0 && ram.u16(0x813092) === 4) {
+      announcePost(ram, 0x260a9a, side);                   // $25DBE8 beq $25DC20 -- RETURNS
+      return;
+    }
+    const [d0] = menuDips23C932(ram);                      // $25DBEC jsr $23C932
+    if (d0 !== 0) {                                        // $25DBF2 tst.w / bne $25DC12
+      announcePost(ram, 0x260a88, side);                   // $25DC16
+    } else if (ram.u8(SCREEN11.dipConfig) === 0) {         // $25DBF8 cmpi.b #$0 / bne $25DC2C
+      announceChoose260ACA(ram, side);                     // $25DC08 jsr $260ACA
+    }
+    // else: $803808 non-zero falls straight through to the body.
+  }
+
+  // $25DC2C onward -- THE BODY, still counted. The note is narrower than it was: the cascade above
+  // and `$25FF38` (already here as `tallyRequest25FF38`) are done, and `$24018C` was never missing
+  // -- it is `enqueueRegisters` on bucket 26, which `drawTallyHeader25DD80` now uses. What remains
+  // is the arm between `$25DC2C` and `$25DD80` plus the cursor half.
+  ctx?.unportedLog?.note(0x25dc2c, 'object [11] state 1\'s BODY -- $25DC2C onward. W328 ported '
+    + 'the gate cascade above it and the header/label row at $25DD80 (drawTallyHeader25DD80). '
+    + 'What is left: the arm $25DC2C..$25DD80, which gates on ($C,A5), $813098/$813092, $803926 '
+    + 'and the descriptor\'s ($4,A4) input read with btst #$F; the six remaining emit sites; and '
+    + 'the CURSOR half from $25DD0C ($25DA60, $25DA94, $25DEAE, $25E0EA -- and $25DA94/$25DEAE '
+    + 'are the entry-picker over $25DAEA, not digit formatters)');
   void slotIndex;
 }
