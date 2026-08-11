@@ -603,6 +603,12 @@ SHOT_WINDOWS.extend([
     # unexported until a reader for it is found.
     (0x2A31E8, 0x001A, "W259: A1 11's selector and its ten (angle, role) pairs, "
                        "ending where the next unreferenced table begins"),
+    # W260: A1 14's FOUR muzzle offsets, two words each. `$2A374E move.w $a(a4),d0` with
+    # two `add.w D0,D0` makes it a longword index, and `$2A373A andi.w #$3` bounds the
+    # index at four. It ends at $2A37DC, which is type $41's own init stub -- the start
+    # of W223's window, so the two are exactly adjacent with nothing between them.
+    (0x2A37CC, 0x0010, "W260: A1 14's four muzzle offsets, ending where type $41's "
+                       "init stub and W223's window begin"),
     # W255: type $42's handler's TWO TABLES, contiguous, both pinned by code.
     #   $2A4252  EIGHT sprite descriptors. `$2A41F0 addq.w #$4,$3c(a5)` with
     #            `$2A41F4 andi.w #$1F` bounds the cursor at eight longwords, and they

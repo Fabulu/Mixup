@@ -2231,8 +2231,76 @@ export function a1_11Init2A317C(ram, rom, ctx, slot) {
 
 registerScript(0x2a11d4, a4id6Init2A11D4);
 registerScript(0x2a1274, a4id6Step2A1274);
+/**
+ * `$2A36EA` / `$2A3714` -- A1 14, one half of the pair A4 id6's `$6(a4)` alternates. A
+ * burst emitter with FOUR muzzles, and three things ramp at once:
+ *
+ *   `$9(a4)`  the burst LENGTH, +1 per burst, so each burst is longer than the last
+ *   `$E(a4)`  a speed bias in D0's high word, +2 per SHOT within a burst
+ *   `$10(a4)` the number of bursts, and it is the PARAMETER A4 id6 hands it through the
+ *             slot `$259A18` returned (`$2A12F2 move.w $C(a4),$10(a0)`)
+ *
+ * `$A(a4)` is a 2-bit `$242EC2` draw choosing one of `$2A37CC`'s four muzzle offsets,
+ * redrawn once per burst rather than per shot, so a whole burst comes from one place.
+ *
+ * THE AIM IS STICKY. `$2A3764 jsr $24226E` is followed by `bcs $2A3772`, which SKIPS the
+ * store, so a burst that begins with no live target keeps whatever `$C(a4)` already held
+ * -- and the INIT seeds that word as `$8000`, whose low byte is zero. So the very first
+ * burst of a targetless volley fires straight along heading 0 rather than at nothing.
+ */
+const A1_14_MUZZLES = 0x2a37cc;
+
+export function a1_14Step2A3714(ram, rom, ctx, slot) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  if (ram.u8(slot + 0x08) === 0) {                        // $2A3714 tst.b/bne
+    if (!due8(ram, slot + 0x04)) return;                  // $2A371C subq.b/bcc
+    ram.setU8(slot + 0x04, ram.u8(slot + 0x05));          // $2A3724
+    ram.setU8(slot + 0x08, ram.u8(slot + 0x09));          // $2A372A -- arm the burst
+    ram.setU8(slot + 0x09, (ram.u8(slot + 0x09) + 1) & 0xff);  // $2A3730 -- LONGER next
+    // $2A3734..$2A3742 -- one muzzle per burst, and the speed bias restarts.
+    ram.setU16(slot + 0x0a, drawWord242EC2(ram, rom) & 3);
+    ram.setU16(slot + 0x0e, 0);
+    // $2A3748..$2A376E -- aim from the boss body PLUS that muzzle, and keep the old
+    // answer on a carry.
+    const m = A1_14_MUZZLES + ram.u16(slot + 0x0a) * 4;
+    const aimed = aim256FromCaller(aimTables(rom), ram, a5,
+      u16(ram.u16(a6 + 0x22) + rom.u16(m)),               // $2A375E add.w (a0),d0
+      u16(ram.u16(a6 + 0x24) + rom.u16(m + 2)));          // $2A3760 add.w $2(a0),d1
+    if (!aimed.carry) ram.setU8(slot + 0x0c, aimed.dir);  // $2A376A bcs -- STICKY
+  }
+  if (!due8(ram, slot + 0x06)) return;                    // $2A3772 subq.b/bcc
+  ram.setU8(slot + 0x06, ram.u8(slot + 0x07));            // $2A377A
+  // $2A3780..$2A37A8 -- the shot: the muzzle longword is D3, the bias is D0's high word.
+  const m = A1_14_MUZZLES + ram.u16(slot + 0x0a) * 4;
+  shootBoss4(ram, rom, ctx, 0x2a37a8, 0x281708,
+    regsBoss4(a5, ((ram.u16(slot + 0x0e) << 16) | 0x13) >>> 0,
+      ram.u8(slot + 0x0c), ram.u32(a6 + 0x22), rom.u32(m)));
+  ram.setU16(slot + 0x0e, u16(ram.u16(slot + 0x0e) + 2));  // $2A37AE addq.w #$2
+  ram.setU8(slot + 0x08, ram.u8(slot + 0x08) - 1);        // $2A37B2 subq.b
+  if (ram.u8(slot + 0x08) !== 0) return;                  // $2A37B6 bne
+  ram.bchg8(a5 + 0x03, 0);                                // $2A37BA bchg #$0,$3(a5)
+  ram.setU16(slot + 0x10, u16(ram.u16(slot + 0x10) - 1));  // $2A37C0 subq.w
+  if (ram.u16(slot + 0x10) === 0) ram.setU16(slot, 0);    // $2A37C8 clr.w (a4)
+}
+
+/** `$2A36EA` -- A1 14's INIT, and it FALLS THROUGH (`$2A370E` ends at `$2A3714`). It does
+ *  NOT touch `$10(a4)`, because that is A4 id6's parameter and was written before the
+ *  scheduler ever dispatched this. `$C(a4)` = `$8000` is the sticky aim's seed. */
+export function a1_14Init2A36EA(ram, rom, ctx, slot) {
+  ram.setU8(slot + 0x02, 0);                              // $2A36EA -- never read
+  ram.setU16(slot + 0x04, 0x0404);                        // $2A36F0
+  ram.setU16(slot + 0x06, 0x0303);                        // $2A36F6
+  ram.setU16(slot + 0x08, 0x0005);                        // $2A36FC -- 0, length 5
+  ram.setU16(slot + 0x0a, 0);                             // $2A3702
+  ram.setU16(slot + 0x0c, 0x8000);                        // $2A3708 -- the aim seed
+  ram.setU16(slot + 0x0e, 0);                             // $2A370E
+  a1_14Step2A3714(ram, rom, ctx, slot);                   // falls through
+}
+
 registerScript(0x2a317c, a1_11Init2A317C);
 registerScript(0x2a31a0, a1_11Step2A31A0);
+registerScript(0x2a36ea, a1_14Init2A36EA);
+registerScript(0x2a3714, a1_14Step2A3714);
 // A3 3..8, the six-instance ramp family. The STEP sits `$6` past its INIT in every
 // one of them, which is the same `$2E`-stride regularity the bodies have.
 for (const a of [0x2a14aa, 0x2a14d8, 0x2a1506, 0x2a1534, 0x2a1562, 0x2a1590]) {
