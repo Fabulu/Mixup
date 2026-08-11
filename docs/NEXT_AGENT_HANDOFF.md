@@ -475,6 +475,56 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
    Next, in order: **the real `$81`** (3 records), then `$49`/`$4A`/`$4B`, then `$47`, then the
    dependency bundles, leaving `$4C` last. `$1A` re-enters the queue once D2/D3 are measured.
 
+   ### THE REAL `$81` (`$273F06`/`$274076`): ITS INIT BODY IS READ, AND IT IS CLEAN
+
+   W325 read `$273F0E..$273FE2` completely. **Unlike `$1A` it is not blocked**: it aims through
+   `$24200A`, which is `aim64FromCaller` -- the entry that does its OWN `targetSelect` and returns
+   a real carry -- rather than `$1A`'s raw `$24203E` core with unset D2/D3. That difference is the
+   whole reason this one is next and `$1A` is not.
+
+       273f0e  lea ($274004,PC),A0 / jsr $2637A2 / move.l A0,($44,A5)
+                                          the ($44,A5) advance idiom, as $1A/$1B/$9F
+       273f1e  lea ($273FEE,PC),A0 / moveq #$A,D0 / jsr $26377A     D0+1 = ELEVEN words
+       273f2c  jsr $263808                readInitPosition -- a jsr, more follows
+       273f32  lea $272DFA,A2             **ALREADY INSIDE the $272D70 + $190 window**
+       -- BLOCK 1 --
+       273f38  movem.w ($2,A6),D0-D1 ; D0 += $5C0 ; D1 += $A40
+       273f46  jsr $24200A                aim64FromCaller: self from the CALLER, target selected
+       273f4c  bcc +4 ; else D1 = ($1B,A6)   NO live player -> fall back to the record's angle
+       273f52  ($2B,A6) = D1 ; D1 &= $3E ; D1 += D1 ; ($26,A6) = (A2,D1.w)
+       -- BLOCK 2, the same nine instructions with two constants and two offsets changed --
+       273f62  movem.w ($2,A6),D0-D1 ; D0 += $5C0 ; D1 += -$A00   (`addi.w #$F600`)
+       273f70  jsr $24200A ; bcc ; else D1 = ($1B,A6)
+       273f7c  ($31,A6) = D1 ; D1 &= $3E ; D1 += D1 ; ($2C,A6) = (A2,D1.w)
+       -- the rest --
+       273f8c  D0 = $10, D1 = $8 ; `cmpi.w #$1,$813092 / bls` -- and **BOTH ARMS WRITE $10/$8**,
+               so it is $10/$8 on every stage. Same shape W319 found in type $8E; transcribe the
+               branch, not the constant, and say why
+       273fa6  ($28,A5) = $10 ; ($29,A5) = $8
+       273fae  ($1E,A5) -= $8130B0        a RANK adjustment, and it is a BYTE subtract on a word read
+       273fb8  $813094 (stage index DOUBLED) indexes $273FE4:
+               ($1D,A6) = byte[0] ; ($1C,A5) = byte[0] ; ($1D,A5) = byte[1]
+               -- note ($1D,A6) and ($1C,A5) BOTH take byte 0: `move.b (A0),($1D,A6)` does not
+               post-increment and the two `(A0)+` after it do
+       273fd2  $81B414 = 1 ; $273FDA  $81B416 = 1
+
+   **AND ITS STAGE ROWS ARE NOT ALL THE SAME**, unlike `$1A`'s and `$1B`'s. Read from the image:
+
+       $273FE4:  11 0E  11 0E  11 0E  11 0E  0D 12
+                 stages 0..3 identical, and **STAGE 5 (index 4) DIFFERS**
+
+   So here the indexed read matters for real, and stage 5 is precisely the stage this type appears
+   in. A port that folded the row to a constant would use the wrong pair in the only stage that
+   spawns it.
+
+   Data extents, all pinned by code: the stage rows `$273FE4 + $A`, the 11-word record prototype
+   `$273FEE + $16`, and the sub prototype from `$274004` (SHORT form -- its first word is `A001`
+   with bit 15 clear). The whole block runs `$273FE4..$274076` and ends at the handler, so **one
+   window `(0x273FE4, 0x0092)`** covers it. Nothing in `$273xxx` currently reaches it: the nearest
+   is `$2735F0 + $220`, which ends at `$273810`.
+
+   **Still to read: the handler `$274076` onward.** Everything above is measured.
+
    ### W322 CLAIMED `$1B` WAS BLOCKED ON `$24226E`. IT IS NOT, AND THE WAY THAT ERROR HAPPENED IS
    ### THE MOST REUSABLE THING IN THIS SECTION
 
