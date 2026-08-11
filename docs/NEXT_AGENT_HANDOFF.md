@@ -28,9 +28,21 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W319, `ddpdoj: type $8E, and the Hibachi trap found while looking at $B0`.
+- HEAD is W322, `ddpdoj: the $5C damage arm becomes one routine, and type $1B is not a leaf`.
 - Suite: `node --test games/ddpdoj/tests/` is **2315/2315**, green, no skips. 411 ROM windows.
   `dojcoverage.py` reports 80/256 enemy types ported.
+- **THE WEB GATE IS GREEN AGAIN AND THE GAME PUBLISHES.** W321 found it had been red for **182
+  commits** and that nothing was broken: the expectations were last recorded at `c62f35e` and the
+  gate is only ever run BY `publish.mjs`, so it goes stale exactly as long as nobody publishes and
+  then blocks the publish that would have caught it. **That ratchet is the reason to publish often.**
+  Two controlled experiments cleared the port -- pre-W300 source against current assets gave a
+  byte-identical failure set, and current source with the old regenerated tables gave another -- and
+  what had actually moved was the sprite PACKING: the art grew to 4244 streams, two shards were
+  repartitioned, and every one of those checks counts records filtered by `map.get(offs)?.[2]`. The
+  gate's own claim that "`records`, `distinct` and `first` are the PORT's own and no bundle can
+  supply them" is FALSE and is corrected in place. `tools/w321itemspan.mjs` is the tool that told
+  benign drift from regression: it prints per-frame SPANS and the per-shard spread instead of one
+  total, and it takes `--tables` to swap the simulation's tables while leaving the assets alone.
 - **READ `HIBACHI CLOSURE RULE` BELOW BEFORE TOUCHING TYPE `$B0`.** It is the one place where every
   measurement this repo has would report a finished stage 5 that has no boss in it.
 - **A hand-built `ctx` in a test can agree with a wrong port.** W316 called
@@ -391,9 +403,31 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
        $4E, $50, $52 and $58 before $4C     <- four children; leave $4C last
 
    So "twelve left" understates it: those twelve expose seven more child types, at least nineteen
-   handler types before anything found deeper. The order is **`$1B` (5 records) then `$81` (3)** --
-   the two whose every `jsr` target the port already implements and which spawn nothing -- then
-   `$1A`, then `$49`/`$4A`/`$4B`, then `$47`, then the bundles.
+   handler types before anything found deeper.
+
+   **W322 FALSIFIED THIS ORDER'S PREMISE.** It used to read "`$1B` (5 records) then `$81` (3) -- the
+   two whose every `jsr` target the port already implements and which spawn nothing". That is NOT
+   true of `$1B`. Its state-2 fire arm opens `$2694DA jsr $24226E`, and **`$24226E` has no port
+   implementation**: it appears in exactly one place in `src/`, as `[0x24226e, 48]` inside
+   `aim.js`'s `AIM_REFS`, which is the REFERENCE-COUNT map. That entry is a measurement that the
+   routine has 48 callers in the image, not a translation of it. Anyone re-deriving "every target is
+   ported" by grepping the address will hit the same false positive, which is the W318 trap exactly.
+
+   The corrected order is:
+
+   1. **`$24226E` on its own.** 48 callers makes it a shared entry point of the player-tracking
+      library, not one type's helper. It goes in `aim.js`, which already names it.
+   2. **`$1B` (5 records)**, which W322 read END TO END -- init body, both exits, the four-state
+      machine (W320 recorded two), the draw arm, the eight-shot fan and the death arm, plus all five
+      tables and the two ROM windows to declare. See `docs/worklog/ddpdoj/322-*.md`: it is a
+      transcription now, not an investigation, and `damageArm5C` is already waiting for it as its
+      second caller.
+   3. Then `$81` (3 records), `$1A`, `$49`/`$4A`/`$4B`, `$47`, then the bundles.
+
+   **Add a type's ROM windows in the SAME wave as its code, never ahead of it.** W321 established
+   why: windows change `player.tables.json`, which changes the asset bytes, which repacks the sprite
+   shards, which moves the web gate's shard-filtered record counts. Windows for code that is not
+   there can turn the gate red for nothing.
 
    **`$B0` is NOT in this queue.** It is the head of boss reconnaissance; see HIBACHI CLOSURE RULE
    above.
