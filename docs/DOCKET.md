@@ -520,14 +520,25 @@ read from the image (`addr`, `priority`, and whether `main.js` registers it):
      8 $25A770 $000A NO     18 $24902A $000A NO
      9 $25CACA $000A NO     19 $28EE88 $001E NO
 
-**Start at 13 and 14.** Both are in `$288xxx`, which is where every HUD table this port already
-uses lives (`$2881F2` the panel tiles, `$2883E6` the hyper-stock icons, `$28840E`, `$287DF8`).
-Both open the same way -- `tst.b ($2,A5) / beq` then `cmpi.b #$2,($2,A5)`, an object state
-machine on a state byte -- and both run at gameplay priorities ($000B and $0014) rather than
-menu ones. That is the profile of a small thing painted next to the other small things.
+**AND THEN THE OBVIOUS CANDIDATES FAILED, WHICH IS WORTH RECORDING SO NOBODY REDOES IT.** 13 and
+14 looked right on address family alone -- `$288xxx` is where every HUD table this port uses
+lives (`$2881F2`, `$2883E6`, `$28840E`, `$287DF8`) -- and both open as object state machines on
+`($2,A5)` at gameplay priorities. Scanning what they actually CALL says otherwise:
 
-A screenshot would still cut this in half, and asking is cheaper than reading two objects: mark
-on it what is missing and which of the two candidates it sits next to.
+* **idx 14 `$288C6C` calls `$246710`**, which is `chainLoader246710`, ported in W303. It also
+  calls `$246410`, `$24631C` and `$241182`. That is a STAGE-SEQUENCING object, not a decoration.
+* **idx 13 `$288A60` calls `$27F8E6`** -- the bee cursor's own CLEAR -- plus `$25FD82`,
+  `$25FE00` (four times), `$25FF38` and `$260A88`. `$25Fxxx`/`$2600xx` is the credit and
+  continue family (`$260056` is named as the credit/continue entry in w228respawn's comment). So
+  it is a GAME-STATE object that resets the medal cursor at a boundary, which incidentally
+  supports the `$29023E` snapshot note in D23.
+
+So the address-family reasoning was too eager and neither is the answer. **The remaining nine
+would each need reading, and that is the expensive way to find a small sprite.**
+
+**ASK FOR A SCREENSHOT. It is now unambiguously the cheapest next step** -- one picture with the
+missing element marked, and which side of the hyper counter it sits on, replaces reading nine
+objects. This item should not consume a wave before that arrives.
 
 ### D22: MEDALS MAKE NO SOUND WHEN COLLECTED
 
