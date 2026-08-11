@@ -20,7 +20,7 @@ that drift.
     D13 orientation, portrait + landscape, mobile + desktop     W279
     D14 make it a PWA                                          W280
     D15 a user option to LOCK the orientation                   W279
-    D16 the hyper bar should show the level when NOT hypering   W281 -> producer
+    D16 the hyper bar should show the level when NOT hypering   W283 (correct as-is)
     D17 the in-stage medals are missing                         OPEN
     D18 commit AND PUSH every wave, not just commit             STANDING RULE
 
@@ -288,7 +288,7 @@ is about exposing it as a user setting that persists, and about being honest on
 engines where it cannot work (it needs fullscreen on most, and iPhone Safari has no
 `Element.requestFullscreen` at all).
 
-### D16: the hyper bar should show the level even when NOT hypering -- REDIRECTED (W281)
+### D16: the hyper bar should show the level even when NOT hypering -- CLOSED (W283)
 
 **The owner's words: "hyper bar shows you how much hyper you have even when not
 hypering."** MEASURED this session, by calling `scoreRow285C62` directly:

@@ -93,6 +93,12 @@ const KIND_NAME = {
 };
 
 const spawnsByKind = new Map();
+// W283: the FINAL value of a hyper word is not the interesting one -- the icon count is
+// consumed as it is spent, so a run can raise it and still hand back zero. Track the MAX
+// each word ever reached, which is what says "the display had something to show".
+const HYPER_WORDS = [['$81B65C stock', 0x81b65c], ['$81B6E0 icon count', 0x81b6e0],
+  ['$81B6E4 gate', 0x81b6e4], ['$81B642 gauge', 0x81b642]];
+const maxSeen = new Map(HYPER_WORDS.map(([, a]) => [a, 0]));
 let spawns = 0;
 let firstLive = -1;
 let framesWithAny = 0;
@@ -122,6 +128,10 @@ for (let f = 1; f <= FRAMES; f++) {
   }
   if (live.size) framesWithAny++;
   if (live.size > maxConcurrent) maxConcurrent = live.size;
+  for (const [, a] of HYPER_WORDS) {
+    const v = g.ram.u16(a);
+    if (v > maxSeen.get(a)) maxSeen.set(a, v);
+  }
   prev = live;
 }
 
@@ -146,10 +156,15 @@ for (const k of Object.keys(KIND_NAME).map(Number)) {
 
 // The four words every hyper display reads. Zero here and a non-zero spawn count
 // above would mean the COLLECT path is the gap; zero in both means the producer is.
-console.log('\nthe words the hyper displays read:');
-for (const [name, a] of [['$81B65C stock', 0x81b65c], ['$81B6E0 icon count', 0x81b6e0],
-  ['$81B6E4 gate', 0x81b6e4], ['$81B642 gauge', 0x81b642]]) {
-  console.log(`  ${name.padEnd(20)} ${g.ram.u16(a)}`);
+console.log('\nthe words the hyper displays read     final   MAX seen');
+for (const [name, a] of HYPER_WORDS) {
+  console.log(`  ${name.padEnd(35)} ${String(g.ram.u16(a)).padStart(5)}   ${
+    String(maxSeen.get(a)).padStart(8)}`);
+}
+if (maxSeen.get(0x81b6e0) > 0 && maxSeen.get(0x81b6e4) > 0) {
+  console.log('\n  -> THE ICON ROW HAD SOMETHING TO SHOW. The gate went up and the count');
+  console.log('     went non-zero, which is exactly the state W281 measured drawing one');
+  console.log('     icon per unit. D16 is a WINDOW problem, not a missing draw.');
 }
 
 if (threw) {

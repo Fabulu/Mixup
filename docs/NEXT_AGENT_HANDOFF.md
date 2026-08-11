@@ -28,8 +28,8 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W282, `ddpdoj: count the item producer`.
-- Suite: `node --test games/ddpdoj/tests/` is **1970/1970**, green, no skips.
+- HEAD is W283, `ddpdoj: close D16 -- stage 1 has no hyper source`.
+- Suite: `node --test games/ddpdoj/tests/` is **1977/1977**, green, no skips.
 - **`900 FRAMES IS TOO SHORT TO SEE AN ITEM.** Every gate here runs 900 and the item
   producer's first drop is at frame 2576. If a probe about items, medals or hyper
   reports zero, check the window before believing it (W282).
@@ -138,30 +138,26 @@ Cloudflare Pages. Pushing does not publish and publishing does not push.
 
 ## Work order toward the goal
 
-1. **HOW MANY TYPE-`$85` ENEMIES DOES STAGE 1 SEND, and do they reach `deathSeq85`?**
-   That is the question W282's census raises and it is upstream of BOTH D16 and D17.
+1. **D17, THE MEDALS -- and use W283's METHOD, which closed D16 in one wave.**
 
-   Everything downstream is proven complete and pinned by tests -- do not look there:
-   - the DISPLAY (W281): `$285D74` draws one icon per unit of `$81B6E0` guarded by
-     `$81B6E4`, measured at 1/2/3/5;
-   - the ALLOCATOR (W282): all six kinds {0,4,8,$C,$10,$14} return a record and mark a
-     slot live with ZERO counted notes, kind `$C` included.
+   The method, in order, because three waves were lost doing it backwards:
+   1. count what the SCRIPT contains (walk the cartridge's own spawn records);
+   2. count what a RUN produces (`tools/w282itemcensus.mjs`);
+   3. look at a DRAW only if those two disagree.
 
-   What the census measured from the laser-hold rung: **900 frames -> ZERO items;
-   5400 frames -> ONE item, kind `$0`, first live at frame 2576.** Kind `$C` -- the
-   hyper stock -- never spawns. So the hyper words being zero is CORRECT for that
-   window, and D16 was never a missing draw.
+   D16 closed as CORRECT: stage 1's script has two type-`$85` records out of 339, and
+   `deathSeq85` drops kind `$0` or `$8` and never `$C`, so stage 1's popcorn cannot put
+   a unit of hyper on the bar. Kind `$C` comes from `$294C40`, a boss part death.
 
-       node games/ddpdoj/tools/w282itemcensus.mjs --lf 2000 --frames 5400
-
-   ONE item in ninety seconds is the lead. `deathSeq85`'s comment records that the
-   type-`$85` drop is GUARANTEED with no RNG in `$275AF2..$275B20`, so one drop means
-   exactly one type-`$85` death. Stage 1's spawn script is closed at 339/339 records,
-   so this is countable rather than speculative.
-2. **Run the census long enough to settle kind `$C`.** If it never spawns in stage 1 at
-   all, WRITE THAT IN THE DOCKET -- "correct for stage 1" is a legitimate answer and it
-   stops D16 being re-opened by the next person who looks at an empty hyper row.
-3. **D17 -- the in-stage medals.** The tally IS reachable (`$8130F9` bit 2 has a writer
+   **Do not assume that answer transfers.** The medals are pool A's reserved ten
+   (`bee.js`: "the medal IS the bee") and that is a DIFFERENT producer. Assuming a
+   shared cause is what kept D4 open for three waves.
+2. **`$280BCE`'s finish routines**, or enough of them to drive a run past frame 6482.
+   A long census run from the laser-hold rung throws `Unreached $280BCE` there --
+   seventeen of its twenty finish routines are unported, already docketed under D3's
+   neighbourhood -- and **that is what stands between the port and observing the whole
+   item chain through to a boss part death.**
+3. **D17 background, kept for the next reader.** The tally IS reachable (`$8130F9` bit 2 has a writer
    at `src/stageend.js:735`), so the gap is upstream: the medal item, its spawn, or its
    art. `src/bee.js` (W111) says "the medal IS the bee"; `src/hud.js` (W124) has the
    accumulator and the tier drain. Sweep what the medal pool emits during play.

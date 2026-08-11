@@ -362,10 +362,21 @@ function partDeathDrop(ram, rom, ctx, a5, a6, mine, other) {
   scoreKill(ram, rom, ctx, 0x1000, d1);                // $294C44/$294C4A
   // $294C50 `moveq #$C,D0 / btst #4,D1 / bne / moveq #$14,D0` -- the item kind
   // is P1's hyper ($C) when the killing hit was P1's, P2's ($14) otherwise.
-  // BOTH ARE THE KINDS `src/items.js` REFUSES AT THE ALLOCATOR (W61 2), so
-  // `spawnItem` returns null and counts the refusal with the stock it did not
-  // grant.  That refusal is what keeps this newly-reachable path off the rank
-  // ledger; see docs/worklog/ddpdoj/62 5.
+  //
+  // **W283 CORRECTION.** This comment used to say both kinds are REFUSED at the
+  // allocator, so `spawnItem` returned null and counted the refusal.  That was
+  // true when W61 wrote it and stopped being true at W163, which emptied
+  // `REFUSED_KINDS` when the hyper machine landed.  **THIS SITE NOW REALLY DROPS
+  // A HYPER ITEM**, and it matters more than a stale sentence usually would,
+  // because it is the answer to docket D16:
+  //
+  //   * stage 1's spawn script has TWO type-$85 records out of 339, and
+  //     `deathSeq85` drops kind $0 or $8 -- never $C.  So stage 1's popcorn
+  //     cannot put a single unit of hyper on the bar.
+  //   * `$294C40` -- HERE -- is where hyper stock comes from.  The bar is empty
+  //     until a boss part dies, and that is CORRECT rather than a missing draw.
+  //
+  // `w283itemsources.test.js` pins both halves.
   const d0 = (d1 & 0x10) !== 0 ? 0x0c : 0x14;          // $294C50..$294C58
   spawnItem(ram, rom, ctx, d0, a6 + mine, 0x294c5e);   // $294C5A lea $20(A6),A6
   note(ctx, 0x243dd0);                                 // $294C68
