@@ -28,8 +28,11 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W296, `ddpdoj: the tally driver -- all nine bonus lines reachable`.
-- Suite: `node --test games/ddpdoj/tests/` is **2034/2034**, green, no skips.
+- HEAD is W297, `ddpdoj: the SET/bonus panel's body`.
+- Suite: `node --test games/ddpdoj/tests/` is **2039/2039**, green, no skips.
+- **THE NINE BONUS LINES ARE COMPLETE with no counted gap of their own.** W297 ported
+  `$2532B6`, which `setPanel2603B0` had been counting as the deferred text path even
+  though both its printers landed in W116 -- the only missing part was the arithmetic.
 - **THE SCORE TALLY'S SPINE IS COMPLETE.** `$25FF7A` walks both records and all NINE of
   `$25FF52`'s real entries have bodies. Line 9 turned out to be already ported --
   `player.js`'s `setPanel2603B0` calls itself "jump-table entry 9 of `$25FF7A`" -- so two

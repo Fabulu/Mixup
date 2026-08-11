@@ -35,7 +35,7 @@ import {
 } from './hyper.js';
 import { spawnItem, collectHyperStock, POWER } from './items.js';
 import { BEAM, wipeSegmentPool } from './laser.js';
-import { hyperStock286ED6 } from './hud.js';
+import { hyperStock286ED6, txPrint240DC2, txPrint240E1A } from './hud.js';
 import { install2415A2 } from './palette.js';
 import { ALLOC, queueKill, stageCreate } from './objalloc.js';
 
@@ -307,20 +307,135 @@ const PLAYER_OBJECT = [
     freshLong: 0x812920, freshWord: 0x812926 },
 ];
 
+// ===========================================================================
+// W297 -- `$2532B6`, THE SET/BONUS PANEL'S BODY: A FIVE-ROW BAR IN THREE SEGMENTS
+// ===========================================================================
+// `setPanel2603B0` below has counted this since the wave that wrote it, on the grounds
+// that it is "a `$240E1A` plus four `$240DC2` calls, i.e. the DEFERRED text path". Both
+// printers have been ported since W116, so the only thing actually missing was the
+// arithmetic that decides HOW MANY of each row to draw. It is this:
+//
+//   2532b6  P1: D1 = $0000, D4 = $02D8000A, D7 = $0100, A6 = $8103E6
+//   2532d0  P2: D1 = $1B00, D4 = $02D8008A, D7 = $FE00, A6 = $810448
+//   253310  D0 = 8, D2 = 2, D3 = 0, D5 = 2 / jsr $240E1A      the header
+//   253322  add.w D7,D1
+//   253324  tst.w D7 / bmi / add.w D7,D7        <- **D7 DOUBLES IF NON-NEGATIVE**
+//   25332a  D3 = 1 / D6 = 5
+//   25332e  D5 = ($25,A6) / D6 -= D5           D6 = 5 - ($25,A6)
+//   253336  swap D5 / D5.b = ($24,A6)          D5 = (($25,A6) << 16) | ($24,A6)
+//   25333c  beq $253356
+//     LOOP A  $02CC000A, and `subi.l #$10001,D5` decrements BOTH HALVES at once
+//             while `tst.w D5` tests only the low one
+//   253356  swap D5 / subq.w #1,D5 / bcs
+//     LOOP B  $02C0000A, dbra
+//   25336e  tst.b D6 / bmi
+//     LOOP C  $02C6000A, dbra
+//   253384  $02D2000A / jsr $240DC2            the closer
+//
+// **THE THREE RUNS ARE `($24,A6)`, `($25,A6) - ($24,A6)` AND `5 - ($25,A6)` + 1, WHICH SUM
+// TO SIX** -- measured across five threshold pairs, and six every time. So this is ONE
+// six-row bar cut into three coloured segments by two thresholds the player record carries,
+// plus a closer: a progress indicator, not three independent lists. A port that read the
+// loops as unrelated would draw a variable number of rows.
+//
+// The SIX is `moveq #$5,D6` with `dbra`, which runs the body six times -- **exactly the
+// fact W276 recorded for `$2533F6`'s own `moveq #$5,D7`** ("moveq #$5,D7 with dbra is SIX
+// passes"). The first draft of this comment said the runs sum to five; measuring them said
+// six, and the reason was a trap this file's neighbour had already written down.
+//
+// The `subi.l #$10001,D5` is the trick that makes it work in one register: loop A counts
+// the low half down to zero and takes the SAME amount off the high half, so loop B's
+// length is already `($25,A6) - ($24,A6)` when it swaps back. Modelling the two halves
+// separately is fine; modelling them as one long and forgetting the high half is not.
+//
+// AND `$2533F6`'s D7 REALLY WAS DEAD, WHILE THIS ONE IS NOT. W276 recorded that
+// `move.w #$100,D7` before `$2533F6`'s `jsr $240E1A` is overwritten at `$240E44` and
+// therefore dead. That is still true there. **Here the same constant is the ROW STEP**:
+// `$253322 add.w D7,D1` uses it after the call, and `$253324`'s `bmi` doubles it only for
+// P1 -- so P1 steps `+$200` and P2 `-$200`, matching the hardcoded steps in `$2533F6`/
+// `$253448` but derived. Two routines, the same immediate, one dead and one load-bearing.
+const PANEL_SIDES = Object.freeze([
+  Object.freeze({ site: 0x2532b6, d1: 0x0000, top: 0x02d8000a, step: 0x0100 }),
+  Object.freeze({ site: 0x2532d0, d1: 0x1b00, top: 0x02d8008a, step: 0xfe00 }),
+]);
+const PANEL_TILES = Object.freeze({
+  runA: 0x02cc000a,      // $25333E
+  runB: 0x02c0000a,      // $25335C
+  runC: 0x02c6000a,      // $253372
+  closer: 0x02d2000a,    // $253384
+});
+/** The two thresholds, on the PLAYER record. */
+const PANEL_LO = 0x24;   // $253338 move.b ($24,A6),D5
+const PANEL_HI = 0x25;   // $253330 move.b ($25,A6),D5
+// $25332C moveq #$5,D6. FIVE as an immediate, SIX passes through `dbra` -- the two
+// numbers are both correct and mean different things, so the constant keeps the
+// ROM's value and the `<=` in loop C is where the extra pass comes from.
+const PANEL_ROWS = 5;
+
+/**
+ * `$2532B6` (P1) / `$2532D0` (P2) -- the SET/bonus panel's five-row bar.
+ *
+ * @param rec the PLAYER record, `$8103E6` or `$810448`
+ * @returns {{runA:number,runB:number,runC:number}} the three segment lengths, for a test
+ */
+export function setPanelBody2532B6(ram, who, rec) {
+  const s = PANEL_SIDES[who === 0 ? 0 : 1];
+  let d1 = s.d1;
+  // $25331C -- the header, through the STRIDE printer, with D5 = 2 and D3 = 0.
+  txPrint240E1A(ram, 8, d1, 2, 0, s.top, 2);
+  d1 = u16(d1 + s.step);                                  // $253322 add.w D7,D1
+  // $253324 tst.w D7 / bmi / add.w D7,D7 -- doubled only when NON-NEGATIVE.
+  const step = (s.step & 0x8000) !== 0 ? s.step : u16(s.step + s.step);
+
+  const hi = ram.u8(rec + PANEL_HI);                      // $253330
+  const lo = ram.u8(rec + PANEL_LO);                      // $253338
+  // $253334 sub.b D5,D6 -- a BYTE subtract, so it wraps rather than going negative, and
+  // $25336E's `tst.b D6 / bmi` is what catches an ($25,A6) above 5.
+  const d6 = (PANEL_ROWS - hi) & 0xff;
+
+  // LOOP A: ($24,A6) rows, and it takes the same amount off the high half.
+  let runA = 0;
+  for (let n = lo; n !== 0; n = (n - 1) & 0xffff) {        // $25333C beq / $253354 bne
+    txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runA);     // $253344
+    d1 = u16(d1 + step);                                  // $25334A
+    runA++;
+  }
+  // LOOP B: what is LEFT of ($25,A6) after loop A took its share.
+  const left = u16(hi - runA);
+  let runB = 0;
+  if ((left & 0x8000) === 0 && left !== 0) {               // $253358 subq / bcs
+    for (let n = 0; n < left; n++) {                       // dbra
+      txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runB);   // $253362
+      d1 = u16(d1 + step);
+      runB++;
+    }
+  }
+  // LOOP C: 5 - ($25,A6), and `tst.b D6 / bmi` skips it when that wrapped negative.
+  let runC = 0;
+  if ((d6 & 0x80) === 0) {                                 // $25336E tst.b / bmi
+    for (let n = 0; n <= d6; n++) {                        // dbra runs D6+1 times
+      txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runC);    // $253378
+      d1 = u16(d1 + step);
+      runC++;
+    }
+  }
+  txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.closer);      // $25338A
+  return { runA, runB, runC };
+}
+
 /** `$2603B0`, jump-table entry 9 of `$25FF7A`: the SET/bonus panel, which the
  *  player object's own INIT arms through `$260846`. `$2534F8`/`$253522` fork on
  *  the stock, the record's bit 6 and the bonus word, and BOTH arms reach
- *  `$2532B6` -- a `$240E1A` plus four `$240DC2` calls, i.e. the DEFERRED text
- *  path, which is why it is counted here rather than invented. */
+ *  `$2532B6` -- **which W297 ported**, so the panel now draws. */
 export function setPanel2603B0(ram, ctx, a6) {
   const p2 = ram.u8(a6 + 0x17) !== 0;                 // $2603B0 tst.b ($17,A6)
   const c = PLAYER_OBJECT[p2 ? 1 : 0];
   const stock = p2 ? 0x81b65e : 0x81b65c;             // $2534F8 / $253522
   const both = ram.u16(stock) !== 0                   // $2534FE bne
     || (!ram.btst8(c.rec, 6) && ram.u16(c.bonus) !== 0);  // $253500 / $253508
-  ctx?.unportedLog?.note(0x2532b6, '$2603B0 -> $2532B6, the SET/bonus panel: one '
-    + '$240E1A and four $240DC2 calls, which is the deferred TEXT path '
-    + '($240DC2 printer + $141258 flush), counted, not run');
+  // W297: $2532B6 is no longer a note. Both arms of $2534F8/$253522 reach it, so it runs
+  // either way; `both` only decides whether the SET-item HUD row goes with it.
+  setPanelBody2532B6(ram, p2 ? 1 : 0, c.rec);         // $253516 bsr / $25351E bra
   if (both) {
     ctx?.unportedLog?.note(p2 ? 0x2534ac : 0x25349a, '$253516 also takes the '
       + 'SET-item HUD row, the same counted draw items.js defers');

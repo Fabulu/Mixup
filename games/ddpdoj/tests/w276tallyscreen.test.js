@@ -23,6 +23,7 @@ import { TALLY, tally2600D8, bonusLine125FFA8, bonusLine2260056,
 import { PaletteState } from '../src/palette.js';
 import { ALLOC, resolveHandle241298 } from '../src/objalloc.js';
 import { RAM as MACHINE } from '../src/machine.js';
+import { setPanelBody2532B6 } from '../src/player.js';
 import {
   SCREEN11, menuCarry28D53C, menuDips23C932, screenHeader2533F6,
   screenState0_25DB30, screenState2_25DB7C, tallyScreen25DBB4,
@@ -1083,4 +1084,85 @@ test('W296 line 9 was ALREADY ported, and player.js said so', () => {
   const src = readFileSync(path.join(R, 'src', 'player.js'), 'utf8');
   assert.match(src, /jump-table entry 9 of `\$25FF7A`/);
   assert.match(src, /export function setPanel2603B0/);
+});
+
+// ============ 17. W297: `$2532B6` -- THE LAST NOTE IN THE TALLY LINES
+//
+// `setPanel2603B0` counted `$2532B6` as "the DEFERRED text path" since the wave that wrote
+// it. Both printers have been ported since W116, so the only thing missing was the
+// arithmetic deciding how many of each row to draw.
+
+test('W297 the panel is ONE bar in three segments, and they always sum to SIX',
+  { skip: SKIP }, () => {
+    // The runs are ($24,A6), ($25,A6) - ($24,A6) and 5 - ($25,A6) + 1. The SIX is
+    // `moveq #$5,D6` with `dbra` -- exactly the fact W276 recorded for $2533F6's own
+    // `moveq #$5,D7`. The first draft of this port said five; measuring said six.
+    for (const [lo, hi] of [[0, 0], [2, 3], [0, 5], [5, 5], [1, 4], [3, 3]]) {
+      for (const who of [0, 1]) {
+        const f = world();
+        const rec = who === 0 ? MACHINE.player1 : MACHINE.player2;
+        f.ram.setU8(rec + 0x24, lo);
+        f.ram.setU8(rec + 0x25, hi);
+        const r = setPanelBody2532B6(f.ram, who, rec);
+        assert.equal(r.runA + r.runB + r.runC, 6,
+          `lo=${lo} hi=${hi} side=${who} sums to six`);
+        assert.equal(r.runA, lo, 'run A is ($24,A6)');
+        assert.equal(r.runB, Math.max(0, hi - lo), 'run B is what is LEFT of ($25,A6)');
+      }
+    }
+  });
+
+test('W297 loop A takes its share off the HIGH half too', { skip: SKIP }, () => {
+  // `$25334C subi.l #$10001,D5` decrements BOTH halves in one instruction while
+  // `tst.w D5` tests only the low one. So loop B's length is already ($25,A6) - ($24,A6)
+  // when it swaps back. Modelling the halves separately is fine; modelling them as one
+  // long and forgetting the high half is not -- that would give run B = hi.
+  const f = world();
+  f.ram.setU8(MACHINE.player1 + 0x24, 4);
+  f.ram.setU8(MACHINE.player1 + 0x25, 4);
+  const r = setPanelBody2532B6(f.ram, 0, MACHINE.player1);
+  assert.equal(r.runA, 4);
+  assert.equal(r.runB, 0, 'loop A consumed all of the high half');
+});
+
+test('W297 the panel really DRAWS, and both sides land in different cells',
+  { skip: SKIP }, () => {
+    const p1 = world();
+    p1.ram.setU8(MACHINE.player1 + 0x25, 3);
+    setPanelBody2532B6(p1.ram, 0, MACHINE.player1);
+    const n = cells(p1.ram);
+    assert.ok(n > 0, 'side 0 printed');
+
+    const p2 = world();
+    p2.ram.setU8(MACHINE.player2 + 0x25, 3);
+    setPanelBody2532B6(p2.ram, 1, MACHINE.player2);
+    assert.equal(cells(p2.ram), n, 'the same number of cells');
+    let differs = false;
+    for (let a = TX.head; a < TX.head + n * 8; a += 8) {
+      if (p1.ram.u32(a) !== p2.ram.u32(a)) { differs = true; break; }
+    }
+    assert.ok(differs, 'at different destinations');
+  });
+
+test('W297 D7 is LOAD-BEARING here where $2533F6\'s was dead', () => {
+  // W276 recorded that `move.w #$100,D7` before $2533F6's `jsr $240E1A` is overwritten at
+  // $240E44 and therefore dead. Still true there. HERE the same constant is the ROW STEP:
+  // `$253322 add.w D7,D1` uses it AFTER the call, and `$253324`'s `bmi` doubles it only
+  // for P1 -- so P1 steps +$200 and P2 -$200. Two routines, the same immediate, one dead
+  // and one load-bearing, and the port has to know which is which.
+  const src = readFileSync(path.join(R, 'src', 'player.js'), 'utf8');
+  const block = src.slice(src.indexOf('W297 -- `$2532B6`'));
+  const head = block.slice(0, block.indexOf('const PANEL_SIDES'));
+  assert.match(head, /D7 DOUBLES IF NON-NEGATIVE/);
+  assert.match(head, /one dead and one load-bearing/);
+});
+
+test('W297 setPanel2603B0 no longer counts $2532B6', () => {
+  // The last note inside the nine bonus lines, and it is gone: both arms of
+  // $2534F8/$253522 reach the body, so it runs either way.
+  const src = readFileSync(path.join(R, 'src', 'player.js'), 'utf8');
+  const fn = src.slice(src.indexOf('export function setPanel2603B0'));
+  const body = fn.slice(0, fn.indexOf('\n}'));
+  assert.ok(!/note\(0x2532b6/.test(body), '$2532B6 is not noted any more');
+  assert.match(body, /setPanelBody2532B6\(ram, p2 \? 1 : 0, c\.rec\)/, 'it is CALLED');
 });
