@@ -28,16 +28,43 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W301, `ddpdoj: the factory high-score table`.
-- Suite: `node --test games/ddpdoj/tests/` is **2091/2091**, green, no skips.
-- **THE HIGH-SCORE SUBSYSTEM IS COMPLETE FROM THE TALLY LINE DOWN.** `$287BD2`, `$287C08`,
-  `$287C3E`, `$287CEE`, `$287D96` and `$28841E` are all in `src/hiscore.js` with no counted
-  gap inside any of them, and bonus line 2 calls them instead of noting them. What remains is
-  the DISPLAY and the name entry, not the arithmetic. Layout, for the next reader: **nine
-  parallel arrays tiling `$803824..$8038B9`** -- five score longs, five 12-byte name entries
-  (three longs, one character each), six arrays of five words (loop, stage, ship, style,
-  chain, digits), five overflow words. **Every `lea` in the family names an END**, which is
-  what makes every walk a `-(An)` climb.
+- HEAD is W306, `ddpdoj: the banned-name filter`.
+- Suite: `node --test games/ddpdoj/tests/` is **2176/2176**, green, no skips. 402 ROM windows.
+- **THE HIGH-SCORE SUBSYSTEM IS ESSENTIALLY COMPLETE.** W300..W306 took it from one measured
+  ordering fact to the whole thing:
+  - `src/hiscore.js` -- the search `$287D96`, the insert `$287CEE`, the entry
+    `$287BD2`/`$287C08`/`$287C3E`, the factory table `$28841E`, and the tag routines
+    `$28F6F4`/`$28F7C8`.
+  - `src/hiscorescreen.js` -- all **eleven** of `$25B492`'s `bsr`s and the state routine
+    `$25B412` above them.
+  - `src/hiscorename.js` -- the name-entry arms `$28F428`/`$28F482`, the row cache `$28F75A`,
+    the work-list drop `$28F6C8`, and the banned-name filter `$28F674`.
+  - Bonus line 2 calls the check instead of noting it. No counted gap inside any of the above.
+  - **What is left is the character GRID only**: `$28FCAA` (the cursor draw, `$28FCAA..$28FD2A`),
+    `$28FD2C`/`$28FD6E` (two entry points sharing a tail that ends at `$28FE0E`, drawn only when
+    exactly ONE side owes a name), and `$28F4BA jsr $246410` with `$28FA98` -- which is the anim
+    driver `stageend.js` declares out of scope as `PRESENTATION_DEVIATION[0x28d6fc]`.
+- **THE LAYOUT, because two conventions share nine arrays.** They tile `$803824..$8038B9`: five
+  score longs, five 12-byte name entries (three longs, one character each), six arrays of five
+  words (loop, stage, ship, style, chain, digits), five overflow words. **The insert family's
+  `lea`s name ENDS** (it walks `-(An)`); **the display family's name BASES** (it walks `(A6)+`).
+  Same addresses, opposite meanings, depending on which routine you are reading.
+- **THE NAME ALPHABET IS SETTLED.** A stored character is its index times four and index 0 is
+  `A`. Proved three ways: the factory data is all multiples of four (W301), the display indexes
+  its font UNSCALED so it must be (W302), and `$28F8AC`'s seventeen entries spell `SEX`, `KKK`,
+  `DIE`, `ASS` and eleven more when read that way (W306). A..Z at 0..25, then 26, 27 and 28,
+  with **27 a `$00000000` hole in both fonts**. The rejection constants `3, 3, 15` spell `DDP`.
+- **`$8130CC` IS A WORK LIST, one bit per side that owes a name.** Bonus line 2 sets bit 0 or 1,
+  `$28F350` copies the byte to `($5,A5)`, and `$28F6C8` clears a bit when that side has no
+  tagged row; at zero the screen ends. Note that `$81E0D9` one screen away uses bits **1 and 2**
+  for the same kind of thing -- do not pattern-match one onto the other.
+- **THE `$FF`/`$FE` TAG IS A SEARCH KEY, not just a sentinel**, and it is `not.b` of the side.
+  Two routines find a row by it. The `($C,A4)` slot pointer the insert writes has **zero**
+  readers in the build -- W302 lost a search assuming a pointer written is a pointer read.
+- **CHECK HOW A ROUTINE LEAVES THE CARRY BEFORE DECIDING IT RETURNS NOTHING.** Four this
+  session: `$287D96` (a `sub` borrow), `$287C3E` (explicit `ori`/`andi`), `$25B412` (`ori`
+  against `move.w D0,D0`, which exists only to CLEAR it), `$28F6F4` (a `subq` borrow on the
+  miss path and an incidental non-carrying `add.w` on the hit path).
 - **WHEN A SUBSYSTEM IS PARALLEL ARRAYS, SCAN THE ADDRESS RANGE, NOT ONE POINTER FIELD.**
   W301 wasted a search chasing `($C,A4)` -- whose absolute forms `$81B42C`/`$81B43C` have zero
   references -- and then found all four caller families in one scan for absolute longs landing
@@ -203,16 +230,23 @@ Cloudflare Pages. Pushing does not publish and publishing does not push.
 
 ## Work order toward the goal
 
-1. **`$25B58E..$25B946`, THE HIGH-SCORE DISPLAY.** The one caller family that touches all
-   nine columns and has not been read yet, so it is the routine that reads back everything
-   W299/W300/W301 wrote, and it is what the player actually sees. Its column addresses are
-   already known and named; start from the scan in the W301 worklog rather than repeating it.
-   After it, `$28F6F6..$28F7D4` (the result screen, eight of the nine columns) and the
-   `$28F32x` head that is the SECOND caller of `$287BD2`/`$287C08`.
+1. **THE NAME-ENTRY CHARACTER GRID**, the last unported part of the high-score subsystem and
+   the only piece of it that is pure presentation:
+   - `$28FCAA..$28FD2A` -- the cursor/grid draw. Straight-line `jsr $23DECE` calls built from
+     immediates, the same shape as `$25B4D6` which W303 ported, so it is a transcription and not
+     a puzzle. Gated on `($2E,A4)` being non-zero at `$28F4C4`.
+   - `$28FD2C` and `$28FD6E` -- two entry points sharing a tail that ends at `$28FE0E`, and they
+     differ only in the first immediate (`$4E800C80` vs `$4E802B80`). Called from
+     `$28F4E0`/`$28F4EE`, and only when **exactly one** side owes a name: `cmpi.b #$3,D0 / beq`
+     skips both when both sides do.
+   - `$28F4A6` sets `($2E,A4) = 1` and `$81E0D6 = 1`, then `jsr $246410` with `$28FA98`. That
+     call is the anim driver `stageend.js` declares out of scope, so **count it, do not invent
+     it** -- `PRESENTATION_DEVIATION[0x28d6fc]` is the precedent.
+   - `$28F664 add.w D1,D1 / move.l D0,(A0,D1.w)` is the per-character commit, and `($16,A4)` is
+     the count W306's filter gates on. `$81E0D6` is tested by both arms at `$28F442`/`$28F49C`.
 
-   Still open in the subsystem: whatever writes the three character longs through `($C,A4)`.
-   The slot is allocated and pointed at, and its first long holds the `$FF`/`$FE` "not entered
-   yet" tag. `$81B42C`/`$81B43C` have zero absolute references, so do not search for them.
+   Do NOT go looking for a reader of `($C,A4)`: `$81B42C`/`$81B43C` have zero absolute
+   references and W302 lost a search there. The row is found by its tag.
 
 1b. **PUBLISH, then ask the owner to look again at D16 and D17.** This is the cheapest
    next move for the docket and it is D19's whole point. **It is outward-facing and D18 does

@@ -39,6 +39,7 @@
 
 import { u16 } from './ram.js';
 import { unreached } from './unported.js';
+import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { tagLookupForSide, tagForSide } from './hiscore.js';
 
 /**
@@ -168,6 +169,156 @@ export const NAME_ARMS = Object.freeze([
   Object.freeze({ site: 0x28f428, side: 0, tag: tagForSide(0), lookup: 0x28f6e2 }),
   Object.freeze({ site: 0x28f482, side: 1, tag: tagForSide(1), lookup: 0x28f6ea }),
 ]);
+
+// ===========================================================================
+// W307 -- THE GRID'S FURNITURE, AND FOUR BUCKETS IN ONE SCREEN
+// ===========================================================================
+// Three straight-line draw routines, all built from immediates, all the shape W303 ported for
+// `$25B4D6`. What makes them worth their own block is what they reveal about the emitter.
+//
+// ## FOUR STUBS, AND THIS TIME THEY REALLY ARE DIFFERENT BUCKETS
+//
+// W303 assumed `$23DECE` and `$23DFB4` were different draw layers, measured them, and found one
+// bucket behind both. Here the same measurement gives the opposite answer:
+//
+//     $23DECE -> bucket 0        $23DF2A -> bucket 2        $23DF58 -> bucket 3
+//
+// `$28FCAA` alone uses three of them in four calls. So "stub address implies layer" is false and
+// "stub address implies nothing" is also false: it has to be resolved, every time, which is
+// exactly what `resolveEmitStub` is for. The lesson from W303 was the inference, not the answer.
+//
+// ## THE POSITION IS TWO INSTRUCTIONS, AND THE CARRY IS HARMLESS BY CONSTRUCTION
+//
+// Every part is `move.l #base,D1 / addi.l #delta,D1` with a negative delta. It is a LONGWORD add,
+// so in principle the low half carries into the high half -- and MEASURED, in all EIGHT parts
+// across the three routines, it does, by exactly bit 16 every time.
+//
+// It makes no difference. `$23DECE` and its siblings pack `D1 >> 6` and mask, and that mask
+// drops the bit for all eight: feeding the emitter the longword result and the per-axis result
+// produces byte-identical records. So the two-instruction pair really is a **signed per-axis
+// encoding** that happens to be spelled as one 32-bit add, and the carry is discarded
+// downstream rather than meaning anything.
+//
+// Worth writing down in that direction rather than as a warning. My first draft of this comment
+// claimed a port adding the halves independently would be "one unit out in Y"; the test showed
+// the emitter cannot tell the two apart, so the warning was for a bug that cannot happen. The
+// longword add is transcribed because it is what the ROM does, not because it is observable.
+//
+// ## THE ONE-SIDE ARMS ARE THE SAME TWO SPRITES, MIRRORED
+//
+// `$28FD2C` (only P2 owes) and `$28FD6E` (only P1 owes) are twins: same two art longs, same two
+// D3s, and they differ in the D1 low words -- the X -- and in D4, which is `$03` on one side and
+// `$43` on the other. **`$43` is `$03 | $40`**, so the difference is one bit, and both of them
+// end in a tail `jmp` rather than a `jsr`+`rts`.
+//
+// Both are called only when EXACTLY ONE side owes a name: `$28F4D4 cmpi.b #$3,D0 / beq $28F4F4`
+// skips both when the work list has both bits set. So the screen draws this furniture to fill
+// the half nobody is using, which is why there is nothing to draw when both halves are busy.
+const GRID_ROW = Object.freeze({
+  // $28FCAA..$28FD24, four calls. `stub` is resolved per call, never assumed.
+  cursor: Object.freeze([
+    Object.freeze({ at: 0x28fcc4, base: 0x2a001c00, delta: 0xee00ea00,
+      art: 0x322f78, d3: 0x12b0, d4: 0x04, stub: 0x23dece }),
+    Object.freeze({ at: 0x28fce4, base: 0x38001c00, delta: 0xc800e400,
+      art: 0x31fe3c, d3: 0x38e0, d4: 0x02, stub: 0x23df2a }),
+    Object.freeze({ at: 0x28fd04, base: 0x38001c00, delta: 0xc800e400,
+      art: 0x323c60, d3: 0x38e0, d4: 0x03, stub: 0x23df58 }),
+    Object.freeze({ at: 0x28fd24, base: 0x62801c40, delta: 0xfa00ea00,
+      art: 0x31f9b8, d3: 0x06b0, d4: 0x04, stub: 0x23df58 }),
+  ]),
+  // $28FD2C (P2-only) and $28FD6E (P1-only): index 0 is the side that OWES.
+  soleSide: Object.freeze([
+    Object.freeze({ site: 0x28fd6e, parts: Object.freeze([
+      Object.freeze({ base: 0x4e802b80, delta: 0xf600f500, art: 0x31fbcc, d3: 0x0a58, d4: 0x43 }),
+      Object.freeze({ base: 0x42002b00, delta: 0xfc00f500, art: 0x31fd88, d3: 0x0458, d4: 0x43 }),
+    ]) }),
+    Object.freeze({ site: 0x28fd2c, parts: Object.freeze([
+      Object.freeze({ base: 0x4e800c80, delta: 0xf600f500, art: 0x31fbcc, d3: 0x0a58, d4: 0x03 }),
+      Object.freeze({ base: 0x42000d00, delta: 0xfc00f500, art: 0x31fd88, d3: 0x0458, d4: 0x03 }),
+    ]) }),
+  ]),
+  soleStub: 0x23df58,
+  flipBit: 0x40,                 // $43 is $03 | $40
+  cursorField: 0x2e,             // $28F4C4 tst.w ($2E,A4) / beq
+  bothOwed: 0x03,                // $28F4D4 cmpi.b #$3,D0 / beq -- neither arm runs
+  active: 0x81e0d6,              // $28F4AC move.w #$1,$81E0D6
+  animScript: 0x28fa98,          // $28F4B4 lea ($28FA98,PC),A0
+  animDriver: 0x246410,          // $28F4BA jsr -- the declared presentation tier
+});
+
+/**
+ * `$28F4A6` -- arm the grid: cursor to 1, the global active flag to 1, and hand `$28FA98` to
+ * the animation driver.
+ *
+ * `$246410` is the anim-object driver `stageend.js` declares out of scope as
+ * `PRESENTATION_DEVIATION[0x28d6fc]`, and W303 counted `$246710`'s content seeding for the same
+ * reason. So this is COUNTED, not invented -- the third place this session that the same tier
+ * has been reached from a different direction, which is worth knowing when someone finally
+ * decides to port it.
+ */
+export function nameArmGrid28F4A6(ram, a4, ctx) {
+  ram.setU16(a4 + GRID_ROW.cursorField, 1);            // $28F4A6 move.w #$1,($2E,A4)
+  ram.setU16(GRID_ROW.active, 1);                      // $28F4AC move.w #$1,$81E0D6
+  ctx?.unportedLog?.note(GRID_ROW.animDriver, `$28F4BA jsr $246410 with A0 = $28FA98 -- the `
+    + `name-entry grid's animation objects. Same presentation tier stageend.js declares out `
+    + `of scope (PRESENTATION_DEVIATION[0x28d6fc]) and W303 counted $246710's seeding for; `
+    + `the cursor and the furniture around it ARE drawn, by $28FCAA`);
+}
+
+/** `move.l #base,D1 / addi.l #delta,D1` -- a LONGWORD add, so the halves are not independent. */
+const packD1 = (base, delta) => ((base + delta) >>> 0);
+
+/** `$28FCAA` -- the cursor and grid furniture. Four calls across THREE buckets. */
+export function drawGrid28FCAA(ram, rom) {
+  for (const p of GRID_ROW.cursor) {
+    enqueueRegistersThroughStub(ram, rom, p.stub, packD1(p.base, p.delta), p.art, p.d3, p.d4);
+  }
+}
+
+/**
+ * `$28FD6E` / `$28FD2C` -- the furniture for the half nobody is entering a name in.
+ *
+ * @param side which side OWES the name, so 0 selects `$28FD6E` and 1 selects `$28FD2C`
+ */
+export function drawSoleSide(ram, rom, side) {
+  const spec = GRID_ROW.soleSide[side];
+  if (!spec) {
+    unreached(GRID_ROW.soleSide[0].site, `the sole-side furniture is a P1/P2 pair; ${side} `
+      + `selects neither, and $28F4DA/$28F4E8 only ever test bits 0 and 1`);
+  }
+  for (const p of spec.parts) {
+    // $28FD46 jsr and $28FD66 jmp -- a tail jump, but the same call.
+    enqueueRegistersThroughStub(ram, rom, GRID_ROW.soleStub,
+      packD1(p.base, p.delta), p.art, p.d3, p.d4);
+  }
+}
+
+/**
+ * `$28F4C4..$28F4F2` -- the grid's per-frame dispatch.
+ *
+ * @param a4 the name-entry record; `($2E)` gates the cursor draw
+ * @param a5 the object; `($5)` is the work list
+ *
+ * The work-list test is the part worth transcribing carefully: `cmpi.b #$3,D0 / beq` leaves
+ * BEFORE either `btst`, so with both sides owing a name neither arm draws. Reading it as a
+ * two-way choice would draw one side's furniture over a half that is in use.
+ */
+export function drawGridFrame28F4C4(ram, rom, a4, a5) {
+  if (ram.u16(a4 + GRID_ROW.cursorField) !== 0) {      // $28F4C4 tst.w / $28F4C8 beq
+    drawGrid28FCAA(ram, rom);                          // $28F4CA jsr ($28FCAA,PC)
+  }
+  const owed = ram.u8(a5 + NAME_OBJ.owed);             // $28F4D0 move.b ($5,A5),D0
+  if (owed === GRID_ROW.bothOwed) return 'both';       // $28F4D4 cmpi.b #$3 / beq $28F4F4
+  if ((owed & 0x01) !== 0) {                           // $28F4DA btst #$0,D0
+    drawSoleSide(ram, rom, 0);                         // $28F4E0 jsr ($28FD6E,PC)
+    return 'p1';
+  }
+  if ((owed & 0x02) !== 0) {                           // $28F4E8 btst #$1,D0
+    drawSoleSide(ram, rom, 1);                         // $28F4EE jsr ($28FD2C,PC)
+    return 'p2';
+  }
+  return 'none';                                       // $28F4EC beq $28F4F4
+}
 
 // ===========================================================================
 // W306 -- THE BANNED-NAME FILTER, AND THE ALPHABET IT PROVES
