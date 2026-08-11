@@ -523,7 +523,37 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
    window `(0x273FE4, 0x0092)`** covers it. Nothing in `$273xxx` currently reaches it: the nearest
    is `$2735F0 + $220`, which ends at `$273810`.
 
-   **Still to read: the handler `$274076` onward.** Everything above is measured.
+   #### AND ITS HANDLER'S STRUCTURE IS READ TOO -- `$274076..$274116`
+
+   It is `$1B`'s shape, which is what makes it the right next wave:
+
+       274076  jsr $2638A6                stepMovement
+       27407c  an INLINE bounds test, TWO separate addi.w (#$E00 then #$7A00) with the branch on
+               the SECOND -- the same idiom as $1B's #$C00/#$7800, and the same trap: folding
+               them into one add tests a different quantity. NOTE it does NOT decrement $8130D8
+               on the free path; that refcount is $1B's, not a family convention
+       27408a  off screen and ($16,A5) set -> jmp $263762 ; $274098 on screen -> ($16,A5) = 1
+       -- THE ARMOUR TIMER, and this type's one genuinely new mechanism --
+       27409e  tst.w ($2A,A5) / bmi -> skip
+       2740a4  ($18,A6) = $7FFF          HP PINNED AT MAX while the timer runs
+       2740aa  D0 = 1 ; tst.w $811F72 / bpl ; else D0 = 2
+       2740b6  ($2A,A5) -= D0            **the drain is DOUBLE while $811F72 is negative**
+       2740ba  on the borrow, ($18,A6) = $2600   the real HP once the armour is gone
+       -- the damage arm --
+       2740c2  `damageArm5C` with hpFull **$980**, base ($1C,A5), xor ($1D,A5) -- see the table
+               above that routine: this is its THIRD member and it shares $1B's field offsets
+       274102  bmi $27449C               the death arm
+       274106  ($1D,A6) = D0 ; jsr $28AC72 (`spawnCues28AC72`)
+       274110  tst.L $8130D2 / bne $27432C   the LONGWORD freeze -> straight to the draw
+
+   **`$811F72` is the BEAM word.** `spark.js` already reads `$811F73` bit 7 (`ram.btst8(0x811f73, 7)`)
+   to pick the pool half, so this is the same word tested as a sign. Meaning: **the laser strips
+   this type's armour twice as fast as shots do**, which is a real gameplay behaviour and the kind
+   of thing worth a test rather than a comment.
+
+   Still to read: `$274116..$27449C` (the body between the freeze test and the death arm), the
+   draw at `$27432C`, and the death arm at `$27449C`. The handler is roughly 1,030 bytes, so budget
+   it like `$1B` (one wave) rather than like `$59`.
 
    ### W322 CLAIMED `$1B` WAS BLOCKED ON `$24226E`. IT IS NOT, AND THE WAY THAT ERROR HAPPENED IS
    ### THE MOST REUSABLE THING IN THIS SECTION

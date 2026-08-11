@@ -1814,11 +1814,19 @@ function deathSeq85(ram, rom, a5, a6, ctx, d1) {
 //  <store>
 //   move.b D0,($1D,A6)
 //
-// The two parameter sets, and the only two:
+// The parameter sets. W322 wrote "and the only two"; **W325 found a THIRD and it is a family of
+// many, not of two** -- so this table is expected to grow and the routine should not be inlined
+// back into any caller:
 //
 //                 hpFull   base       xor        source
 //   type $8E      $140     ($18,A5)   ($19,A5)   $2764F4..$276538  (W319)
 //   type $1B      $380     ($1C,A5)   ($1D,A5)   $26937E..$2693C2  (W322)
+//   type $81      $980     ($1C,A5)   ($1D,A5)   $2740C2..$274106  (W325, READ -- not yet
+//                                                registered; its handler is still being ported)
+//
+// The third one shares `$1B`'s field offsets exactly and differs only in `hpFull`, which is the
+// first evidence that `base`/`xor` may be conventional rather than per-type. A fourth member with
+// `($1C,A5)`/`($1D,A5)` would make that worth simplifying; do not assume it before then.
 //
 // Returns `{pal, dead}`. `dead` is the `bmi` and the CALLER runs its own death arm, because the two
 // death arms are genuinely different routines -- this is shared damage, not shared dying.
