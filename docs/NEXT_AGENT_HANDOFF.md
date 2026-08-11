@@ -28,8 +28,13 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W294, `ddpdoj: bonus line 6 and the A5 judgement`.
-- Suite: `node --test games/ddpdoj/tests/` is **2023/2023**, green, no skips.
+- HEAD is W295, `ddpdoj: bonus line 7, and $813142 is a lease`.
+- Suite: `node --test games/ddpdoj/tests/` is **2028/2028**, green, no skips.
+- **SEVEN of the nine bonus lines are in.** Line 8 is `$26037C`, whose head is the same
+  both-records shape as line 5 (`lea $8130FA,A2 / lea $81311E,A3`), so read it alongside
+  `$2602B6` rather than fresh.
+- `$813142` is a LEASE, not a countdown: `$2600D8` spends one per post and bonus line 7
+  gives one back. W273's note that the decrement is "UNGUARDED" was true and incomplete.
 - **SIX of the nine bonus lines are in.** Line 7 is `$26035A`, whose head is
   `addq.w #1,$813142` -- the same counter `$2600D8` DECREMENTS at `$260112`, going the
   other way, so read the pair together.

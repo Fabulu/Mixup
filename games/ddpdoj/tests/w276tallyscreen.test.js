@@ -18,9 +18,9 @@ import { deferReset } from '../src/background.js';
 import { HUDRAM } from '../src/hud.js';
 import { TALLY, tally2600D8, bonusLine125FFA8, bonusLine2260056,
   bonusLine326010E, bonusLine42601F4, bonusLine52602B6,
-  bonusLine6260348 } from '../src/tally.js';
+  bonusLine6260348, bonusLine726035A } from '../src/tally.js';
 import { PaletteState } from '../src/palette.js';
-import { ALLOC } from '../src/objalloc.js';
+import { ALLOC, resolveHandle241298 } from '../src/objalloc.js';
 import { RAM as MACHINE } from '../src/machine.js';
 import {
   SCREEN11, menuCarry28D53C, menuDips23C932, screenHeader2533F6,
@@ -934,4 +934,73 @@ test('W294 the A5 parameter is DELIBERATE, and the source says why', () => {
   assert.match(head, /THE DRIVER NEVER SETS A5/);
   assert.match(head, /plausible coordinates and plausible motion, silently/);
   assert.match(head, /loud, and no arithmetic/);
+});
+
+// ============ 15. W295: BONUS LINE 7 -- THE COUNTER GOES BACK UP
+
+test('W295 line 7 GIVES BACK the counter $2600D8 spends', { skip: SKIP }, () => {
+  // `$26035A addq.w #1,$813142` against `$260112 subq.w #1,$813142`. The pair is a LEASE,
+  // not a countdown -- which is why W273 found the decrement unguarded: nothing guards it
+  // because something else returns it.
+  const f = world();
+  f.ram.setU16(TALLY.counter, 5);
+  bonusLine726035A(f.ram, TALLY.side0);
+  assert.equal(f.ram.u16(TALLY.counter), 6, 'one back');
+  // And it is the same word, which is the point.
+  assert.equal(TALLY.counter, 0x813142);
+});
+
+test('W295 line 7 advances the TYPE-$D object through line 2\'s stored handle',
+  { skip: SKIP }, () => {
+    // `move.l ($20,A6),D0 / jsr $241298 / move.b #$3,($2,A0)`. ($20,A6) is where line 2
+    // put the type-$D handle, so this is the third wave to depend on that field choice --
+    // W293 killed those fields and this reads one.
+    const f = world();
+    const slot = ALLOC.table + 3 * ALLOC.stride;
+    f.ram.setU32(slot + ALLOC.idOff, 0x1234);
+    f.ram.setU32(TALLY.side0 + 0x20, 0x1234);
+    const r = bonusLine726035A(f.ram, TALLY.side0);
+    assert.equal(r.found, true, 'the handle resolved');
+    assert.equal(r.rec, slot, 'to the right slot');
+    assert.equal(f.ram.u8(slot + 0x02), 3, 'and its state is 3');
+  });
+
+test('W295 lines 6 and 7 advance DIFFERENT objects to DIFFERENT states',
+  { skip: SKIP }, () => {
+    // line 6: ($2,A5) = 2, the CALLER, through a register the driver leaves.
+    // line 7: ($2,A0) = 3, the TYPE-$D object, through a handle line 2 STORED.
+    // Two objects, two states, two routes -- so a port that shared a helper between them
+    // would be wrong twice.
+    const f = world();
+    const slot = ALLOC.table + 4 * ALLOC.stride;
+    f.ram.setU32(slot + ALLOC.idOff, 0x77);
+    f.ram.setU32(TALLY.side0 + 0x20, 0x77);
+    bonusLine6260348(f.ram, TALLY.side0, A5);
+    bonusLine726035A(f.ram, TALLY.side0);
+    assert.equal(f.ram.u8(A5 + 0x02), 2, 'the caller went to 2');
+    assert.equal(f.ram.u8(slot + 0x02), 3, 'and the type-$D object to 3');
+    assert.notEqual(A5, slot, 'and they really are different records');
+  });
+
+test('W295 a DEAD handle resolves to the dummy and does NOT throw', { skip: SKIP }, () => {
+  // An object dying between the frame that stored its handle and the frame that uses it is
+  // normal. `$2412C4 lea $80D51C,A0` is the cartridge's answer: write to the dummy and
+  // carry on. A port that threw here would stop the game on an ordinary event.
+  const f = world();
+  f.ram.setU32(TALLY.side0 + 0x20, 0x9999);      // matches nothing
+  const r = bonusLine726035A(f.ram, TALLY.side0);
+  assert.equal(r.found, false);
+  assert.equal(r.rec, ALLOC.createDummy, 'the same $80D51C stageCreate uses');
+  assert.equal(f.ram.u8(ALLOC.createDummy + 0x02), 3, 'and the 3 landed on the dummy');
+});
+
+test('W295 $241298 skips slot-0 ids, so a DROPPED handle reads as gone', { skip: SKIP }, () => {
+  // `$2412A4 move.l ($4C,A0),D2 / beq` -- an id of 0 is a FREE slot and is skipped. So a
+  // handle of 0 never matches a live object, which is what makes a dropped handle read as
+  // "gone" rather than as slot one.
+  const f = world();
+  const slot0 = ALLOC.table;
+  f.ram.setU32(slot0 + ALLOC.idOff, 0);          // free
+  assert.equal(resolveHandle241298(f.ram, 0).found, false, 'handle 0 matches nothing');
+  assert.equal(resolveHandle241298(f.ram, 0).rec, ALLOC.createDummy);
 });

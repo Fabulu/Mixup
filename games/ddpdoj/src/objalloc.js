@@ -197,6 +197,38 @@ export function queueKill(ram, id) {
   return ALLOC_RESULT.OK;
 }
 
+/**
+ * `$241298` -- RESOLVE A HANDLE TO ITS RECORD, or the dummy.  W295.
+ *
+ *   24129c: lea $80E240,A0 / moveq #$13,D1
+ *   2412a4: move.l ($4C,A0),D2 / beq $2412BC     <- id 0 is a FREE slot, skipped
+ *   2412ac: cmp.l D2,D0 / bne $2412BC
+ *   2412b2: pop / andi #$FFFE,SR / rts            FOUND -- carry CLEAR, A0 = the record
+ *   2412bc: lea ($50,A0),A0 / dbra D1
+ *   2412c4: lea $80D51C,A0 / pop / ori #$1,SR     MISSED -- carry SET, A0 = the DUMMY
+ *
+ * **A MISS IS NOT AN ERROR AND MUST NOT THROW.** It hands back `ALLOC.createDummy` --
+ * the same `$80D51C` `stageCreate` returns on a full queue -- so a caller that writes
+ * through the result scribbles on the dummy and the game carries on. That is the
+ * cartridge's own behaviour for "the object I was holding has already died", which is a
+ * normal thing to happen between one frame and the next, so the port returns the dummy
+ * rather than inventing an error the ROM does not have.
+ *
+ * `beq` on the id means **slot 0 is skipped as free**, so a handle of 0 never matches a
+ * live object -- which is why a dropped handle reads as "gone" rather than as slot one.
+ *
+ * @returns {{rec:number, found:boolean}} `found` is the inverse of the C flag.
+ */
+export function resolveHandle241298(ram, id) {
+  for (let i = 0; i < ALLOC.slots; i++) {
+    const a = ALLOC.table + i * ALLOC.stride;             // $2412BC lea ($50,A0),A0
+    const d2 = ram.u32(a + ALLOC.idOff);                     // $2412A4 move.l ($4C,A0),D2
+    if (d2 === 0) continue;                                  // $2412A8 beq -- a free slot
+    if (d2 === (id >>> 0)) return { rec: a, found: true };   // $2412AC cmp.l / $2412B2
+  }
+  return { rec: ALLOC.createDummy, found: false };           // $2412C4 lea $80D51C,A0
+}
+
 /** $241262 -- drain the kill queue.  LIFO: $24126C subtracts $50 FIRST and then
  *  reads, so the last request queued is the first applied. */
 export function commitKills(ram) {

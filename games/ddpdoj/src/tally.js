@@ -43,7 +43,7 @@
 
 import { u16 } from './ram.js';
 import { unreached } from './unported.js';
-import { stageCreate, queueKill } from './objalloc.js';
+import { stageCreate, queueKill, resolveHandle241298, ALLOC } from './objalloc.js';
 import {
   HUDRAM,
   hyperStock286ED6,
@@ -461,6 +461,52 @@ export function bonusLine6260348(ram, a6, a5) {
   ram.setU8(a5 + BONUS6.callerState, 2);                    // $260348
   ram.setU16(a6 + 0x00, 0);                                 // $26034E
   ram.setU16(a6 + 0x02, 0);                                 // $260352
+}
+
+// ===========================================================================
+// W295 -- `$26035A`, BONUS LINE 7: THE COUNTER GOES BACK UP
+// ===========================================================================
+//   26035a  addq.w #1,$813142       <- the counter $2600D8 DECREMENTS at $260112
+//   260360  move.l ($20,A6),D0      the type-$D handle line 2 stored
+//   260364  jsr $241298             resolve it to a record
+//   26036a  move.b #$3,($2,A0)      set THAT object's state to 3
+//   260370  (A6) = 0 / ($2,A6) = 0 / rts
+//
+// **`$813142` IS THE SAME WORD `$2600D8` SPENDS.** `$260112 subq.w #1,$813142` takes one
+// per post and this gives one back, so the pair is a lease rather than a countdown, and
+// W273's note that the decrement "is UNGUARDED and wraps past zero" is only half the
+// story: nothing guards it because something else is expected to return it.
+//
+// **AND IT ADVANCES A DIFFERENT OBJECT FROM LINE 6, BY A DIFFERENT ROUTE.**
+//
+//   line 6  ($2,A5) = 2      the CALLER's object, through a register the driver leaves
+//   line 7  ($2,A0) = 3      the TYPE-$D object, through the handle line 2 STORED
+//
+// So the two lines advance two different objects to two different states, and the only
+// reason line 7 can do it safely is that line 2 kept the handle at `($20,A6)`. That is
+// now the third wave to depend on line 2's field choice -- W293 killed those fields, and
+// this reads one.
+//
+// A handle that no longer resolves gets `ALLOC.createDummy`, not an error: see
+// `resolveHandle241298`. An object dying between the frame that stored its handle and the
+// frame that uses it is normal, and the cartridge writes to the dummy and carries on.
+const BONUS7 = Object.freeze({
+  site: 0x26035a,
+  counter: 0x813142,               // the same word $2600D8 decrements
+  handleField: 0x20,               // line 2's type-$D handle
+  newState: 3,                     // $26036A move.b #$3,($2,A0)
+  stateOff: 0x02,
+});
+
+/** `$26035A` -- bonus line 7. Returns the record it advanced, dummy included. */
+export function bonusLine726035A(ram, a6) {
+  ram.setU16(BONUS7.counter, u16(ram.u16(BONUS7.counter) + 1));   // $26035A addq.w #1
+  const handle = ram.u32(a6 + BONUS7.handleField);                // $260360 move.l ($20,A6)
+  const r = resolveHandle241298(ram, handle);                     // $260364 jsr $241298
+  ram.setU8(r.rec + BONUS7.stateOff, BONUS7.newState);            // $26036A
+  ram.setU16(a6 + 0x00, 0);                                       // $260370
+  ram.setU16(a6 + 0x02, 0);                                       // $260374
+  return r;
 }
 
 /** `$25FD94` -- HOW MANY SIDES ARE STILL IN THE TALLY, minus one.
