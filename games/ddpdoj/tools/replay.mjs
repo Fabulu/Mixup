@@ -36,6 +36,7 @@ import { createHash } from 'node:crypto';
 import { execSync } from 'node:child_process';
 
 import { Game } from '../src/main.js';
+import { adoptCurrentWindows } from '../src/rom.js';
 import { stateVector, CLAIMED } from '../src/state.js';
 import { readTrace, run } from './portdiff.mjs';
 import { AUTOSHOT_MUTATE, CLAMP_ORDER } from '../src/player.js';
@@ -114,6 +115,18 @@ function resetMutationSwitches() {
  * a green result means the SAME property the oracle checked at record time held
  * again at verify time, in a separate process, with no emulator and no trace.
  */
+/** W269: the LIVE window list, read once and cached. Absent `rip/` means no adoption and
+ *  the frozen behaviour, which is what a tree with no cartridge extracted needs. */
+let LIVE_TABLES_CACHE;
+function liveTablesOnce() {
+  if (LIVE_TABLES_CACHE === undefined) {
+    const p = new URL('../rip/port/player.tables.json', import.meta.url);
+    try { LIVE_TABLES_CACHE = JSON.parse(readFileSync(p, 'utf8')); }
+    catch { LIVE_TABLES_CACHE = null; }
+  }
+  return LIVE_TABLES_CACHE;
+}
+
 export function verifyReplay(obj, opts = {}) {
   const { ramBytes, bgBytes, tables, portinWords, pokes } = validateReplayObject(obj);
 
@@ -204,6 +217,15 @@ function validateReplayObject(obj) {
   let tables;
   try { tables = JSON.parse(Buffer.from(tablesBytes).toString('utf8')); }
   catch (e) { throw new Error(`replay tables seed is not JSON: ${e.message}`); }
+  // W269: a fixture freezes the whole of `player.tables.json`, which is right for the
+  // derived data and WRONG for the ROM WINDOW LIST -- that is a port artifact saying which
+  // cartridge bytes the port lets itself read, never what those bytes are. So a subsystem
+  // translated after a recording throws inside it for a reason unrelated to the recording.
+  // `adoptCurrentWindows` proves the current list is a byte-superset of the frozen one and
+  // then substitutes it; a genuine cartridge difference still throws, by address.
+  // `liveTables` is optional so a caller with no `rip/` keeps the frozen behaviour.
+  const liveTables = liveTablesOnce();
+  if (liveTables?.rom) tables.rom = adoptCurrentWindows(tables.rom, liveTables.rom);
   if (!obj.portin) throw new Error('replay portin is missing');
   const portinBytes = UNB64(obj.portin.b64);
   const portinWords = decodePortin(portinBytes, obj.portin);

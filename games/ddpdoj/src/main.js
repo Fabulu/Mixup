@@ -122,8 +122,15 @@ export function defaultHandlers(rom, vram, opts = {}) {
     // matter what `rip/` or the web bundle now contain. Registering it turns five
     // replay gates red for a stale artifact.
     //
-    // To finish this: rebuild `tools/oracle/out/w69/fly-around` from the oracle,
-    // then add the entry back. The translation and its test do not change.
+    // W269 REGISTERED IT, and WITHOUT rebuilding the artifact. The hold-back was right
+    // about the cause and wrong about the only fix: a fixture's frozen ROM WINDOW LIST is
+    // a port artifact, not game state -- it says which cartridge bytes the port lets
+    // itself read, never what those bytes are. `adoptCurrentWindows` (src/rom.js) PROVES
+    // the current list is a byte-superset of a fixture's and then substitutes it, so a
+    // subsystem translated after a recording can run inside it. This entry was the single
+    // most-counted gap in the whole game: 1800 notes over a 900-frame run, because it
+    // runs TWICE a frame.
+    [4, announce260B30],   // $240F62[4] = $260B30, the per-side announcement text
 
     // $240F62[5] = $28B5E0, PARTIAL: 10 of its 23 jsr targets (`TYPE5_PORTED`
     // is the authority and says so itself).  W29: this entry

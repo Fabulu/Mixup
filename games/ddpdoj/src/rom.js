@@ -18,6 +18,74 @@
 
 import { unreached } from './unported.js';
 
+/**
+ * W269 -- ADOPTING THE CURRENT WINDOW LIST INSIDE A FROZEN REPLAY FIXTURE.
+ *
+ * A `.replay` fixture embeds the whole of `player.tables.json` as `seed.tablesB64`,
+ * frozen when the oracle recorded it. Almost all of that SHOULD be frozen: the speed
+ * quadrants, the folds, the shot templates are derived data and a recording is only
+ * reproducible against the same derivation.
+ *
+ * The `rom` window list is different in kind. It does not say what the cartridge
+ * contains; it says **which cartridge bytes this port lets itself read**. So a subsystem
+ * translated after a recording throws inside that recording for a reason that has nothing
+ * to do with the recording -- W243's `announce260B30` sat unregistered for twenty-six
+ * waves over exactly this, and the note in `main.js` called it "an artifact and not the
+ * code".
+ *
+ * Substituting the current list is sound, and this PROVES it rather than asserting it:
+ * every byte the frozen list could serve must resolve in the current list TO THE SAME
+ * VALUE. If that holds, the current list is a strict superset and the substitution cannot
+ * change any value the port computes -- it can only turn an `Unreached` into a read of the
+ * bytes the cartridge always had. If it does not hold, the ROM behind the two exports
+ * really differs and the fixture is genuinely stale, which is a different problem and gets
+ * a loud throw naming the first disagreeing address.
+ *
+ * @param frozen the `rom` object out of the fixture
+ * @param current the `rom` object out of the live `player.tables.json`
+ * @returns the CURRENT `rom` object, once proven a superset
+ */
+export function adoptCurrentWindows(frozen, current) {
+  const decode = (spec) => (spec?.windows ?? []).map((w) => ({
+    base: parseInt(String(w.base).replace('$', ''), 16),
+    len: w.len,
+    hex: String(w.hex),
+  }));
+  const cur = decode(current);
+  const byteAt = (a) => {
+    for (const w of cur) {
+      if (a >= w.base && a < w.base + w.len) {
+        return parseInt(w.hex.substr((a - w.base) * 2, 2), 16);
+      }
+    }
+    return null;                       // not covered by the current list at all
+  };
+  for (const w of decode(frozen)) {
+    for (let i = 0; i < w.len; i++) {
+      const a = w.base + i;
+      const now = byteAt(a);
+      const then = parseInt(w.hex.substr(i * 2, 2), 16);
+      if (now === null) {
+        unreached(a, `a replay fixture's frozen ROM window $${
+          w.base.toString(16).toUpperCase()}+$${w.len.toString(16).toUpperCase()} covers `
+          + `$${a.toString(16).toUpperCase()} and the CURRENT export does not, so the `
+          + `current list is not a superset and substituting it could change a read. A `
+          + `window was NARROWED or removed since this fixture was recorded; widen it `
+          + `back or re-record`);
+      }
+      if (now !== then) {
+        unreached(a, `a replay fixture's frozen ROM disagrees with the current export at `
+          + `$${a.toString(16).toUpperCase()}: the fixture has $${
+            then.toString(16).toUpperCase().padStart(2, '0')} and the export has $${
+            now.toString(16).toUpperCase().padStart(2, '0')}. The CARTRIDGE behind the `
+          + `two differs, which is not a window-list problem -- this fixture is `
+          + `genuinely stale and must be re-recorded`);
+      }
+    }
+  }
+  return current;
+}
+
 export class RomWindows {
   /** @param spec the `rom` object from tools/export-tables.py's JSON. */
   constructor(spec) {

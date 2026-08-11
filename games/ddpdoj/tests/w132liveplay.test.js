@@ -42,13 +42,19 @@ import { W94_MUTATE } from '../src/bossscripts.js';
 import { W95_MUTATE } from '../src/bossphase.js';
 import { W95G_MUTATE } from '../src/bossguns.js';
 import { W96_MUTATE } from '../src/bossarrival.js';
+import { adoptCurrentWindows } from '../src/rom.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
 const LADDER = path.join(ROOT, 'tools/oracle/out/w69/fly-around');
 const FIXTURE = path.join(LADDER, 'fly-around.lf2000-2250.replay');
 
-const HAVE = fs.existsSync(FIXTURE);
+const TABLES_PATH = path.join(ROOT, 'rip/port/player.tables.json');
+const HAVE = fs.existsSync(FIXTURE) && fs.existsSync(TABLES_PATH);
+// W269: the LIVE window list, adopted into each fixture's frozen tables after being
+// proven a byte-superset of them. See `adoptCurrentWindows`.
+const LIVE_TABLES = HAVE
+  ? JSON.parse(fs.readFileSync(TABLES_PATH, 'utf8')) : { rom: { windows: [] } };
 
 // The fly-around script holds DOWN at lf 2130 (manifest.json `2130=D`): a
 // KNOWN-ACTIVE, non-neutral-stick frame (the same anchor `w129replay.test.js`
@@ -134,7 +140,12 @@ async function playObj(obj) {
   for (let i = 0; i < bgSeed.length; i++) {
     bgSeed[i] = (bgBytes[i * 2] << 8) | bgBytes[i * 2 + 1];
   }
+  // W269: the fixture's tables are frozen -- correctly, except for the ROM WINDOW
+  // LIST, which is a port artifact and not game state. `adoptCurrentWindows` proves
+  // the current list is a byte-superset and then substitutes it, so a subsystem
+  // translated after the recording can run inside it. See src/rom.js.
   const tables = JSON.parse(new TextDecoder().decode(unb64(obj.seed.tablesB64)));
+  tables.rom = adoptCurrentWindows(tables.rom, LIVE_TABLES.rom);
   const game = new Game(ram, tables, {
     logicFrame: obj.seed.lf,
     videoFrame: obj.seed.vf,
@@ -278,6 +289,7 @@ test('play: check() surfaces the first divergence at the boundary (live)',
       bgSeed[i] = (bgBytes[i * 2] << 8) | bgBytes[i * 2 + 1];
     }
     const tables = JSON.parse(new TextDecoder().decode(unb64(m.seed.tablesB64)));
+    tables.rom = adoptCurrentWindows(tables.rom, LIVE_TABLES.rom);   // W269
     const game = new Game(ram, tables, {
       logicFrame: m.seed.lf, videoFrame: m.seed.vf, bgSeed,
     });
