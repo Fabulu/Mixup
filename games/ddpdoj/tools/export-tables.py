@@ -609,6 +609,12 @@ SHOT_WINDOWS.extend([
     # of W223's window, so the two are exactly adjacent with nothing between them.
     (0x2A37CC, 0x0010, "W260: A1 14's four muzzle offsets, ending where type $41's "
                        "init stub and W223's window begin"),
+    # W261: A1 13's fan dispatch. `$2A3538 adda.w $a(a4),a0` with `$2A3540 addq.w #$4`
+    # and `$2A3544 andi.w #$7` makes the cursor take 0 and 4 only, so TWO longwords --
+    # and its own first entry is $2A355E, which is $2A3556 + 8, so the table says where
+    # it stops. The conductor's `rts` is at $2A3554, one word before it.
+    (0x2A3556, 0x0008, "W261: A1 13's two-entry fan dispatch, ending at the first "
+                       "fan's own code"),
     # W255: type $42's handler's TWO TABLES, contiguous, both pinned by code.
     #   $2A4252  EIGHT sprite descriptors. `$2A41F0 addq.w #$4,$3c(a5)` with
     #            `$2A41F4 andi.w #$1F` bounds the cursor at eight longwords, and they

@@ -2299,8 +2299,92 @@ export function a1_14Init2A36EA(ram, rom, ctx, slot) {
 
 registerScript(0x2a317c, a1_11Init2A317C);
 registerScript(0x2a31a0, a1_11Step2A31A0);
+/**
+ * `$2A34CA` / `$2A34EE` -- A1 13, the other half of A4 id6's alternating pair, and TWO
+ * fans behind a two-entry dispatch at `$2A3556`. `$A(a4)` steps by 4 under
+ * `andi.w #$7`, so it takes 0 and 4 and nothing else, and the boss alternates:
+ *
+ *     $2A355E   ELEVEN shots: the base, then +6 to +$1E, then -6 to -$1E
+ *     $2A362A   TEN shots:    +3 to +$1B, then -3 to -$1B
+ *
+ * One is centred on the base and the other straddles it, so the pair is spokes and
+ * gaps. `move.w d7,d1` in the middle of each is what restores the base before the
+ * second half walks the other way, rather than each shot stepping from the last.
+ *
+ * BOTH FANS HAVE A SECOND, UNREACHABLE COPY. Each entry point opens with a `bra` over
+ * an otherwise identical block that fires through `$281744` instead of `$281708` --
+ * `$2A355E bra $2A35C6` and `$2A362A bra $2A368C` -- and NOTHING in the boss's bank
+ * branches, jumps or calls into `$2A3562` or `$2A362E`. That is 21 call sites this
+ * build cannot reach, checked by scanning every `bra`/`bcc`/`jsr`/`jmp` in
+ * `$2A0000..$2A5000` for either address. The sixth vestigial construct in this boss
+ * and the largest: two whole alternate fans, disabled by one instruction each.
+ *
+ * `$9(a4)` -- the number of fans it will fire -- comes from `$11(a4)`, the low byte of
+ * the parameter A4 id6 writes through the slot `$259A18` returned. That parameter is
+ * the one carrying A4 id6's loop-2 rule, so loop 2 gets more fans per attack. A4 id6's
+ * SECOND parameter (`$12(a4)`, from `$2A1336`) is never read here.
+ */
+const A1_13_DISPATCH = 0x2a3556;
+const A1_13_FANS = {
+  0x2a355e: {
+    deltas: [0, 6, 12, 18, 24, 30, -6, -12, -18, -24, -30],
+    sites: [0x2a35c6, 0x2a35ce, 0x2a35d6, 0x2a35de, 0x2a35e6, 0x2a35ee,
+      0x2a35fa, 0x2a3604, 0x2a360e, 0x2a3618, 0x2a3622],
+  },
+  0x2a362a: {
+    deltas: [3, 9, 15, 21, 27, -3, -9, -15, -21, -27],
+    sites: [0x2a368e, 0x2a3696, 0x2a369e, 0x2a36a6, 0x2a36ae,
+      0x2a36ba, 0x2a36c4, 0x2a36ce, 0x2a36d8, 0x2a36e2],
+  },
+};
+
+export function a1_13Step2A34EE(ram, rom, ctx, slot) {
+  const a5 = ctx.bossRec, a6 = ctx.bossSubRec;
+  if (ram.u8(slot + 0x08) === 0) {                        // $2A34EE tst.b/bne
+    if (!due8(ram, slot + 0x04)) return;                  // $2A34F6 subq.b/bcc
+    ram.setU8(slot + 0x04, ram.u8(slot + 0x05));          // $2A34FE
+    ram.setU8(slot + 0x08, ram.u8(slot + 0x09));          // $2A3504 -- arm the run
+  }
+  if (!due8(ram, slot + 0x06)) return;                    // $2A350A subq.b/bcc
+  ram.setU8(slot + 0x06, ram.u8(slot + 0x07));            // $2A3512
+
+  // $2A3518..$2A353E -- the registers, then `jsr (a0)` through the dispatch.
+  const entry = rom.u32(A1_13_DISPATCH + ram.u16(slot + 0x0a));
+  const fan = A1_13_FANS[entry];
+  if (!fan) {
+    unreached(0x2a353e, `$2A3556's dispatch resolved to $${entry.toString(16)
+      .toUpperCase()}, which is neither $2A355E nor $2A362A. $2A3544's andi.w #$7 `
+      + `bounds the cursor at 0 and 4, so this means the cursor escaped it`);
+  }
+  const d0 = ((8 << 16) | 0x0b) >>> 0;                    // $2A3518..$2A351E
+  const d2 = ram.u32(a6 + 0x22);                          // $2A3524
+  for (let i = 0; i < fan.deltas.length; i++) {
+    shootBoss4(ram, rom, ctx, fan.sites[i], 0x281708,
+      regsBoss4(a5, d0, (0x80 + fan.deltas[i]) & 0xff, d2, 0x08000000));
+  }
+  ram.setU16(slot + 0x0a, u16(ram.u16(slot + 0x0a) + 4) & 7);  // $2A3540/$2A3544
+  ram.setU8(slot + 0x08, ram.u8(slot + 0x08) - 1);        // $2A354A subq.b
+  if (ram.u8(slot + 0x08) === 0) ram.setU16(slot, 0);     // $2A3552 clr.w (a4)
+}
+
+/** `$2A34CA` -- A1 13's INIT, and it FALLS THROUGH (`$2A34E8` ends at `$2A34EE`). The
+ *  ORDER of its last two writes matters: `$2A34DC` writes the WORD `$0001`, whose low
+ *  half lands on `$9(a4)`, and `$2A34E8` then overwrites that byte with A4 id6's
+ *  parameter. Folding them would fire exactly one fan however hard the loop is. */
+export function a1_13Init2A34CA(ram, rom, ctx, slot) {
+  ram.setU8(slot + 0x02, 0);                              // $2A34CA -- never read
+  ram.setU16(slot + 0x04, 0x0020);                        // $2A34D0
+  ram.setU16(slot + 0x06, 0x0808);                        // $2A34D6
+  ram.setU16(slot + 0x08, 0x0001);                        // $2A34DC
+  ram.setU16(slot + 0x0a, 0);                             // $2A34E2 -- the fan cursor
+  ram.setU8(slot + 0x09, ram.u8(slot + 0x11));            // $2A34E8 -- A4 id6's count
+  a1_13Step2A34EE(ram, rom, ctx, slot);                   // falls through
+}
+
 registerScript(0x2a36ea, a1_14Init2A36EA);
 registerScript(0x2a3714, a1_14Step2A3714);
+registerScript(0x2a34ca, a1_13Init2A34CA);
+registerScript(0x2a34ee, a1_13Step2A34EE);
 // A3 3..8, the six-instance ramp family. The STEP sits `$6` past its INIT in every
 // one of them, which is the same `$2E`-stride regularity the bodies have.
 for (const a of [0x2a14aa, 0x2a14d8, 0x2a1506, 0x2a1534, 0x2a1562, 0x2a1590]) {
