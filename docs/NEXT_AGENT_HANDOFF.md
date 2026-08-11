@@ -28,8 +28,8 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W277, `ddpdoj: close the tally cursor round trip`.
-- Suite: `node --test games/ddpdoj/tests/` is **1925/1925**, green, no skips.
+- HEAD is W278, `ddpdoj: lock out the other player's selection`.
+- Suite: `node --test games/ddpdoj/tests/` is **1930/1930**, green, no skips.
 - **`top_objects` coverage is 9/20** -- nine of the twenty top-level dispatch entries
   are registered in `main.js`. `w167coverage.test.js` pins it.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
@@ -117,18 +117,24 @@ about it.** `w271hyperstock.test.js` has the mechanical form of the first check.
 
 ## Work order toward the goal
 
-1. **THE LAST THREE OF STATE 1**, then wire state 1 up and delete its note. W277 landed
-   three of the six in dependency order (`$25FF38`, `$25D9E6`, `$25DA60` -- all in
-   `src/tallyscreen.js`), so what remains is:
-   - `$25DFF6` -- another `$28D53C` gate, already ported as `menuCarry28D53C`;
-   - `$25DEAE` -- `($f,A5)` from the `($c,A5) == 2` arm;
-   - `$25E0EA` -- `lea ($25E006,PC),A0 / bra $25E200`, a table-driven jump whose table
-     at `$25E006` needs its own extent measured.
+1. **`$25DEAE` AND `$25E0EA`**, the last of state 1, then wire state 1 up and delete
+   its note. W277 landed `$25FF38`/`$25D9E6`/`$25DA60` and W278 landed `$25DAEA`,
+   `$25DFF6` and the input read `$23D186`/`$23D18E` -- all in `src/tallyscreen.js`.
+   - `$25DEAE` is fully read EXCEPT its draw tail from `$25DF4C` (which loads
+     `D1 = $5BC00000` for side 0 and `$5BC02600` for side 1). `$28C6FA` and `$28C6E0`
+     are sounds and stay counted. **Its tail at `$25DF48 bra $25DB7C` is how the screen
+     enters the tally** -- see below.
+   - `$25E0EA` is `lea ($25E006,PC),A0 / bra $25E200`, and `$25E006` is a run of `$20`
+     bytes -- ASCII SPACES -- so it is a text blit. Needs the extent of that text
+     measured and `$25E200` read.
 
    State 1 also installs a palette from `$225978`: run
    `node tools/export-web.mjs --extent 0x225978` first. The state-1 note in
-   `tallyScreen25DBB4` still names all six and is now three names too long -- trim it as
-   they land.
+   `tallyScreen25DBB4` still names all six and is now five names too long -- trim it.
+
+   **NOTHING EVER WRITES `($2,A5) = 2`.** `$25DF48` is a direct `bra` into `$25DB7C`
+   that skips the dispatcher, which is why `screenState2_25DB7C` is exported separately.
+   Do not "fix" the dispatcher to set the state byte.
 2. **THE EIGHT BONUS LINES AT `$25FF52`.** The score tally's actual arithmetic, and the
    largest single thing left in the subsystem. W277 located the table: nine longwords at
    `$25FF52`, entry 0 null, the other eight `$25FFA8`, `$260056`, `$26010E`, `$2601F4`,

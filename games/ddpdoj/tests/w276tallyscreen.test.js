@@ -18,10 +18,12 @@ import { deferReset } from '../src/background.js';
 import { HUDRAM } from '../src/hud.js';
 import { TALLY } from '../src/tally.js';
 import { ALLOC } from '../src/objalloc.js';
+import { RAM as MACHINE } from '../src/machine.js';
 import {
   SCREEN11, menuCarry28D53C, menuDips23C932, screenHeader2533F6,
   screenState0_25DB30, screenState2_25DB7C, tallyScreen25DBB4,
   tallyRequest25FF38, cursorsFromPosted25D9E6, restoreCursors25DA60,
+  readInput23D186, otherSideHolds25DAEA, gate25DFF6,
 } from '../src/tallyscreen.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -386,4 +388,78 @@ test('W277 $25DA60 stores only the LOW BYTE of a raw pass-through', { skip: SKIP
   f.ram.setU16(TALLY.postD1[0], 2);
   restoreCursors25DA60(f.ram, ROM, A5);
   assert.equal(f.ram.u8(A5 + SCREEN11.xCur), 0x34, 'truncated at the store');
+});
+
+// ================ 8. W278: THE TWO-PLAYER LOCKOUT, AND STATE 1's SECOND GATE
+
+test('W278 the descriptor\'s input read is the EDGE word, per side', { skip: SKIP }, () => {
+  // $23D186 move.w $803972,D0 / rts ; $23D18E move.w $803978,D0 / rts. Two
+  // instructions each, and they are RAM.p1edge/p2edge -- so a held direction
+  // moves the cursor once, not every frame.
+  const f = world();
+  f.ram.setU16(MACHINE.p1edge, 0x0004);
+  f.ram.setU16(MACHINE.p2edge, 0x0008);
+  assert.equal(readInput23D186(f.ram, 0), 0x0004);
+  assert.equal(readInput23D186(f.ram, 1), 0x0008);
+});
+
+test('W278 $25DAEA reads the OTHER side\'s saved selection -- the sense is inverted',
+  { skip: SKIP }, () => {
+    // $25DAF2 tst.b ($7,A5) / bne jumps PAST the second lea, so side NON-ZERO keeps
+    // $813008 and side ZERO takes $813018. That is the whole point: a side has to read
+    // the other side's record for a lockout to work. Every other side test in this
+    // file has the opposite sense, so a copied line would silently self-lock.
+    const f = world();
+    f.ram.setU16(HUDRAM.attract, 1);            // two live sides
+    f.ram.setU8(SCREEN11.savedA + 1, 2);        // record A holds entry 2
+    f.ram.setU8(SCREEN11.savedB + 1, 0);        // record B holds entry 0
+
+    f.ram.setU8(A5 + SCREEN11.side, 0);
+    assert.equal(otherSideHolds25DAEA(f.ram, A5, 0), true, 'side 0 reads record B');
+    assert.equal(otherSideHolds25DAEA(f.ram, A5, 2), false);
+
+    f.ram.setU8(A5 + SCREEN11.side, 1);
+    assert.equal(otherSideHolds25DAEA(f.ram, A5, 2), true, 'side 1 reads record A');
+    assert.equal(otherSideHolds25DAEA(f.ram, A5, 0), false);
+  });
+
+test('W278 a ONE-PLAYER game has no lockout at all', { skip: SKIP }, () => {
+  // $25DB04 tst.w $81308C / bne ; $25DB0E move.w #$FFFF,D1. The live-side count is
+  // (live - 1), so 0 means one side, and D1 is FORCED to the "nothing saved" sentinel.
+  const f = world();
+  f.ram.setU16(HUDRAM.attract, 0);              // one live side
+  f.ram.setU8(SCREEN11.savedB + 1, 1);          // ...and the record says entry 1
+  f.ram.setU8(A5 + SCREEN11.side, 0);
+  assert.equal(otherSideHolds25DAEA(f.ram, A5, 1), false, 'no lockout on one player');
+  f.ram.setU16(HUDRAM.attract, 1);
+  assert.equal(otherSideHolds25DAEA(f.ram, A5, 1), true, 'and it returns with two');
+});
+
+test('W278 the $FF sentinel means "nothing saved", and $25D990 is what writes it',
+  { skip: SKIP }, () => {
+    // The same $FF `cursorsFromPosted25D9E6` treats as "use the defaults", and the same
+    // instruction that pins W276's data window: $25D990 move.b #$FF,$813008.
+    const f = world();
+    f.ram.setU16(HUDRAM.attract, 1);
+    f.ram.setU8(A5 + SCREEN11.side, 0);
+    f.ram.setU8(SCREEN11.savedB + 1, 0xff);
+    assert.equal(otherSideHolds25DAEA(f.ram, A5, 0xff), false,
+      'even asking for $FF itself does not match the sentinel');
+    assert.equal(SCREEN11.savedA, 0x813008, 'and savedA is $25D990\'s destination');
+  });
+
+test('W278 $25DFF6 returns on carry and COUNTS its tail otherwise', { skip: SKIP }, () => {
+  // jsr $28D53C / bcs -> rts / bra $25E0F2. The tail is unported, so it is counted by
+  // address rather than invented.
+  const f = world();
+  f.ram.setU16(SCREEN11.carryWord, 1);
+  assert.equal(gate25DFF6(f.ram, f.ctx), true, 'carry set -> early return');
+  assert.deepEqual(f.log.report(), [], 'and nothing counted');
+
+  const g = world();
+  g.ram.setU16(SCREEN11.carryWord, 0);
+  assert.equal(gate25DFF6(g.ram, g.ctx), false);
+  const hit = g.log.report().find((r) => r.includes('$25E0F2'));
+  assert.ok(hit, 'the tail is counted at $25E0F2');
+  assert.match(hit, /ASCII SPACES/, 'and the note says what $25E006 is');
 });

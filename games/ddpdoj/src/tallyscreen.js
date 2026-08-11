@@ -40,8 +40,9 @@
 // without any of the six.
 
 import { u16 } from './ram.js';
+import { RAM } from './machine.js';
 import { queueKill } from './objalloc.js';
-import { txPrint240DC2, txPrint240E1A } from './hud.js';
+import { txPrint240DC2, txPrint240E1A, HUDRAM } from './hud.js';
 import { announcePost } from './rank.js';
 import { tally2600D8, TALLY } from './tally.js';
 
@@ -61,6 +62,10 @@ export const SCREEN11 = Object.freeze({
   carryWord: 0x81df20,          // $28D53C tst.w
   dipConfig: 0x803808,          // $23C932 move.b
   dipA: 0x80395a, dipB: 0x803960,
+  // W278: the two SAVED-SELECTION records. `$25D990 move.b #$FF,$813008` -- the
+  // instruction that pins the data window -- writes the "nothing saved" sentinel
+  // into savedA, and `($1,A0)` is the selected entry beside it.
+  savedA: 0x813008, savedB: 0x813018,
 });
 
 /**
@@ -148,6 +153,79 @@ export function tallyRequest25FF38(ram, d0, d1) {
   ram.setU16(rec + 0x00, u16(d1));                         // $25FF4A move.w D1,(A0)
   ram.setU16(rec + 0x02, 0);                               // $25FF4C clr.w ($2,A0)
   return rec;
+}
+
+/**
+ * `$23D186` (side 0) / `$23D18E` (side 1) -- THE DESCRIPTOR'S INPUT READ.
+ *
+ *   move.w $803972,D0 / rts          and $803978 for the other side
+ *
+ * Two instructions each, and they are the descriptor's `($8,A4)` -- the second of its
+ * three code pointers. `$803972`/`$803978` are `RAM.p1edge`/`p2edge`, the
+ * EDGE-triggered input words the port already models, so a held direction moves the
+ * cursor once and not every frame.
+ *
+ * The bits the screen tests are 2 and 3, which `BIT` names LEFT and RIGHT.
+ */
+export function readInput23D186(ram, who) {
+  return ram.u16(who === 0 ? RAM.p1edge : RAM.p2edge);
+}
+
+/**
+ * `$25DAEA` -- IS THE OTHER PLAYER ALREADY ON THIS ENTRY?
+ *
+ *   lea $813008,A0 / tst.b ($7,A5) / bne $25DB00 / lea $813018,A0
+ *   move.b ($1,A0),D1
+ *   tst.w $81308C / bne $25DB12 / move.w #$FFFF,D1
+ *   cmpi.b #$FF,D1 / beq -> CARRY CLEAR
+ *   cmp.b D7,D1   / bne -> CARRY CLEAR
+ *   otherwise           -> CARRY SET
+ *
+ * **NOTE THE SENSE OF THE SIDE TEST: IT IS INVERTED FROM EVERY OTHER ONE IN THIS
+ * FILE.** `bne` jumps PAST the second `lea`, so side NON-ZERO keeps `$813008` and side
+ * ZERO takes `$813018`. That is correct and it is the point: a side reads the OTHER
+ * side's saved selection, which is the only way a lockout can work.
+ *
+ * `$813008`/`$813018` are the two saved-selection records, and `$25D990
+ * move.b #$FF,$813008` -- the instruction that pins W276's data window -- is what
+ * writes the "nothing saved" sentinel `$FF` this routine tests for. The same `$FF`
+ * `cursorsFromPosted25D9E6` treats as "use the defaults".
+ *
+ * `tst.w $81308C` is the LIVE-SIDE count (`liveSides25FD94`, and `HUDRAM.attract` is
+ * the port's name for it). Zero means one live side, and then D1 is FORCED to `$FF`:
+ * **a one-player game has no lockout at all.**
+ *
+ * @returns true when the other side holds `d7` -- i.e. the C flag the caller's `bcs`
+ *   and `bcc` read.
+ */
+export function otherSideHolds25DAEA(ram, a5, d7) {
+  const other = ram.u8(a5 + SCREEN11.side) !== 0                // $25DAF2 tst.b / bne
+    ? SCREEN11.savedA : SCREEN11.savedB;                        // $25DAEC / $25DAFA
+  let d1 = ram.u8(other + 0x01);                                // $25DB00 move.b ($1,A0)
+  if (ram.u16(HUDRAM.attract) === 0) d1 = 0xff;                 // $25DB04 tst.w / $25DB0E
+  if (d1 === 0xff) return false;                                // $25DB12 cmpi.b / beq
+  return d1 === (d7 & 0xff);                                    // $25DB1A cmp.b D7,D1
+}
+
+/**
+ * `$25DFF6` -- state 1's second `$28D53C` gate.
+ *
+ *   jsr $28D53C / bcs $25E004 (rts) / bra $25E0F2
+ *
+ * Three instructions: carry set returns, carry clear tails into `$25E0F2`. `$25E0F2`
+ * is unported, so this reports which way it went and counts the tail rather than
+ * inventing it.
+ *
+ * @returns true when it returned early (carry set), false when the board would have
+ *   jumped to `$25E0F2`
+ */
+export function gate25DFF6(ram, ctx) {
+  if (menuCarry28D53C(ram)) return true;                        // $25DFFC bcs -> rts
+  ctx?.unportedLog?.note(0x25e0f2, '$25E000 bra $25E0F2 -- state 1\'s tail when '
+    + '$81DF20 is zero. $25E0F2 is unported; its neighbour $25E0EA is '
+    + '`lea ($25E006,PC),A0 / bra $25E200`, and $25E006 is a run of $20 bytes -- ASCII '
+    + 'SPACES -- so the pair is a text blit and $25E200 is the printer');
+  return false;
 }
 
 /**
