@@ -28,8 +28,12 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W283, `ddpdoj: close D16 -- stage 1 has no hyper source`.
-- Suite: `node --test games/ddpdoj/tests/` is **1977/1977**, green, no skips.
+- HEAD is W284, `ddpdoj: prove the medal chain and file D19`.
+- Suite: `node --test games/ddpdoj/tests/` is **1984/1984**, green, no skips.
+- **THE LIVE BUILD IS STALE AND NOBODY IS TRACKING IT (D19).** `git push` is not
+  `tools/publish.mjs`. This session closed six docket items and moved the bundle
+  4194 -> 4244 streams with no publish, and THREE of those items turned out to be
+  things that already worked. Ask for the build id with the next report.
 - **`900 FRAMES IS TOO SHORT TO SEE AN ITEM.** Every gate here runs 900 and the item
   producer's first drop is at frame 2576. If a probe about items, medals or hyper
   reports zero, check the window before believing it (W282).
@@ -138,20 +142,20 @@ Cloudflare Pages. Pushing does not publish and publishing does not push.
 
 ## Work order toward the goal
 
-1. **D17, THE MEDALS -- and use W283's METHOD, which closed D16 in one wave.**
+1. **KILL A CARRIER -- one measurement settles D17.** W284 proved the medal chain is
+   complete for kind 1: stage 1 holds TEN type-`$8A` carriers, all ten spawn,
+   `deathSeq8A` calls `allocBee27F92A` at `$2767E6`, and forced by hand kind 1
+   allocates a reserved slot with zero counted notes. The reserved ten is never
+   occupied only because **no scenario in the tree kills a carrier** -- the laser-hold
+   ladder parks the ship at the bottom centre by design. So: a scenario that SWEEPS
+   horizontally, or a forced HP zero on a live `$8A`. Either answers it.
 
-   The method, in order, because three waves were lost doing it backwards:
-   1. count what the SCRIPT contains (walk the cartridge's own spawn records);
-   2. count what a RUN produces (`tools/w282itemcensus.mjs`);
-   3. look at a DRAW only if those two disagree.
+   Then **`$280CEE`**: kind 16, the bee's flying variant, throws there, and it throws
+   AFTER claiming a reserved slot, so a caller that swallowed it would leak one of the
+   ten per attempt. It is a named gap in the `$280Cxx` family W264/W266 already know.
 
-   D16 closed as CORRECT: stage 1's script has two type-`$85` records out of 339, and
-   `deathSeq85` drops kind `$0` or `$8` and never `$C`, so stage 1's popcorn cannot put
-   a unit of hyper on the bar. Kind `$C` comes from `$294C40`, a boss part death.
-
-   **Do not assume that answer transfers.** The medals are pool A's reserved ten
-   (`bee.js`: "the medal IS the bee") and that is a DIFFERENT producer. Assuming a
-   shared cause is what kept D4 open for three waves.
+   And read D19 before spending a wave: D17's symptom is `bee.js`'s header VERBATIM,
+   describing the report W111 fixed.
 2. **`$280BCE`'s finish routines**, or enough of them to drive a run past frame 6482.
    A long census run from the laser-hold rung throws `Unreached $280BCE` there --
    seventeen of its twenty finish routines are unported, already docketed under D3's

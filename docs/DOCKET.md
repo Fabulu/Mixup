@@ -23,6 +23,7 @@ that drift.
     D16 the hyper bar should show the level when NOT hypering   W283 (correct as-is)
     D17 the in-stage medals are missing                         OPEN
     D18 commit AND PUSH every wave, not just commit             STANDING RULE
+    D19 record the DEPLOYED BUILD ID with every report          STANDING RULE
 
 D13, D14 and D15 are PRESENTATION AND PACKAGING and share one file, `index.html`;
 they are the only items in this docket that need no ROM reading at all, so they are
@@ -328,7 +329,7 @@ pins the whole display chain so no further wave looks there, and it also pins th
 `spawnItem`'s `REFUSED_KINDS` branch -- which reads exactly like the cause -- has been
 DEAD since W163.
 
-### D17: the in-stage medals are missing
+### D17: the in-stage medals are missing -- UNREPRODUCED on main (W284)
 
 The owner reports the stage medals do not appear. What the port already has, so the
 next wave does not re-derive it:
@@ -345,11 +346,23 @@ spawn, or its art -- and the way in is a sweep of what the medal pool emits duri
 play rather than a reading of the bonus screen. Note that the chaining medal value is
 the thing a player notices, so check the VALUE progression as well as the picture.
 
-**W281 found that D16 lands in the same place**: no item raises the hyper words in a
-900-frame run, and pool A -- which `bee.js` says the medal IS -- was empty too. The
-medals and the hyper items come out of the same item family, so ONE producer defect
-would explain both. **Prove they share a cause rather than assuming it** -- assuming a
-shared cause is exactly what kept D4 open for three waves.
+**W284 applied W283's method and the chain is COMPLETE for kind 1.** Stage 1 holds TEN
+type-`$8A` carriers and all ten spawn; `deathSeq8A` is complete and calls
+`allocBee27F92A` at `$2767E6`; forced by hand, kind 1 (`$04` -- what a real carrier
+death passes) allocates a reserved slot with ZERO counted notes.
+
+But the RESERVED TEN -- the slots only the carrier's death arm uses -- is never occupied
+in a 6400-frame run, because **no scenario in the tree kills a carrier**: the laser-hold
+ladder parks the ship at the bottom centre by design, so it kills what enters the beam
+and nothing else. That is a property of the scenario, not the port.
+
+One real gap found: **kind 16 (`$40`, the flying variant) throws `Unreached $280CEE`**,
+and it throws AFTER claiming the slot, so a caller that swallowed it would leak one of
+the ten per attempt.
+
+**And the symptom is `bee.js`'s own header verbatim** -- the report W110 recon'd and W111
+fixed. See D19. The way to settle this is to KILL A CARRIER (a sweeping scenario, or a
+forced HP zero), which is one measurement and is the next wave's first move.
 
 ### D18: commit AND PUSH intermittently, not just commit
 
@@ -373,3 +386,29 @@ Two things worth writing down, because they are the reason this drifted:
   gates on the Batman suite being ALL GREEN with 0 skipped, builds `dist/`, and
   deploys to Cloudflare Pages -- pushing to GitHub does not publish the site and
   publishing does not push. D18 is about the git remote only.
+
+### D19: record the DEPLOYED BUILD ID with every report
+
+Not a game defect. A docket-keeping one, and it has already cost waves.
+
+Every entry above records what the owner saw. **None records which build they saw it
+on.** Three items this session -- D7, D8 and D16 -- turned out to be things that
+already worked, and D17's symptom is `src/bee.js`'s header verbatim, describing the
+report W111 fixed:
+
+> The owner is playing the live build and the yellow 500-pt medals the carrier
+> type-$8A drops are nowhere.
+
+Meanwhile `git push` is not `tools/publish.mjs` (see D18), and nothing this session ran
+the latter -- while the session took the sprite bundle from 4194 streams to 4244, added
+seven ROM windows, and closed six docket items. So reports are being taken against a
+build that is at best one session stale, and every measurement answering them is taken
+against `main`.
+
+The fix costs one line per report. The page already stamps a build id --
+`games/ddpdoj/src/buildid.js` in a built tree, and `assets/manifest.json` carries
+`buildId` -- so it can be read off the page being played. **Ask for it, write it beside
+the symptom, and check it against `main` before spending a wave.**
+
+A useful corollary: when a report cannot be reproduced on `main`, "publish and ask the
+owner to look again" is a cheaper next step than a translation wave.
