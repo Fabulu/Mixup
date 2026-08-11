@@ -597,15 +597,31 @@ function fillAbort280B2A(ram, slot) {
 /** Dispatch the kind-specific fill hook.  Only kind 1 ($280CEE) is ported;
  *  kind 16 would need its own (but the flying bee is REFUSED at the body). */
 function runFillHook(ram, kind, slot) {
-  if (kind === KIND.bee) {
+  // W286: **KIND 16 SHARES KIND 1's HOOK, AND THE TABLE SAYS SO.**
+  //
+  //   $280BCE[ 1] = $280CEE      kind 1, the medal
+  //   $280BCE[16] = $280CEE      kind 16, the flying variant -- THE SAME ENTRY
+  //
+  // This used to throw for kind 16, on the reasonable-looking grounds that only kind
+  // 1's hook had been transcribed. But there is nothing to transcribe: the two kinds
+  // dispatch to the same two instructions, so refusing kind 16 was refusing a path the
+  // port already had. `allocBee27F92A` accepts both kinds (`$27F92A`'s own refusal is
+  // "not 1 and not 16"), so the throw was reachable from the allocator's own contract
+  // -- and it threw AFTER the slot was claimed, leaking one of the reserved ten per
+  // attempt.
+  //
+  // The family check, once more: before writing a hook, look at whether the table
+  // already points at one the port has.
+  if (kind === KIND.bee || kind === KIND.beeFlying) {
     // $280CEE: move.w #$9601,($1E,A0) / bra $27F926 (rts trampoline)
     ram.setU16(slot + B.hitCount, 0x9601);                // $280CEE
     return;
   }
   unreached(POOL_A.fillHookBee, `$280BAC jsr (A1) -- the fill hook for kind $${
-    (kind >> 2).toString(16).toUpperCase()} is not the bee's ($280CEE). The `
-    + `template-table/fill-hook-table pair at $280E4A/$280BCE is only ported `
-    + `for kind 1; other kinds need their own hook transcribed`);
+    (kind >> 2).toString(16).toUpperCase()} is neither kind 1's nor kind 16's, and `
+    + `those two are the only entries of $280BCE that point at $280CEE. The other `
+    + `eighteen hooks need their own transcription; read $280BCE + kind to see which `
+    + `one this D0 wants`);
 }
 
 // ========================= $27F95A, THE DRIVER ==============================

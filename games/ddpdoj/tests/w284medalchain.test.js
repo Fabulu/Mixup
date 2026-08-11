@@ -8,7 +8,9 @@
 //   the WIRE     `deathSeq8A` is complete and `handlers.js:$2767E6` calls
 //                `allocBee27F92A`. So the carriers are not DYING.
 //   the CHAIN    forced by hand, kind 1 allocates cleanly with zero notes.
-//                **Kind 16 throws `Unreached $280CEE`** -- a real, named gap.
+//                Kind 16 looked like a real gap here and W286 found it was not:
+//                `$280BCE[1]` and `$280BCE[16]` are the SAME hook, so the port
+//                was refusing a path it already had.
 //
 // And `bee.js`'s own header records the SAME owner report -- "the yellow 500-pt medals
 // the carrier type-$8A drops are nowhere" -- which W111 fixed. So D17 is plausibly a
@@ -22,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
-import { UnportedLog, Unreached } from '../src/unported.js';
+import { UnportedLog } from '../src/unported.js';
 import { deferReset } from '../src/background.js';
 import { allocBee27F92A } from '../src/bee.js';
 
@@ -82,16 +84,44 @@ test('W284 kind 1 -- THE MEDAL -- allocates from the reserved ten, silently',
     assert.deepEqual(f.log.report(), [], 'with NO counted gap in the path');
   });
 
-test('W284 kind 16 allocates and then THROWS at $280CEE -- a real named gap',
+test('W286 kind 16 shares kind 1\'s hook, so it allocates identically',
   { skip: SKIP }, () => {
-    // The bee's flying variant. The slot is taken before the throw, which is worth
-    // knowing: a caller that swallowed this would leak a reserved slot per attempt.
-    const f = world();
-    assert.throws(() => allocBee27F92A(f.ram, ROM, f.ctx, 0x40, 0, 0x814600),
-      (e) => e instanceof Unreached && e.romAddress === 0x280cee,
-      'kind 16 reaches an untranslated fill at $280CEE');
-    assert.equal(occupied(f.ram), 1,
-      'and the slot was already claimed -- the throw is AFTER the allocation');
+    // W284 recorded this as a throw at $280CEE and called it a real gap. W286 read the
+    // table: `$280BCE[1]` and `$280BCE[16]` are BOTH `$280CEE`, so there was never
+    // anything to transcribe -- the port was refusing a path it already had. And the
+    // refusal came AFTER the slot was claimed, so every attempt leaked one of the ten.
+    const one = world();
+    allocBee27F92A(one.ram, ROM, one.ctx, 0x04, 0, 0x814600);
+    const fly = world();
+    allocBee27F92A(fly.ram, ROM, fly.ctx, 0x40, 0, 0x814600);
+    for (const f of [one, fly]) {
+      assert.equal(occupied(f.ram), 1);
+      assert.deepEqual(f.log.report(), []);
+    }
+    // The hook's whole effect is one word, so "identical" is checkable.
+    const hookWord = (ram) => {
+      for (let i = 0; i < 10; i++) {
+        const s = RESERVED + i * STRIDE;
+        if (ram.u8(s) !== 0) return ram.u16(s + 0x1e);
+      }
+      return -1;
+    };
+    assert.equal(hookWord(one.ram), 0x9601, '$280CEE move.w #$9601,($1E,A0)');
+    assert.equal(hookWord(fly.ram), hookWord(one.ram), 'and kind 16 gets the same');
+  });
+
+test('W286 the hook table really points both kinds at the same routine',
+  { skip: HAVE_IMG ? false : 'the decrypted image is absent' }, () => {
+    // Read out of the image, so the claim above rests on the cartridge and not on the
+    // port agreeing with itself.
+    const u32 = (a) => (((IMG[a] << 24) | (IMG[a + 1] << 16)
+      | (IMG[a + 2] << 8) | IMG[a + 3]) >>> 0);
+    assert.equal(u32(0x280bce + 1 * 4), 0x280cee, '$280BCE[1]');
+    assert.equal(u32(0x280bce + 16 * 4), 0x280cee, '$280BCE[16] -- the SAME entry');
+    // And no third entry does, which is what keeps the remaining throw honest.
+    let sharing = 0;
+    for (let i = 0; i < 20; i++) if (u32(0x280bce + i * 4) === 0x280cee) sharing++;
+    assert.equal(sharing, 2, 'exactly two of the twenty hooks are $280CEE');
   });
 
 test('W284 a kind that is neither 1 nor 16 is refused', { skip: SKIP }, () => {
