@@ -73,6 +73,17 @@ const GL = {
   scrollB03C: 0x80b03c, // $2417A8 -- the cross-axis comp longword (swap, -> +$02)
 };
 
+/** `$803976` -- p2RAW, the HELD input word `$23D17E` reads. `machine.js` names all six input
+ *  words; this file needs only the one, so it is named here rather than importing the map. */
+const P2RAW = 0x803976;
+
+/** `$242A70`, SIXTEEN bytes, read from the image. Indexed by the four held direction bits.
+ *  `$FF` is negative and means "no direction" -- see `stickMove242A48`. */
+const STICK_HEADINGS = Object.freeze([
+  0xff, 0x00, 0x20, 0xff, 0x30, 0x38, 0x28, 0xff,
+  0x10, 0x08, 0x18, 0xff, 0xff, 0xff, 0xff, 0xff,
+]);
+
 // =========================================== $2417DE recompute + apply ==========
 /**
  * `$2417DE` -- read (speed, heading) from the sub-record, call `$241812`
@@ -82,7 +93,13 @@ const GL = {
  *  `$2417DE` has 63 jsr sites and its own gate).  Returns `{dy, dx}` (D2, D3).
  */
 export function applyVelocity(ram, tables, a5) {
-  const a6 = ram.u32(a5 + MOVER.subRec);
+  return applyVelocityA6(ram, tables, ram.u32(a5 + MOVER.subRec));
+}
+
+/** `$2417DE` with A6 ALREADY ON THE RECORD -- the form its 63 `jsr` sites actually enter at.
+ *  `applyVelocity` above is this plus the `A5 -> sub-record` hop, and `$242A48` below needs the
+ *  raw form because it `jmp`s here with A6 unchanged. Exported for the same reason. */
+export function applyVelocityA6(ram, tables, a6) {
   const speed = ram.u8(a6 + SUB.speed);                  // $2417E0 move.b ($1a,A6),D0
   const heading = ram.u8(a6 + SUB.heading) & 0x3f;       // $2417E4/#$3f / $2417E6 and.b
   if (ram.u16(GL.freeze) !== 0) return { dy: 0, dx: 0 }; // $2417EA / $2417F0 bne $2417fe
@@ -92,6 +109,53 @@ export function applyVelocity(ram, tables, a5) {
   ram.setU16(a6 + SUB.posY,                              // $2417F8 add.w D3,($4,A6)
     u16(i16(ram.u16(a6 + SUB.posY)) + v.dx));
   return v;                                              // D2,D3 for the cache
+}
+
+/**
+ * `$242A48` -- THE STICK DECODE, and it moves a record from PLAYER 2's HELD input.
+ *
+ *   242a48: jsr $23D17E                 D0 = $803976 = **p2raw**, the HELD word
+ *   242a4e: andi.w #$F,D0               the four DIRECTION bits, nothing else
+ *   242a52: lea ($242A70,PC),A0
+ *   242a56: move.b (A0,D0.w),($1B,A6)   the heading, out of a SIXTEEN-byte table
+ *   242a5c: bmi $242A64                 a NEGATIVE entry means "no direction"
+ *   242a5e: jmp ($2417DE,PC)            -> apply, i.e. MOVE
+ *   242a64: move.b #$40,($1B,A6)        no direction: heading $40 ...
+ *   242a6a: moveq #$0,D2                ... and D2 = 0, and NO apply
+ *
+ * **IT IS p2raw AND NOT p2edge, AND THAT IS THE WHOLE POINT.** `$803976` is the held word, so a
+ * direction held down moves every frame; `$803978` (p2edge) is what a MENU cursor reads so a held
+ * direction steps once. `$23D17E`, `$23D186` and `$23D18E` are three different two-instruction
+ * reads of three different words ($803976, $803972, $803978) and the port has all three modelled
+ * in `machine.js`; picking the wrong one here would make a held stick move the object once.
+ *
+ * The table is EIGHT compass headings in 64-direction units plus eight refusals:
+ *
+ *     idx  0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+ *     val $FF $00 $20 $FF $30 $38 $28 $FF $10 $08 $18 $FF $FF $FF $FF $FF
+ *
+ * `$FF` is negative, which is what the `bmi` tests -- so index 0 (nothing held), index 3
+ * (up+down together), index 7, $B and $C..$F all take the refusal arm. The eight real values are
+ * `$00 $08 $10 $18 $20 $28 $30 $38`, i.e. the eight compass points at 8 units apart.
+ *
+ * **THE HEADING IS STILL WRITTEN ON THE REFUSAL ARM.** `$242A64` stores `$40` before returning,
+ * and `$40 & $3F` is 0, so a later `$2417DE` from anywhere else would read heading 0 rather than
+ * a stale one. That store is not dead and must not be dropped.
+ *
+ * Seven callers in Build B: `$267C70` (type $81, W325), `$267E80`, `$267F24`, `$2728F0`,
+ * `$2729DA`, `$272B94`, `$275CFC`.
+ *
+ * @returns {{dy:number, dx:number}} the applied pair, or {0,0} when nothing was held.
+ */
+export function stickMove242A48(ram, tables, a6) {
+  const held = ram.u16(P2RAW) & 0x0f;                    // $242A48/$242A4E
+  const heading = STICK_HEADINGS[held];                  // $242A56 move.b (A0,D0.w)
+  if ((heading & 0x80) !== 0) {                          // $242A5C bmi
+    ram.setU8(a6 + SUB.heading, 0x40);                   // $242A64 move.b #$40,($1B,A6)
+    return { dy: 0, dx: 0 };                             // $242A6A moveq #$0,D2
+  }
+  ram.setU8(a6 + SUB.heading, heading);
+  return applyVelocityA6(ram, tables, a6);               // $242A5E jmp ($2417DE,PC)
 }
 
 /**

@@ -158,7 +158,11 @@ test('the ported handler addresses are registered through W223 type $41', () => 
       // W323 adds $269350, type $1B -- a four-state ramped turret that fires a MIRRORED AIMED
       // PAIR, the SECOND caller of the shared `damageArm5C`, and the first draw arm in the port to
       // drive one bucket through BOTH emitter conventions ($23DF58 by register, $23D816 by record).
-      0x270e36, 0x265a14, 0x2764d2, 0x269350,
+      // W325 adds $267C70, which is type $01 and NOT type $81 -- the recon read the LOW type
+      // table with a masked index. It is the first handler here driven by PLAYER TWO's stick:
+      // it moves on p2RAW and allocates an ITEM on p2EDGE, kind range-checked 0..4 and x4.
+      // No stage script spawns type $01, so this is translated code and not census progress.
+      0x270e36, 0x265a14, 0x2764d2, 0x269350, 0x267c70,
     ].sort((a, b) => a - b));
 });
 

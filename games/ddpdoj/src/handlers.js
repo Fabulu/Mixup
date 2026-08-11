@@ -95,7 +95,9 @@ import { handlerBoss297398 } from './boss2.js';
 import { handlerBoss29BE28 } from './boss3.js';
 import { handler99_29E6B0 } from './boss3type99.js';
 import { handler1E_296DD6 } from './bossf23.js';
-import { stepMovement, scrollCompensate, applyVelocity } from './movement.js';
+import { stepMovement, scrollCompensate, applyVelocity,
+  stickMove242A48 } from './movement.js';
+import { readInput23D186 } from './tallyscreen.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
 import { AimTables, AIM, aim64, aim256, aim64FromCaller, aim64AtTarget,
   aim64TurnStore, aim256FromCaller, slew64, targetSelect } from './aim.js';
@@ -2022,6 +2024,99 @@ function handler59(ram, _rom, a5, ctx) {
   ram.setU8(a5 + 0x18, ram.u8(a5 + 0x19));               // $265A44
   const r = enqueueDeferred(ram, T59.spawnType, DEFQ_D1.FIXED00);  // $265A4A/$265A4C
   ctx?.spawnEvent?.('deferred', T59.spawnType, r);
+}
+
+// ============================================ TYPE $01 (W325) ============
+// `$267C24..$267CBA`, and it arrived here BY A MISTAKE THAT IS WORTH THE COMMENT.
+//
+// W325 set out to port stage 5's type `$81`. The type table is TWO tables -- `$267824` for types
+// `$00..$7F` and `$27E412` for `$80..$FF` -- and the reconnaissance script masked the index with
+// `& $7F` while leaving the base at the LOW table. So it read entry 1 of the low table and
+// translated **type `$01`**, whose init is `$267C24` and whose handler is `$267C70`. The real type
+// `$81` is `$273F06`/`$274076` and is still unported. `tests/w314stage5scope.test.js typeEntry`
+// picks the table correctly and is the thing to copy.
+//
+// **The code below is right about the ROUTINES it read** -- they were disassembled from
+// `$267C24` and `$267C70` directly -- so it is kept rather than reverted. But be clear about what
+// it is NOT: **no stage script spawns type `$01`.** Walking all five scripts on the 8-byte stride
+// finds zero records of it, so this is a type reached (if at all) by some other spawner, and
+// registering its handler is safe precisely because nothing in a stage reaches it. It is real
+// translated code and it is NOT progress against the stage-5 census.
+//
+// What the wave does buy, and the reason it was kept: **two shared library routines** the real
+// types will need -- `$242A48`, the stick decode, with SEVEN callers, and `$259C42` with FIVE.
+//
+//   **TYPE $01 IS DRIVEN BY PLAYER TWO AND IT SPAWNS ITEMS.**
+//
+//   267c70  jsr $242A48         move from p2RAW ($803976), the HELD stick  -- movement.js
+//   267c76  tst.w ($18,A5) / beq $267C86
+//   267c7e  subq.w #1,($18,A5)  a countdown; while it runs, only the draw happens
+//   267c82  bra $267CB2
+//   267c86  jsr $23D18E         D0 = $803978 = p2EDGE, the edge-triggered word
+//   267c8c  btst #$6,D0 / beq $267CB2                 button bit 6, on the EDGE
+//   267c94  jsr $259C42         D0 = $812E0A
+//   267c9a  cmpi.w #$4,D0 / bgt $267CB2               > 4 refused
+//   267ca2  tst.w D0 / bmi $267CB2                    negative refused
+//   267ca8  add.w D0,D0 / add.w D0,D0                 D0 *= 4 -- THE ITEM KIND
+//   267cac  jsr $27E812         the ITEM ALLOCATOR -- `spawnItem`, ported in W61
+//   267cb2  jsr $23D762         bucket 0, RECORD convention -- `enqueueThroughStub`
+//
+// So: P2 holds a direction and it moves; P2 taps a button and it allocates an item whose KIND is
+// `$812E0A * 4`. The range check `0 <= D0 <= 4` scaled by four is exactly the item pool's kinds
+// `$00 $04 $08 $0C $10` -- five of its six, and `$14` (the P2 hyper item) is the one it cannot
+// reach. That is a strong internal check that the reading is right: an unrelated word would not
+// range-check onto precisely the item kind ladder.
+//
+// **`$812E0A` IS READ AND NEVER WRITTEN.** `rosetta.py sites` finds two references in Build B and
+// both are reads (`$1591D8` and `$259C42` itself); nothing anywhere stores to it. So in a fresh
+// machine it is 0 and the kind is `$00`, the power-up. Transcribed as the read it is, because a
+// port that folded it to a constant would be wrong the moment anything ever writes it.
+//
+// NOT ONE NEW PRIMITIVE except the two tiny shared routines this wave added: `$242A48` (the stick
+// decode, seven callers, now `movement.js stickMove242A48`) and `$259C42` (two instructions, five
+// callers, below). Everything else was already here.
+const T01 = Object.freeze({
+  init: 0x267c24, initBody: 0x267c2c, handler: 0x267c70,
+  recordProto: 0x267c50, recordWords: 2,      // $267C3E moveq #$1,D0 -- D0+1 = 2 words
+  subProto: 0x267c54,
+  spawnPos: 0x38001c00,                       // $267C46 move.l #$38001C00,($2,A6)
+  fireBit: 6,                                 // $267C8C btst #$6,D0
+  kindMax: 4,                                 // $267C9A cmpi.w #$4,D0 / bgt
+  configWord: 0x812e0a,                       // $259C42 -- read, never written
+  emitStub: 0x23d762,                         // $267CB2 -- bucket 0, RECORD convention
+});
+
+/** `$259C42` -- two instructions: `move.w $812E0A,D0 / rts`. Five callers in Build B
+ *  (`$267C94`, `$267EA4`, `$267F48`, `$275CBA`, `$275CE8`), so it is a shared read and not this
+ *  type's private one. Nothing in Build B WRITES `$812E0A`; see the block above. */
+function configWord259C42(ram) {
+  return ram.u16(T01.configWord);
+}
+
+function handler01(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  // $267C70 -- the move comes FIRST and is unconditional: the countdown below gates the SPAWN,
+  // not the motion, so the object keeps answering the stick while it is counting down.
+  stickMove242A48(ram, ctx.tables, a6);                   // $267C70 jsr $242A48
+
+  if (ram.u16(a5 + 0x18) !== 0) {                         // $267C76 tst.w / beq $267C86
+    ram.setU16(a5 + 0x18, u16(ram.u16(a5 + 0x18) - 1));   // $267C7E subq.w #1,($18,A5)
+  } else if ((readInput23D186(ram, 1) & (1 << T01.fireBit)) !== 0) {
+    // $267C86 jsr $23D18E -- side ONE, the p2EDGE word. Edge and not held, so one press is one
+    // item however long the button is down.
+    const d0 = configWord259C42(ram);                     // $267C94 jsr $259C42
+    // $267C9A `bgt` and $267CA2 `bmi` are both SIGNED, so the accepted range is 0..4 inclusive.
+    if (i16(d0) >= 0 && i16(d0) <= T01.kindMax) {
+      const kind = u16(d0 * 4);                           // $267CA8/$267CAA add.w D0,D0 twice
+      // `spawnItem` reports through `ctx.itemSpawn(d0, siteAddr, slot)` ITSELF, so this must NOT
+      // call the hook again -- doing so once produced two events per press, one of them with the
+      // arguments in a different order. The site address is passed instead, so the runner sees
+      // where the allocation came from.
+      spawnItem(ram, rom, ctx, kind, a6, 0x27e812);       // $267CAC jsr $27E812
+    }
+  }
+  // $267CB2 -- every path draws, including the refusals.
+  enqueueThroughStub(ram, rom, T01.emitStub, a6);         // $267CB2 jsr $23D762
 }
 
 // ============================================ TYPE $1B (W323) ============
@@ -7386,6 +7481,7 @@ const HANDLERS = new Map([
   [0x265a14, handler59],          // W317: Stage-5 timed type-$3F spawner $59
   [0x2764d2, handler8E],          // W319: Stage-5 zoom-drawn tracking turret $8E
   [0x269350, handler1B],          // W323: Stage-1 four-state ramped aimed-pair turret $1B
+  [0x267c70, handler01],          // W325: the P2-driven item spawner, type $01
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
   [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42

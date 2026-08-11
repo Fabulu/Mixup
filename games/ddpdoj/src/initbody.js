@@ -1821,6 +1821,26 @@ BODY.set(0x270dd8, (ram, rom, a5, a6, unported) => {
   ram.setU16(0x81b414, 1);                              // $270DFE move.w #$1,$81B414
 });
 
+// --- type $01 ($267C2C), W325. NOT type $81: the reconnaissance masked the type index with `& $7F`
+// but read the LOW type table, so it landed on entry 1. The real `$81` is `$273F06`/`$274076` and
+// is still unported; see `handlers.js`'s `TYPE $01` block. No stage script spawns type $01.
+//
+// Its init body is nine instructions with one thing worth naming.
+//
+// **IT DOES NOT CALL `$263808`.** Every other body in this file reads the spawn position through
+// `readInitPosition`; this one writes a LITERAL `move.l #$38001C00,($2,A6)` and returns. So the
+// script's own position bytes are ignored and all three records appear at the same fixed place.
+// Transcribed as the literal it is -- calling `readInitPosition` "for consistency" would move the
+// object to wherever the script said and there is no `$263808` in the listing to justify it.
+//
+// The init STUB also differs: `$267C24 move.w #$0,($4,A5)` is run length ZERO (one sub-record),
+// where types $1A and $1B both write 1.
+BODY.set(0x267c2c, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x267c54);             // $267C32 jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x267c50, 0x01);        // $267C40 jsr $26377A -- D0+1 = 2 words
+  ram.setU32(a6 + 0x02, 0x38001c00);                    // $267C46 move.l #$38001C00,($2,A6)
+});
+
 // --- type $1B ($26925E): W320 read it, W322 recorded it, W323 writes it. One of stage 5's twelve
 // remaining types and the second-biggest by record count; it came early because W320 found it
 // sharing type $8E's whole damage arm (now `damageArm5C`).

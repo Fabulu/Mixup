@@ -2588,6 +2588,16 @@ SHOT_WINDOWS.extend([
     (0x26970C, 0x0040, "W323: type $1B's three tables back to back -- the death arm's four rows "
                        "$26970C, the four-entry sprite ring $26971C, and the eight-long ($24,A5) "
                        "ramp $26972C; ends at $26974C"),
+    # W325: type $01 (NOT $81 -- the recon read the low type table), ONE window. $267C50 + $20 is
+    # its 2-word record prototype at $267C50 and its
+    # sub prototype at $267C54, running to the handler at $267C70 -- so the extent is pinned by
+    # code on both sides. W23's $267820 + $410 window stops at $267C30 and does not reach these.
+    # `$242A70`, the 16-byte stick table, is deliberately NOT windowed: it is transcribed in
+    # `src/movement.js` as `STICK_HEADINGS` with an `[M]` marker, the same way `bee.js` carries
+    # `BASE_LADDER` and `items.js` carries `DISPATCH`, and `w325type81.test.js` asserts the
+    # sixteen bytes against the ROM IMAGE so a hand-copied table cannot drift unnoticed.
+    (0x267C50, 0x0020, "W325: type $01's 2-word record prototype and its sub prototype, "
+                       "$267C50..$267C6F, ending at its handler $267C70"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
