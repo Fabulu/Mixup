@@ -2,10 +2,14 @@
 //
 // W313 showed stage 5's whole spawn script walks with no `Unreached`. That was true and it was not
 // the same as "stage 5 works": the walker allocates records and runs init stubs, while the per-frame
-// HANDLER is a separate table entry. Sixteen of stage 5's 35 types have no handler in the port.
+// HANDLER is a separate table entry. FIFTEEN of stage 5's 35 types have no handler in the port.
+//
+// W314 said sixteen. **W315 corrects it to fifteen**: type $00 points at `$26781C`, which
+// `tools/dojcoverage.py` has always classified as a NULL handler, so there is nothing to port. The
+// coverage tool's own inventory check is what caught the error.
 //
 // The number is what makes this a work list instead of an observation, so it is pinned here: a wave
-// that ports one of the sixteen makes this file fail, and updating it is how the count comes down.
+// that ports one of the fifteen makes this file fail, and updating it is how the count comes down.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -40,6 +44,16 @@ const SCRIPTS = Object.freeze({
 const TYPE_LO = 0x267824;
 const TYPE_HI = 0x27e412;
 
+// W315 CORRECTION. `tools/dojcoverage.py` has long declared these two the NULL handlers, and
+// they are why its report counts 130 of the 256 types as `null` rather than `unknown`. A type
+// pointing at one of them has nothing to port: `$26781C` is `jmp $263762`, which is `freeEnemy`.
+//
+// W314 censused by absence from `enemyHandlerMap` alone and so counted type $00 among stage 5's
+// missing types. Absence from that map is not the same as unported, and the coverage tool's
+// inventory check is what caught it -- registering `$26781C` as a handler made it report
+// "1 source registry entries are not in ROM inventories".
+const NULL_HANDLERS = new Set([0x26781c, 0x27e40a]);
+
 /** `$2635FC`/`$263608`: the low table for types 0..$7F, the high one for $80..$FF. */
 function typeEntry(t) {
   const tab = t < 0x80 ? TYPE_LO : TYPE_HI;
@@ -61,37 +75,63 @@ function missingOf(script, map) {
   const out = [];
   for (const [t, n] of [...census(script)].sort((a, b) => a[0] - b[0])) {
     const e = typeEntry(t);
+    if (NULL_HANDLERS.has(e.handler)) continue;          // nothing to port
     if (!map.has(e.handler)) out.push({ type: t, records: n, ...e });
   }
   return out;
 }
+/** The types a stage uses that point at a NULL handler -- present, and already complete. */
+function nullOf(script) {
+  return [...census(script)]
+    .filter(([t]) => NULL_HANDLERS.has(typeEntry(t).handler))
+    .map(([t, n]) => ({ type: t, records: n }));
+}
 
 // ==================== 1. THE WORK LIST
 
-test('W314 stage 5 has SIXTEEN types with no handler, over 66 of its 770 records',
+test('W314/W315 stage 5 has FIFTEEN types with no handler, over 65 of its 770 records',
   { skip: SKIP_IMG }, () => {
     // The measurement this file exists for. `enemyHandlerMap` is built from the cartridge, and
-    // `runEnemyDriver`'s `handlers.get(h)` miss is the only place a missing handler is reported --
-    // so absence from that map IS the definition of unported here, not a list somebody typed.
+    // `runEnemyDriver`'s `handlers.get(h)` miss is where a missing handler is reported -- but
+    // absence from that map is NOT the same as unported, which is W315's correction: a type
+    // pointing at a NULL handler has nothing to port. W314 said sixteen and 66; it is fifteen
+    // and 65.
     const map = enemyHandlerMap(ROM);
     const miss = missingOf(SCRIPTS[5], map);
-    assert.equal(miss.length, 16, `sixteen types, got ${miss.map((m) => m.type.toString(16))}`);
-    assert.equal(miss.reduce((a, m) => a + m.records, 0), 66, 'across 66 records');
+    assert.equal(miss.length, 15, `fifteen types, got ${miss.map((m) => m.type.toString(16))}`);
+    assert.equal(miss.reduce((a, m) => a + m.records, 0), 65, 'across 65 records');
     // Ranked by how much of the stage each one buys, which is the order to port them in.
     const ranked = [...miss].sort((a, b) => b.records - a.records || a.type - b.type);
     assert.deepEqual(ranked.map((m) => m.type),
       [0x45, 0x46, 0x8e, 0x1b, 0x1a, 0x81, 0x48, 0x49, 0x4a, 0x4b,
-        0x00, 0x43, 0x47, 0x4c, 0x59, 0xb0]);
+        0x43, 0x47, 0x4c, 0x59, 0xb0]);
     assert.deepEqual(ranked.slice(0, 3).map((m) => m.records), [21, 13, 6],
       '$45, $46 and $8E are a third of the missing records between them');
   });
+
+test('W315 stage 5\'s one type-$00 record points at a NULL handler', { skip: SKIP_IMG }, () => {
+  // `$26781C` is `jmp $263762` -- `freeEnemy`, six bytes, bounded by the init stub before it and
+  // by `$267824`, the type table that named it. So the record spawns with run length 0 and frees
+  // itself on its first frame. Nothing to port, and registering it as a handler is what the
+  // coverage tool's inventory check rejects.
+  assert.equal(typeEntry(0x00).handler, 0x26781c);
+  assert.ok(NULL_HANDLERS.has(0x26781c));
+  assert.equal(IMG.readUInt16BE(0x26781c), 0x4ef9, 'an absolute jmp');
+  assert.equal(IMG.readUInt32BE(0x26781e), 0x00263762, 'to freeEnemy');
+  assert.equal(IMG.readUInt16BE(0x267822), 0x4e71, 'then a nop pad');
+  assert.equal(0x267824, TYPE_LO, 'and then the type table itself');
+  assert.equal(IMG.readUInt16BE(typeEntry(0x00).init + 2), 0, 'run length zero');
+  // Stage 5 is the only stage that uses it, one record, and no other stage has any null type.
+  assert.deepEqual(nullOf(SCRIPTS[5]), [{ type: 0x00, records: 1 }]);
+  for (const s of [1, 2, 3, 4]) assert.deepEqual(nullOf(SCRIPTS[s]), [], `stage ${s}`);
+});
 
 test('W314 each missing type\'s init and handler come from the cartridge\'s own table',
   { skip: SKIP_IMG }, () => {
     // Recorded so the next wave does not have to find them again, and asserted so a table that
     // moved would fail here rather than silently port the wrong routine.
     const want = new Map([
-      [0x00, [0x267814, 0x26781c]], [0x1a, [0x268d1e, 0x268e6c]],
+      [0x1a, [0x268d1e, 0x268e6c]],
       [0x1b, [0x269256, 0x269350]], [0x43, [0x26dda4, 0x26de32]],
       [0x45, [0x270dd0, 0x270e36]], [0x46, [0x27102c, 0x2710e2]],
       [0x47, [0x26d6ee, 0x26d7d0]], [0x48, [0x271284, 0x27133a]],
@@ -105,13 +145,13 @@ test('W314 each missing type\'s init and handler come from the cartridge\'s own 
       assert.equal(e.init, init, `type $${t.toString(16)} init`);
       assert.equal(e.handler, handler, `type $${t.toString(16)} handler`);
     }
-    assert.equal(want.size, 16);
+    assert.equal(want.size, 15);
   });
 
 // ==================== 2. THE CONTRAST THAT MAKES IT A GAP
 
 test('W314 stages 1..4 have NO missing handlers at all', { skip: SKIP_IMG }, () => {
-  // Which is what makes sixteen a real gap rather than a property of the measurement. The four
+  // Which is what makes fifteen a real gap rather than a property of the measurement. The four
   // stages that play end to end are complete by this test's own definition.
   const map = enemyHandlerMap(ROM);
   for (const s of [1, 2, 3, 4]) {
