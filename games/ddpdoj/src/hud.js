@@ -1671,8 +1671,24 @@ function subqFloor(ram, addr) {
  *  the skeleton with, IN THE SAME FRAME. */
 function slideIn284CF2(ram, rom, ctx) {
   if (ram.u8(HUDRAM.flags9) & 0x01) {                   // $284CF2 btst #$0,$8130F9
-    if (i16(ram.u16(HUDRAM.aliveP1)) >= 0) { draw(ctx, 0x286ed6); draw(ctx, 0x2878cc); }
-    if (i16(ram.u16(HUDRAM.aliveP2)) >= 0) { draw(ctx, 0x286f3e); draw(ctx, 0x28795c); }
+    // W271 (DOCKET D7) -- THE HYPER STOCK ROW WAS ALREADY TRANSCRIBED AND NEVER CALLED.
+    // `hyperStock286ED6` has been in this file since W113, complete and with every
+    // constant named ($2883E6, $81B65C/$81B65E, the $414000A active tile). This arm --
+    // the one `flags9` bit 0 selects, i.e. the stage-clear/banner frames -- still emitted
+    // the NOTE that the transcription replaced everywhere else. So the owner's "hyper
+    // gauges in UI aren't painted" was not a missing routine and not a missing sprite: it
+    // was two call sites left on the note after the body landed.
+    //
+    // The LIVES rows are the SAME defect: `livesRow2878CC` has been transcribed since
+    // W116 and this arm called the note for it too. Both are wired now.
+    if (i16(ram.u16(HUDRAM.aliveP1)) >= 0) {
+      hyperStock286ED6(ram, rom, ctx, 0);               // $284D0A bsr $286ED6
+      livesRow2878CC(ram, rom, ctx, 0);                 // $284D10 bsr $2878CC
+    }
+    if (i16(ram.u16(HUDRAM.aliveP2)) >= 0) {
+      hyperStock286ED6(ram, rom, ctx, 1);               // $284D1A bsr $286F3E
+      livesRow2878CC(ram, rom, ctx, 1);                 // $284D20 bsr $28795C
+    }
     ram.setU16(HUDRAM.slideFlag, 0);                    // $284D24 clr.w $81B6EE
     return true;                                        // $284D2A bra.w $284460
   }
