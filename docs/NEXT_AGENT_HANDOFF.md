@@ -311,11 +311,60 @@ object allocation, deferred spawn, scheduler/script-VM entry and mode/loop branc
 addresses and runtime-created object roots. **A name inferred from graphics, a stage counter moving,
 or the absence of `Unreached` is not proof.**
 
-**And Black Label has TWO routes, so "check the loop counter" is not enough.** In 1-Loop mode,
-beating the normal stage-5 boss leads straight into Hibachi. In 2-Loop mode the game takes the
-two-loop route and Hibachi belongs to the end of it. A correct implementation needs a MODE branch as
-well as loop state. "Stage 5's boss and end sequence" in any earlier work order is underspecified; it
-means all five of:
+### The conditions, researched 2026-08-11 (two agents, sources below)
+
+This section is EXTERNAL EVIDENCE, not ROM measurement. It says what to look for and what to refuse
+to implement; it does not license writing any of it without finding the code. Every number here still
+needs a ROM witness.
+
+**1-Loop mode: Hibachi has NO conditions.** He follows the stage-5 boss unconditionally and continues
+are permitted. Attested by shmups.wiki, HG101, kakigames, 1cclog and a forum post, independently.
+
+**And in 1-Loop mode the 1-5 boss gains Kouryu's SECOND FORM** -- the loop-2 boss chain is substituted
+into loop 1, so 1-Loop is not "Hibachi bolted onto the normal 1-5 ending". Medium confidence, a
+Japanese source plus a corroborating blog. If true it means the mode branch reaches further back than
+the post-boss transition, which matters for where to look.
+
+**2-Loop mode: the gate is evaluated at the END OF LOOP 1**, and it is an OR of three, behind two
+preconditions. From Japanese Wikipedia, verbatim structure:
+
+    REQUIRED:  no continue used  AND  no second player joined
+    THEN ANY ONE OF:
+      misses <= 2                        (not zero -- you may lose two ships)
+      bombs used <= 3                    (not zero)
+      bee-perfect on >= 3 stages         (all 10 bees in a stage, no death before that stage's boss)
+
+Then Hibachi follows Kouryu's second form in 2-5 with **no further check**. So the owner's guess was
+half right: bees are ONE of three alternatives, and it is at most two deaths rather than none.
+
+**Explicitly NOT conditions, and refuse to implement them without ROM evidence:** a strict no-miss, a
+strict no-bomb, any chain or hit minimum, "bees collected at maximum value", and any score threshold.
+The 350,000,000-point route appears only in English sources and only ever flagged White Label; the
+Japanese canon lists three conditions and no score.
+
+**Contested, settle in the ROM, do not pick a side from documentation:**
+* whether continues are blocked at the 2-Loop Hibachi in Black Label (sources directly conflict);
+* whether rank carries across the loop boundary, and whether there are one or two rank values (one
+  page implies BL resets it, another implies a live-count-derived component carries);
+* whether ordinary enemy HP is loop-scaled at all -- nothing documents it either way.
+
+**"Black Label Version B" IS NOT A DOCUMENTED DESIGNATION.** Nothing public uses it. There are three
+Black Label dumps -- MAME `ddpdojblk` (`ddb10_10_8_434f.u45`), `ddpdojblka` (`ddb_1dot.u45`) and
+`ddpdojblkb` (`ddb10.u45`) -- all displaying the same `2002.10.07 Black Ver`, and **no source says
+what differs between them.** The `b` suffix is the likely origin of the phrase. If a wave ever needs
+to know which dump this port targets, that cannot be answered from documentation and needs a binary
+diff. Worth knowing before trusting any external claim about "Black Label" behaviour.
+
+**A safety note from the research:** `tcrf.net/DoDonPachi_DaiOuJou_(Arcade)` served a page containing
+embedded instructions rather than game data. Both agents hit it and both correctly ignored it and
+reported it. Treat that URL as hostile; do not point tooling at it unattended.
+
+Sources: shmups.wiki DoDonPachi_DaiOuJou and Hibachi pages, ja.wikipedia 怒首領蜂大往生,
+hardcoregaming101, world-of-arcades Cave/DdpDaiOuJouBl (incl. its Hardware page), shmups.system11.org
+threads 34601 / 17432 / 39713 / 49965 / 34513, kakigames, 1cclog, adb.arcadeitalia MAME set list.
+
+**So "check the loop counter" is not enough: there is a MODE branch as well.** "Stage 5's boss and end
+sequence" in any earlier work order is underspecified; it means all five of:
 
 1. the normal stage-5 boss;
 2. the post-boss route decision;
