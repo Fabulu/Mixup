@@ -28,8 +28,8 @@ import { runStageAdvance242952 } from './stageend.js';
 import {
   runScheduler25962E, registerScript, seqStart2598D0, a2Run2598E6,
   a2Stop25994A, a4Start25980C, a4Clear2598A2, a1Clear259B34,
-  a3Start259962, a3Running2599B4, a1Start259A18, a1Running259A4A, a1Stop259B08,
-  seqStop2598BE,
+  a3Start259962, a3Running2599B4, a3Stop2599EC, a1Start259A18, a1Running259A4A,
+  a1Stop259B08, seqStop2598BE,
 } from './scheduler.js';
 
 const due8 = (ram, addr) => {
@@ -1751,6 +1751,8 @@ export function a1_8Init2A2F1E(ram, rom, ctx, slot) {
  */
 const A1_9_SELECTOR = 0x2a3132;
 const BOSS_F4 = 0x8130f4;                                 // $2A3098 clr.w $8130F4
+const BOSS_F0 = 0x8130f0;                                 // $2A11DC clr.w
+const BOSS_F2 = 0x8130f2;                                 // $2A126C / $2A12B2
 
 export function a1_9Step2A30A8(ram, rom, ctx, slot) {
   const a6 = ctx.bossSubRec;
@@ -2077,8 +2079,104 @@ export function a1_10Init2A320E(ram, rom, ctx, slot) {
 
 registerScript(0x29f9b4, main7Init29F9B4);
 registerScript(0x29f9cc, main7Step29F9CC);
+/**
+ * `$2A11D4` / `$2A1274` -- A4 id6, THE THIRD PHASE, which F5's arm 5 hands to. Its INIT
+ * is the phase change itself: it raises `$8130F4` to 2, which is the word type `$42`'s
+ * handler branches on, so every child already in the air switches behaviour on the very
+ * next frame (see `stage4type42.js`). It also retires the whole of F5's attack set --
+ * A3 4 and A1 6, 7, 8, 9 and 10 -- and starts MAIN8, A3 3 and A1 11 in their place.
+ *
+ * The STEP is three independent arms and TWO of them alternate a pair of scripts:
+ *
+ *     $2A1274  bit-free state on `$2(a4)`: start A1 11 once A3 3 is idle, then latch
+ *     $2A1298  the `$8130F2` PULSE -- raised for exactly one frame every `$4(a4)`
+ *              frames, and the next interval is drawn ($1C0 + a 7-bit draw)
+ *     $2A12CC  `$6(a4)` alternates A1 13 and A1 14, each waiting for the other to
+ *              finish, and hands each one a parameter through the slot `$259A18` returns
+ *
+ * `$8130F2` is what type `$42`'s sweep (`$2A3F2A`) waits on, so this pulse is the signal
+ * that makes every child in A4 id6's phase start its turn at the same instant.
+ *
+ * TWO MORE LOOP-2 RULES, the third and fourth this port has found. `$2A1250` starts
+ * `$A(a4)` at 3 rather than 1 in loop 2, and `$2A1346` caps its growth at 5 rather
+ * than 3 -- and `$A(a4)` is the parameter A1 13 receives, so the second loop's version
+ * of this attack begins harder and ends harder.
+ */
+export function a4id6Step2A1274(ram, rom, ctx, slot) {
+  if (ram.u8(slot + 0x02) === 0) {                        // $2A1274 cmpi.b #$0/bne
+    if (!a3Running2599B4(ram, 3)) {                       // $2A127E/$2A1280 bcs
+      a1Start259A18(ram, 11);                             // $2A128A/$2A128C
+      ram.setU8(slot + 0x02, 1);                          // $2A1292
+    }
+  }
+  if (ram.u8(slot + 0x02) === 1) {                        // $2A1298 cmpi.b #$1/bne
+    ram.setU16(BOSS_F2, 0);                               // $2A12A2 -- down every frame
+    ram.setU16(slot + 0x04, u16(ram.u16(slot + 0x04) - 1));  // $2A12AA subq.w
+    if (ram.u16(slot + 0x04) === 0) {                     // $2A12AE bne
+      ram.setU16(BOSS_F2, 1);                             // $2A12B2 -- UP for one frame
+      // $2A12BA..$2A12C8 -- and the next interval is $1C0 plus a 7-bit draw.
+      ram.setU16(slot + 0x04,
+        u16((drawWord242EC2(ram, rom) & 0x7f) + 0x01c0));
+    }
+  }
+  if (ram.u16(slot + 0x06) === 0) {                       // $2A12CC cmpi.w #$0/bne
+    if (!a1Running259A4A(ram, 13)) {                      // $2A12D6/$2A12D8 bcs
+      ram.setU16(slot + 0x08, u16(ram.u16(slot + 0x08) - 1));  // $2A12E2 subq.w
+      if (ram.u16(slot + 0x08) === 0) {                   // $2A12E6 bne
+        const a0 = a1Start259A18(ram, 14);                // $2A12EA/$2A12EC
+        ram.setU16(a0 + 0x10, ram.u16(slot + 0x0c));      // $2A12F2 through A0
+        ram.setU16(slot + 0x06, 1);                       // $2A12F8
+        ram.setU16(slot + 0x08, 0x0030);                  // $2A12FE
+      }
+    }
+  }
+  if (ram.u16(slot + 0x06) !== 1) return;                 // $2A1304 cmpi.w #$1/bne
+  if (a1Running259A4A(ram, 14)) return;                   // $2A130E/$2A1310 bcs
+  ram.setU16(slot + 0x08, u16(ram.u16(slot + 0x08) - 1));  // $2A131A subq.w
+  if (ram.u16(slot + 0x08) !== 0) return;                 // $2A131E bne
+  ram.setU16(slot + 0x06, 0);                             // $2A1322 -- back to A1 13
+  const a0 = a1Start259A18(ram, 13);                      // $2A1328/$2A132A
+  ram.setU16(a0 + 0x10, ram.u16(slot + 0x0a));            // $2A1330 -- the loop-2 one
+  ram.setU16(a0 + 0x12, ram.u16(slot + 0x0e));            // $2A1336
+  ram.setU16(slot + 0x08, 0x0040);                        // $2A133C
+  // $2A1342..$2A135C -- and BOTH parameters ratchet up, each with its own cap.
+  const cap = ram.u16(LOOP_WORD) !== 0 ? 5 : 3;           // $2A1346 tst.w $813098
+  if (ram.u16(slot + 0x0a) !== cap) {                     // $2A1354 cmp.w/beq
+    ram.setU16(slot + 0x0a, u16(ram.u16(slot + 0x0a) + 1));  // $2A135C addq.w
+  }
+  if (ram.u16(slot + 0x0e) !== 0x10) {                    // $2A1360 cmpi.w #$10/beq
+    ram.setU16(slot + 0x0e, u16(ram.u16(slot + 0x0e) + 1));  // $2A136A addq.w
+  }
+}
+
+/** `$2A11D4` -- A4 id6's INIT, and it FALLS THROUGH (`$2A126C` ends at `$2A1274`). It is
+ *  the phase CHANGE: `$8130F4 = 2` re-routes every type `$42` child already in the air,
+ *  and the six stops retire F5's whole attack set. */
+export function a4id6Init2A11D4(ram, rom, ctx, slot) {
+  ram.setU16(BOSS_F4, 2);                                 // $2A11D4 -- THE PHASE
+  ram.setU16(BOSS_F0, 0);                                 // $2A11DC
+  ram.setU16(0x8130ec, 0xffff);                           // $2A11E2
+  ram.setU16(0x8130ee, 0xffff);                           // $2A11EA
+  seqStart2598D0(ram, 8);                                 // $2A11F2 -- MAIN8
+  ram.setU8(slot + 0x02, 0);                              // $2A11FA
+  a3Stop2599EC(ram, 4);                                   // $2A1200/$2A1202
+  a3Start259962(ram, 3);                                  // $2A1208/$2A120A
+  for (const id of [6, 7, 8, 9, 0x0a]) a1Stop259B08(ram, id);  // $2A1210..$2A1232
+  ram.setU16(slot + 0x04, 0x0180);                        // $2A1238 -- the pulse timer
+  ram.setU16(slot + 0x06, 0);                             // $2A123E
+  ram.setU16(slot + 0x08, 0x0100);                        // $2A1244
+  // $2A1250 -- the THIRD loop-2 rule: A1 13's first parameter starts higher in loop 2.
+  ram.setU16(slot + 0x0a, ram.u16(LOOP_WORD) !== 0 ? 3 : 1);   // $2A124A/$2A125A
+  ram.setU16(slot + 0x0c, 8);                             // $2A1260
+  ram.setU16(slot + 0x0e, 8);                             // $2A1266
+  ram.setU16(BOSS_F2, 0);                                 // $2A126C
+  a4id6Step2A1274(ram, rom, ctx, slot);                   // falls through
+}
+
 registerScript(0x2a320e, a1_10Init2A320E);
 registerScript(0x2a323e, a1_10Step2A323E);
+registerScript(0x2a11d4, a4id6Init2A11D4);
+registerScript(0x2a1274, a4id6Step2A1274);
 // A3 3..8, the six-instance ramp family. The STEP sits `$6` past its INIT in every
 // one of them, which is the same `$2E`-stride regularity the bodies have.
 for (const a of [0x2a14aa, 0x2a14d8, 0x2a1506, 0x2a1534, 0x2a1562, 0x2a1590]) {
