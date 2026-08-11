@@ -112,13 +112,43 @@ about it.** `w271hyperstock.test.js` has the mechanical form of the first check.
 
 ## Work order toward the goal
 
-1. **Object dispatch `[11]` `$25DBB4` end to end.** THE FIRST UNFINISHED ITEM. W273
-   landed `$2600D8` and W274 closed its last gap, so `[11]` now needs only `$28D53C`
-   (6 instructions) and `$23C932` (9), both trivial; `$2533F6`, `$253448` and
-   `$241292` were already ported. It is 900 counted notes a run and it is the
-   stage-clear score tally's driver. Then **the four other announcement-poster caller
-   regions** -- `$25CDxx`, `$25D5xx`, `$2601xx`, `$288A02` -- which share the protocol
-   W270 landed.
+1. **Object dispatch `[11]` `$25DBB4`.** THE FIRST UNFINISHED ITEM, and **W270's recon
+   of it UNDERESTIMATED IT BADLY -- read this before planning the wave.** W270 said it
+   was "one small routine away from transcribable" and named `$2600D8` as that routine.
+   W273 landed `$2600D8` and W274 closed its last gap, and the object is still not one
+   routine away. Re-read in W276's recon:
+
+   State 1 alone spans `$25DBB4..$25DD0A`, and its two trivial dependencies really are
+   trivial:
+
+       $28D53C   `tst.w $81DF20` then set or clear CARRY in the SR. In JS: a boolean.
+       $23C932   returns (D0, D1). DIP `$803808` == $12 -> both 0; else D0 = the byte
+                 `$80395A` and D1 = the byte `$803960`.
+
+   But there are SIX MORE, none of them ported and none of them named by W270:
+
+       $25DA60   reads $813084/$813088 into D6/D7 -- the tally's own posted words
+       $25DA94   walks ($f,A5)
+       $25DFF6   another $28D53C gate, reached from state 1's fall-through
+       $25DEAE   ($f,A5) again, from the `($c,A5) == 2` arm
+       $25E0EA   `lea ($25E006,PC),A0 / bra $25E200` -- a table-driven jump
+       $25FF38   `lea $8130FA,A0` -- IT TOUCHES THE TALLY RECORDS DIRECTLY
+
+   and state 1 also calls `$24150A` with `$225978` (a palette block that may need a
+   window) and `$23C668`, which stays a counted note.
+
+   **AND `$25DD0C` ONWARD IS A MENU CURSOR**, not a tally: `btst #$2,D0` / `subq.b #1,
+   ($e,A5)` and `btst #$3,D0` / `addq.b #1,($e,A5)`, each followed by
+   `move.b #$1,($d,A5)` and `jsr $28C6FA` -- a sound. `andi.b #$1,($e,A5)` then keeps
+   the cursor to two entries. So `[11]` is a SELECTION SCREEN with the score tally
+   inside it, which is why it is 900 counted notes a run.
+
+   Scope it as two or three waves, not one. The natural first cut is `$28D53C` +
+   `$23C932` + state 0 + state 2, which is the tally path and reaches `$2600D8`; state
+   1's six dependencies and the cursor are the second and third.
+
+   Then **the four other announcement-poster caller regions** -- `$25CDxx`, `$25D5xx`,
+   `$2601xx`, `$288A02` -- which share the protocol W270 landed.
 2. **WHAT ADVANCES `($14,A6)` THROUGH `$255B7C`.** W275 ported the walker and shipped
    all 49 of its descriptors, but only entries 0..5 of the 39-entry pointer table are
    KNOWN to be reached, because only `$24A120`'s write of `$255B7C` is transcribed.
