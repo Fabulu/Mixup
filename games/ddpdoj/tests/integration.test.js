@@ -170,13 +170,14 @@ test('$281CD6 with $81B412 POSITIVE clears the bullet and POPS an impact', () =>
 });
 
 // A D0 the port has not read is a loud throw naming the DISPATCH ENTRY to port, which is
-// a better diagnosis than the old "unported kind": $280BCE has twenty entries and three
-// are translated.
+// a better diagnosis than the old "unported kind". W312 took `$280BCE` to EIGHTEEN of twenty, so
+// this drives $04 -- index 1, whose hook `$280CEE` belongs to `allocBee27F92A` rather than to
+// this dispatch and is therefore the last kind it will ever refuse.
 test('$281CD6 with an unread $81B412 names $280BCE and not a window', () => {
   const ram = new Ram();
   liveBullet(ram, 0);
   ram.setU16(BULLET_DRIVER.armWord, 1);
-  ram.setU16(BULLET_DRIVER.modeWord, 0x0008);
+  ram.setU16(BULLET_DRIVER.modeWord, 0x0004);
   assert.throws(() => runScreenClear(ctxOf(ram)), (e) => e.name === 'Unreached'
     && e.romAddress === 0x280bce && /\$280C5E/.test(e.message));
 });

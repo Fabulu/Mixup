@@ -124,11 +124,11 @@ test('W264 kind $0 does NOT normalise the status, and the other two do',
   });
 
 test('W264 an unread D0 names the DISPATCH ENTRY, not a window', { skip: SKIP }, () => {
-  // W298 ported kinds $10..$1C (hooks 4..7), so this drives $08 -- index 2, whose hook
-  // $280CF8 is still unported. The claim is unchanged: the message names the dispatch
-  // and does not open with a window error.
+  // W312 ported hooks 2, 3 and 17, so this drives $04 -- index 1, whose hook $280CEE belongs
+  // to `allocBee27F92A` and is the last thing this dispatch will ever refuse. The claim is
+  // unchanged: the message names the dispatch and does not open with a window error.
   const f = world();
-  assert.throws(() => allocPoolA27F8F0(f.ram, ROM, f.ctx, 0x08, 0, 0, CARRIER),
+  assert.throws(() => allocPoolA27F8F0(f.ram, ROM, f.ctx, 0x04, 0, 0, CARRIER),
     (e) => e.name === 'Unreached' && e.romAddress === 0x280bce
       && /\$280C5E/.test(e.message) && !/window/.test(e.message.slice(0, 80)));
 });
@@ -215,19 +215,23 @@ test('W287 $280C1E abuts W264\'s window, so all four blocks are seam-free',
     assert.throws(() => ROM.u16(0x280c1c), 'and nothing below it');
   });
 
-test('W298 the throw that remains says FIFTEEN are translated, not eleven',
+test('W312 the throw that remains says EIGHTEEN, and names the two that are left',
   { skip: SKIP }, () => {
-    // Five of the twenty are still unported and the message has to stay honest about
-    // which -- it is the diagnosis a future run gets. W264 said three, W287 eleven,
-    // W298 fifteen, and each time the number moved the message moved with it.
+    // TWO of the twenty are still unported and the message has to stay honest about which --
+    // it is the diagnosis a future run gets. W264 said three, W287 eleven, W298 fifteen, W312
+    // eighteen, and each time the number moved the message moved with it.
     const f = world();
-    const e = caught(() => allocPoolA27F8F0(f.ram, ROM, f.ctx, 0x08, 0, 0, CARRIER));
-    assert.ok(e, 'index 2 still throws');
+    const e = caught(() => allocPoolA27F8F0(f.ram, ROM, f.ctx, 0x04, 0, 0, CARRIER));
+    assert.ok(e, 'index 1 still throws');
     assert.equal(e.romAddress, 0x280bce);
-    assert.match(e.message, /FIFTEEN of its twenty are/);
-    assert.match(e.message, /indices 8\.\.15/, 'and it still names W287 family');
+    assert.match(e.message, /EIGHTEEN of its twenty are/);
+    assert.match(e.message, /indices 8\.\.15/, 'and it still names W287\'s family');
     assert.match(e.message, /5\/6\/7 are the SAME entry \$280D34/,
       'and W298 too, including that three of its four share one body');
+    assert.match(e.message, /byte-identical/,
+      'and W312, including that hooks 2 and 3 are the same code twice');
+    assert.match(e.message, /indices 1 and 16/, 'and it names what is LEFT');
+    assert.match(e.message, /allocBee27F92A/, 'and where those two belong');
   });
 
 test('W298 hooks 4..7 allocate, and 5/6/7 are the SAME table entry', { skip: SKIP }, () => {

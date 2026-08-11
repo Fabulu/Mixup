@@ -98,7 +98,7 @@ import { enqueueThroughStub, enqueueZoomedThroughStub, enqueueRegisters } from '
 import { scoreByMask } from './score.js';
 import { bcd242AC6 } from './items.js';
 import { grantHyper287682 } from './hyper.js';
-import { drawByte242B3C, drawByte2431F4, drawSigned242FDE,
+import { drawByte242B3C, drawByte2431F4, drawByte242E24, drawSigned242FDE,
   drawWord242EC2 } from './rng.js';
 
 // ============================== THE GEOMETRY ================================
@@ -496,8 +496,41 @@ const FINISH_HOOKS_4_TO_7 = Object.freeze({
     ...FINISH_SPEED_242B3C }),
 });
 
+// W312: HOOKS 2, 3 AND 17, and the first two are the same twenty-four bytes TWICE.
+//
+//   $280BCE[ 2] = $280CF8
+//   $280BCE[ 3] = $280D10   byte-identical to $280CF8, not the same entry
+//   $280BCE[17] = $280DBA
+//
+// `$280CF8` and `$280D10` are `2E004EB900242E240240001FD12800184268002020074E75` -- the same
+// twenty-four bytes at two addresses. That is the FOURTH duplicate in this dispatch and the
+// first of a new sort: W286's kind 16 and W298's 5/6/7 were the same table ENTRY, while these
+// two are duplicated CODE. Same lesson, different mechanism.
+//
+//   move.l D0,D7 / jsr $242E24 / andi.w #$1F,D0 / add.b D0,($18,A0)
+//   clr.w ($20,A0) / move.l D7,D0 / rts
+//
+// **And they do none of the shared speed and angle work.** No `$420`, no hook-offset add, no
+// `bsr $280C84`, no vector -- just a random 0..31 added to the BYTE at `($18,A0)` and the
+// waypoint long cleared. `$280B3E` itself only dispatches (`lea ($280BCE,PC),A1 / adda.w D0,A1 /
+// movea.l (A1),A1 / jsr (A1)`), so all of that work belongs to the hooks and the port had
+// hoisted it into the fill because all fifteen translated kinds happened to do it. These two are
+// why it is now gated on `sharedSpeedBody`.
+//
+// `move.l D0,D7` / `move.l D7,D0` around the draw is the other detail: the hook must not clobber
+// D0, because `$280B3E`'s caller still wants the kind.
+const FINISH_JITTER = Object.freeze({
+  hooks: 0x280c4e, status: null, sharedSpeedBody: false, jitterBlink: true,
+});
+
 const IMPACT_FINISH = Object.freeze({
   0x00: Object.freeze({ hooks: 0x280c4e, status: null, site: 0x280c5e }),
+  0x08: Object.freeze({ ...FINISH_JITTER, site: 0x280cf8 }),
+  0x0c: Object.freeze({ ...FINISH_JITTER, site: 0x280d10 }),
+  // W312 hook 17: the shared body, W287's hook BLOCK 1, and a status rewrite to $14 -- so it is
+  // one table row. `$280DBE move.w #$420,($1A,A0)` is what the shared fill already writes, and
+  // `$280DD0 lea ($280C1E,PC),A3` with `$242EC2 & $E` is the pattern `$280DEA` established.
+  0x44: Object.freeze({ hooks: 0x280c1e, status: 0x14, site: 0x280dba }),
   0x48: Object.freeze({ hooks: 0x280c2e, status: 0x18, site: 0x280dea }),
   0x4c: Object.freeze({ hooks: 0x280c3e, status: 0x1c, site: 0x280e1a }),
   ...FINISH_HOOKS_4_TO_7,
@@ -511,10 +544,13 @@ export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) 
     // The message must NOT read the ROM: $280BCE is code and in no window, so building
     // the diagnosis out of it would throw a DIFFERENT error than the one being reported.
     unreached(0x280bce, `$280BCE's finish dispatch has no translated entry for `
-      + `D0 = $${(kind >>> 0).toString(16).toUpperCase()}. FIFTEEN of its twenty are `
-      + `translated: $280C5E (D0 = 0), $280DEA ($48), $280E1A ($4C), W298's hooks 4..7 `
-      + `(two bodies, and 5/6/7 are the SAME entry $280D34), and W287's family of eight `
-      + `at indices 8..15 (one body over a hook block and a player record). `
+      + `D0 = $${(kind >>> 0).toString(16).toUpperCase()}. EIGHTEEN of its twenty are `
+      + `translated: $280C5E (D0 = 0), W312's hooks 2 and 3 ($280CF8 and the byte-identical `
+      + `$280D10, which do no speed work at all), W298's hooks 4..7 (two bodies, and 5/6/7 `
+      + `are the SAME entry $280D34), W287's family of eight at indices 8..15 (one body over `
+      + `a hook block and a player record), W312's hook 17 ($280DBA), $280DEA ($48) and `
+      + `$280E1A ($4C). The two that remain are indices 1 and 16, which are BOTH $280CEE `
+      + `and belong to allocBee27F92A rather than here. `
       + `Read $280BCE + $${
         (kind >>> 0).toString(16).toUpperCase()} out of the image to see which routine `
       + `this D0 wants, and port THAT rather than widening a window here`);
@@ -530,6 +566,11 @@ export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) 
     speedFrom242B3C: finish.speedFrom242B3C,  // W298: hooks 4..7
     speedBump: finish.speedBump,
     clearByte1: finish.clearByte1,
+    // W312: hooks 2 and 3 do NOT do the shared speed/angle work, so it is a hook property now
+    // rather than something every kind does. Defaulting to true keeps the fifteen kinds that
+    // were translated before this wave exactly as they were.
+    sharedSpeedBody: finish.sharedSpeedBody !== false,
+    jitterBlink: finish.jitterBlink,
     hookOffsets: Array.from({ length: 8 }, (_, i) => rom.u16(finish.hooks + i * 2)),
   };
   const d2 = u16((layer & 0xff) << 2);
@@ -574,6 +615,20 @@ function fillGeneralImpact280B3E(ram, rom, ctx, slot, kind, offset, d2,
   ram.setU16(slot + B.blinkTimer, spec.animWord);
   ram.setU16(slot + B.tpl1C, spec.tpl1C);
   ram.setU32(slot + B.layerEmitter, LAYER_EMITTERS[d2 >> 2]);
+
+  // W312: HOOKS 2 AND 3 END HERE. `$280CF8`/`$280D10` add a random 0..31 to the BYTE at
+  // `($18,A0)` and clear the waypoint long, and that is their whole body -- no `$420`, no
+  // hook-offset add, no speed, no angle, no vector. `$280B3E` only dispatches, so everything
+  // below belongs to the hooks and not to the fill.
+  //
+  // `move.l D0,D7` around `jsr $242E24` preserves the caller's D0; the port's D0 is a parameter,
+  // so the save is structural rather than something to reproduce.
+  if (spec.jitterBlink) {
+    ram.setU8(slot + B.blinkTimer,                        // $280D04 add.b D0,($18,A0)
+      (ram.u8(slot + B.blinkTimer) + (drawByte242E24(ram, rom) & 0x1f)) & 0xff);
+    ram.setU16(slot + B.waypoint, 0);                     // $280D08 clr.w ($20,A0)
+    return slot;                                          // $280D0E rts
+  }
 
   // `$280DEA/$280E1A`: initial even animation phase, then the shared random
   // speed/angle hook and cached `$241812` velocity.
