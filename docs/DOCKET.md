@@ -766,22 +766,39 @@ simply does not run.
     $28D53C  x3   PORTED (tallyscreen.js)    $28C6FA  x3   PORTED (hiscorename.js)
     $24018C  x9   **THE ONLY MISSING ONE**
 
-**Nine of the ten are already ported. The one that is not is `$24018C`, and it is called NINE
-times -- more than anything else in the arm.** It opens
+Nine of the ten were immediately recognisable as ported. The tenth, `$24018C`, is called NINE
+times -- more than anything else in the arm -- and the first pass of this analysis reported it as
+**the one missing routine**.
+
+### D30 CORRECTION: `$24018C` IS ALSO ALREADY PORTED, SO STATE 1 NEEDS **NO NEW PRIMITIVE AT ALL**
+
+Reading it to its `rts` instead of stopping at its first two instructions:
 
     24018c  move.l A0,-(A7) / move.l D0,-(A7)
-    240190  lea $80AD14,A0
-    240196  adda.w $80AFEE,A0
+    240190  lea $80AD14,A0 / adda.w $80AFEE,A0     the buffer+counter pair
+    24019c  addi.w #$C,$80AFEE                     bump by ONE 12-byte record
+    2401a4  D0 = D1 ; asr.l #6 ; andi.l #$07FF03FF ; ori.l #$80008000
+    2401b4  (A0)+ = D0.l ; (A0)+ = D2.l ; (A0)+ = D3.w ; (A0)+ = D4.w
+    2401bc  restore D0/A0 ; rts
 
-which is the buffer-plus-counter QUEUE idiom every sprite emitter in this port uses -- and
-`src/spritequeue.js:94` **already declares that pair**:
-`{ i: 26, buffer: 0x80ad14, counter: 0x80afee, capBytes: 120, site: 0x23d5d4 }`. Bucket 26, ten
-records of twelve. All nine of `$24018C`'s callers in the whole build are inside this one screen,
-so it is the transition screen's own emitter and nothing else depends on it.
+**That is `spritequeue.js`'s `enqueueRegisters(ram, bucket, d1, d2, d3, d4)`, instruction for
+instruction**, and its constants are already exported under the same values:
+`ENQUEUE_MASK = 0x07ff03ff`, `NO_ZOOM_OR = 0x80008000`, `RECORD_BYTES = 12`. The port transcribed
+the routine from `$23EFC6..$23EFEA`; `$24018C` is the SAME routine at a second address. And
+`BUCKETS[26]` resolves to exactly this pair -- verified at runtime: buffer `$80AD14`, counter
+`$80AFEE`, capBytes 120.
 
-**So the wave is: `$24018C` (a small writer into a bucket the port already has), `$25FF38` (twelve
-bytes), and state 1's arm.** Everything else it needs exists. That is the whole reason to do the
-static analysis before the wave rather than after.
+So every one of state 1's nine emit sites is **`enqueueRegisters(ram, 26, d1, d2, d3, d4)`**.
+
+**This is the `$24226E` trap for the third time this session**, and in the same shape: a routine
+that exists in the port under a DIFFERENT address's name, so searching for the address finds
+nothing. The lesson that keeps not being applied: **before calling a routine unported, read it to
+its `rts` and compare its BODY against what the port already has** -- an address search is not
+enough, and neither is reading its first two instructions.
+
+**So the wave is: `$25FF38` (twelve bytes) and state 1's arm, wired to `enqueueRegisters` on bucket
+26.** No new primitive whatsoever. That is a materially smaller wave than the first pass of this
+analysis claimed, which is the whole reason to do the static analysis before the wave.
 
 The five other routines the old note named are also now sized: `$25DA60` starts
 `move.w $813084,D6`; `$25DA94` and `$25DEAE` **share their first two instructions**
