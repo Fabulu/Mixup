@@ -80,8 +80,11 @@ test('W218 pins the type-$9F/$A4 closures and complete live art set',
       assert.equal(h.entries, entries);
       assert.equal(h.distinct, entries);
     }
-    assert.equal(manifest.spr.streamCount, 4194,
-      'W220 adds 64 live boss-part streams after the arrival body');
+    assert.equal(manifest.spr.streamCount, 4244,
+      'W220 adds 64 live boss-part streams after the arrival body; W275 adds the 50 '
+      + 'of the ship\'s dying animation, which is why this number moves whenever a '
+      + 'wave harvests art. Eleven test files pin it and all eleven get bumped '
+      + 'together -- the claim is "the bundle is what the tree measured", not a floor');
   });
 
 test('W218 real clock-$266 spawn damages, sheds a live fragment, and draws it',

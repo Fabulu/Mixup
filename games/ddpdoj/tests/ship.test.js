@@ -286,14 +286,27 @@ test('the aura does not draw at all when the ship is not invulnerable', {
   assert.equal(snapshotBucket(g.ram, 19).count, 24);
 });
 
-test('the ship\'s ALT entry throws by address on state bit 8', () => {
+test('the ship\'s ALT entry gates on bit 15 the OPPOSITE way to $24A440', () => {
+  // W275 replaced this test's original assertion. It used to check that bit 8 threw
+  // at `ROM.shipBit8`, which was true while `$24A6B4` was unported -- and it also
+  // encoded the INVERTED compare, because it drove `$8100` (bit 15 SET) to reach the
+  // bit-8 arm. The cartridge does the reverse: `$24A460 bmi` goes to the RTS, so bit
+  // 15 SET returns and bit 15 CLEAR runs the bit-8 test. See `scriptWalker24A6B4`.
   const ram = new Ram(null);
+  // bit 15 SET -> returns, whatever bit 8 says. No rom needed, because it never
+  // reaches the walker: if it did, `ctx.rom` being undefined would throw.
   ram.setU16(RAM.player1 + P.state, 0x8100);
-  const e = caught(() => drawShipAlt(ram, RAM.player1));
-  assert.ok(e instanceof Unreached);
-  assert.equal(e.romAddress, ROM.shipBit8);
+  assert.doesNotThrow(() => drawShipAlt(ram, RAM.player1, {}));
   ram.setU16(RAM.player1 + P.state, 0x8000);
-  assert.doesNotThrow(() => drawShipAlt(ram, RAM.player1));
+  assert.doesNotThrow(() => drawShipAlt(ram, RAM.player1, {}));
+  // bit 15 CLEAR and bit 8 CLEAR -> also returns, before the walker.
+  ram.setU16(RAM.player1 + P.state, 0x0000);
+  assert.doesNotThrow(() => drawShipAlt(ram, RAM.player1, {}));
+  // bit 15 CLEAR and bit 8 SET -> INTO the walker, which needs a cartridge. That it
+  // gets that far is the whole point, so assert on the attempt rather than skipping.
+  ram.setU16(RAM.player1 + P.state, 0x0100);
+  assert.throws(() => drawShipAlt(ram, RAM.player1, {}), TypeError,
+    '$24A466 bne $24A6B4 -- it reached the walker and asked for the cartridge');
 });
 
 // ================================================ 6. THE OPTION OBJECT, HELD

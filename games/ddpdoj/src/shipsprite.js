@@ -8,11 +8,15 @@
 //            $24A462 btst #8,D0 / bne $24A6B4
 //   $24A46C  ...                                                     P2, alt
 //
-// The `bmi` is bit 15 of the state word -- "this player exists".  The alt pair
-// is the *script-driven* draw at `$24A6B4` (bit 8 of the state word), which
-// walks a display program out of ($14,A6) and feeds bucket 19 through
-// `$23F294`.  MEASURED over all 2,233 drawn frames of `fly-around`: bit 8 is
-// never set, so `$24A6B4` never runs and it is a LOUD NAMED THROW here.
+// The `bmi` is bit 15 of the state word -- "this player exists" -- BUT THE TWO
+// PAIRS USE IT WITH OPPOSITE SENSES: `$24A448` jumps to the draw, `$24A460` jumps
+// to the RTS.  So the alt pair runs its bit-8 test only when bit 15 is CLEAR.
+// The alt pair is the *script-driven* draw at `$24A6B4` (bit 8 of the state word),
+// which walks a display program out of ($14,A6) and feeds bucket 19 through
+// `$23F294`.  Wave 12 measured bit 8 as never set over all 2,233 drawn frames of
+// `fly-around` and read that as "never runs"; the measurement was right and the
+// conclusion was not, because `fly-around` contains no death.  **`$24A6B4` IS THE
+// SHIP'S DYING ANIMATION** and it is ported in W275, below.
 //
 // WHAT THE BLOCK PRODUCES, measured rather than assumed.  `pgm.py shipgate`
 // dumps the board's own bucket-19 and bucket-5 staged bytes per logic frame:
@@ -391,44 +395,133 @@ export function drawShip(ram, rec, ctx) {
  *   24a462: btst #8,D0 / bne $24A6B4
  *   24a46a: rts
  */
-export function drawShipAlt(ram, rec) {
-  // ==========================================================================
-  // W274: **THIS LINE IS INVERTED AND IT IS DELIBERATELY LEFT THAT WAY. READ ON
-  // BEFORE "FIXING" IT, AND FIX IT ONLY TOGETHER WITH `$24A6B4`.**
-  // ==========================================================================
-  // The two entries are twelve bytes apart and read the same word with OPPOSITE
-  // senses, which is why one line got copied into both:
+export function drawShipAlt(ram, rec, ctx) {
+  // W275: **THE TWO ENTRIES READ THE SAME WORD WITH OPPOSITE SENSES**, twelve bytes
+  // apart, which is why one line was copied into both until W274 caught it:
   //
   //   24a448: bmi $24A482    <- $24A440 drawShip:  negative CONTINUES to the draw
   //   24a460: bmi $24A46A    <- $24A458 this one:  **$24A46A IS THE RTS**
   //
-  // So the cartridge returns here when bit 15 is SET, and tests bit 8 when bit 15
-  // is CLEAR. The port has it the other way round, which makes this arm dead by
-  // construction because a live player always carries bit 15.
-  //
-  // AND BIT 8 HAS A WRITER, on the DEATH PATH. `$24A118 andi.w #$2000,(A6) /
-  // $24A11C bset #$0,(A6)` leaves the state word at exactly `$2100` -- bit 15
-  // CLEAR, bit 8 SET -- and then writes `($14,A6) = $255B7C` and `($18,A6) = 6`,
-  // which are the walker's own program pointer and counter. Flipping the compare
-  // was tried in W274 and it turns W227/W228/W231 -- the three real-death tests --
-  // straight into `$24A6B4` throws. So the correct compare is not shippable until
-  // the walker is ported, and the port keeps a KNOWN-WRONG line rather than a
-  // known-broken death.
-  //
-  // W272's worklog claimed no instruction in `$240000..$2A6000` sets bit 8. That
-  // scan was run against `rip/sound/maincpu.bin` with a base of `$200000` when the
-  // file is offset-addressed, so it read the wrong bytes; **the claim is
-  // withdrawn.** `tools/rosetta.py codexref` and the audit in
-  // `tests/w274paletteset.test.js` are the instruments that hold.
-  if ((ram.u16(rec + P.state) & 0x8000) === 0) return;    // $24A460 bmi -- SEE ABOVE
+  // So this entry returns when bit 15 is SET and tests bit 8 when bit 15 is CLEAR,
+  // and bit 8 has a writer on the DEATH path (see `scriptWalker24A6B4` below). W274
+  // found the inversion and could not ship the fix, because flipping it without the
+  // walker turns the three real-death tests into throws. W275 ported the walker, so
+  // the compare is now the cartridge's.
+  if (ram.u16(rec + P.state) & 0x8000) return;            // $24A460 bmi -> $24A46A rts
   if (ram.u16(rec + P.state) & 0x0100) {                  // $24A462 btst #8,D0
-    unreached(ROM.shipBit8, `bit 8 of the player state word is set, which sends `
-      + `$24A458 into the script-driven display walker at $24A6B4: it follows `
-      + `($14,A6) -- WHICH IS THE HITBOX LONG, reused as a program pointer on `
-      + `this path -- through a command list whose opcodes 0/1/2 feed bucket 19 `
-      + `via $23F104 and $23F294. MEASURED 0 on every one of the 2,301 sampled `
-      + `frames of fly-around and never seen in any earlier corpus, so nothing `
-      + `here is measured and the port refuses to invent it`);
+    scriptWalker24A6B4(ram, rec, ctx);                    // $24A466 bne $24A6B4
+  }
+}
+
+/**
+ * `$24A6B4..$24A75C` -- THE SCRIPT-DRIVEN DISPLAY WALKER, and it is what the ship
+ * draws WHILE IT IS DYING.
+ *
+ * `drawShipAlt` above reaches it when bit 15 is CLEAR and bit 8 is SET, and the one
+ * thing in the bank that produces that pair is the death path:
+ *
+ *   24a118: andi.w #$2000,(A6)          the state word becomes exactly $2000
+ *   24a11c: bset   #$0,(A6)             ...then $2100
+ *   24a120: move.l #$255B7C,($14,A6)    THE PROGRAM POINTER, in the hitbox long
+ *   24a128: move.w #$6,($18,A6)         and the counter, six frames
+ *
+ * so `($14,A6)` really is the hitbox long reused as a program pointer, exactly as
+ * the note this replaces said -- and `($18,A6)` is `dirByte`'s word, likewise reused.
+ * The port reads both under their ordinary names with a comment rather than renaming
+ * two fields across six files.
+ *
+ * THE PROGRAM IS INDIRECT AND ITS OPCODES ARE LONGS.
+ *
+ *   $24A6CA movea.l ($14,A6),A2 / movea.l (A2),A2
+ *
+ * so `$255B7C` holds a POINTER (`$255C18`) and the stream is there. `move.l (A2)+,D2`
+ * then dispatches on the WHOLE LONG:
+ *
+ *   negative   end the walk ($24A6D2 bmi -> the rts at $24A6B2)
+ *   0          ($2a,A6) = the next long, ($2e,A6) = the next word    -- SET UP
+ *   1          $24A70E, the two-half split below
+ *   2          ($4,A6) = the next word                              -- MOVE
+ *   anything   D1 = ($2,A6) + ($2a,A6) as ONE LONG ADD, D2 = the opcode ITSELF,
+ *   else         D3 = ($2e,A6), D4 = ($28,A6), then emit
+ *
+ * **THE OPCODE IS ALSO THE DESCRIPTOR.** On the default arm D2 is not re-read; the
+ * long that failed to be 0, 1 or 2 IS the sprite. `$255C18`'s stream is
+ * `0 / $ED00F600 / $0E50 / $000642B4 / $FFFFFFFF` -- one set-up, one 7x80 record at
+ * descriptor `$000642B4`, then the terminator. Eighteen bytes, all inside the window
+ * `$255B7C+$9C`'s neighbour already covers.
+ *
+ * `$23F294` NEEDED NO NEW CODE. It is `$23F1FA` byte for byte -- same bucket 19
+ * buffer `$808EE4`, same counter `$80AFDC`, same `asr.l #6` / `andi.l #$7FF03FF` /
+ * `ori.l #$80008000` -- wrapped in `move.l A0,-(A7) / move.l D0,-(A7)` and the two
+ * pops. JS has no caller-clobbered registers, so the two are ONE call, which is the
+ * same argument `hud.js` already makes for its own pair.
+ */
+export function scriptWalker24A6B4(ram, rec, ctx) {
+  if (ram.u8(rec + P.state) & 0x04) return;               // $24A6B4 btst #$2,(A6) / bne
+  // $24A6BA..$24A6C4 -- while the counter runs, the ship's OWN record draws too, and
+  // the counter is decremented BEFORE the enqueue, so a seed of 6 gives six draws.
+  if (ram.u16(rec + 0x18) !== 0) {                        // $24A6BA tst.w ($18,A6)
+    ram.setU16(rec + 0x18, u16(ram.u16(rec + 0x18) - 1)); // $24A6C0 subq.w #1
+    enqueueRequest(ram, NAMED_BUCKETS.player, rec);       // $24A6C4 jsr $23F104
+  }
+  let a2 = ctx.rom.u32(ram.u32(rec + P.hitXPlus));        // $24A6CA / $24A6CE, INDIRECT
+  for (let guard = 0; ; guard++) {
+    if (guard > 256) {
+      // The ROM has no bound: a stream with no negative long walks the cartridge.
+      // Every stream this port can reach terminates, so this can only fire on a
+      // program pointer the game did not write -- say WHERE rather than spin.
+      unreached(0x24a6d0, `$24A6D0's opcode walk has read 256 longs from $${
+        ram.u32(rec + P.hitXPlus).toString(16).toUpperCase()} without meeting a `
+        + `negative terminator. The stream is data, so this means ($14,A6) is not a `
+        + `program pointer on this path`);
+    }
+    const op = ctx.rom.u32(a2);                           // $24A6D0 move.l (A2)+,D2
+    a2 += 4;
+    if ((op & 0x80000000) !== 0) return;                  // $24A6D2 bmi -> rts
+    if (op === 0) {                                       // $24A6D4 bne / fall through
+      ram.setU32(rec + 0x2a, ctx.rom.u32(a2));            // $24A6D6 move.l (A2)+,($2a,A6)
+      a2 += 4;
+      ram.setU16(rec + 0x2e, ctx.rom.u16(a2));            // $24A6DA move.w (A2)+,($2e,A6)
+      a2 += 2;
+      continue;                                           // $24A6DE bra $24A6D0
+    }
+    if (op === 2) {                                       // $24A6E8 cmpi.l #$2 / beq
+      ram.setU16(rec + P.posX, ctx.rom.u16(a2));          // $24A708 move.w (A2)+,($4,A6)
+      a2 += 2;
+      continue;                                           // $24A70C bra $24A6D0
+    }
+    if (op === 1) {                                       // $24A6E0 cmpi.l #$1 / beq
+      // $24A70E -- THE TWO-HALF SPLIT. It reads one more long and never uses it as a
+      // descriptor: D2 is what the emit sends, and both emits below run with D2 still
+      // holding this long, so it IS the sprite for both halves.
+      const d2 = ctx.rom.u32(a2);                         // $24A70E move.l (A2)+,D2
+      a2 += 4;
+      // $24A710..$24A718 -- ($2,A6) - $400 into D1's HIGH word.
+      const longAxis = u16(i16(ram.u16(rec + P.posY)) - 0x400);
+      const d4Base = ram.u16(rec + P.auraPhase);          // $24A72C/$24A752 ($28,A6)
+      // $24A71A subi.w #$1000,($4,A6) into D3 / bcs -- an UNSIGNED borrow, so the
+      // first half is skipped when posX is below $1000 rather than when it looks
+      // negative. Same trap as the aura's `subq/bcc`.
+      const above = u16(ram.u16(rec + P.posX));
+      if (above >= 0x1000) {                              // $24A722 bcs $24A736
+        const d3 = u16((u16(above - 0x1000) >>> 6) + 0x400);   // $24A726/$24A728
+        enqueueRegisters(ram, NAMED_BUCKETS.player,
+          packD1(longAxis, 0), d2, d3, d4Base);           // $24A724 clr.w D1 / $24A730
+      }
+      // $24A736..$24A742 -- the SECOND half, and its bound is a `bcc` on $3800.
+      const below = u16(above + 0x1000);                  // $24A73A addi.w #$1000
+      if (below >= 0x3800) continue;                      // $24A73E cmpi / bcc $24A6D0
+      const d3 = u16((u16(0x3800 - below) >>> 6) + 0x400); // $24A74A/$24A74C/$24A74E
+      enqueueRegisters(ram, NAMED_BUCKETS.player,
+        packD1(longAxis, below), d2, d3, d4Base);         // $24A744 / $24A756
+      continue;                                           // $24A75C bra $24A6D0
+    }
+    // $24A6F0..$24A706 -- THE DEFAULT ARM, and the opcode IS the descriptor.
+    // `move.l ($2,A6),D1 / add.l ($2a,A6),D1` is ONE 32-BIT ADD, so a carry out of
+    // the short axis reaches the long one. That is why `($2a,A6)` is a long.
+    const d1 = (((ram.u32(rec + P.posY) >>> 0) + ram.u32(rec + 0x2a)) >>> 0);
+    enqueueRegisters(ram, NAMED_BUCKETS.player, d1, op,   // $24A700 jsr $23F294
+      ram.u16(rec + 0x2e), ram.u16(rec + P.auraPhase));
   }
 }
 

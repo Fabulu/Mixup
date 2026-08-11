@@ -398,10 +398,10 @@ export function makeType5(rom) {
           }
           break;
         case ROM.shipDrawAltP1:                         // $24A458
-          drawShipAlt(ram, RAM.player1);
+          drawShipAlt(ram, RAM.player1, ctx);
           break;
         case ROM.shipDrawAltP2:                         // $24A46C
-          drawShipAlt(ram, RAM.player2);
+          drawShipAlt(ram, RAM.player2, ctx);
           break;
         case ROM.shipDrawP1:                            // $24A440
           drawShip(ram, RAM.player1, ctx);

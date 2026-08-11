@@ -73,7 +73,7 @@ test('W220 pins D9/D10 and the complete six-object visible asset set',
       const h = manifest.spr.harvest.find((x) => x.at === at);
       assert.deepEqual([h.entries, h.distinct, h.added], [entries, entries, entries]);
     }
-    assert.equal(manifest.spr.streamCount, 4194);
+    assert.equal(manifest.spr.streamCount, 4244);
   });
 
 test('W220 MAIN0 terminal runs D9, D10, and six boss draws in the same pass',

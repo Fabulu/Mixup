@@ -2385,6 +2385,25 @@ SHOT_WINDOWS.extend([
                        "far end pinned by W91's $222A78 window"),
     (0x2226F8, 0x0080, "W274: $241688's FOUR text palette blocks (4 x 32), "
                        "filling the hole between $222638+$C0 and $222778"),
+    # W275: `$24A6B4`'s DISPLAY PROGRAMS -- the ship's dying animation.
+    #
+    # `$24A6CA movea.l ($14,A6),A2 / movea.l (A2),A2` is a DOUBLE indirection:
+    # `($14,A6)` points into the pointer table `$255B7C` (39 longwords, already
+    # windowed as `$255B7C+$9C`, and its last entry is $FFFFFFFF -- the table
+    # terminates itself), and each entry points at an opcode stream here.
+    #
+    # THE EXTENT IS MEASURED BY WALKING ALL 38 REAL ENTRIES with the same opcode
+    # rules `scriptWalker24A6B4` uses (negative ends; 0 consumes 6 more bytes;
+    # 1 consumes 4; 2 consumes 2; anything else consumes nothing).  The highest
+    # byte any stream reads is $255DD7, and **the four bytes after it are
+    # `4D F9 00 81 1F 72` = `lea $811F72,A6` -- CODE**.  So the far end is pinned
+    # by the instruction that follows and nothing is guessed.
+    #
+    # $255330+$900 already covered $255330..$255C2F, which is why the first two
+    # streams resolved and the third did not.
+    (0x255C18, 0x01C0, "W275: $24A6B4's display programs $255C18..$255DD7, all 38 "
+                       "streams walked; far end pinned by the `lea $811F72,A6` at "
+                       "$255DD8"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

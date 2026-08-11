@@ -2053,6 +2053,25 @@ const STRUCTURE_RANGES = Object.freeze([
   [0x3298f4, 0x329c5c, 2, 'W267 D4: stride $1B4, closed by $1884'],
   [0x33252c, 0x3325a4, 10, 'W267 D4: stride $C, closed by $34'],
   [0x151e10, 0x152a90, 32, '3x32, stride 100. [M] 32 streams, closed by stride 228'],
+  // ----------------------------------------------------------------- WAVE 275
+  // THE SHIP'S DYING ANIMATION.  W275 ported `$24A6B4`, the script-driven display
+  // walker `drawShipAlt` reaches on the death path, and walking all 38 of its
+  // streams collects 49 distinct descriptors -- **every one of which was missing
+  // from the shipped sheet.**  So the animation would have computed correctly and
+  // drawn nothing, which is the same defect D3 and D4 were.
+  //
+  // The five runs below are the cartridge's own, read off the chain with
+  // `node tools/export-web.mjs --extent 0x588A4` and its two siblings.  They hold
+  // 50 streams for the walker's 49: one frame of one family is unreferenced, and
+  // the family ships whole for the reason W66's row already gives -- a family is
+  // closed by its stride CHANGING, not by which of its frames one run asked for.
+  [0x0588a4, 0x05d5e4, 16, 'W275: the ship death, stride $4D4, closed by $8F4'],
+  [0x05d5e4, 0x05e7cc, 2, 'W275: the ship death, stride $8F4, closed by $584'],
+  [0x05e7cc, 0x0629fc, 12, 'W275: the ship death, stride $584, closed by $1C4'],
+  [0x0629fc, 0x0642b4, 14, 'W275: the ship death, stride $1C4, closed by $234'],
+  [0x0642b4, 0x064fec, 6, 'W275: the ship death, stride $234, closed by $C. This is the '
+    + 'SIX-FRAME run $255B7C[0..5] walks, one descriptor per frame, and $24A128 '
+    + 'move.w #$6,($18,A6) is the same six'],
   [0x155c34, 0x156bb4, 32, '3x40 c12, stride 124. [M] 32 streams, closed by $156BB4 '
     + 'being stride 484. 55-diag Ã‚Â§2.2 calls this "a 16-frame 3x40 c12 run '
     + '$155D2C..$1569C4"; [M] it is 32, and it starts $DC lower'],
@@ -2090,7 +2109,7 @@ const STRUCTURE_STREAMS = Object.freeze([
   0x1727c4, 0x172d18, 0x1928bc, 0x192a48,
 ]);
 {
-  if (STRUCTURE_STREAMS.length !== 10 || STRUCTURE_RANGES.length !== 24) {
+  if (STRUCTURE_STREAMS.length !== 10 || STRUCTURE_RANGES.length !== 29) {
     throw new Error(`STRUCTURE_STREAMS holds ${STRUCTURE_STREAMS.length} `
       + `addresses and there are ${STRUCTURE_RANGES.length} chain ranges; `
       + 'W58 measured 18 and 4, W66 added the fifth ($12D430, 8 frames), and '
@@ -2098,7 +2117,8 @@ const STRUCTURE_STREAMS = Object.freeze([
       + 'into BGELEM_ART below, which enumerates all thirteen. W266 added THREE '
       + 'impact-pool animations, each sixteen frames ending on a template sprite, and '
       + 'W267 added SIXTEEN more for the rest of docket D4, every extent read off the '
-      + 'chain with the --extent probe.');
+      + 'chain with the --extent probe. W275 added FIVE for the ship dying '
+      + 'animation, whose 49 descriptors were all missing from the sheet.');
   }
   let added = 0, already = 0, chained = 0;
   for (const [base, endsAt, count, why] of STRUCTURE_RANGES) {

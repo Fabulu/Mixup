@@ -59,7 +59,7 @@ test('W216 exact Type-A3 closure and 49 newly shipped streams', { skip: SKIP }, 
     assert.deepEqual([h.entries, h.distinct, h.added, h.already],
       [entries, distinct, added, already]);
   }
-  assert.equal(manifest.spr.streamCount, 4194);
+  assert.equal(manifest.spr.streamCount, 4244);
 });
 
 test('W216 real clock-$234 carrier dies into Pool-A 18/19 and collects visibly',

@@ -28,8 +28,8 @@ owner cannot.
 
 ## Current product state
 
-- HEAD is W274, `ddpdoj: install the tally palette set and audit the no-caller claims`.
-- Suite: `node --test games/ddpdoj/tests/` is **1889/1889**, green, no skips.
+- HEAD is W275, `ddpdoj: draw the ship dying`.
+- Suite: `node --test games/ddpdoj/tests/` is **1901/1901**, green, no skips.
 - Stages 1, 2 and 3 have their known live spawn paths translated. Stage 3 is
   closed at 414/414 script records and 28/28 script types.
 - **THE STAGE-4 BOSS IS COMPLETE FOR EVERY REACHABLE PATH.** W246 through W263
@@ -49,16 +49,21 @@ owner cannot.
   reaches them); the `$281744` twins of A1 13's two fans (21 call sites behind a
   `bra`); type `$42`'s three call-site-less emitters; and `$2A3AFE` (a role-`$FF`
   child meeting `$8130F4 == 2`, which no translated path produces).
-- **A death works end to end** (W227, W228, W231): the animation, the reset, the
-  life spent, a fresh player object placed where its respawn entry says, `$F0`
-  frames of invulnerability, and the pods deploying to the exact `$24C928` target.
+- **A death works end to end AND NOW DRAWS** (W227, W228, W231, W275): the
+  animation, the reset, the life spent, a fresh player object placed where its
+  respawn entry says, `$F0` frames of invulnerability, and the pods deploying to the
+  exact `$24C928` target. W275 ported `$24A6B4`, the script-driven display walker the
+  ship runs WHILE DYING, and harvested the 49 sprites of the explosion -- all of
+  which were missing from the bundle, so the six frames of the death drew nothing.
 - The stage transition MACHINE works, its banner picture draws (W232), its
   palettes install (W236), both panels paint (W238, W239) and the `$900000` ring
   clears (W240); the rest of its presentation is the gap.
 - The bee popup works (W234), and the secondary explosion spawns (W235).
-- Sprite streams **4194**. `w230descriptorsweep.mjs` draws 718 distinct descriptors
+- Sprite streams **4244**. `w230descriptorsweep.mjs` draws 718 distinct descriptors
   from the shipped seed and 783 from the stage-2 rung (`--lf 19500 --frames 1800`),
-  with ZERO unresolvable in both.
+  with ZERO unresolvable in both. **Eleven test files pin the stream count exactly**
+  and all eleven get bumped together when a wave harvests art; `w218stage4.test.js`
+  carries the explanation.
 - **FIVE loop-2 rules exist**: W241's zero-lives extend (`$253794`), W250's A1 6
   (which changes both its shot count and its generator), A4 id6's two (`$2A1250`,
   `$2A1346`) and W270's `$260ACA` announcement choice. All read `$813098`. Stage 5
@@ -70,9 +75,9 @@ owner cannot.
   the four producers at `$260A20`/`$260A88`/`$260A9A`/`$260AB6`/`$260AF2`.
 - **The ship's draw path is verified against the board byte for byte** (W272): three
   bucket-19 records and five bucket-12 trail records, 100 frames out from the
-  cartridge's own RAM. See D8 -- there was no missing draw. **But W274 found that
-  `drawShipAlt`'s bit-15 compare is INVERTED and left it that way on purpose** --
-  work-order item 1 explains why and what has to land with the fix.
+  cartridge's own RAM. See D8 -- there was no missing draw. W274 found that
+  `drawShipAlt`'s bit-15 compare was INVERTED; W275 fixed it together with the walker
+  it reaches, which is the only way it could be fixed.
 - **The stage-clear SCORE TALLY works** (W273, W274): `$2600D8` posts a bonus line,
   drives all seven HUD rows per side, installs the tally's four palette banks
   (`$241688`) and recounts the live sides. Its only counted gap left is `$23C668`.
@@ -107,28 +112,20 @@ about it.** `w271hyperstock.test.js` has the mechanical form of the first check.
 
 ## Work order toward the goal
 
-1. **`$24A6B4`, THE SCRIPT-DRIVEN DISPLAY WALKER, AND THEN FLIP `$24A458`'s COMPARE.**
-   THE FIRST UNFINISHED ITEM. These are ONE job: the flip alone turns W227/W228/W231 --
-   the three real-death tests -- straight into `$24A6B4` throws, so the wave is not
-   done until the walker is in AND the flip is in AND those three are green.
-
-   `src/shipsprite.js:drawShipAlt` carries the full diagnosis at the line. In short:
-   `$24A448 bmi` continues to the draw and `$24A460 bmi` goes to the RTS, so the two
-   entries read the same word with OPPOSITE senses and the port has `drawShip`'s line
-   in both. Bit 8 has a writer on the DEATH path -- `$24A118 andi.w #$2000,(A6) /
-   $24A11C bset #$0,(A6)` leaves the state at exactly `$2100` and then writes
-   `($14,A6) = $255B7C` and `($18,A6) = 6`, the walker's own pointer and counter.
-
-   The walker's shape is read already; see worklog 274 for the opcode loop. Still
-   needed: the rest of op 1 past `$24A724`, a ROM window for the program at `$255B7C`
-   (whose first long is itself a pointer -- `movea.l (A2),A2`), and a check of
-   `$23F294`'s port. **This is player-visible: it is on the death path.**
-2. **Object dispatch `[11]` `$25DBB4` end to end.** W273 landed `$2600D8` and W274
-   closed its last gap, so `[11]` now needs only `$28D53C` (6 instructions) and
-   `$23C932` (9), both trivial; `$2533F6`, `$253448` and `$241292` were already
-   ported. It is 900 counted notes a run. Then **the four other announcement-poster
-   caller regions** -- `$25CDxx`, `$25D5xx`, `$2601xx`, `$288A02` -- which share the
-   protocol W270 landed.
+1. **Object dispatch `[11]` `$25DBB4` end to end.** THE FIRST UNFINISHED ITEM. W273
+   landed `$2600D8` and W274 closed its last gap, so `[11]` now needs only `$28D53C`
+   (6 instructions) and `$23C932` (9), both trivial; `$2533F6`, `$253448` and
+   `$241292` were already ported. It is 900 counted notes a run and it is the
+   stage-clear score tally's driver. Then **the four other announcement-poster caller
+   regions** -- `$25CDxx`, `$25D5xx`, `$2601xx`, `$288A02` -- which share the protocol
+   W270 landed.
+2. **WHAT ADVANCES `($14,A6)` THROUGH `$255B7C`.** W275 ported the walker and shipped
+   all 49 of its descriptors, but only entries 0..5 of the 39-entry pointer table are
+   KNOWN to be reached, because only `$24A120`'s write of `$255B7C` is transcribed.
+   The port already walks entry 1 during a real death, so **the advance exists and is
+   being done by code this port runs without a name for it.** Find the writer and the
+   other 32 frames get their trigger. `rosetta.py codexref 255B7C` is the way in, and
+   the art is already in the bundle so the fix is code-only.
 
 ### A rule this session paid for twice
 
