@@ -2408,3 +2408,37 @@ Two more private subroutines to read: `$26DB14` (called from both state 2's inne
 
 Still to read for `$47`: `$26DAD0..$26DAF2` (the draw body), `$26DAF4` (its table), `$26DB14`, `$26DC00`,
 `$26DCB6`.
+
+### `$47`'s DRAW BODY, `$26DAD0..$26DAF2` (W339) -- IT HAS NO TABLE INDEX
+
+    26dad0  41fa 0022    lea ($26DAF4,PC),A0
+    26dad4  4e71         nop
+    26dad6  2410         move.l (A0),D2          <-- NO `adda.w`. ALWAYS entry 0.
+    26dad8  move.l ($2,A6),D1
+    26dadc  addi.l #-$1BFF1600,D1                 = $E400EA00
+    26dae2  move.w #$1CB0,D3
+    26dae6  moveq #$0,D4 / move.b ($1D,A6),D4     <-- D4 from the PALETTE byte, not ($1C,A6)
+    26daec  jsr $23DECE
+    26daf2  rts
+
+**TWO THINGS HERE THAT EVERY SIBLING WOULD HAVE MISLED ME ABOUT, AND I DISPLAYED THE BYTES FIRST.**
+
+**1. NO INDEX.** `$49`, `$4A`, `$4B` and `$48` all do `lea table,A0 / adda.w ($1C,A5),A0 / move.l (A0),D2`.
+`$47` does `lea / nop / move.l (A0),D2` -- there is no `adda.w`, so the main draw ALWAYS uses entry 0,
+`$31A600`. The eight-entry table at `$26DAF4` (uniform step `$9A4`) is real, but the main draw never indexes
+into it; the remaining seven entries must be reached by the private subroutines (`$26DB14`, `$26DC00`,
+`$26DCB6`), which is consistent with a multi-part set-piece drawing its pieces from one table. **Do not add
+an index. Do not assume the ring counter feeds this.**
+
+**2. D4 COMES FROM `($1D,A6)`, THE PALETTE BYTE**, via `moveq #$0,D4 / move.b ($1D,A6),D4`. Every band
+member loads D4 from `($1C,A6)` with `move.w`. Here it is a BYTE from the next offset -- so `$47`'s draw
+passes its palette where its siblings pass their sprite/bank field. Getting this wrong swaps two fields at
+once and produces a set-piece drawn in the wrong colours from the wrong bank.
+
+This is the tenth time in this run that displaying beat inferring, and the first where the habit caught the
+error BEFORE it reached a document -- I expected an `adda.w` from four consecutive siblings and checked
+instead of writing it down. That is the whole return on the rule.
+
+Still to read for `$47`: `$26DB14`, `$26DC00`, `$26DCB6`. Then it can be written: two windows
+(`$26D740 + $A0`, and one covering `$26DAF4 + $20` for the eight-entry table), no unported prerequisite, and
+twelve traps documented above.
