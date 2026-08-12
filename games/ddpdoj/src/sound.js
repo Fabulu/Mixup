@@ -441,3 +441,31 @@ export function soundPost(ctx, wrapperAddr) {
 /** The wrapper table (read-only export for tests and the gate). */
 export const SOUND_WRAPPERS = WRAPPERS;
 export const SOUND_ENTRY = ENTRY;
+
+/**
+ * `$28D53C` -- THE `$81DF20` BUSY GATE.  Five instructions, **SIX callers**.  W344.
+ *
+ *     28d53c  tst.w $81DF20
+ *     28d542  beq $28D54C
+ *     28d546  ori  #$1,SR / rts        non-zero -> carry SET
+ *     28d54c  andi #$FFFE,SR / rts     zero     -> carry CLEAR
+ *
+ * **Carry SET means "not now".** That is this codebase's convention, now seen in five routines:
+ * `$281842`'s full pool (W336), `$26DC00`'s retry (W340), `$26FF9E`'s still-moving (W343), `$2593F8`'s
+ * search (W344) and this. All of them write SR directly with `ori`/`andi` rather than relying on an
+ * arithmetic side effect, so **when a caller has a `bcs`/`bcc` with no obvious flag source, look for an
+ * explicit SR write in the callee** -- and read the polarity AT the `ori`/`andi`, never at the caller's
+ * branch. I got that backwards once on `$26FFE2` (W343) having read the caller correctly.
+ *
+ * The transition screen's phase-0 arm uses it as its first real gate: `$25DC68 jsr $28D53C / bcs $25DCC0`
+ * abandons the START press when this returns busy.
+ *
+ * **`$81DF20`'s MEANING IS NOT MEASURED.** It has exactly three references -- this routine, `$28D59E` and
+ * `$28D5EC` -- all inside `$28D5xx`, so it is that subsystem's own flag and nothing outside writes it. The
+ * port models the GATE, not the flag: whatever sets `$81DF20` is in the two unread siblings.
+ *
+ * @returns {boolean} true when the caller should proceed (carry CLEAR), false when it should not
+ */
+export function busyGate28D53C(ram) {
+  return ram.u16(0x81df20) === 0;                          // $28D53C tst.w / $28D542 beq
+}
