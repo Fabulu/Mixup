@@ -1460,3 +1460,44 @@ difference between one line of nothing and an invented spawner.
 
 `$4A` therefore has one fewer prerequisite. Still unread: `$271B42..$271C28` (its fire), and
 `$271BC0`/`$271BD8` (draw and freeze tail).
+
+### `$4A`'s FIRE ARM, `$271B42..$271BC0` -- A SEVEN-SHOT AIMED FAN WITH A DRIFTING CENTRE (W336)
+
+    271b58  add.w (A1),D0 / add.w ($2,A1),D1        a muzzle bias pair out of $271C28
+    271b5e  jsr $24226E                             aim256FromCaller -- ALREADY PORTED (W323)
+    271b64  move.b D1,($20,A5)                      <-- THE AIM IS STORED IN ($20,A5)
+    271b68  subq.b #1,($26,A5) / bcc $271BC0        a THIRD cadence level
+    271b70  move.b ($27,A5),($26,A5)
+    271b76  moveq #$0,D1 / move.b ($20,A5),D1       the stored aim comes back as the centre
+    271b7c  move.l #$FFFF000B,D0
+    271b82  move.l ($2,A6),D2
+    271b86  lea ($271C28,PC),A1
+    271b8c  tst.b ($17,A5) / bne $271B9A
+    271b94  lea ($271C2C,PC),A1                     the mirrored muzzle -- TWO longs, not a table
+    271b9a  add.l (A1),D2                           ONE longword add, so a low-half carry reaches X
+    271b9c  moveq #$0,D3 / moveq #$0,D4
+    271ba0  subi.w #$9,D1                           start NINE units below centre
+    271ba4  move.w #$6,D7
+    271ba8  jsr $281764  /  addq.b #3,D1  /  dbra D7,$271BA8
+    271bb4  move.b ($22,A5),D0 / add.b D0,($20,A5)  the centre DRIFTS by ($22,A5) per volley
+    271bbc  subq.b #1,($24,A5)                      the volley counter the $271B22 gate reads
+
+**`move.w #$6,D7` + `dbra` IS SEVEN PASSES**, the standing DBcc rule -- `dbra` branches while the
+counter is not -1, so it runs at 6,5,4,3,2,1,0. With `subi.w #$9` first and `addq.b #3` after each, the
+headings are centre-9, -6, -3, 0, +3, +6, +9: a **symmetric seven-way fan at 3-unit spacing**. Six or
+eight would both be wrong and both would look plausible on screen.
+
+`$281764` is the same spawner `$49`'s second shot uses, and W336 measured that it preserves D1..D4 --
+which is exactly why this loop can mutate D1 alone between calls and leave D2/D3/D4 standing. **That
+measurement was for `$49` and it pays off again here**, unprompted, which is the argument for reading
+callees properly the first time.
+
+**CORRECTION TO THE `($20,A5)` FINDING ABOVE.** An earlier section called `($20,A5)`/`($21,A5)` "two
+RNG bytes". More precisely: the init SEEDS them from `drawWord242EC2`, and the fire arm then maintains
+`($20,A5)` as the live aim -- written from `$24226E`'s result at `$271B64` and drifted by `($22,A5)` at
+`$271BB8`. So it is RNG-seeded aim state, not scratch randomness. The warning that matters is unchanged
+and is the whole point: **it is not `$49`'s formation-flag pointer**, and treating it as one would
+dereference an aim byte.
+
+So `$4A` is a three-level-cadence, seven-way aimed fan turret whose aim wanders. Only `$271BC0` (which
+begins `subq.b #1,($1A,A5)`) and `$271BD8` remain unread, and both are short.
