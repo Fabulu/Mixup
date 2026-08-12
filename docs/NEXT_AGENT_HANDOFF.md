@@ -2537,3 +2537,35 @@ into a shared guard would invert this routine.
 
 Still to read for `$47`: `$26DCA2..$26DCA8` (six bytes -- the carry condition), `$26DC3C..$26DCA2`, and
 `$26DCCC..$26DCE0` (the rest of `$26DCB6`). Then the read is complete.
+
+### THE OPEN QUESTION IS ANSWERED: `$47`'s STATE-2/3 CYCLE TERMINATES (W339)
+
+    26dca2  subq.w #1,($4A,A6)
+    26dca6  beq $26DCB0          <-- ZERO, not underflow
+    26dcaa  ori  #$1,SR / rts     carry SET   -> $26DABA bcs -> stay in state 3
+    26dcb0  andi #$FFFE,SR / rts  carry CLEAR -> state 3 goes back to state 2 and re-seeds
+
+**`($4A,A6)` IS A REPEAT COUNTER AND THE CYCLE RUNS EXACTLY THAT MANY TIMES.** While it is non-zero
+`$26DC00` returns carry SET, `$26DABA bcs` sends `$47` to the draw and it stays in state 3. On the frame the
+counter REACHES zero, carry is clear, state 3 writes `#$2` to `($2E,A5)` and calls `$26DB14` to re-seed. So
+the set-piece cycles a bounded number of times rather than indefinitely -- the question left open two
+sections ago, now answered by displaying the six bytes rather than reasoning about them.
+
+**AND IT IS THE `$25354C` SHAPE, WHICH THIS PROJECT HAS ALREADY BEEN BITTEN BY.** `subq.w` + **`beq`** fires
+when the counter REACHES zero, not when it underflows. W29's `$25354C` note and the test in
+`integration.test.js` ("`$25354C` fires when `$81B410` REACHES zero, not when it underflows") exist precisely
+because six of seven W27 countdowns use the `subq`/`bcc` underflow shape and applying that heuristic to a
+`beq` one acts a frame late and then again every 65,536 frames. **`$47` now contains BOTH conventions**:
+`$26DC04`'s `subq.b`/`bpl` (signed, runs negative) and `$26DCA2`'s `subq.w`/`beq` (fires at zero), fourteen
+bytes apart. Neither is `due8`.
+
+Three countdown conventions are now attested in this ROM and `$47` uses two of them in one routine:
+
+    subq + bcc    fire on UNDERFLOW      the common shape; `due8` implements this
+    subq + bpl    run into NEGATIVES     $26DC04 -- thresholds at -2/-3
+    subq + beq    fire AT ZERO           $26DCA2, and $25354C (W29)
+
+**Read the branch mnemonic on every countdown.** It is two characters and it selects between three different
+behaviours.
+
+Still to read for `$47`: `$26DC3C..$26DCA2` and `$26DCCC..$26DCE0`. Everything else is read.
