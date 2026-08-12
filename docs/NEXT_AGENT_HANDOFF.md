@@ -446,9 +446,48 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
 
    Every constant above is in `docs/DOCKET.md` under D30. This is a transcription.
 
-### `$49` IS READ. Its init body is complete and its damage arm is a FOURTH variant.
+### `$49` IS READ END TO END AND VERIFIED AGAINST THE TYPE TABLE (W334). WRITE IT.
 
-Init `$27159E`, handler `$271640`. The init body, read in full:
+Type table `$267824 + $49 * 8 = $267A6C` reads `0027159e 00271640`, and the body address is not a
+fall-through: `spawn.js:219` computes `initBody = init + 8` (`$26361A addq.w #8,A1`), so
+`$27159E + 8 = $2715A6`. `codexref` finds NO code reference to `$2715A6`, which is expected and not
+a disassembly fault. Record it exactly as `$81` is recorded:
+
+    type $49    init $27159E  (($4,A5) = 0, ONE sub-record)   initBody $2715A6   handler $271640
+
+**THREE TRAPS, ANY ONE OF WHICH PRODUCES A WRONG `$49` (W334):**
+
+1. **The sub prototype OVERLAPS the handler.** `loadSubProto` copies `$20` bytes from `$271624`, so
+   `$271624..$271643`, and the handler starts at `$271640`. The record's `+$1C`/`+$1D` receive
+   `$72 $5C` and are immediately overwritten by the init (`$2715D2`, `$2715DE`); `+$1E`/`+$1F` keep
+   `$C2 $16`. The window must therefore cover `$271616..$271644` and span into code. That is legal
+   and deliberate -- declare it with this note or it reads as an off-by-one.
+2. **`$2716D8 tst.w $271774.l` IS DEAD. OMIT IT.** `$271774` is inside this routine; the word is
+   `$41FA`, the `lea` opcode. `$2716DE subq.b` then overwrites every flag before `$2716E2 bcc` reads
+   carry. Third instance in stage 5 of the ROM indexing its own instruction stream, after W326's
+   `$27460A` and W332's `$25DAC2`.
+3. **`$27172C neg.w D3` where D3 came from `move.l (A1),D3`.** Only the LOW word negates and there is
+   no borrow into the high word, so the mirrored variant flips Y and keeps X -- then `$27172E add.l`
+   lets a low-word carry reach X. A long negate would move the formation sideways.
+
+**`($20,A5)` IS A POINTER TO A FORMATION FLAG, NOT A VALUE.** `$2715F4..$271610` picks `$8130E0` when
+the scroll clock is `< $260` and `$8130E4` otherwise, stores the ADDRESS, and writes 1 through it.
+Both exits clear it through the pointer: the death arm at `$27168A` and the off-screen free at
+`$2716BE`. Storing the value breaks both.
+
+**THE FIRE TABLES, MEASURED.** `($1C,A5)` steps by 4 and wraps at `$78`, so 30 steps.
+
+    $27179C   30 LONGS, index RAW        draw sprite records, $316494 step $2A4
+    $271814   30 LONGS, index RAW        packed muzzle offsets
+    $27188C   30 WORDS, index ASR 1      ($17,A5) SET   -- $66 up by 6, then back down
+    $271904   30 WORDS, index ASR 1      ($17,A5) CLEAR -- $9A down by 6, then back up
+
+Two tables, one index, **two conventions**. The word values sweep out and return, so the attack is a
+30-frame fan and `($17,A5)` picks the starting direction. Spawners `$2816F6` (D0 = 4), `$281764`
+(D0 = `$FFFC0005`) and `$281744` (D0 = `$40003`, gated on scroll `>= $268`) are all already ported
+and reachable through `shoot`.
+
+The init body, read in full:
 
     27159e  move.w #$0,($4,A5) / rts            the stub -- run length ZERO
     2715a6  loadSubProto($271624)               SHORT form (first word $A000, bit 15 clear)
