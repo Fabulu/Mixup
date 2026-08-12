@@ -2279,3 +2279,39 @@ independently corroborates that `$803934`/`$803936` are the shake mode words `ba
 band ring. `($18,A5)`/`($19,A5)` are a cadence pair here, where in the band `($18,A5)` was the base palette.
 
 Still to read for `$47`: `$26D976` onward (state 2+), `$26DAC8` (the draw) and `$26DCB6`.
+
+### `$47` STATE 2, `$26D98E..$26D9E2` (W339) -- THE PACKED-LONG BORROW, DEMONSTRATED BY THE ROM ITSELF
+
+    26d98e  tst.w $8130D4 / bne $26DA74            the freeze (D4, not D2 -- $47 tests BOTH, separately)
+    26d998  movem.w ($2,A6),D0-D1                  SIGN-EXTENDING
+    26d99e  addi.w #-$580,D0  /  addi.w #-$800,D1   muzzle 1's WORD biases
+    26d9a6  jsr $24200A / bcs $26DA74              aim -- and a REAL `bcs` here, unlike $4A/$48
+    26d9b0  moveq #$D,D0 / move.l ($2,A6),D2
+    26d9b6  addi.l #-$5800800,D2                   = $FA7FF800   <-- NOTE THE HIGH WORD
+    26d9c0  movem.w ($2,A6),D0-D1
+    26d9c6  addi.w #-$580,D0  /  addi.w #$800,D1    muzzle 2: same X bias, OPPOSITE Y
+    26d9ce  jsr $24200A
+    26d9d4  moveq #$D,D0 / move.l ($2,A6),D2
+    26d9da  addi.l #-$57FF800,D2                   = $FA800800
+
+**THE ROM PRE-SUBTRACTS THE BORROW AND A PORT MUST NOT RE-DERIVE IT.** Muzzle 1's word biases are `-$580`
+(high) and `-$800` (low). Combining them naively gives `$FA80F800`. **The ROM's longword is `$FA7FF800`** --
+high word `$FA7F`, one LESS -- because as a single `addi.l` the low half's borrow takes one off the high
+half. Muzzle 2's low bias is POSITIVE, so no borrow, and its long `$FA800800` does match naive combination.
+
+So the two muzzles differ by exactly the borrow, and that is the cleanest demonstration in the whole port of
+why packed position offsets must be transcribed as the longword the ROM writes rather than assembled from
+the word pair. **Transcribe `$FA7FF800` and `$FA800800` literally.** Deriving either from `-$580`/`∓$800`
+gets muzzle 1 one unit off in X -- invisible in a test, visible as a misaligned muzzle.
+
+**`$24200A` IS KNOWN TO THE PORT**: `aim.js:81` carries it in the aim-variant table as `[0x24200a, 61]` --
+sixty-one callers. But `initbody.js:822` still holds a `note` for it in type `$80`'s init, so **check whether
+the variant is actually executed or only tabulated** before relying on it; that distinction is exactly what
+`grep 0x2xxxxx is NOT a test for "is this ported"` was written for.
+
+Two more `$47`-only details: it tests `$8130D4` here having tested `$8130D2` at `$26D7E0`, so it gates on
+BOTH freeze words at different points -- no band member does that. And `$26D9AC bcs` is a REAL carry test on
+the aim result, where `$4A` and `$48` have none and store the biased X instead (W323's trap). `$47` skips the
+volley properly.
+
+Still to read for `$47`: `$26D9E8..$26DAC8` (state 2's tail and state 3+), `$26DAC8` (the draw), `$26DCB6`.
