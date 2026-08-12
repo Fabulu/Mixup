@@ -4350,11 +4350,17 @@ freeze target). Everything before that is read.
     2724ea  subq.b #1,($1C,A5) / bcc $272536  arm A's cadence
     2724f2  move.b ($1D,A5),($1C,A5)
 
-**`($17,A5)` IS READ TWICE IN `$55` FOR TWO DIFFERENT PURPOSES.** At `$272424` it enables the spawn
-invulnerability; at `$2724E0` it selects between two behaviour arms -- arm A from `$2724EA` when it is zero, and
-`$272536` when it is not. So one parent-supplied byte simultaneously decides whether the child is protected
-AND which of two behaviours it runs. **A port that split those into two fields, or that read the byte once and
-cached a boolean, would couple or decouple them wrongly.**
+**`($17,A5)` IS READ TWICE IN `$55`, AND THE SECOND READ IS A THREE-WAY SELECTOR -- not the two arms I first
+wrote.** At `$272424` `tst.b` enables the spawn invulnerability for any non-zero value. Then:
+
+    2724e0  cmpi.b #$0,($17,A5) / bne $272536      0        -> arm A at $2724EA
+    272536  cmpi.b #$2,($17,A5) / blt $272582      1        -> $272582
+    272540  ... the sinusoidal drift ...           2 and up -> arm C at $272540
+
+So **one parent-supplied byte decides whether the child is protected AND which of THREE behaviours it runs**,
+and the value matters, not just its zero-ness. A port that read it once and cached a boolean would collapse
+arms B and C; a port that split protection and mode into two fields would let them disagree, which the
+cartridge cannot do.
 
 That is now FOUR distinct meanings for offset `+$17` across stage 5 -- mirror/table select in all four band
 members, a state number in `$47` and `$43`, and in `$55` both an invulnerability enable and an arm selector.
