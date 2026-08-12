@@ -4218,3 +4218,33 @@ ROM caller IS claimed, **that is the `tallyPhase0Arm25DC2C` bug** -- wire it.
 Both of this wave's process failures were invisible to the five-check definition of done: five duplicate ports
 (now guarded by `tools/claimed.py`) and one unreachable export (guarded by the two commands above). **Neither
 was a knowledge problem; both were checks I had not made mechanical.**
+
+### `$55` FIRST LOOK (W345) -- init `$272390`, handler `$272424`. IT IS A CHILD, AND ITS POSITION PROVES IT.
+
+`$55` is what blocks `$46`, the biggest remaining stage-5 type at 13 records (W317).
+
+    272390  move.w #$0,($4,A5) / rts       ONE sub record
+    272398  loadSubProto($272408)
+    2723a4  move.l ($16,A5),D0 / addi.l #$2000000,D0 / move.l D0,($2,A6)
+    2723b2  move.l ($1A,A5),($30,A5)
+    2723b8  moveq #$E,D0 / loadRecordProto($2723EA)     FIFTEEN words
+    2723c6  cmpi.w #$2800,($2,A6) / ...
+
+**IT NEVER CALLS `readInitPosition`. ITS POSITION COMES FROM `($16,A5)` PLUS `$2000000`** -- a pure high-word
+bias, so no borrow. `($16,A5)` is a field the PARENT writes, which is what makes `$55` a child rather than a
+spawnable type in its own right, and it is why W317 said `$46` "spawns an unported child". **So `$55` cannot be
+tested standalone**: any test needs `($16,A5)` and `($1A,A5)` seeded the way `$46` seeds them.
+
+`$2723B2 move.l ($1A,A5),($30,A5)` copies a long within the record before the prototype load, so the
+prototype does NOT overwrite it -- worth noting because `loadRecordProto` writes from `($16,A5)` onward and the
+order matters.
+
+**THE OVERLAP RULE HOLDS A SEVENTH TIME.** `($4,A5) = 0` means one `$20`-byte sub record, so
+`$272408 + $20 = $272428` against a handler at `$272424`: **four bytes**, exactly as the arithmetic predicts.
+Confirmed now at 4, 8, 4, 16, 4, 20 and 4 bytes across `$49`, `$4A`, `$4B`, `$47`, `$43`, `$4C` and `$55`.
+Window: `$2723EA + $3E` (fifteen-word record prototype plus the one sub prototype, `$2723EA..$272427`).
+
+**AND THE CENSUS IS SOUND.** Audited every remaining stage-5 entry point with `claimed.py` after the nine
+duplicates: `$272390`/`$272424` (`$55`), `$27102C`/`$2710E2` (`$46`), `$268D1E`/`$268E6C` (`$1A`) and all
+eight of `$4C`'s state handlers are genuinely unported. The duplicates were confined to shared primitives with
+role-based names; nothing in the type census was overstated.
