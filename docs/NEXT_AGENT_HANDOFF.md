@@ -3039,3 +3039,38 @@ one `G.scroll` subtraction, two flag words and `installBank` x3 -- all present i
 
 Still to read for `$4C`: the handler `$26F5F2` onward. Windows: `$26F55A + $AC` (prototypes, TWENTY-byte
 handler overlap) and whatever its draw table turns out to be.
+
+### THE DYING/RETIRE FLAGS ARE ALWAYS THE LAST TWO BYTES OF THE RECORD (W341) -- one rule for all of them
+
+`$4C`'s handler head is `$47`'s shape, and comparing the two settles an offset question six waves have been
+answering type by type:
+
+    26f5f2  tst.w $8130D2 / bne $26F704       the freeze -> the draw
+    26f5fc  tst.b ($9E,A6) / beq $26F622      the RETIRE trigger
+    26f604  move.w #$0,$8130DE                clears ONE flag -- see below
+    26f60c  pushExternalSpeed($20, $20) / jmp $263762
+    26f622  tst.b ($16,A5) / bne / tst.b ($9F,A6) / bne     the DYING flag
+    26f632  cmpi.w #$1F0,$8130CE              a scroll-clock EQUALITY, as the band's
+
+**`dying = size - 1` and `retire = size - 2`, where `size = (($4,A5) + 1) * $20`:**
+
+    ($4,A5)   size    retire   dying     types
+      0       $20     --       --        $49, $4B  (no flags at all; they free directly)
+      1       $40     +$3E     +$3F      $4A, $48
+      3       $80     +$7E     +$7F      $47
+      4       $A0     +$9E     +$9F      $4C
+
+Every type read this session fits. **So stop memorising these offsets and compute them from `($4,A5)`,** the
+same way the prototype-overlap depth is computed from it. Two structural facts now fall out of one field in
+the init's first instruction. And `$49`/`$4B` having no such flags is consistent rather than exceptional: at
+`$20` bytes the pair would land on prototype fields, so those types free directly instead.
+
+**THE ASYMMETRY: `$4C`'s RETIREMENT CLEARS ONLY `$8130DE`, NOT `$8130E0`.** Its init sets BOTH (`$26F518`,
+`$26F520`) and `$26F604` clears one. So either something else clears `$8130E0`, or `$4C` leaves it set --
+which, given `$269C6C`'s gate frees any record that sees ANY flag set, would permanently suppress the polling
+type for the rest of the stage. **Do not "fix" this by clearing both.** Transcribe the single clear, and
+`codexref $8130E0`'s fourteen references for another writer -- `$26F524` is `$4C`'s own init and the rest are
+listed in the sweep section above. If nothing clears it, that is a cartridge behaviour the port must
+reproduce, and it may be the mechanism that ends the stage's enemy spawning.
+
+Still to read for `$4C`: `$26F650` onward and `$26F704` (the draw).
