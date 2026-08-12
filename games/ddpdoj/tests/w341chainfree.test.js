@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { Unreached } from '../src/unported.js';
-import { freeChain246800 } from '../src/spawn.js';
+import { freeChain246800, buildParts246520, PARTS } from '../src/spawn.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IMAGE = path.join(HERE, '..', 'rip', 'sound', 'maincpu.bin');
@@ -101,4 +101,89 @@ test('W341 a CYCLE throws by address rather than hanging', () => {
   ram.setU32(NODE + 0x2c, NODE);            // points at itself
   assert.throws(() => freeChain246800(ram, NODE),
     (e) => e instanceof Unreached && e.romAddress === 0x246812);
+});
+
+// --- $246520 / $24652A, the constructor the chain-free tears down.
+
+test('W341 the two entry points differ ONLY in D6', { skip: SKIP }, () => {
+  assert.equal(IMG.readUInt32BE(0x246520), 0x48e77ff8, '$246520 movem.l D1-D7/A0-A4,-(A7)');
+  assert.equal(IMG.readUInt32BE(0x246524), 0x3c3c0001, '$246524 move.w #$1,D6');
+  assert.equal(IMG.readUInt16BE(0x246528), 0x6008, '$246528 bra $246532 -- skipping the other seed');
+  assert.equal(IMG.readUInt32BE(0x24652a), 0x48e77ff8, '$24652A the SAME prologue');
+  assert.equal(IMG.readUInt32BE(0x24652e), 0x3c3c0000, '$24652E move.w #$0,D6 -- the only difference');
+  // D6 lands in the parent's ($4,A1), then is REUSED as the node-walk counter eight bytes later.
+  assert.equal(IMG.readUInt32BE(0x246544), 0x33460004, '$246544 move.w D6,($4,A1) -- the MODE');
+  assert.equal(IMG.readUInt32BE(0x24654e), 0x3c3c0013, '$24654E move.w #$13,D6 -- D6 REUSED as a count');
+});
+
+test('W341 $24627A has THREE entries and index 3 is an instruction', { skip: SKIP }, () => {
+  assert.equal(IMG.readUInt32BE(0x24627a), 0x0080e886, '[0] first long');
+  assert.equal(IMG.readUInt32BE(0x24627e), 0x0080fa66, '[0] second long');
+  assert.equal(IMG.readUInt32BE(0x246292), 0x48e77f00, '[3] is movem.l -- CODE, which bounds the table');
+});
+
+test('W341 $246B38 is bounded by the ROM\'s own mask, not by a guard', { skip: SKIP }, () => {
+  assert.equal(IMG.readUInt32BE(0x2465a2), 0x0243001f, '$2465A2 andi.w #$1F,D3 -- 0..31 only');
+  assert.equal(IMG.readUInt16BE(0x2465a6), 0xd643, '$2465A6 add.w D3,D3');
+  assert.equal(IMG.readUInt16BE(0x2465a8), 0xd643, '$2465A8 add.w D3,D3 again -- so x4');
+  assert.equal(IMG.readUInt32BE(0x246b38), 0x00000004, '[0]');
+  assert.equal(IMG.readUInt32BE(0x246b38 + 31 * 4), 0x001c0001, '[31], the last reachable entry');
+});
+
+test('W341 the constructor claims a parent, links one node, and copies its payload', () => {
+  const ram = new Ram();
+  const rom = {
+    u16: (a) => (ROMW.has(a) ? ROMW.get(a) : 0),
+    u32: (a) => (((ROMW.get(a) ?? 0) * 0x10000) + (ROMW.get(a + 2) ?? 0)) >>> 0,
+  };
+  const ROMW = new Map();
+  const putW = (a, v) => ROMW.set(a, v & 0xffff);
+  const putL = (a, v) => { putW(a, v >>> 16); putW(a + 2, v & 0xffff); };
+  // $4C's table shape: count word, then one 12-byte node.
+  const TBL = 0x2701c8;
+  putW(TBL, 1);                                  // count = 1
+  putW(TBL + 2, 0x0000);                         // D2 -- dispatch index 0
+  putW(TBL + 4, 0x0480);                         // A3 bias
+  putL(TBL + 6, 0x00225238);                     // -> ($A,A2)
+  putW(TBL + 10, 0x0003);                        // -> ($4,A2): 3 means FOUR payload words
+  putW(TBL + 12, 0x0009);                        // -> the $246B38 index
+  putL(0x24627a, 0x0080e886);                    // dispatch entry 0
+  putL(0x24627e, 0x0080fa66);
+  putW(0x246b38 + 9 * 4, 0x1111);
+  putW(0x246b38 + 9 * 4 + 2, 0x2222);
+  for (let i = 0; i < 4; i++) putW(0x0080e886 + 0x0480 + i * 2, 0xaa00 + i);
+
+  const parent = buildParts246520(ram, rom, TBL, 1);
+  assert.equal(parent, PARTS.parentPool, 'the FIRST parent slot was claimed');
+  assert.equal(ram.u16(parent) & 0x8000, 0x8000, 'and marked occupied (negative)');
+  assert.equal(ram.u16(parent + 0x04), 1, 'D6 = 1 reached ($4,A1) as the mode');
+  const node = ram.u32(parent + 0x2c);
+  assert.equal(node, PARTS.nodePool, 'one node linked, at the pool base');
+  assert.equal(ram.u32(node + 0x2c), 0, 'and its own link is null -- end of chain');
+  assert.equal(ram.u32(node + 0x0e), 0x0080e886 + 0x0480, 'the sprite base is entry 0 + the bias');
+  assert.equal(ram.u16(node + 0x16), 0x1111, '($16,A2) from $246B38[9]');
+  assert.equal(ram.u16(node + 0x14), 0x1111, 'and the SAME word copied to ($14,A2)');
+  assert.equal(ram.u16(node + 0x1c), 0x2222, '($1C,A2) from the entry\'s second word');
+  assert.equal(ram.u32(node + 0x18), 0xffff0000, '+$18 seeded to $FFFF0000 -- what $24681A sums');
+  for (let i = 0; i < 4; i++) {
+    assert.equal(ram.u16(node + 0x30 + i * 2), 0xaa00 + i, `payload word ${i} at +$30`);
+  }
+});
+
+test('W341 an out-of-range dispatch index THROWS rather than reading code', () => {
+  const ram = new Ram();
+  const ROMW = new Map([[0x2701c8, 1], [0x2701ca, 0x0018]]);   // D2 = $18 -- past the three entries
+  const rom = { u16: (a) => ROMW.get(a) ?? 0, u32: () => 0 };
+  assert.throws(() => buildParts246520(ram, rom, 0x2701c8, 0),
+    (e) => e instanceof Unreached && e.romAddress === 0x246588);
+});
+
+test('W341 a full parent pool returns 0 without touching the node pool', () => {
+  const ram = new Ram();
+  for (let s = 0; s < PARTS.parentSlots; s++) {
+    ram.setU16(PARTS.parentPool + s * PARTS.parentStride, 0x8000);
+  }
+  const rom = { u16: () => 0, u32: () => 0 };
+  assert.equal(buildParts246520(ram, rom, 0x2701c8, 0), 0, '$246608 moveq #-$1,D0');
+  assert.equal(ram.u16(PARTS.nodePool), 0, 'and no node was claimed');
 });

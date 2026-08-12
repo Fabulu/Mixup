@@ -2743,6 +2743,26 @@ SHOT_WINDOWS.extend([
     (0x26DF00, 0x0040, "W341: type $43's SIXTEEN draw longwords, $26DF00..$26DF3F"),
 ])
 
+# W341: `$246520`'s two dispatch tables, and $4C's caller table.
+#   $24627A + $18   THREE 8-byte entries, indexed by a caller word used as a BYTE offset. Index 3 is
+#                   $48E77F00 -- an INSTRUCTION -- so only 0, 8 and $10 are reachable and the port
+#                   THROWS rather than clamping. Fourth instance in this ROM of a table bounded by its
+#                   own instruction stream, after $27460A (W326), $271774 (W335) and $2714B0 (W336).
+#   $246B38 + $80   THIRTY-TWO 4-byte entries, indexed by `(caller word & $1F) * 4`. The ROM's own
+#                   `andi.w #$1F` bounds it, so no guard is needed. Entry 32 reads 0000 0000.
+#   $2701C8 + $E    type $4C's caller table: a COUNT word (= 1) then count * 12-byte nodes. Its one
+#                   node is D2=$0000 off=$0480 long=$00225238 word=$001F D3=$0009, and $2701D6 onward
+#                   is CODE. The $001F is 32 words = $40 bytes, which exactly fills a $70-byte node
+#                   past its $30 header -- a fit that confirms the stride.
+SHOT_WINDOWS.extend([
+    (0x24627A, 0x0018, "W341: $246520's 3-entry x 8-byte dispatch table, $24627A..$246291 -- index 3 "
+                       "is CODE ($48E77F00), which is what bounds it"),
+    (0x246B38, 0x0080, "W341: $246520's 32-entry x 4-byte dispatch table, $246B38..$246BB7, bounded "
+                       "by the ROM's own andi.w #$1F"),
+    (0x2701C8, 0x000E, "W341: type $4C's $246520 caller table -- a count word (1) then one 12-byte "
+                       "node, $2701C8..$2701D5, ending where code begins"),
+])
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
