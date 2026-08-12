@@ -4115,3 +4115,44 @@ out-of-range Y rather than inventing a row. `$25D9E6` is the routine that makes 
 reading it may explain why that disagreement was survivable on the board.
 
 **Still unread: `$25D9E6`'s head, `$25DA04`, `$25DA10`, and `$25DA94`.** All short, all in one region.
+
+### `$25D9E6` IS A VALUE -> INDEX MAP, AND IT IS PHASE 0's LAST PIECE (W344)
+
+    25d9e6  move.l D0,-(A7) / move.l D1,-(A7)
+    25d9ea  cmpi.w #$FF,D6 / bne $25DA10          not the sentinel -> the SEARCH
+    25d9f2  tst.w D5 / bne $25DA04                 side 1 takes a different default
+    25d9f8  move.w #$0,D6 / move.w #$0,D7          side 0's default: 0, 0
+    25da04  ... side 1's default ...
+    25da10  moveq #$1,D0                           <-- #$1 + dbra = TWO, the X table's entry count
+    25da12  lea ($25D986,PC),A0                    SCREEN11.xTable, xEntries = 2
+    25da16  move.w D0,D1 / add.w D1,D1 / move.w (A0,D1.w),D1
+    25da1e  cmp.w D6,D1 / bne $25DA2A
+    25da24  move.w D0,D6                           FOUND -> D6 becomes the INDEX
+    25da2a  dbra D0,$25DA12
+    25da2e  moveq #$2,D0                           <-- #$2 + dbra = THREE, the Y table's count
+    25da30  lea ($25D98A,PC),A0                    SCREEN11.yTable, yEntries = 3
+    ... the same search for D7 ...
+
+**IT CONVERTS SAVED CURSOR *VALUES* INTO TABLE *INDICES*.** `$25DA60` loads raw words from
+`$813084`/`$813088`, this maps each to its position in `$25D986`/`$25D98A`, and `$25DA60` then stores the
+indices as bytes into `($E,A5)`/`($F,A5)` -- which is what the ported draw code indexes. **So the round trip
+is value -> index -> row offset**, and the port currently has only the last leg.
+
+**BOTH TABLES AND BOTH COUNTS ARE ALREADY IN `SCREEN11`** (`xTable`/`yTable`, `xEntries: 2`, `yEntries: 3`),
+and the counts match the `dbra` literals exactly -- `moveq #$1` is two passes and `moveq #$2` is three. That
+agreement is the check that this reading is right.
+
+**PHASE 0 IS NOW ONE WAVE FROM LANDING**, with nothing unported beneath it:
+
+    $25D9E6   value -> index, with the $FF per-side default    READ (above)
+    $25DA60   load this side's saved cursor, call the above     READ (W344 summary)
+    $25DA94   pick a free Y row                                 PORTED (pickFreeYRow25DA94)
+    $28D53C   the busy gate                                     ALREADY PORTED (menuCarry28D53C)
+    $260A88   the announce post                                 PORTED (postAnnounce260A88)
+    $23C668   the slot-table clear                              PORTED (clearSlotTable23C668)
+    $24150A   installBank                                       ALREADY PORTED
+    ($4,A4)   the descriptor's input read = $23D186              ALREADY PORTED
+
+**Still unread: `$25DA04` (side 1's default pair) and the Y half of the search, `$25DA34..$25DA5E`.** Both
+short, both in the routine above. Read those two, write `$25D9E6` and `$25DA60`, and phase 0's arm is
+transcribable in full -- after which follow its calls forward for the bonus-line driver, which is D24/D31.
