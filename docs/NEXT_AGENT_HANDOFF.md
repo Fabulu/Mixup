@@ -3074,3 +3074,30 @@ listed in the sweep section above. If nothing clears it, that is a cartridge beh
 reproduce, and it may be the mechanism that ends the stage's enemy spawning.
 
 Still to read for `$4C`: `$26F650` onward and `$26F704` (the draw).
+
+### `$8130E0` IS A *SHARED* FLAG, AND `$4C`'s "ASYMMETRY" WAS MY UNREAD SPAN (W341)
+
+The previous section flagged that `$4C` sets `$8130DE` and `$8130E0` but clears only `$8130DE`, and warned it
+might leave a flag stuck. Classified all fourteen references by the opcode preceding each:
+
+    READS  (tst.w)   $269C8E  $26A568  $26ACA0  $26AFDC  $26D4B4  $2702E6  $270446  $2778EC   -- EIGHT
+    WRITES (move.w)  $26C2B6 = 1   $26C520 = 0   $26CA64 = 0   $26F520 = 1   $26F6B6 = 0     -- FIVE
+    ADDRESS (lea)    $2715F4                                                  -- $49's pointer load
+
+**`$26F6B6` IS INSIDE `$4C`'s OWN HANDLER**, in the `$26F650..$26F704` span I had not read. So `$4C` clears
+`$8130DE` at `$26F604` on one exit and `$8130E0` at `$26F6B6` on another: two exits, two flags, no bug. **The
+asymmetry was my unread span, not the cartridge's.** Ninth or tenth time this session that an anomaly
+dissolved on displaying the bytes -- and this one I had already written into the handoff as a thing not to
+"fix", which was the right instinct for the wrong reason.
+
+**AND `$8130E0` IS NOT PER-TYPE.** Three other writers live in `$26Cxxx` -- `$26C2B6` sets it, `$26C520` and
+`$26CA64` clear it -- so at least one more type owns this same word, plus `$49` reaches it through a pointer.
+So the six-word block is **not** one-or-two-flags-per-type: `$8130E0` at minimum is shared between `$4C`,
+`$49` and whatever owns `$26C2B6`. Correct the map two sections above accordingly, and **do not treat any of
+the six as belonging to one type.**
+
+Eight readers is the number that matters for the port: whichever types those eight belong to all self-free
+while the flag is set (the `$269C6C` gate shape), so a missing clear suppresses eight code paths, not one.
+That is why the ROM is careful and why the port must be.
+
+Still to read for `$4C`: `$26F650..$26F704` (which contains that clear) and `$26F704` (the draw).
