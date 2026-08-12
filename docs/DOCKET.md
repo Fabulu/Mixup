@@ -1070,3 +1070,42 @@ to its rts, each time missing a span), `$4B` (predicted mark-and-fall-through fr
 `$2417DE` (two opposite wrong conclusions from one bad grep). **Displaying every byte from entry to `rts`
 before writing a conclusion is not optional, and it is least optional when the conclusion is about to be
 written somewhere actionable.**
+
+### D24/D31 (W342): SECOND LEAD ALSO RULED OUT, AND A THIRD THAT FITS THE SYMPTOM EXACTLY
+
+The correction above suggested `tables.hit` might be unpopulated or unwindowed. **Checked against
+`player.tables.json`'s 440 windows: all four hit tables ARE covered.**
+
+    p1   hit $24ED4E   covered by $24EC72 + $22E   (W188)
+    p2   hit $24F4AE   covered by $24F400 + $C00
+    pod0 hit $2519E0   covered by $2519E0 + $AA    (W188)
+    pod1 hit $2525D6   covered by $2525D6 + $AA    (W188)
+
+So the impact rows are readable and that is not the cause either. **Two leads ruled out; both were mine and
+both were plausible.**
+
+**THE THIRD LEAD FITS THE REPORTED SYMPTOM EXACTLY AND IS IN `hyperShotLaterHit`:**
+
+    function hyperShotLaterHit(ram, rom, rec) {
+      const n = subqBorrow(ram.u16(rec + S.animIdx), 4);
+      ram.setU16(rec + S.animIdx, n.v);
+      if (n.borrow) { ram.setU16(rec, 0); return; }      <-- KILLS THE RECORD
+      ...
+    }
+
+`hyperShotHit` calls it as its LAST act, and **nothing in `hyperShotHit` seeds `S.animIdx`** -- it loads
+`drawOff`, `dlWord4`, `animPtr` and `anim2` from the hit table and then falls straight into the decrement. So
+**if `animIdx` is 0 or 1..3 when the shot hits, the very first `subqBorrow(_, 4)` borrows and the record is
+zeroed on the same frame** -- the shot vanishes with no impact frames drawn, which is precisely
+"hyper when it hits just cuts off, it's missing all the hit sprites".
+
+**WHAT TO MEASURE (do this before changing anything):** read `$25413A`/`$25427E` to their ends and find
+whether the ROM writes the anim index on the hit path. If it does and the port omits it, that is the defect and
+the fix is one `setU16`. If it does NOT, then the ROM relies on `animIdx` holding a live value from the shot's
+flight, and the question becomes what the port leaves there instead.
+
+**Note the shape of this hunt, because it is the useful part.** The spawn call exists, the gate is correct, the
+table is windowed -- three things that all had to be checked and none of which was wrong. The remaining
+candidate is an UNSEEDED FIELD, which no `note` or `unreached` would ever flag because reading zero from RAM is
+legal. **Missing-effect bugs in this port are more likely to be unseeded state than missing code**, and that is
+worth trying first next time.
