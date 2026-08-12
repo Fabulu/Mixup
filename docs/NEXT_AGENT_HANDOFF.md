@@ -2032,3 +2032,35 @@ W169 found exactly that situation and needed no new window.
 Still to read for `$47`: the rest of the init body past `$26D738`, and the whole handler from `$26D7D0`.
 
 **W340 IS THE PUBLISH WAVE.** Land the next type, then `export-web.mjs` then `publish.mjs --only ddpdoj`.
+
+### `$47`'s HANDLER HEAD, `$26D7D0..$26D80E` (W339) -- IT REINSTALLS ITS PALETTE EVERY FRAME
+
+    26d7d0  move.w #$10,D0 / lea $224F38,A0 / jsr $24150A    <-- THE SAME THREE INSTRUCTIONS AS THE INIT
+    26d7e0  tst.w $8130D2 / bne $26DAC8                       the freeze, jumping FAR (the draw)
+    26d7ea  tst.b ($7E,A6) / beq $26D810                      a flag in the LAST sub-record
+    26d7f2  move.w #$0,$8130DC                                clears the global the init SET
+    26d7fa  move.w #$20,D0 / move.w #$20,D1 / jsr $261100     <-- $261100, a NEW callee. Read it.
+    26d808  jmp $263762                                      freeEnemy
+
+**THE PALETTE INSTALL IS NOT INIT-ONLY.** `$26D7D0` is byte-for-byte the init's `$26D728`: bank `$10` from
+`$224F38`, every single frame this handler runs. That is easy to read as redundant and delete, and it is the
+first instruction of the handler so it is also easy to skip past on the way to "the real logic". **Port it as
+the per-frame call it is.** Something else in stage 5 is presumably overwriting bank `$10`, and this type
+repainting it every frame is the mechanism that keeps it correct.
+
+**`$8130DC` IS A SINGLE GLOBAL, NOT A POINTER.** The init sets it to 1 (`$26D720`) and the retirement clears
+it (`$26D7F2`). Same purpose as the band's formation flags but with no `($n,A5)` pointer indirection -- `$47`
+has only one instance's worth of state to track, which fits a type with `$E2` records driven from one place.
+
+`($7E,A6)` is the retirement trigger. Note the offset: FOUR `$20`-byte sub records give a `$80`-byte record,
+so `+$7E` is the last word of the last sub-record. A port that allocated a band-sized record would write
+outside it.
+
+**`$261100` IS NOT YET IDENTIFIED** and is called with D0 = `$20` and D1 = `$20` on the retirement path.
+`codexref` it before writing `$47`: on this project's record a routine reached from a retirement path with two
+equal register arguments is likely shared, and W333's lesson was to port the shared callee FIRST rather than
+discover it mid-type.
+
+Still to read for `$47`: `$26D738` (one instruction, the init's tail), `$26D810` onward (the alive path), and
+`$26DAC8` (the draw). Its window is `$26D740 + $A0`; check `$224F38` against W91's existing palette family
+window before declaring a second one.
