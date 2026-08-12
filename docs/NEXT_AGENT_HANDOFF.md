@@ -4744,8 +4744,34 @@ read. So even the working mode needs a judgment about data versus code.
 written at read time. That is a different tool and a bigger change, and it is the thing that would
 actually stop the four-times-retracted "$55 is finished" pattern.
 
-**STILL UNREAD: `$27245C..$2724E0`, about `$84` bytes** -- the rest of the damage arm, and whatever
-bounds/freeze handling sits before the cascade. `$55` is NOT ready to write until that is read.
+### W351: the damage and death arm read -- standard shape, SIXTH already-ported callee
+
+    27245c  move.b ($1d,A6),D0 / move.b ($19,A5),D2 / eor.b D2,D0 / move.b D0,($1d,A6)
+                                            the palette XOR, same idiom as $4B
+    27246a  tst.w ($18,A6) / bpl $2724a0    HP sign bit -- not dead, skip the death arm
+    272472  move.l #$113,D0                 killScore = $113
+    272478  jsr $28615E                     scoreKill
+    27247e  jsr $28C2DC                     death cue -- IDENTICAL to T49's
+    272484  move.l ($2,A6),D2
+    272488  lea ($272850,PC),A1             the death list -- confirms W345's window from the CODE
+    27248e  jsr ($270d92,PC)                walkDeathSpawns270D92
+    272492  jmp $263762                     <- JMP, not a free
+    27249a  move.b ($18,A5),($1d,A6)        the not-hit path: palette base
+
+**`$55` neither frees itself nor marks-and-continues -- it TAIL-JUMPS to `$263762`.** That resolves the
+question the `$48`/`$49`/`$4A`/`$4B` band raised for this type, and it is a third answer, not one of the
+band's two.
+
+**`$263762` and `$28615E` are both already ported** -- `$263762` is `MOVE_EXIT`/`INIT_BODY_FREED` with 42
+code mentions; `$28615E` is `scoreKill` with 13, used by `death49`, `death81` and `death8E`. So the death
+arm's shape is `death49`'s, and the running total is **SIX callees, every one already written**:
+`$241D34`, `$8130D4`, `$24226E`, `$2816F6`, `$23DF86`, `$28615E` -- plus the `$263762` exit and the
+`$270D92` walker.
+
+**STILL UNREAD: `$2724A0..$2724E0`, about `$40` bytes** -- whatever sits between the not-dead branch
+target and the cascade, almost certainly the bounds and freeze handling. Narrowed from `$84`, and it is
+the last gap in the handler. **`$55` is not writable until it is read**, and given how many times I have
+called this type finished, that statement should be checked against the bytes rather than believed.
 
 What IS settled: all FIVE callees already ported (`shotVector` `$241D34`, FREEZE `$8130D4`, `aim256`
 `$24226E`, the emit `$2816F6`, the enqueue `$23DF86`); both tables already windowed (`$272750+$100`
