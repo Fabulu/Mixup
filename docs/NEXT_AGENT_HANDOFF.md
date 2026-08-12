@@ -4660,7 +4660,39 @@ behaviour change -- and since the stride is `$10` and `$80` is a multiple of it,
 to be safe in the ROM, which is exactly why a port that "tidies" it to `>=` would still look correct.
 **Reproduce the operators as written.**
 
-**`$55` IS READY TO WRITE.** Every span read, every helper and table already ported, no open trace.
+### W351: arm A's action contains a DEAD STORE, and the tail ends in a sprite enqueue
+
+    272508  move.w #$A001,(A6)
+    27250c  move.b #$1,($17,A5)      <- DEAD. Overwritten two instructions later.
+    272512  move.b #$2,($17,A5)      <- the effective value
+    272518  move.w #$4,($20,A5)
+    27251e  move.w #$FFFD,($22,A5)   -3
+
+**Arm A hands the record to mode 2, not mode 1.** There is no branch between `$27250C` and `$272512`, so
+the `#$1` store is simply dead -- almost certainly a development leftover. **Recorded so nobody "fixes"
+it into a mode-1 handoff**, and so nobody ports the `#$1` as though it were observable. Note this also
+means mode 1 (the stationary variant with no movement arm) is **never reached from arm A** -- it can
+only be parent-seeded.
+
+The tail's final two instructions resolve the drift entry's `+8` word:
+
+    27273e  move.w ($8,A0),D3        the entry's +8 word
+    272742  moveq #$0,D4 / move.b ($1d,A6),D4    zero-extended
+    272748  jsr $23DF86
+    27274e  rts
+
+**`$23DF86` is `enqueueRegistersThroughStub`, already ported** (11 mentions, 9 in code; `boss4.js:363`,
+and `handlers.js:1352` documents its register convention for a sibling). So the drift entry is
+`+0 long -> D2`, `+4 long -> packed position bias`, `+8 word -> D3 for the enqueue` -- every field
+accounted for, and the tail is a sprite enqueue rather than anything novel.
+
+Also confirms the table is data: `$272750` disassembles as nonsense (`ori.b #$50,(A7)` / an unknown
+`pmove` form), which is what a data window should look like through a disassembler.
+
+**`$55` IS READY TO WRITE, WITH ZERO UNKNOWNS.** Every span read; all FIVE callees already ported
+(`shotVector` `$241D34`, FREEZE `$8130D4`, `aim256` `$24226E`, the emit `$2816F6`, the enqueue
+`$23DF86`); both tables already windowed (`$272750+$100` W346, `$2735FA` inside W30's `$2735F0+$220`).
+**No new window, no new helper, no open trace.**
 
 Also still unseeded: `($1E,A5)`, `($17,A5)`, `($2E,A5)` and `($2F,A5)` have no writes in the handler either, so
 they are parent-supplied at spawn -- except `($17,A5)` and `($1E,A5)`, which the mode-2 arm writes itself
