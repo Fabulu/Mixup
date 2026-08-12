@@ -1311,3 +1311,37 @@ stage-clear screen, which W328-W332 built the rest of.
 **A NOTE ON WHAT `+$18` IS.** `tallyRequest25FF38` only ever writes `+$0`/`+$2`, so whatever populates `+$18`
 is in the unported nine. Until one of them is read, **do not assume `+$18` non-zero means "this side played"**
 -- that inference is what produced four wrong readings on this item already. Read the routine that writes it.
+
+### D24/D31 (W343): THE CHAIN, MEASURED END TO END, WITH ITS ONE REMAINING UNKNOWN
+
+Everything below is displayed, not inferred. **Two links are now ported; the top of the chain is the gap.**
+
+    ?                                          <-- UNKNOWN: $260580 / $2605A4 / $260788 have NO direct
+                                                   callers, so they are reached through a table
+      -> $26059E / $2605C2 / $2607A4              three `bsr`/`jsr` sites  -- UNPORTED
+        -> $25FF7A  bonus-line dispatcher         **PORTED W343** (tallyBonusDispatch25FF7A)
+          -> $25FF52[2] / [3] / [4]               three of ten bonus lines -- bodies UNPORTED (noted)
+            -> $25FD94  the flag computation      **PORTED W343** (playerFlags25FD94)
+              -> $81308C := 1 in one-player play
+                -> laser.js:1029 spawns the beam impact   **ALREADY CORRECT IN THE PORT**
+
+**So the two hardest links were the two that were missing, and both are now in.** What is left is the top:
+whatever drives `$260580`/`$2605A4`/`$260788`. `codexref` finds no direct caller for any of the three, which
+means a table selects them -- the same shape as `$25FF52` one level down, and as `$240F62[11]` selects the
+stage-clear object itself.
+
+**FINDING THAT TABLE IS THE WHOLE REMAINING TASK.** Search for absolute longwords `$00260580`, `$002605A4` and
+`$00260788` in `$200000..$2B0000` the way W343 found `$25FF52`'s extent -- if two or three of them appear
+consecutively at a fixed stride, that is the table, and its reader is the driver to port.
+
+**AND IT PROBABLY CONVERGES WITH WORK ALREADY ON THE DOCKET.** The stage-clear screen's phases 0 and 2 and the
+arm `$25DC2C..$25DD80` are unwritten (see the `$25DC2C` note in `tallyscreen.js` and the handoff). The bonus
+sequence has to be driven from somewhere in that screen's flow, so **porting the transition screen's remaining
+phases may deliver D24/D31 as a side effect** -- and vice versa. Two items, one blocker; do the transition
+screen and check whether the laser impact appears.
+
+**WHAT NOT TO DO:** do not call `tallyBonusDispatch25FF7A` from a frame loop or from state 1 speculatively to
+"make it fire". Its three real callers are unported and unidentified, and inventing a call site would post
+bonus requests at the wrong time -- which would corrupt the tally screen the owner already praised
+("stage transition looks fucking awesome now") in exchange for an effect that may appear anyway once the real
+driver lands.
