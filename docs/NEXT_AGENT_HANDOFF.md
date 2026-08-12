@@ -4278,3 +4278,34 @@ DESTROYS its copy by counting it down, and `($1A,A5)` has to survive for whateve
 just a forced value. Do not reach for the sink helper.
 
 Still unread for `$55`: `$272424..$27242A` (the entry, 8 bytes) and everything from `$27245C` on.
+
+### `$55`'s ENTRY AND DAMAGE ARM (W345) -- the invulnerability is itself OPTIONAL
+
+    272424  tst.b ($17,A5) / beq $272448      <-- the WHOLE timer block is skipped when ($17,A5) is 0
+    27242c  ... the invulnerability timer (previous section) ...
+    272448  moveq #$5C,D1 / and.b (A6),D1 / beq $27249A     the $5C mask -- an EIGHTH family member
+    272450  move.b #$A3,D0 / and.b D0,(A6)
+    272456  jsr $286096                       scoreHit
+    27245c  D0 = ($1D,A6) ; D2 = ($19,A5) ; eor.b ; store    the SIMPLE palette XOR, base+mask
+    27246a  tst.w ($18,A6) / bpl $2724A0
+    272472  move.l #$113,D0 / jsr $28615E     scoreKill $113 -- a `move.l`, not a moveq
+    27247e  jsr $28C2DC                       the band's cue, not $47/$4C's $28C310
+    272484  D2 = ($2,A6) ; lea ($272850,PC),A1 ; ...        its own death list
+
+**SO THE SPAWN INVULNERABILITY IS OPTIONAL AND THE PARENT CHOOSES.** `($17,A5)` gates the entire block: zero
+means no protection at all and the prototype's HP stands. Non-zero runs the `($30,A5)` countdown with HP forced
+to `$7FFF`. **Both `($17,A5)` and the timer's length come from `$46`**, so one parent can spawn protected and
+unprotected children.
+
+`($17,A5)` is a THIRD meaning for that offset in stage 5 -- the mirror/table-select bit in all four band
+members, a state number in `$47` and `$43`, and now an invulnerability enable. **Nothing about that offset is
+transferable.**
+
+Its damage arm is the SIMPLE `$5C` member -- base `($18,A5)`, XOR mask `($19,A5)`, no `hpFull` reload -- so it
+joins `$49`, `$4B` and `$48` rather than the `damageArm5C` variants. That makes eight family members now.
+
+Kill score `$113` via `move.l`, and the cue is `$28C2DC` (the band's), not the `$28C310` that `$47` and `$4C`
+use -- so `$55` sounds like an ordinary enemy despite being a set-piece child.
+
+Still unread for `$55`: `$27248C` onward (the death arm's tail, its walker call and its list length) and
+`$2724A0` onward (the alive path). Its death list is at `$272850`.
