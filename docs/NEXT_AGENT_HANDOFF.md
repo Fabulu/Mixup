@@ -4001,8 +4001,20 @@ whether its array reaches `$907000` (`$3000` further on) is unmeasured.
 that cannot run.** The reading is kept here because it is correct and the routine has SIX callers -- it opens
 the phase-0 arm AND bonus lines 1 and 2 (`$25FFA8`, `$260056`), so the D24/D31 chain runs through it.
 
-**WHAT IT NEEDS FIRST:** measure whether the `$904000` video object covers `$907000`, and if not, what models
-that address. Then `clearBlock23C668(vram)` is a four-line port with six callers waiting for it.
+**MEASURED (W344): `$907000` IS NOT IN ANY VIDEO OBJECT THE PORT HAS.**
+
+    TxVram   64 * 32 * 2 = 4096 words = $2000 bytes, base $904000  ->  covers $904000..$905FFF
+    BgVram   64 * 16 * 2 = 2048 words = $1000 bytes
+    $907000  is $1000 bytes PAST TxVram's end -- outside it, and outside BgVram
+
+**So this is not "a four-line port with six callers waiting", as I estimated one commit ago.** It needs a new
+video region first: something must model `$907000..$9073FF` before `$23C668` can write anything. That is a new
+subsystem decision (which object, what size, who else reads it), not a transcription.
+
+**`$907000`'s ROLE IS STILL UNMEASURED.** `$904000` is the text plane (`TxVram`, 8KB) and `$9000A4`/`$9000BC`
+in `handlers.js` are selected by `$803926`. `$907000` sits `$1000` past the text plane, so a second plane or a
+sprite region are both plausible and neither is measured. **Find its other readers before choosing a model** --
+`$23C668` only clears it, so the routine that READS it is what defines its shape.
 
 **REMAINING FOR PHASE 0:** `$28D53C` (6 callers), `$260A88` (6 callers), `$25DA60` and `$25DA94` (1 each,
 and `$25DA94` calls `$25DAEA` which the port HAS as `otherSideHolds25DAEA`), and the descriptor's `($C,A4)`
