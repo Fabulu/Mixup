@@ -4841,9 +4841,24 @@ dependencies existed in the port before this wave began: `$241D34`, `$8130D4`, `
 backoff, would be wrong twice over** -- wrong step and wrong emit -- and would look right because both
 paths produce a plausible fan.
 
-Still unread: the remainder of both fan bodies past their third emit, and `$272650..$272686`. The
-structure is now known to be three unrolled emits per pass in each variant, so what remains is confirming
-the third emit's step and each loop's `dbra`.
+**BOTH LOOPS NOW COUNTED FROM THE BYTES, and the variants are NOT three-emits-each:**
+
+    variant            emits/pass                                  dbra          passes   TOTAL
+    ($2E,A5) != 0      3 x jsr $2816F6  at $272648 $27265E $272674  $27267E->$27263A  D7=4 -> 5   15
+    ($2E,A5) == 0      5 x jsr $281744  at $2726A8 $2726BE $2726D4     $27270A->$27269A  D7=3 -> 4   20
+                                          $2726EA $272700
+
+**So the `($2E,A5) == 0` variant fires TWENTY shots and the other fires FIFTEEN.** My W346/W351 names for
+these -- "five-cluster" and "four-cluster" -- describe the pass counts and are actively misleading about
+volume: the variant with FEWER passes fires MORE bullets, because it unrolls five emits per pass instead
+of three. **Call them by their totals (15-shot and 20-shot), not by their cluster counts.**
+
+Consistent with the tighter step: the 20-shot variant steps `2` and backs off `$22`; the 15-shot variant
+steps `4` and backs off `$34`. Both stay roughly symmetric about the aim, but they are two distinct
+patterns with two distinct emit routines, not one pattern with two parameters.
+
+`$27267E` and `$27270A` are both `dbra D7` (`51cf`), confirming the `move.w #$N,D7` counters are loop
+counters and that the N+1 rule applies to both -- which is what makes it 5 and 4 passes rather than 4 and 3.
 
 What IS settled: all FIVE callees already ported (`shotVector` `$241D34`, FREEZE `$8130D4`, `aim256`
 `$24226E`, the emit `$2816F6`, the enqueue `$23DF86`); both tables already windowed (`$272750+$100`
