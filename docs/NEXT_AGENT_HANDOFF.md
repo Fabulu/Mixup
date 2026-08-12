@@ -4037,12 +4037,25 @@ Scanned every longword in `$200000..$2B0000` pointing into `$907000..$9073FF`. *
     2592d6  lea $907400,A1     <-- a SECOND buffer, exactly $400 further on
     2592dc  jsr $2593F8        ... called with BOTH in A0/A1
 
-**So the region is a PAIR of `$400`-byte buffers, `$907000` and `$907400`**, handed to `$2593F8` together --
-the shape of a double buffer or a source/destination pair. `$23C668` clears only the FIRST.
+**CORRECTION (same wave): `$907400` IS THE REGION'S *END*, NOT A SECOND BUFFER.** Reading `$2593F8` settles
+it:
 
-**THE MODEL TO BUILD:** one object covering `$907000..$9077FF` (`$800` bytes, two `$400` halves), addressed
-absolutely the way `TxVram.setLong` handles `$904000`. That is now a definite specification rather than the
-open question it was two commits ago, and with it `$23C668` really is four lines.
+    2593f8..259414   an inner loop: cmp.l (A0),D0 / bne / move.l D5,(A0) / addq.w #4,D2 / dbra D1
+    259418  lea ($4,A0),A0
+    25941c  cmpa.l A0,A1 / bne $2593F8      <-- A0 walks UP TO A1, so A1 is the EXCLUSIVE END
+    259420  andi #$FFFE,SR / rts            carry CLEAR = success
+
+So `$2592D0`/`$2592D6` pass a start and an end, not two buffers, and **the region is ONE `$400`-byte block,
+`$907000..$9073FF`** -- which is exactly what `$23C668` clears. The two facts agree, which is what makes this
+reading trustworthy where "a pair of buffers" did not explain why the clear covered only half.
+
+`$2593F8` itself is a **search-and-claim**: it scans the block a longword at a time for a value matching D0 and
+writes D5 into the first match, returning success in carry. So the block is a small table of `$100` longword
+slots, and `$23C668` empties it.
+
+**THE MODEL TO BUILD:** one object covering `$907000..$9073FF` -- **`$400` bytes, `$100` longword slots**,
+addressed absolutely the way `TxVram.setLong` handles `$904000`. Half the size I said one paragraph earlier,
+and it is the size `$23C668` clears, which is the check that the reading is right.
 
 **READ `$2593F8` BEFORE CHOOSING** -- it is the routine that consumes both halves, so it says whether they are
 double-buffered (swap each frame), a copy pair (A0 -> A1), or two independent planes. `$2593D2` is a second
