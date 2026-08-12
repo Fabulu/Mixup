@@ -3727,3 +3727,41 @@ time this session.
 
 Still unread for `$4C`: `$26F9C6` onward, `$26FA24`, `$26FA8A` onward, `$26FBA2`, `$270128` onward, and the
 six handlers from `$26FBD4`.
+
+### `$4C` SUBSYSTEM 2's RUNNER (W341) -- A DEAD CONDITIONAL, AND THE BORROW RULE AGAIN
+
+    26f9d0  move.w ($48,A6),D0 / add.w ($4A,A6),D0 / bne $26FA24   wait until BOTH counters are zero
+    26f9dc  moveq #$0,D0                                           <-- D0 := 0
+    26f9de  and.w $80390A,D0                                       <-- 0 AND anything IS 0
+    26f9e4  bne $26FA24                                            <-- SO THIS IS NEVER TAKEN
+    26f9e6  move.w #$1,($4C,A6)
+    26f9ec  moveq #$4E,D0 / jsr $263684        enqueueDeferred(type $4E, DEFQ_D1.FIXED00) -- PORTED
+    26f9f4  move.l ($2,A6),D0 / addi.l #-$3C01380,D0 / move.l D0,($16,A0)
+    26fa02  move.w #$FA00,($1A,A0)             a speed/heading PAIR: $FA / $00
+    26fa08  moveq #$4E,D0 / jsr $263684        a SECOND spawn
+
+**`$26F9DC..$26F9E4` IS A DEAD CONDITIONAL AND IT LOOKS COMPLETELY LIVE.** `moveq #$0,D0` then
+`and.w $80390A,D0` leaves D0 zero whatever `$80390A` holds, so the `bne` can never be taken. `$80390A` is in
+the player-input region (`movement.js` has `P2RAW = $803976`), so this READS as "only fire when the player is
+doing something" and is in fact unconditional. **Third kind of dead code this session** -- after `$2716D8`'s
+`tst.w` of a `lea` opcode (W335) and `$2714AE`'s bare `rts` (W336), this is a *test whose operand is forced to
+zero by the instruction before it*.
+
+**Omit the branch, keep the reading.** A port that modelled the input test would silence subsystem 2 whenever
+the player was idle, which is a plausible-looking bug nobody would trace to a `moveq`. And do NOT "repair" it
+to `move.w $80390A,D0`: that is a guess about intent, and the board runs the dead version.
+
+**THE BORROW RULE, A SIXTH TIME.** `addi.l #-$3C01380` is `$FC3FEC80`. Assembled naively from the word pair
+`-$3C0`/`-$1380` it would be `$FC40EC80` -- **one more in the high word**, because the low half's borrow takes
+one off. Transcribe the longword.
+
+Both spawns go through `$263684`, which is `enqueueDeferred` with `DEFQ_D1.FIXED00` -- **already ported**, and
+the same family `$43` uses at `$263678` with `FIXED80`. So subsystem 2 needs no new machinery: it waits for two
+counters, then queues two type-`$4E` objects with biased positions and a `$FA00` speed/heading pair.
+
+By the `$20`-stride finding, subsystem 3's runner at `$26FA82` should mirror this with `+$68`/`+$6A` counters
+and its own spawn type. **Read it rather than assuming the mirror** -- this band has punished that inference
+nine times.
+
+Still unread for `$4C`: `$26FA10` onward, `$26FA24`, `$26FA8A` onward, `$26FBA2`, `$270128` onward, and the six
+handlers from `$26FBD4`.
