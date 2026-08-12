@@ -4512,8 +4512,28 @@ Per-shot vector maths, identical in all three unrolled copies:
 **`$2816F6` IS ALREADY PORTED** -- 50 mentions, 44 in code, and `boss2attacks.js:231` shows it paired with a
 sibling `$281708` chosen by shot index. That is the FOURTH helper this type needed and already had.
 
-Still to find before writing: **where A0 is loaded** (a 256-byte long table, needs a window), and the seeds for
-`($1E,A5)`, `($17,A5)`, `($2E,A5)`, `($2F,A5)` at spawn.
+**A0 IS NEVER LOADED IN THE HANDLER -- IT IS LIVE-IN FROM THE DISPATCHER.** Scanning `$272390..$272634` for every
+`lea`/`movea` into A0 finds exactly three, and **all three sit below the handler entry at `$272424`**, inside the
+init body:
+
+    272398  lea $272408,A0   (PC-relative)   an inline table in the init body
+    2723b8  lea $2723EA,A0   (PC-relative)   the record prototype -- already windowed, W345
+    2723dc  lea $223AB8,A0   (absolute)      inside W91's existing $222A78..$2252F8 palette window
+
+Between `$272424` and the volley at `$272630` there is **no A0 write at all**, so the 64-long vector table the
+three unrolled emits index is whatever the caller left in A0.
+
+**So `$55` cannot be finished by reading. The last unknown is a TRACE, not a span** -- the same shape as `$1A`'s
+blocker at `$268D8C` (D2/D3 provenance). What has to be established is what the type dispatcher guarantees in A0
+on entry to a handler, and that is worth doing once for the whole family rather than for `$55`: if A0 is a
+dispatcher invariant, every handler that indexes `(A0,Dn.w)` without loading A0 depends on it, and the sixteen
+sites sharing the `adda.w ($1E,A5),A0 / move.l (A0),D2` idiom are the candidate list.
+
+Also still unseeded: `($1E,A5)`, `($17,A5)`, `($2E,A5)` and `($2F,A5)` have no writes in the handler either, so
+they are parent-supplied at spawn -- except `($17,A5)` and `($1E,A5)`, which the mode-2 arm writes itself
+(`$2725AA`/`$2725B0`). **`($17,A5)` is therefore BOTH parent-seeded and self-advancing**, which is why calling it
+"the parent-supplied parameter" was wrong in one direction and calling it "self-advancing state" was incomplete
+in the other.
 
 **AND A TOOLING TRAP THAT COST FOUR WRONG READS: `rip/sound/maincpu.bin` IS ADDRESSED BY RAW FILE OFFSET.**
 The address IS the offset -- do NOT subtract `$200000`. "Offset-addressed" in the older notes meant exactly
