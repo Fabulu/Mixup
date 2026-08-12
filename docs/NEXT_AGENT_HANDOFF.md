@@ -2738,3 +2738,35 @@ register provenance" to "needs a trace at one instruction", which is more action
 
 Remaining stage 5 after W340: `$46` (13 records, wants `$55` first), `$1A` (trace-blocked, above), `$43`,
 `$4C`, `$B0`. Five types, 20 records.
+
+### `$43` FIRST LOOK (W340) -- init `$26DDA4`, handler `$26DE32`. IT HAS NO `readInitPosition`.
+
+    26dda4  move.w #$0,($4,A5) / rts       ONE sub record -> FOUR-byte handler overlap
+    26ddac  loadSubProto($26DE16)
+    26ddb8  move.w #$4,D0 / loadRecordProto($26DE0C)     FIVE words -- a `move.w`, not a `moveq`
+    26ddc8  move.l #$30001C00,($2,A6)      <-- A FIXED SPAWN POSITION. No jsr $263808 ANYWHERE.
+    26ddd0  move.w $813172,D0 / sub.w D0,($4,A6)          scroll-compensated at spawn
+    26ddda  move.w #$12,D0 / lea $223578,A0 / jsr $24150A  palette bank $12
+
+**IT NEVER CALLS `readInitPosition`.** Every type read this session calls `$263808`; `$43` writes
+`($2,A6)` from a LITERAL instead and then subtracts `$813172` (`G.scroll`) from the X half. So it is a
+screen-anchored object placed at a fixed spot and corrected once for the scroll position at spawn -- which
+also means it is NOT affected by the `$263808`/D2/D3 indeterminacy that blocks `$1A`.
+
+`move.l #$30001C00,($2,A6)` is the same idiom type `$01` uses (`spawnPos: 0x38001c00`, W325), so this is a
+small shared family: fixed-position spawners that write the packed longword directly. Worth checking `$4C`
+and `$B0` for it too.
+
+**BOTH OUTSTANDING PALETTE SOURCES ARE ALREADY COVERED BY W91's WINDOW** (`$222A78..$2252F8`), checked
+arithmetically:
+
+    $223578   $43's bank $12    inside
+    $224F38   $47's bank $10    inside      <- resolves the check flagged in $47's sections
+
+So neither needs a declaration, and the W169 situation repeats: the palette-family window was drawn wide
+enough that later types need nothing. **Do not declare a palette window for either.**
+
+`$43`'s prototype window: `$26DE0C + $2A` (`$26DE0C..$26DE35`) -- five-word record prototype plus the ONE
+sub prototype, overlapping the handler at `$26DE32` by FOUR bytes, as `($4,A5) = 0` predicts.
+
+Still to read for `$43`: the rest of the init past `$26DDEA`, and the handler from `$26DE32`.
