@@ -4309,3 +4309,33 @@ use -- so `$55` sounds like an ordinary enemy despite being a set-piece child.
 
 Still unread for `$55`: `$27248C` onward (the death arm's tail, its walker call and its list length) and
 `$2724A0` onward (the alive path). Its death list is at `$272850`.
+
+### `$55`'s DEATH ARM AND ALIVE PATH HEAD (W345) -- it needs NOTHING new
+
+    27248e  jsr $270D92                      **the SHARED walker, ported W333/W336**, list $272850
+    272492  jmp $263762                      freeEnemy -- $55 FREES itself, no $8000 mark
+    27249a  move.b ($18,A5),($1D,A6)         the not-hit palette restore
+    2724a0  tst.w $8130D2 / bne $272722      the freeze, jumping FAR
+    2724aa  move.w ($2,A6),D1 / sub.w ($2A,A5),D1 / move.w D1,($2,A6)    a per-frame DRIFT
+    2724b6  jsr $24179E                      scrollCompensate
+    2724bc  addi.w #$1400,D0 / addi.w #$7400,D0    the TWO-addi.w bounds idiom
+
+**`$55` NEEDS NO UNPORTED CALLEE.** `$270D92` is `walkDeathSpawns270D92` with the default `anim` of 4 and its
+list is `$272850 + $3E` (FIVE 12-byte entries then `$FFFF`, measured). `$286096`, `$28615E`, `$28C2DC`,
+`$24179E`, `$2637A2`, `$26377A`, `$24150A` and `$263762` are all in the port. **So `$55` is writable now**, and
+with it `$46` stops being blocked.
+
+**IT USES THE TWO-`addi.w` BOUNDS IDIOM, not the band's signed long.** `$2724BC`/`$2724C4` are the
+`$1B`/`$81` shape, where `$49`/`$4A`/`$4B`/`$48`/`$47`/`$43` all use `ext.l`/`addi.l`/`cmpi.l`. So the
+deciding carry is the SECOND `addi.w`'s alone (W326's finding), and reading it as a signed long compare would
+change which side of the screen frees it.
+
+**AND IT DRIFTS BY A PARENT FIELD.** `$2724AA` subtracts `($2A,A5)` from the Y each frame -- a third value
+`$46` supplies, after `($16,A5)`'s position, `($1A,A5)`'s timer and `($17,A5)`'s invulnerability enable.
+**`$55` is almost entirely parameterised by its parent**, which is why W317 called it a child and why any test
+of it is really a test of the pair.
+
+Windows: `$2723EA + $3E` (declared W345) and `$272850 + $3E` for the death list -- **not yet declared.**
+
+Still unread: `$2724C4` onward (the bounds test's tail and the rest of the alive path) and `$272722` (the
+freeze target). Everything before that is read.
