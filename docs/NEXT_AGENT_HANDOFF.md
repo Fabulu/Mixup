@@ -2210,3 +2210,36 @@ said "one parameter and two `setU16`s". **`$47` can now be written as a single w
 Do keep the two names distinct in the port. The generalised helper should still record BOTH addresses in its
 docstring and the caller should pass the site (`0x271680`-style) so `bulletSpawn`/note attribution stays
 truthful about which ROM routine ran -- W333's `siteAddr` parameter already exists for exactly this.
+
+### `$47`'s ALIVE PATH, `$26D89C..$26D8FE` (W339) -- `($17,A5)` IS A STATE VARIABLE HERE
+
+    26d89c  moveq #$0,D0 / move.w ($2,A6),D0 / ext.l / addi.l #$4000
+    26d8aa  cmpi.l #$800,D0 / bgt $26D8CC        <-- limit $800, a FIFTH distinct value
+    26d8b4  tst.b ($16,A5) / beq $26D8D2
+    26d8bc  move.w #$0,$8130DC / jmp $263762     the off-screen free ALSO clears the global
+    26d8cc  move.b #$1,($16,A5)
+    26d8d2  jsr $24179E                          scrollCompensate
+    26d8d8  tst.b ($7F,A6) / bne $26DAC8         the mark -- and $26DAC8 IS THE DRAW
+    26d8e0  cmpi.b #$0,($17,A5) / bne $26D8F8    <-- ($17,A5) AS A STATE NUMBER
+    26d8ea  subq.w #1,($1C,A5) / bne $26D8F8     a WORD countdown, not a byte
+    26d8f2  move.b #$1,($17,A5)                  state 0 -> 1
+    26d8f8  cmpi.b #$1,($17,A5) / bne $26D976    state 1's arm begins
+
+**A MARKED `$47` STILL DRAWS.** `$26D8DC` branches to `$26DAC8`, the draw, so unlike `$48` and `$4A` --
+which test their mark before the draw and skip it -- a dying `$47` keeps being painted while it stops
+firing. That fits a scroll-stopping set-piece: the thing has to remain visible while it dies.
+
+**`($17,A5)` IS A STATE NUMBER, NOT A MIRROR FLAG.** In all four band members `($17,A5)` was the
+mirror/table-select bit written once by the init. `$47` uses it as a multi-state machine variable, tested
+with `cmpi.b #$0` then `cmpi.b #$1`, advanced by a countdown on `($1C,A5)`. **The band's reading of that
+offset does not transfer** -- and `($1C,A5)` is likewise a WORD countdown here where the band used it as a
+sweep/ring index.
+
+**Nothing about record offsets is portable between `$47` and the band.** `($17,A5)` state vs mirror,
+`($1C,A5)` countdown vs index, `($18,A6)` damage sink vs HP, `+$7F` mark vs `+$3F`, `($32,A5)` long HP
+where the band has none. Read every offset from `$47`'s own code.
+
+Five off-screen limits now, one idiom: `$2000` (`$49`), `$1C00` (`$4A`), `$400` (`$4B`), `$2C00` (`$48`),
+`$800` (`$47`).
+
+Still to read for `$47`: `$26D8FE..$26DAC8` (states 1+), `$26DAC8` (the draw) and `$26DCB6`.
