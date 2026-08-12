@@ -1384,3 +1384,42 @@ path, fire arm and draw, plus whether `($20,A5)`/`($21,A5)` feed cadence or aim.
 
 `$4B` is not yet read past its table entry, and is expected to share both the overlap trap and the
 mark-and-fall-through death.
+
+### `$4A`'s ALIVE PATH AND FIRE ARM, `$271AD8..$271B42` (W336 recon, continued)
+
+    271ad8  moveq #$0,D0 / move.w ($2,A6),D0 / ext.l / addi.l #$4000
+    271ae6  cmpi.l #$1C00,D0 / bgt $271B00        <-- $1C00, where $49 uses $2000
+    271af0  tst.b ($16,A5) / beq $271B06
+    271af8  jmp $263762                            the off-screen free -- and it does NOT touch a flag
+    271b00  move.b #$1,($16,A5)
+    271b06  tst.w $8130D2 / bne $271BD8            FREEZE -- and it skips to $271BD8, past everything
+    271b10  jsr $24179E                            scrollCompensate
+    271b16  jsr ($2714AE,PC)                       <-- UNREAD, and it is NOT in the port yet
+    271b1a  tst.b ($3F,A6) / bne $271BC0           <-- the DEATH MARKER, read by $4A ITSELF
+    271b22  tst.b ($24,A5) / bne $271B3E           a second-level cadence gate
+    271b2a  subq.b #1,($1E,A5) / bcc $271BC0
+    271b32  move.b ($1F,A5),($1E,A5) / move.b ($25,A5),($24,A5)
+    271b3e  lea ($271C28,PC),A1
+
+**REFINEMENT TO THE DEATH FINDING:** the previous section said "something else retires it later". The
+reader is LOCAL: `$271B1A` tests `($3F,A6)` and branches past the whole fire arm to `$271BC0`, so a
+marked-dead `$4A` **keeps drawing and stops firing**. That is the observable behaviour of the mark, and
+it is `$4A`'s own code that implements it. Whether anything ever frees the record is still open -- the
+only `freeEnemy` in the type is the OFF-SCREEN one at `$271AF8`, which suggests a dead `$4A` drifts off
+the top and is collected there.
+
+**Three more differences from `$49`, none of them inheritable:**
+
+  * the off-screen limit is `$1C00`, not `$2000`;
+  * the freeze at `$271B06` branches to `$271BD8` and skips the counter step, where `$49`'s freeze
+    branches INTO its counter step so the sweep keeps advancing. **Opposite behaviour from the same
+    idiom** -- do not copy `$49`'s freeze handling;
+  * the cadence is TWO levels (`($1E,A5)`/`($1F,A5)` reloading, gated by `($24,A5)`/`($25,A5)`), where
+    `$49` has one.
+
+**`$2714AE` IS A NEW CALLEE AND IS NOT PORTED.** It is called every unfrozen frame before the fire
+gate. Read it and `codexref` it FIRST -- on this band's record, it is likely shared with `$4B` and
+possibly `$48`, and porting it inside a type wave is the mistake W333 avoided by doing `$270D92` first.
+
+Still unread: `$271B42..$271C28` (the fire itself), `$271BC0`/`$271BD8` (the draw and the freeze tail),
+and `$2714AE`.
