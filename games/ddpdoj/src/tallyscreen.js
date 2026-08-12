@@ -750,6 +750,13 @@ export function tallyScreen25DBB4(ram, slot, slotIndex, ctx) {
     return;                                                // $25DCE8 rts
   }
 
+  // $25DC2C -- PHASE 0's ARM. W344 RUNS IT: START advances the phase, loads the cursor and announces.
+  // Reached here because state 1's cascade falls through to it, exactly as `$25DBCE bne $25DC2C` does.
+  if (tallyPhase0Arm25DC2C(ram, ctx?.rom, slot, ctx)) {
+    void slotIndex;
+    return;                                                // the arm advanced the phase this frame
+  }
+
   // $25DC2C onward -- THE BODY, still counted. The note is narrower than it was: the cascade above
   // and `$25FF38` (already here as `tallyRequest25FF38`) are done, and `$24018C` was never missing
   // -- it is `enqueueRegisters` on bucket 26, which `drawTallyHeader25DD80` now uses. What remains
