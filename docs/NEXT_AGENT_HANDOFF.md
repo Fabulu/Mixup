@@ -2225,9 +2225,12 @@ truthful about which ROM routine ran -- W333's `siteAddr` parameter already exis
     26d8f2  move.b #$1,($17,A5)                  state 0 -> 1
     26d8f8  cmpi.b #$1,($17,A5) / bne $26D976    state 1's arm begins
 
-**A MARKED `$47` STILL DRAWS.** `$26D8DC` branches to `$26DAC8`, the draw, so unlike `$48` and `$4A` --
-which test their mark before the draw and skip it -- a dying `$47` keeps being painted while it stops
-firing. That fits a scroll-stopping set-piece: the thing has to remain visible while it dies.
+**A MARKED `$47` DOES NOT DRAW. THIS SENTENCE PREVIOUSLY CLAIMED THE OPPOSITE AND WAS WRONG.**
+`$26D8DC` branches to `$26DAC8`, which I recorded as "the draw" -- but `$26DAC8` is itself
+`tst.b ($7F,A6) / bne $26DAF2`, and `$26DAF2` is `4E75`, an `rts`. So the mark is tested a SECOND time at
+the draw's own entry and a marked `$47` returns without painting, exactly like `$48` and `$4A`. I called
+`$26DAC8` the draw from the branch target alone without displaying its first instruction -- the same error
+this document records eight other instances of.
 
 **`($17,A5)` IS A STATE NUMBER, NOT A MIRROR FLAG.** In all four band members `($17,A5)` was the
 mirror/table-select bit written once by the init. `$47` uses it as a multi-state machine variable, tested
@@ -2375,3 +2378,33 @@ Muzzle 5's long `$13C00400` is the fifth data point for the borrow rule and it a
 naive combination correct.
 
 Still to read for `$47`: `$26DAAC..$26DAC8`, `$26DAC8` (the draw), `$26DB14` and `$26DCB6`.
+
+### `$47` STATE 3 AND THE DRAW ENTRY, `$26DAAC..$26DAD0` (W339) -- plus a correction
+
+    26daac  cmpi.b #$3,($2E,A5) / bne $26DAC8
+    26dab6  bsr $26DC00 / bcs $26DAC8            a subroutine that reports FAILURE through carry
+    26dabe  move.b #$2,($2E,A5)                  on success, back to state 2
+    26dac4  bsr $26DB14
+    26dac8  tst.b ($7F,A6) / bne $26DAF2         <-- the draw's OWN mark test
+    26dad0  lea ($26DAF4,PC),A0                  the draw table
+    26daf2  4E75                                 rts
+
+**CORRECTION, and it is the ninth of this kind in this run.** An earlier section here said "a marked `$47`
+STILL DRAWS", reasoning that `$26D8DC bne $26DAC8` jumps to the draw. `$26DAC8`'s first instruction is
+another `tst.b ($7F,A6)` whose `bne` lands on an `rts`. **A marked `$47` returns without painting**, the
+same as `$48` and `$4A`. I named `$26DAC8` "the draw" from the branch target alone, without displaying its
+first instruction. Corrected in place above.
+
+The pattern in every one of these nine: I described a span I had not displayed. The fix each time was one
+command. **Display the first instruction of every branch target before naming what it is.**
+
+**`($2E,A5)` STATES 2 AND 3 FORM A LOOP.** State 3 calls `$26DC00`, and on CARRY CLEAR returns to state 2
+and calls `$26DB14`; on carry set it falls through to the draw and stays in state 3. So `$26DC00` reports
+failure through carry -- read it before writing this, because "which way the carry means retry" decides
+whether the set-piece cycles or stalls.
+
+Two more private subroutines to read: `$26DB14` (called from both state 2's inner machine and state 3) and
+`$26DC00`. With `$26DCB6` that is three, plus the draw body from `$26DAD0`.
+
+Still to read for `$47`: `$26DAD0..$26DAF2` (the draw body), `$26DAF4` (its table), `$26DB14`, `$26DC00`,
+`$26DCB6`.
