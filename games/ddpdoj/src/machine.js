@@ -60,6 +60,13 @@ export const RAM = {
   rank: 0x80380c,            // operator rank, 0..3 (wave 2 item 7)
   objTable: 0x80e240,        // 20 slots x $50, $80E240..$80E87F
   objTableEnd: 0x80e880,
+  // W343: the $8130xx game-state block's own player bookkeeping, distinct from the
+  // $8103E6/$810448 OBJECT records below. Only `+$18` of each in-play record is read,
+  // and only for zero/non-zero. See `playerFlags25FD94`.
+  inPlay1: 0x8130fa, inPlay2: 0x81311e,
+  playerCountM1: 0x81308e,   // players - 1: $FFFF none, 0 one, 1 two
+  onePlayerFlag: 0x81308c,   // **1 in ONE-player play, 0 otherwise** -- not a count
+  freeze: 0x8130d2,          // $25FD82 sets, $25FD8C clears
   player1: 0x8103e6,         // the player OBJECT RECORD base ($62 bytes)
   player2: 0x810448,
   p1Options: 0x8104aa,       // two $20-byte option records
@@ -262,3 +269,59 @@ export const CLAMP = {
 // and bit4/5/6 = buttons 1/2/3, bit15 = start (measured: 1P Start alone gives
 // portin $FFFE and p1raw $8000).
 export const BIT = { up: 0, down: 1, left: 2, right: 3, b1: 4, b2: 5, b3: 6, start: 15 };
+
+/**
+ * `$25FD94` -- THE ONE-PLAYER FLAG AND THE NO-PLAYERS FREEZE.  W343.
+ *
+ * **`$81308C` IS A ONE-PLAYER FLAG, NOT A PLAYER COUNT.**  The routine counts, then
+ * subtracts one, then INVERTS the result into a 0/1 flag, and only the last step
+ * decides what the value means:
+ *
+ *     25fda0  clr.w $81308C
+ *     25fda6  move.l ($18,A2),D0 / beq / addq.w #1,$81308C     A2 = $8130FA
+ *     25fdb4  move.l ($18,A3),D0 / beq / addq.w #1,$81308C     A3 = $81311E
+ *     25fdc2  subq.w #1,$81308C                               count MINUS ONE
+ *     25fdc8  move.w $81308C,$81308E                          ... kept in $81308E
+ *     25fdd2  bsr $25FD8C                                     clr.w $8130D2  (unfreeze)
+ *     25fdd4  cmpi.w #-$1,$81308E / bne $25FDE2
+ *     25fde0  bsr $25FD82                                     move.w #$1,$8130D2 (FREEZE)
+ *     25fde2  cmpi.w #$0,$81308C / bne $25FDF8
+ *     25fdee  move.w #$1,$81308C / rts        <-- ONE player  -> 1
+ *     25fdf8  clr.w $81308C / rts             <-- two or none -> 0
+ *
+ *     0 players -> $81308E = $FFFF, FREEZE,  $81308C = 0
+ *     1 player  -> $81308E = $0000,          $81308C = 1
+ *     2 players -> $81308E = $0001,          $81308C = 0
+ *
+ * **THIS IS DOCKET D24/D31.**  `laser.js:1029` gates the beam impact on
+ * `$81308C !== 0`, and the ROM agrees (`$255056 tst.w / beq` skips `jsr $289FC0`).
+ * The port never wrote `$81308C`, so it was permanently 0 and **the laser hyper's
+ * impact effect never spawned in one-player play** -- exactly the owner's report.
+ * Reading only as far as the `subq` says the opposite (that the effect is 2P-only),
+ * which is what four earlier readings of this concluded; the inversion at `$25FDE2`
+ * is what settles it, and it is nine bytes past where I kept stopping.
+ *
+ * `$8130FA` and `$81311E` are the two players' IN-PLAY records in the `$8130xx`
+ * game-state block -- NOT the `$8103E6`/`$810448` object records.  Only their `+$18`
+ * longword is examined, and only for zero/non-zero.
+ *
+ * @returns {{count: number, onePlayer: boolean, frozen: boolean}} for callers and tests
+ */
+export function playerFlags25FD94(ram) {
+  let n = 0;
+  if (ram.u32(RAM.inPlay1 + 0x18) !== 0) n += 1;           // $25FDA6/$25FDAE
+  if (ram.u32(RAM.inPlay2 + 0x18) !== 0) n += 1;           // $25FDB4/$25FDBC
+  const cm1 = (n - 1) & 0xffff;                            // $25FDC2 subq.w #1
+  ram.setU16(RAM.playerCountM1, cm1);                      // $25FDC8 -> $81308E
+  ram.setU16(RAM.freeze, 0);                               // $25FDD2 bsr $25FD8C
+  const frozen = cm1 === 0xffff;                           // $25FDD4 cmpi.w #-$1 / bne
+  if (frozen) ram.setU16(RAM.freeze, 1);                   // $25FDE0 bsr $25FD82
+  const onePlayer = cm1 === 0;                             // $25FDE2 cmpi.w #$0 / bne
+  ram.setU16(RAM.onePlayerFlag, onePlayer ? 1 : 0);         // $25FDEE / $25FDF8
+  return { count: n, onePlayer, frozen };
+}
+
+/** `$25FD82` / `$25FD8C` -- the freeze setter and clearer, two instructions each. Exported because
+ *  `$25FD94` is not their only caller and the pair is the port's canonical way to touch `$8130D2`. */
+export function setFreeze25FD82(ram) { ram.setU16(RAM.freeze, 1); }
+export function clearFreeze25FD8C(ram) { ram.setU16(RAM.freeze, 0); }
