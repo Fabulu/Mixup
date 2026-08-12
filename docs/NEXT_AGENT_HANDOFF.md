@@ -4598,9 +4598,43 @@ Two calling-convention facts fall out, both usable now:
   across the call boundary cannot live in D6.
 
 **And this RETRACTS the framing of `$55`'s blocker.** I wrote that A0 is "live-in from the dispatcher". It is not:
-neither dispatch site sets it. A0 at `$263538` is whatever the enemy loop above `$263524` last left there, so the
-trace goes UP into that loop, not into the dispatcher. **The dispatcher was the wrong place to look and is now
-ruled out** -- which is progress, but narrower than a solved trace.
+neither dispatch site sets it. **The dispatcher was the wrong place to look.**
+
+### W349: the A0 trace RESOLVED -- it leaks out of `aim256`
+
+The per-frame loop is `$263502`, and it does not set A0 either:
+
+    263502  clr.w $815E9C / $815E9E / $815EA0
+    263514  lea $81332C,A5          the enemy record array
+    26351a  move.w #$39,D6          $39 -> FIFTY-EIGHT records, dbra
+    26351e  tst.w (A5) / beq        empty slot -> skip
+    263532  movea.l ($4C,A5),A1 / jsr (A1)
+
+**That also explains the D6 save/restore exactly: D6 is the loop's own `dbra` counter**, so the caller must
+protect it across a handler that may clobber it.
+
+So A0 is set by neither the dispatcher nor the loop -- it is **whatever the last callee left**, and in `$55`'s
+mode-3 arm the last callee is `$2725F8 jsr $24226E`, aim256, which **ends by loading A0 with one of three
+PC-relative tables of its own**:
+
+    2422ec  lea ($74,PC),A0  -> $242362    byte ramp: 00 01 02 02 03 04 04 05 06 06 07 07 ...
+    2422f6  lea ($5A,PC),A0  -> $242352    quadrant words: 0040 0080 0040 0000 00c0 0080 ...
+    242304  lea ($0C,PC),A0  -> $242312
+
+**All three are already claimed in `src/` (one CODE mention each), so `aim.js` models them.** So `$55`'s volley
+does not need a new table or a new window -- it needs to know WHICH of the three aim256 selected, because
+`move.l (A0,D3.w),D3` reads through exactly that register.
+
+**This is a real coupling and the port must model it deliberately: `aim256` returns an angle AND leaves a table
+selection in A0, and `$55` consumes both.** A port that returns only the angle silently loses the second half and
+`$55`'s fifteen bullets get vectors from whatever table the JS happens to have in scope. The fix is to have
+`aim256` report its selected table alongside the angle, then have `$55` index that -- not to re-derive a table
+from the entry bytes.
+
+Caveat kept honest: which of the three is selected depends on the path taken inside aim256, and I have not read
+those paths. The `$242312` target also disassembles as CODE (`add.w D0,D1 / andi.w #$FF,D1 / rts`) rather than
+data, so either that third `lea` decode is wrong or it is doing something other than table selection. **Read
+aim256's three exits before wiring this.**
 
 **So `$55` cannot be finished by reading. The last unknown is a TRACE, not a span** -- the same shape as `$1A`'s
 blocker at `$268D8C` (D2/D3 provenance). What has to be established is what the type dispatcher guarantees in A0
