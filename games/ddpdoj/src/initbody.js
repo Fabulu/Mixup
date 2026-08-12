@@ -2342,4 +2342,33 @@ export function runInitBodyAddr(addr, ram, rom, a5, unported, tables, palette,
 }
 
 export const INIT_BODY_FREED = FREED;
+// --- type $55 ($272390 init, $272398 body): `$46`'s CHILD, and the child $46 has been blocked on.
+//
+// **IT DERIVES ITS POSITION FROM THE PARENT AND NEVER CALLS `readInitPosition`.** `($16,A5)` is a field the
+// spawner writes; `$2723A4` reads it, adds `$2000000` -- a pure HIGH-WORD bias, so no borrow -- and stores the
+// result as the record's packed position. **So `$55` cannot be exercised standalone**: a test needs `($16,A5)`
+// and `($1A,A5)` seeded the way `$46` seeds them.
+//
+// **AND IT CAN FREE ITSELF BEFORE IT EVER RUNS A FRAME.** `$2723C6 cmpi.w #$2800,($2,A6) / bgt` then
+// `jmp $263762`: a derived position at or below `$2800` is discarded at INIT. That is the first self-freeing
+// init body in this port, and it means `$46` may legitimately spawn children that never appear -- so a
+// missing `$55` on screen is not evidence of a defect.
+//
+// `$2723B2 move.l ($1A,A5),($30,A5)` runs BEFORE `loadRecordProto`, which writes from `($16,A5)` onward, so
+// the copy is deliberate ordering and not interchangeable with it.
+BODY.set(0x272398, (ram, rom, a5, a6, unported, _tables, palette) => {
+  loadSubProto(ram, rom, a5, a6, 0x272408);                // $272398..$2723A4 jsr $2637A2
+  // $2723A4..$2723AE -- the position, out of the PARENT's ($16,A5).
+  ram.setU32(a6 + 0x02, u32(ram.u32(a5 + 0x16) + 0x02000000));
+  ram.setU32(a5 + 0x30, ram.u32(a5 + 0x1a));               // $2723B2 -- BEFORE the prototype load
+  loadRecordProto(ram, rom, a5, 0x2723ea, 0x0e);           // $2723B8..$2723C6 D0+1 = FIFTEEN words
+  // $2723C6 -- the SELF-FREE. `bgt` is signed, so a position at or below $2800 is discarded here.
+  if (i16(ram.u16(a6 + 0x02)) <= 0x2800) {
+    freeEnemy(ram, a5);                                    // $2723D0 jmp $263762
+    return INIT_BODY_FREED;
+  }
+  installBank(ram, rom, palette, unported, 0x15, 0x223ab8, 0x2723e2,
+    'Stage-5 type $55 palette bank $15');                  // $2723D8..$2723E6
+});
+
 export const INIT_BODY_ADDRESSES = [...BODY.keys()];

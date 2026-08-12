@@ -2781,6 +2781,8 @@ SHOT_WINDOWS.extend([
                        "$26F55A..$26F605 -- overlapping its handler at $26F5F2 by TWENTY bytes"),
     (0x26F984, 0x0008, "W342: type $4C state 1's TWO target points -- bounded by the ROM's own "
                        "andi.w #$7 AND by code at +8"),
+    (0x2723EA, 0x003E, "W345: type $55's 15-word record prototype and its sub prototype, "
+                       "$2723EA..$272427 -- overlapping its handler at $272424 by FOUR bytes"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
