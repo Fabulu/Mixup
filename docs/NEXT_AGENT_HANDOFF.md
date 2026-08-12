@@ -3651,3 +3651,40 @@ drift, not a timer**, and the `($9F,A6)` test has the same "runs only when marke
 `$26DCB6`.
 
 Still unread for `$4C`: `$26F994`, `$26FA5E`, `$270128` onward, and the six handlers from `$26FBD4`.
+
+### `$4C` USES THE "ARM + RUN" SPLIT TWICE, AND HAS A THIRD STATE LEVEL (W341)
+
+    26f994  move.w #$1,($46,A6)        <-- the ARM: three instructions
+    26f99a  move.w #$0,($4C,A6)
+    26f9a0  rts
+    26f9a2  tst.w ($46,A6) / beq $26FA24     <-- the RUNNER, a SEPARATE routine
+    26f9aa  cmpi.w #$1,($4C,A6) / bne $26F9C6
+    26f9b4  move.w #$A00,($48,A6) / move.w #$A00,($4A,A6) / move.w #$0,($4C,A6)
+    26f9c6  cmpi.w #$0,($4C,A6) / bne $26FA24
+    ...
+
+**THIS IS THE SAME SETTER/RUNNER SPLIT AS `$26F858`/`$26F86A`, AND IT IS THE SECOND INSTANCE IN THIS TYPE.**
+`$26F994` arms a subsystem (`($46,A6) = 1`) and resets its cursor (`($4C,A6) = 0`); `$26F9A2` runs it, gated
+on the arm flag and cascading on the cursor. Both have exactly ONE caller each -- so they are `$4C`-private,
+not shared, and the split is a **style** this author uses rather than an interface for other types.
+
+**SO `$4C` HAS THREE LEVELS OF STATE**, and a port must keep them distinct:
+
+    ($26,A6)   the OUTER state, 0..7, selecting one of eight handlers   (set by $26F858, run by $26F86A)
+    ($28,A6)   each handler's own sub-state cascade                     (cleared by $26F858 on a change)
+    ($4C,A6)   a THIRD machine, gated by the arm flag ($46,A6)          (set by $26F994, run by $26F9A2)
+
+`($48,A6)`/`($4A,A6)` are seeded to `$A00` each -- a pair of equal values, so likely a symmetric X/Y or a
+two-muzzle offset, and note they are set on cursor `1` and the cursor is then reset to `0`, so the runner
+cycles rather than advancing monotonically.
+
+**Recognising the split matters because both halves look like one routine in a `dasm` that starts at the
+first address.** That is exactly how I first misread `$26F858`, and this is the same shape fourteen bytes
+further on. **When a routine in `$4C` ends in an `rts` followed immediately by a `tst.w` of the flag it just
+set, expect two entry points.**
+
+`$26FA5E`, state 1's other one-caller subroutine, is still unread -- and by this pattern it may well be
+another arm or runner.
+
+Still unread for `$4C`: `$26F9C6` onward, `$26FA24`, `$26FA5E`, `$270128` onward, and the six handlers from
+`$26FBD4`.
