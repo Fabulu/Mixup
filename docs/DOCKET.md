@@ -1345,3 +1345,32 @@ screen and check whether the laser impact appears.
 bonus requests at the wrong time -- which would corrupt the tally screen the owner already praised
 ("stage transition looks fucking awesome now") in exchange for an effect that may appear anyway once the real
 driver lands.
+
+### D24/D31 (W343): THE TABLE HYPOTHESIS IS DISPROVEN. THE REMAINING PATH **IS** THE TRANSITION-SCREEN WORK.
+
+The previous entry said to find the table selecting `$260580`/`$2605A4`/`$260788`. **Done, and there is no such
+table.** Searched two ways:
+
+  * the three addresses as absolute longwords anywhere in `$200000..$2B0000`: **zero hits** for each, and zero
+    for their `-2` variants too. So they are not table entries -- **and that also means my entry points were
+    wrong**: I found them by scanning backwards for `$4E75`, which lands on an interior `rts`, not a routine
+    start.
+  * every longword in the image pointing into `$260400..$260900`: 172 hits, all in `$2276xx`, all sequential
+    (`$260635`, `$260636`, `$260637`...). **That is palette/art data coincidentally in numeric range**, not
+    pointers -- a good reminder that a value-range scan over a ROM finds art, and only a stride check tells the
+    difference.
+
+**SO THE DRIVERS ARE NOT TABLE-DISPATCHED, AND FINDING THEM BY SEARCHING IS THE WRONG METHOD.** They must be
+reached by `bsr`/`jsr` from within the stage-clear screen's own flow, from a routine whose entry point is
+further back than a naive `rts` scan finds.
+
+**THE RIGHT METHOD IS FORWARD, NOT BACKWARD, AND IT IS ALREADY ON THE DOCKET.** Port the stage-clear screen's
+remaining phases -- object [11]'s states 0 and 2 and the arm `$25DC2C..$25DD80` (see the `$25DC2C` note in
+`tallyscreen.js`) -- and follow the calls forward. The bonus sequence is driven from inside that flow, so it
+will appear as a `jsr` in code that gets transcribed anyway.
+
+**THEREFORE: D24/D31 IS NO LONGER AN INDEPENDENT ITEM. IT IS A CONSEQUENCE OF THE TRANSITION-SCREEN WORK.**
+Both halves of its own machinery are ported (`playerFlags25FD94`, `tallyBonusDispatch25FF7A`, W343) and the
+laser spawn was already correct; only the driver is missing, and the driver is transition-screen code. **Do the
+transition screen next and the laser impact should follow.** That is a better outcome than a fifth speculative
+lead: the item went from "unknown cause, three failed attempts" to "one known dependency, already scheduled".
