@@ -485,7 +485,35 @@ check.** `damageArm5C` has all four, so passing this through it would invent a p
 ROM does not make. Keep it separate, and note in the `DAMAGE_5C` table that the family has a
 SIMPLE member as well as its three parameterised ones.
 
-Still to read: `$27169E` onward (the alive path) and the death arm from `$27166A`.
+### AND `$49`'s DEATH ARM NAMES A SHARED PREREQUISITE: PORT `$270D92` FIRST
+
+    27166a  move.l #$250,D0 / jsr $28615E     scoreKill($250)
+    271676  D2 = ($2,A6)
+    27167a  lea ($27197C,PC),A1 / jsr $270D92 <-- UNPORTED
+    271684  jsr $28C2DC                       the cue type $81 already posts
+
+`$270D92` opens `move.w (A1)+,D1 / cmpi.w #-$1,D1`: a WORD-LIST WALKER terminated by `$FFFF`, taking
+its list in A1 and a position in D2. And `codexref` gives it **SIX callers**:
+
+    $270DCC  bra.s          $271390  jsr        $271680  jsr   <- type $49's death arm
+    $271AC2  jsr            $271D88  jsr        $27248E  jsr
+
+`$271AC2` is inside type `$4A` (`$271A64`) and `$271D88` is inside type `$4B` (`$271D48`). **So this
+one routine is the shared death-spawn walker for the whole `$48`/`$49`/`$4A`/`$4B` band**, which is
+the band W315 proved is NOT one family by prototype -- they diverge in their bodies and share this.
+
+**PORT `$270D92` BEFORE ANY OF THEM.** It is small, it is shared six ways, and doing it first turns
+three of the remaining stage-5 types from "read a death arm each" into "one call each". Doing `$49`
+first instead means porting the walker inside a type wave and then finding two more callers for it.
+
+Its list for `$49` is `$27197C`, whose first words are `0000 008D 0000 FC00 0000 0000 0000 0084` --
+so the entries are not uniform and the walker's stride needs reading, not assuming.
+
+`$49`'s alive path, also read: `$27169E` sign-extends `($2,A6)` to a LONG, adds `$4000`, and
+`cmpi.l #$2000,D0 / bgt $2716CC` -- a SIGNED LONG compare, unlike the two-`addi.w` word idiom types
+`$1B` and `$81` use for the same job. Do not reach for that idiom here.
+
+Still to read: `$2716CC` onward, and `$270D92` itself.
 
 **Then, in order:** the real `$81` is DONE (W326), so stage 5 is at **ten types over 29 records**.
 `$1A` is BLOCKED on a measurement (see below). Next unblocked: `$49`/`$4A`/`$4B` (spans `$A2`,
