@@ -1933,3 +1933,35 @@ fire arm can be written.
 
 Still to read for `$48`: `$271426..$27143C` (the aim tail) and `$271488` onward (the animation counter and
 the draw, plus the expected third `($3F,A6)` test).
+
+### `$48`'s TAIL, `$27142C..$2714AC` (W338) -- the THIRD mark test confirmed, and the draw is a `bsr`
+
+    27142c  move.b D1,($20,A5)              the aim store -- W323's trap, exactly as $4A's $271B64
+    271430  subq.b #1,($26,A5) / bcc $271488    the THIRD cadence level, as $4A
+    271438  move.b ($27,A5),($26,A5)
+    27143e  ... the five-shot fan ...
+    271488  subq.b #1,($1A,A5) / bcc        the animation counter
+    271490  move.b ($1B,A5),($1A,A5)
+    271496  addq.w #4,($1C,A5) / andi.w #$1F,($1C,A5)    EIGHT-entry ring, as $4A -- a MASK, not a compare
+    2714a0  tst.b ($3F,A6) / bne $2714AC    <-- THE THIRD MARK TEST, before the draw. As predicted.
+    2714a8  bsr $271510                     the draw is a SEPARATE SUBROUTINE
+    2714ac  rts
+    2714ae  rts                             <-- the bare rts, the very next byte
+
+**THE THIRD `($3F,A6)` TEST IS THERE.** `$48` tests the mark at the handler head, before the fire arm and
+before the draw, the same three points as `$4A`. So a marked `$48` is fully inert -- unhittable, silent,
+invisible -- and only the movement path runs until the off-screen free. The open question recorded two
+sections ago is answered YES, and the `{$48,$4A}` pairing holds on lifetime in full detail.
+
+**`$2714AE` IS THE BYTE IMMEDIATELY AFTER `$48`'s HANDLER ENDS**, which finally explains what it is: a
+stub `rts` parked between `$48`'s handler and the disabled body at `$2714B0`. And that body tests
+`($3F,A6)`, `($3E,A6)` and `($3C,A6)` -- all dying-state fields -- so the disabled feature is an extra
+effect for MARKED records specifically. Version-B turned it off by pointing both call sites at the stub.
+That is a coherent story rather than an oddity, and it is now recorded as one.
+
+`$48` also shares `$4A`'s **eight-entry `andi.w #$1F` ring** (`$49` and `$4B` use `cmpi.w #$78` for
+thirty), so the ring length tracks the pairs, like the `($17,A5)` polarity. Two axes respect the pairing
+now; nine do not.
+
+**Its draw is a `bsr` to `$271510`, not inline** -- the only member of the band that factors it out. That
+is the last unread span: `$271510` onward.
