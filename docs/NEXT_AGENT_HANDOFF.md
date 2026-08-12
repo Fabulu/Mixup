@@ -4401,6 +4401,23 @@ So `($1E,A5)`, which `$27259A` advances by `addi.w #$10`, is a cursor with a **$
 first two longs are used. That means **a window must be declared for the table A0 points at before this tail can
 be written**, and the arms' `addi.w #$10` is what walks it.
 
+**AND THE TABLE IS INLINE, REACHED PC-RELATIVE.** `rosetta.py dasm` mis-aligns here and hides the instruction --
+it prints `$272726 nop` as its first line and silently skips four bytes. The raw bytes at `$272722` are
+`41fa 002c`, which is:
+
+    272722  41fa 002c    lea ($2C,PC),A0     PC = $272724, so A0 = $272750
+
+**The table base is `$272750`, sitting immediately after this routine's code.** That is why no absolute table
+address ever turned up for `$55` -- there is no `move.l #$XXXXXX,A0` to grep for, and the address never appears
+as a literal anywhere in the ROM. **When a routine walks a table you cannot find the base of, suspect
+`lea (d16,PC)` and dump the raw bytes; do not trust a disassembly line as the first instruction at an address
+you asked for.**
+
+Still unknown, and the last thing blocking the write: **the table's extent.** `($1E,A5)` is advanced by `$10`
+on each timer expiry and nothing read so far bounds or wraps it, so either a `cmpi.w` on `($1E,A5)` exists in a
+span not yet read, or the table is terminated by a sentinel the tail tests. **Do not declare the window until
+the bound is known** -- guessing the length is exactly how `$907000` got sized wrong twice.
+
 **`$241D34` IS ALREADY PORTED** as `ctx.tables.shotVector(d0, d1)` -- 29 mentions, 7 in code, used by
 `bossscripts.js`, `boss4.js` and `bossarrival.js`. The sinusoid arm calls it with amplitude `#$28` in D0 and a
 phase from `($2C,A5)` that self-advances by 2, taking D2 as the result. **Do not write a sine helper for `$55`.**
