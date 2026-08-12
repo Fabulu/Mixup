@@ -446,6 +446,47 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
 
    Every constant above is in `docs/DOCKET.md` under D30. This is a transcription.
 
+### `$49` IS READ. Its init body is complete and its damage arm is a FOURTH variant.
+
+Init `$27159E`, handler `$271640`. The init body, read in full:
+
+    27159e  move.w #$0,($4,A5) / rts            the stub -- run length ZERO
+    2715a6  loadSubProto($271624)               SHORT form (first word $A000, bit 15 clear)
+    2715b2  loadRecordProto($271616, 6)         D0+1 = SEVEN words
+    2715c0  readInitPosition
+    2715c6  cmpi.w #$1F3,$8130CE / bne          **AN EQUALITY on the scroll clock**, not a
+    2715d2  ($1C,A6) = $40 ; ($17,A5) = 1       threshold -- so these two writes happen only on the
+                                                exact frame the clock reads $1F3, and a port that
+                                                used >= or < would do them for hundreds of frames
+    2715de  ($1D,A6) = ($18,A5)
+    2715e4  $81B414 = 1 ; $2715EC  $81B416 = 1  the same pair type $81's init writes
+    2715f4  A0 = $8130E0
+    2715fa  cmpi.w #$260,$8130CE / bcs          clock BELOW $260 keeps $8130E0 ...
+    271606  A0 = $8130E4                        ... at or past it, the other word
+    27160c  ($20,A5) = A0 ; $271610 (A0) = 1    store the CHOSEN POINTER, then mark it
+
+So `($20,A5)` is a pointer the handler will use, and which of two counters it points at is decided
+once, at spawn, by the clock. Two clock reads with two different comparisons, one equality and one
+threshold: transcribe both as written.
+
+**AND ITS DAMAGE ARM DOES NOT FIT `damageArm5C`.** It is the same family by mask and by clear, and
+simpler:
+
+    271640  moveq #$5C,D1 / and.b (A6),D1 / beq $271698    the sense is INVERTED (beq, not bne)
+    271648  move.b #$A3,D0 / and.b D0,(A6)                 the clear via D0, not `andi.b`
+    27164e  jsr $286096                                    scoreHit
+    271654  D0 = ($1D,A6) ; $271658 D2 = ($19,A5) ; eor.b D2,D0
+    27165e  move.b D0,($1D,A6)                             stored HERE, before the death test
+    271662  tst.w ($18,A6) / bpl $27169E                   `bpl` to ALIVE, not `bmi` to death
+    27166a  move.l #$250,D0                                the death arm, killScore $250
+
+**There is NO base-palette arm, no `hpFull` compare, no `$8130CA` gate and no `cmpi.b #$19` low-HP
+check.** `damageArm5C` has all four, so passing this through it would invent a palette decision the
+ROM does not make. Keep it separate, and note in the `DAMAGE_5C` table that the family has a
+SIMPLE member as well as its three parameterised ones.
+
+Still to read: `$27169E` onward (the alive path) and the death arm from `$27166A`.
+
 **Then, in order:** the real `$81` is DONE (W326), so stage 5 is at **ten types over 29 records**.
 `$1A` is BLOCKED on a measurement (see below). Next unblocked: `$49`/`$4A`/`$4B` (spans `$A2`,
 `$B6`, `$B6`), then `$47` (`$E2`), then the dependency bundles, `$4C` last. Then stage 5's boss, then
