@@ -1898,3 +1898,38 @@ death list and both muzzles as one self-checking window, the same construction W
 
 Still to read for `$48`: `$271426` onward -- its shot loop (or shot list) and its draw, plus whether
 `($3F,A6)` is tested a third time before the draw as it is in `$4A`.
+
+### `$48`'s SHOT LOOP, `$27143E..$271486` (W338) -- FIVE shots at 5-unit spacing
+
+    27143e  moveq #$0,D1 / move.b ($20,A5),D1      the stored aim as the centre, as $4A
+    271444  move.l #$FFFE000B,D0                   $4A's is $FFFF000B -- the HIGH word differs
+    27144a  move.l ($2,A6),D2
+    27144e  lea ($271596,PC),A1 / tst.b ($17,A5) / bne -> keep ; else lea ($27159A,PC),A1
+    271462  add.l (A1),D2                          the SAME longword, now read as a LONG
+    271464  moveq #$0,D3 / moveq #$0,D4
+    271468  subi.w #$A,D1                          start TEN below centre ($4A starts NINE)
+    27146c  move.w #$4,D7
+    271470  jsr $281744  /  addq.b #5,D1  /  dbra D7,$271470
+    27147c  move.b ($22,A5),D0 / add.b D0,($20,A5)  the centre DRIFTS, as $4A
+    271484  subq.b #1,($24,A5)                      the volley counter
+
+**`move.w #$4,D7` + `dbra` IS FIVE PASSES** (4,3,2,1,0), the standing DBcc rule again. With `subi.w #$A`
+first and `addq.b #5` after each, the headings are centre-10, -5, 0, +5, +10: a symmetric **five-way fan at
+5-unit spacing**, where `$4A` is a **seven-way fan at 3-unit spacing** (`move.w #$6,D7`, `subi.w #$9`,
+`addq.b #3`).
+
+**Identical construction, and FOUR of its five parameters differ between the pair**: the pass count (`#$4`
+vs `#$6`), the initial offset (`#$A` vs `#$9`), the step (`#5` vs `#3`) and the spawner (`$281744` vs
+`$281764`). Plus D0 (`$FFFE000B` vs `$FFFF000B`). This is the clearest single illustration of the band's
+character: the two closest relatives in it share a loop skeleton and agree on almost none of what goes in
+it. **Reading `$4A`'s loop and adjusting one number would have produced a wrong fan four ways over.**
+
+The muzzle longword is again read BOTH ways, as in `$4A`: a word pair at `$27141C` to bias the aim inputs
+and a longword at `$271462` to bias the bullet position.
+
+Note `$27143A` disassembles as `ori.b #$26,-(A7)`, which is data caught mid-stream, not an instruction --
+`$271426..$27143C` is the aim tail and needs one more read at a correct instruction boundary before the
+fire arm can be written.
+
+Still to read for `$48`: `$271426..$27143C` (the aim tail) and `$271488` onward (the animation counter and
+the draw, plus the expected third `($3F,A6)` test).
