@@ -4638,6 +4638,28 @@ Two smaller corrections from reading `aim256`'s exits, both retracting W349:
   jsr (A0,D4.w)` makes a COMPUTED CALL into it: it is a jump table of 4-byte code stubs, the first being
   `add.w D0,D1 / andi.w #$FF,D1`. W349 flagged this as a caveat; it is now settled as a decode error.
 
+### W351: arm A read -- it is `$27258C`'s TWIN, differing only in trigger and action
+
+    2724ea  subq.b #1,($1c,A5) / bcc $272536    the same due8 countdown
+    2724f2  move.b ($1d,A5),($1c,A5)            the same reload byte
+    2724f8  addi.w #$10,($1e,A5)                the same cursor, the same $10 stride
+    2724fe  cmpi.w #$80,($1e,A5) / bne $272536  fires at EXACTLY $80
+    272508  move.w #$A001,(A6)                  and writes $A001 to the record's first word
+
+Set against mode 2's arm at `$27258C`, which is byte-for-byte the same first three steps and then
+`cmpi.w #$F0` / clamp / promote to mode 3. **So arm A and the mode-2 arm are one mechanism with two
+trigger points**, and that is what the drift table's two groups of eight are for: **arm A walks group A
+(cursor `$00..$78`) and stops at `$80`; mode 2 walks group B and stops at `$F0`.** The `$2724FE`
+comparison against `$80` -- which W346 found and could not explain -- is arm A's terminator, not a
+group selector.
+
+**PORT HAZARD: `$2724FE` is `cmpi.w #$80` + `bne`, an EQUALITY test, and `$2725A0` is `cmpi.w #$F0` +
+`blt`, a THRESHOLD.** Arm A's event fires only if the cursor lands on `$80` exactly; a cursor that
+stepped past it would never fire at all. Writing either as the other kind of test is a silent
+behaviour change -- and since the stride is `$10` and `$80` is a multiple of it, the equality happens
+to be safe in the ROM, which is exactly why a port that "tidies" it to `>=` would still look correct.
+**Reproduce the operators as written.**
+
 **`$55` IS READY TO WRITE.** Every span read, every helper and table already ported, no open trace.
 
 Also still unseeded: `($1E,A5)`, `($17,A5)`, `($2E,A5)` and `($2F,A5)` have no writes in the handler either, so
