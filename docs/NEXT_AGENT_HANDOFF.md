@@ -4248,3 +4248,33 @@ Window: `$2723EA + $3E` (fifteen-word record prototype plus the one sub prototyp
 duplicates: `$272390`/`$272424` (`$55`), `$27102C`/`$2710E2` (`$46`), `$268D1E`/`$268E6C` (`$1A`) and all
 eight of `$4C`'s state handlers are genuinely unported. The duplicates were confined to shared primitives with
 role-based names; nothing in the type census was overstated.
+
+### `$55`'s HANDLER HEAD (W345) -- SPAWN INVULNERABILITY, ON A TIMER THE PARENT SUPPLIES
+
+    272424..27242A  NOT YET DISPLAYED (8 bytes)
+    27242c  tst.w ($30,A5) / beq $272448        the timer -- zero means it has expired
+    272434  move.w #$7FFF,($18,A6)              ... while it runs, HP is $7FFF: INVULNERABLE
+    27243a  subq.w #1,($30,A5) / bne $272448
+    272442  move.w #$1100,($18,A6)              on the frame it hits zero, REAL HP $1100
+    272448  moveq #$5C,D1 / and.b (A6),D1 / beq $27249A     the $5C family mask
+    272456  jsr $286096                         scoreHit
+
+**`$55` IS INVULNERABLE FOR A PARENT-SUPPLIED NUMBER OF FRAMES.** The init copies `($1A,A5)` -- a field `$46`
+writes -- into `($30,A5)`, and the handler counts it down while forcing HP to `$7FFF`. On the frame it reaches
+zero it installs the real HP of `$1100`. So a `$55` cannot be killed before its parent's timer expires, and the
+timer's LENGTH is `$46`'s choice.
+
+**THE SUBTLETY: A LONG COPY, A WORD COUNTDOWN.** `$2723B2 move.l ($1A,A5),($30,A5)` copies FOUR bytes, but
+`$27242C tst.w` and `$27243A subq.w` touch only the first WORD -- which on a big-endian read is the long's HIGH
+half. So the parent supplies a longword of which only the top half is the timer, and `($32,A5)` keeps whatever
+the low half was. **Porting the copy as a word would lose that low half**, and porting the countdown as a long
+would make the timer effectively never expire.
+
+That also explains why the init copies at all rather than reading `($1A,A5)` directly each frame: the handler
+DESTROYS its copy by counting it down, and `($1A,A5)` has to survive for whatever else reads it.
+
+**Its HP `$1100` and the `$7FFF` invulnerability value are both literals**; `$7FFF` is the same sink constant
+`$47` and `$4C` use, but here it is a HP FLOOR rather than a per-frame sink -- there is no `sub.w`/re-arm pair,
+just a forced value. Do not reach for the sink helper.
+
+Still unread for `$55`: `$272424..$27242A` (the entry, 8 bytes) and everything from `$27245C` on.
