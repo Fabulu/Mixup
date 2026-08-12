@@ -4020,3 +4020,34 @@ sprite region are both plausible and neither is measured. **Find its other reade
 and `$25DA94` calls `$25DAEA` which the port HAS as `otherSideHolds25DAEA`), and the descriptor's `($C,A4)`
 slot. **Two of those five have six callers each, so they are shared infrastructure and worth their own waves**
 -- the signal that separated `$246520` from `$23C4A0` earlier this session.
+
+### `$907000` IS ONE OF A PAIR OF `$400`-BYTE BUFFERS (W344). THE MODEL IS NOW DEFINED.
+
+Scanned every longword in `$200000..$2B0000` pointing into `$907000..$9073FF`. **Four hits, three real:**
+
+    23c66a  lea $907000,A0     the clear ($23C668)
+    2592d2  lea $907000,A0     a consumer
+    2593d4  lea $907000,A0     a second consumer
+    2655b8  -- NOT a reference: the preceding word is `6D00`, a `blt` displacement, and `$9072xx` here is
+            `blt` + `moveq #$0,D1` read as a longword. A value-range scan finds these; check the opcode.
+
+**AND THE FIRST CONSUMER NAMES ITS PARTNER:**
+
+    2592d0  lea $907000,A0
+    2592d6  lea $907400,A1     <-- a SECOND buffer, exactly $400 further on
+    2592dc  jsr $2593F8        ... called with BOTH in A0/A1
+
+**So the region is a PAIR of `$400`-byte buffers, `$907000` and `$907400`**, handed to `$2593F8` together --
+the shape of a double buffer or a source/destination pair. `$23C668` clears only the FIRST.
+
+**THE MODEL TO BUILD:** one object covering `$907000..$9077FF` (`$800` bytes, two `$400` halves), addressed
+absolutely the way `TxVram.setLong` handles `$904000`. That is now a definite specification rather than the
+open question it was two commits ago, and with it `$23C668` really is four lines.
+
+**READ `$2593F8` BEFORE CHOOSING** -- it is the routine that consumes both halves, so it says whether they are
+double-buffered (swap each frame), a copy pair (A0 -> A1), or two independent planes. `$2593D2` is a second
+consumer and should agree with it.
+
+Sequence for whoever picks this up: `$2593F8` (defines the pair) -> the video object -> `$23C668` (four lines,
+six callers) -> the rest of phase 0 (`$28D53C`, `$260A88`, `$25DA60`, `$25DA94`) -> phase 0 lands -> follow its
+calls forward for the bonus-line driver -> **D24/D31 closes.**
