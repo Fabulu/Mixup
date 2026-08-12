@@ -2800,3 +2800,43 @@ overlapping the handler at `$26DE32` by four bytes.
 
 Still to read for `$43`: the handler `$26DE32` onward. **The init body could be written now** -- it changes
 no registration and `$43` is already counted as missing a handler, so it cannot half-register anything.
+
+### `$43`'s HANDLER HEAD (W340) -- A FOURTH COUNTDOWN CONVENTION
+
+    26de32  tst.w $8130D2 / bne $26DED2         the freeze, jumping far
+    26de3c  cmpi.b #$0,($17,A5) / bne $26DE5A   ($17,A5) as a STATE NUMBER, as $47 -- not the band's mirror
+    26de46  jsr $24179E                         scrollCompensate
+    26de4c  subq.w #1,($1E,A5) / bne $26DE5A    a WORD countdown, fires at ZERO
+    26de54  move.b #$1,($17,A5)                 state 0 -> 1
+    26de5a  cmpi.b #$1,($17,A5) / bne $26DE8C
+    26de64  jsr $2417DE                         playerMove -- ALREADY PORTED (machine.js:215)
+    26de6a  subq.b #1,($1C,A5) / bcc $26DE8C    a BYTE cadence, fires on UNDERFLOW
+    26de72  move.b ($1D,A5),($1C,A5)
+    26de78  subq.b #1,($1A,A6)
+    26de7c  cmpi.b #$2,($1A,A6) / bne $26DE8C   <-- DECREMENT, THEN COMPARE AGAINST **2**
+    26de86  move.b #$2,($17,A5)                 state 1 -> 2
+
+**A FOURTH COUNTDOWN CONVENTION, AND IT IS THE MOST DECEPTIVE ONE YET.** `$26DE78` decrements `($1A,A6)`
+and `$26DE7C` compares the result against **`#$2`**, not zero. So the transition fires when the counter
+reaches TWO and the counter keeps its final value of 2 rather than wrapping or resting at 0. Every
+established reading is wrong here: `bcc` (underflow), `bpl` (runs negative), `beq` (fires at zero) and now
+"fires at an arbitrary constant". Four conventions, and `$43` uses two of them nine bytes apart -- `bcc` at
+`$26DE6E` and this at `$26DE7C`.
+
+    subq + bcc            fire on UNDERFLOW                 `due8` implements this
+    subq + bpl            run into NEGATIVES                 $26DC04 ($47)
+    subq + beq / bne      fire AT ZERO                       $26DCA2 ($47), $25354C (W29)
+    subq + cmpi #$N       fire at an ARBITRARY CONSTANT      $26DE7C ($43)   <-- NEW
+
+**Read the instruction AFTER every `subq`, not just the branch.** A `cmpi` between them changes the meaning
+entirely, and three of these four look identical at a glance.
+
+**`$2417DE` IS ALREADY PORTED** as `playerMove` (`machine.js:215`). **ELEVENTH family check to pay off this
+session** -- and note what it implies: `$43` calls the PLAYER-MOVEMENT routine from its own state 1. That is
+worth understanding before writing it, because a non-player object driving `playerMove` is either a shared
+kinematics helper being reused or something more interesting.
+
+`($17,A5)` is a state number here, as in `$47` and unlike all four band members. That is now two of two
+non-band stage-5 types using it that way, so the band's mirror-flag reading looks like the exception.
+
+Still to read for `$43`: `$26DE8C` onward (state 2+) and `$26DED2` (the freeze target, probably the draw).
