@@ -4563,6 +4563,45 @@ index 1, and `$8E`'s `$2764D2` is `handler8E` at index 14. All 12 specs now cros
 Useful side effect: Hibachi (`$B0`) has a table entry at `$27E592`, so the boss-route root's init and handler are
 now addressable without a trace.
 
+### W348: the enemy driver's calling convention, and where the A0 trace actually goes
+
+The dispatcher at `$2635F6` is fully read, and it is the source of the `initBody = init + 8` rule:
+
+    2635f6  moveq #$0,D7 / move.b ($C,A5),D7    the record's type byte
+    2635fc  lea $267824,A0                      LOW table
+    263602  cmpi.w #$80,D7 / blt $263612
+    263608  lea $27E412,A0 / subi.w #$80,D7     HIGH table -- confirms W347's two bases from the CODE
+    263612  lsl.w #3,D7                         index * 8
+    263614  movea.l (A0,D7.w),A1                A1 = the INIT, the first long
+    263618  jsr (A1)                            run the init
+    26361a  addq.w #8,A1                        <- initBody = init + 8
+
+**The handler is NOT jsr'd at spawn -- it is CACHED INTO THE RECORD.**
+
+    263628  movea.l ($4,A0,D7.w),A0             A0 = the handler, the second long
+    26362c  move.l A0,($4C,A5)                  cached in the record
+    263630  moveq #$0,D0
+    263632  lea $8103E6,A0                      A0 REUSED two instructions later
+
+So **`($4C,A5)` is the record's handler pointer**, and the per-frame driver calls through it:
+
+    263532  movea.l ($4C,A5),A1
+    263536  move.l D6,-(A7)                     the CALLER saves D6
+    263538  jsr (A1)                            <- every enemy handler is entered here
+    26353a  move.l (A7)+,D6                     and restores it
+
+Two calling-convention facts fall out, both usable now:
+
+- **At handler entry `A1` holds the handler's own address**, not A0. Nothing in either dispatch site leaves the
+  type table in A0 -- `$263632` overwrites it with `$8103E6` two instructions after loading the handler.
+- **`D6` is caller-saved across the handler call.** Handlers may clobber it freely; anything a handler needs
+  across the call boundary cannot live in D6.
+
+**And this RETRACTS the framing of `$55`'s blocker.** I wrote that A0 is "live-in from the dispatcher". It is not:
+neither dispatch site sets it. A0 at `$263538` is whatever the enemy loop above `$263524` last left there, so the
+trace goes UP into that loop, not into the dispatcher. **The dispatcher was the wrong place to look and is now
+ruled out** -- which is progress, but narrower than a solved trace.
+
 **So `$55` cannot be finished by reading. The last unknown is a TRACE, not a span** -- the same shape as `$1A`'s
 blocker at `$268D8C` (D2/D3 provenance). What has to be established is what the type dispatcher guarantees in A0
 on entry to a handler, and that is worth doing once for the whole family rather than for `$55`: if A0 is a
