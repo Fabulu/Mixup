@@ -3287,3 +3287,33 @@ what has been read, so its extent must come from the node count or from `$26F858
 
 That completes what can be learned about `$246520` without writing it. **It is one bounded wave**: two pools,
 a three-entry dispatch table, a linked-list constructor, and a caller table per user.
+
+### `$2701C8` MEASURED (W341) -- ONE node, and `$246520`'s wave is now fully scoped
+
+`$24654C move.w (A0)+,D0` reads a leading COUNT word before the per-node fields, and each node consumes
+exactly twelve bytes (`move.w (A0)+,D2`, `adda.w (A0)+,A3`, `move.l (A0)+`, `move.w (A0)+`, `move.w (A0)+`).
+So the table shape is `count word, then count * 12`.
+
+    $2701C8:  count = 1
+    node[0]:  D2 = $0000   A3 offset = $0480   long = $00225238   word = $001F   D3 = $0009
+    $2701D6 onward: CODE  ($3B7C..., $4E75...) -- so the table is $E bytes, $2701C8..$2701D5
+
+**Every field checks out, which is what says the reading is right:** `D2 = 0` is a VALID dispatch index (the
+only legal values are `0`, `8`, `$10`, since `$24627A` has three entries and entry 3 is code), and
+`long = $225238` is inside W91's `$222A78..$2252F8` palette window -- consistent with dispatch entry `[0]`
+being the RAM pointer pair `$80E886`/`$80FA66`. A misread stride or a missing count word would have produced
+an out-of-range `D2` immediately, and node[1] read as data would have given `D2 = $3B7C`.
+
+**So `$4C` builds ONE part through `$246520`**, not twenty. The twenty-slot walk at `$80FA86` is the pool's
+capacity, not this caller's demand -- **do not size anything from `#$13`.** Other callers of `$246520` (six
+total) will pass their own count words, and that is where a twenty-node chain would come from.
+
+**`$246520`'s WAVE IS NOW FULLY SCOPED.** Everything it needs is measured:
+
+    pools      $810346 (3 slots) and $80FA86 (20 slots), plus the three parallel pools named by $24627A
+    dispatch   $24627A + $18 -- THREE entries, index 3 is CODE, so D2 in {0, 8, $10} and throw otherwise
+    per-caller a count word plus count*12-byte nodes; $4C's is $2701C8 + $E, one node
+    windows    $24627A + $18 and $2701C8 + $E; node[0]'s $225238 needs none (inside W91's)
+    linkage    parent from $810346, chain through ($2C,A1), each node advanced by `movea.l A2,A1`
+
+That is a bounded wave with no unmeasured quantity left in it. **Write `$246520` next, then `$4C`.**
