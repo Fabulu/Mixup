@@ -3589,7 +3589,7 @@ Still unread: `$26F982`'s tail, `$26F994`, `$26FA5E`, `$26FF9E`, and the six han
     26ffb2  move.b #$8,($1A,A6)            under $200: speed 8
     26ffb8  cmpi.w #$100,D0 / bge $26FFCC
     26ffbe  move.b #$6,($1A,A6)            under $100: speed 6   <-- the writes CASCADE
-    26ffc4  cmpi.w #$40,D0 / blt $26FFE2   under $40: ARRIVED (and $26FFE2 sets the carry state 1 reads)
+    26ffc4  cmpi.w #$40,D0 / blt $26FFE2   under $40: ARRIVED -- and $26FFE2 CLEARS carry (corrected)
     26ffcc  jsr $242038                    otherwise aim and move
 
 **THE SPEED WRITES CASCADE RATHER THAN SWITCHING.** For `$40 <= D0 < $100` BOTH `move.b`s execute and the
@@ -3616,3 +3616,38 @@ against three that were real (`$246520`, `$246800`, and now `$242494`). The dist
 caller count PLUS a substantial body: `$242038` is two instructions.
 
 Still unread for `$4C`: `$26F994`, `$26FA5E`, `$26FFE2`'s carry tail, and the six handlers from `$26FBD4`.
+
+### `$26FF9E`'s TWO EXITS, AND A POLARITY I HAD BACKWARDS (W341)
+
+    26ffd8  move.b D1,($1B,A6)        the aim result becomes the HEADING
+    26ffdc  ori  #$1,SR / rts         <-- carry SET   = still moving
+    26ffe2  andi #$FFFE,SR / rts      <-- carry CLEAR = ARRIVED (from $26FFC8's blt)
+
+**CORRECTION.** The `$26FF9E` section above said "`$26FFE2` sets the carry state 1 reads". It **clears** it.
+Fixed in place. The state-1 section's reading was right for the wrong stated reason, so both now agree:
+
+    state 1: bsr $26FF9E / bcs $26F958
+      carry SET   -> still moving -> SKIP the cursor flip, keep aiming at the same point
+      carry CLEAR -> arrived      -> advance ($2A,A6) to the other point
+
+So the `bcs` is what makes the oscillation wait for arrival, and the ROM signals "not done" with carry set --
+the same convention as `$281842`'s full-pool path (W336) and `$26DC00`'s retry (W340). **Three routines now
+return failure-or-not-yet as carry SET via an explicit `ori #$1,SR`.** Treat that as this codebase's idiom and
+check the polarity at the `ori`/`andi`, never at the caller's branch alone: I read the caller correctly and
+still wrote the callee backwards.
+
+`$26FFD8` also names a field: the aim result from `$242038`/`core64` lands in `($1B,A6)`, which is exactly the
+heading `applyVelocityA6` reads. **So `$26FF9E` steers and the dispatcher's tail jump moves** -- and with
+`($1A,A6)` set by the distance bands, that pair is the whole locomotion of `$4C`.
+
+### `$26FFE8` IS `$4C`'s DYING DRIFT (W341)
+
+    26ffe8  tst.b ($9F,A6) / beq $270128      runs ONLY when the dying flag is set
+    26fff0  subi.w #$40,($2,A6)               and moves the record UP by $40 per frame
+
+`$26F6E4 bsr $26FFE8` is its one caller, on the death path. So a dying `$4C` drifts upward at `$40` per frame
+-- which is what eventually takes it past the `$800` off-screen limit and frees it. **The retirement is a
+drift, not a timer**, and the `($9F,A6)` test has the same "runs only when marked" polarity as `$47`'s
+`$26DCB6`.
+
+Still unread for `$4C`: `$26F994`, `$26FA5E`, `$270128` onward, and the six handlers from `$26FBD4`.
