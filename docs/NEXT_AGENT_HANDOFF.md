@@ -2477,3 +2477,33 @@ set-piece's cycle is: state 2 counts down, `$26DB14` re-seeds, state 3 tests `$2
 again and return to state 2. **`$26DC00` is the last thing needed to know whether that cycle terminates.**
 
 Still to read for `$47`: `$26DC00` and `$26DCB6`.
+
+### `$26DC00` (W339) -- `subq.b` + `bpl`, so the counter goes NEGATIVE. `due8` IS WRONG HERE.
+
+    26dc04  subq.b #1,($48,A6) / bpl $26DC3C      <-- bpl, NOT bcc. SIGNED.
+    26dc0a  move.b ($4C,A6),D0 / addi.b #$10,D0
+    26dc12  cmpi.b #$20,D0 / bhi $26DC28          an UNSIGNED range test: is ($4C,A6) outside -$10..+$10?
+    26dc1a  cmpi.b #-$2,($48,A6) / bgt $26DCA2    inside the band: threshold -2
+    26dc28  cmpi.b #-$3,($48,A6) / bgt $26DCA2    outside it: threshold -3
+    26dc32  move.b ($49,A6),($48,A6) / bra $26DCA2    the reload
+
+**THE COUNTER IS SIGNED AND RUNS PAST ZERO.** `subq.b` then `bpl` continues while the result is
+NON-NEGATIVE, so `($48,A6)` reaches `-1`, `-2`, `-3` before the reload. **The port's `due8` helper implements
+the `bcc`/underflow convention** -- fire when the decrement borrows -- which is what six of seven countdowns
+in W27 used and what every band member uses. Using `due8` here fires a frame early and never reaches the
+negative thresholds at all. Write this countdown by hand.
+
+**AND THE THRESHOLD DEPENDS ON AN ALIGNMENT TEST.** `($4C,A6) + $10` compared `bhi #$20` is the idiomatic
+signed-range-via-unsigned-compare: it asks whether `($4C,A6)` lies within `-$10..+$10`. Inside that band the
+counter is allowed to reach `-2`; outside it, `-3`. So the set-piece holds one extra frame when whatever
+`($4C,A6)` measures is near zero. Three different comparison flavours in nine instructions -- `bpl` signed,
+`bhi` unsigned, `bgt` signed -- and each one is load-bearing.
+
+**WHAT THIS DOES *NOT* ANSWER.** `$26DABA bcs` expects `$26DC00` to report through CARRY, and nothing in
+`$26DC00..$26DC38` sets carry explicitly; every path here branches to `$26DCA2`, which is still unread. So
+**whether the state-2/state-3 cycle terminates is still open** and `$26DCA2` onward is the place it is
+decided. Recorded as open rather than guessed, because the earlier version of this section would have said
+"the gate reloads and returns" and been describing a span it had not displayed.
+
+Still to read for `$47`: `$26DC3C..$26DCB6` (including `$26DCA2`, which carries the answer above) and
+`$26DCB6` itself.
