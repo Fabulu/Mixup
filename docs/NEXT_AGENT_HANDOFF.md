@@ -3846,7 +3846,30 @@ the first handler it names), `jsr (A0)`, then `jmp $2417DE` -- `applyVelocityA6`
     state 4  $26FD66  READ (head).  State 2's SHAPE with every constant different -- see below.
     state 5  $26FECA  READ (head).  State 3's shape: duration $40 (vs $F0), speed $10 (SAME), and the
                       SAME wind-down block -- BYTE-IDENTICAL, 24 bytes, verified.
-    states 6..7  $26FF3E $26FF56  -- UNREAD.
+    state 6  $26FF3E  READ, COMPLETE.  FOUR instructions: `move.w #$420,($1A,A6)` then rts. Speed $04,
+                      heading $20, as a WORD write to the speed/heading PAIR. Nothing else.
+    state 7  $26FF56  READ (head).  Heading := 0, then ACCELERATE: `addq.b #1,($1A,A6)` per frame,
+                      capped at 8 by `cmpi.b #$8 / beq`. The counterpart to state 0's deceleration.
+
+**ALL EIGHT STATES ARE NOW MAPPED**, and the machine reads as a scripted entrance:
+
+    0  enter at speed $16, DECELERATE to a stop            -> state 1
+    1  speed 4, oscillate between two table points, 300 frames
+    2  speed $10 to $2800/$1C00 (immediate), STOP on arrival
+    3  duration $F0, speed $10, wind ($1E,A5) down by $40
+    4  speed 8 to $3200/$1C00 (immediate), slow to 4 on arrival
+    5  duration $40, speed $10, the SAME 24 bytes as state 3
+    6  speed $04 heading $20, and nothing else (four instructions)
+    7  heading 0, ACCELERATE to 8
+
+**Speed is the through-line**: `$16` decelerating to 0, then 4, `$10`, `$10`, 8-to-4, `$10`, 4, accelerating
+to 8. Six of the eight states write `($1A,A6)` and they never agree on a value -- which is why the four
+writers of that field (state 0's seed, state 0's decrement, state 7's increment, and `$26FF9E`'s distance
+bands) all have to be ported separately.
+
+**State 6's `move.w #$420,($1A,A6)` is the word-pair idiom landing on the LOCOMOTION fields** -- speed `$04`
+and heading `$20` in one instruction. Read as a single word this state would set an absurd speed and no
+heading. Twelfth-plus instance of that idiom this session and the first on these two fields.
 
 **STATES 3 AND 5 SHARE 24 BYTES VERBATIM, AND THIS IS THE FIRST THING IN `$4C` THAT ACTUALLY IS SHARED.**
 `$26FD0E..$26FD25` and `$26FEE6..$26FEFD` are byte-identical:
