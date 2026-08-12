@@ -1620,3 +1620,46 @@ Those are the animation counter and its reload, which `$4A` uses the same way --
 `$4B` gets a 2-frame animation cadence and the early one keeps whatever the prototype gave it.
 
 Still to read: the handler `$271D48` onward, including its `$270D92` call at `$271D88`.
+
+### CORRECTION: `$4B` FREES ITSELF. IT IS `$49`'s SHAPE, NOT `$4A`'s (W337 recon)
+
+The order-for-next-wave note above said of `$4B`: "expect the overlap trap, expect mark-and-fall-through".
+The overlap prediction held. **The mark prediction is WRONG** and is corrected here before anyone builds
+on it.
+
+    271d48  moveq #$5C,D1 / and.b (A6),D1 / beq $271DA0     the handler OPENS on the damage mask,
+                                                            not on a ($3F,A6) test like $4A
+    271d56  jsr $286096                                     scoreHit
+    271d5c  D0 = ($1D,A6) ; D2 = ($19,A5) ; eor.b ; store    the simple palette XOR
+    271d6a  tst.w ($18,A6) / bpl $271DA6
+    271d72  move.l #$290,D0 / jsr $28615E                    scoreKill -- a THIRD value
+    271d7e  D2 = ($2,A6) ; lea ($271F20,PC),A1 ; jsr $270D92   SIX entries, ending $271F6A
+    271d8c  jsr $28C2DC
+    271d92  movea.l ($26,A5),A0 / clr.w (A0)                 the flag, through ($26,A5)
+    271d98  jmp $263762                                     <-- freeEnemy. IT REALLY DOES FREE.
+    271da0  move.b ($18,A5),($1D,A6)                         the not-hit path
+    271da6  moveq #$0,D0 / move.w ($2,A6),D0 / ext.l / addi.l #$4000 / cmpi.l #$400 / bgt
+    271dbe  tst.b ($16,A5) / beq $271DDA
+    271dc6  movea.l ($26,A5),A0 / clr.w (A0) / jmp $263762   the off-screen free, flag cleared too
+    271dd4  move.b #$1,($16,A5)
+    271dda  tst.w $8130D2                                    the freeze
+
+So `$4B` has **no `$8000` mark and no `($3F,A6)` flag at all**. It is `$49`'s lifetime exactly: score,
+walk the death list, clear the formation flag through the stored pointer, `freeEnemy`. `$4A` is the odd
+one of the three, not the pattern.
+
+**THREE TYPES, THREE OFF-SCREEN LIMITS, ALL THE SAME IDIOM.** `ext.l` / `addi.l #$4000` / `cmpi.l` /
+`bgt`, with the limit `$2000` for `$49`, `$1C00` for `$4A` and **`$400`** for `$4B`. And three kill
+scores: `$250`, `$180`, `$290`. Every one of these is a per-type constant wearing shared code.
+
+**WHY I GOT IT WRONG, WHICH IS THE REUSABLE PART.** I predicted mark-and-fall-through for `$4B` because
+`$4A` had it and they are adjacent siblings -- the exact inference this document warns against four
+sections earlier, applied by me in the same session. The band shares idioms and diverges in fields, and
+"it will resemble its neighbour" is not a shortcut even when the neighbour is one type away. **Predicting
+a routine's shape before reading it is only useful if the prediction is then checked; recording it as an
+expectation in a handoff makes it load-bearing.** Left in place, that line would have had the next agent
+looking for a death mark that does not exist.
+
+Window for the death list: `$271F20 + $4A` (SIX 12-byte entries then `$FFFF`, ending `$271F6A`).
+
+Still to read for `$4B`: `$271DDA` onward -- the freeze tail, fire arm and draw.
