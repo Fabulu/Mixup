@@ -426,6 +426,31 @@ the normal boss, launches another scheduler, branches to Hibachi, or merely obse
 
 ## Work order toward the goal
 
+### THE NEXT WAVE IS ITEM 0. Start here, do not re-derive the order.
+
+**0. `$25DEAE` -- THE TRANSITION SCREEN'S VALUE ROWS.** This is first because it is the only
+   USER-VISIBLE defect on the list: the owner reported "0's, some pictures of medals" and D30 traced
+   it. W328..W330 landed the whole interactive draw (cascade, per-side header, both label pairs,
+   cursor, blinking highlight; twelve tests). What remains:
+
+   * `$25DEAE` is the **Y cursor**, structurally the same routine as the ported
+     `tallyCursor25DD0C` -- same `($8,A4)` edge read, same bit 2 / bit 3 pair -- but over
+     `yEntries: 3` on `($F,A5)`, so the `andi.b #$1` mask is replaced by the `$25DA94`/`$25DEAE`
+     picker (up and down halves, skipping an entry the other player holds via the already-ported
+     `otherSideHolds25DAEA`). Three is not a power of two, which is WHY there is a picker.
+   * its TAIL holds the three remaining emit sites -- `$25DF72` (literals `D1 $5BC02600`,
+     `D2 $00334224`, `D3 $0648`), `$25DFBA` and `$25DFE8` (`D2 $00334424`, `D3 $0618`) -- all
+     `enqueueRegisters(ram, 26, ...)`, and bucket 26 holds TEN records of which the draw already
+     uses four.
+   * `tallyRequest25FF38` already writes the record the rows read. `$24018C` is NOT a new emitter.
+
+   Every constant above is in `docs/DOCKET.md` under D30. This is a transcription.
+
+**Then, in order:** the real `$81` is DONE (W326), so stage 5 is at **ten types over 29 records**.
+`$1A` is BLOCKED on a measurement (see below). Next unblocked: `$49`/`$4A`/`$4B` (spans `$A2`,
+`$B6`, `$B6`), then `$47` (`$E2`), then the dependency bundles, `$4C` last. Then stage 5's boss, then
+the HIBACHI CLOSURE RULE, then the loops.
+
 1. **STAGE 5'S REMAINING TWELVE TYPES.** W316 took `$45` (21 records), W317 `$59`, W319 `$8E` -- so
    the census is **twelve types over 37 records**, pinned with every address in
    `tests/w314stage5scope.test.js`.
