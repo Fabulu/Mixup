@@ -23,6 +23,13 @@ import { drawTallyHeader25DD80, tallyCursor25DD0C,
   drawTallyYRows25DF4C, otherSideEntry25DAC2 } from '../src/tallyscreen.js';
 import { BUCKETS, ENQUEUE_MASK, NO_ZOOM_OR, RECORD_BYTES } from '../src/spritequeue.js';
 
+/** W344: the port now reads the descriptor's `($n,A4)` fields from ROM, because descriptors live
+ *  in ROM ($25D952/$25D96C) -- reading them through `ram` threw `RangeError` the moment the
+ *  tally screen's phase advanced. These tests keep their scratch descriptor in RAM, so they
+ *  hand the port a ROM VIEW over that same store. */
+const romOver = (r) => ({ u16: (a) => r.u16(a), u32: (a) => r.u32(a) });
+
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IMAGE = path.join(HERE, '..', 'rip', 'sound', 'maincpu.bin');
 const IMG = existsSync(IMAGE) ? readFileSync(IMAGE) : null;
@@ -98,7 +105,7 @@ test('W328 each side draws the HEADER and its OWN two labels', { skip: SKIP_IMG 
   for (const [side, a, b, hdr] of [[0, 0x00334394, 0x003343b8, 0x5bc00000],
     [1, 0x003343dc, 0x00334400, 0x5bc02c00]]) {
     const ram = world();
-    assert.equal(drawTallyHeader25DD80(ram, A4, side), 4, 'FOUR records: header, two labels, cursor');
+    assert.equal(drawTallyHeader25DD80(ram, romOver(ram), A4, side), 4, 'FOUR records: header, two labels, cursor');
     assert.equal(ram.u16(B.counter), 4 * RECORD_BYTES, 'and the counter moved by four');
 
     // The header position differs by side; the DESCRIPTOR and D3 do not.
@@ -124,7 +131,7 @@ test('W328 the two sides draw DIFFERENT labels, which is the whole trap', { skip
   // all four -- or drew side 0's pair for both sides -- these two runs would agree. They must not.
   const runs = [0, 1].map((side) => {
     const ram = world();
-    drawTallyHeader25DD80(ram, A4, side);
+    drawTallyHeader25DD80(ram, romOver(ram), A4, side);
     return [record(ram, 1).d2, record(ram, 2).d2];
   });
   assert.notDeepEqual(runs[0], runs[1], 'side 0 and side 1 must not draw the same labels');
@@ -140,11 +147,11 @@ test('W328 a non-zero side byte selects side 1, not just the value 1', { skip: S
   // port that compared against 1 would send every other value down side 0's.
   for (const side of [1, 2, 0x80, 0xff]) {
     const ram = world();
-    drawTallyHeader25DD80(ram, A4, side);
+    drawTallyHeader25DD80(ram, romOver(ram), A4, side);
     assert.equal(record(ram, 1).d2, 0x003343dc, `side byte $${side.toString(16)} is side 1`);
   }
   const ram = world();
-  drawTallyHeader25DD80(ram, A4, 0);
+  drawTallyHeader25DD80(ram, romOver(ram), A4, 0);
   assert.equal(record(ram, 1).d2, 0x00334394, 'and only zero is side 0');
 });
 
@@ -154,7 +161,7 @@ test('W328 three records fit bucket 26, which holds ten', { skip: SKIP_IMG }, ()
   assert.equal(B.capBytes, 120);
   assert.equal(B.capBytes / RECORD_BYTES, 10);
   const ram = world();
-  drawTallyHeader25DD80(ram, A4, 0);
+  drawTallyHeader25DD80(ram, romOver(ram), A4, 0);
   assert.equal(ram.u16(B.counter), 4 * RECORD_BYTES, 'four of the ten used');
   assert.ok(ram.u16(B.counter) <= B.capBytes, 'the counter stays inside the bucket');
 });
@@ -173,7 +180,7 @@ test('W329 LEFT falls THROUGH into the right test, so both bits in one frame net
     ram.setU16(0x803972, (1 << 2) | (1 << 3));       // p1edge: LEFT and RIGHT together
     ram.setU8(SLOT + 0x0e, 1);
     ram.setU16(SLOT + 0x12, 0x100);
-    tallyCursor25DD0C(ram, SLOT, A4, 0, { soundPost: (c) => cues.push(c) });
+    tallyCursor25DD0C(ram, SLOT, A4, 0, { rom: romOver(ram), soundPost: (c) => cues.push(c) });
     assert.equal(ram.u8(SLOT + 0x0e), 1, 'minus one then plus one is where it started');
     assert.deepEqual(cues, [0x28c6fa, 0x28c6fa], 'and the step cue fired TWICE');
   });
@@ -188,7 +195,7 @@ test('W329 the clamp is `andi.b #$1`, so stepping off either end WRAPS', { skip:
     ram.setU8(SLOT + 0x0e, from);
     ram.setU16(SLOT + 0x12, 0x100);
     ram.setU16(0x803972, 1 << bit);
-    tallyCursor25DD0C(ram, SLOT, A4, 0, {});
+    tallyCursor25DD0C(ram, SLOT, A4, 0, { rom: romOver(ram) });
     assert.equal(ram.u8(SLOT + 0x0e), want, `from ${from} on bit ${bit} -> ${want}`);
   }
 });
@@ -201,7 +208,7 @@ test('W329 the cursor is stored THROUGH the descriptor\'s ($10,A4)', { skip: SKI
   ram.setU8(SLOT + 0x0e, 1);
   ram.setU16(SLOT + 0x12, 0x100);
   ram.setU16(0x803972, 0);
-  tallyCursor25DD0C(ram, SLOT, A4, 0, {});
+  tallyCursor25DD0C(ram, SLOT, A4, 0, { rom: romOver(ram) });
   assert.equal(ram.u8(STORE), 1, 'the clamped cursor reached the descriptor\'s target');
 });
 
@@ -217,20 +224,20 @@ test('W329 confirm fires on the TIMEOUT reaching zero OR a $70 button, and RE-AR
     byTimeout.setU32(A4 + 0x10, STORE);
     byTimeout.setU16(SLOT + 0x12, 1);            // one frame left
     byTimeout.setU16(0x803972, 0);               // nothing pressed
-    assert.equal(tallyCursor25DD0C(byTimeout, SLOT, A4, 0, {}), true, 'the timeout confirms');
+    assert.equal(tallyCursor25DD0C(byTimeout, SLOT, A4, 0, { rom: romOver(byTimeout) }), true, 'the timeout confirms');
     assert.equal(byTimeout.u16(SLOT + 0x12), 0x04b0, 'and it re-armed');
 
     const byButton = world();
     byButton.setU32(A4 + 0x10, STORE);
     byButton.setU16(SLOT + 0x12, 0x100);         // plenty of time left
     byButton.setU16(0x803972, 0x10);             // a bit inside the $70 mask
-    assert.equal(tallyCursor25DD0C(byButton, SLOT, A4, 0, {}), true, 'a button confirms too');
+    assert.equal(tallyCursor25DD0C(byButton, SLOT, A4, 0, { rom: romOver(byButton) }), true, 'a button confirms too');
 
     const neither = world();
     neither.setU32(A4 + 0x10, STORE);
     neither.setU16(SLOT + 0x12, 0x100);
     neither.setU16(0x803972, 0x80);              // OUTSIDE the $70 mask
-    assert.equal(tallyCursor25DD0C(neither, SLOT, A4, 0, {}), false, 'and $80 is not a confirm');
+    assert.equal(tallyCursor25DD0C(neither, SLOT, A4, 0, { rom: romOver(neither) }), false, 'and $80 is not a confirm');
     assert.equal(neither.u16(SLOT + 0x12), 0xff, 'the timer just decremented');
   });
 
@@ -240,14 +247,14 @@ test('W329 not confirming DRAWS, and confirming does not', { skip: SKIP_IMG }, (
   drew.setU32(A4 + 0x10, STORE);
   drew.setU16(SLOT + 0x12, 0x100);
   drew.setU16(0x803972, 0);
-  tallyCursor25DD0C(drew, SLOT, A4, 0, {});
+  tallyCursor25DD0C(drew, SLOT, A4, 0, { rom: romOver(drew) });
   assert.equal(drew.u16(B.counter), 4 * RECORD_BYTES, 'four records drawn');
 
   const confirmed = world();
   confirmed.setU32(A4 + 0x10, STORE);
   confirmed.setU16(SLOT + 0x12, 1);
   confirmed.setU16(0x803972, 0);
-  tallyCursor25DD0C(confirmed, SLOT, A4, 0, {});
+  tallyCursor25DD0C(confirmed, SLOT, A4, 0, { rom: romOver(confirmed) });
   assert.equal(confirmed.u16(B.counter), 0, 'and a confirming frame draws NOTHING');
 });
 
@@ -267,13 +274,13 @@ test('W329 the cursor HIGHLIGHT blinks on FOUR phases, every OTHER frame', { ski
   for (const [word, phase] of [[0, 0], [1, 0], [2, 1], [3, 1], [4, 2], [6, 3], [8, 0]]) {
     const ram = world();
     ram.setU16(0x80390a, word);
-    drawTallyHeader25DD80(ram, A4, 0, 0);
+    drawTallyHeader25DD80(ram, romOver(ram), A4, 0, 0);
     assert.equal(record(ram, 3).d2, S0[phase], `$80390A = ${word} -> phase ${phase}`);
   }
   // and the SIDE picks the table
   const s1 = world();
   s1.setU16(0x80390a, 0);
-  drawTallyHeader25DD80(s1, A4, 1, 0);
+  drawTallyHeader25DD80(s1, romOver(s1), A4, 1, 0);
   assert.equal(record(s1, 3).d2, S1[0], 'side 1 blinks from its OWN table');
 });
 
@@ -285,7 +292,7 @@ test('W329 the highlight sits on the row the cursor is on', { skip: SKIP_IMG }, 
   for (const [cursor, off] of [[0, 0x0000], [1, 0x0600]]) {
     const ram = world();
     ram.setU16(0x80390a, 0);
-    drawTallyHeader25DD80(ram, A4, 0, cursor);
+    drawTallyHeader25DD80(ram, romOver(ram), A4, 0, cursor);
     assert.equal(record(ram, 3).d0, packed(0x5bc00000 + off),
       `cursor ${cursor} highlights its own row`);
   }
@@ -321,7 +328,7 @@ test('W331 the Y cursor STEPS AND RETRIES over three entries instead of masking'
       const ram = yWorld();
       ram.setU8(SLOT + SCREEN11.yCur, from);
       ram.setU16(0x803972, 1 << bit);
-      tallyYCursor25DEAE(ram, SLOT, A4, 0, {});
+      tallyYCursor25DEAE(ram, SLOT, A4, 0, { rom: romOver(ram) });
       assert.equal(ram.u8(SLOT + SCREEN11.yCur), want, `${from} on bit ${bit} -> ${want}`);
     }
   });
@@ -332,7 +339,7 @@ test('W331 it SKIPS an entry the other side is holding', { skip: SKIP_IMG }, () 
   const ram = yWorld({ held: 1, attract: 1 });   // the other side sits on entry 1
   ram.setU8(SLOT + SCREEN11.yCur, 2);
   ram.setU16(0x803972, 1 << 2);             // step DOWN: 2 -> 1 is held, so it must go on to 0
-  tallyYCursor25DEAE(ram, SLOT, A4, 0, {});
+  tallyYCursor25DEAE(ram, SLOT, A4, 0, { rom: romOver(ram) });
   assert.equal(ram.u8(SLOT + SCREEN11.yCur), 0, 'it stepped PAST the held entry');
 });
 
@@ -344,14 +351,14 @@ test('W331 the cue fires only if the cursor actually MOVED', { skip: SKIP_IMG },
   const m = yWorld();
   m.setU8(SLOT + SCREEN11.yCur, 0);
   m.setU16(0x803972, 1 << 3);
-  tallyYCursor25DEAE(m, SLOT, A4, 0, { soundPost: (c) => moved.push(c) });
+  tallyYCursor25DEAE(m, SLOT, A4, 0, { rom: romOver(m), soundPost: (c) => moved.push(c) });
   assert.deepEqual(moved, [0x28c6fa], 'a real move cues');
 
   const still = [];
   const s = yWorld();
   s.setU8(SLOT + SCREEN11.yCur, 1);
   s.setU16(0x803972, 0);                    // no direction at all
-  tallyYCursor25DEAE(s, SLOT, A4, 0, { soundPost: (c) => still.push(c) });
+  tallyYCursor25DEAE(s, SLOT, A4, 0, { rom: romOver(s), soundPost: (c) => still.push(c) });
   assert.deepEqual(still, [], 'and no move is SILENT');
 });
 
@@ -363,7 +370,7 @@ test('W331 the Y cursor stores at ($1,A0), one byte past the X cursor', { skip: 
   ram.setU8(SLOT + SCREEN11.yCur, 0);
   ram.setU8(STORE, 0xaa);                   // the X cursor's byte, which must survive
   ram.setU16(0x803972, 1 << 3);
-  tallyYCursor25DEAE(ram, SLOT, A4, 0, {});
+  tallyYCursor25DEAE(ram, SLOT, A4, 0, { rom: romOver(ram) });
   assert.equal(ram.u8(STORE + 1), 1, 'the Y cursor landed at +1');
   assert.equal(ram.u8(STORE), 0xaa, 'and the X cursor byte was not touched');
 });
@@ -375,15 +382,15 @@ test('W331 confirm is the timeout OR a $70 button, and it means RUN STATE 2', { 
   const t = yWorld();
   t.setU16(SLOT + 0x12, 1);
   t.setU16(0x803972, 0);
-  assert.equal(tallyYCursor25DEAE(t, SLOT, A4, 0, {}), true, 'the timeout confirms');
+  assert.equal(tallyYCursor25DEAE(t, SLOT, A4, 0, { rom: romOver(t) }), true, 'the timeout confirms');
 
   const b = yWorld();
   b.setU16(0x803972, 0x20);
-  assert.equal(tallyYCursor25DEAE(b, SLOT, A4, 0, {}), true, 'a $70 button confirms');
+  assert.equal(tallyYCursor25DEAE(b, SLOT, A4, 0, { rom: romOver(b) }), true, 'a $70 button confirms');
 
   const n = yWorld();
   n.setU16(0x803972, 0x80);
-  assert.equal(tallyYCursor25DEAE(n, SLOT, A4, 0, {}), false, '$80 is outside the mask');
+  assert.equal(tallyYCursor25DEAE(n, SLOT, A4, 0, { rom: romOver(n) }), false, '$80 is outside the mask');
 });
 
 // ==================== 5. THE VALUE ROWS, $25DF4C -- THE OWNER'S ZEROS
@@ -399,7 +406,7 @@ test('W332 the Y draw is PER-SIDE and side 1 is $5BC02600, not the X draw $5BC02
     for (const [side, hdr] of [[0, 0x5bc00000], [1, 0x5bc02600]]) {
       const ram = yWorld();
       ram.setU16(0x80390a, 0);
-      drawTallyYRows25DF4C(ram, SLOT, A4, side, 0);
+      drawTallyYRows25DF4C(ram, romOver(ram), SLOT, A4, side, 0);
       assert.equal(record(ram, 0).d0, packed(hdr), `side ${side}'s own row position`);
       assert.equal(record(ram, 0).d2, 0x00334224);
       assert.equal(record(ram, 0).d3, 0x0648);
@@ -415,7 +422,7 @@ test('W332 there are THREE row offsets here, where the X draw has two', { skip: 
   for (const cursor of [0, 1, 2]) {
     const ram = yWorld();
     ram.setU16(0x80390a, 0);
-    drawTallyYRows25DF4C(ram, SLOT, A4, 0, cursor);
+    drawTallyYRows25DF4C(ram, romOver(ram), SLOT, A4, 0, cursor);
     assert.equal(record(ram, 1).d0, packed(0x5bc00000 + [0, 0x600, 0xc00][cursor]),
       `cursor ${cursor} highlights its own row`);
   }
@@ -428,7 +435,7 @@ test('W332 the OTHER side marker is drawn only when they have one', { skip: SKIP
   assert.equal(IMG.readUInt16BE(0x25dfc4), 0x4a40, '$25DFC4 tst.w D0');
   const both = yWorld({ held: 2, attract: 1 });       // the other side sits on entry 2
   both.setU16(0x80390a, 0);
-  assert.equal(drawTallyYRows25DF4C(both, SLOT, A4, 0, 0), 3, 'THREE records when they have one');
+  assert.equal(drawTallyYRows25DF4C(both, romOver(both), SLOT, A4, 0, 0), 3, 'THREE records when they have one');
   assert.equal(record(both, 2).d2, 0x00334424, 'and it is the marker descriptor');
   assert.equal(record(both, 2).d0, packed(0x5bc00000 + 0xc00), 'on THEIR row, not mine');
 
@@ -438,14 +445,14 @@ test('W332 the OTHER side marker is drawn only when they have one', { skip: SKIP
   // negative. So attract OFF skips the marker...
   const alone = yWorld({ held: 0xff });               // attract off -> $25DAC2 answers $FFFF
   alone.setU16(0x80390a, 0);
-  assert.equal(drawTallyYRows25DF4C(alone, SLOT, A4, 0, 0), 2, 'TWO records when attract is off');
+  assert.equal(drawTallyYRows25DF4C(alone, romOver(alone), SLOT, A4, 0, 0), 2, 'TWO records when attract is off');
 
   // ...and a $FF sentinel with attract LIVE is a state the ROM relies on not happening: entry * 2
   // would read $25DFF0 + $1FE, far past a three-word table, and add whatever is there to a sprite
   // position. The port REFUSES by address rather than inventing a row.
   const bad = yWorld({ held: 0xff, attract: 1 });   // the combination the board avoids
   bad.setU16(0x80390a, 0);
-  assert.throws(() => drawTallyYRows25DF4C(bad, SLOT, A4, 0, 0),
+  assert.throws(() => drawTallyYRows25DF4C(bad, romOver(bad), SLOT, A4, 0, 0),
     (e) => e.romAddress === 0x25dfd6, 'an out-of-range entry throws BY ADDRESS');
 });
 
@@ -466,7 +473,7 @@ test('W332 the whole screen still fits bucket 26', { skip: SKIP_IMG }, () => {
   // simultaneous -- but saying the ceiling out loud is what stops a later wave overrunning it.
   const ram = yWorld({ held: 2, attract: 1 });
   ram.setU16(0x80390a, 0);
-  drawTallyYRows25DF4C(ram, SLOT, A4, 0, 0);
+  drawTallyYRows25DF4C(ram, romOver(ram), SLOT, A4, 0, 0);
   assert.ok(ram.u16(B.counter) <= B.capBytes, 'inside the bucket');
   assert.equal(ram.u16(B.counter), 3 * RECORD_BYTES);
 });

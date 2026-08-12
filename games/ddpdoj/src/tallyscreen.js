@@ -457,8 +457,11 @@ export function screenState2_25DB7C(ram, rom, ctx, a5) {
  * @param side the record's `($7,A5)`.
  * @returns {number} how many records were emitted -- 3, always, and returned so a caller can say so.
  */
-export function drawTallyHeader25DD80(ram, a4, side, cursor = 0) {
-  const d4 = ram.u16(a4 + 0x14);                  // $25DD94 move.w ($14,A4),D4
+export function drawTallyHeader25DD80(ram, rom, a4, side, cursor = 0) {
+  // **A4 IS THE DESCRIPTOR AND DESCRIPTORS LIVE IN ROM** ($25D952 / $25D96C). Every `($n,A4)` read
+  // here is a ROM read; this was `ram.` until W344 and threw `RangeError: ... outside main RAM` on
+  // the first frame anything reached it. Nothing did until W344 advanced ($C,A5) past 0.
+  const d4 = rom.u16(a4 + 0x14);                  // $25DD94 move.w ($14,A4),D4 -- a ROM read
   // $25DD72 loads $5BC00000 and $25DD78 `tst.b ($7,A5) / beq $25DD86` KEEPS it for side 0; only
   // side 1 reaches $25DD80's $5BC02C00. **THE HEADER POSITION IS PER-SIDE**, and W328 first shipped
   // the side-1 constant for both -- caught by reading $25DD72, which is two instructions ABOVE
@@ -543,8 +546,13 @@ export function tallyCursor25DD0C(ram, slot, a4, side, ctx) {
     ctx?.soundPost?.(0x28c6fa);                             // $25DD3C
   }
   ram.setU8(slot + SCREEN11.xCur, ram.u8(slot + SCREEN11.xCur) & 0x01);   // $25DD42
-  // $25DD48 -- the descriptor's DATA pointer, so the chosen entry leaves the record.
-  ram.setU8(ram.u32(a4 + 0x10), ram.u8(slot + SCREEN11.xCur));
+  // $25DD48 `movea.l ($10,A4),A0` -- the descriptor's DATA pointer, so the chosen entry leaves the
+  // record. **A4 IS THE DESCRIPTOR AND DESCRIPTORS LIVE IN ROM** ($25D952 / $25D96C), so this read is a
+  // ROM read; only the STORE through A0 is RAM. This line read `ram.u32(a4 + 0x10)` until W344 and threw
+  // `RangeError: $25d97c is outside main RAM` the moment anything reached it -- which nothing did, because
+  // no code advanced ($C,A5) to 1 until W344's phase-0 arm landed. The suite never saw it; the web gate,
+  // which drives the object driver over a live seed, failed on the first frame the tally screen ran.
+  ram.setU8(ctx.rom.u32(a4 + 0x10), ram.u8(slot + SCREEN11.xCur));   // $25DD4C move.b ($E,A5),(A0)
   const t = u16(ram.u16(slot + SCREEN11.armA) - 1);         // $25DD50 subq.w #1
   ram.setU16(slot + SCREEN11.armA, t);
   if (t === 0 || (d0 & 0x70) !== 0) {                       // $25DD54 beq / $25DD58 andi/beq
@@ -553,7 +561,7 @@ export function tallyCursor25DD0C(ram, slot, a4, side, ctx) {
     return true;                                           // $25DD6C ori #$1,SR
   }
   // $25DD72 -- not confirmed, so DRAW.
-  drawTallyHeader25DD80(ram, a4, side, ram.u8(slot + SCREEN11.xCur));
+  drawTallyHeader25DD80(ram, ctx.rom, a4, side, ram.u8(slot + SCREEN11.xCur));
   return false;
 }
 
@@ -621,14 +629,15 @@ export function tallyYCursor25DEAE(ram, slot, a4, side, ctx) {
   }
   if (d7 !== d6) ctx?.soundPost?.(0x28c6fa);               // $25DF18 cmp.b D6,D7 / beq
   ram.setU8(slot + SCREEN11.yCur, d7 & 0xff);              // $25DF24
-  ram.setU8(ram.u32(a4 + 0x10) + 0x01, d7 & 0xff);         // $25DF28 -- ($1,A0), NOT (A0)
+  ram.setU8(ctx.rom.u32(a4 + 0x10) + 0x01, d7 & 0xff);     // $25DF28 -- ($1,A0), NOT (A0);
+  //                                                          the ($10,A4) read is ROM, the store is RAM
   const t = u16(ram.u16(slot + SCREEN11.armA) - 1);        // $25DF32 subq.w #1
   ram.setU16(slot + SCREEN11.armA, t);
   if (t === 0 || (d0 & 0x70) !== 0) {                      // $25DF36 beq / $25DF3A andi/beq
     ctx?.soundPost?.(0x28c6e0);                            // $25DF42
     return true;                                           // $25DF48 bra $25DB7C
   }
-  drawTallyYRows25DF4C(ram, slot, a4, ram.u8(slot + SCREEN11.side), d7);   // $25DF4C
+  drawTallyYRows25DF4C(ram, ctx.rom, slot, a4, ram.u8(slot + SCREEN11.side), d7);   // $25DF4C
   return false;
 }
 
@@ -674,8 +683,11 @@ export function otherSideEntry25DAC2(ram, a5) {
  *
  * @returns {number} records emitted: 3 normally, 2 when the other side has nothing selected.
  */
-export function drawTallyYRows25DF4C(ram, a5, a4, side, cursor) {
-  const d4 = ram.u16(a4 + 0x14);                              // $25DF6E
+export function drawTallyYRows25DF4C(ram, rom, a5, a4, side, cursor) {
+  // **A4 IS THE DESCRIPTOR AND DESCRIPTORS LIVE IN ROM** ($25D952 / $25D96C). Every `($n,A4)` read
+  // here is a ROM read; this was `ram.` until W344 and threw `RangeError: ... outside main RAM` on
+  // the first frame anything reached it. Nothing did until W344 advanced ($C,A5) past 0.
+  const d4 = rom.u16(a4 + 0x14);                              // $25DF6E -- a ROM read
   const d7 = side !== 0 ? 0x5bc02600 : 0x5bc00000;            // $25DF5A / $25DF4C
   enqueueRegisters(ram, TALLY_BUCKET, d7, 0x00334224, 0x0648, d4);   // $25DF72
   // $25DF78..$25DFBA -- this player's highlight, on the row the Y cursor is on.
