@@ -3504,3 +3504,38 @@ same cascade shape `$43`'s three states use and the opposite of `$4A`'s mutually
 
 Still unread: the rest of `$26F8A6` past `$26F8DC`, and the seven handlers `$26F90E`, `$26FBD4`, `$26FCF2`,
 `$26FD66`, `$26FECA`, `$26FF3E`, `$26FF56`.
+
+### `$4C` STATE 0 IS COMPLETE (W341) -- and `($1A,A6)` IS BOTH THE SPEED AND THE DECELERATION COUNTER
+
+    26f8dc  cmpi.w #$2,($28,A6) / bne $26F90C          sub-state 2
+    26f8e6  subq.b #1,($34,A6) / bcc $26F90C           the cadence -- UNDERFLOW convention
+    26f8ee  move.b ($35,A6),($34,A6)                   reload from the pair sub-state 0 seeded
+    26f8f4  subq.b #1,($1A,A6) / bne $26F90C           <-- DECREMENT THE SPEED, test for ZERO
+    26f8fc  move.b #$1,($17,A5)
+    26f902  move.w #$A001,(A6)                         the record's type word
+    26f906  moveq #$1,D0 / bsr $26F858                 -> outer state 1
+    26f90c  rts
+
+**`($1A,A6)` IS THE SPEED `applyVelocityA6` READS *AND* THE COUNTER THIS ARM DECREMENTS.** Sub-state 0 seeds
+it to `$16` (via `move.w #$1600,($1A,A6)`), the dispatcher's `jmp $2417DE` reads it every frame to move the
+object, and sub-state 2 knocks it down by one per cadence tick until it hits zero. **So state 0 is "enter
+moving, decelerate to a stop, then advance"** -- the deceleration and the timer are the same byte.
+
+Read as a plain timer, the object would keep its entry speed and then teleport into state 1. Read as a plain
+speed, the state would never advance. **It is both, and a port must decrement the field the velocity code
+reads.** That is a third distinct meaning for `($1A,A6)` in this project after `$4B`'s animation counter and
+the band's palette base -- and the fourth countdown-shaped thing that is not a countdown.
+
+Note the mixed conventions inside eight instructions: `($34,A6)` uses `subq.b`/`bcc` (underflow) and
+`($1A,A6)` uses `subq.b`/`bne` (fires AT ZERO). **Two of the four catalogued conventions, six bytes apart**,
+which is the same trap `$43` set at `$26DE6E`/`$26DE7C`.
+
+`move.w #$A001,(A6)` sets the record's type word on the way out: bit 15 (alive), bit 13, and bit 0.
+Transcribe the literal; do not decompose it into flag names that have not been measured.
+
+**STATE 0 IS THEREFORE FULLY READ AND SMALL** -- roughly 24 instructions across three sub-states. If the other
+seven are comparable, `$4C`'s ~2300 bytes are mostly the later handlers, and the eight can be written in two
+or three waves rather than eight.
+
+Still unread: `$26F90E` (state 1, which begins immediately at `$26F90E cmpi.w #$0,($28,A6)` -- the same
+cascade shape) and the six after it.
