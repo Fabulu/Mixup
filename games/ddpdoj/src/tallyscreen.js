@@ -43,6 +43,7 @@ import { u16, u32 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueRegisters } from './spritequeue.js';
 import { RAM, playerFlags25FD94 } from './machine.js';
+import { clearSlotTable23C668 } from './background.js';
 import { queueKill } from './objalloc.js';
 import { txPrint240DC2, txPrint240E1A, HUDRAM } from './hud.js';
 import { announcePost, announceChoose260ACA } from './rank.js';
@@ -947,4 +948,70 @@ export function loadSavedCursor25DA60(ram, rom, a5) {
   ram.setU8(a5 + SCREEN11.xCur, r.x & 0xff);               // $25DA8A move.b D6,($E,A5)
   ram.setU8(a5 + SCREEN11.yCur, r.y & 0xff);               // $25DA8E move.b D7,($F,A5)
   return r;
+}
+
+/**
+ * `$25DC2C..$25DCA8` -- OBJECT [11] PHASE 0's ARM: wait for START, then set up and advance to phase 1.
+ * W344.
+ *
+ *     25dc2c  movea.l ($8,A5),A4                     the descriptor state 0 chose
+ *     25dc30  cmpi.b #$0,($C,A5) / bne $25DCC0       PHASE 0 ONLY
+ *     25dc3a  tst.w $813098 / beq $25DC50            rank...
+ *     25dc44  cmpi.w #$4,$813092 / beq $25DCC0       ...AND stage index 4 -> skip the arm entirely
+ *     25dc50  tst.w $803926 / bne $25DCC0
+ *     25dc5a  movea.l ($4,A4),A0 / jsr (A0)          the descriptor's input read = $23D186/$23D18E
+ *     25dc60  btst #$F,D0 / beq $25DCC0              bit 15 = START
+ *     25dc68  jsr $28D53C / bcs $25DCC0              menuCarry28D53C -- busy, abandon
+ *     25dc72  movea.l ($C,A4),A0 / jsr (A0) / bcs    the descriptor's THIRD slot -- NOT PORTED
+ *     25dc7c  bsr $25DA60                            loadSavedCursor25DA60
+ *     25dc80  bsr $25DA94                            pickFreeYRow25DA94
+ *     25dc84  move.b #$1,($C,A5)                     **PHASE 0 -> 1**
+ *     25dc8a  move.b ($7,A5),D0 / jsr $260A88        postAnnounce260A88
+ *     25dc94  move.w ($14,A4),D0 / lea $225978,A0 / jsr $24150A     installBank
+ *     25dca4  jsr $23C668                            clearSlotTable23C668
+ *
+ * **`$813098` AND `$813092` ARE ONE GATE, NOT TWO.** `tst.w` then `beq` FORWARD means a zero rank SKIPS the
+ * stage test and runs the arm; only rank non-zero AND stage index 4 abandons it. So on stage 5 at rank the
+ * tally cannot be advanced by START at all -- worth knowing before wondering why it never responds there.
+ *
+ * **THE ONE THING STILL MISSING IS `($C,A4)`**, the descriptor's third code pointer (`$23C98E` for side 0,
+ * `$23C9F0` for side 1). It is substantial -- it opens by reading `$803808`, the same dip-config byte
+ * `menuDips23C932` tests against `$12`, and runs past `$23CAAC` -- so it is a wave of its own. It gates the
+ * advance through carry, so the port NOTES it and treats it as passing: that is the choice that makes START
+ * work rather than silently never advancing, and it is recorded as an assumption rather than a transcription.
+ */
+export function tallyPhase0Arm25DC2C(ram, rom, a5, ctx) {
+  if (ram.u8(a5 + SCREEN11.phase) !== 0) return false;      // $25DC30 -- phase 0 only
+  const a4 = ram.u32(a5 + SCREEN11.desc);                   // $25DC2C movea.l ($8,A5),A4
+  // $25DC3A/$25DC44 -- ONE gate: rank non-zero AND stage index 4 abandons.
+  if (ram.u16(0x813098) !== 0 && ram.u16(0x813092) === 4) return false;
+  if (ram.u16(0x803926) !== 0) return false;                // $25DC50
+  const d0 = readInput23D186(ram, ram.u8(a5 + SCREEN11.side));   // $25DC5A jsr ($4,A4)
+  if ((d0 & 0x8000) === 0) return false;                    // $25DC60 btst #$F -- START
+  if (menuCarry28D53C(ram)) return false;                   // $25DC68 jsr $28D53C / bcs
+  // $25DC72 -- the descriptor's ($C,A4) slot. UNPORTED and it gates on carry; treated as passing.
+  ctx?.unportedLog?.note(0x25dc72, `$25DC72 calls the descriptor's THIRD slot through ($C,A4) -- $23C98E `
+    + `for side 0, $23C9F0 for side 1 -- and abandons the START press on carry set. Neither is `
+    + `transcribed: they open by reading $803808, the dip-config byte menuDips23C932 tests against $12, `
+    + `and run past $23CAAC, so each is its own wave. The port treats the call as PASSING, which is an `
+    + `assumption and not a transcription: it makes START advance the tally, where refusing would make `
+    + `phase 0 silently never complete. MEASUREMENT THAT REMOVES THE ASSUMPTION: read $23C98E to its rts `
+    + `and find what sets its carry`);
+  loadSavedCursor25DA60(ram, rom, a5);                      // $25DC7C bsr $25DA60
+  pickFreeYRow25DA94(ram, a5, ctx);                         // $25DC80 bsr $25DA94
+  ram.setU8(a5 + SCREEN11.phase, 1);                        // $25DC84 -- PHASE 0 -> 1
+  // $25DC8A move.b ($7,A5),D0 / $25DC8E jsr $260A88 -- rank.js already models all FOUR
+  // announcement posters through announcePost, so this passes the SITE rather than reimplementing it.
+  announcePost(ram, 0x260a88, ram.u8(a5 + SCREEN11.side));
+  ctx?.unportedLog?.note(0x25dc94, `$25DC94 installs a palette bank from $225978 with the bank number in `
+    + `($14,A4) -- a descriptor field the port does not yet read, so the install is counted rather than `
+    + `performed. $225978 is inside W91's $222A78..$2252F8 family window, so no window is needed; only `
+    + `the bank NUMBER is missing`);
+  // $25DCA4 jsr $23C668 -- clearSlotTable23C668 needs the SlotTable907000 object, which is not yet
+  // threaded through ctx. Counted here so the dependency is visible rather than silently dropped.
+  if (ctx?.slotTable) clearSlotTable23C668(ctx.slotTable);
+  else ctx?.unportedLog?.note(0x25dca4, '$25DCA4 jsr $23C668 clears the $907000 slot table '
+    + '(clearSlotTable23C668, W344) but no SlotTable907000 is on ctx yet, so the clear is counted. '
+    + 'Threading that object through is the remaining wiring.');
+  return true;
 }
