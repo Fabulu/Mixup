@@ -3356,3 +3356,36 @@ construction leaks a parent slot out of THREE permanently. Read it before writin
 the `A3` the dispatch table computed. So a node is `$70` bytes of which `$30` is header and up to `$40` is
 payload -- and `($4,A2)` comes from the caller's table (`word = $001F` for `$4C`'s node[0], so **32 words =
 $40 bytes**, exactly filling the node). Another self-checking fit.
+
+### `$246800` IS A SIX-INSTRUCTION CHAIN-FREE WITH TWENTY-ONE CALLERS (W341) -- port it first
+
+    246800..246803   the prologue (D0/A0 saved)
+    246804  movea.l D0,A0
+    246806  clr.w (A0)                     release the node
+    246808  move.w #$0,($4,A0)             and its second field
+    24680e  move.l ($2C,A0),D0 / bne $246804    follow the ($2C) LINK and loop
+    246814  movea.l (A7)+,A0 / move.l (A7)+,D0 / rts
+
+**It walks the `($2C)` linked list `$246520` builds and releases every node**, and the two writes are exactly
+the inverse of `$246520`'s claim: that routine sets `move.w #$8000,(A1)` and `move.w D6,($4,A1)`, this one
+clears both. The pool convention is confirmed from both ends -- `tst.w / bmi` means occupied when NEGATIVE,
+so `clr.w` is what frees it.
+
+**TWENTY-ONE CALLERS.** This is not `$4C` infrastructure, it is core linked-list teardown used across the
+ROM, and it is six instructions. **Port `$246800` before `$246520`**: it is the cheapest item in this whole
+dependency chain and the one most likely to be needed again immediately. `codexref` its twenty-one callers
+after writing it -- that list is a map of every multi-part object in the game.
+
+**So the dependency order for `$4C` is now fully determined, cheapest first:**
+
+    1. $246800   6 instructions, 21 callers   the chain-free
+    2. $246520   the two-pool constructor: pools $80FA86 (20 x $70) and $810346 (3 x $30), CONTIGUOUS;
+                 dispatch $24627A (3 entries, index 3 is CODE); caller table = count word + count*12
+    3. $26F858   8 callers, unread, called with D0 = 6
+    4. $4C       everything else about it is read
+
+Nothing in items 1 and 2 is unmeasured any more. Item 3 is the only unread routine left in `$4C`'s chain.
+
+**AND THE `($2C)` LINK IS WORTH NAMING GLOBALLY.** `$24681A` (a separate routine immediately after) walks the
+same chain summing `($18,A0)`, so `+$2C = next` and `+$18 = a per-node quantity` are a convention shared by at
+least three routines. Any future multi-part object in this ROM will use them.
