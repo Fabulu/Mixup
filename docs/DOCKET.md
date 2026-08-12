@@ -1202,3 +1202,43 @@ five routines.
 `$4C` subsystem 2 reads) and four from `$803914` (subsystem 3's live one). So `$803908..$803914` is an input or
 per-player block, and knowing what `$80390C` holds decides whether these draw gates ever fire in one-player
 play at all.
+
+### D24/D31 (W343): THE LASER IMPACT IS GATED ON `$81308C`, WHICH THE TALLY SCREEN COMPUTES AND THE PORT NEVER WRITES
+
+**All six `bne`-gated laser sites are byte-identical** (`$2548A0`, `$254962`, `$254A3C`, `$254B44`, `$254F14`,
+`$254FC2`, `$24` bytes each, verified by comparison not by reading). All six are the per-player DRAW gate.
+**None is the impact spawn.** One command eliminated five sites -- the `$26FD0E`/`$26FEE6` technique from `$4C`.
+
+**THE IMPACT SPAWN IS `laser.js:1029`, AND ITS GATE IS THE PROBLEM:**
+
+    if ((b.d7 ? phase : !phase) && ram.u16(0x81308c) !== 0 && ram.u16(b.sound2) === 0) {
+      spawnBeamImpact289FC0(...)                                  // $255066 / $2550F0
+
+The ROM agrees exactly -- `$255056 tst.w $81308C / beq $25506C` skips the `jsr $289FC0` when the gate is zero.
+**So the port matches the ROM and the effect is correctly conditional. The question is the VALUE.**
+
+**WHAT `$81308C` ACTUALLY IS -- three of my earlier readings were wrong, so here is the measured chain:**
+
+    25fda0  clr.w $81308C
+    25fdae  addq.w #1,$81308C     if ($18,$8130FA) is non-zero
+    25fdbc  addq.w #1,$81308C     if ($18,$81311E) is non-zero
+    25fdc2  subq.w #1,$81308C     <-- SUBTRACTS ONE, so it is a count MINUS ONE
+    25fdc8  move.w $81308C,$81308E
+
+`$8130FA` and `$81311E` are NOT the player records (`$8103E6`/`$810448`) and NOT the beam blocks
+(`$811F32`/`$811F52`) -- **I checked both and both were wrong guesses.** They are reached only by `lea`, from
+nine and seven sites, ALL inside `$25Fxxx`/`$260xxx` -- **the stage-clear / tally region.** And `$25FF38` is in
+that reference list, which the port already carries as `tallyRequest25FF38` (W276/W328-W332).
+
+**SO `$81308C` IS A TALLY-SCREEN QUANTITY, COMPUTED BY CODE THE PORT PARTLY HAS.** The three writers are all in
+`$25FD82..$25FDF8`, called from `$26005C`, `$2601E4` and `$2602B0`. The port writes it nowhere, so it is
+permanently 0, so `!== 0` is permanently false, so **the laser beam impact never spawns.** That is the owner's
+D24/D31, and it is the LASER hyper as they originally said.
+
+**THE NEXT STEP IS BOUNDED AND IN ALREADY-PORTED TERRITORY:** read `$25FD82..$25FDF8` and its three callers,
+identify what `($18,$8130FA)`/`($18,$81311E)` hold, and port the count. `tallyscreen.js` already models
+`$25FF38` in the same region, so the structures are probably within reach of code that exists.
+
+**A CAUTION EARNED FOUR TIMES ON THIS ITEM:** do NOT simply force `$81308C` non-zero to make the effect appear.
+Its `- 1` means one entry gives 0 and two give 1, so a wrong value changes ELEVEN other `$80390C`-paired sites
+and roughly half of the 53 `$81308C` readers. **Port the computation, not the symptom.**
