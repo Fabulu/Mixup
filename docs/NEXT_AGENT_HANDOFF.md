@@ -243,6 +243,37 @@ owner cannot.
   the tally lives inside -- states 0 and 2 transcribed, state 1's gates and its menu
   cursor ONE counted note that NAMES the six routines still missing.
 
+## DEFINITION OF DONE, PER WAVE -- and why this section exists
+
+A wave is DONE when all five hold. Nothing else counts, and "the game is finished" is not a
+per-wave test:
+
+1. `node --test games/ddpdoj/tests/` is green with **zero skips**.
+2. `node games/ddpdoj/tools/w230descriptorsweep.mjs` reports **0 not in the bundle**.
+3. `python games/ddpdoj/tools/dojcoverage.py` prints **both OK lines**.
+4. A worklog exists under `docs/worklog/ddpdoj/`, numbered by the reserve-then-rename rule.
+5. It is **committed AND pushed** (D18).
+
+If the wave is BLOCKED instead, it is done when the blocker is recorded with the specific
+MEASUREMENT that would unblock it -- as `$1A` is ("measure D2/D3 at `$268D8C`") and `$280252` is
+("measure A0 at `$28029A`"). "Unported" is not a blocker; an unread register is.
+
+**WHY THIS IS WRITTEN DOWN.** A session-scoped Stop hook was set by `/goal` with the condition
+*"finishing the whole game including loops, plus everything else we ever said"*. That is a
+COMPLETION test used as a TURN-END gate, so it can never pass: every turn ends with the game
+unfinished, the hook fires, and once the context is spent the only thing left to produce is
+restatement. It fired eight times in a row at the end of 2026-08-11 for exactly that reason.
+
+The lesson for whoever sets the next one: **a goal condition enforced at turn-end has to be
+satisfiable at turn-end.** The five checks above are. "The whole game" is not. And autonomy is a
+different mechanism entirely -- `/loop` or a cron RE-INVOKES with a fresh context, which is what
+unattended progress actually needs; a Stop hook only refuses to let a turn finish and cannot hand
+back the one resource that ran out.
+
+This repo is already built for the fresh-context model: this handoff and `docs/DOCKET.md` are the
+state carriers, and they are kept current precisely so a new session continues without re-reading
+the code. Trust them over trying to keep one context alive.
+
 ## An hourly cron is running
 
 A session-scoped job fires every hour at :23 telling the next wake to resume
