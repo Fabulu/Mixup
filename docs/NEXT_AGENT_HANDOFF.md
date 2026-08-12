@@ -1265,15 +1265,40 @@ records, so `$271A2C + $40 = $271A6C` while the handler starts at `$271A64`. Its
 declared `$271A1A + $52` (`$271A1A..$271A6B`, record proto + both sub records) and must not be trimmed
 to the handler. `$49`'s was four bytes; do not assume the depth.
 
-**THE HANDLER TESTS BOUNDS BEFORE DAMAGE, WHERE `$49` DOES THE REVERSE.**
+**`$271A6C` IS A DESPAWN TRIGGER, NOT THE OFF-SCREEN TEST -- `$4A` HAS BOTH.**
 
-    271a6c  cmpi.w #$2800,($2,A6) / bgt $271A7E     a plain WORD compare -- not $49's ext.l/addi.l
-    271a76  tst.b ($16,A5) / bne $271AB4
-    271a7e  moveq #$5C,D1 / and.b (A6),D1 / beq $271AD2    the $5C family mask, SIXTH member
-    271a86  move.b #$A3,D0 / and.b D0,(A6)
+    271a6c  cmpi.w #$2800,($2,A6) / bgt $271A7E     a POSITION TRIGGER
+    271a76  tst.b ($16,A5) / bne $271AB4            ... into the DEATH sequence
+    271a7e  moveq #$5C,D1 / and.b (A6),D1 / beq $271AD2    the $5C mask, SIXTH member
+    271ad8  moveq #$0,D0 / move.w ($2,A6),D0 / ext.l / addi.l #$4000    <-- and $49's LONG test IS here
 
-So `$4A` is a third variant of the bounds idiom: `$1B`/`$81` use two `addi.w`s, `$49` uses a signed
-LONG compare, and `$4A` uses a bare `cmpi.w #$2800`. Three members, three spellings of one test.
+An earlier version of this section called `$271A6C` a third spelling of the off-screen test. **That is
+wrong and is corrected here:** `$4A` carries `$49`'s signed-long test verbatim at `$271AD8` as well.
+`$271A6C` is a separate check that retires the record once it reaches `$2800` with `($16,A5)` set. Two
+different tests, not one test spelled differently -- so the count of bounds idioms stays at two
+(`addi.w` pairs for `$1B`/`$81`, signed long for `$49`/`$4A`).
 
-Still unread for `$4A`: everything past `$271A8A`, including its walker call at `$271AC2` (W333) and
-whether `($20,A5)`/`($21,A5)` feed cadence or aim. `$4B` is not yet read past its table entry.
+**THE REAL FINDING: `$4A` DOES NOT FREE ITSELF WHEN IT DIES.**
+
+    271aa8  move.l #$180,D0 / jsr $28615E       scoreKill -- $180, where $49 pays $250
+    271ab4  move.w #$8000,(A6)                  <-- the record MARKS itself
+    271ab8  D2 = ($2,A6) ; lea ($271C30,PC),A1 ; jsr $270D92    its OWN list, not $27197C
+    271ac6  jsr $28C2DC
+    271acc  move.b #$1,($3F,A6)
+    271ad2  move.b ($18,A5),($1D,A6)            <-- FALLS THROUGH into the alive path
+
+There is **no `jmp $263762`**. Where `$49`'s death arm ends in `freeEnemy`, `$4A` sets `(A6)` to
+`$8000` and `($3F,A6)` to 1 and **keeps running the alive path in the same frame**. So the record
+survives its own death as a marked, still-drawing object, and something else retires it later.
+
+That also means `$271AB4` is shared by BOTH exits: the `bne` at `$271A7A` jumps straight into it, so
+reaching `$2800` runs the same spawn walk, sound and marking as being shot does. A port that wrote
+`$4A`'s death as `$49`'s -- score, walk, free -- would delete a live record and lose whatever `$8000`
+and `($3F,A6)` are for.
+
+**MEASUREMENT THE NEXT WAVE NEEDS FIRST:** find who reads `(A6) == $8000` and `($3F,A6)`, because that
+reader is what actually frees `$4A`, and it is probably shared with `$4B`. Until it is named, `$4A`
+cannot be written without inventing its lifetime.
+
+Still unread for `$4A`: `$271AE0` onward (its alive path, fire arm and draw) and whether
+`($20,A5)`/`($21,A5)` feed cadence or aim. `$4B` is not yet read past its table entry.
