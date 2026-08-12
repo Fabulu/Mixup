@@ -1782,3 +1782,43 @@ partly.
 Still to read for `$48`: the init body `$27128C`, the handler from `$27133A` to `$271390`, and everything
 after `$2713CE`. Its death list address is inside the unread `$271384`-ish span just before the walker
 call.
+
+### `$48`'s HANDLER HEAD AND DAMAGE ARM (W338 recon continued) -- the `$2800` GUARD IS MISSING
+
+    27133a  tst.b ($3F,A6) / bne $27133E + 2 + $60 = $2713A0    <-- the mark test, test 1 of ?
+    271342  cmpi.w #$2800,($2,A6)
+    271348  ble $271348 + 2 + $38 = $271382                     <-- STRAIGHT to the retirement
+    27134c  moveq #$5C,D1 / and.b (A6),D1 / beq $2713A0          the $5C mask
+    271354  move.b #$A3,D0 / and.b D0,(A6)
+    27135a  jsr $286096                                         scoreHit
+    271360  D0 = ($1D,A6) ; D2 = ($19,A5) ; eor.b ; store        the simple palette XOR
+    27136e  tst.w ($18,A6) / bpl $2713A6
+    271376  move.l #$130,D0 / jsr $28615E                        a FIFTH kill score
+    271382  move.w #$8000,(A6)                                   the mark, as $4A
+    271386  D2 = ($2,A6) ; lea ($271558,PC),A1 ; jsr $270D92      FIVE entries, ends $271596
+
+**CONFIRMED: `$48` tests `($3F,A6)` at the handler's first instruction, exactly as `$4A` does.** So the
+2-2 lifetime split is real and both marking members gate on the mark from instruction one. Whether `$48`
+also tests it before its fire arm and before its draw is still unread.
+
+**THE DIVERGENCE: `$48`'s `$2800` TRIGGER HAS NO `($16,A5)` GUARD.**
+
+    $4A   cmpi.w #$2800,($2,A6) / bgt (skip) ; then tst.b ($16,A5) / bne -> retire
+    $48   cmpi.w #$2800,($2,A6) / ble -> retire                      NO ($16,A5) TEST AT ALL
+
+Same constant, same purpose, and `$4A` requires the record to have been on screen first while `$48` does
+not. `($16,A5)` is the "has been on screen" latch every member sets in its off-screen arm, so `$4A`
+retires only after appearing and `$48` retires the moment its position qualifies -- **including
+potentially before it ever appears.** A port that copied `$4A`'s guarded form would make `$48` outlive
+its intended retirement.
+
+That is the *ninth* distinct axis on which these four types differ while sharing instruction sequences,
+and the first where the difference is a MISSING instruction rather than a changed constant. Absence is
+harder to notice than a different literal, which is the reason this is written down rather than left to
+the next reader's diff.
+
+**Five kill scores now:** `$250` (`$49`), `$180` (`$4A`), `$290` (`$4B`), `$130` (`$48`) -- and four
+off-screen limits: `$2000`, `$1C00`, `$400`, `$2C00`.
+
+Still to read for `$48`: the init body `$27128C`, and everything after `$2713CE` (the freeze tail, fire
+arm and draw). Death-list window: `$271558 + $3E` (FIVE 12-byte entries then `$FFFF`).
