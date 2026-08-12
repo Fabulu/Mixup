@@ -2064,3 +2064,28 @@ discover it mid-type.
 Still to read for `$47`: `$26D738` (one instruction, the init's tail), `$26D810` onward (the alive path), and
 `$26DAC8` (the draw). Its window is `$26D740 + $A0`; check `$224F38` against W91's existing palette family
 window before declaring a second one.
+
+### `$261100` IS ALREADY PORTED. `$47` HAS NO UNIDENTIFIED CALLEE. (W339)
+
+The previous section said to `codexref $261100` before writing `$47`. Done, and the answer is that it needs
+no work: it is **`pushExternalSpeed(ram, d0, d1)` in `src/background.js`** (line 1222), documented there since
+W31 as "THE EXTERNAL SPEED PUSH, the writer side" -- three writes, `$813180 = 1`, `$813182 = D0`,
+`$813184 = D1`, and `backgroundFrame` has consumed those words since W13.
+
+`background.js` had already recorded that it has **nine callers in build B**, and `$26D802` -- `$47`'s
+retirement path -- is one of them. So `$47` calling it with `D0 = D1 = $20` is the same construction as the
+stage-1 midboss at `$26B73A`, which pushes `D0 = D1 = $0020` as its death countdown passes `$30`.
+
+**AND THAT TELLS US WHAT `$47` IS.** `pushExternalSpeed` is the owner's "minibosses stop the scroll" from the
+writer end: the stage stops ADVANCING because a paired speed push overrides the script. A type with `$E2`
+records that pushes the same `$20`/`$20` on retirement is doing the same job -- **`$47` is a scroll-stopping
+set-piece**, not an ordinary enemy, which also explains its four sub records, its sixteen-word prototype and
+its per-frame palette repaint.
+
+**FIFTH TIME THIS SESSION** that a "new callee" or "blocker" dissolved on checking whether the port already
+had it (after W334's `init + 8`, W336's `death37`, W336's `$2816F6` measurement, W338's `$2714AE` story). The
+check is `grep -rniE '<addr>' games/ddpdoj/src/` plus `codexref`, it costs two commands, and it has never once
+failed to be worth running. **Run it on EVERY callee before reading its body.**
+
+So `$47`'s remaining work is pure reading: `$26D738` (one instruction), `$26D810` onward (the alive path) and
+`$26DAC8` (the draw). Window `$26D740 + $A0`; still check `$224F38` against W91's palette family window.
