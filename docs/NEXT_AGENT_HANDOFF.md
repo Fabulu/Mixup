@@ -3009,3 +3009,33 @@ this block needs the poll ported or it will spawn on top of a set-piece. Four po
 `$269C6C`'s owner should be identified first, since it is the one confirmed to self-free.
 
 Still to read for `$4C`: the init past `$26F520` and the handler from `$26F5F2`.
+
+### `$4C`'s INIT IS READ IN FULL (W341) -- it claims TWO flags, and shares `$43`'s BANK NUMBERS
+
+    26f518  move.w #$1,$8130DE
+    26f520  move.w #$1,$8130E0            <-- **A SECOND FLAG**
+    26f528  move.w #$12,D0 / lea $2235F8,A0 / jsr $24150A
+    26f538  move.w #$13,D0 / lea $223638,A0 / jsr $24150A
+    26f548  move.w #$14,D0 / lea $223678,A0 / jsr $24150A
+    26f558  rts
+
+**CORRECTION TO THE FLAG MAP TWO SECTIONS ABOVE.** I recorded `$8130E0` as "`$49` early". `$4C` writes it
+DIRECTLY as well, so the block is not one-flag-per-type: `$4C` claims **two** of the six (`$8130DE` and
+`$8130E0`), while `$49` reaches `$8130E0` through a pointer. Both must be cleared when `$4C` retires, and the
+mutual-exclusion gate at `$269C6C` walks both.
+
+**AND IT INSTALLS THE SAME BANK NUMBERS AS `$43` FROM DIFFERENT SOURCES.** Both write banks `$12`, `$13` and
+`$14`; `$43` sources `$223578`/`$2235B8`/`$2236B8` and `$4C` sources `$2235F8`/`$223638`/`$223678`. **So these
+two set-pieces overwrite each other's palettes**, which is precisely why `$47` reinstalls bank `$10` on EVERY
+FRAME (W339) instead of once at init: bank numbers in this range are contested, and a type that wants its
+colours to survive has to keep repainting them. Two findings from different waves explaining each other.
+
+`$4C`'s bank spacing is `$40`/`$40` -- uniform, where `$43`'s was `$40`/`$100`. **So neither type's sources are
+derivable by a stride from the first, and they are not derivable from each other either.** Transcribe all six
+addresses. All three of `$4C`'s are inside W91's `$222A78..$2252F8` window, so again no palette window.
+
+`$4C`'s init needs: `loadSubProto`, `loadRecordProto`, one packed-longword literal (with a NEGATIVE Y),
+one `G.scroll` subtraction, two flag words and `installBank` x3 -- all present in the port.
+
+Still to read for `$4C`: the handler `$26F5F2` onward. Windows: `$26F55A + $AC` (prototypes, TWENTY-byte
+handler overlap) and whatever its draw table turns out to be.
