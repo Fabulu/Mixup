@@ -55,6 +55,8 @@ import {
   tallyRow287AAA,
 } from './hud.js';
 import { announcePost } from './rank.js';
+// W345: the `$8130D2` pause pair. `liveSides25FD94` clears then conditionally re-sets it.
+import { bgPause25FD82, bgResume25FD8C } from './stageend.js';
 import { paletteSet241688 } from './palette.js';
 import { setPanel2603B0 } from './player.js';
 import { hiscoreBody287C3E, HISCORE_SIDES } from './hiscore.js';
@@ -637,6 +639,28 @@ export function liveSides25FD94(ram) {
   const w = u16(n - 1);                                    // $25FDC2 subq.w #1
   ram.setU16(HUDRAM.attract, w);
   ram.setU16(0x81308e, w);                                 // $25FDC8 move.w -> $81308E
+
+  // ==================== $25FDD2..$25FDF8 -- W345. THE ROUTINE DOES NOT END AT $25FDC8.
+  //
+  // This function stopped here until W345 and the nine bytes below are why docket D24/D31 was open:
+  // `$81308C` was left holding count-MINUS-ONE, which is 0 in one-player play, and `laser.js:1029`
+  // gates the hyper beam's impact on `$81308C !== 0`. So the impact never spawned. The ROM's own
+  // `$255056 tst.w $81308C / beq` agrees with the port's polarity -- the VALUE was wrong, not the test.
+  //
+  //   25fdd2  bsr $25FD8C                  clear $8130D2 UNCONDITIONALLY
+  //   25fdd4  cmpi.w #-$1,$81308E / bne
+  //   25fde0  bsr $25FD82                  ... and re-set it only when NO side is live
+  //   25fde2  cmpi.w #$0,$81308C / bne $25FDF8
+  //   25fdee  move.w #$1,$81308C           ONE live side  -> 1
+  //   25fdf8  clr.w  $81308C               two, or none    -> 0
+  //
+  // **SO `$81308C` IS A ONE-SIDE FLAG, NOT THE COUNT**, and the intermediate count-1 it holds between
+  // `$25FDC2` and `$25FDEE` is scratch. `$81308E` keeps the count-1 for anyone who wants it.
+  // Reading only as far as the `subq` says the beam impact is two-player-only; the inversion says the
+  // opposite, and it is nine bytes further on.
+  bgResume25FD8C(ram);                                     // $25FDD2 bsr $25FD8C -- unfreeze FIRST
+  if (w === 0xffff) bgPause25FD82(ram);                    // $25FDD4/$25FDE0 -- no live side -> FREEZE
+  ram.setU16(HUDRAM.attract, w === 0 ? 1 : 0);             // $25FDE2/$25FDEE/$25FDF8 -- THE INVERSION
   return w;
 }
 

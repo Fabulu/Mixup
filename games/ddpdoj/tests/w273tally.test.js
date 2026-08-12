@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
+import { SE } from '../src/stageend.js';
 import { RomWindows } from '../src/rom.js';
 import { UnportedLog } from '../src/unported.js';
 import { deferReset } from '../src/background.js';
@@ -253,20 +254,39 @@ test('W273 all five rows are note-only and silent-free without a cartridge', () 
 
 // =========================================================== 2. `$25FD94`
 
-test('W273 $25FD94 counts live sides MINUS ONE, and $FFFF for none', () => {
-  // `subq.w #1` with no floor. The port's ten readers of $81308C all test
-  // `=== 0`, so the -1 case is the one a paraphrase would get wrong.
+test('W273/W345 $25FD94 keeps count-1 in $81308E and INVERTS $81308C to a one-side FLAG', () => {
+  // `subq.w #1` with no floor, so the count-1 is $FFFF/0/1 -- and until W345 this port STOPPED there,
+  // leaving that value in $81308C. The ROM does not stop: $25FDE2..$25FDF8 inverts it, so $81308C ends
+  // as 1 for exactly ONE live side and 0 otherwise. That nine-byte tail is docket D24/D31's cause --
+  // `laser.js:1029` gates the hyper beam's impact on `$81308C !== 0`, which was never true in
+  // one-player play. This test asserted the truncated behaviour and now asserts the ROM's.
   const f = world();
-  assert.equal(liveSides25FD94(f.ram), 0xffff, 'neither side -- $FFFF');
-  assert.equal(f.ram.u16(HUDRAM.attract), 0xffff);
-  assert.equal(f.ram.u16(0x81308e), 0xffff, '$25FDC8 copies it to $81308E');
+  assert.equal(liveSides25FD94(f.ram), 0xffff, 'the RETURN is still the count-1');
+  assert.equal(f.ram.u16(0x81308e), 0xffff, '$25FDC8 copies count-1 to $81308E, and it STAYS there');
+  assert.equal(f.ram.u16(HUDRAM.attract), 0, 'neither side live -> the flag is 0');
 
   f.ram.setU32(TALLY.side0 + TALLY.result, 0x8001);
-  assert.equal(liveSides25FD94(f.ram), 0, 'one side -- 0');
+  assert.equal(liveSides25FD94(f.ram), 0, 'one side -- count-1 is 0 ...');
+  assert.equal(f.ram.u16(0x81308e), 0);
+  assert.equal(f.ram.u16(HUDRAM.attract), 1, '... and the FLAG is 1 -- what the beam impact needs');
 
   f.ram.setU32(TALLY.side1 + TALLY.result, 0x8001);
-  assert.equal(liveSides25FD94(f.ram), 1, 'two sides -- 1');
+  assert.equal(liveSides25FD94(f.ram), 1, 'two sides -- count-1 is 1 ...');
   assert.equal(f.ram.u16(0x81308e), 1);
+  assert.equal(f.ram.u16(HUDRAM.attract), 0, '... and the flag is 0 again');
+});
+
+test('W345 $25FD94 clears the $8130D2 pause BEFORE deciding to re-set it', () => {
+  // $25FDD2 bsr $25FD8C unconditionally, then $25FDD4/$25FDE0 re-set it only when count-1 is -1.
+  // Collapsing the two would strand the pause on once it had ever been set.
+  const f = world();
+  f.ram.setU16(SE.pauseFlag, 1);                     // paused from an earlier frame
+  f.ram.setU32(TALLY.side0 + TALLY.result, 0x8001);  // ... and now a side is live
+  liveSides25FD94(f.ram);
+  assert.equal(f.ram.u16(SE.pauseFlag), 0, 'a live side UNPAUSES');
+  const g = world();
+  liveSides25FD94(g.ram);
+  assert.equal(g.ram.u16(SE.pauseFlag), 1, 'and no live side re-pauses');
 });
 
 test('W273 $25FD94 tests the LONG at +$18, so a high-half-only value still counts', () => {
@@ -392,7 +412,10 @@ test('W273 $2600D8 clears the record\'s head, posts announcement state $8 and '
   assert.equal(f.ram.u16(0x813162), 1, 'and the flag beside it');
   assert.equal(f.ram.u16(0x813166 + 0x02), 0, 'P2 mailbox untouched');
   // $2601E4 -- and now one side is live, so the count is 0.
-  assert.equal(f.ram.u16(HUDRAM.attract), 0, '$25FD94 recounted');
+  // W345: $81308C is now the INVERTED flag, so one live side reads 1 here where the
+  // truncated port left the raw count-1 of 0. $81308E still carries the count-1.
+  assert.equal(f.ram.u16(HUDRAM.attract), 1, '$25FD94 recounted -- one side, so the flag is 1');
+  assert.equal(f.ram.u16(0x81308e), 0, 'and $81308E keeps the count-1');
   assert.notEqual(f.ram.u32(TALLY.side0 + TALLY.result), 0, 'because +$18 was set');
 });
 

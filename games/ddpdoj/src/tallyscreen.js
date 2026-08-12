@@ -42,7 +42,7 @@
 import { u16, u32 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueRegisters } from './spritequeue.js';
-import { RAM, playerFlags25FD94 } from './machine.js';
+import { RAM } from './machine.js';
 import { clearSlotTable23C668 } from './background.js';
 import { queueKill } from './objalloc.js';
 import { txPrint240DC2, txPrint240E1A, HUDRAM } from './hud.js';
@@ -782,73 +782,6 @@ export function tallyScreen25DBB4(ram, slot, slotIndex, ctx) {
   void slotIndex;
 }
 
-/** `$25FF52` -- the bonus-line jump table. **TEN** longwords, not the nine an earlier docstring in this
- *  file recorded: entry 9 is `$2603B0`. Entry 0 is `$00000000` and is unreachable because `$25FF84`'s
- *  `beq` skips a zero request. **Its extent is pinned by CODE**: `$25FF52 + 10 * 4 = $25FF7A`, which is
- *  the dispatcher's own `lea`. The ROM does NOT mask the request, so a request above 9 would index into
- *  that instruction -- the port throws instead. */
-export const BONUS_LINES = Object.freeze([
-  0x000000, 0x25ffa8, 0x260056, 0x26010e, 0x2601f4,
-  0x2602b6, 0x260348, 0x26035a, 0x26037c, 0x2603b0,
-]);
-
-/** Entries 2, 3 and 4 call `$25FD94` (at `$26005C`, `$2601E4` and `$2602B0`) -- **mapped by address, not
- *  guessed**: `$2601E4` sits between entries 3 and 4, so it belongs to entry THREE, and `$2602B0` to
- *  entry FOUR. Reading the caller list against the table naively puts them one entry too high. */
-const BONUS_LINES_SETTING_FLAGS = Object.freeze(new Set([2, 3, 4]));
-
-/**
- * `$25FF7A..$25FFA6` -- THE BONUS-LINE DISPATCHER.  W343.
- *
- *     25ff7a  lea $8130FA,A6              side 0's tally record
- *     25ff80  moveq #$1,D7                <-- #$1 + dbra = TWO sides
- *     25ff82  move.w (A6),D0              the request `tallyRequest25FF38` posted at +$0
- *     25ff84  cmpi.w #$0,D0 / beq $25FF9E     request 0 -> nothing
- *     25ff8c  add.w D0,D0 / add.w D0,D0      x4, and NOT masked
- *     25ff92  lea ($25FF52,PC),A0 / adda.w D0,A0 / movea.l (A0),A0 / jsr (A0)
- *     25ff9e  lea ($24,A6),A6             the NEXT side -- $24 is exactly $81311E - $8130FA
- *     25ffa2  dbra D7,$25FF82
- *
- * **THIS IS THE MISSING LINK FOR DOCKET D24/D31.** Three of the ten bonus lines call `$25FD94`, which is
- * what computes `$81308C` -- the ONE-PLAYER flag that `laser.js`'s beam-impact spawn is gated on. The port
- * had the mailbox poster (`tallyRequest25FF38`) and the flag routine (`playerFlags25FD94`, W343) but
- * nothing that connected them, so `$81308C` stayed 0 and the laser hyper's impact never appeared.
- *
- * **The ten bonus-line BODIES are still unported** -- each wants `$23C668`, `$287BD2`/`$287C08` and more,
- * none of which is in the port. So each dispatch is a `note`. But entries 2, 3 and 4 call `$25FD94` as an
- * early, unconditional instruction, BEFORE any of that machinery, so the port makes that call and notes
- * the rest. That is faithful: the flag lands exactly when the board lands it, and nothing is invented.
- */
-export function tallyBonusDispatch25FF7A(ram, rom, ctx) {
-  let a6 = 0x8130fa;                                       // $25FF7A
-  let dispatched = 0;
-  for (let side = 0; side < 2; side++) {                   // $25FF80 moveq #$1,D7 + dbra = TWO
-    const req = u16(ram.u16(a6));                          // $25FF82 move.w (A6),D0
-    if (req !== 0) {                                       // $25FF84 cmpi.w #$0 / beq
-      if (req >= BONUS_LINES.length) {
-        unreached(0x25ff92, `$25FF92 indexed the bonus-line table with request ${req}. The table holds `
-          + `TEN longwords and $25FF52 + 10 * 4 is $25FF7A -- this dispatcher's own \`lea\` -- so a `
-          + `request above 9 reads an INSTRUCTION as a routine address. The ROM does not mask the index `
-          + `($25FF8C is two bare \`add.w D0,D0\`), so the guard is the port's and it throws rather than `
-          + `jumping into code`);
-      }
-      const target = BONUS_LINES[req];
-      // Entries 2/3/4 call $25FD94 before anything else they do. This is the D24/D31 fix.
-      if (BONUS_LINES_SETTING_FLAGS.has(req)) playerFlags25FD94(ram);
-      ctx.unported?.note(target, `$${target.toString(16).toUpperCase()} bonus line ${req} for side `
-        + `${side} is DISPATCHED but its body is not transcribed -- it wants $23C668, $287BD2/$287C08 `
-        + `and more, none of which is ported. `
-        + (BONUS_LINES_SETTING_FLAGS.has(req)
-          ? `Its $25FD94 call IS made (playerFlags25FD94), which is what sets $81308C and makes the `
-            + `laser hyper's impact spawn -- docket D24/D31. Only the score/bonus arithmetic after it is `
-            + `missing.`
-          : `It sets no flags the rest of the port reads.`));
-      dispatched++;
-    }
-    a6 += 0x24;                                            // $25FF9E lea ($24,A6),A6
-  }
-  return dispatched;
-}
 
 /**
  * `$25DA94` -- PICK A Y ROW THE OTHER SIDE IS NOT HOLDING.  W344.

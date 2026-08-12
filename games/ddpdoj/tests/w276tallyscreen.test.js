@@ -204,7 +204,10 @@ test('W276 state 2 really drives $2600D8: the HUD rows run', { skip: SKIP }, () 
   assert.equal(f.ram.u16(HUDRAM.digitStateP1), 1, '$287238 bumped');
   assert.ok(cells(f.ram) > 0, 'and the drawing rows enqueued');
   assert.notEqual(f.ram.u32(TALLY.side0 + TALLY.result), 0, '+$18 was set');
-  assert.equal(f.ram.u16(HUDRAM.attract), 0, '$25FD94 recounted the sides');
+  // W345: $81308C is the INVERTED one-side flag, so a single live side reads 1 here. The raw
+  // count-1 the truncated port used to leave in it now lives in $81308E.
+  assert.equal(f.ram.u16(HUDRAM.attract), 1, '$25FD94 recounted -- one live side, flag 1');
+  assert.equal(f.ram.u16(0x81308e), 0, 'and the count-1 is in $81308E');
 });
 
 test('W276 state 2 SELF-KILLS through $241292', { skip: SKIP }, () => {
@@ -697,8 +700,12 @@ test('W290 line 2 recounts the live sides on the way in', { skip: SKIP }, () => 
     f.ram.setU16(0x803926, gate);
     f.ram.setU16(HUDRAM.attract, 0x1234);
     bonusLine2260056(f.ram, ROM, f.ctx, TALLY.side0);
-    assert.equal(f.ram.u16(HUDRAM.attract), 0xffff,
-      `gate ${gate}: no side is live, so the count is $FFFF`);
+    // W345: the count-1 of $FFFF now lands in $81308E, and $81308C takes the INVERTED flag,
+    // which is 0 when no side is live. Both are asserted so the split is explicit.
+    assert.equal(f.ram.u16(0x81308e), 0xffff,
+      `gate ${gate}: no side is live, so the count-1 is $FFFF`);
+    assert.equal(f.ram.u16(HUDRAM.attract), 0,
+      `gate ${gate}: and the one-side flag is 0`);
   }
 });
 
