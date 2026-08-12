@@ -770,8 +770,18 @@ function fillAbort280B2A(ram, slot) {
   return null;
 }
 
-/** Dispatch the kind-specific fill hook.  Only kind 1 ($280CEE) is ported;
- *  kind 16 would need its own (but the flying bee is REFUSED at the body). */
+/** Dispatch the kind-specific fill hook. **BOTH kind 1 and kind 16 are ported**, because
+ *  `$280BCE[1]` and `$280BCE[16]` are the SAME entry `$280CEE` -- see the note in the body.
+ *
+ *  This docstring used to read "Only kind 1 ($280CEE) is ported; kind 16 would need its own (but
+ *  the flying bee is REFUSED at the body)". Both halves stopped being true at W286, which wired
+ *  kind 16 through the same two instructions, and neither the allocator (`$27F92A` accepts kinds 1
+ *  and 16 alike) nor the driver (`$27F99E[1]` and `[16]` are both `$27FACC`) refuses it either.
+ *
+ *  It is corrected here because a docket item was built on it: D20 opened with "kind 16 still
+ *  throws `Unreached $280CEE` ... START HERE" as the leading explanation for the owner's report
+ *  that too few medals spawn, and spent a wave's worth of attention on a path that had been closed
+ *  for fourteen waves. A comment that outlives its condition is not inert. */
 function runFillHook(ram, kind, slot) {
   // W286: **KIND 16 SHARES KIND 1's HOOK, AND THE TABLE SAYS SO.**
   //
