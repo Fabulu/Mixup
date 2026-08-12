@@ -4600,47 +4600,45 @@ Two calling-convention facts fall out, both usable now:
 **And this RETRACTS the framing of `$55`'s blocker.** I wrote that A0 is "live-in from the dispatcher". It is not:
 neither dispatch site sets it. **The dispatcher was the wrong place to look.**
 
-### W349: the A0 trace RESOLVED -- it leaks out of `aim256`
+### W349/W350: the A0 "trace" WAS A PHANTOM. `$55` is writable now.
 
-The per-frame loop is `$263502`, and it does not set A0 either:
+`$55` loads A0 itself, at the volley loop top:
 
-    263502  clr.w $815E9C / $815E9E / $815EA0
-    263514  lea $81332C,A5          the enemy record array
-    26351a  move.w #$39,D6          $39 -> FIFTY-EIGHT records, dbra
-    26351e  tst.w (A5) / beq        empty slot -> skip
-    263532  movea.l ($4C,A5),A1 / jsr (A1)
+    272634  lea $2735FA,A0        reloaded EVERY pass of the dbra
+    27263a  move.w D1,D3 / addq.w #2,D3 / andi.w #$fc,D3
+    272642  move.l (A0,D3.w),D3
+    272646  add.l D5,D3
 
-**That also explains the D6 save/restore exactly: D6 is the loop's own `dbra` counter**, so the caller must
-protect it across a handler that may clobber it.
+**Four waves of tracing chased a register that was never in question.** W346 called A0 "live-in from the
+dispatcher", W348 corrected that to "inherited from the loop above `$263524`", W349 to "leaked out of `aim256`.
+All three were wrong, and the cause was one off-by-one: **my W346 scan swept `$272390..$272634`, and the `lea` is
+AT `$272634`.** An exclusive upper bound one instruction short of the answer.
 
-So A0 is set by neither the dispatcher nor the loop -- it is **whatever the last callee left**, and in `$55`'s
-mode-3 arm the last callee is `$2725F8 jsr $24226E`, aim256, which **ends by loading A0 with one of three
-PC-relative tables of its own**:
+**And the table was already ported.** `$2735FA` has 13 mentions, 12 in CODE, and `boss2attacks.js:166` contains
+the identical expression:
 
-    2422ec  lea ($74,PC),A0  -> $242362    byte ramp: 00 01 02 02 03 04 04 05 06 06 07 07 ...
-    2422f6  lea ($5A,PC),A0  -> $242352    quadrant words: 0040 0080 0040 0000 00c0 0080 ...
-    242304  lea ($0C,PC),A0  -> $242312
+    const d3 = (rom.u32(0x2735fa + angle * 4) + local) >>> 0;      // move.l (A0,D3.w),D3 / add.l D5,D3
 
-**All three are already claimed in `src/` (one CODE mention each), so `aim.js` models them.** So `$55`'s volley
-does not need a new table or a new window -- it needs to know WHICH of the three aim256 selected, because
-`move.l (A0,D3.w),D3` reads through exactly that register.
+Its window has existed since **W30** (`$2735F0+$220`, "type `$80`'s two fan-direction tables"). So `$55`'s volley
+is the same family as `boss2attacks.js`'s fan.
 
-**This is a real coupling and the port must model it deliberately: `aim256` returns an angle AND leaves a table
-selection in A0, and `$55` consumes both.** A port that returns only the angle silently loses the second half and
-`$55`'s fifteen bullets get vectors from whatever table the JS happens to have in scope. The fix is to have
-`aim256` report its selected table alongside the angle, then have `$55` index that -- not to re-derive a table
-from the entry bytes.
+**`$55` therefore needs no window, no helper, no trace.** It is writable in one pass, reusing the
+`boss2attacks.js` vector expression, `aim256`, FREEZE, `shotVector` and the `$2816F6` emit.
 
-Caveat kept honest: which of the three is selected depends on the path taken inside aim256, and I have not read
-those paths. The `$242312` target also disassembles as CODE (`add.w D0,D1 / andi.w #$FF,D1 / rts`) rather than
-data, so either that third `lea` decode is wrong or it is doing something other than table selection. **Read
-aim256's three exits before wiring this.**
+**THE RULE THIS COST FIVE WAVES TO LEARN: run `claimed.py` on the ADDRESS OPERAND of every instruction read, not
+just on `jsr` targets.** Every one of `$55`'s four helpers and now its vector table were already in the port. And
+when scanning a span for a register write, **make the upper bound inclusive and past the last instruction of
+interest** -- an exclusive bound that lands on the answer reports "no writes" with total confidence.
 
-**So `$55` cannot be finished by reading. The last unknown is a TRACE, not a span** -- the same shape as `$1A`'s
-blocker at `$268D8C` (D2/D3 provenance). What has to be established is what the type dispatcher guarantees in A0
-on entry to a handler, and that is worth doing once for the whole family rather than for `$55`: if A0 is a
-dispatcher invariant, every handler that indexes `(A0,Dn.w)` without loading A0 depends on it, and the sixteen
-sites sharing the `adda.w ($1E,A5),A0 / move.l (A0),D2` idiom are the candidate list.
+Two smaller corrections from reading `aim256`'s exits, both retracting W349:
+
+- **`aim256` does not leak A0 -- `$24230E movea.l (A7)+,A0` RESTORES it** before the `rts`. A0 is callee-saved
+  there, so nothing downstream can depend on aim256's tables.
+- **`$242312` is not a data table.** `$242300 add.w D4,D4 / add.w D4,D4` scales D4 by four and `$24230A
+  jsr (A0,D4.w)` makes a COMPUTED CALL into it: it is a jump table of 4-byte code stubs, the first being
+  `add.w D0,D1 / andi.w #$FF,D1`. W349 flagged this as a caveat; it is now settled as a decode error.
+
+**`$55` IS READY TO WRITE.** Every span read, every helper and table already ported, no open trace.
 
 Also still unseeded: `($1E,A5)`, `($17,A5)`, `($2E,A5)` and `($2F,A5)` have no writes in the handler either, so
 they are parent-supplied at spawn -- except `($17,A5)` and `($1E,A5)`, which the mode-2 arm writes itself
