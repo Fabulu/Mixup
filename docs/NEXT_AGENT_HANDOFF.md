@@ -1663,3 +1663,44 @@ looking for a death mark that does not exist.
 Window for the death list: `$271F20 + $4A` (SIX 12-byte entries then `$FFFF`, ending `$271F6A`).
 
 Still to read for `$4B`: `$271DDA` onward -- the freeze tail, fire arm and draw.
+
+### `$4B`'s SWEEP AND FIRE ARM, `$271DDA..$271E54` (W337 recon) -- `$49`'s shape again
+
+    271df2  move.b ($1B,A5),($1A,A5)
+    271df8  addq.w #4,($1C,A5) / cmpi.w #$78,($1C,A5) / blt / move.w #$0,($1C,A5)
+    271e0c  lea ($271F6A,PC),A1 / adda.w ($1C,A5),A1 / move.l (A1),D3     RAW index, 30 LONGS
+    271e18  move.l ($2,A6),D2
+    271e1c  lea ($271FE2,PC),A1
+    271e22  tst.b ($17,A5) / beq $271E32          CLEAR keeps $271FE2 and does NOT negate
+    271e2a  lea ($27201E,PC),A1
+    271e30  neg.w D3                              SET takes the other table AND mirrors
+    271e32  move.w ($1C,A5),D0 / asr.w #1,D0 / adda.w D0,A1 / move.w (A1),D1   HALVED index
+    271e3c  add.l D3,D2 / moveq #$0,D3 / moveq #$0,D4
+    271e42  move.l #$10003,D0  / jsr $281744
+    271e4e  move.l #$FFFD0004,D0 / ...
+
+**`$4B` WRAPS THIRTY, NOT EIGHT.** `cmpi.w #$78 / blt`, the same `$49` construction, where `$4A` uses
+`andi.w #$1F` for eight. So the sweep length is a third per-type constant on shared code, alongside the
+three off-screen limits (`$2000`/`$1C00`/`$400`) and three kill scores (`$250`/`$180`/`$290`). **Nothing
+about this band is inheritable except the instruction sequences themselves.**
+
+It carries `$49`'s two traps verbatim: **one counter, two index conventions** (RAW for the long table at
+`$271F6A`, ASR 1 for the word tables), and **`neg.w D3` on a `move.l`-loaded long** at `$271E30`, low word
+only, no borrow, followed by `add.l` which does carry. Note the polarity is the OPPOSITE of `$49`'s: here
+`($17,A5)` SET takes the second table and mirrors, where `$49` SET took the FIRST table. Do not copy the
+sense of the test.
+
+Registers are reused across shots (`$281744` with D0 = `$10003`, then D0 = `$FFFD0004`), which W336
+licensed by measuring that the `$2817C2` family preserves D1..D4.
+
+**THE TABLE BLOCK IS CONTIGUOUS AND SELF-CHECKING:**
+
+    $271F20 + $4A   death list, SIX 12-byte entries then $FFFF        ends $271F6A
+    $271F6A + $78   30 muzzle LONGS, index RAW                        ends $271FE2
+    $271FE2 + $3C   30 sweep WORDS, ($17,A5) CLEAR, index ASR 1       ends $27201E
+    $27201E + $3C   30 sweep WORDS, ($17,A5) SET, index ASR 1         ends $27205A
+
+Each table's end is the next one's start, so `$271F20 + $13A` covers all four as one window and the
+arithmetic checks itself. Declare it that way or as four; either is defensible, but state which.
+
+Still to read for `$4B`: `$271E54` onward -- the remaining shots and the draw.
