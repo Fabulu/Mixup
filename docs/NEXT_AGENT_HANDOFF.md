@@ -4689,10 +4689,40 @@ accounted for, and the tail is a sprite enqueue rather than anything novel.
 Also confirms the table is data: `$272750` disassembles as nonsense (`ori.b #$50,(A7)` / an unknown
 `pmove` form), which is what a data window should look like through a disassembler.
 
-**`$55` IS READY TO WRITE, WITH ZERO UNKNOWNS.** Every span read; all FIVE callees already ported
-(`shotVector` `$241D34`, FREEZE `$8130D4`, `aim256` `$24226E`, the emit `$2816F6`, the enqueue
-`$23DF86`); both tables already windowed (`$272750+$100` W346, `$2735FA` inside W30's `$2735F0+$220`).
-**No new window, no new helper, no open trace.**
+### W351: RETRACTING "zero unknowns" -- the handler PROLOGUE was never read
+
+I wrote that every span of `$55` was read. That was wrong, and it was a scope error, not a detail: I had
+read the *arms* and the *tail* and treated the handler as covered. **`$272424..$2724E0`, the ~190-byte
+prologue, had never been disassembled.** Reading its first half now:
+
+    272424  tst.b ($17,A5) / beq $272448        the invulnerability gate
+    27242c  tst.w ($30,A5) / beq $272448        ($30,A5) is the invulnerability COUNTDOWN
+    272434  move.w #$7FFF,($18,A6)              HP forced to $7FFF while it runs
+    27243a  subq.w #1,($30,A5) / bne $272448
+    272442  move.w #$1100,($18,A6)              HP set to $1100 the frame it expires
+    272448  moveq #$5C,D1 / and.b (A6),D1       <- THE $5C DAMAGE FAMILY
+    272450  move.b #$A3,D0 / and.b D0,(A6)         clear mask $A3, same as $49 and $4B
+    272456  jsr $286096                         scoreHit
+    27245c  move.b ($1d,A6),D0
+
+Two things follow:
+
+- **`$55` is a SIXTH member of the `$5C` family**, mask `$5C` and clear `$A3`, identical to `T49` and
+  `T4B`. Check `damageArm5C` before writing the arm -- `T49`'s note says routing the *simple* members
+  through it would invent an `hpFull` reload and a palette decision, but `$55` has a real HP write
+  (`$1100`), so it may be the member that fits.
+- **`($30,A5)` is a spawn-invulnerability countdown, not a flag.** While it runs, HP is pinned at
+  `$7FFF`; on the expiry frame it is set to `$1100`, which is the record's real HP. So `($17,A5)`
+  non-zero *enables* the window and `($30,A5)` *times* it -- a second field, previously unnoticed,
+  that the parent must seed.
+
+**STILL UNREAD: `$27245C..$2724E0`, about `$84` bytes** -- the rest of the damage arm, and whatever
+bounds/freeze handling sits before the cascade. `$55` is NOT ready to write until that is read.
+
+What IS settled: all FIVE callees already ported (`shotVector` `$241D34`, FREEZE `$8130D4`, `aim256`
+`$24226E`, the emit `$2816F6`, the enqueue `$23DF86`); both tables already windowed (`$272750+$100`
+W346, `$2735FA` inside W30's `$2735F0+$220`); and the whole alive path from `$2724EA` on. No new window
+and no new helper are needed for any of that.
 
 Also still unseeded: `($1E,A5)`, `($17,A5)`, `($2E,A5)` and `($2F,A5)` have no writes in the handler either, so
 they are parent-supplied at spawn -- except `($17,A5)` and `($1E,A5)`, which the mode-2 arm writes itself
