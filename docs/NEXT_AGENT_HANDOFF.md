@@ -2315,3 +2315,33 @@ the aim result, where `$4A` and `$48` have none and store the biased X instead (
 volley properly.
 
 Still to read for `$47`: `$26D9E8..$26DAC8` (state 2's tail and state 3+), `$26DAC8` (the draw), `$26DCB6`.
+
+### THE PACKED-LONG BORROW, NOW A CHECKED RULE ACROSS FOUR MUZZLES (W339)
+
+`$47`'s state 2 fires from at least five muzzles, each set up as a word pair for the aim and a longword for
+the bullet position. Tabulating four of them against the ROM's own constants:
+
+      Xbias   Ybias    ROM long    naive       borrow?
+      -1408   -2048    fa7ff800    fa80f800    YES
+      -1408   +2048    fa800800    fa800800    no
+      +3968   +1728    0f8006c0    0f8006c0    no
+      +5056   -1024    13bffc00    13c0fc00    YES
+
+**`long = ((Xbias << 16) | Ybias) - (0x10000 if Ybias < 0 else 0)`** -- verified against all four. The high
+word is decremented by exactly one whenever the Y bias is negative, because a single `addi.l` propagates the
+low half's borrow.
+
+That is no longer an abstract caution: **two of these four differ from the naive combination and two do not**,
+in the same routine, with the same X bias in the first pair. A port that derived the longs from the word pairs
+would misplace the negative-Y muzzles by one unit in X and leave the positive-Y ones correct -- the worst
+possible failure shape, because it looks like a subtle art or table problem rather than an arithmetic one.
+
+**TRANSCRIBE EVERY `addi.l` CONSTANT LITERALLY.** Do not compute it, do not "simplify" it to the word pair it
+appears to encode, and do not assume two muzzles with the same X bias share a high word. The four constants
+above and any further ones in `$26DA5E..$26DAC8` come out of the image verbatim.
+
+This is also why `movem.w ($2,A6),D0-D1` matters alongside them: the aim path gets SIGN-EXTENDED words and the
+position path gets the packed longword. Two different readings of the same `($2,A6)` in adjacent instructions.
+
+Still to read for `$47`: `$26DA5E..$26DAC8` (the remaining muzzles and state 2's tail), `$26DAC8` (the draw)
+and `$26DCB6`.
