@@ -3765,3 +3765,40 @@ nine times.
 
 Still unread for `$4C`: `$26FA10` onward, `$26FA24`, `$26FA8A` onward, `$26FBA2`, `$270128` onward, and the six
 handlers from `$26FBD4`.
+
+### `$4C` SUBSYSTEM 3 IS *NOT* SUBSYSTEM 2's MIRROR (W341) -- and its input gate is LIVE
+
+The previous section said to read `$26FA82` rather than assume it mirrored `$26F9A2`. It does not:
+
+    26fa8a  cmpi.w #$1,($6C,A6) / bne   -> move.w #$800,($68,A6) / cursor := 0
+    26faa0  cmpi.w #$2,($6C,A6) / bne   -> move.w #$800,($6A,A6) / cursor := 0
+    26fab6  cmpi.w #$0,($6C,A6) / bne $26FBA2
+    26fac0  tst.w $803914 / bne $26FB3E          <-- a LIVE input test
+    26faca  moveq #$0,D0
+    26facc  tst.w $8103E6 / ...
+
+**THREE differences from subsystem 2**, none inferable:
+
+    subsystem 2 ($26F9A2)          subsystem 3 ($26FA82)
+    TWO cursor cases (1, 0)        THREE (1, 2, 0)
+    seeds ($48)/($4A) TOGETHER     seeds ($68) and ($6A) SEPARATELY, on different cursors
+    its input test is DEAD         its input test is LIVE
+
+**AND THE DEAD/LIVE DISTINCTION IS ONE INSTRUCTION.** Both subsystems have a `moveq #$0,D0` next to an address
+test, and only one is dead:
+
+    subsystem 2:  moveq #$0,D0 / and.w $80390A,D0 / bne     DEAD -- the moveq feeds the AND's destination
+    subsystem 3:  tst.w $803914 / bne                       LIVE -- a direct tst, nothing zeroed it
+                  moveq #$0,D0 / tst.w $8103E6              LIVE -- the moveq clears D0 for LATER use,
+                                                            and `tst.w` does not read D0 at all
+
+**So the test for deadness is whether the zeroed register is the following instruction's DESTINATION**, not
+whether a `moveq #$0` appears nearby. Getting that backwards in either direction is a live defect: modelling
+subsystem 2's gate silences it when the player is idle; omitting subsystem 3's makes it fire unconditionally.
+
+`$803914` joins `$80390A` in the player-input region, and `$8103E6` is new -- and note it sits just past the
+`$810346 + 3 * $30 = $8103D6` parent pool measured earlier, so it is in the RAM the `$246520` subsystem
+neighbours rather than in the input block.
+
+Still unread for `$4C`: `$26FA10`, `$26FA24`, `$26FACC` onward, `$26FB3E`, `$26FBA2`, `$270128` onward, and the
+six handlers from `$26FBD4`.
