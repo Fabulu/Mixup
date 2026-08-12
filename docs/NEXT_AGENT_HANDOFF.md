@@ -3843,7 +3843,23 @@ the first handler it names), `jsr (A0)`, then `jmp $2417DE` -- `applyVelocityA6`
     state 2  $26FBD4  READ.  Speed $10 to ONE target, D2/D3 IMMEDIATE ($2800/$1C00), stop on arrival.
     state 3  $26FCF2  READ (head).  Duration $F0 and speed $10; winds ($1E,A5) DOWN BY $40 with a
                       SIGNED CLAMP at zero, every frame and outside the sub-state cascade.
-    states 4..7  $26FD66 $26FECA $26FF3E $26FF56  -- UNREAD.
+    state 4  $26FD66  READ (head).  State 2's SHAPE with every constant different -- see below.
+    states 5..7  $26FECA $26FF3E $26FF56  -- UNREAD.
+
+**STATES 2 AND 4 ARE THE SAME SHAPE AND SHARE NO CONSTANT BUT ONE.** Both are "set a speed, move to an
+immediate D2/D3 target, change speed on arrival":
+
+                        state 2        state 4
+    entry speed         $10            $08
+    target D2 (X)       $2800          $3200
+    target D3 (Y)       $1C00          $1C00      <-- the ONE they share
+    arrival speed       $00 (stop)     $04 (keep moving slowly)
+    sub-state 0 clears  ($2A),($2B),($34)   ($2A) only
+
+**So a shared "move to a point" helper would need five parameters and would still get the arrival semantics
+wrong**: state 2 stops, state 4 slows. That is the `$48`/`$49`/`$4A`/`$4B` band's lesson one level down --
+identical instruction sequences, different constants, and the sameness of the Y target is the only thing that
+transfers.
 
 **STATE 3 ADDS A FIFTH COUNTDOWN CONVENTION**, and it is the only one so far that is not a decrement-by-one:
 
