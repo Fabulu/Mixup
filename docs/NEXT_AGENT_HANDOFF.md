@@ -4445,6 +4445,40 @@ one frame** -- which is precisely the visible-behaviour class of bug that reads 
 So the mode table above describes the *entry* condition of each arm, and mode 2 is transient: it walks 16 table
 entries at `$10` a step, clamps, promotes itself to 3, and fires. Only modes 0, 1 and 3 are stable.
 
+### `$55`'s mode-3 firing arm -- ENTIRELY REUSE, no new helper
+
+Read `$2725C0..$272630`. **Every callee it needs is already ported**, which is the whole point of checking the
+family first:
+
+    2725c0  subq.b #1,($26,A5) / bcc $272722       due8 countdown, reload #$10 at $2725C8
+    2725ce  tst.w $8130D4 / bne $272722            FREEZE -- already ported; skips the volley, still runs the tail
+    2725d8  cmpi.w #$2000,($2,A6) / ble $272722    fires only once X (the packed long's high word) exceeds $2000
+    2725e2  move.b ($2e,A5),D0 / cmp.b ($2f,A5),D0 / bne $27260A    re-aim ONLY when the two bytes agree
+    2725ee  movem.w ($2,A6),D0-D1                  SIGN-EXTENDS both -- X into D0, Y into D1
+    2725f4  addi.w #-$600,D0                       aim from $600 above the record, not from it
+    2725f8  jsr $24226E                            aim256 -- aim.js, 48 existing sites
+    2725fe  bcc $272606 / move.w #$80,D1           carry = no target, so the angle DEFAULTS TO $80
+    272606  move.b D1,($28,A5)                     cached as a byte, then zero-extended back at $27260C
+
+- **`$8130D4` is FREEZE** (`boss2attacks.js`, `boss4.js`, `bossf23.js`, `bossguns.js`), and `bossguns.js:146`
+  already records this exact idiom: the freeze skips the volley but still runs the tail.
+- **`$24226E` is `aim256`** in `aim.js` -- listed in `AIM_REFS` with **48 sites**, and `boss3type99.js:138`
+  already documents that only some call sites take the carry exit. `$55` is one that does.
+
+Volley setup at `$272610`, not yet fully read:
+
+    272610  move.l #$FFFF0005,D0      packed pair, $FFFF and $0005
+    272616  move.l ($2,A6),D2         the packed position
+    27261a  move.l #$02000000,D5
+    272624  tst.b ($2e,A5) / beq $272686      zero -> the single-shot path; non-zero -> the fan
+    27262c  subi.w #$34,D1            back the angle off by $34
+    272630  move.w #$4,D7             **VERIFY THIS IS A dbra** before trusting five passes
+
+If `#$4` is consumed by a `dbra` it is FIVE shots, and `$34` of backoff with five shots implies a `$1A` step
+(`4 * $1A = $68 = 2 * $34`), i.e. a symmetric fan centred on the aim. **That step is inferred, not read -- find
+the actual increment.** Note `($2E,A5)` does double duty: it picks fan-vs-single here and is half the re-aim
+agreement test at `$2725E2`.
+
 **AND A TOOLING TRAP THAT COST FOUR WRONG READS: `rip/sound/maincpu.bin` IS ADDRESSED BY RAW FILE OFFSET.**
 The address IS the offset -- do NOT subtract `$200000`. "Offset-addressed" in the older notes meant exactly
 this, and I read it as "subtract the build base", which made `$272710..$272750` come back all zeros and briefly
