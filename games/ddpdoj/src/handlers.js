@@ -2781,6 +2781,149 @@ function handler4B(ram, rom, a5, ctx) {
   draw4B(ram, rom, a5, a6);                                // $271E80
 }
 
+// ============================================================ TYPE $48 (W339)
+//
+// The last member of the `$48`/`$49`/`$4A`/`$4B` band. `$271284` init / `$27128C` initBody / `$27133A`
+// handler. Structurally `$4A`'s twin and behaviourally its own animal:
+//
+//   * **IT HAS NO FREEZE GATE AT ALL.** `$49`, `$4A` and `$4B` each test `$8130D2` (or `$8130D4`) before
+//     firing. `$48` runs straight from `$2713CE` into `$24179E` and the fire arm. Do not add one.
+//   * **ITS `$2800` TRIGGER HAS NO `($16,A5)` GUARD**, where `$4A`'s does -- so `$48` can retire before it
+//     has ever been on screen. A MISSING instruction, which is harder to notice than a changed constant.
+//   * FIVE shots at 5-unit spacing (`move.w #$4,D7` + `dbra` = FIVE passes, `subi.w #$A`, `addq.b #5`)
+//     through `$281744`, where `$4A` fires SEVEN at 3 through `$281764`. Four of five loop parameters
+//     differ between the twins.
+//   * its draw is a `bsr` to `$271510`, the only member to factor it out.
+//
+// It DOES share `$4A`'s three `($3F,A6)` tests (head, pre-fire, pre-draw), its `$8000` mark, its
+// eight-entry `andi.w #$1F` ring, its `movem.w` sign-extension and its `($17,A5)` polarity.
+const T48 = Object.freeze({
+  init: 0x271284, initBody: 0x27128c, handler: 0x27133a,
+  recordProto: 0x2712f0, recordWords: 9, subProto: 0x271302, subRecords: 2,
+  damageMask: 0x5c, damageClear: 0xa3, palBase: 0x18, palXor: 0x19,
+  killScore: 0x130, deathCue: 0x28c2dc, deathList: 0x271558,   // FIVE entries
+  deadMark: 0x8000, deadFlag: 0x3f,
+  despawnAt: 0x2800,                          // $271342 -- ble, and NO ($16,A5) guard
+  boundsBias: 0x4000, boundsLimit: 0x2c00,    // $2713AE/$2713B4 -- a FOURTH limit
+  muzzleSet: 0x271596, muzzleClear: 0x27159a,  // read as a WORD PAIR and as a LONG
+  fanEntry: 0x281744, fanD0: 0xfffe000b,       // $271444 -- $4A's is $FFFF000B
+  fanSpread: 0xa, fanStep: 5, fanPasses: 5,    // $271468/$271476/$27146C -- #$4 + dbra = FIVE
+  ring: 0x271538, ringMask: 0x1f, ringStep: 4,
+  drawBias: 0xf600f600, drawD3: 0x0a50, drawStub: 0x23dece,
+});
+
+/** `$271510..$271536` -- the draw, a `bsr` target rather than inline code. */
+function draw48(ram, rom, a5, a6) {
+  enqueueRegistersThroughStub(ram, rom, T48.drawStub,
+    u32(ram.u32(a6 + 0x02) + T48.drawBias),                // $27151C/$271520 addi.l #-$9FF0A00
+    rom.u32(T48.ring + u16(ram.u16(a5 + 0x1c))),           // $271510..$27151A, index RAW
+    T48.drawD3,                                            // $271526 move.w #$A50,D3
+    ram.u16(a6 + 0x1c));                                   // $27152C move.w ($1C,A6),D4
+}
+
+/** `$271382..$27139E` -- the retirement. Marks and does NOT free, as `$4A`. Reached from the death test
+ *  AND from the unguarded `$2800` trigger. */
+function retire48(ram, rom, a5, a6, ctx) {
+  ram.setU16(a6, T48.deadMark);                            // $271382 move.w #$8000,(A6)
+  walkDeathSpawns270D92(ram, rom, ctx, T48.deathList,
+    ram.u32(a6 + 0x02), 0x271390);                         // $271386/$271390 -- FIVE entries
+  ctx.soundPost?.(T48.deathCue);                           // $271394
+  ram.setU8(a6 + T48.deadFlag, 1);                         // $27139A move.b #$1,($3F,A6)
+}
+
+/** `$271402..$271486` -- FIVE aimed shots at 5-unit spacing, then the centre drifts.
+ *
+ *  `move.w #$4,D7` + `dbra` is FIVE passes; with `subi.w #$A` first and `addq.b #5` after each, the
+ *  headings are centre-10, -5, 0, +5, +10. `$4A`'s same-shaped loop is SEVEN at 3 through a different
+ *  spawner -- four of the five parameters differ. */
+function fire48(ram, rom, a5, a6, ctx) {
+  const set = ram.u8(a5 + 0x17) !== 0;
+  const muzzle = set ? T48.muzzleSet : T48.muzzleClear;     // $271402..$271460, $4A's polarity
+  // $271416 movem.w ($2,A6),D0-D1 -- SIGN-EXTENDS each word into its register.
+  const y = i16(ram.u16(a6 + 0x02)), x = i16(ram.u16(a6 + 0x04));
+  const selfY = u16(y + rom.u16(muzzle));                  // $27141C add.w (A1),D0
+  const selfX = u16(x + rom.u16(muzzle + 2));               // $27141E add.w ($2,A1),D1
+  const aimed = aim256FromCaller(aimTables(rom), ram, a5, selfY, selfX);   // $271422 jsr $24226E
+  // W323's trap, as $4A: on no live target `$242264` is a bare `rts` leaving D1 holding the biased X, and
+  // there is no `bcs` before the store. Transcribed rather than guarded.
+  ram.setU8(a5 + 0x20, (aimed.carry ? selfX : aimed.dir) & 0xff);   // $27142C move.b D1,($20,A5)
+
+  if (!due8(ram, a5 + 0x26)) return;                       // $271430 subq.b #1,($26,A5) / bcc
+  ram.setU8(a5 + 0x26, ram.u8(a5 + 0x27));                 // $271438
+
+  let d1 = u16(ram.u8(a5 + 0x20) - T48.fanSpread);          // $27143E/$271468 subi.w #$A
+  const d2 = u32(ram.u32(a6 + 0x02) + rom.u32(muzzle));    // $271462 add.l (A1),D2 -- the SAME four bytes
+  for (let n = 0; n < T48.fanPasses; n++) {                // $27146C move.w #$4,D7 + dbra = FIVE
+    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, T48.fanEntry,
+      { d0: T48.fanD0, d1, d2, d3: 0, d4: 0, d5: 0, a5 });
+    ctx.bulletSpawn?.(0x271470, res);
+    d1 = u16(d1 + T48.fanStep);                            // $271476 addq.b #5,D1
+  }
+  ram.setU8(a5 + 0x20,
+    u16(ram.u8(a5 + 0x20) + ram.u8(a5 + 0x22)) & 0xff);    // $27147C -- the centre DRIFTS
+  ram.setU8(a5 + 0x24, u16(ram.u8(a5 + 0x24) - 1) & 0xff);  // $271484 subq.b #1,($24,A5)
+}
+
+function handler48(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  // $27133A -- the mark is tested at instruction one, as $4A. No stepMovement anywhere in this type.
+  if (ram.u8(a6 + T48.deadFlag) === 0) {
+    // $271342 cmpi.w #$2800,($2,A6) / ble $271382 -- **NO ($16,A5) GUARD**, unlike $4A. This retires the
+    // record on position alone, potentially before it has ever been on screen.
+    if (i16(ram.u16(a6 + 0x02)) <= T48.despawnAt) {
+      retire48(ram, rom, a5, a6, ctx);
+    } else {
+      const hit = ram.u8(a6) & T48.damageMask;             // $27134C moveq #$5C,D1 / and.b (A6),D1
+      if (hit !== 0) {
+        ram.setU8(a6, ram.u8(a6) & T48.damageClear);       // $271354
+        scoreHit(ram, ctx, a6, hit);                       // $27135A jsr $286096
+        ram.setU8(a6 + 0x1d,
+          (ram.u8(a6 + 0x1d) ^ ram.u8(a5 + T48.palXor)) & 0xff);   // $271360..$27136A
+        if ((ram.u16(a6 + 0x18) & 0x8000) !== 0) {         // $27136E tst.w ($18,A6) / bpl
+          scoreKill(ram, rom, ctx, T48.killScore, hit);    // $271376 move.l #$130,D0
+          retire48(ram, rom, a5, a6, ctx);
+        } else {
+          ram.setU8(a6 + 0x1d, ram.u8(a5 + T48.palBase));  // $2713A0
+        }
+      } else {
+        ram.setU8(a6 + 0x1d, ram.u8(a5 + T48.palBase));    // $2713A0
+      }
+    }
+  }
+
+  // $2713A6..$2713CE -- the off-screen test: signed LONG, limit $2C00 (the band's FOURTH value).
+  const yy = i32(i16(ram.u16(a6 + 0x02)) + T48.boundsBias);
+  if (yy <= T48.boundsLimit) {
+    if (ram.u8(a5 + 0x16) !== 0) { freeEnemy(ram, a5); return; }   // $2713C6 jmp $263762
+  } else {
+    ram.setU8(a5 + 0x16, 1);                               // $2713CE
+  }
+
+  // **NO FREEZE TEST HERE.** $2713CE falls straight into $2713D4. Its three siblings all gate on
+  // $8130D2/$8130D4 at this point and $48 does not; adding one would silence a fan the board keeps firing.
+  scrollCompensate(ram, rom, a5, ctx.unported);             // $2713D4 jsr $24179E
+  // $2713DA `bsr $2714AE` is OMITTED: $2714AE is a bare `rts` sitting between this handler and the
+  // Version-B-disabled body at $2714B0 (W336/W338). Both of its callers target the stub.
+  if (ram.u8(a6 + T48.deadFlag) === 0) {                    // $2713DE tst.b ($3F,A6) / bne $271488
+    if (ram.u8(a5 + 0x24) !== 0) {                          // $2713E6 tst.b ($24,A5) / bne $271402
+      fire48(ram, rom, a5, a6, ctx);
+    } else if (due8(ram, a5 + 0x1e)) {                      // $2713EE subq.b #1,($1E,A5) / bcc
+      ram.setU8(a5 + 0x1e, ram.u8(a5 + 0x1f));              // $2713F6
+      ram.setU8(a5 + 0x24, ram.u8(a5 + 0x25));              // $2713FC
+      fire48(ram, rom, a5, a6, ctx);
+    }
+  }
+
+  // $271488 -- the animation counter, and the ring is MASKED rather than compared, as $4A.
+  if (due8(ram, a5 + 0x1a)) {
+    ram.setU8(a5 + 0x1a, ram.u8(a5 + 0x1b));               // $271490
+    ram.setU16(a5 + 0x1c,
+      u16(ram.u16(a5 + 0x1c) + T48.ringStep) & T48.ringMask);   // $271496/$27149A andi.w #$1F
+  }
+  // $2714A0 -- the THIRD ($3F,A6) test: a marked $48 does not draw either.
+  if (ram.u8(a6 + T48.deadFlag) === 0) draw48(ram, rom, a5, a6);   // $2714A8 bsr $271510
+}
+
 const T01 = Object.freeze({
   init: 0x267c24, initBody: 0x267c2c, handler: 0x267c70,
   recordProto: 0x267c50, recordWords: 2,      // $267C3E moveq #$1,D0 -- D0+1 = 2 words
@@ -8192,6 +8335,7 @@ const HANDLERS = new Map([
   [0x271640, handler49],          // W335: Stage-5 sweeping fan emplacement $49
   [0x271a64, handler4A],          // W337: Stage-5 seven-way aimed fan turret $4A
   [0x271d48, handler4B],          // W338: Stage-5 four-shot sweeping turret $4B
+  [0x27133a, handler48],          // W339: Stage-5 five-way aimed fan turret $48
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
   [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42

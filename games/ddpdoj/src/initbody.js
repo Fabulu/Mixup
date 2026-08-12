@@ -2012,6 +2012,29 @@ BODY.set(0x271c9a, (ram, rom, a5, a6, unported) => {
   ram.setU16(flag, 1);                                     // $271D12 move.w #$1,(A0)
 });
 
+// --- type $48 ($271284 init, $27128C body): the last member of the $48/$49/$4A/$4B band.
+//
+// Structurally `$4A`'s twin: `($4,A5) = 1` so TWO sub records (an EIGHT-byte handler overlap), a NINE-word
+// record prototype, and `($20,A5)`/`($21,A5)` seeded from the RNG with NO formation flag. `$49` and `$4B`
+// are the other pair and hold a POINTER to a formation flag in that region instead.
+//
+// The twinning stops at the structure: `$48`'s spawn frame is `$201` where `$4A`'s is `$2B6`, and every
+// constant in the handler differs too. See the band table in `docs/worklog/ddpdoj/338-type4b.md`.
+BODY.set(0x27128c, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x271302);                // $27128C..$271298 jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x2712f0, 0x08);           // $271298..$2712A6 D0+1 = NINE words
+  readInitPosition(ram, rom, a5, unported);               // $2712A6 jsr $263808
+  if (ram.u16(0x8130ce) === 0x201) {                       // $2712AC -- a FOURTH distinct frame
+    ram.setU8(a6 + 0x1c, 0x40);                            // $2712B8
+    ram.setU8(a5 + 0x17, 1);                               // $2712BE -- sole writer of ($17,A5)
+  }
+  ram.setU16(0x81b414, 1);                                 // $2712C4 -- the bullet-budget opt-in
+  ram.setU16(0x81b416, 1);                                 // $2712CC -- W336: raises $D to $1F
+  ram.setU8(a6 + 0x1d, ram.u8(a5 + 0x18));                 // $2712D4 -- the base palette
+  ram.setU8(a5 + 0x20, drawWord242EC2(ram, rom) & 0xff);   // $2712DA -- aim state, NOT a pointer
+  ram.setU8(a5 + 0x21, drawWord242EC2(ram, rom) & 0xff);   // $2712E4 -- a SECOND draw, not a copy
+});
+
 // The five stage rows at `$2692D2` are ALL `0A 15` (verified by hex dump), so `$813094` -- the stage
 // index DOUBLED -- selects an identical pair every time. Ported as the indexed read the ROM performs
 // rather than as the constant it happens to produce: the sameness is a measurement about this build,

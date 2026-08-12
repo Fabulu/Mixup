@@ -168,6 +168,7 @@ test('the ported handler addresses are registered through W223 type $41', () => 
       0x271640,   // W335: stage-5 type $49, the sweeping fan emplacement
       0x271a64,   // W337: stage-5 type $4A, the seven-way aimed fan turret
       0x271d48,   // W338: stage-5 type $4B, the four-shot sweeping turret
+      0x27133a,   // W339: stage-5 type $48, the five-way aimed fan turret -- BAND CLOSED
     ].sort((a, b) => a - b));
 });
 

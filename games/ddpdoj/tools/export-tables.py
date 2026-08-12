@@ -2688,6 +2688,23 @@ SHOT_WINDOWS.extend([
                        "list, muzzle longs and both sweep word tables, which abut end to end"),
 ])
 
+# W339: type $48 ($271284 init / $27128C initBody / $27133A handler). The last of the band.
+#
+#   $2712F0 + $52  the 9-word record prototype and BOTH $20-byte sub prototypes, $2712F0..$271341.
+#                  ($4,A5) = 1, so $271302 + $40 = $271342 against a handler at $27133A: EIGHT
+#                  bytes of overlap, matching $4A because both declare two sub records. Do not trim.
+#   $271538 + $66  all THREE of its tables, which abut end to end:
+#                      $271538 + $20   8-longword draw ring (5 frames ping-ponging) -> $271558
+#                      $271558 + $3E   death list, FIVE 12-byte entries + $FFFF     -> $271596
+#                      $271596 + $08   the two muzzle longwords                     -> $27159E
+#                  One declaration, so every boundary is checked by the next table's start.
+SHOT_WINDOWS.extend([
+    (0x2712F0, 0x0052, "W339: type $48's 9-word record prototype and BOTH sub prototypes, "
+                       "$2712F0..$271341 -- overlapping its handler at $27133A by EIGHT bytes"),
+    (0x271538, 0x0066, "W339: ALL THREE of type $48's tables, $271538..$27159D -- draw ring, "
+                       "five-entry death list and both muzzle longwords, which abut end to end"),
+])
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
