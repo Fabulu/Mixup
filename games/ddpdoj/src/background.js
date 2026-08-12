@@ -1387,3 +1387,79 @@ export function scrollVector(ram, video) {
     bgy: video.bg_yscroll,
   };
 }
+
+/**
+ * `$907000..$9073FF` -- A `$100`-SLOT LONGWORD TABLE.  W344.
+ *
+ * **Its extent is measured from two independent places that agree**, which is why it is `$400` and not
+ * something else:
+ *
+ *   * `$23C668` clears it -- `lea $907000,A0 / move.w #$FF,D0 / move.l #$0,(A0)+ / dbra`, and `#$FF` with
+ *     `dbra` is **256** iterations, so `$400` bytes.
+ *   * `$2592D0` passes `$907000` in A0 and `$907400` in A1 to `$2593F8`, whose loop ends on
+ *     `cmpa.l A0,A1 / bne` -- **A1 is the EXCLUSIVE END**, so the region stops at `$9073FF`.
+ *
+ * An earlier reading of mine took `$907400` for a second buffer and put the region at `$800`; the clear
+ * covering only half of that was the contradiction that gave it away.  **When two measurements of an extent
+ * disagree, the one that explains the other side's behaviour is the right one.**
+ *
+ * `$2593F8` is a SEARCH-AND-CLAIM over these slots: it walks them a longword at a time comparing against D0,
+ * writes D5 into the first match, and returns success in carry (`andi #$FFFE,SR`).  So the table holds
+ * `$100` longword entries and `$23C668` empties it.  **What the entries MEAN is not measured** -- `$2593D2`
+ * is a second consumer and should be read before this object is given a meaningful name.  It is named by
+ * address on purpose.
+ *
+ * It lives outside every video object the port had: `TxVram` covers `$904000..$905FFF` (4096 words) and
+ * `BgVram` is 2048 words, so `$907000` is `$1000` past the text plane's end.
+ */
+export class SlotTable907000 {
+  static BASE = 0x907000;
+  static SLOTS = 0x100;                    // 256 longwords -- $23C668's `#$FF` + dbra
+  static END = 0x907400;                   // EXCLUSIVE, as $25941C's cmpa.l proves
+
+  constructor(words) {
+    this.w = words ? Uint16Array.from(words) : new Uint16Array(SlotTable907000.SLOTS * 2);
+    if (this.w.length !== SlotTable907000.SLOTS * 2) {
+      throw new Error(`slot table is ${this.w.length} words, expected ${SlotTable907000.SLOTS * 2}`);
+    }
+  }
+
+  /** @param dest the ABSOLUTE address, as the ROM's `lea`/`(A0)+` uses it. */
+  setLong(dest, v) {
+    const i = this.#index(dest);
+    this.w[i] = (v >>> 16) & 0xffff;
+    this.w[i + 1] = v & 0xffff;
+  }
+
+  long(dest) {
+    const i = this.#index(dest);
+    return u32((this.w[i] << 16) | this.w[i + 1]);
+  }
+
+  #index(dest) {
+    if (dest < SlotTable907000.BASE || dest >= SlotTable907000.END || (dest & 3) !== 0) {
+      unreached(0x2593f8, `$${dest.toString(16).toUpperCase()} is not a $907000 slot. The table runs `
+        + `$907000..$9073FF inclusive ($100 longwords) and is addressed a LONGWORD at a time -- `
+        + `$25941C's \`cmpa.l A0,A1\` with A1 = $907400 is what bounds it, and $23C668's \`#$FF\` + dbra `
+        + `is what sizes it. An out-of-range or misaligned address means the caller's own pointer walk is `
+        + `wrong, so this refuses rather than silently wrapping`);
+    }
+    return ((dest - SlotTable907000.BASE) >>> 2) * 2;
+  }
+}
+
+/**
+ * `$23C668` -- CLEAR THE `$907000` TABLE.  Four instructions, **SIX callers**.  W344.
+ *
+ *     23c668  lea $907000,A0 / move.w #$FF,D0 / move.l #$0,(A0)+ / dbra D0,$23C672
+ *
+ * `#$FF` with `dbra` is **256** iterations, not 255 -- a 255 reading would leave the last slot holding a
+ * stale entry, and `$2593F8`'s search-and-claim would then find and reuse it.
+ *
+ * **IT OPENS BOTH THE TRANSITION SCREEN'S PHASE-0 ARM AND THE BONUS LINES.** `$25DCA4` calls it right after
+ * phase 0 advances to 1; `$25FFA8` and `$260056` (bonus lines 1 and 2) open with it. So the D24/D31 chain
+ * runs through this routine, which is why four instructions were worth this much measurement.
+ */
+export function clearSlotTable23C668(table) {
+  for (let a = SlotTable907000.BASE; a < SlotTable907000.END; a += 4) table.setLong(a, 0);
+}
