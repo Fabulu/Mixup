@@ -4369,9 +4369,41 @@ so the arms are successive tests that a value can pass through more than one of:
 of `$4C`'s eight handlers use -- successive `if` tests, never `else if` -- and writing this as a switch would
 silently drop the second arm for value 2.
 
+**AND THE CASCADE HAS A FOURTH TEST.** `$2725B6` is `cmpi.b #$3,($17,A5) / bne $272722`. The complete alive-path
+map, which took four corrections to get right and is now read end to end:
+
+    ($17,A5)  invuln?  movement arm            second arm
+    0         no       $2724EA                 --            (cmpi #0 / bne skips the rest)
+    1         yes      NONE                    --            (blt past $272540; != 2; != 3)
+    2         yes      $272540 sinusoid        $27258C       ($272582 tests == 2)
+    3         yes      $272540 sinusoid        $2725C0 fire  ($2725B6 tests == 3)
+    4 and up  yes      $272540 sinusoid        --
+
+**Value 1 runs no movement arm at all -- it is the stationary variant**, and it reaches that state by failing
+three successive tests rather than by any positive selection. Values 2 and 3 each run TWO arms. Writing this
+as a switch drops the second arm for both.
+
 A port must also not cache the byte as a boolean (that collapses 1 against 2+) nor split protection and mode
-into separate fields (the cartridge cannot let them disagree, since one `tst.b` and three `cmpi.b`s read the
+into separate fields (the cartridge cannot let them disagree, since one `tst.b` and four `cmpi.b`s read the
 same byte).
+
+**`$272722` IS THE SHARED TAIL, NOT A FREEZE TARGET** -- I listed it as one of `$55`'s unread spans and guessed
+wrong about what it does. Every arm falls into it, and it is a descriptor walk:
+
+    272728  adda.w ($1e,A5),A0        ($1E,A5) is a BYTE CURSOR into a table, not a counter
+    27272c  move.l (A0),D2
+    27272e  move.l ($2,A6),D1         the packed X/Y position long
+    272732  add.l  ($4,A0),D1         a packed-long bias -- borrow rule applies
+    272736  swap   D1
+    272738  add.w  ($32,A5),D1        the same field $272570 ramps by $40 up to a $600 cap
+
+So `($1E,A5)`, which `$27259A` advances by `addi.w #$10`, is a cursor with a **$10 stride** over entries whose
+first two longs are used. That means **a window must be declared for the table A0 points at before this tail can
+be written**, and the arms' `addi.w #$10` is what walks it.
+
+**`$241D34` IS ALREADY PORTED** as `ctx.tables.shotVector(d0, d1)` -- 29 mentions, 7 in code, used by
+`bossscripts.js`, `boss4.js` and `bossarrival.js`. The sinusoid arm calls it with amplitude `#$28` in D0 and a
+phase from `($2C,A5)` that self-advances by 2, taking D2 as the result. **Do not write a sine helper for `$55`.**
 
 That is now FOUR distinct meanings for offset `+$17` across stage 5 -- mirror/table select in all four band
 members, a state number in `$47` and `$43`, and in `$55` both an invulnerability enable and an arm selector.
