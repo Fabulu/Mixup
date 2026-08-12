@@ -1751,3 +1751,34 @@ overlapping the handler by FOUR bytes) and `$271EA8 + $1B2` (all five tables).
 `$4B` differs from `$49` in the `($17,A5)` polarity, the limit (`$400`), the score (`$290`), the flag
 offset (`($26,A5)`) and the flag words (`$8130E2`/`$8130E6`), and from `$4A` in essentially everything
 except the shared instruction sequences.
+
+### `$48` FIRST LOOK (W338 recon) -- init `$271284`, handler `$27133A`. IT MARKS, LIKE `$4A`.
+
+Type table `$267824 + $48*8 = $267A64` reads `00271284 0027133A`, so initBody is `$27128C` by the
+`init + 8` rule.
+
+    271390  jsr $270D92                     the shared death-spawn walker (W333), its SIXTH caller
+    271394  jsr $28C2DC
+    27139a  move.b #$1,($3F,A6)             <-- THE MARK. No clr.w through a flag, no freeEnemy.
+    2713a0  move.b ($18,A5),($1D,A6)        FALLS THROUGH into the alive path
+    2713a6  moveq #$0,D0 / move.w ($2,A6),D0 / ext.l / addi.l #$4000
+    2713b4  cmpi.l #$2C00,D0 / bgt $2713CE  <-- a FOURTH off-screen limit
+    2713be  tst.b ($16,A5) / beq $2713D4
+    2713c6  jmp $263762                     the off-screen free
+
+**SO THE BAND SPLITS 2-2 ON LIFETIME, NOT 3-1.** `$4A` and `$48` mark-and-continue; `$49` and `$4B` free
+themselves in the death arm. When W337 found `$4A` marking it looked like the odd one out and W338 said
+so; `$48` makes it a genuine pair. **Do not treat any of the four as the band's "normal" shape** -- there
+isn't one, and the write-up in `338-type4b.md` should be read with that correction in mind.
+
+Whether `$48` also carries `$4A`'s THREE `($3F,A6)` tests (handler head, before the fire arm, before the
+draw) is UNREAD and is the first thing to check: it decides whether a marked `$48` is fully inert or only
+partly.
+
+**Four off-screen limits now, one idiom** (`ext.l` / `addi.l #$4000` / `cmpi.l` / `bgt`):
+
+    $49 $2000     $4A $1C00     $4B $400     $48 $2C00
+
+Still to read for `$48`: the init body `$27128C`, the handler from `$27133A` to `$271390`, and everything
+after `$2713CE`. Its death list address is inside the unread `$271384`-ish span just before the walker
+call.
