@@ -4424,10 +4424,26 @@ exactly. Window declared W346, 442 -> 443.
            +$A   six zero bytes
 
 Two groups of eight share their constants -- group A from `$272750` bias `$F000F400` w8 `$1060`, group B from
-`$2727D0` bias `$EC00F400` w8 `$1460`. **UNVERIFIED HYPOTHESIS, do not port on it:** two groups of eight, with
-two cascade arms (`$27258C` for value 2 and `$2725C0` for value 3) that both advance the cursor, suggests each
-arm seeds `($1E,A5)` to `0` or `$80`. Nothing read so far shows either seed. Find the write to `($1E,A5)` before
-assuming it.
+`$2727D0` bias `$EC00F400` w8 `$1460`. **The `$80` group boundary is real: `$2724FE` is
+`cmpi.w #$80,($1e,A5) / bne $272536`**, so arm A tests the cursor against exactly the group A/group B split.
+
+**AND `($17,A5)` IS SELF-ADVANCING STATE, NOT THE PARENT-SUPPLIED PARAMETER I CALLED IT.** The record writes its
+own mode:
+
+    27259a  addi.w #$10,($1e,A5)     advance the cursor one entry
+    2725a0  cmpi.w #$f0,($1e,A5)
+    2725a6  blt $2725b6              not at the last entry yet -> skip
+    2725aa  move.w #$f0,($1e,A5)     CLAMP at entry 15 -- clamped, NOT wrapped
+    2725b0  move.b #$3,($17,A5)      PROMOTE mode 2 -> mode 3
+    2725b6  cmpi.b #$3,($17,A5)      ...and the next test READS THE NEW MODE, same frame
+
+**The promotion is written mid-cascade and picked up by the very next test in the same cascade, so the firing arm
+runs on the exact tick the table finishes.** That is the fall-through shape being used deliberately as a state
+machine rather than as a dispatch. **Porting the cascade as a `switch` or as `else if` delays the firing arm by
+one frame** -- which is precisely the visible-behaviour class of bug that reads as correct in every unit test.
+
+So the mode table above describes the *entry* condition of each arm, and mode 2 is transient: it walks 16 table
+entries at `$10` a step, clamps, promotes itself to 3, and fires. Only modes 0, 1 and 3 are stable.
 
 **AND A TOOLING TRAP THAT COST FOUR WRONG READS: `rip/sound/maincpu.bin` IS ADDRESSED BY RAW FILE OFFSET.**
 The address IS the offset -- do NOT subtract `$200000`. "Offset-addressed" in the older notes meant exactly
