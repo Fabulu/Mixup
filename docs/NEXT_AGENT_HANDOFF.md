@@ -2569,3 +2569,34 @@ Three countdown conventions are now attested in this ROM and `$47` uses two of t
 behaviours.
 
 Still to read for `$47`: `$26DC3C..$26DCA2` and `$26DCCC..$26DCE0`. Everything else is read.
+
+### `$47` STATE 3'S ATTACK IS RANK-GATED, `$26DC3C..$26DC74` (W339)
+
+    26dc40  move.l #$FFFD0004,D0
+    26dc46  move.l ($2,A6),D2 / addi.l #$10000000,D2     a PURE high-word bias: +$1000 X, 0 Y, no borrow
+    26dc50  moveq #$0,D3 / moveq #$0,D4
+    26dc54  tst.w $813098 / bne $26DC70                  <-- THE RANK GATE ($813098 = G.rank98)
+    26dc5e  jsr $281744                                  rank 0: shot 1
+    26dc64  neg.b D1                                     ... mirrored by a BYTE negate
+    26dc66  jsr $281744                                  ... shot 2
+    26dc6c  bra $26DCA2                                  straight to the repeat counter
+    26dc70  tst.w ($4E,A6) / bne $26DC8A                 rank > 0: a DIFFERENT, longer pattern
+
+**THE ATTACK SCALES WITH RANK AND THE TWO ARMS ARE STRUCTURALLY DIFFERENT.** At rank 0 `$47` fires a
+mirrored PAIR and jumps straight to the repeat counter. Above rank 0 it takes a separate arm gated on
+`($4E,A6)` running to at least `$26DC8A`. This is not a parameter difference like the band's -- it is two
+code paths. `$813098` is already `G.rank98` in `handlers.js` and `$81B414`-style rank reads appear across the
+port, so the gate itself is familiar; **what matters is not folding the two arms together.**
+
+**`neg.b D1` IS A HEADING MIRROR AND IS NOT THE `neg.w` TRAP.** Headings in this game are BYTES over 256
+directions, so `neg.b` is the correct and complete mirror. That is a different operation from `$27172C`/
+`$271E30`'s `neg.w D3` on a `move.l`-loaded PACKED OFFSET, where the word negate leaves the high half alone
+and is a trap. **Two negates, two widths, two purposes** -- do not unify them or "fix" either. The
+distinguishing question is what the register holds: a heading byte or a packed coordinate pair.
+
+`$26DC4A addi.l #$10000000` is also worth one line: a pure high-word bias, so there is no borrow and the
+naive reading is correct here. That makes three flavours of position bias in `$47` alone -- borrowing
+(`$FA7FF800`), non-borrowing negative-Y (`$FA800800`) and high-word-only (`$10000000`) -- and only the first
+needs the rule.
+
+Still to read for `$47`: `$26DC74..$26DCA2` (the rank > 0 arm) and `$26DCCC..$26DCE0`.
