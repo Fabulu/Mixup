@@ -1032,3 +1032,41 @@ W324's failure is now explained: it looked for a missing spawn in the beam code,
 there behind a gate nobody had written to. **A `note` would have caught this; a silent gate did not.** Worth
 remembering as a rule -- when an effect is "missing" and the spawn call exists, check what writes its gate
 before reading the spawn again.
+
+### D24/D31 CORRECTION (W342): THE PREVIOUS ENTRY IS WRONG. `$81308C` IS `players - 1`, AND 0 IS CORRECT.
+
+**Retract the entry above.** I called `$81308C` a live-player COUNT and concluded the port never sets it, so
+the hyper spark was suppressed. Reading nine bytes further would have stopped me:
+
+    25fda0  clr.w $81308C
+    25fdae  addq.w #1,$81308C        P1 present
+    25fdbc  addq.w #1,$81308C        P2 present
+    25fdc2  subq.w #1,$81308C        <-- **AND THEN IT SUBTRACTS ONE**
+    25fdc8  move.w $81308C,$81308E
+
+So it is `players - 1`, an INDEX and not a count:
+
+    0 players -> $FFFF     hyper-hit `beq` TAKES the spawn
+    1 player  -> $0000     hyper-hit `beq` SKIPS the spawn     <-- the normal case
+    2 players -> $0001     hyper-hit `beq` TAKES the spawn
+
+**So a zero gate in one-player play is CORRECT BEHAVIOUR, and the port's permanent zero matches it.** The
+`moveq #$14,D0 / jsr $28xxxx` behind those five `beq`s is a TWO-PLAYER (or no-player) effect, not the
+single-player hyper impact. Nothing here is broken and **the "fix" I proposed would have added an effect the
+board does not show in one-player play.**
+
+**D24/D31 REMAINS OPEN AND ITS CAUSE IS STILL UNKNOWN.** What this rules out is worth keeping: the
+`$81308C`-gated spawn at `$254012`/`$25416E`/`$2542B2`/`$2543DC`/`$254506` is not it, and `hyperShotHit`'s
+`spawnSpark` is correctly gated. Look instead at `hyperShotHit`'s OTHER work -- it loads four fields from
+`tables.hit + ($1E,rec)` (`drawOff`, `dlWord4`, `animPtr`, `anim2`) and then calls `hyperShotLaterHit`, which
+is what actually animates. **Check whether `tables.hit` is populated for the hyper shot's `tableIdx`**, and
+whether the ROM windows cover the rows it reads: a table that reads as zeros gives exactly the reported
+symptom -- the shot stops dead with no impact frames -- and would not throw.
+
+**AND THE PROCESS LESSON, WHICH IS THE THIRD TIME TODAY IN THIS EXACT SHAPE.** I wrote a confident root-cause
+entry into the DOCKET -- a document the next agent acts on -- from a reading that stopped nine bytes short of
+an instruction that inverted it. The three earlier instances were `$246520` ("fully scoped" twice, then read
+to its rts, each time missing a span), `$4B` (predicted mark-and-fall-through from its sibling), and
+`$2417DE` (two opposite wrong conclusions from one bad grep). **Displaying every byte from entry to `rts`
+before writing a conclusion is not optional, and it is least optional when the conclusion is about to be
+written somewhere actionable.**
