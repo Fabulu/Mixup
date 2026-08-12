@@ -79,7 +79,8 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   // W337: 84 -> 85 ported and 42 -> 41 unknown, stage-5 type $4A ($271A64).
   // W338: 85 -> 86 ported and 41 -> 40 unknown, stage-5 type $4B ($271D48).
   // W339: 86 -> 87 ported and 40 -> 39 unknown, stage-5 type $48 ($27133A). Band closed.
-  assert.match(got.stdout, /enemy_types: 87\/256 ported, 39 unknown, 130 null/);
+  // W340: 87 -> 88 ported and 39 -> 38 unknown, stage-5 type $47 ($26D7D0), $E2 records.
+  assert.match(got.stdout, /enemy_types: 88\/256 ported, 38 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
   assert.match(got.stdout, /stage3_spawn_script: 414\/414 ported, 0 unknown, 0 null/);

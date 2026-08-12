@@ -89,7 +89,7 @@ function nullOf(script) {
 
 // ==================== 1. THE WORK LIST
 
-test('W339 stage 5 has SIX types with no handler, over 21 of its 770 records',
+test('W340 stage 5 has FIVE types with no handler, over 20 of its 770 records',
   { skip: SKIP_IMG }, () => {
     // The measurement this file exists for. `enemyHandlerMap` is built from the cartridge, and
     // `runEnemyDriver`'s `handlers.get(h)` miss is where a missing handler is reported -- but
@@ -111,16 +111,20 @@ test('W339 stage 5 has SIX types with no handler, over 21 of its 770 records',
     // except `$48`, and the three ported members agree on no constant at all.
     // W339: SEVEN and 23 -> SIX and 21, type $48 (2 records). **THE BAND IS CLOSED.** All four are
     // ported and they form two structural pairs that agree on no handler constant whatsoever.
+    // W340: SIX and 21 -> FIVE and 20, type $47, which has exactly ONE record in stage 5's script.
+    // **CORRECTION**: earlier notes called $47 "$E2 records". `$E2` is its routine's byte SPAN, taken
+    // from the handoff's span list ($49 $A2, $4A $B6, $4B $B6, $47 $E2) -- not a record count. It is
+    // the scroll-stopping set-piece and shares NOTHING with the band -- see its handler header.
     const map = enemyHandlerMap(ROM);
     const miss = missingOf(SCRIPTS[5], map);
-    assert.equal(miss.length, 6, `six types, got ${miss.map((m) => m.type.toString(16))}`);
-    assert.equal(miss.reduce((a, m) => a + m.records, 0), 21, 'across 21 records');
+    assert.equal(miss.length, 5, `five types, got ${miss.map((m) => m.type.toString(16))}`);
+    assert.equal(miss.reduce((a, m) => a + m.records, 0), 20, 'across 20 records');
     // Ranked by record count. **W317 found this is NOT the order to port them in** -- see the
     // dependency test below. `$46` is the biggest and needs an unported 1130-byte child first.
     const ranked = [...miss].sort((a, b) => b.records - a.records || a.type - b.type);
     assert.deepEqual(ranked.map((m) => m.type),
       [0x46, 0x1a,
-        0x43, 0x47, 0x4c, 0xb0]);
+        0x43, 0x4c, 0xb0]);
     assert.deepEqual(ranked.slice(0, 2).map((m) => m.records), [13, 4],
       '$46 is the biggest left but wants $55 first; $1A is next but is BLOCKED on D2/D3');
   });

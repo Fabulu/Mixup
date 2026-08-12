@@ -2035,6 +2035,34 @@ BODY.set(0x27128c, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + 0x21, drawWord242EC2(ram, rom) & 0xff);   // $2712E4 -- a SECOND draw, not a copy
 });
 
+// --- type $47 ($26D6EE init, $26D6F6 body): stage 5's SCROLL-STOPPING SET-PIECE, $E2 records.
+//
+// Not a band member and nothing about `$48`/`$49`/`$4A`/`$4B` transfers. `($4,A5) = 3` means FOUR sub
+// records, so the prototype pair runs `$26D740..$26D7DF` and overlaps the handler at `$26D7D0` by
+// **SIXTEEN** bytes -- the deepest in the port, and predicted by
+// `depth = subRecords * $20 - (handler - subProto)`.
+//
+// `move.w #$F,D0` is SIXTEEN words, not a `moveq`: every band member used `moveq #$6`/`#$8`/`#$9`, so
+// pattern-matching on `moveq` misses the count entirely.
+//
+// **IT SETS ONLY ONE BULLET-BUDGET WORD.** `$81B414` alone, where every band member sets `$81B414` AND
+// `$81B416`. Per W336 that leaves the pool budget at `$15`, not `$1F`.
+BODY.set(0x26d6f6, (ram, rom, a5, a6, unported, _tables, palette) => {
+  loadSubProto(ram, rom, a5, a6, 0x26d760);                // $26D6F6..$26D702 jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x26d740, 0x0f);           // $26D702..$26D712 D0+1 = SIXTEEN words
+  readInitPosition(ram, rom, a5, unported);               // $26D712 jsr $263808
+  ram.setU16(0x81b414, 1);                                 // $26D718 -- ONE budget word only
+  ram.setU16(0x8130dc, 1);                                 // $26D720 -- a single global, not a pointer
+  installBank(ram, rom, palette, unported, 0x10, 0x224f38, 0x26d732,
+    'Stage-5 type $47 palette bank $10');                  // $26D728..$26D736 jsr $24150A
+  // $26D738 `jsr $23C4A0 / rts` -- one of a family of three-instruction screen-shake mode setters
+  // ($23C4B0 writes 6, $23C4C0 writes 5, $23C4D0 the reverse pair). NOT its own wave: both globals are
+  // already produced and consumed by `background.js`, whose screen-shake arm inlines $23C4D0's pair.
+  // `$26D924` (state 1) clears BOTH, so $47 shakes the screen on spawn and stops when its ramp ends.
+  ram.setU16(0x803934, 1);                                 // $23C4A0
+  ram.setU16(0x803936, 0);                                 // $23C4A8 clr.w
+});
+
 // The five stage rows at `$2692D2` are ALL `0A 15` (verified by hex dump), so `$813094` -- the stage
 // index DOUBLED -- selects an identical pair every time. Ported as the indexed read the ROM performs
 // rather than as the constant it happens to produce: the sameness is a measurement about this build,

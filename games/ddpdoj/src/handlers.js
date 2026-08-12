@@ -115,6 +115,9 @@ import { drawByte242B3C, drawByte24311A, drawByte2431F4, drawSigned242FDE,
   drawSigned242FFC,
   drawWord242EC2 } from './rng.js';
 import { spawnCues28AC72, spawnCues28AC86 } from './cues.js';
+// W340: `$261100`, the external speed push -- type $47 stops the scroll through it on BOTH of its exits.
+// Nine callers in build B; `background.js` has produced and consumed the three words since W13/W31.
+import { pushExternalSpeed } from './background.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 import { handler12, handler13, handler14 } from './stage3carrier.js';
 import { handler15, handler17, handler18 } from './stage3drop.js';
@@ -2922,6 +2925,166 @@ function handler48(ram, rom, a5, ctx) {
   }
   // $2714A0 -- the THIRD ($3F,A6) test: a marked $48 does not draw either.
   if (ram.u8(a6 + T48.deadFlag) === 0) draw48(ram, rom, a5, a6);   // $2714A8 bsr $271510
+}
+
+// ============================================================ TYPE $47 (W340)
+//
+// Stage 5's SCROLL-STOPPING SET-PIECE, `$E2` records. `$26D6EE` init / `$26D6F6` initBody / `$26D7D0`
+// handler. It is NOT a band member and nothing about `$48`/`$49`/`$4A`/`$4B` transfers to it. The
+// load-bearing traps, all documented at length in NEXT_AGENT_HANDOFF.md:
+//
+//   * `($18,A6)` IS A PER-FRAME DAMAGE SINK, NOT HP. Real HP is a LONG at `($32,A5)`. Reading `($18,A6)`
+//     as HP -- which is what all four band members do -- makes `$47` immortal.
+//   * `+$7E` and `+$7F` are ADJACENT FLAGS WITH DIFFERENT ROLES: `($7F,A6)` = "dying", `($7E,A6)` =
+//     "retire me now". Swapping them makes it immortal or instantly gone.
+//   * THREE countdown conventions appear, two of them inside `$26DC00`: `subq.b`/`bpl` runs NEGATIVE
+//     (thresholds -2/-3) and `subq.w`/`beq` fires AT ZERO. Neither is `due8`.
+//   * the palette bank is REINSTALLED EVERY FRAME (`$26D7D0`), not just at init.
+//   * the draw has NO table index -- `move.l (A0),D2` with no `adda.w`, so entry 0 always.
+//   * rank scaling is a bullet-type INTERLEAVE, not more bullets.
+const T47 = Object.freeze({
+  init: 0x26d6ee, initBody: 0x26d6f6, handler: 0x26d7d0,
+  recordProto: 0x26d740, recordWords: 16, subProto: 0x26d760, subRecords: 4,
+  palBank: 0x10, palSrc: 0x224f38,            // reinstalled EVERY FRAME at $26D7D0
+  aliveGlobal: 0x8130dc,                       // set by the init, cleared by all three exits
+  retireFlag: 0x7e, deadFlag: 0x7f,            // ADJACENT, DIFFERENT ROLES
+  damageMask: 0x5c, damageClear: 0xa3,
+  palXorLiteral: 0x0f, palRestore: 0x10,       // $26D82C eori.b #$F / $26D892 move.b #$10
+  hitMaskAt: 0x6e,                             // $26D81E -- consumed ONLY by $26DCB6
+  sinkFull: 0x7fff, hpLong: 0x32,              // the $7FFF sink over a LONG accumulator
+  killScore: 0x600, deathCue: 0x28c310,        // $26D850 / $26D88C -- not the band's $28C2DC
+  deathList: 0x26dcec, deathAnim: 0x10,        // walked by $26C74E: FOURTEEN entries, ($1E,A0) = $10
+  boundsBias: 0x4000, boundsLimit: 0x800,      // a FIFTH limit value
+  scrollPush: 0x20,                            // pushExternalSpeed(D0 = D1 = $20) on BOTH exits
+  drawTable: 0x26daf4, drawBias: 0xe400ea00, drawD3: 0x1cb0, drawStub: 0x23dece,
+  rampStep: 4, rampClamp: 0x1c,                // $26D910 -- CLAMPED at $1C, not wrapped
+});
+
+/** `$26DAC8..$26DAF2` -- the draw. **NO TABLE INDEX**: `$26DAD6 move.l (A0),D2` has no `adda.w`, so the
+ *  main draw always uses entry 0. The other seven entries are reached by the private subroutines. And D4
+ *  comes from the PALETTE byte `($1D,A6)`, where every band member uses `($1C,A6)`. */
+function draw47(ram, rom, a5, a6) {
+  if (ram.u8(a6 + T47.deadFlag) !== 0) return;             // $26DAC8 tst.b ($7F,A6) / bne -> rts
+  enqueueRegistersThroughStub(ram, rom, T47.drawStub,
+    u32(ram.u32(a6 + 0x02) + T47.drawBias),                // $26DAD8/$26DADC addi.l #-$1BFF1600
+    rom.u32(T47.drawTable),                                // $26DAD6 move.l (A0),D2 -- ENTRY 0, no index
+    T47.drawD3,                                            // $26DAE2 move.w #$1CB0,D3
+    ram.u8(a6 + 0x1d));                                    // $26DAE8 move.b ($1D,A6),D4 -- the PALETTE
+}
+
+/** `$26D85C..$26D89A` -- the retirement. Marks and does NOT free; `$26DCB6` later sets `($7E,A6)` and the
+ *  handler's own `$26D7EA` arm does the freeing. Pushes the scroll stop a SECOND time. */
+function retire47(ram, rom, a5, a6, ctx) {
+  pushExternalSpeed(ram, T47.scrollPush, T47.scrollPush);   // $26D85C..$26D864 jsr $261100
+  ram.setU16(a6, 0x8000);                                  // $26D86A move.w #$8000,(A6)
+  ram.setU8(a6 + T47.deadFlag, 1);                         // $26D86E move.b #$1,($7F,A6)
+  ram.setU16(T47.aliveGlobal, 0);                          // $26D874
+  walkDeathSpawns270D92(ram, rom, ctx, T47.deathList,
+    ram.u32(a6 + 0x02), 0x26d886, T47.deathAnim);          // $26D880/$26D886 jsr $26C74E
+  ctx.soundPost?.(T47.deathCue);                           // $26D88C jsr $28C310
+}
+
+function handler47(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  // $26D7D0 -- **THE PALETTE IS REINSTALLED EVERY FRAME**, byte-for-byte the init's three instructions.
+  // Something else in stage 5 overwrites bank $10 and this repaint is what keeps it correct.
+  installPaletteBank47(ram, rom, ctx, a5);
+
+  if (ram.u32(G.freeze) !== 0) { draw47(ram, rom, a5, a6); return; }   // $26D7E0 tst.w $8130D2 / bne
+  // $26D7EA -- the retirement trigger $26DCB6 sets. NOT the same byte as the dying flag at +$7F.
+  if (ram.u8(a6 + T47.retireFlag) !== 0) {
+    ram.setU16(T47.aliveGlobal, 0);                        // $26D7F2
+    pushExternalSpeed(ram, T47.scrollPush, T47.scrollPush);  // $26D7FA..$26D802 jsr $261100
+    freeEnemy(ram, a5);                                    // $26D808 jmp $263762
+    return;
+  }
+
+  // $26D810..$26D89A -- the damage arm. `($18,A6)` IS A SINK: the damage taken this frame is
+  // `$7FFF - ($18,A6)`, subtracted from the LONG at `($32,A5)`, and the sink is re-armed to `$7FFF`.
+  const hit = ram.u8(a6) & T47.damageMask;                 // $26D810 moveq #$5C,D1 / and.b (A6),D1
+  if (hit !== 0) {
+    ram.setU8(a6, ram.u8(a6) & T47.damageClear);           // $26D818
+    ram.setU16(a6 + T47.hitMaskAt, hit);                   // $26D81E -- consumed ONLY by $26DCB6
+    scoreHit(ram, ctx, a6, hit);                           // $26D822 jsr $286096
+    ram.setU8(a6 + 0x1d,
+      (ram.u8(a6 + 0x1d) ^ T47.palXorLiteral) & 0xff);     // $26D82C eori.b #$F -- a LITERAL
+    const taken = u16(T47.sinkFull - ram.u16(a6 + 0x18));  // $26D834/$26D83A move.l #$7FFF / sub.w
+    ram.setU32(a5 + T47.hpLong, u32(ram.u32(a5 + T47.hpLong) - taken));   // $26D83E sub.l D0,($32,A5)
+    ram.setU16(a6 + 0x18, T47.sinkFull);                   // $26D842 -- RE-ARM the sink
+    if ((ram.u32(a5 + T47.hpLong) & 0x80000000) !== 0) {   // $26D848 tst.l ($32,A5) / bpl
+      scoreKill(ram, rom, ctx, T47.killScore, hit);        // $26D850 move.l #$600,D0
+      retire47(ram, rom, a5, a6, ctx);
+    }
+  } else {
+    ram.setU8(a6 + 0x1d, T47.palRestore);                  // $26D892 move.b #$10 -- a LITERAL, not ($18,A5)
+  }
+
+  // $26D89C..$26D8D0 -- the off-screen test: signed LONG, limit $800 (a FIFTH value). Its exit ALSO
+  // clears the global, so all three exits maintain $8130DC.
+  const y = i32(i16(ram.u16(a6 + 0x02)) + T47.boundsBias);
+  if (y <= T47.boundsLimit) {
+    if (ram.u8(a5 + 0x16) !== 0) {                         // $26D8B4 tst.b ($16,A5) / beq
+      ram.setU16(T47.aliveGlobal, 0);                      // $26D8BC
+      freeEnemy(ram, a5);                                  // $26D8C4 jmp $263762
+      return;
+    }
+  } else {
+    ram.setU8(a5 + 0x16, 1);                               // $26D8CC
+  }
+
+  scrollCompensate(ram, rom, a5, ctx.unported);             // $26D8D2 jsr $24179E
+  if (ram.u8(a6 + T47.deadFlag) !== 0) { draw47(ram, rom, a5, a6); return; }   // $26D8D8 bne $26DAC8
+
+  // $26D8E0 -- ($17,A5) IS A STATE NUMBER HERE, not the band's mirror flag, and ($1C,A5) is a WORD
+  // countdown, not a sweep index. The state-2/3 machinery past this point is not yet transcribed.
+  if (ram.u8(a5 + 0x17) === 0) {                           // $26D8E0 cmpi.b #$0,($17,A5) / bne
+    const next = u16(ram.u16(a5 + 0x1c) - 1);              // $26D8EA subq.w #1,($1C,A5) / bne
+    ram.setU16(a5 + 0x1c, next);
+    if (next === 0) ram.setU8(a5 + 0x17, 1);               // $26D8F2 move.b #$1,($17,A5)
+  }
+  if (ram.u8(a5 + 0x17) === 1) {                           // $26D8F8 cmpi.b #$1,($17,A5) / bne $26D976
+    state1_47(ram, rom, a5, a6, ctx);
+  } else {
+    ctx.unported?.note(0x26d976, `$26D976 type $47 state ${ram.u8(a5 + 0x17)} -- the $8130D4-gated `
+      + `five-muzzle volley ($26D98E..$26DA72), the ($2E,A5) inner machine ($26DA74..$26DAC6) and its `
+      + `subroutines $26DB14/$26DC00/$26DCB6 are READ but not yet transcribed. See the $47 sections of `
+      + `NEXT_AGENT_HANDOFF.md: five packed muzzle longs whose high words carry a borrow, a 60-pass `
+      + `triangular dbra, a subq.b/bpl countdown that runs negative, and a rank-gated bullet-type `
+      + `interleave. MEASUREMENT NEEDED: none -- this is transcription work only`);
+  }
+  draw47(ram, rom, a5, a6);                                // $26DAC8
+}
+
+/** `$26D902..$26D970` -- state 1: a cadence, an 8-step opening ramp CLAMPED at `$1C`, then it stops the
+ *  screen shake and seeds NINE byte pairs. **Every `move.w` in that block is TWO BYTE FIELDS**, and two
+ *  genuine `move.b`s sit among them, so neither reading can be applied uniformly. */
+function state1_47(ram, rom, a5, a6, ctx) {
+  if (!due8(ram, a5 + 0x18)) return;                       // $26D902 subq.b #1,($18,A5) / bcc
+  ram.setU8(a5 + 0x18, ram.u8(a5 + 0x19));                 // $26D90A
+  const idx = u16(ram.u16(a5 + 0x1a) + T47.rampStep);      // $26D910 addq.w #4
+  if (idx < T47.rampClamp) { ram.setU16(a5 + 0x1a, idx); return; }   // $26D914 cmpi.w #$1C / blt
+  ram.setU16(a5 + 0x1a, T47.rampClamp);                    // $26D91E -- CLAMPED, not wrapped
+  ram.setU16(0x803934, 0);                                 // $26D924 -- stop the screen shake
+  ram.setU16(0x803936, 0);                                 // $26D92C
+  ram.setU8(a5 + 0x17, 2);                                 // $26D934 move.b #$2,($17,A5)
+  // $26D93A..$26D970 -- word literals into BYTE PAIRS. `move.w #$6,($22,A5)` puts $00 at +$22 and $06
+  // at +$23: the byte the literal names lands in the SECOND field.
+  for (const [off, hi, lo] of [
+    [0x1e, 0x10, 0x20], [0x20, 0x06, 0x06], [0x22, 0x00, 0x06],
+    [0x24, 0x20, 0x30], [0x26, 0x04, 0x04], [0x28, 0x00, 0x04],
+  ]) { ram.setU8(a5 + off, hi); ram.setU8(a5 + off + 1, lo); }
+  ram.setU8(a5 + 0x2a, 0);                                 // $26D95E -- a GENUINE move.b
+  ram.setU8(a5 + 0x2b, 0);                                 // $26D964 -- and another
+  ram.setU8(a5 + 0x2c, 0x60); ram.setU8(a5 + 0x2d, 0x40);  // $26D96A move.w #$6040
+}
+
+/** `$26D7D0..$26D7DE` -- and `$26D728..$26D736` in the init, byte for byte the same three instructions. */
+function installPaletteBank47(ram, rom, ctx, a5) {
+  ctx.unported?.note(0x26d7d0, `$26D7D0 type $47 reinstalls palette bank $${T47.palBank.toString(16)} `
+    + `from $${T47.palSrc.toString(16).toUpperCase()} EVERY FRAME (jsr $24150A), byte for byte the same `
+    + `three instructions as its init at $26D728. The port's installBank lives in initbody.js and is not `
+    + `exported, so the per-frame call is counted here rather than dropped -- it is NOT redundant: `
+    + `something else in stage 5 overwrites bank $10 and this repaint is what keeps it correct`);
 }
 
 const T01 = Object.freeze({
@@ -8336,6 +8499,7 @@ const HANDLERS = new Map([
   [0x271a64, handler4A],          // W337: Stage-5 seven-way aimed fan turret $4A
   [0x271d48, handler4B],          // W338: Stage-5 four-shot sweeping turret $4B
   [0x27133a, handler48],          // W339: Stage-5 five-way aimed fan turret $48
+  [0x26d7d0, handler47],          // W340: Stage-5 scroll-stopping set-piece $47 ($E2 records)
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
   [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42
