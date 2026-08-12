@@ -1578,3 +1578,45 @@ conventions, in a smaller space.
 
 So `$4A` is NOW read end to end, and this time that is checked rather than inferred: every byte from
 `$2719AE` to `$271C06` has been displayed.
+
+### `$4B`'s INIT BODY, READ IN FULL (W337 recon) -- init `$271C92`, body `$271C9A`, handler `$271D48`
+
+    271c92  move.w #$0,($4,A5) / rts        ONE sub-record -- back to $49's count, not $4A's two
+    271c9a  loadSubProto($271D2C)
+    271ca6  loadRecordProto($271D18, 9)     D0+1 = TEN words
+    271cb4  readInitPosition
+    271cba  cmpi.w #$299,$8130CE / bne      a THIRD distinct frame ($49 $1F3, $4A $2B6, $4B $299)
+    271cc6  move.b #$40,($1C,A6) / move.b #$1,($17,A5)
+    271cd2  move.b ($18,A5),($1D,A6)
+    271cd8  move.w #$1,$81B414 / move.w #$1,$81B416      the same budget opt-in (W336)
+    271ce8  move.w #$1,$8130E2              <-- UNCONDITIONAL, and it happens either way
+    271cf0  lea $8130E2,A0
+    271cf6  cmpi.w #$280,$8130CE / bcs $271D0E
+    271d02  lea $8130E6,A0
+    271d08  move.w #$202,($1A,A5)           <-- late branch ONLY
+    271d0e  move.l A0,($26,A5)              <-- the flag pointer, at ($26,A5) NOT ($20,A5)
+    271d12  move.w #$1,(A0)
+    271d16  rts
+
+**THE OVERLAP DEPTH RULE HOLDS AND IS NOW CONFIRMED RATHER THAN ASSERTED.** `($4,A5) = 0` means ONE
+`$20`-byte sub record, so `$271D2C + $20 = $271D4C` against a handler at `$271D48`: **four** bytes, the
+same as `$49` and not `$4A`'s eight. The depth follows from `($4,A5)` exactly as W337's window note
+said. Window: `$271D18 + $34` (`$271D18..$271D4B`, ten-word record prototype plus the sub prototype).
+
+**THE FLAG POINTER IS BACK, BUT AT A DIFFERENT OFFSET AND ON DIFFERENT WORDS.** `$49` stores it in
+`($20,A5)` over `$8130E0`/`$8130E4`; `$4A` has no flag and uses `($20,A5)` for aim state; `$4B` stores it
+in **`($26,A5)`** over **`$8130E2`/`$8130E6`**. Three consecutive types, three different meanings for the
+same region of the record. Find `$4B`'s exits and clear through `($26,A5)`, and do NOT reuse either
+sibling's offset.
+
+**`$8130E2` IS WRITTEN TWICE ON THE LATE BRANCH.** `$271CE8` sets it to 1 unconditionally, and only then
+does the `$280` test possibly redirect A0 to `$8130E6` -- so a late `$4B` arms `$8130E2` AND `$8130E6`,
+while an early one arms `$8130E2` only, through both the direct write and the pointer. Collapsing the
+unconditional write into the branch would leave the early flag set once instead of twice (harmless) and
+the LATE case with `$8130E2` clear (not harmless).
+
+**`move.w #$202,($1A,A5)` IS TWO BYTE FIELDS.** The standing rule: `($1A,A5) = 2` and `($1B,A5) = 2`.
+Those are the animation counter and its reload, which `$4A` uses the same way -- so the late-spawning
+`$4B` gets a 2-frame animation cadence and the early one keeps whatever the prototype gave it.
+
+Still to read: the handler `$271D48` onward, including its `$270D92` call at `$271D88`.
