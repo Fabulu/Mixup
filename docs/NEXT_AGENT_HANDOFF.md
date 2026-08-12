@@ -3317,3 +3317,42 @@ total) will pass their own count words, and that is where a twenty-node chain wo
     linkage    parent from $810346, chain through ($2C,A1), each node advanced by `movea.l A2,A1`
 
 That is a bounded wave with no unmeasured quantity left in it. **Write `$246520` next, then `$4C`.**
+
+### `$246520` READ TO ITS `rts` (W341) -- THE POOLS ARE CONTIGUOUS, WHICH PROVES THE STRIDES
+
+    2465cc  move.w ($4,A2),D4 / lea ($30,A2),A4
+    2465d4  move.w (A3)+,(A4)+ / dbra D4,$2465D4      a variable-length WORD PAYLOAD at node +$30
+    2465da  subq.w #1,D0 / beq $2465E8                <-- D0 IS THE NODE COUNT, confirmed
+    2465de  lea ($70,A2),A2                           <-- node stride is $70
+    2465e2  dbra D6,$246558                           the twenty-slot loop
+    2465e6  moveq #-$1,D0                             pool exhausted -> FAILURE
+    2465e8  movem.l (A7)+,A0-A1
+    2465ec  tst.w D0 / bpl $2465F8
+    2465f0  move.l A1,D0 / bsr $246800                <-- FAILURE UNWIND, and it is UNPORTED
+    2465f8  move.l A1,D0 / movem.l (A7)+,D1-D7/A0-A4 / rts     success: the PARENT in D0
+    246600  lea ($30,A1),A1                           slot occupied -> parent stride is $30
+
+**THE ARITHMETIC PROVES ITSELF:**
+
+    pool 2 (nodes)    $80FA86 + 20 * $70 = $810346
+    pool 1 (parents)  $810346 + 3  * $30 = $8103D6
+
+**`$80FA86 + 20 * $70` lands EXACTLY on `$810346`, the parent pool's own base.** The two pools abut, so if
+either stride or either count were wrong the boundary would not land there. That is the same
+self-checking-extent property the abutting ROM tables have, in RAM -- and it independently confirms `$70`,
+`$30`, twenty and three, none of which was obvious from the literals alone (`#$13` and `#$2` are the dbra
+counts; the strides are separate `lea` displacements).
+
+**CORRECTION TO MY OWN "FULLY SCOPED" CLAIM one commit ago.** I said the wave had no unmeasured quantity
+left. It had three: both pool STRIDES and the failure unwind. I had measured the pool bases, the slot counts,
+the dispatch table and the caller table, and called that complete without reading to the `rts`. **The strides
+are not derivable from anything I had measured**, and `$246800` is a whole routine.
+
+**`$246800` IS UNPORTED AND IS NOT OPTIONAL.** It is the unwind called when the twenty-node pool runs dry
+mid-chain: the parent is already claimed and some nodes are already linked, so without it a failed
+construction leaks a parent slot out of THREE permanently. Read it before writing `$246520`.
+
+**Also: each node carries a variable-length word payload at `+$30`**, length `($4,A2)+1` words, copied from
+the `A3` the dispatch table computed. So a node is `$70` bytes of which `$30` is header and up to `$40` is
+payload -- and `($4,A2)` comes from the caller's table (`word = $001F` for `$4C`'s node[0], so **32 words =
+$40 bytes**, exactly filling the node). Another self-checking fit.
