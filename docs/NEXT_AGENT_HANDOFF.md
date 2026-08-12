@@ -513,7 +513,36 @@ so the entries are not uniform and the walker's stride needs reading, not assumi
 `cmpi.l #$2000,D0 / bgt $2716CC` -- a SIGNED LONG compare, unlike the two-`addi.w` word idiom types
 `$1B` and `$81` use for the same job. Do not reach for that idiom here.
 
-Still to read: `$2716CC` onward, and `$270D92` itself.
+### `$49` IS NOW READ END TO END. `$270D92` IS PORTED (W333). WRITE IT.
+
+    27169e  moveq #$0,D0 / move.w ($2,A6),D0 / ext.l D0 / addi.l #$4000,D0
+    2716ac  cmpi.l #$2000,D0 / bgt $2716CC     **A SIGNED LONG COMPARE.** Not the two-`addi.w` word
+                                               idiom `$1B` and `$81` use for the same job -- do not
+                                               reach for it here
+    2716b6  tst.b ($16,A5) / beq $2716D2       off screen and never seen -> carry on
+    2716be  movea.l ($20,A5),A0 / clr.w (A0)   off screen AND seen -> **CLEAR THE COUNTER THE INIT
+                                               MARKED**, then $2716C4 jmp $263762
+    2716cc  move.b #$1,($16,A5)                on screen -> mark seen
+    2716d2  jsr $24179E                        `scrollCompensate`, ported
+    2716d8  tst.w $271774                      a ROM word, so a constant test
+    2716de  subq.b #1,($1A,A5)                 the cadence
+
+**`($20,A5)` IS A MARKER PAIR, and the init half is already read.** The init body picks `$8130E0` or
+`$8130E4` by the scroll clock, stores the POINTER in `($20,A5)` and writes 1 through it; this arm
+clears it on the way out. That is the same bracket-your-own-lifetime shape `$1B` has around
+`$8130D8`, with a pointer instead of a fixed address -- so whichever of the two counters this type
+chose at spawn is the one it releases.
+
+Everything `$49` needs now exists: `loadSubProto`/`loadRecordProto`, `readInitPosition`,
+`scrollCompensate`, `scoreHit`, `scoreKill`, `soundPost(0x28C2DC)`, and `walkDeathSpawns270D92` for
+the death arm (W333). Its damage arm is the SIMPLE member of the `$5C` family -- write it inline and
+do NOT route it through `damageArm5C`, which would invent a palette decision.
+
+Windows to declare with the code: `$271616 + $E` (the 7-word record prototype) and `$271624 + ?`
+(the sub prototype, SHORT form, extent from `$2637A2`); the block runs `$271616..$271640` and ends at
+the handler, so one window `(0x271616, 0x002A)` covers both. Its death list `$27197C` needs one too.
+
+Still unread: `$2716E2` onward (the cadence's body).
 
 **Then, in order:** the real `$81` is DONE (W326), so stage 5 is at **ten types over 29 records**.
 `$1A` is BLOCKED on a measurement (see below). Next unblocked: `$49`/`$4A`/`$4B` (spans `$A2`,
