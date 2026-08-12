@@ -1175,3 +1175,30 @@ not). **Start with the `bne`-gated sites at `$2548A2`, `$254964`, `$254A3E`, `$2
 **THE LESSON, AND IT IS NOT ABOUT THE ROM.** Four leads, three retractions, and the answer was in the owner's
 original sentence. **Re-read the report before the code.** The self-correction "I mean the laser hyper" was
 sitting in the docket entry for this item the whole time.
+
+### D24/D31 (W342): THE FIRST `bne`-GATED LASER SITE IS A DRAW GATE, NOT AN IMPACT SPAWN
+
+    2548a0  tst.w $81308C / bne $2548BA        one player -> NOT taken, falls through
+    2548a8  moveq #$0,D2
+    2548aa  tst.w ($1A,A6) / beq / moveq #$1,D2      D2 := 0 or 1
+    2548b2  cmp.w $80390C,D2 / beq $2548C2           MATCH -> rts (draw nothing)
+    2548ba  jmp $23F508                              MISMATCH -> emit
+
+So this site is a **per-player draw gate**: it compares a record-derived 0/1 against `$80390C` and skips the
+emit when they agree. **Not an impact effect**, so it is not the hit-sprite source either. One of the six
+`bne` sites eliminated.
+
+**REMAINING TO CHECK, and they are the whole of the live single-player laser gating:** `$254964`, `$254A3E`,
+`$254B46`, `$254F16`, `$254FC4`. All five had the identical following bytes (`66 12 74 00 4a 6e 00 1a`) in the
+W342 scan, which means **they are probably five copies of this same draw gate** -- the `74 00 4a 6e 00 1a` is
+`moveq #$0,D2 / tst.w ($1A,A6)`, byte-identical to `$2548A8`. If so, all six are draw gates and NONE is the
+impact spawn, and the laser's impact effect is somewhere else entirely.
+
+**Check that byte-identity FIRST** -- it is one command and it either eliminates five sites at once or finds the
+one that differs. This is the `$26FD0E`/`$26FEE6` technique from `$4C`: compare the bytes rather than reading
+five routines.
+
+**AND `$80390C` IS WORTH A GREP.** It sits two bytes from `$80390A` (the input word the dead conditional in
+`$4C` subsystem 2 reads) and four from `$803914` (subsystem 3's live one). So `$803908..$803914` is an input or
+per-player block, and knowing what `$80390C` holds decides whether these draw gates ever fire in one-player
+play at all.
