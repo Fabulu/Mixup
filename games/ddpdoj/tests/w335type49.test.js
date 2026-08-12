@@ -146,3 +146,39 @@ test('W335 the death list is FOUR entries and the draw is reached on every path'
     assert.equal(IMG.readUInt16BE(0x27197c + 4 * 12), 0xffff, 'and the fifth word is the terminator');
     assert.equal(IMG.readUInt16BE(0x27179a), 0x4e75, '$27179A is the rts, right after the draw');
   });
+
+test('W336 $2816F6 and its siblings PRESERVE D1..D4, which is what lets $49 fire three',
+  { skip: SKIP }, () => {
+    // The measurement W335's note asked for. All three entries are thin wrappers onto $2817C2.
+    assert.equal(IMG.readUInt16BE(0x2816f6), 0x4a79, '$2816F6 tst.w $813098');
+    assert.equal(IMG.readUInt16BE(0x281700), 0x4efa, '... then jmp $2817C2 -- BOTH paths go there');
+    // $2817C2's prologue saves ONLY D7/A0/A1, so D1..D4 are not protected by a movem...
+    assert.equal(IMG.readUInt32BE(0x2817c2), 0x48e701c0, '$2817C2 movem.l D7/A0-A1,-(A7)');
+    assert.equal(IMG.readUInt32BE(0x28183e), 0x4cdf0380, '$28183E movem.l (A7)+,D7/A0-A1');
+    // ...but they are never WRITTEN either. Every appearance is as a source operand.
+    assert.equal(IMG.readUInt16BE(0x28187c), 0x20c2, '$28187C move.l D2,(A0)+       -- D2 read');
+    assert.equal(IMG.readUInt32BE(0x28189c), 0x1141000b, '$28189C move.b D1,($B,A0)  -- D1 read');
+    assert.equal(IMG.readUInt32BE(0x2818b4), 0x21430018, '$2818B4 move.l D3,($18,A0) -- D3 read');
+    assert.equal(IMG.readUInt32BE(0x2818b8), 0x2144001c, '$2818B8 move.l D4,($1C,A0) -- D4 read');
+    // D0 IS clobbered: it carries the return status, and the full-pool path sets carry.
+    assert.equal(IMG.readUInt16BE(0x2818b0), 0x3000, '$2818B0 move.w D0,D0 -- sets Z before the rts');
+    assert.equal(IMG.readUInt32BE(0x281842), 0x007c0001, '$281842 ori #$1,SR on the full-pool path');
+  });
+
+test('W336 the third shot is gated on the scroll clock reaching $268', { skip: SKIP }, () => {
+  assert.equal(IMG.readUInt16BE(0x271748), 0x0c79, '$271748 cmpi.w');
+  assert.equal(IMG.readUInt16BE(0x27174a), 0x0268, '... #$268');
+  assert.equal(IMG.readUInt16BE(0x271750), 0x6500, '$271750 bcs -- UNSIGNED lower, so skip below $268');
+  assert.equal(IMG.readUInt32BE(0x271756), 0x00040003, '$271754 move.l #$40003,D0 -- the third shot');
+  assert.equal(IMG.readUInt32BE(0x27173e), 0xfffc0005, '$27173C move.l #$FFFC0005,D0 -- the second');
+});
+
+test('W336 the init\'s $81B414/$81B416 writes are READ by the shared spawner', { skip: SKIP }, () => {
+  // $2715E4/$2715EC looked decorative. They are not: $2817C2 walks $81B414..$81B41A to choose the
+  // bullet-pool budget in D7, so writing 1 to the first two raises the allowance from $D to $1F.
+  assert.equal(IMG.readUInt16BE(0x2817e0), 0x7e0d, '$2817E0 moveq #$D,D7 -- the default budget');
+  assert.equal(IMG.readUInt32BE(0x2817e4), 0x0081b414, '$2817E2 tst.w $81B414 -- what the init set');
+  assert.equal(IMG.readUInt16BE(0x2817ea), 0x3e3c, '$2817EA move.w #$15,D7');
+  assert.equal(IMG.readUInt32BE(0x2817f0), 0x0081b416, '$2817EE tst.w $81B416 -- the init set this too');
+  assert.equal(IMG.readUInt16BE(0x2817f8), 0x001f, '$2817F6 move.w #$1F,D7 -- so $49 gets $1F, not $D');
+});

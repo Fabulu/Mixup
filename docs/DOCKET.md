@@ -973,3 +973,22 @@ recent, and not so often that a roughly 40-minute three-game gate run eats the s
 batch of waves, suite green, then publish. W321 is why this matters in both directions --
 the web gate is only ever run BY `tools/publish.mjs`, so not publishing lets the gate rot
 until it blocks the publish that would have caught it.
+
+### D27 REVISED (2026-08-12): PUBLISH EVERY FIVE WAVES, NOT EVERY WAVE
+
+Owner: "don't publish after every checkpoint, let's say after every 5."
+
+D27 originally said "intermittently -- but not on every wave", which was vague enough that recent
+waves drifted back to publishing on nearly every one. The rule is now a number:
+
+  * **publish after every FIFTH wave**, and
+  * **regenerate assets first** whenever the run added ROM windows to `export-tables.py`
+    (`export-web.mjs` THEN `publish.mjs`) -- otherwise the live site serves stale assets;
+  * publish off-cadence only when a wave fixes something the owner reported and is waiting to test.
+
+W335 published as `20260812162556`. **Next publish due after W340.**
+
+Why the cadence matters in both directions: publishing too rarely is what let the web gate rot for
+eleven waves and then block the publish that would have caught it (W321), and publishing too often
+spends the owner's attention on builds that contain nothing they asked about. Five is the owner's
+number, not a derived one.

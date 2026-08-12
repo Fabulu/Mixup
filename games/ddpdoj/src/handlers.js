@@ -2390,15 +2390,28 @@ function fire49(ram, rom, a5, a6, ctx) {
     d3 = ((d3 & 0xffff0000) | (u16(-(d3 & 0xffff)))) >>> 0;    // $27172C neg.w D3 -- LOW WORD ONLY
   }
   const d2 = u32(ram.u32(a6 + 0x02) + d3);                // $27172E add.l D3,D2
-  const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, T49.fanEntry,
-    { d0: T49.fanD0, d1, d2, d3: 0, d4: 0, d5: 0, a5 });  // $271730 moveq #$0,D3/D4 / moveq #$4,D0
-  ctx.bulletSpawn?.(0x271736, res);
-  ctx.unported?.note(0x271742, `$271742 jsr $281764 (D0 = $FFFC0005) and $27175A jsr $281744 `
-    + `(D0 = $40003, gated on $8130CE >= $268) are type $49's second and third shots. Both set ONLY `
-    + `D0 and inherit D1..D4 from the $2816F6 call above, whose register effects are NOT yet read. `
-    + `Porting them on the assumption that D1..D4 survive would invent two of this type's three `
-    + `bullets. MEASUREMENT THAT UNBLOCKS: disassemble $2816F6 to its rts and record which of `
-    + `D1..D4 it preserves`);
+  // $271730 moveq #$0,D3 / moveq #$0,D4 / moveq #$4,D0 -- so D3 and D4 are ZERO for all three shots.
+  //
+  // **W336: THE THREE SHOTS SHARE D1..D4 AND THAT IS NOW MEASURED, NOT ASSUMED.** `$281744`,
+  // `$281764` and `$2816F6` are thin wrappers that all funnel into `$2817C2`, whose prologue is
+  // `movem.l D7/A0-A1,-(A7)` -- it saves only D7, A0 and A1. But read to its `rts`: D1, D2, D3 and
+  // D4 appear ONLY as sources (`move.b D1,($B,A0)`, `move.l D2,(A0)+`, `move.l D3,($18,A0)`,
+  // `move.l D4,($1C,A0)`, `move.b D4,($24,A0)`) and no instruction anywhere writes them. D0 alone is
+  // clobbered, as the return status -- `move.w D0,D0` sets Z before each `rts` and the full-pool
+  // path at `$281842` sets carry with `ori #$1,SR`. So the ROM's second and third shots really do
+  // inherit the first's registers, and the port passes the same D1..D4 rather than rebuilding them.
+  for (const [site, entry, d0, gated] of [
+    [0x271736, T49.fanEntry, T49.fanD0, false],
+    [0x271742, 0x281764, 0xfffc0005, false],
+    [0x27175a, 0x281744, 0x00040003, true],
+  ]) {
+    // $271748 cmpi.w #$268,$8130CE / bcs $271760 -- `bcs` is UNSIGNED lower, so the third shot is
+    // added only once the stage has scrolled to $268. Early in the formation's life it fires two.
+    if (gated && ram.u16(G.clock) < 0x268) continue;
+    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, entry,
+      { d0, d1, d2, d3: 0, d4: 0, d5: 0, a5 });
+    ctx.bulletSpawn?.(site, res);
+  }
 }
 
 /** `$271774..$27179A` -- the draw. ONE register-convention request, and the position bias is a
