@@ -4860,6 +4860,35 @@ patterns with two distinct emit routines, not one pattern with two parameters.
 `$27267E` and `$27270A` are both `dbra D7` (`51cf`), confirming the `move.w #$N,D7` counters are loop
 counters and that the N+1 rule applies to both -- which is what makes it 5 and 4 passes rather than 4 and 3.
 
+### W351: `($2E,A5)` IS A BURST COUNTER. The two volleys are ORDINARY and FINALE.
+
+Both variants converge on `$27270E` (the 15-shot arm reaches it by `$272682 bra $27270E`):
+
+    27270e  subq.b #1,($2e,A5)         <- a COUNTDOWN, not a mode selector
+    272712  bcc $272722                not underflowed -> tail
+    272716  move.b ($2f,A5),($2e,A5)   reload the burst counter from ($2F,A5)
+    27271c  move.b ($27,A5),($26,A5)   AND reload the fire timer ($26,A5) from ($27,A5)
+
+**That reframes all three reads of `($2E,A5)` into one coherent mechanism**, and I had every one of them
+wrong in isolation:
+
+    2725e2  move.b ($2e,A5),D0 / cmp.b ($2f,A5),D0 / bne    re-aim ONLY when counter == reload,
+                                                            i.e. on the FIRST volley of a burst
+    272624  tst.b ($2e,A5) / beq $272686                    the 20-shot pattern fires when the counter
+                                                            has reached ZERO -- the LAST volley
+    27270e  subq.b #1 / bcc / reload both timers            step the burst, and on underflow restart it
+
+**So `$55` fires a BURST of volleys: it aims once at the start, fires the 15-shot pattern for each volley
+of the burst, and fires the 20-shot pattern as the FINALE.** That is why the "fewer passes" variant is the
+bigger one -- it is the closing volley, not an alternative mode. W346 called this byte a fan-vs-single
+selector, W351 called it a five-vs-four cluster selector; it is a burst position counter and the two
+patterns are ordinary-volley and finale.
+
+`($2F,A5)` is the burst length and `($27,A5)` the inter-burst fire-timer reload -- **two more
+parent-seeded fields**, bringing `$55`'s spawn parameters to: `($17,A5)` mode, `($30,A5)` invulnerability
+time, `($1C,A5)`/`($1D,A5)` drift timer, `($1E,A5)` cursor, `($26,A5)`/`($27,A5)` fire timer,
+`($2E,A5)`/`($2F,A5)` burst counter, `($18,A5)`/`($19,A5)` palette base and XOR.
+
 What IS settled: all FIVE callees already ported (`shotVector` `$241D34`, FREEZE `$8130D4`, `aim256`
 `$24226E`, the emit `$2816F6`, the enqueue `$23DF86`); both tables already windowed (`$272750+$100`
 W346, `$2735FA` inside W30's `$2735F0+$220`); and the whole alive path from `$2724EA` on. No new window
