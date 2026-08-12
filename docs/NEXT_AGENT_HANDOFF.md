@@ -3431,3 +3431,41 @@ say which addresses were displayed.
 **WINDOWS `$246520`'s WAVE NEEDS:** `$24627A + $18` (3 entries, index 3 is CODE -- needs a guard) and
 `$246B38 + $80` (32 entries, bounded by `andi.w #$1F` -- needs none). Plus each caller's table; `$4C`'s is
 `$2701C8 + $E`.
+
+### `$26F858` IS A STATE SETTER; THE DISPATCHER IS A SEPARATE ENTRY AT `$26F86A` (W341)
+
+Displayed rather than inferred, because the first `dasm` started mid-routine and made these look like one
+thing:
+
+    26f858  b06e 0026    cmp.w ($26,A6),D0        <-- the SETTER begins
+    26f85c  6700 000a    beq $26F868              already in that state -> do nothing
+    26f860  3d40 0026    move.w D0,($26,A6)       set it
+    26f864  426e 0028    clr.w ($28,A6)           ... and reset the sub-timer, ONLY on a change
+    26f868  4e75         rts
+    26f86a  41fa 001a    lea ($26F886,PC),A0      <-- the DISPATCHER, a SEPARATE entry
+    26f870  move.w ($26,A6),D0 / add.w D0,D0 / add.w D0,D0 / adda.w D0,A0
+    26f87a  movea.l (A0),A0 / jsr (A0)            the indirect call
+    26f87e  jmp $2417DE                           tail jump to applyVelocityA6 -- ALREADY PORTED
+    26f886  the EIGHT-entry jump table
+
+**`$26F6CC moveq #$6,D0 / bsr $26F858` is therefore "GO TO STATE 6"**, and the `clr.w ($28,A6)` is why it
+matters that the setter checks first: re-entering the same state must NOT reset the sub-timer. A port that
+wrote the state unconditionally would restart the timer every frame the state was re-requested.
+
+**THE JUMP TABLE AT `$26F886` HAS EIGHT ENTRIES** (`$20` bytes, `$26F886..$26F8A5`), and entry 8 reads
+`$0C6E0000` -- not a code address -- so the table is bounded by its own data end and the state index is 0..7.
+The eight handlers are `$26F8A6`, `$26F90E`, `$26FBD4`, `$26FCF2`, `$26FD66`, `$26FECA`, `$26FF3E`, `$26FF56`
+-- **all unread**, and `$26F8A6` immediately follows the table, so the first handler's address doubles as the
+table's far end.
+
+**THIS REVISES `$4C`'s SIZE UPWARD, AND THAT IS THE USEFUL PART.** I had it as "one unread routine away from
+writable". It is an eight-state machine whose eight handlers are all unread, spanning `$26F8A6..$2701C8` --
+roughly **2300 bytes**. That makes `$4C` comparable to a boss, not to `$43`, and it should be scheduled as
+several waves: the setter and dispatcher (small, and the dispatcher needs only `applyVelocityA6` plus the
+table), then the handlers in groups.
+
+**Windows:** `$26F886 + $20` for the jump table. The handlers will want their own once read.
+
+So the honest state of `$4C`: init read and small, handler head read, damage arm read, death path read, and an
+eight-state machine of ~2300 unread bytes behind `$26F86A`. Its two shared prerequisites (`$246800`,
+`$246520`) are now PORTED, which was the real value of this stretch.
