@@ -3802,3 +3802,83 @@ neighbours rather than in the input block.
 
 Still unread for `$4C`: `$26FA10`, `$26FA24`, `$26FACC` onward, `$26FB3E`, `$26FBA2`, `$270128` onward, and the
 six handlers from `$26FBD4`.
+
+================================================================================
+## TYPE `$4C` -- ONE CONSOLIDATED REFERENCE (W341). READ THIS INSTEAD OF THE 22 SECTIONS ABOVE.
+================================================================================
+
+Twenty-two sections above accumulated `$4C` one finding at a time. This block is the whole picture; they
+remain only as the reasoning trail. **Everything below was displayed, not inferred.**
+
+    init      $26F4DA  (($4,A5) = 4 -> FIVE $20-byte sub records)
+    initBody  $26F4E2
+    handler   $26F5F2
+    records   ONE, in stage 5's script.  Window: $26F55A + $AC (prototypes, TWENTY-byte handler overlap)
+
+### THE FIVE FACTS THAT FALL OUT OF `($4,A5) = 4`
+
+    record size          5 * $20 = $A0
+    prototype overlap    $26F566 + $A0 = $26F606 vs handler $26F5F2  ->  TWENTY bytes
+    hitMask              size - $12 = +$8E
+    retire flag          size - 2   = +$9E
+    dying flag           size - 1   = +$9F
+    subsystem slots      one machine per sub-record, arm/cursor at a $20 stride
+
+### THREE LEVELS OF STATE, EACH AN "ARM + RUN" PAIR WITH TWO ENTRY POINTS
+
+    sub-rec 1   +$26 state / +$28 cascade   $26F858 sets (with an early-out) / $26F86A dispatches
+    sub-rec 2   +$46 arm   / +$4C cursor    $26F994 arms                     / $26F9A2 runs
+    sub-rec 3   +$66 arm   / +$6C cursor    $26FA5E arms                     / $26FA82 runs
+
+**Every pair is TWO routines, and both halves look like one in a `dasm` that starts at the first address.**
+`$26F858`'s early-out is load-bearing: re-entering the same outer state must NOT clear `($28,A6)`.
+
+### THE OUTER MACHINE
+
+`$26F86A`: index `($26,A6) * 4` into the eight-entry table at **`$26F886 + $20`** (its far end is `$26F8A6`,
+the first handler it names), `jsr (A0)`, then `jmp $2417DE` -- `applyVelocityA6`, already ported.
+
+    state 0  $26F8A6  READ.  Enter at speed $16, decelerate to a stop, -> state 1.
+    state 1  $26F90E  READ.  Speed 4; oscillate between two points from $26F984 + $8 for 300 frames.
+    states 2..7  $26FBD4 $26FCF2 $26FD66 $26FECA $26FF3E $26FF56  -- ALL UNREAD.
+
+**Each handler is a FALL-THROUGH cascade of `if (sub === N)`, never a switch**: setting `($28,A6) = 1` means
+the `cmpi.w #$1` below it fires on the SAME frame.
+
+### LOCOMOTION -- three fields, four writers
+
+`($1A,A6)` speed and `($1B,A6)` heading are what `applyVelocityA6` reads. `$26FF9E` steers (writing the
+heading from `core64`) and sets the speed by DISTANCE BAND: `>= $200` unchanged, `$100..$1FF` -> 8,
+`$40..$FF` -> 6, `< $40` -> arrived. **The band writes CASCADE**, so `$40..$FF` really is 6.
+`$242494` (ported W341) supplies the distance: `max(a,b) + min(a,b)/2` with **`a = |dy| * 3/4`, one axis only**.
+
+`($1A,A6)` is ALSO state 0's deceleration counter and is re-seeded by state 1. Four writers, three meanings.
+
+### DAMAGE AND DEATH
+
+`$7FFF` sink at `($18,A6)` over a LONG HP at `($1A,A5)`; the subtraction is **gated on `($16,A5)`**, so `$4C`
+is invulnerable until it appears. Palette XOR literal `$D`. Kill score `$700`.
+Death marks `(A6) = $8000` and `($9F,A6) = 1`, clears BOTH `$8130DE` and `$8130E0`, pushes
+`pushExternalSpeed($20,$20)`, and builds parts via `$246520` (ported W341) from `$2701C8 + $E`.
+**Retirement clears only `$8130DE`** -- the two exits genuinely differ; do not unify them.
+`$26FFE8` then drifts the record UP `$40` per frame until the `$800` off-screen limit frees it.
+
+### THE TWO DEAD-CODE TRAPS, AND THE ONE-INSTRUCTION TEST THAT SEPARATES THEM
+
+    subsystem 2  moveq #$0,D0 / and.w $80390A,D0 / bne     DEAD: the moveq feeds the AND's DESTINATION
+    subsystem 3  tst.w $803914 / bne                       LIVE: a direct tst
+                 moveq #$0,D0 / tst.w $8103E6              LIVE: tst.w never reads D0
+
+**Deadness is "is the zeroed register this instruction's destination", not "is there a `moveq #$0` nearby".**
+
+### RANK
+
+`$4C` scales rank as a **cadence**: `($6E,A6)` is `$1818` at rank 0 and `$404` above, so subsystem 3 fires four
+times as often. (`$47` scales rank by interleaving a bullet TYPE instead -- two types, two mechanisms.)
+
+### WHAT REMAINS
+
+Six state handlers (`$26FBD4` onward, the bulk of ~2300 bytes) plus the spans `$26FA10`, `$26FA24`, `$26FACC`,
+`$26FB3E`, `$26FBA2`, `$270128`. **No unported callee remains**: `$246800`, `$246520`, `$242494`,
+`applyVelocityA6`, `core64`, `enqueueDeferred` (both `FIXED00` and `FIXED80`), `installBank`, `scoreHit`,
+`scoreKill`, `pushExternalSpeed`, `scrollCompensate` and `$23DECE` are all in the port.
