@@ -3389,3 +3389,45 @@ Nothing in items 1 and 2 is unmeasured any more. Item 3 is the only unread routi
 **AND THE `($2C)` LINK IS WORTH NAMING GLOBALLY.** `$24681A` (a separate routine immediately after) walks the
 same chain summing `($18,A0)`, so `+$2C = next` and `+$18 = a per-node quantity` are a convention shared by at
 least three routines. Any future multi-part object in this ROM will use them.
+
+### `$246520` IS NOW READ END TO END (W341) -- a SECOND dispatch table at `$246B38`
+
+The span `$2465A8..$2465CC`, which two earlier commits skipped over while calling the routine "fully scoped"
+and then "read to its rts":
+
+    2465a0  move.w (A0)+,D3 / andi.w #$1F,D3 / add.w D3,D3 / add.w D3,D3     mask to 0..31, then x4
+    2465aa  lea ($246B38,PC),A3 / adda.w D3,A3        <-- A SECOND TABLE, 4 bytes per entry
+    2465b2  move.w (A3)+,($16,A2)
+    2465b6  move.w ($16,A2),($14,A2)                  the same word lands in TWO fields
+    2465bc  move.w (A3),($1C,A2)
+    2465c0  move.l #$FFFF0000,($18,A2)                +$18 -- the field $24681A SUMS
+    2465c8  movea.l ($E,A2),A3                        A3 = the sprite base computed at $246592
+    2465cc  move.w ($4,A2),D4                         the payload word count
+
+**`$246B38` HOLDS 32 ENTRIES OF FOUR BYTES (`$80` bytes, `$246B38..$246BB7`)**, and the mask is what bounds it:
+`andi.w #$1F` makes 0..31 the only reachable indices, so unlike `$24627A` this table needs no guard -- **the
+ROM's own mask is the bound**, the same construction `$4A`/`$48`'s `andi.w #$1F` ring uses. Entry 32 reads
+`0000 0000`, consistent with the table ending there.
+
+Its contents are a descending-then-ascending pair ladder (`[0] 0000 0004`, `[1] 0000 0003`, `[2] 0000 0002`,
+`[3] 0000 0001`, `[4] 0001 0001`, `[5] 0002 0001` ... `[31] 001C 0001`), so the first word climbs while the
+second holds at 1 after entry 4. **Transcribe it; do not model it as a formula.**
+
+**`($16,A2)` IS WRITTEN TO TWO FIELDS.** `$2465B6` copies it straight into `($14,A2)` as well, so a node's
+`+$14` and `+$16` start equal and presumably diverge as it animates. Writing only one would leave the other at
+whatever `loadSubProto` left.
+
+**`+$18` IS INITIALISED TO `$FFFF0000`.** As a word that is `$FFFF` = -1, and `$24681A` sums `($18,A0)` across
+the chain with `add.w`. So each fresh node contributes -1 to that sum, which is almost certainly a
+"parts remaining" or "damage budget" accumulator counting up from a negative base -- worth confirming when
+`$24681A`'s caller is identified.
+
+**A THIRD CORRECTION ON THIS ONE ROUTINE.** I called it "fully scoped" (missing both strides and the unwind),
+then "read to its rts" (missing this 36-byte span and this second table). Each claim was made after reading
+*most* of it. **The pattern is now unmistakable: I claim completeness at the point where the remaining span is
+small enough to feel like a detail.** The only reliable check is to display every byte from entry to `rts` and
+say which addresses were displayed.
+
+**WINDOWS `$246520`'s WAVE NEEDS:** `$24627A + $18` (3 entries, index 3 is CODE -- needs a guard) and
+`$246B38 + $80` (32 entries, bounded by `andi.w #$1F` -- needs none). Plus each caller's table; `$4C`'s is
+`$2701C8 + $E`.
