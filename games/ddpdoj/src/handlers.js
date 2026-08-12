@@ -88,7 +88,7 @@
 // proof to six types through the real per-frame dispatch, W30 to nine).
 
 import { unreached } from './unported.js';
-import { u16, i16 } from './ram.js';
+import { u16, i16, i32 } from './ram.js';
 import { freeEnemy } from './initbody.js';
 import { handlerBoss292902 } from './boss.js';
 import { handlerBoss297398 } from './boss2.js';
@@ -107,7 +107,8 @@ import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
   EMIT_TABLE } from './spritequeue.js';
 import { armScreenClear, armScreenClear243E02, handlerMidboss } from './midboss.js';
 import { scoreByMask, scoreHit, scoreKill } from './score.js';
-import { spawnEffect, spawnPoolC289B50, spawnPoolC289AF4, remapBucket, REMAP, B } from './effects.js';
+import { spawnEffect, spawnPoolC289B50, spawnPoolC289AF4, remapBucket, REMAP, B,
+  walkDeathSpawns270D92 } from './effects.js';
 import { spawnItem } from './items.js';
 import { allocBee27F92A, allocPoolA27F8F0 } from './bee.js';
 import { drawByte242B3C, drawByte24311A, drawByte2431F4, drawSigned242FDE,
@@ -2330,6 +2331,153 @@ function rampLong81(rom, idx) {
 // NOT ONE NEW PRIMITIVE except the two tiny shared routines this wave added: `$242A48` (the stick
 // decode, seven callers, now `movement.js stickMove242A48`) and `$259C42` (two instructions, five
 // callers, below). Everything else was already here.
+// ============================================================ TYPE $49 (W335)
+//
+// Stage 5's sweeping fan emplacement. `$27159E` init / `$2715A6` initBody (see `initbody.js`) /
+// `$271640` handler. Entry points verified against the type table: `$267824 + $49*8 = $267A6C` reads
+// `0027159e 00271640`, and the body is `init + 8` by `spawn.js`'s `$26361A addq.w #8,A1`.
+//
+// **ITS DAMAGE ARM IS THE FIRST *SIMPLE* MEMBER OF THE `$5C` FAMILY.** `$271640 moveq #$5C,D1 /
+// and.b (A6),D1` is the mask the family is named for, but there is no `hpFull` reload and no palette
+// DECISION -- just base `($18,A5)` and XOR mask `($19,A5)`. Routing it through `damageArm5C` would
+// invent both. Written inline, which is what the fifth member needs.
+//
+// **THE SWEEP: ONE COUNTER, TWO INDEX CONVENTIONS.** `($1C,A5)` steps `addq.w #4` and wraps at `$78`,
+// so 30 steps. The two WORD tables are indexed by it ASR 1 and the two LONG tables by it RAW. The
+// word values run out and come back, so the fan sweeps and returns over 30 frames; `($17,A5)` -- set
+// only by the init, only on the `$8130CE == $1F3` record -- picks the direction and mirrors the muzzle.
+const T49 = Object.freeze({
+  init: 0x27159e, initBody: 0x2715a6, handler: 0x271640,
+  recordProto: 0x271616, recordWords: 7,      // $2715B8 moveq #$6,D0 -- D0+1 = 7
+  subProto: 0x271624,                         // $20 bytes, OVERLAPS the handler at $271640
+  damageMask: 0x5c, damageClear: 0xa3,        // $271640 / $271648 -- and.b #$A3 clears them
+  palBase: 0x18, palXor: 0x19,                // ($18,A5) base, ($19,A5) the XOR mask
+  killScore: 0x250,                           // $27166A move.l #$250,D0
+  deathCue: 0x28c2dc,                         // $271684
+  deathList: 0x27197c,                        // $27167A -- FOUR entries, walked by $270D92
+  boundsBias: 0x4000, boundsLimit: 0x2000,    // $2716A6 addi.l / $2716AC cmpi.l -- SIGNED LONG
+  sweepSet: 0x27188c, sweepClear: 0x271904,   // ($17,A5) SET / CLEAR; index ASR 1
+  muzzleTable: 0x271814, drawTable: 0x27179c, // index RAW
+  sweepStep: 4, sweepWrap: 0x78, sweepEntries: 30,
+  fanEntry: 0x2816f6, fanD0: 4,               // $271734 moveq #$4,D0
+  drawBias: 0xf000f600,                       // $271784 addi.l #-$FFF0A00
+  drawD3: 0x1050, drawStub: 0x23dece,         // $27178A / $271794
+});
+
+/** `$2716F6..$27175E` -- the fire arm: THREE shots, of which only the FIRST specifies its own
+ *  registers.
+ *
+ *  `$271736 jsr $2816F6` is fully determined -- D0 = 4, D1 from the sweep table, D2 the biased
+ *  position, D3 = D4 = 0. The two that follow are NOT: `$271742 jsr $281764` and `$27175A jsr
+ *  $281744` each set only D0 and inherit D1..D4 from whatever `$2816F6` left behind. That is the
+ *  same shape as `draw81`'s third emit, which the port transcribes rather than tidies -- but there
+ *  the producing routine's register effects were read first, and here they have not been. So the
+ *  first shot is ported and the other two are NOTED, because guessing that D1..D4 survive the call
+ *  unchanged would be an invention with a visible consequence: two of this type's three bullets. */
+function fire49(ram, rom, a5, a6, ctx) {
+  const table = ram.u8(a5 + 0x17) !== 0 ? T49.sweepSet : T49.sweepClear;   // $2716F6..$271708
+  const idx = u16(ram.u16(a5 + 0x1c));
+  if (idx >= T49.sweepEntries * 4) {
+    unreached(0x27170a, `type $49's sweep index ($1C,A5) is $${idx.toString(16)}, past the `
+      + `30 entries; $271764's wrap at $78 is the only bound`);
+  }
+  const d1 = rom.u16(table + (idx >> 1));                 // $27170A asr.w #1 / adda.w / move.w (A1),D1
+  // $271714..$27172E -- the packed muzzle offset. `neg.w` negates ONLY the low word of a value
+  // loaded by `move.l`, with no borrow into the high word, so the mirror flips Y and keeps X; the
+  // `add.l` that follows does let a low-word carry reach X.
+  let d3 = rom.u32(T49.muzzleTable + idx);                // $27171E move.l (A1),D3
+  if (ram.u8(a5 + 0x17) !== 0) {                          // $271724 tst.b ($17,A5) / beq
+    d3 = ((d3 & 0xffff0000) | (u16(-(d3 & 0xffff)))) >>> 0;    // $27172C neg.w D3 -- LOW WORD ONLY
+  }
+  const d2 = u32(ram.u32(a6 + 0x02) + d3);                // $27172E add.l D3,D2
+  const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, T49.fanEntry,
+    { d0: T49.fanD0, d1, d2, d3: 0, d4: 0, d5: 0, a5 });  // $271730 moveq #$0,D3/D4 / moveq #$4,D0
+  ctx.bulletSpawn?.(0x271736, res);
+  ctx.unported?.note(0x271742, `$271742 jsr $281764 (D0 = $FFFC0005) and $27175A jsr $281744 `
+    + `(D0 = $40003, gated on $8130CE >= $268) are type $49's second and third shots. Both set ONLY `
+    + `D0 and inherit D1..D4 from the $2816F6 call above, whose register effects are NOT yet read. `
+    + `Porting them on the assumption that D1..D4 survive would invent two of this type's three `
+    + `bullets. MEASUREMENT THAT UNBLOCKS: disassemble $2816F6 to its rts and record which of `
+    + `D1..D4 it preserves`);
+}
+
+/** `$271774..$27179A` -- the draw. ONE register-convention request, and the position bias is a
+ *  LONGWORD add, so the low half's carry reaches the high half. */
+function draw49(ram, rom, a5, a6) {
+  const idx = u16(ram.u16(a5 + 0x1c));
+  if (idx >= T49.sweepEntries * 4) {
+    unreached(0x271774, `type $49's draw index ($1C,A5) is $${idx.toString(16)}, past the `
+      + `30 longwords at $${T49.drawTable.toString(16).toUpperCase()}; $271764's wrap at $78 is the `
+      + `only thing that bounds it, so an out-of-range value means the wrap was skipped`);
+  }
+  enqueueRegistersThroughStub(ram, rom, T49.drawStub,
+    u32(ram.u32(a6 + 0x02) + T49.drawBias),               // $271780/$271784
+    rom.u32(T49.drawTable + idx),                         // $271774..$27177E move.l (A0),D2
+    T49.drawD3,                                           // $27178A move.w #$1050,D3
+    ram.u16(a6 + 0x1c));                                  // $271790 move.w ($1C,A6),D4
+}
+
+/** `$27167A..$271696` -- the death arm: FOUR spawns from `$27197C` through the shared walker, then
+ *  the formation flag is cleared THROUGH `($20,A5)`. */
+function death49(ram, rom, a5, a6, ctx) {
+  scoreKill(ram, rom, ctx, T49.killScore, 0);             // $27166A move.l #$250,D0 / jsr $28615E
+  walkDeathSpawns270D92(ram, rom, ctx, T49.deathList,
+    ram.u32(a6 + 0x02), 0x271680);                        // $271676 D2 = ($2,A6) / $271680 jsr
+  ctx.soundPost?.(T49.deathCue);                          // $271684 jsr $28C2DC
+  ram.setU16(ram.u32(a5 + 0x20), 0);                      // $27168A movea.l ($20,A5),A0 / clr.w (A0)
+  freeEnemy(ram, a5);                                     // $271690 jmp $263762
+}
+
+function handler49(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+
+  // $271640..$27165E -- the SIMPLE $5C damage arm, inline. No hpFull, no palette decision.
+  const hit = ram.u8(a6) & T49.damageMask;                // $271640 moveq #$5C,D1 / and.b (A6),D1
+  if (hit !== 0) {
+    ram.setU8(a6, ram.u8(a6) & T49.damageClear);          // $271648 move.b #$A3,D0 / and.b D0,(A6)
+    scoreHit(ram, ctx, a6, hit);                          // $27164E jsr $286096, D1 = the masked bits
+    ram.setU8(a6 + 0x1d,
+      (ram.u8(a6 + 0x1d) ^ ram.u8(a5 + T49.palXor)) & 0xff);   // $271654..$27165E eor.b
+    if ((ram.u16(a6 + 0x18) & 0x8000) !== 0) {            // $271662 tst.w ($18,A6) / bpl -- alive
+      death49(ram, rom, a5, a6, ctx);
+      return;
+    }
+  } else {
+    ram.setU8(a6 + 0x1d, ram.u8(a5 + T49.palBase));       // $271698 -- NOT hit: restore the base
+  }
+
+  // $27169E..$2716B2 -- the off-screen test, and it is a SIGNED LONG compare rather than the
+  // two-`addi.w` word idiom `$1B` and `$81` use for the same job. `ext.l` first, so a negative Y
+  // sign-extends into the high half before the bias.
+  const y = i32(i16(ram.u16(a6 + 0x02)) + T49.boundsBias);
+  if (y <= T49.boundsLimit) {                             // $2716B2 bgt -- so <= stays on screen
+    if (ram.u8(a5 + 0x16) !== 0) {                        // $2716B6 tst.b ($16,A5) / beq
+      ram.setU16(ram.u32(a5 + 0x20), 0);                  // $2716BE -- the flag, through the pointer
+      freeEnemy(ram, a5);                                 // $2716C4 jmp $263762
+      return;
+    }
+  } else {
+    ram.setU8(a5 + 0x16, 1);                              // $2716CC move.b #$1,($16,A5)
+  }
+
+  scrollCompensate(ram, rom, a5, ctx.unported);            // $2716D2 jsr $24179E
+  // $2716D8 `tst.w $271774.l` IS OMITTED ON PURPOSE. $271774 is inside this routine and the word
+  // there is $41FA -- the `lea` opcode -- so it reads code as data, and $2716DE `subq.b` overwrites
+  // every flag before $2716E2 `bcc` reads carry. It has no effect. Third instance in stage 5 of this
+  // ROM indexing its own instruction stream, after $27460A (W326) and $25DAC2 (W332).
+  if (due8(ram, a5 + 0x1a)) {                             // $2716DE subq.b #1 / bcc $271774
+    ram.setU8(a5 + 0x1a, ram.u8(a5 + 0x1b));              // $2716E6
+    if (ram.u16(G.freezeD4) === 0) {                      // $2716EC tst.w $8130D4 / bne $271760
+      fire49(ram, rom, a5, a6, ctx);
+    }
+    // $271760 -- the counter advances whether or not the volley fired, so a freeze does NOT stall
+    // the sweep; it only silences it.
+    const next = u16(ram.u16(a5 + 0x1c) + T49.sweepStep); // $271760 addq.w #4,($1C,A5)
+    ram.setU16(a5 + 0x1c, next < T49.sweepWrap ? next : 0);   // $271764 cmpi.w #$78 / blt
+  }
+  draw49(ram, rom, a5, a6);                               // $271774 -- reached on EVERY path
+}
+
 const T01 = Object.freeze({
   init: 0x267c24, initBody: 0x267c2c, handler: 0x267c70,
   recordProto: 0x267c50, recordWords: 2,      // $267C3E moveq #$1,D0 -- D0+1 = 2 words
@@ -7738,6 +7886,7 @@ const HANDLERS = new Map([
   [0x269350, handler1B],          // W323: Stage-1 four-state ramped aimed-pair turret $1B
   [0x267c70, handler01],          // W325: the P2-driven item spawner, type $01
   [0x274076, handler81],          // W326: Stage-5 armoured four-state twin-muzzle $81
+  [0x271640, handler49],          // W335: Stage-5 sweeping fan emplacement $49
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
   [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42

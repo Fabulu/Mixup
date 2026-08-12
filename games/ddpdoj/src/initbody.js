@@ -1917,6 +1917,39 @@ BODY.set(0x267c2c, (ram, rom, a5, a6) => {
 // `$263808` is a `jmp`, not a `jsr`: a TAIL jump, so the position read is the last thing that
 // happens and nothing follows it.
 //
+// --- type $49 ($27159E init, $2715A6 body): stage 5's sweeping fan emplacement.
+//
+// **`($20,A5)` HOLDS A POINTER TO A FORMATION FLAG, NOT A FLAG.** `$2715F4..$271610` picks `$8130E0`
+// when the scroll clock is below `$260` and `$8130E4` otherwise, stores the ADDRESS in `($20,A5)`,
+// and writes 1 through it. Both of the handler's exits clear it through that pointer -- the death arm
+// at `$27168A` and the off-screen free at `$2716BE` -- so the two formations of `$49` on the stage
+// retire independent flags. Storing the value here would break both exits.
+//
+// **THE `$1F3` TEST IS AN EQUALITY AND THAT IS DELIBERATE.** Records spawn when the scroll clock
+// reaches their trigger, so "the record whose trigger is exactly `$1F3`" is ONE specific record. It
+// alone gets sprite base `($1C,A6) = $40` and `($17,A5) = 1`, and `($17,A5)` is what the handler
+// reads to pick which of the two sweep tables to fire and whether to mirror the muzzle offset. This
+// init is the SOLE writer of `($17,A5)`. Read as a threshold it would arm every later record.
+BODY.set(0x2715a6, (ram, rom, a5, a6, unported) => {
+  // The sub prototype is $20 bytes from $271624, so it runs to $271643 and OVERLAPS the handler at
+  // $271640: the record's +$1C..+$1F receive `moveq #$5C,D1 / and.b (A6),D1`. +$1C and +$1D are
+  // overwritten below; +$1E/+$1F keep $C2/$16. See the window note in export-tables.py.
+  loadSubProto(ram, rom, a5, a6, 0x271624);               // $2715A6..$2715B2 jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x271616, 0x06);          // $2715B2..$2715C0 D0+1 = SEVEN words
+  readInitPosition(ram, rom, a5, unported);               // $2715C0 jsr $263808
+  if (ram.u16(0x8130ce) === 0x1f3) {                      // $2715C6 cmpi.w #$1F3 / bne -- EQUALITY
+    ram.setU8(a6 + 0x1c, 0x40);                           // $2715D2 move.b #$40,($1C,A6)
+    ram.setU8(a5 + 0x17, 1);                              // $2715D8 move.b #$1,($17,A5)
+  }
+  ram.setU8(a6 + 0x1d, ram.u8(a5 + 0x18));                // $2715DE -- the base palette
+  ram.setU16(0x81b414, 1);                                // $2715E4
+  ram.setU16(0x81b416, 1);                                // $2715EC
+  // $2715F4..$271610 -- `bcs` is UNSIGNED lower, and side "below" KEEPS the $8130E0 loaded first.
+  const flag = ram.u16(0x8130ce) < 0x260 ? 0x8130e0 : 0x8130e4;
+  ram.setU32(a5 + 0x20, flag);                            // $27160C move.l A0,($20,A5)
+  ram.setU16(flag, 1);                                    // $271610 move.w #$1,(A0)
+});
+
 // The five stage rows at `$2692D2` are ALL `0A 15` (verified by hex dump), so `$813094` -- the stage
 // index DOUBLED -- selects an identical pair every time. Ported as the indexed read the ROM performs
 // rather than as the constant it happens to produce: the sameness is a measurement about this build,

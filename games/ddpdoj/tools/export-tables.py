@@ -2613,6 +2613,35 @@ SHOT_WINDOWS.extend([
                        "($3B7C0001), which is what bounds it"),
 ])
 
+# W335: type $49 ($27159E init / $2715A6 initBody / $271640 handler).
+#
+#   $271616 + $2E   THE RECORD PROTOTYPE AND SUB PROTOTYPE TOGETHER, AND IT SPANS INTO CODE.
+#                   $271616 is 7 words (`moveq #$6,D0` -> D0+1) and $271624 is ONE $20-byte sub
+#                   record, so the pair runs $271616..$271643 -- and the handler starts at
+#                   $271640. The prototype's last four bytes ARE `moveq #$5C,D1 / and.b (A6),D1`.
+#                   This is the cartridge overlapping data with code, not an off-by-one: the
+#                   record's +$1C/+$1D receive $72/$5C and the init overwrites both immediately
+#                   ($2715D2, $2715DE), leaving only +$1E/+$1F holding code bytes as $C2/$16.
+#                   Do NOT trim this window to $271640 -- loadSubProto reads the whole $20.
+#   $27179C + $78   the draw's 30 sprite records, $316494 ascending by $2A4. Index is ($1C,A5) RAW.
+#   $271814 + $78   the 30 PACKED muzzle offsets (high word X, low word Y). Index RAW.
+#                   $27172C `neg.w D3` negates only the LOW word of the long loaded here.
+#   $27188C + $3C   the 30-word sweep table taken when ($17,A5) is SET   ($66 up by 6, then back).
+#   $271904 + $3C   the 30-word sweep table taken when ($17,A5) is CLEAR ($9A down by 6, then back).
+#                   Both are indexed by ($1C,A5) ASR 1 while the two long tables above use it RAW:
+#                   ONE counter, TWO conventions.
+#   $27197C + $32   the death-spawn list walked by $270D92 (W333): FOUR twelve-byte entries
+#                   (word, word, word, LONG, word) then the $FFFF terminator.
+SHOT_WINDOWS.extend([
+    (0x271616, 0x002E, "W335: type $49's 7-word record prototype AND its $20-byte sub prototype, "
+                       "$271616..$271643 -- deliberately OVERLAPPING its handler at $271640"),
+    (0x27179C, 0x0078, "W335: type $49's 30 draw sprite records, indexed by ($1C,A5) RAW"),
+    (0x271814, 0x0078, "W335: type $49's 30 packed muzzle offsets, indexed by ($1C,A5) RAW"),
+    (0x27188C, 0x003C, "W335: type $49's 30-word sweep table for ($17,A5) SET, index ASR 1"),
+    (0x271904, 0x003C, "W335: type $49's 30-word sweep table for ($17,A5) CLEAR, index ASR 1"),
+    (0x27197C, 0x0032, "W335: type $49's death-spawn list -- FOUR 12-byte entries then $FFFF"),
+])
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
