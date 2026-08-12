@@ -4357,10 +4357,21 @@ wrote.** At `$272424` `tst.b` enables the spawn invulnerability for any non-zero
     272536  cmpi.b #$2,($17,A5) / blt $272582      1        -> $272582
     272540  ... the sinusoidal drift ...           2 and up -> arm C at $272540
 
-So **one parent-supplied byte decides whether the child is protected AND which of THREE behaviours it runs**,
-and the value matters, not just its zero-ness. A port that read it once and cached a boolean would collapse
-arms B and C; a port that split protection and mode into two fields would let them disagree, which the
-cartridge cannot do.
+**AND IT IS A FALL-THROUGH CASCADE, NOT A SWITCH** -- `$272582` is itself `cmpi.b #$2,($17,A5) / bne $2725B6`,
+so the arms are successive tests that a value can pass through more than one of:
+
+    ($17,A5) = 0   runs $2724EA only          (cmpi #0 / bne skips to $272536)
+    ($17,A5) = 1   runs $272582's test, FAILS it, so $2725B6            (blt sends 1 past $272540)
+    ($17,A5) = 2   runs $272540's sinusoid AND THEN falls into $272582's arm, which tests == 2
+    ($17,A5) > 2   runs $272540's sinusoid, then $272582 fails, so $2725B6
+
+**So value 2 runs TWO arms and value 3+ runs one.** That is the same shape `$43`'s three states and every one
+of `$4C`'s eight handlers use -- successive `if` tests, never `else if` -- and writing this as a switch would
+silently drop the second arm for value 2.
+
+A port must also not cache the byte as a boolean (that collapses 1 against 2+) nor split protection and mode
+into separate fields (the cartridge cannot let them disagree, since one `tst.b` and three `cmpi.b`s read the
+same byte).
 
 That is now FOUR distinct meanings for offset `+$17` across stage 5 -- mirror/table select in all four band
 members, a state number in `$47` and `$43`, and in `$55` both an invulnerability enable and an arm selector.
