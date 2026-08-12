@@ -3844,7 +3844,24 @@ the first handler it names), `jsr (A0)`, then `jmp $2417DE` -- `applyVelocityA6`
     state 3  $26FCF2  READ (head).  Duration $F0 and speed $10; winds ($1E,A5) DOWN BY $40 with a
                       SIGNED CLAMP at zero, every frame and outside the sub-state cascade.
     state 4  $26FD66  READ (head).  State 2's SHAPE with every constant different -- see below.
-    states 5..7  $26FECA $26FF3E $26FF56  -- UNREAD.
+    state 5  $26FECA  READ (head).  State 3's shape: duration $40 (vs $F0), speed $10 (SAME), and the
+                      SAME wind-down block -- BYTE-IDENTICAL, 24 bytes, verified.
+    states 6..7  $26FF3E $26FF56  -- UNREAD.
+
+**STATES 3 AND 5 SHARE 24 BYTES VERBATIM, AND THIS IS THE FIRST THING IN `$4C` THAT ACTUALLY IS SHARED.**
+`$26FD0E..$26FD25` and `$26FEE6..$26FEFD` are byte-identical:
+
+    4a6d 001e  6700 0012  046d 0040 001e  6e00 0008  3b7c 0000 001e
+
+Both also use speed `$10`; only the duration differs (`$F0` against `$40`). **So a helper IS justified here**,
+in contrast to states 2/4 where a shared move-to-a-point routine would have needed five parameters and still
+got the arrival semantics wrong. The distinguishing evidence is byte-identity, not similarity of shape:
+
+    states 2 & 4   same SHAPE, five constants differ    -> write them separately
+    states 3 & 5   24 bytes IDENTICAL, one constant differs -> ONE helper, one parameter
+
+**Check byte-identity before factoring anything in this type.** Six of `$4C`'s eight states are now read and
+that is the only verbatim repeat among them.
 
 **STATES 2 AND 4 ARE THE SAME SHAPE AND SHARE NO CONSTANT BUT ONE.** Both are "set a speed, move to an
 immediate D2/D3 target, change speed on arrival":
