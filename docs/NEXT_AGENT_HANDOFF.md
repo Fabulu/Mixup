@@ -4064,3 +4064,54 @@ consumer and should agree with it.
 Sequence for whoever picks this up: `$2593F8` (defines the pair) -> the video object -> `$23C668` (four lines,
 six callers) -> the rest of phase 0 (`$28D53C`, `$260A88`, `$25DA60`, `$25DA94`) -> phase 0 lands -> follow its
 calls forward for the bonus-line driver -> **D24/D31 closes.**
+
+================================================================================
+## W344 SUMMARY -- FOUR ROUTINES PORTED, PHASE 0 ONE ROUTINE FROM LANDING
+================================================================================
+
+**Ported this wave** (13 tests, suite 2425 -> 2438):
+
+    SlotTable907000 + clearSlotTable23C668   background.js   $23C668, 6 callers, and a NEW video region
+    busyGate28D53C                           sound.js        $28D53C, 6 callers, the 5th explicit-SR return
+    announceMailbox260A20                    rank.js         $260A20, the tst.b side selector
+    postAnnounce260A88                       rank.js         $260A88, 6 callers, the house mailbox shape
+
+**Phase 0's arm (`$25DC2C..$25DCA8`) now needs only `$25DA60` and `$25DA94`**, one caller each.
+
+### `$25DA60` IS READ: "LOAD THIS SIDE'S SAVED CURSOR"
+
+    25da60  move.w $813084,D6 / move.w $813088,D7      side 0's saved X/Y
+    25da6c  tst.b ($7,A5) / beq $25DA80
+    25da74  move.w $813086,D6 / move.w $81308A,D7      side 1's
+    25da80  moveq #$0,D5 / move.b ($7,A5),D5           the side, into D5
+    25da86  bsr $25D9E6                                 the SENTINEL substitution
+    25da8a  move.b D6,($E,A5) / move.b D7,($F,A5)      stored as BYTES
+    25da92  rts
+
+**`($E,A5)` and `($F,A5)` ARE THE X AND Y CURSORS the ported draw code already reads** -- W332's
+`drawTallyYRows25DF4C` indexes `$25DFF0 + ($F,A5) * 2`. So this routine is what puts a value there, and the
+port has been drawing from a field nothing initialised.
+
+**AND THE `$813084..$81308E` BLOCK IS ONE STRUCTURE**, which is worth recording because W343 measured its far
+end from the other direction:
+
+    $813084  side 0 cursor X       $813086  side 1 cursor X
+    $813088  side 0 cursor Y       $81308A  side 1 cursor Y
+    $81308C  the ONE-PLAYER flag (W343)      $81308E  players - 1 (W343)
+
+Interleaved by side at a 2-byte stride, then the two W343 words. **Six words, one block** -- so
+`playerFlags25FD94` and the tally cursor live side by side, which is consistent with both being written by the
+stage-clear screen.
+
+### `$25D9E6` IS THE `$FF` SENTINEL SUBSTITUTION -- READ IT BEFORE WRITING `$25DA60`
+
+    25d9ea  cmpi.w #$FF,D6 / bne $25DA10     not the sentinel -> the normal path
+    25d9f2  tst.w D5 / bne $25DA04           side 1 takes a different default
+    25d9f8  move.w #$0,D6 / move.w #$0,D7    side 0's default is 0,0
+
+So a saved cursor of `$FF` means "never set" and each side substitutes its own default. **This is the same
+`$FF` sentinel W332 found `$25DAC2` and `$25DAEA` disagreeing about** -- and there the port THROWS on an
+out-of-range Y rather than inventing a row. `$25D9E6` is the routine that makes `$FF` legal upstream, so
+reading it may explain why that disagreement was survivable on the board.
+
+**Still unread: `$25D9E6`'s head, `$25DA04`, `$25DA10`, and `$25DA94`.** All short, all in one region.
