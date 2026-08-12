@@ -2507,3 +2507,33 @@ decided. Recorded as open rather than guessed, because the earlier version of th
 
 Still to read for `$47`: `$26DC3C..$26DCB6` (including `$26DCA2`, which carries the answer above) and
 `$26DCB6` itself.
+
+### `$26DCA2` ANSWERS THE CARRY QUESTION, AND `$26DCB6` EXPLAINS `($6E,A6)` (W339)
+
+    26dca2..26dca8   6 bytes NOT YET DISPLAYED -- the condition that picks between the two exits
+    26dcaa  ori  #$1,SR    / rts        <-- FAILURE: carry SET
+    26dcb0  andi #$FFFE,SR / rts        <-- SUCCESS: carry CLEAR
+
+**So `$26DC00` does report through carry, by writing SR directly** -- the same house idiom as `$281842
+ori #$1,SR` on the bullet spawner's full-pool path (W336). Two independent routines in this ROM return
+status by `ori`/`andi` on SR rather than by a flag-setting operation, so treat "explicit SR write" as this
+codebase's convention for a boolean return and look for it whenever a caller has a `bcs`/`bcc` with no
+obvious flag source. The condition at `$26DCA2` is still six undisplayed bytes; **`$26DABA bcs` means carry
+set is the retry/stall path**, so those six bytes decide whether the state-2/3 cycle advances.
+
+    26dcb6  tst.b ($7F,A6) / beq $26DCE0        <-- runs ONLY when the record IS MARKED
+    26dcbe  cmpi.b #$0,($66,A6) / bne $26DCE0
+    26dcc8  move.w ($6E,A6),D1                  <-- THE HIT MASK THE DAMAGE ARM SAVED
+
+**`$26DCB6` IS WHY `$26D81E move.w D1,($6E,A6)` EXISTS.** That store looked gratuitous when the damage arm
+was read -- no band member saves its hit mask -- and this is its only consumer. `$26DCB6` runs on MARKED
+records only (`beq` skips when the flag is clear, the inverse polarity of the three tests in the handler) and
+reads the saved mask to drive its dying-state effect. **So the damage arm's `($6E,A6)` write must be ported
+even though nothing in the damage arm itself uses it.**
+
+That is the fourth place `($7F,A6)` is tested and the first with INVERTED sense: the handler's three tests
+skip work when the mark is SET, and this one skips when it is CLEAR. A port that factored "if marked, return"
+into a shared guard would invert this routine.
+
+Still to read for `$47`: `$26DCA2..$26DCA8` (six bytes -- the carry condition), `$26DC3C..$26DCA2`, and
+`$26DCCC..$26DCE0` (the rest of `$26DCB6`). Then the read is complete.
