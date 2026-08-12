@@ -986,7 +986,15 @@ waves drifted back to publishing on nearly every one. The rule is now a number:
     (`export-web.mjs` THEN `publish.mjs`) -- otherwise the live site serves stale assets;
   * publish off-cadence only when a wave fixes something the owner reported and is waiting to test.
 
-W335 published as `20260812162556`. **Next publish due after W340.**
+Publish log: W335 `20260812162556`, W340 `20260812173300`, W345 `20260812224307` (off-cadence, to
+ship the D24/D31 hyper-laser fix the owner was waiting on), **W350 `20260812234300`**.
+**Next publish due after W355.**
+
+**W351 correction to this item: the tool name here was WRONG and cost a detour.** The step is
+`node games/ddpdoj/tools/export-web.mjs` from the REPO ROOT -- there is no `tools/export-web.mjs`,
+and `ls tools/*.mjs` run from inside `games/ddpdoj` resolves against the root, so it looks convincingly
+absent. W350 regenerated 443 windows into the bundle (11687.4 KiB, 661.1 KiB before the first frame)
+and then published, so the live build is no longer serving the 442-window tables.
 
 Why the cadence matters in both directions: publishing too rarely is what let the web gate rot for
 eleven waves and then block the publish that would have caught it (W321), and publishing too often
