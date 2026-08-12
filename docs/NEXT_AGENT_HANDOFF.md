@@ -2631,3 +2631,38 @@ all sharing D0 = `$FFFD0004`, D2 = `($2,A6) + $10000000`, D3 = D4 = 0.
 
 Still to read for `$47`: `$26DCCC..$26DCE0` only -- the tail of `$26DCB6`, the marked-record effect. That is
 the last span.
+
+### `$47` IS READ END TO END (W339). `$26DCB6` IS WHAT RETIRES IT, AND `+$7E`/`+$7F` ARE DIFFERENT FLAGS.
+
+    26dcb6  tst.b ($7F,A6) / beq $26DCE0        runs only when MARKED (inverted vs the handler's tests)
+    26dcbe  cmpi.b #$0,($66,A6) / bne $26DCE0
+    26dcc8  move.w ($6E,A6),D1                  the hit mask the damage arm saved at $26D81E
+    26dccc  jsr $243E02                         armScreenClearMode -- ALREADY PORTED (midboss.js:235)
+    26dcd2  subq.w #1,($70,A6) / bne $26DCE0    a word countdown
+    26dcda  move.b #$1,($7E,A6)                 <-- SETS THE HANDLER'S RETIREMENT TRIGGER
+    26dce0  andi #$FFFE,SR / rts                carry clear
+    26dce6  ori  #$1,SR    / rts                carry set
+
+**THE LIFETIME LOOP CLOSES HERE.** Damage sets the `$8000` mark and `($7F,A6) = 1` (`$26D86A`/`$26D86E`).
+`$26DCB6` then runs on marked records only, feeds the saved hit mask to `armScreenClearMode`, and counts
+`($70,A6)` down; when that reaches zero it sets **`($7E,A6) = 1`**, which is exactly what the handler tests at
+`$26D7EA` to run its retirement (clear `$8130DC`, `pushExternalSpeed`, `freeEnemy`).
+
+**`+$7E` AND `+$7F` ARE ADJACENT BYTES WITH COMPLETELY DIFFERENT ROLES.** `($7F,A6)` means "I am dying" and
+gates four tests; `($7E,A6)` means "retire me now" and gates one. One byte apart, in an `$80`-byte record, both
+written as `move.b #$1`. **Do not conflate them and do not typo them** -- swapping them makes `$47` either
+immortal or instantly gone, and both look like a spawn-table problem rather than a one-nibble error.
+
+**`$243E02` IS ALREADY PORTED** as `armScreenClearMode` (`midboss.js:235`, nine callers). **NINTH family check
+to pay off this session.** So `$47` has NO unported callee of any kind:
+
+    ported: $2637A2 $26377A $263808 $286096 $28615E $24179E $24200A $242EC2 $24150A $261100
+            $23DECE $243E02 $28C310 $26C74E (via the W339 anim parameter)
+    inline: $23C4A0 (three lines)
+    omit:   nothing
+
+**`$47` CAN NOW BE WRITTEN.** Windows: `$26D740 + $A0` (16-word record prototype + FOUR sub prototypes,
+overlapping the handler by SIXTEEN bytes) and one covering `$26DAF4 + $20` (the eight-entry draw table) plus
+`$26DCEC` (the `$26C74E` death list -- measure its length first). Twenty-one traps are documented in the
+sections above; the load-bearing ones are the `($18,A6)` damage sink, the `+$7E`/`+$7F` pair, the three
+countdown conventions, the packed-long borrow, the missing draw index, and the rank interleave.
