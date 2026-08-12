@@ -291,6 +291,75 @@ export function clearSubEffectPool(ram) {
  *   with the kind.  W33 §4: a producer whose failure nobody counts is a leak
  *   that survives four green gates.
  */
+/**
+ * `$270D92` -- WALK A DEATH-SPAWN LIST AND MAKE ONE EFFECT PER ENTRY.
+ *
+ *   270d92  move.w (A1)+,D1            entry word 1
+ *   270d94  cmpi.w #-$1,D1 / beq       $FFFF TERMINATES the list
+ *   270d9c  move.w (A1)+,D0 / jsr $289004      word 2 is the effect KIND
+ *   270da4  move.w (A1)+,D0 / move.b D0,($1C,A0)   word 3, LOW BYTE only
+ *   270daa  move.w D1,($18,A0)         word 1 lands at +$18
+ *   270dae  move.l (A1)+,($26,A0)      words 4+5 as ONE LONG
+ *   270db2  move.l D2,($2,A0)          the CALLER's position, out of D2
+ *   270db6  move.w #$4,($1E,A0)
+ *   270dbc  move.w #$0,($12,A0) / move.w #$0,($14,A0)
+ *   270dc8  move.w (A1)+,($1A,A0)      word 6
+ *   270dcc  bra $270D92                and round again
+ *
+ * So an entry is **TWELVE BYTES**: word, word, word, long, word. The stride is not uniform-width
+ * fields and cannot be read as six words, because `$270DAE` takes a LONGWORD.
+ *
+ * **SIX CALLERS, AND THREE OF THEM ARE STAGE-5 TYPES.** `$270DCC` is its own back-edge; the real
+ * call sites are `$271390`, `$271680` (type `$49`), `$271AC2` (inside type `$4A`), `$271D88` (inside
+ * type `$4B`) and `$27248E`. W315 proved `$48`/`$49`/`$4A`/`$4B` are NOT one family by prototype --
+ * they diverge in their bodies and share THIS. Porting it once is what makes those types cheap.
+ *
+ * **THE ROM DOES NOT CHECK `$289004`'s RETURN.** On a full pool `$289004` answers `$81C8B2`, the bit
+ * bucket, so the board's writes land somewhere harmless and the loop carries on. `spawnEffect`
+ * returns a falsy slot instead, so the writes are skipped and the walk CONTINUES -- skipping the
+ * whole list on one full pool would lose the entries after it, which the board does not do.
+ *
+ * @param a1 the list address (the ROM's A1).
+ * @param d2 the position longword every entry copies to `($2,A0)`.
+ * @returns {number} how many entries were walked, spawned or not.
+ */
+export function walkDeathSpawns270D92(ram, rom, ctx, a1, d2, siteAddr = 0x270d92) {
+  let at = a1;
+  let n = 0;
+  for (;;) {
+    const d1 = rom.u16(at);                              // $270D92 move.w (A1)+,D1
+    if (d1 === 0xffff) return n;                         // $270D94 cmpi.w #-$1 / beq $270DCE
+    if (n >= WALK_CAP) {
+      unreached(siteAddr, `$${siteAddr.toString(16).toUpperCase()} walked ${WALK_CAP} entries of the `
+        + `list at $${a1.toString(16).toUpperCase()} without meeting the $FFFF terminator. Entries `
+        + `are TWELVE bytes (word, word, word, LONG, word) and the loop's only exit is that word, so `
+        + `either the list address is wrong or the stride is being read as something other than 12`);
+    }
+    const kind = rom.u16(at + 2);                        // $270D9C word 2 -- the KIND
+    const w3 = rom.u16(at + 4);                          // $270DA4 word 3
+    const long26 = rom.u32(at + 6);                      // $270DAE words 4+5 as a LONG
+    const w1a = rom.u16(at + 10);                        // $270DC8 word 6
+    const slot = spawnEffect(ram, ctx, kind);            // $270D9E jsr $289004
+    if (slot) {
+      ram.setU8(slot + 0x1c, w3 & 0xff);                 // $270DA6 move.b D0,($1C,A0)
+      ram.setU16(slot + 0x18, d1);                       // $270DAA
+      ram.setU32(slot + 0x26, long26);                   // $270DAE
+      ram.setU32(slot + 0x02, d2);                       // $270DB2 move.l D2,($2,A0)
+      ram.setU16(slot + 0x1e, 4);                        // $270DB6
+      ram.setU16(slot + 0x12, 0);                        // $270DBC
+      ram.setU16(slot + 0x14, 0);                        // $270DC2
+      ram.setU16(slot + 0x1a, w1a);                      // $270DC8
+    }
+    at += 12;
+    n++;
+  }
+}
+
+/** The walk's only exit in the ROM is the `$FFFF` word, so a wrong list address or a misread stride
+ *  is an infinite loop rather than a wrong picture. Bounded here at a value no real list approaches;
+ *  if it fires, the ADDRESS or the stride is wrong, not the data. */
+const WALK_CAP = 64;
+
 export function spawnEffect(ram, ctx, d0, siteAddr = 0x289004) {
   const d1 = d0 & 0x7f;                                  // $289008/$28900A
   if (d1 < 0) {                                          // $28900E cmpi.w #$0 / blt
