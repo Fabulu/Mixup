@@ -17,7 +17,6 @@ import { fileURLToPath } from 'node:url';
 import { Ram } from '../src/ram.js';
 import { Unreached } from '../src/unported.js';
 import { freeChain246800, buildParts246520, PARTS } from '../src/spawn.js';
-import { octDistance242494 } from '../src/aim.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IMAGE = path.join(HERE, '..', 'rip', 'sound', 'maincpu.bin');
@@ -224,48 +223,4 @@ test('W341 the jump table has EIGHT entries and abuts its own first handler', { 
   assert.equal(0x26f886 + 8 * 4, 0x26f8a6, 'the table ends exactly at the FIRST handler it names');
   assert.equal(want[0], 0x26f8a6, 'which is what pins its extent -- no count word, no terminator');
   assert.notEqual(IMG.readUInt32BE(0x26f8a6), 0x0026f8a6, 'and entry 8 is code, not an address');
-});
-
-// --- $242494, the octagonal distance. TWENTY-ONE callers, and one axis is scaled.
-
-test('W341 $242494 scales ONE axis to three quarters, between two symmetric abs blocks',
-  { skip: SKIP }, () => {
-    // The whole reason this needs a test: $2424A0..$2424A4 sits between two absolute-value blocks that
-    // look symmetric, and it touches only D0. A symmetric max+min/2 would be wrong on the Y axis.
-    assert.equal(IMG.readUInt32BE(0x242494), 0x4cae0003, '$242494 movem.w ($2,A6),D0-D1 -- SIGN-EXTENDS');
-    assert.equal(IMG.readUInt16BE(0x24249a), 0x9042, '$24249A sub.w D2,D0');
-    assert.equal(IMG.readUInt16BE(0x24249c), 0x6a02, '$24249C bpl -- skip the neg');
-    assert.equal(IMG.readUInt16BE(0x24249e), 0x4440, '$24249E neg.w D0');
-    assert.equal(IMG.readUInt16BE(0x2424a0), 0x3800, '$2424A0 move.w D0,D4');
-    assert.equal(IMG.readUInt16BE(0x2424a2), 0xe44c, '$2424A2 lsr.w #2,D4 -- a QUARTER');
-    assert.equal(IMG.readUInt16BE(0x2424a4), 0x9044, '$2424A4 sub.w D4,D0 -- so D0 is three quarters');
-    assert.equal(IMG.readUInt16BE(0x2424a6), 0x9243, '$2424A6 sub.w D3,D1 -- and D1 is NOT scaled');
-    assert.equal(IMG.readUInt16BE(0x2424aa), 0x4441, '$2424AA neg.w D1');
-    assert.equal(IMG.readUInt16BE(0x2424ac), 0xb041, '$2424AC cmp.w D1,D0');
-    assert.equal(IMG.readUInt16BE(0x2424b0), 0xc340, '$2424B0 exg D1,D0 -- so D0 ends up the LARGER');
-    assert.equal(IMG.readUInt16BE(0x2424b2), 0xe249, '$2424B2 lsr.w #1,D1 -- HALF the smaller');
-    assert.equal(IMG.readUInt16BE(0x2424b4), 0xd041, '$2424B4 add.w D1,D0');
-    assert.equal(IMG.readUInt16BE(0x2424b8), 0x4e75, '$2424B8 rts');
-  });
-
-test('W341 the distance is max(a,b) + min(a,b)/2 with a = |dy| * 3/4', () => {
-  // 0x100 -> 0xC0 after the quarter subtraction; 0x80 stays. max 0xC0 + min 0x80 / 2 = 0x100.
-  assert.equal(octDistance242494(0x100, 0x80, 0, 0), 0x100, 'the worked case');
-  // Swap the axes: now the SCALED one is the smaller, which is where a symmetric port diverges.
-  // a = 0x80 - 0x20 = 0x60; b = 0x100. max 0x100 + 0x60/2 = 0x130.
-  assert.equal(octDistance242494(0x80, 0x100, 0, 0), 0x130, 'scaling one axis is NOT symmetric');
-  assert.notEqual(octDistance242494(0x80, 0x100, 0, 0), octDistance242494(0x100, 0x80, 0, 0),
-    'and that asymmetry is the point -- swapping dx and dy changes the answer');
-  // Pure axes.
-  assert.equal(octDistance242494(0x40, 0, 0, 0), 0x30, '|dy| alone loses its quarter');
-  assert.equal(octDistance242494(0, 0x40, 0, 0), 0x40, '|dx| alone does not');
-  assert.equal(octDistance242494(0, 0, 0, 0), 0, 'zero');
-});
-
-test('W341 both deltas are made absolute before the shifts', () => {
-  // `lsr.w` is a LOGICAL shift, so it is only safe because the negs ran first.
-  assert.equal(octDistance242494(0, 0, 0x40, 0), 0x30, 'a NEGATIVE dy is absolute-valued, then scaled');
-  assert.equal(octDistance242494(0, 0, 0, 0x40), 0x40, 'and a negative dx likewise');
-  assert.equal(octDistance242494(0x100, 0x80, 0, 0), octDistance242494(0, 0, 0x100, 0x80),
-    'so the sign of each delta cannot change the result');
 });

@@ -39,7 +39,16 @@ def scan(addr: str):
             if d:
                 owner = d.group(1)
             if pat.search(line):
-                kind = 'COMMENT' if re.match(r'\s*(//|\*|/\*)', line) else 'CODE'
+                if re.match(r'\s*(//|\*|/\*)', line):
+                    kind = 'COMMENT'
+                # W345: an address quoted INSIDE a note()/unreached() string is the port saying it has
+                # NOT ported that address. Counting it as a claim gave a false CLAIMED on $23C98E, whose
+                # only mentions were in my own note text -- the exact inverse of the eight duplicates this
+                # tool was built for, so both directions now have to be distinguished.
+                elif re.search(r'(note|unreached)\s*\(', line) or "'" in line or '`' in line:
+                    kind = 'NOTE'
+                else:
+                    kind = 'CODE'
                 hits.append((f.name, n, kind, owner, line.strip()[:100]))
     return hits
 
@@ -57,8 +66,16 @@ def main(argv):
             continue
         any_claimed = True
         code = [h for h in hits if h[2] == 'CODE']
+        notes = [h for h in hits if h[2] == 'NOTE']
         owners = sorted({h[3] for h in hits if h[3] != '(file scope)'})
-        print(f'{label}: CLAIMED -- {len(hits)} mention(s), {len(code)} in CODE')
+        if not code:
+            print(f'{label}: **NOT PORTED** -- {len(hits)} mention(s) but NONE in code '
+                  f'({len(notes)} inside note/unreached strings, the rest comments). '
+                  'A note quoting an address is the port saying it has NOT ported it.')
+            for f, n, kind, owner, text in hits[:4]:
+                print(f'    {f}:{n} [{kind}] in {owner}')
+            continue
+        print(f'{label}: CLAIMED -- {len(hits)} mention(s), {len(code)} in CODE, {len(notes)} in notes')
         if owners:
             print(f'    likely owner(s): {", ".join(owners)}')
         for f, n, kind, owner, text in hits[:8]:
