@@ -1423,3 +1423,40 @@ possibly `$48`, and porting it inside a type wave is the mistake W333 avoided by
 
 Still unread: `$271B42..$271C28` (the fire itself), `$271BC0`/`$271BD8` (the draw and the freeze tail),
 and `$2714AE`.
+
+### `$2714AE` IS A BARE `rts`, AND THE BODY BEHIND IT IS UNREACHABLE (W336)
+
+The prerequisite the section above told the next wave to read first turns out to need no porting at
+all, and knowing why saves a subsystem's worth of wasted work.
+
+    2714ae  4e75            rts          <-- THE ENTRY POINT IS THE RETURN
+    2714b0  tst.b ($3F,A6) / beq $27150E     the body: unreachable
+    2714b8  tst.b ($3E,A6) / beq $27150E
+    2714c0  subq.b #1,($3C,A6) / bcc $27150E
+    2714c8  move.b ($3D,A6),($3C,A6)
+    2714ce  moveq #$54,D0 / jsr $263684      an ALLOCATION
+    2714d6  move.l ($2,A6),($16,A0)
+    2714dc  jsr $242B3C / addi.b #$14,D0 / move.b D0,($1A,A0)
+
+**BOTH callers target `$2714AE`, not `$2714B0`:**
+
+    $2713DA  bsr.w   opcode $6100 disp $D2   -> $2713DA + 2 + $D2 = $2714AE
+    $271B16  jsr (d16,PC)  disp $F996        -> $271B18 - $66A   = $2714AE
+
+and `codexref $2714B0` finds **no code reference whatsoever**. So the body has no reachable entry
+point in this build: it is a feature Version-B disabled by pointing its entry at a return, which is
+what an `rts` patched over a first instruction looks like from the outside.
+
+**WHAT THE PORT MUST DO:** treat both call sites as no-ops and do NOT port `$2714B0..$27150E`. It
+allocates through `$263684` with D0 = `$54` and randomises a byte through `$242B3C`, so porting it
+would add spawns the board does not make -- a *visible* invention, not a harmless one.
+
+**WHY THIS IS THE FOURTH INSTANCE OF ONE PATTERN.** This build carries dead code that looks live:
+`$2716D8`'s `tst.w` of a `lea` opcode, `$27460A` index `$18` and `$25DAC2`'s sentinel disagreement all
+have the same shape -- an instruction or a table entry that reads as meaningful and is not. Add "a
+`jsr` whose target is an `rts`" to the checklist. **Before porting any callee, read its FIRST
+instruction and `codexref` the body separately from the entry.** Two commands, and here it was the
+difference between one line of nothing and an invented spawner.
+
+`$4A` therefore has one fewer prerequisite. Still unread: `$271B42..$271C28` (its fire), and
+`$271BC0`/`$271BD8` (draw and freeze tail).
