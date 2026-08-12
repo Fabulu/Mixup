@@ -1537,3 +1537,44 @@ muzzles.
 `$23DECE`, `$242EC2` -- all ported -- plus `$2714AE`, which is an `rts` and must be omitted. Windows
 needed: `$271A1A + $52` (record + BOTH sub prototypes, overlapping the handler by eight bytes),
 `$271C08 + $28` (draw ring + both muzzles), and `$271C30 + n` for the death list.
+
+### CORRECTION: `$4A` WAS NOT READ END TO END, AND THE TWO MISSING SPANS BOTH MATTER (W336)
+
+The section above claimed `$4A` was read end to end. It was not: `$271A64..$271A6B` and
+`$271B42..$271B58` had never been displayed, only assumed from what surrounds them. Both contained
+something.
+
+**1. THE HANDLER'S FIRST INSTRUCTION IS THE DEATH MARKER, AND I ASSUMED IT WAS `stepMovement`.**
+
+    271a64  4a2e 003f    tst.b ($3F,A6)
+    271a68  6600 0068    bne  -> $271A68 + 2 + $68 = $271AD2
+
+So `($3F,A6)` is tested **THREE** times, not twice, and the first test is the handler's opening
+instruction: a marked-dead `$4A` skips the despawn trigger, the whole `$5C` damage arm and everything
+else, landing at `$271AD2` and running only the movement/off-screen path, then skipping the fire gate at
+`$271B1A` and the draw at `$271BD8`. **The mark makes the record completely inert on its very next
+frame** -- it cannot be hit, cannot fire, does not draw, and only drifts until `$271AF8` frees it.
+
+I had guessed these eight bytes were `jsr $2638A6 / nop`, because that is what the byte count fitted and
+what most handlers open with. **`$4A` never calls `stepMovement` at all.** Guessing a routine's opening
+from its length is exactly the class of mistake the rest of this document is about, and it was one
+`python` call away from being checked.
+
+**2. `$271B52 movem.w ($2,A6),D0-D1` SIGN-EXTENDS.** `movem.w` into data registers sign-extends each
+word to 32 bits -- it is not a pair of `move.w`s. Here it loads Y into D0 and X into D1 before the
+muzzle bias and the aim, so a negative coordinate arrives already extended.
+
+    271b3e  lea ($271C28,PC),A1
+    271b44  tst.b ($17,A5) / bne $271B52        ($17,A5) SET keeps $271C28
+    271b4c  lea ($271C2C,PC),A1                 CLEAR takes $271C2C
+    271b52  movem.w ($2,A6),D0-D1               SIGN-EXTENDING
+    271b58  add.w (A1),D0 / add.w ($2,A1),D1    the SAME four bytes as a WORD PAIR
+    271b5e  jsr $24226E
+
+**And those four bytes are read two different ways.** `$271B58` takes `$271C28` as a pair of words to
+bias the aim, and `$271B9A add.l (A1),D2` takes the same longword to bias the bullet's position. One
+table, two conventions, four bytes -- the same shape as `$49`'s one counter feeding two index
+conventions, in a smaller space.
+
+So `$4A` is NOW read end to end, and this time that is checked rather than inferred: every byte from
+`$2719AE` to `$271C06` has been displayed.
