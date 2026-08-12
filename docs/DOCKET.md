@@ -992,3 +992,43 @@ Why the cadence matters in both directions: publishing too rarely is what let th
 eleven waves and then block the publish that would have caught it (W321), and publishing too often
 spends the owner's attention on builds that contain nothing they asked about. Five is the owner's
 number, not a derived one.
+
+### D24/D31 ROOT CAUSE FOUND (W342): `$81308C` IS A LIVE-PLAYER COUNT THE PORT NEVER COMPUTES
+
+The owner reported "hyper still has no hit animation" three times, and W324 tried and failed to fix it by
+working on the beam. **The cause is not in the hyper code at all.**
+
+`shots.js`'s `hyperShotHit` already spawns the impact spark, and correctly:
+
+    if (ram.u16(SPAWN.gate308c) !== 0) spawnSpark(ram, rom, ctx, rec, prec);
+
+That polarity is right -- the ROM's hyper-hit sites (`$254012`, `$25416E`, `$2542B2`, `$2543DC`, `$254506`)
+all read `4A79 0081308C` then **`6708`**, a `beq` that SKIPS the spawn when the gate is ZERO. So non-zero
+means spawn, which is what the port has.
+
+**BUT NOTHING IN THE PORT EVER MAKES IT NON-ZERO.** A `setU16` search over `src/` finds no writer at all, and
+the ROM has exactly THREE, all in one routine:
+
+    25fda0  clr.w $81308C
+    25fdae  addq.w #1,$81308C        if ($18,$8130FA) -- P1's record -- is non-zero
+    25fdbc  addq.w #1,$81308C        if ($18,$81311E) -- P2's record -- is non-zero
+
+**`$81308C` IS A COUNT OF LIVE PLAYERS**, recomputed each frame by `$25FD94` (three callers: `$26005C`,
+`$2601E4`, `$2602B0`). `$8130FA` and `$81311E` are the two player records. So the gate means "at least one
+player is present", and every effect behind it is suppressed in the port because the count is permanently 0.
+
+**THIS IS NOT HYPER-SPECIFIC. `$81308C` HAS 53 READ SITES.** `damage.js` alone tests it at six places
+(`$245036`, `$245162`, `$24522E`, `$2452DE`, `$2454CC`, `$2455DE`, `$28B670`). Some of those use `bne` rather
+than `beq`, so they take the OPPOSITE branch -- meaning a permanently-zero gate does not merely disable
+effects, it makes roughly half of those 53 sites take the wrong path. **Any other "missing effect" report may
+share this cause**, which would include D32's "nothing but mid bosses has stars and medals".
+
+**THE FIX IS SMALL AND ITS SHAPE IS KNOWN:** port `$25FD94`'s player count (clear, then two conditional
+increments off `($18,A2)`/`($18,A3)`) and call it from wherever the port models `$26005C`/`$2601E4`/`$2602B0`.
+Both player-record bases are already constants elsewhere in the port. **Do this before anything else in
+stage 5** -- it is one routine and it may close three docket items at once.
+
+W324's failure is now explained: it looked for a missing spawn in the beam code, and the spawn was already
+there behind a gate nobody had written to. **A `note` would have caught this; a silent gate did not.** Worth
+remembering as a rule -- when an effect is "missing" and the spawn call exists, check what writes its gate
+before reading the spawn again.
