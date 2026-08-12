@@ -4791,10 +4791,35 @@ subtract and in a different arm.
 
 That makes `$24179E` the **seventh** callee, and the seventh already ported.
 
-**STILL UNREAD: `$2724C4..$2724E0`, about `$1C` bytes** -- narrowed from `$84` then `$40`. It follows
-`addi.w #$1400,D0`, so it is near-certainly the off-screen bounds test that `$4B` does at `$271DA6` with
-its own bias and limit. **Read it before writing**, and note that this is the fifth time I have described
-a remaining gap in `$55` as the last one.
+### W351: the bounds test read. The PROLOGUE IS NOW CONTIGUOUS from `$272424` to the cascade.
+
+    2724bc  move.w ($2,A6),D0
+    2724c0  addi.w #$1400,D0
+    2724c4  addi.w #$7400,D0        <- TWO SEQUENTIAL ADDS, and the carry is tested off the SECOND
+    2724c8  bcc $2724da             carry clear -> on screen
+    2724cc  tst.b ($16,A5) / beq $2724e0    off screen but never armed -> fall into the cascade
+    2724d2  jmp $263762             off screen AND armed -> exit, the same tail-jump as death
+    2724da  move.b #$1,($16,A5)     on screen -> ARM the flag
+    2724e0  cmpi.b #$0,($17,A5)     the cascade
+
+**PORT HAZARD, and a sharp one: `addi.w #$1400` then `addi.w #$7400` IS NOT `addi.w #$8800`.** The sum is
+the same; the CARRY is not. With `D0 = $F000`: two adds give `$0400` (carry) then `$7800` (no carry), so
+`bcc` is TAKEN. One add of `$8800` gives `$7800` WITH carry, so `bcc` is NOT taken -- opposite branch,
+opposite despawn decision. **Keep the two adds separate.** This is the same class as the packed-long rule
+already in these notes: two sequential biases do not fold into one.
+
+**`($16,A5)` is the on-screen-once flag, at the SAME offset and with the same meaning as `$4B`'s** at
+`$271DD4`/`$271DC6` -- the record may only despawn after it has been on screen at least once. Third
+member of that idiom now.
+
+**The handler prologue is contiguous and complete: `$272424` -> `$2724E0`**, in six pieces (gate,
+invulnerability countdown, `$5C` mask, palette/death, pause+back-out, bounds). That is a checkable claim
+about a byte range, not an assessment.
+
+**STILL UNREAD, and I am NOT calling it the last gap: `$272690..$272722`, about `$92` bytes** -- the body
+of the FOUR-cluster fan variant. Only its head is read (`move.l #$FFFF0004,D0` / `subi.w #$22,D1` /
+`move.w #$3,D7`). Also unread: `$272650..$272686`, the five-cluster fan's tail after its `dbra`. Together
+about `$C8` bytes.
 
 What IS settled: all FIVE callees already ported (`shotVector` `$241D34`, FREEZE `$8130D4`, `aim256`
 `$24226E`, the emit `$2816F6`, the enqueue `$23DF86`); both tables already windowed (`$272750+$100`
