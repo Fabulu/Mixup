@@ -2783,6 +2783,8 @@ SHOT_WINDOWS.extend([
                        "andi.w #$7 AND by code at +8"),
     (0x2723EA, 0x003E, "W345: type $55's 15-word record prototype and its sub prototype, "
                        "$2723EA..$272427 -- overlapping its handler at $272424 by FOUR bytes"),
+    (0x272850, 0x003E, "W345: type $55's death-spawn list for $270D92 -- FIVE 12-byte entries then "
+                       "$FFFF, $272850..$27288D"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
