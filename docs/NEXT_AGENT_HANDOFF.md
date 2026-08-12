@@ -4156,3 +4156,30 @@ agreement is the check that this reading is right.
 **Still unread: `$25DA04` (side 1's default pair) and the Y half of the search, `$25DA34..$25DA5E`.** Both
 short, both in the routine above. Read those two, write `$25D9E6` and `$25DA60`, and phase 0's arm is
 transcribable in full -- after which follow its calls forward for the bonus-line driver, which is D24/D31.
+
+### `tools/claimed.py` -- RUN THIS BEFORE PORTING ANY ROUTINE (W344)
+
+**Built after FIVE duplicate ports in one session, all mine, all from one mistake.** I grepped `0x<addr>` in
+lowercase, got nothing, and ported a routine the port already had:
+
+    $2417DE   already `applyVelocityA6` (movement.js)   -- and I reached TWO opposite wrong conclusions
+    $28D53C   already `menuCarry28D53C` (tallyscreen.js) -- I shipped a copy with INVERTED polarity
+    $260A20   already `announceBox260A20` (rank.js)
+    $260A88   already covered by `announcePost` (rank.js), a FOUR-poster table
+    $261100   already `pushExternalSpeed` (background.js)
+
+The port writes these as `$260A88` in docstrings and names symbols after their ROLE -- `announcePost`,
+`announceBox260A20`, `menuCarry28D53C`, `carryWord`. **A `0x`-prefixed lowercase grep finds none of them.**
+
+    python tools/claimed.py 260a88 28d53c 2417de
+
+It matches `$260A88`, `$00260A88`, `0x260a88` and bare `260A88` case-insensitively, reports CODE versus
+COMMENT mentions, and names the nearest enclosing declaration so the answer is **who claims it**. Exit 1 when
+every address given is unclaimed, so a wave can gate on it.
+
+On `$260A88` it reports 13 mentions, 8 in CODE, and shows `tallyscreen.js:360` already calling
+`announcePost(ram, 0x260a88, ...)` -- i.e. the answer was two lines from code I was editing.
+
+**The rule was already written down** (`grep 0x2xxxxx is NOT a test for "is this ported"`). Four violations
+after writing it is a compliance problem, not a knowledge problem, which is why this is a tool and not another
+paragraph. **Run it on every callee before reading the body, and on every routine before writing one.**
