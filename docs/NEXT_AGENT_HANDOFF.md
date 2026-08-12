@@ -2600,3 +2600,34 @@ naive reading is correct here. That makes three flavours of position bias in `$4
 needs the rule.
 
 Still to read for `$47`: `$26DC74..$26DCA2` (the rank > 0 arm) and `$26DCCC..$26DCE0`.
+
+### `$47` STATE 3, THE RANK > 0 ARM, `$26DC70..$26DCA0` (W339) -- IT ALTERNATES BULLET TYPES
+
+    26dc70  tst.w ($4E,A6) / bne $26DC8A
+    26dc78  jsr $281744 / neg.b D1 / jsr $281744    toggle 0: a mirrored pair, the RANK-0 spawner
+    26dc86  bra $26DC98
+    26dc8a  jsr $2816F6 / neg.b D1 / jsr $2816F6    toggle 1: a mirrored pair, a DIFFERENT spawner
+    26dc98  addq.w #1,($4E,A6) / andi.w #$1,($4E,A6)    the 0/1 TOGGLE
+    26dca2  ... falls into the repeat counter
+
+**SO THE RANK SCALING IS AN INTERLEAVE, NOT A VOLUME INCREASE.** At rank 0, `$47` fires a mirrored pair
+through `$281744` every volley and nothing else. Above rank 0 it fires the SAME pair count but alternates the
+spawner every volley -- `$281744`, then `$2816F6`, then `$281744` -- so the player sees two bullet types
+interleaved rather than more bullets. That is a much more specific piece of behaviour than "harder at rank",
+and it is the kind of thing a port that collapsed the two arms would silently lose while still looking right
+in a screenshot.
+
+`($4E,A6)` is masked with `andi.w #$1`, the same 2-state toggle construction as `$48`'s `($25,A5)`
+(`addq.b #1 / andi.b #$1`) -- one of the few idioms that IS shared across this part of stage 5. `neg.b D1`
+mirrors the pair in all three arms identically.
+
+**`$47`'s STATE-3 ATTACK IS NOW FULLY READ:**
+
+    rank 0                 mirrored pair via $281744
+    rank > 0, ($4E,A6)=0   mirrored pair via $281744
+    rank > 0, ($4E,A6)=1   mirrored pair via $2816F6
+
+all sharing D0 = `$FFFD0004`, D2 = `($2,A6) + $10000000`, D3 = D4 = 0.
+
+Still to read for `$47`: `$26DCCC..$26DCE0` only -- the tail of `$26DCB6`, the marked-record effect. That is
+the last span.
