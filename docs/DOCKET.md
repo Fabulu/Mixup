@@ -1374,3 +1374,46 @@ Both halves of its own machinery are ported (`playerFlags25FD94`, `tallyBonusDis
 laser spawn was already correct; only the driver is missing, and the driver is transition-screen code. **Do the
 transition screen next and the laser impact should follow.** That is a better outcome than a fifth speculative
 lead: the item went from "unknown cause, three failed attempts" to "one known dependency, already scheduled".
+
+### D24/D31 **FIXED** (W345), AND FOUR EARLIER ENTRIES IN THIS ITEM ARE RETRACTED
+
+**The cause was nine bytes missing from a routine the port already had.** `liveSides25FD94` (tally.js, W273/
+W277) stopped at `$25FDC8`, leaving `$81308C` holding count-MINUS-ONE. The ROM continues:
+
+    25fdd2  bsr $25FD8C                clear the $8130D2 pause UNCONDITIONALLY
+    25fdd4  cmpi.w #-$1,$81308E / bne
+    25fde0  bsr $25FD82                ... re-set it only when NO side is live
+    25fde2  cmpi.w #$0,$81308C / bne $25FDF8
+    25fdee  move.w #$1,$81308C         ONE live side  -> 1
+    25fdf8  clr.w  $81308C             two, or none    -> 0
+
+`laser.js:1029` gates the hyper beam's impact on `$81308C !== 0`, and the ROM agrees (`$255056 tst.w / beq`).
+**In one-player play the truncated port left 0 there, so the impact never spawned.** The port's polarity was
+correct throughout; the VALUE was wrong. `$81308E` keeps the count-1 for its own readers.
+
+**RETRACTED FROM THIS ITEM'S EARLIER ENTRIES:**
+
+1. **"`$81308C` is a live-player count and nothing writes it"** -- it is written, by `liveSides25FD94`, from a
+   ported bonus line. What was missing was the tail, not the writer.
+2. **"the effect is two-player-only"** -- that followed from reading only as far as the `subq`. The inversion
+   nine bytes later says the opposite.
+3. **"the ten bonus-line BODIES are unported"** -- **all nine are ported** (W289-W296, plus line 9 in
+   `player.js`), and so is the `$25FF7A` driver. I built a duplicate dispatcher on this false premise.
+4. **"the table has TEN entries, not the nine an earlier docstring recorded"** -- ten LONGWORDS, of which
+   entry 0 is null, so NINE lines. The docstring was right and my correction of it was wrong.
+
+**EIGHT DUPLICATE PORTS THIS SESSION, ALL MINE, ALL THE SAME MISTAKE:** `$2417DE`, `$28D53C`, `$260A20`,
+`$260A88`, `$261100`, `$25FD94`, `$25FD82`/`$25FD8C`, `$25FF7A`. Every one already existed under a
+role-based name (`applyVelocityA6`, `menuCarry28D53C`, `announceBox260A20`, `announcePost`,
+`pushExternalSpeed`, `liveSides25FD94`, `bgPause25FD82`/`bgResume25FD8C`, the tally driver) and every one was
+missed by grepping `0x<addr>` in lowercase. **`tools/claimed.py` (W344) exists to make that impossible; use it
+before writing any routine.** Two of the eight were caught only by a runtime `ReferenceError` and one by
+`claimed.py` itself reporting owners I did not expect.
+
+**WHAT ACTUALLY DELIVERED THE FIX:** running `claimed.py` on `$2600D8` and reading the owner list. Nine
+seconds of the tool I had built the wave before, after two waves of building around a subsystem that was
+already there.
+
+**STILL TO VERIFY:** the live build `20260812222642` carries the truncated value, so this needs a republish
+before the owner can see the impact. And whether the effect now appears is a playtest question -- the gate
+proves the code runs, not that the sprite is right.
