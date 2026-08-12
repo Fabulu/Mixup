@@ -3539,3 +3539,42 @@ or three waves rather than eight.
 
 Still unread: `$26F90E` (state 1, which begins immediately at `$26F90E cmpi.w #$0,($28,A6)` -- the same
 cascade shape) and the six after it.
+
+### `$4C` STATE 1 (W341) -- a two-point oscillation, and a table bounded TWICE
+
+    26f90e  cmpi.w #$0,($28,A6) / bne $26F938        sub-state 0
+    26f918  move.w #$1,($28,A6)
+    26f91e  move.b #$4,($1A,A6)                      speed 4 (state 0 left it at ZERO)
+    26f924  move.w #$0,($2A,A6)                      the oscillation cursor
+    26f92a  move.w #$12C,($30,A6)                    a 300-frame duration
+    26f930  bsr $26F994 / bsr $26FA5E                two more private subroutines
+    26f938  lea ($26F984,PC),A0 / adda.w ($2A,A6),A0
+    26f942  movem.w (A0),D2-D3                       <-- SIGN-EXTENDS both words
+    26f946  bsr $26FF9E / bcs $26F958                a call reporting through CARRY
+    26f94e  addq.w #4,($2A,A6) / andi.w #$7,($2A,A6) advance the cursor on SUCCESS only
+    26f958  subq.w #1,($30,A6) / bne $26F982         the duration
+
+**`($2A,A6)` ALTERNATES BETWEEN EXACTLY TWO VALUES.** Step 4, mask `$7`: `0 -> 4 -> 0 -> 4`, because `8 & 7`
+is 0. So the table at `$26F984` has **TWO** four-byte entries and no more:
+
+    [+0]  5000 2A00
+    [+4]  5000 0E00
+    [+8]  3D7C 0000   <-- CODE (`move.w #$46,...` then `rts` at $26F992)
+
+**IT IS BOUNDED TWICE OVER** -- by the ROM's own `andi.w #$7`, and by code at `+8`. That is the fifth table
+this session bounded by its own instruction stream, and the first that is *also* mask-bounded. So no guard is
+needed (the mask suffices) but the window must still stop at `$8`: `$26F984 + $8`, not `$10`.
+
+**Both entries share D2 = `$5000` and differ only in D3 (`$2A00` / `$0E00`)**, and `movem.w` sign-extends both
+into full longs. Given `$24203E`'s documented convention (`self=D0/D1 target=D2/D3`), these are almost
+certainly **two target positions at the same X**, and `$26FF9E` is a move-toward-target that reports arrival
+through carry: on carry CLEAR the cursor flips to the other point. **So state 1 is "oscillate between two
+points at speed 4 for 300 frames"** -- and the `bcs` skipping the flip is what makes it wait until it arrives.
+
+State 0 left `($1A,A6)` at ZERO after decelerating; state 1 re-seeds it to 4. **The speed field is handed
+between states**, which is worth knowing before writing them independently.
+
+Two more private subroutines appear: `$26F994` and `$26FA5E`, both called once from sub-state 0. And
+`$26FF9E` is the target-mover, called every frame.
+
+Still unread: `$26F982`'s tail, `$26F994`, `$26FA5E`, `$26FF9E`, and the six handlers from `$26FBD4`.
