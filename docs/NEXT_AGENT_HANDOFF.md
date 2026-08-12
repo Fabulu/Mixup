@@ -4537,16 +4537,31 @@ re-derives all of it from the cartridge on every run: `spec.init` and `spec.hand
 `spec.initBody === init + 8` as the RULE rather than a restatement, and both registries actually containing what
 each spec claims. **The fourth test is the `$55` no-op guard specifically.** Suite 2433 -> 2438.
 
-Two facts the new test forced into the open, both of which I had wrong:
+### W347: BOTH type tables solved, and two W346 claims retracted
 
-- **The `$410` window reaches through type `$80`, not `$7F`.** `$267820+$410` ends at `$267C30`, and type `$80`'s
-  pair is `$267C24..$267C28` -- inside. The window's own comment says "types `$00..$7F`", one type short of what
-  it exports. `$81` is the first type that throws.
-- **Types `$80`+ are NOT in this table, and their structure is UNSOLVED.** `$8E`'s pair sits at `$27E41A` and
-  `$81`'s at `$27E482`: spacing `$68` = 13 entries for a type difference of 13, but **the address RISES AS THE
-  TYPE FALLS**, which rules out `base + type * 8` for every base. `T81` and `T8E` are therefore explicitly
-  excluded from the cross-check and the test asserts that the excluded set is exactly `{$81, $8E}`, so the gap
-  stays visible instead of reading as coverage.
+    types $00..$7F   $267824 + type * 8            window $267820+$410, wave 20
+    types $80..$FF   $27E412 + (type - $80) * 8    window $27E410+$410
+
+**The high base is `$27E412`, not `$27E410`** -- the two bytes at `$27E410` are a trailing `nop` from the
+preceding code, which is why the table is not 8-aligned to its window start. Verified three ways against the
+port's own registrations: type `$80`'s handler `$2739C0` is `handler80`, `$81`'s `$274076` is `handler81` at
+index 1, and `$8E`'s `$2764D2` is `handler8E` at index 14. All 12 specs now cross-check with no exclusions.
+
+**Two W346 claims retracted, both mine:**
+
+- "The address rises as the type falls, which rules out `base + type * 8`." **Wrong.** It came from reading a
+  two-pattern `grep -A2` in file order and pairing each spec with the *other's* entry. The consts are correctly
+  named and the table is ordinary ascending. When a `grep -A2` matches two patterns, the output is in FILE order,
+  not argument order -- attribute each hit by line number before believing it.
+- "The `$410` window reaches through type `$80`, so the comment is one type short." **Wrong, and wrong in a way
+  worth naming.** `$267C24` is *readable* because the window is `$10` longer than the table, but it holds CODE
+  (`41fa 0026 4e71 4eb9`), not an address pair. **Readable is not an entry.** The wave-20 comment was right all
+  along: the low table is `$00..$7F`, and type `$80` lives solely in the high table. The test now checks
+  PLAUSIBILITY rather than readability, and pins the low table's end by asserting that one entry past `$7F` is
+  *not* a plausible init.
+
+Useful side effect: Hibachi (`$B0`) has a table entry at `$27E592`, so the boss-route root's init and handler are
+now addressable without a trace.
 
 **So `$55` cannot be finished by reading. The last unknown is a TRACE, not a span** -- the same shape as `$1A`'s
 blocker at `$268D8C` (D2/D3 provenance). What has to be established is what the type dispatcher guarantees in A0

@@ -26,14 +26,18 @@ const HAVE = fs.existsSync(TABLES);
 
 const TYPE_TABLE = 0x267824;
 const ENTRY = 8;
-// The table is types $00..$7F ONLY -- the wave-20 window is $267820+$410, ending at $267C30. Types
-// $80 and up are dispatched through a SEPARATE structure near $27E410 whose indexing is not yet
-// solved: $8E's [init, handler] pair sits at $27E41A and $81's at $27E482, so the pair spacing is
-// $68 = 13 entries for a type difference of 13, but the ADDRESS RISES AS THE TYPE FALLS. That rules
-// out `base + type * 8` for any base. Until it is solved, high types are out of this check's scope
-// rather than silently assumed -- see the third test, which pins the boundary so the gap stays
-// visible instead of looking like coverage.
+// TWO tables, both ascending `[init, handler]` at eight bytes an entry:
+//   types $00..$7F   $267824 + type * 8            windowed wave 20 as $267820+$410
+//   types $80..$FF   $27E412 + (type - $80) * 8    windowed as $27E410+$410
+// W347 solved the high one. W346 got it wrong twice: first "the address rises as the type falls",
+// which came from reading a two-pattern `grep -A2` in the wrong order and so pairing each spec with
+// the other's entry, and then an exclusion built on that error. The high base is $27E412, NOT
+// $27E410 -- the two bytes at $27E410 are a trailing `nop` from the preceding code, which is why the
+// table is not 8-aligned to the window start. Verified three ways: type $80's handler $2739C0 is
+// registered as `handler80`, $81's $274076 as `handler81` at index 1, and $8E's $2764D2 as
+// `handler8E` at index 14.
 const HIGH_TYPE = 0x80;
+const HIGH_TABLE = 0x27e412;
 
 function realRom() {
   const j = JSON.parse(fs.readFileSync(TABLES, 'utf8'));
@@ -42,7 +46,9 @@ function realRom() {
 
 /** `[init, handler]` for a type, straight out of the windowed ROM table. */
 function romEntry(rom, type) {
-  const at = TYPE_TABLE + type * ENTRY;
+  const at = type < HIGH_TYPE
+    ? TYPE_TABLE + type * ENTRY
+    : HIGH_TABLE + (type - HIGH_TYPE) * ENTRY;
   return { init: rom.u32(at), handler: rom.u32(at + 4) };
 }
 
@@ -64,8 +70,7 @@ test('W346: every ported spec agrees with the ROM table on init, initBody and ha
   assert.ok(TYPE_SPECS.size >= 12, 'the spec registry is populated');
   let checked = 0;
   for (const [type, spec] of TYPE_SPECS) {
-    if (type >= HIGH_TYPE) continue;              // a different table, see HIGH_TYPE
-    checked += 1;
+    checked += 1;                                 // W347: both bands, no exclusions
     const hex = `$${type.toString(16).toUpperCase().padStart(2, '0')}`;
     const e = romEntry(rom, type);
     assert.equal(spec.init, e.init,
@@ -76,25 +81,32 @@ test('W346: every ported spec agrees with the ROM table on init, initBody and ha
     assert.equal(spec.initBody, e.init + 8,
       `${hex} initBody must be init + 8 ($26361A addq.w #8,A1)`);
   }
-  assert.ok(checked >= 10, `cross-checked ${checked} low types against the ROM table`);
+  assert.equal(checked, TYPE_SPECS.size,
+    `every spec cross-checked, both bands -- ${checked} of ${TYPE_SPECS.size}`);
 });
 
-test('W346: the low table stops at $7F, and the high types are a known GAP not a pass',
-  { skip: !HAVE }, () => {
+test('W347: both type tables are readable across their whole band', { skip: !HAVE }, () => {
   const rom = realRom();
-  // $7F is the last type in the table; its handler longword is the last four bytes of the window.
-  assert.doesNotThrow(() => romEntry(rom, 0x7f), 'type $7F is inside the wave-20 window');
-  // The wave-20 window is $267820+$410, ending at $267C30, so it actually reaches through type $80
-  // ($267C24..$267C28) and stops inside $81. The window comment saying "types $00..$7F" is therefore
-  // one type short of what it exports. Assert the REAL boundary, since that is what a reader will
-  // hit: $80 reads, $81 throws.
-  assert.doesNotThrow(() => romEntry(rom, 0x80), 'the $410 window reaches through type $80');
-  assert.throws(() => romEntry(rom, 0x81),
-    /outside every ROM window/, 'type $81 is the first outside -- high types dispatch elsewhere');
-  // And say out loud which specs this file therefore does NOT verify.
-  const unverified = [...TYPE_SPECS.keys()].filter((t) => t >= HIGH_TYPE);
-  assert.deepEqual(unverified, [0x81, 0x8e],
-    'exactly $81 and $8E are unverified here; a new high type must update HIGH_TYPE reasoning');
+  // W347 correction: the LOW table really is types $00..$7F, exactly as its wave-20 comment says.
+  // W346 claimed it "reaches through type $80" on the strength of $267C24 being READABLE inside the
+  // $410 window -- but readable is not an entry. $267C24 holds CODE (`41fa 0026 4e71 4eb9`), and the
+  // only reason the read succeeded is that the window is $10 longer than the table. Type $80 lives
+  // solely in the high table. So the check is PLAUSIBILITY, not readability.
+  const plausible = (v) => v >= 0x240000 && v < 0x2b0000;
+  for (const type of [0x00, 0x01, 0x43, 0x7f]) {
+    const e = romEntry(rom, type);
+    assert.ok(plausible(e.init) && plausible(e.handler),
+      `low type $${type.toString(16)} is a real entry`);
+  }
+  for (const type of [0x80, 0x81, 0x8e, 0xb0, 0xff]) {
+    const e = romEntry(rom, type);
+    assert.ok(plausible(e.init) && plausible(e.handler),
+      `high type $${type.toString(16)} is a real entry`);
+  }
+  // And the proof the low table STOPS at $7F: one past it is code, not an address pair.
+  const past = { init: rom.u32(TYPE_TABLE + 0x80 * ENTRY) };
+  assert.ok(!plausible(past.init),
+    'one entry past $7F in the LOW table must be code, not a plausible init -- that is the table end');
 });
 
 test('W346: a spec that claims a handler has it actually registered with the driver', () => {
