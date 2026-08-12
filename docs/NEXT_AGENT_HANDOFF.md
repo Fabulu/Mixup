@@ -1,6 +1,70 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-11 (late)
+Updated: 2026-08-12
+
+## READ THIS FIRST -- STATE AS OF W336 (commit `bbbf63a`)
+
+    suite 2389/2389 green, ZERO skips     sweep 0 missing     dojcoverage.py both OK lines
+    422 ROM windows                       live build 20260812162556      tree clean, all pushed
+
+**Stage 5: NINE types with no handler over 27 records** (was ten over 29 at the session start).
+Ranked: `$46` 13, `$1A` 4, `$48`, `$4A`, `$4B`, `$43`, `$47`, `$4C`, `$B0`.
+
+**PUBLISH CADENCE IS EVERY FIVE WAVES** (owner, 2026-08-12), not every wave. W335 published; next due
+after **W340**. Run `export-web.mjs` BEFORE `publish.mjs --only ddpdoj` whenever the run added ROM
+windows. Foreground, never while still editing.
+
+### THE NEXT THREE THINGS, IN ORDER
+
+1. **Write `$4A`** (init `$2719AE`, initBody `$2719B6`, handler `$271A64`). Everything needed is in
+   the `$4A` section below. Read `$271AE0` onward first -- its alive path, fire arm and draw, and
+   whether `($20,A5)`/`($21,A5)` feed cadence or aim -- then write it. Window `$271A1A + $52`.
+2. **`$4B`** (init `$271C92`, initBody `$271C9A`, handler `$271D48`), expected to share `$4A`'s
+   overlap trap and its mark-and-fall-through death.
+3. **`$47`** (`$E2` records). `$1A` stays blocked until D2/D3 at `$268D8C` are measured.
+
+Then stage 5's boss, the HIBACHI CLOSURE RULE, then the loops.
+
+### THE LESSON THIS SESSION KEPT PAYING FOR: CHECK FOR THE FAMILY FIRST
+
+**Twice in one session a "new mechanism" or a "blocker" dissolved the moment I checked whether the
+port already had the shape.** Both times the cost was a wave of attention and both times the check was
+two minutes:
+
+  * **W334** -- `$2715A6` has no code xref and looked like a broken disassembly. It is `init + 8`,
+    which `spawn.js:219` has computed all along and which `$81` already models as `init`/`initBody`.
+  * **W336** -- `$4A` setting `(A6) = $8000` and NOT calling `freeEnemy` looked like an unknown
+    lifetime needing a measurement. `death37` in `handlers.js` is the same thing instruction for
+    instruction, with the fall-through already labelled in a comment.
+
+A third instance, same root: **W334 also found `bee.js` had carried a docstring saying kind 16 was
+unported for fourteen waves after W286 ported it**, and D20 was opened on the strength of it. A stale
+comment is not inert.
+
+So: before writing anything, grep the port for the shape, not just for the address. And before
+believing a comment, check its condition still holds.
+
+### THREE TRANSCRIPTION TRAPS THIS BAND KEEPS SETTING
+
+1. **Prototypes overlap handlers.** `loadSubProto` copies `($4,A5)+1` records of `$20` bytes and the
+   cartridge lets the tail run into code. `$49`: four bytes. `$4A`: **eight** (two sub-records). Never
+   trim such a window to the handler start, and never assume the depth from a sibling.
+2. **This ROM indexes its own instruction stream.** Four instances now: `$27460A` (W326), `$25DAC2`
+   (W332), `$2716D8` (W335, a wholly DEAD `tst.w` of a `lea` opcode) and `$271774`. When a stage-5
+   routine reads an address inside itself, check whether the target is code before modelling it.
+3. **Word ops on long-loaded registers.** `$27172C neg.w D3` after `move.l (A1),D3` negates the low
+   half only, no borrow -- then `add.l` DOES carry. Also `$281744`/`$281764`/`$2816F6` all funnel to
+   `$2817C2`, which saves only D7/A0-A1 but **never writes D1..D4**, so chained shots legitimately
+   inherit registers (W336). Read the callee before assuming either way.
+
+### STILL OPEN FROM THE OWNER'S PLAYTESTS
+
+D24/D31 hyper laser impact sprites (**start at `src/hyper.js`, not the beam** -- W324 did not fix it),
+D25 transition cutting early, D32 stage-2 invisible-but-hittable enemy plus stars/medals only from
+midbosses, D21 HUD element near the hyper counter (needs a marked screenshot), D12 repo docs behind
+the code. The transition screen's phases 0 and 2 and the arm `$25DC2C..$25DD80` are unwritten.
+D28a/D28b are mods, deferred by the owner until the game is done.
+
 
 ## Objective
 
