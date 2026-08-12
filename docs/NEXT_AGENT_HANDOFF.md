@@ -1704,3 +1704,48 @@ Each table's end is the next one's start, so `$271F20 + $13A` covers all four as
 arithmetic checks itself. Declare it that way or as four; either is defensible, but state which.
 
 Still to read for `$4B`: `$271E54` onward -- the remaining shots and the draw.
+
+### `$4B` IS NOW READ END TO END, `$271E42..$271EA6` (W337 recon). FOUR SHOTS, ASYMMETRIC.
+
+    271e42  move.l #$10003,D0    / jsr $281744      shot 1, at the sweep word itself
+    271e4e  move.l #$FFFD0004,D0 / addq.w #2,D1 / jsr $2816F6     shot 2, base+2
+    271e5c  subq.w #4,D1         / jsr $2816F6                    shot 3, base-2  (D0 UNCHANGED)
+    271e64  addq.w #3,D1 / move.l #$FFF90005,D0 / jsr $2816F6      shot 4, base+1
+    271e72  addq.b #1,($25,A5) / andi.b #$1,($25,A5)               a 0/1 TOGGLE
+    271e7c  subq.b #1,($22,A5)                                     decremented, NOT branched on
+    271e80  lea ($271EA8,PC),A0 / adda.w ($1C,A5),A0 / move.l (A0),D2      RAW index, 30 LONGS
+    271e8c  move.l ($2,A6),D1 / addi.l #-$1DFF1600,D1              = $E200EA00
+    271e96  move.w #$1EB0,D3 / moveq #$0,D4 / move.w ($1C,A6),D4
+    271ea0  jsr $23DECE
+    271ea6  rts
+
+**FOUR SHOTS, NOT A LOOP AND NOT SYMMETRIC.** D1 walks base, base+2, base-2, base+1 by three separate
+`addq`/`subq`s, and D0 changes for shots 1, 2 and 4 while shot 3 REUSES shot 2's. `$49` has three shots
+this way and `$4A` has a seven-pass `dbra` loop -- so all three types spell "fire several bullets"
+differently. Shot 3 inheriting D0 is another instance of the register-reuse W336 licensed; without that
+measurement it would look like an omission.
+
+`$271E7C subq.b #1,($22,A5)` sets flags that nothing reads -- the next instruction is a `lea`. It is a
+plain decrement, not a gate. Do not invent a branch for it.
+
+**THE WHOLE BAND'S TABLE BLOCK IS ONE CONTIGUOUS RUN, AND EVERY BOUNDARY CHECKS THE PREVIOUS ONE:**
+
+    $271EA8 + $78    $4B's 30 draw LONGS, index RAW               ends $271F20
+    $271F20 + $4A    $4B's death list, SIX entries then $FFFF     ends $271F6A
+    $271F6A + $78    $4B's 30 muzzle LONGS, index RAW             ends $271FE2
+    $271FE2 + $3C    $4B's 30 sweep WORDS, ($17,A5) CLEAR         ends $27201E
+    $27201E + $3C    $4B's 30 sweep WORDS, ($17,A5) SET           ends $27205A
+
+So `$271EA8 + $1B2` is one window covering all five, with the arithmetic self-checking end to end.
+Prefer that single declaration and say in the comment that the five spans abut, since five separate
+windows would hide the property that pins them.
+
+**`$4B` NOW HAS NO UNREAD SPAN AND NO UNPORTED PREREQUISITE.** Callees: `$2637A2`, `$26377A`, `$263808`,
+`$286096`, `$28615E`, `$270D92` (W333), `$281744`/`$2816F6` (W336), `$23DECE` -- all ported. It needs no
+`$24179E` and no `$2714AE`. Windows: `$271D18 + $34` (record + sub prototype, overlapping the handler by
+FOUR bytes) and `$271EA8 + $1B2` (all five tables).
+
+**WRITE IT.** The three-way divergence table for the band is in `docs/worklog/ddpdoj/337-type4a.md`;
+`$4B` differs from `$49` in the `($17,A5)` polarity, the limit (`$400`), the score (`$290`), the flag
+offset (`($26,A5)`) and the flag words (`$8130E2`/`$8130E6`), and from `$4A` in essentially everything
+except the shared instruction sequences.
