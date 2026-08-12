@@ -2089,3 +2089,36 @@ failed to be worth running. **Run it on EVERY callee before reading its body.**
 
 So `$47`'s remaining work is pure reading: `$26D738` (one instruction), `$26D810` onward (the alive path) and
 `$26DAC8` (the draw). Window `$26D740 + $A0`; still check `$224F38` against W91's palette family window.
+
+### `$47`'s DAMAGE ARM IS THE BOSS `$7FFF` DAMAGE-SINK, WHICH THE PORT ALREADY HAS (W339)
+
+    26d810  moveq #$5C,D1 / and.b (A6),D1 / beq $26D892       (4 bytes not yet displayed -- confirm)
+    26d818  move.b #$A3,D0 / and.b D0,(A6)
+    26d81e  move.w D1,($6E,A6)                    the hit mask is SAVED, unlike any band member
+    26d822  jsr $286096                           scoreHit
+    26d828  D0 = ($1D,A6) ; eori.b #$F,D0 ; store  <-- a LITERAL $F, not ($19,A5)
+    26d834  move.l #$7FFF,D0 / sub.w ($18,A6),D0   the damage TAKEN this frame
+    26d83e  sub.l D0,($32,A5)                     ... subtracted from a LONG accumulator
+    26d842  move.w #$7FFF,($18,A6)                ... and the sink is RE-ARMED
+    26d848  tst.l ($32,A5) / bpl $26D898          alive while the LONG is non-negative
+    26d850  move.l #$600,D0 / jsr $28615E         scoreKill $600
+    26d85c  move.w #$20,D0 ...
+
+**`($18,A6)` IS NOT `$47`'s HP.** It is a per-frame damage SINK: the bullet code decrements it, and each
+frame `$47` computes `$7FFF - ($18,A6)` as the damage taken, subtracts that from the real HP -- a **LONG** at
+`($32,A5)` -- and re-arms the sink to `$7FFF`. Reading `($18,A6)` as the HP, as every band member's
+`tst.w ($18,A6)` does, would make `$47` effectively immortal.
+
+**AND THE PORT ALREADY HAS THIS PATTERN, IN FOUR PLACES** -- `boss3.js:110`, `boss4.js:224`,
+`handlers.js:6221` (all `u16(0x7fff - ...)`) and `midboss.js:727` (the re-arm). So do not invent it: read one
+of those and match it. **Sixth family check to pay off this session**, and this one also settles what `$47`
+is: the `$7FFF` sink plus a long HP accumulator is a BOSS/large-structure idiom, which together with
+`pushExternalSpeed` on retirement and the per-frame palette repaint makes `$47` a scroll-stopping set-piece
+beyond reasonable doubt.
+
+Two more per-type details: the palette XOR uses the **literal `$F`** rather than `($19,A5)`, and the hit mask
+is saved to `($6E,A6)` -- neither appears anywhere in the band.
+
+Still to read for `$47`: `$26D810` (4 bytes, confirm the mask), `$26D738` (1 instruction), `$26D85C..$26DAC8`
+(the death tail and alive path) and `$26DAC8` (the draw). Window `$26D740 + $A0`; check `$224F38` against
+W91's palette family window.
