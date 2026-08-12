@@ -1142,3 +1142,36 @@ case stop looking in `shots.js` entirely and find what the ROM spawns on a hyper
 **Do not change anything until that span is displayed.** Three leads in this item have now been proposed and
 retracted or ruled out by me -- the `$81308C` gate, the unwindowed table, and the unseeded field -- and each
 retraction came from acting on a reading that stopped one span short. The span is twenty bytes.
+
+### D24/D31 RESOLVED AS A MISDIRECTION (W342): `shots.js` IS CORRECT. THE REPORT IS ABOUT THE **LASER** HYPER.
+
+The decisive span, displayed:
+
+    2541b8  6000 ff86     bra $254140        <-- straight back to the later-hit decrement
+
+**There is no `($24,A6)` write anywhere on the ROM's first-hit path.** So the port matches the ROM exactly,
+the shot's own impact animation really is one frame at most by design, and **`hyperShotHit` has no defect.**
+
+Worse for my four leads: in ONE-PLAYER play the ROM's hyper-bullet hit does only this -- advance the position,
+quarter the velocity, post `$28C714`, load four draw fields, decrement the anim index. **It spawns no impact
+effect at all**, because the `$81308C`-gated spawn is two-player-only. That is the board's behaviour.
+
+**AND THAT IS WHY THE CHASE WAS WRONG FROM THE START.** The owner's report says, verbatim:
+
+> "Hyper when it hits just cuts off, it's missing all the hit sprites. Might be similar to laser.
+> **Err, I mean the laser hyper, not the nomal hyper bullets**, though those feel a bit off."
+
+They corrected themselves in the original message and I spent four leads in `shots.js`, which is the hyper
+BULLET path. **The reported defect is the LASER hyper**, a different subsystem: `src/laser.js`, `$25485E`, and
+`spawnBeamBody289F96` (W324's territory -- which is also why W324 "did not fix it": W324 worked on the beam
+BODY, not its impact).
+
+**WHERE TO ACTUALLY LOOK:** `laser.js`'s hit path and whatever the ROM spawns when the laser beam damages an
+enemy. `$254848`-ish is the laser region (`$25484C` and `$2548A2` both test `$81308C` -- and note `$2548A2`
+onward uses **`bne`**, the OPPOSITE polarity, so those sites fire in ONE-player play where the bullet sites do
+not). **Start with the `bne`-gated sites at `$2548A2`, `$254964`, `$254A3E`, `$254B46`, `$254F16`, `$254FC4`**
+-- six sites that are active in single player and are in the laser range.
+
+**THE LESSON, AND IT IS NOT ABOUT THE ROM.** Four leads, three retractions, and the answer was in the owner's
+original sentence. **Re-read the report before the code.** The self-correction "I mean the laser hyper" was
+sitting in the docket entry for this item the whole time.
