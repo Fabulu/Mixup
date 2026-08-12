@@ -4768,10 +4768,33 @@ arm's shape is `death49`'s, and the running total is **SIX callees, every one al
 `$241D34`, `$8130D4`, `$24226E`, `$2816F6`, `$23DF86`, `$28615E` -- plus the `$263762` exit and the
 `$270D92` walker.
 
-**STILL UNREAD: `$2724A0..$2724E0`, about `$40` bytes** -- whatever sits between the not-dead branch
-target and the cascade, almost certainly the bounds and freeze handling. Narrowed from `$84`, and it is
-the last gap in the handler. **`$55` is not writable until it is read**, and given how many times I have
-called this type finished, that statement should be checked against the bytes rather than believed.
+### W351: `$2724A0` read -- TWO different pause globals, and the sinusoid is BACKED OUT each frame
+
+    2724a0  tst.w $8130D2 / bne $272722    a DIFFERENT global from FREEZE -- straight to the tail
+    2724aa  move.w ($2,A6),D1
+    2724ae  sub.w ($2a,A5),D1              <- SUBTRACTS last frame's cached sinusoid offset
+    2724b2  move.w D1,($2,A6)
+    2724b6  jsr $24179E                    scrollCompensate, already ported ($4B uses it at $271DE4)
+    2724bc  move.w ($2,A6),D0 / addi.w #$1400,D0
+
+**TWO pause globals, at different granularities.** `$8130D2` here skips the ENTIRE alive path and jumps
+to the tail, so the record draws but does not move or act. `$8130D4` (FREEZE) in the mode-3 arm skips
+only the volley. **They are not interchangeable and a port that folds them into one `frozen` check
+changes behaviour under one of the two.** `$8130D2` has 87 mentions and 42 in code, and lives in
+`FROZEN_GLOBALS` -- so both are already modelled, just as distinct things.
+
+**THE CRITICAL PORTING FACT: `sub.w ($2a,A5),D1` backs the sinusoid offset OUT before it is re-applied.**
+That is why `$272556 move.w D2,($2a,A5)` caches it. The pattern is remove-then-reapply each frame, not
+accumulate. **A port that only adds makes the enemy drift off screen at a rate of one offset per frame**
+-- visible immediately, but trivially easy to write wrong since the add is `$40` bytes away from the
+subtract and in a different arm.
+
+That makes `$24179E` the **seventh** callee, and the seventh already ported.
+
+**STILL UNREAD: `$2724C4..$2724E0`, about `$1C` bytes** -- narrowed from `$84` then `$40`. It follows
+`addi.w #$1400,D0`, so it is near-certainly the off-screen bounds test that `$4B` does at `$271DA6` with
+its own bias and limit. **Read it before writing**, and note that this is the fifth time I have described
+a remaining gap in `$55` as the last one.
 
 What IS settled: all FIVE callees already ported (`shotVector` `$241D34`, FREEZE `$8130D4`, `aim256`
 `$24226E`, the emit `$2816F6`, the enqueue `$23DF86`); both tables already windowed (`$272750+$100`
