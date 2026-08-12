@@ -1242,3 +1242,38 @@ identify what `($18,$8130FA)`/`($18,$81311E)` hold, and port the count. `tallysc
 **A CAUTION EARNED FOUR TIMES ON THIS ITEM:** do NOT simply force `$81308C` non-zero to make the effect appear.
 Its `- 1` means one entry gives 0 and two give 1, so a wrong value changes ELEVEN other `$80390C`-paired sites
 and roughly half of the 53 `$81308C` readers. **Port the computation, not the symptom.**
+
+### D24/D31 (W343): `$81308C` IS "PLAYERS IN PLAY MINUS ONE", AND STATIC READING NOW SAYS THE EFFECT IS 2P-ONLY. **THIS NEEDS A TRACE.**
+
+The two `bsr` targets around the counter identify it beyond doubt:
+
+    25fd82  move.w #$1,$8130D2 / rts      SET the global freeze
+    25fd8c  clr.w  $8130D2 / rts          CLEAR it
+    25fd94  ... the count ...
+    25fdd2  bsr $25FD8C                   clear the freeze
+    25fdd4  cmpi.w #-$1,$81308E / bne     if the count-1 is -1, i.e. ZERO populated ...
+    25fde0  bsr $25FD82                   ... FREEZE THE GAME
+
+**So the routine freezes the game when neither structure is populated** -- that is the game-over/no-players
+condition, which makes `$8130FA`/`$81311E` the two PLAYERS' in-play records (in the `$8130xx` game-state block,
+not the `$8103E6`/`$810448` object records I checked first). `$81308C` is therefore **players in play, minus
+one**: none = `$FFFF` (freeze), one = **0**, two = 1.
+
+**WHICH MEANS STATIC READING SAYS THE LASER BEAM IMPACT IS TWO-PLAYER-ONLY**, on the cartridge as well as in
+the port: `$255056 beq` skips `jsr $289FC0` whenever `$81308C` is 0, and in one-player play it IS 0.
+
+**THAT CONTRADICTS THE OWNER'S REPORT, AND I AM NOT GOING TO RESOLVE IT BY READING.** Either
+(a) `$81308C` is non-zero during 1P play for a reason the three writers do not show -- something else populates
+the second structure, or the counter runs in a state I have not traced; or
+(b) the effect genuinely is 2P-only and what the owner remembers is a different effect, or 2P footage.
+
+**THE MEASUREMENT, AND IT IS CHEAP:** trace `$81308C` during one-player stage-1 play with the laser held.
+`tools/oracle/` already exists and the value is one word. **One trace decides between a one-line port and a
+closed docket item**, and after four wrong readings on this item by me, a trace is worth more than a fifth.
+
+**WHAT IS ESTABLISHED AND SHOULD NOT BE RE-DERIVED:** the six laser draw gates are byte-identical and are not
+the impact; `laser.js:1029` and the ROM agree exactly; `$81308C` is `players - 1`; its only three writers are
+`$25FDA0`/`$25FDAE`/`$25FDBC` with the `subq` at `$25FDC2`; `$8130FA`/`$81311E` are the in-play records and
+`$8130D2` (the freeze the whole port reads) is set from the same routine. **The port never writes `$81308C`,
+and that is a real gap regardless of how the trace comes out** -- eleven `$80390C`-paired sites and about half
+of the 53 readers depend on it, so porting `$25FD94` is worth doing on its own merits.
