@@ -2770,3 +2770,33 @@ enough that later types need nothing. **Do not declare a palette window for eith
 sub prototype, overlapping the handler at `$26DE32` by FOUR bytes, as `($4,A5) = 0` predicts.
 
 Still to read for `$43`: the rest of the init past `$26DDEA`, and the handler from `$26DE32`.
+
+### `$43`'s INIT BODY IS READ IN FULL (W340) -- THREE palette banks, and it is `$9F`'s shape
+
+    26ddac  loadSubProto($26DE16)
+    26ddb8  move.w #$4,D0 / loadRecordProto($26DE0C)      FIVE words
+    26ddc8  move.l #$30001C00,($2,A6)                     a FIXED position, no readInitPosition
+    26ddd0  move.w $813172,D0 / sub.w D0,($4,A6)          scroll-compensated once, at spawn
+    26ddda  move.w #$12,D0 / lea $223578,A0 / jsr $24150A     bank $12
+    26ddea  move.w #$13,D0 / lea $2235B8,A0 / jsr $24150A     bank $13
+    26ddfa  move.w #$14,D0 / lea $2236B8,A0 / jsr $24150A     bank $14
+    26de0a  rts
+
+**THREE CONSECUTIVE BANKS, AND THE PORT ALREADY HAS THIS EXACT SHAPE.** `$27C5BE` (type `$9F`, stage 4)
+installs three banks the same way -- `installBank` called three times with consecutive bank numbers -- and
+`initbody.js` carries it. So `$43`'s init body is `$9F`'s body with different constants, which makes it a
+short write. **Tenth family check to pay off this session.**
+
+**ALL THREE SOURCES ARE INSIDE W91's `$222A78..$2252F8` WINDOW** (checked arithmetically), so **no palette
+window is to be declared for `$43`**. Their spacing is `$40` then `$100`, i.e. NOT uniform -- do not derive
+the second and third addresses from the first by a stride.
+
+`$43` is a screen-anchored, fixed-position, three-bank object with no `readInitPosition` and a four-byte
+prototype overlap. Its init needs: `loadSubProto`, `loadRecordProto`, `installBank` x3, one packed-longword
+literal and one `G.scroll` subtraction -- **every one of which the port already has.**
+
+Window: `$26DE0C + $2A` (`$26DE0C..$26DE35`), five-word record prototype plus the one sub prototype,
+overlapping the handler at `$26DE32` by four bytes.
+
+Still to read for `$43`: the handler `$26DE32` onward. **The init body could be written now** -- it changes
+no registration and `$43` is already counted as missing a handler, so it cannot half-register anything.
