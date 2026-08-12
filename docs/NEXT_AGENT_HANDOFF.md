@@ -2345,3 +2345,33 @@ position path gets the packed longword. Two different readings of the same `($2,
 
 Still to read for `$47`: `$26DA5E..$26DAC8` (the remaining muzzles and state 2's tail), `$26DAC8` (the draw)
 and `$26DCB6`.
+
+### `$47`'s SECOND STATE MACHINE MIXES A5 AND A6 AT THE SAME OFFSET (W339)
+
+    26da6a  addi.l #$13C00400,D2               muzzle 5: +$13C0/+$400, positive Y, NO borrow -- rule holds
+    26da74  0c2d 0001 002e   cmpi.b #$1,($2E,A5)      <-- tests A5
+    26da7a  bne $26DA90
+    26da7e  536e 002e        subq.w #1,($2E,A6)       <-- decrements A6
+    26da82  bne $26DA90
+    26da86  bsr $26DB14                              another private subroutine
+    26da8a  move.b #$2,($2E,A5)                       advances A5
+    26da90  cmpi.b #$2,($2E,A5) / bne $26DAAC         state 2's arm
+
+**THE OFFSET IS `$2E` IN ALL FOUR INSTRUCTIONS AND THE BASE REGISTER IS NOT.** `$26DA74` and `$26DA8A` use
+**A5** (the record); `$26DA7E` uses **A6** (the sub-record). Checked in the encoding rather than trusted from
+the disassembler: `536E` is `subq.w #1,(d16,A6)` -- `536D` would be A5. So the state number lives at
+`($2E,A5)` and its countdown lives at `($2E,A6)`, two different fields that share an offset.
+
+This reads exactly like a transcription slip and is not one. **A port that "corrected" it to a single field
+would fuse a state variable with its timer**, and the symptom would be a set-piece that changes phase on the
+wrong frame -- no crash, nothing for the suite to catch. Copy the register letters from the encoding, and when
+`$47` is written, put a comment on that line saying why the two differ, or the next reader will try to fix it.
+
+Note also this is a SECOND state machine: `($17,A5)` drives states 0/1/2 (`$26D8E0` onward) and `($2E,A5)`
+drives an independent one nested inside state 2. `($2E,A5)` is also the offset `bossf23.js`/`bossphase.js`
+read as a per-part dead flag on OTHER types -- another offset whose meaning does not travel.
+
+Muzzle 5's long `$13C00400` is the fifth data point for the borrow rule and it agrees: positive Y, no borrow,
+naive combination correct.
+
+Still to read for `$47`: `$26DAAC..$26DAC8`, `$26DAC8` (the draw), `$26DB14` and `$26DCB6`.
