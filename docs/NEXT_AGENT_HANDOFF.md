@@ -2974,3 +2974,38 @@ progression -- worth a `codexref` sweep over all six before writing `$4C`.
 
 `$4C` is in the fixed-position family with `$43` and `$01` (W325). Still to read: the init past `$26F520` and
 the handler from `$26F5F2`.
+
+### THE `$8130DC..$8130E6` BLOCK IS A MUTUAL-EXCLUSION GATE (W341) -- the sweep answered
+
+Absolute-reference counts across `$200000..$2B0000`, and the pattern in the addresses is the finding:
+
+    $8130DC  18 refs   264DA8 264DE0 264E7C 26730C 269C6C 26D724 26D7F6 26D878 26D8C0 ...
+    $8130DE   7 refs   269C7E 26F51C 26F608 26F6B2 2706A4 270C86 274738
+    $8130E0  14 refs   269C90 26A56A 26ACA2 26AFDE 26C2BA 26C524 26CA68 26D4B6 26F524 ...
+    $8130E2  10 refs   269CA2 26A57C 26ACB4 26AFF0 271CEC 271CF2 27790C 29ED6A 29FE2C
+    $8130E4   7 refs   26A58E 26ACD2 271608 27792A 29ED52 2A3FF8 2A4032
+    $8130E6   8 refs   26A5A0 26AC6C 26ACE4 271D04 27793C 29ED58 29FB6A 29FC7E
+
+**FOUR ROUTINES TOUCH ALL SIX IN SEQUENCE AT UNIFORM STRIDES** -- `$269C6C/7E/90/A2`, `$26A56A/7C/8E/A0`,
+`$26ACA2/B4/D2/E4` and `$26AFDE/F0`. So the block IS treated as a unit, and reading the first one settles
+what for:
+
+    269c6a  tst.w $8130DC / beq $269C7C      flag clear -> test the next
+    269c74  jmp $263762                      flag SET -> the POLLING RECORD FREES ITSELF
+    269c7c  tst.w $8130DE / beq $269C8E      ... and so on down the block
+
+**IT IS A MUTUAL-EXCLUSION GATE.** A record running that code refuses to exist while ANY stage-5 set-piece is
+alive: it walks the six flags and `freeEnemy`s itself on the first one set. So `$47`'s `$8130DC` and `$4C`'s
+`$8130DE` are not bookkeeping -- **they suppress other enemies for as long as the set-piece is on screen**,
+which is exactly what a scroll-stopping set-piece needs and is a visible gameplay behaviour.
+
+That also explains why `$47` clears its flag on **all three** exits (death, off-screen, retirement) and why
+`$4B` writes `$8130E2` unconditionally BEFORE choosing its pointer: leaving a flag set would permanently
+suppress whatever polls it, and the ROM is careful about it in a way that reads as over-engineering until you
+know there is a reader.
+
+**CONSEQUENCE FOR THE PORT:** the flags must be written and cleared exactly, and any type whose handler polls
+this block needs the poll ported or it will spawn on top of a set-piece. Four polling sites are named above;
+`$269C6C`'s owner should be identified first, since it is the one confirmed to self-free.
+
+Still to read for `$4C`: the init past `$26F520` and the handler from `$26F5F2`.
