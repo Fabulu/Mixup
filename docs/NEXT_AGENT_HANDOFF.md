@@ -2883,3 +2883,38 @@ Draw table: `$26DF00 + $40` (sixteen longwords, index `($1A,A5)` RAW, ramp `0..$
 (`playerMove`), `$263678` (`enqueueDeferred`), `$263762`, `$23DECE`-family draw -- all present.
 
 Still to read for `$43`: `$26DED8` onward (the draw body). Everything else is read.
+
+### `$43` IS READ END TO END (W340). ITS DRAW APPLIES TWO LONG BIASES, AND THOSE *DO* COMBINE.
+
+    26ded2  lea ($26DF00,PC),A0 / adda.w ($1A,A5),A0 / move.l (A0),D2    index RAW, 16 longs
+    26dede  move.l ($2,A6),D1
+    26dee2  subi.l #$4000000,D1          = + $FC000000
+    26dee8  addi.l #-$19FF1A00,D1        = + $E600E600
+    26deee  move.w #$1AD0,D3
+    26def2  moveq #$0,D4 / move.b ($1D,A6),D4     the PALETTE byte, as $47 and unlike the band
+    26def8  jmp $23DECE                  a TAIL JUMP, not a jsr
+
+**TWO SEQUENTIAL LONG BIASES, AND UNLIKE THE PACKED-WORD CASE THEY COMBINE EXACTLY.** `$FC000000` then
+`$E600E600` is `$E200E600` applied once -- verified identical on three sample positions including a
+low-half-carry case. That is the precise contrast with `$47`'s muzzle constants: **two full 32-bit adds are
+associative and may be folded; a word pair is NOT a longword and may not be assembled.** Both facts live in
+`addi.l` instructions and look alike, and the distinguishing question is whether the ROM performed word
+arithmetic on the halves.
+
+Even so, transcribe both instructions. Folding costs a reader the ability to match the port line-for-line
+against the listing, and the fold's safety is a property of these two constants rather than of the idiom.
+
+`$26DEF8` is a **`jmp`, not a `jsr`** -- a tail jump into the emit stub, so `$43`'s handler has no code after
+its draw. The port's `enqueueRegistersThroughStub` models the call either way, but a reader looking for an
+`rts` will not find one.
+
+D4 comes from `($1D,A6)`, the palette byte, as in `$47` -- so both non-band stage-5 types do this and all four
+band members use `($1C,A6)`. **Two of two vs four of four: the band is the outlier, not these.**
+
+**`$43` IS NOW COMPLETE AND HAS NO UNPORTED CALLEE.** `$2637A2`, `$26377A`, `$24150A` (x3), `$24179E`,
+`$2417DE` (`playerMove`), `$263678` (`enqueueDeferred`, `DEFQ_D1.FIXED80`), `$263762` (`freeEnemy`),
+`$23DECE`. Windows: `$26DE0C + $2A` (prototypes, four-byte handler overlap) and `$26DF00 + $40` (sixteen
+draw longwords). No palette window -- all three banks are inside W91's.
+
+**Order for the next wave:** write `$43` (init body + handler + draw, one pass), then `$4C` (`$26F4DA` init,
+`$26F5F2` handler), then `$B0`. `$46` wants `$55` first; `$1A` is trace-blocked at `$268D8C`.
