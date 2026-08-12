@@ -4474,10 +4474,46 @@ Volley setup at `$272610`, not yet fully read:
     27262c  subi.w #$34,D1            back the angle off by $34
     272630  move.w #$4,D7             **VERIFY THIS IS A dbra** before trusting five passes
 
-If `#$4` is consumed by a `dbra` it is FIVE shots, and `$34` of backoff with five shots implies a `$1A` step
-(`4 * $1A = $68 = 2 * $34`), i.e. a symmetric fan centred on the aim. **That step is inferred, not read -- find
-the actual increment.** Note `($2E,A5)` does double duty: it picks fan-vs-single here and is half the re-aim
-agreement test at `$2725E2`.
+**READ, and both of my guesses about it were wrong.** The step is `4`, not the `$1A` I inferred, and the shape is
+**three unrolled emits inside a five-pass `dbra`** -- fifteen shots, not five:
+
+    272630  move.w #$4,D7            D7 = 4 -> FIVE passes
+    27263a  loop top
+              ... compute D3 ...  272648  jsr $2816F6      shot 1 at angle A
+            27264e  addq.b #$4,D1
+              ... compute D3 ...  27265e  jsr $2816F6      shot 2 at A+4
+            272664  addq.b #$4,D1
+              ... compute D3 ...  272674  jsr $2816F6      shot 3 at A+8
+            27267a  addi.b #$10,D1   NOT #$4 -- the inter-cluster gap
+            27267e  dbra D7,$27263a
+    272682  bra $27270e
+
+So each pass fires a tight triple `4` apart, then skips `$10` to the next cluster: pass k starts at
+`-$34 + k*$18`. The fifteen angles run `-$34,-$30,-$2C | -$1C,-$18,-$14 | -$04,$00,+$04 | +$14,+$18,+$1C |
++$2C,+$30,+$34` -- **exactly symmetric about the aim**, which is what makes `$34` the right backoff. Five
+clusters of three, the classic clustered fan.
+
+**AND `($2E,A5)` DOES NOT PICK FAN-VERSUS-SINGLE.** `$272686` is a second, smaller fan, not a single shot:
+
+    272686  move.l #$FFFF0004,D0     low word 4, against the other arm's 5
+    27268c  subi.w #$22,D1           smaller backoff
+    272690  move.w #$3,D7            FOUR passes
+
+So `($2E,A5)` selects between a **five-cluster** and a **four-cluster** volley, and the `move.l #$FFFF000N,D0`
+low word tracks it (5 and 4). `($2E,A5)` still does double duty -- it also forms half the re-aim agreement test
+at `$2725E2`.
+
+Per-shot vector maths, identical in all three unrolled copies:
+
+    move.w D1,D3 / addq.w #2,D3 / andi.w #$fc,D3     round the angle to the table's 4-byte stride
+    move.l (A0,D3.w),D3                              A0 is a 256-byte table of 64 longs
+    add.l D5,D3                                      D5 = $02000000, a fixed speed bias
+
+**`$2816F6` IS ALREADY PORTED** -- 50 mentions, 44 in code, and `boss2attacks.js:231` shows it paired with a
+sibling `$281708` chosen by shot index. That is the FOURTH helper this type needed and already had.
+
+Still to find before writing: **where A0 is loaded** (a 256-byte long table, needs a window), and the seeds for
+`($1E,A5)`, `($17,A5)`, `($2E,A5)`, `($2F,A5)` at spawn.
 
 **AND A TOOLING TRAP THAT COST FOUR WRONG READS: `rip/sound/maincpu.bin` IS ADDRESSED BY RAW FILE OFFSET.**
 The address IS the offset -- do NOT subtract `$200000`. "Offset-addressed" in the older notes meant exactly
