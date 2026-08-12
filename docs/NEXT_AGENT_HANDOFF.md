@@ -3578,3 +3578,41 @@ Two more private subroutines appear: `$26F994` and `$26FA5E`, both called once f
 `$26FF9E` is the target-mover, called every frame.
 
 Still unread: `$26F982`'s tail, `$26F994`, `$26FA5E`, `$26FF9E`, and the six handlers from `$26FBD4`.
+
+### `$26FF9E` IS A DISTANCE-BANDED APPROACH, AND ONLY `$242494` IS NEW (W341)
+
+`$26FF9E`, called every frame by `$4C`'s state 1 and by six other sites:
+
+    26ffa4  sub.w D0,D3                    the delta to the target
+    26ffa6  jsr $242494                    -> D0 = a DISTANCE
+    26ffac  cmpi.w #$200,D0 / bge $26FFCC  far: keep the current speed
+    26ffb2  move.b #$8,($1A,A6)            under $200: speed 8
+    26ffb8  cmpi.w #$100,D0 / bge $26FFCC
+    26ffbe  move.b #$6,($1A,A6)            under $100: speed 6   <-- the writes CASCADE
+    26ffc4  cmpi.w #$40,D0 / blt $26FFE2   under $40: ARRIVED (and $26FFE2 sets the carry state 1 reads)
+    26ffcc  jsr $242038                    otherwise aim and move
+
+**THE SPEED WRITES CASCADE RATHER THAN SWITCHING.** For `$40 <= D0 < $100` BOTH `move.b`s execute and the
+field ends at 6, because `$26FFB0`'s `bge` only skips when D0 is `$200` or more. So the bands are: `>= $200`
+unchanged, `$100..$1FF` speed 8, `$40..$FF` speed 6, `< $40` arrived. **Written as a switch, the `$40..$FF`
+band would get speed 8** -- the same fall-through-not-switch shape the eight state handlers use.
+
+So `$4C` decelerates as it approaches each of state 1's two oscillation points, and `($1A,A6)` is written here
+too -- a FOURTH writer of that field after state 0's seed, state 0's decrement and state 1's re-seed.
+
+**BOTH OF ITS CALLEES RESOLVE, AND ONLY ONE IS NEW:**
+
+    $242038   THREE callers. Its preamble is `4CAE 0003 0002` = `movem.w ($2,A6),D0-D1` -- and it FALLS
+              STRAIGHT INTO `$24203E`, which `aim.js:62` already carries as `core64` ("self=D0/D1
+              target=D2/D3 -> D1", 48 callers). **So `$242038` is the A6-convenience entry to a ported
+              routine**, exactly analogous to `applyVelocityA6` vs `applyVelocity`. Two instructions, not a
+              prerequisite.
+    $242494   TWENTY-ONE callers, UNPORTED, returns a distance in D0. **This is the one real gap here**, and
+              at twenty-one callers it is core geometry infrastructure like `$246800` was -- port it on its
+              own and expect it to unblock widely.
+
+That is the sixth time this session a suspected prerequisite turned out to be a thin entry onto ported code,
+against three that were real (`$246520`, `$246800`, and now `$242494`). The distinguishing signal remains
+caller count PLUS a substantial body: `$242038` is two instructions.
+
+Still unread for `$4C`: `$26F994`, `$26FA5E`, `$26FFE2`'s carry tail, and the six handlers from `$26FBD4`.
