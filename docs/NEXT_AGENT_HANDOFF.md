@@ -4183,3 +4183,38 @@ On `$260A88` it reports 13 mentions, 8 in CODE, and shows `tallyscreen.js:360` a
 **The rule was already written down** (`grep 0x2xxxxx is NOT a test for "is this ported"`). Four violations
 after writing it is a compliance problem, not a knowledge problem, which is why this is a tool and not another
 paragraph. **Run it on every callee before reading the body, and on every routine before writing one.**
+
+### REACHABILITY IS A WAVE CHECK NOW (W344). THREE EXPORTS ARE CORRECTLY AHEAD; ONE WAS A DEFECT.
+
+`tallyPhase0Arm25DC2C` shipped with **no caller in `src/`** -- written, tested eight ways, committed, inert.
+Suite green, sweep clean, coverage OK, tree clean, pushed: **not one of the five checks can see an uncalled
+function.** So a new export now needs a caller check, and here is that audit for everything W335-W344 added:
+
+    freeChain246800          called by buildParts246520              OK
+    playerFlags25FD94        called by tallyBonusDispatch25FF7A      OK
+    clearSlotTable23C668     called by tallyPhase0Arm25DC2C          OK
+    pickFreeYRow25DA94       called by tallyPhase0Arm25DC2C          OK
+    loadSavedCursor25DA60    called by tallyPhase0Arm25DC2C          OK
+    mapSavedCursor25D9E6     called by loadSavedCursor25DA60         OK
+    walkDeathSpawns270D92    called by four handlers                 OK
+    tallyPhase0Arm25DC2C     called by tallyScreen25DBB4             FIXED THIS WAVE (was dead)
+    buildParts246520         NO caller -- and its ROM caller $26F6D2 is UNPORTED     ahead, correctly
+    octDistance242494        NO caller -- and its ROM caller $26FFA6 is UNPORTED     ahead, correctly
+    tallyBonusDispatch25FF7A NO caller -- its ROM caller $26059E has 0 CODE mentions ahead, correctly
+
+**THE DISTINCTION IS THE WHOLE POINT.** "Dead because its ROM caller is not ported yet" is a correctly staged
+prerequisite -- that is what porting `$246800` before `$246520`, or `$242494` before `$26FF9E`, is FOR.
+"Dead because I forgot to wire it into code the port already has" is a defect, and it is the one that hid,
+because it looks identical from inside the file.
+
+**THE CHECK THAT SEPARATES THEM, and it is two commands:**
+
+    grep -rn <exportName> src/ | grep -v 'export function'      # any caller in the port?
+    python tools/claimed.py <its ROM caller's address>            # is that caller ported?
+
+If the export has no caller AND its ROM caller is unclaimed, it is staged. If the export has no caller but its
+ROM caller IS claimed, **that is the `tallyPhase0Arm25DC2C` bug** -- wire it.
+
+Both of this wave's process failures were invisible to the five-check definition of done: five duplicate ports
+(now guarded by `tools/claimed.py`) and one unreachable export (guarded by the two commands above). **Neither
+was a knowledge problem; both were checks I had not made mechanical.**
