@@ -2666,3 +2666,37 @@ overlapping the handler by SIXTEEN bytes) and one covering `$26DAF4 + $20` (the 
 `$26DCEC` (the `$26C74E` death list -- measure its length first). Twenty-one traps are documented in the
 sections above; the load-bearing ones are the `($18,A6)` damage sink, the `+$7E`/`+$7F` pair, the three
 countdown conventions, the packed-long borrow, the missing draw index, and the rank interleave.
+
+### `$1A`'s BLOCKER IS NOW ONE SPECIFIC READ, NOT AN OPEN QUESTION (W340)
+
+The standing note said `$1A` is "blocked until D2/D3 at `$268D8C` are measured". Narrowed:
+
+    268d72  jsr $263808                       readInitPosition
+    268d78  lea $272C7A,A0
+    268d7e  movem.w ($2,A6),D0-D1             SIGN-EXTENDING -- sets D0 and D1 ONLY
+    268d84  addi.w #$B00,D0
+    268d88  addi.w #$0,D1                     a REAL instruction that adds zero; do not drop it
+    268d8c  jsr $24203E
+    268d92  bcc $268D98
+
+**`aim.js:62` ALREADY DOCUMENTS THE CONVENTION**: `core64: 0x24203e,  // aim64 CORE  self=D0/D1
+target=D2/D3 -> D1`. So D2/D3 are the TARGET coordinates, and reading upward from `$268D8C` until they
+are dead: **nothing in `$1A`'s init writes them at all.** `$268D7E` sets D0/D1, `$268D78` sets A0, and
+before that is `jsr $263808`. So the target is whatever `readInitPosition` leaves in D2/D3.
+
+**THE BLOCKER IS THEREFORE: read `$263808` to its `rts` and record its exit state in D2/D3.** That is one
+routine and one register pair, not an open-ended provenance hunt. Two possibilities and they are
+distinguishable by reading it: either `$263808` deliberately leaves the player position there (in which
+case `$1A` aims at the player and the port passes it explicitly), or it leaves something incidental (in
+which case `$1A`'s init aims at garbage by construction and the `bcc` at `$268D92` is what saves it -- and
+the port must reproduce that, not "fix" it).
+
+`$268D88 addi.w #$0,D1` is worth its own line: **adding zero is a real instruction here**, not padding. It
+sets flags, and while `$268D8C`'s `jsr` overwrites them before the `bcc` reads any, dropping it changes
+nothing but keeping it costs nothing and preserves the one-to-one correspondence the port relies on. Note
+it rather than delete it -- the sibling case `$2716D8` (W335) WAS deletable and the distinction is that
+this one's operand is a live register.
+
+Also confirmed: `$272C7A` is the table A0 carries into the aim. Check it against W36's `$272D70 + $190`
+window before declaring anything -- it is 246 bytes BELOW that window's start, so it is probably NOT
+covered, unlike `$272DFA` which W326 found already inside it.
