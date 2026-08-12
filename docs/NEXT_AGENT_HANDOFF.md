@@ -1822,3 +1822,42 @@ off-screen limits: `$2000`, `$1C00`, `$400`, `$2C00`.
 
 Still to read for `$48`: the init body `$27128C`, and everything after `$2713CE` (the freeze tail, fire
 arm and draw). Death-list window: `$271558 + $3E` (FIVE 12-byte entries then `$FFFF`).
+
+### THE BAND IS TWO PAIRS, NOT FOUR SINGLETONS (W338, `$48`'s init body read in full)
+
+    271284  move.w #$1,($4,A5) / rts        TWO sub-records, as $4A
+    27128c  loadSubProto($271302)
+    271298  loadRecordProto($2712F0, 8)     D0+1 = NINE words, as $4A
+    2712a6  readInitPosition
+    2712ac  cmpi.w #$201,$8130CE / bne      a FOURTH frame ($49 $1F3, $4A $2B6, $4B $299, $48 $201)
+    2712b8  move.b #$40,($1C,A6) / move.b #$1,($17,A5)
+    2712c4  move.w #$1,$81B414 / move.w #$1,$81B416
+    2712d4  move.b ($18,A5),($1D,A6)
+    2712da  jsr $242EC2 / move.b D0,($20,A5)
+    2712e4  jsr $242EC2 / move.b D0,($21,A5)
+    2712ee  rts                             <-- NO formation flag, exactly as $4A
+
+**So the four types are TWO PAIRS on structure:**
+
+    { $48, $4A }   ($4,A5) = 1 -> TWO sub records -> EIGHT-byte handler overlap
+                   NINE-word record prototype
+                   ($20,A5)/($21,A5) RNG-SEEDED, no formation flag
+                   lifetime: MARK ($8000 + ($3F,A6)) and fall through, tested at instruction one
+
+    { $49, $4B }   ($4,A5) = 0 -> ONE sub record -> FOUR-byte handler overlap
+                   SEVEN- and TEN-word record prototypes
+                   ($20,A5) / ($26,A5) holds a POINTER to a formation flag word
+                   lifetime: score, walk, clear the flag, freeEnemy
+
+That is a real and useful structure -- it says where to look and which sibling's code to read alongside.
+**It does NOT license copying.** Within the `{$48,$4A}` pair the constants still all differ (limit `$2C00`
+vs `$1C00`, score `$130` vs `$180`, frame `$201` vs `$2B6`, death list five entries vs eight) and `$48`
+is MISSING `$4A`'s `($16,A5)` guard on the `$2800` trigger. The pairing tells you the shape; every field
+still has to be read.
+
+Window for `$48`'s prototypes: `$2712F0 + $52` (`$2712F0..$271341`, nine-word record prototype plus BOTH
+sub prototypes, overlapping the handler at `$27133A` by eight bytes -- do not trim).
+
+Still to read for `$48`: everything after `$2713CE` -- the freeze tail, fire arm and draw. Expect them to
+resemble `$4A`'s and verify every constant and every guard, including whether `($3F,A6)` is tested before
+the fire arm and the draw as it is in `$4A`.
