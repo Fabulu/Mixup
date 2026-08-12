@@ -3968,3 +3968,43 @@ Six state handlers (`$26FBD4` onward, the bulk of ~2300 bytes) plus the spans `$
 `$26FB3E`, `$26FBA2`, `$270128`. **No unported callee remains**: `$246800`, `$246520`, `$242494`,
 `applyVelocityA6`, `core64`, `enqueueDeferred` (both `FIXED00` and `FIXED80`), `installBank`, `scoreHit`,
 `scoreKill`, `pushExternalSpeed`, `scrollCompensate` and `$23DECE` are all in the port.
+
+### W344 START: THE TRANSITION SCREEN'S PHASE-0 ARM IS READ. `$23C668` NEEDS A VIDEO-SPACE MODEL FIRST.
+
+**`$25DC2C..$25DCA8` -- object [11] phase 0's arm, read in full:**
+
+    25dc2c  movea.l ($8,A5),A4                     the descriptor
+    25dc30  cmpi.b #$0,($C,A5) / bne $25DCC0       PHASE 0 ONLY
+    25dc3a  tst.w $813098 / beq $25DC50            rank
+    25dc44  cmpi.w #$4,$813092 / beq $25DCC0       ... and stage index 4 -> skip entirely
+    25dc50  tst.w $803926 / bne $25DCC0
+    25dc5a  movea.l ($4,A4),A0 / jsr (A0)          the descriptor's INPUT READ ($23D186, ported)
+    25dc60  btst #$F,D0 / beq $25DCC0              bit 15 -- START not pressed -> nothing
+    25dc68  jsr $28D53C / bcs $25DCC0              a gate, 6 callers, UNPORTED
+    25dc72  movea.l ($C,A4),A0 / jsr (A0) / bcs    a SECOND descriptor slot, UNPORTED
+    25dc7c  bsr $25DA60 / bsr $25DA94              the two cursor routines (1 caller each)
+    25dc84  move.b #$1,($C,A5)                     **PHASE 0 -> 1**
+    25dc8a  move.b ($7,A5),D0 / jsr $260A88        6 callers, UNPORTED
+    25dc94  move.w ($14,A4),D0 / lea $225978,A0 / jsr $24150A    installBank (PORTED)
+    25dca4  jsr $23C668                            the block clear
+
+**So phase 0 is "wait for START, then set up and advance to phase 1"**, and the `cmpi.w #$4,$813092` means it
+is skipped outright on stage 5 at non-zero rank -- worth knowing before wondering why it never runs there.
+
+**`$23C668` IS FOUR INSTRUCTIONS AND I COULD NOT PORT IT.** It is `lea $907000,A0 / move.w #$FF,D0 /
+move.l #$0,(A0)+ / dbra` -- 256 longwords, `$400` bytes, and `#$FF` + `dbra` is 256 not 255. **But `$907000`
+is not main RAM**: `new Ram().setU32(0x907000, ...)` throws `RangeError: $907000 is outside main RAM`.
+`background.js`'s video object addresses `$904000` through `setLong(dest)` with `(dest - $904000) >> 2`, and
+whether its array reaches `$907000` (`$3000` further on) is unmeasured.
+
+**I wrote the function against `ram`, its tests failed on that throw, and I removed both rather than leave code
+that cannot run.** The reading is kept here because it is correct and the routine has SIX callers -- it opens
+the phase-0 arm AND bonus lines 1 and 2 (`$25FFA8`, `$260056`), so the D24/D31 chain runs through it.
+
+**WHAT IT NEEDS FIRST:** measure whether the `$904000` video object covers `$907000`, and if not, what models
+that address. Then `clearBlock23C668(vram)` is a four-line port with six callers waiting for it.
+
+**REMAINING FOR PHASE 0:** `$28D53C` (6 callers), `$260A88` (6 callers), `$25DA60` and `$25DA94` (1 each,
+and `$25DA94` calls `$25DAEA` which the port HAS as `otherSideHolds25DAEA`), and the descriptor's `($C,A4)`
+slot. **Two of those five have six callers each, so they are shared infrastructure and worth their own waves**
+-- the signal that separated `$246520` from `$23C4A0` earlier this session.
