@@ -1978,6 +1978,40 @@ BODY.set(0x2719b6, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + 0x21, drawWord242EC2(ram, rom) & 0xff);   // $271A0E -- a SECOND draw, not a copy
 });
 
+// --- type $4B ($271C92 init, $271C9A body): the last of the $48/$49/$4A/$4B band.
+//
+// **`$8130E2` IS WRITTEN TWICE ON THE LATE BRANCH AND THAT IS NOT REDUNDANT.** `$271CE8` sets it to 1
+// unconditionally, and only then does the `$280` test possibly redirect A0 to `$8130E6`. So an early
+// `$4B` arms `$8130E2` alone (through both the direct write and the pointer) while a late one arms
+// `$8130E2` AND `$8130E6`. Folding the unconditional write into the branch would leave the late case
+// with `$8130E2` clear, which is the harmful direction.
+//
+// **THE FLAG POINTER LIVES AT `($26,A5)` HERE.** `$49` keeps its in `($20,A5)`; `$4A` has no flag and
+// uses `($20,A5)` for aim state. Three consecutive types, three meanings for that region.
+BODY.set(0x271c9a, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x271d2c);                // $271C9A..$271CA6 jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x271d18, 0x09);           // $271CA6..$271CB4 D0+1 = TEN words
+  readInitPosition(ram, rom, a5, unported);               // $271CB4 jsr $263808
+  if (ram.u16(0x8130ce) === 0x299) {                       // $271CBA -- a THIRD distinct frame
+    ram.setU8(a6 + 0x1c, 0x40);                            // $271CC6
+    ram.setU8(a5 + 0x17, 1);                               // $271CCC -- sole writer of ($17,A5)
+  }
+  ram.setU8(a6 + 0x1d, ram.u8(a5 + 0x18));                 // $271CD2 -- the base palette
+  ram.setU16(0x81b414, 1);                                 // $271CD8 -- the bullet-budget opt-in
+  ram.setU16(0x81b416, 1);                                 // $271CE0 -- W336: raises $D to $1F
+  ram.setU16(0x8130e2, 1);                                 // $271CE8 -- UNCONDITIONAL, see above
+  let flag = 0x8130e2;                                     // $271CF0 lea $8130E2,A0
+  if (ram.u16(0x8130ce) >= 0x280) {                        // $271CF6 cmpi.w #$280 / bcs -- UNSIGNED
+    flag = 0x8130e6;                                       // $271D02 lea $8130E6,A0
+    // $271D08 move.w #$202,($1A,A5) -- ONE word literal, TWO byte fields: the animation counter and
+    // its reload both become 2. Only the late branch gets it.
+    ram.setU8(a5 + 0x1a, 0x02);
+    ram.setU8(a5 + 0x1b, 0x02);
+  }
+  ram.setU32(a5 + 0x26, flag);                             // $271D0E move.l A0,($26,A5)
+  ram.setU16(flag, 1);                                     // $271D12 move.w #$1,(A0)
+});
+
 // The five stage rows at `$2692D2` are ALL `0A 15` (verified by hex dump), so `$813094` -- the stage
 // index DOUBLED -- selects an identical pair every time. Ported as the indexed read the ROM performs
 // rather than as the constant it happens to produce: the sameness is a measurement about this build,

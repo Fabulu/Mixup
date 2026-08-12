@@ -2648,6 +2648,139 @@ function handler4A(ram, rom, a5, ctx) {
   draw4A(ram, rom, a5, a6);                                // $271BD8
 }
 
+// ============================================================ TYPE $4B (W338)
+//
+// The last of the `$48`/`$49`/`$4A`/`$4B` band. `$271C92` init / `$271C9A` initBody / `$271D48` handler.
+//
+// **THE AXES OF DIVERGENCE DO NOT LINE UP TYPE BY TYPE**, which is the band's real lesson. `$4B` takes
+// `$49`'s side on the lifetime (it frees itself; `$4A` marks and continues) and on the sweep length
+// (thirty via `cmpi.w #$78`; `$4A` uses an eight-entry `andi.w #$1F`), but `$4A`'s side on the freeze
+// (skip the counter step; `$49`'s freeze runs INTO it). And it agrees with neither on the constants:
+//
+//                        $49          $4A          $4B
+//     off-screen limit   $2000        $1C00        $400
+//     kill score         $250         $180         $290
+//     flag offset        ($20,A5)     none         ($26,A5)
+//     flag words         E0/E4        none         E2/E6
+//     ($17,A5) polarity  SET = first  n/a          SET = SECOND, and mirrors
+//     shots              3            7 (dbra)     4, hand-written, asymmetric
+//
+// So nothing here is inheritable except the instruction sequences themselves.
+const T4B = Object.freeze({
+  init: 0x271c92, initBody: 0x271c9a, handler: 0x271d48,
+  recordProto: 0x271d18, recordWords: 10, subProto: 0x271d2c,
+  damageMask: 0x5c, damageClear: 0xa3, palBase: 0x18, palXor: 0x19,
+  killScore: 0x290, deathCue: 0x28c2dc, deathList: 0x271f20,   // SIX entries
+  flagAt: 0x26,                               // ($26,A5) -- NOT $49's ($20,A5)
+  boundsBias: 0x4000, boundsLimit: 0x400,     // $271DAE/$271DB4 -- signed LONG, limit $400
+  sweepClear: 0x271fe2, sweepSet: 0x27201e,   // index ASR 1; SET also MIRRORS
+  muzzleTable: 0x271f6a, drawTable: 0x271ea8,  // index RAW
+  sweepStep: 4, sweepWrap: 0x78, sweepEntries: 30,
+  drawBias: 0xe200ea00, drawD3: 0x1eb0, drawStub: 0x23dece,
+});
+
+/** `$271E80..$271EA6` -- the draw. Reached on EVERY path, including both early-outs. */
+function draw4B(ram, rom, a5, a6) {
+  const idx = u16(ram.u16(a5 + 0x1c));
+  if (idx >= T4B.sweepEntries * 4) {
+    unreached(0x271e80, `type $4B's draw index ($1C,A5) is $${idx.toString(16)}, past the 30 longwords `
+      + `at $271EA8; $271DFC's wrap at $78 is the only thing that bounds it`);
+  }
+  enqueueRegistersThroughStub(ram, rom, T4B.drawStub,
+    u32(ram.u32(a6 + 0x02) + T4B.drawBias),                // $271E8C/$271E90 addi.l #-$1DFF1600
+    rom.u32(T4B.drawTable + idx),                          // $271E80..$271E8A
+    T4B.drawD3,                                            // $271E96 move.w #$1EB0,D3
+    ram.u16(a6 + 0x1c));                                   // $271E9C move.w ($1C,A6),D4
+}
+
+/** `$271E0C..$271E7E` -- FOUR shots, hand-written and asymmetric.
+ *
+ *  D1 walks base, base+2, base-2, base+1 through three separate `addq`/`subq`s, and D0 changes for
+ *  shots 1, 2 and 4 while **shot 3 REUSES shot 2's** -- legitimate only because W336 measured that the
+ *  `$2817C2` family preserves D1..D4. `$49` spells this as three shots and `$4A` as a seven-pass
+ *  `dbra`; all three types differ. */
+function fire4B(ram, rom, a5, a6, ctx) {
+  const idx = u16(ram.u16(a5 + 0x1c));
+  if (idx >= T4B.sweepEntries * 4) {
+    unreached(0x271e0c, `type $4B's sweep index ($1C,A5) is $${idx.toString(16)}, past 30 entries`);
+  }
+  let d3 = rom.u32(T4B.muzzleTable + idx);                 // $271E16 move.l (A1),D3
+  const set = ram.u8(a5 + 0x17) !== 0;
+  // $271E22 tst.b ($17,A5) / beq -- **THE POLARITY IS THE OPPOSITE OF $49's.** CLEAR keeps the FIRST
+  // table and does NOT negate; SET takes the second AND mirrors. `neg.w` is a WORD negate on a long,
+  // so the low half flips with no borrow, and the `add.l` below does carry out of it.
+  const table = set ? T4B.sweepSet : T4B.sweepClear;
+  if (set) d3 = ((d3 & 0xffff0000) | u16(-(d3 & 0xffff))) >>> 0;   // $271E30 neg.w D3
+  const d1 = rom.u16(table + (idx >> 1));                  // $271E32..$271E3A asr.w #1 / move.w (A1),D1
+  const d2 = u32(ram.u32(a6 + 0x02) + d3);                 // $271E3C add.l D3,D2
+
+  let d = d1;
+  for (const [site, entry, d0, step] of [
+    [0x271e48, 0x281744, 0x00010003, 2],                   // $271E42 / then addq.w #2,D1
+    [0x271e56, 0x2816f6, 0xfffd0004, -4],                  // $271E4E / then subq.w #4,D1
+    [0x271e5e, 0x2816f6, null, 3],                         // $271E5C -- D0 INHERITED from shot 2
+    [0x271e6c, 0x2816f6, 0xfff90005, 0],                   // $271E66
+  ]) {
+    const useD0 = d0 ?? 0xfffd0004;                        // shot 3's inherited D0, named not guessed
+    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, entry,
+      { d0: useD0, d1: d, d2, d3: 0, d4: 0, d5: 0, a5 });
+    ctx.bulletSpawn?.(site, res);
+    d = u16(d + step);
+  }
+  ram.setU8(a5 + 0x25, (ram.u8(a5 + 0x25) + 1) & 0x01);    // $271E72 addq.b #1 / andi.b #$1 -- a TOGGLE
+  // $271E7C subq.b #1,($22,A5) -- the flags it sets are never read (a `lea` follows). A plain
+  // decrement, NOT a gate; inventing a branch here would be the $2716D8 mistake in reverse.
+  ram.setU8(a5 + 0x22, u16(ram.u8(a5 + 0x22) - 1) & 0xff);
+}
+
+function handler4B(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  const clearFlagAndFree = () => {
+    ram.setU16(ram.u32(a5 + T4B.flagAt), 0);               // movea.l ($26,A5),A0 / clr.w (A0)
+    freeEnemy(ram, a5);
+  };
+
+  // $271D48..$271D9E -- the SIMPLE $5C damage arm, the band's shape. No hpFull, no palette decision.
+  const hit = ram.u8(a6) & T4B.damageMask;
+  if (hit !== 0) {
+    ram.setU8(a6, ram.u8(a6) & T4B.damageClear);           // $271D50
+    scoreHit(ram, ctx, a6, hit);                           // $271D56 jsr $286096
+    ram.setU8(a6 + 0x1d,
+      (ram.u8(a6 + 0x1d) ^ ram.u8(a5 + T4B.palXor)) & 0xff);   // $271D5C..$271D66
+    if ((ram.u16(a6 + 0x18) & 0x8000) !== 0) {             // $271D6A tst.w ($18,A6) / bpl
+      scoreKill(ram, rom, ctx, T4B.killScore, hit);        // $271D72 move.l #$290,D0
+      walkDeathSpawns270D92(ram, rom, ctx, T4B.deathList,
+        ram.u32(a6 + 0x02), 0x271d88);                     // $271D7E/$271D88 -- SIX entries
+      ctx.soundPost?.(T4B.deathCue);                       // $271D8C
+      clearFlagAndFree();                                  // $271D92/$271D98 -- IT DOES FREE
+      return;
+    }
+  } else {
+    ram.setU8(a6 + 0x1d, ram.u8(a5 + T4B.palBase));        // $271DA0 -- the not-hit path
+  }
+
+  // $271DA6..$271DD8 -- the off-screen test: signed LONG, limit $400 (the band's third value).
+  const y = i32(i16(ram.u16(a6 + 0x02)) + T4B.boundsBias);
+  if (y <= T4B.boundsLimit) {
+    if (ram.u8(a5 + 0x16) !== 0) { clearFlagAndFree(); return; }   // $271DC6 -- flag cleared here too
+  } else {
+    ram.setU8(a5 + 0x16, 1);                               // $271DD4
+  }
+
+  // $271DDA -- the freeze branches to $271E80, THE DRAW, so the sweep counter does NOT advance. This
+  // is $4A's behaviour, not $49's, whose freeze runs into its counter step. Same idiom, and the band
+  // does not agree on it.
+  if (ram.u16(G.freeze) !== 0) { draw4B(ram, rom, a5, a6); return; }   // $271DE0 bne $271E80
+  scrollCompensate(ram, rom, a5, ctx.unported);             // $271DE4 jsr $24179E
+  if (due8(ram, a5 + 0x1a)) {                              // $271DEA subq.b #1 / bcc $271E80
+    ram.setU8(a5 + 0x1a, ram.u8(a5 + 0x1b));               // $271DF2
+    const next = u16(ram.u16(a5 + 0x1c) + T4B.sweepStep);   // $271DF8 addq.w #4
+    ram.setU16(a5 + 0x1c, next < T4B.sweepWrap ? next : 0);  // $271DFC cmpi.w #$78 / blt
+    fire4B(ram, rom, a5, a6, ctx);
+  }
+  draw4B(ram, rom, a5, a6);                                // $271E80
+}
+
 const T01 = Object.freeze({
   init: 0x267c24, initBody: 0x267c2c, handler: 0x267c70,
   recordProto: 0x267c50, recordWords: 2,      // $267C3E moveq #$1,D0 -- D0+1 = 2 words
@@ -8058,6 +8191,7 @@ const HANDLERS = new Map([
   [0x274076, handler81],          // W326: Stage-5 armoured four-state twin-muzzle $81
   [0x271640, handler49],          // W335: Stage-5 sweeping fan emplacement $49
   [0x271a64, handler4A],          // W337: Stage-5 seven-way aimed fan turret $4A
+  [0x271d48, handler4B],          // W338: Stage-5 four-shot sweeping turret $4B
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
   [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42

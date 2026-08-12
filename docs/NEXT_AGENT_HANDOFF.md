@@ -1741,9 +1741,11 @@ Prefer that single declaration and say in the comment that the five spans abut, 
 windows would hide the property that pins them.
 
 **`$4B` NOW HAS NO UNREAD SPAN AND NO UNPORTED PREREQUISITE.** Callees: `$2637A2`, `$26377A`, `$263808`,
-`$286096`, `$28615E`, `$270D92` (W333), `$281744`/`$2816F6` (W336), `$23DECE` -- all ported. It needs no
-`$24179E` and no `$2714AE`. Windows: `$271D18 + $34` (record + sub prototype, overlapping the handler by
-FOUR bytes) and `$271EA8 + $1B2` (all five tables).
+`$286096`, `$28615E`, `$270D92` (W333), `$281744`/`$2816F6` (W336), `$23DECE` -- all ported, plus
+`$24179E` (`scrollCompensate`, at `$271DE4`), also ported. **An earlier draft of this line said "it needs
+no `$24179E`"; that was wrong** -- I had not yet displayed `$271DDA..$271DF2` when I wrote it. It does not
+call `$2714AE`, which is the bare `rts` (W336). Windows: `$271D18 + $34` (record + sub prototype,
+overlapping the handler by FOUR bytes) and `$271EA8 + $1B2` (all five tables).
 
 **WRITE IT.** The three-way divergence table for the band is in `docs/worklog/ddpdoj/337-type4a.md`;
 `$4B` differs from `$49` in the `($17,A5)` polarity, the limit (`$400`), the score (`$290`), the flag

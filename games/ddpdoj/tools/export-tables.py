@@ -2665,6 +2665,29 @@ SHOT_WINDOWS.extend([
                        "ending exactly at type $4B's init $271C92"),
 ])
 
+# W338: type $4B ($271C92 init / $271C9A initBody / $271D48 handler).
+#
+#   $271D18 + $34  the record prototype (TEN words) and the ONE $20-byte sub prototype,
+#                  $271D18..$271D4B. ($4,A5) = 0, so $271D2C + $20 = $271D4C against a handler at
+#                  $271D48: FOUR bytes of overlap, the same as $49 and not $4A's eight. The depth
+#                  follows from ($4,A5) and is not inheritable between siblings. Do not trim.
+#   $271EA8 + $1B2 ALL FIVE of $4B's tables as ONE window, because they abut and each boundary is
+#                  therefore a check on the one before it:
+#                      $271EA8 + $78   30 draw LONGS,  index ($1C,A5) RAW      -> ends $271F20
+#                      $271F20 + $4A   death list, SIX 12-byte entries + $FFFF -> ends $271F6A
+#                      $271F6A + $78   30 muzzle LONGS, index RAW              -> ends $271FE2
+#                      $271FE2 + $3C   30 sweep WORDS, ($17,A5) CLEAR, ASR 1   -> ends $27201E
+#                      $27201E + $3C   30 sweep WORDS, ($17,A5) SET,   ASR 1   -> ends $27205A
+#                  Declared as one rather than five ON PURPOSE: five separate windows would still
+#                  serve every read, but they would hide the fact that the run is contiguous, which
+#                  is what pins all five far ends without relying on a terminator.
+SHOT_WINDOWS.extend([
+    (0x271D18, 0x0034, "W338: type $4B's 10-word record prototype and its sub prototype, "
+                       "$271D18..$271D4B -- overlapping its handler at $271D48 by FOUR bytes"),
+    (0x271EA8, 0x01B2, "W338: ALL FIVE of type $4B's tables, $271EA8..$272059 -- draw ring, death "
+                       "list, muzzle longs and both sweep word tables, which abut end to end"),
+])
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
