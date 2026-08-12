@@ -2156,3 +2156,30 @@ sound cue is `$28C310` where the band uses `$28C2DC`; and its not-hit palette re
 
 Still to read for `$47`: `$26D89C..$26DAC8` (the rest of the alive path), `$26DAC8` (the draw), `$26DCB6`,
 and the two prerequisites. Window `$26D740 + $A0`; check `$224F38` against W91's palette family window.
+
+### CORRECTION: `$23C4A0` IS NOT A PREREQUISITE WAVE. IT IS THREE LINES. (W339)
+
+The previous section said the order was "`$23C4A0`, then `$26C74E`, then `$47`", treating both as shared
+infrastructure on the strength of six callers each. **That over-scoped `$23C4A0`.** Displayed:
+
+    23c4a0  move.w #$1,$803934 / clr.w $803936 / rts
+    23c4b0  move.w #$6,$803934 / clr.w $803936 / rts
+    23c4c0  move.w #$5,$803934 / clr.w $803936 / rts
+    23c4d0  clr.w $803934      / move.w #$1,$803936 / rts
+
+**It is one of a family of three-instruction MODE SETTERS**, each writing a number to `$803934` and clearing
+`$803936` (or the reverse). Six callers because it is a one-line helper, not because it is infrastructure --
+**caller count alone does not distinguish "shared subsystem" from "trivial setter", and I used it as if it
+did.**
+
+And both globals are ALREADY in the port: `background.js:1336-1337` writes exactly `$803934 = 0` /
+`$803936 = 1`, which **is `$23C4D0`, inlined** in the screen-shake arm. So these are the screen-shake / camera
+mode words, the port already produces and consumes them, and `$23C4A0` is two `setU16` calls plus a name.
+
+**REVISED ORDER: `$26C74E` (the real prerequisite, `$47`'s death-spawn walker), then `$47`, with `$23C4A0`
+written inline inside `$47`'s wave as `shakeMode23C4A0` or similar.** One wave saved.
+
+**SEVENTH family check to pay off this session**, and the first where it corrected a plan rather than a fact.
+The lesson sharpens: run the check on every callee, and read the FIRST INSTRUCTION before deciding a routine
+deserves its own wave. `$2714AE` was a bare `rts` (W336), `$23C4A0` is three instructions -- twice now, sizing
+a routine by its caller count or its address rather than by its body has produced the wrong plan.
