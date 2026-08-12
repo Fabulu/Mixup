@@ -3101,3 +3101,39 @@ while the flag is set (the `$269C6C` gate shape), so a missing clear suppresses 
 That is why the ROM is careful and why the port must be.
 
 Still to read for `$4C`: `$26F650..$26F704` (which contains that clear) and `$26F704` (the draw).
+
+### `$4C`'s DAMAGE ARM (W341) -- a THIRD size-relative offset, and a damage GATE `$47` lacks
+
+    26f658  move.b #$A3,D0 / and.b D0,(A6)
+    26f65e  move.w D1,($8E,A6)             the hit mask -- and see the formula below
+    26f662  jsr $286096                    scoreHit
+    26f668  D0 = ($1D,A6) / eori.b #$D     a LITERAL $D, where $47 uses $F
+    26f674  move.l #$7FFF,D0 / sub.w ($18,A6),D0        the damage taken -- the $7FFF SINK again
+    26f67e  tst.b ($16,A5) / bne $26F68A   <-- THE SUBTRACTION IS GATED. $47 HAS NO SUCH TEST.
+    26f686  sub.l D0,($1A,A5)              the real HP is a LONG at ($1A,A5), not $47's ($32,A5)
+    26f68a  move.w #$7FFF,($18,A6)         re-arm the sink
+    26f690  tst.l ($1A,A5) / bpl $26F6E4
+    26f698  move.l #$700,D0 / jsr $28615E  kill score $700, where $47 pays $600
+
+**A THIRD SIZE-RELATIVE OFFSET: `hitMask = size - $12`.** `$47` (size `$80`) saves at `+$6E`; `$4C` (size
+`$A0`) saves at `+$8E`. Both are `size - $12`. So the record's tail carries a fixed trio:
+
+    2 sub records ($40):  hitMask +$2E   retire +$3E   dying +$3F
+    4 sub records ($80):  hitMask +$6E   retire +$7E   dying +$7F
+    5 sub records ($A0):  hitMask +$8E   retire +$9E   dying +$9F
+
+**Compute all three from `($4,A5)`.** With the prototype-overlap depth that is FOUR structural facts derived
+from the init's first instruction. Confirm `+$2E` on `$4A`/`$48` when either is revisited -- neither was read
+as saving a hit mask, so the trio may only be populated by types that have a `$26DCB6`-style consumer.
+
+**THE DAMAGE SUBTRACTION IS GATED ON `($16,A5)`.** `$26F67E tst.b / bne` skips `sub.l D0,($1A,A5)` unless the
+record has been on screen -- so **`$4C` is INVULNERABLE until it appears**, and its sink is still re-armed
+either way at `$26F68A`. `$47` has no such gate. Porting `$4C` from `$47`'s arm would make it killable before
+it enters, which is exactly the class of difference that shows up as "the set-piece sometimes never appears"
+rather than as a crash.
+
+Its constants, none shared with `$47`: palette XOR `$D` (not `$F`), HP long at `($1A,A5)` (not `($32,A5)`),
+kill score `$700` (not `$600`). **The `$7FFF` sink idiom is shared; nothing else in the arm is.**
+
+Still to read for `$4C`: `$26F6A4..$26F704` (the death tail, which contains the `$8130E0` clear at `$26F6B6`)
+and `$26F704` (the draw).
