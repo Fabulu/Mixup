@@ -3840,7 +3840,19 @@ the first handler it names), `jsr (A0)`, then `jmp $2417DE` -- `applyVelocityA6`
 
     state 0  $26F8A6  READ.  Enter at speed $16, decelerate to a stop, -> state 1.
     state 1  $26F90E  READ.  Speed 4; oscillate between two points from $26F984 + $8 for 300 frames.
-    states 2..7  $26FBD4 $26FCF2 $26FD66 $26FECA $26FF3E $26FF56  -- ALL UNREAD.
+    state 2  $26FBD4  READ.  Speed $10 to ONE target, D2/D3 IMMEDIATE ($2800/$1C00), stop on arrival.
+    states 3..7  $26FCF2 $26FD66 $26FECA $26FF3E $26FF56  -- UNREAD.
+
+**THE TARGET CAN BE IMMEDIATE OR TABLE-SOURCED, AND `$26FF9E` DOES NOT CARE.** State 1 loads D2/D3 with
+`movem.w (A0),D2-D3` from a two-entry table (sign-extending); state 2 uses `move.w #$2800,D2` /
+`move.w #$1C00,D3` outright. Same callee, same carry protocol -- so do not build a shared "load the target"
+helper that assumes a table.
+
+**AND `($2A,A6)` IS WRITTEN AT TWO DIFFERENT WIDTHS.** State 1 does `move.w #$0,($2A,A6)`; state 2 does
+`move.b #$0,($2A,A6)` AND `move.b #$0,($2B,A6)` as separate instructions. Both zero the same two bytes here,
+but they are not the same instruction and a port that unified them would lose the distinction the moment
+either wrote a non-zero. State 2 also writes `($34,A6)` as a BYTE where state 0 wrote it as the word pair
+`$202`.
 
 **Each handler is a FALL-THROUGH cascade of `if (sub === N)`, never a switch**: setting `($28,A6) = 1` means
 the `cmpi.w #$1` below it fires on the SAME frame.
