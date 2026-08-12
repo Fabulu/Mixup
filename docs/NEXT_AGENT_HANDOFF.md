@@ -1296,9 +1296,27 @@ reaching `$2800` runs the same spawn walk, sound and marking as being shot does.
 `$4A`'s death as `$49`'s -- score, walk, free -- would delete a live record and lose whatever `$8000`
 and `($3F,A6)` are for.
 
-**MEASUREMENT THE NEXT WAVE NEEDS FIRST:** find who reads `(A6) == $8000` and `($3F,A6)`, because that
-reader is what actually frees `$4A`, and it is probably shared with `$4B`. Until it is named, `$4A`
-cannot be written without inventing its lifetime.
+**AND IT IS NOT BLOCKED -- THE PORT ALREADY HAS THIS EXACT SHAPE.** I first wrote that `$4A` needed a
+measurement naming whoever reads `(A6) == $8000`. That was wrong, and it was wrong by skipping the one
+check this project has a standing rule about: look for the family before declaring a mechanism new.
 
-Still unread for `$4A`: `$271AE0` onward (its alive path, fire arm and draw) and whether
-`($20,A5)`/`($21,A5)` feed cadence or aim. `$4B` is not yet read past its table entry.
+`death37` (`handlers.js`, type `$37`) is the same pattern instruction for instruction:
+
+    scoreKill(...)                      $2647F4
+    ram.setU16(a6, 0x8000)              the record marks itself
+    ram.setU8(a5 + R.rec1E, 1)          the marker byte
+    ... effects, spawns, soundPost ...
+    ram.setU8(a5 + R.rec1B, ...)        `$26483C fall-through` -- and the port SAYS fall-through
+
+So mark-and-fall-through is an established member shape with a working port, and `$4A` is another
+member of it. `$8000` in the first word is what the collision walk at `$2456C6` (`tst.w (A6)+ / bpl`,
+already ported in `bomb.js`) reads to skip the record as a target, so the object stops being shootable
+while it keeps drawing. `($3F,A6)` is the per-part dead flag `bossf23.js` and `bossphase.js` already
+read as `($3F,A6) + ($7F,A6) == 2`.
+
+**So `$4A` can be written now**, with `death49`'s score/walk/sound replaced by `death37`'s
+mark-and-continue and no `freeEnemy`. What still needs reading is only `$271AE0` onward: its alive
+path, fire arm and draw, plus whether `($20,A5)`/`($21,A5)` feed cadence or aim.
+
+`$4B` is not yet read past its table entry, and is expected to share both the overlap trap and the
+mark-and-fall-through death.
