@@ -2442,3 +2442,38 @@ instead of writing it down. That is the whole return on the rule.
 Still to read for `$47`: `$26DB14`, `$26DC00`, `$26DCB6`. Then it can be written: two windows
 (`$26D740 + $A0`, and one covering `$26DAF4 + $20` for the eight-entry table), no unported prerequisite, and
 twelve traps documented above.
+
+### `$26DB14` (W339) -- a 60-pass `dbra` that computes a triangular number. TRANSCRIBE THE LOOP.
+
+    26db14  move.w #$258,($2A,A6)          TWO byte fields: ($2A)=$02 ($2B)=$58
+    26db1a  move.w #$104,($28,A6)          TWO byte fields: ($28)=$01 ($29)=$04
+    26db20  jsr $242EC2 / andi.w #$1F,D0   an RNG draw masked to 0..31
+    26db2a  move.b #$40,($2C,A6) / sub.b D0,($2C,A6)     ($2C) = $40 - rng
+    26db34  move.b #$0,($2D,A6)
+    26db3a  move.w #$3B,D7                 <-- #$3B + dbra = SIXTY passes
+    26db3e  addq.b #1,($2D,A6)
+    26db42  move.b ($2D,A6),D0
+    26db46  add.b D0,($2C,A6)
+    26db4a  dbra D7,$26DB3E
+    26db4e  rts
+
+**THE LOOP IS A TRIANGULAR-NUMBER ACCUMULATION AND IT FOLDS**, verified for rng = 0, 1 and `$1F`:
+
+    ($2D,A6) = $3C  (60)
+    ($2C,A6) = ($40 - rng + 1830) & $FF = ($66 - rng) & $FF     [1830 = 60*61/2, mod 256 = $26]
+
+**Transcribe the loop anyway.** The fold is correct, but writing `($2C,A6) = (0x66 - rng) & 0xff` puts a
+derived constant in the port where the ROM has an iteration, and the next reader cannot check it without
+redoing this algebra. A sixty-iteration byte loop costs nothing at runtime. If it is folded, the proof above
+must sit in the comment -- and `move.w #$3B,D7` + `dbra` being SIXTY and not fifty-nine is exactly the kind
+of off-by-one the fold would bake in permanently.
+
+Two more `move.w`-into-byte-pairs at the top (`$258` -> `$02`/`$58`, `$104` -> `$01`/`$04`), bringing this
+routine's count of that idiom to two and `$47`'s total to nine.
+
+**AND `$26DB14` IS `($2E,A5)`'s TRANSITION ACTION.** It is called from state 2's inner machine (`$26DA86`)
+and from state 3 on success (`$26DAC4`), and it re-seeds `($28,A6)` through `($2D,A6)` each time. So the
+set-piece's cycle is: state 2 counts down, `$26DB14` re-seeds, state 3 tests `$26DC00`, on success re-seed
+again and return to state 2. **`$26DC00` is the last thing needed to know whether that cycle terminates.**
+
+Still to read for `$47`: `$26DC00` and `$26DCB6`.
