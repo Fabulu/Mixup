@@ -18,7 +18,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
-import { drawTallyHeader25DD80, tallyCursor25DD0C } from '../src/tallyscreen.js';
+import { drawTallyHeader25DD80, tallyCursor25DD0C,
+  tallyYCursor25DEAE, SCREEN11 } from '../src/tallyscreen.js';
 import { BUCKETS, ENQUEUE_MASK, NO_ZOOM_OR, RECORD_BYTES } from '../src/spritequeue.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -287,4 +288,93 @@ test('W329 the highlight sits on the row the cursor is on', { skip: SKIP_IMG }, 
     assert.equal(record(ram, 3).d0, packed(0x5bc00000 + off),
       `cursor ${cursor} highlights its own row`);
   }
+});
+
+// ==================== 4. THE Y CURSOR, $25DEAE -- THREE ENTRIES, SO NO MASK
+
+/** The attract word must be non-zero or `otherSideHolds25DAEA` answers "nobody holds anything". */
+function yWorld({ held = 0xff } = {}) {
+  const ram = world();
+  ram.setU16(0x81308c, 1);                 // HUDRAM.attract, so the held test is live
+  ram.setU8(SCREEN11.savedB + 0x01, held); // side 0 reads savedB for "the OTHER side"
+  ram.setU8(SLOT + SCREEN11.side, 0);
+  ram.setU32(A4 + 0x10, STORE);
+  ram.setU16(SLOT + 0x12, 0x100);
+  return ram;
+}
+
+test('W331 the Y cursor STEPS AND RETRIES over three entries instead of masking',
+  { skip: SKIP_IMG }, () => {
+    // Two entries is one bit, so the X cursor can `andi.b #$1`. THREE is not a power of two, so this
+    // one wraps by compare: down goes to 2 ($25DEE6 subq.b / bge / else 2) and up goes to 0
+    // ($25DF04 addq.b / cmpi.b #$2 / ble / else 0).
+    assert.equal(IMG.readUInt32BE(0x25df06), 0x0c070002, '$25DF04 cmpi.b #$2,D7 -- a COMPARE, not a mask');
+    for (const [from, bit, want] of [[0, 2, 2], [1, 2, 0], [2, 2, 1],
+      [2, 3, 0], [0, 3, 1], [1, 3, 2]]) {
+      const ram = yWorld();
+      ram.setU8(SLOT + SCREEN11.yCur, from);
+      ram.setU16(0x803972, 1 << bit);
+      tallyYCursor25DEAE(ram, SLOT, A4, 0, {});
+      assert.equal(ram.u8(SLOT + SCREEN11.yCur), want, `${from} on bit ${bit} -> ${want}`);
+    }
+  });
+
+test('W331 it SKIPS an entry the other side is holding', { skip: SKIP_IMG }, () => {
+  // `$25DEF0 bsr $25DAEA / $25DEF4 bcs $25DEE6` retries the step while the candidate is held. That
+  // retry is the whole reason a picker exists instead of a mask.
+  const ram = yWorld({ held: 1 });          // the other side sits on entry 1
+  ram.setU8(SLOT + SCREEN11.yCur, 2);
+  ram.setU16(0x803972, 1 << 2);             // step DOWN: 2 -> 1 is held, so it must go on to 0
+  tallyYCursor25DEAE(ram, SLOT, A4, 0, {});
+  assert.equal(ram.u8(SLOT + SCREEN11.yCur), 0, 'it stepped PAST the held entry');
+});
+
+test('W331 the cue fires only if the cursor actually MOVED', { skip: SKIP_IMG }, () => {
+  // `$25DF18 cmp.b D6,D7 / beq $25DF24` compares against the value saved BEFORE the steps. The X
+  // cursor has no such test because masking always moves.
+  assert.equal(IMG.readUInt16BE(0x25df18), 0xbe06, '$25DF18 cmp.b D6,D7');
+  const moved = [];
+  const m = yWorld();
+  m.setU8(SLOT + SCREEN11.yCur, 0);
+  m.setU16(0x803972, 1 << 3);
+  tallyYCursor25DEAE(m, SLOT, A4, 0, { soundPost: (c) => moved.push(c) });
+  assert.deepEqual(moved, [0x28c6fa], 'a real move cues');
+
+  const still = [];
+  const s = yWorld();
+  s.setU8(SLOT + SCREEN11.yCur, 1);
+  s.setU16(0x803972, 0);                    // no direction at all
+  tallyYCursor25DEAE(s, SLOT, A4, 0, { soundPost: (c) => still.push(c) });
+  assert.deepEqual(still, [], 'and no move is SILENT');
+});
+
+test('W331 the Y cursor stores at ($1,A0), one byte past the X cursor', { skip: SKIP_IMG }, () => {
+  // `$25DD4C move.b ($E,A5),(A0)` for X and `$25DF2C move.b ($F,A5),($1,A0)` for Y -- they share the
+  // descriptor's data pointer, so an offset slip would overwrite the other cursor.
+  assert.equal(IMG.readUInt32BE(0x25df2c), 0x116d000f, '$25DF2C move.b ($F,A5),($1,A0)');
+  const ram = yWorld();
+  ram.setU8(SLOT + SCREEN11.yCur, 0);
+  ram.setU8(STORE, 0xaa);                   // the X cursor's byte, which must survive
+  ram.setU16(0x803972, 1 << 3);
+  tallyYCursor25DEAE(ram, SLOT, A4, 0, {});
+  assert.equal(ram.u8(STORE + 1), 1, 'the Y cursor landed at +1');
+  assert.equal(ram.u8(STORE), 0xaa, 'and the X cursor byte was not touched');
+});
+
+test('W331 confirm is the timeout OR a $70 button, and it means RUN STATE 2', { skip: SKIP_IMG }, () => {
+  // `$25DF48 bra $25DB7C` -- the ROM TAILS into state 2 rather than returning a flag. The port
+  // returns a boolean and lets the caller dispatch, which is the same behaviour.
+  assert.equal(IMG.readUInt32BE(0x25df42), 0x4eb90028, '$25DF42 jsr $28C6E0');
+  const t = yWorld();
+  t.setU16(SLOT + 0x12, 1);
+  t.setU16(0x803972, 0);
+  assert.equal(tallyYCursor25DEAE(t, SLOT, A4, 0, {}), true, 'the timeout confirms');
+
+  const b = yWorld();
+  b.setU16(0x803972, 0x20);
+  assert.equal(tallyYCursor25DEAE(b, SLOT, A4, 0, {}), true, 'a $70 button confirms');
+
+  const n = yWorld();
+  n.setU16(0x803972, 0x80);
+  assert.equal(tallyYCursor25DEAE(n, SLOT, A4, 0, {}), false, '$80 is outside the mask');
 });

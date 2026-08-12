@@ -530,6 +530,80 @@ export function tallyCursor25DD0C(ram, slot, a4, side, ctx) {
   return false;
 }
 
+/**
+ * `$25DEAE..$25DF4A` -- THE Y CURSOR, and it is `$25DD0C` again over THREE entries instead of two.
+ *
+ * The X cursor clamps with `andi.b #$1` because two entries is one bit. Three is not a power of
+ * two, so this one cannot mask: it STEPS and RETRIES, skipping any entry the other player is
+ * already sitting on. That is what `$25DA94` (up) and `$25DEAE` (down) are, and why the port has
+ * `otherSideHolds25DAEA`.
+ *
+ *   25deae  D7 = ($F,A5) ; bsr $25DAEA ; bcc $25DECA     a PRE-PASS: step off a held entry
+ *   25debc  subq.b #1,D7 / bge / else D7 = 2             before the input is even read
+ *   25deca  movea.l ($8,A4),A0 / jsr (A0)               the EDGE read, as $25DD0C's
+ *   25ded0  D7 = ($F,A5) ; move.w D7,D6                 D6 keeps the ORIGINAL, for the cue test
+ *   25ded8  btst #$2,D0 / beq $25DEF6                   bit 2: step DOWN, wrapping to 2
+ *   25dee6  subq.b #1,D7 / bge / else D7 = 2 ; bsr $25DAEA / bcs $25DEE6   RETRY while held
+ *   25def6  btst #$3,D0 / beq $25DF18                   bit 3: step UP, wrapping to 0
+ *   25df04  addq.b #1,D7 / cmpi.b #$2,D7 / ble / else D7 = 0 ; bsr $25DAEA / bcs $25DF04
+ *   25df18  cmp.b D6,D7 / beq $25DF24 ; else jsr $28C6FA
+ *   25df24  move.b D7,($F,A5) ; $25DF28 ($1,A0) = ($F,A5)
+ *   25df32  subq.w #1,($12,A5) / beq -> CONFIRM ; $25DF3A andi.w #$70,D0 / beq -> DRAW
+ *   25df42  jsr $28C6E0 / bra $25DB7C                   CONFIRM tails into STATE 2
+ *
+ * **THE CUE ONLY FIRES IF THE CURSOR ACTUALLY MOVED.** `$25DF18 cmp.b D6,D7 / beq` compares against
+ * the value saved BEFORE the steps, so a press whose every candidate entry is held by the other
+ * player is silent. The X cursor has no such test because masking always moves.
+ *
+ * **THE STORE IS AT `($1,A0)`, NOT `(A0)`.** `$25DD4C` wrote the X cursor to `(A0)`; this writes the
+ * Y cursor one byte along. They share the descriptor's data pointer, so an offset slip here would
+ * overwrite the other cursor.
+ *
+ * **AND CONFIRM DOES NOT RETURN A CARRY, IT TAILS INTO STATE 2.** `$25DF48 bra $25DB7C` is
+ * `screenState2_25DB7C`, already ported -- so this routine's confirm is a JUMP, not a flag the
+ * caller tests. Returning a boolean and letting the caller dispatch would be the same behaviour,
+ * and it is what the port does, but the ROM's shape is recorded so the difference is deliberate.
+ *
+ * @returns {boolean} true when confirmed, i.e. the caller should run state 2.
+ */
+export function tallyYCursor25DEAE(ram, slot, a4, side, ctx) {
+  void side;
+  // $25DEAE..$25DEC8 -- the pre-pass, before any input is read.
+  let d7 = ram.u8(slot + SCREEN11.yCur);
+  let guard = 0;
+  while (otherSideHolds25DAEA(ram, slot, d7) && guard++ < 4) {
+    d7 = d7 === 0 ? 2 : d7 - 1;                            // $25DEBC subq.b / bge / else 2
+  }
+  const d0 = readInput23D186(ram, ram.u8(slot + SCREEN11.side));   // $25DECA jsr ($8,A4)
+  d7 = ram.u8(slot + SCREEN11.yCur);                       // $25DED0 -- RE-READ, not the pre-pass value
+  const d6 = d7;                                           // $25DED6 move.w D7,D6
+  if ((d0 & (1 << 2)) !== 0) {                             // $25DED8 btst #$2
+    ram.setU8(slot + 0x0d, 1);                             // $25DEE0
+    guard = 0;
+    do {
+      d7 = d7 === 0 ? 2 : d7 - 1;                          // $25DEE6 wrapping to 2
+    } while (otherSideHolds25DAEA(ram, slot, d7) && guard++ < 4);   // $25DEF4 bcs
+  }
+  // NO `else` -- $25DEF6 is reached from both arms, as $25DD2A is in the X cursor.
+  if ((d0 & (1 << 3)) !== 0) {                             // $25DEF6 btst #$3
+    ram.setU8(slot + 0x0d, 1);                             // $25DEFE
+    guard = 0;
+    do {
+      d7 = d7 >= 2 ? 0 : d7 + 1;                           // $25DF04 wrapping to 0
+    } while (otherSideHolds25DAEA(ram, slot, d7) && guard++ < 4);   // $25DF16 bcs
+  }
+  if (d7 !== d6) ctx?.soundPost?.(0x28c6fa);               // $25DF18 cmp.b D6,D7 / beq
+  ram.setU8(slot + SCREEN11.yCur, d7 & 0xff);              // $25DF24
+  ram.setU8(ram.u32(a4 + 0x10) + 0x01, d7 & 0xff);         // $25DF28 -- ($1,A0), NOT (A0)
+  const t = u16(ram.u16(slot + SCREEN11.armA) - 1);        // $25DF32 subq.w #1
+  ram.setU16(slot + SCREEN11.armA, t);
+  if (t === 0 || (d0 & 0x70) !== 0) {                      // $25DF36 beq / $25DF3A andi/beq
+    ctx?.soundPost?.(0x28c6e0);                            // $25DF42
+    return true;                                           // $25DF48 bra $25DB7C
+  }
+  return false;                                            // $25DF4C -- the draw follows
+}
+
 export function tallyScreen25DBB4(ram, slot, slotIndex, ctx) {
   const st = ram.u8(slot + SCREEN11.state);
   if (st === 0) {                                          // $25DBB4 tst.b / beq
