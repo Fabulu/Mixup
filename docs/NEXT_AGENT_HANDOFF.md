@@ -542,7 +542,33 @@ Windows to declare with the code: `$271616 + $E` (the 7-word record prototype) a
 (the sub prototype, SHORT form, extent from `$2637A2`); the block runs `$271616..$271640` and ends at
 the handler, so one window `(0x271616, 0x002A)` covers both. Its death list `$27197C` needs one too.
 
-Still unread: `$2716E2` onward (the cadence's body).
+### AND THE `$1F3` EQUALITY AT SPAWN SELECTS THIS TYPE'S WHOLE ATTACK PATTERN
+
+The init's `cmpi.w #$1F3,$8130CE / bne` arm looked like a curiosity. It is the switch:
+
+    2716e2  bcc $271774                        no borrow -> straight to the draw
+    2716e6  move.b ($1B,A5),($1A,A5)           reload the cadence
+    2716ec  tst.w $8130D4 / bne $271760        gated OUT while $8130D4 is set
+    2716f6  lea ($271904,PC),A1                the DEFAULT fire list
+    2716fc  tst.b ($17,A5) / beq $27170A
+    271704  lea ($27188C,PC),A1                the ALTERNATE list
+    27170a  move.w ($1C,A5),D0 / asr.w #1,D0 / adda.w D0,A1 / move.w (A1),D1
+                                               a WORD from that list, indexed by ($1C,A5) HALVED
+    271714  lea ($271814,PC),A1 / adda.w ($1C,A5),A1 / move.l (A1),D3
+                                               and a LONG from a SECOND table, indexed UNHALVED
+    271720  move.l ($2,A6),D2
+    271724  tst.b ($17,A5) ...                 tested AGAIN below
+
+**`($17,A5)` is written in exactly one place: the init body's `$2715D8`, on the arm guarded by the
+`$8130CE == $1F3` equality.** So a `$49` that spawns on that one frame fires from `$27188C` and every
+other `$49` fires from `$271904`. That is why the equality matters and why reading it as a threshold
+would give every instance the alternate pattern.
+
+**Two tables, two index conventions, one index.** `($1C,A5)` is halved for the word table at
+`$271904`/`$27188C` and used RAW for the long table at `$271814`. Transcribe both; a shared helper
+that halved once would put the long table's reads on the wrong entries.
+
+Still unread: `$271724` onward (the fire itself), `$271760`, and `$271774` (the draw).
 
 **Then, in order:** the real `$81` is DONE (W326), so stage 5 is at **ten types over 29 records**.
 `$1A` is BLOCKED on a measurement (see below). Next unblocked: `$49`/`$4A`/`$4B` (spans `$A2`,
