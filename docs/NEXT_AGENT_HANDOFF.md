@@ -2700,3 +2700,41 @@ this one's operand is a live register.
 Also confirmed: `$272C7A` is the table A0 carries into the aim. Check it against W36's `$272D70 + $190`
 window before declaring anything -- it is 246 bytes BELOW that window's start, so it is probably NOT
 covered, unlike `$272DFA` which W326 found already inside it.
+
+### `$1A`'s BLOCKER IS A *DYNAMIC* MEASUREMENT, NOT A STATIC READ (W340) -- reclassified
+
+The previous section said: read `$263808` to its `rts` and record its exit state in D2/D3. Done, and the
+answer changes what kind of blocker this is.
+
+    263808  move.l ($12,A5),D0 / beq         the script pointer; no script -> early out
+    263812  btst #$6,($2,A5) / beq           two ways to seed ($2,A6)/($4,A6)
+    26383a  cmpi.b #-$80,($4,A6) / bcs / bset #$7,($4,A6)
+    263848..26386E   THE SCRIPT LOOP:
+              andi.w #$F,D1 / add.w D1,D1 / add.w D1,D1     an opcode index, x4
+              lea ($263948,PC),A1 / adda.w D1,A1 / movea.l (A1),A1 / jsr (A1)
+              bra $263848                                    ... and loop
+    263870  move.l A0,($12,A5)
+
+**`$263808` IS A MOVEMENT-SCRIPT INTERPRETER**, not a leaf routine. It dispatches through a SIXTEEN-entry
+longword table at `$263948` and loops until an opcode breaks out. So **it has no single exit state in
+D2/D3**: whatever is there depends on which opcode handlers ran for this record's script, and each of those
+sixteen can touch any register.
+
+**SO THE BLOCKER IS NOT "READ ONE MORE ROUTINE".** It is: instrument `$268D8C` and record what D2/D3
+actually hold when `$1A`'s init reaches it, across the records stage 5 spawns. That is oracle/trace work --
+`tools/oracle/` -- not disassembly, and it is the right classification because sixteen opcode handlers is a
+combinatorial static problem and a one-line trace answers it directly.
+
+**AND THE LIKELY ANSWER IS "GARBAGE, GUARDED".** `aim.js:62` says `$24203E` takes target in D2/D3, `$1A`'s
+init sets neither, and `$268D92 bcc` immediately follows the call. If the trace shows D2/D3 carrying
+whatever the last movement opcode left, then `$1A`'s init aims at an undefined target BY CONSTRUCTION and
+the `bcc` is what makes that harmless. **The port must then reproduce the indeterminacy, not repair it** --
+which in practice means the aim's result must be shown not to matter on the guarded path, and that is a
+statement a trace can support and a static read cannot.
+
+**Recorded honestly as a reclassification, not progress toward a fix.** The blocker moved from "unmeasured
+register provenance" to "needs a trace at one instruction", which is more actionable but is not resolved.
+`$1A` stays blocked, and it is now the ONLY stage-5 type blocked on something other than reading.
+
+Remaining stage 5 after W340: `$46` (13 records, wants `$55` first), `$1A` (trace-blocked, above), `$43`,
+`$4C`, `$B0`. Five types, 20 records.
