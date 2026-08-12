@@ -2777,6 +2777,10 @@ SHOT_WINDOWS.extend([
 SHOT_WINDOWS.extend([
     (0x26F886, 0x0020, "W341: type $4C's EIGHT-entry state jump table, $26F886..$26F8A5 -- its far end "
                        "is $26F8A6, the first handler it points at"),
+    (0x26F55A, 0x00AC, "W342: type $4C's 6-word record prototype and ALL FIVE sub prototypes, "
+                       "$26F55A..$26F605 -- overlapping its handler at $26F5F2 by TWENTY bytes"),
+    (0x26F984, 0x0008, "W342: type $4C state 1's TWO target points -- bounded by the ROM's own "
+                       "andi.w #$7 AND by code at +8"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

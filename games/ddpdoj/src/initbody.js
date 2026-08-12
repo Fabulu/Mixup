@@ -2086,6 +2086,43 @@ BODY.set(0x26ddac, (ram, rom, a5, a6, unported, _tables, palette) => {
     'Stage-5 type $43 palette bank $14');                  // $26DDFA
 });
 
+// --- type $4C ($26F4DA init, $26F4E2 body): stage 5's five-sub-record set-piece.
+//
+// `($4,A5) = 4` means FIVE `$20`-byte sub records, and that one field determines five things: the record is
+// `$A0` bytes; the prototype pair `$26F566..$26F605` overlaps the handler at `$26F5F2` by **TWENTY** bytes
+// (the deepest in the port); the hit mask sits at `size - $12 = +$8E`; the retire and dying flags at
+// `size - 2` and `size - 1` = `+$9E`/`+$9F`; and each sub-record hosts one state machine, with arm/cursor
+// pairs at a `$20` stride (`+$26`/`+$28`, `+$46`/`+$4C`, `+$66`/`+$6C`).
+//
+// **IT CLAIMS TWO FLAG WORDS, NOT ONE.** `$8130DE` AND `$8130E0`, and `$8130E0` is SHARED -- three other
+// writers live in `$26Cxxx` and `$49` reaches it through a pointer. Eight routines poll the
+// `$8130DC..$8130E6` block and self-free while any of it is set (`$269C6C`), so these two writes suppress
+// other enemies for as long as this set-piece is alive.
+//
+// **NO `readInitPosition`.** Like `$43`, it writes `($2,A6)` from a literal -- but `$F4001C00`'s high word is
+// `$F400`, i.e. `-$C00`, so `$4C` spawns ABOVE the field and descends where `$43` starts on screen.
+//
+// Three palette banks, all inside W91's `$222A78..$2252F8` window so no window is declared. **They are the
+// SAME bank numbers `$43` uses from different sources**, which is why `$47` repaints its own bank every frame
+// (W339): these numbers are contested. Spacing is `$40`/`$40` here and `$40`/`$100` in `$43`, so neither
+// type's sources are stride-derivable.
+BODY.set(0x26f4e2, (ram, rom, a5, a6, unported, _tables, palette) => {
+  loadSubProto(ram, rom, a5, a6, 0x26f566);                // $26F4E2..$26F4EE jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x26f55a, 0x05);           // $26F4EE..$26F4FE D0+1 = SIX words
+  ram.setU32(a6 + 0x02, 0xf4001c00);                       // $26F4FE -- NEGATIVE Y: it enters from above
+  ram.setU16(a6 + 0x04,
+    u16(ram.u16(a6 + 0x04) - ram.u16(0x813172)));          // $26F506/$26F50C sub.w $813172,($4,A6)
+  ram.setU16(0x81b414, 1);                                 // $26F510 -- ONE budget word, as $47
+  ram.setU16(0x8130de, 1);                                 // $26F518 -- its own presence flag
+  ram.setU16(0x8130e0, 1);                                 // $26F520 -- and a SHARED one
+  installBank(ram, rom, palette, unported, 0x12, 0x2235f8, 0x26f532,
+    'Stage-5 type $4C palette bank $12');                  // $26F528
+  installBank(ram, rom, palette, unported, 0x13, 0x223638, 0x26f542,
+    'Stage-5 type $4C palette bank $13');                  // $26F538
+  installBank(ram, rom, palette, unported, 0x14, 0x223678, 0x26f552,
+    'Stage-5 type $4C palette bank $14');                  // $26F548
+});
+
 // The five stage rows at `$2692D2` are ALL `0A 15` (verified by hex dump), so `$813094` -- the stage
 // index DOUBLED -- selects an identical pair every time. Ported as the indexed read the ROM performs
 // rather than as the constant it happens to produce: the sameness is a measurement about this build,
