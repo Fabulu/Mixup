@@ -3841,7 +3841,25 @@ the first handler it names), `jsr (A0)`, then `jmp $2417DE` -- `applyVelocityA6`
     state 0  $26F8A6  READ.  Enter at speed $16, decelerate to a stop, -> state 1.
     state 1  $26F90E  READ.  Speed 4; oscillate between two points from $26F984 + $8 for 300 frames.
     state 2  $26FBD4  READ.  Speed $10 to ONE target, D2/D3 IMMEDIATE ($2800/$1C00), stop on arrival.
-    states 3..7  $26FCF2 $26FD66 $26FECA $26FF3E $26FF56  -- UNREAD.
+    state 3  $26FCF2  READ (head).  Duration $F0 and speed $10; winds ($1E,A5) DOWN BY $40 with a
+                      SIGNED CLAMP at zero, every frame and outside the sub-state cascade.
+    states 4..7  $26FD66 $26FECA $26FF3E $26FF56  -- UNREAD.
+
+**STATE 3 ADDS A FIFTH COUNTDOWN CONVENTION**, and it is the only one so far that is not a decrement-by-one:
+
+    26fd0e  tst.w ($1E,A5) / beq $26FD26          skip entirely when already zero
+    26fd16  subi.w #$40,($1E,A5) / bgt $26FD26    subtract a STRIDE, signed-compare the result
+    26fd20  move.w #$0,($1E,A5)                   ... and CLAMP rather than let it go negative
+
+    subq + bcc          fire on UNDERFLOW                  due8
+    subq + bpl          run into NEGATIVES                  $26DC04 ($47)
+    subq + beq / bne    fire AT ZERO                        $26DCA2 ($47), $25354C (W29)
+    subq + cmpi #$N     fire at an ARBITRARY CONSTANT       $26DE7C ($43)
+    subi #$N + bgt      subtract a STRIDE, CLAMP at zero    $26FD16 ($4C)   <-- FIFTH
+
+Note it runs OUTSIDE the `($28,A6)` cascade -- between sub-state 0's block and sub-state 1's test -- so it
+winds down on every frame the state is active regardless of sub-state. **A port that put it inside a sub-state
+arm would stall it.**
 
 **THE TARGET CAN BE IMMEDIATE OR TABLE-SOURCED, AND `$26FF9E` DOES NOT CARE.** State 1 loads D2/D3 with
 `movem.w (A0),D2-D3` from a two-entry table (sign-extending); state 2 uses `move.w #$2800,D2` /
