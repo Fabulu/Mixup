@@ -128,3 +128,49 @@ test('W333 type $49\'s own list is at $27197C and its first entry is readable',
     assert.equal(IMG.readUInt16BE(0x27197e), 0x008d, 'entry 1 KIND $8D');
     assert.notEqual(IMG.readUInt16BE(0x27197c), 0xffff, 'and the list is not empty');
   });
+
+test('W339 $26C74E is this walker\'s TWIN, differing ONLY in the ($1E,A0) constant',
+  { skip: SKIP }, () => {
+    // Why `walkDeathSpawns270D92` gained an `anim` parameter instead of the port gaining a second
+    // routine. Both heads are byte-identical and every field lands at the same offset; the only
+    // divergence in either routine is the word written to ($1E,A0).
+    assert.equal(IMG.readUInt16BE(0x26c74e), 0x3219, '$26C74E move.w (A1)+,D1 -- same as $270D92');
+    assert.equal(IMG.readUInt32BE(0x26c750), 0x0c41ffff, '$26C750 cmpi.w #-$1,D1 -- same terminator');
+    assert.equal(IMG.readUInt16BE(0x26c760), 0x3019, '$26C760 move.w (A1)+,D0 -- the KIND, same');
+    assert.equal(IMG.readUInt32BE(0x26c76a), 0x21590026, '$26C76A move.l (A1)+,($26,A0) -- a LONG');
+    assert.equal(IMG.readUInt16BE(0x26c784), 0x3159, '$26C784 move.w (A1)+,($1A,A0) -- same');
+    assert.equal(IMG.readUInt16BE(0x26c788), 0x60c4, '$26C788 bra $26C74E -- the same loop shape');
+    // THE ONE DIFFERENCE.
+    assert.equal(IMG.readUInt32BE(0x270db6), 0x317c0004, '$270DB6 move.w #$4,($1E,A0)');
+    assert.equal(IMG.readUInt32BE(0x26c772), 0x317c0010, '$26C772 move.w #$10,($1E,A0)');
+  });
+
+test('W339 the anim parameter reaches ($1E,A0) and defaults to 4', { skip: SKIP }, () => {
+  const rom = new FakeRom();
+  putEntry(rom, LIST, { w1: 1, kind: 0x000d, w3: 0, long26: 0, w1a: 0 });
+  rom.putW(LIST + 12, 0xffff);
+  // Find the slot by a field the walker WROTE rather than by assuming where `spawnEffect` put it:
+  // ($18,A0) receives entry word 1, so the slot whose +$18 holds our sentinel is the one to inspect.
+  // Scanned rather than computed, and the range is wider than it looks like it needs to be for a
+  // measured reason: this file's other tests only ever assert the RETURN COUNT, so no slot address
+  // was ever pinned here. `spawnEffect` on a fresh `Ram` actually answers **$81B732**, not the
+  // $81C8B2 the full-pool test fills -- those are two different pools. Assuming otherwise produced a
+  // null twice before this was checked directly.
+  const animOf = (ram) => {
+    for (let a = 0x81b700; a < 0x81cd00; a += 2) {
+      if (ram.u16(a) === 0x1234) return ram.u16(a + 6);   // ($18,A0) -> ($1E,A0) is +6
+    }
+    return null;
+  };
+  const rom2 = new FakeRom();
+  putEntry(rom2, LIST, { w1: 0x1234, kind: 0x000d, w3: 0, long26: 0, w1a: 0 });
+  rom2.putW(LIST + 12, 0xffff);
+  // Default: $270D92's 4.
+  const a = world();
+  assert.equal(walkDeathSpawns270D92(a.ram, rom2, a.ctx, LIST, 0), 1);
+  assert.equal(animOf(a.ram), 4, 'the default is $270DB6 #$4');
+  // $26C74E's $10, passed explicitly alongside its own site address.
+  const b = world();
+  assert.equal(walkDeathSpawns270D92(b.ram, rom2, b.ctx, LIST, 0, 0x26d886, 0x10), 1);
+  assert.equal(animOf(b.ram), 0x10, '$26C772 #$10 reaches ($1E,A0)');
+});

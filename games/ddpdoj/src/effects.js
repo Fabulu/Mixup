@@ -319,11 +319,21 @@ export function clearSubEffectPool(ram) {
  * returns a falsy slot instead, so the writes are skipped and the walk CONTINUES -- skipping the
  * whole list on one full pool would lose the entries after it, which the board does not do.
  *
+ * **`$26C74E` IS THIS ROUTINE'S TWIN AND IS SERVED BY THE SAME CODE (W339).** Both heads are
+ * `32 19 0C 41 FF FF` and every field lands at the same offset; the ONLY divergence in either
+ * routine is `($1E,A0)` -- `$270DB6` writes `#$4` and `$26C772` writes `#$10`. That is what the
+ * `anim` parameter is for, and it is why callers must keep passing `siteAddr`: the two ROM
+ * addresses have six callers each and `note`/`bulletSpawn` attribution has to stay truthful about
+ * which one actually ran.
+ *
  * @param a1 the list address (the ROM's A1).
  * @param d2 the position longword every entry copies to `($2,A0)`.
+ * @param siteAddr the calling `jsr`'s address, for attribution.
+ * @param anim the `($1E,A0)` constant: `4` for `$270D92`, `0x10` for `$26C74E`. NOT a default to
+ *        lean on -- pass it explicitly from a table entry when adding a third caller.
  * @returns {number} how many entries were walked, spawned or not.
  */
-export function walkDeathSpawns270D92(ram, rom, ctx, a1, d2, siteAddr = 0x270d92) {
+export function walkDeathSpawns270D92(ram, rom, ctx, a1, d2, siteAddr = 0x270d92, anim = 4) {
   let at = a1;
   let n = 0;
   for (;;) {
@@ -345,7 +355,7 @@ export function walkDeathSpawns270D92(ram, rom, ctx, a1, d2, siteAddr = 0x270d92
       ram.setU16(slot + 0x18, d1);                       // $270DAA
       ram.setU32(slot + 0x26, long26);                   // $270DAE
       ram.setU32(slot + 0x02, d2);                       // $270DB2 move.l D2,($2,A0)
-      ram.setU16(slot + 0x1e, 4);                        // $270DB6
+      ram.setU16(slot + 0x1e, anim);                     // $270DB6 #$4 / $26C772 #$10
       ram.setU16(slot + 0x12, 0);                        // $270DBC
       ram.setU16(slot + 0x14, 0);                        // $270DC2
       ram.setU16(slot + 0x1a, w1a);                      // $270DC8
