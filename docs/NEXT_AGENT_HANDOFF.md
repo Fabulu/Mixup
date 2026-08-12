@@ -2000,3 +2000,35 @@ eight self-corrections, every one from inferring across a span instead of displa
 sixteen bytes, then `$48` can be written in one pass: its callees are `$2637A2`, `$26377A`, `$263808`,
 `$286096`, `$28615E`, `$270D92`, `$24179E`, `$24226E`, `$242EC2`, `$281744`, `$23DECE` -- all ported -- plus
 `$2714AE`, the stub `rts`, which is omitted.
+
+### `$47` FIRST LOOK (W339) -- init `$26D6EE`, handler `$26D7D0`. NOT a band member.
+
+`$E2` records, the biggest remaining unblocked type in stage 5. It is structurally unlike
+`$48`/`$49`/`$4A`/`$4B` in every way that matters:
+
+    26d6ee  move.w #$3,($4,A5) / rts        FOUR sub records ($4,A5)+1 -- the band has 1 or 2
+    26d6f6  loadSubProto($26D760)
+    26d702  move.w #$F,D0 / loadRecordProto($26D740)    SIXTEEN words -- and a `move.w`, NOT a `moveq`
+    26d712  readInitPosition
+    26d718  move.w #$1,$81B414              <-- ONE budget word only; the band always sets TWO
+    26d720  move.w #$1,$8130DC              <-- a global the band never touches
+    26d728  move.w #$10,D0 / lea $224F38,A0 / jsr $24150A     <-- A PALETTE BANK INSTALL
+
+**THE OVERLAP IS SIXTEEN BYTES, THE DEEPEST YET, AND THE RULE STILL PREDICTS IT.**
+`($4,A5) = 3` means FOUR `$20`-byte sub records, so `$26D760 + $80 = $26D7E0` against a handler at
+`$26D7D0`. Depth = `subRecords * $20 - (handler - subProto)` = `$80 - $70` = `$10`. The rule established
+across `$49` (4), `$4A` (8) and `$4B` (4) generalises; it is arithmetic, not a per-type fact. Window:
+`$26D740 + $A0` (`$26D740..$26D7DF`, sixteen-word record prototype plus all FOUR sub prototypes).
+
+**`move.w #$F,D0` RATHER THAN `moveq`** is worth flagging: `loadRecordProto` takes `D0+1` words, so this
+is SIXTEEN, and every band member used `moveq #$6`/`#$8`/`#$9`. A reader pattern-matching on `moveq` would
+miss the count entirely.
+
+**`$24150A` IS THE PALETTE-BANK INSTALL** the port already has as `installBank` (see `$27C5BE`'s body in
+`initbody.js`, which installs three). `$47` installs ONE: bank `$10` from `$224F38`. Check whether
+`$224F38` is already inside W91's `$222A78..$2252F8` palette-family window before declaring anything --
+W169 found exactly that situation and needed no new window.
+
+Still to read for `$47`: the rest of the init body past `$26D738`, and the whole handler from `$26D7D0`.
+
+**W340 IS THE PUBLISH WAVE.** Land the next type, then `export-web.mjs` then `publish.mjs --only ddpdoj`.
