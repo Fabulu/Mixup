@@ -2831,10 +2831,15 @@ established reading is wrong here: `bcc` (underflow), `bpl` (runs negative), `be
 **Read the instruction AFTER every `subq`, not just the branch.** A `cmpi` between them changes the meaning
 entirely, and three of these four look identical at a glance.
 
-**`$2417DE` IS ALREADY PORTED** as `playerMove` (`machine.js:215`). **ELEVENTH family check to pay off this
-session** -- and note what it implies: `$43` calls the PLAYER-MOVEMENT routine from its own state 1. That is
-worth understanding before writing it, because a non-player object driving `playerMove` is either a shared
-kinematics helper being reused or something more interesting.
+**CORRECTION: `$2417DE` IS *NOT* PORTED.** This section previously said it was, citing `playerMove` at
+`machine.js:215`. That line is `playerMove: 0x2417de` -- an ADDRESS in a CONSTANT TABLE, with **no consumer
+anywhere in `src/`**. I counted a single grep hit as a port and called it the "eleventh family check to pay
+off"; it was the standing rule `grep 0x2xxxxx is NOT a test for "is this ported"` catching me instead.
+
+So `$43`'s state 1 carries a `note`, not a call: whatever motion `$2417DE` applies is missing, and a `$43` in
+state 1 will sit still. The measurement that unblocks it is in the note -- disassemble `$2417DE` to its `rts`
+and `codexref` it, because a routine named `playerMove` called from a non-player object is either shared
+kinematics or something worth understanding.
 
 `($17,A5)` is a state number here, as in `$47` and unlike all four band members. That is now two of two
 non-band stage-5 types using it that way, so the band's mirror-flag reading looks like the exception.

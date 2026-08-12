@@ -169,7 +169,8 @@ test('the ported handler addresses are registered through W223 type $41', () => 
       0x271a64,   // W337: stage-5 type $4A, the seven-way aimed fan turret
       0x271d48,   // W338: stage-5 type $4B, the four-shot sweeping turret
       0x27133a,   // W339: stage-5 type $48, the five-way aimed fan turret -- BAND CLOSED
-      0x26d7d0,   // W340: stage-5 type $47, the scroll-stopping set-piece ($E2 records)
+      0x26d7d0,   // W340: stage-5 type $47, the scroll-stopping set-piece
+      0x26de32,   // W341: stage-5 type $43, the screen-anchored three-state effect object
     ].sort((a, b) => a - b));
 });
 

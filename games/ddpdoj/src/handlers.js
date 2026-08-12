@@ -3087,6 +3087,98 @@ function installPaletteBank47(ram, rom, ctx, a5) {
     + `something else in stage 5 overwrites bank $10 and this repaint is what keeps it correct`);
 }
 
+// ============================================================ TYPE $43 (W341)
+//
+// A screen-anchored three-state effect object. `$26DDA4` init / `$26DDAC` initBody / `$26DE32` handler.
+//
+// **IT USES TWO COUNTDOWN CONVENTIONS NINE BYTES APART, AND ONE OF THEM IS A FOURTH KIND.** `$26DE6E` is
+// `subq.b` + `bcc` (underflow, what `due8` implements). `$26DE7C` decrements `($1A,A6)` and then compares
+// the result against **`#$2`** -- so that transition fires when the counter reaches TWO and rests there.
+// Four conventions are now attested in this ROM and three of them look identical at a glance:
+//
+//     subq + bcc          fire on UNDERFLOW                 due8
+//     subq + bpl          run into NEGATIVES                 $26DC04 ($47)
+//     subq + beq / bne    fire AT ZERO                       $26DCA2 ($47), $25354C (W29)
+//     subq + cmpi #$N     fire at an ARBITRARY CONSTANT      $26DE7C, HERE
+//
+// **Read the instruction AFTER every `subq`, not just the branch.**
+const T43 = Object.freeze({
+  init: 0x26dda4, initBody: 0x26ddac, handler: 0x26de32,
+  recordProto: 0x26de0c, recordWords: 5, subProto: 0x26de16,
+  rampStep: 4, rampFree: 0x40, rampSpawn: 0x3c,   // EQUALITY tests, not thresholds
+  spawnType: 0x44,                                 // $26DEC4 moveq #$44,D0 -> enqueueDeferred
+  stage1Target: 2,                                 // $26DE7C cmpi.b #$2 -- the fourth convention
+  drawTable: 0x26df00, drawEntries: 16,
+  drawBiasA: 0xfc000000, drawBiasB: 0xe600e600,    // TWO sequential long biases
+  drawD3: 0x1ad0, drawStub: 0x23dece,
+});
+
+/** `$26DED2..$26DEFE` -- the draw. **TWO sequential long biases**, and unlike a word pair they DO combine
+ *  exactly ($E200E600); transcribed as two adds anyway so the port matches the listing line for line.
+ *  D4 is the PALETTE byte `($1D,A6)`, as `$47` and unlike all four band members. `$26DEF8` is a `jmp`, not
+ *  a `jsr`, so nothing follows the draw. */
+function draw43(ram, rom, a5, a6) {
+  const idx = u16(ram.u16(a5 + 0x1a));
+  if (idx >= T43.drawEntries * 4) {
+    unreached(0x26ded2, `type $43's draw index ($1A,A5) is $${idx.toString(16)}, past the 16 longwords at `
+      + `$26DF00; $26DEA8's EQUALITY test against $40 is the only thing that bounds it`);
+  }
+  let d1 = u32(ram.u32(a6 + 0x02) + T43.drawBiasA);        // $26DEE2 subi.l #$4000000
+  d1 = u32(d1 + T43.drawBiasB);                            // $26DEE8 addi.l #-$19FF1A00
+  enqueueRegistersThroughStub(ram, rom, T43.drawStub, d1,
+    rom.u32(T43.drawTable + idx),                          // $26DED8/$26DEDC, index RAW
+    T43.drawD3,                                            // $26DEEE move.w #$1AD0,D3
+    ram.u8(a6 + 0x1d));                                    // $26DEF4 move.b ($1D,A6),D4 -- the PALETTE
+}
+
+function handler43(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  if (ram.u32(G.freeze) !== 0) { draw43(ram, rom, a5, a6); return; }   // $26DE32 tst.w $8130D2 / bne
+
+  // $26DE3C -- ($17,A5) IS A STATE NUMBER, as in $47 and unlike all four band members.
+  if (ram.u8(a5 + 0x17) === 0) {
+    scrollCompensate(ram, rom, a5, ctx.unported);           // $26DE46 jsr $24179E
+    const next = u16(ram.u16(a5 + 0x1e) - 1);               // $26DE4C subq.w #1,($1E,A5) / bne
+    ram.setU16(a5 + 0x1e, next);
+    if (next === 0) ram.setU8(a5 + 0x17, 1);                // $26DE54
+  }
+  if (ram.u8(a5 + 0x17) === 1) {
+    // $26DE64 jsr $2417DE -- NOT PORTED. `machine.js:215` has `playerMove: 0x2417de` but that is an
+    // address in a CONSTANT TABLE with no consumer anywhere in `src/`, which is exactly what the standing
+    // rule means by "grep 0x2xxxxx is NOT a test for is this ported". W341 first recorded it as ported on
+    // the strength of that one grep hit and was wrong. It is a note until someone reads it.
+    ctx.unported?.note(0x26de64, `$26DE64 type $43's state 1 calls $2417DE every frame -- the routine `
+      + `machine.js names 'playerMove' but does NOT implement. Only its ADDRESS is tabulated. Whatever `
+      + `motion it applies to this record is missing, so a $43 in state 1 will sit still. MEASUREMENT `
+      + `THAT UNBLOCKS: disassemble $2417DE to its rts and codexref it -- a routine named playerMove and `
+      + `called from a non-player object is either shared kinematics or something worth understanding`);
+    if (due8(ram, a5 + 0x1c)) {                             // $26DE6A subq.b #1 / bcc -- UNDERFLOW
+      ram.setU8(a5 + 0x1c, ram.u8(a5 + 0x1d));              // $26DE72
+      ram.setU8(a6 + 0x1a, u16(ram.u8(a6 + 0x1a) - 1) & 0xff);   // $26DE78 subq.b #1,($1A,A6)
+      // $26DE7C cmpi.b #$2 -- THE FOURTH CONVENTION. Fires at TWO, not zero, and rests at 2.
+      if (ram.u8(a6 + 0x1a) === T43.stage1Target) ram.setU8(a5 + 0x17, 2);   // $26DE86
+    }
+  } else if (ram.u8(a5 + 0x17) === 2) {
+    if (due8(ram, a5 + 0x18)) {                             // $26DE96 subq.b #1 / bcc
+      ram.setU8(a5 + 0x18, ram.u8(a5 + 0x19));              // $26DE9E
+      const idx = u16(ram.u16(a5 + 0x1a) + T43.rampStep);    // $26DEA4 addq.w #4,($1A,A5)
+      ram.setU16(a5 + 0x1a, idx);
+      // $26DEA8 cmpi.w #$40 / bne -- an EQUALITY. Step 4 from 0 hits $40 exactly, so `===` is faithful
+      // and `>=` would be a different program under any later edit ($1F3, W335).
+      if (idx === T43.rampFree) { freeEnemy(ram, a5); return; }   // $26DEB2 jmp $263762
+      if (idx === T43.rampSpawn) {                          // $26DEBA cmpi.w #$3C / bne
+        // $26DEC4 moveq #$44,D0 / jsr $263678 -- enqueueDeferred with D1 = $80 (DEFQ_D1.FIXED80), the
+        // family spawn.js:419 names as $263678/$263684/$263690. Its own position goes to ($16,A0).
+        const q = enqueueDeferred(ram, T43.spawnType, DEFQ_D1.FIXED80);
+        if (!q.dropped) ram.setU32(q.addr + 0x16, ram.u32(a6 + 0x02));   // $26DECC
+        else ctx.unported?.note(0x26dec4, `$26DEC4 type $43's ramp-$3C spawn of type $44 was DROPPED -- `
+          + `the deferred queue was full at $C80, which the ROM also tolerates silently`);
+      }
+    }
+  }
+  draw43(ram, rom, a5, a6);                                 // $26DED2
+}
+
 const T01 = Object.freeze({
   init: 0x267c24, initBody: 0x267c2c, handler: 0x267c70,
   recordProto: 0x267c50, recordWords: 2,      // $267C3E moveq #$1,D0 -- D0+1 = 2 words
@@ -8500,6 +8592,7 @@ const HANDLERS = new Map([
   [0x271d48, handler4B],          // W338: Stage-5 four-shot sweeping turret $4B
   [0x27133a, handler48],          // W339: Stage-5 five-way aimed fan turret $48
   [0x26d7d0, handler47],          // W340: Stage-5 scroll-stopping set-piece $47 ($E2 records)
+  [0x26de32, handler43],          // W341: Stage-5 screen-anchored three-state effect object $43
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
   [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42

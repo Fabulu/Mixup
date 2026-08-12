@@ -2730,6 +2730,19 @@ SHOT_WINDOWS.extend([
                        "then $FFFF, $26DCEC..$26DD95"),
 ])
 
+# W341: type $43 ($26DDA4 init / $26DDAC initBody / $26DE32 handler).
+#   $26DE0C + $2A  the FIVE-word record prototype (`move.w #$4,D0`) and the ONE $20-byte sub prototype,
+#                  $26DE0C..$26DE35. ($4,A5) = 0, so $26DE16 + $20 = $26DE36 against a handler at
+#                  $26DE32: FOUR bytes of overlap, as the depth rule predicts. Do not trim.
+#   $26DF00 + $40  the SIXTEEN draw longwords, indexed by ($1A,A5) RAW over the ramp 0..$3C step 4.
+# No palette window: all three of $43's banks ($223578, $2235B8, $2236B8) are already inside W91's
+# $222A78..$2252F8 family window, checked arithmetically. Their spacing is $40 then $100, NOT uniform.
+SHOT_WINDOWS.extend([
+    (0x26DE0C, 0x002A, "W341: type $43's 5-word record prototype and its sub prototype, "
+                       "$26DE0C..$26DE35 -- overlapping its handler at $26DE32 by FOUR bytes"),
+    (0x26DF00, 0x0040, "W341: type $43's SIXTEEN draw longwords, $26DF00..$26DF3F"),
+])
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;

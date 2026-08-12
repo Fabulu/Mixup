@@ -2063,6 +2063,29 @@ BODY.set(0x26d6f6, (ram, rom, a5, a6, unported, _tables, palette) => {
   ram.setU16(0x803936, 0);                                 // $23C4A8 clr.w
 });
 
+// --- type $43 ($26DDA4 init, $26DDAC body): a screen-anchored three-bank effect object.
+//
+// **IT NEVER CALLS `readInitPosition`.** Every other stage-5 type read does; `$43` writes `($2,A6)` from
+// the literal `$30001C00` and then subtracts `$813172` (`G.scroll`) from the X half, so it is placed at a
+// fixed spot and corrected once for the scroll at spawn. Same idiom as type `$01` (W325's `spawnPos`).
+//
+// Three consecutive palette banks, which is `$9F`'s shape (`$27C5BE`). All three sources are inside W91's
+// `$222A78..$2252F8` window, so no palette window is declared -- and their spacing is `$40` then `$100`,
+// NOT uniform, so the second and third are not derivable from the first by a stride.
+BODY.set(0x26ddac, (ram, rom, a5, a6, unported, _tables, palette) => {
+  loadSubProto(ram, rom, a5, a6, 0x26de16);                // $26DDAC..$26DDB8 jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x26de0c, 0x04);           // $26DDB8..$26DDC8 D0+1 = FIVE words
+  ram.setU32(a6 + 0x02, 0x30001c00);                       // $26DDC8 move.l #$30001C00,($2,A6)
+  ram.setU16(a6 + 0x04,
+    u16(ram.u16(a6 + 0x04) - ram.u16(0x813172)));          // $26DDD0/$26DDD6 sub.w $813172,($4,A6)
+  installBank(ram, rom, palette, unported, 0x12, 0x223578, 0x26dde4,
+    'Stage-5 type $43 palette bank $12');                  // $26DDDA
+  installBank(ram, rom, palette, unported, 0x13, 0x2235b8, 0x26ddf4,
+    'Stage-5 type $43 palette bank $13');                  // $26DDEA
+  installBank(ram, rom, palette, unported, 0x14, 0x2236b8, 0x26de04,
+    'Stage-5 type $43 palette bank $14');                  // $26DDFA
+});
+
 // The five stage rows at `$2692D2` are ALL `0A 15` (verified by hex dump), so `$813094` -- the stage
 // index DOUBLED -- selects an identical pair every time. Ported as the indexed read the ROM performs
 // rather than as the constant it happens to produce: the sameness is a measurement about this build,

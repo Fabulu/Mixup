@@ -89,7 +89,7 @@ function nullOf(script) {
 
 // ==================== 1. THE WORK LIST
 
-test('W340 stage 5 has FIVE types with no handler, over 20 of its 770 records',
+test('W341 stage 5 has FOUR types with no handler, over 19 of its 770 records',
   { skip: SKIP_IMG }, () => {
     // The measurement this file exists for. `enemyHandlerMap` is built from the cartridge, and
     // `runEnemyDriver`'s `handlers.get(h)` miss is where a missing handler is reported -- but
@@ -117,14 +117,17 @@ test('W340 stage 5 has FIVE types with no handler, over 20 of its 770 records',
     // the scroll-stopping set-piece and shares NOTHING with the band -- see its handler header.
     const map = enemyHandlerMap(ROM);
     const miss = missingOf(SCRIPTS[5], map);
-    assert.equal(miss.length, 5, `five types, got ${miss.map((m) => m.type.toString(16))}`);
-    assert.equal(miss.reduce((a, m) => a + m.records, 0), 20, 'across 20 records');
+    // W341: FIVE and 20 -> FOUR and 19, type $43 (one record). Its state 1 carries a NOTE, not an
+    // `unreached`: $2417DE is tabulated in machine.js but not implemented, so a $43 in state 1 sits
+    // still. The type IS registered, which was the safety requirement.
+    assert.equal(miss.length, 4, `four types, got ${miss.map((m) => m.type.toString(16))}`);
+    assert.equal(miss.reduce((a, m) => a + m.records, 0), 19, 'across 19 records');
     // Ranked by record count. **W317 found this is NOT the order to port them in** -- see the
     // dependency test below. `$46` is the biggest and needs an unported 1130-byte child first.
     const ranked = [...miss].sort((a, b) => b.records - a.records || a.type - b.type);
     assert.deepEqual(ranked.map((m) => m.type),
       [0x46, 0x1a,
-        0x43, 0x4c, 0xb0]);
+        0x4c, 0xb0]);
     assert.deepEqual(ranked.slice(0, 2).map((m) => m.records), [13, 4],
       '$46 is the biggest left but wants $55 first; $1A is next but is BLOCKED on D2/D3');
   });
