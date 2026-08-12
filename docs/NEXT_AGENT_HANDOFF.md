@@ -2183,3 +2183,30 @@ written inline inside `$47`'s wave as `shakeMode23C4A0` or similar.** One wave s
 The lesson sharpens: run the check on every callee, and read the FIRST INSTRUCTION before deciding a routine
 deserves its own wave. `$2714AE` was a bare `rts` (W336), `$23C4A0` is three instructions -- twice now, sizing
 a routine by its caller count or its address rather than by its body has produced the wrong plan.
+
+### `$26C74E` IS `$270D92`'s TWIN, DIFFERING IN ONE CONSTANT. THE LAST PREREQUISITE COLLAPSES. (W339)
+
+    $26C74E head:  32 19 0c 41 ff ff 67 00 00 34    move.w (A1)+,D1 / cmpi.w #-1,D1 / beq $26C78A
+    $270D92 head:  32 19 0c 41 ff ff ...             IDENTICAL
+
+    $270DB6:  31 7c 00 04 00 1e     move.w #$4,($1E,A0)
+    $26C772:  31 7c 00 10 00 1e     move.w #$10,($1E,A0)    <-- THE ONLY DIFFERENCE
+
+Field for field the same walker: word 1 to `($18,A0)`, word 2 as the effect KIND through `$289004`, word 3's
+LOW BYTE to `($1C,A0)`, a LONG to `($26,A0)`, the caller's D2 to `($2,A0)`, zeros to `($12,A0)`/`($14,A0)`,
+word 6 to `($1A,A0)`, `$FFFF` terminates, twelve bytes per entry. **The only divergence in the whole routine
+is `($1E,A0)`: `$4` in `$270D92`, `$10` in `$26C74E`.**
+
+So there is **no prerequisite wave left**. `effects.js:348` already hardcodes `ram.setU16(slot + 0x1e, 4)`;
+give `walkDeathSpawns270D92` an `anim` parameter defaulting to `4`, pass `0x10` for `$26C74E`, and pass the
+site address as it already does. Both of `$47`'s "prerequisites" have now dissolved -- `$23C4A0` into three
+inline lines, `$26C74E` into one parameter.
+
+**EIGHTH family check to pay off this session, and it retired the entire prerequisite plan.** The sequence is
+worth reading as one thing: caller count said "two shared subsystems, two waves"; displaying ten bytes of each
+said "one parameter and two `setU16`s". **`$47` can now be written as a single wave** once `$26D89C..$26DAC8`,
+`$26DAC8` and `$26DCB6` are read.
+
+Do keep the two names distinct in the port. The generalised helper should still record BOTH addresses in its
+docstring and the caller should pass the site (`0x271680`-style) so `bulletSpawn`/note attribution stays
+truthful about which ROM routine ran -- W333's `siteAddr` parameter already exists for exactly this.
