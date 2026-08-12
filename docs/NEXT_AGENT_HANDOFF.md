@@ -4816,10 +4816,34 @@ member of that idiom now.
 invulnerability countdown, `$5C` mask, palette/death, pause+back-out, bounds). That is a checkable claim
 about a byte range, not an assessment.
 
-**STILL UNREAD, and I am NOT calling it the last gap: `$272690..$272722`, about `$92` bytes** -- the body
-of the FOUR-cluster fan variant. Only its head is read (`move.l #$FFFF0004,D0` / `subi.w #$22,D1` /
-`move.w #$3,D7`). Also unread: `$272650..$272686`, the five-cluster fan's tail after its `dbra`. Together
-about `$C8` bytes.
+### W351: the two fan variants differ in EMIT and STEP, not just in cluster count
+
+W346 recorded the `($2E,A5)` split as five clusters against four, differing in pass count and backoff.
+**That was incomplete in two ways that matter.** Reading `$272690` onward:
+
+    five-cluster (($2E,A5) != 0)      four-cluster (($2E,A5) == 0)
+    move.l #$FFFF0005,D0              move.l #$FFFF0004,D0
+    subi.w #$34,D1                    subi.w #$22,D1
+    move.w #$4,D7   -> 5 passes       move.w #$3,D7   -> 4 passes
+    jsr $2816F6                       jsr $281744        <- A DIFFERENT EMIT
+    addq.b #4,D1                      addq.b #2,D1       <- A DIFFERENT STEP
+
+So the four-cluster variant fires a **tighter** triple (step 2, not 4) through a **different emit
+routine**. `$281744` is already ported -- 21 mentions, 14 in code, and it is referenced by `T48` and
+`T49`'s own specs plus `boss2attacks.js:603` and `boss4.js:753`. It is the sibling `boss2attacks.js:231`
+already selects between: `i < 3 ? 0x281708 : 0x2816f6`, so the family is `$2816F6` / `$281708` / `$281744`.
+
+**That is the EIGHTH callee `$55` needs and the eighth already written.** Every single one of its
+dependencies existed in the port before this wave began: `$241D34`, `$8130D4`, `$8130D2`, `$24226E`,
+`$2816F6`, `$281744`, `$23DF86`, `$28615E`, `$24179E`, plus the `$263762` exit and the `$270D92` walker.
+
+**A port that shared one fan routine between the two variants, parameterised only by pass count and
+backoff, would be wrong twice over** -- wrong step and wrong emit -- and would look right because both
+paths produce a plausible fan.
+
+Still unread: the remainder of both fan bodies past their third emit, and `$272650..$272686`. The
+structure is now known to be three unrolled emits per pass in each variant, so what remains is confirming
+the third emit's step and each loop's `dbra`.
 
 What IS settled: all FIVE callees already ported (`shotVector` `$241D34`, FREEZE `$8130D4`, `aim256`
 `$24226E`, the emit `$2816F6`, the enqueue `$23DF86`); both tables already windowed (`$272750+$100`
