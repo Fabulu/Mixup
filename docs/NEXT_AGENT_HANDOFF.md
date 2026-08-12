@@ -3245,3 +3245,45 @@ the next agent to pick the smallest record count and hit `$B0`, which is the tru
 
 Stage 5's enemy-type sweep is effectively DONE: every type that was a straightforward read-and-write has been
 written this session. What remains is one subsystem, two measurements and a boss.
+
+### `$246520` IS A MULTI-PART OBJECT CONSTRUCTOR, AND `$24627A` HAS EXACTLY THREE ENTRIES (W341)
+
+    246568  move.l #$0,($2C,A2)
+    246570  move.l A2,($2C,A1)      <-- LINKS the new node into the previous one
+    246574  movea.l A2,A1           <-- and advances, so this builds a LINKED LIST
+    246576  move.w #$0,($1E,A2) / move.w #$0,($2,A2)
+    246582  move.w (A0)+,D2         an index from the CALLER's table
+    246584  lea ($24627A,PC),A3
+    246588  move.l ($4,A3,D2.w),($6,A2)      the SECOND long of the entry
+    24658e  movea.l (A3,D2.w),A3             the FIRST long, as a base
+    246592  adda.w (A0)+,A3 / move.l A3,($E,A2)
+    246598  move.l (A0)+,($A,A2) / move.w (A0)+,($4,A2)
+    2465a0  move.w (A0)+,D3 / andi.w #$1F,D3 / add.w D3,D3 / add.w D3,D3
+
+So `$246520` allocates a parent from the 3-slot pool at `$810346`, then builds a **chain of up to twenty
+nodes** from `$80FA86`, linking each through `($2C,A1)` and configuring it from the caller's table. `$4C`
+passes `$2701C8`. **It is a multi-part-object constructor** -- which is consistent with `$4C` being a
+set-piece and with the twelve-register `movem.l` prologue.
+
+**`$24627A` HOLDS EXACTLY THREE ENTRIES AND ENTRY 3 IS CODE:**
+
+    [0]  0080E886  0080FA66
+    [1]  0080F086  0080FA68
+    [2]  0080F886  0080FA6A
+    [3]  48E77F00  3E013200      <-- `movem.l D1-D7,-(A7)` -- AN INSTRUCTION
+
+**Fourth instance in this ROM of a table bounded by its own instruction stream**, after `$27460A` (W326,
+index `$18` is `$3B7C0001`), `$2716D8`/`$271774` (W335) and `$2714B0` (W336). So `D2` is `0`, `8` or `$10`
+only, and the port must **throw by address on anything else rather than clamp** -- W326's treatment, for the
+same reason: the guard IS the semantics.
+
+The three entries are pairs of RAM pointers (`$80E886`/`$80FA66`, `$80F086`/`$80FA68`, `$80F886`/`$80FA6A`),
+stepping `$800` and `2` respectively -- so they name three parallel part-pools. **Neither those nor
+`$810346`/`$80FA86` are in the port**, so `$246520`'s wave has to introduce the whole region.
+
+**A WINDOW IS NEEDED FOR `$24627A + $18`** (three 8-byte entries), with the note that index 3 is code, and one
+for `$2701C8` (`$4C`'s part table -- length unmeasured; it is walked by `(A0)+` with no terminator visible in
+what has been read, so its extent must come from the node count or from `$26F858`).
+
+That completes what can be learned about `$246520` without writing it. **It is one bounded wave**: two pools,
+a three-entry dispatch table, a linked-list constructor, and a caller table per user.
