@@ -4523,6 +4523,31 @@ init body:
 Between `$272424` and the volley at `$272630` there is **no A0 write at all**, so the 64-long vector table the
 three unrolled emits index is whatever the caller left in A0.
 
+### W346's actual deliverable: the type table is now MECHANICALLY cross-checked
+
+Chasing A0 led to the master type table at `$267824`, `[init, handler]` per type, eight bytes an entry. **This was
+not a discovery -- `handlers.js` documents it in `T49`'s comment and `export-tables.py` has windowed it since
+WAVE 20.** I rediscovered it twice in one wave. What was genuinely missing is that every spec's
+"entry points verified against the type table" claim was **verified by eye, once, when the spec was written**, and
+nothing re-checked them. `$55` showed the cost: its `BODY.set` landed after `INIT_BODY_ADDRESSES` was built, so it
+registered nothing, and five consecutive green check runs said nothing.
+
+So `TYPE_SPECS` is now exported from `handlers.js` (12 specs by type number) and `tests/w346typetable.test.js`
+re-derives all of it from the cartridge on every run: `spec.init` and `spec.handler` against the ROM table,
+`spec.initBody === init + 8` as the RULE rather than a restatement, and both registries actually containing what
+each spec claims. **The fourth test is the `$55` no-op guard specifically.** Suite 2433 -> 2438.
+
+Two facts the new test forced into the open, both of which I had wrong:
+
+- **The `$410` window reaches through type `$80`, not `$7F`.** `$267820+$410` ends at `$267C30`, and type `$80`'s
+  pair is `$267C24..$267C28` -- inside. The window's own comment says "types `$00..$7F`", one type short of what
+  it exports. `$81` is the first type that throws.
+- **Types `$80`+ are NOT in this table, and their structure is UNSOLVED.** `$8E`'s pair sits at `$27E41A` and
+  `$81`'s at `$27E482`: spacing `$68` = 13 entries for a type difference of 13, but **the address RISES AS THE
+  TYPE FALLS**, which rules out `base + type * 8` for every base. `T81` and `T8E` are therefore explicitly
+  excluded from the cross-check and the test asserts that the excluded set is exactly `{$81, $8E}`, so the gap
+  stays visible instead of reading as coverage.
+
 **So `$55` cannot be finished by reading. The last unknown is a TRACE, not a span** -- the same shape as `$1A`'s
 blocker at `$268D8C` (D2/D3 provenance). What has to be established is what the type dispatcher guarantees in A0
 on entry to a handler, and that is worth doing once for the whole family rather than for `$55`: if A0 is a

@@ -8616,3 +8616,14 @@ export function runHandler(addr, ram, rom, a5, ctx) {
 /** The map of ported handler addresses -> functions, for the enemy driver. */
 export function handlerMap() { return HANDLERS; }
 export const HANDLER_ADDRESSES = [...HANDLERS.keys()];
+
+// W346: every one of these specs carried a hand-written comment claiming its entry points were
+// "verified against the type table", and those claims were checked by eye, once, at the moment the
+// spec was written. That is exactly the class of claim that rots: `$55`'s init body was registered
+// after `INIT_BODY_ADDRESSES` was built and sat as a silent no-op through five green checks.
+// Exporting the specs by type number lets `w346typetable.test.js` re-derive all of it from the ROM's
+// own table at `$267824` on every run, so the prose claims stop being load-bearing.
+export const TYPE_SPECS = Object.freeze(new Map([
+  [0x01, T01], [0x1b, T1B], [0x43, T43], [0x45, T45], [0x47, T47], [0x48, T48],
+  [0x49, T49], [0x4a, T4A], [0x4b, T4B], [0x59, T59], [0x81, T81], [0x8e, T8E],
+]));
