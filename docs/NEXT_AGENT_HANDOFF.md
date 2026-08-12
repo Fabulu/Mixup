@@ -3137,3 +3137,42 @@ kill score `$700` (not `$600`). **The `$7FFF` sink idiom is shared; nothing else
 
 Still to read for `$4C`: `$26F6A4..$26F704` (the death tail, which contains the `$8130E0` clear at `$26F6B6`)
 and `$26F704` (the draw).
+
+### `$4C`'s DEATH PATH (W341) -- it clears BOTH flags; the RETIREMENT path clears one
+
+    26f6a4  move.w #$8000,(A6)             the mark
+    26f6a8  move.b #$1,($9F,A6)            dying at size-1, as the formula predicts
+    26f6ae  move.w #$0,$8130DE
+    26f6b6  move.w #$0,$8130E0             <-- BOTH cleared here
+    26f6be  pushExternalSpeed($20, $20)
+    26f6cc  moveq #$6,D0 / bsr $26F858     a private subroutine, EIGHT callers
+    26f6d2  lea ($2701C8,PC),A0 / jsr $246520      $246520: SIX callers, UNPORTED
+    26f6de  move.b #$12,($1D,A6)           a LITERAL palette, as $47's $10
+    26f6e4  bsr $26FFE8                    a private subroutine, ONE caller
+    26f6e8  tst.b ($9F,A6)                 the mark again
+
+**THE ASYMMETRY IS REAL BUT PATH-SPECIFIC, AND NARROWER THAN I FIRST WROTE.** Two commits ago I said `$4C`
+clears only `$8130DE`; one commit ago I said the missing clear was in my unread span and there was no bug.
+**Both were partly wrong.** The DEATH path (`$26F6AE`/`$26F6B6`) clears BOTH. The RETIREMENT path
+(`$26F5FC` -> `$26F604`) clears only `$8130DE`. So the two exits genuinely differ, and `$8130E0` survives a
+retirement. Given eight readers self-free on it, that is either deliberate -- the retirement is *meant* to
+keep suppressing them -- or a cartridge bug. **Transcribe both paths exactly as written and do not unify
+them.** This is the third statement I have made about this one flag; the first two were made before reading
+the relevant span, and the lesson is the session's usual one.
+
+**THREE MORE CALLEES, AND `$4C` IS NOT A SMALL TYPE:**
+
+    $246520   SIX callers, UNPORTED, and it opens `movem.l D1-D7/A0-A4,-(A7)` -- it saves TWELVE registers,
+              so it is a substantial routine, not a setter. It takes a table in A0 ($2701C8 here).
+              **Read and codexref it BEFORE writing $4C** -- six callers plus a twelve-register prologue is
+              the W333 situation, and porting it inside a type wave is the mistake that lesson prevents.
+    $26F858   EIGHT callers, unported, called with D0 = 6. Also likely shared beyond $4C.
+    $26FFE8   ONE caller -- private to $4C.
+
+So `$4C` has **two genuine shared prerequisites** (`$246520`, `$26F858`) plus one private subroutine, which
+makes it the largest remaining stage-5 type by dependency depth even though it holds one record. Contrast
+`$47`, whose two apparent prerequisites both dissolved: these two have caller counts AND substantial bodies,
+which is the pair of signals that distinguishes real infrastructure from a three-line setter (the `$23C4A0`
+lesson).
+
+Still to read for `$4C`: `$26F6E8..$26F704`, `$26F704` (the draw), and the two prerequisites.
