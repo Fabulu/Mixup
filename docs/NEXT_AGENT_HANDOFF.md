@@ -2840,3 +2840,46 @@ kinematics helper being reused or something more interesting.
 non-band stage-5 types using it that way, so the band's mirror-flag reading looks like the exception.
 
 Still to read for `$43`: `$26DE8C` onward (state 2+) and `$26DED2` (the freeze target, probably the draw).
+
+### `$43`'s STATE 2 AND DRAW (W340) -- and `$263678` IS ALREADY PORTED (twelfth family check)
+
+    26de96  subq.b #1,($18,A5) / bcc $26DED2      a cadence
+    26de9e  move.b ($19,A5),($18,A5)
+    26dea4  addq.w #4,($1A,A5)                    the RAMP
+    26dea8  cmpi.w #$40,($1A,A5) / bne $26DEBA
+    26deb2  jmp $263762                           at EXACTLY $40 -> freeEnemy
+    26deba  cmpi.w #$3C,($1A,A5) / bne $26DED2
+    26dec4  moveq #$44,D0 / jsr $263678           at $3C -> a DEFERRED SPAWN of type $44
+    26decc  move.l ($2,A6),($16,A0)
+    26ded2  lea ($26DF00,PC),A0 / adda.w ($1A,A5),A0    the draw, index RAW
+
+**THE RAMP TERMINATES ON EQUALITY, NOT A THRESHOLD.** `cmpi.w #$40 / bne` -- if the step ever missed `$40`
+the object would never free. Step 4 from 0 hits `$40` exactly, so it is safe as written, but the port must
+use `=== 0x40` and not `>= 0x40`: the two behave identically here and differently under any future edit, and
+"threshold read as equality" has already cost this project a wave (`$1F3`, W335).
+
+**IT SPAWNS TYPE `$44` ONE STEP BEFORE IT DIES**, at ramp `$3C`, and copies its own position into the new
+record's `($16,A0)`. So `$43` is a two-part effect: sixteen ramp frames, a spawn on the penultimate one,
+then self-free.
+
+**AND `$263678` IS ALREADY PORTED. I NEARLY RECORDED THE OPPOSITE.** A grep for `0x263678` returned nothing
+in `src/`, and a grep for its sibling `$263684` returned only a `note` in `midboss.js` -- which I first read
+as "the allocator is unported and already blocks the midboss's death spawn". **Wrong on both counts.** That
+note is about the deferred queue being FULL at runtime, not about a missing routine, and `spawn.js:419-427`
+carries the whole family:
+
+    export const DEFQ_D1 = { FIXED80: 0x80, FIXED00: 0x00, CALLER: -1 };
+    /** Enqueue a deferred spawn.  `$263678/$263684/$263690`. ... */
+
+All three addresses are named in that docstring, and `$263678`'s `D1 = $80` is `DEFQ_D1.FIXED80`. So `$43`
+needs `enqueueDeferred(ram, 0x44, DEFQ_D1.FIXED80)` and nothing new. **Twelfth family check to pay off, and
+the lesson is sharper than the previous eleven**: grepping the ADDRESS found nothing because the port names
+the family in a docstring and exports it under a NAME. `grep 0x2xxxxx is NOT a test for "is this ported"`
+already says to grep case-insensitively for bare hex and read comments -- this is that rule earning its
+keep, and I only got there by reading the cited note instead of trusting my own summary of the grep.
+
+Draw table: `$26DF00 + $40` (sixteen longwords, index `($1A,A5)` RAW, ramp `0..$3C`). Prototype window
+`$26DE0C + $2A`. `$43` has NO unported callee: `$2637A2`, `$26377A`, `$24150A`, `$24179E`, `$2417DE`
+(`playerMove`), `$263678` (`enqueueDeferred`), `$263762`, `$23DECE`-family draw -- all present.
+
+Still to read for `$43`: `$26DED8` onward (the draw body). Everything else is read.
