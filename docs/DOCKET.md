@@ -1109,3 +1109,36 @@ table is windowed -- three things that all had to be checked and none of which w
 candidate is an UNSEEDED FIELD, which no `note` or `unreached` would ever flag because reading zero from RAM is
 legal. **Missing-effect bugs in this port are more likely to be unseeded state than missing code**, and that is
 worth trying first next time.
+
+### D24/D31 (W342): THE PORT MATCHES THE ROM ON THE HIT PATH. THE CHASE NARROWS TO ONE SPAN.
+
+Third lead examined. `animIdx` is NOT unseeded -- `shots.js:153` copies it from the player record's `+$44` at
+`$24A254`, and `shots.js:161-166` cycles that field. But the port's own comment records the cycle as
+**`($44,A6) cycles 4,0,4,0`** (`$24A32E`), so a hyper shot inherits `animIdx` of 4 or 0. On hit,
+`subqBorrow(animIdx, 4)` therefore gives:
+
+    animIdx 4  ->  0, no borrow  ->  ONE impact frame, then the next frame borrows and kills the record
+    animIdx 0  ->  borrow        ->  ZERO impact frames, record zeroed the same frame
+
+**So the impact is at most one frame, and half the time none.** That matches the report.
+
+**BUT THE PORT MATCHES THE ROM HERE, INSTRUCTION FOR INSTRUCTION.** `$25419A..$2541B4`:
+
+    25419a  move.w ($26,A6),D0                  tableIdx
+    25419e  lea $24ED4E,A0 / movea.l (A0,D0.w),A0
+    2541a8  move.l (A0)+,($6,A6)                drawOff
+    2541ac  move.w (A0)+,($E,A6)                dlWord4
+    2541b0  move.l (A0)+,($1E,A6)               animPtr
+    2541b4  move.l (A0)+,($22,A6)               anim2
+
+Four loads, exactly what `hyperShotHit` does -- and **NO write to `($24,A6)` anywhere in that span.**
+
+**SO THE REMAINING QUESTION IS ONE SPAN WIDE:** display `$2541B8..$2541E0`. If a `move.w #imm,($24,A6)` (or
+`($24,A6)` write of any kind) appears there, the port omits it and that omission IS the defect -- a one-line
+fix. **If nothing writes it, the shot's own impact animation is genuinely one frame by design**, and what the
+owner remembers as "hit sprites" must be a SEPARATE spawned effect object, not the shot's own frames. In that
+case stop looking in `shots.js` entirely and find what the ROM spawns on a hyper kill.
+
+**Do not change anything until that span is displayed.** Three leads in this item have now been proposed and
+retracted or ruled out by me -- the `$81308C` gate, the unwindowed table, and the unseeded field -- and each
+retraction came from acting on a reading that stopped one span short. The span is twenty bytes.
