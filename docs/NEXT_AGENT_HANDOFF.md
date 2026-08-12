@@ -2122,3 +2122,37 @@ is saved to `($6E,A6)` -- neither appears anywhere in the band.
 Still to read for `$47`: `$26D810` (4 bytes, confirm the mask), `$26D738` (1 instruction), `$26D85C..$26DAC8`
 (the death tail and alive path) and `$26DAC8` (the draw). Window `$26D740 + $A0`; check `$224F38` against
 W91's palette family window.
+
+### `$47` HAS TWO UNPORTED SHARED PREREQUISITES. PORT THEM FIRST, AS THEIR OWN WAVES. (W339)
+
+Confirmed by displaying the bytes: `$26D810` is `725C C216` = `moveq #$5C,D1 / and.b (A6),D1`, the same `$5C`
+mask the band uses. And `$26D738` is `jsr $23C4A0 / rts` -- the init's tail is a CALL.
+
+Running the callee check on everything `$47` touches:
+
+    $23C4A0   NOT PORTED   -- SIX callers ($26D738, $29B6EA, $2A5D14, +3)
+    $26C74E   NOT PORTED   -- SIX callers ($26C7A8, $26C7CE, $26C838, +3)
+    $26DCB6   NOT PORTED   -- reached by `bsr` from inside `$47`; likely private
+    $28C310   ported       -- already used at `handlers.js:6160` as a death-burst cue
+    $261100   ported       -- `pushExternalSpeed` (background.js)
+    $24150A   ported       -- `installBank`
+    $286096` / `$28615E` / `$2637A2` / `$26377A` / `$263808`   all ported
+
+**`$26C74E` IS `$47`'s DEATH-SPAWN WALKER AND IT IS *NOT* `$270D92`.** `$26D880 lea ($26DCEC,PC),A1 / jsr
+$26C74E` is the same construction the band uses with `$270D92`, but a different routine with its own six
+callers. Do NOT reach for `walkDeathSpawns270D92` here; the entry format is unverified and W333's whole point
+was that the stride must come from the code.
+
+**SO THE ORDER IS: `$23C4A0`, THEN `$26C74E`, THEN `$47`.** Six callers each means both are shared
+infrastructure, and W333 established the payoff: porting `$270D92` first turned three types from "read a
+death arm each" into "one call each". Porting either of these inside `$47`'s wave repeats the mistake that
+lesson exists to prevent -- and `$47` is `$E2` records, the wave least able to absorb a surprise.
+
+**MORE `$47` PER-TYPE DETAILS** (none shared with the band): the death path pushes `pushExternalSpeed` a
+SECOND time (`$26D864`, so both death and retirement stop the scroll); it marks with `(A6) = $8000` and
+`($7F,A6) = 1` -- note **`+$7F`, not `+$3F`**, because the record is `$80` bytes; it clears `$8130DC`; its
+sound cue is `$28C310` where the band uses `$28C2DC`; and its not-hit palette restore writes the **literal
+`$10`** to `($1D,A6)` rather than `($18,A5)`.
+
+Still to read for `$47`: `$26D89C..$26DAC8` (the rest of the alive path), `$26DAC8` (the draw), `$26DCB6`,
+and the two prerequisites. Window `$26D740 + $A0`; check `$224F38` against W91's palette family window.
