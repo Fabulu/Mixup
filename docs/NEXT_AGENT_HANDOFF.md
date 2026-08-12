@@ -1965,3 +1965,38 @@ now; nine do not.
 
 **Its draw is a `bsr` to `$271510`, not inline** -- the only member of the band that factors it out. That
 is the last unread span: `$271510` onward.
+
+### `$48`'s DRAW SUBROUTINE `$271510` (W338) -- and its table run is contiguous too
+
+    271510..27151E   NOT YET DISPLAYED -- the table index setup. READ IT; do not assume it matches $4A's.
+    271520  addi.l #-$9FF0A00,D1        = $F600F600     ($4A's is $E200EA00, $4B's $E200EA00-shaped)
+    271526  move.w #$A50,D3             ($4A $12A0, $4B $1EB0 -- a THIRD value)
+    27152a  moveq #$0,D4 / move.w ($1C,A6),D4
+    271530  jsr $23DECE
+    271536  rts
+    271538  the DRAW RING: EIGHT longwords, five distinct, ping-ponging:
+              $318F78 $31910C $3192A0 $319434 $3195C8 $319434 $3192A0 $31910C
+
+The ring is eight entries, matching the `andi.w #$1F` mask, and it ping-pongs over five distinct frames --
+the same construction as `$4A`'s (`$314860`.. five distinct, eight entries). Its step is `$194` where
+`$4A`'s is `$54C`.
+
+**ONE WINDOW COVERS ALL THREE OF `$48`'s TABLES, AND THE ARITHMETIC CHECKS ITSELF:**
+
+    $271538 + $20   the 8-longword draw ring        -> ends $271558
+    $271558 + $3E   death list, FIVE entries + $FFFF -> ends $271596
+    $271596 + $08   the two muzzle longwords        -> ends $27159E
+
+So **`$271538 + $66`** (`$271538..$27159D`) is the single declaration, the same construction W338 used for
+`$4B`'s five-table run and for `$4A`'s. Every boundary is checked by the next table's start rather than by
+a terminator or a row count.
+
+Together with `$2712F0 + $52` (record prototype + BOTH sub prototypes, eight-byte handler overlap), that is
+`$48`'s complete window set.
+
+**`$48` IS NOW READ EXCEPT `$271510..$27151E`, SIXTEEN BYTES.** That span is the draw's table index setup.
+It is NOT to be assumed from `$4A` -- this session recorded nine axes where the pair diverges and produced
+eight self-corrections, every one from inferring across a span instead of displaying it. Display these
+sixteen bytes, then `$48` can be written in one pass: its callees are `$2637A2`, `$26377A`, `$263808`,
+`$286096`, `$28615E`, `$270D92`, `$24179E`, `$24226E`, `$242EC2`, `$281744`, `$23DECE` -- all ported -- plus
+`$2714AE`, the stub `rts`, which is omitted.
