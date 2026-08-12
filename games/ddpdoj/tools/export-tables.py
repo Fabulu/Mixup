@@ -2785,6 +2785,12 @@ SHOT_WINDOWS.extend([
                        "$2723EA..$272427 -- overlapping its handler at $272424 by FOUR bytes"),
     (0x272850, 0x003E, "W345: type $55's death-spawn list for $270D92 -- FIVE 12-byte entries then "
                        "$FFFF, $272850..$27288D"),
+    (0x272750, 0x0100, "W346: type $55's INLINE drift table, reached lea ($2C,PC),A0 at $272722 -- "
+                       "SIXTEEN $10-byte entries in two groups of eight, $272750..$272850 exclusive. "
+                       "Bounded not by a sentinel but by ADJACENCY: it ends exactly where the death "
+                       "list above begins. Entry: +0 long -> D2, +4 packed-long position bias, +8 "
+                       "word, +$A six zero bytes. Group A bias $F000F400 w8 $1060; group B from "
+                       "$2727D0 bias $EC00F400 w8 $1460"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

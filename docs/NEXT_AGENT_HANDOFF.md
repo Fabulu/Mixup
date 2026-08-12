@@ -4413,10 +4413,31 @@ as a literal anywhere in the ROM. **When a routine walks a table you cannot find
 `lea (d16,PC)` and dump the raw bytes; do not trust a disassembly line as the first instruction at an address
 you asked for.**
 
-Still unknown, and the last thing blocking the write: **the table's extent.** `($1E,A5)` is advanced by `$10`
-on each timer expiry and nothing read so far bounds or wraps it, so either a `cmpi.w` on `($1E,A5)` exists in a
-span not yet read, or the table is terminated by a sentinel the tail tests. **Do not declare the window until
-the bound is known** -- guessing the length is exactly how `$907000` got sized wrong twice.
+**THE TABLE IS SIXTEEN `$10`-BYTE ENTRIES, `$272750..$272850` EXCLUSIVE, AND ITS BOUND COMES FROM ADJACENCY**
+rather than from any sentinel or `cmpi.w`: it ends exactly where `$55`'s death-spawn list at `$272850` begins,
+and that list already had a window from W345. The `$10` entry size matches the arms' `addi.w #$10` stride
+exactly. Window declared W346, 442 -> 443.
+
+    entry  +0    long   -> D2                      ($272728 move.l (A0),D2)
+           +4    long   -> packed position bias     (borrow rule applies)
+           +8    word
+           +$A   six zero bytes
+
+Two groups of eight share their constants -- group A from `$272750` bias `$F000F400` w8 `$1060`, group B from
+`$2727D0` bias `$EC00F400` w8 `$1460`. **UNVERIFIED HYPOTHESIS, do not port on it:** two groups of eight, with
+two cascade arms (`$27258C` for value 2 and `$2725C0` for value 3) that both advance the cursor, suggests each
+arm seeds `($1E,A5)` to `0` or `$80`. Nothing read so far shows either seed. Find the write to `($1E,A5)` before
+assuming it.
+
+**AND A TOOLING TRAP THAT COST FOUR WRONG READS: `rip/sound/maincpu.bin` IS ADDRESSED BY RAW FILE OFFSET.**
+The address IS the offset -- do NOT subtract `$200000`. "Offset-addressed" in the older notes meant exactly
+this, and I read it as "subtract the build base", which made `$272710..$272750` come back all zeros and briefly
+made me retract a correct `lea` reading. Confirm the convention on any new script by searching the image for
+bytes you already know: `d0ed 001e 2410` is at file offset `$272728`, base `+0`.
+
+Incidentally that search found the same three-instruction idiom at **sixteen** distinct addresses, so
+`adda.w ($1E,A5),A0 / move.l (A0),D2` is a shared family rather than anything specific to `$55`. Check the
+family before writing the tail.
 
 **`$241D34` IS ALREADY PORTED** as `ctx.tables.shotVector(d0, d1)` -- 29 mentions, 7 in code, used by
 `bossscripts.js`, `boss4.js` and `bossarrival.js`. The sinusoid arm calls it with amplitude `#$28` in D0 and a
