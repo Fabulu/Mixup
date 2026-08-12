@@ -19,7 +19,8 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { drawTallyHeader25DD80, tallyCursor25DD0C,
-  tallyYCursor25DEAE, SCREEN11 } from '../src/tallyscreen.js';
+  tallyYCursor25DEAE, SCREEN11,
+  drawTallyYRows25DF4C, otherSideEntry25DAC2 } from '../src/tallyscreen.js';
 import { BUCKETS, ENQUEUE_MASK, NO_ZOOM_OR, RECORD_BYTES } from '../src/spritequeue.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -293,9 +294,15 @@ test('W329 the highlight sits on the row the cursor is on', { skip: SKIP_IMG }, 
 // ==================== 4. THE Y CURSOR, $25DEAE -- THREE ENTRIES, SO NO MASK
 
 /** The attract word must be non-zero or `otherSideHolds25DAEA` answers "nobody holds anything". */
-function yWorld({ held = 0xff } = {}) {
+function yWorld({ held = 0xff, attract = 0 } = {}) {
   const ram = world();
-  ram.setU16(0x81308c, 1);                 // HUDRAM.attract, so the held test is live
+  // ATTRACT DEFAULTS OFF, and that is deliberate. The ROM's two readers of the saved-selection byte
+  // DISAGREE about the $FF sentinel: `$25DAEA` checks for it and answers "nobody holds anything",
+  // while `$25DAC2` returns it raw and its caller only rejects the attract-off $FFFF. So attract
+  // LIVE plus a $FF byte is a state the board relies on not happening, and a fixture that set both
+  // would be testing an unreachable combination. Tests that need the hold behaviour pass attract: 1
+  // together with a REAL entry.
+  ram.setU16(0x81308c, attract);           // HUDRAM.attract
   ram.setU8(SCREEN11.savedB + 0x01, held); // side 0 reads savedB for "the OTHER side"
   ram.setU8(SLOT + SCREEN11.side, 0);
   ram.setU32(A4 + 0x10, STORE);
@@ -322,7 +329,7 @@ test('W331 the Y cursor STEPS AND RETRIES over three entries instead of masking'
 test('W331 it SKIPS an entry the other side is holding', { skip: SKIP_IMG }, () => {
   // `$25DEF0 bsr $25DAEA / $25DEF4 bcs $25DEE6` retries the step while the candidate is held. That
   // retry is the whole reason a picker exists instead of a mask.
-  const ram = yWorld({ held: 1 });          // the other side sits on entry 1
+  const ram = yWorld({ held: 1, attract: 1 });   // the other side sits on entry 1
   ram.setU8(SLOT + SCREEN11.yCur, 2);
   ram.setU16(0x803972, 1 << 2);             // step DOWN: 2 -> 1 is held, so it must go on to 0
   tallyYCursor25DEAE(ram, SLOT, A4, 0, {});
@@ -377,4 +384,89 @@ test('W331 confirm is the timeout OR a $70 button, and it means RUN STATE 2', { 
   const n = yWorld();
   n.setU16(0x803972, 0x80);
   assert.equal(tallyYCursor25DEAE(n, SLOT, A4, 0, {}), false, '$80 is outside the mask');
+});
+
+// ==================== 5. THE VALUE ROWS, $25DF4C -- THE OWNER'S ZEROS
+
+test('W332 the Y draw is PER-SIDE and side 1 is $5BC02600, not the X draw $5BC02C00',
+  { skip: SKIP_IMG }, () => {
+    // The W328 trap in its own shape: a scan finds $25DF5A's constant, and side 0's sits two
+    // instructions ABOVE the branch at $25DF52. The two draws also use DIFFERENT side-1 positions,
+    // so copying the X draw's would put these rows 1536 units of packed offset away.
+    assert.equal(IMG.readUInt32BE(0x25df4e), 0x5bc00000, '$25DF4C -- side 0 keeps this');
+    assert.equal(IMG.readUInt32BE(0x25df52), 0x4a2d0007, '$25DF52 tst.b ($7,A5)');
+    assert.equal(IMG.readUInt32BE(0x25df5c), 0x5bc02600, '$25DF5A -- side 1, and NOT $5BC02C00');
+    for (const [side, hdr] of [[0, 0x5bc00000], [1, 0x5bc02600]]) {
+      const ram = yWorld();
+      ram.setU16(0x80390a, 0);
+      drawTallyYRows25DF4C(ram, SLOT, A4, side, 0);
+      assert.equal(record(ram, 0).d0, packed(hdr), `side ${side}'s own row position`);
+      assert.equal(record(ram, 0).d2, 0x00334224);
+      assert.equal(record(ram, 0).d3, 0x0648);
+    }
+  });
+
+test('W332 there are THREE row offsets here, where the X draw has two', { skip: SKIP_IMG }, () => {
+  // `$25DFF0` is `0000 0600 0C00` -- the same $600 step with one more row, because the Y cursor has
+  // three entries and the X cursor two.
+  for (const [i, want] of [[0, 0x0000], [1, 0x0600], [2, 0x0c00]]) {
+    assert.equal(IMG.readUInt16BE(0x25dff0 + i * 2), want, `row offset ${i}`);
+  }
+  for (const cursor of [0, 1, 2]) {
+    const ram = yWorld();
+    ram.setU16(0x80390a, 0);
+    drawTallyYRows25DF4C(ram, SLOT, A4, 0, cursor);
+    assert.equal(record(ram, 1).d0, packed(0x5bc00000 + [0, 0x600, 0xc00][cursor]),
+      `cursor ${cursor} highlights its own row`);
+  }
+});
+
+test('W332 the OTHER side marker is drawn only when they have one', { skip: SKIP_IMG }, () => {
+  // `$25DFC0 jsr $25DAC2 / tst.w D0 / bmi $25DFEE` -- a negative answer SKIPS the third emit
+  // entirely. That is why the screen can show both players' choices at once, and why it does not
+  // draw a phantom one when the other seat is empty.
+  assert.equal(IMG.readUInt16BE(0x25dfc4), 0x4a40, '$25DFC4 tst.w D0');
+  const both = yWorld({ held: 2, attract: 1 });       // the other side sits on entry 2
+  both.setU16(0x80390a, 0);
+  assert.equal(drawTallyYRows25DF4C(both, SLOT, A4, 0, 0), 3, 'THREE records when they have one');
+  assert.equal(record(both, 2).d2, 0x00334424, 'and it is the marker descriptor');
+  assert.equal(record(both, 2).d0, packed(0x5bc00000 + 0xc00), 'on THEIR row, not mine');
+
+  // THE SKIP IS THE ATTRACT GATE, NOT THE $FF SENTINEL, and the difference is measurable.
+  // `move.b ($1,A0),D0` writes only D0's LOW byte, and the caller had just masked D0 to 0..3 for the
+  // blink phase, so `tst.w D0` sees $00FF and reads POSITIVE. Only $25DAC2's attract-off $FFFF is
+  // negative. So attract OFF skips the marker...
+  const alone = yWorld({ held: 0xff });               // attract off -> $25DAC2 answers $FFFF
+  alone.setU16(0x80390a, 0);
+  assert.equal(drawTallyYRows25DF4C(alone, SLOT, A4, 0, 0), 2, 'TWO records when attract is off');
+
+  // ...and a $FF sentinel with attract LIVE is a state the ROM relies on not happening: entry * 2
+  // would read $25DFF0 + $1FE, far past a three-word table, and add whatever is there to a sprite
+  // position. The port REFUSES by address rather than inventing a row.
+  const bad = yWorld({ held: 0xff, attract: 1 });   // the combination the board avoids
+  bad.setU16(0x80390a, 0);
+  assert.throws(() => drawTallyYRows25DF4C(bad, SLOT, A4, 0, 0),
+    (e) => e.romAddress === 0x25dfd6, 'an out-of-range entry throws BY ADDRESS');
+});
+
+test('W332 $25DAC2 answers $FFFF when attract is off, which is what skips the marker',
+  { skip: SKIP_IMG }, () => {
+    // `$25DADA tst.w $81308C / bne / move.w #$FFFF,D0` -- attract ZERO answers "none". So the third
+    // row is a during-a-game element, and a port that ignored the gate would draw it on the
+    // attract loop.
+    assert.equal(IMG.readUInt32BE(0x25dae4), 0x303cffff, '$25DAE4 move.w #$FFFF,D0');
+    const live = yWorld({ held: 1, attract: 1 });
+    assert.equal(otherSideEntry25DAC2(live, SLOT), 1, 'attract live: the real entry');
+    const off = yWorld({ held: 1 });   // attract off by default
+    assert.equal(otherSideEntry25DAC2(off, SLOT), 0xffff, 'attract off: none');
+  });
+
+test('W332 the whole screen still fits bucket 26', { skip: SKIP_IMG }, () => {
+  // The X draw emits four and this one emits three, and they are alternative phases rather than
+  // simultaneous -- but saying the ceiling out loud is what stops a later wave overrunning it.
+  const ram = yWorld({ held: 2, attract: 1 });
+  ram.setU16(0x80390a, 0);
+  drawTallyYRows25DF4C(ram, SLOT, A4, 0, 0);
+  assert.ok(ram.u16(B.counter) <= B.capBytes, 'inside the bucket');
+  assert.equal(ram.u16(B.counter), 3 * RECORD_BYTES);
 });

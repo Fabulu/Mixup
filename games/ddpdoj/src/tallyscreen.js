@@ -40,6 +40,7 @@
 // without any of the six.
 
 import { u16, u32 } from './ram.js';
+import { unreached } from './unported.js';
 import { enqueueRegisters } from './spritequeue.js';
 import { RAM } from './machine.js';
 import { queueKill } from './objalloc.js';
@@ -54,6 +55,31 @@ const TALLY_BUCKET = 26;
 /** `$25DE8A` -- the cursor highlight's two ROW OFFSETS, as words. [M] `0000 0600`, and the $600
  *  matches the step between the two labels, which is what puts the highlight on a label row. */
 const TALLY_CURSOR_ROWS = Object.freeze([0x0000, 0x0600]);
+/** `$25DFF0` -- the Y draw's THREE row offsets, as words. [M] `0000 0600 0C00`, the same $600
+ *  step as the X pair with one more row, because the Y cursor has three entries. */
+const TALLY_Y_ROWS = Object.freeze([0x0000, 0x0600, 0x0c00]);
+
+/** `$25DFF0` indexed by an entry number DOUBLED, and the table is THREE words. The ROM does not
+ *  range-check it, and it cannot be masked: `$25DFD6 add.w (A2),D1` with an entry of `$FF` would
+ *  read `$25DFF0 + $1FE`, far past the table, and add whatever is there to a sprite position.
+ *
+ *  **THE ROM RELIES ON THE SENTINEL NEVER REACHING HERE.** `$25DAC2` answers `$FFFF` when attract
+ *  is off, and `$25DFC6 bmi` catches exactly that -- but the "nothing saved" byte `$FF` is NOT
+ *  caught, because `move.b ($1,A0),D0` writes only D0's low byte and the caller had just masked D0
+ *  to 0..3 for the blink phase, so `tst.w D0` sees `$00FF` and reads POSITIVE. So a saved-selection
+ *  byte of `$FF` with attract LIVE would overrun, and the port refuses rather than inventing a row. */
+function yRow(entry, site) {
+  if (entry >= TALLY_Y_ROWS.length) {
+    unreached(site, `$${site.toString(16).toUpperCase()} indexes $25DFF0 with entry $${
+      entry.toString(16).toUpperCase()}, and the table is THREE words (0000 0600 0C00). The ROM does `
+      + `not range-check this: entry * 2 would read past it and add whatever is there to a sprite `
+      + `position. $25DFC6's \`bmi\` only catches $25DAC2's attract-off $FFFF, NOT the "nothing `
+      + `saved" byte $FF, because move.b leaves D0's high bits alone and the caller had masked them `
+      + `to 0..3. Reaching here means a saved-selection byte was $FF while $81308C was live, which `
+      + `is a state the board is relying on not to happen`);
+  }
+  return TALLY_Y_ROWS[entry];
+}
 /** `$25DE8E` (side 0) and `$25DE9E` (side 1) -- the highlight's FOUR blink descriptors each,
  *  ascending by `$4C`. [M] read from the image. */
 const TALLY_BLINK_S0 = Object.freeze([0x00333fc4, 0x00334010, 0x0033405c, 0x003340a8]);
@@ -601,7 +627,67 @@ export function tallyYCursor25DEAE(ram, slot, a4, side, ctx) {
     ctx?.soundPost?.(0x28c6e0);                            // $25DF42
     return true;                                           // $25DF48 bra $25DB7C
   }
-  return false;                                            // $25DF4C -- the draw follows
+  drawTallyYRows25DF4C(ram, slot, a4, ram.u8(slot + SCREEN11.side), d7);   // $25DF4C
+  return false;
+}
+
+/** `$25DAC2` -- WHICH ENTRY HAS THE OTHER SIDE SELECTED, or `$FFFF` for "none".
+ *
+ *   lea $813008,A0 / tst.b ($7,A5) / bne / lea $813018,A0
+ *   move.b ($1,A0),D0 / tst.w $81308C / bne $25DAE8 / move.w #$FFFF,D0 / rts
+ *
+ * It reads the same two saved-selection records `otherSideHolds25DAEA` does, and picks the same one
+ * for the same side -- but it RETURNS the entry instead of comparing it, and it is gated on the
+ * attract word `$81308C` the other way round: attract ZERO answers `$FFFF`. The Y cursor's third
+ * value row is drawn only when this is non-negative, which is what makes the other player's marker
+ * appear on your screen and only while a game is running. */
+export function otherSideEntry25DAC2(ram, a5) {
+  const rec = ram.u8(a5 + SCREEN11.side) !== 0                // $25DAC8 tst.b / bne
+    ? SCREEN11.savedA : SCREEN11.savedB;                      // $25DAC2 / $25DAD0
+  if (ram.u16(HUDRAM.attract) === 0) return 0xffff;           // $25DADA tst.w / $25DAE4
+  return ram.u8(rec + 0x01);                                  // $25DAD6 move.b ($1,A0),D0
+}
+
+/**
+ * `$25DF4C..$25DFEC` -- THE Y CURSOR'S DRAW, and the three value rows the owner's zeros are about.
+ *
+ * Structurally it is `drawTallyHeader25DD80` again with THREE row offsets instead of two, and it
+ * reuses that routine's blink tables outright:
+ *
+ *   25df4c  move.l #$5BC00000,D1 ; $25DF52 tst.b ($7,A5) / beq ; $25DF5A move.l #$5BC02600,D1
+ *           **PER-SIDE, and side 1's is $5BC02600 -- NOT the X draw's $5BC02C00.** The W328 trap
+ *           in its own shape: the constant a scan finds is the side-1 one and the side-0 one sits
+ *           two instructions above the branch.
+ *   25df60  move.l D1,D7                            saved, as the X draw saves it
+ *   25df62  D2 = $334224 ; D3 = $648 ; D4 = ($14,A4) ; jsr $24018C
+ *   25df78  D1 = D7 ; D0 = ($F,A5) * 2 ; add.w ($25DFF0,D0),D1
+ *           THREE row offsets, `0000 0600 0C00` -- the X draw's table has TWO
+ *   25df8c  A2 = $25DE8E / $25DE9E ; the SAME four-phase blink, `$80390A` asr 1 and 3
+ *   25dfb0  D3 = $618 ; jsr $24018C                 the cursor's own highlight
+ *   25dfc0  jsr $25DAC2 / tst.w D0 / bmi $25DFEE    THE OTHER PLAYER'S MARKER, skipped if none
+ *   25dfca  D1 = D7 + ($25DFF0,D0*2) ; D2 = $334424 ; jsr $24018C
+ *
+ * So it emits TWO or THREE records: the row label, this player's blinking highlight, and -- only
+ * when the other side has an entry selected and attract is live -- a second static marker on THEIR
+ * row. That third one is why the screen can show both players' choices at once.
+ *
+ * @returns {number} records emitted: 3 normally, 2 when the other side has nothing selected.
+ */
+export function drawTallyYRows25DF4C(ram, a5, a4, side, cursor) {
+  const d4 = ram.u16(a4 + 0x14);                              // $25DF6E
+  const d7 = side !== 0 ? 0x5bc02600 : 0x5bc00000;            // $25DF5A / $25DF4C
+  enqueueRegisters(ram, TALLY_BUCKET, d7, 0x00334224, 0x0648, d4);   // $25DF72
+  // $25DF78..$25DFBA -- this player's highlight, on the row the Y cursor is on.
+  const mine = u32(d7 + yRow(cursor & 0xff, 0x25df88));
+  const blink = side !== 0 ? TALLY_BLINK_S1 : TALLY_BLINK_S0; // $25DF8C / $25DF98
+  const phase = (ram.u16(0x80390a) >> 1) & 0x03;              // $25DFA2/$25DFA4
+  enqueueRegisters(ram, TALLY_BUCKET, mine, blink[phase], 0x0618, d4);   // $25DFBA
+  // $25DFC0 -- and the OTHER player's marker, only if they have one.
+  const theirs = otherSideEntry25DAC2(ram, a5);               // $25DFC0 jsr $25DAC2
+  if ((theirs & 0x8000) !== 0) return 2;                      // $25DFC6 bmi $25DFEE
+  const at = u32(d7 + yRow(theirs & 0xff, 0x25dfd6));
+  enqueueRegisters(ram, TALLY_BUCKET, at, 0x00334424, 0x0618, d4);   // $25DFE8
+  return 3;
 }
 
 export function tallyScreen25DBB4(ram, slot, slotIndex, ctx) {
