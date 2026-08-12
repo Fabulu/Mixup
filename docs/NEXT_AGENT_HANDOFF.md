@@ -2936,3 +2936,41 @@ draw longwords). No palette window -- all three banks are inside W91's.
 
 **Order for the next wave:** write `$43` (init body + handler + draw, one pass), then `$4C` (`$26F4DA` init,
 `$26F5F2` handler), then `$B0`. `$46` wants `$55` first; `$1A` is trace-blocked at `$268D8C`.
+
+### `$4C` FIRST LOOK (W341) -- init `$26F4DA`, handler `$26F5F2`. FIVE sub records, 20-byte overlap.
+
+    26f4da  move.w #$4,($4,A5) / rts       FIVE sub records -- the most of any stage-5 type read
+    26f4e2  loadSubProto($26F566)
+    26f4ee  move.w #$5,D0 / loadRecordProto($26F55A)     SIX words -- another `move.w`, not a `moveq`
+    26f4fe  move.l #$F4001C00,($2,A6)      a FIXED position -- NO readInitPosition, as $43
+    26f506  move.w $813172,D0 / sub.w D0,($4,A6)          scroll-compensated once
+    26f510  move.w #$1,$81B414             ONE budget word, as $47 (the band sets two)
+    26f518  move.w #$1,$8130DE             its alive flag
+
+**THE OVERLAP RULE HOLDS A SIXTH TIME AND PREDICTS THE DEEPEST CASE YET.** `($4,A5) = 4` means FIVE
+`$20`-byte sub records, so `$26F566 + $A0 = $26F606` against a handler at `$26F5F2`: **`$14` = TWENTY bytes**.
+`depth = subRecords * $20 - (handler - subProto)` has now been confirmed at 4, 8, 4, 16, 4 and 20 bytes across
+six types. **It is arithmetic. Compute the window extent from the init's first instruction and stop guessing.**
+Window: `$26F55A + $AC` (`$26F55A..$26F605`).
+
+**`$F4001C00` IS A NEGATIVE Y.** The high word `$F400` is `-$C00`, so `$4C` spawns ABOVE the visible field and
+descends. `$43`'s `$30001C00` is positive. Same idiom, opposite side -- do not assume a fixed-position
+spawner starts on screen.
+
+**THE ALIVE-FLAG WORDS ARE ONE CONTIGUOUS FAMILY**, which is worth naming because six waves found them one at
+a time:
+
+    $8130DC   $47          a single global, set in init, cleared on all exits
+    $8130DE   $4C          the same shape
+    $8130E0   $49  early   reached through a POINTER in ($20,A5), chosen by scroll < $260
+    $8130E2   $4B  early   through ($26,A5), chosen by scroll < $280
+    $8130E4   $49  late
+    $8130E6   $4B  late
+
+So `$8130DC..$8130E6` is a six-word block of per-type presence flags: `$47` and `$4C` write theirs directly,
+`$49` and `$4B` hold a POINTER to one of two, and `$4A`/`$48` have none at all. **Anything reading this block
+is reading "which stage-5 set-pieces are currently alive"**, and that is probably what gates the stage's
+progression -- worth a `codexref` sweep over all six before writing `$4C`.
+
+`$4C` is in the fixed-position family with `$43` and `$01` (W325). Still to read: the init past `$26F520` and
+the handler from `$26F5F2`.
