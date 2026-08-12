@@ -2243,3 +2243,39 @@ Five off-screen limits now, one idiom: `$2000` (`$49`), `$1C00` (`$4A`), `$400` 
 `$800` (`$47`).
 
 Still to read for `$47`: `$26D8FE..$26DAC8` (states 1+), `$26DAC8` (the draw) and `$26DCB6`.
+
+### `$47` STATE 1, `$26D902..$26D970` (W339) -- SEVEN word-literal-as-two-bytes writes in a row
+
+    26d902  subq.b #1,($18,A5) / bcc $26D976       a cadence on ($18,A5)/($19,A5)
+    26d90a  move.b ($19,A5),($18,A5)
+    26d910  addq.w #4,($1A,A5) / cmpi.w #$1C,($1A,A5) / blt      an OPENING RAMP, 8 steps of 4
+    26d91e  move.w #$1C,($1A,A5)                   clamped, not wrapped
+    26d924  move.w #$0,$803934 / move.w #$0,$803936    <-- CLEARS BOTH SCREEN-SHAKE WORDS
+    26d934  move.b #$2,($17,A5)                     state 1 -> 2
+    26d93a  move.w #$1020,($1E,A5)                  ($1E)=$10  ($1F)=$20
+    26d940  move.w #$606,($20,A5)                   ($20)=$06  ($21)=$06
+    26d946  move.w #$6,($22,A5)                     ($22)=$00  ($23)=$06   <-- THE TRAP, PUREST FORM
+    26d94c  move.w #$2030,($24,A5)                  ($24)=$20  ($25)=$30
+    26d952  move.w #$404,($26,A5)                   ($26)=$04  ($27)=$04
+    26d958  move.w #$4,($28,A5)                     ($28)=$00  ($29)=$04   <-- again
+    26d95e  move.b #$0,($2A,A5) / move.b #$0,($2B,A5)   genuine BYTE writes, for contrast
+    26d96a  move.w #$6040,($2C,A5)                  ($2C)=$60  ($2D)=$40
+
+**THE WORD-LITERAL RULE, SEVEN TIMES IN ONE BLOCK.** `move.w #$6,($22,A5)` writes **`$00` to `($22,A5)`
+and `$06` to `($23,A5)`** -- the byte the literal names lands in the SECOND field. Read as "`($22,A5) = 6`"
+this whole block would misconfigure seven cadence pairs at once, and every one of them is a timer reload,
+so the symptom would be wrong firing rates rather than a crash.
+
+`$26D95E`/`$26D964` are genuine `move.b`s to `($2A,A5)` and `($2B,A5)`, sitting in the middle of the block.
+**The mix is the hazard**: two real byte writes among seven word-pair writes, so a reader who spots the rule
+and applies it uniformly gets those two wrong in the other direction.
+
+**`$26D924` CONFIRMS THE SCREEN-SHAKE READING.** The init calls `$23C4A0`, which sets `$803934 = 1` and
+clears `$803936`; state 1 clears BOTH. So `$47` starts a screen shake on spawn and stops it when its opening
+ramp completes -- which is exactly what a scroll-stopping set-piece arriving on screen would do, and it
+independently corroborates that `$803934`/`$803936` are the shake mode words `background.js` already writes.
+
+`($1A,A5)` is an 8-step ramp CLAMPED at `$1C` (`move.w #$1C` after the `blt`), not wrapped -- unlike every
+band ring. `($18,A5)`/`($19,A5)` are a cadence pair here, where in the band `($18,A5)` was the base palette.
+
+Still to read for `$47`: `$26D976` onward (state 2+), `$26DAC8` (the draw) and `$26DCB6`.
