@@ -187,3 +187,40 @@ test('W341 a full parent pool returns 0 without touching the node pool', () => {
   assert.equal(buildParts246520(ram, rom, 0x2701c8, 0), 0, '$246608 moveq #-$1,D0');
   assert.equal(ram.u16(PARTS.nodePool), 0, 'and no node was claimed');
 });
+
+// --- type $4C's state machine: $26F858 sets, $26F86A dispatches. Two entries, not one routine.
+
+test('W341 $26F858 is a SETTER with a load-bearing early-out', { skip: SKIP }, () => {
+  // The first `dasm` of this address started mid-routine and made the setter and the dispatcher look
+  // like one thing. Displayed from $26F858, they are separate, and the early-out matters: re-entering
+  // the same state must NOT reset the sub-timer at ($28,A6).
+  assert.equal(IMG.readUInt32BE(0x26f858), 0xb06e0026, '$26F858 cmp.w ($26,A6),D0');
+  assert.equal(IMG.readUInt16BE(0x26f85c), 0x6700, '$26F85C beq -- already in that state, do nothing');
+  assert.equal(IMG.readUInt16BE(0x26f85e), 0x000a, '... displacement $A');
+  assert.equal(0x26f85c + 2 + 0x0a, 0x26f868, 'which lands on the rts, not on the dispatcher');
+  assert.equal(IMG.readUInt32BE(0x26f860), 0x3d400026, '$26F860 move.w D0,($26,A6)');
+  assert.equal(IMG.readUInt32BE(0x26f864), 0x426e0028, '$26F864 clr.w ($28,A6) -- ONLY on a change');
+  assert.equal(IMG.readUInt16BE(0x26f868), 0x4e75, '$26F868 rts -- the setter ends HERE');
+});
+
+test('W341 $26F86A is a separate entry that dispatches and tail-jumps', { skip: SKIP }, () => {
+  assert.equal(IMG.readUInt16BE(0x26f86a), 0x41fa, '$26F86A lea (d16,PC),A0 -- a NEW entry point');
+  assert.equal(IMG.readUInt16BE(0x26f86c), 0x001a, '... displacement $1A');
+  assert.equal(0x26f86a + 4 + 0x1a - 2, 0x26f886, 'which resolves to the jump table at $26F886');
+  assert.equal(IMG.readUInt32BE(0x26f870), 0x302e0026, '$26F870 move.w ($26,A6),D0 -- the state');
+  assert.equal(IMG.readUInt16BE(0x26f874), 0xd040, '$26F874 add.w D0,D0');
+  assert.equal(IMG.readUInt16BE(0x26f876), 0xd040, '$26F876 add.w D0,D0 -- so index * 4');
+  assert.equal(IMG.readUInt16BE(0x26f87a), 0x2050, '$26F87A movea.l (A0),A0');
+  assert.equal(IMG.readUInt16BE(0x26f87c), 0x4e90, '$26F87C jsr (A0) -- the indirect call');
+  assert.equal(IMG.readUInt32BE(0x26f880), 0x002417de, '$26F87E jmp $2417DE -- applyVelocityA6, tail');
+});
+
+test('W341 the jump table has EIGHT entries and abuts its own first handler', { skip: SKIP }, () => {
+  const want = [0x26f8a6, 0x26f90e, 0x26fbd4, 0x26fcf2, 0x26fd66, 0x26feca, 0x26ff3e, 0x26ff56];
+  want.forEach((h, i) => {
+    assert.equal(IMG.readUInt32BE(0x26f886 + i * 4), h, `state ${i} -> $${h.toString(16)}`);
+  });
+  assert.equal(0x26f886 + 8 * 4, 0x26f8a6, 'the table ends exactly at the FIRST handler it names');
+  assert.equal(want[0], 0x26f8a6, 'which is what pins its extent -- no count word, no terminator');
+  assert.notEqual(IMG.readUInt32BE(0x26f8a6), 0x0026f8a6, 'and entry 8 is code, not an address');
+});

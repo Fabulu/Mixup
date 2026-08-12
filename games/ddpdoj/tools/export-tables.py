@@ -2763,6 +2763,22 @@ SHOT_WINDOWS.extend([
                        "node, $2701C8..$2701D5, ending where code begins"),
 ])
 
+# W341: type $4C's state machine. `$26F858` is the SETTER (cmp.w ($26,A6),D0 / early-out / set and
+# clr.w ($28,A6)); `$26F86A` is a SEPARATE entry that dispatches through this table and then tail-jumps
+# to $2417DE (applyVelocityA6).
+#
+#   $26F886 + $20   EIGHT longword handler addresses -- $26F8A6, $26F90E, $26FBD4, $26FCF2, $26FD66,
+#                   $26FECA, $26FF3E, $26FF56 -- indexed by ($26,A6) * 4, so the state is 0..7. The
+#                   table's far end is $26F8A6, which is the FIRST HANDLER: the table abuts the code it
+#                   points into, so the extent is pinned by the entry it names rather than by a count.
+#                   Entry 8 would read $0C6E0000, not a code address.
+#                   The eight handlers span $26F8A6..$2701C8, ~2300 bytes, and are ALL UNREAD. $4C is
+#                   an eight-state machine comparable to a boss, not to $43 -- see the handoff.
+SHOT_WINDOWS.extend([
+    (0x26F886, 0x0020, "W341: type $4C's EIGHT-entry state jump table, $26F886..$26F8A5 -- its far end "
+                       "is $26F8A6, the first handler it points at"),
+])
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
