@@ -3215,3 +3215,33 @@ twenty-slot pool with a three-slot parent is likely the thing `$26F858` feeds.
 **RECOMMENDED ORDER FROM HERE:** `$B0` and `$46`/`$55` are the other remaining work; `$4C` should wait for
 `$246520`'s wave rather than absorb it. `$1A` needs the `$268D8C` trace. Stage 5 stands at FOUR types with no
 handler over 19 records, from ten over 29 at the start of this session.
+
+### WHAT "FOUR TYPES OVER 19 RECORDS" ACTUALLY MEANS (W341) -- the census is not four comparable units
+
+Stage 5 ends this session at FOUR types with no handler over 19 records, from ten over 29. But I have been
+reporting that number as if the four were comparable pieces of work, and they are not:
+
+    $46   13 records   BLOCKED on $55, an unported 1130-byte child (W317). The biggest by record count and
+                       still the wrong thing to start with -- W317 measured exactly this.
+    $1A    4 records   BLOCKED on a TRACE at $268D8C, not a read (W340). D2/D3 reach $24203E from whichever
+                       $263808 opcode ran last, and $2417DE/$241812 are what set them.
+    $4C    1 record    BLOCKED on $246520 (a two-pool spawner over $810346/$80FA86, neither in the port) and
+                       $26F858 (eight callers). Read end to end otherwise.
+    $B0    1 record    **NOT AN ORDINARY TYPE.** Init $2A42D4, handler $2A4606 -- already recorded at line
+                       418 above as "the stage-5 boss-route ROOT until disproven", and $2A42D4 is the address
+                       the owner's own Hibachi analysis names as the oracle trace start.
+
+**So the remaining 19 records are: one boss route, one type behind a new subsystem, one behind a trace, and
+one behind a 1130-byte child.** None is a "write the handler" wave, and reporting "four types left" invites
+the next agent to pick the smallest record count and hit `$B0`, which is the true final boss.
+
+**The honest next-wave options, cheapest first:**
+
+    1. `$246520`'s own wave -- a bounded new subsystem (3-slot + 20-slot pools), unblocks `$4C`.
+    2. the `$268D8C` trace -- one instrumented instruction, unblocks or reclassifies `$1A`.
+    3. `$55` -- unblocks `$46`, the largest remaining record count.
+    4. `$B0`/Hibachi -- boss work, and the owner has flagged it as a trap; it wants the HIBACHI CLOSURE RULE
+       and a trace, not a handler wave.
+
+Stage 5's enemy-type sweep is effectively DONE: every type that was a straightforward read-and-write has been
+written this session. What remains is one subsystem, two measurements and a boss.
