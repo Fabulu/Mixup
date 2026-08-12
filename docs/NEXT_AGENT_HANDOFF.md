@@ -1501,3 +1501,39 @@ dereference an aim byte.
 
 So `$4A` is a three-level-cadence, seven-way aimed fan turret whose aim wanders. Only `$271BC0` (which
 begins `subq.b #1,($1A,A5)`) and `$271BD8` remain unread, and both are short.
+
+### `$4A` IS NOW READ END TO END, `$271BC0..$271C06` (W336)
+
+    271bc0  subq.b #1,($1A,A5) / bcc $271BD8       the ANIMATION counter
+    271bc8  move.b ($1B,A5),($1A,A5)
+    271bce  addq.w #4,($1C,A5)
+    271bd2  andi.w #$1F,($1C,A5)                   <-- A MASK, not a compare-and-wrap
+    271bd8  tst.b ($3F,A6) / bne $271C06           <-- the death marker AGAIN, skipping the DRAW
+    271be0  lea ($271C08,PC),A0 / adda.w ($1C,A5),A0 / move.l (A0),D2
+    271bec  move.l ($2,A6),D1 / addi.l #-$11FF1400,D1      = $EE00EC00
+    271bf6  move.w #$12A0,D3 / moveq #$0,D4 / move.w ($1C,A6),D4
+    271c00  jsr $23DECE
+    271c06  rts
+
+**CORRECTION, AND IT IS THE THIRD ON THIS TYPE.** Two sections above I wrote that a marked-dead `$4A`
+"keeps drawing and stops firing". Wrong: `($3F,A6)` is tested TWICE, at `$271B1A` before the fire arm
+AND at `$271BD8` before the draw. A marked-dead `$4A` therefore skips **both** -- it goes invisible and
+inert, runs only its animation counter, and occupies its slot until the off-screen free at `$271AF8`
+collects it. The mark is a full retirement in everything but slot ownership, which is a different thing
+from a dying animation and would have been a visible bug either way round.
+
+**`andi.w #$1F` IS AN EIGHT-ENTRY RING.** Step 4, mask `$1F`, so `($1C,A5)` cycles 0,4,8..$1C: EIGHT
+frames, where `$49` uses `cmpi.w #$78 / blt` for thirty. **Do not carry `$49`'s wrap over.** The mask
+also means an out-of-range index is impossible by construction, so unlike `$49`'s draw this one needs no
+`unreached` guard -- the ROM's own mask is the bound.
+
+That makes the table layout self-consistent and worth recording as a block: `$271C08 + $20` is the
+eight-entry draw table (`$314860` ascending), and `$271C28`/`$271C2C` are the two muzzle longwords the
+fire arm picks between on `($17,A5)`. So one window `$271C08 + $28` covers the draw table AND both
+muzzles.
+
+**`$4A` IS NOW FULLY READ AND HAS NO UNPORTED PREREQUISITE.** Its callees are `$2637A2`, `$26377A`,
+`$263808`, `$286096`, `$28615E`, `$270D92` (W333), `$24179E`, `$24226E` (W323), `$281764` (W336),
+`$23DECE`, `$242EC2` -- all ported -- plus `$2714AE`, which is an `rts` and must be omitted. Windows
+needed: `$271A1A + $52` (record + BOTH sub prototypes, overlapping the handler by eight bytes),
+`$271C08 + $28` (draw ring + both muzzles), and `$271C30 + n` for the death list.
