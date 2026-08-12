@@ -3176,3 +3176,42 @@ which is the pair of signals that distinguishes real infrastructure from a three
 lesson).
 
 Still to read for `$4C`: `$26F6E8..$26F704`, `$26F704` (the draw), and the two prerequisites.
+
+### `$246520` IS A TWO-POOL SPAWNER OVER POOLS THE PORT DOES NOT HAVE (W341)
+
+    246520..246528  an entry variant, then bra $246532
+    24652a  movem.l D1-D7/A0-A4,-(A7)      TWELVE registers saved -- a substantial routine
+    24652e  move.w #$0,D6
+    246532  lea $810346,A1 / moveq #$2,D7  <-- POOL 1, and #$2 + dbra = THREE slots
+    24653a  tst.w (A1) / bmi $246600       the free-slot test: NEGATIVE means occupied
+    246540  move.w #$8000,(A1)             claim it
+    246544  move.w D6,($4,A1)
+    246548  movem.l A0-A1,-(A7)
+    24654c  move.w (A0)+,D0                read the caller's table ($2701C8 for $4C)
+    24654e  move.w #$13,D6
+    246552  lea $80FA86,A2 / tst.w (A2) / bmi $2465DE      <-- POOL 2, and #$13 -> TWENTY slots
+
+**NEITHER POOL IS IN THE PORT.** `$810346` and `$80FA86` return nothing on a bare-hex search of `src/` --
+this time using the correct pattern (`\$?(0x)?<hex>`, case-insensitive), not the `0x`-lowercase form that
+misled me twice on `$2417DE`. So `$246520` is **genuine new infrastructure**: a two-stage allocator that
+claims one of THREE slots in `$810346`, then walks TWENTY slots in `$80FA86`, driven by a caller-supplied
+table.
+
+**`#$2` and `#$13` with `dbra` are THREE and TWENTY**, not two and nineteen -- the standing DBcc rule, and the
+second pool's twenty-slot walk is the sort of count that is wrong by one in a port unless it is read off the
+literal.
+
+**SO `$4C` IS PROPERLY BLOCKED, AND CORRECTLY SO.** Its prerequisites are:
+
+    $246520   a two-pool spawner over $810346 (3 slots) and $80FA86 (20 slots)   -- NEW SUBSYSTEM
+    $26F858   eight callers, unported, D0 = 6                                    -- unread
+    $26FFE8   one caller, private to $4C                                         -- unread
+
+This is the first stage-5 type this session whose prerequisites did NOT dissolve on inspection, and the two
+signals that predicted it were caller count PLUS a substantial body -- `movem.l` of twelve registers and two
+RAM pools. **`$246520` deserves its own wave**, and it should be measured before `$26F858` because a
+twenty-slot pool with a three-slot parent is likely the thing `$26F858` feeds.
+
+**RECOMMENDED ORDER FROM HERE:** `$B0` and `$46`/`$55` are the other remaining work; `$4C` should wait for
+`$246520`'s wave rather than absorb it. `$1A` needs the `$268D8C` trace. Stage 5 stands at FOUR types with no
+handler over 19 records, from ten over 29 at the start of this session.
