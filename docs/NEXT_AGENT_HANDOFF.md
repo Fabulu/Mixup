@@ -1861,3 +1861,40 @@ sub prototypes, overlapping the handler at `$27133A` by eight bytes -- do not tr
 Still to read for `$48`: everything after `$2713CE` -- the freeze tail, fire arm and draw. Expect them to
 resemble `$4A`'s and verify every constant and every guard, including whether `($3F,A6)` is tested before
 the fire arm and the draw as it is in `$4A`.
+
+### `$48`'s FREEZE TAIL AND AIM SETUP, `$2713CE..$271422` (W338) -- and the dead `bsr` in situ
+
+    2713ce  move.b #$1,($16,A5)
+    2713d4  jsr $24179E                     scrollCompensate -- so $48 DOES call it, like $4B
+    2713da  bsr $2714AE                     <-- THE BARE rts (W336). OMIT IT.
+    2713de  tst.b ($3F,A6) / bne $271488    the mark, test 2 -- before the fire arm, as $4A
+    2713e6  tst.b ($24,A5) / bne $271402    the two-level cadence gate, as $4A
+    2713ee  subq.b #1,($1E,A5) / bcc $271488
+    2713f6  move.b ($1F,A5),($1E,A5) / move.b ($25,A5),($24,A5)
+    271402  lea ($271596,PC),A1
+    271408  tst.b ($17,A5) / bne $271416    SET KEEPS the first table -- $4A's polarity, NOT $4B's
+    271410  lea ($27159A,PC),A1
+    271416  movem.w ($2,A6),D0-D1           SIGN-EXTENDING, as $4A
+    27141c  add.w (A1),D0 / add.w ($2,A1),D1    the muzzle as a WORD PAIR
+    271422  jsr $24226E                     aim256FromCaller
+
+**`$2713DA` IS THE OTHER CALLER OF THE BARE `rts`, NOW SEEN IN CONTEXT.** W336 established that both
+callers of `$2714AE` target the `rts` and that the body at `$2714B0` has no reachable entry point; this is
+that second caller, sitting in `$48`'s per-frame path exactly where `$4A` has its `jsr`. **Both marking
+members call a routine that does nothing, every unfrozen frame.** Omit it in both. Two independent call
+sites make it much less likely to be a mis-disassembly and much more likely to be a deliberately disabled
+feature in Version-B.
+
+**THE `($17,A5)` POLARITY MATCHES `$4A`, NOT `$4B`.** `bne` keeps the first table, so SET = first. `$4B`
+inverted this (SET = second, and it also mirrors). So polarity tracks the PAIRS: `{$48,$4A}` share it and
+`$4B` differs from both. That is the first axis found to respect the pairing -- nine others do not, so it
+is worth noting as a coincidence to verify rather than a rule to lean on.
+
+`$48` also carries `$4A`'s `movem.w` sign-extension and its word-pair reading of the muzzle longword.
+
+**THE TABLE RUN IS CONTIGUOUS AGAIN:** `$271558 + $3E` is the five-entry death list, ending exactly at
+`$271596`, which is the first muzzle longword; `$27159A` is the second. So `$271558 + $46` covers the
+death list and both muzzles as one self-checking window, the same construction W338 used for `$4B`.
+
+Still to read for `$48`: `$271426` onward -- its shot loop (or shot list) and its draw, plus whether
+`($3F,A6)` is tested a third time before the draw as it is in `$4A`.
