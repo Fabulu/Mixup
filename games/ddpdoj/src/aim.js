@@ -418,3 +418,41 @@ export function aim64AtP1Fixed() { deadEntry(0x242022, 'aim64 at P1, fixed'); }
 /** `$24227C` / `$242286` -- the aim256 twins of the above. Both dead. */
 export function aim256AtP2Fixed() { deadEntry(0x24227c, 'aim256 at P2, fixed'); }
 export function aim256AtP1Fixed() { deadEntry(0x242286, 'aim256 at P1, fixed'); }
+
+/**
+ * `$242494` -- THE OCTAGONAL DISTANCE APPROXIMATION.  **TWENTY-ONE callers.**  W341.
+ *
+ *     242494  movem.w ($2,A6),D0-D1     self position, SIGN-EXTENDING both words
+ *     24249a  sub.w D2,D0               dy = self.y - target.y
+ *     24249c  bpl $2424A0 / neg.w D0    ... absolute
+ *     2424a0  move.w D0,D4 / lsr.w #2,D4 / sub.w D4,D0      <-- D0 becomes THREE QUARTERS of |dy|
+ *     2424a6  sub.w D3,D1               dx = self.x - target.x
+ *     2424a8  bpl $2424AC / neg.w D1    ... absolute
+ *     2424ac  cmp.w D1,D0 / bcc / exg D1,D0                 D0 = the larger, D1 = the smaller
+ *     2424b2  lsr.w #1,D1 / add.w D1,D0                     larger + smaller/2
+ *     2424b6  move.w D0,D0 / rts                            sets flags on the result
+ *
+ * So `dist = max(a, b) + min(a, b) / 2` where **`a = |dy| - (|dy| >> 2)` and `b = |dx|`**.
+ *
+ * **THE THREE-QUARTERS SCALING IS APPLIED TO ONE AXIS ONLY**, and it is easy to miss because the two
+ * absolute-value blocks look symmetric either side of it.  `$2424A0..$2424A4` sits between them and
+ * touches only D0.  A symmetric `max + min/2` would make this type approach its targets on the wrong
+ * curve -- no crash, no failing test, just motion that reads slightly wrong.
+ *
+ * `lsr.w` is a LOGICAL shift, which is safe here only because both operands were made non-negative
+ * first; transcribed as `>>>` on the already-absolute value for that reason.
+ *
+ * @param selfY the record's `($2,A6)` word, sign-extended by the caller's `movem.w`
+ * @param selfX the record's `($4,A6)` word
+ * @param d2 the target's Y (the ROM's D2)
+ * @param d3 the target's X (the ROM's D3)
+ * @returns {number} the approximated distance, as a WORD
+ */
+export function octDistance242494(selfY, selfX, d2, d3) {
+  let a = u16(Math.abs(i16(u16(selfY - d2))));            // $24249A..$24249E
+  a = u16(a - (a >>> 2));                                 // $2424A0..$2424A4 -- ONE axis only
+  const b = u16(Math.abs(i16(u16(selfX - d3))));          // $2424A6..$2424AA
+  const hi = a >= b ? a : b;                              // $2424AC cmp.w / bcc / exg
+  const lo = a >= b ? b : a;
+  return u16(hi + (lo >>> 1));                            // $2424B2 lsr.w #1 / add.w
+}
