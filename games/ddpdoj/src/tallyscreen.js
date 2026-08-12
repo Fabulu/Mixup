@@ -829,3 +829,47 @@ export function tallyBonusDispatch25FF7A(ram, rom, ctx) {
   }
   return dispatched;
 }
+
+/**
+ * `$25DA94` -- PICK A Y ROW THE OTHER SIDE IS NOT HOLDING.  W344.
+ *
+ *     25da94  moveq #$0,D7            <-- NOT dead: it ZERO-EXTENDS, because...
+ *     25da96  move.b ($F,A5),D7       ... `move.b` writes only D7's low byte
+ *     25da9a  bsr $25DAEA             otherSideHolds25DAEA
+ *     25da9e  bcc $25DAAE             carry CLEAR = not held -> accept
+ *     25daa2  addq.b #1,D7
+ *     25daa4  cmpi.b #$2,D7 / ble $25DA9A     try the next, 0..2
+ *     25daaa  moveq #$0,D7 / bra $25DA9A      ... wrapping back to 0
+ *     25daae  move.b D7,($F,A5)
+ *
+ * **It starts from the CURRENT cursor, not from zero**, and walks forward with wraparound until
+ * `$25DAEA` says the row is free. So the two sides never land on the same Y row, and which row a side gets
+ * depends on where its cursor already was.
+ *
+ * **THE `moveq` AT `$25DA94` IS LOAD-BEARING AND LOOKS DEAD.** `$25DA96`'s `move.b` writes only bits 0..7,
+ * so without the `moveq` D7's upper bits would be whatever the caller left. `$25DAEA` is reached with D7 as
+ * a whole register. Three genuinely dead instructions were found elsewhere this session (`$2716D8`'s `tst.w`
+ * of a `lea` opcode, `$2714AE`'s bare `rts`, `$26F9DC`'s zero-forced `and.w`), so the habit of suspecting
+ * them is right -- **but a `moveq #$0` before a `move.b` into the same register is a zero-extend, not
+ * redundancy.**
+ *
+ * **THE ROM'S LOOP CAN SPIN FOREVER AND THE PORT BOUNDS IT.** `cmpi.b #$2 / ble` then `moveq #$0 / bra`
+ * means that if all THREE rows were held it would never exit. The board cannot reach that -- two sides
+ * cannot hold three rows -- so the port throws by address rather than hanging, the same treatment W333 gave
+ * `$270D92`'s terminator-less walk.
+ */
+export function pickFreeYRow25DA94(ram, a5, ctx) {
+  let d7 = ram.u8(a5 + 0x0f) & 0xff;                       // $25DA94 moveq / $25DA96 move.b
+  for (let tried = 0; tried <= 3; tried++) {
+    if (!otherSideHolds25DAEA(ram, a5, d7)) {              // $25DA9A bsr / $25DA9E bcc
+      ram.setU8(a5 + 0x0f, d7);                            // $25DAAE move.b D7,($F,A5)
+      return d7;
+    }
+    d7 = d7 + 1 <= 2 ? d7 + 1 : 0;                         // $25DAA2/$25DAA4/$25DAAA
+  }
+  unreached(0x25da9a, 'all THREE Y rows report held by the other side, so $25DA94\'s wraparound would '
+    + 'never exit. Two sides cannot hold three rows, so the board cannot reach this -- it means '
+    + '$25DAEA is being asked about a state that does not occur, or ($1,$813008)/($1,$813018) hold the '
+    + '$FF sentinel with attract LIVE, which W332 established the board also cannot reach');
+  return 0;
+}
