@@ -3688,3 +3688,42 @@ another arm or runner.
 
 Still unread for `$4C`: `$26F9C6` onward, `$26FA24`, `$26FA5E`, `$270128` onward, and the six handlers from
 `$26FBD4`.
+
+### `$4C`'s SUBSYSTEMS ARE ONE PER SUB-RECORD, AT A `$20` STRIDE (W341)
+
+`$26FA5E` is a THIRD arm, and comparing it with `$26F994` reveals the layout:
+
+    26fa5e  move.w #$1,($66,A6)        arm #2
+    26fa64  move.w #$0,($6C,A6)        cursor #2
+    26fa6a  move.w #$1818,($6E,A6)     a cadence PAIR: ($6E)=$18 ($6F)=$18
+    26fa70  tst.w $813098 / beq $26FA80    <-- THE RANK GATE
+    26fa7a  move.w #$404,($6E,A6)      above rank 0: $04/$04 -- FOUR TIMES FASTER
+    26fa80  rts
+    26fa82  tst.w ($66,A6) / beq $26FBA2   the runner, same shape as $26F9A2
+
+**THE ARM/CURSOR PAIRS SIT ONE PER SUB-RECORD AT A `$20` STRIDE:**
+
+    sub-record 1   +$26 outer state   +$28 its cascade      ($26F858 / $26F86A)
+    sub-record 2   +$46 arm           +$4C cursor           ($26F994 / $26F9A2)
+    sub-record 3   +$66 arm           +$6C cursor           ($26FA5E / $26FA82)
+
+`$66 - $46 == $20` and `$6C - $4C == $20`, exactly the sub-record stride. **So each of `$4C`'s five
+`$20`-byte sub-records hosts one machine**, and `($4,A5) = 4` (five sub-records) is not just a size -- it is
+how many independent machines the object has room for. That is a fifth structural fact derived from `($4,A5)`,
+after the overlap depth and the hitMask/retire/dying trio.
+
+**It also predicts where to look:** a fourth pair would be `+$86`/`+$8C` in sub-record 4, and the `+$8E` hit
+mask and `+$9E`/`+$9F` flags already measured live in that same sub-record. So sub-record 4 is the
+damage/lifetime record and sub-records 2 and 3 are weapon subsystems.
+
+**AND THE RANK GATE IS A CADENCE, NOT A PATTERN CHANGE.** `$1818` at rank 0 becomes `$404` above it -- the
+reload byte drops from `$18` to `$04`, so the subsystem fires **four times as often** at higher rank. Contrast
+`$47`, whose rank arm interleaves a second bullet TYPE at the same rate (W339). **Two types, two different
+rank mechanisms**: `$47` changes what it fires, `$4C` changes how often. Neither is a difficulty multiplier
+applied uniformly, so neither can be inferred from the other.
+
+`move.w #$1818` and `move.w #$404` are the word-literal-as-two-byte-fields idiom for the eleventh and twelfth
+time this session.
+
+Still unread for `$4C`: `$26F9C6` onward, `$26FA24`, `$26FA8A` onward, `$26FBA2`, `$270128` onward, and the
+six handlers from `$26FBD4`.
