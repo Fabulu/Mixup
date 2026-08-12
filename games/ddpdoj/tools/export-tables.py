@@ -2705,6 +2705,31 @@ SHOT_WINDOWS.extend([
                        "five-entry death list and both muzzle longwords, which abut end to end"),
 ])
 
+# W339 recon: type $47 ($26D6EE init / $26D6F6 initBody / $26D7D0 handler), the scroll-stopping
+# set-piece at $E2 records. Declared ahead of the port so the reads are servable; see the $47
+# sections of NEXT_AGENT_HANDOFF.md for the twenty-one transcription traps.
+#
+#   $26D740 + $A0   the SIXTEEN-word record prototype (`move.w #$F,D0`, NOT a moveq) and ALL FOUR
+#                   $20-byte sub prototypes. ($4,A5) = 3, so $26D760 + $80 = $26D7E0 against a
+#                   handler at $26D7D0: SIXTEEN bytes of overlap, the deepest in the port, and
+#                   predicted exactly by depth = subRecords*$20 - (handler - subProto). Do not trim.
+#   $26DAF4 + $20   the EIGHT-longword draw table ($31A600, uniform step $9A4). Its far end is
+#                   $26DB14, which is CODE -- the subroutine of that name -- so the extent is pinned
+#                   by the instruction stream and not by a row count. NOTE: the main draw at $26DAD6
+#                   reads `(A0)` with NO `adda.w`, so it only ever uses entry 0; the other seven are
+#                   reached by $26DB14/$26DC00/$26DCB6.
+#   $26DCEC + $AA   the death-spawn list walked by $26C74E (NOT $270D92 -- same 12-byte format, the
+#                   ($1E,A0) constant differs, W339's `anim` parameter): FOURTEEN entries then $FFFF,
+#                   ending $26DD96. Fourteen is the largest death list in stage 5 by some way.
+SHOT_WINDOWS.extend([
+    (0x26D740, 0x00A0, "W339: type $47's 16-word record prototype and ALL FOUR sub prototypes, "
+                       "$26D740..$26D7DF -- overlapping its handler at $26D7D0 by SIXTEEN bytes"),
+    (0x26DAF4, 0x0020, "W339: type $47's 8-longword draw table, $26DAF4..$26DB13, its far end "
+                       "pinned by the code at $26DB14"),
+    (0x26DCEC, 0x00AA, "W339: type $47's death-spawn list for $26C74E -- FOURTEEN 12-byte entries "
+                       "then $FFFF, $26DCEC..$26DD95"),
+])
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
