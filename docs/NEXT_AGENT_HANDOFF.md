@@ -4359,9 +4359,17 @@ cached a boolean, would couple or decouple them wrongly.**
 That is now FOUR distinct meanings for offset `+$17` across stage 5 -- mirror/table select in all four band
 members, a state number in `$47` and `$43`, and in `$55` both an invulnerability enable and an arm selector.
 
-Combined with the position, the timer and the drift, `$46` supplies `$55` with at least five parameters:
-`($16,A5)` position, `($1A,A5)` timer, `($17,A5)` protection AND arm, `($2A,A5)` drift, `($1C,A5)`/`($1D,A5)`
-cadence pair.
+**CORRECTION (same wave): `($2A,A5)` IS NOT A PARENT PARAMETER.** Arm B COMPUTES it. `$272544..$272556` loads
+`D0 = $28` as an amplitude and `D1 = ($2C,A5)` as a phase, advances that phase by 2 (`addq.b #2`), calls
+`$241D34` -- already ported, 29 mentions and 7 in code, the angle/vector helper `boss4.js` and others use --
+and stores the returned `D2` into `($2A,A5)`. **So arm B gives `$55` a SINUSOIDAL drift**, phase-advancing two
+steps a frame, and the drift subtraction at `$2724AA` consumes what arm B produced.
+
+So what `$46` actually supplies is FOUR things: `($16,A5)` position, `($1A,A5)` timer, `($17,A5)` protection
+AND arm select, and the `($1C,A5)`/`($1D,A5)` cadence pair. `($2A,A5)` is internal state, and in arm A -- which
+never reaches `$272544` -- it presumably stays whatever the prototype left, making arm A's drift constant where
+arm B's oscillates. **That is the difference between the two arms and it is worth confirming when arm A's tail
+is read.**
 
 Still unread: `$272536` (arm B), `$2724F8`..`$272536` (the rest of arm A) and `$272722` (the freeze target).
 Everything else in `$55` is read, its init is ported, and it needs no unported callee.
