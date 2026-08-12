@@ -1233,3 +1233,47 @@ implemented, and 225 is SUPERSEDED by 244; every other number through 263 is
 COMPLETE. Reserve the
 next number by creating `<N>-RESERVED.md`, then rename it immediately to the real
 `IN PROGRESS` worklog as `AGENTS.md` requires. Numbers are never reused.
+
+### `$4A` AND `$4B`: NEAR-CLONES OF `$49` THAT DIVERGE ON THE ONE FIELD THAT MATTERS (W336 recon)
+
+    type $4A    init $2719AE   initBody $2719B6   handler $271A64
+    type $4B    init $271C92   initBody $271C9A   handler $271D48
+
+`$4A`'s init body, read in full:
+
+    2719ae  move.w #$1,($4,A5) / rts        TWO sub-records, where $49 declares ONE
+    2719b6  loadSubProto($271A2C)
+    2719c2  loadRecordProto($271A1A, 8)     D0+1 = NINE words, where $49 takes seven
+    2719d0  readInitPosition
+    2719d6  cmpi.w #$2B6,$8130CE / bne      the same equality idiom, a DIFFERENT frame ($1F3 for $49)
+    2719e2  move.b #$40,($1C,A6) / move.b #$1,($17,A5)
+    2719ee  move.w #$1,$81B414 / move.w #$1,$81B416    the same bullet-budget opt-in (W336)
+    2719fe  move.b ($18,A5),($1D,A6)
+    271a04  jsr $242EC2 / move.b D0,($20,A5)
+    271a0e  jsr $242EC2 / move.b D0,($21,A5)
+    271a18  rts
+
+**`($20,A5)` IS TWO RNG BYTES HERE, NOT A POINTER.** In `$49` that same field holds the ADDRESS of a
+formation flag and both of its exits clear the flag through it. `$4A` calls `drawWord242EC2` twice and
+stores a byte from each into `($20,A5)` and `($21,A5)`, and has no formation flag at all. **Porting
+`$4A` by copying `$49` would dereference two random bytes as an address.** This is the W315 finding
+again in a sharper form: the band shares idioms and diverges in its fields, so every field must be
+re-read even when the surrounding code is identical.
+
+**THE OVERLAP TRAP IS HERE TOO AND IT IS EIGHT BYTES DEEP.** `($4,A5) = 1` means TWO `$20`-byte sub
+records, so `$271A2C + $40 = $271A6C` while the handler starts at `$271A64`. Its window must be
+declared `$271A1A + $52` (`$271A1A..$271A6B`, record proto + both sub records) and must not be trimmed
+to the handler. `$49`'s was four bytes; do not assume the depth.
+
+**THE HANDLER TESTS BOUNDS BEFORE DAMAGE, WHERE `$49` DOES THE REVERSE.**
+
+    271a6c  cmpi.w #$2800,($2,A6) / bgt $271A7E     a plain WORD compare -- not $49's ext.l/addi.l
+    271a76  tst.b ($16,A5) / bne $271AB4
+    271a7e  moveq #$5C,D1 / and.b (A6),D1 / beq $271AD2    the $5C family mask, SIXTH member
+    271a86  move.b #$A3,D0 / and.b D0,(A6)
+
+So `$4A` is a third variant of the bounds idiom: `$1B`/`$81` use two `addi.w`s, `$49` uses a signed
+LONG compare, and `$4A` uses a bare `cmpi.w #$2800`. Three members, three spellings of one test.
+
+Still unread for `$4A`: everything past `$271A8A`, including its walker call at `$271AC2` (W333) and
+whether `($20,A5)`/`($21,A5)` feed cadence or aim. `$4B` is not yet read past its table entry.
