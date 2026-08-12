@@ -1277,3 +1277,37 @@ the impact; `laser.js:1029` and the ROM agree exactly; `$81308C` is `players - 1
 `$8130D2` (the freeze the whole port reads) is set from the same routine. **The port never writes `$81308C`,
 and that is a real gap regardless of how the trace comes out** -- eleven `$80390C`-paired sites and about half
 of the 53 readers depend on it, so porting `$25FD94` is worth doing on its own merits.
+
+### D24/D31 (W343): THE CALL SITE IS THE **TALLY SCREEN**, NOT THE FRAME LOOP. MY WIRING PLAN WAS WRONG.
+
+The previous entry said to "find `$25FD94`'s frame-loop call site". **It has none.** Its three callers
+(`$26005C`, `$2601E4`, `$2602B0`) sit inside three of the **nine bonus-line routines** whose table
+`tallyscreen.js:184` already documents:
+
+    $25FF52's nine longwords: 0, $25FFA8, $260056, $26010E, $2601F4, $2602B6, $260348, $26035A, $26037C
+
+and that docstring already says, in the port, **"None of the nine is ported and none is called from here."**
+
+**AND `$8130FA`/`$81311E` ARE THE TALLY RECORD HEADS THE PORT ALREADY WRITES.** `tallyRequest25FF38(ram, d0,
+d1)` posts `(request, state)` into `$8130FA` for side 0 and `$81311E` for side 1 -- **the same two structures
+`$25FD94` counts.** It writes `+$0` and `+$2`; `$25FD94` reads `+$18`. Same records, different fields.
+
+**SO THE WHOLE CHAIN IS:**
+
+    stage clear -> tally screen -> one of nine bonus-line routines -> $25FD94 -> $81308C
+                                                                              -> gameplay reads it
+                                                                                 (53 sites, incl. the laser impact)
+
+`$81308C` is computed on the RESULTS screen and PERSISTS into the next stage's play. That explains why the
+laser impact could be present in some stages and not others on the real board, and it means **calling
+`playerFlags25FD94` from a frame loop would be wrong** -- it would recompute a value the board sets once per
+stage transition.
+
+**THE FIX PATH, NOW CONCRETE:** port the bonus-line routines at `$260056`, `$2601F4` and `$2602B6` (the three
+that call `$25FD94`) far enough to reach their `jsr`, and call `playerFlags25FD94` from there. `tallyscreen.js`
+already has the mailbox poster and the table's address; the nine routines are the last unported piece of the
+stage-clear screen, which W328-W332 built the rest of.
+
+**A NOTE ON WHAT `+$18` IS.** `tallyRequest25FF38` only ever writes `+$0`/`+$2`, so whatever populates `+$18`
+is in the unported nine. Until one of them is read, **do not assume `+$18` non-zero means "this side played"**
+-- that inference is what produced four wrong readings on this item already. Read the routine that writes it.
