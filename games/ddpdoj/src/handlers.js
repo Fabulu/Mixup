@@ -95,7 +95,7 @@ import { handlerBoss297398 } from './boss2.js';
 import { handlerBoss29BE28 } from './boss3.js';
 import { handler99_29E6B0 } from './boss3type99.js';
 import { handler1E_296DD6 } from './bossf23.js';
-import { stepMovement, scrollCompensate, applyVelocity,
+import { stepMovement, scrollCompensate, applyVelocity, applyVelocityA6,
   stickMove242A48 } from './movement.js';
 import { readInput23D186 } from './tallyscreen.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
@@ -3143,15 +3143,16 @@ function handler43(ram, rom, a5, ctx) {
     if (next === 0) ram.setU8(a5 + 0x17, 1);                // $26DE54
   }
   if (ram.u8(a5 + 0x17) === 1) {
-    // $26DE64 jsr $2417DE -- NOT PORTED. `machine.js:215` has `playerMove: 0x2417de` but that is an
-    // address in a CONSTANT TABLE with no consumer anywhere in `src/`, which is exactly what the standing
-    // rule means by "grep 0x2xxxxx is NOT a test for is this ported". W341 first recorded it as ported on
-    // the strength of that one grep hit and was wrong. It is a note until someone reads it.
-    ctx.unported?.note(0x26de64, `$26DE64 type $43's state 1 calls $2417DE every frame -- the routine `
-      + `machine.js names 'playerMove' but does NOT implement. Only its ADDRESS is tabulated. Whatever `
-      + `motion it applies to this record is missing, so a $43 in state 1 will sit still. MEASUREMENT `
-      + `THAT UNBLOCKS: disassemble $2417DE to its rts and codexref it -- a routine named playerMove and `
-      + `called from a non-player object is either shared kinematics or something worth understanding`);
+    // $26DE64 jsr $2417DE -- `applyVelocityA6` (movement.js), the freeze-gated vector application, and
+    // it is the RAW form because $2417DE takes A6 directly. 62 callers in build B.
+    //
+    // **THIS LINE TOOK THREE ATTEMPTS AND THE FIRST TWO ARE WHY THE STANDING RULE EXISTS.** Attempt 1
+    // called it ported because `grep 0x2417de` hit `machine.js:215`'s `playerMove: 0x2417de` -- an
+    // address in a constant table with no consumer. Attempt 2 corrected that to "NOT ported" on the same
+    // grep. Both were wrong: `movement.js:89` documents `$2417DE` in PROSE and `applyVelocityA6` is its
+    // implementation, citing `$2417F2 bsr $241812` line by line. `grep 0x2417de` could never find it.
+    // The rule says: grep case-insensitively for BARE HEX and read every hit INCLUDING COMMENTS.
+    applyVelocityA6(ram, ctx.tables, a6);                   // $26DE64 jsr $2417DE
     if (due8(ram, a5 + 0x1c)) {                             // $26DE6A subq.b #1 / bcc -- UNDERFLOW
       ram.setU8(a5 + 0x1c, ram.u8(a5 + 0x1d));              // $26DE72
       ram.setU8(a6 + 0x1a, u16(ram.u8(a6 + 0x1a) - 1) & 0xff);   // $26DE78 subq.b #1,($1A,A6)

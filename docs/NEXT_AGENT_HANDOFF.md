@@ -2831,15 +2831,28 @@ established reading is wrong here: `bcc` (underflow), `bpl` (runs negative), `be
 **Read the instruction AFTER every `subq`, not just the branch.** A `cmpi` between them changes the meaning
 entirely, and three of these four look identical at a glance.
 
-**CORRECTION: `$2417DE` IS *NOT* PORTED.** This section previously said it was, citing `playerMove` at
-`machine.js:215`. That line is `playerMove: 0x2417de` -- an ADDRESS in a CONSTANT TABLE, with **no consumer
-anywhere in `src/`**. I counted a single grep hit as a port and called it the "eleventh family check to pay
-off"; it was the standing rule `grep 0x2xxxxx is NOT a test for "is this ported"` catching me instead.
+**`$2417DE` IS `applyVelocityA6` (movement.js). THIS TOOK THREE ATTEMPTS; READ WHY.**
 
-So `$43`'s state 1 carries a `note`, not a call: whatever motion `$2417DE` applies is missing, and a `$43` in
-state 1 will sit still. The measurement that unblocks it is in the note -- disassemble `$2417DE` to its `rts`
-and `codexref` it, because a routine named `playerMove` called from a non-player object is either shared
-kinematics or something worth understanding.
+  1. First I called it ported, citing `machine.js:215`'s `playerMove: 0x2417de`. That is an address in a
+     CONSTANT TABLE with no consumer -- not a port.
+  2. Then I "corrected" that to **NOT ported**, on the strength of the same `grep 0x2417de`.
+  3. Both wrong. **`movement.js:89` documents `$2417DE` in PROSE** and `applyVelocityA6(ram, tables, a6)` is
+     its implementation, annotating `$2417E0`, `$2417E4`, `$2417EA`, `$2417F2`, `$2417F4` and `$2417F8` line
+     by line. `grep 0x2417de` could never have found it.
+
+**This is the standing rule earning its keep against me twice on one address**: *grep case-insensitively for
+BARE HEX digits, read every hit INCLUDING comments and docstrings, and read the routine to its `rts`
+comparing its BODY.* Searching for `0x`-prefixed lowercase is the failure mode the rule names, and I used it
+to reach two opposite wrong conclusions before searching for the routine's BEHAVIOUR instead.
+
+`$2417DE` is the freeze-gated vector application with **62 callers**: read speed/heading from `($1A,A6)`/
+`($1B,A6)`, `bsr $241812` for the vector, add D2/D3 into `($2,A6)`/`($4,A6)`, and on freeze return zeros.
+`$43` uses the RAW A6 form, which is why `applyVelocityA6` is exported separately from `applyVelocity`.
+
+**AND IT IS A LEAD ON `$1A`'s BLOCKER.** `$2417DE`/`$241812` are what SET D2 and D3 -- the movement delta. So
+the D2/D3 that `$1A`'s init hands to `$24203E` at `$268D8C` are very likely the last movement delta left by
+whichever `$263808` opcode ran, not a target position at all. That sharpens the trace: instrument `$268D8C`
+and compare D2/D3 against the record's last delta rather than against any player coordinate.
 
 `($17,A5)` is a state number here, as in `$47` and unlike all four band members. That is now two of two
 non-band stage-5 types using it that way, so the band's mirror-flag reading looks like the exception.
