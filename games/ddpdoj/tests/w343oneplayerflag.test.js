@@ -18,6 +18,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
+import { Unreached } from '../src/unported.js';
+import { tallyBonusDispatch25FF7A, BONUS_LINES } from '../src/tallyscreen.js';
 import { RAM, playerFlags25FD94, setFreeze25FD82, clearFreeze25FD8C } from '../src/machine.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -105,4 +107,66 @@ test('W343 the freeze is CLEARED before it may be re-set, so a recovering player
   playerFlags25FD94(ram);
   assert.equal(ram.u16(RAM.freeze), 0,
     '$25FDD2 clears unconditionally BEFORE $25FDD4 decides to re-set it');
+});
+
+// --- $25FF7A, the bonus-line dispatcher: the missing link between the mailbox and the flag.
+
+test('W343 the table has TEN entries and is bounded by the dispatcher\'s own lea', { skip: SKIP }, () => {
+  const want = [0, 0x25ffa8, 0x260056, 0x26010e, 0x2601f4,
+    0x2602b6, 0x260348, 0x26035a, 0x26037c, 0x2603b0];
+  want.forEach((v, i) => assert.equal(IMG.readUInt32BE(0x25ff52 + i * 4), v, `entry ${i}`));
+  assert.deepEqual([...BONUS_LINES], want, 'and the port carries all ten -- an earlier note said NINE');
+  assert.equal(0x25ff52 + 10 * 4, 0x25ff7a, 'entry 10 would be the dispatcher itself');
+  assert.equal(IMG.readUInt16BE(0x25ff7a), 0x4df9, '... which is `lea $8130FA,A6` -- CODE');
+  // And the ROM does NOT mask the request, which is why the port guards it.
+  assert.equal(IMG.readUInt16BE(0x25ff8c), 0xd040, '$25FF8C add.w D0,D0');
+  assert.equal(IMG.readUInt16BE(0x25ff8e), 0xd040, '$25FF8E add.w D0,D0 -- two bare adds, no andi');
+});
+
+test('W343 the dispatcher walks TWO sides at a $24 stride', { skip: SKIP }, () => {
+  assert.equal(IMG.readUInt16BE(0x25ff80), 0x7e01, '$25FF80 moveq #$1,D7 -- plus dbra = TWO');
+  assert.equal(IMG.readUInt16BE(0x25ff82), 0x3016, '$25FF82 move.w (A6),D0 -- the posted request');
+  assert.equal(IMG.readUInt32BE(0x25ff9e), 0x4dee0024, '$25FF9E lea ($24,A6),A6');
+  assert.equal(0x81311e - 0x8130fa, 0x24, 'and $24 is exactly the two records\' separation');
+  assert.equal(IMG.readUInt16BE(0x25ffa2), 0x51cf, '$25FFA2 dbra D7');
+});
+
+test('W343 a request on side 0 dispatches and, for entries 2/3/4, sets the ONE-PLAYER flag', () => {
+  for (const req of [2, 3, 4]) {
+    const ram = new Ram();
+    const notes = [];
+    const ctx = { unported: { note: (a, m) => notes.push([a, m]) } };
+    ram.setU32(RAM.inPlay1 + 0x18, 1);                     // one player in play
+    ram.setU16(0x8130fa, req);                             // side 0 posts the request
+    assert.equal(tallyBonusDispatch25FF7A(ram, null, ctx), 1, `request ${req} dispatched once`);
+    assert.equal(ram.u16(RAM.onePlayerFlag), 1,
+      `entry ${req} calls $25FD94, so $81308C becomes 1 -- the laser impact gate opens`);
+    assert.equal(notes.length, 1, 'and the body is noted, not invented');
+  }
+});
+
+test('W343 an entry OUTSIDE 2/3/4 dispatches without touching the flag', () => {
+  const ram = new Ram();
+  const ctx = { unported: { note: () => {} } };
+  ram.setU32(RAM.inPlay1 + 0x18, 1);
+  ram.setU16(0x8130fa, 7);                                 // entry 7 = $26035A, no $25FD94 call
+  assert.equal(tallyBonusDispatch25FF7A(ram, null, ctx), 1);
+  assert.equal(ram.u16(RAM.onePlayerFlag), 0, 'entry 7 does not call $25FD94, so the flag stays 0');
+});
+
+test('W343 request 0 dispatches nothing, and BOTH sides are walked', () => {
+  const ram = new Ram();
+  const ctx = { unported: { note: () => {} } };
+  assert.equal(tallyBonusDispatch25FF7A(ram, null, ctx), 0, 'two zero requests -> nothing');
+  ram.setU16(0x81311e, 2);                                 // only SIDE 1 posts
+  assert.equal(tallyBonusDispatch25FF7A(ram, null, ctx), 1,
+    'side 1 is reached, so the $24 stride and the two-iteration loop both work');
+});
+
+test('W343 a request past the table THROWS rather than jumping into the dispatcher', () => {
+  const ram = new Ram();
+  const ctx = { unported: { note: () => {} } };
+  ram.setU16(0x8130fa, 10);                                // one past the last entry
+  assert.throws(() => tallyBonusDispatch25FF7A(ram, null, ctx),
+    (e) => e instanceof Unreached && e.romAddress === 0x25ff92);
 });
