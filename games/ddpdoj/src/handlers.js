@@ -2491,6 +2491,163 @@ function handler49(ram, rom, a5, ctx) {
   draw49(ram, rom, a5, a6);                               // $271774 -- reached on EVERY path
 }
 
+// ============================================================ TYPE $4A (W337)
+//
+// Stage 5's seven-way aimed fan turret. `$2719AE` init / `$2719B6` initBody / `$271A64` handler.
+//
+// **IT DIES WITHOUT FREEING ITSELF, AND `($3F,A6)` IS TESTED THREE TIMES.** Where `$49`'s death arm
+// ends in `freeEnemy`, `$4A` sets `(A6) = $8000` and `($3F,A6) = 1` and FALLS THROUGH. The mark is then
+// read at the handler's very first instruction (`$271A64`), before the fire arm (`$271B1A`) and before
+// the draw (`$271BD8`), so from its next frame the record is unhittable, silent and invisible and only
+// drifts until the off-screen free at `$271AF8` collects it. `death37` is the same shape (W336) --
+// mark-and-fall-through is an established member shape, not a new mechanism.
+//
+// **FIVE PLACES IT LOOKS LIKE `$49` AND IS NOT**, every one of them able to produce a plausible wrong
+// picture: `($20,A5)` is aim state and not a formation-flag pointer; the off-screen limit is `$1C00`
+// and not `$2000`; the freeze SKIPS the counter step where `$49`'s freeze runs INTO it; the ring is an
+// eight-entry `andi.w #$1F` mask where `$49` wraps thirty with a compare; and the prototype overlap is
+// eight bytes deep rather than four. It also never calls `stepMovement`.
+const T4A = Object.freeze({
+  init: 0x2719ae, initBody: 0x2719b6, handler: 0x271a64,
+  recordProto: 0x271a1a, recordWords: 9, subProto: 0x271a2c, subRecords: 2,
+  armFrame: 0x2b6,                            // $2719D6 -- $49's is $1F3
+  despawnAt: 0x2800,                          // $271A6C cmpi.w #$2800,($2,A6) -- a TRIGGER, not bounds
+  damageMask: 0x5c, damageClear: 0xa3,
+  palBase: 0x18, palXor: 0x19,
+  killScore: 0x180,                           // $271AA8 -- $49 pays $250
+  deathCue: 0x28c2dc, deathList: 0x271c30,    // EIGHT entries, ending at $4B's init
+  deadMark: 0x8000, deadFlag: 0x3f,           // $271AB4 / $271ACC
+  boundsBias: 0x4000, boundsLimit: 0x1c00,    // $271AE0/$271AE6 -- signed LONG, and $1C00 not $2000
+  muzzleSet: 0x271c28, muzzleClear: 0x271c2c,  // read as a LONG and as a WORD PAIR
+  fanEntry: 0x281764, fanD0: 0xffff000b,      // $271B7C
+  fanSpread: 9, fanStep: 3, fanPasses: 7,     // $271BA0 subi.w #$9 / addq.b #3 / move.w #$6 + dbra
+  ring: 0x271c08, ringMask: 0x1f, ringStep: 4,   // $271BD2 andi.w #$1F -- EIGHT entries
+  drawBias: 0xee00ec00, drawD3: 0x12a0, drawStub: 0x23dece,
+});
+
+/** `$271BD8..$271C06` -- the draw. Skipped entirely once `($3F,A6)` is set. The ring index cannot go
+ *  out of range: `$271BD2 andi.w #$1F` IS the bound, so unlike `$49`'s draw this needs no guard. */
+function draw4A(ram, rom, a5, a6) {
+  if (ram.u8(a6 + T4A.deadFlag) !== 0) return;             // $271BD8 tst.b ($3F,A6) / bne $271C06
+  enqueueRegistersThroughStub(ram, rom, T4A.drawStub,
+    u32(ram.u32(a6 + 0x02) + T4A.drawBias),                // $271BEC/$271BF0 addi.l #-$11FF1400
+    rom.u32(T4A.ring + u16(ram.u16(a5 + 0x1c))),           // $271BE0..$271BEA
+    T4A.drawD3,                                            // $271BF6 move.w #$12A0,D3
+    ram.u16(a6 + 0x1c));                                   // $271BFC move.w ($1C,A6),D4
+}
+
+/** `$271AB4..$271AD2` -- the retirement, reached BOTH from the death test and from the `$2800` despawn
+ *  trigger at `$271A7A`. It marks and does NOT free; see the header. */
+function retire4A(ram, rom, a5, a6, ctx) {
+  ram.setU16(a6, T4A.deadMark);                            // $271AB4 move.w #$8000,(A6)
+  walkDeathSpawns270D92(ram, rom, ctx, T4A.deathList,
+    ram.u32(a6 + 0x02), 0x271ac2);                         // $271AB8/$271AC2
+  ctx.soundPost?.(T4A.deathCue);                           // $271AC6
+  ram.setU8(a6 + T4A.deadFlag, 1);                         // $271ACC move.b #$1,($3F,A6)
+}
+
+/** `$271B3E..$271BBC` -- SEVEN aimed shots at 3-unit spacing, then the centre drifts.
+ *
+ *  `move.w #$6,D7` + `dbra` is SEVEN passes (`dbra` branches while the counter is not -1), so with
+ *  `subi.w #$9` first and `addq.b #3` after each the headings are centre-9,-6,-3,0,+3,+6,+9. Six or
+ *  eight would both look plausible on screen.
+ *
+ *  The muzzle longword is read TWO WAYS: as a pair of words to bias the aim inputs (`$271B58`), and as
+ *  one longword to bias the bullet position (`$271B9A`). Same four bytes. */
+function fire4A(ram, rom, a5, a6, ctx) {
+  const set = ram.u8(a5 + 0x17) !== 0;
+  const muzzle = set ? T4A.muzzleSet : T4A.muzzleClear;     // $271B3E..$271B50 / $271B86..$271B98
+  // $271B52 movem.w ($2,A6),D0-D1 -- movem.w into DATA registers SIGN-EXTENDS each word.
+  const y = i16(ram.u16(a6 + 0x02)), x = i16(ram.u16(a6 + 0x04));
+  const selfY = u16(y + rom.u16(muzzle));                  // $271B58 add.w (A1),D0
+  const selfX = u16(x + rom.u16(muzzle + 2));               // $271B5A add.w ($2,A1),D1
+  const aimed = aim256FromCaller(aimTables(rom), ram, a5, selfY, selfX);   // $271B5E jsr $24226E
+  // **W323's TRAP, AND `$4A` WALKS STRAIGHT INTO IT.** On no live target `$24226E` returns through
+  // `$242264`, a bare `rts` that leaves D1 UNCHANGED -- so D1 still holds the biased X from `$271B5A`
+  // and `$271B64` stores THAT as the aim. There is no `bcs` here to skip the store. Transcribed as the
+  // ROM behaves; inventing a guard is what W323 had to undo.
+  ram.setU8(a5 + 0x20, (aimed.carry ? selfX : aimed.dir) & 0xff);   // $271B64 move.b D1,($20,A5)
+
+  if (!due8(ram, a5 + 0x26)) return;                       // $271B68 subq.b #1,($26,A5) / bcc
+  ram.setU8(a5 + 0x26, ram.u8(a5 + 0x27));                 // $271B70
+  ram.setU8(a5 + 0x24, ram.u8(a5 + 0x25));                 // $271B38 -- reached via $271B22's gate
+
+  let d1 = u16(ram.u8(a5 + 0x20) - T4A.fanSpread);         // $271B78/$271BA0 subi.w #$9
+  const d2 = u32(ram.u32(a6 + 0x02) + rom.u32(muzzle));    // $271B9A add.l (A1),D2 -- ONE longword
+  for (let n = 0; n < T4A.fanPasses; n++) {                // $271BA4 move.w #$6,D7 + dbra = SEVEN
+    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, T4A.fanEntry,
+      { d0: T4A.fanD0, d1, d2, d3: 0, d4: 0, d5: 0, a5 });
+    ctx.bulletSpawn?.(0x271ba8, res);
+    d1 = u16(d1 + T4A.fanStep);                            // $271BAE addq.b #3,D1
+  }
+  // $271BB4 -- the fan's CENTRE drifts by ($22,A5) every volley, which is why ($20,A5) is state.
+  ram.setU8(a5 + 0x20, u16(ram.u8(a5 + 0x20) + ram.u8(a5 + 0x22)) & 0xff);
+  ram.setU8(a5 + 0x24, u16(ram.u8(a5 + 0x24) - 1) & 0xff); // $271BBC subq.b #1,($24,A5)
+}
+
+function handler4A(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  // $271A64 -- THE MARK IS THE FIRST THING TESTED. There is no stepMovement call in this type.
+  if (ram.u8(a6 + T4A.deadFlag) === 0) {                   // tst.b ($3F,A6) / bne $271AD2
+    // $271A6C -- a POSITION TRIGGER, not the off-screen test; the real bounds test is below.
+    let retired = false;
+    if (i16(ram.u16(a6 + 0x02)) <= T4A.despawnAt && ram.u8(a5 + 0x16) !== 0) {
+      retire4A(ram, rom, a5, a6, ctx);                     // $271A7A bne $271AB4
+      retired = true;
+    }
+    if (!retired) {
+      const hit = ram.u8(a6) & T4A.damageMask;             // $271A7E moveq #$5C,D1 / and.b (A6),D1
+      if (hit !== 0) {
+        ram.setU8(a6, ram.u8(a6) & T4A.damageClear);       // $271A86
+        scoreHit(ram, ctx, a6, hit);                       // $271A8C jsr $286096
+        ram.setU8(a6 + 0x1d,
+          (ram.u8(a6 + 0x1d) ^ ram.u8(a5 + T4A.palXor)) & 0xff);   // $271A92..$271A9C
+        if ((ram.u16(a6 + 0x18) & 0x8000) !== 0) {         // $271AA0 tst.w ($18,A6) / bpl
+          scoreKill(ram, rom, ctx, T4A.killScore, hit);    // $271AA8 move.l #$180,D0
+          retire4A(ram, rom, a5, a6, ctx);
+        } else {
+          ram.setU8(a6 + 0x1d, ram.u8(a5 + T4A.palBase));  // $271AD2 -- the fall-through
+        }
+      } else {
+        ram.setU8(a6 + 0x1d, ram.u8(a5 + T4A.palBase));    // $271AD2
+      }
+    }
+  }
+
+  // $271AD8..$271B00 -- the REAL off-screen test: signed LONG, limit $1C00 (not $49's $2000). This
+  // runs even for a marked record, which is what eventually collects it.
+  const y = i32(i16(ram.u16(a6 + 0x02)) + T4A.boundsBias);
+  if (y <= T4A.boundsLimit) {
+    if (ram.u8(a5 + 0x16) !== 0) { freeEnemy(ram, a5); return; }   // $271AF8 jmp $263762
+  } else {
+    ram.setU8(a5 + 0x16, 1);                               // $271B00
+  }
+
+  // $271B06 -- THE FREEZE SKIPS TO THE DRAW, so the ring does NOT advance. $49's freeze branches INTO
+  // its counter step and keeps sweeping. Opposite behaviour from the same idiom: do not unify them.
+  if (ram.u16(G.freeze) !== 0) { draw4A(ram, rom, a5, a6); return; }
+  scrollCompensate(ram, rom, a5, ctx.unported);             // $271B10 jsr $24179E
+  // $271B16 `jsr $2714AE` is OMITTED: $2714AE is a bare `rts` and both of its callers target it, so
+  // the body at $2714B0 has no reachable entry point in this build (W336). Porting that body would
+  // add spawns the board does not make.
+  if (ram.u8(a6 + T4A.deadFlag) === 0 && ram.u8(a5 + 0x24) === 0) {   // $271B1A / $271B22
+    if (due8(ram, a5 + 0x1e)) {                            // $271B2A subq.b #1,($1E,A5) / bcc
+      ram.setU8(a5 + 0x1e, ram.u8(a5 + 0x1f));             // $271B32
+      fire4A(ram, rom, a5, a6, ctx);
+    }
+  } else if (ram.u8(a6 + T4A.deadFlag) === 0) {
+    fire4A(ram, rom, a5, a6, ctx);                         // $271B26 bne $271B3E -- straight to the aim
+  }
+
+  // $271BC0 -- the animation counter, and the ring is masked rather than compared.
+  if (due8(ram, a5 + 0x1a)) {                              // subq.b #1,($1A,A5) / bcc $271BD8
+    ram.setU8(a5 + 0x1a, ram.u8(a5 + 0x1b));               // $271BC8
+    ram.setU16(a5 + 0x1c,
+      u16(ram.u16(a5 + 0x1c) + T4A.ringStep) & T4A.ringMask);   // $271BCE/$271BD2 andi.w #$1F
+  }
+  draw4A(ram, rom, a5, a6);                                // $271BD8
+}
+
 const T01 = Object.freeze({
   init: 0x267c24, initBody: 0x267c2c, handler: 0x267c70,
   recordProto: 0x267c50, recordWords: 2,      // $267C3E moveq #$1,D0 -- D0+1 = 2 words
@@ -7900,6 +8057,7 @@ const HANDLERS = new Map([
   [0x267c70, handler01],          // W325: the P2-driven item spawner, type $01
   [0x274076, handler81],          // W326: Stage-5 armoured four-state twin-muzzle $81
   [0x271640, handler49],          // W335: Stage-5 sweeping fan emplacement $49
+  [0x271a64, handler4A],          // W337: Stage-5 seven-way aimed fan turret $4A
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
   [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42

@@ -89,7 +89,7 @@ function nullOf(script) {
 
 // ==================== 1. THE WORK LIST
 
-test('W335 stage 5 has NINE types with no handler, over 27 of its 770 records',
+test('W337 stage 5 has EIGHT types with no handler, over 25 of its 770 records',
   { skip: SKIP_IMG }, () => {
     // The measurement this file exists for. `enemyHandlerMap` is built from the cartridge, and
     // `runEnemyDriver`'s `handlers.get(h)` miss is where a missing handler is reported -- but
@@ -105,15 +105,17 @@ test('W335 stage 5 has NINE types with no handler, over 27 of its 770 records',
     // not an `unreached`, because $2816F6's register effects are unread -- so the type IS registered
     // and stage 5 no longer reports a missing handler for it. `$4A`/`$4B` are next and share
     // $270D92 with it (W333).
+    // W337: NINE and 27 -> EIGHT and 25, type $4A (2 records). It shares $270D92 with $49 but
+    // diverges from it in five places -- see the handler header. `$4B` is the last of the band.
     const map = enemyHandlerMap(ROM);
     const miss = missingOf(SCRIPTS[5], map);
-    assert.equal(miss.length, 9, `nine types, got ${miss.map((m) => m.type.toString(16))}`);
-    assert.equal(miss.reduce((a, m) => a + m.records, 0), 27, 'across 27 records');
+    assert.equal(miss.length, 8, `eight types, got ${miss.map((m) => m.type.toString(16))}`);
+    assert.equal(miss.reduce((a, m) => a + m.records, 0), 25, 'across 25 records');
     // Ranked by record count. **W317 found this is NOT the order to port them in** -- see the
     // dependency test below. `$46` is the biggest and needs an unported 1130-byte child first.
     const ranked = [...miss].sort((a, b) => b.records - a.records || a.type - b.type);
     assert.deepEqual(ranked.map((m) => m.type),
-      [0x46, 0x1a, 0x48, 0x4a, 0x4b,
+      [0x46, 0x1a, 0x48, 0x4b,
         0x43, 0x47, 0x4c, 0xb0]);
     assert.deepEqual(ranked.slice(0, 2).map((m) => m.records), [13, 4],
       '$46 is the biggest left but wants $55 first; $1A is next but is BLOCKED on D2/D3');

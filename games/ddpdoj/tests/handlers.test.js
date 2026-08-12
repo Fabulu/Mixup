@@ -166,6 +166,7 @@ test('the ported handler addresses are registered through W223 type $41', () => 
       // armour the laser strips twice as fast as shots do, and damageArm5C's THIRD caller.
       0x270e36, 0x265a14, 0x2764d2, 0x269350, 0x267c70, 0x274076,
       0x271640,   // W335: stage-5 type $49, the sweeping fan emplacement
+      0x271a64,   // W337: stage-5 type $4A, the seven-way aimed fan turret
     ].sort((a, b) => a - b));
 });
 

@@ -1950,6 +1950,34 @@ BODY.set(0x2715a6, (ram, rom, a5, a6, unported) => {
   ram.setU16(flag, 1);                                    // $271610 move.w #$1,(A0)
 });
 
+// --- type $4A ($2719AE init, $2719B6 body): stage 5's seven-way aimed fan turret.
+//
+// Reads like `$49`'s body line for line and diverges on the field that would crash. **`($20,A5)` IS
+// NOT `$49`'s FORMATION-FLAG POINTER HERE.** `$49` stores the ADDRESS of `$8130E0`/`$8130E4` there and
+// clears the flag through it on both exits; `$4A` seeds `($20,A5)` and `($21,A5)` from the RNG and the
+// handler then maintains `($20,A5)` as the live AIM (written from `$24226E` at `$271B64`, drifted by
+// `($22,A5)` at `$271BB8`). Treating it as a pointer would dereference an aim byte.
+//
+// `($4,A5) = 1`, so TWO sub records: the prototype pair runs `$271A1A..$271A6B` and overlaps the
+// handler at `$271A64` by EIGHT bytes. `$49`'s overlap was four. The depth follows from `($4,A5)` and
+// is not inheritable between siblings -- see the window note in export-tables.py.
+BODY.set(0x2719b6, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x271a2c);                // $2719B6..$2719C2 jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x271a1a, 0x08);           // $2719C2..$2719D0 D0+1 = NINE words
+  readInitPosition(ram, rom, a5, unported);               // $2719D0 jsr $263808
+  // $2719D6 -- the same equality idiom as $49 on a DIFFERENT frame ($2B6, where $49 uses $1F3), and
+  // as there it is the sole writer of ($17,A5), which picks the mirrored muzzle and sweep.
+  if (ram.u16(0x8130ce) === 0x2b6) {                       // cmpi.w #$2B6,$8130CE / bne
+    ram.setU8(a6 + 0x1c, 0x40);                            // $2719E2
+    ram.setU8(a5 + 0x17, 1);                               // $2719E8
+  }
+  ram.setU16(0x81b414, 1);                                 // $2719EE -- the bullet-budget opt-in
+  ram.setU16(0x81b416, 1);                                 // $2719F6 -- W336: raises $D to $1F
+  ram.setU8(a6 + 0x1d, ram.u8(a5 + 0x18));                 // $2719FE -- the base palette
+  ram.setU8(a5 + 0x20, drawWord242EC2(ram, rom) & 0xff);   // $271A04 jsr $242EC2 / move.b D0
+  ram.setU8(a5 + 0x21, drawWord242EC2(ram, rom) & 0xff);   // $271A0E -- a SECOND draw, not a copy
+});
+
 // The five stage rows at `$2692D2` are ALL `0A 15` (verified by hex dump), so `$813094` -- the stage
 // index DOUBLED -- selects an identical pair every time. Ported as the indexed read the ROM performs
 // rather than as the constant it happens to produce: the sameness is a measurement about this build,

@@ -2642,6 +2642,29 @@ SHOT_WINDOWS.extend([
     (0x27197C, 0x0032, "W335: type $49's death-spawn list -- FOUR 12-byte entries then $FFFF"),
 ])
 
+# W337: type $4A ($2719AE init / $2719B6 initBody / $271A64 handler).
+#
+#   $271A1A + $52  THE RECORD PROTOTYPE AND *BOTH* SUB PROTOTYPES, AND IT SPANS EIGHT BYTES INTO
+#                  CODE. ($4,A5) = 1 means TWO $20-byte sub records, so $271A2C + $40 = $271A6C
+#                  while the handler starts at $271A64. $49's overlap was FOUR bytes; the depth is
+#                  NOT inheritable between siblings, it follows from ($4,A5). Do not trim.
+#   $271C08 + $28  the EIGHT-entry draw ring ($314860/$314E04/$3153A8/$31594C/$315EF0 then back
+#                  down -- five distinct frames ping-ponging) IMMEDIATELY followed by the two
+#                  muzzle longwords $271C28 and $271C2C. One window covers all three because they
+#                  abut, and the muzzles are read BOTH as a longword ($271B9A add.l) and as a pair
+#                  of words ($271B58 add.w (A1),D0 / add.w ($2,A1),D1).
+#   $271C30 + $62  the death-spawn list walked by $270D92 (W333): EIGHT 12-byte entries then the
+#                  $FFFF terminator, ending at $271C92 -- which is type $4B's init, so the far end
+#                  is pinned by CODE and not by the terminator alone.
+SHOT_WINDOWS.extend([
+    (0x271A1A, 0x0052, "W337: type $4A's 9-word record prototype and BOTH $20-byte sub prototypes, "
+                       "$271A1A..$271A6B -- overlapping its handler at $271A64 by EIGHT bytes"),
+    (0x271C08, 0x0028, "W337: type $4A's 8-entry draw ring plus the two muzzle longwords that abut "
+                       "it, $271C08..$271C2F"),
+    (0x271C30, 0x0062, "W337: type $4A's death-spawn list -- EIGHT 12-byte entries then $FFFF, "
+                       "ending exactly at type $4B's init $271C92"),
+])
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
