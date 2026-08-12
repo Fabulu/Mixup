@@ -4716,6 +4716,34 @@ Two things follow:
   non-zero *enables* the window and `($30,A5)` *times* it -- a second field, previously unnoticed,
   that the parent must seed.
 
+### W351: `tools/spanned.py` -- and the NEGATIVE RESULT it produced
+
+I said coverage should stop being my judgment call and become a check, so I built the check. **It does
+not work, and that is the useful finding.** Calibrated against two spans of `$55` whose true status I
+knew:
+
+    $272424..$2724E0   the prologue I had NEVER disassembled     29.8% cited
+    $2725C0..$272650   the fire arm I read instruction by line   33.3% cited
+
+**Four points apart. Indistinguishable.** And no uncited run in either reaches 16 bytes, so the run
+filter calls both clean. The cause is structural: prose cites an address roughly every fourth byte
+whenever it discusses a span at all, and a handler's addresses also get cited by neighbouring
+discussion, by window declarations, and by unrelated notes about the same region. **Citation density
+measures how much has been WRITTEN NEAR a span, not how much has been READ of it.**
+
+The tool is committed with the verdict REMOVED -- it prints the data and an explicit "this is not
+evidence the span was read". Shipping it with a pass/fail would have been worse than not building it,
+because the next confident "coverage is verified" claim would have cited it.
+
+**The one thing it does support:** a long uncited run at `--min 64` is decent evidence nobody has been
+in a region. On `$272390..$272850` it flags `$2727D2..$27284F` (`$7E` bytes) -- correctly, though that
+turns out to be the drift table's group B, i.e. DATA whose start I cited and whose body nobody needs to
+read. So even the working mode needs a judgment about data versus code.
+
+**The real conclusion: "have I read this span?" is not answerable from repo text.** It needs a read log
+written at read time. That is a different tool and a bigger change, and it is the thing that would
+actually stop the four-times-retracted "$55 is finished" pattern.
+
 **STILL UNREAD: `$27245C..$2724E0`, about `$84` bytes** -- the rest of the damage arm, and whatever
 bounds/freeze handling sits before the cascade. `$55` is NOT ready to write until that is read.
 
