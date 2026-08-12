@@ -4339,3 +4339,29 @@ Windows: `$2723EA + $3E` (declared W345) and `$272850 + $3E` for the death list 
 
 Still unread: `$2724C4` onward (the bounds test's tail and the rest of the alive path) and `$272722` (the
 freeze target). Everything before that is read.
+
+### `$55`'s ALIVE PATH (W345) -- `($17,A5)` DOES TWO JOBS IN ONE TYPE
+
+    2724c4  addi.w #$7400,D0 / bcc $2724DA    the SECOND addi.w's carry is the deciding one (W326)
+    2724cc  tst.b ($16,A5) / beq $2724E0
+    2724d2  jmp $263762                       off-screen AND the latch is set -> free
+    2724da  move.b #$1,($16,A5)               ... otherwise set the on-screen latch
+    2724e0  cmpi.b #$0,($17,A5) / bne $272536 <-- ($17,A5) AGAIN, now selecting the BEHAVIOUR ARM
+    2724ea  subq.b #1,($1C,A5) / bcc $272536  arm A's cadence
+    2724f2  move.b ($1D,A5),($1C,A5)
+
+**`($17,A5)` IS READ TWICE IN `$55` FOR TWO DIFFERENT PURPOSES.** At `$272424` it enables the spawn
+invulnerability; at `$2724E0` it selects between two behaviour arms -- arm A from `$2724EA` when it is zero, and
+`$272536` when it is not. So one parent-supplied byte simultaneously decides whether the child is protected
+AND which of two behaviours it runs. **A port that split those into two fields, or that read the byte once and
+cached a boolean, would couple or decouple them wrongly.**
+
+That is now FOUR distinct meanings for offset `+$17` across stage 5 -- mirror/table select in all four band
+members, a state number in `$47` and `$43`, and in `$55` both an invulnerability enable and an arm selector.
+
+Combined with the position, the timer and the drift, `$46` supplies `$55` with at least five parameters:
+`($16,A5)` position, `($1A,A5)` timer, `($17,A5)` protection AND arm, `($2A,A5)` drift, `($1C,A5)`/`($1D,A5)`
+cadence pair.
+
+Still unread: `$272536` (arm B), `$2724F8`..`$272536` (the rest of arm A) and `$272722` (the freeze target).
+Everything else in `$55` is read, its init is ported, and it needs no unported callee.
