@@ -3469,3 +3469,38 @@ table), then the handlers in groups.
 So the honest state of `$4C`: init read and small, handler head read, damage arm read, death path read, and an
 eight-state machine of ~2300 unread bytes behind `$26F86A`. Its two shared prerequisites (`$246800`,
 `$246520`) are now PORTED, which was the real value of this stretch.
+
+### `$4C` IS A TWO-LEVEL STATE MACHINE, WHICH EXPLAINS THE SETTER (W341)
+
+`$26F8A6`, the state-0 handler, is itself a sub-state machine on **`($28,A6)`** -- exactly the field
+`$26F858`'s setter clears:
+
+    26f8a6  cmpi.w #$0,($28,A6) / bne $26F8C2
+    26f8b0  move.w #$1600,($1A,A6)         speed $16, heading $00 -- the applyVelocityA6 FIELDS
+    26f8b6  move.w #$202,($34,A6)          TWO byte fields: ($34)=2 ($35)=2
+    26f8bc  move.w #$1,($28,A6)            sub-state 0 -> 1
+    26f8c2  cmpi.w #$1,($28,A6) / bne $26F8DC
+    26f8cc  cmpi.w #$2000,($2,A6) / blt $26F8DC     wait until Y reaches $2000
+    26f8d6  move.w #$2,($28,A6)            sub-state 1 -> 2
+    26f8dc  cmpi.w #$2,($28,A6) / ...
+
+**SO `($26,A6)` SELECTS ONE OF EIGHT HANDLERS AND EACH HANDLER RUNS ITS OWN MACHINE ON `($28,A6)`.** That is
+why the setter clears `($28,A6)` and why its early-out matters: entering a NEW outer state must restart the
+inner one, and re-requesting the SAME outer state must not. Two facts recorded separately now explain each
+other -- the setter's shape is a consequence of the handler's shape.
+
+**AND IT CONFIRMS THE DISPATCHER'S TAIL JUMP.** `$26F8B0` writes `($1A,A6)`/`($1B,A6)`, which are exactly the
+speed and heading `applyVelocityA6` reads -- so state 0 sets a velocity and the dispatcher's
+`jmp $2417DE` is what applies it every frame. The three pieces (setter, dispatcher, handler) are one design.
+
+`move.w #$202,($34,A6)` is the word-literal-as-two-byte-fields rule again: `($34,A6) = 2` and
+`($35,A6) = 2`. That is the tenth instance of that idiom this session across `$43`, `$47`, `$4B` and `$4C`.
+
+**PORTING SHAPE FOR THE EIGHT HANDLERS:** each is `if (sub === 0) {...} if (sub === 1) {...}` -- a FALL-THROUGH
+cascade, not a switch. `$26F8AC bne` skips to the next test rather than to an exit, so a handler can advance
+through several sub-states in one frame. **Do not write these as `else if` or as a `switch`**: sub-state 0
+setting `($28,A6) = 1` means the `cmpi.w #$1` immediately below it takes effect on the SAME frame. That is the
+same cascade shape `$43`'s three states use and the opposite of `$4A`'s mutually exclusive arms.
+
+Still unread: the rest of `$26F8A6` past `$26F8DC`, and the seven handlers `$26F90E`, `$26FBD4`, `$26FCF2`,
+`$26FD66`, `$26FECA`, `$26FF3E`, `$26FF56`.
