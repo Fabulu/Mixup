@@ -80,3 +80,22 @@ test('W362 the eleven lea sites are verified instruction boundaries', { skip: SK
       `part $${off.toString(16)}: the lea is ${op === 0x41d6 ? 2 : 4} bytes and the jsr follows it`);
   }
 });
+
+test('W372 the boss body ORs every part s damage bits, same eleven offsets again', { skip: SKIP }, () => {
+  // $2A6B94 past its guard collects the parts' flag bytes with `or.b (part,A6),D1` and masks the sum
+  // with $5C -- the SAME damage mask type $4C and its four siblings use. So the eleven-offset list
+  // appears a THIRD time: the init body ARMS eight of them, the handler CALLS all eleven, and the boss
+  // body ORs them. Three routines, one hand-written order, and $1A0 sits after $C0 in every one.
+  const offs = [];
+  for (let a = 0x2a6ba2; a < 0x2a6bc2; a += 4) {
+    if (IMG.readUInt16BE(a) !== 0x822e) continue;         // or.b (d16,A6),D1
+    offs.push(IMG.readUInt16BE(a + 2));
+  }
+  assert.ok(offs.includes(0x1a0), '$1A0 is among them');
+  assert.deepEqual(offs.slice(-4), [0x80, 0xa0, 0xc0, 0x1a0],
+    'ending $80 $A0 $C0 $1A0 -- $1A0 after $C0, exactly as the handler and the init body order it');
+  // The mask is the $5C damage family's, which is what makes this a hit test rather than a state read.
+  assert.equal(IMG.readUInt16BE(0x2a6bc2), 0x0241, '$2A6BC2 andi.w #imm,D1');
+  assert.equal(IMG.readUInt16BE(0x2a6bc4), 0x005c, '  ...#$5C -- the same mask $4C and its band use');
+  assert.equal(IMG[0x2a6bc6], 0x66, '$2A6BC6 bne -- any part hit takes the branch');
+});
