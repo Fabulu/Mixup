@@ -499,3 +499,20 @@ test('W371 an unhit frame REWRITES the palette byte, it does not just skip the X
   assert.equal(IMG.readUInt16BE(0x26f6e2), 0x001d, '  ...($1D,A6)');
   assert.equal((0x12 ^ T4C.palXorImmediate), 0x1f, 'and $12 XOR $D = $1F, the flash value');
 });
+
+test('W371 the handler span is bounded by $4E, not by an rts scan', { skip: SKIP }, () => {
+  // handlerEnd was $26FFE8 with the note "the last rts is $26FFE6". $26FFE6 IS an rts -- but $26FFE8
+  // is the START of the last subroutine, so the recorded end was the beginning of code. The subroutine
+  // list itself contained the disproof: $26FFE8 is in it.
+  assert.ok(T4C.subroutines.includes(0x26ffe8), '$26FFE8 is a subroutine, so the span cannot end there');
+  assert.equal(IMG.readUInt16BE(0x26ffe8), 0x4a2e, '$26FFE8 tst.b (d16,A6) -- code, not padding');
+  assert.equal(IMG.readUInt16BE(0x26ffea), 0x009f, "  ...($9F,A6), part 5's $1F");
+  // Its beq reaches past $270000, which no rts-bounded span would have included.
+  assert.equal(IMG.readUInt16BE(0x26ffec), 0x6700, '$26FFEC beq.w');
+  assert.equal(0x26ffee + IMG.readInt16BE(0x26ffee), 0x270128, '  ...to $270128, past $270000');
+  // The real bound is type $4E's init, with $4C's death table immediately below it.
+  assert.equal(T4C.handlerEnd, 0x2701d6, "bounded by ADJACENCY to type $4E's init");
+  assert.equal(IMG.readUInt16BE(0x26f6d2), 0x41fa, '$26F6D2 lea (d16,PC),A0');
+  assert.equal(0x26f6d4 + IMG.readInt16BE(0x26f6d4), T4C.deathEffectTable, '  ...the $2701C8 table');
+  assert.ok(T4C.deathEffectTable < T4C.handlerEnd, 'which sits inside the span, just below $4E');
+});

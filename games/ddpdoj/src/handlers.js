@@ -9148,7 +9148,15 @@ const T1A = Object.freeze({
 const T4C = Object.freeze({
   ported: false,
   init: 0x26f4da, initBody: 0x26f4e2, handler: 0x26f5f2,
-  handlerEnd: 0x26ffe8,                       // the last rts is $26FFE6; 19 rts sites in the span
+  // W371 CORRECTION: this was $26FFE8 with the note "the last rts is $26FFE6". $26FFE6 IS an rts, but
+  // $26FFE8 is the START of the last subroutine, which is in `subroutines` above -- so the recorded end
+  // was the beginning of code, not the end of it, and the "19 rts sites" count was taken over a span
+  // ~494 bytes short. $26FFE8 runs past $270000 and its beq reaches $270128.
+  // The real bound is ADJACENCY: type $4E's init is at $2701D6, and $4C's own death-effect table sits
+  // immediately below it at $2701C8 ($26F6D2 lea ($2701C8,PC),A0 / jsr $246520 = buildParts246520).
+  handlerEnd: 0x2701d6,                       // exclusive; bounded by $4E's init, NOT by an rts scan
+  lastSubEnd: 0x2701c8,                       // code stops here; $2701C8..$2701D6 is the death table
+  deathEffectTable: 0x2701c8,                 // $26F6D2, consumed by buildParts246520 (spawn.js)
   recordProto: 0x26f55a, recordWords: 6,      // $26F4F4 move.w #$5,D0 -- SIX, where $55 and $1A have 15
   subProto: 0x26f566, subRecords: 5,          // $26F4DA move.w #$4,($4,A5) -- run length + 1
   subStride: 0x20, overlapBytes: 0x14,        // part 5 runs TWENTY bytes into the handler

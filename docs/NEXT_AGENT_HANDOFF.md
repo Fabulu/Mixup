@@ -555,6 +555,13 @@ follows from that.
 reading it as a label only dropped the first draw call. That also settles the pause behaviour: a frozen or blocked
 `$4C` skips every state and **still draws all five sprites**, which is why it does not vanish.
 
+**AND `$4C` IS ~494 BYTES BIGGER THAN THE SPEC SAID.** `handlerEnd` was `$26FFE8`, noted as "the last rts is
+`$26FFE6`". `$26FFE6` IS an rts -- but `$26FFE8` is the **START of the last subroutine**, and the subroutine list in
+the same spec contained the disproof, because `$26FFE8` is in it. Its `beq` reaches `$270128`, well past `$270000`.
+**An rts scan cannot bound a routine whose subroutines follow it.** The real bound is ADJACENCY: type `$4E`'s init is
+at `$2701D6`, and `$4C`'s own death-effect table sits immediately below it at `$2701C8` (`$26F6D2 lea` +
+`buildParts246520`). Any "19 rts sites in the span" style count taken before this was measured over the short span.
+
 **TWO MORE TRAPS READ THIS WAVE.** Death is `tst.l ($1A,A5) / bpl`, so the object dies only when the pool goes
 **NEGATIVE** -- a `<= 0` port kills it one hit early and `=== 0` may never fire. And an UNHIT frame does not merely
 skip the XOR: `$26F6DE` writes `$12` into `($1D,A6)` outright, so the flash is a two-value alternation between `$12`
