@@ -5158,10 +5158,25 @@ the list of siblings is itself the bound.
 `(A0,D5.w)` is a SIGNED word index, so it needs `drawWord242EC2`'s treatment (`i >= 0x8000 ? i - 0x10000 : i`),
 which `rng.js` already implements for its sibling.
 
-**So porting it is a handful of lines beside its six siblings in `rng.js`:** bump `$803917`, read `$803916` as a
-signed word, index a new `RNG_242B90 = { table: 0x242bac, entries: 256 }`, return the byte. A window for
-`$242BAC + $100` is needed -- check first whether an existing RNG window already covers it, since `rng.js`
-already models six tables in this address range.
+**AND IT NEEDS NO NEW CODE AT ALL. `$242B90` IS `$242B3C` WITH A DIFFERENT DESTINATION REGISTER.**
+
+    $242B3C  addq.b #1,$803917 / move.w $803916,D0 / move.l A0,-(A7) / lea $242BAC,A0 / move.b (A0,D0.w),D0
+    $242B90  addq.b #1,$803917 / move.w $803916,D5 / move.l A0,-(A7) / lea $242BAC,A0 / move.b (A0,D5.w),D5
+
+**Byte-identical except D0 versus D5, and they SHARE the table at `$242BAC`.** `drawByte242B3C` is already
+ported (`rng.js:321`) with exactly this logic including the signed-index treatment, and **the window already
+exists** -- W61 declared `$242BAC + $100` and its comment says "`$242B3C`'s 256-byte table", which was the clue
+sitting in plain sight.
+
+So `$1A` calls `drawByte242B3C(ram, rom)` and treats the result as D5. **`$1A` needs ZERO new primitives after
+all**, and `rng.js`'s claim that the 32 bumpers "each read a DIFFERENT canned table" is not strictly true --
+at least this pair shares one.
+
+**`claimed.py` reporting `$242B90` as NOT PORTED was correct but misleading**, and the miss is instructive: an
+address can be unported while the ROUTINE at it is fully ported under a sibling address. **Before believing
+`claimed.py`'s NOT PORTED on a small routine, disassemble it and compare against the nearest ported sibling** --
+these register-variant twins will not show up any other way. That is the third time in this band that
+"unported" resolved to "already there under another name".
 
 Still to read: `$269004` onward and the death arm at `$269160`.
 
