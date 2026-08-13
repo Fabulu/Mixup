@@ -5209,10 +5209,25 @@ Also: `moveq #$5,D0` is a WORD 5 where `$55` passes the long `$FFFF0005`. Same e
 emit must be reading only the low word -- or `$55`'s high `$FFFF` means something `$1A` omits. **Worth checking
 against `$281744`'s body before writing either.**
 
-Seven passes and a `$24` backoff, against `$55`'s five-of-three and four-of-five. Shot count per pass not yet
-read.
+**SEVEN SHOTS, ONE PER PASS -- not unrolled.** Exactly one `jsr $281744` in the loop body (`$269038`), and
+`$269042 dbra D7 -> $26902A` with `D7 = 6`, so seven passes of one shot. `$55` unrolls three (or five) emits per
+pass; `$1A` does not. **Same emit, same table, different loop shape.**
 
-Still to read: `$26903E` onward and the death arm at `$269160`.
+    26903e  addi.w #$C,D1           the step
+    269042  dbra D7,$26902A
+    269046  subq.b #1,($20,A5)      the BURST counter, exactly $55's $27270E idiom
+
+**The seven angles are `-$24 -$18 -$0C $00 +$0C +$18 +$24`** -- backoff `$24`, step `$C`, six gaps, exactly
+symmetric about the aim. Same symmetry property `$55`'s two volleys have, which is the check that the reading is
+right. And `$269046` confirms `($20,A5)` is the burst counter, matching the `($20,A5)`/`($21,A5)` pair read
+earlier at `$268F62`.
+
+**`rosetta.py` MISALIGNED A THIRD TIME.** Asked for `$26903E` it printed `$269042` as its first line and
+silently swallowed the step instruction -- the same failure as `$272722` and `$268EDE`. The raw bytes
+`06 41 00 0c` settled it. **Three occurrences now: treat a disassembly whose first line is not the requested
+address as a MISS, not an answer.** Every one of the three hid exactly one instruction that mattered.
+
+Still to read: `$26904C` onward and the death arm at `$269160`.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
