@@ -1078,7 +1078,28 @@ part-4 draw routines use -- and it sets `($6C,A6)`, the companion the `$66` ON s
 the object's output while every constant stays correct. That is the sixth mirrored pair in this type and the only one
 that is not symmetric in its firing.
 
-### BEFORE PLACING: TWO CALLS IN THE DRAFT ARE INVENTED NAMES (W372)
+### THE EXACT IMPORT DELTA FOR PLACING THE DRAFT (W372, measured)
+
+`handlers.js` ALREADY has `DEFQ_D1`, `WriteLog`, `armScreenClear243E02`, `enqueueDeferred`, `pushExternalSpeed`,
+`scoreHit`, `scoreKill`, `unreached`, `u16`, `u32`, `i16`, `aim64`, `applyVelocityA6`, and a local `aimTables(rom)`
+at line 556. **Seven symbols must be added:**
+
+    dist242494                   ./bossscripts.js
+    slew64FromRecord             ./aim.js        (handlers.js imports slew64, NOT this one)
+    enqueueRegistersThroughStub  ./spritequeue.js
+    buildParts246520             ./spawn.js
+    bigBurst28B4BE               ./boss.js
+    drawWord242EC2               ./rng.js
+    packedAdd                    NOT EXPORTED -- it is a one-line local in stage3carrier.js:34,
+                                 `function packedAdd(pos, delta) { return u32(pos + delta); }`.
+                                 Inline it or write `u32(pos + delta)` directly. Do NOT import it.
+
+**`fireBullet` needs NO import: `handlers.js` EXPORTS IT ITSELF** at line 391, a wrapper over `fire as fireBulletFan`
+from `bullets.js`. So the draft's `fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281402, regs)` is already
+correct in-file -- and note the alias, because `bullets.js` exports it as `fire`, so grepping `fireBullet` in that
+module finds nothing.
+
+### BEFORE PLACING: TWO CALLS IN THE DRAFT WERE INVENTED NAMES (W372)
 
 **`emit28B4BE(...)` and `emit281402(...)` DO NOT EXIST.** I wrote them into `retireCheck4C` and `sub26FA82` from the
 ROM addresses without reading the port, which is the exact seven-of-seven failure W365 recorded and which this wave's
