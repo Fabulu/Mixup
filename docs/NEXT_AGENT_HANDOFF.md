@@ -235,19 +235,25 @@ and `$2A6B94`'s 666-byte body whose twelve callees are all ported.** That is the
 `handler2A4606` is 170 bytes and tempting to write early -- registering it would drop stage 5 from three missing
 types to two. **Resist that.** Its two real callees are:
 
-    $25962E   runScheduler25962E    PORTED (12 code mentions) -- the clear test
-    $242952   the stage ADVANCE     NOT PORTED. stageend.js:109 has it as a note-table entry only:
-                                    'THE ADVANCE. $2429BE addq.w #$1,D7 -- five callers, the five ...'
+    $25962E   runScheduler25962E        PORTED (12 code mentions) -- the clear test
+    $242952   runStageAdvance242952     ALSO PORTED -- in stageend.js, imported by boss.js and boss2.js
 
-**D11 records W232 "forcing `$242952` headlessly" and finding the stage machine works -- that was MEASURING it,
-not porting it.** It is still a note.
+**RETRACTED, ONE COMMIT LATER: `$242952` IS PORTED.** I claimed it was not, because `stageend.js:109` holds it in
+a note TABLE ('THE ADVANCE. `$2429BE addq.w #$1,D7` -- five callers...') and I read a note-table entry as a
+deferral. **It is a DESCRIPTION.** The routine ships as `runStageAdvance242952`, imported by `boss.js:75` and
+`boss2.js:11` and called at `boss.js:1144` (`$292922 jsr $242952`) and `boss2.js:261`.
 
-So a note-only `handler2A4606` would give a Hibachi that runs the scheduler and **never advances the stage**. The
-project's practice of registering a handler with `note()`s inside (as `$43` and `$49` do) is right when the missing
-piece is cosmetic -- the stated safety requirement is that the driver not throw `Unreached`. **It is wrong here,
-because the missing piece is the stage advance itself: the run would reach the final boss and hang there, with a
-green suite and no error.** A loud `Unreached $2A6B94` that names exactly what is missing is strictly better than a
-silent soft-lock.
+**That is the SIXTH "already ported under a name" of this session**, and the first where I got it wrong in the
+pessimistic direction -- the previous five were addresses I would have duplicated. **A note-TABLE entry is not a
+`note()` call**, and `claimed.py` cannot tell them apart because both are strings containing an address. The
+`likely owner(s)` line is what gave it away: it listed `runStageAdvance242952` for `$28CB60`, a routine `$242952`
+calls.
+
+**So the soft-lock argument does not apply, and `handler2A4606` may well be writable now.** Its only genuinely
+missing piece is `$2A6B94` -- the 666-byte body, whose own twelve callees are all ported. A `handler2A4606` with
+`note()` for `$2A6B94` alone WOULD advance the stage correctly, because `runStageAdvance242952` exists. **That is
+worth reconsidering as the next unit**, subject to one check: read `runStageAdvance242952` and confirm it is a full
+translation rather than a partial one with notes inside.
 
 **So `$B0` stays unregistered until `$242952` and `$2A6B94` both exist.** And `$242952` is worth doing on its own
 merits: it is the stage advance, five callers, and it sits directly under D11 (the abrupt stage transition) and
