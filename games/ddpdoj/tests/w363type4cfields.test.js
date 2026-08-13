@@ -693,3 +693,36 @@ test('W371 state 1 ALTERNATES between state 2 and state 4 via a 1-bit toggle', {
   assert.equal(0x26f97c + IMG.readInt16BE(0x26f97c), T4C.partSetters[0].off, '$26F97A bsr the $46 OFF');
   assert.equal(0x26f980 + IMG.readInt16BE(0x26f980), T4C.partSetters[1].off, '$26F97E bsr the $66 OFF');
 });
+
+test('W371 state 2 spawns with TWO cursors rotating in OPPOSITE directions', { skip: SKIP }, () => {
+  // ($2A,A6) steps +4 and ($2B,A6) steps -4, both masked to $3F -- a 64-step circle walked by 4, one
+  // arm clockwise and one anticlockwise. Copying either arm to the other, or masking to $3E as the
+  // 32-step sprite fields elsewhere in this port do, collapses the pattern into a single spiral.
+  assert.equal(IMG.readUInt16BE(0x26fc90), 0x582e, '$26FC90 addq.b #4,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26fc92), 0x002a, '  ...($2A,A6) FORWARD');
+  assert.equal(IMG.readUInt16BE(0x26fcb8), 0x592e, '$26FCB8 subq.b #4,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26fcba), 0x002b, '  ...($2B,A6) BACKWARD');
+  for (const at of [0x26fc94, 0x26fcbc]) {
+    assert.equal(IMG.readUInt16BE(at), 0x022e, `$${at.toString(16)} andi.b #imm,(d16,A6)`);
+    assert.equal(IMG.readUInt16BE(at + 2), 0x003f, '  ...#$3F -- 64 steps, NOT the 32-step $3E mask');
+  }
+  // The two bytes are the pair state 2 sets with two separate move.b writes where state 1 used a word.
+  assert.equal(IMG.readUInt16BE(0x26fbea), 0x1d7c, '$26FBEA move.b #imm,($2A,A6)');
+  assert.equal(IMG.readUInt16BE(0x26fbf0), 0x1d7c, '$26FBF0 move.b #imm,($2B,A6) -- separately');
+});
+
+test('W371 state 2 spawns type $52 and writes the child position and heading', { skip: SKIP }, () => {
+  // moveq #$52,D0 / jsr $263684, then the returned record gets a biased copy of the parent position
+  // and ONE of the two cursors as its heading. So the counter-rotation above is what the bullets ride.
+  assert.equal(IMG.readUInt16BE(0x26fc9a), 0x7052, '$26FC9A moveq #$52,D0 -- the child TYPE');
+  assert.equal(IMG.readUInt16BE(0x26fc9c), 0x4eb9, '$26FC9C jsr abs.l');
+  assert.equal(IMG.readUInt32BE(0x26fc9e), 0x00263684, '  ...$263684, the spawn enqueue');
+  assert.equal(IMG.readUInt16BE(0x26fca2), 0x202e, '$26FCA2 move.l (d16,A6),D0 -- parent position');
+  assert.equal(IMG.readUInt16BE(0x26fca6), 0x0680, '$26FCA6 addi.l #imm,D0');
+  assert.equal(IMG.readUInt32BE(0x26fca8), 0x0c800a00, '  ...#$0C800A00, the muzzle offset');
+  assert.equal(IMG.readUInt16BE(0x26fcae), 0x2140, '$26FCAE move.l D0,(d16,A0) -- into the CHILD');
+  assert.equal(IMG.readUInt16BE(0x26fcb0), 0x0016, '  ...($16,A0)');
+  assert.equal(IMG.readUInt16BE(0x26fcb2), 0x116e, '$26FCB2 move.b (d16,A6),(d16,A0)');
+  assert.equal(IMG.readUInt16BE(0x26fcb4), 0x002b, '  ...FROM ($2B,A6), the BACKWARD cursor');
+  assert.equal(IMG.readUInt16BE(0x26fcb6), 0x001a, '  ...INTO the child $1A');
+});

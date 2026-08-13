@@ -599,6 +599,18 @@ the pattern. State 1 then arms BOTH `partSetters` OFF entries before returning.
 **And these eight bytes are why a linear sweep breaks here** -- `$26F984` is DATA sitting between the `rts` at
 `$26F982` and the next entry point, which is exactly the case the flow-break rule now stops at.
 
+**STATE 2 IS THE BULLET SPAWNER, AND ITS TWO CURSORS COUNTER-ROTATE.** `($2A,A6)` steps **+4** and `($2B,A6)` steps
+**-4**, both masked to **`$3F`** -- a 64-step circle walked by four, one arm clockwise and one anticlockwise. It
+spawns type **`$52`** through `$263684`, writes the parent position biased by `$0C800A00` into the child's `($16,A0)`,
+and gives the child the **backward** cursor as its heading.
+
+Two traps. **Mask `$3F`, not `$3E`**: the 32-step sprite fields elsewhere in this port drop bit 0, and this does not.
+And **the arms are not copies of each other** -- unifying them collapses the twin pattern into one spiral. This is the
+same shape as `$1A`'s two arms, which the band rules already say not to unify, arrived at independently.
+
+It is also why state 2 wrote `($2A)` and `($2B)` as two separate `move.b`s where state 1 used one `move.w`: **they are
+two independent cursors**, not one 16-bit value.
+
 **AND `$4C` IS ~494 BYTES BIGGER THAN THE SPEC SAID.** `handlerEnd` was `$26FFE8`, noted as "the last rts is
 `$26FFE6`". `$26FFE6` IS an rts -- but `$26FFE8` is the **START of the last subroutine**, and the subroutine list in
 the same spec contained the disproof, because `$26FFE8` is in it. Its `beq` reaches `$270128`, well past `$270000`.
