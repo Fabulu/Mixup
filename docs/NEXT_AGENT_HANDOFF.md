@@ -30,20 +30,31 @@ overstated the work by eight routines.
 * **No self-rewriting dispatch.** `move.l #imm,($4C,A5)` (rewriting the record's cached handler pointer, the
   mechanism W348 found the driver calling through) appears **zero** times.
 
-**What it IS: a THREE-state machine on `($86,A6)`, in the SUB-RECORD at a large offset.**
+**AND I OVER-CORRECTED. RETRACTING, SAME WAVE.** I concluded from those three `cmpi.b #imm,($86,A6)` sites that
+`$4C` is a three-state machine on a sub-record byte. **It is not: those sites are in a DIFFERENT ROUTINE.**
 
-    270094  cmpi.b #$00,($86,A6)
-    270014  cmpi.b #$01,($86,A6)
-    270000  cmpi.b #$02,($86,A6)
+Bounding the span properly (rule 11) settles it. There are **19 `rts` sites** in `$26F5F2..$270120`, and the LAST
+is `$26FFE6`:
 
-Three sites, three values, `$0`/`$1`/`$2`, scanned across `$26F4E2..$270400`. **This is rule 2 in its purest
-form**: the state byte is not at a record offset at all, which is why four scans for record-based dispatch found
-nothing. `$4C` also carries `cmpi.b` tests on `($2A,A6)` (`$1`/`$2`) and `($1A,A6)` (`$8`, twice), so it has
-sub-fields the other members do not.
+    26f718 26f78e 26f868 26f90c 26f982 26f992 26f9a0 26fa54 ... 26ff54 26ff9c 26ffe0 26ffe6
 
-**So `$4C` is very likely much smaller than "eight handlers over 2300 bytes" suggests, and the next pass should
-start by finding where the three state arms actually begin** rather than reading forward from `$26F5F2`. It is
-ONE script record, so it is also the cheapest remaining type by reachable behaviour.
+**So `$4C`'s code region is `$26F5F2..$26FFE8` -- about `$9F6`, ~2550 bytes** -- and `$26FFE8`, which the old note
+listed as an "unported callee", is simply **the address where the NEXT routine begins**. Same for `$26FF9E`
+(`$26FF9C` is an `rts`). Those two were boundaries, not work.
+
+**`$270000` onward is past the end**, so the `($86,A6)` state machine belongs to whatever routine starts at
+`$26FFE8` -- not to `$4C`. My scan range `$26F4E2..$270400` reached into a neighbour and I read its dispatch as
+`$4C`'s.
+
+**What survives from the previous entry**: the eight listed addresses are internal to `$4C` and are not separate
+ports; there is no `cmpi.b` cascade on the record; there is no jump table; there is no self-rewriting dispatch.
+**What does not**: the three-state claim, and the "much smaller than 2300 bytes" claim -- the old ~2300 figure was
+close, and 19 `rts` sites across that span is consistent with the original "eight state handlers" reading being
+roughly right.
+
+**The lesson, and it is rule 11 again: bound the routine BEFORE scanning inside it.** I scanned a fixed
+`$26F4E2..$270400` window chosen by guesswork, and 4 of its bytes past `$26FFE8` produced a confident wrong
+structural conclusion within one commit. The `rts` scan that fixed it cost one command and should have come first.
 
 ### THE BAND RULES -- earned across W345..W353, every one after getting it wrong first
 
