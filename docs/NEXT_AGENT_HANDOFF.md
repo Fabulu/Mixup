@@ -921,7 +921,25 @@ function state2_4C(ram, rom, a5, a6, ctx) {
 **NOTE THE ORDER**: spawn A fires, THEN `($2A,A6)` advances, then spawn B fires, then `($2B,A6)` advances. Advancing
 both cursors first would offset every bullet by one step.
 
-**Still to do:** place the whole draft and move the four census pins.
+**THE DRAFT PARSES.** Extracted from this document with stubs for its callees and run through `node --check`: clean.
+The only error was the intended duplicate `state2_4C`, since the corrected one above supersedes the first. So the
+splice cannot fail on syntax, which is the failure mode that would leave `handlers.js` broken mid-edit.
+
+**THREE CALLEES ARE STILL STUBS, AND TWO ARE UNREAD.** The syntax check needed stubs for these, which is how it
+surfaced them:
+
+    retireCheck4C   $26FFE8   PARTLY READ. Arms ($9E,A6) when part 5's $06 is 2, returns a boolean in the
+                              CARRY through the $270128/$27012E SR stubs. Its middle -- $270014..$270128 --
+                              has NOT been read.
+    sub26F9A2       $26F9A2   UNREAD except its first instruction, `tst.w ($46,A6)`. Called from the main
+                              flow only while ($20,A5) is zero, i.e. BEFORE the vulnerability window.
+    sub26FA82       $26FA82   UNREAD. Same gate, same call site.
+
+`$26F9A2` and `$26FA82` pair with the `partSetters` flags `$46` and `$66` -- one reads `($46,A6)`, and the OFF/ON
+setters for `$46` sit immediately above it. **They are almost certainly the two parts' per-frame behaviour**, which
+would make them the last real gameplay in the type. Read them before placing.
+
+**Still to do:** read those three, then place the whole draft and move the four census pins.
 
 **Still to do:** place the draft, then move the FOUR census pins together (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
 `$26F6E8` main flow, then the five-call draw chain) and the eight state bodies, all of which are read and pinned.
