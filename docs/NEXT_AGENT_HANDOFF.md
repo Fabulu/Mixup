@@ -114,8 +114,32 @@ so A6 here is the same large multi-part sub-record the handler walks. **These ar
 they are absolute positions in a sub-record big enough to hold eleven `$20`-byte parts and more.**
 
 **So the boss's structure is: a guard on `($106,A6)`, then a `($10E,A6)` test branching `$370` forward.** Two
-gates before any behaviour. Read `$2A6B9A..$2A6E2E` next, and note that `$2A6F10` (the `bne` target) is a
-separate arm past the first block's end.
+gates before any behaviour, and `$2A6F10` (the `bne` target) is a separate arm past the first block's end.
+
+### ALL TWELVE of the first block's callees are ALREADY PORTED
+
+Counted before reading (rule 8): `$2A6B9A..$2A6E30` makes **15 calls to 12 distinct targets**, and every one is
+claimed:
+
+    $259B34 x2   13 code      $2598A2 x2   13 code      $243DD0 x2    2 code, 4 notes
+    $25980C      42 code      $2599EC      21 code      $2428A6      10 code
+    $286096      scoreHit     $28615E      scoreKill    $28C170       3 code, 3 notes
+    $23C4D0       2 code      $242922       1 code      $253564       1 code
+
+**So Hibachi's main block introduces ZERO new primitives** -- the same result as `$55`, `$46`, `$1A` and `$4C`.
+Five consecutive types, including the final boss, needing nothing new. **The port's primitive coverage is
+effectively complete for this band**; what remains is transcription.
+
+**FOUR are THIN and must be verified before use, per the `$263684` lesson** (claimed with 1 code mention, which
+turned out fine, and the `$242B90` lesson, where "unported" was a register-variant twin):
+
+    $242922   1 code / 3 notes      $253564   1 code / 3 notes
+    $23C4D0   2 code / 3 notes      $243DD0   2 code / 4 notes
+
+**A high notes-to-code ratio means the port has WRITTEN ABOUT the address more than it has implemented it** --
+exactly the shape of a `note()` standing in for a routine. **Check each of those four is a real implementation and
+not a deferral before relying on it**, because `claimed.py` counts a `note()` mention as a hit and reports
+CLAIMED.
 
 **The lesson, and it is now three for three: in this build, an UNCLAIMED small routine is likelier to be a stub
 than to be work.** `$26331C`, `$25A17A`, and the four-`rts` run all read as "unported" to `claimed.py` while
