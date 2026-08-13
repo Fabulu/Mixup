@@ -135,6 +135,31 @@ at `$9F` when no sibling exceeds `$36`.
 **Every member of this band for comparison:** `$55` one sub-record, `$46` one, `$1A` two, `$4C` **five**. It is
 the only multi-part object among them, which is why none of its structure looked familiar.
 
+### AND THE FIVE PARTS ARE ADDRESSED BY OFFSET, NOT ITERATED. `$4C` IS UNROLLED.
+
+There is **exactly ONE `dbra`** in `$26F5F2..$26FFE8` -- at `$26FB3A`, `D7`, with a **28-byte** body. Far too
+small to be a per-part arm loop over 2550 bytes of code. So `$4C` does not iterate its parts.
+
+**It addresses them by offset through one A6 base, at the `$20` stride `loadSubProto` uses.** That resolves the
+sub-record offsets that looked impossibly large:
+
+    part 1  ($00..$1F,A6)      ($1A,A6) tested against $8, twice, at $26FF6C/$26FF7A
+    part 2  ($20..$3F,A6)      ($2A,A6) tested against $1 and $2 -- part 2's own $0A
+    part 3  ($40..$5F,A6)
+    part 4  ($60..$7F,A6)
+    part 5  ($80..$9F,A6)      ($9E,A6)/($9F,A6) -- part 5's $1E and $1F
+
+**`5 * $20 = $A0`, and the largest offset seen is `$9F`: exactly the last byte of the fifth part.** That is the
+confirmation. No sibling exceeds `$36` because no sibling has more than two parts.
+
+**So `$4C` is 2550 bytes of UNROLLED per-part code** -- which explains every anomaly the four earlier scans turned
+up, and means the old "eight state handlers" note was counting arms across parts. **There is no dispatch to find,
+because there is no dispatch**: the parts are handled in straight-line sequence, each at its own `$20` offset.
+
+**That makes `$4C` mechanically simple but long**, and it changes how to write it: **not a state machine, and not a
+loop -- a sequence of five per-part blocks, each reading `(part * $20 + field, A6)`.** The one `dbra` at `$26FB3A`
+is a local 28-byte loop inside one of those blocks, not the part iteration.
+
 **Settled and needing no further work:** `tst.b ($17,A5)` (one branch, two ported stubs), and the eight addresses
 the old note listed as unported callees (all internal, two of them merely the boundaries `$26FF9E` and `$26FFE8`).
 
