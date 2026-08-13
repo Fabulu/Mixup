@@ -9190,15 +9190,30 @@ const T4C = Object.freeze({
   //     >= $100  ->  $8
   //      < $100  ->  $6   (and further bands below $26FFC4)
   distBander: 0x26ff9e, distHelper: 0x242494, distGlobal: 0x813172,
-  // W367 CORRECTION: ($1A,A6) is NOT "the distance band". It is a byte that FOUR arms write for their own
-  // reasons, and the distance helper is only one of them:
-  //   $26FF9E   writes $8 or $6 by distance band (the thresholds below)
-  //   $26F8F4   DECREMENTS it, and acts when it hits zero
-  //   $26FF76   INCREMENTS it toward $8 -- so with the decrement it is a HYSTERESIS counter
-  //   $26F8B0   `move.w #$1600,($1A,A6)` -- a WORD write giving $16, outside the band range entirely,
-  //             and it zeroes ($1B,A6) as a side effect
-  // So bandThresholds is ONE CONTRIBUTOR to this field, not its definition. Model it as a shared byte.
-  bandAt: 0x1a,                               // part 1's $1A -- see the four writers above
+  // W368 CENSUS: ($1A,A6) is NOT "the distance band". A single scan of $26F5F2..$270000 finds SIXTEEN sites
+  // that write it -- fourteen literal stores plus an increment and a decrement. Earlier revisions of this
+  // comment said four, then five, six and seven, because each was written while reading one more state.
+  // Counting by accretion never converges; the census below is the whole set, so it can be checked at once.
+  //
+  //   $26F8B0  move.w #$1600  -> ($1A)=$16 ($1B)=$00   the WORD form, so it clears $1B as a side effect
+  //   $26FF4E  move.w #$0420  -> ($1A)=$04 ($1B)=$20   the OTHER word form, and it SETS $1B
+  //   $26F91E $26FD9C  $04      $26FBE4 $26FD08 $26FEE0  $10     state setup, outside the band range
+  //   $26FC16 $26FD40 $26FF18  $00
+  //   $26FD76 $26FF84 $26FFB2  $08      $26FFBE  $06            IN the band range -- see below
+  //   $26F8F4  subq.b #1       $26FF76  addq.b #1               a hysteresis pair
+  //
+  // TWO consequences for the port. First, $26FD76 (state 4) and $26FFB2 (the distance helper) write the SAME
+  // value $8, and $26FF6C/$26FF7A branch on exactly that -- so the field's value does NOT identify its writer,
+  // and a state can force the close-range behaviour with no distance ever measured. Transcribe each site;
+  // do not try to recover intent by reading the field.
+  // Second, ($1A) and ($1B) are written both as a pair and independently ($26FF66 writes $1B alone), so they
+  // are neither one 16-bit field nor two unrelated bytes. Match the width the cartridge uses at each site.
+  bandAt: 0x1a,                               // part 1's $1A -- see the census above
+  bandWriters: Object.freeze([
+    0x26f8b0, 0x26f8f4, 0x26f91e, 0x26fbe4, 0x26fc16, 0x26fd08, 0x26fd40, 0x26fd76,
+    0x26fd9c, 0x26fee0, 0x26ff18, 0x26ff4e, 0x26ff76, 0x26ff84, 0x26ffb2, 0x26ffbe,
+  ]),
+  bandWritersB: Object.freeze([0x26f8b0, 0x26ff4e, 0x26ff66]),   // sites touching ($1B,A6)
   bandThresholds: Object.freeze([[0x200, null], [0x100, 0x8], [0x000, 0x6]]),
   bandTestSites: Object.freeze([0x26ff6c, 0x26ff7a]),   // where the main flow compares it against $8
 

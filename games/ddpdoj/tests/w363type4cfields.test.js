@@ -397,3 +397,46 @@ test('W368 state 4 walks a cmpi.w SCRIPT STEP cascade, not just the frame-0 open
   // Step 0 must branch PAST step 0's body and land on step 1's compare.
   assert.equal(0x26fd6e + IMG.readInt16BE(0x26fd6e), 0x26fd82, 'step 0s bne -> step 1s compare');
 });
+
+test('W368 the ($1A,A6) writer census is COMPLETE -- rescanned, not accreted', { skip: SKIP }, () => {
+  // The point of this test is the CLOSED WORLD. Four earlier revisions of the spec comment said four, five,
+  // six and seven writers, each written while reading one more state body. This rescans the whole type and
+  // fails if the ROM has a site the census omits -- so the count cannot drift again.
+  const found = [];
+  for (let i = 0x26f5f2; i < 0x270000; i += 2) {
+    const w = IMG.readUInt16BE(i);
+    if (w === 0x3d7c || w === 0x1d7c) {            // move.w/move.b #imm,(d16,A6)
+      if (IMG.readUInt16BE(i + 4) === T4C.bandAt) found.push(i);
+    } else if (w === 0x532e || w === 0x522e) {     // subq.b/addq.b #1,(d16,A6)
+      if (IMG.readUInt16BE(i + 2) === T4C.bandAt) found.push(i);
+    }
+  }
+  assert.deepEqual(found, [...T4C.bandWriters],
+    'every ROM site writing ($1A,A6), and ONLY those -- census must match the cartridge exactly');
+  assert.equal(found.length, 16, 'sixteen, not the four/five/six/seven earlier revisions claimed');
+});
+
+test('W368 a state and the distance helper write the SAME band value', { skip: SKIP }, () => {
+  // $26FD76 is state 4; $26FFB2 is the distance helper. Both store $8, and the main flow branches on $8.
+  // So the field cannot be read back to learn WHY it holds a value.
+  assert.equal(IMG.readUInt16BE(0x26fd76), 0x1d7c, '$26FD76 move.b #imm,(d16,A6) -- state 4');
+  assert.equal(IMG.readUInt16BE(0x26fd78), 0x0008, '  ...#$8');
+  assert.equal(IMG.readUInt16BE(0x26ffb2), 0x1d7c, '$26FFB2 move.b #imm,(d16,A6) -- the distance helper');
+  assert.equal(IMG.readUInt16BE(0x26ffb4), 0x0008, '  ...#$8, the SAME value');
+  for (const at of T4C.bandTestSites) {
+    assert.equal(IMG[at + 3], 0x08, `$${at.toString(16)} branches on $8 -- either writer satisfies it`);
+  }
+});
+
+test('W368 ($1A) and ($1B) are written as a pair AND separately', { skip: SKIP }, () => {
+  // Two word writes cover both bytes, and one byte write hits $1B alone. So the pair is neither a single
+  // 16-bit field nor two independent bytes: the width is per-site.
+  assert.equal(IMG.readUInt16BE(0x26f8b0), 0x3d7c, '$26F8B0 move.w #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f8b2), 0x1600, '  ...#$1600 -> ($1A)=$16, ($1B)=$00 -- CLEARS $1B');
+  assert.equal(IMG.readUInt16BE(0x26ff4e), 0x3d7c, '$26FF4E move.w #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26ff50), 0x0420, '  ...#$420 -> ($1A)=$04, ($1B)=$20 -- SETS $1B');
+  assert.equal(IMG.readUInt16BE(0x26ff52), T4C.bandAt, '  ...both at ($1A,A6)');
+  assert.equal(IMG.readUInt16BE(0x26ff66), 0x1d7c, '$26FF66 move.b #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26ff6a), 0x001b, '  ...($1B,A6) ALONE -- so it is its own field too');
+  assert.deepEqual([...T4C.bandWritersB], [0x26f8b0, 0x26ff4e, 0x26ff66], 'the three $1B sites');
+});

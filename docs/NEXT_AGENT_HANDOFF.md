@@ -548,8 +548,9 @@ folded, and `$55`/`$46` use packed longs. Three conventions in one band -- check
 **SIXTEEN internal subroutines, only TWO shared** (`$26F858` 8 callers, `$26FF9E` 7). The other fourteen are called
 once and can be inlined. The eight the old note listed as "unported callees" are all real entry points in this list.
 
-**STILL UNREAD:** states 2-7's bodies (`$26FBD4`, `$26FCF2`, `$26FD66`, `$26FECA`, `$26FF3E`, `$26FF56`) and the
-remaining single-call subroutines. **The FRAME of every state is known; only the contents of six bodies are not.**
+**ALL EIGHT STATE BODIES ARE NOW READ.** What is left of `$4C` is the remaining single-call subroutines. **Nothing
+structural is outstanding: `handler4C` can be written from this brief plus the 28 assertions in
+`w363type4cfields.test.js`.**
 
 ### Each state handler is a FRAME-COUNTER CASCADE on `($28,A6)`
 
@@ -619,8 +620,14 @@ outside the band range, which is what disproves "the distance band" reading. Sta
 write a band value directly, forcing the close-range behaviour without any distance being measured. **A port cannot
 recover intent by reading this field -- only by transcribing each write site.**
 
-`($1A,A6)` now has SEVEN writers: `$16`, `$4`, `$10` (twice), `$8` from state 4, `$8`/`$6` from the distance helper,
-plus the increment and decrement.
+**A SINGLE SCAN then replaced all of this counting.** `($1A,A6)` has **SIXTEEN** writers, not the four, five, six and
+seven that four successive revisions of this note claimed. Each of those was written while reading one more state body.
+**Counting by accretion never converges.** A test now rescans `$26F5F2..$270000` and fails if the ROM holds a site the
+census omits, so the number is closed rather than growing.
+
+The scan also found a **second word write**: `$26FF4E move.w #$420,($1A,A6)` sets `($1A)=$04` AND `($1B)=$20`, where
+`$26F8B0`'s `#$1600` sets `($1A)=$16` and CLEARS `($1B)`. With `$26FF66` writing `($1B)` alone, the pair is **neither
+one 16-bit field nor two independent bytes.** Match the width the cartridge uses at each site.
 
 **And state 4 settles what `($28,A6)` is.** All eight states open `cmpi.w #$0,($28,A6)`; state 4 follows with
 `cmpi.w #$1,($28,A6)` at `$26FD82`, its step-0 arm branching straight to that compare. **It is a SCRIPT STEP walked by
