@@ -1593,6 +1593,23 @@ file before writing anything new, the way `$55` should have been checked against
 
 ### D35: THE LIFE AND COIN SYSTEM
 
+**W372 ANCHOR: the coin read is `$13CFBA`, 72 bytes, and `isr.js` has been naming it as UNPORTED since W2.** It is
+IRQ6's first `jsr` -- `main.js`'s measured phase order item 3, *"IRQ6: coin, THE INPUT READ"* -- so it runs before
+anything else in the frame.
+
+    $13CFCE  not.w D0                    the raw switch word, ACTIVE LOW
+    $13CFD0  move.w D0,$803950           stored RAW
+    $13CFD6  and.w D0,D1 / andi.w #$E0   THREE bits kept: 5, 6 and 7
+    $13CFDC  move.w D1,$803954           stored MASKED, as a separate word
+    $13CFE2  bsr $13CF86
+    $13CFEA  btst #5,D1                  and bit 5 is tested first
+
+**Two words, not one** -- `$803950` raw and `$803954` masked -- so a port that keeps only the masked value loses
+whatever else reads the raw switches. And the `not.w` says the switches are **ACTIVE LOW**, which is the kind of
+inversion that produces a game that coins itself up continuously.
+
+
+
 Credits, coining up, lives, extends, game over, continue. The port has scoring (`scoreHit`, `scoreKill`, the
 `LEDGER`) but no economy around it.
 
