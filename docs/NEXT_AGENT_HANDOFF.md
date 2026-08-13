@@ -680,6 +680,30 @@ So the family agrees on `$5C` and `$A3` and `scoreHit`, and disagrees on: whethe
 whether the XOR input is inspected (`$1A`'s `$19` sentinel), where the XOR mask comes from (**field vs immediate**),
 and where the hit mask goes. **Five members, five different damage arms.**
 
+### `$4C` HAS A SHARED 32-BIT HP POOL, and the one-shot latch is its INVULNERABILITY gate
+
+    26f674  move.l #$7FFF,D0
+    26f67a  sub.w ($18,A6),D0        D0 = $7FFF - the part's current HP = THE DAMAGE JUST TAKEN
+    26f67e  tst.b ($16,A5) / bne     <- if the one-shot is ARMED, SKIP the subtraction
+    26f686  sub.l D0,($1a,A5)        else subtract that damage from a LONG pool in the RECORD
+    26f68a  move.w #$7FFF,($18,A6)   and reset the part's HP -- every hit, unconditionally
+    26f690  tst.l ($1a,A5) / bpl     pool still positive -> live
+    26f698  move.l #$700,D0 / jsr $28615E    killScore $700 -- the largest in the band
+
+**`($18,A6)` IS NOT `$4C`'s HP. It is a per-hit DAMAGE ACCUMULATOR**, reset to `$7FFF` after every hit, and the real
+health is a **32-bit pool at `($1A,A5)`** in the record. `$49`, `$4B`, `$55` and `$1A` all test `($18,A6)`'s SIGN for
+death; `$4C` tests `tst.l ($1A,A5)`. **A port that copied the family's death test would read a field `$4C` resets on
+every frame it is hit, and the object would never die.**
+
+**AND THIS IS WHAT THE ONE-SHOT LATCH IS FOR.** `($16,A5)` gates the subtraction, so **while the latch is UNSET the
+damage is discarded**: `$4C` is INVULNERABLE until the latch arms, and the latch arms only when the spawn clock
+reaches `$1F0` -- the moment type `$10` spawns. **So `$4C` spawns at `$1B8` invulnerable, and becomes killable 56
+clock units later, cued by another type's arrival.**
+
+That is a complete, coherent mechanism and it ties together every oddity of this type: the long-lived single record,
+the cross-type clock cue, part 5 as a control block, the hit mask stored into part 5, and the shared pool. **`$4C` is
+a multi-part destructible set-piece with a scripted vulnerability window.**
+
 ### `($16,A5)` IS NOT THE ON-SCREEN LATCH IN `$4C`. It is a one-shot armed at a specific SCRIPT FRAME.
 
     26f622  tst.b ($16,A5) / bne $26F650      already armed -> skip
