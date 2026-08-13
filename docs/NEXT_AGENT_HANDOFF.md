@@ -22,6 +22,11 @@ reaches whatever scratch record was chosen. **No address avoids it.**
 0, 1, 2 and 3 and alternating the 2/4 branch. The first two explanations were reasoned from the symptom; the third
 came from reading the callee. **Read the callee first.**
 
+**THE FAN IS LANDED (W372).** It is no longer withheld: the gate reads both player records inline, keeps the LARGER
+coordinate, and skips the whole volley when it is short of `(self - $400)`; the fire registers are literals
+(`d0 = $10007`, `d1 = $2E` wrapping at `$3F`), and it fires **37** shots. A smoke watches it fire -- zero shots short
+of the line, exactly 37 past it -- because a volley this size is worth seeing rather than compiling.
+
 **What IS proven** (see `w372type4crun.test.js`): the handler runs, a frozen frame takes the draw-only path, the
 retire arm releases `$8130DE`, ten frames are clean, and state 0's two-stage timer fires and flips the draw variant.
 **What is NOT proven is anything past a few hundred frames.**

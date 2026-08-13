@@ -181,3 +181,30 @@ test('W372 states 2 and 4 ALTERNATE over a long run -- the one-bit toggle drives
     `visited both branch states; saw ${[...seen].sort((a, b) => a - b).join(',')}`);
   assert.ok(f.ram.u16(A5 + 0x18) <= 1, 'and the toggle stays a single bit');
 });
+
+test('W372 the fan fires THIRTY-SEVEN shots, and only when a player is past the line', { skip: SKIP }, () => {
+  // Landing the fan means watching it fire, not just compile. It is the boss's main attack: 37 shots
+  // ($24 + 1, the DBcc rule), headings wrapping from $2E, and gated on the LARGER player coordinate
+  // reaching (self - $400). The gate and the aim are separate -- the players choose WHETHER, not where.
+  const f = world();
+  f.ram.setU16(A6 + 0x02, 0x2100);
+  f.ram.setU16(A6 + T4C.partSetters[1].flagAt, 1);          // arm the $66 part
+  f.ram.setU16(0x8103e6, 0x0000);                           // P1 alive
+  f.ram.setU16(0x8103e8, 0x0000);                           // ...but at 0, well short of the line
+  f.ram.setU16(0x810448, 0x8000);                           // P2 dead
+  const before = f.draws.length;
+  run(f);
+  assert.equal(f.draws.length, before, 'short of the line, the fan does NOT fire at all');
+
+  // Now put P1 past the engagement line and it must fire the full volley.
+  const g = world();
+  g.ram.setU16(A6 + 0x02, 0x2100);
+  g.ram.setU16(A6 + T4C.partSetters[1].flagAt, 1);
+  g.ram.setU16(0x8103e6, 0x0000);
+  g.ram.setU16(0x8103e8, 0xffff);                           // as far past the line as it gets
+  g.ram.setU16(0x810448, 0x8000);
+  run(g);
+  const shots = g.draws.filter((d) => d.site === 0x26fb2e);
+  assert.equal(shots.length, T4C.fanPasses, `THIRTY-SEVEN shots, got ${shots.length}`);
+  assert.equal(T4C.fanPasses, 37, 'and 37 is $24 + 1 -- one more than the moveq suggests');
+});

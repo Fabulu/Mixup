@@ -9869,52 +9869,44 @@ function sub26F9A2(ram, rom, a5, a6, ctx) {
 /** `$26FA82` -- PART 4's animator, and the type's FAN. `localLoop` is this routine's dbra. */
 function sub26FA82(ram, rom, a5, a6, ctx) {
   if (ram.u16(a6 + T4C.partSetters[1].flagAt) === 0) return; // $26FA82 -- the ($66,A6) gate
-  // $26FAF4..$26FB00 -- the fan is SKIPPED entirely while the target is within $400.
-  if (/* D0 */ 0 < u16(ram.u16(a6 + 0x02) - 0x400)) return;          // $26FAFA/$26FAFE/$26FB00 bcs
-  const passes = 0x24 + 1;                                           // $26FB04 move.w #$24,D7 -- 37
-  let d1 = 0x2e;                                                     // $26FB0E -- the ENTRY heading
-  const d5 = 0;                                                      // $26FB16 moveq #0,D5
-  // $26FB1E..$26FB3A -- the fan. D7 passes, each indexing $2735FA by (D1 & $3F) * 4, emitting, then
-  // stepping D1 and RE-MASKING, so the heading WRAPS rather than clamping.
-  for (let n = 0; n < passes; n++) {                          // $26FB3A dbra D7 -- 37 passes
-    const e = rom.u32(T4C.fanTable + ((d1 & 0x3f) << 2));    // $26FB18..$26FB28
-    // $26FB2C/$26FB2E -- through fireBullet, the type $11 idiom at handlers.js:768, NOT a bare call.
-    // W372: the registers ARE readable and are now partly read. $26FACA..$26FAE2 loads them from the
-    // PLAYER RECORDS, inline rather than through targetSelect: `moveq #0,D0 / tst.w $8103E6 / bpl /
-    // move.w $8103E8,D0` for P1, then the same shape against $810448 for P2. So the fan aims at the
-    // players, and D0/D1 are their coordinates -- not the placeholders this draft still passes.
-    // W372, READ IN FULL NOW: the player coordinates only GATE the fan. It keeps the LARGER of the
-    // two, compares it against (self - $400), and skips the whole fan when the player is short of that
-    // line. Then it OVERWRITES D0 with #$10007 and D1 with #$2E. So the fire registers are LITERALS
-    // and the players decide WHETHER it fires, not where it aims.
-    //
-    // That is the whole specification, and the fan can now be written:
-    //   gate     max(P1,P2 coord) >= ($2,A6) - $400, else no fan at all
-    //   regs     d0 = $10007, d1 = $2E stepping +1 masked to $3F, d2 = position + fanTable entry
-    //   passes   37 ($24 + 1, the DBcc rule)
-    // It is left withheld in THIS commit only because landing it wants its own smoke -- a 37-shot
-    // volley is worth watching fire, not just compiling.
-    //
-    // CORRECTION, same wave: I first withheld it blaming a corrupted ($6,A5) at frame 449. That was
-    // WRONG -- the corruption was the test fixture placing its scratch record inside the SPRITE
-    // QUEUE's RAM, and the write came from enqueueRegisters doing its job. The fan is still withheld,
-    // but for the reason above and not that one. A note whose stated reason is false is worse than no
-    // note, because the next reader fixes the wrong thing.
-    ctx.unported?.note(0x26fb2e, `$26FB2E type $4C's fan fires through $281402 with D0/D3/D5 not yet `
-      + `read from $26FA86..$26FB12. Firing on placeholders corrupted ($6,A5) at frame 449 in the `
-      + `W372 smoke, so the fan is withheld rather than fired wrong`);
-    void e; void d5;
-    d1 = (d1 + 1) & 0x3f;                                    // $26FB34/$26FB36 -- WRAPS, not clamps
+
+  // $26FACA..$26FAF4 -- THE PLAYERS ONLY GATE THIS. Both records are read INLINE rather than through
+  // targetSelect, so there is no side preference, and a dead player contributes 0 rather than being
+  // skipped. It keeps the LARGER of the two coordinates.
+  let d0 = 0;                                                // $26FACA moveq #$0,D0
+  if ((ram.u16(0x8103e6) & 0x8000) === 0) d0 = ram.u16(0x8103e8);     // $26FACC..$26FAD6, P1
+  let d1 = 0;                                                // $26FADC moveq #$0,D1
+  if ((ram.u16(0x810448) & 0x8000) === 0) d1 = ram.u16(0x81044a);     // $26FADE..$26FAE8, P2
+  if (!(d1 < d0)) d0 = d1;                                   // $26FAEE cmp.w / bcs -- keep the LARGER
+
+  // $26FAF6..$26FB00 -- and the whole fan is skipped when that player is short of the engagement line.
+  if (d0 < u16(ram.u16(a6 + 0x02) - 0x400)) return;          // bcs, so SHORT means no fan at all
+
+  // $26FB04..$26FB16 -- the fire registers are LITERALS: the players chose whether, not where.
+  const passes = 0x24 + 1;                                   // $26FB04 move.w #$24,D7 -- the DBcc rule
+  const fireD0 = 0x00010007;                                 // $26FB08 move.l #$10007,D0
+  let head = T4C.fanEntryHeading;                            // $26FB0E move.w #$2E,D1
+  const pos = ram.u32(a6 + 0x02);                            // $26FB12 move.l ($2,A6),D2
+  const d5 = 0;                                              // $26FB16 moveq #$0,D5
+
+  for (let n = 0; n < passes; n++) {                         // $26FB3A dbra D7 -- 37, not 36
+    const e = rom.u32(T4C.fanTable + ((head & 0x3f) << 2));  // $26FB18..$26FB28
+    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281402,   // $26FB2E jsr $281402
+      { d0: fireD0, d1: head, d2: u32(u32(pos + e) + d5), d3: 0, d4: 0, d5, a5 });
+    ctx.bulletSpawn?.(0x26fb2e, res);                        // the type $11 idiom, handlers.js:768
+    head = (head + 1) & 0x3f;                                // $26FB34/$26FB36 -- WRAPS, not clamps
   }
+
   // $26FB3E -- the SECOND counter-and-reload pair, state 0's shape exactly.
   const c = (ram.u8(a6 + 0x6e) - 1) & 0xff;
   ram.setU8(a6 + 0x6e, c);
-  if (c !== 0xff) return;                                    // $26FB42 bcc -- no borrow
+  if (c !== 0xff) return;                                    // $26FB42 bcc -- no borrow yet
   ram.setU8(a6 + 0x6e, ram.u8(a6 + 0x6f));                   // $26FB46 reload from its PERIOD
-  if (u16(ram.u16(a6 + 0x68) + ram.u16(a6 + 0x6a)) !== 0) return;  // $26FB4C..$26FB54 BOTH must be 0
+  if (u16(ram.u16(a6 + 0x68) + ram.u16(a6 + 0x6a)) !== 0) return;  // $26FB4C..$26FB54, BOTH must be 0
+
   // $26FB58 -- a COIN FLIP picks WHICH half of the part-4 pair fires. Part 3's animator fires BOTH of
   // its children; this one fires ONE. Copying either to the other doubles or halves the output.
-  const half = drawWord242EC2(ram, ctx) & 1;                 // $26FB58/$26FB5E andi.w #$1
+  const half = drawWord242EC2(ram, rom) & 1;                 // $26FB58/$26FB5E andi.w #$1
   const p4 = T4C.draws.filter((d) => d.part === 4)[half];    // $26FB62 bne -- the other half
   const shot = enqueueDeferred(ram, 0x50, DEFQ_D1.FIXED00);  // $26FB66 moveq #$50,D0
   if (!shot.dropped) {                                       // $26FB72/$26FB78
