@@ -835,3 +835,13 @@ test('W371 the steerer scroll-compensates the target X, and D0 is SCRATCH', { sk
   // So the call the port must make is dist242494(selfY, selfX, d2, d3 - scroll).
   assert.equal(IMG.readUInt16BE(0x24249a), 0x9042, '$24249A sub.w D2,D0 -- selfY minus tgtY');
 });
+
+test('W372 the death effect calls $246520, which fixes its mode at 1', { skip: SKIP }, () => {
+  // buildParts246520's mode is not a caller register: 1 from $246520, 0 from $24652A. $4C uses the
+  // first, and its table's COUNT word is 1 -- so nothing about this call needs tracing.
+  assert.equal(IMG.readUInt16BE(0x26f6d2), 0x41fa, '$26F6D2 lea (d16,PC),A0');
+  assert.equal(0x26f6d4 + IMG.readInt16BE(0x26f6d4), T4C.deathEffectTable, '  ...$2701C8');
+  assert.equal(IMG.readUInt16BE(0x26f6d8), 0x4eb9, '$26F6D8 jsr abs.l');
+  assert.equal(IMG.readUInt32BE(0x26f6da), 0x00246520, '  ...$246520, NOT the $24652A entry');
+  assert.equal(IMG.readUInt16BE(T4C.deathEffectTable), 1, 'and the table count word is 1');
+});

@@ -653,10 +653,10 @@ function handler4C(ram, rom, a5, ctx) {
       ram.setU16(0x8130e0, 0);                               // $26F6B6 -- and $8130E0, CLAIMED BY $49
       pushExternalSpeed(ram, 0x20, 0x20);                    // $26F6BE..$26F6C6
       setState4C(ram, a6, 6);                                // $26F6CC -- the DEATH state
-      // $26F6D2 lea ($2701C8,PC),A0 / $26F6D8 jsr $246520.
-      // OPEN: buildParts246520(ram, rom, a0, mode, site) -- `mode` comes from a register this draft
-      // has NOT traced. READ IT before placing; do not guess a mode here.
-      buildParts246520(ram, rom, T4C.deathEffectTable, /* mode */ null, 0x26f6d8);
+      // $26F6D2 lea ($2701C8,PC),A0 / $26F6D8 jsr $246520. The `mode` is NOT a caller register: it is
+      // fixed by WHICH ENTRY is called -- 1 from $246520, 0 from $24652A (spawn.js's own docstring).
+      // $4C calls $246520, so it is 1, and $2701C8's count word is 1.
+      buildParts246520(ram, rom, T4C.deathEffectTable, 1, 0x26f6d8);
     }
   } else {
     // $26F6DE -- an unhit frame REWRITES the palette byte rather than merely skipping the XOR. With
@@ -693,9 +693,11 @@ function dispatch4C(ram, rom, a5, a6, ctx) {
 }
 ```
 
-**ONE OPEN ITEM, MARKED IN THE CODE:** `buildParts246520(ram, rom, a0, mode, site)` takes a `mode` that comes from a
-register the draft has not traced. `$26F6D2 lea ($2701C8,PC),A0 / $26F6D8 jsr $246520` shows A0 only. **Read the mode
-before placing this** -- it is the same class as `$1A`'s D3 and must not be guessed.
+**THE OPEN ITEM IS CLOSED, AND IT WAS NOT A TRACE AT ALL.** `buildParts246520`'s `mode` is not a caller register: it
+is fixed by WHICH ENTRY POINT is called -- **1 from `$246520`, 0 from `$24652A`** -- and `spawn.js`'s own docstring
+says so, along with the observation that `$4C` passes `$2701C8` whose count word is 1. `$4C` calls `$246520`, so the
+mode is **1**. Looking for a register would have found nothing, because there is nothing to find; the answer was in
+the port already. **Check the callee's own documentation before tracing the caller.**
 
 **Still to write:** the eight state bodies (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
 `$26F6E8` main flow, then the five-call draw chain) and the eight state bodies, all of which are read and pinned.
