@@ -2791,6 +2791,11 @@ SHOT_WINDOWS.extend([
                        "list above begins. Entry: +0 long -> D2, +4 packed-long position bias, +8 "
                        "word, +$A six zero bytes. Group A bias $F000F400 w8 $1060; group B from "
                        "$2727D0 bias $EC00F400 w8 $1460"),
+    (0x2710B8, 0x002E, "W352: type $46's SEVEN-word record prototype and its $20-byte sub prototype, "
+                       "$2710B8..$2710E6 -- overlapping its handler at $2710E2 by FOUR bytes, which "
+                       "the family depth formula predicts exactly: 1 * $20 - ($2710E2 - $2710C6) = 4. "
+                       "Word count from $271046 moveq #$6,D0 (D0+1). Bounded below by W316's $45 "
+                       "sprite window ending at $27102C and above by the handler"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

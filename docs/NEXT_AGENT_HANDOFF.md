@@ -4860,6 +4860,48 @@ patterns with two distinct emit routines, not one pattern with two parameters.
 `$27267E` and `$27270A` are both `dbra D7` (`51cf`), confirming the `move.w #$N,D7` counters are loop
 counters and that the N+1 rule applies to both -- which is what makes it 5 and 4 passes rather than 4 and 3.
 
+## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
+
+Unblocked by `$55`. Type table `$267824 + $46*8 = $267A54`: init `$27102C`, body `$271034` (the `+8` rule
+again), handler `$2710E2`. `claimed.py`: the handler and `$271024` unclaimed, the init NOT PORTED (one
+comment mention only), and **`$271034` is NOT in `initbody.js`** -- so both a body registration and a
+handler are needed.
+
+**Bounded on both sides without a guess.** W316's note already records that `$45`'s sprite window
+`$27100C+$20` ends exactly at `$27102C`, `$46`'s init. And the prototypes end where the handler starts.
+
+    27102c  move.w #$0,($4,A5) / rts        the init proper: ONE sub-record
+    271034  lea $2710C6,A0 / jsr $2637A2    loadSubProto      <- sub prototype $2710C6
+    271040  lea $2710B8,A0 / moveq #$6,D0 / jsr $26377A       <- record prototype, D0+1 = SEVEN words
+    27104e  jsr $263808                     already ported, 25 code mentions
+    271054  move.w $8130CE,($22,A5)         the spawn clock, STORED into the record
+
+**Window declared W352: `$2710B8 + $2E`, 443 -> 444.** The four-byte handler overlap is exactly what the
+family depth formula predicts: `1 * $20 - ($2710E2 - $2710C6) = $20 - $1C = 4`.
+
+### The init hard-codes the FIVE script frames this type spawns at
+
+A fall-through cascade of spawn-clock equality tests, each `bne` skipping only its own store:
+
+    $8130CE == $E6   -> ($18,A5) = $60      $27105C
+    $8130CE == $E4   -> ($18,A5) = $F0      $27106E
+    $8130CE == $108  -> ($18,A5) = $40      $271080
+    $8130CE == $106  -> ($18,A5) = $F0      $271092
+    $8130CE == $116  -> ($18,A5) = $80      $2710A4
+    (no match)       -> whatever the record prototype set
+
+Same idiom as `$49`'s single `$8130CE == $1F3` direction pick, but five-way. Two frames (`$E4`, `$106`)
+select the same `$F0`, so it is four distinct values over five frames.
+
+**THIS IS A FREE CROSS-CHECK AND IT SHOULD BE A TEST.** The cartridge is naming the exact script frames at
+which `$46` spawns. The port already has stage 5's spawn script, so those five clock values must appear in
+it as `$46` spawns -- and any `$46` spawn at another frame must be one that takes the prototype default.
+That pins the init against the script from two independent directions. **Write that before the handler**:
+it is cheap, and if it fails the reading of the cascade is wrong.
+
+Still to read: the handler `$2710E2` onward, and what `($18,A5)` actually drives (in the `$49`/`$4B`/`$55`
+family that offset is the PALETTE BASE, so check whether `$46` agrees before assuming it).
+
 ### W351: `handler55` WAS WRITTEN AND THEN REVERTED. Read this before writing it again.
 
 The full handler was written against `T55` (~150 lines: prologue, `$5C` arm, pause, back-out, bounds, the
