@@ -208,6 +208,33 @@ lands in the same commit as the code that calls it.**
 So `$B0`'s real remaining cost is `$242922` and `$253564` plus `$2A6B94`'s body. `$243DD0` is solved and costs a
 line.
 
+### And BOTH of the other two have ported cores. `$B0` needs almost nothing new.
+
+Applying the same prose check (which is what found all five family members), `boss.js`'s note table already
+describes them:
+
+    $253564   "the $811F8C clamp"                       and bulletdriver.js:127 adds that it
+                                                        "begins a different routine (cmpi.w #$14,$811F8C)"
+    $242922   "$28C170 + the two $FF intervention bytes"
+
+**`$242922` read in full is three instructions of setup around a PORTED call:**
+
+    242922  jsr $28C170              ALREADY PORTED (3 code mentions)
+    242928  move.w #$1,$81296E       a flag
+    242930  tst.w $8103E6            player 1's record -- the liveness test the note's "$FF intervention
+                                     bytes" hang off
+
+**`$253564` is a clamp on `$811F8C` opening `cmpi.w #$14,$811F8C`** -- and `bulletdriver.js:127` already
+warns not to read past its entry, so someone has been here.
+
+**So the final boss needs: `$243DD0` (one line), `$242922` (a wrapper round a ported call), `$253564` (a clamp),
+and `$2A6B94`'s 666-byte body whose twelve callees are all ported.** That is the whole of `$B0`.
+
+**The prose check has now paid off five times out of five in this session.** `claimed.py` on an address answers
+"did I port THIS"; the port's own note tables and file-header prose answer "is this new work", and they are where
+every single family relationship was recorded. **Read the prose first. It is the cheaper question and usually the
+one that matters.**
+
 **That is the FOURTH time this session that "unported" resolved to "member of a family the port already has"**
 after `$242B90`/`$242B3C`, `$26331C`'s stub siblings, and `$263684`/`enqueueDeferred`. **The pattern is strong
 enough to be the default assumption**: before writing anything, grep the port's PROSE for the address's
