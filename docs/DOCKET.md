@@ -1462,6 +1462,27 @@ Credits, coining up, lives, extends, game over, continue. The port has scoring (
 in `tally.js`. And D25/D32/D21/D12 are open playtest items that may turn out to be life-system symptoms
 rather than independent bugs, so re-read them once this lands.
 
+### D37: THE GAME'S ENDINGS
+
+Every ending the cartridge can reach, and the conditions that select between them. Nothing here is measured
+yet.
+
+**What is already known that bears on it, so it is not rediscovered:**
+
+* **`$B0` is Hibachi, the boss-route root** (`$2A42D4`/`$2A4606`), and it is still unported -- it wants the
+  HIBACHI CLOSURE RULE and a trace. Since which ending you get turns on how far the boss route goes, `$B0`
+  is a hard prerequisite for the best-ending path rather than a parallel task.
+* **The loops are already in the milestone** ("one credit from stage 1 through stage 5 with no `Unreached`,
+  then the loops"), and endings depend on loop state, so this item sits AFTER the loops rather than beside
+  them.
+* Ending selection will read the same run-state the front end writes, so **D35's life and coin system lands
+  first** -- an ending conditioned on credits used or lives remaining cannot be tested before that exists.
+
+Ordering, therefore: D35 and the loops before this, `$B0` before the best ending, and this before D36. **Do
+not treat an unreached ROM region as an ending on the strength of it looking cinematic** -- check it against
+`$B0`'s route and the second game (D36) first, because a misattribution there would put D36 work in scope
+early, which is exactly what the owner ruled out.
+
 ### D36: THE SECOND GAME IN THE ROM -- **DEFINITELY LAST**
 
 The cartridge carries a second game. **The owner's instruction is explicit: this is the last thing tackled,
