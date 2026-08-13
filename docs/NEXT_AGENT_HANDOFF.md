@@ -4860,6 +4860,32 @@ patterns with two distinct emit routines, not one pattern with two parameters.
 `$27267E` and `$27270A` are both `dbra D7` (`51cf`), confirming the `move.w #$N,D7` counters are loop
 counters and that the N+1 rule applies to both -- which is what makes it 5 and 4 passes rather than 4 and 3.
 
+### W351: `handler55` WAS WRITTEN AND THEN REVERTED. Read this before writing it again.
+
+The full handler was written against `T55` (~150 lines: prologue, `$5C` arm, pause, back-out, bounds, the
+four-test cascade, `fire55`, `tail55`) and registered at `$272424`. **It was reverted, and the reasons are
+worth more than the code was:**
+
+1. **Four census pins failed**, exactly as designed -- `W223 type $41`, the `handlerMap()` adapter cover,
+   `W217 reusable coverage`, and `W317`'s thirteen-spawn count. These have hard-coded totals so that adding
+   a handler cannot pass silently. **Bumping them is mechanical BUT must be done from the new true counts,
+   not by making the assertion match.**
+2. **One piece of the fan loop was DERIVED, not read.** The ROM steps the angle after each emit and then
+   adds `$10` between clusters; expressing that as a nested loop needs the inter-cluster add to compensate
+   for the trailing per-shot step. I wrote `d1 + interCluster - step` to do that. **That compensation is
+   arithmetic I reasoned out, not an instruction I saw.** The safe form is to UNROLL the three (and five)
+   emits literally as the ROM does, with the exact `addq.b` after each, rather than a loop plus a fix-up.
+3. **There was no test for `handler55`.** Landing a ~150-line handler whose only validation is that four
+   unrelated pins still pass is how W328's four `ram`-instead-of-`rom` descriptor reads survived for
+   thirteen waves, and how the `tallyPhase0Arm25DC2C` dead code passed five green checks.
+
+`T55` remains committed and `ported: false` remains set, so the suite still pins the unwritten set. Suite
+back to 2438/2438 after the revert.
+
+**What the next pass needs, in order:** unroll both volleys literally; write a focused test that drives one
+record through mode 0 -> 2 -> 3 and asserts the burst reload and the 15/20 shot counts; then bump the four
+pins from their real new values.
+
 ### W351: `($2E,A5)` IS A BURST COUNTER. The two volleys are ORDINARY and FINALE.
 
 Both variants converge on `$27270E` (the 15-shot arm reaches it by `$272682 bra $27270E`):
