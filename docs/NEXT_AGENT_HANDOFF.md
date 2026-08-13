@@ -5287,7 +5287,36 @@ Transcribe it as a comment; do not go looking for what it "should" do.
 SECOND section at `$269092` with its own X gate and a `($30,A5)` test -- so the handler has more structure after
 the draw, which is unlike `$55` and `$46` where the tail is terminal.
 
-Still to read: `$2690A2` onward, the `($30,A5)` arm at `$2690F6`, and the death arm at `$269160`.
+### BOTH rank values are now accounted for -- `$1A` has a SECOND firing arm
+
+    2690a2  subq.b #1,($2E,A5) / bcc $26915E    a THIRD countdown, separate from ($1E) and ($22)
+    2690aa  move.b ($2A,A5),($2E,A5)            <- RELOADED FROM THE OTHER RANK VALUE
+    2690b0  move.b ($31,A5),($30,A5)            a second reload pair
+    2690b6  move.b #$80,($32,A5)
+    2690bc  move.b #$80,($33,A5)                TWO byte writes, not one move.w #$8080
+    2690c2  movem.w ($2,A6),D0-D1
+    2690c8  addi.w #-$600,D0                    the same -$600 bias $55's aim uses
+
+**The init's rank cascade is now fully consumed**, which the old "blocked on a trace" note never reached:
+
+    ($2A,A5) = $4 low rank / $3 high    -> reloads ($2E,A5), the SECOND arm's timer   ($2690AA)
+    ($2B,A5) = $4 low rank / $6 high    -> reloads ($1E,A5), the FIRST arm's timer    ($268FE0)
+
+So rank changes **both** firing intervals, in opposite directions: the high-rank values are `$3` (faster) for the
+second arm and `$6` (slower) for the first. **That asymmetry is the whole point of the cascade** and it would be
+invisible to anyone who read only one arm. Two commits ago I recorded `($2A,A5)` as "still unaccounted for"; this
+closes it.
+
+**`($30,A5)` is a countdown with `($31,A5)` as its reload**, so the `tst.b ($30,A5) / bne $2690F6` gate at
+`$26909A` is testing a live timer, not the invulnerability field it is in `$55`. **Fifth same-offset-different-
+meaning instance** -- `$55`'s `($30,A5)` is its invulnerability counter, seeded to `$10` by its prototype.
+
+**`move.b #$80,($32,A5)` then `move.b #$80,($33,A5)` are two byte writes where one `move.w #$8080` would do.**
+Same resulting memory, so this one is safe either way -- but it is the explicit inverse of the word-literal trap:
+there the cartridge writes a word and a port must see two fields; here it writes two bytes and they really are
+two fields. **The cartridge's chosen width is the documentation.**
+
+Still to read: `$2690CE` onward, the arm at `$2690F6`, and the death arm at `$269160`.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
