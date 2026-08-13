@@ -579,6 +579,28 @@ and `$12 ^ $D = $1F`, and omitting the restore leaves the object stuck in its fl
 **BIASES:** `$4C` uses sequential `addi.l`, which **DO combine**. `$1A` uses swap-separated word adds which must NOT be
 folded, and `$55`/`$46` use packed longs. Three conventions in one band -- check per site.
 
+## W371: THE ALIGNED DECODER EXISTS NOW -- `tools/aligned.py`
+
+Recorded as the top tooling gap for many waves and finally built, because three spec errors in one session all came
+from reading addresses without alignment. **It sweeps forward from a known entry point, decoding each instruction's
+real length, and answers "is this address a boundary".**
+
+    python tools/aligned.py check 0x26f5f2 0x26f718 0x26f702 0x26f704
+    python tools/aligned.py sweep 0x2a4622 0x2a46b2
+
+**IT REFUSES RATHER THAN GUESSES.** An opcode it does not know STOPS the sweep and is named by address; nothing past
+that is invented. Verified on real data: `$2A4446` (Hibachi's sub-prototype) opens with `$A000`, an A-line word, and
+the sweep stops there claiming zero instructions.
+
+**IT PASSED THE FIXTURE RECORDED BEFORE IT EXISTED.** W362's eleven Hibachi `lea` boundaries come out exactly, with
+`$1A0` EIGHTH -- and the sweep shows WHY a fixed-stride scan gets them wrong: the first is `lea (A6),A0` at TWO bytes
+while the other ten are `lea (d16,A6),A0` at four. It also reproduces both W371 findings independently: `$26F702`
+MID-INSTRUCTION, `$26F704` a BOUNDARY.
+
+**ITS LIMITATION IS A TEST, NOT A FOOTNOTE.** A linear sweep cannot tell code from data that happens to decode:
+`$2A443C`, five words of record prototype, decodes cleanly into three plausible instructions with no complaint. So
+`check` must always be given a start you already know is an entry point. That contract is asserted.
+
 **W371: FIFTEEN, NOT SIXTEEN.** `$26F702` was in the inventory and is not a subroutine -- it is the DISPLACEMENT WORD
 of the `bsr.w $26FA82` at `$26F700`. Nothing in the span branches to it. **The test that was supposed to catch this
 passed it for four waves**, because its scan walks every 2-byte boundary, which is the same limitation that created
