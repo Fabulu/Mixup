@@ -2801,6 +2801,13 @@ SHOT_WINDOWS.extend([
                        "step 0,4,8..$1C. Bounded by CODE: $271284 is 3b7c0001, move.w #$1,... . Each "
                        "entry is $0030 in the high word and a byte pair stepping by 4 in the low: "
                        "787C 7C80 8084 8488 888C 8C90 9094 9498"),
+    (0x2A443C, 0x01CA, "W369: HIBACHI $B0's FIVE-word record prototype and its SIXTEEN sub-record "
+                       "prototypes, $2A443C..$2A4606. Word count from $2A42EE moveq #$4,D0 (D0+1); the "
+                       "sub count from the init stub $2A42D4 move.w #$F,($4,A5), so 15+1 = 16. ALL "
+                       "SIXTEEN are the LONG form (bit 15 of each flags word set), 28 table bytes each, "
+                       "walked to size this window rather than assumed -- the short form would be 16. "
+                       "The span ends at $2A4606, which IS the handler address, so the prototype is "
+                       "bounded above by its own handler exactly and cannot be widened by accident"),
     (0x268DD2, 0x0068, "W353: type $1A's FIVE palette rows, 15-word record prototype and $20-byte sub "
                        "prototype, $268DD2..$268E3A -- three contiguous structures the init walks in "
                        "order. The rows are byte PAIRS indexed by $813094: 15 0a / 15 0a / 15 0a / "

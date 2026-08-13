@@ -9315,7 +9315,6 @@ const T4C = Object.freeze({
 // stage machine works, so this handler is the junction the endings (D37) run through -- though selection
 // happens DOWNSTREAM of $242952, not here. $25A17A looked like the selection point and is a bare rts.
 const TB0 = Object.freeze({
-  initBodyPorted: false,
   init: 0x2a42d4, initBody: 0x2a42dc, handler: 0x2a4606,
   // High table: $27E412 + ($B0 - $80) * 8 = $27E592. W347's formula, correct on first use.
   handlerEnd: 0x2a46b0,

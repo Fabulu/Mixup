@@ -176,7 +176,12 @@ test('the Stage-1 through W223 Stage-4 bodies are dispatched', () => {
   // W352: 84 -> 85, type $46's body $271034. This pin is the one that caught $55's silent no-op in
   // W345 (expected 84, actual 83) when its BODY.set landed after INIT_BODY_ADDRESSES was built, so
   // $46's registration was deliberately placed ABOVE that line.
-  assert.equal(INIT_BODY_ADDRESSES.length, 85,
+  // W369: 85 -> 86, HIBACHI $B0's body $2A42DC. It had been missing since the boss handler landed in
+  // W363, and this pin could not catch it: TB0's stale `ported: false` made w346 skip the type, and
+  // this count only says how many bodies exist, not which type wanted one.
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x2a42dc),
+    'W369: HIBACHI $B0 body $2A42DC -- without it every boss spawn threw and stage 5 could not end');
+  assert.equal(INIT_BODY_ADDRESSES.length, 86,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
     + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
     + `W170's $277836, W171's $276946, W172's $27751C, W173's $275154, `

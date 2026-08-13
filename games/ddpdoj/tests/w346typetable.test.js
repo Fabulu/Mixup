@@ -184,7 +184,7 @@ test('W369: exactly ONE spec is measured-but-handlerless -- $4C', () => {
     + 'and were mislabelled, which is what hid their missing init bodies.');
 });
 
-test('W369: exactly TWO types are UNSPAWNABLE -- $1A and HIBACHI $B0', () => {
+test('W369: exactly ONE type is UNSPAWNABLE -- $1A', () => {
   // This is the count that matters for the milestone. A registered handler the driver can never reach is
   // worth nothing: the spawn throws first. $B0 is the stage-5 BOSS, so stage 5 cannot currently be
   // completed regardless of $4C.
@@ -192,7 +192,10 @@ test('W369: exactly TWO types are UNSPAWNABLE -- $1A and HIBACHI $B0', () => {
     .filter(([, spec]) => spec.initBodyPorted === false)
     .map(([type]) => type)
     .sort((a, b) => a - b);
-  assert.deepEqual(unspawnable, [0x1a, 0xb0],
+  assert.deepEqual(unspawnable, [0x1a],
+    // W369 second half: $B0's body $2A42DC LANDED, so HIBACHI spawns and stage 5 can end. $1A stays,
+    // blocked on D3 provenance rather than on reading.
+
     'Porting an init body means DELETING the flag in its spec and here. $1A is blocked on D3 provenance '
     + 'at $268D8C (the aim CORE takes its target in D2/D3 and nothing in the body or $263808 writes D3); '
     + '$B0 has not been read yet. Neither is blocked on the handler.');

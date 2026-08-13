@@ -1535,6 +1535,47 @@ not treat an unreached ROM region as an ending on the strength of it looking cin
 `$B0`'s route and the second game (D36) first, because a misattribution there would put D36 work in scope
 early, which is exactly what the owner ruled out.
 
+### D38: INPUT LAG REDUCTION -- FAITHFUL
+
+**Faithful means the cartridge's own latency is preserved and only the PORT's added latency is removed.** The
+arcade hardware polls, the game reads, the game acts, the screen shows it. Any delay the 68000 program itself
+imposes is part of the game and stays. What must not stay is delay this translation introduces on top: an
+extra buffered frame, a browser event queued behind a render, a poll that happens after the frame it should
+have fed rather than before.
+
+**So the first work here is MEASUREMENT, not optimisation.** Nothing about the port's end-to-end latency is
+measured today. Establish, in frames:
+
+* where in the frame the port samples input, against where `$24xxxx`'s poll sits in the cartridge's frame
+* how many frames sit between a sample and the pixels that reflect it, in the browser build specifically
+* whether any of them are the port's own (a queue, a rAF boundary, a double buffer) rather than the game's
+
+**The distinction is the whole item**, so record for each frame of latency found which of the two it belongs
+to. A frame the cartridge spends is not a bug and must not be "fixed" -- removing it changes the game and
+belongs in D39 instead. A frame this port added is a defect and is in scope here.
+
+The likely places to look are `framesync.js` and whatever drives the web build's frame loop, but that is a
+guess and should be checked rather than assumed.
+
+### D39: INPUT LAG REDUCTION -- UNFAITHFUL, AS PICKABLE MODS
+
+**Everything that makes the game more responsive than the cartridge was**, kept strictly separate from D38 and
+never on by default. The owner's framing: these are mods people can pick.
+
+That framing sets the requirement. Each is an INDIVIDUAL toggle, off by default, and the player chooses --
+not a single "low latency mode", and not something the port decides for them. Anything that changes
+cartridge-visible behaviour belongs here, no matter how small the win.
+
+Candidates to evaluate once D38's measurement exists (each is a separate toggle, not a bundle):
+
+* sampling input later in the frame than the cartridge does, so a press lands one frame sooner
+* skipping the game's own input debounce or repeat delays where it has them
+* reacting to a press before the frame boundary that would normally consume it
+
+**D38 MUST LAND FIRST.** Without its measurement there is no way to tell which of these actually removes a
+frame and which only feels like it does, and no way to keep the faithful build honest while they exist. A
+mod that silently becomes the default is the failure mode to design against.
+
 ### D36: THE SECOND GAME IN THE ROM -- **DEFINITELY LAST**
 
 The cartridge carries a second game. **The owner's instruction is explicit: this is the last thing tackled,

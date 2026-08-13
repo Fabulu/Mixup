@@ -2394,4 +2394,67 @@ BODY.set(0x271034, (ram, rom, a5, a6, unported) => {
   if (clk === 0x116) ram.setU8(a5 + 0x18, 0x80);          // $2710A4/$2710B0
 });
 
+// ------------------------------------------------ type $B0 ($2A42DC): HIBACHI
+// W369. The stage-5 BOSS's init body, and the reason it was missing is recorded in T1A/TB0: both specs
+// kept `ported: false` after their handlers landed, which made w346's registry tests skip them, so
+// nobody checked for these bodies. Without this, every Hibachi spawn threw from `runInitBodyAddr` and
+// stage 5 could not be completed at all.
+//
+// Nothing here needed inventing: three of its four callees were ALREADY ported, in `scheduler.js`
+// ($259554 `installScripts`, $2598E6 `a2Run2598E6`, $25980C `a4Start25980C`). A grep for `0x259554`
+// found nothing because that file cites them as `$259554` -- the family rule found them, not the grep.
+//
+// THE TEN SCHEDULER SLOTS ARE NOT SEQUENTIAL: 0 1 2 5 4 3 8 7 6 9. Two descending runs inside an
+// ascending one. A `for (i = 0; i < 10; i++)` visits the same ten slots in the wrong order, and these
+// are $2598E6 RUN-bit sets, so the order is the boss's opening script order.
+//
+// THE NINE PALETTE BANKS ARE NOT SEQUENTIAL EITHER: $10..$17 then $0F, with blocks stepping +$40 from
+// $223038. Bank $0F is loaded LAST with the NINTH block. Sorting the banks pairs $0F with the wrong
+// block. (The blocks are inside W91's existing sprite-palette window, so no new window is needed.)
+//
+// $2A6E74 ARMS EXACTLY EIGHT PARTS -- $0 $20 $40 $60 $80 $A0 $C0 $1A0, with $1A0 EIGHTH, which is
+// where TB0's eleven-offset handler list also puts it. That list is not arbitrary and not a range: it
+// is these eight, then $140/$160 (armed by $2A6E98), then $180 ($2A6EA6) -- three arming routines
+// concatenated in call order. $E0/$100/$120 are armed by none of them, which is why the handler skips
+// them. This is the strongest confirmation yet that the eleven must be transcribed, not looped.
+BODY.set(0x2a42dc, (ram, rom, a5, a6, unported, tablesArg, palette) => {
+  void tablesArg;
+  loadSubProto(ram, rom, a5, a6, 0x2a4446);             // $2A42DC lea / $2A42E2 jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x2a443c, 0x04);        // $2A42E8..$2A42F2, D0=4 so FIVE words
+  ram.setU32(a6 + S.posX, 0x38001c00);                  // $2A42F8 move.l #$38001C00,($2,A6)
+
+  // $2A4300..$2A4328 -- five table bases, and A1 depends on the LOOP counter. `tst.w $813098 / bne`
+  // SKIPS the second lea, so the reload happens when the counter is ZERO: the FIRST loop gets
+  // $2A92A8 and every later loop keeps $2A72C8. Reading the branch the other way swaps the boss's
+  // whole A1 script set between loops.
+  installScripts(ram, rom, {
+    a0: 0x2a4e56,                                       // $2A4300
+    a1: ram.u16(G.rank98) !== 0 ? 0x2a72c8 : 0x2a92a8,  // $2A4306 / $2A431E..$2A4328
+    a2: 0x2a46b2,                                       // $2A430C
+    a3: 0x2a5492,                                       // $2A4312
+    a4: 0x2a5886,                                       // $2A4318
+  });                                                   // $2A432E jsr $259554
+
+  for (const slot of [0, 1, 2, 5, 4, 3, 8, 7, 6, 9]) {  // $2A4334..$2A4382, ten jsr $2598E6
+    a2Run2598E6(ram, slot);
+  }
+  a4Start25980C(ram, 0);                                // $2A4384 moveq #0,D0 / jsr $25980C
+
+  // $2A438C..$2A441A -- nine `move.w #bank,D0 / lea block,A0 / jsr $24150A`.
+  const BANKS = [0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x0f];
+  BANKS.forEach((bank, i) => {
+    installBank(ram, rom, palette, unported, bank, 0x223038 + i * 0x40,
+      0x2a438c + i * 0x10, 'Hibachi boss art');
+  });
+
+  ram.setU16(0x81b414, 1);                              // $2A441C
+  ram.setU16(0x81b416, 1);                              // $2A4424
+  ram.setU16(0x81b418, 1);                              // $2A442C
+
+  // $2A4434 jsr $2A6E74 -- inlined, it is nine instructions and has no other caller in this body.
+  for (const off of [0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0, 0x1a0]) {
+    ram.setU16(a6 + off, 0x8000);                       // $2A6E74 move.w #$8000,D0 / eight stores
+  }
+});
+
 export const INIT_BODY_ADDRESSES = [...BODY.keys()];
