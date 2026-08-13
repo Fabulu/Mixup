@@ -658,6 +658,32 @@ the old note listed as unported callees (all internal, two of them merely the bo
 
 **Still open:** what selects among the arms, and the three `cmpi.w #$0600,($1E,A5)` ramp sites.
 
+### THE TOP TOOLING GAP: there is NO ALIGNED DECODER, and that is the root cause of six errors
+
+`rosetta.py dasm <addr>` **silently mis-aligned six times this session** (`$272722`, `$268EDE`, `$26903E`,
+`$26907C`, `$2690CE`, `$2690F6`). Each time it printed a different address as its first line and swallowed exactly
+one instruction. One of those cost **four waves** chasing a register that was loaded two bytes past where a scan
+stopped. `tools/branches.py` (W362) cannot align either -- it scans every 2-byte boundary and says so on every run.
+
+**The fix is a tool that, from an address KNOWN to be an instruction boundary, walks forward computing instruction
+LENGTHS and prints the aligned addresses.** Then any `dasm` output can be checked, and any scan can be given real
+boundaries instead of even offsets.
+
+**IT WAS DELIBERATELY NOT BUILT THIS SESSION, and the reason should be respected.** It needs length rules for
+every opcode family in this cartridge -- `4e75`=2, `4eb9`=6, `4e71`=2, `Bcc.s`=2, `Bcc.w`=4, `0c2d/0c6e`=6,
+`4a2d/4a6e`=4, `4a79`=6, `1b7c/3b7c`=6, `532d`=4, `41fa`=4, `41f9`=6, `51cf`=4, and more -- and **a wrong length
+anywhere makes every subsequent address wrong while looking completely plausible.** That is the same failure mode
+as the misalignment it is meant to fix, with a wider blast radius.
+
+**Three tools this session shipped a confident summary their measurement could not support** (`spanned.py`'s
+pass/fail, `claimed.py`'s verdict three times over). An aligner is that risk raised, because its output is not a
+summary but a set of ADDRESSES that everything downstream would trust. **Build it with a test that walks a span
+whose boundaries are already known from committed disassembly and asserts they match** -- `$2A4606..$2A46B0` is a
+good candidate, since its eleven `lea`/`jsr` pairs give eleven verified boundaries.
+
+Until then: **treat any `dasm` whose first line is not the requested address as a MISS**, and prefer raw byte dumps
+for anything load-bearing.
+
 ### THE BAND RULES -- earned across W345..W353, every one after getting it wrong first
 
 The stage-5 band (`$43 $46 $47 $48 $49 $4A $4B $4C $55 $1A`) shares its MECHANISMS almost completely and agrees
