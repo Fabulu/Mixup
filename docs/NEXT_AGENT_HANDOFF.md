@@ -39,48 +39,20 @@ retire arm releases `$8130DE`, ten frames are clean, and state 0's two-stage tim
   places. `spawnEffect` returns the opposite, which is exactly why this cannot be recalled -- read
   `handlers.js:3180` for the sibling idiom.
 
-### THE NEXT JOB: `$1A` CANNOT SPAWN
+### STAGE 5 IS SPAWN-COMPLETE (W372)
 
-**Stage 5 is handler-complete but NOT spawn-complete.** `$1A` has a written, registered handler and **no registered
-init body**, so `runInitBodyAddr` throws the moment one spawns. Handler coverage and spawnability are different
-measurements; `w314stage5scope` counts the first and says so explicitly now.
+**`$1A`'s init body is ported and the type spawns.** Every stage-5 type now has BOTH halves: a handler and an init
+body. `enemy_types` is 94/256.
 
-**W372 RESOLVED IT, NEGATIVELY -- AND THAT IS THE ANSWER.** `$2635F6` has exactly **TWO callers in the whole 6 MB
-image**, `$263438` and `$2634E4`. The first sets A0/A1/A2/A5 and pushes A2/A3; **neither touches D2 or D3.** With
-`$2635B2` (D2 = a slot counter), the `$263650` dispatcher block (side only) and `$263808` (neither) already
-eliminated, **that is the entire chain from type table to init body.**
+**D40 turned out much smaller than I first wrote it.** I had said the undefined D3 at `$268D8C` feeds "the heading
+and velocity", i.e. gameplay. It does not: `($24,A5)` is handed to `$23DECE` as **D2, the ART LONG**, from
+`$272C7A`'s 32 directional pointers. **It is the turret's DRAWN FACING at spawn** -- the handler's own slew drives
+where it shoots, and nothing in `$1A` ever reads `($29,A5)`. So it is cosmetic, it gets a `note()` by address rather
+than an `unreached()`, and the type plays.
 
-**So `$1A`'s spawn-time aim consumes a D3 that NO part of the spawn path writes.** D2 it supplies itself -- the
-literal `$1` or `$2` at `$268D4C`/`$268D62` -- so the aim's target is (Y = 1 or 2, X = whatever D3 held): the top of
-the screen, at an arbitrary column.
-
-**This is a finding about the cartridge, not a gap in the reading.** Any constant a port invents for D3 would be a
-fiction. The honest options are to model the inherited value (which needs the frame's prior register state, i.e. a
-real emulator trace) or to `unreached()` at that site and let it throw with the address. **Do not pick a number.**
-
-**Earlier narrowing, kept because it is what made the answer checkable:** The init body is invoked at **`$263650 jsr (A1)`**, and the dispatcher's last act before that
-is to select a PLAYER RECORD into A0 and store the side into `($3,A5)`:
-
-    $263632  lea $8103E6,A0   btst #0,($1,A5) / beq / $263640 lea $810448,A0 / moveq #$1,D0
-    $263648  move.b D0,($3,A5)    $26364C clr.w ($3E,A5)    $263650 jsr (A1)
-
-**So the SIDE is supplied and D2/D3 are NOT** -- not there, not in `$2635B2` (D2 is a slot counter), not in
-`$263808`. **The supplier is above `$2635F6`, in the spawn walker.** That is where to look next; three levels are now
-eliminated rather than assumed.
-
-Note A0 is dead for aiming purposes anyway: `$1A`'s own body overwrites it at `$268D78` with the heading table.
-
-**The block is real and is a TRACE, not a read.** `$268D8C jsr $24203E` is the aim CORE, which takes its target in
-**D2/D3**. `$1A`'s init body never writes D3, and `$263808` (`readInitPosition`) does not either, so D3 is caller
-state from up the spawn chain. I walked as far as `$2635B2` (the sub-record allocator) and it uses D2 as a slot
-counter and never touches D3 -- so the supplier is further up still. **The result feeds the record's heading
-`($29,A5)` and velocity long `($24,A5)`, which is gameplay: it does not get a `note()` and must not be guessed.**
-
-For contrast, `$4C` answers the same question cleanly: its steerer's D2/D3 come from a table or from literals in the
-calling state. The pattern is normal; `$1A`'s supplier is simply off-screen.
-
-**Also true and already pinned:** `$268D92`'s `bcc` fallback is DEAD -- `$24203E` always returns carry clear -- so do
-not copy type `$97`'s `aimed.carry ? ($1B,A6) : dir` idiom, which sits right next to it and is wrong here.
+The elimination work behind that stands and is worth keeping: **four levels of the spawn chain were swept with
+`tools/aligned.py` and none writes D3** -- the walker `$2633BE`, the dispatcher `$2635F6`, the sub-record allocator
+`$2635B2`, and `readInitPosition` `$263808`.
 
 ### AFTER THAT
 

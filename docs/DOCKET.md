@@ -1551,8 +1551,21 @@ target from D2/D3, `$1A` supplies D2 itself (`$1` or `$2`), and **no caller anyw
 not the dispatcher, not the sub-record allocator, not the movement reader. The aim's target is therefore (Y = 1 or 2,
 X = whatever the previous frame's work left in D3), and it sets the enemy's heading and velocity.
 
-**This is the first place the port would knowingly diverge from "transcribe what the cartridge does", because the
-cartridge does not define this.** Three options, and the choice is a taste call about the project's goal:
+**W372 CORRECTION -- IT IS SMALLER THAN THIS ENTRY FIRST SAID.** I described the aim as setting "the enemy's heading
+and velocity". `($24,A5)` is **not velocity**: it is passed as **D2 to `$23DECE`**, the sprite emitter, where D2 is
+the ART LONG. The `$272C7A` table it indexes holds 32 art pointers in the `$14xxxx` range -- **directional
+sprites**. So the undefined D3 selects **which of 32 facings the turret is DRAWN with at spawn**, and nothing else:
+the handler's own slew drives the firing direction, and nothing in `$1A` reads `($29,A5)` at all.
+
+**That moves it from gameplay to a spawn-time sprite choice**, and this project's own criterion is that a `note()`
+is acceptable for a cosmetic gap where one for gameplay is not. **So the resolution is option 1b: port the body, use
+a documented default, and `note()` the site** -- the type spawns and plays, the inaccuracy is one sprite facing, and
+the log says so by address.
+
+The original framing is kept below because the reasoning that narrowed it is worth having, and because the elimination
+work stands: FOUR levels of the spawn chain were swept and none writes D3.
+
+Three options as first written, and the choice is a taste call about the project's goal:
 
 1. **`unreached()` at that site.** Truthful and loud: `$1A` cannot spawn, and stage 5 keeps a hole. Consistent with
    how this port treats everything else it cannot justify.

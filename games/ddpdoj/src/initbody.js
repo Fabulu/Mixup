@@ -37,7 +37,7 @@ import { installScripts, a2Run2598E6, a2RunAll2598FE,
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
 import { install24150A } from './palette.js';
-import { AimTables, aim64AtTarget, aim64FromCaller, aim256, targetSelect } from './aim.js';
+import { AimTables, aim64, aim64AtTarget, aim64FromCaller, aim256, targetSelect } from './aim.js';
 import { drawByte242B3C, drawByte242E24, drawWord242EC2,
   drawWord24328E, drawByte24311A, drawByte2431F4,
   drawLong243A9C } from './rng.js';
@@ -2455,6 +2455,75 @@ BODY.set(0x2a42dc, (ram, rom, a5, a6, unported, tablesArg, palette) => {
   for (const off of [0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0, 0x1a0]) {
     ram.setU16(a6 + off, 0x8000);                       // $2A6E74 move.w #$8000,D0 / eight stores
   }
+});
+
+
+// W372: $1A's aim tables, cached per ROM exactly as TYPE97_AIM_TABLES above does. `aim64` needs the
+// five ROM tables and building them per spawn would be wasteful and per-call inconsistent.
+const TYPE1A_AIM_TABLES = new WeakMap();
+function aimTables(rom) {
+  let t = TYPE1A_AIM_TABLES.get(rom);
+  if (!t) { t = new AimTables(rom); TYPE1A_AIM_TABLES.set(rom, t); }
+  return t;
+}
+// ------------------------------------------ type $1A ($268D26): the stage-5 slewing twin turret
+// W372. Its handler landed in W365; this is the init body that was missing, which is why the type
+// could not spawn at all. See D40 for the one thing here the CARTRIDGE does not define.
+//
+// $268D50 tests $813092 -- the STAGE INDEX, not rank. `bls` is <= 1, so stages 1 and 2 get the
+// 4/4/2 triple and stage 3+ gets 3/6/1. $1A only appears in stage 5, so the second arm is the live
+// one; the first is transcribed because the cartridge has it, not because it runs.
+//
+// THE AIM AT $268D8C IS THE D40 CASE. It calls $24203E, the aim CORE, whose target is D2/D3. D2 is
+// set right here ($1 or $2, from the triple above). D3 IS NEVER WRITTEN -- not by this body, not by
+// $263808, not by the dispatcher, not by the sub-record allocator, not by the spawn walker. Four
+// levels were swept with tools/aligned.py and none touches it.
+//
+// What the result feeds is ONE sprite choice: ($24,A5) is handed to $23DECE as D2, the ART LONG, out
+// of $272C7A's 32 directional pointers. It is the turret's DRAWN FACING at spawn. The handler's own
+// slew drives where it shoots, and nothing in $1A ever reads ($29,A5). So this is cosmetic, it gets a
+// note() rather than an unreached(), and the type spawns and plays.
+BODY.set(0x268d26, (ram, rom, a5, a6, unported, tablesArg, palette) => {
+  void palette;
+  const cues = loadSubProto(ram, rom, a5, a6, 0x268dfa);   // $268D26 lea / $268D2C jsr $2637A2
+  ram.setU32(a5 + R.rec44, cues);                          // $268D32 move.l A0,($44,A5)
+  loadRecordProto(ram, rom, a5, 0x268ddc, 0x0e);           // $268D36..$268D3E, D0=$E so FIFTEEN words
+
+  // $268D44..$268D64 -- one triple for stages 1-2, another for 3+. `bls` is UNSIGNED <=.
+  const early = ram.u16(G.stage) <= 1;                     // $268D50 cmpi.w #$1,$813092 / bls
+  const d0 = early ? 0x04 : 0x03;
+  const d1 = early ? 0x04 : 0x06;
+  const d2 = early ? 0x02 : 0x01;
+  ram.setU8(a5 + R.rec2A, d0);                             // $268D66
+  ram.setU8(a5 + R.rec2B, d1);                             // $268D6A
+  ram.setU8(a6 + 0x30, d2);                                // $268D6E -- and D2 SURVIVES into the aim
+
+  readInitPosition(ram, rom, a5, unported);                // $268D72 jsr $263808
+
+  // $268D7E..$268D90 -- self is the sub-record position, Y biased by $B00 and X by nothing.
+  const selfY = u16(ram.u16(a6 + S.posX) + 0x0b00);        // $268D7E movem.w / $268D84 addi.w
+  const selfX = u16(ram.u16(a6 + S.posY) + 0x0000);        // $268D88 addi.w #$0 -- transcribed as-is
+  unported?.note(0x268d8c, `$268D8C type $1A's spawn aim calls $24203E with its target in D2/D3. D2 `
+    + `is $${d2.toString(16)} from this body, but D3 is NEVER written -- four levels of the spawn `
+    + `chain were swept and none touches it. The port passes 0. The result picks ONE of $272C7A's 32 `
+    + `directional sprites as the turret's drawn facing at spawn; it does not affect where it shoots`);
+  const aimed = aim64(aimTables(rom), selfY, selfX, d2, 0);
+  // $268D92's `bcc` is DEAD: $24203E's last flag-setting instruction is `andi.w #$3F`, which always
+  // clears carry, so $268D94's `move.b ($1B,A6),D1` never runs. Type $97's `aimed.carry ? ...` idiom
+  // sits next door and is WRONG here -- that one calls $24200A, where carry means "both players dead".
+  ram.setU8(a5 + R.rec29, aimed & 0xff);                   // $268D98 move.b D1,($29,A5)
+  ram.setU32(a5 + R.rec24,                                 // $268DA2 move.l (A0,D1.w),($24,A5)
+    rom.u32(0x272c7a + ((aimed & 0x3e) << 1)));            // $268D9C andi.w #$3E / $268DA0 add.w
+
+  // $268DA8..$268DB6 -- the animation script, indexed by ($28,A6).
+  ram.setU32(a6 + 0x2a, rom.u32(0x269246 + u16(ram.u16(a6 + 0x28))));
+
+  // $268DB8..$268DCE -- the palette PAIR, indexed by $813094 (stage * 2). W353's window covers the
+  // five rows; the fifth SWAPS base and XOR, which is why the two bytes are read in order and not
+  // assumed equal.
+  const row = 0x268dd2 + u16(ram.u16(G.stageX2));
+  ram.setU8(a5 + R.rec1C, rom.u8(row));                    // $268DC8 move.b (A0)+,($1C,A5)
+  ram.setU8(a5 + R.rec1D, rom.u8(row + 1));                // $268DCC move.b (A0)+,($1D,A5)
 });
 
 export const INIT_BODY_ADDRESSES = [...BODY.keys()];

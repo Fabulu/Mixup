@@ -9045,7 +9045,6 @@ function handler46(ram, rom, a5, ctx) {
 // never runs. Sites that CAN take it call $24200A (aim64FromCaller), where the carry is targetSelect's
 // "both players dead". Do not copy the $97 idiom's `aimed.carry ? ($1B,A6) : dir` here.
 const T1A = Object.freeze({
-  initBodyPorted: false,
   init: 0x268d1e, initBody: 0x268d26, handler: 0x268e6c,
   recordProto: 0x268ddc, recordWords: 15,     // $268D3C moveq #$E,D0 -- copied to ($16,A5)
   subProto: 0x268dfa, subRecords: 2,          // $268D1E move.w #$1,($4,A5) -- run length 1 = TWO

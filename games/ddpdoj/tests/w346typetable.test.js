@@ -185,7 +185,7 @@ test('W372: NO spec is measured-but-handlerless -- $4C was the last', () => {
     + 'bodies. An EMPTY list is the honest end state: every spec that describes a handler has one.');
 });
 
-test('W369: exactly ONE type is UNSPAWNABLE -- $1A', () => {
+test('W372: NO type is unspawnable -- $1A was the last', () => {
   // This is the count that matters for the milestone. A registered handler the driver can never reach is
   // worth nothing: the spawn throws first. $B0 is the stage-5 BOSS, so stage 5 cannot currently be
   // completed regardless of $4C.
@@ -193,7 +193,7 @@ test('W369: exactly ONE type is UNSPAWNABLE -- $1A', () => {
     .filter(([, spec]) => spec.initBodyPorted === false)
     .map(([type]) => type)
     .sort((a, b) => a - b);
-  assert.deepEqual(unspawnable, [0x1a],
+  assert.deepEqual(unspawnable, [],
     // W369 second half: $B0's body $2A42DC LANDED, so HIBACHI spawns and stage 5 can end. $1A stays,
     // blocked on D3 provenance rather than on reading.
 

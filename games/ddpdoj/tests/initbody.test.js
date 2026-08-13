@@ -181,7 +181,10 @@ test('the Stage-1 through W223 Stage-4 bodies are dispatched', () => {
   // this count only says how many bodies exist, not which type wanted one.
   assert.ok(INIT_BODY_ADDRESSES.includes(0x2a42dc),
     'W369: HIBACHI $B0 body $2A42DC -- without it every boss spawn threw and stage 5 could not end');
-  assert.equal(INIT_BODY_ADDRESSES.length, 86,
+  // W372: 86 -> 87, type $1A's body $268D26 -- the last stage-5 type that could not spawn.
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x268d26),
+    'W372: type $1A body $268D26 -- without it every $1A spawn threw and stage 5 had a hole');
+  assert.equal(INIT_BODY_ADDRESSES.length, 87,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
     + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
     + `W170's $277836, W171's $276946, W172's $27751C, W173's $275154, `

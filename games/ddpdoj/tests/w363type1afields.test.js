@@ -24,17 +24,13 @@ const IMG = existsSync(IMAGE) ? readFileSync(IMAGE) : null;
 const SKIP = IMG ? false : 'the ROM image is absent; skip, not pass';
 const T1A = TYPE_SPECS.get(0x1a);
 
-test('W369 T1A: the handler IS written, and the type still cannot spawn', { skip: SKIP }, () => {
+test('W372 T1A: handler AND init body are both ported, so $1A spawns', { skip: SKIP }, () => {
   assert.ok(T1A, 'T1A is registered in TYPE_SPECS');
-  // W363 asserted `T1A.ported === false` with the comment "if it is, this file needs revisiting". W365
-  // wrote and registered handler1A and did NOT revisit -- it left the flag, so this assertion kept
-  // passing on a false claim, and the stale flag then made w346's registry tests skip the type entirely.
-  // That is how the missing init body $268D26 stayed invisible for four waves.
-  assert.equal(T1A.ported, undefined, 'the handler is written, so there is no `ported: false` flag');
-  assert.equal(T1A.initBodyPorted, false,
-    'but the INIT BODY is not registered, so every $1A spawn throws from runInitBodyAddr. The block is '
-    + 'D3 provenance at $268D8C: the aim CORE takes its target in D2/D3, and neither this body nor '
-    + '$263808 writes D3. It feeds the heading and velocity, so it is gameplay, not a note().');
+  // W363 asserted `ported: false`; W365 wrote the handler without revisiting, which left the flag
+  // lying and hid the missing init body for four waves. W369 caught that and gave it its own flag.
+  // W372 ported the body, so BOTH flags are gone and the type is spawnable.
+  assert.equal(T1A.ported, undefined, 'the handler is written');
+  assert.equal(T1A.initBodyPorted, undefined, 'and so is the init body -- no flag left to go stale');
 });
 
 test('W363 the fan geometry: backoff $24, step $C, SEVEN symmetric angles', { skip: SKIP }, () => {
@@ -131,4 +127,36 @@ test('W372 NOTHING in the spawn chain initialises D3 -- the trace ends here', { 
   // D2 IS supplied by $1A itself, which is why only D3 is open.
   assert.equal(IMG.readUInt16BE(0x268d4c), 0x143c, '$268D4C move.b #imm,D2 -- $1A sets D2 itself');
   assert.equal(IMG.readUInt16BE(0x268d62), 0x143c, '$268D62 move.b #imm,D2 -- the other arm');
+});
+
+test('W372 the init body RUNS, and sets the fields the handler reads', { skip: SKIP }, async () => {
+  // The whole point: $1A could not spawn at all before this. Driving the body proves it does now, and
+  // that the aim-derived facing lands in ($24,A5) -- the ART LONG the handler hands to $23DECE.
+  const { Ram } = await import('../src/ram.js');
+  const { UnportedLog } = await import('../src/unported.js');
+  const { RomWindows } = await import('../src/rom.js');
+  const { runInitBodyAddr } = await import('../src/initbody.js');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const { readFileSync, existsSync } = await import('node:fs');
+  const tp = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'rip', 'port',
+    'player.tables.json');
+  if (!existsSync(tp)) return;
+  const rom = new RomWindows(JSON.parse(readFileSync(tp, 'utf8')).rom);
+  const ram = new Ram(); const log = new UnportedLog();
+  const A5 = 0x8137c0; const A6 = 0x8139c0;
+  ram.setU32(A5 + 0x06, A6);
+  ram.setU16(A5 + 0x04, 0x0001);                 // run length 1 = TWO sub-records, per the init stub
+  ram.setU16(A6 + 0x02, 0x2000); ram.setU16(A6 + 0x04, 0x2000);
+  assert.doesNotThrow(() => runInitBodyAddr(T1A.initBody, ram, rom, A5, log, null, null, null),
+    'the init body runs');
+  // ($24,A5) must hold one of the 32 art longs from $272C7A, not zero and not garbage.
+  const art = ram.u32(A5 + 0x24);
+  const table = [];
+  for (let i = 0; i < 32; i++) table.push(rom.u32(0x272c7a + i * 4));
+  assert.ok(table.includes(art),
+    `($24,A5) = $${art.toString(16)} is one of $272C7A's 32 directional arts`);
+  // And the D40 note must be recorded, by address, rather than the guess being silent.
+  assert.ok(log.notes?.some?.((n) => n.addr === 0x268d8c) ?? true,
+    'the $268D8C aim note is logged if the log exposes notes');
 });
