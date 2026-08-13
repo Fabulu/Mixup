@@ -9086,6 +9086,58 @@ const T1A = Object.freeze({
   deathEffectKinds: Object.freeze([0xd, 0x5, 0x5]),
 });
 
+// ============================================ TYPE $4C (W354/W356) ============
+// Stage 5's FIVE-PART object, and the band's only multi-part member. ONE script record.
+// STRUCTURE SETTLED, PER-PART BLOCKS NOT YET READ -- `ported: false` keeps the suite honest.
+//
+// THE OLD NOTE SAID "eight state handlers (~2300 bytes)" WITH EIGHT UNPORTED CALLEES. Both were wrong:
+// all eight addresses are INTERNAL to $4C (two of them, $26FF9E and $26FFE8, are merely where the next
+// routine starts), and there are no eight states. What there is:
+//
+//   * NO record state machine. Zero `cmpi.b #imm,(d16,A5)` in $26F5F2..$26FFE8, where every sibling
+//     dispatches exactly that way on ($17,A5).
+//   * NO jump table. One `jsr (A0)` in the whole span.
+//   * NO self-rewriting dispatch. Zero `move.l #imm,($4C,A5)`.
+//   * NO part loop. ONE `dbra` at $26FB3A with a 28-byte body -- a local loop inside one block.
+//
+// So it is 2550 bytes of UNROLLED per-part code, addressing five parts by offset through one A6 base at
+// the $20 stride: part N occupies (N*$20 .. N*$20+$1F, A6). That is why ($9E,A6) and ($9F,A6) are read
+// at $26F5FC/$26F62A/$26F6E8 -- they are part FIVE's $1E and $1F, and 5*$20 = $A0 with $9F the last byte.
+// No sibling exceeds $36 because none has more than two parts.
+//
+// FOUR INDEPENDENT CONFIRMATIONS of that layout, which is why it can be trusted before the blocks are read:
+//   1. ($4,A5) = 4 at $26F4DA, so run length + 1 = FIVE sub-records.
+//   2. W342's window $26F55A + $AC decomposes EXACTLY: $C (six-word record proto) + $A0 (5 x $20).
+//   3. The depth formula 5*$20 - ($26F5F2 - $26F566) = $14 = TWENTY, matching W342's directly-read overlap.
+//   4. Part 5's prototype tail IS the handler's opcodes -- `4a79 0081 30d2` is `tst.w $8130D2`.
+//
+// **PART 5's INITIAL STATE IS NOT A DESIGNED VALUE.** Its $0C..$1F receive twenty bytes of the handler's
+// own instructions, and the handler then TESTS ($9E,A6) -- reading back a byte its prototype seeded from
+// its own opcodes. COPY THE BYTES. Do not invent plausible field values; the same trick appears in $49.
+const T4C = Object.freeze({
+  ported: false,
+  init: 0x26f4da, initBody: 0x26f4e2, handler: 0x26f5f2,
+  handlerEnd: 0x26ffe8,                       // the last rts is $26FFE6; 19 rts sites in the span
+  recordProto: 0x26f55a, recordWords: 6,      // $26F4F4 move.w #$5,D0 -- SIX, where $55 and $1A have 15
+  subProto: 0x26f566, subRecords: 5,          // $26F4DA move.w #$4,($4,A5) -- run length + 1
+  subStride: 0x20, overlapBytes: 0x14,        // part 5 runs TWENTY bytes into the handler
+  onScreenAt: 0x16,                           // $26F622/$26F67E -- the one field this band agrees on
+  // ($17,A5) is NOT a mode here. It is read once, by tst.b at $26F790, and picks an EMIT STUB by
+  // tail-jump: zero -> $23DECE (FRAME_EMIT), non-zero -> $23DF58 (mirrorStub). Both already ported.
+  // $55 gives this byte four cascade values and $46 gives it five modes; here it is a draw variant.
+  drawSelectAt: 0x17,
+  drawStubs: Object.freeze([0x23dece, 0x23df58]),
+  // All three word comparisons in the span are the SAME test: cmpi.w #$0600,($1E,A5) at $26FC32,
+  // $26FDFE and $26FE0E. $0600 is also $55's ramp cap and ($1E,A5) is a cursor there too, so this looks
+  // like the same ramp-with-cap gating THREE different arms. Mapping those is the next step.
+  rampAt: 0x1e, rampCap: 0x0600,
+  rampSites: Object.freeze([0x26fc32, 0x26fdfe, 0x26fe0e]),
+  // The sub-record tests, by part: part 1's $1A against $8 twice, part 2's $0A against $1 and $2,
+  // part 5's $1E and $1F as booleans.
+  partTests: Object.freeze([0x26f5fc, 0x26f62a, 0x26f6e8, 0x26fdf4, 0x26fe30, 0x26ff6c, 0x26ff7a]),
+  localLoop: 0x26fb3a,                        // the one dbra, 28-byte body, NOT the part iteration
+});
+
 /** The map of ported handler addresses -> functions, for the enemy driver. */
 export function handlerMap() { return HANDLERS; }
 export const HANDLER_ADDRESSES = [...HANDLERS.keys()];
@@ -9098,6 +9150,6 @@ export const HANDLER_ADDRESSES = [...HANDLERS.keys()];
 // own table at `$267824` on every run, so the prose claims stop being load-bearing.
 export const TYPE_SPECS = Object.freeze(new Map([
   [0x01, T01], [0x1b, T1B], [0x43, T43], [0x45, T45], [0x47, T47], [0x48, T48],
-  [0x1a, T1A], [0x46, T46], [0x49, T49], [0x4a, T4A], [0x4b, T4B], [0x55, T55], [0x59, T59],
+  [0x1a, T1A], [0x46, T46], [0x49, T49], [0x4c, T4C], [0x4a, T4A], [0x4b, T4B], [0x55, T55], [0x59, T59],
   [0x81, T81], [0x8e, T8E],
 ]));

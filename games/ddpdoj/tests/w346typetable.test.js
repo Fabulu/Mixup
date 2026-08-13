@@ -141,14 +141,17 @@ test('W346: a spec that claims an initBody has it actually registered -- the $55
 // W351: this pin was DESCRIBED as landing two commits before it did. The comment above the handler test
 // went in; this assertion did not, and I reported it as working off a passing test count instead of
 // reading the file. So it is its own test now, with the count in the name, where a diff cannot lose it.
-test('W353: exactly ONE spec is measured-but-unwritten, and it is $1A', () => {
+test('W356: exactly TWO specs are measured-but-unwritten -- $1A and $4C', () => {
   const unwritten = [...TYPE_SPECS.entries()]
     .filter(([, spec]) => spec.ported === false)
-    .map(([type]) => type);
-  assert.deepEqual(unwritten, [0x1a],
-    'W353 landed T1A as recon-complete-but-unwritten. Writing handler1A means deleting its '
-    + '`ported: false` AND updating this list. '
-    + 'spec has to be deliberate enough to update this list. An empty result means $55 was written -- '
-    + 'if so, four census pins move too (W223 type $41, the handlerMap() adapter cover, W217 reusable '
-    + 'coverage, W317 thirteen-spawn), and they must be bumped from their real counts.');
+    .map(([type]) => type)
+    .sort((a, b) => a - b);
+  assert.deepEqual(unwritten, [0x1a, 0x4c],
+    'A spec carries `ported: false` while its fields are measured but its handler is unwritten. Writing '
+    + 'one means DELETING that flag and updating this list, so the count cannot drift silently. Adding '
+    + 'another measured-but-unwritten spec is likewise deliberate. When a handler lands, four census pins '
+    + 'move with it: the handlerMap() adapter size in integration.test.js, the address list in '
+    + 'handlers.test.js, enemy_types in w167coverage.test.js (BOTH numbers -- take them from '
+    + 'dojcoverage.py), and the init-body count in initbody.test.js. w314stage5scope.test.js may need '
+    + 'REWRITING rather than renumbering if the type is one of the unported-child assertions.');
 });
