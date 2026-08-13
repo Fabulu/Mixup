@@ -1529,7 +1529,14 @@ reading it before these entries are updated:
     [18] $24902A   reads $81296E -- THE BOSS-CLEAR FLAG $242922 SETS -- plus both player records,
                    AND calls $23D186, which tallyscreen.js names "THE DESCRIPTOR'S INPUT READ", then
                    masks the result with $80F0 and branches: it WAITS FOR A PRESS. Three independent
-                   signals, all pointing at D37 THE ENDINGS. Its one unported callee is $25A14C.
+                   signals, all pointing at D37 THE ENDINGS.
+
+**D37's WHOLE CALL CHAIN, and it is SHORT:** `[18]` -> `$25A14C` (42 bytes) -> `$240CF0` (60 bytes), and that is the
+depth. `$25A14C` is a **NUL-terminated string draw**: it walks bytes from `(A0)+` until zero and calls `$240CF0` per
+glyph. **The trap is `swap D4 / move.w D5,D4`** -- the glyph goes in the HIGH word and a caller-supplied attribute in
+the LOW, so passing a bare byte draws nothing. `$240CF0` writes LONGS into a table indexed by D5, stepping the tile
+index by `$10000`: **a TILEMAP blit, so the ending screen is TEXT rather than sprites.** Neither is ported; both are
+small.
     [ 9] $25CACA   both player records AND palette installs -- the shape D34 CHARACTER SELECT would have.
     [12] $28F3AC   reads the HISCORE table $803824, so it belongs to the hiscore family, not the front end.
     [13] $288A60   reads the LOOP and STAGE words -- stage progression rather than a screen.

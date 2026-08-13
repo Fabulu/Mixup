@@ -102,3 +102,26 @@ test('W372 slot [18] waits for INPUT through the tally screen s own descriptor r
   assert.equal(IMG.readUInt16BE(0x249040), 0x001e, '  ...#$1E');
   assert.equal(IMG.readUInt16BE(0x249046), 0x41fa, '$249046 lea (d16,PC),A0 -- the descriptor');
 });
+
+test('W372 D37 s call chain bottoms out in a TILEMAP writer, and it is short', { skip: SKIP }, () => {
+  // slot [18] -> $25A14C -> $240CF0, and that is the whole depth.
+  //
+  // $25A14C (42 bytes) is a NUL-TERMINATED STRING DRAW: save D0-D5/A0, then read bytes from (A0)+
+  // until zero, packing each into D4's high word via `swap` and calling $240CF0 per glyph with the
+  // column in D0. The `swap D4 / move.w D5,D4` pair is the trap -- the glyph goes in the HIGH word and
+  // a caller-supplied attribute in the LOW, so a port passing a bare byte draws nothing.
+  assert.equal(IMG.readUInt16BE(0x25a14c), 0x48e7, '$25A14C movem.l <list>,-(A7)');
+  assert.equal(IMG.readUInt16BE(0x25a14e), 0xfc80, '  ...D0-D5/A0 saved');
+  assert.equal(IMG.readUInt16BE(0x25a158), 0x1818, '$25A158 move.b (A0)+,D4 -- the string walk');
+  assert.equal(IMG.readUInt16BE(0x25a15a), 0x4a04, '$25A15A tst.b D4');
+  assert.equal(IMG[0x25a15c], 0x67, '  ...beq -- NUL ends it');
+  assert.equal(IMG.readUInt16BE(0x25a162), 0x4844, '$25A162 swap D4 -- glyph to the HIGH word');
+  assert.equal(IMG.readUInt16BE(0x25a164), 0x3805, '$25A164 move.w D5,D4 -- attribute in the LOW');
+  assert.equal(IMG.readUInt32BE(0x25a168), 0x00240cf0, '$25A166 jsr $240CF0 -- per glyph');
+  // $240CF0 (60 bytes) writes LONGS into a table indexed by D5 and steps the tile index by $10000,
+  // which is a tilemap blit rather than a sprite emit -- so the ending screen is TEXT, not sprites.
+  assert.equal(IMG.readUInt16BE(0x240d10), 0x2184, '$240D10 move.l D4,(A0,D5.w)');
+  assert.equal(IMG.readUInt16BE(0x240d14), 0x0684, '$240D14 addi.l #imm,D4');
+  assert.equal(IMG.readUInt32BE(0x240d16), 0x00010000, '  ...#$10000 -- the tile index steps by ONE');
+  assert.equal(IMG.readUInt16BE(0x240d1c), 0x51cf, '$240D1C dbra D7 -- a fixed row count');
+});
