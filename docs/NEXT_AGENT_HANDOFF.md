@@ -1103,8 +1103,13 @@ own helper table was built to avoid. What is actually there:
 `$242EC2` IS a plain export -- `drawWord242EC2(ram, rom)` in `rng.js:248` -- so the coin flip in `sub26FA82` needs
 `(ram, rom)`, not the `(ram, ctx)` the draft passes. **Fix that too.**
 
-**The lesson is the one this wave keeps relearning:** the helper table above was read from definitions and is right;
-these two were typed from addresses and are wrong. Anything not in that table gets read before it gets called.
+**BOTH ARE NOW RESOLVED and the corrected draft re-parses clean** (zero ellipses, zero placeholders).
+
+**The lesson is the one this wave kept relearning, and it is worth stating once more because it recurred in three
+different disguises:** the helper table above was read from definitions and was right; these two were typed from ROM
+addresses and were wrong. Earlier the same mistake hid three of Hibachi's four callees behind an address grep, and
+hid `armScreenClear243E02` behind another. **The port cites ROM addresses in PROSE, so an address grep finds the
+comment and misses the code.** Search the name, or the family, before writing a call.
 
 **THE DRAFT IS COMPLETE AND PARSES CLEAN.** No ellipses, no placeholders. Re-extracted from this document, stubbed,
 and run through `node --check`.
