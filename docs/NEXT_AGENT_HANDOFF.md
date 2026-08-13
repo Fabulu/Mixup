@@ -597,6 +597,19 @@ the sweep stops there claiming zero instructions.
 while the other ten are `lea (d16,A6),A0` at four. It also reproduces both W371 findings independently: `$26F702`
 MID-INSTRUCTION, `$26F704` a BOUNDARY.
 
+**IT STOPS AT FLOW BREAKS, AND THAT CORRECTION MATTERED MORE THAN THE TOOL.** The first version ran through `rts`,
+`jmp` and `bra`. Sweeping across the `rts` at `$26F982` and the eight padding bytes after it made it report `$26F98C`
+as **MID-INSTRUCTION** -- and `$26F98C` is a genuine `bsr.w` target from `$26F97A`. **A false MID-INSTRUCTION is worse
+than no answer: it reads as proof of exactly the error the tool exists to find.** It now stops at the break and says
+UNVERIFIED.
+
+**THE PRECEDENCE RULE:** a `bsr`/`jsr` target is authoritative evidence of an entry point and **outranks any linear
+sweep**. The sweep can only tell you about a path it actually walked, and it cannot walk past a break. Use it to
+DISPROVE an entry point that nothing branches to (`$26F702`), not to disprove one that something does.
+
+This also means **you cannot sweep a whole type**. `$4C`'s span holds the eight-entry jump table at `$26F886` and
+padding after several `rts`. Sweep from an entry point, to a bound, with no break in between.
+
 **ITS LIMITATION IS A TEST, NOT A FOOTNOTE.** A linear sweep cannot tell code from data that happens to decode:
 `$2A443C`, five words of record prototype, decodes cleanly into three plausible instructions with no complaint. So
 `check` must always be given a start you already know is an entry point. That contract is asserted.

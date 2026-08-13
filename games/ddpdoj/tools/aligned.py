@@ -71,8 +71,12 @@ def insn_len(d, a):
         if (w & 0x0F00) == 0x0800:     # static bit op: BTST/BCHG/BCLR/BSET #n
             e = _ea_len(mode, reg, 1)
             return None if e is None else 4 + e
-        if (w & 0x01C0) == 0x0100 or (w & 0x0100) and (w & 0x00C0) != 0x00C0:
-            e = _ea_len(mode, reg, 1)  # dynamic bit op, Dn source
+        if w & 0x0100:
+            # Dynamic bit op with a Dn source: BTST/BCHG/BCLR/BSET, selected by bits 7-6 as
+            # 00/01/10/11. The first draft excluded type 11 (BSET) and the sweep stopped on a real
+            # `bset D0,-(A0)` at $26FCD4 -- which is the refusal design working, so the fix is here
+            # rather than a looser fallback. MOVEP is matched above and must stay above.
+            e = _ea_len(mode, reg, 1)
             return None if e is None else 2 + e
         size = _SIZES.get((w >> 6) & 3)
         if size is None:
@@ -182,16 +186,44 @@ def insn_len(d, a):
     return None
 
 
+def _is_flow_break(w):
+    """True for instructions after which execution does not fall through."""
+    if w in (0x4E75, 0x4E73, 0x4E77):          # RTS / RTE / RTR
+        return True
+    if (w & 0xFFC0) == 0x4EC0:                 # JMP
+        return True
+    if (w & 0xFF00) == 0x6000 and (w & 0x00FF) != 0x0001:   # BRA (any form)
+        return True
+    return False
+
+
 def sweep(d, start, end):
-    """Boundaries from `start` up to `end`. Returns (list, stopped_at_or_None)."""
+    """Boundaries from `start` up to `end`.
+
+    Returns (boundaries, stopped_at, stop_reason). STOPS at an unconditional flow
+    break -- RTS, RTE, RTR, JMP, BRA -- because the bytes after one are only code if
+    something branches to them, and a sweep that runs through a break decodes padding
+    and silently desynchronises.
+
+    W371 found this the hard way: sweeping across the `rts` at $26F982 and the eight
+    padding bytes after it made the sweep report $26F98C as MID-INSTRUCTION, when
+    $26F98C is a genuine `bsr.w` target from $26F97A. A false MID-INSTRUCTION verdict
+    is worse than no verdict, because it reads as proof of the very error this tool
+    was built to find.
+    """
     out, a = [], start
     while a < end:
         n = insn_len(d, a)
         if n is None or n <= 0:
-            return out, a
+            return out, a, 'opcode %04X is not in the decoder' % int.from_bytes(d[a:a + 2], 'big')
         out.append(a)
+        if _is_flow_break(d and int.from_bytes(d[a:a + 2], 'big')):
+            nxt = a + n
+            if nxt < end:
+                return out, nxt, ('flow break at $%06X -- resume from a known entry point, because '
+                                  'what follows is code only if something branches to it' % a)
         a += n
-    return out, None
+    return out, None, None
 
 
 def main():
@@ -201,13 +233,12 @@ def main():
     cmd = sys.argv[1]
     d = io.open(ROM, 'rb').read()
     start, end = int(sys.argv[2], 0), int(sys.argv[3], 0)
-    bounds, stopped = sweep(d, start, end)
+    bounds, stopped, why = sweep(d, start, end)
 
     print('ALIGNED SWEEP $%06X..$%06X -- %d instructions' % (start, end, len(bounds)))
     if stopped is not None:
-        print('  STOPPED at $%06X: opcode %04X is not in the decoder. Nothing past this '
-              'point was decoded, and none of it is guessed.'
-              % (stopped, int.from_bytes(d[stopped:stopped + 2], 'big')))
+        print('  STOPPED at $%06X: %s. Nothing past this point was decoded, and none of '
+              'it is guessed.' % (stopped, why))
 
     if cmd == 'sweep':
         for a in bounds:
@@ -221,7 +252,7 @@ def main():
             if a in s:
                 verdict = 'BOUNDARY'
             elif stopped is not None and a >= stopped:
-                verdict = 'UNKNOWN -- sweep stopped before reaching it'
+                verdict = 'UNVERIFIED -- the sweep stopped before reaching it'
             elif start <= a < end:
                 verdict = 'MID-INSTRUCTION -- not an entry point'
             else:
