@@ -249,11 +249,31 @@ pessimistic direction -- the previous five were addresses I would have duplicate
 `likely owner(s)` line is what gave it away: it listed `runStageAdvance242952` for `$28CB60`, a routine `$242952`
 calls.
 
-**So the soft-lock argument does not apply, and `handler2A4606` may well be writable now.** Its only genuinely
-missing piece is `$2A6B94` -- the 666-byte body, whose own twelve callees are all ported. A `handler2A4606` with
-`note()` for `$2A6B94` alone WOULD advance the stage correctly, because `runStageAdvance242952` exists. **That is
-worth reconsidering as the next unit**, subject to one check: read `runStageAdvance242952` and confirm it is a full
-translation rather than a partial one with notes inside.
+**AND THE CHECK IS DONE: `runStageAdvance242952` IS A FULL TRANSLATION, zero internal `note()`/`unreached()`
+calls.** Verified by counting them in its body -- the result is 0. It is:
+
+    ctx.soundPost?.(0x28cb60)                                    the $28CB60 call
+    bossFlags |= $08                                             $242958 bset #3
+    bossFlags &= ~$10                                            $242960 bclr #4
+    clearing := 1                                                $242968
+    d7 = stage + 1                                               $2429B8/$2429BE
+    stageCreate(SE.type6, ...)                                   the type-6 object
+    r.addr + $04 := d7                                           $242A3A move.w D7,$4(A0)
+    return { d7, result }
+
+**So `handler2A4606` IS writable now, and its only `note()` would be `$2A6B94`.** The stage advance would work,
+because this routine works. **The soft-lock argument is fully withdrawn.**
+
+**Having been wrong in BOTH directions on this question inside two commits** -- first "not ported" from a
+note-table entry, then "may well be writable" before checking -- the standing rule for this kind of dependency is:
+**count the `note()`/`unreached()` calls INSIDE the candidate function.** It is one command, it answers "is this a
+real port or a shell", and neither `claimed.py` nor the prose can tell you.
+
+**Remaining decision for whoever writes it:** a `handler2A4606` whose boss body is a `note()` gives a Hibachi that
+appears, runs the scheduler, advances the stage when the clear test fires, and otherwise does nothing -- no attacks,
+no parts. **That is a defensible checkpoint** (the type is registered, the stage completes, nothing throws) and it
+matches what `$43` and `$49` already do. **It is also the last handler in stage 5**, so landing it would take the
+stage to two missing types over 5 records.
 
 **So `$B0` stays unregistered until `$242952` and `$2A6B94` both exist.** And `$242952` is worth doing on its own
 merits: it is the stage advance, five callers, and it sits directly under D11 (the abrupt stage transition) and
