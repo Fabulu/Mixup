@@ -9153,7 +9153,7 @@ const T4C = Object.freeze({
 //   2a46b0  rts
 //
 // THE ELEVEN PART OFFSETS ARE NOT A RANGE. In ROM order: $0 $20 $40 $60 $80 $A0 $C0 $1A0 $140 $160 $180.
-// $1A0 is called SEVENTH, out of sequence, and $E0/$100/$120 are never called at all. A loop from 0 to
+// $1A0 is called EIGHTH, out of sequence, and $E0/$100/$120 are never called at all. A loop from 0 to
 // $1A0 by $20 would visit three parts the cartridge skips and place $1A0 last. Transcribe the list.
 //
 // $2A4614 IS THE GAME'S COMPLETION PATH. D11 records W232 forcing $242952 headlessly and finding the

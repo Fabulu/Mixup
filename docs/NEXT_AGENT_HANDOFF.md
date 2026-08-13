@@ -50,7 +50,7 @@ because I had read only the first fourteen disassembly lines. Counting the call 
     ROM order:  $0 $20 $40 $60 $80 $A0 $C0  $1A0  $140 $160 $180
     sorted:     $0 $20 $40 $60 $80 $A0 $C0  $140 $160 $180 $1A0
 
-**`$1A0` is called SEVENTH, out of sequence, between `$C0` and `$140`.** Ten of the eleven are in ascending
+**`$1A0` is called EIGHTH, out of sequence, between `$C0` and `$140`.** Ten of the eleven are in ascending
 order and one is deliberately displaced. **That is not a loop and cannot be written as one** -- a port that
 iterated `for (let p = 0; p <= 0x1A0; p += 0x20)` would both visit `$E0`, `$100` and `$120` (which are NOT
 called) and get `$1A0` in the wrong position.
