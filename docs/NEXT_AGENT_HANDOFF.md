@@ -5825,6 +5825,25 @@ Same class as the `$242B90`/`$242B3C` twins: two ROM entry points to one routine
 argument comes from, with the port modelling both. **Check WHICH entry point a caller uses, not just which
 routine.**
 
+**`$24203E` IS `aim64`, and `aim.js:62` gives its convention outright:** `aim64 CORE, self=D0/D1 target=D2/D3 -> D1`,
+described at `aim.js:150` as "THE 64-DIRECTION AIM. Pure: four coordinates in, 0..63 out", with 48 call sites in
+`AIM_REFS`. So `$1A`'s `$268F8E movem.w ($2,A0),D2-D3` (the chosen player) and `$268F94 movem.w ($2,A6),D0-D1`
+(self) are exactly that calling convention, and the result is a 6-bit direction.
+
+**AND A RESOLUTION SPLIT FALLS OUT OF THAT.** After the slew, `$268FBC andi.w #$3E,D1 / add.w D1,D1` masks the
+heading to EVEN values `0..$3E` and doubles it, giving `0,4,8..$7C` -- thirty-two longs. So:
+
+    the HEADING kept in ($28,A5)   is 64-step, full aim64 resolution, and the slew works at that resolution
+    the SPRITE chosen from $272C7A is 32-step: `andi.w #$3E` DROPS BIT 0 of the heading
+
+**The turret therefore aims and turns twice as finely as it draws.** A port that indexed the sprite table with the
+full heading would read past the table (64 entries into a 32-entry window) and a port that slewed at 32 steps would
+turn visibly coarsely. **They are different resolutions on purpose, and the `andi.w #$3E` is where they diverge.**
+
+Also worth noting from `aim.js:51`: **"RANK DOES NOT REACH THIS FILE. `$24203E..$2420C4`..."** -- so the aim itself
+is rank-independent, and `$1A`'s rank sensitivity is entirely in its two firing intervals, which is what W353 found
+from the other direction.
+
 **The index arithmetic confirms `$272C7A`'s existing window.** `andi.w #$3E` then `add.w D1,D1` yields
 `0,4,8..$7C` -- thirty-two longs, `$80` bytes -- and the declared window is `$272C7A + $80`. Second window this
 wave confirmed by two independent arguments.
