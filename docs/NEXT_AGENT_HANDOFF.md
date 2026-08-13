@@ -512,6 +512,24 @@ implies. Do not model `($1A,A6)` as a distance band; model it as a byte several 
 `move.w #$202,($34,A6)` is the word-literal-is-two-byte-fields rule in its clearest form: a timer and its reload, both
 `2`, set in one instruction -- exactly what `$46`'s prototype does at `($1A,A5)`/`($1B,A5)`.
 
+**State 1, `$26F90E`, confirms the shape and gives `($1A,A6)` a FIFTH writer:**
+
+    26f90e  cmpi.w #$0,($28,A6) / bne $26F938     the same frame-0 test
+    26f918  move.w #$1,($28,A6)                   advance
+    26f91e  move.b #$4,($1A,A6)                   <- $4 this time, a BYTE write
+    26f924  move.w #$0,($2A,A6)
+    26f92a  move.w #$12C,($30,A6)
+    26f92e  bsr $26F994                           one of the sixteen, as the inventory predicted
+
+So `($1A,A6)` is written `$16` by state 0, `$4` by state 1, `$8`/`$6` by the distance helper, and is both incremented
+and decremented elsewhere. **Five writers, three of them outside the "band" range.** The `T4C` correction made one
+commit earlier -- model it as a shared byte, not a distance band -- is confirmed here from an independent site rather
+than by reasoning.
+
+**Both states open identically** (`cmpi.w #$0,($28,A6)` then a setup block then `move.w #$1,($28,A6)`), so the eight
+handlers really are one shape with different bodies. **That is the pattern `handler4C` needs: a jump table of eight, each
+a `switch` on `($28,A6)` whose arms end by advancing it.**
+
 **The chain of my errors here is worth stating in full, because each step looked reasonable:**
 
 1. W354 scanned for `cmpi.b` cascades on the record and found none -- true, but the dispatch is a jump table.
