@@ -729,8 +729,28 @@ are not in conflict.
 session, and the second time W341's own notes anticipated a question I was about to re-derive.
 
 So `$4C`'s remaining unread code is three `bsr` subroutines (`$26F858`, `$26F86A`, `$26FFE8`) plus the tail at
-`$26F704` -- and the five per-part blocks I have been expecting to find may not exist as such, since nothing so far
-iterates or addresses parts 1-4 individually.
+`$26F704`.
+
+**AND MY PREDICTION THAT THE PER-PART BLOCKS MIGHT NOT EXIST WAS WRONG.** Counting `(d16,A6)` references across
+`$26F5F2..$270000` by which `$20` block the offset falls in:
+
+    part 1  ($00..$1F)   57 refs     <- dominant: this is the main body
+    part 2  ($20..$3F)   24 refs
+    part 3  ($40..$5F)   10 refs
+    part 4  ($60..$7F)   11 refs
+    part 5  ($80..$9F)    7 refs     <- the CONTROL BLOCK, as established
+    beyond  ($100+)       2 refs     <- see the caveat
+
+**All five parts ARE individually addressed**, just very unevenly -- part 1 carries eight times part 5's traffic. So
+the unrolled per-part structure is real; I had only read the arms that touch part 5, which made it look absent.
+
+**Two caveats on those numbers, because the scan is crude:** it matches any byte pair whose low bits look like
+`(d16,A6)` addressing, so like `branches.py` it produces false positives inside multi-word operands. The counts are
+INDICATIVE, not exact, and the `$100+` entries in particular may be operand bytes rather than real references --
+`$106`/`$10E` are Hibachi's sub-record fields, not known `$4C` ones. **Do not treat this table as an inventory.**
+
+What it is good for is the SHAPE: five parts, wildly unequal usage, and a main body concentrated in part 1. That is
+enough to say the port needs five per-part field sets rather than a loop, and that part 1's is the big one.
 
 ### Its death path releases TWO mutual-exclusion flags, one of which `$49` CLAIMS
 
