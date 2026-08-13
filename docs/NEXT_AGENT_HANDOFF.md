@@ -475,7 +475,37 @@ call, this handler is the junction the endings (D37) run through. **`$25A17A` --
 constant `D2=2` -- is the most likely place the ending SELECTION happens.** Read it first for D37, not just for
 `$B0`.
 
-## TYPE $4C (W354, OPENED) -- the "eight state handlers" claim is WRONG
+## TYPE $4C -- IT HAS EIGHT STATE HANDLERS. THE ORIGINAL NOTE WAS RIGHT ALL ALONG.
+
+**W354 opened this type by declaring the old note's "eight state handlers (~2300 bytes)" WRONG IN BOTH HALVES. It was
+right in both halves, and the table proves it.** `$26F886` is a jump table of 4-byte pointers indexed by `($26,A6)`:
+
+    state 0  ->  $26F8A6          state 4  ->  $26FD66
+    state 1  ->  $26F90E          state 5  ->  $26FECA
+    state 2  ->  $26FBD4          state 6  ->  $26FF3E
+    state 3  ->  $26FCF2          state 7  ->  $26FF56
+
+**EXACTLY EIGHT**, and the table is bounded by adjacency in the cleanest possible way: it ends at `$26F8A6`, which is
+state 0's own handler. `$26F886..$26F8A6` is `$20` bytes, eight pointers. The span is `$26F5F2..$26FFE8`, about 2550
+bytes -- **the note's "~2300" was close too.**
+
+**The chain of my errors here is worth stating in full, because each step looked reasonable:**
+
+1. W354 scanned for `cmpi.b` cascades on the record and found none -- true, but the dispatch is a jump table.
+2. It scanned for indirect calls and found **one** `jsr (A0)` at `$26F87C`, and cited that as evidence AGAINST a jump
+   table. **That instruction IS the dispatcher.** Counting a construct is not reading it.
+3. It scanned for `move.l #imm,($4C,A5)` self-rewriting and found none -- true and irrelevant.
+4. It scanned for `dbra` and found one 28-byte loop -- true and irrelevant.
+5. Four negative results felt like a proof. They were four wrong questions.
+6. The eight addresses the note listed as "unported callees" are all real `bsr` targets (W367 confirmed), and the
+   state handlers above are a DIFFERENT eight -- so the note's two claims were about two different real things.
+
+**The lesson, and it is the sharpest of the session: I disproved a correct note four times over by scanning for
+mechanisms it never claimed.** The note said "eight state handlers". I tested "is there a `cmpi.b` cascade", "is there
+a self-rewrite", "is there a `dbra`" -- and treated their absence as its refutation. **Read what a note claims before
+designing tests against it.**
+
+## TYPE $4C (W354, OPENED) -- the "eight state handlers" claim was recorded here as WRONG. See above: it was RIGHT.
 
 These notes have long said `$4C` has "eight state handlers (~2300 bytes)" with `$26F858`/`$26F86A`,
 `$26F994`/`$26F9A2`, `$26FA5E`/`$26FA82`, `$26FF9E`, `$26FFE8` unported. **Rule 8 (count before reading) settles
