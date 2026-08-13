@@ -100,9 +100,35 @@ entirely.
 live in the `cmpi.b`/`tst.b` tests on **A6** (4 and 3 sites), i.e. in the SUB-record -- which is where `$1A` also
 keeps its animation cursor and timers.
 
-**So the next pass has a concrete plan**: `$4C` is not a record-state machine. Map outward from the three
-`cmpi.w #$0600,($1E,A5)` ramp sites and the seven A6 tests. **The `tst.b ($17,A5)` is settled and needs no
-further work** -- it is one branch and two already-ported stubs.
+### The seven sub-record tests, mapped
+
+    26f5fc  tst.b  ($9E,A6)          the handler's SECOND instruction region -- an early gate
+    26f62a  tst.b  ($9F,A6)
+    26f6e8  tst.b  ($9F,A6)
+    26fdf4  cmpi.b #$01,($2A,A6)     a TWO-value test near the end
+    26fe30  cmpi.b #$02,($2A,A6)
+    26ff6c  cmpi.b #$08,($1A,A6)     the SAME test twice, 14 bytes apart
+    26ff7a  cmpi.b #$08,($1A,A6)
+
+**Three distinct sub-record fields, and none of them is a state machine of eight arms.** `($9E,A6)` and
+`($9F,A6)` are boolean gates near the handler's head; `($2A,A6)` is tested against `$1` and `$2` (so it takes at
+least three values with the default) 1000+ bytes later; `($1A,A6)` is tested against `$8` twice in the last 100
+bytes.
+
+**`($9E,A6)`/`($9F,A6)` are at offsets far larger than any field in `$55`, `$46` or `$1A`** -- those types use
+`$00..$3B` in the record and `$00..$36` in the sub-record. A sub-record reaching `$9F` means **`$4C`'s sub-record
+is much bigger than its siblings'**, which is consistent with it being a multi-part object (its init loads FIVE sub
+prototypes, per W342's window note `$26F55A + $AC`).
+
+**So the "eight state handlers" almost certainly means the FIVE SUB-RECORDS' arms, not eight states of one
+record.** `$4C` is the band's only member with five sub prototypes, and a per-part arm set would explain both the
+2550-byte span and the absence of any record-level dispatch. **That is the hypothesis to test first**, and it is
+cheap: check whether the arms are selected by a sub-record INDEX rather than a state value.
+
+**Settled and needing no further work:** `tst.b ($17,A5)` (one branch, two ported stubs), and the eight addresses
+the old note listed as unported callees (all internal, two of them merely the boundaries `$26FF9E` and `$26FFE8`).
+
+**Still open:** what selects among the arms, and the three `cmpi.w #$0600,($1E,A5)` ramp sites.
 
 ### THE BAND RULES -- earned across W345..W353, every one after getting it wrong first
 
