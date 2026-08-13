@@ -90,3 +90,22 @@ test('W371 a bsr target OUTRANKS the sweep -- $26F98C is a real entry point', { 
   assert.equal(0x26f980 + IMG.readInt16BE(0x26f980), 0x26fa56, '  ...to $26FA56, the other OFF setter');
   assert.equal(IMG.readUInt16BE(0x26f982), 0x4e75, '$26F982 rts -- the break the sweep stops at');
 });
+
+test('W371 the audit: every address T4C records is a real instruction boundary', { skip: SKIP }, () => {
+  // The audit the false verdict interrupted, redone with the corrected tool. Each entry point is swept
+  // separately to its first flow break, because $4C's span holds a jump table and padding and cannot be
+  // swept whole. 34 recorded addresses, all confirmed -- so the three alignment errors already fixed
+  // were the only ones, which is what bounds the risk of the rest of the spec.
+  //
+  // $26F62A is the case that looked like a fourth and was not: no sweep in the first audit reached it,
+  // because the prologue's `jmp $263762` at $26F61A stops the sweep that would have. Swept from $26F622
+  // it is plainly a boundary. An address a sweep never reaches is UNVERIFIED, never wrong.
+  const out = run(['check', '0x26f622', '0x26f640', '0x26f62a', '0x26f632', '0x26f63a']);
+  assert.match(out, /\$26F62A\s+BOUNDARY/, 'reached from $26F622, it is a boundary');
+  assert.match(out, /\$26F632\s+BOUNDARY/, 'as is the clock compare');
+  assert.match(out, /\$26F63A\s+BOUNDARY/, 'and the branch after it');
+  // And the prologue sweep really does stop where the audit lost it, which is why it was missed.
+  const pro = run(['check', '0x26f5f2', '0x26f640', '0x26f62a']);
+  assert.match(pro, /flow break at \$26F61A/, 'the prologue jmp stops the sweep');
+  assert.match(pro, /\$26F62A\s+UNVERIFIED/, 'so from THERE it is unverified, not mid-instruction');
+});

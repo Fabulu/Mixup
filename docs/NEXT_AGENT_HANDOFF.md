@@ -610,6 +610,14 @@ DISPROVE an entry point that nothing branches to (`$26F702`), not to disprove on
 This also means **you cannot sweep a whole type**. `$4C`'s span holds the eight-entry jump table at `$26F886` and
 padding after several `rts`. Sweep from an entry point, to a bound, with no break in between.
 
+**THE AUDIT IS DONE AND `T4C` IS CLEAN.** Every one of the 34 in-span addresses the spec records was swept from an
+entry point and confirmed a real instruction boundary. **So the three alignment errors already fixed were the only
+ones**, which is what bounds the risk in the rest of the spec rather than leaving it open.
+
+One address, `$26F62A`, looked like a fourth and was not: no sweep reached it, because the prologue's `jmp $263762`
+at `$26F61A` stops the sweep that otherwise would. Swept from `$26F622` it is plainly a boundary. **An address a
+sweep never reaches is UNVERIFIED, never wrong** -- which is the distinction the flow-break fix bought.
+
 **ITS LIMITATION IS A TEST, NOT A FOOTNOTE.** A linear sweep cannot tell code from data that happens to decode:
 `$2A443C`, five words of record prototype, decodes cleanly into three plausible instructions with no complaint. So
 `check` must always be given a start you already know is an entry point. That contract is asserted.
