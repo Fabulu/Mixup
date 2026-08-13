@@ -1098,6 +1098,19 @@ another during this session was wrong.** Concretely:
 12. **Dead code is present and normal.** Four constructs in this band: `$27250C`'s overwritten `#$1`, `$2723B2`'s
     clobbered pointer store, `$268D88`'s no-op `addi.w #$0`, and `$26331C`, a bare `rts`. Transcribe them; do not
     infer intent.
+13. **A FIELD'S MEANING IS DECIDED BY ITS SECOND USE, NOT ITS FIRST.** Twice on `$4C` alone a field's purpose changed
+    once a second site was read, and both times the second reading was the load-bearing one:
+
+        ($16,A5)   read 1: a one-shot armed at clock $1F0    read 2: it GATES THE DAMAGE SUBTRACTION,
+                                                             so it is the INVULNERABILITY window
+        ($1A,A6)   read 1: a distance BAND ($8 far, $6 near) read 2: it is DECREMENTED, so those values
+                                                             are TIMER LENGTHS -- a proximity-scaled RATE
+
+    **In both cases the first reading was not wrong about the value, only about what the value is for** -- and a port
+    built on it would have produced a static thing where the cartridge has a dynamic one. `$55`'s `($2E,A5)` went the
+    same way across three reads (fan-vs-single, then cluster selector, then finally a burst counter).
+    **So before recording a field's PURPOSE, find every site that touches it.** Recording the value is safe;
+    recording the meaning from one site is not.
 
 **Stage 5: NINE types with no handler over 27 records** (was ten over 29 at the session start).
 Ranked: `$46` 13, `$1A` 4, `$48`, `$4A`, `$4B`, `$43`, `$47`, `$4C`, `$B0`.
