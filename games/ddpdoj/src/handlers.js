@@ -9187,6 +9187,37 @@ const T4C = Object.freeze({
   bandAt: 0x1a,                               // part 1's $1A
   bandThresholds: Object.freeze([[0x200, null], [0x100, 0x8], [0x000, 0x6]]),
   bandTestSites: Object.freeze([0x26ff6c, 0x26ff7a]),   // where the main flow compares it against $8
+  // W367: THE DRAW TABLE. FIVE sprites per frame, from five subroutines that each hard-code one part's
+  // offsets -- which is what the unrolled parts are FOR and why there is no loop.
+  //
+  // Four of the five end `jmp $26F790`, the shared selector that picks $23DECE or $23DF58 by ($17,A5).
+  // The fifth, $26F71A, ends in `rts` instead, which is why a scan for those jumps finds only four.
+  //
+  // THEY PAIR: two routines share art $1499CC and palette $5D (part 3), two share $149978 and $7D
+  // (part 4), differing only in the part offset and the FIRST bias -- and those bias pairs straddle a
+  // boundary ($FC3F/$FC40, $F47F/$F480), so each pair is the mirrored halves of one object.
+  //
+  // PARTS 2 AND 5 ARE NOT DRAWN. Part 5 is the control block, correctly. Part 2 has ~24 field references
+  // and no draw routine at all, so it is STATE-ONLY -- do not go looking for its sprite.
+  //
+  // The `biases` are sequential `addi.l` on D1 and DO combine (unlike the word-add case, which must never
+  // be folded, and unlike $1A's swap-separated pair). $26F71A takes FOUR of them where the others take two.
+  draws: Object.freeze([
+    // W367: art was first recorded as $1494A0 -- wrong. My extractor lacked a `break`, so it took the LAST
+    // `move.l #imm,D2` in range instead of the first. The pin below caught it on the first run.
+    Object.freeze({ at: 0x26f71a, art: 0x14985c, partAdd: null, d3: 0x0a38, palAt: 0x1d, part: 1,
+      biases: Object.freeze([0xf7000000, 0xf600f900, 0x0c800000, 0xf200ef00]), exit: 'rts' }),
+    Object.freeze({ at: 0x26f7a8, art: 0x1499cc, partAdd: 0x48, d3: 0x0608, palAt: 0x5d, part: 3,
+      biases: Object.freeze([0xfc3fec80, 0xfa00ff00]), exit: 0x26f790 }),
+    Object.freeze({ at: 0x26f7d2, art: 0x1499cc, partAdd: null, d3: 0x0608, palAt: 0x5d, part: 3,
+      biases: Object.freeze([0xfc401380, 0xfa00ff00]), exit: 0x26f790 }),
+    Object.freeze({ at: 0x26f7fc, art: 0x149978, partAdd: 0x68, d3: 0x0a10, palAt: 0x7d, part: 4,
+      biases: Object.freeze([0xf47ffc00, 0xf600fe00]), exit: 0x26f790 }),
+    Object.freeze({ at: 0x26f82a, art: 0x149978, partAdd: 0x6a, d3: 0x0a10, palAt: 0x7d, part: 4,
+      biases: Object.freeze([0xf4800400, 0xf600fe00]), exit: 0x26f790 }),
+  ]),
+  drawSelector: 0x26f790,
+  partsDrawn: Object.freeze([1, 3, 4]),       // parts 2 and 5 are never drawn
 });
 
 // ============================================ TYPE $B0 -- HIBACHI (W357/W360) ============

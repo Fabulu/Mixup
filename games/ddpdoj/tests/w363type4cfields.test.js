@@ -259,3 +259,49 @@ test('W367 T4C records the subroutine inventory, and it matches the bsr scan', {
       `$${old.toString(16)} -- one of the old note's eight -- IS a real internal entry point`);
   }
 });
+
+test('W367 the draw table matches the cartridge, entry by entry', { skip: SKIP }, () => {
+  // Five hand-extracted rows. Every constant is re-read from the bytes here, because a hand-built table is
+  // exactly where this session's pins have caught errors.
+  assert.equal(T4C.draws.length, 5, 'FIVE draw routines, not four -- $26F71A exits by rts, not jmp');
+  for (const dr of T4C.draws) {
+    // move.l #art,D2 opens every one.
+    assert.equal(IMG.readUInt16BE(dr.at), 0x243c, `$${dr.at.toString(16)} move.l #imm,D2`);
+    assert.equal(IMG.readUInt32BE(dr.at + 2), dr.art, `  ...art $${dr.art.toString(16)}`);
+    // Each bias is a sequential addi.l on D1 -- and these DO combine, unlike the word-add case.
+    let a = dr.at + 6;
+    const found = [];
+    while (a < dr.at + 0x40 && found.length < dr.biases.length) {
+      if (IMG.readUInt16BE(a) === 0x0681) { found.push(IMG.readUInt32BE(a + 2)); a += 6; } else a += 2;
+    }
+    assert.deepEqual(found, [...dr.biases], `$${dr.at.toString(16)} biases, in order`);
+    // The palette offset must land on its part's $1D: part N occupies (N-1)*$20.
+    assert.equal(dr.palAt, (dr.part - 1) * 0x20 + 0x1d,
+      `palAt $${dr.palAt.toString(16)} is part ${dr.part}'s $1D -- the mapping checks out`);
+  }
+});
+
+test('W367 the draw pairs share art and palette, and their biases straddle a boundary', { skip: SKIP }, () => {
+  // Two pairs, each drawing one part twice as mirrored halves. If a port collapsed a pair to one sprite the
+  // object would render half-missing, so the pairing is asserted rather than described.
+  const byPart = new Map();
+  for (const dr of T4C.draws) {
+    if (!byPart.has(dr.part)) byPart.set(dr.part, []);
+    byPart.get(dr.part).push(dr);
+  }
+  assert.deepEqual([...byPart.keys()].sort(), [...T4C.partsDrawn].sort(), 'parts 1, 3 and 4 are drawn');
+  for (const part of [3, 4]) {
+    const pair = byPart.get(part);
+    assert.equal(pair.length, 2, `part ${part} is drawn TWICE`);
+    assert.equal(pair[0].art, pair[1].art, `  ...sharing one art long`);
+    assert.equal(pair[0].palAt, pair[1].palAt, `  ...and one palette field`);
+    assert.equal(pair[0].d3, pair[1].d3, `  ...and one D3`);
+    assert.notEqual(pair[0].biases[0], pair[1].biases[0], `  ...but DIFFERENT first biases`);
+    assert.equal(pair[0].biases[1], pair[1].biases[1], `  ...and the same second`);
+    // The differing halves straddle a boundary: their high words differ by exactly one.
+    const hi = pair.map((d) => (d.biases[0] >>> 16) & 0xffff).sort((a, b) => a - b);
+    assert.equal(hi[1] - hi[0], 1, `  ...high words $${hi[0].toString(16)}/$${hi[1].toString(16)} -- mirrored`);
+  }
+  assert.equal(byPart.get(1).length, 1, 'part 1 is drawn once, by the four-bias outlier');
+  assert.equal(byPart.get(1)[0].biases.length, 4, 'and it takes FOUR biases where the others take two');
+});
