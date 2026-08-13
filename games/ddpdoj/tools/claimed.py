@@ -79,9 +79,22 @@ def main(argv):
         notes = [h for h in hits if h[2] == 'NOTE']
         owners = sorted({h[3] for h in hits if h[3] != '(file scope)'})
         if not code:
-            print(f'{label}: **NOT PORTED** -- {len(hits)} mention(s) but NONE in code '
-                  f'({len(notes)} inside note/unreached strings, the rest comments). '
-                  'A note quoting an address is the port saying it has NOT ported it.')
+            # W358: this verdict is "no CODE LITERAL", which is NOT the same as "not ported". A routine can
+            # be fully ported under a NAME while its address appears only in comments -- $263684 is exactly
+            # that: it is `enqueueDeferred` in spawn.js, called by handler46 in shipped code, and this tool
+            # sees no literal. Saying "NOT PORTED" there would invite someone to delete a working call.
+            # The reverse also happens: $242B90 had no mentions at all while being byte-identical to the
+            # ported $242B3C bar one register. So this tool measures ADDRESS LITERALS, not implementations,
+            # and the verdict is worded to say only what it actually knows.
+            many = len(hits) >= 6
+            print(f'{label}: NO CODE LITERAL -- {len(hits)} mention(s), none of them code '
+                  f'({len(notes)} inside note()/unreached() calls or strings, the rest comments).')
+            if many:
+                print(f'    ** {len(hits)} mentions with no literal often means the routine IS ported under '
+                      'a NAME (grep the comments for it) -- check before concluding it needs writing.')
+            else:
+                print('    Likely genuinely unported: a note()/unreached() quoting an address is the port '
+                      'saying it has not translated it.')
             for f, n, kind, owner, text in hits[:4]:
                 print(f'    {f}:{n} [{kind}] in {owner}')
             continue
