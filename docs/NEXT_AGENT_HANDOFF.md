@@ -817,9 +817,33 @@ selector is not a standalone arm -- **it is the shared exit of four draw routine
     26f822  move.b ($7D,A6),D4          <- PART 4's $1D, the palette byte
     26f824  jmp $26F790                 the shared selector
 
-**So `$4C` emits FOUR sprites per frame**, each with its own art long, its own part's offset and palette, and its own
-two-stage bias -- through one selector that picks the stub. That is what the five unrolled parts are FOR, and why the
-type has no loop: **each draw routine hard-codes a different part's offsets.**
+**So `$4C` emits sprites through one selector**, each draw routine hard-coding a different part's offsets -- which is
+what the five unrolled parts are FOR and why the type has no loop.
+
+### THE COMPLETE DRAW TABLE -- FIVE sprites, not four, and they PAIR
+
+    routine    art        part+   biases                                      D3     palette
+    $26F71A    $1494A0    --      $F7000000 $F600F900 $0C800000 $F200EF00     $A38   $1D   part 1
+    $26F7A8    $1499CC    $48     $FC3FEC80 $FA00FF00                        $608   $5D   part 3
+    $26F7D2    $1499CC    --      $FC401380 $FA00FF00                        $608   $5D   part 3
+    $26F7FC    $149978    $68     $F47FFC00 $F600FE00                        $A10   $7D   part 4
+    $26F82A    $149978    $6A     $F4800400 $F600FE00                        $A10   $7D   part 4
+
+**Correction to the line above: FIVE, not four.** `$26F71A` also draws -- it is the `bsr`-to-next-instruction, and it
+ends in an `rts` rather than a `jmp`, which is why it did not appear in the four-jump scan.
+
+**They PAIR.** `$26F7A8`/`$26F7D2` share art `$1499CC` and palette `$5D`; `$26F7FC`/`$26F82A` share art `$149978` and
+palette `$7D`. **Each pair draws TWO sprites for ONE part**, differing only in the part offset and the first bias --
+`$48` vs none, `$6A` vs `$68`, and biases `$FC3FEC80`/`$FC401380` and `$F47FFC00`/`$F4800400`. Those bias pairs
+straddle a boundary (`$FC3F`/`$FC40`, `$F47F`/`$F480`), so **they are mirrored halves of one object.**
+
+**And the palette offsets confirm the part mapping independently:** `$1D` is part 1's `$1D`, `$5D` is part 3's
+(`$40 + $1D`), `$7D` is part 4's (`$60 + $1D`). Three parts drawn -- 1, 3 and 4 -- and **parts 2 and 5 are NOT drawn
+at all.** Part 5 being undrawn is exactly right: it is the control block. **Part 2 has 24 field references and no
+draw routine, so it is state-only** -- worth knowing before someone looks for its missing sprite.
+
+`$26F71A` is the outlier in every respect: part 1, its own art, FOUR biases instead of two, and an `rts` exit. **Read
+it before writing the draw code** -- the other four are one shape with different constants.
 
 **And `$26F724`/`$26F72A` are TWO SEQUENTIAL `addi.l` on D1.** These notes already record that **two sequential LONG
 biases DO combine**, unlike the word-add case that must not be folded and unlike `$1A`'s swap-separated pair. **So
