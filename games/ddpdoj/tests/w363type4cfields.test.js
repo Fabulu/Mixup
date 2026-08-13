@@ -995,3 +995,19 @@ test('W372 $26F9A2 fires only when FULLY RETRACTED, and spawns a mirrored PAIR',
   assert.equal(IMG.readUInt16BE(0x26fa08), 0x704e, '$26FA08 moveq #$4E,D0 -- the second');
   assert.equal(IMG.readUInt32BE(0x26fa16), p3[1].biases[0], '  ...at the $26F7D2 half s bias');
 });
+
+test('W372 the fan is THIRTY-SEVEN shots from heading $2E, by the DBcc rule', { skip: SKIP }, () => {
+  // `move.w #$24,D7` with a dbra is D7 + 1 passes, so 37, not 36 -- the band rule that has cost this
+  // project waves before. The heading starts at $2E and steps by one with an andi.w #$3F re-mask each
+  // pass, so it WRAPS through zero rather than clamping, covering more than half the 64-step circle.
+  assert.equal(IMG.readUInt16BE(0x26fb04), 0x3e3c, '$26FB04 move.w #imm,D7');
+  assert.equal(IMG.readUInt16BE(0x26fb06) + 1, 37, '  ...#$24, and DBcc makes it THIRTY-SEVEN passes');
+  assert.equal(IMG.readUInt16BE(0x26fb0e), 0x323c, '$26FB0E move.w #imm,D1');
+  assert.equal(IMG.readUInt16BE(0x26fb10), 0x002e, '  ...#$2E, the ENTRY heading');
+  // 37 steps from $2E wrapping at $3F ends at $52 & $3F = $12, so it passes through zero.
+  assert.equal((0x2e + 36) & 0x3f, 0x12, 'so it wraps through zero and ends at $12');
+  // The whole fan is gated on a position test first.
+  assert.equal(IMG.readUInt16BE(0x26fafa), 0x0441, '$26FAFA subi.w #imm,D1');
+  assert.equal(IMG.readUInt16BE(0x26fafc), 0x0400, '  ...#$400 off the position');
+  assert.equal(IMG.readUInt16BE(0x26fb00), 0x6500, '$26FB00 bcs -- too close and the fan is SKIPPED');
+});

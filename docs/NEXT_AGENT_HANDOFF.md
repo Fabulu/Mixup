@@ -1050,8 +1050,16 @@ It is parity-gated through the same `$80390A` as state 2's volley, sets `($4C,A6
 ON setter clears -- and spawns **TWO children of type `$4E`** (not `$52`) at the two part-3 draw biases
 `$FC3FEC80` and `$FC401380`. **A fifth mirrored pair**, and it fires from exactly where the two halves are drawn.
 
-**Still to do:** transcribe `$26FA86..$26FB12` (the fan's entry heading and pass count live there), place the draft,
-move the four census pins.
+**BOTH BLOCKS ARE TRANSCRIBED. `$4C` IS FULLY READ AND FULLY DRAFTED.** The fan is **`move.w #$24,D7` with a
+`dbra` = THIRTY-SEVEN passes**, not 36 -- the DBcc rule -- starting from heading **`$2E`** and stepping by one with
+an `andi.w #$3F` re-mask, so it **wraps through zero** and ends at `$12`. The whole fan is skipped when the position
+is within `$400`.
+
+**Still to do, and it is now purely mechanical:** place the draft into `handlers.js`, register `handler4C` at
+`$26F5F2`, delete `T4C`'s `ported: false`, and move the FOUR census pins together -- the `handlerMap()` adapter size
+in `integration.test.js`, the address list in `handlers.test.js`, `enemy_types` in `w167coverage.test.js` (BOTH
+numbers, from `dojcoverage.py`), and the init-body count in `initbody.test.js`. `w314stage5scope.test.js` needs
+REWRITING rather than renumbering, because `$4C` is its worked example of an unported type.
 
 **Still to do:** place the draft, then move the FOUR census pins together (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
 `$26F6E8` main flow, then the five-call draw chain) and the eight state bodies, all of which are read and pinned.
