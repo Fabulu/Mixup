@@ -120,10 +120,20 @@ bytes.
 is much bigger than its siblings'**, which is consistent with it being a multi-part object (its init loads FIVE sub
 prototypes, per W342's window note `$26F55A + $AC`).
 
-**So the "eight state handlers" almost certainly means the FIVE SUB-RECORDS' arms, not eight states of one
-record.** `$4C` is the band's only member with five sub prototypes, and a per-part arm set would explain both the
-2550-byte span and the absence of any record-level dispatch. **That is the hypothesis to test first**, and it is
-cheap: check whether the arms are selected by a sub-record INDEX rather than a state value.
+**CONFIRMED, from the init itself:**
+
+    26f4da  move.w #$4,($4,A5)     the run length -- so FIVE SUB-RECORDS
+    26f4e0  rts
+    26f4e2  lea $26F566,A0         the init body's first sub prototype
+
+**`($4,A5) = 4` means five sub-records** (the convention is run length + 1, and `$1A`'s `#$1` gave it two).
+So `$4C` IS a five-part object, matching W342's five sub prototypes and its `$26F55A + $AC` window, and the
+"eight state handlers" note was describing **per-part arms, not eight states of one record**. That explains all
+three anomalies at once: the 2550-byte span, the total absence of record-level dispatch, and a sub-record field
+at `$9F` when no sibling exceeds `$36`.
+
+**Every member of this band for comparison:** `$55` one sub-record, `$46` one, `$1A` two, `$4C` **five**. It is
+the only multi-part object among them, which is why none of its structure looked familiar.
 
 **Settled and needing no further work:** `tst.b ($17,A5)` (one branch, two ported stubs), and the eight addresses
 the old note listed as unported callees (all internal, two of them merely the boundaries `$26FF9E` and `$26FFE8`).
