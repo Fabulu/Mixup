@@ -233,3 +233,25 @@ test('W372 the boss HP arm mirrors $4C, and its death can REFILL the pool', { sk
   assert.equal(IMG.readUInt32BE(0x2a6d08), 0x00000200, '  ...#$200 -- the pool is REFILLED');
   assert.equal(IMG.readUInt16BE(0x2a6d0c), 0x0016, '  ...into ($16,A5), so the boss continues');
 });
+
+test('W372 the boss has exactly TWO HP thresholds, and the lower one switches SCRIPTS', { skip: SKIP }, () => {
+  // A census of the whole body finds only two: $EB33 selecting the four-byte sprite quad, and $23000
+  // driving a phase transition. 666 bytes, two thresholds -- most of the routine is the per-part
+  // damage reduce and the draw quad, not a ladder of phases.
+  assert.equal(IMG.readUInt16BE(0x2a6be0), 0x0cad, '$2A6BE0 cmpi.l -- the quad threshold');
+  assert.equal(IMG.readUInt32BE(0x2a6be2), 0x0000eb33, '  ...#$EB33');
+  assert.equal(IMG.readUInt16BE(0x2a6d52), 0x202d, '$2A6D52 move.l (d16,A5),D0');
+  assert.equal(IMG.readUInt16BE(0x2a6d54), 0x0016, '  ...the HP pool');
+  assert.equal(IMG.readUInt16BE(0x2a6d56), 0x0480, '$2A6D56 subi.l #imm,D0');
+  assert.equal(IMG.readUInt32BE(0x2a6d58), 0x00023000, '  ...#$23000, the phase line');
+  assert.equal(IMG[0x2a6d5c], 0x6a, '$2A6D5C bpl -- above it, nothing happens');
+  // Below it: clear both script pools, start A4 script $E, flag it, and arm a screen clear. Every one
+  // of those is already ported, which is what makes this phase portable as it stands.
+  assert.equal(IMG.readUInt32BE(0x2a6d60), 0x00259b34, '$2A6D5E jsr $259B34 -- a1Clear');
+  assert.equal(IMG.readUInt32BE(0x2a6d66), 0x002598a2, '$2A6D64 jsr $2598A2 -- a4Clear');
+  assert.equal(IMG.readUInt16BE(0x2a6d6a), 0x700e, '$2A6D6A moveq #$E,D0');
+  assert.equal(IMG.readUInt32BE(0x2a6d6e), 0x0025980c, '$2A6D6C jsr $25980C -- a4Start, script $E');
+  assert.equal(IMG.readUInt16BE(0x2a6d78), 0x1d7c, '$2A6D78 move.b #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x2a6d7c), 0x010c, '  ...($10C,A6) = 1, the phase flag');
+  assert.equal(IMG.readUInt32BE(0x2a6d80), 0x00243dd0, '$2A6D7E jsr $243DD0 -- armScreenClearMode');
+});
