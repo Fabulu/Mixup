@@ -726,3 +726,37 @@ test('W371 state 2 spawns type $52 and writes the child position and heading', {
   assert.equal(IMG.readUInt16BE(0x26fcb4), 0x002b, '  ...FROM ($2B,A6), the BACKWARD cursor');
   assert.equal(IMG.readUInt16BE(0x26fcb6), 0x001a, '  ...INTO the child $1A');
 });
+
+test('W371 $26FF9E STEERS toward a point and returns ARRIVAL in the carry', { skip: SKIP }, () => {
+  // The spec calls this the "distance bander", which is true but is the side effect. What it does is
+  // steer: below $40 it returns carry CLEAR (arrived), otherwise it aims, slews, stores the new
+  // heading into ($1B,A6) and returns carry SET (still travelling). The band writes to ($1A,A6)
+  // happen on the way past. A port that models only the bands has no movement at all.
+  assert.equal(IMG.readUInt16BE(0x26ffc4), 0x0c40, '$26FFC4 cmpi.w #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x26ffc6), 0x0040, '  ...#$40, the ARRIVAL radius');
+  assert.equal(IMG.readUInt16BE(0x26ffc8), 0x6d00, '$26FFC8 blt.w -- closer than $40 means arrived');
+  assert.equal(0x26ffca + IMG.readInt16BE(0x26ffca), 0x26ffe2, '  ...to the carry-CLEAR exit');
+  assert.equal(IMG.readUInt16BE(0x26ffe2), 0x027c, '$26FFE2 andi.w #imm,SR');
+  assert.equal(IMG.readUInt16BE(0x26ffe4), 0xfffe, '  ...#$FFFE, clearing the carry');
+  // The far path aims, slews, and stores the heading.
+  assert.equal(IMG.readUInt32BE(0x26ffce), 0x00242038, '$26FFCC jsr $242038 -- the aim');
+  assert.equal(IMG.readUInt32BE(0x26ffd4), 0x0024218c, '$26FFD2 jsr $24218C -- slew from ($1B,A6)');
+  assert.equal(IMG.readUInt16BE(0x26ffd8), 0x1d41, '$26FFD8 move.b D1,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26ffda), 0x001b, '  ...($1B,A6), the heading it just slewed');
+  assert.equal(IMG.readUInt16BE(0x26ffdc), 0x007c, '$26FFDC ori.w #imm,SR');
+  assert.equal(IMG.readUInt16BE(0x26ffde), 0x0001, '  ...#$1, carry SET -- still travelling');
+});
+
+test('W371 its two callers supply the target DIFFERENTLY, and both branch on the carry', { skip: SKIP }, () => {
+  // State 1 loads D2/D3 from the $26F984 table; state 3 sets them as LITERALS. Same routine, two ways
+  // in -- which is the same "where do D2/D3 come from" question $1A's $268D8C poses, answered here
+  // because both suppliers are in the routine that calls it.
+  assert.equal(IMG.readUInt16BE(0x26f942), 0x4c90, 'state 1: movem.w (A0),D2-D3 from the table');
+  assert.equal(IMG.readUInt16BE(0x26fd30), 0x343c, '$26FD30 move.w #imm,D2 -- state 3, a LITERAL');
+  assert.equal(IMG.readUInt16BE(0x26fd32), 0x5c00, '  ...#$5C00');
+  assert.equal(IMG.readUInt16BE(0x26fd34), 0x363c, '$26FD34 move.w #imm,D3');
+  assert.equal(IMG.readUInt16BE(0x26fd36), 0x1c00, '  ...#$1C00');
+  // Both then branch on the carry, which is what makes it a waypoint test rather than a query.
+  assert.equal(IMG.readUInt16BE(0x26f94a), 0x6500, 'state 1 bcs -- ARRIVED advances the cursor');
+  assert.equal(IMG.readUInt16BE(0x26fd3c), 0x6500, 'state 3 bcs -- ARRIVED clears ($1A,A6) and steps');
+});

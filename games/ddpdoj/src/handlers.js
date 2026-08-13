@@ -9244,6 +9244,14 @@ const T4C = Object.freeze({
   //     >= $200  ->  ($1A,A6) untouched
   //     >= $100  ->  $8
   //      < $100  ->  $6   (and further bands below $26FFC4)
+  // W371: "distBander" is the SIDE EFFECT, not the function. $26FF9E STEERS TOWARD A POINT given in
+  // D2/D3 and returns ARRIVAL in the carry: below $40 it returns carry CLEAR, otherwise it aims
+  // ($242038), slews from ($1B,A6) ($24218C), stores the new heading back, and returns carry SET.
+  // The ($1A,A6) band writes happen on the way past. A port that models only the bands has NO MOVEMENT.
+  // Its two callers supply the target differently: state 1 reads a point from the $26F984 table,
+  // state 3 sets D2/D3 as literals $5C00/$1C00. Both branch on the carry as a waypoint test.
+  steerArrivalRadius: 0x40, steerAim: 0x242038, steerSlew: 0x24218c, steerHeadingAt: 0x1b,
+  steerCarryClearExit: 0x26ffe2, steerCarrySetExit: 0x26ffdc,
   distBander: 0x26ff9e, distHelper: 0x242494, distGlobal: 0x813172,
   // W368 CENSUS: ($1A,A6) is NOT "the distance band". A single scan of $26F5F2..$270000 finds SIXTEEN sites
   // that write it -- fourteen literal stores plus an increment and a decrement. Earlier revisions of this
