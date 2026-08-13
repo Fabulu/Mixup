@@ -1425,3 +1425,48 @@ already there.
 **STILL TO VERIFY:** the live build `20260812222642` carries the truncated value, so this needs a republish
 before the owner can see the impact. And whether the effect now appears is a playtest question -- the gate
 proves the code runs, not that the sprite is right.
+
+## Added 2026-08-13 by the owner: the FRONT END, and the second game
+
+These are scope the port has never had, as distinct from bugs in what it does have. The owner asked for
+them in one message, and the ordering below is theirs where they gave one.
+
+### D33: THE MAIN SCREEN
+
+The title/attract front end. The port currently starts in gameplay; there is no title screen to arrive at,
+sit on, or attract-loop out of. Nothing here is measured yet, and no ROM window is declared for it.
+
+**Note the one thing already known**, because it is easy to lose: `$81308C` is "players in play minus one",
+and `HUDRAM.attract` IS `$81308C`. W345 fixed `liveSides25FD94` to write it, and `laser.js:1029` reads it.
+So the attract flag already exists and is already correct -- the main screen work must READ that, not
+introduce a second notion of attract.
+
+### D34: CHARACTER SELECTION, AND EVERY TRANSITION IT IMPLIES
+
+Ship/style select, and the owner was explicit that the transitions this implies are part of the item rather
+than a follow-up: getting into select, moving within it, confirming, and getting out of it into stage 1.
+
+**This overlaps D11 and the transition-screen work already in flight**, and that is a reason to do them
+together rather than twice. `tallyscreen.js` already has the cursor machinery (`pickFreeYRow25DA94`,
+`mapSavedCursor25D9E6`, `loadSavedCursor25DA60`, `tallyPhase0Arm25DC2C`), and W344's four descriptor reads
+were fixed there. A select screen is a cursor over a descriptor table with a saved position -- check that
+file before writing anything new, the way `$55` should have been checked against `aim.js`.
+
+### D35: THE LIFE AND COIN SYSTEM
+
+Credits, coining up, lives, extends, game over, continue. The port has scoring (`scoreHit`, `scoreKill`, the
+`LEDGER`) but no economy around it.
+
+**Related and already partly measured:** `$8130DC..$8130E6` is the six-word mutual-exclusion block, and
+`$269C6C` frees any record seeing any flag set -- game-over handling will touch that. `respawn25FFA8` exists
+in `tally.js`. And D25/D32/D21/D12 are open playtest items that may turn out to be life-system symptoms
+rather than independent bugs, so re-read them once this lands.
+
+### D36: THE SECOND GAME IN THE ROM -- **DEFINITELY LAST**
+
+The cartridge carries a second game. **The owner's instruction is explicit: this is the last thing tackled,
+after everything else.** Do not start it opportunistically because a window happens to be declared or a
+routine looks adjacent, and do not let it absorb effort while stage 1-5, the loops, or D33-D35 are open.
+
+Recording it now so it is not rediscovered as a surprise, and so nobody treats an unexplained ROM region as
+in-scope work when it belongs to the second game.
