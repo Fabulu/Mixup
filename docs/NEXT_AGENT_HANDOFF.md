@@ -965,7 +965,83 @@ together -- so **both halves of the object animate their draw offsets**, `$26F9A
 `+$C0` on the other, with **mirrored** position biases `$F8000800` and `$01FFF800`. Reusing one constant for both
 sides stacks the effects on a single bearing.
 
-**Still to do:** place the draft, write the three callees from these readings, and move the four census pins.
+**THE THREE CALLEES, DRAFTED (W372):**
+
+```js
+/** `$26FFE8` -- the RETIRE PREDICATE. Returns a boolean the ROM carries in the CARRY flag, through the
+ *  shared stubs `$270128` (clear) and `$27012E` (set). $4C's single caller IGNORES the return, so do
+ *  not invent a branch on it; what matters is the ($9E,A6) it arms. */
+function retireCheck4C(ram, rom, a5, a6, ctx) {
+  if (ram.u8(a6 + 0x9f) === 0) return false;                 // $26FFE8 tst.b ($9F,A6) / beq $270128
+  ram.setU16(a6 + 0x02, u16(ram.u16(a6 + 0x02) - 0x40));     // $26FFF0 subi.w #$40,($2,A6)
+  armScreenClear243E02(ram, ctx, ram.u16(a6 + T4C.hitMaskTo), 0x26fffa);   // $26FFF6/$26FFFA
+  if (ram.u8(a6 + 0x86) === 2) {                             // $270000 cmpi.b #$2,($86,A6)
+    ram.setU8(a6 + 0x9e, 1);                                 // $27000A -- acted on NEXT frame
+    return true;                                             // $270010 bra $27012E, carry SET
+  }
+  // $270014.. -- the effect emitter. QUARTER-TURN PAIRS: one shared angle, +$40 on one side and +$C0
+  // on the other, with MIRRORED position biases. One constant for both stacks them on one bearing.
+  const ang = (ram.u8(a6 + 0x1a) << 1) & 0xff;               // $27003C asl.b #1,D0
+  for (const [turn, bias] of [[0x40, 0xf8000800], [0xc0, 0x01fff800]]) {
+    emit28B4BE(ram, rom, ctx,
+      (ang + turn) & 0xff,                                   // $270040 / $270066 addi.b
+      u32(ram.u32(a6 + 0x02) + bias),                        // $270048 / $27006E addi.l
+      0x0c, 0x00);                                           // $27004E/$270052 D3, D0
+    drawByte242B3C(ram, ctx);                                // $27005C jsr $242B3C
+  }
+  return false;
+}
+
+/** `$26F9A2` -- PART 3's animator. Fires from the drawn muzzle, then RETRACTS the two draw offsets. */
+function sub26F9A2(ram, rom, a5, a6, ctx) {
+  if (ram.u16(a6 + T4C.partSetters[0].flagAt) === 0) return; // $26F9A2 tst.w ($46,A6) / beq
+  // ... the body between $26F9A6 and $26FA0A, which sets the spawn up ...
+  const q = enqueueDeferred(ram, T4C.spawnChild, DEFQ_D1.FIXED00);        // $26FA0A jsr $263684
+  if (q) {
+    // The SAME bias as the $26F7D2 draw half, so the shot leaves from the muzzle that is drawn.
+    ram.setU32(q + 0x16, u32(ram.u32(a6 + 0x02) + 0xfc401380));           // $26FA14/$26FA1A
+    ram.setU16(q + 0x1a, 0x0600);                                        // $26FA1E
+  }
+  // $26FA24..$26FA52 -- RETRACT both halves toward zero. These are the draw pair's partAdd/partSub, so
+  // they are ANIMATED, not constants: the halves extend and close symmetrically.
+  for (const off of [0x48, 0x4a]) {
+    if (ram.u16(a6 + off) === 0) continue;                   // $26FA24 / $26FA3C tst.w / beq
+    const v = u16(ram.u16(a6 + off) - 0x100);                // $26FA2C / $26FA44 subi.w #$100
+    ram.setU16(a6 + off, i16(v) > 0 ? v : 0);                // $26FA32 bgt / $26FA36 floor at 0
+  }
+}
+
+/** `$26FA82` -- PART 4's animator, and the type's FAN. `localLoop` is this routine's dbra. */
+function sub26FA82(ram, rom, a5, a6, ctx) {
+  if (ram.u16(a6 + T4C.partSetters[1].flagAt) === 0) return; // $26FA82 -- the ($66,A6) gate
+  // ... the body between $26FA86 and $26FB12 ...
+  // $26FB1E..$26FB3A -- the fan. D7 passes, each indexing $2735FA by (D1 & $3F) * 4, emitting, then
+  // stepping D1 and RE-MASKING, so the heading WRAPS rather than clamping.
+  let d1 = /* the entry heading, set in the block above */ 0;
+  for (let n = 0; n <= /* D7 */ 0; n++) {
+    const e = rom.u32(T4C.fanTable + (((d1 & 0x3f) << 2)));  // $26FB18..$26FB28
+    emit281402(ram, rom, ctx, u32(e + /* D5 */ 0));          // $26FB2C/$26FB2E
+    d1 = (d1 + 1) & 0x3f;                                    // $26FB34/$26FB36
+  }
+  // $26FB3E -- the SECOND counter-and-reload pair, state 0's shape exactly.
+  const c = (ram.u8(a6 + 0x6e) - 1) & 0xff;
+  ram.setU8(a6 + 0x6e, c);
+  if (c !== 0xff) return;                                    // $26FB42 bcc -- no borrow
+  ram.setU8(a6 + 0x6e, ram.u8(a6 + 0x6f));                   // $26FB46 reload from its PERIOD
+  if (u16(ram.u16(a6 + 0x68) + ram.u16(a6 + 0x6a)) !== 0) return;  // $26FB4C..$26FB54 BOTH must be 0
+  // ... the remainder past $26FB58 ...
+}
+```
+
+**`$243E02` IS `armScreenClear243E02(ram, ctx, d1, from)`** in `midboss.js:234` -- already ported, found by name
+rather than by address grep, which is the second time that has been the difference this session.
+
+**THE `// ...` MARKS HERE ARE HONEST GAPS, not "setup".** I made that claim once this wave and it was false twice
+over, so: `$26F9A6..$26FA0A` and `$26FA86..$26FB12` are **read but not transcribed**, and the fan's entry heading and
+D7 pass count come from inside the second of them. **Read those two blocks before placing** -- everything else in
+these three is transcribed.
+
+**Still to do:** transcribe those two blocks, place the whole draft, move the four census pins.
 
 **Still to do:** place the draft, then move the FOUR census pins together (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
 `$26F6E8` main flow, then the five-call draw chain) and the eight state bodies, all of which are read and pinned.
