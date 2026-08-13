@@ -82,3 +82,54 @@ test('W363 all three word comparisons in the span are the SAME ramp test', { ski
   }
   assert.equal(T4C.rampSites.length, 3, 'three sites, one test -- so the ramp gates three arms');
 });
+
+test('W366 $4C watches ANOTHER type spawn -- $1F0 is not its own clock', { skip: SKIP }, () => {
+  // $26F632 cmpi.w #$1F0,$8130CE. The identical instruction in $49's init ($8130CE == $1F3) reads the
+  // clock that SPAWNED $49. Assuming that transferred would give a $4C testing a frame it never sees --
+  // it spawns at $1B8 -- so the arm would never fire and the loss would be silent and total.
+  const STAGE5 = 0x237978;
+  const clocksOf = (type) => {
+    const out = [];
+    for (let cur = STAGE5; IMG.readUInt16BE(cur) !== 0xffff; cur += 8) {
+      if (IMG[cur + 4] === type) out.push(IMG.readUInt16BE(cur));
+    }
+    return out;
+  };
+  assert.deepEqual(clocksOf(0x4c), [0x1b8],
+    '$4C is a SINGLE long-lived record spawned at $1B8 -- and nothing else');
+  assert.ok(!clocksOf(0x4c).includes(0x1f0),
+    "so $1F0 is NOT $4C's own spawn clock: the test at $26F632 is a CROSS-TYPE cue");
+  assert.ok(clocksOf(0x10).includes(0x1f0),
+    '$1F0 is when type $10 spawns -- that is the moment $4C is waiting for');
+  // The contrast that gives the assertion meaning: $49's identical idiom IS self-referential.
+  assert.ok(clocksOf(0x49).includes(0x1f3),
+    '$49 spawns at $1F3, which is the clock its own init compares against -- same shape, opposite sense');
+  // And the instruction really is there, on the spawn clock.
+  assert.equal(IMG.readUInt16BE(0x26f632), 0x0c79, '$26F632 cmpi.w #imm,abs.l');
+  assert.equal(IMG.readUInt16BE(0x26f634), 0x01f0, '  ...#$1F0');
+  assert.equal(IMG.readUInt32BE(0x26f636), 0x008130ce, '  ...on $8130CE, the spawn clock');
+});
+
+test('W366 ($16,A5) in $4C is a one-shot, NOT the on-screen latch', { skip: SKIP }, () => {
+  // In $46, $4B and $1A this byte is the once-on-screen flag, and the handoff called $16 "the one field
+  // this band agrees on". It does not: here it is armed once, only at clock $1F0, gated on part 5's $1F.
+  assert.equal(IMG.readUInt16BE(0x26f622), 0x4a2d, '$26F622 tst.b (d16,A5)');
+  assert.equal(IMG.readUInt16BE(0x26f624), 0x0016, '  ...($16,A5) -- skip if ALREADY armed');
+  assert.equal(IMG.readUInt16BE(0x26f62a), 0x4a2e, '$26F62A tst.b (d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f62c), 0x009f, '  ...part 5s $1F must be zero');
+  assert.equal(IMG.readUInt16BE(0x26f63e), 0x1b7c, '$26F63E move.b #imm,(d16,A5)');
+  assert.equal(IMG.readUInt16BE(0x26f640), 0x0001, '  ...#$1');
+  assert.equal(IMG.readUInt16BE(0x26f642), 0x0016, '  ...into ($16,A5), once and for good');
+});
+
+test('W366 the ($9E,A6) arm RELEASES a mutual-exclusion claim and then frees the record', { skip: SKIP }, () => {
+  // $8130DE is inside the six-word block $8130DC..$8130E6 that $269C6C uses to free records, so clearing
+  // it is cross-type coordination rather than a private flag -- and the arm ends by retiring.
+  assert.equal(IMG.readUInt16BE(0x26f604), 0x33fc, '$26F604 move.w #imm,abs.l');
+  assert.equal(IMG.readUInt16BE(0x26f606), 0x0000, '  ...#$0');
+  assert.equal(IMG.readUInt32BE(0x26f608), 0x008130de, '  ...into $8130DE');
+  assert.ok(0x8130de >= 0x8130dc && 0x8130de <= 0x8130e6,
+    '$8130DE is inside the six-word mutual-exclusion block $8130DC..$8130E6');
+  assert.equal(IMG.readUInt16BE(0x26f61a), 0x4ef9, '$26F61A jmp abs.l');
+  assert.equal(IMG.readUInt32BE(0x26f61c), 0x00263762, '  ...to $263762 -- the arm RETIRES the record');
+});
