@@ -1544,6 +1544,26 @@ not treat an unreached ROM region as an ending on the strength of it looking cin
 `$B0`'s route and the second game (D36) first, because a misattribution there would put D36 work in scope
 early, which is exactly what the owner ruled out.
 
+### D40: A DECISION ONLY THE OWNER CAN MAKE -- WHAT TO DO WHERE THE CARTRIDGE IS UNDEFINED
+
+**Type `$1A` aims at a register nothing initialises.** W372 proved it over the whole spawn chain: `$268D8C` reads its
+target from D2/D3, `$1A` supplies D2 itself (`$1` or `$2`), and **no caller anywhere in the 6 MB image writes D3** --
+not the dispatcher, not the sub-record allocator, not the movement reader. The aim's target is therefore (Y = 1 or 2,
+X = whatever the previous frame's work left in D3), and it sets the enemy's heading and velocity.
+
+**This is the first place the port would knowingly diverge from "transcribe what the cartridge does", because the
+cartridge does not define this.** Three options, and the choice is a taste call about the project's goal:
+
+1. **`unreached()` at that site.** Truthful and loud: `$1A` cannot spawn, and stage 5 keeps a hole. Consistent with
+   how this port treats everything else it cannot justify.
+2. **Model the inherited value** -- carry a register file through the spawn path so D3 holds whatever the real
+   machine would. Faithful, and the only option that could be *correct*, but it is a large change to a port that
+   deliberately does not model registers.
+3. **Pick a value and document it.** Cheapest, gets `$1A` on screen, and is a fiction the suite would then enforce.
+
+**No wave should choose this silently.** It is recorded here rather than in the handoff so it reads as a question for
+the owner, not a task for the next agent.
+
 ### D38: INPUT LAG REDUCTION -- FAITHFUL
 
 **Faithful means the cartridge's own latency is preserved and only the PORT's added latency is removed.** The
