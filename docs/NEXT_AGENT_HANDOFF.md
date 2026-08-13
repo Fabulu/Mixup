@@ -489,6 +489,113 @@ right in both halves, and the table proves it.** `$26F886` is a jump table of 4-
 state 0's own handler. `$26F886..$26F8A6` is `$20` bytes, eight pointers. The span is `$26F5F2..$26FFE8`, about 2550
 bytes -- **the note's "~2300" was close too.**
 
+### `handler4C`'s FIVE HELPERS, DRAFTED AND READY TO PLACE (W372)
+
+**This is a DRAFT, deliberately not spliced.** It is recorded here the way W363 recorded `handler2A4606` before placing
+it, because a half-written handler in `handlers.js` is what got `$55` reverted. Place these five, then the main
+`handler4C` and its eight states, then move the four census pins together in one wave.
+
+Each is transcribed from the reading held by `w363type4cfields`'s 52 assertions, and each carries the trap that would
+break it. `$263762` is NOT a call: a sibling documents it as "neither frees nor marks-and-continues", and type `$55`
+transcribes it as a plain `return`.
+
+```js
+// ===================== TYPE $4C -- the stage-5 multi-part set piece (W372) =====================
+// Written from W371's end-to-end reading, held by 52 assertions in w363type4cfields. Every helper
+// signature here was read from its definition, never recalled -- W365 got seven of seven wrong.
+
+/** `$26FF9E` -- STEER toward (d2,d3). Returns TRUE while still travelling, FALSE on arrival.
+ *
+ *  The spec calls this the distance bander and that is the SIDE EFFECT: the ($1A,A6) writes happen on
+ *  the way past. What it does is move the object, which is why every state that travels calls it and
+ *  branches on the result.
+ *
+ *  D0 IS SCRATCH. `move.w $813172,D0 / sub.w D0,D3` looks like it sets up the first argument, but
+ *  `$242494` opens `movem.w ($2,A6),D0-D1` and loads the self position over it. The scroll only ever
+ *  compensates the target X.
+ */
+function steer4C(ram, rom, a6, d2, d3) {
+  const tgtX = u16(d3 - ram.u16(T4C.distGlobal));            // $26FF9E/$26FFA4
+  const selfY = ram.u16(a6 + 0x02);
+  const selfX = ram.u16(a6 + 0x04);
+  const dist = dist242494(selfY, selfX, d2, tgtX);           // $26FFA6 jsr $242494
+
+  // $26FFAC..$26FFC2 -- a FALL-THROUGH cascade, so the smallest band wins. Written as else-if it
+  // yields the largest instead, and $26FF6C/$26FF7A branch on exactly $8.
+  if (dist < 0x200) {                                        // $26FFAC cmpi.w / bge
+    ram.setU8(a6 + T4C.bandAt, 0x08);                        // $26FFB2
+    if (dist < 0x100) ram.setU8(a6 + T4C.bandAt, 0x06);      // $26FFB8 / $26FFBE
+  }
+
+  if (dist < T4C.steerArrivalRadius) return false;           // $26FFC4 blt -> the carry-CLEAR exit
+  // $26FFCC jsr $242038 -- the entry INSIDE aim64AtTarget that skips targetSelect, because the target
+  // is already in D2/D3. aim64AtTarget would re-select a player and discard the waypoint.
+  const dir = aim64(aimTables(rom), selfY, selfX, d2, tgtX);
+  ram.setU8(a6 + T4C.steerHeadingAt,                         // $26FFD8 move.b D1,($1B,A6)
+    slew64FromRecord(ram, a6, dir) & 0xff);                  // $26FFD2 jsr $24218C
+  return true;                                               // $26FFDC -- carry SET
+}
+
+/** One sprite block: `move.l #art,D2` .. `jsr $26F790`. The stub is picked by `($17,A5)`, the same
+ *  field state 0 sets when its two-stage timer expires -- the form change and the emitter choice are
+ *  ONE decision, not two. */
+function draw4C(ram, rom, a5, d1, dr) {
+  const stub = ram.u8(a5 + T4C.drawSelectAt) !== 0           // $26F790 tst.b ($17,A5) / bne
+    ? T4C.drawStubs[1] : T4C.drawStubs[0];
+  enqueueRegistersThroughStub(ram, rom, stub, d1, dr.art, dr.d3, ram.u8(dr.a6base + dr.palAt));
+}
+
+/** The five tail calls, in CALL order. Part 4's two halves, then part 3's two, then `$26F71A` -- which
+ *  is THREE sprite blocks, so seven sprites leave here per frame. Rendering from `T4C.draws` in array
+ *  order instead would put part 1 underneath. */
+function drawAll4C(ram, rom, a5, a6) {
+  const pos = ram.u32(a6 + 0x02);
+  for (const dr of T4C.draws) {
+    let d1 = pos;
+    // Block B alone applies the RAMP, and through a SWAP-SEPARATED word add -- it lands in the high
+    // word with NO borrow into the low. It must not be folded into the addi.l biases around it.
+    if (dr.rampSwapAdd !== undefined) {                      // $26F74A swap / add.w / swap
+      d1 = (((u16((d1 >>> 16) + ram.u16(a5 + dr.rampSwapAdd)) << 16) >>> 0) | (d1 & 0xffff)) >>> 0;
+    }
+    let first = true;
+    for (const b of dr.biases) {
+      d1 = (d1 + b) >>> 0;                                   // addi.l -- these DO carry
+      // The part offset is a WORD op on the LONG, sitting BETWEEN the two biases: low 16 bits only,
+      // NO carry into the high word. That is also why the two addi.l are not sequential and must not
+      // be folded. $26F7D2 SUBTRACTS where its twin adds, which is half of how the pair mirrors.
+      if (first && (dr.partAdd !== null || dr.partSub !== undefined)) {
+        const v = dr.partSub !== undefined
+          ? u16((d1 & 0xffff) - ram.u16(a6 + dr.partSub))    // $26F7E2 sub.w ($4A,A6),D1
+          : u16((d1 & 0xffff) + ram.u16(a6 + dr.partAdd));   // $26F7B8 add.w ($48,A6),D1
+        d1 = ((d1 & 0xffff0000) | v) >>> 0;
+      }
+      first = false;
+    }
+    draw4C(ram, rom, a5, d1, { ...dr, a6base: a6 });
+  }
+}
+
+/** `$26F858` -- the CHANGE-DETECTING state setter. The `beq` guard IS the function: `($28,A6)` is
+ *  cleared only when the state actually changes. Storing unconditionally restarts the inner script
+ *  every frame, which freezes every state at step 0 while everything else keeps working. */
+function setState4C(ram, a6, d0) {
+  if (ram.u16(a6 + T4C.stateAt) === d0) return;              // $26F858 cmp.w / beq rts
+  ram.setU16(a6 + T4C.stateAt, d0);                          // $26F860
+  ram.setU16(a6 + T4C.stepAt, 0);                            // $26F864 clr.w ($28,A6)
+}
+
+/** The two OFF/ON pairs. ON is NOT the inverse of OFF: switching a part on also RESETS its companion
+ *  field, so modelling a pair as one boolean setter leaves stale state behind. */
+function partSet4C(ram, a6, i, on) {
+  const p = T4C.partSetters[i];
+  ram.setU16(a6 + p.flagAt, on ? 1 : 0);                     // $26F98C / $26F994
+  if (on) for (const c of p.clears) ram.setU16(a6 + c, 0);   // the ON-only reset
+}
+```
+
+**Still to write:** the main `handler4C` (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
+`$26F6E8` main flow, then the five-call draw chain) and the eight state bodies, all of which are read and pinned.
+
 ### EVERY HELPER `handler4C` NEEDS, READ FROM ITS DEFINITION (W371)
 
 Seven of seven recalled signatures were wrong in W365, so these were read from the definition or a live call site.
