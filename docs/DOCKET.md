@@ -1672,8 +1672,24 @@ imposes is part of the game and stays. What must not stay is delay this translat
 extra buffered frame, a browser event queued behind a render, a poll that happens after the frame it should
 have fed rather than before.
 
-**So the first work here is MEASUREMENT, not optimisation.** Nothing about the port's end-to-end latency is
-measured today. Establish, in frames:
+**W372 MEASURED THE LOGIC SIDE, and it is already faithful.** Two facts, both from reading the code rather than
+timing it:
+
+1. **The port samples input immediately before it steps.** `app.js:step()` computes `pw` from `currentPortWord()`
+   on the line before `g.step(pw)`. The cartridge samples in **IRQ6** and then runs the loop (`main.js`'s measured
+   phase order, items 3 and 5-10). **Same relationship, no frame inserted.**
+2. **The one-frame sprite hold is DELIBERATE AND FAITHFUL.** `step()` snapshots `$800000` BEFORE stepping, because
+   at that moment it still holds the list the PREVIOUS frame built -- which is the frame the hardware sprite DMA
+   would have shown. W44 put it there against `render/capture.js`'s **measured hardware lag of 1**, and the comment
+   says it must stay independent of how often `draw()` runs.
+
+**So the port adds no logic-side frame, and D38's remaining scope is the PRESENTATION path only** -- the browser's
+rAF-to-photon chain and anything `draw()` does. That is a much smaller item than this entry assumed, and it means
+**the faithful half of D38 may already be done**; what is left is measuring the browser, not the port.
+
+**The original framing is kept below**, because the distinction it draws is still the one that governs D39.
+
+**So the first work here was MEASUREMENT, not optimisation.** Establish, in frames:
 
 * where in the frame the port samples input, against where `$24xxxx`'s poll sits in the cartridge's frame
 * how many frames sit between a sample and the pixels that reflect it, in the browser build specifically
