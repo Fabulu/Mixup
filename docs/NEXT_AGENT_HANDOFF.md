@@ -610,8 +610,22 @@ state 2 does `move.b #$10,($34,A6)` -- touching only `($34)` and leaving `($35)`
 learn here: **transcribe the width the cartridge uses at each site.** A port that normalised these -- either way --
 would write bytes the cartridge leaves untouched or leave untouched bytes the cartridge writes.
 
-`($1A,A6)` now has SIX writers: `$16`, `$4`, `$10`, `$8`/`$6`, plus the increment and decrement. **Four of the six are
-outside the distance-band range.**
+**States 3 and 4 then break the clean story.** State 3 (`$26FCF2`) writes `$10` like state 2, but state 4 (`$26FD66`)
+writes **`$8` -- which IS the distance-band value** `$26FF9E` stores for the `>= $100` band, and IS what the main flow
+compares against at `$26FF6C`/`$26FF7A`.
+
+**So `($1A,A6)` is a shared byte whose value does not identify its writer.** The existing test shows `$16` and `$4` are
+outside the band range, which is what disproves "the distance band" reading. State 4 shows the converse: a state can
+write a band value directly, forcing the close-range behaviour without any distance being measured. **A port cannot
+recover intent by reading this field -- only by transcribing each write site.**
+
+`($1A,A6)` now has SEVEN writers: `$16`, `$4`, `$10` (twice), `$8` from state 4, `$8`/`$6` from the distance helper,
+plus the increment and decrement.
+
+**And state 4 settles what `($28,A6)` is.** All eight states open `cmpi.w #$0,($28,A6)`; state 4 follows with
+`cmpi.w #$1,($28,A6)` at `$26FD82`, its step-0 arm branching straight to that compare. **It is a SCRIPT STEP walked by
+successive compares, each arm advancing it -- not a frame timer.** That is why `$26F858` clears it only on a real
+state change: the clear restarts the script, and doing it unconditionally would pin every state at step 0.
 
 **The chain of my errors here is worth stating in full, because each step looked reasonable:**
 

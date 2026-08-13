@@ -367,3 +367,33 @@ test('W367 ($1A,A6) has FIVE writers, three outside the band range', { skip: SKI
       `$${v.toString(16)} is NOT one of the distance bands -- so the field is not "the band"`);
   }
 });
+
+test('W368 state 4 writes $8 into ($1A,A6) -- COLLIDING with a distance band value', { skip: SKIP }, () => {
+  // States 0-4 all write ($1A,A6): $16, $4, $10, $10, and now $8. The first three are outside the band
+  // range, which is what the test above uses to show the field is not "the distance band".
+  // State 4 is different: $8 IS the band value $26FF9E writes for ">= $100".
+  assert.equal(IMG.readUInt16BE(0x26fd76), 0x1d7c, '$26FD76 move.b #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26fd78), 0x0008, '  ...#$8');
+  assert.equal(IMG.readUInt16BE(0x26fd7a), T4C.bandAt, '  ...($1A,A6), the same shared byte');
+  const bandVals = T4C.bandThresholds.map(([, v]) => v).filter((v) => v !== null);
+  assert.ok(bandVals.includes(0x08),
+    '$8 IS a band value -- so reading the field cannot tell you WHICH site wrote it');
+  // And the main flow branches on exactly $8, so state 4 forces the close-range behaviour outright.
+  for (const at of T4C.bandTestSites) {
+    assert.equal(IMG[at + 3], 0x08, `$${at.toString(16)} compares against $8 -- state 4 satisfies it`);
+  }
+});
+
+test('W368 state 4 walks a cmpi.w SCRIPT STEP cascade, not just the frame-0 opening', { skip: SKIP }, () => {
+  // The eight states were verified to open cmpi.w #$0,($28,A6). State 4 shows what follows: a SECOND
+  // compare against #$1 on the same field, so ($28,A6) really is a step counter walked by successive
+  // compares -- each arm advancing it -- rather than a plain frame timer.
+  assert.equal(IMG.readUInt16BE(0x26fd66), 0x0c6e, '$26FD66 cmpi.w #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26fd68), 0x0000, '  ...#$0 -- step 0');
+  assert.equal(IMG.readUInt16BE(0x26fd6a), T4C.stepAt, '  ...($28,A6)');
+  assert.equal(IMG.readUInt16BE(0x26fd82), 0x0c6e, '$26FD82 cmpi.w #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26fd84), 0x0001, '  ...#$1 -- step 1, the SAME field');
+  assert.equal(IMG.readUInt16BE(0x26fd86), T4C.stepAt, '  ...($28,A6) again');
+  // Step 0 must branch PAST step 0's body and land on step 1's compare.
+  assert.equal(0x26fd6e + IMG.readInt16BE(0x26fd6e), 0x26fd82, 'step 0s bne -> step 1s compare');
+});
