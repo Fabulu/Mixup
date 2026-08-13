@@ -11,6 +11,42 @@ Updated: 2026-08-12
 `ported: false`), `$4C` (1 record, init ported, eight state handlers ~2300 bytes unread), `$B0` (1, Hibachi).
 `$55` and `$46` both shipped in this session. Publish due after W355.
 
+## TYPE $B0 -- HIBACHI (W357, OPENED). Its handler is only 170 BYTES.
+
+High table `$27E412 + ($B0-$80)*8 = $27E592`: init `$2A42D4`, body `$2A42DC`, handler `$2A4606`. **Both
+unclaimed**, and W347's high-table formula produced the entry points correctly on first use.
+
+**Bounded first (rule 11), and it is much smaller than expected.** `rts` sites from `$2A4606`: `$2A46B0`,
+`$2A4DDE`, `$2A4F54`, `$2A50E2`, then 102 more out to `$2A9000`. **The handler proper is
+`$2A4606..$2A46B0` -- 170 bytes** -- followed by an 1838-byte routine. The boss's bulk is in callees, not in
+the handler.
+
+    2a4606  jsr $2A6B94                     <- UNCLAIMED, and the only unported callee so far
+    2a460c  jsr $25962E                     already ported (11 code mentions)
+    2a4612  bcc $2A4622
+    2a4614  jsr $242952                     <- THE STAGE-CLEAR ROUTINE
+    2a461a  jmp $263762                     and exit
+    2a4622  lea (A6),A0     / jsr $26331C   part 1
+    2a462a  lea ($20,A6),A0 / jsr $26331C   part 2
+    2a4634  lea ($40,A6),A0 / jsr $26331C   part 3
+    2a463e  lea ($60,A6),A0 / jsr $26331C   part 4
+
+**`$242952` IS THE STAGE-CLEAR ROUTINE**, the one D11 records W232 forcing headlessly ("the stage machine
+WORKS: the type-6 object runs, the clearing flag sets, the stage word steps"). So **Hibachi's handler is where
+the game's completion path is triggered**: `$25962E` returns a carry, and on the clear side the handler calls
+stage-clear and frees itself. **That makes this handler directly load-bearing for D37 (the endings)** -- it is
+the junction between the boss finishing and the stage machine advancing, and it is 170 bytes.
+
+**AND `$26331C` -- THE BARE `rts` I FOUND IN `$1A` -- IS CALLED FOUR TIMES HERE, PER PART, AT THE `$20`
+STRIDE.** `(A6)`, `($20,A6)`, `($40,A6)`, `($60,A6)`. So it is a deliberate **per-part hook that is disabled in
+this build**, not an oddity of `$1A`: five call sites across two types, all passing a part base, all reaching a
+single `rts`. **Transcribe the calls and do nothing in them.** Anyone who "implements" it will be inventing a
+subsystem the cartridge switched off.
+
+**Hibachi is therefore a FOUR-part object** (four `$26331C` calls at `$20` intervals), where `$4C` has five and
+`$1A` two. And `$2A6B94` is the first genuinely unported callee -- read it before anything else, since it runs
+before every other line of the handler.
+
 ## TYPE $4C (W354, OPENED) -- the "eight state handlers" claim is WRONG
 
 These notes have long said `$4C` has "eight state handlers (~2300 bytes)" with `$26F858`/`$26F86A`,
