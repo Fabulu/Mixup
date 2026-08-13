@@ -665,11 +665,29 @@ this band agrees on". **That was wrong.** Here it is a one-shot latch armed only
 5's `$1F` as a second gate. **Eighth same-offset-different-meaning instance, and it retires the one exception I
 thought the rule had.**
 
-`$8130CE == $1F0` is also the same idiom `$49`'s init uses at `$8130CE == $1F3` to pick its direction, and `$46`'s
-five-way cascade uses on `$E4`/`$E6`/`$106`/`$108`/`$116`. **So three types key off exact spawn-clock values, and
-`$1F0` and `$1F3` being three apart suggests one scripted moment that several types react to.** Worth checking
-against stage 5's script the way `w352type46script.test.js` checked `$46`'s five -- if `$1F0` is not a `$4C` spawn
-clock, then this arm fires on a frame when some OTHER type spawns, which would be a genuinely different mechanism.
+**AND THE SCRIPT CHECK CONFIRMS IT IS A DIFFERENT MECHANISM.** Scanning stage 5's 770 records by type:
+
+    $4C spawns at   $1B8  -- and NOTHING ELSE. It is a single long-lived record.
+    $49 spawns at   $1F3  $269
+    $10 spawns at   $1F0  $1F2 $1F6 $1FA $1FB
+
+**So `$4C`'s `cmpi.w #$1F0` is NOT self-referential.** `$4C` spawned at `$1B8` and this arm fires **56 clock units
+later**, at the exact moment **type `$10`** spawns. By contrast `$49`'s `== $1F3` IS self-referential -- `$49`
+spawns at `$1F3`, so its init reads the clock that created it.
+
+**Two types, the same instruction shape, opposite meanings:**
+
+    $49   $8130CE == $1F3   reads the clock that SPAWNED IT -- a per-spawn parameter
+    $4C   $8130CE == $1F0   watches for ANOTHER TYPE's spawn moment -- a cross-type CUE
+
+**So `$4C` is a long-lived coordinator that reacts to the script reaching a specific frame**, and combined with its
+`$8130DE` mutual-exclusion release, this type is about inter-record timing rather than its own behaviour. That is
+consistent with everything else odd about it: five unrolled parts, no state machine, a boolean draw selector, and
+almost all its state in the sub-record.
+
+**This is why the script check was worth running rather than assuming the idiom transferred** -- the instruction is
+identical to `$49`'s and means something entirely different, which is the eighth instance of this band's rule
+appearing at the level of a WHOLE IDIOM rather than a field.
 
 ### The FIFTH part's prototype tail IS the handler's code -- and the depth formula predicts it exactly
 
