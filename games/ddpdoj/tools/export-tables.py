@@ -2779,6 +2779,11 @@ SHOT_WINDOWS.extend([
                        "is $26F8A6, the first handler it points at"),
     (0x26F55A, 0x00AC, "W342: type $4C's 6-word record prototype and ALL FIVE sub prototypes, "
                        "$26F55A..$26F605 -- overlapping its handler at $26F5F2 by TWENTY bytes"),
+    (0x2735FA, 0x0100, "W372: type $4C's $26FA82 FAN table -- 64 longwords, $2735FA..$2736FA, indexed "
+                       "by `andi.w #$3F,D3 / add.w D3,D3 / add.w D3,D3` so the index is 0..$3F and the "
+                       "ROM's own mask bounds it; no guard needed. The emitter walks it with the type's "
+                       "ONE dbra ($26FB3A, the 28-byte body the spec records as localLoop), stepping D1 "
+                       "by 1 and re-masking to $3F each pass, so a full fan is 64 headings"),
     (0x26FCD2, 0x0020, "W372: type $4C state 2's EIGHT spawn-bias longwords, $26FCD2..$26FCF2. "
                        "Indexed by ($34,A6) through `andi.w #$7,D0 / add.w D0,D0 / add.w D0,D0`, so the "
                        "index is 0..7 and the table is exactly eight longs -- the ROM's own mask bounds "

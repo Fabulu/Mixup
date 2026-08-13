@@ -927,3 +927,35 @@ test('W372 $26F9A2 RETRACTS the very offsets the part-3 draw pair adds and subtr
   assert.equal(IMG.readUInt32BE(0x26fa16), pair[1].biases[0],
     '$26FA14 addi.l #$FC401380 -- the same first bias as the $26F7D2 half it fires from');
 });
+
+test('W372 $26FA82 is a 64-heading FAN, and localLoop is its dbra', { skip: SKIP }, () => {
+  // The spec has recorded `localLoop: 0x26fb3a` as "the one dbra, 28-byte body, NOT the part iteration"
+  // since W367, without knowing what it iterated. It is a fan: each pass indexes $2735FA by
+  // (D1 & $3F) * 4, emits through $281402, then steps D1 and re-masks -- so it sweeps headings.
+  assert.equal(IMG.readUInt16BE(0x26fb18), 0x41f9, '$26FB18 lea abs.l,A0');
+  assert.equal(IMG.readUInt32BE(0x26fb1a), 0x002735fa, '  ...the fan table');
+  assert.equal(IMG.readUInt16BE(0x26fb20), 0x0243, '$26FB20 andi.w #imm,D3');
+  assert.equal(IMG.readUInt16BE(0x26fb22), 0x003f, '  ...#$3F -- 64 entries, and it bounds the window');
+  assert.equal(IMG.readUInt32BE(0x26fb30), 0x00281402, '$26FB2E jsr $281402 -- the emit');
+  assert.equal(IMG.readUInt16BE(0x26fb36), 0x0241, '$26FB36 andi.w #imm,D1');
+  assert.equal(IMG.readUInt16BE(0x26fb38), 0x003f, '  ...#$3F -- the heading WRAPS, it does not clamp');
+  assert.equal(IMG.readUInt16BE(0x26fb3a), 0x51cf, '$26FB3A dbra D7');
+  assert.equal(T4C.localLoop, 0x26fb3a, 'and this is the localLoop the spec already recorded');
+});
+
+test('W372 ($6E,A6)/($6F,A6) is a SECOND counter-and-reload pair', { skip: SKIP }, () => {
+  // Identical shape to ($34,A6)/($35,A6): subq.b, borrow, then reload from the adjacent byte. So the
+  // pattern is the type's idiom rather than a one-off, and the word-literal rule applies wherever one
+  // of these pairs is armed.
+  assert.equal(IMG.readUInt16BE(0x26fb3e), 0x532e, '$26FB3E subq.b #1,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26fb40), 0x006e, '  ...($6E,A6)');
+  assert.equal(IMG[0x26fb42], 0x64, '$26FB42 bcc -- no borrow yet');
+  assert.equal(IMG.readUInt16BE(0x26fb46), 0x1d6e, '$26FB46 move.b (d16,A6),(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26fb48), 0x006f, '  ...FROM ($6F,A6), its RELOAD');
+  assert.equal(IMG.readUInt16BE(0x26fb4a), 0x006e, '  ...INTO ($6E,A6)');
+  // And it then tests part 4's two offsets TOGETHER, the pair the part-4 draw routines use.
+  assert.equal(IMG.readUInt16BE(0x26fb4c), 0x302e, '$26FB4C move.w (d16,A6),D0');
+  assert.equal(IMG.readUInt16BE(0x26fb4e), 0x0068, '  ...($68,A6)');
+  assert.equal(IMG.readUInt16BE(0x26fb50), 0xd06e, '$26FB50 add.w (d16,A6),D0');
+  assert.equal(IMG.readUInt16BE(0x26fb52), 0x006a, '  ...plus ($6A,A6) -- zero only when BOTH are');
+});
