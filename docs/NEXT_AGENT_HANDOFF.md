@@ -160,6 +160,28 @@ because there is no dispatch**: the parts are handled in straight-line sequence,
 loop -- a sequence of five per-part blocks, each reading `(part * $20 + field, A6)`.** The one `dbra` at `$26FB3A`
 is a local 28-byte loop inside one of those blocks, not the part iteration.
 
+### AND W342's WINDOW LENGTH DECOMPOSES EXACTLY. Independent confirmation.
+
+    26f4e2  lea $26F566,A0 / jsr $2637A2      the sub prototype
+    26f4ee  lea $26F55A,A0
+    26f4f4  move.w #$5,D0                     D0+1 = SIX words for loadRecordProto
+
+    record prototype   $26F55A + $C     six words          -> ends $26F566
+    five sub protos    $26F566 + $A0    5 x $20            -> ends $26F606
+    TOTAL              $26F55A .. $26F606                  = $AC
+
+**W342 declared that window as `$26F55A + $AC` -- exactly `$C + $A0`.** So the window a previous wave sized from
+the prototype loads alone independently confirms the five-part reading, and the five-part reading independently
+confirms the window. **Two arguments, arrived at from opposite directions, agreeing to the byte.**
+
+That is the third window this session verified two independent ways (`$272750` by adjacency and by cursor range,
+`$269246` by adjacency and by cursor range, now `$26F55A` by declaration and by decomposition). **When a window's
+length decomposes cleanly into a structure you can name, that is worth more than either fact alone** -- and it is
+cheap to check on any window already declared.
+
+Note `$4C`'s record prototype is only SIX words where `$55` has fifteen and `$1A` has fifteen: the five-part object
+keeps almost all its state in the sub-records, not the record. Consistent with the record having no state machine.
+
 **Settled and needing no further work:** `tst.b ($17,A5)` (one branch, two ported stubs), and the eight addresses
 the old note listed as unported callees (all internal, two of them merely the boundaries `$26FF9E` and `$26FFE8`).
 
