@@ -1588,7 +1588,11 @@ against the port:
 it proves the compiled-C convention against real code rather than against a scan. **Its three, measured:**
 
     $2890FA    262 bytes
-    $289292     72 bytes
+    $289292     72 bytes   -- READ (W372). A per-object loop: `jsr $241E34` (ported), then bounds
+                              culling with `addi.w #$400` / `#$C000` / `#$9000` and `bcs`, walking
+                              A6 by a $40 STRIDE and decrementing a count at $81CDEC.
+                              NOT portable alone: A6 and D7 come from the CALLER, so it needs
+                              $2890FA or slot [14] itself written first. Bottom-up fails here.
     $2892DA   1220 bytes
     -----------------------
               ~1554 bytes of new porting, plus slot [14]'s own 436
