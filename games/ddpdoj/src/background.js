@@ -244,6 +244,19 @@ export class BgVram {
  * credits, chain high-water) still goes through the unported `$240DC2` /
  * `$141258` path, so those cells stay blank in this map until Wave C'.
  */
+/** `$23C622` -- CLEAR THE TX LAYER. Twenty-two bytes, and three dispatch slots call it ([7], [8] and
+ *  [19]), which is what a screen does before it draws itself.
+ *
+ *  `move.w #$7FF,D0` with a `dbra` is 2048 longwords, and 2048 IS 64 x 32 -- exactly `TxVram`'s
+ *  capacity. So it clears the whole map, not a window of it, and the count needs no bounds check
+ *  because the cartridge's own constant is the map size.
+ */
+export function clearTx23C622(tx) {
+  for (let i = 0; i < 64 * 32; i++) {                        // $23C628 move.w #$7FF,D0 / dbra
+    tx.setLong(0x904000 + i * 4, 0);                         // $23C62C move.l #$0,(A0)+
+  }
+}
+
 /** `$240CF0` -- THE TX BLOCK BLIT. 60 bytes, and the routine `$240DC2`'s note above has been standing
  *  in for. It draws a rectangle of tiles into `$904000` with two nested `dbra`s.
  *

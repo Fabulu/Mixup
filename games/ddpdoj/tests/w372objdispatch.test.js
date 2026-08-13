@@ -200,3 +200,22 @@ test('W372 slots [16] and [17] DRAW TEXT -- and [16] neighbours the service poll
   assert.ok(refs(0x256e7a, 0x23d186) || refs(0x256e7a, 0x23d18e), 'slot 16 reads input');
   assert.ok(refs(0x25ceb8, 0x23d186) || refs(0x25ceb8, 0x23d18e), 'slot 17 reads input');
 });
+
+test('W372 $23C622 clears the WHOLE TX map, and 2048 is exactly its size', { skip: SKIP }, async () => {
+  // Twenty-two bytes, called by three dispatch slots -- what a screen does before drawing itself.
+  assert.equal(IMG.readUInt16BE(0x23c622), 0x41f9, '$23C622 lea abs.l,A0');
+  assert.equal(IMG.readUInt32BE(0x23c624), 0x00904000, '  ...$904000, the TX map');
+  assert.equal(IMG.readUInt16BE(0x23c628), 0x303c, '$23C628 move.w #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x23c62a), 0x07ff, '  ...#$7FF');
+  assert.equal(IMG.readUInt16BE(0x23c62c), 0x20fc, '$23C62C move.l #imm,(A0)+');
+  assert.equal(IMG.readUInt16BE(0x23c632), 0x51c8, '$23C632 dbra D0');
+  assert.equal(0x7ff + 1, 64 * 32, 'and $7FF + 1 IS the map size -- no bounds check needed');
+  // Drive it: write a cell, clear, and the cell is gone.
+  const { TxVram, clearTx23C622, txBlock240CF0 } = await import('../src/background.js');
+  const tx = new TxVram();
+  txBlock240CF0(tx, 1, 1, 0, 0, (0x41 << 16) | 7);
+  assert.notEqual(tx.w[(((1 << 6) + 1)) * 2], 0, 'the cell is written');
+  clearTx23C622(tx);
+  assert.equal(tx.w[(((1 << 6) + 1)) * 2], 0, '  ...and cleared');
+  assert.ok(tx.w.every((v) => v === 0), 'the WHOLE map, not a window of it');
+});
