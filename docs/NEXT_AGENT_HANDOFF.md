@@ -5693,9 +5693,31 @@ having written while the checks were fresh.
                                      borrow-rule-symmetric biases $FA000680 / $F9FFF980
     tail1A(ram, rom, a5, a6, ctx)    the $269246 table by cursor, swap-separated word adds -$400/+$500
                                      (NOT an addi.l), D3 = $620, and BOTH emits $23D762 and $23DECE
-    death1A(ram, rom, a5, a6, ctx)   killScore $350, cue $28C2DC, burstBucket $F800, the rank-4-exactly
-                                     mirror burst $0800, then THREE spawnEffect calls with DIFFERENT
-                                     velocities -- count the sites, do not read them in sequence
+    death1A(ram, rom, a5, a6, ctx)   killScore $350, cue $28C2DC, then the burst and THREE spawnEffect
+                                     calls -- kinds $D, $5, $5 -- with DIFFERENT velocities. Count the
+                                     sites; reading them in sequence produced a retraction in W351.
+
+**Two conventions read for the death arm, and one of them changes the plan:**
+
+    spawnEffect(ram, ctx, d0, siteAddr = 0x289004)     effects.js:373 -- PORTED, and the default
+                                                       siteAddr is already $289004
+    $289B22  the burst                                 **NOT PORTED.** Its "code" mentions are
+                                                       `noteEffect(u, 0x289b22, a5, ...)` deferrals at
+                                                       handlers.js:5000-5001 plus an address label in
+                                                       T1B's spec at :3291
+
+**So `death1A` needs `$289B22` written, or deferred through `noteEffect` the way `$1B` and `$84` already do.** That
+is a real decision rather than a transcription: `$1B`'s and `$84`'s death arms both defer it, so deferring is the
+established treatment and would not make `$1A` worse than its siblings.
+
+**AND THIS EXPOSED A THIRD DEFERRAL FORM `claimed.py` COULD NOT SEE.** Its classifier matched `note(` and
+`unreached(` but not **`noteEffect(`** -- "Effect" follows "note", so `note\s*\(` fails. `$289B22` therefore
+reported CLAIMED with three CODE mentions when none is an implementation. Widened to `note\w*\s*\(` in W365, which
+drops it to 2 CODE and now trips the THIN warning, i.e. the tool now flags it for exactly the check it needs.
+
+**That is the FIFTH correction to `claimed.py` and the third to its classifier.** The deferral helpers are a
+FAMILY (`note`, `unreached`, `noteEffect`, and possibly others), and any new one silently turns a deferral into a
+CLAIMED verdict. **If a new `noteXxx()` helper is added to the port, widen this regex in the same commit.**
 
 **RESOLVED: `spawnCues28AC72`'s signature is `(ram, rom, a5, a6)`.** `cues.js:72` defines it and
 `handlers.js:1580`, `:2224` and `:3392` all call it that way. **My guess was `(ram, rom, ctx, a6)` -- wrong in the

@@ -46,7 +46,11 @@ def scan(addr: str):
                 # string tested NOTE in isolation, which is how three of Hibachi's callees were reported
                 # CLAIMED when they are deferrals. An address passed AS AN ARGUMENT to note()/unreached()
                 # is a deferral, full stop, so that is now checked before anything else.
-                if re.search(r'\b(note|unreached)\s*\([^)]*' + re.escape(addr.lower()) + r'\b',
+                # W365: the deferral helpers are a FAMILY. `noteEffect(u, 0x289b22, ...)` is a deferral,
+                # and `note\s*\(` misses it because "Effect" follows "note". That made $289B22 report
+                # CLAIMED with three CODE mentions when all three are deferrals or address labels. So
+                # match note/unreached followed by any identifier characters.
+                if re.search(r'\b(note|unreached)\w*\s*\([^)]*' + re.escape(addr.lower()) + r'\b',
                              line.lower()):
                     kind = 'NOTE'
                 elif re.match(r'\s*(//|\*|/\*)', line):
