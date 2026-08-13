@@ -650,6 +650,27 @@ comes from the handler's own opcodes through the twenty-byte prototype overlap. 
 mutual-exclusion claim on its first frame is decided by an opcode byte**, which is why that value cannot be invented
 and why the overlap has to be copied rather than reasoned about.
 
+**AND THAT ARM ENDS BY FREEING THE RECORD:** `$26F61A jmp $263762`. So part 5's `$1E` being set is a RETIREMENT
+path -- release the mutual-exclusion claim, push external speed, die. Not an ordinary per-frame arm.
+
+### `($16,A5)` IS NOT THE ON-SCREEN LATCH IN `$4C`. It is a one-shot armed at a specific SCRIPT FRAME.
+
+    26f622  tst.b ($16,A5) / bne $26F650      already armed -> skip
+    26f62a  tst.b ($9F,A6) / bne $26F650      part 5's $1F must be ZERO
+    26f632  cmpi.w #$1F0,$8130CE / bne        <- the SPAWN CLOCK, EXACTLY $1F0
+    26f63e  move.b #$1,($16,A5)               arm it, once, forever
+
+**In `$46`, `$4B` and `$1A`, `($16,A5)` is the once-on-screen flag** -- and these notes call `$16` "the one field
+this band agrees on". **That was wrong.** Here it is a one-shot latch armed only at spawn clock `$1F0`, with part
+5's `$1F` as a second gate. **Eighth same-offset-different-meaning instance, and it retires the one exception I
+thought the rule had.**
+
+`$8130CE == $1F0` is also the same idiom `$49`'s init uses at `$8130CE == $1F3` to pick its direction, and `$46`'s
+five-way cascade uses on `$E4`/`$E6`/`$106`/`$108`/`$116`. **So three types key off exact spawn-clock values, and
+`$1F0` and `$1F3` being three apart suggests one scripted moment that several types react to.** Worth checking
+against stage 5's script the way `w352type46script.test.js` checked `$46`'s five -- if `$1F0` is not a `$4C` spawn
+clock, then this arm fires on a frame when some OTHER type spawns, which would be a genuinely different mechanism.
+
 ### The FIFTH part's prototype tail IS the handler's code -- and the depth formula predicts it exactly
 
 Dumping the five `$20` blocks from `$26F566`, parts 1-4 are ordinary data with distinct values, and **part 5's tail
