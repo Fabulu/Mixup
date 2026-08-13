@@ -5474,7 +5474,29 @@ borrow possible), a negative low half (borrow applies), and a zero low half (bor
 `$289004` is `spawnEffect`, already ported and used by `death1B` among others, so **the whole death arm needs no
 new primitive** -- consistent with every other type in this band.
 
-Still to read: `$2691C8` onward to the end of the death arm.
+### The death arm spawns TWO effect kinds, set up almost identically
+
+    2691a8  moveq #$D,D0 / jsr $289004      effect kind $D
+    2691b0  move.l ($2,A6),($2,A0)          the record's position
+    2691b6  move.w #$10,($1e,A0)
+    2691bc  move.w #$0,($12,A0) / move.w #$0,($14,A0)
+    2691c8  move.w #$400,($26,A0)           <- only the $D effect gets these three
+    2691ce  move.w #$0,($28,A0)
+    2691d4  move.w #$1,($10,A0)
+    2691da  moveq #$5,D0 / jsr $289004      effect kind $5
+    2691e2  move.l ($2,A6),($2,A0)          the SAME position
+    2691e8  move.w #$10,($1e,A0)            the SAME $10
+    2691ee  move.w #$0,($12,A0)
+
+**Two `spawnEffect` calls, kinds `$D` and `$5`, both at the record's own position with `($1E,A0) = $10`.** The
+first also gets `($26,A0) = $400`, `($28,A0) = 0` and `($10,A0) = 1`; the second's tail is not yet fully read.
+
+**The near-identical setup is the hazard here.** Eleven of the two blocks' instructions match, and the differences
+are the kind byte and three fields on the first. **A port that factored these into one helper called twice would
+have to get the "extra three fields only on the first" right**, and the symmetry actively invites collapsing them.
+Write them out, or parameterise explicitly.
+
+Still to read: `$2691F4` to the death arm's end.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
