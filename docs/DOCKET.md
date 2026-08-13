@@ -1021,6 +1021,15 @@ whether the boss fights. If the stage does NOT clear, that is a real bug and the
 **W365 `20260813065010` -- TYPE `$1A` IS PORTED.** Published on the behavioural-change reading again, and this one
 is a real change rather than a registration: `$1A` is a **slewing twin-weapon turret** and it now fires.
 
+**W370 `20260813164141` -- HIBACHI CAN SPAWN.** The cadence wave, and it carried a real behavioural change: the
+stage-5 boss's init body `$2A42DC` landed, so `$B0` is no longer unspawnable and stage 5 can reach its end.
+`export-web.mjs` ran BEFORE `publish.mjs` because W369 declared a new ROM window (`$2A443C+$1CA`), which is the
+exact case where skipping it serves stale assets from the live site.
+
+The wave before it is worth the log line too: `$1A` and `$B0` were BOTH unspawnable and nothing reported it. Their
+specs kept `ported: false` after their handlers landed, which made w346's registry tests skip them entirely, so
+neither missing init body was ever checked. Three separate green tests were asserting a state that was not true.
+
 **Stage 5 is down to ONE unported type over ONE record** (`$4C`), from FOUR types over 19 records at the start of
 this session.
 
