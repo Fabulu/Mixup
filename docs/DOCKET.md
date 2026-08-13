@@ -1504,6 +1504,22 @@ port already maps all seven in `main.js`:
 call #1 `$256D5A` reads `$C08004`/`$C08006`, which are **hardware I/O**, and call #3 `$24683E` is the animation-object
 driver that `animobjects.js` already models.
 
+### THE FRONT END IS COMPILED C, AND THE GAMEPLAY IS NOT (W372)
+
+**The most consequential thing this project has learned about the docket.** Slot `[18]`'s state routines use `link`
+stack frames, `pea` to push arguments, and `lea d(A7),A7` for CALLER cleanup -- the **C calling convention**. Type
+`$4C`'s 666-byte enemy body has **ZERO** of all three. Measured, pinned, and not close: `$248492` alone has a `link`,
+sixteen `pea`s and five caller-cleanups.
+
+**So the front end and the gameplay are different KINDS of code**, and every technique this project has built was
+developed against the hand-written half: register-by-register transcription, "read the callee's signature from its
+definition", the aligned sweep's flow-break rule. **Screens will need their arguments read off the STACK**, and a
+port that goes looking for them in registers will find them empty and conclude the routine takes none.
+
+**Plan for it before starting D33/D34/D37, not during.** The reference module `tallyscreen.js` is hand-written
+assembly and will NOT show this shape, so it is the right reference for the state-machine skeleton and the wrong one
+for the routines inside.
+
 ### THE OBJECT DISPATCH TABLE IS THE DOCKET'S KEY (W372)
 
 **Screens in this game are OBJECT DISPATCH ENTRIES.** `tallyscreen.js` opens *"OBJECT DISPATCH [11], `$25DBB4` -- THE

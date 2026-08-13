@@ -150,3 +150,31 @@ test('W372 the TX blit and string draw RUN, and the string trap is real', { skip
   const k4 = (((8 << 6) + 6) << 2) >>> 2;
   assert.equal(tx2.w[k4 * 2], 0, 'the NUL stopped it -- no fourth glyph');
 });
+
+test('W372 the front-end screens are COMPILED C, the gameplay code is not', { skip: SKIP }, () => {
+  // The most consequential thing found about the docket. Slot [18]'s state routines use `link` stack
+  // frames, `pea` to push arguments, and `lea d(A7),A7` for CALLER cleanup -- the C calling convention.
+  // Type $4C's 666-byte enemy body has ZERO of all three.
+  //
+  // So the front end and the gameplay are different KINDS of code. Every technique this project has
+  // built -- register-by-register transcription, "read the callee's signature", the aligned sweep --
+  // was developed against hand-written assembly. Screens will need arguments read off the STACK, and a
+  // port that assumes registers will find them empty.
+  const count = (base, len, pred) => {
+    let n = 0;
+    for (let a = base; a < base + len; a += 2) if (pred(IMG.readUInt16BE(a))) n++;
+    return n;
+  };
+  const isLink = (w) => (w & 0xfff8) === 0x4e50;
+  const isPea = (w) => (w & 0xffc0) === 0x4840 && (w & 0x3f) >= 0x38;
+  const isPop = (w) => w === 0x4fef;                       // lea d(A7),A7 -- caller cleanup
+  // The screens.
+  assert.ok(count(0x248492, 0x400, isLink) >= 1, '$248492 builds a link frame');
+  assert.ok(count(0x248492, 0x400, isPea) >= 10, '  ...and pushes many stack arguments');
+  assert.ok(count(0x248492, 0x400, isPop) >= 3, '  ...with caller cleanup');
+  assert.ok(count(0x2475ca, 0x400, isLink) >= 1, '$2475CA builds one too');
+  // The gameplay, for contrast: none of it.
+  assert.equal(count(0x26f5f2, 0x400, isLink), 0, 'type $4C has NO link frames');
+  assert.equal(count(0x26f5f2, 0x400, isPea), 0, '  ...no stack arguments');
+  assert.equal(count(0x26f5f2, 0x400, isPop), 0, '  ...and no caller cleanup');
+});
