@@ -579,6 +579,22 @@ and `$12 ^ $D = $1F`, and omitting the restore leaves the object stuck in its fl
 **BIASES:** `$4C` uses sequential `addi.l`, which **DO combine**. `$1A` uses swap-separated word adds which must NOT be
 folded, and `$55`/`$46` use packed longs. Three conventions in one band -- check per site.
 
+**W371: FIFTEEN, NOT SIXTEEN.** `$26F702` was in the inventory and is not a subroutine -- it is the DISPLACEMENT WORD
+of the `bsr.w $26FA82` at `$26F700`. Nothing in the span branches to it. **The test that was supposed to catch this
+passed it for four waves**, because its scan walks every 2-byte boundary, which is the same limitation that created
+the bad entry: test and data shared one bug, so their agreement proved nothing. The test now also requires that an
+entry not be preceded by `bsr.w`.
+
+**The tiny subroutines come in OFF/ON PAIRS, and ON is NOT the inverse of OFF:**
+
+    $26F98C  move.w #$0,($46,A6) / rts
+    $26F994  move.w #$1,($46,A6) / move.w #$0,($4C,A6) / rts             <- also clears $4C
+    $26FA56  move.w #$0,($66,A6) / rts
+    $26FA5E  move.w #$1,($66,A6) / move.w #$0,($6C,A6) / move.w #$1818,($6E,A6)
+
+Switching a part ON **resets its companion fields**; switching it off does nothing else. Modelling each pair as one
+boolean setter drops the reset and leaves stale state behind.
+
 **SIXTEEN internal subroutines, only TWO shared** (`$26F858` 8 callers, `$26FF9E` 7). The other fourteen are called
 once and can be inlined. The eight the old note listed as "unported callees" are all real entry points in this list.
 

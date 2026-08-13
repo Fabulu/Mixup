@@ -9200,9 +9200,24 @@ const T4C = Object.freeze({
   // W367: THE SUBROUTINE INVENTORY. Sixteen `bsr` targets, and only TWO are shared -- so the port needs
   // two real functions and fourteen inlinable blocks. The old handoff note listed eight of these as
   // "unported callees"; they are internal entry points, and its addresses were all real.
+  // W371: $26F702 was in this list and is NOT a subroutine. It is the DISPLACEMENT WORD of the
+  // `bsr.w $26FA82` at $26F700 -- mid-instruction, and nothing in the span branches or calls to it.
+  // The scanner that built this list read every 2-byte boundary, which is the documented limitation of
+  // branches.py, and $26F702's `03 80` looked like an opcode. FIFTEEN subroutines, not sixteen.
   subroutines: Object.freeze([
-    0x26f702, 0x26f71a, 0x26f7a8, 0x26f7d2, 0x26f7fc, 0x26f82a, 0x26f858, 0x26f86a,
+    0x26f71a, 0x26f7a8, 0x26f7d2, 0x26f7fc, 0x26f82a, 0x26f858, 0x26f86a,
     0x26f98c, 0x26f994, 0x26f9a2, 0x26fa56, 0x26fa5e, 0x26fa82, 0x26ff9e, 0x26ffe8,
+  ]),
+  // The tiny ones come in OFF/ON PAIRS, one pair per part, and the ON member does more than the OFF:
+  //   $26F98C  move.w #$0,($46,A6) / rts
+  //   $26F994  move.w #$1,($46,A6) / move.w #$0,($4C,A6) / rts      <- also clears $4C
+  //   $26FA56  move.w #$0,($66,A6) / rts
+  //   $26FA5E  move.w #$1,($66,A6) / move.w #$0,($6C,A6) / move.w #$1818,($6E,A6) / ...
+  // So "on" is not the inverse of "off": switching a part on RESETS its companion fields. A port that
+  // models these as one boolean setter loses the reset and leaves stale state behind.
+  partSetters: Object.freeze([
+    Object.freeze({ off: 0x26f98c, on: 0x26f994, flagAt: 0x46, clears: Object.freeze([0x4c]) }),
+    Object.freeze({ off: 0x26fa56, on: 0x26fa5e, flagAt: 0x66, clears: Object.freeze([0x6c]) }),
   ]),
   // W371 CORRECTION: this was FOUR entries starting at $26F708, and it was missing the FIRST draw call.
   // $26F704 is a `bsr.w $26F7FC` that is ALSO the target of two branches -- $26F5F8's pause test and

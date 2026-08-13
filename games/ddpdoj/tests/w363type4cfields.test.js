@@ -245,8 +245,14 @@ test('W367 T4C records the subroutine inventory, and it matches the bsr scan', {
   }
   for (const sub of T4C.subroutines) {
     assert.ok(targets.has(sub), `$${sub.toString(16)} is a real bsr target`);
+    // W371: being a "target" is not enough, and this test PASSED $26F702 for four waves because the
+    // scan above walks every 2-byte boundary -- the same limitation that put $26F702 in the list in
+    // the first place. Test and data shared one bug, so agreement proved nothing. An entry must also
+    // not BE the displacement word of a preceding bsr.w, which is exactly what $26F702 was.
+    assert.notEqual(IMG.readUInt16BE(sub - 2), 0x6100,
+      `$${sub.toString(16)} is preceded by bsr.w, so it is that instruction's displacement word`);
   }
-  assert.equal(T4C.subroutines.length, 16, 'sixteen internal subroutines');
+  assert.equal(T4C.subroutines.length, 15, 'FIFTEEN internal subroutines -- was 16 with $26F702');
   // The two shared ones are in the list, and the tail's four are a subset of it.
   assert.ok(T4C.subroutines.includes(T4C.stateSetter), 'the state setter is one of them');
   assert.ok(T4C.subroutines.includes(T4C.distBander), 'so is the distance bander');
@@ -547,4 +553,38 @@ test('W371 $26FFE8 returns a boolean in the CARRY, via two shared SR stubs', { s
   assert.equal(0x26f6e6 + IMG.readInt16BE(0x26f6e6), 0x26ffe8, '  ...to $26FFE8');
   const after = IMG.readUInt16BE(0x26f6e8) & 0xff00;
   assert.ok(after !== 0x6400 && after !== 0x6500, 'the caller does not branch on the carry it returns');
+});
+
+test('W371 $26F702 is NOT a subroutine -- it is a displacement word', { skip: SKIP }, () => {
+  // It was in `subroutines`. $26F700 is `bsr.w $26FA82`, so $26F702 is that instruction's displacement,
+  // and `03 80` merely looks like an opcode to a scanner walking every 2-byte boundary.
+  assert.equal(IMG.readUInt16BE(0x26f700), 0x6100, '$26F700 bsr.w');
+  assert.equal(0x26f702 + IMG.readInt16BE(0x26f702), 0x26fa82, '  ...displacement points at $26FA82');
+  assert.ok(!T4C.subroutines.includes(0x26f702), 'so it is no longer listed as an entry point');
+  assert.equal(T4C.subroutines.length, 15, 'fifteen subroutines, not sixteen');
+  // And nothing in the span reaches it, which is what makes the removal safe rather than a guess.
+  let reached = 0;
+  for (let i = T4C.handler; i < T4C.handlerEnd; i += 2) {
+    const w = IMG.readUInt16BE(i);
+    const isBr = [0x6100, 0x6000, 0x6600, 0x6700, 0x6a00, 0x6b00, 0x6c00, 0x6d00].includes(w);
+    if (isBr && i + 2 + IMG.readInt16BE(i + 2) === 0x26f702) reached++;
+  }
+  assert.equal(reached, 0, 'no branch or call in $4C targets $26F702');
+});
+
+test('W371 the part setters are OFF/ON pairs, and ON is not the inverse of OFF', { skip: SKIP }, () => {
+  // Switching a part ON also RESETS companion fields. Modelling these as one boolean setter drops the
+  // reset and leaves stale state behind.
+  for (const p of T4C.partSetters) {
+    assert.equal(IMG.readUInt16BE(p.off), 0x3d7c, `$${p.off.toString(16)} move.w #imm,(d16,A6)`);
+    assert.equal(IMG.readUInt16BE(p.off + 2), 0x0000, '  ...#$0');
+    assert.equal(IMG.readUInt16BE(p.off + 4), p.flagAt, `  ...($${p.flagAt.toString(16)},A6)`);
+    assert.equal(IMG.readUInt16BE(p.off + 6), 0x4e75, '  ...rts -- OFF does nothing else');
+    assert.equal(IMG.readUInt16BE(p.on), 0x3d7c, `$${p.on.toString(16)} move.w #imm,(d16,A6)`);
+    assert.equal(IMG.readUInt16BE(p.on + 2), 0x0001, '  ...#$1, the same field');
+    assert.equal(IMG.readUInt16BE(p.on + 4), p.flagAt, '  ...same offset as OFF');
+    assert.equal(IMG.readUInt16BE(p.on + 6), 0x3d7c, '  ...and then a SECOND store, which OFF lacks');
+    assert.equal(IMG.readUInt16BE(p.on + 8), 0x0000, '  ...#$0');
+    assert.equal(IMG.readUInt16BE(p.on + 10), p.clears[0], '  ...clearing the companion field');
+  }
 });
