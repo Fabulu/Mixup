@@ -94,6 +94,29 @@ twelve no-ops in total, plus four dead register loads. **ONE unported callee, no
 
 `$2A6B94` is therefore the entire boss, and it is the 1838-byte stretch ending at `$2A4DDE`.
 
+### W358: `$2A6B94` opened -- it IS real code, and it opens with an early-exit guard
+
+Checked against the stub pattern first, since three "unported" routines this session turned out to be bare
+`rts`. This one is not:
+
+    2a6b94  4a6e 0106     tst.w ($106,A6)
+    2a6b98  6702          beq.s $2A6B9A      <- branches over the rts to the NEXT instruction
+    2a6b98  4e75          rts                 non-zero -> RETURN IMMEDIATELY
+    2a6b9a  4a2e 010e     tst.b ($10E,A6)
+    2a6b9e  6600 0370     bne $2A6F10
+
+**The `beq.s +2` over a single `rts` is the idiom**: the routine does nothing unless `($106,A6)` is zero. Its
+first `rts` is only 6 bytes in, which is why a naive "first rts bounds the routine" scan would have called it a
+stub too. **The real first block runs to `$2A6E2E`, 666 bytes in.**
+
+**`($106,A6)` and `($10E,A6)` are both past `$100`**, consistent with Hibachi's eleven parts reaching `$1A0` --
+so A6 here is the same large multi-part sub-record the handler walks. **These are not part-relative offsets;
+they are absolute positions in a sub-record big enough to hold eleven `$20`-byte parts and more.**
+
+**So the boss's structure is: a guard on `($106,A6)`, then a `($10E,A6)` test branching `$370` forward.** Two
+gates before any behaviour. Read `$2A6B9A..$2A6E2E` next, and note that `$2A6F10` (the `bne` target) is a
+separate arm past the first block's end.
+
 **The lesson, and it is now three for three: in this build, an UNCLAIMED small routine is likelier to be a stub
 than to be work.** `$26331C`, `$25A17A`, and the four-`rts` run all read as "unported" to `claimed.py` while
 containing nothing. **Disassemble before estimating** -- six bytes of `4e75` cost nothing to check and would
