@@ -9098,9 +9098,15 @@ const T1A = Object.freeze({
 // all eight addresses are INTERNAL to $4C (two of them, $26FF9E and $26FFE8, are merely where the next
 // routine starts), and there are no eight states. What there is:
 //
-//   * NO record state machine. Zero `cmpi.b #imm,(d16,A5)` in $26F5F2..$26FFE8, where every sibling
-//     dispatches exactly that way on ($17,A5).
-//   * NO jump table. One `jsr (A0)` in the whole span.
+//   * No `cmpi.b` cascade on the RECORD: zero `cmpi.b #imm,(d16,A5)` in $26F5F2..$26FFE8, where every
+//     sibling dispatches that way on ($17,A5). TRUE, but NOT the same as "no state machine" -- see below.
+//   * **W367 CORRECTION -- IT HAS A JUMP TABLE AND EIGHT STATE HANDLERS.** W354 recorded "NO jump table,
+//     one `jsr (A0)` in the whole span" and used that as evidence against one. THAT `jsr` IS THE
+//     DISPATCHER, at $26F87C: `$26F86A lea ($26F886,PC),A0 / move.w ($26,A6),D0 / add.w D0,D0 twice /
+//     adda.w D0,A0 / movea.l (A0),A0 / jsr (A0) / jmp $2417DE`. So ($26,A6) is a STATE INDEX, the table
+//     at $26F886 holds EIGHT 4-byte pointers, and $26F858 -- the guarded setter with eight callers -- is
+//     that machine's setter. Its `beq` guard protects the state machine's own frame counter.
+//     The original handoff note said "eight state handlers (~2300 bytes)" and was RIGHT ON BOTH COUNTS.
 //   * NO self-rewriting dispatch. Zero `move.l #imm,($4C,A5)`.
 //   * NO part loop. ONE `dbra` at $26FB3A with a 28-byte body -- a local loop inside one block.
 //
@@ -9218,6 +9224,15 @@ const T4C = Object.freeze({
   ]),
   drawSelector: 0x26f790,
   partsDrawn: Object.freeze([1, 3, 4]),       // parts 2 and 5 are never drawn
+
+  // W367: THE STATE MACHINE. ($26,A6) indexes this table of EIGHT 4-byte pointers, dispatched at $26F87C
+  // through `movea.l (A0),A0 / jsr (A0)`, after which the dispatcher tail-jumps to $2417DE
+  // (applyVelocityA6). The table is bounded by ADJACENCY: it ends at $26F8A6, which is state 0's own
+  // handler, so $26F886..$26F8A6 is exactly $20 bytes.
+  stateTable: 0x26f886, stateDispatch: 0x26f87c, stateExit: 0x2417de,
+  states: Object.freeze([
+    0x26f8a6, 0x26f90e, 0x26fbd4, 0x26fcf2, 0x26fd66, 0x26feca, 0x26ff3e, 0x26ff56,
+  ]),
 });
 
 // ============================================ TYPE $B0 -- HIBACHI (W357/W360) ============

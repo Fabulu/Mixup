@@ -305,3 +305,30 @@ test('W367 the draw pairs share art and palette, and their biases straddle a bou
   assert.equal(byPart.get(1).length, 1, 'part 1 is drawn once, by the four-bias outlier');
   assert.equal(byPart.get(1)[0].biases.length, 4, 'and it takes FOUR biases where the others take two');
 });
+
+test('W367 $4C HAS a jump-table state machine -- eight handlers, bounded by adjacency', { skip: SKIP }, () => {
+  // W354 recorded "NO jump table, one jsr (A0) in the whole span" and cited that as evidence against one.
+  // That jsr IS the dispatcher. This test exists so the claim cannot be re-dismissed.
+  assert.equal(IMG.readUInt16BE(0x26f86a), 0x41fa, '$26F86A lea (d16,PC),A0');
+  assert.equal(0x26f86c + IMG.readInt16BE(0x26f86c), T4C.stateTable, '  ...-> the state table $26F886');
+  assert.equal(IMG.readUInt16BE(0x26f870), 0x302e, '$26F870 move.w (d16,A6),D0');
+  assert.equal(IMG.readUInt16BE(0x26f872), T4C.stateAt, '  ...($26,A6) -- the STATE, as the index');
+  assert.equal(IMG.readUInt16BE(0x26f874), 0xd040, '$26F874 add.w D0,D0');
+  assert.equal(IMG.readUInt16BE(0x26f876), 0xd040, '$26F876 add.w D0,D0 again -- so x4, FOUR-byte entries');
+  assert.equal(IMG.readUInt16BE(0x26f87a), 0x2050, '$26F87A movea.l (A0),A0 -- load the POINTER');
+  assert.equal(IMG.readUInt16BE(T4C.stateDispatch), 0x4e90, '$26F87C jsr (A0) -- THE DISPATCH');
+  assert.equal(IMG.readUInt16BE(0x26f87e), 0x4ef9, '$26F87E jmp abs.l');
+  assert.equal(IMG.readUInt32BE(0x26f880), T4C.stateExit, '  ...$2417DE, applyVelocityA6');
+
+  // Eight handlers, each read back from the table and each inside the type's span.
+  assert.equal(T4C.states.length, 8, 'EIGHT state handlers -- the original note was right');
+  T4C.states.forEach((h, i) => {
+    assert.equal(IMG.readUInt32BE(T4C.stateTable + i * 4), h,
+      `state ${i} -> $${h.toString(16)}`);
+    assert.ok(h >= T4C.handler && h < T4C.handlerEnd,
+      `  ...and it is inside $4C's span $${T4C.handler.toString(16)}..$${T4C.handlerEnd.toString(16)}`);
+  });
+  // The table ends where state 0's handler begins -- $20 bytes, the cleanest bound available.
+  assert.equal(T4C.stateTable + T4C.states.length * 4, T4C.states[0],
+    'the table ends exactly at state 0s handler, so its length is self-evident');
+});
