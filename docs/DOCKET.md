@@ -993,6 +993,21 @@ ship the D24/D31 hyper-laser fix the owner was waiting on), W350 `20260812234300
 W355's build is the first to carry types `$55` and `$46` -- the first new ported enemy types to reach the
 live site since W345 -- plus the type-table cross-check suite (2440 -> 2453) and 447 ROM windows.
 
+**W360's publish was DELIBERATELY SKIPPED, and the reason is this item's own wording.** The cadence came due
+after W360, but W356-W360 added **no ROM windows** (still 447), **no ported handlers**, and **no fixes** -- they
+were recon (`$1A`, `$4C`, `$B0` read and specced), tooling (`claimed.py`'s three summary fixes), and three
+`ported: false` spec consts, which are inert frozen data with no behaviour. `rip/` is byte-identical to what
+`20260813052740` already serves.
+
+D27 says publishing too often "spends the owner's attention on builds that contain nothing they asked about".
+**A build identical in behaviour to the live one is exactly that**, so the cadence is honoured by carrying it
+rather than by shipping an empty deploy. **Next publish is due when the next handler lands** -- `handler1A`,
+`handler4C` or `$B0` -- whichever comes first, and that build will carry something worth looking at.
+
+**The cadence is a FLOOR on how often to publish, not a ritual**: five waves without a behavioural change means
+no publish, and a behavioural change the owner is waiting on means publish off-cadence (as W345 did for the
+D24/D31 laser fix).
+
 **W351 correction to this item: the tool name here was WRONG and cost a detour.** The step is
 `node games/ddpdoj/tools/export-web.mjs` from the REPO ROOT -- there is no `tools/export-web.mjs`,
 and `ls tools/*.mjs` run from inside `games/ddpdoj` resolves against the root, so it looks convincingly
