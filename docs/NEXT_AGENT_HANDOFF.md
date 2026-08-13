@@ -4860,6 +4860,45 @@ patterns with two distinct emit routines, not one pattern with two parameters.
 `$27267E` and `$27270A` are both `dbra D7` (`51cf`), confirming the `move.w #$N,D7` counters are loop
 counters and that the N+1 rule applies to both -- which is what makes it 5 and 4 passes rather than 4 and 3.
 
+## TYPE $1A (W353) -- THE "TRACE BLOCKER" DOES NOT EXIST. IT IS UNBLOCKED.
+
+These notes have carried, for many waves, that `$1A` is "blocked on a TRACE at `$268D8C` (D2/D3 provenance),
+not a read". **That is wrong. Every register at that call is statically determined, and both callees plus the
+table are already ported.** Type table `$2678F4`: init `$268D1E`, body `$268D26`, handler `$268E6C`.
+
+    268d2c  jsr $2637A2                    loadSubProto
+    268d32  move.l A0,($44,A5)
+    268d36  lea $268DDC,A0 / moveq #$E,D0 / jsr $26377A     15-word record prototype
+    268d44  move.b #$4,D0 / move.b #$4,D1 / move.b #$2,D2   <- the DEFAULTS
+    268d50  cmpi.w #$1,$813092 / bls $268D66                <- RANK, and it is ALREADY PORTED
+    268d5a  move.b #$3,D0 / move.b #$6,D1 / move.b #$1,D2   <- the high-rank values
+    268d66  move.b D0,($2A,A5) / move.b D1,($2B,A5)         D0 and D1 CONSUMED here
+    268d6e  move.b D2,($30,A6)                              D2 CONSUMED here, into the SUB-record
+    268d72  jsr $263808                                     readInitPosition
+    268d78  lea $272C7A,A0                                  already ported: TYPE97_ART heading table
+    268d7e  movem.w ($2,A6),D0-D1                           SIGN-EXTENDS both -- D0/D1 REDEFINED
+    268d84  addi.w #$B00,D0
+    268d88  addi.w #$0,D1                                   a NO-OP add (see below)
+    268d8c  jsr $24203E                                     already ported, in AIM_REFS
+    268d92  bcc $268D98                                     a carry exit
+    268d94  move.b ($1B,A6),D1
+
+**So the provenance is trivial once read in order.** `D2` never reaches `$268D8C` at all -- it is consumed at
+`$268D6E`, sixteen bytes earlier. And `D0`/`D1` at the call are not the rank values but the record's own
+position, freshly loaded by `movem.w` and biased. **The note was describing a dependency that the instruction
+order rules out.** `$813092` is RANK with 26 code mentions; `$24203E` is an aim routine with 7; `$272C7A` is
+`TYPE97_ART`'s heading table with a window already declared.
+
+**`addi.w #$0,D1` at `$268D88` adds nothing and its flags are destroyed by the `jsr` two instructions later,**
+so it is a third dead instruction in this band after `$27250C`'s `#$1` and `$2723B2`'s dead pointer store.
+Transcribe it or omit it, but do not read meaning into it.
+
+**This is the third "the blocker did not exist" of this session** (`$55`'s A0, `$46`'s mode 3, now this), and
+the only one that was load-bearing across waves: it is why `$1A` was ranked behind `$46` and never attempted.
+`$1A` is FOUR records, the biggest remaining piece of stage 5, and it is now a normal read.
+
+Still to read: the rest of the init body (`$268D98..$268E6C`) and the handler (`$268E6C` onward).
+
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
 Unblocked by `$55`. Type table `$267824 + $46*8 = $267A54`: init `$27102C`, body `$271034` (the `+8` rule
