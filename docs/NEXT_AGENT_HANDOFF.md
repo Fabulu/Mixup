@@ -627,6 +627,29 @@ cheap to check on any window already declared.
 Note `$4C`'s record prototype is only SIX words where `$55` has fifteen and `$1A` has fifteen: the five-part object
 keeps almost all its state in the sub-records, not the record. Consistent with the record having no state machine.
 
+### `$4C`'s handler head: part 5's flag releases a MUTUAL-EXCLUSION claim
+
+    26f5f2  tst.w $8130D2 / bne $26F704       the pause -> straight to the tail
+    26f5fc  tst.b ($9E,A6) / beq $26F622      part 5's $1E -- the flag whose value comes from the
+                                              handler's OWN OPCODES via the prototype overlap
+    26f604  move.w #$0,$8130DE                <- clears a MUTUAL-EXCLUSION flag
+    26f60c  move.w #$20,D0 / move.w #$20,D1
+    26f614  jsr $261100                       pushExternalSpeed -- ported (3 code mentions)
+
+**`$8130DE` IS INSIDE THE SIX-WORD MUTUAL-EXCLUSION BLOCK `$8130DC..$8130E6`**, and these notes already record that
+`$269C6C` FREES ANY RECORD that sees any flag in that block set. So `$4C` clearing `$8130DE` is **releasing a claim
+other records are waiting on** -- not a private flag. `$49` writes into the same block (`$27160C`/`$271610` store
+the ADDRESS of `$8130E0`/`$8130E4` and set it), which is how the band coordinates.
+
+**That makes this arm cross-type behaviour, and the order matters.** A port that cleared `$8130DE` at the wrong time
+would let another record proceed early, or strand one waiting. **`$261100` (`pushExternalSpeed`) with `D0 = D1 = $20`
+follows immediately**, so the release and the push are one action.
+
+**And it closes the `($9E,A6)` loop that has been open since W354:** the flag is part 5's `$1E`, whose initial value
+comes from the handler's own opcodes through the twenty-byte prototype overlap. So **whether `$4C` releases the
+mutual-exclusion claim on its first frame is decided by an opcode byte**, which is why that value cannot be invented
+and why the overlap has to be copied rather than reasoned about.
+
 ### The FIFTH part's prototype tail IS the handler's code -- and the depth formula predicts it exactly
 
 Dumping the five `$20` blocks from `$26F566`, parts 1-4 are ordinary data with distinct values, and **part 5's tail
