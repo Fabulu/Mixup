@@ -4899,8 +4899,27 @@ it as `$46` spawns -- and any `$46` spawn at another frame must be one that take
 That pins the init against the script from two independent directions. **Write that before the handler**:
 it is cheap, and if it fails the reading of the cascade is wrong.
 
-Still to read: the handler `$2710E2` onward, and what `($18,A5)` actually drives (in the `$49`/`$4B`/`$55`
-family that offset is the PALETTE BASE, so check whether `$46` agrees before assuming it).
+### The record prototype settles `($18,A5)`: it IS the palette base, and the default is `$20`
+
+`enemyproto.js:50` records that `$26377A` copies `D0+1` words to **`($16,A5)`**, not to `($0,A5)` -- so a
+seven-word prototype covers `$16..$23`, and `($18,A5)` sits inside it as word 1's high byte. (I nearly
+recorded the opposite: counting 14 bytes from `$0` puts `$18` outside the prototype, which would have made
+the eight defaulted records take allocator leftovers instead of a real value.)
+
+    $2710B8  word 0 -> ($16,A5)/($17,A5) = 00 00
+             word 1 -> ($18,A5)/($19,A5) = 20 10     <- palette BASE $20, palette XOR $10
+             word 2 -> ($1A,A5)/($1B,A5) = 02 02     <- a timer and its reload, both 2
+             words 3-6 -> ($1C..$23,A5)  = all zero
+
+**Three family confirmations in one prototype.** `($18,A5)` base beside `($19,A5)` XOR is exactly the
+`$49`/`$4B`/`$55` palette pair, so the cascade is varying the PALETTE per spawn frame. `($1A,A5)`/`($1B,A5)`
+= `02 02` is the **word-literal-is-two-byte-fields** rule from these notes -- one `move.w #$202` in the
+prototype data, a countdown and its reload. And `($17,A5)` defaulting to 0 matches the family's mode byte.
+
+So `$46`'s thirteen records carry **six** palette values: `$60` at clock `$E6`, `$F0` at `$E4` and `$106`,
+`$40` at `$108`, `$80` at `$116`, and `$20` for the other eight.
+
+Still to read: the handler `$2710E2` onward.
 
 ### W351: `handler55` WAS WRITTEN AND THEN REVERTED. Read this before writing it again.
 
