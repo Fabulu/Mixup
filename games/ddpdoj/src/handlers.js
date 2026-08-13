@@ -8660,11 +8660,27 @@ const T55 = Object.freeze({
   aimFallback: 0x80,                          // $272602 -- the carry exit's default angle
   vectorTable: 0x2735fa,                      // $272634, inside W30's $2735F0+$220 window
   speedBias: 0x02000000,                      // $27261A D5
+  // W351: the angle offsets are stored LITERALLY, not as (passes, perPass, step, interCluster) for a
+  // loop to reconstruct. The first attempt at this handler did reconstruct them, and needed a fix-up
+  // term (`interCluster - step`) to cancel the trailing per-shot step -- arithmetic reasoned out rather
+  // than read, which is why that attempt was reverted. These lists come straight off the instruction
+  // sequence, and each one is exactly symmetric about the aim, which is the check that they are right.
+  //
+  // ordinary: subi.w #$34 then per pass {emit, +4, emit, +4, emit, +$10}  x5   ($27262C..$27267E)
+  // finale:   subi.w #$22 then per pass {emit, +2 x4 ..., +$C}            x4   ($27268C..$27270A)
   volleyOrdinary: Object.freeze({
-    emit: 0x2816f6, passes: 5, perPass: 3, step: 4, interCluster: 0x10, backoff: 0x34, d0: 0xffff0005,
+    emit: 0x2816f6, backoff: 0x34, d0: 0xffff0005,
+    angles: Object.freeze([
+      -0x34, -0x30, -0x2c, -0x1c, -0x18, -0x14, -0x04, 0x00,
+      0x04, 0x14, 0x18, 0x1c, 0x2c, 0x30, 0x34,
+    ]),                                       // 15 shots, -$34..+$34
   }),
   volleyFinale: Object.freeze({
-    emit: 0x281744, passes: 4, perPass: 5, step: 2, backoff: 0x22, d0: 0xffff0004,
+    emit: 0x281744, backoff: 0x22, d0: 0xffff0004,
+    angles: Object.freeze([
+      -0x22, -0x20, -0x1e, -0x1c, -0x1a, -0x0e, -0x0c, -0x0a, -0x08, -0x06,
+      0x06, 0x08, 0x0a, 0x0c, 0x0e, 0x1a, 0x1c, 0x1e, 0x20, 0x22,
+    ]),                                       // 20 shots, -$22..+$22
   }),
   enqueue: 0x23df86,                          // $272748 -- enqueueRegistersThroughStub
 });
