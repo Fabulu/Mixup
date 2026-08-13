@@ -1604,9 +1604,21 @@ anything else in the frame.
     $13CFE2  bsr $13CF86
     $13CFEA  btst #5,D1                  and bit 5 is tested first
 
-**Two words, not one** -- `$803950` raw and `$803954` masked -- so a port that keeps only the masked value loses
-whatever else reads the raw switches. And the `not.w` says the switches are **ACTIVE LOW**, which is the kind of
-inversion that produces a game that coins itself up continuously.
+**THREE words, and it is EDGE detection.** The head reads `$C08004` -- the same hardware port main-loop call #1
+reads -- and takes `$803952`, LAST frame's word, into D1 **before** overwriting it with this frame's:
+
+    $13CFBA  lea $C08004,A0 / move.w (A0),D0     this frame's switches
+    $13CFC2  move.w $803952,D1                   LAST frame's, taken FIRST
+    $13CFC8  move.w D0,$803952                   then overwritten
+    $13CFCE  not.w D0                            ACTIVE LOW: now 1 = pressed
+    $13CFD0  move.w D0,$803950                   the RAW level
+    $13CFD6  and.w D0,D1                         pressed NOW and not before = NEWLY PRESSED
+    $13CFD8  andi.w #$E0,D1                      bits 5, 6, 7 only
+    $13CFDC  move.w D1,$803954                   the EDGES
+
+**`$803954` holds newly-pressed bits, not held ones.** A port that stores the level there **coins up once per FRAME
+HELD instead of once per press** -- which is the single most likely way to get this wrong, and it would look like a
+credit counter running away rather than like an edge bug. Pinned in `w372coinread.test.js`.
 
 
 
