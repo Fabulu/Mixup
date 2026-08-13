@@ -1195,6 +1195,31 @@ import './bossf23.js';
 // `runStageAdvance242952` was verified to be a FULL translation (zero note()/unreached() inside) before
 // this was written, because a note-only stage advance would soft-lock the run at stage 5's end with a
 // green suite and no error.
+/** `$242922` -- the boss-clear INTERVENTION. 48 bytes, and its only callee `$28C170` is already
+ *  ported, which is why the note that stood here called it "a wrapper round the ported $28C170".
+ *
+ *  The two `$FF` writes are the interesting part. `tst.w` each player record and `bpl` SKIPS the
+ *  write, so the byte lands only for a player whose flag word is NEGATIVE -- and it goes to that
+ *  record's `+$3E`, not to a global. A port that wrote both unconditionally, or wrote one shared
+ *  flag, would intervene for a player the cartridge leaves alone.
+ */
+export function bossClear242922(ram, ctx) {
+  ctx.soundPost?.(0x28c170);                                 // $242922 jsr $28C170
+  ram.setU16(0x81296e, 1);                                   // $242928 move.w #$1,$81296E
+  for (const [rec, at] of [[0x8103e6, 0x810424], [0x810448, 0x810486]]) {
+    if ((ram.u16(rec) & 0x8000) === 0) continue;             // $242930/$242940 tst.w / bpl SKIPS
+    ram.setU8(at, 0xff);                                     // $242938/$242948 -- rec + $3E
+  }
+}
+
+/** `$253564` -- the `$811F8C` CLAMP. Twenty bytes: `cmpi.w #$14,$811F8C / bcs rts /
+ *  move.w #$14,$811F8C`. `bcs` means BELOW $14 is left alone, so this clamps DOWN to $14 and never
+ *  raises. Writing `$14` unconditionally would raise a smaller value, which is the inverse bug. */
+export function clamp253564(ram) {
+  if (ram.u16(0x811f8c) < 0x14) return;                      // $253564/$25356C cmpi.w / bcs
+  ram.setU16(0x811f8c, 0x14);                                // $25356E
+}
+
 export function handler2A4606(ram, rom, a5, ctx) {
   // $2A4606 -- the whole boss. $2A6B94's first block is 666 bytes ending at $2A6E2E; it opens
   // `tst.w ($106,A6) / beq` over a single `rts`, so it does nothing unless ($106,A6) is zero, and its

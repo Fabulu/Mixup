@@ -255,3 +255,49 @@ test('W372 the boss has exactly TWO HP thresholds, and the lower one switches SC
   assert.equal(IMG.readUInt16BE(0x2a6d7c), 0x010c, '  ...($10C,A6) = 1, the phase flag');
   assert.equal(IMG.readUInt32BE(0x2a6d80), 0x00243dd0, '$2A6D7E jsr $243DD0 -- armScreenClearMode');
 });
+
+test('W372 the boss sets $8130F8 bits 6 AND 7 on the FIRST loop only', { skip: SKIP }, () => {
+  // Gated on $813098 (the loop counter) being zero and $80393A being clear, it sets TWO bits of
+  // $8130F8 and calls $242922, then flags part 1's $1F. effects.js already reads bit 6 of $8130F8
+  // ($8130F8 & $40), so this is the boss writing a flag the rest of the port already consumes.
+  assert.equal(IMG.readUInt16BE(0x2a6d98), 0x4a79, '$2A6D98 tst.w abs.l');
+  assert.equal(IMG.readUInt32BE(0x2a6d9a), 0x00813098, '  ...$813098, the LOOP counter');
+  assert.equal(IMG.readUInt16BE(0x2a6d9e), 0x6600, '$2A6D9E bne -- later loops skip all of it');
+  assert.equal(IMG.readUInt16BE(0x2a6dac), 0x08f9, '$2A6DAC bset #imm,abs.l');
+  assert.equal(IMG.readUInt16BE(0x2a6dae), 0x0006, '  ...bit 6');
+  assert.equal(IMG.readUInt32BE(0x2a6db0), 0x008130f8, '  ...of $8130F8');
+  assert.equal(IMG.readUInt16BE(0x2a6db6), 0x0007, '$2A6DB4 bset #7 -- BOTH bits, not one');
+  assert.equal(IMG.readUInt32BE(0x2a6db8), 0x008130f8, '  ...same word');
+  assert.equal(IMG.readUInt32BE(0x2a6dbe), 0x00242922, '$2A6DBC jsr $242922');
+  assert.equal(IMG.readUInt16BE(0x2a6dc2), 0x1d7c, '$2A6DC2 move.b #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x2a6dc6), 0x001f, "  ...($1F,A6) = 1, part 1's flag");
+});
+
+test('W372 $242922 writes $FF only for a NEGATIVE player record', { skip: SKIP }, () => {
+  // 48 bytes, now ported as bossClear242922. `tst.w` each record then `bpl` SKIPS the write, so the
+  // byte lands only where the flag word is negative -- and it goes to that record's +$3E, not to a
+  // global. Writing both unconditionally would intervene for a player the cartridge leaves alone.
+  assert.equal(IMG.readUInt32BE(0x242924), 0x0028c170, '$242922 jsr $28C170 -- already ported');
+  assert.equal(IMG.readUInt16BE(0x242928), 0x33fc, '$242928 move.w #imm,abs.l');
+  assert.equal(IMG.readUInt16BE(0x24292a), 0x0001, '  ...#$1');
+  assert.equal(IMG.readUInt32BE(0x24292c), 0x0081296e, '  ...into $81296E');
+  for (const [tst, rec, wr, at] of [[0x242930, 0x8103e6, 0x242938, 0x810424],
+    [0x242940, 0x810448, 0x242948, 0x810486]]) {
+    assert.equal(IMG.readUInt32BE(tst + 2), rec, `tst.w $${rec.toString(16)}`);
+    assert.equal(IMG[tst + 6], 0x6a, '  ...bpl -- PLUS skips the write');
+    assert.equal(IMG.readUInt16BE(wr + 2), 0x00ff, '  ...#$FF');
+    assert.equal(IMG.readUInt32BE(wr + 4), at, `  ...into $${at.toString(16)} = record + $3E`);
+    assert.equal(at - rec, 0x3e, '  ...which is +$3E, a per-player field');
+  }
+});
+
+test('W372 $253564 clamps DOWN to $14 and never raises', { skip: SKIP }, () => {
+  // `cmpi.w #$14,$811F8C / bcs rts / move.w #$14,$811F8C`. bcs means BELOW $14 is left alone, so a
+  // smaller value survives. Writing $14 unconditionally would RAISE it, which is the inverse bug.
+  assert.equal(IMG.readUInt16BE(0x253564), 0x0c79, '$253564 cmpi.w #imm,abs.l');
+  assert.equal(IMG.readUInt16BE(0x253566), 0x0014, '  ...#$14');
+  assert.equal(IMG.readUInt32BE(0x253568), 0x00811f8c, '  ...$811F8C');
+  assert.equal(IMG[0x25356c], 0x65, '$25356C bcs -- below $14 returns untouched');
+  assert.equal(IMG.readUInt16BE(0x25356e), 0x33fc, '$25356E move.w #imm,abs.l');
+  assert.equal(IMG.readUInt16BE(0x253570), 0x0014, '  ...#$14, the ceiling');
+});
