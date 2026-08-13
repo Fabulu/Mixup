@@ -8515,6 +8515,7 @@ const HANDLERS = new Map([
   [0x27687e, handler8B],
   [0x275914, handler85],   // W30: types $85 AND $86 share this one
   [0x272424, handler55],   // W351: stage-5 burst-firing drifter, spec in T55
+  [0x2710e2, handler46],   // W352: stage-5 extend-spawn-retract arm, $55's PARENT, spec in T46
   [0x2739c0, handler80],   // W30: type $80
   [0x276702, handler8A],   // W30: type $8A
   // W31: type $0D, THE MIDBOSS.  It lives in its own module because it is
@@ -8845,6 +8846,144 @@ function handler55(ram, rom, a5, ctx) {
   tail55(ram, rom, a5, a6);                                  // $272722
 }
 
+// ============================================ TYPE $46 (W352) ============
+// Stage 5's extend-spawn-retract arm, and `$55`'s parent. Thirteen script records at clocks
+// $D0 $D4 $E4 $E6 $F6 $106 $108 $116 $119 $127 $129 $138 $13B.
+//
+// NOT ONE NEW PRIMITIVE, same as $45 and $55: all nine callees were already ported.
+//
+// THREE THINGS A CASUAL PORT GETS WRONG HERE:
+//
+//  1. The bounds test is ONE SIGNED LONG operation -- ext.l then addi.l #$4000 then cmpi.l #$2000 --
+//     the exact mirror of $55's two word adds that must not be folded. Same family, opposite hazard.
+//  2. Mode 1's ramp is LATCHED: `tst.w ($1C,A5)` makes the X > $3C00 gate apply only while the ramp is
+//     still zero. Re-checking X every frame stalls the ramp whenever the record drifts back.
+//  3. `move.w #$28,($1E,A5)` writes TWO BYTE FIELDS -- ($1E)=0 and ($1F)=$28 -- so the mode-2 timer
+//     borrows on its first decrement and the arm fires IMMEDIATELY, then every $29 frames. Writing
+//     ($1E) = $28 would delay the first spawn by $29 frames.
+//
+// AND MODE 3 IS UNREACHABLE. Mode 0 -> 1, 1 -> 2, 2 -> 4, 3 -> 4; nothing anywhere writes 3. The one
+// candidate was $2711FA handing the child a back-pointer, but $55's init copies that to ($30,A5) at
+// $2723B2 and its own 15-word prototype overwrites ($30,A5) with $0010 six instructions later, so the
+// pointer never survives to be used. The arm is `unreached()` rather than implemented: giving it a
+// promotion would invent a transition the cartridge cannot make.
+const T46 = Object.freeze({
+  init: 0x27102c, initBody: 0x271034, handler: 0x2710e2,
+  recordProto: 0x2710b8, recordWords: 7,      // $271046 moveq #$6,D0 -- D0+1, copied to ($16,A5)
+  subProto: 0x2710c6,                         // $20 bytes, OVERLAPS the handler at $2710E2 by FOUR
+  clockAt: 0x22,                              // $271054 -- the spawn clock, stored in the record
+  delayAt: 0x18,                              // NOT a palette base: $27115A decrements it
+  onScreenAt: 0x16,                           // $2710FA/$27110A -- the once-on-screen latch
+  modeAt: 0x17,
+  rampTimerAt: 0x1a, rampTimerReloadAt: 0x1b, // the prototype's 02 02
+  rampAt: 0x1c, rampStep: 4, rampEnd: 0x1c,   // seven steps of 4, clamped both ends
+  fireAt: 0x1e, fireReloadAt: 0x1f,
+  countAt: 0x20,                              // $2711D0 -- RNG 2..5, purpose not yet established
+  pauseAll: 0x8130d2,                         // skips the WHOLE alive path, tail only
+  boundsBias: 0x4000, boundsLimit: 0x2000,    // ONE signed long compare, see note 1
+  boxX: Object.freeze([0x5000, 0x7000]),      // $271132/$27113C -- exclusive both ends
+  boxY: Object.freeze([0x0000, 0x3800]),      // $271146/$271150 -- exclusive both ends
+  rampGateX: 0x3c00,                          // $27118C, latched by tst.w ($1C,A5)
+  delayMask: 0x3f, delayFloor: 0x20,          // $271168 -- reload = RNG & $3F + $20, so $20..$5F
+  child: 0x55,                                // $2711EC moveq #$55,D0
+  drawTable: 0x271264,                        // lea ($26,PC),A0 at $27123C -- EIGHT longs
+  drawBias: 0xf000f000, drawD3: 0x1080, drawStub: 0x23dece,
+  // The init's five spawn-clock equality tests. Each `bne` skips only its own store, and any clock not
+  // listed keeps the prototype's $20 -- which is exactly the FLOOR of the random reload range.
+  // tests/w352type46script.test.js proves all five are real $46 spawns and that eight records default.
+  clockDelays: Object.freeze([
+    [0x0e6, 0x60], [0x0e4, 0xf0], [0x108, 0x40], [0x106, 0xf0], [0x116, 0x80],
+  ]),
+});
+
+// $27123C -- the tail every arm falls into. Same shape as $55's and the other fifteen sites sharing
+// `adda.w <cursor>,A0 / move.l (A0),D2`.
+function tail46(ram, rom, a5, a6) {
+  enqueueRegistersThroughStub(ram, rom, T46.drawStub,
+    u32(ram.u32(a6 + 0x02) + T46.drawBias),               // $271248/$27124C -- packed-long BORROW
+    rom.u32(T46.drawTable + ram.u16(a5 + T46.rampAt)),    // $27123C..$271246 move.l (A0),D2
+    T46.drawD3,                                           // $271252 move.w #$1080,D3
+    ram.u8(a6 + 0x1d));                                   // $271256 moveq #$0,D4 / move.b ($1D,A6),D4
+}
+
+function handler46(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+
+  // $2710E2 -- ONE signed long compare. Splitting this into word steps changes the branch, the mirror
+  // of $55's two-adds trap.
+  const y = i32(i16(ram.u16(a6 + 0x02)) + T46.boundsBias);
+  if (y <= T46.boundsLimit) {                             // $2710F0 cmpi.l #$2000 / bgt
+    if (ram.u8(a5 + T46.onScreenAt) !== 0) return;        // $2710FA/$271102 jmp $263762
+  } else {
+    ram.setU8(a5 + T46.onScreenAt, 1);                    // $27110A
+  }
+  scrollCompensate(ram, rom, a5, ctx.unported);           // $271110 jsr $24179E
+
+  // $271116 -- the whole-path pause. Distinct from $55's volley-only $8130D4.
+  if (ram.u16(T46.pauseAll) !== 0) { tail46(ram, rom, a5, a6); return; }
+
+  const mode = () => ram.u8(a5 + T46.modeAt);
+
+  // $271120 -- mode 0: wait inside a position box, then a random delay, then extend.
+  if (mode() === 0) {
+    const x = ram.u16(a6 + 0x02);
+    const yy = ram.u16(a6 + 0x04);
+    const inBox = ram.u8(a5 + T46.onScreenAt) !== 0       // $27112A tst.b / beq
+      && i16(x) < T46.boxX[1] && i16(x) > T46.boxX[0]     // $271132 bge / $27113C ble
+      && i16(yy) > T46.boxY[0] && i16(yy) < T46.boxY[1];  // $271146 ble / $271150 bge
+    if (inBox && due8(ram, a5 + T46.delayAt)) {           // $27115A subq.b #1 / bcc
+      const r = (drawWord242EC2(ram, rom) & T46.delayMask) + T46.delayFloor;   // $271162..$27116C
+      ram.setU8(a5 + T46.delayAt, r & 0xff);              // $271170
+      ram.setU8(a5 + T46.modeAt, 1);                      // $271174
+    }
+  }
+
+  // $27117A -- mode 1: the LATCHED ramp out. The X gate applies only before the first step.
+  if (mode() === 1) {
+    const started = ram.u16(a5 + T46.rampAt) !== 0;       // $271184 tst.w ($1C,A5) / bne
+    if ((started || i16(ram.u16(a6 + 0x02)) > T46.rampGateX)   // $27118C cmpi.w #$3C00 / ble
+      && due8(ram, a5 + T46.rampTimerAt)) {               // $271196
+      ram.setU8(a5 + T46.rampTimerAt, ram.u8(a5 + T46.rampTimerReloadAt));    // $27119E
+      const next = u16(ram.u16(a5 + T46.rampAt) + T46.rampStep);              // $2711A4
+      ram.setU16(a5 + T46.rampAt, next);
+      if (next >= T46.rampEnd) {                          // $2711A8 cmpi.w #$1C / blt
+        ram.setU16(a5 + T46.rampAt, T46.rampEnd);         // $2711B2 -- CLAMP
+        ram.setU8(a5 + T46.modeAt, 2);                    // $2711B8
+        // $2711BE move.w #$28,($1E,A5) -- TWO byte fields: the timer 0 and the reload $28, so the
+        // mode-2 arm below fires on its very next decrement rather than after $29 frames.
+        ram.setU16(a5 + T46.fireAt, 0x0028);
+        ram.setU16(a5 + T46.countAt, (drawWord242EC2(ram, rom) & 0x3) + 2);   // $2711C4..$2711D0
+      }
+    }
+  }
+
+  // $2711D4 -- mode 2: enqueue the $55 child, hand it the position and a back-pointer, go to mode 4.
+  if (mode() === 2) {
+    if (due8(ram, a5 + T46.fireAt)) {                     // $2711DE subq.b #1 / bcc
+      ram.setU8(a5 + T46.fireAt, ram.u8(a5 + T46.fireReloadAt));    // $2711E6
+      const q = enqueueDeferred(ram, T46.child, DEFQ_D1.FIXED00);   // $2711EC/$2711EE
+      ram.setU32(q.addr + 0x16, ram.u32(a6 + 0x02));      // $2711F4 -- the spawn position
+      ram.setU32(q.addr + 0x1a, a5);                      // $2711FA -- the parent back-pointer, which
+      // $55's init copies to ($30,A5) and its own prototype then overwrites. Written because the
+      // cartridge writes it, not because anything reads it -- see the mode-3 note on T46.
+      ram.setU8(a5 + T46.modeAt, 4);                      // $2711FE -- FOUR, not 3
+      ram.setU8(a5 + T46.rampTimerAt, 0x40);              // $271204
+    }
+  }
+
+  // $27120A -- mode 3, the retract. UNREACHABLE: nothing writes 3. Kept as a named throw so that if the
+  // cartridge ever gets here the port says so instead of silently drawing a wrong frame.
+  if (mode() === 3) {
+    ctx.unported?.unreached(0x27120a, `$27120A type $46 mode 3 (the retract ramp) was entered, but W352 `
+      + `established nothing writes 3 to ($17,A5): mode 0 -> 1, 1 -> 2, 2 -> 4, 3 -> 4, and the child's `
+      + `back-pointer is destroyed by $55's own prototype at $2723B8. If this fires, that reasoning is `
+      + `wrong and the arm needs writing: subq.b #1,($1A,A5) then ($1C,A5) -= 4 to a 0 clamp, then mode 4`);
+    return;
+  }
+
+  tail46(ram, rom, a5, a6);                               // $27123C
+}
+
 /** The map of ported handler addresses -> functions, for the enemy driver. */
 export function handlerMap() { return HANDLERS; }
 export const HANDLER_ADDRESSES = [...HANDLERS.keys()];
@@ -8857,5 +8996,6 @@ export const HANDLER_ADDRESSES = [...HANDLERS.keys()];
 // own table at `$267824` on every run, so the prose claims stop being load-bearing.
 export const TYPE_SPECS = Object.freeze(new Map([
   [0x01, T01], [0x1b, T1B], [0x43, T43], [0x45, T45], [0x47, T47], [0x48, T48],
-  [0x49, T49], [0x4a, T4A], [0x4b, T4B], [0x55, T55], [0x59, T59], [0x81, T81], [0x8e, T8E],
+  [0x46, T46], [0x49, T49], [0x4a, T4A], [0x4b, T4B], [0x55, T55], [0x59, T59],
+  [0x81, T81], [0x8e, T8E],
 ]));

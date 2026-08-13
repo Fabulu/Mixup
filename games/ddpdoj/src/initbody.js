@@ -2371,4 +2371,27 @@ BODY.set(0x272398, (ram, rom, a5, a6, unported, _tables, palette) => {
     'Stage-5 type $55 palette bank $15');                  // $2723D8..$2723E6
 });
 
+// --- type $46 ($27102C init, $271034 body): stage 5's extend-spawn-retract arm, $55's PARENT.
+//
+// MUST STAY ABOVE `INIT_BODY_ADDRESSES` below. `$55`'s registration was appended after that line in
+// W345 and silently registered nothing; five green check runs said so, and only a census pin with a
+// hard-coded count caught it, by one.
+//
+// The five clock tests are EQUALITY tests with independent `bne`s, and any clock not listed keeps the
+// prototype's `($18,A5)` = `$20` -- which is exactly the FLOOR of the handler's random reload range.
+// `tests/w352type46script.test.js` proves all five constants are real `$46` spawn clocks in stage 5's
+// script and that EIGHT of the thirteen records match none of them, so the default is the common case.
+BODY.set(0x271034, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x2710c6);               // $271034..$27103A jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x2710b8, 0x06);          // $271040..$271048 D0+1 = SEVEN words
+  readInitPosition(ram, rom, a5, unported);               // $27104E jsr $263808
+  ram.setU16(a5 + 0x22, ram.u16(0x8130ce));               // $271054 -- the spawn clock, kept
+  const clk = ram.u16(0x8130ce);
+  if (clk === 0x0e6) ram.setU8(a5 + 0x18, 0x60);          // $27105C/$271068
+  if (clk === 0x0e4) ram.setU8(a5 + 0x18, 0xf0);          // $27106E/$27107A
+  if (clk === 0x108) ram.setU8(a5 + 0x18, 0x40);          // $271080/$27108C
+  if (clk === 0x106) ram.setU8(a5 + 0x18, 0xf0);          // $271092/$27109E
+  if (clk === 0x116) ram.setU8(a5 + 0x18, 0x80);          // $2710A4/$2710B0
+});
+
 export const INIT_BODY_ADDRESSES = [...BODY.keys()];

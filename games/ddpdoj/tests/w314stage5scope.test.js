@@ -120,16 +120,20 @@ test('W341 stage 5 has FOUR types with no handler, over 19 of its 770 records',
     // W341: FIVE and 20 -> FOUR and 19, type $43 (one record). Its state 1 carries a NOTE, not an
     // `unreached`: $2417DE is tabulated in machine.js but not implemented, so a $43 in state 1 sits
     // still. The type IS registered, which was the safety requirement.
-    assert.equal(miss.length, 4, `four types, got ${miss.map((m) => m.type.toString(16))}`);
-    assert.equal(miss.reduce((a, m) => a + m.records, 0), 19, 'across 19 records');
-    // Ranked by record count. **W317 found this is NOT the order to port them in** -- see the
-    // dependency test below. `$46` is the biggest and needs an unported 1130-byte child first.
+    // W352: FOUR and 19 -> THREE and 6, type $46 (THIRTEEN records, by far the biggest single drop
+    // this file has recorded). W317's dependency finding was right: $46 needed $55 first, W351 ported
+    // $55, and $46 followed immediately. Its mode-3 retract arm is an `unreached()` rather than an
+    // implementation -- nothing writes 3 to ($17,A5), and the child back-pointer that looked like the
+    // missing writer is destroyed by $55's own prototype at $2723B8.
+    assert.equal(miss.length, 3, `three types, got ${miss.map((m) => m.type.toString(16))}`);
+    assert.equal(miss.reduce((a, m) => a + m.records, 0), 6, 'across 6 records');
+    // Ranked by record count. With $46 gone the remaining three are the two dependency/boss bundles
+    // plus $1A, which is still BLOCKED on register provenance at $268D8C rather than on reading.
     const ranked = [...miss].sort((a, b) => b.records - a.records || a.type - b.type);
     assert.deepEqual(ranked.map((m) => m.type),
-      [0x46, 0x1a,
-        0x4c, 0xb0]);
-    assert.deepEqual(ranked.slice(0, 2).map((m) => m.records), [13, 4],
-      '$46 is the biggest left but wants $55 first; $1A is next but is BLOCKED on D2/D3');
+      [0x1a, 0x4c, 0xb0]);
+    assert.deepEqual(ranked.map((m) => m.records), [4, 1, 1],
+      '$1A is now the biggest at four, and it is the one blocked on a TRACE not a read');
   });
 
 test('W315 stage 5\'s one type-$00 record points at a NULL handler', { skip: SKIP_IMG }, () => {
