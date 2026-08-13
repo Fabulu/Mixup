@@ -939,7 +939,21 @@ surfaced them:
 setters for `$46` sit immediately above it. **They are almost certainly the two parts' per-frame behaviour**, which
 would make them the last real gameplay in the type. Read them before placing.
 
-**Still to do:** read those three, then place the whole draft and move the four census pins.
+**`$26F9A2` IS READ, AND IT CLOSES THE LOOP ON THE DRAW TABLE.** It spawns a child at the SAME bias
+(`$FC401380`) as the `$26F7D2` draw half, gives it `($1A,A0) = $600`, and then **retracts `($48,A6)` and
+`($4A,A6)` toward zero by `$100` a frame, with a floor.**
+
+Those are exactly the offsets the part-3 draw pair adds and subtracts. **So `partAdd`/`partSub` are ANIMATED, not
+constants** -- the two halves extend and close symmetrically, which is why one adds where the other subtracts, and a
+port treating them as fixed renders a static object. The shot leaves from the drawn muzzle because it reuses the
+draw's own bias.
+
+**`$26FA82` IS DIFFERENT AND STILL UNREAD.** It is not the part-4 mirror. Its tail walks a table at **`$2735FA`**
+indexed by `(D1 & $3F) * 4`, calls `$281402`, and runs the type's ONE `dbra` at `$26FB3A` -- the 28-byte loop the
+spec records as `localLoop`. That is a fan or spread emitter, and **`$2735FA` has NO window declared** (checked:
+zero matches in `export-tables.py`). Read it, size the table from the `$3F` mask, and declare the window.
+
+**Still to do:** read `$26FA82` and `$26FFE8`'s middle, then place the draft and move the four census pins.
 
 **Still to do:** place the draft, then move the FOUR census pins together (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
 `$26F6E8` main flow, then the five-call draw chain) and the eight state bodies, all of which are read and pinned.

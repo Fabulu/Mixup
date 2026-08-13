@@ -906,3 +906,24 @@ test('W372 the two spawn biases STRADDLE a boundary, like the draw pairs', { ski
   assert.equal(IMG.readUInt32BE(0x26fc56), T4C.spawnParityGlobal, '  ...$80390A, the frame counter');
   assert.equal(IMG.readUInt16BE(0x26fc5a), 0x6600, '$26FC5A bne -- ODD frames skip the whole volley');
 });
+
+test('W372 $26F9A2 RETRACTS the very offsets the part-3 draw pair adds and subtracts', { skip: SKIP }, () => {
+  // The payoff. The draw pair positions its two halves with add.w ($48,A6) and sub.w ($4A,A6), and this
+  // routine walks BOTH of those back toward zero by $100 a frame with a floor. So partAdd/partSub are
+  // ANIMATED fields, not constants: the halves extend and close symmetrically, which is exactly why one
+  // adds where the other subtracts. A port treating them as fixed renders a static object.
+  for (const off of [0x48, 0x4a]) {
+    const at = off === 0x48 ? 0x26fa2c : 0x26fa44;
+    assert.equal(IMG.readUInt16BE(at), 0x046e, `$${at.toString(16)} subi.w #imm,(d16,A6)`);
+    assert.equal(IMG.readUInt16BE(at + 2), 0x0100, '  ...#$100 off it each frame');
+    assert.equal(IMG.readUInt16BE(at + 4), off, `  ...($${off.toString(16)},A6)`);
+    assert.equal(IMG.readUInt16BE(at + 6), 0x6e00, '  ...bgt, so it FLOORS rather than going negative');
+  }
+  // And they are the same two offsets the draw pair uses.
+  const pair = T4C.draws.filter((d) => d.part === 3);
+  assert.equal(pair[0].partAdd, 0x48, 'the draw pair ADDS ($48,A6)');
+  assert.equal(pair[1].partSub, 0x4a, '  ...and SUBTRACTS ($4A,A6)');
+  // Its spawn uses the same bias as that draw routine, so the shot leaves from the drawn muzzle.
+  assert.equal(IMG.readUInt32BE(0x26fa16), pair[1].biases[0],
+    '$26FA14 addi.l #$FC401380 -- the same first bias as the $26F7D2 half it fires from');
+});
