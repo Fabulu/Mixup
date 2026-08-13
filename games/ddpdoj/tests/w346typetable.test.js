@@ -134,3 +134,17 @@ test('W346: a spec that claims an initBody has it actually registered -- the $55
       + 'registers nothing and every other check stays green.');
   }
 });
+
+// W351: this pin was DESCRIBED as landing two commits before it did. The comment above the handler test
+// went in; this assertion did not, and I reported it as working off a passing test count instead of
+// reading the file. So it is its own test now, with the count in the name, where a diff cannot lose it.
+test('W351: exactly ONE spec is measured-but-unwritten, and it is $55', () => {
+  const unwritten = [...TYPE_SPECS.entries()]
+    .filter(([, spec]) => spec.ported === false)
+    .map(([type]) => type);
+  assert.deepEqual(unwritten, [0x55],
+    'Writing a handler means DELETING its `ported: false`, and adding another measured-but-unwritten '
+    + 'spec has to be deliberate enough to update this list. An empty result means $55 was written -- '
+    + 'if so, four census pins move too (W223 type $41, the handlerMap() adapter cover, W217 reusable '
+    + 'coverage, W317 thirteen-spawn), and they must be bumped from their real counts.');
+});
