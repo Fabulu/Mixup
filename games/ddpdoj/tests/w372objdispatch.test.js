@@ -84,3 +84,21 @@ test('W372 four slots carry identifying anchors -- CANDIDATES, not conclusions',
   // [13] reads the loop and stage words, which is stage-progression rather than a screen.
   assert.ok(has(0x288a60, 0x813098) && has(0x288a60, 0x813092), 'slot 13 reads loop AND stage');
 });
+
+test('W372 slot [18] waits for INPUT through the tally screen s own descriptor read', { skip: SKIP }, () => {
+  // $249052 jsr $23D186 -- which tallyscreen.js line 199 names "THE DESCRIPTOR'S INPUT READ" for side
+  // 0 -- then `andi.w #$80F0,D0 / tst.w D0`, a button mask. So slot [18] is a screen that WAITS FOR A
+  // PRESS, built from the same machinery the stage-clear screen uses.
+  //
+  // With the boss-clear flag $81296E and both player records, that is three independent signals
+  // pointing the same way: [18] is the post-clear sequence, which is D37.
+  assert.equal(IMG.readUInt32BE(0x249054), 0x0023d186, '$249052 jsr $23D186 -- the descriptor input read');
+  assert.equal(IMG.readUInt16BE(0x249058), 0x0240, '$249058 andi.w #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x24905a), 0x80f0, '  ...#$80F0, a BUTTON mask');
+  assert.equal(IMG.readUInt16BE(0x24905c), 0x4a40, '$24905C tst.w D0 -- and it branches on the press');
+  // The setup before it is a descriptor call in the tally screen's shape: D0/D1/D2 then a PC-relative
+  // lea, which is how that family passes a descriptor.
+  assert.equal(IMG.readUInt16BE(0x24903e), 0x323c, '$24903E move.w #imm,D1');
+  assert.equal(IMG.readUInt16BE(0x249040), 0x001e, '  ...#$1E');
+  assert.equal(IMG.readUInt16BE(0x249046), 0x41fa, '$249046 lea (d16,PC),A0 -- the descriptor');
+});

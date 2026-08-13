@@ -1526,8 +1526,10 @@ right reference for all of them. Three open at the front slightly differently (`
 bytes for known RAM separates them. An anchor says what a slot TOUCHES, not what it IS, so each must be confirmed by
 reading it before these entries are updated:
 
-    [18] $24902A   reads $81296E -- THE BOSS-CLEAR FLAG $242922 SETS -- plus both player records.
-                   The strongest candidate for D37, THE ENDINGS, and it links straight to Hibachi.
+    [18] $24902A   reads $81296E -- THE BOSS-CLEAR FLAG $242922 SETS -- plus both player records,
+                   AND calls $23D186, which tallyscreen.js names "THE DESCRIPTOR'S INPUT READ", then
+                   masks the result with $80F0 and branches: it WAITS FOR A PRESS. Three independent
+                   signals, all pointing at D37 THE ENDINGS. Its one unported callee is $25A14C.
     [ 9] $25CACA   both player records AND palette installs -- the shape D34 CHARACTER SELECT would have.
     [12] $28F3AC   reads the HISCORE table $803824, so it belongs to the hiscore family, not the front end.
     [13] $288A60   reads the LOOP and STAGE words -- stage progression rather than a screen.
