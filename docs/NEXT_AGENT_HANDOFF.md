@@ -5450,7 +5450,31 @@ will pass every casual check -- it belongs in a test, not a playtest. Second, `$
 timer values) and `cmpi.w #$4 / bne` here (an equality, gating a death effect). **Same global, same type, two
 comparison kinds** -- which is the operand-level version of the lesson `$8130D2` taught at two widths.
 
-Still to read: `$26919C` onward (what the rank-4 path actually does) and `$2691A8` (the shared continuation).
+**The rank-4 extra is a MIRRORED burst.** That is all it is, and it is elegant:
+
+    26917e  move.l #$F8000000,D2 / jsr $289B22     the standard burst: X bias $F800, NEGATIVE
+    26919c  move.l #$08000000,D2 / jsr $289B22     the rank-4 extra:   X bias $0800, POSITIVE
+
+**Same routine, same Y (`$0000`), X bias negated.** So at rank 4 before clock `$2B0` the death burst is thrown in
+BOTH directions instead of one. Nothing new to port -- it is a second call to `burstBucket` with one constant
+changed.
+
+Note both D2 values have a ZERO low half, so the borrow rule does not apply to either -- unlike the twin-muzzle
+biases where it was decisive. **Third distinct borrow situation in this one type**: `swap`-separated word adds (no
+borrow possible), a negative low half (borrow applies), and a zero low half (borrow moot).
+
+### The shared continuation at `$2691A8`
+
+    2691a8  moveq #$D,D0 / jsr $289004          spawnEffect, already ported (13 code mentions)
+    2691b0  move.l ($2,A6),($2,A0)              the position into the new effect record
+    2691b6  move.w #$10,($1e,A0)
+    2691bc  move.w #$0,($12,A0)
+    2691c2  move.w #$0,($14,A0)
+
+`$289004` is `spawnEffect`, already ported and used by `death1B` among others, so **the whole death arm needs no
+new primitive** -- consistent with every other type in this band.
+
+Still to read: `$2691C8` onward to the end of the death arm.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
