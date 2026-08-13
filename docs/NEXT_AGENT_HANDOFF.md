@@ -590,7 +590,28 @@ than by reasoning.
 
 **Both states open identically** (`cmpi.w #$0,($28,A6)` then a setup block then `move.w #$1,($28,A6)`), so the eight
 handlers really are one shape with different bodies. **That is the pattern `handler4C` needs: a jump table of eight, each
-a `switch` on `($28,A6)` whose arms end by advancing it.**
+a `switch` on `($28,A6)` whose arms end by advancing it.** A test now asserts all EIGHT open that way, so it is verified
+across the set rather than inferred from two.
+
+**State 2, `$26FBD4`, confirms it a third time -- and shows `$4C` using BOTH width conventions on ONE field pair:**
+
+    26fbd4  cmpi.w #$0,($28,A6) / bne $26FBFE     the same opening
+    26fbde  move.w #$1,($28,A6)                   advance
+    26fbe4  move.b #$10,($1A,A6)                  <- a SIXTH write, value $10
+    26fbea  move.b #$0,($2A,A6)                   TWO SEPARATE BYTE writes...
+    26fbf0  move.b #$0,($2B,A6)                   ...where state 1 used move.w #$0,($2A,A6)
+    26fbf6  move.b #$10,($34,A6)                  a BYTE, where state 0 used move.w #$202,($34,A6)
+
+**So the same field pairs are written as a WORD in one state and as TWO BYTES in another, inside one type.** State 1
+does `move.w #$0,($2A,A6)`; state 2 does two `move.b`s to `($2A)` and `($2B)`. State 0 does `move.w #$202,($34,A6)`;
+state 2 does `move.b #$10,($34,A6)` -- touching only `($34)` and leaving `($35)` alone.
+
+**That is the word-literal rule and its inverse, both present in one handler.** There is no per-field convention to
+learn here: **transcribe the width the cartridge uses at each site.** A port that normalised these -- either way --
+would write bytes the cartridge leaves untouched or leave untouched bytes the cartridge writes.
+
+`($1A,A6)` now has SIX writers: `$16`, `$4`, `$10`, `$8`/`$6`, plus the increment and decrement. **Four of the six are
+outside the distance-band range.**
 
 **The chain of my errors here is worth stating in full, because each step looked reasonable:**
 
