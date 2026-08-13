@@ -1531,7 +1531,13 @@ reading it before these entries are updated:
                    masks the result with $80F0 and branches: it WAITS FOR A PRESS. Three independent
                    signals, all pointing at D37 THE ENDINGS.
 
-**D37's WHOLE CALL CHAIN, and it is SHORT:** `[18]` -> `$25A14C` (42 bytes) -> `$240CF0` (60 bytes), and that is the
+**BUT SLOT [18] ITSELF IS NOT SHORT, and I said otherwise before measuring.** It is a state sequence on `($4,A5)`:
+state 0 waits for a press, then each state calls ONE routine and advances. The three are
+**`$2475CA`, `$248492` and `$24842C`, and none is ported**. `$24842C` is 102 bytes with two callees;
+**the other two run past 1 KB each before their first `rts`.** So D37 is "one slot away" only in the sense that the
+slot is one file -- there is better than 2 KB of new porting inside it.
+
+**The TEXT CHAIN, by contrast, IS short and is now DONE (W372):** `[18]` -> `$25A14C` (42 bytes) -> `$240CF0` (60 bytes), and that is the
 depth. `$25A14C` is a **NUL-terminated string draw**: it walks bytes from `(A0)+` until zero and calls `$240CF0` per
 glyph. **The trap is `swap D4 / move.w D5,D4`** -- the glyph goes in the HIGH word and a caller-supplied attribute in
 the LOW, so passing a bare byte draws nothing. `$240CF0` writes LONGS into a table indexed by D5, stepping the tile
