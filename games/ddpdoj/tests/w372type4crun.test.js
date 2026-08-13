@@ -84,3 +84,42 @@ test('W372 ten frames run clean, so the state machine advances without throwing'
     assert.doesNotThrow(() => run(f), `frame ${i}`);
   }
 });
+
+test('W372 every internal call site matches its definition arity', { skip: SKIP }, () => {
+  // The bug this file found was an ARITY MISMATCH -- handler4C called retireCheck4C(ram, a6) against a
+  // five-parameter definition. JavaScript does not check that, so nothing static caught it. This is the
+  // audit generalised: every $4C function's call sites, counted depth-aware, against its definition.
+  //
+  // It is a source-text check rather than a ROM check, which is unusual here and is the point: the
+  // three defects this type produced (invented names, wrong order, wrong count) are all invisible to
+  // the cartridge assertions, because none of those 64 pins ever CALLS anything.
+  const src = readFileSync(new URL('../src/handlers.js', import.meta.url), 'utf8');
+  const from = src.indexOf('// ===================== TYPE $4C -- the stage-5 multi-part set piece');
+  const to = src.indexOf('function handler1A(ram, rom, a5, ctx) {');
+  assert.ok(from > 0 && to > from, 'the $4C block is where it was spliced');
+  const blk = src.slice(from, to).replace(/\/\/[^\n]*/g, '');   // strip comments: commas hide in them
+  const defs = new Map();
+  for (const m of blk.matchAll(/function (\w+)\(([^)]*)\)\s*\{/g)) {
+    defs.set(m[1], m[2].split(',').filter((a) => a.trim()).length);
+  }
+  assert.ok(defs.size >= 17, `all $4C functions found, got ${defs.size}`);
+  const argsAt = (t, k) => {
+    let d = 0; let cur = ''; const out = [];
+    for (; k < t.length; k++) {
+      const c = t[k];
+      if ('([{'.includes(c)) d++;
+      else if (')]}'.includes(c)) { if (d === 0) { out.push(cur); break; } d--; }
+      if (c === ',' && d === 0) { out.push(cur); cur = ''; } else cur += c;
+    }
+    return out.filter((a) => a.trim()).length;
+  };
+  const bad = [];
+  for (const [name, n] of defs) {
+    const re = new RegExp(`(?<!function )\\b${name}\\(`, 'g');
+    for (const m of blk.matchAll(re)) {
+      const got = argsAt(blk, m.index + m[0].length);
+      if (got !== n) bad.push(`${name}: defined with ${n}, called with ${got}`);
+    }
+  }
+  assert.deepEqual(bad, [], 'no call site disagrees with its definition');
+});
