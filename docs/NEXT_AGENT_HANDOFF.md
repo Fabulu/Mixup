@@ -4960,7 +4960,35 @@ the field, in this type.
 
 `$1A` is also a `$5C`-family damage arm, joining `$49`, `$4B` and `$55`.
 
-Still to read: `$268EA4` onward (the damage arm and the states).
+### `$1A`'s damage arm has a TWO-STATE palette the siblings do not
+
+    268e9a  move.b ($1c,A5),D0            the not-hit path: the base
+    268e9e  cmpi.w #$7C0,($18,A6)         ...gated on HP
+    268eae  moveq #$19,D0                 ...or the literal $19
+    268eb0  bra $268ED8                   -> store
+
+    268eb2  andi.b #$A3,(A6)              the HIT path, same clear mask as the family
+    268eb6  jsr $286096                   scoreHit
+    268ebc  move.b ($1d,A6),D0            read the CURRENT palette
+    268ec0  cmpi.b #$19,D0 / bne $268ECA  <- if it is $19, swap in the base FIRST
+    268ec6  move.b ($1c,A5),D0
+    268eca  move.b ($1d,A5),D2 / eor.b D2,D0     then the XOR
+    268ed0  tst.w ($18,A6) / bmi $269160  dead -> $269160
+    268ed8  move.b D0,($1d,A6)
+
+**`$19` is a sentinel palette, not a colour choice.** The not-hit path writes it when HP is on one side of
+`$7C0`, and the hit path RECOGNISES it and substitutes the real base before XORing. `$49`, `$4B` and `$55` all
+XOR unconditionally against whatever is in `($1D,A6)`; **`$1A` is the first member that inspects it first.**
+
+A port that copied the sibling arm would XOR `$19` directly and produce a colour the cartridge never shows --
+and only on frames where the record is hit while at that HP threshold, which is exactly the kind of narrow
+window that survives a playtest.
+
+So the `$5C` family agrees on the mask (`$5C`), the clear byte (`$A3`) and `scoreHit`, and disagrees on: whether
+there is an `hpFull` reload, whether there is a palette DECISION, and now whether the XOR input is inspected.
+**Four members, four different arms.**
+
+Still to read: `$268EDE` onward (the states) and the death arm at `$269160`.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
