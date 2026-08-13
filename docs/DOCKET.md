@@ -1504,7 +1504,22 @@ port already maps all seven in `main.js`:
 call #1 `$256D5A` reads `$C08004`/`$C08006`, which are **hardware I/O**, and call #3 `$24683E` is the animation-object
 driver that `animobjects.js` already models.
 
-**That means the title screen is a STATE INSIDE one of the seven, not a peer of them** -- almost certainly reached
+### THE OBJECT DISPATCH TABLE IS THE DOCKET'S KEY (W372)
+
+**Screens in this game are OBJECT DISPATCH ENTRIES.** `tallyscreen.js` opens *"OBJECT DISPATCH [11], `$25DBB4` -- THE
+STAGE-CLEAR SCREEN"*. The table is at **`$240F62`**, twenty slots, stride 8, indexed by `(type & $FF)` -- bounded by
+the driver's own `moveq #$13` and by slot 20 not being a code pointer.
+
+**ELEVEN of the twenty are unreferenced anywhere in the port**, and D33, D34 and D37 are almost certainly among them:
+
+    [ 7] $290BE8   [ 8] $25A770   [ 9] $25CACA   [12] $28F3AC   [13] $288A60   [14] $288C6C
+    [15] $291F66   [16] $256E7A   [17] $25CEB8   [18] $24902A   [19] $28EE88
+
+**So the front-end docket items are not code to go hunting for -- they are slots in a table**, and the work starts by
+identifying which slot is which screen. Pinned in `w372objdispatch.test.js`, with the list shrinking as slots land,
+the way the enemy type-table census works.
+
+**And the title screen is a STATE INSIDE one of the main loop's seven calls, not a peer of them** -- almost certainly reached
 through the object driver, the way every other screen in this game is. Start by finding the state word that selects
 it, not by looking for a `jsr` the main loop makes.
 
