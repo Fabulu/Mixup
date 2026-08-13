@@ -178,3 +178,25 @@ test('W372 the front-end screens are COMPILED C, the gameplay code is not', { sk
   assert.equal(count(0x26f5f2, 0x400, isPea), 0, '  ...no stack arguments');
   assert.equal(count(0x26f5f2, 0x400, isPop), 0, '  ...and no caller cleanup');
 });
+
+test('W372 slots [16] and [17] DRAW TEXT -- and [16] neighbours the service poll', { skip: SKIP }, () => {
+  // Using the two text routines W372 ported as a discriminator: only two of the seven anchorless slots
+  // reference them, which separates the screens that print from the ones that do not.
+  const refs = (base, val) => {
+    for (let k = base; k < base + 0x600; k += 2) if (IMG.readUInt32BE(k) === val) return true;
+    return false;
+  };
+  assert.ok(refs(0x256e7a, 0x240cf0), 'slot 16 uses the TX block blit');
+  assert.ok(refs(0x25ceb8, 0x25a14c), 'slot 17 uses the string draw');
+  assert.ok(refs(0x25ceb8, 0x24150a), '  ...and installs palettes');
+  // [16] sits $120 after main-loop call #1 $256D5A, which reads $C08004 -- the SERVICE switches. A
+  // test/service menu is the obvious reading, and it explains why [16] is the one slot that opens
+  // with cmpi.b instead of tst.b: it has no idle state to fall through.
+  assert.equal(0x256e7a - 0x256d5a, 0x120, 'slot 16 is $120 past the service poll');
+  assert.equal(IMG.readUInt16BE(0x256d5a + 10), 0x41f9, '$256D64 lea abs.l,A0');
+  assert.equal(IMG.readUInt32BE(0x256d66), 0x00c08004, '  ...$C08004, the service port');
+  // Both read input through the descriptor family, so both are interactive screens rather than
+  // displays -- which is what a title screen and a service menu both are.
+  assert.ok(refs(0x256e7a, 0x23d186) || refs(0x256e7a, 0x23d18e), 'slot 16 reads input');
+  assert.ok(refs(0x25ceb8, 0x23d186) || refs(0x25ceb8, 0x23d18e), 'slot 17 reads input');
+});

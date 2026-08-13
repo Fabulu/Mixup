@@ -1563,9 +1563,18 @@ small.
     [12] $28F3AC   reads the HISCORE table $803824, so it belongs to the hiscore family, not the front end.
     [13] $288A60   reads the LOOP and STAGE words -- stage progression rather than a screen.
 
-The remaining seven ([7], [8], [14], [15], [16], [17], [19]) carry none of those anchors in their first `$400`, which
-is itself informative: **the main screen is likely among them**, because a title screen reads neither player records
-nor the score table.
+**TWO MORE FELL OUT once W372 ported the text routines**, by scanning the seven for `$240CF0` and `$25A14C`:
+
+    [17] $25CEB8   the STRING DRAW, PALETTE INSTALLS and input reads -- print, set up your own colours,
+                   wait for a press. That is a TITLE SCREEN's shape, and it is D33's strongest candidate.
+    [16] $256E7A   the BLOCK BLIT and three input reads -- and it sits exactly $120 past main-loop call
+                   #1 `$256D5A`, which reads `$C08004`, THE SERVICE SWITCHES. A test/service menu is the
+                   obvious reading, and it explains why [16] is the one slot opening with `cmpi.b`
+                   instead of `tst.b`: no idle state to fall through.
+
+Five of the eleven are now candidates: **[17] D33, [9] D34, [18] D37, [16] service, [12] hiscore, [13] stage
+progression.** The remaining five ([7], [8], [14], [15], [19]) print no text and touch no known RAM in their first
+`$600`, so they are the ones to identify by what they CALL rather than by what they touch.
 
 **So the front-end docket items are not code to go hunting for -- they are slots in a table**, and the work starts by
 identifying which slot is which screen. Pinned in `w372objdispatch.test.js`, with the list shrinking as slots land,
