@@ -5260,7 +5260,34 @@ compute the same-looking result. Read which form the cartridge uses.
 `$46`) and `$23DF86` (`$55`). **So three sibling types use three different emit stubs**, which is one more thing
 not to carry across.
 
-Still to read: `$269078` onward and the death arm at `$269160`.
+### The tail's end, a no-op `jsr`, and a FOURTH misalignment
+
+    26907a  jsr $23DECE              FRAME_EMIT -- so $1A uses BOTH $23D762 AND $23DECE
+    269080  movea.l A6,A0            A0 = the sub-record
+    269082  jsr $26331C              <- A BARE `rts`. Does nothing.
+    269088  tst.l $8130D2 / beq $269092    the DUAL pause again, long again
+    269090  rts
+    269092  cmpi.w #$1000,($2,A6) / blt $269090
+    26909a  tst.b ($30,A5) / bne $2690F6
+
+**`$26331C` IS A SINGLE `rts`.** `claimed.py` calls it UNCLAIMED, which is right and means nothing to port: the
+`jsr` is a no-op. `$26331E`, two bytes later, is `lea $81332C,A0` -- the enemy-array clear belonging to a
+different routine -- so `$26331C` is a deliberate stub entry, presumably a disabled hook. **Fourth dead
+construct in this band**, after `$27250C`'s `#$1`, `$2723B2`'s dead pointer store, and `$268D88`'s no-op add.
+Transcribe it as a comment; do not go looking for what it "should" do.
+
+**Correction to the previous entry: `$1A` uses TWO emits, not one.** `$23D762` (`EMIT_STUB`) at `$269058` and
+`$23DECE` (`FRAME_EMIT`) at `$26907A`. So the band's emit picture is: `$55` uses `$23DF86`, `$46` uses `$23DECE`,
+`$1A` uses BOTH `$23D762` and `$23DECE`. Three types, three stubs, and one type calling two of them.
+
+**And `rosetta.py` misaligned a FOURTH time** at `$26907C`, printing `ori.b #$CE,-(A3)` and hiding
+`jsr $23DECE`. Same fix, same two-byte back-up. The rule is now beyond doubt.
+
+**The alive path does not end at `$269090`.** `tst.l $8130D2 / beq $269092` means NOT-paused falls through to a
+SECOND section at `$269092` with its own X gate and a `($30,A5)` test -- so the handler has more structure after
+the draw, which is unlike `$55` and `$46` where the tail is terminal.
+
+Still to read: `$2690A2` onward, the `($30,A5)` arm at `$2690F6`, and the death arm at `$269160`.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
