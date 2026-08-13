@@ -201,13 +201,23 @@ test('W317 FOUR of the thirteen spawn an UNPORTED child, so record count is the 
       }
       return out;
     };
-    // The four with an unported child, and which child.
-    for (const [t, span, kids] of [[0x46, 0x1a2, [0x55]], [0x48, 0x264, [0x54]],
+    // THREE now have an unported child, and which child. W351 ported $55, so $46's entry moved to the
+    // list below rather than being deleted -- deleting it would lose the only machine-checked record of
+    // the $46 -> $55 edge, which is exactly what made $55 worth porting.
+    for (const [t, span, kids] of [[0x48, 0x264, [0x54]],
       [0x43, 0x10e, [0x44]], [0x4c, 0xbe4, [0x4e, 0x50, 0x52, 0x58]]]) {
       const got = spawnsOf(typeEntry(t).handler, span);
       for (const k of kids) {
         assert.ok(got.has(k), `type $${t.toString(16)} spawns $${k.toString(16)}`);
         assert.ok(!map.has(typeEntry(k).handler), `and $${k.toString(16)} is unported`);
+      }
+    }
+    // Same treatment W319 gave $8E and W323 gave $1B: keep the scan assertion, flip the ported claim.
+    for (const [t, span, kids] of [[0x46, 0x1a2, [0x55]]]) {
+      const got = spawnsOf(typeEntry(t).handler, span);
+      for (const k of kids) {
+        assert.ok(got.has(k), `type $${t.toString(16)} still spawns $${k.toString(16)}`);
+        assert.ok(map.has(typeEntry(k).handler), `and W351 PORTED $${k.toString(16)}`);
       }
     }
     // `$8E` was the biggest standalone one and W319 took it; `$1B` (5 records) was next and W323

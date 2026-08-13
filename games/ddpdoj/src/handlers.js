@@ -8514,6 +8514,7 @@ const HANDLERS = new Map([
   [0x2747c6, handler82],
   [0x27687e, handler8B],
   [0x275914, handler85],   // W30: types $85 AND $86 share this one
+  [0x272424, handler55],   // W351: stage-5 burst-firing drifter, spec in T55
   [0x2739c0, handler80],   // W30: type $80
   [0x276702, handler8A],   // W30: type $8A
   // W31: type $0D, THE MIDBOSS.  It lives in its own module because it is
@@ -8631,10 +8632,6 @@ export function runHandler(addr, ram, rom, a5, ctx) {
 // And two operator-level traps: $2724FE is an EQUALITY test where $2725A0 is a THRESHOLD, and the bounds
 // test's two sequential `addi.w` do NOT fold into one (same sum, different carry, opposite despawn).
 const T55 = Object.freeze({
-  // RECON COMPLETE, HANDLER NOT WRITTEN. This flag is not decoration: `w346typetable.test.js` reads it
-  // to skip the registry checks while still verifying init/initBody/handler against the cartridge. It
-  // makes "measured but unported" a state the suite knows about, instead of a claim in a commit message.
-  ported: false,
   init: 0x272390, initBody: 0x272398, handler: 0x272424,
   recordProto: 0x2723ea, recordWords: 15,     // W345: $2723EA + $3E, overlaps the handler by FOUR bytes
   damageMask: 0x5c, damageClear: 0xa3,        // $272448/$272450 -- the SIXTH $5C-family member
@@ -8654,6 +8651,7 @@ const T55 = Object.freeze({
   driftTable: 0x272750, driftEntries: 16,     // W346: $272750+$100, bounded by ADJACENCY to deathList
   sineAmp: 0x28, phaseAt: 0x2c, phaseStep: 2, offsetAt: 0x2a,   // $272544/$272548/$27254C/$272556
   rampAt: 0x32, rampStep: 0x40, rampCap: 0x600,                 // $272566/$272570
+  aimAt: 0x28,                                // $272606/$27260C -- the cached aim, byte
   fireAt: 0x26, fireReloadAt: 0x27,           // $2725C0 / $27271C
   burstAt: 0x2e, burstReloadAt: 0x2f,         // THE BURST COUNTER -- see note 2
   aimXBias: -0x600, fireXGate: 0x2000,        // $2725F4 / $2725D8
@@ -8689,6 +8687,163 @@ const T55 = Object.freeze({
   }),
   enqueue: 0x23df86,                          // $272748 -- enqueueRegistersThroughStub
 });
+
+// $272722 -- the shared tail EVERY arm falls into: a drift-table walk and a sprite enqueue.
+function tail55(ram, rom, a5, a6) {
+  const at = T55.driftTable + ram.u16(a5 + T55.cursorAt);    // $272728 adda.w ($1e,A5),A0
+  const d2 = rom.u32(at);                                    // $27272C move.l (A0),D2
+  const biased = i32(ram.u32(a6 + 0x02) + rom.u32(at + 4));  // $272732 add.l ($4,A0),D1
+  // $272736 swap D1 / $272738 add.w ($32,A5),D1 -- the ramp lands on the SWAPPED half.
+  const swapped = ((biased >>> 16) | (biased << 16)) >>> 0;
+  const d1 = ((swapped & 0xffff0000) | u16((swapped & 0xffff) + ram.u16(a5 + T55.rampAt))) >>> 0;
+  enqueueRegistersThroughStub(ram, rom, T55.enqueue, {
+    d1,
+    d2,
+    d3: rom.u16(at + 8),                                     // $27273E move.w ($8,A0),D3
+    d4: ram.u8(a6 + 0x1d),                                   // $272744 -- zero-extended by the moveq
+  });
+}
+
+// $2725C0's volley. ONE aim per burst, the ordinary 15-shot pattern each step, the 20-shot FINALE when
+// the burst counter reaches zero. The offsets and jsr sites come from T55, which
+// tests/w351volleyangles.test.js rebuilds from the cartridge every run -- do NOT reconstruct them here.
+function fire55(ram, rom, a5, a6, ctx) {
+  if (ram.u16(T55.pauseVolley) !== 0) return;                // $2725CE -- skips the volley, NOT the tail
+  if (i16(ram.u16(a6 + 0x02)) <= T55.fireXGate) return;      // $2725D8 cmpi.w #$2000 / ble
+
+  // $2725E2 -- re-aim ONLY while the counter still equals its reload, i.e. the burst's FIRST volley.
+  if (ram.u8(a5 + T55.burstAt) === ram.u8(a5 + T55.burstReloadAt)) {
+    const target = targetSelect(ram, a5);                    // the bsr $24270A inside $24226E
+    const angle = target === null
+      ? T55.aimFallback                                      // $272602 -- the carry exit default $80
+      : aim256(aimTables(rom), u16(ram.u16(a6 + 0x02) + T55.aimXBias), ram.u16(a6 + 0x04),
+        ram.u16(target + 0x02), ram.u16(target + 0x04));
+    ram.setU8(a5 + T55.aimAt, angle & 0xff);                 // $272606 move.b D1,($28,A5)
+  }
+
+  // $272624 -- counter at zero picks the OTHER pattern, through the OTHER emit, with a tighter step.
+  const v = ram.u8(a5 + T55.burstAt) === 0 ? T55.volleyFinale : T55.volleyOrdinary;
+  const base = ram.u8(a5 + T55.aimAt);
+  const ctxB = { ram, rom, log: new WriteLog(ram) };
+  v.angles.forEach((off, i) => {
+    const d1 = (base + off) & 0xff;
+    const idx = (d1 + 2) & 0xfc;                             // addq.w #2,D3 / andi.w #$fc,D3
+    const regs = {
+      d0: v.d0,                                              // $272610 / $272686
+      d1,
+      d2: ram.u32(a6 + 0x02),                                // $272616
+      d3: i32(rom.u32(T55.vectorTable + idx) + T55.speedBias), // move.l (A0,D3.w),D3 / add.l D5,D3
+      d4: 0,
+      d5: T55.speedBias,                                     // $27261A
+      a5,
+    };
+    ctx.bulletSpawn?.(v.sites[i % v.sites.length], fireBullet(ctxB, v.emit, regs));
+  });
+}
+
+function handler55(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+
+  // $272424 -- ($17,A5) ENABLES the spawn-invulnerability window; ($30,A5) TIMES it.
+  if (ram.u8(a5 + T55.modeAt) !== 0 && ram.u16(a5 + T55.invulnAt) !== 0) {
+    ram.setU16(a6 + 0x18, 0x7fff);                           // $272434 -- HP pinned while it runs
+    const left = u16(ram.u16(a5 + T55.invulnAt) - 1);        // $27243A
+    ram.setU16(a5 + T55.invulnAt, left);
+    if (left === 0) ram.setU16(a6 + 0x18, T55.hpFull);       // $272442 -- real HP on the expiry frame
+  }
+
+  // $272448 -- the $5C damage arm; $55 is that family's sixth member.
+  const hit = ram.u8(a6) & T55.damageMask;
+  if (hit !== 0) {
+    ram.setU8(a6, ram.u8(a6) & T55.damageClear);             // $272450
+    scoreHit(ram, ctx, a6, hit);                             // $272456 jsr $286096
+    ram.setU8(a6 + 0x1d,
+      (ram.u8(a6 + 0x1d) ^ ram.u8(a5 + T55.palXor)) & 0xff);  // $27245C..$272466
+    if ((ram.u16(a6 + 0x18) & 0x8000) !== 0) {               // $27246A tst.w ($18,A6) / bpl
+      scoreKill(ram, rom, ctx, T55.killScore, hit);          // $272478 jsr $28615E
+      ctx.soundPost?.(T55.deathCue);                         // $27247E
+      walkDeathSpawns270D92(ram, rom, ctx, T55.deathList,
+        ram.u32(a6 + 0x02), 0x27248e);                       // $272488/$27248E
+      return;                                                // $272492 JMP $263762 -- no self-free
+    }
+  } else {
+    ram.setU8(a6 + 0x1d, ram.u8(a5 + T55.palBase));          // $27249A -- the not-hit path
+  }
+
+  // $2724A0 -- THIS pause skips the entire alive path. Distinct from the volley's $8130D4; folding the
+  // two into one frozen check changes behaviour under one of them.
+  if (ram.u16(T55.pauseAll) !== 0) { tail55(ram, rom, a5, a6); return; }
+
+  // $2724AA -- back LAST frame's sinusoid offset OUT before anything re-applies it. Accumulating
+  // instead walks the record off screen at one offset per frame.
+  ram.setU16(a6 + 0x02, u16(ram.u16(a6 + 0x02) - ram.u16(a5 + T55.offsetAt)));
+  scrollCompensate(ram, rom, a5, ctx.unported);              // $2724B6 jsr $24179E
+
+  // $2724BC -- TWO sequential adds. The carry comes off the SECOND and they must NOT be folded into
+  // one addi.w #$8800: same sum, different carry, opposite despawn decision.
+  const first = u16(ram.u16(a6 + 0x02) + T55.boundsBias[0]); // $2724C0
+  const offScreen = first + T55.boundsBias[1] > 0xffff;      // $2724C4/$2724C8 bcc == on screen
+  if (offScreen) {
+    if (ram.u8(a5 + T55.onScreenAt) !== 0) return;           // $2724CC/$2724D2 JMP $263762
+  } else {
+    ram.setU8(a5 + T55.onScreenAt, 1);                       // $2724DA -- arm it
+  }
+
+  // $2724E0 -- THE CASCADE. Successive ifs, never else-if: the mode-2 arm promotes itself to 3 below
+  // and the very next test must see the new value in the SAME frame, or the finale is a frame late.
+  const mode = () => ram.u8(a5 + T55.modeAt);
+  if (mode() === 0) {                                        // $2724E0 cmpi.b #$0 / bne
+    if (due8(ram, a5 + T55.driftTimerAt)) {                  // $2724EA
+      ram.setU8(a5 + T55.driftTimerAt, ram.u8(a5 + T55.driftTimerReloadAt));   // $2724F2
+      ram.setU16(a5 + T55.cursorAt,
+        u16(ram.u16(a5 + T55.cursorAt) + T55.cursorStride)); // $2724F8
+      if (ram.u16(a5 + T55.cursorAt) === T55.cursorArmAEnd) { // $2724FE -- EQUALITY, not >=
+        ram.setU16(a6, 0xa001);                              // $272508
+        ram.setU8(a5 + T55.modeAt, 2);                       // $27250C writes #$1, $272512 overwrites
+        ram.setU16(a5 + 0x20, 4);                            // $272518
+        ram.setU16(a5 + 0x22, 0xfffd);                       // $27251E -- -3
+      }
+    }
+  }
+  if (mode() >= 2) {                                         // $272536 cmpi.b #$2 / blt
+    // $272540 -- the sinusoid, cached at ($2A,A5) so $2724AE can back it out next frame.
+    const d2 = ctx.tables.shotVector(T55.sineAmp, ram.u8(a5 + T55.phaseAt)).dy;  // jsr $241D34
+    ram.setU8(a5 + T55.phaseAt,
+      (ram.u8(a5 + T55.phaseAt) + T55.phaseStep) & 0xff);    // $27254C addq.b #2
+    ram.setU16(a5 + T55.offsetAt, u16(d2));                  // $272556
+    ram.setU16(a6 + 0x02,
+      u16(ram.u16(a6 + 0x02) + ram.u16(a5 + T55.offsetAt))); // $27255A..$272562
+    if (ram.u16(a5 + T55.rampAt) < T55.rampCap) {            // $272566 cmpi.w #$600 / bcc
+      ram.setU16(a5 + T55.rampAt, u16(ram.u16(a5 + T55.rampAt) + T55.rampStep));  // $272570
+      ram.setU16(a6 + 0x10, u16(ram.u16(a6 + 0x10) + T55.rampStep));              // $272576
+    }
+  }
+  if (mode() === 2) {                                        // $272582 cmpi.b #$2 / bne
+    if (due8(ram, a5 + T55.driftTimerAt)) {                  // $27258C
+      ram.setU8(a5 + T55.driftTimerAt, ram.u8(a5 + T55.driftTimerReloadAt));   // $272594
+      const next = u16(ram.u16(a5 + T55.cursorAt) + T55.cursorStride);          // $27259A
+      ram.setU16(a5 + T55.cursorAt, next);
+      if (next >= T55.cursorEnd) {                           // $2725A0 -- THRESHOLD, not equality
+        ram.setU16(a5 + T55.cursorAt, T55.cursorEnd);        // $2725AA -- CLAMP, not wrap
+        ram.setU8(a5 + T55.modeAt, 3);                       // $2725B0 -- read by the NEXT test
+      }
+    }
+  }
+  if (mode() === 3) {                                        // $2725B6 cmpi.b #$3 / bne
+    if (due8(ram, a5 + T55.fireAt)) {                        // $2725C0
+      ram.setU8(a5 + T55.fireAt, 0x10);                      // $2725C8
+      fire55(ram, rom, a5, a6, ctx);
+      // $27270E -- step the burst; on underflow reload BOTH the burst counter and the fire timer.
+      const b = ram.u8(a5 + T55.burstAt);
+      ram.setU8(a5 + T55.burstAt, (b - 1) & 0xff);
+      if (b === 0) {
+        ram.setU8(a5 + T55.burstAt, ram.u8(a5 + T55.burstReloadAt));   // $272716
+        ram.setU8(a5 + T55.fireAt, ram.u8(a5 + T55.fireReloadAt));     // $27271C
+      }
+    }
+  }
+  tail55(ram, rom, a5, a6);                                  // $272722
+}
 
 /** The map of ported handler addresses -> functions, for the enemy driver. */
 export function handlerMap() { return HANDLERS; }
