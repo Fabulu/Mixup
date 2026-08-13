@@ -4901,10 +4901,24 @@ back to 2438/2438 after the revert.
                                              split rather than assuming only the first number moves
        tests/w314stage5scope.test.js:210  assert.ok(!map.has(typeEntry(k).handler), '... is unported')
 
-**The last one is the trap.** It is NOT a count: it asserts that four of stage 5's thirteen spawn an
-UNPORTED child. If `$55` is one of those four children, porting it makes the claim FALSE and the test must
-be **rewritten, not renumbered** -- renumbering would turn a real finding about stage 5's shape into a
-tautology. Check which of the four it is before touching it.
+**The last one is the trap, and it IS triggered -- checked, not guessed.** `tests/w314stage5scope.test.js:205`
+reads:
+
+    for (const [t, span, kids] of [[0x46, 0x1a2, [0x55]], [0x48, 0x264, [0x54]],
+      [0x43, 0x10e, [0x44]], [0x4c, 0xbe4, [0x4e, 0x50, 0x52, 0x58]]]) {
+        assert.ok(got.has(k), `type $.. spawns $..`);
+        assert.ok(!map.has(typeEntry(k).handler), `and $.. is unported`);
+
+**`$46` spawns `$55`, and `$55` is the asserted-unported child.** So porting `$55` makes the second
+assertion FALSE. It must be **rewritten, not renumbered**, and the file documents its own precedent: when
+W319 ported `$8E` and W323 ported `$1B`, both were *kept* as assertions that the scan still agrees about
+what they spawn, with the ported-ness claim flipped. Do the same here -- keep `got.has(0x55)` (the scan
+must still see `$46` spawning it) and flip the second assertion to assert it IS in `map`. **Deleting the
+entry would lose the `$46` -> `$55` edge**, which is the only machine-checked record of it.
+
+**And this CONFIRMS from the test rather than from my notes that porting `$55` unblocks `$46`** -- `$46` is
+13 records with span `$1A2`, the largest single remaining piece of stage 5, and its unported-child blocker
+is exactly `$55`.
 
 ### W351: `($2E,A5)` IS A BURST COUNTER. The two volleys are ORDINARY and FINALE.
 
