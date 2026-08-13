@@ -133,9 +133,43 @@ pointed straight at them, and reading the code site settles it -- `boss.js:184-1
     note(ctx, 0x253564);      // $294DEA
     note(ctx, 0x242922);      // $294DF0
 
-**Those are the port declaring the addresses NOT ported.** So Hibachi's first block needs THREE new primitives,
-not zero, and my "five consecutive types needing nothing new" claim covers `$55`, `$46`, `$1A` and `$4C` but not
-`$B0`. `$243DD0` (2 code / 4 notes) still needs the same check.
+**Those are the port declaring the addresses NOT ported.** So Hibachi's first block needs new primitives, and the
+"five consecutive types needing nothing new" claim covers `$55`, `$46`, `$1A` and `$4C` but not `$B0`.
+
+**THE VERIFIED PICTURE, after three rounds of fixing `claimed.py` itself** (see below), is THREE unported --
+but not the three above:
+
+    $242922   4 mentions, ALL note()          genuinely unported
+    $253564   5 mentions, 4 note()            genuinely unported
+    $243DD0   7 mentions, 6 note()            genuinely unported -- the HIT-STOP / SCREEN-SHAKE routine
+    $23C4D0   1 CODE in initbody.js:1250      PORTED for that caller, deferred in boss.js -- do not rewrite
+    the other eight                           ported
+
+**`$243DD0` is the interesting one: hit-stop / screen-shake is a SHARED effect, not boss-specific.** Its note at
+`boss.js:113` records three call sites (`$292912`, `$294C68`, `$294D4C`), so writing it serves more than `$B0`.
+
+**And `$23C4D0` is ported for one caller and deferred for another** -- `initbody.js` uses it, `boss.js` defers it.
+That is why `claimed.py` reports counts rather than a verdict now: a boolean would have to lie about this address
+in one direction or the other.
+
+### `claimed.py` was WRONG THREE WAYS on these twelve addresses, and all three were in its SUMMARY
+
+The measurement (address-literal occurrences per file, classified by position) was right throughout. Every wrong
+answer came from a confident label on top of it:
+
+1. **CLAIMED flattened solid and thin ports.** `$263684` read CLAIMED on ONE code mention. Fixed with a THIN
+   warning, which then immediately caught four of Hibachi's callees -- and was right about them.
+2. **`note(ctx, 0xADDR)` classified as CODE.** The classifier had a rule for it that did not fire on the real
+   file. Fixed by testing the address's SYNTACTIC POSITION (is it an argument to `note()`/`unreached()`?) before
+   anything else. This is what exposed the deferrals.
+3. **"NOT PORTED" overstated what the tool can see.** After fix 2, `$263684` flipped to NOT PORTED -- but it IS
+   ported, as `enqueueDeferred`, and `handler46` calls it in shipped code. The tool sees no literal because the
+   port uses a NAME. Now worded "NO CODE LITERAL", split by whether PROSE comments or `note()` deferrals dominate.
+   A first attempt split on mention count instead and `$243DD0` disproved it within one command.
+
+**The rule for anyone using this tool: it measures address literals, not implementations.** A high prose-comment
+count with no literal usually means a named port; a high `note()` count means a real deferral. **Neither verdict is
+a substitute for reading the six bytes.**
 
 **AND `claimed.py` HAS A BUG HERE, WHICH IS WHY THE HEADLINE SAID CLAIMED.** It labels those three lines `[CODE]`
 even though its classifier has a rule for exactly this case (`re.search(r'(note|unreached)\s*\(', line)` ->
