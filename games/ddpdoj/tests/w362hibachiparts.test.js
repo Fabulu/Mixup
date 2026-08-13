@@ -407,3 +407,21 @@ test('W372 the body EXITS into $2A6EDC, which counts down ($1A,A5) and re-asks $
   // The first call site is in the body proper, at the pool-negative decision.
   assert.equal(IMG.readUInt32BE(0x2a6cfe), 0x002428a6, 'and $2A6CFC is the first');
 });
+
+test('W372 $2428A6 returns a MASK, and ZERO is what keeps the boss alive', { skip: SKIP }, () => {
+  // 44 bytes, two call sites, and the whole fight turns on it. Each player contributes only when its
+  // record word is NEGATIVE and its bit 0 is CLEAR -- both tests, in that order. P1 contributes $10
+  // via moveq, which SETS D0; P2 contributes 8 via addq, which ADDS. So both give $18.
+  assert.equal(IMG.readUInt16BE(0x2428a6), 0x7000, '$2428A6 moveq #$0,D0');
+  assert.equal(IMG.readUInt32BE(0x2428aa), 0x008103e6, '$2428A8 tst.w $8103E6');
+  assert.equal(IMG[0x2428ae], 0x6a, '  ...bpl -- a PLUS record contributes nothing');
+  assert.equal(IMG.readUInt16BE(0x2428b0), 0x0839, '$2428B0 btst #imm,abs.l');
+  assert.equal(IMG.readUInt16BE(0x2428b2), 0x0000, '  ...bit 0');
+  assert.equal(IMG[0x2428b8], 0x66, '  ...bne -- bit 0 SET also contributes nothing');
+  assert.equal(IMG.readUInt16BE(0x2428ba), 0x7010, '$2428BA moveq #$10,D0 -- P1 SETS');
+  assert.equal(IMG.readUInt16BE(0x2428ce), 0x5040, '$2428CE addq.w #8,D0 -- P2 ADDS, so both = $18');
+  assert.equal(IMG.readUInt16BE(0x2428d0), 0x4e75, '$2428D0 rts');
+  // Both callers branch on ZERO, and zero is the arm that refills the pool.
+  assert.equal(IMG.readUInt16BE(0x2a6d02), 0x4a40, '$2A6D02 tst.w D0 -- the body');
+  assert.equal(IMG.readUInt16BE(0x2a6ef4), 0x4a40, '$2A6EF4 tst.w D0 -- the exit block');
+});

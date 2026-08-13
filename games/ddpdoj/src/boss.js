@@ -1220,6 +1220,30 @@ export function clamp253564(ram) {
   ram.setU16(0x811f8c, 0x14);                                // $25356E
 }
 
+/** `$2428A6` -- THE DECISION HIBACHI'S FIGHT TURNS ON. 44 bytes, asked from TWO sites: `$2A6CFC`, when
+ *  the HP pool goes negative, and `$2A6EEE`, when the `($1A,A5)` countdown expires.
+ *
+ *  It returns a MASK, not a boolean: `$10` for P1 and `+8` for P2, each set only when that player's
+ *  record word is NEGATIVE **and** its bit 0 is CLEAR. Both tests, in that order -- `bpl` skips on
+ *  plus, `bne` skips on bit 0 set.
+ *
+ *  Its callers branch on zero, and zero means NEITHER player is in that state. In the body that is the
+ *  arm which REFILLS the pool to `$200` and keeps the fight going, so reading this as "is the boss
+ *  dead" inverts the fight: a non-zero return is what lets it die.
+ */
+export function bossDecide2428A6(ram) {
+  let d0 = 0;                                                // $2428A6 moveq #$0,D0
+  if ((ram.u16(0x8103e6) & 0x8000) !== 0                     // $2428A8 tst.w / $2428AE bpl
+      && (ram.u8(0x8103e6 + 1) & 0x01) === 0) {              // $2428B0 btst #0 / $2428B8 bne
+    d0 = 0x10;                                               // $2428BA moveq #$10,D0 -- SETS, not ORs
+  }
+  if ((ram.u16(0x810448) & 0x8000) !== 0                     // $2428BC / $2428C2
+      && (ram.u8(0x810448 + 1) & 0x01) === 0) {              // $2428C4 / $2428CC
+    d0 = u16(d0 + 8);                                        // $2428CE addq.w #8 -- ADDS, so both = $18
+  }
+  return d0;                                                 // $2428D0 rts
+}
+
 export function handler2A4606(ram, rom, a5, ctx) {
   // $2A4606 -- the whole boss. $2A6B94's first block is 666 bytes ending at $2A6E2E; it opens
   // `tst.w ($106,A6) / beq` over a single `rts`, so it does nothing unless ($106,A6) is zero, and its
