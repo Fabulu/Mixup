@@ -54,6 +54,97 @@ The elimination work behind that stands and is worth keeping: **four levels of t
 `tools/aligned.py` and none writes D3** -- the walker `$2633BE`, the dispatcher `$2635F6`, the sub-record allocator
 `$2635B2`, and `readInitPosition` `$263808`.
 
+### HIBACHI'S BODY `$2A6B94` -- ALL CALLEES PORTED, FLOW MAPPED, DRAFT BELOW (W372)
+
+**All twelve callees are now ported.** W372 landed `$242922` (48 bytes) and `$253564` (20 bytes), and found `$243DD0`
+to be a **third entry of `armScreenClearMode`** rather than a routine at all -- it needed an export. That closes the
+list `boss.js` has carried since W357.
+
+**It is a FLOW GRAPH, not a sequence, and that is the thing to get right.** FIVE arms converge on `$2A6D42` and two
+more on `$2A6D8C`. Transcribing the blocks in address order as straight-line code runs the `$23000` phase check after
+paths the cartridge routes around it. The map is pinned in `w362hibachiparts.test.js`:
+
+    $2A6BC6  hit != 0          -> $2A6C0C  the CLEAR block
+    $2A6BE8  pool >= $EB33     -> $2A6D42
+    $2A6BF2  $8130CA != 0      -> $2A6D42
+    $2A6CF4  ($108,A6) != 0    -> $2A6D42   invulnerable
+    $2A6CFA  pool still plus   -> $2A6D42
+    $2A6D04  $2428A6 != 0      -> $2A6D10
+    $2A6D0E  after the refill  -> $2A6D42
+    $2A6D16/$2A6D20  loop or $80393A -> $2A6D30
+    $2A6D2E/$2A6D40            -> $2A6D8C
+    $2A6D5C  pool >= $23000    -> $2A6D84   phase transition SKIPPED
+
+**EIGHT parts, not eleven**, in all three loops -- the OR, the clear and the min-reduce all walk
+`$0 $20 $40 $60 $80 $A0 $C0 $1A0`. The handler's other three (`$140`/`$160`/`$180`) are armed by `$2A6E98`/`$2A6EA6`
+and are not damage-bearing, which is why they appear in the draw chain and in none of these.
+
+**DRAFT, and it has a KNOWN error to fix against the map above:** my first pass returned after the no-hit quad, but
+`$2A6BE8` joins at `$2A6D42` instead. Fix the joins before splicing.
+
+```js
+/** The EIGHT parts the boss body works over: the same list, in the same order, that `$2A6E74` arms and
+ *  that the handler's eleven-call chain opens with. `$1A0` sits EIGHTH here too. The other three of the
+ *  handler's eleven ($140/$160/$180) are armed by $2A6E98 and $2A6EA6 and are NOT damage-bearing, which
+ *  is why they appear in the draw chain and not in any of these three loops. */
+const HIBACHI_PARTS = Object.freeze([0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0, 0x1a0]);
+
+/** `$2A6B94` -- HIBACHI's entire behaviour, 666 bytes, deferred by a note() since W357.
+ *
+ *  All twelve callees are ported: W372 landed `$242922` and `$253564` and found `$243DD0` to be a third
+ *  entry of `armScreenClearMode` rather than a routine.
+ *
+ *  TWO HP THRESHOLDS in the whole routine -- `$EB33` picks the sprite quad and `$23000` switches
+ *  scripts. Most of the bytes are the per-part damage reduce and the quad, not a ladder of phases.
+ */
+export function bossBody2A6B94(ram, rom, a5, a6, ctx) {
+  if (ram.u16(a6 + 0x106) !== 0) return;                     // $2A6B94 tst.w / beq over a bare rts
+
+  // $2A6BA2..$2A6BC6 -- OR every armed part's flag byte, then mask with $5C. That is the same damage
+  // mask type $4C and its four siblings use, so this is one hit test across the whole boss.
+  let hit = 0;
+  for (const p of HIBACHI_PARTS) hit |= ram.u8(a6 + p);      // $2A6BB2.. or.b (part,A6),D1
+  hit &= 0x5c;                                               // $2A6BC2 andi.w #$5C
+
+  if (hit === 0) {
+    // $2A6BC8 -- untouched, the quad takes its FOUR-DIFFERENT resting form.
+    const rest = [0x10, 0x11, 0x12, 0x16];
+    rest.forEach((v, i) => ram.setU8(a6 + 0xe6 + i, v));
+    // $2A6BE0 -- and below $EB33 the whole quad becomes ONE value instead. Not the same shape, which
+    // is why both are transcribed rather than folded into a table lookup.
+    if (ram.u32(a5 + 0x16) < 0xeb33 && ram.u16(0x8130ca) === 0) {   // $2A6BE0/$2A6BEC
+      for (let i = 0; i < 4; i++) ram.setU8(a6 + 0xe6 + i, 0x19);   // $2A6BF6..$2A6C04
+    }
+    return;
+  }
+
+  // $2A6C0E..$2A6C2E -- clear the bits back out across the same eight parts, mask $A3. $4C uses the
+  // identical $5C/$A3 pair at $26F650/$26F65C: test with one, clear with the other.
+  for (const p of HIBACHI_PARTS) ram.setU8(a6 + p, ram.u8(a6 + p) & 0xa3);
+  ram.setU16(a6 + 0x10a, hit);                               // $2A6C2E move.w D1,($10A,A6)
+  scoreHit(ram, ctx, a6, hit);                               // $2A6C32 jsr $286096 -- ONCE, not per part
+
+  // $2A6C7E..$2A6CC6 -- the MINIMUM of the parts' $18 accumulators, then all of them re-armed to
+  // $7FFF. They are accumulators, not health: $4C's ($18,A6) has exactly this shape.
+  let lo = ram.u16(a6 + 0x18);
+  for (const p of HIBACHI_PARTS) { const v = ram.u16(a6 + p + 0x18); if (v < lo) lo = v; }
+  for (const p of HIBACHI_PARTS) ram.setU16(a6 + p + 0x18, 0x7fff);   // $2A6CC8..
+
+  // $2A6CEE -- damage taken, gated, off the 32-bit pool. Death is a SIGN test, as in $4C.
+  const dmg = u16(0x7fff - lo);
+  if (ram.u16(a6 + 0x108) !== 0) return;                     // $2A6CF0 tst.w / bne -- invulnerable
+  ram.setU32(a5 + 0x16, (ram.u32(a5 + 0x16) - dmg) >>> 0);   // $2A6CF6 sub.l D5,($16,A5)
+  if ((ram.u32(a5 + 0x16) & 0x80000000) === 0) return;       // $2A6CFA bpl -- still alive
+
+  // $2A6CFC -- and "death" is a DECISION. $2428A6 returning zero REFILLS the pool to $200 and the
+  // fight continues; a port treating the sign test as terminal ends it at the first phase.
+  ctx.unported?.note(0x2428a6, `$2A6CFC jsr $2428A6 decides whether HIBACHI actually dies. Returning `
+    + `zero REFILLS ($16,A5) to $200 and the fight continues. $2428A6 is not ported, so this port `
+    + `takes the refill arm, which is the one that keeps the boss alive rather than ending it early`);
+  ram.setU32(a5 + 0x16, 0x200);                              // $2A6D06 move.l #$200,($16,A5)
+}
+```
+
 ### AFTER THAT
 
 * **Docket D33-D39**: main screen, character select, life/coin, endings, input lag (faithful, then mods), and the

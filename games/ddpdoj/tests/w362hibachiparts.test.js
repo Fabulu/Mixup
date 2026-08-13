@@ -339,3 +339,24 @@ test('W372 $243DD0 is a THIRD entry of armScreenClearMode, not a new routine', {
   assert.equal(IMG.readUInt16BE(0x243df0), 0x0001, '  ...#$1 into the arm word');
   assert.equal(IMG.readUInt16BE(0x243df8), 0xffff, '$243DF6 move.w #$FFFF -- the MODE');
 });
+
+test('W372 $2A6B94 is a flow GRAPH with one join point, not a linear sequence', { skip: SKIP }, () => {
+  // Mapping the inter-block branches is what a port needs before writing this, and it is not obvious
+  // from reading the blocks in address order: FIVE separate arms converge on $2A6D42, and two more on
+  // $2A6D8C. Transcribing the blocks top to bottom as straight-line code would run the phase check
+  // after paths the cartridge routes around it.
+  const target = (at) => {
+    const lo = IMG[at + 1];
+    return lo === 0 ? at + 2 + IMG.readInt16BE(at + 2)
+      : at + 2 + (lo > 0x7f ? lo - 0x100 : lo);
+  };
+  for (const at of [0x2a6be8, 0x2a6bf2, 0x2a6cf4, 0x2a6cfa, 0x2a6d0e]) {
+    assert.equal(target(at), 0x2a6d42, `$${at.toString(16)} joins at $2A6D42`);
+  }
+  for (const at of [0x2a6d2e, 0x2a6d40]) {
+    assert.equal(target(at), 0x2a6d8c, `$${at.toString(16)} joins at $2A6D8C`);
+  }
+  // And the two that do NOT join: the hit test and the phase check each go their own way.
+  assert.equal(target(0x2a6bc6), 0x2a6c0c, 'the hit arm goes to the CLEAR block');
+  assert.equal(target(0x2a6d5c), 0x2a6d84, 'and above $23000 the phase transition is skipped');
+});
