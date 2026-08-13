@@ -8668,8 +8668,12 @@ const T55 = Object.freeze({
   //
   // ordinary: subi.w #$34 then per pass {emit, +4, emit, +4, emit, +$10}  x5   ($27262C..$27267E)
   // finale:   subi.w #$22 then per pass {emit, +2 x4 ..., +$C}            x4   ($27268C..$27270A)
+  // `sites` are the literal `jsr` addresses, in order, because `ctx.bulletSpawn?.(site, ...)` wants the
+  // CALL SITE and the emits are unrolled -- so the site cycles per shot within a pass:
+  // `sites[i % sites.length]`. Counted off the bytes in W351, not inferred from the pass structure.
   volleyOrdinary: Object.freeze({
     emit: 0x2816f6, backoff: 0x34, d0: 0xffff0005,
+    sites: Object.freeze([0x272648, 0x27265e, 0x272674]),
     angles: Object.freeze([
       -0x34, -0x30, -0x2c, -0x1c, -0x18, -0x14, -0x04, 0x00,
       0x04, 0x14, 0x18, 0x1c, 0x2c, 0x30, 0x34,
@@ -8677,6 +8681,7 @@ const T55 = Object.freeze({
   }),
   volleyFinale: Object.freeze({
     emit: 0x281744, backoff: 0x22, d0: 0xffff0004,
+    sites: Object.freeze([0x2726a8, 0x2726be, 0x2726d4, 0x2726ea, 0x272700]),
     angles: Object.freeze([
       -0x22, -0x20, -0x1e, -0x1c, -0x1a, -0x0e, -0x0c, -0x0a, -0x08, -0x06,
       0x06, 0x08, 0x0a, 0x0c, 0x0e, 0x1a, 0x1c, 0x1e, 0x20, 0x22,

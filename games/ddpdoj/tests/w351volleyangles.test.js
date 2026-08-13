@@ -55,6 +55,17 @@ test('W351: T55 volley angles match the cartridge instruction stream', { skip: !
     assert.equal(r.backoff, spec.backoff, `${v.name} backoff from the subi.w`);
     assert.deepEqual([...spec.angles], r.out,
       `${v.name}: ${r.passes} passes x ${r.perPass} emits, inter-cluster +${r.inter}`);
+    // The call SITES, scanned as `jsr <emit>` (0x4eb9 + the 32-bit target) inside the loop body. The
+    // handler passes these to ctx.bulletSpawn, so a transcription slip would misattribute every bullet.
+    const found = [];
+    for (let a = v.top; a < v.dbra; a += 2) {
+      if (buf.readUInt16BE(a) === 0x4eb9 && buf.readUInt32BE(a + 2) === spec.emit) found.push(a);
+    }
+    assert.deepEqual([...spec.sites], found, `${v.name} jsr sites, in order`);
+    assert.equal(spec.angles.length % spec.sites.length, 0,
+      `${v.name}: ${spec.angles.length} shots must divide evenly by ${spec.sites.length} emit sites, `
+      + 'since the site cycles per shot within a pass');
+
     // Symmetry is the independent check: the ROM aims at the centre, so the set must mirror.
     // `-x` on the centre shot gives -0, and strict deepEqual distinguishes -0 from 0, so normalise it.
     const mirrored = [...spec.angles].map((x) => (x === 0 ? 0 : -x)).reverse();
