@@ -1112,6 +1112,23 @@ another during this session was wrong.** Concretely:
     **So before recording a field's PURPOSE, find every site that touches it.** Recording the value is safe;
     recording the meaning from one site is not.
 
+    **APPLIED IMMEDIATELY TO `$4C`, AND IT FOUND TWO UNREAD SITES.** Counting `(d16,An)` references per field:
+
+        ($16,A5)  2 sites  $26F622 $26F67E              both read
+        ($1A,A5)  2 sites  $26F686 $26F690              both read
+        ($1A,A6)  2 sites  $26F8F4 **$26FF76**          the second is UNREAD
+        ($26,A6)  2 sites  $26F858 **$26F870**          the second is UNREAD
+
+    **So `T4C`'s recorded meanings for `bandAt` and `stateAt` are PROVISIONAL** -- each has a site I have not read,
+    and rule 13 says that is exactly where the meaning gets decided. `$26FF76` sits inside the `$26FF9E` distance
+    helper's tail, and `$26F870` immediately follows the state setter, so both are plausible extensions rather than
+    contradictions -- but that is a guess, which is the thing this rule exists to stop.
+
+    **CAVEAT ON THE SCAN, and it cuts both ways:** it matches only `xx2d`/`xx2e` addressing forms, so it MISSES
+    immediate-to-memory writes like `1b7c` (`move.b #imm,(d16,A5)`) and `1d7c`. It therefore does not list
+    `$26F8FC`'s write to `($17,A5)` or `$26FF9E`'s writes to `($1A,A6)`, both of which I have read. **Use it to find
+    sites you have missed, never to conclude you have found them all.**
+
 **Stage 5: NINE types with no handler over 27 records** (was ten over 29 at the session start).
 Ranked: `$46` 13, `$1A` 4, `$48`, `$4A`, `$4B`, `$43`, `$47`, `$4C`, `$B0`.
 
