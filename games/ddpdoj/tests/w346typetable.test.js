@@ -174,14 +174,15 @@ test('W369: an `initBodyPorted: false` spec has no registered init body, and can
   }
 });
 
-test('W369: exactly ONE spec is measured-but-handlerless -- $4C', () => {
+test('W372: NO spec is measured-but-handlerless -- $4C was the last', () => {
   const unwritten = [...TYPE_SPECS.entries()]
     .filter(([, spec]) => spec.ported === false)
     .map(([type]) => type)
     .sort((a, b) => a - b);
-  assert.deepEqual(unwritten, [0x4c],
-    'Was [$1A, $4C, $B0]. $1A and $B0 were never in this state: both had written, registered handlers '
-    + 'and were mislabelled, which is what hid their missing init bodies.');
+  assert.deepEqual(unwritten, [],
+    'W372 ported $4C, the last of them. Was [$1A, $4C, $B0]; $1A and $B0 were never really in this '
+    + 'state, having written handlers and mislabelled specs, which is what hid their missing init '
+    + 'bodies. An EMPTY list is the honest end state: every spec that describes a handler has one.');
 });
 
 test('W369: exactly ONE type is UNSPAWNABLE -- $1A', () => {

@@ -175,6 +175,7 @@ test('the ported handler addresses are registered through W223 type $41', () => 
       0x2710e2,   // W352: stage-5 type $46, $55's parent -- the extend-spawn-retract arm
       0x2a4606,   // W363: HIBACHI. Its body is a note(); the stage-clear path is complete.
       0x268e6c,   // W365: stage-5 type $1A, the slewing twin-weapon turret -- never needed a trace
+      0x26f5f2,   // W372: stage-5 type $4C, the multi-part set piece -- the LAST of stage 5's
     ].sort((a, b) => a - b));
 });
 

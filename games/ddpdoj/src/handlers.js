@@ -99,6 +99,12 @@ import { stepMovement, scrollCompensate, applyVelocity, applyVelocityA6,
   stickMove242A48 } from './movement.js';
 import { readInput23D186 } from './tallyscreen.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
+// W372: type $4C's seven. `packedAdd` is deliberately absent -- it is a one-line local in
+// stage3carrier.js, not an export, so $4C inlines `u32(pos + delta)` instead.
+import { dist242494 } from './bossscripts.js';
+import { slew64FromRecord } from './aim.js';
+import { buildParts246520 } from './spawn.js';
+import { bigBurst28B4BE } from './boss.js';
 import { AimTables, AIM, aim64, aim256, aim64FromCaller, aim64AtTarget,
   aim64TurnStore, aim256FromCaller, slew64, targetSelect } from './aim.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
@@ -8517,6 +8523,7 @@ const HANDLERS = new Map([
   [0x272424, handler55],   // W351: stage-5 burst-firing drifter, spec in T55
   [0x2710e2, handler46],   // W352: stage-5 extend-spawn-retract arm, $55's PARENT, spec in T46
   [0x268e6c, handler1A],   // W365: stage-5 slewing twin-weapon turret -- spec in T1A
+  [0x26f5f2, handler4C],   // W372: stage-5 multi-part set piece -- spec in T4C
   [0x2a4606, handler2A4606],  // W363: HIBACHI, stage 5's boss-route root -- spec in TB0. Its body
                               // $2A6B94 is a note(), so it appears and lets the stage clear but does
                               // not attack. Registered because the stage-clear path is COMPLETE.
@@ -9146,7 +9153,6 @@ const T1A = Object.freeze({
 // own instructions, and the handler then TESTS ($9E,A6) -- reading back a byte its prototype seeded from
 // its own opcodes. COPY THE BYTES. Do not invent plausible field values; the same trick appears in $49.
 const T4C = Object.freeze({
-  ported: false,
   init: 0x26f4da, initBody: 0x26f4e2, handler: 0x26f5f2,
   // W371 CORRECTION: this was $26FFE8 with the note "the last rts is $26FFE6". $26FFE6 IS an rts, but
   // $26FFE8 is the START of the last subroutine, which is in `subroutines` above -- so the recorded end
@@ -9432,6 +9438,467 @@ const TB0 = Object.freeze({
 //
 // And ($28,A5) is the HEADING while ($28,A6) is the ANIMATION CURSOR -- one offset, two structures,
 // both live in this function. A5 is the record, A6 the sub-record.
+// ===================== TYPE $4C -- the stage-5 multi-part set piece (W372) =====================
+// ===================== TYPE $4C -- the stage-5 multi-part set piece (W372) =====================
+// Written from W371's end-to-end reading, held by 52 assertions in w363type4cfields. Every helper
+// signature here was read from its definition, never recalled -- W365 got seven of seven wrong.
+
+/** `$26FF9E` -- STEER toward (d2,d3). Returns TRUE while still travelling, FALSE on arrival.
+ *
+ *  The spec calls this the distance bander and that is the SIDE EFFECT: the ($1A,A6) writes happen on
+ *  the way past. What it does is move the object, which is why every state that travels calls it and
+ *  branches on the result.
+ *
+ *  D0 IS SCRATCH. `move.w $813172,D0 / sub.w D0,D3` looks like it sets up the first argument, but
+ *  `$242494` opens `movem.w ($2,A6),D0-D1` and loads the self position over it. The scroll only ever
+ *  compensates the target X.
+ */
+function steer4C(ram, rom, a6, d2, d3) {
+  const tgtX = u16(d3 - ram.u16(T4C.distGlobal));            // $26FF9E/$26FFA4
+  const selfY = ram.u16(a6 + 0x02);
+  const selfX = ram.u16(a6 + 0x04);
+  const dist = dist242494(selfY, selfX, d2, tgtX);           // $26FFA6 jsr $242494
+
+  // $26FFAC..$26FFC2 -- a FALL-THROUGH cascade, so the smallest band wins. Written as else-if it
+  // yields the largest instead, and $26FF6C/$26FF7A branch on exactly $8.
+  if (dist < 0x200) {                                        // $26FFAC cmpi.w / bge
+    ram.setU8(a6 + T4C.bandAt, 0x08);                        // $26FFB2
+    if (dist < 0x100) ram.setU8(a6 + T4C.bandAt, 0x06);      // $26FFB8 / $26FFBE
+  }
+
+  if (dist < T4C.steerArrivalRadius) return false;           // $26FFC4 blt -> the carry-CLEAR exit
+  // $26FFCC jsr $242038 -- the entry INSIDE aim64AtTarget that skips targetSelect, because the target
+  // is already in D2/D3. aim64AtTarget would re-select a player and discard the waypoint.
+  const dir = aim64(aimTables(rom), selfY, selfX, d2, tgtX);
+  ram.setU8(a6 + T4C.steerHeadingAt,                         // $26FFD8 move.b D1,($1B,A6)
+    slew64FromRecord(ram, a6, dir) & 0xff);                  // $26FFD2 jsr $24218C
+  return true;                                               // $26FFDC -- carry SET
+}
+
+/** One sprite block: `move.l #art,D2` .. `jsr $26F790`. The stub is picked by `($17,A5)`, the same
+ *  field state 0 sets when its two-stage timer expires -- the form change and the emitter choice are
+ *  ONE decision, not two. */
+function draw4C(ram, rom, a5, d1, dr) {
+  const stub = ram.u8(a5 + T4C.drawSelectAt) !== 0           // $26F790 tst.b ($17,A5) / bne
+    ? T4C.drawStubs[1] : T4C.drawStubs[0];
+  enqueueRegistersThroughStub(ram, rom, stub, d1, dr.art, dr.d3, ram.u8(dr.a6base + dr.palAt));
+}
+
+/** The five tail calls, in CALL order. Part 4's two halves, then part 3's two, then `$26F71A` -- which
+ *  is THREE sprite blocks, so seven sprites leave here per frame. Rendering from `T4C.draws` in array
+ *  order instead would put part 1 underneath. */
+function drawAll4C(ram, rom, a5, a6) {
+  const pos = ram.u32(a6 + 0x02);
+  for (const dr of T4C.draws) {
+    let d1 = pos;
+    // Block B alone applies the RAMP, and through a SWAP-SEPARATED word add -- it lands in the high
+    // word with NO borrow into the low. It must not be folded into the addi.l biases around it.
+    if (dr.rampSwapAdd !== undefined) {                      // $26F74A swap / add.w / swap
+      d1 = (((u16((d1 >>> 16) + ram.u16(a5 + dr.rampSwapAdd)) << 16) >>> 0) | (d1 & 0xffff)) >>> 0;
+    }
+    let first = true;
+    for (const b of dr.biases) {
+      d1 = (d1 + b) >>> 0;                                   // addi.l -- these DO carry
+      // The part offset is a WORD op on the LONG, sitting BETWEEN the two biases: low 16 bits only,
+      // NO carry into the high word. That is also why the two addi.l are not sequential and must not
+      // be folded. $26F7D2 SUBTRACTS where its twin adds, which is half of how the pair mirrors.
+      if (first && (dr.partAdd !== null || dr.partSub !== undefined)) {
+        const v = dr.partSub !== undefined
+          ? u16((d1 & 0xffff) - ram.u16(a6 + dr.partSub))    // $26F7E2 sub.w ($4A,A6),D1
+          : u16((d1 & 0xffff) + ram.u16(a6 + dr.partAdd));   // $26F7B8 add.w ($48,A6),D1
+        d1 = ((d1 & 0xffff0000) | v) >>> 0;
+      }
+      first = false;
+    }
+    draw4C(ram, rom, a5, d1, { ...dr, a6base: a6 });
+  }
+}
+
+/** `$26F858` -- the CHANGE-DETECTING state setter. The `beq` guard IS the function: `($28,A6)` is
+ *  cleared only when the state actually changes. Storing unconditionally restarts the inner script
+ *  every frame, which freezes every state at step 0 while everything else keeps working. */
+function setState4C(ram, a6, d0) {
+  if (ram.u16(a6 + T4C.stateAt) === d0) return;              // $26F858 cmp.w / beq rts
+  ram.setU16(a6 + T4C.stateAt, d0);                          // $26F860
+  ram.setU16(a6 + T4C.stepAt, 0);                            // $26F864 clr.w ($28,A6)
+}
+
+/** The two OFF/ON pairs. ON is NOT the inverse of OFF: switching a part on also RESETS its companion
+ *  field, so modelling a pair as one boolean setter leaves stale state behind. */
+function partSet4C(ram, a6, i, on) {
+  const p = T4C.partSetters[i];
+  ram.setU16(a6 + p.flagAt, on ? 1 : 0);                     // $26F98C / $26F994
+  if (on) for (const c of p.clears) ram.setU16(a6 + c, 0);   // the ON-only reset
+}
+/** `$26F5F2` -- type $4C. A multi-part destructible set piece with a SCRIPTED vulnerability window:
+ *  it spawns once at clock $1B8 and cannot be hurt until $1F0. */
+function handler4C(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+
+  // $26F5F2 -- FREEZE. The bne lands on $26F704, the FIRST draw call, not on the rts. So a paused $4C
+  // skips every state and still draws all seven sprites, which is why it does not vanish when frozen.
+  if (ram.u16(0x8130d2) !== 0) { drawAll4C(ram, rom, a5, a6); return; }
+
+  // $26F5FC -- part 5's $1E, the retire flag. It was armed a frame ago, by state 7's $26FF96 or by
+  // $27000A, and NOTHING acts on it in the frame that sets it. So the object lives one more full
+  // frame after the flag goes up, including one more pass through the draw chain.
+  if (ram.u8(a6 + 0x9e) !== 0) {
+    ram.setU16(T4C.releaseFlag, 0);                          // $26F604
+    pushExternalSpeed(ram, 0x20, 0x20);                      // $26F60C..$26F614
+    return;                                                  // $26F61A jmp $263762 -- just a return
+  }
+
+  // $26F622 -- the latch arms ONCE: only at clock $1F0, only while part 5's $1F is clear, and only
+  // while it is not already set. It opens the damage window AND selects the exit state in one go.
+  if (ram.u8(a5 + T4C.invulnGateAt) === 0 && ram.u8(a6 + 0x9f) === 0
+      && ram.u16(0x8130ce) === T4C.armClock) {               // $26F632 cmpi.w #$1F0,$8130CE
+    ram.setU8(a5 + T4C.invulnGateAt, 1);                     // $26F63E
+    ram.setU16(a5 + 0x20, 1);                                // $26F644
+    setState4C(ram, a6, 7);                                  // $26F64A moveq #$7 / bsr $26F858
+  }
+
+  // $26F650 -- the $5C damage arm, this band's sixth member.
+  const hit = ram.u8(a6) & 0x5c;
+  if (hit !== 0) {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);                        // $26F658/$26F65C
+    ram.setU16(a6 + T4C.hitMaskTo, hit);                     // $26F65E -- into part 5's $0E
+    scoreHit(ram, ctx, a6, hit);                             // $26F662 jsr $286096
+    // The XOR is an IMMEDIATE $D baked into the instruction, NOT ($19,A5) as the four siblings use.
+    // T4C deliberately has no palXor field, and a test asserts its absence.
+    ram.setU8(a6 + 0x1d, (ram.u8(a6 + 0x1d) ^ T4C.palXorImmediate) & 0xff);   // $26F668..$26F670
+
+    // $26F674 -- THE ONE A SIBLING-COPY GETS WRONG. ($18,A6) is a per-hit DAMAGE ACCUMULATOR that is
+    // reset every hit; the real health is the 32-BIT POOL at ($1A,A5). All four siblings test
+    // ($18,A6)'s sign for death, and copying that reads a field $4C resets, so it NEVER dies.
+    const dmg = u16(0x7fff - ram.u16(a6 + T4C.damageAccumAt));                // $26F674/$26F67A
+    if (ram.u8(a5 + T4C.invulnGateAt) === 0) {               // $26F67E tst.b / bne SKIPS the sub.l
+      ram.setU32(a5 + T4C.hpPoolAt,
+        (ram.u32(a5 + T4C.hpPoolAt) - dmg) >>> 0);                           // $26F686 sub.l
+    }
+    ram.setU16(a6 + T4C.damageAccumAt, T4C.hpReset);         // $26F68A -- UNCONDITIONAL, every hit
+
+    // $26F690 tst.l ($1A,A5) / $26F694 bpl -- death needs the pool NEGATIVE. `<= 0` kills it a hit
+    // early and `=== 0` may never fire at all.
+    if ((ram.u32(a5 + T4C.hpPoolAt) & 0x80000000) !== 0) {
+      scoreKill(ram, rom, ctx, T4C.killScore, hit);          // $26F698/$26F69E
+      ram.setU16(a6, 0x8000);                                // $26F6A4 -- the dying bit
+      ram.setU8(a6 + 0x9f, 1);                               // $26F6A8 -- part 5's $1F BLOCKS re-arm
+      ram.setU16(T4C.releaseFlag, 0);                        // $26F6AE $8130DE
+      ram.setU16(0x8130e0, 0);                               // $26F6B6 -- and $8130E0, CLAIMED BY $49
+      pushExternalSpeed(ram, 0x20, 0x20);                    // $26F6BE..$26F6C6
+      setState4C(ram, a6, 6);                                // $26F6CC -- the DEATH state
+      // $26F6D2 lea ($2701C8,PC),A0 / $26F6D8 jsr $246520. The `mode` is NOT a caller register: it is
+      // fixed by WHICH ENTRY is called -- 1 from $246520, 0 from $24652A (spawn.js's own docstring).
+      // $4C calls $246520, so it is 1, and $2701C8's count word is 1.
+      buildParts246520(ram, rom, T4C.deathEffectTable, 1, 0x26f6d8);
+    }
+  } else {
+    // $26F6DE -- an unhit frame REWRITES the palette byte rather than merely skipping the XOR. With
+    // the $D XOR this is a two-value alternation, $12 and $1F; drop it and the object stays flashing.
+    ram.setU8(a6 + 0x1d, 0x12);
+  }
+
+  retireCheck4C(ram, a6);                                    // $26F6E4 bsr $26FFE8
+
+  // $26F6E8 -- part 5's $1F set SKIPS the state machine, but the draw chain below still runs.
+  if (ram.u8(a6 + 0x9f) === 0) {
+    dispatch4C(ram, rom, a5, a6, ctx);                       // $26F6F0 bsr $26F86A
+    // $26F6F4 -- ($20,A5) non-zero skips these two, and the $1F0 arm SETS it, so they run only
+    // BEFORE the vulnerability window opens.
+    if (ram.u16(a5 + 0x20) === 0) {
+      sub26F9A2(ram, rom, a5, a6, ctx);                      // $26F6FC
+      sub26FA82(ram, rom, a5, a6, ctx);                      // $26F700
+    }
+  }
+
+  drawAll4C(ram, rom, a5, a6);                               // $26F704..$26F714, then rts
+}
+
+/** `$26F86A` -- the dispatcher. `($26,A6)` indexes eight 4-byte pointers at `$26F886`, and the tail is
+ *  `jmp $2417DE`, so applyVelocityA6 runs after EVERY state, including the ones that return early. */
+function dispatch4C(ram, rom, a5, a6, ctx) {
+  const state = ram.u16(a6 + T4C.stateAt) & 0xffff;          // $26F870 move.w ($26,A6),D0
+  if (state > 7) {
+    unreached(0x26f87c, `type $4C state ${state} is outside the eight-entry table at `
+      + `$${T4C.stateTable.toString(16).toUpperCase()}`);
+  }
+  STATES_4C[state](ram, rom, a5, a6, ctx);                   // $26F87C jsr (A0)
+  applyVelocityA6(ram, ctx.tables, a6);                      // $26F87E jmp $2417DE
+}
+// The eight state bodies. Each is a SCRIPT walked by ($28,A6) through successive `cmpi.w`, each arm
+// ending by advancing it -- not a frame timer. $26F858 clears it only on a real state change, which is
+// what restarts the script.
+
+/** State 0 `$26F8A6` -- arrive, then a TWO-STAGE timer that ends by changing the object's form. */
+function state0_4C(ram, rom, a5, a6) {
+  if (ram.u16(a6 + T4C.stepAt) === 0) {                      // $26F8A6
+    ram.setU16(a6 + T4C.bandAt, 0x1600);                     // $26F8B0 WORD: ($1A)=$16, ($1B)=0
+    ram.setU16(a6 + 0x34, 0x0202);                           // $26F8B6 WORD: counter AND its RELOAD
+    ram.setU16(a6 + T4C.stepAt, 1);                          // $26F8BC
+  }
+  if (ram.u16(a6 + T4C.stepAt) === 1) {                      // $26F8C2
+    if (i16(ram.u16(a6 + 0x02)) >= 0x2000) {                 // $26F8CC cmpi.w #$2000 / blt
+      ram.setU16(a6 + T4C.stepAt, 2);                        // $26F8D6
+    }
+  }
+  if (ram.u16(a6 + T4C.stepAt) !== 2) return;                // $26F8DC
+  // $26F8E6 -- the INNER counter borrows, reloads from ($35,A6), and only then does the OUTER one tick.
+  const inner = (ram.u8(a6 + 0x34) - 1) & 0xff;
+  ram.setU8(a6 + 0x34, inner);
+  if (inner !== 0xff) return;                                // $26F8EA bcc -- no borrow yet
+  ram.setU8(a6 + 0x34, ram.u8(a6 + 0x35));                   // $26F8EE reload from its PERIOD
+  const outer = (ram.u8(a6 + T4C.bandAt) - 1) & 0xff;        // $26F8F4
+  ram.setU8(a6 + T4C.bandAt, outer);
+  if (outer !== 0) return;                                   // $26F8F8
+  ram.setU8(a5 + T4C.drawSelectAt, 1);                       // $26F8FC -- the DRAW VARIANT changes
+  ram.setU16(a6, 0xa001);                                    // $26F902
+  setState4C(ram, a6, 1);                                    // $26F906/$26F908
+}
+
+/** State 1 `$26F90E` -- patrol the two-point table, then ALTERNATE states 2 and 4. */
+function state1_4C(ram, rom, a5, a6, ctx) {
+  if (ram.u16(a6 + T4C.stepAt) === 0) {                      // $26F90E
+    ram.setU8(a6 + T4C.bandAt, 0x04);                        // $26F91E
+    ram.setU16(a6 + 0x2a, 0);                                // $26F924 WORD -- clears BOTH cursors
+    ram.setU16(a6 + 0x30, 0x012c);                           // $26F92A -- 300 frames
+    partSet4C(ram, a6, 0, true);                             // $26F930 bsr $26F994
+    partSet4C(ram, a6, 1, true);                             // $26F934 bsr $26FA5E
+    ram.setU16(a6 + T4C.stepAt, 1);                          // $26F918
+  }
+  const cursor = ram.u16(a6 + 0x2a);                         // $26F93E adda.w ($2A,A6),A0
+  const at = T4C.state1Table + cursor;                       // $26F938 lea $26F984
+  const travelling = steer4C(ram, rom, a6,                   // $26F942 movem.w (A0),D2-D3
+    rom.u16(at), rom.u16(at + 2));                           // $26F946 bsr $26FF9E
+  if (!travelling) {                                         // $26F94A bcs SKIPS the advance
+    ram.setU16(a6 + 0x2a, (cursor + 4) & 0x7);               // $26F94E/$26F952 -- 0, 4, 0, 4...
+  }
+  const left = u16(ram.u16(a6 + 0x30) - 1);                  // $26F958
+  ram.setU16(a6 + 0x30, left);
+  if (left !== 0) return;                                    // $26F95C
+  // ($18,A5) is ONE BIT, so 2 and 4 run in strict alternation. Hardcoding either plays half the show.
+  setState4C(ram, a6, ram.u16(a5 + 0x18) !== 0 ? 4 : 2);     // $26F960..$26F96C
+  ram.setU16(a5 + 0x18, (ram.u16(a5 + 0x18) + 1) & 1);       // $26F970/$26F974
+  partSet4C(ram, a6, 0, false);                              // $26F97A bsr $26F98C
+  partSet4C(ram, a6, 1, false);                              // $26F97E bsr $26FA56
+}
+
+// (state 2's draft lives BELOW, in its corrected four-step form -- the one-spawn version that
+// stood here was wrong and is deleted rather than left to be copied by mistake.)
+
+/** States 3 `$26FCF2` and 5 `$26FECA` -- THE SAME SCRIPT with two constants changed. Both travel to
+ *  $5C00/$1C00, ramp ($1E,A5) down by $40 with a floor at zero, dwell, and hand back to state 1. The
+ *  dwell is the only difference: $F0 for state 3, $40 for state 5. Do NOT write these twice. */
+function travelDwell4C(ram, rom, a5, a6, dwell) {
+  if (ram.u16(a6 + T4C.stepAt) === 0) {                      // $26FCF2 / $26FECA
+    ram.setU16(a6 + 0x30, dwell);                            // $26FD02 #$F0 / $26FEDA #$40
+    ram.setU8(a6 + T4C.bandAt, 0x10);                        // $26FD08 / $26FEE0
+    if (ram.u16(a5 + T4C.rampAt) !== 0) {                    // $26FD0E tst.w ($1E,A5)
+      const r = u16(ram.u16(a5 + T4C.rampAt) - 0x40);        // $26FD16 subi.w #$40
+      ram.setU16(a5 + T4C.rampAt, i16(r) > 0 ? r : 0);       // $26FD1C bgt / $26FD20 clamp to 0
+    }
+    ram.setU16(a6 + T4C.stepAt, 1);
+  }
+  if (ram.u16(a6 + T4C.stepAt) === 1) {                      // $26FD26 / $26FEFE
+    if (!steer4C(ram, rom, a6, 0x5c00, 0x1c00)) {            // $26FD30..$26FD38 / $26FF08..$26FF10
+      ram.setU8(a6 + T4C.bandAt, 0);                         // $26FD40 / $26FF18
+    }
+    ram.setU16(a6 + T4C.stepAt, 2);                          // $26FD46 / $26FF1E
+  }
+  if (ram.u16(a6 + T4C.stepAt) !== 2) return;                // $26FD4C / $26FF24
+  const left = u16(ram.u16(a6 + 0x30) - 1);                  // $26FD56 / $26FF2E
+  ram.setU16(a6 + 0x30, left);
+  if (left === 0) setState4C(ram, a6, 1);                    // $26FD5E / $26FF36
+}
+
+/** State 4 `$26FD66` -- a WAYPOINT CHAIN at X $3600, over state 1's two Ys, then state 5. */
+function state4_4C(ram, rom, a5, a6) {
+  if (ram.u16(a6 + T4C.stepAt) === 0) {                      // $26FD66
+    ram.setU8(a6 + T4C.bandAt, 0x08);                        // $26FD76 -- and $8 IS a band value
+    ram.setU8(a6 + 0x2a, 0);                                 // $26FD7E
+    ram.setU16(a6 + T4C.stepAt, 1);                          // $26FD70
+  }
+  if (ram.u16(a6 + T4C.stepAt) === 1) {                      // $26FD82
+    ram.setU8(a6 + T4C.bandAt, 0x04);                        // $26FD9C
+    ram.setU16(a6 + T4C.stepAt, 2);                          // $26FDA2
+    ram.setU8(a6 + 0x2a, 1);                                 // $26FDA8
+  }
+  for (const [step, y, next] of [[2, 0x2a00, 3], [3, 0x0e00, null]]) {
+    if (ram.u16(a6 + T4C.stepAt) !== step) continue;         // $26FDAE / $26FDD4
+    if (steer4C(ram, rom, a6, 0x3600, y)) return;            // $26FDB8/$26FDC0 -- bcs, still going
+    if (next !== null) {
+      ram.setU16(a6 + T4C.stepAt, next);                     // $26FDC8
+      ram.setU8(a6 + 0x2a, 1);                               // $26FDCE
+    } else {
+      setState4C(ram, a6, 5);                                // $26FDEE/$26FDF0
+    }
+  }
+}
+
+/** State 6 `$26FF3E` -- DEATH. Three instructions, and the middle one sets a speed AND a heading with
+ *  ONE word write: ($1A)=$04, ($1B)=$20. ($1B) is the field the steerer slews; death sets it flat. */
+function state6_4C(ram, rom, a5, a6) {
+  if (ram.u16(a6 + T4C.stepAt) !== 0) return;                // $26FF3E
+  ram.setU16(a6 + T4C.stepAt, 1);                            // $26FF48
+  ram.setU16(a6 + T4C.bandAt, 0x0420);                       // $26FF4E -- BOTH bytes at once
+}
+
+/** State 7 `$26FF56` -- the EXIT, selected by the $1F0 arm cue. Ramps to 8 with a CLAMP, and arms the
+ *  retire flag the prologue acts on NEXT frame. */
+function state7_4C(ram, rom, a5, a6) {
+  if (ram.u16(a6 + T4C.stepAt) === 0) {                      // $26FF56
+    ram.setU16(a6 + T4C.stepAt, 1);                          // $26FF60
+    ram.setU8(a6 + T4C.steerHeadingAt, 0);                   // $26FF66
+  }
+  if (ram.u8(a6 + T4C.bandAt) !== 8) {                       // $26FF6C cmpi.b #$8 / beq
+    const v = (ram.u8(a6 + T4C.bandAt) + 1) & 0xff;          // $26FF76 addq.b #1
+    ram.setU8(a6 + T4C.bandAt, i16(v) < 8 ? v : 8);          // $26FF7A/$26FF84 -- SATURATES at 8
+  }
+  // $26FF8E -- signed, and `bgt` SKIPS the arm, so it retires once the position is at or below $9800.
+  if (i16(ram.u16(a6 + 0x02)) <= i16(0x9800)) {
+    ram.setU8(a6 + 0x9e, 1);                                 // $26FF96 -- acted on NEXT frame
+  }
+}
+
+const STATES_4C = Object.freeze([
+  state0_4C, state1_4C, state2_4C,
+  (ram, rom, a5, a6) => travelDwell4C(ram, rom, a5, a6, 0xf0),   // state 3
+  state4_4C,
+  (ram, rom, a5, a6) => travelDwell4C(ram, rom, a5, a6, 0x40),   // state 5
+  state6_4C, state7_4C,
+]);
+/** State 2 `$26FBD4` -- the bullet spawner. FOUR script steps, and the volley fires TWICE per pass on
+ *  ALTERNATE frames. Each counter-rotating cursor drives its own spawn. */
+function state2_4C(ram, rom, a5, a6, ctx) {
+  if (ram.u16(a6 + T4C.stepAt) === 0) {                      // $26FBD4
+    ram.setU8(a6 + T4C.bandAt, 0x10);                        // $26FBE4
+    ram.setU8(a6 + 0x2a, 0); ram.setU8(a6 + 0x2b, 0);        // $26FBEA/$26FBF0 -- TWO byte writes
+    ram.setU8(a6 + 0x34, 0x10);                              // $26FBF6 -- a BYTE, leaving $35 alone
+    ram.setU16(a6 + T4C.stepAt, 1);
+  }
+  if (ram.u16(a6 + T4C.stepAt) === 1) {                      // $26FBFE
+    if (!steer4C(ram, rom, a6, 0x2800, 0x1c00)) {            // $26FC06..$26FC0E
+      ram.setU8(a6 + T4C.bandAt, 0);                         // $26FC16
+    }
+    ram.setU16(a6 + T4C.stepAt, 2);                          // $26FC1C
+  }
+  if (ram.u16(a6 + T4C.stepAt) === 2) {                      // $26FC22
+    const r = u16(ram.u16(a5 + T4C.rampAt) + 0x40);          // $26FC2C addi.w #$40 -- ramp UP
+    ram.setU16(a5 + T4C.rampAt, i16(r) < T4C.rampCap ? r : T4C.rampCap);   // $26FC32 cap $600
+    ram.setU16(a6 + T4C.stepAt, 3);                          // $26FC42
+  }
+  if (ram.u16(a6 + T4C.stepAt) !== 3) return;                // $26FC48
+  // $26FC52 -- FRAME PARITY. The whole volley is skipped on odd frames, so it fires every OTHER
+  // frame. Without this the bullet count doubles, and each individual spawn still looks correct.
+  if ((ram.u16(0x80390a) & 1) !== 0) return;
+
+  const bias = T4C.spawnBiasTable + ((ram.u8(a6 + 0x34) & 7) << 2);   // $26FC5E..$26FC70
+  // The two spawns' own biases STRADDLE a boundary -- $0C7FF600 and $0C800A00 -- the same mirrored
+  // shape as the draw pairs. Folding them to one value puts both volleys on top of each other.
+  for (const [addBias, cursorAt, step] of [[0x0c7ff600, 0x2a, +4], [0x0c800a00, 0x2b, -4]]) {
+    const q = enqueueDeferred(ram, 0x52, DEFQ_D1.FIXED00);   // $26FC72 / $26FC9A jsr $263684
+    if (q) {
+      ram.setU32(q + 0x16,                                   // $26FC86 / $26FCAE
+        u32(u32(ram.u32(a6 + 0x02) + addBias) + rom.u32(bias)));      // add.l (A4),D0
+      ram.setU8(q + 0x1a, ram.u8(a6 + cursorAt));            // $26FC8A / $26FCB2
+    }
+    ram.setU8(a6 + cursorAt, (ram.u8(a6 + cursorAt) + step) & 0x3f);  // $26FC90 / $26FCB8
+  }
+
+  const c = (ram.u8(a6 + 0x34) - 1) & 0xff;                  // $26FCC2
+  ram.setU8(a6 + 0x34, c);
+  if (c === 0) setState4C(ram, a6, 3);                       // $26FCCA/$26FCCC
+}
+/** `$26FFE8` -- the RETIRE PREDICATE. Returns a boolean the ROM carries in the CARRY flag, through the
+ *  shared stubs `$270128` (clear) and `$27012E` (set). $4C's single caller IGNORES the return, so do
+ *  not invent a branch on it; what matters is the ($9E,A6) it arms. */
+function retireCheck4C(ram, rom, a5, a6, ctx) {
+  if (ram.u8(a6 + 0x9f) === 0) return false;                 // $26FFE8 tst.b ($9F,A6) / beq $270128
+  ram.setU16(a6 + 0x02, u16(ram.u16(a6 + 0x02) - 0x40));     // $26FFF0 subi.w #$40,($2,A6)
+  armScreenClear243E02(ram, ctx, ram.u16(a6 + T4C.hitMaskTo), 0x26fffa);   // $26FFF6/$26FFFA
+  if (ram.u8(a6 + 0x86) === 2) {                             // $270000 cmpi.b #$2,($86,A6)
+    ram.setU8(a6 + 0x9e, 1);                                 // $27000A -- acted on NEXT frame
+    return true;                                             // $270010 bra $27012E, carry SET
+  }
+  // $270014.. -- the effect emitter. QUARTER-TURN PAIRS: one shared angle, +$40 on one side and +$C0
+  // on the other, with MIRRORED position biases. One constant for both stacks them on one bearing.
+  // W372: this is `bigBurst28B4BE`, and STAGE 3'S CARRIER already does it with the SAME two biases and
+  // the SAME quarter turns (stage3carrier.js:422). Read that call site, do not reinvent the shape.
+  for (const [turn, bias] of [[0x40, 0xf8000800], [0xc0, 0x01fff800]]) {
+    const r = drawWord242EC2(ram, rom) & 0xff;               // $27005C-family RNG, before each burst
+    bigBurst28B4BE(ram, rom, ctx,                            // $270056 / $270082 jsr $28B4BE
+      packedAdd(ram.u32(a6 + 0x02), bias),                   // $270048 / $27006E addi.l
+      u16(r * 2 + turn),                                     // $27003C asl.b #1 then +$40 / +$C0
+      0, 0x0c, 0x270056);                                    // $270052 D0=0, $27004E D3=$C
+  }
+  return false;
+}
+
+/** `$26F9A2` -- PART 3's animator. Fires from the drawn muzzle, then RETRACTS the two draw offsets. */
+function sub26F9A2(ram, rom, a5, a6, ctx) {
+  if (ram.u16(a6 + T4C.partSetters[0].flagAt) === 0) return; // $26F9A2 tst.w ($46,A6) / beq
+  // $26F9D0 -- THE GATE IS THE SUM: it fires only once BOTH draw offsets have retracted to zero, so
+  // the two halves close and THEN it shoots. Parity-gated like state 2's volley.
+  if (u16(ram.u16(a6 + 0x48) + ram.u16(a6 + 0x4a)) !== 0) return;   // $26F9D0..$26F9D8
+  if ((ram.u16(T4C.spawnParityGlobal) & 0xffff) !== 0) return;      // $26F9DE or.w / bne
+  ram.setU16(a6 + 0x4c, 1);                                         // $26F9E6 -- the $46 companion
+  // TWO children of type $4E at the two part-3 draw biases: the fifth mirrored pair in this type.
+  for (const b of [0xfc3fec80, 0xfc401380]) {                       // $26F9F8 / $26FA14
+    const c = enqueueDeferred(ram, 0x4e, DEFQ_D1.FIXED00);          // $26F9EC/$26F9EE moveq #$4E
+    if (c) {
+      ram.setU32(c + 0x16, u32(ram.u32(a6 + 0x02) + b));            // $26F9FE / $26FA1A
+      ram.setU16(c + 0x1a, b === 0xfc3fec80 ? 0xfa00 : 0x0600);     // $26FA02 / $26FA1E
+    }
+  }
+  const q = enqueueDeferred(ram, T4C.spawnChild, DEFQ_D1.FIXED00);        // $26FA0A jsr $263684
+  if (q) {
+    // The SAME bias as the $26F7D2 draw half, so the shot leaves from the muzzle that is drawn.
+    ram.setU32(q + 0x16, u32(ram.u32(a6 + 0x02) + 0xfc401380));           // $26FA14/$26FA1A
+    ram.setU16(q + 0x1a, 0x0600);                                        // $26FA1E
+  }
+  // $26FA24..$26FA52 -- RETRACT both halves toward zero. These are the draw pair's partAdd/partSub, so
+  // they are ANIMATED, not constants: the halves extend and close symmetrically.
+  for (const off of [0x48, 0x4a]) {
+    if (ram.u16(a6 + off) === 0) continue;                   // $26FA24 / $26FA3C tst.w / beq
+    const v = u16(ram.u16(a6 + off) - 0x100);                // $26FA2C / $26FA44 subi.w #$100
+    ram.setU16(a6 + off, i16(v) > 0 ? v : 0);                // $26FA32 bgt / $26FA36 floor at 0
+  }
+}
+
+/** `$26FA82` -- PART 4's animator, and the type's FAN. `localLoop` is this routine's dbra. */
+function sub26FA82(ram, rom, a5, a6, ctx) {
+  if (ram.u16(a6 + T4C.partSetters[1].flagAt) === 0) return; // $26FA82 -- the ($66,A6) gate
+  // $26FAF4..$26FB00 -- the fan is SKIPPED entirely while the target is within $400.
+  if (/* D0 */ 0 < u16(ram.u16(a6 + 0x02) - 0x400)) return;          // $26FAFA/$26FAFE/$26FB00 bcs
+  const passes = 0x24 + 1;                                           // $26FB04 move.w #$24,D7 -- 37
+  let d1 = 0x2e;                                                     // $26FB0E -- the ENTRY heading
+  const d5 = 0;                                                      // $26FB16 moveq #0,D5
+  // $26FB1E..$26FB3A -- the fan. D7 passes, each indexing $2735FA by (D1 & $3F) * 4, emitting, then
+  // stepping D1 and RE-MASKING, so the heading WRAPS rather than clamping.
+  for (let n = 0; n < passes; n++) {                          // $26FB3A dbra D7 -- 37 passes
+    const e = rom.u32(T4C.fanTable + ((d1 & 0x3f) << 2));    // $26FB18..$26FB28
+    // $26FB2C/$26FB2E -- through fireBullet, the type $11 idiom at handlers.js:768, NOT a bare call.
+    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281402,
+      { d0: 0, d1, d2: u32(e + d5), d3: 0, d4: 0, d5, a5 });
+    ctx.bulletSpawn?.(0x26fb2e, res);
+    d1 = (d1 + 1) & 0x3f;                                    // $26FB34/$26FB36 -- WRAPS, not clamps
+  }
+  // $26FB3E -- the SECOND counter-and-reload pair, state 0's shape exactly.
+  const c = (ram.u8(a6 + 0x6e) - 1) & 0xff;
+  ram.setU8(a6 + 0x6e, c);
+  if (c !== 0xff) return;                                    // $26FB42 bcc -- no borrow
+  ram.setU8(a6 + 0x6e, ram.u8(a6 + 0x6f));                   // $26FB46 reload from its PERIOD
+  if (u16(ram.u16(a6 + 0x68) + ram.u16(a6 + 0x6a)) !== 0) return;  // $26FB4C..$26FB54 BOTH must be 0
+  // $26FB58 -- a COIN FLIP picks WHICH half of the part-4 pair fires. Part 3's animator fires BOTH of
+  // its children; this one fires ONE. Copying either to the other doubles or halves the output.
+  const half = drawWord242EC2(ram, ctx) & 1;                 // $26FB58/$26FB5E andi.w #$1
+  const p4 = T4C.draws.filter((d) => d.part === 4)[half];    // $26FB62 bne -- the other half
+  const shot = enqueueDeferred(ram, 0x50, DEFQ_D1.FIXED00);  // $26FB66 moveq #$50,D0
+  if (shot) {                                                // $26FB72/$26FB78
+    ram.setU32(shot + 0x16, u32(ram.u32(a6 + 0x02) + p4.biases[0]));
+  }
+  ram.setU16(a6 + T4C.partSetters[1].clears[0], 1);          // $26FB7C -- the $66 companion
+}
+
 function handler1A(ram, rom, a5, ctx) {
   const a6 = ram.u32(a5 + 0x06);
 

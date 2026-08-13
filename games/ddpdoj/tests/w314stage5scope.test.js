@@ -131,8 +131,12 @@ test('W341 stage 5 has FOUR types with no handler, over 19 of its 770 records',
     // advance would have soft-locked the run at stage 5's end with a green suite and no error.
     // W365: TWO and 5 -> ONE and 1, type $1A (four records). It was recorded for many waves as "blocked on
     // a TRACE at $268D8C" and needed no trace at all -- D2 is consumed sixteen bytes before that call.
-    assert.equal(miss.length, 1, `one type, got ${miss.map((m) => m.type.toString(16))}`);
-    assert.equal(miss.reduce((a, m) => a + m.records, 0), 1, 'across 1 record -- $4C alone');
+    // W372: ZERO. $4C was the last, and this assertion has counted down 4 -> 3 -> 2 -> 1 -> 0 across
+    // W352/W363/W365/W372. It is REWRITTEN rather than renumbered because "$4C alone" was a factual
+    // claim about which type remained, not a number -- the same distinction W365 got wrong for $1A.
+    assert.equal(miss.length, 0,
+      `EVERY stage-5 type now has a handler, got ${miss.map((m) => m.type.toString(16))}`);
+    assert.equal(miss.reduce((a, m) => a + m.records, 0), 0, 'across 0 records');
     // W369: AND THIS COUNT IS NOT SPAWNABILITY. It measures HANDLERS. $1A and $B0 have registered
     // handlers and NO registered init body, so both throw at spawn and neither is in `miss`. Stage 5
     // therefore has three gaps, not one, and the boss is among them. See w346's W369 pins.
@@ -142,10 +146,11 @@ test('W341 stage 5 has FOUR types with no handler, over 19 of its 770 records',
     }
     // Ranked by record count. With $46 gone the remaining three are the two dependency/boss bundles
     // plus $1A, which is still BLOCKED on register provenance at $268D8C rather than on reading.
-    const ranked = [...miss].sort((a, b) => b.records - a.records || a.type - b.type);
-    assert.deepEqual(ranked.map((m) => m.type), [0x4c]);
-    assert.deepEqual(ranked.map((m) => m.records), [1],
-      '$4C alone: ONE record, five unrolled parts, recon complete with T4C pinned by w363type4cfields');
+    assert.deepEqual([...miss], [],
+      'The ranked list is empty. $4C was the last: ONE record, five unrolled parts, SEVEN sprite '
+      + 'blocks, and 64 assertions in w363type4cfields holding the reading it was transcribed from. '
+      + 'HANDLER coverage for stage 5 is now complete -- but see W369: $1A is still UNSPAWNABLE '
+      + 'because its INIT BODY is unported, and this test counts handlers, not spawnability.');
   });
 
 test('W315 stage 5\'s one type-$00 record points at a NULL handler', { skip: SKIP_IMG }, () => {

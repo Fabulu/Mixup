@@ -19,9 +19,12 @@ const IMG = existsSync(IMAGE) ? readFileSync(IMAGE) : null;
 const SKIP = IMG ? false : 'the ROM image is absent; skip, not pass';
 const T4C = TYPE_SPECS.get(0x4c);
 
-test('W363 T4C exists and is still marked unwritten', { skip: SKIP }, () => {
-  assert.ok(T4C, 'T4C is registered');
-  assert.equal(T4C.ported, false, 'handler4C is not written');
+test('W372 T4C exists and its handler is now WRITTEN', { skip: SKIP }, () => {
+  assert.ok(T4C, 'T4C is registered in TYPE_SPECS');
+  assert.equal(T4C.ported, undefined,
+    'W372 wrote handler4C, so the `ported: false` flag is gone. W363 asserted it was still false and '
+    + 'said this file would need revisiting when it landed -- this is that revisit, done WITH the '
+    + 'handler rather than four waves later, which is the mistake $1A s spec made.');
 });
 
 test('W363 confirmation 1 -- ($4,A5) = 4, so FIVE sub-records', { skip: SKIP }, () => {
