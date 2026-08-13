@@ -16,9 +16,17 @@ Trapping the write showed it came from `enqueueRegisters` in `spritequeue.js`, c
 queue writing into its own RAM, which the fixture's scratch record `$8137C0` sits inside.** Moving the record to
 `$811000` only moved the collision; the queue's region is wide.
 
-**`handler4C` is not corrupting anything.** The fixture needs a scratch address genuinely clear of the queue -- take
-one from the live enemy table's region rather than guessing. A symptom seen through a fixture is a fact about the
-fixture until proven otherwise, and I skipped that step and wrote it up as a port bug.
+**AND THE SHARPER DIAGNOSIS, which supersedes "the queue's region is wide":** `enqueueRegisters` writes at
+`base + off` and BUMPS `off` by `RECORD_BYTES` every call. **Nothing in the smoke ever resets that counter**, because
+the real per-frame reset lives in the frame driver, not in `spritequeue.js` -- it has no reset export. So over
+hundreds of frames at seven sprites each, the write address walks forward until it reaches ANY chosen scratch record.
+
+**No scratch address can avoid it.** The fix is for the smoke to drive the frame the way the game does, or to reset
+the queue counter itself between frames -- not to hunt for a safer address, which is what my first two attempts did.
+
+**`handler4C` is not corrupting anything.** A symptom seen through a fixture is a fact about the fixture until proven
+otherwise; I skipped that step and wrote it up as a port bug, then half-corrected it with a second wrong explanation
+before trapping the write and reading the queue's own code.
 
 **What IS proven** (see `w372type4crun.test.js`): the handler runs, a frozen frame takes the draw-only path, the
 retire arm releases `$8130DE`, ten frames are clean, and state 0's two-stage timer fires and flips the draw variant.
