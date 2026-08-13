@@ -1573,8 +1573,24 @@ small.
                    instead of `tst.b`: no idle state to fall through.
 
 Five of the eleven are now candidates: **[17] D33, [9] D34, [18] D37, [16] service, [12] hiscore, [13] stage
-progression.** The remaining five ([7], [8], [14], [15], [19]) print no text and touch no known RAM in their first
-`$600`, so they are the ones to identify by what they CALL rather than by what they touch.
+progression.**
+
+**AND THE REMAINING FIVE ARE RANKED BY DEPENDENCY COUNT (W372).** Counting `jsr` AND `bsr` callees and checking each
+against the port:
+
+    [ 7] $290BE8    3 callees, ONE unported: $23C622
+    [14] $288C6C    9 callees, ONE unported: $2890FA
+    [19] $28EE88   45 callees, 15 unported
+    [ 8] $25A770   33 callees, 17 unported
+    [15] $291F66   18 callees, 13 unported
+
+**`[7]` and `[14]` each need exactly ONE new routine**, which makes them the cheapest dispatch slots in the table to
+land -- cheaper than the screens already identified. **A first slot ported end to end is worth more than a sixth
+identified**, because it proves the compiled-C convention against the real thing rather than against a scan.
+
+**CORRECTION:** a first pass at this counted `jsr` only and reported `[14]` and `[15]` as having every callee ported.
+That was wrong -- `[15]`'s `bsr $291DF4` alone is 278 unported bytes, and it has thirteen unported callees in total.
+**Count `bsr` as well as `jsr`, or the estimate is fiction.**
 
 **So the front-end docket items are not code to go hunting for -- they are slots in a table**, and the work starts by
 identifying which slot is which screen. Pinned in `w372objdispatch.test.js`, with the list shrinking as slots land,
