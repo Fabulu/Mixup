@@ -653,6 +653,33 @@ and why the overlap has to be copied rather than reasoned about.
 **AND THAT ARM ENDS BY FREEING THE RECORD:** `$26F61A jmp $263762`. So part 5's `$1E` being set is a RETIREMENT
 path -- release the mutual-exclusion claim, push external speed, die. Not an ordinary per-frame arm.
 
+### `$4C`'s damage arm: the palette XOR is an IMMEDIATE, and the hit mask goes to part 5
+
+    26f650  moveq #$5C,D1 / and.b (A6),D1     the family mask
+    26f654  beq $26F6DE                        not hit -> skip
+    26f658  move.b #$A3,D0 / and.b D0,(A6)     the family clear byte
+    26f65e  move.w D1,($8E,A6)                 <- the HIT MASK stored into PART 5's $0E
+    26f662  jsr $286096                        scoreHit
+    26f668  move.b ($1d,A6),D0
+    26f66c  eori.b #$D,D0                      <- an IMMEDIATE $D, not ($19,A5)
+    26f670  move.b D0,($1d,A6)
+    26f674  move.l #$7FFF,D0
+
+**THE PALETTE XOR IS A LITERAL `$D` HERE.** `$49`, `$4B`, `$55` and `$1A` all read it from `($19,A5)` -- these notes
+call `($18,A5)`/`($19,A5)` "the family's palette pair". **`$4C` has no such field: the mask is baked into the
+instruction.** A port reusing the family's `palXor` would read a byte `$4C` never writes, which for a five-part
+object is whatever the prototype overlap happened to leave there. **Ninth same-thing-different-way instance in this
+band.**
+
+**And the hit mask is written to `($8E,A6)` -- part 5's `$0E`.** So damage taken by the record is recorded into a
+PART, not into the record. Given part 5 is also the one whose `$1E`/`$1F` gate the mutual-exclusion release and the
+one-shot latch, **part 5 is `$4C`'s control block** rather than a fifth body segment. That is worth stating plainly:
+the five parts are not five equivalent things.
+
+So the family agrees on `$5C` and `$A3` and `scoreHit`, and disagrees on: whether there is an `hpFull` reload,
+whether the XOR input is inspected (`$1A`'s `$19` sentinel), where the XOR mask comes from (**field vs immediate**),
+and where the hit mask goes. **Five members, five different damage arms.**
+
 ### `($16,A5)` IS NOT THE ON-SCREEN LATCH IN `$4C`. It is a one-shot armed at a specific SCRIPT FRAME.
 
     26f622  tst.b ($16,A5) / bne $26F650      already armed -> skip
