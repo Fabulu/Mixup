@@ -1578,19 +1578,22 @@ progression.**
 **AND THE REMAINING FIVE ARE RANKED BY DEPENDENCY COUNT (W372).** Counting `jsr` AND `bsr` callees and checking each
 against the port:
 
-    [ 7] $290BE8    3 callees, ONE unported: $23C622
-    [14] $288C6C    9 callees, ONE unported: $2890FA
-    [19] $28EE88   45 callees, 15 unported
-    [ 8] $25A770   33 callees, 17 unported
-    [15] $291F66   18 callees, 13 unported
+    [14] $288C6C   12 callees,  3 unported     <- the cheapest
+    [ 7] $290BE8    9 callees,  6 unported
+    [15] $291F66   19 callees, 14 unported
+    [19] $28EE88   51 callees, 18 unported
+    [ 8] $25A770   51 callees, 34 unported
 
-**`[7]` and `[14]` each need exactly ONE new routine**, which makes them the cheapest dispatch slots in the table to
-land -- cheaper than the screens already identified. **A first slot ported end to end is worth more than a sixth
-identified**, because it proves the compiled-C convention against the real thing rather than against a scan.
+**`[14]` is the cheapest at three**, and a first slot ported end to end is worth more than a sixth identified, because
+it proves the compiled-C convention against real code rather than against a scan.
 
-**CORRECTION:** a first pass at this counted `jsr` only and reported `[14]` and `[15]` as having every callee ported.
-That was wrong -- `[15]`'s `bsr $291DF4` alone is 278 unported bytes, and it has thirteen unported callees in total.
-**Count `bsr` as well as `jsr`, or the estimate is fiction.**
+**THIS COUNT WAS WRONG TWICE, AND THE RULE IS THE POINT.** The first pass counted `jsr abs.l` only and reported
+`[14]` and `[15]` as fully covered. The second added `bsr` and reported `[7]` as needing ONE routine -- a claim that
+reached a commit message. Both were wrong because **`4E BA` is `jsr (d16,PC)`**, and this ROM uses it constantly:
+slot `[7]`'s own two calls at `$290C14`/`$290C18` are that form, and neither target is ported or even mentioned.
+
+**Enumerate ALL call forms** -- `4EB9` (abs.l), `4EBA`/`4EFA` (PC-relative), `61xx` (bsr short and word) -- or the
+dependency count is fiction. Three passes, three answers, and only the third counted what the cartridge actually does.
 
 **So the front-end docket items are not code to go hunting for -- they are slots in a table**, and the work starts by
 identifying which slot is which screen. Pinned in `w372objdispatch.test.js`, with the list shrinking as slots land,
