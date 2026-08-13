@@ -1742,6 +1742,31 @@ cartridge-visible behaviour belongs here, no matter how small the win.
 
 Candidates to evaluate once D38's measurement exists (each is a separate toggle, not a bundle):
 
+**W372 MADE THESE CONCRETE**, because D38's measurement says where the frames actually are. The port samples input
+immediately before `g.step()` and holds the sprite list one frame to match hardware DMA. **So there are exactly three
+places a frame can be taken, and each is a separate toggle:**
+
+    MOD 1  DROP THE SPRITE HOLD.  app.js's step() snapshots $800000 BEFORE stepping, deliberately, to match
+           render/capture.js's MEASURED hardware lag of 1. Snapshotting AFTER shows the frame the game just
+           built, one frame earlier than the arcade ever could. This is the single biggest honest win and
+           the most clearly unfaithful: it shows a frame the cabinet physically never displayed.
+           W44's comment must be read before touching it -- the hold is also what keeps `draw()` independent
+           of step rate, so a naive move breaks repaint-without-step.
+
+    MOD 2  SAMPLE INSIDE THE STEP.  The cartridge samples in IRQ6, before the loop's seven calls. A mod could
+           re-read input between calls so a press made during the frame is seen by the object driver in the
+           SAME frame. Faithful ordering says no; it is worth roughly one frame.
+
+    MOD 3  SKIP THE EDGE DELAY. $13CFBA-style edge detection (D35) means a press is seen the frame AFTER it
+           lands, because the edge needs a previous-frame word to compare against. Acting on the LEVEL for
+           menu inputs removes that frame -- and would break auto-repeat behaviour, which is exactly why it
+           is a mod and not a fix.
+
+**None is a "low latency mode".** Each is one toggle, off by default, and MOD 1 is the only one that does not change
+game logic -- which makes it the right first one to build and the easiest to reason about.
+
+**The original candidate list, kept because it is what the owner asked for:**
+
 * sampling input later in the frame than the cartridge does, so a press lands one frame sooner
 * skipping the game's own input debounce or repeat delays where it has them
 * reacting to a press before the frame boundary that would normally consume it
