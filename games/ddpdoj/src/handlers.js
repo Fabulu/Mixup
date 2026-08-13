@@ -9295,17 +9295,40 @@ const T4C = Object.freeze({
   draws: Object.freeze([
     // W367: art was first recorded as $1494A0 -- wrong. My extractor lacked a `break`, so it took the LAST
     // `move.l #imm,D2` in range instead of the first. The pin below caught it on the first run.
+    // W371: this ONE entry was THREE sprite blocks. $26F71A does not draw a sprite and return -- it
+    // draws THREE, each with its own art long, biases, D3 and `jsr $26F790`, and only then rts. The
+    // recorded "4 biases" were block A's two plus block B's two, with block C's never recorded and one
+    // value ($F200EF00 vs block C's $F200E600) belonging to a different block than it looked.
+    // So $4C draws SEVEN sprites per frame, not five.
     Object.freeze({ at: 0x26f71a, art: 0x14985c, partAdd: null, d3: 0x0a38, palAt: 0x1d, part: 1,
-      biases: Object.freeze([0xf7000000, 0xf600f900, 0x0c800000, 0xf200ef00]), exit: 'rts' }),
+      biases: Object.freeze([0xf7000000, 0xf600f900]), exit: 0x26f790, block: 'A' }),
+    // Block B applies the RAMP with a SWAP-SEPARATED word add -- `swap D1 / add.w ($1E,A5),D1 / swap
+    // D1` -- so it lands in the HIGH word with no borrow into the low. Its two addi.l ARE adjacent and
+    // do combine; block A's are too. The swap pair must never be folded into them.
+    Object.freeze({ at: 0x26f740, art: 0x1494a0, partAdd: null, d3: 0x0e88, palAt: 0x1d, part: 1,
+      biases: Object.freeze([0x0c800000, 0xf200ef00]), exit: 0x26f790, block: 'B',
+      rampSwapAdd: 0x1e }),
+    Object.freeze({ at: 0x26f76e, art: 0x148eec, partAdd: null, d3: 0x0ed0, palAt: 0x1d, part: 1,
+      biases: Object.freeze([0xf200e600]), exit: 0x26f790, block: 'C', lastBeforeRts: true }),
     Object.freeze({ at: 0x26f7a8, art: 0x1499cc, partAdd: 0x48, d3: 0x0608, palAt: 0x5d, part: 3,
       biases: Object.freeze([0xfc3fec80, 0xfa00ff00]), exit: 0x26f790 }),
-    Object.freeze({ at: 0x26f7d2, art: 0x1499cc, partAdd: null, d3: 0x0608, palAt: 0x5d, part: 3,
-      biases: Object.freeze([0xfc401380, 0xfa00ff00]), exit: 0x26f790 }),
+    // W371: `partAdd: null` was wrong. This one has a part offset and SUBTRACTS it: `sub.w ($4A,A6)`,
+    // where its twin ADDS ($48,A6). The extractor looked for add.w ($D26E) only and did not see the
+    // sub.w ($926E). So the mirrored pair mirrors TWICE -- bias $FC3F vs $FC40 AND add vs subtract --
+    // which is what actually places the two halves either side of the boundary. The part-4 pair below
+    // does NOT do this: both of those add, from $68 and $6A.
+    Object.freeze({ at: 0x26f7d2, art: 0x1499cc, partSub: 0x4a, partAdd: null, d3: 0x0608,
+      palAt: 0x5d, part: 3, biases: Object.freeze([0xfc401380, 0xfa00ff00]), exit: 0x26f790 }),
     Object.freeze({ at: 0x26f7fc, art: 0x149978, partAdd: 0x68, d3: 0x0a10, palAt: 0x7d, part: 4,
       biases: Object.freeze([0xf47ffc00, 0xf600fe00]), exit: 0x26f790 }),
     Object.freeze({ at: 0x26f82a, art: 0x149978, partAdd: 0x6a, d3: 0x0a10, palAt: 0x7d, part: 4,
       biases: Object.freeze([0xf4800400, 0xf600fe00]), exit: 0x26f790 }),
   ]),
+  // W371: every `partAdd`/`partSub` is a WORD op on the LONG D1 -- `add.w ($48,A6),D1`. It changes only
+  // the low 16 bits and does NOT carry into the high word, so it is not `d1 + v`. And because it sits
+  // BETWEEN the two addi.l biases, those two are NOT sequential and must not be folded: the long adds
+  // carry, the word add does not, so folding them changes the result whenever the low word overflows.
+  partOpIsWord: true,
   drawSelector: 0x26f790,
   partsDrawn: Object.freeze([1, 3, 4]),       // parts 2 and 5 are never drawn
 

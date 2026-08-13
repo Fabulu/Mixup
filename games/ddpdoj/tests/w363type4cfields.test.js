@@ -269,7 +269,11 @@ test('W367 T4C records the subroutine inventory, and it matches the bsr scan', {
 test('W367 the draw table matches the cartridge, entry by entry', { skip: SKIP }, () => {
   // Five hand-extracted rows. Every constant is re-read from the bytes here, because a hand-built table is
   // exactly where this session's pins have caught errors.
-  assert.equal(T4C.draws.length, 5, 'FIVE draw routines, not four -- $26F71A exits by rts, not jmp');
+  // W371: SEVEN, not five. $26F71A is not one routine that draws a sprite -- it is three sprite BLOCKS
+  // back to back, each with its own art, biases, D3 and `jsr $26F790`, and only the third is followed
+  // by the rts. The old count came from treating the whole routine as one entry.
+  assert.equal(T4C.draws.length, 7, 'SEVEN sprite blocks across FIVE tail calls');
+  assert.equal(T4C.draws.filter((d) => d.block).length, 3, 'three of them live inside $26F71A');
   for (const dr of T4C.draws) {
     // move.l #art,D2 opens every one.
     assert.equal(IMG.readUInt16BE(dr.at), 0x243c, `$${dr.at.toString(16)} move.l #imm,D2`);
@@ -308,8 +312,36 @@ test('W367 the draw pairs share art and palette, and their biases straddle a bou
     const hi = pair.map((d) => (d.biases[0] >>> 16) & 0xffff).sort((a, b) => a - b);
     assert.equal(hi[1] - hi[0], 1, `  ...high words $${hi[0].toString(16)}/$${hi[1].toString(16)} -- mirrored`);
   }
-  assert.equal(byPart.get(1).length, 1, 'part 1 is drawn once, by the four-bias outlier');
-  assert.equal(byPart.get(1)[0].biases.length, 4, 'and it takes FOUR biases where the others take two');
+  // W371: part 1 is drawn THREE times, not once, and there was never a "four-bias outlier". That count
+  // came from reading $26F71A's three blocks as one entry and merging block A's two biases with block
+  // B's two. Block C's single bias was never recorded at all.
+  const p1 = byPart.get(1);
+  assert.equal(p1.length, 3, 'part 1 is drawn THREE times, by the three blocks inside $26F71A');
+  assert.deepEqual(p1.map((d) => d.biases.length), [2, 2, 1], 'two, two and ONE -- never four');
+  assert.deepEqual(p1.map((d) => d.art), [0x14985c, 0x1494a0, 0x148eec], 'three DIFFERENT art longs');
+  assert.equal(new Set(p1.map((d) => d.palAt)).size, 1, 'but one shared palette field, ($1D,A6)');
+  // Only block B applies the ramp, and it does so through the swap pair.
+  assert.deepEqual(p1.map((d) => d.rampSwapAdd ?? null), [null, 0x1e, null],
+    'the RAMP rides on block B alone -- swap D1 / add.w ($1E,A5),D1 / swap D1');
+});
+
+test('W371 the part-3 pair mirrors by ADD vs SUBTRACT, the part-4 pair does not', { skip: SKIP }, () => {
+  // The spec had `partAdd: null` on $26F7D2 because its extractor looked for add.w ($D26E) only. It is
+  // `sub.w ($4A,A6),D1` ($926E) -- so the pair mirrors twice, by bias AND by sign, which is what puts
+  // the halves either side of the boundary. The part-4 pair both ADD, from $68 and $6A.
+  assert.equal(IMG.readUInt16BE(0x26f7b8), 0xd26e, '$26F7B8 add.w (d16,A6),D1');
+  assert.equal(IMG.readUInt16BE(0x26f7ba), 0x0048, '  ...($48,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f7e2), 0x926e, '$26F7E2 sub.w (d16,A6),D1 -- SUBTRACT');
+  assert.equal(IMG.readUInt16BE(0x26f7e4), 0x004a, '  ...($4A,A6), a DIFFERENT offset too');
+  for (const [at, off] of [[0x26f808, 0x68], [0x26f836, 0x6a]]) {
+    assert.equal(IMG.readUInt16BE(at), 0xd26e, `$${at.toString(16)} add.w -- part 4 both ADD`);
+    assert.equal(IMG.readUInt16BE(at + 2), off, `  ...($${off.toString(16)},A6)`);
+  }
+  // And every one of them is a WORD op on the LONG D1: low 16 bits only, no carry into the high word,
+  // and it sits BETWEEN the two addi.l biases, so those two are not sequential and must not be folded.
+  assert.equal(T4C.partOpIsWord, true, 'recorded, because `d1 + v` on the long would be wrong');
+  assert.equal(IMG.readUInt16BE(0x26f7b2), 0x0681, '$26F7B2 addi.l -- bias BEFORE the word add');
+  assert.equal(IMG.readUInt16BE(0x26f7bc), 0x0681, '$26F7BC addi.l -- and the other AFTER it');
 });
 
 test('W367 $4C HAS a jump-table state machine -- eight handlers, bounded by adjacency', { skip: SKIP }, () => {
@@ -458,16 +490,20 @@ test('W371 the tail is FIVE bsr calls, and $26F704 is the one the spec dropped',
   assert.deepEqual(got, [...T4C.tailCalls], 'five targets, in CALL order');
   assert.equal(IMG.readUInt16BE(0x26f718), 0x4e75, '$26F718 rts closes the chain -- exactly five');
   // Every draw routine appears exactly once, so the tail IS the draw table.
-  assert.deepEqual([...T4C.tailCalls].sort(), T4C.draws.map((d) => d.at).sort(),
-    'the five tail calls are precisely the five `draws` entries');
+  // W371: the tail calls are the five ENTRY POINTS. `draws` has seven entries because $26F71A holds
+  // three blocks, so the tail calls are a SUBSET, not an equality.
+  const entries = T4C.draws.filter((d) => !d.block || d.block === 'A').map((d) => d.at);
+  assert.deepEqual([...T4C.tailCalls].sort(), entries.sort(),
+    'the five tail calls are the five draw ENTRY POINTS, and $26F71A is one of them');
 });
 
 test('W371 CALL order is not the array order -- part 1 draws LAST', { skip: SKIP }, () => {
   // `draws` is in ADDRESS order ($26F71A first). The cartridge calls part 1 LAST. Sprite layering
   // follows call order, so iterating `draws` to render puts part 1 underneath instead of on top.
   const callParts = T4C.tailCalls.map((a) => T4C.draws.find((d) => d.at === a).part);
+  // (part 1 appears once here because the tail calls $26F71A once; it then draws three sprites.)
   assert.deepEqual(callParts, [4, 4, 3, 3, 1], 'both part-4 halves, then both part-3 halves, then part 1');
-  const arrayParts = T4C.draws.map((d) => d.part);
+  const arrayParts = T4C.draws.filter((d) => !d.block || d.block === 'A').map((d) => d.part);
   assert.deepEqual(arrayParts, [1, 3, 3, 4, 4], 'the array is the REVERSE grouping -- do not render from it');
   assert.notDeepEqual(callParts, arrayParts, 'which is the whole point of keeping both lists');
 });

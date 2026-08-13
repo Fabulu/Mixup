@@ -532,14 +532,29 @@ follows from that.
                 (part 4a, 4b, 3a, 3b, then part 1 LAST -- the `draws` array is ADDRESS order and is
                 the REVERSE grouping, so rendering by iterating it puts part 1 underneath)
 
-    DRAW       five subroutines, all through the selector at $26F790
+    DRAW       W371: SEVEN SPRITE BLOCKS across FIVE tail calls, all through the selector at $26F790
+      $26F71A is THREE blocks back to back, not one routine drawing one sprite. Each has its own art
+      long, biases, D3 and `jsr $26F790`; only the third is followed by the rts:
+        A  $26F71A  art $14985C  biases $F7000000 $F600F900              D3 $0A38
+        B  $26F740  art $1494A0  swap D1 / add.w ($1E,A5),D1 / swap D1   D3 $0E88   <- the RAMP
+                                 then biases $0C800000 $F200EF00
+        C  $26F76E  art $148EEC  bias  $F200E600                         D3 $0ED0
+      All three share the palette field ($1D,A6). The old "four-bias outlier" was block A's two merged
+      with block B's two; block C was never recorded at all.
+
+    DRAW       the four single-sprite routines
       $26F71A  art $14985C  part 1  4 biases  D3 $A38  pal $1D   (exits rts, not jmp)
       $26F7A8  art $1499CC  part 3  $48       D3 $608  pal $5D
       $26F7D2  art $1499CC  part 3  --        D3 $608  pal $5D
       $26F7FC  art $149978  part 4  $68       D3 $A10  pal $7D
       $26F82A  art $149978  part 4  $6A       D3 $A10  pal $7D
       The pairs are MIRRORED HALVES: same art and palette, first biases straddling a boundary. Collapsing a
-      pair renders the object half-missing. Parts 2 and 5 are NEVER drawn -- part 2 is state-only.
+      pair renders the object half-missing.
+      W371: the part-3 pair mirrors TWICE -- $26F7A8 does `add.w ($48,A6),D1` and $26F7D2 does
+      `sub.w ($4A,A6),D1`. The spec said `partAdd: null` for $26F7D2 because the extractor matched
+      add.w ($D26E) only and never saw the sub.w ($926E). The part-4 pair both ADD, from $68 and $6A.
+      EVERY one of these is a WORD op on the LONG D1: low 16 bits, NO carry into the high word. And it
+      sits BETWEEN the two addi.l biases, so those two are NOT sequential and must not be folded. Parts 2 and 5 are NEVER drawn -- part 2 is state-only.
       ($17,A5) picks $23DECE or $23DF58 by tail-jump; it is a DRAW VARIANT, not a mode.
 
     DISTANCE   $26FF9E, seven callers
