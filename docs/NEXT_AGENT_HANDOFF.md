@@ -984,13 +984,14 @@ function retireCheck4C(ram, rom, a5, a6, ctx) {
   }
   // $270014.. -- the effect emitter. QUARTER-TURN PAIRS: one shared angle, +$40 on one side and +$C0
   // on the other, with MIRRORED position biases. One constant for both stacks them on one bearing.
-  const ang = (ram.u8(a6 + 0x1a) << 1) & 0xff;               // $27003C asl.b #1,D0
+  // W372: this is `bigBurst28B4BE`, and STAGE 3'S CARRIER already does it with the SAME two biases and
+  // the SAME quarter turns (stage3carrier.js:422). Read that call site, do not reinvent the shape.
   for (const [turn, bias] of [[0x40, 0xf8000800], [0xc0, 0x01fff800]]) {
-    emit28B4BE(ram, rom, ctx,
-      (ang + turn) & 0xff,                                   // $270040 / $270066 addi.b
-      u32(ram.u32(a6 + 0x02) + bias),                        // $270048 / $27006E addi.l
-      0x0c, 0x00);                                           // $27004E/$270052 D3, D0
-    drawByte242B3C(ram, ctx);                                // $27005C jsr $242B3C
+    const r = drawWord242EC2(ram, rom) & 0xff;               // $27005C-family RNG, before each burst
+    bigBurst28B4BE(ram, rom, ctx,                            // $270056 / $270082 jsr $28B4BE
+      packedAdd(ram.u32(a6 + 0x02), bias),                   // $270048 / $27006E addi.l
+      u16(r * 2 + turn),                                     // $27003C asl.b #1 then +$40 / +$C0
+      0, 0x0c, 0x270056);                                    // $270052 D0=0, $27004E D3=$C
   }
   return false;
 }
@@ -1083,8 +1084,11 @@ own helper table was built to avoid. What is actually there:
 * **`$281402` is an ENTRY IN A DISPATCH TABLE**, `bullets.js:591` -- `[0x281402, (ctx, r) => { ... }]`, not a
   standalone export. Its own comment notes that `$281402 $281708 $281726` **do not wrap** and restore D0 themselves.
   Calling it means going through that table's dispatch, not calling a function.
-* **`$28B4BE`** appears across `rng.js`, `boss.js`, `boss2.js`, `boss4.js` and `stage3carrier.js`. **Read a live call
-  site** and use whatever those do.
+* **`$28B4BE` IS RESOLVED: it is `bigBurst28B4BE(ram, rom, ctx, pos, rngByte, shift, bucket, site)`** in `boss.js`,
+  and **stage 3's carrier already calls it with `$4C`'s EXACT two biases and quarter turns**
+  (`stage3carrier.js:422`): `packedAdd(pos, 0xf8000800)` with `r * 2 + 0x40`, then `packedAdd(pos, 0x01fff800)` with
+  `r * 2 + 0xc0`, both `shift 0`, `bucket $0C`. So `$4C`'s effect emitter is a **member of a family the port already
+  has** -- the standing rule, paying off. The draft above is corrected to that shape.
 
 `$242EC2` IS a plain export -- `drawWord242EC2(ram, rom)` in `rng.js:248` -- so the coin flip in `sub26FA82` needs
 `(ram, rom)`, not the `(ram, ctx)` the draft passes. **Fix that too.**
