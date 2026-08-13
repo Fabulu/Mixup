@@ -100,10 +100,16 @@ Checked against the stub pattern first, since three "unported" routines this ses
 `rts`. This one is not:
 
     2a6b94  4a6e 0106     tst.w ($106,A6)
-    2a6b98  6702          beq.s $2A6B9A      <- branches over the rts to the NEXT instruction
-    2a6b98  4e75          rts                 non-zero -> RETURN IMMEDIATELY
-    2a6b9a  4a2e 010e     tst.b ($10E,A6)
-    2a6b9e  6600 0370     bne $2A6F10
+    2a6b98  6702          beq.s $2A6B9C      <- branches OVER the rts to the next instruction
+    2a6b9a  4e75          rts                 non-zero -> RETURN IMMEDIATELY
+    2a6b9c  4a2e 010e     tst.b ($10E,A6)
+    2a6ba0  6600 0370     bne.w $2A6F12
+
+**W362 CORRECTION: the four lines above were recorded off by two, and the `bne` target was wrong.** I had the
+`rts` and the `tst.b` sharing an address (impossible) and gave the target as `$2A6F10`. **An audit of every
+hand-computed branch target in these notes caught it** -- the bytes are `4e 75 | 4a 2e 01 0e | 66 00 03 70` from
+`$2A6B9A`, and `bne.w`'s displacement is relative to the byte after the opcode word, so `$2A6BA2 + $370 =
+$2A6F12`. `TB0` is corrected too.
 
 **The `beq.s +2` over a single `rts` is the idiom**: the routine does nothing unless `($106,A6)` is zero. Its
 first `rts` is only 6 bytes in, which is why a naive "first rts bounds the routine" scan would have called it a

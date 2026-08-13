@@ -9169,7 +9169,12 @@ const TB0 = Object.freeze({
   // $2A6B94 opens with an early-exit guard: tst.w ($106,A6) / beq over a single rts, so it does nothing
   // unless ($106,A6) is zero. Its first rts is only 6 bytes in -- a "first rts bounds the routine" scan
   // would wrongly call it a stub, which is the inverse of the trap that caught $26331C and $25A17A.
-  bodyGuardAt: 0x106, bodySecondGateAt: 0x10e, bodySecondGateTarget: 0x2a6f10,
+  // W362: these were recorded off by two, and an audit of hand-computed branch targets caught it. The
+  // real layout is $2A6B94 tst.w ($106,A6) / $2A6B98 beq.s over / $2A6B9A rts / $2A6B9C tst.b ($10E,A6)
+  // / $2A6BA0 bne.w -> $2A6F12. I had the rts and the tst.b both at $2A6B9A-ish and the target at
+  // $2A6F10. bne.w's displacement is relative to the byte AFTER the opcode word, so $2A6BA2 + $370.
+  bodyGuardAt: 0x106, bodyGuardRts: 0x2a6b9a,
+  bodySecondGateAt: 0x10e, bodySecondGateSite: 0x2a6ba0, bodySecondGateTarget: 0x2a6f12,
   partStride: 0x20,
   partOffsets: Object.freeze([0x0, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0, 0x1a0, 0x140, 0x160, 0x180]),
   perPartStub: 0x26331c,                      // a bare rts. Transcribe the calls; implement nothing.
