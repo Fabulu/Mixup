@@ -624,3 +624,36 @@ test('W371 the part setters are OFF/ON pairs, and ON is not the inverse of OFF',
     assert.equal(IMG.readUInt16BE(p.on + 10), p.clears[0], '  ...clearing the companion field');
   }
 });
+
+test('W371 ($34,A6) is a counter and ($35,A6) is its RELOAD -- the word literal sets both', { skip: SKIP }, () => {
+  // This is what the word-literal rule buys, on a field pair whose purpose was unknown until now.
+  // State 0 writes `move.w #$202,($34,A6)`, setting the counter to 2 AND the reload to 2. State 2
+  // writes `move.b #$10,($34,A6)`, setting ONLY the counter and leaving the reload alone. A port that
+  // normalised either write to the other's width would break one of the two states.
+  assert.equal(IMG.readUInt16BE(0x26f8e6), 0x532e, '$26F8E6 subq.b #1,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f8e8), 0x0034, '  ...($34,A6), counting DOWN');
+  assert.equal(IMG[0x26f8ea], 0x64, '$26F8EA bcc -- no borrow means not expired yet');
+  assert.equal(IMG.readUInt16BE(0x26f8ee), 0x1d6e, '$26F8EE move.b (d16,A6),(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f8f0), 0x0035, '  ...FROM ($35,A6), the reload value');
+  assert.equal(IMG.readUInt16BE(0x26f8f2), 0x0034, '  ...INTO ($34,A6) -- so $35 is $34s period');
+  // And the two writes that set them, at their two different widths.
+  assert.equal(IMG.readUInt16BE(0x26f8b6), 0x3d7c, '$26F8B6 move.w #imm,(d16,A6) -- state 0');
+  assert.equal(IMG.readUInt16BE(0x26f8b8), 0x0202, '  ...#$202: ($34)=2 AND ($35)=2, both at once');
+  assert.equal(IMG.readUInt16BE(0x26fbf6), 0x1d7c, '$26FBF6 move.b #imm,(d16,A6) -- state 2');
+  assert.equal(IMG.readUInt16BE(0x26fbf8), 0x0010, '  ...#$10 into ($34) ONLY, reload untouched');
+});
+
+test('W371 state 0 ends by switching the DRAW VARIANT, ($17,A5)', { skip: SKIP }, () => {
+  // ($17,A5) picks $23DECE or $23DF58 in the draw selector, so this is the object visibly changing
+  // form -- and it happens only when BOTH counters expire: ($34,A6) reloading each time it borrows,
+  // and ($1A,A6) decrementing once per reload. A two-stage timer, not one.
+  assert.equal(IMG.readUInt16BE(0x26f8f4), 0x532e, '$26F8F4 subq.b #1,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f8f6), T4C.bandAt, '  ...($1A,A6) -- the OUTER counter');
+  assert.equal(IMG.readUInt16BE(0x26f8fc), 0x1b7c, '$26F8FC move.b #imm,(d16,A5)');
+  assert.equal(IMG.readUInt16BE(0x26f8fe), 0x0001, '  ...#$1');
+  assert.equal(IMG.readUInt16BE(0x26f900), T4C.drawSelectAt, '  ...($17,A5), the draw VARIANT');
+  assert.equal(IMG.readUInt16BE(0x26f902), 0x3cbc, '$26F902 move.w #imm,(A6)');
+  assert.equal(IMG.readUInt16BE(0x26f904), 0xa001, '  ...#$A001 into part 1s flags word');
+  assert.equal(IMG.readUInt16BE(0x26f906), 0x7001, '$26F906 moveq #$1,D0 -- then state 1');
+  assert.equal(0x26f90a + IMG.readInt16BE(0x26f90a), T4C.stateSetter, '  ...bsr $26F858');
+});

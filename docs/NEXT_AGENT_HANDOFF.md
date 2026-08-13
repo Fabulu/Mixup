@@ -570,6 +570,18 @@ follows from that.
 reading it as a label only dropped the first draw call. That also settles the pause behaviour: a frozen or blocked
 `$4C` skips every state and **still draws all five sprites**, which is why it does not vanish.
 
+**STATE 0 READ IN FULL, AND IT NAMES A FIELD PAIR THE WORD-LITERAL RULE HAD ONLY WARNED ABOUT.** `($34,A6)` is a
+down-counter and `($35,A6)` is its RELOAD: `$26F8E6 subq.b #1,($34,A6) / bcc out / $26F8EE move.b ($35,A6),($34,A6)`.
+
+So state 0's `move.w #$202,($34,A6)` sets the counter to 2 **and** the period to 2 in one instruction, while state 2's
+`move.b #$10,($34,A6)` sets **only** the counter and leaves the period alone. **Normalising either write to the
+other's width breaks one of the two states**, which is exactly what the rule predicted before anyone knew what the
+fields were for.
+
+**State 0 ends by switching the DRAW VARIANT.** When `($34,A6)` borrows it reloads and decrements `($1A,A6)`; when
+THAT reaches zero it sets `($17,A5)` to 1, writes `$A001` into part 1's flags word, and advances to state 1. So it is
+a **two-stage timer**, and `($17,A5)` is the object visibly changing form -- the field the draw selector reads.
+
 **AND `$4C` IS ~494 BYTES BIGGER THAN THE SPEC SAID.** `handlerEnd` was `$26FFE8`, noted as "the last rts is
 `$26FFE6`". `$26FFE6` IS an rts -- but `$26FFE8` is the **START of the last subroutine**, and the subroutine list in
 the same spec contained the disproof, because `$26FFE8` is in it. Its `beq` reaches `$270128`, well past `$270000`.
