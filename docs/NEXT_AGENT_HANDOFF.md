@@ -4993,14 +4993,26 @@ So the `$46` -> `$55` edge that `w314stage5scope.test.js` pins is now confirmed 
 just from the scan. **Mode 2 jumps to mode 4 and `$27120A` immediately tests for mode 3**, so mode 3's arm is
 skipped on the promoting frame and must be entered by some other path -- find it before writing the cascade.
 
-**FLAGGED, NOT CONCLUDED -- needs checking before either type is trusted:** `move.l A5,($1a,A0)` writes FOUR
-bytes to the child's `$1A..$1D`, and `T55` records `driftTimerAt: 0x1c, driftTimerReloadAt: 0x1d`. If both
-readings are right, the parent's back-pointer **overwrites `$55`'s drift timer pair** with the low word of
-the parent's record address, and it does so AFTER `$263684` has run the child's init. That would make `$55`'s
-drift timing depend on its parent's slot address. **Either one of the two offset readings is wrong, or this
-is a real cartridge quirk the port must reproduce.** Resolve it by finding what `$55` does with `($1A,A5)`
-and whether anything re-initialises `($1C,A5)` after spawn -- do NOT write `handler46` until it is settled,
-because both outcomes change what the spawn must write.
+**RESOLVED, AND THE ALARM WAS MINE: A0 IS A DEFERRED-SPAWN QUEUE ENTRY, NOT THE CHILD'S RECORD.** I flagged
+`move.l A5,($1a,A0)` as possibly clobbering `$55`'s drift timer at `$1C`/`$1D`. It does not clobber anything:
+`$263684` is **already documented in this very file's source** at `handlers.js:2004` as
+`enqueueDeferred(ram, type, DEFQ_D1.FIXED00)`, and `spawn.js:429` shows it returns a queue entry at
+`$815EAA + count`, stride `$50`. So:
+
+    2711ee  jsr $263684                 enqueueDeferred(ram, 0x55, DEFQ_D1.FIXED00)
+    2711f4  move.l ($2,A6),($16,A0)     queue entry +$16 = the spawn POSITION
+    2711fa  move.l A5,($1a,A0)          queue entry +$1A = the parent record pointer
+
+**`boss2.js:1071` already does exactly this shape** -- `enqueueDeferred(...)` then `ram.setU32(q.addr + 0x16, ...)`.
+`$263678` is the same routine with `DEFQ_D1.FIXED80` (`handlers.js:3171`), which is what makes three distinct
+`jsr` targets in `w314stage5scope.test.js`'s scanner.
+
+**The lesson, and it is the same one as `($18,A5)`:** I read `($16,A0)`/`($1A,A0)` as record offsets because
+`$55`'s prototype loads at `($16,A5)` and the numbers matched. Matching offsets across two different
+STRUCTURES is not evidence they are the same structure. The register said which structure it was, and the
+port already had the answer written down twice.
+
+So `handler46`'s spawn is three lines of existing API, and nothing about `$55` needs revisiting.
 
 ### W351: `handler55` WAS WRITTEN AND THEN REVERTED. Read this before writing it again.
 
