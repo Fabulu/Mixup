@@ -5108,7 +5108,37 @@ read the register, every time.** A port that hoisted a `const CURSOR = 0x28` wou
 it is part of this type's call idiom rather than a one-off artifact -- still a no-op whose flags the `jsr`
 destroys, but consistent enough that it should be transcribed rather than silently dropped.
 
-Still to read: `$268FC8` onward and the death arm at `$269160`.
+### `$1A`'s fire arm, and THE FIRST UNPORTED CALLEE OF THIS RUN
+
+    268fd2  cmpi.w #$1000,($2,A6) / blt $269058     an X gate
+    268fda  subq.b #1,($1E,A5) / bcc $269058        the shot timer
+    268fe0  move.b ($2B,A5),($1E,A5)                <- RELOADED FROM THE RANK VALUE
+    268fe6  lea $272FFA,A4                          already ported (1 code mention, "delta")
+    268fec  move.w ($28,A5),D1 / move.w D1,D0       the slewed heading
+    268ff2  add.w D1,D1 / add.w D1,D1               D1 *= 4
+    268ff6  jsr $242B90                             <- **NOT PORTED**
+    268ffc  add.b D5,D1
+    268ffe  andi.w #$3E,D0
+
+**`($2B,A5)` IS THE SHOT INTERVAL AND IT IS RANK-DEPENDENT.** The init's cascade at `$268D50` set it from
+`$813092`: `$4` when RANK <= 1, `$6` above. So reading that cascade pays off here -- the fire rate is the only
+thing rank changes about this type, and `($2A,A5)` (`$4`/`$3`) is still unaccounted for. **This is the first
+concrete consequence found for the rank values**, which the old "blocked on a trace" note never got to.
+
+**`$242B90` IS NOT PORTED -- the first unported callee across `$55`, `$46` and `$1A`.** All three types until now
+needed nothing new. It is NOT a new subsystem though: `rng.js:63` already documents it as **one of the 32 RNG
+bumper sites in build B** that share the counter at `$803917`, each reading a different canned table with a
+different mask. The port already models six of them (`drawByte242B3C`, `drawByte24311A`, `drawByte2431F4`,
+`drawSigned242FDE`, `drawSigned242FFC`, `drawWord242EC2`).
+
+**So the work is one more member of an existing family**: read `$242B90`'s table address and mask, add a
+`drawXxx242B90` to `rng.js` beside its siblings, and check whether it is a byte, a signed byte or a word draw --
+the six existing names show all three shapes exist, so that must be read rather than assumed.
+
+`add.b D5,D1` after the call means D5 carries a caller-supplied base the RNG offsets, so **find where D5 is set
+before writing this** -- it is not visible in the span read so far.
+
+Still to read: `$269004` onward, the death arm at `$269160`, and `$242B90` itself.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
