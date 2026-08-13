@@ -425,3 +425,41 @@ test('W372 $2428A6 returns a MASK, and ZERO is what keeps the boss alive', { ski
   assert.equal(IMG.readUInt16BE(0x2a6d02), 0x4a40, '$2A6D02 tst.w D0 -- the body');
   assert.equal(IMG.readUInt16BE(0x2a6ef4), 0x4a40, '$2A6EF4 tst.w D0 -- the exit block');
 });
+
+test('W372 bossBody2A6B94 RUNS, and the guard switches it off', { skip: SKIP }, async () => {
+  // The body was a note() from W357 to W372. This drives it. Static checks passed an out-of-scope a6
+  // in the handler minutes before this test existed, so "it compiles" proves nothing here either.
+  const { Ram } = await import('../src/ram.js');
+  const { UnportedLog } = await import('../src/unported.js');
+  const { bossBody2A6B94 } = await import('../src/boss.js');
+  const A5 = 0x811000; const A6 = 0x811400;
+  const world = () => {
+    const ram = new Ram();
+    ram.setU32(A5 + 0x16, 0x00030000);            // a healthy 32-bit pool, above BOTH thresholds
+    return { ram, ctx: { unported: new UnportedLog(), soundPost: () => {} } };
+  };
+
+  // 1. the entry guard: non-zero ($106,A6) means it does nothing at all.
+  const g = world();
+  g.ram.setU16(A6 + 0x106, 1);
+  g.ram.setU8(A6 + 0x00, 0x5c);                   // a hit that would otherwise be scored
+  bossBody2A6B94(g.ram, null, A5, A6, g.ctx);
+  assert.equal(g.ram.u8(A6 + 0x00), 0x5c, 'guarded: the hit bits are NOT cleared');
+
+  // 2. unguarded and unhit: the resting quad is written and the pool is untouched.
+  const f = world();
+  bossBody2A6B94(f.ram, null, A5, A6, f.ctx);
+  assert.deepEqual([0, 1, 2, 3].map((i) => f.ram.u8(A6 + 0xe6 + i)), [0x10, 0x11, 0x12, 0x16],
+    'the resting quad, four DIFFERENT values');
+  assert.equal(f.ram.u32(A5 + 0x16), 0x00030000, 'and an unhit frame costs no HP');
+
+  // 3. a hit on one part: bits cleared with $A3, mask stored, accumulators re-armed to $7FFF.
+  const h = world();
+  h.ram.setU8(A6 + 0x20, 0x5c);                   // part 2 takes the hit
+  h.ram.setU16(A6 + 0x38, 0x7000);                // and its accumulator shows damage
+  bossBody2A6B94(h.ram, null, A5, A6, h.ctx);
+  assert.equal(h.ram.u8(A6 + 0x20) & 0x5c, 0, 'the hit bits are cleared');
+  assert.equal(h.ram.u16(A6 + 0x10a), 0x5c, 'the mask is stored to ($10A,A6)');
+  assert.equal(h.ram.u16(A6 + 0x38), 0x7fff, 'and every accumulator is re-armed');
+  assert.ok(h.ram.u32(A5 + 0x16) < 0x00030000, 'the pool took the damage');
+});

@@ -62,7 +62,7 @@
 // is skipped and D-script 6 could never step.  Installing a table runs nothing;
 // it is the activations that do, and those are still counted.
 
-import { u16, i16 } from './ram.js';
+import { u16, u32, i16 } from './ram.js';
 import { unreached } from './unported.js';
 import { freeEnemy } from './initbody.js';
 import { scoreHit, scoreKill } from './score.js';
@@ -73,6 +73,9 @@ import {
   a2Stop25994A, fadeArm259B7E, fadeDone259B9E, suspend2595E8,
 } from './scheduler.js';
 import { runStageAdvance242952 } from './stageend.js';
+// W372: $243DD0 is a THIRD entry of this, not a routine of its own -- same guard, same
+// $81B410/$81B412 pair, differing only in the mode it arms.
+import { armScreenClearMode } from './midboss.js';
 import { enqueueRegisters } from './spritequeue.js';
 import { spawnEffect, B } from './effects.js';
 import { drawByte242B3C, drawWord242EC2 } from './rng.js';
@@ -1244,15 +1247,142 @@ export function bossDecide2428A6(ram) {
   return d0;                                                 // $2428D0 rts
 }
 
+/** The EIGHT damage-bearing parts. Same list and same order that `$2A6E74` arms, that the handler's
+ *  eleven-call chain opens with, and that all three of this body's loops walk -- `$1A0` EIGHTH in every
+ *  one. The handler's other three (`$140`/`$160`/`$180`) are armed by `$2A6E98`/`$2A6EA6`, carry no
+ *  damage, and appear only in the draw chain. "The eleven" is two groups with different jobs. */
+const HIBACHI_PARTS = Object.freeze([0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0, 0x1a0]);
+
+/** `$2A6EDC` -- the body's EXIT, reached by `jmp` from both arms of the phase check. It counts
+ *  `($1A,A5)` down and, when it expires, asks `$2428A6` a SECOND time and reloads `$78`. */
+function bossExit2A6EDC(ram, a5) {
+  const left = u16(ram.u16(a5 + 0x1a) - 1);                  // $2A6EE6 subq.w #1,($1A,A5)
+  ram.setU16(a5 + 0x1a, left);
+  if (left !== 0) return;                                    // $2A6EEA bne
+  if (bossDecide2428A6(ram) !== 0) return;                   // $2A6EEE/$2A6EF4 -- the SECOND ask
+  ram.setU16(a5 + 0x1a, 0x78);                               // $2A6EFA move.w #$78,($1A,A5)
+}
+
+/** `$2A6D42` -- the phase check. Self-latching on `($10C,A6)`, first loop only, and below `$23000` it
+ *  switches the boss's whole script set. Both arms exit through `$2A6EDC`. */
+function bossPhase2A6D42(ram, a5, a6, ctx) {
+  if (ram.u8(a6 + 0x10c) === 0                               // $2A6D42 tst.b / bne
+      && ram.u16(0x813098) === 0                             // $2A6D48 tst.w $813098 / bne
+      && (u32(ram.u32(a5 + 0x16) - 0x23000) & 0x80000000) !== 0) {   // $2A6D52/$2A6D5C bpl
+    a1Clear259B34(ram);                                      // $2A6D5E
+    a4Clear2598A2(ram);                                      // $2A6D64
+    a4Start25980C(ram, 0x0e);                                // $2A6D6A/$2A6D6C
+    ram.setU16(a6 + 0x108, 1);                               // $2A6D72 bsr $2A6E28 -- INVULNERABLE
+    ram.setU8(a6 + 0x10c, 1);                                // $2A6D78 -- and the latch
+    armScreenClearMode(ram, ctx, 0, 'HIBACHI $23000 phase', 0xffff, 0x243dd0);   // $2A6D7E
+  }
+  bossExit2A6EDC(ram, a5);                                   // $2A6D84 jmp $2A6EDC
+}
+
+/** `$2A6D8C` -- the ENDING block, reached only when `$2428A6` says a player is out. */
+function bossEnding2A6D8C(ram, rom, a5, a6, ctx) {
+  ctx.soundPost?.(0x28c170);                                 // $2A6D8C
+  ctx.unported?.note(0x23c4d0, '$2A6D92 jsr $23C4D0 -- the $8039xx pause/flag block, noted in '
+    + 'boss.js since W357 and still not ported');
+  if (ram.u16(0x813098) === 0 && ram.u16(0x80393a) === 0) {  // $2A6D98/$2A6DA2
+    ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x40);            // $2A6DAC bset #6 -- effects.js reads this
+    ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x80);            // $2A6DB4 bset #7 -- BOTH bits
+    bossClear242922(ram, ctx);                               // $2A6DBC
+    ram.setU8(a6 + 0x1f, 1);                                 // $2A6DC2
+  }
+  clamp253564(ram);                                          // $2A6DD2
+  armScreenClearMode(ram, ctx, 0, 'HIBACHI ending', 0xffff, 0x243dd0);   // $2A6DD8
+  a1Clear259B34(ram);                                        // $2A6DDE
+  a4Clear2598A2(ram);                                        // $2A6DE4
+  ram.setU16(a6 + 0x106, 1);                                 // $2A6DEA bsr $2A6ED4 -- the body SWITCHES
+                                                             //   ITSELF OFF: $2A6B94's entry guard
+  for (const p of HIBACHI_PARTS) ram.setU16(a6 + p, 0x8000); // $2A6DF0 bsr $2A6E74 -- re-arm
+  a3Stop2599EC(ram, 2);                                      // $2A6DF6/$2A6DF8
+  ram.setU32(a5 + 0x16, 0xffffffff);                         // $2A6DFE -- the pool, dead
+  [0x10, 0x11, 0x12, 0x16].forEach((v, i) => ram.setU8(a6 + 0xe6 + i, v));   // $2A6E06..
+  a4Start25980C(ram, 1);                                     // $2A6E20 JMP -- a tail call
+}
+
+/** `$2A6B94` -- HIBACHI's entire behaviour, deferred behind a note() since W357.
+ *
+ *  It is a FLOW GRAPH: five arms converge on the phase check and two on the ending block, so it is
+ *  written as three functions rather than one straight line. Transcribing the blocks in address order
+ *  would run the phase check after paths the cartridge routes around it.
+ *
+ *  TWO HP thresholds in the whole routine. Most of the bytes are the per-part damage reduce and the
+ *  four-byte sprite quad.
+ */
+export function bossBody2A6B94(ram, rom, a5, a6, ctx) {
+  if (ram.u16(a6 + 0x106) !== 0) return;                     // $2A6B94 -- switched off by the ending
+
+  // $2A6BA2..$2A6BC6 -- OR every armed part's flags, mask $5C: ONE hit test across the whole boss.
+  let hit = 0;
+  for (const p of HIBACHI_PARTS) hit |= ram.u8(a6 + p);
+  hit &= 0x5c;
+
+  if (hit === 0) {
+    [0x10, 0x11, 0x12, 0x16].forEach((v, i) => ram.setU8(a6 + 0xe6 + i, v));   // $2A6BC8
+    // $2A6BE0/$2A6BEC -- below $EB33 the quad becomes ONE value in all four, not four different ones.
+    if (ram.u32(a5 + 0x16) < 0xeb33 && ram.u16(0x8130ca) === 0) {
+      for (let i = 0; i < 4; i++) ram.setU8(a6 + 0xe6 + i, 0x19);              // $2A6BF6..
+    }
+    bossPhase2A6D42(ram, a5, a6, ctx);                       // both arms JOIN here
+    return;
+  }
+
+  // $2A6C0E.. -- clear the bits with $A3. $4C uses the identical $5C/$A3 pair: test with one, clear
+  // with the other.
+  for (const p of HIBACHI_PARTS) ram.setU8(a6 + p, ram.u8(a6 + p) & 0xa3);
+  ram.setU16(a6 + 0x10a, hit);                               // $2A6C2E
+  scoreHit(ram, ctx, a6, hit);                               // $2A6C32 -- ONCE for the boss
+
+  // $2A6C38..$2A6C7C -- read the quad back and write it out flashed. The first byte is REMAPPED
+  // $19 -> $10; the other three are XORed with THREE DIFFERENT constants. One XOR for all four
+  // flashes the wrong colours while every store stays individually correct.
+  const q0 = ram.u8(a6 + 0xe6) === 0x19 ? 0x10 : ram.u8(a6 + 0xe6);
+  ram.setU8(a6 + 0xe6, q0);                                  // $2A6C62
+  ram.setU8(a6 + 0xe7, ram.u8(a6 + 0xe7) ^ 0x0e);            // $2A6C66/$2A6C6A
+  ram.setU8(a6 + 0xe8, ram.u8(a6 + 0xe8) ^ 0x0d);            // $2A6C6E/$2A6C72
+  ram.setU8(a6 + 0xe9, ram.u8(a6 + 0xe9) ^ 0x09);            // $2A6C76/$2A6C7A
+
+  // $2A6C7E..$2A6CC6 -- the MINIMUM of the parts' $18 accumulators, then all of them re-armed.
+  let lo = ram.u16(a6 + 0x18);
+  for (const p of HIBACHI_PARTS) { const v = ram.u16(a6 + p + 0x18); if (v < lo) lo = v; }
+  for (const p of HIBACHI_PARTS) ram.setU16(a6 + p + 0x18, 0x7fff);
+
+  // $2A6CEE -- damage taken, gated, off the 32-bit pool; death is a SIGN test, as in $4C.
+  const dmg = u16(0x7fff - lo);
+  if (ram.u16(a6 + 0x108) === 0) {                           // $2A6CF0 -- non-zero is INVULNERABLE
+    ram.setU32(a5 + 0x16, (ram.u32(a5 + 0x16) - dmg) >>> 0); // $2A6CF6
+    if ((ram.u32(a5 + 0x16) & 0x80000000) !== 0) {           // $2A6CFA bpl
+      // $2A6CFC -- and "death" is a DECISION. NON-zero means a player is out and the fight ENDS;
+      // zero refills the pool and it continues. Reading it the other way inverts the whole fight.
+      if (bossDecide2428A6(ram) !== 0) {                     // $2A6D02 tst.w D0 / bne $2A6D10
+        if (ram.u16(0x813098) === 0 && ram.u16(0x80393a) === 0) {          // $2A6D10/$2A6D1A
+          ram.setU32(0x81b61a, 0x00070000);                  // $2A6D24
+        } else {
+          scoreKill(ram, rom, ctx, 0x00070000, ram.u16(a6 + 0x10a));      // $2A6D30..$2A6D3A
+        }
+        bossEnding2A6D8C(ram, rom, a5, a6, ctx);             // $2A6D2E/$2A6D40 both -> $2A6D8C
+        return;
+      }
+      ram.setU32(a5 + 0x16, 0x200);                          // $2A6D06 -- REFILL, the fight goes on
+    }
+  }
+  bossPhase2A6D42(ram, a5, a6, ctx);                         // every remaining arm JOINS here
+}
+
 export function handler2A4606(ram, rom, a5, ctx) {
   // $2A4606 -- the whole boss. $2A6B94's first block is 666 bytes ending at $2A6E2E; it opens
   // `tst.w ($106,A6) / beq` over a single `rts`, so it does nothing unless ($106,A6) is zero, and its
-  // twelve callees are all ported bar $243DD0 (one line against armScreenClearMode), $242922 (a
-  // wrapper round the ported $28C170) and $253564 (the $811F8C clamp).
-  ctx.unported?.note(0x2a6b94, '$2A4606 jsr $2A6B94 -- HIBACHI\'s entire behaviour. The handler around '
-    + 'it is complete: the clear test, the stage advance and the free all run, so the boss appears and '
-    + 'the stage still completes, but it does not attack or move. 666 bytes at $2A6B94..$2A6E2E, guarded '
-    + 'on ($106,A6) == 0, with a second gate on ($10E,A6) branching to $2A6F10');
+  // $2A4606 jsr $2A6B94 -- HIBACHI's entire behaviour. W372 ported it: all twelve callees landed
+  // ($242922, $253564, $2428A6, and $243DD0 which turned out to be a third entry of
+  // armScreenClearMode), the flow graph was mapped rather than assumed, and the body is written as
+  // three functions because five arms converge on the phase check and two on the ending block.
+  // A6 is the sub-record, exactly as the per-frame driver hands it to every other handler. It was
+  // not in scope here because this handler never needed it while the body was a note().
+  const a6 = ram.u32(a5 + BOSS.subRec);
+  bossBody2A6B94(ram, rom, a5, a6, ctx);
 
   // $2A460C -- the clear test. Carry SET means the boss is done.
   const c = runScheduler25962E(ram, rom, ctx);            // $2A460C jsr $25962E
