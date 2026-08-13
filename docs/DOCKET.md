@@ -1008,6 +1008,19 @@ rather than by shipping an empty deploy. **Next publish is due when the next han
 no publish, and a behavioural change the owner is waiting on means publish off-cadence (as W345 did for the
 D24/D31 laser fix).
 
+**W363 `20260813062744` -- HIBACHI IS REGISTERED.** Published on that reading rather than on the count: W360's
+skip was because nothing had changed behaviourally, and this build changes something. Stage 5 now has **TWO**
+unported types over 5 records, down from four over 19 at the start of this session.
+
+**What to look at in this build:** reaching stage 5's end should now produce a Hibachi that APPEARS and lets the
+stage CLEAR, where before the driver had no handler for type `$B0`. **It will not attack or move** -- its body
+`$2A6B94` is a `note()`. So the thing worth checking is whether the stage completes and the transition runs, not
+whether the boss fights. If the stage does NOT clear, that is a real bug and the place to look is
+`runStageAdvance242952`, not the boss.
+
+Next publish due when `handler1A` or `handler4C` lands, or on the fifth wave after W363 if a behavioural change
+arrives sooner.
+
 **W351 correction to this item: the tool name here was WRONG and cost a detour.** The step is
 `node games/ddpdoj/tools/export-web.mjs` from the REPO ROOT -- there is no `tools/export-web.mjs`,
 and `ls tools/*.mjs` run from inside `games/ddpdoj` resolves against the root, so it looks convincingly
