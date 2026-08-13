@@ -734,7 +734,14 @@ function state0_4C(ram, rom, a5, a6) {
 
 /** State 1 `$26F90E` -- patrol the two-point table, then ALTERNATE states 2 and 4. */
 function state1_4C(ram, rom, a5, a6, ctx) {
-  // ... steps 0 and 1 as read at $26F90E..$26F936 ...
+  if (ram.u16(a6 + T4C.stepAt) === 0) {                      // $26F90E
+    ram.setU8(a6 + T4C.bandAt, 0x04);                        // $26F91E
+    ram.setU16(a6 + 0x2a, 0);                                // $26F924 WORD -- clears BOTH cursors
+    ram.setU16(a6 + 0x30, 0x012c);                           // $26F92A -- 300 frames
+    partSet4C(ram, a6, 0, true);                             // $26F930 bsr $26F994
+    partSet4C(ram, a6, 1, true);                             // $26F934 bsr $26FA5E
+    ram.setU16(a6 + T4C.stepAt, 1);                          // $26F918
+  }
   const cursor = ram.u16(a6 + 0x2a);                         // $26F93E adda.w ($2A,A6),A0
   const at = T4C.state1Table + cursor;                       // $26F938 lea $26F984
   const travelling = steer4C(ram, rom, a6,                   // $26F942 movem.w (A0),D2-D3
@@ -752,21 +759,8 @@ function state1_4C(ram, rom, a5, a6, ctx) {
   partSet4C(ram, a6, 1, false);                              // $26F97E bsr $26FA56
 }
 
-/** State 2 `$26FBD4` -- the bullet spawner. Its two cursors COUNTER-ROTATE. */
-function state2_4C(ram, rom, a5, a6, ctx) {
-  // ... steps 0 and 1 as read at $26FBD4..$26FC8E ...
-  ram.setU8(a6 + 0x2a, (ram.u8(a6 + 0x2a) + 4) & 0x3f);      // $26FC90/$26FC94 FORWARD
-  const q = enqueueDeferred(ram, 0x52, DEFQ_D1.FIXED00);     // $26FC9A/$26FC9C jsr $263684
-  if (q) {
-    const d0 = u32(ram.u32(a6 + 0x02) + 0x0c800a00);         // $26FCA2/$26FCA6 the muzzle offset
-    ram.setU32(q + 0x16, d0);                                // $26FCAE
-    ram.setU8(q + 0x1a, ram.u8(a6 + 0x2b));                  // $26FCB2 the BACKWARD cursor
-  }
-  ram.setU8(a6 + 0x2b, (ram.u8(a6 + 0x2b) - 4) & 0x3f);      // $26FCB8/$26FCBC BACKWARD
-  const c = (ram.u8(a6 + 0x34) - 1) & 0xff;                  // $26FCC2
-  ram.setU8(a6 + 0x34, c);
-  if (c === 0) setState4C(ram, a6, 3);                       // $26FCCA/$26FCCC
-}
+// (state 2's draft lives BELOW, in its corrected four-step form -- the one-spawn version that
+// stood here was wrong and is deleted rather than left to be copied by mistake.)
 
 /** States 3 `$26FCF2` and 5 `$26FECA` -- THE SAME SCRIPT with two constants changed. Both travel to
  *  $5C00/$1C00, ramp ($1E,A5) down by $40 with a floor at zero, dwell, and hand back to state 1. The
@@ -795,7 +789,16 @@ function travelDwell4C(ram, rom, a5, a6, dwell) {
 
 /** State 4 `$26FD66` -- a WAYPOINT CHAIN at X $3600, over state 1's two Ys, then state 5. */
 function state4_4C(ram, rom, a5, a6) {
-  // ... steps 0 and 1 as read at $26FD66..$26FDA0 ...
+  if (ram.u16(a6 + T4C.stepAt) === 0) {                      // $26FD66
+    ram.setU8(a6 + T4C.bandAt, 0x08);                        // $26FD76 -- and $8 IS a band value
+    ram.setU8(a6 + 0x2a, 0);                                 // $26FD7E
+    ram.setU16(a6 + T4C.stepAt, 1);                          // $26FD70
+  }
+  if (ram.u16(a6 + T4C.stepAt) === 1) {                      // $26FD82
+    ram.setU8(a6 + T4C.bandAt, 0x04);                        // $26FD9C
+    ram.setU16(a6 + T4C.stepAt, 2);                          // $26FDA2
+    ram.setU8(a6 + 0x2a, 1);                                 // $26FDA8
+  }
   for (const [step, y, next] of [[2, 0x2a00, 3], [3, 0x0e00, null]]) {
     if (ram.u16(a6 + T4C.stepAt) !== step) continue;         // $26FDAE / $26FDD4
     if (steer4C(ram, rom, a6, 0x3600, y)) return;            // $26FDB8/$26FDC0 -- bcs, still going
@@ -995,7 +998,19 @@ function retireCheck4C(ram, rom, a5, a6, ctx) {
 /** `$26F9A2` -- PART 3's animator. Fires from the drawn muzzle, then RETRACTS the two draw offsets. */
 function sub26F9A2(ram, rom, a5, a6, ctx) {
   if (ram.u16(a6 + T4C.partSetters[0].flagAt) === 0) return; // $26F9A2 tst.w ($46,A6) / beq
-  // ... the body between $26F9A6 and $26FA0A, which sets the spawn up ...
+  // $26F9D0 -- THE GATE IS THE SUM: it fires only once BOTH draw offsets have retracted to zero, so
+  // the two halves close and THEN it shoots. Parity-gated like state 2's volley.
+  if (u16(ram.u16(a6 + 0x48) + ram.u16(a6 + 0x4a)) !== 0) return;   // $26F9D0..$26F9D8
+  if ((ram.u16(T4C.spawnParityGlobal) & 0xffff) !== 0) return;      // $26F9DE or.w / bne
+  ram.setU16(a6 + 0x4c, 1);                                         // $26F9E6 -- the $46 companion
+  // TWO children of type $4E at the two part-3 draw biases: the fifth mirrored pair in this type.
+  for (const b of [0xfc3fec80, 0xfc401380]) {                       // $26F9F8 / $26FA14
+    const c = enqueueDeferred(ram, 0x4e, DEFQ_D1.FIXED00);          // $26F9EC/$26F9EE moveq #$4E
+    if (c) {
+      ram.setU32(c + 0x16, u32(ram.u32(a6 + 0x02) + b));            // $26F9FE / $26FA1A
+      ram.setU16(c + 0x1a, b === 0xfc3fec80 ? 0xfa00 : 0x0600);     // $26FA02 / $26FA1E
+    }
+  }
   const q = enqueueDeferred(ram, T4C.spawnChild, DEFQ_D1.FIXED00);        // $26FA0A jsr $263684
   if (q) {
     // The SAME bias as the $26F7D2 draw half, so the shot leaves from the muzzle that is drawn.
@@ -1014,7 +1029,10 @@ function sub26F9A2(ram, rom, a5, a6, ctx) {
 /** `$26FA82` -- PART 4's animator, and the type's FAN. `localLoop` is this routine's dbra. */
 function sub26FA82(ram, rom, a5, a6, ctx) {
   if (ram.u16(a6 + T4C.partSetters[1].flagAt) === 0) return; // $26FA82 -- the ($66,A6) gate
-  // ... the body between $26FA86 and $26FB12 ...
+  // $26FAF4..$26FB00 -- the fan is SKIPPED entirely while the target is within $400.
+  if (/* D0 */ 0 < u16(ram.u16(a6 + 0x02) - 0x400)) return;          // $26FAFA/$26FAFE/$26FB00 bcs
+  const passes = 0x24 + 1;                                           // $26FB04 move.w #$24,D7 -- 37
+  let d1 = 0x2e;                                                     // $26FB0E -- the ENTRY heading
   // $26FB1E..$26FB3A -- the fan. D7 passes, each indexing $2735FA by (D1 & $3F) * 4, emitting, then
   // stepping D1 and RE-MASKING, so the heading WRAPS rather than clamping.
   let d1 = /* the entry heading, set in the block above */ 0;
@@ -1036,10 +1054,15 @@ function sub26FA82(ram, rom, a5, a6, ctx) {
 **`$243E02` IS `armScreenClear243E02(ram, ctx, d1, from)`** in `midboss.js:234` -- already ported, found by name
 rather than by address grep, which is the second time that has been the difference this session.
 
-**THE `// ...` MARKS HERE ARE HONEST GAPS, not "setup".** I made that claim once this wave and it was false twice
-over, so: `$26F9A6..$26FA0A` and `$26FA86..$26FB12` are **read but not transcribed**, and the fan's entry heading and
-D7 pass count come from inside the second of them. **Read those two blocks before placing** -- everything else in
-these three is transcribed.
+**BOTH OF THOSE BLOCKS ARE NOW TRANSCRIBED**, and the superseded one-spawn `state2_4C` has been DELETED rather than
+left above its replacement, because a stale draft beside a correct one is a copy-paste error waiting to happen.
+
+**ONE GAP REMAINS, and it is a real one:** `$26FB58` onward, the remainder of `$26FA82` past the part-4 offset test.
+It is marked `// ... the remainder past $26FB58 ...` and is **NOT read**. Everything else in all three callees is
+transcribed.
+
+**Two placeholders in `sub26FA82` are register values from that unread block**, marked `/* D0 */` and `/* D5 */`.
+The fan's pass count (37) and entry heading (`$2E`) ARE read and are in the draft; those two are not.
 
 **`$26F9A6..$26FA0A` IS NOW TRANSCRIBED, and it is the type's cleanest idea.** The gate is
 `move.w ($48,A6),D0 / add.w ($4A,A6),D0 / bne` -- **the SUM**, so the routine fires only once BOTH draw offsets have
