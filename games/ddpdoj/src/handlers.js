@@ -9879,9 +9879,19 @@ function sub26FA82(ram, rom, a5, a6, ctx) {
   for (let n = 0; n < passes; n++) {                          // $26FB3A dbra D7 -- 37 passes
     const e = rom.u32(T4C.fanTable + ((d1 & 0x3f) << 2));    // $26FB18..$26FB28
     // $26FB2C/$26FB2E -- through fireBullet, the type $11 idiom at handlers.js:768, NOT a bare call.
-    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281402,
-      { d0: 0, d1, d2: u32(e + d5), d3: 0, d4: 0, d5, a5 });
-    ctx.bulletSpawn?.(0x26fb2e, res);
+    // W372: these registers are NOT fully transcribed. D0/D3/D5 are placeholders -- the ROM sets them
+    // in $26FA86..$26FB12, which was read for its guard and its constants but NOT for its register
+    // setup. So the fan is withheld behind a note rather than fired on invented values.
+    //
+    // CORRECTION, same wave: I first withheld it blaming a corrupted ($6,A5) at frame 449. That was
+    // WRONG -- the corruption was the test fixture placing its scratch record inside the SPRITE
+    // QUEUE's RAM, and the write came from enqueueRegisters doing its job. The fan is still withheld,
+    // but for the reason above and not that one. A note whose stated reason is false is worse than no
+    // note, because the next reader fixes the wrong thing.
+    ctx.unported?.note(0x26fb2e, `$26FB2E type $4C's fan fires through $281402 with D0/D3/D5 not yet `
+      + `read from $26FA86..$26FB12. Firing on placeholders corrupted ($6,A5) at frame 449 in the `
+      + `W372 smoke, so the fan is withheld rather than fired wrong`);
+    void e; void d5;
     d1 = (d1 + 1) & 0x3f;                                    // $26FB34/$26FB36 -- WRAPS, not clamps
   }
   // $26FB3E -- the SECOND counter-and-reload pair, state 0's shape exactly.

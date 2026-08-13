@@ -9,12 +9,16 @@ Updated: 2026-08-13 (W372)
 **`handler4C` IS PLACED.** Stage 5 now has **zero types without a handler**. The draft, its import delta and the
 placement checklist that produced it are still below for reference, but **that job is done** -- do not redo it.
 
-### OPEN DEFECT IN `handler4C` -- IT CORRUPTS `($6,A5)` OVER A LONG RUN
+### NOT A DEFECT: the "($6,A5) corruption" was the TEST FIXTURE, and I reported it wrongly first
 
-**Driving 4000 frames throws `$8eec0ed2 is outside main RAM`** from `drawAll4C`'s `ram.u32(a6 + 0x02)`. That value is
-a POSITION LONG, so **`($6,A5)` -- the sub-record pointer A6 is read from -- is being overwritten.** The handler
-never writes `($6,A5)` itself, so the suspect is a callee reached only deep in the state machine: `buildParts246520`
-on the death path, or a spawn write running with a bad `q.addr`.
+**Driving 4000 frames threw `$8eec0ed2 is outside main RAM`, and I recorded it as a handler defect. It is not.**
+Trapping the write showed it came from `enqueueRegisters` in `spritequeue.js`, called by `draw4C` -- **the sprite
+queue writing into its own RAM, which the fixture's scratch record `$8137C0` sits inside.** Moving the record to
+`$811000` only moved the collision; the queue's region is wide.
+
+**`handler4C` is not corrupting anything.** The fixture needs a scratch address genuinely clear of the queue -- take
+one from the live enemy table's region rather than guessing. A symptom seen through a fixture is a fact about the
+fixture until proven otherwise, and I skipped that step and wrote it up as a port bug.
 
 **What IS proven** (see `w372type4crun.test.js`): the handler runs, a frozen frame takes the draw-only path, the
 retire arm releases `$8130DE`, ten frames are clean, and state 0's two-stage timer fires and flips the draw variant.
