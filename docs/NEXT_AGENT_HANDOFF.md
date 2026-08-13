@@ -5048,6 +5048,36 @@ BOTH of the band's pause globals at once**, and that is why they sit adjacent.
 freeze the cartridge honours. **Read the operand SIZE on these globals, not just the address** -- the same
 address is legitimately tested at two widths in one routine.
 
+### `$1A` DOES ITS OWN TARGET SELECTION, with a per-record side preference
+
+    268f50  subq.b #1,($22,A5) / bcc $268FC8      the fire timer
+    268f5c  move.b ($23,A5),($22,A5)              and its reload
+    268f62  move.b ($20,A5),D0
+    268f66  cmp.b ($21,A5),D0 / bne $268FC8       <- the BURST-first idiom
+    268f6e  lea $8103E6,A0                        PLAYER 1's record
+    268f74  lea $810448,A1                        PLAYER 2's record
+    268f7a  tst.b ($3,A5) / beq $268F82
+    268f80  exg A0,A1                             <- SWAP the preference
+    268f82  tst.w (A0) / bmi $268F8E              is the preferred one alive?
+    268f86  tst.w (A1)
+
+**`($20,A5)` vs `($21,A5)` is `$55`'s burst idiom at different offsets.** `$55` compares `($2E,A5)` against
+`($2F,A5)` to detect the first volley of a burst; `$1A` does the identical `move.b`/`cmp.b`/`bne` on `$20`/`$21`.
+Third instance of same-meaning-different-offset in this band.
+
+**AND `$1A` INLINES TARGET SELECTION INSTEAD OF CALLING `$24270A`.** `$8103E6` and `$810448` are the two player
+records (both heavily ported -- 21 and 20 code mentions, owned by `PLAYER`/`PLAYER_OBJECT`). `$24270A`
+(`targetSelect`) loads `$8103E6` four times and picks a side; `$1A` loads BOTH, then uses **`($3,A5)` as a side
+PREFERENCE** and `exg A0,A1` to swap which is tried first, before falling back on liveness (`tst.w (A0)/bmi`).
+
+**So `targetSelect(ram, a5)` is the WRONG call here** -- it would discard the `($3,A5)` preference and pick by
+the shared rule instead of this record's. That preference is presumably what makes a pair of `$1A` records
+attack different players. **Write the inline form.** This is the first type in the band that does not delegate
+target choice, and it is exactly the kind of thing that reads as "just call the helper" until you notice the
+extra byte.
+
+Still to read: `$268F8E` onward (the shot itself) and the death arm at `$269160`.
+
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
 Unblocked by `$55`. Type table `$267824 + $46*8 = $267A54`: init `$27102C`, body `$271034` (the `+8` rule
