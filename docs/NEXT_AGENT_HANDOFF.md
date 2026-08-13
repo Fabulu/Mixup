@@ -169,6 +169,21 @@ after `$242B90`/`$242B3C`, `$26331C`'s stub siblings, and `$263684`/`enqueueDefe
 enough to be the default assumption**: before writing anything, grep the port's PROSE for the address's
 neighbours, not just the address.
 
+**A `--near` mode for `claimed.py` was attempted this wave and REVERTED unfinished.** The idea was sound -- scan
+`src/` for every address within `+/-$200` and report which are already in CODE, so the family shows up
+automatically instead of being found by luck. **It did not work and I could not diagnose it in the time
+available:** the regex matches `0x243da0` correctly in isolation, the target parses correctly, `bomb.js:185` sits
+inside the window, and the function still returned zero neighbours.
+
+**It was reverted rather than shipped**, because a neighbour search that silently reports "none" is worse than no
+neighbour search: it would license exactly the "genuinely new territory" conclusion this session has been wrong
+about four times. `spanned.py` taught the same lesson -- **a broken check that answers confidently is worse than
+an absent one.** `claimed.py` keeps this wave's three WORKING fixes; only the unfinished feature is gone.
+
+**So the neighbour check stays MANUAL, and it is worth doing every time: grep the port's prose for the routine's
+ROLE** (`screen-clear`, `arm`, `enqueue`, `stub`) rather than its address. All four family finds this session came
+from prose, not from address matching.
+
 **And `$23C4D0` is ported for one caller and deferred for another** -- `initbody.js` uses it, `boss.js` defers it.
 That is why `claimed.py` reports counts rather than a verdict now: a boolean would have to lie about this address
 in one direction or the other.
