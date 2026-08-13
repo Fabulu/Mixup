@@ -2,14 +2,33 @@
 
 Updated: 2026-08-12
 
-## READ THIS FIRST -- STATE AS OF W353
+## READ THIS FIRST -- STATE AS OF W367
 
-    suite 2453/2453 green, ZERO skips     sweep 0 missing     dojcoverage.py both OK lines
-    447 ROM windows                       live build 20260812234300      tree clean, all pushed
+    suite 2479/2479 green, ZERO skips     sweep 0 missing     dojcoverage.py both OK lines
+    447 ROM windows                       live build 20260813065010      tree clean, all pushed
 
-**Stage 5: THREE unported types over 6 records** -- `$1A` (4 records, recon complete, `T1A` landed with
-`ported: false`), `$4C` (1 record, init ported, eight state handlers ~2300 bytes unread), `$B0` (1, Hibachi).
-`$55` and `$46` both shipped in this session. Publish due after W355.
+**Stage 5: ONE unported type over ONE record.** It began this session at FOUR types over 19.
+
+    $55  PORTED (W351)   the burst-firing drifter
+    $46  PORTED (W352)   $55's parent, the extend-spawn-retract arm
+    $B0  REGISTERED (W363)  Hibachi -- handler complete, BODY $2A6B94 is a note(), so it appears and lets
+                            the stage clear but does not attack
+    $1A  PORTED (W365)   the slewing twin-weapon turret
+    $4C  THE LAST ONE    one record, fully specified in T4C (43 fields, 18 assertions), NOT written
+
+**`$4C` needs writing, and it is fully prepared.** Read `T4C` and the `$4C` section below: the mechanism is a
+multi-part destructible set-piece with a scripted vulnerability window, it has sixteen internal subroutines of which
+only TWO are shared, and both shared helpers are read with their traps recorded. **What remains unread are the
+fourteen single-call blocks.**
+
+**THE ONE RULE THAT MATTERED MOST THIS SESSION, stated first because it cost the most:** **read every helper's
+signature from its definition or an existing call site. Never recall it.** Seven of seven recalled conventions were
+wrong, every one silent -- a mirrored aim, a facing from the wrong structure, a duplicate port, dropped field writes,
+`ctx` in a record's place. **The two I was most confident about were both wrong.**
+
+**And the second: `rosetta.py dasm` misaligns silently -- SEVEN times this session.** If its first line is not the
+address you asked for, it is a MISS. Use raw bytes for anything load-bearing. Once, the instruction it swallowed WAS
+the finding (`$26F858`'s guard).
 
 ## TYPE $B0 -- HIBACHI (W357, OPENED). Its handler is only 170 BYTES.
 
