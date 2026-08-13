@@ -345,11 +345,21 @@ function handler2A4606(ram, rom, a5, ctx) {
 }
 ```
 
-**The carry polarity in it is copied from `boss.js:1141`, not derived.** That line is
-`const c = runScheduler25962E(...); if (!c) return;` -- there `!c` returns because nothing follows, whereas
-Hibachi's `$2A4612 bcc $2A4622` skips forward to the part hooks, so the sense is inverted in the JS while the
-convention is the same. **That asymmetry is the one thing in this function worth re-checking against the ROM before
-trusting it.**
+**The carry polarity is now CONFIRMED FROM THE ROM, not copied.** Both branch targets computed from the bytes:
+
+    $2A4612   64 0e         bcc.s  +$0E  ->  $2A4622   the part hooks
+    $29291E   64 00 00 10   bcc.w  +$10  ->  $292930   past boss.js:1145's end, i.e. return
+
+**Both mean the same thing: carry CLEAR = do NOT advance.** So `if (c) { runStageAdvance242952(...); freeEnemy(...) }`
+is correct, and `boss.js`'s `if (!c) return;` is the identical test phrased as an early return. **The "inversion" is
+only in the JS phrasing; the convention is one convention.**
+
+**AND A BRANCH-ENCODING TRAP I FELL INTO WHILE CHECKING THIS.** I first computed `$2A4612`'s target as `$2A94CD` by
+reading the two bytes AFTER the opcode as a word displacement. That is the `.w` form. **`64 0e` is `bcc.s`, with the
+displacement in the OPCODE'S OWN LOW BYTE**; the `.w` form has `00` there and takes the following word, which is
+exactly what `$29291E`'s `64 00 00 10` is. **So `64 xx` (xx != 00) is short and self-contained, `64 00` is word and
+takes two more bytes.** Getting this wrong invents a branch target thousands of bytes away, and it will not look
+obviously wrong -- `$2A94CD` is a plausible-looking address.
 
 **So `$B0` stays unregistered until `$242952` and `$2A6B94` both exist.** And `$242952` is worth doing on its own
 merits: it is the stage advance, five callers, and it sits directly under D11 (the abrupt stage transition) and
