@@ -91,3 +91,21 @@ test('W363 the damage and bounds constants', { skip: SKIP }, () => {
   const single = (0xf000 + T1A.boundsBias[0] + T1A.boundsBias[1]) > 0xffff;
   assert.notEqual(pair, single, 'so the two adds must NOT be folded into one');
 });
+
+test('W372 the init-body call site sets the SIDE but never D2/D3', { skip: SKIP }, () => {
+  // Narrowing $1A's blocker. The body is invoked at $263650 `jsr (A1)`, and the dispatcher's last act
+  // before it is to select a PLAYER RECORD into A0 and store the side into ($3,A5):
+  //     $263632 lea $8103E6,A0   / btst #0,($1,A5) / beq / $263640 lea $810448,A0 / moveq #$1,D0
+  //     $263648 move.b D0,($3,A5) / $26364C clr.w ($3E,A5) / $263650 jsr (A1)
+  // So the side IS supplied, and D2/D3 are NOT -- not here, not in $2635B2 (which uses D2 as a slot
+  // counter), and not in $263808. The supplier is above $2635F6, in the spawn walker.
+  assert.equal(IMG.readUInt16BE(0x263632), 0x41f9, '$263632 lea abs.l,A0');
+  assert.equal(IMG.readUInt32BE(0x263634), 0x008103e6, "  ...$8103E6, P1's record");
+  assert.equal(IMG.readUInt32BE(0x263642), 0x00810448, "$263640 lea $810448,A0 -- P2's record");
+  assert.equal(IMG.readUInt16BE(0x263648), 0x1b40, '$263648 move.b D0,(d16,A5)');
+  assert.equal(IMG.readUInt16BE(0x26364a), 0x0003, '  ...($3,A5), the SIDE the handler later reads');
+  assert.equal(IMG.readUInt16BE(0x263650), 0x4e91, '$263650 jsr (A1) -- the init body itself');
+  // And A0 is dead by the time $1A aims: its own body reloads it at $268D78.
+  assert.equal(IMG.readUInt16BE(0x268d78), 0x41f9, '$268D78 lea abs.l,A0');
+  assert.equal(IMG.readUInt32BE(0x268d7a), 0x272c7a, "  ...$1A overwrites A0 with the heading table");
+});

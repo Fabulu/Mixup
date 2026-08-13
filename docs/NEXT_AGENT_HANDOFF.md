@@ -15,6 +15,18 @@ placement checklist that produced it are still below for reference, but **that j
 init body**, so `runInitBodyAddr` throws the moment one spawns. Handler coverage and spawnability are different
 measurements; `w314stage5scope` counts the first and says so explicitly now.
 
+**W372 NARROWED IT.** The init body is invoked at **`$263650 jsr (A1)`**, and the dispatcher's last act before that
+is to select a PLAYER RECORD into A0 and store the side into `($3,A5)`:
+
+    $263632  lea $8103E6,A0   btst #0,($1,A5) / beq / $263640 lea $810448,A0 / moveq #$1,D0
+    $263648  move.b D0,($3,A5)    $26364C clr.w ($3E,A5)    $263650 jsr (A1)
+
+**So the SIDE is supplied and D2/D3 are NOT** -- not there, not in `$2635B2` (D2 is a slot counter), not in
+`$263808`. **The supplier is above `$2635F6`, in the spawn walker.** That is where to look next; three levels are now
+eliminated rather than assumed.
+
+Note A0 is dead for aiming purposes anyway: `$1A`'s own body overwrites it at `$268D78` with the heading table.
+
 **The block is real and is a TRACE, not a read.** `$268D8C jsr $24203E` is the aim CORE, which takes its target in
 **D2/D3**. `$1A`'s init body never writes D3, and `$263808` (`readInitPosition`) does not either, so D3 is caller
 state from up the spawn chain. I walked as far as `$2635B2` (the sub-record allocator) and it uses D2 as a slot
