@@ -489,6 +489,29 @@ right in both halves, and the table proves it.** `$26F886` is a jump table of 4-
 state 0's own handler. `$26F886..$26F8A6` is `$20` bytes, eight pointers. The span is `$26F5F2..$26FFE8`, about 2550
 bytes -- **the note's "~2300" was close too.**
 
+### Each state handler is a FRAME-COUNTER CASCADE on `($28,A6)`
+
+State 0, `$26F8A6`:
+
+    26f8a6  cmpi.w #$0,($28,A6) / bne $26F8C2      frame 0?
+    26f8b0  move.w #$1600,($1A,A6)                 <- a WORD write: ($1A)=$16, ($1B)=$00
+    26f8b6  move.w #$202,($34,A6)                  the #$202 idiom: ($34)=2, ($35)=2
+    26f8bc  move.w #$1,($28,A6)                    advance to frame 1
+    26f8c2  cmpi.w #$1,($28,A6) / bne ...          frame 1?
+
+**So the structure is TWO nested levels:** `($26,A6)` selects the state through the jump table, and within each state
+`($28,A6)` is a SCRIPT STEP counter walked by successive `cmpi.w`. That is why `$26F858`'s guard clears `($28,A6)`
+only on a real state change -- **it restarts the inner script**, and clearing it every frame would pin every state on
+its first step forever.
+
+**AND `($1A,A6)` GETS `$16` HERE, VIA A WORD WRITE -- a FOURTH use, outside the `$8`/`$6` band range entirely.** Rule
+13 again, and this time the write is a WORD, so it also sets `($1B,A6)` to `$00`. **The `bandThresholds` in `T4C` are
+therefore one contributor to that byte, not its definition**, and the field is doing more than the distance helper
+implies. Do not model `($1A,A6)` as a distance band; model it as a byte several arms write for their own reasons.
+
+`move.w #$202,($34,A6)` is the word-literal-is-two-byte-fields rule in its clearest form: a timer and its reload, both
+`2`, set in one instruction -- exactly what `$46`'s prototype does at `($1A,A5)`/`($1B,A5)`.
+
 **The chain of my errors here is worth stating in full, because each step looked reasonable:**
 
 1. W354 scanned for `cmpi.b` cascades on the record and found none -- true, but the dispatch is a jump table.
