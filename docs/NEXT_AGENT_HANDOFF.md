@@ -704,6 +704,34 @@ That is a complete, coherent mechanism and it ties together every oddity of this
 the cross-type clock cue, part 5 as a control block, the hit mask stored into part 5, and the shared pool. **`$4C` is
 a multi-part destructible set-piece with a scripted vulnerability window.**
 
+### The eight "unported callees" are now PROVEN internal -- they are `bsr` targets
+
+    26f6ce  bsr $26F858             <- one of the eight
+    26f6d2  lea $2701C8,A0 / jsr $246520     buildParts246520 -- and W341 already scoped this
+    26f6de  move.b #$12,($1d,A6)    the not-hit palette (the $26F654 skip target)
+    26f6e4  bsr $26FFE8             <- a second
+    26f6e8  tst.b ($9F,A6) / bne $26F704
+    26f6f0  bsr $26F86A             <- a third
+
+**`bsr`, not `jsr`** -- so `$26F858`, `$26F86A` and `$26FFE8` are `$4C`'s own subroutines, which settles W354's
+reading from the instruction rather than from an address range. **`$26FFE8` is genuinely a separate routine that
+`$4C` calls**, sitting immediately past the main body's last `rts` at `$26FFE6`: both readings were right, and they
+are not in conflict.
+
+**AND `$246520` WAS ALREADY SCOPED BY W341**, including its window:
+
+    export-tables.py:2762   (0x2701C8, 0x000E, "W341: type $4C's $246520 caller table -- a count word (1)
+                             then one 12-byte node, $2701C8..$2701D5, ending where code begins")
+
+`$246520` is `buildParts246520`, ported. **And the count word is ONE, not five** -- so this call builds a SINGLE
+12-byte node, and it is NOT what creates the five parts. Those come from `loadSubProto`'s `5 * $20` in the init.
+**I had been assuming `$246520` was the part builder for this type; it is not.** Eighth "already there" of the
+session, and the second time W341's own notes anticipated a question I was about to re-derive.
+
+So `$4C`'s remaining unread code is three `bsr` subroutines (`$26F858`, `$26F86A`, `$26FFE8`) plus the tail at
+`$26F704` -- and the five per-part blocks I have been expecting to find may not exist as such, since nothing so far
+iterates or addresses parts 1-4 individually.
+
 ### Its death path releases TWO mutual-exclusion flags, one of which `$49` CLAIMS
 
     26f6a4  move.w #$8000,(A6)          the record's dying bit
