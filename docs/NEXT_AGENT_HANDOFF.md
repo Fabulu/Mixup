@@ -4988,7 +4988,37 @@ So the `$5C` family agrees on the mask (`$5C`), the clear byte (`$A3`) and `scor
 there is an `hpFull` reload, whether there is a palette DECISION, and now whether the XOR input is inspected.
 **Four members, four different arms.**
 
-Still to read: `$268EDE` onward (the states) and the death arm at `$269160`.
+### `$1A`'s alive path, and the rosetta.py misalignment trap AGAIN
+
+**`rosetta.py dasm 0x268ede` returns pure garbage** (`ori.b #$72,($4A79,A0)`, `ori.l #$30D26660,D1`) because the
+real instruction boundary is `$268EDC`, two bytes earlier. **This is the SECOND time this trap has cost a read
+this session** -- the first was `$272722`, where it silently dropped four bytes and hid a `lea (d16,PC)`.
+
+**The rule, now earned twice: when a disassembly line looks like `ori`/`pmove`/`ILLEGAL` in the middle of a
+routine, the alignment is wrong, not the cartridge.** Back up two bytes and re-ask. Cheap to test, and it has
+now produced two entirely fictional readings when skipped.
+
+Realigned:
+
+    268edc  jsr $28AC72                     spawnCues28AC72, already ported (9 code mentions)
+    268ee2  tst.w $8130D2 / bne $268F4A     the whole-path pause -- same global as $55 and $46
+    268eea  move.w #$F000,($6,A6)
+    268ef0  cmpi.b #$40,($1B,A6) / bcc $268F4A
+    268ef8  addi.w #$20,($36,A6)
+    268efe  move.w ($36,A6),D0 / andi.w #$40,D0
+    268f06  add.w D0,($6,A6)                a $40-or-0 wobble added to ($6,A6)
+    268f0a  subq.b #1,($26,A6) / bcc $268F4A
+    268f10  move.b ($27,A6),($26,A6)        timer and reload, both in the SUB-record
+
+Two things worth noting. **`($36,A6)` is a free-running phase** whose bit 6 alone is used (`andi.w #$40`), so
+`($6,A6)` alternates between `$F000` and `$F040` on a `$20`-per-frame ramp -- a square wave, not a sine, and
+cheaper than the `$241D34` route `$55` takes. **And `$1A` keeps its timer pair in the SUB-record** (`($26,A6)`
+/`($27,A6)`) where `$55` and `$46` keep theirs in the record (`($1A,A5)`, `($26,A5)`). Another instance of the
+same-meaning-different-place rule.
+
+`$8130D2` is now confirmed as the band's shared whole-path pause across `$55`, `$46` and `$1A`.
+
+Still to read: `$268F16` onward and the death arm at `$269160`.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
