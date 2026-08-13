@@ -182,3 +182,54 @@ test('W366 the palette XOR is an IMMEDIATE, so there is no palXor field to reuse
   assert.equal(IMG.readUInt16BE(0x26f65e), 0x3d41, '$26F65E move.w D1,(d16,A6)');
   assert.equal(IMG.readUInt16BE(0x26f660), T4C.hitMaskTo, "  ...($8E,A6) -- part 5's $0E");
 });
+
+test('W367 $26F858 is a CHANGE-DETECTING setter -- the beq guard is the function', { skip: SKIP }, () => {
+  // Eight callers. If a port stores D0 and clears ($28,A6) unconditionally, the frame counter resets every
+  // frame and the animation freezes on frame zero while everything else keeps working.
+  assert.equal(IMG.readUInt16BE(0x26f858), 0xb06e, '$26F858 cmp.w (d16,A6),D0 -- the GUARD');
+  assert.equal(IMG.readUInt16BE(0x26f85a), 0x0026, '  ...against ($26,A6), the current state');
+  assert.equal(IMG.readUInt16BE(0x26f85c), 0x6700, '$26F85C beq.w');
+  // The branch must clear BOTH stores and land on the rts.
+  const tgt = 0x26f85e + IMG.readInt16BE(0x26f85e);
+  assert.equal(tgt, 0x26f868, 'beq -> $26F868, skipping the store AND the clear');
+  assert.equal(IMG.readUInt16BE(0x26f868), 0x4e75, '  ...which is the rts');
+  assert.equal(IMG.readUInt16BE(0x26f860), 0x3d40, '$26F860 move.w D0,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f862), 0x0026, '  ...($26,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f864), 0x426e, '$26F864 clr.w (d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f866), 0x0028, '  ...($28,A6), the frame counter');
+});
+
+test('W367 $26FF9E grades DISTANCE into bands, smallest wins by fall-through', { skip: SKIP }, () => {
+  // Seven callers. It calls dist242494 -- itself one of the nine duplicate ports removed earlier in this
+  // session -- then walks thresholds. Each later store OVERWRITES the earlier, so the SMALLEST matching
+  // band wins. Written as else-if it would yield the largest instead.
+  assert.equal(IMG.readUInt16BE(0x26ff9e), 0x3039, '$26FF9E move.w abs.l,D0');
+  assert.equal(IMG.readUInt32BE(0x26ffa0), 0x00813172, '  ...from $813172');
+  assert.equal(IMG.readUInt16BE(0x26ffa4), 0x9640, '$26FFA4 sub.w D0,D3');
+  assert.equal(IMG.readUInt16BE(0x26ffa6), 0x4eb9, '$26FFA6 jsr abs.l');
+  assert.equal(IMG.readUInt32BE(0x26ffa8), 0x00242494, '  ...dist242494');
+  // Band 1: >= $200 leaves ($1A,A6) untouched.
+  assert.equal(IMG.readUInt16BE(0x26ffac), 0x0c40, '$26FFAC cmpi.w #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x26ffae), 0x0200, '  ...#$200');
+  assert.equal(IMG[0x26ffb0], 0x6c, '$26FFB0 bge -- so >= $200 skips every store');
+  // Band 2: $8.
+  assert.equal(IMG.readUInt16BE(0x26ffb2), 0x1d7c, '$26FFB2 move.b #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26ffb4), 0x0008, '  ...#$8');
+  assert.equal(IMG.readUInt16BE(0x26ffb6), 0x001a, '  ...into ($1A,A6)');
+  // Band 3: $6, written AFTER band 2, which is what makes the smallest band win.
+  assert.equal(IMG.readUInt16BE(0x26ffb8), 0x0c40, '$26FFB8 cmpi.w #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x26ffba), 0x0100, '  ...#$100');
+  assert.equal(IMG.readUInt16BE(0x26ffbe), 0x1d7c, '$26FFBE move.b #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26ffc0), 0x0006, '  ...#$6 -- OVERWRITES the $8 above');
+  assert.equal(IMG.readUInt16BE(0x26ffc2), 0x001a, '  ...same field, ($1A,A6)');
+});
+
+test('W367 the band field is what the main flow branches on', { skip: SKIP }, () => {
+  // ($1A,A6) is part 1's $1A, and $26FF6C/$26FF7A compare it against $8 -- so the helper grades proximity
+  // and the main flow reacts to the band. That is the loop this type closes.
+  for (const at of [0x26ff6c, 0x26ff7a]) {
+    assert.equal(IMG.readUInt16BE(at), 0x0c2e, `$${at.toString(16)} cmpi.b #imm,(d16,A6)`);
+    assert.equal(IMG[at + 3], 0x08, '  ...#$8 -- the band $26FF9E writes');
+    assert.equal(IMG.readUInt16BE(at + 4), 0x001a, '  ...($1A,A6), part 1s $1A');
+  }
+});
