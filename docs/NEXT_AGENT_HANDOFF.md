@@ -5799,14 +5799,31 @@ extra byte.
     268fa4  addi.w #$0,D1             the same NO-OP add as $268D88 -- TWICE now
     268fa8  jsr $24203E               aim (already ported, AIM_REFS)
     268fae  move.w ($28,A5),D0        the CURRENT heading
-    268fb2  jsr $242190               SLEW -- slew64FromRecord, already ported, 14 code mentions
+    268fb2  jsr $242190               SLEW -- see the WARNING below: NOT slew64FromRecord
     268fb8  move.w D1,($28,A5)        the new heading
     268fbc  andi.w #$3E,D1 / add.w D1,D1
     268fc2  move.l (A3,D1.w),($24,A5) the heading long
 
-**`aim -> current -> slew -> store` is the turret idiom**, and both halves were already ported: `$24203E` and
-`$242190` (`slew64FromRecord`). So `$1A` turns TOWARD its target rather than snapping, which no other type in
-this band does.
+**`aim -> current -> slew -> store` is the turret idiom**, and both halves were already ported. So `$1A` turns
+TOWARD its target rather than snapping, which no other type in this band does.
+
+**WARNING, and it would be a SILENT bug: `$1A` MUST CALL `slew64`, NOT `slew64FromRecord`.** `aim.js:392` is
+
+    /** `$24218C` -- `$242190` with the current facing taken from `($1B,A6)`. */
+    export function slew64FromRecord(ram, a6, target) { return slew64(ram.u8(a6 + 0x1b), target); }
+
+so **`slew64FromRecord` IS `$24218C`, a DIFFERENT ROM entry point** that hard-codes the facing as `($1B,A6)`.
+`$242190` is its register-argument twin -- `aim.js`'s own `slew256` docstring says so ("there is no
+register-argument twin the way `$242190` is `$24218C`'s"). **`$1A` calls `$242190` and supplies the facing in D0
+from `($28,A5)`** (`$268FAE move.w ($28,A5),D0`) -- a RECORD field, not the sub-record's `($1B,A6)`.
+
+**So the call is `slew64(<facing from ($28,A5)>, target)`.** Using `slew64FromRecord` would read a different field
+in a different structure and slew from whatever that byte holds, **while still producing plausible turning**, which
+is what makes it dangerous.
+
+Same class as the `$242B90`/`$242B3C` twins: two ROM entry points to one routine, differing only in where an
+argument comes from, with the port modelling both. **Check WHICH entry point a caller uses, not just which
+routine.**
 
 **The index arithmetic confirms `$272C7A`'s existing window.** `andi.w #$3E` then `add.w D1,D1` yields
 `0,4,8..$7C` -- thirty-two longs, `$80` bytes -- and the declared window is `$272C7A + $80`. Second window this
