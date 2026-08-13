@@ -45,3 +45,21 @@ test('W372 the ELEVEN slots the port has never touched -- the docket lives here'
     assert.equal(IMG.readUInt32BE(TABLE + slot * 8), addr, `slot ${slot} is ported`);
   }
 });
+
+test('W372 all eleven untouched slots are STATE MACHINES of the tally screen s shape', { skip: SKIP }, () => {
+  // Every one opens `tst.b (d8,A5)` / `beq` then `cmpi.b (d8,A5)` / `beq` -- a cascade on a state byte
+  // in the object record, which is exactly what tallyscreen.js documents for slot [11]: "$25DBB4 the
+  // dispatcher, on ($2,A5)". So the eleven are not eleven different problems: they are one shape,
+  // and the machinery tallyscreen.js already has is the right reference for all of them.
+  const SLOTS = [0x290be8, 0x25a770, 0x25caca, 0x28f3ac, 0x288a60, 0x288c6c,
+    0x291f66, 0x25ceb8];
+  for (const a of SLOTS) {
+    assert.equal(IMG.readUInt16BE(a), 0x4a2d, `$${a.toString(16)} opens tst.b (d8,A5)`);
+    assert.equal(IMG[a + 2] & 0xf0, 0x00, '  ...on a small record offset');
+    assert.equal(IMG[a + 4], 0x67, '  ...followed by beq -- the state-zero arm');
+  }
+  // Two differ at the very front and are worth knowing about before someone calls the shape universal.
+  assert.equal(IMG.readUInt16BE(0x256e7a), 0x0c2d, 'slot 16 opens with cmpi.b, skipping the tst');
+  assert.equal(IMG.readUInt16BE(0x24902a), 0x4a2d, 'slot 18 opens with tst.b like the rest');
+  assert.equal(IMG.readUInt16BE(0x28ee88), 0x4df9, 'slot 19 opens with lea abs.l,A6 FIRST');
+});

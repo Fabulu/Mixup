@@ -1515,6 +1515,13 @@ the driver's own `moveq #$13` and by slot 20 not being a code pointer.
     [ 7] $290BE8   [ 8] $25A770   [ 9] $25CACA   [12] $28F3AC   [13] $288A60   [14] $288C6C
     [15] $291F66   [16] $256E7A   [17] $25CEB8   [18] $24902A   [19] $28EE88
 
+**AND ALL ELEVEN ARE THE SAME SHAPE.** Every one opens `tst.b (d8,A5)` / `beq` then a `cmpi.b` cascade -- a state
+machine on a byte in the object record, exactly what `tallyscreen.js` documents for slot [11] (*"$25DBB4 the
+dispatcher, on ($2,A5)"*). **So the eleven are not eleven different problems.** They are one shape, and the machinery
+`tallyscreen.js` already carries -- the cursor helpers D34 names, the descriptor reads, the state dispatch -- is the
+right reference for all of them. Three open at the front slightly differently (`[16]` skips the `tst`, `[19]` does a
+`lea` first), which is worth knowing before anyone calls the shape universal.
+
 **So the front-end docket items are not code to go hunting for -- they are slots in a table**, and the work starts by
 identifying which slot is which screen. Pinned in `w372objdispatch.test.js`, with the list shrinking as slots land,
 the way the enemy type-table census works.
