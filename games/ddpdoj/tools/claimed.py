@@ -39,7 +39,17 @@ def scan(addr: str):
             if d:
                 owner = d.group(1)
             if pat.search(line):
-                if re.match(r'\s*(//|\*|/\*)', line):
+                # W358: classify by the address's SYNTACTIC POSITION first, not by what the line looks
+                # like. `note(ctx, 0x23c4d0);` is executable JavaScript AND a declaration that the address
+                # is NOT ported, so a comment-versus-code test cannot decide it -- it is both. The old
+                # chain was meant to catch this and did not: boss.js:184 came out CODE while the same
+                # string tested NOTE in isolation, which is how three of Hibachi's callees were reported
+                # CLAIMED when they are deferrals. An address passed AS AN ARGUMENT to note()/unreached()
+                # is a deferral, full stop, so that is now checked before anything else.
+                if re.search(r'\b(note|unreached)\s*\([^)]*' + re.escape(addr.lower()) + r'\b',
+                             line.lower()):
+                    kind = 'NOTE'
+                elif re.match(r'\s*(//|\*|/\*)', line):
                     kind = 'COMMENT'
                 # W345: an address quoted INSIDE a note()/unreached() string is the port saying it has
                 # NOT ported that address. Counting it as a claim gave a false CLAIMED on $23C98E, whose
