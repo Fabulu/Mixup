@@ -244,6 +244,54 @@ export class BgVram {
  * credits, chain high-water) still goes through the unported `$240DC2` /
  * `$141258` path, so those cells stay blank in this map until Wave C'.
  */
+/** `$240CF0` -- THE TX BLOCK BLIT. 60 bytes, and the routine `$240DC2`'s note above has been standing
+ *  in for. It draws a rectangle of tiles into `$904000` with two nested `dbra`s.
+ *
+ *  The index is `((D6 << 6) + D1) * 4`, and `<< 6` is 64 -- the TX map's column count, which `TxVram`
+ *  already models. The INNER loop steps D6 and the outer DECREMENTS D1, so it walks one way along the
+ *  `* 64` axis and backwards along the other. A port that incremented both draws the block mirrored.
+ *
+ *  `addi.l #$C0000000,D4` before the loop ORs the two high attribute bits in ONCE, and each tile then
+ *  steps by `$10000` -- one tile NUMBER, since the number is the high word. So consecutive cells take
+ *  consecutive glyphs, which is what makes this a string blit rather than a fill.
+ *
+ *  @param d4 the tile longword: high word the tile number, low word the attribute.
+ */
+export function txBlock240CF0(tx, d0, d1, d2, d3, d4) {
+  let tile = u32(d4 + 0xc0000000);                           // $240CFA addi.l #$C0000000,D4
+  let col = d1;                                              // $240D02.. the outer variable
+  for (let outer = 0; outer <= (d3 & 0xffff); outer++) {     // $240D22 dbra D3
+    let row = d0;                                            // $240D02 move.w D0,D6 -- RESET each pass
+    for (let inner = 0; inner <= (d2 & 0xffff); inner++) {   // $240D1C dbra D7
+      const idx = u16(u16(u16(row << 6) + col) << 2);        // $240D06..$240D0E lsl/add/add/add
+      tx.setLong(0x904000 + idx, tile);                      // $240D10 move.l D4,(A0,D5.w)
+      tile = u32(tile + 0x10000);                            // $240D14 -- the NEXT glyph
+      row = u16(row + 1);                                    // $240D1A addq.w #1,D6
+    }
+    col = u16(col - 1);                                      // $240D20 subq.w #1,D1 -- BACKWARDS
+  }
+}
+
+/** `$25A14C` -- draw a NUL-TERMINATED STRING through the blit above. 42 bytes. Slot [18] of the object
+ *  dispatch table -- D37's endings -- calls it, and it is the only routine between that screen and the
+ *  tilemap.
+ *
+ *  THE TRAP IS `swap D4 / move.w D5,D4`: the glyph byte goes in the HIGH word and the caller's
+ *  attribute in the LOW. Passing the byte as a bare longword draws tile 0 everywhere, which looks
+ *  exactly like a missing font rather than like a bug.
+ */
+export function txString25A14C(tx, rom, d0, d1, d2, addr) {
+  const attr = d2;                                           // $25A150 move.w D2,D5
+  let col = d0;
+  for (let a = addr; ; a++) {
+    const ch = rom.u8(a);                                    // $25A158 move.b (A0)+,D4
+    if (ch === 0) return;                                    // $25A15A tst.b / beq -- NUL ends it
+    const d4 = u32(((ch & 0xff) << 16) | (attr & 0xffff));   // $25A15E andi / $25A162 swap / $25A164
+    txBlock240CF0(tx, col, d1, 0, 0, d4);                    // $25A166 jsr $240CF0 -- ONE cell
+    col = u16(col + 1);                                      // $25A16C addq.w #1,D0
+  }
+}
+
 export class TxVram {
   constructor(words) {
     this.w = words ? Uint16Array.from(words) : new Uint16Array(64 * 32 * 2);

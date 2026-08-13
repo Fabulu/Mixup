@@ -125,3 +125,28 @@ test('W372 D37 s call chain bottoms out in a TILEMAP writer, and it is short', {
   assert.equal(IMG.readUInt32BE(0x240d16), 0x00010000, '  ...#$10000 -- the tile index steps by ONE');
   assert.equal(IMG.readUInt16BE(0x240d1c), 0x51cf, '$240D1C dbra D7 -- a fixed row count');
 });
+
+test('W372 the TX blit and string draw RUN, and the string trap is real', { skip: SKIP }, async () => {
+  // Driving them, because a text routine that draws tile 0 everywhere looks like a missing font rather
+  // than a bug, and no static check would tell them apart.
+  const { TxVram, txBlock240CF0, txString25A14C } = await import('../src/background.js');
+  const tx = new TxVram();
+  // One cell, tile $41, attribute $0007. The high word must be the TILE and the low the ATTRIBUTE.
+  txBlock240CF0(tx, 2, 3, 0, 0, (0x41 << 16) | 0x0007);
+  const idx = (((2 << 6) + 3) << 2);
+  assert.equal(tx.w[((idx) >>> 2) * 2], 0xc041, 'the tile number, with $C000 s attribute bits ORed in');
+  assert.equal(tx.w[((idx) >>> 2) * 2 + 1], 0x0007, 'and the attribute in the LOW word');
+
+  // The string draw must step CONSECUTIVE tile numbers across consecutive cells.
+  const tx2 = new TxVram();
+  const rom = { u8: (a) => [0x41, 0x42, 0x43, 0x00][a] ?? 0 };
+  txString25A14C(tx2, rom, 5, 6, 0x0002, 0);
+  for (let i = 0; i < 3; i++) {
+    const k = ((((5 + i) << 6) + 6) << 2) >>> 2;
+    assert.equal(tx2.w[k * 2], 0xc041 + i, `cell ${i} takes glyph $${(0x41 + i).toString(16)}`);
+    assert.equal(tx2.w[k * 2 + 1], 0x0002, '  ...and the caller s attribute');
+  }
+  // And the NUL really terminates: the fourth cell is untouched.
+  const k4 = (((8 << 6) + 6) << 2) >>> 2;
+  assert.equal(tx2.w[k4 * 2], 0, 'the NUL stopped it -- no fourth glyph');
+});
