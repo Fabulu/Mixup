@@ -182,6 +182,32 @@ cheap to check on any window already declared.
 Note `$4C`'s record prototype is only SIX words where `$55` has fifteen and `$1A` has fifteen: the five-part object
 keeps almost all its state in the sub-records, not the record. Consistent with the record having no state machine.
 
+### The FIFTH part's prototype tail IS the handler's code -- and the depth formula predicts it exactly
+
+Dumping the five `$20` blocks from `$26F566`, parts 1-4 are ordinary data with distinct values, and **part 5's tail
+is executable code**:
+
+    part 5 $26F5E6:  00 00 00 00 00 00 00 00 00 00 00 00 | 4a 79 00 81 30 d2 66 00 ...
+                                                            ^^^^^^^^^^^^^^^^ tst.w $8130D2 / bne
+
+`$26F5E6 + $C = $26F5F2`, the handler entry. So the fifth prototype runs `$14` bytes INTO the handler, and the
+band's depth formula gives that without being told:
+
+    subRecords * $20 - (handler - subProto)  =  5 * $20 - ($26F5F2 - $26F566)  =  $A0 - $8C  =  $14  =  TWENTY
+
+**W342 recorded the overlap as "TWENTY bytes" from reading it directly. The formula, the window length `$AC`, and
+the five-part structure now all agree.** Four independent confirmations of the same layout.
+
+**So the fifth sub-record receives twenty bytes of the handler's own instructions as its initial field values** --
+`tst.w $8130D2 / bne / tst.b ($9E,A6) / beq / move.w ...` become part 5's `$0C..$1F`. That is the same trick `$49`
+uses (`+$1C..+$1F` receive `moveq #$5C,D1 / and.b (A6),D1`), and it means **part 5's initial state is whatever those
+opcodes happen to encode -- not a designed value.** A port MUST copy the bytes rather than invent plausible field
+values, and the depth formula is how you know how many.
+
+**This also settles the `($9E,A6)` puzzle from the other side**: part 5's `$1E`/`$1F` are `33 fc` and beyond, taken
+from `move.w #...`, and the handler then TESTS `($9E,A6)` at `$26F5FC` -- reading back a byte its own prototype
+seeded from its own opcodes. Circular, deliberate, and exactly the kind of thing that cannot be guessed.
+
 **Settled and needing no further work:** `tst.b ($17,A5)` (one branch, two ported stubs), and the eight addresses
 the old note listed as unported callees (all internal, two of them merely the boundaries `$26FF9E` and `$26FFE8`).
 
