@@ -109,3 +109,26 @@ test('W372 the init-body call site sets the SIDE but never D2/D3', { skip: SKIP 
   assert.equal(IMG.readUInt16BE(0x268d78), 0x41f9, '$268D78 lea abs.l,A0');
   assert.equal(IMG.readUInt32BE(0x268d7a), 0x272c7a, "  ...$1A overwrites A0 with the heading table");
 });
+
+test('W372 NOTHING in the spawn chain initialises D3 -- the trace ends here', { skip: SKIP }, () => {
+  // $2635F6 has exactly TWO callers in the whole 6MB image, $263438 and $2634E4, both bsr. The first
+  // sets up A0/A1/A2/A5 and pushes A2/A3; neither touches D2 or D3. With $2635B2 (D2 = a slot counter,
+  // D3 untouched), $263650's dispatcher block (side only) and $263808 (neither) already eliminated,
+  // that is the ENTIRE chain from type table to init body.
+  //
+  // So $1A's spawn-time aim at $268D8C consumes a D3 that NO part of the spawn path writes. D2 it does
+  // supply -- the literal $1 or $2 from $268D4C/$268D62 -- so the aim's target is (Y = 1 or 2, X =
+  // whatever D3 held), which is the top of the screen at an arbitrary column.
+  //
+  // This is the answer to "where does D3 come from": NOWHERE IN THE CHAIN. It is inherited frame state.
+  // That is a finding about the cartridge, not a gap in the reading, and it is why the init body must
+  // not be written on a guessed value -- any constant a port picks would be a fiction.
+  assert.equal(IMG.readUInt16BE(0x263432), 0x2f0a, '$263432 move.l A2,-(A7) -- the caller saves A2');
+  assert.equal(IMG.readUInt16BE(0x263434), 0x2f0b, '$263434 move.l A3,-(A7) -- and A3');
+  assert.equal(IMG.readUInt16BE(0x263436), 0x2a48, '$263436 movea.l A0,A5 -- the record');
+  assert.equal(IMG.readUInt16BE(0x263438), 0x6100, '$263438 bsr.w -- into the dispatcher');
+  assert.equal(0x26343a + IMG.readInt16BE(0x26343a), 0x2635f6, '  ...$2635F6');
+  // D2 IS supplied by $1A itself, which is why only D3 is open.
+  assert.equal(IMG.readUInt16BE(0x268d4c), 0x143c, '$268D4C move.b #imm,D2 -- $1A sets D2 itself');
+  assert.equal(IMG.readUInt16BE(0x268d62), 0x143c, '$268D62 move.b #imm,D2 -- the other arm');
+});

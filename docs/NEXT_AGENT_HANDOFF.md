@@ -15,7 +15,20 @@ placement checklist that produced it are still below for reference, but **that j
 init body**, so `runInitBodyAddr` throws the moment one spawns. Handler coverage and spawnability are different
 measurements; `w314stage5scope` counts the first and says so explicitly now.
 
-**W372 NARROWED IT.** The init body is invoked at **`$263650 jsr (A1)`**, and the dispatcher's last act before that
+**W372 RESOLVED IT, NEGATIVELY -- AND THAT IS THE ANSWER.** `$2635F6` has exactly **TWO callers in the whole 6 MB
+image**, `$263438` and `$2634E4`. The first sets A0/A1/A2/A5 and pushes A2/A3; **neither touches D2 or D3.** With
+`$2635B2` (D2 = a slot counter), the `$263650` dispatcher block (side only) and `$263808` (neither) already
+eliminated, **that is the entire chain from type table to init body.**
+
+**So `$1A`'s spawn-time aim consumes a D3 that NO part of the spawn path writes.** D2 it supplies itself -- the
+literal `$1` or `$2` at `$268D4C`/`$268D62` -- so the aim's target is (Y = 1 or 2, X = whatever D3 held): the top of
+the screen, at an arbitrary column.
+
+**This is a finding about the cartridge, not a gap in the reading.** Any constant a port invents for D3 would be a
+fiction. The honest options are to model the inherited value (which needs the frame's prior register state, i.e. a
+real emulator trace) or to `unreached()` at that site and let it throw with the address. **Do not pick a number.**
+
+**Earlier narrowing, kept because it is what made the answer checkable:** The init body is invoked at **`$263650 jsr (A1)`**, and the dispatcher's last act before that
 is to select a PLAYER RECORD into A0 and store the side into `($3,A5)`:
 
     $263632  lea $8103E6,A0   btst #0,($1,A5) / beq / $263640 lea $810448,A0 / moveq #$1,D0
