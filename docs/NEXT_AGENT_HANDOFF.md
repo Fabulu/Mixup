@@ -823,6 +823,28 @@ is the part that does nothing.
 `cmp.w` -- i.e. hidden exactly the guard. **Seventh misalignment of the session, and the first where the swallowed
 instruction WAS the finding.**
 
+### `$26FF9E` IS A DISTANCE-BAND MAPPER, and it calls `dist242494`
+
+    26ff9e  move.w $813172,D0
+    26ffa4  sub.w D0,D3
+    26ffa6  jsr $242494              <- dist242494. ALREADY PORTED -- it was one of the NINE duplicates
+                                        removed early in this session, so this is the ninth "already
+                                        there" and the first that is a routine I personally deleted a
+                                        second copy of.
+    26ffac  cmpi.w #$200,D0 / bge $26FFCC     dist >= $200 -> leave ($1A,A6) ALONE
+    26ffb2  move.b #$8,($1A,A6)               $100 <= dist < $200 -> $8
+    26ffb8  cmpi.w #$100,D0 / bge $26FFCC
+    26ffbe  move.b #$6,($1A,A6)               dist < $100 -> $6, and more bands follow
+
+**A fall-through cascade of distance thresholds writing `($1A,A6)`**, so the SMALLEST band wins because each later
+store overwrites the earlier one. **Written as `else if` it would give the LARGEST band instead** -- the same
+fall-through-versus-switch hazard as `$55`'s mode cascade, in a helper called from seven places.
+
+**And `($1A,A6)` is part 1's `$1A`, which `$26FF6C`/`$26FF7A` test against `$8`.** So the loop closes: this helper
+grades proximity into a band, and the main flow branches on whether that band is `$8`. **`$4C` reacts to how close
+the player is** -- which for a destructible set-piece with a scripted vulnerability window is exactly the behaviour
+you would expect, and it is the last major unknown about what this type does.
+
 **AND THIS FULLY REHABILITATES THE OLD NOTE.** Its eight "unported callees" -- `$26F858`, `$26F86A`, `$26F994`,
 `$26F9A2`, `$26FA5E`, `$26FA82`, `$26FF9E`, `$26FFE8` -- are **every one a real `bsr` target in this list**, including
 both shared helpers. W354 called that note "wrong in both halves". **It was wrong only in its LABEL:** they are
