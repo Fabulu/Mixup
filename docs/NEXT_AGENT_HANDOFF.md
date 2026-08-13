@@ -914,7 +914,29 @@ fall-through-versus-switch hazard as `$55`'s mode cascade, in a helper called fr
 **And `($1A,A6)` is part 1's `$1A`, which `$26FF6C`/`$26FF7A` test against `$8`.** So the loop closes: this helper
 grades proximity into a band, and the main flow branches on whether that band is `$8`. **`$4C` reacts to how close
 the player is** -- which for a destructible set-piece with a scripted vulnerability window is exactly the behaviour
-you would expect, and it is the last major unknown about what this type does.
+you would expect.
+
+**REFINED: `($1A,A6)` IS A COUNTDOWN, so `$26FF9E` grades distance into a TIMER DURATION.** `$26F8F4` decrements it:
+
+    26f8f4  subq.b #1,($1A,A6)        <- the band field is a COUNTDOWN
+    26f8f8  bne $26F90C               not expired -> nothing
+    26f8fc  move.b #$1,($17,A5)       EXPIRED -> flip the draw selector to the MIRRORED stub
+    26f902  move.w #$A001,(A6)        the record's state word
+    26f906  moveq #$1,D0
+    26f908  bsr $26F858               ...and set the animation state to 1 through the guarded setter
+    26f90c  rts
+
+**So the distance bands (`$8` far, `$6` near) are TIMER LENGTHS, not animation indices.** Closer player -> smaller
+value -> the countdown expires sooner -> the flip happens faster. **That is a proximity-scaled reaction speed**, and
+reading `$26FF9E` as an animation selector -- which I did one commit ago -- would have produced a static value where
+the cartridge has a rate.
+
+**`move.w #$A001,(A6)` is the same word `$55` writes at `$272508`.** Two types in this band write `$A001` into their
+record's first word at a state transition, so it is a shared convention rather than a `$4C` constant. Worth checking
+what reads it before writing either.
+
+And the `$26FF6C`/`$26FF7A` comparisons against `$8` are therefore testing **whether the timer is still at its
+far-distance value**, i.e. "has the player not been close yet" -- not "which animation is playing".
 
 **AND THIS FULLY REHABILITATES THE OLD NOTE.** Its eight "unported callees" -- `$26F858`, `$26F86A`, `$26F994`,
 `$26F9A2`, `$26FA5E`, `$26FA82`, `$26FF9E`, `$26FFE8` -- are **every one a real `bsr` target in this list**, including
