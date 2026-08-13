@@ -793,6 +793,34 @@ was better evidence than my reading of it.
 returns to the `rts` at `$26F718`, which is a tail call spelled as `bsr`+`rts`. **A port must not "simplify" it into
 a fall-through** -- the routine is also reachable independently, or the `bsr` would be pointless.
 
+**AND THE TAIL IS FIVE `bsr` CALLS, NOT FOUR.** `$26F704` is itself `61 00 00 f6` = `bsr.w $26F7FC`, which I had
+counted as part of the preceding instruction. So the order is `$26F7FC`, `$26F82A`, `$26F7A8`, `$26F7D2`, `$26F71A`.
+
+### `$26F790` IS A SHARED DRAW TAIL, reached by FOUR `jmp (d16,PC)` jumps
+
+Every `jmp (d16,PC)` in `$4C` -- there are exactly four -- targets the same address:
+
+    $26F7CC  $26F7F6  $26F824  $26F852   ->  ALL FOUR jmp $26F790
+
+Those are the ends of `$26F7A8`, `$26F7D2`, `$26F7FC` and `$26F82A`. **So four of the five tail subroutines set up
+registers and then jump into the `tst.b ($17,A5)` draw selector**, which tail-jumps to `$23DECE` or `$23DF58`. The
+selector is not a standalone arm -- **it is the shared exit of four draw routines.**
+
+`$26F7FC` shows the shape:
+
+    26f7fc  move.l #$149978,D2          this routine's art long
+    26f804  move.l ($2,A6),D1 / swap D1
+    26f80a  add.w ($68,A6),D1           <- PART 4's $08, added to the swapped half
+    26f810  addi.l #$F47FFC00,D1
+    26f816  addi.l #$F600FE00,D1        two sequential LONG adds -- these DO combine
+    26f81c  move.w #$A10,D3
+    26f822  move.b ($7D,A6),D4          <- PART 4's $1D, the palette byte
+    26f824  jmp $26F790                 the shared selector
+
+**So `$4C` emits FOUR sprites per frame**, each with its own art long, its own part's offset and palette, and its own
+two-stage bias -- through one selector that picks the stub. That is what the five unrolled parts are FOR, and why the
+type has no loop: **each draw routine hard-codes a different part's offsets.**
+
 **And `$26F724`/`$26F72A` are TWO SEQUENTIAL `addi.l` on D1.** These notes already record that **two sequential LONG
 biases DO combine**, unlike the word-add case that must not be folded and unlike `$1A`'s swap-separated pair. **So
 this band now shows all three bias conventions in one place** -- fold the longs, never fold the words, never fold
