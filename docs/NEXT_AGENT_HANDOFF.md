@@ -5372,7 +5372,32 @@ the same one `drawByte242B3C` already reads; what differs is how this caller int
 **And a SIXTH misalignment**: asked for `$2690F6`, `rosetta.py` returned `$2690FA` as its first line, hiding the
 `subq.b` that the `bcc` depends on. Six occurrences.
 
-Still to read: `$269122` onward and the death arm at `$269160`.
+### The two muzzle shots, and a TEXTBOOK demonstration of the packed-long borrow rule
+
+    muzzle 1  D1 = ($32,A5) + asr.b #2 of a $242B3C draw
+              D0 = $20016   D2 = ($2,A6)   D3 = $FA000680   D4 = 0   jsr $281708
+    muzzle 2  D1 = ($33,A5) + asr.b #2 of a fresh draw
+              D0 = $20016   D2 = ($2,A6)   D3 = $F9FFF980            jsr $281708
+
+**`$281708` is already ported** -- 33 mentions, 23 in code, and `boss2attacks.js:231` already selects between it
+and `$2816F6` by shot index. **So it is the third member of the emit family and `$1A` needs nothing new for it.**
+
+**THE TWO D3 VALUES LOOK LIKE DIFFERENT X BIASES AND ARE THE SAME ONE.** Apply the borrow rule
+(`long = ((Xbias<<16)|Ybias) - $10000 if Ybias < 0`):
+
+    $FA000680  ->  Ybias $0680 POSITIVE, no borrow   ->  Xbias $FA00, Ybias +$680
+    $F9FFF980  ->  Ybias $F980 NEGATIVE, borrow      ->  Xbias $F9FF + 1 = $FA00, Ybias -$680
+
+**Both muzzles share Xbias `$FA00` and take Ybias `+$680` / `-$680`** -- exactly the `±$680` the two aims were
+computed from at `$2690C8`/`$2690E4`. **The symmetry is the proof the borrow rule is being applied correctly**, and
+it is the cleanest demonstration of that rule anywhere in these notes: a port that read `$F9FF` literally would
+place the second muzzle one pixel-unit off in X and never notice, while the correct reading makes the pair exactly
+symmetric.
+
+So `$1A`'s second arm is a symmetric twin-muzzle burst, each shot aimed independently at (possibly) different
+players, each jittered by its own signed RNG draw, fired through `$281708`.
+
+Still to read: `$26914A` onward and the death arm at `$269160`.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
