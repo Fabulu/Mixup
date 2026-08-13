@@ -9883,9 +9883,17 @@ function sub26FA82(ram, rom, a5, a6, ctx) {
     // PLAYER RECORDS, inline rather than through targetSelect: `moveq #0,D0 / tst.w $8103E6 / bpl /
     // move.w $8103E8,D0` for P1, then the same shape against $810448 for P2. So the fan aims at the
     // players, and D0/D1 are their coordinates -- not the placeholders this draft still passes.
-    // The remaining unread part is how D3/D5 are derived from them ($26FAE4..$26FB12).
-    // It stays withheld until that is read, because a fan of 37 shots on wrong headings is worse than
-    // no fan: it is the boss's main attack and it would look plausible while being wrong.
+    // W372, READ IN FULL NOW: the player coordinates only GATE the fan. It keeps the LARGER of the
+    // two, compares it against (self - $400), and skips the whole fan when the player is short of that
+    // line. Then it OVERWRITES D0 with #$10007 and D1 with #$2E. So the fire registers are LITERALS
+    // and the players decide WHETHER it fires, not where it aims.
+    //
+    // That is the whole specification, and the fan can now be written:
+    //   gate     max(P1,P2 coord) >= ($2,A6) - $400, else no fan at all
+    //   regs     d0 = $10007, d1 = $2E stepping +1 masked to $3F, d2 = position + fanTable entry
+    //   passes   37 ($24 + 1, the DBcc rule)
+    // It is left withheld in THIS commit only because landing it wants its own smoke -- a 37-shot
+    // volley is worth watching fire, not just compiling.
     //
     // CORRECTION, same wave: I first withheld it blaming a corrupted ($6,A5) at frame 449. That was
     // WRONG -- the corruption was the test fixture placing its scratch record inside the SPRITE

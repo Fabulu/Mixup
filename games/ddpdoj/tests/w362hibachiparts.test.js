@@ -177,3 +177,21 @@ test('W372 $4C s fan reads the PLAYER records inline, not through targetSelect',
   assert.equal(IMG.readUInt16BE(0x26fadc), 0x7200, '$26FADC moveq #$0,D1 -- then the same for P2');
   assert.equal(IMG.readUInt32BE(0x26fae0), 0x00810448, "  ...$810448, P2's record");
 });
+
+test('W372 the player reads only GATE the fan -- the fire registers are constants', { skip: SKIP }, () => {
+  // The block takes the LARGER of the two player coordinates, compares it against (self - $400), and
+  // skips the whole fan when the player is short of that line. Then it OVERWRITES D0 and D1 with
+  // literals. So the players decide WHETHER it fires, not where it aims -- and a port that fed the
+  // player coordinate into the fire would aim a 37-shot fan at the wrong thing while gating correctly.
+  assert.equal(IMG.readUInt16BE(0x26faee), 0xb240, '$26FAEE cmp.w D0,D1 -- the two players');
+  assert.equal(IMG.readUInt16BE(0x26faf4), 0x3001, '$26FAF4 move.w D1,D0 -- keep the LARGER');
+  assert.equal(IMG.readUInt16BE(0x26faf6), 0x322e, '$26FAF6 move.w (d16,A6),D1 -- self position');
+  assert.equal(IMG.readUInt16BE(0x26fafa), 0x0441, '$26FAFA subi.w #imm,D1');
+  assert.equal(IMG.readUInt16BE(0x26fafc), 0x0400, '  ...#$400, the engagement line');
+  assert.equal(IMG.readUInt16BE(0x26fb00), 0x6500, '$26FB00 bcs -- short of it, NO fan at all');
+  // And the fire registers, which are literals and do not depend on the players.
+  assert.equal(IMG.readUInt16BE(0x26fb08), 0x203c, '$26FB08 move.l #imm,D0');
+  assert.equal(IMG.readUInt32BE(0x26fb0a), 0x00010007, '  ...#$10007 -- OVERWRITES the player coord');
+  assert.equal(IMG.readUInt16BE(0x26fb0e), 0x323c, '$26FB0E move.w #imm,D1');
+  assert.equal(IMG.readUInt16BE(0x26fb10), 0x002e, '  ...#$2E, the entry heading -- also a literal');
+});
