@@ -779,6 +779,35 @@ biases DO combine**, unlike the word-add case that must not be folded and unlike
 this band now shows all three bias conventions in one place** -- fold the longs, never fold the words, never fold
 across a swap. `$4C` uses the first, `$1A` the third, `$55` and `$46` the packed-long form.
 
+### THE DEFINITIVE SUBROUTINE INVENTORY: SIXTEEN `bsr` targets, two of them shared
+
+    $26F702   from $26F6A2
+    $26F71A   from $26F714                                   the bsr-to-next-instruction
+    $26F7A8   from $26F70C
+    $26F7D2   from $26F710
+    $26F7FC   from $26F704
+    $26F82A   from $26F708
+    $26F858   from EIGHT sites: $26F64C $26F6CE $26F908 $26F96C $26FCCC $26FD60 $26FDF0 $26FF38
+    $26F86A   from $26F6F0
+    $26F98C   from $26F97A
+    $26F994   from $26F930
+    $26F9A2   from $26F6FC
+    $26FA56   from $26F97E
+    $26FA5E   from $26F934
+    $26FA82   from $26F700
+    $26FF9E   from SEVEN sites: $26F946 $26FC0E $26FD38 $26FD94 $26FDC0 $26FDE6 $26FF10
+    $26FFE8   from $26F6E4
+
+**`$26F858` (8 callers) and `$26FF9E` (7 callers) are shared helpers**; the other fourteen are called exactly once.
+**So the port needs two real functions and fourteen inlinable blocks** -- and knowing which is which before writing
+is worth more than any of the individual readings.
+
+**AND THIS FULLY REHABILITATES THE OLD NOTE.** Its eight "unported callees" -- `$26F858`, `$26F86A`, `$26F994`,
+`$26F9A2`, `$26FA5E`, `$26FA82`, `$26FF9E`, `$26FFE8` -- are **every one a real `bsr` target in this list**, including
+both shared helpers. W354 called that note "wrong in both halves". **It was wrong only in its LABEL:** they are
+internal subroutine entry points, not external callees, and there are sixteen rather than eight. **The addresses
+themselves were correct and useful, and I spent two waves dismissing them before counting.**
+
 ### Its death path releases TWO mutual-exclusion flags, one of which `$49` CLAIMS
 
     26f6a4  move.w #$8000,(A6)          the record's dying bit
