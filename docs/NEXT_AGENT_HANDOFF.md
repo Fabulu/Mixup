@@ -4897,7 +4897,35 @@ Transcribe it or omit it, but do not read meaning into it.
 the only one that was load-bearing across waves: it is why `$1A` was ranked behind `$46` and never attempted.
 `$1A` is FOUR records, the biggest remaining piece of stage 5, and it is now a normal read.
 
-Still to read: the rest of the init body (`$268D98..$268E6C`) and the handler (`$268E6C` onward).
+### `$1A`'s init body read end to end -- three tables, two windows declared (445 -> 447)
+
+    268d1e  move.w #$1,($4,A5) / rts        the init proper: run length 1 = TWO sub-records
+    268d26  lea $268DFA,A0 / jsr $2637A2    sub prototype $268DFA
+    268d36  lea $268DDC,A0 / moveq #$E,D0   record prototype $268DDC, FIFTEEN words
+    ...the rank cascade and the aim call above...
+    268da0  add.w D1,D1 / move.l (A0,D1.w),($24,A5)     a heading long out of $272C7A
+    268da8  move.w ($28,A6),D0 / lea $269246,A0 / move.l (A0,D0.w),($2a,A6)
+    268db8  move.w $813094,D0 / lea $268DD2,A0 / lea (A0,D0.w),A0
+    268dc8  move.b (A0)+,($1c,A5) / move.b (A0)+,($1d,A5)      a PAIR, post-incremented
+    268dd0  rts
+
+**Three contiguous structures, and each is bounded without a guess.** `$268DD2` rows run to the record
+prototype at `$268DDC`; that runs its 15 words to `$268DFA`; the sub prototype's `$40` (TWO sub-records) runs
+to `$268E3A`, comfortably clear of the handler at `$268E6C` -- so **this type has NO prototype overlap**, unlike
+`$49`,`$4A`,`$4B`,`$47`,`$43`,`$4C`,`$55`,`$46`. Declared as one `$268DD2 + $68` window.
+
+**The five palette rows are `15 0a / 15 0a / 15 0a / 15 0a / 0a 15`.** Four identical pairs and a fifth that
+**SWAPS base and XOR**. Indexed by `$813094` (already ported, 8 code mentions). **A port that noticed the first
+four were identical and hoisted a constant would be wrong on exactly one row** -- the same trap shape as `$46`'s
+two clock arms sharing `$F0`. And `$15`/`$0A` is the very pair `$55`'s prototype carries, so the palette is
+shared across the pair.
+
+**`$269246` is four longs DESCENDING by `$304`** -- `0017D17C 0017CE78 0017CB74 0017C870` -- and `$55`'s drift
+table ASCENDS by `$304` (`B050 B354 B658 ...`). Same art family, opposite direction. Bounded by adjacency to
+type `$1B`'s init at `$269256`, the same way `$46`'s table was bounded by its neighbour and `$55`'s by its
+death list. Declared as `$269246 + $10`.
+
+Still to read: the handler (`$268E6C` onward).
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 

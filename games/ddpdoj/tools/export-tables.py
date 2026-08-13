@@ -2801,6 +2801,16 @@ SHOT_WINDOWS.extend([
                        "step 0,4,8..$1C. Bounded by CODE: $271284 is 3b7c0001, move.w #$1,... . Each "
                        "entry is $0030 in the high word and a byte pair stepping by 4 in the low: "
                        "787C 7C80 8084 8488 888C 8C90 9094 9498"),
+    (0x268DD2, 0x0068, "W353: type $1A's FIVE palette rows, 15-word record prototype and $20-byte sub "
+                       "prototype, $268DD2..$268E3A -- three contiguous structures the init walks in "
+                       "order. The rows are byte PAIRS indexed by $813094: 15 0a / 15 0a / 15 0a / "
+                       "15 0a / 0a 15, so the FIFTH row SWAPS base and XOR. Same $15/$0A pair $55's "
+                       "prototype carries. Two sub-records ($268D1E move.w #$1,($4,A5)), so $40 of "
+                       "sub prototype, and the handler at $268E6C is clear of it -- no overlap"),
+    (0x269246, 0x0010, "W353: type $1A's FOUR art longwords, indexed by ($28,A6) -- $269246..$269256, "
+                       "bounded by ADJACENCY to type $1B's init at $269256. High word $0017 constant, "
+                       "low words $D17C $CE78 $CB74 $C870 DESCENDING by $304 -- the same $304 stride "
+                       "type $55's drift table ascends by, so this is that art family"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
