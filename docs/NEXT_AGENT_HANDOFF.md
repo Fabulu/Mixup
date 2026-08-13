@@ -5018,7 +5018,35 @@ same-meaning-different-place rule.
 
 `$8130D2` is now confirmed as the band's shared whole-path pause across `$55`, `$46` and `$1A`.
 
-Still to read: `$268F16` onward and the death arm at `$269160`.
+### `($28,A6)` is a BIDIRECTIONAL 4-frame cursor, and `tst.l $8130D2` tests BOTH pause globals
+
+    268f1c  addq.w #4,($28,A6)              forward
+    268f20  cmpi.w #$10,($28,A6) / bne
+    268f28  clr.w ($28,A6)                  wrap $10 -> 0
+    268f2e  subq.w #4,($28,A6)              reverse
+    268f32  bcc $268F3A
+    268f34  move.w #$C,($28,A6)             wrap underflow -> $C
+    268f3a  move.w ($28,A6),D0
+    268f3e  lea $269246,A0                  the four longs
+    268f44  move.l (A0,D0.w),($a,A6)        the art long into the sub-record
+    268f4a  tst.l $8130D2                   <- LONG, not word
+
+**The cursor takes exactly the values 0, 4, 8, `$C`** and indexes the table at `$269246`. That independently
+confirms the `$269246 + $10` window declared earlier this wave from adjacency alone: four longs is exactly what
+the cursor can address. Two bounds arguments agreeing is the first time this wave a window has been checked
+twice.
+
+**It is BIDIRECTIONAL**, with two different wraps -- forward resets to 0 at `$10`, reverse resets to `$C` on
+underflow. So the animation can run either way, and the reverse arm cannot be written as `(cursor - 4) & 0xC`
+without checking: the ROM uses the CARRY, not a mask.
+
+**AND `$268F4A` IS `tst.l $8130D2`, WHERE `$268EE2` WAS `tst.w $8130D2`.** A long test at `$8130D2` reads
+`$8130D2..$8130D5` -- which covers `$8130D2` AND `$8130D4`, the volley pause. **So this one instruction tests
+BOTH of the band's pause globals at once**, and that is why they sit adjacent.
+
+`ram.u16(0x8130d2)` where the cartridge has `tst.l` would silently ignore `$8130D4` and keep animating through a
+freeze the cartridge honours. **Read the operand SIZE on these globals, not just the address** -- the same
+address is legitimately tested at two widths in one routine.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
