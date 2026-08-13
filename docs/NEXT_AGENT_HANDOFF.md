@@ -5227,7 +5227,40 @@ silently swallowed the step instruction -- the same failure as `$272722` and `$2
 `06 41 00 0c` settled it. **Three occurrences now: treat a disassembly whose first line is not the requested
 address as a MISS, not an answer.** Every one of the three hid exactly one instruction that mattered.
 
-Still to read: `$26904C` onward and the death arm at `$269160`.
+### The burst reload is `$55`'s exactly, and the tail bias is a THIRD convention
+
+    26904c  move.b ($21,A5),($20,A5)   burst reload   -- byte for byte $55's $272716
+    269052  move.b ($1f,A5),($1e,A5)   timer reload   -- byte for byte $55's $27271C
+    269058  jsr $23D762                EMIT_STUB, already ported (9 code mentions, owned by T01/TYPE84_ART)
+    26905e  move.l ($2,A6),D1
+    269062  addi.w #-$400,D1           the LOW word (Y)
+    269066  swap D1
+    269068  addi.w #$500,D1            the HIGH word (X)
+    26906c  swap D1                    swapped back
+    26906e  move.l ($24,A5),D2         the heading long the slew wrote
+    269072  move.w #$620,D3
+
+**`$26904C`/`$269052` are `$55`'s dual reload verbatim** -- both the burst counter and the shot timer restored
+from their paired reload bytes, at different offsets. That is the fourth same-idiom-different-offset instance and
+it settles that the burst mechanism is shared across the pair, not coincidental.
+
+**THE BIAS IS TWO INDEPENDENT WORD ADDS WITH `swap` BETWEEN THEM, AND THAT IS NOT A PACKED LONG.**
+
+    $55  tail   addi.l ($4,A0),D1              a packed long from a table -- BORROW rule applies
+    $46  tail   addi.l #$F000F000,D1           a packed long literal     -- BORROW rule applies
+    $1A  tail   addi.w #-$400 / swap / addi.w #$500 / swap    -- NO borrow between halves
+
+**A port that "simplified" `$1A`'s form into `addi.l #$0500FC00,D1` would introduce a borrow the cartridge never
+performs.** `-$400` on the low half cannot carry into the high half here, because the halves are added while
+swapped apart. So the packed-long borrow rule that these notes have carried for many waves has an **inverse
+trap**: it applies to `addi.l` on a packed pair, and must NOT be applied to `swap`-separated word adds that
+compute the same-looking result. Read which form the cartridge uses.
+
+`$23D762` is `EMIT_STUB`, already ported -- the third distinct emit in this band after `$23DECE` (`FRAME_EMIT`,
+`$46`) and `$23DF86` (`$55`). **So three sibling types use three different emit stubs**, which is one more thing
+not to carry across.
+
+Still to read: `$269078` onward and the death arm at `$269160`.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
