@@ -818,3 +818,20 @@ test('W371 state 6 is the DEATH state, and one word write does both bytes', { sk
   // ($1B,A6) is the steerer's heading field, so death sets a heading without steering to it.
   assert.equal(T4C.steerHeadingAt, 0x1b, 'and $1B is the heading $26FF9E slews -- here set directly');
 });
+
+test('W371 the steerer scroll-compensates the target X, and D0 is SCRATCH', { skip: SKIP }, () => {
+  // $26FF9E opens `move.w $813172,D0 / sub.w D0,D3` and then calls $242494. That looks like D0 is
+  // being set up as an argument -- it is not. $242494 opens `movem.w ($2,A6),D0-D1`, loading the self
+  // position over it. So the scroll load exists ONLY to compensate the target X in D3, and a port that
+  // passed the scroll value as selfY would be wrong while looking like a faithful transcription.
+  assert.equal(IMG.readUInt16BE(0x26ff9e), 0x3039, '$26FF9E move.w abs.l,D0');
+  assert.equal(IMG.readUInt32BE(0x26ffa0), T4C.distGlobal, '  ...$813172, the scroll');
+  assert.equal(IMG.readUInt16BE(0x26ffa4), 0x9640, '$26FFA4 sub.w D0,D3 -- the ONLY use of it');
+  assert.equal(IMG.readUInt32BE(0x26ffa8), T4C.distHelper, '$26FFA6 jsr $242494');
+  // The callee reloads D0/D1 from the sub-record, which is what makes D0 scratch.
+  assert.equal(IMG.readUInt16BE(0x242494), 0x4cae, '$242494 movem.w (d16,A6),<list>');
+  assert.equal(IMG.readUInt16BE(0x242496), 0x0003, '  ...D0-D1, overwriting the scroll');
+  assert.equal(IMG.readUInt16BE(0x242498), 0x0002, '  ...from ($2,A6), the self position');
+  // So the call the port must make is dist242494(selfY, selfX, d2, d3 - scroll).
+  assert.equal(IMG.readUInt16BE(0x24249a), 0x9042, '$24249A sub.w D2,D0 -- selfY minus tgtY');
+});

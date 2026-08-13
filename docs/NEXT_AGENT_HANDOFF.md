@@ -509,6 +509,11 @@ Seven of seven recalled signatures were wrong in W365, so these were read from t
     slew64FromRecord(ram, a6, target)          aim.js:391     -- $24218C, facing from ($1B,A6)
     aim64(t, selfY, selfX, tgtY, tgtX)         aim.js:159
 
+**THE STEERER'S CALL IS `dist242494(selfY, selfX, d2, u16(d3 - scroll))`.** `$26FF9E` opens
+`move.w $813172,D0 / sub.w D0,D3`, which LOOKS like it is setting up D0 as an argument. It is not: `$242494` opens
+`movem.w ($2,A6),D0-D1` and loads the self position over it. **The scroll load exists only to compensate the target X
+in D3, and D0 is scratch.** Passing the scroll as `selfY` would look like a faithful transcription and be wrong.
+
 **`$242038` IS NOT ITS OWN ROUTINE.** It is the label inside `aim64AtTarget` (`$24202C`) where
 `movem.w ($2,A6),D0-D1` happens (`aim.js:324`), i.e. the entry that SKIPS `targetSelect` because the caller already
 holds the target in D2/D3. So the steerer is `aim64(t, ram.u16(a6+2), ram.u16(a6+4), d2, d3)` -- **not**
