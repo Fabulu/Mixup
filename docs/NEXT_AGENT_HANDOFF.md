@@ -5014,6 +5014,38 @@ port already had the answer written down twice.
 
 So `handler46`'s spawn is three lines of existing API, and nothing about `$55` needs revisiting.
 
+### `$46` READ END TO END. Mode 3 is a REVERSE ramp, and nothing entered it.
+
+    mode 0  $271120  position box X($5000,$7000) Y($0,$3800) + on-screen, then a random
+                     $20..$5F countdown, then -> mode 1
+    mode 1  $27117A  LATCHED ramp: ($1C,A5) += 4 to a $1C clamp, X > $3C00 gating only the
+                     first step, then -> mode 2 with ($1E/$1F,A5) = 00/$28 and ($20,A5) = RNG 2..5
+    mode 2  $2711D4  enqueueDeferred($55, FIXED00) + position + parent pointer, then -> mode FOUR
+    mode 3  $27120A  the REVERSE ramp: ($1C,A5) -= 4 down to a 0 clamp, then -> mode 4
+    mode 4           NO ARM -- the cascade tests 0,1,2,3 only, so mode 4 falls straight to the tail
+    tail    $27123C  lea ($26,PC),A0 / adda.w ($1C,A5),A0 / move.l (A0),D2, then
+                     move.l ($2,A6),D1 / addi.l #$F000F000,D1 (the packed-long BORROW rule),
+                     move.w #$1080,D3, D4 = ($1D,A6) zero-extended, jsr $23DECE, rts
+
+**`$23DECE` is `FRAME_EMIT`** -- 80 mentions, 70 in code, already owned by `T43 T45 T47 T48 T49 T4A T4B`. So
+it is the band's standard sprite emit and `$46` uses it unchanged. **That is the NINTH callee `$46` needs and
+the ninth already ported** -- like `$55`, this type introduces no new primitive.
+
+**Window declared W352: `$271264 + $20`, 444 -> 445**, bounded by CODE rather than a guess (`$271284` is
+`3b7c 0001`, a `move.w #$1`).
+
+**THE OPEN QUESTION, and it is a good one: NOTHING SETS MODE 3.** Mode 0 goes to 1, mode 1 to 2, mode 2 to 4,
+mode 3 to 4. No arm in `$46` writes `#$3` to `($17,A5)`. So mode 3 -- the retract -- is either dead code or
+**written from outside the record**, and there is an obvious candidate: `$2711FA move.l A5,($1a,A0)` hands the
+child a pointer to this exact record. **Hypothesis, UNVERIFIED: `$55` tells its parent to retract by writing
+`3` through that back-pointer.** That would make the pair a single mechanism -- `$46` extends, spawns `$55`,
+and retracts when the child says so.
+
+**Check it by finding where the deferred-queue processor copies entry `+$1A` into the child's record, then
+what `$55` does with that field.** Do not write `handler46`'s mode 3 until this is settled: if the hypothesis
+holds, mode 3 is live and load-bearing; if it is dead code, writing it invents behaviour. `$55`'s own handler
+is already written and does not obviously touch a parent pointer, which is itself evidence worth weighing.
+
 ### W351: `handler55` WAS WRITTEN AND THEN REVERTED. Read this before writing it again.
 
 The full handler was written against `T55` (~150 lines: prologue, `$5C` arm, pause, back-out, bounds, the

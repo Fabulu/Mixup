@@ -2796,6 +2796,11 @@ SHOT_WINDOWS.extend([
                        "the family depth formula predicts exactly: 1 * $20 - ($2710E2 - $2710C6) = 4. "
                        "Word count from $271046 moveq #$6,D0 (D0+1). Bounded below by W316's $45 "
                        "sprite window ending at $27102C and above by the handler"),
+    (0x271264, 0x0020, "W352: type $46's INLINE tail table, reached lea ($26,PC),A0 at $27123C and "
+                       "indexed by the ($1C,A5) ramp -- EIGHT longs, $271264..$271284, one per ramp "
+                       "step 0,4,8..$1C. Bounded by CODE: $271284 is 3b7c0001, move.w #$1,... . Each "
+                       "entry is $0030 in the high word and a byte pair stepping by 4 in the low: "
+                       "787C 7C80 8084 8488 888C 8C90 9094 9498"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
