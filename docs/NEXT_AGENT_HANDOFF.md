@@ -5611,6 +5611,70 @@ Transcribe it or omit it, but do not read meaning into it.
 the only one that was load-bearing across waves: it is why `$1A` was ranked behind `$46` and never attempted.
 `$1A` is FOUR records, the biggest remaining piece of stage 5, and it is now a normal read.
 
+### HOW TO WRITE `handler1A` -- every convention VERIFIED, nothing left to derive
+
+W364 checked each helper's calling convention against its source rather than assuming, and found two traps and one
+retraction doing so. The result is that writing this handler is now transcription. **Do not re-derive these; they
+were each wrong once.**
+
+    PROLOGUE
+      bounds      TWO word adds, $1000 then $6E00, carry off the SECOND ($268E76..$268E7E). Pinned by
+                  w363type1afields.test.js, including a $F000 case proving they must not be folded.
+      on-screen   ($16,A5) latch, same offset and meaning as $46/$4B/$1A ($268E80/$268E8E)
+      exit        both off-screen-armed and death jmp $263762 -> freeEnemy
+
+    DAMAGE ARM ($5C family, fifth member)
+      mask $5C / clear $A3, scoreHit -- but this member INSPECTS ($1D,A6) first: if it holds the
+      sentinel $19, the base ($1C,A5) is substituted BEFORE the XOR with ($1D,A5). $49/$4B/$55 XOR
+      unconditionally. Getting this wrong shows a colour the cartridge never draws, only at one HP
+      threshold, only when hit -- invisible to a playtest.
+
+    PAUSE
+      $8130D2 as a WORD at $268EE2, and as a LONG at $268F4A and $269088. The long read covers
+      $8130D4 too, so it tests BOTH pause globals. ram.u16 where the ROM has tst.l loses one of them.
+
+    MOTION
+      wobble      ($36,A6) += $20 free-running, bit 6 ONLY (andi.w #$40) added to ($6,A6): a SQUARE
+                  wave, not a sine. Cheaper than the $241D34 route $55 takes for the same visual job.
+      cursor      ($28,A6) BIDIRECTIONAL, step 4: forward wraps $10 -> 0, reverse wraps underflow -> $C.
+                  The reverse arm uses the CARRY, so it is not (cursor - 4) & 0xC.
+
+    TURRET -- the two traps
+      target      `targetSelect(ram, a5)`. It ALREADY keys on ($3,A5) and does the exg. W353 said to
+                  write this inline and that was BACKWARDS; the port's function is this logic exactly.
+      aim         `aim64(self, target)` -- $24203E, "self=D0/D1 target=D2/D3 -> D1", 0..63 out, and
+                  aim.js:51 confirms RANK DOES NOT REACH IT.
+      slew        `slew64(<facing from ($28,A5)>, target)`. NOT slew64FromRecord: that is $24218C, a
+                  different entry point taking the facing from ($1B,A6) -- a different structure.
+      sprite      andi.w #$3E then double: 32-step, where the heading is 64-step. The turret aims and
+                  turns twice as finely as it draws, and $272C7A's window is $80 = 32 longs.
+
+    ARM 1 -- the 7-shot fan
+      T1A.fan.angles, emit $281744, speed bias = a drawByte242B3C draw SWAPPED into the high word, so
+      the shot speed is RANDOM per volley where $55's is fixed $02000000. Timer ($1E,A5) reloads from
+      ($2B,A5) -- the RANK value -- at $268FE0, and from ($1F,A5) at $269052. TWO reload sources.
+
+    ARM 2 -- the twin muzzles
+      ($2E,A5) reloads from ($2A,A5), the OTHER rank value, and from ($2F,A5) when ($30,A5) expires:
+      a burst-within-a-burst. Two aims at Y +/-$680 off a shared X-$600, via aim256 (self-selecting,
+      so it IGNORES ($3,A5) -- the two arms can target DIFFERENT players). Each shot jittered by
+      asr.b #2 of a fresh draw: ARITHMETIC, so signed, -32..+31 centred. Emit $281708, biases
+      $FA000680 and $F9FFF980 -- the borrow rule makes both Xbias $FA00 with Ybias +/-$680.
+
+    TAIL
+      table at $269246 (4 longs, cursor 0/4/8/$C), position + swap-separated word adds -$400 / +$500
+      (NO borrow between halves -- do NOT fold into addi.l), D3 = $620, emits $23D762 AND $23DECE.
+
+    DEATH ARM
+      killScore $350 via $28615E, cue $28C2DC (shared with $49 and $55), burstBucket $289B22 with X
+      bias $F800, then a RANK-4-EXACTLY and clock < $2B0 gated MIRROR burst with $0800, then THREE
+      spawnEffect $289004 calls -- kinds $D, $5, $5 -- whose setups look alike and carry DIFFERENT
+      velocities. Count the call sites; reading them in sequence produced a retraction.
+
+**DO NOT land a partial `handler1A`.** Hibachi could be registered with a `note()` body because its critical
+function was the STAGE ADVANCE, which was complete. `$1A`'s critical function is FIRING: a non-firing version is
+four records of harmless scenery and silently changes the stage's difficulty. It is all-or-nothing.
+
 ### `$1A`'s init body read end to end -- three tables, two windows declared (445 -> 447)
 
     268d1e  move.w #$1,($4,A5) / rts        the init proper: run length 1 = TWO sub-records
