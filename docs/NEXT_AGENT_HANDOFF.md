@@ -5178,7 +5178,41 @@ address can be unported while the ROUTINE at it is fully ported under a sibling 
 these register-variant twins will not show up any other way. That is the third time in this band that
 "unported" resolved to "already there under another name".
 
-Still to read: `$269004` onward and the death arm at `$269160`.
+### `$1A`'s volley: `$55`'s table and `$55`'s emit, with a RANDOMISED speed
+
+    269012  swap D5                    the RNG byte -> the HIGH word
+    269014  moveq #$0,D4
+    269016  moveq #$5,D0               D0 = 5, a WORD, where $55 passes the long $FFFF0005
+    269018  move.l ($2,A6),D2          the packed position
+    26901c  subi.w #$24,D1             backoff $24
+    269020  move.w #$6,D7              SEVEN passes (DBcc N+1)
+    269024  lea $2735FA,A0             THE SAME vector table $55 uses (T55.vectorTable)
+    26902a  move.w D1,D3 / addq.w #2,D3 / andi.w #$fc,D3      the identical index arithmetic
+    269032  move.l (A0,D3.w),D3
+    269036  add.l D5,D3                <- the swapped RNG byte AS THE SPEED BIAS
+    269038  jsr $281744                THE SAME emit $55's FINALE uses
+
+**Three exact shares with `$55`**: the vector table `$2735FA` (windowed since W30), the emit `$281744`, and the
+`move.w D1,D3 / addq.w #2 / andi.w #$fc / move.l (A0,D3.w),D3` index arithmetic, byte for byte. So the two types
+are the same fan machine.
+
+**The one real difference is the speed bias, and it is the interesting part.** `$55` adds a fixed
+`D5 = $02000000`. `$1A` calls `$242B90` (`drawByte242B3C`), gets a byte in D5, **`swap`s it into the high word**,
+and adds that -- so **the shot speed is RANDOMISED per volley** by the shared RNG counter, in the same field
+`$55` holds constant. `swap` on a byte draw is what turns `0..$FF` into `0..$FF0000`, i.e. the X-speed half of
+the packed long.
+
+**A port that reused `$55`'s fan with a `speedBias` constant would produce a uniform-speed volley** -- visually
+close, mechanically wrong, and invisible in any single frame.
+
+Also: `moveq #$5,D0` is a WORD 5 where `$55` passes the long `$FFFF0005`. Same emit, different D0 width, so the
+emit must be reading only the low word -- or `$55`'s high `$FFFF` means something `$1A` omits. **Worth checking
+against `$281744`'s body before writing either.**
+
+Seven passes and a `$24` backoff, against `$55`'s five-of-three and four-of-five. Shot count per pass not yet
+read.
+
+Still to read: `$26903E` onward and the death arm at `$269160`.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
