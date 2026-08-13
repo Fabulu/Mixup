@@ -704,6 +704,31 @@ That is a complete, coherent mechanism and it ties together every oddity of this
 the cross-type clock cue, part 5 as a control block, the hit mask stored into part 5, and the shared pool. **`$4C` is
 a multi-part destructible set-piece with a scripted vulnerability window.**
 
+### Its death path releases TWO mutual-exclusion flags, one of which `$49` CLAIMS
+
+    26f6a4  move.w #$8000,(A6)          the record's dying bit
+    26f6a8  move.b #$1,($9F,A6)         set part 5's $1F -- the gate that BLOCKS re-arming
+    26f6ae  move.w #$0,$8130DE          release flag 1
+    26f6b6  move.w #$0,$8130E0          release flag 2  <- $49 STORES THIS ONE'S ADDRESS AND SETS IT
+    26f6be  move.w #$20,D0 / move.w #$20,D1
+    26f6c6  jsr $261100                 pushExternalSpeed -- the SAME call the retirement arm makes
+
+**`$49`'s init stores the ADDRESS of `$8130E0` or `$8130E4` into `($20,A5)` and sets the flag** (`$27160C`/`$271610`,
+recorded in `initbody.js`), clearing it on both its exits. **So `$4C` dying clears a flag `$49` may currently hold**
+-- and since `$269C6C` frees any record that sees any flag in `$8130DC..$8130E6` set, this is `$4C` reaching into the
+band's shared interlock on the way out.
+
+**Three consequences worth stating before anyone writes this:**
+
+1. **The order matters and it is cross-type.** Releasing `$8130E0` early or late changes when other records are
+   freed, and `$49` is a live user of that exact word.
+2. **`($9F,A6)` is set to BLOCK, not to enable.** `$26F62A tst.b ($9F,A6) / bne` skips the arming, so death setting
+   it to `1` permanently prevents the vulnerability window re-opening. A port that treated `$1` as "armed" would
+   invert it.
+3. **The retirement arm and the death path share their cleanup**: both clear `$8130DE` and call
+   `pushExternalSpeed(D0 = D1 = $20)`. So that pair is `$4C`'s "let the stage move on" action, reached two ways.
+   Worth factoring in the port, but only after both paths are written -- they differ in the flags they clear.
+
 ### `($16,A5)` IS NOT THE ON-SCREEN LATCH IN `$4C`. It is a one-shot armed at a specific SCRIPT FRAME.
 
     26f622  tst.b ($16,A5) / bne $26F650      already armed -> skip
