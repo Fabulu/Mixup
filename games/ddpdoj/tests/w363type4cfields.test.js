@@ -1030,3 +1030,17 @@ test('W372 part 4 picks ONE half at random where part 3 fires BOTH', { skip: SKI
   assert.equal(IMG.readUInt16BE(0x26fb80), T4C.partSetters[1].clears[0],
     '  ...($6C,A6), the companion the $66 ON setter clears -- the pairing closed from both ends');
 });
+
+test('W372 the two indexed tables match their windows and their masks', { skip: SKIP }, () => {
+  // Both are read through a ROM window and bounded by the cartridge's own mask, so the spec records
+  // the entry counts the masks imply rather than a guess, and a port needs no bounds check on either.
+  assert.equal(T4C.state1Table, 0x26f984, "state 1's target points");
+  assert.equal(T4C.state1Points * 4, 8, '  ...two 4-byte points, which is the $7 cursor mask');
+  assert.equal(T4C.fanTable, 0x2735fa, "the fan's heading table");
+  assert.equal(T4C.fanEntries * 4, 0x100, '  ...64 longs, which is the $3F index mask');
+  assert.equal(T4C.fanPasses, 37, 'and 37 passes -- move.w #$24,D7 with a dbra, the DBcc rule');
+  assert.equal(T4C.fanEntryHeading, 0x2e, 'starting from heading $2E');
+  // The declared entry counts must actually fit the ROM between each table and what follows it.
+  assert.equal(IMG.readUInt16BE(T4C.state1Table + T4C.state1Points * 4), 0x3d7c,
+    'what follows state 1s table is the $26F98C OFF setter -- move.w, so two points is the whole table');
+});

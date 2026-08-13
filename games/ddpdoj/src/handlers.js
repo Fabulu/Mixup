@@ -9287,6 +9287,11 @@ const T4C = Object.freeze({
   stepAt: 0x28,                               // same field as frameCounterAt -- it is the script step
   // W372: state 2's spawn-bias table, eight longs, indexed by ($34,A6) & 7. The volley fires TWICE per
   // pass -- one spawn per counter-rotating cursor -- and only on EVEN frames ($80390A & 1).
+  // W372: the two tables the drafted states index. Both are windowed and both are bounded by the ROM's
+  // own mask, so neither needs a guard: state 1's cursor is masked to $7 (two 4-byte points) and the
+  // fan's index to $3F (64 longs).
+  state1Table: 0x26f984, state1Points: 2,
+  fanTable: 0x2735fa, fanEntries: 64, fanPasses: 37, fanEntryHeading: 0x2e,
   spawnBiasTable: 0x26fcd2, spawnBiasEntries: 8, spawnChild: 0x52,
   spawnParityGlobal: 0x80390a,
   spawnBiases: Object.freeze([0x0c7ff600, 0x0c800a00]),   // STRADDLE $0C7F/$0C80, like the draw pairs
