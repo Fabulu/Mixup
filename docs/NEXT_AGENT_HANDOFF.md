@@ -1057,9 +1057,14 @@ rather than by address grep, which is the second time that has been the differen
 **BOTH OF THOSE BLOCKS ARE NOW TRANSCRIBED**, and the superseded one-spawn `state2_4C` has been DELETED rather than
 left above its replacement, because a stale draft beside a correct one is a copy-paste error waiting to happen.
 
-**ONE GAP REMAINS, and it is a real one:** `$26FB58` onward, the remainder of `$26FA82` past the part-4 offset test.
-It is marked `// ... the remainder past $26FB58 ...` and is **NOT read**. Everything else in all three callees is
-transcribed.
+**`$26FB58` IS NOW READ TOO, and it holds the one ASYMMETRY between the two animators.** `jsr $242EC2 / andi.w #$1,D0
+/ bne` is a **coin flip** choosing WHICH half of the part-4 pair spawns -- type `$50`, at the same biases the two
+part-4 draw routines use -- and it sets `($6C,A6)`, the companion the `$66` ON setter clears, exactly mirroring
+`$26F9A2` setting `($4C,A6)`.
+
+**Part 3 fires BOTH children; part 4 fires ONE at random.** Copying either behaviour to the other doubles or halves
+the object's output while every constant stays correct. That is the sixth mirrored pair in this type and the only one
+that is not symmetric in its firing.
 
 **Two placeholders in `sub26FA82` are register values from that unread block**, marked `/* D0 */` and `/* D5 */`.
 The fan's pass count (37) and entry heading (`$2E`) ARE read and are in the draft; those two are not.

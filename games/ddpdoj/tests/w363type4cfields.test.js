@@ -1011,3 +1011,22 @@ test('W372 the fan is THIRTY-SEVEN shots from heading $2E, by the DBcc rule', { 
   assert.equal(IMG.readUInt16BE(0x26fafc), 0x0400, '  ...#$400 off the position');
   assert.equal(IMG.readUInt16BE(0x26fb00), 0x6500, '$26FB00 bcs -- too close and the fan is SKIPPED');
 });
+
+test('W372 part 4 picks ONE half at random where part 3 fires BOTH', { skip: SKIP }, () => {
+  // $26FB58 jsr $242EC2 / andi.w #$1,D0 / bne -- a coin flip choosing which half of the part-4 pair
+  // spawns, at the SAME biases the two part-4 draw routines use. Part 3's animator fires both children
+  // unconditionally; part 4 fires one. Copying either behaviour to the other doubles or halves the
+  // object's output while every constant stays correct.
+  assert.equal(IMG.readUInt32BE(0x26fb5a), 0x00242ec2, '$26FB58 jsr $242EC2 -- the RNG');
+  assert.equal(IMG.readUInt16BE(0x26fb5e), 0x0240, '$26FB5E andi.w #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x26fb60), 0x0001, '  ...#$1 -- ONE BIT, so it is a coin flip');
+  assert.equal(IMG.readUInt16BE(0x26fb62), 0x6600, '$26FB62 bne -- the other half');
+  assert.equal(IMG.readUInt16BE(0x26fb66), 0x7050, '$26FB66 moveq #$50,D0 -- child type $50');
+  // The bias is the part-4 draw routine's own, so it fires from where that half is drawn.
+  const p4 = T4C.draws.filter((d) => d.part === 4);
+  assert.equal(IMG.readUInt32BE(0x26fb74), p4[0].biases[0], '  ...at the $26F7FC half s bias');
+  // And it sets the $66 companion, mirroring $26F9A2 setting the $46 one.
+  assert.equal(IMG.readUInt16BE(0x26fb7c), 0x3d7c, '$26FB7C move.w #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26fb80), T4C.partSetters[1].clears[0],
+    '  ...($6C,A6), the companion the $66 ON setter clears -- the pairing closed from both ends');
+});
