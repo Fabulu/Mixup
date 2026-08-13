@@ -5697,8 +5697,14 @@ having written while the checks were fresh.
                                      mirror burst $0800, then THREE spawnEffect calls with DIFFERENT
                                      velocities -- count the sites, do not read them in sequence
 
-Also unresolved in the code below: **`spawnCues28AC72`'s argument list is a guess** (`ram, rom, ctx, a6`). Check it
-against its 9 code mentions before trusting it -- that is exactly the class of thing W364 found wrong three times.
+**RESOLVED: `spawnCues28AC72`'s signature is `(ram, rom, a5, a6)`.** `cues.js:72` defines it and
+`handlers.js:1580`, `:2224` and `:3392` all call it that way. **My guess was `(ram, rom, ctx, a6)` -- wrong in the
+third argument**, which would have passed `ctx` where the record pointer belongs. Corrected in the code below.
+
+That is the fourth argument-convention guess W364 checked and the fourth that needed correcting (`slew64` vs
+`slew64FromRecord`, `targetSelect`'s applicability, the `moveq` register encoding in a test, and now this).
+**Every helper call in a new handler should be read from its definition or an existing call site, not recalled** --
+the hit rate on recall in this codebase is, empirically, zero out of four.
 
 ```js
 // $268E6C -- TYPE $1A, stage 5's slewing twin-weapon turret. FOUR script records.
@@ -5748,7 +5754,7 @@ function handler1A(ram, rom, a5, ctx) {
     ram.setU8(a6 + 0x1d, d0);                                 // $268ED8
   }
 
-  spawnCues28AC72(ram, rom, ctx, a6);                         // $268EDC jsr $28AC72
+  spawnCues28AC72(ram, rom, a5, a6);                          // $268EDC jsr $28AC72
   // $268EE2 -- the pause as a WORD here, and as a LONG at $268F4A/$269088 where it also covers $8130D4.
   if (ram.u16(T1A.pauseAll) !== 0) { tail1A(ram, rom, a5, a6, ctx); return; }   // $268EE8 bne $268F4A
 
