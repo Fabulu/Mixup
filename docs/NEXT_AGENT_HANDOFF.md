@@ -5427,7 +5427,30 @@ its `$19` sentinel palette, the `$8130D2` pause at two widths, the square-wave w
 animation cursor, the inline target selection with its side preference, the slewing turret, the seven-shot
 symmetric fan with RNG speed, and the twin-muzzle burst with its borrow-rule-symmetric biases.
 
-Still to read: the rest of the death arm from `$269172`.
+### The death arm has a RANK-4-ONLY, clock-gated extra behaviour
+
+    269160  move.l #$350,D0 / jsr $28615E       killScore $350
+    26916c  jsr $28C2DC                         the shared cue
+    269172  moveq #$C,D0 / move.w #$0,D1
+    269178  move.l #$F8000000,D2
+    26917e  jsr $289B22                         burstBucket -- already ported, owned by T1B/death1B/death84
+    269184  cmpi.w #$4,$813092 / bne $2691A8    <- RANK EXACTLY 4
+    269190  cmpi.w #$2B0,$8130CE / bcc $2691A8  <- and spawn clock BELOW $2B0
+
+**`$289B22` is already ported** (`burstBucket`, used by `death1B` and `death84`), so the ordinary death effect
+needs nothing new.
+
+**But there is a behaviour that only exists at RANK 4 and only before clock `$2B0`.** `cmpi.w #$4` with `bne` is an
+EQUALITY test, so it is rank 4 exactly -- not "rank 4 or above". Combined with the clock gate, this is content
+almost nobody sees: **maximum rank, early in the stage.**
+
+**Two consequences worth stating.** First, **this is unreachable in most playtests**, so a port that gets it wrong
+will pass every casual check -- it belongs in a test, not a playtest. Second, `$1A` now uses `$813092` (RANK) in
+**two** places with **two different comparisons**: `cmpi.w #$1 / bls` in the init (a threshold, selecting the
+timer values) and `cmpi.w #$4 / bne` here (an equality, gating a death effect). **Same global, same type, two
+comparison kinds** -- which is the operand-level version of the lesson `$8130D2` taught at two widths.
+
+Still to read: `$26919C` onward (what the rank-4 path actually does) and `$2691A8` (the shared continuation).
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
