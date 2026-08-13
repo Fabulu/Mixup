@@ -1178,3 +1178,54 @@ import './bossarrival.js';
 // `dist242494`, `bodyTail29314C` and `pickWaypoint2933DE` out of
 // `bossscripts.js`, and `bossA5`/`bossA6` back out of this file.
 import './bossf23.js';
+
+// $2A4606 -- HIBACHI's handler, all 170 bytes of it. See TB0 for the structure and its four
+// independent confirmations.
+//
+// It does exactly TWO things: run the boss body, and take the stage-clear path when the scheduler
+// says the boss is finished. The other TWELVE calls in it are no-ops against bare `rts` stubs, and
+// they are transcribed as comments rather than as calls -- eleven `$26331C` per-part hooks and one
+// `$25A17A`, which is one of four adjacent `rts` bytes at `$25A17A..$25A182`.
+//
+// THE CARRY POLARITY IS NOT INFERRED. `boss.js:1141` is the same sequence and settles it:
+//   const c = runScheduler25962E(...);  if (!c) return;  runStageAdvance242952(...);  freeEnemy(...)
+// There `!c` returns because nothing follows. Here `$2A4612 bcc $2A4622` skips FORWARD to the part
+// hooks, so `!c` falls through to them instead of returning. Same convention, different continuation.
+//
+// `runStageAdvance242952` was verified to be a FULL translation (zero note()/unreached() inside) before
+// this was written, because a note-only stage advance would soft-lock the run at stage 5's end with a
+// green suite and no error.
+export function handler2A4606(ram, rom, a5, ctx) {
+  // $2A4606 -- the whole boss. $2A6B94's first block is 666 bytes ending at $2A6E2E; it opens
+  // `tst.w ($106,A6) / beq` over a single `rts`, so it does nothing unless ($106,A6) is zero, and its
+  // twelve callees are all ported bar $243DD0 (one line against armScreenClearMode), $242922 (a
+  // wrapper round the ported $28C170) and $253564 (the $811F8C clamp).
+  ctx.unported?.note(0x2a6b94, '$2A4606 jsr $2A6B94 -- HIBACHI\'s entire behaviour. The handler around '
+    + 'it is complete: the clear test, the stage advance and the free all run, so the boss appears and '
+    + 'the stage still completes, but it does not attack or move. 666 bytes at $2A6B94..$2A6E2E, guarded '
+    + 'on ($106,A6) == 0, with a second gate on ($10E,A6) branching to $2A6F10');
+
+  // $2A460C -- the clear test. Carry SET means the boss is done.
+  const c = runScheduler25962E(ram, rom, ctx);            // $2A460C jsr $25962E
+  if (c) {                                                // $2A4612 bcc $2A4622 -- inverted here
+    runStageAdvance242952(ram, rom, ctx);                 // $2A4614 jsr $242952
+    freeEnemy(ram, a5);                                   // $2A461A jmp $263762
+    return;
+  }
+
+  // $2A4622..$2A46AA -- ELEVEN per-part `lea (part,A6),A0 / jsr $26331C` calls and one `$25A17A`,
+  // every one of them reaching a bare `rts`. TB0.partOffsets holds the eleven in ROM ORDER, which is
+  // NOT ascending: $1A0 is called seventh, between $C0 and $140, and $E0/$100/$120 are never called.
+  // The list is transcribed as data on TB0 so that a future reader can see the order the cartridge
+  // uses; nothing is called here because there is nothing to call.
+  //
+  //   2a4622  lea (A6),A0      / jsr $26331C      part $0
+  //   2a462a  lea ($20,A6),A0  / jsr $26331C      part $20
+  //   ...                                          $40 $60 $80 $A0 $C0
+  //   2a4666  lea ($1A0,A6),A0 / jsr $26331C      part $1A0  <- OUT OF ORDER
+  //   2a4670  lea ($140,A6),A0 / jsr $26331C      part $140
+  //   ...                                          $160 $180
+  //   2a469a  moveq #$0,D3 / move.w D0,D3 / move.w #$0,D0 / move.w #$0,D1 / move.w #$2,D2
+  //   2a46aa  jsr $25A17A                          also a bare rts; the register setup above is DEAD
+  //   2a46b0  rts
+}

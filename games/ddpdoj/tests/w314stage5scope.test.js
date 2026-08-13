@@ -125,15 +125,19 @@ test('W341 stage 5 has FOUR types with no handler, over 19 of its 770 records',
     // $55, and $46 followed immediately. Its mode-3 retract arm is an `unreached()` rather than an
     // implementation -- nothing writes 3 to ($17,A5), and the child back-pointer that looked like the
     // missing writer is destroyed by $55's own prototype at $2723B8.
-    assert.equal(miss.length, 3, `three types, got ${miss.map((m) => m.type.toString(16))}`);
-    assert.equal(miss.reduce((a, m) => a + m.records, 0), 6, 'across 6 records');
+    // W363: THREE and 6 -> TWO and 5, type $B0 (HIBACHI, one record). Its handler is registered with its
+    // BODY ($2A6B94) as a note(), which is the $43/$49 pattern -- but it was only safe here because the
+    // stage-clear path ($242952, runStageAdvance242952) is a COMPLETE translation. A note-only stage
+    // advance would have soft-locked the run at stage 5's end with a green suite and no error.
+    assert.equal(miss.length, 2, `two types, got ${miss.map((m) => m.type.toString(16))}`);
+    assert.equal(miss.reduce((a, m) => a + m.records, 0), 5, 'across 5 records');
     // Ranked by record count. With $46 gone the remaining three are the two dependency/boss bundles
     // plus $1A, which is still BLOCKED on register provenance at $268D8C rather than on reading.
     const ranked = [...miss].sort((a, b) => b.records - a.records || a.type - b.type);
     assert.deepEqual(ranked.map((m) => m.type),
-      [0x1a, 0x4c, 0xb0]);
-    assert.deepEqual(ranked.map((m) => m.records), [4, 1, 1],
-      '$1A is now the biggest at four, and it is the one blocked on a TRACE not a read');
+      [0x1a, 0x4c]);
+    assert.deepEqual(ranked.map((m) => m.records), [4, 1],
+      '$1A at four and $4C at one -- both recon-complete with specs, neither blocked on a trace');
   });
 
 test('W315 stage 5\'s one type-$00 record points at a NULL handler', { skip: SKIP_IMG }, () => {

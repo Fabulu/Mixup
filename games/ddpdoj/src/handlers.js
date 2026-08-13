@@ -90,7 +90,7 @@
 import { unreached } from './unported.js';
 import { u16, i16, i32 } from './ram.js';
 import { freeEnemy } from './initbody.js';
-import { handlerBoss292902 } from './boss.js';
+import { handlerBoss292902, handler2A4606 } from './boss.js';
 import { handlerBoss297398 } from './boss2.js';
 import { handlerBoss29BE28 } from './boss3.js';
 import { handler99_29E6B0 } from './boss3type99.js';
@@ -8516,6 +8516,9 @@ const HANDLERS = new Map([
   [0x275914, handler85],   // W30: types $85 AND $86 share this one
   [0x272424, handler55],   // W351: stage-5 burst-firing drifter, spec in T55
   [0x2710e2, handler46],   // W352: stage-5 extend-spawn-retract arm, $55's PARENT, spec in T46
+  [0x2a4606, handler2A4606],  // W363: HIBACHI, stage 5's boss-route root -- spec in TB0. Its body
+                              // $2A6B94 is a note(), so it appears and lets the stage clear but does
+                              // not attack. Registered because the stage-clear path is COMPLETE.
   [0x2739c0, handler80],   // W30: type $80
   [0x276702, handler8A],   // W30: type $8A
   // W31: type $0D, THE MIDBOSS.  It lives in its own module because it is
