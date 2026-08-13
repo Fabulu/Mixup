@@ -4911,15 +4911,52 @@ the eight defaulted records take allocator leftovers instead of a real value.)
              word 2 -> ($1A,A5)/($1B,A5) = 02 02     <- a timer and its reload, both 2
              words 3-6 -> ($1C..$23,A5)  = all zero
 
-**Three family confirmations in one prototype.** `($18,A5)` base beside `($19,A5)` XOR is exactly the
-`$49`/`$4B`/`$55` palette pair, so the cascade is varying the PALETTE per spawn frame. `($1A,A5)`/`($1B,A5)`
-= `02 02` is the **word-literal-is-two-byte-fields** rule from these notes -- one `move.w #$202` in the
-prototype data, a countdown and its reload. And `($17,A5)` defaulting to 0 matches the family's mode byte.
+**RETRACTED, BY THE HANDLER ITSELF: `($18,A5)` IS NOT `$46`'s PALETTE BASE. IT IS A COUNTDOWN.**
 
-So `$46`'s thirteen records carry **six** palette values: `$60` at clock `$E6`, `$F0` at `$E4` and `$106`,
-`$40` at `$108`, `$80` at `$116`, and `$20` for the other eight.
+I concluded "palette base" because `($19,A5)` held `$10` and, in `$49`/`$4B`/`$55`, base-beside-XOR at
+`$18`/`$19` is the palette pair. **That was a pattern match, not evidence, and `$27115A` settles it:**
 
-Still to read: the handler `$2710E2` onward.
+    27115a  subq.b #1,($18,A5) / bcc $27117A      it is DECREMENTED -- a timer, not a colour
+    271162  jsr $242EC2                           the RNG (already ported: RNG_242EC2, 5 code mentions)
+    271168  andi.w #$3F,D0 / addi.w #$20,D0       reload = RNG & $3F + $20, so $20..$5F
+    271170  move.b D0,($18,A5)
+    271174  move.b #$1,($17,A5)                   and promote to mode 1
+
+So the init's five-frame cascade sets a per-spawn-frame **initial DELAY**, not a palette: `$60` at clock
+`$E6`, `$F0` at `$E4` and `$106`, `$40` at `$108`, `$80` at `$116`, and the prototype's `$20` for the other
+eight. **Note `$20` is exactly the FLOOR of the random reload range** -- the eight default records start with
+the shortest possible wait and every subsequent wait is drawn from `$20..$5F`, which is a coherent story the
+palette reading never had.
+
+`($1A,A5)`/`($1B,A5)` = `02 02` still stands as the word-literal-is-two-byte-fields rule, and `($17,A5)`
+defaulting to 0 still matches the family's mode byte. **What does not transfer is the field MEANING**: this
+family shares record OFFSETS across types but not their purposes, and `$18`/`$19` adjacency is not a
+signature. **Confirm every offset's role from an instruction that reads or writes it, never from a sibling.**
+
+### `$46`'s mode-0 arm is a POSITION-BOX trigger
+
+    271120  cmpi.b #$0,($17,A5) / bne $27117A     mode 0 only
+    27112a  tst.b ($16,A5) / beq $27117A          must have been on screen
+    271132  cmpi.w #$7000,($2,A6) / bge           X <  $7000
+    27113c  cmpi.w #$5000,($2,A6) / ble           X >  $5000
+    271146  cmpi.w #$0,($4,A6) / ble              Y >  $0
+    271150  cmpi.w #$3800,($4,A6) / bge           Y <  $3800
+    27115a  ...the countdown above, then mode 1
+
+Six guards, all branching to the same `$27117A`, so it is the same fall-through shape as `$55`'s cascade.
+The record must be inside the box `X in ($5000,$7000)`, `Y in ($0,$3800)` AND have been on screen before its
+timer runs.
+
+**And the handler's own bounds test is a SIGNED LONG, the mirror image of `$55`'s trap:**
+
+    2710e4  move.w ($2,A6),D0 / ext.l D0          sign-extend to long
+    2710ea  addi.l #$4000,D0
+    2710f0  cmpi.l #$2000,D0 / bgt $27110A
+
+`$55` had two word adds that must NOT be folded; `$46` has one long operation that must NOT be split into
+word steps. Same family, opposite hazard, and both look interchangeable in JS.
+
+Still to read: `$27117A` onward (the mode-1 arm and beyond) and the tail at `$27123C`.
 
 ### W351: `handler55` WAS WRITTEN AND THEN REVERTED. Read this before writing it again.
 
