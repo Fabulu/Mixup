@@ -1039,7 +1039,10 @@ function sub26FA82(ram, rom, a5, a6, ctx) {
   // stepping D1 and RE-MASKING, so the heading WRAPS rather than clamping.
   for (let n = 0; n < passes; n++) {                          // $26FB3A dbra D7 -- 37 passes
     const e = rom.u32(T4C.fanTable + ((d1 & 0x3f) << 2));    // $26FB18..$26FB28
-    emit281402(ram, rom, ctx, u32(e + d5));                  // $26FB2C/$26FB2E
+    // $26FB2C/$26FB2E -- through fireBullet, the type $11 idiom at handlers.js:768, NOT a bare call.
+    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281402,
+      { d0: 0, d1, d2: u32(e + d5), d3: 0, d4: 0, d5, a5 });
+    ctx.bulletSpawn?.(0x26fb2e, res);
     d1 = (d1 + 1) & 0x3f;                                    // $26FB34/$26FB36 -- WRAPS, not clamps
   }
   // $26FB3E -- the SECOND counter-and-reload pair, state 0's shape exactly.
@@ -1081,9 +1084,16 @@ that is not symmetric in its firing.
 ROM addresses without reading the port, which is the exact seven-of-seven failure W365 recorded and which this wave's
 own helper table was built to avoid. What is actually there:
 
-* **`$281402` is an ENTRY IN A DISPATCH TABLE**, `bullets.js:591` -- `[0x281402, (ctx, r) => { ... }]`, not a
-  standalone export. Its own comment notes that `$281402 $281708 $281726` **do not wrap** and restore D0 themselves.
-  Calling it means going through that table's dispatch, not calling a function.
+* **`$281402` IS RESOLVED TOO.** It is reached through `fireBullet`, and type `$11` shows the idiom at
+  `handlers.js:768`:
+
+      const regs = { d0, d1, d2, d3, d4: 0, d5: 0, a5 };
+      const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281402, regs);
+      ctx.bulletSpawn?.(<site>, res);
+
+  So `sub26FA82`'s fan calls `fireBullet` once per pass with the table longword in the register the ROM puts it in,
+  **not** an invented `emit281402`. The `bulletSpawn` hook is part of the idiom -- type `$11` reports every shot
+  through it, and a fan of 37 that reports none would be invisible to anything watching bullet spawns.
 * **`$28B4BE` IS RESOLVED: it is `bigBurst28B4BE(ram, rom, ctx, pos, rngByte, shift, bucket, site)`** in `boss.js`,
   and **stage 3's carrier already calls it with `$4C`'s EXACT two biases and quarter turns**
   (`stage3carrier.js:422`): `packedAdd(pos, 0xf8000800)` with `r * 2 + 0x40`, then `packedAdd(pos, 0x01fff800)` with
