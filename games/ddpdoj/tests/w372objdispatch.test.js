@@ -63,3 +63,24 @@ test('W372 all eleven untouched slots are STATE MACHINES of the tally screen s s
   assert.equal(IMG.readUInt16BE(0x24902a), 0x4a2d, 'slot 18 opens with tst.b like the rest');
   assert.equal(IMG.readUInt16BE(0x28ee88), 0x4df9, 'slot 19 opens with lea abs.l,A6 FIRST');
 });
+
+test('W372 four slots carry identifying anchors -- CANDIDATES, not conclusions', { skip: SKIP }, () => {
+  // Scanning each slot's first $400 bytes for known RAM anchors separates them. These are CANDIDATE
+  // identifications: the anchor says what a slot touches, not what it is, and each must be confirmed
+  // by reading the slot before the docket entry is updated.
+  const has = (base, val) => {
+    for (let k = base; k < base + 0x400; k += 2) if (IMG.readUInt32BE(k) === val) return true;
+    return false;
+  };
+  // [18] reads $81296E -- the flag $242922 sets when HIBACHI is cleared. That makes it the strongest
+  // candidate for D37, the endings, and it links the front end straight to this wave's boss work.
+  assert.ok(has(0x24902a, 0x81296e), 'slot 18 reads the boss-clear flag $81296E');
+  assert.ok(has(0x24902a, 0x8103e6) && has(0x24902a, 0x810448), '  ...and BOTH player records');
+  // [9] touches both players and installs palettes -- the shape a character select would have (D34).
+  assert.ok(has(0x25caca, 0x8103e6) && has(0x25caca, 0x810448), 'slot 9 touches both players');
+  assert.ok(has(0x25caca, 0x24150a), '  ...and installs palettes');
+  // [12] reads the high-score table, so it belongs to the hiscore family rather than the front end.
+  assert.ok(has(0x28f3ac, 0x803824), 'slot 12 reads the HISCORE table $803824');
+  // [13] reads the loop and stage words, which is stage-progression rather than a screen.
+  assert.ok(has(0x288a60, 0x813098) && has(0x288a60, 0x813092), 'slot 13 reads loop AND stage');
+});

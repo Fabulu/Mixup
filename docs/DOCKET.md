@@ -1522,6 +1522,20 @@ dispatcher, on ($2,A5)"*). **So the eleven are not eleven different problems.** 
 right reference for all of them. Three open at the front slightly differently (`[16]` skips the `tst`, `[19]` does a
 `lea` first), which is worth knowing before anyone calls the shape universal.
 
+**FOUR SLOTS CARRY IDENTIFYING ANCHORS (W372) -- CANDIDATES, not conclusions.** Scanning each slot's first `$400`
+bytes for known RAM separates them. An anchor says what a slot TOUCHES, not what it IS, so each must be confirmed by
+reading it before these entries are updated:
+
+    [18] $24902A   reads $81296E -- THE BOSS-CLEAR FLAG $242922 SETS -- plus both player records.
+                   The strongest candidate for D37, THE ENDINGS, and it links straight to Hibachi.
+    [ 9] $25CACA   both player records AND palette installs -- the shape D34 CHARACTER SELECT would have.
+    [12] $28F3AC   reads the HISCORE table $803824, so it belongs to the hiscore family, not the front end.
+    [13] $288A60   reads the LOOP and STAGE words -- stage progression rather than a screen.
+
+The remaining seven ([7], [8], [14], [15], [16], [17], [19]) carry none of those anchors in their first `$400`, which
+is itself informative: **the main screen is likely among them**, because a title screen reads neither player records
+nor the score table.
+
 **So the front-end docket items are not code to go hunting for -- they are slots in a table**, and the work starts by
 identifying which slot is which screen. Pinned in `w372objdispatch.test.js`, with the list shrinking as slots land,
 the way the enemy type-table census works.
