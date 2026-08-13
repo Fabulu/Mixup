@@ -2,10 +2,51 @@
 
 Updated: 2026-08-12
 
-## READ THIS FIRST -- STATE AS OF W336 (commit `bbbf63a`)
+## READ THIS FIRST -- STATE AS OF W353
 
-    suite 2389/2389 green, ZERO skips     sweep 0 missing     dojcoverage.py both OK lines
-    422 ROM windows                       live build 20260812162556      tree clean, all pushed
+    suite 2453/2453 green, ZERO skips     sweep 0 missing     dojcoverage.py both OK lines
+    447 ROM windows                       live build 20260812234300      tree clean, all pushed
+
+**Stage 5: THREE unported types over 6 records** -- `$1A` (4 records, recon complete, `T1A` landed with
+`ported: false`), `$4C` (1 record, init ported, eight state handlers ~2300 bytes unread), `$B0` (1, Hibachi).
+`$55` and `$46` both shipped in this session. Publish due after W355.
+
+### THE BAND RULES -- earned across W345..W353, every one after getting it wrong first
+
+The stage-5 band (`$43 $46 $47 $48 $49 $4A $4B $4C $55 $1A`) shares its MECHANISMS almost completely and agrees
+on almost none of its CONSTANTS, OFFSETS or INSTRUCTION FORMS. **Every single thing carried from one member to
+another during this session was wrong.** Concretely:
+
+1. **Confirm every field from an instruction IN THIS TYPE.** The same offset means different things across types
+   (`$46`'s `($18,A5)` is a countdown, `$55`'s is a palette base) AND the same meaning lives at different offsets
+   (`$1A`'s palette pair is at `$1C`/`$1D`). Neither direction of inference is safe.
+2. **Read the base register.** `($28,A5)` and `($28,A6)` are the heading and the animation cursor in ONE handler.
+   A5 is the record, A6 the sub-record.
+3. **Read the operand SIZE and the comparison KIND.** `$8130D2` is tested as a word and as a long in one routine
+   (the long covers `$8130D4` too). `$813092` is tested `bls #$1` in an init and `bne #$4` in a death arm.
+4. **Bounds tests split the band.** `$55` and `$1A` use two word adds with the carry off the SECOND (must NOT be
+   folded); `$46` uses one `ext.l`/`addi.l`/`cmpi.l` (must NOT be split).
+5. **The packed-long borrow rule is a per-site decision, not a rule.** `$1A` alone shows three situations:
+   `swap`-separated word adds (no borrow possible), a negative low half (borrow applies -- and it is what makes
+   the twin muzzles symmetric), and a zero low half (moot).
+6. **A word literal is TWO byte fields.** `move.w #$28,($1E,A5)` sets the timer to 0 and the reload to `$28`, so
+   the arm fires IMMEDIATELY. Writing `setU8(0x1e, 0x28)` inverts it into a `$29`-frame wait.
+7. **Read EVERY reload site.** `($1E,A5)` and `($2E,A5)` in `$1A` each have two, and the second one is what
+   creates the burst-within-a-burst grouping.
+8. **COUNT call sites before reading spans.** `jsr <emit>` counted with a byte scan gave `$55`'s fan (3 unrolled),
+   `$1A`'s fan (1) and `$1A`'s death arm (3 spawns) in one command each. Reading sequentially instead produced a
+   retraction every time.
+9. **`rosetta.py dasm` MISALIGNS SILENTLY -- six times this session.** If the first output line is not the address
+   you asked for, it is a MISS, not an answer. Back up two bytes. Every one of the six hid exactly one
+   instruction that mattered, and one cost four waves.
+10. **`claimed.py` NOT PORTED can be misleading.** `$242B90` is unported as an address while being byte-identical
+    to the ported `$242B3C` bar one register. Disassemble a small routine and compare with its nearest ported
+    sibling before believing it.
+11. **Bound tables by ADJACENCY.** Five tables this session were bounded exactly by what follows them -- the next
+    type's init, the death list, the record prototype, the next RNG bumper. Try that before guessing a length.
+12. **Dead code is present and normal.** Four constructs in this band: `$27250C`'s overwritten `#$1`, `$2723B2`'s
+    clobbered pointer store, `$268D88`'s no-op `addi.w #$0`, and `$26331C`, a bare `rts`. Transcribe them; do not
+    infer intent.
 
 **Stage 5: NINE types with no handler over 27 records** (was ten over 29 at the session start).
 Ranked: `$46` 13, `$1A` 4, `$48`, `$4A`, `$4B`, `$43`, `$47`, `$4C`, `$B0`.
