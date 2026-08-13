@@ -5397,7 +5397,37 @@ symmetric.
 So `$1A`'s second arm is a symmetric twin-muzzle burst, each shot aimed independently at (possibly) different
 players, each jittered by its own signed RNG draw, fired through `$281708`.
 
-Still to read: `$26914A` onward and the death arm at `$269160`.
+### `$1A`'s HANDLER IS READ END TO END: `$268E6C..$26915E`
+
+    26914a  moveq #$0,D4 / jsr $281708      muzzle 2's emit
+    269152  subq.b #1,($30,A5) / bcc $26915E
+    269158  move.b ($2F,A5),($2E,A5)        <- a THIRD reload source for ($2E,A5)
+    26915e  rts                             the handler ENDS here
+
+**`($2E,A5)` HAS TWO DIFFERENT RELOAD VALUES DEPENDING ON WHICH PATH RELOADS IT.** `$2690AA` and `$2690FC` both
+reload it from `($2A,A5)`, the rank value; `$269158` reloads it from `($2F,A5)` when the `($30,A5)` counter
+expires. **So the second arm is a burst-within-a-burst**: `($2E,A5)` paces individual twin-muzzle volleys at the
+rank interval, `($30,A5)` counts volleys, and when it runs out `($2F,A5)` sets a different (presumably longer)
+gap before the next group. A port that treated `($2E,A5)` as having one reload would collapse the grouping.
+
+**That is the sixth distinct countdown in this one handler**: `($1E)`/`($1F)` the fan timer, `($22)`/`($23)` the
+fan gate, `($26,A6)`/`($27,A6)` the sub-record animation timer, `($1A)`/`($1B)`... and `($2E)` with TWO reloads
+plus `($30)`/`($31)`. **Read every reload site, not the first one.**
+
+### The death arm at `$269160`
+
+    269160  move.l #$350,D0        killScore $350
+    269166  jsr $28615E            scoreKill, already ported
+    26916c  jsr $28C2DC            the death cue -- the SAME cue $49 and $55 use
+
+So `$1A` shares its death cue with `$49` and `$55` and differs only in the score (`$350` against `$55`'s `$113`).
+
+**HANDLER COMPLETE.** `$268E6C..$26915E` read in full: the two-word-add bounds test, the `$5C` damage arm with
+its `$19` sentinel palette, the `$8130D2` pause at two widths, the square-wave wobble, the bidirectional
+animation cursor, the inline target selection with its side preference, the slewing turret, the seven-shot
+symmetric fan with RNG speed, and the twin-muzzle burst with its borrow-rule-symmetric biases.
+
+Still to read: the rest of the death arm from `$269172`.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
