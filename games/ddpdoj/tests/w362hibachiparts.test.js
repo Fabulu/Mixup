@@ -214,3 +214,22 @@ test('W372 the boss RESETS every part s $18 to $7FFF after reducing them', { ski
   assert.equal(IMG.readUInt16BE(0x2a6cc0), 0x01b8, '$1A0 + $18 -- and the out-of-sequence one again');
   assert.equal(0x1b8 - 0x18, 0x1a0, 'which is the $1A0 the other three routines also single out');
 });
+
+test('W372 the boss HP arm mirrors $4C, and its death can REFILL the pool', { skip: SKIP }, () => {
+  // `sub.w D4,D5` turns the reduced minimum into damage taken ($7FFF - min), exactly as $4C computes
+  // it at $26F674. ($108,A6) then gates the subtraction the way ($16,A5) gates $4C's, and the pool is
+  // a 32-bit ($16,A5) tested by SIGN. Four structural details, all shared with $4C.
+  assert.equal(IMG.readUInt16BE(0x2a6cee), 0x9a44, '$2A6CEE sub.w D4,D5 -- $7FFF minus the minimum');
+  assert.equal(IMG.readUInt16BE(0x2a6cf0), 0x4a6e, '$2A6CF0 tst.w (d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x2a6cf2), 0x0108, '  ...($108,A6), the invulnerability gate');
+  assert.equal(IMG[0x2a6cf4], 0x66, '$2A6CF4 bne -- gated means SKIP the subtraction, as in $4C');
+  assert.equal(IMG.readUInt16BE(0x2a6cf6), 0x9bad, '$2A6CF6 sub.l D5,(d16,A5) -- a LONG pool');
+  assert.equal(IMG.readUInt16BE(0x2a6cf8), 0x0016, '  ...($16,A5)');
+  assert.equal(IMG[0x2a6cfa], 0x6a, '$2A6CFA bpl -- death needs it NEGATIVE, as $4C does');
+  // And the death path is not necessarily death: $2428A6 decides, and a zero return REFILLS the pool.
+  assert.equal(IMG.readUInt32BE(0x2a6cfe), 0x002428a6, '$2A6CFC jsr $2428A6 -- the decision');
+  assert.equal(IMG.readUInt16BE(0x2a6d02), 0x4a40, '$2A6D02 tst.w D0');
+  assert.equal(IMG.readUInt16BE(0x2a6d06), 0x2b7c, '$2A6D06 move.l #imm,(d16,A5)');
+  assert.equal(IMG.readUInt32BE(0x2a6d08), 0x00000200, '  ...#$200 -- the pool is REFILLED');
+  assert.equal(IMG.readUInt16BE(0x2a6d0c), 0x0016, '  ...into ($16,A5), so the boss continues');
+});
