@@ -124,3 +124,23 @@ test('W372 the boss body is an HP-PHASE machine over a 32-bit pool', { skip: SKI
     assert.equal(IMG.readUInt16BE(0x2a6bca + i * 6), v, `  ...#$${v.toString(16)}, all four differ`);
   });
 });
+
+test('W372 the boss damage arm scores once and REMAPS the quad on read', { skip: SKIP }, () => {
+  // After ORing the parts' hit bits it clears them across the parts with `and.b D0,(part,A6)`, stores
+  // the mask into ($10A,A6), and calls $286096 -- scoreHit -- ONCE for the whole boss, not per part.
+  assert.equal(IMG.readUInt16BE(0x2a6c2a), 0xc12e, '$2A6C2A and.b D0,(d16,A6) -- clearing a part');
+  assert.equal(IMG.readUInt16BE(0x2a6c2c), 0x01a0, '  ...($1A0,A6), the out-of-sequence one again');
+  assert.equal(IMG.readUInt16BE(0x2a6c2e), 0x3d41, '$2A6C2E move.w D1,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x2a6c30), 0x010a, '  ...($10A,A6), the hit mask');
+  assert.equal(IMG.readUInt32BE(0x2a6c34), 0x00286096, '$2A6C32 jsr $286096 -- scoreHit, ONCE');
+  // Then the quad is read back into four separate registers and $19 is remapped to $10.
+  const regs = [[0x2a6c38, 0x102e], [0x2a6c3c, 0x142e], [0x2a6c40, 0x162e], [0x2a6c44, 0x182e]];
+  regs.forEach(([at, op], i) => {
+    assert.equal(IMG.readUInt16BE(at), op, `$${at.toString(16)} move.b (d16,A6),D -- quad byte ${i}`);
+    assert.equal(IMG.readUInt16BE(at + 2), 0xe6 + i, `  ...($${(0xe6 + i).toString(16)},A6)`);
+  });
+  assert.equal(IMG.readUInt16BE(0x2a6c48), 0x0c00, '$2A6C48 cmpi.b #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x2a6c4a), 0x0019, '  ...#$19 -- the low-HP phase value');
+  assert.equal(IMG.readUInt16BE(0x2a6c4e), 0x103c, '$2A6C4E move.b #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x2a6c50), 0x0010, '  ...remapped to #$10 on the way out');
+});
