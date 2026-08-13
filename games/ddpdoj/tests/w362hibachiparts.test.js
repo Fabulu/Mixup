@@ -99,3 +99,28 @@ test('W372 the boss body ORs every part s damage bits, same eleven offsets again
   assert.equal(IMG.readUInt16BE(0x2a6bc4), 0x005c, '  ...#$5C -- the same mask $4C and its band use');
   assert.equal(IMG[0x2a6bc6], 0x66, '$2A6BC6 bne -- any part hit takes the branch');
 });
+
+test('W372 the boss body is an HP-PHASE machine over a 32-bit pool', { skip: SKIP }, () => {
+  // $2A6BE0 cmpi.l #$EB33,($16,A5) -- a LONG compare against a 32-bit health pool, the same shape as
+  // type $4C's ($1A,A5). Below the threshold (and with $8130CA clear) it writes ONE value into FOUR
+  // adjacent bytes $E6..$E9; the branch above it writes a different quad, $10/$11/$12/$16, one byte at
+  // a time. So ($E6..$E9) is a four-part sprite or animation quad selected by HP phase, and the two
+  // paths differ in whether the four bytes share a value.
+  assert.equal(IMG.readUInt16BE(0x2a6be0), 0x0cad, '$2A6BE0 cmpi.l #imm,(d16,A5)');
+  assert.equal(IMG.readUInt32BE(0x2a6be2), 0x0000eb33, '  ...#$EB33, an HP threshold');
+  assert.equal(IMG.readUInt16BE(0x2a6be6), 0x0016, '  ...($16,A5) -- the 32-bit pool');
+  assert.equal(IMG.readUInt16BE(0x2a6bec), 0x4a79, '$2A6BEC tst.w abs.l');
+  assert.equal(IMG.readUInt32BE(0x2a6bee), 0x008130ca, '  ...$8130CA gates the phase change');
+  assert.equal(IMG.readUInt16BE(0x2a6bf6), 0x7019, '$2A6BF6 moveq #$19,D0 -- ONE value...');
+  const quad = [0x2a6bf8, 0x2a6bfc, 0x2a6c00, 0x2a6c04];
+  quad.forEach((at, i) => {
+    assert.equal(IMG.readUInt16BE(at), 0x1d40, `$${at.toString(16)} move.b D0,(d16,A6)`);
+    assert.equal(IMG.readUInt16BE(at + 2), 0xe6 + i, `  ...($${(0xe6 + i).toString(16)},A6)`);
+  });
+  // The other path writes FOUR DIFFERENT values to the same four bytes.
+  const other = [0x10, 0x11, 0x12, 0x16];
+  other.forEach((v, i) => {
+    assert.equal(IMG.readUInt16BE(0x2a6bc8 + i * 6), 0x1d7c, 'the other phase: move.b #imm');
+    assert.equal(IMG.readUInt16BE(0x2a6bca + i * 6), v, `  ...#$${v.toString(16)}, all four differ`);
+  });
+});
