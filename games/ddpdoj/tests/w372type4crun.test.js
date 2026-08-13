@@ -123,3 +123,25 @@ test('W372 every internal call site matches its definition arity', { skip: SKIP 
   }
   assert.deepEqual(bad, [], 'no call site disagrees with its definition');
 });
+
+test('W372 state 0s TWO-STAGE timer really fires, and it changes the draw variant', { skip: SKIP }, () => {
+  // Behaviour, not just absence of throwing. State 0 arms ($34,A6)=2 with its reload, and ($1A,A6)=$16.
+  // The inner counter borrows and reloads; only then does the outer tick. When the outer reaches zero it
+  // sets ($17,A5) -- the field the draw selector reads -- and advances to state 1.
+  //
+  // A port that collapsed the two counters into one would reach state 1 far too early, and a port that
+  // stored the state unconditionally in setState4C would never advance at all. Both pass the smokes.
+  const f = world();
+  f.ram.setU16(A6 + 0x02, 0x2100);               // past the $2000 gate, so step 1 completes at once
+  assert.equal(f.ram.u8(A5 + T4C.drawSelectAt), 0, 'the draw variant starts clear');
+  let flipped = -1;
+  for (let i = 0; i < 400 && flipped < 0; i++) {
+    run(f);
+    if (f.ram.u8(A5 + T4C.drawSelectAt) !== 0) flipped = i;
+  }
+  assert.ok(flipped > 0, `the two-stage timer fired, on frame ${flipped}`);
+  // It must NOT fire immediately: two nested counters means tens of frames, not one or two.
+  assert.ok(flipped > 8, `and it took ${flipped} frames, not one -- the counters are nested`);
+  assert.equal(f.ram.u16(A6 + T4C.stateAt), 1, 'and it handed over to state 1');
+  assert.equal(f.ram.u16(A6 + T4C.stepAt), 0, "state 1 starts at step 0 -- $26F858 cleared it");
+});
