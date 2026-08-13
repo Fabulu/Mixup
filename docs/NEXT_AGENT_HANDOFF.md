@@ -4956,7 +4956,51 @@ timer runs.
 `$55` had two word adds that must NOT be folded; `$46` has one long operation that must NOT be split into
 word steps. Same family, opposite hazard, and both look interchangeable in JS.
 
-Still to read: `$27117A` onward (the mode-1 arm and beyond) and the tail at `$27123C`.
+### `$46`'s mode 1 is a LATCHED ramp, and mode 2 IS THE `$55` SPAWN
+
+    27117a  cmpi.b #$1,($17,A5) / bne $2711D4
+    271184  tst.w ($1c,A5) / bne $271196          <- the LATCH: skip the X gate once started
+    27118c  cmpi.w #$3C00,($2,A6) / ble $2711D4      first step only: X > $3C00
+    271196  subq.b #1,($1a,A5) / bcc $2711D4         the prototype's 02/02 timer
+    27119e  move.b ($1b,A5),($1a,A5)
+    2711a4  addq.w #4,($1c,A5)                       ramp by 4
+    2711a8  cmpi.w #$1C,($1c,A5) / blt $2711D4
+    2711b2  move.w #$1C,($1c,A5)                     CLAMP at $1C -- so SEVEN steps of 4
+    2711b8  move.b #$2,($17,A5)                      promote to mode 2
+    2711be  move.w #$28,($1e,A5)                     <- SEE BELOW
+    2711c4  jsr $242EC2 / andi.w #$3,D0 / addq.w #2,D0 / move.w D0,($20,A5)   a COUNT of 2..5
+
+**The latch is the point of `tst.w ($1c,A5)`**: the `X > $3C00` gate applies only while the ramp is still at
+zero, so the ramp STARTS past that X but then continues regardless of where the record drifts. A port that
+checks X every frame stalls the ramp whenever the record moves back.
+
+**`move.w #$28,($1e,A5)` IS THE WORD-LITERAL TRAP, LIVE.** It writes TWO byte fields: `($1E,A5) = $00` and
+`($1F,A5) = $28`. Then `$2711DE subq.b #1,($1E,A5)` borrows immediately (0 - 1), so `bcc` is NOT taken and
+the arm **fires on its very first frame**, after which `$2711E6 move.b ($1F,A5),($1E,A5)` reloads it to
+`$28`. So this one instruction means "fire now, then every `$29` frames". **Writing `setU8(a5+0x1e, 0x28)`
+because "the timer is `$28`" inverts that: it would wait `$29` frames before the first shot.**
+
+### Mode 2 spawns `$55` -- the edge, from the code
+
+    2711ec  moveq #$55,D0
+    2711ee  jsr $263684              the spawn (already ported, though only 1 code mention -- check it)
+    2711f4  move.l ($2,A6),($16,A0)  the parent's packed position into the CHILD
+    2711fa  move.l A5,($1a,A0)       and a BACK-POINTER to the parent record
+    2711fe  move.b #$4,($17,A5)      promote to mode FOUR, not 3
+    271204  move.b #$40,($1a,A5)     and set ($1A,A5) to $40
+
+So the `$46` -> `$55` edge that `w314stage5scope.test.js` pins is now confirmed from the instruction, not
+just from the scan. **Mode 2 jumps to mode 4 and `$27120A` immediately tests for mode 3**, so mode 3's arm is
+skipped on the promoting frame and must be entered by some other path -- find it before writing the cascade.
+
+**FLAGGED, NOT CONCLUDED -- needs checking before either type is trusted:** `move.l A5,($1a,A0)` writes FOUR
+bytes to the child's `$1A..$1D`, and `T55` records `driftTimerAt: 0x1c, driftTimerReloadAt: 0x1d`. If both
+readings are right, the parent's back-pointer **overwrites `$55`'s drift timer pair** with the low word of
+the parent's record address, and it does so AFTER `$263684` has run the child's init. That would make `$55`'s
+drift timing depend on its parent's slot address. **Either one of the two offset readings is wrong, or this
+is a real cartridge quirk the port must reproduce.** Resolve it by finding what `$55` does with `($1A,A5)`
+and whether anything re-initialises `($1C,A5)` after spawn -- do NOT write `handler46` until it is settled,
+because both outcomes change what the spawn must write.
 
 ### W351: `handler55` WAS WRITTEN AND THEN REVERTED. Read this before writing it again.
 
