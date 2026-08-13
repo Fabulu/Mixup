@@ -80,9 +80,24 @@ the trap.**
 per-part hooks, and one unported epilogue call.** That is the entire boss-route root -- and **nine of its eleven
 `$26331C` calls do nothing**, because `$26331C` is a bare `rts`.
 
-**TWO unported callees, and they bracket everything else:** `$2A6B94` before any other line, `$25A17A` after all
-of them with `D0=0 D1=0 D2=2 D3=<incoming D0>`. **Everything Hibachi actually does is in those two routines**, and
-`$2A6B94` is the 1838-byte stretch ending at `$2A4DDE`.
+**AND `$25A17A` IS ALSO A BARE `rts`.** The bytes at `$25A17A` are `4e75 4e75 4e75 4e75` -- **four consecutive
+`rts` instructions**, at `$25A17A`, `$25A17C`, `$25A17E` and `$25A180`. So the epilogue call does nothing either,
+and the careful `D0=0 D1=0 D2=2 D3=<incoming D0>` setup before it is discarded.
+
+**That retracts the speculation that `$25A17A` is where ending selection happens.** It selects nothing. A run of
+four adjacent `rts` bytes is a TABLE OF DISABLED HOOKS -- the same construct as `$26331C`, four side by side -- so
+this build has stubbed out a whole group of entry points, not just one.
+
+**So Hibachi's handler does exactly TWO things**: `jsr $2A6B94`, and the stage-clear path when `$25962E` says the
+boss is finished. **Everything else in its 170 bytes is disabled**: eleven `$26331C` calls and one `$25A17A` call,
+twelve no-ops in total, plus four dead register loads. **ONE unported callee, not two.**
+
+`$2A6B94` is therefore the entire boss, and it is the 1838-byte stretch ending at `$2A4DDE`.
+
+**The lesson, and it is now three for three: in this build, an UNCLAIMED small routine is likelier to be a stub
+than to be work.** `$26331C`, `$25A17A`, and the four-`rts` run all read as "unported" to `claimed.py` while
+containing nothing. **Disassemble before estimating** -- six bytes of `4e75` cost nothing to check and would
+otherwise have been recorded as a subsystem to port.
 
 **This retires the "HIBACHI CLOSURE RULE and a trace" note.** These notes have long said `$B0` "wants the HIBACHI
 CLOSURE RULE and a trace". The handler needs neither: it is 170 bytes, fully read, and its only unknowns are two
