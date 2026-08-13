@@ -5686,15 +5686,32 @@ having written while the checks were fresh.
 **ALL FOUR ARE NOW WRITTEN TOO, and appended below the main body. TWO SIGNATURES IN THEM ARE UNVERIFIED**, and by
 this session's record that means they are probably wrong -- five of five checked conventions needed correcting:
 
-    aim256(aimTables(rom), selfX, selfY)     GUESS. The verified form is aim256(tables, selfX, selfY,
-                                             tgtX, tgtY) -- FIVE args, with an explicit target. Arm 2
-                                             uses the SELF-SELECTING $24226E, which does its own
-                                             targetSelect internally, so it is a DIFFERENT function or
-                                             a different entry. Find it before trusting arm2_1A.
-    spawnEffect(...) -> { addr }             GUESS at the return shape. effects.js:373 is read for its
-                                             ARGUMENTS but its return was not. The three death spawns
-                                             write fields through it, so a wrong shape silently drops
-                                             every field write.
+**BOTH LOOKED UP, AND BOTH GUESSES WERE WRONG -- seven of seven now:**
+
+    $24226E is `aim256FromCaller(t, ram, a5, selfY, selfX)`     aim.js:339. NOTE THE ARGUMENT ORDER:
+                                                                **selfY BEFORE selfX**. My guess had
+                                                                (tables, selfX, selfY) -- wrong function
+                                                                AND wrong order. Swapping X and Y gives a
+                                                                MIRRORED aim that still looks plausible on
+                                                                screen, which is the worst kind of wrong.
+    spawnEffect returns a BARE ADDRESS                          effects.js returns `POOL_B.bitBucket`
+                                                                directly, not `{ addr }`. So the death
+                                                                spawns must write through the returned
+                                                                value itself; `r.addr` would be undefined
+                                                                and every field write would silently vanish.
+
+**So `arm2_1A` and `death1A` as written below are BOTH wrong** -- `arm2_1A` calls a non-existent overload with
+transposed coordinates, and `death1A` writes through `r.addr` on a number. **Fix both before landing:**
+
+    const up   = aim256FromCaller(aimTables(rom), ram, a5, u16(y + T1A.muzzleYOffset), selfX);
+    const down = aim256FromCaller(aimTables(rom), ram, a5, u16(y - T1A.muzzleYOffset), selfX);
+    ...
+    const addr = spawnEffect(ram, ctx, kind);
+    ram.setU32(addr + 0x02, ram.u32(a6 + 0x02));
+
+**`aim256FromCaller` taking `a5` also explains why arm 2 ignores `($3,A5)`**: it does its own selection from the
+record, by the shared rule -- which is exactly what W351 read off the ROM at `$2725F8` for `$55` and what makes the
+two arms able to target different players. **The port's argument list encodes the behavioural fact.**
 
 **Also unresolved: `noteEffect` is a LOCAL at `handlers.js:275`, not an export.** That is fine if `handler1A` lives
 in `handlers.js` (it should -- it is not a boss, so the `boss.js`/`midboss.js` precedent does not apply), but
