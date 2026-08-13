@@ -9140,6 +9140,28 @@ const T4C = Object.freeze({
   // part 5's $1E and $1F as booleans.
   partTests: Object.freeze([0x26f5fc, 0x26f62a, 0x26f6e8, 0x26fdf4, 0x26fe30, 0x26ff6c, 0x26ff7a]),
   localLoop: 0x26fb3a,                        // the one dbra, 28-byte body, NOT the part iteration
+
+  // W366: WHAT THIS TYPE ACTUALLY IS -- a multi-part destructible set-piece with a SCRIPTED
+  // VULNERABILITY WINDOW. Every earlier oddity is a consequence of that one design.
+  //
+  // It spawns ONCE, at clock $1B8, and is INVULNERABLE until the clock reaches $1F0 -- the moment type
+  // $10 spawns. ($16,A5) is the latch that opens the window, NOT the once-on-screen flag it is in $46,
+  // $4B and $1A. And PART 5 IS THE CONTROL BLOCK, not a body segment: its $1E gates a mutual-exclusion
+  // release, its $1F gates the latch, and its $0E receives the hit mask.
+  spawnClock: 0x1b8,                          // its only script record
+  armClock: 0x1f0, armCueType: 0x10,          // $26F632 -- a CROSS-TYPE cue, not self-referential
+  invulnGateAt: 0x16,                         // $26F67E -- gates the damage subtraction
+  // ($18,A6) is NOT hp. It is a per-hit DAMAGE ACCUMULATOR reset to $7FFF every hit, and the real
+  // health is a 32-BIT POOL at ($1A,A5). The four siblings all test ($18,A6)'s SIGN for death; copying
+  // that here reads a field $4C resets on every hit and the object never dies.
+  damageAccumAt: 0x18, hpReset: 0x7fff,
+  hpPoolAt: 0x1a,                             // $26F686 sub.l / $26F690 tst.l -- a LONG
+  killScore: 0x700,                           // $26F698 -- the largest in the band
+  palXorImmediate: 0x0d,                      // $26F66C eori.b #$D -- an IMMEDIATE, not ($19,A5)
+  hitMaskTo: 0x8e,                            // $26F65E -- part 5's $0E
+  releaseFlag: 0x8130de,                      // inside the $8130DC..$8130E6 mutual-exclusion block
+  pushSpeed: 0x261100,                        // pushExternalSpeed, D0 = D1 = $20
+  retireExit: 0x263762,                       // $26F61A -- the ($9E,A6) arm RETIRES the record
 });
 
 // ============================================ TYPE $B0 -- HIBACHI (W357/W360) ============

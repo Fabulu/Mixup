@@ -133,3 +133,52 @@ test('W366 the ($9E,A6) arm RELEASES a mutual-exclusion claim and then frees the
   assert.equal(IMG.readUInt16BE(0x26f61a), 0x4ef9, '$26F61A jmp abs.l');
   assert.equal(IMG.readUInt32BE(0x26f61c), 0x00263762, '  ...to $263762 -- the arm RETIRES the record');
 });
+
+test('W366 the shared 32-bit HP pool -- ($18,A6) is a damage ACCUMULATOR, not hp', { skip: SKIP }, () => {
+  // $26F674 move.l #$7FFF,D0 / $26F67A sub.w ($18,A6),D0 -- so D0 becomes the damage just taken.
+  assert.equal(IMG.readUInt16BE(0x26f674), 0x203c, '$26F674 move.l #imm,D0');
+  assert.equal(IMG.readUInt32BE(0x26f676), T4C.hpReset, '  ...#$7FFF');
+  assert.equal(IMG.readUInt16BE(0x26f67a), 0x906e, '$26F67A sub.w (d16,A6),D0');
+  assert.equal(IMG.readUInt16BE(0x26f67c), T4C.damageAccumAt, '  ...($18,A6)');
+  // $26F686 sub.l D0,($1A,A5) -- the pool is a LONG in the RECORD, not a word in the sub-record.
+  assert.equal(IMG.readUInt16BE(0x26f686), 0x91ad, '$26F686 sub.l D0,(d16,A5)');
+  assert.equal(IMG.readUInt16BE(0x26f688), T4C.hpPoolAt, '  ...($1A,A5) -- the 32-bit pool');
+  // $26F68A resets the accumulator EVERY hit, which is why it cannot be hp.
+  assert.equal(IMG.readUInt16BE(0x26f68a), 0x3d7c, '$26F68A move.w #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f68c), T4C.hpReset, '  ...#$7FFF -- reset unconditionally');
+  assert.equal(IMG.readUInt16BE(0x26f68e), T4C.damageAccumAt, '  ...into ($18,A6)');
+  // And death is tested on the POOL with tst.l, not on ($18,A6)'s sign the way the siblings do.
+  assert.equal(IMG.readUInt16BE(0x26f690), 0x4aad, '$26F690 tst.l (d16,A5)');
+  assert.equal(IMG.readUInt16BE(0x26f692), T4C.hpPoolAt, '  ...($1A,A5) -- so THIS is the health');
+});
+
+test('W366 ($16,A5) gates the damage subtraction -- a scripted INVULNERABILITY window', { skip: SKIP }, () => {
+  // $26F67E tst.b ($16,A5) / bne skips the sub.l, so while the latch is UNSET damage is DISCARDED.
+  assert.equal(IMG.readUInt16BE(0x26f67e), 0x4a2d, '$26F67E tst.b (d16,A5)');
+  assert.equal(IMG.readUInt16BE(0x26f680), T4C.invulnGateAt, '  ...($16,A5)');
+  assert.equal(IMG[0x26f682], 0x66, '$26F682 bne -- ARMED means SKIP the subtraction');
+  // The branch must clear the sub.l at $26F686 and land on the reset at $26F68A: a short displacement
+  // of 6 from $26F684. If this ever differs, the invulnerability sense has changed.
+  assert.equal(IMG.readUInt16BE(0x26f684), 0x0006, 'bne.w +6 -> $26F68A, clearing the sub.l');
+  // So the same byte that arms at clock $1F0 is the one that opens the damage window.
+  assert.equal(T4C.invulnGateAt, 0x16, 'and it is the byte armed by the $1F0 cue, not an hp field');
+});
+
+test('W366 killScore $700 is the largest in the band', { skip: SKIP }, () => {
+  assert.equal(IMG.readUInt16BE(0x26f698), 0x203c, '$26F698 move.l #imm,D0');
+  assert.equal(IMG.readUInt32BE(0x26f69a), T4C.killScore, '  ...#$700');
+  assert.equal(IMG.readUInt32BE(0x26f6a0), 0x0028615e, '$26F69E jsr $28615E -- scoreKill');
+  // For contrast: $1A is $350, $55 is $113. A set-piece is worth more than a turret.
+  const T1A = TYPE_SPECS.get(0x1a);
+  assert.ok(T4C.killScore > T1A.killScore, '$4C ($700) scores above $1A ($350)');
+});
+
+test('W366 the palette XOR is an IMMEDIATE, so there is no palXor field to reuse', { skip: SKIP }, () => {
+  assert.equal(IMG.readUInt16BE(0x26f66c), 0x0a00, '$26F66C eori.b #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x26f66e), T4C.palXorImmediate, '  ...#$D, baked into the instruction');
+  assert.equal(T4C.palXor, undefined,
+    'T4C deliberately has NO palXor field: reusing the family pair would read a byte $4C never writes');
+  // And the hit mask goes to part 5, which is why part 5 is the control block.
+  assert.equal(IMG.readUInt16BE(0x26f65e), 0x3d41, '$26F65E move.w D1,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f660), T4C.hitMaskTo, "  ...($8E,A6) -- part 5's $0E");
+});
