@@ -79,6 +79,14 @@ paths the cartridge routes around it. The map is pinned in `w362hibachiparts.tes
 `$0 $20 $40 $60 $80 $A0 $C0 $1A0`. The handler's other three (`$140`/`$160`/`$180`) are armed by `$2A6E98`/`$2A6EA6`
 and are not damage-bearing, which is why they appear in the draw chain and in none of these.
 
+**THE BODY DOES NOT END AT `$2A6E2E`.** Both arms of the phase check end `jmp $2A6EDC`, a separate block that
+decrements `($1A,A5)` and, when it expires, calls **`$2428A6` a SECOND time** and reloads `($1A,A5)` with `$78`. So
+`$2428A6` is asked from TWO sites -- `$2A6CFC` (the pool-negative decision) and `$2A6EEE` -- and it is **not ported**.
+It is the one routine this fight still turns on: it decides whether Hibachi dies or refills.
+
+**SO THE SPLICE ORDER IS:** port or note `$2428A6` first, then write the body against the flow map, then `$2A6EDC`
+as its own function. Doing the body first means writing a death path whose decision is a stub.
+
 **DRAFT, and it has a KNOWN error to fix against the map above:** my first pass returned after the no-hit quad, but
 `$2A6BE8` joins at `$2A6D42` instead. Fix the joins before splicing.
 

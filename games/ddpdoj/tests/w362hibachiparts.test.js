@@ -390,3 +390,20 @@ test('W372 the phase transition needs BOTH a clear flag and the first loop', { s
   assert.equal(IMG.readUInt32BE(0x2a6d4a), 0x00813098, '  ...$813098, the loop counter');
   assert.equal(IMG.readUInt16BE(0x2a6d4e), 0x6600, '  ...bne -- later loops skip it too');
 });
+
+test('W372 the body EXITS into $2A6EDC, which counts down ($1A,A5) and re-asks $2428A6', { skip: SKIP }, () => {
+  // Both arms of the phase check end `jmp $2A6EDC`, so the 666-byte span is not the whole routine --
+  // it tail-jumps into a separate block that decrements ($1A,A5), and when that reaches zero calls
+  // $2428A6 AGAIN and reloads ($1A,A5) with $78. So $2428A6 is asked twice per fight, from two places,
+  // and a port that treated the first call as one-off would miss the second.
+  assert.equal(IMG.readUInt16BE(0x2a6ee6), 0x536d, '$2A6EE6 subq.w #1,(d16,A5)');
+  assert.equal(IMG.readUInt16BE(0x2a6ee8), 0x001a, '  ...($1A,A5), a countdown');
+  assert.equal(IMG.readUInt16BE(0x2a6eea), 0x6600, '  ...bne -- nothing happens until it expires');
+  assert.equal(IMG.readUInt32BE(0x2a6ef0), 0x002428a6, '$2A6EEE jsr $2428A6 -- the SECOND call site');
+  assert.equal(IMG.readUInt16BE(0x2a6ef4), 0x4a40, '$2A6EF4 tst.w D0');
+  assert.equal(IMG.readUInt16BE(0x2a6efa), 0x3b7c, '$2A6EFA move.w #imm,(d16,A5)');
+  assert.equal(IMG.readUInt16BE(0x2a6efc), 0x0078, '  ...#$78 -- the reload');
+  assert.equal(IMG.readUInt16BE(0x2a6efe), 0x001a, '  ...back into ($1A,A5)');
+  // The first call site is in the body proper, at the pool-negative decision.
+  assert.equal(IMG.readUInt32BE(0x2a6cfe), 0x002428a6, 'and $2A6CFC is the first');
+});
