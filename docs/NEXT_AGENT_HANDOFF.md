@@ -2,156 +2,45 @@
 
 Updated: 2026-08-13 (W372)
 
-## START HERE (W372 done)
+## START HERE -- W372 ENDED HERE
 
-**State: tree clean, all pushed, suite 2541/2541 zero skips, gate exit 0. Live build `20260813164141`.**
+**Tree clean, all pushed, suite 2581/2581 zero skips, gate exit 0. Live build `20260813164141`; publish due W375.**
 
-**`handler4C` IS PLACED.** Stage 5 now has **zero types without a handler**. The draft, its import delta and the
-placement checklist that produced it are still below for reference, but **that job is done** -- do not redo it.
+### DONE THIS WAVE (do not redo)
 
-### RESOLVED: the "($6,A5) corruption" was the fixture, and the fix is a PER-FRAME QUEUE RESET
+* **STAGE 5 IS FINISHED** -- handler-complete AND spawn-complete. `handler4C` written, placed and driven (4000 frames,
+  eight tests); `$1A`'s init body ported; D40 resolved.
+* **HIBACHI IS FINISHED** -- init body, all twelve body callees (`$242922`, `$253564`, `$2428A6`, and `$243DD0` which
+  was a third entry of `armScreenClearMode`, not a routine), and the 666-byte body itself, live and driven.
+* **`tools/aligned.py`** -- instruction-boundary sweeps that refuse rather than guess.
 
-I reported this three times before getting it right, which is the part worth remembering. `handler4C` corrupting a
-pointer (wrong). A wide sprite-queue region needing a safer scratch address (wrong). **The truth, from reading
-`enqueueRegisters`: it writes at `base + off` and bumps `off` every call, and the per-frame reset lives in the FRAME
-DRIVER, not in `spritequeue.js`.** A bare handler call never resets it, so the write address walks forward until it
-reaches whatever scratch record was chosen. **No address avoids it.**
+### THE DOCKET: WHAT W372 ESTABLISHED
 
-**The smoke now resets `BUCKETS[*].counter` before each frame, as the driver does**, and with that
-`handler4C` runs **4000 frames** with the sub-record pointer asserted intact every single one, visiting states
-0, 1, 2 and 3 and alternating the 2/4 branch. The first two explanations were reasoned from the symptom; the third
-came from reading the callee. **Read the callee first.**
+**Read `docs/DOCKET.md` first -- every anchor below is recorded there with its reasoning.**
 
-**THE FAN IS LANDED (W372).** It is no longer withheld: the gate reads both player records inline, keeps the LARGER
-coordinate, and skips the whole volley when it is short of `(self - $400)`; the fire registers are literals
-(`d0 = $10007`, `d1 = $2E` wrapping at `$3F`), and it fires **37** shots. A smoke watches it fire -- zero shots short
-of the line, exactly 37 past it -- because a volley this size is worth seeing rather than compiling.
+1. **THE FRONT END IS COMPILED C.** Slot `[18]`'s routines use `link`, `pea` and caller cleanup; type `$4C` has zero
+   of all three. **Arguments come off the STACK.** Plan for it before writing any screen. `tallyscreen.js` is the
+   right reference for the state-machine skeleton and the WRONG one for the routines inside.
+2. **Screens are OBJECT DISPATCH slots**, table at `$240F62`, twenty entries, stride 8. **Eleven are untouched** and
+   all share one shape. D33/D34/D37 are slots, not searches.
+3. **D37 = slot [18] `$24902A`** -- three signals agree. Its text chain (`$25A14C`, `$240CF0`) is **BUILT AND
+   DRIVEN**; its three state routines are **NOT** and total better than 2 KB.
+4. **D35 = `$13CFBA`**, 72 bytes, IRQ6's first call. **EDGE detection over three words** -- storing the level coins
+   up once per frame held.
+5. **D38's faithful half is largely ANSWERED** -- the port adds no logic-side frame and its one-frame sprite hold is
+   deliberate and matches measured hardware. Only the browser presentation path remains.
 
-**What IS proven** (see `w372type4crun.test.js`): the handler runs, a frozen frame takes the draw-only path, the
-retire arm releases `$8130DE`, ten frames are clean, and state 0's two-stage timer fires and flips the draw variant.
-**What is NOT proven is anything past a few hundred frames.**
+**NOT BUILT: D33, D34, D35, D37's screen, D39. D36 is a second game and is LAST by the owner's instruction.**
 
-**Two real bugs were already fixed by driving it**, both invisible to every static check:
+### THE RULES THAT COST THE MOST
 
-* `retireCheck4C(ram, a6)` against a five-parameter definition -- an ARITY mismatch. There is now a source-text
-  audit test that checks every `$4C` call site against its definition.
-* **`enqueueDeferred` returns `{ addr, dropped }`, NOT a bare address**, and the draft used `q + 0x16` in FIVE
-  places. `spawnEffect` returns the opposite, which is exactly why this cannot be recalled -- read
-  `handlers.js:3180` for the sibling idiom.
-
-### STAGE 5 IS SPAWN-COMPLETE (W372)
-
-**`$1A`'s init body is ported and the type spawns.** Every stage-5 type now has BOTH halves: a handler and an init
-body. `enemy_types` is 94/256.
-
-**D40 turned out much smaller than I first wrote it.** I had said the undefined D3 at `$268D8C` feeds "the heading
-and velocity", i.e. gameplay. It does not: `($24,A5)` is handed to `$23DECE` as **D2, the ART LONG**, from
-`$272C7A`'s 32 directional pointers. **It is the turret's DRAWN FACING at spawn** -- the handler's own slew drives
-where it shoots, and nothing in `$1A` ever reads `($29,A5)`. So it is cosmetic, it gets a `note()` by address rather
-than an `unreached()`, and the type plays.
-
-The elimination work behind that stands and is worth keeping: **four levels of the spawn chain were swept with
-`tools/aligned.py` and none writes D3** -- the walker `$2633BE`, the dispatcher `$2635F6`, the sub-record allocator
-`$2635B2`, and `readInitPosition` `$263808`.
-
-### HIBACHI'S BODY `$2A6B94` -- ALL CALLEES PORTED, FLOW MAPPED, DRAFT BELOW (W372)
-
-**All twelve callees are now ported.** W372 landed `$242922` (48 bytes) and `$253564` (20 bytes), and found `$243DD0`
-to be a **third entry of `armScreenClearMode`** rather than a routine at all -- it needed an export. That closes the
-list `boss.js` has carried since W357.
-
-**It is a FLOW GRAPH, not a sequence, and that is the thing to get right.** FIVE arms converge on `$2A6D42` and two
-more on `$2A6D8C`. Transcribing the blocks in address order as straight-line code runs the `$23000` phase check after
-paths the cartridge routes around it. The map is pinned in `w362hibachiparts.test.js`:
-
-    $2A6BC6  hit != 0          -> $2A6C0C  the CLEAR block
-    $2A6BE8  pool >= $EB33     -> $2A6D42
-    $2A6BF2  $8130CA != 0      -> $2A6D42
-    $2A6CF4  ($108,A6) != 0    -> $2A6D42   invulnerable
-    $2A6CFA  pool still plus   -> $2A6D42
-    $2A6D04  $2428A6 != 0      -> $2A6D10
-    $2A6D0E  after the refill  -> $2A6D42
-    $2A6D16/$2A6D20  loop or $80393A -> $2A6D30
-    $2A6D2E/$2A6D40            -> $2A6D8C
-    $2A6D5C  pool >= $23000    -> $2A6D84   phase transition SKIPPED
-
-**EIGHT parts, not eleven**, in all three loops -- the OR, the clear and the min-reduce all walk
-`$0 $20 $40 $60 $80 $A0 $C0 $1A0`. The handler's other three (`$140`/`$160`/`$180`) are armed by `$2A6E98`/`$2A6EA6`
-and are not damage-bearing, which is why they appear in the draw chain and in none of these.
-
-**THE BODY DOES NOT END AT `$2A6E2E`.** Both arms of the phase check end `jmp $2A6EDC`, a separate block that
-decrements `($1A,A5)` and, when it expires, calls **`$2428A6` a SECOND time** and reloads `($1A,A5)` with `$78`. So
-`$2428A6` is asked from TWO sites -- `$2A6CFC` (the pool-negative decision) and `$2A6EEE` -- and it is **not ported**.
-It is the one routine this fight still turns on: it decides whether Hibachi dies or refills.
-
-**SO THE SPLICE ORDER IS:** port or note `$2428A6` first, then write the body against the flow map, then `$2A6EDC`
-as its own function. Doing the body first means writing a death path whose decision is a stub.
-
-**DRAFT, and it has a KNOWN error to fix against the map above:** my first pass returned after the no-hit quad, but
-`$2A6BE8` joins at `$2A6D42` instead. Fix the joins before splicing.
-
-```js
-/** The EIGHT parts the boss body works over: the same list, in the same order, that `$2A6E74` arms and
- *  that the handler's eleven-call chain opens with. `$1A0` sits EIGHTH here too. The other three of the
- *  handler's eleven ($140/$160/$180) are armed by $2A6E98 and $2A6EA6 and are NOT damage-bearing, which
- *  is why they appear in the draw chain and not in any of these three loops. */
-const HIBACHI_PARTS = Object.freeze([0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0, 0x1a0]);
-
-/** `$2A6B94` -- HIBACHI's entire behaviour, 666 bytes, deferred by a note() since W357.
- *
- *  All twelve callees are ported: W372 landed `$242922` and `$253564` and found `$243DD0` to be a third
- *  entry of `armScreenClearMode` rather than a routine.
- *
- *  TWO HP THRESHOLDS in the whole routine -- `$EB33` picks the sprite quad and `$23000` switches
- *  scripts. Most of the bytes are the per-part damage reduce and the quad, not a ladder of phases.
- */
-export function bossBody2A6B94(ram, rom, a5, a6, ctx) {
-  if (ram.u16(a6 + 0x106) !== 0) return;                     // $2A6B94 tst.w / beq over a bare rts
-
-  // $2A6BA2..$2A6BC6 -- OR every armed part's flag byte, then mask with $5C. That is the same damage
-  // mask type $4C and its four siblings use, so this is one hit test across the whole boss.
-  let hit = 0;
-  for (const p of HIBACHI_PARTS) hit |= ram.u8(a6 + p);      // $2A6BB2.. or.b (part,A6),D1
-  hit &= 0x5c;                                               // $2A6BC2 andi.w #$5C
-
-  if (hit === 0) {
-    // $2A6BC8 -- untouched, the quad takes its FOUR-DIFFERENT resting form.
-    const rest = [0x10, 0x11, 0x12, 0x16];
-    rest.forEach((v, i) => ram.setU8(a6 + 0xe6 + i, v));
-    // $2A6BE0 -- and below $EB33 the whole quad becomes ONE value instead. Not the same shape, which
-    // is why both are transcribed rather than folded into a table lookup.
-    if (ram.u32(a5 + 0x16) < 0xeb33 && ram.u16(0x8130ca) === 0) {   // $2A6BE0/$2A6BEC
-      for (let i = 0; i < 4; i++) ram.setU8(a6 + 0xe6 + i, 0x19);   // $2A6BF6..$2A6C04
-    }
-    return;
-  }
-
-  // $2A6C0E..$2A6C2E -- clear the bits back out across the same eight parts, mask $A3. $4C uses the
-  // identical $5C/$A3 pair at $26F650/$26F65C: test with one, clear with the other.
-  for (const p of HIBACHI_PARTS) ram.setU8(a6 + p, ram.u8(a6 + p) & 0xa3);
-  ram.setU16(a6 + 0x10a, hit);                               // $2A6C2E move.w D1,($10A,A6)
-  scoreHit(ram, ctx, a6, hit);                               // $2A6C32 jsr $286096 -- ONCE, not per part
-
-  // $2A6C7E..$2A6CC6 -- the MINIMUM of the parts' $18 accumulators, then all of them re-armed to
-  // $7FFF. They are accumulators, not health: $4C's ($18,A6) has exactly this shape.
-  let lo = ram.u16(a6 + 0x18);
-  for (const p of HIBACHI_PARTS) { const v = ram.u16(a6 + p + 0x18); if (v < lo) lo = v; }
-  for (const p of HIBACHI_PARTS) ram.setU16(a6 + p + 0x18, 0x7fff);   // $2A6CC8..
-
-  // $2A6CEE -- damage taken, gated, off the 32-bit pool. Death is a SIGN test, as in $4C.
-  const dmg = u16(0x7fff - lo);
-  if (ram.u16(a6 + 0x108) !== 0) return;                     // $2A6CF0 tst.w / bne -- invulnerable
-  ram.setU32(a5 + 0x16, (ram.u32(a5 + 0x16) - dmg) >>> 0);   // $2A6CF6 sub.l D5,($16,A5)
-  if ((ram.u32(a5 + 0x16) & 0x80000000) === 0) return;       // $2A6CFA bpl -- still alive
-
-  // $2A6CFC -- and "death" is a DECISION. $2428A6 returning zero REFILLS the pool to $200 and the
-  // fight continues; a port treating the sign test as terminal ends it at the first phase.
-  ctx.unported?.note(0x2428a6, `$2A6CFC jsr $2428A6 decides whether HIBACHI actually dies. Returning `
-    + `zero REFILLS ($16,A5) to $200 and the fight continues. $2428A6 is not ported, so this port `
-    + `takes the refill arm, which is the one that keeps the boss alive rather than ending it early`);
-  ram.setU32(a5 + 0x16, 0x200);                              // $2A6D06 move.l #$200,($16,A5)
-}
-```
+1. **This port cites ROM addresses in PROSE.** `grep 0x259554` finds a comment and misses the code. **Search the NAME
+   or the FAMILY.** It hid four callees this session and broke a splice script.
+2. **READ THE PORT BEFORE THE CARTRIDGE.** Five docket items were anchored by reading notes the project already had.
+3. **Static checks prove SHAPE, not EXISTENCE or CORRECTNESS.** Five defects this session passed `node --check` and
+   every ROM assertion: an invented function name, a wrong argument order, a wrong argument COUNT, an out-of-scope
+   variable, and a shadowed import. **All five were caught by EXECUTING the code.** Drive every port.
+4. **Read the callee's own docstring before tracing the caller.**
 
 ### AFTER THAT
 
