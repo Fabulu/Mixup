@@ -76,6 +76,14 @@ def main(argv):
                 print(f'    {f}:{n} [{kind}] in {owner}')
             continue
         print(f'{label}: CLAIMED -- {len(hits)} mention(s), {len(code)} in CODE, {len(notes)} in notes')
+        # W358: CLAIMED flattens a solid port and a barely-there one. Two addresses taught this the hard
+        # way -- $263684 read as CLAIMED on ONE code mention (it was fine), and four of Hibachi's callees
+        # came back CLAIMED with 1-2 code mentions against 3-4 notes. A high notes-to-code ratio means the
+        # port has written ABOUT the address more than it has implemented it, which is the shape of a
+        # `note()` standing in for a routine -- and a note() mention counts as a hit here.
+        if len(code) <= 2 and len(notes) >= len(code):
+            print(f'    ** THIN: only {len(code)} code mention(s) against {len(notes)} note(s). VERIFY this '
+                  'is a real implementation and not a note() deferral before relying on it.')
         if owners:
             print(f'    likely owner(s): {", ".join(owners)}')
         for f, n, kind, owner, text in hits[:8]:
