@@ -5344,7 +5344,35 @@ entirely. **So the two arms can legitimately target different players in the sam
 types. **Always pass an address you have arrived at by adding up instruction lengths, and reject any output whose
 first line differs.**
 
-Still to read: the arm at `$2690F6` and the death arm at `$269160`.
+### The muzzle-fire arm calls `$242B3C` -- so `$1A` USES BOTH RNG TWINS
+
+    2690fa  bcc $26915E
+    2690fc  move.b ($2A,A5),($2E,A5)      the rank-dependent reload again
+    269102  moveq #$0,D1 / move.b ($32,A5),D1    muzzle 1's aim, zero-extended
+    269108  jsr $242B3C                   <- the D0 twin, ALREADY PORTED as drawByte242B3C
+    26910e  asr.b #2,D0                   ARITHMETIC shift: the draw is treated as SIGNED
+    269110  add.b D0,D1                   jitter the aim by draw/4
+    269112  move.l #$20016,D0             the bullet kind/speed pair
+    269118  move.l ($2,A6),D2             position
+    26911c  move.l #$FA000680,D3          a packed long: $FA00 / $0680
+
+**This closes the loop on the twin finding.** `$1A` calls `$242B90` at `$268FF6` (draw into D5, added to the fan's
+speed bias) AND `$242B3C` here (draw into D0, shifted and added to a muzzle aim). **Both register variants of the
+same table, in one handler, for two different purposes.** So the ROM's two entry points are not redundancy -- they
+exist precisely so a caller can have the draw land in D0 or D5 without shuffling registers. `drawByte242B3C`
+serves both; only the destination differs.
+
+**`asr.b #2,D0` is an ARITHMETIC shift, so the draw is signed here.** The jitter is therefore `-32..+31`, centred
+-- not `0..63`. A port using `>>> 2` on an unsigned byte would bias every muzzle shot to one side. **The table is
+the same one `drawByte242B3C` already reads; what differs is how this caller interprets the byte.**
+
+`move.l #$FA000680,D3` is a packed long with a POSITIVE low half (`$0680`), so the borrow rule does not bite here
+-- unlike `$46`'s `$F000F000` where both halves are negative.
+
+**And a SIXTH misalignment**: asked for `$2690F6`, `rosetta.py` returned `$2690FA` as its first line, hiding the
+`subq.b` that the `bcc` depends on. Six occurrences.
+
+Still to read: `$269122` onward and the death arm at `$269160`.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
