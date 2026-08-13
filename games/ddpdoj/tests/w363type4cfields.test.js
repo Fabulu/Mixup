@@ -845,3 +845,26 @@ test('W372 the death effect calls $246520, which fixes its mode at 1', { skip: S
   assert.equal(IMG.readUInt32BE(0x26f6da), 0x00246520, '  ...$246520, NOT the $24652A entry');
   assert.equal(IMG.readUInt16BE(T4C.deathEffectTable), 1, 'and the table count word is 1');
 });
+
+test('W372 states 3 and 5 are the same script with one constant changed', { skip: SKIP }, () => {
+  // Same target point, same ramp-down, same hand-back to state 1. Only the dwell differs, so they are
+  // one function with a parameter -- writing them twice invites the copies to drift.
+  for (const [at, dwell] of [[0x26fd02, 0x00f0], [0x26feda, 0x0040]]) {
+    assert.equal(IMG.readUInt16BE(at), 0x3d7c, `$${at.toString(16)} move.w #imm,(d16,A6)`);
+    assert.equal(IMG.readUInt16BE(at + 2), dwell, `  ...the DWELL, #$${dwell.toString(16)}`);
+    assert.equal(IMG.readUInt16BE(at + 4), 0x0030, '  ...into ($30,A6)');
+  }
+  // Both steer to the SAME literal point.
+  for (const at of [0x26fd30, 0x26ff08]) {
+    assert.equal(IMG.readUInt16BE(at), 0x343c, `$${at.toString(16)} move.w #imm,D2`);
+    assert.equal(IMG.readUInt16BE(at + 2), 0x5c00, '  ...#$5C00');
+    assert.equal(IMG.readUInt16BE(at + 4), 0x363c, '  ...move.w #imm,D3');
+    assert.equal(IMG.readUInt16BE(at + 6), 0x1c00, '  ...#$1C00 -- identical in both states');
+  }
+  // And both ramp ($1E,A5) down by $40 with a floor at zero.
+  for (const at of [0x26fd16, 0x26feee]) {
+    assert.equal(IMG.readUInt16BE(at), 0x046d, `$${at.toString(16)} subi.w #imm,(d16,A5)`);
+    assert.equal(IMG.readUInt16BE(at + 2), 0x0040, '  ...#$40 off the ramp');
+    assert.equal(IMG.readUInt16BE(at + 4), T4C.rampAt, '  ...($1E,A5)');
+  }
+});

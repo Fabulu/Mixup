@@ -699,7 +699,157 @@ says so, along with the observation that `$4C` passes `$2701C8` whose count word
 mode is **1**. Looking for a register would have found nothing, because there is nothing to find; the answer was in
 the port already. **Check the callee's own documentation before tracing the caller.**
 
-**Still to write:** the eight state bodies (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
+**THE EIGHT STATE BODIES, DRAFTED (W372):**
+
+```js
+// The eight state bodies. Each is a SCRIPT walked by ($28,A6) through successive `cmpi.w`, each arm
+// ending by advancing it -- not a frame timer. $26F858 clears it only on a real state change, which is
+// what restarts the script.
+
+/** State 0 `$26F8A6` -- arrive, then a TWO-STAGE timer that ends by changing the object's form. */
+function state0_4C(ram, rom, a5, a6) {
+  if (ram.u16(a6 + T4C.stepAt) === 0) {                      // $26F8A6
+    ram.setU16(a6 + T4C.bandAt, 0x1600);                     // $26F8B0 WORD: ($1A)=$16, ($1B)=0
+    ram.setU16(a6 + 0x34, 0x0202);                           // $26F8B6 WORD: counter AND its RELOAD
+    ram.setU16(a6 + T4C.stepAt, 1);                          // $26F8BC
+  }
+  if (ram.u16(a6 + T4C.stepAt) === 1) {                      // $26F8C2
+    if (i16(ram.u16(a6 + 0x02)) >= 0x2000) {                 // $26F8CC cmpi.w #$2000 / blt
+      ram.setU16(a6 + T4C.stepAt, 2);                        // $26F8D6
+    }
+  }
+  if (ram.u16(a6 + T4C.stepAt) !== 2) return;                // $26F8DC
+  // $26F8E6 -- the INNER counter borrows, reloads from ($35,A6), and only then does the OUTER one tick.
+  const inner = (ram.u8(a6 + 0x34) - 1) & 0xff;
+  ram.setU8(a6 + 0x34, inner);
+  if (inner !== 0xff) return;                                // $26F8EA bcc -- no borrow yet
+  ram.setU8(a6 + 0x34, ram.u8(a6 + 0x35));                   // $26F8EE reload from its PERIOD
+  const outer = (ram.u8(a6 + T4C.bandAt) - 1) & 0xff;        // $26F8F4
+  ram.setU8(a6 + T4C.bandAt, outer);
+  if (outer !== 0) return;                                   // $26F8F8
+  ram.setU8(a5 + T4C.drawSelectAt, 1);                       // $26F8FC -- the DRAW VARIANT changes
+  ram.setU16(a6, 0xa001);                                    // $26F902
+  setState4C(ram, a6, 1);                                    // $26F906/$26F908
+}
+
+/** State 1 `$26F90E` -- patrol the two-point table, then ALTERNATE states 2 and 4. */
+function state1_4C(ram, rom, a5, a6, ctx) {
+  // ... steps 0 and 1 as read at $26F90E..$26F936 ...
+  const cursor = ram.u16(a6 + 0x2a);                         // $26F93E adda.w ($2A,A6),A0
+  const at = T4C.state1Table + cursor;                       // $26F938 lea $26F984
+  const travelling = steer4C(ram, rom, a6,                   // $26F942 movem.w (A0),D2-D3
+    rom.u16(at), rom.u16(at + 2));                           // $26F946 bsr $26FF9E
+  if (!travelling) {                                         // $26F94A bcs SKIPS the advance
+    ram.setU16(a6 + 0x2a, (cursor + 4) & 0x7);               // $26F94E/$26F952 -- 0, 4, 0, 4...
+  }
+  const left = u16(ram.u16(a6 + 0x30) - 1);                  // $26F958
+  ram.setU16(a6 + 0x30, left);
+  if (left !== 0) return;                                    // $26F95C
+  // ($18,A5) is ONE BIT, so 2 and 4 run in strict alternation. Hardcoding either plays half the show.
+  setState4C(ram, a6, ram.u16(a5 + 0x18) !== 0 ? 4 : 2);     // $26F960..$26F96C
+  ram.setU16(a5 + 0x18, (ram.u16(a5 + 0x18) + 1) & 1);       // $26F970/$26F974
+  partSet4C(ram, a6, 0, false);                              // $26F97A bsr $26F98C
+  partSet4C(ram, a6, 1, false);                              // $26F97E bsr $26FA56
+}
+
+/** State 2 `$26FBD4` -- the bullet spawner. Its two cursors COUNTER-ROTATE. */
+function state2_4C(ram, rom, a5, a6, ctx) {
+  // ... steps 0 and 1 as read at $26FBD4..$26FC8E ...
+  ram.setU8(a6 + 0x2a, (ram.u8(a6 + 0x2a) + 4) & 0x3f);      // $26FC90/$26FC94 FORWARD
+  const q = enqueueDeferred(ram, 0x52, DEFQ_D1.FIXED00);     // $26FC9A/$26FC9C jsr $263684
+  if (q) {
+    const d0 = u32(ram.u32(a6 + 0x02) + 0x0c800a00);         // $26FCA2/$26FCA6 the muzzle offset
+    ram.setU32(q + 0x16, d0);                                // $26FCAE
+    ram.setU8(q + 0x1a, ram.u8(a6 + 0x2b));                  // $26FCB2 the BACKWARD cursor
+  }
+  ram.setU8(a6 + 0x2b, (ram.u8(a6 + 0x2b) - 4) & 0x3f);      // $26FCB8/$26FCBC BACKWARD
+  const c = (ram.u8(a6 + 0x34) - 1) & 0xff;                  // $26FCC2
+  ram.setU8(a6 + 0x34, c);
+  if (c === 0) setState4C(ram, a6, 3);                       // $26FCCA/$26FCCC
+}
+
+/** States 3 `$26FCF2` and 5 `$26FECA` -- THE SAME SCRIPT with two constants changed. Both travel to
+ *  $5C00/$1C00, ramp ($1E,A5) down by $40 with a floor at zero, dwell, and hand back to state 1. The
+ *  dwell is the only difference: $F0 for state 3, $40 for state 5. Do NOT write these twice. */
+function travelDwell4C(ram, rom, a5, a6, dwell) {
+  if (ram.u16(a6 + T4C.stepAt) === 0) {                      // $26FCF2 / $26FECA
+    ram.setU16(a6 + 0x30, dwell);                            // $26FD02 #$F0 / $26FEDA #$40
+    ram.setU8(a6 + T4C.bandAt, 0x10);                        // $26FD08 / $26FEE0
+    if (ram.u16(a5 + T4C.rampAt) !== 0) {                    // $26FD0E tst.w ($1E,A5)
+      const r = u16(ram.u16(a5 + T4C.rampAt) - 0x40);        // $26FD16 subi.w #$40
+      ram.setU16(a5 + T4C.rampAt, i16(r) > 0 ? r : 0);       // $26FD1C bgt / $26FD20 clamp to 0
+    }
+    ram.setU16(a6 + T4C.stepAt, 1);
+  }
+  if (ram.u16(a6 + T4C.stepAt) === 1) {                      // $26FD26 / $26FEFE
+    if (!steer4C(ram, rom, a6, 0x5c00, 0x1c00)) {            // $26FD30..$26FD38 / $26FF08..$26FF10
+      ram.setU8(a6 + T4C.bandAt, 0);                         // $26FD40 / $26FF18
+    }
+    ram.setU16(a6 + T4C.stepAt, 2);                          // $26FD46 / $26FF1E
+  }
+  if (ram.u16(a6 + T4C.stepAt) !== 2) return;                // $26FD4C / $26FF24
+  const left = u16(ram.u16(a6 + 0x30) - 1);                  // $26FD56 / $26FF2E
+  ram.setU16(a6 + 0x30, left);
+  if (left === 0) setState4C(ram, a6, 1);                    // $26FD5E / $26FF36
+}
+
+/** State 4 `$26FD66` -- a WAYPOINT CHAIN at X $3600, over state 1's two Ys, then state 5. */
+function state4_4C(ram, rom, a5, a6) {
+  // ... steps 0 and 1 as read at $26FD66..$26FDA0 ...
+  for (const [step, y, next] of [[2, 0x2a00, 3], [3, 0x0e00, null]]) {
+    if (ram.u16(a6 + T4C.stepAt) !== step) continue;         // $26FDAE / $26FDD4
+    if (steer4C(ram, rom, a6, 0x3600, y)) return;            // $26FDB8/$26FDC0 -- bcs, still going
+    if (next !== null) {
+      ram.setU16(a6 + T4C.stepAt, next);                     // $26FDC8
+      ram.setU8(a6 + 0x2a, 1);                               // $26FDCE
+    } else {
+      setState4C(ram, a6, 5);                                // $26FDEE/$26FDF0
+    }
+  }
+}
+
+/** State 6 `$26FF3E` -- DEATH. Three instructions, and the middle one sets a speed AND a heading with
+ *  ONE word write: ($1A)=$04, ($1B)=$20. ($1B) is the field the steerer slews; death sets it flat. */
+function state6_4C(ram, rom, a5, a6) {
+  if (ram.u16(a6 + T4C.stepAt) !== 0) return;                // $26FF3E
+  ram.setU16(a6 + T4C.stepAt, 1);                            // $26FF48
+  ram.setU16(a6 + T4C.bandAt, 0x0420);                       // $26FF4E -- BOTH bytes at once
+}
+
+/** State 7 `$26FF56` -- the EXIT, selected by the $1F0 arm cue. Ramps to 8 with a CLAMP, and arms the
+ *  retire flag the prologue acts on NEXT frame. */
+function state7_4C(ram, rom, a5, a6) {
+  if (ram.u16(a6 + T4C.stepAt) === 0) {                      // $26FF56
+    ram.setU16(a6 + T4C.stepAt, 1);                          // $26FF60
+    ram.setU8(a6 + T4C.steerHeadingAt, 0);                   // $26FF66
+  }
+  if (ram.u8(a6 + T4C.bandAt) !== 8) {                       // $26FF6C cmpi.b #$8 / beq
+    const v = (ram.u8(a6 + T4C.bandAt) + 1) & 0xff;          // $26FF76 addq.b #1
+    ram.setU8(a6 + T4C.bandAt, i16(v) < 8 ? v : 8);          // $26FF7A/$26FF84 -- SATURATES at 8
+  }
+  // $26FF8E -- signed, and `bgt` SKIPS the arm, so it retires once the position is at or below $9800.
+  if (i16(ram.u16(a6 + 0x02)) <= i16(0x9800)) {
+    ram.setU8(a6 + 0x9e, 1);                                 // $26FF96 -- acted on NEXT frame
+  }
+}
+
+const STATES_4C = Object.freeze([
+  state0_4C, state1_4C, state2_4C,
+  (ram, rom, a5, a6) => travelDwell4C(ram, rom, a5, a6, 0xf0),   // state 3
+  state4_4C,
+  (ram, rom, a5, a6) => travelDwell4C(ram, rom, a5, a6, 0x40),   // state 5
+  state6_4C, state7_4C,
+]);
+```
+
+**STATES 3 AND 5 ARE ONE FUNCTION.** They travel to the SAME point `$5C00/$1C00`, ramp `($1E,A5)` down by `$40` with
+a floor at zero, dwell, and hand back to state 1. The only difference is the dwell: `$F0` for state 3, `$40` for
+state 5. Writing them twice invites the two copies to drift.
+
+**Marked `// ...` are the step-0/step-1 setup blocks** already read and pinned, left out of the draft only to keep it
+legible -- they are plain field writes, and the assertions in `w363type4cfields` name every one.
+
+**Still to do:** place the draft, then move the FOUR census pins together (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
 `$26F6E8` main flow, then the five-call draw chain) and the eight state bodies, all of which are read and pinned.
 
 ### EVERY HELPER `handler4C` NEEDS, READ FROM ITS DEFINITION (W371)
