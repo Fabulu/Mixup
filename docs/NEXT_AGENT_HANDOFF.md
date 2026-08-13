@@ -5076,7 +5076,39 @@ attack different players. **Write the inline form.** This is the first type in t
 target choice, and it is exactly the kind of thing that reads as "just call the helper" until you notice the
 extra byte.
 
-Still to read: `$268F8E` onward (the shot itself) and the death arm at `$269160`.
+### `$1A` is a SLEWING turret, and `($28,A5)` vs `($28,A6)` is the same offset in two structures
+
+    268f8e  movem.w ($2,A0),D2-D3     the chosen TARGET's position, sign-extended
+    268f94  movem.w ($2,A6),D0-D1     SELF, sign-extended
+    268f9a  lea $272C7A,A3            the heading table, into A3 this time
+    268fa0  addi.w #$B00,D0           the same $B00 bias the init used
+    268fa4  addi.w #$0,D1             the same NO-OP add as $268D88 -- TWICE now
+    268fa8  jsr $24203E               aim (already ported, AIM_REFS)
+    268fae  move.w ($28,A5),D0        the CURRENT heading
+    268fb2  jsr $242190               SLEW -- slew64FromRecord, already ported, 14 code mentions
+    268fb8  move.w D1,($28,A5)        the new heading
+    268fbc  andi.w #$3E,D1 / add.w D1,D1
+    268fc2  move.l (A3,D1.w),($24,A5) the heading long
+
+**`aim -> current -> slew -> store` is the turret idiom**, and both halves were already ported: `$24203E` and
+`$242190` (`slew64FromRecord`). So `$1A` turns TOWARD its target rather than snapping, which no other type in
+this band does.
+
+**The index arithmetic confirms `$272C7A`'s existing window.** `andi.w #$3E` then `add.w D1,D1` yields
+`0,4,8..$7C` -- thirty-two longs, `$80` bytes -- and the declared window is `$272C7A + $80`. Second window this
+wave confirmed by two independent arguments.
+
+**`($28,A5)` IS THE HEADING. `($28,A6)` IS THE ANIMATION CURSOR.** Same offset, one in the record and one in the
+sub-record, both live in this one handler. That is a sharper version of the band's confusion rule: it is not only
+that offsets mean different things across TYPES, but that within a single routine the same offset means two
+different things depending on which base register it hangs off. **`A5` is the record, `A6` is the sub-record --
+read the register, every time.** A port that hoisted a `const CURSOR = 0x28` would be wrong half the time here.
+
+**`addi.w #$0,D1` has now appeared twice** (`$268D88` and `$268FA4`), both immediately before `jsr $24203E`. So
+it is part of this type's call idiom rather than a one-off artifact -- still a no-op whose flags the `jsr`
+destroys, but consistent enough that it should be transcribed rather than silently dropped.
+
+Still to read: `$268FC8` onward and the death arm at `$269160`.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
