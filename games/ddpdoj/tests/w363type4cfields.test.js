@@ -332,3 +332,38 @@ test('W367 $4C HAS a jump-table state machine -- eight handlers, bounded by adja
   assert.equal(T4C.stateTable + T4C.states.length * 4, T4C.states[0],
     'the table ends exactly at state 0s handler, so its length is self-evident');
 });
+
+test('W367 all EIGHT state handlers open with the same frame-0 test', { skip: SKIP }, () => {
+  // Two states read by hand both open `cmpi.w #$0,($28,A6)`. If all eight do, the shape is the pattern
+  // handler4C is built on, and that is worth checking across the set rather than inferring from two.
+  let uniform = 0;
+  for (const h of T4C.states) {
+    if (IMG.readUInt16BE(h) === 0x0c6e && IMG.readUInt16BE(h + 2) === 0
+        && IMG.readUInt16BE(h + 4) === T4C.stepAt) uniform += 1;
+  }
+  assert.equal(uniform, T4C.states.length,
+    `all ${T4C.states.length} states open cmpi.w #$0,($28,A6) -- one shape, eight bodies`);
+});
+
+test('W367 ($1A,A6) has FIVE writers, three outside the band range', { skip: SKIP }, () => {
+  // T4C used to call this "the distance band". Pinning the writers stops that framing returning.
+  // $26F8B0 move.w #$1600 -- a WORD write, so it also zeroes ($1B,A6).
+  assert.equal(IMG.readUInt16BE(0x26f8b0), 0x3d7c, '$26F8B0 move.w #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f8b2), 0x1600, '  ...#$1600 -- $16 into ($1A), $00 into ($1B)');
+  assert.equal(IMG.readUInt16BE(0x26f8b4), T4C.bandAt, '  ...at ($1A,A6)');
+  // $26F91E move.b #$4 -- a BYTE write, state 1.
+  assert.equal(IMG.readUInt16BE(0x26f91e), 0x1d7c, '$26F91E move.b #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f920), 0x0004, '  ...#$4');
+  assert.equal(IMG.readUInt16BE(0x26f922), T4C.bandAt, '  ...same field');
+  // The decrement and the increment.
+  assert.equal(IMG.readUInt16BE(0x26f8f4), 0x532e, '$26F8F4 subq.b #1,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f8f6), T4C.bandAt, '  ...($1A,A6) -- DECREMENT');
+  assert.equal(IMG.readUInt16BE(0x26ff76), 0x522e, '$26FF76 addq.b #1,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26ff78), T4C.bandAt, '  ...($1A,A6) -- INCREMENT');
+  // So the values $16 and $4 are both outside the $8/$6 the distance helper writes.
+  const bandVals = T4C.bandThresholds.map(([, v]) => v).filter((v) => v !== null);
+  for (const v of [0x16, 0x04]) {
+    assert.ok(!bandVals.includes(v),
+      `$${v.toString(16)} is NOT one of the distance bands -- so the field is not "the band"`);
+  }
+});
