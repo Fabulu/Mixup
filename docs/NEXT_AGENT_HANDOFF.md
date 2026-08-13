@@ -5784,11 +5784,28 @@ records (both heavily ported -- 21 and 20 code mentions, owned by `PLAYER`/`PLAY
 (`targetSelect`) loads `$8103E6` four times and picks a side; `$1A` loads BOTH, then uses **`($3,A5)` as a side
 PREFERENCE** and `exg A0,A1` to swap which is tried first, before falling back on liveness (`tst.w (A0)/bmi`).
 
-**So `targetSelect(ram, a5)` is the WRONG call here** -- it would discard the `($3,A5)` preference and pick by
-the shared rule instead of this record's. That preference is presumably what makes a pair of `$1A` records
-attack different players. **Write the inline form.** This is the first type in the band that does not delegate
-target choice, and it is exactly the kind of thing that reads as "just call the helper" until you notice the
-extra byte.
+**RETRACTED, AND IT WAS EXACTLY BACKWARDS: `targetSelect(ram, a5)` IS THIS LOGIC.** `aim.js:260` is
+
+    export function targetSelect(ram, a5, mut = null) {
+      return targetSelectBy(ram, ram.u8(a5 + 0x03) !== 0, mut);   // $242716 tst.b ($3,A5)
+    }
+    function targetSelectBy(ram, swap) {
+      let a0 = AIM.selP1, a1 = AIM.selP2;                // $24270A / $242710
+      if (swap) { a0 = AIM.selP2; a1 = AIM.selP1; }      // $24271C exg A0,A1
+
+**That is `$1A`'s block instruction for instruction** -- two player records loaded, `($3,A5)` tested, `exg A0,A1`
+on non-zero. The port's `targetSelect` ALREADY keys on `($3,A5)`; the side preference I thought was unique to `$1A`
+is the shared rule.
+
+So `$1A` does not "inline target selection instead of calling `$24270A`" in any way that matters: **the ROM
+duplicates the logic inline, and the port's function reproduces it exactly.** Calling `targetSelect(ram, a5)` is
+correct and correct-by-construction.
+
+**My warning said "write the inline form" and would have caused a duplicate port of existing code -- the precise
+failure this session's tooling was built to prevent.** Seventh "already ported" of the session, and the only one
+where I actively argued AGAINST reuse. The lesson is narrower than the earlier ones: **`claimed.py` on `$24270A`
+would have answered this in seconds, and I never ran it, because I had already decided the code was novel.** A
+conclusion reached before the check makes the check feel unnecessary.
 
 ### `$1A` is a SLEWING turret, and `($28,A5)` vs `($28,A6)` is the same offset in two structures
 
