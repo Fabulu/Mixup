@@ -5706,9 +5706,30 @@ having written while the checks were fresh.
                                                        handlers.js:5000-5001 plus an address label in
                                                        T1B's spec at :3291
 
-**So `death1A` needs `$289B22` written, or deferred through `noteEffect` the way `$1B` and `$84` already do.** That
-is a real decision rather than a transcription: `$1B`'s and `$84`'s death arms both defer it, so deferring is the
-established treatment and would not make `$1A` worse than its siblings.
+**DECISION RESOLVED, with an exact precedent: DEFER IT via `noteEffect`.** `handlers.js:4998-5001` is type `$88`'s
+death arm and it has `$1A`'s structure line for line:
+
+    scoreKill(ram, rom, ctx, 0x115, d1);                  // $27627E/$276284 jsr $28615E
+    ctx.soundPost?.(0x28c2dc);                            // $27628A -- the SAME cue $1A uses
+    noteEffect(u, 0x289b22, a5, 'D0=$C, D2=$FFFFFA00');   // $27629C
+    noteEffect(u, 0x289b22, a5, 'D0=$C, D2=$00000600');   // $2762A8
+
+**Two `$289B22` bursts with different D2 biases, both deferred, in a block whose own header reads "THE DEATH
+EXPLOSION, WIRED".** So the explosion is wired and the pool-C burst specifically is a known deferral of the effect
+subsystem, not an oversight. `noteEffect(u, addr, a5, what)` records the D2 value in its message, which is how the
+information survives the deferral.
+
+**`death1A` is therefore pure transcription:**
+
+    scoreKill(ram, rom, ctx, T1A.killScore, hit)                  // $269160/$269166 -- $350
+    ctx.soundPost?.(T1A.deathCue)                                 // $26916C -- $28C2DC
+    noteEffect(u, 0x289b22, a5, 'D0=$C, D2=$F8000000')            // $26917E
+    if (rank === 4 && clock < $2B0) noteEffect(... 'D2=$08000000') // $2A619C -- the MIRROR burst
+    three spawnEffect(ram, ctx, kind) calls, kinds $D / $5 / $5, with the field writes between them
+
+**And the "do not land a partial" rule does NOT bar this**, by its own criterion: the burst is COSMETIC, like
+Hibachi's stage-clear reasoning inverted. What barred a partial `$1A` was the FIRING arms, which are gameplay. A
+deferred death burst leaves `$1A` no worse than `$88`, which ships that way.
 
 **AND THIS EXPOSED A THIRD DEFERRAL FORM `claimed.py` COULD NOT SEE.** Its classifier matched `note(` and
 `unreached(` but not **`noteEffect(`** -- "Effect" follows "note", so `note\s*\(` fails. `$289B22` therefore
