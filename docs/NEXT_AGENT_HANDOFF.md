@@ -582,6 +582,23 @@ fields were for.
 THAT reaches zero it sets `($17,A5)` to 1, writes `$A001` into part 1's flags word, and advances to state 1. So it is
 a **two-stage timer**, and `($17,A5)` is the object visibly changing form -- the field the draw selector reads.
 
+**STATE 1 READ IN FULL: it walks a two-point table and ALTERNATES two states.**
+
+    $26F938  lea $26F984,A0 / adda.w ($2A,A6),A0 / movem.w (A0),D2-D3   a POINT, two words
+    $26F946  bsr $26FF9E                                                 the distance bander
+    $26F94E  addq.w #4,($2A,A6) / andi.w #$7,($2A,A6)                    cursor: 0, 4, 0, 4...
+    $26F960  D0 = 2, or 4 if ($18,A5) -- then bsr $26F858, then flip ($18,A5) with andi.w #$1
+
+The two points are `$5000/$2A00` and `$5000/$0E00`: **one X, two Ys.** W342 declared the window as "state 1's two
+target points" without the mechanism; the cursor steps by FOUR and masks to `$7`, so it is 0 or 4 and never 8, and
+D2/D3 feed `$26FF9E` -- which is what its target registers hold.
+
+**`($18,A5)` is a single BIT**, so states 2 and 4 run in strict alternation: a port that hardcodes either plays half
+the pattern. State 1 then arms BOTH `partSetters` OFF entries before returning.
+
+**And these eight bytes are why a linear sweep breaks here** -- `$26F984` is DATA sitting between the `rts` at
+`$26F982` and the next entry point, which is exactly the case the flow-break rule now stops at.
+
 **AND `$4C` IS ~494 BYTES BIGGER THAN THE SPEC SAID.** `handlerEnd` was `$26FFE8`, noted as "the last rts is
 `$26FFE6`". `$26FFE6` IS an rts -- but `$26FFE8` is the **START of the last subroutine**, and the subroutine list in
 the same spec contained the disproof, because `$26FFE8` is in it. Its `beq` reaches `$270128`, well past `$270000`.

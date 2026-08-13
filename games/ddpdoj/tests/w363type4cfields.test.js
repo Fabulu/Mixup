@@ -657,3 +657,39 @@ test('W371 state 0 ends by switching the DRAW VARIANT, ($17,A5)', { skip: SKIP }
   assert.equal(IMG.readUInt16BE(0x26f906), 0x7001, '$26F906 moveq #$1,D0 -- then state 1');
   assert.equal(0x26f90a + IMG.readInt16BE(0x26f90a), T4C.stateSetter, '  ...bsr $26F858');
 });
+
+test('W371 state 1 walks the $26F984 target table with a WRAPPING cursor', { skip: SKIP }, () => {
+  // W342 declared the window as "state 1's TWO target points" without the mechanism. Here it is:
+  // lea $26F984,A0 / adda.w ($2A,A6),A0 / movem.w (A0),D2-D3, then the cursor steps by FOUR and is
+  // masked to $7 -- so it takes the values 0 and 4 only, and the table is exactly two 4-byte entries.
+  // That is also why a linear sweep desynchronises here: these eight bytes are DATA, not padding.
+  assert.equal(IMG.readUInt16BE(0x26f938), 0x41fa, '$26F938 lea (d16,PC),A0');
+  assert.equal(0x26f93a + IMG.readInt16BE(0x26f93a), 0x26f984, '  ...the target table');
+  assert.equal(IMG.readUInt16BE(0x26f93e), 0xd0ee, '$26F93E adda.w (d16,A0),A0');
+  assert.equal(IMG.readUInt16BE(0x26f940), 0x002a, '  ...($2A,A6), the cursor');
+  assert.equal(IMG.readUInt16BE(0x26f942), 0x4c90, '$26F942 movem.w (A0),D2-D3 -- a POINT, two words');
+  assert.equal(IMG.readUInt16BE(0x26f94e), 0x586e, '$26F94E addq.w #4,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f952), 0x026e, '$26F952 andi.w #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f954), 0x0007, '  ...#$7, so the cursor is 0 or 4 and never 8');
+  // And D2/D3 feed the distance bander, which answers what its target registers hold.
+  assert.equal(0x26f948 + IMG.readInt16BE(0x26f948), T4C.distBander, '$26F946 bsr $26FF9E');
+  const pts = [0, 4].map((o) => [IMG.readUInt16BE(0x26f984 + o), IMG.readUInt16BE(0x26f986 + o)]);
+  assert.deepEqual(pts, [[0x5000, 0x2a00], [0x5000, 0x0e00]],
+    'two points sharing an X and differing in Y -- so the cursor picks which one it heads for');
+});
+
+test('W371 state 1 ALTERNATES between state 2 and state 4 via a 1-bit toggle', { skip: SKIP }, () => {
+  // ($18,A5) is a single bit: tst picks D0 = 2 or 4, then it increments and masks to $1. So the two
+  // states run in strict alternation, and a port that hardcodes either one plays half the pattern.
+  assert.equal(IMG.readUInt16BE(0x26f960), 0x7002, '$26F960 moveq #$2,D0 -- the default target state');
+  assert.equal(IMG.readUInt16BE(0x26f962), 0x4a6d, '$26F962 tst.w (d16,A5)');
+  assert.equal(IMG.readUInt16BE(0x26f964), 0x0018, '  ...($18,A5), the toggle');
+  assert.equal(IMG.readUInt16BE(0x26f96a), 0x7004, '$26F96A moveq #$4,D0 -- the other one');
+  assert.equal(0x26f96e + IMG.readInt16BE(0x26f96e), T4C.stateSetter, '$26F96C bsr $26F858');
+  assert.equal(IMG.readUInt16BE(0x26f970), 0x526d, '$26F970 addq.w #1,(d16,A5)');
+  assert.equal(IMG.readUInt16BE(0x26f974), 0x026d, '$26F974 andi.w #imm,(d16,A5)');
+  assert.equal(IMG.readUInt16BE(0x26f976), 0x0001, '  ...#$1 -- one bit, so it flips every time');
+  // It then arms both OFF setters before returning, which is where partSetters gets used.
+  assert.equal(0x26f97c + IMG.readInt16BE(0x26f97c), T4C.partSetters[0].off, '$26F97A bsr the $46 OFF');
+  assert.equal(0x26f980 + IMG.readInt16BE(0x26f980), T4C.partSetters[1].off, '$26F97E bsr the $66 OFF');
+});
