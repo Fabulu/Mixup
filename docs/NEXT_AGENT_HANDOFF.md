@@ -5683,7 +5683,29 @@ W364 conventions applied (`targetSelect`, `aim64`, `slew64` with the facing from
 sprite index). **This is the part where getting a convention wrong would be silent**, so it is the part worth
 having written while the checks were fresh.
 
-**STILL TO WRITE, and the handler cannot land without them:**
+**ALL FOUR ARE NOW WRITTEN TOO, and appended below the main body. TWO SIGNATURES IN THEM ARE UNVERIFIED**, and by
+this session's record that means they are probably wrong -- five of five checked conventions needed correcting:
+
+    aim256(aimTables(rom), selfX, selfY)     GUESS. The verified form is aim256(tables, selfX, selfY,
+                                             tgtX, tgtY) -- FIVE args, with an explicit target. Arm 2
+                                             uses the SELF-SELECTING $24226E, which does its own
+                                             targetSelect internally, so it is a DIFFERENT function or
+                                             a different entry. Find it before trusting arm2_1A.
+    spawnEffect(...) -> { addr }             GUESS at the return shape. effects.js:373 is read for its
+                                             ARGUMENTS but its return was not. The three death spawns
+                                             write fields through it, so a wrong shape silently drops
+                                             every field write.
+
+**Also unresolved: `noteEffect` is a LOCAL at `handlers.js:275`, not an export.** That is fine if `handler1A` lives
+in `handlers.js` (it should -- it is not a boss, so the `boss.js`/`midboss.js` precedent does not apply), but
+`death1A` cannot be split into another file without exporting it first.
+
+**Everything else in the four pieces is transcription against verified conventions**: the fan's random speed bias
+via a swapped `$242B90` draw, the two reload sources on `($2E,A5)`, the signed `asr.b #2` jitter, the
+borrow-symmetric muzzle biases, the swap-separated tail bias with its own helper so the no-borrow property is
+explicit, and the death arm following `$88`'s deferral pattern exactly.
+
+**FORMERLY: still to write --**
 
     fan1A(ram, rom, a5, a6, ctx)     arm 1's seven shots: T1A.fan.angles, emit $281744, speed bias =
                                      a drawByte242B3C draw SWAPPED into the high word (random per volley)
@@ -5870,6 +5892,138 @@ function handler1A(ram, rom, a5, ctx) {
   }
 
   tail1A(ram, rom, a5, a6, ctx);                              // $269058
+}
+// $269024..$269046 -- arm 1's SEVEN shots. One emit per pass, not unrolled like $55's.
+// T1A.fan.angles is pinned against the cartridge by w363type1afields.test.js: seven values derived from
+// backoff $24 and step $C, checked symmetric about the aim.
+//
+// THE SPEED BIAS IS RANDOM PER VOLLEY. $268FF6 calls $242B90 -- drawByte242B3C's D5-returning twin, same
+// table -- and $269012 SWAPS the byte into the high word, so it becomes the X half of a packed long.
+// $55's equivalent is a fixed $02000000, and reusing $55's fan with a constant here gives a
+// uniform-speed volley: visually close, mechanically wrong, invisible in one frame.
+function fan1A(ram, rom, a5, a6, ctx) {
+  const base = ram.u16(a5 + T1A.headingAt) & 0xff;
+  const d5 = (drawByte242B3C(ram, rom) << 16) >>> 0;      // $268FF6 jsr $242B90 / $269012 swap D5
+  const ctxB = { ram, rom, log: new WriteLog(ram) };
+  T1A.fan.angles.forEach((off) => {
+    const d1 = (base + off) & 0xff;                       // $26901C subi.w #$24 / $26903E addi.w #$C
+    const idx = (d1 + 2) & 0xfc;                          // $26902C addq.w #2 / $26902E andi.w #$fc
+    const regs = {
+      d0: 0x5,                                            // $269016 moveq #$5,D0 -- a WORD 5
+      d1,
+      d2: ram.u32(a6 + 0x02),                             // $269018
+      d3: i32(rom.u32(T1A.vectorTable + idx) + d5),       // $269032 move.l (A0,D3.w),D3 / $269036 add.l D5,D3
+      d4: 0,
+      d5,
+      a5,
+    };
+    ctx.bulletSpawn?.(0x269038, fireBullet(ctxB, T1A.fan.emit, regs));   // $269038 jsr $281744
+  });
+}
+
+// $269092..$26915E -- ARM 2: the twin-muzzle burst, on its own rank-dependent timer.
+//
+// ($2E,A5) HAS TWO RELOAD SOURCES: ($2A,A5), the other rank value, on the ordinary step, and ($2F,A5)
+// when the ($30,A5) volley counter expires. That is a burst-within-a-burst, and treating ($2E,A5) as
+// having one reload collapses the grouping.
+//
+// It also selects its target DIFFERENTLY from arm 1: aim256 does its own selection by the shared rule
+// and IGNORES ($3,A5), so the two arms can legitimately fire at different players in one frame.
+function arm2_1A(ram, rom, a5, a6, ctx) {
+  if (!due8(ram, a5 + T1A.arm2TimerAt)) return;           // $2690A2 subq.b #1,($2E,A5) / bcc
+  ram.setU8(a5 + T1A.arm2TimerAt, ram.u8(a5 + T1A.rankArm2At));          // $2690AA -- the RANK value
+  ram.setU8(a5 + T1A.arm2CountAt, ram.u8(a5 + T1A.arm2CountReloadAt));   // $2690B0
+  // $2690B6/$2690BC -- TWO byte writes of $80, the no-target fallback for both muzzles.
+  ram.setU8(a5 + T1A.muzzleAimAt[0], T1A.muzzleAimFallback);
+  ram.setU8(a5 + T1A.muzzleAimAt[1], T1A.muzzleAimFallback);
+
+  // $2690C2..$2690F2 -- two aims from points +/-$680 in Y off a shared X-$600. The `bcs` at $2690D6
+  // fires on the FIRST aim only, so no target leaves BOTH muzzles at $80.
+  const selfX = u16(ram.u16(a6 + 0x02) + T1A.muzzleXOffset);
+  const up = aim256(aimTables(rom), selfX, u16(ram.u16(a6 + 0x04) + T1A.muzzleYOffset));
+  if (up === null) return;                                // $2690D6 bcs $2690F6
+  ram.setU8(a5 + T1A.muzzleAimAt[0], up & 0xff);          // $2690DA
+  const down = aim256(aimTables(rom), selfX, u16(ram.u16(a6 + 0x04) - T1A.muzzleYOffset));
+  if (down !== null) ram.setU8(a5 + T1A.muzzleAimAt[1], down & 0xff);    // $2690F2
+
+  // $2690F6..$26915E -- the two shots. Each jitters its own muzzle's aim by asr.b #2 of a FRESH draw:
+  // ARITHMETIC, so signed, giving -32..+31 centred. `>>> 2` on an unsigned byte biases every shot one way.
+  const ctxB = { ram, rom, log: new WriteLog(ram) };
+  T1A.muzzleAimAt.forEach((at, i) => {
+    const draw = drawByte242B3C(ram, rom);                // $269108/$269130 jsr $242B3C
+    const jitter = (draw << 24) >> 24 >> T1A.muzzle.jitterShift;          // $26910E asr.b #2
+    const d1 = (ram.u8(a5 + at) + jitter) & 0xff;         // $269110 add.b D0,D1
+    const regs = {
+      d0: T1A.muzzle.d0,                                  // $269112 move.l #$20016,D0
+      d1,
+      d2: ram.u32(a6 + 0x02),                             // $269118
+      d3: T1A.muzzle.bias[i],                             // $26911C/$269144 -- borrow-symmetric
+      d4: 0,
+      d5: 0,
+      a5,
+    };
+    ctx.bulletSpawn?.(0x269124 + i * 0x28, fireBullet(ctxB, T1A.muzzle.emit, regs));
+  });
+
+  // $269152 -- step the volley counter; on underflow ($2E,A5) reloads from ($2F,A5), NOT ($2A,A5).
+  const n = ram.u8(a5 + T1A.arm2CountAt);
+  ram.setU8(a5 + T1A.arm2CountAt, (n - 1) & 0xff);
+  if (n === 0) ram.setU8(a5 + T1A.arm2TimerAt, ram.u8(a5 + T1A.arm2GapAt));   // $269158
+}
+
+// $269058..$26907E -- the tail. TWO emits, and the position bias is SWAP-SEPARATED word adds.
+//
+// $26905E..$26906C is `move.l ($2,A6),D1 / addi.w #-$400,D1 / swap D1 / addi.w #$500,D1 / swap D1`. The
+// halves are added while swapped APART, so there is NO borrow between them. Folding this into
+// `addi.l #$0500FC00` introduces a carry the cartridge never performs.
+function tail1A(ram, rom, a5, a6, ctx) {
+  enqueueRegistersThroughStub(ram, rom, T1A.drawStubs[0],                // $269058 jsr $23D762
+    swapBiasedPosition(ram.u32(a6 + 0x02)),
+    ram.u32(a5 + 0x24),                                                  // $26906E move.l ($24,A5),D2
+    0x620,                                                               // $269072 move.w #$620,D3
+    ram.u8(a6 + 0x1d));
+  enqueueRegistersThroughStub(ram, rom, T1A.drawStubs[1],                // $26907A jsr $23DECE
+    swapBiasedPosition(ram.u32(a6 + 0x02)),
+    ram.u32(a5 + 0x24), 0x620, ram.u8(a6 + 0x1d));
+  // $269082 jsr $26331C -- a bare rts. Transcribed, not called. Hibachi calls the same stub eleven times.
+}
+
+/** The swap-separated bias: -$400 on the LOW half, +$500 on the HIGH, with no borrow between them. */
+function swapBiasedPosition(pos) {
+  const lo = u16((pos & 0xffff) - 0x400);                 // $269062 addi.w #-$400,D1
+  const hi = u16(((pos >>> 16) & 0xffff) + 0x500);         // $269068 addi.w #$500,D1 after the swap
+  return ((hi << 16) | lo) >>> 0;
+}
+
+// $269160..$26925C -- the death arm. Follows type $88's ($27627E) line for line, including deferring
+// the pool-C bursts through noteEffect: $88 ships that way and its own header says "THE DEATH EXPLOSION,
+// WIRED", so the burst is a known effect-subsystem deferral rather than an oversight.
+function death1A(ram, rom, a5, a6, ctx) {
+  const u = ctx.unported;
+  scoreKill(ram, rom, ctx, T1A.killScore, ram.u8(a6) & T1A.damageMask);   // $269160/$269166 -- $350
+  ctx.soundPost?.(T1A.deathCue);                                          // $26916C -- shared with $49/$55
+  noteEffect(u, T1A.burstBucket, a5, `D0=$C, D2=$${T1A.burstBias[0].toString(16).toUpperCase()}`);
+  // $269184 -- RANK EXACTLY 4 (cmpi.w #$4 / bne, not a threshold) AND clock below $2B0. Content almost
+  // nobody sees, so a port that gets it wrong passes every playtest: it belongs in a test, not a session.
+  if (ram.u16(T1A.rankGlobal) === T1A.rank4Exactly
+      && ram.u16(T1A.clockGlobal) < T1A.rank4ClockBelow) {
+    noteEffect(u, T1A.burstBucket, a5,
+      `D0=$C, D2=$${T1A.burstBias[1].toString(16).toUpperCase()} -- the RANK-4 MIRROR burst`);
+  }
+  // $2691A8/$2691DC/$26920E -- THREE spawnEffect calls, kinds $D, $5, $5, with DIFFERENT velocities.
+  // Counting the sites is how this was read; reading them in sequence produced a retraction in W351.
+  const fields = [
+    { kind: 0xd, w: [[0x1e, 0x10], [0x12, 0], [0x14, 0], [0x26, 0x400], [0x28, 0], [0x10, 1]] },
+    { kind: 0x5, w: [[0x1e, 0x10], [0x12, 0]] },
+    { kind: 0x5, w: [[0x1e, 0x10], [0x14, 0x400], [0x26, 0xf800], [0x28, 0x600], [0x10, 1]] },
+  ];
+  for (const { kind, w } of fields) {
+    const r = spawnEffect(ram, ctx, kind);                // $289004
+    if (!r || r.addr === undefined) continue;
+    ram.setU32(r.addr + 0x02, ram.u32(a6 + 0x02));        // the record's position
+    for (const [off, val] of w) ram.setU16(r.addr + off, val);
+  }
+  freeEnemy(ram, a5);
 }
 ```
 
