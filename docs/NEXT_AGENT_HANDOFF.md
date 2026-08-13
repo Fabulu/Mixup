@@ -62,8 +62,37 @@ either. **The call list is data, not a range** -- transcribe the eleven offsets 
 and with one deliberately out of order. **Same architecture, and in both cases the temptation to write a loop is
 the trap.**
 
-And `$2A6B94` is the first genuinely unported callee -- read it before anything else, since it runs before every
-other line of the handler.
+### Hibachi's handler READ END TO END -- all 170 bytes
+
+    2a4606  jsr $2A6B94                    UNPORTED, and it runs FIRST
+    2a460c  jsr $25962E 
+    2a4612  bcc $2A4622
+    2a4614  jsr $242952 / jmp $263762      the STAGE-CLEAR path, then free
+    2a4622  eleven `lea (part,A6),A0 / jsr $26331C` calls, one out of order
+    2a469a  moveq #$0,D3 / move.w D0,D3    D3 = whatever D0 held, zero-extended
+    2a469e  move.w #$0,D0
+    2a46a2  move.w #$0,D1
+    2a46a6  move.w #$2,D2
+    2a46aa  jsr $25A17A                    UNPORTED
+    2a46b0  rts
+
+**So the whole handler is: one unported prologue call, a clear test with the stage-clear path, eleven disabled
+per-part hooks, and one unported epilogue call.** That is the entire boss-route root -- and **nine of its eleven
+`$26331C` calls do nothing**, because `$26331C` is a bare `rts`.
+
+**TWO unported callees, and they bracket everything else:** `$2A6B94` before any other line, `$25A17A` after all
+of them with `D0=0 D1=0 D2=2 D3=<incoming D0>`. **Everything Hibachi actually does is in those two routines**, and
+`$2A6B94` is the 1838-byte stretch ending at `$2A4DDE`.
+
+**This retires the "HIBACHI CLOSURE RULE and a trace" note.** These notes have long said `$B0` "wants the HIBACHI
+CLOSURE RULE and a trace". The handler needs neither: it is 170 bytes, fully read, and its only unknowns are two
+ordinary callees at fixed addresses. **The third "the blocker did not exist" of this kind this session**, after
+`$55`'s A0 and `$1A`'s D2/D3.
+
+**And its position in the game matters more than its size**: because `$2A4614 jsr $242952` is the stage-clear
+call, this handler is the junction the endings (D37) run through. **`$25A17A` -- the epilogue call, taking a
+constant `D2=2` -- is the most likely place the ending SELECTION happens.** Read it first for D37, not just for
+`$B0`.
 
 ## TYPE $4C (W354, OPENED) -- the "eight state handlers" claim is WRONG
 
