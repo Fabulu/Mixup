@@ -148,6 +148,27 @@ but not the three above:
 **`$243DD0` is the interesting one: hit-stop / screen-shake is a SHARED effect, not boss-specific.** Its note at
 `boss.js:113` records three call sites (`$292912`, `$294C68`, `$294D4C`), so writing it serves more than `$B0`.
 
+**AND IT IS A MEMBER OF A FOURTEEN-ENTRY FAMILY THE PORT ALREADY HAS SIBLINGS FOR.** `bomb.js:331` already
+documents the whole region -- this was investigated long before this wave:
+
+    $243CE0..$2440DE   FOURTEEN near-identical entries
+    $243E7C            the MIDBOSS's -- ported, as `armScreenClear` in src/midboss.js
+    $243DA0            the BOMB's -- arms $81B412 := $FFFF and returns, ten instructions
+    $243DD0            <- the one Hibachi calls
+
+And `bulletdriver.js` documents that `$281CE0 move.w $81B412,D0 / bmi` **forks on the SIGN of `$81B412`**, so the
+family members differ in what they arm it to: `$0` walks 210 slots, `$FFFF` returns immediately.
+
+**So `$243DD0` is a small variant of a ported routine, not new work.** Its own first 28 bytes read
+`tst.w $81B410` then compare `$81B412` against `$20` and `$3C` -- both globals already modelled (4 and 5 code
+mentions) -- so its inputs exist and its siblings are written. **Read `armScreenClear` and `$243DA0`'s note
+first; the差 is likely one constant.**
+
+**That is the FOURTH time this session that "unported" resolved to "member of a family the port already has"**
+after `$242B90`/`$242B3C`, `$26331C`'s stub siblings, and `$263684`/`enqueueDeferred`. **The pattern is strong
+enough to be the default assumption**: before writing anything, grep the port's PROSE for the address's
+neighbours, not just the address.
+
 **And `$23C4D0` is ported for one caller and deferred for another** -- `initbody.js` uses it, `boss.js` defers it.
 That is why `claimed.py` reports counts rather than a verdict now: a boolean would have to lie about this address
 in one direction or the other.
