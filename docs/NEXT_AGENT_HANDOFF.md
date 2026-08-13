@@ -2,41 +2,48 @@
 
 Updated: 2026-08-13 (W372)
 
-## START HERE -- PLACE `handler4C`. Everything it needs is in this file.
+## START HERE (W372 done)
 
-**State: tree clean, all pushed, suite 2541/2541 zero skips, gate exit 0, live build `20260813164141`.**
-Type `$4C` is READ AND TRANSCRIBED END TO END. The draft below **parses clean** and has no ellipses or placeholders.
-**Nothing is left to discover -- this is a placement, not an investigation.**
+**State: tree clean, all pushed, suite 2541/2541 zero skips, gate exit 0. Live build `20260813164141`.**
 
-**Do these in one wave, in this order:**
+**`handler4C` IS PLACED.** Stage 5 now has **zero types without a handler**. The draft, its import delta and the
+placement checklist that produced it are still below for reference, but **that job is done** -- do not redo it.
 
-1. **Splice the draft** into `games/ddpdoj/src/handlers.js`. Search this file for `handler4C`; the pieces are five
-   helpers, the main body + dispatcher, the eight state bodies, and three callees. **Take `state2_4C` from the
-   CORRECTED four-step version** (the one-spawn draft was deleted, but read the surrounding prose so you take the
-   right one).
-2. **Add the SEVEN imports** listed under "THE EXACT IMPORT DELTA". `packedAdd` is NOT one of them -- inline
-   `u32(pos + delta)`. `fireBullet` needs no import; `handlers.js` exports it itself.
-3. **Register** `[0x26f5f2, handler4C]` in the `HANDLERS` list (the `$1A` entry at ~line 8519 is the pattern).
-4. **Delete `ported: false`** from `T4C`.
-5. **Move the FOUR census pins**: the `handlerMap()` adapter size in `integration.test.js`, the address list in
-   `handlers.test.js`, `enemy_types` in `w167coverage.test.js` (BOTH numbers -- take them from
-   `python games/ddpdoj/tools/dojcoverage.py`), and the init-body count in `initbody.test.js`.
-6. **REWRITE, do not renumber, `w314stage5scope.test.js`.** `$4C` is its worked example of an unported type, so the
-   prose claims flip, not just the counts. Same trap as `$1A` in W365.
-7. `node --test games/ddpdoj/tests/`, then `node games/ddpdoj/tools/webgate.mjs`.
+### THE NEXT JOB: `$1A` CANNOT SPAWN
 
-**Before editing the draft, re-run the syntax check** -- extract the ```js blocks, stub the callees, `node --check`.
-It has caught something on all three runs, including two bugs I introduced while filling gaps. **It proves shape, not
-existence:** a call to a function that does not exist parses fine, which is how two invented names survived until a
-grep found them.
+**Stage 5 is handler-complete but NOT spawn-complete.** `$1A` has a written, registered handler and **no registered
+init body**, so `runInitBodyAddr` throws the moment one spawns. Handler coverage and spawnability are different
+measurements; `w314stage5scope` counts the first and says so explicitly now.
 
-**THE ONE RULE THAT KEPT BITING:** this port cites ROM addresses in PROSE, so `grep 0x26f9a2` finds a comment and
-misses the code. **Search the NAME or the FAMILY.** It hid three of Hibachi's four callees, `armScreenClear243E02`,
-`bigBurst28B4BE`, and `fireBullet` (exported from `bullets.js` as `fire`).
+**The block is real and is a TRACE, not a read.** `$268D8C jsr $24203E` is the aim CORE, which takes its target in
+**D2/D3**. `$1A`'s init body never writes D3, and `$263808` (`readInitPosition`) does not either, so D3 is caller
+state from up the spawn chain. I walked as far as `$2635B2` (the sub-record allocator) and it uses D2 as a slot
+counter and never touches D3 -- so the supplier is further up still. **The result feeds the record's heading
+`($29,A5)` and velocity long `($24,A5)`, which is gameplay: it does not get a `note()` and must not be guessed.**
 
-**Still open after this, in priority order:** `$1A` is UNSPAWNABLE (its init body is unported, blocked on D3
-provenance at `$268D8C` -- a real trace, do not guess); then docket D33-D39; `$B0`'s boss body `$2A6B94` is still a
-`note()`.
+For contrast, `$4C` answers the same question cleanly: its steerer's D2/D3 come from a table or from literals in the
+calling state. The pattern is normal; `$1A`'s supplier is simply off-screen.
+
+**Also true and already pinned:** `$268D92`'s `bcc` fallback is DEAD -- `$24203E` always returns carry clear -- so do
+not copy type `$97`'s `aimed.carry ? ($1B,A6) : dir` idiom, which sits right next to it and is wrong here.
+
+### AFTER THAT
+
+* **Docket D33-D39**: main screen, character select, life/coin, endings, input lag (faithful, then mods), and the
+  second ROM game LAST.
+* **`$B0`'s boss body `$2A6B94`** is still a `note()` -- 666 bytes, and Hibachi spawns now, so it is reachable.
+* **PUBLISH** is due at **W375** (every fifth wave; W370 was `20260813164141`). If any wave adds a ROM window,
+  run `node games/ddpdoj/tools/export-web.mjs` from the repo root **BEFORE** `node tools/publish.mjs --only ddpdoj`.
+
+### THE RULES THAT COST THE MOST THIS SESSION
+
+1. **This port cites ROM addresses in PROSE.** `grep 0x259554` finds a comment and misses the code. **Search the NAME
+   or the FAMILY.** It hid three of Hibachi's four callees, `armScreenClear243E02`, `bigBurst28B4BE`, and
+   `fireBullet` (exported from `bullets.js` as `fire`) -- and it broke the `handler4C` splice script itself.
+2. **`tools/aligned.py` bounds instruction boundaries** and refuses rather than guessing. It stops at flow breaks;
+   a `bsr` target OUTRANKS it. It cannot tell code from data that happens to decode.
+3. **`node --check` proves SHAPE, not EXISTENCE.** A call to a function that does not exist parses fine.
+4. **Read the callee's own docstring before tracing the caller.** `buildParts246520`'s mode was documented all along.
 
 ---
 
