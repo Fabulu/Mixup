@@ -78,9 +78,31 @@ offset. So `$16` is the one field this band agrees on.
 same ramp-with-cap mechanism, checked from three places rather than one. **Three call sites for one test means the
 ramp gates three different arms**, which is the structure to map next.
 
-**So the next pass has a concrete plan**: `$4C`'s control flow is not a state cascade. Start from the three
-`cmpi.w #$0600,($1E,A5)` sites and the single `tst.b ($17,A5)`, and map outward from those five branch points
-rather than reading `$26F5F2` forward.
+### `($17,A5)` IN `$4C` PICKS AN EMIT STUB. It is not a state at all.
+
+    26f790  tst.b ($17,A5)
+    26f794  bne $26F7A0
+    26f798  jmp $23DECE        zero     -> FRAME_EMIT
+    26f7a0  jmp $23DF58        non-zero -> mirrorStub
+
+**Both are tail-JUMPS, and both stubs are already ported** -- `$23DECE` is `FRAME_EMIT` (owned by `T43 T45 T47 T48
+T49 T4A T4B`) and `$23DF58` has 31 mentions with 21 in code, appearing as `mirrorStub`/`drawChild` in
+`background.js`. So the byte selects between a normal and a MIRRORED draw.
+
+**That is the seventh same-offset-different-meaning instance and by far the most different.** In `$55` the byte is
+a four-value fall-through mode cascade; in `$46` it is a five-mode selector; in `$4C` **it is not a control-flow
+state at any arity -- it is a RENDERING variant**, consumed once, at the very end, by a tail-jump. Anything
+carried from a sibling here would not be off by a value or an offset; it would be the wrong kind of field
+entirely.
+
+**This also means `$4C` has no state machine on the record at all.** Zero `cmpi.b` on A5, and the one `tst.b` on
+`($17,A5)` is a draw selector. Whatever multi-arm structure the old "eight state handlers" note was describing must
+live in the `cmpi.b`/`tst.b` tests on **A6** (4 and 3 sites), i.e. in the SUB-record -- which is where `$1A` also
+keeps its animation cursor and timers.
+
+**So the next pass has a concrete plan**: `$4C` is not a record-state machine. Map outward from the three
+`cmpi.w #$0600,($1E,A5)` ramp sites and the seven A6 tests. **The `tst.b ($17,A5)` is settled and needs no
+further work** -- it is one branch and two already-ported stubs.
 
 ### THE BAND RULES -- earned across W345..W353, every one after getting it wrong first
 
