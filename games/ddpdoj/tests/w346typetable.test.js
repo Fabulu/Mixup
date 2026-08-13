@@ -127,6 +127,9 @@ test('W346: a spec that claims an initBody has it actually registered -- the $55
   { skip: !HAVE }, () => {
   const registered = new Set(INIT_BODY_ADDRESSES);
   for (const [type, spec] of TYPE_SPECS) {
+    // W353: an unwritten type has NEITHER registration. W351 put this skip on the handler test only,
+    // which was an oversight caught the moment a second `ported: false` spec landed.
+    if (spec.ported === false) continue;
     const hex = `$${type.toString(16).toUpperCase().padStart(2, '0')}`;
     assert.ok(registered.has(spec.initBody),
       `${hex} initBody $${spec.initBody.toString(16)} is missing from INIT_BODY_ADDRESSES. This is `
@@ -138,13 +141,13 @@ test('W346: a spec that claims an initBody has it actually registered -- the $55
 // W351: this pin was DESCRIBED as landing two commits before it did. The comment above the handler test
 // went in; this assertion did not, and I reported it as working off a passing test count instead of
 // reading the file. So it is its own test now, with the count in the name, where a diff cannot lose it.
-test('W351: NO spec is measured-but-unwritten -- $55 was written', () => {
+test('W353: exactly ONE spec is measured-but-unwritten, and it is $1A', () => {
   const unwritten = [...TYPE_SPECS.entries()]
     .filter(([, spec]) => spec.ported === false)
     .map(([type]) => type);
-  assert.deepEqual(unwritten, [],
-    'W351 WROTE $55, so this list is now EMPTY -- its `ported: false` is gone. Adding another '
-    + 'measured-but-unwritten spec means putting its type here deliberately. '
+  assert.deepEqual(unwritten, [0x1a],
+    'W353 landed T1A as recon-complete-but-unwritten. Writing handler1A means deleting its '
+    + '`ported: false` AND updating this list. '
     + 'spec has to be deliberate enough to update this list. An empty result means $55 was written -- '
     + 'if so, four census pins move too (W223 type $41, the handlerMap() adapter cover, W217 reusable '
     + 'coverage, W317 thirteen-spawn), and they must be bumped from their real counts.');

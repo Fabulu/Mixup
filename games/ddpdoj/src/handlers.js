@@ -8984,6 +8984,108 @@ function handler46(ram, rom, a5, ctx) {
   tail46(ram, rom, a5, a6);                               // $27123C
 }
 
+// ============================================ TYPE $1A (W353) ============
+// Stage 5's slewing twin-weapon turret. FOUR script records, and the last non-boss, non-bundle type
+// in the stage. RECON COMPLETE, HANDLER NOT WRITTEN -- `ported: false` below is read by
+// `w346typetable.test.js`, which still verifies init/initBody/handler against the cartridge.
+//
+// These notes have carried for many waves that `$1A` was "blocked on a TRACE at $268D8C (D2/D3
+// provenance)". THAT WAS WRONG: D2 is consumed at $268D6E, sixteen bytes before the call, and D0/D1
+// there are the record's own position freshly loaded by `movem.w`. Nothing needed tracing.
+//
+// FOURTEEN CALLEES, EVERY ONE ALREADY PORTED: $2637A2 $26377A $263808 $24203E $242190 $242B3C
+// ($242B90 is its D5-returning twin, same table) $23D762 $23DECE $281708 $281744 $289B22 $289004
+// $28615E $28C2DC, plus RANK $813092 and the pause $8130D2.
+//
+// SEVEN THINGS THAT WOULD BREAK A PORT WRITTEN FROM A SIBLING:
+//
+//  1. The bounds test is TWO sequential word adds with the carry off the SECOND ($1000 then $6E00),
+//     like $55 and UNLIKE $46, whose single `addi.l` must not be split. Read it per type.
+//  2. The palette pair is at ($1C,A5)/($1D,A5), where $55 keeps it at $18/$19.
+//  3. ($28,A5) is the HEADING and ($28,A6) is the ANIMATION CURSOR -- one offset, two structures,
+//     both live in this handler. A5 is the record, A6 the sub-record.
+//  4. $8130D2 is tested as a WORD at $268EE2 and as a LONG at $268F4A and $269088. The long test
+//     covers $8130D4 too, so it checks BOTH pause globals at once.
+//  5. The damage arm INSPECTS ($1D,A6) before XORing: if it holds the sentinel $19 the base is
+//     substituted first. $49, $4B and $55 all XOR unconditionally.
+//  6. Arm 1 selects its target INLINE, honouring the ($3,A5) side preference via `exg A0,A1`.
+//     Arm 2 calls $24226E, which selects by the shared rule and ignores ($3,A5). The two arms can
+//     legitimately target DIFFERENT players in one frame. Do not unify them.
+//  7. ($1E,A5) and ($2E,A5) each have TWO reload sources. Read every reload site, not the first.
+const T1A = Object.freeze({
+  ported: false,
+  init: 0x268d1e, initBody: 0x268d26, handler: 0x268e6c,
+  recordProto: 0x268ddc, recordWords: 15,     // $268D3C moveq #$E,D0 -- copied to ($16,A5)
+  subProto: 0x268dfa, subRecords: 2,          // $268D1E move.w #$1,($4,A5) -- run length 1 = TWO
+  paletteRows: 0x268dd2, paletteRowCount: 5,  // W353 window $268DD2+$68 covers rows + both protos
+  artTable: 0x269246, artEntries: 4,          // W353 window $269246+$10, bounded by $1B's init
+  headingTable: 0x272c7a,                     // 32 longs, W-existing window $272C7A+$80
+  deltaTable: 0x272ffa,                       // already ported
+  vectorTable: 0x2735fa,                      // SHARED with $55 (T55.vectorTable), window from W30
+
+  damageMask: 0x5c, damageClear: 0xa3,        // the $5C family's fifth member
+  palBase: 0x1c, palXor: 0x1d,                // NOT $18/$19 -- see note 2
+  paletteSentinel: 0x19,                      // see note 5
+  hpGate: 0x7c0,                              // $268E9E
+  killScore: 0x350, deathCue: 0x28c2dc,       // $269160 / $26916C -- the cue $49 and $55 share
+  onScreenAt: 0x16,
+  boundsBias: Object.freeze([0x1000, 0x6e00]),  // SEPARATE adds -- see note 1
+  pauseAll: 0x8130d2,                         // word AND long tested -- see note 4
+  rankGlobal: 0x813092, clockGlobal: 0x8130ce,
+
+  headingAt: 0x28,                            // in the RECORD -- see note 3
+  cursorAt: 0x28, cursorStep: 4, cursorWrap: 0x10, cursorWrapDown: 0x0c,   // in the SUB-record
+  wobbleAt: 0x36, wobbleStep: 0x20, wobbleMask: 0x40,   // a SQUARE wave, not a sine
+  sideRefAt: 0x03,                            // the side preference -- see note 6
+
+  // The rank cascade at $268D50 ($813092 <= 1 keeps the first column):
+  //   ($2A,A5) = $4 low / $3 high  -> reloads ($2E,A5), arm 2's timer   FASTER at high rank
+  //   ($2B,A5) = $4 low / $6 high  -> reloads ($1E,A5), arm 1's timer   SLOWER at high rank
+  // Opposite directions, which is the whole point of the cascade.
+  rankArm2At: 0x2a, rankArm1At: 0x2b,
+  rankLow: Object.freeze([0x4, 0x4, 0x2]), rankHigh: Object.freeze([0x3, 0x6, 0x1]),
+
+  fanTimerAt: 0x1e, fanTimerReloadAt: 0x1f,   // ALSO reloaded from ($2B,A5) at $268FE0
+  fanGateAt: 0x22, fanGateReloadAt: 0x23,
+  burstAt: 0x20, burstReloadAt: 0x21,         // $55's ($2E/$2F) idiom at different offsets
+  fanGateX: 0x1000,                           // $268FD2
+  fan: Object.freeze({
+    emit: 0x281744,                           // the SAME emit $55's finale uses
+    shots: 7, backoff: 0x24, step: 0x0c,      // one emit per pass, NOT unrolled like $55's
+    // -$24 -$18 -$0C $00 +$0C +$18 +$24 -- exactly symmetric, which is the check on the reading.
+    angles: Object.freeze([-0x24, -0x18, -0x0c, 0x00, 0x0c, 0x18, 0x24]),
+    d0: 0x5,                                  // a WORD 5, where $55 passes the long $FFFF0005
+    // The speed bias is a $242B90 draw SWAPPED into the high word -- RANDOM per volley, where $55
+    // adds a fixed $02000000. Reusing $55's fan with a constant bias gives a uniform-speed volley.
+    speedFromRng: true,
+  }),
+
+  arm2TimerAt: 0x2e, arm2CountAt: 0x30, arm2CountReloadAt: 0x31,
+  arm2GapAt: 0x2f,                            // ($2E,A5)'s OTHER reload -- burst-within-a-burst
+  muzzleAimAt: Object.freeze([0x32, 0x33]), muzzleAimFallback: 0x80,
+  muzzleYOffset: 0x680, muzzleXOffset: -0x600,
+  muzzle: Object.freeze({
+    emit: 0x281708,                           // the third emit-family member
+    d0: 0x20016,
+    // $FA000680 and $F9FFF980. The BORROW rule makes both Xbias $FA00 with Ybias +/-$680: $F980 is
+    // negative so $F9FF + 1 = $FA00. Reading $F9FF literally puts muzzle 2 one unit off in X.
+    bias: Object.freeze([0xfa000680, 0xf9fff980]),
+    // The aim jitter is `asr.b #2` of a $242B3C draw -- ARITHMETIC, so signed: -32..+31, centred.
+    jitterShift: 2, jitterSigned: true,
+  }),
+
+  drawStubs: Object.freeze([0x23d762, 0x23dece]),   // BOTH, at $269058 and $26907A
+  noopJsr: 0x26331c,                          // a bare `rts`. Nothing to port; do not hunt for it.
+  // The death arm, $269160..$26925C: killScore, cue, burstBucket with X bias $F800, then a RANK-4-
+  // EXACTLY and clock < $2B0 gated MIRROR burst with X bias $0800, then THREE spawnEffect calls --
+  // kind $D, kind $5, kind $5 -- whose field setups look alike and carry DIFFERENT velocities.
+  burstBucket: 0x289b22,
+  burstBias: Object.freeze([0xf8000000, 0x08000000]),
+  rank4Exactly: 4, rank4ClockBelow: 0x2b0,
+  spawnEffect: 0x289004,
+  deathEffectKinds: Object.freeze([0xd, 0x5, 0x5]),
+});
+
 /** The map of ported handler addresses -> functions, for the enemy driver. */
 export function handlerMap() { return HANDLERS; }
 export const HANDLER_ADDRESSES = [...HANDLERS.keys()];
@@ -8996,6 +9098,6 @@ export const HANDLER_ADDRESSES = [...HANDLERS.keys()];
 // own table at `$267824` on every run, so the prose claims stop being load-bearing.
 export const TYPE_SPECS = Object.freeze(new Map([
   [0x01, T01], [0x1b, T1B], [0x43, T43], [0x45, T45], [0x47, T47], [0x48, T48],
-  [0x46, T46], [0x49, T49], [0x4a, T4A], [0x4b, T4B], [0x55, T55], [0x59, T59],
+  [0x1a, T1A], [0x46, T46], [0x49, T49], [0x4a, T4A], [0x4b, T4B], [0x55, T55], [0x59, T59],
   [0x81, T81], [0x8e, T8E],
 ]));
