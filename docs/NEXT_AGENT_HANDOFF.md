@@ -159,10 +159,26 @@ documents the whole region -- this was investigated long before this wave:
 And `bulletdriver.js` documents that `$281CE0 move.w $81B412,D0 / bmi` **forks on the SIGN of `$81B412`**, so the
 family members differ in what they arm it to: `$0` walks 210 slots, `$FFFF` returns immediately.
 
-**So `$243DD0` is a small variant of a ported routine, not new work.** Its own first 28 bytes read
-`tst.w $81B410` then compare `$81B412` against `$20` and `$3C` -- both globals already modelled (4 and 5 code
-mentions) -- so its inputs exist and its siblings are written. **Read `armScreenClear` and `$243DA0`'s note
-first; the差 is likely one constant.**
+**So `$243DD0` is a small variant of a ported routine, not new work. READ IN FULL, it is a 28-byte GUARD:**
+
+    243dd0  tst.w $81B410      / beq $243DEE     armWord zero        -> fall through to the body
+    243dd8  cmpi.w #$20,$81B412 / bcs $243DEE    modeWord below $20  -> fall through to the body
+    243de2  cmpi.w #$3C,$81B412 / bhi $243DEE    modeWord above $3C  -> fall through to the body
+    243dec  rts                                   IN the window [$20,$3C] -> RETURN, do nothing
+
+**The polarity is the whole point and it is easy to invert.** All three branches go to `$243DEE`, the shared
+body; the FALL-THROUGH is the `rts`. So the routine **does nothing when `$81B410` is set AND `$81B412` is within
+`[$20,$3C]`**, and otherwise runs the body. `bcs` is UNSIGNED below and `bhi` UNSIGNED above, so it is an
+unsigned window test, not a signed range.
+
+**`$81B410` and `$81B412` are `armWord` and `modeWord`** -- named in `bomb.js:235` as exactly that, and
+`bomb.js:185` records `cancel: 0x243da0` with `$81B412 := $FFFF`. So `$FFFF` (as unsigned `$FFFF`) is ABOVE
+`$3C`, meaning **a cancelled bomb takes the `bhi` exit and the body RUNS.** That is a real behavioural
+consequence of reading the comparison as unsigned.
+
+**So writing `$243DD0` is: the three-test guard, then whatever `$243DEE` is** -- and `$243DEE` is shared with the
+family, so check whether `armScreenClear` already covers it before writing a body. **The guard is the new part,
+and it is nine instructions.**
 
 **That is the FOURTH time this session that "unported" resolved to "member of a family the port already has"**
 after `$242B90`/`$242B3C`, `$26331C`'s stub siblings, and `$263684`/`enqueueDeferred`. **The pattern is strong
