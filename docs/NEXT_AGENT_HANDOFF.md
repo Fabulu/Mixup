@@ -5496,7 +5496,28 @@ are the kind byte and three fields on the first. **A port that factored these in
 have to get the "extra three fields only on the first" right**, and the symmetry actively invites collapsing them.
 Write them out, or parameterise explicitly.
 
-Still to read: `$2691F4` to the death arm's end.
+**THREE effect spawns, not two, and the death arm ENDS at `$26925C`.** Counted from the bytes rather than read
+span by span:
+
+    2691aa  kind $D    ($26,A0)=$400   ($28,A0)=0      ($10,A0)=1   ($12/$14,A0)=0/0
+    2691dc  kind $5     ...            ...             ...          ($12,A0)=0
+    26920e  kind $5    ($26,A0)=$F800  ($28,A0)=$600   ($10,A0)=1   ($14,A0)=$400
+    26925c  rts
+
+**Correction to the previous entry:** I wrote that both `$5` effects were set up near-identically. They are not --
+the second gets `($14,A0) = $400`, `($26,A0) = $F800` and `($28,A0) = $600`, where the first cleared `($12,A0)`.
+So the three spawns are a `$D` plus **two `$5`s with different velocity vectors**: a debris spray, not a repeat.
+
+**That is the same trap I had just finished warning about, and I walked into it one commit later.** The blocks look
+alike for eleven instructions and then diverge in the fields that carry the motion. **Counting the call sites first
+(`jsr $289004` appears exactly three times between `$269160` and the `rts` at `$26925C`) would have given the shape
+in one command instead of three reads and a retraction** -- the same move that settled `$55`'s fan (three emits) and
+`$1A`'s (one).
+
+**`$1A` IS NOW READ END TO END: init `$268D1E..$268DD2`, tables, handler `$268E6C..$26915E`, death arm
+`$269160..$26925C`.** Fourteen callees, every one already ported. Two windows declared (445 -> 447).
+
+Still to read: `$26921A..$26925C`, the third spawn's field tail.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
