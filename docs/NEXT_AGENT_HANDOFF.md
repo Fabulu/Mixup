@@ -43,9 +43,27 @@ this build**, not an oddity of `$1A`: five call sites across two types, all pass
 single `rts`. **Transcribe the calls and do nothing in them.** Anyone who "implements" it will be inventing a
 subsystem the cartridge switched off.
 
-**Hibachi is therefore a FOUR-part object** (four `$26331C` calls at `$20` intervals), where `$4C` has five and
-`$1A` two. And `$2A6B94` is the first genuinely unported callee -- read it before anything else, since it runs
-before every other line of the handler.
+**RETRACTED WITHIN THE WAVE: Hibachi is an ELEVEN-part object, not four.** I counted four `$26331C` calls
+because I had read only the first fourteen disassembly lines. Counting the call sites across the whole handler
+(rule 8, which I should have applied first) gives **eleven**, and the ORDER is the finding:
+
+    ROM order:  $0 $20 $40 $60 $80 $A0 $C0  $1A0  $140 $160 $180
+    sorted:     $0 $20 $40 $60 $80 $A0 $C0  $140 $160 $180 $1A0
+
+**`$1A0` is called SEVENTH, out of sequence, between `$C0` and `$140`.** Ten of the eleven are in ascending
+order and one is deliberately displaced. **That is not a loop and cannot be written as one** -- a port that
+iterated `for (let p = 0; p <= 0x1A0; p += 0x20)` would both visit `$E0`, `$100` and `$120` (which are NOT
+called) and get `$1A0` in the wrong position.
+
+**Also note the gap:** `$C0` to `$140` skips `$E0`, `$100` and `$120`. So the eleven parts are not contiguous
+either. **The call list is data, not a range** -- transcribe the eleven offsets in ROM order.
+
+`$4C` has five parts addressed by offset with no loop; Hibachi has eleven, also by offset, also with no loop,
+and with one deliberately out of order. **Same architecture, and in both cases the temptation to write a loop is
+the trap.**
+
+And `$2A6B94` is the first genuinely unported callee -- read it before anything else, since it runs before every
+other line of the handler.
 
 ## TYPE $4C (W354, OPENED) -- the "eight state handlers" claim is WRONG
 
