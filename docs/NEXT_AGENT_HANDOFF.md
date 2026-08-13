@@ -11,6 +11,40 @@ Updated: 2026-08-12
 `ported: false`), `$4C` (1 record, init ported, eight state handlers ~2300 bytes unread), `$B0` (1, Hibachi).
 `$55` and `$46` both shipped in this session. Publish due after W355.
 
+## TYPE $4C (W354, OPENED) -- the "eight state handlers" claim is WRONG
+
+These notes have long said `$4C` has "eight state handlers (~2300 bytes)" with `$26F858`/`$26F86A`,
+`$26F994`/`$26F9A2`, `$26FA5E`/`$26FA82`, `$26FF9E`, `$26FFE8` unported. **Rule 8 (count before reading) settles
+the structure in four scans, and the claim does not survive it.**
+
+`claimed.py` on all eight: UNCLAIMED. **But they are all INSIDE `$4C`'s own span** (`$26F4E2` onward), so they are
+internal arms, not external callees -- there is nothing separate to port. Listing them as unported callees
+overstated the work by eight routines.
+
+**What `$4C` is NOT:**
+
+* **No `cmpi.b` cascade on the record.** Scanning `$26F5F2..$270100` for `cmpi.b #imm,(d16,A5)` (`0c2d`) finds
+  **ZERO** sites -- where every other band member dispatches exactly that way on `($17,A5)`.
+* **No jump table.** The only indirect call in the span is a single `jsr (A0)` at `$26F87C`. No
+  `jmp/jsr (A0,Dn)` anywhere.
+* **No self-rewriting dispatch.** `move.l #imm,($4C,A5)` (rewriting the record's cached handler pointer, the
+  mechanism W348 found the driver calling through) appears **zero** times.
+
+**What it IS: a THREE-state machine on `($86,A6)`, in the SUB-RECORD at a large offset.**
+
+    270094  cmpi.b #$00,($86,A6)
+    270014  cmpi.b #$01,($86,A6)
+    270000  cmpi.b #$02,($86,A6)
+
+Three sites, three values, `$0`/`$1`/`$2`, scanned across `$26F4E2..$270400`. **This is rule 2 in its purest
+form**: the state byte is not at a record offset at all, which is why four scans for record-based dispatch found
+nothing. `$4C` also carries `cmpi.b` tests on `($2A,A6)` (`$1`/`$2`) and `($1A,A6)` (`$8`, twice), so it has
+sub-fields the other members do not.
+
+**So `$4C` is very likely much smaller than "eight handlers over 2300 bytes" suggests, and the next pass should
+start by finding where the three state arms actually begin** rather than reading forward from `$26F5F2`. It is
+ONE script record, so it is also the cheapest remaining type by reachable behaviour.
+
 ### THE BAND RULES -- earned across W345..W353, every one after getting it wrong first
 
 The stage-5 band (`$43 $46 $47 $48 $49 $4A $4B $4C $55 $1A`) shares its MECHANISMS almost completely and agrees
