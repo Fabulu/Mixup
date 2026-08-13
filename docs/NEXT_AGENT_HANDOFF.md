@@ -5316,7 +5316,35 @@ Same resulting memory, so this one is safe either way -- but it is the explicit 
 there the cartridge writes a word and a port must see two fields; here it writes two bytes and they really are
 two fields. **The cartridge's chosen width is the documentation.**
 
-Still to read: `$2690CE` onward, the arm at `$2690F6`, and the death arm at `$269160`.
+### The second arm is TWO MUZZLES, and it uses a DIFFERENT target-selection route
+
+    2690c2  movem.w ($2,A6),D0-D1
+    2690c8  addi.w #-$600,D0 / addi.w #$680,D1     muzzle 1: X-$600, Y+$680
+    2690d0  jsr $24226E                            aim256, the SELF-SELECTING entry
+    2690d6  bcs $2690F6                            no target -> skip BOTH stores
+    2690da  move.b D1,($32,A5)                     aim 1
+    2690de  movem.w ($2,A6),D0-D1                  position RELOADED
+    2690e4  addi.w #-$600,D0 / addi.w #-$680,D1    muzzle 2: X-$600, Y-$680  (sign flipped)
+    2690ec  jsr $24226E
+    2690f2  move.b D1,($33,A5)                     aim 2
+
+**`($32,A5)` and `($33,A5)` are two independent muzzle headings**, aimed from points `±$680` in Y off the
+record's own position with a shared `X-$600` offset. That is what the `move.b #$80` pair at `$2690B6`/`$2690BC`
+was pre-seeding: **`$80` is the no-target fallback**, the same fallback constant `$55` uses at its carry exit.
+And `bcs` fires on the FIRST aim only, so a missing target leaves BOTH muzzles at `$80` rather than aiming one.
+
+**`$1A` USES TWO DIFFERENT TARGET-SELECTION ROUTES IN ONE HANDLER.** Arm 1 at `$268F6E` selects inline --
+`lea $8103E6,A0 / lea $810448,A1 / tst.b ($3,A5) / exg A0,A1` -- honouring a per-record side preference. Arm 2
+here calls `$24226E`, which does its own `bsr $24270A` selection by the shared rule and ignores `($3,A5)`
+entirely. **So the two arms can legitimately target different players in the same frame.** Anything that
+"unified" them would be wrong, in whichever direction it unified.
+
+**And `rosetta.py` misaligned a FIFTH time** at `$2690CE`, where the true boundary is `$2690CC` -- it rendered
+`addi.w #$680,D1` plus a `jsr` as `addi.l #$4EB90024,D0` and four lines of garbage. Five occurrences across three
+types. **Always pass an address you have arrived at by adding up instruction lengths, and reject any output whose
+first line differs.**
+
+Still to read: the arm at `$2690F6` and the death arm at `$269160`.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
