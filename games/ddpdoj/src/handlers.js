@@ -9795,11 +9795,13 @@ function state2_4C(ram, rom, a5, a6, ctx) {
   // The two spawns' own biases STRADDLE a boundary -- $0C7FF600 and $0C800A00 -- the same mirrored
   // shape as the draw pairs. Folding them to one value puts both volleys on top of each other.
   for (const [addBias, cursorAt, step] of [[0x0c7ff600, 0x2a, +4], [0x0c800a00, 0x2b, -4]]) {
+    // enqueueDeferred returns { addr, dropped } -- NOT a bare address. `spawnEffect` returns the
+    // opposite, which is why this cannot be recalled and must be read (sibling: handlers.js:3180).
     const q = enqueueDeferred(ram, 0x52, DEFQ_D1.FIXED00);   // $26FC72 / $26FC9A jsr $263684
-    if (q) {
-      ram.setU32(q + 0x16,                                   // $26FC86 / $26FCAE
+    if (!q.dropped) {
+      ram.setU32(q.addr + 0x16,                              // $26FC86 / $26FCAE
         u32(u32(ram.u32(a6 + 0x02) + addBias) + rom.u32(bias)));      // add.l (A4),D0
-      ram.setU8(q + 0x1a, ram.u8(a6 + cursorAt));            // $26FC8A / $26FCB2
+      ram.setU8(q.addr + 0x1a, ram.u8(a6 + cursorAt));       // $26FC8A / $26FCB2
     }
     ram.setU8(a6 + cursorAt, (ram.u8(a6 + cursorAt) + step) & 0x3f);  // $26FC90 / $26FCB8
   }
@@ -9844,16 +9846,16 @@ function sub26F9A2(ram, rom, a5, a6, ctx) {
   // TWO children of type $4E at the two part-3 draw biases: the fifth mirrored pair in this type.
   for (const b of [0xfc3fec80, 0xfc401380]) {                       // $26F9F8 / $26FA14
     const c = enqueueDeferred(ram, 0x4e, DEFQ_D1.FIXED00);          // $26F9EC/$26F9EE moveq #$4E
-    if (c) {
-      ram.setU32(c + 0x16, u32(ram.u32(a6 + 0x02) + b));            // $26F9FE / $26FA1A
-      ram.setU16(c + 0x1a, b === 0xfc3fec80 ? 0xfa00 : 0x0600);     // $26FA02 / $26FA1E
+    if (!c.dropped) {
+      ram.setU32(c.addr + 0x16, u32(ram.u32(a6 + 0x02) + b));       // $26F9FE / $26FA1A
+      ram.setU16(c.addr + 0x1a, b === 0xfc3fec80 ? 0xfa00 : 0x0600); // $26FA02 / $26FA1E
     }
   }
   const q = enqueueDeferred(ram, T4C.spawnChild, DEFQ_D1.FIXED00);        // $26FA0A jsr $263684
-  if (q) {
+  if (!q.dropped) {
     // The SAME bias as the $26F7D2 draw half, so the shot leaves from the muzzle that is drawn.
-    ram.setU32(q + 0x16, u32(ram.u32(a6 + 0x02) + 0xfc401380));           // $26FA14/$26FA1A
-    ram.setU16(q + 0x1a, 0x0600);                                        // $26FA1E
+    ram.setU32(q.addr + 0x16, u32(ram.u32(a6 + 0x02) + 0xfc401380));      // $26FA14/$26FA1A
+    ram.setU16(q.addr + 0x1a, 0x0600);                                   // $26FA1E
   }
   // $26FA24..$26FA52 -- RETRACT both halves toward zero. These are the draw pair's partAdd/partSub, so
   // they are ANIMATED, not constants: the halves extend and close symmetrically.
@@ -9893,8 +9895,8 @@ function sub26FA82(ram, rom, a5, a6, ctx) {
   const half = drawWord242EC2(ram, ctx) & 1;                 // $26FB58/$26FB5E andi.w #$1
   const p4 = T4C.draws.filter((d) => d.part === 4)[half];    // $26FB62 bne -- the other half
   const shot = enqueueDeferred(ram, 0x50, DEFQ_D1.FIXED00);  // $26FB66 moveq #$50,D0
-  if (shot) {                                                // $26FB72/$26FB78
-    ram.setU32(shot + 0x16, u32(ram.u32(a6 + 0x02) + p4.biases[0]));
+  if (!shot.dropped) {                                       // $26FB72/$26FB78
+    ram.setU32(shot.addr + 0x16, u32(ram.u32(a6 + 0x02) + p4.biases[0]));
   }
   ram.setU16(a6 + T4C.partSetters[1].clears[0], 1);          // $26FB7C -- the $66 companion
 }

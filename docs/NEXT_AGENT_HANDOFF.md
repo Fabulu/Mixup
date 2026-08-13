@@ -9,6 +9,25 @@ Updated: 2026-08-13 (W372)
 **`handler4C` IS PLACED.** Stage 5 now has **zero types without a handler**. The draft, its import delta and the
 placement checklist that produced it are still below for reference, but **that job is done** -- do not redo it.
 
+### OPEN DEFECT IN `handler4C` -- IT CORRUPTS `($6,A5)` OVER A LONG RUN
+
+**Driving 4000 frames throws `$8eec0ed2 is outside main RAM`** from `drawAll4C`'s `ram.u32(a6 + 0x02)`. That value is
+a POSITION LONG, so **`($6,A5)` -- the sub-record pointer A6 is read from -- is being overwritten.** The handler
+never writes `($6,A5)` itself, so the suspect is a callee reached only deep in the state machine: `buildParts246520`
+on the death path, or a spawn write running with a bad `q.addr`.
+
+**What IS proven** (see `w372type4crun.test.js`): the handler runs, a frozen frame takes the draw-only path, the
+retire arm releases `$8130DE`, ten frames are clean, and state 0's two-stage timer fires and flips the draw variant.
+**What is NOT proven is anything past a few hundred frames.**
+
+**Two real bugs were already fixed by driving it**, both invisible to every static check:
+
+* `retireCheck4C(ram, a6)` against a five-parameter definition -- an ARITY mismatch. There is now a source-text
+  audit test that checks every `$4C` call site against its definition.
+* **`enqueueDeferred` returns `{ addr, dropped }`, NOT a bare address**, and the draft used `q + 0x16` in FIVE
+  places. `spawnEffect` returns the opposite, which is exactly why this cannot be recalled -- read
+  `handlers.js:3180` for the sibling idiom.
+
 ### THE NEXT JOB: `$1A` CANNOT SPAWN
 
 **Stage 5 is handler-complete but NOT spawn-complete.** `$1A` has a written, registered handler and **no registered

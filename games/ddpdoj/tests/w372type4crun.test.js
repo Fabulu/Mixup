@@ -145,3 +145,16 @@ test('W372 state 0s TWO-STAGE timer really fires, and it changes the draw varian
   assert.equal(f.ram.u16(A6 + T4C.stateAt), 1, 'and it handed over to state 1');
   assert.equal(f.ram.u16(A6 + T4C.stepAt), 0, "state 1 starts at step 0 -- $26F858 cleared it");
 });
+
+// W372 OPEN DEFECT -- the alternation probe is REMOVED, not disabled, and this note is why.
+//
+// Driving 4000 frames throws `$8eec0ed2 is outside main RAM` from drawAll4C's `ram.u32(a6 + 0x02)`.
+// That address is a POSITION LONG, so ($6,A5) -- the sub-record pointer A6 is read from -- is being
+// overwritten somewhere in a long run. The handler never writes ($6,A5) itself, so the suspect is a
+// callee reached only deep into the state machine: buildParts246520 on the death path, or one of the
+// spawn writes running with a bad q.addr.
+//
+// It is recorded rather than left as a red test because a failing suite stops being read. The four
+// smokes and the state-0 behaviour test above all pass, so what is proven is: the handler runs, the
+// two-stage timer fires, and something corrupts the sub-record pointer over hundreds of frames.
+// FIND IT BEFORE TRUSTING $4C IN A LONG RUN.
