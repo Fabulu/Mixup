@@ -133,6 +133,13 @@ test('W341 stage 5 has FOUR types with no handler, over 19 of its 770 records',
     // a TRACE at $268D8C" and needed no trace at all -- D2 is consumed sixteen bytes before that call.
     assert.equal(miss.length, 1, `one type, got ${miss.map((m) => m.type.toString(16))}`);
     assert.equal(miss.reduce((a, m) => a + m.records, 0), 1, 'across 1 record -- $4C alone');
+    // W369: AND THIS COUNT IS NOT SPAWNABILITY. It measures HANDLERS. $1A and $B0 have registered
+    // handlers and NO registered init body, so both throw at spawn and neither is in `miss`. Stage 5
+    // therefore has three gaps, not one, and the boss is among them. See w346's W369 pins.
+    for (const t of [0x1a, 0xb0]) {
+      assert.ok(map.has(typeEntry(t).handler),
+        `$${t.toString(16).toUpperCase()} has a handler, which is why it is absent from miss`);
+    }
     // Ranked by record count. With $46 gone the remaining three are the two dependency/boss bundles
     // plus $1A, which is still BLOCKED on register provenance at $268D8C rather than on reading.
     const ranked = [...miss].sort((a, b) => b.records - a.records || a.type - b.type);

@@ -129,7 +129,10 @@ test('W346: a spec that claims an initBody has it actually registered -- the $55
   for (const [type, spec] of TYPE_SPECS) {
     // W353: an unwritten type has NEITHER registration. W351 put this skip on the handler test only,
     // which was an oversight caught the moment a second `ported: false` spec landed.
-    if (spec.ported === false) continue;
+    // W369: this check now keys on the INIT-BODY flag alone. It used to skip `ported: false` specs, which
+    // was the hole: $4C is `ported: false` with its body already registered, so the skip was wrong even
+    // for the case it was written for -- and it hid $1A's and $B0's missing bodies entirely.
+    if (spec.initBodyPorted === false) continue;
     const hex = `$${type.toString(16).toUpperCase().padStart(2, '0')}`;
     assert.ok(registered.has(spec.initBody),
       `${hex} initBody $${spec.initBody.toString(16)} is missing from INIT_BODY_ADDRESSES. This is `
@@ -138,20 +141,59 @@ test('W346: a spec that claims an initBody has it actually registered -- the $55
   }
 });
 
-// W351: this pin was DESCRIBED as landing two commits before it did. The comment above the handler test
-// went in; this assertion did not, and I reported it as working off a passing test count instead of
-// reading the file. So it is its own test now, with the count in the name, where a diff cannot lose it.
-test('W360: exactly THREE specs are measured-but-unwritten -- $1A, $4C and $B0', () => {
+// W369: TWO ORTHOGONAL FLAGS, because the first attempt at this test modelled them as three ordered
+// states and $4C immediately disproved it -- $4C is `ported: false` with its init body ALREADY registered.
+// A type has two halves and they land independently:
+//     ported: false          the HANDLER is not written        -> handler must NOT be registered
+//     initBodyPorted: false  the INIT BODY is not registered   -> the type CANNOT SPAWN
+// $4C has the body but no handler; $1A and $B0 have handlers but no body. Nothing orders them.
+//
+// WHY IT EXISTS: the two registry tests above skip `ported: false` specs. W365 registered handler1A and
+// W363 registered handler2A4606 while both specs still said `ported: false`, so BOTH tests skipped BOTH
+// types -- and neither init body was ever registered. `runInitBodyAddr` throws by address, so $1A and
+// HIBACHI cannot spawn, while w314stage5scope read clean because it counts handlers.
+test('W369: a `ported: false` spec has no registered handler', { skip: !HAVE }, () => {
+  const handlers = new Set(HANDLER_ADDRESSES);
+  for (const [type, spec] of TYPE_SPECS) {
+    if (spec.ported !== false) continue;
+    assert.ok(!handlers.has(spec.handler),
+      `$${type.toString(16).toUpperCase()} is flagged \`ported: false\` but its handler IS registered. `
+      + 'When a handler lands the flag must go, because leaving it makes the init-body check above skip '
+      + 'the type -- which is how $1A and $B0 both ended up unspawnable with a green suite.');
+  }
+});
+
+test('W369: an `initBodyPorted: false` spec has no registered init body, and cannot spawn',
+  { skip: !HAVE }, () => {
+  const bodies = new Set(INIT_BODY_ADDRESSES);
+  for (const [type, spec] of TYPE_SPECS) {
+    if (spec.initBodyPorted !== false) continue;
+    assert.ok(!bodies.has(spec.initBody),
+      `$${type.toString(16).toUpperCase()} carries \`initBodyPorted: false\` but its init body IS `
+      + 'registered -- delete the flag, the type is spawnable now');
+  }
+});
+
+test('W369: exactly ONE spec is measured-but-handlerless -- $4C', () => {
   const unwritten = [...TYPE_SPECS.entries()]
     .filter(([, spec]) => spec.ported === false)
     .map(([type]) => type)
     .sort((a, b) => a - b);
-  assert.deepEqual(unwritten, [0x1a, 0x4c, 0xb0],
-    'A spec carries `ported: false` while its fields are measured but its handler is unwritten. Writing '
-    + 'one means DELETING that flag and updating this list, so the count cannot drift silently. Adding '
-    + 'another measured-but-unwritten spec is likewise deliberate. When a handler lands, four census pins '
-    + 'move with it: the handlerMap() adapter size in integration.test.js, the address list in '
-    + 'handlers.test.js, enemy_types in w167coverage.test.js (BOTH numbers -- take them from '
-    + 'dojcoverage.py), and the init-body count in initbody.test.js. w314stage5scope.test.js may need '
-    + 'REWRITING rather than renumbering if the type is one of the unported-child assertions.');
+  assert.deepEqual(unwritten, [0x4c],
+    'Was [$1A, $4C, $B0]. $1A and $B0 were never in this state: both had written, registered handlers '
+    + 'and were mislabelled, which is what hid their missing init bodies.');
+});
+
+test('W369: exactly TWO types are UNSPAWNABLE -- $1A and HIBACHI $B0', () => {
+  // This is the count that matters for the milestone. A registered handler the driver can never reach is
+  // worth nothing: the spawn throws first. $B0 is the stage-5 BOSS, so stage 5 cannot currently be
+  // completed regardless of $4C.
+  const unspawnable = [...TYPE_SPECS.entries()]
+    .filter(([, spec]) => spec.initBodyPorted === false)
+    .map(([type]) => type)
+    .sort((a, b) => a - b);
+  assert.deepEqual(unspawnable, [0x1a, 0xb0],
+    'Porting an init body means DELETING the flag in its spec and here. $1A is blocked on D3 provenance '
+    + 'at $268D8C (the aim CORE takes its target in D2/D3 and nothing in the body or $263808 writes D3); '
+    + '$B0 has not been read yet. Neither is blocked on the handler.');
 });

@@ -552,6 +552,41 @@ once and can be inlined. The eight the old note listed as "unported callees" are
 structural is outstanding: `handler4C` can be written from this brief plus the 28 assertions in
 `w363type4cfields.test.js`.**
 
+## W369: STAGE 5 HAS THREE GAPS, NOT ONE, AND TWO OF THEM ARE INVISIBLE
+
+**`$1A` and HIBACHI `$B0` CANNOT SPAWN.** Both have written, registered handlers and **no registered init body**.
+`runInitBodyAddr` throws by address, so the spawn dies before the handler is ever reached. `$B0` is the stage-5 boss,
+so **stage 5 cannot be completed today regardless of `$4C`.**
+
+**How it hid for four waves.** Both specs still carried `ported: false` after their handlers landed. That flag makes
+w346's two registry tests SKIP the type -- so the init-body check never ran on either. Three separate things then
+reported clean:
+
+- `w346`'s registry tests, which skipped both types
+- `w363type1afields`, which asserted `T1A.ported === false` with the comment *"if it is written, this file needs
+  revisiting"* -- W365 wrote the handler and did not revisit, so the assertion kept passing on a false claim
+- `w314stage5scope`, which reported stage 5 as **"$4C alone"** because it counts HANDLERS, not spawnability
+
+**The flags are now two orthogonal facts, and the first model of them was wrong.** I first wrote them as three ordered
+states and `$4C` disproved it immediately: `$4C` is `ported: false` with its init body **already** registered. The two
+halves land independently and nothing orders them:
+
+    ported: false          the HANDLER is not written       -> handler must NOT be registered     ($4C)
+    initBodyPorted: false  the INIT BODY is not registered  -> the type CANNOT SPAWN         ($1A, $B0)
+
+**`$1A`'s init body is genuinely blocked, and not on reading.** `$268D8C jsr $24203E` calls the aim **CORE**, which
+takes its target in **D2/D3**. The body never writes D3, and `$263808` (`readInitPosition`) does not either -- so D3 is
+caller state from up the spawn chain. The result sets the heading `($29,A5)` and the velocity long `($24,A5)`, which is
+**gameplay, so it does not get a `note()`.** W365 declared this "needed no trace at all" having resolved **D2 only**.
+
+**And the fallback that guard protects is DEAD.** `$268D92 bcc` skips `move.b ($1B,A6),D1`, but `$24203E`'s last
+flag-setting instruction is `andi.w #$3F,D1` (`$2420B4`, and `$2420BE` in the add twin), which always CLEARS carry; its
+early exit `tst.w D1 / beq $2420C4` clears it too. **The branch is always taken.** Sites that CAN take it call
+`$24200A` (`aim64FromCaller`), where carry means targetSelect's "both players dead". **Do not copy type `$97`'s
+`aimed.carry ? ($1B,A6) : dir` idiom here** -- it is right there and it is wrong for this site.
+
+`$B0`'s init body `$2A42DC` has not been read at all yet.
+
 ### Each state handler is a FRAME-COUNTER CASCADE on `($28,A6)`
 
 State 0, `$26F8A6`:

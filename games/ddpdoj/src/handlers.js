@@ -9016,8 +9016,29 @@ function handler46(ram, rom, a5, ctx) {
 //     Arm 2 calls $24226E, which selects by the shared rule and ignores ($3,A5). The two arms can
 //     legitimately target DIFFERENT players in one frame. Do not unify them.
 //  7. ($1E,A5) and ($2E,A5) each have TWO reload sources. Read every reload site, not the first.
+// W369: `$1A` IS NOT SPAWNABLE, and the flag below is the whole reason that was invisible for four waves.
+// W365 wrote handler1A and REGISTERED it, but left `ported: false` here. That flag makes the two registry
+// tests in w346 SKIP the type -- so nobody noticed that the init body $268D26 was never registered at all.
+// A missing body is not silent: `runInitBodyAddr` throws by address. So every $1A spawn in stage 5 throws,
+// the handler is unreachable, and the stage-5 scope test still reported "$4C alone" because it counts
+// HANDLERS, not spawnability.
+//
+// `ported: false` cannot describe this: the handler IS written. The state is HANDLER PORTED, INIT BODY NOT,
+// so it gets its own flag, and W369 asserts all three states agree with the registries.
+//
+// THE BLOCK IS REAL. $268D8C `jsr $24203E` calls the aim CORE, which takes its target in D2/D3. This body
+// never writes D3, and $263808 (readInitPosition) does not either -- so D3 is caller state from somewhere up
+// the spawn chain, and the result feeds the record's heading ($29,A5) and velocity long ($24,A5). That is
+// gameplay, not cosmetics, so it does not get a note(). W365 declared this "needed no trace at all" having
+// resolved D2 only; D3 was never addressed.
+//
+// AND THE FALLBACK IS DEAD. $268D92 `bcc` guards `move.b ($1B,A6),D1`, but $24203E's last flag-setting
+// instruction is `andi.w #$3F,D1` ($2420B4, and $2420BE in the add twin), which always CLEARS carry; its
+// early exit is `tst.w D1 / beq $2420C4`, which clears it too. So the branch is always taken and $268D94
+// never runs. Sites that CAN take it call $24200A (aim64FromCaller), where the carry is targetSelect's
+// "both players dead". Do not copy the $97 idiom's `aimed.carry ? ($1B,A6) : dir` here.
 const T1A = Object.freeze({
-  ported: false,
+  initBodyPorted: false,
   init: 0x268d1e, initBody: 0x268d26, handler: 0x268e6c,
   recordProto: 0x268ddc, recordWords: 15,     // $268D3C moveq #$E,D0 -- copied to ($16,A5)
   subProto: 0x268dfa, subRecords: 2,          // $268D1E move.w #$1,($4,A5) -- run length 1 = TWO
@@ -9267,7 +9288,15 @@ const T4C = Object.freeze({
 // ============================================ TYPE $B0 -- HIBACHI (W357/W360) ============
 // The boss-route root, ONE script record, and the type these notes long said "wants the HIBACHI CLOSURE
 // RULE and a trace". IT WANTS NEITHER. Its handler is 170 bytes and needed no trace at all.
-// STRUCTURE SETTLED, BODY NOT YET WRITTEN -- `ported: false` keeps the suite honest.
+//
+// W369: THE FLAG HERE WAS WRONG THE SAME WAY $1A's WAS, and this is the more serious of the two. It read
+// `ported: false` meaning "the boss BODY $2A6B94 is not written" -- but W363 REGISTERED handler2A4606, and
+// `ported: false` makes w346's two registry tests skip the type. So nobody checked the INIT body $2A42DC,
+// which is not registered either. `runInitBodyAddr` throws by address, so HIBACHI CANNOT SPAWN, and the
+// stage-5 scope test read clean because it counts handlers.
+//
+// Two different meanings of "body" collided: the boss body (a deliberate note()) and the init body (simply
+// absent). The flag now says exactly which is missing.
 //
 // THE HANDLER DOES EXACTLY TWO THINGS. Everything else in it is disabled:
 //
@@ -9286,7 +9315,7 @@ const T4C = Object.freeze({
 // stage machine works, so this handler is the junction the endings (D37) run through -- though selection
 // happens DOWNSTREAM of $242952, not here. $25A17A looked like the selection point and is a bare rts.
 const TB0 = Object.freeze({
-  ported: false,
+  initBodyPorted: false,
   init: 0x2a42d4, initBody: 0x2a42dc, handler: 0x2a4606,
   // High table: $27E412 + ($B0 - $80) * 8 = $27E592. W347's formula, correct on first use.
   handlerEnd: 0x2a46b0,

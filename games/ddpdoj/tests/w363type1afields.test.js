@@ -24,9 +24,17 @@ const IMG = existsSync(IMAGE) ? readFileSync(IMAGE) : null;
 const SKIP = IMG ? false : 'the ROM image is absent; skip, not pass';
 const T1A = TYPE_SPECS.get(0x1a);
 
-test('W363 T1A exists and is still marked unwritten', { skip: SKIP }, () => {
+test('W369 T1A: the handler IS written, and the type still cannot spawn', { skip: SKIP }, () => {
   assert.ok(T1A, 'T1A is registered in TYPE_SPECS');
-  assert.equal(T1A.ported, false, 'handler1A is not written; if it is, this file needs revisiting');
+  // W363 asserted `T1A.ported === false` with the comment "if it is, this file needs revisiting". W365
+  // wrote and registered handler1A and did NOT revisit -- it left the flag, so this assertion kept
+  // passing on a false claim, and the stale flag then made w346's registry tests skip the type entirely.
+  // That is how the missing init body $268D26 stayed invisible for four waves.
+  assert.equal(T1A.ported, undefined, 'the handler is written, so there is no `ported: false` flag');
+  assert.equal(T1A.initBodyPorted, false,
+    'but the INIT BODY is not registered, so every $1A spawn throws from runInitBodyAddr. The block is '
+    + 'D3 provenance at $268D8C: the aim CORE takes its target in D2/D3, and neither this body nor '
+    + '$263808 writes D3. It feeds the heading and velocity, so it is gameplay, not a note().');
 });
 
 test('W363 the fan geometry: backoff $24, step $C, SEVEN symmetric angles', { skip: SKIP }, () => {
