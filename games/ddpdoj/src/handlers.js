@@ -9196,7 +9196,18 @@ const T4C = Object.freeze({
     0x26f702, 0x26f71a, 0x26f7a8, 0x26f7d2, 0x26f7fc, 0x26f82a, 0x26f858, 0x26f86a,
     0x26f98c, 0x26f994, 0x26f9a2, 0x26fa56, 0x26fa5e, 0x26fa82, 0x26ff9e, 0x26ffe8,
   ]),
-  tailCalls: Object.freeze([0x26f82a, 0x26f7a8, 0x26f7d2, 0x26f71a]),   // $26F708..$26F714, then rts
+  // W371 CORRECTION: this was FOUR entries starting at $26F708, and it was missing the FIRST draw call.
+  // $26F704 is a `bsr.w $26F7FC` that is ALSO the target of two branches -- $26F5F8's pause test and
+  // $26F6EC's blocked test -- and reading it as a branch label only is what dropped it. There are FIVE
+  // tail calls, matching `draws` exactly, and the order below is CALL order, not the address order the
+  // `draws` array happens to be in. Sprite layering follows call order, so drawing them by iterating
+  // `draws` renders part 1 FIRST instead of last and puts the wrong sprite on top.
+  //
+  // It also settles what the pause path does: $8130D2 non-zero jumps to $26F704, the FIRST of the five,
+  // so a paused $4C skips every state and still draws all five sprites.
+  tailCalls: Object.freeze([0x26f7fc, 0x26f82a, 0x26f7a8, 0x26f7d2, 0x26f71a]),  // $26F704..$26F714, rts
+  tailCallSites: Object.freeze([0x26f704, 0x26f708, 0x26f70c, 0x26f710, 0x26f714]),
+  pauseEntry: 0x26f704,                       // $26F5F8 bne / $26F6EC bne both land HERE
 
   // $26F858 -- EIGHT callers. A CHANGE-DETECTING state setter, and the guard IS the function:
   //     cmp.w ($26,A6),D0 / beq rts / move.w D0,($26,A6) / clr.w ($28,A6)

@@ -524,6 +524,14 @@ follows from that.
       $26F858 is the SETTER: `cmp.w ($26,A6),D0 / beq rts / move.w D0,($26,A6) / clr.w ($28,A6)`. Its guard
       is the function -- it restarts the inner script ONLY on a real state change. Eight callers.
 
+    THE FRAME  $26F5F2 prologue -> $26F86A state machine -> FIVE draw bsr's -> rts, read end to end
+      $26F6E8   part 5's $1F non-zero SKIPS the state machine but still draws
+      $26F6F4   ($20,A5) non-zero SKIPS $26F9A2 and $26FA82 -- and the arm at $1F0 SETS it, so those
+                two run only BEFORE the vulnerability window opens
+      $26F704   the FIVE draw calls, in CALL order: $26F7FC $26F82A $26F7A8 $26F7D2 $26F71A
+                (part 4a, 4b, 3a, 3b, then part 1 LAST -- the `draws` array is ADDRESS order and is
+                the REVERSE grouping, so rendering by iterating it puts part 1 underneath)
+
     DRAW       five subroutines, all through the selector at $26F790
       $26F71A  art $14985C  part 1  4 biases  D3 $A38  pal $1D   (exits rts, not jmp)
       $26F7A8  art $1499CC  part 3  $48       D3 $608  pal $5D
@@ -541,6 +549,16 @@ follows from that.
 **`($1A,A6)` HAS FIVE WRITERS AND IS NOT "THE DISTANCE BAND":** `$16` from state 0 (a WORD write, so it zeroes
 `($1B,A6)`), `$4` from state 1, `$8`/`$6` from the distance helper, plus a decrement at `$26F8F4` and an increment at
 `$26FF76`. Model it as a shared byte. A test asserts `$16` and `$4` are not among the thresholds.
+
+**THE SPEC'S `tailCalls` WAS WRONG AND IS NOW FIVE.** It listed four starting at `$26F708`. `$26F704` is a
+`bsr.w $26F7FC` that is **also the target of two branches** (`$26F5F8`'s pause test and `$26F6EC`'s blocked test), and
+reading it as a label only dropped the first draw call. That also settles the pause behaviour: a frozen or blocked
+`$4C` skips every state and **still draws all five sprites**, which is why it does not vanish.
+
+**TWO MORE TRAPS READ THIS WAVE.** Death is `tst.l ($1A,A5) / bpl`, so the object dies only when the pool goes
+**NEGATIVE** -- a `<= 0` port kills it one hit early and `=== 0` may never fire. And an UNHIT frame does not merely
+skip the XOR: `$26F6DE` writes `$12` into `($1D,A6)` outright, so the flash is a two-value alternation between `$12`
+and `$12 ^ $D = $1F`, and omitting the restore leaves the object stuck in its flash colour.
 
 **BIASES:** `$4C` uses sequential `addi.l`, which **DO combine**. `$1A` uses swap-separated word adds which must NOT be
 folded, and `$55`/`$46` use packed longs. Three conventions in one band -- check per site.

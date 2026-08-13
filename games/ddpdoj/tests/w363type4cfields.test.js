@@ -440,3 +440,62 @@ test('W368 ($1A) and ($1B) are written as a pair AND separately', { skip: SKIP }
   assert.equal(IMG.readUInt16BE(0x26ff6a), 0x001b, '  ...($1B,A6) ALONE -- so it is its own field too');
   assert.deepEqual([...T4C.bandWritersB], [0x26f8b0, 0x26ff4e, 0x26ff66], 'the three $1B sites');
 });
+
+test('W371 the tail is FIVE bsr calls, and $26F704 is the one the spec dropped', { skip: SKIP }, () => {
+  // The spec listed four, starting at $26F708. $26F704 is a bsr.w that is ALSO the target of two
+  // branches ($26F5F8 pause, $26F6EC blocked), and reading it as a label only lost the first draw.
+  const got = [];
+  for (const at of T4C.tailCallSites) {
+    assert.equal(IMG.readUInt16BE(at), 0x6100, `$${at.toString(16)} bsr.w -- the word form`);
+    got.push(at + 2 + IMG.readInt16BE(at + 2));
+  }
+  assert.deepEqual(got, [...T4C.tailCalls], 'five targets, in CALL order');
+  assert.equal(IMG.readUInt16BE(0x26f718), 0x4e75, '$26F718 rts closes the chain -- exactly five');
+  // Every draw routine appears exactly once, so the tail IS the draw table.
+  assert.deepEqual([...T4C.tailCalls].sort(), T4C.draws.map((d) => d.at).sort(),
+    'the five tail calls are precisely the five `draws` entries');
+});
+
+test('W371 CALL order is not the array order -- part 1 draws LAST', { skip: SKIP }, () => {
+  // `draws` is in ADDRESS order ($26F71A first). The cartridge calls part 1 LAST. Sprite layering
+  // follows call order, so iterating `draws` to render puts part 1 underneath instead of on top.
+  const callParts = T4C.tailCalls.map((a) => T4C.draws.find((d) => d.at === a).part);
+  assert.deepEqual(callParts, [4, 4, 3, 3, 1], 'both part-4 halves, then both part-3 halves, then part 1');
+  const arrayParts = T4C.draws.map((d) => d.part);
+  assert.deepEqual(arrayParts, [1, 3, 3, 4, 4], 'the array is the REVERSE grouping -- do not render from it');
+  assert.notDeepEqual(callParts, arrayParts, 'which is the whole point of keeping both lists');
+});
+
+test('W371 the pause path jumps INTO the draw chain, so a paused $4C still draws', { skip: SKIP }, () => {
+  // $26F5F2 tst.w $8130D2 / bne $26F704 -- not to the rts. Pausing skips every state and every
+  // subroutine but still renders all five sprites, which is why the object does not vanish when frozen.
+  assert.equal(IMG.readUInt16BE(0x26f5f2), 0x4a79, '$26F5F2 tst.w abs.l');
+  assert.equal(IMG.readUInt32BE(0x26f5f4), 0x008130d2, '  ...$8130D2, the freeze flag');
+  assert.equal(IMG.readUInt16BE(0x26f5f8), 0x6600, '$26F5F8 bne.w');
+  assert.equal(0x26f5fa + IMG.readInt16BE(0x26f5fa), T4C.pauseEntry, '  ...to $26F704, the FIRST draw');
+  // The blocked test lands on the same instruction, so a blocked $4C draws too.
+  assert.equal(IMG.readUInt16BE(0x26f6ec), 0x6600, '$26F6EC bne.w -- part 5 $1F blocked');
+  assert.equal(0x26f6ee + IMG.readInt16BE(0x26f6ee), T4C.pauseEntry, '  ...also to $26F704');
+});
+
+test('W371 death needs the pool NEGATIVE, and the branch is bpl not beq', { skip: SKIP }, () => {
+  // $26F690 tst.l ($1A,A5) / $26F694 bpl.w $26F6E4 -- so the object dies only when the 32-bit pool goes
+  // NEGATIVE, not when it reaches zero. A `<= 0` port kills it one hit early; `=== 0` may never fire.
+  assert.equal(IMG.readUInt16BE(0x26f690), 0x4aad, '$26F690 tst.l (d16,A5)');
+  assert.equal(IMG.readUInt16BE(0x26f692), T4C.hpPoolAt, '  ...($1A,A5)');
+  assert.equal(IMG.readUInt16BE(0x26f694), 0x6a00, '$26F694 bpl.w -- PLUS skips the death block');
+  assert.equal(0x26f696 + IMG.readInt16BE(0x26f696), 0x26f6e4, '  ...to $26F6E4, past the kill');
+  assert.equal(IMG.readUInt16BE(0x26f698), 0x203c, '$26F698 move.l #imm,D0 -- the kill score');
+});
+
+test('W371 an unhit frame REWRITES the palette byte, it does not just skip the XOR', { skip: SKIP }, () => {
+  // $26F654 beq $26F6DE when the hit mask is empty, and $26F6DE stores $12 into ($1D,A6) outright.
+  // With the $D XOR that gives $12 ^ $D = $1F while hit, so the flash is a two-value alternation and
+  // the unhit path is what RESTORES it. Omitting it leaves the object stuck in its flash colour.
+  assert.equal(IMG.readUInt16BE(0x26f654), 0x6700, '$26F654 beq.w -- no hit this frame');
+  assert.equal(0x26f656 + IMG.readInt16BE(0x26f656), 0x26f6de, '  ...to $26F6DE');
+  assert.equal(IMG.readUInt16BE(0x26f6de), 0x1d7c, '$26F6DE move.b #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f6e0), 0x0012, '  ...#$12, the RESTING palette');
+  assert.equal(IMG.readUInt16BE(0x26f6e2), 0x001d, '  ...($1D,A6)');
+  assert.equal((0x12 ^ T4C.palXorImmediate), 0x1f, 'and $12 XOR $D = $1F, the flash value');
+});
