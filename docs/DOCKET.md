@@ -1493,6 +1493,21 @@ and `HUDRAM.attract` IS `$81308C`. W345 fixed `liveSides25FD94` to write it, and
 So the attract flag already exists and is already correct -- the main screen work must READ that, not
 introduce a second notion of attract.
 
+**W372 ALSO ANCHORED WHERE TO LOOK.** The main loop is `$23BFDC..$23C006` -- **SEVEN calls then `bra`** -- and the
+port already maps all seven in `main.js`:
+
+    $23BE8C  counters        $256D5A  call #1        $2410BC  the OBJECT DRIVER
+    $24683E  call #3         $23D2AE  the SPRITE LIST BUILD
+    $23C212  arm $803940 and spin        $23D12A  post-vblank edges
+
+**So the front end is NOT a separate main-loop call.** Only two were unnamed, and neither is a scene dispatcher:
+call #1 `$256D5A` reads `$C08004`/`$C08006`, which are **hardware I/O**, and call #3 `$24683E` is the animation-object
+driver that `animobjects.js` already models.
+
+**That means the title screen is a STATE INSIDE one of the seven, not a peer of them** -- almost certainly reached
+through the object driver, the way every other screen in this game is. Start by finding the state word that selects
+it, not by looking for a `jsr` the main loop makes.
+
 **W372 CONFIRMED THAT BY SCANNING THE CARTRIDGE.** `$81308C` has exactly **TWO writers in the whole 6 MB image**,
 `$25FDA0` and `$25FDF8`, and **both are `clr.w`** -- both inside `liveSides25FD94`, which is ported. So nothing else
 in the ROM sets it, the port already owns every write, and D33 genuinely cannot need a second flag. That is one
