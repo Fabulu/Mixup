@@ -735,7 +735,7 @@ function handler4C(ram, rom, a5, ctx) {
     ram.setU8(a6 + 0x1d, 0x12);
   }
 
-  retireCheck4C(ram, a6);                                    // $26F6E4 bsr $26FFE8
+  retireCheck4C(ram, rom, a5, a6, ctx);                      // $26F6E4 bsr $26FFE8
 
   // $26F6E8 -- part 5's $1F set SKIPS the state machine, but the draw chain below still runs.
   if (ram.u8(a6 + 0x9f) === 0) {
