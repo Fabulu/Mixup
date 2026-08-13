@@ -802,6 +802,27 @@ across a swap. `$4C` uses the first, `$1A` the third, `$55` and `$46` the packed
 **So the port needs two real functions and fourteen inlinable blocks** -- and knowing which is which before writing
 is worth more than any of the individual readings.
 
+### `$26F858` IS AN 18-BYTE STATE SETTER, and its guard is the whole point
+
+    26f858  b06e 0026     cmp.w ($26,A6),D0      is D0 already the current value?
+    26f85c  6700 000a     beq $26F868            YES -> do nothing at all
+    26f860  3d40 0026     move.w D0,($26,A6)     NO -> store it
+    26f864  426e 0028     clr.w ($28,A6)         AND reset the counter
+    26f868  4e75          rts
+
+**This is the change-detecting animation setter**: `($26,A6)` holds the current state and `($28,A6)` its frame
+counter, and **the counter is reset ONLY when the state actually changes.** Called with a different D0 from each of
+its eight sites.
+
+**A port that stored D0 and cleared `($28,A6)` unconditionally would reset the counter every frame and freeze the
+animation on frame zero** -- while still drawing, still advancing everything else, and looking like a sprite that
+simply does not animate. **The `beq` IS the function.** Eighteen bytes, eight callers, and the only part that matters
+is the part that does nothing.
+
+`rosetta.py` misaligned on this one too (asked for `$26F858`, answered from `$26F85C`), which would have hidden the
+`cmp.w` -- i.e. hidden exactly the guard. **Seventh misalignment of the session, and the first where the swallowed
+instruction WAS the finding.**
+
 **AND THIS FULLY REHABILITATES THE OLD NOTE.** Its eight "unported callees" -- `$26F858`, `$26F86A`, `$26F994`,
 `$26F9A2`, `$26FA5E`, `$26FA82`, `$26FF9E`, `$26FFE8` -- are **every one a real `bsr` target in this list**, including
 both shared helpers. W354 called that note "wrong in both halves". **It was wrong only in its LABEL:** they are
