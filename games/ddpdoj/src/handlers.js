@@ -9162,6 +9162,31 @@ const T4C = Object.freeze({
   releaseFlag: 0x8130de,                      // inside the $8130DC..$8130E6 mutual-exclusion block
   pushSpeed: 0x261100,                        // pushExternalSpeed, D0 = D1 = $20
   retireExit: 0x263762,                       // $26F61A -- the ($9E,A6) arm RETIRES the record
+  // W367: THE SUBROUTINE INVENTORY. Sixteen `bsr` targets, and only TWO are shared -- so the port needs
+  // two real functions and fourteen inlinable blocks. The old handoff note listed eight of these as
+  // "unported callees"; they are internal entry points, and its addresses were all real.
+  subroutines: Object.freeze([
+    0x26f702, 0x26f71a, 0x26f7a8, 0x26f7d2, 0x26f7fc, 0x26f82a, 0x26f858, 0x26f86a,
+    0x26f98c, 0x26f994, 0x26f9a2, 0x26fa56, 0x26fa5e, 0x26fa82, 0x26ff9e, 0x26ffe8,
+  ]),
+  tailCalls: Object.freeze([0x26f82a, 0x26f7a8, 0x26f7d2, 0x26f71a]),   // $26F708..$26F714, then rts
+
+  // $26F858 -- EIGHT callers. A CHANGE-DETECTING state setter, and the guard IS the function:
+  //     cmp.w ($26,A6),D0 / beq rts / move.w D0,($26,A6) / clr.w ($28,A6)
+  // The frame counter resets ONLY when the state actually changes. Storing unconditionally freezes the
+  // animation on frame zero while everything else keeps working.
+  stateSetter: 0x26f858, stateAt: 0x26, frameCounterAt: 0x28,
+
+  // $26FF9E -- SEVEN callers. Grades DISTANCE into bands via dist242494 (itself one of the nine duplicate
+  // ports removed earlier this session). A FALL-THROUGH cascade, so the SMALLEST band wins because each
+  // later store overwrites the earlier; written as else-if it yields the LARGEST instead.
+  //     >= $200  ->  ($1A,A6) untouched
+  //     >= $100  ->  $8
+  //      < $100  ->  $6   (and further bands below $26FFC4)
+  distBander: 0x26ff9e, distHelper: 0x242494, distGlobal: 0x813172,
+  bandAt: 0x1a,                               // part 1's $1A
+  bandThresholds: Object.freeze([[0x200, null], [0x100, 0x8], [0x000, 0x6]]),
+  bandTestSites: Object.freeze([0x26ff6c, 0x26ff7a]),   // where the main flow compares it against $8
 });
 
 // ============================================ TYPE $B0 -- HIBACHI (W357/W360) ============

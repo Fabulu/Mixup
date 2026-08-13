@@ -233,3 +233,29 @@ test('W367 the band field is what the main flow branches on', { skip: SKIP }, ()
     assert.equal(IMG.readUInt16BE(at + 4), 0x001a, '  ...($1A,A6), part 1s $1A');
   }
 });
+
+test('W367 T4C records the subroutine inventory, and it matches the bsr scan', { skip: SKIP }, () => {
+  // Every entry must actually be a bsr target somewhere in the span, or the inventory has rotted.
+  const targets = new Set();
+  for (let a = T4C.handler; a < 0x270000; a += 2) {
+    if (IMG[a] !== 0x61) continue;
+    const lo = IMG[a + 1];
+    const off = lo === 0 ? IMG.readInt16BE(a + 2) : (lo > 0x7f ? lo - 0x100 : lo);
+    targets.add(a + 2 + off);
+  }
+  for (const sub of T4C.subroutines) {
+    assert.ok(targets.has(sub), `$${sub.toString(16)} is a real bsr target`);
+  }
+  assert.equal(T4C.subroutines.length, 16, 'sixteen internal subroutines');
+  // The two shared ones are in the list, and the tail's four are a subset of it.
+  assert.ok(T4C.subroutines.includes(T4C.stateSetter), 'the state setter is one of them');
+  assert.ok(T4C.subroutines.includes(T4C.distBander), 'so is the distance bander');
+  for (const t of T4C.tailCalls) {
+    assert.ok(T4C.subroutines.includes(t), `tail call $${t.toString(16)} is in the inventory`);
+  }
+  // And the eight the old handoff note listed as "unported callees" are all real entry points.
+  for (const old of [0x26f858, 0x26f86a, 0x26f994, 0x26f9a2, 0x26fa5e, 0x26fa82, 0x26ff9e, 0x26ffe8]) {
+    assert.ok(T4C.subroutines.includes(old),
+      `$${old.toString(16)} -- one of the old note's eight -- IS a real internal entry point`);
+  }
+});
