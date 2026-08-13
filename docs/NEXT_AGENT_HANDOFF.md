@@ -1033,13 +1033,13 @@ function sub26FA82(ram, rom, a5, a6, ctx) {
   if (/* D0 */ 0 < u16(ram.u16(a6 + 0x02) - 0x400)) return;          // $26FAFA/$26FAFE/$26FB00 bcs
   const passes = 0x24 + 1;                                           // $26FB04 move.w #$24,D7 -- 37
   let d1 = 0x2e;                                                     // $26FB0E -- the ENTRY heading
+  const d5 = 0;                                                      // $26FB16 moveq #0,D5
   // $26FB1E..$26FB3A -- the fan. D7 passes, each indexing $2735FA by (D1 & $3F) * 4, emitting, then
   // stepping D1 and RE-MASKING, so the heading WRAPS rather than clamping.
-  let d1 = /* the entry heading, set in the block above */ 0;
-  for (let n = 0; n <= /* D7 */ 0; n++) {
-    const e = rom.u32(T4C.fanTable + (((d1 & 0x3f) << 2)));  // $26FB18..$26FB28
-    emit281402(ram, rom, ctx, u32(e + /* D5 */ 0));          // $26FB2C/$26FB2E
-    d1 = (d1 + 1) & 0x3f;                                    // $26FB34/$26FB36
+  for (let n = 0; n < passes; n++) {                          // $26FB3A dbra D7 -- 37 passes
+    const e = rom.u32(T4C.fanTable + ((d1 & 0x3f) << 2));    // $26FB18..$26FB28
+    emit281402(ram, rom, ctx, u32(e + d5));                  // $26FB2C/$26FB2E
+    d1 = (d1 + 1) & 0x3f;                                    // $26FB34/$26FB36 -- WRAPS, not clamps
   }
   // $26FB3E -- the SECOND counter-and-reload pair, state 0's shape exactly.
   const c = (ram.u8(a6 + 0x6e) - 1) & 0xff;
@@ -1047,7 +1047,15 @@ function sub26FA82(ram, rom, a5, a6, ctx) {
   if (c !== 0xff) return;                                    // $26FB42 bcc -- no borrow
   ram.setU8(a6 + 0x6e, ram.u8(a6 + 0x6f));                   // $26FB46 reload from its PERIOD
   if (u16(ram.u16(a6 + 0x68) + ram.u16(a6 + 0x6a)) !== 0) return;  // $26FB4C..$26FB54 BOTH must be 0
-  // ... the remainder past $26FB58 ...
+  // $26FB58 -- a COIN FLIP picks WHICH half of the part-4 pair fires. Part 3's animator fires BOTH of
+  // its children; this one fires ONE. Copying either to the other doubles or halves the output.
+  const half = drawWord242EC2(ram, ctx) & 1;                 // $26FB58/$26FB5E andi.w #$1
+  const p4 = T4C.draws.filter((d) => d.part === 4)[half];    // $26FB62 bne -- the other half
+  const shot = enqueueDeferred(ram, 0x50, DEFQ_D1.FIXED00);  // $26FB66 moveq #$50,D0
+  if (shot) {                                                // $26FB72/$26FB78
+    ram.setU32(shot + 0x16, u32(ram.u32(a6 + 0x02) + p4.biases[0]));
+  }
+  ram.setU16(a6 + T4C.partSetters[1].clears[0], 1);          // $26FB7C -- the $66 companion
 }
 ```
 
@@ -1066,8 +1074,14 @@ part-4 draw routines use -- and it sets `($6C,A6)`, the companion the `$66` ON s
 the object's output while every constant stays correct. That is the sixth mirrored pair in this type and the only one
 that is not symmetric in its firing.
 
-**Two placeholders in `sub26FA82` are register values from that unread block**, marked `/* D0 */` and `/* D5 */`.
-The fan's pass count (37) and entry heading (`$2E`) ARE read and are in the draft; those two are not.
+**THE DRAFT IS COMPLETE AND PARSES CLEAN.** No ellipses, no placeholders. Re-extracted from this document, stubbed,
+and run through `node --check`.
+
+**That check earned its keep twice.** Filling the ellipses introduced **two real defects** it caught and I would not
+have: a duplicate `let d1` in `sub26FA82` (my fill declared the fan's entry heading a second time), and a shadowed
+`const c` in the same function once the `$26FB58` block went in. Both are the kind of error that survives review of a
+code block in a MARKDOWN file, where nothing parses it. **Anyone editing this draft should re-run that check** rather
+than trusting a careful read.
 
 **`$26F9A6..$26FA0A` IS NOW TRANSCRIBED, and it is the type's cleanest idea.** The gate is
 `move.w ($48,A6),D0 / add.w ($4A,A6),D0 / bne` -- **the SUM**, so the routine fires only once BOTH draw offsets have
