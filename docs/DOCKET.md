@@ -1018,8 +1018,20 @@ stage CLEAR, where before the driver had no handler for type `$B0`. **It will no
 whether the boss fights. If the stage does NOT clear, that is a real bug and the place to look is
 `runStageAdvance242952`, not the boss.
 
-Next publish due when `handler1A` or `handler4C` lands, or on the fifth wave after W363 if a behavioural change
-arrives sooner.
+**W365 `20260813065010` -- TYPE `$1A` IS PORTED.** Published on the behavioural-change reading again, and this one
+is a real change rather than a registration: `$1A` is a **slewing twin-weapon turret** and it now fires.
+
+**Stage 5 is down to ONE unported type over ONE record** (`$4C`), from FOUR types over 19 records at the start of
+this session.
+
+**What to look at in this build:** stage 5's `$1A` records -- four of them -- should now aim, TURN TOWARD the player
+rather than snapping, and fire two weapons on separate timers: a seven-shot symmetric fan with randomised shot
+speed, and a twin-muzzle burst whose two muzzles aim independently and can target DIFFERENT players in two-player
+play. Its rank sensitivity is real: at high rank the fan slows and the muzzles speed up. **The one thing it will not
+do is the pool-C death burst** -- that is deferred through `noteEffect` exactly as type `$88` ships it, so the
+explosion is the shared one and not `$1A`'s specific flourish.
+
+Next publish due when `handler4C` lands, or on the fifth wave after W365 if a behavioural change arrives sooner.
 
 **W351 correction to this item: the tool name here was WRONG and cost a detour.** The step is
 `node games/ddpdoj/tools/export-web.mjs` from the REPO ROOT -- there is no `tools/export-web.mjs`,
