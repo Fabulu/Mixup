@@ -195,3 +195,22 @@ test('W372 the player reads only GATE the fan -- the fire registers are constant
   assert.equal(IMG.readUInt16BE(0x26fb0e), 0x323c, '$26FB0E move.w #imm,D1');
   assert.equal(IMG.readUInt16BE(0x26fb10), 0x002e, '  ...#$2E, the entry heading -- also a literal');
 });
+
+test('W372 the boss RESETS every part s $18 to $7FFF after reducing them', { skip: SKIP }, () => {
+  // After taking the minimum it does `move.l #$7FFF,D5` and writes D5 into $18, $38, $58, $78... --
+  // the same part offsets, each +$18. That is EXACTLY type $4C's damage-accumulator idiom
+  // ($26F68A move.w #$7FFF,($18,A6)), at eleven parts instead of one: the fields accumulate damage,
+  // are reduced to their minimum, and are then re-armed. They are NOT health.
+  assert.equal(IMG.readUInt16BE(0x2a6cc8), 0x2a3c, '$2A6CC8 move.l #imm,D5');
+  assert.equal(IMG.readUInt32BE(0x2a6cca), 0x00007fff, '  ...#$7FFF -- $4C uses the same constant');
+  const resets = [];
+  for (let a = 0x2a6cce; a < 0x2a6cde; a += 4) {
+    assert.equal(IMG.readUInt16BE(a), 0x3d45, `$${a.toString(16)} move.w D5,(d16,A6)`);
+    resets.push(IMG.readUInt16BE(a + 2));
+  }
+  assert.deepEqual(resets, [0x18, 0x38, 0x58, 0x78], 'stepping by $20, the PART stride');
+  // And the reduce above covers the same eleven parts: $D8 is $C0+$18, $1B8 is $1A0+$18.
+  assert.equal(IMG.readUInt16BE(0x2a6cbc), 0x00d8, '$C0 + $18 -- part 7s accumulator');
+  assert.equal(IMG.readUInt16BE(0x2a6cc0), 0x01b8, '$1A0 + $18 -- and the out-of-sequence one again');
+  assert.equal(0x1b8 - 0x18, 0x1a0, 'which is the $1A0 the other three routines also single out');
+});
