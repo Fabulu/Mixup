@@ -1493,6 +1493,11 @@ and `HUDRAM.attract` IS `$81308C`. W345 fixed `liveSides25FD94` to write it, and
 So the attract flag already exists and is already correct -- the main screen work must READ that, not
 introduce a second notion of attract.
 
+**W372 CONFIRMED THAT BY SCANNING THE CARTRIDGE.** `$81308C` has exactly **TWO writers in the whole 6 MB image**,
+`$25FDA0` and `$25FDF8`, and **both are `clr.w`** -- both inside `liveSides25FD94`, which is ported. So nothing else
+in the ROM sets it, the port already owns every write, and D33 genuinely cannot need a second flag. That is one
+question closed before the subsystem is started, which is the cheapest kind.
+
 ### D34: CHARACTER SELECTION, AND EVERY TRANSITION IT IMPLIES
 
 Ship/style select, and the owner was explicit that the transitions this implies are part of the item rather
