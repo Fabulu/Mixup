@@ -5041,10 +5041,44 @@ child a pointer to this exact record. **Hypothesis, UNVERIFIED: `$55` tells its 
 `3` through that back-pointer.** That would make the pair a single mechanism -- `$46` extends, spawns `$55`,
 and retracts when the child says so.
 
-**Check it by finding where the deferred-queue processor copies entry `+$1A` into the child's record, then
-what `$55` does with that field.** Do not write `handler46`'s mode 3 until this is settled: if the hypothesis
-holds, mode 3 is live and load-bearing; if it is dead code, writing it invents behaviour. `$55`'s own handler
-is already written and does not obviously touch a parent pointer, which is itself evidence worth weighing.
+**SETTLED: `$46`'s MODE 3 IS UNREACHABLE DEAD CODE, and the chain that proves it also VALIDATES `T55`.**
+
+The drain (`spawn.js:476`) copies queue `+$1A` to record `+$1A` and only THEN runs `initDispatch`
+(`$2634E4`). So `$55`'s init sees the parent pointer. And it does read it:
+
+    27239e  jsr $2637A2                loadSubProto
+    2723a4  move.l ($16,A5),D0         the QUEUED POSITION $46 wrote
+    2723a8  addi.l #$2000000,D0
+    2723ae  move.l D0,($2,A6)          -> the sub-record position
+    2723b2  move.l ($1a,A5),($30,A5)   the parent pointer, moved to ($30,A5)
+    2723b8  lea $2723EA,A0 / moveq #$E,D0 / jsr $26377A    THEN the 15-word prototype load
+
+**But the prototype load covers `($16,A5)..($33,A5)`, and its word 13 is `00 10`.** So `($30,A5)` is
+overwritten with `$0010` fourteen bytes after the parent pointer was stored there. **`$2723B2` is a DEAD
+STORE** -- the second one this pair has produced, after `$27250C`'s `#$1`.
+
+Three consequences:
+
+1. **`$55` cannot signal its parent.** The pointer is destroyed before the handler ever runs, so the
+   hypothesis is dead and **nothing anywhere writes `3` to `$46`'s `($17,A5)`. Mode 3 is unreachable.**
+   `handler46` should mark that arm `unreached()`, NOT implement a promotion into it -- implementing one
+   would invent a transition the cartridge cannot make.
+2. **`T55`'s `invulnAt: 0x30` IS CORRECT and `handler55` as shipped is right.** I raised this as a possible
+   defect in shipped code; it is not. `($30,A5)` really is an invulnerability counter, and the prototype
+   really does seed it to `$10`.
+3. **The prototype independently confirms every remaining `T55` field**, which is the check I never had:
+
+       ($17,A5) = 00        mode 0, so $55 spawns into arm A
+       ($18/$19) = 15 0a    palette base $15, XOR $0A
+       ($1C/$1D) = 03 03    drift timer and reload
+       ($26/$27) = 00 08    fire timer 0, reload 8 -- fires immediately, then every 9
+       ($2E/$2F) = 01 01    burst counter 1, reload 1 -- so counter == reload on the first volley
+                            (it re-aims) and reaches 0 on the next (the finale fires)
+       ($30,A5)  = 00 10    the invulnerability window, $10 frames
+
+   **That `($2E,A5)` = `($2F,A5)` = 1 is the nicest confirmation:** it means every burst is exactly two
+   volleys, an aimed 15-shot followed by the 20-shot finale, which is what the burst-counter reading
+   predicts and would be nonsense under the "pattern selector" reading I first had.
 
 ### W351: `handler55` WAS WRITTEN AND THEN REVERTED. Read this before writing it again.
 
