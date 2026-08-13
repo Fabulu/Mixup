@@ -1129,6 +1129,33 @@ another during this session was wrong.** Concretely:
     `$26F8FC`'s write to `($17,A5)` or `$26FF9E`'s writes to `($1A,A6)`, both of which I have read. **Use it to find
     sites you have missed, never to conclude you have found them all.**
 
+    **BOTH UNREAD SITES READ, AND ONE REVERSES A W354 STRUCTURAL CONCLUSION.**
+
+    **`$26F870` IS A JUMP-TABLE DISPATCHER, so `$4C` DOES have a state machine:**
+
+        26f86a  lea ($26F886,PC),A0      the table
+        26f870  move.w ($26,A6),D0       the STATE
+        26f874  add.w D0,D0 / add.w D0,D0    x4 -- FOUR-BYTE entries
+        26f878  adda.w D0,A0
+        26f87a  movea.l (A0),A0          load a POINTER
+        26f87c  jsr (A0)                 CALL IT
+        26f87e  jmp $2417DE              then tail-jump to applyVelocityA6
+
+    **W354 concluded "no jump table -- the only indirect call in the span is one `jsr (A0)` at `$26F87C`". That `jsr`
+    IS the dispatcher.** I found the instruction, noted it as evidence AGAINST a jump table, and never followed it.
+    So `($26,A6)` is a state INDEX into a table at `$26F886`, and `$26F858` -- the guarded setter with eight callers --
+    is that state machine's SETTER. **Its `beq` guard therefore protects the state machine's own frame counter, which
+    makes the guard even more load-bearing than recorded.**
+
+    **`$26FF76` INCREMENTS the band toward `$8`:**
+
+        26ff6c  cmpi.b #$8,($1A,A6) / beq $26FF8C     already at 8 -> done
+        26ff76  addq.b #1,($1A,A6)                    <- INCREMENT
+        26ff7a  cmpi.b #$8,($1A,A6) / blt ...
+
+    So `($1A,A6)` is decremented at `$26F8F4` and incremented here, converging on `$8`. **It is a HYSTERESIS
+    counter, not a plain timer** -- the third reading of this one field, and rule 13 predicted exactly that.
+
 **Stage 5: NINE types with no handler over 27 records** (was ten over 29 at the session start).
 Ranked: `$46` 13, `$1A` 4, `$48`, `$4A`, `$4B`, `$43`, `$47`, `$4C`, `$B0`.
 
