@@ -9190,9 +9190,23 @@ const T4C = Object.freeze({
   //     >= $100  ->  $8
   //      < $100  ->  $6   (and further bands below $26FFC4)
   distBander: 0x26ff9e, distHelper: 0x242494, distGlobal: 0x813172,
-  bandAt: 0x1a,                               // part 1's $1A
+  // W367 CORRECTION: ($1A,A6) is NOT "the distance band". It is a byte that FOUR arms write for their own
+  // reasons, and the distance helper is only one of them:
+  //   $26FF9E   writes $8 or $6 by distance band (the thresholds below)
+  //   $26F8F4   DECREMENTS it, and acts when it hits zero
+  //   $26FF76   INCREMENTS it toward $8 -- so with the decrement it is a HYSTERESIS counter
+  //   $26F8B0   `move.w #$1600,($1A,A6)` -- a WORD write giving $16, outside the band range entirely,
+  //             and it zeroes ($1B,A6) as a side effect
+  // So bandThresholds is ONE CONTRIBUTOR to this field, not its definition. Model it as a shared byte.
+  bandAt: 0x1a,                               // part 1's $1A -- see the four writers above
   bandThresholds: Object.freeze([[0x200, null], [0x100, 0x8], [0x000, 0x6]]),
   bandTestSites: Object.freeze([0x26ff6c, 0x26ff7a]),   // where the main flow compares it against $8
+
+  // W367: the state handlers are FRAME-COUNTER CASCADES. ($26,A6) picks the state via the jump table, and
+  // within a state ($28,A6) is a SCRIPT STEP walked by successive `cmpi.w #$N,($28,A6)`. That is the third
+  // reason $26F858's guard matters: clearing ($28,A6) only on a real state change RESTARTS the inner
+  // script, and clearing it every frame would pin every state on its first step forever.
+  stepAt: 0x28,                               // same field as frameCounterAt -- it is the script step
   // W367: THE DRAW TABLE. FIVE sprites per frame, from five subroutines that each hard-code one part's
   // offsets -- which is what the unrolled parts are FOR and why there is no loop.
   //
