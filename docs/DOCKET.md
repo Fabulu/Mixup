@@ -987,8 +987,11 @@ waves drifted back to publishing on nearly every one. The rule is now a number:
   * publish off-cadence only when a wave fixes something the owner reported and is waiting to test.
 
 Publish log: W335 `20260812162556`, W340 `20260812173300`, W345 `20260812224307` (off-cadence, to
-ship the D24/D31 hyper-laser fix the owner was waiting on), **W350 `20260812234300`**.
-**Next publish due after W355.**
+ship the D24/D31 hyper-laser fix the owner was waiting on), W350 `20260812234300`,
+**W355 `20260813052740`**. **Next publish due after W360.**
+
+W355's build is the first to carry types `$55` and `$46` -- the first new ported enemy types to reach the
+live site since W345 -- plus the type-table cross-check suite (2440 -> 2453) and 447 ROM windows.
 
 **W351 correction to this item: the tool name here was WRONG and cost a detour.** The step is
 `node games/ddpdoj/tools/export-web.mjs` from the REPO ROOT -- there is no `tools/export-web.mjs`,
