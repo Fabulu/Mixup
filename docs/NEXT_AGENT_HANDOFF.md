@@ -622,6 +622,21 @@ returns arrival in the carry, so every state that moves is a list of points plus
 again in state 4 at X `$3600`. The object patrols between two HEIGHTS at different depths, which is why the same Ys
 are worth checking for in the states still unread.
 
+**STATES 6 AND 7 CLOSE THE LIFECYCLE, AND THE OBJECT IS NOW READ END TO END.**
+
+`state 7` (`$26FF56`) is the EXIT, and it is what the `$1F0` arm cue selects. It clears the heading, ramps
+`($1A,A6)` up to 8 **with a clamp** (`addq.b #1` then `cmpi #8 / blt / move.b #8`), and once `($2,A6)` passes
+`$9800` it sets `($9E,A6)` -- **so this is where the one-frame retire deferral originates.**
+
+`state 6` (`$26FF3E`) is the DEATH state: the death block does `moveq #$6,D0 / bsr $26F858`. It is three instructions,
+and the middle one is `move.w #$420,($1A,A6)` -- **one word write setting `($1A)=$04` and `($1B)=$20` together**, a
+speed and a heading for the death drift. `($1B)` is the field the steerer slews; death sets it directly and never
+steers to it.
+
+**That also completes `($1A,A6)`'s roles**, and they are mutually exclusive per state: an outer timer (state 0), a mode
+value (states 2/3/4), a distance band (the steerer), and a **clamped speed ramp** (state 7). The census said its value
+cannot identify its writer; the states say its MEANING cannot either.
+
 **AND `$4C` IS ~494 BYTES BIGGER THAN THE SPEC SAID.** `handlerEnd` was `$26FFE8`, noted as "the last rts is
 `$26FFE6`". `$26FFE6` IS an rts -- but `$26FFE8` is the **START of the last subroutine**, and the subroutine list in
 the same spec contained the disproof, because `$26FFE8` is in it. Its `beq` reaches `$270128`, well past `$270000`.

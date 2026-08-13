@@ -784,3 +784,37 @@ test('W371 state 4 is a WAYPOINT CHAIN, and its Ys are state 1\'s Ys', { skip: S
   assert.equal(IMG.readUInt16BE(0x26fdee), 0x7005, '$26FDEE moveq #$5,D0');
   assert.equal(0x26fdf2 + IMG.readInt16BE(0x26fdf2), T4C.stateSetter, '  ...bsr $26F858 -- state 5');
 });
+
+test('W371 state 7 is the EXIT: ramp, clamp, then arm the retire flag', { skip: SKIP }, () => {
+  // The state the $1F0 arm cue selects. It clears the heading, ramps ($1A,A6) UP to 8 with a clamp,
+  // and once the position passes $9800 it sets ($9E,A6) -- the retire flag the prologue acts on the
+  // NEXT frame. So this is where the one-frame deferral originates.
+  assert.equal(IMG.readUInt16BE(0x26ff66), 0x1d7c, '$26FF66 move.b #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26ff6a), 0x001b, '  ...($1B,A6) = 0, heading cleared');
+  assert.equal(IMG.readUInt16BE(0x26ff76), 0x522e, '$26FF76 addq.b #1,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26ff78), T4C.bandAt, '  ...($1A,A6) climbing');
+  assert.equal(IMG.readUInt16BE(0x26ff80), 0x6d00, '$26FF80 blt.w -- under 8 skips the clamp');
+  assert.equal(IMG.readUInt16BE(0x26ff84), 0x1d7c, '$26FF84 move.b #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26ff86), 0x0008, '  ...#$8 -- the CLAMP, so it saturates');
+  // The exit test, and the arm.
+  assert.equal(IMG.readUInt16BE(0x26ff8e), 0x0c40, '$26FF8E cmpi.w #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x26ff90), 0x9800, '  ...#$9800 against ($2,A6)');
+  assert.equal(IMG.readUInt16BE(0x26ff92), 0x6e00, '$26FF92 bgt.w -- SKIPS the arm while still on');
+  assert.equal(IMG.readUInt16BE(0x26ff96), 0x1d7c, '$26FF96 move.b #imm,(d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x26ff9a), 0x009e, '  ...($9E,A6) = 1, retire NEXT frame');
+});
+
+test('W371 state 6 is the DEATH state, and one word write does both bytes', { skip: SKIP }, () => {
+  // The death block does moveq #$6,D0 / bsr $26F858, so state 6 is what a dying $4C runs. It is three
+  // instructions, and the interesting one writes ($1A) and ($1B) TOGETHER: move.w #$420 gives
+  // ($1A)=$04 and ($1B)=$20 -- a speed and a heading for the death drift, set in one instruction.
+  assert.equal(IMG.readUInt16BE(0x26f6cc), 0x7006, '$26F6CC moveq #$6,D0 -- from the death block');
+  assert.equal(0x26f6d0 + IMG.readInt16BE(0x26f6d0), T4C.stateSetter, '  ...bsr $26F858');
+  assert.equal(T4C.states[6], 0x26ff3e, 'and state 6 is $26FF3E');
+  assert.equal(IMG.readUInt16BE(0x26ff4e), 0x3d7c, '$26FF4E move.w #imm,(d16,A6) -- the WORD form');
+  assert.equal(IMG.readUInt16BE(0x26ff50), 0x0420, '  ...#$420');
+  assert.equal(IMG.readUInt16BE(0x26ff52), T4C.bandAt, '  ...at ($1A,A6), so ($1A)=$04 and ($1B)=$20');
+  assert.equal(IMG.readUInt16BE(0x26ff54), 0x4e75, '$26FF54 rts -- three instructions, that is all');
+  // ($1B,A6) is the steerer's heading field, so death sets a heading without steering to it.
+  assert.equal(T4C.steerHeadingAt, 0x1b, 'and $1B is the heading $26FF9E slews -- here set directly');
+});
