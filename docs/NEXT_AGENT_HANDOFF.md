@@ -752,6 +752,33 @@ INDICATIVE, not exact, and the `$100+` entries in particular may be operand byte
 What it is good for is the SHAPE: five parts, wildly unequal usage, and a main body concentrated in part 1. That is
 enough to say the port needs five per-part field sets rather than a loop, and that part 1's is the big one.
 
+### The tail is FOUR `bsr` calls -- and the old "eight state handlers" note was counting SUBROUTINES
+
+    26f708  bsr $26F82A
+    26f70c  bsr $26F7A8
+    26f710  bsr $26F7D2
+    26f714  bsr $26F71A      <- to the IMMEDIATELY FOLLOWING instruction
+    26f718  rts
+    26f71a  move.l #$14985C,D2        subroutine 4 starts here
+    26f720  move.l ($2,A6),D1
+    26f724  addi.l #$F7000000,D1      a packed-long bias
+    26f72a  addi.l #$F600F900,D1      and ANOTHER -- two sequential LONG adds
+
+**So `$4C` has at least SEVEN internal subroutines**: `$26F858`, `$26F86A`, `$26FFE8` from the main flow, plus
+`$26F82A`, `$26F7A8`, `$26F7D2`, `$26F71A` from the tail. **The old note's "eight state handlers" was counting these,
+and it was very nearly right.** W354 dismissed that note as "wrong in both halves"; **it was wrong about them being
+STATES and about the callees being unported, but its COUNT was close.** Worth recording -- I discarded a number that
+was better evidence than my reading of it.
+
+**`$26F714 bsr $26F71A` calls the next instruction.** Legal and deliberate: the `bsr` runs the following routine and
+returns to the `rts` at `$26F718`, which is a tail call spelled as `bsr`+`rts`. **A port must not "simplify" it into
+a fall-through** -- the routine is also reachable independently, or the `bsr` would be pointless.
+
+**And `$26F724`/`$26F72A` are TWO SEQUENTIAL `addi.l` on D1.** These notes already record that **two sequential LONG
+biases DO combine**, unlike the word-add case that must not be folded and unlike `$1A`'s swap-separated pair. **So
+this band now shows all three bias conventions in one place** -- fold the longs, never fold the words, never fold
+across a swap. `$4C` uses the first, `$1A` the third, `$55` and `$46` the packed-long form.
+
 ### Its death path releases TWO mutual-exclusion flags, one of which `$49` CLAIMS
 
     26f6a4  move.w #$8000,(A6)          the record's dying bit
