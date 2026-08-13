@@ -9138,6 +9138,53 @@ const T4C = Object.freeze({
   localLoop: 0x26fb3a,                        // the one dbra, 28-byte body, NOT the part iteration
 });
 
+// ============================================ TYPE $B0 -- HIBACHI (W357/W360) ============
+// The boss-route root, ONE script record, and the type these notes long said "wants the HIBACHI CLOSURE
+// RULE and a trace". IT WANTS NEITHER. Its handler is 170 bytes and needed no trace at all.
+// STRUCTURE SETTLED, BODY NOT YET WRITTEN -- `ported: false` keeps the suite honest.
+//
+// THE HANDLER DOES EXACTLY TWO THINGS. Everything else in it is disabled:
+//
+//   2a4606  jsr $2A6B94                    the entire boss
+//   2a460c  jsr $25962E / bcc              the clear test
+//   2a4614  jsr $242952 / jmp $263762      THE STAGE-CLEAR PATH, then free
+//   2a4622  ELEVEN `lea (part,A6),A0 / jsr $26331C` calls  -- ALL NO-OPS, $26331C is a bare rts
+//   2a469a  four register loads, then jsr $25A17A            -- ALSO A NO-OP, one of four adjacent rts
+//   2a46b0  rts
+//
+// THE ELEVEN PART OFFSETS ARE NOT A RANGE. In ROM order: $0 $20 $40 $60 $80 $A0 $C0 $1A0 $140 $160 $180.
+// $1A0 is called SEVENTH, out of sequence, and $E0/$100/$120 are never called at all. A loop from 0 to
+// $1A0 by $20 would visit three parts the cartridge skips and place $1A0 last. Transcribe the list.
+//
+// $2A4614 IS THE GAME'S COMPLETION PATH. D11 records W232 forcing $242952 headlessly and finding the
+// stage machine works, so this handler is the junction the endings (D37) run through -- though selection
+// happens DOWNSTREAM of $242952, not here. $25A17A looked like the selection point and is a bare rts.
+const TB0 = Object.freeze({
+  ported: false,
+  init: 0x2a42d4, initBody: 0x2a42dc, handler: 0x2a4606,
+  // High table: $27E412 + ($B0 - $80) * 8 = $27E592. W347's formula, correct on first use.
+  handlerEnd: 0x2a46b0,
+  body: 0x2a6b94,                             // the whole boss; its first block runs to $2A6E2E
+  clearTest: 0x25962e, stageClear: 0x242952, exit: 0x263762,
+  // $2A6B94 opens with an early-exit guard: tst.w ($106,A6) / beq over a single rts, so it does nothing
+  // unless ($106,A6) is zero. Its first rts is only 6 bytes in -- a "first rts bounds the routine" scan
+  // would wrongly call it a stub, which is the inverse of the trap that caught $26331C and $25A17A.
+  bodyGuardAt: 0x106, bodySecondGateAt: 0x10e, bodySecondGateTarget: 0x2a6f10,
+  partStride: 0x20,
+  partOffsets: Object.freeze([0x0, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0, 0x1a0, 0x140, 0x160, 0x180]),
+  perPartStub: 0x26331c,                      // a bare rts. Transcribe the calls; implement nothing.
+  epilogueStub: 0x25a17a,                     // likewise -- one of FOUR adjacent rts bytes
+  // The body's twelve callees are ALL ported bar three, and all three are small with ported cores:
+  //   $243DD0  ONE LINE: armScreenClearMode(ram, ctx, d1, from, 0xffff, 0x243dd0) -- midboss.js:197
+  //            already implements the guard AND parameterises the mode. Land it WITH its caller, not
+  //            before, or it is dead code (the tallyPhase0Arm25DC2C mistake).
+  //   $242922  jsr $28C170 (ported) / move.w #$1,$81296E / tst.w $8103E6 -- a wrapper
+  //   $253564  the $811F8C clamp, opening cmpi.w #$14,$811F8C
+  unportedCallees: Object.freeze([0x243dd0, 0x242922, 0x253564]),
+  screenClearMode: 0xffff,                    // what $243DD0 arms $81B412 to, from $243DEE
+  clampGlobal: 0x811f8c, clampFirstTest: 0x14,
+});
+
 /** The map of ported handler addresses -> functions, for the enemy driver. */
 export function handlerMap() { return HANDLERS; }
 export const HANDLER_ADDRESSES = [...HANDLERS.keys()];
@@ -9151,5 +9198,5 @@ export const HANDLER_ADDRESSES = [...HANDLERS.keys()];
 export const TYPE_SPECS = Object.freeze(new Map([
   [0x01, T01], [0x1b, T1B], [0x43, T43], [0x45, T45], [0x47, T47], [0x48, T48],
   [0x1a, T1A], [0x46, T46], [0x49, T49], [0x4c, T4C], [0x4a, T4A], [0x4b, T4B], [0x55, T55], [0x59, T59],
-  [0x81, T81], [0x8e, T8E],
+  [0x81, T81], [0x8e, T8E], [0xb0, TB0],
 ]));

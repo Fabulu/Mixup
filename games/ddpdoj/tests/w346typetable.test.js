@@ -141,12 +141,12 @@ test('W346: a spec that claims an initBody has it actually registered -- the $55
 // W351: this pin was DESCRIBED as landing two commits before it did. The comment above the handler test
 // went in; this assertion did not, and I reported it as working off a passing test count instead of
 // reading the file. So it is its own test now, with the count in the name, where a diff cannot lose it.
-test('W356: exactly TWO specs are measured-but-unwritten -- $1A and $4C', () => {
+test('W360: exactly THREE specs are measured-but-unwritten -- $1A, $4C and $B0', () => {
   const unwritten = [...TYPE_SPECS.entries()]
     .filter(([, spec]) => spec.ported === false)
     .map(([type]) => type)
     .sort((a, b) => a - b);
-  assert.deepEqual(unwritten, [0x1a, 0x4c],
+  assert.deepEqual(unwritten, [0x1a, 0x4c, 0xb0],
     'A spec carries `ported: false` while its fields are measured but its handler is unwritten. Writing '
     + 'one means DELETING that flag and updating this list, so the count cannot drift silently. Adding '
     + 'another measured-but-unwritten spec is likewise deliberate. When a handler lands, four census pins '
