@@ -516,3 +516,35 @@ test('W371 the handler span is bounded by $4E, not by an rts scan', { skip: SKIP
   assert.equal(0x26f6d4 + IMG.readInt16BE(0x26f6d4), T4C.deathEffectTable, '  ...the $2701C8 table');
   assert.ok(T4C.deathEffectTable < T4C.handlerEnd, 'which sits inside the span, just below $4E');
 });
+
+test('W371 the retire flag is armed ONE FRAME before the prologue acts on it', { skip: SKIP }, () => {
+  // ($9E,A6) is part 5's $1E. Nothing in the frame that writes it acts on it: the prologue tests it at
+  // $26F5FC, which is the NEXT frame. So retirement is deliberately deferred by a frame, and a port that
+  // retires inline at the write site skips the last frame of the object entirely.
+  assert.equal(IMG.readUInt16BE(0x26f5fc), 0x4a2e, '$26F5FC tst.b (d16,A6) -- the prologue');
+  assert.equal(IMG.readUInt16BE(0x26f5fe), 0x009e, "  ...($9E,A6), part 5's $1E");
+  for (const at of [0x26ff96, 0x27000a]) {
+    assert.equal(IMG.readUInt16BE(at), 0x1d7c, `$${at.toString(16)} move.b #imm,(d16,A6)`);
+    assert.equal(IMG.readUInt16BE(at + 2), 0x0001, '  ...#$1');
+    assert.equal(IMG.readUInt16BE(at + 4), 0x009e, '  ...($9E,A6) -- armed, not acted on');
+    assert.ok(at > 0x26f5fc, '  ...and it happens AFTER the prologue read, so it lands next frame');
+  }
+});
+
+test('W371 $26FFE8 returns a boolean in the CARRY, via two shared SR stubs', { skip: SKIP }, () => {
+  // $270128 andi.w #$FFFE,SR / rts  = return carry CLEAR
+  // $27012E ori.w  #$1,SR    / rts  = return carry SET
+  // Privileged instructions used deliberately as a boolean return. $4C's single caller ($26F6E4)
+  // IGNORES the carry -- it reads ($9E,A6) next frame instead -- so do not invent a branch on it here.
+  assert.equal(IMG.readUInt16BE(0x270128), 0x027c, '$270128 andi.w #imm,SR');
+  assert.equal(IMG.readUInt16BE(0x27012a), 0xfffe, '  ...#$FFFE, clearing the carry');
+  assert.equal(IMG.readUInt16BE(0x27012c), 0x4e75, '  ...rts');
+  assert.equal(IMG.readUInt16BE(0x27012e), 0x007c, '$27012E ori.w #imm,SR');
+  assert.equal(IMG.readUInt16BE(0x270130), 0x0001, '  ...#$1, setting the carry');
+  assert.equal(IMG.readUInt16BE(0x270132), 0x4e75, '  ...rts');
+  // The one caller, and the instruction after it is NOT a bcc/bcs.
+  assert.equal(IMG.readUInt16BE(0x26f6e4), 0x6100, '$26F6E4 bsr.w');
+  assert.equal(0x26f6e6 + IMG.readInt16BE(0x26f6e6), 0x26ffe8, '  ...to $26FFE8');
+  const after = IMG.readUInt16BE(0x26f6e8) & 0xff00;
+  assert.ok(after !== 0x6400 && after !== 0x6500, 'the caller does not branch on the carry it returns');
+});

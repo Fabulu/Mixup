@@ -562,6 +562,15 @@ the same spec contained the disproof, because `$26FFE8` is in it. Its `beq` reac
 at `$2701D6`, and `$4C`'s own death-effect table sits immediately below it at `$2701C8` (`$26F6D2 lea` +
 `buildParts246520`). Any "19 rts sites in the span" style count taken before this was measured over the short span.
 
+**WHAT IS IN THE NEW SPAN.** `$26FFE8` is a PREDICATE that returns a boolean in the **carry flag**, through two shared
+stubs: `$270128 andi.w #$FFFE,SR / rts` (clear) and `$27012E ori.w #$1,SR / rts` (set). Privileged instructions used
+deliberately as a return value. **`$4C`'s single caller ignores the carry** -- do not invent a branch on it.
+
+What the routine actually does for `$4C` is arm `($9E,A6)`, part 5's `$1E`, when part 5's `$06` is 2. **Nothing in the
+frame acts on that flag.** The prologue tests it at `$26F5FC`, which is the NEXT frame, and both arming sites
+(`$26FF96`, `$27000A`) are AFTER that read. **Retirement is deferred by exactly one frame**, so a port that retires
+inline at the write site drops the object's last frame.
+
 **TWO MORE TRAPS READ THIS WAVE.** Death is `tst.l ($1A,A5) / bpl`, so the object dies only when the pool goes
 **NEGATIVE** -- a `<= 0` port kills it one hit early and `=== 0` may never fire. And an UNHIT frame does not merely
 skip the XOR: `$26F6DE` writes `$12` into `($1D,A6)` outright, so the flash is a two-value alternation between `$12`
