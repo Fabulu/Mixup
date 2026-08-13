@@ -489,6 +489,31 @@ right in both halves, and the table proves it.** `$26F886` is a jump table of 4-
 state 0's own handler. `$26F886..$26F8A6` is `$20` bytes, eight pointers. The span is `$26F5F2..$26FFE8`, about 2550
 bytes -- **the note's "~2300" was close too.**
 
+### EVERY HELPER `handler4C` NEEDS, READ FROM ITS DEFINITION (W371)
+
+Seven of seven recalled signatures were wrong in W365, so these were read from the definition or a live call site.
+**Do not adjust them from memory.**
+
+    enqueueRegistersThroughStub(ram, rom, stub, d1, d2, d3, d4)   spritequeue.js -- the draw request.
+                              stub = ($17,A5) ? $23DF58 : $23DECE; d1 = biased position long,
+                              d2 = art long, d3 = the attr word, d4 = the palette byte.
+                              Live call site: type $45 at handlers.js:3577.
+    scoreHit(ram, ctx, a6, d1)                 score.js:638   -- $286096
+    scoreKill(ram, rom, ctx, d0, d1)           score.js:701   -- $28615E, d0 = $700 for $4C
+    pushExternalSpeed(ram, d0, d1)             background.js:1222 -- $261100, both $20 here
+    enqueueDeferred(ram, type, DEFQ_D1.<kind>) spawn.js       -- $263684, type $52 in state 2
+    applyVelocityA6(ram, tables, a6)           movement.js:102 -- $2417DE, the dispatcher's tail jmp
+    freeEnemy(ram, a5)                         initbody.js:95
+    buildParts246520(ram, rom, a0, mode, site) spawn.js:609   -- $246520, the death table $2701C8
+    dist242494(selfY, selfX, tgtY, tgtX)       bossscripts.js:126
+    slew64FromRecord(ram, a6, target)          aim.js:391     -- $24218C, facing from ($1B,A6)
+    aim64(t, selfY, selfX, tgtY, tgtX)         aim.js:159
+
+**`$242038` IS NOT ITS OWN ROUTINE.** It is the label inside `aim64AtTarget` (`$24202C`) where
+`movem.w ($2,A6),D0-D1` happens (`aim.js:324`), i.e. the entry that SKIPS `targetSelect` because the caller already
+holds the target in D2/D3. So the steerer is `aim64(t, ram.u16(a6+2), ram.u16(a6+4), d2, d3)` -- **not**
+`aim64AtTarget`, which would re-select a player and discard the waypoint.
+
 ### HOW TO WRITE `handler4C` -- the structure is settled, 23 assertions hold it
 
 **WHAT IT IS:** a multi-part destructible set-piece with a **scripted vulnerability window**. It spawns ONCE at clock
