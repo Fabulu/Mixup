@@ -322,3 +322,20 @@ test('W372 the body s FINAL path re-arms the parts and hands over to A4 script 1
   assert.equal(IMG.readUInt16BE(0x2a6e1e), 0x7001, '$2A6E1E moveq #$1,D0');
   assert.equal(IMG.readUInt32BE(0x2a6e22), 0x0025980c, '$2A6E20 JMP $25980C -- a tail call, not a jsr');
 });
+
+test('W372 $243DD0 is a THIRD entry of armScreenClearMode, not a new routine', { skip: SKIP }, () => {
+  // Same guard shape as $243E02/$243E7C, which midboss.js already models: bail when the arm word is
+  // set AND the mode word is in [$20,$3C]; otherwise arm it. Same two globals. The only difference is
+  // the mode it writes, $FFFF. So Hibachi's last unported callee was never a routine to write.
+  assert.equal(IMG.readUInt16BE(0x243dd0), 0x4a79, '$243DD0 tst.w abs.l');
+  assert.equal(IMG.readUInt32BE(0x243dd2), 0x0081b410, '  ...$81B410, the ARM word');
+  assert.equal(IMG.readUInt16BE(0x243dd8), 0x0c79, '$243DD8 cmpi.w #imm,abs.l');
+  assert.equal(IMG.readUInt16BE(0x243dda), 0x0020, '  ...#$20, the low bound');
+  assert.equal(IMG.readUInt32BE(0x243ddc), 0x0081b412, '  ...$81B412, the MODE word');
+  assert.equal(IMG.readUInt16BE(0x243de4), 0x003c, '$243DE2 cmpi.w #$3C -- the high bound');
+  assert.equal(IMG.readUInt16BE(0x243dec), 0x4e75, '$243DEC rts -- inside the window it does nothing');
+  // And past the guard it arms with $FFFF, which is the mode Hibachi's call passes.
+  assert.equal(IMG.readUInt16BE(0x243dee), 0x33fc, '$243DEE move.w #imm,abs.l');
+  assert.equal(IMG.readUInt16BE(0x243df0), 0x0001, '  ...#$1 into the arm word');
+  assert.equal(IMG.readUInt16BE(0x243df8), 0xffff, '$243DF6 move.w #$FFFF -- the MODE');
+});

@@ -194,7 +194,10 @@ function note(ctx, addr, what) {
 // `$28615E` already stands in for.  It is counted WITH THE LIVE-BULLET COUNT
 // so "the clear fired over an empty pool" and "the clear fired over 27
 // bullets" are not the same line in the log.
-function armScreenClearMode(ram, ctx, d1, from, mode, entry) {
+// W372: exported so HIBACHI's body can reach it. $243DD0 is a THIRD entry of this same routine --
+// same guard, same $81B410/$81B412 pair, differing only in the mode it arms ($FFFF) -- which is what
+// the handoff meant by calling it a one-liner. It is NOT a separate routine to port.
+export function armScreenClearMode(ram, ctx, d1, from, mode, entry) {
   const ARM = BULLET_DRIVER.armWord, MODE = BULLET_DRIVER.modeWord;
   if (ram.u16(ARM) !== 0                                // $243E02/$243E7C tst.w
       && ram.u16(MODE) >= 0x20                          // cmpi/bcs
