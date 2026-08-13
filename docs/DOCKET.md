@@ -1472,9 +1472,18 @@ yet.
 
 **What is already known that bears on it, so it is not rediscovered:**
 
-* **`$B0` is Hibachi, the boss-route root** (`$2A42D4`/`$2A4606`), and it is still unported -- it wants the
-  HIBACHI CLOSURE RULE and a trace. Since which ending you get turns on how far the boss route goes, `$B0`
-  is a hard prerequisite for the best-ending path rather than a parallel task.
+* **`$B0` is Hibachi, the boss-route root** (`$2A42D4`/`$2A4606`), still unported -- but **W357 read its whole
+  handler and it needs neither the "HIBACHI CLOSURE RULE" nor a trace.** It is 170 bytes: `jsr $2A6B94`, a clear
+  test on `$25962E`, and the stage-clear path. **Everything else in it is disabled** -- eleven `$26331C` calls
+  and one `$25A17A` call, all reaching bare `rts` stubs. So the whole boss is `$2A6B94`, the 1838-byte stretch
+  ending at `$2A4DDE`.
+
+* **The endings are NOT selected in Hibachi's handler.** W357 briefly recorded `$25A17A` as the likely selection
+  point because it is called last with a deliberate `D0=0 D1=0 D2=2 D3=<incoming D0>` setup. **That was wrong:
+  `$25A17A` is one of four consecutive `rts` bytes and does nothing.** The register setup before it is dead.
+  **Do not start D37 by looking there.** What IS established is that `$2A4614 jsr $242952` is the stage-clear
+  call, so Hibachi's handler is the junction the completion path runs THROUGH -- but the selection happens
+  somewhere downstream of `$242952`, not in `$B0`.
 * **The loops are already in the milestone** ("one credit from stage 1 through stage 5 with no `Unreached`,
   then the loops"), and endings depend on loop state, so this item sits AFTER the loops rather than beside
   them.
