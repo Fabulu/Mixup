@@ -8516,6 +8516,7 @@ const HANDLERS = new Map([
   [0x275914, handler85],   // W30: types $85 AND $86 share this one
   [0x272424, handler55],   // W351: stage-5 burst-firing drifter, spec in T55
   [0x2710e2, handler46],   // W352: stage-5 extend-spawn-retract arm, $55's PARENT, spec in T46
+  [0x268e6c, handler1A],   // W365: stage-5 slewing twin-weapon turret -- spec in T1A
   [0x2a4606, handler2A4606],  // W363: HIBACHI, stage 5's boss-route root -- spec in TB0. Its body
                               // $2A6B94 is a note(), so it appears and lets the stage clear but does
                               // not attack. Registered because the stage-clear path is COMPLETE.
@@ -9192,6 +9193,250 @@ const TB0 = Object.freeze({
   screenClearMode: 0xffff,                    // what $243DD0 arms $81B412 to, from $243DEE
   clampGlobal: 0x811f8c, clampFirstTest: 0x14,
 });
+
+// $268E6C -- TYPE $1A, stage 5's slewing twin-weapon turret. FOUR script records.
+//
+// See T1A for the measured fields and the seven sibling-divergence traps. The three that cost a check
+// each in W364, all verified against source rather than assumed:
+//
+//   * `slew64`, NOT `slew64FromRecord`. The latter is $24218C, a different ROM entry point that takes
+//     the facing from ($1B,A6). $242190 takes it in a register, and $1A supplies ($28,A5).
+//   * `targetSelect(ram, a5)` IS this type's inline block -- it already keys on ($3,A5) and does the
+//     exg. W353 recorded the opposite and would have caused a duplicate port.
+//   * the heading is 64-step and the SPRITE is 32-step: `andi.w #$3E` drops bit 0 before the double.
+//
+// And ($28,A5) is the HEADING while ($28,A6) is the ANIMATION CURSOR -- one offset, two structures,
+// both live in this function. A5 is the record, A6 the sub-record.
+function handler1A(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+
+  // $268E6C..$268E92 -- TWO sequential word adds, carry off the SECOND. Folding them into one
+  // addi.w #$7E00 changes the branch: with D0 = $F000 the pair clears the carry and the single sets it.
+  const first = u16(ram.u16(a6 + 0x02) + T1A.boundsBias[0]);   // $268E76
+  const offScreen = first + T1A.boundsBias[1] > 0xffff;        // $268E7A/$268E7E bcc
+  if (offScreen) {
+    if (ram.u8(a5 + T1A.onScreenAt) !== 0) { freeEnemy(ram, a5); return; }   // $268E80/$268E86
+  } else {
+    ram.setU8(a5 + T1A.onScreenAt, 1);                        // $268E8E
+  }
+
+  // $268E94 -- the $5C damage arm. THIS MEMBER INSPECTS ($1D,A6) BEFORE XORING: $49, $4B and $55 all
+  // XOR unconditionally, and copying them would show a colour the cartridge never draws.
+  const hit = ram.u8(a6) & T1A.damageMask;                    // $268E94/$268E96
+  if (hit === 0) {
+    // $268E9A..$268EB0 -- the not-hit path picks the base or the sentinel by HP.
+    ram.setU8(a6 + 0x1d, i16(ram.u16(a6 + 0x18)) >= T1A.hpGate
+      ? ram.u8(a5 + T1A.palBase)                              // $268E9A
+      : T1A.paletteSentinel);                                 // $268EAE moveq #$19,D0
+  } else {
+    ram.setU8(a6, ram.u8(a6) & T1A.damageClear);              // $268EB2 andi.b #$A3
+    scoreHit(ram, ctx, a6, hit);                              // $268EB6 jsr $286096
+    let d0 = ram.u8(a6 + 0x1d);                               // $268EBC
+    if (d0 === T1A.paletteSentinel) d0 = ram.u8(a5 + T1A.palBase);   // $268EC0/$268EC6
+    d0 = (d0 ^ ram.u8(a5 + T1A.palXor)) & 0xff;               // $268ECA/$268ECE
+    if ((ram.u16(a6 + 0x18) & 0x8000) !== 0) {                // $268ED0 tst.w / bmi $269160
+      death1A(ram, rom, a5, a6, ctx);
+      return;
+    }
+    ram.setU8(a6 + 0x1d, d0);                                 // $268ED8
+  }
+
+  spawnCues28AC72(ram, rom, a5, a6);                          // $268EDC jsr $28AC72
+  // $268EE2 -- the pause as a WORD here, and as a LONG at $268F4A/$269088 where it also covers $8130D4.
+  if (ram.u16(T1A.pauseAll) !== 0) { tail1A(ram, rom, a5, a6, ctx); return; }   // $268EE8 bne $268F4A
+
+  // $268EEA..$268F14 -- the SQUARE-wave wobble. ($36,A6) free-runs by $20 and only bit 6 is used, so
+  // ($6,A6) alternates between $F000 and $F040. Not a sine, and cheaper than $55's $241D34 route.
+  ram.setU16(a6 + 0x06, 0xf000);                              // $268EEA
+  if (ram.u8(a6 + 0x1b) < 0x40) {                             // $268EF0 cmpi.b #$40 / bcc
+    ram.setU16(a6 + 0x36, u16(ram.u16(a6 + 0x36) + T1A.wobbleStep));            // $268EF8
+    ram.setU16(a6 + 0x06,
+      u16(ram.u16(a6 + 0x06) + (ram.u16(a6 + 0x36) & T1A.wobbleMask)));         // $268EFE..$268F06
+    if (due8(ram, a6 + 0x26)) {                               // $268F0A subq.b #1,($26,A6) / bcc
+      ram.setU8(a6 + 0x26, ram.u8(a6 + 0x27));                // $268F10 -- the pair is in the SUB-record
+      // $268F16..$268F38 -- the BIDIRECTIONAL cursor. Forward wraps at $10 to 0; reverse wraps on
+      // UNDERFLOW to $C, using the carry, so it is not (cursor - 4) & 0xC.
+      const dir = ram.u8(a6 + 0x1c) !== 0;
+      let cur = ram.u16(a6 + T1A.cursorAt);
+      if (!dir) {
+        cur = u16(cur + T1A.cursorStep);                      // $268F1C addq.w #4
+        if (cur === T1A.cursorWrap) cur = 0;                  // $268F20/$268F28 -- EQUALITY, then clr
+      } else {
+        const next = cur - T1A.cursorStep;                    // $268F2E subq.w #4
+        cur = next < 0 ? T1A.cursorWrapDown : next;           // $268F32 bcc / $268F34 move.w #$C
+      }
+      ram.setU16(a6 + T1A.cursorAt, cur);
+      ram.setU32(a6 + 0x0a, rom.u32(T1A.artTable + cur));     // $268F3A..$268F44
+    }
+  }
+
+  // $268F4A -- the LONG read, so this one test honours BOTH $8130D2 and $8130D4.
+  if (ram.u32(T1A.pauseAll) !== 0) { tail1A(ram, rom, a5, a6, ctx); return; }
+
+  // $268F50..$269046 -- ARM 1: the seven-shot fan.
+  if (due8(ram, a5 + T1A.fanGateAt)) {                        // $268F50 subq.b #1,($22,A5) / bcc
+    ram.setU8(a5 + T1A.fanGateAt, ram.u8(a5 + T1A.fanGateReloadAt));            // $268F5C
+    // $268F62 -- re-aim only on the burst's first volley, the same idiom as $55's ($2E,A5)/($2F,A5).
+    if (ram.u8(a5 + T1A.burstAt) === ram.u8(a5 + T1A.burstReloadAt)) {
+      // $268F6E..$268F8C -- targetSelect IS this block: it keys on ($3,A5) and does the exg.
+      const sel = targetSelect(ram, a5);
+      if (sel && sel.addr) {
+        // $268F8E/$268F94 -- movem.w SIGN-EXTENDS both. aim64 is $24203E: self D0/D1, target D2/D3.
+        const want = aim64(aimTables(rom),
+          u16(ram.u16(a6 + 0x02) + 0x0b00), ram.u16(a6 + 0x04),                 // $268FA0 addi.w #$B00
+          ram.u16(sel.addr + 0x02), ram.u16(sel.addr + 0x04));
+        // $268FB2 -- slew64, NOT slew64FromRecord. The facing comes from ($28,A5), the RECORD.
+        const dir = slew64(ram.u16(a5 + T1A.headingAt) & 0xff, want);            // $268FAE/$268FB2
+        ram.setU16(a5 + T1A.headingAt, u16(dir));                               // $268FB8
+        // $268FBC -- the sprite is 32-step where the heading is 64-step: andi.w #$3E drops bit 0.
+        ram.setU32(a5 + 0x24, rom.u32(T1A.headingTable + ((dir & 0x3e) * 2)));   // $268FC2
+      }
+    }
+    if (i16(ram.u16(a6 + 0x02)) >= T1A.fanGateX && due8(ram, a5 + T1A.fanTimerAt)) {   // $268FD2/$268FDA
+      ram.setU8(a5 + T1A.fanTimerAt, ram.u8(a5 + T1A.rankArm1At));              // $268FE0 -- the RANK value
+      fan1A(ram, rom, a5, a6, ctx);
+    }
+  }
+
+  tail1A(ram, rom, a5, a6, ctx);                              // $269058
+}
+// $269024..$269046 -- arm 1's SEVEN shots. One emit per pass, not unrolled like $55's.
+// T1A.fan.angles is pinned against the cartridge by w363type1afields.test.js: seven values derived from
+// backoff $24 and step $C, checked symmetric about the aim.
+//
+// THE SPEED BIAS IS RANDOM PER VOLLEY. $268FF6 calls $242B90 -- drawByte242B3C's D5-returning twin, same
+// table -- and $269012 SWAPS the byte into the high word, so it becomes the X half of a packed long.
+// $55's equivalent is a fixed $02000000, and reusing $55's fan with a constant here gives a
+// uniform-speed volley: visually close, mechanically wrong, invisible in one frame.
+function fan1A(ram, rom, a5, a6, ctx) {
+  const base = ram.u16(a5 + T1A.headingAt) & 0xff;
+  const d5 = (drawByte242B3C(ram, rom) << 16) >>> 0;      // $268FF6 jsr $242B90 / $269012 swap D5
+  const ctxB = { ram, rom, log: new WriteLog(ram) };
+  T1A.fan.angles.forEach((off) => {
+    const d1 = (base + off) & 0xff;                       // $26901C subi.w #$24 / $26903E addi.w #$C
+    const idx = (d1 + 2) & 0xfc;                          // $26902C addq.w #2 / $26902E andi.w #$fc
+    const regs = {
+      d0: 0x5,                                            // $269016 moveq #$5,D0 -- a WORD 5
+      d1,
+      d2: ram.u32(a6 + 0x02),                             // $269018
+      d3: i32(rom.u32(T1A.vectorTable + idx) + d5),       // $269032 move.l (A0,D3.w),D3 / $269036 add.l D5,D3
+      d4: 0,
+      d5,
+      a5,
+    };
+    ctx.bulletSpawn?.(0x269038, fireBullet(ctxB, T1A.fan.emit, regs));   // $269038 jsr $281744
+  });
+}
+
+// $269092..$26915E -- ARM 2: the twin-muzzle burst, on its own rank-dependent timer.
+//
+// ($2E,A5) HAS TWO RELOAD SOURCES: ($2A,A5), the other rank value, on the ordinary step, and ($2F,A5)
+// when the ($30,A5) volley counter expires. That is a burst-within-a-burst, and treating ($2E,A5) as
+// having one reload collapses the grouping.
+//
+// It also selects its target DIFFERENTLY from arm 1: aim256 does its own selection by the shared rule
+// and IGNORES ($3,A5), so the two arms can legitimately fire at different players in one frame.
+function arm2_1A(ram, rom, a5, a6, ctx) {
+  if (!due8(ram, a5 + T1A.arm2TimerAt)) return;           // $2690A2 subq.b #1,($2E,A5) / bcc
+  ram.setU8(a5 + T1A.arm2TimerAt, ram.u8(a5 + T1A.rankArm2At));          // $2690AA -- the RANK value
+  ram.setU8(a5 + T1A.arm2CountAt, ram.u8(a5 + T1A.arm2CountReloadAt));   // $2690B0
+  // $2690B6/$2690BC -- TWO byte writes of $80, the no-target fallback for both muzzles.
+  ram.setU8(a5 + T1A.muzzleAimAt[0], T1A.muzzleAimFallback);
+  ram.setU8(a5 + T1A.muzzleAimAt[1], T1A.muzzleAimFallback);
+
+  // $2690C2..$2690F2 -- two aims from points +/-$680 in Y off a shared X-$600. The `bcs` at $2690D6
+  // fires on the FIRST aim only, so no target leaves BOTH muzzles at $80.
+  // $24226E is aim256FromCaller(t, ram, a5, selfY, selfX) -- selfY BEFORE selfX, and it does its OWN
+  // target selection from the record, which is why this arm ignores ($3,A5) where arm 1 honours it.
+  const selfX = u16(ram.u16(a6 + 0x02) + T1A.muzzleXOffset);
+  const y = ram.u16(a6 + 0x04);
+  const up = aim256FromCaller(aimTables(rom), ram, a5, u16(y + T1A.muzzleYOffset), selfX);
+  if (up === null) return;                                // $2690D6 bcs $2690F6 -- FIRST aim only
+  ram.setU8(a5 + T1A.muzzleAimAt[0], up & 0xff);          // $2690DA
+  const down = aim256FromCaller(aimTables(rom), ram, a5, u16(y - T1A.muzzleYOffset), selfX);
+  if (down !== null) ram.setU8(a5 + T1A.muzzleAimAt[1], down & 0xff);    // $2690F2
+
+  // $2690F6..$26915E -- the two shots. Each jitters its own muzzle's aim by asr.b #2 of a FRESH draw:
+  // ARITHMETIC, so signed, giving -32..+31 centred. `>>> 2` on an unsigned byte biases every shot one way.
+  const ctxB = { ram, rom, log: new WriteLog(ram) };
+  T1A.muzzleAimAt.forEach((at, i) => {
+    const draw = drawByte242B3C(ram, rom);                // $269108/$269130 jsr $242B3C
+    const jitter = (draw << 24) >> 24 >> T1A.muzzle.jitterShift;          // $26910E asr.b #2
+    const d1 = (ram.u8(a5 + at) + jitter) & 0xff;         // $269110 add.b D0,D1
+    const regs = {
+      d0: T1A.muzzle.d0,                                  // $269112 move.l #$20016,D0
+      d1,
+      d2: ram.u32(a6 + 0x02),                             // $269118
+      d3: T1A.muzzle.bias[i],                             // $26911C/$269144 -- borrow-symmetric
+      d4: 0,
+      d5: 0,
+      a5,
+    };
+    ctx.bulletSpawn?.(0x269124 + i * 0x28, fireBullet(ctxB, T1A.muzzle.emit, regs));
+  });
+
+  // $269152 -- step the volley counter; on underflow ($2E,A5) reloads from ($2F,A5), NOT ($2A,A5).
+  const n = ram.u8(a5 + T1A.arm2CountAt);
+  ram.setU8(a5 + T1A.arm2CountAt, (n - 1) & 0xff);
+  if (n === 0) ram.setU8(a5 + T1A.arm2TimerAt, ram.u8(a5 + T1A.arm2GapAt));   // $269158
+}
+
+// $269058..$26907E -- the tail. TWO emits, and the position bias is SWAP-SEPARATED word adds.
+//
+// $26905E..$26906C is `move.l ($2,A6),D1 / addi.w #-$400,D1 / swap D1 / addi.w #$500,D1 / swap D1`. The
+// halves are added while swapped APART, so there is NO borrow between them. Folding this into
+// `addi.l #$0500FC00` introduces a carry the cartridge never performs.
+function tail1A(ram, rom, a5, a6, ctx) {
+  enqueueRegistersThroughStub(ram, rom, T1A.drawStubs[0],                // $269058 jsr $23D762
+    swapBiasedPosition(ram.u32(a6 + 0x02)),
+    ram.u32(a5 + 0x24),                                                  // $26906E move.l ($24,A5),D2
+    0x620,                                                               // $269072 move.w #$620,D3
+    ram.u8(a6 + 0x1d));
+  enqueueRegistersThroughStub(ram, rom, T1A.drawStubs[1],                // $26907A jsr $23DECE
+    swapBiasedPosition(ram.u32(a6 + 0x02)),
+    ram.u32(a5 + 0x24), 0x620, ram.u8(a6 + 0x1d));
+  // $269082 jsr $26331C -- a bare rts. Transcribed, not called. Hibachi calls the same stub eleven times.
+}
+
+/** The swap-separated bias: -$400 on the LOW half, +$500 on the HIGH, with no borrow between them. */
+function swapBiasedPosition(pos) {
+  const lo = u16((pos & 0xffff) - 0x400);                 // $269062 addi.w #-$400,D1
+  const hi = u16(((pos >>> 16) & 0xffff) + 0x500);         // $269068 addi.w #$500,D1 after the swap
+  return ((hi << 16) | lo) >>> 0;
+}
+
+// $269160..$26925C -- the death arm. Follows type $88's ($27627E) line for line, including deferring
+// the pool-C bursts through noteEffect: $88 ships that way and its own header says "THE DEATH EXPLOSION,
+// WIRED", so the burst is a known effect-subsystem deferral rather than an oversight.
+function death1A(ram, rom, a5, a6, ctx) {
+  const u = ctx.unported;
+  scoreKill(ram, rom, ctx, T1A.killScore, ram.u8(a6) & T1A.damageMask);   // $269160/$269166 -- $350
+  ctx.soundPost?.(T1A.deathCue);                                          // $26916C -- shared with $49/$55
+  noteEffect(u, T1A.burstBucket, a5, `D0=$C, D2=$${T1A.burstBias[0].toString(16).toUpperCase()}`);
+  // $269184 -- RANK EXACTLY 4 (cmpi.w #$4 / bne, not a threshold) AND clock below $2B0. Content almost
+  // nobody sees, so a port that gets it wrong passes every playtest: it belongs in a test, not a session.
+  if (ram.u16(T1A.rankGlobal) === T1A.rank4Exactly
+      && ram.u16(T1A.clockGlobal) < T1A.rank4ClockBelow) {
+    noteEffect(u, T1A.burstBucket, a5,
+      `D0=$C, D2=$${T1A.burstBias[1].toString(16).toUpperCase()} -- the RANK-4 MIRROR burst`);
+  }
+  // $2691A8/$2691DC/$26920E -- THREE spawnEffect calls, kinds $D, $5, $5, with DIFFERENT velocities.
+  // Counting the sites is how this was read; reading them in sequence produced a retraction in W351.
+  const fields = [
+    { kind: 0xd, w: [[0x1e, 0x10], [0x12, 0], [0x14, 0], [0x26, 0x400], [0x28, 0], [0x10, 1]] },
+    { kind: 0x5, w: [[0x1e, 0x10], [0x12, 0]] },
+    { kind: 0x5, w: [[0x1e, 0x10], [0x14, 0x400], [0x26, 0xf800], [0x28, 0x600], [0x10, 1]] },
+  ];
+  for (const { kind, w } of fields) {
+    // spawnEffect returns a BARE ADDRESS (effects.js returns POOL_B.bitBucket directly), NOT { addr }.
+    // Writing through `r.addr` would write through undefined and drop every field silently.
+    const addr = spawnEffect(ram, ctx, kind);             // $289004
+    if (!addr) continue;
+    ram.setU32(addr + 0x02, ram.u32(a6 + 0x02));          // the record's position
+    for (const [off, val] of w) ram.setU16(addr + off, val);
+  }
+  freeEnemy(ram, a5);
+}
 
 /** The map of ported handler addresses -> functions, for the enemy driver. */
 export function handlerMap() { return HANDLERS; }

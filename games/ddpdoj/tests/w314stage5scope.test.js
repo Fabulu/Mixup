@@ -129,15 +129,16 @@ test('W341 stage 5 has FOUR types with no handler, over 19 of its 770 records',
     // BODY ($2A6B94) as a note(), which is the $43/$49 pattern -- but it was only safe here because the
     // stage-clear path ($242952, runStageAdvance242952) is a COMPLETE translation. A note-only stage
     // advance would have soft-locked the run at stage 5's end with a green suite and no error.
-    assert.equal(miss.length, 2, `two types, got ${miss.map((m) => m.type.toString(16))}`);
-    assert.equal(miss.reduce((a, m) => a + m.records, 0), 5, 'across 5 records');
+    // W365: TWO and 5 -> ONE and 1, type $1A (four records). It was recorded for many waves as "blocked on
+    // a TRACE at $268D8C" and needed no trace at all -- D2 is consumed sixteen bytes before that call.
+    assert.equal(miss.length, 1, `one type, got ${miss.map((m) => m.type.toString(16))}`);
+    assert.equal(miss.reduce((a, m) => a + m.records, 0), 1, 'across 1 record -- $4C alone');
     // Ranked by record count. With $46 gone the remaining three are the two dependency/boss bundles
     // plus $1A, which is still BLOCKED on register provenance at $268D8C rather than on reading.
     const ranked = [...miss].sort((a, b) => b.records - a.records || a.type - b.type);
-    assert.deepEqual(ranked.map((m) => m.type),
-      [0x1a, 0x4c]);
-    assert.deepEqual(ranked.map((m) => m.records), [4, 1],
-      '$1A at four and $4C at one -- both recon-complete with specs, neither blocked on a trace');
+    assert.deepEqual(ranked.map((m) => m.type), [0x4c]);
+    assert.deepEqual(ranked.map((m) => m.records), [1],
+      '$4C alone: ONE record, five unrolled parts, recon complete with T4C pinned by w363type4cfields');
   });
 
 test('W315 stage 5\'s one type-$00 record points at a NULL handler', { skip: SKIP_IMG }, () => {
@@ -236,7 +237,7 @@ test('W317 FOUR of the thirteen spawn an UNPORTED child, so record count is the 
     assert.equal(spawnsOf(typeEntry(0x1b).handler, 0x3fc).size, 0, '$1B spawns nothing either');
     assert.ok(map.has(typeEntry(0x1b).handler), 'and W323 ported it');
     assert.equal(spawnsOf(typeEntry(0x1a).handler, 0x1fc).size, 0, '$1A spawns nothing either');
-    assert.ok(!map.has(typeEntry(0x1a).handler), 'and it is the next clean one');
+    assert.ok(map.has(typeEntry(0x1a).handler), 'and W365 ported it -- it was NEVER blocked on a trace');
     // And W317's own type spawned an ALREADY-ported child, which is why it was the cheap one.
     assert.ok(map.has(typeEntry(0x3f).handler), 'type $3F, W199, is ported');
   });
@@ -285,7 +286,9 @@ test('W314 the walker and the driver are different tables', { skip: SKIP_IMG }, 
   assert.equal(IMG.readUInt16BE(e.init), 0x3b7c, 'and it IS the 8-byte `move.w #N,($4,A5)` stub');
   assert.equal(IMG.readUInt16BE(e.init + 6), 0x4e75, 'ending in rts');
   assert.equal(IMG.readUInt16BE(e.init + 2), 1, 'with run length 1');
-  assert.ok(!map.has(e.handler), 'but its handler is absent');
+  // W365: was `!map.has` -- $1A's handler is now registered. The init STUB facts above still hold and are
+  // the point of this test; the handler's absence was incidental to them.
+  assert.ok(map.has(e.handler), 'and W365 registered its handler');
   // And the type W326 DID port is registered on both halves, which is the contrast that makes the
   // assertion above mean something rather than merely being true of everything.
   assert.ok(map.has(typeEntry(0x81).handler), 'W326: type $81\'s handler IS registered now');
