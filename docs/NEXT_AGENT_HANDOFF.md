@@ -593,7 +593,111 @@ function partSet4C(ram, a6, i, on) {
 }
 ```
 
-**Still to write:** the main `handler4C` (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
+**THE MAIN HANDLER AND THE DISPATCHER, DRAFTED (W372):**
+
+```js
+/** `$26F5F2` -- type $4C. A multi-part destructible set piece with a SCRIPTED vulnerability window:
+ *  it spawns once at clock $1B8 and cannot be hurt until $1F0. */
+function handler4C(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+
+  // $26F5F2 -- FREEZE. The bne lands on $26F704, the FIRST draw call, not on the rts. So a paused $4C
+  // skips every state and still draws all seven sprites, which is why it does not vanish when frozen.
+  if (ram.u16(0x8130d2) !== 0) { drawAll4C(ram, rom, a5, a6); return; }
+
+  // $26F5FC -- part 5's $1E, the retire flag. It was armed a frame ago, by state 7's $26FF96 or by
+  // $27000A, and NOTHING acts on it in the frame that sets it. So the object lives one more full
+  // frame after the flag goes up, including one more pass through the draw chain.
+  if (ram.u8(a6 + 0x9e) !== 0) {
+    ram.setU16(T4C.releaseFlag, 0);                          // $26F604
+    pushExternalSpeed(ram, 0x20, 0x20);                      // $26F60C..$26F614
+    return;                                                  // $26F61A jmp $263762 -- just a return
+  }
+
+  // $26F622 -- the latch arms ONCE: only at clock $1F0, only while part 5's $1F is clear, and only
+  // while it is not already set. It opens the damage window AND selects the exit state in one go.
+  if (ram.u8(a5 + T4C.invulnGateAt) === 0 && ram.u8(a6 + 0x9f) === 0
+      && ram.u16(0x8130ce) === T4C.armClock) {               // $26F632 cmpi.w #$1F0,$8130CE
+    ram.setU8(a5 + T4C.invulnGateAt, 1);                     // $26F63E
+    ram.setU16(a5 + 0x20, 1);                                // $26F644
+    setState4C(ram, a6, 7);                                  // $26F64A moveq #$7 / bsr $26F858
+  }
+
+  // $26F650 -- the $5C damage arm, this band's sixth member.
+  const hit = ram.u8(a6) & 0x5c;
+  if (hit !== 0) {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);                        // $26F658/$26F65C
+    ram.setU16(a6 + T4C.hitMaskTo, hit);                     // $26F65E -- into part 5's $0E
+    scoreHit(ram, ctx, a6, hit);                             // $26F662 jsr $286096
+    // The XOR is an IMMEDIATE $D baked into the instruction, NOT ($19,A5) as the four siblings use.
+    // T4C deliberately has no palXor field, and a test asserts its absence.
+    ram.setU8(a6 + 0x1d, (ram.u8(a6 + 0x1d) ^ T4C.palXorImmediate) & 0xff);   // $26F668..$26F670
+
+    // $26F674 -- THE ONE A SIBLING-COPY GETS WRONG. ($18,A6) is a per-hit DAMAGE ACCUMULATOR that is
+    // reset every hit; the real health is the 32-BIT POOL at ($1A,A5). All four siblings test
+    // ($18,A6)'s sign for death, and copying that reads a field $4C resets, so it NEVER dies.
+    const dmg = u16(0x7fff - ram.u16(a6 + T4C.damageAccumAt));                // $26F674/$26F67A
+    if (ram.u8(a5 + T4C.invulnGateAt) === 0) {               // $26F67E tst.b / bne SKIPS the sub.l
+      ram.setU32(a5 + T4C.hpPoolAt,
+        (ram.u32(a5 + T4C.hpPoolAt) - dmg) >>> 0);                           // $26F686 sub.l
+    }
+    ram.setU16(a6 + T4C.damageAccumAt, T4C.hpReset);         // $26F68A -- UNCONDITIONAL, every hit
+
+    // $26F690 tst.l ($1A,A5) / $26F694 bpl -- death needs the pool NEGATIVE. `<= 0` kills it a hit
+    // early and `=== 0` may never fire at all.
+    if ((ram.u32(a5 + T4C.hpPoolAt) & 0x80000000) !== 0) {
+      scoreKill(ram, rom, ctx, T4C.killScore, hit);          // $26F698/$26F69E
+      ram.setU16(a6, 0x8000);                                // $26F6A4 -- the dying bit
+      ram.setU8(a6 + 0x9f, 1);                               // $26F6A8 -- part 5's $1F BLOCKS re-arm
+      ram.setU16(T4C.releaseFlag, 0);                        // $26F6AE $8130DE
+      ram.setU16(0x8130e0, 0);                               // $26F6B6 -- and $8130E0, CLAIMED BY $49
+      pushExternalSpeed(ram, 0x20, 0x20);                    // $26F6BE..$26F6C6
+      setState4C(ram, a6, 6);                                // $26F6CC -- the DEATH state
+      // $26F6D2 lea ($2701C8,PC),A0 / $26F6D8 jsr $246520.
+      // OPEN: buildParts246520(ram, rom, a0, mode, site) -- `mode` comes from a register this draft
+      // has NOT traced. READ IT before placing; do not guess a mode here.
+      buildParts246520(ram, rom, T4C.deathEffectTable, /* mode */ null, 0x26f6d8);
+    }
+  } else {
+    // $26F6DE -- an unhit frame REWRITES the palette byte rather than merely skipping the XOR. With
+    // the $D XOR this is a two-value alternation, $12 and $1F; drop it and the object stays flashing.
+    ram.setU8(a6 + 0x1d, 0x12);
+  }
+
+  retireCheck4C(ram, a6);                                    // $26F6E4 bsr $26FFE8
+
+  // $26F6E8 -- part 5's $1F set SKIPS the state machine, but the draw chain below still runs.
+  if (ram.u8(a6 + 0x9f) === 0) {
+    dispatch4C(ram, rom, a5, a6, ctx);                       // $26F6F0 bsr $26F86A
+    // $26F6F4 -- ($20,A5) non-zero skips these two, and the $1F0 arm SETS it, so they run only
+    // BEFORE the vulnerability window opens.
+    if (ram.u16(a5 + 0x20) === 0) {
+      sub26F9A2(ram, rom, a5, a6, ctx);                      // $26F6FC
+      sub26FA82(ram, rom, a5, a6, ctx);                      // $26F700
+    }
+  }
+
+  drawAll4C(ram, rom, a5, a6);                               // $26F704..$26F714, then rts
+}
+
+/** `$26F86A` -- the dispatcher. `($26,A6)` indexes eight 4-byte pointers at `$26F886`, and the tail is
+ *  `jmp $2417DE`, so applyVelocityA6 runs after EVERY state, including the ones that return early. */
+function dispatch4C(ram, rom, a5, a6, ctx) {
+  const state = ram.u16(a6 + T4C.stateAt) & 0xffff;          // $26F870 move.w ($26,A6),D0
+  if (state > 7) {
+    unreached(0x26f87c, `type $4C state ${state} is outside the eight-entry table at `
+      + `$${T4C.stateTable.toString(16).toUpperCase()}`);
+  }
+  STATES_4C[state](ram, rom, a5, a6, ctx);                   // $26F87C jsr (A0)
+  applyVelocityA6(ram, ctx.tables, a6);                      // $26F87E jmp $2417DE
+}
+```
+
+**ONE OPEN ITEM, MARKED IN THE CODE:** `buildParts246520(ram, rom, a0, mode, site)` takes a `mode` that comes from a
+register the draft has not traced. `$26F6D2 lea ($2701C8,PC),A0 / $26F6D8 jsr $246520` shows A0 only. **Read the mode
+before placing this** -- it is the same class as `$1A`'s D3 and must not be guessed.
+
+**Still to write:** the eight state bodies (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
 `$26F6E8` main flow, then the five-call draw chain) and the eight state bodies, all of which are read and pinned.
 
 ### EVERY HELPER `handler4C` NEEDS, READ FROM ITS DEFINITION (W371)
