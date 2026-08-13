@@ -760,3 +760,27 @@ test('W371 its two callers supply the target DIFFERENTLY, and both branch on the
   assert.equal(IMG.readUInt16BE(0x26f94a), 0x6500, 'state 1 bcs -- ARRIVED advances the cursor');
   assert.equal(IMG.readUInt16BE(0x26fd3c), 0x6500, 'state 3 bcs -- ARRIVED clears ($1A,A6) and steps');
 });
+
+test('W371 state 4 is a WAYPOINT CHAIN, and its Ys are state 1\'s Ys', { skip: SKIP }, () => {
+  // Steps 2 and 3 each set a literal point, call the steerer, and advance only on arrival. So the
+  // object's path is a sequence of points, and the same two Y values recur across states with only
+  // the X changing -- state 1's table is $5000/$2A00 and $5000/$0E00, state 4's literals are
+  // $3600/$2A00 and $3600/$0E00. It patrols between two HEIGHTS at different depths.
+  const pts = [[0x26fdb8, 0x3600, 0x2a00], [0x26fdde, 0x3600, 0x0e00]];
+  for (const [at, x, y] of pts) {
+    assert.equal(IMG.readUInt16BE(at), 0x343c, `$${at.toString(16)} move.w #imm,D2`);
+    assert.equal(IMG.readUInt16BE(at + 2), x, `  ...#$${x.toString(16)}`);
+    assert.equal(IMG.readUInt16BE(at + 4), 0x363c, '  ...move.w #imm,D3');
+    assert.equal(IMG.readUInt16BE(at + 6), y, `  ...#$${y.toString(16)}`);
+    assert.equal(IMG.readUInt16BE(at + 8), 0x6100, '  ...bsr.w');
+    assert.equal(at + 10 + IMG.readInt16BE(at + 10), T4C.distBander, '  ...to the steerer');
+    assert.equal(IMG.readUInt16BE(at + 12), 0x6500, '  ...bcs -- advance ONLY on arrival');
+  }
+  // The Ys are exactly state 1's table Ys, from the other X.
+  const tableYs = [0, 4].map((o) => IMG.readUInt16BE(0x26f986 + o));
+  assert.deepEqual(tableYs, [0x2a00, 0x0e00], 'state 1s two Ys');
+  assert.deepEqual(pts.map((p) => p[2]), tableYs, 'and state 4 reuses them at X $3600');
+  // It ends by handing over to state 5.
+  assert.equal(IMG.readUInt16BE(0x26fdee), 0x7005, '$26FDEE moveq #$5,D0');
+  assert.equal(0x26fdf2 + IMG.readInt16BE(0x26fdf2), T4C.stateSetter, '  ...bsr $26F858 -- state 5');
+});

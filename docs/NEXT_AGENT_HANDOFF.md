@@ -611,6 +611,17 @@ same shape as `$1A`'s two arms, which the band rules already say not to unify, a
 It is also why state 2 wrote `($2A)` and `($2B)` as two separate `move.b`s where state 1 used one `move.w`: **they are
 two independent cursors**, not one 16-bit value.
 
+**THE PATH IS A WAYPOINT GRAPH, AND STATES 1, 3 AND 4 ARE ITS LEGS.** `$26FF9E` steers toward a point in D2/D3 and
+returns arrival in the carry, so every state that moves is a list of points plus a branch on arrival:
+
+    state 1   $5000/$2A00 and $5000/$0E00, from the table at $26F984, cursor 0/4
+    state 3   $5C00/$1C00, a literal
+    state 4   $3600/$2A00 then $3600/$0E00, literals, then hands over to state 5
+
+**The two Y values recur with only the X changing** -- `$2A00` and `$0E00` appear in state 1's table at X `$5000` and
+again in state 4 at X `$3600`. The object patrols between two HEIGHTS at different depths, which is why the same Ys
+are worth checking for in the states still unread.
+
 **AND `$4C` IS ~494 BYTES BIGGER THAN THE SPEC SAID.** `handlerEnd` was `$26FFE8`, noted as "the last rts is
 `$26FFE6`". `$26FFE6` IS an rts -- but `$26FFE8` is the **START of the last subroutine**, and the subroutine list in
 the same spec contained the disproof, because `$26FFE8` is in it. Its `beq` reaches `$270128`, well past `$270000`.
