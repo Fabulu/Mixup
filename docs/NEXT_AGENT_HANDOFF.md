@@ -5138,7 +5138,32 @@ the six existing names show all three shapes exist, so that must be read rather 
 `add.b D5,D1` after the call means D5 carries a caller-supplied base the RNG offsets, so **find where D5 is set
 before writing this** -- it is not visible in the span read so far.
 
-Still to read: `$269004` onward, the death arm at `$269160`, and `$242B90` itself.
+### `$242B90` READ. It is a BYTE draw returning in **D5**, table `$242BAC`, 256 entries.
+
+    242b90  addq.b #1,$803917       bump the shared counter, as all 32 siblings do
+    242b96  move.w $803916,D5       the state WORD -> D5
+    242b9c  move.l A0,-(A7)         A0 saved (so it is callee-preserved, unlike $55's aim256 exit)
+    242b9e  lea $242BAC,A0          the canned table, PC-relative
+    242ba4  move.b (A0,D5.w),D5     a BYTE, indexed by the state, back into D5
+
+**It returns in D5, not D0.** `drawWord242EC2` returns D0; this one overwrites D5. **That is exactly why
+`$1A`'s `$268FFC add.b D5,D1` works** -- and why the earlier note that "D5 carries a caller-supplied base" was
+wrong. D5 is not an input at all: `$242B90` produces it, and `$1A` adds the fresh draw to its heading. **The
+prerequisite I flagged last commit does not exist.**
+
+**The table is `$242BAC..$242CAC`, 256 bytes, bounded by ADJACENCY: `$242CAC` is the next bumper site** in
+`rng.js`'s own list of 32. Fifth time this wave that adjacency has bounded a table exactly, and the cleanest --
+the list of siblings is itself the bound.
+
+`(A0,D5.w)` is a SIGNED word index, so it needs `drawWord242EC2`'s treatment (`i >= 0x8000 ? i - 0x10000 : i`),
+which `rng.js` already implements for its sibling.
+
+**So porting it is a handful of lines beside its six siblings in `rng.js`:** bump `$803917`, read `$803916` as a
+signed word, index a new `RNG_242B90 = { table: 0x242bac, entries: 256 }`, return the byte. A window for
+`$242BAC + $100` is needed -- check first whether an existing RNG window already covers it, since `rng.js`
+already models six tables in this address range.
+
+Still to read: `$269004` onward and the death arm at `$269160`.
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
