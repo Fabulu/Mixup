@@ -1074,6 +1074,24 @@ part-4 draw routines use -- and it sets `($6C,A6)`, the companion the `$66` ON s
 the object's output while every constant stays correct. That is the sixth mirrored pair in this type and the only one
 that is not symmetric in its firing.
 
+### BEFORE PLACING: TWO CALLS IN THE DRAFT ARE INVENTED NAMES (W372)
+
+**`emit28B4BE(...)` and `emit281402(...)` DO NOT EXIST.** I wrote them into `retireCheck4C` and `sub26FA82` from the
+ROM addresses without reading the port, which is the exact seven-of-seven failure W365 recorded and which this wave's
+own helper table was built to avoid. What is actually there:
+
+* **`$281402` is an ENTRY IN A DISPATCH TABLE**, `bullets.js:591` -- `[0x281402, (ctx, r) => { ... }]`, not a
+  standalone export. Its own comment notes that `$281402 $281708 $281726` **do not wrap** and restore D0 themselves.
+  Calling it means going through that table's dispatch, not calling a function.
+* **`$28B4BE`** appears across `rng.js`, `boss.js`, `boss2.js`, `boss4.js` and `stage3carrier.js`. **Read a live call
+  site** and use whatever those do.
+
+`$242EC2` IS a plain export -- `drawWord242EC2(ram, rom)` in `rng.js:248` -- so the coin flip in `sub26FA82` needs
+`(ram, rom)`, not the `(ram, ctx)` the draft passes. **Fix that too.**
+
+**The lesson is the one this wave keeps relearning:** the helper table above was read from definitions and is right;
+these two were typed from addresses and are wrong. Anything not in that table gets read before it gets called.
+
 **THE DRAFT IS COMPLETE AND PARSES CLEAN.** No ellipses, no placeholders. Re-extracted from this document, stubbed,
 and run through `node --check`.
 
