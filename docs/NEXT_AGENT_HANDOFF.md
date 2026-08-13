@@ -4882,9 +4882,29 @@ worth more than the code was:**
 `T55` remains committed and `ported: false` remains set, so the suite still pins the unwritten set. Suite
 back to 2438/2438 after the revert.
 
-**What the next pass needs, in order:** unroll both volleys literally; write a focused test that drives one
-record through mode 0 -> 2 -> 3 and asserts the burst reload and the 15/20 shot counts; then bump the four
-pins from their real new values.
+**What the next pass needs, in order:**
+
+1. **Unroll both volleys -- ALREADY DONE.** `T55.volleyOrdinary.angles` (15) and `T55.volleyFinale.angles`
+   (20) hold the literal offsets, and `tests/w351volleyangles.test.js` rebuilds both from the cartridge's
+   instruction stream every run and checks each is symmetric about the aim. **Index those lists; do not
+   re-derive a loop** -- that fix-up arithmetic is what got the first attempt reverted.
+2. **Write `handler55`** against `T55`, then delete its `ported: false`.
+3. **Write a focused test** driving one record through mode 0 -> 2 -> 3, asserting the burst reload at
+   `$27270E` and the 15-then-20 shot counts.
+4. **Bump the four census pins.** LOCATED, with current values, so nobody rediscovers them off a red suite:
+
+       tests/integration.test.js:266      assert.equal(m.size, 77, ...)   -> 78
+       tests/handlers.test.js:137         deepEqual([...HANDLER_ADDRESSES].sort(...), [...])
+                                          -> insert 0x272424 in sorted position
+       tests/w167coverage.test.js:84      enemy_types: 89/256 ported, 37 unknown, 130 null
+                                          -> 90/256, and RE-RUN dojcoverage.py for the unknown/null
+                                             split rather than assuming only the first number moves
+       tests/w314stage5scope.test.js:210  assert.ok(!map.has(typeEntry(k).handler), '... is unported')
+
+**The last one is the trap.** It is NOT a count: it asserts that four of stage 5's thirteen spawn an
+UNPORTED child. If `$55` is one of those four children, porting it makes the claim FALSE and the test must
+be **rewritten, not renumbered** -- renumbering would turn a real finding about stage 5's shape into a
+tautology. Check which of the four it is before touching it.
 
 ### W351: `($2E,A5)` IS A BURST COUNTER. The two volleys are ORDINARY and FINALE.
 
