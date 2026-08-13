@@ -176,9 +176,37 @@ unsigned window test, not a signed range.
 `$3C`, meaning **a cancelled bomb takes the `bhi` exit and the body RUNS.** That is a real behavioural
 consequence of reading the comparison as unsigned.
 
-**So writing `$243DD0` is: the three-test guard, then whatever `$243DEE` is** -- and `$243DEE` is shared with the
-family, so check whether `armScreenClear` already covers it before writing a body. **The guard is the new part,
-and it is nine instructions.**
+**AND THE PORT ALREADY HAS THE WHOLE THING, PARAMETERISED.** `midboss.js:197` is
+`armScreenClearMode(ram, ctx, d1, from, mode, entry)`, and lines 199-203 are this exact guard with this exact
+polarity:
+
+    if (ram.u16(ARM) !== 0                 // $243E02/$243E7C tst.w
+        && ram.u16(MODE) >= 0x20           // cmpi/bcs
+        && ram.u16(MODE) <= 0x3c) {        // cmpi/bhi
+      return false;                        // $243E1E/$243E98 rts
+    }
+    ram.setU16(ARM, 1);                    // $243E20/$243E9A
+    ram.setU16(MODE, mode);                // $243E28/$243EA2
+
+`armScreenClear` is `armScreenClearMode(..., mode = 0, entry = 0x243e7c)`. And `$243DEE` -- the body `$243DD0`
+falls into -- is `move.w #$1,$81B410 / move.w #$FFFF,$81B412`, i.e. **`mode = $FFFF`**.
+
+**So `$243DD0` is ONE LINE:**
+
+    export function screenClear243DD0(ram, ctx, d1, from) {
+      return armScreenClearMode(ram, ctx, d1, from, 0xffff, 0x243dd0);
+    }
+
+**FIFTH "already ported family member" of the session, and this time the port had already parameterised the
+variation point.** Whoever wrote `armScreenClearMode` anticipated exactly this: the `mode` and `entry` arguments
+exist precisely so a sibling entry costs one line.
+
+**DO NOT LAND IT YET.** Its only caller is Hibachi, whose handler is unwritten, so adding it now creates dead
+code -- the `tallyPhase0Arm25DC2C` mistake, which passed five green check runs while being unreachable. **It
+lands in the same commit as the code that calls it.**
+
+So `$B0`'s real remaining cost is `$242922` and `$253564` plus `$2A6B94`'s body. `$243DD0` is solved and costs a
+line.
 
 **That is the FOURTH time this session that "unported" resolved to "member of a family the port already has"**
 after `$242B90`/`$242B3C`, `$26331C`'s stub siblings, and `$263684`/`enqueueDeferred`. **The pattern is strong
