@@ -126,9 +126,27 @@ claimed:
     $286096      scoreHit     $28615E      scoreKill    $28C170       3 code, 3 notes
     $23C4D0       2 code      $242922       1 code      $253564       1 code
 
-**So Hibachi's main block introduces ZERO new primitives** -- the same result as `$55`, `$46`, `$1A` and `$4C`.
-Five consecutive types, including the final boss, needing nothing new. **The port's primitive coverage is
-effectively complete for this band**; what remains is transcription.
+**RETRACTED: THREE OF THE TWELVE ARE `note()` DEFERRALS, NOT IMPLEMENTATIONS.** The THIN warning added this wave
+pointed straight at them, and reading the code site settles it -- `boss.js:184-186` is:
+
+    note(ctx, 0x23c4d0);      // $294DE4
+    note(ctx, 0x253564);      // $294DEA
+    note(ctx, 0x242922);      // $294DF0
+
+**Those are the port declaring the addresses NOT ported.** So Hibachi's first block needs THREE new primitives,
+not zero, and my "five consecutive types needing nothing new" claim covers `$55`, `$46`, `$1A` and `$4C` but not
+`$B0`. `$243DD0` (2 code / 4 notes) still needs the same check.
+
+**AND `claimed.py` HAS A BUG HERE, WHICH IS WHY THE HEADLINE SAID CLAIMED.** It labels those three lines `[CODE]`
+even though its classifier has a rule for exactly this case (`re.search(r'(note|unreached)\s*\(', line)` ->
+`NOTE`), and that regex tested TRUE against the line text in isolation. So the rule exists, matches in a unit
+test, and does not fire on the real file. **Diagnose that before trusting any CLAIMED verdict on an address whose
+only code mentions sit in `boss.js`** -- the same false-positive class the `$23C98E` fix was meant to close, still
+open by another route.
+
+**The wider lesson: `note(ctx, 0xADDR)` is executable JavaScript AND a declaration of non-portedness.** Any tool
+that classifies by "is this a comment or is this code" gets it wrong, because it is both. The reliable test is
+whether the address appears as an ARGUMENT to `note()`/`unreached()`, not where it sits on the line.
 
 **FOUR are THIN and must be verified before use, per the `$263684` lesson** (claimed with 1 code mention, which
 turned out fine, and the `$242B90` lesson, where "unported" was a register-variant twin):
