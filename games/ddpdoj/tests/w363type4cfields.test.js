@@ -976,3 +976,22 @@ test('W372 $26FFE8s middle emits effects in QUARTER-TURN pairs', { skip: SKIP },
   assert.equal(IMG.readUInt32BE(0x270058), 0x0028b4be, '$270056 jsr $28B4BE -- the emit');
   assert.equal(IMG.readUInt32BE(0x27005e), 0x00242b3c, '$27005C jsr $242B3C -- the ported RNG twin');
 });
+
+test('W372 $26F9A2 fires only when FULLY RETRACTED, and spawns a mirrored PAIR', { skip: SKIP }, () => {
+  // The gate is `move.w ($48,A6),D0 / add.w ($4A,A6),D0 / bne` -- the sum, so it fires only when BOTH
+  // draw offsets have reached zero. The halves close, THEN it shoots. Testing either offset alone, or
+  // testing them before the retract, fires at the wrong moment while every constant stays right.
+  assert.equal(IMG.readUInt16BE(0x26f9d0), 0x302e, '$26F9D0 move.w (d16,A6),D0');
+  assert.equal(IMG.readUInt16BE(0x26f9d2), 0x0048, '  ...($48,A6)');
+  assert.equal(IMG.readUInt16BE(0x26f9d4), 0xd06e, '$26F9D4 add.w (d16,A6),D0');
+  assert.equal(IMG.readUInt16BE(0x26f9d6), 0x004a, '  ...plus ($4A,A6) -- the SUM');
+  assert.equal(IMG.readUInt16BE(0x26f9d8), 0x6600, '$26F9D8 bne -- non-zero means still extended');
+  // Parity-gated like state 2's volley, through the same global.
+  assert.equal(IMG.readUInt32BE(0x26f9e0), T4C.spawnParityGlobal, '$26F9DE or.w $80390A,D0');
+  // TWO children of type $4E, at the two part-3 draw biases -- the fifth mirrored pair in this type.
+  const p3 = T4C.draws.filter((d) => d.part === 3);
+  assert.equal(IMG.readUInt16BE(0x26f9ec), 0x704e, '$26F9EC moveq #$4E,D0 -- NOT $52');
+  assert.equal(IMG.readUInt32BE(0x26f9fa), p3[0].biases[0], '  ...at the $26F7A8 half s bias');
+  assert.equal(IMG.readUInt16BE(0x26fa08), 0x704e, '$26FA08 moveq #$4E,D0 -- the second');
+  assert.equal(IMG.readUInt32BE(0x26fa16), p3[1].biases[0], '  ...at the $26F7D2 half s bias');
+});

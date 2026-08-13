@@ -1041,7 +1041,17 @@ over, so: `$26F9A6..$26FA0A` and `$26FA86..$26FB12` are **read but not transcrib
 D7 pass count come from inside the second of them. **Read those two blocks before placing** -- everything else in
 these three is transcribed.
 
-**Still to do:** transcribe those two blocks, place the whole draft, move the four census pins.
+**`$26F9A6..$26FA0A` IS NOW TRANSCRIBED, and it is the type's cleanest idea.** The gate is
+`move.w ($48,A6),D0 / add.w ($4A,A6),D0 / bne` -- **the SUM**, so the routine fires only once BOTH draw offsets have
+retracted to zero. **The two halves close, and then it shoots.** Testing either offset alone, or testing before the
+retract, fires at the wrong moment with every constant still correct.
+
+It is parity-gated through the same `$80390A` as state 2's volley, sets `($4C,A6)` -- the companion field the `$46`
+ON setter clears -- and spawns **TWO children of type `$4E`** (not `$52`) at the two part-3 draw biases
+`$FC3FEC80` and `$FC401380`. **A fifth mirrored pair**, and it fires from exactly where the two halves are drawn.
+
+**Still to do:** transcribe `$26FA86..$26FB12` (the fan's entry heading and pass count live there), place the draft,
+move the four census pins.
 
 **Still to do:** place the draft, then move the FOUR census pins together (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
 `$26F6E8` main flow, then the five-call draw chain) and the eight state bodies, all of which are read and pinned.
