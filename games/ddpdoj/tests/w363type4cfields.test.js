@@ -959,3 +959,20 @@ test('W372 ($6E,A6)/($6F,A6) is a SECOND counter-and-reload pair', { skip: SKIP 
   assert.equal(IMG.readUInt16BE(0x26fb50), 0xd06e, '$26FB50 add.w (d16,A6),D0');
   assert.equal(IMG.readUInt16BE(0x26fb52), 0x006a, '  ...plus ($6A,A6) -- zero only when BOTH are');
 });
+
+test('W372 $26FFE8s middle emits effects in QUARTER-TURN pairs', { skip: SKIP }, () => {
+  // The last unread block in the type. It emits through $28B4BE with an angle built from a shared D0
+  // (`asl.b #1` then a per-side constant), and the two sides differ by $40 and $C0 -- a quarter turn
+  // apart on the 256-step circle, with mirrored position biases. Reusing one constant for both sides
+  // stacks the effects on one bearing.
+  assert.equal(IMG.readUInt16BE(0x27003c), 0xe300, '$27003C asl.b #1,D0 -- the shared angle');
+  assert.equal(IMG.readUInt16BE(0x270040), 0x0601, '$270040 addi.b #imm,D1');
+  assert.equal(IMG.readUInt16BE(0x270042), 0x0040, '  ...#$40, side ONE');
+  assert.equal(IMG.readUInt16BE(0x270066), 0x0601, '$270066 addi.b #imm,D1');
+  assert.equal(IMG.readUInt16BE(0x270068), 0x00c0, '  ...#$C0, side TWO -- a quarter turn apart');
+  // The position biases are mirrored too, not shared.
+  assert.equal(IMG.readUInt32BE(0x27004a), 0xf8000800, '$270048 addi.l #$F8000800 -- side ones bias');
+  assert.equal(IMG.readUInt32BE(0x270070), 0x01fff800, '$27006E addi.l #$01FFF800 -- side twos');
+  assert.equal(IMG.readUInt32BE(0x270058), 0x0028b4be, '$270056 jsr $28B4BE -- the emit');
+  assert.equal(IMG.readUInt32BE(0x27005e), 0x00242b3c, '$27005C jsr $242B3C -- the ported RNG twin');
+});

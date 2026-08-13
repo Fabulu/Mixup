@@ -953,7 +953,19 @@ indexed by `(D1 & $3F) * 4`, calls `$281402`, and runs the type's ONE `dbra` at 
 spec records as `localLoop`. That is a fan or spread emitter, and **`$2735FA` has NO window declared** (checked:
 zero matches in `export-tables.py`). Read it, size the table from the `$3F` mask, and declare the window.
 
-**Still to do:** read `$26FA82` and `$26FFE8`'s middle, then place the draft and move the four census pins.
+**BOTH ARE NOW READ, AND `$4C` HAS NO UNREAD CODE LEFT.**
+
+`$26FA82` is a **64-heading FAN** over the table at `$2735FA` (window declared, `$100`, bounded by the ROM's `$3F`
+mask), emitting through `$281402`. Its `dbra` IS the `localLoop` the spec has carried since W367 as "the one dbra,
+NOT the part iteration" -- a note that said what it was not, now closed. It also holds a **second counter-and-reload
+pair**, `($6E,A6)`/`($6F,A6)`, in state 0's exact shape, and closes by testing part 4's `($68,A6)` and `($6A,A6)`
+together -- so **both halves of the object animate their draw offsets**, `$26F9A2` for part 3 and this for part 4.
+
+`$26FFE8`'s middle emits effects in **QUARTER-TURN PAIRS**: one shared angle in D0, then `+$40` on one side and
+`+$C0` on the other, with **mirrored** position biases `$F8000800` and `$01FFF800`. Reusing one constant for both
+sides stacks the effects on a single bearing.
+
+**Still to do:** place the draft, write the three callees from these readings, and move the four census pins.
 
 **Still to do:** place the draft, then move the FOUR census pins together (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
 `$26F6E8` main flow, then the five-call draw chain) and the eight state bodies, all of which are read and pinned.
