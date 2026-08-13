@@ -144,3 +144,22 @@ test('W372 the boss damage arm scores once and REMAPS the quad on read', { skip:
   assert.equal(IMG.readUInt16BE(0x2a6c4e), 0x103c, '$2A6C4E move.b #imm,D0');
   assert.equal(IMG.readUInt16BE(0x2a6c50), 0x0010, '  ...remapped to #$10 on the way out');
 });
+
+test('W372 the boss takes the MINIMUM of the parts $18 fields, not a sum', { skip: SKIP }, () => {
+  // `move.w ($18,A6),D4` then repeated `cmp.w (part+$18,A6),D4 / ble skip / move.w that,D4`. `ble`
+  // KEEPS D4 when it is already the smaller, so the reduce is a MINIMUM. A sum or a first-part read
+  // would both be plausible from one line of it and both wrong, and the parts step by $20 -- the part
+  // stride -- so the fields being reduced are one per part.
+  assert.equal(IMG.readUInt16BE(0x2a6c7e), 0x382e, '$2A6C7E move.w (d16,A6),D4 -- the seed');
+  assert.equal(IMG.readUInt16BE(0x2a6c80), 0x0018, '  ...($18,A6), part 0s field');
+  for (const [at, off] of [[0x2a6c82, 0x38], [0x2a6c8c, 0x58]]) {
+    assert.equal(IMG.readUInt16BE(at), 0xb86e, `$${at.toString(16)} cmp.w (d16,A6),D4`);
+    assert.equal(IMG.readUInt16BE(at + 2), off, `  ...($${off.toString(16)},A6) -- +$20 each time`);
+    assert.equal(IMG[at + 4], 0x6f, '  ...ble -- so D4 KEEPS the smaller, making this a MINIMUM');
+    assert.equal(IMG.readUInt16BE(at + 6), 0x382e, '  ...else move.w that field into D4');
+  }
+  assert.equal(0x38 - 0x18, 0x20, 'the stride is the PART stride, so one field per part');
+  // The quad writeback just above it XORs one byte, which is why the four are not interchangeable.
+  assert.equal(IMG.readUInt16BE(0x2a6c76), 0x0a04, '$2A6C76 eori.b #imm,D4');
+  assert.equal(IMG.readUInt16BE(0x2a6c78), 0x0009, '  ...#$9 -- applied to D4s byte ALONE');
+});
