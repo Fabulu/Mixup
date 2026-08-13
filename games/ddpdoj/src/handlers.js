@@ -9879,9 +9879,13 @@ function sub26FA82(ram, rom, a5, a6, ctx) {
   for (let n = 0; n < passes; n++) {                          // $26FB3A dbra D7 -- 37 passes
     const e = rom.u32(T4C.fanTable + ((d1 & 0x3f) << 2));    // $26FB18..$26FB28
     // $26FB2C/$26FB2E -- through fireBullet, the type $11 idiom at handlers.js:768, NOT a bare call.
-    // W372: these registers are NOT fully transcribed. D0/D3/D5 are placeholders -- the ROM sets them
-    // in $26FA86..$26FB12, which was read for its guard and its constants but NOT for its register
-    // setup. So the fan is withheld behind a note rather than fired on invented values.
+    // W372: the registers ARE readable and are now partly read. $26FACA..$26FAE2 loads them from the
+    // PLAYER RECORDS, inline rather than through targetSelect: `moveq #0,D0 / tst.w $8103E6 / bpl /
+    // move.w $8103E8,D0` for P1, then the same shape against $810448 for P2. So the fan aims at the
+    // players, and D0/D1 are their coordinates -- not the placeholders this draft still passes.
+    // The remaining unread part is how D3/D5 are derived from them ($26FAE4..$26FB12).
+    // It stays withheld until that is read, because a fan of 37 shots on wrong headings is worse than
+    // no fan: it is the boss's main attack and it would look plausible while being wrong.
     //
     // CORRECTION, same wave: I first withheld it blaming a corrupted ($6,A5) at frame 449. That was
     // WRONG -- the corruption was the test fixture placing its scratch record inside the SPRITE

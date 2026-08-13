@@ -163,3 +163,17 @@ test('W372 the boss takes the MINIMUM of the parts $18 fields, not a sum', { ski
   assert.equal(IMG.readUInt16BE(0x2a6c76), 0x0a04, '$2A6C76 eori.b #imm,D4');
   assert.equal(IMG.readUInt16BE(0x2a6c78), 0x0009, '  ...#$9 -- applied to D4s byte ALONE');
 });
+
+test('W372 $4C s fan reads the PLAYER records inline, not through targetSelect', { skip: SKIP }, () => {
+  // $26FACA..$26FAE2: `moveq #0,D0 / tst.w $8103E6 / bpl / move.w $8103E8,D0` and the same shape for
+  // P2 at $810448. Those are AIM.selP1 and AIM.selP2 -- the player records targetSelect also uses --
+  // read here DIRECTLY, so the fan aims at the players without the shared selector's side preference.
+  assert.equal(IMG.readUInt16BE(0x26faca), 0x7000, '$26FACA moveq #$0,D0');
+  assert.equal(IMG.readUInt16BE(0x26facc), 0x4a79, '$26FACC tst.w abs.l');
+  assert.equal(IMG.readUInt32BE(0x26face), 0x008103e6, "  ...$8103E6, P1's record");
+  assert.equal(IMG[0x26fad2], 0x6a, '$26FAD2 bpl -- a live player has the sign clear');
+  assert.equal(IMG.readUInt16BE(0x26fad6), 0x3039, '$26FAD6 move.w abs.l,D0');
+  assert.equal(IMG.readUInt32BE(0x26fad8), 0x008103e8, "  ...$8103E8, P1's coordinate");
+  assert.equal(IMG.readUInt16BE(0x26fadc), 0x7200, '$26FADC moveq #$0,D1 -- then the same for P2');
+  assert.equal(IMG.readUInt32BE(0x26fae0), 0x00810448, "  ...$810448, P2's record");
+});
