@@ -489,6 +489,68 @@ right in both halves, and the table proves it.** `$26F886` is a jump table of 4-
 state 0's own handler. `$26F886..$26F8A6` is `$20` bytes, eight pointers. The span is `$26F5F2..$26FFE8`, about 2550
 bytes -- **the note's "~2300" was close too.**
 
+### HOW TO WRITE `handler4C` -- the structure is settled, 23 assertions hold it
+
+**WHAT IT IS:** a multi-part destructible set-piece with a **scripted vulnerability window**. It spawns ONCE at clock
+`$1B8` and is INVULNERABLE until the clock reaches `$1F0` -- the moment type `$10` spawns. Everything odd about it
+follows from that.
+
+    PROLOGUE   $26F5F2
+      pause          tst.w $8130D2 -> the tail at $26F704
+      part 5's $1E   ($9E,A6) non-zero -> release $8130DE, pushExternalSpeed(D0=D1=$20), and RETIRE
+      the latch      ($16,A5) arms ONCE, only at clock $1F0, and only while part 5's $1F is zero
+
+    DAMAGE     $26F650
+      $5C family, clear $A3, scoreHit -- but the XOR mask is an IMMEDIATE $D, NOT ($19,A5). T4C has no
+      palXor field and a test asserts its absence.
+      hit mask -> ($8E,A6), part 5's $0E. Part 5 is the CONTROL BLOCK, not a body segment.
+
+    HP         $26F674 -- THE ONE A SIBLING-COPY GETS WRONG
+      ($18,A6) is a per-hit DAMAGE ACCUMULATOR reset to $7FFF every hit. The real health is a 32-BIT POOL
+      at ($1A,A5), tested `tst.l`. All four siblings test ($18,A6)'s SIGN for death; copying that reads a
+      field $4C resets on every hit and the object NEVER DIES.
+      ($16,A5) gates the sub.l, so damage is DISCARDED while the latch is unset.
+      killScore $700, the largest in the band.
+
+    DEATH      $26F6A4
+      dying bit, then set part 5's $1F to BLOCK re-arming (1 means blocked, not armed), release BOTH
+      $8130DE and $8130E0 -- and $49 CLAIMS $8130E0, so the order is cross-type -- then pushExternalSpeed.
+
+    STATE MACHINE   $26F86A
+      ($26,A6) indexes EIGHT 4-byte pointers at $26F886, dispatched `movea.l (A0),A0 / jsr (A0)` at
+      $26F87C, then `jmp $2417DE` (applyVelocityA6). The table ends at state 0's own handler, so its
+      length is self-evident. ALL EIGHT open `cmpi.w #$0,($28,A6)` -- verified across the set.
+      Within a state, ($28,A6) is a SCRIPT STEP walked by successive cmpi.w, each arm ending by advancing it.
+      $26F858 is the SETTER: `cmp.w ($26,A6),D0 / beq rts / move.w D0,($26,A6) / clr.w ($28,A6)`. Its guard
+      is the function -- it restarts the inner script ONLY on a real state change. Eight callers.
+
+    DRAW       five subroutines, all through the selector at $26F790
+      $26F71A  art $14985C  part 1  4 biases  D3 $A38  pal $1D   (exits rts, not jmp)
+      $26F7A8  art $1499CC  part 3  $48       D3 $608  pal $5D
+      $26F7D2  art $1499CC  part 3  --        D3 $608  pal $5D
+      $26F7FC  art $149978  part 4  $68       D3 $A10  pal $7D
+      $26F82A  art $149978  part 4  $6A       D3 $A10  pal $7D
+      The pairs are MIRRORED HALVES: same art and palette, first biases straddling a boundary. Collapsing a
+      pair renders the object half-missing. Parts 2 and 5 are NEVER drawn -- part 2 is state-only.
+      ($17,A5) picks $23DECE or $23DF58 by tail-jump; it is a DRAW VARIANT, not a mode.
+
+    DISTANCE   $26FF9E, seven callers
+      dist242494, then thresholds writing ($1A,A6): >= $200 untouched, >= $100 -> $8, < $100 -> $6.
+      FALL-THROUGH, so the SMALLEST band wins. else-if gives the largest.
+
+**`($1A,A6)` HAS FIVE WRITERS AND IS NOT "THE DISTANCE BAND":** `$16` from state 0 (a WORD write, so it zeroes
+`($1B,A6)`), `$4` from state 1, `$8`/`$6` from the distance helper, plus a decrement at `$26F8F4` and an increment at
+`$26FF76`. Model it as a shared byte. A test asserts `$16` and `$4` are not among the thresholds.
+
+**BIASES:** `$4C` uses sequential `addi.l`, which **DO combine**. `$1A` uses swap-separated word adds which must NOT be
+folded, and `$55`/`$46` use packed longs. Three conventions in one band -- check per site.
+
+**SIXTEEN internal subroutines, only TWO shared** (`$26F858` 8 callers, `$26FF9E` 7). The other fourteen are called
+once and can be inlined. The eight the old note listed as "unported callees" are all real entry points in this list.
+
+**STILL UNREAD:** states 2-7's bodies (`$26FBD4`, `$26FCF2`, `$26FD66`, `$26FECA`, `$26FF3E`, `$26FF56`) and the
+remaining single-call subroutines. **The FRAME of every state is known; only the contents of six bodies are not.**
+
 ### Each state handler is a FRAME-COUNTER CASCADE on `($28,A6)`
 
 State 0, `$26F8A6`:
