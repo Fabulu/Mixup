@@ -9285,6 +9285,11 @@ const T4C = Object.freeze({
   // reason $26F858's guard matters: clearing ($28,A6) only on a real state change RESTARTS the inner
   // script, and clearing it every frame would pin every state on its first step forever.
   stepAt: 0x28,                               // same field as frameCounterAt -- it is the script step
+  // W372: state 2's spawn-bias table, eight longs, indexed by ($34,A6) & 7. The volley fires TWICE per
+  // pass -- one spawn per counter-rotating cursor -- and only on EVEN frames ($80390A & 1).
+  spawnBiasTable: 0x26fcd2, spawnBiasEntries: 8, spawnChild: 0x52,
+  spawnParityGlobal: 0x80390a,
+  spawnBiases: Object.freeze([0x0c7ff600, 0x0c800a00]),   // STRADDLE $0C7F/$0C80, like the draw pairs
   // W367: THE DRAW TABLE. FIVE sprites per frame, from five subroutines that each hard-code one part's
   // offsets -- which is what the unrolled parts are FOR and why there is no loop.
   //

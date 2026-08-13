@@ -871,8 +871,57 @@ needed or wanted**. Bounded above by adjacency: `$26FCF2` is state 3's entry.
 **And there is a FRAME-PARITY GATE on the volley**: `$26FC52 moveq #$1,D1 / and.w $80390A,D1 / bne` skips the whole
 double spawn on odd frames, so it fires every OTHER frame. A port without it doubles the bullet count.
 
-**Still to do before placing:** add state 2's second spawn to the drafted `state2_4C` (the FORWARD-cursor one at
-`$26FC72`), then place the whole draft and move the four census pins.
+**`state2_4C`, CORRECTED AND COMPLETE.** This replaces the drafted version above.
+
+```js
+/** State 2 `$26FBD4` -- the bullet spawner. FOUR script steps, and the volley fires TWICE per pass on
+ *  ALTERNATE frames. Each counter-rotating cursor drives its own spawn. */
+function state2_4C(ram, rom, a5, a6, ctx) {
+  if (ram.u16(a6 + T4C.stepAt) === 0) {                      // $26FBD4
+    ram.setU8(a6 + T4C.bandAt, 0x10);                        // $26FBE4
+    ram.setU8(a6 + 0x2a, 0); ram.setU8(a6 + 0x2b, 0);        // $26FBEA/$26FBF0 -- TWO byte writes
+    ram.setU8(a6 + 0x34, 0x10);                              // $26FBF6 -- a BYTE, leaving $35 alone
+    ram.setU16(a6 + T4C.stepAt, 1);
+  }
+  if (ram.u16(a6 + T4C.stepAt) === 1) {                      // $26FBFE
+    if (!steer4C(ram, rom, a6, 0x2800, 0x1c00)) {            // $26FC06..$26FC0E
+      ram.setU8(a6 + T4C.bandAt, 0);                         // $26FC16
+    }
+    ram.setU16(a6 + T4C.stepAt, 2);                          // $26FC1C
+  }
+  if (ram.u16(a6 + T4C.stepAt) === 2) {                      // $26FC22
+    const r = u16(ram.u16(a5 + T4C.rampAt) + 0x40);          // $26FC2C addi.w #$40 -- ramp UP
+    ram.setU16(a5 + T4C.rampAt, i16(r) < T4C.rampCap ? r : T4C.rampCap);   // $26FC32 cap $600
+    ram.setU16(a6 + T4C.stepAt, 3);                          // $26FC42
+  }
+  if (ram.u16(a6 + T4C.stepAt) !== 3) return;                // $26FC48
+  // $26FC52 -- FRAME PARITY. The whole volley is skipped on odd frames, so it fires every OTHER
+  // frame. Without this the bullet count doubles, and each individual spawn still looks correct.
+  if ((ram.u16(0x80390a) & 1) !== 0) return;
+
+  const bias = T4C.spawnBiasTable + ((ram.u8(a6 + 0x34) & 7) << 2);   // $26FC5E..$26FC70
+  // The two spawns' own biases STRADDLE a boundary -- $0C7FF600 and $0C800A00 -- the same mirrored
+  // shape as the draw pairs. Folding them to one value puts both volleys on top of each other.
+  for (const [addBias, cursorAt, step] of [[0x0c7ff600, 0x2a, +4], [0x0c800a00, 0x2b, -4]]) {
+    const q = enqueueDeferred(ram, 0x52, DEFQ_D1.FIXED00);   // $26FC72 / $26FC9A jsr $263684
+    if (q) {
+      ram.setU32(q + 0x16,                                   // $26FC86 / $26FCAE
+        u32(u32(ram.u32(a6 + 0x02) + addBias) + rom.u32(bias)));      // add.l (A4),D0
+      ram.setU8(q + 0x1a, ram.u8(a6 + cursorAt));            // $26FC8A / $26FCB2
+    }
+    ram.setU8(a6 + cursorAt, (ram.u8(a6 + cursorAt) + step) & 0x3f);  // $26FC90 / $26FCB8
+  }
+
+  const c = (ram.u8(a6 + 0x34) - 1) & 0xff;                  // $26FCC2
+  ram.setU8(a6 + 0x34, c);
+  if (c === 0) setState4C(ram, a6, 3);                       // $26FCCA/$26FCCC
+}
+```
+
+**NOTE THE ORDER**: spawn A fires, THEN `($2A,A6)` advances, then spawn B fires, then `($2B,A6)` advances. Advancing
+both cursors first would offset every bullet by one step.
+
+**Still to do:** place the whole draft and move the four census pins.
 
 **Still to do:** place the draft, then move the FOUR census pins together (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
 `$26F6E8` main flow, then the five-call draw chain) and the eight state bodies, all of which are read and pinned.

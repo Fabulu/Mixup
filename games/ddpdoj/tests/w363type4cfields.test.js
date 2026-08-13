@@ -891,3 +891,18 @@ test('W372 state 2 fires TWICE, and both spawns bias through the $26FCD2 table',
   assert.equal(IMG.readUInt16BE(0x26fc64), 0x0007, '  ...#$7 -- 0..7, so EIGHT entries');
   assert.equal(IMG.readUInt16BE(0x26fcf2), 0x0c6e, 'and $26FCF2 is state 3, bounding it by adjacency');
 });
+
+test('W372 the two spawn biases STRADDLE a boundary, like the draw pairs', { skip: SKIP }, () => {
+  // $0C7FF600 and $0C800A00 -- the high words differ by one, the same mirrored shape the part-3 and
+  // part-4 draw pairs use. Folding them to one value stacks both volleys on the same origin.
+  assert.equal(IMG.readUInt16BE(0x26fc7e), 0x0680, '$26FC7E addi.l #imm,D0');
+  assert.equal(IMG.readUInt32BE(0x26fc80), T4C.spawnBiases[0], '  ...#$0C7FF600');
+  assert.equal(IMG.readUInt16BE(0x26fca6), 0x0680, '$26FCA6 addi.l #imm,D0');
+  assert.equal(IMG.readUInt32BE(0x26fca8), T4C.spawnBiases[1], '  ...#$0C800A00');
+  const hi = T4C.spawnBiases.map((b) => b >>> 16).sort((a, b) => a - b);
+  assert.equal(hi[1] - hi[0], 1, 'high words $C7F/$C80 -- mirrored halves, not one value');
+  // And the parity gate that halves the fire rate.
+  assert.equal(IMG.readUInt16BE(0x26fc54), 0xc279, '$26FC54 and.w abs.l,D1');
+  assert.equal(IMG.readUInt32BE(0x26fc56), T4C.spawnParityGlobal, '  ...$80390A, the frame counter');
+  assert.equal(IMG.readUInt16BE(0x26fc5a), 0x6600, '$26FC5A bne -- ODD frames skip the whole volley');
+});
