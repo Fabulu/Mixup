@@ -230,6 +230,29 @@ warns not to read past its entry, so someone has been here.
 **So the final boss needs: `$243DD0` (one line), `$242922` (a wrapper round a ported call), `$253564` (a clamp),
 and `$2A6B94`'s 666-byte body whose twelve callees are all ported.** That is the whole of `$B0`.
 
+### DO NOT register `$B0` with a note-only handler. It would SOFT-LOCK the run.
+
+`handler2A4606` is 170 bytes and tempting to write early -- registering it would drop stage 5 from three missing
+types to two. **Resist that.** Its two real callees are:
+
+    $25962E   runScheduler25962E    PORTED (12 code mentions) -- the clear test
+    $242952   the stage ADVANCE     NOT PORTED. stageend.js:109 has it as a note-table entry only:
+                                    'THE ADVANCE. $2429BE addq.w #$1,D7 -- five callers, the five ...'
+
+**D11 records W232 "forcing `$242952` headlessly" and finding the stage machine works -- that was MEASURING it,
+not porting it.** It is still a note.
+
+So a note-only `handler2A4606` would give a Hibachi that runs the scheduler and **never advances the stage**. The
+project's practice of registering a handler with `note()`s inside (as `$43` and `$49` do) is right when the missing
+piece is cosmetic -- the stated safety requirement is that the driver not throw `Unreached`. **It is wrong here,
+because the missing piece is the stage advance itself: the run would reach the final boss and hang there, with a
+green suite and no error.** A loud `Unreached $2A6B94` that names exactly what is missing is strictly better than a
+silent soft-lock.
+
+**So `$B0` stays unregistered until `$242952` and `$2A6B94` both exist.** And `$242952` is worth doing on its own
+merits: it is the stage advance, five callers, and it sits directly under D11 (the abrupt stage transition) and
+D37 (the endings). **It is probably the highest-leverage single routine left in the project.**
+
 **The prose check has now paid off five times out of five in this session.** `claimed.py` on an address answers
 "did I port THIS"; the port's own note tables and file-header prose answer "is this new work", and they are where
 every single family relationship was recorded. **Read the prose first. It is the cheaper question and usually the
