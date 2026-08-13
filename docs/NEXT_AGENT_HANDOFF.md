@@ -4925,7 +4925,42 @@ table ASCENDS by `$304` (`B050 B354 B658 ...`). Same art family, opposite direct
 type `$1B`'s init at `$269256`, the same way `$46`'s table was bounded by its neighbour and `$55`'s by its
 death list. Declared as `$269246 + $10`.
 
-Still to read: the handler (`$268E6C` onward).
+### `$1A`'s handler head: the bounds convention SPLITS the band three ways
+
+    268e76  addi.w #$1000,D0
+    268e7a  addi.w #$6E00,D0       TWO sequential word adds, carry off the SECOND
+    268e7e  bcc $268E8E
+    268e80  tst.b ($16,A5) / beq $268E94
+    268e86  jmp $263762            off screen AND armed -> the shared exit
+    268e8e  move.b #$1,($16,A5)    on screen -> arm the once-seen latch
+    268e94  moveq #$5C,D1 / and.b (A6),D1     the $5C damage family
+    268e98  bne $268EB2
+    268e9a  move.b ($1c,A5),D0     <- THE PALETTE BASE, and note the OFFSET
+    268e9e  cmpi.w #$7C0,($18,A6)
+
+**THE BOUNDS TEST IS TWO SEQUENTIAL WORD ADDS, like `$55` and UNLIKE `$46`.** So the band now shows both
+conventions side by side:
+
+    $55   addi.w #$1400 then addi.w #$7400, carry off the second   -- must NOT be folded
+    $1A   addi.w #$1000 then addi.w #$6E00, carry off the second   -- must NOT be folded
+    $46   ext.l then addi.l #$4000 then cmpi.l #$2000              -- must NOT be split
+
+**Three types, two conventions, and no way to tell which from the type's other traits.** Read the bounds test
+per type; never carry it over from a sibling.
+
+**AND `($1C,A5)` IS `$1A`'s PALETTE BASE.** `$268E9A move.b ($1c,A5),D0` on the not-hit path is the family's
+palette-base read, which confirms the five-row table at `$268DD2` writes base/XOR into `($1C,A5)`/`($1D,A5)`.
+**`$55` keeps that pair at `$18`/`$19`; `$1A` keeps it at `$1C`/`$1D`.**
+
+That is the exact inverse of the `$46` lesson and worth stating as one rule: **in this band the same OFFSET can
+mean different things across types (`$46`'s `($18,A5)` is a countdown, `$55`'s is a palette base), AND the same
+MEANING can live at different offsets (`$1A`'s palette pair is at `$1C`/`$1D`).** Neither direction of inference
+is safe. The only reliable move is the one that has worked all session: find an instruction that reads or writes
+the field, in this type.
+
+`$1A` is also a `$5C`-family damage arm, joining `$49`, `$4B` and `$55`.
+
+Still to read: `$268EA4` onward (the damage arm and the states).
 
 ## TYPE $46 (W352, IN PROGRESS) -- 13 records, the largest remaining piece of stage 5
 
