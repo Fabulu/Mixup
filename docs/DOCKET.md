@@ -1585,7 +1585,17 @@ against the port:
     [ 8] $25A770   51 callees, 34 unported
 
 **`[14]` is the cheapest at three**, and a first slot ported end to end is worth more than a sixth identified, because
-it proves the compiled-C convention against real code rather than against a scan.
+it proves the compiled-C convention against real code rather than against a scan. **Its three, measured:**
+
+    $2890FA    262 bytes
+    $289292     72 bytes
+    $2892DA   1220 bytes
+    -----------------------
+              ~1554 bytes of new porting, plus slot [14]'s own 436
+
+**So "cheapest" is about TWO KILOBYTES, not a morning.** That is the honest size of the smallest front-end slot, and
+it is worth knowing before picking it up: no dispatch slot in this table is a quick win, and the three-versus-six
+ranking is a ranking of large jobs. **Do not start one expecting the scale of a stage-5 enemy type.**
 
 **THIS COUNT WAS WRONG TWICE, AND THE RULE IS THE POINT.** The first pass counted `jsr abs.l` only and reported
 `[14]` and `[15]` as fully covered. The second added `bsr` and reported `[7]` as needing ONE routine -- a claim that
