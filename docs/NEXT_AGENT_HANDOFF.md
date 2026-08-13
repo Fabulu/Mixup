@@ -846,8 +846,26 @@ const STATES_4C = Object.freeze([
 a floor at zero, dwell, and hand back to state 1. The only difference is the dwell: `$F0` for state 3, `$40` for
 state 5. Writing them twice invites the two copies to drift.
 
-**Marked `// ...` are the step-0/step-1 setup blocks** already read and pinned, left out of the draft only to keep it
-legible -- they are plain field writes, and the assertions in `w363type4cfields` name every one.
+**CORRECTION (same wave): the `// ...` marks were NOT "plain field writes already read".** I wrote that and it was
+false for two of them. What they actually contain:
+
+**State 1's head `$26F90E..$26F936`** -- now read. `($1A,A6)=$4`, a WORD `move.w #$0,($2A,A6)` clearing BOTH cursor
+bytes, `($30,A6)=$12C` (300 frames), then `bsr $26F994` and `bsr $26FA5E`: it turns **both parts ON at entry** and,
+in the tail already drafted, **both OFF at exit**. That symmetry is the reason `partSetters` exists as a pair.
+
+**State 2's middle `$26FBFE..$26FC8E`** -- 34 instructions, and NOT setup. It steers to `$2800/$1C00`, ramps
+`($1E,A5)` UP by `$40` against the `$600` cap the spec records as `rampCap`, and then does a **SECOND spawn**: a
+second `moveq #$52 / jsr $263684` whose child takes the **FORWARD** cursor `($2A,A6)`, where the drafted tail spawn
+takes the **BACKWARD** one. **State 2 fires TWO bullets per frame, not one**, and the drafted `state2_4C` above is
+therefore INCOMPLETE.
+
+**AND IT USES A TABLE THAT HAS NO WINDOW.** `$26FC6A lea ($26FCD2,PC),A4 / adda.w D0,A4`, then `add.l (A4),D0` biases
+each spawn. `$26FCD2` holds longword pairs (`$03400 1E0`, `$03C000C0`, `$0460FFA0`, ...) and **is not declared in
+`export-tables.py`** -- a `rom.u32` there would throw `outside every ROM window`. It also explains the aligned
+decoder's stop at `$26FCD4` earlier this wave: that was DATA being decoded, not a missing opcode.
+
+**So the draft is not placeable yet.** State 2 needs its second spawn, and the `$26FCD2` window must be declared and
+sized before any of it runs.
 
 **Still to do:** place the draft, then move the FOUR census pins together (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
 `$26F6E8` main flow, then the five-call draw chain) and the eight state bodies, all of which are read and pinned.
