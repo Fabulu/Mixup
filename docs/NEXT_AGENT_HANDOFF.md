@@ -275,6 +275,82 @@ no parts. **That is a defensible checkpoint** (the type is registered, the stage
 matches what `$43` and `$49` already do. **It is also the last handler in stage 5**, so landing it would take the
 stage to two missing types over 5 records.
 
+### `handler2A4606` IS WRITTEN. It is below, ready to place. Three edits, not one.
+
+**PLACEMENT: it goes in `src/boss.js`, not `handlers.js`.** `handlers.js` imports nothing from `stageend.js` and so
+has neither `runScheduler25962E` nor `runStageAdvance242952`, while `boss.js` imports both (lines 71 and 75) and
+already contains the byte-identical sequence at `boss.js:1141`. **The precedent for a boss handler living outside
+`handlers.js` is `$0D`, the midboss, which is in `src/midboss.js`** and registered from `handlers.js` by import.
+
+**The three edits:**
+
+1. Paste the function into `src/boss.js` and export it.
+2. In `handlers.js`, import it and add `[0x2a4606, handler2A4606]` to `HANDLERS`.
+3. Delete `TB0`'s `ported: false`, then bump the census pins the W360 pin's failure message lists --
+   `integration.test.js` `m.size`, `handlers.test.js`'s address list, `w167coverage.test.js`'s `enemy_types`
+   (**both** numbers, from `dojcoverage.py`), and `w346typetable.test.js`'s unwritten set to `[0x1a, 0x4c]`.
+   The init-body count does NOT move: `$B0`'s init body `$2A42DC` is a separate piece and stays unwritten, so
+   **leave `TB0.ported` alone if you register the handler without the init body** -- check which the pin means.
+
+```js
+// $2A4606 -- HIBACHI's handler, all 170 bytes of it. See TB0 for the structure and its four
+// independent confirmations.
+//
+// It does exactly TWO things: run the boss body, and take the stage-clear path when the scheduler
+// says the boss is finished. The other TWELVE calls in it are no-ops against bare `rts` stubs, and
+// they are transcribed as comments rather than as calls -- eleven `$26331C` per-part hooks and one
+// `$25A17A`, which is one of four adjacent `rts` bytes at `$25A17A..$25A182`.
+//
+// THE CARRY POLARITY IS NOT INFERRED. `boss.js:1141` is the same sequence and settles it:
+//   const c = runScheduler25962E(...);  if (!c) return;  runStageAdvance242952(...);  freeEnemy(...)
+// There `!c` returns because nothing follows. Here `$2A4612 bcc $2A4622` skips FORWARD to the part
+// hooks, so `!c` falls through to them instead of returning. Same convention, different continuation.
+//
+// `runStageAdvance242952` was verified to be a FULL translation (zero note()/unreached() inside) before
+// this was written, because a note-only stage advance would soft-lock the run at stage 5's end with a
+// green suite and no error.
+function handler2A4606(ram, rom, a5, ctx) {
+  // $2A4606 -- the whole boss. $2A6B94's first block is 666 bytes ending at $2A6E2E; it opens
+  // `tst.w ($106,A6) / beq` over a single `rts`, so it does nothing unless ($106,A6) is zero, and its
+  // twelve callees are all ported bar $243DD0 (one line against armScreenClearMode), $242922 (a
+  // wrapper round the ported $28C170) and $253564 (the $811F8C clamp).
+  ctx.unported?.note(0x2a6b94, '$2A4606 jsr $2A6B94 -- HIBACHI\'s entire behaviour. The handler around '
+    + 'it is complete: the clear test, the stage advance and the free all run, so the boss appears and '
+    + 'the stage still completes, but it does not attack or move. 666 bytes at $2A6B94..$2A6E2E, guarded '
+    + 'on ($106,A6) == 0, with a second gate on ($10E,A6) branching to $2A6F10');
+
+  // $2A460C -- the clear test. Carry SET means the boss is done.
+  const c = runScheduler25962E(ram, rom, ctx);            // $2A460C jsr $25962E
+  if (c) {                                                // $2A4612 bcc $2A4622 -- inverted here
+    runStageAdvance242952(ram, rom, ctx);                 // $2A4614 jsr $242952
+    freeEnemy(ram, a5);                                   // $2A461A jmp $263762
+    return;
+  }
+
+  // $2A4622..$2A46AA -- ELEVEN per-part `lea (part,A6),A0 / jsr $26331C` calls and one `$25A17A`,
+  // every one of them reaching a bare `rts`. TB0.partOffsets holds the eleven in ROM ORDER, which is
+  // NOT ascending: $1A0 is called seventh, between $C0 and $140, and $E0/$100/$120 are never called.
+  // The list is transcribed as data on TB0 so that a future reader can see the order the cartridge
+  // uses; nothing is called here because there is nothing to call.
+  //
+  //   2a4622  lea (A6),A0      / jsr $26331C      part $0
+  //   2a462a  lea ($20,A6),A0  / jsr $26331C      part $20
+  //   ...                                          $40 $60 $80 $A0 $C0
+  //   2a4666  lea ($1A0,A6),A0 / jsr $26331C      part $1A0  <- OUT OF ORDER
+  //   2a4670  lea ($140,A6),A0 / jsr $26331C      part $140
+  //   ...                                          $160 $180
+  //   2a469a  moveq #$0,D3 / move.w D0,D3 / move.w #$0,D0 / move.w #$0,D1 / move.w #$2,D2
+  //   2a46aa  jsr $25A17A                          also a bare rts; the register setup above is DEAD
+  //   2a46b0  rts
+}
+```
+
+**The carry polarity in it is copied from `boss.js:1141`, not derived.** That line is
+`const c = runScheduler25962E(...); if (!c) return;` -- there `!c` returns because nothing follows, whereas
+Hibachi's `$2A4612 bcc $2A4622` skips forward to the part hooks, so the sense is inverted in the JS while the
+convention is the same. **That asymmetry is the one thing in this function worth re-checking against the ROM before
+trusting it.**
+
 **So `$B0` stays unregistered until `$242952` and `$2A6B94` both exist.** And `$242952` is worth doing on its own
 merits: it is the stage advance, five callers, and it sits directly under D11 (the abrupt stage transition) and
 D37 (the endings). **It is probably the highest-leverage single routine left in the project.**
