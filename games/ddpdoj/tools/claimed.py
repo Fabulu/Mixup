@@ -86,15 +86,22 @@ def main(argv):
             # The reverse also happens: $242B90 had no mentions at all while being byte-identical to the
             # ported $242B3C bar one register. So this tool measures ADDRESS LITERALS, not implementations,
             # and the verdict is worded to say only what it actually knows.
-            many = len(hits) >= 6
+            # W358: the discriminator is the NOTE-to-COMMENT ratio, not the mention count. A first attempt
+            # used "6+ mentions means probably ported under a name" and $243DD0 disproved it immediately:
+            # 7 mentions, 6 of them note()/string, and it is the genuinely unported hit-stop routine. What
+            # actually separates the two cases is what KIND of mention dominates.
+            #   $263684  18 mentions,  3 notes -> 15 PROSE comments describing `enqueueDeferred`  -> NAMED
+            #   $243DD0   7 mentions,  6 notes ->  1 comment                                     -> deferred
+            #   $242922   4 mentions,  4 notes ->  0 comments                                    -> deferred
+            prose = len(hits) - len(notes)
             print(f'{label}: NO CODE LITERAL -- {len(hits)} mention(s), none of them code '
-                  f'({len(notes)} inside note()/unreached() calls or strings, the rest comments).')
-            if many:
-                print(f'    ** {len(hits)} mentions with no literal often means the routine IS ported under '
-                      'a NAME (grep the comments for it) -- check before concluding it needs writing.')
+                  f'({len(notes)} inside note()/unreached() calls or strings, {prose} in prose comments).')
+            if prose > len(notes):
+                print(f'    ** {prose} PROSE mentions against {len(notes)} deferrals: the routine may well be '
+                      'ported under a NAME. Grep those comments for the function name before writing it.')
             else:
-                print('    Likely genuinely unported: a note()/unreached() quoting an address is the port '
-                      'saying it has not translated it.')
+                print(f'    Likely genuinely unported: {len(notes)} of {len(hits)} mentions are '
+                      'note()/unreached(), which is the port saying it has not translated this.')
             for f, n, kind, owner, text in hits[:4]:
                 print(f'    {f}:{n} [{kind}] in {owner}')
             continue
