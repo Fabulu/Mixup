@@ -360,3 +360,33 @@ test('W372 $2A6B94 is a flow GRAPH with one join point, not a linear sequence', 
   assert.equal(target(0x2a6bc6), 0x2a6c0c, 'the hit arm goes to the CLEAR block');
   assert.equal(target(0x2a6d5c), 0x2a6d84, 'and above $23000 the phase transition is skipped');
 });
+
+test('W372 each quad byte gets a DIFFERENT flash XOR', { skip: SKIP }, () => {
+  // On a hit the four quad bytes are read back and written out again, and three of them are XORed --
+  // with THREE DIFFERENT constants -- while the first is remapped $19 -> $10 instead. A port that used
+  // one XOR for all four, or the same constant $4C uses, would flash the boss in the wrong colours and
+  // every individual store would still be correct.
+  assert.equal(IMG.readUInt16BE(0x2a6c48), 0x0c00, '$2A6C48 cmpi.b #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x2a6c4a), 0x0019, '  ...#$19, the low-HP phase value');
+  assert.equal(IMG.readUInt16BE(0x2a6c4e), 0x103c, '$2A6C4E move.b #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x2a6c50), 0x0010, '  ...remapped to $10 -- NOT xored');
+  for (const [at, reg, xor, off] of [[0x2a6c66, 'D2', 0x0e, 0xe7], [0x2a6c6e, 'D3', 0x0d, 0xe8],
+    [0x2a6c76, 'D4', 0x09, 0xe9]]) {
+    assert.equal(IMG[at], 0x0a, `$${at.toString(16)} eori.b on ${reg}`);
+    assert.equal(IMG.readUInt16BE(at + 2), xor, `  ...#$${xor.toString(16)} -- its OWN constant`);
+    assert.equal(IMG.readUInt16BE(at + 6), off, `  ...stored to ($${off.toString(16)},A6)`);
+  }
+  assert.notEqual(0x0e, 0x0d, 'the three constants differ from each other');
+});
+
+test('W372 the phase transition needs BOTH a clear flag and the first loop', { skip: SKIP }, () => {
+  // $2A6D42 tst.b ($10C,A6) / bne, then tst.w $813098 / bne -- so the $23000 transition runs only if
+  // it has not already fired AND this is loop one. ($10C,A6) is the flag the transition itself sets,
+  // so it is self-latching; dropping either test would re-run the transition every frame.
+  assert.equal(IMG.readUInt16BE(0x2a6d42), 0x4a2e, '$2A6D42 tst.b (d16,A6)');
+  assert.equal(IMG.readUInt16BE(0x2a6d44), 0x010c, '  ...($10C,A6), which the transition SETS');
+  assert.equal(IMG[0x2a6d46], 0x66, '  ...bne -- already fired means skip');
+  assert.equal(IMG.readUInt16BE(0x2a6d48), 0x4a79, '$2A6D48 tst.w abs.l');
+  assert.equal(IMG.readUInt32BE(0x2a6d4a), 0x00813098, '  ...$813098, the loop counter');
+  assert.equal(IMG.readUInt16BE(0x2a6d4e), 0x6600, '  ...bne -- later loops skip it too');
+});
