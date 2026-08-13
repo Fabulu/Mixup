@@ -5716,8 +5716,23 @@ reported CLAIMED with three CODE mentions when none is an implementation. Widene
 drops it to 2 CODE and now trips the THIN warning, i.e. the tool now flags it for exactly the check it needs.
 
 **That is the FIFTH correction to `claimed.py` and the third to its classifier.** The deferral helpers are a
-FAMILY (`note`, `unreached`, `noteEffect`, and possibly others), and any new one silently turns a deferral into a
-CLAIMED verdict. **If a new `noteXxx()` helper is added to the port, widen this regex in the same commit.**
+FAMILY, and any new one silently turns a deferral into a CLAIMED verdict.
+
+**AND THE FAMILY IS NOW ENUMERATED, so the fix is provably complete for the current codebase** rather than being a
+fourth guess. Every deferral-shaped definition in `src/`:
+
+    unreached              src/unported.js       MATCHED
+    note                   src/unported.js       MATCHED
+    noteEffect             handlers.js:275       MATCHED (by the W365 widening)
+    notePerFrameLedger     (exported)            MATCHED
+    deferReset             background.js:315     NOT a deferral marker -- it resets the CAMERA's
+                                                 deferred list ($240F0A/$240F10/$240F1A), so the name
+                                                 is about the deferred-spawn QUEUE, not about unported code
+
+**So `note\w*` plus `unreached\w*` covers all four real markers, and the one non-matching candidate is not a marker
+at all.** The regex is complete, not merely widened. **The maintenance rule stands for any FUTURE helper**: if one
+is added, check it against this list and widen in the same commit -- and note that `noteEffect` is NOT exported
+(`handlers.js:275`), so a grep for `export function note` alone would have missed it.
 
 **RESOLVED: `spawnCues28AC72`'s signature is `(ram, rom, a5, a6)`.** `cues.js:72` defines it and
 `handlers.js:1580`, `:2224` and `:3392` all call it that way. **My guess was `(ram, rom, ctx, a6)` -- wrong in the
