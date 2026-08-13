@@ -9,24 +9,18 @@ Updated: 2026-08-13 (W372)
 **`handler4C` IS PLACED.** Stage 5 now has **zero types without a handler**. The draft, its import delta and the
 placement checklist that produced it are still below for reference, but **that job is done** -- do not redo it.
 
-### NOT A DEFECT: the "($6,A5) corruption" was the TEST FIXTURE, and I reported it wrongly first
+### RESOLVED: the "($6,A5) corruption" was the fixture, and the fix is a PER-FRAME QUEUE RESET
 
-**Driving 4000 frames threw `$8eec0ed2 is outside main RAM`, and I recorded it as a handler defect. It is not.**
-Trapping the write showed it came from `enqueueRegisters` in `spritequeue.js`, called by `draw4C` -- **the sprite
-queue writing into its own RAM, which the fixture's scratch record `$8137C0` sits inside.** Moving the record to
-`$811000` only moved the collision; the queue's region is wide.
+I reported this three times before getting it right, which is the part worth remembering. `handler4C` corrupting a
+pointer (wrong). A wide sprite-queue region needing a safer scratch address (wrong). **The truth, from reading
+`enqueueRegisters`: it writes at `base + off` and bumps `off` every call, and the per-frame reset lives in the FRAME
+DRIVER, not in `spritequeue.js`.** A bare handler call never resets it, so the write address walks forward until it
+reaches whatever scratch record was chosen. **No address avoids it.**
 
-**AND THE SHARPER DIAGNOSIS, which supersedes "the queue's region is wide":** `enqueueRegisters` writes at
-`base + off` and BUMPS `off` by `RECORD_BYTES` every call. **Nothing in the smoke ever resets that counter**, because
-the real per-frame reset lives in the frame driver, not in `spritequeue.js` -- it has no reset export. So over
-hundreds of frames at seven sprites each, the write address walks forward until it reaches ANY chosen scratch record.
-
-**No scratch address can avoid it.** The fix is for the smoke to drive the frame the way the game does, or to reset
-the queue counter itself between frames -- not to hunt for a safer address, which is what my first two attempts did.
-
-**`handler4C` is not corrupting anything.** A symptom seen through a fixture is a fact about the fixture until proven
-otherwise; I skipped that step and wrote it up as a port bug, then half-corrected it with a second wrong explanation
-before trapping the write and reading the queue's own code.
+**The smoke now resets `BUCKETS[*].counter` before each frame, as the driver does**, and with that
+`handler4C` runs **4000 frames** with the sub-record pointer asserted intact every single one, visiting states
+0, 1, 2 and 3 and alternating the 2/4 branch. The first two explanations were reasoned from the symptom; the third
+came from reading the callee. **Read the callee first.**
 
 **What IS proven** (see `w372type4crun.test.js`): the handler runs, a frozen frame takes the draw-only path, the
 retire arm releases `$8130DE`, ten frames are clean, and state 0's two-stage timer fires and flips the draw variant.

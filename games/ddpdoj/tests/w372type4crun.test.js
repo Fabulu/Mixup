@@ -11,6 +11,7 @@ import { AimTables } from '../src/aim.js';
 import { MoveTables } from '../src/vectors.js';
 import { handlerMap, TYPE_SPECS } from '../src/handlers.js';
 import { RomWindows } from '../src/rom.js';
+import { BUCKETS } from '../src/spritequeue.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const tablesPath = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
@@ -48,7 +49,12 @@ function world() {
     },
   };
 }
-const run = (f) => handlerMap().get(T4C.handler)(f.ram, ROM, A5, f.ctx);
+// THE FRAME DRIVER RESETS THE SPRITE QUEUE; a bare handler call does not. `enqueueRegisters` writes at
+// base + off and bumps off EVERY call, so without this the write address walks forward until it reaches
+// the scratch record -- which is what made three earlier runs look like the handler corrupting memory.
+// No choice of scratch address avoids it; only resetting does.
+const frame = (f) => { for (const b of BUCKETS) f.ram.setU16(b.counter, 0); };
+const run = (f) => { frame(f); return handlerMap().get(T4C.handler)(f.ram, ROM, A5, f.ctx); };
 
 test('W372 handler4C RUNS a frame without throwing', { skip: SKIP }, () => {
   // The first thing that would have caught a bad splice, a wrong import or a missing ROM window, none
@@ -158,3 +164,20 @@ test('W372 state 0s TWO-STAGE timer really fires, and it changes the draw varian
 // smokes and the state-0 behaviour test above all pass, so what is proven is: the handler runs, the
 // two-stage timer fires, and something corrupts the sub-record pointer over hundreds of frames.
 // FIND IT BEFORE TRUSTING $4C IN A LONG RUN.
+
+test('W372 states 2 and 4 ALTERNATE over a long run -- the one-bit toggle drives both', { skip: SKIP }, () => {
+  // Restored now the fixture resets the sprite queue each frame, as the frame driver does. ($18,A5) is
+  // a single bit: state 1 picks 2 or 4 from it, then flips it. A port that hardcoded either would run
+  // half the pattern forever and pass every other test in this file.
+  const f = world();
+  f.ram.setU16(A6 + 0x02, 0x2100);
+  const seen = new Set();
+  for (let i = 0; i < 4000; i++) {
+    run(f);
+    assert.equal(f.ram.u32(A5 + 0x06), A6, `the sub-record pointer survives frame ${i}`);
+    seen.add(f.ram.u16(A6 + T4C.stateAt));
+  }
+  assert.ok(seen.has(2) && seen.has(4),
+    `visited both branch states; saw ${[...seen].sort((a, b) => a - b).join(',')}`);
+  assert.ok(f.ram.u16(A5 + 0x18) <= 1, 'and the toggle stays a single bit');
+});
