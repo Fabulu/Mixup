@@ -864,8 +864,15 @@ each spawn. `$26FCD2` holds longword pairs (`$03400 1E0`, `$03C000C0`, `$0460FFA
 `export-tables.py`** -- a `rom.u32` there would throw `outside every ROM window`. It also explains the aligned
 decoder's stop at `$26FCD4` earlier this wave: that was DATA being decoded, not a missing opcode.
 
-**So the draft is not placeable yet.** State 2 needs its second spawn, and the `$26FCD2` window must be declared and
-sized before any of it runs.
+**THE WINDOW IS NOW DECLARED: `$26FCD2 + $20`, eight longs.** The index is `($34,A6)` through
+`andi.w #$7 / add.w D0,D0 / add.w D0,D0`, so it is 0..7 and the ROM's own mask bounds the table -- **no guard is
+needed or wanted**. Bounded above by adjacency: `$26FCF2` is state 3's entry.
+
+**And there is a FRAME-PARITY GATE on the volley**: `$26FC52 moveq #$1,D1 / and.w $80390A,D1 / bne` skips the whole
+double spawn on odd frames, so it fires every OTHER frame. A port without it doubles the bullet count.
+
+**Still to do before placing:** add state 2's second spawn to the drafted `state2_4C` (the FORWARD-cursor one at
+`$26FC72`), then place the whole draft and move the four census pins.
 
 **Still to do:** place the draft, then move the FOUR census pins together (`$26F5F2` prologue, `$26F650` damage, `$26F674` HP, `$26F6A4` death,
 `$26F6E8` main flow, then the five-call draw chain) and the eight state bodies, all of which are read and pinned.

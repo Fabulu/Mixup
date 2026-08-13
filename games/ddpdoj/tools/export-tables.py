@@ -2779,6 +2779,13 @@ SHOT_WINDOWS.extend([
                        "is $26F8A6, the first handler it points at"),
     (0x26F55A, 0x00AC, "W342: type $4C's 6-word record prototype and ALL FIVE sub prototypes, "
                        "$26F55A..$26F605 -- overlapping its handler at $26F5F2 by TWENTY bytes"),
+    (0x26FCD2, 0x0020, "W372: type $4C state 2's EIGHT spawn-bias longwords, $26FCD2..$26FCF2. "
+                       "Indexed by ($34,A6) through `andi.w #$7,D0 / add.w D0,D0 / add.w D0,D0`, so the "
+                       "index is 0..7 and the table is exactly eight longs -- the ROM's own mask bounds "
+                       "it and no guard is needed. Bounded above by ADJACENCY: $26FCF2 is state 3's "
+                       "entry. Both of state 2's spawns bias through it with `add.l (A4),D0`. Its "
+                       "absence is also why the aligned sweep stopped at $26FCD4 reading DATA as an "
+                       "opcode"),
     (0x26F984, 0x0008, "W342: type $4C state 1's TWO target points -- bounded by the ROM's own "
                        "andi.w #$7 AND by code at +8"),
     (0x2723EA, 0x003E, "W345: type $55's 15-word record prototype and its sub prototype, "

@@ -868,3 +868,26 @@ test('W372 states 3 and 5 are the same script with one constant changed', { skip
     assert.equal(IMG.readUInt16BE(at + 4), T4C.rampAt, '  ...($1E,A5)');
   }
 });
+
+test('W372 state 2 fires TWICE, and both spawns bias through the $26FCD2 table', { skip: SKIP }, () => {
+  // The drafted state2_4C had ONE spawn. There are two: the first takes the FORWARD cursor ($2A,A6),
+  // the second the BACKWARD one ($2B,A6). That is what the counter-rotation is for -- each cursor
+  // drives its own volley, so a port with one spawn fires half the pattern in one direction only.
+  for (const [at, cursor] of [[0x26fc72, 0x2a], [0x26fc9a, 0x2b]]) {
+    assert.equal(IMG.readUInt16BE(at), 0x7052, `$${at.toString(16)} moveq #$52,D0`);
+    assert.equal(IMG.readUInt32BE(at + 4), 0x00263684, '  ...jsr $263684');
+    const head = at === 0x26fc72 ? 0x26fc8a : 0x26fcb2;
+    assert.equal(IMG.readUInt16BE(head), 0x116e, `$${head.toString(16)} move.b (d16,A6),(d16,A0)`);
+    assert.equal(IMG.readUInt16BE(head + 2), cursor, `  ...from ($${cursor.toString(16)},A6)`);
+  }
+  // Both add a longword from the table through A4.
+  assert.equal(IMG.readUInt16BE(0x26fc6a), 0x49fa, '$26FC6A lea (d16,PC),A4');
+  assert.equal(0x26fc6c + IMG.readInt16BE(0x26fc6c), 0x26fcd2, '  ...the bias table');
+  for (const at of [0x26fc84, 0x26fcac]) {
+    assert.equal(IMG.readUInt16BE(at), 0xd094, `$${at.toString(16)} add.l (A4),D0 -- the bias`);
+  }
+  // The index is masked to $7, which is what bounds the table at eight longs with no guard needed.
+  assert.equal(IMG.readUInt16BE(0x26fc62), 0x0240, '$26FC62 andi.w #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x26fc64), 0x0007, '  ...#$7 -- 0..7, so EIGHT entries');
+  assert.equal(IMG.readUInt16BE(0x26fcf2), 0x0c6e, 'and $26FCF2 is state 3, bounding it by adjacency');
+});
