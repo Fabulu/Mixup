@@ -53,8 +53,34 @@ close, and 19 `rts` sites across that span is consistent with the original "eigh
 roughly right.
 
 **The lesson, and it is rule 11 again: bound the routine BEFORE scanning inside it.** I scanned a fixed
-`$26F4E2..$270400` window chosen by guesswork, and 4 of its bytes past `$26FFE8` produced a confident wrong
-structural conclusion within one commit. The `rts` scan that fixed it cost one command and should have come first.
+`$26F4E2..$270400` window chosen by guesswork, and its bytes past `$26FFE8` produced a confident wrong structural
+conclusion within one commit. The `rts` scan that fixed it cost one command and should have come first.
+
+### `$4C`'s comparison inventory, from the CORRECT span `$26F5F2..$26FFE8`
+
+    cmpi.b (d16,A5)   0      <- ZERO. No byte cascade on the record, unlike every sibling.
+    tst.b  (d16,A5)   3      $26F622 and $26F67E on ($16,A5); $26F790 on ($17,A5)
+    tst.w  (d16,A5)   4
+    cmpi.w (d16,A5)   3      ALL THREE are cmpi.w #$0600,($1E,A5) -- $26FC32 $26FDFE $26FE0E
+    cmpi.b (d16,A6)   4
+    tst.b  (d16,A6)   3
+
+**`($17,A5)` IS A BOOLEAN IN `$4C`.** It is touched exactly once, by `tst.b` at `$26F790` -- zero or non-zero.
+`$55` gives that same byte four values in a fall-through cascade and `$46` gives it five modes. **Sixth
+same-offset-different-meaning instance**, and the sharpest yet: same field, same family, and even the same KIND of
+role (a mode selector), but with a different arity that changes the whole control shape.
+
+**`($16,A5)` is the once-on-screen latch**, tested twice -- the same idiom as `$46`, `$4B` and `$1A`, at the same
+offset. So `$16` is the one field this band agrees on.
+
+**All three word comparisons are the SAME test**: `cmpi.w #$0600,($1E,A5)` at `$26FC32`, `$26FDFE` and `$26FE0E`.
+`$0600` is also `$55`'s ramp cap (`T55.rampCap`), and `($1E,A5)` is a cursor in `$55` too -- so this looks like the
+same ramp-with-cap mechanism, checked from three places rather than one. **Three call sites for one test means the
+ramp gates three different arms**, which is the structure to map next.
+
+**So the next pass has a concrete plan**: `$4C`'s control flow is not a state cascade. Start from the three
+`cmpi.w #$0600,($1E,A5)` sites and the single `tst.b ($17,A5)`, and map outward from those five branch points
+rather than reading `$26F5F2` forward.
 
 ### THE BAND RULES -- earned across W345..W353, every one after getting it wrong first
 
