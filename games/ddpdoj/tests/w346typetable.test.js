@@ -109,9 +109,13 @@ test('W347: both type tables are readable across their whole band', { skip: !HAV
     'one entry past $7F in the LOW table must be code, not a plausible init -- that is the table end');
 });
 
-test('W346: a spec that claims a handler has it actually registered with the driver', () => {
+// W351: a spec may carry `ported: false` to mean "every field measured, handler not yet written". The two
+// registry tests below skip those, because an unwritten handler cannot be registered. The ROM cross-check
+// above does NOT skip them -- that is the point of recording the addresses before the code exists.
+test('W346: a spec that claims a handler has it actually registered with the driver', { skip: !HAVE }, () => {
   const registered = new Set(HANDLER_ADDRESSES);
   for (const [type, spec] of TYPE_SPECS) {
+    if (spec.ported === false) continue;
     const hex = `$${type.toString(16).toUpperCase().padStart(2, '0')}`;
     assert.ok(registered.has(spec.handler),
       `${hex} handler $${spec.handler.toString(16)} is in HANDLERS -- an unregistered handler is a `
@@ -119,7 +123,8 @@ test('W346: a spec that claims a handler has it actually registered with the dri
   }
 });
 
-test('W346: a spec that claims an initBody has it actually registered -- the $55 no-op guard', () => {
+test('W346: a spec that claims an initBody has it actually registered -- the $55 no-op guard',
+  { skip: !HAVE }, () => {
   const registered = new Set(INIT_BODY_ADDRESSES);
   for (const [type, spec] of TYPE_SPECS) {
     const hex = `$${type.toString(16).toUpperCase().padStart(2, '0')}`;

@@ -8613,6 +8613,62 @@ export function runHandler(addr, ram, rom, a5, ctx) {
   fn(ram, rom, a5, ctx);
 }
 
+// Type $55 -- stage 5's burst-firing drifter. Read across W345..W351; the handler is NOT written yet,
+// but every field below is measured, and `w346typetable.test.js` checks init/initBody/handler against the
+// cartridge's own type table on every run so this cannot drift from $267824 unnoticed.
+//
+// THE THREE THINGS THAT WOULD BREAK A PORT WRITTEN FROM A CASUAL READ:
+//
+//  1. The arms are a FALL-THROUGH CASCADE, not a switch, and mode 2 PROMOTES ITSELF to 3 mid-cascade at
+//     $2725B0 -- the very next test reads the new value, so the finale runs on the same tick the drift
+//     table finishes. A switch or else-if delays it one frame.
+//  2. ($2E,A5) is a BURST COUNTER, not a pattern selector. One aim at the burst's first volley
+//     (counter == reload), the ordinary 15-shot volley each step, the 20-shot volley as the FINALE when
+//     it reaches zero. The two volleys differ in emit routine AND angle step, not just in size.
+//  3. The sinusoid is BACKED OUT at $2724AE before being re-applied. Accumulating instead drifts the
+//     record off screen at one offset per frame.
+//
+// And two operator-level traps: $2724FE is an EQUALITY test where $2725A0 is a THRESHOLD, and the bounds
+// test's two sequential `addi.w` do NOT fold into one (same sum, different carry, opposite despawn).
+const T55 = Object.freeze({
+  // RECON COMPLETE, HANDLER NOT WRITTEN. This flag is not decoration: `w346typetable.test.js` reads it
+  // to skip the registry checks while still verifying init/initBody/handler against the cartridge. It
+  // makes "measured but unported" a state the suite knows about, instead of a claim in a commit message.
+  ported: false,
+  init: 0x272390, initBody: 0x272398, handler: 0x272424,
+  recordProto: 0x2723ea, recordWords: 15,     // W345: $2723EA + $3E, overlaps the handler by FOUR bytes
+  damageMask: 0x5c, damageClear: 0xa3,        // $272448/$272450 -- the SIXTH $5C-family member
+  palBase: 0x18, palXor: 0x19,                // $27249A base, $272460 XOR
+  killScore: 0x113,                           // $272472, through $28615E not $286096
+  deathCue: 0x28c2dc,                         // $27247E -- identical to T49's
+  deathList: 0x272850,                        // $272488 lea (PC) -- walked by $270D92
+  deathExit: 0x263762,                        // $272492 JMP -- it neither frees nor marks-and-continues
+  hpFull: 0x1100, invulnAt: 0x30,             // $272442 / $27242C -- ($30,A5) TIMES the window
+  onScreenAt: 0x16,                           // $2724DA -- same offset and meaning as $4B's
+  boundsBias: [0x1400, 0x7400],               // $2724C0/$2724C4 -- SEPARATE adds, see the note above
+  pauseAll: 0x8130d2, pauseVolley: 0x8130d4,  // $2724A0 skips everything; $2725CE skips only the volley
+  modeAt: 0x17,                               // 0 arm A, 1 stationary, 2 drift+promote, 3 fire, 4+ drift
+  cursorAt: 0x1e, cursorStride: 0x10,         // $2724F8/$27259A
+  cursorArmAEnd: 0x80, cursorEnd: 0xf0,       // $2724FE EQUALITY / $2725A0 THRESHOLD
+  driftTimerAt: 0x1c, driftTimerReloadAt: 0x1d,
+  driftTable: 0x272750, driftEntries: 16,     // W346: $272750+$100, bounded by ADJACENCY to deathList
+  sineAmp: 0x28, phaseAt: 0x2c, phaseStep: 2, offsetAt: 0x2a,   // $272544/$272548/$27254C/$272556
+  rampAt: 0x32, rampStep: 0x40, rampCap: 0x600,                 // $272566/$272570
+  fireAt: 0x26, fireReloadAt: 0x27,           // $2725C0 / $27271C
+  burstAt: 0x2e, burstReloadAt: 0x2f,         // THE BURST COUNTER -- see note 2
+  aimXBias: -0x600, fireXGate: 0x2000,        // $2725F4 / $2725D8
+  aimFallback: 0x80,                          // $272602 -- the carry exit's default angle
+  vectorTable: 0x2735fa,                      // $272634, inside W30's $2735F0+$220 window
+  speedBias: 0x02000000,                      // $27261A D5
+  volleyOrdinary: Object.freeze({
+    emit: 0x2816f6, passes: 5, perPass: 3, step: 4, interCluster: 0x10, backoff: 0x34, d0: 0xffff0005,
+  }),
+  volleyFinale: Object.freeze({
+    emit: 0x281744, passes: 4, perPass: 5, step: 2, backoff: 0x22, d0: 0xffff0004,
+  }),
+  enqueue: 0x23df86,                          // $272748 -- enqueueRegistersThroughStub
+});
+
 /** The map of ported handler addresses -> functions, for the enemy driver. */
 export function handlerMap() { return HANDLERS; }
 export const HANDLER_ADDRESSES = [...HANDLERS.keys()];
@@ -8625,5 +8681,5 @@ export const HANDLER_ADDRESSES = [...HANDLERS.keys()];
 // own table at `$267824` on every run, so the prose claims stop being load-bearing.
 export const TYPE_SPECS = Object.freeze(new Map([
   [0x01, T01], [0x1b, T1B], [0x43, T43], [0x45, T45], [0x47, T47], [0x48, T48],
-  [0x49, T49], [0x4a, T4A], [0x4b, T4B], [0x59, T59], [0x81, T81], [0x8e, T8E],
+  [0x49, T49], [0x4a, T4A], [0x4b, T4B], [0x55, T55], [0x59, T59], [0x81, T81], [0x8e, T8E],
 ]));
