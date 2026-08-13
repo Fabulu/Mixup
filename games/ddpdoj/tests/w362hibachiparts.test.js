@@ -301,3 +301,24 @@ test('W372 $253564 clamps DOWN to $14 and never raises', { skip: SKIP }, () => {
   assert.equal(IMG.readUInt16BE(0x25356e), 0x33fc, '$25356E move.w #imm,abs.l');
   assert.equal(IMG.readUInt16BE(0x253570), 0x0014, '  ...#$14, the ceiling');
 });
+
+test('W372 the body s FINAL path re-arms the parts and hands over to A4 script 1', { skip: SKIP }, () => {
+  // The end of $2A6B94: call the part-arming routine $2A6E74 again, stop A3 script 2, set the HP pool
+  // to -1, write the FOUR-DIFFERENT quad, and tail-jump into a4Start with script 1. Every helper here
+  // is already ported, so this path is portable as it stands.
+  assert.equal(0x2a6df2 + IMG.readInt16BE(0x2a6df2), 0x2a6e74, '$2A6DF0 bsr $2A6E74 -- re-arm');
+  assert.equal(IMG.readUInt16BE(0x2a6df6), 0x7002, '$2A6DF6 moveq #$2,D0');
+  assert.equal(IMG.readUInt32BE(0x2a6dfa), 0x002599ec, '$2A6DF8 jsr $2599EC -- a3Stop, script 2');
+  assert.equal(IMG.readUInt16BE(0x2a6dfe), 0x2b7c, '$2A6DFE move.l #imm,(d16,A5)');
+  assert.equal(IMG.readUInt32BE(0x2a6e00), 0xffffffff, '  ...#-1 into the HP pool');
+  assert.equal(IMG.readUInt16BE(0x2a6e04), 0x0016, '  ...($16,A5)');
+  // The quad here is the FOUR-DIFFERENT form, not the one-value form the $EB33 arm writes.
+  const quad = [];
+  for (let a = 0x2a6e06; a < 0x2a6e1e; a += 6) {
+    assert.equal(IMG.readUInt16BE(a), 0x1d7c, `$${a.toString(16)} move.b #imm,(d16,A6)`);
+    quad.push(IMG.readUInt16BE(a + 2));
+  }
+  assert.deepEqual(quad, [0x10, 0x11, 0x12, 0x16], 'four DIFFERENT values, one per quad byte');
+  assert.equal(IMG.readUInt16BE(0x2a6e1e), 0x7001, '$2A6E1E moveq #$1,D0');
+  assert.equal(IMG.readUInt32BE(0x2a6e22), 0x0025980c, '$2A6E20 JMP $25980C -- a tail call, not a jsr');
+});
