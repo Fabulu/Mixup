@@ -209,3 +209,48 @@ export function sequenceDriver291470(ram, rom, ctx, a5, a6, listBase) {
   ram.setU16(a6 + 0x0c, u16(ram.u16(a6 + 0x0c) + 4));        // $2914BE addq.w #4,($C,A6)
   poolClear2908E4(ram, rom, ctx);                            // $2914C2 jsr $2908E4
 }
+
+/** `$2908D2` -- the INNER-STATE SETTER. Eighteen bytes: point A6 at the fixed block, store D0 into
+ *  `($8,A6)`, and clear the sub-state `($6,A6)`.
+ *
+ *  **It has NO change-detection guard**, unlike `$4C`'s `$26F858`, which returns early when the state
+ *  is unchanged. Here every call resets the sub-state, so calling it with the current state is a
+ *  RESTART rather than a no-op. Copying `$26F858`'s guard across would silently prevent that.
+ */
+export function setInnerState2908D2(ram, d0) {
+  ram.setU16(0x81e0dc + 0x08, u16(d0));                      // $2908D8 move.w D0,($8,A6)
+  ram.setU16(0x81e0dc + 0x06, 0);                            // $2908DC move.w #$0,($6,A6)
+}
+
+/** `$290E9E` -- INNER STATE 0. The same sequence-driving shape as `$291470`, with one difference that
+ *  matters: on the terminator it does NOT finish the object -- it BUMPS the variant `($E,A6)` and
+ *  re-enters through the setter, so it cycles through the three sequence lists at `$290F12`.
+ *
+ *  `$291470` sets the object's state to 2 and stops. This one loops. Same five instructions either
+ *  side of the terminator test, opposite meanings.
+ */
+export function innerState0_290E9E(ram, rom, ctx, a5, a6) {
+  if (ram.u16(a6 + 0x06) === 0) {                            // $290EA4 cmpi.w #$0,($6,A6)
+    ram.setU16(a6 + 0x06, 1);                                // $290EAE
+    poolClear2908E4(ram, rom, ctx);                          // $290EB4 jsr $2908E4
+    ram.setU16(a6 + 0x0c, 0);                                // $290EB8
+    ctx.cue28CC28?.(ram, ctx);                               // $290EBE jsr $28CC28 (ported elsewhere)
+  }
+  if (ram.u16(a6 + 0x06) !== 1) return;                      // $290EC4 cmpi.w #$1 / bne
+
+  // $290ECE -- pick the sequence LIST by the variant, then index it by the sequence cursor.
+  const list = rom.u32(0x290f12 + (u16(ram.u16(a6 + 0x0e)) << 2));   // $290ED4..$290EDC
+  const entry = rom.u32(list + u16(ram.u16(a6 + 0x0c)));     // $290EE0/$290EE4
+
+  if (entry === 0xffffffff) {                                // $290EE6
+    // $290EF0 reads ($E,A6) -- the VARIANT -- adds one, and hands it to the setter, which stores it
+    // as the INNER STATE in ($8,A6). So the variant selector and the state index are the SAME
+    // number one apart, and finishing variant N moves to inner state N+1. It does not "cycle the
+    // variant": it leaves inner state 0 entirely.
+    setInnerState2908D2(ram, u16(ram.u16(a6 + 0x0e) + 1));   // $290EF0/$290EF4/$290EF6
+    return;                                                  // $290EFA
+  }
+  if (scriptStep2909AA(ram, rom, ctx, entry)) return;        // $290F00 jsr $2909AA / $290F04 bcs
+  ram.setU16(a6 + 0x0c, u16(ram.u16(a6 + 0x0c) + 4));        // $290F08 addq.w #4
+  poolClear2908E4(ram, rom, ctx);                            // $290F0C jsr $2908E4
+}

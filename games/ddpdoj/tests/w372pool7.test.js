@@ -266,3 +266,30 @@ test('W372 the sequence driver CLEARS THE POOL between entries', { skip: SKIP },
   assert.equal(ram.u8(A5 + 0x02), 2, '$FFFFFFFF sets the object state to 2 -- on A5, not A6');
   void SCRIPT7;
 });
+
+test('W372 inner state 0 CYCLES the variant where the triplicate driver STOPS', { skip: SKIP }, async () => {
+  const { innerState0_290E9E, setInnerState2908D2, POOL7: P } = await import('../src/objslot7pool.js');
+  const { Ram } = await import('../src/ram.js');
+  const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
+  const A5 = 0x80e300; const A6 = 0x81e0dc;
+  // Real ROM: $290F12's three lists, each ending $FFFFFFFF. Drive to a terminator and check it bumps
+  // the variant rather than ending the object -- the opposite of $291470 on the same instruction.
+  const rom = { u32: (a) => IMG.readUInt32BE(a), u16: (a) => IMG.readUInt16BE(a), bytes: (a, n) => IMG.subarray(a, a + n) };
+  const ram = new Ram();
+  ram.setU16(A6 + 0x0e, 0);                       // variant 0
+  ram.setU16(A6 + 0x06, 1);                       // already past the init step
+  ram.setU16(A6 + 0x0c, 5 * 4);                   // cursor parked ON the terminator
+  innerState0_290E9E(ram, rom, { palette: null }, A5, A6);
+  // The ROM reads ($E,A6), adds one, and the setter stores it as the INNER STATE in ($8,A6) -- NOT
+  // back into ($E,A6). So finishing a sequence LEAVES inner state 0 rather than cycling within it.
+  assert.equal(ram.u16(A6 + 0x08), 1, 'the INNER STATE advanced to 1');
+  assert.equal(ram.u16(A6 + 0x0e), 0, '  ...and the variant field is UNCHANGED');
+  assert.equal(ram.u16(A6 + 0x06), 0, '  ...and the sub-state was reset, so the next state re-inits');
+  assert.equal(ram.u8(A5 + 0x02), 0, '  ...and the OBJECT state is untouched -- it did NOT finish');
+
+  // The setter has NO change guard: setting the same state still resets the sub-state.
+  ram.setU16(A6 + 0x06, 7);
+  setInnerState2908D2(ram, 1);                    // same state as now
+  assert.equal(ram.u16(A6 + 0x06), 0, 'no change-detection: an identical set still RESTARTS');
+  void P;
+});
