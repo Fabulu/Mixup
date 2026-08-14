@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2638/2638 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2644/2644 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -55,9 +55,32 @@ restarts until it equals that count, then stages a create and kills. The tally's
 * **A test that clobbered `BUCKETS[i].counter`** -- that field is the counter's ADDRESS, not a running count.
   Writing it rewrites the bucket descriptors and breaks `resolveEmitStub` for the whole process.
 
+### D35 IS OPEN: THE COIN EDGE READ IS PORTED, THE ECONOMY IS MAPPED
+
+`$13CFBA` and `$13CF86` are written and driven in `src/isr.js`, and **IRQ6 calls the real routine now** instead
+of noting it. The three words `$803950` (raw level, inverted), `$803952` (last frame, still active low) and
+`$803954` (edges, masked to bits 5/6/7) behave correctly under a held coin -- one edge, not one per frame.
+
+`$13CF86`'s two pending flags are **`cmpi.w` against `$0080` exactly, not bit tests**, and reading one CONSUMES
+it, so it cannot be called twice in a frame.
+
+**THE ECONOMY IS THE NEXT UNIT AND IT IS ALREADY SWEPT:**
+
+* **`$13CE22` -- the COINAGE CONVERTER.** Reads the DIP at `$803808`, compares against `$09`, `$12`, `$11`,
+  walks a per-slot counter at `($2,A0)` against `$803956`, and clamps at `$09`/`$10`. Starts `move.l D0,-(A7) /
+  move.l D1,-(A7)`, so it saves its own registers. Roughly `$13CE22..$13CEA0`.
+* **`$13D002` -- the SECOND and THIRD arms**, `btst #$0` and `btst #$1` over the same D1. Each calls `$18B0D6`,
+  points A0 at `$803958` or `$80395E`, and runs `$13CE22`. `$13D018` tests the DIP `$803808` against `$12` and
+  bumps `$80394C`; `$13D03E` tests `$80380B` against `$01` to decide whether slot 2 shares slot 1's block.
+* **`$18B0D6`** is called by all three arms before the converter and is unread.
+
+The three arms are `note()`d with those addresses. **They test bits of ONE word that carries both coin edges
+and pending flags, so a coin edge and a pending flag are indistinguishable to them by design.**
+
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **Nine dispatch slots untouched**: [8], [9], [12], [13], [15], [16], [17], [18], [19].
+1. **`$13CE22` + `$13D002` + `$18B0D6`** -- D35's credit economy, all swept above.
+2. **Nine dispatch slots untouched**: [8], [9], [12], [13], [15], [16], [17], [18], [19].
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
    chain built and driven, three state routines >2 KB unwritten), **D38** input lag faithful (logic side measured

@@ -34,6 +34,7 @@
 // `count(rel == 0)` the same run reported 0 firings where there were 614.
 
 import { RAM, ROM } from './machine.js';
+import { u16 } from './ram.js';
 import { isr6InputRead } from './input.js';
 import { uploadRegs } from './background.js';
 import { flushScoreDigits185DC4, flushTextDefer141258 } from './hud.js';
@@ -44,7 +45,7 @@ import { flushScoreDigits185DC4, flushTextDefer141258 } from './hud.js';
  */
 export function irq6(ram, portWord, ctx) {
   const { unportedLog } = ctx;
-  unportedLog.note(ROM.isr6Coin, 'ISR6 jsr #1: coin/service ($13CFBA)');
+  coinRead13CFBA(ram, portWord, ctx);                 // $13C7D4 jsr $13CFBA
   isr6InputRead(ram, portWord, unportedLog);          // $13C7DA
   unportedLog.note(ROM.isr6Third, 'ISR6 jsr #3 ($18ACC0)');
   const sem = ram.u8(RAM.semaphore);                  // $13C7E6 tst.b $803940
@@ -94,4 +95,95 @@ export function irq6(ram, portWord, ctx) {
   ram.setU8(RAM.semaphore, (sem - 1) & 0xff);         // $13C806 subq.b #1
   unportedLog.note(ROM.isr6Tail, 'ISR6 tail ($13C4FC)');
   return true;
+}
+
+// ---------------------------------------------------------------------------------------------
+// `$13CFBA` -- THE COIN AND SERVICE READ. IRQ6's FIRST call, so it runs before anything else in the
+// frame. W373, D35.
+//
+// THREE WORDS, AND THEY ARE NOT THREE COPIES OF THE SAME THING:
+//
+//     $803950   this frame's switches, RAW LEVEL, already inverted so 1 = pressed
+//     $803952   LAST frame's switches, still ACTIVE LOW -- taken into D1 BEFORE being overwritten
+//     $803954   the EDGES: newly pressed this frame, masked to bits 5, 6 and 7
+//
+// The order is the whole of it. `$13CFC2` reads `$803952` into D1 and only then does `$13CFC8`
+// overwrite it, so D1 holds the previous frame while `$803952` moves on. Then `not.w D0` inverts
+// only THIS frame, and `and.w D0,D1` is `prev_raw & ~now_raw` -- set where the switch was released
+// last frame and pressed this one.
+//
+// **`$803954` HOLDS NEWLY-PRESSED BITS, NOT HELD ONES.** Storing the level there coins up once per
+// FRAME HELD instead of once per press, and it does not look like an edge bug from the outside: it
+// looks like the credit counter running away.
+
+export const COIN = Object.freeze({
+  read: 0x13cfba, pending: 0x13cf86,
+  port: 0xc08004,
+  raw: 0x803950, prev: 0x803952, edges: 0x803954,
+  mask: 0x00e0,                        // $13CFD8 andi.w #$E0 -- bits 5, 6 and 7
+  // $13CF86's two pending flags. Each is a WORD compared against $0080 exactly, not a bit test, and
+  // reading one CONSUMES it.
+  pendA: 0x803968, pendB: 0x80396e, pendValue: 0x0080,
+  bitCoin1: 5, bitCoin2: 0, bitService: 1,
+  creditA: 0x803958, creditB: 0x80395e,
+  arms: Object.freeze({ credit: 0x13ce22, hook: 0x18b0d6, tail: 0x13d002 }),
+});
+
+/** `$13CF86` -- THE PENDING FLAGS, and reading them CLEARS them.
+ *
+ *  Two words tested against `$0080` with `cmpi.w`, not bit-tested, so any other value reads as
+ *  "nothing pending". Each match ORs a bit into D1 and zeroes its word, which is why this cannot be
+ *  called twice per frame and why the port returns the bits rather than exposing the words.
+ */
+export function coinPending13CF86(ram) {
+  let d1 = 0;                                                // $13CF86 moveq #$0,D1
+  if (ram.u16(COIN.pendA) === COIN.pendValue) {              // $13CF88 cmpi.w #$0080 / bne
+    d1 |= 0x01;                                              // $13CF94 ori.w #$1,D1
+    ram.setU16(COIN.pendA, 0);                               // $13CF98 -- CONSUMED
+  }
+  if (ram.u16(COIN.pendB) === COIN.pendValue) {              // $13CFA0 / bne
+    d1 |= 0x02;                                              // $13CFAC ori.w #$2,D1
+    ram.setU16(COIN.pendB, 0);                               // $13CFB0 -- CONSUMED
+  }
+  return d1;
+}
+
+/** `$13CFBA` -- the read and its three stores. Returns D1 as the cartridge leaves it: the pending
+ *  bits ORed with the edge word, which is what the three arms below are tested against.
+ *
+ *  `$13CF86` runs AFTER the edges are stored and it starts `moveq #$0,D1`, so it DESTROYS the edge
+ *  value in D1 and `$13CFE4 or.w $803954,D1` reads it back out of memory. Keeping the edges in a
+ *  local across the call would be the same answer by accident; it is written the way the cartridge
+ *  writes it because the store is what the rest of the frame reads.
+ */
+export function coinRead13CFBA(ram, portWord, ctx) {
+  const prev = ram.u16(COIN.prev);                           // $13CFC2 -- taken FIRST
+  ram.setU16(COIN.prev, u16(portWord));                      // $13CFC8 -- and only then overwritten
+  const now = u16(~portWord);                                // $13CFCE not.w D0 -- ACTIVE LOW
+  ram.setU16(COIN.raw, now);                                 // $13CFD0
+  ram.setU16(COIN.edges, (prev & now & COIN.mask) >>> 0);    // $13CFD6 and.w / $13CFD8 andi.w #$E0
+
+  let d1 = coinPending13CF86(ram);                           // $13CFE2 bsr $13CF86 -- CLOBBERS D1
+  d1 |= ram.u16(COIN.edges);                                 // $13CFE4 or.w $803954,D1 -- read back
+
+  // $13CFEA btst #5 / $13D002 btst #0 / $13D02C btst #1 -- three arms over ONE word, so a coin edge
+  // and a pending flag are indistinguishable to them by design. Each arm calls $18B0D6, points A0 at
+  // a credit block, and runs $13CE22, the coinage converter that reads the DIP at $803808.
+  if ((d1 & (1 << COIN.bitCoin1)) !== 0) {                   // $13CFEA btst #$5,D1
+    ctx?.unportedLog?.note(COIN.arms.credit, `$13CFF0 jsr $18B0D6 then $13CFFC bsr $13CE22 with `
+      + `A0 = $${COIN.creditA.toString(16).toUpperCase()} -- coin slot 1. $13CE22 is the COINAGE `
+      + `CONVERTER: it reads the DIP at $803808, compares against $12 and $11, and walks a per-slot `
+      + `counter at ($2,A0) against $803956. That is D35's economy and it is measured, not written`);
+  }
+  if ((d1 & (1 << COIN.bitCoin2)) !== 0) {                   // $13D002 btst #$0,D1
+    ctx?.unportedLog?.note(COIN.arms.tail, `$13D008 jsr $18B0D6 then $13D014 bsr $13CE22 with `
+      + `A0 = $${COIN.creditA.toString(16).toUpperCase()}, then $13D018 tests the DIP $803808 `
+      + `against $12 and bumps $80394C`);
+  }
+  if ((d1 & (1 << COIN.bitService)) !== 0) {                 // $13D02C btst #$1,D1
+    ctx?.unportedLog?.note(COIN.arms.tail, `$13D032 jsr $18B0D6 with A0 = $${
+      COIN.creditB.toString(16).toUpperCase()} -- coin slot 2, and $13D03E's DIP test at $80380B `
+      + `picks whether it shares slot 1's credit block`);
+  }
+  return d1;
 }
