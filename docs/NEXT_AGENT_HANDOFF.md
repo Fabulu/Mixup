@@ -127,23 +127,35 @@ them, from the neighbours' recon and verified by hand:
   same trap as `$25E220`'s fourth sprite inheriting D1's high word. Rebuilding the registers per
   emit would silently change the picture.
 
-  **`$25EB2E..$25EB62` IS `$25E824`'s SHARED BAIL-OUT TAIL, NOT AN ORPHAN. I called it an orphan
-  first and that was wrong.** It has no `jsr` or `jmp` caller anywhere in the image -- true, and
-  misleading, because it is reached by **`Bcc`**. **FIVE conditional branches inside `$25E824` jump
-  FORWARD, past the routine's own `rts` at `$25EB2C`, into `$25EB2E`:**
+  **`$25EB2E..$25EB62` IS A SHARED SUBROUTINE THAT `$25E824` CALLS FIVE TIMES.** It has no
+  `jsr`/`jmp` caller anywhere in the image -- true, and misleading, because it is reached by
+  **`bsr`**. The five call sites, all opcode `$61xx`:
 
-      $25E870   $25E916   $25E9D4   $25EA52   $25EAD0   -- all -> $25EB2E
+      $25E870   $25E916   $25E9D4   $25EA52   $25EAD0   -- all bsr $25EB2E
 
-  So `$25E824` has **TWO exits**: the normal fall-through to `rts` at `$25EB2C`, and this shared tail
-  which calls `$241812` at `$25EB30` and returns at `$25EB62`. Five gates bailing to one tail, sitting
-  between the emit sites, is the routine's skeleton. **Treat `$25EB2E..$25EB62` as part of this unit.**
+  It returns to each via its `rts` at `$25EB62`, and it sits immediately after `$25E824`'s own `rts`
+  at `$25EB2C`. It calls `$241812` at `$25EB30`. **Treat it as part of this unit.**
 
-  The earlier note that its `rts` at `$25EB62` bounds `$25EDF8`'s data block from below still holds;
-  the routine owning that `rts` is `$25E824`.
+  **THE A1 TABLE LEAD.** All five `bsr`s are preceded by the identical pair
 
-  **The lesson, and it has now cost two wrong claims this wave:** "nothing calls it" is not
-  "nothing reaches it". Scan `Bcc` and `bra` as well as `jsr`/`jmp` before calling anything dead or
-  orphaned -- the same mistake shape as my `$25E29E`/`$25E4D0` containment error.
+      3229 0002    move.w ($2,A1),D1
+      3A11         move.w (A1),D5
+      61xx         bsr $25EB2E
+
+  and the displacement tail before each differs: `$0A`, `$10`, `$16`, `$1C`, `$22` -- **a stride of
+  6, three words per entry.** So D1 and D5 are the subroutine's arguments and the A1 table is
+  consumed in 6-byte groups. **Note `$22` is past the 26-byte extent measured from the table base,
+  so either that size is wrong or A1 is rebased between uses. Settle that before declaring the
+  window.**
+
+  The earlier note that `$25EB62`'s `rts` bounds `$25EDF8`'s data block from below still holds; the
+  code owning it belongs to `$25E824`.
+
+  **I GOT THIS WRONG TWICE IN A ROW, AND BOTH ERRORS ARE THE SAME KIND.** First I called `$25EB2E`
+  an orphan because nothing `jsr`/`jmp`s it. Then I called it a bail-out tail because I read `$61`
+  as a conditional branch instead of `bsr`. **Check the opcode, not just the opcode's neighbourhood:
+  `$60` is `bra`, `$61` is `bsr`, and `$62..$6F` are the conditionals.** And "nothing calls it" is
+  never "nothing reaches it" -- the same mistake shape as my `$25E29E`/`$25E4D0` containment error.
 
 * **`$25E29E` HAS NO BRANCHES AT ALL, AND TWO OF ITS FOUR GROUPS NEVER EMIT.** Mechanical scans over
   `$25E29E..$25E480`, all verified:
