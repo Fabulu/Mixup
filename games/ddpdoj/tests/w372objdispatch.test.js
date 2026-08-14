@@ -240,3 +240,44 @@ test('W372 slot [14] picks between TWO tables that differ in ONE entry', { skip:
   assert.equal(b[5], 0x001f75c0, '  ...$1F75C0 in the second');
   assert.ok(a.every((v) => v >= 0x1f3168 && v <= 0x1f8c88), 'and all sixteen point into $1F3168..$1F8C88');
 });
+
+test('W372 slot [14] TAIL-JUMPS into the ported sprite emitter', { skip: SKIP }, () => {
+  // Its draw is already portable: D1 = the record position biased by $E600E400, D2 = the longword the
+  // rank-selected table supplied into ($C,A5), D3 = $1AE0, D4 = 2, through $23DECE -- which the port
+  // has as enqueueRegistersThroughStub. So the slot's OUTPUT needs nothing new; only its state
+  // routines do.
+  assert.equal(IMG.readUInt16BE(0x288d44), 0x222d, '$288D44 movea.l (d16,A5),A1');
+  assert.equal(IMG.readUInt16BE(0x288d46), 0x0008, '  ...($8,A5)');
+  assert.equal(IMG.readUInt16BE(0x288d48), 0x0681, '$288D48 addi.l #imm,D1');
+  assert.equal(IMG.readUInt32BE(0x288d4a), 0xe600e400, '  ...#$E600E400, the draw bias');
+  assert.equal(IMG.readUInt16BE(0x288d4e), 0x242d, '$288D4E movea.l (d16,A5),A2');
+  assert.equal(IMG.readUInt16BE(0x288d50), 0x000c, '  ...($C,A5) -- what the TABLE selection wrote');
+  assert.equal(IMG.readUInt16BE(0x288d52), 0x363c, '$288D52 move.w #imm,D3');
+  assert.equal(IMG.readUInt16BE(0x288d54), 0x1ae0, '  ...#$1AE0, the attribute');
+  assert.equal(IMG.readUInt16BE(0x288d56), 0x383c, '$288D56 move.w #imm,D4');
+  assert.equal(IMG.readUInt16BE(0x288d58), 0x0002, '  ...#$2, the palette');
+  assert.equal(IMG.readUInt16BE(0x288d5a), 0x4ef9, '$288D5A JMP abs.l -- a TAIL call, not a jsr');
+  assert.equal(IMG.readUInt32BE(0x288d5c), 0x0023dece, '  ...$23DECE, already ported');
+});
+
+test('W372 $23C61E is COMPOSITION, and it was slot [14] s only unported dependency', { skip: SKIP }, async () => {
+  // Two instructions: bsr $23C5F2 then bra $23C608. That is why it stayed unported while both halves
+  // were already modelled -- a scan for unported callees flags it, and reading it finds nothing new.
+  assert.equal(IMG.readUInt16BE(0x23c61e), 0x61d2, '$23C61E bsr.s');
+  assert.equal(0x23c620 + (IMG[0x23c61f] > 0x7f ? IMG[0x23c61f] - 0x100 : IMG[0x23c61f]), 0x23c5f2,
+    '  ...to $23C5F2');
+  assert.equal(IMG.readUInt16BE(0x23c620), 0x60e6, '$23C620 bra.s');
+  assert.equal(0x23c622 + (IMG[0x23c621] > 0x7f ? IMG[0x23c621] - 0x100 : IMG[0x23c621]), 0x23c608,
+    '  ...to $23C608 -- a TAIL branch, so it never returns here');
+  // The off-by-one is real and is in the cartridge: tx_xscroll is set to ONE, not zero.
+  assert.equal(IMG.readUInt16BE(0x23c5f8), 0x30bc, '$23C5F8 move.w #imm,(A0)');
+  assert.equal(IMG.readUInt16BE(0x23c5fa), 0x0000, '  ...#$0 -- tx_yscroll');
+  assert.equal(IMG.readUInt16BE(0x23c602), 0x30bc, '$23C602 move.w #imm,(A0)');
+  assert.equal(IMG.readUInt16BE(0x23c604), 0x0001, '  ...#$1 -- tx_xscroll is ONE, not zero');
+  const { VideoRegs, resetScrolls23C61E } = await import('../src/background.js');
+  const r = new VideoRegs();
+  r.tx_yscroll = 9; r.tx_xscroll = 9; r.bg_yscroll = 9; r.bg_xscroll = 9;
+  resetScrolls23C61E(r);
+  assert.deepEqual([r.tx_yscroll, r.tx_xscroll, r.bg_yscroll, r.bg_xscroll], [0, 1, 0, 0],
+    'and the port keeps the off-by-one rather than zeroing all four');
+});

@@ -244,6 +244,23 @@ export class BgVram {
  * credits, chain high-water) still goes through the unported `$240DC2` /
  * `$141258` path, so those cells stay blank in this map until Wave C'.
  */
+/** `$23C61E` -- RESET BOTH SCROLLS. Two instructions: `bsr $23C5F2` then `bra $23C608`, so it is
+ *  composition rather than a routine, which is why it stayed unported while both its halves were
+ *  already modelled by `VideoRegs`.
+ *
+ *  `$23C5F2` sets tx_yscroll 0 and tx_xscroll **1** -- not 0. That off-by-one is in the cartridge and
+ *  `VideoRegs`'s constructor already records it; a reset that zeroed both would shift the text layer
+ *  by one column against every reference shot.
+ *
+ *  Object-dispatch slot `[14]` calls this, and it was that slot's only unported dependency.
+ */
+export function resetScrolls23C61E(regs) {
+  regs.tx_yscroll = 0;                                       // $23C5F2 lea $B05000 / move.w #$0
+  regs.tx_xscroll = 1;                                       // $23C5FC lea $B06000 / move.w #$1
+  regs.bg_yscroll = 0;                                       // $23C608, reached by the bra
+  regs.bg_xscroll = 0;
+}
+
 /** `$23C622` -- CLEAR THE TX LAYER. Twenty-two bytes, and three dispatch slots call it ([7], [8] and
  *  [19]), which is what a screen does before it draws itself.
  *
