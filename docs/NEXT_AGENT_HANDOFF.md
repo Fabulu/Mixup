@@ -133,6 +133,16 @@ It is slot [9]'s record state 0, and it is mostly a palette wall:
     $25CA8E  jsr $28CA94     UNPORTED
     $25CAC0  rts
 
+**AND ALL FOUR UNPORTED CALLEES ARE TINY LEAVES WITH NO CALLEES OF THEIR OWN:**
+
+    $25F442..$25F454   20 bytes   no calls
+    $25FA78..$25FAA2   44 bytes   no calls   (ends right before $25FAA4, one of $25D560's callees)
+    $25C57E..$25C590   20 bytes   no calls
+    $28CA94..$28CAAC   26 bytes   no calls
+
+**110 bytes in total, and the tree stops there.** So the whole unit is 543 bytes of mostly-ported
+palette work plus four small leaves. There is no hidden depth in it.
+
 **So it is FOUR unported callees, not 543 bytes of unknown.** Compare `phase0_25D010`, slot [9]'s
 state 0 sibling, which is eleven palette installs and is already written -- this is the same shape
 with fourteen. **It is cheaper than either remaining draw**, because both of those are blocked on
