@@ -132,12 +132,26 @@ settle these two things first:
 1. **`carrierA6`.** It is the record whose position the fill adds to: `bee.js:598` does
    `ram.u32(carrierA6 + B.pos) + (offset & 0xffff)`. `handlers.js:3617` passes the `a6` in scope,
    so `tail92`'s `a6` is probably right, but confirm it rather than assuming.
-2. **`offset & 0xffff` MAY BE WRONG FOR THESE TWO CALLERS.** Type `$92`'s D1 is a packed LONG
-   (`$FF00FE00`, with only the low word conditionally negated at `$279D56`), i.e. a two-axis offset.
-   The fill masks it to sixteen bits, which would DROP the high word. Every existing caller passes
-   either 0 or a small value, so the mask has never been exercised with a real long. **Check what
-   the cartridge's fill actually does with D1 before wiring these two**; if it adds the full long,
-   the mask is a latent defect that these callers would be the first to hit.
+2. **`offset & 0xffff` IS WRONG FOR THESE TWO CALLERS. CONFIRMED FROM THE ROM.** The call site:
+
+       $279D50  move.l #$FF00FE00,D1      <-- a FULL LONG, not a zero-extended word
+       $279D56  btst #$6,($1C,A6) / beq $279D60
+       $279D5E  neg.w D1                  <-- negates the LOW word only
+       $279D60  move.b ($1F,A6),D2
+       $279D64  jsr $27F8F0
+       $279D6A  jmp $263762               <-- freeEnemy
+
+   `bee.js:597`'s comment says "D1 begins as the caller's zero-extended word and ADD.L carries
+   across the two packed position halves", and `bee.js:598` therefore does
+   `ram.u32(carrierA6 + B.pos) + (offset & 0xffff)`. **That assumption does not hold here**: D1's
+   high word is `$FF00` and the mask discards it, so the impact would spawn at the wrong long-axis
+   position.
+
+   **The fix is safe for every existing caller.** They pass either `0` or a value already through
+   `u16(...)`, so it is always below `$10000` and the mask is a no-op for them. Dropping the mask
+   and adding the full 32 bits restores `add.l` semantics for everyone. **Do it inside the
+   `$27F8F0` unit with a test that pins the carry across the packed halves**, not as a drive-by:
+   it is invisible today precisely because no caller has ever passed a real long.
 
 The rest of the audit came back clean. Every other non-note reference among the 40 noted addresses
 is prose, a constant, or a dispatch-table entry -- trap 17 -- and the two `unportedLog` notes for
