@@ -1572,6 +1572,22 @@ small.
                    obvious reading, and it explains why [16] is the one slot opening with `cmpi.b`
                    instead of `tst.b`: no idle state to fall through.
 
+**W373: SLOT [9] IS CONFIRMED AS D34, and most of its mechanism is ported.** It is a TWO-PLAYER CHARACTER
+SELECT WITH MUTUAL EXCLUSION over three options:
+
+* `$25D402` is the cursor. Bit 2 steps back, bit 3 forward, and each **loops again while the new value equals
+  the other side's byte**, so a player steps OVER the other's pick rather than being blocked by it.
+* `$25D306` seeds it: each side reads the OTHER side's byte, and `$25D2EA` returns the first entry that
+  DIFFERS. The two order tables are MIRRORED (`0,1,2` and `2,1,0`) so the players scan from opposite ends.
+* Confirm is two conditions -- a button in the `$70` mask, or `($30,A6)` set by a per-record countdown.
+* `$25D164` cycles the record back to state 3, so the select loops rather than ending.
+* The six bytes at `($4,A5)..($9,A5)` are PER-SIDE PAIRS, even for P1 and odd for P2, written by three
+  handlers one pair each.
+
+**Slot [17] is the SAME machine with four of the eight states** and is ported too. `$25D306`, `$25D39C`,
+`$25D4F0` are literally shared. **Still open: slot [9] state 0 (`$25C8A2`, ~550 bytes), `$25D010`, `$25D1DA`,
+`$25D560`, and the seven draw routines state 4 calls.**
+
 Five of the eleven are now candidates: **[17] D33, [9] D34, [18] D37, [16] service, [12] hiscore, [13] stage
 progression.**
 
