@@ -205,3 +205,37 @@ test('W372 opcode $8003 caches its load, and its records come BEFORE their table
   }
   assert.equal(0x290e8a + 5 * 4, 0x290e9e, 'and the table ends exactly at inner state 0');
 });
+
+test('W372 the interpreter advances the cursor PER OPCODE, and waits do not advance', { skip: SKIP }, async () => {
+  const { scriptStep2909AA, SCRIPT7, POOL7: P } = await import('../src/objslot7pool.js');
+  const { Ram } = await import('../src/ram.js');
+  // A synthetic script exercising each advance: $8000 (+4), $8001 (+6), $8002 wait (0 then +4), $FFFF.
+  const words = [0x8000, 0x0301, 0x8001, 0x1234, 0x5678, 0x8002, 0x0002, 0xffff];
+  const base = 0x400000;
+  const rom = {
+    u16: (a) => words[(a - base) >> 1] ?? 0xffff,
+    u32: (a) => ((words[(a - base) >> 1] << 16) | words[((a - base) >> 1) + 1]) >>> 0,
+  };
+  const ram = new Ram();
+  ram.setU16(SCRIPT7.cursor, 0);
+
+  // $8000 then $8001 loop INTERNALLY, so one call runs both and then blocks on $8002's wait.
+  let running = scriptStep2909AA(ram, rom, {}, base);
+  assert.equal(running, true, 'still running');
+  assert.equal(ram.u16(SCRIPT7.counter), 0x0301, '$8000 armed counter AND reload in one word write');
+  assert.equal(ram.u16(SCRIPT7.cursor), 4 + 6, '  ...cursor advanced 4 then 6 -- NOT 4 twice');
+  assert.equal(ram.u16(SCRIPT7.loopCount), 1, 'and $8002 bumped its count');
+
+  // The wait must NOT advance until the count matches its operand of 2.
+  const held = ram.u16(SCRIPT7.cursor);
+  scriptStep2909AA(ram, rom, {}, base);
+  assert.equal(ram.u16(SCRIPT7.cursor), held, 'a wait that has not finished leaves the cursor ALONE');
+  assert.equal(ram.u16(SCRIPT7.loopCount), 2, '  ...and bumps again');
+
+  // On the matching call it resets, advances by 4, and runs into $FFFF -- which ENDS it.
+  running = scriptStep2909AA(ram, rom, {}, base);
+  assert.equal(running, false, '$FFFF ends the script -- the carry-CLEAR exit');
+  assert.equal(ram.u16(SCRIPT7.loopCount), 0, 'and the wait reset its counter on the way past');
+  assert.equal(ram.u16(SCRIPT7.cursor), held + 4, '  ...advancing by FOUR only once satisfied');
+  void P;
+});

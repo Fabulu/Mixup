@@ -97,3 +97,84 @@ export function poolDraw290946(ram, rom, ctx) {
     a3 += POOL7.stride;                                      // $29097A lea ($10,A3),A3
   }
 }
+
+/** The interpreter's RAM, all of it in one place because five separate words is how it desynchronises. */
+export const SCRIPT7 = Object.freeze({
+  cursor: 0x81e0f8,        // a BYTE OFFSET into the script, not a pointer -- survives the call
+  counter: 0x81e0fa,       // and $81E0FB is its RELOAD: one move.w arms both
+  loopCount: 0x81e0fc,     // $8002's repeat counter
+  resource: 0x81e0fe,      // $8003's cache -- non-zero means "already loaded"
+  scriptPtr: 0x81e102,     // $8001's long
+  spawnBias: 0x81e104,     // bumped by $400 per spawn
+  resTable: 0x290e8a,      // $8003's five records, which sit BEFORE this table
+  spawnTable: 0x2902c2,    // 64 pointers to $24-byte records
+  END: 0xffff,
+});
+
+/** `$2909AA` -- THE SCRIPT INTERPRETER. Returns TRUE while the script is still running, which the ROM
+ *  carries in the carry flag through `ori.w #$1,SR` / `andi.w #$FFFE,SR`.
+ *
+ *  THE CURSOR ADVANCE IS PER-OPCODE and that is the whole correctness of it:
+ *
+ *      $8000  word operand   cursor += 4    and LOOP internally
+ *      $8001  LONG operand   cursor += 6    and LOOP internally
+ *      $8002  wait           cursor += 4 ONLY when the count matches, else ZERO and return
+ *      $8003  load+cache     cursor UNCHANGED, always returns
+ *
+ *  A fixed stride desynchronises the whole script, and silently: the first command still works.
+ *  The two waiting opcodes returning WITHOUT advancing is how the script holds -- the next call
+ *  re-reads the same command.
+ */
+export function scriptStep2909AA(ram, rom, ctx, scriptBase) {
+  for (;;) {                                                 // $290A10/$290A26/$290A4A bra back
+    const at = scriptBase + u16(ram.u16(SCRIPT7.cursor));    // $2909AC adda.w $81E0F8,A2
+    // The SCRIPT is in ROM -- A0 is a ROM base and only the CURSOR lives in RAM. Reading the word from
+    // RAM throws "outside main RAM" the moment it runs, which is how this was caught.
+    const word = rom.u16(at);                                // $2909B2 move.w (A2)+,D0
+
+    if ((word & 0x8000) === 0) {                             // $2909B4 bmi -- plain data
+      // $2909B8 -- the counter ticks on DATA words only, and a borrow reloads it from $81E0FB.
+      const c = (ram.u8(SCRIPT7.counter) - 1) & 0xff;
+      ram.setU8(SCRIPT7.counter, c);
+      if (c !== 0xff) return true;                           // $2909BE bcc -- not expired, hold
+      ram.setU8(SCRIPT7.counter, ram.u8(SCRIPT7.counter + 1));   // $2909C2 reload from the pair
+      // $2909CC -- index the spawn table by the data word and allocate into the pool.
+      const rec = rom.u32(SCRIPT7.spawnTable + ((word & 0xffff) << 2));   // $2909D0..$2909D6
+      poolAlloc290984(ram, rec, ram.u32(SCRIPT7.scriptPtr), 0);           // $2909D8/$2909DE/$2909E0
+      ram.setU16(SCRIPT7.spawnBias,
+        u16(ram.u16(SCRIPT7.spawnBias) + 0x400));            // $2909E2 addi.w #$400
+      ram.setU16(SCRIPT7.cursor, u16(ram.u16(SCRIPT7.cursor) + 2));       // $2909EA addq.w #2
+      return true;                                           // $2909F0 ori.w #$1,SR
+    }
+
+    if (word === 0x8000) {                                   // $2909FC
+      ram.setU16(SCRIPT7.counter, rom.u16(at + 2));          // $290A04 move.w (A2)+,$81E0FA
+      ram.setU16(SCRIPT7.cursor, u16(ram.u16(SCRIPT7.cursor) + 4));       // $290A0A addq.w #4
+      continue;                                              // $290A10 -- LOOP
+    }
+    if (word === 0x8001) {                                   // $290A12
+      ram.setU32(SCRIPT7.scriptPtr, rom.u32(at + 2));        // $290A1A move.l (A2)+,$81E102
+      ram.setU16(SCRIPT7.cursor, u16(ram.u16(SCRIPT7.cursor) + 6));       // $290A20 addq.w #6
+      continue;                                              // $290A26 -- LOOP
+    }
+    if (word === 0x8002) {                                   // $290A28 -- WAIT
+      if (ram.u16(SCRIPT7.loopCount) === rom.u16(at + 2)) {  // $290A30/$290A36 cmp.w (A2),D1
+        ram.setU16(SCRIPT7.loopCount, 0);                    // $290A3C
+        ram.setU16(SCRIPT7.cursor, u16(ram.u16(SCRIPT7.cursor) + 4));     // $290A44
+        continue;                                            // $290A4A -- LOOP
+      }
+      ram.setU16(SCRIPT7.loopCount, u16(ram.u16(SCRIPT7.loopCount) + 1)); // $290A4E addq.w #1
+      return true;                                           // $290A54 -- HOLD, cursor UNCHANGED
+    }
+    if (word === 0x8003) {                                   // $290A56 -- LOAD, cached
+      if (ram.u32(SCRIPT7.resource) === 0) {                 // $290A5E/$290A64 bne -- already loaded
+        const idx = rom.u16(at + 2);                         // $290A68
+        const res = ctx.load246710?.(rom, rom.u32(SCRIPT7.resTable + (idx << 2))) ?? 0;  // $290A78
+        ram.setU32(SCRIPT7.resource, res >>> 0);             // $290A7E
+      }
+      return true;                                           // $290A84 -- HOLD, cursor UNCHANGED
+    }
+    if (word === SCRIPT7.END) return false;                  // $FFFF -- the carry-CLEAR exit
+    return false;                                            // any other $80xx: unread, stop cleanly
+  }
+}
