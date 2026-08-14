@@ -14,6 +14,8 @@
 // no bounds check anywhere.
 
 import { u16, u32 } from './ram.js';
+import { unreached } from './unported.js';
+import { stageCreate, queueKill } from './objalloc.js';
 import { readInput23D186 } from './tallyscreen.js';
 import { chainLoader246710, chainCheck24681A, chainFree246800 } from './stageend.js';
 import { install24150A } from './palette.js';
@@ -434,4 +436,199 @@ export function menu2911B0(ram, rom, a5, a6, ctx) {
   enqueueRegistersThroughStub(ram, rom, 0x23e08c, MENU2911B0.digitPos,
     rom.u32(MENU2911B0.digitTable + secs * 4),               // $29133A move.l (A0,D0.w),D2
     MENU2911B0.digitAttr, MENU2911B0.digitPal);              // $29134C
+}
+
+// ---------------------------------------------------------------------------------------------
+// OBJECT DISPATCH [7], `$290BE8` -- the dispatcher that owns everything above. W373.
+//
+// The table entry at $240F9A is `$290BE8, $001E, $0000`: the routine, then a 30-byte record. Its
+// work block is NOT the object record though -- `lea $81E0DC,A6` is an absolute address, so slot [7]
+// keeps one fixed 64-byte block and the whole subsystem ($81E0F8 the pool cursor, $81E106 the
+// banner, $81E108 the loader, $81E112 the menu, $81E118 the flash) lives inside it.
+//
+// THE SHAPE, once all of it is read, is a PER-PLAYER LOOP:
+//
+//   state 0   clear the block, COUNT THE PLAYERS into ($10,A6), then restart
+//   state 1   inner-dispatch through $290C8E, draw the pool, run the loader, draw the banner
+//   state 2   bump the pass counter; if it has not reached the player count, restart for the
+//             next player, otherwise stage a create and kill this object
+//
+// and `$290B4C` is the restart both ends use -- called with `bsr` from state 0 and reached by a
+// `bne` from state 2, which is why it is a function here and not inlined into either.
+//
+// THE INNER TABLE HAS FIVE ENTRIES AND THREE OF THEM ARE THE SAME FUNCTION. $291470, $2917BE and
+// $291B3A differ in exactly SIX BYTES -- three `jsr (d16,PC)` displacement words, verified against
+// the cartridge -- so they are one driver over three different sequence lists. Which one runs comes
+// from $813088/$81308A, the per-player value the tally screen posts: $2 -> 0, $4 -> 1, $6 -> 2, and
+// the inner state is that plus one.
+
+export const SLOT7 = Object.freeze({
+  entry: 0x290be8, table: 0x240f9a, recSize: 0x1e, dispatch: 0x240f62,
+  work: 0x81e0dc, blockWords: 32,        // move.w #$1F,D0 + dbra = 32 passes, so 64 bytes
+  stateAt: 0x02,
+  innerTable: 0x290c8e, innerEntries: 5,
+  bannerTable: 0x290c72, bannerSel: 0x81e106,
+  bannerPos: 0x38000000, bannerAttr: 0x1ce0, bannerPal: 0x0001,
+  // The counter and its reload on ADJACENT BYTES, armed by ONE word literal -- $290B10 writes
+  // move.w #$101, which is count 1 AND reload 1. The port's fourth sighting of this idiom.
+  flash: 0x81e118, flashReload: 0x81e119, palShift: 0x81e11a,
+  armed: 0x81e0da,
+  seqSel: 0x0e, innerAt: 0x08, players: 0x10, pass: 0x12,
+  p1: 0x8103e6, p2: 0x810448,
+  postD1: Object.freeze([0x813088, 0x81308a]),
+  gate: 0x813098,
+  seqLists: Object.freeze([0x2914c8, 0x291816, 0x291b92]),
+  killNormal: 0x0f, killChosen: 0x11,
+});
+
+/** `$29079E` -- reset the resource loader. Four clears and an rts, and the only thing that puts
+ *  `$2907E2` back to state 0 from outside. */
+export function resetLoader29079E(ram) {
+  ram.setU16(0x81e108, 0);                                   // $29079E
+  ram.setU16(0x81e10a, 0);                                   // $2907A6
+  ram.setU16(0x81e10c, 0);                                   // $2907AE
+  ram.setU32(0x81e10e, 0);                                   // $2907B6 -- a LONG, the handle
+}
+
+/** `$290B4C` -- THE RESTART, shared by state 0 (`bsr`) and state 2 (`bne`). It picks which of the
+ *  three sequences this player gets and sets the inner state to run it.
+ *
+ *  The selector is a THREE-WAY MAP, not an index: $813088/$81308A hold $2, $4 or $6 and those map to
+ *  0, 1, 2 in `($E,A6)`. Dividing by two would give the same answer for these three inputs and a
+ *  different one for everything else, so the compares are transcribed as compares.
+ */
+export function restart290B4C(ram, rom, a5, ctx) {
+  const a6 = SLOT7.work;
+  ram.setU8(a5 + SLOT7.stateAt, 1);                          // $290B4C
+  poolClear2908E4(ram, rom, ctx);                            // $290B52 jsr $2908E4
+  resetLoader29079E(ram);                                    // $290B56 jsr $29079E
+  setInnerState2908D2(ram, 0);                               // $290B5A moveq #0 / $290B5C jsr $2908D2
+  ram.setU16(SLOT7.bannerSel, 0);                            // $290B60
+
+  // $290B6E -- ONE player reads the two posts by P1's active byte; TWO players read them by the pass
+  // counter. Same two addresses, different chooser, which is why both arms are written out.
+  let d0;
+  if (ram.u16(a6 + SLOT7.players) === 1) {                   // $290B6E cmpi.w #$1,($10,A6)
+    d0 = (ram.u8(SLOT7.p1) & 0x80)                           // $290B7E tst.b $8103E6 / bmi
+      ? ram.u16(SLOT7.postD1[0]) : ram.u16(SLOT7.postD1[1]); // $290B78 / $290B88
+  } else {
+    d0 = ram.u16(a6 + SLOT7.pass) === 0                      // $290B98 cmpi.w #$0,($12,A6)
+      ? ram.u16(SLOT7.postD1[0]) : ram.u16(SLOT7.postD1[1]); // $290B92 / $290BA2
+  }
+
+  if (d0 === 2) ram.setU16(a6 + SLOT7.seqSel, 0);            // $290BA8/$290BB0
+  if (d0 === 4) ram.setU16(a6 + SLOT7.seqSel, 1);            // $290BB6/$290BBE
+  if (d0 === 6) ram.setU16(a6 + SLOT7.seqSel, 2);            // $290BC4/$290BCC
+
+  // $290BD2 -- and on the FIRST pass it stays in inner state 0. Only the second player onward is
+  // dropped straight into a sequence, because the first one has just been set up by state 0.
+  if (ram.u16(a6 + SLOT7.pass) === 0) return;                // $290BD2 tst.w / beq
+  setInnerState2908D2(ram, u16(ram.u16(a6 + SLOT7.seqSel) + 1));   // $290BDC/$290BE0 addq.w #1
+}
+
+/** `$290ACC` -- STATE 0. Clears the block, counts the players, and asks `$2901E0` whether to open
+ *  the menu instead of a sequence. */
+function state0_290ACC(ram, rom, a5, ctx) {
+  const a6 = SLOT7.work;
+  ram.setU8(a5 + SLOT7.stateAt, 1);                          // $290ACC
+  ram.setU16(SLOT7.armed, 1);                                // $290AD2
+  // $290AE0 move.w #$1F,D0 + dbra -- THIRTY-TWO passes, not 31. 64 bytes, which is exactly the
+  // block: $81E0DC..$81E11B, so the flash bytes and the palette shift at the far end are included.
+  for (let i = 0; i < SLOT7.blockWords; i++) ram.setU16(a6 + i * 2, 0);
+
+  let n = 0;                                                 // $290AF2 moveq #$0,D0
+  if (ram.u16(SLOT7.p1) & 0x8000) n++;                       // $290AF4 tst.w / bpl / $290AFE addq
+  if (ram.u16(SLOT7.p2) & 0x8000) n++;                       // $290B00 / $290B0A
+  ram.setU16(a6 + SLOT7.players, n);                         // $290B0C
+
+  // $290B10 move.w #$101 -- ONE word literal writing TWO byte fields: count $01 at $81E118 and
+  // reload $01 at $81E119. Written as the two bytes it is.
+  ram.setU8(SLOT7.flash, 0x01);
+  ram.setU8(SLOT7.flashReload, 0x01);
+  ram.setU16(SLOT7.palShift, 0);                             // $290B18
+
+  ctx.unported?.note(0x23c6c6, '$290B20 jsr $23C6C6 -- slot [7] state 0 screen setup, unported');
+  ctx.soundPost?.(0x28c170);                                 // $290B26
+  ctx.soundPost?.(0x28c0fc);                                 // $290B2C
+  ctx.soundPost?.(0x28c10c);                                 // $290B32
+  restart290B4C(ram, rom, a5, ctx);                          // $290B38 bsr $290B4C
+
+  // $290B3C jsr $2901E0 / $290B40 bcc -- carry SET opens the MENU instead of the sequence the
+  // restart just chose. $2901E0 opens `tst.w $813098 / bne / tst.w $80393A / bne`, both branching to
+  // the same $2902B6, and it is 214 bytes that this port has not read.
+  const open = ctx.menuGate2901E0?.(ram, rom);
+  if (open === undefined) {
+    ctx.unported?.note(0x2901e0, '$290B3C jsr $2901E0 decides whether slot [7] opens its $2911B0 '
+      + 'menu (inner state 4) instead of the sequence $290B4C just picked. Unread, so this port '
+      + 'takes the carry-CLEAR arm and runs the sequence -- the menu is reachable only by driving '
+      + 'ctx.menuGate2901E0 until $2901E0 is ported');
+    return;
+  }
+  if (open) setInnerState2908D2(ram, 4);                     // $290B44 moveq #4 / $290B46 jsr $2908D2
+}
+
+/** `$290746` -- STATE 2. Either the menu's answer or the end of a player's turn. */
+function state2_290746(ram, rom, a5, ctx) {
+  const a6 = SLOT7.work;
+  if (ram.u16(0x81e116) !== 0) {                             // $290746 tst.w $81E116
+    ram.setU16(0x81e116, 0);                                 // $290750
+    // $290758 -- THE MENU'S ANSWER. Non-zero restarts this player; zero sets the global gate and
+    // kills the object with a different code. $81E112 is the menu's selection word and state 0 of
+    // the menu defaults it to 1, so doing nothing takes the restart arm.
+    if (ram.u16(0x81e112) !== 0) { restart290B4C(ram, rom, a5, ctx); return; }   // $29075E
+    ram.setU16(SLOT7.gate, 1);                               // $290762
+    stageCreate(ram, SLOT7.killChosen,                       // $29076A moveq #$11
+      (t) => rom.u16(SLOT7.dispatch + t * 8 + 4));           // $29076E jsr $241182
+    queueKill(ram, ram.u16(a5 + 0x00));                      // $290774 JMP $241292
+    return;
+  }
+  // $29077C -- the pass counter against the PLAYER COUNT. Not a fixed 2: a one-player game runs
+  // this once and a two-player game twice.
+  const pass = u16(ram.u16(a6 + SLOT7.pass) + 1);            // $29077C addq.w #1,($12,A6)
+  ram.setU16(a6 + SLOT7.pass, pass);
+  if (pass !== ram.u16(a6 + SLOT7.players)) {                // $290784 cmp.w ($10,A6),D0 / bne
+    restart290B4C(ram, rom, a5, ctx);                        // $290788 -> $290B4C
+    return;
+  }
+  stageCreate(ram, SLOT7.killNormal,                          // $29078C moveq #$F
+    (t) => rom.u16(SLOT7.dispatch + t * 8 + 4));             // $290790 jsr $241182
+  queueKill(ram, ram.u16(a5 + 0x00));                        // $290796 JMP $241292
+}
+
+/** `$290BE8` -- THE DISPATCH ENTRY, and state 1 is its fall-through. */
+export function objSlot7(ram, rom, a5, ctx) {
+  const st = ram.u8(a5 + SLOT7.stateAt);
+  if (st === 0) { state0_290ACC(ram, rom, a5, ctx); return; }      // $290BE8 tst.b / beq $290ACC
+  if (st === 2) { state2_290746(ram, rom, a5, ctx); return; }      // $290BF0 cmpi.b #$2 / beq
+
+  const a6 = SLOT7.work;                                     // $290BFA lea $81E0DC,A6
+  const inner = ram.u16(a6 + SLOT7.innerAt);                 // $290C06 move.w ($8,A6),D0
+  switch (inner) {                                           // $290C12 jsr (A4)
+    case 0: innerState0_290E9E(ram, rom, ctx, a5, a6); break;             // $290E9E
+    case 1: case 2: case 3:                                              // the triplicate driver
+      sequenceDriver291470(ram, rom, ctx, a5, a6, SLOT7.seqLists[inner - 1]); break;
+    case 4: menu2911B0(ram, rom, a5, a6, ctx); break;                    // $2911B0
+    default:
+      unreached(SLOT7.innerTable, `slot [7] inner state ${inner}, but $290C8E has FIVE entries `
+        + `and entry [5] is $00030000, which is data. The state word was written by something `
+        + `other than $2908D2`);
+  }
+  poolDraw290946(ram, rom, ctx);                             // $290C14 jsr $290946
+  resourceLoader2907E2(ram, rom, ctx);                       // $290C18 jsr $2907E2
+
+  // $290C1C -- the banner, and index 0 is NOT an entry: the beq returns before the lea is indexed,
+  // which is why $290C72[0] is $00000000 and never read.
+  const sel = ram.u16(SLOT7.bannerSel);
+  if (sel === 0) return;                                     // $290C22 beq
+  enqueueRegistersThroughStub(ram, rom, POOL7.stubZero, SLOT7.bannerPos,
+    rom.u32(SLOT7.bannerTable + sel * 4), SLOT7.bannerAttr,  // $290C32 / $290C3A
+    u16(SLOT7.bannerPal + ram.u16(SLOT7.palShift)));         // $290C42 add.w $81E11A,D4
+
+  // $290C4E subq.b #1 / bcc -- the reload fires on the BORROW, so it happens on the frame the byte
+  // was already 0, one frame later than "when it reaches 0" would give.
+  const before = ram.u8(SLOT7.flash);
+  ram.setU8(SLOT7.flash, (before - 1) & 0xff);
+  if (before !== 0) return;                                  // $290C54 bcc -- no borrow
+  ram.setU8(SLOT7.flash, ram.u8(SLOT7.flashReload));         // $290C58 -- the adjacent reload byte
+  ram.setU16(SLOT7.palShift, u16(ram.u16(SLOT7.palShift) + 1) & 1);   // $290C62/$290C68 andi.w #$1
 }

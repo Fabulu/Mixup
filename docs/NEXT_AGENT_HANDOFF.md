@@ -1,113 +1,61 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-13 (W372)
+Updated: 2026-08-14 (W373)
 
-## START HERE -- W372 ENDED HERE
+## START HERE -- W373
 
-**Tree clean, all pushed, suite 2581/2581 zero skips, gate exit 0. Live build `20260813164141`; publish due W375.**
+**Suite 2615+/2615+ zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+publish due W375 (every FIFTH wave). If any wave added a ROM window, run
+`node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
-### DONE THIS WAVE (do not redo)
+### OBJECT-DISPATCH SLOT [7] IS FINISHED
 
-* **STAGE 5 IS FINISHED** -- handler-complete AND spawn-complete. `handler4C` written, placed and driven (4000 frames,
-  eight tests); `$1A`'s init body ported; D40 resolved.
-* **HIBACHI IS FINISHED** -- init body, all twelve body callees (`$242922`, `$253564`, `$2428A6`, and `$243DD0` which
-  was a third entry of `armScreenClearMode`, not a routine), and the 666-byte body itself, live and driven.
-* **`tools/aligned.py`** -- instruction-boundary sweeps that refuse rather than guess.
+All of it, in `src/objslot7pool.js`, every routine driven:
 
-### IN FLIGHT: OBJECT-DISPATCH SLOT [7] `$290BE8`
+* **`$290BE8` the dispatcher** (`objSlot7`) -- three states on `($2,A5)`. Its work block is NOT the object record:
+  `lea $81E0DC,A6` is absolute, so the whole subsystem lives in one fixed 64-byte block.
+* **`$290ACC` state 0**, **`$290746` state 2**, **`$290B4C` the shared restart** (`bsr` from state 0, `bne` from
+  state 2, so it is a function).
+* **`$2907E2` the resource loader** -- five states that are really TWO load/wait pairs sharing ONE handle word.
+* **`$2911B0` the menu** -- two options, ten-second countdown.
+* **`$29079E` loader reset**, and the pool (`$2908E4`/`$290984`/`$290946`), script walker `$2909AA`,
+  inner state 0 `$290E9E`, sequence driver `$291470` (registered three times).
 
-**Slot [14] IS PORTED** (`src/objslot14.js`, four driving tests) -- the first front-end slot written. Slot [7] is
-next and is part-analysed:
+**THE SLOT IS A PER-PLAYER LOOP.** State 0 counts the active sides into `($10,A6)`; state 2 bumps `($12,A6)` and
+restarts until it equals that count, then stages a create and kills. The tally's posted value at
+`$813088`/`$81308A` (`$2`, `$4` or `$6`) maps three-way onto sequences 0/1/2, and the inner state is that plus one.
 
-* **Real span `$290BE8..$290C72`.** Three callees: `$23E020` (ported), `$2907E2` (240 bytes, UNPORTED),
-  `$290946` (62 bytes, UNPORTED).
-* **`$290946` is READ and is a 200-entry sprite walker.** `lea $81585C,A3 / move.w #$C7,D7` with a `dbra` is 200
-  entries at a `$10` stride. Per entry: skip if `(A3)` is zero; else `A1 = ($4,A3)`, `D3 = $410`, `D4 = 0`, and
-  emit through **`$23DFEA` when `($8,A3)` is NON-zero, `$23E020` when it is zero** -- both already ported, both
-  reached via `enqueueRegistersThroughStub`.
-* **THE OPEN QUESTION on `$290946`: D1 is never set inside the loop.** The emitter convention is
-  `(d1, d2, d3, d4)` with d1 the position (see `boss2.js:1097`), and this loop sets D2/D3/D4 and A1 only. So D1
-  comes from the CALLER -- check slot [7] before `$290946`'s call site. **Do not invent a D1**; that is the same
-  trap as `$1A`'s D3 and the fan's registers, and both were only got right by refusing to guess.
-* **THE `$81585C` POOL IS PORTED** (`src/objslot7pool.js`): `$2908E4` clear, `$290984` alloc, `$290946` draw.
-  200 entries, `$10` stride, entry is `long/long/word`, free is the first long being zero. Window `$290706+$40`
-  declared for its palette block.
-* **`$2909AA` IS READ** -- a SCRIPT WALKER. `A0` is the script base and `$81E0F8` a byte-offset CURSOR in RAM,
-  advanced by 2 per step. Negative words are COMMANDS (`$2909FC cmpi.w #$8000,D0`), not terminators.
-  `$81E0FA`/`$81E0FB` is a counter/reload pair -- the THIRD of that shape. Both carry exits, and it allocates
-  into the pool via `$290984`. **Not yet written**; the `$8000` command arm at `$2909FC` is unread.
-* **`$290E9E` (inner state 0, 116 bytes) IS PART-READ and is ITSELF a sub-state machine** on `($6,A6)`:
-  `cmpi.w #$0` / set 1 / `jsr $2908E4` (the pool CLEAR, already ported) / `($C,A6)=0` / `jsr $28CC28` (ported);
-  then `cmpi.w #$1` and a `lea $290F12,A0` indexed by `($E,A6)`. **So the nesting is three deep: slot -> inner
-  table -> sub-state.** `$290F12` is another ROM table needing a bound.
-* **THE SCRIPT OPCODE TABLE IS READ.** Slot [7] is a SCRIPT-DRIVEN object: `$2909AA` interprets `$FFFF`-terminated
-  word scripts (the blocks at `$290F66` onward), with the cursor at `$81E0F8` as a byte offset in RAM.
-  **Each opcode advances the cursor by a DIFFERENT amount, so a fixed stride desyncs the whole script:**
+**WHAT IS STILL OPEN IN SLOT [7]:**
 
-      $8000  word operand  -> $81E0FA as a WORD, arming counter AND reload together;  cursor += 4; loop
-      $8001  LONG operand  -> $81E102;                                                cursor += 6; loop
-      $8002  word operand  -> WAIT: compare $81E0FC with it. Equal: zero the counter, cursor += 4, loop.
-                              NOT equal: bump $81E0FC and EXIT CARRY SET **without advancing the cursor**,
-                              so the next call re-reads the same command. That is how it repeats.
-      $8003  unread (its arm begins past $290A54)
+* **`$2901E0`, 214 bytes, UNREAD.** It decides whether state 0 opens the menu (inner state 4) instead of the
+  sequence. It opens `tst.w $813098 / bne $2902B6 / tst.w $80393A / bne $2902B6`. The port takes the carry-CLEAR
+  arm and keeps a counted `note()`; `ctx.menuGate2901E0` drives the other arm. **This is the cheapest remaining
+  unit in the whole file.**
+* **`$23C6C6`, unported**, state 0's screen setup, `note()`d.
+* The slot is **not yet named**. It is a per-player presentation screen driven by the tally, ending in a
+  two-option choice that sets `$813098` -- a global every boss file already reads. Do not guess which screen.
 
-  Non-negative words are data consumed between commands. `$FFFF` ends the script.
+### WHAT W373 LANDED BESIDES THAT
 
-* **`$2909AA`'s `$8000` COMMAND IS READ**: it writes the next script word to `$81E0FA` as a WORD, arming counter
-  AND reload together, advances the cursor by FOUR, and BRANCHES BACK into the walker -- so one call runs several
-  commands. The other commands past `$290A12` are unread.
-* **`$2907E2` IS A RESOURCE-LOADER STATE MACHINE on `$81E108`**, and every routine it calls is ported:
+* **A latent defect in slot [14]**, already committed in W372: `stageCreate(ram, type, 0)` passes `0` where
+  `$241182` wants the DISPATCH-TABLE priority lookup `(t) => rom.u16(0x240F62 + t * 8 + 4)`. It type-errors the
+  moment state 2 runs. Fixed, and slot [14] state 2 is now driven. **Check every other `stageCreate` caller.**
+* **Ten W373 ROM windows.** Every bound is stated by the code: a table is two entries because an `andi.w #$1`
+  masks its index, ten because a 600-frame counter feeds it, five because entry [5] is not a code address.
+* **A test that clobbered `BUCKETS[i].counter`** -- that field is the counter's ADDRESS, not a running count.
+  Writing it rewrites the bucket descriptors and breaks `resolveEmitStub` for the whole process.
 
-      state 0   `tst.w $81E108 / beq $2908D0`            -- idle
-      state 1   `lea $290CE8` indexed by `$81E10C`, `jsr $246710`, cache the handle to `$81E10E`
-      state 2   `move.l $81E10E,D0 / jsr $24681A` (READY test) / `jsr $246800` (COMMIT),
-                then `move.w $81E10A,$81E106` and `move.w #$3,$81E108`
-      state 3+  unread, from `$29085E`
+### THE NEXT UNITS, CHEAPEST FIRST
 
-  **`$24681A` and `$246800` are the animobjects pair the port already has**, so this is a
-  load-then-wait-then-commit sequence rather than anything new. Its window `$290CE8+$C6` is declared.
-* **`$2907E2` (240 bytes) IS PART-READ.** Another indexed dispatch: `lea $290CE8,A0`, index by `$81E10C * 4`,
-  `movea.l (A0,D0.w),A0`, `jsr $246710` (ported), result to `$81E10E`. **`$290CE8` is a ROM table and needs a
-  window and a bound.**
-* **`$2908E4` (98 bytes) IS READ -- the RESET.** `lea $81585C,A3 / move.w #$C7,D7` clears the SAME 200-entry,
-  `$10`-stride table `$290946` draws from (long, long, word per entry), then zeroes `$81E0F8`, `$81E0FA`,
-  `$81E0FC` and the longs at `$81E0FE` and `$81E102`, then `lea $290706,A0 / move.w #$0,D0 / jsr $24150A` --
-  palette bank 0, and `install24150A` is already ported. **Fully portable as read.**
-* **`$2909AA` (76 bytes) IS PART-READ -- and it RETURNS CARRY.** Its tail is
-  `lea $2902C2,A1 / adda.w D0*4 / movea.l (A1),A0 / movea.l $81E102,A1 / moveq #0,D2 / bsr $290984`, then
-  `addi.w #$400,$81E104`, `addq.w #2,$81E0F8`, and **`ori.w #$1,SR` -- the same carry-return trick `$4C`'s
-  `$26FFE8` uses**. So callers branch on it. `$2902C2` is a POINTER TABLE indexed by D0, and `$290984` is a
-  further unread routine.
-
-**SLOT [7] REMAINING, measured:** `$290E9E` 116, one 88-byte routine for inner states 1-3, `$2911B0` 420,
-`$2907E2` 240, `$290946` 62, `$2908E4` 98 (read), `$2909AA` 76 (part-read), plus `$290984` and the `$2902C2`
-table, both unsized. **Roughly 1.1 KB.** Its RAM block is `$81E0DC` and the sprite table is `$81585C`+`$800`;
-**neither is windowed and both are RAM, so no window is needed -- but `$290706` (the palette block) and `$2902C2`
-(the pointer table) are ROM and WILL need windows.**
-* **SLOT [7] IS DEEPER THAN [14] AND HAS ITS OWN INNER JUMP TABLE.** `$290BFA lea $81E0DC,A6` -- a FIXED RAM
-  block, not the object record -- then `$290C00 lea ($290C8E,PC),A4`, `adda.w` by `($8,A6) * 4`, `movea.l (A4),A4`,
-  `jsr (A4)`. So it dispatches through a **second** table at `$290C8E` before calling `$290946` and `$2907E2`.
-  **That is where `$290946`'s D1 comes from**: whichever inner state ran. Read `$290C8E`'s entries first --
-  it is the same `lea/adda/movea/jsr` shape as `$4C`'s `$26F86A` and Hibachi's, so the technique is known.
-* **THE INNER TABLE `$290C8E` HAS FIVE ENTRIES, and THREE OF THEM ARE THE SAME ROUTINE:**
-
-      [0] $290E9E   116 bytes
-      [1] $291470    88 bytes        [2] $2917BE    88 bytes   >  IDENTICAL -- one routine assembled three times
-      [3] $291B3A    88 bytes  /
-      [4] $2911B0   420 bytes
-
-  The three differ in exactly SIX bytes, and all six are inside `jsr (d16,PC)` displacements that differ only
-  because the copies sit at different addresses. Resolved, **all three call `$2908E4`, `$2909AA`, `$2908E4`**.
-  **Write ONE function and register it at three indices.** Transcribing them separately means three copies kept
-  in step by hand.
-
-* **A6 BEING FIXED IS THE POINT.** Slot [14] worked on `A5`, the object record. Slot [7] works on `$81E0DC`,
-  which means its state survives the object and two slots could share it. Do not model it as per-record.
-
-**THE SCANNING RULE, learned expensively:** count **`4EB9` `4EF9` `4EBA` `4EFA` `61xx` `60xx`**. Counting fewer
-forms gave three different wrong dependency answers for slot [14], including one that reached a commit message.
-And the dispatch-table address is **NOT** the routine's start -- slot [14]'s arms branch BACKWARD, so scan from the
-preceding `rts`, not from the table entry.
+1. **`$2901E0`** (214 bytes) -- closes slot [7] completely.
+2. **`$23C6C6`** -- slot [7] state 0's screen setup.
+3. **Nine dispatch slots untouched**: [8], [9], [12], [13], [15], [16], [17], [18], [19].
+4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
+   **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
+   chain built and driven, three state routines >2 KB unwritten), **D38** input lag faithful (logic side measured
+   faithful; presentation path remains), **D39** input lag mods (three toggles specified).
+5. **D26** second ship + two more pilots, **D28** multi-ship/pilot mods.
+6. **D36** the second ROM game -- LAST, by the owner's instruction.
 
 ### THE DOCKET: WHAT W372 ESTABLISHED
 

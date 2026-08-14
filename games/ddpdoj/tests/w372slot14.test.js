@@ -86,3 +86,27 @@ test('W372 the table selector only switches after THREE zero rank bytes', { skip
   objSlot14(f.ram, ROM, A5, f.ctx);
   assert.equal(f.ram.u8(A5 + 0x16), 0, '  ...and only the third lets it through');
 });
+
+test('W373 slot [14] state 2 actually RUNS -- it stages a create and kills itself', { skip: SKIP }, async () => {
+  const { objSlot14, SLOT14 } = await import('../src/objslot14.js');
+  const { Ram } = await import('../src/ram.js');
+  const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
+  const rom = { u32: (a) => IMG.readUInt32BE(a), u16: (a) => IMG.readUInt16BE(a), u8: (a) => IMG[a],
+    bytes: (a, n) => IMG.subarray(a, a + n) };
+  const ram = new Ram();
+  const ctx = { unported: { note: () => {} }, soundPost: () => {} };
+  const a5 = 0x812400;
+  // State 2 with the counter at 1, so this frame is the one that fires.
+  ram.setU8(a5 + SLOT14.stateAt, 2);
+  ram.setU16(a5 + 0x1c, 1);
+  ram.setU16(a5 + 0x00, 0x40);
+  objSlot14(ram, rom, a5, ctx);
+  assert.equal(ram.u16(a5 + 0x1c), 0, 'the counter reached zero and the arm fired');
+  // The priority stored alongside the staged type must be the DISPATCH TABLE's, not a constant.
+  const want = rom.u16(SLOT14.dispatch + SLOT14.childType * 8 + 4);
+  const { ALLOC } = await import('../src/objalloc.js');
+  assert.equal(ram.u16(ALLOC.createStage + ALLOC.priOff), want,
+    'the staged priority came from $240F62 + type * 8 + 4');
+  assert.equal(ram.u16(ALLOC.createStage + ALLOC.typeOff), (SLOT14.childType | 0x8000) >>> 0,
+    'and the staged type is $C with the live bit');
+});

@@ -2800,6 +2800,22 @@ SHOT_WINDOWS.extend([
                        "The pointer table is bounded by its OWN FIRST ENTRY: [0] is $290D0C, which is "
                        "where the pointers stop. Each descriptor is identical bar an incrementing "
                        "index at +9 and +17, so they are one record shape with a sequence number"),
+    (0x290C72, 0x001C, "W373: slot [7]'s BANNER table, indexed by $81E106 * 4. Seven longs, and "
+                       "entry [0] is $00000000 because $290C22's beq returns before the index is "
+                       "taken -- the zero is unreachable padding, not a banner. Bounded above by "
+                       "the inner dispatch table at $290C8E"),
+    (0x290C8E, 0x0014, "W373: slot [7]'s INNER dispatch table -- FIVE entries, $290E9E, $291470, "
+                       "$2917BE, $291B3A, $2911B0. Entry [5] would be $00030000, which is not a ROM "
+                       "code address, so the table bounds itself on its first non-pointer"),
+    (0x2914C8, 0x0028, "W373: sequence list A for the $291470 driver -- nine entries and the "
+                       "$FFFFFFFF terminator. Self-bounding: [0] is $2914F0 and the terminator ends "
+                       "exactly there"),
+    (0x291816, 0x0020, "W373: sequence list B, for the $2917BE copy of the same driver -- seven "
+                       "entries then the terminator, ending exactly at its own [0] $291836"),
+    (0x291B92, 0x001C, "W373: sequence list C, for the $291B3A copy -- six entries then the "
+                       "terminator, ending exactly at its own [0] $291BAE. All three lists are "
+                       "self-bounding the same way, and the three drivers differ in SIX BYTES "
+                       "(three jsr displacement words), verified against the cartridge"),
     (0x222838, 0x0040, "W373: the $2911B0 menu's palette block, handed to $24150A by $2911EC with "
                        "bank 3. Sixty-four bytes because that is what install24150A reads for every "
                        "bank -- the CALLEE's constant, not a guess about this block"),
