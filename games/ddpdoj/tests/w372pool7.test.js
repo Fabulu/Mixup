@@ -311,3 +311,20 @@ test('W372 THREE consecutive tables, each bounded by its own first entry', { ski
   // So the three tile the span $290CE8..$290E9E with no gap and no overlap.
   assert.equal(0x290e8a + 5 * 4, 0x290e9e, 'and the last ends at inner state 0');
 });
+
+test('W372 $24641A is $246410 with mode 0, not a routine of its own', { skip: SKIP }, async () => {
+  const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
+  // Both entries push the same registers and set D6, then fall into ONE body at $246422. $246410
+  // takes the bra; $24641A is the fall-through. Same shape as buildParts246520 / $24652A.
+  assert.equal(IMG.readUInt32BE(0x246410), 0x48e77ff8, '$246410 movem.l D1-D7/A0-A4,-(A7)');
+  assert.equal(IMG.readUInt16BE(0x246414), 0x3c3c, '$246414 move.w #imm,D6');
+  assert.equal(IMG.readUInt16BE(0x246416), 0x0001, '  ...#$1');
+  assert.equal(IMG.readUInt16BE(0x246418), 0x6008, '$246418 bra.s +8 -- over the second entry');
+  assert.equal(IMG.readUInt32BE(0x24641a), 0x48e77ff8, '$24641A saves the SAME registers');
+  assert.equal(IMG.readUInt16BE(0x24641e), 0x3c3c, '$24641E move.w #imm,D6');
+  assert.equal(IMG.readUInt16BE(0x246420), 0x0000, '  ...#$0 -- the ONLY difference');
+  assert.equal(0x246418 + 2 + 8, 0x246422, 'and both land on the shared body at $246422');
+  // The port now takes it as a parameter, defaulting to $246410's value.
+  const { loadAnimObjects246410 } = await import('../src/animobjects.js');
+  assert.equal(loadAnimObjects246410.length, 3, 'mode is optional, so old callers are unchanged');
+});

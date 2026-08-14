@@ -50,7 +50,11 @@ function clearChain(ram, root) {
  * `{fill.w, target-family.w, current-offset.w, target.l, words-minus-one.w,
  * timing-index.w}`. Returns the root address, or zero when either pool is
  * full, matching the ROM's all-or-nothing chain cleanup. */
-export function loadAnimObjects246410(ram, rom, table) {
+/** W372: `mode` is D6, and the ROM has TWO ENTRY POINTS that differ only in it -- `$246410` sets
+ *  `#$1` and falls into the body at `$246422`; `$24641A` sets `#$0` and falls into the same body two
+ *  instructions later. Exactly the shape `buildParts246520`/`$24652A` has. So `$24641A` is not a
+ *  routine to port: it is this one called with 0, and slot [7]'s `$2907E2` state 3 is its caller. */
+export function loadAnimObjects246410(ram, rom, table, mode = 1) {
   let root = 0;
   for (let i = 0; i < ANIM_OBJECT.rootSlots; i++) {
     const at = ANIM_OBJECT.roots + i * ANIM_OBJECT.rootStride;
@@ -59,7 +63,7 @@ export function loadAnimObjects246410(ram, rom, table) {
   if (root === 0) return 0;                            // $246510..$24651E
 
   ram.setU16(root + N.status, 0x8000);
-  ram.setU16(root + N.mode, 1);                       // `$246410` entry mode
+  ram.setU16(root + N.mode, mode);                    // D6: 1 from $246410, 0 from $24641A
   ram.setU32(root + N.next, 0);
   let previous = root;
   let left = rom.u16(table); table += 2;              // $24643C
