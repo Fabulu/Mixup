@@ -2779,6 +2779,10 @@ SHOT_WINDOWS.extend([
                        "is $26F8A6, the first handler it points at"),
     (0x26F55A, 0x00AC, "W342: type $4C's 6-word record prototype and ALL FIVE sub prototypes, "
                        "$26F55A..$26F605 -- overlapping its handler at $26F5F2 by TWENTY bytes"),
+    (0x288C2E, 0x0010, "W372: object-dispatch slot [14]'s ANIM-OBJECT table, handed to $246410 by "
+                       "the lea at $288C14. A count word of 1 then a single 14-byte entry, ending at "
+                       "$288C3E -- which is the slot's own state-2 arm, so it is bounded by adjacency "
+                       "to code rather than by a guess at the entry stride"),
     (0x288D62, 0x0040, "W372: object-dispatch slot [14]'s TWO eight-long tables, $288D62 and $288D82, "
                        "reached by lea (d16,PC) at $288CF4 and $288CFE and selected by ($16,A5) -- "
                        "which is rankByte242E24 >> 3, so the choice is RANK-dependent. They are "
