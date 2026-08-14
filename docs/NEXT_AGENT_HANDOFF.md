@@ -30,6 +30,21 @@ next and is part-analysed:
   comes from the CALLER -- check slot [7] before `$290946`'s call site. **Do not invent a D1**; that is the same
   trap as `$1A`'s D3 and the fan's registers, and both were only got right by refusing to guess.
 * `$2907E2` (240 bytes) is not read yet.
+* **`$2908E4` (98 bytes) IS READ -- the RESET.** `lea $81585C,A3 / move.w #$C7,D7` clears the SAME 200-entry,
+  `$10`-stride table `$290946` draws from (long, long, word per entry), then zeroes `$81E0F8`, `$81E0FA`,
+  `$81E0FC` and the longs at `$81E0FE` and `$81E102`, then `lea $290706,A0 / move.w #$0,D0 / jsr $24150A` --
+  palette bank 0, and `install24150A` is already ported. **Fully portable as read.**
+* **`$2909AA` (76 bytes) IS PART-READ -- and it RETURNS CARRY.** Its tail is
+  `lea $2902C2,A1 / adda.w D0*4 / movea.l (A1),A0 / movea.l $81E102,A1 / moveq #0,D2 / bsr $290984`, then
+  `addi.w #$400,$81E104`, `addq.w #2,$81E0F8`, and **`ori.w #$1,SR` -- the same carry-return trick `$4C`'s
+  `$26FFE8` uses**. So callers branch on it. `$2902C2` is a POINTER TABLE indexed by D0, and `$290984` is a
+  further unread routine.
+
+**SLOT [7] REMAINING, measured:** `$290E9E` 116, one 88-byte routine for inner states 1-3, `$2911B0` 420,
+`$2907E2` 240, `$290946` 62, `$2908E4` 98 (read), `$2909AA` 76 (part-read), plus `$290984` and the `$2902C2`
+table, both unsized. **Roughly 1.1 KB.** Its RAM block is `$81E0DC` and the sprite table is `$81585C`+`$800`;
+**neither is windowed and both are RAM, so no window is needed -- but `$290706` (the palette block) and `$2902C2`
+(the pointer table) are ROM and WILL need windows.**
 * **SLOT [7] IS DEEPER THAN [14] AND HAS ITS OWN INNER JUMP TABLE.** `$290BFA lea $81E0DC,A6` -- a FIXED RAM
   block, not the object record -- then `$290C00 lea ($290C8E,PC),A4`, `adda.w` by `($8,A6) * 4`, `movea.l (A4),A4`,
   `jsr (A4)`. So it dispatches through a **second** table at `$290C8E` before calling `$290946` and `$2907E2`.
