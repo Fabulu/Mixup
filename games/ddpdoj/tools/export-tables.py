@@ -2816,6 +2816,62 @@ SHOT_WINDOWS.extend([
                        "terminator, ending exactly at its own [0] $291BAE. All three lists are "
                        "self-bounding the same way, and the three drivers differ in SIX BYTES "
                        "(three jsr displacement words), verified against the cartridge"),
+    (0x222618, 0x0020, "W373: object-dispatch slot [17]'s palette install, bank 0 through $2414BE -- THIRTY-TWO bytes, because that is what $2414BE reads and it is not the 64 $24150A takes. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
+    (0x223C38, 0x0040, "W373: object-dispatch slot [17]'s palette install, bank 24. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
+    (0x223C78, 0x0040, "W373: object-dispatch slot [17]'s palette install, bank 25. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
+    (0x223CB8, 0x0040, "W373: object-dispatch slot [17]'s palette install, bank 27. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
+    (0x223D38, 0x0040, "W373: object-dispatch slot [17]'s palette install, bank 26. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
+    (0x223D78, 0x0040, "W373: object-dispatch slot [17]'s palette install, bank 28. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
+    (0x223FF8, 0x0040, "W373: object-dispatch slot [17]'s palette install, bank 18. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
+    (0x2240B8, 0x0040, "W373: object-dispatch slot [17]'s palette install, bank 19. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
+    (0x2241B8, 0x0040, "W373: object-dispatch slot [17]'s palette install, bank 20. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
+    (0x2240F8, 0x0040, "W373: object-dispatch slot [17]'s palette install, bank 16. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
+    (0x224038, 0x0040, "W373: object-dispatch slot [17]'s palette install, bank 21. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
+    (0x224178, 0x0040, "W373: object-dispatch slot [17]'s palette install, bank 22. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
+    (0x224138, 0x0040, "W373: object-dispatch slot [17]'s palette install, bank 23. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
+    (0x224078, 0x0040, "W373: object-dispatch slot [17]'s palette install, bank 17. Size is the "
+                       "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
+                       "already has a window from the $2911B0 menu -- the same block, reused "
+                       "rather than re-declared"),
     (0x28898A, 0x0028, "W373: object-dispatch slot [13]'s TWO per-side descriptors, $28898A and "
                        "$28899E, chosen by ($7,A5). Twenty bytes each and the second starts exactly "
                        "where the first ends, so the pair bounds itself. Same family as slot [11]'s "

@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2669/2669 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2680/2680 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -118,6 +118,25 @@ It regenerates data the W129/W132 replay tests read, and doing it mid-run turned
 tests red. They passed in isolation and the clean re-run was green. **A red MUT-A/B/C is a race before it is
 a regression** -- re-run before diagnosing.
 
+### SLOT [17] IS PORTED (`src/objslot17.js`, 11 driving tests)
+
+Reached from slot [7] when `$2911B0`'s menu answers 0. It walks TWO `$70`-byte records at `$812EA0` and per
+record tests four flag bytes, each with its own handler -- `($3)` -> `$25D306`, `($5)` -> `$25D39C`,
+`($6)` -> `$25D4F0`, `($7)` -> `$25D560`, **and only the first also writes `($1,A6) = 5`**.
+
+**THE OBJECT'S SIX BYTES ARE PER-SIDE PAIRS.** State 0 fills `($4,A5)..($9,A5)` with `$FF`, then P1 writes
+the EVEN offsets `$4`/`$6`/`$8` and P2 the ODD `$5`/`$7`/`$9`. One array of pairs, not two blocks.
+
+**`$25CEA2` IS `move.w #$0,($4,A0)` -- A0, NOT A5.** `$241182` leaves the staging slot in A0 and does not
+restore it, so it lands on the record just staged. `tally.js` documents the identical trap at `$260024`.
+Reading it as `($4,A5)` silently zeroes P1's freshly seeded slot pair, which is exactly what the smoke caught.
+
+Still noted inside it: `$25F442` (state 0's opener) and the four sub-handlers, ~700 bytes together.
+
+**Fifteen palette windows declared.** Fourteen at 64 bytes through `$24150A` and ONE at 32 through `$2414BE`,
+which is a different routine reading half as much. `$222838` was already declared for the `$2911B0` menu and
+is REUSED rather than re-declared.
+
 ### THE FRONT-END CHAIN, SCANNED (W373)
 
 Every `$241182` call site in `$230000..$2C0000` with the dispatch type it stages -- 34 sites, and the ones
@@ -130,6 +149,12 @@ inside a dispatch routine give the screen graph. **The front end is a sequence, 
     [18] -> [8]           (the ASIC27 self-test rejoins here)
     [3]  -> [16]
     [11] -> [0] [1] [4] [5] [11] [13] [14]                    <- the tally is the hub
+    [17] -> [10]                                              (state 0, found while porting it)
+
+**THE "FROM" SIDE OF THAT TABLE IS A HEURISTIC.** The type staged is exact -- the `moveq` sits right at the
+call -- but the owning slot is the nearest PRECEDING dispatch-table entry, and dispatch entries are not
+routine starts. `$25CE9C` was attributed to slot [9] and is actually slot [17]'s. Verify an edge before
+relying on it.
 
 **THIS CORRECTED MY OWN SLOT [7] PORT.** `$11` and `$0F` were committed as `killChosen`/`killNormal`, as
 though they were kill codes. They are the DISPATCH TYPES of the next screen: `$11` is slot [17] and `$0F` is
@@ -150,7 +175,7 @@ but it is a real bound and it reorders the docket:
 | [13] | `$288A60` | `$00B` | `$20C` = 524 | **PORTED W373** |
 | [ 9] | `$25CACA` | `$00A` | `$3EE` = 1006 | D34 candidate |
 | [19] | `$28EE88` | `$01E` | `$524` | |
-| [17] | `$25CEB8` | `$00A` | `$CFC` | D33 candidate |
+| [17] | `$25CEB8` | `$00A` | `$CFC` | **PORTED W373** (D33 candidate) |
 | [12] | `$28F3AC` | `$009` | `$183C` | |
 | [ 8] | `$25A770` | `$00A` | `$235A` | |
 | [16] | `$256E7A` | `$01E` | `$38F6` | |
@@ -245,7 +270,8 @@ skeleton and the WRONG one for anything inside these routines.
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **Slot [9] `$25CACA`** (1006) and **slot [17] `$25CEB8`** -- the D34 and D33 candidates.
+1. **Slot [15] `$291F66`** -- slot [7]'s OTHER fork arm, the sibling of the one just done.
+2. **Slot [9] `$25CACA`** (1006) -- the D34 candidate.
 3. **Slot [18] `$24902A`** -- the ASIC27 self-test. Real work, but NOT on the path to the milestone.
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
