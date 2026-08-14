@@ -22,13 +22,18 @@
 import { u16 } from './ram.js';
 import { RAM } from './machine.js';
 import { SCHED } from './scheduler.js';
-import { paletteSet241688, install24150A } from './palette.js';
-import { txString25A14C } from './background.js';
+import { paletteSet241688, install24150A, install2414BE } from './palette.js';
+import { txString25A14C, clearTx23C622 } from './background.js';
 import { readInput23D186 } from './tallyscreen.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
-import { queueKill } from './objalloc.js';
+import { queueKill, stageCreate } from './objalloc.js';
+// $25C8C2 jsr $23C47A -- the SAME routine stageend.js calls from $28D5C4. Imported rather than
+// transcribed a second time so the two callers cannot drift apart. stageend.js imports neither
+// objslot9.js nor objslot17.js, so there is no cycle.
+import { clear23C47A } from './stageend.js';
 import {
   SCREEN17, phase3_25D306, phase5_25D39C, phase6_25D4F0, sideFromD7_25D4E4, DESC17,
+  clear25F442,
 } from './objslot17.js';
 
 export const SCREEN9 = Object.freeze({
@@ -43,12 +48,221 @@ export const SCREEN9 = Object.freeze({
   after: 0x25cb94,
 });
 
+/** The fifteen palette installs `$25C8A2` ends with, in cartridge order, `$25C9A6..$25CA72`.
+ *  THE FIRST GOES THROUGH `$2414BE` AND COPIES 32 BYTES; the other fourteen go through `$24150A`
+ *  and copy 64. Folding them into one loop puts 64 bytes of the wrong thing into the TX bank.
+ *
+ *  This list is BYTE-FOR-BYTE the same fifteen `{src, bank, via}` triples as slot [17]'s
+ *  `SCREEN17_PAL`, in the same order -- w374slot9seed.test.js asserts that identity rather than
+ *  either file importing the other's array, so that a future edit to one screen's furniture cannot
+ *  silently move the other's. */
+const SEED9_PAL = Object.freeze([
+  Object.freeze({ src: 0x222618, bank: 0, via: 0x2414be }),  // $25C9A6/$25C9AC/$25C9AE
+  Object.freeze({ src: 0x222838, bank: 2, via: 0x24150a }),  // $25C9B4/$25C9BA/$25C9BC
+  Object.freeze({ src: 0x223c38, bank: 24, via: 0x24150a }),
+  Object.freeze({ src: 0x223c78, bank: 25, via: 0x24150a }),
+  Object.freeze({ src: 0x223cb8, bank: 27, via: 0x24150a }),
+  Object.freeze({ src: 0x223d38, bank: 26, via: 0x24150a }),
+  Object.freeze({ src: 0x223d78, bank: 28, via: 0x24150a }),
+  Object.freeze({ src: 0x223ff8, bank: 18, via: 0x24150a }),
+  Object.freeze({ src: 0x2240b8, bank: 19, via: 0x24150a }),
+  Object.freeze({ src: 0x2241b8, bank: 20, via: 0x24150a }),
+  Object.freeze({ src: 0x2240f8, bank: 16, via: 0x24150a }),
+  Object.freeze({ src: 0x224038, bank: 21, via: 0x24150a }),
+  Object.freeze({ src: 0x224178, bank: 22, via: 0x24150a }),
+  Object.freeze({ src: 0x224138, bank: 23, via: 0x24150a }),
+  Object.freeze({ src: 0x224078, bank: 17, via: 0x24150a }),  // $25CA6A/$25CA70/$25CA72
+]);
+
+export const SEED9 = Object.freeze({
+  addr: 0x25c8a2, rts: 0x25cac0, bytes: 0x220,
+  // Absolute words and bytes it touches, in cartridge order.
+  dualGate: 0x803926,                        // $25C8BA move.w #$0 -- sound.js's SOUND.gateDual
+  clear23c47a: 0x80392e, clear23c47aWords: 6,  // $25C8C2 jsr $23C47A
+  flagA: 0x812f82,                           // $25C8C8
+  byte813005: 0x813005,                      // $25C8D0
+  flagC: 0x812f80,                           // $25C936 clr.w -- the word just past the two records
+  word813006: 0x813006,                      // $25C99A clr.w
+  // Off A5. `mask` is READ at $25C942 and then OVERWRITTEN with $FF at $25C972.
+  mask: 0x04, busy: 0x03, slots: 0x04, slotCount: 6, extra: 0x0a, stateValue: 0x01,
+  // Off A0, per record. `$64` is ONE and is the gate `draw25E220` reads; everything else is 0 or a
+  // plain constant. $56 is a LONG.
+  liveAt: 0x00, phaseAt: 0x01, phaseSeed: 0x00,
+  sentinelAt: 0x56, sentinel: 0xffffffff,
+  // Named `recFields` and NOT `recWords`, which in `SCREEN17` is the 112-word bulk-clear count.
+  recFields: Object.freeze([[0x60, 0x0000], [0x62, 0x0000], [0x64, 0x0001], [0x66, 0x0000],
+    [0x68, 0x0000], [0x6a, 0x0002], [0x6c, 0x0140]]),
+  gateWord: 0x64,
+  // The mask arms, as three INDEPENDENT compares. See the doc comment.
+  maskArms: Object.freeze([
+    Object.freeze({ value: 3, recs: Object.freeze([0, 1]) }),   // $25C946/$25C94C/$25C950
+    Object.freeze({ value: 2, recs: Object.freeze([1]) }),      // $25C956/$25C95C
+    Object.freeze({ value: 1, recs: Object.freeze([0]) }),      // $25C962/$25C968
+  ]),
+  childType: 0x0a, newRecArm: 0x04,          // $25CA78 move.w #$A,D0 / $25CA82 move.w #$0,($4,A0)
+  soundStream: 0x28cb38, soundWrapper: 0x28ca94,   // $25CA88 / $25CA8E
+  copySrc: 0x223ff8, copyDst: 0x812f84, copyLongs: 16,   // $25CA94..$25CABE, SIXTEEN move.l
+  palettes: SEED9_PAL,
+});
+
+/** The three RAM-clearing leaves `$25C8A2` opens with. `$25F442` is shared with slot [17] and lives
+ *  in `objslot17.js`; these two are slot [9]'s alone. */
+export const LEAVES9 = Object.freeze({
+  b: Object.freeze({ addr: 0x25fa78, base: 0x813070, words: 5, seed: 0x3c, redundant: 0x813072 }),
+  c: Object.freeze({ addr: 0x25c57e, base: 0x812e82, words: 15 }),
+});
+
+/** `$25FA78` -- 44 bytes, and the ONLY one of the four leaves that is register-transparent.
+ *
+ *  `movem.l D0-D7/A0-A6,-(A7)` ... `movem.l (A7)+` brackets the whole body, so unlike `$25F442` and
+ *  `$25C57E` it clobbers nothing at all. It clears FIVE words -- `move.w #$4,D0` plus `dbra` --
+ *  which is 10 bytes, `$813070..$813079`, and then IMMEDIATELY writes `$3C` back into `$813070`.
+ *
+ *  `$25FA96 move.w #$0,($813072).l` then re-clears a word the loop cleared four instructions
+ *  earlier. It is redundant as shipped. TRANSCRIBED ANYWAY: "redundant" is a claim about the five
+ *  words the `dbra` covers, and folding the line away is exactly how that claim would rot unnoticed
+ *  if the count ever turned out to be four. */
+export function clear25FA78(ram) {
+  for (let i = 0; i < LEAVES9.b.words; i++) {                // $25FA82 move.w #$4,D0 + dbra = FIVE
+    ram.setU16(LEAVES9.b.base + i * 2, 0);                   // $25FA88 move.w D1,(A0)+ with D1 = 0
+  }
+  ram.setU16(LEAVES9.b.base, LEAVES9.b.seed);                // $25FA8E -- seeds $3C straight back
+  ram.setU16(LEAVES9.b.redundant, 0);                        // $25FA96 -- already zero. Kept.
+}
+
+/** `$25C57E` -- 20 bytes, `lea $812E82,A0 / move.w #$E,D0 / moveq #$0,D1 / move.w D1,(A0)+ / dbra`.
+ *
+ *  `$E` is 14, so FIFTEEN words = 30 bytes = `$812E82..$812E9F`, and `$812EA0` is the base of
+ *  record 0. The clear therefore ENDS EXACTLY ON the record wall without crossing it, which is what
+ *  makes the separate 112-word record clear at `$25C8D8` non-overlapping rather than merely
+ *  redundant. One word more and it would wipe record 0's live flag AFTER the seeder set it.
+ *
+ *  No `movem`: D0, D1 and A0 are clobbered. */
+export function clear25C57E(ram) {
+  for (let i = 0; i < LEAVES9.c.words; i++) {                // $25C584 move.w #$E,D0 + dbra = 15
+    ram.setU16(LEAVES9.c.base + i * 2, 0);                   // $25C58A move.w D1,(A0)+ with D1 = 0
+  }
+}
+
+/** `$25C8A2` -- SLOT [9]'s OBJECT STATE 0, 544 bytes (`$25C8A2..$25CAC1`), and **IT IS THE SEEDER
+ *  THAT FEEDS `$25D010`, NOT A PEER OF IT.**
+ *
+ *  Two different state bytes are in play and confusing them inverts the whole routine. `($2,A5)` is
+ *  the OBJECT's state and this sets it to **1** as its very first instruction, so the dispatcher's
+ *  `tst.b ($2,A5) / beq $25C8A2` never comes back here: it is one-shot. `($1,A0)` is each RECORD's
+ *  state and it sets that to **0**, which routes both records to `phase0_25D010` on the next frame.
+ *
+ *  **IT NEVER TOUCHES A6 AND IT IS NOT PER-SIDE.** Both `$812EA0` records are reached through A0 as
+ *  an absolute pointer, there is no `tst.w D7` anywhere in the 544 bytes, and both records receive
+ *  IDENTICAL field values. The only per-record difference in the whole routine is the live flag.
+ *  D0 and A0 are clobbered (no `movem`); A5 is inherited.
+ *
+ *  **`($4,A5)` IS A TWO-BIT JOIN MASK AND THE ROUTINE READS IT, THEN CLOBBERS IT.** `$25ACCA
+ *  ori.b #$1` (side 0) and `$25ACE8 ori.b #$2` (side 1) build it; 3 is both, 2 is record 1, 1 is
+ *  record 0, 0 is neither. `$25C942` reads it into D0 and `$25C972` overwrites the same byte with
+ *  `$FF` forty-eight bytes later. Both halves are load-bearing: the mask decides which records go
+ *  live, and the `$FF` is the "no choice yet" sentinel `$25D306` tests with a SIGNED `tst.b`.
+ *
+ *  **THE THREE `cmpi.b` ARE PORTED AS THREE INDEPENDENT `if`s, NOT AN ELSE-IF CHAIN.** They are
+ *  sequential in the cartridge and D0 is not touched between them, so at most one can fire -- but
+ *  that is a property of the DATA (a two-bit value is never 3 and 2 at once), not of the control
+ *  flow. Writing it as `else if` would encode an assumption the instructions do not make.
+ *
+ *  **`$223FF8` IS READ TWICE, FOR TWO UNRELATED PURPOSES.** Once at `$25CA08` as bank 18's 64-byte
+ *  palette, and once at `$25CA94` as a 64-byte data copy into `$812F84`. Folding them into one
+ *  operation would tie a palette install to a RAM buffer that has nothing to do with the palette.
+ *
+ *  **THE SIXTEEN `move.l (A0)+,(A1)+` ARE UNROLLED IN THE CARTRIDGE**, with no counter and no
+ *  `dbra`. Sixteen longwords is exactly 64 bytes, the same width as one palette block, which is the
+ *  only reason the count can be checked at all.
+ */
+export function seed25C8A2(ram, rom, a5, ctx) {
+  // $25C8A2 move.b #$1,($2,A5). FIRST INSTRUCTION, and it is this OBJECT's state, not a record's.
+  ram.setU8(a5 + SCREEN9.state, SEED9.stateValue);
+  clear25F442(ram);                                          // $25C8A8 -- 72 bytes at $813028
+  clear25FA78(ram);                                          // $25C8AE -- 10 bytes at $813070, + $3C
+  clear25C57E(ram);                                          // $25C8B4 -- 30 bytes ending at $812EA0
+  ram.setU16(SEED9.dualGate, 0);                             // $25C8BA move.w #$0,$803926
+  clear23C47A(ram);                                          // $25C8C2 jsr $23C47A
+  ram.setU16(SEED9.flagA, 0);                                // $25C8C8 move.w #$0,$812F82
+  ram.setU8(SEED9.byte813005, 0);                            // $25C8D0 move.b #$0,$813005
+
+  // $25C8D8..$25C8E6 -- `move.w #$6F,D0` plus `dbra` is ONE HUNDRED AND TWELVE words = $E0 bytes =
+  // exactly two $70 records. The count is the cartridge's own; it stops one word BELOW $812F80.
+  for (let i = 0; i < SCREEN17.recWords; i++) ram.setU16(SCREEN17.recs + i * 2, 0);
+
+  for (let r = 0; r < SCREEN17.recCount; r++) {              // $25C8F0 moveq #$1,D0 + dbra = TWO
+    const a0 = SCREEN17.recs + r * SCREEN17.recStride;       // $25C92E lea ($70,A0),A0
+    ram.setU8(a0 + SEED9.liveAt, 0);                         // $25C8F2 -- the live flag, cleared
+    // $25C8F6 move.b #$0,($1,A0) -- THE RECORD STATE, and 0 is `phase0_25D010`'s arm. This is the
+    // hand-off: slot [9]'s inner walk will find state 0 on the next frame and run $25D010.
+    ram.setU8(a0 + SEED9.phaseAt, SEED9.phaseSeed);
+    ram.setU32(a0 + SEED9.sentinelAt, SEED9.sentinel);       // $25C8FC move.l #$FFFFFFFF,($56,A0)
+    for (const [off, v] of SEED9.recFields) ram.setU16(a0 + off, v);  // $25C904..$25C92C
+  }
+
+  ram.setU16(SEED9.flagC, 0);                                // $25C936 clr.w $812F80
+
+  // $25C93C lea $812EA0,A0 reloads A0, which the loop above left at $812FE0.
+  // $25C942 move.b ($4,A5),D0 -- THE JOIN MASK, read BEFORE $25C972 destroys it.
+  const d0 = ram.u8(a5 + SEED9.mask);
+  for (const arm of SEED9.maskArms) {                        // three SEQUENTIAL cmpi.b, not else-if
+    if (d0 !== arm.value) continue;
+    for (const r of arm.recs) ram.setU8(SCREEN17.recs + r * SCREEN17.recStride, 1);
+  }
+
+  ram.setU8(a5 + SEED9.busy, 0);                             // $25C96C move.b #$0,($3,A5)
+  // $25C972..$25C990 -- SIX bytes to $FF, and ($4,A5) is the first of them, so the mask read eleven
+  // instructions ago is gone by the time this returns.
+  for (let i = 0; i < SEED9.slotCount; i++) ram.setU8(a5 + SEED9.slots + i, 0xff);
+  ram.setU16(a5 + SEED9.extra, 0);                           // $25C996 clr.w ($A,A5)
+  ram.setU16(SEED9.word813006, 0);                           // $25C99A clr.w $813006
+
+  clearTx23C622(ctx.tx);                                     // $25C9A0 jsr $23C622
+  for (const p of SEED9.palettes) {                          // $25C9A6..$25CA72
+    if (!ctx.palette) {
+      ctx.unported?.note(p.via, `$25C9A6.. bank ${p.bank} <- $${p.src.toString(16).toUpperCase()
+        } with no PaletteState on this chain`);
+      continue;
+    }
+    if (p.via === 0x2414be) {
+      // THIRTY-TWO bytes, not 64 -- $2414BE is the TX installer and reads half what $24150A does.
+      install2414BE(ram, ctx.palette, p.bank, rom.bytes(p.src, 32), 0x25c9ae, 'slot [9] TX palette');
+    } else {
+      install24150A(ram, ctx.palette, p.bank, rom.bytes(p.src, 64), 0x25c9bc, 'slot [9] palette');
+    }
+  }
+
+  // $25CA78 move.w #$A,D0 / $25CA7C jsr $241182 -- stages dispatch type $A, slot [10]. THE PRIORITY
+  // COMES FROM THE TABLE, never from a constant: $241182 reads it out of ($4,A0,D1) itself, which
+  // is why `dispatchPri` is a CALLBACK. $240F62 + $A*8 gives handler $260794 and priority $001F.
+  const made = stageCreate(ram, SEED9.childType,
+    (t) => rom.u16(SCREEN9.dispatch + t * 8 + 4));
+  // $25CA82 move.w #$0,($4,A0) -- A0, NOT A5. $24150A preserves A0, so A0 still held $224078 across
+  // the fourteenth install; then $241182 REPLACED it with the record it just staged and did not
+  // restore it. So this word lands on the NEW type-$A record and clears its $4 and $5 together. It
+  // does NOT touch this object's ($4,A5), which is the $FF written twenty bytes earlier. Slot [17]
+  // has the identical trap at $25CEA2 and tally.js a third at $260024.
+  // On a full create queue $241182 hands back the DUMMY at $80D51C in A0 and the ROM writes through
+  // it just the same, so this is unconditional rather than guarded on `made.ok`.
+  ram.setU16(made.addr + SEED9.newRecArm, 0);
+
+  ctx.soundPost?.(SEED9.soundStream);                        // $25CA88 jsr $28CB38 -- streaming leaf
+  ctx.soundPost?.(SEED9.soundWrapper);                       // $25CA8E jsr $28CA94 -- id $41
+
+  // $25CA94..$25CABE -- the SECOND read of $223FF8, and it is a plain data copy, not a palette.
+  // Sixteen literal `move.l (A0)+,(A1)+` with no loop; 16 longwords is 64 bytes, $812F84..$812FC3.
+  for (let i = 0; i < SEED9.copyLongs; i++) {
+    ram.setU32(SEED9.copyDst + i * 4, rom.u32(SEED9.copySrc + i * 4));
+  }
+  // $25CAC0 rts. $25CAC2 is the NEXT routine (`jmp $241292`), reached only from $25CAD2.
+}
+
 /** `$25CACA` -- THE DISPATCH ENTRY. State 1 is the fall-through and is the record walk. */
 export function objSlot9(ram, rom, a5, ctx) {
   const st = ram.u8(a5 + SCREEN9.state);
   if (st === 0) {                                            // $25CACA tst.b / beq $25C8A2
-    ctx.unported?.note(SCREEN9.start, '$25C8A2 -- slot [9] state 0, roughly 550 bytes and unread. '
-      + 'It is the counterpart of slot [17] state 0, which seeds the same $812EA0 records');
+    seed25C8A2(ram, rom, a5, ctx);
     return;
   }
   if (st === 2) {                                            // $25CAD2 cmpi.b #$2 / beq $25CAC2

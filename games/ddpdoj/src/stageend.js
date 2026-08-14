@@ -300,7 +300,10 @@ function clear287DDC(ram) {
 function clear28E7A2(ram) {
   for (let i = 0; i <= 0x27; i++) ram.setU16(SE.banner + i * 2, 0);
 }
-function clear23C47A(ram) {
+/** `$23C47A` -- six `clr.w` over `$80392E..$803939`. Exported because slot [9]'s seeder
+ *  `$25C8A2` calls it too (`$25C8C2 jsr $23C47A`); a second transcription in `objslot9.js`
+ *  would be free to drift from this one. */
+export function clear23C47A(ram) {
   for (let i = 0; i < 6; i++) ram.setU16(0x80392e + i * 2, 0);
 }
 function clear27F8C4(ram) {

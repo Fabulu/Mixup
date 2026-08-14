@@ -21,13 +21,20 @@ reason. Worktree isolation is withdrawn as the port-contention fallback, so **se
 is the only concurrency control** -- and every shared draw lands in `src/objslot9.js`, so it is one port
 agent there regardless.
 
-### W374 STATE: SUITE 2751/2751 ZERO SKIPS, GATE EXIT 0, 510 ROM WINDOWS
+### W374 STATE: SUITE 2786/2786 ZERO SKIPS, GATE EXIT 0, 519 ROM WINDOWS
 
 Up from 2730 at the start of the wave. **Three more shared draws are PORTED, DRIVEN AND WIRED:**
 
 * **`$25E6CE`** (`draw25E6CE`) -- the mirror pair, 70 bytes. Wired into `confirmAndDraw`'s bit-1 arm.
 * **`$25EF30`** (`draw25EF30`) -- the two mutually recursive halves, 228 bytes.
 * **`$25EDF8`** (`draw25EDF8`) -- the portrait draw, 312 bytes, twelve ROM windows. Body dead, see below.
+
+**AND TWO MORE UNITS BEYOND THE DRAWS:**
+
+* **`$23E2F2`** (`enqueueZoomedRegisters` + `resolveZoomRegisterStub`, `src/spritequeue.js`) -- the
+  zooming enqueue in REGISTER form, and the whole thirteen-stub family. Nine ROM windows. **This
+  unblocked the last three draws**, which could not be written without it.
+* **`$25C8A2`** (`seed25C8A2`, `src/objslot9.js`) plus its four leaves. **SLOT [9] IS NOW COMPLETE.**
 
 The ungated tail is wired **in ROM order** (`$25E824` note, `$25EDF8`, `$25EF30`, `$25F074` note).
 **The order is load-bearing:** all four emit into the same bucket, so reordering them reorders the
@@ -130,9 +137,31 @@ them, from the neighbours' recon and verified by hand:
   **tell port agents to write temp files to an absolute scratchpad path**, because an empty
   `$TMPDIR` in Git Bash resolves relative paths under `C:\Program Files\Git`.
 
-### `$25C8A2` IS FULLY DECODED AND REVIEWED. IT IS THE SEEDER, NOT A PEER OF `$25D010`.
+### `$25C8A2` IS PORTED. **SLOT [9] IS COMPLETE.**
 
-Not yet ported. Everything below was decoded and cross-checked; the headline findings:
+`seed25C8A2` in `src/objslot9.js`, with all four leaves, wired into `objSlot9`'s state-0 arm, 24
+driving tests. No new ROM windows: all fifteen palette sources were already covered by W373's.
+
+Two things came out of it that were NOT in the brief:
+
+* **`$28CAAE` HAD NO `WRAPPERS` ROW AND THAT WAS A LIVE TRAP.** `objslot17.js:315` already posts it
+  from state 6 (`HANDLER6.sound`), and with no row `postWrapper` **throws** `no wrapper at $28CAAE`
+  on any chain carrying a real `SoundState`. The seeder makes that chain reachable (seed -> record
+  state 0 -> ... -> state 6), so it would have surfaced as a crash. Verified from the bytes:
+  `$28CAAE` is `48E7 FFFE / 303C 0042 / 323C 00FF / 343C 0014 / 4EBA F56A`, and the `jsr (d16,PC)`
+  extension word at `$28CAC0` less `$A96` resolves to `$28C02A`, which `sound.js` already has. Row
+  added: `{ id: 0x42, pan: 0xFF, ch: 0x14, entry: 0x28C02A }`.
+* **`$23C47A` IS NOW EXPORTED FROM `stageend.js` INSTEAD OF TRANSCRIBED TWICE.** The port agent
+  could not edit `stageend.js` and wrote a second copy of the six `clr.w`; the coordinator replaced
+  it with an import, because two transcriptions of the same six instructions are free to drift.
+  `stageend.js` imports neither `objslot9.js` nor `objslot17.js`, so there is no cycle.
+
+**A limit worth knowing:** the mask arms being three independent `if`s rather than an `else if`
+chain **cannot be caught behaviourally**, because a two-bit value can never match two arms. It is
+pinned by the shape of the `SEED9.maskArms` table instead. Structure that cannot fail a test needs
+pinning some other way, or it will be "tidied" later.
+
+Everything below was decoded and cross-checked before the port; the headline findings:
 
 * **It sets its OWN state byte `($2,A5)` to 1 as its FIRST instruction**, so it is a one-shot
   seeder: the dispatcher's `tst.b ($2,A5) / beq $25C8A2` never returns to it.
@@ -184,7 +213,7 @@ and once as data. **Do not fold them.**
 
 Correction to my own earlier note: the span is **544 bytes** (`$25CAC2 - $25C8A2 = $220`), not 543.
 
-### THE CHEAPEST NEXT UNIT IS `$25C8A2`, NOT THE REMAINING DRAWS
+### HOW `$25C8A2` WAS SIZED BEFORE IT WAS PORTED (kept -- the method transfers)
 
 Mapped by hand. **`$25C8A2..$25CAC0`, 543 bytes, ONE `rts`**, then `jmp $241292` at `$25CAC2`.
 It is slot [9]'s record state 0, and it is mostly a palette wall:
@@ -228,7 +257,10 @@ written TWICE. Check it when the port is reviewed.
 emitters are `$23DECE..$23E08C` and `$27829C`'s eighteen primary emitters are `$23D762..$23DBCA`.
 So it is a standalone third emitter.
 
-**IT BLOCKS THREE OF THE FOUR REMAINING DRAWS, not two:**
+**IT IS NOW PORTED, SO NOTHING IS BLOCKED ANY MORE.** The table below is why it mattered; all four
+remaining draws can now be written in any order.
+
+**IT BLOCKED THREE OF THE FOUR REMAINING DRAWS, not two:**
 
     $25E29E   481 B   4 emits, ALL via $23E2F2                          BLOCKED
     $25E4D0   958 B   6 emits: 4 via $23E2F2, 2 via $23DFB4             BLOCKED

@@ -79,11 +79,29 @@ function palSet(ram, rom, ctx, d0, d1) {
     + `No PaletteState on this call chain`);
 }
 
+/** `$25F442` -- THE OPENER BOTH STATE 0s CALL, and it is twenty bytes with no gate of any kind.
+ *
+ *  `lea $813028,A0 / move.w #$23,D0 / moveq #$0,D1 / move.w D1,(A0)+ / dbra D0` -- `$23` is 35, so
+ *  the `dbra` runs THIRTY-SIX times and clears 72 bytes, `$813028..$81306F`. It stops exactly one
+ *  word below `$813070`, which is `$25FA78`'s block, so the two leaves TILE and neither overlaps
+ *  the other. Reading `#$23` as a byte count would clear 36 bytes and leave half the block standing.
+ *
+ *  There is NO `movem` here, unlike `$25FA78`: D0, D1 and A0 are clobbered. Nothing is returned.
+ *  Slot [9]'s seeder `$25C8A2` calls the same routine at `$25C8A8`, which is why it lives in the
+ *  file both slots already share rather than in either one's. */
+export const OPENER_25F442 = Object.freeze({ addr: 0x25f442, base: 0x813028, words: 36 });
+
+export function clear25F442(ram) {
+  for (let i = 0; i < OPENER_25F442.words; i++) {            // $25F448 move.w #$23,D0 + dbra = 36
+    ram.setU16(OPENER_25F442.base + i * 2, 0);               // $25F44E move.w D1,(A0)+ with D1 = 0
+  }
+}
+
 /** `$25CC46` -- STATE 0. Clears both records, seeds whichever sides are live, installs fifteen
  *  palettes and stages the next screen. */
 function state0(ram, rom, a5, ctx) {
   ram.setU8(a5 + SCREEN17.state, 1);                         // $25CC46
-  ctx.unported?.note(SCREEN17.opener, '$25CC4C jsr $25F442 -- slot [17] state 0 opener, unread');
+  clear25F442(ram);                                          // $25CC4C jsr $25F442 -- now ported
   ram.setU16(SCREEN17.flagA, 0);                             // $25CC52
   ram.setU16(SCREEN17.flagB, 1);                             // $25CC5A
 

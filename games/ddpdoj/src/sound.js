@@ -144,6 +144,15 @@ const WRAPPERS = {
   0x28CA12: { id: 0x3C, pan: 0xFF, ch: 0x14, entry: 0x28C02A },
   0x28CA60: { id: 0x3F, pan: 0xFF, ch: 0x14, entry: 0x28C02A },
   0x28CA7A: { id: 0x40, pan: 0xFF, ch: 0x14, entry: 0x28C02A }, // boss warning
+  // W374. Two more of the same $14-channel family, read straight off the image. $28CA94 is the one
+  // slot [9]'s seeder $25C8A2 calls at $25CA8E. $28CAAE is what slot [17]/[9] state 6 ($25D4F0)
+  // ALREADY posts through `HANDLER6.sound`, and it had no row here, so that post threw
+  // `no wrapper at $28CAAE` on any chain with a real SoundState -- it is added with $28CA94 rather
+  // than left as a live trap. Both are the byte-identical five-line shape of $28C310: movem, three
+  // move.w immediates, and a `jsr (d16,PC)` whose extension word resolves to $28C02A
+  // ($28CAA6 - $A7C and $28CAC0 - $A96).
+  0x28CA94: { id: 0x41, pan: 0xFF, ch: 0x14, entry: 0x28C02A },
+  0x28CAAE: { id: 0x42, pan: 0xFF, ch: 0x14, entry: 0x28C02A },
 };
 
 // W150: the real streaming leaf wrappers call one of two score-index resolvers
