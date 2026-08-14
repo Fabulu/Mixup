@@ -219,3 +219,24 @@ test('W372 $23C622 clears the WHOLE TX map, and 2048 is exactly its size', { ski
   assert.equal(tx.w[(((1 << 6) + 1)) * 2], 0, '  ...and cleared');
   assert.ok(tx.w.every((v) => v === 0), 'the WHOLE map, not a window of it');
 });
+
+test('W372 slot [14] picks between TWO tables that differ in ONE entry', { skip: SKIP }, () => {
+  // $288CF4 lea $288D62,A0 and $288CFE lea $288D82,A0, chosen by ($16,A5) -- which $288CD4 fills from
+  // rankByte242E24 >> 3, so the choice is RANK-dependent.
+  assert.equal(0x288cf6 + IMG.readInt16BE(0x288cf6), 0x288d62, '$288CF4 lea -> $288D62');
+  assert.equal(0x288d00 + IMG.readInt16BE(0x288d00), 0x288d82, '$288CFE lea -> $288D82');
+  assert.equal(IMG.readUInt32BE(0x288cd6), 0x00242e24, '$288CD4 jsr $242E24 -- the rank byte');
+  assert.equal(IMG.readUInt16BE(0x288cda), 0xe648, '$288CDA lsr.w #3,D0 -- shifted before use');
+  // The two tables are the same EXCEPT entry 5. A port that used one for both would be wrong in
+  // exactly one case out of eight, at one rank -- which is close to unnoticeable.
+  const a = []; const b = [];
+  for (let i = 0; i < 8; i++) {
+    a.push(IMG.readUInt32BE(0x288d62 + i * 4));
+    b.push(IMG.readUInt32BE(0x288d82 + i * 4));
+  }
+  const diff = a.map((v, i) => (v === b[i] ? null : i)).filter((i) => i !== null);
+  assert.deepEqual(diff, [5], 'exactly ONE entry differs, at index 5');
+  assert.equal(a[5], 0x001f6a5c, '  ...$1F6A5C in the first table');
+  assert.equal(b[5], 0x001f75c0, '  ...$1F75C0 in the second');
+  assert.ok(a.every((v) => v >= 0x1f3168 && v <= 0x1f8c88), 'and all sixteen point into $1F3168..$1F8C88');
+});

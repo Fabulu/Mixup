@@ -2779,6 +2779,11 @@ SHOT_WINDOWS.extend([
                        "is $26F8A6, the first handler it points at"),
     (0x26F55A, 0x00AC, "W342: type $4C's 6-word record prototype and ALL FIVE sub prototypes, "
                        "$26F55A..$26F605 -- overlapping its handler at $26F5F2 by TWENTY bytes"),
+    (0x288D62, 0x0040, "W372: object-dispatch slot [14]'s TWO eight-long tables, $288D62 and $288D82, "
+                       "reached by lea (d16,PC) at $288CF4 and $288CFE and selected by ($16,A5) -- "
+                       "which is rankByte242E24 >> 3, so the choice is RANK-dependent. They are "
+                       "IDENTICAL except entry 5: $001F6A5C against $001F75C0. One window covers both "
+                       "because they are adjacent and the same shape; the pointers run $1F3168..$1F8C88"),
     (0x2735FA, 0x0100, "W372: type $4C's $26FA82 FAN table -- 64 longwords, $2735FA..$2736FA, indexed "
                        "by `andi.w #$3F,D3 / add.w D3,D3 / add.w D3,D3` so the index is 0..$3F and the "
                        "ROM's own mask bounds it; no guard needed. The emitter walks it with the type's "
