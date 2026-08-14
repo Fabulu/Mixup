@@ -1,10 +1,145 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-14 (W373)
+Updated: 2026-08-14 (W374)
 
-## START HERE -- W373
+## START HERE -- W374
 
-**Suite 2730/2730 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+### THE FINISH LINE IS NAMED: D36 IS **DOJ WHITE LABEL**
+
+The owner set the definition of done on 2026-08-14: *"the goal is accomplished when, following the tasks we
+set out, the agent finishes the second game in the rom, doj white label."* **D36's order is UNCHANGED -- it
+is still LAST.** This names the endpoint; it does not promote the item, and the docket ahead of it is not
+groundwork to be cut short in order to reach it. Nothing has been decoded for it: no entry point, no region
+bound, no dispatch table. See `docs/DOCKET.md` D36.
+
+### WORKING MODEL: ONE AGENT AT A TIME, AND NO WORKTREES
+
+Owner, same day: *"only work in parallel if you are sure it disrupts nothing. One agent working at the time
+is usually better"* and *"please don't do worktrees."* The brief's old claim that many recon agents at once
+is safe is **overridden**; read-only recon genuinely cannot corrupt the tree, but that is not a sufficient
+reason. Worktree isolation is withdrawn as the port-contention fallback, so **serialisation by target file
+is the only concurrency control** -- and every shared draw lands in `src/objslot9.js`, so it is one port
+agent there regardless.
+
+### W374 STATE: SUITE 2741/2741 ZERO SKIPS, GATE EXIT 0
+
+Up from 2730. **Two of the six remaining shared draws are PORTED, DRIVEN AND WIRED:**
+
+* **`$25E6CE`** (`draw25E6CE`) -- the mirror pair, 70 bytes. Wired into `confirmAndDraw`'s bit-1 arm.
+* **`$25EF30`** (`draw25EF30`) -- the two mutually recursive halves, 228 bytes. Wired into the ungated
+  tail **in ROM order**, between `$25EDF8`'s note and `$25F074`'s. The order is load-bearing: all four
+  emit into the same bucket, so reordering them reorders the sprites.
+
+Neither needed a ROM window: every sprite parameter in both is an immediate.
+
+`confirmAndDraw` now takes **`d7`** as a trailing argument, because `$25EF30` needs the side to pick
+which record it reads across to. Both call sites pass it.
+
+**FOUR SHARED DRAWS REMAIN**, plus the newly found eighth: `$25E29E`, `$25E824`, `$25EDF8`,
+`$25F074`, `$25E4D0`.
+
+### `$25EDF8` IS FULLY DECODED AND ITS BODY IS UNREACHABLE AS SHIPPED
+
+Decoded, reviewed and hand-verified, but **NOT yet ported.** The finding that matters:
+
+**`$25EE28 cmpi.b #$4,($1,A6)` CAN NEVER BE TRUE AT ENTRY.** Its only two callers write `($1,A6)`
+immediately before calling: `$25D24E move.b #$2,($1,A6)` then `$25D27E jsr $25EDF8`, and
+`$25D49A move.b #$5,($1,A6)` then `$25D4CE jsr $25EDF8`. Verified three ways: the caller bytes read
+by hand, the port's own `confirmAndDraw` (which sets `phaseAt` to `HANDLER1.nextPhase` = 2 or
+`HANDLER4.nextPhase` = 5 before the draws), and a scan of the whole 6 MB image for the longword
+`0025EDF8`, which finds **exactly two** operands, both `jsr`. **So the entire body is dead and the
+routine is an immediate `rts`.** I could not explain why. Port the gate faithfully and pin the fact
+in a test so nobody later "fixes" it into life.
+
+**A CLAIM TO IGNORE:** the same recon said `$25E824` "is dead the same way" via a
+`cmpi.b #$1,($1,A6)` gate. **That is WRONG.** `$25E824` opens `41FA FFAE / 43FA FFE0 /
+3C2E 0036 / 4446` -- two `lea`s then `move.w ($36,A6),D6 / neg.w D6`. No state gate at all.
+
+**ITS DATA BLOCK TILES EXACTLY, WHICH IS THE BOUND EVIDENCE.** `$25EB64..$25EDF7` is 660 bytes of
+this routine's own data, bounded below by the `rts` at `$25EB62` and above by the routine's first
+opcode at `$25EDF8`. It decomposes into TWELVE structures that tile the range with **no gaps and no
+overlaps**, and every pointer in it resolves inside the block. Declare these twelve windows:
+
+    $25EB64  12   A3 outer, side 0 -- 3 arms, bound STATED by cmpi.w #$C,($5C,A6) at $25EE6A
+    $25EB70  36   A3 inner x3, side 0 -- 3 entries each, bound STATED by cmpi.w #$2,D1 in $25D402
+    $25EB94  12   A3 outer, side 1
+    $25EBA0  36   A3 inner x3, side 1
+    $25EBC4  180  the 18 leaf records, 10 bytes each (D1.l, D3.w, then D2.l or A0.l)
+    $25EC78  96   three 8-long frame tables, bound STATED by moveq #$E / and.w / add.w D2,D2
+    $25ECD8  24   A2 pointer tables, both sides, 3 entries each
+    $25ECF0  52   A2 zero-terminated record lists, side 0
+    $25ED24  52   A2 zero-terminated record lists, side 1
+    $25ED58  128  four 8-long frame tables
+    $25EDD8  24   A1 art pointer tables, both sides, 3 longs each
+    $25EDF0  8    A0 coordinate pairs, 2 words each, bound STATED by (A0)+ then (A0)
+
+**The three bounds are stated by CODE, not by adjacency:** the cursor is 0..2 (`cmpi.w #$2,D1` in
+`$25D402`), the animation phase is 0/4/8 (`addq.w #$4 / cmpi.w #$C / clr.w`), and the frame tables
+have 8 entries (`moveq #$E,D2 / and.w $80390A,D2 / add.w D2,D2` yields byte offsets 0,4,..,28).
+The exact tiling is corroboration on top of that, not the source of the bounds.
+
+Other things the port will need: `($5C,A6)`'s countdown reloads on the BORROW (`subq.w` then `bcc`),
+so the period is **181 decrements, not 180**. `$25EE86` is a 3-entry `bra.w` JUMP TABLE sitting
+inside the routine as data, reached by `lea ($25EE86,PC),A4 / adda.w D1,A4 / jmp (A4)`. `$80390C`
+(`SCHED.mirror2`) gates the second emit entirely. A4 is clobbered and the CALLER saves it
+(`$25D4A4`/`$25D4E0`). D4 is `$12` at all three emit sites.
+
+### W374 RECON: THREE CORRECTIONS TO THE SHARED-DRAW DOCKET, ALL VERIFIED BY HAND
+
+**1. THERE ARE EIGHT SHARED DRAWS, NOT SEVEN, AND A THIRD CONFIRM-AND-DRAW COPY.**
+`$25D800` is a THIRD copy of the confirm-and-draw tail, alongside the two the port models (`$25D256`,
+`$25D4A6`). The two modelled copies are byte-identical in their lists and the port's `drawsA`/`drawsB`/
+`drawsAlways` are exactly right for them. **The third copy is NOT the same:**
+
+    $25D800  bset #$0,($3,A5) / bne $25D814    ->  $25E220, $25E29E        (same as drawsA)
+    $25D814  jsr $25E4D0                       ->  UNGATED, and in NO list
+    $25D81A  bset #$1,($3,A5) / bne $25D828    ->  $25E6CE                 (same as drawsB)
+    $25D828  ungated tail                      ->  $25E824, $25EF30, $25F074
+    $25D83A  rts
+
+So the third copy **swaps `$25EDF8` for `$25E4D0`**. `$25E4D0` is UNPORTED, in no list, and has exactly ONE
+call site, `$25D814`. Confirmed by grep with a positive control (a bare-hex grep for `25E4D0` finds nothing
+while the same grep for `25E220` finds `objslot9.js`, so the miss is real and not a broken command).
+
+**The `bne` at `$25D806` is `+$0C`, which lands on `$25D814` and spans exactly the two 6-byte `jsr`s before
+it.** The recon reported `$25E4D0` as part of the bit-0 arm; it is not, it is ungated. Measure the branch,
+do not eyeball the grouping.
+
+**2. `$25E6CE` IS 70 BYTES, NOT 342.** The 342 was the gap to the next routine, and the gap holds four
+separate things: the 70-byte routine, two 12-byte descriptors at `$25E716`/`$25E722`, a SEPARATE 138-byte
+routine `$25E72E` (called only from `$25CBF4`, previously unread by anyone), and 108 bytes of tables that
+belong to `$25E824`. **A size taken from an address gap is an upper bound on a REGION, not on a routine.**
+
+**3. `$25EF30` IS TWO MUTUALLY RECURSIVE HALVES, not a body plus a subroutine.** The part-read had
+`$25EF44 bsr $25EFAE` but missed the mirror, **`$25EFAC bsr $25EF46`**. Both `bsr` targets are the gate
+entries PAST the `tst.b`, which is exactly what stops it recursing forever. Consequence: **if either record
+is empty, BOTH halves draw**, and the order is the other half first, then the caller's own.
+
+### W374 DECODING NOTES WORTH KEEPING
+
+* **`sideFromD7_25D4E4` INVERTS.** It returns 1 when D7 is 0. So in `$25EDF8`, the fall-through table set
+  belongs to **side 1** and the override set to side 0, which reads backwards until you check the mapping.
+  Two separate claims in this project looked like side-swap defects and were not.
+* **Cancelling immediates are real.** `$25E6CE` loads `#$38001C00` and then cancels BOTH halves exactly
+  (`$3800+$C800` and `$1C00+$E400` each wrap to `$0000`), so D1 ends as `+/-($3E,A6) << 16` with a hard-zero
+  low word. A port that treats `$38001C00` as a coordinate base is wrong by `$3800`. `$25EF30` does the same
+  trick in all four of its emits.
+* **`($3E,A6)` is never written non-zero anywhere in `$25C000..$260000`.** A displacement scan for `$003E`
+  over that range returns exactly four sites: `clr.w` at `$25D090` (state 0, already ported as
+  `HANDLER0.clearWords`) and `$25E6CE`'s three reads. Both of `$25E6CE`'s sprites therefore sit at
+  coordinate 0 on every path currently reachable. **The port still READS the field rather than folding it to
+  a constant** -- the writer may live outside the scanned range, and inventing the fold would hide it.
+* **`$25E6CE` has NO gates of its own.** Unlike `$25E220` it has no `tst`/`cmp`/branch at all: one entry,
+  one exit. Its gate is entirely the caller's `bset #$1,($3,A5)`.
+* **`$25EF30` reads NO tables** and needs no ROM window. Every sprite parameter is an immediate. The two
+  `lea (d16,PC)` tables in the gap at `$25F014`/`$25F044` belong to `$25F074`, the NEXT routine.
+* **There is no ROM window anywhere in the `$25Exxx` region**, and `$25E220` needed none because its fields
+  are all immediates. Draws that index real tables (`$25EDF8` does, via `movea.l (A2,D0.w),A2` at a LONG
+  stride) WILL need windows declared with the bound the code states.
+
+## SUPERSEDED: W373
+
+**(W373 record) Suite 2730/2730 zero skips, gate exit 0. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 

@@ -208,7 +208,7 @@ export function phase4_25D402(ram, rom, ctx, a5, a6, d7) {
   ram.setU8(a5 + (side === 0 ? 0x06 : 0x07),                 // $25D474 tst.w D7 / $25D478 / $25D480
     ram.u8(a6 + 0x05));
 
-  confirmAndDraw(ram, rom, ctx, a5, a6, d0, HANDLER4.nextPhase);   // $25D486..$25D4E2
+  confirmAndDraw(ram, rom, ctx, a5, a6, d0, HANDLER4.nextPhase, d7);   // $25D486..$25D4E2
 }
 
 /** `$25D486..$25D4E2` and `$25D23A..$25D292` -- THE SHARED CONFIRM-AND-DRAW TAIL. The two blocks are
@@ -223,7 +223,7 @@ export function phase4_25D402(ram, rom, ctx, a5, a6, d7) {
  *  the OLD bit, so the FIRST record to reach here does the gated draws and the second skips them.
  *  Drop the guard and the shared parts draw twice per frame.
  */
-function confirmAndDraw(ram, rom, ctx, a5, a6, d0, nextPhase) {
+function confirmAndDraw(ram, rom, ctx, a5, a6, d0, nextPhase, d7) {
   if (ram.u8(a6 + HANDLER4.autoConfirm) === 0                // $25D23A / $25D486 tst.b ($30,A6)
       && (d0 & HANDLER4.confirmMask) === 0) return;          // $25D240 / $25D48C andi.w #$70
   ctx.soundPost?.(HANDLER4.confirmSound);                    // $25D248 / $25D494 jsr $28C6E0
@@ -240,12 +240,15 @@ function confirmAndDraw(ram, rom, ctx, a5, a6, d0, nextPhase) {
       + `second bit-0 draw. Unread`);
   }
   if ((guard & 0x02) === 0) {                                // $25D26A / $25D4BA bset #$1
-    for (const r of HANDLER4.drawsB) ctx.unported?.note(r, `$${r.toString(16).toUpperCase()} -- `
-      + `gated by bit 1 of ($3,A5). Unread`);
+    draw25E6CE(ram, rom, ctx, a6);                            // $25D272 / $25D4C2 jsr $25E6CE
   }
-  for (const r of HANDLER4.drawsAlways) {
-    ctx.unported?.note(r, `$${r.toString(16).toUpperCase()} -- ungated draw. Unread`);
-  }
+  // THE UNGATED TAIL, IN ROM ORDER. The order is load-bearing: these four emit into the same
+  // bucket, so reordering them reorders the sprites. $25D278/$25D27E/$25D284/$25D28A on state 1's
+  // tail and $25D4C8/$25D4CE/$25D4D4/$25D4DA on state 4's.
+  ctx.unported?.note(HANDLER4.drawsAlways[0], '$25E824 -- ungated draw. Unread');
+  ctx.unported?.note(HANDLER4.drawsAlways[1], '$25EDF8 -- ungated draw. Unread');
+  draw25EF30(ram, rom, ctx, a6, d7);                         // $25D284 / $25D4D4 jsr $25EF30
+  ctx.unported?.note(HANDLER4.drawsAlways[3], '$25F074 -- ungated draw. Unread');
 }
 
 export const HANDLER1 = Object.freeze({
@@ -285,7 +288,7 @@ export function phase1_25D1DA(ram, rom, ctx, a5, a6, d7) {
   if ((d0 & (1 << HANDLER4.bitPrev)) !== 0) step(-1, HANDLER1.options - 1, HANDLER1.options - 1);
   if ((d0 & (1 << HANDLER4.bitNext)) !== 0) step(+1, 0, HANDLER1.options - 1);
 
-  confirmAndDraw(ram, rom, ctx, a5, a6, d0, HANDLER1.nextPhase);   // $25D23A..$25D292
+  confirmAndDraw(ram, rom, ctx, a5, a6, d0, HANDLER1.nextPhase, d7);   // $25D23A..$25D292
 }
 
 export const HANDLER0 = Object.freeze({
@@ -388,4 +391,184 @@ export function draw25E220(ram, rom, ctx, a6) {
     if (sp.op === 'addLowB') d1 = ((hi << 16) | u16(lo + offB)) >>> 0;   // $25E28A add.w, NO swap
     enqueueRegistersThroughStub(ram, rom, DRAW_25E220.stub, d1, sp.art, sp.attr, sp.pal);
   }
+}
+
+export const DRAW_25E6CE = Object.freeze({
+  addr: 0x25e6ce, end: 0x25e713, stub: 0x23dfb4,
+  base: 0x38001c00,                          // $25E6CE move.l -- CANCELLED, see the note below
+  addHigh: 0xc800, addLow: 0xe400,           // $25E6D6 / $25E6E0 addi.w
+  offA: 0x3e,                                // ($3E,A6), READ THREE TIMES, written never
+  art: 0x0019c068, attr: 0x38e0,
+  // $25E6EE move.w #$0015,D4 and $25E70A ori.w #$6000,D4 -- BOTH flip bits at once.
+  pal: Object.freeze([0x0015, 0x6015]), flipOr: 0x6000,
+});
+
+/** `$25E6CE` -- A MIRROR PAIR, and the whole routine is 70 bytes (`$25E6CE..$25E713`).
+ *
+ *  The 342-byte figure in the older docket was the GAP to the next routine, not this one's length.
+ *  Nothing past `$25E70E jmp $23DFB4` belongs to it.
+ *
+ *  **`#$38001C00` IS FULLY CANCELLED BY THE TWO `addi.w`, AND THAT IS DELIBERATE.**
+ *  `$25E6D6 addi.w #$C800` lands on the `$3800` half and `$3800 + $C800` wraps to exactly `$0000`;
+ *  `$25E6E0 addi.w #$E400` lands on the `$1C00` half and `$1C00 + $E400` wraps to exactly `$0000`.
+ *  So D1 leaves the preamble as `(+/-f) << 16` with a HARD ZERO low word -- the long immediate is a
+ *  carrier for two constants that annihilate, not a coordinate base. A port that keeps `$38001C00`
+ *  and adds the offset on top is wrong by `$3800` in the long axis and by `$1C00` in the short one.
+ *  It looks like a transcription mistake. It is not. The arithmetic is kept in the code below rather
+ *  than folded to `0` so that the cancellation is visible and checkable.
+ *
+ *  **IT HAS NO GATES OF ITS OWN.** No `tst`, no `cmp`, no branch: one entry, one exit, two emits.
+ *  That is a real structural difference from `$25E220`, which opens with two gates of opposite
+ *  sense. This routine's only gate is the caller's `bset #$1,($3,A5)`.
+ *
+ *  **THE SECOND EMIT RELOADS D2 WITH THE VALUE IT ALREADY HOLDS** (`$25E6F8 move.l #$0019C068,D2`).
+ *  D2 survives the `jsr`, so the reload is redundant -- transcribed anyway, because "redundant" is a
+ *  claim about `$23DFB4`'s clobber set and that claim is what would silently rot.
+ *
+ *  **AND THE MIRROR IS TWO SEPARATE `sub.w`, NOT ONE.** `$25E700` and `$25E704` both subtract
+ *  `($3E,A6)` from the low word, which after the swap holds `f`: `f - f - f = -f`. Collapsing them
+ *  into a single subtract gives `0` and both sprites land on top of each other.
+ *
+ *  `($3E,A6)` is a WORD and is never written non-zero anywhere in `$25C000..$260000` -- the only
+ *  writer there is the `clr.w` at `$25D090`, already ported as `HANDLER0.clearWords` entry `$3E`.
+ *  Both sprites therefore currently sit at coordinate 0. The field is still READ rather than folded
+ *  to a constant, because a writer outside that range would be invisible if it were folded.
+ *
+ *  Inherited: **A6 only**. D7 is NOT used, so there is no side select here.
+ */
+export function draw25E6CE(ram, rom, ctx, a6) {
+  const f = ram.u16(a6 + DRAW_25E6CE.offA);                  // $25E6DA / $25E700 / $25E704 ($3E,A6)
+
+  // D1 is carried as an explicit (high, low) pair so every `swap` is a real step and the two
+  // cancellations stay separately visible. $25E6CE move.l #$38001C00,D1:
+  let hi = (DRAW_25E6CE.base >>> 16) & 0xffff;               // $3800
+  let lo = DRAW_25E6CE.base & 0xffff;                        // $1C00
+  [hi, lo] = [lo, hi];                                       // $25E6D4 swap  -> D1 = $1C00_3800
+  lo = u16(lo + DRAW_25E6CE.addHigh);                        // $25E6D6 addi.w #$C800 -> EXACT $0000
+  lo = u16(lo + f);                                          // $25E6DA add.w ($3E,A6),D1 -> f
+  [hi, lo] = [lo, hi];                                       // $25E6DE swap  -> D1 = f_1C00
+  lo = u16(lo + DRAW_25E6CE.addLow);                         // $25E6E0 addi.w #$E400 -> EXACT $0000
+
+  enqueueRegistersThroughStub(ram, rom, DRAW_25E6CE.stub, ((hi << 16) | lo) >>> 0,
+    DRAW_25E6CE.art, DRAW_25E6CE.attr, DRAW_25E6CE.pal[0]);  // $25E6F2 jsr $23DFB4 -- EMIT 1
+
+  // $25E6F8 move.l #$0019C068,D2 -- the redundant reload, transcribed as its own read of the
+  // constant rather than "whatever D2 still holds".
+  const art2 = DRAW_25E6CE.art;
+  [hi, lo] = [lo, hi];                                       // $25E6FE swap  -> D1 = $0000_f
+  lo = u16(lo - f);                                          // $25E700 sub.w ($3E,A6),D1 -> $0000
+  lo = u16(lo - f);                                          // $25E704 sub.w ($3E,A6),D1 -> -f
+  [hi, lo] = [lo, hi];                                       // $25E708 swap  -> D1 = (-f)_$0000
+  const pal2 = (DRAW_25E6CE.pal[0] | DRAW_25E6CE.flipOr) & 0xffff;   // $25E70A ori.w #$6000,D4
+  enqueueRegistersThroughStub(ram, rom, DRAW_25E6CE.stub, ((hi << 16) | lo) >>> 0,
+    art2, DRAW_25E6CE.attr, pal2);                           // $25E70E jmp $23DFB4 -- EMIT 2, TAIL
+}
+
+export const DRAW_25EF30 = Object.freeze({
+  addr: 0x25ef30, end: 0x25f013, stub: 0x23dfb4,
+  bodyA: 0x25ef40, gateA: 0x25ef46,          // the bsr TARGET is the gate, not the body head
+  bodyB: 0x25efa8, gateB: 0x25efae,
+  other: 0x70,                               // +/- SCREEN17.recStride; the sign comes from D7
+  loopCounter: 0x813098,                     // absolute WORD -- both halves draw on loop 0 only
+  off36: 0x36, off38: 0x38,
+  // Resolved D1 immediates, after every cancelling `addi.w`. Every LOW word is exactly $0000 on the
+  // first emit of each half, exactly as in $25E6CE.
+  a1: Object.freeze({ base: 0x4500, art: 0x001a0630, attr: 0x16e0, pal: 0x0016, op: 'addHigh36' }),
+  a2: Object.freeze({ high: 0x35c0, base: 0x2800, art: 0x001a0fd4, attr: 0x0a40, pal: 0x0016,
+    op: 'addLow38' }),
+  b1: Object.freeze({ base: 0xff40, art: 0x001a0630, attr: 0x16e0, pal: 0x0076, op: 'subHigh36' }),
+  b2: Object.freeze({ high: 0x2600, base: 0x0000, art: 0x001a1118, attr: 0x0a40, pal: 0x0016,
+    op: 'subLow38' }),
+  oriB1: 0x0060,                             // $25EFDC ori.w #$0060,D4 -- THIS EMIT ONLY
+});
+
+/** `$25EF30` -- TWO MUTUALLY RECURSIVE HALVES, `$25EF30..$25F013`, 228 bytes.
+ *
+ *  This is NOT a body plus a subroutine. It is two PEER bodies that call each other, and the only
+ *  thing that stops the recursion is WHERE the `bsr`s land.
+ *
+ *  **BOTH `bsr` TARGETS ARE THE GATE ENTRIES, PAST THE `tst.b (A1)`.** `$25EF44 bsr $25EFAE` skips
+ *  body B's own `tst.b (A1) / bne`, and `$25EFAC bsr $25EF46` skips body A's. Neither half re-tests
+ *  the other record, so the mutual call is one level deep by construction and not by luck. Modelled
+ *  below as two functions whose entry point IS the gate, with the `tst.b` living in the caller half.
+ *  Point either `bsr` at the body head instead and it either spins forever or drops a sprite pair.
+ *
+ *  **A1 IS THE *OTHER* RECORD.** `$25EF30 lea (-$70,A6),A1` is the DEFAULT and `$25EF38 lea
+ *  ($70,A6),A1` is the D7-driven override, and D7 then picks the body as well: D7 != 0 takes body A
+ *  with `A1 = A6 + $70`, D7 == 0 takes body B with `A1 = A6 - $70`. Since D7 != 0 is record 0, both
+ *  halves are always looking at the record they are not drawing for. `(A1)` is a BYTE -- the other
+ *  record's active flag.
+ *
+ *  **BEHAVIOUR: if the other record is EMPTY, BOTH halves draw, and the other half runs FIRST**,
+ *  because the `bsr` precedes the fall-through into the caller's own gate.
+ *
+ *  `tst.w $813098` is the loop counter, so this pair draws on the FIRST LOOP ONLY -- and it is
+ *  tested INSIDE each half, which is why a non-zero counter silences both even when the `bsr` fired.
+ *
+ *  **NOTHING IS INHERITED BETWEEN EMITS.** D1..D4 are rebuilt from immediates every single time.
+ *  That is the opposite of `$25E220`, whose fourth sprite inherits D1's high word from the third,
+ *  and it is why `$25EFDC ori.w #$0060,D4` does NOT survive into emit B2: `$25F006 move.w #$0016,D4`
+ *  is a full-word write that overwrites the `$76` outright.
+ *
+ *  Same cancelling-immediate idiom as `$25E6CE` (see there): `$5B00 + $EA00 -> $4500` then
+ *  `$1C00 + $E400 -> $0000`, and `$1540 + $EA00 -> $FF40` then `$1C00 + $E400 -> $0000`. The first
+ *  emit of each half therefore has a HARD ZERO low word.
+ *
+ *  Reads only: `($36,A6)` word, `($38,A6)` word, `(A1)` byte, `$813098` word.
+ *  **THE ROUTINE WRITES NOTHING TO RAM ITSELF.** Inherited: A6 and D7. A0/A4 untouched.
+ */
+function emitHalfA_25EF46(ram, rom, a6) {
+  if (ram.u16(DRAW_25EF30.loopCounter) !== 0) return;        // $25EF46 tst.w $813098 / bne $25EFA6
+  const m36 = ram.u16(a6 + DRAW_25EF30.off36);
+  const m38 = ram.u16(a6 + DRAW_25EF30.off38);
+
+  // $25EF50..$25EF64: $5B00 -> +$EA00 = $4500, +m36; low $1C00 -> +$E400 = $0000.
+  const d1a1 = ((u16(DRAW_25EF30.a1.base + m36) << 16) | 0x0000) >>> 0;
+  enqueueRegistersThroughStub(ram, rom, DRAW_25EF30.stub, d1a1,
+    DRAW_25EF30.a1.art, DRAW_25EF30.a1.attr, DRAW_25EF30.a1.pal);    // $25EF74 jsr -- EMIT A1
+
+  // $25EF7A..$25EF8E: high $3FC0 -> +$F600 = $35C0; low $3000 -> +$F800 = $2800, +m38.
+  const d1a2 = ((DRAW_25EF30.a2.high << 16) | u16(DRAW_25EF30.a2.base + m38)) >>> 0;
+  enqueueRegistersThroughStub(ram, rom, DRAW_25EF30.stub, d1a2,
+    DRAW_25EF30.a2.art, DRAW_25EF30.a2.attr, DRAW_25EF30.a2.pal);    // $25EF9E jmp -- EMIT A2, TAIL
+  // $25EFA4 nop / $25EFA6 rts
+}
+
+function emitHalfB_25EFAE(ram, rom, a6) {
+  if (ram.u16(DRAW_25EF30.loopCounter) !== 0) return;        // $25EFAE tst.w $813098 / bne $25F012
+  const m36 = ram.u16(a6 + DRAW_25EF30.off36);
+  const m38 = ram.u16(a6 + DRAW_25EF30.off38);
+
+  // $25EFB8..$25EFCC: $1540, SUB m36 ($25EFC0 -- body A ADDs), then +$EA00 = $FF40 - m36;
+  // low $1C00 -> +$E400 = $0000.
+  const d1b1 = ((u16(DRAW_25EF30.b1.base - m36) << 16) | 0x0000) >>> 0;
+  // $25EFDC ori.w #$0060,D4 -> $0076. It applies to THIS EMIT ONLY.
+  const palB1 = (DRAW_25EF30.a1.pal | DRAW_25EF30.oriB1) & 0xffff;
+  enqueueRegistersThroughStub(ram, rom, DRAW_25EF30.stub, d1b1,
+    DRAW_25EF30.b1.art, DRAW_25EF30.b1.attr, palB1);                 // $25EFE0 jsr -- EMIT B1
+
+  // $25EFE6..$25EFFA: high $3000 -> +$F600 = $2600; low $0800 -> +$F800 = $0000, SUB m38.
+  const d1b2 = ((DRAW_25EF30.b2.high << 16) | u16(DRAW_25EF30.b2.base - m38)) >>> 0;
+  // $25F006 move.w #$0016,D4 -- a FULL WORD write, so B1's ori is gone. Not `palB1 & ~$60`.
+  enqueueRegistersThroughStub(ram, rom, DRAW_25EF30.stub, d1b2,
+    DRAW_25EF30.b2.art, DRAW_25EF30.b2.attr, DRAW_25EF30.b2.pal);    // $25F00A jmp -- EMIT B2, TAIL
+  // $25F010 nop / $25F012 rts
+}
+
+export function draw25EF30(ram, rom, ctx, a6, d7) {
+  // $25EF34 / $25EF3C are `tst.w D7`, a WORD test, so mask before testing -- the same reason
+  // `sideFromD7_25D4E4` does. A caller that hands over a wider value must not read as non-zero here.
+  const side = u16(d7);
+  // $25EF30 lea (-$70,A6),A1 is the DEFAULT; $25EF38 lea ($70,A6),A1 is D7's override.
+  const a1 = side !== 0 ? a6 + DRAW_25EF30.other : a6 - DRAW_25EF30.other;
+
+  if (side !== 0) {                                          // $25EF3C tst.w D7 / beq $25EFA8
+    // BODY A. $25EF40 tst.b (A1) / bne $25EF46 -- the other record EMPTY runs body B FIRST.
+    if (ram.u8(a1) === 0) emitHalfB_25EFAE(ram, rom, a6);     // $25EF44 bsr $25EFAE, past B's tst.b
+    emitHalfA_25EF46(ram, rom, a6);                           // fall through into A's own gate
+    return;
+  }
+  // BODY B. $25EFA8 tst.b (A1) / bne $25EFAE.
+  if (ram.u8(a1) === 0) emitHalfA_25EF46(ram, rom, a6);       // $25EFAC bsr $25EF46, BACKWARD
+  emitHalfB_25EFAE(ram, rom, a6);
 }
