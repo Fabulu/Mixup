@@ -127,10 +127,23 @@ them, from the neighbours' recon and verified by hand:
   same trap as `$25E220`'s fourth sprite inheriting D1's high word. Rebuilding the registers per
   emit would silently change the picture.
 
-  **AND `$25EB2E..$25EB62` IS A SEPARATE 54-BYTE ROUTINE**, calling `$241812` at `$25EB30` and ending
-  at the `rts` at `$25EB62` -- the very `rts` that bounds `$25EDF8`'s data block from below. **It has
-  no `jsr` or `jmp` caller anywhere in the 6 MB image.** Either something reaches it by `bsr`/`bra`
-  from inside `$25E824`, or it is dead. Do not assume either; find out.
+  **`$25EB2E..$25EB62` IS `$25E824`'s SHARED BAIL-OUT TAIL, NOT AN ORPHAN. I called it an orphan
+  first and that was wrong.** It has no `jsr` or `jmp` caller anywhere in the image -- true, and
+  misleading, because it is reached by **`Bcc`**. **FIVE conditional branches inside `$25E824` jump
+  FORWARD, past the routine's own `rts` at `$25EB2C`, into `$25EB2E`:**
+
+      $25E870   $25E916   $25E9D4   $25EA52   $25EAD0   -- all -> $25EB2E
+
+  So `$25E824` has **TWO exits**: the normal fall-through to `rts` at `$25EB2C`, and this shared tail
+  which calls `$241812` at `$25EB30` and returns at `$25EB62`. Five gates bailing to one tail, sitting
+  between the emit sites, is the routine's skeleton. **Treat `$25EB2E..$25EB62` as part of this unit.**
+
+  The earlier note that its `rts` at `$25EB62` bounds `$25EDF8`'s data block from below still holds;
+  the routine owning that `rts` is `$25E824`.
+
+  **The lesson, and it has now cost two wrong claims this wave:** "nothing calls it" is not
+  "nothing reaches it". Scan `Bcc` and `bra` as well as `jsr`/`jmp` before calling anything dead or
+  orphaned -- the same mistake shape as my `$25E29E`/`$25E4D0` containment error.
 
 * **`$25E29E` HAS NO BRANCHES AT ALL, AND TWO OF ITS FOUR GROUPS NEVER EMIT.** Mechanical scans over
   `$25E29E..$25E480`, all verified:
