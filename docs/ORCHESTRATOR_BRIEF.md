@@ -14,6 +14,10 @@ the expensive way.
 
 **The milestone:** one credit from stage 1 through stage 5 with no `Unreached`, then the loops.
 
+**THE FINISH LINE (owner, 2026-08-14):** the project is done when **D36, the second game in the cartridge --
+DoDonPachi DaiOuJou WHITE LABEL -- is finished.** D36 stays LAST in order, exactly as before; this names the
+endpoint, it does not promote the item. Everything in section 6 comes first.
+
 **The owner's standing goal, stated repeatedly and never withdrawn:**
 > "finish everything we ever talked about including stage 5, hibachi, the docket, and everything I forgot."
 
@@ -73,15 +77,25 @@ several routines land in the same file.
    shipped were misreadings that looked plausible. Catching them at spec review is far cheaper than
    after a port.
 4. **Dispatch a PORT agent** with the reviewed spec (brief in 4.2). **Never run two port agents on
-   the same file at once.** Either serialise them or give each `isolation: "worktree"`.
+   the same file at once.** Serialise them. **Worktree isolation is refused by the owner**, so
+   serialising is the only option.
 5. **Verify**: full suite, then the gate.
 6. **Commit and push yourself.** Keep the commit message factual about what was found and what was
    wrong. Update `docs/NEXT_AGENT_HANDOFF.md` in the same commit.
 
-### Parallelism that is safe
+### Parallelism: the owner asked for ONE AGENT AT A TIME (2026-08-14)
 
-* Many RECON agents at once -- they are read-only.
-* PORT agents in parallel **only** when their target files are disjoint, or with worktree isolation.
+**Run agents SERIALLY.** One recon, review its spec, one port, verify, commit, then the next unit. The
+owner's words: *"only work in parallel if you are sure it disrupts nothing. One agent working at the time is
+usually better."* Read-only recon agents genuinely cannot corrupt the tree, so fanning them out is *safe* --
+but the owner was shown six at once and asked for serial anyway, so "it is technically safe" is not a
+sufficient reason. Parallelise only when you can state why it disrupts nothing AND the work genuinely needs
+it.
+
+**WORKTREE ISOLATION IS REFUSED.** The owner said *"please don't do worktrees."* The brief previously
+offered it as the fallback for port-agent file contention; it is withdrawn. Serialisation by target file is
+the only concurrency control, and since all seven shared draws land in `src/objslot9.js`, that means one
+port agent at a time there regardless.
 * One VERIFY pass at a time. **Never run `export-tables.py` while the suite is running** -- it
   regenerates data the W129/W132 replay tests read and turns four mutation tests red. A red
   MUT-A/B/C is a race before it is a regression: re-run before diagnosing.

@@ -1843,7 +1843,7 @@ game logic -- which makes it the right first one to build and the easiest to rea
 frame and which only feels like it does, and no way to keep the faithful build honest while they exist. A
 mod that silently becomes the default is the failure mode to design against.
 
-### D36: THE SECOND GAME IN THE ROM -- **DEFINITELY LAST**
+### D36: THE SECOND GAME IN THE ROM -- **DEFINITELY LAST, AND IT IS THE FINISH LINE**
 
 The cartridge carries a second game. **The owner's instruction is explicit: this is the last thing tackled,
 after everything else.** Do not start it opportunistically because a window happens to be declared or a
@@ -1851,3 +1851,16 @@ routine looks adjacent, and do not let it absorb effort while stage 1-5, the loo
 
 Recording it now so it is not rediscovered as a surprise, and so nobody treats an unexplained ROM region as
 in-scope work when it belongs to the second game.
+
+**IDENTIFIED (owner, 2026-08-14): the second game is DoDonPachi DaiOuJou WHITE LABEL.** The ROM this port
+translates is Black Label Version-B, and the cartridge carries the White Label build alongside it.
+
+**AND IT IS NOW THE PROJECT'S DEFINITION OF DONE.** The owner's words: *"the goal is accomplished when,
+following the tasks we set out, the agent finishes the second game in the rom, doj white label."* So D36 is
+both LAST in order and the terminal deliverable -- the docket ahead of it is not optional groundwork to be
+cut short in order to reach it, and reaching it early is not permitted either. Order is unchanged; only the
+endpoint is now named.
+
+**NOTHING HAS BEEN DECODED FOR IT.** No entry point, no region bound, no dispatch table. When its turn
+comes, the first job is to locate its reset vector and bound its region, not to assume it mirrors Black
+Label's layout.
