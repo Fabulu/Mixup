@@ -115,9 +115,9 @@ but it is a real bound and it reorders the docket:
 | [16] | `$256E7A` | `$01E` | `$38F6` | |
 | [15] | `$291F66` | `$01E` | last in the image | |
 
-**THIS CORRECTS THE HANDOFF'S OWN D37 ESTIMATE.** It said slot [18]'s three state routines total "better than
-2 KB". The whole slot is bounded at 406 bytes by slot [2]'s routine at `$2491C0`. The 2 KB figure was not
-measured against the table.
+**READ THE BOUND CORRECTLY.** Slot [18]'s DISPATCH ROUTINE is 406 bytes, bounded by slot [2] at `$2491C0`.
+Its CALLEES are not in that 406 and they are the bulk of D37 -- see below. The table bounds the routine, never
+the subsystem, and the same caution applies to every other row.
 
 ### SLOT [18] IS THE NEXT UNIT AND IT IS PART-READ
 
@@ -129,6 +129,28 @@ measured against the table.
   `tallyscreen.js`'s `readInput23D186`. `$2475CA` is not.
 * **`$24911A` is its text table**, reached by `lea (d16,PC),A0` at `$249046` with D0=0, D1=`$1E`, D2=0.
 * `$249058 andi.w #$80F0,D0` is the input mask, and a non-zero result advances `($4,A5)` to 1.
+* **State 0 is `$24900A`**: set `($2,A5)=1`, clear both `($4,A5)` and `($6,A5)`, `jsr $23C622` (ported), then
+  `jsr $2472D4`.
+* **IT ENDS BY STAGING DISPATCH TYPE 8 AND KILLING ITSELF.** `$2490F4 moveq #$8 / $2490F8 jsr $241182 /
+  $2490FE move.w #$D,($4,A5) / $249104 JMP $241292`. So slot [18] hands over to **slot [8] `$25A770`**, and the
+  two are one chain rather than two screens. Remember `$241182` wants the dispatch-table priority lookup
+  `(t) => rom.u16(0x240F62 + t * 8 + 4)`, not a constant -- that defect has now been made twice.
+
+**THE SIX CALLEES ARE THE REAL D37 WORK, and none of them is ported.** Upper bounds only -- the gaps include
+code that may not belong to them:
+
+| routine | inner state | bound |
+|---|---|---|
+| `$248FD0` | 5 | 58 |
+| `$24842C` | 3 | 102 |
+| `$2472D4` | state 0's setup | 758 |
+| `$248A62` | 4 | 1390 |
+| `$248492` | 2 | 1488 |
+| `$2475CA` | 1 | 3682 |
+
+**So the original "better than 2 KB" was about the CALLEES and it was not wrong.** Start with `$248FD0` and
+`$24842C`: together they are 160 bytes and they are inner states 5 and 3, so landing them makes the state
+machine's two ends real before the middle is touched.
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
