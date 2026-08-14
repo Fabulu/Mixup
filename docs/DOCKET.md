@@ -1677,6 +1677,16 @@ rather than independent bugs, so re-read them once this lands.
 Every ending the cartridge can reach, and the conditions that select between them. Nothing here is measured
 yet.
 
+**W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own
+text says otherwise: `$24910E` is `'Asic27 Test'`, `$24911A` is `'Wait or Press Any To Start !!'`, and the
+block its callees print from (`$2C3100..$2C32B8`) is `'Asic27 Stack Ram Error !!'`, `'Global Ram Testing...'`,
+`'Data Compare Testing...'`, `'All Functions Test Ok!'`, `'A) Exit'`. **Slot [18] is the ASIC27 coprocessor's
+operator self-test.** It is real work and worth porting for completeness, but it is not an ending and it is not
+on the path to one credit through stage 5.
+
+**Do not re-anchor D37 on a slot without reading its strings first.** That check cost one command and would
+have saved the wrong anchor standing for two waves.
+
 **What is already known that bears on it, so it is not rediscovered:**
 
 * **`$B0` is Hibachi, the boss-route root** (`$2A42D4`/`$2A4606`), still unported -- but **W357 read its whole

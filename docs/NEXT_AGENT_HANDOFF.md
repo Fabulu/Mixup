@@ -105,8 +105,8 @@ but it is a real bound and it reorders the docket:
 
 | slot | routine | rec | bound | note |
 |---|---|---|---|---|
-| [18] | `$24902A` | `$00A` | **`$196` = 406** | **D37. The SMALLEST untouched slot.** |
-| [13] | `$288A60` | `$00B` | `$20C` = 524 | |
+| [18] | `$24902A` | `$00A` | `$196` = 406 | **ASIC27 SELF-TEST, not D37.** Smallest, lowest value. |
+| [13] | `$288A60` | `$00B` | `$20C` = 524 | **the smallest that is not a diagnostic** |
 | [ 9] | `$25CACA` | `$00A` | `$3EE` = 1006 | D34 candidate |
 | [19] | `$28EE88` | `$01E` | `$524` | |
 | [17] | `$25CEB8` | `$00A` | `$CFC` | D33 candidate |
@@ -119,7 +119,37 @@ but it is a real bound and it reorders the docket:
 Its CALLEES are not in that 406 and they are the bulk of D37 -- see below. The table bounds the routine, never
 the subsystem, and the same caution applies to every other row.
 
-### SLOT [18] IS THE NEXT UNIT AND IT IS PART-READ
+### SLOT [18] IS NOT D37. IT IS THE ASIC27 SELF-TEST, AND ITS OWN STRINGS SAY SO.
+
+`$24911A` is `'Wait or Press Any To Start !!'` and `$24910E` is `'Asic27 Test'`. The block its callees print
+from, `$2C3100..$2C32B8`, is a hardware diagnostic end to end:
+
+    'Testing...'                      'Asic27 Stack Ram Error !!'
+    'Auto Ram Testing...'             'Asic27 Auto Ram Error !!'
+    'Global Ram Testing...'           'Asic27 Global Ram Error !!'
+    'Data Compare Testing...'         'Global Ram Operand Add Error'
+    'All Functions Test Ok!'          'Move Functions Compare Error'
+    'A) Exit'                         'cnt='
+
+**SO D37'S ANCHOR IS WRONG AND SHOULD BE DROPPED.** The handoff has been saying "D37 = slot [18] `$24902A`,
+three signals agree". The strings settle it: this is the ASIC27 coprocessor's operator self-test, not the
+endings. Everything that looked like corroboration fits the test menu at least as well -- it reads the service
+switches, it chains to another slot, and `$24842C` BLOCKS on input inside a loop, which is normal for a service
+menu and wrong for anything in the frame loop.
+
+**AND IT DROPS DOWN THE ORDER.** A hardware diagnostic is not on the path to one credit through stage 5. It is
+worth porting eventually for completeness, not next.
+
+**`$259FBC` IS ALREADY PORTED.** It is `txString25A14C` with the attribute forced to zero and its arguments
+taken off the STACK instead of registers -- identical loop, identical `swap D4 / move.w D5,D4`. **Fifth time**
+a routine listed as unported turned out to be an existing one under another entry. `$246C78` is a bare thunk
+onto it: `link A6,#0`, re-push `($8,A6)/($C,A6)/($10,A6)`, `jsr $259FBC`, `unlk`.
+
+**THE C FRAME LAYOUT IS NOW PINNED**: `link A6,#0`, return address at `($4,A6)`, FIRST argument at `($8,A6)`,
+then `($C,A6)`, `($10,A6)`. `$259FBC` reads its three off `($40,A7)/($44,A7)/($48,A7)` after a 15-register
+`movem`, which is 60 bytes plus the return address. Both readings agree, so the convention is measured twice.
+
+### SLOT [18]'s SHAPE, ALREADY READ (keep it, it is still correct)
 
 * **The dispatch address is NOT the start, again.** `$24902A tst.b ($2,A5) / beq.s` branches BACKWARD to
   `$24900A`. Fourth time this port has hit that; measure from the preceding `rts`.
@@ -174,8 +204,9 @@ skeleton and the WRONG one for anything inside these routines.
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **Slot [18] `$24902A`** -- D37, 406 bytes bounded, both big callees already ported. Start from `$24900A`.
-2. **Slot [13] `$288A60`** -- 524 bytes, the next smallest.
+1. **Slot [13] `$288A60`** -- 524 bytes, the smallest untouched slot that is not a diagnostic.
+2. **Slot [9] `$25CACA`** (1006) and **slot [17] `$25CEB8`** -- the D34 and D33 candidates.
+3. **Slot [18] `$24902A`** -- the ASIC27 self-test. Real work, but NOT on the path to the milestone.
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
    chain built and driven, three state routines >2 KB unwritten), **D38** input lag faithful (logic side measured
