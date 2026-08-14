@@ -23,6 +23,7 @@ import { u16 } from './ram.js';
 import { paletteSet241688, install24150A } from './palette.js';
 import { txString25A14C } from './background.js';
 import { readInput23D186 } from './tallyscreen.js';
+import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { queueKill } from './objalloc.js';
 import {
   SCREEN17, phase3_25D306, phase5_25D39C, phase6_25D4F0, sideFromD7_25D4E4, DESC17,
@@ -207,7 +208,7 @@ export function phase4_25D402(ram, rom, ctx, a5, a6, d7) {
   ram.setU8(a5 + (side === 0 ? 0x06 : 0x07),                 // $25D474 tst.w D7 / $25D478 / $25D480
     ram.u8(a6 + 0x05));
 
-  confirmAndDraw(ram, ctx, a5, a6, d0, HANDLER4.nextPhase);   // $25D486..$25D4E2
+  confirmAndDraw(ram, rom, ctx, a5, a6, d0, HANDLER4.nextPhase);   // $25D486..$25D4E2
 }
 
 /** `$25D486..$25D4E2` and `$25D23A..$25D292` -- THE SHARED CONFIRM-AND-DRAW TAIL. The two blocks are
@@ -222,7 +223,7 @@ export function phase4_25D402(ram, rom, ctx, a5, a6, d7) {
  *  the OLD bit, so the FIRST record to reach here does the gated draws and the second skips them.
  *  Drop the guard and the shared parts draw twice per frame.
  */
-function confirmAndDraw(ram, ctx, a5, a6, d0, nextPhase) {
+function confirmAndDraw(ram, rom, ctx, a5, a6, d0, nextPhase) {
   if (ram.u8(a6 + HANDLER4.autoConfirm) === 0                // $25D23A / $25D486 tst.b ($30,A6)
       && (d0 & HANDLER4.confirmMask) === 0) return;          // $25D240 / $25D48C andi.w #$70
   ctx.soundPost?.(HANDLER4.confirmSound);                    // $25D248 / $25D494 jsr $28C6E0
@@ -234,8 +235,9 @@ function confirmAndDraw(ram, ctx, a5, a6, d0, nextPhase) {
   const guard = ram.u8(a5 + HANDLER4.sharedGuard);           // $25D256 / $25D4A6 bset #$0,($3,A5)
   ram.setU8(a5 + HANDLER4.sharedGuard, guard | 0x03);
   if ((guard & 0x01) === 0) {
-    for (const r of HANDLER4.drawsA) ctx.unported?.note(r, `$${r.toString(16).toUpperCase()} -- a `
-      + `shared draw gated by bit 0 of ($3,A5). Unread`);
+    draw25E220(ram, rom, ctx, a6);                           // $25D25E / $25D4AE jsr $25E220
+    ctx.unported?.note(HANDLER4.drawsA[1], `$${HANDLER4.drawsA[1].toString(16).toUpperCase()} -- the `
+      + `second bit-0 draw. Unread`);
   }
   if ((guard & 0x02) === 0) {                                // $25D26A / $25D4BA bset #$1
     for (const r of HANDLER4.drawsB) ctx.unported?.note(r, `$${r.toString(16).toUpperCase()} -- `
@@ -283,7 +285,7 @@ export function phase1_25D1DA(ram, rom, ctx, a5, a6, d7) {
   if ((d0 & (1 << HANDLER4.bitPrev)) !== 0) step(-1, HANDLER1.options - 1, HANDLER1.options - 1);
   if ((d0 & (1 << HANDLER4.bitNext)) !== 0) step(+1, 0, HANDLER1.options - 1);
 
-  confirmAndDraw(ram, ctx, a5, a6, d0, HANDLER1.nextPhase);  // $25D23A..$25D292
+  confirmAndDraw(ram, rom, ctx, a5, a6, d0, HANDLER1.nextPhase);   // $25D23A..$25D292
 }
 
 export const HANDLER0 = Object.freeze({
@@ -341,4 +343,49 @@ export function phase0_25D010(ram, rom, ctx, a6, d7) {
     }
   }
   ram.setU8(a6 + SCREEN17.phaseAt, HANDLER0.nextPhase);      // $25D15C -- 0 ADVANCES to 1
+}
+
+export const DRAW_25E220 = Object.freeze({
+  addr: 0x25e220, exit: 0x25e21e, stub: 0x23dfb4,
+  gateWord: 0x64, gateByte: 0x35, offA: 0x46, offB: 0x48,
+  sprites: Object.freeze([
+    Object.freeze({ d1: 0x34010d00, art: 0x0019dd68, attr: 0x0c78, pal: 0x13, op: 'addHigh' }),
+    Object.freeze({ d1: 0x21410d00, art: 0x0019e03c, attr: 0x0c78, pal: 0x13, op: 'subHigh' }),
+    Object.freeze({ d1: 0x21810e00, art: 0x001a125c, attr: 0x1650, pal: 0x14, op: 'subLowB' }),
+    Object.freeze({ d1: 0x21811640, art: 0x001a15d0, attr: 0x1650, pal: 0x14, op: 'addLowB' }),
+  ]),
+});
+
+/** `$25E220` -- the first of the SEVEN shared draws, called by both state 1 and state 4.
+ *
+ *  TWO GATES, and they are different kinds: `tst.w ($64,A6) / beq` returns when the WORD is zero,
+ *  and `tst.b ($35,A6) / bne` returns when the BYTE is NON-zero. Both jump to the same `rts` at
+ *  `$25E21E`, which sits BEFORE the entry -- so the routine's own exit is above its first byte.
+ *
+ *  FOUR SPRITES, and the offsets go to different HALVES of D1. The first two use `swap D1 /
+ *  add.w or sub.w ($46,A6) / swap`, so they move the HIGH word; the third and fourth apply
+ *  `($48,A6)` to the LOW word with no swap at all. Same idiom, opposite halves, and reading the
+ *  swaps as decoration puts every offset in the wrong axis.
+ *
+ *  THE FOURTH SPRITE INHERITS D1'S HIGH WORD FROM THE THIRD. `$25E286 move.w #$1640,D1` writes only
+ *  the low half, so `$2181` carries over. Rebuilding D1 from scratch for each sprite loses that.
+ *
+ *  It ends in `jmp $23DFB4`, so the fourth emit is a tail call rather than a fourth `jsr`.
+ */
+export function draw25E220(ram, rom, ctx, a6) {
+  if (ram.u16(a6 + DRAW_25E220.gateWord) === 0) return;      // $25E220 tst.w / beq $25E21E
+  if (ram.u8(a6 + DRAW_25E220.gateByte) !== 0) return;       // $25E226 tst.b / bne $25E21E -- INVERTED
+
+  const offA = ram.u16(a6 + DRAW_25E220.offA);
+  const offB = ram.u16(a6 + DRAW_25E220.offB);
+  for (const sp of DRAW_25E220.sprites) {
+    let d1 = sp.d1 >>> 0;
+    const hi = (d1 >>> 16) & 0xffff;
+    const lo = d1 & 0xffff;
+    if (sp.op === 'addHigh') d1 = ((u16(hi + offA) << 16) | lo) >>> 0;   // $25E232 swap/add/swap
+    if (sp.op === 'subHigh') d1 = ((u16(hi - offA) << 16) | lo) >>> 0;   // $25E254 swap/sub/swap
+    if (sp.op === 'subLowB') d1 = ((hi << 16) | u16(lo - offB)) >>> 0;   // $25E26E sub.w, NO swap
+    if (sp.op === 'addLowB') d1 = ((hi << 16) | u16(lo + offB)) >>> 0;   // $25E28A add.w, NO swap
+    enqueueRegistersThroughStub(ram, rom, DRAW_25E220.stub, d1, sp.art, sp.attr, sp.pal);
+  }
 }

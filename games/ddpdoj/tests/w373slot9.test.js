@@ -245,20 +245,20 @@ test('W373 the shared draws run ONCE across both records', { skip: SKIP }, async
   ram.setU8(a5 + 0x07, 0xff);
   ram.setU16(P1EDGE, 0x10);                                  // confirm both
 
+  // $25E220 is PORTED now, so only its sibling still notes. Count that one.
+  const gated = HANDLER4.drawsA[1];
   phase4_25D402(ram, rom, ctx, a5, SCREEN17.recs, 1);        // record 0
-  const first = notes.filter((n) => HANDLER4.drawsA.includes(n)).length;
+  assert.equal(notes.filter((n) => n === gated).length, 1, 'the first record did the gated draws');
   notes.length = 0;
   phase4_25D402(ram, rom, ctx, a5, SCREEN17.recs + SCREEN17.recStride, 0);   // record 1
-  const second = notes.filter((n) => HANDLER4.drawsA.includes(n)).length;
-
-  assert.equal(first, HANDLER4.drawsA.length, 'the first record did the gated draws');
-  assert.equal(second, 0, 'the second saw the bit already set and skipped them');
+  assert.equal(notes.filter((n) => n === gated).length, 0,
+    'the second saw the bit already set and skipped them');
 
   // And clearing ($3,A5) -- which the walk does every frame -- re-arms them.
   ram.setU8(a5 + HANDLER4.sharedGuard, 0);
   notes.length = 0;
   phase4_25D402(ram, rom, ctx, a5, SCREEN17.recs, 1);
-  assert.equal(notes.filter((n) => HANDLER4.drawsA.includes(n)).length, HANDLER4.drawsA.length,
+  assert.equal(notes.filter((n) => n === gated).length, 1,
     'clearing the guard re-arms them for the next frame');
 });
 
@@ -394,3 +394,43 @@ test('W373 slot [9]\'s eleven palettes overlap slot [17]\'s fifteen in only two 
       'the character-art banks, shared; the other six differ');
     assert.equal(mine.size, 11, 'and no bank is installed twice within slot [9]');
   });
+
+test('W373 $25E220 has TWO gates of opposite sense', { skip: SKIP }, async () => {
+  const { draw25E220, DRAW_25E220, ram, rom, ctx } = await fx();
+  const { BUCKETS } = await import('../src/spritequeue.js');
+  const a6 = 0x812ea0;
+  const count = () => BUCKETS.reduce((n, b) => n + ram.u16(b.counter), 0);
+
+  ram.setU16(a6 + DRAW_25E220.gateWord, 0);                  // word ZERO closes it
+  let before = count();
+  draw25E220(ram, rom, ctx, a6);
+  assert.equal(count(), before, 'a zero ($64,A6) draws nothing');
+
+  ram.setU16(a6 + DRAW_25E220.gateWord, 1);
+  ram.setU8(a6 + DRAW_25E220.gateByte, 1);                   // byte NON-zero also closes it
+  before = count();
+  draw25E220(ram, rom, ctx, a6);
+  assert.equal(count(), before, 'a non-zero ($35,A6) draws nothing -- the opposite sense');
+
+  ram.setU8(a6 + DRAW_25E220.gateByte, 0);
+  before = count();
+  draw25E220(ram, rom, ctx, a6);
+  // The bucket counter is a BYTE OFFSET, not a sprite tally -- each entry advances it by its own
+  // record size -- so the check is that it moved by a whole number of equal-sized emits.
+  const delta = count() - before;
+  assert.ok(delta > 0, 'open: it drew');
+  assert.equal(delta % DRAW_25E220.sprites.length, 0,
+    `open: ${delta} bytes is a whole multiple of the four sprites`);
+});
+
+test('W373 $25E220 applies its offsets to different HALVES of D1', { skip: SKIP }, async () => {
+  const { DRAW_25E220 } = await fx();
+  const ops = DRAW_25E220.sprites.map((s) => s.op);
+  assert.deepEqual(ops, ['addHigh', 'subHigh', 'subLowB', 'addLowB'],
+    'two swap-wrapped high-word ops, then two plain low-word ones');
+  // The fourth reuses the third's high word: $2181 in both, with only the low half rewritten.
+  assert.equal(DRAW_25E220.sprites[3].d1 >>> 16, DRAW_25E220.sprites[2].d1 >>> 16,
+    'the fourth sprite inherits D1 high from the third');
+  assert.notEqual(DRAW_25E220.sprites[3].d1 & 0xffff, DRAW_25E220.sprites[2].d1 & 0xffff,
+    '  ...and only the low half was rewritten');
+});
