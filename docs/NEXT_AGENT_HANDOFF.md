@@ -35,6 +35,18 @@ next and is part-analysed:
   `jsr (A4)`. So it dispatches through a **second** table at `$290C8E` before calling `$290946` and `$2907E2`.
   **That is where `$290946`'s D1 comes from**: whichever inner state ran. Read `$290C8E`'s entries first --
   it is the same `lea/adda/movea/jsr` shape as `$4C`'s `$26F86A` and Hibachi's, so the technique is known.
+* **THE INNER TABLE `$290C8E` HAS FIVE ENTRIES, and THREE OF THEM ARE THE SAME ROUTINE:**
+
+      [0] $290E9E   116 bytes
+      [1] $291470    88 bytes        [2] $2917BE    88 bytes   >  IDENTICAL -- one routine assembled three times
+      [3] $291B3A    88 bytes  /
+      [4] $2911B0   420 bytes
+
+  The three differ in exactly SIX bytes, and all six are inside `jsr (d16,PC)` displacements that differ only
+  because the copies sit at different addresses. Resolved, **all three call `$2908E4`, `$2909AA`, `$2908E4`**.
+  **Write ONE function and register it at three indices.** Transcribing them separately means three copies kept
+  in step by hand.
+
 * **A6 BEING FIXED IS THE POINT.** Slot [14] worked on `A5`, the object record. Slot [7] works on `$81E0DC`,
   which means its state survives the object and two slots could share it. Do not model it as per-record.
 

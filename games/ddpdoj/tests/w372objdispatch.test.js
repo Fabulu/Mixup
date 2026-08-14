@@ -281,3 +281,29 @@ test('W372 $23C61E is COMPOSITION, and it was slot [14] s only unported dependen
   assert.deepEqual([r.tx_yscroll, r.tx_xscroll, r.bg_yscroll, r.bg_xscroll], [0, 1, 0, 0],
     'and the port keeps the off-by-one rather than zeroing all four');
 });
+
+test('W372 slot [7] s inner states 1, 2 and 3 are ONE routine assembled THREE times', { skip: SKIP }, () => {
+  // $291470, $2917BE and $291B3A are 88 bytes each and differ in exactly SIX bytes -- three word
+  // fields at +18, +72 and +84. Those are not constants: they are the DISPLACEMENTS of three
+  // `jsr (d16,PC)` instructions, and they differ only because the copies sit at different addresses.
+  // Resolved, all three call the SAME targets. So the port needs ONE function registered at three
+  // table indices, not three functions -- and a port that transcribed them separately would carry
+  // three copies that must then be kept in step by hand.
+  const A = 0x291470; const B = 0x2917be; const C = 0x291b3a;
+  const diff = (x, y) => {
+    const out = [];
+    for (let i = 0; i < 88; i++) if (IMG[x + i] !== IMG[y + i]) out.push(i);
+    return out;
+  };
+  assert.deepEqual(diff(A, B), [18, 19, 72, 73, 84, 85], 'A and B differ in six bytes');
+  assert.deepEqual(diff(A, C), [18, 19, 72, 73, 84, 85], 'A and C differ in the same six');
+  // Every one of those six is inside a jsr (d16,PC), and every target resolves the same.
+  for (const base of [A, B, C]) {
+    const targets = [16, 70, 82].map((o) => {
+      assert.equal(IMG.readUInt16BE(base + o), 0x4eba, `$${(base + o).toString(16)} jsr (d16,PC)`);
+      return base + o + 2 + IMG.readInt16BE(base + o + 2);
+    });
+    assert.deepEqual(targets, [0x2908e4, 0x2909aa, 0x2908e4],
+      `$${base.toString(16)} calls the same three`);
+  }
+});
