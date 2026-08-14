@@ -88,9 +88,61 @@ them, from the neighbours' recon and verified by hand:
   no `jsr` or `jmp` caller anywhere in the 6 MB image.** Either something reaches it by `bsr`/`bra`
   from inside `$25E824`, or it is dead. Do not assume either; find out.
 
-* **`$25E29E` ends with `jmp $23E2F2` at `$25E686`**, then a `nop` pad, then a 64-byte word table at
-  `$25E68E..$25E6CD` that `$25E29E` itself `lea`s TWICE (from `$25E51C` and `$25E5F6`). That table
-  is what bounds `$25E6CE` from below, so `$25E29E`'s true end is `$25E6CD`, not `$25E686`.
+* **`$25E29E` IS 481 BYTES AND ENDS AT `$25E47E`, NOT `$25E686`. I GOT THIS WRONG FIRST AND A RECON
+  CAUGHT ME.** I claimed `$25E29E` ran to `$25E686` and therefore that `$25E4D0` was a second entry
+  point INSIDE it, the way `$25EFAE` is inside `$25EF30`. **That was wrong.** There is an `rts` at
+  `$25E47E`, above `$25E4D0`, so they are two separate routines and the `lea` sites at `$25E51C` and
+  `$25E5F6` belong to `$25E4D0`, not to `$25E29E`. The lesson is the ordinary one: **scan for the
+  flow break before reasoning about what is inside what.** The corrected map:
+
+      $25E29E..$25E47F   481 B   the routine. FOUR emits, all via $23E2F2, at
+                                 $25E322 $25E344 $25E36A $25E38C. No other callee.
+      $25E480..$25E4BF    64 B   a 32-word ramp table stepping by $800:
+                                 8000 8000 8800 8800 ... F800 F800
+      $25E4C0..$25E4CF    16 B   four longs: $00001520 $00001BC4 $0025576E $0025583A
+                                 (the last two are ROM code pointers)
+      $25E4D0..$25E68D   958 B   $25E4D0, a SEPARATE routine, see below
+      $25E68E..$25E6CD    64 B   the shared word table both of $25E4D0's halves lea
+
+* **`$25E4D0` IS ONE ROUTINE WITH TWO PER-SIDE HALVES**, the same shape as `$25EF30`. It opens
+  `$25E4D0 tst.w D7 / $25E4D2 beq.w $25E5B0`, so D7 == 0 (side 1) takes the second half:
+
+      side 0 half   $25E4D6..$25E5AB   jsr $23E2F2 ($25E528), jsr $23DFB4 ($25E574),
+                                       jmp $23E2F2 ($25E5A8, TAIL)
+      side 1 half   $25E5B0..$25E68D   jsr $23E2F2 ($25E602), jsr $23DFB4 ($25E64E),
+                                       jmp $23E2F2 ($25E686, TAIL)
+
+  **Three emits per half, symmetric**, and each half `lea`s the same `$25E68E` table
+  (`$25E51C` and `$25E5F6`).
+
+### THE REAL BLOCKER FOR THE LAST TWO DRAWS: `$23E2F2` IS A THIRD EMITTER AND IT IS UNPORTED
+
+`grep -rli "23E2F2" games/ddpdoj/src/` returns **nothing**, verified against a positive control
+(`23DFB4` returns five files). And it is in **NEITHER** emitter table: `$2782E4`'s twelve register
+emitters are `$23DECE..$23E08C` and `$27829C`'s eighteen primary emitters are `$23D762..$23DBCA`.
+So it is a standalone third emitter.
+
+**`$25E29E` calls it four times and `$25E4D0` four times, so NEITHER of the last two draws can be
+ported until this is modelled.** That is why they are the hard ones, and it is not a size problem.
+
+What it does, decoded by hand:
+
+    $23E2F2  movem.l <mask $0980>,-(SP)
+    $23E2F6  lea ($23E78C,PC),A0      ext@$23E2F8 + $494
+    $23E2FC  move.l D6,D7 / lsr.l #8,D7 / neg.w D7 / addi.w #$80,D7
+    $23E306  swap D4 / move.w D3,D4 / andi.w #$1FF,D4 / lsr.w #1,D4
+    $23E310  adda.w D4,A0 / movea.l (A0),A0 / jsr (A0)      <-- INDIRECT DISPATCH on D3
+    ...      lea $80397C,A0 / add.l $80AFC0,A0 / swap D1    <-- then bucket 0, same as $23DFB4
+
+So it takes an index from **D3** as `(D3 & $1FF) >> 1`, dispatches through a pointer table at
+`$23E78C`, and ends up writing bucket 0 like `$23DFB4` does. It also derives D7 from **D6** as
+`-((D6 >> 8)) + $80`.
+
+**IT WRITES D7 -- BUT IT SAVES IT FIRST.** `movem.l <$0980>,-(SP)`: in predecrement order bit 0 is
+A7 and bit 15 is D0, so mask `$0980` (bits 7, 8, 11) is **A0, D7 and D4**. So the side selector is
+preserved across the call, provided the restore mask matches. **Recon is confirming the restore.**
+Do not act on this until it does -- the mask bit order is reversed for `-(SP)` and easy to read
+backwards, which is exactly the kind of thing that looks right and is not.
 * **`$25F074` uses `cmpi.b #$7,($1,A6) / bcs`**, an UNSIGNED `<` that selects a table SLICE rather
   than returning, plus `adda.l #$18,A0` to skip 24 bytes when the state is `>= 7`. Head verified by
   hand:
@@ -192,9 +244,14 @@ the port would be silently wrong.
 across the emit stub `$23DFB4..$23DFE9`. **NONE, anywhere.** The stub pushes A0/D0 (`2F08 2F00`) and
 restores them (`201F 205F`) and never touches D7.
 
-So D7 is read-only for the entire chain and the port is correct as written. **Re-run this scan if a
-new draw is added to the chain** -- it is cheap and it is the only thing standing between the port
-and a silent side swap.
+So D7 is read-only for the entire chain and the port is correct as written.
+
+**THE SCOPE OF THAT RESULT, PRECISELY:** all four PORTED draws call only `$23DFB4`, and neither they
+nor that stub touch D7. **`$25E29E` and `$25E4D0`, the two still unported, DO call `$23E2F2`, which
+DOES write D7** (`move.l D6,D7`). It appears to save and restore it, but that is unconfirmed.
+**Re-run this scan, including `$23E2F2` and its dispatch targets, the moment either of those two
+draws is added to the chain.** It is cheap and it is the only thing standing between the port and a
+silent side swap.
 
 ### THE SIDE-SELECT BRANCH SENSE IS NOT UNIFORM ACROSS THIS FAMILY
 
