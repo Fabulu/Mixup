@@ -1541,3 +1541,74 @@ export class SlotTable907000 {
 export function clearSlotTable23C668(table) {
   for (let a = SlotTable907000.BASE; a < SlotTable907000.END; a += 4) table.setLong(a, 0);
 }
+
+// ---------------------------------------------------------------------------------------------
+// `$23C6C6` -- THE FULL SCREEN WIPE. W373.
+//
+// Six of the routines below are ONE ROUTINE assembled six times:
+//
+//     lea <base>,A0 / move.w #<n>,D0 / move.l #$0,(A0)+ / dbra D0,-8 / rts
+//
+// and they differ only in the base and the count. `move.w #N,D0` with a `dbra` is **N+1** passes, so
+// the sizes are one longword larger than the constants read:
+//
+//     $23C638   $900000   #$0FFF   4096 longs   $4000   the BG tilemap
+//     $23C652   $800000   #$027F    640 longs   $A00    low main RAM
+//     $23C668   $907000   #$00FF    256 longs   $400    the slot table
+//     $23C67E   $A01000   #$007F    128 longs   $200
+//     $23C694   $A00800   #$01FF    512 longs   $800
+//     $23C6AA   $A00000   #$01FF    512 longs   $800
+//
+// The other three are pure COMPOSITION, and each ends in a `bra` rather than a call, so the last
+// clear of every group is a tail:
+//
+//     $23C64E   = $23C622, then $23C638
+//     $23C6C0   = $23C67E, $23C694, then $23C6AA
+//     $23C6C6   = $23C61E, $23C64E, $23C652, $23C668, then $23C6C0
+//
+// Four of the six leaves were already in this file or on `BgVram`. Only `$23C652` and the three
+// `$A0xxxx` clears were new, and of those only `$23C652` lands in memory this port models.
+
+export const WIPE23C6C6 = Object.freeze({
+  addr: 0x23c6c6,
+  lowRam: 0x800000, lowRamLongs: 640,                 // $23C652, #$027F + dbra
+  // $A00000..$A011FF. Nothing in this port reads that range -- the sprite path emits into the
+  // $80xxxx buckets -- so these three are recorded with their exact extents and noted, not faked.
+  hw: Object.freeze([
+    Object.freeze({ addr: 0x23c67e, base: 0xa01000, longs: 128 }),
+    Object.freeze({ addr: 0x23c694, base: 0xa00800, longs: 512 }),
+    Object.freeze({ addr: 0x23c6aa, base: 0xa00000, longs: 512 }),
+  ]),
+});
+
+/** `$23C652` -- 640 longwords from `$800000`. The one member of the family whose target this port
+ *  actually models, so it is a real loop and not a hook. */
+export function clearLowRam23C652(ram) {
+  for (let i = 0; i < WIPE23C6C6.lowRamLongs; i++) ram.setU32(WIPE23C6C6.lowRam + i * 4, 0);
+}
+
+/** `$23C6C0` -- the three `$A0xxxx` clears. One note per routine, each naming its exact extent, so
+ *  the gap stays countable instead of turning into three silent no-ops. */
+export function clearHw23C6C0(ctx) {
+  for (const r of WIPE23C6C6.hw) {
+    if (ctx?.hwVram?.clear) { ctx.hwVram.clear(r.base, r.longs * 4); continue; }
+    ctx?.unported?.note(r.addr, `$${r.addr.toString(16).toUpperCase()} clears ${r.longs} longwords `
+      + `at $${r.base.toString(16).toUpperCase()} ($${(r.longs * 4).toString(16).toUpperCase()} `
+      + `bytes). This port does not model $A0xxxx -- sprites are emitted into the $80xxxx buckets -- `
+      + `so there is nothing to clear, and the extent is recorded rather than approximated`);
+  }
+}
+
+/** `$23C6C6` -- WIPE EVERYTHING, and slot [7] state 0's first call.
+ *
+ *  Written as the composition it is. Inlining the six leaves would hide that `$23C64E` and `$23C6C0`
+ *  are their own routines with their own callers, and that four of the six leaves were already here.
+ */
+export function screenWipe23C6C6(ram, ctx) {
+  resetScrolls23C61E(ctx.videoRegs);                         // $23C6C6 bsr $23C61E
+  clearTx23C622(ctx.tx);                                     // $23C64E bsr $23C622
+  ctx.bgVram?.clear23C638?.();                               // $23C650 bra $23C638 -- the tail
+  clearLowRam23C652(ram);                                    // $23C6CC bsr $23C652
+  if (ctx.slotTable) clearSlotTable23C668(ctx.slotTable);    // $23C6CE bsr $23C668
+  clearHw23C6C0(ctx);                                        // $23C6D0 bra $23C6C0 -- the tail
+}

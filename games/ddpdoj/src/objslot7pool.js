@@ -17,6 +17,7 @@ import { u16, u32 } from './ram.js';
 import { unreached } from './unported.js';
 import { endHyper285AF2 } from './hyper.js';
 import { hyperStock286ED6 } from './hud.js';
+import { screenWipe23C6C6 } from './background.js';
 import { stageCreate, queueKill } from './objalloc.js';
 import { readInput23D186 } from './tallyscreen.js';
 import { chainLoader246710, chainCheck24681A, chainFree246800 } from './stageend.js';
@@ -549,7 +550,7 @@ function state0_290ACC(ram, rom, a5, ctx) {
   ram.setU8(SLOT7.flashReload, 0x01);
   ram.setU16(SLOT7.palShift, 0);                             // $290B18
 
-  ctx.unported?.note(0x23c6c6, '$290B20 jsr $23C6C6 -- slot [7] state 0 screen setup, unported');
+  screenWipe23C6C6(ram, ctx);                                // $290B20 jsr $23C6C6
   ctx.soundPost?.(0x28c170);                                 // $290B26
   ctx.soundPost?.(0x28c0fc);                                 // $290B2C
   ctx.soundPost?.(0x28c10c);                                 // $290B32

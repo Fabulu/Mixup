@@ -18,8 +18,14 @@ async function fixture({ players = 1, post = [2, 2] } = {}) {
   const ram = new Ram();
   const sounds = [];
   const notes = [];
+  // State 0 opens with $23C6C6, the full screen wipe, so the fixture carries REAL video objects
+  // rather than stubs -- the wipe is most of what state 0 does and stubbing it out would leave the
+  // biggest thing on the path untested.
+  const { BgVram, TxVram, VideoRegs, SlotTable907000 } = await import('../src/background.js');
   const ctx = { soundPost: (a) => sounds.push(a), unported: { note: (a) => notes.push(a) },
-    unportedLog: { note: () => {} } };
+    unportedLog: { note: () => {} },
+    videoRegs: new VideoRegs(), tx: new TxVram(), bgVram: new BgVram(),
+    slotTable: new SlotTable907000() };
   // The active-player words: bit 15 set means that side is in the game.
   if (players >= 1) ram.setU16(mod.SLOT7.p1, 0x8000);
   if (players >= 2) ram.setU16(mod.SLOT7.p2, 0x8000);
