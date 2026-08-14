@@ -1817,6 +1817,34 @@ game logic -- which makes it the right first one to build and the easiest to rea
 frame and which only feels like it does, and no way to keep the faithful build honest while they exist. A
 mod that silently becomes the default is the failure mode to design against.
 
+### D41: THE SUN BEAMS, THE PLANETS AND SUNS, AND THE STARDRIFTER -- AUTHENTIC
+
+> "Add the sun beams on all kinds of planets and suns and the stardrifter to the docket, they must
+> look authentic"
+
+Three things, and **"authentic" is the acceptance criterion**, not a nice-to-have: these are
+background set pieces the player looks at for whole stages, so a plausible-but-wrong beam is worse
+here than in most places -- it is on screen continuously and nothing else distracts from it.
+
+**NOTHING HERE IS IDENTIFIED YET.** The honest first step is naming them in the cartridge, not
+designing them:
+
+* **The sun beams** -- rays or god-rays over the celestial bodies. Likely a per-frame effect rather
+  than static art, which is what "authentic" will turn on: the motion, not the picture.
+* **The planets and suns, "all kinds"** -- so a FAMILY with variants, not one object. Expect a table
+  and expect the variants to share most of their code, the way this game's enemies do.
+* **The stardrifter** -- the owner's name for it; it is not yet matched to a ROM object. Ask before
+  guessing, or find it by what it draws.
+
+**START WITH THE BACKGROUND LAYER, NOT THE SPRITE QUEUE.** `background.js` already models the BG
+tilemap, `BgVram`, the column streams and the per-stage palette blocks, and W372 added the TX layer's
+blit and clear. Whichever of these three is a tilemap effect is already half-instrumented; whichever
+is a sprite goes through the emitters the port has. **Find out which before scoping.**
+
+**Sequencing:** this is a LOOK item, and the port's own rule is that gameplay comes first -- but it
+is also the kind of thing that is cheap while the background code is fresh and expensive once it is
+cold. It sits after the front end (D33-D35, D37) and before D36, unless the owner says otherwise.
+
 ### D36: THE SECOND GAME IN THE ROM -- **DEFINITELY LAST**
 
 The cartridge carries a second game. **The owner's instruction is explicit: this is the last thing tackled,
