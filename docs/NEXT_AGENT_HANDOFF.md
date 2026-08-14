@@ -40,6 +40,19 @@ next and is part-analysed:
   `cmpi.w #$0` / set 1 / `jsr $2908E4` (the pool CLEAR, already ported) / `($C,A6)=0` / `jsr $28CC28` (ported);
   then `cmpi.w #$1` and a `lea $290F12,A0` indexed by `($E,A6)`. **So the nesting is three deep: slot -> inner
   table -> sub-state.** `$290F12` is another ROM table needing a bound.
+* **THE SCRIPT OPCODE TABLE IS READ.** Slot [7] is a SCRIPT-DRIVEN object: `$2909AA` interprets `$FFFF`-terminated
+  word scripts (the blocks at `$290F66` onward), with the cursor at `$81E0F8` as a byte offset in RAM.
+  **Each opcode advances the cursor by a DIFFERENT amount, so a fixed stride desyncs the whole script:**
+
+      $8000  word operand  -> $81E0FA as a WORD, arming counter AND reload together;  cursor += 4; loop
+      $8001  LONG operand  -> $81E102;                                                cursor += 6; loop
+      $8002  word operand  -> WAIT: compare $81E0FC with it. Equal: zero the counter, cursor += 4, loop.
+                              NOT equal: bump $81E0FC and EXIT CARRY SET **without advancing the cursor**,
+                              so the next call re-reads the same command. That is how it repeats.
+      $8003  unread (its arm begins past $290A54)
+
+  Non-negative words are data consumed between commands. `$FFFF` ends the script.
+
 * **`$2909AA`'s `$8000` COMMAND IS READ**: it writes the next script word to `$81E0FA` as a WORD, arming counter
   AND reload together, advances the cursor by FOUR, and BRANCHES BACK into the walker -- so one call runs several
   commands. The other commands past `$290A12` are unread.
