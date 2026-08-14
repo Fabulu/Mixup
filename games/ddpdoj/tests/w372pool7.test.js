@@ -112,3 +112,20 @@ test('W372 the $290CE8 pointer table is bounded by its OWN FIRST ENTRY', { skip:
     assert.equal(IMG[at + 17], i, `  ...and again at +17`);
   }
 });
+
+test('W372 script command $8000 arms BOTH halves of the counter pair in one word write', { skip: SKIP }, () => {
+  const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
+  // $2909FC cmpi.w #$8000,D0 -- the first command. Its operand is the NEXT script word, and it is
+  // written as a WORD to $81E0FA, which is the counter; $81E0FB, the reload, is its low byte. So one
+  // move.w arms both halves, and the word-literal rule is not an inference here -- this is the write.
+  assert.equal(IMG.readUInt16BE(0x2909fc), 0x0c40, '$2909FC cmpi.w #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x2909fe), 0x8000, '  ...#$8000, the first command');
+  assert.equal(IMG.readUInt16BE(0x290a04), 0x33da, '$290A04 move.w (A2)+,abs.l');
+  assert.equal(IMG.readUInt32BE(0x290a06), 0x0081e0fa, '  ...into $81E0FA -- counter AND reload');
+  // The cursor advances by FOUR, not two: the command word plus its operand.
+  assert.equal(IMG.readUInt16BE(0x290a0a), 0x5879, '$290A0A addq.w #4,abs.l');
+  assert.equal(IMG.readUInt32BE(0x290a0c), 0x0081e0f8, '  ...the cursor -- 4, because it consumed two words');
+  // And it LOOPS back into the walker rather than returning, so one call can run several commands.
+  assert.equal(IMG.readUInt16BE(0x290a10), 0x6098, '$290A10 bra.s');
+  assert.equal(0x290a12 + (0x98 - 0x100), 0x2909aa, '  ...back to $2909AA -- a command does not end the call');
+});
