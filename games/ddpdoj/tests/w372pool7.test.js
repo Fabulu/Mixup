@@ -163,3 +163,22 @@ test('W372 the three sequences differ in exactly ONE step of five', { skip: SKIP
   // And the whole structure bounds itself: the sequences end where their first STEP begins.
   assert.equal(0x290f1e + 3 * 0x18, a[0], 'three sequences end exactly at step 0s address');
 });
+
+test('W372 the sequence "steps" are SCRIPTS -- $2909AA is their interpreter', { skip: SKIP }, () => {
+  const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
+  // They have no rts because they are not routines. $290F66 is word data: $80xx COMMAND words with
+  // operands, plain words between, and $FFFF to end -- and $8000 is exactly the command $2909FC
+  // decodes. So the walker, the cursor, the counter pair and these blocks are one subsystem.
+  assert.equal(IMG.readUInt16BE(0x290f66), 0x8000, '$290F66 opens with command $8000');
+  assert.equal(IMG.readUInt16BE(0x290f68), 0x3000, '  ...operand $3000');
+  assert.equal(IMG.readUInt16BE(0x290f6a), 0x8001, '  ...then command $8001');
+  assert.equal(IMG.readUInt16BE(0x290f66 + 0x1e), 0x8002, '  ...$8002 at +$1E');
+  assert.equal(IMG.readUInt16BE(0x290f66 + 0x22), 0x8003, '  ...and $8003 at +$22, each with an operand');
+  assert.equal(IMG.readUInt16BE(0x290f8e - 2), 0xffff, 'terminated by $FFFF');
+  // $8000 here is the SAME command the walker decodes, which is what ties them together.
+  assert.equal(IMG.readUInt16BE(0x2909fe), 0x8000, '$2909FC tests #$8000 -- the same value');
+  // And every one of the seven blocks ends the same way, which is why none has an rts.
+  for (const end of [0x290f8e, 0x290fe2, 0x291040, 0x29109c, 0x2910f6, 0x291172]) {
+    assert.equal(IMG.readUInt16BE(end - 2), 0xffff, `the block before $${end.toString(16)} ends $FFFF`);
+  }
+});
