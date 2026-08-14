@@ -148,9 +148,29 @@ code that may not belong to them:
 | `$248492` | 2 | 1488 |
 | `$2475CA` | 1 | 3682 |
 
-**So the original "better than 2 KB" was about the CALLEES and it was not wrong.** Start with `$248FD0` and
-`$24842C`: together they are 160 bytes and they are inner states 5 and 3, so landing them makes the state
-machine's two ends real before the middle is touched.
+**So the original "better than 2 KB" was about the CALLEES and it was not wrong.**
+
+### AND THE CALLEES ARE THE COMPILED C. FIRST HARD CONFIRMATION, WITH THE SHAPE.
+
+`$248FD0` and `$24842C` were swept expecting 160 bytes of assembly. They are **compiled C**, exactly as D33's
+docket entry warned, and the convention is now measured rather than predicted:
+
+* **Arguments are PUSHED, right to left.** `pea <abs>.l` / `pea <abs>.w` / `clr.l -(A7)` -- so `clr.l` pushes
+  the FIRST argument last. `$248FD6` reads `f(0, $1E, $2C327E)`.
+* **THE CALLER CLEANS UP, AND THE COMPILER BATCHES IT.** `$248FF6 lea ($18,A7),A7` clears **24 bytes after
+  TWO calls**, not 12 after each. Reading one call's cleanup as its own leaves the stack wrong by 12 bytes for
+  the whole rest of the routine.
+* `$248FD0` is a **1000-iteration loop** (`addq.l #1,D2 / cmpi.l #$3E8,D2 / blt`) making two three-argument
+  calls to **`$246C78`** per pass, with `($1E, $2C327E)` and `($1C, $2C329C)`. **`$246C78` is UNPORTED and is
+  the single most valuable thing to read next** -- it is the C runtime's workhorse for this whole screen.
+* `$24842C` has the same shape with a 300-iteration bound (`cmpi.l #$12C`), plus `jsr $23D12A` (PORTED, the
+  post-vblank edge derivation) and `jsr $23D196` (unported), and it spins on `andi.l #$8010,D0 / beq` -- so it
+  BLOCKS on input inside a loop rather than returning per frame. **That does not fit the port's frame model
+  and needs a decision before it is written**, not a transcription.
+
+**DO NOT start D37 by transcribing these.** Read `$246C78` first, and settle how a blocking input spin is
+represented in a port whose driver is per-frame. `tallyscreen.js` is the right reference for the state-machine
+skeleton and the WRONG one for anything inside these routines.
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
