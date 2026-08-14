@@ -30,6 +30,13 @@ next and is part-analysed:
   comes from the CALLER -- check slot [7] before `$290946`'s call site. **Do not invent a D1**; that is the same
   trap as `$1A`'s D3 and the fan's registers, and both were only got right by refusing to guess.
 * `$2907E2` (240 bytes) is not read yet.
+* **SLOT [7] IS DEEPER THAN [14] AND HAS ITS OWN INNER JUMP TABLE.** `$290BFA lea $81E0DC,A6` -- a FIXED RAM
+  block, not the object record -- then `$290C00 lea ($290C8E,PC),A4`, `adda.w` by `($8,A6) * 4`, `movea.l (A4),A4`,
+  `jsr (A4)`. So it dispatches through a **second** table at `$290C8E` before calling `$290946` and `$2907E2`.
+  **That is where `$290946`'s D1 comes from**: whichever inner state ran. Read `$290C8E`'s entries first --
+  it is the same `lea/adda/movea/jsr` shape as `$4C`'s `$26F86A` and Hibachi's, so the technique is known.
+* **A6 BEING FIXED IS THE POINT.** Slot [14] worked on `A5`, the object record. Slot [7] works on `$81E0DC`,
+  which means its state survives the object and two slots could share it. Do not model it as per-record.
 
 **THE SCANNING RULE, learned expensively:** count **`4EB9` `4EF9` `4EBA` `4EFA` `61xx` `60xx`**. Counting fewer
 forms gave three different wrong dependency answers for slot [14], including one that reached a commit message.
