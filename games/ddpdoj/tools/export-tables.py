@@ -2879,13 +2879,17 @@ SHOT_WINDOWS.extend([
                        "by $291DF4 with the cursor $81E11C, then the $FFFF terminator. Each entry is "
                        "delay, X, MODE, then a long string pointer. SELF-BOUNDING: the terminator "
                        "ends at $2921BA, which is entry [0]'s own string pointer"),
-    (0x25D294, 0x0020, "W373: the $25D294 region. $25D39C indexes it from $25D294 by ($5,A6) * 2 "
-                       "as WORDS and the first three are $2/$4/$6, the values the tally posts. But "
-                       "$25D306 does `lea $25D29A,A4`, two bytes INSIDE that, so the two routines "
-                       "disagree about where the structure starts and the layout is NOT settled. "
-                       "The window covers $25D294..$25D2B3, which holds both the words and the "
-                       "$23D16C/$23D186 and $23D17E/$23D18E reader pairs, so either reading is "
-                       "served. DO NOT quote a bound from this until $25D306 is finished"),
+    (0x25D294, 0x0006, "W373: the $25D39C value table -- THREE words, $2/$4/$6, the values the "
+                       "tally posts to $813088. Self-bounding after all: the third ends exactly "
+                       "where $25D306's side-0 descriptor begins at $25D29A. An earlier W373 "
+                       "window called this FOUR words and was withdrawn; $25D306 settled it"),
+    (0x25D29A, 0x001C, "W373: the two per-side descriptors $25D306 selects, $25D29A and $25D2A8, "
+                       "at a stride of $E -- FOURTEEN bytes, not sixteen. Each is word, long (raw "
+                       "reader $23D16C/$23D17E), long (edge reader $23D186/$23D18E), word, word. "
+                       "The fourth field is what $25D39C reads as ($A,A4)"),
+    (0x25D2DE, 0x000C, "W373: $25D2EA's two three-word order tables, $25D2DE and $25D2E4. They are "
+                       "MIRRORED -- 0,1,2 and 2,1,0 -- so the two sides scan from opposite ends. "
+                       "Self-bounding: the second ends exactly where $25D2EA's code begins"),
     (0x28898A, 0x0028, "W373: object-dispatch slot [13]'s TWO per-side descriptors, $28898A and "
                        "$28899E, chosen by ($7,A5). Twenty bytes each and the second starts exactly "
                        "where the first ends, so the pair bounds itself. Same family as slot [11]'s "

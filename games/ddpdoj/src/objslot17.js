@@ -187,13 +187,21 @@ export function objSlot17(ram, rom, a5, ctx) {
     if (ram.u8(a6) === 0) continue;                          // $25CED4 tst.b (A6) / beq $25CF18
     for (const [i, phase] of SCREEN17.subStates.entries()) {
       if (ram.u8(a6 + SCREEN17.phaseAt) !== phase) continue; // $25CEDA.. cmpi.b #phase,($1,A6)
+      if (phase === SCREEN17.phaseSeed) {
+        phase3_25D306(ram, rom, ctx, a5, a6, SCREEN17.recCount - 1 - r);   // $25CEE2 jsr $25D306
+        // $25CEE8 -- and slot [17] OVERWRITES the 4 the handler just wrote. It has no state-4 arm;
+        // slot [9] does, and lets it stand. Same routine, two screens, two next states.
+        ram.setU8(a6 + SCREEN17.phaseAt, SCREEN17.firstSetsPhase);
+        continue;
+      }
       if (phase === 0x06) {
         phase6_25D4F0(ram, rom, ctx, a6, SCREEN17.recCount - 1 - r);
         continue;
       }
       if (phase === 0x05) {
         // The dbra counter runs 1 then 0, so `r` maps to D7 as (recCount - 1 - r).
-        phase5_25D39C(ram, rom, ctx, a5, a6, SCREEN17.recCount - 1 - r, undefined);
+        const d7 = SCREEN17.recCount - 1 - r;
+        phase5_25D39C(ram, rom, ctx, a5, a6, d7, DESC17.base[sideFromD7_25D4E4(d7)]);
         continue;
       }
       ctx.unported?.note(SCREEN17.subHandlers[i],
@@ -201,9 +209,7 @@ export function objSlot17(ram, rom, a5, ctx) {
         + `${phase} on ($1,A6). Unread`);
       // $25CEE8 -- state 3's handler ADVANCES the byte, and because the compares run in sequence
       // the state-5 arm then fires in this same pass.
-      if (phase === SCREEN17.phaseSeed) {
-        ram.setU8(a6 + SCREEN17.phaseAt, SCREEN17.firstSetsPhase);
-      }
+
     }
   }
 
@@ -302,4 +308,73 @@ export function phase6_25D4F0(ram, rom, ctx, a6, d7) {
     ctx.unported?.note(0x25d548, '$25D548 tst.b (A0) -- with $813098 clear, a ZERO byte at (A0) '
       + 'ALSO takes the second announce. A0 is inherited, not set by this routine or either caller');
   }
+}
+
+/** The two per-side descriptors `$25D306` selects, at a stride of `$E` -- fourteen, not sixteen.
+ *  `$25D39C`'s `($A,A4)` is the fourth field, which is why that handler's row was unresolved until
+ *  this routine pinned where A4 comes from. */
+export const DESC17 = Object.freeze({
+  base: Object.freeze([0x25d29a, 0x25d2a8]), stride: 0x0e,
+  raw: 0x02, edge: 0x06, rowSrc: 0x0a, tail: 0x0c,
+  // $25D2EA's two order tables. They are MIRRORED: side 0 walks 0,1,2 and side 1 walks 2,1,0.
+  order: Object.freeze([0x25d2de, 0x25d2e4]), orderLen: 3,
+});
+
+/** `$25D2EA` -- PICK THE FIRST OPTION THE OTHER SIDE IS NOT ON.
+ *
+ *  `cmp.w (A0),D0 / bne` exits on the first entry that DIFFERS from D0, which reads backwards until
+ *  you see what D0 is: the caller loads it from the OTHER side's byte. So this returns the first
+ *  choice the other player has not taken, and the two order tables run in opposite directions so
+ *  the two players scan from opposite ends.
+ */
+export function pickFree25D2EA(rom, d7, d0) {
+  const table = DESC17.order[sideFromD7_25D4E4(d7)];         // $25D2EA / $25D2F2, chosen by D7
+  for (let i = 0; i < DESC17.orderLen; i++) {                // $25D2F6 moveq #2,D1 + dbra = THREE
+    const v = rom.u16(table + i * 2);
+    if (v !== u16(d0)) return v;                             // $25D2F8 cmp.w (A0),D0 / bne $25D302
+  }
+  return rom.u16(table + DESC17.orderLen * 2);               // fell through: A0 walked past the end
+}
+
+export const HANDLER3 = Object.freeze({
+  addr: 0x25d306, nextPhase: 0x04,
+  // $25D35A's block, verbatim. Three ($60,$C00) pairs then two singles.
+  tailWords: Object.freeze([[0x16, 0x0060], [0x18, 0x0c00], [0x1c, 0x0060], [0x1e, 0x0c00],
+    [0x22, 0x0060], [0x24, 0x0c00], [0x2a, 0x00b4], [0x2e, 0x0599]]),
+  tailCount: 0x31, tailCountValue: 0x02, tailClear: 0x30,
+});
+
+/** `$25D306` -- THE STATE-3 HANDLER, shared by slots [17] and [9].
+ *
+ *  EACH SIDE READS THE OTHER SIDE'S BYTE. The D7 != 0 arm loads `($7,A5)` -- side 1's -- and writes
+ *  `($6,A5)`, its own; the other arm does the mirror. Together with `$25D2EA` returning the first
+ *  entry that DIFFERS, that is a mutual exclusion: neither side can sit on the other's choice.
+ *
+ *  A NEGATIVE byte means "the other side has not chosen", and then the default is the FIRST entry of
+ *  this side's own order table -- 0 for side 0, 2 for side 1, which are opposite ends.
+ *
+ *  IT SETS `($1,A6) = 4`, NOT 5. Slot [17] overwrites that with 5 at `$25CEE8` the instant this
+ *  returns, because slot [17] has no state-4 handler; slot [9] does (`$25D402`) and lets it stand.
+ *  So the same routine advances two different screens to two different states.
+ */
+export function phase3_25D306(ram, rom, ctx, a5, a6, d7) {
+  const side = sideFromD7_25D4E4(d7);
+  const otherByte = side === 0 ? 0x07 : 0x06;                // $25D310 / $25D33A -- the OTHER side's
+  const ownByte = side === 0 ? 0x06 : 0x07;                  // $25D31E / $25D346 -- its own
+  const d0 = ram.u8(a5 + otherByte);
+
+  if ((d0 & 0x80) !== 0) {                                   // $25D314 tst.b / bge -- SIGNED
+    ram.setU16(a6 + 0x04, side === 0 ? 0 : 2);               // $25D318 / $25D340 -- opposite ends
+  } else {
+    ram.setU16(a6 + 0x04, pickFree25D2EA(rom, d7, d0));      // $25D326 bsr / $25D328
+  }
+  // $25D31E / $25D346 -- and this reads ($5,A6), which the move.w two lines up JUST OVERWROTE with
+  // the low byte of the choice. So the side's own slot byte receives THE CHOSEN OPTION, not
+  // whatever ($5,A6) held before. The word write and the byte read deliberately overlap.
+  ram.setU8(a5 + ownByte, ram.u8(a6 + 0x05));
+
+  for (const [off, v] of HANDLER3.tailWords) ram.setU16(a6 + off, v);   // $25D35A..$25D388
+  ram.setU8(a6 + HANDLER3.tailCount, HANDLER3.tailCountValue);          // $25D38A
+  ram.setU8(a6 + HANDLER3.tailClear, 0);                                // $25D390 clr.b
+  ram.setU8(a6 + SCREEN17.phaseAt, HANDLER3.nextPhase);                 // $25D394 -- FOUR
 }

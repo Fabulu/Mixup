@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2698/2698 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2704/2704 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -183,18 +183,27 @@ which is only possible because the four compares are sequential.
 Still noted: `$25F442` (state 0's opener), `$25D306` (state 3), `$25D560` (state 7), and `$25F2D0`, the
 two-line per-side label printer state 6 calls twice.
 
-**AN OVERCLAIM OF MINE, CORRECTED IN THE SAME WAVE.** I declared `$25D294` as "four words, self-bounding at
-`$25D29C`". Then `$25D306` turned out to do `lea $25D29A,A4` -- TWO BYTES INSIDE that supposed table. So
-`$25D39C` indexes the region from `$25D294` as words while `$25D306` treats `$25D29A` as a base, and the two
-disagree about where the structure starts. **The layout is NOT settled and nothing should quote a bound from
-it until `$25D306` is finished.** The window now covers `$25D294..$25D2B3`, which holds the three known
-values AND both `$23D16C`/`$23D186` and `$23D17E`/`$23D18E` reader pairs, so either reading is served.
+**`$25D306`, the state-3 handler, IS PORTED and it SETTLED the `$25D294` question.** It leas `$25D29A` and
+`$25D2A8`, two per-side descriptors at a stride of `$E` -- fourteen, not sixteen. So `$25D294` really is THREE
+words, bounded by the first descriptor. I had declared it four and self-bounding, withdrawn that, and this
+restored it with the right count. **The descriptor's fourth field is `($A,A4)`, which resolves the one value
+`$25D39C` could not.**
+
+**IT IS A MUTUAL-EXCLUSION CHARACTER SELECT.** Each side reads THE OTHER SIDE'S byte and writes its own, and
+`$25D2EA` returns the first order-table entry that DIFFERS from what it is given -- so neither side can sit on
+the other's choice. The two order tables are MIRRORED, `0,1,2` and `2,1,0`, so the players scan from opposite
+ends, and a negative "not yet chosen" byte defaults each side to its own end. **That is D34 territory.**
+
+**`move.w D0,($4,A6)` OVERLAPS THE NEXT INSTRUCTION'S SOURCE.** It writes `($5,A6)` as its low byte and
+`$25D31E` immediately reads `($5,A6)` back, so the side's slot receives THE CHOSEN OPTION. Not an accident --
+transcribe both and the aliasing works; "tidy" them into separate fields and it silently stops.
+
+**`$25D306` SETS STATE 4, AND SLOT [17] OVERWRITES IT WITH 5** at `$25CEE8` the instant it returns, because
+slot [17] has no state-4 arm. Slot [9] does (`$25D402`) and lets it stand. One routine, two screens, two next
+states.
 
 **PARTIAL READS, so they are not redone from scratch:**
 
-* **`$25D306` (state 3)**: `tst.w D7 / beq $25D334` splits by side at the very top, then
-  `lea $25D29A,A4`, `move.b ($7,A5),D0`, `tst.b D0 / bge $25D326`. The NEGATIVE arm does
-  `move.w #$0,($4,A6)` and `move.b ($5,A6),($6,A5)` then `bra $25D35A`.
 * **`$25D560` (state 7)**: opens `jsr $25F530`, then the same `tst.w D7` A6-walk as state 6. The tail at
   `$25D574` gates on `$813098`, calls `$25FAA4`, tests `(A0)` and `cmpi.b #$7,($1,A0)`, and can raise
   `$812F82` and post `$28CB9C`. It also touches `($32,A6)` and compares `($36,A6)` against `$3800`.

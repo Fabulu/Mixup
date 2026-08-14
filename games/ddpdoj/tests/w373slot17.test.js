@@ -157,7 +157,6 @@ test('W373 state 3 CASCADES into state 5 in the same frame', { skip: SKIP }, asy
   // on the same pass. An else-if chain would run only the first. State 5 is PORTED now, so the
   // proof is the byte reaching 6 in one call rather than a second note.
   const { HANDLER6 } = await import('../src/objslot17.js');
-  assert.ok(notes.includes(SCREEN17.subHandlers[0]), 'state 3 ran (still only a note)');
   // With states 5 AND 6 ported, one frame now walks 3 -> 5 -> 6 -> 7. Three arms in a single call,
   // which is only possible because the four compares are sequential rather than an else-if chain.
   assert.equal(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), HANDLER6.nextPhase,
@@ -283,4 +282,88 @@ test('W373 the state-6 tail announces the OPPOSITE side', { skip: SKIP }, async 
     const first = sideFromD7_25D4E4(d7);
     assert.notEqual((first + 1) & 1, first, `D7 ${d7}: the tail flips ${first}`);
   }
+});
+
+test('W373 the two descriptors are 14 bytes apart, not 16', { skip: SKIP }, async () => {
+  const { DESC17, rom } = await fx();
+  assert.equal(DESC17.base[1] - DESC17.base[0], DESC17.stride, 'stride $E');
+  assert.equal(rom.u32(DESC17.base[0] + DESC17.raw), 0x23d16c, 'side 0 raw reader');
+  assert.equal(rom.u32(DESC17.base[1] + DESC17.raw), 0x23d17e, 'side 1 raw reader');
+  assert.equal(rom.u32(DESC17.base[0] + DESC17.edge), 0x23d186, 'side 0 edge reader');
+  assert.equal(rom.u32(DESC17.base[1] + DESC17.edge), 0x23d18e, 'side 1 edge reader');
+  // And THIS is what $25D39C's ($A,A4) reads -- the field that was unresolved before $25D306.
+  assert.equal(rom.u16(DESC17.base[0] + DESC17.rowSrc), 0x5000);
+  assert.equal(rom.u16(DESC17.base[1] + DESC17.rowSrc), 0x1c00);
+  // The three-word table ends exactly where the first descriptor begins, so it IS three not four.
+  assert.equal(DESC17.base[0], 0x25d294 + 3 * 2, 'the $25D294 table is THREE words after all');
+});
+
+test('W373 the two order tables are MIRRORED', { skip: SKIP }, async () => {
+  const { DESC17, rom } = await fx();
+  const a = [0, 1, 2].map((i) => rom.u16(DESC17.order[0] + i * 2));
+  const b = [0, 1, 2].map((i) => rom.u16(DESC17.order[1] + i * 2));
+  assert.deepEqual(a, [0, 1, 2], 'side 0 scans upward');
+  assert.deepEqual(b, [2, 1, 0], 'side 1 scans downward');
+  assert.deepEqual(b, [...a].reverse(), 'so the two players scan from opposite ends');
+});
+
+test('W373 $25D2EA returns the first option the OTHER side is not on', { skip: SKIP }, async () => {
+  const { pickFree25D2EA, rom } = await fx();
+  // Side 0, table [0,1,2].
+  assert.equal(pickFree25D2EA(rom, 1, 0), 1, 'other side on 0 -> take 1');
+  assert.equal(pickFree25D2EA(rom, 1, 1), 0, 'other side on 1 -> take 0');
+  assert.equal(pickFree25D2EA(rom, 1, 2), 0, 'other side on 2 -> take 0');
+  // Side 1, table [2,1,0] -- the mirror.
+  assert.equal(pickFree25D2EA(rom, 0, 2), 1, 'other side on 2 -> take 1');
+  assert.equal(pickFree25D2EA(rom, 0, 1), 2, 'other side on 1 -> take 2');
+  assert.equal(pickFree25D2EA(rom, 0, 0), 2, 'other side on 0 -> take 2');
+  // It never returns what it was given -- that is the whole mutual exclusion.
+  for (const d7 of [0, 1]) {
+    for (const d0 of [0, 1, 2]) {
+      assert.notEqual(pickFree25D2EA(rom, d7, d0), d0, `D7 ${d7}, other on ${d0}`);
+    }
+  }
+});
+
+test('W373 $25D306 reads the OTHER side and writes its OWN', { skip: SKIP }, async () => {
+  const { phase3_25D306, SCREEN17, HANDLER3, ram, rom, ctx } = await fx();
+  const a5 = 0x812800;
+  const a6 = SCREEN17.recs;
+  ram.setU8(a6 + 0x05, 0x5a);                                // deliberately dirty
+  ram.setU8(a5 + 0x07, 1);                                   // side 1 is on option 1
+  phase3_25D306(ram, rom, ctx, a5, a6, 1);                   // run for SIDE 0
+  assert.equal(ram.u16(a6 + 0x04), 0, 'side 0 took 0, which side 1 is not on');
+  // `move.w D0,($4,A6)` writes ($5,A6) as its LOW byte, and the next instruction reads ($5,A6)
+  // back. So the side's own slot receives THE CHOICE, and the $5A never survives.
+  assert.equal(ram.u8(a6 + 0x05), 0, 'the word write clobbered ($5,A6) with the choice');
+  assert.equal(ram.u8(a5 + 0x06), 0, 'and THAT is what reached ($6,A5), not the $5A');
+  assert.equal(ram.u8(a5 + 0x07), 1, 'leaving the other side untouched');
+  assert.equal(ram.u8(a6 + SCREEN17.phaseAt), HANDLER3.nextPhase,
+    'the handler itself sets state FOUR');
+});
+
+test('W373 a NEGATIVE other-side byte defaults to each side\'s own end', { skip: SKIP }, async () => {
+  const { phase3_25D306, SCREEN17, ram, rom, ctx } = await fx();
+  const a5 = 0x812800;
+  const a6 = SCREEN17.recs;
+  ram.setU8(a5 + 0x07, 0xff);                                // negative: side 1 has not chosen
+  phase3_25D306(ram, rom, ctx, a5, a6, 1);
+  assert.equal(ram.u16(a6 + 0x04), 0, 'side 0 defaults to 0');
+
+  const b = await fx();
+  b.ram.setU8(a5 + 0x06, 0xff);
+  b.phase3_25D306(b.ram, b.rom, b.ctx, a5, a6, 0);
+  assert.equal(b.ram.u16(a6 + 0x04), 2, 'side 1 defaults to 2 -- the opposite end');
+});
+
+test('W373 slot [17] OVERWRITES the state 4 that $25D306 sets', { skip: SKIP }, async () => {
+  const { objSlot17, SCREEN17, HANDLER3, ram, rom, ctx, a5 } = await fx({ p1: true });
+  objSlot17(ram, rom, a5, ctx);                              // state 0 seeds ($1,A6) = 3
+  ram.setU8(SCREEN17.recs + SCREEN17.phaseAt, SCREEN17.phaseSeed);
+  ram.setU16(0x813098, 1);                                   // shut states 5/6 so 3 is observable
+  objSlot17(ram, rom, a5, ctx);
+  assert.notEqual(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), HANDLER3.nextPhase,
+    'slot [17] did NOT leave it at 4 -- it has no state-4 arm');
+  assert.equal(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), SCREEN17.firstSetsPhase,
+    'it overwrote 4 with 5 at $25CEE8');
 });
