@@ -2779,6 +2779,10 @@ SHOT_WINDOWS.extend([
                        "is $26F8A6, the first handler it points at"),
     (0x26F55A, 0x00AC, "W342: type $4C's 6-word record prototype and ALL FIVE sub prototypes, "
                        "$26F55A..$26F605 -- overlapping its handler at $26F5F2 by TWENTY bytes"),
+    (0x290706, 0x0040, "W372: object-dispatch slot [7]'s pool palette block, handed to $24150A by "
+                       "$2908E4 with bank 0. Sixty-four bytes because that is what install24150A "
+                       "reads for every bank, so the size is the CALLEE's constant and not a guess "
+                       "about this block"),
     (0x288C2E, 0x0010, "W372: object-dispatch slot [14]'s ANIM-OBJECT table, handed to $246410 by "
                        "the lea at $288C14. A count word of 1 then a single 14-byte entry, ending at "
                        "$288C3E -- which is the slot's own state-2 arm, so it is bounded by adjacency "
