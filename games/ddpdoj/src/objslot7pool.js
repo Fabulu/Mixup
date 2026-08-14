@@ -481,7 +481,9 @@ export const SLOT7 = Object.freeze({
   postD1: Object.freeze([0x813088, 0x81308a]),
   gate: 0x813098,
   seqLists: Object.freeze([0x2914c8, 0x291816, 0x291b92]),
-  killNormal: 0x0f, killChosen: 0x11,
+  // NOT kill codes -- these are the DISPATCH TYPES of the screen that runs next. $11 is slot [17]
+  // and $0F is slot [15], so slot [7] forks to a different screen depending on the menu's answer.
+  nextNormal: 0x0f, nextChosen: 0x11,
 });
 
 /** `$29079E` -- reset the resource loader. Four clears and an rts, and the only thing that puts
@@ -572,7 +574,7 @@ function state2_290746(ram, rom, a5, ctx) {
     // the menu defaults it to 1, so doing nothing takes the restart arm.
     if (ram.u16(0x81e112) !== 0) { restart290B4C(ram, rom, a5, ctx); return; }   // $29075E
     ram.setU16(SLOT7.gate, 1);                               // $290762
-    stageCreate(ram, SLOT7.killChosen,                       // $29076A moveq #$11
+    stageCreate(ram, SLOT7.nextChosen,                       // $29076A moveq #$11 -> slot [17]
       (t) => rom.u16(SLOT7.dispatch + t * 8 + 4));           // $29076E jsr $241182
     queueKill(ram, ram.u16(a5 + 0x00));                      // $290774 JMP $241292
     return;
@@ -585,7 +587,7 @@ function state2_290746(ram, rom, a5, ctx) {
     restart290B4C(ram, rom, a5, ctx);                        // $290788 -> $290B4C
     return;
   }
-  stageCreate(ram, SLOT7.killNormal,                          // $29078C moveq #$F
+  stageCreate(ram, SLOT7.nextNormal,                          // $29078C moveq #$F -> slot [15]
     (t) => rom.u16(SLOT7.dispatch + t * 8 + 4));             // $290790 jsr $241182
   queueKill(ram, ram.u16(a5 + 0x00));                        // $290796 JMP $241292
 }

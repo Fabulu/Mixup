@@ -118,6 +118,26 @@ It regenerates data the W129/W132 replay tests read, and doing it mid-run turned
 tests red. They passed in isolation and the clean re-run was green. **A red MUT-A/B/C is a race before it is
 a regression** -- re-run before diagnosing.
 
+### THE FRONT-END CHAIN, SCANNED (W373)
+
+Every `$241182` call site in `$230000..$2C0000` with the dispatch type it stages -- 34 sites, and the ones
+inside a dispatch routine give the screen graph. **The front end is a sequence, not a set of peers**:
+
+    [0]  -> [7]
+    [7]  -> [17] when the menu answers 0, [15] otherwise      <- a FORK on the $2911B0 answer
+    [13] -> [14] -> [12]
+    [6]  -> [19] -> [8] -> [9] and [10]
+    [18] -> [8]           (the ASIC27 self-test rejoins here)
+    [3]  -> [16]
+    [11] -> [0] [1] [4] [5] [11] [13] [14]                    <- the tally is the hub
+
+**THIS CORRECTED MY OWN SLOT [7] PORT.** `$11` and `$0F` were committed as `killChosen`/`killNormal`, as
+though they were kill codes. They are the DISPATCH TYPES of the next screen: `$11` is slot [17] and `$0F` is
+slot [15]. Renamed to `nextChosen`/`nextNormal`.
+
+**So slot [17] is reached from slot [7]**, which this wave finished, and slot [15] is its sibling arm. Those
+two are now the structurally motivated next units rather than the merely small ones.
+
 ### THE NINE UNTOUCHED SLOTS, MEASURED (W373)
 
 Every entry of `$240F62` with its record size and the distance to the next dispatch routine in address order.
