@@ -222,11 +222,29 @@ settle these two things first:
    high word is `$FF00` and the mask discards it, so the impact would spawn at the wrong long-axis
    position.
 
-   **The fix is safe for every existing caller.** They pass either `0` or a value already through
-   `u16(...)`, so it is always below `$10000` and the mask is a no-op for them. Dropping the mask
-   and adding the full 32 bits restores `add.l` semantics for everyone. **Do it inside the
-   `$27F8F0` unit with a test that pins the carry across the packed halves**, not as a drive-by:
-   it is invisible today precisely because no caller has ever passed a real long.
+   **AND IT IS AN ACTIVE DEFECT TODAY, NOT A LATENT ONE. I FIRST WROTE THAT IT WAS LATENT AND THAT
+   WAS WRONG.** I claimed every existing caller passes `0` or a `u16(...)`. `handlers.js:3369` does
+   not: it passes `rom.u32(T1B.deathRows + n * 4)`, a FULL LONG straight out of the cartridge, for
+   type `$1B`'s four death rows at `$26970C`:
+
+       [0] $04000280     [1] $0400FD80     [2] $FC00FD80     [3] $FC000280
+
+   Every one has a non-zero high word. That is a **four-corner pattern** around the dying enemy,
+   `+/-$0400` on the long axis and `+/-$0280` on the short one. `offset & 0xffff` discards all four
+   high words, so **all four impacts collapse onto the carrier's own long-axis position** and type
+   `$1B`'s death burst spreads along one axis instead of to four corners. It is on screen right now.
+
+   **THE FIX IS ONE LINE**: drop the `& 0xffff` in `bee.js:598` so the add is a real `add.l`. That
+   is what the cartridge does (`$280B56 add.l ($2,A6),D1`) and what `bee.js:597`'s own comment
+   already claims ("ADD.L carries across the two packed position halves").
+
+   It is also correct for the `u16(...)` callers rather than merely harmless for them: the cartridge
+   zero-extends D1 into a long and then `add.l`s, so the carry from the low half into the high half
+   is intended for them too. The mask suppressed that carry.
+
+   **Do it with tests** -- one pinning the four `$1B` corners as four DISTINCT long-axis positions,
+   and one pinning the low-to-high carry -- and note that fixing it CHANGES on-screen behaviour for
+   type `$1B`, so it wants its own commit rather than being buried in the `$27F8F0` wiring.
 
 The rest of the audit came back clean. Every other non-note reference among the 40 noted addresses
 is prose, a constant, or a dispatch-table entry -- trap 17 -- and the two `unportedLog` notes for
