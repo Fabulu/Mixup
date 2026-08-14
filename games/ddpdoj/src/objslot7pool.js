@@ -254,3 +254,51 @@ export function innerState0_290E9E(ram, rom, ctx, a5, a6) {
   ram.setU16(a6 + 0x0c, u16(ram.u16(a6 + 0x0c) + 4));        // $290F08 addq.w #4
   poolClear2908E4(ram, rom, ctx);                            // $290F0C jsr $2908E4
 }
+
+/** `$2907E2` -- THE RESOURCE LOADER. A five-state machine on `$81E108` that is really TWO load/wait
+ *  pairs and an idle:
+ *
+ *      0  idle
+ *      1  load through $246710 from the $290CE8 table   -> 2
+ *      2  WAIT on $24681A, COMMIT with $246800          -> 3
+ *      3  load through $24641A from the $290DAE table   -> 4
+ *      4  WAIT on $24681A, COMMIT with $246800          -> 0
+ *
+ *  Both loads cache their handle in the SAME word, `$81E10E`, and both waits consume it -- so the
+ *  pairs must not be collapsed or interleaved: state 3 overwrites what state 2 committed, and doing
+ *  the two loads together would lose the first handle entirely.
+ *
+ *  `$24641A` is `$246410` with mode 0, which is why the two loads use different entries of one
+ *  routine rather than two routines.
+ */
+export function resourceLoader2907E2(ram, rom, ctx) {
+  const st = ram.u16(0x81e108);
+  if (st === 0) return;                                      // $2907E2 tst.w / beq $2908D0
+
+  if (st === 1) {                                            // $2907EC
+    if (ram.u16(0x81e106) === 0) return;                     // $2907F8 tst.w / beq -- not armed yet
+    const rec = rom.u32(0x290ce8 + (u16(ram.u16(0x81e10c)) << 2));   // $290802..$290812
+    ram.setU32(0x81e10e, ctx.load246710?.(rom, rec) ?? 0);   // $290816 jsr $246710 / $29081C
+    return;
+  }
+  if (st === 2) {                                            // $290828
+    if (!ctx.ready24681A?.(ram, ram.u32(0x81e10e))) return;  // $290836/$29083C jsr $24681A / bne
+    ctx.commit246800?.(ram, ram.u32(0x81e10e));              // $290846 jsr $246800
+    ram.setU16(0x81e106, ram.u16(0x81e10a));                 // $29084C move.w $81E10A,$81E106
+    ram.setU16(0x81e108, 3);                                 // $290856
+    return;
+  }
+  if (st === 3) {                                            // $29085E
+    // The SECOND table and the mode-0 entry. Same shape as state 1, different table and mode, and it
+    // overwrites $81E10E -- which is why state 2 must have committed before this runs.
+    const rec = rom.u32(0x290dae + (u16(ram.u16(0x81e10c)) << 2));   // $29087E..$29088E
+    ram.setU32(0x81e10e, ctx.loadAnim0?.(rom, rec) ?? 0);    // $290892 jsr $24641A -- MODE 0
+    ram.setU16(0x81e108, 4);                                 // $29089E
+    return;
+  }
+  if (st === 4) {                                            // $2908A6
+    if (!ctx.ready24681A?.(ram, ram.u32(0x81e10e))) return;  // $2908B2/$2908B8
+    ctx.commit246800?.(ram, ram.u32(0x81e10e));              // $2908C2
+    ram.setU16(0x81e108, 0);                                 // $2908C8 -- back to IDLE, not onward
+  }
+}

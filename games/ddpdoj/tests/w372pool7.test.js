@@ -328,3 +328,46 @@ test('W372 $24641A is $246410 with mode 0, not a routine of its own', { skip: SK
   const { loadAnimObjects246410 } = await import('../src/animobjects.js');
   assert.equal(loadAnimObjects246410.length, 3, 'mode is optional, so old callers are unchanged');
 });
+
+test('W372 the loader is TWO load/wait pairs sharing ONE handle word', { skip: SKIP }, async () => {
+  const { resourceLoader2907E2 } = await import('../src/objslot7pool.js');
+  const { Ram } = await import('../src/ram.js');
+  const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
+  const rom = { u32: (a) => IMG.readUInt32BE(a), u16: (a) => IMG.readUInt16BE(a) };
+  const ram = new Ram();
+  let ready = false;
+  const commits = [];
+  const ctx = {
+    load246710: () => 0x1111, loadAnim0: () => 0x2222,
+    ready24681A: () => ready, commit246800: (r, h) => commits.push(h),
+  };
+  // State 0 does nothing at all.
+  resourceLoader2907E2(ram, rom, ctx);
+  assert.equal(ram.u16(0x81e108), 0, 'idle stays idle');
+
+  // State 1 is GATED on $81E106 -- unarmed, it must not load.
+  ram.setU16(0x81e108, 1);
+  resourceLoader2907E2(ram, rom, ctx);
+  assert.equal(ram.u32(0x81e10e), 0, 'unarmed: no load');
+  ram.setU16(0x81e106, 1);
+  resourceLoader2907E2(ram, rom, ctx);
+  assert.equal(ram.u32(0x81e10e), 0x1111, 'armed: the first handle is cached');
+
+  // State 2 WAITS, then commits and advances.
+  ram.setU16(0x81e108, 2);
+  resourceLoader2907E2(ram, rom, ctx);
+  assert.deepEqual(commits, [], 'not ready: nothing committed and no advance');
+  assert.equal(ram.u16(0x81e108), 2, '  ...still in state 2');
+  ready = true;
+  resourceLoader2907E2(ram, rom, ctx);
+  assert.deepEqual(commits, [0x1111], 'ready: the FIRST handle committed');
+  assert.equal(ram.u16(0x81e108), 3, '  ...and it advanced');
+
+  // State 3 OVERWRITES the same handle word -- which is why the pairs cannot be collapsed.
+  resourceLoader2907E2(ram, rom, ctx);
+  assert.equal(ram.u32(0x81e10e), 0x2222, 'the second load overwrites the first handle');
+  assert.equal(ram.u16(0x81e108), 4);
+  resourceLoader2907E2(ram, rom, ctx);
+  assert.deepEqual(commits, [0x1111, 0x2222], 'and the SECOND handle commits separately');
+  assert.equal(ram.u16(0x81e108), 0, 'then back to IDLE, not onward');
+});
