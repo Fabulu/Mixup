@@ -155,11 +155,12 @@ test('W373 state 3 CASCADES into state 5 in the same frame', { skip: SKIP }, asy
   ram.setU8(SCREEN17.recs + SCREEN17.phaseAt, SCREEN17.phaseSeed);
   objSlot17(ram, rom, a5, ctx);
   // The compares run in sequence, so state 3's handler advancing the byte lets state 5's arm fire
-  // on the same pass. An else-if chain would run only the first.
-  assert.deepEqual(notes.filter((n) => SCREEN17.subHandlers.includes(n)),
-    [SCREEN17.subHandlers[0], SCREEN17.subHandlers[1]], 'both the 3 and 5 arms ran');
-  assert.equal(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), SCREEN17.firstSetsPhase,
-    'and the byte is left at 5');
+  // on the same pass. An else-if chain would run only the first. State 5 is PORTED now, so the
+  // proof is the byte reaching 6 in one call rather than a second note.
+  const { HANDLER5 } = await import('../src/objslot17.js');
+  assert.ok(notes.includes(SCREEN17.subHandlers[0]), 'state 3 ran (still only a note)');
+  assert.equal(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), HANDLER5.nextPhase,
+    'and the byte went 3 -> 5 -> 6 in ONE frame, which only happens if BOTH arms ran');
 });
 
 test('W373 state 1 advances only when BOTH records are idle', { skip: SKIP }, async () => {
@@ -184,4 +185,51 @@ test('W373 state 2 clears the flag state 0 raised, then kills', { skip: SKIP }, 
   ram.setU16(a5 + 0x00, 0x60);
   objSlot17(ram, rom, a5, ctx);
   assert.equal(ram.u16(SCREEN17.killFlag), 0, 'state 2 dropped it again');
+});
+
+test("W373 $25D39C writes THIS side's byte, picked by the caller's dbra counter",
+  { skip: SKIP }, async () => {
+    const { phase5_25D39C, HANDLER5, SCREEN17, ram, rom, ctx } = await fx();
+    const { TxVram } = await import('../src/background.js');
+    ctx.tx = new TxVram();
+    const a5 = 0x812800;
+    const a6 = SCREEN17.recs;
+    ram.setU8(a6 + 0x05, 1);                                 // index 1 -> the table's $4
+    ram.setU8(a5 + 0x04, 0xff);
+    ram.setU8(a5 + 0x05, 0xff);
+
+    phase5_25D39C(ram, rom, ctx, a5, a6, 1, undefined);      // D7 = 1, so record 0
+    assert.equal(ram.u8(a5 + 0x04), rom.u16(HANDLER5.table + 2) & 0xff, 'the EVEN byte took it');
+    assert.equal(ram.u8(a5 + 0x05), 0xff, 'and the odd one was left alone');
+    assert.equal(ram.u8(a6 + SCREEN17.phaseAt), HANDLER5.nextPhase, 'and it advanced 5 -> 6');
+
+    ram.setU8(a5 + 0x04, 0xff);
+    ram.setU8(a6 + SCREEN17.phaseAt, 5);
+    phase5_25D39C(ram, rom, ctx, a5, a6, 0, undefined);      // D7 = 0, so record 1
+    assert.equal(ram.u8(a5 + 0x05), rom.u16(HANDLER5.table + 2) & 0xff, 'the ODD byte took it');
+    assert.equal(ram.u8(a5 + 0x04), 0xff, 'and the even one was left alone');
+  });
+
+test('W373 $25D39C is gated on $813098 and does nothing at all when it is set',
+  { skip: SKIP }, async () => {
+    const { phase5_25D39C, SCREEN17, ram, rom, ctx } = await fx();
+    const { TxVram } = await import('../src/background.js');
+    ctx.tx = new TxVram();
+    const a5 = 0x812800;
+    const a6 = SCREEN17.recs;
+    ram.setU16(0x813098, 1);
+    ram.setU8(a5 + 0x04, 0xff);
+    ram.setU8(a6 + SCREEN17.phaseAt, 5);
+    phase5_25D39C(ram, rom, ctx, a5, a6, 1, undefined);
+    assert.equal(ram.u8(a5 + 0x04), 0xff, 'nothing written');
+    assert.equal(ram.u8(a6 + SCREEN17.phaseAt), 5,
+      'and the state did NOT advance -- the gate is before everything');
+  });
+
+test('W373 the $25D294 table is four words and self-bounding', { skip: SKIP }, async () => {
+  const { HANDLER5, rom } = await fx();
+  const vals = [0, 1, 2, 3].map((i) => rom.u16(HANDLER5.table + i * 2));
+  assert.deepEqual(vals, [2, 4, 6, 0], 'the same 2/4/6 the tally posts, then a zero');
+  assert.equal(rom.u32(HANDLER5.table + HANDLER5.entries * 2), 0x0023d16c,
+    'and the word after the fourth is the $25D29C descriptor, so four is the bound');
 });

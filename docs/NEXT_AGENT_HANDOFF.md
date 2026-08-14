@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2691/2691 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2694/2694 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -160,7 +160,16 @@ the EVEN offsets `$4`/`$6`/`$8` and P2 the ODD `$5`/`$7`/`$9`. One array of pair
 restore it, so it lands on the record just staged. `tally.js` documents the identical trap at `$260024`.
 Reading it as `($4,A5)` silently zeroes P1's freshly seeded slot pair, which is exactly what the smoke caught.
 
-Still noted inside it: `$25F442` (state 0's opener) and the four sub-handlers, ~700 bytes together.
+**`$25D39C`, the state-5 handler, IS PORTED and is SHARED with slot [9]** (`phase5_25D39C`). It reads the
+side from **the caller's D7, the `dbra` counter** -- and `dbra` counts DOWN, so record 0 runs with D7 = 1 and
+takes the EVEN byte. That is the even/odd pairing arrived at from the other end, which is the strongest
+confirmation the port has for it.
+
+**ONE THING IN IT IS UNRESOLVED AND IS NOTED RATHER THAN GUESSED:** `$25D3C4 move.w ($A,A4),D1`. A4 is set by
+neither the handler nor either caller, so it is inherited from further up the frame. The string still prints;
+only its ROW is unknown, and the port leaves it at the bias.
+
+Still noted: `$25F442` (state 0's opener) and the other three handlers.
 
 **Fifteen palette windows declared.** Fourteen at 64 bytes through `$24150A` and ONE at 32 through `$2414BE`,
 which is a different routine reading half as much. `$222838` was already declared for the `$2911B0` menu and

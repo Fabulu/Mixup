@@ -24,7 +24,7 @@
 
 import { u16 } from './ram.js';
 import { install24150A, install2414BE, paletteSet241688 } from './palette.js';
-import { clearTx23C622 } from './background.js';
+import { clearTx23C622, txString25A14C } from './background.js';
 import { announcePost } from './rank.js';
 import { stageCreate, queueKill } from './objalloc.js';
 
@@ -187,6 +187,11 @@ export function objSlot17(ram, rom, a5, ctx) {
     if (ram.u8(a6) === 0) continue;                          // $25CED4 tst.b (A6) / beq $25CF18
     for (const [i, phase] of SCREEN17.subStates.entries()) {
       if (ram.u8(a6 + SCREEN17.phaseAt) !== phase) continue; // $25CEDA.. cmpi.b #phase,($1,A6)
+      if (phase === 0x05) {
+        // The dbra counter runs 1 then 0, so `r` maps to D7 as (recCount - 1 - r).
+        phase5_25D39C(ram, rom, ctx, a5, a6, SCREEN17.recCount - 1 - r, undefined);
+        continue;
+      }
       ctx.unported?.note(SCREEN17.subHandlers[i],
         `$${SCREEN17.subHandlers[i].toString(16).toUpperCase()} -- slot [17]'s handler for state `
         + `${phase} on ($1,A6). Unread`);
@@ -208,4 +213,42 @@ export function objSlot17(ram, rom, a5, ctx) {
   }
   if (ram.u8(SCREEN17.recs + 0x71) !== 0) d0 = u16(d0 | 0x02);   // $25CF46/$25CF4E ori.w #$2
   if (d0 === 3) ram.setU8(a5 + SCREEN17.state, 2);           // $25CF52 cmpi.w #$3 / $25CF58
+}
+
+/** `$25D39C` -- THE STATE-5 HANDLER, and it is SHARED: slot [17] runs it at state 5 and slot [9]
+ *  runs the same routine at the same state over the same records.
+ *
+ *  It picks a value from the four-word table at `$25D294` using `($5,A6)`, writes it into THIS
+ *  SIDE's byte of the object's pair array, prints one string, and advances the record to state 6.
+ *
+ *  THE SIDE COMES FROM THE CALLER'S D7, THE `dbra` COUNTER. `tst.w D7 / beq` takes `($5,A5)` when it
+ *  is zero and `($4,A5)` otherwise -- and `dbra` counts DOWN, so record 0 runs with D7 = 1 and takes
+ *  the EVEN byte while record 1 runs with D7 = 0 and takes the ODD one. That is the same even/odd
+ *  pairing state 0 seeds, arrived at from the other end.
+ *
+ *  The table's four entries are `$2`, `$4`, `$6`, `$0` -- the same values the tally posts and slot
+ *  [7] maps three ways. Self-bounding: four words end exactly where the `$25D29C` descriptor begins.
+ */
+export const HANDLER5 = Object.freeze({
+  addr: 0x25d39c, table: 0x25d294, entries: 4,
+  string: 0x25d3f6, gate: 0x813098, nextPhase: 0x06, col: 0x08, shift: 9, bias: 8,
+});
+
+export function phase5_25D39C(ram, rom, ctx, a5, a6, d7, a4) {
+  if (ram.u16(HANDLER5.gate) !== 0) return;                  // $25D39C tst.w $813098 / bne $25D3C4
+  const d0 = rom.u16(HANDLER5.table + u16(ram.u8(a6 + 0x05) << 1));   // $25D3A8/$25D3AC/$25D3B2
+  // $25D3B6 tst.w D7 / beq $25D3C0 -- the caller's dbra counter IS the side select.
+  ram.setU8(a5 + (d7 !== 0 ? 0x04 : 0x05), d0 & 0xff);       // $25D3BA / $25D3C0
+
+  // $25D3C4 move.w ($A,A4),D1 -- A4 is set by NEITHER this routine nor either caller, so its value
+  // is inherited from further up the frame. The string still prints; only its ROW is unresolved,
+  // and it is left at the bias rather than invented.
+  if (a4 === undefined) {
+    ctx.unported?.note(HANDLER5.addr, '$25D3C4 move.w ($A,A4),D1 -- A4 is inherited, not set. The '
+      + 'row this string prints at is the one value in the handler this port cannot resolve');
+  }
+  const src = a4 === undefined ? 0 : rom.u16(a4 + 0x0a);
+  const row = u16((src >>> HANDLER5.shift) + HANDLER5.bias);  // $25D3C8 lsr #6 / $25D3CA lsr #3
+  txString25A14C(ctx.tx, rom, HANDLER5.col, row, 0, HANDLER5.string);   // $25D3DC jsr $25A14C
+  ram.setU8(a6 + SCREEN17.phaseAt, HANDLER5.nextPhase);      // $25D3E2 -- state 5 ADVANCES to 6
 }
