@@ -2879,6 +2879,33 @@ SHOT_WINDOWS.extend([
                        "by $291DF4 with the cursor $81E11C, then the $FFFF terminator. Each entry is "
                        "delay, X, MODE, then a long string pointer. SELF-BOUNDING: the terminator "
                        "ends at $2921BA, which is entry [0]'s own string pointer"),
+    (0x223FB8, 0x0040, "W373: slot [9] record-state-0 palette, bank 24 through $24150A. Sixty-four "
+                       "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
+                       "slot [17]; this one is slot [9]'s own"),
+    (0x223F78, 0x0040, "W373: slot [9] record-state-0 palette, bank 25 through $24150A. Sixty-four "
+                       "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
+                       "slot [17]; this one is slot [9]'s own"),
+    (0x223F38, 0x0040, "W373: slot [9] record-state-0 palette, bank 27 through $24150A. Sixty-four "
+                       "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
+                       "slot [17]; this one is slot [9]'s own"),
+    (0x223DB8, 0x0040, "W373: slot [9] record-state-0 palette, bank 29 through $24150A. Sixty-four "
+                       "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
+                       "slot [17]; this one is slot [9]'s own"),
+    (0x223DF8, 0x0040, "W373: slot [9] record-state-0 palette, bank 30 through $24150A. Sixty-four "
+                       "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
+                       "slot [17]; this one is slot [9]'s own"),
+    (0x223E38, 0x0040, "W373: slot [9] record-state-0 palette, bank 12 through $24150A. Sixty-four "
+                       "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
+                       "slot [17]; this one is slot [9]'s own"),
+    (0x223E78, 0x0040, "W373: slot [9] record-state-0 palette, bank 13 through $24150A. Sixty-four "
+                       "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
+                       "slot [17]; this one is slot [9]'s own"),
+    (0x223EB8, 0x0040, "W373: slot [9] record-state-0 palette, bank 14 through $24150A. Sixty-four "
+                       "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
+                       "slot [17]; this one is slot [9]'s own"),
+    (0x223EF8, 0x0040, "W373: slot [9] record-state-0 palette, bank 15 through $24150A. Sixty-four "
+                       "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
+                       "slot [17]; this one is slot [9]'s own"),
     (0x25CF60, 0x0004, "W373: $25D164's value table, indexed by ($3,A6) * 2. TWO words, and it is "
                        "bounded by a THIRD descriptor pair at $25CF64/$25CF72 -- same 14-byte shape "
                        "as $25D29A/$25D2A8, with the $23D16C/$23D186 and $23D17E/$23D18E readers"),

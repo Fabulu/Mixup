@@ -20,7 +20,7 @@
 // are in front of you.
 
 import { u16 } from './ram.js';
-import { paletteSet241688 } from './palette.js';
+import { paletteSet241688, install24150A } from './palette.js';
 import { txString25A14C } from './background.js';
 import { readInput23D186 } from './tallyscreen.js';
 import { queueKill } from './objalloc.js';
@@ -74,6 +74,9 @@ export function objSlot9(ram, rom, a5, ctx) {
           break;
         case 0x04:
           phase4_25D402(ram, rom, ctx, a5, a6, d7);          // $25CB02
+          break;
+        case 0x00:
+          phase0_25D010(ram, rom, ctx, a6, d7);              // $25CB3A
           break;
         case 0x01:
           phase1_25D1DA(ram, rom, ctx, a5, a6, d7);          // $25CB48
@@ -283,3 +286,59 @@ export function phase1_25D1DA(ram, rom, ctx, a5, a6, d7) {
   confirmAndDraw(ram, ctx, a5, a6, d0, HANDLER1.nextPhase);  // $25D23A..$25D292
 }
 
+export const HANDLER0 = Object.freeze({
+  addr: 0x25d010, nextPhase: 0x01,
+  desc: Object.freeze([0x25cf64, 0x25cf72]),
+  // Per-side coordinates: side 0 gets $1A00/$E600 and side 1 $1E40/$5200.
+  coord: Object.freeze([Object.freeze([0x1a00, 0xe600]), Object.freeze([0x1e40, 0x5200])]),
+  d0At: 0x0e, d1At: Object.freeze([0x14, 0x1a, 0x20, 0x26]),
+  pairs: Object.freeze([[0x0a, 0x0060], [0x0c, 0x0c00], [0x10, 0x0060], [0x12, 0x0c00],
+    [0x2e, 0x0599], [0x40, 0x1ac0]]),
+  countAt: 0x31, countValue: 0x02,
+  clearBytes: Object.freeze([0x30, 0x34, 0x35]),
+  clearWords: Object.freeze([0x36, 0x38, 0x3a, 0x3c, 0x3e,
+    0x42, 0x44, 0x46, 0x48, 0x4a, 0x4c, 0x4e, 0x50, 0x52, 0x54]),
+  palettes: Object.freeze([
+    Object.freeze({ src: 0x223fb8, bank: 24 }), Object.freeze({ src: 0x223f78, bank: 25 }),
+    Object.freeze({ src: 0x223f38, bank: 27 }), Object.freeze({ src: 0x223d38, bank: 26 }),
+    Object.freeze({ src: 0x223d78, bank: 28 }), Object.freeze({ src: 0x223db8, bank: 29 }),
+    Object.freeze({ src: 0x223df8, bank: 30 }), Object.freeze({ src: 0x223e38, bank: 12 }),
+    Object.freeze({ src: 0x223e78, bank: 13 }), Object.freeze({ src: 0x223eb8, bank: 14 }),
+    Object.freeze({ src: 0x223ef8, bank: 15 }),
+  ]),
+});
+
+/** `$25D010` -- SLOT [9]'s RECORD STATE 0: arm a record and hand it to state 1.
+ *
+ *  THE ONLY PER-SIDE VALUE IS THE COORDINATE PAIR. Side 0 gets `$1A00`/`$E600` and side 1
+ *  `$1E40`/`$5200`; everything else it writes is identical for both. D1 goes into FOUR fields at
+ *  `$14`/`$1A`/`$20`/`$26`, a `$6` stride, so those are one array rather than four names.
+ *
+ *  It clears three BYTES and fifteen WORDS, and `($40,A6)` alone is set to `$1AC0` in the MIDDLE of
+ *  that run. Transcribed as the list it is: folding the clears into a range would take `$40` with
+ *  them and lose the only non-zero field in the block.
+ *
+ *  ELEVEN PALETTE INSTALLS, all through `$24150A`. They overlap slot [17] state 0's set in FIVE banks
+ *  -- 24, 25, 26, 27, 28 -- and differ in the other six, which is what you would expect of two
+ *  screens that share their character art and not their furniture.
+ */
+export function phase0_25D010(ram, rom, ctx, a6, d7) {
+  const side = sideFromD7_25D4E4(d7);
+  ram.setU16(a6 + 0x02, 0);                                  // $25D010 (and again at $25D022)
+  const [d0, d1] = HANDLER0.coord[side];                     // $25D028/$25D034 -- the ONLY per-side part
+  ram.setU16(a6 + HANDLER0.d0At, d0);                        // $25D03C
+  for (const off of HANDLER0.d1At) ram.setU16(a6 + off, d1); // $25D040..$25D04C, a $6 stride
+  for (const [off, v] of HANDLER0.pairs) ram.setU16(a6 + off, v);   // $25D050..$25D068, $25D094
+  ram.setU8(a6 + HANDLER0.countAt, HANDLER0.countValue);     // $25D06E
+  for (const off of HANDLER0.clearBytes) ram.setU8(a6 + off, 0);    // $25D074..$25D07C
+  for (const off of HANDLER0.clearWords) ram.setU16(a6 + off, 0);   // $25D080..$25D0BE
+
+  for (const p of HANDLER0.palettes) {                       // $25D0C2..$25D156
+    if (ctx.palette) {
+      install24150A(ram, ctx.palette, p.bank, rom.bytes(p.src, 64), 0x25d0c8, 'slot [9] palette');
+    } else {
+      ctx.unported?.note(0x24150a, `$25D0C8.. bank ${p.bank} <- $${p.src.toString(16).toUpperCase()}`);
+    }
+  }
+  ram.setU8(a6 + SCREEN17.phaseAt, HANDLER0.nextPhase);      // $25D15C -- 0 ADVANCES to 1
+}

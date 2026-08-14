@@ -328,3 +328,69 @@ test('W373 state 1 and state 4 share one confirm-and-draw tail', { skip: SKIP },
     'and state 4 confirms to 5 -- the same tail, a different next state');
   assert.notEqual(one.HANDLER1.nextPhase, four.HANDLER4.nextPhase);
 });
+
+test('W373 $25D010 differs between sides ONLY in the coordinate pair', { skip: SKIP }, async () => {
+  const a6base = 0x812ea0;
+  const snap = async (d7) => {
+    const f = await fx();
+    f.phase0_25D010(f.ram, f.rom, f.ctx, a6base, d7);
+    const out = [];
+    for (let i = 0; i < 0x60; i += 2) out.push(f.ram.u16(a6base + i));
+    return out;
+  };
+  const s0 = await snap(1);                                  // D7 = 1 -> side 0
+  const s1 = await snap(0);                                  // D7 = 0 -> side 1
+  const diff = [];
+  for (let i = 0; i < s0.length; i++) if (s0[i] !== s1[i]) diff.push(i * 2);
+  const { HANDLER0 } = await fx();
+  // $E holds D0 and $14/$1A/$20/$26 all hold D1 -- five words, and nothing else.
+  assert.deepEqual(diff, [HANDLER0.d0At, ...HANDLER0.d1At].sort((a, b) => a - b),
+    'exactly the coordinate fields differ between the two sides');
+});
+
+test('W373 $25D010 writes D1 into FOUR fields at a $6 stride', { skip: SKIP }, async () => {
+  const { phase0_25D010, HANDLER0, ram, rom, ctx } = await fx();
+  const a6 = 0x812ea0;
+  phase0_25D010(ram, rom, ctx, a6, 1);
+  const [, d1] = HANDLER0.coord[0];
+  for (const off of HANDLER0.d1At) {
+    assert.equal(ram.u16(a6 + off), d1, `($${off.toString(16)},A6) got D1`);
+  }
+  for (let i = 1; i < HANDLER0.d1At.length; i++) {
+    assert.equal(HANDLER0.d1At[i] - HANDLER0.d1At[i - 1], 6, 'the stride is $6 throughout');
+  }
+});
+
+test('W373 ($40,A6) survives the clear run around it', { skip: SKIP }, async () => {
+  const { phase0_25D010, HANDLER0, ram, rom, ctx } = await fx();
+  const a6 = 0x812ea0;
+  phase0_25D010(ram, rom, ctx, a6, 1);
+  assert.equal(ram.u16(a6 + 0x40), 0x1ac0,
+    '$40 is the ONLY non-zero field in the middle of the clears');
+  for (const off of HANDLER0.clearWords) {
+    assert.equal(ram.u16(a6 + off), 0, `($${off.toString(16)},A6) cleared`);
+  }
+  assert.ok(!HANDLER0.clearWords.includes(0x40), 'and $40 is NOT in the clear list');
+  assert.ok(HANDLER0.clearWords.includes(0x3e) && HANDLER0.clearWords.includes(0x42),
+    '  ...though $3E and $42, on either side of it, are');
+});
+
+test('W373 $25D010 advances the record 0 -> 1', { skip: SKIP }, async () => {
+  const { phase0_25D010, HANDLER0, SCREEN17, ram, rom, ctx } = await fx();
+  const a6 = 0x812ea0;
+  ram.setU8(a6 + SCREEN17.phaseAt, 0);
+  phase0_25D010(ram, rom, ctx, a6, 1);
+  assert.equal(ram.u8(a6 + SCREEN17.phaseAt), HANDLER0.nextPhase);
+});
+
+test('W373 slot [9]\'s eleven palettes overlap slot [17]\'s fifteen in only two banks',
+  { skip: SKIP }, async () => {
+    const { HANDLER0 } = await fx();
+    const { SCREEN17 } = await import('../src/objslot17.js');
+    const mine = new Set(HANDLER0.palettes.map((p) => p.bank));
+    const theirs = new Set(SCREEN17.palettes.filter((p) => p.via === 0x24150a).map((p) => p.bank));
+    const shared = [...mine].filter((b) => theirs.has(b)).sort((a, b) => a - b);
+    assert.deepEqual(shared, [24, 25, 26, 27, 28],
+      'the character-art banks, shared; the other six differ');
+    assert.equal(mine.size, 11, 'and no bank is installed twice within slot [9]');
+  });

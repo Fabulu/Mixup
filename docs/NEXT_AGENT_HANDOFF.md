@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2723/2723 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2728/2728 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -163,7 +163,18 @@ change, where state 4 posts unconditionally.
 **STATES 1 AND 4 SHARE ONE CONFIRM-AND-DRAW TAIL**, `$25D23A` and `$25D486`, byte for byte identical apart
 from the state they write (2 and 5). Extracted as `confirmAndDraw`.
 
-**STILL OPEN IN SLOT [9]:** state 0 at `$25C8A2` (~550 bytes, unread), the four handlers it does not share
+**`$25D010`, the RECORD's state 0, IS PORTED.** The ONLY per-side value in it is the coordinate pair --
+side 0 `$1A00`/`$E600`, side 1 `$1E40`/`$5200` -- and a test diffs the whole record between the two sides to
+prove nothing else differs. D1 lands in FOUR fields at a `$6` stride, and `($40,A6)` is set to `$1AC0` in the
+MIDDLE of a fifteen-word clear run, so the clears cannot be folded into a range.
+
+Its eleven palettes overlap slot [17]'s in FIVE banks (24-28) and differ in the other six. I claimed two by
+eye and the test corrected it.
+
+**SO SLOT [9]'s RECORD MACHINE IS COMPLETE EXCEPT STATE 7**: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7, all
+ported bar `$25D560`, and `$25D164` closes the ring back to 3.
+
+**STILL OPEN IN SLOT [9]:** the OBJECT's state 0 at `$25C8A2` (~550 bytes, unread), the four handlers it does not share
 (`$25D402`, `$25D010`, `$25D1DA`, `$25D164`), and the block at `$25CB94` after the record walk, which reads
 `$23D16C`, tests bit `$F` and calls `$23C98E`.
 
@@ -405,8 +416,7 @@ skeleton and the WRONG one for anything inside these routines.
 
 1. **`$25D560`** -- slot [17]'s last unported handler, and the biggest. Partially read below.
 2. **Slot [9] state 0** `$25C8A2` (~550 bytes) -- then slot [9] is complete too.
-3. **`$25D010`** -- slot [9]'s last unshared handler (state 0 of the RECORD machine, ~340 bytes).
-4. **The seven shared draws**: `$25E220`, `$25E29E`, `$25E6CE`, `$25E824`, `$25EDF8`, `$25EF30`, `$25F074`.
+3. **The seven shared draws**: `$25E220`, `$25E29E`, `$25E6CE`, `$25E824`, `$25EDF8`, `$25EF30`, `$25F074`.
    Both state 1 and state 4 call all seven, so porting them serves the whole select screen.
 3. **Slot [18] `$24902A`** -- the ASIC27 self-test. Real work, but NOT on the path to the milestone.
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
