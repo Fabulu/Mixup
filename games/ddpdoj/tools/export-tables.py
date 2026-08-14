@@ -2779,6 +2779,12 @@ SHOT_WINDOWS.extend([
                        "is $26F8A6, the first handler it points at"),
     (0x26F55A, 0x00AC, "W342: type $4C's 6-word record prototype and ALL FIVE sub prototypes, "
                        "$26F55A..$26F605 -- overlapping its handler at $26F5F2 by TWENTY bytes"),
+    (0x290F12, 0x0054, "W372: slot [7] inner state 0's SEQUENCE set -- three pointers at $290F12 to "
+                       "three five-step sequences at $290F1E/$290F36/$290F4E, each $18 and terminated "
+                       "by $FFFFFFFF. Self-bounding TWICE over: the pointer table ends where its first "
+                       "sequence begins, and the sequences end where their first STEP ($290F66) begins. "
+                       "The three differ in exactly ONE step -- index 2, $290FE2 / $291040 / $29109C -- "
+                       "so they are one sequence with a single swapped stage"),
     (0x290CE8, 0x00C6, "W372: slot [7]'s $2907E2 descriptor set -- NINE pointers at $290CE8 followed "
                        "immediately by the nine 18-byte descriptors they point at, $290D0C..$290DAE. "
                        "The pointer table is bounded by its OWN FIRST ENTRY: [0] is $290D0C, which is "

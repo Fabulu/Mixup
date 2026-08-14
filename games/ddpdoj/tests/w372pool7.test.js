@@ -145,3 +145,21 @@ test('W372 $290F12 is THREE entries, and a naive scan reads EIGHT', { skip: SKIP
   // The proof that a forward scan over-reads: the word at the fourth slot is inside the FIRST target.
   assert.ok(0x290f12 + 3 * 4 >= first, 'the fourth pointer slot is already inside entry [0]s code');
 });
+
+test('W372 the three sequences differ in exactly ONE step of five', { skip: SKIP }, () => {
+  const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
+  // Each is five pointers then $FFFFFFFF. All three share steps 0, 1, 3 and 4 and differ only at
+  // index 2 -- so this is one sequence with a single swapped stage, not three sequences.
+  const seq = (base) => {
+    const out = [];
+    for (let i = 0; i < 5; i++) out.push(IMG.readUInt32BE(base + i * 4));
+    assert.equal(IMG.readUInt32BE(base + 20), 0xffffffff, 'terminated by $FFFFFFFF');
+    return out;
+  };
+  const a = seq(0x290f1e); const b = seq(0x290f36); const c = seq(0x290f4e);
+  const diff = a.map((v, i) => (v === b[i] && v === c[i] ? null : i)).filter((i) => i !== null);
+  assert.deepEqual(diff, [2], 'exactly one step differs across all three');
+  assert.deepEqual([a[2], b[2], c[2]], [0x290fe2, 0x291040, 0x29109c], 'the three swapped stages');
+  // And the whole structure bounds itself: the sequences end where their first STEP begins.
+  assert.equal(0x290f1e + 3 * 0x18, a[0], 'three sequences end exactly at step 0s address');
+});
