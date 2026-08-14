@@ -412,6 +412,18 @@ docket entry warned, and the convention is now measured rather than predicted:
 represented in a port whose driver is per-frame. `tallyscreen.js` is the right reference for the state-machine
 skeleton and the WRONG one for anything inside these routines.
 
+### THE "ALREADY PORTED" AUDIT WAS RUN AND CAME BACK CLEAN (W373)
+
+Five routines this session turned out to exist already under another name -- `$243DD0`, `$24652A`, `$24641A`,
+`$285AF2` and `$259FBC` -- so at the end of the wave every address still `note()`d in the new files was
+grepped back against `src/`. **Twenty-seven distinct noted addresses, and none of them is a ported routine
+hiding under a different name.** The only cross-references are constants (`$24107C` is `machine.js`'s
+`objTableInit`, not a function) and the `$24150A`/`$241688` guards, which are "no PaletteState on this chain"
+notes rather than unported claims.
+
+So the remaining notes are real gaps. **Do not re-run this audit before starting them; DO re-run it after
+writing any new batch**, because it has paid off five times.
+
 ### THE NEXT UNITS, CHEAPEST FIRST
 
 1. **The six remaining shared draws**, cheapest first: **`$25EDF8`** (312, part-read below),
