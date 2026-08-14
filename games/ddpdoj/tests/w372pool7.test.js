@@ -182,3 +182,26 @@ test('W372 the sequence "steps" are SCRIPTS -- $2909AA is their interpreter', { 
     assert.equal(IMG.readUInt16BE(end - 2), 0xffff, `the block before $${end.toString(16)} ends $FFFF`);
   }
 });
+
+test('W372 opcode $8003 caches its load, and its records come BEFORE their table', { skip: SKIP }, () => {
+  const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
+  // $8003 loads a resource through $246710 and caches the result in $81E0FE. If the cache is already
+  // set it skips the load entirely -- and either way it exits CARRY SET without advancing the cursor,
+  // so like $8002 it holds until it is satisfied.
+  assert.equal(IMG.readUInt16BE(0x290a56), 0x0c40, '$290A56 cmpi.w #imm,D0');
+  assert.equal(IMG.readUInt16BE(0x290a58), 0x8003, '  ...#$8003');
+  assert.equal(IMG.readUInt32BE(0x290a60), 0x0081e0fe, '$290A5E move.l $81E0FE,D0 -- the cache');
+  assert.equal(IMG.readUInt16BE(0x290a64), 0x6600, '  ...bne -- already loaded, skip the load');
+  assert.equal(IMG.readUInt32BE(0x290a7a), 0x00246710, '$290A78 jsr $246710');
+  assert.equal(IMG.readUInt32BE(0x290a80), 0x0081e0fe, '$290A7E caches the result');
+  assert.equal(0x290a86 + IMG.readInt16BE(0x290a86), 0x2909f0, '$290A84 bra -> the CARRY SET exit');
+  // Its table sits AFTER its records -- the reverse of $290CE8 and $290F12 -- so "first entry bounds
+  // the table" gives the lower bound here, not the upper one.
+  const first = IMG.readUInt32BE(0x290e8a);
+  assert.equal(first, 0x290e58, 'table [0] points BACKWARD to $290E58');
+  assert.ok(first < 0x290e8a, '  ...so the records precede the table');
+  for (let i = 0; i < 5; i++) {
+    assert.equal(IMG.readUInt32BE(0x290e8a + i * 4), 0x290e58 + i * 0x0a, `record ${i}, 10 bytes apart`);
+  }
+  assert.equal(0x290e8a + 5 * 4, 0x290e9e, 'and the table ends exactly at inner state 0');
+});

@@ -2779,6 +2779,11 @@ SHOT_WINDOWS.extend([
                        "is $26F8A6, the first handler it points at"),
     (0x26F55A, 0x00AC, "W342: type $4C's 6-word record prototype and ALL FIVE sub prototypes, "
                        "$26F55A..$26F605 -- overlapping its handler at $26F5F2 by TWENTY bytes"),
+    (0x290E58, 0x0046, "W372: slot [7] script opcode $8003's resource set -- FIVE 10-byte records at "
+                       "$290E58 followed by the five pointers to them at $290E8A, $290E58..$290E9E. "
+                       "The records come BEFORE their table here, the reverse of $290CE8 and $290F12, "
+                       "so the table is bounded BELOW by its own first entry and ABOVE by inner state "
+                       "0 at $290E9E. $8003 indexes it by its operand and hands the record to $246710"),
     (0x290F12, 0x0054, "W372: slot [7] inner state 0's SEQUENCE set -- three pointers at $290F12 to "
                        "three five-step sequences at $290F1E/$290F36/$290F4E, each $18 and terminated "
                        "by $FFFFFFFF. Self-bounding TWICE over: the pointer table ends where its first "
