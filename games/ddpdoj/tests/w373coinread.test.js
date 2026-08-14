@@ -5,10 +5,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 async function fx() {
-  const { coinRead13CFBA, coinPending13CF86, coinage13CE22, COIN } = await import('../src/isr.js');
+  const { coinRead13CFBA, coinPending13CF86, coinage13CE22, counterPulse13D068, COIN } = await import('../src/isr.js');
   const { Ram } = await import('../src/ram.js');
   const notes = [];
-  return { coinRead13CFBA, coinPending13CF86, coinage13CE22, COIN, ram: new Ram(),
+  return { coinRead13CFBA, coinPending13CF86, coinage13CE22, counterPulse13D068, COIN, ram: new Ram(),
     ctx: { unportedLog: { note: (a) => notes.push(a) } }, notes };
 }
 
@@ -208,4 +208,54 @@ test('W373 IRQ6 does not feed the PLAYER port into the coin read', async () => {
   } catch { /* the rest of IRQ6 wants a fuller ctx; the credit count is what matters */ }
   assert.equal(ram.u8(COIN.creditA + 2), 0, 'no credits appeared from player input');
   assert.equal(ram.u16(COIN.edges), 0, 'and no coin edge was recorded');
+});
+
+test('W373 $13D068 is a SIX-frame pulse, not a single store', async () => {
+  const { counterPulse13D068, COIN, ram } = await fx();
+  const port = [];
+  const ctx = { coinCounterPort: (v) => port.push(v), counterTrigger13CC50: () => 0x22,
+    unportedLog: { note: () => {} } };
+  ram.setU8(COIN.dipSlot2, 0x01);                            // non-zero -> drive $13CC50's value
+
+  counterPulse13D068(ram, ctx);
+  assert.deepEqual(port, [0x22], 'the trigger drove the port with its own value');
+  assert.equal(ram.u8(COIN.pulseState), 1);
+  assert.equal(ram.u8(COIN.pulseCount), COIN.pulseFrames, 'armed for six frames');
+
+  // The count is armed to 6 and decremented once per frame, so SIX state-1 frames are needed, not
+  // five: the arming frame is state 0's and does not decrement.
+  for (let i = 0; i < 5; i++) counterPulse13D068(ram, ctx);
+  assert.deepEqual(port, [0x22], 'still energised after five, still one write');
+  assert.equal(ram.u8(COIN.pulseState), 1, '  ...and still in state 1');
+  counterPulse13D068(ram, ctx);
+  assert.equal(ram.u8(COIN.pulseState), 2, 'the SIXTH frame moved it on');
+  assert.deepEqual(port.length, 2, 'and de-energised it');
+  assert.equal(port[1], 0x0000, 'with a ZERO write');
+
+  for (let i = 0; i < 6; i++) counterPulse13D068(ram, ctx);
+  assert.equal(ram.u8(COIN.pulseState), 0, 'six more frames de-energised, then back to idle');
+  counterPulse13D068(ram, ctx);
+  assert.equal(ram.u8(COIN.pulseState), 1, 'and the trigger fires again from state 0');
+  assert.equal(port.length, 3, 'a second pulse, so this is a repeating solenoid drive');
+});
+
+test('W373 the slot-2 DIP picks the pulse PATTERN as well as the credit block', async () => {
+  const { counterPulse13D068, COIN, ram } = await fx();
+  const port = [];
+  const ctx = { coinCounterPort: (v) => port.push(v), counterTrigger13CC50: () => 0x22,
+    unportedLog: { note: () => {} } };
+  ram.setU8(COIN.dipSlot2, 0x00);                            // ZERO -> the literal $F
+  counterPulse13D068(ram, ctx);
+  assert.deepEqual(port, [0x000f], '$80380B zero writes the literal $F, not the trigger value');
+});
+
+test('W373 without $13CC50 the pulse never STARTS -- the safe half', async () => {
+  const { counterPulse13D068, COIN, ram } = await fx();
+  const notes = [];
+  const port = [];
+  const ctx = { coinCounterPort: (v) => port.push(v), unportedLog: { note: (a) => notes.push(a) } };
+  for (let i = 0; i < 40; i++) counterPulse13D068(ram, ctx);
+  assert.deepEqual(port, [], 'nothing driven');
+  assert.equal(ram.u8(COIN.pulseState), 0, 'and it stayed idle rather than stuck energised');
+  assert.ok(notes.includes(COIN.trigger), 'the gap is counted');
 });

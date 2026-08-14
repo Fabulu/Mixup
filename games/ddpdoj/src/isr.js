@@ -135,7 +135,10 @@ export const COIN = Object.freeze({
   // $80394C and $80394D are ADJACENT per-slot coin counters, bumped with addq.b (opcode $5239,
   // whose size field is 00 = BYTE -- $5279 would be the word form).
   counterA: 0x80394c, counterB: 0x80394d,
-  service: 0x13d068, servicePort: 0xc08006,
+  service: 0x13d068, servicePort: 0xc08006, trigger: 0x13cc50,
+  // $80394A is the pulse STATE and $80394B its duration -- adjacent bytes, and both are byte ops
+  // ($0C39/$13FC/$5339 all carry size 00; $0C79 would be the word compare).
+  pulseState: 0x80394a, pulseCount: 0x80394b, pulseFrames: 0x06,
   // ACTIVE LOW, so all ones is nothing pressed. A harness with no coin port sees no coins.
   idle: 0xffff,
   arms: Object.freeze({ credit: 0x13ce22, hook: 0x18b0d6, tail: 0x13d002 }),
@@ -209,12 +212,7 @@ export function coinRead13CFBA(ram, coinPortWord, ctx) {
     }
   }
 
-  // $13D068 -- then the SERVICE half, on a SECOND hardware port $C08006, gated on $80394A being
-  // zero. It calls $13CC50 and branches on the $80380B DIP. Swept only to $13D08E; the coin and
-  // credit path above is complete without it.
-  ctx?.unportedLog?.note(COIN.service, `$13D068 lea $C08006,A0 -- the service/test half of the `
-    + `coin handler, on a second hardware port, gated on $80394A. Calls $13CC50, branches on `
-    + `$80380B. Not read past $13D08E`);
+  counterPulse13D068(ram, ctx);                               // $13D068 -- and always, every frame
 
   return d1;
 }
@@ -260,5 +258,63 @@ export function coinage13CE22(ram, a0) {
   if (dip <= 0x08) {                                         // $13CE7E blt / $13CE84 bgt
     ram.setU8(a0 + 2,                                        // $13CE8A move.b $803957,D1
       Math.min(ram.u8(a0 + 2) + ram.u8(COIN.creditsPerCoin), 0x09));   // $13CE90 add.b / $13CE94
+  }
+}
+
+/** `$13D068` -- THE COIN-COUNTER PULSE, on the SECOND hardware port `$C08006`.
+ *
+ *  A THREE-STATE MACHINE on `$80394A` with `$80394B` as its duration, and the two are ADJACENT
+ *  BYTES -- the same arrangement as `$803956`/`$803957` two routines earlier and as every other
+ *  counter pair in this port:
+ *
+ *      0   idle. Ask `$13CC50`; if it answers, drive the port and arm 6 frames   -> 1
+ *      1   count 6 frames down, then drive the port with ZERO and arm 6 more     -> 2
+ *      2   count 6 frames down, then go back to idle                             -> 0
+ *
+ *  So one coin energises the mechanical counter for six frames and de-energises it for six. It is a
+ *  SOLENOID PULSE, not a value being written once: collapsing it to a single store would leave the
+ *  counter permanently energised, and nothing on screen would show it.
+ *
+ *  BOTH counters reload from the LITERAL `$6` written at `$13D096` and `$13D0BE`, not from a reload
+ *  byte, so this pair is the one place in the family where the duration is not data.
+ *
+ *  `$13D084` picks WHAT is driven: `$80380B` being zero writes `#$F`, anything else writes whatever
+ *  `$13CC50` returned. The shared/separate coinage DIP therefore also selects the pulse pattern.
+ */
+export function counterPulse13D068(ram, ctx) {
+  const st = ram.u8(COIN.pulseState);
+
+  if (st === 0) {                                            // $13D06E cmpi.b #$00 / bne
+    const d0 = ctx?.counterTrigger13CC50?.(ram);             // $13D078 bsr $13CC50
+    if (d0 === undefined) {
+      ctx?.unportedLog?.note(COIN.trigger, `$13D078 bsr $13CC50 decides whether the coin counter `
+        + `pulses and supplies the value driven to $C08006. Unread. This port takes the `
+        + `beq-to-rts arm, so the pulse never starts -- which leaves the mechanical counter idle `
+        + `rather than stuck energised, the safe half of the two`);
+      return;
+    }
+    if (d0 === 0) return;                                    // $13D07C beq $13D0EA
+    // $13D084 -- the DIP picks the pattern, and $F is a literal, not d0 masked.
+    ctx?.coinCounterPort?.(ram.u8(COIN.dipSlot2) === 0 ? 0x000f : u16(d0));   // $13D08C/$13D092
+    ram.setU8(COIN.pulseCount, COIN.pulseFrames);            // $13D096
+    ram.setU8(COIN.pulseState, 1);                          // $13D09E move.b -- BYTE, like its cmpi.b
+    return;
+  }
+
+  if (st === 1) {                                            // $13D0A8 cmpi.b #$01 / bne
+    const left = (ram.u8(COIN.pulseCount) - 1) & 0xff;       // $13D0B2 subq.b #1
+    ram.setU8(COIN.pulseCount, left);
+    if (left !== 0) return;                                  // $13D0B8 bne
+    ctx?.coinCounterPort?.(0x0000);                          // $13D0BA move.w #$0,(A0)
+    ram.setU8(COIN.pulseCount, COIN.pulseFrames);            // $13D0BE -- the SAME literal
+    ram.setU8(COIN.pulseState, 2);                          // $13D0C6
+    return;
+  }
+
+  if (st === 2) {                                            // $13D0D0 cmpi.b #$02 / bne
+    const left = (ram.u8(COIN.pulseCount) - 1) & 0xff;       // $13D0DA subq.b #1
+    ram.setU8(COIN.pulseCount, left);
+    if (left !== 0) return;                                  // $13D0E0 bne
+    ram.setU8(COIN.pulseState, 0);                          // $13D0E2 -- back to idle
   }
 }

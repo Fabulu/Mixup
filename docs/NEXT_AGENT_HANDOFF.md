@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2652/2652 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2655/2655 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -76,16 +76,25 @@ it, so it cannot be called twice in a frame.
   whose size field is `00` = BYTE. `$5279` is the word form. Getting that wrong reads as an odd-address word.
 * **`$80380B` decides whether slot 2 shares slot 1's credit block**, and it must be EXACTLY 1 to split.
 
-**STILL OPEN IN D35:** `$13D068`, the service/test half on a SECOND hardware port `$C08006`, gated on
-`$80394A`. It calls `$13CC50` and branches on `$80380B`. Swept only to `$13D08E`. And `$18B0D6` is a sound post
-(`movem`, D0=$17, D1=$FF, D2=0, `jsr $18AB50`) modelled as `ctx.soundPost`.
+* **`$13D068` is the COIN-COUNTER SOLENOID PULSE** on the second port `$C08006`: three states on `$80394A`
+  with `$80394B` as a SIX-frame duration (adjacent bytes again, and here the reload is a literal `$6` written
+  twice rather than a data byte). Six frames energised, six de-energised, then idle. Collapsing it to one store
+  would leave the counter permanently energised and nothing on screen would show it.
+
+**STILL OPEN IN D35:** `$13CC50`, the pulse trigger -- it decides whether the counter fires and supplies the
+value driven to `$C08006`. Unread. The port takes the beq-to-rts arm, so the pulse never starts, which leaves
+the counter idle rather than stuck energised. `ctx.counterTrigger13CC50` drives the other arm. And `$18B0D6` is
+a sound post (`movem`, D0=$17, D1=$FF, D2=0, `jsr $18AB50`) modelled as `ctx.soundPost`.
+
+**AND THE REST OF D35 IS STILL UNANCHORED:** lives, extends, game over and continue. The economy above is the
+input side only.
 
 **THE PORT TRAP, and it cost six unrelated test failures:** IRQ6's `portWord` is `$C08000`, the PLAYER port.
 `$13CFBA` does its OWN `lea $C08004,A0` and reads a different one. `irq6` now passes `ctx.coinPort ?? $FFFF`.
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **`$13D068`** -- D35's service/test half, swept to `$13D08E`.
+1. **`$13CC50`** -- D35's pulse trigger, the last routine in the coin handler.
 2. **Nine dispatch slots untouched**: [8], [9], [12], [13], [15], [16], [17], [18], [19].
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
