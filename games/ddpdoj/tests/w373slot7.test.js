@@ -95,7 +95,6 @@ test('W373 the three sequence lists are self-bounding and the drivers differ in 
 
 test('W373 ONE player runs one pass and dies with code $F', { skip: SKIP }, async () => {
   const { objSlot7, SLOT7, ram, rom, ctx, a5 } = await fixture({ players: 1 });
-  const { STAGE } = await import('../src/objalloc.js');
   objSlot7(ram, rom, a5, ctx);
   assert.equal(ram.u16(SLOT7.work + SLOT7.pass), 0, 'pass counter starts at 0');
 
@@ -168,3 +167,95 @@ test('W373 the banner index 0 is unreachable, and the flash reloads on the BORRO
     assert.equal(ram.u8(SLOT7.flash), 1, '0 -> borrow -> reloaded from the adjacent byte');
     assert.equal(ram.u16(SLOT7.palShift), shift0 ^ 1, '  ...and NOW the palette shifted');
   });
+
+test('W373 $2901E0: the two vetoes short-circuit before any side effect', { skip: SKIP }, async () => {
+  const { GATE2901E0 } = await fixture();
+  for (const veto of [GATE2901E0.vetoA, GATE2901E0.vetoB]) {
+    const f = await fixture();
+    f.ram.setU16(veto, 1);
+    f.ram.setU16(0x81b646, 0x1234);   // what $253A0A would clear
+    assert.equal(f.menuGate2901E0(f.ram, f.rom, f.ctx), false,
+      `$${veto.toString(16)} non-zero closes the gate`);
+    assert.equal(f.ram.u16(0x81b646), 0x1234,
+      '  ...and returned before $253A0A could clear anything');
+  }
+});
+
+test('W373 $2901E0 clears sixteen words in two interleaved side lists', { skip: SKIP }, async () => {
+  const { menuGate2901E0, GATE_CLEARS, ram, rom, ctx } = await fixture();
+  for (const a of [...GATE_CLEARS.p1, ...GATE_CLEARS.p2]) ram.setU16(a, 0xffff);
+  menuGate2901E0(ram, rom, ctx);
+  for (const a of [...GATE_CLEARS.p1, ...GATE_CLEARS.p2]) {
+    assert.equal(ram.u16(a), 0, `$${a.toString(16)} cleared`);
+  }
+  // The two lists must not be the same list: every P1 address has a P2 neighbour, none shared.
+  assert.equal(new Set([...GATE_CLEARS.p1, ...GATE_CLEARS.p2]).size, 16, 'sixteen distinct words');
+});
+
+test('W373 $2901E0\'s three final compares are an OR, not an AND', { skip: SKIP }, async () => {
+  // Set up a state where all three would FAIL, then relax each one alone. If the compares were an
+  // AND, relaxing one would not be enough.
+  async function shut() {
+    const f = await fixture();
+    f.ram.setU16(f.GATE2901E0.beeCursor, 0x0b);              // < $C
+    f.ram.setU16(f.GATE2901E0.dropP1, 5);                    // >= 2
+    f.ram.setU16(f.GATE2901E0.bombP1, 9);                    // >= 3
+    return f;
+  }
+  const base = await shut();
+  assert.equal(base.menuGate2901E0(base.ram, base.rom, base.ctx), false, 'all three shut');
+
+  const a = await shut(); a.ram.setU16(a.GATE2901E0.beeCursor, 0x0c);
+  assert.equal(a.menuGate2901E0(a.ram, a.rom, a.ctx), true, 'the bee cursor alone opens it');
+  const b = await shut(); b.ram.setU16(b.GATE2901E0.dropP1, 1);
+  assert.equal(b.menuGate2901E0(b.ram, b.rom, b.ctx), true, 'the drop count alone opens it');
+  const c = await shut(); c.ram.setU16(c.GATE2901E0.bombP1, 2);
+  assert.equal(c.menuGate2901E0(c.ram, c.rom, c.ctx), true, 'the bomb count alone opens it');
+});
+
+test('W373 $2901E0 picks the side by $8130BE\'s SIGN, not by $8103E6', { skip: SKIP }, async () => {
+  const p1 = await fixture();
+  p1.ram.setU16(p1.GATE2901E0.livesSign, 0x0001);            // PLUS -> keep P1
+  p1.ram.setU16(p1.GATE2901E0.digitP1, 1);                   // P1's digit state vetoes
+  p1.ram.setU16(p1.GATE2901E0.digitP2, 0);
+  assert.equal(p1.menuGate2901E0(p1.ram, p1.rom, p1.ctx), false, 'plus read P1\'s digit state');
+
+  const p2 = await fixture();
+  p2.ram.setU16(p2.GATE2901E0.livesSign, 0x8000);            // MINUS -> switch to P2
+  p2.ram.setU16(p2.GATE2901E0.digitP1, 1);
+  p2.ram.setU16(p2.GATE2901E0.digitP2, 0);
+  p2.ram.setU16(p2.GATE2901E0.beeCursor, 0x0c);
+  assert.equal(p2.menuGate2901E0(p2.ram, p2.rom, p2.ctx), true,
+    'minus ignored P1\'s veto and read P2\'s zero');
+});
+
+test('W373 $2901E0 stores the mark THROUGH the pointer, on the selected side', { skip: SKIP }, async () => {
+  const f = await fixture();
+  f.ram.setU16(f.GATE2901E0.livesSign, 0x0001);
+  f.ram.setU16(f.GATE2901E0.dropP1, 0);                      // D3 zero -> the store fires
+  f.menuGate2901E0(f.ram, f.rom, f.ctx);
+  assert.equal(f.ram.u16(f.GATE2901E0.markP1), 1, 'P1\'s mark written');
+  assert.equal(f.ram.u16(f.GATE2901E0.markP2), 0, '  ...and P2\'s left alone');
+
+  const g = await fixture();
+  g.ram.setU16(g.GATE2901E0.livesSign, 0x8000);
+  g.ram.setU16(g.GATE2901E0.dropP2, 0);
+  g.menuGate2901E0(g.ram, g.rom, g.ctx);
+  assert.equal(g.ram.u16(g.GATE2901E0.markP2), 1, 'the pointer followed the side select');
+  assert.equal(g.ram.u16(g.GATE2901E0.markP1), 0);
+});
+
+test('W373 the gate actually opens slot [7]\'s menu through state 0', { skip: SKIP }, async () => {
+  const f = await fixture({ players: 1 });
+  // Both sides live vetoes it, so leave $813090 alone and open the bee arm.
+  f.ram.setU16(f.GATE2901E0.beeCursor, 0x0c);
+  f.objSlot7(f.ram, f.rom, f.a5, f.ctx);
+  assert.equal(f.ram.u16(f.SLOT7.work + f.SLOT7.innerAt), 4,
+    'state 0 put the slot into inner state 4, the $2911B0 menu');
+
+  const g = await fixture({ players: 1 });
+  g.ram.setU16(g.GATE2901E0.vetoA, 1);                       // $813098 shuts it
+  g.objSlot7(g.ram, g.rom, g.a5, g.ctx);
+  assert.notEqual(g.ram.u16(g.SLOT7.work + g.SLOT7.innerAt), 4,
+    'and with the gate shut it runs a sequence instead');
+});

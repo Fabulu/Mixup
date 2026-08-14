@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2615+/2615+ zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2632/2632 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -25,12 +25,17 @@ All of it, in `src/objslot7pool.js`, every routine driven:
 restarts until it equals that count, then stages a create and kills. The tally's posted value at
 `$813088`/`$81308A` (`$2`, `$4` or `$6`) maps three-way onto sequences 0/1/2, and the inner state is that plus one.
 
+* **`$2901E0` the menu gate** (`menuGate2901E0`) plus its four clear routines `$2539A2`, `$2539D6`, `$253A0A`,
+  `$253A14`. It is a predicate WITH SIDE EFFECTS and the two do not overlap: the answer comes only from
+  `$813098`, `$80393A`, `$813090` and four counters, so the two calls it still notes cannot change it. The side
+  is picked by the SIGN OF `$8130BE` (plus keeps P1), NOT by `$8103E6` like everything else in this port. Its
+  three final compares are an **OR** -- each `bcc`/`bcs` jumps straight to the carry-SET exit.
+
 **WHAT IS STILL OPEN IN SLOT [7]:**
 
-* **`$2901E0`, 214 bytes, UNREAD.** It decides whether state 0 opens the menu (inner state 4) instead of the
-  sequence. It opens `tst.w $813098 / bne $2902B6 / tst.w $80393A / bne $2902B6`. The port takes the carry-CLEAR
-  arm and keeps a counted `note()`; `ctx.menuGate2901E0` drives the other arm. **This is the cheapest remaining
-  unit in the whole file.**
+* **`$285AF2` / `$285C1C`, the hyper-end pair** -- one routine with `$81B63E`/`$81B6FA` swapped for
+  `$81B640`/`$81B6FC`. Needs `$25329A` too. Side effects only; noted, and nothing in slot [7] reads what they
+  write. **Cheapest remaining unit.**
 * **`$23C6C6`, unported**, state 0's screen setup, `note()`d.
 * The slot is **not yet named**. It is a per-player presentation screen driven by the tally, ending in a
   two-option choice that sets `$813098` -- a global every boss file already reads. Do not guess which screen.
@@ -47,7 +52,7 @@ restarts until it equals that count, then stages a create and kills. The tally's
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **`$2901E0`** (214 bytes) -- closes slot [7] completely.
+1. **`$285AF2` / `$285C1C` / `$25329A`** -- the hyper-end pair, closes slot [7] completely.
 2. **`$23C6C6`** -- slot [7] state 0's screen setup.
 3. **Nine dispatch slots untouched**: [8], [9], [12], [13], [15], [16], [17], [18], [19].
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),

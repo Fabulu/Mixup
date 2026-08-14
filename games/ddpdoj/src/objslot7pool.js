@@ -554,16 +554,8 @@ function state0_290ACC(ram, rom, a5, ctx) {
   restart290B4C(ram, rom, a5, ctx);                          // $290B38 bsr $290B4C
 
   // $290B3C jsr $2901E0 / $290B40 bcc -- carry SET opens the MENU instead of the sequence the
-  // restart just chose. $2901E0 opens `tst.w $813098 / bne / tst.w $80393A / bne`, both branching to
-  // the same $2902B6, and it is 214 bytes that this port has not read.
-  const open = ctx.menuGate2901E0?.(ram, rom);
-  if (open === undefined) {
-    ctx.unported?.note(0x2901e0, '$290B3C jsr $2901E0 decides whether slot [7] opens its $2911B0 '
-      + 'menu (inner state 4) instead of the sequence $290B4C just picked. Unread, so this port '
-      + 'takes the carry-CLEAR arm and runs the sequence -- the menu is reachable only by driving '
-      + 'ctx.menuGate2901E0 until $2901E0 is ported');
-    return;
-  }
+  // restart just chose. ctx.menuGate2901E0 stays as an override so a test can force either arm.
+  const open = (ctx.menuGate2901E0 ?? menuGate2901E0)(ram, rom, ctx);
   if (open) setInnerState2908D2(ram, 4);                     // $290B44 moveq #4 / $290B46 jsr $2908D2
 }
 
@@ -631,4 +623,94 @@ export function objSlot7(ram, rom, a5, ctx) {
   if (before !== 0) return;                                  // $290C54 bcc -- no borrow
   ram.setU8(SLOT7.flash, ram.u8(SLOT7.flashReload));         // $290C58 -- the adjacent reload byte
   ram.setU16(SLOT7.palShift, u16(ram.u16(SLOT7.palShift) + 1) & 1);   // $290C62/$290C68 andi.w #$1
+}
+
+/** `$2539A2` / `$2539D6` -- the P1 and P2 halves of one clear. Eight `move.w D0,<abs>` each after a
+ *  `moveq #$0,D0`, and the two lists interleave: $81B63E/$81B640, $81B646/$81B648, and so on. One
+ *  routine per side rather than one routine with a side argument, because the addresses are absolute.
+ *  `$253A0A` and `$253A14` clear the THIRD word of each list on its own. */
+export const GATE_CLEARS = Object.freeze({
+  p1: Object.freeze([0x81b63e, 0x81b646, 0x81b64a, 0x81b64e, 0x81b654, 0x81b658, 0x81b660, 0x81b6e0]),
+  p2: Object.freeze([0x81b640, 0x81b648, 0x81b64c, 0x81b650, 0x81b656, 0x81b65a, 0x81b6a0, 0x81b6e2]),
+  oneP1: 0x81b646, oneP2: 0x81b648,
+});
+
+export function clear2539A2(ram) { for (const a of GATE_CLEARS.p1) ram.setU16(a, 0); }   // $2539A2
+export function clear2539D6(ram) { for (const a of GATE_CLEARS.p2) ram.setU16(a, 0); }   // $2539D6
+export function clear253A0A(ram) { ram.setU16(GATE_CLEARS.oneP1, 0); }                   // $253A0A
+export function clear253A14(ram) { ram.setU16(GATE_CLEARS.oneP2, 0); }                   // $253A14
+
+/** The six values `$2901E0` weighs, and the two globals that veto it outright. */
+export const GATE2901E0 = Object.freeze({
+  addr: 0x2901e0,
+  vetoA: 0x813098, vetoB: 0x80393a, liveMask: 0x813090, liveBoth: 0x03,
+  beeCursor: 0x817f82, beeLimit: 0x0c,
+  bombP1: 0x812940, bombP2: 0x812942, bombLimit: 0x03,
+  digitP1: 0x81b49a, digitP2: 0x81b49e,
+  dropP1: 0x812938, dropP2: 0x81293a, dropLimit: 0x02,
+  markP1: 0x812948, markP2: 0x81294a,
+  livesSign: 0x8130be,
+  hyperEndP1: 0x285af2, hyperEndP2: 0x285c1c,
+  scratch: 0x81b6e4,
+});
+
+/** `$2901E0` -- WHETHER SLOT [7] OPENS ITS MENU. Returns the routine's CARRY: true is `ori.w #$1,SR`
+ *  at `$2902BC`, false is `andi.w #$FFFE,SR` at `$2902B6`.
+ *
+ *  It is a predicate with SIDE EFFECTS, and the two do not overlap: the six calls and the eight-word
+ *  clears touch the hyper and bomb blocks, while the answer comes only from `$813098`, `$80393A`,
+ *  `$813090` and four counters. That is why the two unported calls below cannot change what this
+ *  returns -- they are noted, not guessed at.
+ *
+ *  THE SIDE IS CHOSEN BY A SIGN TEST ON `$8130BE`, and PLUS keeps P1. Every other side-select in
+ *  this port reads `$8103E6`'s sign, so reaching for that here picks the wrong player whenever P1 is
+ *  still alive but not the one being asked about.
+ *
+ *  THE THREE FINAL COMPARES ARE AN `OR`, NOT AN `AND`. `bcc`/`bcs` each jump straight to the
+ *  carry-SET exit, so ANY ONE of them opening is enough; only falling past all three clears carry.
+ */
+export function menuGate2901E0(ram, rom, ctx) {
+  if (ram.u16(GATE2901E0.vetoA) !== 0) return false;         // $2901E0 tst.w $813098 / bne $2902B6
+  if (ram.u16(GATE2901E0.vetoB) !== 0) return false;         // $2901EA tst.w $80393A / bne $2902B6
+
+  clear253A0A(ram);                                          // $2901F4 jsr $253A0A
+  clear253A14(ram);                                          // $2901FA jsr $253A14
+  if (ram.u16(0x81b63e) !== 0) {                             // $290200 tst.w $81B63E / beq
+    ctx.unported?.note(GATE2901E0.hyperEndP1, '$29020A jsr $285AF2 -- P1 hyper end. It sets '
+      + '$81B6FA and calls $25329A, then clears eight words. Side effects only: nothing it '
+      + 'touches feeds $2901E0\'s answer');
+  }
+  clear2539A2(ram);                                          // $290210 jsr $2539A2
+  if (ram.u16(0x81b640) !== 0) {                             // $290216 tst.w $81B640 / beq
+    ctx.unported?.note(GATE2901E0.hyperEndP2, '$290220 jsr $285C1C -- P2 hyper end, the same '
+      + 'routine as $285AF2 with $81B63E/$81B6FA swapped for $81B640/$81B6FC');
+  }
+  clear2539D6(ram);                                          // $290226 jsr $2539D6
+  ram.setU16(GATE2901E0.scratch, 0);                         // $29022C clr.w $81B6E4
+
+  // $290232 -- both sides live vetoes the menu.
+  if (ram.u16(GATE2901E0.liveMask) === GATE2901E0.liveBoth) return false;
+
+  const d0 = ram.u16(GATE2901E0.beeCursor);                  // $29023E -- NOT per side
+  let d1 = ram.u16(GATE2901E0.bombP1);                       // $290244
+  let d2 = ram.u16(GATE2901E0.digitP1);                      // $29024A
+  let d3 = ram.u16(GATE2901E0.dropP1);                       // $290250
+  let mark = GATE2901E0.markP1;                              // $290256 lea $812948,A0
+  if ((ram.u16(GATE2901E0.livesSign) & 0x8000) !== 0) {      // $290262 tst.w $8130BE / bpl $29028A
+    d1 = ram.u16(GATE2901E0.bombP2);                         // $29026C
+    d2 = ram.u16(GATE2901E0.digitP2);                        // $290272
+    d3 = ram.u16(GATE2901E0.dropP2);                         // $290278
+    mark = GATE2901E0.markP2;                                // $29027E
+  }
+
+  if (d2 !== 0) return false;                                // $29028A tst.w D2 / bne $2902B6
+
+  // $290290 -- the mark is written when D3 is zero, OR when D3 is set but D1 is zero. It is a
+  // `move.w #$1,(A0)`, a store THROUGH the pointer, not a register load.
+  if (d3 === 0 || d1 === 0) ram.setU16(mark, 1);             // $29029C move.w #$1,(A0)
+
+  if (d0 >= GATE2901E0.beeLimit) return true;                // $2902A0 cmpi.w #$C,D0 / bcc $2902BC
+  if (d3 < 2) return true;                                   // $2902A8 cmpi.w #$2,D3 / bcs $2902BC
+  if (d1 < 3) return true;                                   // $2902B0 cmpi.w #$3,D1 / bcs $2902BC
+  return false;                                              // $2902B6 andi.w #$FFFE,SR
 }
