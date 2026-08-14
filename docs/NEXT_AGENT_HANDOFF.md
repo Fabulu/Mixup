@@ -97,9 +97,43 @@ input side only.
 **THE PORT TRAP, and it cost six unrelated test failures:** IRQ6's `portWord` is `$C08000`, the PLAYER port.
 `$13CFBA` does its OWN `lea $C08004,A0` and reads a different one. `irq6` now passes `ctx.coinPort ?? $FFFF`.
 
+### THE NINE UNTOUCHED SLOTS, MEASURED (W373)
+
+Every entry of `$240F62` with its record size and the distance to the next dispatch routine in address order.
+**That distance is an UPPER BOUND on the routine, not its size** -- a routine can end early and leave data --
+but it is a real bound and it reorders the docket:
+
+| slot | routine | rec | bound | note |
+|---|---|---|---|---|
+| [18] | `$24902A` | `$00A` | **`$196` = 406** | **D37. The SMALLEST untouched slot.** |
+| [13] | `$288A60` | `$00B` | `$20C` = 524 | |
+| [ 9] | `$25CACA` | `$00A` | `$3EE` = 1006 | D34 candidate |
+| [19] | `$28EE88` | `$01E` | `$524` | |
+| [17] | `$25CEB8` | `$00A` | `$CFC` | D33 candidate |
+| [12] | `$28F3AC` | `$009` | `$183C` | |
+| [ 8] | `$25A770` | `$00A` | `$235A` | |
+| [16] | `$256E7A` | `$01E` | `$38F6` | |
+| [15] | `$291F66` | `$01E` | last in the image | |
+
+**THIS CORRECTS THE HANDOFF'S OWN D37 ESTIMATE.** It said slot [18]'s three state routines total "better than
+2 KB". The whole slot is bounded at 406 bytes by slot [2]'s routine at `$2491C0`. The 2 KB figure was not
+measured against the table.
+
+### SLOT [18] IS THE NEXT UNIT AND IT IS PART-READ
+
+* **The dispatch address is NOT the start, again.** `$24902A tst.b ($2,A5) / beq.s` branches BACKWARD to
+  `$24900A`. Fourth time this port has hit that; measure from the preceding `rts`.
+* **TWO state fields.** A byte at `($2,A5)` chooses the arm and a WORD at `($4,A5)` is the inner state, tested
+  with `cmpi.w #$0` then `#$1`. Do not collapse them.
+* **Its two big callees are ALREADY PORTED**: `$25A14C` is `background.js`'s `txString25A14C` and `$23D186` is
+  `tallyscreen.js`'s `readInput23D186`. `$2475CA` is not.
+* **`$24911A` is its text table**, reached by `lea (d16,PC),A0` at `$249046` with D0=0, D1=`$1E`, D2=0.
+* `$249058 andi.w #$80F0,D0` is the input mask, and a non-zero result advances `($4,A5)` to 1.
+
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **Nine dispatch slots untouched**: [8], [9], [12], [13], [15], [16], [17], [18], [19].
+1. **Slot [18] `$24902A`** -- D37, 406 bytes bounded, both big callees already ported. Start from `$24900A`.
+2. **Slot [13] `$288A60`** -- 524 bytes, the next smallest.
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
    chain built and driven, three state routines >2 KB unwritten), **D38** input lag faithful (logic side measured
