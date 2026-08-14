@@ -235,10 +235,32 @@ inside the routine as data, reached by `lea ($25EE86,PC),A4 / adda.w D1,A4 / jmp
 
 ### W374 RECON: THREE CORRECTIONS TO THE SHARED-DRAW DOCKET, ALL VERIFIED BY HAND
 
-**1. THERE ARE EIGHT SHARED DRAWS, NOT SEVEN, AND A THIRD CONFIRM-AND-DRAW COPY.**
-`$25D800` is a THIRD copy of the confirm-and-draw tail, alongside the two the port models (`$25D256`,
-`$25D4A6`). The two modelled copies are byte-identical in their lists and the port's `drawsA`/`drawsB`/
-`drawsAlways` are exactly right for them. **The third copy is NOT the same:**
+**0. THE "THIRD CONFIRM-AND-DRAW COPY" IS NOT A COPY. IT IS `$25D560`'s TAIL.**
+
+A flow-break scan of `$25D560..$25D860` finds **no `rts` at all until `$25D83A`**. So
+`$25D560..$25D83A` is ONE routine of 730 bytes -- slot [17]'s and slot [9]'s state-7 handler -- and
+the draw block at `$25D800` is simply how it ends. That is why its draw list differs from the two
+real copies: it is not a copy of them.
+
+Its callees, with port status:
+
+    $25D560  jsr $25F530     UNPORTED
+    $25D57E  jsr $25FAA4     UNPORTED
+    $25D5AA  jsr $260A9A     known as objslot17.js's SCREEN17.announceSite, NOT ported
+    $25D5C2  jsr $28CB9C     PORTED as a sound entry (sound.js index 11, group 1)
+    $25D642  jsr $24150A     PORTED (install24150A)
+    $25D662  jsr $26070C     UNPORTED
+    $25D668  jsr $25F456     UNPORTED
+    $25D73E  jsr $2603FE     UNPORTED
+    $25D808..$25D834         the seven draws, then rts at $25D83A
+
+So `$25D560` is FIVE unported callees plus its own 730 bytes. It is the biggest single remaining
+item in the slot [9]/[17] screen, and it is the ONLY caller of `$25E4D0`.
+
+**1. THERE ARE EIGHT SHARED DRAWS, NOT SEVEN.**
+There ARE exactly two confirm-and-draw copies (`$25D256` and `$25D4A6`); they are byte-identical in their
+lists and the port's `drawsA`/`drawsB`/`drawsAlways` are exactly right for them. **`$25D800` is a THIRD
+draw block but NOT a third copy** -- see item 0 above, it is `$25D560`'s own tail. Its list differs:
 
     $25D800  bset #$0,($3,A5) / bne $25D814    ->  $25E220, $25E29E        (same as drawsA)
     $25D814  jsr $25E4D0                       ->  UNGATED, and in NO list
@@ -246,7 +268,7 @@ inside the routine as data, reached by `lea ($25EE86,PC),A4 / adda.w D1,A4 / jmp
     $25D828  ungated tail                      ->  $25E824, $25EF30, $25F074
     $25D83A  rts
 
-So the third copy **swaps `$25EDF8` for `$25E4D0`**. `$25E4D0` is UNPORTED, in no list, and has exactly ONE
+So that block **swaps `$25EDF8` for `$25E4D0`**. `$25E4D0` is UNPORTED, in no list, and has exactly ONE
 call site, `$25D814`. Confirmed by grep with a positive control (a bare-hex grep for `25E4D0` finds nothing
 while the same grep for `25E220` finds `objslot9.js`, so the miss is real and not a broken command).
 
