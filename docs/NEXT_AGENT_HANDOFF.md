@@ -87,6 +87,22 @@ them, from the neighbours' recon and verified by hand:
   table A's first pair (`$4F013000`) is NOT a plausible art pointer, so the pairing is not a uniform
   `{D1, art}` array throughout.** Do not assume the layout.
 
+### RESOLVED: D7 SURVIVES THE WHOLE DRAW CHAIN, SO PASSING IT FRESH TO EACH DRAW IS CORRECT
+
+A recon flagged this as an unverified dependency and it mattered, because the ported draws take `d7`
+as a JS parameter while the cartridge keeps it in a register across the whole `jsr` chain. If any
+earlier draw clobbered D7, `$25EDF8` and `$25EF30` would see a different side than the walk set and
+the port would be silently wrong.
+
+**Scanned for every D7-writing form** (`moveq #x,D7`, `move.b/.w/.l <ea>,D7`, `dbra D7`,
+`addq/subq #n,D7`) across all four ported draw extents, across the whole `$25E29E` region, and
+across the emit stub `$23DFB4..$23DFE9`. **NONE, anywhere.** The stub pushes A0/D0 (`2F08 2F00`) and
+restores them (`201F 205F`) and never touches D7.
+
+So D7 is read-only for the entire chain and the port is correct as written. **Re-run this scan if a
+new draw is added to the chain** -- it is cheap and it is the only thing standing between the port
+and a silent side swap.
+
 ### THE SIDE-SELECT BRANCH SENSE IS NOT UNIFORM ACROSS THIS FAMILY
 
 **`$25EDF8` and `$25E824` use `beq` to skip the override; `$25F074` uses `bne`.** So the
