@@ -56,6 +56,16 @@ next and is part-analysed:
 * **`$2909AA`'s `$8000` COMMAND IS READ**: it writes the next script word to `$81E0FA` as a WORD, arming counter
   AND reload together, advances the cursor by FOUR, and BRANCHES BACK into the walker -- so one call runs several
   commands. The other commands past `$290A12` are unread.
+* **`$2907E2` IS A RESOURCE-LOADER STATE MACHINE on `$81E108`**, and every routine it calls is ported:
+
+      state 0   `tst.w $81E108 / beq $2908D0`            -- idle
+      state 1   `lea $290CE8` indexed by `$81E10C`, `jsr $246710`, cache the handle to `$81E10E`
+      state 2   `move.l $81E10E,D0 / jsr $24681A` (READY test) / `jsr $246800` (COMMIT),
+                then `move.w $81E10A,$81E106` and `move.w #$3,$81E108`
+      state 3+  unread, from `$29085E`
+
+  **`$24681A` and `$246800` are the animobjects pair the port already has**, so this is a
+  load-then-wait-then-commit sequence rather than anything new. Its window `$290CE8+$C6` is declared.
 * **`$2907E2` (240 bytes) IS PART-READ.** Another indexed dispatch: `lea $290CE8,A0`, index by `$81E10C * 4`,
   `movea.l (A0,D0.w),A0`, `jsr $246710` (ported), result to `$81E10E`. **`$290CE8` is a ROM table and needs a
   window and a bound.**
