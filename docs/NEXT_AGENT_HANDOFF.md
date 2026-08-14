@@ -21,7 +21,7 @@ reason. Worktree isolation is withdrawn as the port-contention fallback, so **se
 is the only concurrency control** -- and every shared draw lands in `src/objslot9.js`, so it is one port
 agent there regardless.
 
-### W374 STATE: SUITE 2798/2798 ZERO SKIPS, GATE EXIT 0, 519 ROM WINDOWS
+### W374 STATE: SUITE 2811/2811 ZERO SKIPS, GATE EXIT 0, 522 ROM WINDOWS
 
 Up from 2730 at the start of the wave. **Three more shared draws are PORTED, DRIVEN AND WIRED:**
 
@@ -45,9 +45,38 @@ sprites on screen. `$25E6CE` is wired into the bit-1 arm.
 `confirmAndDraw` now takes **`d7`** as a trailing argument, because `$25EF30` needs the side to pick
 which record it reads across to. Both call sites pass it.
 
-**THREE OF THE ORIGINAL SEVEN REMAIN, PLUS THE NEWLY FOUND EIGHTH:** `$25E29E`, `$25E824`,
-`$25F074`, and `$25E4D0`. Four of the eight are now ported (`$25E220`, `$25E6CE`, `$25EF30`,
-`$25EDF8`).
+**THREE OF THE EIGHT REMAIN:** `$25E29E`, `$25E824` and `$25E4D0`. **FIVE ARE PORTED**: `$25E220`,
+`$25E6CE`, `$25EF30`, `$25EDF8` and `$25F074`.
+
+### `$25F074` IS PORTED, AND IT IS THE ONE WITH NO CANCELLING CHAINS
+
+327 bytes, `$25F074..$25F1BA`, eight emits (five via `$23DFB4`, three via the newly ported
+`$23E2F2`), three ROM windows, thirteen driving tests. Things worth carrying forward:
+
+* **It has NO cancelling `addi.w`/`swap` chains at all**, unlike every sibling. D1 comes from the
+  tables verbatim; the only arithmetic is `add.w D5,D1`, `subi.w #$3C0,D1` and `add.l D0,D2`.
+* **A SECOND DEAD GATE, the same shape as `$25EDF8`'s.** `$25F0A8 cmpi.b #$4,($1,A6)` never matches:
+  the three callers enter with 2, 5, 7 or 8. So emit 1's art is always `$0019A35C` and `$0019A410`
+  is unreachable as shipped. Both arms are transcribed and the fact is pinned.
+* **The `cmpi.b #$7 / bcs` is a SLICE SELECT, not a return.** States 0..6 run all eight emits;
+  states 7 and above take `adda.l #$18,A0 / bra.w` and run only the last four. **Both arms are live
+  in the cartridge** -- the third call site `$25D836` (in `$25D560`'s tail) enters with state 7, or
+  8 via `$25D748 move.b #$8,($1,A6)`. Only the full path has a host in the port today, because
+  `$25D560` is not written.
+* **WHY THE TWO A0 LANDINGS AGREE, which the spec did not explain and a port would most plausibly
+  get wrong:** both `move.l (A0)+,D1` sit ABOVE their gates (`$25F09A`'s `beq` targets `$25F0C4`,
+  `$25F0CA`'s targets `$25F102`), so A0 reaches base+`$08` no matter how `$80390C` and `($2C,A6)`
+  fall. That is what makes `lea ($10,A0),A0` and `adda.l #$18,A0` provably equivalent.
+* **`($2E,A6)` IS READ AS A WORD HERE**, three nibbles at bits 11..8, 7..4 and 3..0, while
+  `SCREEN9.tailFlag` and `HANDLER4.clearOnConfirm` treat `$2E` as a BYTE. The word spans `$2E` and
+  `$2F`. **Do not "correct" either reading.**
+* **UNRESOLVED AND DELIBERATELY NOT PAPERED OVER:** nothing masks or clamps those nibbles, so a
+  value of `$A..$F` would index past the intended art frames. No bound is stated anywhere in the
+  routine and no writer was found. **No clamp was invented**; the port `note()`s only when a nibble
+  actually lands in `$A..$F`, so the gap is counted without per-frame noise.
+* **`aligned.py` MIS-SIZES `C1FC 0064 D480`**, grouping it as one six-byte instruction at `$25F156`
+  and `$25F1A0`. It is `muls.w #$0064,D0` plus `add.l D0,D2`. The total length matches so no
+  addresses slip, but the listing is wrong -- the same class as the known `divs.w`/`adda.w` defects.
 
 **Recon on `$25E29E`, `$25E824` and `$25F074` was STARTED AND CANCELLED** when the owner asked for
 serial working. Nothing from those three runs was kept, so they start clean. What IS known about
@@ -513,7 +542,10 @@ underlying semantics ARE consistent -- side 1 always ends up with the NEGATED of
 there are two independent inversions in play, and assuming a uniform convention across the family is
 exactly how a side-swap defect ships looking plausible.
 * **`$25E4D0` is completely unread.** One call site, `$25D814`, ungated, and it is in `$25D560`'s
-  tail only -- so it is reachable ONLY through state 7, never from states 1 or 4.
+  tail only -- so it is reachable ONLY through state 7, never from states 1 or 4. Its SHAPE is
+  known: `$25E4D0..$25E68D`, 958 bytes, ONE routine with two per-side halves opening
+  `tst.w D7 / beq.w $25E5B0`, three emits each (two via `$23E2F2`, one via `$23DFB4`), both halves
+  `lea`ing the same `$25E68E` table.
 
 ### `$25EDF8` IS PORTED, AND ITS BODY IS UNREACHABLE AS SHIPPED
 

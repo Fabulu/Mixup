@@ -2906,6 +2906,29 @@ SHOT_WINDOWS.extend([
     (0x223EF8, 0x0040, "W373: slot [9] record-state-0 palette, bank 15 through $24150A. Sixty-four "
                        "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
                        "slot [17]; this one is slot [9]'s own"),
+    # ---- W374: $25F074's three tables --------------------------------------------------------
+    # All three bounds are stated by CODE and all three tile exactly against the next structure:
+    # $25F014 + $30 = $25F044, $25F044 + $30 = $25F074 (the routine's own first opcode), and
+    # $25F1BC + $30 = $25F1EC (the next routine's bra.w). The tiling is corroboration; the bounds
+    # below are what the instructions say.
+    (0x25F014, 0x0030, "W374: $25F074's coordinate/art table for SIDE 0, the lea $25F014 default "
+                       "kept when D7 != 0. $30 bytes STATED BY THE CODE: A0 walks +$00..+$2F and "
+                       "the last read, move.l (A0)+ at +$2C, leaves A0 at +$30. The code also "
+                       "states the HALFWAY point twice -- adda.l #$18,A0 (state >= 7) and "
+                       "lea ($10,A0),A0 (state < 7) both land on +$18. NOT a uniform {D1,art} "
+                       "array: +$00 and +$04 are COORDINATE longs whose art comes from elsewhere "
+                       "(a literal and the $25F1BC ramp), which is why +$04 = $4F013000 is not a "
+                       "plausible art pointer. Pairing only begins at +$08"),
+    (0x25F044, 0x0030, "W374: the same table for SIDE 1, reached by the fall-through lea when "
+                       "D7 == 0, alongside neg.w D5. Same $30 bound from the same walk. Its three "
+                       "art longs at +$1C/+$24/+$2C are BYTE-IDENTICAL to side 0's "
+                       "($0019A4C4/$0019AF00/$0019B2E8); only the coordinates differ, which is "
+                       "independent confirmation of the field layout"),
+    (0x25F1BC, 0x0030, "W374: $25F074's emit-2 ART RAMP, TWELVE longs. The bound is stated by the "
+                       "WRAP, not by adjacency: cmpi.w #$30,($66,A6) / move.w #$0,($66,A6) at "
+                       "$25F0E4..$25F0F2. Four distinct frames at stride $E4 ($1A02A0, $1A0384, "
+                       "$1A0468, $1A054C), each held for THREE ticks, and the tick only advances "
+                       "on frames where ($2C,A6) is non-zero"),
     # ---- W374: the ZOOMING REGISTER emitter family, all thirteen stubs -----------------------
     # $23E2F2 and its twelve siblings are the zooming enqueue in REGISTER form -- $23D9E2's twin,
     # with D1/D2/D3/D4 in place of the object record plus D6, the zoom-flags longword. The port

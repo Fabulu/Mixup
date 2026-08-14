@@ -25,7 +25,7 @@ import { SCHED } from './scheduler.js';
 import { paletteSet241688, install24150A, install2414BE } from './palette.js';
 import { txString25A14C, clearTx23C622 } from './background.js';
 import { readInput23D186 } from './tallyscreen.js';
-import { enqueueRegistersThroughStub } from './spritequeue.js';
+import { enqueueRegistersThroughStub, enqueueZoomedRegistersThroughStub } from './spritequeue.js';
 import { queueKill, stageCreate } from './objalloc.js';
 // $25C8C2 jsr $23C47A -- the SAME routine stageend.js calls from $28D5C4. Imported rather than
 // transcribed a second time so the two callers cannot drift apart. stageend.js imports neither
@@ -469,7 +469,10 @@ function confirmAndDraw(ram, rom, ctx, a5, a6, d0, nextPhase, d7) {
   // makes the body live has to be deliberate.
   draw25EDF8(ram, rom, ctx, a6, d7);
   draw25EF30(ram, rom, ctx, a6, d7);                         // $25D284 / $25D4D4 jsr $25EF30
-  ctx.unported?.note(HANDLER4.drawsAlways[3], '$25F074 -- ungated draw. Unread');
+  // $25D28A / $25D4DA jsr $25F074. The record state is 2 here (state 1's tail) or 5 (state 4's),
+  // and both are below 7, so BOTH call sites take the full eight-emit path. The slice-2-only arm
+  // is reachable only from $25D560's tail at $25D836, which is not ported.
+  draw25F074(ram, rom, ctx, a6, d7);
 }
 
 export const HANDLER1 = Object.freeze({
@@ -987,4 +990,230 @@ export function draw25EDF8(ram, rom, ctx, a6, d7) {
  *  moveq zeroed the high word first, so no inherited garbage survives into the index. */
 function frameIndex25EEB2(ram) {
   return u16(u16(DRAW_25EDF8.frameMask & ram.u16(DRAW_25EDF8.frameCounter)) * 2);
+}
+
+export const DRAW_25F074 = Object.freeze({
+  addr: 0x25f074, rts: 0x25f1ba, bytes: 327,
+  stub: 0x23dfb4,                            // emits 1..5, the plain register enqueue
+  zoomStub: 0x23e2f2,                        // emits 6..8, the ZOOMING register family, bucket 0
+  // $25F086 cmpi.b #$7,($1,A6) / bcs -- an UNSIGNED <, so states 0..6 run everything and 7..$FF
+  // take `adda.l #$18,A0 / bra.w $25F128`. BOTH ARMS ARE LIVE; see the doc comment.
+  stateAt: 0x01, stateLimit: 0x07, sliceSkip: 0x18,
+  // THE DEAD GATE. $25F0A8 cmpi.b #$4,($1,A6) -- immediate word $0004 BEFORE displacement $0001.
+  deadGateValue: 0x04, artEmit1: 0x0019a35c, artEmit1Dead: 0x0019a410,
+  // Off A6. $2E is read as a WORD here; see the doc comment before "correcting" it.
+  animAt: 0x2c, nibblesAt: 0x2e, shortAt: 0x38, cursorAt: 0x66,
+  gateEmit1: SCHED.mirror2,                  // $80390C -- gates EMIT 1 ONLY
+  loopCounter: DRAW_25EF30.loopCounter,      // $813098 -- the same word $25EF30 tests
+  // $25F0CC lea ($25F1BC,PC),A1 / adda.w ($66,A6),A1. TWELVE longs, four frames at stride $E4,
+  // each held for three ticks. The bound is stated by the wrap, not measured.
+  ramp: 0x25f1bc, rampStep: 0x04, rampWrap: 0x30, rampEntries: 12, rampStride: 0xe4,
+  emit7Back: 0x03c0,                         // $25F174 subi.w -- $3C0 / 64 = 15 px
+  zoomFlags: 0x80005000,                     // D6, loaded from scratch at all THREE zoom sites
+  attr: Object.freeze({ e1: 0x0458, e2: 0x0e20, e3: 0x0630, e5: 0x0218, e6: 0x0818, e8: 0x0610 }),
+  pal: 0x0012,                               // D4 at emits 1, 3, 4, 5, 6, 7 and 8
+  palEmit2: 0x0017, palEmit2Ori: 0x0060,     // $25F0DC then $25F0F8 -> $0077, side 1 only
+  // Table offsets AS THE CODE READS THEM. This is NOT a uniform {D1, art} array: pairing only
+  // begins at +$08, which is why +$04 = $4F013000 is a COORDINATE and not an art pointer.
+  off: Object.freeze({ d1e1: 0x00, d1e2: 0x04, d1e3: 0x08, d2e3: 0x0c, d1e4: 0x10, d2e4: 0x14,
+    d1e5: 0x18, d2e5: 0x1c, d1e67: 0x20, d2e67: 0x24, d1e8: 0x28, d2e8: 0x2c }),
+  tableBytes: 0x30,
+  // INDEXED BY `sideFromD7_25D4E4`. Entry 0 is D7 != 0, which the `bne` at $25F07E KEEPS on the
+  // $25F074 lea with D5 un-negated; entry 1 is D7 == 0, which falls into $25F080 and `neg.w D5`.
+  sides: Object.freeze([
+    Object.freeze({ table: 0x25f014, negate: false }),
+    Object.freeze({ table: 0x25f044, negate: true }),
+  ]),
+  // The three ($2E,A6) nibbles, in the order the code reads them.
+  nib6: Object.freeze({ mask: 0x00f0, shift: 4, mul: 0x0064, at: 0x25f14c }),
+  nib7: Object.freeze({ mask: 0x0f00, shift: 8, mul: 0x0064, at: 0x25f178 }),
+  nib8: Object.freeze({ mask: 0x000f, shift: 0, mul: 0x0034, at: 0x25f19a }),
+});
+
+/** `move.w ($2E,A6),D0 / andi.w #<mask>,D0 / lsr.w #<n>,D0 / muls.w #<mul>,D0` at `$25F14C` and
+ *  `$25F178`, and the `moveq #$F,D0 / and.w ($2E,A6),D0 / muls.w #$34,D0` form at `$25F19A`, which
+ *  is the same nibble with mask `$F` and no shift.
+ *
+ *  **`($2E,A6)` IS A WORD HERE**, spanning `$2E` and `$2F`, while `SCREEN9.tailFlag` and
+ *  `HANDLER4.clearOnConfirm` read `$2E` as a BYTE. Both readings are the cartridge's own. Neither
+ *  is a mistake and neither should be unified with the other.
+ *
+ *  The nibble is 0..$F, so `muls.w`'s signedness never bites and the product is 0..1500.
+ *  **NOTHING IN THIS ROUTINE MASKS OR CLAMPS IT**, so $A..$F would index past the intended frames.
+ *  No bound is stated anywhere and the writer of `($2E,A6)` was not found, so no clamp is invented;
+ *  the out-of-range case is NOTED instead, and only when it actually happens. */
+function nibbleOffset25F074(ram, ctx, a6, spec) {
+  const w = ram.u16(a6 + DRAW_25F074.nibblesAt);
+  const n = (w & spec.mask) >>> spec.shift;
+  if (n > 0x09) {
+    ctx?.unported?.note(spec.at, `$${spec.at.toString(16).toUpperCase()} -- ($2E,A6) = $${
+      w.toString(16).toUpperCase()} puts nibble $${n.toString(16).toUpperCase()} through `
+      + `muls.w #$${spec.mul.toString(16).toUpperCase()}. Nothing in $25F074 clamps it and no `
+      + `writer of ($2E,A6) was found, so the art frame this selects is not measured`);
+  }
+  return n * spec.mul;
+}
+
+/** `$25F074` -- the LAST of the eight shared select-screen draws by size, `$25F074..$25F1BA`,
+ *  **327 bytes and EIGHT emits**: five through `$23DFB4` and three through `$23E2F2`.
+ *
+ *  **A0 AND D5 ARE INHERITED ACROSS ALL EIGHT CALLS.** A0 is the table pointer and D5 the short-axis
+ *  offset, and neither stub touches them: `$23DFB4` pushes and restores A0/D0, `$23E2F2` `movem`s
+ *  D4/D7/A0. D1/D3/D4 carry from emit 3 into emit 4 and from emit 6 into emit 7 the same way.
+ *
+ *  **THERE ARE NO CANCELLING `addi.w`/`swap` CHAINS HERE AT ALL** -- unlike every sibling in this
+ *  file. D1 comes out of the tables verbatim and the only arithmetic is `add.w D5,D1`,
+ *  `subi.w #$3C0,D1` and `add.l D0,D2`. There is nothing to unwind.
+ *
+ *  **THE SIDE SENSE IS INVERTED RELATIVE TO ITS SIBLINGS AND THE SEMANTICS ARE IDENTICAL.**
+ *  `$25F07E` is a `bne` where `$25EDF8` and `$25E824` use `beq`, and `sideFromD7_25D4E4` inverts as
+ *  well, so the two inversions cancel: D7 != 0 is SIDE 0 and keeps the `$25F014` lea and an
+ *  un-negated D5; D7 == 0 is SIDE 1, takes `$25F044`, `neg.w D5` and emit 2's `ori.w #$0060`.
+ *  Swap the two tables and the port is wrong on both screens at once.
+ *
+ *  **THE `cmpi.b #$7` IS A TABLE SLICE, NOT AN EXIT.** States 0..6 run all eight emits; states
+ *  7..$FF do `adda.l #$18,A0 / bra.w $25F128` and land with EXACTLY the A0 the full path reaches
+ *  via `lea ($10,A0),A0`, then emit 5..8. A full-image scan for the longword `$0025F074` finds
+ *  exactly three operands, all `jsr`: `$25D28C` (state 1's confirm tail, `($1,A6)` = 2),
+ *  `$25D4DC` (state 4's, = 5) and `$25D836` (`$25D560`'s tail, = 7 or 8). **Both arms are reachable
+ *  as shipped**; only the full path has a host in the port today, because `$25D560` is not ported.
+ *
+ *  **A DEAD GATE, the same shape as `$25EDF8`'s.** `($1,A6)` at entry is only ever 2, 5, 7 or 8, so
+ *  `$25F0A8 cmpi.b #$4` never matches and emit 1's art is ALWAYS `$0019A35C`. `$0019A410` is
+ *  unreachable as shipped. Both arms are transcribed and the fact is pinned by a test, so that a
+ *  change which makes the second arm live has to be a deliberate, visible act.
+ *
+ *  **THE TWO GATES INSIDE THE FULL PATH SKIP DIFFERENT AMOUNTS.** `$80390C` skips EMIT 1 only --
+ *  both `move.l (A0)+,D1` sit OUTSIDE it, so A0 lands on +$08 either way. `($2C,A6)` skips EMIT 2
+ *  *and* the `($66,A6)` advance, so a zero anim field freezes the ramp cursor as well.
+ *
+ *  **`$813098` IS THE ONLY EARLY EXIT** and it lands directly on the `rts`, after emits 1..4 have
+ *  already been queued on the full path.
+ *
+ *  **A TOOL DEFECT, not a port one:** `aligned.py` groups `C1FC 0064 D480` at `$25F156` and
+ *  `$25F1A0` as one six-byte instruction. It is `muls.w #$0064,D0` (4 bytes) plus `add.l D0,D2`
+ *  (2). Same total length, so no address slips, but the listing is wrong -- the same class as the
+ *  known `divs.w`/`adda.w` mis-sizings.
+ *
+ *  Reads: `($1,A6)` byte TWICE, `($2C,A6)`, `($2E,A6)` WORD three times, `($38,A6)`, `($66,A6)`,
+ *  `$80390C`, `$813098`. **WRITES ONLY `($66,A6)`**, and only when `($2C,A6)` is non-zero.
+ *  Inherited: A6 and D7. */
+export function draw25F074(ram, rom, ctx, a6, d7) {
+  const D = DRAW_25F074;
+  // $25F07C tst.w D7 / $25F07E bne.s $25F086 -- a WORD test, so mask, exactly as `draw25EF30` does.
+  // `sideFromD7_25D4E4` IS that masked test; it returns 0 for D7 != 0, which is the arm the `bne`
+  // takes and therefore the arm that KEEPS the $25F074 lea.
+  const side = sideFromD7_25D4E4(d7);
+  const sel = D.sides[side];
+  let a0 = sel.table;                                        // $25F074 or $25F080 lea (dN,PC),A0
+  let d5 = ram.u16(a6 + D.shortAt);                          // $25F078 move.w ($38,A6),D5
+  if (sel.negate) d5 = u16(-d5);                             // $25F084 neg.w D5 -- SIDE 1 ONLY
+
+  // $25F086 cmpi.b #$7,($1,A6) / $25F08C bcs.s $25F098 -- UNSIGNED <, so this is `state < 7`.
+  if (ram.u8(a6 + D.stateAt) < D.stateLimit) {
+    // ---- EMIT 1. $25F098 move.l (A0)+,D1 -- table +$00, and it happens BEFORE the gate below.
+    let d1 = rom.u32(a0);
+    a0 += 4;
+    // $25F09A tst.w $80390C / $25F0A0 beq.s $25F0C4 -- SKIPS EMIT 1 ONLY. Both `(A0)+` reads sit
+    // outside it, which is why A0 reaches +$08 whether or not this fires.
+    if (ram.u16(D.gateEmit1) !== 0) {
+      let d2 = D.artEmit1;                                   // $25F0A2 move.l #$0019A35C,D2
+      // THE DEAD GATE. $25F0A8 cmpi.b #$4,($1,A6) / $25F0AE bne.s $25F0B6. Never taken as shipped:
+      // no caller can arrive in state 4. Transcribed, not folded away.
+      if (ram.u8(a6 + D.stateAt) === D.deadGateValue) {
+        d2 = D.artEmit1Dead;                                 // $25F0B0 -- UNREACHABLE
+      }
+      // $25F0B6 move.w #$0458,D3 / $25F0BA move.w #$0012,D4 / $25F0BE jsr $23DFB4.
+      enqueueRegistersThroughStub(ram, rom, D.stub, d1, d2, D.attr.e1, D.pal);
+    }
+
+    // ---- EMIT 2. $25F0C4 move.l (A0)+,D1 -- table +$04, again BEFORE the gate.
+    d1 = rom.u32(a0);
+    a0 += 4;
+    // $25F0C6 tst.w ($2C,A6) / $25F0CA beq.s $25F102 -- skips the emit AND the cursor advance.
+    if (ram.u16(a6 + D.animAt) !== 0) {
+      // $25F0CC lea ($25F1BC,PC),A1 / $25F0D0 nop / $25F0D2 adda.w ($66,A6),A1 / $25F0D6 move.l
+      // (A1),D2. ($66,A6) is a BYTE OFFSET into the twelve longs, not an entry index. The `nop` is
+      // real cartridge padding between the lea and the adda; it does nothing and is named here
+      // rather than silently dropped.
+      const cur = ram.u16(a6 + D.cursorAt);
+      const d2 = rom.u32(D.ramp + cur);
+      let d4 = D.palEmit2;                                   // $25F0DC move.w #$0017,D4
+      ram.setU16(a6 + D.cursorAt, u16(cur + D.rampStep));    // $25F0E0 addq.w #4 -- THE RAM WRITE
+      // $25F0E4 cmpi.w #$30,($66,A6) / $25F0EA bne.w $25F0F4 -- re-READ, after the addq.
+      if (ram.u16(a6 + D.cursorAt) === D.rampWrap) {
+        ram.setU16(a6 + D.cursorAt, 0);                      // $25F0EE -- the wrap
+      }
+      // $25F0F4 tst.w D7 / $25F0F6 bne.s $25F0FC -- D7 == 0, i.e. SIDE 1, falls into the ori.
+      if (side === 1) d4 = u16(d4 | D.palEmit2Ori);          // $25F0F8 ori.w #$0060,D4 -> $0077
+      enqueueRegistersThroughStub(ram, rom, D.stub, d1, d2, D.attr.e2, d4);   // $25F0FC jsr
+    }
+
+    // ---- EMIT 3. $25F102 move.l (A0),D1 with NO post-increment, where both neighbours use
+    // `(A0)+`. A0 stays at +$08 and the `lea ($10,A0),A0` below is what finally moves it.
+    enqueueRegistersThroughStub(ram, rom, D.stub,
+      rom.u32(a0 + 0), rom.u32(a0 + 4),                      // $25F102 / $25F104 ($4,A0)
+      D.attr.e3, D.pal);                                     // $25F108 / $25F10C / $25F110 jsr
+
+    // ---- EMIT 4. D3 AND D4 ARE INHERITED from emit 3: neither is rewritten between the two jsr.
+    enqueueRegistersThroughStub(ram, rom, D.stub,
+      rom.u32(a0 + 8), rom.u32(a0 + 12),                     // $25F116 ($8,A0) / $25F11A ($C,A0)
+      D.attr.e3, D.pal);                                     // $25F11E jsr
+
+    a0 += 0x10;                                              // $25F124 lea ($10,A0),A0 -> base+$18
+  } else {
+    // $25F08E adda.l #$18,A0 / $25F094 bra.w $25F128 -- the SLICE. Same landing A0 as above.
+    a0 += D.sliceSkip;
+  }
+
+  // $25F128 tst.w $813098 / $25F12E bne.w $25F1BA -- THE ONLY EARLY EXIT, straight onto the rts,
+  // and on the full path emits 1..4 have already been queued by the time it is tested.
+  if (ram.u16(D.loopCounter) !== 0) return;
+
+  // ---- EMIT 5. table +$18 and +$1C.
+  let d1 = rom.u32(a0);
+  a0 += 4;                                                   // $25F132 move.l (A0)+,D1
+  d1 = withShort(d1, u16(d1 + d5));                          // $25F134 add.w D5,D1 -- SHORT axis
+  let d2 = rom.u32(a0);
+  a0 += 4;                                                   // $25F136 move.l (A0)+,D2
+  enqueueRegistersThroughStub(ram, rom, D.stub, d1, d2, D.attr.e5, D.pal);   // $25F138..$25F140
+
+  // ---- EMIT 6, the first zoom. table +$20 and +$24.
+  d1 = rom.u32(a0);
+  a0 += 4;                                                   // $25F146 move.l (A0)+,D1
+  d1 = withShort(d1, u16(d1 + d5));                          // $25F148 add.w D5,D1
+  const d2base67 = rom.u32(a0);
+  a0 += 4;                                                   // $25F14A move.l (A0)+,D2
+  d2 = (d2base67 + nibbleOffset25F074(ram, ctx, a6, D.nib6)) >>> 0;   // $25F14C..$25F15A add.l
+  // $25F164 move.l #$80005000,D6 -- the high word $8000 is grow 1 / zoom 0, so the LONG-axis
+  // adjustment is exactly 0 and only the short axis moves. Both heights here ($18 and $10) are
+  // multiples of 8, so $23E2F2's `height & 7` throw is not reachable from this routine.
+  enqueueZoomedRegistersThroughStub(ram, rom, D.zoomStub, d1, d2,
+    D.attr.e6, D.pal, D.zoomFlags);                          // $25F16A jsr $23E2F2
+
+  // ---- EMIT 7. D2 IS RE-READ FROM (-$4,A0), i.e. table +$24 AGAIN -- the same base emit 6 used,
+  // with a DIFFERENT nibble. D1 is emit 6's, moved 15 px back along the short axis. D3 and D4 are
+  // INHERITED from emit 6; only D6 is reloaded, from the identical literal.
+  const d2base7 = rom.u32(a0 - 4);                           // $25F170 move.l (-$4,A0),D2
+  d1 = withShort(d1, u16(d1 - D.emit7Back));                 // $25F174 subi.w #$03C0,D1
+  d2 = (d2base7 + nibbleOffset25F074(ram, ctx, a6, D.nib7)) >>> 0;    // $25F178..$25F186
+  enqueueZoomedRegistersThroughStub(ram, rom, D.zoomStub, d1, d2,
+    D.attr.e6, D.pal, D.zoomFlags);                          // $25F188 / $25F18E jsr $23E2F2
+
+  // ---- EMIT 8. table +$28 and +$2C, and the third nibble at a DIFFERENT stride ($34, not $64).
+  d1 = rom.u32(a0);
+  a0 += 4;                                                   // $25F194 move.l (A0)+,D1
+  d1 = withShort(d1, u16(d1 + d5));                          // $25F196 add.w D5,D1
+  d2 = rom.u32(a0);
+  a0 += 4;                                                   // $25F198 move.l (A0)+,D2 -- A0 dies
+  d2 = (d2 + nibbleOffset25F074(ram, ctx, a6, D.nib8)) >>> 0;         // $25F19A..$25F1A4
+  enqueueZoomedRegistersThroughStub(ram, rom, D.zoomStub, d1, d2,
+    D.attr.e8, D.pal, D.zoomFlags);                          // $25F1A6..$25F1B4 jsr $23E2F2
+  void a0;                                                   // $25F1BA rts
+}
+
+/** Replace D1's LOW word and keep its high word. `add.w D5,D1` and `subi.w #$3C0,D1` are WORD ops:
+ *  they touch the short axis only and never carry into the long one. */
+function withShort(d1, lo) {
+  return (((d1 & 0xffff0000) >>> 0) | u16(lo)) >>> 0;
 }
