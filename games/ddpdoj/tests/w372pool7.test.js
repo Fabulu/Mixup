@@ -293,3 +293,21 @@ test('W372 inner state 0 CYCLES the variant where the triplicate driver STOPS', 
   assert.equal(ram.u16(A6 + 0x06), 0, 'no change-detection: an identical set still RESTARTS');
   void P;
 });
+
+test('W372 THREE consecutive tables, each bounded by its own first entry', { skip: SKIP }, () => {
+  const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
+  // $290CE8, $290DAE and $290E8A sit back to back and every one of them bounds itself, which is what
+  // let all three be windowed without a single adjacency guess. The last one is the odd one: its
+  // records come BEFORE it, so its first entry is its LOWER bound.
+  const t1 = IMG.readUInt32BE(0x290ce8);
+  assert.equal((t1 - 0x290ce8) / 4, 9, '$290CE8 -- nine pointers');
+  assert.equal(t1 + 9 * 0x12, 0x290dae, '  ...and its records end exactly at $290DAE');
+  const t2 = IMG.readUInt32BE(0x290dae);
+  assert.equal((t2 - 0x290dae) / 4, 5, '$290DAE -- five pointers');
+  assert.equal(t2 + 5 * 0x1e, 0x290e58, '  ...and ITS records end exactly at $290E58');
+  const t3 = IMG.readUInt32BE(0x290e8a);
+  assert.ok(t3 < 0x290e8a, '$290E8A -- records BEFORE the table, so the bound reads the other way');
+  assert.equal(t3, 0x290e58, '  ...starting where the previous structure ended');
+  // So the three tile the span $290CE8..$290E9E with no gap and no overlap.
+  assert.equal(0x290e8a + 5 * 4, 0x290e9e, 'and the last ends at inner state 0');
+});
