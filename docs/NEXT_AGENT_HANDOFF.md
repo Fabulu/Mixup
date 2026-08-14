@@ -87,6 +87,37 @@ them, from the neighbours' recon and verified by hand:
   table A's first pair (`$4F013000`) is NOT a plausible art pointer, so the pairing is not a uniform
   `{D1, art}` array throughout.** Do not assume the layout.
 
+### THE ALREADY-PORTED AUDIT PAID OFF A SIXTH TIME: `$27F8F0`
+
+After `$243DD0`, `$24652A`, `$24641A`, `$285AF2` and `$259FBC`, here is number six.
+
+**`$27F8F0` IS PORTED** -- `allocPoolA27F8F0` in `src/bee.js:541` -- **but `src/handlers.js` still
+notes it as unported at TWO sites**, `handlers.js:6671` (type `$92` death) and `handlers.js:7024`
+(type `$93` death). Both notes read `$27F8F0 ... D0=$C, D1=..., D2=...`.
+
+The identification is solid on three independent signals:
+
+* The ROM at `$27F8F0` is `... 48E7 0180 (movem.l D7/A0,-(SP)) / 41F9 008171BE (lea $8171BE,A0) /
+  3E3C 0045 (move.w #$45,D7) / ... / 51CF FFF4 (dbra D7) / 4CDF 0180`. `#$45` is 69, so the `dbra`
+  runs **70 passes** -- and `bee.js`'s own docstring for `$27F8F0` says "scans the first seventy
+  slots". That is the cartridge agreeing with the port's prose.
+* The ported signature is `(ram, rom, ctx, kind, offset, layer, carrierA6)` and the docstring says
+  "D1 is a zero-extended packed-position offset and D2 is the display layer byte", so
+  `kind`/`offset`/`layer` are D0/D1/D2 -- exactly the three registers the two notes report.
+* `IMPACT_FINISH` **already has a `0x0c` entry** (`{ ...FINISH_JITTER, site: 0x280d10 }`), and `$C`
+  is exactly the D0 both notes carry. So the arm those call sites need is already translated.
+
+**It also SAVES AND RESTORES D7** (`movem.l D7/A0,-(SP)` ... `4CDF 0180`), so calling it does not
+disturb a caller's side selector.
+
+**NOT WIRED YET, DELIBERATELY.** This is a behaviour change in shipped enemy-death code for two
+types, so it needs driving tests rather than a drive-by edit, and `carrierA6`'s meaning at these two
+call sites needs checking before the `a6` in scope is passed to it. **Treat it as its own unit.**
+
+The rest of the audit came back clean. Every other non-note reference among the 40 noted addresses
+is prose, a constant, or a dispatch-table entry -- trap 17 -- and the two `unportedLog` notes for
+`$25DB7C`/`$25DC2C` are deliberate logging next to routines that ARE ported, not unported claims.
+
 ### RESOLVED: D7 SURVIVES THE WHOLE DRAW CHAIN, SO PASSING IT FRESH TO EACH DRAW IS CORRECT
 
 A recon flagged this as an unverified dependency and it mattered, because the ported draws take `d7`
