@@ -393,6 +393,27 @@ Its callees, with port status:
 So `$25D560` is FIVE unported callees plus its own 730 bytes. It is the biggest single remaining
 item in the slot [9]/[17] screen, and it is the ONLY caller of `$25E4D0`.
 
+**THE WHOLE `$25D560` TREE IS NOW SIZED, and it bottoms out at about 1.9 KB.** First level:
+
+    $25F530    80 B   no calls
+    $25F456   218 B   no calls
+    $260A9A    28 B   no calls           (objslot17.js knows it as SCREEN17.announceSite)
+    $26070C   124 B   calls $25D990                                    ($25D990 PORTED)
+    $25FAA4   334 B   calls $256F78 x2, $23D16C, $23D17E, $28C6FA x2
+                      ($23D16C/$23D17E are the descriptor raw readers, $28C6FA is a ported sound)
+    $2603FE   172 B   calls $287084, $241182, $2870E6, $241182, $287A5E
+                      ($241182 PORTED -- and it appears TWICE, so TRAP 12 applies twice)
+
+Second level, all unported and all small:
+
+    $256F78    24 B   TAIL jmp $240CF0        $287084    98 B   no calls
+    $287A5E    28 B   no calls                $2870E6    98 B   no calls
+
+**248 bytes at the second level and the tree STOPS there** -- nothing below it calls anything
+unported. So the total is roughly 730 + 956 + 248 = **about 1.9 KB across eleven routines**, none
+larger than 334 bytes. That is a large unit but a shallow one, and it can be split cleanly: the
+four no-call leaves (`$25F530`, `$25F456`, `$260A9A`, `$287A5E`) are independent of everything else.
+
 **1. THERE ARE EIGHT SHARED DRAWS, NOT SEVEN.**
 There ARE exactly two confirm-and-draw copies (`$25D256` and `$25D4A6`); they are byte-identical in their
 lists and the port's `drawsA`/`drawsB`/`drawsAlways` are exactly right for them. **`$25D800` is a THIRD
