@@ -593,9 +593,22 @@ function fillGeneralImpact280B3E(ram, rom, ctx, slot, kind, offset, d2,
   ram.setU16(POOL_A.liveCount, u16(ram.u16(POOL_A.liveCount) + 1));
   ram.setU16(slot + B.status, kind | 0x8000);
 
-  // D1 begins as the caller's zero-extended word and ADD.L carries across the
-  // two packed position halves. The following ADD.W scroll does not.
-  let pos = (ram.u32(carrierA6 + B.pos) + (offset & 0xffff)) >>> 0;
+  // $280B56 `add.l ($2,A6),D1` -- a LONG add, so the carry crosses from the low
+  // packed half into the high one AND the caller's high word is part of the sum.
+  // The following $280B5A `add.w $813176,D1` scroll is a WORD add and does not.
+  //
+  // W374 REMOVES AN `& 0xffff` THAT USED TO SIT ON `offset`, and it was losing data
+  // every frame a type $1B died. `$2696F8 move.l (A4)+,D1` walks the four longs at
+  // $26970C -- $04000280 / $0400FD80 / $FC00FD80 / $FC000280 -- and EVERY high word
+  // is non-zero. They are the four corners of a rectangle around the dying enemy,
+  // +/-$0400 on the packed high half and +/-$0280 on the low one. Masking the offset
+  // to a word threw the +/-$0400 away and collapsed the four corners onto TWO points
+  // that differ only on the low axis, so the death burst was a segment and not a box.
+  //
+  // It is equally correct for the `moveq`/`u16(...)` callers: the cartridge zero-
+  // extends D1 into a LONG before the `add.l`, so their high word is a real zero and
+  // the low-to-high carry the mask suppressed is the cartridge's own behaviour.
+  let pos = (ram.u32(carrierA6 + B.pos) + (offset >>> 0)) >>> 0;
   pos = ((pos & 0xffff0000)
     | u16((pos & 0xffff) + ram.u16(POOL_A.scrollShort))) >>> 0;
   ram.setU32(slot + B.pos, pos);

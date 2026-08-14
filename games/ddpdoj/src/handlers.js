@@ -6667,9 +6667,24 @@ function tail92(ram, rom, a5, a6, ctx) {
   let d1 = 0xff00fe00;
   if ((ram.u8(a6 + S.f1c) & 0x40) !== 0)
     d1 = ((d1 & 0xffff0000) | u16(-(d1 & 0xffff))) >>> 0; // $279D56..$279D5E
-  const d2 = ram.u8(a6 + S.f1f);
-  ctx.unported?.note(0x27f8f0, `$27F8F0 type $92 death D0=$C, D1=$${d1
-    .toString(16).toUpperCase()}, D2=$${d2.toString(16).toUpperCase()} rec $${a5.toString(16)}`);
+  const d2 = ram.u8(a6 + S.f1f);                        // $279D60 move.b ($1F,A6),D2
+  // W374 WIRES THIS. `$27F8F0` is `allocPoolA27F8F0` and has been since W312 -- the sixth
+  // routine in this project found already ported under another name -- so the note was a
+  // deferral of something that already existed.
+  //
+  // Three things had to be settled before the call could be written:
+  //   * D0 is `$C` ($279D4E moveq #$C,D0), and `IMPACT_FINISH` has a $0C row ($280D10).
+  //   * A6 is THIS record, and it is the same kind `death1B` and type $45 pass. The fill's
+  //     `$280B56 add.l ($2,A6),D1` reads the packed position long at ($2,A6), and nothing
+  //     between `$279D64 jsr` and `$280B56` writes A6: `$27F8F0` saves and uses only D7/A0,
+  //     and `$280B3E` starts with `addq.w #1,$817F7E`.
+  //   * this is the `$27F8F0` entry, NOT `$27F8F8`, so D2 really does go through
+  //     `andi.w #$FF,D2 / lsl.w #2,D2` -- which is what `allocPoolA27F8F0` models.
+  //
+  // And it needs W374's other half: D1 is a FULL LONG here ($FF00FE00, or $FF000200 when the
+  // mirror bit flipped its low word), so the old `offset & 0xffff` inside the fill would have
+  // dropped the $FF00 and spawned this on the wrong side of the carrier.
+  allocPoolA27F8F0(ram, rom, ctx, 0x0c, d1, d2, a6);    // $279D64 jsr $27F8F0
   freeEnemy(ram, a5);                                   // $279D6A jmp $263762
 }
 
@@ -7019,11 +7034,15 @@ function tail93(ram, rom, a5, a6, ctx) {
   ram.setU8(a5 + 0x17, linger - 1);                    // $279F28
   if (linger !== 0) { emit93(ram, rom, a6); return; } // $279F2C bcc $279FC0
 
+  // $279F32 move.l #$FAC0FA40,D1 -- a FULL LONG, and unlike type $92's there is NO mirror
+  // `btst`/`neg.w` here: $279F32's immediate goes straight to $279F38's `move.b ($1F,A6),D2`.
   const d1 = 0xfac0fa40;
-  const d2 = ram.u8(a6 + S.f1f);
-  ctx.unported?.note(0x27f8f0, `$27F8F0 type $93 death D0=$C, D1=$${d1
-    .toString(16).toUpperCase()}, D2=$${d2.toString(16).toUpperCase()} rec $${a5
-    .toString(16)}`);
+  const d2 = ram.u8(a6 + S.f1f);                       // $279F38 move.b ($1F,A6),D2
+  // W374 WIRES THIS -- see `tail92` above for the three things that had to be settled; this
+  // site is the same shape with the same D0 ($279F30 moveq #$C,D0) and the same A6, and it
+  // uses the same `$27F8F0` masking entry. $FAC0FA40's high word is what W374's fill fix
+  // stops discarding.
+  allocPoolA27F8F0(ram, rom, ctx, 0x0c, d1, d2, a6);   // $279F3C jsr $27F8F0
   freeEnemy(ram, a5);                                  // $279F42
 }
 

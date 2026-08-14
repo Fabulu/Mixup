@@ -12,6 +12,9 @@ import { runInitBodyAddr, INIT_BODY_ADDRESSES } from '../src/initbody.js';
 import { runHandler, HANDLER_ADDRESSES, TYPE93_ART } from '../src/handlers.js';
 import { BUCKETS } from '../src/spritequeue.js';
 import { B, POOL_B } from '../src/effects.js';
+// W374 wired `$279F3C jsr $27F8F0` to `allocPoolA27F8F0`, so the impact is now observable as a
+// pool-A slot rather than as an unported note.
+import { POOL_A, B as BEE, LAYER_EMITTERS } from '../src/bee.js';
 
 const tablesPath = new URL('../rip/port/player.tables.json', import.meta.url);
 const HAVE = existsSync(tablesPath);
@@ -114,8 +117,18 @@ test('W181/4 lethal damage arms exact three effects, lingers, impacts and frees'
   assert.deepEqual([0, 1, 2].map((n) => effect(n, B.delay)), [2, 1, 0]);
   assert.equal(effect(0, B.f1c, 'u8'), 0x40);
 
+  const live = ram.u16(POOL_A.liveCount);
   for (let i = 0; i < 19; i++) runHandler(0x279f4a, ram, ROM, A5, c.ctx);
   assert.equal(ram.u16(A5), 0);
-  assert.match(c.unported.report().join('\n'),
-    /\$27F8F0 type \$93 death D0=\$C, D1=\$FAC0FA40, D2=\$0/);
+  // W374: the tail CALLS `$27F8F0` now. `$279F30 moveq #$C,D0`, `$279F32 move.l #$FAC0FA40,D1`
+  // as a FULL long through `$280B56 add.l ($2,A6),D1`, and `$279F38 move.b ($1F,A6),D2` = 0.
+  // `freeEnemy` clears A5 and never touches A6, so ($2,A6) still holds the position the fill
+  // read, which is what makes this an exact expectation rather than a transcribed constant.
+  assert.equal(ram.u16(POOL_A.liveCount), live + 1, 'the impact was allocated');
+  assert.equal(ram.u16(POOL_A.base + BEE.status), 0x800c, 'D0 = $C');
+  assert.equal(ram.u32(POOL_A.base + BEE.pos), (ram.u32(A6 + 0x02) + 0xfac0fa40) >>> 0,
+    'carrier position plus the WHOLE long, high word and low-to-high carry included');
+  assert.equal(ram.u32(POOL_A.base + BEE.layerEmitter), LAYER_EMITTERS[0], 'D2 = 0');
+  assert.deepEqual(c.unported.report().filter((x) => x.includes('$27F8F0')), [],
+    'and the deferral is gone');
 });

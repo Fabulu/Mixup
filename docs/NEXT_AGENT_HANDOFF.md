@@ -21,7 +21,7 @@ reason. Worktree isolation is withdrawn as the port-contention fallback, so **se
 is the only concurrency control** -- and every shared draw lands in `src/objslot9.js`, so it is one port
 agent there regardless.
 
-### W374 STATE: SUITE 2786/2786 ZERO SKIPS, GATE EXIT 0, 519 ROM WINDOWS
+### W374 STATE: SUITE 2798/2798 ZERO SKIPS, GATE EXIT 0, 519 ROM WINDOWS
 
 Up from 2730 at the start of the wave. **Three more shared draws are PORTED, DRIVEN AND WIRED:**
 
@@ -355,7 +355,39 @@ references in the image are call-site operands.
   table A's first pair (`$4F013000`) is NOT a plausible art pointer, so the pairing is not a uniform
   `{D1, art}` array throughout.** Do not assume the layout.
 
-### THE ALREADY-PORTED AUDIT PAID OFF A SIXTH TIME: `$27F8F0`
+### FIXED IN W374: `bee.js`'s OFFSET MASK, AND `$27F8F0` IS NOW WIRED
+
+Both done, driven, and committed. `$280B56` really is `D2AE 0002` = `add.l ($2,A6),D1` (a word add
+would be `D26E 0002`), and `$280B5A add.w $813176,D1` is genuinely word-sized and still does NOT
+carry -- both pinned by ROM assertions in the tests.
+
+**A CORRECTION TO MY OWN DIAGNOSIS.** I wrote that the mask made "all four impacts collapse onto the
+carrier's own long-axis position". The long-axis part is right, but the useful statement is sharper:
+**the four corners collapsed onto TWO positions, not four**, differing only by `+/-$0280` on the
+short axis -- a segment rather than a box. And the assertion I proposed, "four distinct HIGH words",
+is **carrier-dependent and therefore the wrong pin**: with a carrier low half of `$0000` even the
+fixed code yields only two distinct highs. The right pin, and the one the tests use, is
+**four distinct FULL positions where the masked code gives two**. That one holds for any carrier.
+
+**A NEW EXPOSURE THAT DID NOT EXIST BEFORE.** `allocPoolA27F8F0` throws `Unreached` when
+`(D2 & $FF) >= 6`, past the six `LAYER_EMITTERS` rows. The three older callers all pass CONSTANTS
+(3, 1, 0). **Types `$92` and `$93` are the first callers whose D2 is DATA** -- `($1F,A6)`, a runtime
+byte. Their init bodies write 3 and 0, so the shipped path is safe today, but a future value of 6 or
+more would throw rather than misdraw. Worth knowing before anyone widens that path.
+
+**AND `allocPoolA27F8F0` STILL DOES NOT DISTINGUISH THE TWO ENTRY POINTS.** It models the `$27F8F0`
+entry (it applies `(layer & $FF) << 2` unconditionally) plus the shared body.
+`bulletdriver.js:207` is a **`$27F8F8`** site routed through it, and it only works because it passes
+`0, 0` and the mask-and-scale of 0 is the identity. **That is a coincidence of the argument, not a
+modelled distinction.** A `$27F8F8` caller with a non-zero layer in scope would be silently masked
+and scaled. Left as-is deliberately, recorded here as its own small item.
+
+Two pre-existing tests, `w178type92.test.js` and `w181type93.test.js`, asserted that the `$27F8F0`
+note IS raised, so wiring it made them fail. They were converted to assert the same D1/D2 facts
+against the pool-A slot that is now really allocated, which is a strengthening: they check behaviour
+instead of note text.
+
+### HOW `$27F8F0` WAS FOUND: THE ALREADY-PORTED AUDIT, A SIXTH TIME
 
 After `$243DD0`, `$24652A`, `$24641A`, `$285AF2` and `$259FBC`, here is number six.
 
@@ -393,13 +425,16 @@ alternate entry, which zeroes D1/D2 for you. The `$27F8F0` entry masks D2 to a b
 by 4 first. **A port that routes a `$27F8F8` caller through the `$27F8F0` entry silently applies
 `andi.w #$FF` and `lsl.w #2` to a layer byte that was meant to be zero.**
 
-**NOT WIRED YET, DELIBERATELY.** This is a behaviour change in shipped enemy-death code for two
-types, so it needs driving tests rather than a drive-by edit. **Treat it as its own unit**, and
-settle these two things first:
+**WIRED IN W374.** It was held back from a drive-by edit because it changes shipped enemy-death
+behaviour for two types; it was then done as its own unit with tests, together with the mask fix it
+depends on. The two questions below were both settled before the wiring, and the answers are worth
+keeping:
 
-1. **`carrierA6`.** It is the record whose position the fill adds to: `bee.js:598` does
-   `ram.u32(carrierA6 + B.pos) + (offset & 0xffff)`. `handlers.js:3617` passes the `a6` in scope,
-   so `tail92`'s `a6` is probably right, but confirm it rather than assuming.
+1. **`carrierA6` -- CONFIRMED, not assumed.** `tail92`/`tail93` take `a6 = ram.u32(a5 + 0x06)`,
+   identical to `death1B`'s and to the type `$45` site. `S.f1c`/`S.f1f` = `$1C`/`$1F` match the
+   ROM's `btst #$6,($1C,A6)` and `move.b ($1F,A6),D2`, and `S.posX` = `$02` = `B.pos`. Nothing
+   between `$279D64 jsr` and `$280B56` writes A6: `$27F8F0` uses only D7/A0, and `$280B3E` opens
+   with `addq.w #1,$817F7E`.
 2. **`offset & 0xffff` IS WRONG FOR THESE TWO CALLERS. CONFIRMED FROM THE ROM.** The call site:
 
        $279D50  move.l #$FF00FE00,D1      <-- a FULL LONG, not a zero-extended word
@@ -426,6 +461,9 @@ settle these two things first:
    `+/-$0400` on the long axis and `+/-$0280` on the short one. `offset & 0xffff` discards all four
    high words, so **all four impacts collapse onto the carrier's own long-axis position** and type
    `$1B`'s death burst spreads along one axis instead of to four corners. It is on screen right now.
+
+   **THIS IS DONE AS OF W374 -- see the FIXED section higher up. The rest of this item is the
+   diagnosis as it stood at the time, kept because the method is what transfers.**
 
    **THE FIX IS ONE LINE**: drop the `& 0xffff` in `bee.js:598` so the add is a real `add.l`. That
    is what the cartridge does (`$280B56 add.l ($2,A6),D1`) and what `bee.js:597`'s own comment

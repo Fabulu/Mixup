@@ -12,6 +12,9 @@ import { runInitBodyAddr, INIT_BODY_ADDRESSES } from '../src/initbody.js';
 import { runHandler, HANDLER_ADDRESSES, TYPE92_ART } from '../src/handlers.js';
 import { BUCKETS } from '../src/spritequeue.js';
 import { B, POOL_B } from '../src/effects.js';
+// W374 wired `$279D64 jsr $27F8F0` to `allocPoolA27F8F0`, so this file's death-tail test now
+// reads the pool-A slot the note used to describe.
+import { POOL_A, B as BEE, LAYER_EMITTERS } from '../src/bee.js';
 
 const tablesPath = new URL('../rip/port/player.tables.json', import.meta.url);
 const HAVE = existsSync(tablesPath);
@@ -140,18 +143,28 @@ test('W178/4 lethal damage scores $14 and creates exact 0D/05 pool-B effects',
 
 test('W178/5 death tail mirrors only D1 low word, preserves D2 and frees on borrow',
   { skip: SKIP }, () => {
-  for (const [mirror, want] of [[0, '$FF00FE00'], [0x40, '$FF000200']]) {
+  // W374: `$27F8F0` is `allocPoolA27F8F0` and the tail now CALLS it, so the D1 and D2 facts
+  // this test has always made are asserted against the pool-A slot instead of the note text.
+  // The fill is `$280B56 add.l ($2,A6),D1`, so the position is the carrier's $20004000 plus
+  // the whole long -- which is why `neg.w`'s low-word-only mirror shows up as a carry.
+  for (const [mirror, d1, wantPos] of [
+    [0, 0xff00fe00, 0x1f013e00], [0x40, 0xff000200, 0x1f004200]]) {
     const ram = fixture();
     const c = context(ram);
     ram.setU16(A6, 0x8080);
     ram.setU8(A6 + 0x1c, mirror);
     ram.setU8(A6 + 0x1f, 3);
     ram.setU8(A5 + 0x17, 0);
+    const live = ram.u16(POOL_A.liveCount);
     runHandler(0x279d72, ram, ROM, A5, c.ctx);
     assert.equal(ram.u16(A5), 0);
-    const notes = c.unported.report().filter((x) => x.includes('$27F8F0'));
-    assert.equal(notes.length, 1);
-    assert.match(notes[0], new RegExp(`D1=\\${want}`));
-    assert.match(notes[0], /D2=\$3/);
+    assert.equal(ram.u16(POOL_A.liveCount), live + 1, 'the impact was allocated');
+    assert.equal(ram.u16(POOL_A.base + BEE.status), 0x800c, '$279D4E moveq #$C,D0');
+    assert.equal(ram.u32(POOL_A.base + BEE.pos), wantPos,
+      `$20004000 + $${d1.toString(16).toUpperCase()}, the FULL long`);
+    assert.equal(ram.u32(POOL_A.base + BEE.layerEmitter), LAYER_EMITTERS[3],
+      'D2 = ($1F,A6) = 3, preserved through `andi.w #$FF` / `lsl.w #2`');
+    assert.deepEqual(c.unported.report().filter((x) => x.includes('$27F8F0')), [],
+      'and the deferral is gone');
   }
 });
