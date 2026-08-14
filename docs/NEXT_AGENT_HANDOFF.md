@@ -65,6 +65,29 @@ them, from the neighbours' recon and verified by hand:
   the gap BELOW the routine (`$25E7B8..$25E823`), not above it, so `$25E824`'s data and `$25E6CE`'s
   region are neighbours. Same fall-through/override shape as `$25EDF8`, so the same inversion trap
   applies: **the fall-through set belongs to side 1.**
+
+  **ITS EXTENT AND SHAPE ARE NOW MAPPED, by hand and with no agent.** `$25E824..$25EB2C`, **777
+  bytes**, ending at the `rts` at `$25EB2C`, with **SEVEN `jsr $23DFB4` emits** at `$25E8B8`,
+  `$25E8F0`, `$25E960`, `$25E998`, `$25EA2A`, `$25EAA8` and `$25EB26`. It has no other callee at all.
+
+  **Its four tables tile `$25E7B8..$25E823` exactly**, 28 + 28 + 26 + 26 = 108 bytes:
+
+      $25E7B8  28  A0, side 0 -- SEVEN art longs, one per emit:
+               001A23D8 001A1944 001A57D4 001A6CFC 001A8224 001A47A4 001A4394
+      $25E7D4  28  A0, side 1 -- seven more:
+               001A3900 001A2E6C 001A6268 001A7790 001A8CB8 001A51C4 001A4DB4
+      $25E7F0  26  A1, side 0 -- THIRTEEN words, not longs. Layout UNRESOLVED.
+      $25E80A  26  A1, side 1 -- thirteen words.
+
+  **Seven emits and seven art longs line up exactly**, which is strong evidence the A0 tables are
+  one art per emit. **The A1 tables do NOT divide evenly by seven** (26 bytes = 13 words), so do not
+  assume a per-emit stride there. That is the main thing a recon still has to settle for this one.
+
+  **AND `$25EB2E..$25EB62` IS A SEPARATE 54-BYTE ROUTINE**, calling `$241812` at `$25EB30` and ending
+  at the `rts` at `$25EB62` -- the very `rts` that bounds `$25EDF8`'s data block from below. **It has
+  no `jsr` or `jmp` caller anywhere in the 6 MB image.** Either something reaches it by `bsr`/`bra`
+  from inside `$25E824`, or it is dead. Do not assume either; find out.
+
 * **`$25E29E` ends with `jmp $23E2F2` at `$25E686`**, then a `nop` pad, then a 64-byte word table at
   `$25E68E..$25E6CD` that `$25E29E` itself `lea`s TWICE (from `$25E51C` and `$25E5F6`). That table
   is what bounds `$25E6CE` from below, so `$25E29E`'s true end is `$25E6CD`, not `$25E686`.
