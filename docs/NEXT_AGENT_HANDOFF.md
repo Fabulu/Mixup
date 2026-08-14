@@ -159,8 +159,20 @@ written TWICE. Check it when the port is reviewed.
 emitters are `$23DECE..$23E08C` and `$27829C`'s eighteen primary emitters are `$23D762..$23DBCA`.
 So it is a standalone third emitter.
 
-**`$25E29E` calls it four times and `$25E4D0` four times, so NEITHER of the last two draws can be
-ported until this is modelled.** That is why they are the hard ones, and it is not a size problem.
+**IT BLOCKS THREE OF THE FOUR REMAINING DRAWS, not two:**
+
+    $25E29E   481 B   4 emits, ALL via $23E2F2                          BLOCKED
+    $25E4D0   958 B   6 emits: 4 via $23E2F2, 2 via $23DFB4             BLOCKED
+    $25F074   327 B   8 emits: 3 via $23E2F2 ($25F16A/$25F18E/$25F1B4)  BLOCKED
+                              5 via $23DFB4
+    $25E824   777 B   7 emits, ALL via $23DFB4                          NOT BLOCKED
+
+**So `$25E824` is the ONLY remaining draw that can be ported today**, and `$23E2F2` is the single
+highest-leverage item on the board: modelling it unblocks 1766 bytes of draw across three routines.
+That is why these are the hard ones, and it was never a size problem.
+
+`$25F074`'s true extent is `$25F074..$25F1BA`, 327 bytes -- much smaller than its unknown-size entry
+in the old docket suggested.
 
 What it does, decoded by hand:
 
@@ -171,15 +183,58 @@ What it does, decoded by hand:
     $23E310  adda.w D4,A0 / movea.l (A0),A0 / jsr (A0)      <-- INDIRECT DISPATCH on D3
     ...      lea $80397C,A0 / add.l $80AFC0,A0 / swap D1    <-- then bucket 0, same as $23DFB4
 
-So it takes an index from **D3** as `(D3 & $1FF) >> 1`, dispatches through a pointer table at
-`$23E78C`, and ends up writing bucket 0 like `$23DFB4` does. It also derives D7 from **D6** as
-`-((D6 >> 8)) + $80`.
+### IDENTIFIED: `$23E2F2` IS THE **ZOOMING** ENQUEUE IN **REGISTER** FORM
 
-**IT WRITES D7 -- BUT IT SAVES IT FIRST.** `movem.l <$0980>,-(SP)`: in predecrement order bit 0 is
-A7 and bit 15 is D0, so mask `$0980` (bits 7, 8, 11) is **A0, D7 and D4**. So the side selector is
-preserved across the call, provided the restore mask matches. **Recon is confirming the restore.**
-Do not act on this until it does -- the mask bit order is reversed for `-(SP)` and easy to read
-backwards, which is exactly the kind of thing that looks right and is not.
+It is not a new convention. **It is `$23D9E2` -- already ported as `enqueueZoomedRequest` -- with
+`D1/D2/D3/D4` in place of the object record**, plus one extra input. `spritequeue.js:132` already
+calls `$23FDE8` "the ZOOMING register convention" without knowing what stood behind it; this is it.
+`$23FDE8` is a member of the same family.
+
+**Calling convention** (`enqueueRegistersThroughStub`'s four arguments PLUS `d6`):
+
+| reg | role |
+|---|---|
+| `D1.l` | packed coords, high word = LONG axis, low = SHORT, caller has already summed position + offset |
+| `D2.l` | art longword |
+| `D3.w` | **the SIZE word**, used THREE times: both scale indices AND written verbatim as record word 4 |
+| `D4.w` | flip/colour word. Its HIGH half is don't-care on entry (it is parked by a `swap`) |
+| `D6.l` | **the ZOOM FLAGS longword** -- the input `$23DFB4` does not have. Also `or.l`-ed whole into the coords |
+
+**IT PRESERVES EVERY REGISTER, D7 INCLUDED.** Verified from the bytes: save `48E7 0980` in `-(SP)`
+order (bit 7 = A0, bit 8 = D7, bit 11 = D4) and restore `4CDF 0190` in `(SP)+` order (bit 4 = D4,
+bit 7 = D7, bit 8 = A0) are **the same set**. D1 is `swap`ped exactly twice, so net identity. So the
+side selector is safe across all three blocked draws.
+
+**ONE record per call, 12 bytes, bucket 0. No branch, no loop anywhere in its 120 bytes.**
+
+### THE TRAP IN IT: ITS SCALE TABLE IS **NOT** `SCALE_TABLE`
+
+`$23E78C` is 64 longs and **self-bounding** -- `$23E78C[0] = $23E88C = $23E78C + $100`, i.e. exactly
+64 entries -- corroborated independently by the index arithmetic capping at 63. (Trap 8 genuinely
+holds here, and it is not a pattern-match.)
+
+**It matches `$23E54A` entry for entry EXCEPT AT INDEX 56**, and that one entry is the whole problem:
+
+    $23E54A[56] = $23E64A   == $23E54A[0], i.e. the x1 GUARD
+    $23E78C[56] = $23E9CE   a real routine: lsl.w #3 / move.w D7,D4 / lsl.w #3 / sub.w D4,D7
+                            = 64x - 8x = x56
+
+**And index 56 is exactly what these draws use.** `$25E29E`'s third and fourth calls pass
+`D3 = $3840`, whose width index is `($3840 & $3E00) >> 6 / 4` = **56**. So **reusing `SCALE_TABLE`
+would silently emit x1 where the cartridge emits x56**, at precisely the index the blocked draws
+need and nowhere else. Declare a SECOND table constant. Do not alias them.
+
+Index arithmetic: entry = byte offset / 4, so the height index is `height/8`
+(`(D3 & $1FF) >> 1`, then /4) and the width index is `(D3 & $3E00) >> 6`, then /4 = `width/8`. Both
+are extent in pixels / 8, the same as `$23D9E2`'s.
+
+**It is a FAMILY OF THIRTEEN** stubs (`$23E2F2`, `$23E36A`, `$23E3E2`, `$23E45A`, `$23E4D2`,
+`$23F090`, `$23F9A2`, `$23FD3E`, `$23FDE8`, `$23FE92`, `$24022E`, `$24072A`, `$24079E`), every one
+resolving its `lea` to `$23E78C`, differing only in bucket and in whether the counter bump comes
+first or last -- a reordering `resolveEmitStub` already handles.
+
+**`$23E2F2` is in NO pointer table at all**, stronger than "neither emitter table": all 16
+references in the image are call-site operands.
 * **`$25F074` uses `cmpi.b #$7,($1,A6) / bcs`**, an UNSIGNED `<` that selects a table SLICE rather
   than returning, plus `adda.l #$18,A0` to skip 24 bytes when the state is `>= 7`. Head verified by
   hand:
