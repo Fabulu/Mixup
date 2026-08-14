@@ -36,6 +36,13 @@ next and is part-analysed:
   advanced by 2 per step. Negative words are COMMANDS (`$2909FC cmpi.w #$8000,D0`), not terminators.
   `$81E0FA`/`$81E0FB` is a counter/reload pair -- the THIRD of that shape. Both carry exits, and it allocates
   into the pool via `$290984`. **Not yet written**; the `$8000` command arm at `$2909FC` is unread.
+* **`$290E9E` (inner state 0, 116 bytes) IS PART-READ and is ITSELF a sub-state machine** on `($6,A6)`:
+  `cmpi.w #$0` / set 1 / `jsr $2908E4` (the pool CLEAR, already ported) / `($C,A6)=0` / `jsr $28CC28` (ported);
+  then `cmpi.w #$1` and a `lea $290F12,A0` indexed by `($E,A6)`. **So the nesting is three deep: slot -> inner
+  table -> sub-state.** `$290F12` is another ROM table needing a bound.
+* **`$2909AA`'s `$8000` COMMAND IS READ**: it writes the next script word to `$81E0FA` as a WORD, arming counter
+  AND reload together, advances the cursor by FOUR, and BRANCHES BACK into the walker -- so one call runs several
+  commands. The other commands past `$290A12` are unread.
 * **`$2907E2` (240 bytes) IS PART-READ.** Another indexed dispatch: `lea $290CE8,A0`, index by `$81E10C * 4`,
   `movea.l (A0,D0.w),A0`, `jsr $246710` (ported), result to `$81E10E`. **`$290CE8` is a ROM table and needs a
   window and a bound.**
