@@ -115,6 +115,33 @@ them, from the neighbours' recon and verified by hand:
   **Three emits per half, symmetric**, and each half `lea`s the same `$25E68E` table
   (`$25E51C` and `$25E5F6`).
 
+### THE CHEAPEST NEXT UNIT IS `$25C8A2`, NOT THE REMAINING DRAWS
+
+Mapped by hand. **`$25C8A2..$25CAC0`, 543 bytes, ONE `rts`**, then `jmp $241292` at `$25CAC2`.
+It is slot [9]'s record state 0, and it is mostly a palette wall:
+
+    $25C8A8  jsr $25F442     UNPORTED  (objslot17.js knows it as SCREEN17.opener, a constant only)
+    $25C8AE  jsr $25FA78     UNPORTED
+    $25C8B4  jsr $25C57E     UNPORTED
+    $25C8C2  jsr $23C47A     PORTED    (stageend.js, clear23C47A)
+    $25C9A0  jsr $23C622     PORTED    (background.js, CLEAR THE TX LAYER)
+    $25C9AE  jsr $2414BE     PORTED    (palette.js, install2414BE -- 32 bytes, not 64)
+    $25C9BC..$25CA72         FOURTEEN jsr $24150A    ALL PORTED (install24150A)
+    $25CA7C  jsr $241182     PORTED    (stageCreate -- REMEMBER trap 12, it needs the
+                                        dispatch-priority LOOKUP, not a constant)
+    $25CA88  jsr $28CB38     PORTED    (sound.js index 7, group 0)
+    $25CA8E  jsr $28CA94     UNPORTED
+    $25CAC0  rts
+
+**So it is FOUR unported callees, not 543 bytes of unknown.** Compare `phase0_25D010`, slot [9]'s
+state 0 sibling, which is eleven palette installs and is already written -- this is the same shape
+with fourteen. **It is cheaper than either remaining draw**, because both of those are blocked on
+`$23E2F2` below.
+
+**Trap 12 applies directly here:** `$25CA7C jsr $241182` is a `stageCreate`, and passing `0` for the
+dispatch priority instead of `(t) => rom.u16(0x240F62 + t * 8 + 4)` is a defect this project has
+written TWICE. Check it when the port is reviewed.
+
 ### THE REAL BLOCKER FOR THE LAST TWO DRAWS: `$23E2F2` IS A THIRD EMITTER AND IT IS UNPORTED
 
 `grep -rli "23E2F2" games/ddpdoj/src/` returns **nothing**, verified against a positive control
