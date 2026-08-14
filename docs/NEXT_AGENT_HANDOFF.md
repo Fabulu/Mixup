@@ -183,7 +183,8 @@ underlying semantics ARE consistent -- side 1 always ends up with the NEGATED of
 **Read the branch, every time.** Combined with `sideFromD7_25D4E4` inverting (`u16(d7) !== 0 ? 0 : 1`)
 there are two independent inversions in play, and assuming a uniform convention across the family is
 exactly how a side-swap defect ships looking plausible.
-* **`$25E4D0` is completely unread.** One call site, `$25D814`, ungated, in the third copy only.
+* **`$25E4D0` is completely unread.** One call site, `$25D814`, ungated, and it is in `$25D560`'s
+  tail only -- so it is reachable ONLY through state 7, never from states 1 or 4.
 
 ### `$25EDF8` IS PORTED, AND ITS BODY IS UNREACHABLE AS SHIPPED
 
