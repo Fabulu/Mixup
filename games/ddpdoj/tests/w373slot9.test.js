@@ -174,3 +174,90 @@ test('W373 the six per-side bytes are covered by THREE handlers, one pair each',
     assert.equal(SCREEN17.slotCount, 6);
     assert.equal(SCREEN17.slots, 0x04, 'the six run $4..$9');
   });
+
+test('W373 $25D402 SKIPS the other side\'s choice rather than being blocked by it',
+  { skip: SKIP }, async () => {
+    const { phase4_25D402, HANDLER4, SCREEN17, ram, rom, ctx } = await fx();
+    const a5 = 0x812c00;
+    const a6 = SCREEN17.recs;
+    const P1EDGE = 0x803972;
+    ram.setU8(a5 + 0x07, 1);                                 // side 1 is sitting on option 1
+    ram.setU16(a6 + 0x04, 0);                                // side 0 is on 0
+    ram.setU16(P1EDGE, 1 << HANDLER4.bitNext);               // step FORWARD
+    phase4_25D402(ram, rom, ctx, a5, a6, 1);
+    // Plain +1 mod 3 would land on 1, which side 1 holds. The loop goes round again to 2.
+    assert.equal(ram.u16(a6 + 0x04), 2, 'it stepped over option 1 to option 2');
+  });
+
+test('W373 $25D402 wraps in BOTH directions across three options', { skip: SKIP }, async () => {
+  const { phase4_25D402, HANDLER4, SCREEN17, rom } = await fx();
+  const P1EDGE = 0x803972;
+  const a5 = 0x812c00;
+  const a6 = SCREEN17.recs;
+
+  const run = async (from, bit) => {
+    const f = await fx();
+    f.ram.setU8(a5 + 0x07, 0xff);                            // other side nowhere, so no skipping
+    f.ram.setU16(a6 + 0x04, from);
+    f.ram.setU16(P1EDGE, 1 << bit);
+    f.phase4_25D402(f.ram, f.rom, f.ctx, a5, a6, 1);
+    return f.ram.u16(a6 + 0x04);
+  };
+  assert.equal(await run(0, HANDLER4.bitPrev), 2, '0 steps back to 2');
+  assert.equal(await run(2, HANDLER4.bitNext), 0, '2 steps forward to 0');
+  assert.equal(await run(1, HANDLER4.bitPrev), 0, '1 back to 0');
+  assert.equal(await run(1, HANDLER4.bitNext), 2, '1 forward to 2');
+});
+
+test('W373 $25D402 confirms on a BUTTON or on ($30,A6), two separate conditions',
+  { skip: SKIP }, async () => {
+    const P1EDGE = 0x803972;
+    const a5 = 0x812c00;
+
+    const idle = await fx();
+    const a6 = idle.SCREEN17.recs;
+    idle.ram.setU8(a5 + 0x07, 0xff);
+    idle.ram.setU8(a6 + idle.SCREEN17.phaseAt, 4);
+    idle.phase4_25D402(idle.ram, idle.rom, idle.ctx, a5, a6, 1);
+    assert.equal(idle.ram.u8(a6 + idle.SCREEN17.phaseAt), 4, 'no button, no timer: it stays');
+
+    const btn = await fx();
+    btn.ram.setU8(a5 + 0x07, 0xff);
+    btn.ram.setU8(a6 + btn.SCREEN17.phaseAt, 4);
+    btn.ram.setU16(P1EDGE, 0x10);                            // inside the $70 mask
+    btn.phase4_25D402(btn.ram, btn.rom, btn.ctx, a5, a6, 1);
+    assert.equal(btn.ram.u8(a6 + btn.SCREEN17.phaseAt), btn.HANDLER4.nextPhase, 'a button confirms');
+
+    const timer = await fx();
+    timer.ram.setU8(a5 + 0x07, 0xff);
+    timer.ram.setU8(a6 + timer.SCREEN17.phaseAt, 4);
+    timer.ram.setU8(a6 + timer.HANDLER4.autoConfirm, 1);     // ($30,A6), set by the dispatcher tail
+    timer.phase4_25D402(timer.ram, timer.rom, timer.ctx, a5, a6, 1);
+    assert.equal(timer.ram.u8(a6 + timer.SCREEN17.phaseAt), timer.HANDLER4.nextPhase,
+      '($30,A6) confirms with NO button at all');
+  });
+
+test('W373 the shared draws run ONCE across both records', { skip: SKIP }, async () => {
+  const { phase4_25D402, HANDLER4, SCREEN17, ram, rom, ctx, notes } = await fx();
+  const a5 = 0x812c00;
+  const P1EDGE = 0x803972;
+  ram.setU8(a5 + 0x06, 0xff);
+  ram.setU8(a5 + 0x07, 0xff);
+  ram.setU16(P1EDGE, 0x10);                                  // confirm both
+
+  phase4_25D402(ram, rom, ctx, a5, SCREEN17.recs, 1);        // record 0
+  const first = notes.filter((n) => HANDLER4.drawsA.includes(n)).length;
+  notes.length = 0;
+  phase4_25D402(ram, rom, ctx, a5, SCREEN17.recs + SCREEN17.recStride, 0);   // record 1
+  const second = notes.filter((n) => HANDLER4.drawsA.includes(n)).length;
+
+  assert.equal(first, HANDLER4.drawsA.length, 'the first record did the gated draws');
+  assert.equal(second, 0, 'the second saw the bit already set and skipped them');
+
+  // And clearing ($3,A5) -- which the walk does every frame -- re-arms them.
+  ram.setU8(a5 + HANDLER4.sharedGuard, 0);
+  notes.length = 0;
+  phase4_25D402(ram, rom, ctx, a5, SCREEN17.recs, 1);
+  assert.equal(notes.filter((n) => HANDLER4.drawsA.includes(n)).length, HANDLER4.drawsA.length,
+    'clearing the guard re-arms them for the next frame');
+});

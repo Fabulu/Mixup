@@ -22,6 +22,7 @@
 import { u16 } from './ram.js';
 import { paletteSet241688 } from './palette.js';
 import { txString25A14C } from './background.js';
+import { readInput23D186 } from './tallyscreen.js';
 import { queueKill } from './objalloc.js';
 import {
   SCREEN17, phase3_25D306, phase5_25D39C, phase6_25D4F0, sideFromD7_25D4E4, DESC17,
@@ -70,6 +71,9 @@ export function objSlot9(ram, rom, a5, ctx) {
           break;
         case 0x06:
           phase6_25D4F0(ram, rom, ctx, a6, d7);              // $25CB1E
+          break;
+        case 0x04:
+          phase4_25D402(ram, rom, ctx, a5, a6, d7);          // $25CB02
           break;
         case 0x02:
           phase2_25D164(ram, rom, ctx, a5, a6, d7,           // $25CB58
@@ -139,4 +143,84 @@ export function phase2_25D164(ram, rom, ctx, a5, a6, d7, a4) {
   const row = u16((src >>> HANDLER2.shift) + HANDLER2.bias); // $25D198 lsr #6 / $25D19A lsr #3
   txString25A14C(ctx.tx, rom, HANDLER2.col, row, 0, HANDLER2.string);   // $25D1AC jsr $25A14C
   ram.setU8(a6 + SCREEN17.phaseAt, HANDLER2.nextPhase);      // $25D1B2 -- back to THREE
+}
+
+export const HANDLER4 = Object.freeze({
+  addr: 0x25d402, options: 3, nextPhase: 0x05,
+  bitPrev: 0x02, bitNext: 0x03, confirmMask: 0x70,
+  moveSound: 0x28c6fa, confirmSound: 0x28c6e0,
+  moved: 0x28, autoConfirm: 0x30, clearOnConfirm: 0x2e,
+  sharedGuard: 0x03,                          // ($3,A5), bset here and cleared at the top of the walk
+  drawsA: Object.freeze([0x25e220, 0x25e29e]),
+  drawsB: Object.freeze([0x25e6ce]),
+  drawsAlways: Object.freeze([0x25e824, 0x25edf8, 0x25ef30, 0x25f074]),
+});
+
+/** `$25D402` -- SLOT [9]'s STATE-4 HANDLER: THE CURSOR ITSELF, and the mutual exclusion in motion.
+ *
+ *  It reads input through the DESCRIPTOR's edge reader -- `movea.l ($6,A4),A0 / jsr (A0)` -- so the
+ *  side's reader comes from the same `$25D29A`/`$25D2A8` records `$25D306` selects.
+ *
+ *  BIT 2 STEPS BACK AND BIT 3 STEPS FORWARD, each wrapping across THREE options, and each **loops
+ *  again while the new value equals `(A3)`** -- the OTHER side's byte, which the head leas as
+ *  `($7,A5)` for side 0 and `($6,A5)` for side 1. So the cursor SKIPS OVER whatever the other player
+ *  is on rather than being blocked by it. Written as a plain `+1 mod 3` it would land on the other
+ *  player's choice and stick there.
+ *
+ *  CONFIRM IS TWO CONDITIONS, NOT ONE. `($30,A6)` non-zero confirms outright; otherwise a button in
+ *  the `$70` mask is required. `($30,A6)` is exactly what the dispatcher's `($31,A6)` countdown
+ *  sets, so the record can also confirm ITSELF on a timer.
+ *
+ *  AND THE FIVE DRAW CALLS ARE GUARDED BY `bset` ON `($3,A5)`, the byte the walk clears each frame.
+ *  The FIRST record to reach state 4 does the shared draws; the second sees the bit already set and
+ *  skips them. Dropping the guard draws the shared parts twice per frame.
+ */
+export function phase4_25D402(ram, rom, ctx, a5, a6, d7) {
+  const side = sideFromD7_25D4E4(d7);
+  const a4 = DESC17.base[side];                              // $25D406 / $25D410
+  const a3 = a5 + (side === 0 ? 0x07 : 0x06);                // $25D40A / $25D414 -- the OTHER side
+  const d0 = readInput23D186(ram, side);                     // $25D418 movea.l ($6,A4),A0 / jsr (A0)
+
+  const step = (dir) => {
+    ctx.soundPost?.(HANDLER4.moveSound);                     // $25D426 / $25D450
+    ram.setU16(a6 + HANDLER4.moved, 1);                      // $25D42C / $25D456
+    let d1 = ram.u16(a6 + 0x04);                             // $25D432 / $25D45C
+    for (let guard = 0; guard <= HANDLER4.options; guard++) {
+      d1 = u16(d1 + dir);
+      if (dir < 0 && (d1 & 0x8000) !== 0) d1 = HANDLER4.options - 1;   // $25D438 bpl / $25D43C
+      if (dir > 0 && d1 > HANDLER4.options - 1) d1 = 0;                // $25D462 cmpi #$2 / ble
+      // $25D440 / $25D46C cmp.b (A3),D1 / beq -- go round AGAIN on the other side's choice.
+      if ((d1 & 0xff) !== ram.u8(a3)) break;
+    }
+    ram.setU16(a6 + 0x04, d1);                               // $25D444 / $25D470
+  };
+
+  if ((d0 & (1 << HANDLER4.bitPrev)) !== 0) step(-1);        // $25D41E btst #$2,D0
+  if ((d0 & (1 << HANDLER4.bitNext)) !== 0) step(+1);        // $25D448 btst #$3,D0
+
+  ram.setU8(a5 + (side === 0 ? 0x06 : 0x07),                 // $25D474 tst.w D7 / $25D478 / $25D480
+    ram.u8(a6 + 0x05));
+
+  // $25D486 -- ($30,A6) non-zero confirms WITHOUT a button; otherwise the $70 mask is required.
+  if (ram.u8(a6 + HANDLER4.autoConfirm) === 0
+      && (d0 & HANDLER4.confirmMask) === 0) return;          // $25D48C andi.w #$70 / beq $25D4A4
+  ctx.soundPost?.(HANDLER4.confirmSound);                    // $25D494 jsr $28C6E0
+  ram.setU8(a6 + SCREEN17.phaseAt, HANDLER4.nextPhase);      // $25D49A -- 4 ADVANCES to 5
+  ram.setU8(a6 + HANDLER4.clearOnConfirm, 0);                // $25D4A0 clr.b ($2E,A6)
+
+  // $25D4A6/$25D4BA -- bset returns the OLD bit, so each group runs once per frame across BOTH
+  // records. The walk clears ($3,A5) at the top, which is what re-arms them.
+  const guard = ram.u8(a5 + HANDLER4.sharedGuard);
+  ram.setU8(a5 + HANDLER4.sharedGuard, guard | 0x03);
+  if ((guard & 0x01) === 0) {
+    for (const r of HANDLER4.drawsA) ctx.unported?.note(r, `$${r.toString(16).toUpperCase()} -- one `
+      + `of slot [9] state 4's shared draws, gated by bit 0 of ($3,A5). Unread`);
+  }
+  if ((guard & 0x02) === 0) {
+    for (const r of HANDLER4.drawsB) ctx.unported?.note(r, `$${r.toString(16).toUpperCase()} -- `
+      + `gated by bit 1 of ($3,A5). Unread`);
+  }
+  for (const r of HANDLER4.drawsAlways) {
+    ctx.unported?.note(r, `$${r.toString(16).toUpperCase()} -- slot [9] state 4 draw, ungated`);
+  }
 }

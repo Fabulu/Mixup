@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2716/2716 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2720/2720 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -136,6 +136,23 @@ record CYCLES rather than running to an end. Slot [17] has no state-2 arm and th
 **THE SIX PER-SIDE BYTES ARE NOW FULLY ACCOUNTED FOR, one pair per handler:** `$25D39C` writes `$4`/`$5`,
 `$25D306` writes `$6`/`$7`, `$25D164` writes `$8`/`$9`. Every one of them selects the side by the caller's D7.
 That is four independent confirmations of the even/odd pairing.
+
+**`$25D402`, the STATE-4 handler, IS PORTED AND IT IS THE CURSOR ITSELF.** It reads input through the
+DESCRIPTOR's edge reader (`movea.l ($6,A4),A0 / jsr (A0)`), so the reader comes from the same
+`$25D29A`/`$25D2A8` records. Bit 2 steps back and bit 3 steps forward across THREE options, and **each loops
+again while the new value equals `(A3)`, the OTHER side's byte** -- so the cursor SKIPS OVER the other
+player's choice. A plain `+1 mod 3` lands on it and sticks.
+
+**CONFIRM IS TWO CONDITIONS.** `($30,A6)` non-zero confirms outright; otherwise a button in the `$70` mask is
+needed. `($30,A6)` is exactly what the dispatcher's `($31,A6)` countdown sets, so a record can confirm itself
+on a timer.
+
+**THE FIVE DRAW CALLS ARE GUARDED BY `bset` ON `($3,A5)`**, the byte the walk clears every frame. `bset`
+returns the OLD bit, so the FIRST record to reach state 4 does the shared draws and the second skips them.
+Drop the guard and the shared parts draw twice per frame.
+
+**SO SLOT [9] IS D34: A TWO-PLAYER CHARACTER SELECT WITH MUTUAL EXCLUSION.** Three options, each side
+skipping the other's pick, a per-record confirm timer, and `$25D164` cycling back to state 3.
 
 **STILL OPEN IN SLOT [9]:** state 0 at `$25C8A2` (~550 bytes, unread), the four handlers it does not share
 (`$25D402`, `$25D010`, `$25D1DA`, `$25D164`), and the block at `$25CB94` after the record walk, which reads
@@ -379,7 +396,8 @@ skeleton and the WRONG one for anything inside these routines.
 
 1. **`$25D560`** -- slot [17]'s last unported handler, and the biggest. Partially read below.
 2. **Slot [9] state 0** `$25C8A2` (~550 bytes) -- then slot [9] is complete too.
-3. **`$25D402` / `$25D010` / `$25D1DA`** -- slot [9]'s three remaining unshared handlers.
+3. **`$25D010` / `$25D1DA`** -- slot [9]'s two remaining unshared handlers, plus the five draw
+   routines state 4 calls (`$25E220`, `$25E29E`, `$25E6CE`, `$25E824`, `$25EDF8`, `$25EF30`, `$25F074`).
 3. **Slot [18] `$24902A`** -- the ASIC27 self-test. Real work, but NOT on the path to the milestone.
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
