@@ -127,36 +127,39 @@ test('W373 state 0 stages slot [10] with the table priority', { skip: SKIP }, as
   assert.equal(ram.u16(ALLOC.createStage + SCREEN17.newRecArm), 0, 'the new record got the zero');
 });
 
-test('W373 state 1 runs a sub-handler only when its flag is exactly 1', { skip: SKIP }, async () => {
+test('W373 the inner dispatch is a STATE MACHINE on ($1,A6), not four flags', { skip: SKIP }, async () => {
   const { objSlot17, SCREEN17, ram, rom, ctx, notes, a5 } = await fx({ p1: true });
-  objSlot17(ram, rom, a5, ctx);                              // state 0
+  objSlot17(ram, rom, a5, ctx);                              // state 0 seeds record 0 to state 3
+  assert.equal(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), SCREEN17.phaseSeed,
+    'state 0 seeded ($1,A6) to 3');
+
+  // A value that is none of 3/5/6/7 must run nothing at all. Read as four independent flags each
+  // would still fire, because each would be testing a byte that happens to be non-zero.
   notes.length = 0;
-  ram.setU8(SCREEN17.recs, 1);                               // record 0 live
-  for (const [i, off] of SCREEN17.subFlags.entries()) {
-    ram.setU8(SCREEN17.recs + off, i === 1 ? 1 : 2);         // only the second flag is exactly 1
-  }
+  ram.setU8(SCREEN17.recs + SCREEN17.phaseAt, 4);
   objSlot17(ram, rom, a5, ctx);
-  assert.deepEqual(notes.filter((n) => SCREEN17.subHandlers.includes(n)),
-    [SCREEN17.subHandlers[1]], 'a flag of 2 does not run its handler; only 1 does');
+  assert.deepEqual(notes.filter((n) => SCREEN17.subHandlers.includes(n)), [],
+    "state 4 is not one of this slot's four, so nothing ran");
+
+  notes.length = 0;
+  ram.setU8(SCREEN17.recs + SCREEN17.phaseAt, 6);
+  objSlot17(ram, rom, a5, ctx);
+  assert.deepEqual(notes.filter((n) => SCREEN17.subHandlers.includes(n)), [SCREEN17.subHandlers[2]],
+    'state 6 runs exactly one handler');
 });
 
-test('W373 only the FIRST sub-handler also writes ($1,A6)', { skip: SKIP }, async () => {
-  const a = await fx({ p1: true });
-  a.objSlot17(a.ram, a.rom, a.a5, a.ctx);
-  a.ram.setU8(a.SCREEN17.recs, 1);
-  a.ram.setU8(a.SCREEN17.recs + a.SCREEN17.subFlags[0], 1);
-  a.ram.setU8(a.SCREEN17.recs + 0x01, 0);
-  a.objSlot17(a.ram, a.rom, a.a5, a.ctx);
-  assert.equal(a.ram.u8(a.SCREEN17.recs + 0x01), a.SCREEN17.firstSetsPhase,
-    'the $3 handler set ($1,A6) to 5');
-
-  const b = await fx({ p1: true });
-  b.objSlot17(b.ram, b.rom, b.a5, b.ctx);
-  b.ram.setU8(b.SCREEN17.recs, 1);
-  b.ram.setU8(b.SCREEN17.recs + b.SCREEN17.subFlags[2], 1);
-  b.ram.setU8(b.SCREEN17.recs + 0x01, 0);
-  b.objSlot17(b.ram, b.rom, b.a5, b.ctx);
-  assert.equal(b.ram.u8(b.SCREEN17.recs + 0x01), 0, 'the $6 handler does not');
+test('W373 state 3 CASCADES into state 5 in the same frame', { skip: SKIP }, async () => {
+  const { objSlot17, SCREEN17, ram, rom, ctx, notes, a5 } = await fx({ p1: true });
+  objSlot17(ram, rom, a5, ctx);
+  notes.length = 0;
+  ram.setU8(SCREEN17.recs + SCREEN17.phaseAt, SCREEN17.phaseSeed);
+  objSlot17(ram, rom, a5, ctx);
+  // The compares run in sequence, so state 3's handler advancing the byte lets state 5's arm fire
+  // on the same pass. An else-if chain would run only the first.
+  assert.deepEqual(notes.filter((n) => SCREEN17.subHandlers.includes(n)),
+    [SCREEN17.subHandlers[0], SCREEN17.subHandlers[1]], 'both the 3 and 5 arms ran');
+  assert.equal(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), SCREEN17.firstSetsPhase,
+    'and the byte is left at 5');
 });
 
 test('W373 state 1 advances only when BOTH records are idle', { skip: SKIP }, async () => {

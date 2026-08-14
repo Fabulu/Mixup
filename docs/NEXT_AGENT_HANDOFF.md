@@ -146,6 +146,13 @@ Reached from slot [7] when `$2911B0`'s menu answers 0. It walks TWO `$70`-byte r
 record tests four flag bytes, each with its own handler -- `($3)` -> `$25D306`, `($5)` -> `$25D39C`,
 `($6)` -> `$25D4F0`, `($7)` -> `$25D560`, **and only the first also writes `($1,A6) = 5`**.
 
+**ITS INNER DISPATCH IS A STATE MACHINE ON ONE BYTE, `($1,A6)`, WITH VALUES 3/5/6/7.** `$0C2E 0003 0001`
+is `cmpi.b #$3,($1,A6)` -- the IMMEDIATE comes before the displacement. I first read it as
+`cmpi.b #$1,($3,A6)`, which turns one state byte into four independent flags, and every arm still looked
+plausible. **Caught by reading slot [9], which runs the same machine over the same records with SIX states.**
+The compares are also SEQUENTIAL, not else-if: `$25D306` sets the byte to 5 and the next compare then fires
+in the same frame.
+
 **THE OBJECT'S SIX BYTES ARE PER-SIDE PAIRS.** State 0 fills `($4,A5)..($9,A5)` with `$FF`, then P1 writes
 the EVEN offsets `$4`/`$6`/`$8` and P2 the ODD `$5`/`$7`/`$9`. One array of pairs, not two blocks.
 
@@ -292,7 +299,10 @@ skeleton and the WRONG one for anything inside these routines.
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **Slot [9] `$25CACA`** (1006) -- the D34 candidate, and slot [8] stages it.
+1. **Slot [9] `$25CACA`** (1006) -- the D34 candidate, and slot [8] stages it. **It is slot [17]'s twin**:
+   the same walk over the same `$812EA0` records, dispatching `($1,A6)` on SIX states rather than four --
+   3 -> `$25D306`, 4 -> `$25D402`, 5 -> `$25D39C`, 6 -> `$25D4F0`, 7 -> `$25D560`, 0 -> `$25D010`. Four of
+   those six handlers are shared with slot [17], so porting them serves both.
 3. **Slot [18] `$24902A`** -- the ASIC27 self-test. Real work, but NOT on the path to the milestone.
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text

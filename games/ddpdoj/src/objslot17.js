@@ -4,12 +4,18 @@
 // is this slot, when `$2911B0`'s menu answers 0. Slot [15] is the other arm of that fork.
 //
 // IT WALKS TWO `$70`-BYTE RECORDS at `$812EA0`. `moveq #$1,D7` with a `dbra` is TWO passes, and per
-// record it tests four flag bytes and calls a different handler for each:
+// record it runs a STATE MACHINE on the single byte `($1,A6)`:
 //
-//     ($3,A6) -> $25D306      ($6,A6) -> $25D4F0
-//     ($5,A6) -> $25D39C      ($7,A6) -> $25D560
+//     3 -> $25D306      6 -> $25D4F0
+//     5 -> $25D39C      7 -> $25D560
 //
-// and the FIRST of those also writes `($1,A6) = 5`, which none of the other three does.
+// `$0C2E 0003 0001` is `cmpi.b #$3,($1,A6)`, NOT `cmpi.b #$1,($3,A6)`: the immediate comes before
+// the displacement. Reading it the other way turns one state byte into four independent flags, and
+// every individual arm still looks plausible. It was caught by reading slot [9], which runs the
+// same machine over the same records with SIX states instead of four.
+//
+// THE COMPARES ARE SEQUENTIAL, NOT AN ELSE-IF CHAIN. `$25D306` sets `($1,A6) = 5` and the very next
+// compare then matches, so a record walks 3 -> 5 within ONE frame. A switch stops that.
 //
 // THE OBJECT'S OWN SIX BYTES ARE INTERLEAVED BY SIDE. State 0 fills `($4,A5)..($9,A5)` with `$FF`,
 // then P1 writes the EVEN offsets `$4`/`$6`/`$8` and P2 the ODD `$5`/`$7`/`$9`. They are one array
@@ -50,8 +56,9 @@ export const SCREEN17 = Object.freeze({
   state: 0x02, busy: 0x03, slots: 0x04, slotCount: 6, extra: 0x0a,
   // $25CEA2's target: the NEW record's ($4), not this object's. See state 0's tail.
   newRecArm: 0x04,
-  // ($3,A6)/($5,A6)/($6,A6)/($7,A6) and the routine each one runs.
-  subFlags: Object.freeze([0x03, 0x05, 0x06, 0x07]),
+  // ($1,A6) is a per-record STATE, seeded to 3 by state 0. These are its values, not offsets.
+  phaseAt: 0x01, phaseSeed: 0x03,
+  subStates: Object.freeze([0x03, 0x05, 0x06, 0x07]),
   subHandlers: Object.freeze([0x25d306, 0x25d39c, 0x25d4f0, 0x25d560]),
   firstSetsPhase: 0x05,
   p1: 0x8103e6, p2: 0x810448,
@@ -115,7 +122,8 @@ function state0(ram, rom, a5, ctx) {
     ram.setU8(a5 + 0x09, ram.u16(SCREEN17.p2SrcA) & 0xff);   // $25CD2E/$25CD34 -- the ODD slots
     ram.setU8(a5 + 0x05, ram.u16(SCREEN17.p2SrcB) & 0xff);   // $25CD38/$25CD3E
     ram.setU8(a5 + 0x07, ram.u16(SCREEN17.p2SrcB) & 0xff);   // $25CD42 -- the SAME source, twice
-    ram.setU8(SCREEN17.recs + SCREEN17.recStride + 1, 3);    // $25CD46
+    ram.setU8(SCREEN17.recs + SCREEN17.recStride + SCREEN17.phaseAt,
+      SCREEN17.phaseSeed);                                   // $25CD46 -- state 3
     d1 = ram.u16(SCREEN17.p2Gate) === 0 ? 0 : 1;             // $25CD4E/$25CD5A
     ram.setU16(SCREEN17.recs + SCREEN17.recStride + 2, d1);  // $25CD5C
     palSet(ram, rom, ctx, 1, d1);                            // $25CD60 moveq #1 / $25CD62
@@ -125,7 +133,7 @@ function state0(ram, rom, a5, ctx) {
     ram.setU8(a5 + 0x08, ram.u16(SCREEN17.p1SrcA) & 0xff);   // $25CD7E/$25CD84 -- the EVEN slots
     ram.setU8(a5 + 0x04, ram.u16(SCREEN17.p1SrcB) & 0xff);   // $25CD88/$25CD8E
     ram.setU8(a5 + 0x06, ram.u16(SCREEN17.p1SrcB) & 0xff);   // $25CD92
-    ram.setU8(SCREEN17.recs + 1, 3);                         // $25CD96
+    ram.setU8(SCREEN17.recs + SCREEN17.phaseAt, SCREEN17.phaseSeed);   // $25CD96
     d1 = ram.u16(SCREEN17.p1Gate) === 0 ? 0 : 1;             // $25CD9E/$25CDAA
     ram.setU16(SCREEN17.recs + 2, d1);                       // $25CDAC
     // $241688 takes D1 as its SECOND arm selector, and D1 here is the gate result computed two
@@ -177,13 +185,16 @@ export function objSlot17(ram, rom, a5, ctx) {
   for (let r = 0; r < SCREEN17.recCount; r++) {              // $25CED2 moveq #$1,D7 + dbra = TWO
     const a6 = SCREEN17.recs + r * SCREEN17.recStride;
     if (ram.u8(a6) === 0) continue;                          // $25CED4 tst.b (A6) / beq $25CF18
-    for (const [i, off] of SCREEN17.subFlags.entries()) {
-      if (ram.u8(a6 + off) !== 1) continue;                  // cmpi.b #$1,(off,A6) / bne
+    for (const [i, phase] of SCREEN17.subStates.entries()) {
+      if (ram.u8(a6 + SCREEN17.phaseAt) !== phase) continue; // $25CEDA.. cmpi.b #phase,($1,A6)
       ctx.unported?.note(SCREEN17.subHandlers[i],
-        `$${SCREEN17.subHandlers[i].toString(16).toUpperCase()} -- slot [17] sub-handler for `
-        + `($${off.toString(16).toUpperCase()},A6). Unread`);
-      // $25CEE8 -- and ONLY the first of the four also writes ($1,A6). The other three do not.
-      if (i === 0) ram.setU8(a6 + 0x01, SCREEN17.firstSetsPhase);
+        `$${SCREEN17.subHandlers[i].toString(16).toUpperCase()} -- slot [17]'s handler for state `
+        + `${phase} on ($1,A6). Unread`);
+      // $25CEE8 -- state 3's handler ADVANCES the byte, and because the compares run in sequence
+      // the state-5 arm then fires in this same pass.
+      if (phase === SCREEN17.phaseSeed) {
+        ram.setU8(a6 + SCREEN17.phaseAt, SCREEN17.firstSetsPhase);
+      }
     }
   }
 
