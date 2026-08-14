@@ -2879,10 +2879,13 @@ SHOT_WINDOWS.extend([
                        "by $291DF4 with the cursor $81E11C, then the $FFFF terminator. Each entry is "
                        "delay, X, MODE, then a long string pointer. SELF-BOUNDING: the terminator "
                        "ends at $2921BA, which is entry [0]'s own string pointer"),
-    (0x25D294, 0x0008, "W373: the $25D39C state-5 handler's value table, indexed by ($5,A6) * 2. "
-                       "FOUR words -- $2, $4, $6, $0, the same values the tally posts to $813088 -- "
-                       "and self-bounding: the fourth ends exactly where the $25D29C descriptor "
-                       "begins with $0023D16C"),
+    (0x25D294, 0x0020, "W373: the $25D294 region. $25D39C indexes it from $25D294 by ($5,A6) * 2 "
+                       "as WORDS and the first three are $2/$4/$6, the values the tally posts. But "
+                       "$25D306 does `lea $25D29A,A4`, two bytes INSIDE that, so the two routines "
+                       "disagree about where the structure starts and the layout is NOT settled. "
+                       "The window covers $25D294..$25D2B3, which holds both the words and the "
+                       "$23D16C/$23D186 and $23D17E/$23D18E reader pairs, so either reading is "
+                       "served. DO NOT quote a bound from this until $25D306 is finished"),
     (0x28898A, 0x0028, "W373: object-dispatch slot [13]'s TWO per-side descriptors, $28898A and "
                        "$28899E, chosen by ($7,A5). Twenty bytes each and the second starts exactly "
                        "where the first ends, so the pair bounds itself. Same family as slot [11]'s "

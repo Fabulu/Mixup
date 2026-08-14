@@ -183,6 +183,22 @@ which is only possible because the four compares are sequential.
 Still noted: `$25F442` (state 0's opener), `$25D306` (state 3), `$25D560` (state 7), and `$25F2D0`, the
 two-line per-side label printer state 6 calls twice.
 
+**AN OVERCLAIM OF MINE, CORRECTED IN THE SAME WAVE.** I declared `$25D294` as "four words, self-bounding at
+`$25D29C`". Then `$25D306` turned out to do `lea $25D29A,A4` -- TWO BYTES INSIDE that supposed table. So
+`$25D39C` indexes the region from `$25D294` as words while `$25D306` treats `$25D29A` as a base, and the two
+disagree about where the structure starts. **The layout is NOT settled and nothing should quote a bound from
+it until `$25D306` is finished.** The window now covers `$25D294..$25D2B3`, which holds the three known
+values AND both `$23D16C`/`$23D186` and `$23D17E`/`$23D18E` reader pairs, so either reading is served.
+
+**PARTIAL READS, so they are not redone from scratch:**
+
+* **`$25D306` (state 3)**: `tst.w D7 / beq $25D334` splits by side at the very top, then
+  `lea $25D29A,A4`, `move.b ($7,A5),D0`, `tst.b D0 / bge $25D326`. The NEGATIVE arm does
+  `move.w #$0,($4,A6)` and `move.b ($5,A6),($6,A5)` then `bra $25D35A`.
+* **`$25D560` (state 7)**: opens `jsr $25F530`, then the same `tst.w D7` A6-walk as state 6. The tail at
+  `$25D574` gates on `$813098`, calls `$25FAA4`, tests `(A0)` and `cmpi.b #$7,($1,A0)`, and can raise
+  `$812F82` and post `$28CB9C`. It also touches `($32,A6)` and compares `($36,A6)` against `$3800`.
+
 **Fifteen palette windows declared.** Fourteen at 64 bytes through `$24150A` and ONE at 32 through `$2414BE`,
 which is a different routine reading half as much. `$222838` was already declared for the `$2911B0` menu and
 is REUSED rather than re-declared.

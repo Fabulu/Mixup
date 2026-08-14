@@ -227,12 +227,14 @@ test('W373 $25D39C is gated on $813098 and does nothing at all when it is set',
       'and the state did NOT advance -- the gate is before everything');
   });
 
-test('W373 the $25D294 table is four words and self-bounding', { skip: SKIP }, async () => {
+test('W373 the $25D294 values are known even though its EXTENT is not', { skip: SKIP }, async () => {
   const { HANDLER5, rom } = await fx();
-  const vals = [0, 1, 2, 3].map((i) => rom.u16(HANDLER5.table + i * 2));
-  assert.deepEqual(vals, [2, 4, 6, 0], 'the same 2/4/6 the tally posts, then a zero');
-  assert.equal(rom.u32(HANDLER5.table + HANDLER5.entries * 2), 0x0023d16c,
-    'and the word after the fourth is the $25D29C descriptor, so four is the bound');
+  assert.deepEqual([0, 1, 2].map((i) => rom.u16(HANDLER5.table + i * 2)), [2, 4, 6],
+    'the same three values the tally posts to $813088');
+  // $25D306 does `lea $25D29A,A4` -- TWO BYTES INSIDE this table. The two routines disagree about
+  // where the structure starts, so the extent is deliberately not asserted here.
+  assert.equal(rom.u32(0x25d29c), 0x0023d16c, '$25D29C is the side-0 raw reader');
+  assert.equal(rom.u32(0x25d2aa), 0x0023d17e, 'and $25D2AA the side-1 one, so both pairs are near');
 });
 
 test('W373 $25D4E4 maps the dbra counter to a side, and dbra counts DOWN', { skip: SKIP }, async () => {

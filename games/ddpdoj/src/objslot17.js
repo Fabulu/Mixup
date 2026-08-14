@@ -230,8 +230,10 @@ export function objSlot17(ram, rom, a5, ctx) {
  *  the EVEN byte while record 1 runs with D7 = 0 and takes the ODD one. That is the same even/odd
  *  pairing state 0 seeds, arrived at from the other end.
  *
- *  The table's four entries are `$2`, `$4`, `$6`, `$0` -- the same values the tally posts and slot
- *  [7] maps three ways. Self-bounding: four words end exactly where the `$25D29C` descriptor begins.
+ *  The first three entries are `$2`, `$4`, `$6` -- the same values the tally posts and slot [7] maps
+ *  three ways. **THE TABLE'S EXTENT IS NOT SETTLED**: this routine indexes from `$25D294`, but
+ *  `$25D306` does `lea $25D29A,A4`, two bytes inside it. The two disagree about where the structure
+ *  begins, so nothing here quotes a bound. What IS certain is the three values and the indexing.
  */
 export const HANDLER5 = Object.freeze({
   addr: 0x25d39c, table: 0x25d294, entries: 4,
