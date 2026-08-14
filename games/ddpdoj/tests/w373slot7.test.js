@@ -259,3 +259,50 @@ test('W373 the gate actually opens slot [7]\'s menu through state 0', { skip: SK
   assert.notEqual(g.ram.u16(g.SLOT7.work + g.SLOT7.innerAt), 4,
     'and with the gate shut it runs a sequence instead');
 });
+
+test('W373 $2901E0 really runs the hyper end, per side, only when that side is active',
+  { skip: SKIP }, async () => {
+    // Both sides idle: endHyper285AF2 must not be reached, so nothing it clears changes.
+    const idle = await fixture();
+    idle.ram.setU16(0x81b642, 0x1234);                       // P1's gauge, cleared by the hyper end
+    idle.menuGate2901E0(idle.ram, idle.rom, idle.ctx);
+    assert.equal(idle.ram.u16(0x81b642), 0x1234, 'idle side: the hyper end was not called');
+
+    // P1 active ($81B63E non-zero) -- the guarded call fires and clears P1's block.
+    const p1 = await fixture();
+    p1.ram.setU16(0x81b63e, 1);
+    p1.ram.setU16(0x81b642, 0x1234);
+    p1.menuGate2901E0(p1.ram, p1.rom, p1.ctx);
+    assert.equal(p1.ram.u16(0x81b642), 0, 'P1 active: the hyper end ran and cleared its gauge');
+    assert.equal(p1.ram.u16(0x81b6fa), 0x48, '  ...and armed the end flash at $81B6FA');
+    assert.equal(p1.ram.u16(0x81b6fc), 0, '  ...and did NOT touch P2\'s flash word');
+
+    // P2 active takes the mirror, writing $81B6FC instead.
+    const p2 = await fixture();
+    p2.ram.setU16(0x81b640, 1);
+    p2.menuGate2901E0(p2.ram, p2.rom, p2.ctx);
+    assert.equal(p2.ram.u16(0x81b6fc), 0x48, 'P2 active: the mirror armed $81B6FC');
+    assert.equal(p2.ram.u16(0x81b6fa), 0, '  ...and left P1\'s alone');
+  });
+
+test('W373 the hyper end does not change what $2901E0 ANSWERS', { skip: SKIP }, async () => {
+  // The whole reason the six calls could be deferred safely. Now that they are real, prove it:
+  // the same inputs give the same answer whether or not a side is mid-hyper.
+  for (const bee of [0x0b, 0x0c]) {
+    const off = await fixture();
+    off.ram.setU16(off.GATE2901E0.beeCursor, bee);
+    off.ram.setU16(off.GATE2901E0.dropP1, 5);
+    off.ram.setU16(off.GATE2901E0.bombP1, 9);
+    const a = off.menuGate2901E0(off.ram, off.rom, off.ctx);
+
+    const on = await fixture();
+    on.ram.setU16(on.GATE2901E0.beeCursor, bee);
+    on.ram.setU16(on.GATE2901E0.dropP1, 5);
+    on.ram.setU16(on.GATE2901E0.bombP1, 9);
+    on.ram.setU16(0x81b63e, 1);                              // mid-hyper
+    on.ram.setU16(0x81b640, 1);
+    const b = on.menuGate2901E0(on.ram, on.rom, on.ctx);
+
+    assert.equal(a, b, `bee $${bee.toString(16)}: the hyper end is side effects only`);
+  }
+});

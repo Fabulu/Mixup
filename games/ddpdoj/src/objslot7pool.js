@@ -15,6 +15,8 @@
 
 import { u16, u32 } from './ram.js';
 import { unreached } from './unported.js';
+import { endHyper285AF2 } from './hyper.js';
+import { hyperStock286ED6 } from './hud.js';
 import { stageCreate, queueKill } from './objalloc.js';
 import { readInput23D186 } from './tallyscreen.js';
 import { chainLoader246710, chainCheck24681A, chainFree246800 } from './stageend.js';
@@ -660,7 +662,8 @@ export const GATE2901E0 = Object.freeze({
  *  It is a predicate with SIDE EFFECTS, and the two do not overlap: the six calls and the eight-word
  *  clears touch the hyper and bomb blocks, while the answer comes only from `$813098`, `$80393A`,
  *  `$813090` and four counters. That is why the two unported calls below cannot change what this
- *  returns -- they are noted, not guessed at.
+ *  returns. Both of them are real calls now: $285AF2 and its P2 mirror $285C1C are hyper.js's
+ *  endHyper285AF2, which already covered every instruction the sweep found.
  *
  *  THE SIDE IS CHOSEN BY A SIGN TEST ON `$8130BE`, and PLUS keeps P1. Every other side-select in
  *  this port reads `$8103E6`'s sign, so reaching for that here picks the wrong player whenever P1 is
@@ -675,15 +678,17 @@ export function menuGate2901E0(ram, rom, ctx) {
 
   clear253A0A(ram);                                          // $2901F4 jsr $253A0A
   clear253A14(ram);                                          // $2901FA jsr $253A14
+  // $285AF2 was ALREADY PORTED, as hyper.js's endHyper285AF2 -- the fourth routine this port
+  // "needed" that turned out to exist under its own name, after $243DD0, $24652A and $24641A. It
+  // already covers the $81B6FA store, $25329A's bclr and beam reset, the four clears, $286ED6
+  // through its redrawStock hook and the $2875B4 tail: every instruction the sweep found.
+  const stock = (n) => hyperStock286ED6(ram, rom, ctx, n);
   if (ram.u16(0x81b63e) !== 0) {                             // $290200 tst.w $81B63E / beq
-    ctx.unported?.note(GATE2901E0.hyperEndP1, '$29020A jsr $285AF2 -- P1 hyper end. It sets '
-      + '$81B6FA and calls $25329A, then clears eight words. Side effects only: nothing it '
-      + 'touches feeds $2901E0\'s answer');
+    endHyper285AF2(ram, rom, ctx, false, stock);             // $29020A jsr $285AF2
   }
   clear2539A2(ram);                                          // $290210 jsr $2539A2
   if (ram.u16(0x81b640) !== 0) {                             // $290216 tst.w $81B640 / beq
-    ctx.unported?.note(GATE2901E0.hyperEndP2, '$290220 jsr $285C1C -- P2 hyper end, the same '
-      + 'routine as $285AF2 with $81B63E/$81B6FA swapped for $81B640/$81B6FC');
+    endHyper285AF2(ram, rom, ctx, true, stock);              // $290220 jsr $285C1C -- the P2 mirror
   }
   clear2539D6(ram);                                          // $290226 jsr $2539D6
   ram.setU16(GATE2901E0.scratch, 0);                         // $29022C clr.w $81B6E4

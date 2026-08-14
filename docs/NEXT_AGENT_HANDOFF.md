@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2632/2632 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2634/2634 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -31,12 +31,12 @@ restarts until it equals that count, then stages a create and kills. The tally's
   is picked by the SIGN OF `$8130BE` (plus keeps P1), NOT by `$8103E6` like everything else in this port. Its
   three final compares are an **OR** -- each `bcc`/`bcs` jumps straight to the carry-SET exit.
 
-**WHAT IS STILL OPEN IN SLOT [7]:**
+* **`$285AF2` / `$285C1C` the hyper-end pair -- ALREADY PORTED**, as `hyper.js`'s `endHyper285AF2`, which
+  covered the `$81B6FA` store, `$25329A`, the four clears, `$286ED6` and `$2875B4`. **That is the FOURTH time a
+  routine listed as unported turned out to exist under its own name**, after `$243DD0`, `$24652A` and `$24641A`.
+  **Grep `src/` for the ROUTINE NUMBER before writing anything.**
 
-* **`$285AF2` / `$285C1C`, the hyper-end pair** -- one routine with `$81B63E`/`$81B6FA` swapped for
-  `$81B640`/`$81B6FC`. Needs `$25329A` too. Side effects only; noted, and nothing in slot [7] reads what they
-  write. **Cheapest remaining unit.**
-* **`$23C6C6`, unported**, state 0's screen setup, `note()`d.
+**WHAT IS STILL OPEN IN SLOT [7]: only `$23C6C6`**, state 0's screen setup, `note()`d.
 * The slot is **not yet named**. It is a per-player presentation screen driven by the tally, ending in a
   two-option choice that sets `$813098` -- a global every boss file already reads. Do not guess which screen.
 
@@ -52,9 +52,8 @@ restarts until it equals that count, then stages a create and kills. The tally's
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **`$285AF2` / `$285C1C` / `$25329A`** -- the hyper-end pair, closes slot [7] completely.
-2. **`$23C6C6`** -- slot [7] state 0's screen setup.
-3. **Nine dispatch slots untouched**: [8], [9], [12], [13], [15], [16], [17], [18], [19].
+1. **`$23C6C6`** -- slot [7] state 0's screen setup, the last thing in the slot.
+2. **Nine dispatch slots untouched**: [8], [9], [12], [13], [15], [16], [17], [18], [19].
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
    chain built and driven, three state routines >2 KB unwritten), **D38** input lag faithful (logic side measured
