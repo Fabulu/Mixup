@@ -119,6 +119,14 @@ them, from the neighbours' recon and verified by hand:
   one art per emit. **The A1 tables do NOT divide evenly by seven** (26 bytes = 13 words), so do not
   assume a per-emit stride there. That is the main thing a recon still has to settle for this one.
 
+  **IT HAS REAL CONTROL FLOW AND HEAVY REGISTER INHERITANCE**, unlike `$25E29E`. Measured:
+  42 branch-opcode words across `$25E824..$25EB2C` (against ZERO in `$25E29E`), and only FIVE `D3`
+  loads (`$1AD0` at `$25E8B0`, `$0680` at `$25E8E8`, `$1AD0` at `$25E958`, `$0480` at `$25E990`,
+  then `$1AD0` at `$25EA22`/`$25EAA0`/`$25EB1E`) plus only THREE `D4` loads (`$001B`, `$0019`,
+  `$0018`) to serve SEVEN emits. **So several emits inherit D3 and/or D4 from the one before**, the
+  same trap as `$25E220`'s fourth sprite inheriting D1's high word. Rebuilding the registers per
+  emit would silently change the picture.
+
   **AND `$25EB2E..$25EB62` IS A SEPARATE 54-BYTE ROUTINE**, calling `$241812` at `$25EB30` and ending
   at the `rts` at `$25EB62` -- the very `rts` that bounds `$25EDF8`'s data block from below. **It has
   no `jsr` or `jmp` caller anywhere in the 6 MB image.** Either something reaches it by `bsr`/`bra`
