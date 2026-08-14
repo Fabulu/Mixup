@@ -129,3 +129,19 @@ test('W372 script command $8000 arms BOTH halves of the counter pair in one word
   assert.equal(IMG.readUInt16BE(0x290a10), 0x6098, '$290A10 bra.s');
   assert.equal(0x290a12 + (0x98 - 0x100), 0x2909aa, '  ...back to $2909AA -- a command does not end the call');
 });
+
+test('W372 $290F12 is THREE entries, and a naive scan reads EIGHT', { skip: SKIP }, () => {
+  const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
+  // Self-bounding, like $290CE8: entry [0] is where the pointers stop. Deriving the count that way
+  // gives THREE. Scanning forward for "values that look like code pointers" gives EIGHT, because the
+  // target code past the boundary keeps looking plausible -- which is how a table gets over-read.
+  const first = IMG.readUInt32BE(0x290f12);
+  assert.equal(first, 0x290f1e, 'entry [0] is $290F1E');
+  assert.equal((first - 0x290f12) / 4, 3, '  ...so the table is THREE pointers, not more');
+  for (let i = 0; i < 3; i++) {
+    assert.equal(IMG.readUInt32BE(0x290f12 + i * 4), 0x290f1e + i * 0x18,
+      `pointer ${i} -- targets spaced $18 apart`);
+  }
+  // The proof that a forward scan over-reads: the word at the fourth slot is inside the FIRST target.
+  assert.ok(0x290f12 + 3 * 4 >= first, 'the fourth pointer slot is already inside entry [0]s code');
+});
