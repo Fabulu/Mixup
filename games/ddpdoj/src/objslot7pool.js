@@ -13,7 +13,9 @@
 // 200 is `move.w #$C7,D7` with a `dbra` in all three, so the count is the cartridge's own and needs
 // no bounds check anywhere.
 
-import { u16 } from './ram.js';
+import { u16, u32 } from './ram.js';
+import { readInput23D186 } from './tallyscreen.js';
+import { chainLoader246710, chainCheck24681A, chainFree246800 } from './stageend.js';
 import { install24150A } from './palette.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 
@@ -301,4 +303,135 @@ export function resourceLoader2907E2(ram, rom, ctx) {
     ctx.commit246800?.(ram, ram.u32(0x81e10e));              // $2908C2
     ram.setU16(0x81e108, 0);                                 // $2908C8 -- back to IDLE, not onward
   }
+}
+
+/** The `$2911B0` menu's four tables and its two RAM words. Every bound here is something the code
+ *  states rather than something a scan guessed -- see the W373 window notes. */
+export const MENU2911B0 = Object.freeze({
+  start: 0x2911b0, end: 0x291352,
+  list: 0x291396,            // state 1's script list, one entry then $FFFFFFFF
+  confirmRes: 0x291354,      // handed to $246710 when the choice is taken
+  cursorTable: 0x291366,     // TWO entries, bounded by the #$1 mask on $81E112
+  digitTable: 0x29136e,      // TEN entries, bounded by the 600-frame counter
+  sel: 0x81e112,             // the selection, 0 or 1
+  timer: 0x81e114,           // the countdown, $258 = 600 frames = 10 seconds
+  flag: 0x81e116,
+  palBlock: 0x222838, palBank: 3,   // $2911E2 lea / $2911E8 moveq #$3 / $2911EC jsr $24150A
+  cursorArt: 0x0b20, cursorAttr: 0x0210, cursorPal: 0x0003,
+  digitPos: 0x5e001c00, digitAttr: 0x0210, digitPal: 0x0003,
+  mirrorBias: 0x1000, mirrorPal: 0x40,
+  timeout: 0x258, seconds: 0x3c,
+});
+
+/** `$2911B0` -- A TWO-OPTION MENU WITH A TEN-SECOND COUNTDOWN, and the last unwritten routine of
+ *  slot [7]'s subsystem. Four states on `($6,A6)`:
+ *
+ *      0  clear the pool, arm the counters, install the palette      -> 1
+ *      1  run the script list; when it ends, PICK THE INPUT READER   -> 2
+ *      2  read input, move the cursor, wait for a button OR the timeout -> 3
+ *      3  wait on the loaded resource, commit, set the OUTER dispatch state to 2
+ *
+ *  THREE THINGS THE CARTRIDGE DOES THAT A TIDIED PORT WOULD GET WRONG:
+ *
+ *   1. LEFT AND RIGHT BOTH DO `addq.w #1` AND THE RESULT IS MASKED WITH `#$1`. Bits 2 and 3 are the
+ *      pad's LEFT and RIGHT, and neither one "selects 0" or "selects 1" -- each TOGGLES. Pressing
+ *      both on the same frame moves the cursor by two, which is back where it started. Writing it
+ *      as an if/else changes what the pad does.
+ *   2. THE INPUT IS READ THREE SEPARATE TIMES, once per test. `$23D186` is edge-detected, so three
+ *      reads is not the same as one read used three times.
+ *   3. THE TIMEOUT AND THE BUTTON SHARE ONE EXIT. `$2912BE beq` jumps BACKWARD to `$291298`, the
+ *      confirm path. Running out of time confirms whatever is currently selected, and state 0
+ *      selects 1 -- so the default choice is option 1 and it is what the clock picks.
+ */
+export function menu2911B0(ram, rom, a5, a6, ctx) {
+  if (ram.u16(a6 + 0x06) === 0) {                            // $2911B0 cmpi.w #$0,($6,A6)
+    ram.setU16(a6 + 0x06, 1);                                // $2911BA
+    poolClear2908E4(ram, rom, ctx);                          // $2911C0 jsr $2908E4 (PC-relative)
+    // $2911C4 -- move.w, not move.l. ($C,A6) is read back as a LONG by the adda.l below, so state 0
+    // clears only its HIGH half and trusts the low half to be zero already. Transcribed as written.
+    ram.setU16(a6 + 0x0c, 0);
+    ram.setU16(MENU2911B0.flag, 1);                          // $2911CA
+    ram.setU16(MENU2911B0.sel, 1);                           // $2911D2 -- the DEFAULT choice
+    ram.setU16(MENU2911B0.timer, MENU2911B0.timeout);        // $2911DA -- 600 frames
+    // Guarded the same way $2908E4 guards its own install: a chain with no PaletteState keeps a
+    // counted note naming the bank, rather than silently leaving bank 3 as whatever it was.
+    if (ctx.palette) {                                       // $2911E2 lea $222838,A0
+      install24150A(ram, ctx.palette, MENU2911B0.palBank,    // $2911E8 moveq #$3,D0
+        rom.bytes(MENU2911B0.palBlock, 64), 0x2911ec, "the $2911B0 menu's palette");
+    } else {
+      ctx.unported?.note(0x24150a, `$2911EC jsr $24150A -- the $2911B0 menu's palette: bank `
+        + `${MENU2911B0.palBank} <- $${MENU2911B0.palBlock.toString(16).toUpperCase()}`);
+    }
+  }
+
+  if (ram.u16(a6 + 0x06) === 1) {                            // $2911F2
+    const entry = rom.u32(MENU2911B0.list + ram.u32(a6 + 0x0c));   // $291202 adda.l / $291206
+    if (entry === 0xffffffff) {                              // $291208 cmpi.l #$FFFFFFFF
+      ram.setU16(a6 + 0x06, 2);                              // $291212 -- the list is spent
+      // $291218/$291220 -- and NOW the reader is chosen, once, from P1's record. Same sign test on
+      // $8103E6 that background.js and boss.js use to pick the active side.
+      ram.setU32(a6 + 0x18, (ram.u32(0x8103e6) & 0x80000000) ? 0x23d186 : 0x23d18e);
+    } else {
+      // $291238 bsr $2909AA / $29123C bcs -- carry SET means "stay on this entry", so the cursor
+      // advances only when the step reports itself finished.
+      if (!scriptStep2909AA(ram, rom, ctx, entry)) {
+        ram.setU32(a6 + 0x0c, u32(ram.u32(a6 + 0x0c) + 4));  // $291240 addq.l #4,($C,A6)
+      }
+    }
+  }
+
+  if (ram.u16(a6 + 0x06) === 2) {                            // $291244
+    const side = ram.u32(a6 + 0x18) === 0x23d186 ? 0 : 1;
+    let confirmed = false;
+    if ((readInput23D186(ram, side) & 0x04) !== 0) {          // $291252 jsr (A0) / $291254 btst #$2
+      ram.setU16(MENU2911B0.sel, u16(ram.u16(MENU2911B0.sel) + 1));   // $29125C addq.w #1
+      ctx.soundPost?.(0x28c6fa);                             // $291262 -- the cursor-move sound
+    }
+    if ((readInput23D186(ram, side) & 0x08) !== 0) {          // $29126C SECOND read / btst #$3
+      ram.setU16(MENU2911B0.sel, u16(ram.u16(MENU2911B0.sel) + 1));   // $291276 -- ALSO addq #1
+      ctx.soundPost?.(0x28c6fa);
+    }
+    ram.setU16(MENU2911B0.sel, ram.u16(MENU2911B0.sel) & 1); // $291282 andi.w #$1 -- the mask
+    if ((readInput23D186(ram, side) & 0x70) !== 0) {          // $29128E THIRD read / $291290 #$70
+      confirmed = true;
+    } else {
+      const left = u16(ram.u16(MENU2911B0.timer) - 1);       // $2912B8 subq.w #1
+      ram.setU16(MENU2911B0.timer, left);
+      if (left === 0) confirmed = true;                      // $2912BE beq BACKWARD to $291298
+    }
+    if (confirmed) {
+      ctx.soundPost?.(0x28c6e0);                             // $291298 -- the confirm sound
+      ram.setU32(a6 + 0x14,                                  // $2912A4 jsr $246710 / $2912AA
+        chainLoader246710(ram, rom, MENU2911B0.confirmRes, ctx) >>> 0);
+      ram.setU16(a6 + 0x06, 3);                              // $2912AE
+    }
+  }
+
+  if (ram.u16(a6 + 0x06) === 3) {                            // $2912C0
+    if (chainCheck24681A(ram, ram.u32(a6 + 0x14)) === 0) {   // $2912CE jsr $24681A / $2912D4 bne
+      chainFree246800(ram, ram.u32(a6 + 0x14));              // $2912D8 jsr $246800
+      ram.setU8(a5 + 0x02, 2);                               // $2912DE move.b #$2,($2,A5) -- A5, the
+                                                             //   OUTER dispatch slot, not A6
+    }
+  }
+
+  // $2912E4 cmpi.w #$2 / blt $291352 -- states 0 and 1 draw NOTHING. The menu appears only once its
+  // script list has run out, which is what makes state 1 an intro rather than a frame of the menu.
+  if (u16(ram.u16(a6 + 0x06)) < 2) return;
+
+  // $2912F4 -- the cursor, drawn TWICE: the second copy is shifted $1000 in X and takes palette bit
+  // $40. One sprite mirrored into a pair, not two different sprites.
+  const pos = rom.u32(MENU2911B0.cursorTable + ram.u16(MENU2911B0.sel) * 4);   // $2912FE
+  enqueueRegistersThroughStub(ram, rom, 0x23e08c, pos, MENU2911B0.cursorArt,
+    MENU2911B0.cursorAttr, MENU2911B0.cursorPal);            // $291310
+  enqueueRegistersThroughStub(ram, rom, 0x23e08c,
+    u32(pos + MENU2911B0.mirrorBias), MENU2911B0.cursorArt,  // $291316 addi.w #$1000,D1
+    MENU2911B0.cursorAttr, MENU2911B0.cursorPal | MENU2911B0.mirrorPal);   // $29131A ori #$40,D4
+
+  // $291326 -- and the countdown digit, art picked by whole SECONDS. divs.w #$3C then TWO add.w, so
+  // the index is (frames / 60) * 4 and the table is longs.
+  const secs = Math.floor(ram.u16(MENU2911B0.timer) / MENU2911B0.seconds);     // $29132C divs.w #$3C
+  enqueueRegistersThroughStub(ram, rom, 0x23e08c, MENU2911B0.digitPos,
+    rom.u32(MENU2911B0.digitTable + secs * 4),               // $29133A move.l (A0,D0.w),D2
+    MENU2911B0.digitAttr, MENU2911B0.digitPal);              // $29134C
 }

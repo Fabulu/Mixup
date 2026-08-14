@@ -2800,6 +2800,24 @@ SHOT_WINDOWS.extend([
                        "The pointer table is bounded by its OWN FIRST ENTRY: [0] is $290D0C, which is "
                        "where the pointers stop. Each descriptor is identical bar an incrementing "
                        "index at +9 and +17, so they are one record shape with a sequence number"),
+    (0x222838, 0x0040, "W373: the $2911B0 menu's palette block, handed to $24150A by $2911EC with "
+                       "bank 3. Sixty-four bytes because that is what install24150A reads for every "
+                       "bank -- the CALLEE's constant, not a guess about this block"),
+    (0x291354, 0x0012, "W373: the $2911B0 menu's CONFIRM resource record, handed to $246710 by the "
+                       "lea at $29129E. Eighteen bytes because that is where the cursor table at "
+                       "$291366 begins, and $291366 is reached by its own lea four instructions "
+                       "later -- the bound is a second call site, not a plausibility scan"),
+    (0x291366, 0x0008, "W373: the $2911B0 menu's CURSOR POSITION pair, indexed by $81E112 * 4. TWO "
+                       "entries and no more, because $291282 masks $81E112 with #$1 before the "
+                       "index is taken. The mask is the bound"),
+    (0x29136E, 0x0028, "W373: the $2911B0 menu's COUNTDOWN DIGIT art, indexed by ($81E114 / 60) * 4. "
+                       "TEN entries: $81E114 starts at $258 = 600 frames, and it is decremented "
+                       "before the draw runs, so the largest index the counter can ever produce is "
+                       "9. Stride $14 throughout, and the tenth entry ends exactly where the list "
+                       "table at $291396 starts"),
+    (0x291396, 0x0008, "W373: the $2911B0 menu's state-1 SCRIPT LIST -- one pointer to $29139E and "
+                       "the $FFFFFFFF terminator. Self-bounding in the usual way: entry [0] is "
+                       "$29139E, which is where the list stops"),
     (0x290706, 0x0040, "W372: object-dispatch slot [7]'s pool palette block, handed to $24150A by "
                        "$2908E4 with bank 0. Sixty-four bytes because that is what install24150A "
                        "reads for every bank, so the size is the CALLEE's constant and not a guess "
