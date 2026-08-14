@@ -5,10 +5,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 async function fx() {
-  const { coinRead13CFBA, coinPending13CF86, coinage13CE22, counterPulse13D068, COIN } = await import('../src/isr.js');
+  const { coinRead13CFBA, coinPending13CF86, coinage13CE22, counterPulse13D068, drainTicks13CC50, COIN } = await import('../src/isr.js');
   const { Ram } = await import('../src/ram.js');
   const notes = [];
-  return { coinRead13CFBA, coinPending13CF86, coinage13CE22, counterPulse13D068, COIN, ram: new Ram(),
+  return { coinRead13CFBA, coinPending13CF86, coinage13CE22, counterPulse13D068, drainTicks13CC50, COIN, ram: new Ram(),
     ctx: { unportedLog: { note: (a) => notes.push(a) } }, notes };
 }
 
@@ -115,9 +115,11 @@ test('W373 with bit 5 clear, the bit-0 arm runs and bumps the mechanical counter
   ram.setU8(COIN.dipCoinage, 0x11);
   ram.setU16(COIN.prev, IDLE);
   ram.setU16(COIN.pendA, COIN.pendValue);                    // D1 bit 0, no bit 5
+  // $13D068 runs at the END of the same call, and $13CC50 drains the tick that was just queued --
+  // so the observable result of the bump is the PULSE starting, not a counter left standing at 1.
   coinRead13CFBA(ram, IDLE, ctx);
   assert.equal(ram.u8(COIN.creditA), 1, 'slot 1 credited');
-  assert.equal(ram.u8(COIN.counterA), 1, 'and NOW $80394C was bumped');
+  assert.equal(ram.u8(COIN.pulseState), 1, 'and the bump reached the solenoid pulse in one frame');
 });
 
 test('W373 $13CE22: free play does nothing and nine credits is a hard stop', async () => {
@@ -249,13 +251,62 @@ test('W373 the slot-2 DIP picks the pulse PATTERN as well as the credit block', 
   assert.deepEqual(port, [0x000f], '$80380B zero writes the literal $F, not the trigger value');
 });
 
-test('W373 without $13CC50 the pulse never STARTS -- the safe half', async () => {
+test('W373 an empty tick queue never starts the pulse', async () => {
   const { counterPulse13D068, COIN, ram } = await fx();
-  const notes = [];
   const port = [];
-  const ctx = { coinCounterPort: (v) => port.push(v), unportedLog: { note: (a) => notes.push(a) } };
+  const ctx = { coinCounterPort: (v) => port.push(v), unportedLog: { note: () => {} } };
   for (let i = 0; i < 40; i++) counterPulse13D068(ram, ctx);
-  assert.deepEqual(port, [], 'nothing driven');
+  assert.deepEqual(port, [], 'nothing pending, nothing driven');
   assert.equal(ram.u8(COIN.pulseState), 0, 'and it stayed idle rather than stuck energised');
-  assert.ok(notes.includes(COIN.trigger), 'the gap is counted');
+});
+
+test('W373 $13CC50 DRAINS one tick per call, it does not read the byte', async () => {
+  const { drainTicks13CC50, COIN, ram } = await fx();
+  ram.setU8(COIN.ticks, 3);                                  // three coins queued on counter 0
+  assert.equal(drainTicks13CC50(ram), 0b0001, 'bit 0');
+  assert.equal(ram.u8(COIN.ticks), 2, 'and ONE was taken, not the lot');
+  assert.equal(drainTicks13CC50(ram), 0b0001);
+  assert.equal(drainTicks13CC50(ram), 0b0001);
+  assert.equal(ram.u8(COIN.ticks), 0, 'three calls, three ticks');
+  assert.equal(drainTicks13CC50(ram), 0, 'and then nothing -- Z is what $13D07C tests');
+});
+
+test('W373 $13CC50 maps four adjacent bytes onto four bits', async () => {
+  const { drainTicks13CC50, COIN, ram } = await fx();
+  for (let i = 0; i < COIN.tickCount; i++) ram.setU8(COIN.ticks + i, 1);
+  assert.equal(drainTicks13CC50(ram), 0b1111, 'all four contribute at once');
+  for (let i = 0; i < COIN.tickCount; i++) {
+    assert.equal(ram.u8(COIN.ticks + i), 0, `byte ${i} drained`);
+  }
+  for (let i = 0; i < COIN.tickCount; i++) {
+    ram.setU8(COIN.ticks + i, 1);
+    assert.equal(drainTicks13CC50(ram), 1 << i, `$${(COIN.ticks + i).toString(16)} is bit ${i}`);
+  }
+});
+
+test('W373 a coin taken through IRQ6 ends as a solenoid pulse on the counter port', async () => {
+  // The whole loop: the bit-0 arm bumps $80394C, $13CC50 hands that tick to $13D068, and the pulse
+  // drives $C08006 for six frames. Nothing between these was wired by hand.
+  const { coinRead13CFBA, counterPulse13D068, COIN, ram } = await fx();
+  const port = [];
+  const ctx = { coinCounterPort: (v) => port.push(v), unportedLog: { note: () => {} },
+    soundPost: () => {} };
+  ram.setU8(COIN.dipCoinage, 0x00);
+  ram.setU8(COIN.creditsPerCoin, 1);
+  ram.setU8(COIN.dipSlot2, 0x01);
+  ram.setU16(COIN.prev, IDLE);
+  ram.setU16(COIN.pendA, COIN.pendValue);                    // D1 bit 0, so the arm that bumps
+
+  coinRead13CFBA(ram, IDLE, ctx);
+  assert.equal(ram.u8(COIN.creditA + 2), 1, 'a credit was taken');
+  // The tick is queued AND drained inside the one call, because $13D068 is the tail of $13CFBA.
+  assert.deepEqual(port, [0b0001], 'the port was driven with counter 0\'s bit');
+  assert.equal(ram.u8(COIN.counterA), 0, 'the queue is empty again');
+  assert.equal(ram.u8(COIN.pulseState), 1, 'and the six-frame pulse is running');
+
+  // It stays energised for six frames and is not re-driven in between.
+  for (let i = 0; i < 5; i++) counterPulse13D068(ram, ctx);
+  assert.equal(port.length, 1, 'still one write');
+  counterPulse13D068(ram, ctx);
+  assert.deepEqual(port, [0b0001, 0x0000], 'and the sixth frame de-energises it');
 });

@@ -134,7 +134,9 @@ export const COIN = Object.freeze({
   coinsPerCredit: 0x803956, creditsPerCoin: 0x803957,
   // $80394C and $80394D are ADJACENT per-slot coin counters, bumped with addq.b (opcode $5239,
   // whose size field is 00 = BYTE -- $5279 would be the word form).
-  counterA: 0x80394c, counterB: 0x80394d,
+  // ...and they are the FIRST TWO of four adjacent pending-tick bytes $80394C..$80394F that
+  // $13CC50 drains one at a time into the solenoid pulse.
+  counterA: 0x80394c, counterB: 0x80394d, ticks: 0x80394c, tickCount: 4,
   service: 0x13d068, servicePort: 0xc08006, trigger: 0x13cc50,
   // $80394A is the pulse STATE and $80394B its duration -- adjacent bytes, and both are byte ops
   // ($0C39/$13FC/$5339 all carry size 00; $0C79 would be the word compare).
@@ -285,15 +287,8 @@ export function counterPulse13D068(ram, ctx) {
   const st = ram.u8(COIN.pulseState);
 
   if (st === 0) {                                            // $13D06E cmpi.b #$00 / bne
-    const d0 = ctx?.counterTrigger13CC50?.(ram);             // $13D078 bsr $13CC50
-    if (d0 === undefined) {
-      ctx?.unportedLog?.note(COIN.trigger, `$13D078 bsr $13CC50 decides whether the coin counter `
-        + `pulses and supplies the value driven to $C08006. Unread. This port takes the `
-        + `beq-to-rts arm, so the pulse never starts -- which leaves the mechanical counter idle `
-        + `rather than stuck energised, the safe half of the two`);
-      return;
-    }
-    if (d0 === 0) return;                                    // $13D07C beq $13D0EA
+    const d0 = (ctx?.counterTrigger13CC50 ?? drainTicks13CC50)(ram);   // $13D078 bsr $13CC50
+    if (d0 === 0) return;                                    // $13D07C beq $13D0EA -- nothing pending
     // $13D084 -- the DIP picks the pattern, and $F is a literal, not d0 masked.
     ctx?.coinCounterPort?.(ram.u8(COIN.dipSlot2) === 0 ? 0x000f : u16(d0));   // $13D08C/$13D092
     ram.setU8(COIN.pulseCount, COIN.pulseFrames);            // $13D096
@@ -317,4 +312,32 @@ export function counterPulse13D068(ram, ctx) {
     if (left !== 0) return;                                  // $13D0E0 bne
     ram.setU8(COIN.pulseState, 0);                          // $13D0E2 -- back to idle
   }
+}
+
+/** `$13CC50` -- THE PENDING-TICK DRAIN, and the thing that closes D35's coin loop.
+ *
+ *  FOUR ADJACENT BYTES at `$80394C..$80394F`, one per mechanical counter, and four identical blocks
+ *  over them. Each non-zero byte is decremented by ONE and contributes ONE BIT to D0:
+ *
+ *      $80394C -> bit 0     $80394E -> bit 2
+ *      $80394D -> bit 1     $80394F -> bit 3
+ *
+ *  It DRAINS, it does not read: `subq.b #1` per call, so a counter standing at 3 produces three
+ *  separate pulses on three separate passes. That is what makes the whole thing a queue -- the coin
+ *  arms bump `$80394C`/`$80394D` when a credit is taken, and this hands the ticks out one at a time
+ *  to `$13D068`'s six-frame solenoid pulse. Draining the whole byte at once would fire one pulse for
+ *  three coins and the operator's counter would under-read.
+ *
+ *  The `tst.w D0` at `$13CC9A` is the routine's answer: `$13D07C beq` exits when nothing was
+ *  pending, and otherwise D0 IS the bit pattern driven to `$C08006`.
+ */
+export function drainTicks13CC50(ram) {
+  let d0 = 0;                                                // $13CC50 moveq #$0,D0
+  for (let i = 0; i < 4; i++) {                              // $13CC52/$13CC64/$13CC76/$13CC88
+    const at = COIN.ticks + i;
+    if (ram.u8(at) === 0) continue;                          // tst.b / beq
+    ram.setU8(at, (ram.u8(at) - 1) & 0xff);                  // subq.b #1 -- ONE tick, not the lot
+    d0 |= (1 << i);                                          // ori.w #$1 / #$2 / #$4 / #$8
+  }
+  return d0;                                                 // $13CC9A tst.w D0 -- Z is the answer
 }

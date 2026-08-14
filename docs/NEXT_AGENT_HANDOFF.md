@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2655/2655 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2658/2658 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -81,12 +81,17 @@ it, so it cannot be called twice in a frame.
   twice rather than a data byte). Six frames energised, six de-energised, then idle. Collapsing it to one store
   would leave the counter permanently energised and nothing on screen would show it.
 
-**STILL OPEN IN D35:** `$13CC50`, the pulse trigger -- it decides whether the counter fires and supplies the
-value driven to `$C08006`. Unread. The port takes the beq-to-rts arm, so the pulse never starts, which leaves
-the counter idle rather than stuck energised. `ctx.counterTrigger13CC50` drives the other arm. And `$18B0D6` is
-a sound post (`movem`, D0=$17, D1=$FF, D2=0, `jsr $18AB50`) modelled as `ctx.soundPost`.
+* **`$13CC50` is the PENDING-TICK DRAIN and it closes the loop.** Four adjacent bytes `$80394C..$80394F`, one
+  per mechanical counter, each contributing one BIT to D0 and decremented by ONE per call. It drains rather
+  than reads, so three queued coins produce three separate pulses. `$80394C`/`$80394D` are the same two bytes
+  the coin arms bump, so: arm bumps -> drain hands out one tick -> `$13D068` pulses `$C08006` for six frames.
+  **The whole chain runs inside ONE call**, because `$13D068` is `$13CFBA`'s tail.
 
-**AND THE REST OF D35 IS STILL UNANCHORED:** lives, extends, game over and continue. The economy above is the
+**THE COIN HANDLER IS COMPLETE**, `$13CFBA` through `$13D0EA`, every routine driven. The only thing still
+noted in it is `$18B0D6`, a sound post (`movem`, D0=$17, D1=$FF, D2=0, `jsr $18AB50`) modelled as
+`ctx.soundPost`.
+
+**BUT THE REST OF D35 IS STILL UNANCHORED:** lives, extends, game over and continue. The economy above is the
 input side only.
 
 **THE PORT TRAP, and it cost six unrelated test failures:** IRQ6's `portWord` is `$C08000`, the PLAYER port.
@@ -94,8 +99,7 @@ input side only.
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **`$13CC50`** -- D35's pulse trigger, the last routine in the coin handler.
-2. **Nine dispatch slots untouched**: [8], [9], [12], [13], [15], [16], [17], [18], [19].
+1. **Nine dispatch slots untouched**: [8], [9], [12], [13], [15], [16], [17], [18], [19].
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
    chain built and driven, three state routines >2 KB unwritten), **D38** input lag faithful (logic side measured
