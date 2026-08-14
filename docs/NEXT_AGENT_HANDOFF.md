@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2704/2704 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2713/2713 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -118,6 +118,22 @@ It regenerates data the W129/W132 replay tests read, and doing it mid-run turned
 tests red. They passed in isolation and the clean re-run was green. **A red MUT-A/B/C is a race before it is
 a regression** -- re-run before diagnosing.
 
+### SLOT [9]'s DISPATCHER IS PORTED (`src/objslot9.js`, 9 driving tests)
+
+Slot [17]'s twin over the SAME `$812EA0` records, with EIGHT states where slot [17] has four -- and slot
+[17]'s four are a strict subset, which is why `phase3_25D306`, `phase5_25D39C` and `phase6_25D4F0` are
+imported from `objslot17.js` rather than rewritten.
+
+**Reading this slot is what exposed slot [17]'s state machine.** Two callers disagreeing about one byte made
+the `cmpi.b` operand order visible; neither alone would have.
+
+Its `$25CB5E` tail is an **UNSIGNED** `cmpi.b #$7 / bcc`, so state 7 and above skip the `($31,A6)` counter
+entirely. The counter reloads to TWO and drives `($30,A6)` / `($2E,A6)`.
+
+**STILL OPEN IN SLOT [9]:** state 0 at `$25C8A2` (~550 bytes, unread), the four handlers it does not share
+(`$25D402`, `$25D010`, `$25D1DA`, `$25D164`), and the block at `$25CB94` after the record walk, which reads
+`$23D16C`, tests bit `$F` and calls `$23C98E`.
+
 ### SLOT [15] IS PORTED (`src/objslot15.js`, 11 driving tests)
 
 Slot [7]'s OTHER fork arm, so `[7] -> [15] -> [14] -> [12]` is now written end to end. It is a TIMED TEXT
@@ -204,9 +220,18 @@ states.
 
 **PARTIAL READS, so they are not redone from scratch:**
 
-* **`$25D560` (state 7)**: opens `jsr $25F530`, then the same `tst.w D7` A6-walk as state 6. The tail at
-  `$25D574` gates on `$813098`, calls `$25FAA4`, tests `(A0)` and `cmpi.b #$7,($1,A0)`, and can raise
-  `$812F82` and post `$28CB9C`. It also touches `($32,A6)` and compares `($36,A6)` against `$3800`.
+* **`$25D560` (state 7) -- THE ONE REMAINING SLOT [17] HANDLER, and the biggest.** Read this far:
+  - `jsr $25F530`, then the same `tst.w D7` A6-walk as state 6 (`lea $70` / `lea -$70`, a net no-op).
+  - `$25D574`: gate on `$813098`; if clear, `jsr $25FAA4`, `tst.b (A0) / beq $25D5B0`,
+    `cmpi.b #$7,($1,A0) / bne $25D800` (a FAR branch, so there is more of this routine at `$25D800`),
+    `tst.b ($5E,A6) / bne`, `move.w #$1,($5E,A6)`.
+  - `$25D5A0`: `bsr $25D4E4` then `addq.w #1,D0 / andi.w #$1,D0 / jsr $260A9A` -- the SAME
+    opposite-side announce as state 6, so that idiom is shared between them.
+  - `$25D5B0`: `tst.w $812F82 / bne`, else raise it and `jsr $28CB9C`.
+  - `$25D5C8` onward: `addq.w #1,($32,A6)` then a long run of clamps and accumulates over
+    `($36..$48,A6)` -- compares against `$3800`, `$1C00`, `$7000`, `$14C0`, adds `$200` and `$33`.
+    That is an animation/physics update and it continues past `$25D620`.
+  - **NEW CALLEES: `$25F530` and `$25FAA4`, both unread.**
 
 **Fifteen palette windows declared.** Fourteen at 64 bytes through `$24150A` and ONE at 32 through `$2414BE`,
 which is a different routine reading half as much. `$222838` was already declared for the `$2911B0` menu and
@@ -248,7 +273,7 @@ but it is a real bound and it reorders the docket:
 |---|---|---|---|---|
 | [18] | `$24902A` | `$00A` | `$196` = 406 | **ASIC27 SELF-TEST, not D37.** Smallest, lowest value. |
 | [13] | `$288A60` | `$00B` | `$20C` = 524 | **PORTED W373** |
-| [ 9] | `$25CACA` | `$00A` | `$3EE` = 1006 | D34 candidate |
+| [ 9] | `$25CACA` | `$00A` | `$3EE` = 1006 | **dispatcher PORTED W373**, state 0 open |
 | [19] | `$28EE88` | `$01E` | `$524` | |
 | [17] | `$25CEB8` | `$00A` | `$CFC` | **PORTED W373** (D33 candidate) |
 | [12] | `$28F3AC` | `$009` | `$183C` | |
@@ -345,10 +370,9 @@ skeleton and the WRONG one for anything inside these routines.
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **Slot [9] `$25CACA`** (1006) -- the D34 candidate, and slot [8] stages it. **It is slot [17]'s twin**:
-   the same walk over the same `$812EA0` records, dispatching `($1,A6)` on SIX states rather than four --
-   3 -> `$25D306`, 4 -> `$25D402`, 5 -> `$25D39C`, 6 -> `$25D4F0`, 7 -> `$25D560`, 0 -> `$25D010`. Four of
-   those six handlers are shared with slot [17], so porting them serves both.
+1. **`$25D560`** -- slot [17]'s last unported handler, and the biggest. Partially read below.
+2. **Slot [9] state 0** `$25C8A2` (~550 bytes) -- then slot [9] is complete too.
+3. **`$25D402` / `$25D010` / `$25D1DA` / `$25D164`** -- slot [9]'s four unshared handlers.
 3. **Slot [18] `$24902A`** -- the ASIC27 self-test. Real work, but NOT on the path to the milestone.
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
