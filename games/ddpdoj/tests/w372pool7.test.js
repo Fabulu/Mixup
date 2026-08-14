@@ -239,3 +239,30 @@ test('W372 the interpreter advances the cursor PER OPCODE, and waits do not adva
   assert.equal(ram.u16(SCRIPT7.cursor), held + 4, '  ...advancing by FOUR only once satisfied');
   void P;
 });
+
+test('W372 the sequence driver CLEARS THE POOL between entries', { skip: SKIP }, async () => {
+  const { sequenceDriver291470, poolAlloc290984, POOL7: P, SCRIPT7 } =
+    await import('../src/objslot7pool.js');
+  const { Ram } = await import('../src/ram.js');
+  const A5 = 0x80e300; const A6 = 0x81e0dc;
+  // A two-entry sequence: one script that ends immediately ($FFFF), then the terminator.
+  const LIST = 0x400000; const SCRIPT = 0x400100;
+  const rom = {
+    u16: (a) => (a === SCRIPT ? 0xffff : 0),
+    u32: (a) => (a === LIST ? SCRIPT : a === LIST + 4 ? 0xffffffff : 0),
+    bytes: () => new Uint8Array(64),
+  };
+  const ram = new Ram();
+  // Put something in the pool, then run: the first call inits, clears, and runs the ended script.
+  poolAlloc290984(ram, 0xdeadbeef, 0, 0);
+  assert.notEqual(ram.u32(P.base), 0, 'the pool has an entry');
+  sequenceDriver291470(ram, rom, { palette: null }, A5, A6, LIST);
+  assert.equal(ram.u32(P.base), 0, 'entering the sequence CLEARS the pool');
+  assert.equal(ram.u16(A6 + 0x0c), 4, '  ...and the ended script advanced the cursor by 4');
+
+  // Re-dirty the pool and step again: hitting the terminator must set the OBJECT's state to 2.
+  poolAlloc290984(ram, 0xfeedface, 0, 0);
+  sequenceDriver291470(ram, rom, { palette: null }, A5, A6, LIST);
+  assert.equal(ram.u8(A5 + 0x02), 2, '$FFFFFFFF sets the object state to 2 -- on A5, not A6');
+  void SCRIPT7;
+});

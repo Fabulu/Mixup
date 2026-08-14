@@ -178,3 +178,34 @@ export function scriptStep2909AA(ram, rom, ctx, scriptBase) {
     return false;                                            // any other $80xx: unread, stop cleanly
   }
 }
+
+/** `$291470` / `$2917BE` / `$291B3A` -- THE SEQUENCE DRIVER, assembled three times.
+ *
+ *  The 88 bytes of CODE are identical in all three; only three `jsr (d16,PC)` displacements differ,
+ *  and only because the copies sit at different addresses. What makes them three is the DATA: each
+ *  copy is followed at +88 by ITS OWN `$FFFFFFFF`-terminated sequence list. So the port needs ONE
+ *  function taking the list base, registered three times.
+ *
+ *  It drives the whole subsystem: walk the sequence, hand each entry to the script interpreter, and
+ *  when a script REPORTS DONE (carry clear) advance to the next entry AND CLEAR THE POOL. The clear
+ *  between entries is the part a port would drop -- without it the previous script's effects survive
+ *  into the next one, and only on a sequence that spawns.
+ */
+export function sequenceDriver291470(ram, rom, ctx, a5, a6, listBase) {
+  if (ram.u16(a6 + 0x06) === 0) {                            // $291470 cmpi.w #$0,($6,A6)
+    ram.setU16(a6 + 0x06, 1);                                // $29147A
+    poolClear2908E4(ram, rom, ctx);                          // $291480 jsr $2908E4
+    ram.setU16(a6 + 0x0c, 0);                                // $291484 -- the sequence CURSOR
+  }
+  if (ram.u16(a6 + 0x06) !== 1) return;                      // $29148A cmpi.w #$1 / bne
+
+  const entry = rom.u32(listBase + u16(ram.u16(a6 + 0x0c))); // $291494/$29149A/$29149E
+  if (entry === 0xffffffff) {                                // $2914A0 cmpi.l #$FFFFFFFF
+    ram.setU8(a5 + 0x02, 2);                                 // $2914AA -- the OBJECT's state, not A6's
+    return;                                                  // $2914B0
+  }
+  if (scriptStep2909AA(ram, rom, ctx, entry)) return;        // $2914B6 jsr $2909AA / $2914BA bcs
+  // Carry CLEAR means that script ENDED: step the sequence and wipe what it left behind.
+  ram.setU16(a6 + 0x0c, u16(ram.u16(a6 + 0x0c) + 4));        // $2914BE addq.w #4,($C,A6)
+  poolClear2908E4(ram, rom, ctx);                            // $2914C2 jsr $2908E4
+}
