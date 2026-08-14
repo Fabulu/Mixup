@@ -414,17 +414,40 @@ skeleton and the WRONG one for anything inside these routines.
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **`$25D560`** -- slot [17]'s last unported handler, and the biggest. Partially read below.
-2. **Slot [9] state 0** `$25C8A2` (~550 bytes) -- then slot [9] is complete too.
-3. **The seven shared draws**: `$25E220`, `$25E29E`, `$25E6CE`, `$25E824`, `$25EDF8`, `$25EF30`, `$25F074`.
-   Both state 1 and state 4 call all seven, so porting them serves the whole select screen.
-3. **Slot [18] `$24902A`** -- the ASIC27 self-test. Real work, but NOT on the path to the milestone.
-4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
-   **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
-   chain built and driven, three state routines >2 KB unwritten), **D38** input lag faithful (logic side measured
-   faithful; presentation path remains), **D39** input lag mods (three toggles specified).
-5. **D26** second ship + two more pilots, **D28** multi-ship/pilot mods.
-6. **D36** the second ROM game -- LAST, by the owner's instruction.
+1. **The six remaining shared draws**, cheapest first: **`$25EDF8`** (312, part-read below),
+   **`$25EF30`** (324), **`$25E6CE`** (342), **`$25E29E`** (1072), **`$25E824`** (1492), `$25F074`.
+   Both state 1 and state 4 call all seven, so each one serves the whole select screen.
+   **`$25E220` is DONE** and is the pattern: two gates of OPPOSITE sense (`tst.w / beq` and
+   `tst.b / bne`), an `rts` sitting BEFORE the entry, offsets applied to different HALVES of D1 via
+   `swap`, and a `jmp` tail on the last emit.
+2. **`$25D560`** -- slot [17]'s last unported handler, and the biggest. Part-read below.
+3. **Slot [9]'s OBJECT state 0** `$25C8A2` (~550 bytes) -- then slot [9] is complete too.
+4. **Slot [18] `$24902A`** -- the ASIC27 self-test. Real work, but NOT on the path to the milestone.
+5. **D33** main screen (**slot [17] PORTED**), **D34** character select (**slot [9], CONFIRMED and mostly
+   ported**), **D35** life/coin (**the coin handler is COMPLETE**; lives, extends, game over and continue are
+   still unanchored), **D37** endings (**the slot [18] anchor is WITHDRAWN** -- re-anchor by reading strings
+   first), **D38** input lag faithful (logic side measured faithful; presentation path remains),
+   **D39** input lag mods (three toggles specified).
+6. **D26** second ship + two more pilots, **D28** multi-ship/pilot mods.
+7. **D36** the second ROM game -- LAST, by the owner's instruction.
+
+**A NOTE FOR EVERY DRAW SMOKE:** the sprite bucket counter is a BYTE OFFSET, not a sprite tally -- four emits
+moved it by 48. Assert a whole multiple, not a count.
+
+### `$25EDF8` IS PART-READ: IT IS THE PORTRAIT DRAW, INDEXED BY THE CURSOR
+
+Start from this rather than the top:
+
+* It opens with **FOUR `lea (d16,PC)` into A0/A1/A2/A3, then `tst.w D7 / beq` and FOUR MORE** -- eight tables,
+  four per side. Side 1 takes `$25EDF4`, `$25EDE4`, `$25ECE4`, `$25EB94`; side 0 takes `$25EDF0`, `$25EDD8`,
+  `$25ECD8`, `$25EB64`. **Side 1's set is the FALL-THROUGH and side 0's the override** -- the opposite way
+  round from `$25D306`, so do not assume the order.
+* `move.w ($4,A6),D0` then TWO `add.w D0,D0` -- **the CURSOR VALUE times four** indexes `(A2,D0.w)` for the
+  art. The portrait is chosen by the same `($4,A6)` that `$25D402` moves, which is the link between the
+  cursor and the picture.
+* `cmpi.b #$4,($1,A6) / bne $25EF2E` -- **the whole body runs ONLY in state 4.**
+* Then `tst.w ($28,A6)` -- the "moved" flag `$25D402` sets -- clears it and arms `($2A,A6) = $B4` and
+  `($5C,A6) = 4`. That is a re-trigger on cursor movement.
 
 ### THE DOCKET: WHAT W372 ESTABLISHED
 
