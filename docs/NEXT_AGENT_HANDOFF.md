@@ -412,6 +412,17 @@ docket entry warned, and the convention is now measured rather than predicted:
 represented in a port whose driver is per-frame. `tallyscreen.js` is the right reference for the state-machine
 skeleton and the WRONG one for anything inside these routines.
 
+### THE W373 WINDOWS ARE VERIFIED (41 of them)
+
+Checked at the end of the wave, because **publish is due at W375** and a bad window only shows up as a broken
+live page. **No overlaps among the 41**, and every structure the new sources read -- the `$2911B0` menu's four
+tables, both `$25D29A`/`$25CF64` descriptor pairs, the `$25D2DE` order tables, slot [15]'s `$291FE2` sequence
+and `$291FD8` record, slot [13]'s `$28898A` descriptors, and all twenty-six palette blocks -- falls inside a
+declared window.
+
+**AT PUBLISH: run `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE
+`node tools/publish.mjs --only ddpdoj`.** This wave added 41 windows, so the assets WILL be stale otherwise.
+
 ### THE "ALREADY PORTED" AUDIT WAS RUN AND CAME BACK CLEAN (W373)
 
 Five routines this session turned out to exist already under another name -- `$243DD0`, `$24652A`, `$24641A`,
