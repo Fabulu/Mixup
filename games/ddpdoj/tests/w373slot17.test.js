@@ -141,11 +141,10 @@ test('W373 the inner dispatch is a STATE MACHINE on ($1,A6), not four flags', { 
   assert.deepEqual(notes.filter((n) => SCREEN17.subHandlers.includes(n)), [],
     "state 4 is not one of this slot's four, so nothing ran");
 
-  notes.length = 0;
+  // State 6 is PORTED now, so the proof it ran is the byte advancing rather than a note.
   ram.setU8(SCREEN17.recs + SCREEN17.phaseAt, 6);
   objSlot17(ram, rom, a5, ctx);
-  assert.deepEqual(notes.filter((n) => SCREEN17.subHandlers.includes(n)), [SCREEN17.subHandlers[2]],
-    'state 6 runs exactly one handler');
+  assert.equal(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), 7, 'state 6 ran and advanced to 7');
 });
 
 test('W373 state 3 CASCADES into state 5 in the same frame', { skip: SKIP }, async () => {
@@ -157,10 +156,12 @@ test('W373 state 3 CASCADES into state 5 in the same frame', { skip: SKIP }, asy
   // The compares run in sequence, so state 3's handler advancing the byte lets state 5's arm fire
   // on the same pass. An else-if chain would run only the first. State 5 is PORTED now, so the
   // proof is the byte reaching 6 in one call rather than a second note.
-  const { HANDLER5 } = await import('../src/objslot17.js');
+  const { HANDLER6 } = await import('../src/objslot17.js');
   assert.ok(notes.includes(SCREEN17.subHandlers[0]), 'state 3 ran (still only a note)');
-  assert.equal(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), HANDLER5.nextPhase,
-    'and the byte went 3 -> 5 -> 6 in ONE frame, which only happens if BOTH arms ran');
+  // With states 5 AND 6 ported, one frame now walks 3 -> 5 -> 6 -> 7. Three arms in a single call,
+  // which is only possible because the four compares are sequential rather than an else-if chain.
+  assert.equal(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), HANDLER6.nextPhase,
+    'the byte reached 7 in ONE frame');
 });
 
 test('W373 state 1 advances only when BOTH records are idle', { skip: SKIP }, async () => {
@@ -232,4 +233,52 @@ test('W373 the $25D294 table is four words and self-bounding', { skip: SKIP }, a
   assert.deepEqual(vals, [2, 4, 6, 0], 'the same 2/4/6 the tally posts, then a zero');
   assert.equal(rom.u32(HANDLER5.table + HANDLER5.entries * 2), 0x0023d16c,
     'and the word after the fourth is the $25D29C descriptor, so four is the bound');
+});
+
+test('W373 $25D4E4 maps the dbra counter to a side, and dbra counts DOWN', { skip: SKIP }, async () => {
+  const { sideFromD7_25D4E4 } = await fx();
+  assert.equal(sideFromD7_25D4E4(1), 0, 'record 0 runs with D7 = 1 and is side 0');
+  assert.equal(sideFromD7_25D4E4(0), 1, 'record 1 runs with D7 = 0 and is side 1');
+});
+
+test('W373 $25D4F0 advances to 7 whether or not the gate is set', { skip: SKIP }, async () => {
+  for (const gate of [0, 1]) {
+    const { phase6_25D4F0, HANDLER6, SCREEN17, ram, rom, ctx } = await fx();
+    const a6 = SCREEN17.recs;
+    ram.setU16(HANDLER6.gate, gate);
+    ram.setU8(a6 + SCREEN17.phaseAt, 6);
+    for (const off of HANDLER6.clears) ram.setU16(a6 + off, 0xbeef);
+    phase6_25D4F0(ram, rom, ctx, a6, 1);
+    assert.equal(ram.u8(a6 + SCREEN17.phaseAt), HANDLER6.nextPhase,
+      `gate ${gate}: the state still advanced -- the gate guards the SOUND, not the progression`);
+    for (const off of HANDLER6.clears) {
+      assert.equal(ram.u16(a6 + off), 0, `gate ${gate}: ($${off.toString(16)},A6) cleared`);
+    }
+  }
+});
+
+test('W373 $25D4F0 posts its sound ONLY with the gate clear', { skip: SKIP }, async () => {
+  const clear = await fx();
+  const sounds = [];
+  clear.ctx.soundPost = (a) => sounds.push(a);
+  clear.ram.setU16(clear.HANDLER6.gate, 0);
+  clear.phase6_25D4F0(clear.ram, clear.rom, clear.ctx, clear.SCREEN17.recs, 1);
+  assert.deepEqual(sounds, [clear.HANDLER6.sound], 'gate clear -> the sound posts');
+
+  const set = await fx();
+  const s2 = [];
+  set.ctx.soundPost = (a) => s2.push(a);
+  set.ram.setU16(set.HANDLER6.gate, 1);
+  set.phase6_25D4F0(set.ram, set.rom, set.ctx, set.SCREEN17.recs, 1);
+  assert.deepEqual(s2, [], 'gate set -> it does not');
+});
+
+test('W373 the state-6 tail announces the OPPOSITE side', { skip: SKIP }, async () => {
+  // $25D550 addq.w #1,D0 / andi.w #$1,D0 flips the index $25D4E4 just produced, so the second
+  // $260A9A is deliberately the other side and not a repeat.
+  const { sideFromD7_25D4E4 } = await fx();
+  for (const d7 of [0, 1]) {
+    const first = sideFromD7_25D4E4(d7);
+    assert.notEqual((first + 1) & 1, first, `D7 ${d7}: the tail flips ${first}`);
+  }
 });

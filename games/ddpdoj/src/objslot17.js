@@ -187,6 +187,10 @@ export function objSlot17(ram, rom, a5, ctx) {
     if (ram.u8(a6) === 0) continue;                          // $25CED4 tst.b (A6) / beq $25CF18
     for (const [i, phase] of SCREEN17.subStates.entries()) {
       if (ram.u8(a6 + SCREEN17.phaseAt) !== phase) continue; // $25CEDA.. cmpi.b #phase,($1,A6)
+      if (phase === 0x06) {
+        phase6_25D4F0(ram, rom, ctx, a6, SCREEN17.recCount - 1 - r);
+        continue;
+      }
       if (phase === 0x05) {
         // The dbra counter runs 1 then 0, so `r` maps to D7 as (recCount - 1 - r).
         phase5_25D39C(ram, rom, ctx, a5, a6, SCREEN17.recCount - 1 - r, undefined);
@@ -251,4 +255,49 @@ export function phase5_25D39C(ram, rom, ctx, a5, a6, d7, a4) {
   const row = u16((src >>> HANDLER5.shift) + HANDLER5.bias);  // $25D3C8 lsr #6 / $25D3CA lsr #3
   txString25A14C(ctx.tx, rom, HANDLER5.col, row, 0, HANDLER5.string);   // $25D3DC jsr $25A14C
   ram.setU8(a6 + SCREEN17.phaseAt, HANDLER5.nextPhase);      // $25D3E2 -- state 5 ADVANCES to 6
+}
+
+/** `$25D4E4` -- SIDE INDEX FROM D7, twelve bytes, and the third independent confirmation of the
+ *  mapping: `tst.w D7 / bne` returns 0 when D7 is non-zero and 1 when it is zero. `dbra` counts
+ *  DOWN, so record 0 (D7 = 1) is side 0. */
+export function sideFromD7_25D4E4(d7) {
+  return u16(d7) !== 0 ? 0 : 1;                              // $25D4E6 tst.w D7 / bne / $25D4EC
+}
+
+export const HANDLER6 = Object.freeze({
+  addr: 0x25d4f0, gate: 0x813098, sound: 0x28caae, announce: 0x260a9a,
+  labels: 0x25f2d0, nextPhase: 0x07,
+  clears: Object.freeze([0x32, 0x5a, 0x5e, 0x60]),
+});
+
+/** `$25D4F0` -- THE STATE-6 HANDLER, shared by slots [17] and [9].
+ *
+ *  It prints BOTH sides' labels unconditionally (`$25F2D0` with D0 = 0 then D0 = 1), then -- only
+ *  when `$813098` is clear -- posts a sound. The four clears and the state advance happen either
+ *  way, so the gate does NOT stop the progression, only the sound.
+ *
+ *  THE TAIL RE-ANNOUNCES FOR THE OTHER SIDE. `$25D550 addq.w #1,D0 / andi.w #$1,D0` flips the index
+ *  `$25D4E4` just derived, so the second `$260A9A` is deliberately the opposite side. And it is
+ *  reached when `$813098` is SET *or* `(A0)` is zero -- two unrelated conditions, one arm.
+ */
+export function phase6_25D4F0(ram, rom, ctx, a6, d7) {
+  ctx.unported?.note(HANDLER6.labels, '$25D4F2/$25D4FA jsr $25F2D0 with D0 = 0 then 1 -- the '
+    + 'two-line per-side label printer. It prints through $25A14C twice, advancing A0 by $10 and '
+    + 'D1 by -1 between them, from a descriptor at $25F43E. Head unread, so it is noted');
+
+  if (ram.u16(HANDLER6.gate) === 0) {                        // $25D500 tst.w $813098 / bne $25D510
+    ctx.soundPost?.(HANDLER6.sound);                         // $25D50A jsr $28CAAE
+  }
+  for (const off of HANDLER6.clears) ram.setU16(a6 + off, 0);   // $25D510..$25D51C
+  ram.setU8(a6 + SCREEN17.phaseAt, HANDLER6.nextPhase);      // $25D522 -- 6 ADVANCES to 7
+  announcePost(ram, HANDLER6.announce, sideFromD7_25D4E4(d7));   // $25D528 bsr / $25D52A jsr
+
+  // $25D530/$25D53A -- A6 walks to the other record and straight back, so the pair is a no-op; it
+  // exists only so the two arms share one tail.
+  if (ram.u16(HANDLER6.gate) !== 0) {                        // $25D53E tst.w / bne $25D54E
+    announcePost(ram, HANDLER6.announce, u16(sideFromD7_25D4E4(d7) + 1) & 1);   // $25D550/$25D552
+  } else {
+    ctx.unported?.note(0x25d548, '$25D548 tst.b (A0) -- with $813098 clear, a ZERO byte at (A0) '
+      + 'ALSO takes the second announce. A0 is inherited, not set by this routine or either caller');
+  }
 }

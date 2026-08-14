@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2694/2694 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2698/2698 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -169,7 +169,19 @@ confirmation the port has for it.
 neither the handler nor either caller, so it is inherited from further up the frame. The string still prints;
 only its ROW is unknown, and the port leaves it at the bias.
 
-Still noted: `$25F442` (state 0's opener) and the other three handlers.
+**`$25D4F0`, the state-6 handler, IS PORTED and is ALSO SHARED.** Its gate `$813098` guards only the SOUND;
+the four clears and the advance to state 7 happen either way. Its tail deliberately announces the OPPOSITE
+side (`addq.w #1,D0 / andi.w #$1,D0`), and that arm is reached when the gate is SET *or* when `(A0)` is zero,
+which are two unrelated conditions on one path.
+
+**`$25D4E4` is the D7 -> side helper** and is the THIRD independent confirmation of the mapping: `dbra` counts
+down, so record 0 runs with D7 = 1 and is side 0.
+
+With 5 and 6 both ported, **one frame now walks a record 3 -> 5 -> 6 -> 7** -- three arms in a single call,
+which is only possible because the four compares are sequential.
+
+Still noted: `$25F442` (state 0's opener), `$25D306` (state 3), `$25D560` (state 7), and `$25F2D0`, the
+two-line per-side label printer state 6 calls twice.
 
 **Fifteen palette windows declared.** Fourteen at 64 bytes through `$24150A` and ONE at 32 through `$2414BE`,
 which is a different routine reading half as much. `$222838` was already declared for the `$2911B0` menu and
