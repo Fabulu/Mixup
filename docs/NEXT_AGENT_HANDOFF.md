@@ -46,19 +46,57 @@ which record it reads across to. Both call sites pass it.
 serial working. Nothing from those three runs was kept, so they start clean. What IS known about
 them, from the neighbours' recon and verified by hand:
 
-* **`$25E824` has NO state gate.** It opens `41FA FFAE / 43FA FFE0 / 3C2E 0036 / 4446` = two
-  `lea (d16,PC)` then `move.w ($36,A6),D6 / neg.w D6`. Its four tables are already resolved:
-  `$25E824 -> $25E7D4`, `$25E828 -> $25E80A`, `$25E836 -> $25E7B8`, `$25E83A -> $25E7F0`, two
-  side-selected pairs sitting in the gap BELOW it (`$25E7B8..$25E823`), not above.
+* **`$25E824` has NO state gate, and its side split is a NEGATION.** Head, decoded and verified by
+  hand:
+
+      $25E824  lea ($25E7D4,PC),A0        ext@$25E826 disp -$0052
+      $25E828  lea ($25E80A,PC),A1        ext@$25E82A disp -$0020
+      $25E82C  move.w ($36,A6),D6
+      $25E830  neg.w D6                   <-- the fall-through NEGATES
+      $25E832  tst.w D7
+      $25E834  beq.s $25E842              D7 == 0 SKIPS the override
+      $25E836  lea ($25E7B8,PC),A0        ext@$25E838 disp -$0080
+      $25E83A  lea ($25E7F0,PC),A1        ext@$25E83C disp -$004C
+      $25E83E  move.w ($36,A6),D6         <-- and the override does NOT negate
+      $25E842  ...
+
+  So **side 1 (D7 == 0) gets `D6 = -($36,A6)` and side 0 gets `D6 = +($36,A6)`** -- a mirrored X
+  offset, which is what you would expect of a two-player symmetric layout. The four tables sit in
+  the gap BELOW the routine (`$25E7B8..$25E823`), not above it, so `$25E824`'s data and `$25E6CE`'s
+  region are neighbours. Same fall-through/override shape as `$25EDF8`, so the same inversion trap
+  applies: **the fall-through set belongs to side 1.**
 * **`$25E29E` ends with `jmp $23E2F2` at `$25E686`**, then a `nop` pad, then a 64-byte word table at
   `$25E68E..$25E6CD` that `$25E29E` itself `lea`s TWICE (from `$25E51C` and `$25E5F6`). That table
   is what bounds `$25E6CE` from below, so `$25E29E`'s true end is `$25E6CD`, not `$25E686`.
 * **`$25F074` uses `cmpi.b #$7,($1,A6) / bcs`**, an UNSIGNED `<` that selects a table SLICE rather
-  than returning, plus `adda.l #$18,A0` to skip 24 bytes when the state is `>= 7`. Its two tables
-  are `$25F074 -> $25F014` (D7 != 0) and `$25F080 -> $25F044` (D7 == 0, and that path also does
-  `neg.w D5`). Both are `$30` = 48 bytes, bounded by each other and by the code. **The second long
-  of table A's first pair (`$4F013000`) is NOT a plausible art pointer, so the pairing is not a
-  uniform `{D1, art}` array throughout.** Do not assume the layout.
+  than returning, plus `adda.l #$18,A0` to skip 24 bytes when the state is `>= 7`. Head verified by
+  hand:
+
+      $25F074  lea ($25F014,PC),A0        ext@$25F076 disp -$0062
+      $25F078  move.w ($38,A6),D5
+      $25F07C  tst.w D7
+      $25F07E  bne.s $25F086              <-- bne, NOT beq
+      $25F080  lea ($25F044,PC),A0        ext@$25F082 disp -$003E
+      $25F084  neg.w D5
+      $25F086  cmpi.b #$7,($1,A6)         trap 1: imm $0007 before disp $0001
+      $25F08C  bcs.s $25F098
+      $25F08E  adda.l #$18,A0             skip 24 bytes when state >= 7
+      $25F094  bra.w $25F128
+
+  Both tables are `$30` = 48 bytes, bounded by each other and by the code. **The second long of
+  table A's first pair (`$4F013000`) is NOT a plausible art pointer, so the pairing is not a uniform
+  `{D1, art}` array throughout.** Do not assume the layout.
+
+### THE SIDE-SELECT BRANCH SENSE IS NOT UNIFORM ACROSS THIS FAMILY
+
+**`$25EDF8` and `$25E824` use `beq` to skip the override; `$25F074` uses `bne`.** So the
+fall-through set belongs to **side 1** in the first two and to **side 0** in `$25F074`. The
+underlying semantics ARE consistent -- side 1 always ends up with the NEGATED offset (`neg.w D6` in
+`$25E824`, `neg.w D5` in `$25F074`) -- but the two routines encode that with opposite branch senses.
+
+**Read the branch, every time.** Combined with `sideFromD7_25D4E4` inverting (`u16(d7) !== 0 ? 0 : 1`)
+there are two independent inversions in play, and assuming a uniform convention across the family is
+exactly how a side-swap defect ships looking plausible.
 * **`$25E4D0` is completely unread.** One call site, `$25D814`, ungated, in the third copy only.
 
 ### `$25EDF8` IS PORTED, AND ITS BODY IS UNREACHABLE AS SHIPPED
