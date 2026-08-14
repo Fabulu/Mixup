@@ -124,6 +124,28 @@ them, from the neighbours' recon and verified by hand:
   no `jsr` or `jmp` caller anywhere in the 6 MB image.** Either something reaches it by `bsr`/`bra`
   from inside `$25E824`, or it is dead. Do not assume either; find out.
 
+* **`$25E29E` HAS NO BRANCHES AT ALL, AND TWO OF ITS FOUR GROUPS NEVER EMIT.** Mechanical scans over
+  `$25E29E..$25E480`, all verified:
+
+      D3 = $14E0  loaded 4x   $25E2B2  $25E31A  $25E3AE  $25E42A   (width idx 20, height idx 28)
+      D3 = $3840  loaded 4x   $25E2DE  $25E366  $25E3EE  $25E462   (width idx 56)
+      D4 = $0010  loaded 4x   $25E2B6  $25E31E  $25E3B2  $25E42E
+      calls       exactly 4   $25E322  $25E344  $25E36A  $25E38C, ALL jsr.l $23E2F2
+      branches    ZERO -- no Bcc, no bra, no bsr anywhere in the 481 bytes
+      entries     ZERO -- nothing in the 6 MB image jsr/jmp's into $25E390..$25E480
+
+  So the head block `$25E29E..$25E2F0` and the tail block `$25E392..$25E47E` both load D1/D2/D3/D4
+  and are followed by no emit, no branch and no entry -- only the `rts`. **A previous recon flagged
+  the head as "vestigial" without being able to prove it; the tail is the same shape.** Recon is
+  settling whether both are genuinely dead stores. If they are, the routine reads as an unrolled
+  four-way body with two arms disabled by deleting their `jsr`, which would sit alongside the two
+  dead GATES already found on this same screen in `$25EDF8` and `$25F074`.
+
+  **`D3 = $3840` CONFIRMS THE `$23E2F2` TABLE FINDING.** Width index 56 is exactly where
+  `SCALE_TABLE` and `ZOOM_REG_SCALE_TABLE` disagree, so this routine is the producer that would have
+  exposed an aliasing mistake. **And it corrects an earlier recon claim** that D4 is "set ONCE at
+  `$25E31E` and never reloaded across four calls" -- it is loaded four times.
+
 * **`$25E29E` IS 481 BYTES AND ENDS AT `$25E47E`, NOT `$25E686`. I GOT THIS WRONG FIRST AND A RECON
   CAUGHT ME.** I claimed `$25E29E` ran to `$25E686` and therefore that `$25E4D0` was a second entry
   point INSIDE it, the way `$25EFAE` is inside `$25EF30`. **That was wrong.** There is an `rts` at
