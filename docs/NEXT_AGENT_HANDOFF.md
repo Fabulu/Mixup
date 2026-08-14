@@ -14,6 +14,28 @@ Updated: 2026-08-13 (W372)
   was a third entry of `armScreenClearMode`, not a routine), and the 666-byte body itself, live and driven.
 * **`tools/aligned.py`** -- instruction-boundary sweeps that refuse rather than guess.
 
+### IN FLIGHT: OBJECT-DISPATCH SLOT [7] `$290BE8`
+
+**Slot [14] IS PORTED** (`src/objslot14.js`, four driving tests) -- the first front-end slot written. Slot [7] is
+next and is part-analysed:
+
+* **Real span `$290BE8..$290C72`.** Three callees: `$23E020` (ported), `$2907E2` (240 bytes, UNPORTED),
+  `$290946` (62 bytes, UNPORTED).
+* **`$290946` is READ and is a 200-entry sprite walker.** `lea $81585C,A3 / move.w #$C7,D7` with a `dbra` is 200
+  entries at a `$10` stride. Per entry: skip if `(A3)` is zero; else `A1 = ($4,A3)`, `D3 = $410`, `D4 = 0`, and
+  emit through **`$23DFEA` when `($8,A3)` is NON-zero, `$23E020` when it is zero** -- both already ported, both
+  reached via `enqueueRegistersThroughStub`.
+* **THE OPEN QUESTION on `$290946`: D1 is never set inside the loop.** The emitter convention is
+  `(d1, d2, d3, d4)` with d1 the position (see `boss2.js:1097`), and this loop sets D2/D3/D4 and A1 only. So D1
+  comes from the CALLER -- check slot [7] before `$290946`'s call site. **Do not invent a D1**; that is the same
+  trap as `$1A`'s D3 and the fan's registers, and both were only got right by refusing to guess.
+* `$2907E2` (240 bytes) is not read yet.
+
+**THE SCANNING RULE, learned expensively:** count **`4EB9` `4EF9` `4EBA` `4EFA` `61xx` `60xx`**. Counting fewer
+forms gave three different wrong dependency answers for slot [14], including one that reached a commit message.
+And the dispatch-table address is **NOT** the routine's start -- slot [14]'s arms branch BACKWARD, so scan from the
+preceding `rts`, not from the table entry.
+
 ### THE DOCKET: WHAT W372 ESTABLISHED
 
 **Read `docs/DOCKET.md` first -- every anchor below is recorded there with its reasoning.**
