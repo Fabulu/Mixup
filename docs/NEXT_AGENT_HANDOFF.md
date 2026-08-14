@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2644/2644 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2652/2652 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -64,22 +64,28 @@ of noting it. The three words `$803950` (raw level, inverted), `$803952` (last f
 `$13CF86`'s two pending flags are **`cmpi.w` against `$0080` exactly, not bit tests**, and reading one CONSUMES
 it, so it cannot be called twice in a frame.
 
-**THE ECONOMY IS THE NEXT UNIT AND IT IS ALREADY SWEPT:**
+**THE ECONOMY IS PORTED TOO** -- `$13CE22`, the three arms, and both mechanical counters:
 
-* **`$13CE22` -- the COINAGE CONVERTER.** Reads the DIP at `$803808`, compares against `$09`, `$12`, `$11`,
-  walks a per-slot counter at `($2,A0)` against `$803956`, and clamps at `$09`/`$10`. Starts `move.l D0,-(A7) /
-  move.l D1,-(A7)`, so it saves its own registers. Roughly `$13CE22..$13CEA0`.
-* **`$13D002` -- the SECOND and THIRD arms**, `btst #$0` and `btst #$1` over the same D1. Each calls `$18B0D6`,
-  points A0 at `$803958` or `$80395E`, and runs `$13CE22`. `$13D018` tests the DIP `$803808` against `$12` and
-  bumps `$80394C`; `$13D03E` tests `$80380B` against `$01` to decide whether slot 2 shares slot 1's block.
-* **`$18B0D6`** is called by all three arms before the converter and is unread.
+* **`$13CE22` is FOUR BANDS over the DIP at `$803808`, and they are ranges, not an index:** `$00..$08`
+  multiplies by `$803957`, `$09..$10` divides by `$803956` through a carry counter, `$11` bumps the COIN count
+  only, `$12` is free play and returns at once. `$803956`/`$803957` are ADJACENT bytes. Every write clamps at 9
+  and the entry test is `($2,A0) == 9` exactly.
+* **THE THREE ARMS ARE NOT INDEPENDENT.** `$13CFEE beq $13D002` means bit 5 set falls through and **RETURNS at
+  `$13D000`**, so bits 0 and 1 are tested only when bit 5 is clear.
+* **`$80394C`/`$80394D` are adjacent per-slot mechanical counters**, bumped with `addq.b` -- opcode `$5239`,
+  whose size field is `00` = BYTE. `$5279` is the word form. Getting that wrong reads as an odd-address word.
+* **`$80380B` decides whether slot 2 shares slot 1's credit block**, and it must be EXACTLY 1 to split.
 
-The three arms are `note()`d with those addresses. **They test bits of ONE word that carries both coin edges
-and pending flags, so a coin edge and a pending flag are indistinguishable to them by design.**
+**STILL OPEN IN D35:** `$13D068`, the service/test half on a SECOND hardware port `$C08006`, gated on
+`$80394A`. It calls `$13CC50` and branches on `$80380B`. Swept only to `$13D08E`. And `$18B0D6` is a sound post
+(`movem`, D0=$17, D1=$FF, D2=0, `jsr $18AB50`) modelled as `ctx.soundPost`.
+
+**THE PORT TRAP, and it cost six unrelated test failures:** IRQ6's `portWord` is `$C08000`, the PLAYER port.
+`$13CFBA` does its OWN `lea $C08004,A0` and reads a different one. `irq6` now passes `ctx.coinPort ?? $FFFF`.
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **`$13CE22` + `$13D002` + `$18B0D6`** -- D35's credit economy, all swept above.
+1. **`$13D068`** -- D35's service/test half, swept to `$13D08E`.
 2. **Nine dispatch slots untouched**: [8], [9], [12], [13], [15], [16], [17], [18], [19].
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text

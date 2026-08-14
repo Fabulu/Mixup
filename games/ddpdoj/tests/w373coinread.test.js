@@ -5,10 +5,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 async function fx() {
-  const { coinRead13CFBA, coinPending13CF86, COIN } = await import('../src/isr.js');
+  const { coinRead13CFBA, coinPending13CF86, coinage13CE22, COIN } = await import('../src/isr.js');
   const { Ram } = await import('../src/ram.js');
   const notes = [];
-  return { coinRead13CFBA, coinPending13CF86, COIN, ram: new Ram(),
+  return { coinRead13CFBA, coinPending13CF86, coinage13CE22, COIN, ram: new Ram(),
     ctx: { unportedLog: { note: (a) => notes.push(a) } }, notes };
 }
 
@@ -95,4 +95,117 @@ test('W373 IRQ6 no longer reports the coin read as unported', async () => {
   } catch { /* the rest of IRQ6 needs a fuller ctx; the note list is what matters */ }
   assert.ok(!notes.includes(ROM.isr6Coin),
     '$13CFBA is called now, not noted as ISR6 jsr #1');
+});
+
+test('W373 bit 5 RETURNS -- the other two arms are only tested when it is clear', async () => {
+  const { coinRead13CFBA, COIN, ram, ctx } = await fx();
+  ram.setU8(COIN.dipCoinage, 0x11);                          // a band that touches the coin count
+  ram.setU16(COIN.prev, IDLE);
+  // Bits 5 and 6 edge on the SAME frame. Bit 6 is in the mask, so both reach D1... but bit 5's arm
+  // returns before $13D002 is ever reached.
+  ram.setU16(COIN.pendA, COIN.pendValue);                    // this sets D1 bit 0 as well
+  coinRead13CFBA(ram, press(5), ctx);
+  assert.equal(ram.u8(COIN.creditA), 1, 'slot 1 was credited exactly once');
+  assert.equal(ram.u8(COIN.counterA), 0,
+    'and $80394C was NOT bumped -- that lives in the bit-0 arm, which bit 5 skipped');
+});
+
+test('W373 with bit 5 clear, the bit-0 arm runs and bumps the mechanical counter', async () => {
+  const { coinRead13CFBA, COIN, ram, ctx } = await fx();
+  ram.setU8(COIN.dipCoinage, 0x11);
+  ram.setU16(COIN.prev, IDLE);
+  ram.setU16(COIN.pendA, COIN.pendValue);                    // D1 bit 0, no bit 5
+  coinRead13CFBA(ram, IDLE, ctx);
+  assert.equal(ram.u8(COIN.creditA), 1, 'slot 1 credited');
+  assert.equal(ram.u8(COIN.counterA), 1, 'and NOW $80394C was bumped');
+});
+
+test('W373 $13CE22: free play does nothing and nine credits is a hard stop', async () => {
+  const { coinage13CE22, COIN, ram } = await fx();
+  ram.setU8(COIN.dipCoinage, 0x12);                          // free play
+  coinage13CE22(ram, COIN.creditA);
+  assert.equal(ram.u8(COIN.creditA), 0);
+  assert.equal(ram.u8(COIN.creditA + 2), 0, 'free play credits nothing');
+
+  ram.setU8(COIN.dipCoinage, 0x00);
+  ram.setU8(COIN.creditsPerCoin, 5);
+  ram.setU8(COIN.creditA + 2, 9);                            // already at nine
+  coinage13CE22(ram, COIN.creditA);
+  assert.equal(ram.u8(COIN.creditA + 2), 9, 'the entry test is == 9 exactly, and it stops there');
+});
+
+test('W373 $13CE22: the $00..$08 band MULTIPLIES and clamps at nine', async () => {
+  const { coinage13CE22, COIN, ram } = await fx();
+  ram.setU8(COIN.dipCoinage, 0x03);
+  ram.setU8(COIN.creditsPerCoin, 4);
+  coinage13CE22(ram, COIN.creditA);
+  assert.equal(ram.u8(COIN.creditA + 2), 4, 'one coin gave $803957 credits');
+  coinage13CE22(ram, COIN.creditA);
+  assert.equal(ram.u8(COIN.creditA + 2), 8);
+  coinage13CE22(ram, COIN.creditA);
+  assert.equal(ram.u8(COIN.creditA + 2), 9, '12 would overflow, so it clamps at nine');
+});
+
+test('W373 $13CE22: the $09..$10 band DIVIDES through a carry counter', async () => {
+  const { coinage13CE22, COIN, ram } = await fx();
+  ram.setU8(COIN.dipCoinage, 0x0a);
+  ram.setU8(COIN.coinsPerCredit, 3);                         // three coins per credit
+  for (let i = 0; i < 2; i++) coinage13CE22(ram, COIN.creditA);
+  assert.equal(ram.u8(COIN.creditA), 2, 'two coins counted');
+  assert.equal(ram.u8(COIN.creditA + 2), 0, '  ...and no credit yet');
+  coinage13CE22(ram, COIN.creditA);
+  assert.equal(ram.u8(COIN.creditA), 0, 'the third coin RESET the coin count');
+  assert.equal(ram.u8(COIN.creditA + 2), 1, '  ...and gave one credit');
+});
+
+test('W373 $13CE22: the $11 band bumps the COIN count and not the credit count', async () => {
+  const { coinage13CE22, COIN, ram } = await fx();
+  ram.setU8(COIN.dipCoinage, 0x11);
+  coinage13CE22(ram, COIN.creditA);
+  assert.equal(ram.u8(COIN.creditA), 1, '(A0) bumped');
+  assert.equal(ram.u8(COIN.creditA + 2), 0,
+    'and ($2,A0) did NOT -- $13CE52 sends $11 past both remaining bands');
+  for (let i = 0; i < 20; i++) coinage13CE22(ram, COIN.creditA);
+  assert.equal(ram.u8(COIN.creditA), 9, 'clamped at nine like every other write');
+});
+
+test('W373 the slot-2 DIP decides whether both slots share one credit block', async () => {
+  const shared = await fx();
+  shared.ram.setU8(shared.COIN.dipCoinage, 0x00);
+  shared.ram.setU8(shared.COIN.creditsPerCoin, 1);
+  shared.ram.setU8(shared.COIN.dipSlot2, 0x00);              // NOT 1 -> share slot 1's block
+  shared.ram.setU16(shared.COIN.prev, IDLE);
+  shared.ram.setU16(shared.COIN.pendB, shared.COIN.pendValue);   // D1 bit 1, the slot-2 arm
+  shared.coinRead13CFBA(shared.ram, IDLE, shared.ctx);
+  assert.equal(shared.ram.u8(shared.COIN.creditA + 2), 1, 'shared: slot 1 got the credit');
+  assert.equal(shared.ram.u8(shared.COIN.creditB + 2), 0, '  ...and slot 2 got none');
+
+  const split = await fx();
+  split.ram.setU8(split.COIN.dipCoinage, 0x00);
+  split.ram.setU8(split.COIN.creditsPerCoin, 1);
+  split.ram.setU8(split.COIN.dipSlot2, 0x01);               // EXACTLY 1 -> its own block
+  split.ram.setU16(split.COIN.prev, IDLE);
+  split.ram.setU16(split.COIN.pendB, split.COIN.pendValue);
+  split.coinRead13CFBA(split.ram, IDLE, split.ctx);
+  assert.equal(split.ram.u8(split.COIN.creditB + 2), 1, 'split: slot 2 got its own credit');
+  assert.equal(split.ram.u8(split.COIN.creditA + 2), 0);
+});
+
+test('W373 IRQ6 does not feed the PLAYER port into the coin read', async () => {
+  // $13CFBA does its own `lea $C08004,A0`; IRQ6's portWord is $C08000. Handing IRQ6's word to the
+  // coin read credits a coin whenever a player holds a button inside the $E0 mask, and it broke six
+  // unrelated frame-level tests before it was caught.
+  const { irq6 } = await import('../src/isr.js');
+  const { COIN } = await import('../src/isr.js');
+  const { Ram } = await import('../src/ram.js');
+  const ram = new Ram();
+  ram.setU16(COIN.prev, IDLE);
+  ram.setU8(COIN.dipCoinage, 0x00);
+  ram.setU8(COIN.creditsPerCoin, 1);
+  try {
+    // A player holding the button on bit 5 of the PLAYER port, thirty frames.
+    for (let i = 0; i < 30; i++) irq6(ram, press(5), { unportedLog: { note: () => {} } });
+  } catch { /* the rest of IRQ6 wants a fuller ctx; the credit count is what matters */ }
+  assert.equal(ram.u8(COIN.creditA + 2), 0, 'no credits appeared from player input');
+  assert.equal(ram.u16(COIN.edges), 0, 'and no coin edge was recorded');
 });

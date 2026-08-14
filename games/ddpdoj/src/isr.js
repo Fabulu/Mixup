@@ -45,7 +45,10 @@ import { flushScoreDigits185DC4, flushTextDefer141258 } from './hud.js';
  */
 export function irq6(ram, portWord, ctx) {
   const { unportedLog } = ctx;
-  coinRead13CFBA(ram, portWord, ctx);                 // $13C7D4 jsr $13CFBA
+  // $13C7D4 jsr $13CFBA. IRQ6's portWord is $C08000, the PLAYER port; $13CFBA does its own
+  // `lea $C08004,A0` and reads a DIFFERENT one. Handing it portWord credits a coin whenever a
+  // player holds a button whose bit falls in the $E0 mask, which is how this was caught.
+  coinRead13CFBA(ram, ctx.coinPort ?? COIN.idle, ctx);
   isr6InputRead(ram, portWord, unportedLog);          // $13C7DA
   unportedLog.note(ROM.isr6Third, 'ISR6 jsr #3 ($18ACC0)');
   const sem = ram.u8(RAM.semaphore);                  // $13C7E6 tst.b $803940
@@ -126,6 +129,15 @@ export const COIN = Object.freeze({
   pendA: 0x803968, pendB: 0x80396e, pendValue: 0x0080,
   bitCoin1: 5, bitCoin2: 0, bitService: 1,
   creditA: 0x803958, creditB: 0x80395e,
+  // The operator DIPs and the two adjacent coinage bytes.
+  dipCoinage: 0x803808, dipSlot2: 0x80380b,
+  coinsPerCredit: 0x803956, creditsPerCoin: 0x803957,
+  // $80394C and $80394D are ADJACENT per-slot coin counters, bumped with addq.b (opcode $5239,
+  // whose size field is 00 = BYTE -- $5279 would be the word form).
+  counterA: 0x80394c, counterB: 0x80394d,
+  service: 0x13d068, servicePort: 0xc08006,
+  // ACTIVE LOW, so all ones is nothing pressed. A harness with no coin port sees no coins.
+  idle: 0xffff,
   arms: Object.freeze({ credit: 0x13ce22, hook: 0x18b0d6, tail: 0x13d002 }),
 });
 
@@ -156,34 +168,97 @@ export function coinPending13CF86(ram) {
  *  local across the call would be the same answer by accident; it is written the way the cartridge
  *  writes it because the store is what the rest of the frame reads.
  */
-export function coinRead13CFBA(ram, portWord, ctx) {
+export function coinRead13CFBA(ram, coinPortWord, ctx) {
   const prev = ram.u16(COIN.prev);                           // $13CFC2 -- taken FIRST
-  ram.setU16(COIN.prev, u16(portWord));                      // $13CFC8 -- and only then overwritten
-  const now = u16(~portWord);                                // $13CFCE not.w D0 -- ACTIVE LOW
+  ram.setU16(COIN.prev, u16(coinPortWord));                  // $13CFC8 -- and only then overwritten
+  const now = u16(~coinPortWord);                            // $13CFCE not.w D0 -- ACTIVE LOW
   ram.setU16(COIN.raw, now);                                 // $13CFD0
   ram.setU16(COIN.edges, (prev & now & COIN.mask) >>> 0);    // $13CFD6 and.w / $13CFD8 andi.w #$E0
 
   let d1 = coinPending13CF86(ram);                           // $13CFE2 bsr $13CF86 -- CLOBBERS D1
   d1 |= ram.u16(COIN.edges);                                 // $13CFE4 or.w $803954,D1 -- read back
 
-  // $13CFEA btst #5 / $13D002 btst #0 / $13D02C btst #1 -- three arms over ONE word, so a coin edge
-  // and a pending flag are indistinguishable to them by design. Each arm calls $18B0D6, points A0 at
-  // a credit block, and runs $13CE22, the coinage converter that reads the DIP at $803808.
+  // $13CFEA btst #$5 / $13CFEE beq $13D002 -- AND THE THREE ARMS ARE NOT INDEPENDENT. Bit 5 set
+  // falls through to $13CFF0 and RETURNS at $13D000, so bits 0 and 1 are tested ONLY when bit 5 is
+  // clear. Written as three separate ifs it credits two slots on a frame where the cartridge
+  // credits one, and only when two switches happen to edge together.
   if ((d1 & (1 << COIN.bitCoin1)) !== 0) {                   // $13CFEA btst #$5,D1
-    ctx?.unportedLog?.note(COIN.arms.credit, `$13CFF0 jsr $18B0D6 then $13CFFC bsr $13CE22 with `
-      + `A0 = $${COIN.creditA.toString(16).toUpperCase()} -- coin slot 1. $13CE22 is the COINAGE `
-      + `CONVERTER: it reads the DIP at $803808, compares against $12 and $11, and walks a per-slot `
-      + `counter at ($2,A0) against $803956. That is D35's economy and it is measured, not written`);
+    ctx?.soundPost?.(COIN.arms.hook);                        // $13CFF0 jsr $18B0D6
+    coinage13CE22(ram, COIN.creditA);                        // $13CFF6 lea $803958 / $13CFFC bsr
+    return d1;                                               // $13D000 rts -- the rest is SKIPPED
   }
+
   if ((d1 & (1 << COIN.bitCoin2)) !== 0) {                   // $13D002 btst #$0,D1
-    ctx?.unportedLog?.note(COIN.arms.tail, `$13D008 jsr $18B0D6 then $13D014 bsr $13CE22 with `
-      + `A0 = $${COIN.creditA.toString(16).toUpperCase()}, then $13D018 tests the DIP $803808 `
-      + `against $12 and bumps $80394C`);
+    ctx?.soundPost?.(COIN.arms.hook);                        // $13D008 jsr $18B0D6
+    coinage13CE22(ram, COIN.creditA);                        // $13D00E lea $803958 / $13D014 bsr
+    // $13D018 -- the mechanical counter is NOT bumped on free play, so the DIP is read twice per
+    // coin: once inside the converter and once here.
+    if (ram.u8(COIN.dipCoinage) !== 0x12) {                  // $13D01E cmpi.b #$12 / beq
+      ram.setU8(COIN.counterA, (ram.u8(COIN.counterA) + 1) & 0xff);   // $13D026 addq.b #1
+    }
   }
+
   if ((d1 & (1 << COIN.bitService)) !== 0) {                 // $13D02C btst #$1,D1
-    ctx?.unportedLog?.note(COIN.arms.tail, `$13D032 jsr $18B0D6 with A0 = $${
-      COIN.creditB.toString(16).toUpperCase()} -- coin slot 2, and $13D03E's DIP test at $80380B `
-      + `picks whether it shares slot 1's credit block`);
+    ctx?.soundPost?.(COIN.arms.hook);                        // $13D032 jsr $18B0D6
+    // $13D03E -- slot 2 gets its OWN credit block only when $80380B is EXACTLY 1; otherwise both
+    // slots share slot 1's. The lea at $13D038 is done first and then undone at $13D04A.
+    const block = ram.u8(COIN.dipSlot2) === 0x01 ? COIN.creditB : COIN.creditA;
+    coinage13CE22(ram, block);                               // $13D050 bsr $13CE22
+    if (ram.u8(COIN.dipCoinage) !== 0x12) {                  // $13D05A cmpi.b #$12 / beq
+      ram.setU8(COIN.counterB, (ram.u8(COIN.counterB) + 1) & 0xff);   // $13D062 addq.b #1
+    }
   }
+
+  // $13D068 -- then the SERVICE half, on a SECOND hardware port $C08006, gated on $80394A being
+  // zero. It calls $13CC50 and branches on the $80380B DIP. Swept only to $13D08E; the coin and
+  // credit path above is complete without it.
+  ctx?.unportedLog?.note(COIN.service, `$13D068 lea $C08006,A0 -- the service/test half of the `
+    + `coin handler, on a second hardware port, gated on $80394A. Calls $13CC50, branches on `
+    + `$80380B. Not read past $13D08E`);
+
   return d1;
+}
+
+/** `$13CE22` -- THE COINAGE CONVERTER. It saves D0/D1 itself (`move.l D0,-(A7)` twice) and takes the
+ *  slot's two-byte block in A0: `(A0)` is that slot's COIN count and `($2,A0)` its CREDIT count.
+ *
+ *  FOUR BANDS OVER THE DIP AT `$803808`, and they are ranges, not an index:
+ *
+ *      $00..$08   one coin gives `$803957` credits          (a multiplier)
+ *      $09..$10   `$803956` coins are needed per credit     (a divisor, with a carry counter)
+ *      $11        bumps the COIN count only
+ *      $12        returns immediately -- free play
+ *
+ *  `$803956` and `$803957` are ADJACENT BYTES holding the two halves of the coinage, the same
+ *  arrangement as every counter/reload pair in this port.
+ *
+ *  THE `$11` BAND BUMPS `(A0)` AND NOT `($2,A0)`. It looks like the one-coin-one-credit case and it
+ *  is written like one, but the credit byte it touches is the COIN counter: `$13CE52`'s two compares
+ *  then send `$11` past both remaining bands to the exit. Transcribed as written.
+ *
+ *  EVERY WRITE TO EITHER COUNT IS CLAMPED AT NINE, and the entry test is `($2,A0) == 9` exactly, so
+ *  a block already at nine credits does nothing at all.
+ */
+export function coinage13CE22(ram, a0) {
+  if (ram.u8(a0 + 2) === 0x09) return;                       // $13CE26/$13CE2A -- already full
+  const dip = ram.u8(COIN.dipCoinage);                       // $13CE32 move.b $803808,D0
+  if (dip === 0x12) return;                                  // $13CE38 cmpi.b #$12 -- FREE PLAY
+
+  if (dip === 0x11) {                                        // $13CE40 cmpi.b #$11 / bne
+    ram.setU8(a0, Math.min(ram.u8(a0) + 1, 0x09));           // $13CE46 addq.b / $13CE48 ble / $13CE4E
+  }
+
+  if (dip >= 0x09 && dip <= 0x10) {                          // $13CE52 blt / $13CE58 bgt
+    ram.setU8(a0, (ram.u8(a0) + 1) & 0xff);                  // $13CE5E addq.b #1,(A0)
+    if (ram.u8(COIN.coinsPerCredit) === ram.u8(a0)) {        // $13CE60/$13CE66 cmp.b (A0),D1
+      ram.setU8(a0, 0);                                      // $13CE6A clr.b (A0)
+      ram.setU8(a0 + 2, Math.min(ram.u8(a0 + 2) + 1, 0x09)); // $13CE6C/$13CE70/$13CE78
+    }
+    return;                                                  // $13CE7E's blt/bgt both exit for $9..$10
+  }
+
+  if (dip <= 0x08) {                                         // $13CE7E blt / $13CE84 bgt
+    ram.setU8(a0 + 2,                                        // $13CE8A move.b $803957,D1
+      Math.min(ram.u8(a0 + 2) + ram.u8(COIN.creditsPerCoin), 0x09));   // $13CE90 add.b / $13CE94
+  }
 }
