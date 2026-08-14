@@ -2906,6 +2906,59 @@ SHOT_WINDOWS.extend([
     (0x223EF8, 0x0040, "W373: slot [9] record-state-0 palette, bank 15 through $24150A. Sixty-four "
                        "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
                        "slot [17]; this one is slot [9]'s own"),
+    # ---- W374: $25EDF8's data block, $25EB64..$25EDF7 ----------------------------------------
+    # 660 bytes, bounded BELOW by the rts at $25EB62 and ABOVE by the routine's first opcode at
+    # $25EDF8. The twelve windows below TILE that range exactly -- no gaps, no overlaps -- and every
+    # pointer in it resolves back inside the block. That tiling is CORROBORATION. The bounds
+    # themselves are stated by CODE, in three places:
+    #   * the cursor ($4,A6) is 0..2      -- cmpi.w #$2,D1 / ble in $25D402, so every cursor-indexed
+    #                                        table has exactly THREE entries
+    #   * the phase ($5C,A6) is 0, 4, 8   -- addq.w #$4 / cmpi.w #$C / clr.w at $25EE66..$25EE72,
+    #                                        so every phase-indexed table has exactly THREE
+    #   * the frame tables have EIGHT     -- moveq #$E,D2 / and.w $80390A,D2 / add.w D2,D2 yields
+    #                                        byte offsets 0,4,..,28 and nothing else
+    # NOTE the whole body of $25EDF8 is unreachable as shipped (both callers set ($1,A6) to 2 or 5
+    # and the body needs 4), so nothing here is read at runtime today. The windows are declared
+    # anyway: the data is real, the bounds are stated, and a future caller would need them.
+    (0x25EB64, 0x000C, "W374: $25EDF8's A3 OUTER table, side 0 -- three longs, one per animation "
+                       "phase. THREE because cmpi.w #$C,($5C,A6) at $25EE6A bounds the phase to "
+                       "0/4/8. Entries are $25EB70/$25EB7C/$25EB88, the side-0 inner tables"),
+    (0x25EB70, 0x0024, "W374: $25EDF8's three A3 INNER tables for side 0, $25EB70/$25EB7C/$25EB88, "
+                       "twelve bytes each. THREE entries each because the cursor ($4,A6) is bounded "
+                       "0..2 by cmpi.w #$2,D1 in $25D402. They are contiguous and the last ends "
+                       "exactly where side 1's outer table begins"),
+    (0x25EB94, 0x000C, "W374: $25EDF8's A3 OUTER table, side 1. Same three-phase bound as side 0's "
+                       "$25EB64. Entries are $25EBA0/$25EBAC/$25EBB8"),
+    (0x25EBA0, 0x0024, "W374: $25EDF8's three A3 INNER tables for side 1, $25EBA0/$25EBAC/$25EBB8. "
+                       "Same cursor bound of three as side 0's $25EB70"),
+    (0x25EBC4, 0x00B4, "W374: $25EDF8's EIGHTEEN A3 leaf records, ten bytes each -- D1.l packed "
+                       "coords, D3.w attr, then D2.l (phases 0 and 2) or A0.l a frame table (phase "
+                       "1). Eighteen = 2 sides * 3 phases * 3 cursor values, every one of those "
+                       "three bounds stated by code. The block ends exactly at $25EC78, its own "
+                       "first frame table"),
+    (0x25EC78, 0x0060, "W374: three of $25EDF8's frame tables, $25EC78/$25EC98/$25ECB8, EIGHT longs "
+                       "each. Eight because moveq #$E,D2 / and.w $80390A,D2 / add.w D2,D2 at "
+                       "$25EF12 yields byte offsets 0,4,..,28. All three hold ONE repeated pointer, "
+                       "so these are static frames held across the counter, not animations"),
+    (0x25ECD8, 0x0018, "W374: $25EDF8's two A2 POINTER tables, $25ECD8 (side 0) and $25ECE4 (side "
+                       "1), three longs each. THREE by the cursor bound cmpi.w #$2,D1 in $25D402. "
+                       "They point at the zero-terminated record lists below"),
+    (0x25ECF0, 0x0034, "W374: $25EDF8's three A2 record lists for side 0, $25ECF0/$25ECFE/$25ED0C. "
+                       "Ten-byte records (D1.l, D3.w, A0.l) terminated by a ZERO LONGWORD consumed "
+                       "as D1 -- $25EF2A move.l (A2)+,D1 / bne. The bound is the terminator, stated "
+                       "by the loop. The first two hold one record, the third holds TWO"),
+    (0x25ED24, 0x0034, "W374: $25EDF8's three A2 record lists for side 1, $25ED24/$25ED32/$25ED40. "
+                       "Same zero-longword terminator and the same one/one/two shape as side 0"),
+    (0x25ED58, 0x0080, "W374: four more of $25EDF8's frame tables, $25ED58/$25ED78/$25ED98/$25EDB8, "
+                       "EIGHT longs each by the same moveq #$E mask. Unlike $25EC78's three, these "
+                       "hold eight DISTINCT pointers, so they are real animations"),
+    (0x25EDD8, 0x0018, "W374: $25EDF8's two A1 ART tables, $25EDD8 (side 0) and $25EDE4 (side 1), "
+                       "three longs each, indexed by the cursor times four at $25EEFA. THREE by the "
+                       "same cmpi.w #$2,D1 bound. This is the art for the $80390C-gated second emit"),
+    (0x25EDF0, 0x0008, "W374: $25EDF8's two A0 COORDINATE pairs, $25EDF0 (side 0, $5200/$1A00) and "
+                       "$25EDF4 (side 1, $1E00/$1E00). TWO WORDS each, stated by the code reading "
+                       "(A0)+ then (A0) and nothing more. $25EDF4 is followed immediately by the "
+                       "routine's first opcode at $25EDF8, which closes the whole block"),
     (0x25CF60, 0x0004, "W373: $25D164's value table, indexed by ($3,A6) * 2. TWO words, and it is "
                        "bounded by a THIRD descriptor pair at $25CF64/$25CF72 -- same 14-byte shape "
                        "as $25D29A/$25D2A8, with the $23D16C/$23D186 and $23D17E/$23D18E readers"),

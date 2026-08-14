@@ -20,6 +20,8 @@
 // are in front of you.
 
 import { u16 } from './ram.js';
+import { RAM } from './machine.js';
+import { SCHED } from './scheduler.js';
 import { paletteSet241688, install24150A } from './palette.js';
 import { txString25A14C } from './background.js';
 import { readInput23D186 } from './tallyscreen.js';
@@ -246,7 +248,12 @@ function confirmAndDraw(ram, rom, ctx, a5, a6, d0, nextPhase, d7) {
   // bucket, so reordering them reorders the sprites. $25D278/$25D27E/$25D284/$25D28A on state 1's
   // tail and $25D4C8/$25D4CE/$25D4D4/$25D4DA on state 4's.
   ctx.unported?.note(HANDLER4.drawsAlways[0], '$25E824 -- ungated draw. Unread');
-  ctx.unported?.note(HANDLER4.drawsAlways[1], '$25EDF8 -- ungated draw. Unread');
+  // $25D27E / $25D4CE jsr $25EDF8. THE BODY NEVER RUNS: the `setU8(phaseAt, nextPhase)` near the
+  // top of this function has already put ($1,A6) at 2 (state 1's tail) or 5 (state 4's), and
+  // $25EE28 gates the whole body on 4. So this call is an immediate rts as shipped, on both paths.
+  // Wired faithfully anyway, and w374selectdraws.test.js pins the fact so a future change that
+  // makes the body live has to be deliberate.
+  draw25EDF8(ram, rom, ctx, a6, d7);
   draw25EF30(ram, rom, ctx, a6, d7);                         // $25D284 / $25D4D4 jsr $25EF30
   ctx.unported?.note(HANDLER4.drawsAlways[3], '$25F074 -- ungated draw. Unread');
 }
@@ -571,4 +578,199 @@ export function draw25EF30(ram, rom, ctx, a6, d7) {
   // BODY B. $25EFA8 tst.b (A1) / bne $25EFAE.
   if (ram.u8(a1) === 0) emitHalfA_25EF46(ram, rom, a6);       // $25EFAC bsr $25EF46, BACKWARD
   emitHalfB_25EFAE(ram, rom, a6);
+}
+
+export const DRAW_25EDF8 = Object.freeze({
+  addr: 0x25edf8, exit: 0x25ef2e, stub: 0x23dfb4,
+  // THE DEAD GATE. $25EE28 cmpi.b #$4,($1,A6) -- immediate word $0004 BEFORE displacement $0001.
+  gateAt: 0x01, gateValue: 0x04,
+  cursorAt: 0x04, movedAt: 0x28, timerAt: 0x2a, animAt: 0x2c, phaseAt: 0x5c,
+  timerReload: 0xb4,                         // $25EE3C / $25EE60 move.w #$B4,($2A,A6)
+  timerPeriod: 0xb5,                         // $B4 + 1 -- see the `bcc` note in the doc comment
+  phaseStep: 0x04, phaseWrap: 0x0c,          // $25EE66 addq.w #$4 / $25EE6A cmpi.w #$C
+  cursorMax: 0x02,                           // $25D402 cmpi.w #$2,D1 / ble -- the cursor is 0..2
+  frameCounter: RAM.frameCounter,            // $80390A, the MAIN-LOOP counter
+  mirror2: SCHED.mirror2,                    // $80390C -- gates emit 2 entirely
+  frameMask: 0x0e,                           // $25EEB2 / $25EF12 moveq #$E,D2 -> EIGHT frames
+  frameEntries: 8,
+  coordBias: 0xe600,                         // $25EEE6 / $25EEEE addi.w #$E600, i.e. -$1A00
+  attrEmit2: 0x1ad0,                         // $25EEFE move.w #$1AD0,D3
+  pal: 0x0012,                               // $25EED2 / $25EF02 / $25EF20 move.w #$12,D4 -- ALL THREE
+  // The in-routine jump table at $25EE86: DATA inside the routine, three bra.w, 12 bytes. It is
+  // indexed by BYTES, because ($5C,A6) is 0, 4 or 8 and each bra.w is 4 bytes wide.
+  jumpTable: 0x25ee86,
+  arms: Object.freeze([0x25ee86, 0x25ee8a, 0x25ee8e]),
+  armTargets: Object.freeze([0x25ee92, 0x25eea2, 0x25eec4]),
+  // The four lea'd tables, INDEXED BY `sideFromD7_25D4E4`. Entry 0 is the OVERRIDE set that D7 != 0
+  // takes ($25EE0C..$25EE18); entry 1 is the FALL-THROUGH set that D7 == 0 keeps ($25EDF8..$25EE04).
+  // Every displacement below was re-resolved from the extension word's own address.
+  tables: Object.freeze([
+    Object.freeze({ a0: 0x25edf0, a1: 0x25edd8, a2: 0x25ecd8, a3: 0x25eb64 }),   // side 0, D7 != 0
+    Object.freeze({ a0: 0x25edf4, a1: 0x25ede4, a2: 0x25ece4, a3: 0x25eb94 }),   // side 1, D7 == 0
+  ]),
+  // The 660-byte data block $25EB64..$25EDF7, bounded below by the `rts` at $25EB62 and above by
+  // this routine's first opcode. It TILES EXACTLY -- no gaps, no overlaps.
+  dataFrom: 0x25eb64, dataTo: 0x25edf7,
+});
+
+/** `$25EDF8` -- the third of the four ungated draws, `$25EDF8..$25EF2F`, and **AS SHIPPED IT IS AN
+ *  IMMEDIATE `rts`.**
+ *
+ *  **THE BODY IS UNREACHABLE.** `$25EE28 cmpi.b #$4,($1,A6) / bne $25EF2E` gates everything below it
+ *  on record state 4, and neither of the routine's two callers can arrive in state 4: both write
+ *  `($1,A6)` a handful of instructions earlier. `$25D24E move.b #$2,($1,A6)` precedes `$25D27E jsr
+ *  $25EDF8`, and `$25D49A move.b #$5,($1,A6)` precedes `$25D4CE jsr $25EDF8`. A scan of the whole
+ *  6 MB image for the longword `$0025EDF8` finds EXACTLY TWO operands, at `$25D280` and `$25D4D0`,
+ *  and both are those `jsr`. There is no third entry and no computed one.
+ *
+ *  Nobody knows why. The gate is ported faithfully and the full body is ported anyway, and the dead
+ *  gate is pinned by a test, so that a later change which makes the body live is a deliberate,
+ *  visible act rather than an accident. Do not "fix" it and do not force state 4.
+ *
+ *  **THE SIDE SELECT READS BACKWARDS UNTIL YOU CHECK THE MAPPING.** `$25EE0A beq.s $25EE1C` is taken
+ *  when `D7 == 0`, and it SKIPS the second block -- so `D7 == 0` KEEPS the fall-through set
+ *  `$25EDF4/$25EDE4/$25ECE4/$25EB94`. `sideFromD7_25D4E4` INVERTS D7, so that fall-through set is
+ *  SIDE 1 and the override set `$25EDF0/$25EDD8/$25ECD8/$25EB64` is SIDE 0.
+ *
+ *  **`($2A,A6)`'s PERIOD IS 181 DECREMENTS, NOT 180.** `$25EE5A subq.w #$1,($2A,A6)` then `$25EE5E
+ *  bcc.s` reloads on the BORROW, so the reload fires on the transition OUT of 0 -- after `$B4 + 1`
+ *  decrements. Reading it as a plain "reload at zero" is a one-frame animation drift that no static
+ *  check can see.
+ *
+ *  **A2 IS DEREFERENCED BEFORE THE GATE.** `$25EE24 movea.l (0,A2,D0.w),A2` turns the lea'd pointer
+ *  table into a record list, so A2 is a LONG POINTER by the time the tail's loop reads it, not art.
+ *
+ *  **THE JUMP AT `$25EE82` IS A BYTE-INDEXED TABLE.** `lea ($25EE86,PC),A4 / adda.w D1,A4 /
+ *  jmp (A4)` with `D1 = ($5C,A6)` in {0, 4, 8} lands on one of three `bra.w` sitting INSIDE the
+ *  routine. Arms 0 and 2 are byte-identical apart from arm 0's `bra.s`; arm 1 is the ONLY one whose
+ *  art comes from a FRAME TABLE, and the only one that touches A0 (which it saves and restores).
+ *
+ *  **`$80390C` GATES EMIT 2 ENTIRELY.** Inside it, `move.w (A0)+,D1` then `move.w (A0),D1` -- `(A0)+`
+ *  THEN `(A0)`, exactly two words, which is what bounds the A0 coordinate table at two.
+ *
+ *  **THE RECORD LOOP IS AWKWARD AND IS TRANSCRIBED AS-IS.** It is ENTERED at `$25EF0C`, one
+ *  instruction ABOVE the loop top at `$25EF0E`; the top re-reads D3 and A0 but NOT D1; and the
+ *  terminator is a ZERO LONGWORD consumed as D1 by `$25EF2A`. A rewritten `while` that reads all
+ *  three fields at the top either emits the terminator as a sprite or drops the first record.
+ *
+ *  D4 is `$12` at all three emit sites. Inherited: A6 and D7. A4 is clobbered by the computed jump,
+ *  but the caller saves it (`$25D4A4` / `$25D4E0`), so the save is not modelled. A5, D5, D6 unused.
+ */
+export function draw25EDF8(ram, rom, ctx, a6, d7) {
+  // $25EE08 tst.w D7 -- a WORD test, so mask, exactly as `sideFromD7_25D4E4` and `draw25EF30` do.
+  // $25EDF8..$25EE06 lea the fall-through set; $25EE0C..$25EE18 overrides it when D7 != 0.
+  const side = sideFromD7_25D4E4(d7);                        // D7 != 0 -> 0, D7 == 0 -> 1. INVERTS.
+  const t = DRAW_25EDF8.tables[side];
+  let a0 = t.a0;                     // the TWO-WORD coordinate pair, emit 2 only
+  const a1 = t.a1;                   // the emit-2 art table, three longs, by cursor
+  let a2 = t.a2;                     // a pointer table, three longs, by cursor
+  let a3 = t.a3;                     // the outer art table, three longs, by PHASE
+
+  // $25EE1C move.w ($4,A6),D0 / $25EE20 add.w D0,D0 / $25EE22 add.w D0,D0 -- cursor * 4. The cursor
+  // is bounded 0..2 by $25D402, so D0.w's sign extension in the indexed modes never bites.
+  let d0 = u16(u16(ram.u16(a6 + DRAW_25EDF8.cursorAt) * 2) * 2);
+  a2 = rom.u32(a2 + d0);                                     // $25EE24 movea.l (0,A2,D0.w),A2
+
+  // THE DEAD GATE. $25EE28 cmpi.b #$4,($1,A6) / $25EE2E bne.w $25EF2E -- straight to the rts.
+  if (ram.u8(a6 + DRAW_25EDF8.gateAt) !== DRAW_25EDF8.gateValue) return;
+
+  if (ram.u16(a6 + DRAW_25EDF8.movedAt) !== 0) {             // $25EE32 tst.w / $25EE36 beq.s $25EE48
+    ram.setU16(a6 + DRAW_25EDF8.movedAt, 0);                 // $25EE38 clr.w ($28,A6) -- CONSUMED
+    ram.setU16(a6 + DRAW_25EDF8.timerAt, DRAW_25EDF8.timerReload);   // $25EE3C move.w #$B4,($2A,A6)
+    ram.setU16(a6 + DRAW_25EDF8.phaseAt, DRAW_25EDF8.phaseStep);     // $25EE42 move.w #$4,($5C,A6)
+  }
+
+  // $25EE48..$25EE4E recomputes cursor * 4. REDUNDANT here -- nothing has touched D0 since $25EE22
+  // -- and kept anyway, because "redundant" is a claim about the two instructions in between.
+  d0 = u16(u16(ram.u16(a6 + DRAW_25EDF8.cursorAt) * 2) * 2);
+  let d1 = 0;                                                // $25EE50 move.w #$0,D1
+  let arm = 0;                                               // the beq at $25EE58 lands on arm 0
+  if (ram.u16(a6 + DRAW_25EDF8.animAt) !== 0) {              // $25EE54 tst.w / $25EE58 beq.s $25EE92
+    // $25EE5A subq.w #$1,($2A,A6) / $25EE5E bcc.s $25EE76 -- BRANCH ON NO BORROW, so the reload
+    // runs only on the 0 -> $FFFF transition. PERIOD $B4 + 1 = 181 DECREMENTS, not 180.
+    const was = ram.u16(a6 + DRAW_25EDF8.timerAt);
+    ram.setU16(a6 + DRAW_25EDF8.timerAt, u16(was - 1));
+    if (was === 0) {                                         // the borrow
+      ram.setU16(a6 + DRAW_25EDF8.timerAt, DRAW_25EDF8.timerReload);          // $25EE60
+      ram.setU16(a6 + DRAW_25EDF8.phaseAt,                                    // $25EE66 addq.w #$4
+        u16(ram.u16(a6 + DRAW_25EDF8.phaseAt) + DRAW_25EDF8.phaseStep));
+      // $25EE6A cmpi.w #$C,($5C,A6) / $25EE70 bne.s $25EE76 / $25EE72 clr.w -- 0 -> 4 -> 8 -> 0.
+      if (ram.u16(a6 + DRAW_25EDF8.phaseAt) === DRAW_25EDF8.phaseWrap) {
+        ram.setU16(a6 + DRAW_25EDF8.phaseAt, 0);
+      }
+    }
+    d1 = ram.u16(a6 + DRAW_25EDF8.phaseAt);                  // $25EE76 move.w ($5C,A6),D1
+    // $25EE7A lea ($25EE86,PC),A4 / $25EE7E nop / $25EE80 adda.w D1,A4 / $25EE82 jmp (A4). The
+    // landing site is a BYTE offset into the three-entry bra.w table, NOT an entry index.
+    const landing = DRAW_25EDF8.jumpTable + d1;
+    arm = DRAW_25EDF8.arms.indexOf(landing);
+    if (arm < 0) {
+      ctx.unported?.note(landing, `$${landing.toString(16).toUpperCase()} -- $25EE82 jmp (A4) with `
+        + `($5C,A6) = $${d1.toString(16).toUpperCase()}, which is not one of the three bra.w at `
+        + `$25EE86/$25EE8A/$25EE8E. The cartridge only ever produces 0, 4 or 8`);
+      return;
+    }
+  }
+  // $25EE84 nop -- padding between `jmp (A4)` and the table, unreachable.
+
+  // Arms 0 ($25EE92) and 2 ($25EEC4) are byte-identical apart from arm 0's `bra.s $25EED2`; arm 2
+  // falls through into the tail. Both dereference A3 twice: outer by PHASE, inner by CURSOR * 4.
+  a3 = rom.u32(a3 + d1);                                     // $25EE92/$25EEA2/$25EEC4 (0,A3,D1.w)
+  a3 = rom.u32(a3 + d0);                                     // $25EE96/$25EEA6/$25EEC8 (0,A3,D0.w)
+  const d1emit = rom.u32(a3);                                // move.l (A3)+,D1 -- packed coords
+  const d3 = rom.u16(a3 + 4);                                // move.w (A3)+,D3 -- attr
+  let d2;
+  if (arm === 1) {
+    // $25EEAA move.l A0,-(SP) ... $25EEC0 movea.l (SP)+,A0. A0 is BORROWED for the frame table and
+    // handed back, which is why emit 2 below still sees the lea'd coordinate pair.
+    const savedA0 = a0;
+    a0 = rom.u32(a3 + 6);                                    // $25EEB0 movea.l (A3)+,A0 -- FRAMES
+    d2 = rom.u32(a0 + frameIndex25EEB2(ram));                // $25EEB2..$25EEBC
+    a0 = savedA0;                                            // $25EEC0
+  } else {
+    d2 = rom.u32(a3 + 6);                                    // $25EE9E / $25EED0 move.l (A3)+,D2
+  }
+
+  // $25EED2 move.w #$12,D4 / $25EED6 jsr $23DFB4 -- EMIT 1.
+  enqueueRegistersThroughStub(ram, rom, DRAW_25EDF8.stub, d1emit, d2, d3, DRAW_25EDF8.pal);
+
+  if (ram.u16(DRAW_25EDF8.mirror2) !== 0) {                  // $25EEDC tst.w / $25EEE2 beq.s $25EF0C
+    // $25EEE4 move.w (A0)+,D1 / $25EEE6 addi.w #$E600 / $25EEEA swap D1 / $25EEEC move.w (A0),D1 --
+    // `(A0)+` THEN `(A0)`, so exactly TWO words are ever read and the coordinate table is two long.
+    const hi = u16(rom.u16(a0) + DRAW_25EDF8.coordBias);
+    a0 += 2;                                                 // the ONLY post-increment here
+    const lo = u16(rom.u16(a0) + DRAW_25EDF8.coordBias);     // $25EEEC (A0), NOT (A0)+ / $25EEEE
+    // $25EEF2..$25EEF8 recomputes cursor * 4. NOT redundant: $23DFB4 clobbers D0.
+    d0 = u16(u16(ram.u16(a6 + DRAW_25EDF8.cursorAt) * 2) * 2);
+    const art2 = rom.u32(a1 + d0);                           // $25EEFA move.l (0,A1,D0.w),D2
+    enqueueRegistersThroughStub(ram, rom, DRAW_25EDF8.stub, ((hi << 16) | lo) >>> 0,
+      art2, DRAW_25EDF8.attrEmit2, DRAW_25EDF8.pal);         // $25EF06 jsr $23DFB4 -- EMIT 2
+  }
+
+  // THE RECORD LOOP. $25EF0C is the ENTRY -- one instruction ABOVE the loop top at $25EF0E -- so D1
+  // is read once here and then again at the BOTTOM, while D3 and A0 are re-read every pass. The
+  // terminator is the ZERO LONGWORD that $25EF2A consumes as D1, and it is never emitted.
+  let rd1 = rom.u32(a2);                                     // $25EF0C move.l (A2)+,D1
+  a2 += 4;
+  for (;;) {                                                 // $25EF0E -- THE LOOP TOP
+    const rd3 = rom.u16(a2);                                 // $25EF0E move.w (A2)+,D3
+    a2 += 2;
+    const ra0 = rom.u32(a2);                                 // $25EF10 movea.l (A2)+,A0 -- FRAMES
+    a2 += 4;
+    const rd2 = rom.u32(ra0 + frameIndex25EEB2(ram));        // $25EF12..$25EF1C
+    // $25EF20 move.w #$12,D4 / $25EF24 jsr $23DFB4 -- EMIT 3..N.
+    enqueueRegistersThroughStub(ram, rom, DRAW_25EDF8.stub, rd1, rd2, rd3, DRAW_25EDF8.pal);
+    rd1 = rom.u32(a2);                                       // $25EF2A move.l (A2)+,D1
+    a2 += 4;
+    if (rd1 === 0) break;                                    // $25EF2C bne.s $25EF0E
+  }
+  // $25EF2E rts
+}
+
+/** `$25EEB2 moveq #$E,D2 / and.w $80390A,D2 / add.w D2,D2` -- and the same three at `$25EF12`.
+ *  The mask is `$E` and the doubling makes byte offsets 0, 4, ..., 28, so a frame table is EIGHT
+ *  entries and the index is `(counter & $E) * 2`. The `and.w` writes only D2's low word, and the
+ *  moveq zeroed the high word first, so no inherited garbage survives into the index. */
+function frameIndex25EEB2(ram) {
+  return u16(u16(DRAW_25EDF8.frameMask & ram.u16(DRAW_25EDF8.frameCounter)) * 2);
 }

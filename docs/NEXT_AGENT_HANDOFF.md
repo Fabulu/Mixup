@@ -21,26 +21,50 @@ reason. Worktree isolation is withdrawn as the port-contention fallback, so **se
 is the only concurrency control** -- and every shared draw lands in `src/objslot9.js`, so it is one port
 agent there regardless.
 
-### W374 STATE: SUITE 2741/2741 ZERO SKIPS, GATE EXIT 0
+### W374 STATE: SUITE 2751/2751 ZERO SKIPS, GATE EXIT 0, 510 ROM WINDOWS
 
-Up from 2730. **Two of the six remaining shared draws are PORTED, DRIVEN AND WIRED:**
+Up from 2730 at the start of the wave. **Three more shared draws are PORTED, DRIVEN AND WIRED:**
 
 * **`$25E6CE`** (`draw25E6CE`) -- the mirror pair, 70 bytes. Wired into `confirmAndDraw`'s bit-1 arm.
-* **`$25EF30`** (`draw25EF30`) -- the two mutually recursive halves, 228 bytes. Wired into the ungated
-  tail **in ROM order**, between `$25EDF8`'s note and `$25F074`'s. The order is load-bearing: all four
-  emit into the same bucket, so reordering them reorders the sprites.
+* **`$25EF30`** (`draw25EF30`) -- the two mutually recursive halves, 228 bytes.
+* **`$25EDF8`** (`draw25EDF8`) -- the portrait draw, 312 bytes, twelve ROM windows. Body dead, see below.
 
-Neither needed a ROM window: every sprite parameter in both is an immediate.
+The ungated tail is wired **in ROM order** (`$25E824` note, `$25EDF8`, `$25EF30`, `$25F074` note).
+**The order is load-bearing:** all four emit into the same bucket, so reordering them reorders the
+sprites on screen. `$25E6CE` is wired into the bit-1 arm.
+
+`$25E6CE` and `$25EF30` needed no ROM window: every sprite parameter in both is an immediate.
 
 `confirmAndDraw` now takes **`d7`** as a trailing argument, because `$25EF30` needs the side to pick
 which record it reads across to. Both call sites pass it.
 
-**FOUR SHARED DRAWS REMAIN**, plus the newly found eighth: `$25E29E`, `$25E824`, `$25EDF8`,
-`$25F074`, `$25E4D0`.
+**THREE OF THE ORIGINAL SEVEN REMAIN, PLUS THE NEWLY FOUND EIGHTH:** `$25E29E`, `$25E824`,
+`$25F074`, and `$25E4D0`. Four of the eight are now ported (`$25E220`, `$25E6CE`, `$25EF30`,
+`$25EDF8`).
 
-### `$25EDF8` IS FULLY DECODED AND ITS BODY IS UNREACHABLE AS SHIPPED
+**Recon on `$25E29E`, `$25E824` and `$25F074` was STARTED AND CANCELLED** when the owner asked for
+serial working. Nothing from those three runs was kept, so they start clean. What IS known about
+them, from the neighbours' recon and verified by hand:
 
-Decoded, reviewed and hand-verified, but **NOT yet ported.** The finding that matters:
+* **`$25E824` has NO state gate.** It opens `41FA FFAE / 43FA FFE0 / 3C2E 0036 / 4446` = two
+  `lea (d16,PC)` then `move.w ($36,A6),D6 / neg.w D6`. Its four tables are already resolved:
+  `$25E824 -> $25E7D4`, `$25E828 -> $25E80A`, `$25E836 -> $25E7B8`, `$25E83A -> $25E7F0`, two
+  side-selected pairs sitting in the gap BELOW it (`$25E7B8..$25E823`), not above.
+* **`$25E29E` ends with `jmp $23E2F2` at `$25E686`**, then a `nop` pad, then a 64-byte word table at
+  `$25E68E..$25E6CD` that `$25E29E` itself `lea`s TWICE (from `$25E51C` and `$25E5F6`). That table
+  is what bounds `$25E6CE` from below, so `$25E29E`'s true end is `$25E6CD`, not `$25E686`.
+* **`$25F074` uses `cmpi.b #$7,($1,A6) / bcs`**, an UNSIGNED `<` that selects a table SLICE rather
+  than returning, plus `adda.l #$18,A0` to skip 24 bytes when the state is `>= 7`. Its two tables
+  are `$25F074 -> $25F014` (D7 != 0) and `$25F080 -> $25F044` (D7 == 0, and that path also does
+  `neg.w D5`). Both are `$30` = 48 bytes, bounded by each other and by the code. **The second long
+  of table A's first pair (`$4F013000`) is NOT a plausible art pointer, so the pairing is not a
+  uniform `{D1, art}` array throughout.** Do not assume the layout.
+* **`$25E4D0` is completely unread.** One call site, `$25D814`, ungated, in the third copy only.
+
+### `$25EDF8` IS PORTED, AND ITS BODY IS UNREACHABLE AS SHIPPED
+
+`draw25EDF8` in `src/objslot9.js`, wired into the ungated tail in ROM order, with twelve ROM windows
+declared and ten driving tests. The finding that matters:
 
 **`$25EE28 cmpi.b #$4,($1,A6)` CAN NEVER BE TRUE AT ENTRY.** Its only two callers write `($1,A6)`
 immediately before calling: `$25D24E move.b #$2,($1,A6)` then `$25D27E jsr $25EDF8`, and
@@ -58,7 +82,8 @@ in a test so nobody later "fixes" it into life.
 **ITS DATA BLOCK TILES EXACTLY, WHICH IS THE BOUND EVIDENCE.** `$25EB64..$25EDF7` is 660 bytes of
 this routine's own data, bounded below by the `rts` at `$25EB62` and above by the routine's first
 opcode at `$25EDF8`. It decomposes into TWELVE structures that tile the range with **no gaps and no
-overlaps**, and every pointer in it resolves inside the block. Declare these twelve windows:
+overlaps**, and every pointer in it resolves inside the block. **These twelve windows are DECLARED**
+(510 windows total now, and none of them overlaps anything else in the set):
 
     $25EB64  12   A3 outer, side 0 -- 3 arms, bound STATED by cmpi.w #$C,($5C,A6) at $25EE6A
     $25EB70  36   A3 inner x3, side 0 -- 3 entries each, bound STATED by cmpi.w #$2,D1 in $25D402
