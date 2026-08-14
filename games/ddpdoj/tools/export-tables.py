@@ -2872,6 +2872,13 @@ SHOT_WINDOWS.extend([
                        "CALLEE's constant, not a guess about the block. $222838 is bank 2 and "
                        "already has a window from the $2911B0 menu -- the same block, reused "
                        "rather than re-declared"),
+    (0x291FD8, 0x000A, "W373: object-dispatch slot [15]'s resource record, handed to $246710 by "
+                       "the lea at $291F9A. Ten bytes, bounded above by the sequence table its own "
+                       "next lea points at"),
+    (0x291FE2, 0x01D8, "W373: slot [15]'s TIMED TEXT SEQUENCE -- FORTY-SEVEN 10-byte entries walked "
+                       "by $291DF4 with the cursor $81E11C, then the $FFFF terminator. Each entry is "
+                       "delay, X, MODE, then a long string pointer. SELF-BOUNDING: the terminator "
+                       "ends at $2921BA, which is entry [0]'s own string pointer"),
     (0x28898A, 0x0028, "W373: object-dispatch slot [13]'s TWO per-side descriptors, $28898A and "
                        "$28899E, chosen by ($7,A5). Twenty bytes each and the second starts exactly "
                        "where the first ends, so the pair bounds itself. Same family as slot [11]'s "

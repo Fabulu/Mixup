@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2680/2680 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2691/2691 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -118,6 +118,28 @@ It regenerates data the W129/W132 replay tests read, and doing it mid-run turned
 tests red. They passed in isolation and the clean re-run was green. **A red MUT-A/B/C is a race before it is
 a regression** -- re-run before diagnosing.
 
+### SLOT [15] IS PORTED (`src/objslot15.js`, 11 driving tests)
+
+Slot [7]'s OTHER fork arm, so `[7] -> [15] -> [14] -> [12]` is now written end to end. It is a TIMED TEXT
+SEQUENCE: 47 ten-byte entries at `$291FE2` scheduled against a frame counter, each spawning a pool entry
+that drifts down by `$81E120` per frame and retires past `$7800`.
+
+**IT SHARES `$81585C` WITH SLOT [7]'S POOL AT A DIFFERENT SHAPE** -- 50 entries of `$20` here against 200 of
+`$10` there, the same first half of one region. Both counts are the cartridge's own (`moveq #$31` and
+`moveq #$C7`, each with a `dbra`), so neither is a guess, but the two views ALIAS and neither may assume the
+other's layout.
+
+**`($6,A6)` PICKS THE WHOLE TEXT MODE, not just a font.** Zero is font `$2923DA`, attr `$210`, X advancing
+`$400` per character. Non-zero is font `$29255A`, attr `$208`, and the X advance is SKIPPED -- so the string
+reads DOWNWARD. A port that always advances X draws it as one horizontal line in the wrong font and every
+character still looks individually right.
+
+**The schedule word is a DELAY, not a time.** A spawn resets `$81E11E` to zero, so each entry counts from the
+previous one. And a `$FFFFFFFF` string pointer does not draw: it zeroes the SHARED drift, stopping every entry
+at once.
+
+Still noted inside it: nothing. `$28C186` goes through `ctx.soundPost` like every other post.
+
 ### SLOT [17] IS PORTED (`src/objslot17.js`, 11 driving tests)
 
 Reached from slot [7] when `$2911B0`'s menu answers 0. It walks TWO `$70`-byte records at `$812EA0` and per
@@ -179,7 +201,7 @@ but it is a real bound and it reorders the docket:
 | [12] | `$28F3AC` | `$009` | `$183C` | |
 | [ 8] | `$25A770` | `$00A` | `$235A` | |
 | [16] | `$256E7A` | `$01E` | `$38F6` | |
-| [15] | `$291F66` | `$01E` | last in the image | |
+| [15] | `$291F66` | `$01E` | last in the image | **PORTED W373** |
 
 **READ THE BOUND CORRECTLY.** Slot [18]'s DISPATCH ROUTINE is 406 bytes, bounded by slot [2] at `$2491C0`.
 Its CALLEES are not in that 406 and they are the bulk of D37 -- see below. The table bounds the routine, never
@@ -270,8 +292,7 @@ skeleton and the WRONG one for anything inside these routines.
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **Slot [15] `$291F66`** -- slot [7]'s OTHER fork arm, the sibling of the one just done.
-2. **Slot [9] `$25CACA`** (1006) -- the D34 candidate.
+1. **Slot [9] `$25CACA`** (1006) -- the D34 candidate, and slot [8] stages it.
 3. **Slot [18] `$24902A`** -- the ASIC27 self-test. Real work, but NOT on the path to the milestone.
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
