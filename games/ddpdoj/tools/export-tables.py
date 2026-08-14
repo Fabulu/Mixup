@@ -2816,6 +2816,11 @@ SHOT_WINDOWS.extend([
                        "terminator, ending exactly at its own [0] $291BAE. All three lists are "
                        "self-bounding the same way, and the three drivers differ in SIX BYTES "
                        "(three jsr displacement words), verified against the cartridge"),
+    (0x28898A, 0x0028, "W373: object-dispatch slot [13]'s TWO per-side descriptors, $28898A and "
+                       "$28899E, chosen by ($7,A5). Twenty bytes each and the second starts exactly "
+                       "where the first ends, so the pair bounds itself. Same family as slot [11]'s "
+                       "$25D952/$25D96C: two words, then three code pointers ($23C97A/$23D16C/"
+                       "$23D186 and the side-1 siblings), then a RAM block pointer"),
     (0x222838, 0x0040, "W373: the $2911B0 menu's palette block, handed to $24150A by $2911EC with "
                        "bank 3. Sixty-four bytes because that is what install24150A reads for every "
                        "bank -- the CALLEE's constant, not a guess about this block"),

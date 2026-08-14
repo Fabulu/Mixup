@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2658/2658 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2669/2669 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -97,6 +97,27 @@ input side only.
 **THE PORT TRAP, and it cost six unrelated test failures:** IRQ6's `portWord` is `$C08000`, the PLAYER port.
 `$13CFBA` does its OWN `lea $C08004,A0` and reads a different one. `irq6` now passes `ctx.coinPort ?? $FFFF`.
 
+### SLOT [13] IS PORTED (`src/objslot13.js`, 11 driving tests)
+
+Same descriptor family as slot [11]: two per-side records at `$28898A`/`$28899E`, three code pointers and a
+RAM block each. Five states, THREE of them below the dispatch address. **It chains** -- state 4 stages
+dispatch type `$E` (slot [14]), and slot [14] stages type `$C`. The front end is a chain of screens handing
+over through `$241182`, not a set of peers.
+
+`$288598` and `$2885C6` look like one routine and are not: the first SETS a selection and only on change, the
+second ADVANCES it (`1 -> 2`, anything else `-> 4`) and refuses an empty block. **`$2885C6`'s `$81B706 == 3`
+branch jumps PAST the `lea`, so a side-1 call writes SIDE 0's block.** Both `bsr` displacements from state 1
+differ by `$3E` and I took the wrong one first; the test now pins the difference.
+
+Still noted inside it: `$287B0E`/`$287B54` (the per-side opener pair), `$23C97A`/`$23C984` (the descriptor's
+first code pointer), `$27F8E6`, `$24107C`.
+
+### DO NOT RUN `export-tables.py` WHILE THE SUITE IS RUNNING
+
+It regenerates data the W129/W132 replay tests read, and doing it mid-run turned four mutation-detection
+tests red. They passed in isolation and the clean re-run was green. **A red MUT-A/B/C is a race before it is
+a regression** -- re-run before diagnosing.
+
 ### THE NINE UNTOUCHED SLOTS, MEASURED (W373)
 
 Every entry of `$240F62` with its record size and the distance to the next dispatch routine in address order.
@@ -106,7 +127,7 @@ but it is a real bound and it reorders the docket:
 | slot | routine | rec | bound | note |
 |---|---|---|---|---|
 | [18] | `$24902A` | `$00A` | `$196` = 406 | **ASIC27 SELF-TEST, not D37.** Smallest, lowest value. |
-| [13] | `$288A60` | `$00B` | `$20C` = 524 | **the smallest that is not a diagnostic** |
+| [13] | `$288A60` | `$00B` | `$20C` = 524 | **PORTED W373** |
 | [ 9] | `$25CACA` | `$00A` | `$3EE` = 1006 | D34 candidate |
 | [19] | `$28EE88` | `$01E` | `$524` | |
 | [17] | `$25CEB8` | `$00A` | `$CFC` | D33 candidate |
@@ -204,8 +225,7 @@ skeleton and the WRONG one for anything inside these routines.
 
 ### THE NEXT UNITS, CHEAPEST FIRST
 
-1. **Slot [13] `$288A60`** -- 524 bytes, the smallest untouched slot that is not a diagnostic.
-2. **Slot [9] `$25CACA`** (1006) and **slot [17] `$25CEB8`** -- the D34 and D33 candidates.
+1. **Slot [9] `$25CACA`** (1006) and **slot [17] `$25CEB8`** -- the D34 and D33 candidates.
 3. **Slot [18] `$24902A`** -- the ASIC27 self-test. Real work, but NOT on the path to the milestone.
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
