@@ -20,6 +20,8 @@
 // are in front of you.
 
 import { u16 } from './ram.js';
+import { paletteSet241688 } from './palette.js';
+import { txString25A14C } from './background.js';
 import { queueKill } from './objalloc.js';
 import {
   SCREEN17, phase3_25D306, phase5_25D39C, phase6_25D4F0, sideFromD7_25D4E4, DESC17,
@@ -69,6 +71,10 @@ export function objSlot9(ram, rom, a5, ctx) {
         case 0x06:
           phase6_25D4F0(ram, rom, ctx, a6, d7);              // $25CB1E
           break;
+        case 0x02:
+          phase2_25D164(ram, rom, ctx, a5, a6, d7,           // $25CB58
+            DESC17.base[sideFromD7_25D4E4(d7)]);
+          break;
         default:
           ctx.unported?.note(SCREEN9.handlers[i], `$${SCREEN9.handlers[i].toString(16).toUpperCase()
             } -- slot [9]'s handler for state ${phase} on ($1,A6). Unread`);
@@ -96,4 +102,41 @@ export function objSlot9(ram, rom, a5, ctx) {
 
   ctx.unported?.note(SCREEN9.after, '$25CB94 -- slot [9] continues past the record walk: it reads '
     + '$23D16C, tests bit $F, then checks record 1 and calls $23C98E. Unread');
+}
+
+export const HANDLER2 = Object.freeze({
+  addr: 0x25d164, table: 0x25cf60, entries: 2,
+  string: 0x25d1ca, nextPhase: 0x03, col: 0x08, shift: 9, bias: 8,
+});
+
+/** `$25D164` -- SLOT [9]'s STATE-2 HANDLER, and it CLOSES THE LOOP: it sets `($1,A6)` back to 3.
+ *
+ *  So a record cycles 3 -> 4 -> ... -> 2 -> 3 rather than running to an end. Slot [17], which has no
+ *  state-2 arm, cannot cycle -- another way the two screens differ while sharing the machine.
+ *
+ *  It is `$25D39C`'s shape with three things moved: the index is `($3,A6)` not `($5,A6)`, the table
+ *  is `$25CF60` (TWO entries, bounded by a descriptor at `$25CF64`), and it writes the THIRD slot
+ *  byte `($8,A5)`/`($9,A5)` rather than the first. The side select is the same `tst.w D7`.
+ *
+ *  Because it lands on `($8,A5)`/`($9,A5)` it completes the picture of the six per-side bytes: `$4`
+ *  and `$5` from `$25D39C`, `$6` and `$7` from `$25D306`, `$8` and `$9` from here. Three pairs, one
+ *  handler each, and every one of them selects by D7.
+ */
+export function phase2_25D164(ram, rom, ctx, a5, a6, d7, a4) {
+  const d0 = rom.u16(HANDLER2.table + u16(ram.u8(a6 + 0x03) << 1));   // $25D166/$25D16A/$25D170
+  ram.setU8(a5 + (u16(d7) !== 0 ? 0x08 : 0x09), d0 & 0xff);  // $25D174 tst.w D7 / $25D178 / $25D17E
+
+  // $25D182 -- D0 is rebuilt as the SIDE INDEX here, the same 0/1 $25D4E4 produces, and handed to
+  // $241688 together with ($2,A6) as D1.
+  const side = sideFromD7_25D4E4(d7);                        // $25D184 tst.w D7 / bne / $25D188
+  if (ctx.palette) {
+    paletteSet241688(ram, ctx.palette, rom, side, ram.u16(a6 + 0x02));   // $25D18A / $25D18E
+  } else {
+    ctx.unported?.note(0x241688, `$25D18E jsr $241688 with D0=${side} -- no PaletteState here`);
+  }
+
+  const src = a4 === undefined ? 0 : rom.u16(a4 + 0x0a);     // $25D194 move.w ($A,A4),D1
+  const row = u16((src >>> HANDLER2.shift) + HANDLER2.bias); // $25D198 lsr #6 / $25D19A lsr #3
+  txString25A14C(ctx.tx, rom, HANDLER2.col, row, 0, HANDLER2.string);   // $25D1AC jsr $25A14C
+  ram.setU8(a6 + SCREEN17.phaseAt, HANDLER2.nextPhase);      // $25D1B2 -- back to THREE
 }

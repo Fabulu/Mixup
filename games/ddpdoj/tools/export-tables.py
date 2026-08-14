@@ -2879,6 +2879,11 @@ SHOT_WINDOWS.extend([
                        "by $291DF4 with the cursor $81E11C, then the $FFFF terminator. Each entry is "
                        "delay, X, MODE, then a long string pointer. SELF-BOUNDING: the terminator "
                        "ends at $2921BA, which is entry [0]'s own string pointer"),
+    (0x25CF60, 0x0004, "W373: $25D164's value table, indexed by ($3,A6) * 2. TWO words, and it is "
+                       "bounded by a THIRD descriptor pair at $25CF64/$25CF72 -- same 14-byte shape "
+                       "as $25D29A/$25D2A8, with the $23D16C/$23D186 and $23D17E/$23D18E readers"),
+    (0x25CF64, 0x001C, "W373: the second per-side descriptor pair, $25CF64 and $25CF72, stride $E. "
+                       "Same layout as $25D29A: word, long raw reader, long edge reader, word, word"),
     (0x25D294, 0x0006, "W373: the $25D39C value table -- THREE words, $2/$4/$6, the values the "
                        "tally posts to $813088. Self-bounding after all: the third ends exactly "
                        "where $25D306's side-0 descriptor begins at $25D29A. An earlier W373 "

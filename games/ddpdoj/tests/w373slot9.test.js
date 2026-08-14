@@ -137,3 +137,40 @@ test('W373 state 2 is one instruction: a tail kill', { skip: SKIP }, async () =>
   objSlot9(ram, rom, a5, ctx);                               // must not throw
   assert.equal(rom.u32(0x25cac2), 0x4ef90024, '$25CAC2 opens JMP abs.l');
 });
+
+test('W373 $25D164 CLOSES THE LOOP -- it sets the record back to state 3', { skip: SKIP }, async () => {
+  const { phase2_25D164, HANDLER2, SCREEN17, ram, rom, ctx } = await fx();
+  const a5 = 0x812c00;
+  const a6 = SCREEN17.recs;
+  ram.setU8(a6 + SCREEN17.phaseAt, 2);
+  phase2_25D164(ram, rom, ctx, a5, a6, 1, undefined);
+  assert.equal(ram.u8(a6 + SCREEN17.phaseAt), HANDLER2.nextPhase,
+    'state 2 goes back to 3, so a record CYCLES rather than running to an end');
+});
+
+test('W373 $25D164 writes the THIRD pair, completing the six bytes', { skip: SKIP }, async () => {
+  const { phase2_25D164, HANDLER2, SCREEN17, ram, rom, ctx } = await fx();
+  const a5 = 0x812c00;
+  const a6 = SCREEN17.recs;
+  for (let i = 4; i <= 9; i++) ram.setU8(a5 + i, 0xff);
+  ram.setU8(a6 + 0x03, 1);                                   // index 1
+  phase2_25D164(ram, rom, ctx, a5, a6, 1, undefined);        // D7 = 1 -> side 0
+  assert.equal(ram.u8(a5 + 0x08), rom.u16(HANDLER2.table + 2) & 0xff, 'side 0 -> ($8,A5)');
+  assert.equal(ram.u8(a5 + 0x09), 0xff, 'side 1 untouched');
+
+  const b = await fx();
+  for (let i = 4; i <= 9; i++) b.ram.setU8(a5 + i, 0xff);
+  b.ram.setU8(a6 + 0x03, 1);
+  b.phase2_25D164(b.ram, b.rom, b.ctx, a5, a6, 0, undefined);   // ctx is the THIRD arg
+  assert.equal(b.ram.u8(a5 + 0x09), rom.u16(HANDLER2.table + 2) & 0xff, 'side 1 -> ($9,A5)');
+  assert.equal(b.ram.u8(a5 + 0x08), 0xff, 'side 0 untouched');
+});
+
+test('W373 the six per-side bytes are covered by THREE handlers, one pair each',
+  { skip: SKIP }, async () => {
+    // $25D39C -> $4/$5, $25D306 -> $6/$7, $25D164 -> $8/$9. Every one selects by D7, and together
+    // they account for all six bytes slot [17] state 0 fills with $FF.
+    const { SCREEN17 } = await fx();
+    assert.equal(SCREEN17.slotCount, 6);
+    assert.equal(SCREEN17.slots, 0x04, 'the six run $4..$9');
+  });

@@ -4,7 +4,7 @@ Updated: 2026-08-14 (W373)
 
 ## START HERE -- W373
 
-**Suite 2713/2713 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
+**Suite 2716/2716 zero skips, gate exit 0, tree clean, everything pushed. Live build `20260813164141`;
 publish due W375 (every FIFTH wave). If any wave added a ROM window, run
 `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE `node tools/publish.mjs --only ddpdoj`.**
 
@@ -129,6 +129,13 @@ the `cmpi.b` operand order visible; neither alone would have.
 
 Its `$25CB5E` tail is an **UNSIGNED** `cmpi.b #$7 / bcc`, so state 7 and above skip the `($31,A6)` counter
 entirely. The counter reloads to TWO and drives `($30,A6)` / `($2E,A6)`.
+
+**`$25D164`, its state-2 handler, IS PORTED and it CLOSES THE LOOP** -- it sets `($1,A6)` back to 3, so a
+record CYCLES rather than running to an end. Slot [17] has no state-2 arm and therefore cannot cycle.
+
+**THE SIX PER-SIDE BYTES ARE NOW FULLY ACCOUNTED FOR, one pair per handler:** `$25D39C` writes `$4`/`$5`,
+`$25D306` writes `$6`/`$7`, `$25D164` writes `$8`/`$9`. Every one of them selects the side by the caller's D7.
+That is four independent confirmations of the even/odd pairing.
 
 **STILL OPEN IN SLOT [9]:** state 0 at `$25C8A2` (~550 bytes, unread), the four handlers it does not share
 (`$25D402`, `$25D010`, `$25D1DA`, `$25D164`), and the block at `$25CB94` after the record walk, which reads
@@ -372,7 +379,7 @@ skeleton and the WRONG one for anything inside these routines.
 
 1. **`$25D560`** -- slot [17]'s last unported handler, and the biggest. Partially read below.
 2. **Slot [9] state 0** `$25C8A2` (~550 bytes) -- then slot [9] is complete too.
-3. **`$25D402` / `$25D010` / `$25D1DA` / `$25D164`** -- slot [9]'s four unshared handlers.
+3. **`$25D402` / `$25D010` / `$25D1DA`** -- slot [9]'s three remaining unshared handlers.
 3. **Slot [18] `$24902A`** -- the ASIC27 self-test. Real work, but NOT on the path to the milestone.
 4. **D33** main screen (candidate slot [17] `$25CEB8`), **D34** character select (candidate slot [9] `$25CACA`),
    **D35** life/coin (`$13CFBA`, EDGE detection over three words), **D37** endings (slot [18] `$24902A`, text
