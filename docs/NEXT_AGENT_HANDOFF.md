@@ -434,6 +434,19 @@ skeleton and the WRONG one for anything inside these routines.
 **A NOTE FOR EVERY DRAW SMOKE:** the sprite bucket counter is a BYTE OFFSET, not a sprite tally -- four emits
 moved it by 48. Assert a whole multiple, not a count.
 
+### `$25EF30` IS PART-READ: IT LOOKS AT THE **OTHER** RECORD
+
+* `lea (-$70,A6),A1` is the DEFAULT and `tst.w D7 / beq` keeps it; a non-zero D7 overrides to
+  `lea ($70,A6),A1`. Either way **A1 ends up on the OTHER record** -- record 0 looks at record 1 and vice
+  versa. It is the only draw so far that reads across.
+* `$25EF3C tst.w D7 / beq $25EFA8` -- **the whole first block runs for RECORD 0 ONLY.** Record 1 skips it.
+* `$25EF40 tst.b (A1) / bne` then `bsr $25EFAE`: if the other record is EMPTY it calls a subroutine that
+  draws the mirrored variant. `$25EFAE` is a real second body, not a tail.
+* `$25EF46 tst.w $813098 / bne $25EFA6` gates the rest, and `$25EFA6` is the `rts`.
+* Every emit is `move.l #imm,D1` then a chain of `swap D1` / `addi.w` / `add.w ($36,A6)` or `($38,A6)`, so
+  **both halves of D1 are adjusted** -- more involved than `$25E220`, where each sprite touched one half.
+  `$25EFDC ori.w #$60,D4` also modifies the palette mid-sequence.
+
 ### `$25EDF8` IS PART-READ: IT IS THE PORTRAIT DRAW, INDEXED BY THE CURSOR
 
 Start from this rather than the top:
