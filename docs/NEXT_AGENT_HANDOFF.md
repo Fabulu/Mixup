@@ -29,7 +29,16 @@ next and is part-analysed:
   `(d1, d2, d3, d4)` with d1 the position (see `boss2.js:1097`), and this loop sets D2/D3/D4 and A1 only. So D1
   comes from the CALLER -- check slot [7] before `$290946`'s call site. **Do not invent a D1**; that is the same
   trap as `$1A`'s D3 and the fan's registers, and both were only got right by refusing to guess.
-* `$2907E2` (240 bytes) is not read yet.
+* **THE `$81585C` POOL IS PORTED** (`src/objslot7pool.js`): `$2908E4` clear, `$290984` alloc, `$290946` draw.
+  200 entries, `$10` stride, entry is `long/long/word`, free is the first long being zero. Window `$290706+$40`
+  declared for its palette block.
+* **`$2909AA` IS READ** -- a SCRIPT WALKER. `A0` is the script base and `$81E0F8` a byte-offset CURSOR in RAM,
+  advanced by 2 per step. Negative words are COMMANDS (`$2909FC cmpi.w #$8000,D0`), not terminators.
+  `$81E0FA`/`$81E0FB` is a counter/reload pair -- the THIRD of that shape. Both carry exits, and it allocates
+  into the pool via `$290984`. **Not yet written**; the `$8000` command arm at `$2909FC` is unread.
+* **`$2907E2` (240 bytes) IS PART-READ.** Another indexed dispatch: `lea $290CE8,A0`, index by `$81E10C * 4`,
+  `movea.l (A0,D0.w),A0`, `jsr $246710` (ported), result to `$81E10E`. **`$290CE8` is a ROM table and needs a
+  window and a bound.**
 * **`$2908E4` (98 bytes) IS READ -- the RESET.** `lea $81585C,A3 / move.w #$C7,D7` clears the SAME 200-entry,
   `$10`-stride table `$290946` draws from (long, long, word per entry), then zeroes `$81E0F8`, `$81E0FA`,
   `$81E0FC` and the longs at `$81E0FE` and `$81E102`, then `lea $290706,A0 / move.w #$0,D0 / jsr $24150A` --
