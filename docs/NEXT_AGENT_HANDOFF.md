@@ -110,9 +110,34 @@ The identification is solid on three independent signals:
 **It also SAVES AND RESTORES D7** (`movem.l D7/A0,-(SP)` ... `4CDF 0180`), so calling it does not
 disturb a caller's side selector.
 
+**IT HAS TWO ENTRY POINTS.** Decoded in full:
+
+    $27F8F0  andi.w #$FF,D2 / lsl.w #2,D2 / bra.s $27F8FC
+    $27F8F8  moveq #0,D1 / moveq #0,D2            <-- the ALTERNATE entry, zeroes both
+    $27F8FC  movem.l D7/A0,-(SP)
+    $27F900  lea $8171BE,A0 / move.w #$45,D7      <-- 70 slots at stride $2C
+    $27F90A  tst.w (A0) / beq $27F920 / lea ($2C,A0),A0 / dbra D7,$27F90A
+    $27F918  movem.l (SP)+,D7/A0
+    $27F91C  ori.w #$1,SR                         <-- TRAP 13: carry SET is the FAILURE exit
+
+That is why `bulletdriver.js:207` passes `0, 0` and comments `$281D2E jsr $27F8F8` -- it uses the
+alternate entry, which zeroes D1/D2 for you. The `$27F8F0` entry masks D2 to a byte and scales it
+by 4 first. **A port that routes a `$27F8F8` caller through the `$27F8F0` entry silently applies
+`andi.w #$FF` and `lsl.w #2` to a layer byte that was meant to be zero.**
+
 **NOT WIRED YET, DELIBERATELY.** This is a behaviour change in shipped enemy-death code for two
-types, so it needs driving tests rather than a drive-by edit, and `carrierA6`'s meaning at these two
-call sites needs checking before the `a6` in scope is passed to it. **Treat it as its own unit.**
+types, so it needs driving tests rather than a drive-by edit. **Treat it as its own unit**, and
+settle these two things first:
+
+1. **`carrierA6`.** It is the record whose position the fill adds to: `bee.js:598` does
+   `ram.u32(carrierA6 + B.pos) + (offset & 0xffff)`. `handlers.js:3617` passes the `a6` in scope,
+   so `tail92`'s `a6` is probably right, but confirm it rather than assuming.
+2. **`offset & 0xffff` MAY BE WRONG FOR THESE TWO CALLERS.** Type `$92`'s D1 is a packed LONG
+   (`$FF00FE00`, with only the low word conditionally negated at `$279D56`), i.e. a two-axis offset.
+   The fill masks it to sixteen bits, which would DROP the high word. Every existing caller passes
+   either 0 or a small value, so the mask has never been exercised with a real long. **Check what
+   the cartridge's fill actually does with D1 before wiring these two**; if it adds the full long,
+   the mask is a latent defect that these callers would be the first to hit.
 
 The rest of the audit came back clean. Every other non-note reference among the 40 noted addresses
 is prose, a constant, or a dispatch-table entry -- trap 17 -- and the two `unportedLog` notes for
