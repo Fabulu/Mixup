@@ -61,3 +61,34 @@ test('W372 draw picks its emitter PER ENTRY from the word alloc wrote', { skip: 
   assert.equal(POOL7.stubZero, 0x23e020, 'zero -> $23E020');
   void seen; void rom;
 });
+
+test('W372 $2909AA is a SCRIPT WALKER with a cursor, a reload pair and TWO carry exits', { skip: SKIP }, () => {
+  const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
+  // A0 is the script base and $81E0F8 is the CURSOR, added in and advanced by 2 per step -- so the
+  // cursor is a byte offset kept in RAM, not a pointer, and it survives the call.
+  assert.equal(IMG.readUInt16BE(0x2909aa), 0x2448, '$2909AA movea.l A0,A2');
+  assert.equal(IMG.readUInt16BE(0x2909ac), 0xd4f9, '$2909AC adda.w abs.l,A2');
+  assert.equal(IMG.readUInt32BE(0x2909ae), 0x0081e0f8, '  ...$81E0F8, the cursor');
+  assert.equal(IMG.readUInt16BE(0x2909b2), 0x301a, '$2909B2 move.w (A2)+,D0 -- read a script word');
+  assert.equal(IMG.readUInt16BE(0x2909b4), 0x6b00, '$2909B4 bmi -- NEGATIVE words are commands');
+  assert.equal(IMG.readUInt16BE(0x2909fc), 0x0c40, '  ...and $2909FC cmpi.w tests which command');
+  assert.equal(IMG.readUInt16BE(0x2909fe), 0x8000, '  ...#$8000');
+  // $81E0FA / $81E0FB is a THIRD counter-and-reload pair of the shape $4C uses twice.
+  assert.equal(IMG.readUInt16BE(0x2909b8), 0x5339, '$2909B8 subq.b #1,abs.l');
+  assert.equal(IMG.readUInt32BE(0x2909ba), 0x0081e0fa, '  ...$81E0FA, the counter');
+  assert.equal(IMG.readUInt16BE(0x2909c2), 0x13f9, '$2909C2 move.b abs.l,abs.l');
+  assert.equal(IMG.readUInt32BE(0x2909c4), 0x0081e0fb, '  ...FROM $81E0FB, its RELOAD -- the adjacent byte');
+  assert.equal(0x81e0fb - 0x81e0fa, 1, 'adjacent, exactly like ($34)/($35) and ($6E)/($6F) in $4C');
+  // Two carry exits, the same SR trick $4C's $26FFE8 uses.
+  assert.equal(IMG.readUInt16BE(0x2909f0), 0x007c, '$2909F0 ori.w #imm,SR');
+  assert.equal(IMG.readUInt16BE(0x2909f2), 0x0001, '  ...carry SET -- still running');
+  assert.equal(IMG.readUInt16BE(0x2909f6), 0x027c, '$2909F6 andi.w #imm,SR');
+  assert.equal(IMG.readUInt16BE(0x2909f8), 0xfffe, '  ...carry CLEAR');
+  // And it ALLOCATES into the pool ported above, from a $2902C2 entry.
+  // NOTE the SHORT form: $61A2, so the displacement is the low BYTE, not a following word. Reading it
+  // as a word lands on the next instruction's bytes -- the same mistake the dependency scans kept
+  // making in the other direction.
+  assert.equal(IMG[0x2909e0], 0x61, '$2909E0 bsr');
+  assert.equal(IMG[0x2909e1], 0xa2, '  ...short form, displacement in the low byte');
+  assert.equal(0x2909e2 + (IMG[0x2909e1] - 0x100), 0x290984, '  ...to $290984 -- poolAlloc290984');
+});
