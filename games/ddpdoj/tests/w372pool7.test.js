@@ -92,3 +92,23 @@ test('W372 $2909AA is a SCRIPT WALKER with a cursor, a reload pair and TWO carry
   assert.equal(IMG[0x2909e1], 0xa2, '  ...short form, displacement in the low byte');
   assert.equal(0x2909e2 + (IMG[0x2909e1] - 0x100), 0x290984, '  ...to $290984 -- poolAlloc290984');
 });
+
+test('W372 the $290CE8 pointer table is bounded by its OWN FIRST ENTRY', { skip: SKIP }, () => {
+  const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
+  // Nine pointers, and pointer [0] is $290D0C -- which is exactly where the pointers stop. So the
+  // table bounds itself, with no adjacency argument and no guess needed.
+  const first = IMG.readUInt32BE(0x290ce8);
+  assert.equal(first, 0x290d0c, 'entry [0] points at $290D0C');
+  assert.equal((first - 0x290ce8) / 4, 9, '  ...which is exactly nine pointers along');
+  for (let i = 0; i < 9; i++) {
+    assert.equal(IMG.readUInt32BE(0x290ce8 + i * 4), 0x290d0c + i * 0x12,
+      `pointer ${i} -> its own 18-byte descriptor`);
+  }
+  // The descriptors are DATA, not code: one record shape carrying its own sequence number twice.
+  for (let i = 0; i < 9; i++) {
+    const at = 0x290d0c + i * 0x12;
+    assert.equal(IMG.readUInt16BE(at), 0x0002, `descriptor ${i} opens with the same word`);
+    assert.equal(IMG[at + 9], i, `  ...and carries index ${i} at +9`);
+    assert.equal(IMG[at + 17], i, `  ...and again at +17`);
+  }
+});

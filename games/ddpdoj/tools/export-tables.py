@@ -2779,6 +2779,11 @@ SHOT_WINDOWS.extend([
                        "is $26F8A6, the first handler it points at"),
     (0x26F55A, 0x00AC, "W342: type $4C's 6-word record prototype and ALL FIVE sub prototypes, "
                        "$26F55A..$26F605 -- overlapping its handler at $26F5F2 by TWENTY bytes"),
+    (0x290CE8, 0x00C6, "W372: slot [7]'s $2907E2 descriptor set -- NINE pointers at $290CE8 followed "
+                       "immediately by the nine 18-byte descriptors they point at, $290D0C..$290DAE. "
+                       "The pointer table is bounded by its OWN FIRST ENTRY: [0] is $290D0C, which is "
+                       "where the pointers stop. Each descriptor is identical bar an incrementing "
+                       "index at +9 and +17, so they are one record shape with a sequence number"),
     (0x290706, 0x0040, "W372: object-dispatch slot [7]'s pool palette block, handed to $24150A by "
                        "$2908E4 with bank 0. Sixty-four bytes because that is what install24150A "
                        "reads for every bank, so the size is the CALLEE's constant and not a guess "
