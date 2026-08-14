@@ -115,6 +115,75 @@ them, from the neighbours' recon and verified by hand:
   **Three emits per half, symmetric**, and each half `lea`s the same `$25E68E` table
   (`$25E51C` and `$25E5F6`).
 
+### TWO HOUSEKEEPING ITEMS FROM W374
+
+* **`src/spritequeue.js` HAS MIXED LINE ENDINGS AT HEAD**, and it did before this wave: 594 CRLF
+  lines and 14 bare-LF ones (around lines 269-300, from an earlier wave's editor). Every other
+  `src/*.js` is pure LF. W374's new block was written as LF and the pre-existing bytes were left
+  exactly as they were, so the diff is a clean 240 insertions and 0 deletions. **Normalising the
+  file is worth doing but belongs in a commit of its own** -- folding 594 line-ending changes into a
+  functional commit would bury the real change.
+* **A W374 port agent left a stray file OUTSIDE THE PROJECT**: `C:\Program Files\Git\sq.bak.js`,
+  48,609 bytes, created by its mutation harness when `$TMPDIR` came back empty in the Bash tool.
+  **It has NOT been deleted** -- rule 4 forbids deleting outside the project, so it is NAMED here
+  for the owner to action rather than removed. It is also a warning for future agent briefs:
+  **tell port agents to write temp files to an absolute scratchpad path**, because an empty
+  `$TMPDIR` in Git Bash resolves relative paths under `C:\Program Files\Git`.
+
+### `$25C8A2` IS FULLY DECODED AND REVIEWED. IT IS THE SEEDER, NOT A PEER OF `$25D010`.
+
+Not yet ported. Everything below was decoded and cross-checked; the headline findings:
+
+* **It sets its OWN state byte `($2,A5)` to 1 as its FIRST instruction**, so it is a one-shot
+  seeder: the dispatcher's `tst.b ($2,A5) / beq $25C8A2` never returns to it.
+* **It sets each RECORD's state `($1,A0)` to 0**, which routes them to `phase0_25D010`. **So it
+  FEEDS the already-ported `$25D010` rather than being its sibling.**
+* **It never touches A6 at all.** It reaches both `$812EA0` records through A0 as an absolute
+  pointer. Registers used are D0, A0 and the inherited A5 only, and there is no `movem`, so D0/A0
+  are clobbered.
+* **It is NOT per-side.** No `tst.w D7`, no side branch, no per-side coordinate pair. It seeds both
+  records identically; the only per-record difference is the live flag.
+* **`($4,A5)` is a TWO-BIT JOIN MASK**, built by `$25ACCA ori.b #$1` (side 0) and `$25ACE8 ori.b
+  #$2` (side 1) into `$812E5A`. 3 means both records go live, 2 record 1, 1 record 0. The routine
+  **reads it and then overwrites `($4,A5)` with `$FF`** a few instructions later.
+* **`$4..$9` are seeded to `$FF`** -- the "nothing selected" sentinel -- and they are exactly the
+  three per-side pairs already documented: `$4`/`$5` from `$25D39C`, `$6`/`$7` from `$25D306`,
+  `$8`/`$9` from `$25D164`.
+* **`($64,A0) = 1` OPENS `draw25E220`'s gate.** That is the very `gateWord` the ported draw tests.
+
+**TRAP 11 FIRES, AND IT IS THE TEXTBOOK INSTANCE.** `$25CA7C jsr $241182` then
+`$25CA82 move.w #$0,($4,A0)`. `$24150A` preserves A0, so A0 still holds `$224078` going in;
+`$241182` replaces it with the NEWLY STAGED record. **So that write lands on the new type-`$A`
+record, not on this object.** It is a WORD, so it clears `$4` and `$5` together. Six other sites in
+the image have the identical shape (`$23BFD0`, `$2490F8`, `$25A81E`, `$25A9CE`, `$25CE9C`,
+`$28F39E`), which is what makes it idiomatic rather than coincidence.
+
+**TRAP 12 FIRES TOO.** The staged type is **`$0A`**, and `$240F62 + $0A*8` gives handler `$260794`
+with priority `$001F` at `+4`. The call must pass the LOOKUP, never a constant.
+
+**The palette wall is 14 installs plus one `$2414BE` TEXT install** (bank 0 from `$222618`, **32**
+bytes, not 64). Slot [17]'s opener at `$25CDD4..$25CE8A` runs **the identical 14 in the identical
+order**. And the overlap with `phase0_25D010`'s eleven is a real ordering dependency, not a
+duplicate: five banks are common (24, 25, 26, 27, 28) but only banks 26 and 28 carry the same
+source, so `$25D010` later OVERWRITES three of the five.
+
+**Its four leaves are all clears plus one sound wrapper**, none returning a value (trap 13 checked,
+no `SR` manipulation anywhere):
+
+    $25F442  20 B  clears 72 bytes at $813028 (move.w #$23 + dbra = 36 words)
+    $25FA78  44 B  clears 10 bytes at $813070, then seeds $813070 = $3C. Full movem, so it is
+                   register-transparent
+    $25C57E  20 B  clears 30 bytes at $812E82..$812E9F, ending EXACTLY at the record base $812EA0
+    $28CA94  26 B  a SOUND WRAPPER of the existing family. Trap 7 applies to its `jsr (d16,PC)`:
+                   ext word at $28CAA6, so $28CAA6 - $A7C = $28C02A, which sound.js ALREADY has.
+                   It ports as one row: { id: 0x41, pan: 0xFF, ch: 0x14, entry: 0x28C02A }
+
+**The tail copies `$223FF8`'s 64 bytes a SECOND time**, into RAM at `$812F84`, via sixteen unrolled
+`move.l (A0)+,(A1)+`. `$223FF8` is therefore read twice by this routine -- once as bank 18's palette
+and once as data. **Do not fold them.**
+
+Correction to my own earlier note: the span is **544 bytes** (`$25CAC2 - $25C8A2 = $220`), not 543.
+
 ### THE CHEAPEST NEXT UNIT IS `$25C8A2`, NOT THE REMAINING DRAWS
 
 Mapped by hand. **`$25C8A2..$25CAC0`, 543 bytes, ONE `rts`**, then `jmp $241292` at `$25CAC2`.

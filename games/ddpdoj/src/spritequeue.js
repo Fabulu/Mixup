@@ -561,6 +561,246 @@ export function enqueueZoomedRequest(ram, rec, flags, bucket = 0) {
   return off;
 }
 
+// ------------------------------------------------------------------- W374
+// 2b. THE ZOOMING ENQUEUE IN **REGISTER** FORM -- `$23E2F2`.
+//
+// It is `$23D9E2` above with D1/D2/D3/D4 in place of the object record, plus
+// one extra input D6 (the flags longword the record form also takes).  So this
+// is to `enqueueZoomedRequest` exactly what `enqueueRegisters` is to
+// `enqueueRequest`, and it is the routine the comment on NAMED_BUCKETS.trail
+// already called "the ZOOMING register convention" for `$23FDE8`.
+//
+//   23e2f2: movem.l D4/D7/A0,-(SP)   bit 11 = D4, bit 8 = D7, bit 7 = A0
+//   23e2f6: lea ($23E78C,PC),A0      <-- NOT $23E54A.  See the trap below.
+//   23e2fa: nop
+//   23e2fc: move.l D6,D7 / lsr.l #8,D7 / neg.w D7 / addi.w #$80,D7
+//                                    D7.w = $80 - ((D6>>8) & $FFFF)
+//   23e306: swap D4                  park the caller's palette word in D4 HIGH
+//   23e308: move.w D3,D4 / andi.w #$1FF,D4    the HEIGHT field, out of D3
+//   23e30e: lsr.w #1,D4              a BYTE offset into a 4-byte table (trap)
+//   23e310: adda.w D4,A0 / movea.l (A0),A0 / jsr (A0)    D7.w *= height/8
+//   23e316: lea ($23E78C,PC),A0      the SAME table, resolved a second time
+//   23e31a: nop
+//   23e31c: swap D7                  the short-axis product to the high half
+//   23e31e: neg.w D7 / addi.w #$80,D7   D7.w = $80 - ((D6>>24) & $FF)
+//   23e324: move.w D3,D4 / andi.w #$3E00,D4   the WIDTH field, out of D3 again
+//   23e32a: lsr.w #6,D4              **lsr #6, not #1** -- so the ENTRY index
+//                                    is (D3 & $3E00) >> 8 = width*2 = px/8,
+//                                    the same reading $23DA16's `lsl.w #2` has
+//   23e32c: adda.w D4,A0 / movea.l (A0),A0 / jsr (A0)    D7.w *= width*2
+//   23e332: lea $80397C,A0 / adda.w $80AFC0,A0   <-- adda.W, not add.l
+//   23e33e: swap D1 / add.w D1,D7 / swap D1      long total  = longAdj + D1 hi
+//                                    (D1 is swapped TWICE, so it is unchanged;
+//                                    transcribed as written)
+//   23e344: swap D7 / add.w D1,D7    short total = shortAdj + D1 lo
+//   23e348: asr.l #6,D7 / andi.l #$07FF03FF,D7   ONE 32-bit shift, as always
+//   23e350: or.l D6,D7               the caller's flags, exactly like $23DA44
+//   23e352: move.l D7,(A0)+ / move.l D2,(A0)+ / move.w D3,(A0)+
+//                                    record word 4 is the SIZE WORD AGAIN --
+//                                    D3 is used THREE times, twice as an index
+//                                    and once verbatim
+//   23e358: swap D4 / move.w D4,(A0)+   the parked palette word back down
+//   23e35c: addi.w #$C,$80AFC0
+//   23e364: movem.l (SP)+,D4/D7/A0   bit 4 = D4, bit 7 = D7, bit 8 = A0
+//
+// IT PRESERVES EVERY REGISTER, D7 INCLUDED.  The two `movem` masks are the same
+// set in the two orders `-(SP)` and `(SP)+` want.  That is load-bearing: the
+// select-screen draws that call it ($25E29E, $25E4D0, $25F074) carry a side
+// selector in D7 across the call.  A port that returns a value in D7 -- or that
+// this function is expected to clobber -- would break them.  This one takes its
+// inputs by argument and touches nothing else, so preservation is free.
+//
+// THE TRAP: **ITS SCALE TABLE IS NOT `SCALE_TABLE`.**  $23E78C is 64 longwords
+// and self-bounding ($23E78C[0] = $23E88C = $23E78C + $100), and it agrees with
+// $23E54A entry for entry EXCEPT AT INDEX 56:
+//
+//   $23E54A[56] = $23E64A -- which IS $23E54A[0], the x1 out-of-range GUARD
+//   $23E78C[56] = $23E9CE -- `lsl.w #3,D7 / move.w D7,D4 / lsl.w #3,D7 /
+//                            sub.w D4,D7` = 64x - 8x = **x56**
+//
+// and index 56 is exactly what the blocked draws use: `$25E29E`'s third and
+// fourth calls pass `D3 = $3840`, whose width index is ($3840 & $3E00) >> 8 =
+// 56.  Aliasing the two tables would silently emit x1 where the cartridge emits
+// x56, at precisely the index that matters and nowhere else.  So this is a
+// SECOND constant, and `tests/w374zoomreg.test.js` pins the difference in both
+// directions.  (The two tables are also physically distinct routine blocks --
+// $23E64A.. multiplies D1 with D0 as scratch, $23E88C.. multiplies D7 with D4 --
+// which is why the register form needed its own copy at all.)
+//
+// INDEX 25 IS x21 IN BOTH TABLES.  That is the cartridge defect §2(a) already
+// names for $23E54A; $23E78C[25] = $23E972 decodes to x21 the same way.
+// Transcribed, not corrected.
+export const ZOOM_REG_TABLE_ROM = 0x23e78c;
+/** $23E78C, 64 longwords, decoded to their multipliers by executing each
+ *  routine symbolically (the same decoder that produced SCALE_TABLE).
+ *  Entry 25 IS 21 -- the shared defect.  Entry 56 IS 56 -- the difference. */
+export const ZOOM_REG_SCALE_TABLE = Object.freeze([
+  1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+  16, 17, 18, 19, 20, 21, 22, 23, 24, 21, 26, 27, 28, 29, 30, 31,
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1, 1, 56, 1, 1, 1, 1, 1, 1, 1,
+  //                      ^ index 56 -- $23E9CE, x56.  $23E54A has x1 here.
+]);
+
+// THE FAMILY IS THIRTEEN STUBS, all resolving both their `lea`s to $23E78C and
+// differing only in the (buffer, counter) pair at the end:
+//
+//   $23E2F2 (bucket 0)  $23E36A (1)  $23E3E2 (2)  $23E45A (3)  $23E4D2 (7)
+//   $23F090 (5)  $23F9A2 (21)  $23FD3E (10)  $23FDE8 (12)  $23FE92 (24)
+//   $24022E (26)  $24072A (11)  $24079E (27)
+//
+// TWO COSMETIC SUB-SHAPES, and both must resolve:
+//
+//   A. $23E2F2..$23E4D2, stride $78: a `4E71` after EACH `lea (d16,PC),A0`, and
+//      the `addi.w #$C,<ctr>` LAST, at +$6A.  `lea <buf>.l,A0` is at +$40.
+//   B. $23F090 onward: no `nop`s, and the `addi.w #$C,<ctr>` FIRST, at +$48,
+//      immediately after the `adda.w`.  `lea <buf>.l,A0` is at +$3C.
+//
+// The counter order is invisible to a port -- this function reads the counter
+// and then adds, which is both orders' answer -- but the OFFSET of the `lea` is
+// not, which is what W36 learned the hard way on `resolveEmitStub`.
+//
+// `resolveEmitStub` cannot be used here and MUST NOT BE LOOSENED so that it
+// could: it would see the `48E7` prologue, do `at += 4`, land on `41FA` rather
+// than `41F9` and throw.  That throw is correct -- these stubs do not open with
+// an absolute `lea`, and its message already points the reader at the zooming
+// family.
+/** @returns {{bucket:number, nops:boolean}} */
+export function resolveZoomRegisterStub(rom, stub) {
+  const bad = (why) => unreached(stub, `$${stub.toString(16).toUpperCase()} was `
+    + `called as a member of the ZOOMING REGISTER enqueue family $23E2F2/`
+    + `$23E36A/$23E3E2/$23E45A/$23E4D2/$23F090/$23F9A2/$23FD3E/$23FDE8/$23FE92/`
+    + `$24022E/$24072A/$24079E, and ${why}`);
+  // $23E2F2 movem.l D4/D7/A0,-(SP) -- the mask is part of the identity, because
+  // WHICH registers survive is the whole reason this form exists.
+  if (rom.u16(stub) !== 0x48e7 || rom.u16(stub + 2) !== 0x0980) {
+    bad(`it does not open \`movem.l D4/D7/A0,-(SP)\` (48E7 0980); it opens $${
+      rom.u16(stub).toString(16).toUpperCase()} $${
+      rom.u16(stub + 2).toString(16).toUpperCase()}`);
+  }
+  if (rom.u16(stub + 4) !== 0x41fa) {
+    bad(`+$4 is not \`lea (d16,PC),A0\` (it is $${
+      rom.u16(stub + 4).toString(16).toUpperCase()})`);
+  }
+  // 68000 PC-relative: the PC is the EXTENSION WORD's address, which for a
+  // `lea` at stub+4 is stub+6 -- not stub+2 as in the record form, where the
+  // `lea` is the first instruction.
+  const scale = i16(rom.u16(stub + 6)) + stub + 6;
+  if (scale !== ZOOM_REG_TABLE_ROM) {
+    bad(`its PC-relative \`lea\` resolves to $${scale.toString(16).toUpperCase()
+    } and not to the register form's scale table $${
+      ZOOM_REG_TABLE_ROM.toString(16).toUpperCase()}. $${
+      SCALE_TABLE_ROM.toString(16).toUpperCase()} is the RECORD form's table and `
+      + `the two differ at index 56 (x1 there, x56 here)`);
+  }
+  // Sub-shape A carries `4E71` after each `lea`; sub-shape B carries neither.
+  // Four bytes of `nop` is the whole difference in where the buffer `lea` sits.
+  const nops = rom.u16(stub + 8) === 0x4e71;
+  const at = stub + (nops ? 0x40 : 0x3c);
+  // the SECOND `lea (d16,PC),A0` -- $23E316 / $23F0B2 -- must reach the same
+  // table.  Checking it is what stops a routine that merely opens the same way.
+  const lea2 = nops ? stub + 0x24 : stub + 0x22;
+  if (rom.u16(lea2) !== 0x41fa
+      || i16(rom.u16(lea2 + 2)) + lea2 + 2 !== ZOOM_REG_TABLE_ROM) {
+    bad(`its SECOND \`lea (d16,PC),A0\` at $${lea2.toString(16).toUpperCase()} `
+      + `does not resolve to $${ZOOM_REG_TABLE_ROM.toString(16).toUpperCase()}`);
+  }
+  if (rom.u16(at) !== 0x41f9 || rom.u16(at + 6) !== 0xd0f9) {
+    bad(`+$${(at - stub).toString(16).toUpperCase()} is not \`lea <abs>.l,A0 / `
+      + `adda.w <abs>.l,A0\` (it is $${rom.u16(at).toString(16).toUpperCase()})`);
+  }
+  const buffer = rom.u32(at + 2), counter = rom.u32(at + 8);
+  const b = BUCKETS.find((x) => x.buffer === buffer && x.counter === counter);
+  if (!b) {
+    bad(`it feeds buffer $${buffer.toString(16).toUpperCase()} counted at $${
+      counter.toString(16).toUpperCase()}, which is not one of the thirty `
+      + 'buckets wave 11 enumerated');
+  }
+  return { bucket: b.i, nops };
+}
+
+/** Run a ZOOMING REGISTER enqueue read out of a ROM address (W374).
+ *
+ *  Deliberately NOT `enqueueRegistersThroughStub`: that one goes through
+ *  `resolveEmitStub`, which throws on this prologue, and the throw is right. */
+export function enqueueZoomedRegistersThroughStub(ram, rom, stub, d1, d2, d3, d4, d6) {
+  const r = resolveZoomRegisterStub(rom, stub);
+  return enqueueZoomedRegisters(ram, r.bucket, d1, d2, d3, d4, d6);
+}
+
+/**
+ * $23E2F2 -- the zooming enqueue, REGISTER convention.
+ *
+ * @param {import('./ram.js').Ram} ram
+ * @param {number} bucket which member of the thirteen; $23E2F2's own is 0
+ * @param {number} d1  packed coords, high word = LONG axis, low word = SHORT,
+ *                     1/64 px.  THE CALLER HAS ALREADY SUMMED position and
+ *                     offset -- that is the difference from the record form
+ * @param {number} d2  the art longword, straight into record words 2 and 3
+ * @param {number} d3  THE SIZE WORD: width bits 14..9, height bits 8..0.  Used
+ *                     three times -- both scale indices and record word 4
+ * @param {number} d4  the flip/colour word into record word 5.  Its HIGH half
+ *                     is don't-care: $23E306 parks it and $23E358 restores it
+ * @param {number} d6  THE FLAGS LONGWORD, high word = long axis (grow bit 15,
+ *                     zoom bits 14..11), low = short.  Drives the recentring
+ *                     AND is `or.l`-ed whole into the coords
+ * @returns {number} the byte offset within the bucket the record landed at
+ */
+export function enqueueZoomedRegisters(ram, bucket, d1, d2, d3, d4, d6) {
+  const flags = d6 >>> 0;
+  const sizeWord = d3 & 0xffff;                               // $23E308 move.w D3
+  const height = sizeWord & 0x1ff;                            // $23E30A andi.w
+  // $23E326 `andi.w #$3E00` then $23E32A `lsr.w #6` is a BYTE offset of
+  // (size & $3E00) >> 6, so the ENTRY index is that over four = width*2 = the
+  // long extent in pixels / 8.  Written as the byte the record form isolates
+  // with `moveq #$3E / and.b`, which is the same number.
+  const widthByte = (sizeWord >> 8) & 0xff;
+
+  // $23E30E `lsr.w #1` used as an offset into a 4-byte table -- the SAME defect
+  // $23D9FA has.  An entry boundary needs height ≡ 0 (mod 8); at height mod 4
+  // in {2,3} the `movea.l (A0),A0` is an ODD-address long read, i.e. a 68000
+  // address error.  Nothing invents an answer here.
+  if (height & 7) {
+    unreached(0x23e30e, `$23E2F2's first scale dispatch indexes $23E78C with `
+      + `height/2 = ${height >> 1} as a BYTE offset into a 4-byte table; height `
+      + `${height} is not a multiple of 8, so the 68000 reads a longword at an `
+      + `address the table does not start an entry at (and at height mod 4 in `
+      + `{2,3} an ODD address, i.e. an address error). The caller's D3 is $${
+        sizeWord.toString(16).toUpperCase()}; no producer in the corpus passes `
+      + `such a size, so nothing here is measured`);
+  }
+  const scaleShort = ZOOM_REG_SCALE_TABLE[(height >> 1) >> 2];   // $23E30E..$23E314
+  const scaleLong = ZOOM_REG_SCALE_TABLE[widthByte & 0x3e];      // $23E32A..$23E330
+
+  // $23E2FC..$23E304, then $23E31C..$23E322 on the swapped half.
+  const shortAdj = i16(u16(0x80 - u16(flags >>> 8)) * scaleShort);
+  const longAdj = i16(u16(0x80 - ((flags >>> 24) & 0xff)) * scaleLong);
+
+  const b = BUCKETS[bucket];
+  if (!b) throw new RangeError(`no sprite bucket ${bucket}`);
+  const off = u16(ram.u16(b.counter));                         // $23E338 adda.w
+  const at = b.buffer + off;
+  // $23E35C addi.w #$C -- sub-shape B bumps it BEFORE the record writes and
+  // sub-shape A after, which no port can observe: read, then add.
+  ram.setU16(b.counter, u16(off + RECORD_BYTES));
+
+  // $23E33E..$23E346.  D1 is swapped twice (net identity) so the long axis --
+  // its HIGH word -- reaches the low half for the first `add.w` and the short
+  // axis for the second.
+  const long = u16(longAdj + i16((d1 >>> 16) & 0xffff));
+  const short = u16(shortAdj + i16(d1 & 0xffff));
+  const packed = (((long << 16) | short) | 0) >> 6;            // $23E348 asr.l #6
+  const d7 = (((packed & ENQUEUE_MASK) | flags) >>> 0);        // $23E34A / $23E350
+
+  ram.setU16(at + 0, (d7 >>> 16) & 0xffff);                    // $23E352 move.l
+  ram.setU16(at + 2, d7 & 0xffff);
+  ram.setU16(at + 4, (d2 >>> 16) & 0xffff);                    // $23E354 move.l D2
+  ram.setU16(at + 6, d2 & 0xffff);
+  ram.setU16(at + 8, sizeWord);                                // $23E356 move.w D3
+  ram.setU16(at + 10, d4 & 0xffff);                            // $23E35A move.w D4
+  return off;
+}
+
 // ---------------------------------------------------------------------------
 // 3. THE BULK-WRITER CONVENTION.  `$28A098`->`$28A198` (bucket 20) and
 //    `$281D9A`->`$281DCE`/`$281DD6` (buckets 22 and 23) walk a source list,

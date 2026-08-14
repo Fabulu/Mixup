@@ -2906,6 +2906,31 @@ SHOT_WINDOWS.extend([
     (0x223EF8, 0x0040, "W373: slot [9] record-state-0 palette, bank 15 through $24150A. Sixty-four "
                        "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
                        "slot [17]; this one is slot [9]'s own"),
+    # ---- W374: the ZOOMING REGISTER emitter family, all thirteen stubs -----------------------
+    # $23E2F2 and its twelve siblings are the zooming enqueue in REGISTER form -- $23D9E2's twin,
+    # with D1/D2/D3/D4 in place of the object record plus D6, the zoom-flags longword. The port
+    # resolves each stub OUT OF THE CARTRIDGE (`resolveZoomRegisterStub`), reading the $48E7 $0980
+    # prologue, the PC-relative lea that must resolve to $23E78C, and the $41F9/$D0F9 buffer and
+    # counter pair -- so the bodies must be readable, and none of them was in any window.
+    # Every extent below was measured to the routine's OWN `rts`, and every one opens $48E7 $0980.
+    # The scale table itself, $23E78C + $100, is ALREADY declared by W96.
+    (0x23E2F2, 0x0258, "W374: the five stride-$78 members of the zooming-REGISTER emitter family -- "
+                       "$23E2F2 (bucket 0), $23E36A (1), $23E3E2 (2), $23E45A (3) and $23E4D2 (7). "
+                       "120 bytes each, measured to each one's own rts, and they are CONTIGUOUS, so "
+                       "5 * 120 = $258. The upper bound is stated TWICE: it is where the fifth stub's "
+                       "rts falls AND it is exactly $23E54A, SCALE_TABLE_ROM, the next structure"),
+    (0x23F090, 0x0074, "W374: zooming-REGISTER emitter, bucket 5. 116 bytes to its own rts. This is "
+                       "the second sub-shape -- no $4E71 after either lea, and the counter bump comes "
+                       "FIRST rather than last"),
+    (0x23F9A2, 0x0074, "W374: zooming-REGISTER emitter, bucket 21. 116 bytes to its own rts"),
+    (0x23FD3E, 0x0074, "W374: zooming-REGISTER emitter, bucket 10. 116 bytes to its own rts"),
+    (0x23FDE8, 0x0074, "W374: zooming-REGISTER emitter, bucket 12. 116 bytes to its own rts. This is "
+                       "the stub spritequeue.js already called 'the ZOOMING register convention' "
+                       "without knowing the routine behind it"),
+    (0x23FE92, 0x0074, "W374: zooming-REGISTER emitter, bucket 24. 116 bytes to its own rts"),
+    (0x24022E, 0x0074, "W374: zooming-REGISTER emitter, bucket 26. 116 bytes to its own rts"),
+    (0x24072A, 0x0074, "W374: zooming-REGISTER emitter, bucket 11. 116 bytes to its own rts"),
+    (0x24079E, 0x0074, "W374: zooming-REGISTER emitter, bucket 27. 116 bytes to its own rts"),
     # ---- W374: $25EDF8's data block, $25EB64..$25EDF7 ----------------------------------------
     # 660 bytes, bounded BELOW by the rts at $25EB62 and ABOVE by the routine's first opcode at
     # $25EDF8. The twelve windows below TILE that range exactly -- no gaps, no overlaps -- and every
