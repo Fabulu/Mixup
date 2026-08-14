@@ -261,3 +261,70 @@ test('W373 the shared draws run ONCE across both records', { skip: SKIP }, async
   assert.equal(notes.filter((n) => HANDLER4.drawsA.includes(n)).length, HANDLER4.drawsA.length,
     'clearing the guard re-arms them for the next frame');
 });
+
+test('W373 $25D1DA is a SECOND cursor: two options, no exclusion, conditional sound',
+  { skip: SKIP }, async () => {
+    const P1EDGE = 0x803972;
+    const a5 = 0x812c00;
+
+    // Two options, and they wrap. There is no (A3) compare at all, so the other side is irrelevant.
+    const fwd = await fx();
+    const a6 = fwd.SCREEN17.recs;
+    fwd.ram.setU8(a5 + 0x07, 1);                             // other side on 1 -- must NOT matter
+    fwd.ram.setU16(a6 + fwd.HANDLER1.at, 1);
+    fwd.ram.setU16(P1EDGE, 1 << fwd.HANDLER4.bitNext);
+    fwd.phase1_25D1DA(fwd.ram, fwd.rom, fwd.ctx, a5, a6, 1);
+    assert.equal(fwd.ram.u16(a6 + fwd.HANDLER1.at), 0, '1 wraps forward to 0, not to 2');
+
+    const back = await fx();
+    back.ram.setU16(a6 + back.HANDLER1.at, 0);
+    back.ram.setU16(P1EDGE, 1 << back.HANDLER4.bitPrev);
+    back.phase1_25D1DA(back.ram, back.rom, back.ctx, a5, a6, 1);
+    assert.equal(back.ram.u16(a6 + back.HANDLER1.at), 1, '0 wraps back to 1');
+  });
+
+test('W373 $25D1DA posts its move sound only on a real CHANGE', { skip: SKIP }, async () => {
+  const P1EDGE = 0x803972;
+  const a5 = 0x812c00;
+  const f = await fx();
+  const a6 = f.SCREEN17.recs;
+  const sounds = [];
+  f.ctx.soundPost = (x) => sounds.push(x);
+  f.ram.setU16(a6 + f.HANDLER1.at, 0);
+  f.ram.setU16(P1EDGE, 1 << f.HANDLER4.bitNext);
+  f.phase1_25D1DA(f.ram, f.rom, f.ctx, a5, a6, 1);
+  assert.ok(sounds.includes(f.HANDLER4.moveSound), '0 -> 1 changed, so it sounded');
+
+  // Pressing BOTH directions on one frame returns to where it started, and state 4 would still
+  // have sounded twice. This one saves the value and compares, so the second step is silent.
+  const g = await fx();
+  const s2 = [];
+  g.ctx.soundPost = (x) => s2.push(x);
+  g.ram.setU16(a6 + g.HANDLER1.at, 0);
+  g.ram.setU16(P1EDGE, (1 << g.HANDLER4.bitPrev) | (1 << g.HANDLER4.bitNext));
+  g.phase1_25D1DA(g.ram, g.rom, g.ctx, a5, a6, 1);
+  assert.equal(s2.filter((x) => x === g.HANDLER4.moveSound).length, 2,
+    'both steps changed the value, so both sounded');
+});
+
+test('W373 state 1 and state 4 share one confirm-and-draw tail', { skip: SKIP }, async () => {
+  const P1EDGE = 0x803972;
+  const a5 = 0x812c00;
+  const one = await fx();
+  const a6 = one.SCREEN17.recs;
+  one.ram.setU8(a5 + 0x07, 0xff);
+  one.ram.setU8(a6 + one.SCREEN17.phaseAt, 1);
+  one.ram.setU16(P1EDGE, 0x10);
+  one.phase1_25D1DA(one.ram, one.rom, one.ctx, a5, a6, 1);
+  assert.equal(one.ram.u8(a6 + one.SCREEN17.phaseAt), one.HANDLER1.nextPhase,
+    'state 1 confirms to 2');
+
+  const four = await fx();
+  four.ram.setU8(a5 + 0x07, 0xff);
+  four.ram.setU8(a6 + four.SCREEN17.phaseAt, 4);
+  four.ram.setU16(P1EDGE, 0x10);
+  four.phase4_25D402(four.ram, four.rom, four.ctx, a5, a6, 1);
+  assert.equal(four.ram.u8(a6 + four.SCREEN17.phaseAt), four.HANDLER4.nextPhase,
+    'and state 4 confirms to 5 -- the same tail, a different next state');
+  assert.notEqual(one.HANDLER1.nextPhase, four.HANDLER4.nextPhase);
+});
