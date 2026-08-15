@@ -659,12 +659,13 @@ exactly how a side-swap defect ships looking plausible.
   **FOUR NEW ROM WINDOWS**, bounds from the displacements (tiling only as corroboration):
   `$25E7B8 + $1C`, `$25E7D4 + $1C`, `$25E7F0 + $1A`, `$25E80A + $1A`.
 
-  **AND ONE EXPORT-SET CHANGE, NOT A WINDOW.** `$25EB2E` calls `$241812` with speed levels
-  `$60, $30, $18, $0C, $06, $03, $01, $00`. `export-tables.py`'s `speed_index_set()` yields
-  `range(32)` plus a few extras, so **`$60` (96) and `$30` (48) are OUTSIDE it** and
-  `MoveTables.quad()` would take its `unreached()` throw on the first select-screen frame. Both
-  pointers resolve correctly (`$200920[96] = $20D020`, `$200920[48] = $206EA0`), so only the JSON
-  `speed.quads` key set needs the two entries.
+  **A CLAIMED EXPORT-SET GAP THAT IS NOT REAL -- CHECKED BEFORE ACTING.** The recon reported that
+  `$25EB2E`'s speed levels `$60` and `$30` fall outside `export-tables.py`'s exported index set and
+  would make `MoveTables.quad()` throw on the first select-screen frame. **They do not.** The
+  generated `speed.quads` carries **162 indices with a maximum of 254**, and every level in the
+  chain (`$60, $30, $18, $0C, $06, $03, $01, $00`) is present. **No export-set change is needed.**
+  The recon reasoned from `speed_index_set()`'s `range(32)` without checking what the file actually
+  contains -- the same shape of error as reasoning about reachability without resolving the branch.
 
   **`($2C,A6)` IS A CROSS-ROUTINE PRODUCER AND THE PORT HAS NO PRODUCER FOR IT TODAY.** `$25E824`
   is its ONLY writer and `$25EDF8` and `$25F074` are its ONLY readers. It means "the selected item
