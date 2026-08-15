@@ -33,6 +33,48 @@ So the living DaiOuJou docs are exactly three: **`DOCKET.md`, `ORCHESTRATOR_BRIE
 file.** `D12`'s claim that the reference docs "predate stages 3 and 4" was false and is corrected in
 place.
 
+### SLOT [8] `$25A770` IS THE WHOLE BOOT GATE, AND IT IS FULLY DECODED
+
+**3,192 bytes, `$25A764..$25B3DB`** -- not the 188 I measured, because **its arms live ABOVE the
+entry**, the opposite of `objSlot9`'s shape. Fifteen `bra.w` arms behind a `jmp ($4,PC,D0.w)`.
+
+**THE BOOT CHAIN, END TO END:**
+
+    $23B7C0 (cold) / $23B7E0 (warm) -> jmp $23BEEA
+    $23BEEA's LAST ACT: move.w #$8,D0 / jsr $241182 / move.w #$D,($4,A0)
+      -> slot [8] at STATE 13 is the FIRST object the machine creates after reset
+    13 warning -> 2 high score -> 12 -> 9 -> 1 demo -> 5 -> teardown -> restage at 2
+    coin (any state but 3/13/14) -> teardown -> restage at STATE 3, the CREDIT screen
+    START -> $25ACAC consumes a credit, sets the join mask -> STATE 14
+    14: $24107C, then stage type 9 with ($812E5A).b -> objSlot9, WHICH IS PORTED
+
+**So nothing stands between reset and the ported player-select except `$23BEEA` and `$24107C`.**
+
+* **ARM 2 IS ALREADY PORTED** -- `hiscoreScreen25B412` in `hiscorescreen.js` is arm 2's entire
+  per-frame body, carry included. A slot [8] port gets state 2 for free by importing it and writing
+  only the 52-byte `$25B3DC` init.
+* **`$24107C` IS NAMED ONLY, NOT IMPLEMENTED.** `machine.js:216` carries the address and
+  `objslot13.js:211` notes it. It is the object-table init -- 62 bytes clearing four globals then 20
+  slots of stride `$50` from `$80E240` -- and it is the teardown slot [8] calls three times.
+* **THE DOCKET'S CHAIN MAP HAS A WRONG EDGE.** `[19] -> [8]` is the heuristic's guess. An exhaustive
+  image search for every type-8 stager (`303C 0008` within 8 bytes of `241182`) finds five sites:
+  `$23BFCC` (reset, state $D), **`$2490F4` inside slot [18]** (state $D -- edge `[18] -> [8]`
+  CONFIRMED), **`$28F39A` inside slot [12]** (state 2 -- **the real edge is `[12] -> [8]`**), and
+  slot [8]'s own two.
+* **`$812E56` IS THE STATE, NOT `($2,A5)`.** `($2,A5)` is a one-bit constructed flag and `($3,A5)`
+  is the per-arm inited flag. The state is a WORD in main RAM shared by every slot-8 instance, with
+  exactly one writer, `$25A764`.
+* **`$25A86C jmp ($4,PC,D0.w)` HAS NO BOUND** -- no `cmpi`, no mask. Fifteen entries is stated only
+  by where arm 0's code begins. Safety comes from the writer census: seven constants, all in `0..$E`.
+  **Do not invent a clamp; record the census.**
+* **`ctx.slotTable` IS MISSING FROM `Game#ctx()`** and arm 0 calls `$23C668` UNCONDITIONALLY. Both
+  existing callers guard it. **This is a NEW exposure, not the `tx`/`videoRegs` one.**
+
+**A GREP HAZARD THAT WILL WASTE SOMEONE'S DAY:** there is a **SECOND BUILD of this entire routine at
+`$159BBC`**, with its own `setState` twin and its own dispatch table at `$1412D4`. The two are
+separate assemblies, not a mirror. **The live copy is `$25A770`** -- that is what `$240F62[8]` holds.
+Anyone grepping `812E56` or `PRESS 1P OR 2P START` hits the dead twin first.
+
 ### D41 ANSWERED: **COIN PLUS START IS NOT ENOUGH.** THREE THINGS BLOCK GAMEPLAY
 
 The recon traced it end to end. Wiring a coin key is correct and necessary and **will change nothing
