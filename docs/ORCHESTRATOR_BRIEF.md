@@ -169,9 +169,34 @@ Paste section 7 into every recon brief.
 
 ---
 
-## 5. CURRENT STATE (end of W374; W375 in progress)
+## 5. CURRENT STATE (W375 landed and published)
 
-**Suite 2875/2875, zero skips. Gate exit 0. 531 ROM windows.** W373 ended at 2730 and 498.
+**Suite 3023/3023, zero skips. Gate exit 0. 536 ROM windows. Dispatch 16 of 20.** W373 ended at
+2730 tests and 498 windows; W374 at 2875 and 531.
+
+**PUBLISHED: build `20260815041100`** (`export-web.mjs` BEFORE `publish.mjs`, per the standing rule
+-- this wave added windows and skipping the export serves stale assets).
+
+**THE HEADLINE: A COLD BOOT NOW REACHES A DRAWING SCREEN THROUGH THE CARTRIDGE'S OWN PATH.**
+`Game#boot()` exists (it did not, in any form). From `new Game(new Uint8Array(0x20000), tables,
+{palCatchUp: false})`, `boot()` then `step()`: slot [8] appears as type `$8008` at state `$D` on
+frame 1, 300 warning frames, `$D -> 2` at frame 302, then 101 terminated display-list entries. The
+positive control is the load-bearing part -- removing ONLY `jsr $28841E` throws `Unreached` at
+`$25B602` with `style value 0`.
+
+**D41 IS ANSWERED: coin plus start was NOT sufficient.** Three blockers, all cleared: no boot path,
+slot [8] `$25A770` unported, and the `$13CEC8` IRQ4 coin path unmodelled. Coin is bound on the page
+(`Digit5`/`Digit6`/`Digit9`/`F2`), and the `$C08000` player word and `$C08004` coin word stay
+separate all the way to the browser.
+
+**STILL BLANK AND STALLED, none of it throwing:** `$259FF8` (warning screen draws nothing),
+`$23CFDE` (credit line, so a coin is invisible), the `$25AD02`/`$25AFD8` blink pair, and the four
+screen sub-machines that keep arms 1, 5, 9 and 12 holding. The attract loop terminates at state 12
+rather than cycling.
+
+**STATED HOLE:** `Game` has a second per-frame input now (`this.coinPort`) and `.replay` v1 cannot
+carry it, so a recording made while coining up diverges on credit count. Every existing fixture is
+unaffected. The fix is a v2 encoding with a sibling `coinin` block, not a change to `step()`.
 
 **Confirm the baseline yourself before trusting that line.** If the suite reports failures while
 other agents are editing `src/`, they are almost certainly a snapshot of a mid-edit file rather than
@@ -394,6 +419,27 @@ Every one of these has produced a shipped defect or a withdrawn claim.
     Search the bare hex, the NAME, or the FAMILY.
 18. **A scripted string replace that finds no anchor writes nothing and says nothing.** Two handoff
     edits silently no-opped this way. **Grep for the result, not the exit code.**
+19. **A COMMENT IS NOT A PORT, AND A COMMENT CAN BE WRONG.** `claimed.py` reported `$23C194` as
+    CLAIMED; every hit was a comment in `displaylist.js`, and **the comment was the error**. It said
+    the routine was `move.w #1,D0 / or.w D0,$80393C` and stopped there. The routine is four bytes
+    longer and ends `bra.w $23C008`, which is `lea $B0E000,A0 / move.w $80393C,(A0)` -- the commit to
+    the IGS023 control register. **Call #4 dropped two hardware writes every frame from wave 11 to
+    W375.** `claimed.py` classifies hits CODE / NOTE / COMMENT for exactly this reason: read the
+    class, not the verdict, and re-decode anything whose only evidence is prose.
+20. **NEVER PROVE AN EXTENT BY ASSERTING AN ABSENCE.** `w236banner-palette.test.js` proved W236's
+    five-block extent with `assert.throws(() => ROM.bytes(0x2256b8 + 5*0x40, 64), Unreached)` -- a
+    claim about **the window list**, not about W236. `$2256B8 + 5*$40` is `$2257F8`, and the moment
+    an unrelated wave declared a window there for the high-score fade targets, a correct test failed
+    for a reason with nothing to do with its subject. Prove bounds from **the code that reads the
+    data** or from the table's own terminator (`$28EE1E` pair [5] is `$80008000`, not an address).
+21. **A routine may never return, and may be PRECEDED BY A `jmp` RATHER THAN AN `rts`.** Trap 6 says
+    scan back from the preceding `rts`; sometimes there is none. `$25B3D4` is `jmp $25A14C.l`,
+    `nop`-padded. And `$23BF74` has no `rts` anywhere in `$23BF74..$23C007`: it falls through into
+    the seven-call main loop and `bra`s back forever. `4EF9` is 6 bytes, `4E75` is 2, so tail-jump
+    routines are 4 bytes longer than a naive size count.
+22. **A push/pop pair means the routine is REGISTER-TRANSPARENT and returns NOTHING.** `$23C1C2`
+    opens `move.l D0,-(A7)` and its shared tail closes `move.l (A7)+,D0`. "It returns the old mask"
+    is the obvious reading and it is wrong. Check both halves before you name a return value.
 
 ---
 
