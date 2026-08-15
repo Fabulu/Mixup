@@ -71,7 +71,39 @@ const ENTRY = {
  * wrapper is a 5-line constant-set + call; the id/pan/channel are fixed per call
  * site, the entry picks the type and gate. Two wrappers ($28C5E4/$28C714) carry a
  * debounce guard ('deb') that suppresses retriggering until the drain has ticked
- * the counter down to zero. */
+ * the counter down to zero.
+ *
+ * W375 -- WHAT IS NOT IN HERE, AND WHY `$28C170` MUST NOT BE ADDED. Slot [7]'s
+ * state 0 ends `$290B26 jsr $28C170`, and five other ported call sites post the
+ * same address (objslot13.js:208, boss.js:1210/1284, tally.js:400,
+ * hiscorescreen.js's `endCue`). Decoded off the image, `$28C170` is:
+ *
+ *     28C170  48E7 FFFE       movem.l D0-D7/A0-A6,-(A7)
+ *     28C174  303C 0015       move.w  #$15,D0
+ *     28C178  7200            moveq   #0,D1
+ *     28C17A  4EB9 0028BBAC   jsr     $28BBAC          <- ABSOLUTE, not (d16,PC)
+ *     28C180  4CDF 7FFF       movem.l (A7)+,D0-D7/A0-A6
+ *     28C184  4E75            rts
+ *
+ * That is NOT this table's shape. Every row here sets THREE immediates (id, pan,
+ * channel) and calls one of the six `ENTRY` routines, all of which reach
+ * `$28BB04` -- `packLongword(type, pan, id, chan)`. `$28C170` sets TWO registers
+ * and calls `$28BBAC`, which is a different packer entirely:
+ *
+ *     28BBAC  E148            lsl.w   #8,D0
+ *     28BBAE  8041            or.w    D1,D0
+ *     28BBB0  4840            swap    D0
+ *     28BBB2  303C 0000       move.w  #$0,D0
+ *     28BBB6  6000 FEE8       bra     $28BAA0          <- the ring enqueue
+ *
+ * so the longword is `((D0<<8|D1)<<16)` with a ZERO low word -- no id byte, no
+ * channel nibble, no gate and no pan tail. `$28C170` therefore posts $15000000.
+ * $28C186 is its sibling (D0=$16, D1 from the caller), and the scroll VM's CUE
+ * op already counts both by name rather than posting them (background.js:1047
+ * and :1051). Giving `$28C170` a row here would invent an id, a pan and a channel
+ * the cartridge never loads, and would run it through a gate and a pan tail it
+ * never touches. The `no wrapper at $28C170` throw is the honest state until the
+ * `$28BBAC` tier gets its own posting path. */
 const WRAPPERS = {
   0x28C25A: { id: 0x00, pan: 0xB4, ch: 0x1E, entry: 0x28C0AE }, // SFX id=0 (40x)
   0x28C274: { id: 0x01, pan: 0x9E, ch: 0x1E, entry: 0x28C0AE },

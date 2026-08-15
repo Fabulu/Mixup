@@ -36,8 +36,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { Game } from '../src/main.js';
-import { TxVram, VideoRegs, clearTx23C622, resetScrolls23C61E } from '../src/background.js';
+import {
+  BgVram, TxVram, VideoRegs, clearTx23C622, resetScrolls23C61E,
+} from '../src/background.js';
 import { OBJ } from '../src/objdriver.js';
+import { UnportedLog } from '../src/unported.js';
 
 const SEED = fileURLToPath(new URL('../rip/web/seed.bin', import.meta.url));
 const TABLES = fileURLToPath(new URL('../rip/port/player.tables.json', import.meta.url));
@@ -110,6 +113,77 @@ test('W375: Game#ctx() carries tx/txvram and videoRegs/video, and each pair is O
     assert.equal(ctx.video.bg_xscroll, 0x123);
   });
 
+// The SAME defect, twice more, and both GUARDED -- so instead of a TypeError they were silence.
+// They were `KNOWN_MISSING_OPTIONAL` entries below until this wave; the inventory is exact-set
+// equality, so supplying them means deleting their lines there.
+//
+//   unported  about thirty `ctx.unported?.note(..)` sites across the six front-end files, every
+//             one a NO-OP from the driver. `Game#ctx()` carried the log only as `unportedLog`.
+//             This is the mechanism that makes an unported callee COUNTABLE instead of an
+//             invisible skip, so it was switched off for exactly the six files W374/W375 had
+//             just connected to the driver.
+//   bgVram    `objslot14.js:40` and `background.js:1610` (the `screenWipe23C6C6` tail, i.e. slot
+//             [7]'s state 0): `$23C638`, the BG tilemap clear. `Game#ctx()` carried the same
+//             `BgVram` as `vram` -- `stageend.js:513` already calls `ctx.vram.clear23C638()`.
+test('W375: Game#ctx() carries unported/unportedLog and bgVram/vram, and each pair is ONE object',
+  () => {
+    const { g, ctx } = captureCtx();
+
+    for (const k of ['unported', 'unportedLog', 'bgVram', 'vram']) {
+      assert.ok(Object.hasOwn(ctx, k), `Game#ctx() does not carry \`${k}\``);
+    }
+    assert.equal(ctx.unported, ctx.unportedLog);
+    assert.equal(ctx.unported, g.unportedLog);
+    assert.equal(ctx.bgVram, ctx.vram);
+    assert.equal(ctx.bgVram, g.vram);
+    assert.ok(ctx.unported instanceof UnportedLog);
+    assert.ok(ctx.bgVram instanceof BgVram);
+
+    // Aliases, not renames. A note through the front end's name must be the same census the
+    // runners print off `unportedLog`, and `$23C638` through `bgVram` must clear the ring the
+    // renderer reads off `vram`.
+    ctx.unported.note(0x123456, 'W375 alias probe');
+    assert.ok(g.unportedLog.report().some((l) => l.includes('$123456 W375 alias probe')));
+    ctx.vram.setLong(3, 7, 0xdeadbeef);
+    assert.equal(ctx.bgVram.long(3, 7), 0xdeadbeef);
+    ctx.bgVram.clear23C638();
+    assert.equal(ctx.vram.long(3, 7), 0);
+  });
+
+// THE ALIAS, DRIVEN. Not "the key is present" -- "a `ctx.unported?.note(..)` written inside a
+// front-end slot file lands in the census the gates print". Slot [9]'s record walk ends at
+// `objslot9.js:379`, `ctx.unported?.note($25CB94, ..)`; before the alias that call evaluated to
+// undefined and the frame reported nothing at all.
+test('W375: a front-end slot\'s ctx.unported?.note() REACHES the log from the driver', () => {
+  const g = game();
+  assert.equal(g.unportedLog.calls.size, 0, 'the log is not empty before the frame');
+
+  // Three frames: state 0 is the screen reset, and the record walk that ends at $25CB94 is
+  // reached from the state it advances into, not on the frame that runs the reset.
+  plant(g, firstEmptySlot(g), 9, 0);
+  for (let i = 0; i < 3; i++) g.step(0);
+
+  const hit = g.unportedLog.report().filter((l) => l.includes('$25CB94'));
+  assert.equal(hit.length, 1, 'objslot9.js:379 `ctx.unported?.note($25CB94, ..)` did not reach '
+    + `the log -- the front end's notes are still a no-op. log: ${
+      g.unportedLog.report().join(' | ')}`);
+  assert.match(hit[0], /slot \[9\] continues past the record walk/);
+});
+
+// `$288BDA jsr $23C638` through `ctx.bgVram`, driven. Before the alias the guard swallowed it and
+// the BG tilemap kept whatever the seed had in it.
+test('W375: slot [14] state 0 clears the BG tilemap through ctx.bgVram', () => {
+  const g = game();
+  plant(g, firstEmptySlot(g), 14, 0);
+  for (let row = 0; row < 16; row++) g.vram.setLong(row, row * 3, 0x11110000 + row);
+  assert.ok([...g.vram.w].some((w) => w !== 0), 'the BG ring was not dirtied, so this proves nothing');
+
+  g.step(0);
+
+  assert.deepEqual([...g.vram.w].filter((w) => w !== 0), [],
+    'slot [14] state 0 did not clear $900000 through ctx.bgVram ($288BDA jsr $23C638)');
+});
+
 // --------------------------------------------------------------- 2. the defect, DRIVEN
 
 // DRIVEN, not called directly: each slot is planted in the object table in state 0 and reached
@@ -170,9 +244,18 @@ test('W375: slot [14] state 0 resets BOTH scrolls through ctx.videoRegs, tx_xscr
 
 // Slot [7] gets its own test because it CANNOT finish state 0 yet, and that is a finding rather
 // than a reason to leave it out. `$290B20 jsr $23C6C6` (the wipe) is followed immediately by
-// `$290B26` posting cue `$28C170`, and `sound.js`'s WRAPPERS table has no entry for that address,
-// so the frame still ends in a throw -- a DIFFERENT throw, from a different gap, three lines
-// later. What this asserts is that the ctx-key failure is gone and the wipe actually happened.
+// `$290B26` posting `$28C170`, and `sound.js`'s WRAPPERS table has no row for that address, so
+// the frame still ends in a throw -- a DIFFERENT throw, from a different gap, three lines later.
+//
+// AND IT IS NOT A MISSING ROW. W375 decoded `$28C170` off the cartridge and it is NOT a cue
+// wrapper of the WRAPPERS family shape at all -- see the block above `WRAPPERS` in `sound.js`.
+// It sets D0=$15/D1=0 and calls `$28BBAC`, a SECOND packer that builds `((D0<<8|D1)<<16)` and
+// enqueues it, where every WRAPPERS row's entry routes through `$28BB04`'s four-field
+// `packLongword`. `ctx.soundPost` only knows the four-field family, so six call sites
+// (objslot7pool.js:556, objslot13.js:208, boss.js:1210/1284, tally.js:400, hiscorescreen.js)
+// post `$28C170` into a throw. Inventing a WRAPPERS row for it would invent an id, a pan and a
+// channel the cartridge does not set. What this asserts is that the ctx-key failure is gone and
+// the wipe actually happened.
 test('W375: slot [7] state 0 reaches screenWipe23C6C6 and stops at the $28C170 sound gap', () => {
   const g = game();
   plant(g, firstEmptySlot(g), 7, 0);
@@ -276,16 +359,15 @@ function scanCtxReads() {
 // silently does nothing from the driver -- and each is listed here with what it would need, so
 // that a NEW one fails this test instead of joining them unnoticed. Adding a key to `#ctx()`
 // means deleting its line here.
+//
+// `unported` and `bgVram` LEFT THIS INVENTORY IN W375's SECOND PASS. Both were the same alias
+// defect as `tx`/`videoRegs`, only guarded, and both are now supplied by `Game#ctx()` and
+// asserted by the two tests above. The measured cost of `unported` was the point of the exercise:
+// from the shipped seed the census does not move at all (no front-end slot is live in it), but
+// with a slot planted and driven it does -- slot [9] +39 notes at $25CB94, slot [13] +1 at
+// $287B0E, slot [7] +3 ($23C67E/$23C694/$23C6AA, the $A0xxxx clears inside `screenWipe23C6C6`).
+// Those were being emitted into nothing.
 const KNOWN_MISSING_OPTIONAL = Object.freeze({
-  unported: 'THE BIG ONE. 30 reads. Every `ctx.unported?.note(..)` in the six files is a no-op '
-    + 'from the driver, because `Game#ctx()` supplies the SAME log under the name `unportedLog` '
-    + '(28 reads elsewhere) and only `enemyframe.js:118` re-aliases it with '
-    + '`{...ctx, unported: ctx.unportedLog}`. So the front end\'s counted notes -- the whole '
-    + 'mechanism that keeps an unported callee countable instead of a silent skip -- are lost. '
-    + 'NOT fixed here: it changes the note census every gate and runner prints, which is a '
-    + 'bigger blast radius than this defect and wants its own wave.',
-  bgVram: 'objslot14.js:40, `$288BDA jsr $23C638` -- the BG tilemap clear. `Game#ctx()` supplies '
-    + 'the same `BgVram` as `vram`, so this is the identical alias defect, guarded.',
   clear24631C: '$24631C, the animation-object table clear. Not ported.',
   rankByte: '$242E24. Ported as makeRankObject\'s own read; not on ctx, so slot [14] state 1 '
     + 'takes rank 0 and always picks tableA.',

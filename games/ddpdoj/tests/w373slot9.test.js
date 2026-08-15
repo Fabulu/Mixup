@@ -443,3 +443,109 @@ test('W373 $25E220 applies its offsets to different HALVES of D1', { skip: SKIP 
   assert.notEqual(DRAW_25E220.sprites[3].d1 & 0xffff, DRAW_25E220.sprites[2].d1 & 0xffff,
     '  ...and only the low half was rewritten');
 });
+
+// ---------------------------------------------------------------------------------------------
+// W375 -- SLOT [9]'s OWN EDGE INTO $25D560. $25CB24 cmpi.b #$7,($1,A6) / $25CB2A bne.s /
+// $25CB2C jsr $25D560, the FIFTH compare in the sequence, immediately after state 6's. Slot [17]
+// reaches the same routine from $25CF0A/$25CF12; until W375 slot [9] did not reach it at all and
+// filed the "Unread" note instead, even though `phase7_25D560` had been live from slot [17] since
+// W374. These tests drive it through `objSlot9`, never by calling the handler directly, because
+// the hole was in the DISPATCH and not in the handler.
+// ---------------------------------------------------------------------------------------------
+
+const REC12 = 12;                                            // one sprite record, in bytes
+
+/** Bucket occupancy, summed. `BUCKETS[i].counter` is the counter's ADDRESS and is READ here and
+ *  never written -- writing it would rewrite the bucket descriptors for the whole process. */
+async function emitted(ram) {
+  const { BUCKETS } = await import('../src/spritequeue.js');
+  return BUCKETS.reduce((n, b) => n + ram.u16(b.counter), 0);
+}
+
+/** Record 0 live, in `phase`, with its partner DEAD so `$25D584 tst.b (A0)` takes the beq and the
+ *  rendezvous never runs -- the body then goes all the way through to the draw tail. */
+function arm9(ram, SCREEN9, SCREEN17, a5, phase) {
+  ram.setU8(a5 + SCREEN9.state, 1);                          // not 0 (seed) and not 2 (kill)
+  ram.setU8(SCREEN17.recs, 1);                               // record 0 live
+  ram.setU8(SCREEN17.recs + SCREEN17.phaseAt, phase);
+  ram.setU8(SCREEN17.recs + SCREEN17.recStride, 0);          // record 1 DEAD
+  ram.setU16(SCREEN17.recs + 0x64, 1);                       // $25C90C -- draw25E220's open gate
+  ram.setU8(SCREEN17.recs + SCREEN9.tailCount, 5);
+}
+
+test('W375 slot [9] state 7 REACHES $25D560 and no longer files the Unread note',
+  { skip: SKIP }, async () => {
+    const { objSlot9, SCREEN9, SCREEN17, ram, rom, ctx, notes, a5 } = await fx();
+    const { HANDLER7 } = await import('../src/objslot17.js');
+    const a6 = SCREEN17.recs;
+    arm9(ram, SCREEN9, SCREEN17, a5, 7);
+
+    objSlot9(ram, rom, a5, ctx);
+
+    // $25D5C8 addq.w #1,($32,A6) -- the frame counter, and NOTHING else in this walk writes it.
+    assert.equal(ram.u16(a6 + HANDLER7.frameAt), 1, '$25D5C8 ran: the frame counter advanced');
+    // $25D5F6/$25D5FE -- rampC, a flat +$200 a frame up to $7000.
+    assert.equal(ram.u16(a6 + HANDLER7.rampC.at), HANDLER7.rampC.step, '$25D5FE ran');
+    // $25D5CC/$25D5D4 -- rampA's delta word grows FIRST and is then added, so a frame moves both.
+    assert.equal(ram.u16(a6 + HANDLER7.rampA.deltaAt), HANDLER7.rampA.deltaStep, '$25D5D4 ran');
+    assert.equal(ram.u16(a6 + HANDLER7.rampA.at), HANDLER7.rampA.deltaStep, '$25D5DE ran');
+
+    // ...and the default arm's note is gone. $25D560 is index 4 of SCREEN9.handlers.
+    assert.equal(SCREEN9.handlers[SCREEN9.states.indexOf(7)], 0x25d560, 'state 7 -> $25D560');
+    assert.ok(!notes.includes(0x25d560),
+      'no "$25D560 -- slot [9]s handler for state 7. Unread" note any more');
+  });
+
+test('W375 the state-6-then-7 cascade fires in ONE objSlot9 call', { skip: SKIP }, async () => {
+  const { objSlot9, SCREEN9, SCREEN17, ram, rom, ctx, a5 } = await fx();
+  const { HANDLER7 } = await import('../src/objslot17.js');
+  const a6 = SCREEN17.recs;
+  arm9(ram, SCREEN9, SCREEN17, a5, 6);                       // enter the walk in state SIX
+
+  objSlot9(ram, rom, a5, ctx);
+
+  // $25D522 inside $25D4F0 writes ($1,A6) = 7, and $25CB24 is the VERY NEXT compare. The eight
+  // compares are sequential and not an else-if chain, so state 7 runs on the same pass.
+  assert.equal(ram.u8(a6 + SCREEN17.phaseAt), 7, '$25D522 advanced 6 -> 7');
+  assert.equal(ram.u16(a6 + HANDLER7.frameAt), 1,
+    '  ...and $25D560 ran in the SAME frame, off the state 6 handler just wrote');
+
+  // The position is the cartridge's, not a tidied one: 7 sits between 6 and 0 in the compare order.
+  assert.deepEqual([...SCREEN9.states], [3, 4, 5, 6, 7, 0, 1, 2], '$25CAEC..$25CB4E, in order');
+  assert.equal(SCREEN9.states[SCREEN9.states.indexOf(6) + 1], 7,
+    '6 is compared immediately before 7');
+});
+
+test('W375 slot [9] state 7 puts sprites in the bucket, in whole 12-byte records',
+  { skip: SKIP }, async () => {
+    const { objSlot9, SCREEN9, SCREEN17, ram, rom, ctx, a5 } = await fx();
+    arm9(ram, SCREEN9, SCREEN17, a5, 7);
+
+    const before = await emitted(ram);
+    objSlot9(ram, rom, a5, ctx);
+    const delta = (await emitted(ram)) - before;
+
+    // The draws are passed DIRECTLY from this module rather than through ctx.selectDraws -- nothing
+    // seeded ctx here, and a missing draw would be a counted note and a delta of 0.
+    assert.ok(delta > 0, 'the $25D800 tail drew through slot [9]s own draw set');
+    assert.equal(delta % REC12, 0, `${delta} bytes is a whole multiple of ${REC12}`);
+  });
+
+test('W375 state 8 is the RETIREMENT MARKER: nothing dispatches it', { skip: SKIP }, async () => {
+  const { objSlot9, SCREEN9, SCREEN17, ram, rom, ctx, notes, a5 } = await fx();
+  const { HANDLER7 } = await import('../src/objslot17.js');
+  const a6 = SCREEN17.recs;
+  assert.equal(HANDLER7.nextPhase, 8, '$25D748 move.b #$8,($1,A6)');
+  assert.ok(!SCREEN9.states.includes(8), 'and 8 is not one of the eight compares');
+
+  arm9(ram, SCREEN9, SCREEN17, a5, 8);
+  objSlot9(ram, rom, a5, ctx);
+
+  assert.equal(ram.u16(a6 + HANDLER7.frameAt), 0, 'no handler ran');
+  assert.equal(ram.u8(a6 + SCREEN17.phaseAt), 8, '  ...and the state was left alone');
+  // $25CB5E is an UNSIGNED >= 7, so 8 skips the counter tail as well.
+  assert.equal(ram.u8(a6 + SCREEN9.tailCount), 5,
+    '$25CB5E skipped the tail for 8, as it does for 7');
+  // The ONLY note the frame files is the walk's own $25CB94 continuation -- no handler note at all.
+  assert.deepEqual(notes, [SCREEN9.after], 'state 8 files no handler note');
+});

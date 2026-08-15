@@ -395,6 +395,20 @@ export class Game {
       // sprite producer, and a caller that omits `vram` reaches a loud named
       // throw at $26C226 rather than dropping 207 longwords.
       vram: this.vram,
+      // W375, THE SAME OBJECT UNDER THE FRONT END'S NAME, and for the same
+      // reason `tx` and `videoRegs` are below. `ctx.bgVram?.clear23C638?.()` is
+      // how slot [14]'s state 0 clears the BG tilemap ($288BDA jsr $23C638,
+      // objslot14.js:40) and how `screenWipe23C6C6` tails out ($23C650,
+      // background.js:1610) -- which is slot [7]'s state 0. Both reads are
+      // GUARDED, so before this alias the clear silently never ran: the same
+      // defect as `tx`/`videoRegs`, only quiet instead of fatal.
+      // PROVEN THE SAME OBJECT, not a same-named lookalike: `clear23C638()` is
+      // `BgVram`'s own zero-argument method (background.js:214, `this.w.fill(0)`)
+      // and `stageend.js:513` already calls it as `ctx.vram.clear23C638()` off
+      // this very key. `BgVram#setLong(row, col, v)` and `TxVram#setLong(addr, v)`
+      // are the pair with the same name and different signatures; nothing on this
+      // path touches either.
+      bgVram: this.vram,
       // W115: the TX tilemap, because the ISR6-gated score-digit flush
       // `$185DC4` writes the P1/P2 score cells into it.  A caller that omits
       // it (every main-loop handler) does not reach the flush; the flush is
@@ -422,6 +436,16 @@ export class Game {
       // between "this bank is the recording's" and "this bank is wrong".
       palette: this.palette,
       unportedLog: this.unportedLog,
+      // W375, THE SAME LOG UNDER THE FRONT END'S NAME. The six front-end slot
+      // files call `ctx.unported?.note(..)` at about thirty sites, and until this
+      // line every one of them was a NO-OP from the driver: `#ctx()` carried the
+      // log only as `unportedLog` (the name twenty-eight reads elsewhere use) and
+      // only `enemyframe.js:118` re-aliased it with `{...ctx, unported:
+      // ctx.unportedLog}`. So the mechanism that keeps an unported callee
+      // COUNTABLE rather than an invisible skip -- the whole point of
+      // src/unported.js -- was switched off for exactly the six files W374/W375
+      // connected to the driver. An ALIAS, not a rename: `unportedLog` stays.
+      unported: this.unportedLog,
       // WAVE A (SOUND). Post a cue by wrapper address -- the one-for-one
       // replacement for the counted `note(ctx, 0x28Cxxx, ...)` placeholders the
       // sound wave removes. Runs the gate, tail, packer and ring enqueue from

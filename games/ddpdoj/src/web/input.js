@@ -121,6 +121,134 @@ export function currentBits(mask = currentMask()) {
 /** The 68000 port word this frame, via the inverse of $13D464. */
 export function currentPortWord() { return portWordFromBits(currentBits()); }
 
+// ----------------------------------------------------------------- $C08004, THE COIN PORT
+//
+// `$C08004` IS A DIFFERENT PORT FROM `$C08000` AND MUST NOT GO THROUGH `portWordFromBits`.
+// That function is the inverse of build A's `$13D464`, which does `ror.w #1,D0` before `not.w`,
+// so it clears bit `(b+1) & 15` -- the PLAYER port's shuffle, and nothing else's. The coin port
+// has no shuffle: `$13CFBA` and `$13CEC8` both do a plain `move.w (A0),D0 / not.w D0`, so bit N
+// of the word IS switch N. Running a coin bit through the player shuffle credits the wrong slot
+// on the wrong frame, and conflating the two ports already cost six test failures once.
+//
+// ACTIVE LOW: idle is $FFFF and a held switch CLEARS its bit.
+//
+// The bit numbers are the cartridge's own I/O TEST screen, which reads `$C08004` and labels each
+// bit it finds low:
+//     $156BF2 btst #$5  SERVICE      $156C2E btst #$0  COIN 1
+//     $156C10 btst #$4  TEST         $156C4C btst #$1  COIN 2
+//
+// KEYS, MAME-conventional and by `e.code` so they are layout-invariant. The digits and F2 sit in
+// the same physical place on Swiss QWERTZ as on US QWERTY, so no pairing is needed here -- but
+// THE STANDING RULE IS UNCHANGED: any binding that ever uses `KeyZ` or `KeyY` must bind BOTH,
+// the way SHOT does above.
+
+/** Coin-port switch -> its BIT POSITION in the raw `$C08004` word. */
+export const COIN_BITS = Object.freeze({ COIN1: 0, COIN2: 1, TEST: 4, SERVICE: 5 });
+
+/** `e.code` -> coin switch. PHYSICAL positions. */
+export const COIN_KEYMAP = Object.freeze({
+  Digit5: 'COIN1', Digit6: 'COIN2', Digit9: 'SERVICE', F2: 'TEST',
+});
+
+// THE KEY DEBOUNCE, and it exists because of a real UX cliff in `$13CEC8`.
+//
+// That routine counts how many of ITS OWN calls a coin switch was held for, and credits only when
+// the count lands in [3, $26] INCLUSIVE. It runs once every two video frames (IRQ4 fires once per
+// frame -- measured n=2617 over 1,901 logic frames -- and `$1453BC andi.w #$1` halves that), so
+// the window is 6 to 76 video frames, roughly 0.1 s to 1.27 s. A key held past that writes $0001
+// instead of $0080 and CREDITS NOTHING, SILENTLY.
+//
+// A human leaning on the 5 key blows straight through 1.27 s. So a keydown does not hand the port
+// a held switch: it arms a fixed-length PULSE measured in debounce calls, parks it in the middle
+// of the window, and lets go by itself. One press, one coin, however long the key is down.
+//
+// 12 calls = 24 video frames = about 0.4 s, comfortably inside [3, 38].
+export const COIN_PULSE_CALLS = 12;
+
+// Only COIN1 and COIN2 are pulsed: they are the two the debounce watches (record 0 -> port bit 0,
+// record 1 -> port bit 1, via the `ror.w #1,D0` at `$13CF76`). SERVICE and TEST never reach it.
+// SERVICE goes through `$13CFBA`'s EDGE word instead -- `prev & now & $E0` is a rising edge, so a
+// held SERVICE key already fires exactly once and pulsing it would be a second, wrong debounce.
+const coinPulse = { COIN1: 0, COIN2: 0 };
+
+// The raw key state, one bit per COIN_BITS entry, 1 = HELD. Kept separate from the pulse so a
+// fresh press can be told from an autorepeat.
+let coinHeld = 0;
+
+/** Press or release one coin switch by name. A press EDGE arms the pulse; a release does NOT
+ *  cancel it, so even a one-frame tap still spends its full 12 calls and credits. */
+export function setCoinKey(name, down) {
+  const b = 1 << COIN_BITS[name];
+  if (down) {
+    if (coinHeld & b) return;                 // autorepeat / already down -- do not re-arm
+    coinHeld |= b;
+    if (name in coinPulse) coinPulse[name] = COIN_PULSE_CALLS;
+  } else {
+    coinHeld &= ~b;
+  }
+}
+
+/**
+ * The raw `$C08004` word this frame. Starts at $FFFF and CLEARS each held bit.
+ *
+ * PURE -- calling it twice in a frame returns the same word and changes nothing. That matters
+ * because two ROM routines read this port at DIFFERENT RATES: `$13CFBA` once per IRQ6 (every
+ * frame) and `$13CEC8` once per two. Advancing the pulse in here would make the answer depend on
+ * who asked last. `tickCoinPulse()` below is the advance, and it belongs next to the debounce.
+ */
+export function currentCoinWord() {
+  let w = 0xffff;                                            // ACTIVE LOW: idle is all ones
+  for (const [name, b] of Object.entries(COIN_BITS)) {
+    // A pulsed switch reports its PULSE, not the key; the others report the key.
+    const on = (name in coinPulse) ? coinPulse[name] > 0 : (coinHeld & (1 << b)) !== 0;
+    if (on) w &= ~(1 << b);                                  // held -> bit CLEARED
+  }
+  return w & 0xffff;
+}
+
+/** Advance the coin pulse by one `coinDebounce13CEC8` call. CALL IT EXACTLY WHERE THE DEBOUNCE IS
+ *  CALLED -- once per two video frames -- and nowhere else. Ticking it per frame halves the hold
+ *  the ROM sees; ticking it twice per debounce call quarters it. */
+export function tickCoinPulse() {
+  for (const k of Object.keys(coinPulse)) if (coinPulse[k] > 0) coinPulse[k]--;
+}
+
+/** The coin backstop, for blur / pagehide / visibilitychange. Its own, because the coin word is
+ *  its own port: `clearTouch` and `clearKeyboard` never touch these bits. */
+export function clearCoin() {
+  coinHeld = 0;
+  for (const k of Object.keys(coinPulse)) coinPulse[k] = 0;
+}
+
+/**
+ * Wire the coin keys. Separate from `attachInput`'s shared controller because the shared
+ * controller speaks the PLAYER port's normalized vocabulary and these switches are not in it.
+ *
+ * @returns {() => void} the backstop, already wired to blur / pagehide / visibilitychange.
+ */
+export function attachCoinKeys(target = (typeof window !== 'undefined' ? window : null)) {
+  if (!target) return clearCoin;                     // headless: the tests drive setCoinKey
+  const onDown = (e) => {
+    const name = COIN_KEYMAP[e.code];
+    if (!name) return;
+    e.preventDefault();                              // F2 is a browser shortcut in some hosts
+    if (e.repeat) return;                            // setCoinKey ignores it too; belt and braces
+    setCoinKey(name, true);
+  };
+  const onUp = (e) => {
+    const name = COIN_KEYMAP[e.code];
+    if (!name) return;
+    e.preventDefault();
+    setCoinKey(name, false);
+  };
+  target.addEventListener('keydown', onDown);
+  target.addEventListener('keyup', onUp);
+  for (const t of ['blur', 'pagehide', 'visibilitychange']) {
+    target.addEventListener(t, clearCoin);
+  }
+  return clearCoin;
+}
+
 // ---------------------------------------------- shared controller (kb + pad)
 
 /**

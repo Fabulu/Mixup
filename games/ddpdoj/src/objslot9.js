@@ -34,7 +34,7 @@ import { queueKill, stageCreate } from './objalloc.js';
 // objslot9.js nor objslot17.js, so there is no cycle.
 import { clear23C47A } from './stageend.js';
 import {
-  SCREEN17, phase3_25D306, phase5_25D39C, phase6_25D4F0, sideFromD7_25D4E4, DESC17,
+  SCREEN17, phase3_25D306, phase5_25D39C, phase6_25D4F0, phase7_25D560, sideFromD7_25D4E4, DESC17,
   clear25F442,
 } from './objslot17.js';
 
@@ -260,6 +260,31 @@ export function seed25C8A2(ram, rom, a5, ctx) {
   // $25CAC0 rts. $25CAC2 is the NEXT routine (`jmp $241292`), reached only from $25CAD2.
 }
 
+/** The seven draws `$25D800` -- `phase7_25D560`'s tail -- calls, keyed by the names `TAIL_25D560`
+ *  in `objslot17.js` looks them up under. THE KEYS ARE THE EXPORT NAMES; a rename here without a
+ *  rename there turns the sprite into a counted note rather than a crash.
+ *
+ *  **THIS IS THE ASYMMETRY, AND IT IS DELIBERATE.** `phase7_25D560(..., draws = ctx?.selectDraws)`
+ *  takes its draws as INJECTED data because `objslot9.js` already imports `objslot17.js` and the
+ *  tail importing them back would close a cycle. `main.js` therefore has to seed `ctx.selectDraws`
+ *  from the `objslot9` NAMESPACE before it runs slot [17], because `objslot17.js` cannot see these
+ *  functions. **Slot [9] has no such problem: this file is where all seven are DEFINED**, so its
+ *  own edge into `$25D560` hands them over directly and needs no `ctx.selectDraws` at all. Do not
+ *  "tidy" this into a `ctx` read to match slot [17] -- that would make slot [9] depend on `main.js`
+ *  having run slot [17] first.
+ *
+ *  `$25EDF8` is ported in this file too and is deliberately NOT here: `$25D800` calls `$25E4D0` and
+ *  does not call `$25EDF8`, the exact opposite of `confirmAndDraw`'s two tails. */
+const DRAWS9_25D800 = Object.freeze({
+  draw25E220,                                                // $25D808
+  draw25E29E,                                                // $25D80E
+  draw25E4D0,                                                // $25D814 -- UNGATED
+  draw25E6CE,                                                // $25D822
+  draw25E824,                                                // $25D828
+  draw25EF30,                                                // $25D82E
+  draw25F074,                                                // $25D834
+});
+
 /** `$25CACA` -- THE DISPATCH ENTRY. State 1 is the fall-through and is the record walk. */
 export function objSlot9(ram, rom, a5, ctx) {
   const st = ram.u8(a5 + SCREEN9.state);
@@ -291,6 +316,24 @@ export function objSlot9(ram, rom, a5, ctx) {
         case 0x06:
           phase6_25D4F0(ram, rom, ctx, a6, d7);              // $25CB1E
           break;
+        // $25CB24 cmpi.b #$7,($1,A6) / $25CB2A bne.s / $25CB2C jsr $25D560 -- SLOT [9]'s OWN edge
+        // into the state-7 handler, and it sits FIFTH in the compare sequence, immediately after
+        // state 6's. That position is load-bearing: the compares are sequential, not else-if, and
+        // `$25D522` inside `$25D4F0` writes `($1,A6) = 7`, so a record that entered this pass in
+        // state 6 runs state 7 in the SAME frame. The order lives in `SCREEN9.states`, which the
+        // loop above iterates -- reordering these `case` labels for tidiness would not change it,
+        // but reordering that array would, and it must not be.
+        //
+        // Slot [17] reaches the same routine from `$25CF0A`/`$25CF12`. The draws are passed
+        // DIRECTLY here and injected as `ctx.selectDraws` in `main.js`; see `DRAWS9_25D800` for
+        // why the two callers cannot do the same thing.
+        //
+        // `$25D748 move.b #$8,($1,A6)` retires the record to state 8 and FALLS THROUGH into the
+        // draws, so state 8 is visible to them on that frame. Nothing dispatches 8 -- it is the
+        // retirement marker, it is not in `SCREEN9.states`, and it must not get an arm.
+        case 0x07:
+          phase7_25D560(ram, rom, ctx, a5, a6, d7, DRAWS9_25D800);   // $25CB2C
+          break;
         case 0x04:
           phase4_25D402(ram, rom, ctx, a5, a6, d7);          // $25CB02
           break;
@@ -304,12 +347,10 @@ export function objSlot9(ram, rom, a5, ctx) {
           phase2_25D164(ram, rom, ctx, a5, a6, d7,           // $25CB58
             DESC17.base[sideFromD7_25D4E4(d7)]);
           break;
-        // STATE 7 IS THE ONLY ARM LEFT HERE, AND IT IS NOT AN "UNREAD ROUTINE" ANY MORE.
-        // `$25D560` IS ported -- `phase7_25D560` in `objslot17.js`, W374 -- and slot [17]'s
-        // dispatcher routes state 7 to it. What is missing is this slot's OWN edge into it, which
-        // needs `ctx.selectDraws` seeded the way `main.js`'s `[17]` entry seeds it, so the note
-        // stays until that is wired rather than being half-done here. The note text says "Unread",
-        // which is now wrong about the routine and right about this call site.
+        // ALL EIGHT OF `SCREEN9.states` NOW HAVE AN ARM, so nothing in this file reaches `default:`
+        // any more. IT STAYS ANYWAY. It is the only thing that would catch a state added to
+        // `SCREEN9.states`/`SCREEN9.handlers` without an arm to run it -- which is exactly the hole
+        // state 7 sat in until W375, and reading this note's count is what would have found it.
         default:
           ctx.unported?.note(SCREEN9.handlers[i], `$${SCREEN9.handlers[i].toString(16).toUpperCase()
             } -- slot [9]'s handler for state ${phase} on ($1,A6). Unread`);

@@ -120,14 +120,38 @@ export function irq6(ram, portWord, ctx) {
 // looks like the credit counter running away.
 
 export const COIN = Object.freeze({
-  read: 0x13cfba, pending: 0x13cf86,
+  read: 0x13cfba, pending: 0x13cf86, debounce: 0x13cec8,
   port: 0xc08004,
+  // $13CEC8's two 6-byte records, and `recA + 4` IS `pendA` -- the debounce's result word and the
+  // pending flag $13CF86 consumes are the same word. `recStride` is the `lea ($6,A0),A0` at $13CF78.
+  recA: 0x803964, recB: 0x80396a, recStride: 0x6,
+  // $13CF4A cmpi.w #$3 / blt and $13CF52 cmpi.w #$26 / bgt -- INCLUSIVE both ends.
+  tapMin: 0x3, tapMax: 0x26,
+  // $1453B6 addq.w #$1 / $1453BC andi.w #$1 -- the IRQ4 phase toggle that halves the call rate.
+  irq4Phase: 0x80fa84, irq4Guard: 0x80fa82,
   raw: 0x803950, prev: 0x803952, edges: 0x803954,
   mask: 0x00e0,                        // $13CFD8 andi.w #$E0 -- bits 5, 6 and 7
   // $13CF86's two pending flags. Each is a WORD compared against $0080 exactly, not a bit test, and
   // reading one CONSUMES it.
   pendA: 0x803968, pendB: 0x80396e, pendValue: 0x0080,
-  bitCoin1: 5, bitCoin2: 0, bitService: 1,
+  // W375 -- THE THREE BIT NAMES WERE WRONG, and the code that used them was right. The arms are
+  // unchanged; only the labels moved.
+  //
+  //   bit 5 comes from the EDGE word, and `$13CFD8 andi.w #$E0` leaves ONLY bits 5, 6 and 7 in it.
+  //   The cartridge's own I/O TEST screen names bit 5: `$156BF2 btst #$5,D0` on `$C08004` prints
+  //   the SERVICE label. So the `btst #$5` arm is SERVICE, not Coin 1 -- and it is the arm that
+  //   credits without bumping a mechanical counter, which is exactly what a service switch does.
+  //
+  //   bits 0 and 1 are NOT port bits. `$13CFE2 bsr $13CF86` runs FIRST and ORs the two PENDING
+  //   FLAGS into D1 as bits 0 and 1; `$13CFE4 or.w $803954,D1` can then only add bits 5/6/7. So
+  //   `$13D002 btst #$0` means `$803968 == $0080` and `$13D02C btst #$1` means `$80396E == $0080`,
+  //   i.e. the debounce below finalised a tap on record 0 or record 1.
+  //
+  //   Record 0 watches coin-port bit 0 and record 1 bit 1 (the `ror.w #1,D0` at `$13CF76`), and
+  //   the I/O TEST screen names those too: `$156C2E btst #$0` = COIN 1, `$156C4C btst #$1` =
+  //   COIN 2. So pendBitCoin1/pendBitCoin2 do end up meaning Coin 1 and Coin 2 -- one debounce
+  //   away from the port, never directly from it.
+  bitService: 5, pendBitCoin1: 0, pendBitCoin2: 1,
   creditA: 0x803958, creditB: 0x80395e,
   // The operator DIPs and the two adjacent coinage bytes.
   dipCoinage: 0x803808, dipSlot2: 0x80380b,
@@ -145,6 +169,112 @@ export const COIN = Object.freeze({
   idle: 0xffff,
   arms: Object.freeze({ credit: 0x13ce22, hook: 0x18b0d6, tail: 0x13d002 }),
 });
+
+// ---------------------------------------------------------------------------------------------
+// `$13CEC8` -- THE COIN DEBOUNCE, and the reason a coin key cannot do anything without it. W375.
+//
+// NOTHING in the port reached this before: the whole coin chain the port models hangs off IRQ6
+// (`$13CFBA`), and `$13CFBA` only ever sees bits 5/6/7 of the port because `$13CFD8 andi.w #$E0`
+// throws the rest away. Coin-port bits 0 and 1 enter the game ONLY here, through the two pending
+// words this routine writes.
+//
+// WHERE IT RUNS -- and it is NOT IRQ6. `$1453D0 jsr $13CEC8` sits inside the IRQ4 body `$13BDAA`,
+// behind a phase toggle:
+//
+//   $1453A6  jsr $13C51A / tst.w $80FA82 / bne $1453DE     reentrancy guard
+//   $1453B6  addq.w #$1,$80FA84 / andi.w #$1,$80FA84
+//   $1453C4  bne.w $1453DE                                 <- runs on every OTHER IRQ4
+//   $1453C8  move.w #$1,$80FA82 / jsr $13CEC8 / move.w #$0,$80FA82
+//
+// IRQ4 FIRES ONCE PER VIDEO FRAME. Measured in this repo: `MARK IRQ4 n=2617` against `MARK IRQ6
+// n=2617` over 1,901 logic frames
+// (docs/worklog/ddpdoj/02-impl-object-driver-and-overrun.md:47). A separate RTL note
+// (76-recon-mister-timing.md:262) claims ~252 Hz, i.e. ~4.26 IRQ4 per frame, AND FLAGS ITSELF
+// UNCALIBRATED. The two disagree; the measurement is the one taken on this build and it is what
+// the numbers below use. If the RTL figure is ever confirmed, every frame count here divides by
+// about 4 and the tap window becomes much shorter in wall-clock time.
+//
+// So `$13CEC8` runs ONCE EVERY TWO VIDEO FRAMES.
+//
+// THE UX FACT, and it is the whole point of porting this:
+//   a credit needs the coin key HELD for 3..$26 (3..38) calls of this routine,
+//   i.e. 6 TO 76 VIDEO FRAMES, ROUGHLY 0.1 s TO 1.27 s at 60 Hz.
+//   Hold it LONGER and `$13CF64` writes `$0001` instead of `$0080` -- which `$13CF86` compares
+//   against `$0080` and rejects -- so the coin CREDITS NOTHING, SILENTLY. No sound, no counter,
+//   no message. A player leaning on the key gets nothing and has no way to tell why.
+//
+// `$80FA82`, the reentrancy guard at `$1453AC`, has NO MEANING in a single-threaded port: there is
+// no second context that could re-enter. It is transcribed as a constant (`COIN.irq4Guard`) and
+// gates NOTHING here. Same for `$80FA84`: the caller owns the phase, not this routine.
+//
+// THE SHAPE: two 6-byte records, `moveq #$1,D7` + `dbra`, so exactly two passes.
+//
+//     ($0,A0) state    ($2,A0) hold count    ($4,A0) result word
+//
+// and the `ror.w #1,D0` at `$13CF76` rotates the port word right by one between passes, so pass N
+// tests port bit N through the SAME `btst #$0,D0`. Record 0 -> bit 0 (COIN 1), record 1 -> bit 1
+// (COIN 2). `not.w D0` at `$13CED4` first: the port is ACTIVE LOW, so 1 means PRESSED.
+
+/** `$13CEC8` -- the coin debounce. Call once per TWO video frames (see the header). Writes
+ *  `$803968`/`$80396E`, which `$13CF86` then consumes on the next IRQ6.
+ *
+ *  Nothing drives this yet -- the main-loop wiring is a separate unit. Exported only.
+ *
+ *  @param ram
+ *  @param {number} coinPortWord  the RAW `$C08004` word, ACTIVE LOW ($FFFF = nothing pressed)
+ */
+export function coinDebounce13CEC8(ram, coinPortWord) {
+  // $13CECC lea $C08004,A0 / $13CED2 move.w (A0),D0 / $13CED4 not.w D0 -- ACTIVE LOW inverted
+  // once, up front, for BOTH records. After this a set bit means PRESSED.
+  let d0 = u16(~coinPortWord);
+  let a0 = COIN.recA;                                        // $13CED6 lea $803964,A0
+  for (let d7 = 1; d7 >= 0; d7--) {                          // $13CEDC moveq #$1,D7 / $13CF7C dbra
+    const state = ram.u8(a0);                                // ($0,A0) -- byte, cmpi.b throughout
+    const pressed = (d0 & 1) !== 0;                          // $13CEE6/$13CF0A/$13CF34 btst #$0,D0
+
+    if (state === 0) {                                       // $13CEDE cmpi.b #$0,(A0)
+      if (pressed) {                                         // $13CEEA beq $13CF76 -- idle, nothing
+        ram.setU8(a0, 1);                                    // $13CEEE move.b #$1,(A0)
+        ram.setU16(a0 + 4, 0);                               // $13CEF2 move.w #$0,($4,A0) -- ARMED
+        ram.setU16(a0 + 2, 1);                               // $13CEF8 move.w #$1,($2,A0) -- count 1
+      }
+    } else if (state === 1) {                                // $13CF02 cmpi.b #$1,(A0)
+      if (pressed) {
+        // $13CF12 cmpi.w #$FFFF,($2,A0) / beq -- SATURATES, it does not wrap. A key held forever
+        // parks the count at $FFFF, far past tapMax, and the release credits nothing.
+        if (ram.u16(a0 + 2) !== 0xffff) {
+          ram.setU16(a0 + 2, ram.u16(a0 + 2) + 1);           // $13CF1C addq.w #$1,($2,A0)
+        }
+      } else {
+        ram.setU8(a0, 2);                                    // $13CF24 move.b #$2,(A0) -- NO finalise
+      }
+    } else if (state === 2) {                                // $13CF2C cmpi.b #$2,(A0)
+      if (pressed) {
+        // $13CF38 bne $13CF6E -- THE RESUME. Back to state 1 with the count UNTOUCHED, so a switch
+        // that chatters open for one call keeps accumulating rather than restarting. This is the
+        // debounce; state 2 is "released, but not believed yet".
+        ram.setU8(a0, 1);                                    // $13CF6E move.b #$1,(A0)
+      } else {
+        ram.setU8(a0, 0);                                    // $13CF3C move.b #$0,(A0) -- FIRST
+        const d1 = ram.u16(a0 + 2);                          // $13CF40 move.w ($2,A0),D1
+        ram.setU16(a0 + 2, 0);                               // $13CF44 move.w #$0,($2,A0)
+        // $13CF4A cmpi.w #$3,D1 / blt $13CF64 and $13CF52 cmpi.w #$26,D1 / bgt $13CF64.
+        // INCLUSIVE at both ends: 3 and $26 are taps, 2 and $27 are not.
+        const tap = d1 >= COIN.tapMin && d1 <= COIN.tapMax;
+        // $13CF5A move.w #$80,($4,A0) -- THE TAP, and $0080 is what $13CF88/$13CFA0 compare for.
+        // $13CF64 move.w #$1,($4,A0) -- anything else. NOT zero: it is a distinct "seen and
+        // rejected" value that $13CF86's cmpi.w reads as nothing pending, so it credits NOTHING
+        // and leaves no trace.
+        ram.setU16(a0 + 4, tap ? COIN.pendValue : 0x0001);
+      }
+    }
+    // else: a record whose state byte is not 0/1/2 falls straight through ($13CF30 bne $13CF76).
+
+    d0 = u16((d0 >>> 1) | ((d0 & 1) << 15));                 // $13CF76 ror.w #$1,D0 -- next port bit
+    a0 += COIN.recStride;                                    // $13CF78 lea ($6,A0),A0
+  }
+  // $13CF80 movem.l (A7)+ / $13CF84 rts -- no return value; the result is the two words.
+}
 
 /** `$13CF86` -- THE PENDING FLAGS, and reading them CLEARS them.
  *
@@ -187,13 +317,13 @@ export function coinRead13CFBA(ram, coinPortWord, ctx) {
   // falls through to $13CFF0 and RETURNS at $13D000, so bits 0 and 1 are tested ONLY when bit 5 is
   // clear. Written as three separate ifs it credits two slots on a frame where the cartridge
   // credits one, and only when two switches happen to edge together.
-  if ((d1 & (1 << COIN.bitCoin1)) !== 0) {                   // $13CFEA btst #$5,D1
+  if ((d1 & (1 << COIN.bitService)) !== 0) {                 // $13CFEA btst #$5,D1 -- SERVICE
     ctx?.soundPost?.(COIN.arms.hook);                        // $13CFF0 jsr $18B0D6
     coinage13CE22(ram, COIN.creditA);                        // $13CFF6 lea $803958 / $13CFFC bsr
     return d1;                                               // $13D000 rts -- the rest is SKIPPED
   }
 
-  if ((d1 & (1 << COIN.bitCoin2)) !== 0) {                   // $13D002 btst #$0,D1
+  if ((d1 & (1 << COIN.pendBitCoin1)) !== 0) {               // $13D002 btst #$0,D1 -- $803968 tapped
     ctx?.soundPost?.(COIN.arms.hook);                        // $13D008 jsr $18B0D6
     coinage13CE22(ram, COIN.creditA);                        // $13D00E lea $803958 / $13D014 bsr
     // $13D018 -- the mechanical counter is NOT bumped on free play, so the DIP is read twice per
@@ -203,7 +333,7 @@ export function coinRead13CFBA(ram, coinPortWord, ctx) {
     }
   }
 
-  if ((d1 & (1 << COIN.bitService)) !== 0) {                 // $13D02C btst #$1,D1
+  if ((d1 & (1 << COIN.pendBitCoin2)) !== 0) {               // $13D02C btst #$1,D1 -- $80396E tapped
     ctx?.soundPost?.(COIN.arms.hook);                        // $13D032 jsr $18B0D6
     // $13D03E -- slot 2 gets its OWN credit block only when $80380B is EXACTLY 1; otherwise both
     // slots share slot 1's. The lea at $13D038 is done first and then undone at $13D04A.
