@@ -26,6 +26,7 @@ import { u16, i16 } from './ram.js';
 import { install24150A, install2414BE, paletteSet241688 } from './palette.js';
 import { clearTx23C622, txString25A14C } from './background.js';
 import { announcePost } from './rank.js';
+import { cursorsFromPosted25D9E6 } from './tallyscreen.js';
 import { stageCreate, queueKill } from './objalloc.js';
 
 /** The fifteen palette installs state 0 ends with, in cartridge order. Fourteen go through
@@ -442,6 +443,8 @@ export const HANDLER7 = Object.freeze({
   rampD: Object.freeze({ at: 0x48, ceil: 0x3800, step: 0x0033, openAt: 0x40, openBelow: 0x14c0 }),
   rampE: Object.freeze({ at: 0x46, ceil: 0x7000, step: 0x0033, openAt: 0x48, openFrom: 0x0300 }),
   palOnceAt: 0x0a, palSrc: 0x2243f8, palBank: 0x1a, palBytes: 0x40,   // $25D630/$25D63A/$25D640
+  // W375 PORTED BOTH OF THESE -- `handoff26070C` and `playerRecords25F456`. The addresses stay
+  // because $25D662/$25D668 are still the sites; the byte counts are the extents they cover.
   handoff: 0x26070c, handoffBytes: 124, tailCall: 0x25f456, tailCallBytes: 218,
   flashAt: 0x42, flashHoldAt: 0x44, flashHold: 0x0040, flashReload: 0x0003,   // $25D670..$25D69C
   fuseAt: 0x40, fuseStep: 0x0026,
@@ -502,6 +505,212 @@ function drawTail25D800(ram, rom, ctx, a5, a6, d7, draws) {
   fire(TAIL_25D560[4]);                                      // $25D828 jsr $25E824
   fire(TAIL_25D560[5]);                                      // $25D82E jsr $25EF30
   fire(TAIL_25D560[6]);                                      // $25D834 jsr $25F074 -- $25D83A rts
+}
+
+// =================================================================================================
+// W375 -- THE THREE CALLEES `$25D630`'s ONCE-ONLY BLOCK MAKES. `$25D662 jsr $26070C` and
+// `$25D668 jsr $25F456` fire back to back, both inside the `bset #$0,($A,A5)` gate, so the whole
+// of what follows happens exactly ONCE per screen and on whichever record gets there first.
+//
+// **BOTH CALLEES OPEN WITH `movem.l d0-d7/a0-a6,-(A7)` AND CLOSE WITH THE MATCHING RESTORE**
+// (`$25F456`/`$25F52A` and `$26070C`/`$260782`), so neither one clobbers a single register the
+// caller was holding. That is why `d0Site` survives the pair below rather than being reset.
+// =================================================================================================
+
+/**
+ * `$25F456..$25F52F`, 218 bytes, no calls -- **THE TWO PLAYER RECORDS**.
+ *
+ * Two mirrored blocks, one per side, over records that are `$24` bytes apart (`$813028` and
+ * `$81304C`) -- the same `$24` stride `$25FF7A`'s `lea ($24,A6),A6` walks. It does NOT read A0, A6
+ * or D0..D4 as the caller left them: it re-reads `($4,A5)` and `($5,A5)` itself, which is why the
+ * four `moveq #0` and four `move.b` at `$25D648..$25D65E` belong to `$26070C` and not to this.
+ *
+ * **THE SELECTION BYTE IS `$810440`'s / `$8104A2`'s LOW BYTE AND ITS DOMAIN IS `{2, 4, 6}`.**
+ * `$25CD88`/`$25CD38` seed `($4,A5)`/`($5,A5)` from those two words, and object [11]'s y table at
+ * `$25D98A` holds exactly `$0002 $0004 $0006` -- three entries, which `$25DB98`'s `dbra` count of
+ * `moveq #$2` confirms. So `subq.w #2 / add.w D0,D0 / add.w D0,D0` -- a stride of FOUR, not eight
+ * -- lands on offsets 0, 8 and $10, and the table at `$25F868` is THREE eight-byte entries. Read
+ * with a stride of eight the code looks wrong; read with the real domain it is exact.
+ *
+ * **AND THE TABLE'S FAR END IS ITS OWN FIRST PAYLOAD.** Entry 0's first longword is `$0025F880`,
+ * and `$25F880` is where the pointed-to `$28`-byte blocks start (`$25F880`, `$25F8A8`, `$25F8D0`,
+ * one per entry, at exactly that stride). So `$25F868 + $18` is pinned by the data itself.
+ *
+ * `$25F460 bmi.b` is a BYTE test of bit 7 and it is the only bound the routine states. State 0
+ * fills all six of `($4,A5)..($9,A5)` with `$FF` at `$25CCCC`, so an unseeded side is negative and
+ * is skipped -- the `bmi` IS the "this side did not join" guard, not a range check.
+ *
+ * `$25F46C`, `$25F4A6`, `$25F4D4` and `$25F50E` are `nop`s sitting between the `lea` and the
+ * `adda`/first read. Transcribed as nothing, and noted only because they are there.
+ */
+export const PLAYERREC_25F456 = Object.freeze({
+  addr: 0x25f456, bytes: 218,
+  // $25F468/$25F4D0 `lea ($25F868,PC),A0`: EA is the EXTENSION WORD's address plus the
+  // displacement -- $25F46A + $3FE and $25F4D2 + $396, which are the same address.
+  ptrTable: 0x25f868, ptrEntries: 3, ptrStride: 4, ptrBytes: 0x18,
+  wordTable: 0x25f7c2, wordBytes: 6,        // $25F4A2/$25F50A, and exactly three `(A0)+` word reads
+  // Field offsets off each record's base, shared by both mirrors.
+  fPtrA: 0x18, fPtrB: 0x0e, fCountA: 0x12, fCountB: 0x04, fCountC: 0x06,
+  fW0: 0x02, fW1: 0x14, fW2: Object.freeze([0x1c, 0x1e, 0x20, 0x22]),
+  // The mirrors differ in TWO constants and nothing else: $17 vs $18 and $5E00 vs $1200.
+  sides: Object.freeze([
+    Object.freeze({ srcAt: 0x04, base: 0x813028, cA: 0x0017, cB: 0x5e00, cC: 0x1c00 }),
+    Object.freeze({ srcAt: 0x05, base: 0x81304c, cA: 0x0018, cB: 0x1200, cC: 0x1c00 }),
+  ]),
+});
+
+/** `$25F456` -- see `PLAYERREC_25F456`. Takes only A5; every other register is ignored. */
+export function playerRecords25F456(ram, rom, a5) {
+  const P = PLAYERREC_25F456;
+  for (const s of P.sides) {
+    const sel = ram.u8(a5 + s.srcAt);          // $25F45A moveq #0,D0 / $25F45C move.b ($4,A5),D0
+    if ((sel & 0x80) !== 0) continue;          // $25F460 bmi.b $25F4C2 -- BYTE bit 7, not a range
+    // $25F462 subq.w #2 / $25F464 add.w D0,D0 / $25F466 add.w D0,D0, and $25F46E `adda.w D0,A0`
+    // SIGN-EXTENDS the word, so a selection under 2 indexes BACKWARDS off the table rather than
+    // wrapping. Kept, because the ROM window is what draws the line and it draws it loudly.
+    let a0 = P.ptrTable + i16(u16(u16(sel - 2) * 4));
+    ram.setU32(s.base + P.fPtrA, rom.u32(a0)); a0 += 4;     // $25F470 move.l (A0)+,$813040
+    ram.setU32(s.base + P.fPtrB, rom.u32(a0)); a0 += 4;     // $25F476 move.l (A0)+,$813036
+    ram.bset8(s.base, 0);                                   // $25F47C bset.b #$0,$813028 -- a BYTE
+    ram.setU16(s.base + P.fCountA, s.cA);                   // $25F484 move.w #$17,$81303A
+    ram.setU16(s.base + P.fCountB, s.cB);                   // $25F48C move.w #$5E00,$81302C
+    ram.setU16(s.base + P.fCountC, s.cC);                   // $25F494 move.w #$1C00,$81302E
+    // $25F49C lea $813028,A1 -- the SAME base, taken again; the writes below are (d16,A1).
+    let w = P.wordTable;                                    // $25F4A2 lea ($25F7C2,PC),A0
+    ram.setU16(s.base + P.fW0, rom.u16(w)); w += 2;         // $25F4A8 move.w (A0)+,($2,A1)
+    ram.setU16(s.base + P.fW1, rom.u16(w)); w += 2;         // $25F4AC move.w (A0)+,($14,A1)
+    const d0 = rom.u16(w);                                  // $25F4B0 move.w (A0)+,D0 -- the THIRD
+    for (const off of P.fW2) ram.setU16(s.base + off, d0);  // $25F4B2/$25F4B6/$25F4BA/$25F4BE
+  }
+}
+
+/** `$25D990..$25D9E5`, 84 bytes -- **SAVE BOTH SIDES' SELECTIONS**, and the reason `$26070C`
+ *  swaps D1 and D2.
+ *
+ *  It pairs its arguments ACROSS the register file, not adjacently:
+ *
+ *      $813008 <- ($25D9E6 of D0, D2)   with D5 = 0
+ *      $813018 <- ($25D9E6 of D1, D3)   with D5 = 1
+ *
+ *  so side 0 is (D0,D2) and side 1 is (D1,D3). `$26070C` hands it (P1 style, P2 style, P1 ship,
+ *  P2 ship) precisely so that those two strided pairs come out per-player.
+ *
+ *  Each arm writes the `$FF` "nothing saved" sentinel FIRST and only overwrites it when `$25D9E6`
+ *  returns CARRY CLEAR, so a defaulted lookup leaves the sentinel standing -- which is exactly the
+ *  `$FF` `otherSideHolds25DAEA` tests for. `move.b D6`/`move.b D7` store the LOW BYTE of a word
+ *  `$25D9E6` may have left as a raw posted value.
+ *
+ *  **THE BRIEF FOR THIS WAVE SAID `$25D990` WAS ALREADY PORTED. IT WAS NOT** -- only its callee
+ *  `$25D9E6` was (`tallyscreen.js`'s `cursorsFromPosted25D9E6`). It is eighty-four bytes with one
+ *  call and that call resolved, so it is transcribed here rather than noted.
+ */
+export const SAVEDSEL_25D990 = Object.freeze({
+  addr: 0x25d990, bytes: 84,
+  recs: Object.freeze([0x813008, 0x813018]),                // $25D990/$25D998 and $25D9BA/$25D9C2
+  sentinel: 0xff,
+});
+
+/** `$25D990` -- see `SAVEDSEL_25D990`. */
+export function savedSelections25D990(ram, rom, d0, d1, d2, d3) {
+  const S = SAVEDSEL_25D990;
+  const arms = [
+    { rec: S.recs[0], d6: d0, d7: d2, d5: 0 },              // $25D9A0/$25D9A2/$25D9A4
+    { rec: S.recs[1], d6: d1, d7: d3, d5: 1 },              // $25D9CA/$25D9CC/$25D9CE
+  ];
+  for (const a of arms) {
+    ram.setU8(a.rec, S.sentinel);                           // $25D990/$25D9BA move.b #$FF
+    ram.setU8(a.rec + 1, S.sentinel);                       // $25D998/$25D9C2 move.b #$FF
+    const c = cursorsFromPosted25D9E6(rom, a.d5, a.d6, a.d7);   // $25D9A6/$25D9D0 bsr $25D9E6
+    if (c.defaulted) continue;                              // $25D9AA/$25D9D4 bcs -- sentinel stays
+    ram.setU8(a.rec, c.x & 0xff);                           // $25D9AE/$25D9D8 move.b D6
+    ram.setU8(a.rec + 1, c.y & 0xff);                       // $25D9B4/$25D9DE move.b D7
+  }
+}
+
+/**
+ * `$26070C..$260786`, 124 bytes -- **THE ONE-SHOT HANDOFF**.
+ *
+ * `$260710 tst.w $813082 / beq.w $260782` and `$26071A clr.w $813082`: the flag is a REQUEST and
+ * the routine consumes it, so a non-zero word runs the body once and every later call falls
+ * straight through to the `movem` restore. It touches A0, A5 and A6 not at all.
+ *
+ * **IT STORES ITS FIVE ARGUMENTS AND THEN READS FOUR OF THEM BACK IN A DIFFERENT ORDER.**
+ *
+ *     D0 -> $813084      $813084 -> D0        D0 stays  (P1 style)
+ *     D1 -> $813088      $813086 -> D1        D1 <- D2  (P2 style)
+ *     D2 -> $813086      $813088 -> D2        D2 <- D1  (P1 ship)
+ *     D3 -> $81308A      $81308A -> D3        D3 stays  (P2 ship)
+ *     D4 -> $813080
+ *
+ * The caller supplies `($8,A5)`, `($4,A5)`, `($9,A5)`, `($5,A5)` -- P1's pair then P2's pair. The
+ * swap regroups them BY FIELD, and `$25D990` then re-pairs (D0,D2) and (D1,D3) back into per-player
+ * (style, ship). A port that passes D1 and D2 straight through saves P1's style against P1's ship
+ * for side 0 -- which happens to look right for one side and is silently wrong for the other.
+ *
+ * `$813084` and `$813086` are `SCREEN17.p1Gate`/`p2Gate`, the two words state 0 read at `$25CD4E`
+ * and `$25CD9E`, and `$813084`/`$813088` are `tally.js`'s `postD0`/`postD1` for side 0. This is the
+ * same four-word mailbox from the other end.
+ *
+ * D7 is `$38` only when `$803926` is non-zero AND `$813092` is zero -- two independent gates, one
+ * arm (`$260764 beq.w $260778` and `$260770 bne.w $260778` both land on the same instruction).
+ * `$260778` then re-reads D6 from `$813080` AFTER `$25D990` has run, not from the D4 it stored, so
+ * anything `$25D990` did to that word is picked up. Transcribed that way.
+ */
+export const HANDOFF_26070C = Object.freeze({
+  addr: 0x26070c, bytes: 124,
+  once: 0x813082,                                           // $260710 tst.w / $26071A clr.w -- WORD
+  slotD0: 0x813084, slotD1: 0x813088, slotD2: 0x813086, slotD3: 0x81308a, slotD4: 0x813080,
+  callee: 0x25d990,                                         // $260756 jsr
+  d7Gate: 0x803926, d7Block: 0x813092, d7Set: 0x0038,       // $26075E / $260768 / $260774
+  tail: 0x260580, tailBytes: 36,                            // $26077E bsr.w $260580
+});
+
+/** `$26070C` -- see `HANDOFF_26070C`. `save` exists so a test can watch what reaches `$25D990`. */
+export function handoff26070C(ram, rom, ctx, d0, d1, d2, d3, d4, save = savedSelections25D990) {
+  const K = HANDOFF_26070C;
+  if (ram.u16(K.once) === 0) return false;                  // $260710 tst.w / beq.w $260782
+  ram.setU16(K.once, 0);                                    // $26071A clr.w -- consumed, ONE-SHOT
+  ram.setU16(K.slotD0, d0);                                 // $260720 move.w D0,$813084
+  ram.setU16(K.slotD1, d1);                                 // $260726 move.w D1,$813088
+  ram.setU16(K.slotD2, d2);                                 // $26072C move.w D2,$813086
+  ram.setU16(K.slotD3, d3);                                 // $260732 move.w D3,$81308A
+  ram.setU16(K.slotD4, d4);                                 // $260738 move.w D4,$813080
+  // ...and back out THROUGH RAM, D1 and D2 crossed. Read before the call, so `$25D990` writing any
+  // of these four cannot disturb the arguments it is being given.
+  const r0 = ram.u16(K.slotD0);                             // $26073E move.w $813084,D0
+  const r1 = ram.u16(K.slotD2);                             // $260744 move.w $813086,D1
+  const r2 = ram.u16(K.slotD1);                             // $26074A move.w $813088,D2
+  const r3 = ram.u16(K.slotD3);                             // $260750 move.w $81308A,D3
+  save(ram, rom, r0, r1, r2, r3);                           // $260756 jsr $25D990
+
+  let d7 = 0;                                               // $26075C moveq #$0,D7
+  if (ram.u16(K.d7Gate) !== 0                               // $26075E tst.w $803926 / beq $260778
+    && ram.u16(K.d7Block) === 0) {                          // $260768 cmpi.w #$0,$813092 / bne
+    d7 = K.d7Set;                                           // $260774 move.w #$38,D7
+  }
+  const d6 = ram.u16(K.slotD4);                             // $260778 move.w $813080,D6 -- RE-READ
+
+  // $26077E bsr.w $260580 -- THIRTY-SIX BYTES, $260580..$2605A3, and it is left as a note because
+  // it is the mouth of a subtree, not a leaf. It writes $81296E = 0, $81307E = D7 and $813080 = D6
+  // and then `bsr`s FOUR routines in order:
+  //
+  //   $2604F4  38 B  -> $241238 x2 and $2604AA (74 B, six more $241238)
+  //   $25FD24  20 B  -> a leaf: `move.w #$0,(A0)+` x22
+  //   $26051A 102 B  -> $241182 x2, $2603FE (172 B -- HANDLER7.pairSite, already noted from
+  //                     $25D72E, so the graph has a CYCLE), then $2414BE, $241654, $26089E
+  //   $25FF7A  46 B  -> `$25FF9A jsr (A0)` -- an INDIRECT call through a pointer it walks at a
+  //                     $24 stride, so the callee is not even statically knowable
+  //
+  // Three hundred and sixteen bytes in this bank before counting $241xxx, and one computed call.
+  // The three head writes are not done either: half of $260580 would leave $81307E/$813080 set
+  // with nothing downstream to consume them.
+  ctx?.unported?.note(K.tail, `${hex7(K.tail)} -- ${K.tailBytes} bytes, ${hex7(K.tail)}..$2605A3, `
+    + `reached from $26077E with D6 = ${hex7(d6)} and D7 = ${hex7(d7)}. It bsr's $2604F4 (38 B), `
+    + '$25FD24 (20 B), $26051A (102 B) and $25FF7A (46 B); $26051A bsr\'s back into $2603FE '
+    + '(172 B) so the call graph CYCLES, and $25FF9A is a `jsr (A0)` through a walked pointer. '
+    + 'Unread, and its own three writes ($81296E = 0, $81307E = D7, $813080 = D6) are held back '
+    + 'with it rather than done half-way');
+  return true;
 }
 
 /** `$25D560` -- THE STATE-7 HANDLER, shared by object-dispatch slots [17] and [9]. Seven hundred
@@ -631,11 +840,15 @@ export function phase7_25D560(ram, rom, ctx, a5, a6, d7, draws = ctx?.selectDraw
       const d1 = ram.u8(a5 + 0x04);                          // $25D656
       const d2 = ram.u8(a5 + 0x09);                          // $25D65A
       const d3 = ram.u8(a5 + 0x05);                          // $25D65E -- and D4 stays 0
-      ctx.unported?.note(H.handoff, `${hex7(H.handoff)} -- ${H.handoffBytes} bytes, called with `
-        + `D0..D3 = ${u16(d0)}/${d1}/${d2}/${d3} off ($8,A5)/($4,A5)/($9,A5)/($5,A5) and D4 = 0. `
-        + 'Unread');                                         // $25D662 jsr $26070C
-      ctx.unported?.note(H.tailCall, `${hex7(H.tailCall)} -- ${H.tailCallBytes} bytes. Unread`);
-      d0Site = 0;                                            // both callees are free to clobber D0
+      // $25D662 jsr $26070C -- D0..D3 are ($8,A5)/($4,A5)/($9,A5)/($5,A5), i.e. P1's (style, ship)
+      // then P2's, and D4 is still the moveq #0 from $25D650. $26070C crosses D1 and D2 on the way
+      // to $25D990; see HANDOFF_26070C.
+      handoff26070C(ram, rom, ctx, u16(d0), d1, d2, d3, 0);
+      // $25D668 jsr $25F456 -- takes NOTHING from here. It re-reads ($4,A5)/($5,A5) itself.
+      playerRecords25F456(ram, rom, a5);
+      // ...and `d0Site` is deliberately NOT cleared: BOTH callees are `movem.l d0-d7/a0-a6` at
+      // entry and the matching restore at exit ($25F456/$25F52A and $26070C/$260782), so D0 comes
+      // back out of them holding the ($8,A5) that $25D652 put there.
     }
   }
 

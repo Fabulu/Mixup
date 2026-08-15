@@ -2906,6 +2906,19 @@ SHOT_WINDOWS.extend([
     (0x223EF8, 0x0040, "W373: slot [9] record-state-0 palette, bank 15 through $24150A. Sixty-four "
                        "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
                        "slot [17]; this one is slot [9]'s own"),
+    # ---- W375: $25F456's two tables ----------------------------------------------------------
+    (0x25F868, 0x0018, "W375: $25F456's per-selection record table, THREE entries of eight bytes. "
+                       "$25F468 and $25F4D0 lea (d16,PC),A0 and index it by (sel-2)*4 -- the STRIDE "
+                       "IS FOUR, not eight, and the domain of ($4,A5)/($5,A5) is {2,4,6}, not "
+                       "{2,3,4}: object [11]'s y table at $25D98A holds exactly $0002/$0004/$0006 "
+                       "and $25CD88/$25CD38 seed those bytes from $810440/$8104A2. So the index "
+                       "lands on 0, 8, $10 and the table is three EIGHT-byte entries. THE FAR END "
+                       "IS ITS OWN FIRST PAYLOAD POINTER: entry 0's long is $0025F880, and "
+                       "$25F880/$25F8A8/$25F8D0 are the three $28-byte blocks it points at -- the "
+                       "same self-bounding argument $260B6A's window uses"),
+    (0x25F7C2, 0x0006, "W375: $25F456's three-word constant block. Bound stated by the code reading "
+                       "it: EXACTLY three move.w (A0)+ at $25F4A8, $25F4AC and $25F4B0, and nothing "
+                       "more. $25F7C8 onward is unrelated pointer data"),
     # ---- W374: $25D560's step table and its state-7 palette ----------------------------------
     (0x25D85C, 0x00F6, "W374: $25D560's SLIDE STEP table -- 122 words plus the $FFFF sentinel at "
                        "$25D950, 246 bytes. $25D7CE lea ($8C,PC),A1 resolves off the extension word "

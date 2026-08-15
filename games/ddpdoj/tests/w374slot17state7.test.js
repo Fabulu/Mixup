@@ -813,7 +813,12 @@ test('W374 the branch senses the port rests on, read out of the ROM', { skip: SK
   assert.equal(rom.u32(0x25d644), 0x0024150a, '$25D642 jsr $24150A');
 });
 
-test('W374 the six unported callees are noted with their exact extents', { skip: SKIP },
+// W375 EDITED THIS TEST. `H.handoff` ($26070C, 124 B) and `H.tailCall` ($25F456, 218 B) were in
+// the list below and are now PORTED (`handoff26070C` / `playerRecords25F456` in objslot17.js), so
+// they are no longer noted -- `w375state7callees.test.js` drives them instead, and asserts there
+// that neither address is noted any more. What $26070C left behind, `$260580`, is checked there
+// with its own extent. The two that remain unported here are $25F530 and $25FAA4.
+test('W374 the four unported callees are noted with their exact extents', { skip: SKIP },
   async () => {
     const { phase7_25D560, HANDLER7: H, SCREEN17, ram, rom, ctx, notes, a5 } = await fx();
     const a6 = SCREEN17.recs;
@@ -826,8 +831,7 @@ test('W374 the six unported callees are noted with their exact extents', { skip:
     phase7_25D560(ram, rom, ctx, a5, a6, 1, spy().draws);
 
     const texts = notes.map((n) => n.what);
-    for (const [addr, size] of [[H.head, 80], [H.perFrame, 334], [H.handoff, 124],
-      [H.tailCall, 218]]) {
+    for (const [addr, size] of [[H.head, 80], [H.perFrame, 334]]) {
       const hit = notes.find((n) => n.addr === addr);
       assert.ok(hit, `$${addr.toString(16).toUpperCase()} was noted`);
       assert.match(hit.what, new RegExp(`${size} bytes`), `  ...with its ${size}-byte extent`);
