@@ -71,6 +71,24 @@ The docstrings, the wiring comment and the test names all now carry the withdraw
 warning rather than as a fact, because the tests themselves were always right: they pin the
 FUNCTION's gate, which behaves correctly whichever state it is handed.
 
+### A WITHDRAWN CLAIM ABOUT `$25D85C`, AND A TABLE NOBODY HAD NOTICED
+
+**`$25D85C` IS NOT `$FFFF`-TERMINATED.** That claim was recorded earlier this wave and I repeated it;
+a scan of 96 words from `$25D85C` finds **no `$FFFF` at all**. Whatever bounds it is in the code that
+indexes it, not a sentinel. Its first 24 words are mostly zero -- `$20` at words 0 and 2, `$40` at
+word 4, another `$40` at word 17 -- so if it is the D0 source for the slide accumulators, most
+entries contribute nothing, and that sparseness is itself the finding.
+
+**AND THERE IS A SECOND TABLE AT `$25D83C` THAT NOTHING HAD RECORDED.** `$25D83A` is `$25D560`'s
+`rts`; `$25D83C..$25D85B` is **sixteen words, 32 bytes, ending EXACTLY where `$25D85C` begins**:
+
+    $014A x10, then $016B $018C $01AD $01CE $01EF $0210
+
+**Ten identical entries then six stepping by exactly `$21`** -- the same "held, then ramping" shape
+as `$25F074`'s art ramp (four frames held three ticks each), so it is likely a sequence rather than
+a pointer table. Bounds for both are open and are recon's job; the exact `$25D83C + $20 = $25D85C`
+boundary is corroboration, not the bound (trap 8).
+
 ### THE FOUR UNTOUCHED DISPATCH SLOTS ARE SMALL AT THEIR ENTRY
 
 Measured to each one's FIRST `rts`, so treat these as a FLOOR, not the routine's true end -- a
