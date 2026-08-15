@@ -50,6 +50,25 @@
 //
 // AND ONE DEFECT FOUND ON THE WAY, IN THE ROUTINE THAT DOES THE READ: `stepNode`'s two cursor
 // strides were TRANSPOSED. SECTION 4.
+//
+// ===============================================================================================
+// W387: FOUR ASSERTIONS IN THIS FILE ARE RE-BASED, AND NOT ONE MEASUREMENT IS RETRACTED
+// ===============================================================================================
+//
+// W387 ported and registered dispatch slot [12] (`src/objslot12.js`), so the machine no longer
+// STOPS at +4,414 -- it runs the name-entry screen and hands back to the attract sequencer. Every
+// assertion here that was really "and this is the resting state of the machine" had to say WHICH
+// FRAME it meant instead. All four are marked at their sites:
+//
+//   1. "the fade RUNS" now reads the staging bank at `fadeDone` (+4,169) rather than at +5,000.
+//      Slot [12]'s state-0 init installs `$2254B8` into sprite bank 2, which IS `$80E906`, so the
+//      fade still lands exactly and the next screen then legitimately replaces it.
+//   2. "the window OVERLAPS NOTHING" -- the neighbour above `$2252F8` is now W387's `$225478`
+//      with $140 clear, not W125's `$2254B8` with $180. Nothing was widened at either end.
+//   3. the deferral census -- `$240FC2` is gone entirely and slot [12]'s four one-shot teardown
+//      notes take its place. The test is renamed for what it now measures.
+//   4. "$2254F8 has no window" and its two siblings are now DECLARED, by W387, at exactly the
+//      $40 this file's own `$001F` measurement predicted.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -131,7 +150,7 @@ const RUN = (() => {
 
   let firstD = 0, firstE = 0, firstC = 0, fadeDone = 0, matchedAtFirstE = 0;
   let stoppedAt = 0, stopError = null, lastFrame = 0;
-  let notesAt4079 = null;
+  let notesAt4079 = null, currentAtFadeDone = null;
 
   for (let f = 1; f <= 5000; f++) {
     try {
@@ -141,14 +160,14 @@ const RUN = (() => {
     if (!firstD && t.has(0x0d)) firstD = f;
     if (!firstE && t.has(0x0e)) { firstE = f; matchedAtFirstE = matched(); }
     if (!firstC && t.has(0x0c)) firstC = f;
-    if (!fadeDone && matched() === 32) fadeDone = f;
+    if (!fadeDone && matched() === 32) { fadeDone = f; currentAtFadeDone = cur(); }
     if (f === 4079) notesAt4079 = new Set(g.unportedLog.report().map((s) => s.split(' x ')[1]));
     lastFrame = f;
   }
 
   return {
     g, firstD, firstE, firstC, fadeDone, matchedAtFirstE, stoppedAt, stopError, lastFrame,
-    notesAt4079, current: cur(), rom, notes: g.unportedLog.report(),
+    notesAt4079, current: cur(), currentAtFadeDone, rom, notes: g.unportedLog.report(),
   };
 })();
 
@@ -302,10 +321,18 @@ test('W386 the window OVERLAPS NOTHING, and ABUTS W91 rather than widening it', 
   assert.equal(w91[0].len, 0x2880, 'and it is STILL $2880 -- this wave widened nothing');
   assert.equal(W91 + w91[0].len, TARGET, 'W91 ends AT $2252F8, so the two abut exactly');
 
-  // The other side: the next declared window above is W125's $2254B8, $180 bytes clear.
+  // The other side. W386 measured "the next declared window above is W125's $2254B8, $180 bytes
+  // clear". W387 declared ($225478, $40) in that gap -- one of slot [12]'s four palette sources --
+  // so the nearest neighbour above is now $225478 with $140 bytes clear. Nothing was widened at
+  // either end: W386's own line is still ($2252F8, $40), asserted above, and W125's $2254B8 is
+  // still $40. The gap shrank because a NEW window was declared in it, which is the shape this
+  // whole test is here to enforce.
   const above = windows.filter((x) => x.base > TARGET).sort((a, b) => a.base - b.base)[0];
-  assert.equal(above.base, 0x2254b8, 'the next window above is $2254B8');
-  assert.equal(above.base - (TARGET + LENGTH), 0x180, '...and $180 bytes of nothing lie between');
+  assert.equal(above.base, 0x225478, 'the next window above is W387\'s $225478');
+  assert.match(above.why, /W387/, '...and it is W387\'s declaration, not a widened W386');
+  assert.equal(above.base - (TARGET + LENGTH), 0x140, '...with $140 bytes of nothing between');
+  const w125 = windows.filter((x) => x.base === 0x2254b8);
+  assert.deepEqual(w125.map((x) => x.len), [0x40], 'and W125\'s $2254B8 is STILL $40');
 });
 
 test('W386 ABLATION: remove ONLY this window and the same cold boot dies at $2252F8', () => {
@@ -434,10 +461,28 @@ test('W386 the fade RUNS: 32 staging words converge on the 32 ROM words, exactly
     'on the load frame exactly ONE of the 32 words already matches -- the block\'s $0000 tail');
 
   // AFTER. Not "close to": every word, and the values come out of the image, not this file.
-  assert.deepEqual(RUN.current, RUN.rom,
-    'all 32 words of $80E906 equal all 32 words of $2252F8');
+  //
+  // **W387 RE-BASES THIS FROM THE LAST FRAME TO `fadeDone`, AND THAT IS A REAL CHANGE.** This
+  // assertion used to read `RUN.current`, the bank at +5,000, because when W386 wrote it the
+  // machine STOPPED at +4,414 and +5,000 was simply "after the fade". It does not stop any more:
+  // W387 registered dispatch slot [12], whose state-0 init runs FOUR `$24150A` installs at
+  // `$28F2D8..$28F317`, and the FIRST of them is `lea $2254B8,A0 / move.w #$2,D0` -- **sprite
+  // staging bank 2, which is $80E886 + 2*64 = $80E906, this very address.** So the game-over
+  // fade still lands exactly, and the next screen then legitimately overwrites the bank.
+  //
+  // The measurement W386 made is unchanged and is asserted here at the frame it was about.
+  assert.deepEqual(RUN.currentAtFadeDone, RUN.rom,
+    'all 32 words of $80E906 equal all 32 words of $2252F8, on the frame the fade completes');
   assert.equal(RUN.rom[0], w(TARGET) & 0x7fff, 'and the expectation is the cartridge, not a literal');
   assert.equal(RUN.rom.length, 32, '32 words -- the bound SECTION 2 derived, exercised end to end');
+
+  // ...and the hand-over, as a value, so the re-base above is a measurement and not an excuse.
+  assert.equal(w(0x28f2d8), 0x41f9, '$28F2D8 lea xxx.l,A0');
+  assert.equal(l(0x28f2da), 0x2254b8, '  ...$2254B8, slot [12]\'s first palette source');
+  assert.equal(w(0x28f2e0), 0x0003 - 1, '  ...into bank 2 ($28F2DE move.w #$2,D0)');
+  assert.equal(0x80e886 + 2 * 64, CURRENT, 'and bank 2 IS $80E906 -- the same 64 bytes');
+  assert.notDeepEqual(RUN.current, RUN.rom,
+    'so by +5,000 the name-entry screen has replaced it, which is what the front end closing means');
 
   // WHEN. Step 1 every 2 frames over 32 progress units is 64 frames of stepping; the channel
   // walk needs a few more because `$246950`'s per-channel move SKIPS index $10 in both
@@ -462,14 +507,31 @@ test('W386 the two sound posts on the game-over path are STILL counted, not thro
   assert.equal(l(0x288a44), 0x0028c0fc, '  ...jsr $28C0FC, with no immediates between them');
 });
 
-test('W386 the ONLY new deferral behind the screen is dispatch [12], and it stops nothing', () => {
+test('W386 the deferrals behind the screen are slot [12]\'s, and they stop nothing', () => {
   // The census at +4,079 -- the last frame W385 ever saw -- against the census at +5,000.
+  //
+  // **W387 REPLACES THE ONE NOTE THIS TEST WAS NAMED FOR.** W386 measured exactly one new note,
+  // `$240FC2 object dispatch entry [12] -- handler not ported`, counted once per frame from
+  // +4,414 to the end of time, because the machine reached a screen with no handler and STAYED
+  // THERE. W387 ported and registered that handler (`src/objslot12.js`), so `$240FC2` is gone
+  // entirely and what is new behind the game-over screen is the FOUR counted calls inside slot
+  // [12]'s own teardown, each fired ONCE. "One note forever" became "four notes once", which is
+  // the shape of a screen that ran and handed on rather than a screen that never started.
   const after = new Set(RUN.notes.map((s) => s.split(' x ')[1]));
   const grown = [...after].filter((k) => !RUN.notesAt4079.has(k));
-  assert.deepEqual(grown, ['$240FC2 object dispatch entry [12] -- handler not ported in wave 4'],
-    'exactly one note is NEW behind the game-over screen, and it is slot [12]');
-  assert.equal(noteCount(0x240fc2), RUN.lastFrame - RUN.firstC + 1,
-    'counted once per frame from the frame type $C entered the table -- a deferral, not a stop');
+  assert.equal(noteCount(0x240fc2), 0,
+    '$240FC2 is NOT counted at all any more -- W387 registered the handler');
+  const sites = grown
+    .map((k) => (k.match(/^\$[0-9A-F]{6} (\$28F[0-9A-F]{3}) /) ?? [])[1]).filter(Boolean);
+  assert.deepEqual(sites.sort(), ['$28F368', '$28F36E', '$28F374', '$28F380'],
+    'the new notes are slot [12]\'s three teardown clears and its $28C0FC stream post');
+  for (const line of RUN.notes.filter((s) => sites.some((x) => s.includes(x)))) {
+    assert.match(line, /^\s+1 x /, 'each fires EXACTLY ONCE -- the teardown is a single frame');
+  }
+  // `$24676A` also appears, and it is NOT slot [12]'s: it is `$246710`'s per-node content
+  // seeding, reached because the attract screen slot [12] stages runs `hiscoreInit25B3DC`.
+  // Counted here as part of "what is behind the screen" rather than filtered away.
+  assert.ok(grown.length <= 5, `five new census lines at most; got ${grown.length}`);
 
   // ITS MEASURED EXTENT, so the deferral is precise rather than a shrug.
   // $240FC2 is the DISPATCH TABLE ROW (8 bytes per row, $240F62 + 12 * 8); the handler is the
@@ -511,9 +573,14 @@ test('W386 the ONLY new deferral behind the screen is dispatch [12], and it stop
   assert.equal(0x28fad2 - 0x28fa98, 0x3a, '$28FA98 is $3A bytes: 2 + 4 * 14');
   assert.equal(0x28faf4 - 0x28fad2, 0x22, '$28FAD2 is $22 bytes: 2 + 4 * 8');
 
-  // WHY THOSE ARE NOT WINDOWED HERE: the $28FA98 table names FOUR more colour blocks and only
-  // ONE of them has a declared window. Declaring the other three would be declaring windows for
-  // a subsystem no line of this port executes -- the deferral is slot [12], whole.
+  // WHY THOSE WERE NOT WINDOWED HERE, AND ARE NOW: the $28FA98 table names FOUR more colour
+  // blocks and when W386 ran only ONE of them had a declared window. Declaring the other three
+  // would then have been declaring windows for a subsystem no line of this port executed.
+  // **W387 PORTED THAT SUBSYSTEM**, so `$28F2D8..$28F317` really does install all four through
+  // `$24150A` on a cold boot, and W387 declared ($225478, $40) and ($2254F8, $80) for the three
+  // that lacked one -- with the SAME $40 bound this table's `$001F` field gives, arrived at from
+  // `$241518 moveq #$F,D0` as well. The measurement below is W386's and is unchanged; only the
+  // declared/undeclared verdict moves, and it moves in the direction this test predicted.
   // The four targets sit at entry+8, NOT entry+6: fill.w, family.w, offset.w THEN target.l.
   // The count word is at $28FA98, so entry 0 opens at $28FA9A and its target is at $28FAA0.
   const targets = [0, 1, 2, 3].map((i) => l(0x28fa9a + i * 14 + 6));
@@ -525,9 +592,12 @@ test('W386 the ONLY new deferral behind the screen is dispatch [12], and it stop
 
   const declared = (a) => windows.some((x) => x.base <= a && a + 0x40 <= x.base + x.len);
   assert.equal(declared(targets[0]), true, '$2254B8 is inside W125\'s window already');
-  assert.equal(declared(targets[1]), false, '$2254F8 has no window');
-  assert.equal(declared(targets[2]), false, '$225538 has none either');
-  assert.equal(declared(targets[3]), false, '...nor $225478');
+  assert.equal(declared(targets[1]), true, '$2254F8 is inside W387\'s ($2254F8, $80)');
+  assert.equal(declared(targets[2]), true, '$225538 is the second half of that same window');
+  assert.equal(declared(targets[3]), true, '...and $225478 is W387\'s ($225478, $40)');
+  // AND W125'S LINE IS UNTOUCHED, which is the rule this whole section is about.
+  assert.deepEqual(windows.filter((x) => x.base === 0x2254b8).map((x) => x.len), [0x40],
+    'W387 declared new windows on both sides of W125\'s block and widened neither');
 });
 
 test('W386 slot [12] ends the front-end loop by staging dispatch type 8, the attract screen', () => {
@@ -552,7 +622,18 @@ test('W386 nothing else on the game-over path needs a window: no note names a RO
   // miss comes out of `rom.js`, and a run that raised one would have STOPPED. The shared RUN
   // did not stop (SECTION 5), so this is a restatement of a positive measurement. What is
   // asserted here is only that the census behind the screen is the ONE entry above.
+  //
+  // **W387 RE-BASES THE COUNT AND KEEPS THE CLAIM.** W386 asserted "exactly one census line is
+  // new, and it is dispatch [12]" -- true when the machine stopped at +4,414. With slot [12]
+  // registered the screen runs and hands on, so the new lines are its four one-shot teardown
+  // notes plus `$24676A` from the attract screen that follows. The CLAIM this test exists for is
+  // unchanged and is asserted directly: NOT ONE of them names a ROM address that needs a window,
+  // which is why the run never stopped.
   const behind = RUN.notes.filter((s) => !RUN.notesAt4079.has(s.split(' x ')[1]));
-  assert.equal(behind.length, 1, `exactly one census line is new; got ${behind.length}`);
-  assert.match(behind[0], /\$240FC2/, 'and it is dispatch [12]');
+  assert.ok(behind.length <= 5, `at most five census lines are new; got ${behind.length}`);
+  assert.equal(RUN.stopError, null, 'and the run did not stop, which is the actual proof');
+  for (const line of behind) {
+    assert.doesNotMatch(line, /no ROM window|outside .* window/i,
+      `no note behind the screen is a window miss: ${line.slice(0, 70)}`);
+  }
 });

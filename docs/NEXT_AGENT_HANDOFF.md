@@ -2,7 +2,69 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W386
+## START HERE -- W387
+
+### THE FRONT-END LOOP CLOSES. DISPATCH IS 17 OF 20.
+
+`attract [8] -> coin -> play -> game over [$D] -> [$E] -> [$C] -> attract [8]`, measured on a real
+cold boot with no buttons held. Type 8 is back at **+4,416** with `($4,A0) = 2` and
+`$812E56 = $0002`.
+
+`$28F3AC` is the **NAME-ENTRY screen**, and on this path it is a **two-frame pass-through**:
+`$8130CC` is `$00` and both player records read `$0000`, so `$28F318 tst.w / bpl` skips both
+high-score checks and nobody owes a name. State 0 init at +4,414 (same frame the record is created;
+`commitCreates` drains before the walk), state 1 teardown at +4,415.
+
+**Porting it made ~700 lines of `src/hiscorename.js` REACHABLE FOR THE FIRST TIME.** W301, W304-W311
+and W382 wrote the entire name-entry body and nothing ever called it.
+
+### `claimed.py <entry>` IS NOT A SURVEY OF A SUBSYSTEM
+
+`$28F3AC` reported UNCLAIMED, which was true of the address and badly misleading about the unit:
+`hiscorename.js` was 1,028 lines of ported body with no caller. **Check the SUBSYSTEM, not the entry
+point.**
+
+And my brief's **"1,522 bytes" was the first of THREE code blocks**, not the unit. Eight `bsr`/`jsr`
+inside it target code above `$28F8AB`; the owned span is `$28F2BA..$2901DF` = **`$F26` = 3,878
+bytes**. (The `rts` at `$28F8AA`, and the `$5F2`/`$3A`/`$22` figures, were all correct.)
+
+`$28FAD2` -- the "only live use of the `$246704` family" -- is read **ZERO** times on this path. It
+sits inside `nameCountdown28F4FC`, past a committed name. And `$28F3D2 moveq #$3,D0` is **dead**:
+`$28F450`'s `jsr $23D17E` overwrites D0 first.
+
+### A LIVE DEFECT IN `objslot14.js`, FOUND NOT FIXED
+
+**`objslot14.js:63` passes `queueKill` the TYPE WORD** (`ram.u16(a5 + 0x00)`), but `$241292` is
+`lea ($4C,A5),A0` -- **the ID**. `killById` compares 16 bits, so `$800E` never matches `$0001` and
+**the type-`$E` object never dies.** Asserted as a live measurement in `w387slot12.test.js` SECTION 8
+so the fixing wave goes through that test.
+
+### TWO CLEARS ARE TRANSCRIBED AND TESTED BUT DELIBERATELY NOT CALLED
+
+`$24A810..$24A823` (`$14`) and `$2603DA..$2603FD` (`$24`). Running them wipes
+`$8103E6..$812977` and `$81308C..$813157`, which turns **six assertions in `w384stall`,
+`w385player` and `w386gameover` red** -- measurements taken at the last frame of runs that
+previously had no teardown. **It is one line plus six re-bases**, documented in `objslot12.js`'s
+CLEARS block. A future wave should do it deliberately, not by accident.
+
+### TWO NEW WINDOWS (552), BOTH DOUBLE-BOUNDED
+
+`(0x225478, 0x40)` and `(0x2254F8, 0x80)`, with `check_name_entry_fade_sources`. The bound is stated
+**twice over**: `$241518 moveq #$F,D0 / move.l (A0)+,(A1)+ / dbra` (16 longwords) and `$28FA98`'s
+four `words-minus-one = $001F` fields. **W125's `$2254B8` is untouched at `$40`** and both new
+windows abut it.
+
+### NEXT: SLOT [8] ARM 2 NEVER FINISHES, AND IT IS PRE-EXISTING
+
+After the handover the machine rests at `$812E56 = 2`, `$812E5C = 2` -- `hiscoreScreen25B412`'s
+state 2 waiting on `chainCheck24681A` reaching zero, forever. **NOT caused by this wave**: a plain
+cold boot with NO COIN AT ALL reaches the identical resting state at +302 and stays there to
++40,000. `w387slot12.test.js` SECTION 8 runs both and compares, so the loop demonstrably closes onto
+the same machine a fresh boot rests on.
+
+**The palette-chain completion in `hiscorescreen.js` is the next unit.**
+
+## W386 NOTES
 
 ### NOTHING STOPS THE RUN ANY MORE. 60,000 FRAMES CLEAN.
 

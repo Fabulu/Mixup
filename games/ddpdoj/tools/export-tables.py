@@ -3575,6 +3575,153 @@ def check_gameover_anim_table(d: bytes) -> None:
                 f"{why[:60]}. Declare a disjoint window, never widen one.")
 
 
+# ==================== W387: SLOT [12]'S FOUR PALETTE SOURCES ==================
+#
+# `$28F2BA`, the name-entry screen's state-0 init, installs FOUR sprite palette
+# banks back to back:
+#
+#   [M] 28F2D8  41f9 00225 4b8   lea $2254B8,A0 / 303c 0002 move.w #$2,D0 / jsr $24150A
+#   [M] 28F2E8  41f9 00225 4f8   lea $2254F8,A0 / 303c 0003 move.w #$3,D0 / jsr $24150A
+#   [M] 28F2F8  41f9 00225 538   lea $225538,A0 / 303c 0004 move.w #$4,D0 / jsr $24150A
+#   [M] 28F308  41f9 00225 478   lea $225478,A0 / 303c 0005 move.w #$5,D0 / jsr $24150A
+#
+# THE BOUND IS STATED TWICE IN THE CODE, INDEPENDENTLY, and both say $40:
+#
+#   1. `$24150A` itself: `$241518 moveq #$F,D0 / $24151A move.l (A0)+,(A1)+ /
+#      $24151C dbra D0` -- sixteen longwords (trap 2: the dbra runs N+1 = 16
+#      times), so exactly 64 bytes per source.  `src/palette.js install24150A`
+#      already refuses any `src` that is not 64 bytes long.
+#   2. The FADE SCRIPT at `$28FA98` that `$28F4BA jsr $246410` reads names the
+#      SAME four longwords as its four entries' `target`, each carrying
+#      `words-minus-one = $001F`, and both readers of that field run
+#      `for i in 0..words_m1` -- 32 words = $40 bytes.  Same number, from a
+#      different instruction in a different routine.
+#
+# So the four are $40 each.  `$2254B8` is already W125's window (bank $11 of the
+# RESULT screen -- the same ROM block serves two screens).  The other three:
+#
+#   $225478 + $40 == $2254B8   -- ABUTS W125's base from below
+#   $2254F8 + $40 == $225538, + $40 == $225578  -- contiguous, so ONE window
+#
+# `$2254F8`'s base is W125's `$2254B8 + $40`, its exclusive far end `$225578` is
+# $40 clear of W125's `$2255B8`.  NEITHER LINE ABOVE IS WIDENED: W125's
+# `$2254B8` entry is untouched, for the reason W386 gives about W91.  Below
+# `$225478` the nearest declaration is W386's `$2252F8 + $40` (ends $225338),
+# $140 bytes clear.  `check_name_entry_fade_sources` re-derives all of it from
+# the cartridge and asserts the disjointness rather than trusting this comment.
+SHOT_WINDOWS.extend([
+    (0x225478, 0x0040, "W387: slot [12]'s state-0 palette source for sprite bank 5, "
+                       "installed by `$28F312 jsr $24150A` after `$28F308 lea $225478,A0 / "
+                       "$28F30E move.w #$5,D0`. $24150A copies 16 longwords ($241518 moveq "
+                       "#$F / dbra), and $28FA98's fade script names the same longword with "
+                       "words-minus-one $001F -- $40 bytes, stated twice. ABUTS W125's "
+                       "$2254B8 from below and widens nothing"),
+    (0x2254F8, 0x0080, "W387: slot [12]'s state-0 palette sources for sprite banks 3 and 4, "
+                       "$2254F8 and $225538, installed by `$28F2F2` and `$28F302 jsr "
+                       "$24150A`. $40 each from the same two independent bounds, and "
+                       "CONTIGUOUS ($2254F8 + $40 == $225538), which is why they are one "
+                       "window and not two. Base abuts W125's $2254B8 + $40; far end "
+                       "$225578 is $40 clear of W125's $2255B8"),
+])
+
+
+def check_name_entry_fade_sources(d: bytes) -> None:
+    """W387.  Re-derive slot [12]'s four palette sources and their ONE length
+    from the cartridge, and refuse a declaration that disagrees with either of
+    the two instructions that state it.
+
+    Nothing here is typed twice: the four addresses come out of the four `lea`
+    immediates, the length out of `$24150A`'s `moveq` operand AND out of the
+    `$28FA98` script's `words-minus-one` field, and the declared SHOT_WINDOWS
+    lines are checked against the union of the four.
+    """
+    INSTALLS = 0x28F2D8          # the first of four 16-byte lea/move/jsr triples
+    COPIER, SCRIPT = 0x24150A, 0x28FA98
+    sources = []
+    for i in range(4):
+        a = INSTALLS + i * 16
+        if u16(d, a) != 0x41F9:
+            raise SystemExit(f"${a:06X} is ${u16(d, a):04X}, not `41F9` "
+                             f"(lea xxx.l,A0) -- $28F2BA no longer installs "
+                             f"four palette banks in a row.")
+        if u16(d, a + 6) != 0x303C:
+            raise SystemExit(f"${a + 6:06X} is ${u16(d, a + 6):04X}, not "
+                             f"`303C` (move.w #imm,D0) -- the bank number is "
+                             f"not where W387 measured it.")
+        if u16(d, a + 10) != 0x4EB9 or u32(d, a + 12) != COPIER:
+            raise SystemExit(f"${a + 10:06X} is no longer `jsr ${COPIER:06X}` "
+                             f"-- the 64-byte bound below is $24150A's and "
+                             f"does not apply to another copier.")
+        sources.append((u32(d, a + 2), u16(d, a + 8)))
+    if [b for _, b in sources] != [2, 3, 4, 5]:
+        raise SystemExit(f"$28F2BA's four installs target banks "
+                         f"{[b for _, b in sources]}, not [2, 3, 4, 5].")
+
+    # BOUND 1 -- $24150A's own loop.  `$241518 moveq #$F,D0`, then one
+    # `move.l (A0)+,(A1)+` under a `dbra` that runs N+1 times (trap 2).
+    if u16(d, COPIER + 0x0E) != 0x700F or u16(d, COPIER + 0x10) != 0x22D8 \
+            or u16(d, COPIER + 0x12) != 0x51C8:
+        raise SystemExit(f"${COPIER + 0x0E:06X} is no longer "
+                         f"`moveq #$F,D0 / move.l (A0)+,(A1)+ / dbra` -- the "
+                         f"64-byte copy length is unproven.")
+    by_copier = (d[COPIER + 0x0F] + 1) * 4
+
+    # BOUND 2 -- the fade script at $28FA98, four fourteen-byte entries after a
+    # count word.  Its four targets must be the SAME four, and each entry's
+    # words-minus-one must give the same length.
+    count = u16(d, SCRIPT)
+    if count != 4:
+        raise SystemExit(f"${SCRIPT:06X} declares {count} entries, not 4 -- "
+                         f"the script no longer corroborates the four installs.")
+    for i, (src, _) in enumerate(sources):
+        e = SCRIPT + 2 + i * 14
+        target, words_m1 = u32(d, e + 6), u16(d, e + 10)
+        if target != src:
+            raise SystemExit(
+                f"${SCRIPT:06X} entry {i} fades toward ${target:06X} but "
+                f"$28F2BA install {i} loads ${src:06X}. The two readings of "
+                f"the same four blocks disagree; do not declare either.")
+        if (words_m1 + 1) * 2 != by_copier:
+            raise SystemExit(
+                f"${SCRIPT:06X} entry {i} carries words-minus-one ${words_m1:04X} "
+                f"= ${(words_m1 + 1) * 2:X} bytes, and $24150A copies "
+                f"${by_copier:X}. Two instructions, two answers.")
+    # 2 + 4 * 14 = $3A, and $28FA98 + $3A is $28FAD2, the $246704 script -- the
+    # count word's own bound, checked so the loop above cannot run off the end.
+    if u16(d, SCRIPT + 0x3A) != 4:
+        raise SystemExit(f"${SCRIPT + 0x3A:06X} is ${u16(d, SCRIPT + 0x3A):04X}, "
+                         f"not the $28FAD2 sibling script's count of 4 -- the "
+                         f"$28FA98 table does not end where four entries put it.")
+
+    # THE DECLARATION.  $2254B8 is W125's and is deliberately NOT re-declared;
+    # the other three must be covered EXACTLY by the two W387 lines.
+    want = {0x225478: 0x40, 0x2254F8: 0x80}
+    for base, length in want.items():
+        decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == base]
+        if decl != [(base, length)]:
+            raise SystemExit(f"W387 declares {[(hex(a), hex(n)) for a, n in decl]} "
+                             f"at ${base:06X}; it must be exactly "
+                             f"[(${base:06X}, ${length:X})].")
+    covered = set()
+    for base, length in want.items():
+        covered |= set(range(base, base + length))
+    covered |= set(range(0x2254B8, 0x2254B8 + by_copier))   # W125's, untouched
+    for src, _ in sources:
+        if not set(range(src, src + by_copier)) <= covered:
+            raise SystemExit(f"install source ${src:06X}+${by_copier:X} is not "
+                             f"covered by the declared windows.")
+    # NEVER WIDEN A NEIGHBOUR: both new windows must overlap nothing at all.
+    for base, length in want.items():
+        for a, ln, why in SHOT_WINDOWS:
+            if (a, ln) == (base, length):
+                continue
+            if a < base + length and base < a + ln:
+                raise SystemExit(
+                    f"the W387 window [${base:06X}, ${base + length:06X}) "
+                    f"OVERLAPS the declared window [${a:06X}, ${a + ln:06X}) -- "
+                    f"{why[:60]}. Declare a disjoint window, never widen one.")
+
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
@@ -7375,6 +7522,7 @@ def build(d: bytes) -> dict:
     check_stage2_boot_data(d)                  # W133 -- STAGE-2 BG boot windows
     check_stage2_spawn_data(d)                 # W169 -- reset/install + spawn span
     check_gameover_anim_table(d)               # W386 -- THE GAME-OVER FADE TARGET
+    check_name_entry_fade_sources(d)           # W387 -- SLOT [12]'S FOUR SOURCES
     check_sample_windows()                     # W27D -- ICS sample tight union
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)

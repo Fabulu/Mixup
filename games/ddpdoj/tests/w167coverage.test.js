@@ -87,7 +87,14 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   // W375 again: 15 -> 16 ported and 5 -> 4 unknown, slot [8] = `$25A770`, the attract sequencer
   // (`src/objslot8.js`), ported AND registered in the same wave. The four still unknown are
   // [12] $28F3AC, [16] $256E7A, [18] $24902A, [19] $28EE88.
-  assert.match(got.stdout, /top_objects: 16\/20 ported, 4 unknown, 0 null/);
+  //
+  // W387: 16 -> 17 ported and 4 -> 3 unknown, slot [12] = `$28F3AC`, the NAME-ENTRY screen
+  // (`src/objslot12.js`), ported AND registered in the same wave. It is the entry that CLOSES
+  // the front-end loop: slot [14] stages dispatch type $C at +4,414 of a real cold boot and
+  // this handler's teardown (`$28F368`) stages dispatch type 8 straight back. The three still
+  // unknown are [16] $256E7A, [18] $24902A, [19] $28EE88, and none of them is on the cold-boot
+  // path -- see `w387slot12.test.js` SECTION 3.
+  assert.match(got.stdout, /top_objects: 17\/20 ported, 3 unknown, 0 null/);
   assert.match(got.stdout, /type5_calls: 19\/23 ported/);
   // W229: 72 -> 76 ported and 54 -> 50 unknown, the four the Stage-4 waves added
   // after W217 (W218's $27C81A and $27DB30, W219's Type-$40 boss, W223's $41).

@@ -89,6 +89,8 @@ import { tallyScreen25DBB4 } from './tallyscreen.js';
 import * as slot9 from './objslot9.js';
 import { objSlot7 } from './objslot7pool.js';
 import { objSlot8 } from './objslot8.js';
+// W387: slot [12], the NAME-ENTRY screen -- the frame the front end closes on itself.
+import { objSlot12 } from './objslot12.js';
 import { objSlot13 } from './objslot13.js';
 // W375: slot [14], ported in W372 and left out of W374's registration pass.
 import { objSlot14 } from './objslot14.js';
@@ -243,6 +245,22 @@ export function defaultHandlers(rom, vram, opts = {}) {
     // $25C6D4) are counted notes, not calls -- the sequencer's own spine is what runs here.
     [8, slotObject(objSlot8, rom)],
     [9, slotObject(slot9.objSlot9, rom)],
+    // W387. $240F62[12] = $28F3AC, priority $0009 (read out of $240FC6, not carried as a
+    // literal) -- the NAME-ENTRY screen (src/objslot12.js),
+    // and REGISTERING IT IS WHAT CLOSES THE FRONT-END LOOP. Slot [14] stages dispatch type $C at
+    // +4,414 of a real cold boot and, until this entry existed, `$240FC2` was a counted note once
+    // per frame from that frame to the end of time: the machine reached a screen with no handler
+    // and stayed there. Its state 1 finds `$8130CC` empty -- nobody owes a name -- and falls into
+    // `$28F368`, which stages dispatch type 8, the ATTRACT SEQUENCER. attract -> coin -> play ->
+    // game over -> attract, closed.
+    //
+    // PARTIAL, AND IT SAYS SO. The SPINE is transcribed ($28F2BA, $28F368, $28F3AC and the two
+    // per-side heads) and it makes ~700 lines of already-ported name-entry body in
+    // `src/hiscorename.js` reachable for the first time -- W301 through W382 wrote it and nothing
+    // ever called it. Three draw routines below it ($28FAF4, $28FB8A, $28FC36) and the clear
+    // `$259C4A` are counted notes with measured extents. NONE of them is on the cold-boot path:
+    // w387slot12.test.js asserts the note set added by this entry is EMPTY on a real boot.
+    [12, slotObject(objSlot12, rom)],
     [13, slotObject(objSlot13, rom)],
     // W375. $240F62[14] = $288C6C, priority $0014 -- the TRANSITIONAL object (src/objslot14.js): it
     // draws ONE sprite through $23DECE from a rank-selected table, and when its $012C counter passes

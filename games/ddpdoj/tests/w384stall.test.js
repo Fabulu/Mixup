@@ -327,7 +327,14 @@ test('W384 RAM is NOT a fixed point -- thousands of bytes move over the run\'s l
     `+3,000 vs the last frame must differ in thousands of bytes; got ${RUN.diffBytes}`);
   assert.ok(RUN.diffBlocks > 40,
     `...spread over dozens of 256-byte blocks; got ${RUN.diffBlocks}`);
-  assert.equal(RUN.g.ram.u16(STATE), 0x000e, 'slot [8] is still on arm $E');
+  // **W387: THIS USED TO ASSERT `$812E56 == $E`, "slot [8] is still on arm $E".** It is $2 now,
+  // and the reason is the whole of W387: dispatch slot [12] is ported and registered
+  // (`src/objslot12.js`), its teardown `$28F368` stages dispatch type 8 at state 2, and the
+  // attract sequencer takes the machine back. The claim this test carries -- that the RAM is not
+  // a fixed point -- is made by the two assertions above and is UNCHANGED; the state word was an
+  // incidental "and we are still in gameplay", which is exactly what stopped being true.
+  assert.equal(RUN.g.ram.u16(STATE), 0x0002,
+    'slot [8] is back, on arm 2 -- the front-end loop CLOSED (W387, w387slot12.test.js)');
 });
 
 // =============================================================================================
