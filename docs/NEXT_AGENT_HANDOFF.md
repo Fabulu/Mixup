@@ -71,6 +71,25 @@ The docstrings, the wiring comment and the test names all now carry the withdraw
 warning rather than as a fact, because the tests themselves were always right: they pin the
 FUNCTION's gate, which behaves correctly whichever state it is handed.
 
+### `$2603FE`'s TWO `stageCreate`s BOTH STAGE TYPE `$B` -- TRAP 12, WITH THE ANSWER KNOWN
+
+    $260442  jsr $287084
+    $26044C  move.w #$000B,D0
+    $260450  jsr $241182          <-- stageCreate #1
+    $260480  jsr $2870E6
+    $26048A  move.w #$000B,D0
+    $26048E  jsr $241182          <-- stageCreate #2
+    $26049E  jsr $287A5E
+
+**Both stage dispatch type `$B` = 11.** `$240F62 + $B*8` gives handler **`$25DBB4`** priority
+**`$000A`**, so both calls must pass the lookup `rom.u16(0x240F62 + t * 8 + 4)` and both must come
+out as `$000A`. **A constant `0` type-errors the moment the arm runs, and this project has written
+that bug twice.** Here you can check the port against a known value.
+
+Worth noting what type `$B` IS: slot [11], `$25DBB4`, the **TALLY SCREEN** (`tallyscreen.js`) -- and
+unlike the rest of the front end, slot [11] **is** registered in `main.js`. So this once-per-screen
+spawn hands off to something that can actually run today.
+
 ### STATE 8 IS HOW A RECORD RETIRES, AND NOTHING SERVES IT
 
 `$25D560` contains **no `cmpi.b` against `($1,A6)` at all** -- it is reached by dispatch, not by
