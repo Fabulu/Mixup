@@ -55,6 +55,19 @@
 // $28B5A8 (the `beq` target) is not translated either -- it is the not-yet-
 // started branch and it is a named throw if ($2,A5) is ever 0.
 //
+// ----------------------------------------- WAVE 380: AND $28B5A8 IS NOW REAL
+//
+// The paragraph above was true from wave 4 until W380 and is kept because the
+// header's own rule is that a stale number here costs somebody a headline.  IT
+// IS NO LONGER TRUE.  `$28B5A8` is `notStarted28B5A8` below: eight subsystem
+// resets, `move.b #$1,($2,A5)`, and an `rts` that ENDS THE FRAME.  Six of the
+// eight already had a port under other names and W380 wrote the last two into
+// `src/poolclear.js`; NOT ONE of the eight is a counted note.
+//
+// It was the last stop on the boot chain.  A cold boot, one coin, P1 START and
+// no input after it used to throw here on frame 2058 past START; it now runs
+// past it into gameplay and does not stop -- measured to 120,000 frames.
+//
 // ------------------------------------------------------- WAVE 9: THE LASER
 //
 // A play report: "holding the fire button does nothing, does not throw, does
@@ -117,24 +130,31 @@
 // shipped path: the ramp is real, `rampUp` in options.js ports its other half,
 // and tests still pin its shape.  It is no longer a gate on anything.
 
-import { unreached } from './unported.js';
 import { runShotDriver } from './weapons.js';
 import { shotHandlers } from './shots.js';
 import { runOptionObject } from './options.js';
 import { drawShip, drawShipAlt, SHIP_MUTATE } from './shipsprite.js';
 import { RAM, ROM } from './machine.js';
 import { runEnemyFrame, enemyHandlerMap } from './enemyframe.js';
-import { reapSubRecords, SUB_REAPER } from './spawn.js';
+import { reapSubRecords, SUB_REAPER, resetAndInstallStage26331E } from './spawn.js';
 import { runBulletDriver, runClearTimer } from './bulletdriver.js';
 import { runType5Tail } from './damage.js';
 import { notePerFrameLedger } from './score.js';
 import { runSegmentDriver, runBeamDraw } from './laser.js';
 import { runSparkDriver } from './spark.js';
-import { runEffectDriver, runPoolCDriver, runSubEffectDriver } from './effects.js';
-import { runItemDriver } from './items.js';
+import {
+  runEffectDriver, runPoolCDriver, runSubEffectDriver,
+  clearEffectPool, clearSubEffectPool,
+} from './effects.js';
+import { runItemDriver, clearItemPool } from './items.js';
 import { runPoolADriver } from './bee.js';
 import { bombDriver255DD8 } from './bomb.js';
 import { runCueDriver28AD70 } from './cues.js';
+// W380 -- the two of `$28B5A8`'s eight resets that had no port anywhere.
+import { clearPoolC289AE0, clearCuePool28AC3A } from './poolclear.js';
+import { poolClear as clearBulletPool28131E, poolPark as parkBulletSlots281330 }
+  from './bullets.js';
+import { clearPool as clearSparkPool289F3A } from './spark.js';
 
 export const TYPE5 = {
   handler: 0x28b5e0,
@@ -252,15 +272,62 @@ export const TYPE5_PORTED = new Set([
   0x255dd8,   // #7  THE BOMB: $255E3E's three phases and $2564F0's teardown (W64)
 ]);
 
+// ============================ W380: $28B5A8, THE FIRST FRAME ================
+/**
+ * `$28B5A8..$28B5DF` -- 56 bytes, VERIFIED BY SWEEP, not taken from a report:
+ *
+ *   28b5a8: 4eb9 0027e98a   jsr $27E98A      the ITEM pool
+ *   28b5ae: 4eb9 0028131e   jsr $28131E      the BULLET pool + the 210 parks
+ *   28b5b4: 4eb9 00288e0c   jsr $288E0C      pool B, the death explosion
+ *   28b5ba: 4eb9 00289084   jsr $289084      pool D, the secondary debris
+ *   28b5c0: 4eb9 00289ae0   jsr $289AE0      pool C, the satellites
+ *   28b5c6: 4eb9 0028ac3a   jsr $28AC3A      the CUE pool
+ *   28b5cc: 4eb9 00289f3a   jsr $289F3A      pool E, the shot spark
+ *   28b5d2: 4eb9 0026331e   jsr $26331E      the ENEMY subsystem + install stage
+ *   28b5d8: 1b7c 0001 0002  move.b #$1,($2,A5)
+ *   28b5de: 4e75            rts
+ *
+ * **IT RETURNS.  IT DOES NOT FALL THROUGH INTO THE TWENTY-THREE CALLS.**  In
+ * ROM `$28B5A8` sits BEFORE `$28B5E0`, so `$28B5E0 tst.b ($2,A5) / beq $28B5A8`
+ * jumps BACKWARDS and the `rts` at `$28B5DE` ends the frame.  On the first
+ * frame object type 5 exists, gameplay's whole job is to WIPE THE WORLD -- no
+ * driver runs, no bullet moves, and the tail at `$28B670` is not reached
+ * either.  A port that ran the resets and then fell into the loop would drive
+ * every subsystem over freshly zeroed pools one frame early.
+ *
+ * ALL EIGHT ARE REAL CALLS.  Nothing here is a counted note.  Six of the eight
+ * already had a port -- they are the SAME EIGHT `$25FD38` calls, in a different
+ * order -- and `src/poolclear.js` adds the last two.  See that file for the
+ * tiling proof that pins every `dbra` count.
+ *
+ * `$26331E` is the one with depth: 22 bytes of clear (`$81332C`, `$1C27` words)
+ * and then `$263330 bsr.w $263386`, the stage install, which is why the enemy
+ * script cursor `$8132CC` is live when the next frame's call #2 walks it.
+ */
+export function notStarted28B5A8(ram, rom, ctx) {
+  clearItemPool(ram);                                  // $28B5A8 jsr $27E98A
+  clearBulletPool28131E(ram);                          // $28B5AE jsr $28131E ..
+  parkBulletSlots281330(ram);                          //   ..and its second loop
+  clearEffectPool(ram);                                // $28B5B4 jsr $288E0C
+  clearSubEffectPool(ram);                             // $28B5BA jsr $289084
+  clearPoolC289AE0(ram);                               // $28B5C0 jsr $289AE0
+  clearCuePool28AC3A(ram);                             // $28B5C6 jsr $28AC3A
+  clearSparkPool289F3A(ram);                           // $28B5CC jsr $289F3A
+  // $28B5D2 jsr $26331E -- the clear AND `$263330 bsr.w $263386`'s install.
+  return resetAndInstallStage26331E(ram, rom, ctx.unportedLog, ctx.prot);
+}
+
 /** Handlers this module dispatches to, built once per Game. */
 export function makeType5(rom) {
   const handlers = shotHandlers();
   const enemyHandlers = enemyHandlerMap(rom);
   return function type5(ram, slot, index, ctx) {
     if (ram.u8(slot + 2) === 0) {                       // $28B5E0 tst.b ($2,A5)
-      unreached(TYPE5.notStarted, `object type 5's "not started" branch `
-        + `($28B5E0 tst.b ($2,A5) / beq $28B5A8) -- ($2,A5) is 0. MEASURED `
-        + `non-zero on every frame of the compared window`);
+      // W380.  `beq $28B5A8` -- the FIRST FRAME.  Eight resets, the started
+      // flag, and `rts`: the twenty-three calls below do NOT run this frame.
+      ctx.type5Started = notStarted28B5A8(ram, rom, ctx);
+      ram.setU8(slot + 2, 1);                           // $28B5D8 move.b #$1,($2,A5)
+      return;                                           // $28B5DE rts
     }
     for (const c of TYPE5.calls) {
       switch (c) {

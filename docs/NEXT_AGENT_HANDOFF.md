@@ -2,7 +2,75 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W379
+## START HERE -- W380
+
+### THE BOOT CHAIN IS COMPLETE. 120,000 FRAMES, NO THROW.
+
+Cold `Game`, `boot()`, `$803957 = 1`, COIN1, P1 START, **nothing pressed after**: measured to
+**120,000 frames past START** (about 2,000 seconds of game time) with **no throw at any address**.
+`$28B5A8` was the last stop on the boot chain and there is no next one.
+
+On the handoff frame `$8132CC` goes null -> `$230C6C` (`$26331E`'s `bsr.w $263386` installing the
+stage-1 spawn script) and the distance clock leaves 0 three frames later. The type-5 main body then
+runs every frame (117,942 times in that window) with 53 live enemy bullets in the pool.
+
+**NOT A STOP, THOUGH IT LOOKS LIKE ONE:** the distance clock `$8130CE` climbs to **836** and holds.
+`$8130CE` is an odometer bumped by `$26132C` once per `$200` of accumulated scroll, and **836 is the
+same plateau `damage.js:14` records W34 measuring.** Identical with fire tapped and with no input.
+
+### `$28B5A8` RETURNS, AND THAT IS LOAD-BEARING
+
+`$28B5A8..$28B5DF`, 56 bytes, eight `jsr`s then `move.b #$1,($2,A5)` and **`$28B5DE rts`**. It sits
+BEFORE `$28B5E0` in ROM, so the `beq` jumps BACKWARDS and the `rts` ends the frame. **The 23
+subsystem calls do NOT run on the frame `$28B5A8` takes.** A port that ran the resets and fell
+through would drive every subsystem over freshly zeroed pools one frame early.
+
+### SIX OF THE EIGHT CALLEES WERE ALREADY PORTED
+
+The brief said all eight were unported. Wrong by six. The real remainder was **two 18-byte
+routines**, now `src/poolclear.js`: `$289AE0` (pool C) and `$28AC3A` (cue pool). Seven of the eight
+are the identical five-instruction `lea` / `move.w #N,D0` / `move.w #0,(A0)+` / `dbra` / `rts`.
+
+| Addr | Extent | Where |
+|---|---|---|
+| `$27E98A` | 18 B | `items.js clearItemPool` |
+| `$28131E` | 42 B, two loops | `bullets.js poolClear` + `poolPark` |
+| `$288E0C` | 18 B | `effects.js clearEffectPool` |
+| `$289084` | 18 B | `effects.js clearSubEffectPool` |
+| `$289AE0` | 18 B | **W380** `poolclear.js` |
+| `$28AC3A` | 18 B | **W380** `poolclear.js` |
+| `$289F3A` | 18 B | `spark.js clearPool` |
+| `$26331E` | 22 B + `bsr.w` | `spawn.js resetAndInstallStage26331E` |
+
+**THE BOUNDS ARE PROVED BY TILING, NOT BY ASSERTION.** Five clears cover RAM with no gap and no
+overlap, each one's exclusive end being the next one's `lea` operand:
+`$81B732 -> $81C8EC -> $81CDEE -> $81D394 -> $81DB90 -> $81DD10`, and
+`$81332C + $1C27*2 = $816B7A` is `$27E98A`'s own `lea`. An off-by-one anywhere breaks the chain.
+(ROM immediates are `$2D2` and `$BF`; the port's word COUNTS are `$2D3` and `$C0` -- `dbra` is N+1.)
+
+### `claimed.py` ITSELF CAN BE WRONG -- IT WAS, ON `$28131E`
+
+It reports `NO CODE LITERAL -- likely genuinely unported, 2 of 4 mentions are note()/unreached()`.
+**The port exists.** `bullets.js:78` is `poolClear: 0x28131e` inside the `BUL` constant table, which
+the classifier reads as a note, and the two real translations are functions further down that never
+spell the address in a matching form. **Reading the CLASS was not enough here; the file had to be
+opened.** Add that to the "a comment is not a port" rule: a CONSTANT TABLE is not a note either.
+
+### A LIVE STALE NOTE, AND IT IS COSTING TWO POOL CLEARS RIGHT NOW
+
+**`stageend.js rebuildWorld25FD38` (`$25FD38`) calls the same eight resets in a different order and
+counts FOUR as deferred at lines 173 and 178**: `$289AE0`, `$28AC3A`, `$289F3A`, `$28131E`.
+`$289F3A` has had `spark.js clearPool` **since W53** and `$28131E` has had `bullets.js poolClear` /
+`poolPark` for longer. **So the stage-advance path does not clear the spark pool or the bullet pool
+even though the port can.** All four functions exist as of this wave. Four one-line calls. **NEXT
+UNIT.**
+
+### STILL DEFERRED ON THE GAMEPLAY PATH
+
+Four type-5 calls, unchanged from before: `$2527CE`, `$252BD0`, `$25292A`, `$252A52`. Nineteen of
+twenty-three run.
+
+## W379 NOTES
 
 ### SLOT [9] ADVANCES. THE WHOLE CHAIN FROM COLD BOOT TO GAMEPLAY NOW RUNS.
 

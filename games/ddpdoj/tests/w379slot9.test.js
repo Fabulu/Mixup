@@ -170,18 +170,43 @@ test('W379 a cold boot + coin + P1 START drives slot [9] all the way to state 7 
       '  ...and it is base table 0, the longword W378 windowed at $26086E');
   });
 
-test('W379 the run stops at $28B5A8, and that is the object-type-5 round init, not slot [9]', () => {
+// UPDATED BY W380, and this is the one assertion in the tree that could not survive that wave.
+//
+// As W379 shipped it, this test read:
+//
+//     assert.notEqual(out.err, null, 'the run does still stop');
+//     assert.match(String(out.err.message), /\$28B5A8/, ...);
+//     assert.ok(out.frames > 2000 && out.frames < 2200, ...);
+//
+// Its subject was the THROW at `$28B5A8`, which W380 replaced with the real routine
+// (`type5.js notStarted28B5A8`, eight subsystem resets and `move.b #$1,($2,A5)`). An assertion
+// that a named `unreached()` still fires cannot be kept once that `unreached()` is ported; there
+// is no way to weaken it that leaves it meaning anything. So the stop assertions are inverted
+// and the rest of the test -- everything it proved about W379's OWN work, which is that record 0
+// reaches state 7 with the rank base installed and stays there -- is kept verbatim.
+//
+// `tests/w380type5.test.js` is where the new behaviour is pinned.
+test('W379 the run reaches $28B5A8 with slot [9] finished -- and W380 ported the stop away', () => {
   const g = coldToStart();
   const out = stepUntil(g, () => false, 4000);
 
-  assert.notEqual(out.err, null, 'the run does still stop');
-  assert.match(String(out.err.message), /\$28B5A8/,
-    `the next stop is $28B5A8, not something in the select screen. Got: ${out.err.message}`);
-  assert.ok(out.frames > 2000 && out.frames < 2200,
-    `and it is ${out.frames} frames past START -- the frame after the handoff`);
-  // The state that got it there is the one this wave produced, so the stop is downstream.
-  assert.equal(g.ram.u8(REC0 + SCREEN17.phaseAt), 7, 'record 0 is in state 7 when it stops');
-  assert.notEqual(g.ram.u32(RANK.basePtr), 0, '  ...with the rank base installed');
+  assert.equal(out.err, null,
+    `the run no longer stops: $28B5A8 is ported (W380). Got: ${out.err && out.err.message}`);
+  assert.equal(out.frames, 4000, 'all 4000 frames past START were stepped');
+  assert.notEqual(g.ram.u32(RANK.basePtr), 0, 'the rank base is still installed at frame 4000');
+
+  // The second thing W380 changed here. As long as the run froze on frame 2058 the record was
+  // PINNED at state 7 and this test could assert 7 at any later frame. It is not pinned any
+  // more: state 7 arrives on frame 2001 (measured), $28B5A8 runs on 2058, and the record RETIRES
+  // to state 8 on frame 2407 -- the `$25CC34` path tests 18-23 below already decode. So the
+  // assertion is that it reached 7 and then went FORWARD, which is what W379 actually proved.
+  const h = coldToStart();
+  const early = stepUntil(h, () => false, 2057);
+  assert.equal(early.err, null, 'nothing throws in the first 2057 frames');
+  assert.equal(h.ram.u8(REC0 + SCREEN17.phaseAt), 7,
+    'record 0 is in state 7 on the frame before $28B5A8 runs');
+  assert.equal(g.ram.u8(REC0 + SCREEN17.phaseAt), 8,
+    '  ...and by frame 4000 it has retired to state 8, which the freeze used to prevent');
 });
 
 test('W379 $28B5A8 is DEFERRED, and here is the extent this wave measured for it', () => {
