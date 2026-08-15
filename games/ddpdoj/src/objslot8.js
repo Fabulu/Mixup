@@ -34,11 +34,16 @@
 // $12C timeout -> state 2 -> the high-score screen` runs without throwing.
 //
 // WHAT IS NOTED AND THEREFORE STILL STANDS BETWEEN THIS AND A BOOTABLE GAME: the four screen
-// sub-machines above, `$259FF8` (arm 13's sprite-string emitter -- the warning screen draws nothing
-// yet), `$23CFDE` (the credit / FREE PLAY line) and the `$25AD02`/`$25AFD8` blink-message pair.
-// None of them gates the state machine except through a carry this port cannot compute, which is
-// why arms 1, 5, 9 and 12 hold instead of advancing. Arms 0, 2, 3, 13 and 14 are complete, and
-// 13 -> 2 -> 12 and 3 -> 14 -> gameplay are live paths today.
+// sub-machines above and the `$25AD02`/`$25AFD8` blink-message pair. Neither gates the state
+// machine except through a carry this port cannot compute, which is why arms 1, 5, 9 and 12 hold
+// instead of advancing. Arms 0, 2, 3, 13 and 14 are complete, and 13 -> 2 -> 12 and
+// 3 -> 14 -> gameplay are live paths today.
+//
+// **W376 CLOSED THE TWO THAT MADE THE LOOP SILENT AND BLANK.** `$259FF8` (arm 13's string
+// emitter, the warning screen) and `$23CFDE` (the credit / FREE PLAY line) are ported in
+// `fronttext.js` and called for real from `arm13` and `dispatchTail25A82C` below. Neither is
+// noted any more, and that is the point: a `note()` is a COUNTED deferral, and one left standing
+// beside a live call would make the unported report claim a gap this port no longer has.
 
 import { u16 } from './ram.js';
 import { clearTx23C622, clearSlotTable23C668, camReset } from './background.js';
@@ -49,6 +54,7 @@ import { clear25C57E } from './objslot9.js';
 import { menuDips23C932 } from './tallyscreen.js';
 import { hiscoreScreen25B412 } from './hiscorescreen.js';
 import { loadAnimObjects246410 } from './animobjects.js';
+import { txFontString259FF8, creditLine23CFDE } from './fronttext.js';
 
 export const SCREEN8 = Object.freeze({
   entry: 0x25a770, setState: 0x25a764, tail: 0x25a82c, table: 0x25a872, dispatch: 0x240f62,
@@ -87,7 +93,7 @@ export const SCREEN8 = Object.freeze({
   txPalWarn: 0x222618,    // $25A99A / $25AC08 lea -- likewise 32
   cueStream: 0x28c0fc, cueWrapper: 0x28c5b0, cueBgm: 0x28c170,
 
-  // --- the blink and the credit line, both NOTED
+  // --- the blink (still NOTED) and the credit line (W376: LIVE, see fronttext.js)
   blinkMask: 0x10,        // $25A844 andi.w #$10 -- 16 frames on, 16 off
   blinkOn: 0x25ad02, blinkOff: 0x25afd8, creditLine: 0x23cfde,
 
@@ -604,9 +610,9 @@ function arm13(ram, rom, a5, ctx) {
   if (draw) {
     // $25AC50 lea ($25AA36,PC),A0 -- EA = $25AC52 + $FDE4, the EXTENSION WORD's address.
     const a0 = SCREEN8.warnStrings + ram.u16(a5 + SCREEN8.cursor);   // $25AC54 adda.w ($6,A5),A0
-    ctx?.unported?.note(SCREEN8.warnEmit,
-      `$25AC64 jsr $259FF8 -- the sprite string emitter, with A0=$${a0.toString(16).toUpperCase()
-      }, D0=$${ram.u16(a5 + SCREEN8.y).toString(16).toUpperCase()} (the Y), D1=0, D2=0`);
+    // $25AC58 move.w ($8,A5),D0 (the Y) / $25AC5C move.w #$0,D1 / $25AC60 move.w #$0,D2, and D2
+    // is dead: $259FFC overwrites it before $25A000 reads it. See fronttext.js.
+    txFontString259FF8(ram, rom, ram.u16(a5 + SCREEN8.y), 0x0000, a0);   // $25AC64 jsr $259FF8
     ram.setU16(a5 + SCREEN8.y,                                 // $25AC6A subi.w #$C,($8,A5)
       u16(ram.u16(a5 + SCREEN8.y) - SCREEN8.warnYStep));
     ram.setU16(a5 + SCREEN8.cursor,                            // $25AC70 addi.w #$20,($6,A5)
@@ -701,7 +707,10 @@ function dispatchTail25A82C(ram, rom, a5, ctx) {
       // $25A856 jsr ($25AFD8,PC) -- EA = $25A858 + $780.
       ctx?.unported?.note(SCREEN8.blinkOff, '$25A856 jsr $25AFD8 -- the blink message, OFF (blank)');
     }
-    ctx?.unported?.note(SCREEN8.creditLine, '$25A85C jsr $23CFDE -- the credit / FREE PLAY line');
+    // $25A85C jsr $23CFDE -- the credit / FREE PLAY line. W376: ported in fronttext.js, and it
+    // writes TxVram DIRECTLY (through $25A14C/$240CF0) rather than through the defer buffer, so
+    // it lands on this frame's tilemap and not the next one's.
+    creditLine23CFDE(ram, rom, ctx.tx);
   }
 
   const st = ram.u16(SCREEN8.state);                           // $25A862 -- THE RE-READ

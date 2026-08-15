@@ -3239,6 +3239,69 @@ SHOT_WINDOWS.extend([
                        "$225938 -- $25BA46's entries [2], [3] and [4], $40 each from the "
                        "same $001F. Contiguous at stride $40, which is why they are one "
                        "window and not three"),
+
+    # ---- W376: THE WARNING SCREEN AND THE CREDIT LINE ---------------------------------------
+    #
+    # Six windows, and every extent below comes from an INSTRUCTION -- a count word, a
+    # terminator test, or a verified instruction boundary. None of them widens an existing
+    # window; the nearest declared neighbours are $256CAA+$B0 (ends $256D5A) below and
+    # $25B578+$14 above for the two $25xxxx windows, and $237978+$2640 (ends $239FB8) below and
+    # $23D760+$962 above for the four $23Cxxx ones, so all six sit in open ground.
+    #
+    # 1. $25AA36 -- arm 13's FOURTEEN warning lines. THE COUNT IS IN THE CODE, twice over:
+    #    `$25AC36 cmpi.w #$1C0,($6,A5)` is the cursor value that stops the walk and
+    #    `$25AC70 addi.w #$20,($6,A5)` is the stride, so the block is exactly $1C0 bytes of
+    #    $20-byte lines.  $25AA36 + $1C0 == $25ABF6, which is arm 13's OWN entry point -- the
+    #    data ends precisely where the code that reads it begins.  Base from
+    #    `$25AC50 lea ($25AA36,pc),A0`: EA = $25AC52 (the EXTENSION WORD) + $FDE4.
+    (0x25AA36, 0x01C0, "W376: arm 13's fourteen warning-screen lines, $20 bytes each. Bound "
+                       "from $25AC36 cmpi.w #$1C0,($6,A5) (the terminal cursor) and $25AC70 "
+                       "addi.w #$20 (the stride); $25AA36+$1C0 == $25ABF6, arm 13's own entry"),
+    #
+    # 2. $25A042 -- $259FF8's FONT TABLE, 96 words for ASCII $20..$7F.
+    #    Base: `$25A010 lea ($25A042,pc),A1`, EA = $25A012 + $30.
+    #    THE READER STATES NO BOUND -- `andi.w #$FF / subi.w #$20 / add.w D4,D4 / adda.w D4,A1`
+    #    has no compare and no mask -- so the extent is pinned by the CODE AROUND IT instead:
+    #      * below, $25A040 is $259FF8's own `4e75 rts` (aligned.py sweep $259FF8..$25A044), so
+    #        the table cannot start earlier than $25A042;
+    #      * above, $25A102 is `48e7fffe movem.l d0-d7/a0-a6,-(a7)` and
+    #        `python tools/aligned.py sweep 0x25A102 0x25A14C` decodes 24 instructions straight
+    #        through to the `4e75` at $25A14A -- a whole routine.  So the table cannot run past
+    #        $25A101, and $25A042..$25A101 is $C0 bytes = 96 words = chars $20..$7F exactly.
+    #    The entries confirm the same 96: $0080+((i>>4)*$20)+(i&$F) holds for i = 0..95 and the
+    #    next word is the movem.  Arm 13's own strings reach only $20..$59 (measured), so the
+    #    window is wider than this caller needs BY DESIGN -- narrowing it to the observed
+    #    characters would be a bound taken from the data instead of from the code.
+    (0x25A042, 0x00C0, "W376: $259FF8's font table -- 96 words, ASCII $20..$7F, reached by "
+                       "$25A010 lea ($25A042,pc),A1 with an UNBOUNDED index. Pinned below by "
+                       "$259FF8's rts at $25A040 and above by the routine prologue at $25A102 "
+                       "(aligned.py sweeps $25A102..$25A14A as 24 instructions to its rts)"),
+    #
+    # 3-6. $23CFDE's six NUL-TERMINATED strings, in four contiguous runs.  Every one is bounded
+    #    by the READER'S OWN terminator test, `$25A15A tst.b D4 / $25A15C beq $25A170`
+    #    (txString25A14C), and every run ends on the first instruction of the tail that leas it
+    #    -- each of those is an aligned-sweep boundary, not an eyeballed gap:
+    #      $23CDAC "FREE PLAY\0"                  NUL at $23CDB5, $23CDB6 = move.w #$A,D0
+    #      $23CDF0 "COINS:\0" + pad               NUL at $23CDF6, $23CDF8 = move.w #$B,D0
+    #      $23CE6A "CREDITS: ( / )\0" + pad       NUL at $23CE78
+    #      $23CE7A "CREDITS\0" + pad              NUL at $23CE81
+    #      $23CE83 "  ( / )\0" + pad              NUL at $23CE8A, $23CE8C = move.w #$7,D0
+    #      $23CF68 "CREDITS:\0" + pad             NUL at $23CF70, $23CF72 = move.w #$A,D0
+    #    The three middle strings are ADJACENT ($23CE6A + $10 == $23CE7A + $9 == $23CE83 + $9 ==
+    #    $23CE8C) so they are one window of $22 rather than three.
+    (0x23CDAC, 0x000A, "W376: $23CFDE's \"FREE PLAY\" string, lea'd at $23CDBE and $23CDE0. "
+                       "NUL at $23CDB5 ($25A15A tst.b/beq is the reader's bound); $23CDB6 is "
+                       "the move.w #$A,D0 that opens $23CDB6's tail"),
+    (0x23CDF0, 0x0008, "W376: $23CFDE's \"COINS:\" string, lea'd at $23CE00/$23CE2A/$23CE4E. "
+                       "NUL at $23CDF6 plus one alignment pad; $23CDF8 is the next tail's "
+                       "move.w #$B,D0"),
+    (0x23CE6A, 0x0022, "W376: $23CFDE's three band strings, ADJACENT -- $23CE6A "
+                       "\"CREDITS: ( / )\", $23CE7A \"CREDITS\", $23CE83 \"  ( / )\". NULs at "
+                       "$23CE78/$23CE81/$23CE8A; the run ends at $23CE8C, the move.w #$7,D0 "
+                       "that opens $23CE8C's tail"),
+    (0x23CF68, 0x000A, "W376: $23CFDE's \"CREDITS:\" string, lea'd at $23CF7A/$23CF9E/$23CFC2 "
+                       "-- the DEFAULT band, and the one a cold boot takes ($803808 = 0). NUL "
+                       "at $23CF70 plus a pad; $23CF72 is the next tail's move.w #$A,D0"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

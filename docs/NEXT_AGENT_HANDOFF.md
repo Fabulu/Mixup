@@ -2,7 +2,91 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W375
+## START HERE -- W376
+
+### THE WARNING SCREEN DRAWS. THE TILEMAP WAS EMPTY FOR THE ENTIRE BOOT BEFORE THIS.
+
+`src/fronttext.js` is new: `txFontString259FF8`, `creditLine23CFDE`, `hexDigit23CD80`. On
+`new Game(new Uint8Array(0x20000), tables).boot()`, frames 3..16 fill the tilemap one line a frame,
+56 cells each, to **784 cells** (14 lines x 28 chars x TWO tiles a char), and it holds there for the
+whole `$12C`. Decoded back it reads the ROM's own lines, `"  THIS GAME IS FOR USE IN   "` through
+`"    2002.10.07.BLACK VER    "`.
+
+**`$259FF8` IS NOT A SPRITE-STRING EMITTER.** It draws TEXT TILES into the `$904000` TX tilemap
+through the DEFERRED printer `$240E1A` -- no sprite, no display list, nothing in `$800000`.
+`objslot8.js`'s own W375 header said "sprite string emitter" and was wrong; it is corrected in place.
+
+**`$259FF8` vs its near-twin `$25A14C`: same two instructions, OPPOSITE ORDER, OPPOSITE CONTRACT.**
+`$259FFC move.w #$0,D2` runs BEFORE `$25A000 move.w D2,D5`, so the attribute is HARDWIRED ZERO.
+`$25A14C` does `move.w D2,D5` FIRST and honours the caller's D2. Do not assume twins share a
+contract because they share instructions.
+
+Also settled: `$25A03A bra.s` lands on the loop top `$25A006 moveq #$0,D4`, not `$25A008`, so D4's
+high word is cleared every character and `swap` cannot carry the previous glyph in. The D5 push/pop
+at `$25A028`/`$25A034` is DEAD -- `$240E1A` is `48e7ff80`/`4cdf01ff` and saves D0-D7/A0 itself,
+which is also what proves D0-D3 survive the call.
+
+`hexDigit23CD80` is EXPORTED because a whole-image scan finds **24 callers**, nine outside its file
+(`$25B0AA $25B0F2 $25B32A $25B362 $25E1B4 $25E1F4 $25F3C6 $25F408 $2886F4`). **Call it; do not
+transcribe it a tenth time.**
+
+### THE ATTRACT LOOP DOES NOT STALL AT STATE 12. IT NEVER REACHES 12 -- IT STALLS AT STATE 2.
+
+Earlier waves (including this file, above) said "terminates at state 12". **Wrong.** It stalls at
+state 2, the high-score screen, and sits there 4,000+ frames.
+
+**Exact address: `$25B480 jsr $24681A`.** The screen's own machine advances 0 -> 1 -> 2 correctly
+(`$812E5C` = 2 by frame 557, timer `$F0` counted down), but the eight-node chain `$25B45A` loaded
+from `$25BAAA` through `$246710` NEVER REPORTS FINISHED: `($2C,$810346)` stays `$80FA86`,
+`runAnimObjects24683E` steps all 8 nodes every frame and frees ZERO, so `$24681A` never returns
+zero, `$25B4D2 move.w D0,D0` (carry-clear = finished) is never reached, and `$25A940` never writes
+state 12. **That is in `animobjects.js` / `$25BAAA`'s script, NOT in slot [8].** Next unit.
+
+### A COIN CRASHES THE RUN ONE FRAME AFTER THE CREDIT LINE UPDATES
+
+A COIN1 tap with `$803957 = 1`: `$80395A` 0 -> 1, the gate tears the screen down, arm 0 restages at
+state 3, the next frame's tail draws `CREDITS:1` -- and then arm 3's init runs `$25A962 jsr $28C170`
+and `sound.js` throws `no wrapper at $28C170`.
+
+**`sound.js`'s header says `$28C170` MUST NOT be added to `WRAPPERS`** (it goes through the
+`$28BBAC` packer, not `$28BB04`) and that the throw is the honest state. The established fix at the
+CALL SITE is a counted note: `background.js:1047` and `hiscorescreen.js:544` already do exactly that
+for this address. **`objslot8.js` arm 3 is the outlier that posts it.**
+
+### A LITERAL COLD BOOT CREDITS NOTHING, AND THAT IS FAITHFUL
+
+`$803957` (`COIN.creditsPerCoin`) is 0 on zeroed RAM, and dip `$803808` = 0 takes `coinage13CE22`'s
+`<= $8` band, which adds `$803957` to `$80395A`. **A coin is worth 0 credits until that byte is 1**
+(the shipped seed's value). Do not "fix" this; seed the dip.
+
+### `$23CFDE` IS FOUR BANDS x TWO POOL MODES, AND BOTH SIDES PRINT
+
+`$23CFDE..$23D05F`, 130 bytes, pinned above by `creditSpend23D060`. Its TWELVE tails and SIX strings
+live BELOW it, `$23CD80..$23CFDD`.
+
+| `$803808` | shared (`$80380B != 1`) | separate (`== 1`) |
+|---|---|---|
+| `$12` FREE PLAY | `$23CDB6` | `$23CDCE` **jsr** + `$23CDD8` **jmp** |
+| `$11` coin mode | `$23CDF8` | `$23CE22` + `$23CE46` |
+| `$9..$10` | `$23CE8C` | `$23CED0` + `$23CF1C` |
+| otherwise | `$23CF72` | `$23CF96` + `$23CFBA` |
+
+Every separate-pool arm is `jsr <P1>` then `jmp <P2>` -- **both sides print.** `$23CDCE` and
+`$23CDD8` are two entries falling into ONE body at `$23CDE0`. **The band test is the THIRD test**,
+so it really is `$9..$10`, not `$9..$12`.
+
+### SIX NEW ROM WINDOWS (536 -> 542), AND ONE HAS NO READER-STATED BOUND
+
+`$25AA36 + $1C0` (`$25AC36 cmpi.w #$1C0,($6,A5)` x `$25AC70 addi.w #$20`; `$25AA36+$1C0` IS arm 13's
+own entry `$25ABF6`), four NUL-terminated string runs `$23CDAC + $A`, `$23CDF0 + $8`,
+`$23CE6A + $22`, `$23CF68 + $A` (reader's bound `$25A15A tst.b D4 / beq`), and:
+
+**`$25A042 + $C0`, THE FONT TABLE, whose reader has NO bound at all.** It is pinned BELOW by
+`$259FF8`'s `rts` at `$25A040` and ABOVE by the routine prologue `48e7fffe` at `$25A102`. The
+progression `$80 + (i>>4)*$20 + (i&$F)` holds for i = 0..95 and stops. **This is the weakest bound
+in the window list; if a glyph ever reads wrong, suspect it first.**
+
+### W375 NOTES
 
 ### A COLD BOOT NOW REACHES THE ATTRACT LOOP THROUGH THE REAL PATH
 

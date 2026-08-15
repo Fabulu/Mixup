@@ -45,6 +45,16 @@ async function fx({ dip = 0x00, dipCredit = 0x00 } = {}) {
 
 const noteAddrs = (notes) => notes.map(([a]) => a);
 
+/** W376. `$259FF8` and `$23CFDE` used to be `note()` deferrals, and three tests below used the
+ *  note as their probe for "the tail called it". Both are ported now (`src/fronttext.js`), so
+ *  the probe is the thing they actually do: cells in the `$904000` tilemap. Counting cells is
+ *  also a STRICTLY STRONGER assertion -- a note only proved the call was reached. */
+const txCells = (tx) => {
+  let n = 0;
+  for (let i = 0; i < 64 * 32; i++) if (tx.long(0x904000 + i * 4) !== 0) n++;
+  return n;
+};
+
 /** A live record in object-table slot 0, in the three fields `$24107C` actually clears:
  *  `(A0)` and `($4A,A0)` are WORDS and `($4C,A0)` is a LONG. It does NOT wipe the record, so
  *  asserting a longword at `$80E240` would fail against a correct port. */
@@ -180,7 +190,10 @@ test('W375 nobody has a coin or a credit -> the tail, and NO teardown', { skip: 
   assert.ok(!objectTableWiped(f.ram), '$24107C did NOT run');
   assert.equal(f.ram.u16(0x80dbac), 0, 'nothing staged');
   assert.equal(f.ram.u16(f.SCREEN8.blink), 1, 'the tail ticked the blink counter instead');
-  assert.ok(noteAddrs(f.notes).includes(0x23cfde), 'and drew the credit line');
+  // W376: `$23CFDE` is PORTED (fronttext.js) and no longer a note, so the probe for "the tail
+  // drew the credit line" is the tilemap it writes. `$25A14C`/`$240CF0` write TxVram directly,
+  // so the cells are there the moment `objSlot8` returns.
+  assert.ok(txCells(f.ctx.tx) > 0, 'and drew the credit line');
 });
 
 test('W375 states $E, $3 and $D skip the credit check entirely', { skip: SKIP }, async () => {
@@ -472,15 +485,24 @@ test('W375 arm 13 walks 14 lines: $1C0 total, $20 a line, Y down by $C', { skip:
   f.ram.setU16(f.SCREEN8.state, 0x000d);
   f.objSlot8(f.ram, f.rom, f.a5, f.ctx);         // the init frame
 
+  // W376: the probe is the DEFER BUFFER, not a note. `$259FF8` queues through `$240E1A`, so
+  // IRQ6's `$141258` flush has to run before anything reaches the tilemap -- draining it here
+  // each frame is what makes "this frame emitted a line" observable, and it is the emitter's
+  // real product rather than a marker that it was reached.
+  const { flushTextDefer141258 } = await import('../src/hud.js');
   const emits = [];
   for (let frame = 0; frame < 20; frame++) {
-    const before = f.notes.length;
+    const before = txCells(f.ctx.tx);
     const y = f.ram.u16(f.a5 + f.SCREEN8.y);
     const cur = f.ram.u16(f.a5 + f.SCREEN8.cursor);
     f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
-    if (f.notes.slice(before).some(([a]) => a === 0x259ff8)) emits.push({ y, cur });
+    flushTextDefer141258(f.ram, f.ctx.tx, {});
+    const drawn = txCells(f.ctx.tx) - before;
+    if (drawn > 0) emits.push({ y, cur, drawn });
   }
   assert.equal(emits.length, 14, 'fourteen lines and no fifteenth');
+  assert.deepEqual(emits.map((e) => e.drawn), Array.from({ length: 14 }, () => 56),
+    '28 characters a line, TWO cells a character');
   assert.deepEqual(emits.map((e) => e.cur),
     Array.from({ length: 14 }, (_, i) => i * 0x20), 'the cursor steps by $20');
   assert.deepEqual(emits.map((e) => e.y),
@@ -488,7 +510,10 @@ test('W375 arm 13 walks 14 lines: $1C0 total, $20 a line, Y down by $C', { skip:
   assert.equal(f.ram.u16(f.a5 + f.SCREEN8.cursor), 0x01c0, 'stopping exactly at $1C0');
   // $25AC50 lea ($25AA36,PC),A0 -- the base is the EXTENSION WORD's address plus $FDE4.
   assert.equal(f.SCREEN8.warnStrings, 0x25ac52 + ((0xfde4 << 16) >> 16));
-  assert.ok(f.notes.some(([a, w]) => a === 0x259ff8 && w.includes('$25AA36')),
+  // The first line really is $25AA36's own: character 0 is the SPACE the block opens with, and
+  // the font entry for $20 is tile $80. Its cell is at Y = $B8, D1 = 0.
+  assert.equal(f.IMG[0x25aa36], 0x20);
+  assert.equal(f.ctx.tx.long(0x904000 + 0xb8), (0xc0000000 | (0x0080 << 16)) >>> 0,
     'the first line comes from $25AA36 itself');
 });
 
@@ -538,10 +563,13 @@ test('W375 state 13 draws no blink and no credit line; every other state draws b
   assert.equal(warn.ram.u16(warn.SCREEN8.blink), 0x0020, 'the counter did not move');
   const a = noteAddrs(warn.notes);
   assert.ok(!a.includes(0x25ad02) && !a.includes(0x25afd8) && !a.includes(0x23cfde));
+  // W376: and the credit line's own product is absent too. State 13's init clears TX and
+  // returns, so the only way a cell could be here is the tail drawing what it must not.
+  assert.equal(txCells(warn.ctx.tx), 0, 'state 13 wrote no credit line to the tilemap');
 
   const other = await gated();
   other.objSlot8(other.ram, other.rom, other.a5, other.ctx);
-  assert.ok(noteAddrs(other.notes).includes(0x23cfde), 'state 4 draws the credit line');
+  assert.ok(txCells(other.ctx.tx) > 0, 'state 4 draws the credit line');
 });
 
 // ------------------------------------------------------------------ the remaining arms
