@@ -102,10 +102,22 @@ re-reads the last real entry forever, so the step sticks at its final value. **A
 receives exactly HALF of what `($4E,A6)` does** -- `asr.w #1` on the same D0 -- under independent
 caps of `$3800` and `$1C00`.
 
-**`$25D83C` STILL HAS NO REFERENCE ANYWHERE IN THE IMAGE** -- no absolute longword, and the only
-PC-relative `lea` in `$25D000..$25E000` landing in either table resolves to `$25D85C`. Since the
-read is `(0,A1,D1.w)` and there is also a `(-2,A1,D1.w)`, **a small enough cursor would reach below
-`$25D85C` into it**. Open: whether `$25D83C` is reachable at all or belongs to something else.
+**RESOLVED: `$25D83C` IS NOT REACHABLE FROM HERE.** `($52,A6)` has exactly FOUR touch sites in
+`$25C000..$260000`:
+
+    $25D0BA  clr.w ($52,A6)          the ONLY reset -- state 0, and ALREADY PORTED
+                                     (it is in HANDLER0.clearWords)
+    $25D7D4  move.w ($52,A6),D1      read
+    $25D7D8  addq.w #2,($52,A6)      advance
+    $25D7E6  subq.w #2,($52,A6)      back up, terminator only
+
+So the cursor starts at 0 and can never go negative. The `(-2,A1,D1.w)` read only fires when D0 came
+back `$FFFF`, and `$25D85C[0]` is `$0020`, not `$FFFF`, so that can never happen at cursor 0. At the
+real terminator (cursor 244) it reads offset 242, safely inside the table. **`$25D83C` therefore
+belongs to something else, and the window for `$25D85C` does not need to cover it.**
+
+**And the reset is already ported**, so nothing new is needed to make the cursor replay: `$25D010`
+clears `($52,A6)` along with the other fourteen words.
 
 **AND THERE IS A SECOND TABLE AT `$25D83C` THAT NOTHING HAD RECORDED.** `$25D83A` is `$25D560`'s
 `rts`; `$25D83C..$25D85B` is **sixteen words, 32 bytes, ending EXACTLY where `$25D85C` begins**:
