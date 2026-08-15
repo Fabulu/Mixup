@@ -50,6 +50,12 @@ routine never touches: **1 means separate pools** (`$803960` via `$23D070`), **a
 SHARED pool and P2 spends `$80395A`, P1's own counter, through `$23D060`.** A mirrored port lets P2
 join for free.
 
+**VERIFIED INDEPENDENTLY, because a wrong call here ships a live bug.** The byte pattern
+`00 80 38 0B` appears in `$23C9F0`'s range and **NOT** in `$23C98E`'s. The two share a byte-identical
+18-byte head -- `moveq #1,D3 / bra +4 / moveq #0,D3 / move.b $803808,D0 / cmpi.w #$12` -- and then
+diverge at DIFFERENT `beq` displacements (`$010A` against `$00A8`), with P2's `move.b` absolute read
+immediately after. **They look like a mirrored pair for their first eighteen bytes and are not.**
+
 **TWO STALE THINGS THIS CREATED:** `objslot13.js:211` still `note()`s `$24107C`, which is now ported;
 and `clear24631C` is **module-private in `stageend.js`** and not in `Game#ctx()`, so it is a SECOND
 ctx gap beside `slotTable`. Arm 0 calls `$23C668` **unconditionally**, so `slotTable` is the sharper
