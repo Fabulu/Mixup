@@ -377,8 +377,16 @@ test('W390 SECTION 3: arm 9 raises exactly one counted note, and it is NOT its o
     assert.equal(/\$25C592|\$25C6D4/.test(report), false,
       'arm 5 is ported (W392), so neither half of it is counted any more, and the loop no '
       + 'longer parks: it laps every 4,032 frames');
-    assert.ok(/\$26070C/.test(report), 'what arm 5 DOES leave counted is $26070C, its demo '
-      + 'handoff -- named, measured, and unable to gate anything');
+    // **W393: AND NEITHER IS ITS HANDOFF.** This line read `assert.ok(/\$26070C/)` -- "what arm
+    // 5 DOES leave counted is $26070C" -- and it is the FOURTH consecutive wave on which this
+    // one assertion has had to be inverted for the same reason. `objslot8.js handoffCall` runs
+    // `handoff26070C` for real now, because W393 ported the option formation the note pointed
+    // at (`$24C4F8`, `options.js formation4`). A note beside a live call is a lie about the
+    // port; what the line was checking -- that the report names ONLY what is deferred -- is
+    // kept, and there is nothing of arm 5's left to name.
+    assert.equal(/\$26070C/.test(report), false,
+      'arm 5 has NO counted deferral at all since W393: its handoff is a real call and boots '
+      + 'the three attract demos, which play their stages');
   });
 
 test('W390 SECTION 3 ABLATION: hold the `$F0` timer and the screen never leaves state 1',

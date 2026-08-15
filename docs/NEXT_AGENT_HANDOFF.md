@@ -2,7 +2,97 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W392
+## START HERE -- W393
+
+### DEMOS 0 AND 1 PLAY. DEMO 2 DIES ON A **BACKGROUND** GAP, NOT AN OPTION.
+
+Arm 5's `$26070C` is a REAL CALL now. Sixteen transitions **identical to W392's**, so calling it
+costs the sequencer nothing:
+
+```
+f2        sel=2  first=1935  last=3414   frames=1264
+f4-rotate sel=0  first=5967  last=6864   frames=754
+f6        sel=2  first=9999  last=10513  frames=443
+THREW at frame 10514 : UNPORTED $262B4C: not one of the 22 ported BGELEM constructors
+```
+
+**+5,996 is gone** -- formation 4 runs 754 frames where W392 got 31.
+
+### **THE DEMOS NEVER FIRE.** THE BRIEF CONFLATED TWO THINGS AND I WROTE IT THAT WAY.
+
+Measured over all 12,000 frames: `($41,A6)` (the fire edge) and `($35,A4)` (the burst counter) are
+**0 on every option frame**, and **zero records ever appear in `$810572`** -- the ship does not shoot
+either. The replay stream `$812E98` is advanced only by the codec `$25C60C`, whose single caller
+`$23D116` sits inside `$23D0F8`, **which this port does not run** (that is the same `$25C60C` W392
+found had no live caller).
+
+So a cold boot exercises `formation4Rotate`, `rotatePod24C7F8` and `formation6`, but **CANNOT REACH
+ANY OF THE THREE POD-SHOT SPAWNS.** Those are driven by unit tests. Stated, not papered over.
+
+Also: over 754 formation-4 frames the state word is only ever `$8000/$8001/$8003`, so **bit 2 never
+rises and only the rotating arm runs**. `$24C500`'s arm is transcribed and unexercised.
+
+### "TWO ROUTINES" WAS FIVE BODIES, 1,688 BYTES
+
+A **formation** is the option-pod behaviour, selected by `($5a,A4)` (the ship) through `$24C34C`'s
+`(($5a,A4)-2)*2` index into `$24C384`, three `bra.w`s. **The three demos hand `$26070C` ships 2, 4
+and 6 -- so the three demos are exactly the three arms.**
+
+| span | bytes | what |
+|---|---|---|
+| `$24C4F8..$24C4FF` | 8 | `btst #2,(A6) / beq.w` -- formation 4 is TWO routines behind one bit |
+| `$24C500..$24C5AB` | `$AC` | arm A; vs `$24C3CC..$24C475` **4 bytes differ, all `bsr` displacement halves resolving to the same `$24D12E`** |
+| `$24C5AC..$24C60D` | `$62` | arm B -- the pods **ORBIT**, via `$24C7F8`, which never calls `$24D12E` |
+| `$24C60E..$24C68F` | `$82` | formation 4's own copy of the fire handshake |
+| `$24C690..$24C7F7` | `$168` | formation 6 = formation 2's body + handshake |
+| `$24C7F8..$24C8BD` | `$C6` | one orbiting pod |
+| `$24D5DA..$24D6D1` / `$24D6D2..$24D75B` | `$F8` / `$8A` | formation 4's spawn and its writer |
+| `$24D75C..$24D8AB` | `$150` | formation 6's spawn |
+
+**`$24BEC6` is a HALF-ELLIPSE**, 33 word pairs, extent stated by `$24C80C cmpi.b #$20,D5 / bls`.
+One table half serves the whole circle -- the fold mirrors X, sets the flip bit and negates the
+vector with one compare.
+
+**TRAP 19 CONFIRMED EXACTLY:** `$24C476`, `$24C60E` and `$24C776` are `$82` bytes each and differ in
+**ONE BYTE** -- the low half of the final `bra.w`.
+
+### THREE ABLATIONS DID NOT REDDEN, SO THREE TESTS WERE REWRITTEN
+
+Per trap 21. The three were `$24C7F8`'s redundant `move.l`, a `dbra` mutation that was not one, and a
+spawn test that bypassed the wiring it claimed to check. **Twelve ablations now, every one reddens.**
+
+### NEXT: `$262B4C`, AND IT IS ONE ROW PLUS ART
+
+`$262B4C..$262B69`, **`$1E` bytes, 5 instructions, `4E75` AT `$262B68`** -- a background-element
+constructor demo 2's stage asks for. Its updater `$262B6A..$262B9B` (`$32`) differs from the ported
+`$2627CA` in **TWO BYTES** (the `addi.l` threshold and one branch displacement). Row:
+`data $290F10, yPos $38A0, kind $16, thr $7000, lbgt, emit $23DEFC`.
+
+**One row in `BGELEM_HANDLERS` plus its sprite art, in `src/background.js`.**
+
+### ONE NEW WINDOW (569), BOUNDED FROM BOTH ENDS BY CODE
+
+`(0x24D3C0, 0x00BC)`. Near end abuts where W12's `$24D2E0+$E0` stops; far end is named twice --
+`$24D638`/`$24D7A0 lea ($24D47C,PC),A1` **names** `$24D47C`, and `$24D41C + $60` (the family stride,
+confirmed across all four blocks) gives the same answer. Ablated from the exported tables: formation
+4 throws at `$24D3CC`, formation 6 at `$24D41C`. Overlap 71 with and without. **`$24BEC6` needs no
+window** -- W12's `$24BBA0+$4E0` already covers it, asserted.
+
+### FOUR DEAD THINGS, TRANSCRIBED NOT TIDIED
+
+`$24C85C tst.w $812970` re-tests a word already routed to the `rts`; `$24D77C`/`$24D786
+move.w #$150,D0` is dead on BOTH arms; **`$24D752 add.w D1,($4,A6)` adds ZERO on this cartridge** (all
+17 entries of `$24FD4C` have dX = 0, so `$24D706`'s negate is unobservable too); and `$24C7F8`'s
+`move.l ($2,A4),($2,A6)` is redundant with `$24C33A` three instructions earlier.
+
+`$24D5FA move.w #$450,D0` is **slot 23**, not 24 (`$450 / $30 = 23`).
+
+### `w390arm9`'s `$26070C` ASSERTION HAS NOW INVERTED FOUR WAVES RUNNING
+
+**Stale text found, not touched:** `src/rank.js:141-142` still says `handoff26070C` "NOTES `$260580`
+instead of running it". **W378 made it a call.**
+
+## W392 NOTES
 
 ### **THE ATTRACT LOOP CYCLES.**
 

@@ -142,6 +142,7 @@ const RUN = (() => {
   let firstC = 0, initFrame = 0, ownedAtInit = -1, firstEightBack = 0, cGone = 0;
   let stopError = null, stoppedAt = 0;
   let stateAtHandover = -1, childStateWord = -1;
+  let p1AtInit = -1, p2AtInit = -1;
   // **W390 WIDENED THIS WINDOW FROM 5,000 TO 5,400 FRAMES, AND THAT IS TRAP 16 EXACTLY.** The
   // loop-back reaches arm 12 at +4,688 and arm 9 at +4,992 -- EIGHT frames before the old window
   // closed. Arm 9's screen is ported now (W390) and takes 304 frames of its own, so at +5,000
@@ -167,6 +168,13 @@ const RUN = (() => {
     if (c && !initFrame && g.ram.u8(c + SLOT12.stateAt) === 1) {
       initFrame = f;
       ownedAtInit = g.ram.u8(c + SLOT12.owedAt);
+      // W393: the two player records, ON THE FRAME $28F2BA READS THEM. Until W393 they were
+      // still $0000 at +6,200 as well, because arm 5's `$26070C` was a counted note and no
+      // attract demo ever booted a stage. It does now (`objslot8.js handoffCall`), the demo
+      // that starts at +6,048 creates a real player, and a read at the END of this run measures
+      // that demo instead of the screen this file is about.
+      p1AtInit = g.ram.u16(0x8103e6);
+      p2AtInit = g.ram.u16(0x810448);
     }
     const e8 = slotOf(g, TYPE_8);
     if (e8 && !firstEightBack) {
@@ -177,7 +185,7 @@ const RUN = (() => {
     if (firstC && !c && !cGone) cGone = f;
   }
   return { g, firstC, initFrame, ownedAtInit, firstEightBack, cGone,
-    stopError, stoppedAt, stateAtHandover, childStateWord,
+    stopError, stoppedAt, stateAtHandover, childStateWord, p1AtInit, p2AtInit,
     notes: g.unportedLog.report(), types: liveTypes(g) };
 })();
 
@@ -657,9 +665,13 @@ test('W387 SECTION 7: the two high-score checks are gated on the record SIGN BIT
   assert.equal(init28F2BA(quiet, rom, a5, { unported: { note() {} } }), 0,
     '$8103E6 positive -> $8130CC untouched, which is exactly the cold-boot case');
 
-  // ...and on the real boot BOTH records read $0000, which is why the screen passes through.
-  assert.equal(RUN.g.ram.u16(0x8103e6) & 0x8000, 0, 'P1\'s record is positive on the real boot');
-  assert.equal(RUN.g.ram.u16(0x810448) & 0x8000, 0, '...and so is P2\'s');
+  // ...and on the real boot BOTH records read $0000 ON THE FRAME $28F2BA RUNS, which is why
+  // the screen passes through. W393 RE-BASE: read them at `initFrame` and not at the end of
+  // the 6,200-frame window -- the attract demo that starts at +6,048 now boots a stage and
+  // creates a live player, so the final frame measures that demo and not this screen.
+  assert.ok(RUN.initFrame > 0, 'POSITIVE CONTROL: the init frame was found');
+  assert.equal(RUN.p1AtInit & 0x8000, 0, 'P1 record positive when $28F318 tests it');
+  assert.equal(RUN.p2AtInit & 0x8000, 0, '...and so is P2 record');
 });
 
 test('W387 SECTION 7: the two transcribed clears do EXACTLY what their dbras say', () => {

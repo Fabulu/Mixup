@@ -463,12 +463,26 @@ test('the pods land where the board puts them, one unit apart', {
 });
 
 test('an unknown formation throws with the arm it would have taken', () => {
+  // **W393 CORRECTION.** This test read:
+  //
+  //     g.ram.setU16(RAM.player1 + P.optFormation, 4);
+  //     assert.ok(e instanceof Unreached);
+  //     assert.equal(e.romAddress, 0x24c4f8, 'formation 4 -> the $24C384 table\'s [1]');
+  //
+  // It could not survive: W393 ports `$24C4F8` and `$24C690`, so formations 4 and 6 RUN. What
+  // the test was really about -- that an index off the end of a three-entry `bra.w` table
+  // throws by address instead of executing a displacement word -- is kept, with a formation
+  // that really is off the end. `w393options.test.js` SECTION 3 drives the two that are not.
   const g = bench();
   seedOptions(g.ram);
   g.ram.setU16(RAM.player1 + P.optFormation, 4);
-  const e = caught(() => runOptionObject(g.ram, g.ctx));
+  assert.doesNotThrow(() => runOptionObject(g.ram, g.ctx), 'formation 4 runs since W393');
+  const g8 = bench();
+  seedOptions(g8.ram);
+  g8.ram.setU16(RAM.player1 + P.optFormation, 8);
+  const e = caught(() => runOptionObject(g8.ram, g8.ctx));
   assert.ok(e instanceof Unreached);
-  assert.equal(e.romAddress, 0x24c4f8, 'formation 4 -> the $24C384 table\'s [1]');
+  assert.equal(e.romAddress, 0x24c384, 'formation 8 -> past the end of the $24C384 table');
   assert.match(e.message, /only EVEN formations land on one/);
 });
 

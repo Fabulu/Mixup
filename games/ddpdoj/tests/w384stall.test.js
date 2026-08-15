@@ -227,6 +227,7 @@ const RUN = (() => {
   // These three fields capture each one at its peak, plus the frame the teardown landed, so the
   // assertions stay measurements of the same thing instead of being relaxed to fit.
   let odoPeak = 0, odoPeakFrame = 0, teardownFrame = 0;
+  let odoAtTeardown = null, pauseAtTeardown = null;
 
   // A TARGETED snapshot, not a RAM copy: these eleven words are every field this file reads at
   // the last frame, and refreshing them once per frame costs nothing where copying 2MB would.
@@ -269,7 +270,19 @@ const RUN = (() => {
     // subsystem still existed", and freezing it on the first zero is what that sentence always
     // said. Nothing is relaxed: the values it feeds are the same ones W385 and W388 measured.
     if (!teardownFrame && g.ram.u32(TALLY.side0 + TALLY.ptr) !== 0) atTeardown = snapWatch();
-    else if (!teardownFrame && atTeardown) teardownFrame = f;
+    else if (!teardownFrame && atTeardown) {
+      teardownFrame = f;
+      // **W393: CAPTURE THE TWO WORDS THE TEARDOWN CLEARS, ON THE FRAME IT CLEARS THEM.**
+      // Until W393 the ATTRACT LAPS that follow the game over were inert -- arm 5's `$26070C`
+      // was a counted note, so no demo ever booted a stage -- and `$8130CE`/`$8130D2` were
+      // still zero at frame 14,000, thousands of frames later. W393 calls `$26070C` for real
+      // and ports the option formations behind it, so the demos PLAY: they re-arm the odometer
+      // and the pause word exactly as a stage should. Reading either at +14,000 now measures
+      // whichever demo is mid-flight, not `$2603DA`. These two fields read them where the
+      // claim lives -- on the teardown frame -- and nothing is relaxed.
+      odoAtTeardown = g.ram.u16(ODO);
+      pauseAtTeardown = g.ram.u16(BGRAM.bgFreeze);
+    }
     if (!bossFirstFrame && bossRec()) bossFirstFrame = f;
     if (!playerFrame && (g.ram.u16(P1REC) & 0x8000) !== 0) playerFrame = f;
     livesLow = Math.min(livesLow, g.ram.i16(LIVES1));
@@ -289,7 +302,7 @@ const RUN = (() => {
     diffBytes, diffBlocks: diffBlocks.size,
     notes: g.unportedLog.report(),
     // W388: the pre-teardown machine, and the frame it stopped being the live one.
-    odoPeak, odoPeakFrame, teardownFrame, atTeardown,
+    odoPeak, odoPeakFrame, teardownFrame, atTeardown, odoAtTeardown, pauseAtTeardown,
   };
 })();
 
@@ -343,8 +356,10 @@ test('W386 the odometer stops short of the boss lock, and it is the GAME OVER th
       + `is only possible because the run no longer ends three frames later (W386)`);
     // ...and then W388's teardown zeroes it outright. `$2603DA` is `lea $81308C,A0 / move.w
     // #$65,D0 / clr / dbra`, $66 words = $81308C..$813157, and $8130CE is inside that span.
-    assert.equal(RUN.g.ram.u16(ODO), 0,
-      'and at frame 14,000 it is ZERO -- $28F374 jsr $2603DA wiped it (W388)');
+    // W393 RE-BASE: on the TEARDOWN FRAME, not at +14,000. See the harness comment: the
+    // attract laps after the game over now boot real stages and re-arm this word.
+    assert.equal(RUN.odoAtTeardown, 0,
+      'and on the teardown frame it is ZERO -- $28F374 jsr $2603DA wiped it (W388)');
     assert.ok(RUN.teardownFrame > RUN.odoPeakFrame,
       'the wipe happens AFTER the last climb, so it cannot be what parked the odometer');
 
@@ -535,7 +550,9 @@ test('W386 the boss is NEVER REACHED -- there is a GAME OVER first, and the run 
   // frames between the game over and the teardown, which is the fact this assertion carries.
   assert.equal(RUN.atTeardown.u16(BOSS.deathPause), 1,
     'it is SET when the teardown runs -- tally.js liveSides25FD94 pauses when no side is live');
-  assert.equal(RUN.g.ram.u16(BOSS.deathPause), 0,
+  // W393 RE-BASE, same reason as SECTION 1's odometer: read it on the teardown frame, because
+  // the attract laps after the game over now boot real stages that set it again.
+  assert.equal(RUN.pauseAtTeardown, 0,
     '...and $28F374 jsr $2603DA then clears it, which is what RELEASES the pause (W388)');
 });
 

@@ -118,6 +118,23 @@ SHOT_WINDOWS = [
     # The OPTION PODS' pointer tables and templates ($24D4E2's $24D2FC/$24D35C).
     (0x24D2E0, 0x00E0, "$24D2FC/$24D35C + their per-power tables"),
     (0x24D47C, 0x0004, "W188 option-pod hyper shot-count words for ship selectors 0/2"),
+    # W393: ...and the OTHER TWO blocks of the same family, the ones formations 4
+    # and 6 read.  `$24D2FC`, `$24D35C`, `$24D3BC` and `$24D41C` are FOUR blocks at
+    # a $60 stride, each four longs (ship selector 0/2 x normal/hyper) followed by
+    # the four five-long per-power tables those longs point at.  W12 exported the
+    # first two because only formation 2 could reach a spawn; `$24D654 lea
+    # ($24D3BC,PC),A1` and `$24D7BC lea ($24D41C,PC),A1` are the other two, and
+    # they were unreachable until W393 ported $24C4F8 and $24C690.
+    #
+    # THE BOUNDS ARE BOTH STATED BY CODE, and neither is an absence:
+    #   near  $24D2E0 + $E0 = $24D3C0, where W12's window stops.  ABUTTING, and
+    #         the first longword of $24D3BC's block is served by W12's window.
+    #   far   $24D638 / $24D7A0 `lea ($24D47C,PC),A1` NAMES $24D47C as a different
+    #         table's base, so $24D41C's block cannot run past it -- and
+    #         $24D41C + $60 = $24D47C from the stride's side, the same answer.
+    (0x24D3C0, 0x00BC, "W393 $24D3BC/$24D41C -- the option-pod spawn pointer "
+                       "blocks formations 4 and 6 read, from $24D3C0 (where W12's "
+                       "$24D2E0 window stops) to $24D47C (which $24D638 names)"),
     (0x24F400, 0x0C00, "option-pod templates $24F8EC.. and every anim table they point at"),
     (0x24F3D2, 0x002E, "W188 P2 hyper-shot normal table through $24F400 boundary"),
     (0x251100, 0x0300, "option-pod laser templates $251184.."),
@@ -4275,6 +4292,139 @@ def check_arm5_demo_windows(d: bytes) -> None:
                     f"{why[:60]}. Declare a disjoint window, never widen one.")
 
 
+W393_SPAWN_BLOCKS = (0x24D2FC, 0x24D35C, 0x24D3BC, 0x24D41C)
+W393_BLOCK_STRIDE = 0x60
+W393_HYPER_COUNTS = 0x24D47C
+W393_ROTATE_TABLE = 0x24BEC6
+W393_ROTATE_ENTRIES = 0x21          # $24C80C cmpi.b #$20,D5 -- indices 0..$20
+W393_FORMATION_ARMS = (0x24C390, 0x24C4F8, 0x24C690)
+W393_POD_SPAWNS = (0x24D480, 0x24D5DA, 0x24D75C)
+
+
+def check_option_formation_windows(d: bytes) -> None:
+    """W393.  Re-derive the two option-pod spawn pointer blocks formations 4 and
+    6 read, and the rotation vector table `$24C7F8` indexes, from the cartridge.
+
+    NOTHING HERE ASSERTS AN ABSENCE (trap 8).  Every bound below is either an
+    instruction's operand or a stride confirmed from both ends."""
+    # ---- THE DISPATCH.  Three `bra.w`s at $24C384, and TRAP 4 on every one of
+    # them: the target is the EXTENSION WORD's address plus the displacement.
+    for i, want in enumerate(W393_FORMATION_ARMS):
+        at = 0x24C384 + i * 4
+        if u16(d, at) != 0x6000:
+            raise SystemExit(f"${at:06X} is not `bra.w`, so the $24C384 "
+                             "formation table is not three four-byte entries.")
+        got = at + 2 + s16(u16(d, at + 2))
+        if got != want:
+            raise SystemExit(f"${at:06X}'s bra.w lands on ${got:06X}, not "
+                             f"${want:06X}.")
+    # ...and the index that reaches them: `(($5a,A4)-2)*2`, so 2/4/6 and no other.
+    if u16(d, 0x24C350) != 0x0440 or u16(d, 0x24C352) != 2 \
+            or u16(d, 0x24C354) != 0xD040:
+        raise SystemExit("$24C350 is not `subi.w #$2,D0 / add.w D0,D0`, so the "
+                         "formation index is not (($5a,A4)-2)*2.")
+
+    # ---- THE ONE BYTE that separates the three copies of the fire handshake.
+    # Each tail is $82 bytes and they are identical except the final bra.w.
+    for arm, spawn in zip((0x24C476, 0x24C60E, 0x24C776), W393_POD_SPAWNS):
+        if d[arm:arm + 0x7C] != d[0x24C476:0x24C476 + 0x7C]:
+            raise SystemExit(f"the fire handshake at ${arm:06X} is no longer "
+                             "byte-identical to $24C476's first $7C bytes.")
+        if u16(d, arm + 0x7C) != 0x6000:
+            raise SystemExit(f"${arm + 0x7C:06X} is not the tail's `bra.w`.")
+        got = arm + 0x7E + s16(u16(d, arm + 0x7E))
+        if got != spawn:
+            raise SystemExit(f"${arm + 0x7C:06X}'s bra.w lands on ${got:06X}, "
+                             f"not ${spawn:06X}.")
+        if u16(d, arm + 0x80) != 0x4E75:
+            raise SystemExit(f"${arm + 0x80:06X} is not the `rts` (trap 5).")
+
+    # ---- THE FOUR SPAWN POINTER BLOCKS, at a $60 stride, and the two `lea`s
+    # that name the last two of them.
+    for at, want in ((0x24D4E2, 0x24D2FC), (0x24D4E6, 0x24D35C),
+                     (0x24D654, 0x24D3BC), (0x24D7BC, 0x24D41C)):
+        if u16(d, at) not in (0x43FA, 0x45FA):
+            raise SystemExit(f"${at:06X} is not `lea (d16,PC),A1/A2`.")
+        got = at + 2 + s16(u16(d, at + 2))
+        if got != want:
+            raise SystemExit(f"${at:06X}'s lea resolves to ${got:06X}, not "
+                             f"${want:06X}.")
+    for i in range(1, len(W393_SPAWN_BLOCKS)):
+        if W393_SPAWN_BLOCKS[i] - W393_SPAWN_BLOCKS[i - 1] != W393_BLOCK_STRIDE:
+            raise SystemExit("the four option-pod spawn blocks are not at a $60 "
+                             "stride, so $24D41C's length is a guess.")
+    # THE FAR BOUND, NAMED BY AN INSTRUCTION: $24D638 and $24D7A0 both `lea
+    # ($24D47C,PC),A1`, so $24D41C's block cannot run past $24D47C.
+    for at in (0x24D4C8, 0x24D638, 0x24D7A0):
+        if u16(d, at) != 0x43FA:
+            raise SystemExit(f"${at:06X} is not `lea (d16,PC),A1`.")
+        got = at + 2 + s16(u16(d, at + 2))
+        if got != W393_HYPER_COUNTS:
+            raise SystemExit(f"${at:06X}'s lea resolves to ${got:06X}, not "
+                             f"${W393_HYPER_COUNTS:06X}, so the spawn blocks' "
+                             "far end is not pinned by code.")
+    if W393_SPAWN_BLOCKS[-1] + W393_BLOCK_STRIDE != W393_HYPER_COUNTS:
+        raise SystemExit("$24D41C + $60 is not $24D47C -- the stride and the "
+                         "`lea` disagree about where the family ends.")
+    # ...and each block's four longs really do point INSIDE its own $60.
+    for blk in W393_SPAWN_BLOCKS:
+        for i in range(4):
+            p = u32(d, blk + i * 4)
+            if not blk + 0x10 <= p <= blk + W393_BLOCK_STRIDE - 0x14:
+                raise SystemExit(f"${blk:06X}[{i}] points at ${p:06X}, outside "
+                                 "its own block, so $60 is the wrong length.")
+
+    # ---- THE ROTATION VECTOR TABLE.  TRAP 4, negative displacement.
+    if u16(d, 0x24C82E) != 0x47FA:
+        raise SystemExit("$24C82E is no longer `lea (d16,PC),A3`.")
+    rot = 0x24C830 + s16(u16(d, 0x24C830))
+    if rot != W393_ROTATE_TABLE:
+        raise SystemExit(f"$24C82E's lea resolves to ${rot:06X}, not "
+                         f"${W393_ROTATE_TABLE:06X}.")
+    # The FOLD is the extent: `cmpi.b #$20,D5 / bls` caps the index at $20, and
+    # `add.w D5,D5` twice makes the stride four.  $21 entries, $84 bytes.
+    if u16(d, 0x24C80C) != 0x0C05 or u16(d, 0x24C80E) != 0x0020:
+        raise SystemExit("$24C80C is not `cmpi.b #$20,D5`, so $24BEC6 has no "
+                         "code-stated extent and $84 is a guess.")
+    if u16(d, 0x24C810) != 0x630E:
+        raise SystemExit("$24C810 is not the `bls` that folds the index.")
+    if u16(d, 0x24C820) != 0xDA45 or u16(d, 0x24C822) != 0xDA45:
+        raise SystemExit("$24C820/$24C822 are not `add.w D5,D5` twice, so the "
+                         "rotation table's stride is not four.")
+    if u16(d, 0x24C832) != 0x4CB3 or u16(d, 0x24C834) != 0x0021:
+        raise SystemExit("$24C832 is not `movem.w (A3,D5.w),D0/D5`, so the "
+                         "entries are not word PAIRS.")
+    rot_end = W393_ROTATE_TABLE + W393_ROTATE_ENTRIES * 4
+    # NO NEW WINDOW: W12's $24BBA0 block already contains it, with room to spare.
+    decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x24BBA0]
+    if decl != [(0x24BBA0, 0x04E0)]:
+        raise SystemExit("W12's $24BBA0 window changed shape; $24BEC6's "
+                         "coverage was proven against $4E0.")
+    if not 0x24BBA0 <= W393_ROTATE_TABLE and rot_end <= 0x24BBA0 + 0x04E0:
+        raise SystemExit(f"$24BEC6..${rot_end:06X} escaped W12's $24BBA0 window "
+                         "-- it needs a window of its own.")
+
+    # ---- THE WINDOW ITSELF, declared at exactly the length derived above.
+    base, length = 0x24D3C0, 0x00BC
+    if base + length != W393_HYPER_COUNTS:
+        raise SystemExit("the W393 window does not end at $24D47C.")
+    if 0x24D2E0 + 0x00E0 != base:
+        raise SystemExit("W12's $24D2E0 window no longer abuts W393's $24D3C0.")
+    decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == base]
+    if decl != [(base, length)]:
+        raise SystemExit(f"${base:06X} needs ${length:X} bytes; SHOT_WINDOWS "
+                         f"declares {[(hex(a), hex(n)) for a, n in decl]}.")
+    # NEVER WIDEN A NEIGHBOUR: the new window must overlap nothing.
+    for a, ln, why in SHOT_WINDOWS:
+        if (a, ln) == (base, length):
+            continue
+        if a < base + length and base < a + ln:
+            raise SystemExit(
+                f"the W393 window [${base:06X}, ${base + length:06X}) OVERLAPS "
+                f"[${a:06X}, ${a + ln:06X}) -- {why[:60]}. Declare a disjoint "
+                "window, never widen one.")
+
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
@@ -8080,6 +8230,7 @@ def build(d: bytes) -> dict:
     check_arm9_chain_scripts(d)                # W390 -- ARM 9'S TWO SCRIPTS
     check_arm1_chain_scripts(d)                # W391 -- ARMS 1 AND 3'S SIX BLOCKS
     check_arm5_demo_windows(d)                 # W392 -- ARM 5'S FOUR DEMO BLOCKS
+    check_option_formation_windows(d)          # W393 -- FORMATIONS 4 AND 6
     check_sample_windows()                     # W27D -- ICS sample tight union
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)

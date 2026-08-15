@@ -44,9 +44,15 @@
 //
 // Arms 0, 1, 2, 3, 5, 9, 12, 13 and 14 are complete and `3 -> 14 -> gameplay` is live too. What
 // is left NOTED in this file is presentation and sound, not a screen: `$25AD02` (the blink
-// message's ON half, a 1,754-byte dispatcher), the three `$28C0FC`/`$28C170` cue posts, arm 12's
-// `$25BB6C` TX plane block and `$28CAE2`, and arm 5's `$26070C` demo handoff. NONE of them gates
-// the state machine.
+// message's ON half, a 1,754-byte dispatcher), the three `$28C0FC`/`$28C170` cue posts, and arm
+// 12's `$25BB6C` TX plane block and `$28CAE2`. NONE of them gates the state machine.
+//
+// **W393 CORRECTION: arm 5's `$26070C` IS NO LONGER NOTED.** It is a real `jsr` now (see
+// `handoffCall`), so the attract loop's three demos BOOT A STAGE and play. W392 had to count it
+// because the second demo's ship reached the unported option formation `$24C4F8` 31 frames in;
+// W393 ported `$24C4F8` and `$24C690`, and a cold boot runs all three demos' option formations
+// -- 2, 4 and 6 -- with no throw from the option subsystem at all. NOT ONE deferral is left in
+// arm 5.
 //
 // **W377 CLOSED THE COIN CRASH AND HALF THE BLINK PAIR.** Arm 3's `$25A962 jsr $28C170` and the
 // three `jsr $28C0FC` in the two teardowns were `ctx.soundPost` calls, and BOTH addresses go
@@ -81,6 +87,7 @@ import {
   enqueueRegistersThroughStub, enqueueZoomedRegistersThroughStub,
 } from './spritequeue.js';
 import { txFontString259FF8, creditLine23CFDE, blinkOff25AFD8 } from './fronttext.js';
+import { handoff26070C } from './objslot17.js';
 
 export const SCREEN8 = Object.freeze({
   entry: 0x25a770, setState: 0x25a764, tail: 0x25a82c, table: 0x25a872, dispatch: 0x240f62,
@@ -696,11 +703,11 @@ function arm5(ram, rom, a5, ctx) {
 //   `$28E7DC` -- one word, `$81DFF6 := 1`. That is what switches the banner on.
 //   `$23BDDA` -- `lea $80390A,A0 / move.w #$6,D0 / dbra`: SEVEN words (trap 2 again),
 //                `$80390A..$803916`. It resets the very counter the draw's parity reads.
-//   `$26070C` -- the one-shot handoff, and the ONE counted deferral in the pair. It is ported
-//                (`objslot17.js`'s `handoff26070C`) and its `$813082` gate really is armed by
-//                the type-$A record this arm stages, so calling it boots a stage for real --
-//                and the SECOND demo's ship then reaches an unported option formation 31 frames
-//                later. Measured both ways; see `handoffNote`.
+//   `$26070C` -- the one-shot handoff, CALLED FOR REAL since W393 (`handoffCall`). It is
+//                `objslot17.js`'s `handoff26070C`, its `$813082` gate is armed by the type-$A
+//                record this arm stages, and it boots a stage. W392 counted it because the
+//                second demo's ship then reached the unported option formation `$24C4F8`; W393
+//                ported that arm and its twin `$24C690`, so all three demos run.
 //
 // TWO DEAD STORES, both transcribed rather than tidied away, because a port that dropped them
 // would not be reading the same instructions the cartridge does:
@@ -836,35 +843,41 @@ export function screen5Init25C592(ram, rom, ctx) {
 }
 
 /**
- * `$25C79A jsr $26070C` -- **COUNTED, AND THE ONLY DEFERRAL IN THE PAIR THAT COSTS ANYTHING.**
+ * `$25C79A jsr $26070C` -- **A REAL CALL SINCE W393, AND THE DEMOS PLAY.**
  *
  * `handoff26070C` is exported by `objslot17.js` and it is fully live: `$813082` is set for real
  * by the type-$A record `$25C592` stages (`rank.js`'s `rankInit2605C8`, `$260666`), so the call
- * fires and `stageStart260580` boots a stage. W392 MEASURED it both ways on a real cold boot:
+ * fires and `stageStart260580` boots a stage.
  *
- *   WITH the call   13 -> 2 -> 12 -> 9 -> 1 -> 5 -> 2 -> 12 -> 9 -> 1 -> 5
- *                   +1, +302, +574, +878, +1182, +1918, +4334, +4606, +4910, +5214, +5950
- *                   ...then THREW at +5,996:
- *                   `UNPORTED $24C4F8: option formation 4` -- 31 frames into the SECOND demo.
- *   WITHOUT it      the same eleven transitions, and 12,000 frames without a throw.
+ * W392 had to leave it a counted note, and its own text said why: with the call, a cold boot
+ * THREW at +5,996 on `UNPORTED $24C4F8: option formation 4`, 31 frames into the second demo.
+ * W393 ported `$24C4F8` and `$24C690` (`options.js formation4`/`formation6`) and re-measured the
+ * same boot:
  *
- * The three demo blocks hand `$26070C` (style, ship) = (2,2), (0,4) and (2,6). Demo 0's pair is
- * inside what `handlers.js` translated; demo 1's ship 4 lands on `$24C356`'s jump-table arm
- * `$24C4F8`, which wave 4 did not port and which no file W392 owns can supply. So driving the
- * handoff from here does not make the attract loop cycle -- it makes it die on the second lap,
- * on a gap in the OPTION subsystem that has nothing to do with slot [8]. Counted, with the
- * frame number, exactly as arm 3 counts `$28C170`.
+ *   13 -> 2 -> 12 -> 9 -> 1 -> 5 -> 2 -> 12 -> 9 -> 1 -> 5 -> 2 -> 12 -> 9 -> 1 -> 5
+ *   +1 +302 +574 +878 +1182 +1918 +4334 +4606 +4910 +5214 +5950 +8366 +8638 +8942 +9246 +9982
+ *
+ * -- THE SAME sixteen transitions W392 measured WITHOUT the call, three laps of 4,032 frames,
+ * and the option object now runs formation 2 for 1,264 frames of demo 0, formation 4 for 754 of
+ * demo 1 and formation 6 for 443 of demo 2. So the call costs the loop nothing and buys three
+ * demos that actually boot a stage.
+ *
+ * The three demo blocks hand `$26070C` (style, ship) = (2,2), (0,4) and (2,6), and those ships
+ * are exactly the three formation arms.
+ *
+ * WHAT THE DEMOS STILL DO NOT DO IS **SHOOT**, and that is not an option-subsystem gap: the
+ * replay stream `$812E98` is only ever advanced by the codec `$25C60C`, whose single caller
+ * `$23D116` sits inside `$23D0F8`, which this port does not run. MEASURED over all three demos:
+ * `($41,A6)` (the fire edge) and `($35,A4)` (the burst counter) are 0 on every frame, so no pod
+ * shot is ever spawned by a cold boot. `options.js`'s three spawns are driven by
+ * `w393options.test.js` instead, and said so.
  *
  * Nothing else in arm 5 reads what the handoff writes: `$813080`..`$81308A` and `$81315C` are
  * never touched by `$25C592` or `$25C6D4`, and the exit is the `$812E86` counter alone.
  */
-function handoffNote(ctx, d0, d1) {
-  ctx?.unported?.note(ARM5SCREEN.handoff,
-    `$25C79A jsr $26070C -- arm 5's demo handoff with D0=$${d0.toString(16).toUpperCase()}, `
-    + `D1=$${d1.toString(16).toUpperCase()}, D2=D3=$FF, D4=1. handoff26070C is ported and the `
-    + '$813082 gate really is set by the type-$A record this arm stages, so the call fires and '
-    + 'boots a stage -- and 31 frames into the SECOND demo it reaches $24C4F8, option formation '
-    + '4, which wave 4 did not port. Measured: +5,996 on a cold boot. Counted so the loop laps');
+function handoffCall(ram, rom, ctx, d0, d1) {
+  const A = ARM5SCREEN;
+  return handoff26070C(ram, rom, ctx, d0, d1, A.handoffD2, A.handoffD3, A.handoffD4);
 }
 
 /**
@@ -911,7 +924,7 @@ export function screen5Body25C6D4(ram, rom, ctx) {
       // $25C780..$25C79A -- the ONE-SHOT HANDOFF, the same `$26070C` the ship-select screen
       // fires. D0/D1 are the block's two words; D2/D3 are `#$FF` (both sides "not joined",
       // which is what `$25F460`'s `bmi` skips) and D4 is 1, where a human's is 0.
-      handoffNote(ctx, ram.u16(A.x), ram.u16(A.y));            // $25C79A jsr $26070C
+      handoffCall(ram, rom, ctx, ram.u16(A.x), ram.u16(A.y));  // $25C79A jsr $26070C
     }
   }
   if (ram.u16(A.state) === 1) {                                // $25C7A0 cmpi.w #$1 -- FALL-THROUGH

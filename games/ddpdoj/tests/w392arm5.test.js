@@ -26,11 +26,20 @@
 // AND THE DELIVERABLE. **THE LOOP CYCLES.** SECTION 4 drives a real cold boot for 12,000 frames
 // and sees arm 2 three times: +302, +4,334 and +8,366, a lap of exactly 4,032 frames.
 //
+// **W393 CORRECTION.** Two things in this file stopped being true one wave later, and both are
+// corrected in place rather than deleted:
+//   * SECTION 5c called `$26070C` "the ONLY deferral". It is a real call now -- W393 ported the
+//     option formation its note named -- so arm 5 has NO deferral at all, and the test asserts
+//     that instead.
+//   * SECTION 4's drives ran 12,000 clean frames because no demo ever booted a stage. They do
+//     now, and demo 2 reaches the unported BGELEM constructor `$262B4C` at +10,514. The drives
+//     are tolerant of that and assert it; every value they measure lands at or before +10,000.
+//
 // SECTION 1  the init `$25C592..$25C60B`, the FIFTEEN-word clear and the two timers
 // SECTION 2  the body `$25C6D4..$25C807`, the FALL-THROUGH counters, both carries, two dead stores
 // SECTION 3  the draw: 168 TX cells through `$240DC2` and ZERO sprite-queue records
 // SECTION 4  DRIVEN: THE ATTRACT LOOP CYCLES, three laps, no coin
-// SECTION 5  where the brief is wrong, and the one deferral that is left
+// SECTION 5  where the brief is wrong, and (after W393) the deferral that is GONE
 // SECTION 6  the four ROM windows, re-derived from the cartridge
 // ===============================================================================================
 
@@ -475,24 +484,35 @@ test('W392 SECTION 3: the animation is four entries, two frames each, on the fra
 // SECTION 4 -- **THE DELIVERABLE. THE ATTRACT LOOP CYCLES.**
 // ===============================================================================================
 
-/** A real cold boot, the same helper W390 and W391 use. */
+/**
+ * A real cold boot, the same helper W390 and W391 use.
+ *
+ * **W393 CORRECTION: THE DRIVE IS TOLERANT NOW, AND IT HAS TO BE.** W392 measured these three
+ * laps with `$26070C` NOTED, so no demo ever booted a stage and 12,000 frames ran clean. W393
+ * calls it for real (`objslot8.js handoffCall`) and ports the option formations behind it, so
+ * the demos play -- and demo 2 reaches `$262B4C`, an unported background-element constructor,
+ * at +10,514. Every event any test in this section asserts happens at or before +10,000, so the
+ * measurements are unchanged; what has changed is that the run now ENDS, and pretending
+ * otherwise by shortening the loop would hide the new limit instead of stating it.
+ */
 function coldBootTrace(frames) {
   const g = new Game(new Uint8Array(0x20000), tablesJson, { palCatchUp: false });
   g.boot();
   g.ram.setU8(0x803957, 1);                 // the boot-complete flag every attract test sets
   const arms = [];
   let prev = -1;
+  let threw = null;
   for (let f = 1; f <= frames; f++) {
-    g.step(0xffff);
+    try { g.step(0xffff); } catch (e) { threw = { f, e }; break; }
     const a = g.ram.u16(SCREEN8.state);
     if (a !== prev) { arms.push([f, a]); prev = a; }
   }
-  return { g, arms };
+  return { g, arms, threw };
 }
 
 test('W392 SECTION 4: THE LOOP CYCLES. Arm 2 runs a SECOND time at +4,334 and a THIRD at +8,366',
   { skip: SKIP_T }, () => {
-    const { g, arms } = coldBootTrace(12000);
+    const { g, arms, threw } = coldBootTrace(12000);
     assert.deepEqual(arms, [
       [1, 13], [302, 2], [574, 12], [878, 9], [1182, 1], [1918, 5],
       [4334, 2], [4606, 12], [4910, 9], [5214, 1], [5950, 5],
@@ -508,7 +528,15 @@ test('W392 SECTION 4: THE LOOP CYCLES. Arm 2 runs a SECOND time at +4,334 and a 
     assert.equal(twos[2] - twos[1], 4032, 'lap 2 -> lap 3 is the SAME 4,032 frames');
     // Of those 4,032, arm 5 is 2,415 -- sixty per cent of the whole attract cycle.
     assert.equal(4032 - 2415, 1617, 'and 1,617 of them are arms 2, 12, 9 and 1 together');
-    assert.equal(g.ram.u16(SCREEN8.state), 5, 'at +12,000 the machine is mid-demo on lap 3');
+    // W393: this line read `at +12,000 the machine is mid-demo on lap 3`. It cannot survive,
+    // because +12,000 is no longer reached -- and the reason is that the machine really IS
+    // mid-demo on lap 3, playing one, which is what W392 could not measure.
+    assert.equal(g.ram.u16(SCREEN8.state), 5, 'the run ends mid-demo on lap 3');
+    assert.equal(threw?.f, 10514, '...at +10,514');
+    assert.equal(threw?.e?.romAddress, 0x262b4c,
+      '...on $262B4C, an unported BGELEM constructor demo 2\'s stage asks for. It is 532 frames '
+      + 'into the third demo and it is not in the attract sequencer or the option subsystem; '
+      + 'see w393options.test.js SECTION 5');
   });
 
 test('W392 SECTION 4: $803926 is up for exactly the 2,415 frames of arm 5, and $803928 rotates',
@@ -518,8 +546,10 @@ test('W392 SECTION 4: $803926 is up for exactly the 2,415 frames of arm 5, and $
     g.ram.setU8(0x803957, 1);
     const flag = [], index = [], phase = [];
     let pf = -1, pi = -1, pp = -1;
+    // W393: the demos boot stages now, and demo 2 dies at +10,514 on $262B4C. Every event
+    // asserted below is at or before +9,983, so the measurement is untouched.
     for (let f = 1; f <= 12000; f++) {
-      g.step(0xffff);
+      try { g.step(0xffff); } catch { break; }
       const x = g.ram.u16(ARM5SCREEN.demoFlag); if (x !== pf) { flag.push([f, x]); pf = x; }
       const i = g.ram.u16(ARM5SCREEN.demoIndex); if (i !== pi) { index.push([f, i]); pi = i; }
       const s = g.ram.u16(ARM5SCREEN.state); if (s !== pp) { phase.push([f, s]); pp = s; }
@@ -543,8 +573,9 @@ test('W392 SECTION 4: the demo really does pick a DIFFERENT block each lap', { s
     g.boot();
     g.ram.setU8(0x803957, 1);
     const picked = [];
+    // W393: +10,000 is the last sample and the run dies at +10,514, so all three land.
     for (let f = 1; f <= 12000; f++) {
-      g.step(0xffff);
+      try { g.step(0xffff); } catch { break; }
       // Sample DURING each demo: the teardown's $25C57E wipes $812E98 on the way out, so a
       // sample taken after the exit would read zero every lap and prove nothing (trap 16).
       if (f === 2000 || f === 6000 || f === 10000) {
@@ -611,8 +642,22 @@ test('W392 SECTION 5b: arm 5 is the DEMO, and $803926 is the flag the coin gate 
     assert.equal(0x25c7ee + w(0x25c7ee), 0x25c7f8, '  ...past the reset at $25C7F0');
   });
 
-test('W392 SECTION 5c: $26070C is the ONLY deferral, and it is counted with a measured reason',
+test('W392 SECTION 5c: ...and W393 makes $26070C a REAL CALL, so arm 5 has NO deferral left',
   { skip: SKIP_T }, () => {
+    // **W393 CORRECTION.** This test was `'$26070C is the ONLY deferral, and it is counted with
+    // a measured reason'`, and three of its assertions could not survive:
+    //
+    //     assert.ok(/\$26070C/.test(report), '$26070C IS counted');
+    //     assert.ok(/\$24C4F8/.test(report), '  ...and the note names WHY: option formation 4');
+    //     assert.ok(/5,996/.test(report),    '  ...and the frame it was measured at');
+    //     assert.equal(keyed('26070C'), true, 'and $26070C is keyed');
+    //
+    // They asserted a NOTE beside a call that is now live -- exactly the lie trap 14 names, and
+    // exactly what this test's own `keyed(live)` loop below exists to catch. W392's own text
+    // said the note would stop being true the moment `$24C4F8` was ported; W393 ported it
+    // (`options.js formation4`) and `handoffCall` runs `handoff26070C` for real. So the four
+    // lines are INVERTED, not deleted: $26070C joins the list of arm 5 callees that may not be
+    // counted, and the truthful number of deferrals in the pair is ZERO.
     const { g } = coldBootTrace(4400);
     const report = g.unportedLog.report().join('\n');
     // The two the brief named are GONE.
@@ -630,22 +675,23 @@ test('W392 SECTION 5c: $26070C is the ONLY deferral, and it is counted with a me
     assert.equal(w(0x25c796), ARM5SCREEN.handoffD3, '  ...#$FF');
     assert.equal(w(0x25c798), 0x7801, '$25C798 moveq #$1,D4 -- where a human hands 0');
     assert.equal(ARM5SCREEN.handoffD4, 1);
-    // ...and the one that is left names its cost, in frames.
-    assert.ok(/\$26070C/.test(report), '$26070C IS counted');
-    assert.ok(/\$24C4F8/.test(report), '  ...and the note names WHY: option formation 4');
-    assert.ok(/5,996/.test(report), '  ...and the frame it was measured at');
-    // A note beside a live call would be a lie (trap 14), so none of arm 5's other callees may
-    // be KEYED in the report. Keyed, not merely mentioned: `$240B0E` is named inside
+    // A note beside a live call would be a lie (trap 14), so none of arm 5's callees may be
+    // KEYED in the report. Keyed, not merely mentioned: `$240B0E` is named inside
     // `bootFrontEnd23BF74`'s `$23BEEA` note, which lists the twenty-three jsr's the RESET
     // routine runs -- a different call site, and matching on substring would have called that
     // a lie when it is not one.
     const keyed = (a) => new RegExp(`^\\s*\\d+ x \\$${a}\\b`, 'm').test(report);
     for (const live of ['28E7F8', '28E7A2', '28E7DC', '23BDDA', '240DC2', '23C608', '23C638',
-      '240B0E', '241182', '25C57E']) {
+      '240B0E', '241182', '25C57E', '26070C']) {
       assert.equal(keyed(live), false,
         `$${live} is a REAL call from arm 5 and must not be counted as a deferral`);
     }
-    assert.equal(keyed('26070C'), true, 'and $26070C is keyed, which is what "counted" means');
+    // ...and the source no longer says otherwise either. W392's `handoffNote` is gone.
+    const src = readFileSync(here('../src/objslot8.js'), 'utf8');
+    assert.equal(/function handoffNote/.test(src), false, 'handoffNote is gone');
+    assert.ok(/function handoffCall/.test(src), '  ...and handoffCall calls $26070C for real');
+    assert.equal(/ONLY counted deferral in the pair/.test(src), false,
+      'and the sentence calling it the only counted deferral is gone with it');
     assert.ok(/\$240B0E/.test(report), 'while $240B0E is still MENTIONED, by the reset-prologue '
       + 'note -- which is exactly the distinction the keyed check above draws');
   });
