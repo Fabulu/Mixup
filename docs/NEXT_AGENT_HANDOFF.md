@@ -71,6 +71,23 @@ The docstrings, the wiring comment and the test names all now carry the withdraw
 warning rather than as a fact, because the tests themselves were always right: they pin the
 FUNCTION's gate, which behaves correctly whichever state it is handed.
 
+### TRAP 1 BITES SCANNERS, NOT JUST READERS -- CHECK YOUR OWN GREP
+
+Scanning for writers of `($54,A6)` with "displacement word at `a+2`, mode 5, reg 6" returned only
+the `clr.w` and the two `tst.w`, and I nearly recorded that **nothing ever sets the field**. Wrong:
+`$25D6EE 3D7C 0001 0054` is `move.w #$1,($54,A6)`, and in that form **the immediate comes first, so
+the displacement is at `a+4`**. My scanner encoded trap 1 as a bug.
+
+**Any `(d16,An)` sweep must handle both layouts** -- `3D7C imm disp` and `1D7C imm disp` put the
+displacement two bytes further along than `426E disp` or `4A6E disp` do. A sweep that only knows the
+short form reports absent writers, which reads exactly like a dead field.
+
+The confirmed picture for `($54,A6)`, which gates `draw25E4D0`'s emit 2:
+
+    $25D0BE  clr.w ($54,A6)          state 0, ALREADY PORTED (HANDLER0.clearWords)
+    $25D6EE  move.w #$1,($54,A6)     inside $25D560, UNPORTED
+    $25E52E / $25E608  tst.w         draw25E4D0's two gate reads
+
 ### THE ZOOM-CURSOR GATE, FULLY DECODED -- AND IT IS TRAP 5 IN ITS PUREST FORM
 
 `($60,A6)` is the cursor that indexes BOTH zoom ramps -- `$25E480` (in) for `draw25E29E` and
