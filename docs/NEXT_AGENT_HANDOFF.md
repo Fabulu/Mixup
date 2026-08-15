@@ -601,7 +601,7 @@ broken page rather than as a failing test. The 31 are: 12 for `$25EDF8`, 9 for t
 emitter family, 3 for `$25F074`, 4 for `$25E824`, 1 for `$25E29E`'s ramp and 2 for `$25E4D0`.
 **None of them overlaps anything** -- checked against the full 529 after every declaration.
 
-### W374 STATE: SUITE 2875/2875 ZERO SKIPS, GATE EXIT 0, 531 ROM WINDOWS
+### W375 STATE: SUITE 2934/2934 ZERO SKIPS, GATE EXIT 0, 533 ROM WINDOWS, 15/20 SLOTS DISPATCHED
 
 Up from 2730 at the start of the wave. **Three more shared draws are PORTED, DRIVEN AND WIRED:**
 
