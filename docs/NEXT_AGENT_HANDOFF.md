@@ -71,6 +71,28 @@ The docstrings, the wiring comment and the test names all now carry the withdraw
 warning rather than as a fact, because the tests themselves were always right: they pin the
 FUNCTION's gate, which behaves correctly whichever state it is handed.
 
+### THE ZOOM-CURSOR GATE, FULLY DECODED -- AND IT IS TRAP 5 IN ITS PUREST FORM
+
+`($60,A6)` is the cursor that indexes BOTH zoom ramps -- `$25E480` (in) for `draw25E29E` and
+`draw25E4D0`'s emits 3/6, and `$25E68E` (out) for `draw25E4D0`'s emits 1/4. **Four conditions gate
+its advance**, and it took reading all four to see that the period is not a constant:
+
+    $25D784  cmpi.w #$1,($32,A6) / bcs.w $25D7BA    needs ($32,A6) >= 1
+    $25D78E  tst.w  ($6C,A6)     / beq.w $25D79E    zero skips the outer countdown
+    $25D796  subq.w #1,($6C,A6)  / bne.w $25D7BA    outer countdown, WORD
+    $25D79E  subq.b #1,($6A,A6)  / bcc.w $25D7BA    BYTE, and it gates on the BORROW
+    $25D7A6  move.b ($6B,A6),($6A,A6)               RELOAD from the ADJACENT byte
+    $25D7AC  cmpi.w #$3C,($60,A6) / beq.w $25D7BA   the cap
+    $25D7B6  addq.w #4,($60,A6)
+
+**`($6A,A6)` and `($6B,A6)` are a counter-and-reload pair on adjacent bytes** -- trap 5 exactly, and
+the fifth or sixth instance in this project. `$532E` is `subq.b`, not `subq.w`; reading it as a word
+makes `($6B,A6)` look like padding and turns a variable period into a fixed one. **The period is
+`($6B,A6) + 1` frames**, because the advance fires on the BORROW, not on reaching zero.
+
+So the sixteen-frame zoom is not sixteen frames of animation -- it is sixteen STEPS, each held for
+`($6B,A6) + 1` frames, gated behind an outer `($6C,A6)` countdown and an `($32,A6)` enable.
+
 ### THE SLIDE-ACCUMULATOR MECHANIC, FULLY DECODED -- AND `$25D85C`'s REAL BOUND
 
 **`$25D85C..$25D951`: 122 entries plus the `$FFFF` terminator at `$25D950`, so 246 bytes (`$F6`).**
