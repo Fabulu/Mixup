@@ -241,3 +241,130 @@ export function commitKills(ram) {
   }
   return n;
 }
+
+/** `$80E880` -- the WORD that lives immediately past slot 19's record.
+ *
+ *  $80E240 + 20 * $50 = $80E880 exactly, so this address does double duty: the
+ *  allocator's memmoves take it as a LITERAL END BOUND (`ALLOC.tableEnd`, from
+ *  `$241150 move.l #$80E880,D3`) and never write through it, while a separate
+ *  WORD VARIABLE lives there.  $24107C clears that word.
+ *
+ *  What the word is has NOT been proven here, so it is not named after a guess.
+ *  What was read: the routine at `$241000..$24107A` does `move.w $80E880,D3`
+ *  ($241002), `clr.w $80E880` ($241022), `sub.w $80E880,D1` ($24103C and
+ *  $24105C) and `addq.w #1,$80E880` ($24106C) inside its own `dbra` over the
+ *  same 20 slots at stride $50 -- i.e. it is a per-pass counter of table slots.
+ *
+ *  The consequence worth stating plainly: the four globals $24107C clears are
+ *  NOT somewhere else in RAM.  $80E880 (word) and $80E882 (long) occupy
+ *  $80E880..$80E885, which is exactly where a 21st object record would begin.
+ *  So a port that "cleaned this up" into a 21-slot loop would clear them by
+ *  accident and look correct. */
+export const OBJ_TABLE_END_WORD = 0x80e880;
+
+/**
+ * `$24107C` -- THE OBJECT-TABLE INIT.  Destroy every object and reset the
+ * allocator, in 64 bytes and no subroutine calls.  W375.
+ *
+ * This is the teardown the FRONT-END SEQUENCER calls, and until it existed the
+ * front end could tear nothing down.  Confirmed callers, by `jsr $24107C` sites
+ * found in the image (`4EB9 0024 107C`), all seven of them:
+ *
+ *     $23BF4A   the boot path
+ *     $256DAA
+ *     $25A7C0   slot [8] -- a coin came in
+ *     $25A9B2   slot [8] arm 5 -- restage
+ *     $25AC92   slot [8] arm 14 -- the exit into gameplay
+ *     $288A4E   (see objslot13.js:211, which deferred to here)
+ *     $28D600   the big teardown
+ *
+ * There is no `jmp`/`bsr` form anywhere in the image.
+ *
+ * THE LISTING, byte for byte, `$24107C..$2410BB` -- 64 bytes, ending in the
+ * `rts` at $2410BA.  ($241078..$24107A is the previous routine's `rts`; the
+ * next routine starts at $2410BC with a `bsr`, so both boundaries are pinned.)
+ *
+ *     24107C  23FC 00000000 0080E882   move.l #$00000000,$0080E882
+ *     241086  4279 0080E880            clr.w  $0080E880
+ *     24108C  4279 0080DBAC            clr.w  $0080DBAC
+ *     241092  4279 0080E23E            clr.w  $0080E23E
+ *     241098  41F9 0080E240            lea    $0080E240,A0
+ *     24109E  7013                     moveq  #$13,D0
+ *     2410A0  30BC 0000                move.w #$0000,(A0)
+ *     2410A4  317C 0000 004A           move.w #$0000,($4A,A0)
+ *     2410AA  217C 00000000 004C       move.l #$00000000,($4C,A0)
+ *     2410B2  41E8 0050                lea    ($50,A0),A0
+ *     2410B6  51C8 FFE8                dbra   D0,$2410A0
+ *     2410BA  4E75                     rts
+ *
+ * FOUR THINGS IN THAT LISTING ARE WORTH SAYING OUT LOUD.
+ *
+ *  1. `$24107C` IS A `move.l #0`, NOT A `clr.l`.  `clr.l $80E882` would be
+ *     `42B9 0080E882` -- six bytes against ten.  The cartridge spends the four
+ *     extra bytes.  Same effect on RAM, so the port writes a 32-bit zero, but
+ *     the untidiness is transcribed rather than smoothed over.  Likewise the
+ *     loop body uses `move.w #$0000` / `move.l #$00000000` where `clr` would do.
+ *
+ *  2. THE SIZES ARE NOT UNIFORM, and that is the whole behaviour.  $80E882 is
+ *     cleared as a LONG -- it is the 32-bit unique-ID counter `$2411BE` bumps
+ *     with `addq.l #1`, so a word clear would leave the top half set and IDs
+ *     would resume in the millions after a restart.  The other three are
+ *     `clr.w` (opcode `4279`, size bits `01`), because all three are WORD
+ *     variables: $80DBAC and $80E23E are byte-offset cursors capped at $640,
+ *     and $80E880 is the word above.
+ *
+ *  3. THE COUNTER IS D0, AND `moveq #$13` + `dbra` IS TWENTY PASSES, not 19 and
+ *     not 21.  `DBcc` decrements and branches while the register is not -1, so
+ *     the body runs $13 + 1 times.  Slot 19 (`$80E830`) is the last one touched;
+ *     its final byte is `$80E87F`, one below the globals.  The displacement
+ *     `FFE8` = -24 from `$2410B8` lands on `$2410A0`, so the `lea` at $241098
+ *     and the `moveq` are OUTSIDE the loop -- A0 is not reloaded per pass.
+ *
+ *  4. IT CLEARS THREE FIELDS PER SLOT, NOT THE RECORD.  `(A0)` is the type word,
+ *     `($4A,A0)` the priority word, `($4C,A0)` the ID longword -- exactly the
+ *     three `$241218..$24121E` clears when `killById` vacates the last slot, and
+ *     exactly the three the driver tests for liveness.  The other $46 bytes of
+ *     each record KEEP THEIR STALE CONTENTS.  That is deliberate on the
+ *     cartridge's part and must not be "fixed": a record is dead because its
+ *     type word is 0, not because it was wiped.
+ *
+ * WHY CLEARING `$80DBAC` IS THE POINT.  It is the pending-CREATE staging cursor
+ * (`ALLOC.createSp`): `$241188` reads it, `$2411B6 addi.w #$50,$80DBAC` bumps it
+ * one record per staged create, and `$24118C cmpi.w #$640` refuses at 20.
+ * Zeroing it makes the entire staging area reusable from the start, which is why
+ * the front end can call this between screens and immediately stage again.
+ * `$80E23E` (`ALLOC.killSp`) is the same thing for the pending-KILL queue.
+ *
+ * NOTE WHAT IS *NOT* CLEARED: the staging area at `$80D56C` and the kill queue
+ * at `$80DBFE` keep their bytes.  Only the cursors move back to 0, so the stale
+ * records are simply unreachable.  `commitCreates` bails on `createSp == 0`
+ * before reading any of them, so that is safe -- but a port that reset the
+ * cursors by rewriting the buffers would be doing something the cartridge does
+ * not.
+ *
+ * @param {Ram} ram
+ * @returns {void} the ROM returns nothing; D0/A0 are left as scratch.
+ */
+export function objTableInit24107C(ram) {
+  // $24107C move.l #$00000000,$0080E882 -- the LONG unique-ID counter.  A full
+  // 32-bit store, so the next `stageCreate` hands out ID 1 again ($2411BE
+  // increments BEFORE the store).
+  ram.setU32(ALLOC.idCounter, 0);
+  // $241086 clr.w $0080E880 -- a WORD, and the word past the table's end.
+  ram.setU16(OBJ_TABLE_END_WORD, 0);
+  // $24108C clr.w $0080DBAC -- the pending-CREATE cursor.  This is what makes
+  // the whole staging area reusable.
+  ram.setU16(ALLOC.createSp, 0);
+  // $241092 clr.w $0080E23E -- the pending-KILL cursor, same idea.
+  ram.setU16(ALLOC.killSp, 0);
+  // $241098 lea $0080E240,A0 -- outside the loop; A0 walks.
+  let a0 = ALLOC.table;
+  // $24109E moveq #$13,D0 / $2410B6 dbra D0 -- 20 passes, slots 0..19.
+  for (let d0 = 0x13; d0 >= 0; d0--) {
+    ram.setU16(a0 + ALLOC.typeOff, 0);   // $2410A0 move.w #$0000,(A0)
+    ram.setU16(a0 + ALLOC.priOff, 0);    // $2410A4 move.w #$0000,($4A,A0)
+    ram.setU32(a0 + ALLOC.idOff, 0);     // $2410AA move.l #$00000000,($4C,A0)
+    a0 += ALLOC.stride;                  // $2410B2 lea ($50,A0),A0
+  }
+  // $2410BA rts
+}
