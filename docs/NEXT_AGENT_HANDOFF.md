@@ -33,6 +33,35 @@ So the living DaiOuJou docs are exactly three: **`DOCKET.md`, `ORCHESTRATOR_BRIE
 file.** `D12`'s claim that the reference docs "predate stages 3 and 4" was false and is corrected in
 place.
 
+### SLOT [8] IS PORTED. **IT IS NOT REGISTERED YET** -- DO THAT FIRST.
+
+`objSlot8(ram, rom, a5, ctx)` in `src/objslot8.js`, 700 lines, 35 tests, no new ROM windows. **It is
+NOT in `main.js`'s `defaultHandlers`.** Add `[8, slotObject(objSlot8, rom)]` -- the adapter already
+exists. That takes the dispatch table to **16 of 20**, and `w167coverage.test.js`'s
+`top_objects: 15/20 ported, 5 unknown` moves by exactly one.
+
+**IT PORTED THREE ROUTINES I HAD SAID TO NOTE**, and that was the right call: `$23C98E`, `$23C9F0`
+and `$23C956`. A noted credit consumer makes `$25ACAC` structurally unable to return a set join
+mask, so the gate would have been ported in a shape that cannot boot. They live in `objslot8.js` for
+now, marked "move me when the `$11` coin arm gets its wave".
+
+**`$23C9F0` IS NOT `$23C98E` MIRRORED.** It reads a second dip byte, **`$80380B`**, that the P1
+routine never touches: **1 means separate pools** (`$803960` via `$23D070`), **anything else is a
+SHARED pool and P2 spends `$80395A`, P1's own counter, through `$23D060`.** A mirrored port lets P2
+join for free.
+
+**TWO STALE THINGS THIS CREATED:** `objslot13.js:211` still `note()`s `$24107C`, which is now ported;
+and `clear24631C` is **module-private in `stageend.js`** and not in `Game#ctx()`, so it is a SECOND
+ctx gap beside `slotTable`. Arm 0 calls `$23C668` **unconditionally**, so `slotTable` is the sharper
+of the two.
+
+**WHAT STILL BLOCKS A COLD BOOT:** `$25B3DC`, arm 2's 52-byte init. `hiscoreScreen25B412` reads
+`$812E60` as a chain handle and `$24681A` walks `($2C,handle)` with **no null check**, so the first
+frame after `13 -> 2` throws. Being ported now. After that, arms 1, 5, 9 and 12 **hold** rather than
+advancing -- their bodies' carry is unknowable and was deliberately not invented -- so the attract
+loop stalls at 12 until a coin arrives. **A coin or a free-play START still boots from any state**,
+because the credit gate runs ahead of the arm.
+
 ### THE ORDER OF WORK AFTER SLOT [8] LANDS
 
 1. **`$23C956`** (36 B, UNCLAIMED) and **`$23C98E`/`$23C9F0`** (the credit consumers, prose only).
