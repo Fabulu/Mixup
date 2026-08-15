@@ -21,6 +21,26 @@ reason. Worktree isolation is withdrawn as the port-contention fallback, so **se
 is the only concurrency control** -- and every shared draw lands in `src/objslot9.js`, so it is one port
 agent there regardless.
 
+### READ THIS BEFORE PORTING ANOTHER SLOT ROUTINE: **NONE OF THE FRONT-END SLOTS IS DISPATCHED**
+
+`main.js`'s `defaultHandlers` registers dispatch indices **0, 1, 2, 3, 4, 5, 6, 10, 11** and
+**nothing else**. Slots **7, 9, 13, 15 and 17** -- the entire front end that W372, W373 and W374
+have been building -- are **NOT in the map**, and `objSlot7`, `objSlot9`, `objSlot13`, `objSlot15`
+and `objSlot17` are each referenced only inside their own file.
+
+**So every screen ported in the last three waves is driven by tests and unreachable from the
+driver.** The select screen this wave completed cannot appear in the running game. Nothing is
+broken -- the code is correct and covered -- but it is not yet CONNECTED.
+
+**This is the highest-value non-porting item on the board.** Before writing another slot routine,
+consider registering what exists: `[11, ...]` (the tally screen) is the nearest working pattern for
+what a front-end entry looks like, and `makeHudObject` / `makeBackground` show the factory shape.
+
+It also reframes the docket: the remaining slot work adds routines to screens that still cannot run,
+whereas wiring the dispatch turns three waves of finished work into something visible. **Weigh that
+before picking the next unit.** I did not do it this wave because it was not asked for and it is a
+behaviour change to the running game rather than a translation gap.
+
 ### THE BIGGEST FINDING OF W374: `confirmAndDraw` HAD A REAL BUG, AND IT MADE ME CALL TWO LIVE GATES DEAD
 
 **`$25D244 beq.w $25D254` does NOT return. It lands on `$25D254 move.l A4,-(SP)`, the FIRST
