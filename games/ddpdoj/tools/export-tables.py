@@ -3302,6 +3302,34 @@ SHOT_WINDOWS.extend([
     (0x23CF68, 0x000A, "W376: $23CFDE's \"CREDITS:\" string, lea'd at $23CF7A/$23CF9E/$23CFC2 "
                        "-- the DEFAULT band, and the one a cold boot takes ($803808 = 0). NUL "
                        "at $23CF70 plus a pad; $23CF72 is the next tail's move.w #$A,D0"),
+
+    # ---- W377: $25AFD8's THREE BLANK LINES ---------------------------------------------------
+    #
+    # `$25AFD8` is the OFF half of the front end's blinking prompt (`fronttext.js`,
+    # `blinkOff25AFD8`).  It reads exactly three NUL-terminated strings and nothing else:
+    #
+    #   base    $25AFD8 lea (-$29C,pc),A0 -- EA = $25AFDA (the EXTENSION WORD) + $FD64 = $25AD3E
+    #   stride  $25AFEE and $25AFFA adda.w #$20,A0
+    #   count   THREE, and it is stated only by the calls being WRITTEN OUT -- $25AFE8 jsr,
+    #           $25AFF4 jsr, $25B000 jmp.  There is no dbra and no counter word.
+    #   extent  each string ends at the READER's own terminator, $25A15A tst.b D4 / beq
+    #           (txString25A14C) -- the same bound the six $23CFDE strings above use.
+    #
+    # So the run is $25AD3E + 3 * $20 = $25AD9E on the stride, but the LAST string stops at its
+    # NUL well before that: the three are 28, 26 and 24 characters, NUL at $25AD5A, $25AD78 and
+    # $25AD96.  The window is $5A, NOT $60, and the far end is pinned BY CODE rather than by
+    # eyeballing the pad: $25AD3E + $5A == $25AD98, which is the lea target of the NEXT message
+    # group (`$25B008 lea (-$272,pc),A0`, EA = $25B00A + $FD8E = $25AD98, the "PRESS 1P OR 2P
+    # START" block).  Taking $60 would overlap that group's first six bytes.
+    #
+    # Neighbours: $25AA36+$1C0 ends at $25ABF6 below and $25B578 is the next window above, so
+    # this widens nothing.  ABLATION: filtering it out makes `blinkOff25AFD8` report
+    # `Unreached $25AD3E`.
+    (0x25AD3E, 0x005A, "W377: $25AFD8's three blank prompt lines, 28/26/24 characters. Base "
+                       "from $25AFD8 lea (-$29C,pc),A0 (EA = $25AFDA + $FD64); stride $20 from "
+                       "$25AFEE/$25AFFA adda.w; THREE lines because $25AFE8/$25AFF4/$25B000 are "
+                       "written out with no counter; each ends at $25A15A tst.b/beq, the "
+                       "reader's terminator. $25AD3E+$5A == $25AD98, the NEXT group's lea target"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window

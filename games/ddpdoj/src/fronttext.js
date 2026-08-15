@@ -67,6 +67,15 @@ export const FRONTTEXT = Object.freeze({
   strCredits: 0x23ce7a,       // $23CED8 / $23CF24 lea -- "CREDITS"
   strPairOnly: 0x23ce83,      // $23CEE6 / $23CF32 lea -- "  ( / )"
   strCreditsColon: 0x23cf68,  // $23CF7A / $23CF9E / $23CFC2 lea -- "CREDITS:"
+
+  // --- W377: `$25AFD8`, the blink message's OFF half. See `blinkOff25AFD8` below.
+  blinkOff: 0x25afd8, blinkOffEnd: 0x25b006,
+  blinkBlank: 0x25ad3e,       // $25AFD8 lea (-$29C,PC),A0 -- EA = $25AFDA + $FD64
+  blinkStride: 0x0020,        // $25AFEE / $25AFFA adda.w #$20,A0
+  blinkLines: 3,              // $25AFE8 jsr, $25AFF4 jsr, $25B000 jmp -- THREE, no loop
+  blinkRow0: 0x0000,          // $25AFDC move.w #$0,D0
+  blinkCol0: 0x0013,          // $25AFE0 move.w #$13,D1, then subq.w #1 twice
+  blinkAttr: 0x0000,          // $25AFE4 move.w #$0,D2
 });
 
 // -------------------------------------------------------------------------------------------
@@ -350,4 +359,67 @@ export function creditLine23CFDE(ram, rom, tx) {
   }
   plainCreditsLine(ram, tx, rom, 0x0003, FRONTTEXT.creditA);     // $23D056 jsr $23CF96
   plainCreditsLine(ram, tx, rom, 0x0011, FRONTTEXT.creditB);     // $23D05A jmp $23CFBA
+}
+
+// -------------------------------------------------------------------------------------------
+// `$25AFD8` -- THE BLINK MESSAGE'S **OFF** HALF. W377.
+
+/**
+ * `$25AFD8` -- blank the blinking prompt. Forty-six bytes, `$25AFD8..$25B005`, ELEVEN
+ * instructions, and it has NO `rts` of its own: it TAIL-JUMPS into `$25A14C` for its third line.
+ *
+ *     25AFD8  41fa fd64       lea      (-$29C,pc),a0     <- EA = $25AFDA + $FD64 = $25AD3E
+ *     25AFDC  303c 0000       move.w   #$0,d0
+ *     25AFE0  323c 0013       move.w   #$13,d1
+ *     25AFE4  343c 0000       move.w   #$0,d2
+ *     25AFE8  4eb9 0025a14c   jsr      $25A14C
+ *     25AFEE  d0fc 0020       adda.w   #$20,a0           <- $25AD5E
+ *     25AFF2  5341            subq.w   #1,d1             <- $12
+ *     25AFF4  4eb9 0025a14c   jsr      $25A14C
+ *     25AFFA  d0fc 0020       adda.w   #$20,a0           <- $25AD7E
+ *     25AFFE  5341            subq.w   #1,d1             <- $11
+ *     25B000  4ef9 0025a14c   jmp      $25A14C           <- the TAIL JUMP; $25B006 is $25B008's
+ *                                                           predecessor pad, not this routine
+ *
+ * **`aligned.py` MIS-SIZES THE TWO `adda.w`.** It reports `d0fc 0020 5341` as one six-byte
+ * instruction and answers `MID-INSTRUCTION` for `$25AFF2`. `D0FC` is `1101 000 011 111 100`:
+ * opmode `011` is ADDA.**W**, so its immediate is ONE word and the instruction is FOUR bytes;
+ * `5341` at `$25AFF2` is `subq.w #1,D1`. The tool's `insn_len` takes `size = 4 if op in (3, 7)`
+ * for the `top in (8,9,B,C,D)` family, which is right for `op == 7` (ADDA.L) and wrong for
+ * `op == 3`. Here the two readings happen to end at the same address so the sweep re-aligns by
+ * luck; a lone `adda.w #imm,An` would misalign everything after it. Reported, not edited --
+ * `tools/aligned.py` is not this wave's file.
+ *
+ * **THREE CALLS, NOT A LOOP.** There is no `dbra` and no counter: `$25AFE8` and `$25AFF4` are
+ * `jsr` and `$25B000` is `jmp`, so the line count is stated only by how many times the sequence
+ * is written out. Three.
+ *
+ * **THE THREE LINES ARE NOT THE SAME LENGTH, AND THEY OVERLAP THE NEXT MESSAGE.** Measured off
+ * the image: `$25AD3E` is 28 spaces, `$25AD5E` is 26 and `$25AD7E` is 24, each NUL-terminated at
+ * `$25AD5A`, `$25AD78` and `$25AD96`. The ON messages are 28 / 28 / 28, so an OFF frame does NOT
+ * blank every cell an ON frame wrote -- cells at columns $12 and $11 past the 26th and 24th
+ * character keep whatever was there. That is the cartridge's behaviour, not an approximation,
+ * and `w377coin.test.js` pins it so nobody "fixes" it into symmetry.
+ *
+ * WHAT IS STILL NOTED. `$25AD02`, the ON half, is NOT here. It is not the mirror image of this
+ * routine: it is a `$25AD02..$25B3DB` dispatcher, 1,754 bytes, with TWO embedded data blocks
+ * (`$25AD3E..$25AFD7` and `$25B1E0..$25B29F`), two coordinate conventions ($20-stride three-line
+ * messages off `#$13`, and $10-stride lines off the caller's D6/D7), a second whole copy for
+ * SEPARATE credit pools entered by `$25B172 bsr $25B180`, and digit patching through `$23CD80`
+ * and `$23C838`/`$23C874`. It is a wave, not a tail, and it stays a counted deferral.
+ *
+ * @param tx   the TxVram the blit writes ($904000)
+ * @param rom  the ROM reader -- `$25AD3E..$25AD97`, its own window in export-tables.py
+ */
+export function blinkOff25AFD8(tx, rom) {
+  let addr = FRONTTEXT.blinkBlank;                     // $25AFD8 lea
+  let col = FRONTTEXT.blinkCol0;                       // $25AFE0 move.w #$13,D1
+  for (let i = 0; i < FRONTTEXT.blinkLines; i++) {
+    // D0 and D2 are re-set only ONCE, before the first call, but `$25A14C` saves and restores
+    // D0-D5/A0 (`48e7fc80` / `4cdf013f`), so every line really does start from row 0 with
+    // attribute 0. Passing the constants each time is that restore, not an assumption.
+    txString25A14C(tx, rom, FRONTTEXT.blinkRow0, col, FRONTTEXT.blinkAttr, addr);
+    addr += FRONTTEXT.blinkStride;                     // $25AFEE / $25AFFA adda.w #$20,A0
+    col = u16(col - 1);                                // $25AFF2 / $25AFFE subq.w #1,D1
+  }
 }

@@ -2,7 +2,83 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W376
+## START HERE -- W377
+
+### A COIN NOW SURVIVES, AND START ACTUALLY JOINS. GAMEPLAY IS REACHED.
+
+On a cold boot: coin credits, `CREDITS:1` draws, arm 3 holds the credit screen indefinitely, and
+**pressing P1 START (port word `$FFFE`) really does join** -- `$25ACAC` takes the credit, sets the
+join mask to 1, `$812E56` goes to `$E`, arm 14 stages slot [9] and hands over to gameplay.
+
+**THE NEXT THING THAT STOPS THE PLAYER IS FOUR FRAMES LATER, IN GAMEPLAY, NOT THE FRONT END:**
+
+```
+Unreached UNPORTED $0: byte at $0 is outside every ROM window
+  at recompute2608D2 (src/rank.js:127)
+  at perFrame2607A8  (src/rank.js:268)
+  at rankObject      (src/rank.js:316)
+```
+
+`$2608D2 movea.l $81315C,A0` -- the rank base-table pointer. **On a cold boot `$81315C` is still
+zero, so `base[stage]` reads ROM address `$0`.** Whatever installs that pointer during the real
+stage-1 start is either unported or not on the slot [9] path yet. **THAT IS THE NEXT UNIT.**
+
+### `$28C170` IS NOT ONE OUTLIER -- IT IS SYSTEMIC, AND `$28C0FC` IS THE SAME BUG
+
+Arm 3's `$28C170` was fixed as a counted note (`sound.js`'s header forbids giving it a `WRAPPERS`
+row: it goes through the `$28BBAC` packer, not `$28BB04`). **Then the same defect turned up three
+more times in the same file** on `SCREEN8.cueStream = $28C0FC`, which is in neither `WRAPPERS` nor
+`STREAMING_LEAVES`:
+
+```
+$28C170 WRAPPER=false LEAF=false ENTRY=false   <-- THROWS
+$28C0FC WRAPPER=false LEAF=false ENTRY=true    <-- THROWS
+```
+
+`$28C0FC` is `movem / jsr $28BB76 / movem / rts`, and `$28BB76` is the bare longword `$10000000` --
+same `$28BBxx` family. `$25A7E2`, `$25A7FA`, `$25A9DA` now route through a `cueStreamNote()` helper.
+`$28C5B0` IS a real wrapper row and still posts.
+
+**STILL LIVE ELSEWHERE AND WILL THROW WHEN REACHED** (not touched, not this unit): `$28C170` at
+`boss.js:1210`, `boss.js:1284`, `objslot13.js:208`, `objslot7pool.js:556`, `tally.js:400`; plus
+`$28C0FC`/`$28C10C` in `objslot13.js` and `objslot7pool.js`.
+
+**Note the exemplars disagree on the log name:** `background.js:1047` uses `ctx.unportedLog.note`,
+`hiscorescreen.js:544` uses `ctx?.unportedLog?.note`, and `objslot8.js` uses `ctx?.unported?.note`
+at ~30 sites. `main.js:513` aliases both, so either works from production; match the FILE you are in.
+
+### A TOOL BUG IN `aligned.py`, FIXED -- IT COULD HAVE MISALIGNED ANY SWEEP
+
+`insn_len` had `size = 4 if op in (3, 7)` for the ADD/SUB/CMP/ADDA family. **Opmode 3 is the WORD
+address form and 7 is the LONG one**, so `adda.w #imm,An` was given a four-byte immediate:
+`d0fc 0020` (FOUR bytes) was reported as six and swallowed the following `5341` (`subq.w #1,D1`).
+
+At `$25AFEC` the two readings re-converge, so the sweep self-corrected and the only symptom was a
+bogus `MID-INSTRUCTION` verdict for `$25AFF2`. **A LONE `adda.w #imm,An` MISALIGNS EVERYTHING AFTER
+IT, SILENTLY.** Now `4 if op == 7 else (2 if op == 3 else ...)`. Any sweep taken before W377 that
+crossed an `adda.w` immediate is suspect.
+
+### `$25AD02` IS NOT A BLINK TAIL. IT IS 1,754 BYTES AND IT IS A WHOLE WAVE.
+
+The brief called it a mirror of `$25AFD8`. It is `$25AD02..$25B3DB` with TWO embedded data blocks
+(`$25AD3E..$25AFD7`, `$25B1E0..$25B29F`), TWO coordinate conventions ($20-stride three-line messages
+off `#$13`; $10-stride lines off the caller's D6/D7), a whole SECOND copy for separate credit pools
+entered at `$25B172 bsr $25B180`, and digit patching through `$23CD80`/`$23C838`/`$23C874`.
+**It stays a counted note.** The full map is written into `fronttext.js`.
+
+`$25AFD8` IS ported whole (`fronttext.js blinkOff25AFD8`), eleven instructions, `$25AFD8..$25B005`,
+no `rts` -- it tail-jumps into `$25A14C`. New window `(0x25AD3E, 0x005A)`, far end pinned because
+`$25AD3E + $5A == $25AD98` is `$25B008`'s own lea target.
+
+**Its three blank lines are 28 / 26 / 24 characters, NOT 28/28/28**, so an OFF frame does not fully
+erase an ON frame. Pinned in a test so nobody "fixes" it.
+
+### THE ATTRACT LOOP STILL NEVER LEAVES STATE 2
+
+Refined from W376: the hiscore chain never retires because **`$24676A`'s node content seeding is
+unported**. State 12 is not reachable from a cold boot today.
+
+## W376 NOTES
 
 ### THE WARNING SCREEN DRAWS. THE TILEMAP WAS EMPTY FOR THE ENTIRE BOOT BEFORE THIS.
 

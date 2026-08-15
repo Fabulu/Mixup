@@ -172,7 +172,13 @@ def insn_len(d, a):
             return 2                            # SBCD / ABCD
         if top == 0xC and op in (5, 6) and mode in (0, 1):
             return 2                            # EXG
-        size = 4 if op in (3, 7) else _SIZES.get(op & 3)
+        # W377. opmode 3 is the WORD address form (ADDA.W / SUBA.W / CMPA.W) and opmode 7 is
+        # the LONG one. This read `4 if op in (3, 7)` and so gave ADDA.W a four-byte immediate:
+        # `d0fc 0020` (adda.w #$20,A0, FOUR bytes) was reported as six and swallowed the
+        # following `5341` (subq.w #1,D1). At $25AFEC the two readings happen to re-converge, so
+        # the sweep self-corrected and the error only showed as a bogus MID-INSTRUCTION verdict
+        # for $25AFF2 -- but a LONE `adda.w #imm,An` misaligns everything after it, silently.
+        size = 4 if op == 7 else (2 if op == 3 else _SIZES.get(op & 3))
         if size is None:
             return None
         e = _ea_len(mode, reg, size)

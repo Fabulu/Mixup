@@ -706,12 +706,26 @@ test('W376 the credit line appears the frame AFTER 13 -> 2, because arm 2\'s ini
   assert.deepEqual(seen[300], [0x000d, 784]);
   assert.deepEqual(seen[301], [0x0002, 0], 'the $12C expiry frame wipes the warning screen');
   assert.deepEqual(seen[302], [0x0002, 0], 'arm 2\'s $25A91E clears the line the tail just drew');
-  assert.deepEqual(seen[303], [0x0002, 9], '"CREDITS:" + one digit = 9 cells');
+  // **W377 CHANGED THIS COUNT FROM 9 TO 87, AND THE EXTRA 78 ARE A NEW PORT, NOT A LEAK.**
+  // `$25AFD8` -- the blink message's OFF half -- is ported now (`fronttext.js blinkOff25AFD8`)
+  // and the tail calls it for real on OFF frames. It blits 28 + 26 + 24 = 78 blank cells at
+  // D1 = $13/$12/$11, and the blink counter is 1, 2, 3... here, so every frame in this window
+  // is an OFF frame. 9 + 78 = 87. The credit line's own column is unaffected, which is what
+  // the next assertion still pins.
+  assert.deepEqual(seen[303], [0x0002, 87],
+    '"CREDITS:" + one digit = 9 cells, plus $25AFD8\'s 78 blanks');
   assert.equal(txColumn(g.txvram, 3), '..........CREDITS:0');
 });
 
-test('W376 A COIN CHANGES WHAT IS ON SCREEN: CREDITS:0 -> CREDITS:1 -- and then the run dies '
-  + 'in arm 3 on a PRE-EXISTING W375 gap, $28C170', { skip: SKIP }, async () => {
+// **W377 REWROTE THIS TEST'S ENDING, BECAUSE THE ENDING WAS THE BUG.**
+// It used to assert that `g.step()` THROWS `no wrapper at $28C170` one frame after the credit
+// line updates -- i.e. it pinned the crash that made a coin unsurvivable on a cold boot. Arm 3
+// now COUNTS `$28C170` instead of posting it (`objslot8.js`; `sound.js`'s header forbids giving
+// that address a `WRAPPERS` row), so the step returns cleanly and the run continues. The claim
+// this test still makes -- the coin changes what is on screen, `CREDITS:0` -> `CREDITS:1` -- is
+// unchanged and is now checked on a run that SURVIVES. See `w377coin.test.js`.
+test('W377 A COIN CHANGES WHAT IS ON SCREEN: CREDITS:0 -> CREDITS:1, and the run SURVIVES it',
+  { skip: SKIP }, async () => {
   const { COIN } = await import('../src/isr.js');
   const { COIN_BITS } = await import('../src/web/input.js');
   const coinWord = (...names) => {
@@ -739,13 +753,16 @@ test('W376 A COIN CHANGES WHAT IS ON SCREEN: CREDITS:0 -> CREDITS:1 -- and then 
   g.step(0xffff);                                     // arm 0 on the restaged record -> state 3
   assert.equal(g.ram.u16(0x812e56), 0x0003);
 
-  // The next frame's TAIL draws the credit line with the new count -- and then arm 3's init
-  // posts `$25A962 jsr $28C170`, which `sound.js` deliberately refuses to map. THE DRAW HAS
-  // ALREADY HAPPENED when the throw lands, which is what this asserts.
-  const e = caught(() => g.step(0xffff));
-  assert.match(e.message, /no wrapper at \$28C170/);
-  assert.equal(txColumn(g.txvram, 3), '..........CREDITS:1',
-    'the credit line updated BEFORE the pre-existing throw');
+  // The next frame's TAIL draws the credit line with the new count, and then arm 3's init runs
+  // `$25A962 jsr $28C170` -- which is COUNTED now, not posted, so the frame completes.
+  assert.doesNotThrow(() => g.step(0xffff), 'W377: arm 3 no longer throws on $28C170');
+  assert.equal(txColumn(g.txvram, 3), '..........CREDITS:1', 'the credit line updated');
+  assert.ok(g.unportedLog.report().some((s) => s.includes('$28C170')),
+    'and the cue it cannot post is on the unported report rather than gone');
+  // And it keeps running: thirty more frames of arm 3 with the credit still in hand.
+  for (let i = 0; i < 30; i++) g.step(0xffff);
+  assert.equal(g.ram.u16(0x812e56), 0x0003, 'still on the credit screen');
+  assert.equal(g.ram.u8(0x80395a), 1, 'with the credit unspent');
 });
 
 test('W376 the attract loop does NOT cycle: it stalls in the high-score screen at $25B480, '

@@ -34,10 +34,19 @@
 // $12C timeout -> state 2 -> the high-score screen` runs without throwing.
 //
 // WHAT IS NOTED AND THEREFORE STILL STANDS BETWEEN THIS AND A BOOTABLE GAME: the four screen
-// sub-machines above and the `$25AD02`/`$25AFD8` blink-message pair. Neither gates the state
+// sub-machines above and `$25AD02`, the blink message's ON half. Neither gates the state
 // machine except through a carry this port cannot compute, which is why arms 1, 5, 9 and 12 hold
 // instead of advancing. Arms 0, 2, 3, 13 and 14 are complete, and 13 -> 2 -> 12 and
 // 3 -> 14 -> gameplay are live paths today.
+//
+// **W377 CLOSED THE COIN CRASH AND HALF THE BLINK PAIR.** Arm 3's `$25A962 jsr $28C170` and the
+// three `jsr $28C0FC` in the two teardowns were `ctx.soundPost` calls, and BOTH addresses go
+// through the `$28BBAC`/`$28BB76` packers that `sound.js` has no posting path for -- so posting
+// either THREW. On a cold boot the first one killed the run one frame after a coin credited.
+// All four are counted deferrals now; see `arm3` and `cueStreamNote`. `$25AFD8`, the OFF half of
+// the blink message, is ported in `fronttext.js` and called for real from the tail. `$25AD02`,
+// the ON half, is NOT the mirror of it -- it is a 1,754-byte dispatcher through $25B3DB with two
+// embedded data blocks and a second copy for separate credit pools -- and stays noted.
 //
 // **W376 CLOSED THE TWO THAT MADE THE LOOP SILENT AND BLANK.** `$259FF8` (arm 13's string
 // emitter, the warning screen) and `$23CFDE` (the credit / FREE PLAY line) are ported in
@@ -54,7 +63,7 @@ import { clear25C57E } from './objslot9.js';
 import { menuDips23C932 } from './tallyscreen.js';
 import { hiscoreScreen25B412 } from './hiscorescreen.js';
 import { loadAnimObjects246410 } from './animobjects.js';
-import { txFontString259FF8, creditLine23CFDE } from './fronttext.js';
+import { txFontString259FF8, creditLine23CFDE, blinkOff25AFD8 } from './fronttext.js';
 
 export const SCREEN8 = Object.freeze({
   entry: 0x25a770, setState: 0x25a764, tail: 0x25a82c, table: 0x25a872, dispatch: 0x240f62,
@@ -93,7 +102,8 @@ export const SCREEN8 = Object.freeze({
   txPalWarn: 0x222618,    // $25A99A / $25AC08 lea -- likewise 32
   cueStream: 0x28c0fc, cueWrapper: 0x28c5b0, cueBgm: 0x28c170,
 
-  // --- the blink (still NOTED) and the credit line (W376: LIVE, see fronttext.js)
+  // --- the blink (ON still NOTED; OFF is W377-LIVE) and the credit line (W376: LIVE) --
+  //     both halves live in fronttext.js
   blinkMask: 0x10,        // $25A844 andi.w #$10 -- 16 frames on, 16 off
   blinkOn: 0x25ad02, blinkOff: 0x25afd8, creditLine: 0x23cfde,
 
@@ -488,13 +498,33 @@ function arm2(ram, rom, a5, ctx) {
  *
  * `$25A962 jsr $28C170` -- a BGM cue in the init that the brief for this wave did not list.
  * Verified at `$25A962: 4E B9 00 28 C1 70`, and `$28C170` is an already-known cue.
+ *
+ * **W377: THAT CUE IS A COUNTED NOTE, NOT A `soundPost`, AND THAT IS WHAT KILLED THE COIN.**
+ * `$28C170` has no row in `sound.js`'s `WRAPPERS` and must not be given one -- see that file's
+ * header: it loads D0/D1 and calls `$28BBAC`, a DIFFERENT packer from the `$28BB04` every
+ * `WRAPPERS` row describes, with no id, no pan and no channel nibble. `postWrapper` therefore
+ * THROWS `no wrapper at $28C170`. Five other files still post it (`boss.js:1210` and `:1284`,
+ * `objslot13.js:208`, `objslot7pool.js:556`, `tally.js:400`) and every one of them will throw the
+ * same way when reached -- but arm 3 was the only one ON THE COLD-BOOT COIN PATH, and the others
+ * are not this file's to change.
+ *
+ * On a cold boot that throw is reached by the shortest path a player has: insert a coin ->
+ * `$80395A` 0 -> 1 -> the entry's coin gate tears down and restages at state 3 -> the very next
+ * frame arm 3's init runs this line and the run dies. `background.js:1047` and
+ * `hiscorescreen.js:544` already note this same address at their own call sites for this same
+ * reason; arm 3 was the outlier that posted it. It is now the third counted deferral.
  */
 function arm3(ram, a5, ctx) {
   if (ram.u8(a5 + SCREEN8.inited) === 0) {                     // $25A94A/$25A94E
     ram.setU8(a5 + SCREEN8.inited, 1);                         // $25A950
     clear24631C(ram, ctx, 0x25a956);                           // $25A956 jsr $24631C
     ctx?.unported?.note(0x25bbb4, '$25A95C jsr $25BBB4 -- the credit screen INIT, shared with arm 1');
-    ctx?.soundPost?.(SCREEN8.cueBgm);                          // $25A962 jsr $28C170
+    // $25A962 jsr $28C170 -- verified `4E B9 00 28 C1 70`. $28C170 -> $28BBAC D0=$15 (BGM
+    // command), the tier sound.js has no posting path for.
+    ctx?.unported?.note(SCREEN8.cueBgm,
+      '$25A962 jsr $28C170 -- the credit screen\'s BGM cue. $28C170 -> $28BBAC D0=$15 (BGM '
+      + 'command), NOT the $28BB04 packer every sound.js WRAPPERS row describes, so posting it '
+      + 'throws. Counted here exactly as background.js:1047 and hiscorescreen.js:544 count it');
   }
   ctx?.unported?.note(0x25bde0, '$25A968 jsr $25BDE0 -- the credit screen per-frame body');
   joinPoll25ACAC(ram, a5, ctx);                                // $25A96E bsr.w $25ACAC
@@ -503,6 +533,51 @@ function arm3(ram, a5, ctx) {
 /** States 4, 6, 7, 8, 10 and 11 -- `$25A974`, `$25A9E2`, `$25A9E4` (twice), `$25AA0C`,
  *  `$25AA0E`. Each is a bare `rts` and nothing else; 7 and 8 share ONE of them. */
 function armRts() { /* $25A974 / $25A9E2 / $25A9E4 / $25AA0C / $25AA0E -- rts */ }
+
+/**
+ * `$28C0FC` -- THE SECOND CUE IN THIS FILE THAT `soundPost` CANNOT POST, COUNTED AT ITS THREE
+ * CALL SITES. W377.
+ *
+ * Exactly the same defect as arm 3's `$28C170`, found while fixing it, in the same file, and one
+ * of the three sites is on the coin path itself. Decoded off the image:
+ *
+ *     28C0FC  48E7 FFFE       movem.l D0-D7/A0-A6,-(A7)
+ *     28C100  4EB9 0028BB76   jsr     $28BB76
+ *     28C106  4CDF 7FFF       movem.l (A7)+,D0-D7/A0-A6
+ *     28C10A  4E75            rts
+ *
+ *     28BB76  48E7 F000       movem.l D0-D3,-(A7)
+ *     28BB7A  7010            moveq   #$10,D0
+ *     28BB7C  E148            lsl.w   #8,D0        -> D0.w = $1000
+ *     28BB7E  4840            swap    D0           -> D0   = $10000000
+ *     28BB80  6100 FF1E       bsr     $28BAA0
+ *     28BB84  4CDF 000F       movem.l (A7)+,D0-D3
+ *     28BB88  4E75            rts
+ *
+ * So `$28C0FC` posts the bare longword `$10000000`: type $10, no id, no pan, no channel nibble,
+ * no gate and no pan tail -- the `$28BBxx` family again, not the `$28BB04` packer that every
+ * `sound.js` `WRAPPERS` row describes. `sound.js` carries `$28C0FC` in its `ENTRY` table (as
+ * `type $10, gate none, tail false`) but `postWrapper` looks in `WRAPPERS` and `STREAMING_LEAVES`
+ * only, so `ctx.soundPost(0x28C0FC)` throws `no wrapper at $28C0FC`. Verified: neither table has
+ * it (`w377coin.test.js`).
+ *
+ * **THE THREE SITES, AND WHICH OF THEM A PLAYER CAN REACH.**
+ *   `$25A7E2` -- coin teardown, behind `tst.w $803926` (the dual-play gate). Reachable.
+ *   `$25A7FA` -- coin teardown, behind `cmpi.w #$C,$812E56`. Reachable: attract reaches state 12
+ *                from arm 2, and a coin inserted there took this branch and threw.
+ *   `$25A9DA` -- arm 5's teardown, which today needs the unported `$25C6D4` to hand it a clear
+ *                carry, so it is a time bomb rather than a live crash.
+ * Both coin sites were proved to throw before this change; see `w377coin.test.js`.
+ *
+ * A `$28BBxx`-tier posting path in `sound.js` would close all of these AND `$28C170` at once, and
+ * that is a sound wave, not this file's to write. Until then: counted, never invented.
+ */
+function cueStreamNote(ctx, site) {
+  ctx?.unported?.note(SCREEN8.cueStream,
+    `$${site.toString(16).toUpperCase()} jsr $28C0FC -- $28C0FC -> $28BB76 posts the bare `
+    + 'longword $10000000 (type $10), NOT the $28BB04 packer every sound.js WRAPPERS row '
+    + 'describes, so posting it throws. Counted, as arm 3 counts $28C170');
+}
 
 /**
  * `$25A9B2` -- ARM 5's TEARDOWN, exported because the carry that reaches it comes from the
@@ -516,6 +591,9 @@ function armRts() { /* $25A974 / $25A9E2 / $25A9E4 / $25AA0C / $25AA0E -- rts */
  * is what makes `$25A9D4` land on the new record rather than on this one's `($4,A5)`.
  * `$241182` also takes the priority from the DISPATCH TABLE (`$240F62 + t*8 + 4`), never from
  * the caller -- hence the callback.
+ *
+ * **W377: `$25A9DA jsr $28C0FC` IS A COUNTED NOTE FOR THE SAME REASON ARM 3'S `$28C170` IS.**
+ * See `cueStreamNote` below.
  */
 export function teardown25A9B2(ram, rom, ctx) {
   objTableInit24107C(ram);                                     // $25A9B2 jsr $24107C
@@ -528,7 +606,7 @@ export function teardown25A9B2(ram, rom, ctx) {
   // unconditionally: on a full queue $241182 hands back the DUMMY at $80D51C and the cartridge
   // writes through it just the same.
   ram.setU16(made.addr + SCREEN8.joinField, SCREEN8.teardownState);
-  ctx?.soundPost?.(SCREEN8.cueStream);                         // $25A9DA jsr $28C0FC
+  cueStreamNote(ctx, 0x25a9da);                                // $25A9DA jsr $28C0FC
   return made;
 }
 
@@ -653,7 +731,8 @@ function arm14(ram, rom, ctx) {
 /**
  * `$25A7C0` -- A COIN IS IN. Tear the screen down and restart at state 3.
  *
- * Two `$28C0FC`/`$28C5B0` pairs, and they are NOT one pair with two conditions: `$25A7D2`
+ * Two `$28C0FC`/`$28C5B0` pairs (the `$28C0FC` half of each is a counted note -- see
+ * `cueStreamNote`), and they are NOT one pair with two conditions: `$25A7D2`
  * fires them when `$803926` (the dual-play gate) is set, clearing it on the way, and `$25A7EE`
  * fires them again when the state is 12. Both true means both pairs post.
  *
@@ -666,11 +745,11 @@ export function coinTeardown25A7C0(ram, rom, ctx) {
   clear25C57E(ram);                                            // $25A7CC jsr $25C57E
   if (ram.u16(SCREEN8.dualGate) !== 0) {                       // $25A7D2 tst.w / beq $25A7EE
     ram.setU16(SCREEN8.dualGate, 0);                           // $25A7DC clr.w $803926
-    ctx?.soundPost?.(SCREEN8.cueStream);                       // $25A7E2 jsr $28C0FC
+    cueStreamNote(ctx, 0x25a7e2);                              // $25A7E2 jsr $28C0FC
     ctx?.soundPost?.(SCREEN8.cueWrapper);                      // $25A7E8 jsr $28C5B0
   }
   if (ram.u16(SCREEN8.state) === 0x0c) {                       // $25A7EE cmpi.w #$C / bne $25A806
-    ctx?.soundPost?.(SCREEN8.cueStream);                       // $25A7FA jsr $28C0FC
+    cueStreamNote(ctx, 0x25a7fa);                              // $25A7FA jsr $28C0FC
     ctx?.soundPost?.(SCREEN8.cueWrapper);                      // $25A800 jsr $28C5B0
   }
   // $25A806 lea $222638,A0 / $25A80C moveq #0,D0 / $25A80E jsr $2414BE -- THIRTY-TWO bytes.
@@ -704,8 +783,10 @@ function dispatchTail25A82C(ram, rom, a5, ctx) {
       // $25A84C jsr ($25AD02,PC) -- EA = $25A84E + $4B4, the extension word plus the disp.
       ctx?.unported?.note(SCREEN8.blinkOn, '$25A84C jsr $25AD02 -- the blink message, ON');
     } else {
-      // $25A856 jsr ($25AFD8,PC) -- EA = $25A858 + $780.
-      ctx?.unported?.note(SCREEN8.blinkOff, '$25A856 jsr $25AFD8 -- the blink message, OFF (blank)');
+      // $25A856 jsr ($25AFD8,PC) -- EA = $25A858 + $780. W377: PORTED, in fronttext.js. Like
+      // `$23CFDE` below it this is a DIRECT blit through $25A14C, so its blanks land on this
+      // frame's tilemap, not the next one's. The note is gone because the call is real.
+      blinkOff25AFD8(ctx.tx, rom);                             // $25A856 jsr $25AFD8
     }
     // $25A85C jsr $23CFDE -- the credit / FREE PLAY line. W376: ported in fronttext.js, and it
     // writes TxVram DIRECTLY (through $25A14C/$240CF0) rather than through the defer buffer, so

@@ -210,19 +210,35 @@ test('W375 states $E, $3 and $D skip the credit check entirely', { skip: SKIP },
   }
 });
 
-test('W375 the coin teardown\'s two sound pairs are independent, not one', { skip: SKIP }, async () => {
+// W377 CHANGED HOW THIS TEST WATCHES THE PAIRS, NOT WHAT IT CLAIMS. The claim is still "two
+// INDEPENDENT pairs, not one pair with two conditions". What changed is that the `$28C0FC` half
+// of each pair is now a COUNTED NOTE rather than a `soundPost`: `$28C0FC` has no `WRAPPERS` row
+// and is not a streaming leaf, so against the real driver posting it threw
+// `no wrapper at $28C0FC` -- the same defect as arm 3's `$28C170`, and `$25A7FA` is reachable by
+// a player (state 12 + a coin). See `w377coin.test.js`. The `$28C5B0` half IS a real wrapper and
+// still posts. So each pair now shows up as one cue AND one note, and the note carries its own
+// call-site address, which is a STRICTLY STRONGER probe than two identical `0x28c0fc` entries:
+// it distinguishes `$25A7E2` from `$25A7FA`, which the old cue list could not.
+test('W375/W377 the coin teardown\'s two sound pairs are independent, not one',
+  { skip: SKIP }, async () => {
   const both = await gated();
   both.ram.setU8(both.SCREEN8.coinA, 1);
   both.ram.setU16(both.SCREEN8.dualGate, 1);      // $803926 set...
   both.ram.setU16(both.SCREEN8.state, 0x000c);    // ...AND state 12
   both.objSlot8(both.ram, both.rom, both.a5, both.ctx);
-  assert.deepEqual(both.cues, [0x28c0fc, 0x28c5b0, 0x28c0fc, 0x28c5b0], 'both pairs posted');
+  assert.deepEqual(both.cues, [0x28c5b0, 0x28c5b0], 'both $28C5B0 halves posted');
+  const streams = both.notes.filter(([a]) => a === 0x28c0fc).map(([, w]) => w);
+  assert.equal(streams.length, 2, 'and both $28C0FC halves were counted');
+  assert.ok(streams[0].includes('$25A7E2'), 'the dual-gate pair first');
+  assert.ok(streams[1].includes('$25A7FA'), 'then the state-12 pair');
   assert.equal(both.ram.u16(both.SCREEN8.dualGate), 0, '$25A7DC cleared $803926');
 
   const neither = await gated();
   neither.ram.setU8(neither.SCREEN8.coinA, 1);
   neither.objSlot8(neither.ram, neither.rom, neither.a5, neither.ctx);
   assert.deepEqual(neither.cues, [], 'and neither condition posts nothing');
+  assert.deepEqual(neither.notes.filter(([a]) => a === 0x28c0fc), [],
+    '  ...and counts nothing either -- the note is inside the branch, not beside it');
 });
 
 // ------------------------------------------------------------------ 3. $25ACAC
@@ -535,16 +551,31 @@ test('W375 arm 13\'s $12C timeout lands on state 2, counted from the frame AFTER
 
 // ------------------------------------------------------------------ 7. the blink
 
-test('W375 the blink is 16 frames on and 16 off across $812E58', { skip: SKIP }, async () => {
+// W377 CHANGED THE **OFF** PROBE, for the reason W376 changed $259FF8's and $23CFDE's: the note
+// is gone because the call is real. `$25AFD8` is ported (`fronttext.js blinkOff25AFD8`), so an
+// OFF frame is now detected by ITS PRODUCT -- the blank tile it blits at $904000 + ((0<<6)+$13)*4
+// -- which is a strictly stronger probe than a note that only proved the call was reached. The ON
+// half `$25AD02` is still a counted deferral and is still watched by note.
+const BLINK_CELL0 = 0x904000 + ((0 * 64 + 0x13) << 2);   // $25AFD8's first line, first character
+const BLANK_TILE = 0xc0200000;             // ' ' = $20 -> ($20 << 16) | attr 0, + $C0000000
+const POISON = 0x11223344;
+
+test('W375/W377 the blink is 16 frames on and 16 off across $812E58', { skip: SKIP }, async () => {
   const f = await gated();                        // state 4, no coins, so only the tail runs
   const seen = [];
   for (let i = 0; i < 64; i++) {
     const before = f.notes.length;
+    f.ctx.tx.setLong(BLINK_CELL0, POISON);        // re-poisoned every frame, so each is its own
     f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
     const fresh = noteAddrs(f.notes.slice(before));
-    assert.equal(fresh.filter((a) => a === 0x25ad02 || a === 0x25afd8).length, 1,
-      'exactly one of the two messages per frame');
-    seen.push(fresh.includes(0x25ad02) ? 1 : 0);
+    const on = fresh.includes(0x25ad02);
+    const off = f.ctx.tx.long(BLINK_CELL0) === BLANK_TILE;
+    assert.equal(Number(on) + Number(off), 1, 'exactly one of the two messages per frame');
+    if (on) {
+      assert.equal(f.ctx.tx.long(BLINK_CELL0), POISON,
+        'an ON frame must not blank -- $25AD02 is still noted, so it draws nothing');
+    }
+    seen.push(on ? 1 : 0);
   }
   assert.equal(f.ram.u16(f.SCREEN8.blink), 64, 'the counter is free-running');
   // $25A838 addq.w #1 happens BEFORE $25A844 andi.w #$10, so frame 1 sees counter 1.
@@ -561,11 +592,14 @@ test('W375 state 13 draws no blink and no credit line; every other state draws b
   warn.ram.setU16(warn.SCREEN8.blink, 0x0020);
   warn.objSlot8(warn.ram, warn.rom, warn.a5, warn.ctx);
   assert.equal(warn.ram.u16(warn.SCREEN8.blink), 0x0020, 'the counter did not move');
+  // W377: `$25AFD8` no longer has a note to be absent, so only `$25AD02` is watched that way.
   const a = noteAddrs(warn.notes);
-  assert.ok(!a.includes(0x25ad02) && !a.includes(0x25afd8) && !a.includes(0x23cfde));
-  // W376: and the credit line's own product is absent too. State 13's init clears TX and
-  // returns, so the only way a cell could be here is the tail drawing what it must not.
-  assert.equal(txCells(warn.ctx.tx), 0, 'state 13 wrote no credit line to the tilemap');
+  assert.ok(!a.includes(0x25ad02) && !a.includes(0x23cfde));
+  // W376/W377: and BOTH ported halves' products are absent too. State 13's init clears TX and
+  // returns, so the only way a cell could be here is the tail drawing what it must not -- and
+  // `$25AFD8`'s blanks are $C0200000, non-zero, so this count sees them.
+  assert.equal(txCells(warn.ctx.tx), 0,
+    'state 13 wrote neither the credit line nor the blink blanks to the tilemap');
 
   const other = await gated();
   other.objSlot8(other.ram, other.rom, other.a5, other.ctx);
@@ -611,14 +645,26 @@ test('W375 arm 2 advances to 12 when the ported $25B412 finishes, and holds whil
     assert.equal(f.ram.u8(f.a5 + f.SCREEN8.inited), 0, 'and $25A764 re-armed arm 12\'s init');
   });
 
-test('W375 arm 3 polls $25ACAC every frame and posts $28C170 in its init', { skip: SKIP }, async () => {
+// **W377 CHANGED WHAT THIS TEST ASSERTS, AND THE OLD ASSERTION WAS ASSERTING A BUG.**
+// It used to require `f.cues` to be `[0x28c170]`, i.e. that arm 3's init POSTS `$28C170`
+// through `ctx.soundPost`. Against the real driver that post is not a cue, it is a THROW:
+// `sound.js` has no `WRAPPERS` row for `$28C170` and its header says it must never get one
+// (`$28C170` goes through the `$28BBAC` packer, not `$28BB04`). So the assertion was pinning
+// the exact line that killed a cold-boot run one frame after a coin credited -- see
+// `w377coin.test.js`. Arm 3 now COUNTS the cue, the way `background.js:1047` and
+// `hiscorescreen.js:544` have always counted this same address, and this test asserts that:
+// the note is present AND `soundPost` is never reached.
+test('W377 arm 3 polls $25ACAC every frame and COUNTS $28C170 rather than posting it',
+  { skip: SKIP }, async () => {
   const f = await fx();
   f.ram.setU8(f.a5 + f.SCREEN8.constructed, 1);
   f.ram.setU16(f.SCREEN8.state, 0x0003);
   f.ram.setU16(f.SCREEN8.p1Raw, 0x8000);
   f.ram.setU8(f.SCREEN8.creditA, 1);
   f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
-  assert.deepEqual(f.cues, [0x28c170], '$25A962 jsr $28C170 -- verified in the ROM at $25A962');
+  assert.deepEqual(f.cues, [], 'arm 3 posts NO wrapper cue -- $28C170 has no wrapper to post');
+  assert.ok(noteAddrs(f.notes).includes(0x28c170),
+    '$25A962 jsr $28C170 -- verified in the ROM at $25A962, counted as an unported cue');
   assert.ok(f.clears.includes(0x24631c), '$25A956 jsr $24631C');
   assert.equal(f.ram.u16(f.SCREEN8.state), 0x000e, 'and the poll joined, on COIN play');
   assert.equal(f.ram.u8(f.SCREEN8.creditA), 0);
@@ -668,7 +714,10 @@ test('W375 $25A9B2, arm 5\'s teardown, restages slot [8] at state 2', { skip: SK
   assert.equal(f.ram.u16(made.addr) & 0x7fff, 0x0008, 'type 8 -- ITSELF');
   assert.equal(f.ram.u16(made.addr + 0x4a), 0x000a, 'at the table\'s priority');
   assert.equal(f.ram.u16(made.addr + 0x04), 0x0002, '$25A9D4 move.w #$2,($4,A0)');
-  assert.deepEqual(f.cues, [0x28c0fc], '$25A9DA jsr $28C0FC');
+  // W377: $28C0FC is COUNTED, not posted -- posting it throws `no wrapper at $28C0FC`.
+  assert.deepEqual(f.cues, [], 'nothing postable is posted here');
+  const n = f.notes.find(([a]) => a === 0x28c0fc);
+  assert.ok(n && n[1].includes('$25A9DA'), '$25A9DA jsr $28C0FC -- counted at its own call site');
 });
 
 // ------------------------------------------------------------------ 8. the unbounded table
