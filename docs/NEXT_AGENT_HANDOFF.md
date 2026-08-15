@@ -2,7 +2,75 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W384
+## START HERE -- W385
+
+### RUN THE SUITE FROM THE **REPO ROOT**. FROM `games/ddpdoj/` IT SILENTLY LIES.
+
+```
+cd games/ddpdoj && node --test tests/   ->  2833 pass, 12 FAIL, 356 SKIPPED
+cd <repo root>  && node --test games/ddpdoj/tests/  ->  3201 pass, 0 fail, 0 skipped
+```
+
+**A wrong-cwd run looks like a catastrophic regression AND violates the zero-skip property.** Verified
+both ways this wave. Every count in this document is from the repo root.
+
+### THE SHIP EXISTS. OBJECT TYPE 2 IS LIVE ON A COLD BOOT.
+
+- request 4 armed at **+2,394**, lives seeded to 2 at **+2,395**, `$8103E6` bit 15 at **+2,396**
+- `$813090 = 1`, `$2428A6` returns `$10`
+- live types went from `1, 5, 9, $A` to **`0, 1, 2, 4, 5, 9, $A, $B`**
+
+**Stage 1's ENDING MECHANISM works**, proved against real cold-booted RAM: `$294F44` falls through,
+`$294F60 jmp $294DD4` runs, `$294DDC bset #7,$8130F8` and `$294E34`'s D-script arm both land. The
+ablation (clear both player records) restores the `$78` re-floor.
+
+**BUT THE RUN STILL DOES NOT REACH THE BOSS**, and this is not a defect: a harness holding no buttons
+cannot survive stage 1. The player dies about every 320 frames, the counter borrows to -1 at
+**+4,075**, `$25FFA8` arms request 2, and `$260056` builds the game-over object. The boss (formerly
++8,614) is never reached. **To see stage 1 end you need a harness that plays, or invulnerability.**
+
+### THE THREE PIECES, AND FIVE PLACES MY BRIEF WAS WRONG
+
+Ported: `rank.js`'s two `$25FF7A` sites wired to `tally.js tallyDriver25FF7A`; `$25FE42` (**158**
+bytes, not 156 -- `4E75` sits AT `$25FEDE`); `$2603FE` (**172**, not 171). Plus `hud.js
+slideArm287A5E` and `scoreDrainInit287084`.
+
+1. **`$2603FE`'s two arms are EXCLUSIVE and the `$FF` polarity is INVERTED.** `$26042C beq.s
+   $26044C` sends the **`$FF`** case to the type-`$B` create; a non-`$FF` gate arms request 4 and
+   then `$260448 bra.w $260460` **jumps PAST** the create. Measured on a cold boot: `$813084 = $0000`
+   (P1 joined), `$813086 = $00FF` (P2 did not), so **exactly ONE** type-`$B` object is made, **for
+   the ABSENT side**. "Creates two" is true only when NEITHER side joined.
+2. Both byte counts were off by one (trap 5).
+3. **`$287A5E` is NOT unread** -- 5 instructions, `$287A5E..$287A79`. And its `bne.s` **skips ONE
+   INSTRUCTION, not the routine**: the slide flag is set on BOTH arms.
+4. **The `$28C170` throw does NOT come from `boss.js`.** It arrives from **`objslot13.js:208`
+   (`$288A3C`, slot [13] state 4, the GAME-OVER screen)** at frame +4,079, and there are **TWO**
+   unmapped posts there -- `$288A42 jsr $28C0FC` throws as well, because `$28C0FC` is in `sound.js`'s
+   **`ENTRY`** table, not `WRAPPERS`, and the ROM `jsr`s the entry directly with inherited D0..D3.
+   `objslot8.js:502` had already named this exact site as one that "will throw the same way when
+   reached".
+5. The baseline cwd trap above.
+
+### `$241182` SAVES ONLY `D1-D2`, AND TWO BYTE WRITES DEPEND ON IT
+
+`$25FE42`'s tail creates type 4, writes `move.b #$0,($7,A0)`, creates type 4 again, writes
+`move.b #$1,($7,A0)`. **Both byte writes hit the record the PRECEDING `$241182` left in A0** (trap
+11). The `movem` list is `D1-D2` only. Pinned in the test.
+
+### NEW ROM WINDOW `$25FE22 + $20` (548)
+
+Bound entirely code-stated: `$25FE42`'s own `lea (-$22,PC)` gives the base, `$25FE96 lea ($10,A0)`
+the stride, `$25FE4C moveq #$1,D7` + `dbra` the count (**2 entries**, N+1), and entry 1's `($C,A0)`
+longword ends at `$25FE41`, one byte below the routine's first opcode. Ablation address `$25FE22`.
+
+**`player.tables.json` is gitignored -- run `export-web.mjs` BEFORE any publish.**
+
+### NEXT: `$2252F8`, THE GAME-OVER SCREEN'S ANIMATION TABLE
+
+Outside every ROM window, read by `animobjects.js:233 stepNode` from `runAnimObjects24683E`, at
+frame **+4,081**. Different subsystem from everything above.
+
+## W384 NOTES
 
 ### THE GAME RUNS WITH **NO PLAYER**. THAT IS THE WHOLE STALL.
 

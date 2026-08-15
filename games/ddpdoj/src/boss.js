@@ -1200,16 +1200,28 @@ import './bossf23.js';
 // `runStageAdvance242952` was verified to be a FULL translation (zero note()/unreached() inside) before
 // this was written, because a note-only stage advance would soft-lock the run at stage 5's end with a
 // green suite and no error.
-/** `$242922` -- the boss-clear INTERVENTION. 48 bytes, and its only callee `$28C170` is already
- *  ported, which is why the note that stood here called it "a wrapper round the ported $28C170".
+/** `$242922` -- the boss-clear INTERVENTION. 48 bytes.
  *
  *  The two `$FF` writes are the interesting part. `tst.w` each player record and `bpl` SKIPS the
  *  write, so the byte lands only for a player whose flag word is NEGATIVE -- and it goes to that
  *  record's `+$3E`, not to a global. A port that wrote both unconditionally, or wrote one shared
  *  flag, would intervene for a player the cartridge leaves alone.
- */
+ *
+ *  **W385: `$28C170` IS A COUNTED NOTE HERE NOW, NOT A `soundPost`.** The comment above used to
+ *  say "its only callee `$28C170` is already ported". IT IS NOT. `$28C170` has no row in
+ *  `sound.js`'s `WRAPPERS` and must never be given one -- see that file's header: it loads D0/D1
+ *  and calls `$28BBAC`, a DIFFERENT packer from the `$28BB04` every `WRAPPERS` row describes, with
+ *  no id, no pan and no channel nibble, so `postWrapper` THROWS `no wrapper at $28C170`. Until
+ *  W385 nothing could reach this line, because no cold-boot run had a player to clear the boss
+ *  over; `objslot8.js:502` had already found and fixed the same defect on the coin path and its
+ *  comment names this exact site as one of five that would throw the same way when reached.
+ *  `background.js:1047` and `hiscorescreen.js:544` count it the same way. */
 export function bossClear242922(ram, ctx) {
-  ctx.soundPost?.(0x28c170);                                 // $242922 jsr $28C170
+  // $242922 jsr $28C170 -- $28C170 -> $28BBAC D0=$15 (BGM command), the tier sound.js has no
+  // posting path for. Counted exactly as objslot8.js arm3 counts it.
+  ctx.unported?.note(0x28c170, '$242922 jsr $28C170 -- the boss-clear BGM cue. $28C170 -> '
+    + '$28BBAC D0=$15 (BGM command), NOT the $28BB04 packer every sound.js WRAPPERS row '
+    + 'describes, so posting it throws. Counted here as objslot8.js:522 counts its own');
   ram.setU16(0x81296e, 1);                                   // $242928 move.w #$1,$81296E
   for (const [rec, at] of [[0x8103e6, 0x810424], [0x810448, 0x810486]]) {
     if ((ram.u16(rec) & 0x8000) === 0) continue;             // $242930/$242940 tst.w / bpl SKIPS
@@ -1283,7 +1295,10 @@ function bossPhase2A6D42(ram, a5, a6, ctx) {
 
 /** `$2A6D8C` -- the ENDING block, reached only when `$2428A6` says a player is out. */
 function bossEnding2A6D8C(ram, rom, a5, a6, ctx) {
-  ctx.soundPost?.(0x28c170);                                 // $2A6D8C
+  // $2A6D8C jsr $28C170 -- the same unmapped BGM cue `bossClear242922` above counts, for the
+  // same reason. W385.
+  ctx.unported?.note(0x28c170, '$2A6D8C jsr $28C170 -- the ENDING block\'s BGM cue. $28C170 -> '
+    + '$28BBAC D0=$15 (BGM command), NOT the $28BB04 packer sound.js WRAPPERS describes');
   ctx.unported?.note(0x23c4d0, '$2A6D92 jsr $23C4D0 -- the $8039xx pause/flag block, noted in '
     + 'boss.js since W357 and still not ported');
   if (ram.u16(0x813098) === 0 && ram.u16(0x80393a) === 0) {  // $2A6D98/$2A6DA2

@@ -361,7 +361,13 @@ test('W374 $25D72A exg normalises D0 to record 0 and D1 to record 1, whichever r
     const rec0 = SCREEN17.recs;
     const rec1 = SCREEN17.recs + H.otherRec;
 
-    // The note $2603FE files carries D0 and D1, which is the only way to see the exg from outside.
+    // **W385 CHANGED HOW THIS IS OBSERVED, AND FOR THE BETTER.** The note `$2603FE` used to file
+    // carried D0 and D1 in its prose, and this test pattern-matched that string. `$2603FE` is a
+    // CALL now (`rank.js stagePair2603FE`), so the two registers are watched where the cartridge
+    // actually puts them: `$260414 move.l D0,($10,A2)` and `$26041E move.l D1,($10,A3)`, the two
+    // `$25FF7A` records at $8130FA and $81311E. That observes the value ARRIVING somewhere
+    // instead of a string this port composed about it -- the same upgrade `w375state7callees`
+    // made when `$260580` stopped being a note.
     const run = (a6, d7) => {
       const ram = new Ram();
       const notes = [];
@@ -376,19 +382,24 @@ test('W374 $25D72A exg normalises D0 to record 0 and D1 to record 1, whichever r
       ram.setU16(a6 + H.travelAt, H.travelCap);
       ram.setU16(a6 + H.speedAt, 2);                         // one decel step and it is done
       frameStart(ram);
+      assert.equal(ram.u16(H.pairLatch), 0, 'POSITIVE CONTROL: $812F80 starts clear');
       phase7_25D560(ram, rom, c, a5, a6, d7, spy().draws);
-      const n = notes.filter((x) => x.addr === H.pairSite);
-      assert.equal(n.length, 1, '$2603FE was called exactly once');
-      return n[0].what;
+      assert.equal(ram.u16(H.pairLatch), 1, '$25D736 latched, so $25D73E jsr $2603FE fired');
+      assert.deepEqual(notes.filter((x) => x.addr === H.pairSite), [],
+        '...and it is a CALL now, so nothing is noted at $2603FE');
+      return [ram.u32(0x8130fa + 0x10) >>> 0, ram.u32(0x81311e + 0x10) >>> 0];
     };
 
     const fromRec0 = run(rec0, 1);
-    assert.match(fromRec0, /D0 = record 0's \(\$56\) anchor \$11110000/, 'run from record 0: no exg');
-    assert.match(fromRec0, /D1 = record 1's \$22220000/);
+    assert.equal(fromRec0[0], 0x11110000, 'run from record 0: D0 is record 0\'s anchor, no exg');
+    assert.equal(fromRec0[1], 0x22220000, '  ...and D1 is record 1\'s');
     const fromRec1 = run(rec1, 0);
-    assert.match(fromRec1, /D0 = record 0's \(\$56\) anchor \$11110000/,
-      'run from record 1: the exg puts record 0 back in D0');
-    assert.match(fromRec1, /D1 = record 1's \$22220000/);
+    assert.equal(fromRec1[0], 0x11110000,
+      'run from record 1: the exg puts record 0\'s anchor back in D0');
+    assert.equal(fromRec1[1], 0x22220000, '  ...and record 1\'s in D1');
+    assert.deepEqual(fromRec1, fromRec0,
+      'which is the whole claim: the pair is NORMALISED, so which record runs cannot be seen '
+      + 'downstream of $25D72A');
   });
 
 // ---------------------------------------------------------------------------------------------
@@ -591,23 +602,35 @@ test('W374 the three once-only latches each fire ONCE: ($5E,A6), $812F82 and $81
     assert.deepEqual(sounds, [H.sound], '$28CB9C posted exactly once across six frames');
 
     // $812F80 at $25D72C/$25D736. Drive the record to the one frame that reaches it.
+    //
+    // **W385 CHANGED THE WITNESS.** `$2603FE` was a counted note and this counted it; it is a
+    // call now, so what is watched is the RAM it writes -- `$260414 move.l D0,($10,A2)`. The
+    // record's ($56) anchor is 0 in this fixture, and `$26040E tst.l / bmi` stores a zero D0
+    // happily, so a distinctive anchor is planted first and the store is what is observed.
+    const POS0 = 0x8130fa + 0x10;                            // ($10,$8130FA), tally.js argA/argB
     notes.length = 0;
+    ram.setU32(SCREEN17.recs + H.anchorAt, 0x33330000);      // a value nothing else can produce
+    ram.setU32(POS0, 0);
     ram.setU16(a6 + H.frameAt, H.gateSlide);
     ram.setU16(a6 + H.travelAt, H.travelCap);
     ram.setU16(a6 + H.speedAt, 2);
     ram.setU16(a6 + H.doneAt, 0);
     step();
     assert.equal(ram.u16(H.pairLatch), 1, '$812F80 latched');
-    assert.equal(notesAt(notes, H.pairSite).length, 1, '$2603FE ran once');
+    assert.equal(ram.u32(POS0) >>> 0, 0x33330000, '$2603FE ran once and stored D0 through A2');
+    assert.deepEqual(notesAt(notes, H.pairSite), [],
+      '...and it is a CALL now, so nothing is noted at $2603FE');
 
     // ...and with the latch already up it does not run at all.
     notes.length = 0;
+    ram.setU32(POS0, 0);                                     // wipe the witness
     ram.setU16(a6 + H.frameAt, H.gateSlide);
     ram.setU16(a6 + H.travelAt, H.travelCap);
     ram.setU16(a6 + H.speedAt, 2);
     ram.setU16(a6 + H.doneAt, 0);
     step();
-    assert.deepEqual(notesAt(notes, H.pairSite), [], '$2603FE did NOT run a second time');
+    assert.equal(ram.u32(POS0) >>> 0, 0,
+      '$2603FE did NOT run a second time -- the witness stayed wiped');
   });
 
 // ---------------------------------------------------------------------------------------------

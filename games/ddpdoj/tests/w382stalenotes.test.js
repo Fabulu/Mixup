@@ -163,10 +163,23 @@ test('W382 neither address is counted as unported on any of the three deaths',
       run(w);
       seen.push(w.log.report().join('\n'));
     }
+    // **W385 TIGHTENED THESE THREE MATCHES FROM THE PROSE TO THE KEY.** `UnportedLog.report()`
+    // lines are `N x $ADDR text`, so `/\$242922/` matched the ADDRESS OF A NOTE and also any
+    // note whose MESSAGE happened to mention $242922. W385 gave `bossClear242922` a counted note
+    // for `$28C170` -- the unmapped BGM cue `sound.js` refuses to give a WRAPPERS row -- and its
+    // message names its own call site, `$242922 jsr $28C170`. The old regex read that as
+    // "$242922 is deferred", which it is not: the ROUTINE is fully ported and one CALLEE inside
+    // it is counted. Anchoring on ` x $ADDR ` is the fix, and it is the same key-match
+    // `w384stall.test.js` uses for exactly this reason.
+    const deferred = (r, addr) => new RegExp(` x \\$${addr} `).test(r);
     for (const [n, r] of seen.entries()) {
-      assert.ok(!/\$253564/.test(r), `stage ${n + 1} no longer defers $253564`);
-      assert.ok(!/\$242922/.test(r), `stage ${n + 1} no longer defers $242922`);
-      assert.ok(/\$23C4D0/.test(r), `stage ${n + 1} still defers $23C4D0, which is real`);
+      assert.ok(!deferred(r, '253564'), `stage ${n + 1} no longer defers $253564`);
+      assert.ok(!deferred(r, '242922'), `stage ${n + 1} no longer defers $242922`);
+      assert.ok(deferred(r, '23C4D0'), `stage ${n + 1} still defers $23C4D0, which is real`);
+      // POSITIVE CONTROL for the tightening: the note W385 added IS there, under its own
+      // address, so the assertion above is not passing because the census went empty.
+      assert.ok(deferred(r, '28C170'),
+        `stage ${n + 1} counts $28C170, the cue $242922 calls and sound.js cannot pack`);
     }
   });
 

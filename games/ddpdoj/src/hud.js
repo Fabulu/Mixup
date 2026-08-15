@@ -2383,10 +2383,18 @@ export function extendInit286FA6(ram, rom, ctx, who) {
  *   28715c: move.w D0,(A0)+ / move.l D1,(A0)+ / move.w D2,(A0)+ / move.w D3,(A0)+
  *           addi.w #$100,D1 / dbra D7
  *
- * `moveq #$8,D7` with `dbra` is NINE passes, one per record, and $A bytes each
- * lands exactly on `extraRecA` ($81B4C8 + 9*$A == $81B57C) -- the adjacency
- * `HUDRAM`'s own comment records. `addi.w #$100,D1` is a WORD add on a longword
- * register, so the destination column steps and the high half never carries.
+ * `moveq #$8,D7` with `dbra` is NINE passes, one per record, and $A bytes each.
+ * `addi.w #$100,D1` is a WORD add on a longword register, so the destination
+ * column steps and the high half never carries.
+ *
+ * **W385 CORRECTION TO THIS COMMENT.** It used to say the nine passes "land
+ * exactly on `extraRecA` ($81B4C8 + 9*$A == $81B57C)". THE ARITHMETIC IS WRONG:
+ * $81B4C8 + 9*$A is $81B522, which is `digitsP2`. The code does not rely on the
+ * adjacency at all -- `$28716C lea $81B57C,A0` re-loads A0 outright, and so does
+ * its sibling `$2870A8` below -- so the PORT was always right and only the
+ * justification was false. Left corrected rather than deleted, because "the walk
+ * ends where the next field starts" is exactly the kind of claim this project
+ * keeps re-deriving (trap 8: find the bound in the code that reads it).
  */
 export function scoreDrainReset287148(ram, who) {
   const p = who === 0
@@ -2412,6 +2420,120 @@ export function scoreDrainReset287148(ram, who) {
   ram.setU16(p.ovf, 0);                                 // $287184
   ram.setU16(p.ovf2, 0);                                // $28718A
   ram.setU8(p.shown, 0);                                // $287190
+}
+
+// ===========================================================================
+// W385 -- `$287084` (P1) / `$2870E6` (P2), THE SCORE ROW **INIT**
+// ===========================================================================
+// `$2603FE` calls one of these per side on the way out of the select screen (see
+// `rank.js stagePair2603FE`), and they are `$287148`'s LONGER SIBLINGS: 25
+// instructions each, pure RAM, and the first eleven are the same nine-record
+// loop instruction for instruction. `$2870E4 rts` is immediately followed by
+// `$2870E6`, and `$287146 rts` by `$287148`, so the four routines sit in one run.
+//
+//     287084  7000              moveq #$0,D0
+//     287086  223c 009040D8     move.l #$9040D8,D1
+//     28708C  7400              moveq #$0,D2
+//     28708E  7600              moveq #$0,D3
+//     287090  41f9 0081B4C8     lea $81B4C8,A0        digitsP1
+//     287096  7e08              moveq #$8,D7          NINE passes (trap 2)
+//     287098  30c0              move.w D0,(A0)+
+//     28709A  20c1              move.l D1,(A0)+
+//     28709C  30c2              move.w D2,(A0)+
+//     28709E  30c3              move.w D3,(A0)+
+//     2870A0  0641 0100         addi.w #$100,D1       WORD add on a LONG register
+//     2870A4  51cf fff2         dbra D7,$287098
+//     2870A8  41f9 0081B57C     lea $81B57C,A0        extraRecA -- RE-LOADED
+//     2870AE  30fc 0001         move.w #$1,(A0)+
+//     2870B2  20fc 009049D8     move.l #$9049D8,(A0)+
+//     2870B8  30fc c030         move.w #$C030,(A0)+
+//     2870BC  30c3              move.w D3,(A0)+
+//     2870BE  7000              moveq #$0,D0
+//     2870C0  23c0 0081B440     move.l D0,$81B440     totalP1
+//     2870C6  23c0 0081B4A0     move.l D0,$81B4A0     total2P1
+//     2870CC  33c0 0081B44C     move.w D0,$81B44C     ovfP1
+//     2870D2  33c0 0081B4A8     move.w D0,$81B4A8     ovf2P1
+//     2870D8  33c0 0081B49A     move.w D0,$81B49A     digitStateP1
+//     2870DE  13c0 0081B596     move.b D0,$81B596     p1.hyperShown
+//     2870E4  4e75              rts
+//
+// **THE TENTH RECORD'S DESTINATION IS THE LOOP'S NEXT COLUMN, AND THAT IS WHAT
+// PINS IT.** The loop stores $9040D8, $9041D8 ... $9048D8 and leaves D1 holding
+// $9049D8; `$2870B2`'s literal is that same $9049D8. `$2870E6`'s pair is
+// $9051D8..$9059D8 with the literal $905AD8. So the two constants are not two
+// facts to check separately -- either side's literal is the ninth column plus
+// $100, which is why `extraRecB` is $905AD8 and not $9059D8.
+//
+// **WHAT IT ADDS OVER `$287148`.** Three more fields on the tenth record
+// ($9049D8, $C030, 0) and `digitStateP1`. Everything else is identical. So this
+// is the FULL init and `$287148` is the mid-game reset that leaves the row's
+// destination and mode alone.
+const SCOREINIT_287084 = Object.freeze([
+  Object.freeze({ site: 0x287084, digits: 0x81b4c8, dest: 0x9040d8, extra: 0x81b57c,
+    extraDest: 0x9049d8, total: 0x81b440, total2: 0x81b4a0, ovf: 0x81b44c,
+    ovf2: 0x81b4a8, digitState: 0x81b49a, shown: 0x81b596 }),
+  Object.freeze({ site: 0x2870e6, digits: 0x81b522, dest: 0x9051d8, extra: 0x81b586,
+    extraDest: 0x905ad8, total: 0x81b444, total2: 0x81b4a4, ovf: 0x81b44e,
+    ovf2: 0x81b4aa, digitState: 0x81b49e, shown: 0x81b597 }),
+]);
+/** `$2870B8 move.w #$C030,(A0)+` -- the tenth record's MODE word, the one field
+ *  `$287148` does not touch. */
+const SCOREINIT_MODE = 0xc030;
+
+/** `$287084` (who = 0) / `$2870E6` (who = 1) -- see `SCOREINIT_287084`. */
+export function scoreDrainInit287084(ram, who) {
+  const p = SCOREINIT_287084[who === 0 ? 0 : 1];
+  let a0 = p.digits;
+  let d1 = p.dest >>> 0;
+  for (let n = 0; n < 9; n++) {                         // moveq #$8,D7 / dbra -- NINE
+    ram.setU16(a0, 0);                                  // move.w D0,(A0)+
+    ram.setU32(a0 + 2, d1);                             // move.l D1,(A0)+
+    ram.setU16(a0 + 6, 0);                              // move.w D2,(A0)+
+    ram.setU16(a0 + 8, 0);                              // move.w D3,(A0)+
+    a0 += 10;
+    d1 = ((d1 & 0xffff0000) | u16((d1 & 0xffff) + 0x100)) >>> 0;  // addi.w #$100,D1
+  }
+  ram.setU16(p.extra, 1);                               // $2870AE move.w #$1,(A0)+
+  ram.setU32(p.extra + 2, p.extraDest);                 // $2870B2 move.l #$9049D8,(A0)+
+  ram.setU16(p.extra + 6, SCOREINIT_MODE);              // $2870B8 move.w #$C030,(A0)+
+  ram.setU16(p.extra + 8, 0);                           // $2870BC move.w D3,(A0)+
+  ram.setU32(p.total, 0);                               // $2870C0
+  ram.setU32(p.total2, 0);                              // $2870C6
+  ram.setU16(p.ovf, 0);                                 // $2870CC
+  ram.setU16(p.ovf2, 0);                                // $2870D2
+  ram.setU16(p.digitState, 0);                          // $2870D8 -- $287148 lacks this
+  ram.setU8(p.shown, 0);                                // $2870DE
+}
+
+/**
+ * `$287A5E` -- **ARM THE HUD SLIDE-IN**, 24 bytes, five instructions, no calls.
+ *
+ *     287A5E  0839 0000 008130F9   btst #$0,$8130F9
+ *     287A66  6608                 bne.s $287A70
+ *     287A68  33fc 0053 0081B620   move.w #$53,$81B620
+ *     287A70  33fc 0001 0081B6EE   move.w #$1,$81B6EE
+ *     287A78  4e75                 rts
+ *
+ * The brief that set W385 listed this as UNREAD. It is not unreadable; it is
+ * five instructions, and both words it writes are already named in `HUDRAM`.
+ *
+ * **THE `bne.s` SKIPS ONE INSTRUCTION, NOT THE ROUTINE.** `$287A66 + 2 + $8` is
+ * `$287A70`, so `$81B6EE` is set on BOTH arms and only the banner timer is
+ * conditional. Reading it as an early-out would leave the HUD permanently in its
+ * flown-in state whenever `flags9` bit 0 is up.
+ *
+ * `$8130F9` bit 0 is the stage-clear/banner flag `hud.js` already tests at
+ * `$2878D8`, `$286EDE`, `$284CF2` and `$2844CC`; nothing in this port WRITES it,
+ * so on every run the port can currently reach, the timer arm is taken.
+ * `$81B620` is `bannerTimer`, counted down at `$284D38`; `$81B6EE` is
+ * `slideFlag`, the word `$284456 tst.w` reads as "the HUD is still flying in" and
+ * `$284D24`/`$284F6A` clear when it has landed.
+ */
+export function slideArm287A5E(ram) {
+  if ((ram.u8(HUDRAM.flags9) & 0x01) === 0) {           // $287A5E btst #$0 / $287A66 bne.s
+    ram.setU16(HUDRAM.bannerTimer, 0x53);               // $287A68 move.w #$53,$81B620
+  }
+  ram.setU16(HUDRAM.slideFlag, 1);                      // $287A70 -- BOTH arms reach this
 }
 
 /** `$2871E8` (P1) / `$287210` (P2) -- CLEAR THE CHAIN METER.

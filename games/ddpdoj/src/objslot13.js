@@ -203,10 +203,47 @@ function state2(ram, a5) {
   queueKill(ram, ram.u16(a5 + 0x00));                        // $288A34 JMP $241292 -- a TAIL kill
 }
 
-/** `$288A3C` -- STATE 4. Hand over to slot [14] and die. */
+/** `$288A3C` -- STATE 4. Hand over to slot [14] and die.
+ *
+ *  **W385: `$28C170` IS A COUNTED NOTE HERE, NOT A `soundPost`, AND THIS LINE WAS A LIVE CRASH.**
+ *  `$28C170` has no row in `sound.js`'s `WRAPPERS` and must not be given one -- it loads D0/D1 and
+ *  calls `$28BBAC`, a DIFFERENT packer from the `$28BB04` every `WRAPPERS` row describes, so
+ *  `postWrapper` throws `no wrapper at $28C170`. `objslot8.js:502` found and fixed exactly this on
+ *  the coin path in W377 and its comment names THIS SITE, by file and line, as one of five that
+ *  "will throw the same way when reached".
+ *
+ *  W385 reached it. Once the player object exists, a cold-boot run with no input loses its last
+ *  life at frame +4,075 past START; `$25FFA8`'s borrow arms bonus-line request 2, `$260056`
+ *  creates this object, and its state 4 ran this line on frame +4,079 and killed the run. So the
+ *  five sites objslot8.js listed were not hypothetical; this one is on the GAME-OVER path, which
+ *  is now reachable. `$28C0FC` on the next line is fine -- it HAS a `WRAPPERS` row ($10,
+ *  streaming) -- **so does `$28C0FC` on the next line, and that one was wrong for a SECOND
+ *  reason.** `$28C0FC` is not a wrapper at all: `sound.js` lists it in `ENTRY`, as the streaming
+ *  type-`$10` routine the wrappers CALL. `postWrapper` looks only in `WRAPPERS` and
+ *  `STREAMING_LEAVES`, so it throws on it too -- measured, immediately after the first note landed.
+ *  And the cartridge really does `jsr` the entry directly here:
+ *
+ *      288A3C  4eb9 0028C170     jsr $28C170
+ *      288A42  4eb9 0028C0FC     jsr $28C0FC     <- no immediates loaded, four back-to-back 4EB9s
+ *      288A48  4eb9 0024631C     jsr $24631C
+ *      288A4E  4eb9 0024107C     jsr $24107C
+ *
+ *  so its id, pan and channel are the caller's INHERITED D0..D3, which this port does not track.
+ *  A wrapper post would have to invent all three. Both lines are counted instead.
+ *
+ *  Counted exactly as `objslot8.js:522`, `background.js:1047` and `hiscorescreen.js:544` count it. */
 function state4(ram, rom, ctx) {
-  ctx.soundPost?.(0x28c170);                                 // $288A3C
-  ctx.soundPost?.(0x28c0fc);                                 // $288A42
+  // $288A3C jsr $28C170 -- $28C170 -> $28BBAC D0=$15 (BGM command), the tier sound.js has no
+  // posting path for.
+  ctx.unported?.note(0x28c170, '$288A3C jsr $28C170 -- slot [13] state 4\'s GAME-OVER BGM cue. '
+    + '$28C170 -> $28BBAC D0=$15 (BGM command), NOT the $28BB04 packer every sound.js WRAPPERS '
+    + 'row describes, so posting it throws. Counted here as objslot8.js:522 counts its own');
+  // $288A42 jsr $28C0FC -- the ENTRY routine, not a wrapper, entered with the caller's registers.
+  ctx.unported?.note(0x28c0fc, '$288A42 jsr $28C0FC -- slot [13] state 4 calls the STREAMING '
+    + 'ENTRY $28C0FC ($28BB76, type $10) DIRECTLY, with no id/pan/channel immediates: the four '
+    + 'jsr\'s at $288A3C..$288A4E are back to back, so D0..D3 are whatever the caller left. '
+    + 'sound.js keeps $28C0FC in ENTRY, not in WRAPPERS, so postWrapper throws on it. Posting '
+    + 'it would mean inventing three fields the port does not track');
   ctx.clear24631C?.(ram);                                    // $288A48
   // $288A4E jsr $24107C -- UNCONDITIONAL, four back-to-back `4EB9`s from $288A3C
   // with nothing between them.  It destroys ALL TWENTY object slots (including

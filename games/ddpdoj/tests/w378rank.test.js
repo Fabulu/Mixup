@@ -47,6 +47,10 @@ const TABLES = fileURLToPath(new URL('../rip/port/player.tables.json', import.me
 const tablesJson = JSON.parse(readFileSync(TABLES, 'utf8'));
 const IMG = readFileSync(fileURLToPath(new URL('../rip/sound/maincpu.bin', import.meta.url)));
 
+/** `$8130FA` -- W385. Taken from `RANK` rather than retyped, so it is the same word the file
+ *  under test dispatches over. `tally.js TALLY.side0` is the same address from the other end. */
+const TALLY_SIDE0 = RANK.disp25FF7ATable;
+
 const COINAGE = 0x803957;                       // see w377coin.test.js -- the service dip
 const NO_PLAYER = 0xffff;
 const P1_START = 0xfffe;                        // render.test.js portWordFromBits([BIT.start])
@@ -131,7 +135,12 @@ test('W378 the gate the INIT raises is the SAME word the per-frame body tests', 
 //      COUNTED AT ITS OWN SITE.
 // =================================================================================================
 
-test('W378 the state-0 INIT does its own writes and counts its ten unread callees by address',
+// **W385 EDITED THIS TEST.** `$260700 bsr.w $25FE42` was the ninth of the ten pairs below and it
+// is a CALL now, not a note: `rank.js playerRecords25FE42`. The pair is removed from the list and
+// replaced by its inverse -- the census must carry NO note for $25FE42 -- so this test still fails
+// if the wiring is ever backed out, rather than quietly agreeing with either state. Nothing else
+// in the list moved.
+test('W378 the state-0 INIT does its own writes and counts its NINE remaining unread callees',
   () => {
     const g = coldToStart();
     for (let i = 0; i < 30; i++) g.step(NO_PLAYER);
@@ -144,12 +153,21 @@ test('W378 the state-0 INIT does its own writes and counts its ten unread callee
     assert.equal(g.ram.u16(0x813094), 0, '  ...and $813094');
     assert.equal(g.ram.u16(0x813096), 0, '  ...and $813096');
 
-    // The ten calls that are still deferred on the loop-1 arm ($2606E8..$2606FA run because
-    // $813098 is 0 on a cold board, so all ten are reached).
+    // W385: $25FE42 IS PORTED, so the census must NOT carry a note for it any more. Asserted
+    // FIRST, because it is the assertion that goes red if the call at $260700 is ever reverted
+    // to a `defer()` -- the list below would happily pass with nine or with ten.
+    assert.deepEqual(noteKeys(g, 0x25fe42), [],
+      '$260700 bsr.w $25FE42 is a CALL now (rank.js playerRecords25FE42), not a deferral');
+    assert.equal(g.ram.u32(TALLY_SIDE0 + 0x08), 0x8130be,
+      '  ...and it ran: ($8,$8130FA) is the P1 LIVES POINTER out of the $25FE22 table');
+    assert.equal(g.ram.u16(TALLY_SIDE0 + 0x14), 2, '  ...and ($14) is 2, the P1 object type');
+
+    // The NINE calls that are still deferred on the loop-1 arm ($2606E8..$2606FA run because
+    // $813098 is 0 on a cold board, so all nine are reached).
     for (const [site, target] of [
       [0x2605ce, 0x259c4a], [0x260678, 0x2603da], [0x2606d2, 0x28d552],
       [0x2606d8, 0x28ebfe], [0x2606e8, 0x27f87c], [0x2606ee, 0x2884e2],
-      [0x2606f4, 0x287024], [0x2606fa, 0x24a810], [0x260700, 0x25fe42],
+      [0x2606f4, 0x287024], [0x2606fa, 0x24a810],
       [0x260704, 0x288574],
     ]) {
       const keys = noteKeys(g, target);
@@ -331,14 +349,24 @@ test('W378 stageStart260580 runs the four bsr\'s and ends with $81315C installed
 });
 
 test('W378 $260542\'s gate is D6, and it decides both $2603FE and the six extra kills', () => {
-  // D6 non-zero: $26051A takes the $2603FE arm (counted) and CLEARS $813080 itself, and
-  // $2604F4 takes its `bsr.b $2604AA` arm -- eight queued kills instead of two.
-  for (const [d6, wantNotes, wantKills] of [[0x0000, 0, 2], [0x0001, 1, 8]]) {
+  // D6 non-zero: $26051A takes the $2603FE arm and CLEARS $813080 itself, and $2604F4 takes its
+  // `bsr.b $2604AA` arm -- eight queued kills instead of two.
+  //
+  // **W385 CHANGED THE $2603FE WITNESS.** It was `noteKeys(g, $2603FE).length`; `$2603FE` is a
+  // call now (`rank.js stagePair2603FE`), so the arm is observed by what the cartridge writes:
+  // `$26054C move.l #$10000E00,D0 / $260558 bsr.w $2603FE` and then `$260414 move.l D0,($10,A2)`.
+  // The field is CLEARED first, because a cold board already carries $10000E00 there from
+  // `$25FE42`'s table -- which is itself the corroboration that `($10,A2)` is the spawn position.
+  const POS0 = RANK.disp25FF7ATable + 0x10;              // ($10,$8130FA) -- tally.js argA/argB
+  for (const [d6, wantPos, wantKills] of [[0x0000, 0, 2], [0x0001, STAGESTART.pairD0, 8]]) {
     const g = coldToStart();
     g.ram.setU16(ALLOC.killSp, 0);
+    g.ram.setU32(POS0, 0);                               // wipe the witness $25FE42 left
     stageStart260580(g.ram, g.rom, ctxOf(g), d6, 0);
-    assert.equal(noteKeys(g, STAGESTART.pairSite).length, wantNotes,
-      `D6 = ${d6}: $2603FE counted ${wantNotes} time(s)`);
+    assert.deepEqual(noteKeys(g, STAGESTART.pairSite), [],
+      `D6 = ${d6}: $2603FE is a CALL now, so it is never noted on either arm`);
+    assert.equal(g.ram.u32(POS0) >>> 0, wantPos >>> 0,
+      `D6 = ${d6}: $260414 move.l D0,($10,A2) ${d6 ? 'ran with $10000E00' : 'did NOT run'}`);
     assert.equal(g.ram.u16(ALLOC.killSp) / ALLOC.stride, wantKills,
       `D6 = ${d6}: $2604F4 queued ${wantKills} kills`);
     assert.equal(g.ram.u16(STAGESTART.wordD6), 0,

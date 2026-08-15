@@ -3404,6 +3404,52 @@ SHOT_WINDOWS.extend([
                        "reader's terminator. $25AD3E+$5A == $25AD98, the NEXT group's lea target"),
 ])
 
+# ==============================================================================================
+# W385 -- `$25FE42`'s INLINE TABLE, THE ONE THAT MAKES THE PLAYER EXIST
+# ==============================================================================================
+# `$25FE42..$25FEDF` fills BOTH `$25FF7A` dispatcher records ($8130FA and $81311E) out of a
+# table that sits immediately BELOW its own first instruction:
+#
+#   25FE42  41fa ffde        lea (-$22,PC),A0     EA = $25FE44 + $FFDE = $25FE22   <- the BASE
+#   25FE46  4df9 008130FA    lea $8130FA,A6
+#   25FE4C  7e01             moveq #$1,D7         <- TWO entries (dbra runs N+1)
+#   25FE4E  3d50 000c        move.w (A0),($C,A6)
+#   ...     six move.w and one move.l, largest displacement ($C,A0) read as a LONGWORD
+#   25FE96  41e8 0010        lea ($10,A0),A0      <- the STRIDE, $10
+#   25FE9A  4dee 0024        lea ($24,A6),A6
+#   25FE9E  51cf ffae        dbra D7,$25FE4E
+#
+# EVERY BOUND IS STATED BY THAT CODE AND NOT BY ADJACENCY:
+#
+#   * the BASE is $25FE22, from the lea's own extension word at $25FE44 (trap 4);
+#   * the STRIDE is $10, from $25FE96's `lea ($10,A0),A0`;
+#   * the COUNT is TWO, from `moveq #$1,D7` + `dbra` (trap 2) -- and it is corroborated by
+#     the two DESTINATIONS being $8130FA and $8130FA+$24 = $81311E, the exact pair
+#     `tally.js TALLY.side0/side1` and `$25FF7A`'s own `lea ($24,A6),A6` walk;
+#   * the LAST BYTE READ is entry 1's `($C,A0)` LONGWORD, i.e. $25FE22 + $10 + $C + 4 - 1 =
+#     $25FE41. So the extent is exactly $20 bytes and the table ends ONE BYTE BELOW $25FE42,
+#     the routine's own first opcode.
+#
+# MEASURED, and it is its own positive control -- `rip/web/seed.bin` was ripped mid-stage-1
+# from a real board and carries what this table writes:
+#
+#   $25FE22  1000 0E00 1000 0E00 0002 0000 0081 30BE     -> ($14) = 2, ($8) = $8130BE
+#   $25FE32  1000 2A00 1000 2A00 0003 0001 0081 30C0     -> ($14) = 3, ($8) = $8130C0
+#
+# and the seed has $8130FA+$14 = 2, $81311E+$14 = 3, $8130FA+$8 = $8130BE, $81311E+$8 =
+# $8130C0, $8130FA+$C = $1000, +$E = $0E00.  ($10,$12) do NOT match the literals in the seed
+# because `$260414 move.l D0,($10,A2)` in $2603FE overwrites that pair with the live position.
+SHOT_WINDOWS.append(
+    (0x25FE22, 0x0020, "W385: $25FE42's inline table -- TWO $10-byte entries, $25FE22..$25FE41. "
+                       "Base from $25FE42 lea (-$22,PC),A0 (EA = the extension word $25FE44 plus "
+                       "$FFDE). Stride $10 from $25FE96 lea ($10,A0),A0. Count TWO from $25FE4C "
+                       "moveq #$1,D7 with the dbra at $25FE9E, and corroborated by the two "
+                       "destinations $8130FA and $81311E being exactly $24 apart. Largest read is "
+                       "entry 1's ($C,A0) LONGWORD, ending at $25FE41 -- one byte below $25FE42, "
+                       "the routine's own first opcode. Each entry is spawn X, spawn Y, spawn X, "
+                       "spawn Y, THE OBJECT TYPE (2 for P1, 3 for P2), the side, then the "
+                       "LIVES-COUNTER POINTER ($8130BE / $8130C0)"))
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;

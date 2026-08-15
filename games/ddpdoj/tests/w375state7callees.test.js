@@ -310,9 +310,25 @@ test('W375 $25F456 runs from $25D668, inside the once-only $25D630 bset', { skip
 // 3. `$26070C` -- THE ONE-SHOT HANDOFF
 // =================================================================================================
 
-/** Runs `$26070C` with the request flag armed and a spy in place of `$25D990`. */
+/**
+ * Runs `$26070C` with the request flag armed and a spy in place of `$25D990`.
+ *
+ * **W385 ADDED THE `$25FE42` FILL, AND IT IS A FIDELITY FIX, NOT A WORKAROUND.** Three of the
+ * tests below pass a NON-ZERO D4, which `$260738` stores in `$813080`, which opens
+ * `$260542 tst.w`'s gate, which now really runs `$260558 bsr.w $2603FE` instead of noting it.
+ * `$2603FE` arms bonus-line request 4, and `$26059E bsr.w $25FF7A` at the end of `$260580`
+ * consumes it on the same call -- so `$2601F4 movea.l ($8,A6),A0 / move.w (A1,D0.w),(A0)` writes
+ * THROUGH the record's lives pointer.
+ *
+ * On a board that pointer is never null: `$260700 bsr.w $25FE42`, inside the rank object's
+ * state-0 INIT, fills both records long before the handoff runs. This fixture started from a
+ * blank RAM, so the pointer was 0 and the write went to address $0 -- a state the cartridge
+ * cannot be in. Running the cartridge's own routine is the faithful way to establish it; seeding
+ * the two longwords by hand would have been the guess.
+ */
 async function armed(f) {
   const g = await fx();
+  g.rank.playerRecords25FE42(g.ram, g.rom, g.ctx);           // $260700, in the state-0 INIT
   g.ram.setU16(g.HANDOFF_26070C.once, 1);                    // $260710 tst.w -> non-zero
   const seen = [];
   g.save = (ram, rom, ...regs) => seen.push(regs);

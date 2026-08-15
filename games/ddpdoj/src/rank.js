@@ -44,8 +44,11 @@
 import { RAM } from './machine.js';
 import { unreached } from './unported.js';
 import { queueKill, stageCreate, ALLOC } from './objalloc.js';
-import { respawn25FFA8, setPanel2603B0 } from './player.js';
-import { txPrint240DC2, txPrint240EBC } from './hud.js';
+import { tallyDriver25FF7A } from './tally.js';
+import { armRequest25FF38 } from './player.js';
+import {
+  txPrint240DC2, txPrint240EBC, scoreDrainInit287084, slideArm287A5E,
+} from './hud.js';
 import { install2414BE } from './palette.js';
 import { writeStage25FD0C, wipeStageBlock25FD24 } from './stageend.js';
 import { u16, i16 } from './ram.js';
@@ -92,17 +95,23 @@ export const RANK = {
 
 /** W378 -- what is STILL deferred inside state-0 INIT `$2605C8`.  The INIT's own
  *  RAM writes and its ten `$2414BE` TEXT installs are ported now (`rankInit2605C8`
- *  below); what remains are its twelve calls into subsystems no wave has read, and
- *  each of those is counted at ITS OWN call site rather than as one blanket skip.
+ *  below); what remains are its calls into subsystems no wave has read, and each of
+ *  those is counted at ITS OWN call site rather than as one blanket skip.
  *  The entry left here is the summary, kept because it is the routine's name and
- *  because the deferral is still real. */
+ *  because the deferral is still real.
+ *
+ *  W385 removed `$25FE42` from the list below -- `$260700 bsr.w $25FE42` is a CALL
+ *  now, `playerRecords25FE42`, so ten remain and not eleven. Leaving it in would be
+ *  a stale deferral of exactly the kind trap 13 is about. */
 export const RANK_DEVIATION = Object.freeze({
   [0x2605c8]: 'PARTIAL -- $2605C8, the state-0 INIT, $2605C8..$26070A. W378 ports '
     + 'its RAM writes (the $2(A5) state byte, the ten $2414BE TEXT installs, '
     + '$813080 = 0, $813082 = 1, the $813098 loop branch and the loop-2+ clears at '
-    + '$260680..$2606C9) and $2606CE bsr $25FD0C. Its twelve remaining calls '
-    + '($259C4A, $2603DA, $28D552, $28EBFE, $27F87C, $2884E2, $287024, $24A810, '
-    + '$25FE42, $288574) are counted at their own call sites. $260666 move.w '
+    + '$260680..$2606C9) and $2606CE bsr $25FD0C; W385 adds $260700 bsr.w $25FE42, '
+    + 'which fills both $25FF7A dispatcher records and creates the HUD and the two '
+    + 'announcement objects. Its nine remaining calls ($259C4A, $2603DA, $28D552, '
+    + '$28EBFE, $27F87C, $2884E2, $287024, $24A810, $288574) are counted at their '
+    + 'own call sites. $260666 move.w '
     + '#$1,$813082 is the one that matters here: it is the gate $2607A8 tests, and '
     + 'while the whole INIT was deferred the gate stayed 0, so the per-frame body '
     + 'ran before $26089E had installed the rank base pointer $81315C.',
@@ -236,6 +245,133 @@ export const STAGESTART = Object.freeze({
 
 const hexA = (v) => `$${v.toString(16).toUpperCase()}`;
 
+// ===========================================================================
+// W385 -- `$2603FE`, THE ROUTINE THAT ARMS BONUS-LINE REQUEST 4
+// ===========================================================================
+//
+// `$2603FE..$2604A9`, 172 bytes / 40 instructions, and TWO call sites: `$260558`
+// in `stageInstall26051A` above (gated on `$813080`, which a cold boot leaves 0,
+// so it does NOT fire) and `$25D73E` in `objslot17.js phase7_25D560`, behind the
+// `$812F80` one-shot latch, which DOES.
+//
+//     2603FE  48e7 fffe        movem.l D0-D7/A0-A6,-(SP)     REGISTER-TRANSPARENT
+//     260402  45f9 008130FA    lea $8130FA,A2
+//     260408  47f9 0081311E    lea $81311E,A3
+//     26040E  4a80             tst.l D0
+//     260410  6b00 0006        bmi.w $260418                 SKIP a negative D0
+//     260414  2540 0010        move.l D0,($10,A2)
+//     260418  4a81             tst.l D1
+//     26041A  6b00 0006        bmi.w $260422
+//     26041E  2741 0010        move.l D1,($10,A3)
+//     260422  3039 00813084    move.w $813084,D0
+//     260428  0c40 00ff        cmpi.w #$FF,D0
+//     26042C  671e             beq.s $26044C                 <- $FF TAKES THE OTHER ARM
+//     26042E  7000             moveq #$0,D0                  side 0
+//     260430  323c 0004        move.w #$4,D1                 REQUEST 4
+//     260434  4eba fb02        jsr ($25FF38,PC)
+//     260438  4a79 00813098    tst.w $813098                 loop 1 only
+//     26043E  6600 0020        bne.w $260460
+//     260442  4eb9 00287084    jsr $287084                   hud.js scoreDrainInit287084
+//     260448  6000 0016        bra.w $260460
+//     26044C  303c 000b        move.w #$B,D0                 <- the $FF arm
+//     260450  4eb9 00241182    jsr $241182
+//     260456  2540 001c        move.l D0,($1C,A2)
+//     26045A  117c 0000 0007   move.b #$0,($7,A0)            A0 IS INHERITED (trap 11)
+//     260460  ...the whole block again for side 1: $813086, D0 = 1, $2870E6, ($1C,A3)
+//     26049E  4eb9 00287A5E    jsr $287A5E                   hud.js slideArm287A5E
+//     2604A4  4cdf 7fff        movem.l (SP)+,D0-D7/A0-A6
+//     2604A8  4e75             rts
+//
+// ===========================================================================
+// THE BRIEF THAT SET THIS WAVE GOT THIS ROUTINE'S SHAPE WRONG, TWICE
+// ===========================================================================
+//
+// It said: "For each side whose `$813084`/`$813086` is not `$FF` it runs
+// `$260434 jsr $25FF38` with D1 = 4 ... **and** creates a type-`$B` object", and
+// "Creates **two** type-`$B` objects".
+//
+// **THE TWO ARMS ARE EXCLUSIVE AND THE `$FF` POLARITY IS THE OPPOSITE WAY ROUND.**
+// `$26042C beq.s $26044C` jumps to the type-`$B` create when the gate word IS
+// `$FF`; a side that is NOT `$FF` arms request 4 and never reaches `$26044C`. So a
+// side gets EITHER a bonus-line request OR a type-`$B` object, never both.
+//
+// `[M]` on a real cold boot with P1 only: `$813084` = `$0000` (P1's style word)
+// and `$813086` = `$00FF` (P2 never joined -- `$25CCCC` fills all six of
+// `($4,A5)..($9,A5)` with `$FF`, which is the same "this side did not join" guard
+// `$25F460 bmi` uses). So **exactly ONE** type-`$B` object is created, and it is
+// created for the ABSENT side. Both halves of that were checked against the frame,
+// not inferred: see `tests/w385player.test.js`.
+//
+// **AND THE `($10,A2)` STORE IS A LONGWORD OVER TWO WORD FIELDS** (trap 3):
+// `move.l D0,($10,A2)` fills `($10)` AND `($12)`, which `tally.js bonusLine42601F4`
+// then copies to the new player object's `($8,A0)`/`($A,A0)`. That is why
+// `rip/web/seed.bin` has `$8130FA+$10` = `$1179` rather than the `$25FE22` table's
+// `$1000`: `$25D71C`'s anchor `$117914C0` has overwritten the pair with the ship's
+// live position on the select screen. `$260558`'s call passes the LITERALS
+// `$10000E00` / `$10002A00` instead, which are the table's own values.
+const PAIR_2603FE = Object.freeze({
+  addr: 0x2603fe, end: 0x2604a9, bytes: 172,
+  absent: 0x00ff,                  // $260428 / $260466 cmpi.w #$FF,D0
+  request: 4,                      // $260430 / $26046E move.w #$4,D1
+  type: 0x0b,                      // $26044C / $26048A move.w #$B,D0
+  posOff: 0x10,                    // $260414 / $26041E move.l Dn,($10,An)
+  handleOff: 0x1c,                 // $260456 / $260494 move.l D0,($1C,An)
+  sideOff: 0x07,                   // $26045A / $260498 move.b #$n,($7,A0)
+  sides: Object.freeze([
+    Object.freeze({ side: 0, gate: 0x813084, handleSite: 0x260456 }),   // A2
+    Object.freeze({ side: 1, gate: 0x813086, handleSite: 0x260494 }),   // A3
+  ]),
+});
+
+/**
+ * `$2603FE` -- see `PAIR_2603FE`.
+ *
+ * `$2603FE`'s `movem.l D0-D7/A0-A6` and `$2604A4`'s restore make it
+ * REGISTER-TRANSPARENT (trap 9): it returns nothing and its callers read nothing
+ * back out of it. Everything it does, it does through RAM.
+ *
+ * @param d0 side 0's position LONGWORD, or a negative value to leave `($10,A2)`
+ *   alone. `$25D73E` passes record 0's `($56)` anchor; `$260558` passes the
+ *   literal `$10000E00`.
+ * @param d1 the same for side 1. `$25D73E` passes `$FFFFFFFF` when the other
+ *   record never joined, and `$26041A bmi.w` is what makes that a skip.
+ */
+export function stagePair2603FE(ram, rom, ctx, d0, d1) {
+  const recs = [RANK.disp25FF7ATable,                          // $260402 lea $8130FA,A2
+    RANK.disp25FF7ATable + RANK.disp25FF7AStride];             // $260408 lea $81311E,A3
+  // $26040E/$260418 tst.l + bmi.w -- SIGNED, and the skip is the NEGATIVE arm.
+  if ((d0 | 0) >= 0) ram.setU32(recs[0] + PAIR_2603FE.posOff, d0 >>> 0);   // $260414
+  if ((d1 | 0) >= 0) ram.setU32(recs[1] + PAIR_2603FE.posOff, d1 >>> 0);   // $26041E
+
+  const pri = (t) => rom.u16(RANK.dispatch + t * 8 + 4);       // $24119C ($4,A0,D1)
+  for (const s of PAIR_2603FE.sides) {
+    if (ram.u16(s.gate) !== PAIR_2603FE.absent) {              // $260428 cmpi.w / $26042C beq.s
+      // THE SIDE IS PLAYING: arm bonus-line request 4 and, on loop 1, init its score row.
+      armRequest25FF38(ram, s.side, PAIR_2603FE.request);      // $26042E/$260430/$260434
+      if (ram.u16(RANK.loopWord) === 0) {                      // $260438 tst.w $813098 / bne.w
+        scoreDrainInit287084(ram, s.side);                     // $260442 jsr $287084
+      }
+      continue;                                                // $260448 bra.w -- past the create
+    }
+    // THE SIDE IS ABSENT ($FF): a type-$B object instead, carrying the side byte.
+    const rec = stageCreate(ram, PAIR_2603FE.type, pri);       // $26044C/$260450 jsr $241182
+    if (rec.ok) {
+      ram.setU32(recs[s.side] + PAIR_2603FE.handleOff,         // $260456 move.l D0,($1C,An)
+        ram.u32(rec.addr + ALLOC.idOff));                      // $2411C4 move.l $80E882,D0
+    } else {
+      note(ctx, s.handleSite, `${hexA(s.handleSite)} move.l D0,($1C,${
+        s.side === 0 ? 'A2' : 'A3'}) -- $241182's create queue was FULL, so $241190 `
+        + 'bge took $2411D4 before $2411A8\'s ori and D0 still holds the bare '
+        + 'move.w #$B with the caller\'s high half, which this port does not know. '
+        + 'The low word is stored; the high half is not invented');
+      ram.setU32(recs[s.side] + PAIR_2603FE.handleOff, PAIR_2603FE.type);
+    }
+    // $26045A/$260498 -- through the A0 `$241182` LEFT BEHIND (trap 11), not A2/A3.
+    ram.setU8(rec.addr + PAIR_2603FE.sideOff, s.side);
+  }
+  slideArm287A5E(ram);                                         // $26049E jsr $287A5E
+}
+
 /**
  * `$2604F4..$260518` plus `$2604AA..$2604F2` -- **THE STAGE-START DELETE.** Every
  * instruction in both is a `$241238` push, so the whole thing is eight deferred
@@ -329,10 +465,15 @@ export function stageInstall26051A(ram, rom, ctx) {
   // that is the $80D51C dummy and the cartridge writes through it just the same.
   ram.setU16(one.addr + STAGESTART.childField, ram.u16(STAGESTART.wordD7));
   if (ram.u16(STAGESTART.wordD6) !== 0) {                   // $260542 tst.w / $260548 beq
-    note(ctx, STAGESTART.pairSite, `${hexA(STAGESTART.pairSite)} -- 172 bytes, `
-      + `$2603FE..$2604A9, reached from $260558 with D0 = ${hexA(STAGESTART.pairD0)} `
-      + `and D1 = ${hexA(STAGESTART.pairD1)}. This is objslot17.js HANDLER7.pairSite, `
-      + 'already counted from $25D72E, so the call graph cycles here. Unread');
+    // W385: A CALL NOW, NOT A NOTE. `$26054C move.l #$10000E00,D0 / $260552 move.l
+    // #$10002A00,D1 / $260558 bsr.w $2603FE` -- and the two literals are exactly the
+    // `($C,$E)` pairs the `$25FE22` table holds, which is the corroboration that
+    // `($10,A2)` really is the spawn position field. **THIS ARM DOES NOT FIRE ON A COLD
+    // BOOT**: `$813080` is cleared by `$260660` in the state-0 INIT and only a two-player
+    // handoff (`$26070C`'s D4) raises it, so `$25D73E` is the site that runs -- see the
+    // note W384 pinned. It is wired anyway, because a gate that never opens is not a
+    // reason to leave a routine unreachable from one of its two callers.
+    stagePair2603FE(ram, rom, ctx, STAGESTART.pairD0, STAGESTART.pairD1);
     ram.setU16(STAGESTART.wordD6, 0);                       // $26055C move.w #$0
   }
   // $260564 lea $222618,A0 / $26056A moveq #$0,D0 / $26056C jsr $2414BE -- 32 bytes.
@@ -384,16 +525,19 @@ export function stageInstall26051A(ram, rom, ctx) {
  *
  * @param d6 `$260778 move.w $813080,D6` -- re-read from RAM by the caller
  * @param d7 `$260774 move.w #$38,D7`, or 0
+ * @param a5 the OBJECT RECORD the chain entered on. `$25FF7A` does not set A5 and
+ *   bonus line 6 (`$260348 move.b #$2,($2,A5)`) writes through it, so it is
+ *   threaded from `$25D630`'s A5 -- the select-screen object -- rather than
+ *   guessed. See `tally.js bonusLine6260348`.
  */
-export function stageStart260580(ram, rom, ctx, d6, d7) {
+export function stageStart260580(ram, rom, ctx, d6, d7, a5) {
   ram.setU16(STAGESTART.zeroWord, 0);                       // $260580 clr.w $81296E
   ram.setU16(STAGESTART.wordD7, u16(d7));                   // $260586 move.w D7
   ram.setU16(STAGESTART.wordD6, u16(d6));                   // $26058C move.w D6
   stageClear2604F4(ram);                                    // $260592 bsr.w $2604F4
   wipeStageBlock25FD24(ram);                                // $260596 bsr.w $25FD24
   stageInstall26051A(ram, rom, ctx);                        // $26059A bsr.w $26051A
-  computedDispatch(ram, ctx, RANK.disp25FF7ATable, RANK.disp25FF7AStride,
-    RANK.disp25FF7AJump, RANK.disp25FF7A, DISP_25FF7A_TARGETS);   // $26059E bsr.w $25FF7A
+  tallyDriver25FF7A(ram, rom, ctx, a5);                     // $26059E bsr.w $25FF7A
 }
 
 /** `$2605C8..$26070A` -- the state-0 INIT's ten `$2414BE` TEXT installs, at their
@@ -434,9 +578,127 @@ const INIT_UNREAD = Object.freeze([
   Object.freeze([0x2606f4, 0x287024, 'unread anywhere in this port']),
   Object.freeze([0x2606fa, 0x24a810, 'a reset-prologue routine (frontend.js '
     + 'RESET_PROLOGUE)']),
-  Object.freeze([0x260700, 0x25fe42, 'unread anywhere in this port']),
   Object.freeze([0x260704, 0x288574, 'unread anywhere in this port']),
 ]);
+
+// ===========================================================================
+// W385 -- `$25FE42`, THE ROUTINE THAT GIVES BOTH SIDES A PLAYER TO BE
+// ===========================================================================
+//
+// `$25FE42..$25FEDF`, 158 bytes / 29 instructions, ONE caller (`$260700 bsr.w`,
+// inside the `$2605C8` state-0 INIT above). Until W385 it was the first of the
+// three counted notes that between them meant `$8103E6` stayed zero for the whole
+// of a cold-boot run -- see `tests/w384stall.test.js`.
+//
+//     25FE42  41fa ffde         lea (-$22,PC),A0        A0 = $25FE22, the table
+//     25FE46  4df9 008130FA     lea $8130FA,A6          A6 = the side-0 record
+//     25FE4C  7e01              moveq #$1,D7            TWO passes (trap 2)
+//     25FE4E  3d50 000c         move.w (A0),($C,A6)
+//     25FE52  3d68 0002 000e    move.w ($2,A0),($E,A6)
+//     25FE58  3d68 0004 0010    move.w ($4,A0),($10,A6)
+//     25FE5E  3d68 0006 0012    move.w ($6,A0),($12,A6)
+//     25FE64  3d68 0008 0014    move.w ($8,A0),($14,A6)   <- THE OBJECT TYPE
+//     25FE6A  3d68 000a 0016    move.w ($A,A0),($16,A6)   <- the side
+//     25FE70  2d68 000c 0008    move.l ($C,A0),($8,A6)    <- THE LIVES POINTER
+//     25FE76  2d7c 0 0018       move.l #$0,($18,A6)
+//     25FE7E  2d7c 0 001c       move.l #$0,($1C,A6)
+//     25FE86  2d7c 0 0004       move.l #$0,($4,A6)
+//     25FE8E  2d7c 0 0020       move.l #$0,($20,A6)
+//     25FE96  41e8 0010         lea ($10,A0),A0
+//     25FE9A  4dee 0024         lea ($24,A6),A6
+//     25FE9E  51cf ffae         dbra D7,$25FE4E
+//     25FEA2  303c 0000         move.w #$0,D0
+//     25FEA6  4eb9 00241182     jsr $241182               type 0, the HUD
+//     25FEAC  23c0 0081314c     move.l D0,$81314C
+//     25FEB2  303c 0004         move.w #$4,D0
+//     25FEB6  4eb9 00241182     jsr $241182               type 4, announcement A
+//     25FEBC  23c0 00813150     move.l D0,$813150
+//     25FEC2  117c 0000 0007    move.b #$0,($7,A0)        <- A0 IS INHERITED
+//     25FEC8  303c 0004         move.w #$4,D0
+//     25FECC  4eb9 00241182     jsr $241182               type 4, announcement B
+//     25FED2  23c0 00813154     move.l D0,$813154
+//     25FED8  117c 0001 0007    move.b #$1,($7,A0)        <- ...and again
+//     25FEDE  4e75              rts
+//
+// **THE TWO `move.b #$x,($7,A0)` ARE TRAP 11 AND THEY ARE THE POINT OF THE TAIL.**
+// `$241182` is `movem.l D1-D2,-(SP)` / `movem.l (SP)+,D1-D2` -- it restores D1 and
+// D2 and NOTHING ELSE, so A0 comes back holding the record it just staged
+// ($2411A0 lea $80D56C,A0 / $2411A6 adda.w D2,A0). The A0 those two byte writes
+// see is therefore the type-4 object created two instructions earlier, not the
+// table pointer the dbra loop left at $25FE42. `($7)` is the SIDE BYTE: it is the
+// same offset `announce260B30` reads (`$260A20`, which picks $813162 for side 0
+// and $813166 for side 1) and the same one `player.js:525` hands
+// `armRequest25FF38`. Reading A0 as the table would put the two bytes into ROM,
+// and BOTH announcement objects would then run as side 0.
+//
+// **AND $25FE42 DOES NOT ARM A REQUEST.** It clears ($4,A6) -- a longword, so
+// ($4) and ($6) -- and ($18)/($1C)/($20), but never (A6) or ($2,A6). Filling the
+// two records is only half the unit; `$2603FE` is what writes the request word.
+//
+// The table's window is declared in `tools/export-tables.py` as W385, with its
+// base, stride, count and far end each taken from an instruction in the listing
+// above rather than from adjacency.
+const SPAWN_25FE22 = Object.freeze({
+  table: 0x25fe22,             // $25FE42 lea (-$22,PC),A0 -- EA = $25FE44 + $FFDE
+  stride: 0x10,                // $25FE96 lea ($10,A0),A0
+  entries: 2,                  // $25FE4C moveq #$1,D7 + $25FE9E dbra (trap 2)
+  // src offset -> dest offset, in the ROM's own write order. Words except the last.
+  words: Object.freeze([
+    Object.freeze([0x00, 0x0c]), Object.freeze([0x02, 0x0e]),   // $25FE4E / $25FE52
+    Object.freeze([0x04, 0x10]), Object.freeze([0x06, 0x12]),   // $25FE58 / $25FE5E
+    Object.freeze([0x08, 0x14]), Object.freeze([0x0a, 0x16]),   // $25FE64 / $25FE6A
+  ]),
+  ptrSrc: 0x0c, ptrDst: 0x08,                                   // $25FE70 move.l
+  zeroLongs: Object.freeze([0x18, 0x1c, 0x04, 0x20]),           // $25FE76..$25FE8E
+  // the three creates, in ROM order: (type, handle longword, site of the move.l)
+  creates: Object.freeze([
+    Object.freeze([0x0, 0x81314c, 0x25feac]),                   // $25FEA2/$25FEA6/$25FEAC
+    Object.freeze([0x4, 0x813150, 0x25febc]),                   // $25FEB2/$25FEB6/$25FEBC
+    Object.freeze([0x4, 0x813154, 0x25fed2]),                   // $25FEC8/$25FECC/$25FED2
+  ]),
+  sideOff: 0x07,                                                // ($7,A0)
+});
+
+/**
+ * `$25FE42` -- fill both `$25FF7A` dispatcher records from the inline table, then
+ * create the HUD and the two announcement objects.
+ *
+ * @returns the three staged records, in ROM order, for a test to look at.
+ */
+export function playerRecords25FE42(ram, rom, ctx) {
+  const K = SPAWN_25FE22;
+  for (let e = 0; e < K.entries; e++) {                     // $25FE4C / $25FE9E dbra
+    const a0 = K.table + e * K.stride;                      // $25FE42 / $25FE96
+    const a6 = RANK.disp25FF7ATable + e * RANK.disp25FF7AStride;   // $25FE46 / $25FE9A
+    for (const [src, dst] of K.words) ram.setU16(a6 + dst, rom.u16(a0 + src));
+    ram.setU32(a6 + K.ptrDst, rom.u32(a0 + K.ptrSrc));      // $25FE70 move.l ($C,A0)
+    for (const off of K.zeroLongs) ram.setU32(a6 + off, 0); // $25FE76..$25FE8E
+  }
+
+  const pri = (t) => rom.u16(RANK.dispatch + t * 8 + 4);    // $24119C ($4,A0,D1)
+  const made = [];
+  for (const [type, handle, site] of K.creates) {
+    const rec = stageCreate(ram, type, pri);                // $241182
+    if (rec.ok) {
+      ram.setU32(handle, ram.u32(rec.addr + ALLOC.idOff));  // $2411C4 move.l $80E882,D0
+    } else {
+      // The same full-queue deviation `stageInstall26051A` declares, at this site.
+      note(ctx, site, `${hexA(site)} move.l D0,${hexA(handle)} -- $241182's create `
+        + `queue was FULL, so $241190 bge took $2411D4 before $2411A8's ori and D0 `
+        + `still holds the bare move.w #$${type} with the caller's high half, which `
+        + 'this port does not know. The low word is stored; the high half is not '
+        + 'invented');
+      ram.setU32(handle, type);
+    }
+    made.push(rec);
+  }
+  // $25FEC2 / $25FED8 -- through the A0 the PRECEDING $241182 left, not the table
+  // pointer. On a full queue that is `$80D51C`, the dummy, and the cartridge writes
+  // through it just the same.
+  ram.setU8(made[1].addr + K.sideOff, 0);                   // $25FEC2 move.b #$0,($7,A0)
+  ram.setU8(made[2].addr + K.sideOff, 1);                   // $25FED8 move.b #$1,($7,A0)
+  return made;
+}
 
 /**
  * `$2605C8..$26070A` -- **THE STATE-0 INIT**, and `$260666 move.w #$1,$813082` is
@@ -503,7 +765,7 @@ function rankInit2605C8(ram, rom, a5, ctx) {
   if (ram.u16(RANK.loopWord) === 0) {                       // $2606DE tst.w / $2606E4 bne
     defer(0x2606e8); defer(0x2606ee); defer(0x2606f4); defer(0x2606fa);
   }
-  defer(0x260700);                                          // $260700 bsr.w $25FE42
+  playerRecords25FE42(ram, rom, ctx);                       // $260700 bsr.w $25FE42
   defer(0x260704);                                          // $260704 jsr $288574
 }
 
@@ -594,22 +856,27 @@ function fanOut260984(ram, r) {
 
 // --------------------------------------------- the computed-call dispatchers
 
-/** `$25FF52`, the jump table `$25FF7A` indexes: `[0] $00000000`,
- *  `[1] $0025FFA8` (the respawn, W228), `[2] $260056`, `[3] $26010E`. Only the
- *  ported entries appear here; the others still throw by the jsr site. */
-const DISP_25FF7A_TARGETS = Object.freeze({
-  1: respawn25FFA8,        // $25FFA8, the respawn (W228)
-  9: setPanel2603B0,       // $2603B0, the SET/bonus panel (W231)
-});
-
 /**
- * The shared body of `$25FF7A` and `$288610`: walk a 2-entry RAM table, read
- *  each entry's index word, SKIP on 0, otherwise index a ROM jump table (idx*4)
- *  and `jsr (target)`.  `[M]` ALL FOUR index words are 0 in the seed, so on the
- *  corpus both callers return without dispatching.  The targets are unported
- *  (per-player hyper/palette/sound servicers); a nonzero index is a state the
- *  corpus never produces, so it throws `unreached()` by the jsr site rather than
- *  calling an untranslated target.
+ * `$288610` -- the SECOND computed-call dispatcher, and after W385 the only one
+ *  this file still drives itself: walk a 2-entry RAM table, read each entry's
+ *  index word, SKIP on 0, otherwise index a ROM jump table (idx*4) and
+ *  `jsr (target)`.
+ *
+ * **`$25FF7A` NO LONGER COMES THROUGH HERE.** W384 measured the reason and W385
+ *  acted on it. This function used to serve BOTH dispatchers with a
+ *  `DISP_25FF7A_TARGETS` map of exactly two entries (1 and 9), and it threw
+ *  `unreached()` on the rest with the text "a per-player hyper/palette/sound
+ *  servicer ... the unported hyper subsystem (Wave B)". **That text was false and
+ *  the throw was live, not latent.** `$25FF52` is the BONUS-LINE table, all nine
+ *  of whose lines `tally.js` has ported since W296 and exports as
+ *  `tallyDriver25FF7A` -- which nothing in `src/` called. `$2603FE` arms request
+ *  **4** on a cold boot and `$25FFA8` arms request **2** whenever a side runs out
+ *  of lives, so both of those walked straight into the `unreached()`.
+ *
+ *  `$288610`'s own table (`$81B706`/`$81B71C`, jump table `$288568`) is a
+ *  different table with different targets and IS still unread, so the throw below
+ *  stays exactly as it was for that one -- with the prose corrected to say which
+ *  dispatcher it is talking about.
  */
 function computedDispatch(ram, ctx, tableAddr, stride, jumpTable, jsrSite,
   targets = null) {
@@ -619,18 +886,15 @@ function computedDispatch(ram, ctx, tableAddr, stride, jumpTable, jsrSite,
     if (idx === 0) continue;                // $28861A beq (skip this entry)
     // $288624 add.w D0,D0 ; $288626 add.w D0,D0 (idx*4) ; $288628 adda.w D0,A0
     // ; $28862A movea.l (A0),A0 ; $28862C jsr (A0).
-    // W228: `$25FF7A`'s entry 1 IS ported now -- it is the respawn, and a death
-    // arms it through `$24A210`, so this stopped being a corpus no-op the moment
-    // the player could die.  The rest stay a throw by the jsr site.
     const target = targets?.[idx];
     if (target) { target(ram, ctx, entry); continue; }
     unreached(jsrSite, `$${jsrSite.toString(16).toUpperCase()} computed-call `
       + `dispatcher: entry $${entry.toString(16).toUpperCase()} index `
       + `$${idx.toString(16)} is nonzero, so it would jsr the jump-table `
-      + `[$${idx}] target out of $${jumpTable.toString(16).toUpperCase()} `
-      + `(a per-player hyper/palette/sound servicer). The corpus keeps every `
-      + `index 0; a nonzero index belongs to the unported hyper subsystem `
-      + `(Wave B). Port the target or narrow the scenario`);
+      + `[$${idx}] target out of $${jumpTable.toString(16).toUpperCase()}, `
+      + `which no wave has read. (This is NOT $25FF7A -- that one is the `
+      + `bonus-line table and W385 routed it to tally.js tallyDriver25FF7A.) `
+      + `Port the target or narrow the scenario`);
   }
 }
 
@@ -712,11 +976,10 @@ export function makeRankObject(rom) {
       queueKill(ram, ram.u32(a5 + ALLOC.idOff));  // $26078C jmp $241292
       return;
     }
-    // state 1: `$2607A4 jsr ($25FF7A,PC)` -- a computed-call dispatcher (corpus
-    // no-op, same shape as $288610), THEN the per-frame body.
-    computedDispatch(ram, ctx, RANK.disp25FF7ATable, RANK.disp25FF7AStride,
-      RANK.disp25FF7AJump, RANK.disp25FF7A,       // $2607A4
-      DISP_25FF7A_TARGETS);
+    // state 1: `$2607A4 jsr ($25FF7A,PC)` -- THE BONUS-LINE DRIVER, then the
+    // per-frame body.  A5 here is the rank object's own record, which is what
+    // the ROM has in A5 at $2607A4 and what bonus line 6 writes through.
+    tallyDriver25FF7A(ram, rom, ctx, a5);         // $2607A4
     perFrame2607A8(ram, rom, ctx);                // $2607A8..$260808
   };
 }

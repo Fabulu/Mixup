@@ -1,4 +1,39 @@
-// W384 -- WHY STAGE 1 REACHES A FIXED POINT AND NEVER PROGRESSES. THE MEASUREMENT.
+// W384 -- WHY STAGE 1 REACHED A FIXED POINT AND NEVER PROGRESSED. THE MEASUREMENT.
+//
+// ===============================================================================================
+// **W385 FIXED WHAT THIS FILE MEASURED, AND EDITED THIS FILE ACCORDINGLY. READ THIS FIRST.**
+// ===============================================================================================
+//
+// Everything below the line was written to PIN A BUG. W385 landed the three pieces -- `$25FE42`,
+// `$2603FE` and the `$25FF7A` wiring -- and the bug is gone, so the assertions that described it
+// are now false. They have been INVERTED rather than deleted: each one still runs, and each one
+// still fails if the fix is backed out. The sections that were about something else are
+// untouched.
+//
+// WHAT CHANGED, SECTION BY SECTION:
+//
+//   1  WAS "the odometer stops at 836 at +9,364". The odometer's stall was real and was the
+//      cartridge's own boss lock, but the run NO LONGER LIVES THAT LONG -- see 5. Rewritten to
+//      assert the odometer is still ADVANCING when the run ends, which is the fact that remains
+//      measurable, and to record 836/+9,364 as the no-player figure it was.
+//   2  unchanged in kind; the two snapshot frames moved from +10,000/+14,000 to +3,000/the last
+//      surviving frame, for the same reason.
+//   3  WAS "THE PLAYER OBJECT IS NEVER CREATED". Inverted.
+//   4  WAS "the two dispatcher entries $25FE42 fills are still blank". Inverted.
+//   5  WAS "the stage-1 boss is alive and stays alive with $2428A6 reading zero". The boss is
+//      never reached now: with no input the player loses its last life at +4,075 and the run ends
+//      on the GAME-OVER screen at +4,081. Rewritten to say so and to name the frame.
+//      **The unit test underneath it -- `$294F50` re-floors without a player and does not with one
+//      -- is UNCHANGED and still green.** It was always a bare-RAM test and it is the mechanism
+//      W385 unblocked.
+//   6  WAS the two counted deferrals. Inverted: the census must NOT carry them.
+//   7  WAS "rank.js THROWS on request 4". Inverted, and its own header already said this would
+//      have to happen.
+//
+// The positive, fix-side measurements live in `tests/w385player.test.js`. This file is kept
+// because the DIAGNOSIS in the header below is still the best account of what was wrong.
+//
+// ===============================================================================================
 //
 // ===============================================================================================
 // THE ANSWER IN ONE LINE
@@ -129,6 +164,7 @@ const P2REC = RAM.player2;            // $810448
 const LIVEBITS = 0x813090;            // $2491CC ori.w #$1,$813090
 const LIVES1 = 0x8130BE;              // the P1 lives counter $25FE42 points ($8,A6) at
 const BOSS1 = 0x292902;               // the stage-1 boss's per-frame handler
+const STAGESTART_D6 = 0x813080;       // rank.js STAGESTART.wordD6 -- $260542's gate
 
 const coinWord = () => (0xffff & ~(1 << COIN_BITS.COIN1)) & 0xffff;
 
@@ -181,25 +217,37 @@ const RUN = (() => {
 
   const everLive = new Set();
   let odo = 0, odoLastFrame = 0, bossFirstFrame = 0;
-  let at10k = null;
+  let at3k = null;
+  // W385: the loop CATCHES. Before W385 this run survived all 14,000 frames because nothing
+  // happened in it; now it reaches a GAME OVER and stops on the game-over screen's own unported
+  // table, and the frame it stops on is one of the facts SECTION 5 measures.
+  let stoppedAt = 0, stopError = null, lastLive = 0, playerFrame = 0, livesLow = 0x7fff;
 
   for (let f = 1; f <= 14000; f++) {
-    g.step(NO_PLAYER);
+    try {
+      g.step(NO_PLAYER);
+    } catch (e) {
+      stopError = e; stoppedAt = f; break;
+    }
     for (const t of typesLive()) everLive.add(t);
     const o = g.ram.u16(ODO);
     if (o !== odo) { odo = o; odoLastFrame = f; }
     if (!bossFirstFrame && bossRec()) bossFirstFrame = f;
-    if (f === 10000) at10k = Uint8Array.from(g.ram.b);
+    if (!playerFrame && (g.ram.u16(P1REC) & 0x8000) !== 0) playerFrame = f;
+    livesLow = Math.min(livesLow, g.ram.i16(LIVES1));
+    if (f === 3000) at3k = Uint8Array.from(g.ram.b);
+    lastLive = f;
   }
 
   let diffBytes = 0;
   const diffBlocks = new Set();
-  for (let i = 0; i < at10k.length; i++) {
-    if (at10k[i] !== g.ram.b[i]) { diffBytes++; diffBlocks.add((0x800000 + i) & ~0xff); }
+  for (let i = 0; at3k && i < at3k.length; i++) {
+    if (at3k[i] !== g.ram.b[i]) { diffBytes++; diffBlocks.add((0x800000 + i) & ~0xff); }
   }
 
   return {
     g, everLive, odo, odoLastFrame, bossFirstFrame, bossRec: bossRec(),
+    stoppedAt, stopError, lastLive, playerFrame, livesLow,
     diffBytes, diffBlocks: diffBlocks.size,
     notes: g.unportedLog.report(),
   };
@@ -225,23 +273,36 @@ const noteCount = (addr) => {
 // The gate the brief warned about looking for IS HERE, and the hold IS intended.
 // =============================================================================================
 
-test('W384 the odometer stops at 836 = $0344, the frame the scroll VM latches the boss lock', () => {
-  assert.equal(RUN.odo, 836, 'the odometer parks at 836 and 836 is $0344, the record time');
-  assert.equal(RUN.odo, 0x0344, '...spelled the way the scroll record spells it');
-  assert.ok(RUN.odoLastFrame > 9300 && RUN.odoLastFrame < 9400,
-    `and its LAST movement is at +9,364 past START; measured +${RUN.odoLastFrame}`);
+// **W385 REWROTE THIS TEST.** It asserted `RUN.odo === 836` and `odoLastFrame` near +9,364.
+// Both were true of a run with NO PLAYER, which could sit in stage 1 indefinitely. A run with a
+// player ends at +4,081 (SECTION 5), long before the scroll VM reaches record time `$0344`, so
+// the odometer is still MOVING when the run stops. That is what is asserted now. The boss lock
+// itself is unchanged in the cartridge and is still pinned by `background.js:994-1014`.
+test('W385 the odometer is still ADVANCING when the run ends -- 836 was the no-player figure',
+  () => {
+    assert.ok(RUN.odo > 100,
+      `the odometer is well past zero when the run stops; got ${RUN.odo}`);
+    assert.ok(RUN.odo < 836,
+      `and it has NOT reached the boss-lock record time $0344 = 836 -- the run ends first. `
+      + `Measured ${RUN.odo}`);
+    assert.ok(RUN.lastLive - RUN.odoLastFrame < 30,
+      `its last movement is within a handful of frames of the end (+${RUN.odoLastFrame} of `
+      + `+${RUN.lastLive}), not 4,500 frames back: it is advancing, not parked`);
 
-  // The freeze is real and it is the op-$0C-with-loops-$FFFF one, counted exactly once.
-  assert.equal(noteCount(0x261142), 1,
-    '$26214C latched the unreleasable freeze exactly once -- see background.js:1007');
-  assert.match(noteFor(0x261142), /t=\$0344/,
-    'and it names the record time $0344, which is the odometer value it stopped at');
+    // ...and the freeze that parked it at 836 is therefore never latched in this run.
+    assert.equal(noteCount(0x261142), 0,
+      '$26214C\'s op-$0C freeze is NOT reached -- it fires at record time $0344 and the run '
+      + 'does not live that long any more');
 
-  // POSITIVE CONTROL: the freeze word is the CLOCK's, not the scroll's. $8130D2 -- the global
-  // pause, the only other thing that could stop the whole handler -- is clear.
-  assert.equal(RUN.g.ram.u16(BGRAM.bgFreeze), 0,
-    'POSITIVE CONTROL: $8130D2 is 0, so $2612A0 ran every frame -- the handler is not paused');
-});
+    // WHY the last few frames are still: `$8130D2` -- the GLOBAL PAUSE -- is SET at the end, and
+    // it is set by the game over, not by the scroll VM. `stageend.js bgPause25FD82` is its
+    // writer and `tally.js liveSides25FD94` re-sets it when NO side is live, which is exactly
+    // what `$25FDD4 cmpi.w #-$1,$81308E` decides once the last life is gone. So the two ways the
+    // odometer can stop are BOTH pinned here and they are told apart by which word did it.
+    assert.equal(RUN.g.ram.u16(BGRAM.bgFreeze), 1,
+      '$8130D2 = 1 at the last frame -- $25FDE0 bsr $25FD82, the no-live-side pause, NOT the '
+      + 'scroll VM\'s own op-$0C freeze');
+  });
 
 // =============================================================================================
 // 2 -- THE BRIEF'S "FIXED POINT" IS NOT ONE. THE MACHINE IS STILL RUNNING.
@@ -250,16 +311,14 @@ test('W384 the odometer stops at 836 = $0344, the frame the scroll VM latches th
 // +10,000. Four words are identical. The RAM is not.
 // =============================================================================================
 
-test('W384 RAM is NOT a fixed point after +10,000 -- thousands of bytes still move', () => {
+// W385 moved the two snapshot frames from +10,000/+14,000 to +3,000/the last surviving frame,
+// because there is no +10,000 any more. The claim is unchanged.
+test('W384 RAM is NOT a fixed point -- thousands of bytes move over the run\'s last stretch', () => {
   assert.ok(RUN.diffBytes > 2000,
-    `+10,000 vs +14,000 must differ in thousands of bytes (measured 3,481); got ${RUN.diffBytes}`);
+    `+3,000 vs the last frame must differ in thousands of bytes; got ${RUN.diffBytes}`);
   assert.ok(RUN.diffBlocks > 40,
-    `...spread over dozens of 256-byte blocks (measured 57); got ${RUN.diffBlocks}`);
-
-  // ...while the four words w383 watches really are stable, which is why that test passes and
-  // this one is not a contradiction of it.
+    `...spread over dozens of 256-byte blocks; got ${RUN.diffBlocks}`);
   assert.equal(RUN.g.ram.u16(STATE), 0x000e, 'slot [8] is still on arm $E');
-  assert.equal(RUN.g.ram.u16(ODO), 836, 'and the odometer really has not moved');
 });
 
 // =============================================================================================
@@ -270,32 +329,49 @@ test('W384 RAM is NOT a fixed point after +10,000 -- thousands of bytes still mo
 // record `$8103E6` is never given the `$24915E` template word that sets its bit 15.
 // =============================================================================================
 
-test('W384 THE PLAYER OBJECT IS NEVER CREATED -- dispatch types 2 and 3 never go live', () => {
+// **W385 INVERTED THIS TEST.** It asserted `everLive` was exactly `[1, 5, 9, $A]` and that
+// `$8103E6`, `$813090` and `$8130BE` were all zero. All five claims are now false, which is the
+// whole point of the wave. The list, the record and the two globals are asserted the other way
+// round here; `tests/w385player.test.js` SECTION 4 carries the frame-by-frame version.
+test('W385 THE PLAYER OBJECT IS CREATED -- dispatch type 2 goes live on a cold boot', () => {
   assert.ok(RUN.everLive.size > 0, 'POSITIVE CONTROL: some objects did live');
-  assert.deepEqual([...RUN.everLive].sort((a, b) => a - b), [0x1, 0x5, 0x9, 0xa],
-    'over 14,000 frames the object table holds ONLY $1 (background), $5, $9 (select) and $A (rank)');
-  assert.ok(!RUN.everLive.has(2), 'dispatch type 2 -- P1 -- is never staged');
-  assert.ok(!RUN.everLive.has(3), 'dispatch type 3 -- P2 -- is never staged');
-
-  assert.equal(RUN.g.ram.u16(P1REC), 0, '$8103E6 is still ZERO: there is no P1 record');
-  assert.equal(RUN.g.ram.u16(P2REC), 0, '$810448 is still ZERO: there is no P2 record');
-  assert.equal(RUN.g.ram.u16(LIVEBITS), 0, '$813090 is 0 -- $2491CC never ran for either side');
-  assert.equal(RUN.g.ram.u16(LIVES1), 0, '$8130BE is 0 -- the lives counter was never seeded');
-});
-
-test('W384 and the two dispatcher entries $25FE42 fills are still blank', () => {
-  const r = RUN.g.ram;
-  for (const [name, e] of [['P1 $8130FA', TALLY.side0], ['P2 $81311E', TALLY.side1]]) {
-    assert.equal(r.u32(e + TALLY.ptr), 0, `${name} ($8,A6): the LIVES POINTER is null`);
-    assert.equal(r.u16(e + TALLY.type), 0, `${name} ($14,A6): the OBJECT TYPE is 0, not 2/3`);
-    assert.equal(r.u16(e + TALLY.argA), 0, `${name} ($10,A6): no spawn X`);
-    assert.equal(r.u16(e + TALLY.argB), 0, `${name} ($12,A6): no spawn Y`);
-    assert.equal(r.u16(e + 0x00), 0, `${name} (A6): and no bonus-line request is ever armed`);
+  assert.ok(RUN.everLive.has(2), 'dispatch type 2 -- P1 -- IS staged now');
+  assert.ok(RUN.everLive.has(0), '...and type 0, the HUD object $25FE42 creates');
+  assert.ok(RUN.everLive.has(4), '...and type 4, the two announcement objects');
+  assert.ok(RUN.everLive.has(0xb), '...and type $B, the object $2603FE gives the ABSENT side');
+  assert.ok(!RUN.everLive.has(3),
+    'and still NOT type 3: P2 never pressed START, so $813086 is $FF and it gets no request');
+  // The four the old assertion listed are all still there, so this is a strict superset and not
+  // a different run.
+  for (const t of [0x1, 0x5, 0x9, 0xa]) {
+    assert.ok(RUN.everLive.has(t), `the old list's $${t.toString(16)} is still live`);
   }
 
+  assert.ok(RUN.playerFrame > 2300 && RUN.playerFrame < 2500,
+    `$8103E6 got bit 15 at +${RUN.playerFrame}; the measured frame is +2,396`);
+  assert.equal(RUN.g.ram.u16(P2REC), 0, '$810448 is still ZERO: P2 really did not join');
+});
+
+test('W385 and the two dispatcher entries $25FE42 fills are FILLED', () => {
+  const r = RUN.g.ram;
+  // The values are the $25FE22 table's own, and `w385player.test.js` proves them against
+  // `rip/web/seed.bin` field by field. Here they are read off the LIVE machine.
+  assert.equal(r.u32(TALLY.side0 + TALLY.ptr), LIVES1, 'P1 ($8,A6) points at $8130BE');
+  assert.equal(r.u32(TALLY.side1 + TALLY.ptr), 0x8130c0, 'P2 ($8,A6) points at $8130C0');
+  assert.equal(r.u16(TALLY.side0 + TALLY.type), 2, 'P1 ($14,A6) = 2, the P1 object type');
+  assert.equal(r.u16(TALLY.side1 + TALLY.type), 3, 'P2 ($14,A6) = 3');
+  assert.equal(r.u16(TALLY.side0 + 0x16), 0, 'P1 ($16,A6) = side 0');
+  assert.equal(r.u16(TALLY.side1 + 0x16), 1, 'P2 ($16,A6) = side 1');
+  // ...and ($10,$12) carry the LIVE position $2603FE wrote through them, not the table literal.
+  assert.equal(r.u16(TALLY.side0 + TALLY.argA), 0x1179,
+    'P1 ($10,A6) is $1179 -- $260414 move.l D0 overwrote the table\'s $1000 with $25D71C\'s '
+    + 'anchor $117914C0, which is exactly what rip/web/seed.bin carries');
+  assert.equal(r.u16(TALLY.side0 + TALLY.argB), 0x14c0, '...and ($12,A6) is its low word');
+
   // THE POSITIVE CONTROL, AND IT IS THE BOARD'S OWN: `rip/web/seed.bin` was ripped mid-stage-1
-  // from a real run, so it carries exactly what $25FE42 writes. Every field this port leaves at
-  // zero is non-zero there, with the values the $25FE22 table holds.
+  // from a real run, so it carries exactly what $25FE42 writes. Every field the port used to
+  // leave at zero is non-zero there, with the values the $25FE22 table holds -- and, since W385,
+  // the port produces the same ones from a cold boot.
   const s = new Ram(seed);
   assert.equal(s.u32(TALLY.side0 + TALLY.ptr), LIVES1, 'SEED: ($8,A6) = $8130BE, the lives ptr');
   assert.equal(s.u32(TALLY.side1 + TALLY.ptr), 0x8130c0, 'SEED: P2 points at $8130C0');
@@ -322,16 +398,39 @@ test('W384 and the two dispatcher entries $25FE42 fills are still blank', () => 
 // this wave measured (a player is alive throughout)". ON A COLD BOOT IT IS THE ONLY ARM THERE IS.
 // =============================================================================================
 
-test('W384 the stage-1 boss is alive and stays alive, with $2428A6 reading zero', () => {
-  assert.ok(RUN.bossFirstFrame > 8000 && RUN.bossFirstFrame < 9000,
-    `the boss arrives around +8,614; got +${RUN.bossFirstFrame}`);
-  assert.notEqual(RUN.bossRec, 0, 'and it is STILL in the enemy table at +14,000');
-  assert.equal(RUN.g.ram.u32(RUN.bossRec + ENEMY.handlerOff) & 0xffffff, BOSS1,
-    'the record dispatches $292902, the stage-1 boss handler');
-  assert.equal(livePlayers2428A6(RUN.g.ram), 0,
-    '$2428A6 reports NO live player, which is what re-floors the timeout');
-  assert.equal(RUN.g.ram.u16(BOSS.deathPause), 0,
-    'POSITIVE CONTROL: $8130D2 is clear, so $294F32 is not being skipped at its first line');
+// **W385 REWROTE THIS TEST.** It asserted the boss arrives near +8,614 and is still in the enemy
+// table at +14,000 with `$2428A6` reading 0. None of that happens now: a harness that holds no
+// buttons cannot survive stage 1 with a real ship in it, so the run ENDS -- in a game over --
+// before the boss is ever spawned. That is not a regression and the test says which it is: the
+// mechanism the missing player blocked is proved unblocked by the unit test directly below, and
+// by `tests/w385player.test.js` SECTION 6 against a real cold-booted RAM.
+test('W385 the boss is NEVER REACHED now -- the run ends in a GAME OVER at about +4,081', () => {
+  assert.equal(RUN.bossFirstFrame, 0,
+    'the stage-1 boss $292902 never enters the enemy table: the run is over first');
+  assert.equal(RUN.bossRec, 0, '...and there is no boss record at the last frame either');
+
+  // WHY it is over, in the cartridge's own terms: the lives counter BORROWED. `$25FFC4 subq.w #1
+  // / tst.w / bpl` finishes on -1 and not on 0, so -1 is the "last life spent" value.
+  assert.equal(RUN.livesLow, -1,
+    '$8130BE reached -1 -- $25FFA8\'s borrow, the LAST life. Before W385 there was no life to '
+    + 'lose and this word never moved off zero');
+  assert.ok(RUN.everLive.has(0xd),
+    'and bonus-line request 2 created dispatch type $D, the GAME-OVER object (objslot13.js)');
+
+  // WHERE it stops, named by address. `w385player.test.js` SECTION 7 carries the full account.
+  assert.ok(RUN.stopError instanceof Unreached,
+    `the run ends on a NAMED Unreached, not a bare crash; got ${RUN.stopError}`);
+  assert.equal(RUN.stopError.romAddress, 0x2252f8,
+    '$2252F8 -- the GAME-OVER screen\'s animation table, outside every declared ROM window');
+  assert.ok(RUN.stoppedAt > 3900 && RUN.stoppedAt < 4300,
+    `at frame +${RUN.stoppedAt}; the measured frame is +4,081`);
+
+  // ...and the same word SECTION 1 reads is set here, from the other end: `$294F32 tst.w
+  // $8130D2 / bne` is the timeout's own first line, so once the last side is gone the timeout
+  // would not run even if a boss existed. `BOSS.deathPause` and `BGRAM.bgFreeze` are one word.
+  assert.equal(BOSS.deathPause, BGRAM.bgFreeze, '$8130D2 is one word with two names');
+  assert.equal(RUN.g.ram.u16(BOSS.deathPause), 1,
+    'and it is SET at the end -- tally.js liveSides25FD94 pauses when no side is live');
 });
 
 test('W384 $294F50 re-floors the timeout to $78 with no player, and does NOT with one', () => {
@@ -362,49 +461,59 @@ test('W384 $294F50 re-floors the timeout to $78 with no player, and does NOT wit
 });
 
 // =============================================================================================
-// 5 -- THE TWO DEFERRALS ON THE PATH, BY ADDRESS AND BY COUNT.
+// 5 -- THE TWO DEFERRALS ON THE PATH. **W385 INVERTED BOTH.**
 //
-// Both are counted `note()`s that this run HITS. Neither is stale: `claimed.py` and the files
-// agree that nothing in `src/` implements either address.
+// They were counted `note()`s that this run HIT exactly once each. They are calls now, so the
+// census must NOT carry them -- and the neighbours that ARE still deferred are asserted beside
+// them, so a broken `report()` cannot make an empty census look like a fix.
 // =============================================================================================
 
-test('W384 DEFERRAL 1: $25FE42 -- the routine that fills both dispatcher entries', () => {
-  assert.equal(noteCount(0x25fe42), 1,
-    '$260700 bsr.w $25FE42 is reached exactly once, inside the $2605C8 state-0 INIT');
-  assert.match(noteFor(0x25fe42), /\$260700/, 'and the note names its one call site');
+test('W385 DEFERRAL 1 IS GONE: $25FE42 is rank.js playerRecords25FE42', () => {
+  assert.equal(noteCount(0x25fe42), 0,
+    '$260700 bsr.w $25FE42 is a CALL now -- no note at $25FE42 anywhere in the run');
+  // POSITIVE CONTROL: its next-door neighbour in the SAME INIT is still deferred and still
+  // counted once, so the census is working and the assertion above means something.
+  assert.equal(noteCount(0x288574), 1,
+    '$260704 jsr $288574, the very next instruction, is STILL deferred and counted once');
 });
 
-test('W384 DEFERRAL 2: $2603FE -- the routine that ARMS BONUS-LINE REQUEST 4', () => {
-  assert.equal(noteCount(0x2603fe), 1, '$2603FE is reached exactly once on a cold boot');
-  // AND THE SITE MATTERS, because $2603FE has TWO callers. The one that fires is
-  // `$25D73E jsr $2603FE` in `objslot17.js phase7_25D560`, behind the $812F80 one-shot latch --
-  // NOT `$260558 bsr.w $2603FE` in `rank.js stageInstall26051A`, which is gated on $813080 and
-  // stays shut. The two notes have different prose, so the census names which one ran.
-  assert.match(noteFor(0x2603fe), /record 0's \(\$56\) anchor/,
-    'the note that fired is objslot17.js:920 ($25D73E), the select screen\'s state-7 handler');
-  assert.doesNotMatch(noteFor(0x2603fe), /\$260558/,
-    'and NOT rank.js:333 ($260558), whose $813080 gate never opens on a cold boot');
-  // The two are INDEPENDENT: even with $25FE42 run, nothing would arm a request without this one.
-  assert.equal(RUN.g.ram.u16(TALLY.side0 + 0x00), 0, 'so $8130FA never carries a request');
-  assert.equal(RUN.g.ram.u16(TALLY.side1 + 0x00), 0, 'and neither does $81311E');
+test('W385 DEFERRAL 2 IS GONE: $2603FE is rank.js stagePair2603FE, and it ARMED REQUEST 4', () => {
+  assert.equal(noteCount(0x2603fe), 0, '$25D73E jsr $2603FE is a CALL now');
+  // AND THE SITE STILL MATTERS, because $2603FE has TWO callers and only one fires. The proof
+  // that it was `$25D73E` and not `$260558` is now a VALUE rather than a note's prose:
+  // `$260558` passes the literal $10000E00, `$25D73E` passes `$25D71C`'s live anchor $117914C0.
+  assert.equal(RUN.g.ram.u16(TALLY.side0 + TALLY.argA), 0x1179,
+    'the position that reached ($10,$8130FA) is $25D71C\'s anchor, so objslot17.js:920 ran');
+  assert.notEqual(RUN.g.ram.u16(TALLY.side0 + TALLY.argA), 0x1000,
+    '...and NOT rank.js\'s $10000E00, whose $813080 gate never opens on a cold boot');
+  assert.equal(RUN.g.ram.u16(STAGESTART_D6), 0,
+    'POSITIVE CONTROL: $813080 really is 0, which is what keeps rank.js:$260558 shut');
 });
 
 // =============================================================================================
-// 6 -- THE THIRD BLOCKER, AND IT IS A STALE STUB WITH A FALSE NOTE.
+// 6 -- THE THIRD BLOCKER, AND W385 REMOVED IT. **THIS SECTION WAS REWRITTEN BY W385.**
 //
-// `rank.js` runs `$25FF7A` through its own `computedDispatch`, whose `DISP_25FF7A_TARGETS` maps
-// requests 1 and 9 only, and `unreached()`s everything else claiming the targets belong to "the
-// unported hyper subsystem (Wave B)". `tally.js` ports ALL NINE lines and exports
-// `tallyDriver25FF7A` -- **which nothing in `src/` calls.** Both halves are asserted, and the
-// second half is the ABLATION: the same request, the same RAM, one routine throws and the other
-// creates the player object.
+// As written for W384 this test pinned the BUG: `rank.js` ran `$25FF7A` through its own
+// `computedDispatch`, whose `DISP_25FF7A_TARGETS` mapped requests 1 and 9 only and
+// `unreached()`d the rest claiming "the unported hyper subsystem (Wave B)". Its half (a)
+// asserted that a frame carrying request 4 THREW, and its own header said so in as many words:
 //
-// **THIS TEST PINS THE BUG, NOT THE FIX.** When a later wave routes `$2607A4`/`$26059E` at
-// `rank.js:717`/`rank.js:395` to `tallyDriver25FF7A`, half (a) SHOULD go red -- that is the
-// signal that the wiring landed. Half (b) is the part that must stay green forever.
+//     "THIS TEST PINS THE BUG, NOT THE FIX. When a later wave routes $2607A4/$26059E at
+//      rank.js:717/rank.js:395 to tallyDriver25FF7A, half (a) SHOULD go red -- that is the
+//      signal that the wiring landed. Half (b) is the part that must stay green forever."
+//
+// W385 is that wave. Half (a) went red on the first run after the edit and is replaced below by
+// its inverse: the SAME hand-seeded request, driven through the SAME real frame, must now be
+// CONSUMED by `rank.js`'s own `$2607A4` and must stage the player. Half (b) -- the direct call
+// into `tallyDriver25FF7A` -- is kept unchanged underneath it, because it is the control that
+// says the two paths agree.
+//
+// The three `RANK.disp25FF7A*` constants are still asserted even though `rank.js` no longer
+// dispatches through them: they are what proves the table `tally.js` walks is the table the
+// cartridge's `$25FF7A` walks, and that claim is the whole reason the re-wiring is legitimate.
 // =============================================================================================
 
-test('W384 rank.js THROWS on bonus-line request 4, which tally.js has ported since W292', () => {
+test('W385 rank.js RUNS bonus-line request 4 through tally.js and the player is staged', () => {
   assert.equal(RANK.disp25FF7ATable, TALLY.side0,
     'rank.js and tally.js walk the SAME table -- $8130FA, stride $24');
   assert.equal(RANK.disp25FF7AStride, TALLY.stride, '...and the same stride');
@@ -421,25 +530,39 @@ test('W384 rank.js THROWS on bonus-line request 4, which tally.js has ported sin
   g.ram.setU16(TALLY.side0 + 0x16, 0);                    // $25FE6A -- side 0
   // ...and $2603FE's `$260434 jsr $25FF38` with D0 = 0, D1 = 4.
   g.ram.setU16(TALLY.side0 + 0x00, 4);
+  assert.equal(g.ram.i16(LIVES1), 0, 'POSITIVE CONTROL: the lives counter is still zero');
 
-  // (a) THE STUB. The rank object's own $2607A4 refuses request 4 by address.
-  let err = null;
-  try { g.step(NO_PLAYER); } catch (e) { err = e; }
-  assert.ok(err instanceof Unreached, 'the frame must stop with a NAMED Unreached, not survive');
-  assert.equal(err.romAddress, RANK.disp25FF7A, 'it throws at $25FF7A, rank.js:627');
-  assert.match(err.message, /hyper subsystem/,
-    'with the STALE text -- $25FF52 is the BONUS-LINE table, not a hyper servicer');
+  // (a) THE WIRING. One real frame. `$2607A4` reaches `tallyDriver25FF7A`, which runs line 4.
+  g.step(NO_PLAYER);
+  assert.equal(g.ram.u16(TALLY.side0 + 0x00), 0,
+    '$2602A6 CONSUMED the request inside a real frame -- rank.js no longer refuses it');
+  assert.equal(g.ram.i16(LIVES1), 2,
+    '$260204 seeded the lives counter through ($8,A6) from $2600CE[0] = 2');
+  // `$26022E jsr $241182` only STAGES; `$24111E commitCreates` drains the queue at the TOP of
+  // the next object-driver pass, so the handler cannot have run yet. One more frame.
+  assert.equal(g.ram.u16(P1REC), 0, 'and on THAT frame $8103E6 is still 0 -- the create is staged');
+  g.step(NO_PLAYER);
+  assert.equal(g.ram.u16(P1REC) & 0x8000, 0x8000,
+    '...one frame later $2491C0 has run: $8103E6 bit 15, THE PLAYER EXISTS');
+  assert.notEqual(livePlayers2428A6(g.ram), 0, '$2428A6 no longer reports zero live players');
 
-  // (b) THE ABLATION. The request word survived the throw; hand the SAME state to tally.js's
-  // driver and the player object is staged, the lives counter is seeded off the $80380E dip, and
-  // $2428A6 stops reading zero.
-  assert.equal(g.ram.u16(TALLY.side0 + 0x00), 4, 'the request is still armed after the throw');
-  assert.equal(g.ram.u16(P1REC), 0, 'POSITIVE CONTROL: still no player record');
+  // (b) THE CONTROL, kept from W384 and unchanged: the driver called DIRECTLY, on a second
+  // machine, reaches the same place. If (a) ever regressed to a throw this half would still be
+  // green, which is how the two halves distinguish "tally.js broke" from "the wiring broke".
+  const h = bootToGameplay();
+  for (let i = 0; i < 2100; i++) h.step(NO_PLAYER);
+  h.ram.setU32(TALLY.side0 + TALLY.ptr, LIVES1);
+  h.ram.setU16(TALLY.side0 + TALLY.argA, 0x1000);
+  h.ram.setU16(TALLY.side0 + TALLY.argB, 0x0e00);
+  h.ram.setU16(TALLY.side0 + TALLY.type, 2);
+  h.ram.setU16(TALLY.side0 + 0x16, 0);
+  h.ram.setU16(TALLY.side0 + 0x00, 4);
+  assert.equal(h.ram.u16(P1REC), 0, 'POSITIVE CONTROL: still no player record on this one');
 
   const rankSlot = (() => {
     for (let i = 0; i < ALLOC.slots; i++) {
       const a = ALLOC.table + i * ALLOC.stride;
-      if ((g.ram.u16(a) & 0x7fff) === 0x0a) return a;
+      if ((h.ram.u16(a) & 0x7fff) === 0x0a) return a;
     }
     return 0;
   })();
@@ -448,20 +571,20 @@ test('W384 rank.js THROWS on bonus-line request 4, which tally.js has ported sin
   // `Game#ctx()` is private, so the four fields `$2601F4`'s chain actually reads are handed over
   // by name off the Game's OWN objects -- not re-created -- so this is the real ROM, the real
   // palette state and the real census, and only the plumbing is local to the test.
-  const ctx = { unportedLog: g.unportedLog, unported: g.unportedLog, rom: g.rom,
-    palette: g.palette };
-  tallyDriver25FF7A(g.ram, g.rom, ctx, rankSlot);          // $25FF7A, the driver nothing calls
+  const ctx = { unportedLog: h.unportedLog, unported: h.unportedLog, rom: h.rom,
+    palette: h.palette };
+  tallyDriver25FF7A(h.ram, h.rom, ctx, rankSlot);          // $25FF7A, called directly
 
-  assert.equal(g.ram.u16(TALLY.side0 + 0x00), 0, '$2602A6 consumed the request');
+  assert.equal(h.ram.u16(TALLY.side0 + 0x00), 0, '$2602A6 consumed the request');
   // `$26011C move.b $80380E,D0 / add.w D0,D0 / lea ($2600CE,PC),A1 / $260204 move.w (A1,D0.w),(A0)`.
   // $2600CE is `$0002 $0003 $0004 $0000 $0001`, and a cold board's $80380E is 0, so the counter
   // gets 2 -- which is exactly what `rip/web/seed.bin` carries at $8130BE (SECTION 3).
-  assert.equal(g.ram.u8(0x80380e), 0, 'a cold board has the $80380E lives dip at index 0');
-  assert.equal(g.ram.i16(LIVES1), 2,
+  assert.equal(h.ram.u8(0x80380e), 0, 'a cold board has the $80380E lives dip at index 0');
+  assert.equal(h.ram.i16(LIVES1), 2,
     '$260204 seeded the lives counter through ($8,A6) from $2600CE[0] = 2');
   const staged = (() => {
     for (let i = 0; i < ALLOC.slots; i++) {
-      if ((g.ram.u16(ALLOC.createStage + i * ALLOC.stride) & 0x7fff) === 2) return true;
+      if ((h.ram.u16(ALLOC.createStage + i * ALLOC.stride) & 0x7fff) === 2) return true;
     }
     return false;
   })();

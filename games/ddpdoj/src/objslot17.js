@@ -25,7 +25,7 @@
 import { u16, i16 } from './ram.js';
 import { install24150A, install2414BE, paletteSet241688 } from './palette.js';
 import { clearTx23C622, txString25A14C } from './background.js';
-import { announcePost, stageStart260580 } from './rank.js';
+import { announcePost, stageStart260580, stagePair2603FE } from './rank.js';
 import { cursorsFromPosted25D9E6 } from './tallyscreen.js';
 import { stageCreate, queueKill } from './objalloc.js';
 
@@ -665,8 +665,16 @@ export const HANDOFF_26070C = Object.freeze({
   tail: 0x260580, tailBytes: 36,                            // $26077E bsr.w $260580
 });
 
-/** `$26070C` -- see `HANDOFF_26070C`. `save` exists so a test can watch what reaches `$25D990`. */
-export function handoff26070C(ram, rom, ctx, d0, d1, d2, d3, d4, save = savedSelections25D990) {
+/** `$26070C` -- see `HANDOFF_26070C`. `save` exists so a test can watch what reaches `$25D990`.
+ *
+ *  `a5` is APPENDED AFTER `save` deliberately: `save` was already the ninth parameter and four
+ *  test call sites pass a spy there positionally, so inserting ahead of it would silently hand
+ *  those spies to the new argument. It is the caller's OBJECT RECORD -- `$26070C` never touches
+ *  A5 (`$26070C movem.l d0-d7/a0-a6` / `$260782` restores it), so the A5 that reaches
+ *  `$26059E bsr.w $25FF7A` two frames down the chain is still `$25D630`'s. W385 threads it
+ *  because bonus line 6 writes `($2,A5)`. */
+export function handoff26070C(ram, rom, ctx, d0, d1, d2, d3, d4, save = savedSelections25D990,
+  a5 = undefined) {
   const K = HANDOFF_26070C;
   if (ram.u16(K.once) === 0) return false;                  // $260710 tst.w / beq.w $260782
   ram.setU16(K.once, 0);                                    // $26071A clr.w -- consumed, ONE-SHOT
@@ -708,7 +716,7 @@ export function handoff26070C(ram, rom, ctx, d0, d1, d2, d3, d4, save = savedSel
   // `rom.u8(ram.u32($81315C) + stage)` threw `UNPORTED $0` on the frame after the handoff -- 2058
   // frames past START on a cold boot. Splitting the pair is what makes a null pointer reachable;
   // trap 14 in reverse.
-  stageStart260580(ram, rom, ctx, d6, d7);
+  stageStart260580(ram, rom, ctx, d6, d7, a5);
   return true;
 }
 
@@ -842,7 +850,9 @@ export function phase7_25D560(ram, rom, ctx, a5, a6, d7, draws = ctx?.selectDraw
       // $25D662 jsr $26070C -- D0..D3 are ($8,A5)/($4,A5)/($9,A5)/($5,A5), i.e. P1's (style, ship)
       // then P2's, and D4 is still the moveq #0 from $25D650. $26070C crosses D1 and D2 on the way
       // to $25D990; see HANDOFF_26070C.
-      handoff26070C(ram, rom, ctx, u16(d0), d1, d2, d3, 0);
+      // ...and A5 goes with them: `$26059E bsr.w $25FF7A`, four frames further down this chain,
+      // runs bonus lines through whatever A5 the 68000 still holds, and that is THIS record.
+      handoff26070C(ram, rom, ctx, u16(d0), d1, d2, d3, 0, undefined, a5);
       // $25D668 jsr $25F456 -- takes NOTHING from here. It re-reads ($4,A5)/($5,A5) itself.
       playerRecords25F456(ram, rom, a5);
       // ...and `d0Site` is deliberately NOT cleared: BOTH callees are `movem.l d0-d7/a0-a6` at
@@ -917,9 +927,19 @@ export function phase7_25D560(ram, rom, ctx, a5, a6, d7, draws = ctx?.selectDraw
             if (u16(d7) === 0) { const t = d0; setD0L(d1, 0x25d72a); d1 = t; }   // $25D72A exg
             if (ram.u16(H.pairLatch) === 0) {                // $25D72C tst.w $812F80
               ram.setU16(H.pairLatch, 1);                    // $25D736 -- cleared per screen
-              ctx.unported?.note(H.pairSite, `${hex7(H.pairSite)} -- ${H.pairBytes} bytes, called `
-                + `once with D0 = record 0's ($56) anchor ${hex7(d0 >>> 0)} and D1 = record 1's `
-                + `${hex7(d1 >>> 0)}. Unread`);              // $25D73E jsr $2603FE
+              // W385: A CALL NOW, NOT A NOTE. `$25D73E jsr $2603FE` is THE site that fires on a
+              // cold boot -- `rank.js`'s other caller `$260558` is gated on `$813080` and stays
+              // shut -- and it is what arms bonus-line request 4 for the joined side, which is
+              // what finally creates the player object. See `rank.js stagePair2603FE`.
+              //
+              // D0 and D1 are the two records' `($56)` anchors, already crossed by `$25D72A` so
+              // that D0 is ALWAYS record 0's whichever record is running. `$2603FE`'s two
+              // `tst.l`/`bmi.w` pairs are what make an absent side's `$FFFFFFFF` a skip, so the
+              // sentinel is handed over rather than filtered out here.
+              stagePair2603FE(ram, rom, ctx, d0, d1);        // $25D73E jsr $2603FE
+              // `$2603FE` is `movem.l d0-d7/a0-a6` at entry and `$2604A4` at exit, so D0 comes
+              // back exactly as it went in; `d0Site` is cleared for the reason it always was --
+              // the value `$25D7FA` may read was last written at `$25D71C`, in this routine.
               d0Site = 0;
             }
           }
