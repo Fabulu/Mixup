@@ -191,6 +191,7 @@ import {
   registerScript, seqStart2598D0, a2Run2598E6, a2Stop25994A,
   a3Start259962, a4Start25980C,
 } from './scheduler.js';
+import { install24150A } from './palette.js';
 import { aim64, slew64, AimTables } from './aim.js';
 import { applyVelocity } from './movement.js';
 import { drawWord242EC2 } from './rng.js';
@@ -552,6 +553,26 @@ const OBJ1 = { anim: AR.p2Anim, frames: W96.obj1Frames, pos: AR.p2Pos,
 //   294FB6: move.w #$13,D0 / lea $222AF8,A0 / jsr $24150A
 //   294FC6: clr.w (a4)
 //   294FC8: rts
+//
+// **W383 -- THE NOTE THAT USED TO SIT HERE WAS WRONG ABOUT ITS OWN SHAPE, WHICH
+// IS WHY IT SURVIVED W91.**  It read `$294FC0 jsr $24150A -- F 0's resource
+// install, entry [$13] of $222AF8 (data; $24150A is counted, not run)`, i.e. it
+// described `$13` as an INDEX INTO A TABLE AT `$222AF8`.  The bytes say
+// otherwise, and they are unambiguous:
+//
+//     294FB6  30 3c 00 13     move.w  #$13,D0        <- D0, the DESTINATION BANK
+//     294FBA  41 f9 00 22 2a f8   lea $222AF8,A0     <- ABSOLUTE LONG, the 64-byte SOURCE
+//     294FC0  4e b9 00 24 15 0a   jsr $24150A
+//
+// `41 f9` is `lea (xxx).L,An`, not `lea (d16,PC),An`, so there is no
+// displacement to resolve and no table to index: this is `install24150A`'s
+// exact `(d0 = bank, A0 = 64 source bytes)` signature with bank $13 and source
+// $222AF8.  Described as an index it looked like it needed a descriptor nobody
+// had measured; described as it is, it needed nothing at all.  (Trap 13: a
+// counted note can be stale AND its text can be wrong about why.)
+//
+// `$222AF8 + $40` is inside the exported window `$222A78 + $2880`, so the read
+// was already served -- nothing was blocking this but the sentence above it.
 export function f0Init294FA0(ram, a4) {
   ram.setU16(a4 + 2, 0xc0);                              // $294FA0
 }
@@ -560,10 +581,24 @@ export function f0Step294FA6(ram, ctx, a4) {
   ram.setU16(a4 + 2, t);
   if (t !== 0) return;                                   // $294FAA bne.w
   seqStart2598D0(ram, 0);                                // $294FAE/$294FB0
-  note(ctx, 0x24150a, '$294FC0 jsr $24150A -- F 0\'s resource install, entry '
-    + '[$13] of $222AF8 (data; $24150A is counted, not run)');
+  // The cartridge is taken off `ctx.rom` rather than a new parameter, exactly as
+  // `bomb.js:165` takes it for its own `$24150A` (`install24150A(ram, ctx.palette,
+  // 6, ctx.rom.bytes(src, 64), $260866, ..)`).  `Game#ctx()` carries `rom`, so the
+  // driver path is served and the exported signature is unchanged.
+  if (ctx.palette) {                                     // $294FB6/$294FBA
+    install24150A(ram, ctx.palette, F0_PAL.bank,
+      ctx.rom.bytes(F0_PAL.src, 64), 0x294fc0, "F 0's resource install");
+  } else {
+    note(ctx, 0x24150a, `$294FC0 jsr $24150A -- F 0's resource install: bank $${
+      F0_PAL.bank.toString(16).toUpperCase()} <- $${F0_PAL.src.toString(16)
+      .toUpperCase()}. No PaletteState on this call chain, so that bank stays `
+      + 'whatever it was');
+  }
   ram.setU16(a4, 0);                                     // $294FC6 clr.w (a4)
 }
+
+/** `$294FB6`'s two operands. Named so the port and the note read the same numbers. */
+const F0_PAL = Object.freeze({ bank: 0x13, src: 0x222af8 });
 
 // ===========================================================================
 // $294EF2 and $294EFA -- MAIN 0's TWO HANDOFF HELPERS

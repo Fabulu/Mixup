@@ -88,6 +88,7 @@
 // proof to six types through the real per-frame dispatch, W30 to nine).
 
 import { unreached } from './unported.js';
+import { install24150A } from './palette.js';
 import { u16, i16, i32 } from './ram.js';
 import { freeEnemy } from './initbody.js';
 import { handlerBoss292902, handler2A4606 } from './boss.js';
@@ -3088,13 +3089,41 @@ function state1_47(ram, rom, a5, a6, ctx) {
   ram.setU8(a5 + 0x2c, 0x60); ram.setU8(a5 + 0x2d, 0x40);  // $26D96A move.w #$6040
 }
 
-/** `$26D7D0..$26D7DE` -- and `$26D728..$26D736` in the init, byte for byte the same three instructions. */
+/**
+ * `$26D7D0..$26D7DE` -- and `$26D728..$26D736` in the init, byte for byte the same three
+ * instructions. Both sweeps confirm it:
+ *
+ *     26D728  30 3c 00 10        move.w  #$10,D0        \  the INIT
+ *     26D72C  41 f9 00 22 4f 38  lea     $224F38,A0     |
+ *     26D732  4e b9 00 24 15 0a  jsr     $24150A        /
+ *
+ *     26D7D0  30 3c 00 10        move.w  #$10,D0        \  the HANDLER, every frame
+ *     26D7D4  41 f9 00 22 4f 38  lea     $224F38,A0     |
+ *     26D7DA  4e b9 00 24 15 0a  jsr     $24150A        /
+ *
+ * **W383 -- THE OLD NOTE'S STATED REASON WAS THE WHOLE BLOCKER, AND IT WAS WRONG.** It said
+ * "the port's installBank lives in initbody.js and is not exported". True, and irrelevant:
+ * `initbody.js`'s `installBank` is a LOCAL WRAPPER around `install24150A`, which `palette.js`
+ * exports and which twelve other files already import directly (`bomb.js`, `boss2.js`,
+ * `boss4.js`, `objslot15.js`, `stageend.js`, ...). Nothing here ever needed `initbody.js`.
+ * `installPaletteBank47` was already being handed `rom`, and `$224F38 + $40` is inside the
+ * exported window `$222A78 + $2880`, so the source read was already served too. (Trap 13.)
+ *
+ * The repaint is NOT redundant and the guard below does not make it optional: something else in
+ * stage 5 overwrites bank $10 and this per-frame install is what keeps it correct. A chain with
+ * no `PaletteState` keeps the counted note, the same way `initbody.js`'s `installBank` does.
+ */
 function installPaletteBank47(ram, rom, ctx, a5) {
-  ctx.unported?.note(0x26d7d0, `$26D7D0 type $47 reinstalls palette bank $${T47.palBank.toString(16)} `
-    + `from $${T47.palSrc.toString(16).toUpperCase()} EVERY FRAME (jsr $24150A), byte for byte the same `
-    + `three instructions as its init at $26D728. The port's installBank lives in initbody.js and is not `
-    + `exported, so the per-frame call is counted here rather than dropped -- it is NOT redundant: `
-    + `something else in stage 5 overwrites bank $10 and this repaint is what keeps it correct`);
+  void a5;                                               // A5 is not read by these three instructions
+  if (ctx.palette) {
+    install24150A(ram, ctx.palette, T47.palBank, rom.bytes(T47.palSrc, 64), 0x26d7da,
+      'type $47 per-frame bank $10 repaint');            // $26D7D0/$26D7D4/$26D7DA
+  } else {
+    ctx.unported?.note(0x26d7d0, `$26D7D0 type $47 reinstalls palette bank $${T47.palBank
+      .toString(16)} from $${T47.palSrc.toString(16).toUpperCase()} EVERY FRAME (jsr $24150A), `
+      + `byte for byte the same three instructions as its init at $26D728. No PaletteState on `
+      + `this chain, so that bank stays whatever it was`);
+  }
 }
 
 // ============================================================ TYPE $43 (W341)

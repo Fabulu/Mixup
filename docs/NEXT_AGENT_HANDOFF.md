@@ -2,7 +2,68 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W382
+## START HERE -- W383
+
+### THE COLD BOOT IS NOW DEFENDED BY A TEST, AND THE 120,000-FRAME CLAIM IS WEAKER THAN IT SOUNDS
+
+`tests/w383coldboot.test.js` -- **6 tests, 4.2 s by default**, driving the real `Game` from zeroed
+RAM to gameplay and asserting MILESTONES, not just "no throw": 784 TX cells at frame 20, `CREDITS:0`
+at 400, `$80395A` 0->1 and `CREDITS:1` after the coin, state `$E` with the credit spent after START,
+the rank gate 1->0 and `$81315C = $26086E` at +2045, the odometer advancing at +3000.
+
+**Proved by TWELVE ablations**, ten of them breakages in six different source files, each reddening
+the NAMED milestone rather than throwing generically.
+
+The long soak is gated by `DDPDOJ_SOAK=1` **around the `test()` call**, so the file defines FIVE
+tests instead of six when the var is unset. `skipped 0` either way -- the standing zero-skip property
+is intact.
+
+**NOW THE HONEST PART. `$8130CE = 836` IS NOT A 120,000-FRAME NUMBER.** The odometer's last movement
+is at **+9,364**, and RAM is byte-identical at +10,000 and at +120,000. **92 percent of that soak
+moves nothing.** "Survives 120,000 frames" really means "survives, and is a FIXED POINT from
++10,000". **Stage 1 does not progress past that**, and the test asserts survival and the fixed point
+separately rather than dressing a stall up as an endurance result.
+
+**THAT STALL IS THE NEXT REAL QUESTION ON THE GAMEPLAY PATH.**
+
+### `$FFFE` IS P1 START BY COINCIDENCE. DO NOT DERIVE IT.
+
+**`BIT.start` is 15, not 0.** `mirrorsFromPort` puts a `ror.w #1` between the port and `$803970`, so
+mirror bit `b` clears port bit `(b+1)&15`. Measured:
+
+- `$FFFE` -> `$803970 = $8000` -> state `$E`  (works)
+- naive `~(1 << BIT.start)` = `$7FFF` -> `$803970 = $4000` -> **still state 3**
+
+The coin word and the start word both being `$FFFE` is a coincidence of two unrelated tables. Pinned.
+
+### `ctx.palette` HAS EXISTED SINCE W91. THE "FIFTEEN DEFERRALS" WERE MOSTLY NOT DEFERRALS.
+
+W381's sweep reported 15 sites blocked on a missing `PaletteState`. **Wrong, and the correction
+matters for how the sweep's other tiers should be read.** `Game#ctx()` carries `palette` as a plain
+key with its own comment. Measured on both a real cold boot into gameplay and the seeded mid-stage
+board: **zero notes at all five addresses**, `palette.installCount > 0`, staged banks carrying
+cartridge bytes.
+
+**13 of the 15 are `if (ctx.palette) { install } else { note }`** -- the `else` is a FALLBACK for
+bare-ctx unit-test callers, not a deferral. `claimed.py` counts them as NOTE because it reads source
+text. **A `note()` inside an `else` branch is not evidence the call is skipped in production.**
+
+**2 were genuinely open, and BOTH were blocked by the text of their own note** (trap 13 again):
+
+- **`$294FC0`** (`bossarrival.js`): the note called `$13` "entry [$13] of `$222AF8`", an index into a
+  table. **`41 f9` is `lea (xxx).L,An`, not `41 fa` -- there is no table.** `$13` is the destination
+  BANK and `$222AF8` the 64-byte SOURCE, which is `install24150A`'s exact signature.
+- **`$26D7DA`** (`handlers.js`): the note said `installBank` "lives in initbody.js and is not
+  exported". True and irrelevant -- it is a local wrapper around `install24150A`, which `palette.js`
+  exports and twelve files already import.
+
+Both closed. No signature changes, no test edits.
+
+### `{ logicFrame: 0, videoFrame: 0 }` ARE NO-OPS
+
+`main.js:323-324` is `?? 0`. Harmless, but do not write them thinking they do something.
+
+## W382 NOTES
 
 ### THE 120,000-FRAME CLAIM: VERIFIED BY ME, BUT **NOT PINNED BY ANY COMMITTED TEST**
 
