@@ -1725,3 +1725,448 @@ test('W374 $25E29E notes rather than invents when ($60,A6) leaves the declared w
     }
     assert.equal(notes.length, 3, 'no reachable cursor adds a note');
   });
+
+// ---------------------------------------------------------------------------
+// $25E824 plus its shared subroutine $25EB2E -- W375. The SEVENTH of the eight
+// shared draws, and the one that MOVES the menu.
+//
+// Everything below is driven through the real `draw25E824` against a real Ram, and every emit
+// count is read back from the bucket-0 BYTE counter. `fx9()` is `fx()` plus a real MoveTables,
+// because $25EB2E calls $241812 and refusing to invent a delta is the alternative.
+// ---------------------------------------------------------------------------
+
+const TABLES9 = 'games/ddpdoj/rip/port/player.tables.json';
+const SKIP9 = SKIP || (existsSync(TABLES9) ? false : 'no player.tables.json');
+
+async function fx9() {
+  const f = await fx();
+  const { MoveTables } = await import('../src/vectors.js');
+  // The same rom reader the rest of this file uses -- maincpu.bin is RAW FILE OFFSET, and
+  // MoveTables only touches it for $241AF4, which `vector()` never reads.
+  f.ctx.tables = new MoveTables(JSON.parse(readFileSync(TABLES9, 'utf8')), f.rom);
+  return f;
+}
+
+const A6_824 = 0x812ea0;                   // SCREEN17.recs, record 0
+const i16w = (v) => (v << 16) >> 16;
+
+/** Put the whole record and both absolute words into a known state. Every field $25E824 reads. */
+function arm9(ram, D, o = {}) {
+  ram.setU8(A6_824 + D.stateAt, o.state ?? 0x01);
+  ram.setU16(A6_824 + D.pairCursorAt, o.pair ?? 0);
+  ram.setU16(A6_824 + D.tripleCursorAt, o.triple ?? 0);
+  ram.setU16(A6_824 + D.off36, o.off36 ?? 0);
+  ram.setU16(D.loopCounter, o.loop ?? 0);          // $813098
+  ram.setU16(D.frameCounter, o.frame ?? 0);        // $80390A
+  ram.setU16(A6_824 + D.flagAt, o.flag ?? 0x5555); // ($2C,A6), deliberately dirty
+  for (const b of [...D.pairs, ...D.triples]) {
+    ram.setU16(A6_824 + b.sub + D.sub.speed, 0);
+    ram.setU16(A6_824 + b.sub + D.sub.tol, 0);
+    ram.setU16(A6_824 + b.coord, 0);
+  }
+  for (const [off, v] of Object.entries(o.words ?? {})) ram.setU16(A6_824 + Number(off), v);
+}
+
+/** Run once and return the emits it produced, asserting the bucket moved in whole records. */
+function run9(ram, rom, ctx, draw, d7) {
+  const before = bytesUsed(ram);
+  draw(ram, rom, ctx, A6_824, d7);
+  const delta = bytesUsed(ram) - before;
+  assert.equal(delta % REC, 0,
+    `${delta} bytes is a whole multiple of 12 -- the bucket counter is a BYTE OFFSET`);
+  return emitsSince(ram, before);
+}
+
+test('W374 $25E824 is 778 bytes to the rts at $25EB2C, with $25EB2E a 54-byte subroutine',
+  { skip: SKIP9 }, async () => {
+    const { DRAW_25E824: D, rom } = await fx9();
+    assert.equal(D.rts - D.addr + 2, D.bytes, '$25E824..$25EB2D is 778 bytes');
+    assert.equal(D.bytes, 778);
+    assert.equal(rom.u16(D.rts), 0x4e75, '$25EB2C rts');
+    assert.equal(rom.u16(D.approachRts), 0x4e75, '$25EB62 rts -- the subroutine ends');
+    assert.equal(D.approachEnd - D.approach + 1, D.approachBytes, '$25EB2E..$25EB63 is 54 bytes');
+
+    // FIVE bsr, all $6100 with a 16-bit displacement, and all five land on $25EB2E.
+    const bsrs = [0x25e870, 0x25e916, 0x25e9d4, 0x25ea52, 0x25ead0];
+    for (const at of bsrs) {
+      assert.equal(rom.u16(at), 0x6100, `$${at.toString(16).toUpperCase()} bsr.w`);
+      assert.equal(at + 2 + i16w(rom.u16(at + 2)), D.approach, '  ...to $25EB2E');
+    }
+    // SEVEN jsr $23DFB4, and they are the only emits.
+    const emits = [0x25e8b8, 0x25e8f0, 0x25e960, 0x25e998, 0x25ea2a, 0x25eaa8, 0x25eb26];
+    for (const at of emits) {
+      assert.equal(rom.u16(at), 0x4eb9, `$${at.toString(16).toUpperCase()} jsr`);
+      assert.equal(rom.u32(at + 2), D.stub, '  ...$23DFB4');
+    }
+    assert.deepEqual([...D.pairs.flatMap((p) => [...p.emits]), ...D.triples.map((t) => t.emit)],
+      emits, 'and the descriptors name the same seven sites in ROM order');
+
+    // $25EB30 jsr $241812 -- MoveTables.vector, already ported.
+    assert.equal(rom.u16(0x25eb30), 0x4eb9);
+    assert.equal(rom.u32(0x25eb32), D.vectorAt, '$25EB30 jsr $241812');
+    // $25EB3A move.w D5,D2 -- $241812's dy is overwritten ONE instruction after the call returns.
+    assert.equal(rom.u16(0x25eb36), 0xd76a, '$25EB36 add.w D3,($4,A2) -- dx ONLY');
+    assert.equal(rom.u16(0x25eb3a), 0x3405, '$25EB3A move.w D5,D2 -- dy DISCARDED');
+    // $25EB42 bpl.s / $25EB44 neg.w D0 -- transcribed, not Math.abs.
+    assert.equal(rom.u16(0x25eb42), 0x6a02, '$25EB42 bpl.s');
+    assert.equal(rom.u16(0x25eb44), 0x4440, '$25EB44 neg.w D0');
+  });
+
+test('W374 $25E824 state 1 emits FOUR, states 4 and 7 emit THREE, every other state emits NONE',
+  { skip: SKIP9 }, async () => {
+    const { draw25E824, DRAW_25E824: D, ram, rom, ctx } = await fx9();
+
+    arm9(ram, D, { state: 0x01 });
+    assert.equal(run9(ram, rom, ctx, draw25E824, 1).length, 4, 'state 1: blocks B and A, 2 + 2');
+
+    // STATE 4 IS REACHABLE. `confirmAndDraw`'s no-confirm path skips the state write and falls
+    // into the draws, so ($1,A6) is still 4 here. Do NOT turn this into a dead-gate assertion.
+    for (const state of [0x04, 0x07]) {
+      arm9(ram, D, { state });
+      assert.equal(run9(ram, rom, ctx, draw25E824, 1).length, 3,
+        `state ${state}: blocks E, D and C, one emit each`);
+    }
+
+    for (const state of [0x00, 0x02, 0x03, 0x05, 0x06, 0x08, 0xff]) {
+      arm9(ram, D, { state });
+      assert.equal(run9(ram, rom, ctx, draw25E824, 1).length, 0,
+        `state ${state}: $25E9AE bne.w $25EB2C, an immediate rts`);
+      assert.equal(ram.u16(A6_824 + D.flagAt), 0,
+        '  ...but $25E842 clr.w ($2C,A6) ran BEFORE the state compares');
+    }
+  });
+
+test('W374 $25E824 clears ($2C,A6) at entry and sets it to 1 the frame the item is home',
+  { skip: SKIP9 }, async () => {
+    const { draw25E824, DRAW_25E824: D, ram, rom, ctx } = await fx9();
+    const home0 = rom.u16(D.tables[0].a1 + D.a1.home);        // side 0: $1A00
+
+    // Not home -> the clr.w at $25E842 is the last word on it.
+    arm9(ram, D, { state: 0x01, pair: 1, flag: 0x5555 });
+    run9(ram, rom, ctx, draw25E824, 1);
+    assert.equal(ram.u16(A6_824 + D.flagAt), 0, 'cleared at entry and never re-set');
+
+    // Block B selected ($2,A6) non-zero, and its coordinate ALREADY equals the A1 home word.
+    arm9(ram, D, { state: 0x01, pair: 1, flag: 0x5555, words: { [D.pairs[0].coord]: home0 } });
+    run9(ram, rom, ctx, draw25E824, 1);
+    assert.equal(ram.u16(A6_824 + D.flagAt), 1,
+      '$25E85E move.w #$1,($2C,A6) -- the flag $25EDF8 and $25F074 are the SOLE READERS of');
+
+    // ...and each of the five blocks can raise it. C is the state-7 one.
+    arm9(ram, D, { state: 0x07, triple: 0, flag: 0, words: { [D.triples[2].coord]: home0 } });
+    run9(ram, rom, ctx, draw25E824, 1);
+    assert.equal(ram.u16(A6_824 + D.flagAt), 1, 'block C at $25EABE raises the same flag');
+  });
+
+test('W374 $25E824 side split: side 1 negates D6 and takes $25E7D4/$25E80A', { skip: SKIP9 },
+  async () => {
+    const { draw25E824, DRAW_25E824: D, HANDLER0, sideFromD7_25D4E4, ram, rom, ctx } = await fx9();
+    assert.equal(sideFromD7_25D4E4(1), 0, 'D7 != 0 -> side 0, the OVERRIDE lea at $25E836');
+    assert.equal(sideFromD7_25D4E4(0), 1, 'D7 == 0 -> side 1, the FALL-THROUGH lea at $25E824');
+    assert.deepEqual({ ...D.tables[0] }, { a0: 0x25e7b8, a1: 0x25e7f0, negD6: false });
+    assert.deepEqual({ ...D.tables[1] }, { a0: 0x25e7d4, a1: 0x25e80a, negD6: true });
+
+    const m36 = 0x0140;                     // a multiple of $40, so `asr.l #6` keeps all of it
+    const seen = [];
+    for (const d7 of [1, 0]) {
+      const side = sideFromD7_25D4E4(d7);
+      arm9(ram, D, { state: 0x07, triple: 0, off36: m36 });
+      const got = run9(ram, rom, ctx, draw25E824, d7);
+      assert.equal(got.length, 3);
+      const t = D.tables[side];
+      // The art longs come from THAT side's A0 table, in sub-block order E, D, C.
+      for (let i = 0; i < 3; i++) {
+        assert.equal(got[i].art, rom.u32(t.a0 + D.triples[i].art),
+          `side ${side} emit ${i + 5}: art from $${t.a0.toString(16).toUpperCase()}`);
+      }
+      // D4 is a move.w IMMEDIATE in these three, so it is side-INDEPENDENT -- pinned so that
+      // nobody "helpfully" moves it into the A1 struct.
+      assert.deepEqual(got.map((e) => e.pal), [0x1b, 0x19, 0x18], '$1B / $19 / $18, immediates');
+      // D6 = +/-($36,A6) lands on D1's HIGH half at $25EA12, before the swap.
+      const base = rom.u16(t.a1 + D.a1.base);
+      const d6 = t.negD6 ? (-m36 & 0xffff) : m36;
+      const hi = (base + D.coordBias + d6) & 0xffff;
+      assert.equal(got[0].d1hi, pack((hi << 16) >>> 0).hi,
+        `side ${side}: D1 high = ($8,A1) + $E600 ${t.negD6 ? '-' : '+'} ($36,A6)`);
+      seen.push(got.map((e) => e.art).concat(got[0].d1hi));
+    }
+    // The two sides are genuinely different data: swapping the rows of `tables` cannot pass both.
+    assert.notDeepEqual(seen[0], seen[1], 'side 0 and side 1 produce different art AND coordinates');
+
+    // HANDLER0.coord is an INDEPENDENT read of +$00 and +$04 of these two A1 structs.
+    for (const side of [0, 1]) {
+      assert.deepEqual([rom.u16(D.tables[side].a1 + D.a1.home),
+        rom.u16(D.tables[side].a1 + D.a1.limit)], [...HANDLER0.coord[side]],
+      `HANDLER0.coord[${side}] IS ($25E7F0/$25E80A)+$00 and +$04 -- shipped code, same constants`);
+    }
+    assert.deepEqual([...HANDLER0.coord[0]], [0x1a00, 0xe600]);
+    assert.deepEqual([...HANDLER0.coord[1]], [0x1e40, 0x5200]);
+  });
+
+test('W374 $25E824 exg D0,D1 runs on SIDE 1 ONLY and REVERSES the limit compare',
+  { skip: SKIP9 }, async () => {
+    const { draw25E824, DRAW_25E824: D, ram, rom, ctx } = await fx9();
+    // $25E88A tst.w D7 / $25E88C bne.s $25E890 / $25E88E exg D0,D1 -- so D7 == 0 (side 1) exchanges.
+    assert.equal(rom.u16(0x25e88a), 0x4a47, '$25E88A tst.w D7');
+    assert.equal(rom.u16(0x25e88c), 0x6602, '$25E88C bne.s -- SKIPS the exg when D7 != 0');
+    assert.equal(rom.u16(0x25e88e), 0xc141, '$25E88E exg D0,D1');
+
+    // Blocks E and D fly out (cursor 0 selects C); their coordinate decides whether they draw.
+    // $7000 is PAST side 1's limit ($5200, compare reversed) and NOT past side 0's ($E600).
+    // $E000 is the exact opposite. Nothing but the `exg` inverts like this.
+    const counts = {};
+    for (const d7 of [1, 0]) {
+      for (const pos of [0x7000, 0xe000]) {
+        arm9(ram, D, { state: 0x07, triple: 0,
+          words: { [D.triples[0].coord]: pos, [D.triples[1].coord]: pos } });
+        counts[`${d7}:${pos.toString(16)}`] = run9(ram, rom, ctx, draw25E824, d7).length;
+      }
+    }
+    assert.equal(counts['1:7000'], 3, 'side 0, pos $7000: $7000 <= $E600 is FALSE, E and D draw');
+    assert.equal(counts['1:e000'], 1, 'side 0, pos $E000: $E000 <= $E600 is TRUE, both skipped');
+    assert.equal(counts['0:7000'], 1, 'side 1, pos $7000: REVERSED, $5200 <= $7000 is TRUE');
+    assert.equal(counts['0:e000'], 3, 'side 1, pos $E000: REVERSED, $5200 <= $E000 is FALSE');
+    // The inversion is the assertion. Deleting the exg makes side 1 match side 0 and this dies.
+    assert.notEqual(counts['0:7000'], counts['1:7000']);
+    assert.notEqual(counts['0:e000'], counts['1:e000']);
+  });
+
+test('W374 $25E824 block A cursor test is INVERTED against block B', { skip: SKIP9 },
+  async () => {
+    const { draw25E824, DRAW_25E824: D, ram, rom, ctx } = await fx9();
+    assert.equal(rom.u16(0x25e850), 0x4a6e, '$25E850 tst.w ($2,A6) -- block B');
+    assert.equal(rom.u16(0x25e854), 0x6720, '$25E854 beq.s $25E876');
+    assert.equal(rom.u16(0x25e8f6), 0x4a6e, '$25E8F6 tst.w ($2,A6) -- block A, the SAME field');
+    assert.equal(rom.u16(0x25e8fa), 0x6620, '$25E8FA bne.s $25E91C -- the OPPOSITE sense');
+
+    const [B, A] = D.pairs;
+    // Only the fly-out arm re-seeds {$0060, $0C00}, so the seed is a direct readout of which arm ran.
+    for (const [cursor, flying, approaching] of [[0, B, A], [1, A, B]]) {
+      arm9(ram, D, { state: 0x01, pair: cursor });
+      run9(ram, rom, ctx, draw25E824, 1);
+      assert.equal(ram.u16(A6_824 + flying.sub + D.sub.speed), D.flySpeed,
+        `($2,A6) = ${cursor}: block ${flying.block} took the FLY-OUT arm`);
+      assert.equal(ram.u16(A6_824 + flying.sub + D.sub.tol), D.flyTol);
+      assert.equal(ram.u16(A6_824 + approaching.sub + D.sub.speed), 0,
+        `  ...and block ${approaching.block} did NOT -- it went to $25EB2E instead`);
+      assert.equal(ram.u16(A6_824 + approaching.sub + D.sub.tol), 0);
+      // The fly-out arm also STEPS the coordinate by ($6,A1); the approach with speed 0 does not.
+      assert.equal(ram.u16(A6_824 + flying.coord), rom.u16(D.tables[0].a1 + D.a1.step),
+        `  ...and only block ${flying.block} coordinate moved`);
+      assert.equal(ram.u16(A6_824 + approaching.coord), 0);
+    }
+  });
+
+test('W374 $25EB2E halves speed through $60,$30,$18,... and SNAPS once the tolerance is <= $20',
+  { skip: SKIP9 }, async () => {
+    const { draw25E824, DRAW_25E824: D, ram, rom, ctx } = await fx9();
+    const B = D.pairs[0];
+    const a1 = D.tables[0].a1;                       // side 0, angle $0010 -> dx is POSITIVE
+    const home = rom.u16(a1 + D.a1.home);            // $1A00
+
+    // 1416 = 714 + 357 + 178 + 89 + 44 + 22 + 7 + 5, the seven dx the speed chain produces plus a
+    // remainder, so every pass stays inside its (also halving) tolerance and the chain runs to the
+    // end. ($2,A6) non-zero selects block B, so it approaches rather than flies out.
+    arm9(ram, D, { state: 0x01, pair: 1,
+      words: { [B.coord]: (home - 1416) & 0xffff,
+        [B.sub + D.sub.speed]: D.flySpeed, [B.sub + D.sub.tol]: D.flyTol } });
+
+    const speeds = [];
+    const tols = [];
+    for (let i = 0; i < 7; i++) {
+      run9(ram, rom, ctx, draw25E824, 1);
+      speeds.push(ram.u16(A6_824 + B.sub + D.sub.speed));
+      tols.push(ram.u16(A6_824 + B.sub + D.sub.tol));
+    }
+    // $25EB4C lsr.w (A2): $60 -> $30 -> $18 -> $C -> $6 -> $3 -> $1 -> $0.
+    assert.deepEqual(speeds, [0x30, 0x18, 0x0c, 0x06, 0x03, 0x01, 0x00],
+      'the speed HALVES on every pass that lands inside the tolerance');
+    // $25EB4E halves the tolerance too, and $25EB5E CLEARS it on the pass that snaps.
+    assert.deepEqual(tols.slice(0, 6), [0x600, 0x300, 0x180, 0xc0, 0x60, 0x30]);
+    assert.equal(tols[6], 0, '$25EB5E clr.w ($2,A2) once $25EB52 sees $18 <= $20');
+    assert.equal(ram.u16(A6_824 + B.coord), home, '$25EB5A move.w D5,($4,A2) -- SNAPPED to the home');
+
+    // ...and the very next frame the block own compare fires, which is the whole point.
+    assert.equal(ram.u16(A6_824 + D.flagAt), 0, 'the snapping frame does NOT raise ($2C,A6)');
+    run9(ram, rom, ctx, draw25E824, 1);
+    assert.equal(ram.u16(A6_824 + D.flagAt), 1, '$25E85A cmp.w (A1),D0 matches on the NEXT frame');
+
+    // A tolerance of 0 makes $25EB4A UNSIGNED bcc always taken, so a zeroed sub-block never moves.
+    const before = ram.u16(A6_824 + B.coord);
+    arm9(ram, D, { state: 0x01, pair: 1, words: { [B.coord]: before } });
+    run9(ram, rom, ctx, draw25E824, 1);
+    assert.equal(ram.u16(A6_824 + B.sub + D.sub.speed), 0, 'speed 0 stays 0');
+  });
+
+test('W374 $813098 gates ONLY blocks E/D/C draws -- the movement runs every loop',
+  { skip: SKIP9 }, async () => {
+    const { draw25E824, DRAW_25E824: D, ram, rom, ctx } = await fx9();
+    // $25EA00 tst.w $813098 / $25EA06 bne.w -- and it sits AFTER $25E9FC add.w D1,($26,A6).
+    assert.equal(rom.u16(0x25ea00), 0x4a79, '$25EA00 tst.w');
+    assert.equal(rom.u32(0x25ea02), D.loopCounter, '  ...$813098');
+    assert.equal(rom.u16(0x25e9fc), 0xd36e, '$25E9FC add.w D1,($26,A6) -- BEFORE the test');
+    // Blocks B and A have no such test: $25E89C and $25E942 are `move.w ($8,A1),D1` outright.
+    assert.equal(rom.u16(0x25e89c), 0x3229, '$25E89C is the join, not a tst.w $813098');
+    assert.equal(rom.u16(0x25e942), 0x3229, '$25E942 likewise');
+
+    const step = rom.u16(D.tables[0].a1 + D.a1.step);
+    for (const loop of [0, 1]) {
+      arm9(ram, D, { state: 0x07, triple: 0, loop });
+      const got = run9(ram, rom, ctx, draw25E824, 1);
+      assert.equal(got.length, loop === 0 ? 3 : 0,
+        `$813098 = ${loop}: ${loop === 0 ? 'the first loop draws' : 'nothing is emitted'}`);
+      // ...and E and D moved and were re-seeded EITHER WAY.
+      for (const b of D.triples.slice(0, 2)) {
+        assert.equal(ram.u16(A6_824 + b.coord), step,
+          `  ...block ${b.block} still stepped with $813098 = ${loop}`);
+        assert.equal(ram.u16(A6_824 + b.sub + D.sub.speed), D.flySpeed);
+      }
+    }
+    // Blocks B and A are untouched by it.
+    for (const loop of [0, 1]) {
+      arm9(ram, D, { state: 0x01, loop });
+      assert.equal(run9(ram, rom, ctx, draw25E824, 1).length, 4,
+        `state 1 draws all four with $813098 = ${loop} -- no gate in blocks B or A`);
+    }
+  });
+
+test('W374 $25E824 animation is FOUR frames, strides $184 and $104 off ($14,A0)/($18,A0)',
+  { skip: SKIP9 }, async () => {
+    const { draw25E824, DRAW_25E824: D, ram, rom, ctx } = await fx9();
+    assert.equal(rom.u16(0x25e8d8), 0x7403, '$25E8D8 moveq #$3,D2 -- FOUR frames, not $25EDF8 $E');
+    assert.equal(rom.u32(0x25e8dc), D.frameCounter, '  ...and.w $80390A,D2');
+    assert.equal(rom.u16(0x25e8e0), 0xc4fc, '$25E8E0 mulu.w');
+    assert.equal(rom.u16(0x25e8e2), 0x0184, '  ...#$0184 -- a BYTE delta, no index step');
+    assert.equal(rom.u16(0x25e988), 0xc4fc, '$25E988 mulu.w -- block A');
+    assert.equal(rom.u16(0x25e98a), 0x0104, '  ...#$0104');
+
+    const a0 = D.tables[0].a0;
+    const base2 = rom.u32(a0 + D.pairs[0].anim.art);      // ($14,A0)
+    const base4 = rom.u32(a0 + D.pairs[1].anim.art);      // ($18,A0)
+    const arts2 = [];
+    const arts4 = [];
+    for (let frame = 0; frame < 8; frame++) {
+      arm9(ram, D, { state: 0x01, frame });
+      const got = run9(ram, rom, ctx, draw25E824, 1);
+      assert.equal(got.length, 4);
+      arts2.push(got[1].art);                             // emit 2, block B animated one
+      arts4.push(got[3].art);                             // emit 4, block A
+      assert.equal(got[0].art, rom.u32(a0 + D.pairs[0].art), 'emit 1 is STATIC -- (A0)');
+      assert.equal(got[2].art, rom.u32(a0 + D.pairs[1].art), 'emit 3 is STATIC -- ($4,A0)');
+    }
+    assert.deepEqual(arts2, [0, 1, 2, 3, 0, 1, 2, 3].map((f) => (base2 + f * 0x184) >>> 0),
+      'emit 2 steps four arts at $184 and WRAPS at 4');
+    assert.deepEqual(arts4, [0, 1, 2, 3, 0, 1, 2, 3].map((f) => (base4 + f * 0x104) >>> 0),
+      'emit 4 steps four arts at $104 and WRAPS at 4');
+    assert.equal(new Set(arts2).size, 4, 'exactly FOUR distinct arts -- $E would give eight');
+    assert.equal(new Set(arts4).size, 4);
+  });
+
+test('W374 $25E824 rebuilds every register at all seven emits and inherits nothing',
+  { skip: SKIP9 }, async () => {
+    const { draw25E824, DRAW_25E824: D, ram, rom, ctx } = await fx9();
+    const a1 = D.tables[0].a1;
+
+    arm9(ram, D, { state: 0x01, frame: 0 });
+    const pair = run9(ram, rom, ctx, draw25E824, 1);
+    // D3: $1AD0 / $0680 / $1AD0 / $0480, alternating -- so nothing carries.
+    assert.deepEqual(pair.map((e) => e.attr), [D.attrMain, 0x0680, D.attrMain, 0x0480]);
+    // D4: the four SEPARATE A1 words $A, $E, $C, $10 in emit order 1, 2, 3, 4.
+    assert.deepEqual(pair.map((e) => e.pal), [rom.u16(a1 + D.a1.d4e1), rom.u16(a1 + D.a1.d4e2),
+      rom.u16(a1 + D.a1.d4e3), rom.u16(a1 + D.a1.d4e4)]);
+    assert.deepEqual(pair.map((e) => e.pal), [0x1c, 0x0d, 0x1a, 0x0c],
+      'side 0: $001C, $000D, $001A, $000C -- four different words, none inherited');
+
+    // ($36,A6) reaches emits 5..7 ONLY. Change it and the state-1 emits are byte-identical.
+    arm9(ram, D, { state: 0x01, frame: 0, off36: 0x0140 });
+    assert.deepEqual(run9(ram, rom, ctx, draw25E824, 1), pair,
+      'D6 is added at $25EA12/$25EA90/$25EB0E only -- blocks B and A never touch it');
+
+    arm9(ram, D, { state: 0x07, triple: 0, off36: 0 });
+    const zero36 = run9(ram, rom, ctx, draw25E824, 1);
+    arm9(ram, D, { state: 0x07, triple: 0, off36: 0x0140 });
+    const some36 = run9(ram, rom, ctx, draw25E824, 1);
+    assert.notDeepEqual(some36, zero36,
+      '($36,A6) IS read from RAM at $25E82C/$25E83E, not folded to the 0 it ships as');
+    assert.deepEqual(some36.map((e) => e.attr), [D.attrMain, D.attrMain, D.attrMain]);
+  });
+
+test('W374 $25E824 notes rather than invents when there is no MoveTables on ctx', { skip: SKIP9 },
+  async () => {
+    const { draw25E824, DRAW_25E824: D, ram, rom, ctx, notes } = await fx();
+    const B = D.pairs[0];
+    // ($2,A6) non-zero selects block B, and its coordinate is not the home word, so $25E870 fires.
+    arm9(ram, D, { state: 0x01, pair: 1,
+      words: { [B.sub + D.sub.speed]: D.flySpeed, [B.sub + D.sub.tol]: D.flyTol } });
+    const got = run9(ram, rom, ctx, draw25E824, 1);
+    assert.equal(got.length, 4, 'it still draws -- only the approach is refused');
+    assert.equal(ram.u16(A6_824 + B.coord), 0, 'and the position did NOT move');
+    assert.deepEqual(notes, [D.vectorAt], 'one note at $241812, the jsr it could not make');
+  });
+
+test('W374 $25EB4A bcc is UNSIGNED -- a tolerance with bit 15 set still damps', { skip: SKIP9 },
+  async () => {
+    const { draw25E824, DRAW_25E824: D, ram, rom, ctx } = await fx9();
+    const B = D.pairs[0];
+    const home = rom.u16(D.tables[0].a1 + D.a1.home);
+    // $25EB46 cmp.w ($2,A2),D0 / $25EB4A bcc.s $25EB62. `bcc` is CARRY clear, i.e. UNSIGNED >=.
+    // $9000 as a signed word is -28672, so a `bge` here would return before damping anything.
+    assert.equal(rom.u16(0x25eb46), 0xb06a, '$25EB46 cmp.w ($2,A2),D0');
+    assert.equal(rom.u16(0x25eb4a), 0x6416, '$25EB4A bcc.s -- $64xx, NOT $6Cxx (bge)');
+    arm9(ram, D, { state: 0x01, pair: 1,
+      words: { [B.coord]: (home - 50) & 0xffff,
+        [B.sub + D.sub.speed]: 0x0c, [B.sub + D.sub.tol]: 0x9000 } });
+    run9(ram, rom, ctx, draw25E824, 1);
+    assert.equal(ram.u16(A6_824 + B.sub + D.sub.speed), 0x06,
+      'the distance (39) is UNSIGNED-below $9000, so $25EB4C/$25EB4E both ran');
+    assert.equal(ram.u16(A6_824 + B.sub + D.sub.tol), 0x4800, '$9000 >> 1');
+  });
+
+test('W374 $25E824 three-option cursor is a WORD compare, not a byte one', { skip: SKIP9 },
+  async () => {
+    const { draw25E824, DRAW_25E824: D, ram, rom, ctx } = await fx9();
+    // $0C6E is cmpi.W; the byte form would be $0C2E, which is what $25E846/$25E99E/$25E9A8 use
+    // four instructions away. Getting the width wrong here matches on $XX02 as well as $0002.
+    for (const [at, imm] of [[0x25e9b2, 2], [0x25ea30, 1], [0x25eaae, 0]]) {
+      assert.equal(rom.u16(at), 0x0c6e, `$${at.toString(16).toUpperCase()} cmpi.W ($4,A6)`);
+      assert.equal(rom.u16(at + 2), imm, '  ...and its immediate');
+      assert.equal(rom.u16(at + 4), D.tripleCursorAt, '  ...displacement $0004, AFTER the immediate');
+    }
+    assert.equal(rom.u16(0x25e846), 0x0c2e, '$25E846 cmpi.B ($1,A6) -- the BYTE one, for contrast');
+
+    // $0100 matches NO block as a word and block C as a byte. Every block must fly out.
+    arm9(ram, D, { state: 0x07, triple: 0x0100 });
+    assert.equal(run9(ram, rom, ctx, draw25E824, 1).length, 3);
+    for (const b of D.triples) {
+      assert.equal(ram.u16(A6_824 + b.sub + D.sub.speed), D.flySpeed,
+        `cursor $0100: block ${b.block} flew out -- a byte compare would have selected C`);
+    }
+    // ...and the plain values still select exactly one each.
+    for (const b of D.triples) {
+      arm9(ram, D, { state: 0x07, triple: b.cursor });
+      run9(ram, rom, ctx, draw25E824, 1);
+      assert.equal(ram.u16(A6_824 + b.sub + D.sub.speed), 0,
+        `cursor ${b.cursor} selects block ${b.block}`);
+      for (const o of D.triples) {
+        if (o !== b) assert.equal(ram.u16(A6_824 + o.sub + D.sub.speed), D.flySpeed);
+      }
+    }
+  });
+
+test('W374 $25E824 limit compare is ble, so EXACTLY at the limit the block stops drawing',
+  { skip: SKIP9 }, async () => {
+    const { draw25E824, DRAW_25E824: D, ram, rom, ctx } = await fx9();
+    assert.equal(rom.u16(0x25e892) & 0xff00, 0x6f00, '$25E892 ble.s -- $6Fxx, not $6Dxx (blt)');
+    for (const at of [0x25e938, 0x25e9f6, 0x25ea74, 0x25eaf2]) {
+      assert.equal(rom.u16(at) & 0xff00, 0x6f00, `$${at.toString(16).toUpperCase()} ble.s too`);
+    }
+    const limit0 = rom.u16(D.tables[0].a1 + D.a1.limit);          // side 0: $E600
+    // Cursor 0 selects C, so E and D fly out. Sitting EXACTLY on the limit is already "past" it.
+    const at = (pos) => {
+      arm9(ram, D, { state: 0x07, triple: 0,
+        words: { [D.triples[0].coord]: pos, [D.triples[1].coord]: pos } });
+      return run9(ram, rom, ctx, draw25E824, 1).length;
+    };
+    assert.equal(at(limit0), 1, 'coordinate == $E600: ble is TAKEN, E and D draw nothing');
+    assert.equal(at((limit0 + 1) & 0xffff), 3, 'one unit short of it, both still draw');
+  });

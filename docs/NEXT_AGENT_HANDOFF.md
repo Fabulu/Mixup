@@ -51,7 +51,7 @@ The docstrings, the wiring comment and the test names all now carry the withdraw
 warning rather than as a fact, because the tests themselves were always right: they pin the
 FUNCTION's gate, which behaves correctly whichever state it is handed.
 
-### W374 STATE: SUITE 2811/2811 ZERO SKIPS, GATE EXIT 0, 522 ROM WINDOWS
+### W374 STATE: SUITE 2838/2838 ZERO SKIPS, GATE EXIT 0, 527 ROM WINDOWS
 
 Up from 2730 at the start of the wave. **Three more shared draws are PORTED, DRIVEN AND WIRED:**
 
@@ -75,8 +75,14 @@ sprites on screen. `$25E6CE` is wired into the bit-1 arm.
 `confirmAndDraw` now takes **`d7`** as a trailing argument, because `$25EF30` needs the side to pick
 which record it reads across to. Both call sites pass it.
 
-**THREE OF THE EIGHT REMAIN:** `$25E29E`, `$25E824` and `$25E4D0`. **FIVE ARE PORTED**: `$25E220`,
-`$25E6CE`, `$25EF30`, `$25EDF8` and `$25F074`.
+**ONE OF THE EIGHT REMAINS: `$25E4D0`.** **SEVEN ARE PORTED**: `$25E220`, `$25E6CE`, `$25EF30`,
+`$25EDF8`, `$25F074`, `$25E29E` and `$25E824`.
+
+**`$25E4D0` IS THE LAST ONE**, and it is the only draw NOT reachable from states 1 or 4 -- its one
+call site `$25D814` is in `$25D560`'s tail, so it needs state 7. Shape already known:
+`$25E4D0..$25E68D`, 958 bytes, ONE routine with two per-side halves opening `tst.w D7 / beq.w
+$25E5B0`, three emits each (two via `$23E2F2`, one via `$23DFB4`), both halves `lea`ing the same
+`$25E68E` table.
 
 ### `$25F074` IS PORTED, AND IT IS THE ONE WITH NO CANCELLING CHAINS
 
@@ -626,7 +632,25 @@ underlying semantics ARE consistent -- side 1 always ends up with the NEGATED of
 **Read the branch, every time.** Combined with `sideFromD7_25D4E4` inverting (`u16(d7) !== 0 ? 0 : 1`)
 there are two independent inversions in play, and assuming a uniform convention across the family is
 exactly how a side-swap defect ships looking plausible.
-* **`$25E824` IS FULLY DECODED AND NOTHING IN IT IS DEAD.** `$25E824..$25EB2D`, **778 bytes** (not
+* **`$25E824` IS PORTED (`draw25E824` + `approach25EB2E`), AND NOTHING IN IT IS DEAD.** Four ROM
+  windows, fourteen driving tests, wired FIRST in the ungated tail. Three things the port found that
+  the spec did not say:
+
+  * **The damping chain is SEVEN passes, not eight.** From `{$0060, $0C00}` the tolerance runs
+    3072 -> 1536 -> ... -> 24, and `$25EB52` fires on the pass that produces 24, so the position
+    snaps on pass 7 and the tolerance reads back as **0** (the `clr.w`), not `$18`. The
+    `$60,$30,$18,...` list is the sequence of speeds USED, one per pass.
+  * **Sub-blocks C, D and E are never seeded by state 0.** `HANDLER0.pairs` seeds only `$0A/$0C` and
+    `$10/$12`; `$16/$18`, `$1C/$1E` and `$22/$24` start at zero, and a `{speed 0, tolerance 0}`
+    sub-block never moves because `$25EB4A`'s unsigned `bcc` is always taken. **So a three-option
+    item can only ease home AFTER it has been unselected once** and the fly-out arm has written the
+    seed. Reproduced faithfully. Worth knowing for whoever owns `$25D010`.
+  * **The discarded `dy` is unobservable with the shipped data.** The A1 structs carry only angles
+    `$0010` and `$0030`, and `MoveTables.vector` returns `dy = 0` at both. "One axis only" is
+    structurally right but has no behavioural consequence today, so a port that ALSO added `dy`
+    would not be caught by any test. Noted rather than papered over.
+
+* **`$25E824` DECODED (the detail below stands, and the port matches it).** `$25E824..$25EB2D`, **778 bytes** (not
   777), plus `$25EB2E..$25EB63`, its 54-byte shared subroutine called five times by `bsr`.
   **SEVEN emits, all `$23DFB4`, and NOTHING is inherited between them** -- my D4 scan was an
   immediates-only floor, and the four it missed are `move.w ($A,A1),D4`, `($C,A1)`, `($E,A1)`,

@@ -19,7 +19,7 @@
 // therefore advances the two screens to two different states, which is only sane once both callers
 // are in front of you.
 
-import { u16 } from './ram.js';
+import { u16, i16 } from './ram.js';
 import { RAM } from './machine.js';
 import { SCHED } from './scheduler.js';
 import { paletteSet241688, install24150A, install2414BE } from './palette.js';
@@ -469,8 +469,7 @@ function confirmAndDraw(ram, rom, ctx, a5, a6, d0, nextPhase, d7) {
   ram.setU8(a5 + HANDLER4.sharedGuard, guard | 0x03);
   if ((guard & 0x01) === 0) {
     draw25E220(ram, rom, ctx, a6);                           // $25D25E / $25D4AE jsr $25E220
-    ctx.unported?.note(HANDLER4.drawsA[1], `$${HANDLER4.drawsA[1].toString(16).toUpperCase()} -- the `
-      + `second bit-0 draw. Unread`);
+    draw25E29E(ram, rom, ctx, a6);                           // $25D264 / $25D4B4 jsr $25E29E
   }
   if ((guard & 0x02) === 0) {                                // $25D26A / $25D4BA bset #$1
     draw25E6CE(ram, rom, ctx, a6);                            // $25D272 / $25D4C2 jsr $25E6CE
@@ -478,7 +477,11 @@ function confirmAndDraw(ram, rom, ctx, a5, a6, d0, nextPhase, d7) {
   // THE UNGATED TAIL, IN ROM ORDER. The order is load-bearing: these four emit into the same
   // bucket, so reordering them reorders the sprites. $25D278/$25D27E/$25D284/$25D28A on state 1's
   // tail and $25D4C8/$25D4CE/$25D4D4/$25D4DA on state 4's.
-  ctx.unported?.note(HANDLER4.drawsAlways[0], '$25E824 -- ungated draw. Unread');
+  // $25D278 / $25D4C8 jsr $25E824. It runs FIRST of the ungated tail, and that order matters for
+  // more than sprite sequence: it is the SOLE WRITER of ($2C,A6), which $25EDF8 and $25F074 both
+  // read further down this same tail. Until it was ported that flag was permanently 0, so those
+  // two draws' animation arms never ran.
+  draw25E824(ram, rom, ctx, a6, d7);
   // $25D27E / $25D4CE jsr $25EDF8. WITHDRAWN CLAIM, kept as a warning: W374 recorded this as a
   // call whose body never runs. It was wrong, and it was wrong because `confirmAndDraw` modelled
   // the no-confirm path as an early `return`. On a non-confirm frame `($1,A6)` is still 4 here and
@@ -1414,4 +1417,302 @@ export function draw25F074(ram, rom, ctx, a6, d7) {
  *  they touch the short axis only and never carry into the long one. */
 function withShort(d1, lo) {
   return (((d1 & 0xffff0000) >>> 0) | u16(lo)) >>> 0;
+}
+
+export const DRAW_25E824 = Object.freeze({
+  addr: 0x25e824, rts: 0x25eb2c, bytes: 778,
+  // The shared subroutine. Named `approach*` and not `sub*` because `sub` below is the RECORD
+  // sub-block layout, and one name for both is exactly the collision that hides a NaN.
+  approach: 0x25eb2e, approachRts: 0x25eb62, approachEnd: 0x25eb63, approachBytes: 54,
+  stub: 0x23dfb4,                            // SEVEN emits, all `jsr $23DFB4`
+  vectorAt: 0x241812,                        // $25EB30 jsr -- MoveTables.vector, src/vectors.js
+  // Off A6. `($2C,A6)` is the POINT of the routine: this is its SOLE WRITER and $25EDF8 / $25F074
+  // are its SOLE READERS.
+  off36: 0x36, flagAt: 0x2c, stateAt: 0x01, pairCursorAt: 0x02, tripleCursorAt: 0x04,
+  state1: 0x01, state4: 0x04, state7: 0x07,  // $25E846 / $25E99E / $25E9A8, all cmpi.b
+  loopCounter: DRAW_25EF30.loopCounter,      // $813098 -- gates E/D/C's DRAW only
+  frameCounter: RAM.frameCounter,            // $80390A, the FOUR-frame animation counter
+  flySpeed: 0x0060, flyTol: 0x0c00,          // $25E876/$25E87C and the four copies of it
+  animMask: 0x03, animFrames: 4,             // $25E8D8 moveq #$3 -- FOUR frames, not eight
+  snapTolLimit: 0x20,                        // $25EB52 cmpi.w #$20,($2,A2)
+  coordBias: 0xe600,                         // $25E8A0 / $25E8AA addi.w, i.e. -$1A00
+  attrMain: 0x1ad0,                          // D3 at emits 1, 3, 5, 6 and 7
+  // INDEXED BY `sideFromD7_25D4E4`, which INVERTS D7. Entry 1 is the FALL-THROUGH set that D7 == 0
+  // keeps ($25E824/$25E828) and the side that NEGATES D6; entry 0 is the override the `bne` past
+  // $25E834 takes ($25E836/$25E83A) and does NOT negate.
+  tables: Object.freeze([
+    Object.freeze({ a0: 0x25e7b8, a1: 0x25e7f0, negD6: false }),   // side 0, D7 != 0
+    Object.freeze({ a0: 0x25e7d4, a1: 0x25e80a, negD6: true }),    // side 1, D7 == 0
+  ]),
+  // A1 IS A FLAT 13-WORD STRUCT AND IS NEVER ADVANCED. Displacements, not indices.
+  a1: Object.freeze({ home: 0x00, angle: 0x02, limit: 0x04, step: 0x06, base: 0x08,
+    d4e1: 0x0a, d4e3: 0x0c, d4e2: 0x0e, d4e4: 0x10,
+    hi2: 0x12, lo2: 0x14, hi4: 0x16, lo4: 0x18 }),
+  // The record's FIVE 6-byte sub-blocks {speed, tolerance, position}, $0A..$27.
+  sub: Object.freeze({ speed: 0x00, tol: 0x02, pos: 0x04, size: 0x06 }),
+  // BLOCKS B and A -- state 1, two emits each. `flyWhenZero` is the ONE inverted test: B is
+  // `tst.w ($2,A6) / beq` ($25E854) and A is the same `tst.w` with `bne` ($25E8FA).
+  pairs: Object.freeze([
+    Object.freeze({ at: 0x25e850, block: 'B', sub: 0x10, coord: 0x14, flyWhenZero: true,
+      art: 0x00, d4: 0x0a, join: 0x25e89c, ble: 0x25e8f6, emits: Object.freeze([0x25e8b8, 0x25e8f0]),
+      anim: Object.freeze({ hiBias: 0xfa00, loBias: 0xf000, hi: 0x12, lo: 0x14,
+        stride: 0x0184, art: 0x14, attr: 0x0680, d4: 0x0e }) }),
+    Object.freeze({ at: 0x25e8f6, block: 'A', sub: 0x0a, coord: 0x0e, flyWhenZero: false,
+      art: 0x04, d4: 0x0c, join: 0x25e942, ble: 0x25e99e, emits: Object.freeze([0x25e960, 0x25e998]),
+      anim: Object.freeze({ hiBias: 0xfc00, loBias: 0xf000, hi: 0x16, lo: 0x18,
+        stride: 0x0104, art: 0x18, attr: 0x0480, d4: 0x10 }) }),
+  ]),
+  // BLOCKS E, D and C -- states 4 and 7, ONE emit each, and the only three with the $813098 gate.
+  // `cursor` is the `cmpi.w #N,($4,A6)` immediate: a WORD compare four instructions from the BYTE
+  // state compares. `d4` is a move.w IMMEDIATE here, not an A1 field.
+  triples: Object.freeze([
+    Object.freeze({ at: 0x25e9b2, block: 'E', cursor: 0x02, sub: 0x22, coord: 0x26, art: 0x08,
+      d4: 0x001b, join: 0x25ea00, ble: 0x25ea30, emit: 0x25ea2a }),
+    Object.freeze({ at: 0x25ea30, block: 'D', cursor: 0x01, sub: 0x1c, coord: 0x20, art: 0x0c,
+      d4: 0x0019, join: 0x25ea7e, ble: 0x25eaae, emit: 0x25eaa8 }),
+    Object.freeze({ at: 0x25eaae, block: 'C', cursor: 0x00, sub: 0x16, coord: 0x1a, art: 0x10,
+      d4: 0x0018, join: 0x25eafc, ble: 0x25eb2c, emit: 0x25eb26 }),
+  ]),
+});
+
+/** `$25EB2E..$25EB63` -- A DAMPED, ONE-AXIS APPROACH, and the shared subroutine five `bsr` in
+ *  `$25E824` call ($25E870, $25E916, $25E9D4, $25EA52, $25EAD0).
+ *
+ *  A2 is a THREE-WORD sub-block `{speed, tolerance, position}`. D1 is the angle, D5 the target.
+ *
+ *  **`$241812`'s D2 -- the LONG-axis delta -- IS DISCARDED ONE INSTRUCTION LATER.** `$25EB36` adds
+ *  only D3 to the position and `$25EB3A move.w D5,D2` overwrites D2 with the target before anything
+ *  can read it. So this motion is ONE AXIS. A port that also applies `dy` moves the sprite on an
+ *  axis the cartridge never touches.
+ *
+ *  **THE `bpl` / `neg.w` IS TRANSCRIBED, NOT `Math.abs`.** `neg.w` on `$8000` yields `$8000` again,
+ *  which is not what an absolute value would give, and the difference should not be smoothed away.
+ *
+ *  **`$25EB4A bcc` IS UNSIGNED.** Still farther from the target than the tolerance -> return with
+ *  nothing damped. Inside the tolerance, BOTH speed and tolerance halve (`lsr.w`, so they walk
+ *  `$60, $30, $18, $0C, $06, $03, $01, $00` from the `$0060`/`$0C00` seed), and once the halved
+ *  tolerance is `<= $20` the position SNAPS to the target and the tolerance is zeroed -- which is
+ *  what makes the "arrived" compare at the top of each block fire on the next frame.
+ *
+ *  `$241812` clobbers D0-D3 and A3. Harmless: `$25E824` reloads D1 after every `bsr` before it uses
+ *  it again, and A0/A1/D5/D6/D7 are untouched here. */
+function approach25EB2E(ram, ctx, a2, angle, d5, tables) {
+  const S = DRAW_25E824.sub;
+  const d0 = ram.u16(a2 + S.speed);                          // $25EB2E move.w (A2),D0 -- SPEED LEVEL
+  if (!tables) {
+    ctx.unported?.note(DRAW_25E824.vectorAt, `$25EB30 jsr $241812 with no MoveTables on ctx. `
+      + `$25E824's damped approach needs speed level $${d0.toString(16).toUpperCase()} at angle `
+      + `$${u16(angle).toString(16).toUpperCase()}; refusing to invent a delta`);
+    return;
+  }
+  const v = tables.vector(d0, angle);                        // $25EB30 jsr $241812 -> D2 dy, D3 dx
+  // $25EB36 add.w D3,($4,A2) -- THE ONLY write of the vector. D2 (dy) is dead from here.
+  ram.setU16(a2 + S.pos, u16(ram.u16(a2 + S.pos) + v.dx));
+  const d2 = u16(d5);                                        // $25EB3A move.w D5,D2 -- D2 = TARGET
+  let d0abs = u16(ram.u16(a2 + S.pos) - d2);                 // $25EB3C move.w / $25EB40 sub.w
+  if ((d0abs & 0x8000) !== 0) d0abs = u16(-d0abs);          // $25EB42 bpl.s / $25EB44 neg.w
+  // $25EB46 cmp.w ($2,A2),D0 / $25EB4A bcc.s $25EB62 -- UNSIGNED >=, i.e. still far away.
+  if (d0abs >= ram.u16(a2 + S.tol)) return;
+  ram.setU16(a2 + S.speed, ram.u16(a2 + S.speed) >>> 1);     // $25EB4C lsr.w (A2)
+  ram.setU16(a2 + S.tol, ram.u16(a2 + S.tol) >>> 1);         // $25EB4E lsr.w ($2,A2)
+  // $25EB52 cmpi.w #$20,($2,A2) / $25EB58 bgt.s $25EB62 -- SIGNED, transcribed as such.
+  if (i16(ram.u16(a2 + S.tol)) > DRAW_25E824.snapTolLimit) return;
+  ram.setU16(a2 + S.pos, u16(d5));                           // $25EB5A move.w D5,($4,A2) -- SNAP
+  ram.setU16(a2 + S.tol, 0);                                 // $25EB5E clr.w ($2,A2)
+  // $25EB62 rts
+}
+
+/** The movement half every one of the five blocks opens with, byte for byte the same in all five
+ *  apart from the fields the caller passes in. Returns `true` when control reaches the block's JOIN
+ *  POINT (so the emits run) and `false` when the `ble.s` fires and the whole block is skipped.
+ *
+ *  `selected` is the block's cursor test, and BLOCK A'S IS INVERTED against block B's -- `$25E854
+ *  beq.s` versus `$25E8FA bne.s`, the same `tst.w ($2,A6)` in both. Blocks E/D/C use a WORD
+ *  `cmpi.w #N,($4,A6)` instead, four instructions away from the BYTE state compares. */
+function moveBlock25E850(ram, rom, ctx, a6, d7, a1, blk, selected, tables) {
+  const A = DRAW_25E824.a1;
+  const S = DRAW_25E824.sub;
+  if (selected) {
+    const d0 = ram.u16(a6 + blk.coord);                      // $25E856 move.w (<coord>,A6),D0
+    const home = rom.u16(a1 + A.home);                       // $25E85A cmp.w (A1),D0
+    if (d0 === home) {
+      // $25E85E move.w #$1,($2C,A6) -- ARRIVED. The flag $25EDF8 and $25F074 read.
+      ram.setU16(a6 + DRAW_25E824.flagAt, 1);
+      return true;                                           // $25E864 bra.s the join point
+    }
+    // $25E866 lea (<sub>,A6),A2 / $25E86A move.w ($2,A1),D1 / $25E86E move.w (A1),D5
+    approach25EB2E(ram, ctx, a6 + blk.sub, rom.u16(a1 + A.angle), home, tables);   // bsr $25EB2E
+    return true;                                             // $25E874 bra.s the join point
+  }
+
+  // THE FLY-OUT ARM. $25E876 / $25E87C re-seed the sub-block EVERY FRAME the item is unselected,
+  // which is what makes the damping start from $60/$0C00 again the moment it is selected.
+  ram.setU16(a6 + blk.sub + S.speed, DRAW_25E824.flySpeed);  // move.w #$0060,(<sub>,A6)
+  ram.setU16(a6 + blk.sub + S.tol, DRAW_25E824.flyTol);      // move.w #$0C00,(<sub>+2,A6)
+  let d0 = ram.u16(a6 + blk.coord);                          // $25E882 move.w (<coord>,A6),D0
+  let d1 = rom.u16(a1 + A.limit);                            // $25E886 move.w ($4,A1),D1 -- the LIMIT
+  // $25E88A tst.w D7 / $25E88C bne.s -- so `$25E88E exg D0,D1` runs on D7 == 0 ONLY, which
+  // `sideFromD7_25D4E4` calls SIDE 1. It REVERSES the compare below, and it is the only place the
+  // two sides' off-screen directions differ. `exg` swaps the full longs; both halves that matter
+  // here were written by `move.w`, and `cmp.w` reads the low words only.
+  if (u16(d7) === 0) { const t = d0; d0 = d1; d1 = t; }
+  // $25E890 cmp.w D1,D0 / $25E892 ble.s -- SIGNED, and it lands on the NEXT block's head (block C's
+  // lands on the `rts`). Past the limit -> this block emits nothing at all this frame.
+  if (i16(d0) <= i16(d1)) return false;
+  // $25E894 move.w ($6,A1),D1 / $25E898 add.w D1,(<coord>,A6) -- the constant slide off screen.
+  ram.setU16(a6 + blk.coord, u16(ram.u16(a6 + blk.coord) + rom.u16(a1 + A.step)));
+  return true;
+}
+
+/** `$25E824..$25EB2D` -- 778 bytes, the SEVENTH of the eight shared select-screen draws, and the
+ *  one that MOVES the menu. Plus its 54-byte subroutine `$25EB2E`, five `bsr` sites.
+ *
+ *  **`($0A..$27,A6)` IS FIVE 6-BYTE SUB-BLOCKS `{speed, tolerance, position}`, NOT LOOSE FIELDS.**
+ *  `HANDLER0.d1At: [$14, $1A, $20, $26]` had already half-noticed the $6 stride; `($0E,A6)` is
+ *  element 0 of the same array and `HANDLER0.d0At` names it separately only because state 0 seeds it
+ *  with the other coordinate.
+ *
+ *      A  $0A/$0C/$0E -> emits 3, 4     B  $10/$12/$14 -> emits 1, 2
+ *      C  $16/$18/$1A -> emit 7         D  $1C/$1E/$20 -> emit 6      E  $22/$24/$26 -> emit 5
+ *
+ *  **TWO CURSORS, AND THEY GATE DIFFERENT STATES.** `($2,A6)` is state 1's two-option cursor and
+ *  picks between blocks A and B; `($4,A6)` is states 4 and 7's three-option cursor (bounded 0..2 by
+ *  `$25D402`) and picks among C, D and E. `$25E846 cmpi.b #$1,($1,A6)` runs the pair, `$25E99E
+ *  cmpi.b #$4` and `$25E9A8 cmpi.b #$7` run the triple, and anything else is an immediate `rts`.
+ *
+ *  **NEITHER STATE GATE IS DEAD.** `confirmAndDraw`'s no-confirm path skips the state write and
+ *  falls into the draws, so `($1,A6)` is still 1 or still 4 when this runs. W374 briefly recorded
+ *  `$25EDF8`'s and `$25F074`'s `cmpi.b #$4` gates as dead on the old early-`return` model and both
+ *  claims were withdrawn; the same reasoning applies here. Read `confirmAndDraw`'s comment first.
+ *
+ *  **THE SELECTED ITEM EASES HOME; THE OTHERS SLIDE OFF AND STOP DRAWING PAST THE LIMIT.** The
+ *  fly-out arm re-seeds `{$0060, $0C00}` every frame, so the damping always restarts from the top,
+ *  and its `ble.s` lands on the NEXT block's head -- block C's on the `rts` -- so an item past the
+ *  limit contributes no sprite at all.
+ *
+ *  **BLOCK A'S CURSOR TEST IS INVERTED AGAINST BLOCK B'S.** `$25E854 beq.s` versus `$25E8FA
+ *  bne.s`, on the same `tst.w ($2,A6)`. Copy B's sense into A and both halves of the pair fly out
+ *  together on one cursor value and both ease home on the other.
+ *
+ *  **THE `exg D0,D1` RUNS ON SIDE 1 ONLY** (`tst.w D7 / bne` skips it, and D7 == 0 is side 1), and
+ *  it REVERSES the limit compare. The two records slide off opposite edges, and the `exg` is the
+ *  entire mechanism -- there is no second limit word.
+ *
+ *  **`$813098` GATES ONLY BLOCKS E/D/C's DRAW, AND IT SITS AFTER THE MOVEMENT.** The stepping and
+ *  the damping run every loop; only the `jsr $23DFB4` is first-loop-only. Blocks B and A have no
+ *  such test at all. Hoisting the gate to the top of those blocks freezes the three-option menu.
+ *
+ *  **`($2C,A6)` IS THE POINT OF THE ROUTINE.** This is its SOLE WRITER -- `clr.w` at `$25E842` and
+ *  `move.w #$1` at the five "arrived" sites -- and `$25EDF8` and `$25F074` are its SOLE READERS. It
+ *  means "the selected item finished sliding home this frame". Because `$25E824` was unported it had
+ *  been permanently 0, so `$25EDF8`'s timer arm and `$25F074`'s emit 2 plus its `($66,A6)` ramp
+ *  advance were both permanently OFF. Porting this turns them on.
+ *
+ *  **NOTHING IS INHERITED BETWEEN THE SEVEN EMITS.** All seven load D1, D2, D3 and D4 fresh, which
+ *  is the opposite of `$25E220`. D3's and D4's high halves are inherited garbage at every site and
+ *  unobservable, because `$23DFB4` consumes both as words.
+ *
+ *  **THE ANIMATION IS FOUR FRAMES AND THE `mulu` YIELDS A BYTE DELTA DIRECTLY** -- `moveq #$3 /
+ *  and.w $80390A / mulu.w #$0184` (emit 2) and `#$0104` (emit 4), added to `($14,A0)` / `($18,A0)`
+ *  with `add.l`. This is NOT `$25EDF8`'s eight-frame `(counter & $E) * 2` index idiom; the two look
+ *  alike and produce different arts.
+ *
+ *  **A0 IS SEVEN ART LONGS AND IS NOT IN EMIT ORDER.** Entries 0..4 are the five sub-blocks' STATIC
+ *  art in SUB-BLOCK order (`$10`, `$0A`, `$22`, `$1C`, `$16`); entries 5..6 are the animation bases.
+ *  **A1 IS A FLAT 13-WORD STRUCT AND IS NEVER ADVANCED** -- the only writes to it are the two `lea`.
+ *  `HANDLER0.coord` is exactly `+$00` and `+$04` of the two A1 tables, side for side, which is an
+ *  independent read of the same constants by already-shipped code.
+ *
+ *  `($36,A6)` is 0 as shipped (`HANDLER0.clearWords` clears it and no writer exists in
+ *  `$25C000..$260000`), so D6 contributes nothing to emits 5-7 today. Read from RAM anyway, exactly
+ *  as `draw25E6CE` reads `($3E,A6)`: a writer outside that range would be invisible if it were
+ *  folded to a constant.
+ *
+ *  Inherited: **A6 and D7 only**. A4/A5 untouched. `$23DFB4` pushes and restores A0 and D0, so
+ *  A0, A1, D5, D6 and D7 survive all seven calls -- that is what lets the head's `lea`s and the
+ *  negated D6 reach the last emit. */
+export function draw25E824(ram, rom, ctx, a6, d7) {
+  const D = DRAW_25E824;
+  const A = D.a1;
+  // $25E824/$25E828 lea the FALL-THROUGH set and $25E830 neg.w D6; $25E834 beq keeps them on
+  // D7 == 0. `sideFromD7_25D4E4` INVERTS, so the fall-through set is SIDE 1. Same `beq` sense as
+  // $25EDF8: swap the two rows of `DRAW_25E824.tables` and every sprite lands on the wrong record.
+  const side = sideFromD7_25D4E4(d7);
+  const t = D.tables[side];
+  const a0 = t.a0;
+  const a1 = t.a1;
+  // $25E82C / $25E83E move.w ($36,A6),D6, and $25E830 neg.w D6 on the fall-through ONLY.
+  const d6 = t.negD6 ? u16(-ram.u16(a6 + D.off36)) : ram.u16(a6 + D.off36);
+  const tables = ctx.tables;
+
+  ram.setU16(a6 + D.flagAt, 0);                              // $25E842 clr.w ($2C,A6) -- ALWAYS
+
+  const state = ram.u8(a6 + D.stateAt);
+  if (state === D.state1) {
+    // $25E846 cmpi.b #$1,($1,A6) -- the immediate word $0001 comes BEFORE the displacement $0001.
+    // Both happen to be $01 here, which is exactly the coincidence that hides an operand-order slip.
+    const cursor = ram.u16(a6 + D.pairCursorAt);             // $25E850 / $25E8F6 tst.w ($2,A6)
+    for (const blk of D.pairs) {
+      // BLOCK B is `beq.s` (fly out when the cursor is 0); BLOCK A is `bne.s`, the INVERSE.
+      const selected = blk.flyWhenZero ? cursor !== 0 : cursor === 0;
+      // The `ble.s` at $25E892 lands on $25E8F6 (block A's head) and the one at $25E938 on $25E99E
+      // (the state-4 compare), so in both cases it is exactly "skip the rest of this block".
+      if (!moveBlock25E850(ram, rom, ctx, a6, d7, a1, blk, selected, tables)) continue;
+
+      // ---- FIRST EMIT ($25E89C join / $25E942 join). D1 is a (high, low) pair: the `swap` at
+      // $25E8A4 puts the A1 base word in the HIGH half and the record coordinate in the LOW.
+      const hi1 = u16(rom.u16(a1 + A.base) + D.coordBias);   // move.w ($8,A1),D1 / addi.w #$E600
+      const lo1 = u16(ram.u16(a6 + blk.coord) + D.coordBias);   // move.w (<coord>,A6),D1 / addi.w
+      enqueueRegistersThroughStub(ram, rom, D.stub, ((hi1 << 16) | lo1) >>> 0,
+        rom.u32(a0 + blk.art),                               // move.l (A0),D2 / move.l ($4,A0),D2
+        D.attrMain,                                          // move.w #$1AD0,D3
+        rom.u16(a1 + blk.d4));                               // move.w ($A,A1),D4 / ($C,A1),D4
+
+      // ---- SECOND EMIT, THE ANIMATED ONE. Every register is rebuilt from scratch; nothing at all
+      // is inherited from the emit above.
+      const an = blk.anim;
+      // $25E8BE..$25E8CA: base + $FA00 (block A: $FC00) + ($12,A1) (A: $16,A1), then swap.
+      const hi2 = u16(u16(rom.u16(a1 + A.base) + an.hiBias) + rom.u16(a1 + an.hi));
+      // $25E8CC..$25E8D6: coordinate + $F000 + ($14,A1) (A: $18,A1). BOTH blocks bias by $F000.
+      const lo2 = u16(u16(ram.u16(a6 + blk.coord) + an.loBias) + rom.u16(a1 + an.lo));
+      // $25E8D8 moveq #$3,D2 / and.w $80390A,D2 / mulu.w #$0184 (A: #$0104) / add.l ($14,A0),D2
+      // (A: ($18,A0)). FOUR frames, and the multiply is the BYTE DELTA -- there is no index step.
+      const frame = u16(D.animMask & ram.u16(D.frameCounter));
+      const d2 = ((frame * an.stride + rom.u32(a0 + an.art)) >>> 0);
+      enqueueRegistersThroughStub(ram, rom, D.stub, ((hi2 << 16) | lo2) >>> 0, d2,
+        an.attr,                                             // move.w #$0680,D3 / #$0480,D3
+        rom.u16(a1 + an.d4));                                // move.w ($E,A1),D4 / ($10,A1),D4
+    }
+    // Block A's second emit at $25E998 FALLS THROUGH into $25E99E, and there is no `bra` in
+    // between. Returning is equivalent and not a shortcut: `($1,A6)` is still 1 here -- nothing in
+    // the routine writes it -- so both `cmpi.b` below fail and the fall-through reaches the `rts`.
+    return;
+  }
+
+  // $25E99E cmpi.b #$4,($1,A6) / beq.w $25E9B2 and $25E9A8 cmpi.b #$7,($1,A6) / bne.w $25EB2C.
+  // NEITHER is dead. State 4 is reached on any frame the player does not confirm.
+  if (state !== D.state4 && state !== D.state7) return;      // $25E9AE bne.w -> the rts
+
+  const cursor = ram.u16(a6 + D.tripleCursorAt);
+  for (const blk of D.triples) {
+    // $25E9B2 / $25EA30 / $25EAAE cmpi.w #N,($4,A6) -- `$0C6E` is cmpi.W. Four instructions from the
+    // BYTE state compares above and easy to read as a byte; a byte compare here would match on
+    // $XX02 as well as $0002.
+    const selected = cursor === blk.cursor;
+    if (!moveBlock25E850(ram, rom, ctx, a6, d7, a1, blk, selected, tables)) continue;
+
+    // $25EA00 tst.w $813098 / bne.w -- FIRST LOOP ONLY, and it is AFTER the movement, so the
+    // stepping and the damping above already ran. Only the draw is gated. Blocks B and A have no
+    // such test anywhere.
+    if (ram.u16(D.loopCounter) !== 0) continue;
+
+    // $25EA0A..$25EA1C. D6 -- the SIDE-SIGNED ($36,A6) -- lands on the HIGH half, before the swap.
+    const hi = u16(u16(rom.u16(a1 + A.base) + D.coordBias) + d6);
+    const lo = u16(ram.u16(a6 + blk.coord) + D.coordBias);
+    enqueueRegistersThroughStub(ram, rom, D.stub, ((hi << 16) | lo) >>> 0,
+      rom.u32(a0 + blk.art),                                 // move.l ($8,A0),D2 -- ($C,A0), ($10,A0)
+      D.attrMain,                                            // move.w #$1AD0,D3
+      blk.d4);                                               // move.w #$1B,D4 -- an IMMEDIATE here
+  }
+  // $25EB2C rts
 }

@@ -245,21 +245,30 @@ test('W373 the shared draws run ONCE across both records', { skip: SKIP }, async
   ram.setU8(a5 + 0x07, 0xff);
   ram.setU16(P1EDGE, 0x10);                                  // confirm both
 
-  // $25E220 is PORTED now, so only its sibling still notes. Count that one.
-  const gated = HANDLER4.drawsA[1];
+  // W374: both bit-0 draws ($25E220 and $25E29E) are PORTED now, so neither notes any more. The
+  // observable is the real one -- sprites reaching the bucket -- which is strictly stronger than
+  // the note this test used to count.
+  const { BUCKETS } = await import('../src/spritequeue.js');
+  const emitted = () => BUCKETS.reduce((n, b) => n + ram.u16(b.counter), 0);
+  void notes;
+
+  let before = emitted();
   phase4_25D402(ram, rom, ctx, a5, SCREEN17.recs, 1);        // record 0
-  assert.equal(notes.filter((n) => n === gated).length, 1, 'the first record did the gated draws');
-  notes.length = 0;
+  const first = emitted() - before;
+  assert.ok(first > 0, 'the first record did the gated draws');
+
+  before = emitted();
   phase4_25D402(ram, rom, ctx, a5, SCREEN17.recs + SCREEN17.recStride, 0);   // record 1
-  assert.equal(notes.filter((n) => n === gated).length, 0,
-    'the second saw the bit already set and skipped them');
+  const second = emitted() - before;
+  assert.ok(second < first,
+    'the second saw bit 0 already set and skipped the gated draws, so it emitted strictly less');
 
   // And clearing ($3,A5) -- which the walk does every frame -- re-arms them.
   ram.setU8(a5 + HANDLER4.sharedGuard, 0);
-  notes.length = 0;
+  before = emitted();
   phase4_25D402(ram, rom, ctx, a5, SCREEN17.recs, 1);
-  assert.equal(notes.filter((n) => n === gated).length, 1,
-    'clearing the guard re-arms them for the next frame');
+  assert.equal(emitted() - before, first,
+    'clearing the guard re-arms them, and record 0 emits exactly what it did the first time');
 });
 
 test('W373 $25D1DA is a SECOND cursor: two options, no exclusion, conditional sound',

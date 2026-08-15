@@ -2906,6 +2906,32 @@ SHOT_WINDOWS.extend([
     (0x223EF8, 0x0040, "W373: slot [9] record-state-0 palette, bank 15 through $24150A. Sixty-four "
                        "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
                        "slot [17]; this one is slot [9]'s own"),
+    # ---- W374: $25E824's four tables ---------------------------------------------------------
+    # Bounds come from the LARGEST DISPLACEMENT each table is read at, not from adjacency. They do
+    # also tile $25E7B8..$25E823 exactly, ending on the routine's own first opcode at $25E824, with
+    # the lower end pinned by the rts at $25E7B6 -- but that is corroboration (trap 8).
+    (0x25E7B8, 0x001C, "W374: $25E824's A0 art table, SIDE 0 (the D7 != 0 override lea at $25E836). "
+                       "Seven longs, one per emit. Bound STATED BY THE CODE: the largest "
+                       "displacement is $18, read as add.l ($18,A0),D2 at $25E98C, so $18 + 4 = $1C. "
+                       "NOT in emit order -- entries 0..4 are the five record sub-blocks' STATIC art "
+                       "in sub-block order ($10,$0A,$22,$1C,$16) and entries 5..6 are the ANIMATION "
+                       "BASES for emits 2 and 4, stepped by (frame & 3) * $184 and * $104"),
+    (0x25E7D4, 0x001C, "W374: $25E824's A0 art table, SIDE 1 -- the fall-through lea at $25E824, the "
+                       "side that also NEGATES D6. Same $18 + 4 bound and the same seven-entry "
+                       "layout as side 0"),
+    (0x25E7F0, 0x001A, "W374: $25E824's A1 parameter table, SIDE 0. THIRTEEN words, and it is a FLAT "
+                       "STRUCT read by fixed displacement, NOT an array -- A1 is never advanced, the "
+                       "only writes to it being the two lea at $25E828/$25E83A. Bound STATED BY THE "
+                       "CODE: largest displacement $18, read as add.w ($18,A1),D1 at $25E97C, so "
+                       "$18 + 2 = $1A. Fields: +$00 HOME, +$02 ANGLE for $241812, +$04 off-screen "
+                       "LIMIT, +$06 fly-out STEP, +$08 the D1 high-word base read by ALL seven "
+                       "emits, +$0A/$0C/$0E/$10 the D4 for emits 1/3/2/4, +$12/$14 emit 2's high and "
+                       "low addends, +$16/$18 emit 4's. Corroborated independently by the existing "
+                       "port: HANDLER0.coord is [[$1A00,$E600],[$1E40,$5200]], which is exactly +$00 "
+                       "and +$04 of these two tables"),
+    (0x25E80A, 0x001A, "W374: $25E824's A1 parameter table, SIDE 1. Same $18 + 2 bound and the same "
+                       "thirteen-word field layout. Its +$00/+$04 are $1E40/$5200, the second half "
+                       "of HANDLER0.coord"),
     # ---- W374: $25E29E's zoom-flag ramp ------------------------------------------------------
     (0x25E480, 0x0040, "W374: $25E29E's ZOOM-FLAG ramp, SIXTEEN longwords, read as move.l (A4),D6 "
                        "with A4 = $25E480 + ($60,A6) and handed to $23E2F2 as its D6 zoom flags. "
