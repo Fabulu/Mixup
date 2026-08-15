@@ -40,7 +40,8 @@ import { Game } from '../src/main.js';
 import { COIN } from '../src/isr.js';
 import { COIN_BITS } from '../src/web/input.js';
 import { SOUND_WRAPPERS, STREAMING_LEAVES, postWrapper, SoundState } from '../src/sound.js';
-import { SCREEN8 } from '../src/objslot8.js';
+import { SCREEN8, setState25A764 } from '../src/objslot8.js';
+import { ALLOC } from '../src/objalloc.js';
 import { FRONTTEXT } from '../src/fronttext.js';
 import { Ram } from '../src/ram.js';
 
@@ -197,14 +198,33 @@ test('W377 $28C170 still has no WRAPPERS row and postWrapper still throws on it'
 // one a player reaches without any help: attract goes to state 12 and a coin lands there.
 //
 // The state / dual-gate writes below are SCAFFOLDING and are labelled as such: they put the
-// machine in a condition the cartridge reaches on its own but that a cold boot cannot reach
-// today, because the hiscore screen holds at state 2 (its chain content, `$24676A`, is unported)
-// and so state 12 is not currently on the cold path.
+// machine in a condition the cartridge reaches on its own but that this run does not reach at
+// +305, which is still inside arm 13's warning screen.
+//
+// **W389 HAD TO REPAIR THE STATE-12 SCAFFOLDING, and the reason is worth keeping.** It used to
+// be a bare `move.w #$C,$812E56`. That was harmless while arm 12's screen was a pair of counted
+// notes; now that `$25C2AE`/`$25C2EA` are ported it is not, because `($3,A5)`, the per-arm INIT
+// flag, is still 1 from arm 13. Writing the state word raw skips `$25A764`'s `clr.b ($3,A5)`, so
+// arm 12's init never runs, `$812E76` is zero, and `$25C300 jsr $24681A` walks `($2C)` off a null
+// handle -- `$2C is outside main RAM`. That is exactly the honest crash `objslot8.js`'s arm-2
+// comment describes for `$25B412`, and it is a property of the SCAFFOLDING, not of the port: on
+// every real path into arm 12 the transition goes through `$25A764` and the init runs first. The
+// fix is to make the scaffolding take the cartridge's own transition.
 // ---------------------------------------------------------------------------------------------
+
+/** The live slot [8] record in the allocator table -- the A5 `$25A764` expects. */
+function slot8Record(g) {
+  for (let i = 0; i < ALLOC.slots; i++) {
+    const a = ALLOC.table + i * ALLOC.stride;
+    if ((g.ram.u16(a) & 0xff) === 8) return a;
+  }
+  throw new Error('slot [8] is not in the object table');
+}
 
 for (const [name, seed, site] of [
   ['the dual-play gate $803926 ($25A7E2)', (g) => g.ram.setU16(0x803926, 1), '$25A7E2'],
-  ['state 12 ($25A7FA)', (g) => g.ram.setU16(SCREEN8.state, 0x000c), '$25A7FA'],
+  // W389 -- through `$25A764`, so `($3,A5)` is cleared and arm 12's init runs. See above.
+  ['state 12 ($25A7FA)', (g) => setState25A764(g.ram, slot8Record(g), 0x000c), '$25A7FA'],
 ]) {
   test(`W377 a coin taken through ${name} survives and counts $28C0FC`, () => {
     const g = coldGame();

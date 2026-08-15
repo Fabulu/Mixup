@@ -2,12 +2,79 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W388
+## START HERE -- W389
 
-### THE SUITE NOW TAKES ~675 SECONDS. IT EXCEEDS A 600s TIMEOUT.
+### THE SEQUENCER RUNS `13 -> 2 -> 12 -> 9` UNATTENDED
 
-Run it in the background or with a longer limit. Still **from the repo root** -- from
-`games/ddpdoj/` it reports 2833 pass / 12 fail / 356 SKIPPED and is meaningless.
+Ported arm 12 (`$25C2AE` init, `$25C2EA` body) as `SCREEN12` in `objslot8.js`. Real cold boot:
+`13 -> 2 (+302) -> 12 (+574) -> 9 (+878)`. It parks on **arm 9**, and **arm 9 is arm 12 again** on
+`$812E7A/$7C/$7E` instead of `$812E72/$74/$76`: same four-word clear, same `#$F0` timer, same
+`$24641A` init chain (from `$25C512`), same `$246710` state-1 chain (from `$25C530`), same two exits,
+no `$28CAE2`. **Near-verbatim from `SCREEN12`.**
+
+**ARM 12's EXIT DEPENDS ON THE FOLD, NOT ON `$24641A`.** My brief said it waits on the `$24641A`
+chain. Wrong: **state 0** waits on that one and frees it at `$25C30A`; **state 1** counts `$F0` down
+and loads a SECOND chain from a SECOND script (`$25C334 lea ($A0,PC)` -> `$25C3D6`) through
+**`$25C33A jsr $246710`**, and `$25C360`/`$25C36A` wait on THAT. Proved by ablation: revert the fold
+and arm 12 never reaches arm 9.
+
+### THE FOLD IS PER-HEAD, BECAUSE `$24652A` HAS A CONTENT BLOCK TOO
+
+`$246582..$2465D9` is `$24676A`'s twin instruction for instruction -- same `$24627A` dispatch, same
+`$246B38` timing, same `$2465D4 38db` snapshot -- **PLUS ONE INSTRUCTION**:
+`$246598 2558 000a  move.l (A0)+,($A,A2)` where `$246710` has `$24677E 257c 0024 6bb8 000a`.
+
+**So `$24652A`'s script is SIX words per node, not four.** An unconditional fold would have
+mis-parsed one of the two. `CHAIN_LOADERS` gained a third axis, `content`; `animobjects.js` gained
+`seedChainNode24676A` (one node) with `seedChainContent24676A` kept as the whole-chain wrapper.
+
+All four sites now build live chains and drain, each with an ablation that blanks only `($6)`:
+`objslot15.js:176`, `objslot7pool.js:410`, `hiscorename.js:338`, `hiscorescreen.js:543`. W388's
+cold-boot pins are unchanged.
+
+**W388's withheld-`ctx` was about the NOTE, not behaviour** -- the loader raised a `$24676A`
+deferral whose text would have been a lie at that call site. Folding deletes the note, so there is
+nothing left to withhold and `hiscorescreen.js` now passes `ctx` like everything else.
+
+### `stageend.js chainLoader24652A` IS A DUPLICATE PORT, AND IT IS THE HOLLOW ONE
+
+`animobjects.js loadAnimObjects24652A` (via `loadAnimObjectsNoFill`) already ports the same routine
+over the same `$810346`/`$80FA86` pools and **seeds all six words**. The `stageend.js` copy is
+hollow and the result screen uses it. Left off deliberately (`CHAIN_LOADERS[0].content: null`)
+because turning it on gives the result screen a real wait it has never had (`PRESENTATION_DEVIATION`
+DEV-2). **Largest remaining defect in that file, and it is one line -- decide deliberately.**
+
+### `queueKill` WAS SIX SITES, NOT ONE. TWO ARE STILL LIVE.
+
+`$288A34 jmp $241292` -> `$241292 lea ($4C,A5),A0` -> `$241238`, whose `$241252 22 90` is
+`move.l (A0),(A1)`. **The argument is the ID LONG, never the type word.**
+
+Fixed: `objslot13.js:203`, `objslot15.js:153`, `objslot7pool.js:579`, `objslot7pool.js:592`.
+**STILL BROKEN: `objslot17.js:194` (`$25CEB0`) and `objslot9.js:512` (`$25CAC2`).** One line each
+(`ram.u32(a5 + 0x4c)`).
+
+### THE SUITE TAKES ~170s, NOT 675s. MY W388 FIGURE WAS WRONG.
+
+Measured 167s wall clock on a quiet tree. **The 675s I recorded last wave was CONTENTION** from an
+agent running its own suite passes in parallel, and I wrote it up as growth. Still **from the repo
+root** -- from `games/ddpdoj/` it reports 2833 pass / 12 fail / 356 SKIPPED and is meaningless.
+
+### TRAP 16 AGAIN: A 4,000-FRAME TEST WOULD HAVE MISREAD A GATE
+
+`objslot15.js`'s load is gated on `$81E120` (drift), which only clears when the `$291FE2` sequence
+table reaches its `$FFFFFFFF` payload at **entry 46, cumulative delay 7,232 frames**. Short runs read
+that as a stall.
+
+### THREE NEW WINDOWS (555), AND STALE TEXT LEFT BEHIND
+
+`$25C3B8+$1E`, `$25C3D6+$12`, `$225A38+$40`, with `check_arm12_chain_scripts`. Both script bounds
+land on something the code states (`$25C3D6`, then `$25C3E8 = 48E7`, arm 9's init). `$246BF8` is
+already inside W91's `$246BB8+$80` and was NOT re-declared.
+
+**Not touched, outside that wave's grant:** `src/main.js:244` still lists `$25C2AE`/`$25C2EA` as
+counted notes, and `tests/w307namegrid.test.js:246` still says W303 counted `$246710`'s seeding.
+
+## W388 NOTES
 
 ### ARM 2 FINISHED. THE ATTRACT SEQUENCER ADVANCES `13 -> 2 -> 12`.
 

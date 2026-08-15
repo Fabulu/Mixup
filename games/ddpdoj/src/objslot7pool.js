@@ -484,6 +484,8 @@ export const SLOT7 = Object.freeze({
   // NOT kill codes -- these are the DISPATCH TYPES of the screen that runs next. $11 is slot [17]
   // and $0F is slot [15], so slot [7] forks to a different screen depending on the menu's answer.
   nextNormal: 0x0f, nextChosen: 0x11,
+  // W389 -- `$241292 lea ($4C,A5),A0`. The object's ID LONG, and `queueKill`'s real argument.
+  idAt: 0x4c,
 });
 
 /** `$29079E` -- reset the resource loader. Four clears and an rts, and the only thing that puts
@@ -576,7 +578,10 @@ function state2_290746(ram, rom, a5, ctx) {
     ram.setU16(SLOT7.gate, 1);                               // $290762
     stageCreate(ram, SLOT7.nextChosen,                       // $29076A moveq #$11 -> slot [17]
       (t) => rom.u16(SLOT7.dispatch + t * 8 + 4));           // $29076E jsr $241182
-    queueKill(ram, ram.u16(a5 + 0x00));                      // $290774 JMP $241292
+    // W389 -- `$241292` is `lea ($4C,A5),A0` and `$241252 move.l (A0),(A1)` queues the LONG
+    // through it, so the argument is the ID. This passed the TYPE WORD, `killById` compared it
+    // 16 bits wide against a 32-bit id, never matched, and slot [7] never died.
+    queueKill(ram, ram.u32(a5 + SLOT7.idAt));                // $290774 JMP $241292
     return;
   }
   // $29077C -- the pass counter against the PLAYER COUNT. Not a fixed 2: a one-player game runs
@@ -589,7 +594,7 @@ function state2_290746(ram, rom, a5, ctx) {
   }
   stageCreate(ram, SLOT7.nextNormal,                          // $29078C moveq #$F -> slot [15]
     (t) => rom.u16(SLOT7.dispatch + t * 8 + 4));             // $290790 jsr $241182
-  queueKill(ram, ram.u16(a5 + 0x00));                        // $290796 JMP $241292
+  queueKill(ram, ram.u32(a5 + SLOT7.idAt));                   // $290796 JMP $241292 -- same fix
 }
 
 /** `$290BE8` -- THE DISPATCH ENTRY, and state 1 is its fall-through. */

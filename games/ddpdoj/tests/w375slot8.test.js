@@ -685,12 +685,17 @@ test('W375 states 4, 6, 7, 8, 10, 11 do nothing at all', { skip: SKIP }, async (
   }
 });
 
+// **W389 REMOVED ARM 12 FROM THIS LIST, and that is the only change.** The list is "the arms
+// whose screens are counted rather than ported", and arm 12's `$25C2AE`/`$25C2EA` are ported now
+// (`objslot8.js screen12Init25C2AE` / `screen12Body25C2EA`), so it can no longer note its init and
+// this test's `notes its init` assertion could not survive. It also no longer HOLDS: it drains its
+// two chains and hands on to state 9, which `w389chainloader.test.js` SECTION 5 measures on a real
+// cold boot. The other three arms are untouched and still assert exactly what they did.
 test('W375 the unported arms HOLD rather than inventing an advance', { skip: SKIP }, async () => {
   const arms = [
     { st: 0x1, init: 0x25bbb4, body: 0x25bd7c },
     { st: 0x5, init: 0x25c592, body: 0x25c6d4 },
     { st: 0x9, init: 0x25c3e8, body: 0x25c424 },
-    { st: 0xc, init: 0x25c2ae, body: 0x25c2ea },
   ];
   for (const arm of arms) {
     const f = await gated();

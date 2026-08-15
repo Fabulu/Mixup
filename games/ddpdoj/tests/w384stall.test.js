@@ -384,8 +384,13 @@ test('W384 RAM is NOT a fixed point -- thousands of bytes move over the run\'s l
   // answered zero. W388 ports `$24676A..$2467C3` (`animobjects.js seedChainContent24676A`), the
   // chain drains in 16 frames, `$25B4D2` reports finished and `$25A940` sets state 12. The claim
   // above is still made by the two byte-count assertions and is UNCHANGED.
-  assert.equal(RUN.g.ram.u16(STATE), 0x000c,
-    'slot [8] is on arm 12 -- arm 2 RAN OUT and handed on (W388, w376attract.test.js)');
+  // **W389 MOVES IT ONE ARM FURTHER AGAIN**, for the same incidental reason: arm 12's own screen
+  // (`$25C2AE`/`$25C2EA`) is ported now, it drains its two chains and `$25AA2C` sets state 9.
+  // Arm 9 is the new unported end of the chain. This test's CLAIM -- that RAM keeps moving -- is
+  // made by the byte-count assertions above and is untouched; only the incidental arm number
+  // could not survive.
+  assert.equal(RUN.g.ram.u16(STATE), 0x0009,
+    'slot [8] is on arm 9 -- arm 2 handed to 12 (W388) and 12 handed to 9 (W389)');
 });
 
 // =============================================================================================

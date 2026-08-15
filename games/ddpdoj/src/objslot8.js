@@ -63,6 +63,9 @@ import { clear25C57E } from './objslot9.js';
 import { menuDips23C932 } from './tallyscreen.js';
 import { hiscoreScreen25B412 } from './hiscorescreen.js';
 import { loadAnimObjects246410 } from './animobjects.js';
+// W389 -- arm 12's screen is arm 2's twin and uses the same three chain primitives.
+import { chainCheck24681A, chainFree246800, chainLoader246710 } from './stageend.js';
+import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { txFontString259FF8, creditLine23CFDE, blinkOff25AFD8 } from './fronttext.js';
 
 export const SCREEN8 = Object.freeze({
@@ -637,14 +640,120 @@ function arm9(ram, a5, ctx) {
     '$25A9F8 jsr $25C424 -- arm 9\'s per-frame body; CARRY CLEAR -> state 1 ($25AA02/$25AA06)');
 }
 
-/** ARM 12, `$25AA10` -> state 9. Init `$25C2AE`, body `$25C2EA`, both unported. */
-function arm12(ram, a5, ctx) {
+// ---------------------------------------------------------------------------------------------
+// W389 -- ARM 12'S SCREEN, `$25C2AE` (init) AND `$25C2EA` (body). ARM 2'S TWIN, EXACTLY.
+// ---------------------------------------------------------------------------------------------
+//
+// **AND THE BRIEF FOR THIS WAVE HAD IT BACKWARDS ABOUT WHICH LOADER MATTERS.** It said the arm
+// waits on the chain its init builds through `$24641A` -- the loader that already seeds content --
+// and so might drain the moment it was transcribed. The sweep says otherwise:
+//
+//   25C2CC  41fa 00ea       lea ($EA,PC),A0          -> $25C2CE+$EA = $25C3B8   THE INIT SCRIPT
+//   25C2D2  4eb9 0024641a   jsr $24641A              <- 14-byte entries, seeds content
+//   25C2D8  23c0 00812e76   move.l D0,$812E76
+//   ...
+//   25C334  41fa 00a0       lea ($A0,PC),A0          -> $25C336+$A0 = $25C3D6   A SECOND SCRIPT
+//   25C33A  4eb9 00246710   jsr $246710              <- 8-byte entries, and THIS is the one
+//   25C340  23c0 00812e76   move.l D0,$812E76        <- OVERWRITING the init's handle
+//
+// State 0 waits on the init's chain and FREES it (`$25C30A jsr $246800`); state 1 counts `$812E74`
+// down from `$F0` and loads the SECOND chain through `$246710`; state 2 waits on THAT. So arm 12's
+// exit depended on exactly the defect W388 found and W389 folded, in exactly the same place arm 2
+// did. The two screens are the same machine with different scripts and one extra cue.
+//
+// THE BOUNDS ARE IN THE DATA, not in an absence: `$25C3B8` is `count 2` and `2 + 2*14 = $1E` lands
+// on `$25C3D6`; `$25C3D6` is `count 2` and `2 + 2*8 = $12` lands on `$25C3E8`, which is `48E7`,
+// the `movem.l` opening ARM 9's init -- a routine this file already names.
+//
+// TWO CALLEES STAY COUNTED, and neither can hold the machine:
+//   `$25BB6C` -- 19 instructions writing `$900000`, the TX tile plane. Presentation, unclaimed by
+//                any file in the port, and the same tier as arm 1/3's `$25BBB4` next door.
+//   `$28CAE2` -- `move.w #$44,D0 / #$FF,D1 / #$14,D2 / bsr $28C02A`, a sound post through a
+//                different packer than `sound.js`'s `WRAPPERS` describes. Counted for the same
+//                reason arm 3's `$28C170` is: posting it would THROW.
+export const SCREEN12 = Object.freeze({
+  init: 0x25c2ae, initEnd: 0x25c2ea,   // $25C2AE..$25C2E9 -- 60 bytes, `rts` AT $25C2E8
+  body: 0x25c2ea,
+  state: 0x812e72,                     // $25C2B2 lea $812E72,A0 -- and the $25C2EE cmpi base
+  clearWords: 4,                       // $25C2B8 move.w #$3,D0 -- dbra runs FOUR times
+  timer: 0x812e74,                     // $25C2C4 move.w #$F0,$812E74
+  timerInit: 0xf0,
+  handle: 0x812e76,                    // $25C2D8 / $25C340 move.l D0,$812E76
+  initScript: 0x25c3b8,                // $25C2CC lea ($EA,PC),A0 -- $24641A's, 14 bytes/entry
+  loadScript: 0x25c3d6,                // $25C334 lea ($A0,PC),A0 -- $246710's, 8 bytes/entry
+  scriptNodes: 2,                      // both count words
+  txBlock: 0x25bb6c,                   // $25C2DE jsr $25BB6C -- counted
+  cue: 0x28cae2,                       // $25C318 jsr $28CAE2 -- counted
+  draw: 0x25c39c,                      // $25C374 bsr.w -> $25C376 + $26
+  emit: 0x23dece,                      // $25C3B0 jmp $23DECE -- a TAIL jump out of the draw
+  drawD1: 0x20000e00, drawD2: 0x00336164, drawD3: 0x1870,
+});
+
+/** `$25C2AE` -- arm 12's screen INIT. Four words cleared, the `$F0` timer armed, the first chain
+ *  loaded through `$24641A` and its handle stored. */
+export function screen12Init25C2AE(ram, rom, ctx) {
+  for (let i = 0; i < SCREEN12.clearWords; i++) {              // $25C2B8 #$3 + dbra = FOUR
+    ram.setU16(SCREEN12.state + i * 2, 0);                     // $25C2BE move.w D1,(A0)+
+  }
+  ram.setU16(SCREEN12.timer, SCREEN12.timerInit);              // $25C2C4
+  // $25C2D2 jsr $24641A -- `$246410` with D6 = 0, which `animobjects.js` already ports.
+  ram.setU32(SCREEN12.handle, loadAnimObjects246410(ram, rom, SCREEN12.initScript, 0) >>> 0);
+  ctx?.unported?.note(SCREEN12.txBlock, '$25C2DE jsr $25BB6C -- arm 12\'s TX plane block, 19 '
+    + 'instructions writing $900000 through a $2302E0 table. Presentation; it cannot gate the '
+    + 'screen, whose only exit is the $246710 chain state 2 waits on');
+}
+
+/**
+ * `$25C2EA` -- one frame of arm 12's screen. Three states that FALL THROUGH into each other,
+ * exactly as `hiscoreScreen25B412` does.
+ *
+ * @returns {boolean} the CARRY: `true` ($25C37C `ori.w #$1,SR`) means still running, `false`
+ *   ($25C386 `move.w D0,D0`) means finished. `$25AA28 bcs` skips the advance on `true`.
+ */
+export function screen12Body25C2EA(ram, rom, ctx) {
+  if (ram.u16(SCREEN12.state) === 0) {                         // $25C2EE cmpi.w #$0
+    if (chainCheck24681A(ram, ram.u32(SCREEN12.handle)) === 0) {   // $25C300 jsr / $25C306 bne
+      chainFree246800(ram, ram.u32(SCREEN12.handle));          // $25C30A jsr $246800
+      ram.setU16(SCREEN12.state, 1);                           // $25C310
+      ctx?.unported?.note(SCREEN12.cue, '$25C318 jsr $28CAE2 -- D0=$44, D1=$FF, D2=$14 into '
+        + '$28C02A. Counted for the same reason arm 3\'s $28C170 is: it is not a $28BB04 '
+        + 'wrapper, so postWrapper throws on it');
+    }
+  }
+  if (ram.u16(SCREEN12.state) === 1) {                         // $25C31E -- FALLS THROUGH
+    const t = u16(ram.u16(SCREEN12.timer) - 1);                // $25C32A subq.w #1
+    ram.setU16(SCREEN12.timer, t);
+    if (t === 0) {                                             // $25C330 bne
+      // $25C334/$25C33A -- the SECOND script, through the SECOND loader. W389's fold is what
+      // makes the nodes this builds visible to `$24683E`.
+      ram.setU32(SCREEN12.handle,                              // $25C340
+        chainLoader246710(ram, rom, SCREEN12.loadScript, ctx) >>> 0);
+      ram.setU16(SCREEN12.state, 2);                           // $25C346
+    }
+  }
+  if (ram.u16(SCREEN12.state) === 2) {                         // $25C34E
+    if (chainCheck24681A(ram, ram.u32(SCREEN12.handle)) === 0) {   // $25C360 / $25C366 bne
+      chainFree246800(ram, ram.u32(SCREEN12.handle));          // $25C36A jsr $246800
+      return false;                                            // $25C370 bra $25C382 -- carry CLEAR
+    }
+  }
+  // $25C374 bsr $25C39C -- ONE register-convention enqueue of four immediates, tail-jumping to
+  // $23DECE. Every state that is still running reaches it; the finished frame skips it, which is
+  // the same one-frame gap arm 2 has.
+  enqueueRegistersThroughStub(ram, rom, SCREEN12.emit,
+    SCREEN12.drawD1, SCREEN12.drawD2, SCREEN12.drawD3, 0);     // $25C39C..$25C3B4
+  return true;                                                 // $25C37C ori.w #$1,SR
+}
+
+/** ARM 12, `$25AA10` -> state 9. W389 ports both halves; see `SCREEN12` above. */
+function arm12(ram, rom, a5, ctx) {
   if (ram.u8(a5 + SCREEN8.inited) === 0) {                     // $25AA10/$25AA14
     ram.setU8(a5 + SCREEN8.inited, 1);                         // $25AA16
-    ctx?.unported?.note(0x25c2ae, '$25AA1C jsr $25C2AE -- arm 12\'s screen INIT');
+    screen12Init25C2AE(ram, rom, ctx);                         // $25AA1C jsr $25C2AE
   }
-  ctx?.unported?.note(0x25c2ea,
-    '$25AA22 jsr $25C2EA -- arm 12\'s per-frame body; CARRY CLEAR -> state 9 ($25AA2C/$25AA30)');
+  if (!screen12Body25C2EA(ram, rom, ctx)) {                    // $25AA22 jsr / $25AA28 bcs
+    setState25A764(ram, a5, 0x09);                             // $25AA2C moveq #$9 / $25AA30
+  }
 }
 
 /**
@@ -810,7 +919,7 @@ function dispatchTail25A82C(ram, rom, a5, ctx) {
     case 0x9: arm9(ram, a5, ctx); return;                      // $25A9E6
     case 0xa: armRts(); return;                                // $25AA0C
     case 0xb: armRts(); return;                                // $25AA0E
-    case 0xc: arm12(ram, a5, ctx); return;                     // $25AA10
+    case 0xc: arm12(ram, rom, a5, ctx); return;                // $25AA10
     case 0xd: arm13(ram, rom, a5, ctx); return;                // $25ABF6
     case 0xe: arm14(ram, rom, ctx); return;                    // $25AC92
     default:

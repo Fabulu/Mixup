@@ -496,8 +496,10 @@ test('W387 SECTION 5 ABLATION: drop entry [12] and the machine STOPS at type $C 
   assert.ok(RUN.types.has(TYPE_8), 'WITH the entry: type 8 is back');
   assert.ok(!RUN.types.has(TYPE_C), '...type $C is gone');
   // W388: was `0x0002`. Arm 2 no longer holds -- its palette chain drains and it hands on to
-  // arm 12. The ablation's claim is the CONTRAST with `$E` above, which is unchanged.
-  assert.equal(RUN.g.ram.u16(STATE), 0x000c, '...and $812E56 has moved on through arm 2 to arm 12');
+  // arm 12. **W389: was `0x000C`.** Arm 12 no longer holds either: `$25C2AE`/`$25C2EA` are ported
+  // and it hands on to arm 9. The ablation's claim is the CONTRAST with `$E` above, which is
+  // unchanged; only the incidental resting arm could not survive.
+  assert.equal(RUN.g.ram.u16(STATE), 0x0009, '...and $812E56 has moved on 2 -> 12 -> 9');
 });
 
 // ===============================================================================================
@@ -728,8 +730,8 @@ test('W387 SECTION 8: the loop closes onto the SAME machine a plain cold boot re
   g.ram.setU8(0x803957, 1);
   for (let f = 1; f <= 5000; f++) g.step(NO_PLAYER);
 
-  // W388: this was `0x0002` -- see the re-base note at the foot of this test.
-  assert.equal(g.ram.u16(STATE), 0x000c, 'a plain cold boot rests at $812E56 = 12, arm 12');
+  // W388: this was `0x0002`; W389: `0x000C` -- see the re-base note at the foot of this test.
+  assert.equal(g.ram.u16(STATE), 0x0009, 'a plain cold boot rests at $812E56 = 9, arm 9');
   assert.equal(RUN.g.ram.u16(STATE), g.ram.u16(STATE), '...and so does the run that looped back');
   assert.equal(RUN.g.ram.u16(0x812e5c), g.ram.u16(0x812e5c),
     '...with the high-score screen in the same internal state ($812E5C)');
@@ -742,9 +744,13 @@ test('W387 SECTION 8: the loop closes onto the SAME machine a plain cold boot re
   // (`$24676A..$2467C3`) is ported in `animobjects.js`, the eight-node chain drains in 16 frames,
   // and `$25A940` moves the sequencer to arm 12.
   //
+  // **AND W389 CAME THROUGH THE SAME WAY.** Arm 12's own screen (`$25C2AE`/`$25C2EA`) is ported
+  // now, it drains its two chains and `$25AA2C` hands on to arm 9 at +878. Arm 9 is the new
+  // unported end of the chain.
+  //
   // The STRUCTURAL claim this test carries is untouched and is the one that matters: the looped
-  // run and the plain cold boot land on the SAME machine. Both now rest at 12 instead of 2.
-  assert.equal(g.ram.u16(STATE), 0x000c, 'both runs rest on arm 12, not arm 2 (W388)');
+  // run and the plain cold boot land on the SAME machine. Both now rest at 9.
+  assert.equal(g.ram.u16(STATE), 0x0009, 'both runs rest on arm 9 (W389), not 12 or 2');
   assert.equal(g.ram.u16(0x812e5c), 0x0002,
     "...with the high-score screen's own state left at 2 by the $246800 on its way out");
 });

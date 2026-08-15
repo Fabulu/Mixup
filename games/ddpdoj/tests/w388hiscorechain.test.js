@@ -235,10 +235,19 @@ const RUN = (() => {
   g.ram.setU8(0x803957, 1);
   const marks = [];
   let prevS = -1, prevSub = -1, seedFrame = 0, nodeSnapshot = null;
+  let paletteAtDone = null, animAtDone = null;
   for (let f = 1; f <= 5000; f++) {
     g.step(NO_PLAYER);
     const s = g.ram.u16(STATE), sub = g.ram.u16(SUB);
-    if (s !== prevS || sub !== prevSub) { marks.push([f, s, sub]); prevS = s; prevSub = sub; }
+    if (s !== prevS || sub !== prevSub) {
+      // The instant arm 2 hands on: snapshot the bank it was fading, before arm 12 touches it.
+      if (s === 12 && prevS === 2 && !paletteAtDone) {
+        paletteAtDone = Array.from({ length: 32 }, (_, i) => g.ram.u16(0x80e886 + i * 2));
+        paletteAtDone.push(g.ram.u16(0x80f086));
+        animAtDone = { ...g.animFrame };
+      }
+      marks.push([f, s, sub]); prevS = s; prevSub = sub;
+    }
     // The frame the state-2 chain is built: capture the head node before it starts fading.
     if (sub === 2 && !seedFrame) {
       seedFrame = f;
@@ -257,7 +266,12 @@ const RUN = (() => {
       };
     }
   }
-  return { g, marks, seedFrame, nodeSnapshot };
+  // W389 -- the palette has to be sampled ON THE FRAME THE SCREEN FINISHES. Arm 12's own screen
+  // is ported now and its INIT chain fades the same `$80E886` range toward `$225A38`, so by
+  // +5,000 the bank is arm 12's colours and not arm 2's black. Nothing about arm 2's fade
+  // changed; only where this file may read it from.
+  const doneFrame = marks.find((m) => m[1] === 12)?.[0] ?? 0;
+  return { g, marks, seedFrame, nodeSnapshot, doneFrame, paletteAtDone, animAtDone };
 })();
 
 test('W388 SECTION 3: the attract sequencer ADVANCES 13 -> 2 -> 12 on a plain cold boot',
@@ -268,6 +282,7 @@ test('W388 SECTION 3: the attract sequencer ADVANCES 13 -> 2 -> 12 on a plain co
       [319, 2, 1],     // state 0's chain (the $246410 one) finished -- it always did
       [558, 2, 2],     // the $F0 countdown fired and state 2's chain was built
       [574, 12, 2],    // ...and SIXTEEN FRAMES LATER it drained. This line is the wave.
+      [878, 9, 2],     // W389: arm 12's OWN screen is ported now, so it drains too and hands on
     ], 'the full transition list, with no state visited twice');
   });
 
@@ -289,16 +304,21 @@ test('W388 SECTION 3: the head node is seeded with a REAL executor pointer, a co
 
 test('W388 SECTION 3: the chain really drains, and the palette really ends BLACK',
   { skip: SKIP }, () => {
-    // At +574 the screen reported finished. Its palette is the thing that was fading.
+    // At +574 the screen reported finished. Its palette is the thing that was fading, and W389
+    // reads it AT THAT FRAME: arm 12's screen is ported now and its init chain fades the SAME
+    // `$80E886` bank toward `$225A38` immediately afterwards, so +5,000 shows arm 12's colours.
+    // Arm 2's fade is unchanged; only the frame this file may sample it on is.
+    assert.equal(RUN.doneFrame, 574, 'arm 2 handed on at +574');
     for (let i = 0; i < 32; i++) {
-      assert.equal(RUN.g.ram.u16(0x80e886 + i * 2), 0,
+      assert.equal(RUN.paletteAtDone[i], 0,
         `$80E886 word ${i} faded to $0000, the $246BB8 target`);
     }
-    assert.equal(RUN.g.ram.u16(0x80f086), 0, 'and node 7\'s family-$08 range faded too');
+    assert.equal(RUN.paletteAtDone[32], 0, 'and node 7\'s family-$08 range faded too');
     // `$25B488 jsr $246800` freed the chain on the way out.
-    assert.equal(RUN.g.animFrame.nodes, 0, 'no chain is walked any more -- $246800 freed it');
+    assert.equal(RUN.animAtDone.nodes, 0, 'no chain is walked any more -- $246800 freed it');
     assert.equal(RUN.g.ram.u16(RUN.nodeSnapshot.head), 0, '...and the head node\'s id word is clear');
-    assert.equal(RUN.g.ram.u16(STATE), 0x000c, 'the sequencer rests on arm 12');
+    // W389 -- was `0x000C`. Arm 12 drains its own two chains and hands on to arm 9 at +878.
+    assert.equal(RUN.g.ram.u16(STATE), 0x0009, 'the sequencer rests on arm 9 (W389)');
   });
 
 // ===============================================================================================
@@ -331,7 +351,8 @@ test('W388 SECTION 4 ABLATION: blank the ONE field the seeding adds and the mach
   assert.notEqual(g.ram.u16(0x80e886), 0, 'and the palette never faded: nothing ever stepped');
 
   // SIDE BY SIDE with the unablated run, so the delta is one field and not a memory.
-  assert.equal(RUN.g.ram.u16(STATE), 0x000c, 'WITH the seeding: arm 12 by +574');
+  assert.equal(RUN.doneFrame, 574, 'WITH the seeding: arm 12 by +574...');
+  assert.equal(RUN.g.ram.u16(STATE), 0x0009, '...and on through arm 12 to arm 9 (W389)');
 });
 
 // ===============================================================================================

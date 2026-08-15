@@ -91,6 +91,9 @@ import { poolClear as clearBulletPool28131E, poolPark as parkBulletSlots281330 }
 // W381 -- `$28EAB8`/`$28EACE`'s callee, ported since W163 and counted here since W125.
 import { flushPendingHyper2875B4 } from './hyper.js';
 import { emit23F82A } from './bossarrival.js';
+// W389 -- `$24676A..$2467C3`, the per-node CONTENT seeding that lives INSIDE `$246710`'s
+// allocation loop. `animobjects.js` imports nothing from here, so this is not a cycle.
+import { seedChainNode24676A, CHAIN_CONTENT } from './animobjects.js';
 
 export const SE = {
   stage: 0x813092, stageX2: 0x813094, stageX4: 0x813096,   // $25FD0C
@@ -1187,11 +1190,18 @@ const CHAIN = {
  *  not the tail.
  *
  *  R2a ports the POOL LIFECYCLE byte-for-byte (claim slot, allocate N nodes from
- *  `$80FA86`, link at `($2C,node)`, seed the lifetime `$18 := $FFFF0000`).  The
- *  per-node CONTENT seeding (`$24627A` code-pointer table, `$246B38` anim-data
- *  table, the `$30(node)` code-script copy) is the presentation tier the anim
- *  driver `$246410` dispatches on; it is NOT ported here and the node-count word
- *  is the only script byte the loader reads.  See `PRESENTATION_DEVIATION[0x28d6fc]`. */
+ *  `$80FA86`, link at `($2C,node)`, seed the lifetime `$18 := $FFFF0000`) and the
+ *  node-count word is the only script word it reads.
+ *
+ *  **W389 CORRECTION -- THIS ROUTINE DOES HAVE A CONTENT BLOCK AND IT IS NOT PORTED HERE.**
+ *  The old text called it "the presentation tier the anim driver `$246410` dispatches on", which
+ *  was written before `$246410`'s executor was ported. `$246582..$2465D9` is a real 88-byte
+ *  block, `$24676A`'s twin plus `$246598 move.l (A0)+,($A,A2)`, and W389 decoded it -- see
+ *  `animobjects.js CHAIN_CONTENT_24652A`. It is deliberately still switched OFF for this head
+ *  (`CHAIN_LOADERS[0].content` is `null`); the reasons are on `CHAIN_LOADERS` below, and the
+ *  short version is that `animobjects.js loadAnimObjects24652A` is ALREADY a second, fully
+ *  seeding port of this same routine and turning this one on changes the result screen's
+ *  timing.  See `PRESENTATION_DEVIATION[0x28d6fc]`. */
 export function chainLoader24652A(ram, rom, scriptAddr) {
   return chainLoaderBody(ram, rom, scriptAddr, CHAIN_LOADERS[0]);
 }
@@ -1207,17 +1217,14 @@ export function chainLoader24652A(ram, rom, scriptAddr) {
  * `#$1` where `$246576` writes `#$0`.** (The two also swap the order of the `($2,node)` and
  * `($1E,node)` stores, which changes nothing.)
  *
- * Its per-node CONTENT seeding is larger -- it reads four script words per node instead of
- * none and walks the `$24627A` code-pointer table and the `$246B38` anim-data table -- but
- * that is the SAME presentation tier `$24652A`'s own comment above declares out of scope for
- * the same reason, so it is counted here rather than invented. See
- * `PRESENTATION_DEVIATION[0x28d6fc]`.
+ * **W389: ITS PER-NODE CONTENT SEEDING IS NOW PORTED HERE, AND THE NOTE IS GONE.** `$24676A..
+ * $2467C3` is `animobjects.js seedChainNode24676A`, called from `chainLoaderBody` inside the
+ * allocation loop, which is where `$2467CE`'s `dbra` puts it. `ctx` is no longer read by this
+ * function; it is kept in the signature because three call sites pass it and because
+ * `chainLoader246704` below still has arms of its own that may want it.
  */
 export function chainLoader246710(ram, rom, scriptAddr, ctx) {
-  ctx?.unportedLog?.note(0x24676a, '$246710 per-node CONTENT seeding -- the $24627A '
-    + 'code-pointer table, the $246B38 anim-data table and the $30(node) script copy. The '
-    + 'same presentation tier $24652A declares out of scope; the pool lifecycle above is '
-    + 'ported byte for byte and the node count is the only script word it reads');
+  void ctx;
   return chainLoaderBody(ram, rom, scriptAddr, CHAIN_LOADERS[1]);
 }
 
@@ -1233,9 +1240,7 @@ export function chainLoader246710(ram, rom, scriptAddr, ctx) {
  * correct for `$246710` and left this sibling absent; `$28F526 jsr $246704` is what needs it.
  */
 export function chainLoader246704(ram, rom, scriptAddr, ctx) {
-  ctx?.unportedLog?.note(0x24676a, '$246704 -> $246710 per-node CONTENT seeding -- the same '
-    + 'presentation tier $24652A declares out of scope; only the D6 that reaches ($4,slot) '
-    + 'differs from $246710');
+  void ctx;
   return chainLoaderBody(ram, rom, scriptAddr, CHAIN_LOADERS[2]);
 }
 
@@ -1246,11 +1251,27 @@ export function chainLoader246704(ram, rom, scriptAddr, ctx) {
  * There is a FOURTH pair in this family at `$246610` (D6 = 1) and `$24661A` (D6 = 0), but they
  * fall into a DIFFERENT body at `$246622`, so they are not variants of these and are not
  * assumed to be. Named here so the next reader does not have to find them again.
+ *
+ * **W389 ADDS A THIRD AXIS: `content`, the per-node CONTENT SEEDING, AND IT IS NOT SHARED.**
+ * `$24652A` and `$246710` each have one and they are DIFFERENT SHAPES -- `$246598 move.l
+ * (A0)+,($A,A2)` reads the target from the script in `$24652A`, while `$24677E move.l
+ * #$246BB8,($A,A2)` hardcodes it in `$246710`, so `$24652A`'s script is SIX words per node and
+ * `$246710`'s is FOUR. A single unconditional fold would have mis-parsed one of the two.
+ *
+ * `$24652A`'s is left at `null` **deliberately**, and this is a declared hold rather than an
+ * oversight: its only caller here is `f8Exit28DE1E`, whose wait is `PRESENTATION_DEVIATION`
+ * DEV-2, and `animobjects.js` ALREADY has a full second port of `$24652A`
+ * (`loadAnimObjects24652A`, via `loadAnimObjectsNoFill`) that seeds all six words. Turning this
+ * one on would give the result screen a real 16-frame-plus wait it has never had. See W389's
+ * report -- it is the largest thing this file still gets wrong, and it is one line to change.
  */
 const CHAIN_LOADERS = Object.freeze([
-  Object.freeze({ site: 0x24652a, field1e: 0, field4: 0 }),   // $246576 #$0 / $24652E D6=0
-  Object.freeze({ site: 0x246710, field1e: 1, field4: 0 }),   // $246762 #$1 / $246714 D6=0
-  Object.freeze({ site: 0x246704, field1e: 1, field4: 1 }),   // shares the body / $246708 D6=1
+  // $246576 #$0 / $24652E D6=0 / content $246582 is SIX words -- see the note above
+  Object.freeze({ site: 0x24652a, field1e: 0, field4: 0, content: null }),
+  // $246762 #$1 / $246714 D6=0 / content $24676A is FOUR words with the constant target
+  Object.freeze({ site: 0x246710, field1e: 1, field4: 0, content: CHAIN_CONTENT }),
+  // shares the body / $246708 D6=1 / same content block, reached through the same $246718
+  Object.freeze({ site: 0x246704, field1e: 1, field4: 1, content: CHAIN_CONTENT }),
 ]);
 export const CHAIN_OTHER_BODY = Object.freeze([0x246610, 0x24661a, 0x246622]);
 
@@ -1261,6 +1282,7 @@ function chainLoaderBody(ram, rom, scriptAddr, spec) {
     ram.setU16(slot, 0x8000);                               // $246540 claim
     ram.setU16(slot + CHAIN.subOff, spec.field4);            // $246544/$24672A move.w D6,($4,A1)
     const nodeCount = rom.u16(scriptAddr);                  // $24654C (A0)+,D0
+    let table = scriptAddr + 2;                             // A0, past the count word
     let tail = slot;                                        // a1 walks prev -> node
     let built = 0;
     for (let n = 0; n < nodeCount; n++) {                   // $246558..$2465E2
@@ -1277,6 +1299,10 @@ function chainLoaderBody(ram, rom, scriptAddr, spec) {
       tail = node;                                          // $246574 a1 := a2
       ram.setU16(node + 0x1e, spec.field1e);                // $246576 / $246762 -- the ONE
       ram.setU16(node + 0x02, 0);                           // $24657C / $24675C
+      // $246768..$2467C3 -- THE CONTENT, inside this same loop, which is why `$2467CE`'s `dbra`
+      // closes back over it to `$24673E`. Without `($6,node)` the node is invisible to
+      // `runAnimObjects24683E` and the chain never drains: W388's whole finding.
+      if (spec.content) table = seedChainNode24676A(ram, rom, node, table, spec.content);
       ram.setU32(node + CHAIN.lifeOff, 0xffff0000);         // $2465C0 the lifetime
       built++;
     }

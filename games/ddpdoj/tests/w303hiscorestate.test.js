@@ -121,31 +121,73 @@ test('W303 the label table stops before `$25B58C`', { skip: SKIP_IMG }, () => {
 
 // ==================== 3. `$246710` IS `$24652A` PLUS ONE CONSTANT
 
-test('W303 both loaders build the same chain, differing only in `($1E,node)`', { skip: SKIP }, () => {
-  // The whole difference in the pool lifecycle. `$246762` writes #$1 where `$246576` writes
-  // #$0, and everything else -- the three-slot scan, the twenty-slot pool, the `($2C)` link,
-  // the `$FFFF0000` lifetime -- is the same instruction sequence.
-  const a = new Ram();
-  const b = new Ram();
-  const w = world();
-  const ha = chainLoader24652A(a, ROM, SCREEN_STATE.script);
-  const hb = chainLoader246710(b, ROM, SCREEN_STATE.script, w.ctx);
-  assert.equal(ha, hb, 'the same player slot');
-  assert.notEqual(ha, 0xffffffff, 'and it succeeded');
-  // Byte-compare the whole of RAM: the ONLY differences may be the `($1E)` words.
-  const diffs = [];
-  for (let i = 0; i < a.b.length; i++) if (a.b[i] !== b.b[i]) diffs.push(i + 0x800000);
-  assert.ok(diffs.length > 0, 'they do differ');
-  // Every differing byte must be inside the `($1E)` word of some pool node: the pool base is
-  // `$80FA86` with stride `$70`, so the offset within a node has to be $1E or $1F.
-  for (const addr of diffs) {
-    const within = (addr - 0x80fa86) % 0x70;
-    assert.ok(within === 0x1e || within === 0x1f,
-      `$${addr.toString(16)} is offset $${within.toString(16)} in its node, not ($1E)`);
-  }
-  assert.equal(diffs.length, SCREEN_STATE.scriptNodes,
-    'one differing byte per node -- the low half of each ($1E) word');
-});
+// W389 REWROTE THIS TEST, and the reason is a fact about the ROM this file had wrong.
+//
+// The old assertion was a whole-RAM byte compare between `$24652A` and `$246710` demanding that
+// the ONLY differing bytes be the `($1E)` words. That was true of the port because NEITHER
+// loader seeded content. It was never true of the cartridge. W389 disassembled `$24652A`'s own
+// content block, `$246582..$2465D9`, and it exists and it is a DIFFERENT SHAPE:
+//
+//   246598  2558 000a   move.l (A0)+,($A,A2)          <- $24652A: the target comes FROM THE SCRIPT
+//   24677E  257c 0024 6bb8 000a                       <- $246710: the target is the CONSTANT
+//
+// so `$24652A`'s script is SIX words per node and `$246710`'s is FOUR. Feeding one loader's
+// script to the other is meaningless, and `SCREEN_STATE.script` is a FOUR-word script. Now that
+// `$246710` really seeds, the byte compare could only pass by keeping `$246710` hollow.
+//
+// What survives, and is the claim the section heading was reaching for, is that the POOL
+// LIFECYCLE halves are the same instruction sequence apart from `($1E,node)`. That is asserted
+// field by field below, which is stronger than a byte compare that could not tell the two halves
+// apart in the first place.
+test('W303 the two loaders\' POOL LIFECYCLE halves differ only in `($1E,node)`', { skip: SKIP },
+  () => {
+    const a = new Ram();
+    const b = new Ram();
+    const w = world();
+    const ha = chainLoader24652A(a, ROM, SCREEN_STATE.script);
+    const hb = chainLoader246710(b, ROM, SCREEN_STATE.script, w.ctx);
+    assert.equal(ha, hb, 'the same player slot');
+    assert.notEqual(ha, 0xffffffff, 'and it succeeded');
+    assert.equal(a.u16(ha + 0x04), b.u16(hb + 0x04), 'and the same ($4,slot), both D6 = 0');
+
+    // The lifecycle fields, the ones both bodies write outside their content blocks:
+    // ($0) the claim, ($2), ($20), ($2C) the link, ($18) the lifetime -- and ($1E), the one.
+    let na = a.u32(ha + 0x2c), nb = b.u32(hb + 0x2c), n = 0;
+    while (na !== 0 && nb !== 0) {
+      assert.equal(na, nb, `node ${n} is the same pool slot in both`);
+      assert.equal(a.u16(na + 0x00), b.u16(nb + 0x00), `node ${n} ($0) claim word`);
+      assert.equal(a.u16(na + 0x02), b.u16(nb + 0x02), `node ${n} ($2)`);
+      assert.equal(a.u16(na + 0x20), b.u16(nb + 0x20), `node ${n} ($20) progress`);
+      assert.equal(a.u32(na + 0x2c), b.u32(nb + 0x2c), `node ${n} ($2C) link`);
+      assert.equal(a.u32(na + 0x18), b.u32(nb + 0x18), `node ${n} ($18) lifetime $FFFF0000`);
+      assert.equal(a.u32(na + 0x18), 0xffff0000, `  ...and it really is $FFFF0000`);
+      // THE ONE. $246576 writes #$0 where $246762 writes #$1.
+      assert.equal(a.u16(na + 0x1e), 0, `node ${n} ($1E) is 0 under $24652A`);
+      assert.equal(b.u16(nb + 0x1e), 1, `node ${n} ($1E) is 1 under $246710`);
+      na = a.u32(na + 0x2c); nb = b.u32(nb + 0x2c); n++;
+    }
+    assert.equal(n, SCREEN_STATE.scriptNodes, 'both built all eight nodes');
+  });
+
+test('W303 the two CONTENT blocks are different shapes, which is why the fold is per-head',
+  { skip: SKIP_IMG }, () => {
+    // The instruction that makes them different, read off the image. Trap 1: the immediate
+    // operand comes BEFORE the displacement, so `$246780..$246783` is the long and `$246784` is
+    // the `($A,A2)` displacement.
+    assert.equal(IMG.readUInt16BE(0x246598), 0x2558, '$246598 move.l (A0)+,(d16,A2)');
+    assert.equal(IMG.readUInt16BE(0x24659a), 0x000a, '  ...into ($A,A2) -- FROM THE SCRIPT');
+    assert.equal(IMG.readUInt16BE(0x24677e), 0x257c, '$24677E move.l #imm,(d16,A2)');
+    assert.equal(IMG.readUInt32BE(0x246780), 0x246bb8, '  ...the CONSTANT $246BB8');
+    assert.equal(IMG.readUInt16BE(0x246784), 0x000a, '  ...into the same ($A,A2)');
+    // Both content blocks index the SAME two tables, which is what makes them the same routine
+    // in two shapes rather than two routines. Trap 4: extension-word address plus displacement.
+    assert.equal(0x246586 + (IMG.readUInt16BE(0x246586) - 0x10000), 0x24627a,
+      '$246584 lea (-$30C,PC),A3 -> $24627A, the same dispatch table $24676A reaches');
+    assert.equal(0x2465ac + IMG.readUInt16BE(0x2465ac), 0x246b38,
+      '$2465AA lea ($58C,PC),A3 -> $246B38, the same timing table');
+    // So the script strides differ by exactly the four bytes of that long.
+    assert.equal(6 * 2 - 4 * 2, 4, '$24652A reads six words per node where $246710 reads four');
+  });
 
 test('W303 `$246710` sets `($1E,node)` to ONE on every node it builds', { skip: SKIP }, () => {
   const ram = new Ram();
@@ -162,18 +204,31 @@ test('W303 `$246710` sets `($1E,node)` to ONE on every node it builds', { skip: 
   assert.equal(n, SCREEN_STATE.scriptNodes, 'eight nodes, as the script\'s count word says');
 });
 
-test('W303 the content seeding is COUNTED, not invented', { skip: SKIP }, () => {
-  // `$24652A`'s own comment declares the per-node content tier out of scope for the anim
-  // driver's sake. `$246710`'s is larger -- four script words per node through the `$24627A`
-  // and `$246B38` tables -- and it is counted for the same reason rather than guessed at.
-  const ram = new Ram();
-  const w = world();
-  chainLoader246710(ram, ROM, SCREEN_STATE.script, w.ctx);
-  const hit = w.log.report().find((r) => r.includes('$246710'));
-  assert.ok(hit, 'the note exists');
-  assert.match(hit, /\$24627A/, 'and it names the code-pointer table');
-  assert.match(hit, /out of scope/);
-});
+// W389 INVERTED THIS TEST. It asserted that `$246710`'s content seeding raised a counted note --
+// which is precisely the behaviour this wave removes, so the assertion could not survive. The
+// replacement asserts the stronger property the note was standing in for: the block is PORTED,
+// the census is silent about it, and the field it was missing is really written.
+test('W303 the content seeding is PORTED, and no note is left claiming otherwise', { skip: SKIP },
+  () => {
+    const ram = new Ram();
+    const w = world();
+    const slot = chainLoader246710(ram, ROM, SCREEN_STATE.script, w.ctx);
+    for (const line of w.log.report()) {
+      assert.ok(!line.includes('$24676A'), `no $24676A note may remain: ${line}`);
+      assert.ok(!/246710.*CONTENT/i.test(line), `no $246710 content note may remain: ${line}`);
+    }
+    // AND THE FIELD ITSELF. `($6,node)` is the executor pointer `runAnimObjects24683E` tests;
+    // zero there is exactly the hollow chain W388 found.
+    let node = ram.u32(slot + 0x2c), n = 0;
+    while (node !== 0) {
+      assert.equal(ram.u32(node + 0x06), n === 7 ? 0x80fa68 : 0x80fa66,
+        `node ${n} carries $24627A[family]+$4, the dirty word -- node 7 is the family-$08 one`);
+      assert.equal(ram.u32(node + 0x0a), 0x246bb8, `node ${n} target is the constant $246BB8`);
+      assert.equal(ram.u16(node + 0x04), 0x1f, `node ${n} covers $20 words`);
+      node = ram.u32(node + 0x2c); n++;
+    }
+    assert.equal(n, SCREEN_STATE.scriptNodes, 'all eight seeded');
+  });
 
 test('W303 the chain script is EIGHT nodes of four words after the count', { skip: SKIP_IMG }, () => {
   // `$246710` reads one word for the count and four per node, so the run is 2 + 8*8 = $42.

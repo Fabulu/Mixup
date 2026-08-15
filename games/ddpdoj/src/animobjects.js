@@ -253,14 +253,14 @@ export function freeAnimObjects246800(ram, root) {
 // FOUR WORDS PER NODE, and the script bound confirms it: `$25BAAA` says 8 nodes and
 // `2 + 8*8 = $42` is exactly W303's declared window length. No window is added by this wave.
 //
-// **WHY THIS IS A SECOND PASS AND NOT INLINE.** The ROM interleaves this block with the
-// allocation `dbra` at `$2467CE`, but the allocator lives in `stageend.js`, which this wave does
-// not own. Applying it as a second walk of the same `($2C)` chain in script order lands the
-// IDENTICAL RAM: the allocation pass writes `($0) ($20) ($2C) ($1E) ($2) ($18)`, this pass
-// writes `($6) ($A) ($E) ($4) ($14) ($16) ($1C) ($18) ($30..)`, the only field in both is
-// `($18)` and both write the same `$FFFF0000`. Nothing this pass READS is written by the other.
-// The proper home is `chainLoaderBody`, which would also fix `objslot15.js` and
-// `objslot7pool.js`; see this wave's report.
+// **W389 -- IT IS NOW INLINE, WHICH IS WHERE THE ROM PUTS IT.** W388 applied this as a second
+// walk of the same `($2C)` chain because `stageend.js` was out of that wave's scope, and noted
+// that the proper home is `chainLoaderBody`. It is there now: `seedChainNode24676A` below is one
+// node's worth, `chainLoaderBody` calls it from inside its own allocation loop exactly where
+// `$2467CE`'s `dbra` closes over it, and the script cursor advances once instead of twice. That
+// fixes `objslot15.js`, `objslot7pool.js` and `hiscorename.js` at the same time, which is what
+// W388's report asked for. `seedChainContent24676A` stays as the whole-chain wrapper so the
+// second-pass form can still be exercised on its own.
 export const CHAIN_CONTENT = Object.freeze({
   site: 0x24676a, end: 0x2467c4,      // $24676A..$2467C3 -- 90 bytes
   dispatch: 0x24627a,                 // $24676A lea (-$4F2,PC),A3
@@ -270,13 +270,94 @@ export const CHAIN_CONTENT = Object.freeze({
 });
 
 /**
+ * `$24652A`'S OWN CONTENT BLOCK, `$246582..$2465D9`, decoded in W389 -- because the brief said
+ * `$24652A` had none and **the image says otherwise**. Instruction for instruction it is the same
+ * block as `$24676A` with ONE extra store, and that store is the difference in the SCRIPT SHAPE:
+ *
+ *   246582  3418            move.w (A0)+,D2               <- family, as $246768
+ *   246584  47fa fcf4       lea (-$30C,PC),A3          -> $246586-$30C = $24627A, the SAME table
+ *   246588  2573 2004 0006  move.l ($4,A3,D2.w),($6,A2)   <- the SAME writer store
+ *   24658E  2673 2000       movea.l ($0,A3,D2.w),A3
+ *   246592  d6d8            adda.w (A0)+,A3               <- offset, as $246778
+ *   246594  254b 000e       move.l A3,($E,A2)
+ *   246598  2558 000a       move.l (A0)+,($A,A2)          <- **THE TARGET, FROM THE SCRIPT, LONG**
+ *   24659C  3558 0004       move.w (A0)+,($4,A2)          <- words-minus-one
+ *   2465A0  3618            move.w (A0)+,D3               <- timing index
+ *   2465AA  47fa 058c       lea ($58C,PC),A3           -> $2465AC+$58C = $246B38, the SAME table
+ *   2465C0  257c ffff 0000 0018  move.l #$FFFF0000,($18,A2)
+ *   2465D4  38db / 2465D6 51cc fffc   the SAME palette snapshot
+ *
+ * So `$24652A`'s script is SIX words per node, not four, and its target is per-node rather than
+ * the constant `$246BB8`. The two shapes are therefore NOT interchangeable and a single fold
+ * would have mis-parsed one of them; `CHAIN_LOADERS` in `stageend.js` carries the shape per head.
+ */
+export const CHAIN_CONTENT_24652A = Object.freeze({
+  site: 0x246582, end: 0x2465da,      // $246582..$2465D9
+  dispatch: 0x24627a,                 // $246584 lea (-$30C,PC),A3
+  timingTable: 0x246b38,              // $2465AA lea ($58C,PC),A3
+  targetBank: 0,                      // there is none: $246598 reads it from the script
+  targetFromScript: true,             // $246598 move.l (A0)+,($A,A2)
+  wordsPerNode: 6,                    // family, offset, target.l, words-minus-one, timing
+});
+
+/**
+ * ONE node's worth of `$24676A..$2467C3` (or of its `$24652A` twin), seeded into `node` from the
+ * script cursor `table`.
+ *
+ * @param shape `CHAIN_CONTENT` (four words, constant target) or `CHAIN_CONTENT_24652A` (six
+ *   words, target read from the script).
+ * @returns the advanced script cursor -- `table + shape.wordsPerNode * 2`.
+ */
+export function seedChainNode24676A(ram, rom, node, table, shape = CHAIN_CONTENT) {
+  const family = rom.u16(table); table += 2;                // $246768 move.w (A0)+,D2
+  // `adda.w` SIGN-EXTENDS its source, so the offset word is signed. Sign-extended here from
+  // `u16` rather than read through `rom.i16`, because `chainLoaderBody` is reached from fixtures
+  // whose `rom` face has only `u8/u16/u32/bytes` -- and a loader that needs a wider face than
+  // its callers provide is a loader that throws in five existing tests.
+  const offset = i16(rom.u16(table)); table += 2;           // $246778 adda.w (A0)+,A3
+  let target = shape.targetBank;                            // $24677E move.l #$246BB8,($A,A2)
+  if (shape.targetFromScript) {                             // $246598 move.l (A0)+,($A,A2)
+    target = rom.u32(table); table += 4;
+  }
+  const wordsMinusOne = rom.u16(table); table += 2;         // $246786 move.w (A0)+,($4,A2)
+  const timingIndex = rom.u16(table); table += 2;           // $24678A move.w (A0)+,D3
+
+  const targetFamily = TARGETS[family];
+  if (!targetFamily) {
+    unreached(shape.site, `$${shape.site.toString(16).toUpperCase()} content seeding: `
+      + `target-family byte offset $${family.toString(16).toUpperCase()} is outside the `
+      + 'three-entry $24627A table');
+  }
+  const [reload, step] = timing(timingIndex);               // $24679C/$2467A6 via $246B38
+
+  ram.setU32(node + N.writer, targetFamily.dirty);          // $24676E ($4,A3,D2.w) -> ($6,A2)
+  const current = targetFamily.current + offset;            // $246774/$246778
+  ram.setU32(node + N.current, current);                    // $24677A
+  ram.setU32(node + N.target, target >>> 0);                // $24677E / $246598
+  ram.setU16(node + N.mode, wordsMinusOne);                 // $246786
+  ram.setU16(node + N.reload, reload);                      // $24679C
+  ram.setU16(node + N.countdown, reload);                   // $2467A0
+  ram.setU16(node + N.step, step);                          // $2467A6
+  ram.setU32(node + N.active, 0xffff0000);                  // $2467AA / $2465C0
+  // $2467BE/$2467C0 -- `dbra` runs words-minus-one PLUS ONE times.
+  for (let k = 0; k <= wordsMinusOne; k++)
+    ram.setU16(node + N.snapshot + k * 2, ram.u16(current + k * 2));
+  return table;
+}
+
+/**
  * Seed `$246710`'s per-node content across an already-allocated chain.
+ *
+ * Kept as the SECOND-PASS form W388 shipped. `chainLoaderBody` now seeds inline, so no live path
+ * calls this; it is the shape the ablation drives against, and calling it on an already-seeded
+ * chain is idempotent (every field it writes is a function of the script and of `($E)`'s RAM,
+ * neither of which the allocator moves).
  *
  * @param root the player-slot handle `chainLoader246710` returned (`($2C,root)` is the head).
  * @param scriptAddr the same script address the loader was given: a count word then four words
  *   per node -- `{family.w, current-offset.w, words-minus-one.w, timing-index.w}`.
  */
-export function seedChainContent24676A(ram, rom, root, scriptAddr) {
+export function seedChainContent24676A(ram, rom, root, scriptAddr, shape = CHAIN_CONTENT) {
   if ((root >>> 0) === 0 || (root >>> 0) === 0xffffffff) return 0;
   let node = ram.u32(root + N.next);
   let table = scriptAddr;
@@ -284,31 +365,7 @@ export function seedChainContent24676A(ram, rom, root, scriptAddr) {
   let seeded = 0;
 
   for (let i = 0; i < count && node !== 0; i++) {
-    const family = rom.u16(table); table += 2;              // $246768 move.w (A0)+,D2
-    const offset = rom.i16(table); table += 2;              // $246778 adda.w (A0)+,A3
-    const wordsMinusOne = rom.u16(table); table += 2;       // $246786 move.w (A0)+,($4,A2)
-    const timingIndex = rom.u16(table); table += 2;         // $24678A move.w (A0)+,D3
-
-    const targetFamily = TARGETS[family];
-    if (!targetFamily) {
-      unreached(CHAIN_CONTENT.site, `$246710 content seeding: target-family byte offset $${family
-        .toString(16).toUpperCase()} is outside the three-entry $24627A table`);
-    }
-    const [reload, step] = timing(timingIndex);             // $24679C/$2467A6 via $246B38
-
-    ram.setU32(node + N.writer, targetFamily.dirty);        // $24676E ($4,A3,D2.w) -> ($6,A2)
-    const current = targetFamily.current + offset;          // $246774/$246778
-    ram.setU32(node + N.current, current);                  // $24677A
-    ram.setU32(node + N.target, CHAIN_CONTENT.targetBank);  // $24677E -- the CONSTANT
-    ram.setU16(node + N.mode, wordsMinusOne);               // $246786
-    ram.setU16(node + N.reload, reload);                    // $24679C
-    ram.setU16(node + N.countdown, reload);                 // $2467A0
-    ram.setU16(node + N.step, step);                        // $2467A6
-    ram.setU32(node + N.active, 0xffff0000);                // $2467AA -- same value, rewritten
-    // $2467BE/$2467C0 -- `dbra` runs words-minus-one PLUS ONE times.
-    for (let k = 0; k <= wordsMinusOne; k++)
-      ram.setU16(node + N.snapshot + k * 2, ram.u16(current + k * 2));
-
+    table = seedChainNode24676A(ram, rom, node, table, shape);
     seeded++;
     node = ram.u32(node + N.next);                          // $2467CA lea ($70,A2),A2
   }

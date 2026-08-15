@@ -67,7 +67,6 @@ import { u16, u32 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { chainCheck24681A, chainFree246800, chainLoader246710 } from './stageend.js';
-import { seedChainContent24676A } from './animobjects.js';
 
 const EMIT = 0x23dfb4;                  // the register-convention emitter, W30's family
 const ROW_STEP = 0x11c0;                // subi.w #$11C0 -- the same in all nine routines
@@ -532,21 +531,16 @@ export function hiscoreScreen25B412(ram, rom, ctx) {
     const t = u16(ram.u16(SCREEN_STATE.timer) - 1);         // $25B44C subq.w #1
     ram.setU16(SCREEN_STATE.timer, t);
     if (t === 0) {                                          // $25B452 bne
-      // $25B45A -- the ALLOCATION half, from `stageend.js`, byte for byte.
+      // $25B45A -- `jsr $246710`, allocation AND content, one call.
       //
-      // **CTX IS WITHHELD DELIBERATELY, AND THAT IS THE WHOLE POINT.** `chainLoader246710` raises
-      // the `$24676A` "per-node CONTENT seeding is unported" note on every call. As of W388 that
-      // is FALSE HERE: the line below ports exactly that block. Passing `ctx` would leave a
-      // counted note whose text is a lie about this call site, which is the one failure mode the
-      // census exists to prevent. The note still stands for `objslot15.js` and
-      // `objslot7pool.js`, which call the same loader and still do NOT seed.
-      const handle = chainLoader246710(ram, rom, SCREEN_STATE.script, undefined);
-      // W388 -- the allocator seeds NO CONTENT, so each node's executor pointer `($6)` stayed
-      // zero, `runAnimObjects24683E` skipped all eight, `($18)` never drained, and state 2 below
-      // waited forever. `seedChainContent24676A` is `$24676A..$2467C3`, the block `$246710` runs
-      // inside its own allocation loop. See `animobjects.js` for the bytes and for why it is a
-      // second pass here.
-      seedChainContent24676A(ram, rom, handle, SCREEN_STATE.script);
+      // **W389 RESOLVED W388'S WITHHELD `ctx`.** W388 passed `undefined` here on purpose: the
+      // loader raised a counted `$24676A` "content seeding is unported" note on every call, and
+      // that note was already false at THIS site because W388 seeded the chain on the next line
+      // by hand. Withholding `ctx` kept the census from recording a lie. W389 folded the seeding
+      // into `chainLoaderBody` itself, so the note is gone from the loader entirely and there is
+      // nothing left to withhold -- `ctx` is passed like every other call site, and the separate
+      // `seedChainContent24676A` pass is gone with it.
+      const handle = chainLoader246710(ram, rom, SCREEN_STATE.script, ctx);
       ram.setU32(SCREEN_STATE.handle, handle >>> 0);        // $25B460
       ram.setU16(SCREEN_STATE.state, 2);                    // $25B466
     }

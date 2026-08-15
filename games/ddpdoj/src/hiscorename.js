@@ -386,18 +386,28 @@ export function nameFrameBands28F542(ram, rom, a4, ctx) {
  * the animation driver.
  *
  * `$246410` is the anim-object driver `stageend.js` declares out of scope as
- * `PRESENTATION_DEVIATION[0x28d6fc]`, and W303 counted `$246710`'s content seeding for the same
- * reason. So this is COUNTED, not invented -- the third place this session that the same tier
- * has been reached from a different direction, which is worth knowing when someone finally
- * decides to port it.
+ * `PRESENTATION_DEVIATION[0x28d6fc]`, so this is COUNTED, not invented.
+ *
+ * **W389 CORRECTION TO THIS COMMENT'S SECOND HALF.** It used to add "and W303 counted `$246710`'s
+ * content seeding for the same reason". That is no longer true: W388 ported `$24676A..$2467C3`
+ * and W389 folded it into `chainLoaderBody`, so `$246710` seeds content on every call and raises
+ * no note at all. `nameCountdown28F4FC` above drives it for real. The `$246410` note here is a
+ * SEPARATE and now questionable deferral -- `animobjects.js loadAnimObjects246410` has been a
+ * real port for many waves and slot [8] arm 12 calls it live -- but `w307namegrid.test.js` pins
+ * this note by text, so retiring it is a wave of its own. See W389's report.
  */
 export function nameArmGrid28F4A6(ram, a4, ctx) {
   ram.setU16(a4 + GRID_ROW.cursorField, 1);            // $28F4A6 move.w #$1,($2E,A4)
   ram.setU16(GRID_ROW.active, 1);                      // $28F4AC move.w #$1,$81E0D6
+  // W389 -- the note's TEXT used to end "...and W303 counted $246710's seeding for", which is
+  // now false: `$246710` seeds on every call and raises no note. Trap 14, caught by grepping the
+  // notes when the call site changed. The DEFERRAL itself is left standing, but it is thin --
+  // `animobjects.js loadAnimObjects246410` is a real port, W387 already declared all four of
+  // `$28FA98`'s fade targets, and arm 12 calls the same loader live. See W389's report.
   ctx?.unportedLog?.note(GRID_ROW.animDriver, `$28F4BA jsr $246410 with A0 = $28FA98 -- the `
     + `name-entry grid's animation objects. Same presentation tier stageend.js declares out `
-    + `of scope (PRESENTATION_DEVIATION[0x28d6fc]) and W303 counted $246710's seeding for; `
-    + `the cursor and the furniture around it ARE drawn, by $28FCAA`);
+    + `of scope (PRESENTATION_DEVIATION[0x28d6fc]); the cursor and the furniture around it `
+    + `ARE drawn, by $28FCAA`);
 }
 
 /** `move.l #base,D1 / addi.l #delta,D1` -- a LONGWORD add, so the halves are not independent. */

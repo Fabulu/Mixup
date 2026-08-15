@@ -40,6 +40,8 @@ export const SLOT15 = Object.freeze({
   state: 0x02, phase: 0x04, timer: 0x06, handle: 0x08,
   timerInit: 0x80, gate: 0x813098, doneFlag: 0x81309a, clearFlag: 0x81e0da,
   childType: 0x0e,
+  // W389 -- `$241292 lea ($4C,A5),A0`. The object's ID LONG, and `queueKill`'s real argument.
+  idAt: 0x4c,
 });
 
 /** `$291DC6` -- ARM. Clears the 50 entries and zeroes the two cursors, then sets the drift to `$20`.
@@ -150,7 +152,10 @@ function state2(ram, rom, a5) {
   stageCreate(ram, SLOT15.childType,                         // $291F0A moveq #$E / $291F0E $241182
     (t) => rom.u16(SLOT15.dispatch + t * 8 + 4));
   ram.setU16(SLOT15.clearFlag, 0);                           // $291F14
-  queueKill(ram, ram.u16(a5 + 0x00));                        // $291F1C JMP $241292
+  // W389 -- the same defect as `objslot13.js`/`objslot14.js`: `$241292` is `lea ($4C,A5),A0`
+  // and `$241252 move.l (A0),(A1)` queues the LONG through it, so the argument is the ID, not
+  // the type word at `($0,A5)`. A 16-bit compare against a 32-bit id accepts and does nothing.
+  queueKill(ram, ram.u32(a5 + SLOT15.idAt));                 // $291F1C JMP $241292
 }
 
 /** `$291F66` -- THE DISPATCH ENTRY. State 1 is the fall-through. */

@@ -41,6 +41,8 @@ export const SCREEN13 = Object.freeze({
   // high byte is read back out, which is why both halves are named.
   markValue: 0x093c,
   inputMask: 0x70, requestArg: 0x08,
+  // W389 -- `$241292 lea ($4C,A5),A0`. The object's ID LONG, and `queueKill`'s real argument.
+  idAt: 0x4c,
 });
 
 /** `$25FE00` -- IS THE SCREEN ALLOWED TO RUN? Twenty-eight bytes and a carry-flag answer:
@@ -197,10 +199,23 @@ function exitArm(ram, rom, a5, ctx, desc) {
   ram.setU8(a5 + SCREEN13.state, 4);                         // $288B62
 }
 
-/** `$288A2A` -- STATE 2. Two instructions and a tail kill. */
+/** `$288A2A` -- STATE 2. Two instructions and a tail kill.
+ *
+ *  **W389 -- THE ARGUMENT WAS THE TYPE WORD, AND THE KILL DID NOTHING.** The same defect W388
+ *  fixed in `objslot14.js`, verified again from the image this wave:
+ *
+ *      288A34  4ef9 00241292   jmp $241292
+ *      241292  41ed 004c       lea ($4C,A5),A0     <- the ID field, NOT ($0,A5)
+ *      241296  60a0            bra $241238
+ *      241252  2290            move.l (A0),(A1)    <- the queue takes the LONG THROUGH A0
+ *
+ *  `killById` then compares `u16(id)` against `u16(($4C,slot))`. With the type word `$800D`
+ *  queued it compared `$800D` against an id like `$0001`, never matched, and the type-$D screen
+ *  object stayed live in the twenty-slot table for the rest of the run -- accepted silently,
+ *  because `queueKill` returns OK for anything that fits in the queue. */
 function state2(ram, a5) {
   selectAdvance2885C6(ram, ram.u8(a5 + SCREEN13.side));      // $288A2A/$288A30 bsr $2885C6
-  queueKill(ram, ram.u16(a5 + 0x00));                        // $288A34 JMP $241292 -- a TAIL kill
+  queueKill(ram, ram.u32(a5 + SCREEN13.idAt));               // $288A34 JMP $241292 -- a TAIL kill
 }
 
 /** `$288A3C` -- STATE 4. Hand over to slot [14] and die.
