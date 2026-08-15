@@ -157,6 +157,8 @@ export const DL = {
   queue: 0x80397c,
   list: 0x800000, listEnd: 0x800a00,
   sectionFlag: 0x80393c,           // $23C1A2 clears bit 0, $23C194 sets it
+  sectionCommit: 0x23c008,         // ...and BOTH tail-jump here -- W375, see below
+  ctrlReg: 0x00b0e000,             // $23C008 lea $B0E000,A0 -- the IGS023 control reg
   overBudgetBytes: 0x80b000,       // $23D382
   overBudgetRecords: 0x80affe,     // $23D38C, D0/12
   dropped20Flag: 0x80b002,         // $23D3BC
@@ -169,6 +171,64 @@ export const DL = {
   fillerThen: 0x32,                // $23D67E moveq
   terminatorTestValue: 0x12,       // $23D6DA move.w #$12,D1 -- see §4
 };
+
+// ===========================================================================
+// W375 -- `$23C1A2` AND `$23C194` ARE FOUR BYTES LONGER THAN THIS FILE SAID
+// ===========================================================================
+// Steps (a) and (j) above have been transcribed since wave 11 as the RAM bit
+// twiddle alone, on the strength of a comment reading "`move.w #1,D0 / or.w
+// D0,$80393C`". Both first halves are right. **NEITHER ROUTINE ENDS THERE.**
+// [M] re-decoded from `rip/sound/maincpu.bin` this wave:
+//
+//   [M] 23C1A2  30 3c 00 01        move.w #$1,D0
+//   [M] 23C1A6  46 40              not.w  D0                    -> $FFFE
+//   [M] 23C1A8  c1 79 00 80 39 3c  and.w  D0,$80393C
+//   [M] 23C1AE  60 00 fe 58        bra.w  $23C008     <- $23C1B0 + $FE58
+//
+//   [M] 23C194  30 3c 00 01        move.w #$1,D0
+//   [M] 23C198  81 79 00 80 39 3c  or.w   D0,$80393C
+//   [M] 23C19E  60 00 fe 68        bra.w  $23C008     <- $23C1A0 + $FE68
+//
+//   [M] 23C008  41 f9 00 b0 e0 00  lea    $B0E000,A0
+//   [M] 23C00E  30 b9 00 80 39 3c  move.w $80393C,(A0)
+//   [M] 23C014  4e 75              rts
+//
+// `bra.w`'s base is the EXTENSION WORD's address, not the opcode's (decoding
+// trap 4 applied to a branch), and both displacements land on the same target.
+// So **CALL #4 WRITES THE IGS023 CONTROL REGISTER TWICE PER FRAME** -- once with
+// bit 0 down as it starts building, once with it back up as it finishes -- and
+// until this wave the port wrote `$B0E000` exactly never. `background.js:363`
+// records the register's measured value ($001F on 16,000 frames) and says of
+// this very instruction that "the caller is not on the main loop's seven-call
+// path and is NOT identified here". It is on it, and it is identified: it is
+// this file, at both ends of its own build, plus `$23BF7A` in the boot block
+// (`frontend.js`). Three call sites, one routine.
+//
+// `videoRegs` is OPTIONAL on purpose. Every caller that does not pass one gets
+// exactly the behaviour it had before this wave -- the RAM word moves, the
+// register does not -- because `buildDisplayList` is driven by a dozen gates and
+// fixtures that construct no `VideoRegs` at all. `Game#step()` passes one.
+
+/** `$23C008` -- mirror the section flag into the IGS023 control register.
+ *  @returns the word written, which is `$80393C` AFTER the caller's edit. */
+export function sectionCommit23C008(ram, videoRegs) {
+  const v = ram.u16(DL.sectionFlag);           // $23C00E move.w $80393C,(A0)
+  if (videoRegs) videoRegs.ctrl = v;           // $23C008 lea $B0E000,A0
+  return v;
+}
+
+/** `$23C1A2` -- clear bit 0 of the section flag, then commit. Step (a). */
+export function sectionFlagClear23C1A2(ram, videoRegs) {
+  ram.setU16(DL.sectionFlag, u16(ram.u16(DL.sectionFlag) & ~1));
+  return sectionCommit23C008(ram, videoRegs);   // $23C1AE bra.w $23C008
+}
+
+/** `$23C194` -- set bit 0 of the section flag, then commit. Step (j), and the
+ *  boot block's `$23BF7A`. */
+export function sectionFlagSet23C194(ram, videoRegs) {
+  ram.setU16(DL.sectionFlag, u16(ram.u16(DL.sectionFlag) | 1));
+  return sectionCommit23C008(ram, videoRegs);   // $23C19E bra.w $23C008
+}
 
 /** $23D680 -- the filler entry, five words, verbatim. */
 export const FILLER = Object.freeze([0xfc00, 0x3800, 0x0000, 0x0000, 0x0201]);
@@ -269,10 +329,14 @@ export function buildDisplayList(ram, opts = {}) {
     capFired: false, capBucket: -1, bucketsDrained: 0, bucketsAbandoned: 0,
     perBucketRecords: new Array(BUCKETS.length).fill(0),
     b054: 0, b054Values: new Set(), shortAxisOverflow: 0,
+    // W375 -- what `$23C008` mirrored into $B0E000 at each end of the build.
+    ctrlAtStart: 0, ctrlAtEnd: 0,
   };
 
-  // (a) $23D2AE jsr $23C1A2 -- `move.w #1,D0 / not.w D0 / and.w D0,$80393C`.
-  ram.setU16(DL.sectionFlag, u16(ram.u16(DL.sectionFlag) & ~1));
+  // (a) $23D2AE jsr $23C1A2 -- `move.w #1,D0 / not.w D0 / and.w D0,$80393C`,
+  //     AND `bra.w $23C008`, which mirrors the word into $B0E000. See the block
+  //     comment above `sectionCommit23C008` for why that half was missing.
+  t.ctrlAtStart = sectionFlagClear23C1A2(ram, opts.videoRegs);
 
   // (b) THE SUM, $23D2B4..$23D362.  `move.w` then 29 x `add.w`: WORD arithmetic,
   //     so it wraps at $10000 and the port must too.
@@ -459,8 +523,9 @@ export function buildDisplayList(ram, opts = {}) {
     for (let i = 0; i < COUNTER_COUNT; i++) ram.setU16(COUNTER_BASE + i * 2, 0);
   }
 
-  // (j) $23D71E jsr $23C194 -- `move.w #1,D0 / or.w D0,$80393C`.
-  ram.setU16(DL.sectionFlag, u16(ram.u16(DL.sectionFlag) | 1));
+  // (j) $23D71E jsr $23C194 -- `move.w #1,D0 / or.w D0,$80393C`, and the same
+  //     `bra.w $23C008` commit step (a) takes.
+  t.ctrlAtEnd = sectionFlagSet23C194(ram, opts.videoRegs);
   return t;
 }
 

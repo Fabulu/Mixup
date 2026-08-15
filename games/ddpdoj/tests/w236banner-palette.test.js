@@ -33,9 +33,19 @@ test('W236 $28EE1E is five (picture, palette) PAIRS, and both halves are live',
     assert.deepEqual(pals, [0x2256b8, 0x2256f8, 0x225738, 0x225778, 0x2257b8],
       'contiguous at stride $40 -- five banks of sixty-four bytes');
     for (const p of pals) assert.equal(ROM.bytes(p, 64).length, 64);
-    // ...and the window stops after the fifth, so the extent is not a guess.
-    assert.throws(() => ROM.bytes(0x2256b8 + 5 * 0x40, 64),
-      (e) => e.name === 'Unreached');
+    // ...and the extent is not a guess, because THE TABLE BOUNDS ITSELF: pair [5]
+    // is $80008000 / $90009000 and pair [6] is $A000A000 / $B000B000, neither of
+    // which is a ROM address at all.
+    //
+    // W375 REPLACED THE OLD CHECK HERE, which was
+    //   assert.throws(() => ROM.bytes(0x2256b8 + 5 * 0x40, 64), ...Unreached)
+    // -- that asserted an ABSENCE, and the absence was never a fact about W236.
+    // It only said "nobody has declared a window at $2257F8 yet", and W375
+    // declared exactly that address for the high-score screen's fade targets
+    // ($25B3DC -> $25BA46 -> $24641A). Reading the table's own terminator is
+    // strictly stronger and cannot be invalidated by an unrelated window.
+    assert.equal(ROM.u32(0x28ee1e + 5 * 8), 0x80008000);
+    assert.equal(ROM.u32(0x28ee1e + 5 * 8 + 4), 0x90009000);
   });
 
 test('W236 the banner installs its palette into bank $17 on its first frame',

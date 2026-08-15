@@ -4,6 +4,65 @@ Updated: 2026-08-15 (W375)
 
 ## START HERE -- W375
 
+### A COLD BOOT NOW REACHES THE ATTRACT LOOP THROUGH THE REAL PATH
+
+`Game#boot()` EXISTS NOW -- it did not before, at all. (`w375slot8.test.js:718` said "`Game#boot()`
+DOES NOT DO THIS"; there was no `boot()` to not do it.) From `new Game(new Uint8Array(0x20000),
+tables, {palCatchUp: false})` -- zeroed RAM, catch-ups refused -- then `boot()` then `step()`:
+
+- frame 1: the create commits, slot [8] appears as type `$8008`, arm 0 reads `($4,A5)`, sets state `$D`
+- frames 2..301: the warning screen counts its own `$12C`
+- frame 302: `$D -> 2`, the high-score screen
+- frame 302 on: **101 display-list entries, terminated, no throw.** All five style rows read 2, 4 or 6.
+
+**The positive control is the load-bearing part**: the same cold boot with ONLY `jsr $28841E`
+removed throws `Unreached` at `romAddress === 0x25b602`, message `style value 0`. The pass is
+attributable to that wiring and nothing else.
+
+### A SHIPPED BUG SINCE WAVE 11: CALL #4 WAS MISSING TWO WRITES PER FRAME
+
+`displaylist.js` recorded `$23C194` as `move.w #1,D0 / or.w D0,$80393C` and `$23C1A2` as its
+clearing twin, and stopped there. **Both are four bytes longer and end in `bra.w $23C008`**, and
+`$23C008..$23C015` is `lea $B0E000,A0 / move.w $80393C,(A0) / rts` -- the commit to the IGS023
+control register. So the section flag was being maintained in RAM and **never pushed to hardware**.
+
+Now `displaylist.js` exports `sectionFlagSet23C194`, `sectionFlagClear23C1A2` and
+`sectionCommit23C008`, with `DL.sectionCommit`/`DL.ctrlReg`. `buildDisplayList` takes an OPTIONAL
+`opts.videoRegs`; omitting it is exactly the pre-wave behaviour, which a dozen fixtures depend on.
+
+**THE LESSON, AND IT IS THE THIRD TIME THIS WAVE:** `claimed.py` said `$23C194` was CLAIMED. Every
+hit was a COMMENT, and the comment was the source of the error. A comment is not a port, and a
+comment can be wrong in a way that outlives the wave that wrote it.
+
+### `$23BF74` IS NOT A ROUTINE ENTRY, AND IT NEVER RETURNS
+
+It is **23 `jsr`s into `$23BEEA`** (the routine `palette.js` already names), listed in
+`frontend.js RESET_PROLOGUE` and asserted against the ROM. It does NOT end at `$23BFDC`: it falls
+straight through into the seven-call main loop, and `$23C006 60 d4` is `bra.s` back to `$23BFDC`.
+There is no `rts` in `$23BF74..$23C007` -- asserted, with a positive control that sees the `4E75`
+at `$23C014`.
+
+`$23C1C2` (`interruptEnable23C1C2` in `src/frontend.js`) **returns NOTHING.** The `move.l D0,-(A7)`
+and the shared tail's `move.l (A7)+,D0` are a pair, so it is register-transparent. "It returns the
+old mask" is the obvious reading and it is WRONG. It writes `$80393E := 0` and sets IPL := 0; the
+`move D1,SR` half is a counted note, since this port has no status register.
+
+### TWO NEW ROM WINDOWS, AND A TEST THAT ASSERTED AN ABSENCE
+
+`(0x2257F8, 0x0080)` and `(0x2258B8, 0x00C0)` -- the high-score screen's fade targets, five of the
+seven of which had no window. **Code-stated bound:** every script entry carries `$001F` in its
+words-minus-one field and both readers loop `i <= wordsMinusOne` reading a word, so exactly `$40`
+per target. Ablation proved the need: with the two filtered out, all five throw `Unreached`.
+
+**`w236banner-palette.test.js` broke, and it deserved to.** It proved W236's extent with
+`assert.throws(() => ROM.bytes(0x2256b8 + 5*0x40, 64), Unreached)` -- and `$2256B8 + 5*$40` IS
+`$2257F8`. That assertion never tested W236's data; it tested that **nobody had yet declared a
+window next door**, which is not a fact about W236 and was never W236's to own. Replaced with the
+table's own terminator: pair [5] of `$28EE1E` is `$80008000`/`$90009000` and pair [6] is
+`$A000A000`/`$B000B000`, neither a ROM address. That is strictly stronger and cannot be invalidated
+by an unrelated window. **If you ever prove an extent with an absence, expect it to break for a
+reason that has nothing to do with your claim.**
+
 ### SLOT [8] IS PORTED **AND REGISTERED**. DISPATCH IS 16 OF 20.
 
 `$240F62[8] = $25A770`, the attract sequencer and credit gate, is `src/objslot8.js` and is wired into

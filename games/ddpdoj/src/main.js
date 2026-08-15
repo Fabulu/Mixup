@@ -67,6 +67,10 @@ import { RomWindows } from './rom.js';
 import { makeType5 } from './type5.js';
 import { PLAYER_SLOTS } from './shots.js';
 import { buildDisplayList } from './displaylist.js';
+// W375 -- `$23BF74`, THE FRONT-END BOOT BLOCK.  See `boot()` below and
+// src/frontend.js's header for the four places the disassembly it was ported
+// from had to be corrected.
+import { bootFrontEnd23BF74 } from './frontend.js';
 import { ProtLatch } from './protsim.js';
 import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
 import { makeBackground, BgVram, TxVram, VideoRegs } from './background.js';
@@ -777,6 +781,40 @@ export class Game {
    * $C08000 -- one word per LOGIC frame, which is exactly what a replay
    * records (NOTES-replay.md constraint 3; measured input lead is ZERO).
    */
+  /**
+   * `$23BF74..$23BFDB` -- THE FRONT-END BOOT BLOCK, and the gap it closes.
+   *
+   * `hiscore.js` has exported `hiscoreDefaults28841E` since W301 and, until this
+   * wave, **NOTHING IN `src/` CALLED IT**: fourteen test files did, and the port
+   * did not. `tests/w375slot8.test.js:718` recorded that as "`Game#boot()` DOES
+   * NOT DO THIS", which was true twice over -- there was no `boot()` at all. This
+   * is it, and the factory table is its first instruction, because `$23BF74 jsr
+   * $28841E` is the block's first instruction.
+   *
+   * **IT IS NOT CALLED FROM THE CONSTRUCTOR AND MUST NOT BE.** Every existing
+   * caller hands `Game` a MID-GAME snapshot (`rip/web/seed.bin` and the `.replay`
+   * fixtures), and `$28841E` overwrites `$803824..$8038B9` with the FACTORY
+   * table. On a seed taken mid-attract that is a no-op only because the shipped
+   * seed happens to hold the factory table (hiscore.js:355 measured exactly
+   * that); on a seed taken after somebody scored it would silently rewrite the
+   * board's own high scores and every column downstream of them. `boot()` is for
+   * a caller that starts from ZEROED RAM, which is what a cold boot is.
+   *
+   * THE FALL-THROUGH IS `step()`. The block does not return on the board: it runs
+   * off the end of `$23BFDB` into `$23BFDC`, the seven-call main loop, whose last
+   * instruction is `$23C006 bra.s $23BFDC`. So `boot()` then `step()` repeatedly
+   * IS `$23BF74`, whole, and the object it stages -- dispatch type 8 at state
+   * `$D` -- is picked up by the very next `step()`'s `commitCreates`.
+   *
+   * @returns the frontend.js result record: which banks installed, what the
+   *   section flag and the control register ended at, and the staged record.
+   */
+  boot() {
+    this.bootResult = bootFrontEnd23BF74(this.ram, this.rom, this.palette,
+      this.#ctx());
+    return this.bootResult;
+  }
+
   step(portWord) {
     const ctx = this.#ctx();
     this.budget.beginFrame();
@@ -917,6 +955,13 @@ export class Game {
       // THE $80B054 WATCH, counted and printed like every other honest gap:
       // $23D6A6 is the `add.l $80B054,D1` whose behaviour changes if it moves.
       warn: (m) => this.unportedLog.note(0x23d6a6, `WATCH ${m}`),
+      // W375 -- steps (a) and (j) each `bra.w $23C008`, which mirrors $80393C
+      // into $B0E000. The port had the RAM half and not the register half; see
+      // displaylist.js's `sectionCommit23C008`. On the shipped seed $80393C is
+      // $001F, exactly the value `VideoRegs` was constructed with, so this makes
+      // the register FOLLOW the word it was already hard-coded to match rather
+      // than changing what any renderer sees.
+      videoRegs: this.video,
     });
     // WAVE 91 -- `$23C454 jsr $24133C`, THE PALETTE UPLOAD.  It sits in the
     // block `$23C44C tst.b $803940 / beq $23C472` runs while the vblank

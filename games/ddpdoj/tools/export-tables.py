@@ -3206,6 +3206,39 @@ SHOT_WINDOWS.extend([
                        "bounded by ADJACENCY to type $1B's init at $269256. High word $0017 constant, "
                        "low words $D17C $CE78 $CB74 $C870 DESCENDING by $304 -- the same $304 stride "
                        "type $55's drift table ascends by, so this is that art family"),
+    # W375: THE HIGH-SCORE SCREEN'S PALETTE-FADE TARGETS, and they are the last thing
+    # standing between a REAL cold boot and the high-score screen. `$25B3DC` (arm 2's
+    # init) does `lea ($25BA46,pc),A0 / jsr $24641A`, and `$25BA46` is a SEVEN-entry
+    # chain script whose count word is already windowed as `$25BA46+$64` (2 + 7*14 = 100
+    # bytes, exact). Each entry's `target` longword is a fade DESTINATION the per-frame
+    # executor `$24683E` reads through `stepNode`.
+    #
+    # THE BOUND IS THE SCRIPT'S OWN WORDS-MINUS-ONE FIELD, not a guess about the data.
+    # Every one of the seven entries carries `$001F` there, and both readers are
+    # `for (i = 0; i <= wordsMinusOne; i++) { rom.u16(target); target += 2; }`
+    # (`animobjects.js loadAnimObjects246410` and `stepNode`), so each target is
+    # EXACTLY 32 words = $40 bytes. [M] the seven targets, decoded from the script:
+    #
+    #   [M] 25BA4E $2257F8   25BA5C $225838   25BA6A $2258B8   25BA78 $2258F8
+    #   [M] 25BA86 $225938   25BA94 $2254B8   25BAA2 $225878
+    #
+    # $2254B8 and $225878 already have $40 windows. The other five did not, and
+    # `$2257F8` is exactly where W236's `$2256B8+$140` STOPS -- the five banner
+    # palettes end there and this family begins there, adjacent and distinct. The two
+    # windows below are the five blocks in their two contiguous runs:
+    #
+    #   $2257F8 + $40 == $225838, + $40 == $225878, which is an existing window's base
+    #   $2258B8 + $40 == $2258F8, + $40 == $225938, + $40 == $225978
+    #
+    # so the first is pinned at BOTH ends by declared windows and neither widens one.
+    (0x2257F8, 0x0080, "W375: the high-score screen's fade targets $2257F8 and $225838 "
+                       "-- $25BA46's entries [0] and [1], $40 each from their own "
+                       "words-minus-one field $001F. Far end pinned by the existing "
+                       "$225878 window; near end pinned by W236's $2256B8+$140"),
+    (0x2258B8, 0x00C0, "W375: the high-score screen's fade targets $2258B8, $2258F8 and "
+                       "$225938 -- $25BA46's entries [2], [3] and [4], $40 each from the "
+                       "same $001F. Contiguous at stride $40, which is why they are one "
+                       "window and not three"),
 ])
 
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
