@@ -10,7 +10,17 @@ each has its own oracle, its own gate and its own record:
 |---|---|---|---|
 | Batman (Game Boy) | PyBoy, Python | `npm run test-all` - 27 stages | this file |
 | Gradius (NES) | Mesen 2.1.1, Lua | `node games/gradius/tools/test-all.mjs` - 12 stages | `docs/worklog/gradius/` |
-| DaiOuJou (IGS PGM) | MAME 0.288, Lua, `-video none -sound none -nothrottle` | no `test-all` yet; unit tests plus individual gates under `games/ddpdoj/tools/` | `docs/worklog/ddpdoj/` |
+| DaiOuJou (IGS PGM) | MAME 0.288, Lua, `-video none -sound none -nothrottle` | no `test-all` yet; `node --test games/ddpdoj/tests/` plus `node games/ddpdoj/tools/webgate.mjs` | `docs/worklog/ddpdoj/`, `docs/DOCKET.md`, `docs/ORCHESTRATOR_BRIEF.md` |
+
+DaiOuJou's two commands are the ones its every wave runs, and both must be clean
+before a publish: **the suite at 2875 tests with ZERO skipped, and the gate at
+exit 0** (counts as of W374, 2026-08-15). Its `RomWindows` layer adds a third
+kind of check that the other two games have no equivalent of: a read is served
+only from a declared window that contains it WHOLE, so an undeclared table
+throws rather than returning zeros. The window count is in
+`games/ddpdoj/rip/port/player.tables.json` under `rom.windows` (531 at W374) and
+`games/ddpdoj/tools/export-web.mjs` must be re-run before `tools/publish.mjs`
+whenever it changes, or the live site serves assets that do not match the code.
 
 The method is the same for all three and is written up once, cross-game, in
 `docs/knowledge/`. What is *below* is Batman's application of it - including the

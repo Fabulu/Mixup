@@ -54,9 +54,12 @@ Break any of these and the owner loses work or money.
    code is waste.
 10. **One focused smoke per meaningful change.** Every port must be **driven**, not just compiled.
 11. **Publish every FIFTH wave** (standing authorisation). Last publish was W370
-    (`20260813164141`), so the next is due at **W375**. Wave W373 is complete.
+    (`20260813164141`), so the next is due at **W375**, which is the wave in progress.
     **Run `node games/ddpdoj/tools/export-web.mjs` from the repo root BEFORE
-    `node tools/publish.mjs --only ddpdoj`** whenever windows changed. W373 added 41 windows.
+    `node tools/publish.mjs --only ddpdoj`** whenever windows changed. **W374 added 33 windows
+    (498 -> 531), so this publish MUST regenerate.** Count them from the file --
+    `rip/port/player.tables.json`'s `rom.windows` array -- not from a handoff note; a mid-wave note
+    recorded 31 and the wave finished at 33.
 
 ---
 
@@ -69,9 +72,11 @@ several routines land in the same file.
 ### Your own job, in order, for every unit
 
 1. **Check whether it is already ported.** `grep -rli "<ADDR>" games/ddpdoj/src/` for the bare hex
-   with no `0x` and no `$`. **Five routines this project "needed" already existed under another
-   name** (`$243DD0`, `$24652A`, `$24641A`, `$285AF2`, `$259FBC`). Do this before dispatching
-   anything.
+   with no `0x` and no `$`. **SIX routines this project "needed" already existed under another
+   name**: `$243DD0`, `$24652A`, `$24641A`, `$285AF2`, `$259FBC`, and -- found in W374 --
+   **`$27F8F0` = `allocPoolA27F8F0` in `src/bee.js`**. Do this before dispatching anything, and
+   prefer `tools/claimed.py`: the grep misses role-named ports, which is how eight duplicates were
+   written in one session.
 2. **Dispatch a RECON agent** to decode the routine completely (brief in 4.1).
 3. **Review the returned spec yourself** against section 7's trap list. Most defects this project
    shipped were misreadings that looked plausible. Catching them at spec review is far cheaper than
@@ -164,12 +169,20 @@ Paste section 7 into every recon brief.
 
 ---
 
-## 5. CURRENT STATE (end of W373)
+## 5. CURRENT STATE (end of W374; W375 in progress)
 
-**Suite 2730/2730, zero skips. Gate exit 0. Tree clean. Everything pushed.**
+**Suite 2875/2875, zero skips. Gate exit 0. 531 ROM windows.** W373 ended at 2730 and 498.
 
-`docs/NEXT_AGENT_HANDOFF.md` is the detailed, verified record. Read it after this file. It is long
-but every section was checked at the end of the wave.
+**Confirm the baseline yourself before trusting that line.** If the suite reports failures while
+other agents are editing `src/`, they are almost certainly a snapshot of a mid-edit file rather than
+a regression -- re-run once on a quiet tree before diagnosing anything. The totals (2875 tests, 0
+skipped) are the numbers to match.
+
+`docs/NEXT_AGENT_HANDOFF.md` is the detailed record. Read it after this file. **It is over 10,000
+lines and it is NOT uniformly current**: it carries at least one section that a later wave in the
+same run contradicted (it records `$25E4D0` as having no ported caller and warns against wiring
+one -- `$25D560` landed later in that wave and is its caller). Treat it as a research log, not as
+state, and check anything it asserts against the code.
 
 ### Done
 
@@ -178,9 +191,63 @@ but every section was checked at the end of the wave.
 * **Object dispatch slot [7]** `$290BE8` -- complete. A per-player loop that forks on a two-option,
   ten-second menu (`$2911B0`) to slot [17] or slot [15].
 * **Slot [13]** `$288A60`, **slot [14]** `$288C6C`, **slot [15]** `$291F66`, **slot [17]** `$25CEB8`.
-* **Slot [9]** `$25CACA` -- dispatcher plus five of its eight record states.
+* **Slot [9]** `$25CACA` -- **COMPLETE except its `$25CB94` tail.** All EIGHT record states are
+  ported (`$25D306`, `$25D402`, `$25D39C`, `$25D4F0`, `$25D560`, `$25D010`, `$25D1DA`, `$25D164`),
+  and so is the seeder `$25C8A2` (`$25C8A2..$25CAC0`, `$220` bytes -- W373 estimated ~550 from an
+  address gap). `$25CB94`, the dispatcher's continuation past the record walk, is still a counted
+  note: it reads `$23D16C`, tests bit `$F`, checks record 1 and calls `$23C98E`.
+* **`$25D560`, the state-7 handler** -- ported as `phase7_25D560` in `src/objslot17.js`.
+  732 bytes, `$25D560..$25D83B`, one `rts`. Its six callees remain counted notes (see section 6).
+* **`$23E2F2`** -- the zooming enqueue in REGISTER form, `enqueueZoomedRegisters` /
+  `resolveZoomRegisterStub` in `src/spritequeue.js`, a family of thirteen stubs. It is what
+  unblocked the last three shared draws.
 * **D35's coin handler**, `$13CFBA` through `$13D0EA`, complete: edge read, DIP coinage conversion,
-  a four-byte tick queue, and a six-frame counter solenoid pulse.
+  a four-byte tick queue, and a six-frame counter solenoid pulse. **But nothing feeds it a coin**
+  -- see D41, new on 2026-08-15.
+
+### ALL EIGHT SHARED SELECT-SCREEN DRAWS ARE PORTED, in `src/objslot9.js`
+
+    $25E220   $25E29E   $25E4D0   $25E6CE   $25E824   $25EDF8   $25EF30   $25F074
+
+**NO SINGLE CALL SITE RUNS ALL EIGHT, and that is the cartridge's design, not an omission.**
+`confirmAndDraw` (record states 1 and 4) fires seven and omits `$25E4D0`. `$25D560`'s tail at
+`$25D800` fires seven and omits `$25EDF8` -- counted as seven `4EB9` jsrs in `$25D800..$25D839`, not
+assumed. **Do not "fix" either list by adding the missing one**; it would draw a sprite on the wrong
+screen. The tail's order is load-bearing in both: every call emits into the same bucket, so
+reordering them reorders the sprites.
+
+**Three sizes this project recorded were wrong because they came from an address gap.** Measured to
+the real `rts`: `$25E6CE` is **70** bytes (recorded 342), `$25E4D0` is **446** (recorded 958),
+`$25F074` is **327** (recorded unknown). **An address gap bounds a REGION, not a routine.**
+
+### THE FRONT-END SLOTS ARE REGISTERED IN `src/main.js` -- THEY WERE NOT BEFORE
+
+Until W374 `defaultHandlers` held only slots **0-6, 10, 11**. Every screen the front-end waves built
+was correct code the object driver could not reach. W374 added **7, 9, 13, 15, 17**; W375 added
+**14**. `slotObject(fn, rom)` adapts `(ram, rom, a5, ctx)` to the driver's
+`(ram, slot, slotIndex, ctx)`; slot [17] needs more than the adapter, because `phase7_25D560`'s draw
+tail takes its seven draws as `ctx.selectDraws` rather than importing them (`objslot9.js` already
+imports `objslot17.js`, so importing back would close a cycle).
+
+**READ `main.js` FOR THE LIVE LIST. Do not copy this one** -- it moved twice in two waves.
+
+### TWO REAL BUGS IN SHIPPED CODE WERE FIXED IN W374
+
+Both are worth knowing because both are shapes that recur:
+
+* **`confirmAndDraw`'s early `return`.** `$25D244 beq.w $25D254` lands INSIDE the draw block, on its
+  first instruction, not on the `rts`. A non-confirm frame skips the sound and the state write and
+  **still draws**. Modelled as an early `return`, the whole select screen drew only on the single
+  frame a button was pressed.
+* **`bee.js`'s `offset & 0xffff`**, which dropped the high word of type `$1B`'s four-corner death
+  rows and collapsed a box to a segment.
+
+**AND THE FIRST BUG WITHDREW TWO CLAIMS THAT HAD ALREADY BEEN SHIPPED INTO DOCSTRINGS.** `$25EDF8`'s
+body and `$25F074`'s art arm were both recorded as dead gates on the strength of the early return.
+**Both are live**: on a non-confirm frame `($1,A6)` is still 4 at the call, so both
+`cmpi.b #$4,($1,A6)` gates fire. That is trap 10 -- and the rule it leaves is worth more than the
+fix: **before calling a gate dead because of what a caller writes, resolve the branch that skips
+that write.** "The caller sets it to 2" is only an argument if the caller ALWAYS sets it to 2.
 
 ### Established structure
 
@@ -212,29 +279,74 @@ entries are not routine starts. Verify an edge before relying on it. One was alr
 
 ## 6. NEXT UNITS, MEASURED, CHEAPEST FIRST
 
-Sizes are upper bounds from the address gap to the next known routine.
+**Every unit the previous edition of this section listed is DONE** -- `$25EDF8`, `$25EF30`,
+`$25E6CE`, `$25E29E`, `$25E824`, `$25F074`, `$25D560` and `$25C8A2` all landed in W374. The list
+below replaces it. **Run the already-ported check (section 3, step 1) on each one anyway**; that
+list was current when it was written too.
 
-1. **`$25EDF8`** (312) -- the PORTRAIT draw, fully swept, spec is in the handoff. Eight tables, four
-   per side; art index is the cursor value times four; body gated on record state 4.
-2. **`$25EF30`** (324) -- the only shared draw that reads the OTHER record. Part-read in the handoff.
-3. **`$25E6CE`** (342), **`$25E29E`** (1072), **`$25E824`** (1492), **`$25F074`** -- the remaining
-   shared draws. Both record state 1 and state 4 call all seven, so each serves the whole screen.
-   **`$25E220` is done and is the pattern for them.**
-4. **`$25D560`** -- slot [17]'s last handler. Part-read. Pulls in `$25F530`, `$25FAA4`, and a far
-   branch to `$25D800`.
-5. **Slot [9]'s OBJECT state 0** `$25C8A2` (~550 bytes) -- then slot [9] is complete.
-6. **Slot [18]** the ASIC27 self-test. Real work but NOT on the path to the milestone. Its callees
-   are **compiled C**: arguments pushed right to left, caller cleans up, and **the compiler batches
-   the cleanup across two calls** (`lea ($18,A7),A7` after two 12-byte pushes). `$24842C` BLOCKS on
-   input inside a loop, which does not fit a per-frame driver and **needs a decision, not a
-   transcription**.
-7. **Nine dispatch slots still untouched:** [8] `$25A770`, [12] `$28F3AC`, [16] `$256E7A`,
-   [19] `$28EE88`, and the rest.
-8. **Docket:** D33 main screen (slot [17], ported), D34 (slot [9], mostly done), D35 (coin handler
-   done; **lives, extends, game over and continue are still unanchored**), D37 (re-anchor needed),
-   D38 input lag faithful (logic side measured faithful; presentation path remains), D39 input lag
-   mods (three toggles specified), D26 second ship plus two more pilots, D28 multi-ship/pilot mods.
-9. **D36, the second ROM game -- LAST, by the owner's explicit instruction.**
+Sizes below are measured to a real `rts` unless marked. **A size taken from an address gap bounds a
+REGION, not a routine** -- that error put three numbers in this file wrong by up to a factor of six.
+
+1. **`$23C98E`** -- the cheapest unit on the list and it pays TWICE. It is the descriptor's third
+   code pointer, and it is the ONE thing blocking two separate places: slot [9]'s `$25CB94` tail
+   calls it, and `tallyscreen.js:945` carries a counted note saying slot [11]'s phase 0 can never
+   complete without it. Unported -- it appears in `src/` only in prose (trap 17), so grep the name
+   and the family, not the address.
+2. **`$25CB94`** -- slot [9]'s continuation past the record walk, and then slot [9] is complete. It
+   reads `$23D16C` (a descriptor input accessor, ported alongside `$23D186`), tests bit `$F`, checks
+   record 1 and calls `$23C98E`. Unread; do unit 1 first.
+3. **`$25D560`'s SIX CALLEES**, all counted notes in `objslot17.js`, all sized from `HANDLER7`:
+
+       $25F530     80 B   the head -- and it `bsr`s $25F592 (560 B), so it is really two
+       $25FAA4    334 B   the per-frame body
+       $25F456    218 B   the tail call
+       $26070C    124 B   the handoff
+       $2603FE    172 B   the pair site, behind a once-only latch on $812F80
+
+   Plus `$25F2D0`, slot [17]'s state-6 label pair, noted at `objslot17.js:317`.
+4. **D41: coin and start controls.** New from the owner on 2026-08-15 and the smallest
+   player-visible item on the docket. **`ctx.coinPort` is read at `isr.js:51` and set NOWHERE** -- a
+   repo-wide grep returns the read and the parameter name, nothing else -- so the coin port sits at
+   `COIN.idle` for ever and no coin can be inserted. The economy below it is complete and driven.
+   **The trap is at the site**: IRQ6's `portWord` is `$C08000`, the PLAYER port; `$13CFBA` reads
+   `$C08004`. Handing one to the other credits a coin every frame, and it already cost six test
+   failures. Browser layer is `src/web/input.js`; `games/ddpdoj/.scratch/` holds a stale copy that
+   is NOT the live tree. **Swiss QWERTZ: bind by `e.code`, and bind `KeyY` and `KeyZ` together.**
+5. **FIVE dispatch slots still untouched** -- not nine, and not eleven. Six of the eleven W372 found
+   are ported (`objslot7pool.js`, `objslot9.js`, `objslot13.js`, `objslot14.js`, `objslot15.js`,
+   `objslot17.js`) and all six are now registered in `main.js`. What is left:
+
+       [ 8] $25A770    ~188 B to its first rts, TEN distinct callees   -- the big one
+       [12] $28F3AC     ~76 B   zero callees before the first rts      -- hiscore family
+       [16] $256E7A     ~74 B   zero                                   -- service/test menu
+       [18] $24902A             the ASIC27 self-test (see below)
+       [19] $28EE88     ~30 B   zero                                   -- 51 callees, 18 unported
+
+   **Those byte counts are FLOORS, measured to the first `rts` only.** A dispatcher's arms usually
+   live BELOW its entry -- slot [14]'s do, and slot [9]'s start at `$25C8A2`, `$228` bytes under its
+   own table entry. Trap 6, and it has bitten this table specifically.
+6. **Slot [18], the ASIC27 self-test.** Real work, NOT on the path to the milestone, and **not an
+   ending** -- the D37 anchor on it was withdrawn in W373 on the strength of its own strings. Its
+   callees are **compiled C**: arguments pushed right to left, caller cleans up, and the compiler
+   **batches the cleanup across two calls** (`lea ($18,A7),A7` after two 12-byte pushes). `$24842C`
+   BLOCKS on input inside a loop, which does not fit a per-frame driver and **needs a decision, not
+   a transcription**.
+7. **Docket, by what is actually blocked:**
+   * **D33** main screen -- slot [17] is ported and registered; the screen itself still needs its
+     seeding and its entry path.
+   * **D34** character select -- slot [9], complete but for `$25CB94` (units 1 and 2).
+   * **D35** life and coin -- the coin HANDLER is done; **lives, extends, game over and continue
+     remain unanchored**, and D41 is the input edge D35 never covered.
+   * **D37** endings -- **needs re-anchoring**; slot [18] is not it.
+   * **D38** input lag, faithful -- the logic side is measured faithful; only the presentation path
+     remains.
+   * **D39** input lag mods -- three toggles specified, and D38 lands first.
+   * **D26** second ship and two more pilots; **D28** the multi-ship/pilot mods, explicitly deferred
+     by the owner until the game is done.
+8. **D36, the second ROM game -- DoDonPachi DaiOuJou WHITE LABEL.** LAST by the owner's explicit
+   instruction, and **the project's definition of done**. Nothing has been decoded for it: no entry
+   point, no region bound, no dispatch table. When its turn comes, the first job is to locate its
+   reset vector and bound its region, **not** to assume it mirrors Black Label's layout.
 
 ---
 
@@ -308,8 +420,15 @@ deferral.
 
 ## 9. WHAT TO DO FIRST
 
-1. Read `docs/NEXT_AGENT_HANDOFF.md`.
-2. Confirm the baseline yourself: full suite, gate, `git status`.
-3. Take unit 1 from section 6 (`$25EDF8`). Its spec is already in the handoff -- still run the
-   already-ported grep, still review the spec, then dispatch a PORT agent.
-4. Keep going. Do not stop.
+1. **Confirm the baseline yourself first**: full suite (expect 2875, 0 skipped), gate exit 0,
+   `git status`, and the window count out of `rip/port/player.tables.json` (expect 531). Do this
+   before reading anything, so you find out immediately if a document is describing a tree that no
+   longer exists. Several sections of this file have been wrong in exactly that way.
+2. **Publish. It is due at W375 and W374 added 33 windows**, so
+   `node games/ddpdoj/tools/export-web.mjs` from the repo root FIRST, then
+   `node tools/publish.mjs --only ddpdoj`. Skipping the first step serves stale assets from the live
+   site, and that fails as a broken page rather than as a red test.
+3. Read `docs/NEXT_AGENT_HANDOFF.md` for detail -- as a research log, not as state. See section 5.
+4. Take unit 1 from section 6 (`$23C98E`). Run the already-ported check, dispatch a RECON agent,
+   review the spec yourself against section 7, then dispatch a PORT agent.
+5. Keep going. Do not stop.

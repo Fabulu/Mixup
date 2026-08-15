@@ -12,6 +12,18 @@ The section headings below still read "Fixed" and "Open, in priority order" from
 day the docket was opened; the per-item markers are authoritative, and D12 covers
 that drift.
 
+**STANDING AS OF W375 (2026-08-15).** The docket now runs D1..D41 and its centre of gravity has
+moved: the play-session defects D1..D32 are almost all closed, and the open bulk is the **front
+end** the owner added on 2026-08-13 (D33 main screen, D34 character select, D35 life and coin,
+D37 endings) plus the new **D41 controls to start the game**. **D36, the second game in the
+cartridge -- DoDonPachi DaiOuJou WHITE LABEL -- is LAST in order and is the project's definition of
+done.** Nothing has been decoded for it.
+
+Two entries in the D33/D34 material below are marked SUPERSEDED in place rather than deleted: the
+"eleven untouched dispatch slots" count (six are ported now) and W373's "still open" list for slot
+[9] (all of it landed in W374). The superseded text is kept because the reasoning that produced it
+is still the right method; only the numbers moved.
+
     D1  W226   D2  W226   D3  W264/265/266   D4  W265/266/267
     D5  W230   D6  W234   D7  W271           D8  W272 (no draw was missing)
     D9  W227/228/231      D10 W268           D12 W253/263
@@ -225,6 +237,40 @@ stages 3 and 4 entirely, and nothing in `docs/` except this docket and
 the web bundle's shard layout. Worth one pass that brings the top-level documents
 up to the code, states where the port actually is stage by stage, and points at
 the worklogs for detail rather than restating them.
+
+**W375 CORRECTION -- THE PREMISE OF THE PARAGRAPH ABOVE IS WRONG, AND THAT IS
+WHY THE ITEM LOOKED BIGGER THAN IT IS.** `00-MASTER-REFERENCE.md`,
+`01-PORT-PLAN.md`, `02-MOD-SYSTEM.md`, every `recon-*` and every `research-*`
+file **is about BATMAN: RETURN OF THE JOKER (Game Boy, Sunsoft 1992)**, which is
+this repository's first game. They cite `B:$AAAA` bank addresses, MBC1 banking
+and a 131072-byte ROM. **They do not describe DaiOuJou at all**, so they cannot
+"predate stages 3 and 4" -- DaiOuJou has no stages in them to predate.
+
+The repository holds THREE games (`03-VERIFICATION.md`'s own table says so:
+Batman, Gradius, DaiOuJou). DaiOuJou's living documents are **this file**,
+`ORCHESTRATOR_BRIEF.md`, `NEXT_AGENT_HANDOFF.md` and `docs/worklog/ddpdoj/`;
+`04-INPUT-SYSTEM.md` is the only top-level plan that spans all three.
+
+So the real scope of D12 is those four, plus the DaiOuJou row of
+`03-VERIFICATION.md`. **Do not "update" the Batman references to mention the
+Stage-4 boss.** That would corrupt the record of a different port, which is a
+worse outcome than the staleness this item was opened for.
+
+**W375 DID A PASS AND THIS ITEM STAYS OPEN, NARROWED.** Corrected against the code:
+this file's front-end sections, `ORCHESTRATOR_BRIEF.md`'s current-state and
+next-units sections, and the top-level references. **What was stale was never the
+prose -- it was the counts**: ROM window counts, suite counts, "eleven slots
+untouched", three routine sizes taken from address gaps, and a "next units" list
+every entry of which had already landed. **Numbers rot and reasoning does not**, so
+the correction was to date and supersede the numbers and leave the reasoning
+standing.
+
+Deliberately not touched: `recon-*` and `research-*` are historical records of
+investigations, not living state. Still stale and NOT fixed by that pass:
+`NEXT_AGENT_HANDOFF.md`, which is over 10,000 lines because nobody prunes it and
+which now contradicts itself within a single wave -- it records `$25E4D0` as having
+no ported caller and warns against wiring one, which stopped being true the moment
+`$25D560` landed in that same wave and gave it its host.
 
 ## Added 2026-08-11 from a second play session
 
@@ -1042,6 +1088,26 @@ explosion is the shared one and not `$1A`'s specific flourish.
 
 Next publish due when `handler4C` lands, or on the fifth wave after W365 if a behavioural change arrives sooner.
 
+**PUBLISH IS DUE AT W375, AND `export-web.mjs` IS MANDATORY THIS TIME.** Last publish was W370
+(`20260813164141`); five waves later is W375. **W374 took the ROM window count from 498 to 531 --
+THIRTY-THREE new windows**, verified by counting `rip/port/player.tables.json`'s `rom.windows`. That
+is precisely the case the standing rule exists for:
+
+    node games/ddpdoj/tools/export-web.mjs      FIRST, from the repo root
+    node tools/publish.mjs --only ddpdoj        only then
+
+Skipping the first step serves a live page reading stale assets, and a missing window shows up as a
+broken page rather than as a failing test. **A mid-wave handoff note recorded "31 new windows"; the
+count at the end of the wave is 33.** Take the number from the file, not from a note.
+
+**What to look at in the W375 build:** the two-player character-select screen. It is the first build
+where any front-end slot is reachable from the object driver at all -- W374 registered slots 7, 9,
+13, 15 and 17 and W375 registered 14, and until then they were correct code nothing could call. Two
+real defects also land in it: the select screen used to draw **only on the single frame a button was
+pressed** (`confirmAndDraw` modelled a `beq` that lands INSIDE the draw block as an early `return`),
+and type `$1B`'s four-corner death rows used to **collapse from a box to a segment** (an
+`offset & 0xffff` in `bee.js` dropped the high word).
+
 **W351 correction to this item: the tool name here was WRONG and cost a detour.** The step is
 `node games/ddpdoj/tools/export-web.mjs` from the REPO ROOT -- there is no `tools/export-web.mjs`,
 and `ls tools/*.mjs` run from inside `games/ddpdoj` resolves against the root, so it looks convincingly
@@ -1531,6 +1597,23 @@ the driver's own `moveq #$13` and by slot 20 not being a code pointer.
     [ 7] $290BE8   [ 8] $25A770   [ 9] $25CACA   [12] $28F3AC   [13] $288A60   [14] $288C6C
     [15] $291F66   [16] $256E7A   [17] $25CEB8   [18] $24902A   [19] $28EE88
 
+**SUPERSEDED W372..W375: SIX OF THE ELEVEN ARE PORTED, AND FIVE REMAIN.** The W372 list above is
+kept because it is what the sweep found and it is still the right way to enumerate the table. What
+has changed is the count:
+
+    PORTED   [ 7] objslot7pool.js   [ 9] objslot9.js    [13] objslot13.js
+             [14] objslot14.js      [15] objslot15.js   [17] objslot17.js
+
+    LEFT     [ 8] $25A770   [12] $28F3AC   [16] $256E7A   [18] $24902A   [19] $28EE88
+
+**AND THEY ARE NOW REGISTERED IN `src/main.js`, WHICH THEY WERE NOT.** Until W374 `defaultHandlers`
+held only slots 0-6, 10 and 11, so **four waves of screen work was correct code the object driver
+could not reach**; W374 added 7, 9, 13, 15 and 17 and W375 added 14. Derive the live list from
+`main.js` rather than from any list in a document -- it moved twice in two waves.
+
+`grep`ing for a handler address is NOT how to check this any more: each slot lives in its own
+`objslot*.js` and the dispatch address appears there as prose. Check the file, then check the map.
+
 **AND ALL ELEVEN ARE THE SAME SHAPE.** Every one opens `tst.b (d8,A5)` / `beq` then a `cmpi.b` cascade -- a state
 machine on a byte in the object record, exactly what `tallyscreen.js` documents for slot [11] (*"$25DBB4 the
 dispatcher, on ($2,A5)"*). **So the eleven are not eleven different problems.** They are one shape, and the machinery
@@ -1588,8 +1671,31 @@ SELECT WITH MUTUAL EXCLUSION over three options:
 `$25D4F0` are literally shared. **Still open: slot [9] state 0 (`$25C8A2`, ~550 bytes), `$25D010`, `$25D1DA`,
 `$25D560`, and the seven draw routines state 4 calls.**
 
+**W373 SAID THAT; W374 CLOSED EVERY ITEM ON THE LIST.** All eight of slot [9]'s record states are
+ported (`$25D306`, `$25D402`, `$25D39C`, `$25D4F0`, `$25D560`, `$25D010`, `$25D1DA`, `$25D164`), and
+so is the seeder `$25C8A2` -- which measured **`$25C8A2..$25CAC0`, `$220` bytes**, not the "~550"
+this entry estimated. **All EIGHT shared draws are ported**, in `src/objslot9.js`:
+
+    $25E220   $25E29E   $25E4D0   $25E6CE   $25E824   $25EDF8   $25EF30   $25F074
+
+**IT WAS NEVER "the seven draw routines" -- there are eight, and no single call site runs all of
+them.** `confirmAndDraw` (states 1 and 4) fires seven and omits `$25E4D0`; `$25D560`'s tail at
+`$25D800` fires seven and omits `$25EDF8`. Counting the `4EB9` jsrs in `$25D800..$25D839` gives
+exactly seven. A wave that assumes one canonical draw list will wire a sprite onto the wrong screen.
+
+**Sizes taken from an address gap bound a REGION, not a routine**, and this item recorded three that
+were wrong by a lot. Measured to the real `rts`: `$25E6CE` is **70** bytes (recorded as 342),
+`$25E4D0` is **446** (recorded as 958), and `$25F074` is **327** (recorded as unknown).
+
+**Still open in slot [9]:** `$25CB94`, the dispatcher's tail past the record walk -- it reads
+`$23D16C`, tests bit `$F`, checks record 1 and calls `$23C98E`. Unread, and a counted note.
+
+**Still open in slot [17]:** the six `$25D560` callees, all counted notes and all sized --
+`$25F530` (80 B, which `bsr`s the 560-byte `$25F592`), `$25FAA4` (334 B), `$25F456` (218 B),
+`$26070C` (124 B) and `$2603FE` (172 B).
+
 Five of the eleven are now candidates: **[17] D33, [9] D34, [18] D37, [16] service, [12] hiscore, [13] stage
-progression.**
+progression.** (The [18] anchor was withdrawn in W373 -- see D37.)
 
 **AND THE REMAINING FIVE ARE RANKED BY DEPENDENCY COUNT (W372).** Counting `jsr` AND `bsr` callees and checking each
 against the port:
@@ -1616,6 +1722,15 @@ it proves the compiled-C convention against real code rather than against a scan
 **So "cheapest" is about TWO KILOBYTES, not a morning.** That is the honest size of the smallest front-end slot, and
 it is worth knowing before picking it up: no dispatch slot in this table is a quick win, and the three-versus-six
 ranking is a ranking of large jobs. **Do not start one expecting the scale of a stage-5 enemy type.**
+
+**SUPERSEDED: `[14]` AND `[7]` ARE BOTH DONE, so the ranking now covers only the five that are left**
+-- `[8] $25A770`, `[12] $28F3AC`, `[16] $256E7A`, `[18] $24902A`, `[19] $28EE88`. `[8]` and `[19]`
+remain the two large ones by the same count. **And `[14]`'s two-kilobyte estimate was itself wrong in
+the interesting direction:** the dispatch address `$288C6C` is not the routine's start -- the state-0
+and state-2 arms branch BACKWARD to `$288BCE` and `$288C3E`, so the routine is `$288BCE..$288D62`,
+and **all eleven of its callees turned out to be ported** once `4EF9` (`jmp` abs.l) and `4EBA`
+(`jsr` PC-relative) were counted. The "three unported" figure came from a fixed forward window
+running past the routine's end. Trap 6 and the call-form rule, both in one slot.
 
 **THIS COUNT WAS WRONG TWICE, AND THE RULE IS THE POINT.** The first pass counted `jsr abs.l` only and reported
 `[14]` and `[15]` as fully covered. The second added `bsr` and reported `[7]` as needing ONE routine -- a claim that
@@ -1842,6 +1957,57 @@ game logic -- which makes it the right first one to build and the easiest to rea
 **D38 MUST LAND FIRST.** Without its measurement there is no way to tell which of these actually removes a
 frame and which only feels like it does, and no way to keep the faithful build honest while they exist. A
 mod that silently becomes the default is the failure mode to design against.
+
+## Added 2026-08-15 by the owner
+
+### D41: CONTROLS TO ACTUALLY START THE GAME -- INSERT COIN AND START
+
+> "add to docket controls to actually start the game, like insert coin and start button and such"
+
+**D40 was already taken** (the undefined-cartridge decision), so this item is D41.
+
+**This is the half of D35 that D35 never covered.** D35 is the life and coin SYSTEM, and its coin
+handler is recorded there as complete: `$13CFBA`, `$13CF86`, `$13CE22`, `$13CC50` and `$13D068` are
+all in `src/isr.js`, covering the edge read, the DIP coinage conversion, the four-byte pending-tick
+queue and the six-frame counter solenoid pulse. **The economy works. Nothing can reach it.**
+
+**THE MEASURED GAP IS ONE UNSET FIELD.** `src/isr.js:51` reads
+
+    coinRead13CFBA(ram, ctx.coinPort ?? COIN.idle, ctx);
+
+and a repo-wide grep for `coinPort` returns exactly two hits: that read, and the parameter name in
+`coinRead13CFBA`'s own definition at `isr.js:176`. **Nothing anywhere writes it.** So the coin port
+sits at `COIN.idle` on every frame of every run, the edge detector never sees a transition, and no
+coin can be inserted by any means the port currently offers.
+
+**THE TRAP, WHICH ALREADY COST SIX TEST FAILURES AND IS WRITTEN INTO `isr.js` AT THE SITE:** IRQ6's
+`portWord` is `$C08000`, the PLAYER port. `$13CFBA` does its own `lea $C08004,A0` and reads a
+DIFFERENT word. **Handing one to the other credits a coin whenever a player holds a button whose bit
+falls in the `$E0` mask** -- which is how it was caught. The two ports are separate inputs and must
+stay separate all the way out to the browser.
+
+**START IS ALREADY BOUND. ONLY COIN IS MISSING**, which halves the item and is worth knowing before
+anyone designs a control scheme. `src/web/input.js`'s `KEYMAP` already carries `Enter: 'START'`
+alongside the movement and the three action buttons, and `src/input.js`'s `portWordFromBits` is the
+measured inverse of build A's `$13D464`, unit-tested against the board's own port words (`$FFFE` for
+1P Start alone, `$FF7F` for Button 3 held). **Start reaches the 68000 today. Coin has no route at
+all**, because coin does not travel on that port -- see the trap above.
+
+**KEYBOARD CONSTRAINT, asked for by the owner twice:** the layout is **Swiss QWERTZ**. Bind by
+`e.code`, never `e.key`, and whenever `KeyZ` is bound `KeyY` must be bound too, and the reverse.
+`src/web/input.js` already does this correctly for SHOT (`KeyZ` and `KeyY` both map to it, because
+the key printed Z on a Swiss board sits where QWERTY has Y and reports `KeyY`), so **copy that
+file's existing pattern rather than inventing a binding**. `docs/04-INPUT-SYSTEM.md` is the
+cross-game plan for this layer and it preserves the same rule.
+
+**Where the work lands:** `src/web/input.js` is the live browser input layer. `games/ddpdoj/.scratch/`
+holds a stale copy of it that is NOT the live tree -- do not edit that one.
+
+**OPEN, and deliberately not guessed at here:** a read-only recon is mapping the two ports' bit
+layouts, the boot-to-play sequence, and **whether coin plus start is even SUFFICIENT to reach
+gameplay** -- the port starts mid-game today, so the front end may have to run first (D33, D34), and
+that is exactly what the recon is for. Nothing above depends on its answer; everything above is
+measured. Do not act on a prediction of it.
 
 ### D36: THE SECOND GAME IN THE ROM -- **DEFINITELY LAST, AND IT IS THE FINISH LINE**
 

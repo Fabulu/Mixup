@@ -21,6 +21,49 @@ reason. Worktree isolation is withdrawn as the port-contention fallback, so **se
 is the only concurrency control** -- and every shared draw lands in `src/objslot9.js`, so it is one port
 agent there regardless.
 
+### THE `docs/` SWEEP FOUND SOMETHING NOBODY SHOULD RE-DISCOVER THE HARD WAY
+
+**`00-MASTER-REFERENCE.md`, `01-PORT-PLAN.md`, `02-MOD-SYSTEM.md` and EVERY `recon-*` and
+`research-*` file are about a DIFFERENT GAME** -- **Batman: Return of the Joker (Game Boy)**: MBC1
+banking, `B:$AAAA` addresses, a 131,072-byte ROM. **They say nothing about DaiOuJou and cannot be
+brought "up to date" against its code.** Anyone who tries will corrupt another port's record.
+`04-INPUT-SYSTEM.md` is the one top-level plan spanning all three games and it IS consistent.
+
+So the living DaiOuJou docs are exactly three: **`DOCKET.md`, `ORCHESTRATOR_BRIEF.md` and this
+file.** `D12`'s claim that the reference docs "predate stages 3 and 4" was false and is corrected in
+place.
+
+### NEW DOCKET ITEM (owner, 2026-08-15): **CONTROLS TO ACTUALLY START THE GAME** -- filed as **D41**
+
+**D40 was already taken**, so it is D41 in `DOCKET.md`.
+
+**HALF OF IT IS ALREADY DONE, WHICH THE MEASUREMENT FOUND AND I HAD ASSUMED OTHERWISE.**
+`src/web/input.js`'s `KEYMAP` already carries **`Enter: 'START'`**, and `portWordFromBits` is
+unit-tested against the board's own words. **Only COIN has no route at all.** So the item is one
+input edge, not two.
+
+Insert coin, start button, and whatever else stands between boot and play. **You currently cannot
+start the game**, and the reason is concrete:
+
+**`ctx.coinPort` IS READ BUT NEVER SET.** `src/isr.js:51` does
+`coinRead13CFBA(ram, ctx.coinPort ?? COIN.idle, ctx)`, and a repo-wide grep for `coinPort` finds
+only that read plus the function definition. **So the coin port sits at idle forever and no coin can
+ever be inserted.** The coin machinery below it is fine -- `$13CFBA`, `$13CF86`, `$13CE22`,
+`$13CC50` and `$13D068` are all ported and driven, including the DIP coinage conversion, the
+four-byte pending-tick queue and the six-frame solenoid pulse. **The gap is the input edge, not the
+economy.**
+
+**REMEMBER THE PORT TRAP:** IRQ6's `portWord` is `$C08000`, the PLAYER port; `$13CFBA` does its OWN
+`lea $C08004,A0` and reads a DIFFERENT word. Handing one to the other credits a coin every frame --
+that mistake already cost six test failures once.
+
+**AND THE KEYBOARD RULE, asked for twice:** the owner uses **Swiss QWERTZ**. Bind by **`e.code`**,
+never `e.key`, and **whenever you bind `KeyZ` you must also bind `KeyY`**, and vice versa.
+
+Recon is mapping the port bit layouts from the cartridge, the boot-to-play sequence, where `ctx` is
+built, what `src/web/input.js` binds today, and -- the question that matters most -- **whether coin
+plus start is actually SUFFICIENT to reach gameplay, or whether something else stands in the way.**
+
 ### **THE FRONT-END SLOTS ARE NOW REGISTERED.** `main.js` DISPATCHES 7, 9, 13, 15 AND 17
 
 Until W374 `defaultHandlers` held only **0, 1, 2, 3, 4, 5, 6, 10, 11**, so slots **7, 9, 13, 15 and
@@ -53,7 +96,19 @@ additions are a no-op for it, and git history shows it has not been regenerated 
 many ports.
 
 **CONSEQUENCE FOR EVERY REMAINING NOTE IN THESE FILES:** the `note()`s inside slots 7, 9, 13, 15 and
-17 are **LIVE at runtime now**, not hypothetical. They will be counted on real frames.
+17 are **LIVE at runtime now**, not hypothetical. They will be counted on real frames. The
+inventory, which is the front end's remaining gap made measurable:
+
+    objslot17.js   15 notes      objslot9.js    11 notes      objslot13.js    4 notes
+    objslot7pool.js 2 notes      objslot15.js    1 note       -- 33 in total
+
+**AND I MISSED SLOT [14] IN THE FIRST PASS.** `objSlot14` is exported from `objslot14.js` and was
+ported in W372, and it was not in the map either. That is the SECOND time this wave I have found a
+ported dispatcher nobody had registered. **The lesson is not "check again" -- it is that
+"ported" and "reachable" are different properties and this project had no check that tied them
+together.** Before adding another slot routine, run the audit: for each of the twenty `$240F62`
+entries, does a real port exist, and is it in `defaultHandlers`? Use a positive control on every
+"not found", because `grep ... | head` returns head's exit status and `|| echo` never fires.
 
 ### THE BIGGEST FINDING OF W374: `confirmAndDraw` HAD A REAL BUG, AND IT MADE ME CALL TWO LIVE GATES DEAD
 
@@ -432,7 +487,7 @@ The full dispatch table `$240F62`, for reference -- handler and priority, twenty
 ### PUBLISH IS DUE NEXT WAVE (W375), AND W374 ADDED 31 WINDOWS -- `export-web.mjs` IS MANDATORY
 
 Last publish was W370 (`20260813164141`); the cadence is every FIFTH wave, so **W375 publishes**.
-**W374 took the window count from 498 to 529 -- THIRTY-ONE new windows.** So this is exactly the
+**W374 took the window count from 498 to 531 -- THIRTY-THREE new windows.** So this is exactly the
 case the standing rule was written for:
 
     node games/ddpdoj/tools/export-web.mjs      FIRST, from the repo root
@@ -469,10 +524,20 @@ which record it reads across to. Both call sites pass it.
 
 ### **ALL EIGHT SHARED DRAWS ARE PORTED.** `$25E220`, `$25E29E`, `$25E4D0`, `$25E6CE`, `$25E824`, `$25EDF8`, `$25EF30`, `$25F074`.
 
-Seven are WIRED into `confirmAndDraw`. **`$25E4D0` is deliberately NOT wired and that is correct:**
-its only call site is `$25D814`, inside `$25D560`'s tail, and `$25D560` is unported. It is exported
-and unreferenced on purpose. **Do not "fix" that by adding it to `confirmAndDraw`** -- it is in
-neither of the two ported tails, and inventing a caller would draw it on the wrong screens.
+**SUPERSEDED LATER IN THE SAME WAVE -- READ THIS BEFORE ACTING ON THE PARAGRAPH BELOW.**
+`$25E4D0` **IS** wired now. `$25D560` was ported after this was written, and `$25E4D0` is
+`TAIL_25D560[2]`, fired at `$25D814` from `phase7_25D560` -- which is live, because slot [17] is
+registered in `main.js`. The only thing still true is that it is absent from `confirmAndDraw`.
+
+**AND NO SINGLE CALL SITE RUNS ALL EIGHT.** `confirmAndDraw`'s two tails fire seven including
+`$25EDF8` and excluding `$25E4D0`; `$25D560`'s tail fires seven the other way round. Any sentence of
+the form "all eight draws run" is wrong wherever it appears.
+
+The original note, kept because its reasoning about not inventing a caller was right at the time:
+seven are WIRED into `confirmAndDraw`, and `$25E4D0` is deliberately NOT among them --
+its only call site is `$25D814`, inside `$25D560`'s tail. **Do not "fix" that by adding it to
+`confirmAndDraw`** -- it is in neither of that function's tails, and inventing a caller there would
+draw it on the wrong screens.
 
 **`$25E4D0` is 446 bytes, not the 958 I first claimed** (`$25E4D0..$25E68D`, with `4E71` pads at
 `$25E5AE` and `$25E68C`), plus a 16-byte DATA PROLOGUE at `$25E4C0..$25E4CF` sitting BELOW its own
@@ -676,7 +741,12 @@ them, from the neighbours' recon and verified by hand:
   **tell port agents to write temp files to an absolute scratchpad path**, because an empty
   `$TMPDIR` in Git Bash resolves relative paths under `C:\Program Files\Git`.
 
-### `$25C8A2` IS PORTED. **SLOT [9] IS COMPLETE.**
+### `$25C8A2` IS PORTED. SLOT [9] IS NOT QUITE COMPLETE -- I OVERSTATED THIS.
+
+**`$25CB94` IS STILL A COUNTED NOTE** (`objslot9.js:330`) -- the dispatcher's continuation past the
+record walk, which reads `$23D16C`, tests bit `$F` and calls `$23C98E`. Every record STATE is ported;
+the walk's tail is not. "Slot [9] is complete" appears in several W374 commit messages and is wrong
+by that one routine. Fix the claim, not the code.
 
 `seed25C8A2` in `src/objslot9.js`, with all four leaves, wired into `objSlot9`'s state-0 arm, 24
 driving tests. No new ROM windows: all fifteen palette sources were already covered by W373's.
