@@ -25,11 +25,38 @@
 // the WHOLE iteration rather than skip and catch up.
 //
 // videoFrame and logicFrame are separate compared fields, always.
+//
+// ---------------------------------------------------------------------------
+// W375 -- A DECLARED DEVIATION FROM `NOTES-replay.md` §2, AND IT IS A WIDENING
+// OF THE REPLAY CONTRACT, not a bug.
+//
+// That note says a run's state derives from (initial state, input words) and
+// NOTHING ELSE, and every per-game field in the constructor below cites it.
+// From this wave `Game` has a SECOND per-frame input: `this.coinPort`, the raw
+// `$C08004` word, which the page writes before each `step()` and which
+// `coinDebounce13CEC8` and `$13CFBA` both read.
+//
+// **THE `.replay` FORMAT DOES NOT CARRY IT.** `src/web/replay.js` fixes
+// `portin.encoding === 'u16be'` with ONE word per logic frame and
+// `decodePortinWords` throws on anything else, so a recording made while the
+// owner was coining up REPRODUCES ONLY ITS PLAYER INPUT: the replayed run sees
+// `COIN.idle` on every frame it was recorded with a coin held, and its credit
+// count -- and anything downstream of it -- diverges. A recording taken with
+// no coin key touched is unaffected, which is every existing fixture.
+//
+// `step()`'s signature is deliberately UNCHANGED for that reason: a second
+// per-frame word is a FORMAT VERSION BUMP, not an argument. THE HONEST FIX,
+// when someone wants coin-accurate recordings, is a v2 encoding carrying BOTH
+// streams -- the existing `portin` block plus a sibling `coinin` block of the
+// same shape (`u16be`, same count) -- with `validateReplay` requiring the two
+// counts to match and a v1 file read back as `coinin` = all `$FFFF`, which is
+// exactly what a v1 run already means. Until then this is a stated hole.
+// ---------------------------------------------------------------------------
 
 import { RAM, ROM, MACHINE } from './machine.js';
 import { Ram, u16, i16 } from './ram.js';
 import { postVblankEdges } from './input.js';
-import { irq6 } from './isr.js';
+import { irq6, coinDebounce13CEC8, COIN } from './isr.js';
 import { WorkBudget } from './budget.js';
 import { frameSync } from './framesync.js';
 import { runObjectDriver, ObjOrder } from './objdriver.js';
@@ -63,7 +90,7 @@ import { objSlot14 } from './objslot14.js';
 import { objSlot15 } from './objslot15.js';
 import { objSlot17 } from './objslot17.js';
 import { SoundState, drainFrame, postWrapperWithRuntime,
-  soundFrameInput } from './sound.js';
+  soundFrameInput, SOUND_WRAPPERS, STREAMING_LEAVES } from './sound.js';
 import {
   PaletteState, flush24133C, catchUpObjectStream, catchUpBgPalette,
   catchUpTextPalette,
@@ -288,6 +315,26 @@ export class Game {
     // afterwards, and `irq6` being a compared column is what would catch that.
     this.armedVblanks = opts.seedArm ?? 1;
     this.ram.setU8(RAM.semaphore, this.armedVblanks);
+    // W375 -- THE COIN PORT, `$C08004`, RAW AND ACTIVE LOW. A PUBLIC FIELD the
+    // caller writes before each `step()` (the page does it in `Demo.step`), not
+    // a `step()` argument: see this file's header for why the signature cannot
+    // grow a second per-frame word without a `.replay` format bump.
+    //
+    // `$FFFF` IS NOTHING PRESSED, and it is the default for a reason -- a
+    // harness that never assigns this (every existing test, `tools/replay.mjs`,
+    // the headless runner) sees exactly the coin behaviour it saw before this
+    // wave: no edges, no taps, no credits. Until now `isr.js:51` read
+    // `ctx.coinPort ?? COIN.idle` and NOTHING ANYWHERE SET IT, so the port was
+    // idle forever and an inserted coin could not reach `$80395A`.
+    this.coinPort = COIN.idle;
+    // ...and the PULSE ADVANCE that must run in lockstep with the debounce.
+    // `src/web/input.js`'s `currentCoinWord()` is deliberately PURE, because
+    // `$13CFBA` reads the port every video frame and `$13CEC8` reads it every
+    // TWO -- advancing inside the read would make the answer depend on who
+    // asked last. `tickCoinPulse` is the advance, and `step()` calls this hook
+    // at the ONE site `coinDebounce13CEC8` is called, never anywhere else.
+    // Optional: null in every headless caller, which drives `coinPort` directly.
+    this.coinTick = opts.coinTick ?? null;
     this.wallHits = [];
     this.allocEvents = new Map();
     this.bulletSpawns = new Map();   // WAVE 30, see #ctx()'s bulletSpawn
@@ -451,6 +498,41 @@ export class Game {
       // sound wave removes. Runs the gate, tail, packer and ring enqueue from
       // src/sound.js; returns true if the cue posted. See sound.js.
       soundPost: (addr) => {
+        // W375 -- MEASURED THE MOMENT THE COIN CHAIN WAS FIRST DRIVEN, and it is
+        // a REAL GAP in another unit, recorded here rather than hidden.
+        //
+        // All three of `$13CFBA`'s arms call `jsr $18B0D6` (isr.js:321/327/333,
+        // `COIN.arms.hook`). Every OTHER `soundPost` caller in this port passes a
+        // `$28Cxxx` WRAPPER address; `$18B0D6` is in build A's BIOS-side range,
+        // the same family as the `$18ACC0` that isr.js:53 counts as UNPORTED.
+        // `sound.js`'s `WRAPPERS` does not carry it and neither does
+        // `STREAMING_LEAVES`, so `postWrapper` throws by design ("an unmapped
+        // wrapper is a loud gap, not a silent drop", sound.js:364) -- and that
+        // throw lands at `isr.js:327`, BEFORE `coinage13CE22`, so until this
+        // wave's wiring existed nothing could reach it and from this wave the
+        // FIRST CREDITED COIN would kill the frame instead of crediting.
+        //
+        // COUNTED, NOT SWALLOWED, and NOT WEAKENED FOR ANYTHING ELSE:
+        //   * it applies to `COIN.arms.hook` ALONE -- every other unmapped
+        //     address still throws exactly as loudly as it did yesterday, and
+        //     `$28C170`'s deliberate throw (sound.js:105) is untouched;
+        //   * it goes to `unportedLog` under its own ROM address, so the hook is
+        //     a countable gap in the one place this port counts them;
+        //   * it is SELF-HEALING. The moment `$18B0D6` gains a row in
+        //     `WRAPPERS` or `STREAMING_LEAVES` the condition stops matching and
+        //     the real post runs, with nothing here to remember to delete.
+        //
+        // THE REAL FIX IS NOT IN THIS FILE. Either `sound.js` maps `$18B0D6`, or
+        // `isr.js` stops calling `soundPost` for it and calls `note()` instead
+        // the way it already does for `$18ACC0` -- and which of those is right is
+        // a question about a BIOS-range routine nobody has read yet, not about
+        // the main loop. Both files are owned elsewhere this wave.
+        if (addr === COIN.arms.hook
+            && !(addr in SOUND_WRAPPERS) && !STREAMING_LEAVES.has(addr)) {
+          this.unportedLog.note(addr,
+            'coin/service sound hook ($18B0D6) -- no row in sound.js WRAPPERS');
+          return false;
+        }
         // `$28CAFC->$28B884` synchronously installs the selected score group
         // before the leaf posts its ordinary four-byte door. Keep that side
         // effect ordered at the sound boundary; it is not a fifth payload byte.
@@ -481,6 +563,13 @@ export class Game {
           (compared ? this.frameRequests : this.frameRequestsOther).push(o);
         }
       },
+      // W375 -- THE COIN PORT, read by `irq6` -> `coinRead13CFBA` ($13CFBA,
+      // IRQ6's FIRST call). It is a SEPARATE key from the `portWord` argument
+      // on purpose: `$C08000` is the PLAYER port and `$C08004` is the coin one,
+      // and `$13CFBA` does its own `lea $C08004,A0`. Handing it `portWord`
+      // credits a coin whenever a player holds a button in the `$E0` mask,
+      // which is how that defect was caught (isr.js:48).
+      coinPort: this.coinPort,
       budget: this.budget,
       order: this.order,
       // WAVE 13.  The video registers the ISR6-gated $140FFE uploads, and the
@@ -705,6 +794,42 @@ export class Game {
     for (let v = 0; v < this.armedVblanks; v++) {
       this.videoFrame++;
       this.irq6Count++;
+      // W375 -- THE IRQ4 PHASE, and it is the ONLY route into `$13CEC8`.
+      //
+      // IRQ4 FIRES ONCE PER VIDEO FRAME, measured on this build: `MARK IRQ4
+      // n=2617` against `MARK IRQ6 n=2617` over 1,901 logic frames
+      // (docs/worklog/ddpdoj/02-impl-object-driver-and-overrun.md:47). So it
+      // belongs in THIS loop, alongside the IRQ6 dispatch, and not once per
+      // logic frame -- a dilated frame sees N vblanks and therefore N IRQ4s.
+      //
+      // BEFORE `irq6`, because that is the cartridge's order at the only rate
+      // that can distinguish them: `$13CEC8` WRITES `$803968`/`$80396E` and
+      // `$13CFBA` -> `$13CF86` READS AND CONSUMES them, so a tap finalised on
+      // this video frame is credited on this video frame. Running the debounce
+      // after the ISR would delay every credit by two video frames and would be
+      // invisible in anything but a frame-exact comparison.
+      //
+      //   $1453B6  addq.w #$1,$80FA84
+      //   $1453BC  andi.w #$1,$80FA84      <- and it WRITES BACK; the word is 0/1
+      //   $1453C4  bne.w $1453DE           <- so the body runs on every OTHER IRQ4
+      //   $1453C8  move.w #$1,$80FA82 / jsr $13CEC8 / move.w #$0,$80FA82
+      //
+      // `$80FA82` is the REENTRANCY GUARD at `$1453AC` and it gates NOTHING
+      // here: there is no second context in a single-threaded port that could
+      // re-enter, so writing 1 and then 0 around a synchronous call is a pair of
+      // stores no reader could ever observe between. Transcribed as
+      // `COIN.irq4Guard` in isr.js and deliberately not enforced -- honouring it
+      // would be modelling a race this port cannot have.
+      this.ram.setU16(COIN.irq4Phase, u16(this.ram.u16(COIN.irq4Phase) + 1));
+      this.ram.setU16(COIN.irq4Phase, this.ram.u16(COIN.irq4Phase) & 0x1);
+      if (this.ram.u16(COIN.irq4Phase) === 0) {              // $1453C4 bne -- SKIPPED unless 0
+        coinDebounce13CEC8(this.ram, this.coinPort);         // $1453D0 jsr $13CEC8
+        // THE CONTRACT (src/web/input.js:209): the pulse advances EXACTLY where
+        // the debounce is called. Ticking it per video frame would halve the
+        // hold the ROM counts; ticking it twice per call would quarter it, and
+        // either way a held key credits at the wrong rate or not at all.
+        this.coinTick?.();
+      }
       if (irq6(this.ram, portWord, ctx)) this.releases++;
     }
     if (this.ram.u8(RAM.semaphore) !== 0) {

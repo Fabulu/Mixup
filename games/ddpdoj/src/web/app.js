@@ -186,6 +186,11 @@ import {
 import { mergePalette } from '../palette.js';
 import { loadBundle, loadSoundAssets, httpReader, gunzip, AssetError } from './assets.js';
 import { attachInput, pollInput, currentPortWord } from './input.js';
+// W375 -- THE COIN PORT, `$C08004`. Its own import line because it is its own
+// PORT: `currentPortWord()` is the inverse of build A's `$13D464` shuffle and
+// `currentCoinWord()` is a plain active-low word with no shuffle at all. The
+// two must never be mixed (src/web/input.js:126).
+import { currentCoinWord, tickCoinPulse, attachCoinKeys } from './input.js';
 import { AudioController } from '../../../../shared/audio.js';
 import { soundRuntimeFromStage1Seed } from '../soundruntime.js';
 import { APPROVED_SOUND_POLICIES } from '../soundpolicy.js';
@@ -729,6 +734,10 @@ class Demo {
       videoFrame: rung ? rung.vf : this.cap.frames[0].vf,
       bgSeed: rung ? rung.bgSeed : this.cap.part(0, 'bg'),
       soundSink: soundController,
+      // W375 -- THE COIN PULSE ADVANCE. `Game#step` calls this at the ONE site
+      // it calls `coinDebounce13CEC8`, i.e. once every two video frames, which
+      // is the rate `currentCoinWord()`'s purity exists to protect.
+      coinTick: tickCoinPulse,
     });
     this.prevTilt = this.game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
     this.prevPos = [this.game.ram.u16(RAM.player1 + P.posY),
@@ -835,6 +844,19 @@ class Demo {
       ? this.playback.words[this.playback.i++]
       : currentPortWord();
     if (this.recorder) this.recorder.input(pw);
+    // W375 -- THE COIN WORD, `$C08004`. A FIELD, not a second `step()` argument:
+    // `.replay` v1 fixes `portin.encoding === 'u16be'` at ONE word per logic
+    // frame and `decodePortinWords` throws on anything else, so a second
+    // per-frame word is a format version bump plus every existing fixture. See
+    // `main.js`'s header for the deviation this widens and the v2 `portin` +
+    // `coinin` encoding that would close it.
+    //
+    // AND IT IS NOT TEE'd INTO `this.recorder`, because there is nowhere in a v1
+    // file to put it -- which is exactly the hole `main.js` declares. It is also
+    // NOT suppressed during PLAY: a coin key pressed while a `.replay` is
+    // playing back perturbs the very state the verifier is hashing, for the same
+    // one reason. Both follow from the format, not from this line.
+    g.coinPort = currentCoinWord();
     g.step(pw);
     if (this.recorder) this.recorder.feed();
     // WAVE 132 -- THE PLAYBACK DIGEST FEED.  After the step hashes the state the
@@ -981,6 +1003,7 @@ class Demo {
       videoFrame: seed.vf,
       bgSeed: beWords(bg),
       soundSink: this.soundController,
+      coinTick: tickCoinPulse,           // W375, as in the constructor above
     });
 
     // Swap in the fresh Game and re-init the game-derived state.  `recorder` is
@@ -1563,6 +1586,12 @@ export async function boot(canvas, opts = {}) {
   // the fallback `JSON.stringify(bundle.tables)`.
   demo.assetBase = base;
   attachInput(opts.target);
+  // W375 -- THE COIN KEYS (Digit5 COIN1, Digit6 COIN2, Digit9 SERVICE, F2 TEST),
+  // by `e.code` so they are layout-invariant. SEPARATE from `attachInput`'s
+  // shared controller because that controller speaks the PLAYER port's
+  // normalized vocabulary and these four switches are not in it; it brings its
+  // own blur / pagehide / visibilitychange backstop for the same reason.
+  attachCoinKeys(opts.target);
 
   const frame = (t) => {
     if (!demo.running) return;
