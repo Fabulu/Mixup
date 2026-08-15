@@ -2,7 +2,77 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W385
+## START HERE -- W386
+
+### NOTHING STOPS THE RUN ANY MORE. 60,000 FRAMES CLEAN.
+
+On a real cold boot -- coin, START, no buttons held: last life lost at **+4,075**, game-over object
+built at **+4,077**, fade loaded at **+4,080**, **fade COMPLETES EXACTLY by +4,169** (all 32 staging
+words of `$80E906` equal all 32 ROM words), machine handed to dispatch type `$C` at **+4,414**, then
+runs indefinitely.
+
+**The next frontier is not a stop, it is a SILENCE.**
+
+### `$2252F8` IS NOT A SCRIPT. IT IS A 64-BYTE FADE TARGET.
+
+Plain xRGB555 colour block; `animobjects.js:233`'s `rom.u16(target)` is the only thing that touches
+it. **No reader states its extent** -- the bound lives in the `words-minus-one` FIELD of the one
+entry that names it, at `$288C2E`:
+
+```
+288C14  41fa 0018   lea ($18,PC),A0     EA = $288C16 + $18 = $288C2E   <- trap 4
+288C1A  4eb9 00246410  jsr $246410      <- the FOURTEEN-byte family, asserted as BYTES
+288C2E  0001 0000 0000 0080 0022 52F8 001F 0005
+288C3E  536d 001c   subq.w #1,($1C,A5)  <- objslot14.js state2's FIRST instruction
+```
+
+`$246878`'s executor: `$24688C move.w ($4,A4),D5` = `$001F`, `$246B2A dbra D5` -- **N+1 = 32 words =
+`$40` bytes**, last byte `$225337`. The table's own far end is code the port already named, which is
+an independent second bound.
+
+**New window `(0x2252F8, 0x0040)` -- 550 total.** It carries `check_gameover_anim_table(d)`, which
+**re-derives the length from the cartridge every run** and refuses on mismatch or overlap; both arms
+red-validated. Ablation `$2252F8` at frame +4,082, positive control 60,000 frames clean.
+
+**W91's `[$222A78, $2252F8)` was NOT widened, and that mattered more than expected:**
+`check_palette_upload_family` DERIVES its sprite-bank bound from that declaration, so widening it
+would have silently moved a different check's goalposts.
+
+### A REAL DEFECT: `stepNode`'s TWO CURSOR STRIDES WERE TRANSPOSED
+
+`$246890..$246898` builds D6 = 2-or-0 from `($1E,A4)` and `$246B28 adda.w D6,A2` puts it on the
+**ROM** cursor, while `$246B24 addq.w #2,A3` steps the **RAM** cursor unconditionally. **The port had
+them the other way round.** A `shared` node would have rewritten one RAM word from a walking ROM
+cursor instead of fanning one ROM colour across a range. Latent today -- both ported loaders clear
+`($1E)` -- but wrong. Ablated: reverting gives `[7fa0,7fff,7fff,7fff]` instead of
+`[7f61,7f61,7f61,7f61]`.
+
+### FOUR MORE CORRECTIONS
+
+1. **The stop was at +4,082, not +4,081.** The load is +4,080 and the read is the THIRD `$24683E`
+   because `$2468A2 subq.w #1,($14,A4)` must BORROW and timing index 5 seeds the countdown at 2.
+   **W385's own assertion was a RANGE (3,900..4,300), so its prose was never checked.** Now a bare
+   number.
+2. `$288C1C` is literally `00246410` -- the family question does not arise here; asserted as a value.
+3. There IS more behind the screen, but nothing that stops anything.
+4. Two tests could not survive and were rewritten, both because **they asserted the stop itself**:
+   `w384stall.test.js`'s `lastLive - odoLastFrame < 30` was true ONLY because the run halted three
+   frames later (now ~9,900), and both it and `w385player.test.js` asserted
+   `stopError instanceof Unreached` at `$2252F8`.
+
+### NEXT: SLOT [12] `$28F3AC`, AND IT CLOSES THE FRONT-END LOOP
+
+Dispatch row `$240FC2`, counted once per frame from **+4,414** onward.
+
+- code `$28F2BA..$28F8AB`, **`$5F2` = 1,522 bytes** (low end from `$28F3B0 beq.w` -> `$28F2BA`, with
+  `$28F2B8` the previous `rts`; high end `rts` **AT** `$28F8AA`)
+- data `$28FA98` `$3A` bytes (2 + 4x14, `$246410`) and `$28FAD2` `$22` bytes (2 + 4x8, `$246704` --
+  **the only live use of that second family**). Its four targets `$2254B8/$2254F8/$225538/$225478`:
+  one windowed, three not. **Not declared -- nothing executes them yet.**
+- **`$28F368` stages dispatch type 8 = `$25A770`, the attract screen.** Slot [12] is all that stands
+  between this port and a front-end loop that closes back on itself.
+
+## W385 NOTES
 
 ### RUN THE SUITE FROM THE **REPO ROOT**. FROM `games/ddpdoj/` IT SILENTLY LIES.
 

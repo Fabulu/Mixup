@@ -5,6 +5,10 @@
 // ROM colour block and raises the matching palette-upload dirty word. Type
 // `$8C` is the first ported enemy that requires this path during ordinary
 // stage play, both for its spawn colours and its fifteen-part death fade.
+//
+// W386: the GAME-OVER screen is the second. Object slot [14] ($288BCE, staged by slot [13]'s
+// state 4) opens a one-entry chain at `$288C2E` whose target is `$2252F8`, and until W386
+// declared that 64-byte window every cold boot ended HERE, in `stepNode`, at frame +4,081.
 
 import { i16, u16 } from './ram.js';
 import { unreached } from './unported.js';
@@ -228,7 +232,25 @@ function stepNode(ram, rom, node) {
 
   let target = ram.u32(node + N.target);
   let current = ram.u32(node + N.current);
-  const currentStride = ram.u16(node + N.shared) === 0 ? 2 : 0;
+  // W386: THE CONDITIONAL STRIDE IS ON THE **TARGET**, NOT ON THE CURRENT, and this port
+  // had the two transposed. The executor's prologue and its two increments, verbatim:
+  //
+  //   246884  246c 000a     movea.l ($A,A4),A2    <- N.target, the ROM cursor
+  //   246888  266c 000e     movea.l ($E,A4),A3    <- N.current, the RAM cursor
+  //   246890  7c00          moveq #$0,D6
+  //   246892  4a6c 001e     tst.w ($1E,A4)        <- N.shared
+  //   246896  6602          bne.s $24689A
+  //   246898  7c02          moveq #$2,D6
+  //   ...
+  //   246B24  544b          addq.w #2,A3          <- CURRENT, ALWAYS 2
+  //   246B28  d4c6          adda.w D6,A2          <- TARGET, 2 or 0
+  //
+  // So a non-zero `shared` re-reads ONE ROM colour for every entry of the range, which is
+  // what the field's name says it does. Transposed, it instead rewrote one RAM word from a
+  // walking ROM cursor. Every ported caller leaves `shared` at 0 ($246466 and its no-fill
+  // twin both clear it), so both strides are 2 on every live path and no measured behaviour
+  // moves; the two arms are only distinguishable with the field set directly.
+  const targetStride = ram.u16(node + N.shared) === 0 ? 2 : 0;
   for (let i = 0; i <= ram.u16(node + N.mode); i++) {
     const want = rom.u16(target);
     let have = ram.u16(current);
@@ -246,8 +268,8 @@ function stepNode(ram, rom, node) {
       ram.setU16(current, have);                       // $246B1E
       ram.setU16(ram.u32(node + N.writer), 1);        // $246B20
     }
-    target += 2;
-    current += currentStride;
+    target += targetStride;                          // $246B28 adda.w D6,A2
+    current += 2;                                    // $246B24 addq.w #2,A3
   }
 }
 

@@ -1,0 +1,558 @@
+// W386 -- THE GAME-OVER SCREEN. `$2252F8` IS A FADE TARGET, NOT A SCRIPT, AND ITS BOUND IS $40.
+//
+// ===============================================================================================
+// THE ANSWER IN ONE LINE
+// ===============================================================================================
+//
+// A cold boot with no buttons held no longer stops. `$2252F8` is the 64-byte ROM COLOUR BLOCK the
+// game-over screen fades sprite staging bank 2 toward; one 64-byte window serves it, and behind it
+// the whole screen runs to completion and hands the machine on.
+//
+// THE CHAIN, ON A REAL COLD BOOT, MEASURED IN THIS FILE:
+//
+//   +4,075  the life counter borrows to -1 ($25FFC4), `$25FFA8` arms bonus-line request 2
+//   +4,077  `$260056` creates dispatch type $D -- objslot13.js, the GAME-OVER object
+//   +4,079  its state 4 ($288A3C) counts its two sound posts, wipes the object table and
+//           stages dispatch type $E
+//   +4,080  slot [14] state 0 ($288BCE) runs `$288C14 lea ($18,PC),A0 / $288C1A jsr $246410`
+//           on the table at $288C2E, whose ONE entry targets $2252F8. **W385 DIED HERE.**
+//   +4,169  the fade has finished: all 32 words of $80E906 equal all 32 words of $2252F8
+//   +4,414  slot [14]'s $12C-frame counter runs out, it stages dispatch type $C and kills itself
+//   ...     and dispatch [12] ($28F3AC) is a COUNTED note from that frame on, once per frame
+//
+// ===============================================================================================
+// WHERE THE BRIEF THAT SET THIS WAVE IS WRONG. FOUR PLACES, ALL PINNED BELOW.
+// ===============================================================================================
+//
+// 1. **"`$2252F8` is animation-object script/target data" and "find its extent in the CODE that
+//    READS it".** It is neither a script nor a node table: it is the fade TARGET, a plain
+//    64-byte xRGB555 colour block, and `animobjects.js:233`'s `rom.u16(target)` is the only
+//    thing in the port that touches it. The bound is therefore NOT in `$246410`'s reader and NOT
+//    in `$246710`'s -- it is the `words-minus-one` FIELD of the one entry that names it, plus
+//    `$246B2A`'s `dbra`. SECTION 2.
+//
+// 2. **"`$246710`/`$246704` read a node-count word then four words per node. Two different
+//    families that look alike."** True of the family, and NOT the one here: `$288C1A` is a
+//    `4EB9 00246410`, asserted as bytes in SECTION 1. (The $246704 family IS live on this
+//    screen's successor -- `$28F520 lea / $28F526 jsr $246704` on the table at `$28FAD2` -- but
+//    slot [12] is unported, so nothing reads it. SECTION 6.)
+//
+// 3. **"NEVER WIDEN AN EXISTING WINDOW."** Obeyed, and it matters more here than the brief knew:
+//    W91's window is `[$222A78, $2252F8)` and its EXCLUSIVE far end is this window's BASE. The
+//    two abut with a zero-byte gap, which is exactly the shape that invites a widening. W91's
+//    own `check_palette_upload_family` DERIVES the sprite-bank bound from that declaration, so
+//    widening it would have silently moved a different check's goalposts. SECTION 3.
+//
+// 4. **"EXPECT MORE BEHIND IT ... expect further gaps."** There are none that STOP anything.
+//    60,000 frames past START were measured with no throw at all, and the only note that grows
+//    after the game-over screen is `$240FC2`, dispatch slot [12], which was already counted.
+//    SECTION 5 and SECTION 6.
+//
+// AND ONE DEFECT FOUND ON THE WAY, IN THE ROUTINE THAT DOES THE READ: `stepNode`'s two cursor
+// strides were TRANSPOSED. SECTION 4.
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+import { Game } from '../src/main.js';
+import { Ram } from '../src/ram.js';
+import { COIN } from '../src/isr.js';
+import { COIN_BITS } from '../src/web/input.js';
+import { portWordFromBits } from '../src/input.js';
+import { BIT } from '../src/machine.js';
+import { ALLOC } from '../src/objalloc.js';
+import { ANIM_OBJECT, loadAnimObjects246410, runAnimObjects24683E } from '../src/animobjects.js';
+import { RomWindows } from '../src/rom.js';
+import { Unreached } from '../src/unported.js';
+
+const here = (p) => fileURLToPath(new URL(p, import.meta.url));
+const tablesJson = JSON.parse(readFileSync(here('../rip/port/player.tables.json'), 'utf8'));
+const IMG = readFileSync(here('../rip/sound/maincpu.bin'));
+
+/** A word / longword straight out of the cartridge image, for the disassembly sections. */
+const w = (a) => IMG.readUInt16BE(a);
+const l = (a) => IMG.readUInt32BE(a);
+
+const NO_PLAYER = 0xffff;
+const STATE = 0x812e56;               // SCREEN8.state
+const TABLE = 0x288c2e;               // the animation table $288C14's lea resolves to
+const TARGET = 0x2252f8;              // its one entry's target.l -- THE WINDOW
+const LENGTH = 0x40;                  // ...and the bound SECTION 2 derives
+const CURRENT = 0x80e906;             // $80E886 + the entry's $80 offset -- staging bank 2
+const W91 = 0x222a78;                 // the neighbour that must NOT be widened
+
+/** `COIN_BITS.COIN1` IS A BIT INDEX OF 0, so the held-coin word is `$FFFE` and NOT `$FFFF`
+ *  (`w383coldboot.test.js` SECTION 1 pins both halves of that trap as bare values). */
+const coinWord = () => (0xffff & ~(1 << COIN_BITS.COIN1)) & 0xffff;
+
+/** `w383coldboot.test.js` / `w385player.test.js`'s cold-boot chain, unchanged, with its final
+ *  milestone checked so nothing below can measure a run that never started. `tables` is a
+ *  parameter ONLY so SECTION 3 can run the identical boot with one window removed. */
+function bootToGameplay(tables = tablesJson) {
+  const g = new Game(new Uint8Array(0x20000), tables, { palCatchUp: false });
+  g.boot();
+  g.ram.setU8(0x803957, 1);                        // the coinage dip, the one hand-written byte
+  const run = (n, coin = COIN.idle, player = NO_PLAYER) => {
+    g.coinPort = coin;
+    for (let i = 0; i < n; i++) g.step(player);
+  };
+  run(20);                                         // the warning screen
+  run(380);                                        // its $12C timeout
+  run(20, coinWord());                             // a coin, HELD
+  run(10);                                         // ...and RELEASED -- the credit lands here
+  run(20, COIN.idle, portWordFromBits([BIT.start]));   // P1 START. `$FFFE` on the PLAYER port.
+  assert.equal(g.ram.u16(STATE), 0x000e, 'the harness must reach gameplay before measuring');
+  return g;
+}
+
+/** The 32 words of the ROM block, masked the way `stepNode` compares them. */
+const romWords = () => [...Array(32)].map((_, i) => w(TARGET + i * 2) & 0x7fff);
+
+// ===============================================================================================
+// ONE COLD-BOOT RUN, SHARED. Every section below reads a different fact out of the SAME run, so
+// the sections cannot disagree with each other about what the machine did. 5,000 frames past
+// START -- far enough past the +4,414 handover to prove the screen finished, not merely started.
+// ===============================================================================================
+const RUN = (() => {
+  const g = bootToGameplay();
+  const rom = romWords();
+  const cur = () => [...Array(32)].map((_, i) => g.ram.u16(CURRENT + i * 2) & 0x7fff);
+  const matched = () => cur().filter((v, i) => v === rom[i]).length;
+  const types = () => {
+    const s = new Set();
+    for (let i = 0; i < ALLOC.slots; i++) {
+      const t = g.ram.u16(ALLOC.table + i * ALLOC.stride);
+      if (t !== 0) s.add(t & 0x7fff);
+    }
+    return s;
+  };
+
+  let firstD = 0, firstE = 0, firstC = 0, fadeDone = 0, matchedAtFirstE = 0;
+  let stoppedAt = 0, stopError = null, lastFrame = 0;
+  let notesAt4079 = null;
+
+  for (let f = 1; f <= 5000; f++) {
+    try {
+      g.step(NO_PLAYER);
+    } catch (e) { stopError = e; stoppedAt = f; break; }
+    const t = types();
+    if (!firstD && t.has(0x0d)) firstD = f;
+    if (!firstE && t.has(0x0e)) { firstE = f; matchedAtFirstE = matched(); }
+    if (!firstC && t.has(0x0c)) firstC = f;
+    if (!fadeDone && matched() === 32) fadeDone = f;
+    if (f === 4079) notesAt4079 = new Set(g.unportedLog.report().map((s) => s.split(' x ')[1]));
+    lastFrame = f;
+  }
+
+  return {
+    g, firstD, firstE, firstC, fadeDone, matchedAtFirstE, stoppedAt, stopError, lastFrame,
+    notesAt4079, current: cur(), rom, notes: g.unportedLog.report(),
+  };
+})();
+
+const noteFor = (addr) => {
+  const key = `$${addr.toString(16).toUpperCase()} `;
+  return RUN.notes.find((s) => s.includes(` x ${key}`)) ?? null;
+};
+const noteCount = (addr) => {
+  const line = noteFor(addr);
+  return line === null ? 0 : Number(line.trim().split(' ')[0]);
+};
+
+// ===============================================================================================
+// 1 -- WHO READS `$2252F8`, AND WHICH FORMAT FAMILY IT IS. FROM THE IMAGE, NOT FROM ADJACENCY.
+//
+// The brief listed two loader families that "look alike". This settles which one by asserting
+// the four bytes of the `jsr`, and it pins the SECOND, independent bound on the table: the byte
+// after its one entry is CODE that `src/objslot14.js` already names.
+// ===============================================================================================
+
+test('W386 $288C14 names $288C2E and hands it to $246410 -- the FOURTEEN-byte family', () => {
+  // `41FA` is `lea (d16,PC),A0` and the EA is the EXTENSION WORD's address plus the
+  // displacement -- $288C16 + $18 -- NOT the opcode's address (trap 4). Reading it from the
+  // opcode gives $288C2C, which is the `rts`.
+  assert.equal(w(0x288c14), 0x41fa, '$288C14 lea (d16,PC),A0');
+  assert.equal(w(0x288c16), 0x0018, '  ...displacement $0018');
+  assert.equal(0x288c16 + w(0x288c16), TABLE, '  ...so A0 = $288C2E, the table');
+  assert.notEqual(0x288c14 + w(0x288c16), TABLE,
+    'and measuring from the OPCODE gives $288C2C, the rts -- trap 4, stated as a value');
+
+  assert.equal(w(0x288c18), 0x4e71, '$288C18 nop');
+  assert.equal(w(0x288c1a), 0x4eb9, '$288C1A jsr (xxx).L');
+  assert.equal(l(0x288c1c), 0x00246410, '  ...of $246410 -- the FILL loader, 14 bytes per entry');
+  // The brief's other family, ruled out as a value rather than by prose.
+  assert.notEqual(l(0x288c1c), 0x00246704, 'and NOT $246704, the four-words-per-node family');
+  assert.notEqual(l(0x288c1c), 0x00246710, 'and NOT $246710 either');
+
+  // $246410's own head, so "14 bytes per entry" is not taken on trust. TWO entry points that
+  // differ only in D6, exactly as animobjects.js's header describes.
+  assert.equal(w(0x246410), 0x48e7, '$246410 movem.l ...,-(A7)');
+  assert.equal(w(0x246414), 0x3c3c, '$246414 move.w #imm,D6');
+  assert.equal(w(0x246416), 0x0001, '  ...#$1 -- the mode-1 entry');
+  assert.equal(w(0x246418), 0x6008, '$246418 bra.s $246422 -- past $24641A\'s `moveq #$0`');
+  assert.equal(w(0x24643c), 0x3018, '$24643C move.w (A0)+,D0 -- THE COUNT WORD');
+});
+
+test('W386 the $288C2E table is ONE 14-byte entry, and the byte after it is CODE', () => {
+  assert.equal(w(TABLE), 0x0001, '$288C2E count.w = 1');
+  assert.equal(w(TABLE + 0x02), 0x0000, '  fill.w      $0000   ($246472 move.w (A0)+,($12,A2))');
+  assert.equal(w(TABLE + 0x04), 0x0000, '  family.w    $0000   ($246476 move.w (A0)+,D2)');
+  assert.equal(w(TABLE + 0x06), 0x0080, '  offset.w    $0080   ($246486 adda.w (A0)+,A3)');
+  assert.equal(l(TABLE + 0x08), TARGET, '  target.l    $2252F8 ($24648C move.l (A0)+,($A,A2))');
+  assert.equal(w(TABLE + 0x0c), 0x001f, '  words-1.w   $001F   ($246490 move.w (A0)+,($4,A2))');
+  assert.equal(w(TABLE + 0x0e), 0x0005, '  timing.w    $0005   ($246494 move.w (A0)+,D3)');
+
+  // 2 + 14 = 16, so the entry's last byte is $288C3D. THE OTHER BOUND: $288C3E is the first
+  // instruction of slot [14] STATE 2, which src/objslot14.js has named since W372. A second
+  // entry would run the loader straight into executable code.
+  assert.equal(w(0x288c3e), 0x536d, '$288C3E subq.w #1,(d16,A5)');
+  assert.equal(w(0x288c40), 0x001c, '  ...($1C,A5) -- objslot14.js state2\'s first instruction');
+  assert.equal(TABLE + 2 + 14, 0x288c3e, 'so the table ends exactly where the code begins');
+
+  // And $246486 is `adda.w`, not `adda.l`: the offset is ONE word, which is what makes the
+  // entry 14 bytes and not 16. Asserted as the opcode, because the field order is the trap.
+  assert.equal(w(0x246486), 0xd6d8, '$246486 adda.w (A0)+,A3 -- a WORD offset, sign-extended');
+  assert.equal(w(0x24648c), 0x2558, '$24648C move.l (A0)+,($A,A2) -- the target is a LONG');
+});
+
+// ===============================================================================================
+// 2 -- THE BOUND, STATED BY THE CODE THAT READS THE BLOCK. NEVER BY AN ABSENCE.
+//
+// `$246878` is the per-node executor. It puts the entry's `words-minus-one` in D5 and the
+// entry's `target` in A2, reads `(A2)` once per iteration, and the loop is a `dbra` -- N+1 times
+// (trap 2). $001F + 1 = 32 words = $40 bytes. Nothing here appeals to what the bytes look like.
+// ===============================================================================================
+
+test('W386 $24688C puts words-minus-one in D5 and $246B2A dbra\'s it -- 32 words, $40 bytes', () => {
+  assert.equal(w(0x246884), 0x246c, '$246884 movea.l (d16,A4),A2');
+  assert.equal(w(0x246886), 0x000a, '  ...($A,A4) -- N.target, so A2 IS the ROM cursor');
+  assert.equal(w(0x246888), 0x266c, '$246888 movea.l (d16,A4),A3');
+  assert.equal(w(0x24688a), 0x000e, '  ...($E,A4) -- N.current, the RAM cursor');
+  assert.equal(w(0x24688c), 0x3a2c, '$24688C move.w (d16,A4),D5');
+  assert.equal(w(0x24688e), 0x0004, '  ...($4,A4) -- the field $246490 filled from words-minus-one');
+
+  assert.equal(w(0x2468da), 0x3212, '$2468DA move.w (A2),D1 -- THE READ, and it is a WORD');
+  assert.equal(w(0x246b28), 0xd4c6, '$246B28 adda.w D6,A2 -- the ROM cursor steps');
+  assert.equal(w(0x246b2a), 0x51cd, '$246B2A dbra D5,...');
+  assert.equal(0x246b2c + (w(0x246b2c) - 0x10000), 0x2468da,
+    '  ...back to $2468DA, THE READ ITSELF -- the displacement is measured from the EXTENSION '
+    + 'word $246B2C, and $2468D6\'s `lea ($30,A4),A5` sits OUTSIDE the loop');
+
+  // THE ARITHMETIC, spelled out, because "dbra runs N+1 times" is trap 2 and an off-by-one
+  // here is a 62-byte window that reads fine for 31 words and throws on the last one.
+  const wordsMinusOne = w(TABLE + 0x0c);
+  assert.equal(wordsMinusOne, 0x001f, 'the entry says $001F');
+  assert.equal((wordsMinusOne + 1) * 2, LENGTH, 'and $1F + 1 = 32 words = $40 bytes, not $3E');
+
+  // The far end named as an address: the last word read is at $225336 and the last BYTE at
+  // $225337. A window of $3E would stop at $225335 and the final `move.w (A2),D1` would throw.
+  assert.equal(TARGET + LENGTH - 2, 0x225336, 'the last WORD read is $225336');
+  assert.equal(TARGET + LENGTH - 1, 0x225337, 'the last BYTE read is $225337');
+});
+
+test('W386 timing index 5 is 1 step every 2 frames, so the fade is 32 steps and 64 frames', () => {
+  // $246494 move.w (A0)+,D3 / $246496 andi.w #$1F,D3 / add.w D3,D3 twice / lea ($698,PC),A3.
+  assert.equal(w(0x246496), 0x0243, '$246496 andi.w #imm,D3');
+  assert.equal(w(0x246498), 0x001f, '  ...#$1F -- the index is masked to 32 entries');
+  assert.equal(w(0x24649a), 0xd643, '$24649A add.w D3,D3');
+  assert.equal(w(0x24649c), 0xd643, '$24649C add.w D3,D3 -- so the stride is FOUR bytes');
+  assert.equal(w(0x24649e), 0x47fa, '$24649E lea (d16,PC),A3');
+  assert.equal(0x2464a0 + w(0x2464a0), 0x246b38, '  ...= $246B38, the timing table (trap 4 again)');
+  // Entry 5 is two longwords in: (reload, step) = ($2, $1).
+  assert.equal(w(0x246b38 + 5 * 4), 0x0002, 'entry 5 reload = 2 frames per step');
+  assert.equal(w(0x246b38 + 5 * 4 + 2), 0x0001, 'entry 5 step = 1 -- one channel unit per step');
+});
+
+// ===============================================================================================
+// 3 -- THE WINDOW: DECLARED, DISJOINT, AND PROVED BY ABLATION WITH A POSITIVE CONTROL.
+// ===============================================================================================
+
+const windows = tablesJson.rom.windows.map((x) => ({
+  base: parseInt(String(x.base).replace('$', ''), 16), len: x.len, why: x.why,
+}));
+
+test('W386 the export declares exactly ($2252F8, $40), and its bytes are the cartridge\'s', () => {
+  const mine = windows.filter((x) => x.base === TARGET);
+  assert.equal(mine.length, 1, 'exactly one declaration of $2252F8');
+  assert.equal(mine[0].len, LENGTH, '...and it is $40 bytes, the length SECTION 2 derived');
+  assert.match(mine[0].why, /W386/, '...declared by this wave');
+
+  // The window SERVES the right bytes, read through RomWindows the way the port reads them.
+  const rom = new RomWindows(tablesJson.rom);
+  for (let i = 0; i < 32; i++) {
+    assert.equal(rom.u16(TARGET + i * 2), w(TARGET + i * 2),
+      `word ${i} of the block matches the cartridge image`);
+  }
+});
+
+test('W386 the window OVERLAPS NOTHING, and ABUTS W91 rather than widening it', () => {
+  for (const x of windows) {
+    if (x.base === TARGET && x.len === LENGTH) continue;
+    assert.ok(x.base >= TARGET + LENGTH || TARGET >= x.base + x.len,
+      `[$${TARGET.toString(16)}, $${(TARGET + LENGTH).toString(16)}) overlaps `
+      + `[$${x.base.toString(16)}, $${(x.base + x.len).toString(16)}) -- ${x.why.slice(0, 60)}`);
+  }
+
+  // THE NEIGHBOUR CHECK, as a value. W91's window is still $2880 bytes and its EXCLUSIVE far
+  // end is this window's base: a zero-byte gap, which is the shape that invites a widening.
+  const w91 = windows.filter((x) => x.base === W91);
+  assert.equal(w91.length, 1, 'W91 declares $222A78 exactly once');
+  assert.equal(w91[0].len, 0x2880, 'and it is STILL $2880 -- this wave widened nothing');
+  assert.equal(W91 + w91[0].len, TARGET, 'W91 ends AT $2252F8, so the two abut exactly');
+
+  // The other side: the next declared window above is W125's $2254B8, $180 bytes clear.
+  const above = windows.filter((x) => x.base > TARGET).sort((a, b) => a.base - b.base)[0];
+  assert.equal(above.base, 0x2254b8, 'the next window above is $2254B8');
+  assert.equal(above.base - (TARGET + LENGTH), 0x180, '...and $180 bytes of nothing lie between');
+});
+
+test('W386 ABLATION: remove ONLY this window and the same cold boot dies at $2252F8', () => {
+  // The identical boot, the identical frames, one window filtered out of the export. Nothing
+  // else differs -- this is the same `bootToGameplay` the shared RUN uses.
+  const ablated = {
+    ...tablesJson,
+    rom: { ...tablesJson.rom, windows: tablesJson.rom.windows.filter((x) => x.base !== '$2252F8') },
+  };
+  assert.equal(ablated.rom.windows.length, tablesJson.rom.windows.length - 1,
+    'exactly ONE window was removed');
+
+  const g = bootToGameplay(ablated);
+  let err = null, at = 0;
+  for (let f = 1; f <= 4300; f++) {
+    try { g.step(NO_PLAYER); } catch (e) { err = e; at = f; break; }
+  }
+  assert.ok(err instanceof Unreached, `a NAMED Unreached, not a bare crash; got ${err}`);
+  assert.equal(err.romAddress, TARGET, 'THE ABLATION ADDRESS: $2252F8');
+  assert.match(err.stack, /animobjects\.js/, 'read by animobjects.js stepNode');
+  assert.match(err.stack, /runAnimObjects24683E/, '...from runAnimObjects24683E');
+
+  // **THE FRONTIER FRAME IS +4,082, NOT THE +4,081 THE BRIEF AND `w385player.test.js`'s PROSE
+  // BOTH GIVE.** The load is on +4,080 (SECTION 5 measures it) and the read is the THIRD
+  // `$24683E` after it, because `$2468A2 subq.w #1,($14,A4)` must BORROW before the loop is
+  // entered and timing index 5 seeds that countdown at 2: +4,080 takes it 2 -> 1, +4,081 takes
+  // it 1 -> 0, and only +4,082 borrows. W385's own assertion was a RANGE (3,900..4,300), so
+  // the prose was never checked. This asserts the frame as a bare number instead.
+  assert.equal(at, 4082, 'at frame +4,082 past START, three $24683E calls after the +4,080 load');
+  assert.equal(at - RUN.firstE, 2, '...i.e. two frames after the chain appeared');
+  assert.equal(w(0x246b38 + 5 * 4), 2, 'and 2 is exactly the reload timing index 5 selects');
+
+  // POSITIVE CONTROL, the same claim from the other side: WITH the window, the shared RUN
+  // walked straight through that frame and kept going.
+  assert.equal(RUN.stopError, null, 'and with the window present the run does not stop at all');
+  assert.ok(RUN.lastFrame > at, `it reached +${RUN.lastFrame}, past the ablated +${at}`);
+});
+
+// ===============================================================================================
+// 4 -- A DEFECT IN THE ROUTINE THAT DOES THE READ: THE TWO CURSOR STRIDES WERE TRANSPOSED.
+//
+// `$246890..$246898` builds D6 as 2-or-0 from `($1E,A4)`, and D6 is added to **A2, the ROM
+// cursor**. The RAM cursor A3 is unconditionally `addq.w #2`. This port had it the other way
+// round. Every ported caller leaves `($1E)` at zero, so both strides are 2 on every live path
+// and nothing measured moves -- which is exactly why it survived: it is only distinguishable
+// with the field set directly, and no fixture had ever set it.
+// ===============================================================================================
+
+test('W386 $246B28 adds the CONDITIONAL stride to A2 (ROM) and $246B24 adds 2 to A3 (RAM)', () => {
+  assert.equal(w(0x246890), 0x7c00, '$246890 moveq #$0,D6');
+  assert.equal(w(0x246892), 0x4a6c, '$246892 tst.w (d16,A4)');
+  assert.equal(w(0x246894), 0x001e, '  ...($1E,A4) -- N.shared');
+  assert.equal(w(0x246896), 0x6602, '$246896 bne.s $24689A -- skips ONE instruction (trap 7)');
+  assert.equal(w(0x246898), 0x7c02, '$246898 moveq #$2,D6 -- so D6 is 2 only when ($1E) is ZERO');
+
+  assert.equal(w(0x246b24), 0x544b, '$246B24 addq.w #2,A3 -- the RAM cursor, UNCONDITIONALLY 2');
+  assert.equal(w(0x246b28), 0xd4c6, '$246B28 adda.w D6,A2 -- the ROM cursor takes the 2-or-0');
+  // A3 is ($E,A4) = N.current and A2 is ($A,A4) = N.target; SECTION 2 asserted both loads.
+});
+
+test('W386 a `shared` node re-reads ONE ROM word across the whole range', () => {
+  // A directly-seeded node, because NO PORTED SITE SETS ($1E): both loaders clear it
+  // ($246466 `move.w #0,($1E,A2)`), so this arm cannot be driven from a cold boot and a test
+  // that waited for one would never run. The OTHER arm is driven from a cold boot, by SECTION 5.
+  const ram = new Ram(null);
+  const rom = new RomWindows(tablesJson.rom);
+  const node = ANIM_OBJECT.nodes;
+  const seed = (shared) => {
+    ram.setU16(node + 0x00, 0x8000);              // status
+    ram.setU32(node + 0x06, 0x80fa66);            // writer -- the dirty word
+    ram.setU32(node + 0x0a, TARGET);              // target: the W386 block
+    ram.setU32(node + 0x0e, CURRENT);             // current: staging bank 2
+    ram.setU16(node + 0x04, 3);                   // words-minus-one: FOUR words
+    ram.setU16(node + 0x14, 0);                   // countdown -- fire this frame
+    ram.setU16(node + 0x16, 0);                   // reload
+    ram.setU16(node + 0x1c, 0x1f);                // step $1F -- one frame is enough to arrive
+    ram.setU16(node + 0x18, 0xffff);              // active
+    ram.setU16(node + 0x20, 0);                   // progress
+    ram.setU16(node + 0x1e, shared);              // THE FIELD UNDER TEST
+    for (let i = 0; i < 4; i++) ram.setU16(CURRENT + i * 2, 0x7fff);
+    ram.setU32(ANIM_OBJECT.roots + 0x2c, node);
+    ram.setU16(ANIM_OBJECT.roots, 0x8000);
+    ram.setU16(ANIM_OBJECT.roots + 0x04, 0);      // mode 0 -- never auto-freed
+    ram.setU32(node + 0x2c, 0);
+  };
+
+  seed(0);
+  runAnimObjects24683E(ram, rom);
+  const walking = [...Array(4)].map((_, i) => ram.u16(CURRENT + i * 2));
+  assert.deepEqual(walking, [...Array(4)].map((_, i) => w(TARGET + i * 2) & 0x7fff),
+    'shared = 0: the ROM cursor WALKS, so word i arrives at ROM word i');
+
+  seed(1);
+  runAnimObjects24683E(ram, rom);
+  const held = [...Array(4)].map((_, i) => ram.u16(CURRENT + i * 2));
+  assert.deepEqual(held, [w(TARGET) & 0x7fff, w(TARGET) & 0x7fff,
+    w(TARGET) & 0x7fff, w(TARGET) & 0x7fff],
+  'shared = 1: D6 is 0, A2 never moves, and ALL FOUR words arrive at ROM word 0');
+  assert.notDeepEqual(held, walking, 'the two arms really are distinguishable');
+});
+
+// ===============================================================================================
+// 5 -- THE REAL COLD BOOT. NOT A FIXTURE: `bootToGameplay` then `g.step(NO_PLAYER)` to +5,000.
+// ===============================================================================================
+
+test('W386 the cold boot reaches the game-over screen and DOES NOT STOP', () => {
+  assert.equal(RUN.stopError, null,
+    `no throw in 5,000 frames past START; got ${RUN.stopError}`);
+  assert.equal(RUN.lastFrame, 5000, 'and every one of those frames completed');
+
+  // The chain, by frame. Each of these is a DIFFERENT object dispatch type entering the table.
+  assert.equal(RUN.firstD, 4077, 'type $D -- objslot13.js, the GAME-OVER object, at +4,077');
+  assert.equal(RUN.firstE, 4080, 'type $E -- objslot14.js, which loads the $288C2E table, at +4,080');
+  assert.equal(RUN.firstC, 4414, 'type $C -- the handover, at +4,414');
+
+  // AND THE FRAME W385 DIED ON IS INSIDE THAT. +4,081 is the first `$24683E` after the chain
+  // was loaded, which is precisely why the ablation above lands there.
+  assert.ok(RUN.firstE < 4081 && 4081 < RUN.firstC,
+    'the ablated frontier +4,081 sits between the load and the handover');
+});
+
+test('W386 the fade RUNS: 32 staging words converge on the 32 ROM words, exactly', () => {
+  // BEFORE. `$246410` fills the range with the entry's `fill` word ($0000) at load time, so on
+  // the frame the chain appears only the ROM block's own trailing $0000 agrees.
+  assert.equal(RUN.matchedAtFirstE, 1,
+    'on the load frame exactly ONE of the 32 words already matches -- the block\'s $0000 tail');
+
+  // AFTER. Not "close to": every word, and the values come out of the image, not this file.
+  assert.deepEqual(RUN.current, RUN.rom,
+    'all 32 words of $80E906 equal all 32 words of $2252F8');
+  assert.equal(RUN.rom[0], w(TARGET) & 0x7fff, 'and the expectation is the cartridge, not a literal');
+  assert.equal(RUN.rom.length, 32, '32 words -- the bound SECTION 2 derived, exercised end to end');
+
+  // WHEN. Step 1 every 2 frames over 32 progress units is 64 frames of stepping; the channel
+  // walk needs a few more because `$246950`'s per-channel move SKIPS index $10 in both
+  // directions, so the widest channel takes more units than the narrowest.
+  assert.ok(RUN.fadeDone > RUN.firstE && RUN.fadeDone <= RUN.firstE + 120,
+    `the fade finished at +${RUN.fadeDone}, ${RUN.fadeDone - RUN.firstE} frames after the load`);
+});
+
+// ===============================================================================================
+// 6 -- WHAT IS BEHIND IT. COUNTED, WITH THE EXTENTS MEASURED.
+// ===============================================================================================
+
+test('W386 the two sound posts on the game-over path are STILL counted, not thrown', () => {
+  // objslot13.js:208/209. `sound.js`'s header forbids $28C170 a WRAPPERS row (it goes through
+  // the $28BBAC packer) and $28C0FC is in ENTRY, not WRAPPERS. Both stay counted, and this run
+  // is the proof they are REACHED rather than hypothetical.
+  assert.ok(noteCount(0x28c170) >= 1, '$288A3C jsr $28C170 counted');
+  assert.ok(noteCount(0x28c0fc) >= 1, '$288A42 jsr $28C0FC counted');
+  assert.equal(l(0x288a3c), 0x4eb90028, '$288A3C is a 4EB9...');
+  assert.equal(l(0x288a3e), 0x0028c170, '  ...jsr $28C170');
+  assert.equal(l(0x288a42), 0x4eb90028, '$288A42 is the next 4EB9, back to back...');
+  assert.equal(l(0x288a44), 0x0028c0fc, '  ...jsr $28C0FC, with no immediates between them');
+});
+
+test('W386 the ONLY new deferral behind the screen is dispatch [12], and it stops nothing', () => {
+  // The census at +4,079 -- the last frame W385 ever saw -- against the census at +5,000.
+  const after = new Set(RUN.notes.map((s) => s.split(' x ')[1]));
+  const grown = [...after].filter((k) => !RUN.notesAt4079.has(k));
+  assert.deepEqual(grown, ['$240FC2 object dispatch entry [12] -- handler not ported in wave 4'],
+    'exactly one note is NEW behind the game-over screen, and it is slot [12]');
+  assert.equal(noteCount(0x240fc2), RUN.lastFrame - RUN.firstC + 1,
+    'counted once per frame from the frame type $C entered the table -- a deferral, not a stop');
+
+  // ITS MEASURED EXTENT, so the deferral is precise rather than a shrug.
+  // $240FC2 is the DISPATCH TABLE ROW (8 bytes per row, $240F62 + 12 * 8); the handler is the
+  // longword in it.
+  assert.equal(0x240f62 + 12 * 8, 0x240fc2, '$240FC2 is dispatch row 12');
+  assert.equal(l(0x240fc2), 0x0028f3ac, 'and its handler is $28F3AC');
+  assert.equal(w(0x240fc6), 0x0009, '...at priority $9');
+
+  // The handler's LOW end: like slots [13] and [14], the dispatch address is the MIDDLE of the
+  // routine. $28F3B0's `beq` reaches back to $28F2BA, and $28F2B8 is the previous routine's rts.
+  assert.equal(w(0x28f3ac), 0x4a2d, '$28F3AC tst.b (d16,A5)');
+  assert.equal(w(0x28f3ae), 0x0002, '  ...($2,A5) -- the state byte, the same shape as [13]/[14]');
+  assert.equal(w(0x28f3b0), 0x6700, '$28F3B0 beq.w');
+  assert.equal(0x28f3b2 + (w(0x28f3b2) - 0x10000), 0x28f2ba, '  ...back to $28F2BA, state 0');
+  assert.equal(w(0x28f2b8), 0x4e75, 'and $28F2B8 is an rts -- the routine above ends there');
+
+  // The handler's HIGH end. TRAP 5, and it caught this file once while it was being written:
+  // the last instruction is the `dbra` at $28F8A6, the `rts` is at $28F8AA, and the routine's
+  // LAST BYTE is $28F8AB -- not $28F8A7, which is where a count taken from the dbra lands.
+  assert.equal(w(0x28f8a6), 0x51cf, '$28F8A6 dbra D7,... -- NOT the rts');
+  assert.equal(w(0x28f8aa), 0x4e75, '$28F8AA rts, and 4E75 SITS AT the last address (trap 5)');
+  assert.equal(l(0x28f8ac), 0x00000000, '$28F8AC opens the data island');
+  assert.equal(l(0x28f978), 0xffffffff, '...whose first table ends on the $FFFFFFFF at $28F978');
+  assert.equal(0x28f8ac - 0x28f2ba, 0x5f2, 'so slot [12]\'s CODE is $28F2BA..$28F8AB, $5F2 bytes');
+
+  // And its own data, unwindowed because nothing reads it: TWO animation tables, one per
+  // family, which is where the brief's "$246704 reads four words per node" is actually live.
+  assert.equal(w(0x28f4b4), 0x41fa, '$28F4B4 lea (d16,PC),A0');
+  assert.equal(0x28f4b6 + w(0x28f4b6), 0x28fa98, '  ...= $28FA98');
+  assert.equal(l(0x28f4ba), 0x4eb90024, '$28F4BA jsr...');
+  assert.equal(l(0x28f4bc), 0x00246410, '  ...$246410 -- FOUR 14-byte entries, $28FA98..$28FAD1');
+  assert.equal(w(0x28fa98), 0x0004, 'and its count word says four');
+  assert.equal(w(0x28f520), 0x41fa, '$28F520 lea (d16,PC),A0');
+  assert.equal(0x28f522 + w(0x28f522), 0x28fad2, '  ...= $28FAD2');
+  assert.equal(l(0x28f526), 0x4eb90024, '$28F526 jsr...');
+  assert.equal(l(0x28f528), 0x00246704, '  ...$246704 -- FOUR 8-byte nodes, $28FAD2..$28FAF3');
+  assert.equal(w(0x28fad2), 0x0004, 'and its count word says four too');
+  assert.equal(w(0x28faf4), 0x532c, 'with $28FAF4 back to code (subq.b #1,(d16,A4))');
+  assert.equal(0x28fad2 - 0x28fa98, 0x3a, '$28FA98 is $3A bytes: 2 + 4 * 14');
+  assert.equal(0x28faf4 - 0x28fad2, 0x22, '$28FAD2 is $22 bytes: 2 + 4 * 8');
+
+  // WHY THOSE ARE NOT WINDOWED HERE: the $28FA98 table names FOUR more colour blocks and only
+  // ONE of them has a declared window. Declaring the other three would be declaring windows for
+  // a subsystem no line of this port executes -- the deferral is slot [12], whole.
+  // The four targets sit at entry+8, NOT entry+6: fill.w, family.w, offset.w THEN target.l.
+  // The count word is at $28FA98, so entry 0 opens at $28FA9A and its target is at $28FAA0.
+  const targets = [0, 1, 2, 3].map((i) => l(0x28fa9a + i * 14 + 6));
+  assert.deepEqual(targets, [0x2254b8, 0x2254f8, 0x225538, 0x225478],
+    'four 64-byte colour blocks, and the fourth is BELOW the third -- not a run');
+  const banks = [0, 1, 2, 3].map((i) => w(0x28fa9a + i * 14 + 4));
+  assert.deepEqual(banks, [0x0080, 0x00c0, 0x0100, 0x0140],
+    'into staging banks 2, 3, 4 and 5 -- W386\'s own entry fades bank 2 as well');
+
+  const declared = (a) => windows.some((x) => x.base <= a && a + 0x40 <= x.base + x.len);
+  assert.equal(declared(targets[0]), true, '$2254B8 is inside W125\'s window already');
+  assert.equal(declared(targets[1]), false, '$2254F8 has no window');
+  assert.equal(declared(targets[2]), false, '$225538 has none either');
+  assert.equal(declared(targets[3]), false, '...nor $225478');
+});
+
+test('W386 slot [12] ends the front-end loop by staging dispatch type 8, the attract screen', () => {
+  // Both of the entry's other arms ($28F3BA and $28F3C4, 8-bit displacements) go to the SAME
+  // place, and that place hands the machine back to slot [8]. So the screen after game over is
+  // not a dead end in the cartridge -- it is the loop closing, and slot [12] is all that is
+  // between this port and a front end that runs forever.
+  assert.equal(w(0x28f3ba), 0x67ac, '$28F3BA beq.s -- displacement $AC is NEGATIVE, -84');
+  assert.equal(0x28f3bc + (w(0x28f3ba) & 0xff) - 0x100, 0x28f368, '  ...to $28F368');
+  assert.equal(w(0x28f3c4), 0x67a2, '$28F3C4 beq.s -94');
+  assert.equal(0x28f3c6 + (w(0x28f3c4) & 0xff) - 0x100, 0x28f368, '  ...to the SAME $28F368');
+  assert.equal(w(0x28f39a), 0x303c, '$28F39A move.w #imm,D0');
+  assert.equal(w(0x28f39c), 0x0008, '  ...#$8 -- dispatch type 8');
+  assert.equal(l(0x28f39e), 0x4eb90024, '$28F39E jsr...');
+  assert.equal(l(0x28f3a0), 0x00241182, '  ...$241182, the stage-a-create the whole front end uses');
+  assert.equal(l(0x240fa2), 0x0025a770, 'and dispatch row 8 is $25A770 -- objslot8.js, the '
+    + 'warning/credit/attract screen the cold boot started on');
+});
+
+test('W386 nothing else on the game-over path needs a window: no note names a ROM address', () => {
+  // A negative that is NOT an absence proof: every `Unreached` this port raises for a window
+  // miss comes out of `rom.js`, and a run that raised one would have STOPPED. The shared RUN
+  // did not stop (SECTION 5), so this is a restatement of a positive measurement. What is
+  // asserted here is only that the census behind the screen is the ONE entry above.
+  const behind = RUN.notes.filter((s) => !RUN.notesAt4079.has(s.split(' x ')[1]));
+  assert.equal(behind.length, 1, `exactly one census line is new; got ${behind.length}`);
+  assert.match(behind[0], /\$240FC2/, 'and it is dispatch [12]');
+});

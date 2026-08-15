@@ -669,7 +669,13 @@ test('W385 the two deferrals W384 counted are GONE from the census', () => {
   assert.equal(noteCount(0x259c4a), 1, '...as is $2605CE jsr $259C4A');
 });
 
-test('W385 the cold boot now reaches GAME OVER, and stops on the game-over screen\'s $2252F8',
+// **W386 REWROTE PART (b) OF THIS TEST.** W385 asserted the run ends on a NAMED `Unreached` at
+// `$2252F8`, the game-over screen's fade target. W386 declares that 64-byte window, so the run
+// does not end there or anywhere else in 14,000 frames. Parts (a) and (c) -- it REACHED the game
+// over, and the two sound posts on the way are counted rather than thrown -- are exactly what
+// W385 measured and are unchanged. `tests/w386gameover.test.js` SECTION 3 ablates the one window
+// and reproduces this file's original ending, to the frame.
+test('W386 the cold boot reaches GAME OVER, and no longer stops on the game-over screen\'s $2252F8',
   () => {
     // (a) IT GOT THERE. The lives counter BORROWED, which is $25FFA8's own end-of-game test
     // (`subq.w #1 / tst.w / bpl` -- so -1 and not 0 is the finish) and the state the port could
@@ -679,18 +685,14 @@ test('W385 the cold boot now reaches GAME OVER, and stops on the game-over scree
     assert.ok(RUN.everLive.has(0x0d),
       'and bonus-line request 2 created dispatch type $D -- objslot13.js, the GAME-OVER object');
 
-    // (b) AND WHERE IT STOPPED. Named by address, by file and by frame.
-    assert.ok(RUN.stopError instanceof Unreached,
-      `the run ends on a NAMED Unreached, not a bare crash; got ${RUN.stopError}`);
-    assert.equal(RUN.stopError.romAddress, 0x2252f8,
-      '$2252F8 -- the game-over screen\'s animation table, outside every declared ROM window');
-    assert.match(RUN.stopError.stack, /animobjects\.js/,
-      'and it is animobjects.js stepNode that reads it, from runAnimObjects24683E');
-    assert.ok(RUN.stoppedAt > 3900 && RUN.stoppedAt < 4300,
-      `at frame +${RUN.stoppedAt} past START; the measured frame is +4,081`);
-    assert.ok(RUN.stoppedAt > RUN.firstPlayerFrame,
-      'and it is AFTER the player existed, which is what makes it a NEW frontier and not a '
-      + 'regression of the old one');
+    // (b) AND IT NO LONGER STOPS. W386's `$2252F8` window is 64 bytes, derived from the
+    // `words-minus-one` field of the one $288C2E entry that names it and $246B2A's `dbra`.
+    assert.equal(RUN.stopError, null,
+      `no Unreached anywhere in the run any more; got ${RUN.stopError}`);
+    assert.equal(RUN.stoppedAt, 0, '...so there is no stop frame');
+    assert.equal(RUN.lastLive, 14000, 'and all 14,000 frames completed');
+    assert.ok(RUN.lastLive > RUN.firstPlayerFrame,
+      'well past the frame the player was created on, which is what W385 built');
 
     // (c) THE TWO SOUND POSTS ON THE WAY THERE ARE COUNTED, NOT THROWN. Both are reached: this
     // run walked through slot [13] state 4 to get where it stopped.

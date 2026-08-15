@@ -150,7 +150,8 @@ import { BGRAM } from '../src/background.js';
 import { BOSS, livePlayers2428A6, bossTimeout294F32 } from '../src/boss.js';
 import { TALLY, tallyDriver25FF7A } from '../src/tally.js';
 import { RANK } from '../src/rank.js';
-import { Unreached } from '../src/unported.js';
+// W386: the `Unreached` import is gone with the assertion that used it -- this run no longer
+// throws one. `tests/w386gameover.test.js` SECTION 3 holds the ablation that still does.
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const tablesJson = JSON.parse(readFileSync(here('../rip/port/player.tables.json'), 'utf8'));
@@ -273,21 +274,29 @@ const noteCount = (addr) => {
 // The gate the brief warned about looking for IS HERE, and the hold IS intended.
 // =============================================================================================
 
-// **W385 REWROTE THIS TEST.** It asserted `RUN.odo === 836` and `odoLastFrame` near +9,364.
-// Both were true of a run with NO PLAYER, which could sit in stage 1 indefinitely. A run with a
-// player ends at +4,081 (SECTION 5), long before the scroll VM reaches record time `$0344`, so
-// the odometer is still MOVING when the run stops. That is what is asserted now. The boss lock
-// itself is unchanged in the cartridge and is still pinned by `background.js:994-1014`.
-test('W385 the odometer is still ADVANCING when the run ends -- 836 was the no-player figure',
+// **W385 REWROTE THIS TEST AND W386 REWROTE ONE LINE OF IT AGAIN.** W385's version asserted
+// `RUN.lastLive - RUN.odoLastFrame < 30` -- "the odometer is still moving when the run STOPS" --
+// which was true only because the run stopped, at +4,081, three frames after the game-over object
+// appeared. W386 declares the `$2252F8` window and the run no longer stops at all, so the
+// odometer's last movement is now ~9,900 frames before the end of a 14,000-frame run and that
+// assertion cannot survive. What it was measuring is preserved and made sharper: the odometer
+// stops SHORT of the boss lock, and it stops WHERE THE GAME OVER PAUSES IT.
+test('W386 the odometer stops short of the boss lock, and it is the GAME OVER that parks it',
   () => {
     assert.ok(RUN.odo > 100,
-      `the odometer is well past zero when the run stops; got ${RUN.odo}`);
+      `the odometer is well past zero when it stops; got ${RUN.odo}`);
     assert.ok(RUN.odo < 836,
-      `and it has NOT reached the boss-lock record time $0344 = 836 -- the run ends first. `
-      + `Measured ${RUN.odo}`);
-    assert.ok(RUN.lastLive - RUN.odoLastFrame < 30,
-      `its last movement is within a handful of frames of the end (+${RUN.odoLastFrame} of `
-      + `+${RUN.lastLive}), not 4,500 frames back: it is advancing, not parked`);
+      `and it has NOT reached the boss-lock record time $0344 = 836 -- the game over comes `
+      + `first. Measured ${RUN.odo}`);
+    // WHERE it parks: within a few frames of the game-over object, NOT at the boss lock. The
+    // type-$D create is at +4,077 (`w386gameover.test.js` SECTION 5 asserts that frame), and
+    // `$8130D2` -- asserted below -- is what holds it from then on.
+    assert.ok(Math.abs(RUN.odoLastFrame - 4077) < 30,
+      `its last movement is +${RUN.odoLastFrame}, a handful of frames from the +4,077 game-over `
+      + `create -- not the +9,364 the boss lock used to park it at`);
+    assert.ok(RUN.lastLive - RUN.odoLastFrame > 9000,
+      `and it then sits still for the remaining ${RUN.lastLive - RUN.odoLastFrame} frames, which `
+      + `is only possible because the run no longer ends three frames later (W386)`);
 
     // ...and the freeze that parked it at 836 is therefore never latched in this run.
     assert.equal(noteCount(0x261142), 0,
@@ -404,9 +413,14 @@ test('W385 and the two dispatcher entries $25FE42 fills are FILLED', () => {
 // before the boss is ever spawned. That is not a regression and the test says which it is: the
 // mechanism the missing player blocked is proved unblocked by the unit test directly below, and
 // by `tests/w385player.test.js` SECTION 6 against a real cold-booted RAM.
-test('W385 the boss is NEVER REACHED now -- the run ends in a GAME OVER at about +4,081', () => {
+// **W386 REWROTE THE SECOND HALF OF THIS TEST.** W385 asserted the run ends on a NAMED
+// `Unreached` at `$2252F8` around +4,081. That was the game-over screen's own fade target and
+// W386 declares its window, so there is no throw any more: the same run now completes all
+// 14,000 frames. The FIRST half -- no boss, the lives counter borrows, type $D is created -- is
+// unchanged and still measures what W385 measured. Only the ending changed.
+test('W386 the boss is NEVER REACHED -- there is a GAME OVER first, and the run SURVIVES it', () => {
   assert.equal(RUN.bossFirstFrame, 0,
-    'the stage-1 boss $292902 never enters the enemy table: the run is over first');
+    'the stage-1 boss $292902 never enters the enemy table: the game over comes first');
   assert.equal(RUN.bossRec, 0, '...and there is no boss record at the last frame either');
 
   // WHY it is over, in the cartridge's own terms: the lives counter BORROWED. `$25FFC4 subq.w #1
@@ -417,13 +431,14 @@ test('W385 the boss is NEVER REACHED now -- the run ends in a GAME OVER at about
   assert.ok(RUN.everLive.has(0xd),
     'and bonus-line request 2 created dispatch type $D, the GAME-OVER object (objslot13.js)');
 
-  // WHERE it stops, named by address. `w385player.test.js` SECTION 7 carries the full account.
-  assert.ok(RUN.stopError instanceof Unreached,
-    `the run ends on a NAMED Unreached, not a bare crash; got ${RUN.stopError}`);
-  assert.equal(RUN.stopError.romAddress, 0x2252f8,
-    '$2252F8 -- the GAME-OVER screen\'s animation table, outside every declared ROM window');
-  assert.ok(RUN.stoppedAt > 3900 && RUN.stoppedAt < 4300,
-    `at frame +${RUN.stoppedAt}; the measured frame is +4,081`);
+  // AND IT NO LONGER STOPS. W386 declared `$2252F8`, the game-over screen's fade target, so the
+  // frame W385 died on ($24683E's first read of that block) completes and the run goes on.
+  // `w386gameover.test.js` SECTION 3 ablates that one window and gets the old death back, to
+  // the frame, which is what makes this a MEASUREMENT and not merely a silence.
+  assert.equal(RUN.stopError, null,
+    `the run no longer stops: W386's $2252F8 window; got ${RUN.stopError}`);
+  assert.equal(RUN.stoppedAt, 0, '...so there is no stop frame at all');
+  assert.equal(RUN.lastLive, 14000, 'and all 14,000 frames completed');
 
   // ...and the same word SECTION 1 reads is set here, from the other end: `$294F32 tst.w
   // $8130D2 / bne` is the timeout's own first line, so once the last side is gone the timeout

@@ -3450,6 +3450,131 @@ SHOT_WINDOWS.append(
                        "spawn Y, THE OBJECT TYPE (2 for P1, 3 for P2), the side, then the "
                        "LIVES-COUNTER POINTER ($8130BE / $8130C0)"))
 
+# ==============================================================================================
+# W386 -- THE GAME-OVER SCREEN'S FADE TARGET, `$2252F8`
+# ==============================================================================================
+# `$2252F8` is NOT a script and NOT a node table.  It is the ROM COLOUR BLOCK that
+# `$24683E`'s executor walks as `move.w (A2),D1`, and the ONLY thing that states its length is
+# the `words-minus-one` field of the one entry that names it.  Three separate pieces of code,
+# none of them an eyeball on the bytes:
+#
+#   1. WHO NAMES IT.  Slot [14] ($288C6C, the object slot [13]'s state 4 stages) state 0:
+#
+#        288C0E  3b7c 012c 0004     move.w #$12C,($4,A5)
+#        288C14  41fa 0018          lea ($18,PC),A0     EA = $288C16 + $18 = $288C2E   <- trap 4
+#        288C18  4e71               nop
+#        288C1A  4eb9 0024 6410     jsr $246410
+#
+#   2. THE TABLE ITSELF, sixteen bytes, and the SIXTEENTH is the last: $288C3E is
+#      `536d 001c` = `subq.w #1,($1C,A5)`, which is slot [14] STATE 2's own first instruction
+#      (src/objslot14.js state2, `$288C3E`).  So the table cannot be longer than one entry,
+#      and its count word agrees:
+#
+#        288C2E  0001                        count = 1                 ($24643C move.w (A0)+,D0)
+#        288C30  0000                        fill                      ($246472 -> ($12,A2))
+#        288C32  0000                        target family             ($246476 -> $24627A[0])
+#        288C34  0080                        current offset            ($246486 adda.w (A0)+,A3)
+#        288C36  0022 52F8                   TARGET, a LONG            ($24648C -> ($A,A2))
+#        288C3A  001F                        WORDS MINUS ONE           ($246490 -> ($4,A2))
+#        288C3C  0005                        timing index              ($246494/$246496 andi #$1F)
+#
+#   3. THE BOUND, STATED BY THE READER.  `$246878`'s executor loads the count into D5 from the
+#      node field the loader filled from `words-minus-one`, and the `dbra` at the bottom runs
+#      it N+1 times (trap 2):
+#
+#        24688C  3a2c 0004          move.w ($4,A4),D5      <- $001F
+#        246884  246c 000a          movea.l ($A,A4),A2     <- $2252F8, the ROM cursor
+#        2468DA  3212               move.w (A2),D1         <- THE READ
+#        246B28  d4c6               adda.w D6,A2           <- D6 is 2 here ($246892/$246898)
+#        246B2A  51cd fdae          dbra D5,$2468D8
+#
+#      $1F + 1 = 32 words = $40 bytes.  $2252F8..$225337.
+#
+# NEIGHBOURS.  W91's block window is [$222A78, $2252F8) -- its EXCLUSIVE far end is this
+# window's base, so the two ABUT and DO NOT OVERLAP.  The W91 line is NOT widened (its own
+# `check_palette_upload_family` derives the sprite-bank bound from it); a new window is
+# declared instead.  The next declared window above is W125's $2254B8, $180 bytes clear.
+#
+# CORROBORATION, not proof: the 64 bytes end `...9c40 0000` and $225338 opens `ffd3`, the same
+# `0000`-terminated 32-word shape as every 64-byte colour block either side of it.
+SHOT_WINDOWS.append(
+    (0x2252F8, 0x0040, "W386: the GAME-OVER screen's palette FADE TARGET. Slot [14] state 0 "
+                       "($288BCE) does `$288C14 lea ($18,PC),A0` -- EA = the extension word "
+                       "$288C16 plus $18 = $288C2E -- then `$288C1A jsr $246410`. The table is "
+                       "count.w = 1 followed by ONE fourteen-byte entry, and $288C3E, the byte "
+                       "after it, is `subq.w #1,($1C,A5)`, slot [14] state 2's first "
+                       "instruction. The entry's target.l is $2252F8 and its words-minus-one is "
+                       "$001F; $246878's executor puts that in D5 ($24688C move.w ($4,A4),D5) "
+                       "and the dbra at $246B2A runs the `move.w (A2),D1` at $2468DA N+1 times, "
+                       "so 32 words = $40 bytes. ABUTS W91's [$222A78, $2252F8) exactly and "
+                       "widens nothing. It fades sprite staging bank 2 ($80E886 + the entry's "
+                       "$80 offset) over 32 steps of 1 every 2 frames (timing index 5)"))
+
+
+def check_gameover_anim_table(d: bytes) -> None:
+    """W386.  Re-derive the $2252F8 window's BASE and LENGTH from the cartridge
+    every run, and refuse a declaration that does not match what the code says.
+
+    The length is NEVER typed twice: it is computed from the entry's
+    `words-minus-one` field with the executor's `dbra` semantics (N+1), and the
+    declared SHOT_WINDOWS line is checked against that.  W91's own check found
+    that a constant written twice is a check that cannot fail on one of them.
+    """
+    LEA, TABLE, AFTER = 0x288C14, 0x288C2E, 0x288C3E
+    if u16(d, LEA) != 0x41FA:
+        raise SystemExit(f"${LEA:06X} is ${u16(d, LEA):04X}, not `41FA` "
+                         f"(lea (d16,PC),A0) -- slot [14] state 0 no longer "
+                         f"names an animation table.")
+    # TRAP 4: the EA is the EXTENSION WORD's address plus the displacement.
+    base = LEA + 2 + u16(d, LEA + 2)
+    if base != TABLE:
+        raise SystemExit(f"${LEA:06X}'s lea now resolves to ${base:06X}, not "
+                         f"${TABLE:06X}.")
+    if u16(d, LEA + 4) != 0x4E71 or u16(d, LEA + 6) != 0x4EB9 \
+            or u32(d, LEA + 8) != 0x00246410:
+        raise SystemExit(f"${LEA + 6:06X} is no longer `jsr $246410` -- the "
+                         f"table at ${TABLE:06X} is read by some other loader "
+                         f"and its 14-byte entry shape is not guaranteed.")
+    count = u16(d, TABLE)
+    if count != 1:
+        raise SystemExit(f"${TABLE:06X} declares {count} entries, not 1. The "
+                         f"table would then run past ${AFTER:06X}, which is "
+                         f"CODE (slot [14] state 2).")
+    # 2 (count) + 14 (one entry) = 16, so the entry's last byte is $288C3D and
+    # $288C3E must be executable.  That is the table's OTHER, independent bound.
+    if u16(d, AFTER) != 0x536D or u16(d, AFTER + 2) != 0x001C:
+        raise SystemExit(f"${AFTER:06X} is ${u16(d, AFTER):04X} "
+                         f"${u16(d, AFTER + 2):04X}, not `536D 001C` "
+                         f"(subq.w #1,($1C,A5)) -- src/objslot14.js state2's "
+                         f"first instruction. The one-entry bound is unproven.")
+    fill, family, off = u16(d, TABLE + 2), u16(d, TABLE + 4), u16(d, TABLE + 6)
+    target, words_m1, timing = u32(d, TABLE + 8), u16(d, TABLE + 12), \
+        u16(d, TABLE + 14)
+    if (fill, family, off, timing) != (0x0000, 0x0000, 0x0080, 0x0005):
+        raise SystemExit(f"the ${TABLE:06X} entry's non-target fields are "
+                         f"(fill ${fill:04X}, family ${family:04X}, offset "
+                         f"${off:04X}, timing ${timing:04X}) and W386 measured "
+                         f"($0000, $0000, $0080, $0005).")
+    # $24688C move.w ($4,A4),D5 / $246B2A dbra D5 -- N+1 words (trap 2).
+    length = (words_m1 + 1) * 2
+    decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == target]
+    if decl != [(target, length)]:
+        raise SystemExit(
+            f"${TABLE:06X} points the fade at ${target:06X} with "
+            f"words-minus-one ${words_m1:04X}, so the executor's dbra reads "
+            f"{words_m1 + 1} words = ${length:X} bytes; SHOT_WINDOWS declares "
+            f"{[(hex(a), hex(n)) for a, n in decl]}.")
+    # NEVER WIDEN A NEIGHBOUR: assert the new window overlaps nothing at all.
+    for a, ln, why in SHOT_WINDOWS:
+        if a == target and ln == length:
+            continue
+        if a < target + length and target < a + ln:
+            raise SystemExit(
+                f"the W386 window [${target:06X}, ${target + length:06X}) "
+                f"OVERLAPS the declared window [${a:06X}, ${a + ln:06X}) -- "
+                f"{why[:60]}. Declare a disjoint window, never widen one.")
+
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
@@ -7249,6 +7374,7 @@ def build(d: bytes) -> dict:
     check_text_palette_boot(d)                 # W93 -- THE RESET PATH'S FIVE
     check_stage2_boot_data(d)                  # W133 -- STAGE-2 BG boot windows
     check_stage2_spawn_data(d)                 # W169 -- reset/install + spawn span
+    check_gameover_anim_table(d)               # W386 -- THE GAME-OVER FADE TARGET
     check_sample_windows()                     # W27D -- ICS sample tight union
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
