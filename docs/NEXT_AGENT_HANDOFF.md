@@ -108,7 +108,13 @@ Still unmeasured and unported: **`$2604AA`, `$241654`, `$26089E`**. Already port
 So `$25D560` is roughly 730 + 956 + 262 + 262 bytes and still open at the edges. **Do not plan
 around the 1.9 KB figure**; it is a large unit and it has a cycle in it.
 
-**THE PATTERN, AND IT HAS NOW COST FOUR CLAIMS THIS WAVE.** Every one of my wrong claims came from
+**AND MY SIZE ARITHMETIC HAD THE SAME SHAPE OF BUG.** The sizing loop computed `end - start + 2`,
+which is right for `rts` (`4E75`, two bytes) and **wrong for a tail `jmp abs.l` (`4EF9`, SIX
+bytes)**. So every routine measured as ending in a tail jump came out **4 bytes short**. In this
+tree that is `$256F78`, which is **28 bytes (`$256F78..$256F93`)**, not the 24 I recorded --
+verified from the bytes, with a `4E71` pad at `$256F94` and an unrelated routine at `$256F96`.
+
+**THE PATTERN, AND IT HAS NOW COST FIVE CLAIMS THIS WAVE.** Every one of my wrong claims came from
 an ad-hoc sweep that knew one instruction form and not its siblings:
 
 * `jsr`/`jmp` scanned, `bsr` missed -> this tree sizing, and the "`$25EB2E` has no caller" claim.
