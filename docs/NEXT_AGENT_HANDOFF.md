@@ -33,6 +33,18 @@ So the living DaiOuJou docs are exactly three: **`DOCKET.md`, `ORCHESTRATOR_BRIE
 file.** `D12`'s claim that the reference docs "predate stages 3 and 4" was false and is corrected in
 place.
 
+### PART OF THE BOOT PATH IS ALREADY PORTED -- DO NOT DUPLICATE IT
+
+The recon reported `$23BEEA` as unported. **That is true of the routine as a whole and misleading
+about its tail.** `$23BF86..$23BFCC` -- the five TX palette installs (`$222638`, `$222658`,
+`$222678`, `$222698`, `$2226B8` into banks 0..4 through `$2414BE`) -- **ARE modelled**, in
+`palette.js`, as "the ONE palette catch-up in this port whose code path is the RESET PATH". Its
+docstring carries the disassembly and notes there is no branch between `$23BF86` and `$23BFCC`.
+
+So a boot-path port needs `$23BEEA`'s **twenty initialisers and its `$23BF38 jsr $2412FE`** (which
+zeroes the whole palette staging), **not** the five installs. Check `palette.js` before writing any
+of it.
+
 ### SLOT [8] `$25A770` IS THE WHOLE BOOT GATE, AND IT IS FULLY DECODED
 
 **3,192 bytes, `$25A764..$25B3DB`** -- not the 188 I measured, because **its arms live ABOVE the
