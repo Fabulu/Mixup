@@ -2,7 +2,88 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W387
+## START HERE -- W388
+
+### THE SUITE NOW TAKES ~675 SECONDS. IT EXCEEDS A 600s TIMEOUT.
+
+Run it in the background or with a longer limit. Still **from the repo root** -- from
+`games/ddpdoj/` it reports 2833 pass / 12 fail / 356 SKIPPED and is meaningless.
+
+### ARM 2 FINISHED. THE ATTRACT SEQUENCER ADVANCES `13 -> 2 -> 12`.
+
+```
+  +1:   $812E56=13  $812E5C=0
+  +302: $812E56=2   $812E5C=0
+  +319: $812E56=2   $812E5C=1
+  +558: $812E56=2   $812E5C=2
+  +574: $812E56=12  $812E5C=2      <- arm 2 finished
+```
+
+**The cause was a MISSING ROUTINE, not a gate** -- `$246710`'s per-node content seeding,
+`$24676A..$2467C3`, **90 bytes**, never ported:
+
+```
+24676A  47fa fb0e         lea (-$4F2,PC),A3            -> $24676C-$4F2 = $24627A
+24676E  2573 2004 0006    move.l ($4,A3,D2.w),($6,A2)  <- THE MISSING STORE
+```
+
+`chainLoaderBody` in `stageend.js` ports `$246710`'s pool lifecycle byte for byte and **stops**. It
+never writes `($6,node)`, the executor pointer, and `runAnimObjects24683E` skips any node whose
+`($6)` is zero. All eight nodes walked, none stepped, `($18)` stuck at `$FFFF` forever.
+
+**WHAT MADE THE DIAGNOSIS EXACT:** the same screen loads TWO chains through TWO loaders, and only
+one was hollow. State 0's comes from `$24641A` -> `loadAnimObjects246410`, which **has** its content
+seeding, and state 0 always advanced. State 2's came from `$246710`, which did not. **One screen,
+two loaders, one difference.** That is the shape of proof to reach for.
+
+Ported as `seedChainContent24676A` in `animobjects.js`. The target is the **constant** `$246BB8`
+(`$24677E`), not a script field, and the allocator sets `($1E)=1` so `stepNode`'s target stride is
+zero -- **this chain is a FADE TO BLACK** against W91's all-zero bank, draining in exactly 16 frames.
+**No window added or widened**; all four tables were already declared.
+
+### THREE MORE FILES BUILD HOLLOW CHAINS -- SAME LATENT STALL
+
+`objslot15.js:173`, `objslot7pool.js:410` and `hiscorename.js:338` all call the loader that lacks
+content seeding. **Folding `seedChainContent24676A` into `stageend.js`'s `chainLoaderBody` fixes all
+three at once.** Worth a wave.
+
+### `objslot13.js:203` HAS THE IDENTICAL `queueKill` DEFECT, AND IT IS LIVE
+
+`objslot14.js` is fixed: `$241292 41 ed 00 4c` is `lea ($4C,A5),A0` and `$241252 22 90` is
+`move.l (A0),(A1)` -- **a LONG through A0, the id.** The port passed `ram.u16(a5 + 0x00)`, the type
+word `$800E`, so `killById`'s 16-bit compare never matched id `$0001` and **the kill was accepted and
+did nothing.** Now `ram.u32(a5 + SLOT14.idAt)`.
+
+**`$288A34 4e f9 00 24 12 92` is `jmp $241292` and `objslot13.js:203` passes the type word too.**
+Not touched. **It is live.**
+
+### UNIT C COST EIGHT ASSERTIONS ACROSS FOUR FILES, NOT SIX ACROSS THREE
+
+Both clears (`$24A810`, `$2603DA`) are called now. Two of the eight were in
+`w387slot12.test.js`, which my scoping missed entirely: SECTION 4's "exactly FOUR counted notes" went
+to 2, and SECTION 7's "the counted `$24A810` wrote nothing" **inverted**. Nothing was weakened -- an
+eleven-word snapshot was added to `w384stall`'s run so "the last frame" and "the last frame the
+subject existed" are separable and both assertable.
+
+`w384stall`'s "RAM is NOT a fixed point" failed from **Unit A**, not Unit C.
+
+### TRAP 14 BIT TWICE ON THE SAME WAVE'S OWN WORK
+
+The `$24676A` note in `stageend.js` **became a lie** for the new call site, and `objslot12.js`'s
+CLEARS header still said "DELIBERATELY NOT CALLED" after they were called. Both repaired. **When you
+change a call site, grep for the notes and headers that describe it.**
+
+### NEXT: ARM 12, AND IT LOOKS LIKE ARM 2's TWIN
+
+The sequencer now parks on **arm 12**, whose init `$25C2AE..$25C2E9` (60 bytes, `rts` AT `$25C2E8`)
+and body `$25C2EA` are counted. **Structurally the same shape as arm 2:** `$25C2D2 jsr $24641A`
+loads a chain into `$812E76` from the script at `$25C3B8`, and `$25C360 jsr $24681A` /
+`$25C36A jsr $246800` wait and free it. **Its loader is the one that ALREADY HAS content seeding**,
+so it may drain the moment it is transcribed. Its note says carry-clear takes it to state 9.
+
+`$28C170` at `$25B4C8` is now reachable for the first time. `$24676A` left the census.
+
+## W387 NOTES
 
 ### THE FRONT-END LOOP CLOSES. DISPATCH IS 17 OF 20.
 

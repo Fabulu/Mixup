@@ -97,37 +97,42 @@
 //                              $28FC96 it indexes with the row index ($38,A4)
 //
 // ===============================================================================================
-// THE CLEARS: TRANSCRIBED, TESTED, AND DELIBERATELY NOT CALLED. THE PRICE, MEASURED.
+// THE CLEARS: TRANSCRIBED, TESTED, AND -- SINCE W388 -- CALLED. THE PRICE WAS PAID.
 // ===============================================================================================
 //
 // `$24A810..$24A823` ($14) and `$2603DA..$2603FD` ($24) are six and seven instructions with no
 // branch and no call, and both are transcribed here as `clearPlayerRam24A810` and
 // `clearRankRam2603DA`, with `w387slot12.test.js` SECTION 7 proving both ends of both spans.
-// **The teardown COUNTS the calls instead of making them, and the reason is a measurement.**
 //
 // Between them they wipe `$8103E6..$812977` (9,618 bytes) and `$81308C..$813157` (204 bytes) --
 // which is the whole player subsystem, the rank subsystem's pointers, `$8130FA` (tally.js's
-// `TALLY.side0`) and `$8130BE` (the lives counter). RUN THEM AND SIX ASSERTIONS IN TWO FILES THIS
-// WAVE DOES NOT OWN GO RED, every one of them a measurement taken at the LAST FRAME of a run that
-// now has a teardown in it:
+// `TALLY.side0`) and `$8130BE` (the lives counter).
 //
-//     w384*.test.js  "RAM is NOT a fixed point"
-//     w385player.test.js  "the two dispatcher entries $25FE42 fills are FILLED"
-//                         "DEFERRAL 2 IS GONE: $2603FE is rank.js stagePair2603FE"
-//                         "the lives counter is seeded from the DIP"
-//     w386gameover.test.js  "the odometer stops short of the boss lock"
-//                           "the boss is NEVER REACHED ... and the run SURVIVES it"
+// **W387 COUNTED THEM RATHER THAN CALLING THEM, and priced the change at six assertions in three
+// files. W388 CALLED THEM AND THE PRICE WAS EXACTLY RIGHT.** Every one of the six was a
+// measurement taken at the LAST FRAME of a run that had no teardown in it, and every one has been
+// re-based to the frame on which its subject still exists rather than weakened:
 //
-// None of those six is about this object, and none of them is WRONG about its own subject -- they
-// are right about a machine that used to stop at +4,414 and stop being right about one that does
-// not. Re-basing six measurements in two other waves' files is a decision with more information
-// behind it than this wave has, so the calls are counted, the routines are here and tested, and
-// turning them on is one line plus those six re-bases. That is the brief's own bargain: the spine
-// running and the rest counted, rather than all of it half-ported.
+//     w384stall.test.js  "the odometer stops short of the boss lock"      -> `RUN.odoPeak`
+//                        "the two dispatcher entries $25FE42 fills"       -> `RUN.atTeardown`
+//                        "the boss is NEVER REACHED ... and it SURVIVES"  -> `RUN.atTeardown`
+//                        "DEFERRAL 2 IS GONE: $2603FE is stagePair2603FE" -> `RUN.atTeardown`
+//     w385player.test.js "the lives counter is seeded from the DIP"       -> its own +2,500 boot
+//     w386gameover.test.js / w387slot12.test.js -- the note census, which LOSES two lines
 //
-// Total counted below this object: $258 bytes of draw code and $A6 of clear.  NONE of it is on
-// the cold-boot path except the three clear notes and `$28C0FC` -- SECTION 4 of the test file
-// pins the whole set at exactly four notes, one fire each.
+// `w384stall.test.js`'s run now carries an eleven-word snapshot refreshed while the tally block is
+// live, so "the last frame" and "the last frame the player subsystem existed" are separate and
+// both assertable. The teardown's own effect is asserted positively in
+// `w388hiscorechain.test.js` SECTION 6, on the real game-over path, with both spans' ends checked
+// and the first word past each end proved untouched.
+//
+// **`$259C4A` IS STILL COUNTED and is the only one of the three that is not ported**: `$259CA0` is
+// a `jsr` out of the middle of it, so it is not a straight-line clear and porting the visible half
+// would put the whole routine's name on two thirds of its behaviour.
+//
+// Total counted below this object: $258 bytes of draw code and $6E of clear.  NONE of it is on
+// the cold-boot path except the `$259C4A` note and `$28C0FC` -- SECTION 4 of the test file
+// pins the whole set at exactly two notes, one fire each.
 
 import { clearTx23C622 } from './background.js';
 import { install24150A, install2414BE } from './palette.js';
@@ -173,17 +178,17 @@ export const SLOT12 = Object.freeze({
   flagBits: Object.freeze([0x01, 0x02]),          // $28F32C ori.b #$1 / $28F348 ori.b #$2
   entryCue: 0x28cb74,          // $28F360 jsr -- sound.js STREAMING_LEAVES, id 10
 
-  // The teardown's chain, in the cartridge's order. The three CLEARS are counted, with the
-  // extent and the exact RAM span each one wipes -- see the CLEARS block in this file's header.
+  // The teardown's chain, in the cartridge's order, with the extent and the exact RAM span each
+  // one wipes. **ONLY THE MIDDLE ONE IS STILL COUNTED** -- W388 calls the other two; their rows
+  // stay here because the extents are the measurement, and `w387slot12.test.js` SECTION 4 reads
+  // them. See the CLEARS block in this file's header.
   clears: Object.freeze([
     Object.freeze({ at: 0x24a810, site: 0x28f368,
       why: '$28F368 jsr $24A810 -- $24A810..$24A823, $14 bytes: `move.w #$12C8,D0 / moveq #$0,D1 '
         + '/ lea $8103E6,A0 / move.w D1,(A0)+ / dbra`, so $12C9 WORDS (trap 2) = $8103E6..$812977, '
-        + '9,618 bytes of player RAM. `clearPlayerRam24A810` in objslot12.js transcribes it and '
-        + 'w387slot12.test.js SECTION 7 proves both ends; the CALL is counted rather than made '
-        + 'because turning it on wipes the resting RAM six assertions in w385player.test.js and '
-        + 'w386gameover.test.js measure at the last frame of their runs -- see this file\'s CLEARS '
-        + 'block for the list. It is a one-line change with a measured price, not a gap' }),
+        + '9,618 bytes of player RAM. `clearPlayerRam24A810` in objslot12.js transcribes it, '
+        + 'w387slot12.test.js SECTION 7 proves both ends, and W388 CALLS IT -- this row is the '
+        + 'extent, not a deferral, and nothing counts this address any more' }),
     Object.freeze({ at: 0x259c4a, site: 0x28f36e,
       why: '$28F36E jsr $259C4A -- $259C4A..$259CB7, $6E bytes: clears $81E0DA, the eight '
         + 'longwords at $812E08, and $812E28/$812E48/$812E4A. NOT transcribed at all, because '
@@ -193,8 +198,8 @@ export const SLOT12 = Object.freeze({
       why: '$28F374 jsr $2603DA -- $2603DA..$2603FD, $24 bytes: $66 words (trap 2) from $81308C '
         + '= $81308C..$813157, then $FFFF into $8130BE and $8130C0, which are INSIDE that span. '
         + 'It also clears $8130CC, this screen\'s own work list, and $8130FA, tally.js TALLY.side0. '
-        + '`clearRankRam2603DA` transcribes it; the CALL is counted for the same reason $24A810\'s '
-        + 'is' }),
+        + '`clearRankRam2603DA` transcribes it and W388 CALLS IT -- this row is the extent, not a '
+        + 'deferral, and nothing counts this address any more' }),
   ]),
   kill: 0x241292,
   cueStream: 0x28c0fc,
@@ -371,10 +376,21 @@ export function init28F2BA(ram, rom, a5, ctx) {
  * makes the kill silently miss (`killById` compares 16 bits of the id and never matches).
  */
 export function teardown28F368(ram, rom, a5, ctx) {
-  // $28F368 / $28F36E / $28F374 -- THE THREE CLEARS, ALL COUNTED. See CLEARS above for the
-  // measurement that decided it: the two straight-line ones are transcribed and tested in this
-  // file, and calling them from here is a one-line change with a measured price.
-  for (const c of SLOT12.clears) ctx?.unported?.note(c.at, c.why);
+  // $28F368 / $28F36E / $28F374 -- THE THREE CLEARS.
+  //
+  // **W388 TURNS THE TWO TRANSCRIBED ONES ON, and pays the price the CLEARS block priced.** They
+  // are six and seven instructions with no branch and no call, both proven end-to-end by
+  // `w387slot12.test.js` SECTION 7, and the only thing that ever kept them from being called was
+  // that six assertions in three other files measured the resting RAM of runs that had no
+  // teardown in them. Those six are re-based in `w388hiscorechain.test.js`'s companion edits,
+  // named one by one, and none of them was weakened: each now measures what the cartridge
+  // actually leaves behind once the game-over screen tears the player subsystem down.
+  //
+  // `$259C4A` STAYS COUNTED and is the only one of the three that is not ported: it is $6E bytes
+  // with its own control flow, not a straight-line clear, and inventing it is not this wave's.
+  clearPlayerRam24A810(ram);                                 // $28F368 jsr $24A810
+  ctx?.unported?.note(SLOT12.clears[1].at, SLOT12.clears[1].why);  // $28F36E jsr $259C4A
+  clearRankRam2603DA(ram);                                   // $28F374 jsr $2603DA
   queueKill(ram, ram.u32(a5 + SLOT12.idAt));                 // $28F37A jsr $241292
   cueStreamNote(ctx, 0x28f380);                              // $28F380 jsr $28C0FC
   clearTx(ctx, 0x28f386);                                    // $28F386 jsr $23C622

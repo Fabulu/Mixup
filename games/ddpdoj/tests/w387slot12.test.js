@@ -73,6 +73,7 @@ import {
   clearPlayerRam24A810, clearRankRam2603DA,
 } from '../src/objslot12.js';
 import { NAME_REC, NAME_SCREEN } from '../src/hiscorename.js';
+import { SLOT14 } from '../src/objslot14.js';
 import { Ram } from '../src/ram.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -418,13 +419,19 @@ test('W387 SECTION 4: this object counts exactly FOUR things on a real cold boot
     return m ? { n: Number(m[1]), at: parseInt(m[2], 16), msg: m[3] } : null;
   }).filter(Boolean);
 
+  // **W388: FOUR BECAME TWO, and that is the deliverable of Unit C.** `$28F368 jsr $24A810` and
+  // `$28F374 jsr $2603DA` are CALLS now -- `clearPlayerRam24A810` and `clearRankRam2603DA`, both
+  // already transcribed and both proven end-to-end by SECTION 7 below -- so they have left the
+  // census entirely. `$28F36E jsr $259C4A` stays counted because it is $6E bytes with its own
+  // control flow ($259CA0 is a `jsr`), not a straight-line clear, and `$28F380 jsr $28C0FC` stays
+  // counted because `sound.js` has no posting path for it.
   const mine = parsed.filter((k) => /^\$28F[0-9A-F]{3} /.test(k.msg));
   assert.deepEqual(mine.map((k) => [k.msg.slice(0, 20), k.n]), [
-    ['$28F368 jsr $24A810 ', 1],
     ['$28F36E jsr $259C4A ', 1],
-    ['$28F374 jsr $2603DA ', 1],
     ['$28F380 jsr $28C0FC ', 1],
-  ], 'exactly FOUR counted calls, each fired exactly once -- the teardown is ONE frame');
+  ], 'exactly TWO counted calls left, each fired once -- the teardown is ONE frame');
+  assert.equal(parsed.filter((k) => /^\$28F368 |^\$28F374 /.test(k.msg)).length, 0,
+    'the two transcribed clears are CALLED now, so neither is counted from anywhere');
 
   // And NOTHING is counted at the three draw routines, the panel draw or either script loader,
   // from any call site at all: the cold-boot path does not reach the name-entry body.
@@ -488,7 +495,9 @@ test('W387 SECTION 5 ABLATION: drop entry [12] and the machine STOPS at type $C 
   // AND THE SAME RUN WITH THE ENTRY, side by side, so the delta is one line and not a memory.
   assert.ok(RUN.types.has(TYPE_8), 'WITH the entry: type 8 is back');
   assert.ok(!RUN.types.has(TYPE_C), '...type $C is gone');
-  assert.equal(RUN.g.ram.u16(STATE), 0x0002, '...and $812E56 has moved to arm 2');
+  // W388: was `0x0002`. Arm 2 no longer holds -- its palette chain drains and it hands on to
+  // arm 12. The ablation's claim is the CONTRAST with `$E` above, which is unchanged.
+  assert.equal(RUN.g.ram.u16(STATE), 0x000c, '...and $812E56 has moved on through arm 2 to arm 12');
 });
 
 // ===============================================================================================
@@ -673,12 +682,28 @@ test('W387 SECTION 7: $28F368 kills THIS object and stages type 8 at state 2', (
   const rom = new RomWindows(tablesJson.rom);
   const ram = new Ram(new Uint8Array(0x20000));
   for (let a = 0x8103e6; a <= 0x812978; a += 2) ram.setU16(a, 0x5a5a);
+  for (let a = 0x81308c; a <= 0x813158; a += 2) ram.setU16(a, 0x5a5a);
   const a5 = ALLOC.table;
   ram.setU32(a5 + SLOT12.idAt, 0x00000007);              // the id $241292 pushes
   const made = teardown28F368(ram, rom, a5, { unported: { note() {} } });
 
-  // The three clears are COUNTED, so the RAM they would wipe is untouched. Asserted, not assumed.
-  assert.equal(ram.u16(0x8103e6), 0x5a5a, 'the counted $24A810 wrote nothing');
+  // **W388 RE-BASE: THE TWO TRANSCRIBED CLEARS ARE CALLED NOW.** This assertion used to read
+  // `'the counted $24A810 wrote nothing'` and prove the deliberate omission. Unit C turns them
+  // on, so what is proven here instead is that each wipes EXACTLY its own span -- both ends, and
+  // the first word past the end still holding the $5A5A fill, which is the check that a `dbra`
+  // off by one would fail (trap 2).
+  //
+  // $24A810: `move.w #$12C8,D0 ... dbra` = $12C9 words from $8103E6, so $8103E6..$812977.
+  assert.equal(ram.u16(0x8103e6), 0, '$24A810 cleared the FIRST word of the player span');
+  assert.equal(ram.u16(0x812976), 0, '...and the LAST, $8103E6 + $12C8*2');
+  assert.equal(ram.u16(0x812978), 0x5a5a, '...and NOT the word past it -- $12C9 words, not $12CA');
+  // $2603DA: `move.w #$65,D0 ... dbra` = $66 words from $81308C, so $81308C..$813157, and THEN
+  // two $FFFF stores at $8130BE/$8130C0 which are INSIDE the span and must land after the loop.
+  assert.equal(ram.u16(0x81308c), 0, '$2603DA cleared the FIRST word of the rank span');
+  assert.equal(ram.u16(0x813156), 0, '...and the LAST, $81308C + $65*2');
+  assert.equal(ram.u16(0x813158), 0x5a5a, '...and NOT the word past it');
+  assert.equal(ram.u16(0x8130be), 0xffff, '...and $8130BE is $FFFF: the store runs AFTER the loop');
+  assert.equal(ram.u16(0x8130c0), 0xffff, '...as does $8130C0, its P2 twin');
 
   // THE KILL, and it takes the ID and not the type word.
   assert.equal(ram.u32(ALLOC.killQueue), 0x00000007, '$241292 queued ($4C,A5), the id');
@@ -703,36 +728,46 @@ test('W387 SECTION 8: the loop closes onto the SAME machine a plain cold boot re
   g.ram.setU8(0x803957, 1);
   for (let f = 1; f <= 5000; f++) g.step(NO_PLAYER);
 
-  assert.equal(g.ram.u16(STATE), 0x0002, 'a plain cold boot rests at $812E56 = 2, arm 2');
+  // W388: this was `0x0002` -- see the re-base note at the foot of this test.
+  assert.equal(g.ram.u16(STATE), 0x000c, 'a plain cold boot rests at $812E56 = 12, arm 12');
   assert.equal(RUN.g.ram.u16(STATE), g.ram.u16(STATE), '...and so does the run that looped back');
   assert.equal(RUN.g.ram.u16(0x812e5c), g.ram.u16(0x812e5c),
     '...with the high-score screen in the same internal state ($812E5C)');
   assert.ok(liveTypes(g).has(TYPE_8), 'and dispatch type 8 is live on both');
   assert.ok(RUN.types.has(TYPE_8));
 
-  // WHICH ALSO NAMES THE NEXT THING IN THE WAY, and it is NOT slot [12]'s: arm 2 never
-  // finishes. `hiscoreScreen25B412`'s state 2 waits on `chainCheck24681A` reaching 0 and it
-  // never does, on EITHER run -- so this is pre-existing and this wave neither caused nor
-  // cured it. The assertion is here so the wave that fixes it has to come through this file.
+  // **W388 CAME THROUGH HERE, WHICH IS WHAT THIS ASSERTION WAS FOR.** W387 measured both runs
+  // resting at `$812E56 = 2` with arm 2 parked in its own state 2, and said the wave that fixed
+  // it would have to re-base this test. It did: `$246710`'s per-node content seeding
+  // (`$24676A..$2467C3`) is ported in `animobjects.js`, the eight-node chain drains in 16 frames,
+  // and `$25A940` moves the sequencer to arm 12.
+  //
+  // The STRUCTURAL claim this test carries is untouched and is the one that matters: the looped
+  // run and the plain cold boot land on the SAME machine. Both now rest at 12 instead of 2.
+  assert.equal(g.ram.u16(STATE), 0x000c, 'both runs rest on arm 12, not arm 2 (W388)');
   assert.equal(g.ram.u16(0x812e5c), 0x0002,
-    'arm 2 is parked in its own state 2 on a plain boot -- the palette chain never completes');
+    "...with the high-score screen's own state left at 2 by the $246800 on its way out");
 });
 
-test('W387 SECTION 8: objslot14.js hands queueKill the TYPE WORD, so type $E never dies', () => {
-  // $288C62 is `JMP $241292`; $241292 is `lea ($4C,A5),A0 / bra $241238`; $241252 is
-  // `move.l (A0),(A1)`. So the queued value is the LONGWORD AT ($4C,A5) -- the object's ID.
+test('W388 SECTION 8 RE-BASE: objslot14.js hands queueKill the ID, and type $E really dies', () => {
+  // The disassembly is UNCHANGED and re-verified: $288C62 is `JMP $241292`; $241292 is
+  // `lea ($4C,A5),A0 / bra $241238`; $241252 is `move.l (A0),(A1)`. So the queued value is the
+  // LONGWORD AT ($4C,A5) -- the object's ID -- and never the type word at ($0,A5).
   assert.equal(l(0x28f37a), 0x4eb90024, '$28F37A jsr...');
   assert.equal(w(0x28f37e), 0x1292, '...$241292, the same routine slot [14] tail-jumps to');
   assert.equal(l(0x241292), 0x41ed004c, '$241292 lea ($4C,A5),A0');
   assert.equal(w(0x241296), 0x60a0, '...then bra $241238');
   assert.equal(w(0x241252), 0x2290, '$241252 move.l (A0),(A1) -- the LONG AT ($4C,A5)');
+  assert.equal(SLOT14.idAt, 0x4c, 'and objslot14.js names that field rather than a literal');
 
-  // THE MEASUREMENT. The type-$E object staged type $C at +4,414 and is still there at +5,000.
-  assert.ok(RUN.types.has(0x0e),
-    'dispatch type $E is STILL LIVE 586 frames after it staged its successor and asked to die');
-  const e = slotOf(RUN.g, 0x0e);
-  assert.equal(RUN.g.ram.u32(e + SLOT12.idAt), 1, 'its id is 1');
-  assert.equal(RUN.g.ram.u16(e) & 0xff, 0x0e, '...and the type word objslot14.js queued is $800E');
-  // Slot [12] does NOT have the same bug: its record is gone on the frame after the teardown.
-  assert.ok(!RUN.types.has(TYPE_C), 'slot [12] passes the ID, and its record really died');
+  // **THE MEASUREMENT, INVERTED BY W388.** W387 asserted the DEFECT as a live fact: type $E was
+  // still in the table 586 frames after it staged its successor and asked to die, because
+  // `objslot14.js:68` passed `ram.u16(a5 + 0x00)` -- the type word $800E -- where `$241292` takes
+  // the ID. `killById` compares 16 bits, $800E never matched the id $0001, and the kill silently
+  // did nothing every time. `src/objslot14.js` now passes `ram.u32(a5 + SLOT14.idAt)`.
+  assert.ok(!RUN.types.has(0x0e),
+    'dispatch type $E is GONE -- its queued kill matched and $2411E2 vacated the slot');
+  assert.equal(slotOf(RUN.g, 0x0e), 0, '...and no table slot holds it any more');
+  // Slot [12] never had the bug, and still does not: the two now behave identically.
+  assert.ok(!RUN.types.has(TYPE_C), 'slot [12] passes the ID too, and its record really died');
 });

@@ -521,17 +521,26 @@ test('W386 the deferrals behind the screen are slot [12]\'s, and they stop nothi
   const grown = [...after].filter((k) => !RUN.notesAt4079.has(k));
   assert.equal(noteCount(0x240fc2), 0,
     '$240FC2 is NOT counted at all any more -- W387 registered the handler');
+  // **W388: the list drops to TWO.** Unit C calls `$24A810` and `$2603DA` for real
+  // (`clearPlayerRam24A810` / `clearRankRam2603DA` in `objslot12.js`), so `$28F368` and `$28F374`
+  // are no longer counted anywhere. `$28F36E` ($259C4A, $6E bytes with its own `jsr`) and
+  // `$28F380` ($28C0FC, which `sound.js` cannot post) are the two that remain.
   const sites = grown
     .map((k) => (k.match(/^\$[0-9A-F]{6} (\$28F[0-9A-F]{3}) /) ?? [])[1]).filter(Boolean);
-  assert.deepEqual(sites.sort(), ['$28F368', '$28F36E', '$28F374', '$28F380'],
-    'the new notes are slot [12]\'s three teardown clears and its $28C0FC stream post');
+  assert.deepEqual(sites.sort(), ['$28F36E', '$28F380'],
+    'the new notes are slot [12]\'s ONE unported clear and its $28C0FC stream post');
   for (const line of RUN.notes.filter((s) => sites.some((x) => s.includes(x)))) {
     assert.match(line, /^\s+1 x /, 'each fires EXACTLY ONCE -- the teardown is a single frame');
   }
-  // `$24676A` also appears, and it is NOT slot [12]'s: it is `$246710`'s per-node content
-  // seeding, reached because the attract screen slot [12] stages runs `hiscoreInit25B3DC`.
-  // Counted here as part of "what is behind the screen" rather than filtered away.
-  assert.ok(grown.length <= 5, `five new census lines at most; got ${grown.length}`);
+  // **W388.** `$24676A` used to appear here too -- `$246710`'s per-node content seeding, reached
+  // because the attract screen slot [12] stages runs `hiscoreInit25B3DC`. It is PORTED now
+  // (`animobjects.js seedChainContent24676A`), so it has left the census, the high-score screen
+  // finishes instead of holding, and the sequencer reaches arm 12. The three lines that replace
+  // it are `$28C170` (the screen-end cue at `$25B4C8`) and arm 12's `$25C2AE` / `$25C2EA`. None
+  // of them is slot [12]'s, which is what the `sites` assertion above actually pins.
+  assert.ok(grown.length <= 7, `seven new census lines at most; got ${grown.length}`);
+  assert.ok(!grown.some((k) => k.includes('$24676A')),
+    '$24676A is GONE from the census -- the seeding it counted is ported');
 
   // ITS MEASURED EXTENT, so the deferral is precise rather than a shrug.
   // $240FC2 is the DISPATCH TABLE ROW (8 bytes per row, $240F62 + 12 * 8); the handler is the
@@ -629,8 +638,18 @@ test('W386 nothing else on the game-over path needs a window: no note names a RO
   // notes plus `$24676A` from the attract screen that follows. The CLAIM this test exists for is
   // unchanged and is asserted directly: NOT ONE of them names a ROM address that needs a window,
   // which is why the run never stopped.
+  //
+  // **W388 RE-BASES IT AGAIN: 5 -> 7, and `$24676A` IS NO LONGER ONE OF THEM.** That note said
+  // `$246710`'s per-node content seeding was unported; W388 ports it, the high-score screen's
+  // chain drains, `$25B4D2` reports finished, and the sequencer moves to arm 12. So one line
+  // LEAVES the census and three arrive: `$28C170` (`$25B4C8`, the screen-end cue, reachable for
+  // the first time), and `$25C2AE` / `$25C2EA`, arm 12's init and body -- the NEXT screen's
+  // deferral, which is progress rather than regression. The claim is unchanged and still asserted
+  // below by the loop, not by the count.
   const behind = RUN.notes.filter((s) => !RUN.notesAt4079.has(s.split(' x ')[1]));
-  assert.ok(behind.length <= 5, `at most five census lines are new; got ${behind.length}`);
+  assert.ok(behind.length <= 7, `at most seven census lines are new; got ${behind.length}`);
+  assert.ok(!behind.some((s) => s.includes('$24676A')),
+    '$24676A has LEFT the census -- W388 ported the seeding it was counting');
   assert.equal(RUN.stopError, null, 'and the run did not stop, which is the actual proof');
   for (const line of behind) {
     assert.doesNotMatch(line, /no ROM window|outside .* window/i,

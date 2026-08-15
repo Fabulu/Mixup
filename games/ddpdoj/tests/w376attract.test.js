@@ -765,18 +765,55 @@ test('W377 A COIN CHANGES WHAT IS ON SCREEN: CREDITS:0 -> CREDITS:1, and the run
   assert.equal(g.ram.u8(0x80395a), 1, 'with the credit unspent');
 });
 
-test('W376 the attract loop does NOT cycle: it stalls in the high-score screen at $25B480, '
-  + 'never reaching state 12', { skip: SKIP }, async () => {
-  const g = await coldBoot(1500);
-  assert.equal(g.ram.u16(0x812e56), 0x0002, 'still arm 2 after 1,500 frames');
-  const { SCREEN_STATE } = await import('../src/hiscorescreen.js');
-  assert.equal(g.ram.u16(SCREEN_STATE.state), 2, '$812E5C reached the screen\'s own state 2');
-  // ...and it is stuck there because `$25B480 jsr $24681A` never answers zero: the eight-node
-  // chain `$25B45A` loaded from `$25BAAA` still has a live head at ($2C,handle).
-  const handle = g.ram.u32(SCREEN_STATE.handle);
-  assert.notEqual(handle, 0, 'the handle $25B3DC installed is real');
-  assert.notEqual(g.ram.u32(handle + 0x2c), 0,
-    '($2C,handle) is still live, so $24681A returns non-zero and $25B4D2 is never reached');
-  assert.equal(g.animFrame.nodes, 8, 'all eight nodes still step every frame');
-  assert.equal(g.animFrame.freed, 0, 'and none of them ever expires');
-});
+// W388 RE-BASE. This test was named `the attract loop does NOT cycle` and PINNED the stall it
+// describes: arm 2 held at `$812E56 = 2` because `$25B480 jsr $24681A` never answered zero.
+//
+// **W376 DIAGNOSED IT CORRECTLY AND THE MEASUREMENTS BELOW WERE ALL TRUE.** The eight nodes did
+// step every frame and none ever expired -- because `chainLoader246710` allocated them and seeded
+// no CONTENT, leaving each node's executor pointer `($6)` zero, which is the exact field
+// `runAnimObjects24683E` tests before it will step a node. W388 ports `$24676A..$2467C3`, the
+// 90-byte block `$246710` runs inside its own allocation loop, so the chain now drains.
+//
+// The assertions are re-based to what the cartridge does now, NOT weakened: every one of them is
+// the same measurement with the opposite (and now correct) expectation.
+test('W388 the attract loop ADVANCES: arm 2\'s chain drains and $25B4D2 hands on to state 12',
+  { skip: SKIP }, async () => {
+    const g = await coldBoot(1500);
+    assert.equal(g.ram.u16(0x812e56), 0x000c, 'arm 2 finished and set state 12 ($25A940)');
+    const { SCREEN_STATE } = await import('../src/hiscorescreen.js');
+    // `$25B488 jsr $246800` freed the chain on the way out, so the screen's own state word is
+    // left at 2 -- the arm advanced, it did not restart.
+    assert.equal(g.ram.u16(SCREEN_STATE.state), 2, '$812E5C is left at the screen\'s state 2');
+    const handle = g.ram.u32(SCREEN_STATE.handle);
+    assert.notEqual(handle, 0, 'the handle $25B3DC installed is real');
+    // `chainFree246800` clears each node's id word; the root itself is released.
+    assert.equal(g.ram.u16(handle), 0, '$246800 cleared the root -- the chain was freed, not left');
+    assert.equal(g.animFrame.nodes, 0, 'no node is walked any more: every chain has been freed');
+    assert.equal(g.animFrame.freed, 0, '...and there is nothing left to free');
+  });
+
+// The DRAIN itself, frame by frame, so the fix is measured rather than inferred from the state
+// word. Timing index 2 in the `$246B38` table is `{reload 0, step 2}`, so `($20,node)` climbs by
+// 2 every frame and reaches `$20` -- the terminal value -- on the sixteenth.
+test('W388 the eight nodes drain in exactly 16 frames, and the palette ends BLACK',
+  { skip: SKIP }, async () => {
+    const { SCREEN_STATE } = await import('../src/hiscorescreen.js');
+    const g = await coldBoot(558);            // the frame $812E5C reaches 2
+    assert.equal(g.ram.u16(SCREEN_STATE.state), 2, 'the screen is on its state 2');
+    const handle = g.ram.u32(SCREEN_STATE.handle);
+    const head = g.ram.u32(handle + 0x2c);
+    assert.notEqual(head, 0, 'the chain is live at the start of state 2');
+    // `$24676E move.l ($4,A3,D2.w),($6,A2)` -- the store W376 was missing.
+    assert.equal(g.ram.u32(head + 0x06), 0x80fa66,
+      'node 0 has a REAL executor pointer, so $24683E will step it');
+    assert.equal(g.ram.u32(head + 0x0a), 0x246bb8,
+      '$24677E seeded the target as the CONSTANT $246BB8 -- W91\'s all-zero bank, BLACK');
+    assert.equal(g.animFrame.nodes, 8, 'all eight nodes are walked');
+
+    let drained = 0;
+    for (let f = 1; f <= 40; f++) {
+      g.step(0xffff);
+      if (!drained && g.ram.u16(0x812e56) === 0x000c) drained = f;
+    }
+    assert.equal(drained, 16, 'the chain finished on the 16th frame of state 2');
+  });

@@ -510,8 +510,6 @@ test('W385 the lives counter is seeded from the DIP, through the pointer $25FE42
   // `$26011C move.b $80380E,D0 / add.w D0,D0 / lea ($2600CE,PC),A1 / $260204 move.w (A1,D0.w),(A0)`
   // -- and (A0) is `movea.l ($8,A6),A0`, the pointer, not a field.
   assert.equal(RUN.g.ram.u8(0x80380e), 0, 'a cold board has the $80380E lives dip at index 0');
-  assert.equal(RUN.g.ram.u32(TALLY.side0 + TALLY.ptr), LIVES1,
-    '$25FE70 installed the pointer, and it points at $8130BE');
   assert.equal(RUN.livesLow >= -1, true, 'the counter is a real signed count, not garbage');
 
   // THE ABLATION: a second cold boot with the dip at index 2 must seed FOUR, not two. Same code,
@@ -519,6 +517,14 @@ test('W385 the lives counter is seeded from the DIP, through the pointer $25FE42
   const g = bootToGameplay();
   g.ram.setU8(0x80380e, 2);                    // $2600CE is $0002 $0003 $0004 $0000 $0001
   for (let i = 0; i < 2500; i++) g.step(NO_PLAYER);
+  // **W388 RE-BASE: the pointer is read HERE, mid-gameplay, instead of off `RUN` at its last
+  // frame.** `TALLY.side0` is $8130FA, inside the $81308C..$813157 span `clearRankRam2603DA`
+  // blanks, and slot [12]'s teardown calls it now -- so at the end of `RUN` the pointer is 0
+  // because the player subsystem has been torn down, which is correct and is asserted in
+  // `w384stall.test.js`. Frame 2,500 is squarely inside the same run's gameplay, so this is the
+  // identical measurement of the identical write, taken while the subject still exists.
+  assert.equal(g.ram.u32(TALLY.side0 + TALLY.ptr), LIVES1,
+    '$25FE70 installed the pointer, and it points at $8130BE');
   assert.equal(g.ram.i16(LIVES1), 4,
     'dip index 2 seeds FOUR lives -- $2600CE[2]. A hard-coded 2 would still read 2 here');
 });

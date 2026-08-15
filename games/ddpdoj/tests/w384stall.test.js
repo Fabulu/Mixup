@@ -219,6 +219,31 @@ const RUN = (() => {
   const everLive = new Set();
   let odo = 0, odoLastFrame = 0, bossFirstFrame = 0;
   let at3k = null;
+  // W388 -- SLOT [12]'S TEARDOWN NOW RUNS ITS TWO CLEARS, so a dozen words this file used to
+  // read at the LAST frame are wiped before the run ends. `$24A810` blanks $8103E6..$812977 and
+  // `$2603DA` blanks $81308C..$813157, and the latter contains the odometer ($8130CE), the pause
+  // word ($8130D2), the lives counters ($8130BE/$8130C0) and the whole `TALLY.side0` block
+  // ($8130FA). None of the measurements below changed -- the FRAME they have to be taken on did.
+  // These three fields capture each one at its peak, plus the frame the teardown landed, so the
+  // assertions stay measurements of the same thing instead of being relaxed to fit.
+  let odoPeak = 0, odoPeakFrame = 0, teardownFrame = 0;
+
+  // A TARGETED snapshot, not a RAM copy: these eleven words are every field this file reads at
+  // the last frame, and refreshing them once per frame costs nothing where copying 2MB would.
+  // `atTeardown` therefore holds the LAST FRAME ON WHICH THE PLAYER SUBSYSTEM STILL EXISTED.
+  const WATCH = [
+    [TALLY.side0 + TALLY.ptr, 32], [TALLY.side1 + TALLY.ptr, 32],
+    [TALLY.side0 + TALLY.type, 16], [TALLY.side1 + TALLY.type, 16],
+    [TALLY.side0 + 0x16, 16], [TALLY.side1 + 0x16, 16],
+    [TALLY.side0 + TALLY.argA, 16], [TALLY.side0 + TALLY.argB, 16],
+    [BOSS.deathPause, 16], [ODO, 16], [LIVES1, 16],
+  ];
+  const snapWatch = () => {
+    const m = new Map();
+    for (const [a, wide] of WATCH) m.set(`${a}:${wide}`, wide === 32 ? g.ram.u32(a) : g.ram.u16(a));
+    return { u16: (a) => m.get(`${a}:16`), u32: (a) => m.get(`${a}:32`) };
+  };
+  let atTeardown = null;
   // W385: the loop CATCHES. Before W385 this run survived all 14,000 frames because nothing
   // happened in it; now it reaches a GAME OVER and stops on the game-over screen's own unported
   // table, and the frame it stops on is one of the facts SECTION 5 measures.
@@ -233,6 +258,11 @@ const RUN = (() => {
     for (const t of typesLive()) everLive.add(t);
     const o = g.ram.u16(ODO);
     if (o !== odo) { odo = o; odoLastFrame = f; }
+    if (o > odoPeak) { odoPeak = o; odoPeakFrame = f; }
+    // The teardown is the frame `$2603DA` blanks the tally block's pointer word. While that word
+    // is still live the snapshot is refreshed; the frame it goes to zero, the snapshot freezes.
+    if (g.ram.u32(TALLY.side0 + TALLY.ptr) !== 0) atTeardown = snapWatch();
+    else if (!teardownFrame && atTeardown) teardownFrame = f;
     if (!bossFirstFrame && bossRec()) bossFirstFrame = f;
     if (!playerFrame && (g.ram.u16(P1REC) & 0x8000) !== 0) playerFrame = f;
     livesLow = Math.min(livesLow, g.ram.i16(LIVES1));
@@ -251,6 +281,8 @@ const RUN = (() => {
     stoppedAt, stopError, lastLive, playerFrame, livesLow,
     diffBytes, diffBlocks: diffBlocks.size,
     notes: g.unportedLog.report(),
+    // W388: the pre-teardown machine, and the frame it stopped being the live one.
+    odoPeak, odoPeakFrame, teardownFrame, atTeardown,
   };
 })();
 
@@ -283,20 +315,31 @@ const noteCount = (addr) => {
 // stops SHORT of the boss lock, and it stops WHERE THE GAME OVER PAUSES IT.
 test('W386 the odometer stops short of the boss lock, and it is the GAME OVER that parks it',
   () => {
-    assert.ok(RUN.odo > 100,
-      `the odometer is well past zero when it stops; got ${RUN.odo}`);
-    assert.ok(RUN.odo < 836,
+    // **W388 RE-BASE: `RUN.odo` -> `RUN.odoPeak`.** `$8130CE` is inside the $81308C..$813157 span
+    // `clearRankRam2603DA` blanks, and slot [12]'s teardown now calls it, so the odometer reads
+    // 0 at frame 14,000. The claim is about where the odometer STOPPED CLIMBING, which is
+    // `odoPeak`/`odoPeakFrame` -- the same number this test always meant. Nothing is relaxed:
+    // the final zero is asserted separately below, and it is the teardown's signature.
+    assert.ok(RUN.odoPeak > 100,
+      `the odometer is well past zero when it stops; got ${RUN.odoPeak}`);
+    assert.ok(RUN.odoPeak < 836,
       `and it has NOT reached the boss-lock record time $0344 = 836 -- the game over comes `
-      + `first. Measured ${RUN.odo}`);
+      + `first. Measured ${RUN.odoPeak}`);
     // WHERE it parks: within a few frames of the game-over object, NOT at the boss lock. The
     // type-$D create is at +4,077 (`w386gameover.test.js` SECTION 5 asserts that frame), and
     // `$8130D2` -- asserted below -- is what holds it from then on.
-    assert.ok(Math.abs(RUN.odoLastFrame - 4077) < 30,
-      `its last movement is +${RUN.odoLastFrame}, a handful of frames from the +4,077 game-over `
+    assert.ok(Math.abs(RUN.odoPeakFrame - 4077) < 30,
+      `its last movement is +${RUN.odoPeakFrame}, a handful of frames from the +4,077 game-over `
       + `create -- not the +9,364 the boss lock used to park it at`);
-    assert.ok(RUN.lastLive - RUN.odoLastFrame > 9000,
-      `and it then sits still for the remaining ${RUN.lastLive - RUN.odoLastFrame} frames, which `
+    assert.ok(RUN.lastLive - RUN.odoPeakFrame > 9000,
+      `and it then sits still for the remaining ${RUN.lastLive - RUN.odoPeakFrame} frames, which `
       + `is only possible because the run no longer ends three frames later (W386)`);
+    // ...and then W388's teardown zeroes it outright. `$2603DA` is `lea $81308C,A0 / move.w
+    // #$65,D0 / clr / dbra`, $66 words = $81308C..$813157, and $8130CE is inside that span.
+    assert.equal(RUN.g.ram.u16(ODO), 0,
+      'and at frame 14,000 it is ZERO -- $28F374 jsr $2603DA wiped it (W388)');
+    assert.ok(RUN.teardownFrame > RUN.odoPeakFrame,
+      'the wipe happens AFTER the last climb, so it cannot be what parked the odometer');
 
     // ...and the freeze that parked it at 836 is therefore never latched in this run.
     assert.equal(noteCount(0x261142), 0,
@@ -308,8 +351,10 @@ test('W386 the odometer stops short of the boss lock, and it is the GAME OVER th
     // writer and `tally.js liveSides25FD94` re-sets it when NO side is live, which is exactly
     // what `$25FDD4 cmpi.w #-$1,$81308E` decides once the last life is gone. So the two ways the
     // odometer can stop are BOTH pinned here and they are told apart by which word did it.
-    assert.equal(RUN.g.ram.u16(BGRAM.bgFreeze), 1,
-      '$8130D2 = 1 at the last frame -- $25FDE0 bsr $25FD82, the no-live-side pause, NOT the '
+    // W388 RE-BASE: at the LAST FRAME THE WORD EXISTS, for the same reason as the odometer --
+    // $8130D2 is inside $81308C..$813157 and `$28F374 jsr $2603DA` blanks it.
+    assert.equal(RUN.atTeardown.u16(BGRAM.bgFreeze), 1,
+      '$8130D2 = 1 while it lasts -- $25FDE0 bsr $25FD82, the no-live-side pause, NOT the '
       + 'scroll VM\'s own op-$0C freeze');
   });
 
@@ -333,8 +378,14 @@ test('W384 RAM is NOT a fixed point -- thousands of bytes move over the run\'s l
   // attract sequencer takes the machine back. The claim this test carries -- that the RAM is not
   // a fixed point -- is made by the two assertions above and is UNCHANGED; the state word was an
   // incidental "and we are still in gameplay", which is exactly what stopped being true.
-  assert.equal(RUN.g.ram.u16(STATE), 0x0002,
-    'slot [8] is back, on arm 2 -- the front-end loop CLOSED (W387, w387slot12.test.js)');
+  // **W388 MOVES IT ONE ARM FURTHER, for the same incidental reason.** Arm 2 used to hold
+  // forever: `chainLoader246710` allocated the high-score screen's eight-node palette chain and
+  // seeded no content, so `runAnimObjects24683E` skipped every node and `chainCheck24681A` never
+  // answered zero. W388 ports `$24676A..$2467C3` (`animobjects.js seedChainContent24676A`), the
+  // chain drains in 16 frames, `$25B4D2` reports finished and `$25A940` sets state 12. The claim
+  // above is still made by the two byte-count assertions and is UNCHANGED.
+  assert.equal(RUN.g.ram.u16(STATE), 0x000c,
+    'slot [8] is on arm 12 -- arm 2 RAN OUT and handed on (W388, w376attract.test.js)');
 });
 
 // =============================================================================================
@@ -369,7 +420,12 @@ test('W385 THE PLAYER OBJECT IS CREATED -- dispatch type 2 goes live on a cold b
 });
 
 test('W385 and the two dispatcher entries $25FE42 fills are FILLED', () => {
-  const r = RUN.g.ram;
+  // **W388 RE-BASE: `RUN.g.ram` -> `RUN.atTeardown`.** Every field below lives in the
+  // `TALLY.side0`/`side1` block at $8130FA, inside the $81308C..$813157 span slot [12]'s teardown
+  // now blanks through `clearRankRam2603DA`. The values are unchanged and so is the claim -- the
+  // frame moved from "the last one" to "the last one on which the player subsystem still exists",
+  // which is what these fields were always about. The wipe itself is asserted at the foot.
+  const r = RUN.atTeardown;
   // The values are the $25FE22 table's own, and `w385player.test.js` proves them against
   // `rip/web/seed.bin` field by field. Here they are read off the LIVE machine.
   assert.equal(r.u32(TALLY.side0 + TALLY.ptr), LIVES1, 'P1 ($8,A6) points at $8130BE');
@@ -451,8 +507,13 @@ test('W386 the boss is NEVER REACHED -- there is a GAME OVER first, and the run 
   // $8130D2 / bne` is the timeout's own first line, so once the last side is gone the timeout
   // would not run even if a boss existed. `BOSS.deathPause` and `BGRAM.bgFreeze` are one word.
   assert.equal(BOSS.deathPause, BGRAM.bgFreeze, '$8130D2 is one word with two names');
-  assert.equal(RUN.g.ram.u16(BOSS.deathPause), 1,
-    'and it is SET at the end -- tally.js liveSides25FD94 pauses when no side is live');
+  // **W388 RE-BASE: read it at the teardown frame, not at 14,000.** $8130D2 is inside
+  // $81308C..$813157, so `clearRankRam2603DA` blanks it too. It WAS set, for the thousands of
+  // frames between the game over and the teardown, which is the fact this assertion carries.
+  assert.equal(RUN.atTeardown.u16(BOSS.deathPause), 1,
+    'it is SET when the teardown runs -- tally.js liveSides25FD94 pauses when no side is live');
+  assert.equal(RUN.g.ram.u16(BOSS.deathPause), 0,
+    '...and $28F374 jsr $2603DA then clears it, which is what RELEASES the pause (W388)');
 });
 
 test('W384 $294F50 re-floors the timeout to $78 with no player, and does NOT with one', () => {
@@ -504,9 +565,11 @@ test('W385 DEFERRAL 2 IS GONE: $2603FE is rank.js stagePair2603FE, and it ARMED 
   // AND THE SITE STILL MATTERS, because $2603FE has TWO callers and only one fires. The proof
   // that it was `$25D73E` and not `$260558` is now a VALUE rather than a note's prose:
   // `$260558` passes the literal $10000E00, `$25D73E` passes `$25D71C`'s live anchor $117914C0.
-  assert.equal(RUN.g.ram.u16(TALLY.side0 + TALLY.argA), 0x1179,
+  // W388 RE-BASE: `$8130FA` is inside `clearRankRam2603DA`'s span and slot [12]'s teardown now
+  // calls it, so this is read at the last frame the block was live. Same value, same claim.
+  assert.equal(RUN.atTeardown.u16(TALLY.side0 + TALLY.argA), 0x1179,
     'the position that reached ($10,$8130FA) is $25D71C\'s anchor, so objslot17.js:920 ran');
-  assert.notEqual(RUN.g.ram.u16(TALLY.side0 + TALLY.argA), 0x1000,
+  assert.notEqual(RUN.atTeardown.u16(TALLY.side0 + TALLY.argA), 0x1000,
     '...and NOT rank.js\'s $10000E00, whose $813080 gate never opens on a cold boot');
   assert.equal(RUN.g.ram.u16(STAGESTART_D6), 0,
     'POSITIVE CONTROL: $813080 really is 0, which is what keeps rank.js:$260558 shut');

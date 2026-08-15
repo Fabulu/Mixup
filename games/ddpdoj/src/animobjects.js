@@ -202,6 +202,119 @@ export function freeAnimObjects246800(ram, root) {
   if (root !== 0) clearChain(ram, root);
 }
 
+// ===========================================================================
+// `$24676A..$2467C3` -- THE PER-NODE CONTENT SEEDING `$246710` DOES AND THE PORT DID NOT.  W388.
+// ===========================================================================
+// This is the routine five waves of notes have called "the presentation tier" and deferred. It
+// is 90 bytes, it reads three tables that ALREADY have declared ROM windows, and it is why
+// `hiscoreScreen25B412`'s state 2 never finished.
+//
+// THE MECHANISM, end to end. `chainLoaderBody` in `stageend.js` ports `$246710`'s POOL
+// LIFECYCLE byte for byte -- claim the root, allocate N nodes, link `($2C)`, seed
+// `($18) := $FFFF0000` -- and stops there. It never writes `($6,node)`, the executor pointer.
+// `runAnimObjects24683E` below skips any node whose `($6)` is zero, so those nodes were never
+// stepped, `($18)` never drained, `chainCheck24681A` never summed to zero, and `$25B412` state 2
+// waited forever. NOT A GATE: the cartridge has no branch that would hold here.
+//
+// WHY STATE 0 WORKED AND STATE 2 DID NOT, which is the detail that names the bug precisely:
+// `hiscoreInit25B3DC` loads state 0's chain through `$24641A` -- `loadAnimObjects246410` above,
+// which HAS its content seeding -- while state 1 loads state 2's chain through `$246710`, which
+// did not. Same screen, two loaders, one of them hollow.
+//
+// THE BYTES, decoded this wave:
+//
+//   246768  3418            move.w (A0)+,D2            <- the family word
+//   24676A  47fa fb0e       lea (-$4F2,PC),A3          -> $24676C-$4F2 = $24627A
+//   24676E  2573 2004 0006  move.l ($4,A3,D2.w),($6,A2)   <- THE WRITER. The missing store.
+//   246774  2673 2000       movea.l ($0,A3,D2.w),A3       <- the family's palette base
+//   246778  d6d8            adda.w (A0)+,A3               <- plus the script's offset word
+//   24677A  254b 000e       move.l A3,($E,A2)             <- N.current
+//   24677E  257c 0024 6bb8 000a  move.l #$246BB8,($A,A2)  <- N.target: A CONSTANT, not a script
+//                                                            field. $246BB8 is the all-zero
+//                                                            bank W91 already declares. BLACK.
+//   246786  3558 0004       move.w (A0)+,($4,A2)          <- words-minus-one
+//   24678A  3618            move.w (A0)+,D3               <- timing index
+//   24678C  0243 001f       andi.w #$1F,D3
+//   246790  d643            add.w D3,D3
+//   246792  d643            add.w D3,D3                   <- index * 4
+//   246794  47fa 03a2       lea ($3A2,PC),A3           -> $246796+$3A2 = $246B38
+//   246798  4e71            nop
+//   24679A  d6c3            adda.w D3,A3
+//   24679C  355b 0016       move.w (A3)+,($16,A2)         <- N.reload
+//   2467A0  356a 0016 0014  move.w ($16,A2),($14,A2)      <- N.countdown := reload
+//   2467A6  3553 001c       move.w (A3),($1C,A2)          <- N.step
+//   2467AA  257c ffff 0000 0018  move.l #$FFFF0000,($18,A2)
+//   2467B2  266a 000e       movea.l ($E,A2),A3
+//   2467B6  382a 0004       move.w ($4,A2),D4
+//   2467BA  49ea 0030       lea ($30,A2),A4
+//   2467BE  38db            move.w (A3)+,(A4)+            <- SNAPSHOT the live palette
+//   2467C0  51cc fffc       dbra D4,$2467BE               <- N+1, so words-minus-one is inclusive
+//
+// FOUR WORDS PER NODE, and the script bound confirms it: `$25BAAA` says 8 nodes and
+// `2 + 8*8 = $42` is exactly W303's declared window length. No window is added by this wave.
+//
+// **WHY THIS IS A SECOND PASS AND NOT INLINE.** The ROM interleaves this block with the
+// allocation `dbra` at `$2467CE`, but the allocator lives in `stageend.js`, which this wave does
+// not own. Applying it as a second walk of the same `($2C)` chain in script order lands the
+// IDENTICAL RAM: the allocation pass writes `($0) ($20) ($2C) ($1E) ($2) ($18)`, this pass
+// writes `($6) ($A) ($E) ($4) ($14) ($16) ($1C) ($18) ($30..)`, the only field in both is
+// `($18)` and both write the same `$FFFF0000`. Nothing this pass READS is written by the other.
+// The proper home is `chainLoaderBody`, which would also fix `objslot15.js` and
+// `objslot7pool.js`; see this wave's report.
+export const CHAIN_CONTENT = Object.freeze({
+  site: 0x24676a, end: 0x2467c4,      // $24676A..$2467C3 -- 90 bytes
+  dispatch: 0x24627a,                 // $24676A lea (-$4F2,PC),A3
+  timingTable: 0x246b38,              // $246794 lea ($3A2,PC),A3
+  targetBank: 0x246bb8,               // $24677E move.l #$246BB8,($A,A2) -- the BLACK bank
+  wordsPerNode: 4,                    // $246768/$246778/$246786/$24678A
+});
+
+/**
+ * Seed `$246710`'s per-node content across an already-allocated chain.
+ *
+ * @param root the player-slot handle `chainLoader246710` returned (`($2C,root)` is the head).
+ * @param scriptAddr the same script address the loader was given: a count word then four words
+ *   per node -- `{family.w, current-offset.w, words-minus-one.w, timing-index.w}`.
+ */
+export function seedChainContent24676A(ram, rom, root, scriptAddr) {
+  if ((root >>> 0) === 0 || (root >>> 0) === 0xffffffff) return 0;
+  let node = ram.u32(root + N.next);
+  let table = scriptAddr;
+  const count = rom.u16(table); table += 2;
+  let seeded = 0;
+
+  for (let i = 0; i < count && node !== 0; i++) {
+    const family = rom.u16(table); table += 2;              // $246768 move.w (A0)+,D2
+    const offset = rom.i16(table); table += 2;              // $246778 adda.w (A0)+,A3
+    const wordsMinusOne = rom.u16(table); table += 2;       // $246786 move.w (A0)+,($4,A2)
+    const timingIndex = rom.u16(table); table += 2;         // $24678A move.w (A0)+,D3
+
+    const targetFamily = TARGETS[family];
+    if (!targetFamily) {
+      unreached(CHAIN_CONTENT.site, `$246710 content seeding: target-family byte offset $${family
+        .toString(16).toUpperCase()} is outside the three-entry $24627A table`);
+    }
+    const [reload, step] = timing(timingIndex);             // $24679C/$2467A6 via $246B38
+
+    ram.setU32(node + N.writer, targetFamily.dirty);        // $24676E ($4,A3,D2.w) -> ($6,A2)
+    const current = targetFamily.current + offset;          // $246774/$246778
+    ram.setU32(node + N.current, current);                  // $24677A
+    ram.setU32(node + N.target, CHAIN_CONTENT.targetBank);  // $24677E -- the CONSTANT
+    ram.setU16(node + N.mode, wordsMinusOne);               // $246786
+    ram.setU16(node + N.reload, reload);                    // $24679C
+    ram.setU16(node + N.countdown, reload);                 // $2467A0
+    ram.setU16(node + N.step, step);                        // $2467A6
+    ram.setU32(node + N.active, 0xffff0000);                // $2467AA -- same value, rewritten
+    // $2467BE/$2467C0 -- `dbra` runs words-minus-one PLUS ONE times.
+    for (let k = 0; k <= wordsMinusOne; k++)
+      ram.setU16(node + N.snapshot + k * 2, ram.u16(current + k * 2));
+
+    seeded++;
+    node = ram.u32(node + N.next);                          // $2467CA lea ($70,A2),A2
+  }
+  return seeded;
+}
+
 function moveChannel(current, target) {
   if (current === target) return current;
   if (target > current) {

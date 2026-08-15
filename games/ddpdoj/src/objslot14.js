@@ -31,6 +31,7 @@ export const SLOT14 = Object.freeze({
   tableA: 0x288d62, tableB: 0x288d82, tableEntries: 8,
   drawStub: 0x23dece, drawBias: 0xe600e400, drawAttr: 0x1ae0, drawPal: 0x0002,
   childType: 0x0c, dispatch: 0x240f62,
+  idAt: 0x4c,                 // $241292 does `lea ($4C,A5),A0` -- the same field objslot12.js names
 });
 
 /** State 0 -- reset the screen and arm every counter. Reached by the entry's BACKWARD `beq`. */
@@ -65,7 +66,15 @@ function state2(ram, rom, a5, ctx) {
   // at $240F62. Passing a bare 0 here type-errors the moment this arm runs.
   stageCreate(ram, SLOT14.childType,                         // $288C58/$288C5C -- type $C
     (t) => rom.u16(SLOT14.dispatch + t * 8 + 4));
-  queueKill(ram, ram.u16(a5 + 0x00));                        // $288C62 JMP $241292 -- a TAIL kill
+  // $288C62 JMP $241292 -- a TAIL kill, and the ARGUMENT IS THE ID, not the type word.
+  // Verified from the bytes this wave (W388), because passing the wrong one is silent:
+  //   $241292  41 ed 00 4c   lea ($4C,A5),A0       <- the ID field, NOT ($0,A5)
+  //   $241296  60 a0         bra $241238
+  //   $241252  22 90         move.l (A0),(A1)      <- the queue takes the LONG THROUGH A0
+  // `killById` then compares `u16(id)` against `u16(($4C,slot))`. With the type word $800E
+  // queued it compared $800E against the id $0001, never matched, and the type-$E object
+  // NEVER DIED -- it stayed live in the table for the whole run after staging its successor.
+  queueKill(ram, ram.u32(a5 + SLOT14.idAt));                 // $288C62 JMP $241292
 }
 
 /** `$288C6C` -- the dispatch entry. Note it is the MIDDLE of the routine: both other arms are below.
