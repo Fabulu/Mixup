@@ -68,6 +68,8 @@ export const SCREEN9 = Object.freeze({
   // covering two byte fields, and reading it as one word hides the whole timer.
   tailLowAt: 0x2f,
   after: 0x25cb94,
+  // W390 -- `$241292 lea ($4C,A5),A0`. The object's ID LONG, and `queueKill`'s real argument.
+  idAt: 0x4c,
 });
 
 /** `$25CB94..$25CC44` -- everything the record walk does that is NOT a state handler.
@@ -509,7 +511,11 @@ export function objSlot9(ram, rom, a5, ctx) {
     return;
   }
   if (st === 2) {                                            // $25CAD2 cmpi.b #$2 / beq $25CAC2
-    queueKill(ram, ram.u16(a5 + 0x00));                      // $25CAC2 JMP $241292 -- one instruction
+    // W390 -- `$241292 41ed 004c` is `lea ($4C,A5),A0`, and `$241238`'s `$241252 22 90` is
+    // `move.l (A0),(A1)`. The argument is the ID LONG at `($4C,A5)`, never the type word at (A5).
+    // A 16-bit read here silently queued the wrong value and `$2411F4`'s `cmp.w` matched nothing,
+    // so the screen asked to die and never did (trap 18).
+    queueKill(ram, ram.u32(a5 + SCREEN9.idAt));              // $25CAC2 JMP $241292 -- one instruction
     return;
   }
 

@@ -777,19 +777,23 @@ test('W377 A COIN CHANGES WHAT IS ON SCREEN: CREDITS:0 -> CREDITS:1, and the run
 // The assertions are re-based to what the cartridge does now, NOT weakened: every one of them is
 // the same measurement with the opposite (and now correct) expectation.
 //
-// **W389 RE-BASES THE ARM NUMBER, AND ONLY THAT.** Arm 2 still finishes and still sets state 12.
-// What changed is that arm 12 no longer PARKS there: its screen `$25C2AE`/`$25C2EA` is ported now,
-// it drains its own two chains and `$25AA2C` hands on to state 9 at +878. So the handover this
-// test is named for is measured at +600, where it happens, and +1,500 records where the machine
-// now rests. Every other measurement below is untouched.
+// **W389 RE-BASED THE ARM NUMBER, AND W390 RE-BASES IT AGAIN, AND ONLY THAT.** Arm 2 still
+// finishes and still sets state 12. What changed in W389 is that arm 12 no longer PARKS there:
+// its screen `$25C2AE`/`$25C2EA` is ported, it drains its own two chains and `$25AA2C` hands on
+// to state 9 at +878. What changes in W390 is that arm 9 does not park either: `$25C3E8`/
+// `$25C424` are ported, it drains ITS two chains and `$25AA02` hands on to state 1 at +1,182.
+// So the handover this test is named for is measured at +600, where it happens, and +1,500
+// records where the machine now rests -- **arm 1, whose `$25BD7C` demo body is still counted**.
+// Every other measurement below is untouched.
 test('W388 the attract loop ADVANCES: arm 2\'s chain drains and $25B4D2 hands on to state 12',
   { skip: SKIP }, async () => {
     const at = await coldBoot(600);
     assert.equal(at.ram.u16(0x812e56), 0x000c,
       'arm 2 finished and set state 12 ($25A940) -- by +600, and it did not restart');
     const g = await coldBoot(1500);
-    assert.equal(g.ram.u16(0x812e56), 0x0009,
-      'and by +1,500 arm 12 has drained its OWN two chains and handed on to 9 (W389)');
+    assert.equal(g.ram.u16(0x812e56), 0x0001,
+      'and by +1,500 arm 12 has drained its own two chains and handed on to 9 (W389), and arm 9 '
+      + 'has drained ITS two and handed on to 1 (W390), where the counted $25BD7C stops it');
     const { SCREEN_STATE } = await import('../src/hiscorescreen.js');
     // `$25B488 jsr $246800` freed the chain on the way out, so the screen's own state word is
     // left at 2 -- the arm advanced, it did not restart.

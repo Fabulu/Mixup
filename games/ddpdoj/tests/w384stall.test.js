@@ -386,11 +386,13 @@ test('W384 RAM is NOT a fixed point -- thousands of bytes move over the run\'s l
   // above is still made by the two byte-count assertions and is UNCHANGED.
   // **W389 MOVES IT ONE ARM FURTHER AGAIN**, for the same incidental reason: arm 12's own screen
   // (`$25C2AE`/`$25C2EA`) is ported now, it drains its two chains and `$25AA2C` sets state 9.
-  // Arm 9 is the new unported end of the chain. This test's CLAIM -- that RAM keeps moving -- is
-  // made by the byte-count assertions above and is untouched; only the incidental arm number
-  // could not survive.
-  assert.equal(RUN.g.ram.u16(STATE), 0x0009,
-    'slot [8] is on arm 9 -- arm 2 handed to 12 (W388) and 12 handed to 9 (W389)');
+  // **AND W390 MOVES IT ONE MORE**: arm 9's screen (`$25C3E8`/`$25C424`) is ported, it drains ITS
+  // two chains and `$25AA02` sets state 1. Arm 1 is the new unported end of the chain -- its
+  // `$25BD7C` demo body is the last counted screen between here and a closed attract loop. This
+  // test's CLAIM -- that RAM keeps moving -- is made by the byte-count assertions above and is
+  // untouched; only the incidental arm number could not survive, for the fourth wave running.
+  assert.equal(RUN.g.ram.u16(STATE), 0x0001,
+    'slot [8] is on arm 1 -- 2 -> 12 (W388), 12 -> 9 (W389), 9 -> 1 (W390)');
 });
 
 // =============================================================================================

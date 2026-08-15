@@ -19,9 +19,9 @@
 //
 // UNIT B. `objslot13.js`, `objslot15.js` and `objslot7pool.js` (twice) handed `queueKill` the TYPE
 // WORD at `($0,A5)` where `$241292 lea ($4C,A5),A0` takes the ID LONG. Same defect W388 fixed in
-// `objslot14.js`. SECTION 4. **TWO MORE SITES HAVE IT AND ARE OUTSIDE THIS WAVE'S FILE LIST** --
-// `objslot17.js:194` and `objslot9.js:512` -- and SECTION 4 asserts their bytes so the finding
-// cannot be lost.
+// `objslot14.js`. SECTION 4. **TWO MORE SITES HAD IT AND WERE OUTSIDE THIS WAVE'S FILE LIST** --
+// `objslot17.js:194` and `objslot9.js:512` -- and SECTION 4 asserted their bytes so the finding
+// could not be lost. **W390 FIXED BOTH**, which closes the census at six.
 //
 // UNIT C. Arm 12's screen, `$25C2AE` / `$25C2EA`. SECTION 5.
 // ===============================================================================================
@@ -445,8 +445,10 @@ const KILL_SITES = Object.freeze([
   [0x291f1c, 'objslot15.js:153', 'FIXED W389'],
   [0x290774, 'objslot7pool.js:579', 'FIXED W389'],
   [0x290796, 'objslot7pool.js:592', 'FIXED W389'],
-  [0x25ceb0, 'objslot17.js:194', 'STILL BROKEN -- outside W389\'s file list'],
-  [0x25cac2, 'objslot9.js:512', 'STILL BROKEN -- outside W389\'s file list'],
+  // W390 CORRECTION (trap 14): these two said "STILL BROKEN -- outside W389's file list".
+  // They are fixed. `w390arm9.test.js` SECTION 4 drives and ablates both.
+  [0x25ceb0, 'objslot17.js:194', 'FIXED W390'],
+  [0x25cac2, 'objslot9.js:512', 'FIXED W390'],
 ]);
 
 test('W389 SECTION 4: all six sites are the SAME `jmp $241292`, so all six take the ID LONG',
@@ -600,6 +602,11 @@ test('W389 SECTION 5: the two exits are arm 2\'s exactly -- carry SET runs, carr
     assert.equal(SCREEN12.emit, 0x23dece, 'which is the stub objslot8.js names');
   });
 
+// **W390 RE-BASES THE TAIL OF THIS LIST, AND ONLY THE TAIL.** Arm 9's screen ($25C3E8/$25C424)
+// is ported now too, so the machine does not stop at 9 either: it drains arm 9's two chains and
+// hands on to arm 1 at +1,182. Everything this test is NAMED for -- arm 12 running its screen and
+// advancing to 9 at +878 -- is measured unchanged; the fifth entry is new and arm 12's own screen
+// state is still checked at 2.
 test('W389 SECTION 5: on a real cold boot arm 12 RUNS ITS SCREEN and advances to arm 9',
   { skip: SKIP_T }, () => {
     const g = new Game(new Uint8Array(0x20000), tablesJson, { palCatchUp: false });
@@ -612,8 +619,11 @@ test('W389 SECTION 5: on a real cold boot arm 12 RUNS ITS SCREEN and advances to
       const s = g.ram.u16(0x812e56);
       if (s !== prev) { marks.push([f, s]); prev = s; }
     }
-    assert.deepEqual(marks.map((m) => m[1]), [13, 2, 12, 9],
-      'the sequencer now runs 13 -> 2 -> 12 -> 9 with no hand-holding. Arm 12 no longer parks');
+    assert.deepEqual(marks, [[1, 13], [302, 2], [574, 12], [878, 9], [1182, 1]],
+      'the sequencer now runs 13 -> 2 -> 12 -> 9 -> 1 with no hand-holding. Arm 12 no longer '
+      + 'parks (W389) and arm 9 no longer parks either (W390)');
+    assert.deepEqual(marks.slice(0, 4).map((m) => m[1]), [13, 2, 12, 9],
+      '...and the four this test was written for are unchanged, frame numbers included');
     // The two chains, in order, and both really drained.
     assert.equal(g.ram.u16(SCREEN12.state), 2, 'arm 12 left its screen in state 2, the exit state');
   });

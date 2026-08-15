@@ -68,6 +68,8 @@ export const SCREEN17 = Object.freeze({
   flagA: 0x812f82, flagB: 0x80392c, flagC: 0x812f80, killFlag: 0x80392c,
   opener: 0x25f442, announceSite: 0x260a9a,
   childType: 0x0a,
+  // W390 -- `$241292 lea ($4C,A5),A0`. The object's ID LONG, and `queueKill`'s real argument.
+  idAt: 0x4c,
   palettes: SCREEN17_PAL,
 });
 
@@ -191,7 +193,11 @@ function state0(ram, rom, a5, ctx) {
 /** `$25CEAA` -- STATE 2. Two instructions: drop the flag state 0 raised, then a tail kill. */
 function state2(ram, a5) {
   ram.setU16(SCREEN17.killFlag, 0);                          // $25CEAA clr.w $80392C
-  queueKill(ram, ram.u16(a5 + 0x00));                        // $25CEB0 JMP $241292
+  // W390 -- `$241292 41ed 004c` is `lea ($4C,A5),A0`, and `$241238`'s `$241252 22 90` is
+  // `move.l (A0),(A1)`. The argument is the ID LONG at `($4C,A5)`, never the type word at (A5).
+  // `$241238` is the QUEUE push, but `$2411F4`'s scan compares only `cmp.w` against the low half,
+  // so a 16-bit argument read out of (A5) silently matched nothing and killed nothing (trap 18).
+  queueKill(ram, ram.u32(a5 + SCREEN17.idAt));               // $25CEB0 JMP $241292
 }
 
 /** `$25CEB8` -- THE DISPATCH ENTRY. State 1 is the fall-through and is the record walk. */

@@ -19,10 +19,11 @@
 // in `($4,A5)`. This port models the table faithfully and NOTES an out-of-range state rather than
 // clamping -- see `objSlot8`'s tail.
 //
-// SCOPE. This wave ports the SEQUENCER, not the screens. Arms 0, 5's teardown, 13 and 14, the
+// SCOPE. W375 ported the SEQUENCER, not the screens. Arms 0, 5's teardown, 13 and 14, the
 // `$25ACAC` join handler, the `$25A770` credit gate and the `$25A82C` dispatch tail are here in
-// full. Every arm's screen sub-machine -- `$25BBB4 $25BD7C $25BDE0` (1 and 3), `$25C2AE $25C2EA`
-// (12), `$25C3E8 $25C424` (9), `$25C592 $25C6D4` (5) -- is a wave of its own and is NOTED. **ARM 2
+// full. **W389 ported arm 12's `$25C2AE`/`$25C2EA` and W390 arm 9's `$25C3E8`/`$25C424`, so the
+// screen sub-machines still NOTED are `$25BBB4 $25BD7C $25BDE0` (arms 1 and 3) and
+// `$25C592 $25C6D4` (arm 5)** -- each a wave of its own. **ARM 2
 // IS WHOLE**: its per-frame body `hiscoreScreen25B412` is ported in `hiscorescreen.js`, and W375b
 // adds its init `$25B3DC` here as `hiscoreInit25B3DC`, so arm 2 initialises, runs and really does
 // advance to state 12 when the screen finishes.
@@ -33,11 +34,13 @@
 // is what fills that handle, and with it in place the reset path `($4,A5) = $D -> arm 13 -> the
 // $12C timeout -> state 2 -> the high-score screen` runs without throwing.
 //
-// WHAT IS NOTED AND THEREFORE STILL STANDS BETWEEN THIS AND A BOOTABLE GAME: the four screen
-// sub-machines above and `$25AD02`, the blink message's ON half. Neither gates the state
-// machine except through a carry this port cannot compute, which is why arms 1, 5, 9 and 12 hold
-// instead of advancing. Arms 0, 2, 3, 13 and 14 are complete, and 13 -> 2 -> 12 and
-// 3 -> 14 -> gameplay are live paths today.
+// WHAT IS NOTED AND THEREFORE STILL STANDS BETWEEN THIS AND A BOOTABLE GAME: the TWO remaining
+// screen sub-machines above and `$25AD02`, the blink message's ON half. Neither gates the state
+// machine except through a carry this port cannot compute, which is why **arms 1 and 5** hold
+// instead of advancing. Arms 0, 2, 3, 9, 12, 13 and 14 are complete, and
+// `13 -> 2 -> 12 -> 9 -> 1` and `3 -> 14 -> gameplay` are live paths today. **The attract loop
+// still does not CLOSE**: arm 9 hands state 1 to arm 1, whose `$25BD7C` demo body is the carry
+// nothing here can compute, so the sequencer parks on arm 1 rather than returning to 13.
 //
 // **W377 CLOSED THE COIN CRASH AND HALF THE BLINK PAIR.** Arm 3's `$25A962 jsr $28C170` and the
 // three `jsr $28C0FC` in the two teardowns were `ctx.soundPost` calls, and BOTH addresses go
@@ -630,16 +633,6 @@ function arm5(ram, rom, a5, ctx) {
     + 'runs teardown25A9B2 (ported and exported here). Unported, so this port holds at state 5');
 }
 
-/** ARM 9, `$25A9E6` -> state 1. Init `$25C3E8`, body `$25C424`, both unported. */
-function arm9(ram, a5, ctx) {
-  if (ram.u8(a5 + SCREEN8.inited) === 0) {                     // $25A9E6/$25A9EA
-    ram.setU8(a5 + SCREEN8.inited, 1);                         // $25A9EC
-    ctx?.unported?.note(0x25c3e8, '$25A9F2 jsr $25C3E8 -- arm 9\'s screen INIT');
-  }
-  ctx?.unported?.note(0x25c424,
-    '$25A9F8 jsr $25C424 -- arm 9\'s per-frame body; CARRY CLEAR -> state 1 ($25AA02/$25AA06)');
-}
-
 // ---------------------------------------------------------------------------------------------
 // W389 -- ARM 12'S SCREEN, `$25C2AE` (init) AND `$25C2EA` (body). ARM 2'S TWIN, EXACTLY.
 // ---------------------------------------------------------------------------------------------
@@ -753,6 +746,168 @@ function arm12(ram, rom, a5, ctx) {
   }
   if (!screen12Body25C2EA(ram, rom, ctx)) {                    // $25AA22 jsr / $25AA28 bcs
     setState25A764(ram, a5, 0x09);                             // $25AA2C moveq #$9 / $25AA30
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// W390 -- ARM 9'S SCREEN, `$25C3E8` (init) AND `$25C424` (body).
+// ---------------------------------------------------------------------------------------------
+//
+// The brief called this "structurally arm 12 on a different triple of words", and the sweep says
+// that is TRUE OF THE STATE MACHINE and FALSE OF THE DRAW. Both halves are given below with the
+// bytes that decide them, because the last two times "structurally the same" was asserted here it
+// was right in shape and wrong in a detail that changed behaviour.
+//
+// THE INIT, `$25C3E8..$25C422` -- `4E75` sits AT `$25C422` (trap 5), so the routine is 60 bytes:
+//
+//   25C3E8  48e7 fffe                 movem.l D0-D7/A0-A6,-(A7)
+//   25C3EC  41f9 00812e7a             lea $812E7A,A0            <- the triple, NOT $812E72
+//   25C3F2  303c 0003 / 7200 / 30c1 / 51c8 fffc
+//                                     move.w #$3,D0 / moveq #0,D1 / move.w D1,(A0)+ / dbra
+//                                     -- FOUR words (trap 2): $812E7A/$7C/$7E/$80, and the last
+//                                     two ARE the handle long at $812E7E
+//   25C3FE  33fc 00f0 00812e7c        move.w #$F0,$812E7C
+//   25C406  41fa 010a                 lea ($10A,PC),A0 -> $25C408 + $10A = $25C512   (trap 4)
+//   25C40A  4e71                      nop                       <- arm 12 has this too, at $25C2D0
+//   25C40C  4eb9 0024641a             jsr $24641A               <- $246410 with D6 = 0
+//   25C412  23c0 00812e7e             move.l D0,$812E7E
+//   25C418  4eb9 0025bb6c             jsr $25BB6C               <- the TX plane block, counted
+//
+// THE BODY, `$25C424..$25C4BC` -- the three fall-through states, and WHICH CHAIN THE EXIT WAITS
+// ON, which the brief asked to be checked rather than assumed:
+//
+//   25C428  cmpi.w #$0,$812E7A / bne.w -> $25C452
+//   25C434  move.l $812E7E,D0 / jsr $24681A / bne.w -> $25C452
+//   25C444  jsr $246800                       <- state 0 FREES the INIT chain
+//   25C44A  move.w #$1,$812E7A
+//   25C452  cmpi.w #$1,$812E7A / bne.w -> $25C482
+//   25C45E  subq.w #1,$812E7C / bne.w -> $25C482
+//   25C468  lea ($C6,PC),A0 -> $25C46A + $C6 = $25C530   <- a SECOND script
+//   25C46E  jsr $246710                       <- a SECOND loader, EIGHT bytes per entry
+//   25C474  move.l D0,$812E7E                 <- OVERWRITING the init's handle
+//   25C47A  move.w #$2,$812E7A
+//   25C482  cmpi.w #$2,$812E7A / bne.w -> $25C4A8
+//   25C48E  move.l $812E7E,D0 / jsr $24681A / bne.w -> $25C4A8
+//   25C49E  jsr $246800 / bra.w -> $25C4B6    <- THE EXIT
+//
+// So the answer is the same as arm 12's: **the exit waits on the SECOND chain, the `$246710` one
+// that state 1 loads.** State 0's wait is on the `$24641A` chain and it frees it before state 1
+// ever runs. `$25C482`'s `cmpi.w #$2` cannot be satisfied by the init handle, because `$25C474`
+// has already replaced it.
+//
+// **THE BRIEF IS WRONG ABOUT ONE THING, AND IT IS THE DRAW.** "Same four-word clear, same `#$F0`
+// timer, same `$24641A` init chain, same `$25BB6C`, same `$246710` state-1 chain, same two exits"
+// is all confirmed. But `$25C4A8 bsr.w` (displacement word at `$25C4AA`, `+$26`) lands on
+// `$25C4D0`, and that stub is NOT `$25C39C`'s shape:
+//
+//   25C4D0  223c 3c001c00             move.l #$3C001C00,D1
+//   25C4D6  0681 f800f000             addi.l #$F800F000,D1      <- arm 12 has NO addi at all
+//   25C4DC  243c 003366a8 / 363c 0880 / 383c 0000
+//   25C4EA  4eb9 0023dece             jsr $23DECE               <- jsr, not arm 12's `4EF9` jmp
+//   25C4F0  223c 30001e00 / 0681 fc00f200 / 243c 003368ac / 363c 0470 / 383c 0000
+//   25C50A  4eb9 0023dece             jsr $23DECE               <- a SECOND enqueue
+//   25C510  4e75
+//
+// TWO sprites per frame, not one, and each D1 is a 32-BIT ADD whose carry crosses bit 15:
+// `$3C001C00 + $F800F000 = $34010C00` -- the low half wraps and adds 1 to the high half. Folding
+// those as two independent word adds would put `$33FF0C00` in the queue. The port keeps both
+// literals and does the add, so the arithmetic is visible rather than precomputed.
+//
+// THE BOUNDS ARE IN THE DATA, exactly as arm 12's are: `$25C512` is `count 2` and
+// `2 + 2*14 = $1E` lands on `$25C530`; `$25C530` is `count 2` and `2 + 2*8 = $12` lands on
+// `$25C542`, which is a block of three longword pointers (`$25C54E $25C55E $25C56E`) and not more
+// script. Entry [0] of the init script fades to `$225A78` -- arm 12's is `$225A38`, and
+// `$225A38 + $40` is `$225A78` exactly, so the two windows ABUT and do not overlap. Entry [1] is
+// `$246BF8`, already inside W91's `$246BB8+$80`, and is not re-declared.
+//
+// ONE CALLEE STAYS COUNTED, and it cannot hold the machine:
+//   `$25BB6C` -- the same 19-instruction TX plane block arm 12 counts, called from the same place.
+// **THERE IS NO `$28CAE2` HERE.** Arm 12 posts a cue at `$25C318` on the 0 -> 1 edge; arm 9's
+// `$25C44A` writes the state and falls straight through. Confirmed from the bytes: `$25C44A
+// 33fc 0001 00812e7a` is immediately followed by `$25C452 0c79`, with no `4EB9` between them.
+export const ARM9SCREEN = Object.freeze({
+  init: 0x25c3e8, initEnd: 0x25c424,   // $25C3E8..$25C423 -- 60 bytes, `rts` AT $25C422
+  body: 0x25c424, bodyEnd: 0x25c4be,   // `rts` AT $25C4BC and AT $25C4B4, two exits
+  state: 0x812e7a,                     // $25C3EC lea $812E7A,A0 -- and the $25C428 cmpi base
+  clearWords: 4,                       // $25C3F2 move.w #$3,D0 -- dbra runs FOUR times
+  timer: 0x812e7c,                     // $25C3FE move.w #$F0,$812E7C
+  timerInit: 0xf0,
+  handle: 0x812e7e,                    // $25C412 / $25C474 move.l D0,$812E7E
+  initScript: 0x25c512,                // $25C406 lea ($10A,PC),A0 -- $24641A's, 14 bytes/entry
+  loadScript: 0x25c530,                // $25C468 lea ($C6,PC),A0 -- $246710's, 8 bytes/entry
+  scriptNodes: 2,                      // both count words
+  fadeTarget: 0x225a78,                // $25C512 entry [0]'s longword
+  txBlock: 0x25bb6c,                   // $25C418 jsr $25BB6C -- counted
+  draw: 0x25c4d0,                      // $25C4A8 bsr.w -> $25C4AA + $26
+  emit: 0x23dece,                      // $25C4EA / $25C50A jsr $23DECE -- TWICE, and jsr not jmp
+  // The two enqueues, each `move.l #base,D1` then `addi.l #add,D1`. Kept unfolded on purpose.
+  draws: Object.freeze([
+    Object.freeze({ d1: 0x3c001c00, d1Add: 0xf800f000, d2: 0x003366a8, d3: 0x0880, d4: 0x0000 }),
+    Object.freeze({ d1: 0x30001e00, d1Add: 0xfc00f200, d2: 0x003368ac, d3: 0x0470, d4: 0x0000 }),
+  ]),
+});
+
+/** `$25C3E8` -- arm 9's screen INIT. Four words cleared, the `$F0` timer armed, the first chain
+ *  loaded through `$24641A` and its handle stored. Arm 12's `$25C2AE` on the other triple. */
+export function screen9Init25C3E8(ram, rom, ctx) {
+  for (let i = 0; i < ARM9SCREEN.clearWords; i++) {            // $25C3F2 #$3 + dbra = FOUR
+    ram.setU16(ARM9SCREEN.state + i * 2, 0);                   // $25C3F8 move.w D1,(A0)+
+  }
+  ram.setU16(ARM9SCREEN.timer, ARM9SCREEN.timerInit);          // $25C3FE
+  // $25C40C jsr $24641A -- `$246410` with D6 = 0, which `animobjects.js` already ports.
+  ram.setU32(ARM9SCREEN.handle,
+    loadAnimObjects246410(ram, rom, ARM9SCREEN.initScript, 0) >>> 0);   // $25C412
+  ctx?.unported?.note(ARM9SCREEN.txBlock, '$25C418 jsr $25BB6C -- arm 9\'s TX plane block, the '
+    + 'same 19 instructions writing $900000 that arm 12 calls from $25C2DE. Presentation; it '
+    + 'cannot gate the screen, whose only exit is the $246710 chain state 2 waits on');
+}
+
+/**
+ * `$25C424` -- one frame of arm 9's screen. Three states that FALL THROUGH into each other.
+ *
+ * @returns {boolean} the CARRY: `true` ($25C4B0 `ori.w #$1,SR`) means still running, `false`
+ *   ($25C4BA `move.w D0,D0`) means finished. `$25A9FE bcs` skips the advance on `true`.
+ */
+export function screen9Body25C424(ram, rom, ctx) {
+  if (ram.u16(ARM9SCREEN.state) === 0) {                       // $25C428 cmpi.w #$0
+    if (chainCheck24681A(ram, ram.u32(ARM9SCREEN.handle)) === 0) {   // $25C43A jsr / $25C440 bne
+      chainFree246800(ram, ram.u32(ARM9SCREEN.handle));        // $25C444 jsr $246800
+      ram.setU16(ARM9SCREEN.state, 1);                         // $25C44A
+      // NO `$28CAE2` HERE. Arm 12's $25C318 cue has no counterpart on this edge.
+    }
+  }
+  if (ram.u16(ARM9SCREEN.state) === 1) {                       // $25C452 -- FALLS THROUGH
+    const t = u16(ram.u16(ARM9SCREEN.timer) - 1);              // $25C45E subq.w #1
+    ram.setU16(ARM9SCREEN.timer, t);
+    if (t === 0) {                                             // $25C464 bne
+      ram.setU32(ARM9SCREEN.handle,                            // $25C474
+        chainLoader246710(ram, rom, ARM9SCREEN.loadScript, ctx) >>> 0);
+      ram.setU16(ARM9SCREEN.state, 2);                         // $25C47A
+    }
+  }
+  if (ram.u16(ARM9SCREEN.state) === 2) {                       // $25C482
+    if (chainCheck24681A(ram, ram.u32(ARM9SCREEN.handle)) === 0) {   // $25C494 / $25C49A bne
+      chainFree246800(ram, ram.u32(ARM9SCREEN.handle));        // $25C49E jsr $246800
+      return false;                                            // $25C4A4 bra $25C4B6 -- carry CLEAR
+    }
+  }
+  // $25C4A8 bsr $25C4D0 -- TWO register-convention enqueues, each `jsr $23DECE` and each with an
+  // `addi.l` the 68000 carries across bit 15. Arm 12's stub has one enqueue and no addi.
+  for (const d of ARM9SCREEN.draws) {                          // $25C4D0..$25C510
+    const d1 = (d.d1 + d.d1Add) >>> 0;                         // $25C4D6 / $25C4F6 addi.l
+    enqueueRegistersThroughStub(ram, rom, ARM9SCREEN.emit, d1, d.d2, d.d3, d.d4);
+  }
+  return true;                                                 // $25C4B0 ori.w #$1,SR
+}
+
+/** ARM 9, `$25A9E6` -> state 1. W390 ports both halves; see `ARM9SCREEN` above. */
+function arm9(ram, rom, a5, ctx) {
+  if (ram.u8(a5 + SCREEN8.inited) === 0) {                     // $25A9E6/$25A9EA
+    ram.setU8(a5 + SCREEN8.inited, 1);                         // $25A9EC
+    screen9Init25C3E8(ram, rom, ctx);                          // $25A9F2 jsr $25C3E8
+  }
+  if (!screen9Body25C424(ram, rom, ctx)) {                     // $25A9F8 jsr / $25A9FE bcs
+    setState25A764(ram, a5, 0x01);                             // $25AA02 move.w #$1 / $25AA06
   }
 }
 
@@ -916,7 +1071,7 @@ function dispatchTail25A82C(ram, rom, a5, ctx) {
     case 0x6: armRts(); return;                                // $25A9E2
     case 0x7: armRts(); return;                                // $25A9E4
     case 0x8: armRts(); return;                                // $25A9E4 -- the SAME rts as 7
-    case 0x9: arm9(ram, a5, ctx); return;                      // $25A9E6
+    case 0x9: arm9(ram, rom, a5, ctx); return;                 // $25A9E6
     case 0xa: armRts(); return;                                // $25AA0C
     case 0xb: armRts(); return;                                // $25AA0E
     case 0xc: arm12(ram, rom, a5, ctx); return;                // $25AA10

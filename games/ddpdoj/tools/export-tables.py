@@ -3821,6 +3821,116 @@ def check_arm12_chain_scripts(d: bytes) -> None:
                     f"{why[:60]}. Declare a disjoint window, never widen one.")
 
 
+# ==================== W390: ARM 9'S TWO CHAIN SCRIPTS AND ITS FADE TARGET =====
+#
+# Slot [8] arm 9's screen (`$25C3E8` init, `$25C424` body) is arm 12's machine on
+# a different triple of words, and it names its two scripts the same way.  Both
+# bounds land on something the code or the data states, so neither is proven by
+# an absence:
+#
+#   $25C406  41fa 010a       lea ($10A,PC),A0  -> $25C408 + $10A = $25C512
+#   $25C40C  4eb9 0024641a   jsr $24641A       <- $246410 with D6 = 0: FOURTEEN
+#                                                 bytes per entry
+#   $25C468  41fa 00c6       lea ($C6,PC),A0   -> $25C46A + $C6 = $25C530
+#   $25C46E  4eb9 00246710   jsr $246710       <- EIGHT bytes per entry
+#
+#   $25C512: count 2, so 2 + 2*14 = $1E, ending AT $25C530 -- the other script.
+#   $25C530: count 2, so 2 + 2*8  = $12, ending AT $25C542, and $25C542 is the
+#            first of THREE longword pointers ($25C54E, $25C55E, $25C56E) whose
+#            targets are 16 bytes apart.  That is a different table, not more
+#            script, and the check below re-derives all three pointers.
+#
+# And the init script's entry [0] fades to $225A78 -- which is EXACTLY where arm
+# 12's $225A38+$40 ends, so the two windows ABUT and do not overlap.  Entry [1]
+# fades to $246BF8, already inside W91's $246BB8+$80, and is NOT re-declared.
+SHOT_WINDOWS.append(
+    (0x25C512, 0x001E, "W390: slot [8] arm 9's INIT chain script, $25C406's "
+                       "lea into $24641A. Count 2 x 14-byte entries + the count "
+                       "word = $1E, ending exactly at $25C530, the OTHER script"))
+SHOT_WINDOWS.append(
+    (0x25C530, 0x0012, "W390: slot [8] arm 9's state-1 chain script, $25C468's "
+                       "lea into $246710. Count 2 x 8-byte entries + the count "
+                       "word = $12, ending exactly at $25C542, the first of "
+                       "three longword pointers into a different table"))
+SHOT_WINDOWS.append(
+    (0x225A78, 0x0040, "W390: arm 9's INIT-chain fade TARGET, entry [0] of "
+                       "$25C512. Its words-minus-one is $001F and $246B2A's dbra "
+                       "runs N+1 = 32 words = $40 bytes (trap 2). It ABUTS arm "
+                       "12's W389 $225A38+$40 and overlaps nothing. Entry [1]'s "
+                       "target $246BF8 is already inside W91's $246BB8+$80"))
+
+
+def check_arm9_chain_scripts(d: bytes) -> None:
+    """W390.  Re-derive both arm-9 script windows and the fade target from the
+    cartridge, so a wrong length here fails the export rather than the game."""
+    INIT_LEA, LOAD_LEA = 0x25C406, 0x25C468
+    for lea, want_base, want_jsr, entry in ((INIT_LEA, 0x25C512, 0x0024641A, 14),
+                                            (LOAD_LEA, 0x25C530, 0x00246710, 8)):
+        if u16(d, lea) != 0x41FA:
+            raise SystemExit(f"${lea:06X} is ${u16(d, lea):04X}, not `41FA` "
+                             f"(lea (d16,PC),A0) -- arm 9 no longer names a "
+                             f"chain script here.")
+        # TRAP 4: the EA is the EXTENSION WORD's address plus the displacement.
+        base = lea + 2 + u16(d, lea + 2)
+        if base != want_base:
+            raise SystemExit(f"${lea:06X}'s lea resolves to ${base:06X}, not "
+                             f"${want_base:06X}.")
+        # Both arms carry a `nop` between the lea and the jsr, so the jsr is at
+        # +6.  Checking it is what guarantees the ENTRY SIZE, not the table.
+        jsr_at = lea + 6
+        if u16(d, jsr_at) != 0x4EB9 or u32(d, jsr_at + 2) != want_jsr:
+            raise SystemExit(f"${jsr_at:06X} is not `jsr ${want_jsr:06X}` -- the "
+                             f"table at ${base:06X} is read by some other loader "
+                             f"and its {entry}-byte entry shape is not guaranteed.")
+        count = u16(d, base)
+        if count != 2:
+            raise SystemExit(f"${base:06X} declares {count} entries, not 2.")
+        length = 2 + count * entry
+        decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == base]
+        if decl != [(base, length)]:
+            raise SystemExit(f"${base:06X} needs ${length:X} bytes; SHOT_WINDOWS "
+                             f"declares {[(hex(a), hex(n)) for a, n in decl]}.")
+    # THE BOUND, STATED BY WHAT FOLLOWS EACH TABLE.
+    if 0x25C512 + 0x1E != 0x25C530:
+        raise SystemExit("the init script does not end at the load script.")
+    for i, want_ptr in enumerate((0x25C54E, 0x25C55E, 0x25C56E)):
+        got = u32(d, 0x25C542 + i * 4)
+        if got != want_ptr:
+            raise SystemExit(f"${0x25C542 + i * 4:06X} is ${got:06X}, not "
+                             f"${want_ptr:06X} -- the pointer block that pins "
+                             f"the load script's $12 bound is not there, so the "
+                             f"bound is unproven.")
+    # THE FADE TARGETS, from the two 14-byte entries the init script carries.
+    for i, want_target in ((0, 0x225A78), (1, 0x246BF8)):
+        e = 0x25C514 + i * 14
+        target, words_m1 = u32(d, e + 6), u16(d, e + 10)
+        if target != want_target:
+            raise SystemExit(f"$25C512 entry [{i}] targets ${target:06X}, not "
+                             f"${want_target:06X}.")
+        if words_m1 != 0x001F:
+            raise SystemExit(f"$25C512 entry [{i}] has words-minus-one "
+                             f"${words_m1:04X}, not $001F, so $40 is wrong.")
+        length = (words_m1 + 1) * 2
+        if not any(a <= target and target + length <= a + ln
+                   for a, ln, _ in SHOT_WINDOWS):
+            raise SystemExit(f"the fade target ${target:06X}+${length:X} is not "
+                             f"fully inside any declared window.")
+    # ABUTTING IS NOT OVERLAPPING, and this is the pair most likely to be got
+    # wrong: arm 12's fade target ends exactly where arm 9's begins.
+    if 0x225A38 + 0x40 != 0x225A78:
+        raise SystemExit("W389's fade target no longer abuts W390's.")
+    # NEVER WIDEN A NEIGHBOUR: all three new windows must overlap nothing.
+    for base, length in ((0x25C512, 0x1E), (0x25C530, 0x12), (0x225A78, 0x40)):
+        for a, ln, why in SHOT_WINDOWS:
+            if (a, ln) == (base, length):
+                continue
+            if a < base + length and base < a + ln:
+                raise SystemExit(
+                    f"the W390 window [${base:06X}, ${base + length:06X}) "
+                    f"OVERLAPS the declared window [${a:06X}, ${a + ln:06X}) -- "
+                    f"{why[:60]}. Declare a disjoint window, never widen one.")
+
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
@@ -7623,6 +7733,7 @@ def build(d: bytes) -> dict:
     check_gameover_anim_table(d)               # W386 -- THE GAME-OVER FADE TARGET
     check_name_entry_fade_sources(d)           # W387 -- SLOT [12]'S FOUR SOURCES
     check_arm12_chain_scripts(d)               # W389 -- ARM 12'S TWO SCRIPTS
+    check_arm9_chain_scripts(d)                # W390 -- ARM 9'S TWO SCRIPTS
     check_sample_windows()                     # W27D -- ICS sample tight union
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)

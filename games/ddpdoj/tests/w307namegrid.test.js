@@ -243,8 +243,11 @@ test('W307 the cursor and the furniture add up, and share no bucket record', { s
 // ==================== 5. THE ARM, AND THE COUNTED TIER
 
 test('W307 `$28F4A6` arms the cursor and counts the anim driver', { skip: SKIP }, () => {
-  // `$246410` is the tier `stageend.js` declares out of scope and W303 counted `$246710`'s
-  // seeding for. Third direction onto the same subsystem this session, so the note says so.
+  // `$246410` is the tier `stageend.js` declares out of scope. W390 CORRECTION (trap 14): this
+  // comment used to add "and W303 counted `$246710`'s seeding for", which is no longer true --
+  // W388 found that gap and W389 folded the per-node seeding into `chainLoaderBody`, so
+  // `$246710` seeds content on every call and raises no note. Only `$246410` is counted here,
+  // which is exactly what the assertions below check.
   const ram = factory();
   const w = world();
   nameArmGrid28F4A6(ram, A4, w.ctx);

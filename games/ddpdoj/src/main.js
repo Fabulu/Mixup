@@ -241,8 +241,10 @@ export function defaultHandlers(rom, vram, opts = {}) {
     // stages the type it hands off to. Ported this wave; registering it takes the dispatch table to
     // 16 of 20.
     //
-    // Its arm sub-machines ($25BBB4, $25BD7C, $25BDE0, $25C2AE, $25C2EA, $25C3E8, $25C424, $25C592,
-    // $25C6D4) are counted notes, not calls -- the sequencer's own spine is what runs here.
+    // W390 CORRECTION -- this list was STALE (trap 14). W389 ported arm 12's $25C2AE/$25C2EA and
+    // W390 arm 9's $25C3E8/$25C424, and all four are real calls now. The arm sub-machines that
+    // are still counted notes are $25BBB4, $25BD7C, $25BDE0 (arms 1 and 3) and $25C592, $25C6D4
+    // (arm 5) -- the sequencer's own spine plus arms 2, 9 and 12 is what runs here.
     [8, slotObject(objSlot8, rom)],
     [9, slotObject(slot9.objSlot9, rom)],
     // W387. $240F62[12] = $28F3AC, priority $0009 (read out of $240FC6, not carried as a

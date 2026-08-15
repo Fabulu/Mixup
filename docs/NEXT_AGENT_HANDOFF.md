@@ -2,7 +2,95 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W389
+## START HERE -- W390
+
+### THE SEQUENCER RUNS `13 -> 2 -> 12 -> 9 -> 1`. THE LOOP IS TWO SCREENS FROM CLOSING.
+
+Cold boot, no hand-holding: `+1 arm 13, +302 arm 2, +574 arm 12, +878 arm 9, +1182 arm 1`. It parks
+on **arm 1**, whose `$25BD7C` demo body is a counted note that cannot produce a carry.
+
+**THE REMAINING PATH IS SHORT AND THE BYTES SAY SO.** `$25A908 move.w #$5` -- arm 1 exits to state
+**5**. Arm 5's `$25A9AE bcs` skips `teardown25A9B2`, which is **already ported** and writes `#$2`
+into the new record's `($4,A0)`, so arm 0 reads it back as state **2**, the high-score screen.
+
+**`1 -> 5 -> (teardown, fresh slot-8 record) -> 2` CLOSES THE LOOP.** Exactly two screens stand in
+the way:
+
+1. **`$25BBB4` / `$25BD7C` (+ `$25BDE0`)** -- arm 1's demo screen, **SHARED WITH ARM 3, so porting
+   it pays twice.** This is the right next unit.
+2. **`$25C592` / `$25C6D4`** -- arm 5's screen, the one whose carry chooses the teardown.
+
+### ARM 9's DRAW IS **NOT** ARM 12's. COPYING IT WOULD HAVE HALVED THE SPRITES.
+
+My brief said arm 9 was arm 12 on a different word triple. True of the state machine, **false of the
+draw**. `$25C4A8 bsr.w` (ext word `$25C4AA`, `+$26`) lands on `$25C4D0`, which is **TWO** enqueues,
+each `4EB9 0023DECE` (a **jsr**, where arm 12's `$25C3B0` is `4EF9`, a tail **jmp**), each with an
+`addi.l` preamble arm 12 has none of:
+
+```
+25C4D0  223c 3c001c00   move.l #$3C001C00,D1
+25C4D6  0681 f800f000   addi.l #$F800F000,D1
+25C4DC  243c 003366a8 / 363c 0880 / 383c 0000 / 4eb9 0023dece
+25C4F0  223c 30001e00 / 0681 fc00f200 / 243c 003368ac / 363c 0470 / 383c 0000 / 4eb9 0023dece
+25C510  4e75
+```
+
+**Not one immediate is shared.** And the tests would have passed with half the sprites, because
+nothing counted them. Ablation A4 now pins it.
+
+Sub-finding worth keeping: the `addi.l` carry **does** cross bit 15 (`$3C001C00 + $F800F000 =
+$34010C00`, not `$34000C00`), but `asr.l #6` puts that bit at low-word bit 10 and
+`$23D77E andi.l #$07FF03FF` clears it. **The carry never reaches the queue.** The port does the true
+32-bit add anyway and the test says exactly what it is worth, so nobody "simplifies" it later.
+
+### ARM 9's EXIT WAITS ON THE SECOND CHAIN -- `$25C474` OVERWRITES THE HANDLE
+
+`$25C474 move.l D0,$812E7E` overwrites the init handle **before** `$25C482 cmpi.w #$2` ever runs, so
+state 2's `$24681A` cannot be looking at the init chain. State 0 waits on the `$24641A` chain and
+frees it at `$25C444`. Measured: init chain drains at **+911**, the screen runs 271 more frames and
+exits at **+1,182**. **A port that waited on the init chain would have exited at +911.** Third arm
+running that this question has mattered -- ask it again for arm 1.
+
+Confirmed as briefed: 60-byte init (`4E75` AT `$25C422`), four-word clear where words 3-4 ARE the
+handle long, `#$F0`, `$25BB6C`, two exits, and **no `$28CAE2`** (`$25C44A`'s operand ends at
+`$25C451`, `$25C452` is state 1's `cmpi` -- bound found in the code, not by asserting an absence).
+
+### `queueKill`: CENSUS CLOSED AT 14 SITES, AND ONE IS ENTIRELY UNPORTED
+
+`objslot17.js:194` and `objslot9.js:512` fixed; both files gained a named `idAt: 0x4c`. A whole-image
+scan for `4EF9/4EB9 00241292` finds **fourteen** sites: twelve ported and all passing the ID long,
+`$25DBAC` already right, and:
+
+**`$249104` IS UNPORTED ENTIRELY** (`claimed.py`: no mention in `src/` in any form). It is
+`$2490F8 jsr $241182` with D0=8, `$2490FE move.w #$D,($4,A0)`, then the tail kill -- **another route
+that stages the attract sequencer at arm 13.** Worth a look.
+
+### TRAP 16 AGAIN, AND IT WAS EIGHT FRAMES FROM LYING
+
+`w387slot12.test.js`'s loop-back run reaches arm 12 at +4,688 and arm 9 at **+4,992 -- eight frames
+before its 5,000-frame window closed.** So it read as "rests on arm 9" while a plain cold boot had
+long since moved to arm 1, and its structural claim ("both runs land on the same machine") failed.
+**A short run misreading a gate, not a divergence:** at 5,400 frames the loop-back hands to arm 1 at
++5,296 and the two agree. Window widened to 5,400 and said so in the file.
+
+### THREE NEW WINDOWS (558), WITH AN OVERLAP PROOF WORTH COPYING
+
+`$25C512+$1E` (ends exactly at `$25C530`, the other script), `$25C530+$12` (ends exactly at
+`$25C542`, a block of three longword pointers -- **bound pinned by what FOLLOWS**), `$225A78+$40`.
+Seven ablations, all firing. **Overlap proof:** overlapping pairs across the whole 558-window set is
+**71 with and 71 without** the three; each overlaps **0**. `$225A38+$40` ends exactly at `$225A78` --
+abutting, not overlapping, and the check asserts that explicitly.
+
+### THE FILE LIST WAS SHORT BY SIX
+
+All six are re-bases of "the machine rests on arm 9", true only while arm 9 was a note:
+`w375slot8.test.js:694`, `w376attract.test.js:791`, `w384stall.test.js:392`, `w387slot12.test.js`
+(x2 + the window), `w388hiscorechain.test.js` (x3), `w389chainloader.test.js:603`. **The last one
+also had stale text on the test that flagged the finding** -- its `KILL_SITES` still labelled
+`$25CEB0`/`$25CAC2` "STILL BROKEN" (trap 14). `objslot8.js`'s own header claimed "arms 1, 5, 9 and
+12 hold" in two more places; corrected.
+
+## W389 NOTES
 
 ### THE SEQUENCER RUNS `13 -> 2 -> 12 -> 9` UNATTENDED
 
