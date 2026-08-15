@@ -43,9 +43,11 @@
 
 import { RAM } from './machine.js';
 import { unreached } from './unported.js';
-import { queueKill, ALLOC } from './objalloc.js';
+import { queueKill, stageCreate, ALLOC } from './objalloc.js';
 import { respawn25FFA8, setPanel2603B0 } from './player.js';
 import { txPrint240DC2, txPrint240EBC } from './hud.js';
+import { install2414BE } from './palette.js';
+import { writeStage25FD0C, wipeStageBlock25FD24 } from './stageend.js';
 import { u16, i16 } from './ram.js';
 
 /** ROM and RAM addresses the rank object speaks in, each cited at the line that
@@ -88,24 +90,422 @@ export const RANK = {
   disp25FF7AJump: 0x25FF52, // $25FF92 lea (PC) -- the jump table
 };
 
-/** The one declared deviation: state-0 INIT `$2605C8` is DEFERRED.  A seeded
- *  run starts in state 1 (slot 0 in the seed carries state byte 1), so INIT
- *  only runs on a cold boot / fresh RAM.  Its palette half is already replayed
- *  by `palette.js catchUpTextPalette` (W93); its non-palette tail (resource
- *  installs, the `$813082`/`$813098` seeds, ten `$2414BE` installs, creation of
- *  object type 0) is cold-boot-only and belongs to a boot-at-any-rung follow-up.
- *  If state 0 is ever hit, the deviation is noted and the object advances to
- *  state 1 (its per-frame body), so it cannot spin. */
+/** W378 -- what is STILL deferred inside state-0 INIT `$2605C8`.  The INIT's own
+ *  RAM writes and its ten `$2414BE` TEXT installs are ported now (`rankInit2605C8`
+ *  below); what remains are its twelve calls into subsystems no wave has read, and
+ *  each of those is counted at ITS OWN call site rather than as one blanket skip.
+ *  The entry left here is the summary, kept because it is the routine's name and
+ *  because the deferral is still real. */
 export const RANK_DEVIATION = Object.freeze({
-  [0x2605c8]: 'DEFERRED -- $2605C8, the state-0 INIT. Seeded runs start in state '
-    + '1 (slot 0 carries state byte 1 in the seed), so this only runs on a cold '
-    + 'boot. The palette half is replayed by palette.js catchUpTextPalette (W93); '
-    + 'the non-palette tail (resource installs, $813082/$813098 seeds, object '
-    + 'type-0 creation) is cold-boot-only and deferred to a boot-at-any-rung '
-    + 'follow-up. The object advances to state 1 so it cannot spin.',
+  [0x2605c8]: 'PARTIAL -- $2605C8, the state-0 INIT, $2605C8..$26070A. W378 ports '
+    + 'its RAM writes (the $2(A5) state byte, the ten $2414BE TEXT installs, '
+    + '$813080 = 0, $813082 = 1, the $813098 loop branch and the loop-2+ clears at '
+    + '$260680..$2606C9) and $2606CE bsr $25FD0C. Its twelve remaining calls '
+    + '($259C4A, $2603DA, $28D552, $28EBFE, $27F87C, $2884E2, $287024, $24A810, '
+    + '$25FE42, $288574) are counted at their own call sites. $260666 move.w '
+    + '#$1,$813082 is the one that matters here: it is the gate $2607A8 tests, and '
+    + 'while the whole INIT was deferred the gate stayed 0, so the per-frame body '
+    + 'ran before $26089E had installed the rank base pointer $81315C.',
 });
 
-const note = (ctx, a, w) => ctx.unportedLog?.note(a, w);
+const note = (ctx, a, w) => (ctx?.unportedLog ?? ctx?.unported)?.note(a, w);
+
+// ===========================================================================
+// W378 -- $81315C, THE RANK BASE POINTER, AND THE CHAIN THAT INSTALLS IT
+// ===========================================================================
+//
+// `$2608D2 movea.l $81315C.l,A0` is the first instruction of the recompute and
+// on a cold boot it read ZERO, so `base[stage]` was a read of ROM `$0` and
+// `RomWindows` threw four frames after a P1 START. The pointer had no writer in
+// the port at all. It has exactly ONE in the cartridge:
+//
+//   [M] the longword `0081315C` appears FOUR times in the 6 MiB image --
+//       $15FC20 and $15FC28 (the build-A twin of this routine) and $2608CC and
+//       $2608D4. $2608D4 is the recompute's own `movea.l`. **$2608CC is the only
+//       write, and it is `$2608CA move.l (A0),$81315C`, inside $26089E.**
+//
+// SO WHY WAS IT NOT RUNNING? Two separate reasons, and both are fixed here:
+//
+//  1. `$26089E` was unported. Its only caller is `$260578 jsr $26089E` at the
+//     tail of `$26051A`, whose only caller is `$26059A bsr $26051A` inside
+//     `$260580`, whose only caller is `$26077E bsr.w $260580` at the tail of
+//     `$26070C` -- the one-shot handoff `objslot17.js` ports as
+//     `handoff26070C`, which NOTES `$260580` instead of running it.
+//  2. **The cartridge never lets the recompute run before that handoff.**
+//     `$260666 move.w #$1,$813082` in the state-0 INIT raises the very gate
+//     `$2607A8 tst.w $813082 / bne $260808` tests, and the ONLY thing that
+//     lowers it again is `$26071A clr.w $813082` -- the first thing `$26070C`
+//     does before it walks down to `$26089E`. So on a board the rank body is
+//     switched OFF from the moment slot [9] creates the object (`$25CA78
+//     move.w #$A,D0 / jsr $241182`, objslot9.js) until the handoff has installed
+//     the pointer. The port deferred the whole INIT, so the gate stayed 0 and
+//     the body ran with a null pointer from its second frame.
+//
+// THE TABLES. `$26089E` picks ONE OF FOUR per-stage base tables by a config
+// byte, and both of its `lea (dN,PC)` bases are pinned by code, not by looks:
+//
+//     $2608B6  41fa ffde   lea (-$22,PC),A0   EA = $2608B8 - $22 = $260896
+//     $2608C4  41fa ffc0   lea (-$40,PC),A0   EA = $2608C6 - $40 = $260886
+//
+// so the WORD table lives at $260896 and the LONGWORD table at $260886. The
+// longword table's four entries are $26086E, $260874, $26087A, $260880 -- six
+// apart, and the last of them ends at $260886, which is the longword table's own
+// base. The longword table then ends at $260896, the word table's base ($10 =
+// four longwords), and the word table ends at $26089E, the routine's own first
+// instruction ($8 = four words). Three tables, every bound named by an address
+// the code itself computes. W127's window comment called `$26086E` "the rank
+// object's own code" and `$26087A` "more rank/difficulty data" -- both wrong;
+// they are difficulty tables 0 and 2 of the same set of four.
+
+/** `$26089E..$2608D0`, 52 bytes -- **THE ONLY WRITER OF `$81315C`.** */
+export const RANKBASE = Object.freeze({
+  addr: 0x26089e, rts: 0x2608d0, bytes: 0x34,
+  cfg: 0x80380c,             // $2608A0 move.b $80380C.l,D0 -- the config byte
+  force: 0x803926,           // $2608A6 tst.w $803926 / $2608AC beq.w $2608B4
+  forceIndex: 1,             // $2608B0 move.b #$1,D0 -- non-zero $803926 pins index 1
+  wordTable: 0x260896, wordEntries: 4, wordBytes: 0x08,     // $2608B6 lea (-$22,PC)
+  wordOut: 0x813160,         // $2608BC move.w (A0),$813160
+  ptrTable: 0x260886, ptrEntries: 4, ptrBytes: 0x10,        // $2608C4 lea (-$40,PC)
+  ptrOut: 0x81315c,          // $2608CA move.l (A0),$81315C
+  // The four tables the longword table points at, and the stride that bounds each.
+  baseTables: Object.freeze([0x26086e, 0x260874, 0x26087a, 0x260880]),
+  baseStride: 6, baseBytes: 0x18,
+});
+
+/**
+ * `$26089E` -- install the per-stage rank base table pointer.
+ *
+ *     26089E  7000            moveq   #$0,D0
+ *     2608A0  1039 0080380C   move.b  $80380C.l,D0
+ *     2608A6  4a79 00803926   tst.w   $803926.l
+ *     2608AC  6700 0006       beq.w   $2608B4
+ *     2608B0  103c 0001       move.b  #$1,D0
+ *     2608B4  d040            add.w   D0,D0
+ *     2608B6  41fa ffde       lea     ($260896,PC),A0
+ *     2608BA  d0c0            adda.w  D0,A0
+ *     2608BC  33d0 00813160   move.w  (A0),$813160.l
+ *     2608C2  d040            add.w   D0,D0
+ *     2608C4  41fa ffc0       lea     ($260886,PC),A0
+ *     2608C8  d0c0            adda.w  D0,A0
+ *     2608CA  23d0 0081315C   move.l  (A0),$81315C.l
+ *     2608D0  4e75            rts
+ *
+ * `moveq #$0,D0` then `move.b` means D0 is 0..$FF, so both `adda.w`s take a
+ * POSITIVE word and the two indexes are `cfg*2` and `cfg*4`. THERE IS NO RANGE
+ * CHECK ON THE CONFIG BYTE. A byte of 4 or more indexes past the four entries
+ * and the ROM window is what says so, loudly, at the address it reached -- which
+ * is the honest behaviour, because the cartridge would read whatever is there.
+ *
+ * On a COLD board `$80380C` is 0 (nothing in this port writes it; the settings
+ * block belongs to the `$23BEEA` reset prologue, which is a counted deferral in
+ * `frontend.js`), so index 0 is picked and the pointer becomes `$26086E`. The
+ * `rip/web/seed.bin` board had been configured and carries `$260874`, index 1 --
+ * the same relationship `$803957`, the coinage byte, has in W377.
+ */
+export function installRankBase26089E(ram, rom) {
+  let d0 = ram.u8(RANKBASE.cfg);                            // $26089E / $2608A0
+  if (ram.u16(RANKBASE.force) !== 0) d0 = RANKBASE.forceIndex;   // $2608A6..$2608B0
+  d0 = u16(d0 * 2);                                         // $2608B4 add.w D0,D0
+  ram.setU16(RANKBASE.wordOut, rom.u16(RANKBASE.wordTable + d0));   // $2608B6..$2608BC
+  d0 = u16(d0 * 2);                                         // $2608C2 add.w D0,D0
+  ram.setU32(RANKBASE.ptrOut, rom.u32(RANKBASE.ptrTable + d0));    // $2608C4..$2608CA
+}
+
+/** `$2604AA`, `$2604F4`, `$26051A` and `$260580` -- the stage-start chain that
+ *  ends at `$26089E`. Byte extents are `rts` inclusive. */
+export const STAGESTART = Object.freeze({
+  start: 0x260580, startRts: 0x2605a2, startBytes: 0x24,
+  clear: 0x2604f4, clearRts: 0x260518, clearBytes: 0x26,
+  clearMore: 0x2604aa, clearMoreRts: 0x2604f2, clearMoreBytes: 0x4a,
+  install: 0x26051a, installRts: 0x26057e, installBytes: 0x66,
+  wipe: 0x25fd24, dispatch25FF7A: 0x25ff7a,
+  twin: 0x2605a4, twinRts: 0x2605c6,         // the byte-identical, uncalled copy of $260580
+  zeroWord: 0x81296e,        // $260580 clr.w $81296E
+  wordD7: 0x81307e,          // $260586 move.w D7,$81307E
+  wordD6: 0x813080,          // $26058C move.w D6,$813080
+  id5: 0x813148, id1: 0x813144,          // $260524 / $260534 move.l D0
+  type5: 5, type1: 1,                    // $26051A / $26052A move.w #n,D0
+  childField: 0x06,          // $26053A move.w $81307E,($6,A0)
+  pairSite: 0x2603fe, pairD0: 0x10000e00, pairD1: 0x10002a00,   // $26054C..$260558
+  txSrc: 0x222618, txBank: 0,            // $260564 lea $222618,A0 / $26056A moveq #$0
+  txSite: 0x26056c,                      // $26056C jsr $2414BE
+  palWalk: 0x241654, palWalkSite: 0x260572,
+  killIdA: 0x8130fa, killIdB: 0x81311e,  // $2604AA lea A2 / $2604B0 lea A3
+  killOffs: Object.freeze([0x18, 0x1c, 0x20]),
+});
+
+const hexA = (v) => `$${v.toString(16).toUpperCase()}`;
+
+/**
+ * `$2604F4..$260518` plus `$2604AA..$2604F2` -- **THE STAGE-START DELETE.** Every
+ * instruction in both is a `$241238` push, so the whole thing is eight deferred
+ * kills and one gate:
+ *
+ *     2604F4  lea $813148,A0 / jsr $241238      the type-5 child from last time
+ *     260500  lea $813144,A0 / jsr $241238      the type-1 child from last time
+ *     26050C  tst.w $813080 / beq.w $260518     ...and only when D6 was non-zero:
+ *     260516  6192            bsr.b $2604AA     six more, off $8130FA and $81311E
+ *
+ * `$2604AA` walks the SAME three offsets on two bases in the order A2, A3, A2,
+ * A3, A2, A3 -- `($18,A2) ($18,A3) ($1C,A2) ($1C,A3) ($20,A2) ($20,A3)` -- and
+ * those two bases are `$25FF7A`'s and `$288610`'s per-side tables, at their
+ * `$24`/`$16` strides' far end. A zero handle is not a special case: `$2411E6
+ * tst.l/beq` in `$2411E2` makes killing ID 0 a no-op, so a first stage start,
+ * whose five longwords are all still 0, queues eight nothings.
+ *
+ * `61 92` at `$260516` is an eight-bit `bsr`, so its target is `$260518 - $6E`
+ * and NOT `$260516 - $6E`; the displacement counts from the byte after the
+ * opcode word.
+ */
+export function stageClear2604F4(ram) {
+  queueKill(ram, ram.u32(STAGESTART.id5));                  // $2604F4 / $2604FA
+  queueKill(ram, ram.u32(STAGESTART.id1));                  // $260500 / $260506
+  if (ram.u16(STAGESTART.wordD6) === 0) return;             // $26050C tst.w / $260512 beq
+  for (const off of STAGESTART.killOffs) {                  // $2604AA..$2604F2
+    queueKill(ram, ram.u32(STAGESTART.killIdA + off));
+    queueKill(ram, ram.u32(STAGESTART.killIdB + off));
+  }
+}
+
+/**
+ * `$26051A..$26057E`, 102 bytes -- **THE STAGE-START INSTALL**, and the routine
+ * `$26089E` hangs off the end of.
+ *
+ *     26051A  303c 0005       move.w  #$5,D0
+ *     26051E  4eb9 00241182   jsr     $241182            stage dispatch type 5
+ *     260524  23c0 00813148   move.l  D0,$813148         ...and keep its ID
+ *     26052A  303c 0001       move.w  #$1,D0
+ *     26052E  4eb9 00241182   jsr     $241182            stage dispatch type 1
+ *     260534  23c0 00813144   move.l  D0,$813144
+ *     26053A  3179 0081307E 0006   move.w $81307E.l,($6,A0)
+ *     260542  4a79 00813080   tst.w   $813080
+ *     260548  6700 001a       beq.w   $260564
+ *     26054C  203c 10000E00   move.l  #$10000E00,D0
+ *     260552  223c 10002A00   move.l  #$10002A00,D1
+ *     260558  6100 fea4       bsr.w   $2603FE
+ *     26055C  33fc 0000 00813080   move.w #$0,$813080
+ *     260564  41f9 00222618   lea     $222618,A0
+ *     26056A  7000            moveq   #$0,D0
+ *     26056C  4eb9 002414be   jsr     $2414BE
+ *     260572  4eb9 00241654   jsr     $241654
+ *     260578  4eb9 0026089e   jsr     $26089E
+ *     26057E  4e75            rts
+ *
+ * **`($6,A0)` AT `$26053A` IS THE TYPE-1 RECORD `$241182` JUST STAGED**, not the
+ * caller's A0 and not A5 -- `$241182` returns the staging slot in A0 and does not
+ * restore it (`$2411CE movem.l (SP)+,D1-D2` puts back D1 and D2 and nothing
+ * else). So `$81307E`, which `$260586` has just filled from D7, lands on the new
+ * child, which is how the `$38` `$26070C` computes for the two-player first stage
+ * reaches the object that consumes it.
+ *
+ * **AND `$241182` RETURNS THE ID IN D0**, which is why the two `move.l D0` stores
+ * are the handles and not the type: `$2411BE addq.l #1,$80E882 / $2411C4 move.l
+ * $80E882,D0`. On the FULL-QUEUE path `$241190 bge $2411D4` jumps out BEFORE the
+ * `ori.w #$8000,D0` at `$2411A8`, so D0 is still the bare `move.w #$5,D0` -- a
+ * word write over an unknown high half. That is counted rather than invented.
+ *
+ * `$2603FE` (172 bytes) is the pair site `objslot17.js HANDLER7.pairLatch` already
+ * counts from `$25D72E`, so the call graph cycles here; `$241654` is a per-stage
+ * PALETTE WALK (`lea ($241610,PC),A2 / movea.l (0,A2,D0.w),A2` indexed by
+ * `$813096`, then `$24150A` per `$FFFF`-terminated entry) whose tables no wave has
+ * measured. Both are counted at their call sites.
+ */
+export function stageInstall26051A(ram, rom, ctx) {
+  const pri = (t) => rom.u16(RANK.dispatch + t * 8 + 4);    // $24119C ($4,A0,D1)
+  const idOf = (made, type, site) => {
+    if (made.ok) return ram.u32(made.addr + ALLOC.idOff);   // $2411C4 move.l $80E882,D0
+    note(ctx, site, `${hexA(site)} move.l D0,${hexA(site === 0x260524
+      ? STAGESTART.id5 : STAGESTART.id1)} -- $241182's create queue was FULL, so `
+      + `$241190 bge took $2411D4 before $2411A8's ori and D0 still holds the bare `
+      + `move.w #$${type} with the caller's high half, which this port does not `
+      + `know. The low word is stored; the high half is not invented`);
+    return type;
+  };
+  const five = stageCreate(ram, STAGESTART.type5, pri);     // $26051A / $26051E
+  ram.setU32(STAGESTART.id5, idOf(five, STAGESTART.type5, 0x260524));   // $260524
+  const one = stageCreate(ram, STAGESTART.type1, pri);      // $26052A / $26052E
+  ram.setU32(STAGESTART.id1, idOf(one, STAGESTART.type1, 0x260534));    // $260534
+  // $26053A -- through A0, the record the SECOND $241182 staged. On a full queue
+  // that is the $80D51C dummy and the cartridge writes through it just the same.
+  ram.setU16(one.addr + STAGESTART.childField, ram.u16(STAGESTART.wordD7));
+  if (ram.u16(STAGESTART.wordD6) !== 0) {                   // $260542 tst.w / $260548 beq
+    note(ctx, STAGESTART.pairSite, `${hexA(STAGESTART.pairSite)} -- 172 bytes, `
+      + `$2603FE..$2604A9, reached from $260558 with D0 = ${hexA(STAGESTART.pairD0)} `
+      + `and D1 = ${hexA(STAGESTART.pairD1)}. This is objslot17.js HANDLER7.pairSite, `
+      + 'already counted from $25D72E, so the call graph cycles here. Unread');
+    ram.setU16(STAGESTART.wordD6, 0);                       // $26055C move.w #$0
+  }
+  // $260564 lea $222618,A0 / $26056A moveq #$0,D0 / $26056C jsr $2414BE -- 32 bytes.
+  if (ctx?.palette) {
+    install2414BE(ram, ctx.palette, STAGESTART.txBank,
+      rom.bytes(STAGESTART.txSrc, 32), STAGESTART.txSite, 'the $26051A stage install');
+  } else {
+    note(ctx, STAGESTART.txSite, `${hexA(STAGESTART.txSite)} jsr $2414BE -- TEXT bank `
+      + `0 <- ${hexA(STAGESTART.txSrc)} with no PaletteState on this chain`);
+  }
+  note(ctx, STAGESTART.palWalk, `${hexA(STAGESTART.palWalk)} -- the per-stage PALETTE `
+    + 'WALK, reached from $260572. `$241654 lea ($241610,PC),A2 / move.w $813096,D0 / '
+    + 'movea.l (0,A2,D0.w),A2` picks the stage`s list and then loops `move.l (A2)+,D0 / '
+    + 'cmpi.l #$FFFFFFFF / movea.l D0,A1` over $FFFF-terminated (bank word, source '
+    + 'longword) pairs, calling $24150A for each. Neither $241610 nor any list it '
+    + 'points at has been measured, so no window exists for them. Unread');
+  installRankBase26089E(ram, rom);                          // $260578 jsr $26089E
+}
+
+/**
+ * `$260580..$2605A3`, 36 bytes -- **THE STAGE START.** `$26077E bsr.w $260580` is
+ * the last thing the one-shot handoff `$26070C` does, and everything that gives
+ * stage 1 its rank base pointer is below it.
+ *
+ *     260580  4279 0081296E   clr.w   $81296E
+ *     260586  33c7 0081307E   move.w  D7,$81307E
+ *     26058C  33c6 00813080   move.w  D6,$813080
+ *     260592  6100 ff60       bsr.w   $2604F4
+ *     260596  6100 f78c       bsr.w   $25FD24
+ *     26059A  6100 ff7e       bsr.w   $26051A
+ *     26059E  6100 f9da       bsr.w   $25FF7A
+ *     2605A2  4e75            rts
+ *
+ * **`$2605A4..$2605C6` IS A SECOND COPY**, instruction for instruction, resolving
+ * to the SAME four targets -- not byte for byte, because all four branches are
+ * PC-relative and their displacements have to differ ($FF60/$F78C/$FF7E/$F9DA here,
+ * $FF3C/$F768/$FF5A/$F9B6 there). [M] nothing in the 6 MiB image branches to the
+ * twin or names it; only `$260580` has a caller. Checked rather than assumed,
+ * because `$259FF8`/`$25A14C` two waves ago were the same instructions in a
+ * different order with OPPOSITE contracts.
+ *
+ * All three of the head writes are consumed downstream now: `$813080` by
+ * `$260542`'s gate and `$26055C`'s clear, `$81307E` by `$26053A`'s store onto the
+ * new type-1 record. That is what `objslot17.js` was holding this routine back
+ * for -- half of it would have set two words with nothing to read them.
+ *
+ * `$25FF7A` is the computed-call dispatcher this file already ports for the rank
+ * object's own state 1, taken here through the same `computedDispatch`.
+ *
+ * @param d6 `$260778 move.w $813080,D6` -- re-read from RAM by the caller
+ * @param d7 `$260774 move.w #$38,D7`, or 0
+ */
+export function stageStart260580(ram, rom, ctx, d6, d7) {
+  ram.setU16(STAGESTART.zeroWord, 0);                       // $260580 clr.w $81296E
+  ram.setU16(STAGESTART.wordD7, u16(d7));                   // $260586 move.w D7
+  ram.setU16(STAGESTART.wordD6, u16(d6));                   // $26058C move.w D6
+  stageClear2604F4(ram);                                    // $260592 bsr.w $2604F4
+  wipeStageBlock25FD24(ram);                                // $260596 bsr.w $25FD24
+  stageInstall26051A(ram, rom, ctx);                        // $26059A bsr.w $26051A
+  computedDispatch(ram, ctx, RANK.disp25FF7ATable, RANK.disp25FF7AStride,
+    RANK.disp25FF7AJump, RANK.disp25FF7A, DISP_25FF7A_TARGETS);   // $26059E bsr.w $25FF7A
+}
+
+/** `$2605C8..$26070A` -- the state-0 INIT's ten `$2414BE` TEXT installs, at their
+ *  real call sites. The same ten `palette.js TX_OBJ0A_INSTALLS` replays for a
+ *  SEEDED run (W93); this is the cartridge doing them itself on a cold one. */
+const INIT_TX_INSTALLS = Object.freeze([
+  Object.freeze([0x2605dc, 0x0, 0x222638]), Object.freeze([0x2605ea, 0x1, 0x222658]),
+  Object.freeze([0x2605f8, 0x2, 0x222678]), Object.freeze([0x260606, 0x3, 0x222698]),
+  Object.freeze([0x260614, 0x4, 0x2226b8]), Object.freeze([0x260622, 0x5, 0x2226d8]),
+  Object.freeze([0x260630, 0x6, 0x222778]), Object.freeze([0x26063e, 0x7, 0x222798]),
+  Object.freeze([0x26064c, 0x8, 0x2227b8]), Object.freeze([0x26065a, 0xb, 0x2227d8]),
+]);
+
+/** `$260680..$2606C9` -- the loop-2+ arm, taken when `$813098` is non-zero. Two
+ *  words of `$FFFF`, one of `$0`, and five zero LONGWORDS -- and the last five are
+ *  the same `$813144`/`$813148` handles `$2604F4` deletes through, plus three more
+ *  at `$81314C`/`$813150`/`$813154`. */
+const INIT_LOOP2_WORDS = Object.freeze([
+  Object.freeze([0x8130be, 0xffff]), Object.freeze([0x8130c0, 0xffff]),
+  Object.freeze([0x813142, 0x0000]),
+]);
+const INIT_LOOP2_LONGS = Object.freeze([0x813144, 0x813148, 0x81314c, 0x813150, 0x813154]);
+
+/** The calls `$2605C8` makes that no wave has read, in ROM order: call site ->
+ *  target. Each is counted at its OWN site so the report says which one. */
+const INIT_UNREAD = Object.freeze([
+  Object.freeze([0x2605ce, 0x259c4a, 'a reset-prologue routine ($23BEEA\'s 20th call, '
+    + 'frontend.js RESET_PROLOGUE)']),
+  Object.freeze([0x260678, 0x2603da, 'the presentation/teardown body this file already '
+    + 'counts from the state-2 arm at $260788']),
+  Object.freeze([0x2606d2, 0x28d552, 'stageend.js has it as the module-private '
+    + 'clear28D552 and does not export it']),
+  Object.freeze([0x2606d8, 0x28ebfe, 'unread anywhere in this port']),
+  Object.freeze([0x2606e8, 0x27f87c, 'bee.js names it as the big $6E7-word clear and '
+    + 'does not implement it']),
+  Object.freeze([0x2606ee, 0x2884e2, 'a reset-prologue routine (frontend.js '
+    + 'RESET_PROLOGUE)']),
+  Object.freeze([0x2606f4, 0x287024, 'unread anywhere in this port']),
+  Object.freeze([0x2606fa, 0x24a810, 'a reset-prologue routine (frontend.js '
+    + 'RESET_PROLOGUE)']),
+  Object.freeze([0x260700, 0x25fe42, 'unread anywhere in this port']),
+  Object.freeze([0x260704, 0x288574, 'unread anywhere in this port']),
+]);
+
+/**
+ * `$2605C8..$26070A` -- **THE STATE-0 INIT**, and `$260666 move.w #$1,$813082` is
+ * why a board never reads a null `$81315C`.
+ *
+ *     2605C8  1b7c 0001 0002  move.b  #$1,($2,A5)      <- immediate BEFORE displacement
+ *     2605CE  jsr $259C4A
+ *     2605D4  ten x (lea src,A0 / moveq #bank,D0 / jsr $2414BE)
+ *     260660  4279 00813080   clr.w   $813080
+ *     260666  33fc 0001 00813082   move.w #$1,$813082   <- THE GATE $2607A8 TESTS
+ *     26066E  4a79 00813098   tst.w   $813098
+ *     260674  6600 000a       bne.w   $260680           <- loop 2+ arm
+ *     260678  4eba fd60       jsr     ($2603DA,PC)
+ *     26067C  6000 004c       bra.w   $2606CA
+ *     260680  ...loop-2+ clears...      (falls through to $2606CA)
+ *     2606CA  302d 0004       move.w  ($4,A5),D0
+ *     2606CE  6100 f63c       bsr.w   $25FD0C           <- THE STAGE COUNTER
+ *     2606D2  jsr $28D552 / jsr $28EBFE
+ *     2606DE  4a79 00813098 / 6600 001a  tst.w / bne.w $260700
+ *     2606E8  jsr $27F87C / $2884E2 / $287024 / $24A810
+ *     260700  6100 f740       bsr.w   $25FE42
+ *     260704  4eb9 00288574   jsr     $288574
+ *     26070A  4e75            rts
+ *
+ * Both arms of the `$813098` test reach `$2606CA` -- one by `bra.w`, the other by
+ * falling out of the clears -- so the tail is unconditional. `$2606DE`'s second
+ * read of the same word is a separate `tst.w`, not an else, and it skips FOUR
+ * calls on loop 2+.
+ *
+ * `$25FD0C` is `stageend.js writeStage25FD0C` and it writes `$813092`, the very
+ * stage index the recompute indexes the base table with, from `($4,A5)`. So the
+ * two halves of `base[stage]` are installed by two different routines: the stage
+ * by this INIT, the pointer by `$26089E` at the far end of the handoff.
+ */
+function rankInit2605C8(ram, rom, a5, ctx) {
+  ram.setU8(a5 + RANK.stateOff, 1);                         // $2605C8 move.b #$1,($2,A5)
+  const unread = new Map(INIT_UNREAD.map(([site, tgt, why]) => [site, [tgt, why]]));
+  const defer = (site) => {
+    const [tgt, why] = unread.get(site);
+    note(ctx, tgt, `${hexA(tgt)} -- reached from ${hexA(site)}, inside the $2605C8 `
+      + `state-0 INIT of object type $A. ${why}. Not run`);
+  };
+  defer(0x2605ce);                                          // $2605CE jsr $259C4A
+  for (const [site, bank, src] of INIT_TX_INSTALLS) {        // $2605D4..$260660
+    if (!ctx?.palette) {
+      note(ctx, site, `${hexA(site)} jsr $2414BE -- TEXT bank ${bank} <- ${hexA(src)}, `
+        + 'from the $2605C8 state-0 INIT, with no PaletteState on this chain');
+      continue;
+    }
+    install2414BE(ram, ctx.palette, bank, rom.bytes(src, 32), site,
+      'the $2605C8 state-0 INIT');
+  }
+  ram.setU16(STAGESTART.wordD6, 0);                         // $260660 clr.w $813080
+  ram.setU16(RANK.gate813082, 1);                           // $260666 -- THE GATE
+  if (ram.u16(RANK.loopWord) === 0) {                       // $26066E tst.w / $260674 bne
+    defer(0x260678);                                        // $260678 jsr $2603DA
+  } else {
+    for (const [a, v] of INIT_LOOP2_WORDS) ram.setU16(a, v);     // $260680..$260697
+    for (const a of INIT_LOOP2_LONGS) ram.setU32(a, 0);          // $260698..$2606C9
+  }
+  writeStage25FD0C(ram, ram.u16(a5 + 0x04));                // $2606CA / $2606CE
+  defer(0x2606d2);                                          // $2606D2 jsr $28D552
+  defer(0x2606d8);                                          // $2606D8 jsr $28EBFE
+  if (ram.u16(RANK.loopWord) === 0) {                       // $2606DE tst.w / $2606E4 bne
+    defer(0x2606e8); defer(0x2606ee); defer(0x2606f4); defer(0x2606fa);
+  }
+  defer(0x260700);                                          // $260700 bsr.w $25FE42
+  defer(0x260704);                                          // $260704 jsr $288574
+}
 
 // ---------------------------------------------------------- the recompute $2608D2
 
@@ -291,11 +691,15 @@ export function makeRankObject(rom) {
     const a5 = slot;
     const state = ram.u8(a5 + RANK.stateOff);     // $260794 tst.b ($2,A5)
     if (state === 0) {
-      // $260798 beq $2605C8 -- state 0 INIT.  DEFERRED (cold-boot only; the
-      // seed starts in state 1).  Note the deviation and advance to state 1 so
-      // the object cannot spin; the full INIT is a boot-at-any-rung follow-up.
+      // $260798 beq $2605C8 -- state 0 INIT.  W378 ports its writes; what is still
+      // deferred is counted at each call site, and the summary stays keyed here.
+      // The one that matters is $260666 move.w #$1,$813082: it is the gate $2607A8
+      // tests, so from this frame on the per-frame body below is switched OFF until
+      // $26071A ($26070C, the one-shot handoff) clears it -- which is the same
+      // routine that installs $81315C. While the whole INIT was deferred that gate
+      // stayed 0 and the recompute read a null base pointer on the very next frame.
       note(ctx, RANK.initState, RANK_DEVIATION[RANK.initState]);
-      ram.setU8(a5 + RANK.stateOff, 1);
+      rankInit2605C8(ram, rom, a5, ctx);
       return;
     }
     if (state === 2) {

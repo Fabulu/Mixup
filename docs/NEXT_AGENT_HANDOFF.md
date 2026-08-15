@@ -2,7 +2,70 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W377
+## START HERE -- W378
+
+### COLD BOOT -> COIN -> START NOW SURVIVES 6008 FRAMES. IT USED TO DIE AT +4.
+
+`$812E56` = `$E`, `$813082` = 1, `$81315C` = 0, no throw.
+
+### THE RANK POINTER WAS TWO DEFECTS, AND THE SECOND ONE IS THE LESSON
+
+**A guard on the null read would have passed tests and been WRONG.**
+
+1. `$26089E` (the only writer of `$81315C` in the image) was unported, and so was its whole caller
+   chain: `$260578 jsr` at the tail of `$26051A` <- `$26059A bsr` in `$260580` <- `$26077E bsr.w`
+   at the tail of `$26070C`, the handoff `objslot17.js` ports as `handoff26070C` and whose
+   `$260580` tail it NOTES INSTEAD OF RUNNING.
+2. **THE CARTRIDGE NEVER LETS THE RECOMPUTE RUN THAT EARLY ANYWAY.**
+   `$260666 move.w #$1,$813082`, in the state-0 INIT, raises the exact gate that
+   `$2607A8 tst.w $813082 / bne $260808` tests, and the ONLY thing that lowers it is
+   `$26071A clr.w $813082` -- the FIRST instruction of the same handoff that ends at `$26089E`.
+
+So on a board the rank body is switched OFF from the frame slot [9] creates the object
+(`$25CA78 move.w #$A,D0 / jsr $241182`) until the pointer exists. **The port deferred the whole
+INIT wholesale, so the gate stayed 0 and the body ran with a null pointer on its second frame.**
+A zero `$81315C` is SAFE while the gate is up. That is design, not a hole.
+
+**The write is `23D0` (`move.l (A0),abs.l`), not `23FC` or `23C8`.** The longword `0081315C` occurs
+exactly FOUR times in the image: `$2608CC` (this operand), `$2608D4` (the recompute's read), and
+`$15FC20`/`$15FC28` -- **a full second copy of `$2608B0..$2608D0` in the build-A twin at `$15FC00`.**
+
+`$26089E` picks one of FOUR 6-byte base tables by `$80380C`, with `$803926 != 0` pinning index 1
+(`$2608B0 move.b #$1,D0`), and writes `$813160` from a parallel word table. Cold board -> `$80380C`
+= 0 -> `$26086E`. The configured `seed.bin` came from index 1 (`$260874`, W127's).
+
+### PORTED THIS WAVE (all in `src/rank.js`)
+
+| ROM | bytes | name |
+|---|---|---|
+| `$26089E..$2608D0` | 52 | `installRankBase26089E` |
+| `$26051A..$26057E` | 102 | `stageInstall26051A` |
+| `$260580..$2605A2` | 36 | `stageStart260580` (exported) |
+| `$2604F4..$260518` + `$2604AA..$2604F2` | 38 + 74 | `stageClear2604F4` |
+| `$2605C8..$26070A` | 324 | `rankInit2605C8` (writes ported, twelve calls counted individually) |
+
+### THE NEXT BLOCKER IS `$25CB94`, AND WIRING THE CHAIN IS ITS OWN UNIT
+
+`$25CB94` is slot [9]'s continuation past its record walk -- **noted 6005 times in 6008 frames.**
+Slot [9] never advances to `$25D560` state 7, so `$25D662 jsr $26070C` never fires, so the gate is
+never lowered and the pointer is never installed. **Faithful, not a hole.**
+
+**DO NOT treat the `objslot17.js` wiring as a one-liner.** `handoff26070C`'s tail note becomes
+`stageStart260580(ram, rom, ctx, d6, d7)`, and W378's test 9 established that the moment that chain
+runs, `$26051A`'s two real `$241182` creates put **dispatch type 5** in the object table and the very
+next frame throws `UNPORTED $28B5A8: object type 5's "not started" branch`. Budget it as a unit.
+
+### THREE NEW WINDOWS (543 -> 546), AND W127's COMMENT WAS WRONG IN BOTH DIRECTIONS
+
+`$26086E+$18`, `$260886+$10`, `$260896+$8`, each bound by a `lea` base or the next routine's own
+first instruction, each ablated with a positive control. `$260874+$6` (W127) is left byte-for-byte;
+the new `$26086E` window is a SUPERSET and a test asserts the overlap is identical.
+
+**W127's comment called `$26086E` "the rank object's own code" (it is difficulty table 0) and
+`$26087A` onward "more rank/difficulty data" (it is difficulty tables 2 and 3, then the pointer
+table).** Corrected in place; the row itself untouched. Another comment that was wrong for waves.
+
+## W377 NOTES
 
 ### A COIN NOW SURVIVES, AND START ACTUALLY JOINS. GAMEPLAY IS REACHED.
 

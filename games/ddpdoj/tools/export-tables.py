@@ -2314,6 +2314,62 @@ SHOT_WINDOWS.append(
                        "pointer $81315C.  Stage-1 base $34; the seed's $81309E=$35 "
                        "is this byte + (clock>>8)"))
 
+# ==================== W378: THE OTHER THREE RANK BASE TABLES, AND THE TWO =====
+# ==================== TABLES $26089E PICKS BETWEEN THEM WITH =================
+#
+# W127's comment above is WRONG in both directions and this wave read the writer.
+# `$260874-6` is NOT "the rank object's own code" and `$26087A` onward is not
+# loose "rank/difficulty data": there are FOUR base tables, six bytes each, and
+# `$26089E` -- the only writer of `$81315C` anywhere in the 6 MiB image -- picks
+# one of them by a config byte:
+#
+#   26089E  7000            moveq   #$0,D0
+#   2608A0  1039 0080380C   move.b  $80380C.l,D0      the config byte
+#   2608A6  4a79 00803926   tst.w   $803926.l
+#   2608AC  6700 0006       beq.w   $2608B4
+#   2608B0  103c 0001       move.b  #$1,D0            non-zero $803926 pins index 1
+#   2608B4  d040            add.w   D0,D0
+#   2608B6  41fa ffde       lea     ($260896,PC),A0   EA = $2608B8 - $22
+#   2608BA  d0c0            adda.w  D0,A0
+#   2608BC  33d0 00813160   move.w  (A0),$813160.l
+#   2608C2  d040            add.w   D0,D0
+#   2608C4  41fa ffc0       lea     ($260886,PC),A0   EA = $2608C6 - $40
+#   2608C8  d0c0            adda.w  D0,A0
+#   2608CA  23d0 0081315C   move.l  (A0),$81315C.l    <- THE WRITE
+#   2608D0  4e75            rts
+#
+# EVERY BOUND BELOW IS AN ADDRESS THE CODE ITSELF COMPUTES, not a run length:
+#
+#   * the LONGWORD table starts at $260886 (the `lea (-$40,PC)`) and ends at
+#     $260896 (the `lea (-$22,PC)`), so it holds exactly $10/4 = FOUR entries;
+#   * the WORD table starts at $260896 and ends at $26089E, the routine's own
+#     first instruction, so it holds exactly $8/2 = FOUR entries;
+#   * the longword table's four entries are $26086E, $260874, $26087A, $260880 --
+#     six apart -- and the last of them ends at $260886, the longword table's own
+#     base.  So the four base tables fill $26086E..$260885 and nothing else does.
+#
+# MEASURED: $26086E = 10 10 18 20 20 00, $260874 = 34 44 54 64 64 00 (W127's, the
+# one `rip/web/seed.bin` carries), $26087A = 90 A8 C0 D8 F0 00, $260880 = FF FF FF
+# FF FF 00.  A COLD board has $80380C = 0 and so takes $26086E; the seeded board
+# had been configured and carries index 1.  The $26086E window therefore covers
+# W127's table too -- it is a NEW window, not a widening; the W127 row above is
+# left exactly as it was.
+SHOT_WINDOWS.extend([
+    (0x26086E, 0x0018, "W378: all FOUR per-stage RANK BASE tables, $26086E, "
+                       "$260874, $26087A and $260880, six bytes each.  Bounded by "
+                       "$2608C4's own pointer table: its four entries are these "
+                       "four addresses and the last of them ends AT $260886, the "
+                       "table's base.  Read by $2608D2 through $81315C"),
+    (0x260886, 0x0010, "W378: the RANK BASE POINTER table, four longwords, read by "
+                       "$2608C4 lea (-$40,PC) / $2608CA move.l (A0),$81315C.  Four "
+                       "because it runs from $260886 to $260896, the base of the "
+                       "word table $2608B6's lea names"),
+    (0x260896, 0x0008, "W378: the rank DIFFICULTY WORD table, four words, read by "
+                       "$2608B6 lea (-$22,PC) / $2608BC move.w (A0),$813160.  Four "
+                       "because it runs from $260896 to $26089E, which is $26089E's "
+                       "own first instruction (moveq #$0,D0)"),
+])
+
 # ==================== W133: STAGE-2 BACKGROUND DATA (the boot windows) =========
 #
 # W124's worklog (6.3, "THE SEEDED GATE CANNOT REACH THE BANNER DRAIN") added the
