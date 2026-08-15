@@ -42,6 +42,17 @@ place.
 unit-tested against the board's own words. **Only COIN has no route at all.** So the item is one
 input edge, not two.
 
+**AND THE QWERTZ RULE IS ALREADY HONOURED THERE** -- `KEYMAP` is keyed by `e.code`, binds
+`KeyZ` and `KeyY` BOTH to `SHOT`, and `KEYMAP_BY_CODE`'s comment cites the owner's request. So a
+COIN binding must follow the same shape: **`e.code`, and if it ever uses `KeyZ` or `KeyY`, both.**
+Arcade convention is `Digit5` for coin and `Digit1` for P1 start, which collides with nothing in
+the current map.
+
+**THE HARD PART IS NOT THE KEY.** `ctx.coinPort` has no writer, and `$13CFBA` reads `$C08004` while
+IRQ6's `portWord` is `$C08000`. Wiring COIN means routing a SECOND port word, not reusing the
+player one -- conflating them credits a coin every frame, which cost six test failures once
+already.
+
 Insert coin, start button, and whatever else stands between boot and play. **You currently cannot
 start the game**, and the reason is concrete:
 
