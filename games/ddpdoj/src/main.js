@@ -58,6 +58,8 @@ import { tallyScreen25DBB4 } from './tallyscreen.js';
 import * as slot9 from './objslot9.js';
 import { objSlot7 } from './objslot7pool.js';
 import { objSlot13 } from './objslot13.js';
+// W375: slot [14], ported in W372 and left out of W374's registration pass.
+import { objSlot14 } from './objslot14.js';
 import { objSlot15 } from './objslot15.js';
 import { objSlot17 } from './objslot17.js';
 import { SoundState, drainFrame, postWrapperWithRuntime,
@@ -198,6 +200,17 @@ export function defaultHandlers(rom, vram, opts = {}) {
     [7, slotObject(objSlot7, rom)],
     [9, slotObject(slot9.objSlot9, rom)],
     [13, slotObject(objSlot13, rom)],
+    // W375. $240F62[14] = $288C6C, priority $0014 -- the TRANSITIONAL object (src/objslot14.js): it
+    // draws ONE sprite through $23DECE from a rank-selected table, and when its $012C counter passes
+    // zero it stages a create of dispatch type $C and kills itself. PORTED IN W372 and REGISTERED
+    // HERE IN W375 -- it was the first front-end slot written and the one W374's registration pass
+    // missed, so for three waves it was correct code the driver could not reach.
+    //
+    // ITS STATE 0 READS `ctx.videoRegs` AND `ctx.tx` UNGUARDED, which `Game#ctx()` does not carry
+    // under those names (it has `video` and `txvram`). That is the same shape slots [9] and [17]
+    // already have -- `clearTx23C622(ctx.tx)` in both -- so registering [14] adds no new exposure;
+    // the front end reaching state 0 from the driver is one gap for all three, not one per slot.
+    [14, slotObject(objSlot14, rom)],
     [15, slotObject(objSlot15, rom)],
     // Slot [17] is the ONE that needs more than the adapter. `phase7_25D560`'s draw tail takes its
     // seven draws as injected data (`ctx.selectDraws`) rather than importing them, because
@@ -212,7 +225,7 @@ export function defaultHandlers(rom, vram, opts = {}) {
 }
 
 /** Adapt a front-end slot dispatcher to `runObjectDriver`'s `(ram, slot, slotIndex, ctx)` call.
- *  The five take `(ram, rom, a5, ctx)` and none of them reads the slot index. */
+ *  All six ([7], [9], [13], [14], [15], [17]) take `(ram, rom, a5, ctx)` and none reads the index. */
 function slotObject(fn, rom) {
   return (ram, slot, _slotIndex, ctx) => fn(ram, rom, slot, ctx);
 }

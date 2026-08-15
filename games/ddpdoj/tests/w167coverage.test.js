@@ -75,7 +75,15 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   // driver could not reach them; registering them is the whole of this delta -- five
   // entries move from `unknown` to `ported` and the 20-entry table and its 0 nulls do
   // not move. 14 of the 20 top-level dispatch entries now run.
-  assert.match(got.stdout, /top_objects: 14\/20 ported, 6 unknown, 0 null/);
+  // W375: 14 -> 15 ported and 6 -> 5 unknown. ONE slot, [14] = `$288C6C` (`src/objslot14.js`,
+  // ported in W372), which W374's registration pass missed. W375 audited the whole 20-entry
+  // table rather than the eye: the five still unknown -- [8] $25A770, [12] $28F3AC, [16] $256E7A,
+  // [18] $24902A, [19] $28EE88 -- have NO ported dispatcher in `src/` at all. Every repo hit on
+  // those five addresses is a ROM-scan assertion in `w372objdispatch.test.js`, which reads the
+  // cartridge image and asserts nothing about the port. `dojcoverage.py`'s `source_registries()`
+  // parses this number straight out of `main.js`'s `defaultHandlers` block, so this line and the
+  // registry cannot drift apart.
+  assert.match(got.stdout, /top_objects: 15\/20 ported, 5 unknown, 0 null/);
   assert.match(got.stdout, /type5_calls: 19\/23 ported/);
   // W229: 72 -> 76 ported and 54 -> 50 unknown, the four the Stage-4 waves added
   // after W217 (W218's $27C81A and $27DB30, W219's Type-$40 boss, W223's $41).
