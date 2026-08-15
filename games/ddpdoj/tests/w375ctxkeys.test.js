@@ -151,23 +151,28 @@ test('W375: Game#ctx() carries unported/unportedLog and bgVram/vram, and each pa
   });
 
 // THE ALIAS, DRIVEN. Not "the key is present" -- "a `ctx.unported?.note(..)` written inside a
-// front-end slot file lands in the census the gates print". Slot [9]'s record walk ends at
-// `objslot9.js:379`, `ctx.unported?.note($25CB94, ..)`; before the alias that call evaluated to
-// undefined and the frame reported nothing at all.
+// front-end slot file lands in the census the gates print". Slot [9]'s record walk files one, and
+// before the alias that call evaluated to undefined and the frame reported nothing at all.
+//
+// W379 MOVED WHICH NOTE THIS WATCHES, and only that. The site used to be `$25CB94`, which W375
+// read as a once-a-frame continuation past the walk; W379 ported it (it is the dead-record JOIN
+// POLL, reached by `$25CAE8 beq.w`, not a tail) and the note went with it. The walk's remaining
+// counted site is `$25CBF4 jsr $25E72E`, filed once per record from the same loop in the same
+// file through the same `ctx`, so it exercises the alias identically.
 test('W375: a front-end slot\'s ctx.unported?.note() REACHES the log from the driver', () => {
   const g = game();
   assert.equal(g.unportedLog.calls.size, 0, 'the log is not empty before the frame');
 
-  // Three frames: state 0 is the screen reset, and the record walk that ends at $25CB94 is
-  // reached from the state it advances into, not on the frame that runs the reset.
+  // Three frames: state 0 is the screen reset, and the record walk that reaches $25CBF4 runs in
+  // the state it advances into, not on the frame that runs the reset.
   plant(g, firstEmptySlot(g), 9, 0);
   for (let i = 0; i < 3; i++) g.step(0);
 
-  const hit = g.unportedLog.report().filter((l) => l.includes('$25CB94'));
-  assert.equal(hit.length, 1, 'objslot9.js:379 `ctx.unported?.note($25CB94, ..)` did not reach '
+  const hit = g.unportedLog.report().filter((l) => l.includes('$25E72E'));
+  assert.equal(hit.length, 1, 'objslot9.js\'s `ctx.unported?.note($25E72E, ..)` did not reach '
     + `the log -- the front end's notes are still a no-op. log: ${
       g.unportedLog.report().join(' | ')}`);
-  assert.match(hit[0], /slot \[9\] continues past the record walk/);
+  assert.match(hit[0], /slot \[9\]'s per-record select-screen sprite/);
 });
 
 // `$288BDA jsr $23C638` through `ctx.bgVram`, driven. Before the alias the guard swallowed it and

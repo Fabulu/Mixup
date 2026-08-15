@@ -339,7 +339,14 @@ test('W375 $26070C: D1 and D2 arrive at $25D990 SWAPPED', { skip: SKIP }, async 
   assert.equal(ram.u16(K.slotD1), d1, '$260726 D1 -> $813088  (not $813086)');
   assert.equal(ram.u16(K.slotD2), d2, '$26072C D2 -> $813086  (not $813088)');
   assert.equal(ram.u16(K.slotD3), d3, '$260732 D3 -> $81308A');
-  assert.equal(ram.u16(K.slotD4), d4, '$260738 D4 -> $813080');
+  // W379: `$813080` IS NO LONGER READABLE AFTER THE CALL, and that is the cartridge, not a
+  // regression. `$260738` still writes D4 there -- the two ROM assertions below and the D6
+  // re-read test prove it -- but `$26077E bsr.w $260580` now RUNS, and `$26055C move.w #$0,
+  // $813080` inside `$26051A` clears the word whenever `$260542 tst.w` finds it non-zero. So the
+  // observable end state for a non-zero D4 is 0. This assertion used to read the value because
+  // nothing downstream consumed it; something does now.
+  assert.equal(ram.u16(K.slotD4), 0,
+    '$260738 D4 -> $813080, and then $26055C clears it: $260542 tst.w saw the $55');
   assert.equal(rom.u32(0x260726 + 2), 0x00813088, '$260726 move.w D1,$813088');
   assert.equal(rom.u32(0x26072c + 2), 0x00813086, '$26072C move.w D2,$813086');
   assert.equal(rom.u32(0x260744 + 2), 0x00813086, '$260744 move.w $813086,D1');
@@ -391,7 +398,10 @@ test('W375 $26070C is a ONE-SHOT on $813082', { skip: SKIP }, async () => {
   }
   assert.equal(seen.length, 1, '$25D990 still called exactly once');
   assert.equal(ram.u16(K.slotD0), 1, '  ...and the second call wrote no slot');
-  assert.equal(ram.u16(K.slotD4), 5, '  ...nor $813080');
+  // W379: same as above -- the FIRST call's $260580 tail cleared $813080 through $26055C, and the
+  // later calls do not touch it because $260710 sends them straight to the movem restore. Zero
+  // here therefore still proves "no second write": a second call would have put $9 in it.
+  assert.equal(ram.u16(K.slotD4), 0, '  ...nor $813080, which $26055C left at 0 on the first pass');
 
   // The flag is a WORD, and it is a REQUEST: zero means "already done", not "do it".
   const g = await fx();
@@ -411,6 +421,17 @@ test('W375 $26070C D7 = $38 only when $803926 != 0 AND $813092 == 0 -- all four'
       [1, 1, 0x00, 'gate set,   block set   -> $260770 bne skips'],
       [1, 0, 0x38, 'gate set,   block clear -> $260774 move.w #$38,D7'],
     ];
+    // W379: D6 AND D7 ARE READ OFF THE CARTRIDGE'S OWN WRITES NOW, NOT OUT OF A NOTE'S TEXT.
+    // `$26077E bsr.w $260580` used to be a counted note whose message carried the two registers,
+    // so this loop pattern-matched that message. `$260580` runs, and its first three instructions
+    // are `clr.w $81296E / move.w D7,$81307E / move.w D6,$813080` -- so D7 lands in `$81307E`
+    // where it can simply be read. That is a strictly better check: it observes the value
+    // ARRIVING somewhere rather than a string this port composed about it.
+    //
+    // D6 is checked at `($6,A0)` and not at `$813080`, because `$26055C` clears `$813080` again
+    // on the way past whenever it was non-zero (see the ONE-SHOT test). `$26053A move.w $81307E,
+    // ($6,A0)` is D7's own destination on the staged type-1 record, so the two travel together.
+    const { STAGESTART } = await import('../src/rank.js');
     for (const [gate, block, want, why] of cases) {
       const { handoff26070C, HANDOFF_26070C: K, ram, rom, ctx, notes, save } = await armed();
       ram.setU16(K.d7Gate, gate);                            // $803926
@@ -418,11 +439,13 @@ test('W375 $26070C D7 = $38 only when $803926 != 0 AND $813092 == 0 -- all four'
       ram.setU16(K.slotD4, 0);
       handoff26070C(ram, rom, ctx, 0, 0, 0, 0, 0x077, save);
 
-      const n = notesAt(notes, K.tail);
-      assert.equal(n.length, 1, `${why}: $260580 noted once`);
-      assert.match(n[0].what, new RegExp(`D7 = \\$${want.toString(16).toUpperCase()}\\b`), why);
-      assert.match(n[0].what, /D6 = \$77\b/,
-        '$260778 re-reads D6 from $813080 AFTER $25D990, not from the D4 it stored');
+      assert.deepEqual(notesAt(notes, K.tail), [], `${why}: $260580 is a CALL, so it is not noted`);
+      assert.equal(ram.u16(STAGESTART.wordD7), want, `${why}: $260586 move.w D7,$81307E`);
+      // $260778 move.w $813080,D6 RE-READS the word after $25D990, so D6 is the $77 the caller
+      // put there as D4 and not something $25D990 might have changed. $26055C then clears it,
+      // which is exactly the branch a zero D6 would not have taken.
+      assert.equal(ram.u16(STAGESTART.wordD6), 0,
+        '$26058C wrote D6 = $77 and $260542 tst.w / $26055C clr saw it non-zero');
     }
 
     // Both gates are read as WORDS, and $813092 is compared to zero with a `cmpi.w`, not tested.
@@ -450,24 +473,40 @@ test('W375 $26070C touches neither A0, A5 nor A6, and restores every register', 
   });
 
 // =================================================================================================
-// 4. `$260580` -- WHAT WAS LEFT, AND ITS EXACT EXTENT
+// 4. `$260580` -- W375 LEFT IT A NOTE, W378 PORTED IT INTO `rank.js`, W379 CONNECTED THE TWO
+//
+// THE TEST THAT STOOD HERE ASSERTED THE NOTE, and it was correct on the day it was written. W378
+// then ported the whole of `$260580..$2605A3` as `rank.js`'s `stageStart260580` -- all four of the
+// `bsr`s this test used to enumerate by size -- and nobody removed the note, so the port owned the
+// routine and refused to call it from the only site the cartridge gives it. That gap is what made
+// `$81315C` reachable as a null: `$26071A clr.w $813082` switched the rank body ON and `$26089E`,
+// four `bsr`s below `$26077E`, never ran to give it a pointer.
+//
+// The extent assertions off the cartridge are KEPT, unchanged, below -- they are measurements and
+// they did not stop being true. What is replaced is the claim that the port declines to run it.
 // =================================================================================================
 
-test('W375 $260580 is a counted note carrying its exact extent and its whole subtree',
+test('W379 $260580 is CALLED from $26077E, and it is what installs the rank base $81315C',
   { skip: SKIP }, async () => {
     const { handoff26070C, ram, rom, ctx, notes, save } = await armed();
+    const { RANK, STAGESTART } = await import('../src/rank.js');
+
+    ram.setU32(RANK.basePtr, 0);                             // $81315C -- W378's null
+    ram.setU16(STAGESTART.zeroWord, 0x1234);                 // $81296E, so the clr is visible
+    assert.equal(ram.u16(0x813082), 1, 'armed: $260710 tst.w sees the request');
+
     handoff26070C(ram, rom, ctx, 0, 0, 0, 0, 0, save);
 
-    const n = notesAt(notes, 0x260580);
-    assert.equal(n.length, 1, '$260580 is noted, by address');
-    assert.match(n[0].what, /36 bytes/, '  ...36 bytes');
-    assert.match(n[0].what, /\$260580\.\.\$2605A3/, '  ...$260580..$2605A3, both ends');
-    for (const [addr, size] of [['\\$2604F4', 38], ['\\$25FD24', 20], ['\\$26051A', 102],
-      ['\\$25FF7A', 46], ['\\$2603FE', 172]]) {
-      assert.match(n[0].what, new RegExp(`${addr} \\(${size} B\\)`),
-        `  ...and names ${addr.replace('\\', '')} with ${size} bytes`);
-    }
-    assert.match(n[0].what, /CYCLES/, '  ...and says the graph cycles back through $2603FE');
+    assert.deepEqual(notesAt(notes, STAGESTART.start), [],
+      '$260580 is not noted any more -- it is a call');
+    assert.equal(ram.u16(STAGESTART.zeroWord), 0,
+      '$260580 clr.w $81296E -- its FIRST instruction ran');
+    assert.notEqual(ram.u32(RANK.basePtr), 0,
+      '$26059A bsr $26051A -> $260578 jsr $26089E -> $2608CA move.l (A0),$81315C. This is the '
+      + 'only writer of that longword in the 6 MiB image, and reaching it is the whole point of '
+      + 'the chain: $26071A lowered $813082 on the way in, so $2607A8 will let $2608D2 read '
+      + 'through this pointer on the very next frame');
+    assert.equal(ram.u16(0x813082), 0, '  ...and the request was consumed, as before');
 
     // The four `bsr`s and the cycle, straight off the cartridge. `$61` is BSR.
     assert.equal(rom.u16(0x260580), 0x4279, '$260580 clr.w $81296E -- the first of its own writes');

@@ -440,6 +440,20 @@ Every one of these has produced a shipped defect or a withdrawn claim.
 22. **A push/pop pair means the routine is REGISTER-TRANSPARENT and returns NOTHING.** `$23C1C2`
     opens `move.l D0,-(A7)` and its shared tail closes `move.l (A7)+,D0`. "It returns the old mask"
     is the obvious reading and it is wrong. Check both halves before you name a return value.
+23. **`$8xx0` IS `SBCD`, NOT A COMPARE, AND IT WRITES ITS DESTINATION.** `$8300` decodes field by
+    field as SBCD D0,D1 (bits 15-12 = `1000`, bits 8-4 = `10000`, bit 3 = 0); a `cmp.b D0,D1` is
+    `$B200`, a different opcode. W379 found the port had read `$25CB86 8300` as a compare, concluded
+    D1 was untouched, and let the following `$25CB8E 1D41 002F move.b D1,($2F,A6)` write back the
+    literal `1` the `moveq` had put there. **That pinned the select screen's auto-confirm clock at 1
+    forever**, so the borrow never happened, and every record sat in state 1 waiting for a button
+    press that a demo run never makes. Nine bytes, and it froze the whole screen.
+    **The tell is an arithmetic opcode followed by a store of the "compared" register.** If code
+    writes back a register you believe was only read, you have mis-decoded the instruction above it.
+24. **A COUNTED NOTE GOES STALE WHEN SOMEONE ELSE PORTS ITS SUBJECT.** `objslot17.js` noted
+    `$26077E bsr.w $260580` with a message listing four routines as unread. W378 ported all four
+    into `rank.js` and nobody removed the note, so the cartridge's ONLY caller of that routine still
+    did not call it -- and `$26089E`, the sole writer of `$81315C`, sits at the bottom of it. **When
+    you port a routine, grep the tree for notes naming it** and hand the list to whoever owns them.
 
 ---
 

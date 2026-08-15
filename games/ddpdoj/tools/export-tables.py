@@ -3172,6 +3172,22 @@ SHOT_WINDOWS.extend([
                        "at a stride of $E -- FOURTEEN bytes, not sixteen. Each is word, long (raw "
                        "reader $23D16C/$23D17E), long (edge reader $23D186/$23D18E), word, word. "
                        "The fourth field is what $25D39C reads as ($A,A4)"),
+    (0x25D1CA, 0x000F, "W379: $25D164's STRING, handed to $25A14C by the lea at $25D1A2. The bound "
+                       "is stated by the READER and by nothing else: $25A158 move.b (A0)+,D4 / "
+                       "$25A15A tst.b D4 / beq -- a NUL scan, so the window has to reach the "
+                       "terminator and stop. Fifteen bytes: fourteen $20 blanks (this string "
+                       "ERASES the prompt row state 1 wrote) and the $00 at $25D1D8 that ends the "
+                       "loop. $25D1D9 is the alignment pad before $25D1DA's first opcode and is "
+                       "deliberately OUTSIDE the window -- the reader can never touch it, because "
+                       "it has already returned. W373 windowed this routine's value table "
+                       "($25CF60) and its descriptors ($25CF64) but not its string, which no test "
+                       "reached until slot [9]'s records could leave state 1"),
+    (0x25D3F6, 0x000C, "W379: $25D39C's STRING, handed to $25A14C by the lea at $25D3CC, and the "
+                       "twin of $25D1CA. Same reader, same bound: $25A158 move.b (A0)+ / $25A15A "
+                       "tst.b / beq stops on the NUL. Eleven $20 blanks and the $00 at $25D401, "
+                       "which is TWELVE bytes and ends exactly where $25D402's first opcode "
+                       "($25D402 tst.w D7) begins -- so the routine that follows closes the block "
+                       "and no plausibility scan is involved"),
     (0x25D2DE, 0x000C, "W373: $25D2EA's two three-word order tables, $25D2DE and $25D2E4. They are "
                        "MIRRORED -- 0,1,2 and 2,1,0 -- so the two sides scan from opposite ends. "
                        "Self-bounding: the second ends exactly where $25D2EA's code begins"),

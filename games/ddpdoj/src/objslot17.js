@@ -25,7 +25,7 @@
 import { u16, i16 } from './ram.js';
 import { install24150A, install2414BE, paletteSet241688 } from './palette.js';
 import { clearTx23C622, txString25A14C } from './background.js';
-import { announcePost } from './rank.js';
+import { announcePost, stageStart260580 } from './rank.js';
 import { cursorsFromPosted25D9E6 } from './tallyscreen.js';
 import { stageCreate, queueKill } from './objalloc.js';
 
@@ -690,26 +690,25 @@ export function handoff26070C(ram, rom, ctx, d0, d1, d2, d3, d4, save = savedSel
   }
   const d6 = ram.u16(K.slotD4);                             // $260778 move.w $813080,D6 -- RE-READ
 
-  // $26077E bsr.w $260580 -- THIRTY-SIX BYTES, $260580..$2605A3, and it is left as a note because
-  // it is the mouth of a subtree, not a leaf. It writes $81296E = 0, $81307E = D7 and $813080 = D6
-  // and then `bsr`s FOUR routines in order:
+  // $26077E bsr.w $260580 -- **AND THIS IS A CALL NOW, NOT A NOTE.**
   //
-  //   $2604F4  38 B  -> $241238 x2 and $2604AA (74 B, six more $241238)
-  //   $25FD24  20 B  -> a leaf: `move.w #$0,(A0)+` x22
-  //   $26051A 102 B  -> $241182 x2, $2603FE (172 B -- HANDLER7.pairSite, already noted from
-  //                     $25D72E, so the graph has a CYCLE), then $2414BE, $241654, $26089E
-  //   $25FF7A  46 B  -> `$25FF9A jsr (A0)` -- an INDIRECT call through a pointer it walks at a
-  //                     $24 stride, so the callee is not even statically knowable
+  // The note that stood here described $260580 as "the mouth of a subtree" and listed the four
+  // `bsr`s below it as unread. THAT WAS TRUE WHEN IT WAS WRITTEN AND IT STOPPED BEING TRUE IN
+  // W378, which ported the whole of $260580..$2605A3 into `rank.js` as `stageStart260580`
+  // (`$2604F4` -> `stageClear2604F4`, `$25FD24` -> `wipeStageBlock25FD24`, `$26051A` ->
+  // `stageInstall26051A`, `$25FF7A` -> `computedDispatch`). Nobody removed the note, so the port
+  // held the routine back from the ONE caller the cartridge gives it and the whole chain below
+  // $26077E was dead.
   //
-  // Three hundred and sixteen bytes in this bank before counting $241xxx, and one computed call.
-  // The three head writes are not done either: half of $260580 would leave $81307E/$813080 set
-  // with nothing downstream to consume them.
-  ctx?.unported?.note(K.tail, `${hex7(K.tail)} -- ${K.tailBytes} bytes, ${hex7(K.tail)}..$2605A3, `
-    + `reached from $26077E with D6 = ${hex7(d6)} and D7 = ${hex7(d7)}. It bsr's $2604F4 (38 B), `
-    + '$25FD24 (20 B), $26051A (102 B) and $25FF7A (46 B); $26051A bsr\'s back into $2603FE '
-    + '(172 B) so the call graph CYCLES, and $25FF9A is a `jsr (A0)` through a walked pointer. '
-    + 'Unread, and its own three writes ($81296E = 0, $81307E = D7, $813080 = D6) are held back '
-    + 'with it rather than done half-way');
+  // **IT IS ALSO THE ONLY WRITER OF `$81315C`.** `$26051A` ends in `$260578 jsr $26089E`, and
+  // `$2608CA move.l (A0),$81315C` is the single store to that longword in the 6 MiB image. So
+  // this line and `$26071A clr.w $813082` are two halves of one transaction: the `clr` above
+  // switches the rank body ON and this call gives it the pointer it is now allowed to read. With
+  // the note in place, W378's gate came down and the pointer stayed null, and `$2608D2`'s
+  // `rom.u8(ram.u32($81315C) + stage)` threw `UNPORTED $0` on the frame after the handoff -- 2058
+  // frames past START on a cold boot. Splitting the pair is what makes a null pointer reachable;
+  // trap 14 in reverse.
+  stageStart260580(ram, rom, ctx, d6, d7);
   return true;
 }
 

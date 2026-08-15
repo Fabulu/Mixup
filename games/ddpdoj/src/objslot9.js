@@ -24,7 +24,7 @@
 import { u16, i16 } from './ram.js';
 import { RAM } from './machine.js';
 import { SCHED } from './scheduler.js';
-import { paletteSet241688, install24150A, install2414BE } from './palette.js';
+import { paletteSet241688, install24150A, install2414BE, fade246292 } from './palette.js';
 import { txString25A14C, clearTx23C622 } from './background.js';
 import { readInput23D186 } from './tallyscreen.js';
 import { enqueueRegistersThroughStub, enqueueZoomedRegistersThroughStub } from './spritequeue.js';
@@ -33,6 +33,22 @@ import { queueKill, stageCreate } from './objalloc.js';
 // transcribed a second time so the two callers cannot drift apart. stageend.js imports neither
 // objslot9.js nor objslot17.js, so there is no cycle.
 import { clear23C47A } from './stageend.js';
+// $25CB98 jsr $23D16C / $25CBC8 jsr $23D17E, and $25CBB8 jsr $23C98E / $25CBE6 jsr $23C9F0. All
+// four are already ported in `objslot8.js`, which is where the credit dips live, so `$25CB94`
+// calls them rather than transcribing a second copy of the coin logic into this file.
+//
+// **THIS CLOSES A CYCLE AND IT IS SAFE, DELIBERATELY.** `objslot8.js` imports `clear25C57E` from
+// HERE (its own `$25A9B2` teardown needs it), so the two files now import each other. Every one
+// of the four names below is an `export function` -- a hoisted declaration, initialised before
+// either module body runs -- and this file calls them only from inside `joinPoll25CB94`, never at
+// module scope. `objslot8.js` uses `clear25C57E` the same way. So whichever module the loader
+// evaluates first, neither ever reads a binding of the other's that is still in its TDZ.
+// The rule the file header states for `stageend.js` is unchanged: what must not happen is a
+// module-scope read across a cycle, and there is none here. Importing `SCREEN8` (a `const`) into
+// module scope WOULD be one, which is why `$8000` below is spelled out at its own site instead.
+import {
+  startRaw23D16C, creditTake23C98E, creditTake23C9F0,
+} from './objslot8.js';
 import {
   SCREEN17, phase3_25D306, phase5_25D39C, phase6_25D4F0, phase7_25D560, sideFromD7_25D4E4, DESC17,
   clear25F442,
@@ -47,7 +63,69 @@ export const SCREEN9 = Object.freeze({
     0x25d010, 0x25d1da, 0x25d164]),
   // $25CB5E cmpi.b #$7,($1,A6) / bcc -- an UNSIGNED >= test, so states 7 and above skip the tail.
   tailLimit: 0x07, tailCount: 0x31, tailReload: 0x02, tailFlag: 0x2e, tailSet: 0x30,
+  // ($2F,A6) is the LOW HALF of the auto-confirm clock. `$25D010` seeds the pair with a single
+  // `move.w #$599,($2E,A6)`, so ($2E,A6) is $05 and ($2F,A6) is $99 -- trap 3, one word literal
+  // covering two byte fields, and reading it as one word hides the whole timer.
+  tailLowAt: 0x2f,
   after: 0x25cb94,
+});
+
+/** `$25CB94..$25CC44` -- everything the record walk does that is NOT a state handler.
+ *
+ *  THE ADDRESS `$25CB94` IS NOT "AFTER THE LOOP" AND NEVER WAS. `$25CAE8 beq.w` has its
+ *  displacement word at `$25CAEA` and `$00AA` past that is `$25CB94` (trap 4, and it is why the
+ *  old note here described a tail that runs once a frame -- it runs once per DEAD RECORD). The
+ *  loop's real seam is two bytes earlier: `$25CB92 bra.s` lands on `$25CBF4`, which is inside the
+ *  loop, and `$25CBFE dbra D7` (`51CF FEE6`, displacement word at `$25CC00`, -282) goes back to
+ *  `$25CAE6`. So the shape is:
+ *
+ *      $25CAE6  live?  no  -> $25CB94  JOIN POLL         (this record is empty; may it start?)
+ *                      yes -> handlers, then $25CB5E tail, then $25CB92 bra
+ *      $25CBF4  jsr $25E72E                              EVERY record, live or dead
+ *      $25CBFA  lea ($70,A6),A6 / $25CBFE dbra
+ *      $25CC02  the TEARDOWN decision, then $25CC40 bsr.w $25C818, $25CC44 rts
+ */
+export const WALK9 = Object.freeze({
+  join: 0x25cb94, joinEnd: 0x25cbf4, drawSite: 0x25cbf4, done: 0x25cc02, rts: 0x25cc44,
+  // $25CB9E / $25CBCE btst #$F,D0 on the RAW (held, not edge) input word.
+  startBit: 0x8000,
+  // $25CBB0 / $25CBDE cmpi.b #$6,<other record's state> / bcc -- an UNSIGNED >=, and the arm it
+  // skips is the credit take. So once the OTHER side is at state 6 or past it, nobody else joins.
+  lateState: 0x06,
+  // $25CBF4 jsr $25E72E -- $25E72E..$25E7B7, 138 bytes, ending at the `$25E7B6 rts`.
+  draw: 0x25e72e, drawBytes: 0x8a,
+  // $25CC12 / $25CC28 cmpi.b #$8 -- state 8 is `$25D748`'s retirement marker.
+  retired: 0x08, bothBits: 0x0003, killState: 0x02,
+});
+
+/** `$25C818..$25C8A1`, 138 bytes -- **THE SELECT SCREEN'S PALETTE PULSE**, and the writer of
+ *  `$813005`, which is the byte `$25C8A2` seeds to 0 and nothing else in the port sets.
+ *
+ *  `movem.l D0-D7/A0-A6,-(A7)` at `$25C818` and `movem.l (A7)+,D0-D7/A0-A6` at `$25C89C` bracket
+ *  the whole body, so it is REGISTER-TRANSPARENT (trap 9) and returns nothing. Its only products
+ *  are `$813004`, `$813005` and one palette bank.
+ *
+ *  IT IS A ONE-WAY LATCH. `$25C81C tst.b $813005 / bne $25C89C` leaves immediately once the byte
+ *  is set, and the only thing that sets it is `$25C840`, four instructions later, when EITHER
+ *  record has reached state 6. So the pulse animates the whole time the players are choosing and
+ *  then stops dead on the frame the first one commits.
+ *
+ *  **THE TWO RECORD TESTS ARE SIGNED AND NEITHER LOOKS AT A LIVE BYTE.** `$25C832 bge.w` and
+ *  `$25C83C blt.w` read `($1,A6)` and `($71,A6)` straight through; a dead record simply still
+ *  holds the 0 `$25C8A2` seeded, which is below 6, so it never latches the byte on its own.
+ *
+ *  The pulse itself is a brightness sweep: `$813004` advances by 6 a frame and is used as the
+ *  ANGLE into `$241D34` at speed index `$50`; `$800` minus the returned D2, shifted right six,
+ *  is the LEVEL handed to `$246292` for each of 32 words copied `$812F84 -> $812FC4`. `$812F84`
+ *  is the 64-byte block `$25CA94` copied out of `$223FF8`, so the source is already windowed.
+ */
+export const PULSE9 = Object.freeze({
+  addr: 0x25c818, rts: 0x25c8a0, bytes: 0x8a,
+  gate: 0x813005, phase: 0x813004, phaseStep: 0x06,   // $25C81C / $25C858 addi.b #$6,$813004
+  freeze: 0x06,                                       // $25C82C / $25C836 cmpi.b #$6
+  src: 0x812f84, dst: 0x812fc4, words: 0x20,          // $25C84C / $25C852 / $25C87A moveq #$1F + dbra
+  speedIdx: 0x50, levelBase: 0x0800, levelShift: 6,   // $25C860 / $25C872 / $25C878 lsr.w #$6
+  bank: 0x0b,                                         // $25C892 move.w #$B,D0 / $25C896 jsr $24150A
 });
 
 /** The fifteen palette installs `$25C8A2` ends with, in cartridge order, `$25C9A6..$25CA72`.
@@ -285,6 +363,144 @@ const DRAWS9_25D800 = Object.freeze({
   draw25F074,                                                // $25D834
 });
 
+/** Sign-extend a byte. `$25C832 bge.w` and `$25C83C blt.w` are the SIGNED conditions, and a record
+ *  state byte is only ever 0..8 on the board -- but the port must branch on what the instruction
+ *  tests, not on what the data happens to be. `ram.js` exports `i16` and not this. */
+const i8 = (v) => (v << 24) >> 24;
+
+/** `$25CB86 sbcd D0,D1` -- a **PACKED-BCD** subtract, not the `cmp.b` this file used to call it.
+ *
+ *  `8300` is SBCD D0,D1 (`rosetta.py dasm` agrees), and the difference is the whole auto-confirm
+ *  clock: SBCD leaves its RESULT in D1, and `$25CB8E move.b D1,($2F,A6)` stores that result. The
+ *  old transcription read the opcode as a compare, concluded D1 was untouched, and wrote back the
+ *  literal 1 -- which pinned ($2F,A6) at 1 from the first tick onwards and made the borrow that
+ *  drives ($2E,A6) impossible. See `walkTail25CB5E`.
+ *
+ *  **X IS ZERO ON EVERY PATH THAT REACHES IT**, so this models `Dx - Dy` and not `Dx - Dy - X`.
+ *  SBCD is the only instruction here that reads X, and the last writer of X before it is
+ *  `$25CB66 subq.b #1,($31,A6)`. The `$25CB6A bne` we fell through means that subq's result was
+ *  zero, and a byte subtract of 1 can only give zero from 1, which does not borrow. (A `($31,A6)`
+ *  of 0 WOULD borrow, but it also gives $FF and takes the `bne`.)
+ *
+ *  @returns `{ value, borrow }` -- `borrow` is the C the `$25CB88 bcc` reads. */
+function sbcd25CB86(dx, dy) {
+  let lo = (dx & 0x0f) - (dy & 0x0f);
+  let hi = ((dx >>> 4) & 0x0f) - ((dy >>> 4) & 0x0f);
+  if (lo < 0) { lo += 10; hi -= 1; }
+  let borrow = false;
+  if (hi < 0) { hi += 10; borrow = true; }
+  return { value: ((hi & 0x0f) << 4) | (lo & 0x0f), borrow };
+}
+
+/** `$25CB5E..$25CB92` -- THE PER-RECORD TAIL, and it is the AUTO-CONFIRM CLOCK.
+ *
+ *  `($31,A6)` is a divide-by-two on frames. Every second frame the BCD pair `($2E,A6)`/`($2F,A6)`
+ *  -- seeded `$0599` by `$25D010`'s one `move.w` -- counts down by one, and the frame `($2E,A6)`
+ *  reaches 0 the other arm fires `move.b #$1,($30,A6)`, which is exactly the byte
+ *  `confirmAndDraw` reads as "confirmed with no button". 500 ticks at one per two frames is
+ *  1000 frames, and that is the select screen's timeout.
+ *
+ *  It is factored out of `objSlot9` because `$25CB92 bra.s $25CBF4` is a jump INTO the loop tail,
+ *  not out of the iteration: the `jsr $25E72E` at `$25CBF4` still has to run. Written with
+ *  `continue`, as it was, that call could never be reached.
+ *
+ *  EXPORTED so `w379slot9.test.js` can step the clock without a handler running underneath it.
+ *  Every state below 7 has a handler and several of them advance `($1,A6)` mid-pass, so driving
+ *  the tail through `objSlot9` alone cannot hold the state still long enough to watch 500 ticks;
+ *  the real path proves it end to end and this proves the arithmetic. */
+export function walkTail25CB5E(ram, a6) {
+  // $25CB5E cmpi.b #$7,($1,A6) / $25CB64 bcc.s $25CB92 -- UNSIGNED, so 7 and above skip it all.
+  if (ram.u8(a6 + SCREEN17.phaseAt) >= SCREEN9.tailLimit) return;
+  const left = (ram.u8(a6 + SCREEN9.tailCount) - 1) & 0xff;   // $25CB66 subq.b #1,($31,A6)
+  ram.setU8(a6 + SCREEN9.tailCount, left);
+  if (left !== 0) return;                                    // $25CB6A bne.s $25CB92
+  ram.setU8(a6 + SCREEN9.tailCount, SCREEN9.tailReload);     // $25CB6C -- reload TWO
+  if (ram.u8(a6 + SCREEN9.tailFlag) === 0) {                 // $25CB72 tst.b ($2E,A6) / bne.s
+    ram.setU8(a6 + SCREEN9.tailSet, 1);                      // $25CB78 move.b #$1,($30,A6)
+    return;                                                  // $25CB7E bra.s $25CB92
+  }
+  // $25CB80 moveq #$1,D0 / $25CB82 move.b ($2F,A6),D1 / $25CB86 sbcd D0,D1 -- the BCD tick.
+  const { value, borrow } = sbcd25CB86(ram.u8(a6 + SCREEN9.tailLowAt), 1);
+  if (borrow) {                                              // $25CB88 bcc.s $25CB8E
+    ram.setU8(a6 + SCREEN9.tailFlag,
+      (ram.u8(a6 + SCREEN9.tailFlag) - 1) & 0xff);           // $25CB8A subq.b #1,($2E,A6)
+  }
+  ram.setU8(a6 + SCREEN9.tailLowAt, value);                  // $25CB8E move.b D1,($2F,A6)
+}
+
+/** `$25CB94..$25CBF2` -- **THE MID-SCREEN JOIN POLL**, run for a record that is NOT live.
+ *
+ *  `$25CB94 tst.w D7 / beq.s $25CBC8` splits it into two arms that are the same eleven
+ *  instructions with the other player's four addresses in them:
+ *
+ *      D7 != 0  (record 0)   $23D16C  P1 raw   other = ($70,A0)   $23C98E  take a P1 credit
+ *      D7 == 0  (record 1)   $23D17E  P2 raw   other = ($1,A0)    $23C9F0  take a P2 credit
+ *
+ *  and the four callees are `objslot8.js`'s, not new ones. `creditTake*` already carries the
+ *  cartridge's contract: **`true` means REFUSED**, which is the `bcs.w $25CBF4` at `$25CBBE` and
+ *  `$25CBEC`. A refusal leaves the record dead, which is the correct answer on a board with no
+ *  credit left, and it is why this can be a call rather than an invention.
+ *
+ *  THREE CONDITIONS, ALL OF WHICH MUST HOLD, and the middle one is easy to invert:
+ *   1. `btst #$F` on the RAW (held) word -- START is down.
+ *   2. the OTHER record is dead, OR its state is still BELOW 6. `$25CBB0 cmpi.b #$6 / bcc.s`
+ *      branches AWAY on >=, so a partner already at state 6 CLOSES the door.
+ *   3. the credit is granted.
+ *
+ *  Only then `$25CBC2`/`$25CBF0 move.b #$1,(A6)`. `$25C8A2` left the record's state byte at 0, so
+ *  the next frame's walk finds it in state 0 and runs `phase0_25D010` -- the joiner gets the full
+ *  entry sequence, not a half-built record. */
+function joinPoll25CB94(ram, ctx, a6, d7) {
+  const first = u16(d7) !== 0;                               // $25CB94 tst.w D7 / $25CB96 beq.s
+  const raw = startRaw23D16C(ram, first ? 0 : 1);            // $25CB98 jsr $23D16C / $25CBC8 $23D17E
+  if ((raw & WALK9.startBit) === 0) return;                  // $25CB9E btst #$F,D0 / $25CBA2 beq
+  // $25CBA4 / $25CBD4 lea $812EA0,A0 -- the SAME absolute in both arms; only the displacement
+  // moves, so this is "the other record" spelled two ways.
+  const other = SCREEN17.recs + (first ? SCREEN17.recStride : 0);
+  if (ram.u8(other) !== 0                                    // $25CBAA / $25CBDA tst.b -- live?
+    && ram.u8(other + SCREEN17.phaseAt) >= WALK9.lateState) return;   // $25CBB0 / $25CBDE cmpi/bcc
+  const refused = first ? creditTake23C98E(ram, ctx) : creditTake23C9F0(ram, ctx);
+  if (refused) return;                                       // $25CBBE / $25CBEC bcs.w $25CBF4
+  ram.setU8(a6, 1);                                          // $25CBC2 / $25CBF0 move.b #$1,(A6)
+}
+
+/** `$25C818` -- see `PULSE9`. */
+export function pulse25C818(ram, ctx) {
+  if (ram.u8(PULSE9.gate) !== 0) return;                     // $25C81C tst.b / $25C822 bne.w $25C89C
+  const recs = SCREEN17.recs;                                // $25C826 lea $812EA0,A6
+  // $25C82C cmpi.b #$6,($1,A6) / bge.w $25C840 and $25C836 cmpi.b #$6,($71,A6) / blt.w $25C84C.
+  // SIGNED, and the second is only consulted when the first fails, which is an OR either way.
+  if (i8(ram.u8(recs + SCREEN17.phaseAt)) >= PULSE9.freeze
+    || i8(ram.u8(recs + SCREEN17.recStride + SCREEN17.phaseAt)) >= PULSE9.freeze) {
+    ram.setU8(PULSE9.gate, 1);                               // $25C840 move.b #$1,$813005
+    return;                                                  // $25C848 bra.w $25C89C
+  }
+  const phase = (ram.u8(PULSE9.phase) + PULSE9.phaseStep) & 0xff;   // $25C858 addi.b #$6,$813004
+  ram.setU8(PULSE9.phase, phase);
+  if (!ctx?.tables || !ctx?.palette) {
+    ctx?.unported?.note(PULSE9.addr, `$${PULSE9.addr.toString(16).toUpperCase()
+      } -- the select screen's palette pulse needs BOTH a MoveTables ($241D34) and a PaletteState `
+      + '($24150A). This chain carries neither, so $813004 advanced and nothing was installed');
+    return;
+  }
+  // $25C860 move.w #$50,D0 / $25C864 moveq #0,D1 / $25C866 move.b $813004,D1 / $25C86C jsr $241D34.
+  // D2 is the component `handlers.js`'s $272540 also names `.dy`.
+  const d2 = ctx.tables.shotVector(PULSE9.speedIdx, phase).dy;
+  // $25C872 move.w #$800,D6 / $25C876 sub.w D2,D6 / $25C878 lsr.w #$6,D6 -- a WORD subtract and a
+  // LOGICAL shift, so the level is unsigned however far D2 swings.
+  const level = u16(PULSE9.levelBase - u16(d2)) >>> PULSE9.levelShift;
+  for (let i = 0; i < PULSE9.words; i++) {                   // $25C87A moveq #$1F,D7 -- dbra, so 32
+    ram.setU16(PULSE9.dst + i * 2,
+      fade246292(ram.u16(PULSE9.src + i * 2), level));       // $25C87C..$25C888
+  }
+  // $25C88C `41 f9` is lea $812FC4,A0 -- A0, NOT A1 (`43F9` would be A1). It reloads the SOURCE,
+  // because $24150A's own `lea $80E886,A1` would overwrite an A1 set here. The loop above already
+  // left A0 at $812FC4 anyway; the cartridge spells it out and so does this.
+  const src = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) src[i] = ram.u8(PULSE9.dst + i);
+  install24150A(ram, ctx.palette, PULSE9.bank, src, 0x25c896, '$25C818 select-screen pulse');
+}
+
 /** `$25CACA` -- THE DISPATCH ENTRY. State 1 is the fall-through and is the record walk. */
 export function objSlot9(ram, rom, a5, ctx) {
   const st = ram.u8(a5 + SCREEN9.state);
@@ -300,84 +516,115 @@ export function objSlot9(ram, rom, a5, ctx) {
   ram.setU8(a5 + SCREEN9.busy, 0);                           // $25CADA clr.b ($3,A5)
   for (let r = 0; r < SCREEN17.recCount; r++) {              // $25CAE4 moveq #$1,D7 + dbra = TWO
     const a6 = SCREEN17.recs + r * SCREEN17.recStride;
-    if (ram.u8(a6) === 0) continue;                          // $25CAE6 tst.b (A6) / beq $25CB94
     const d7 = SCREEN17.recCount - 1 - r;                    // dbra counts DOWN
-    // Eight compares against ONE byte, run in SEQUENCE. A handler that advances the state lets the
-    // next arm fire in the same pass, exactly as in slot [17].
-    for (const [i, phase] of SCREEN9.states.entries()) {
-      if (ram.u8(a6 + SCREEN17.phaseAt) !== phase) continue;
-      switch (phase) {
-        case 0x03:
-          phase3_25D306(ram, rom, ctx, a5, a6, d7);          // $25CAF4 -- leaves state 4 STANDING
-          break;
-        case 0x05:
-          phase5_25D39C(ram, rom, ctx, a5, a6, d7, DESC17.base[sideFromD7_25D4E4(d7)]);
-          break;
-        case 0x06:
-          phase6_25D4F0(ram, rom, ctx, a6, d7);              // $25CB1E
-          break;
-        // $25CB24 cmpi.b #$7,($1,A6) / $25CB2A bne.s / $25CB2C jsr $25D560 -- SLOT [9]'s OWN edge
-        // into the state-7 handler, and it sits FIFTH in the compare sequence, immediately after
-        // state 6's. That position is load-bearing: the compares are sequential, not else-if, and
-        // `$25D522` inside `$25D4F0` writes `($1,A6) = 7`, so a record that entered this pass in
-        // state 6 runs state 7 in the SAME frame. The order lives in `SCREEN9.states`, which the
-        // loop above iterates -- reordering these `case` labels for tidiness would not change it,
-        // but reordering that array would, and it must not be.
-        //
-        // Slot [17] reaches the same routine from `$25CF0A`/`$25CF12`. The draws are passed
-        // DIRECTLY here and injected as `ctx.selectDraws` in `main.js`; see `DRAWS9_25D800` for
-        // why the two callers cannot do the same thing.
-        //
-        // `$25D748 move.b #$8,($1,A6)` retires the record to state 8 and FALLS THROUGH into the
-        // draws, so state 8 is visible to them on that frame. Nothing dispatches 8 -- it is the
-        // retirement marker, it is not in `SCREEN9.states`, and it must not get an arm.
-        case 0x07:
-          phase7_25D560(ram, rom, ctx, a5, a6, d7, DRAWS9_25D800);   // $25CB2C
-          break;
-        case 0x04:
-          phase4_25D402(ram, rom, ctx, a5, a6, d7);          // $25CB02
-          break;
-        case 0x00:
-          phase0_25D010(ram, rom, ctx, a6, d7);              // $25CB3A
-          break;
-        case 0x01:
-          phase1_25D1DA(ram, rom, ctx, a5, a6, d7);          // $25CB48
-          break;
-        case 0x02:
-          phase2_25D164(ram, rom, ctx, a5, a6, d7,           // $25CB58
-            DESC17.base[sideFromD7_25D4E4(d7)]);
-          break;
-        // ALL EIGHT OF `SCREEN9.states` NOW HAVE AN ARM, so nothing in this file reaches `default:`
-        // any more. IT STAYS ANYWAY. It is the only thing that would catch a state added to
-        // `SCREEN9.states`/`SCREEN9.handlers` without an arm to run it -- which is exactly the hole
-        // state 7 sat in until W375, and reading this note's count is what would have found it.
-        default:
-          ctx.unported?.note(SCREEN9.handlers[i], `$${SCREEN9.handlers[i].toString(16).toUpperCase()
-            } -- slot [9]'s handler for state ${phase} on ($1,A6). Unread`);
-      }
-    }
-
-    // $25CB5E cmpi.b #$7,($1,A6) / bcc -- UNSIGNED, so 7 and anything above skip this entirely.
-    if (ram.u8(a6 + SCREEN17.phaseAt) >= SCREEN9.tailLimit) continue;
-    const left = (ram.u8(a6 + SCREEN9.tailCount) - 1) & 0xff;   // $25CB66 subq.b #1,($31,A6)
-    ram.setU8(a6 + SCREEN9.tailCount, left);
-    if (left !== 0) continue;                                // $25CB6A bne
-    ram.setU8(a6 + SCREEN9.tailCount, SCREEN9.tailReload);   // $25CB6C -- reload TWO
-    if (ram.u8(a6 + SCREEN9.tailFlag) === 0) {               // $25CB72 tst.b ($2E,A6) / bne
-      ram.setU8(a6 + SCREEN9.tailSet, 1);                    // $25CB78 move.b #$1,($30,A6)
+    // $25CAE6 tst.b (A6) / $25CAE8 beq.w $25CB94. THE `beq` IS NOT `continue`: its target is the
+    // JOIN POLL, and both arms of the branch rejoin at $25CBF4 inside the loop.
+    if (ram.u8(a6) === 0) {
+      joinPoll25CB94(ram, ctx, a6, d7);                      // $25CB94..$25CBF2
     } else {
-      // $25CB80 -- the other arm counts ($2E,A6) DOWN and mirrors the byte into ($2F,A6).
-      const d1 = ram.u8(a6 + 0x2f);                          // $25CB82 move.b ($2F,A6),D1
-      if (d1 < 1) {                                          // $25CB86 cmp.b D0,D1 with D0 = 1 / bcc
-        ram.setU8(a6 + SCREEN9.tailFlag,
-          (ram.u8(a6 + SCREEN9.tailFlag) - 1) & 0xff);       // $25CB8A subq.b #1,($2E,A6)
-      }
-      ram.setU8(a6 + 0x2f, 1);                               // $25CB8E move.b D1,($2F,A6) with D1 = 1
+      recordWalk25CAEC(ram, rom, ctx, a5, a6, d7);           // $25CAEC..$25CB92
     }
+    // $25CBF4 jsr $25E72E -- EVERY record reaches this, live or dead, and it is the only thing
+    // both arms share. $25E72E..$25E7B7 is 138 bytes ending at `$25E7B6 rts`; it gates on the same
+    // $813005 `$25C818` latches, rebuilds a sprite through $260A7C and $23E08C, and calls $25F1EC
+    // and $25F2D0. Two of those four are unported, so this is COUNTED rather than half-run.
+    ctx.unported?.note(WALK9.draw, `$${WALK9.draw.toString(16).toUpperCase()
+      } -- slot [9]'s per-record select-screen sprite, $${WALK9.drawBytes.toString(16).toUpperCase()
+      } bytes to the $25E7B6 rts. Reached from $25CBF4 for BOTH live and dead records. Unread`);
+    // $25CBFA lea ($70,A6),A6 / $25CBFE dbra D7,$25CAE6 ($51CF FEE6, -282 from $25CC00).
   }
 
-  ctx.unported?.note(SCREEN9.after, '$25CB94 -- slot [9] continues past the record walk: it reads '
-    + '$23D16C, tests bit $F, then checks record 1 and calls $23C98E. Unread');
+  // ---------------------------------------------------------------------------------------------
+  // $25CC02..$25CC44 -- THE TEARDOWN DECISION, and it is the screen's only exit.
+  //
+  // D0 starts at 3 with BOTH bits set and each record CLEARS its own bit unless it is finished:
+  // a DEAD record never clears (the `beq` jumps the `andi` entirely), and a live one clears and
+  // then puts the bit back only if its state is 8, `$25D748`'s retirement marker. So 3 means
+  // "neither record is still choosing", and that writes ($2,A5) = 2 -- the state `$25CAD2` turns
+  // into `jmp $241292` on the NEXT frame. Without this block slot [9] runs for ever and the front
+  // end never hands over.
+  //
+  // `1B7C 0002 0002` is `move.b #$2,($2,A5)`. The immediate comes first and the displacement
+  // second (trap 1), and here they are the SAME VALUE -- so this one site cannot tell a reader
+  // which order the assembler used. `$25CC12 0C2E 0008 0001` next door can, and does: immediate
+  // $8, displacement $1. That is where the order was checked; this line just follows it.
+  // ---------------------------------------------------------------------------------------------
+  let d0 = WALK9.bothBits;                                   // $25CC02 moveq #$3,D0
+  const recs = SCREEN17.recs;                                // $25CC04 lea $812EA0,A6
+  if (ram.u8(recs) !== 0) {                                  // $25CC0A tst.b (A6) / beq.s $25CC1E
+    d0 &= 0xfffe;                                            // $25CC0E andi.w #$FFFE,D0
+    if (ram.u8(recs + SCREEN17.phaseAt) === WALK9.retired) d0 |= 0x0001;   // $25CC12 / $25CC1A ori
+  }
+  const rec1 = recs + SCREEN17.recStride;
+  if (ram.u8(rec1) !== 0) {                                  // $25CC1E tst.b ($70,A6) / beq.s
+    d0 &= 0xfffd;                                            // $25CC24 andi.w #$FFFD,D0
+    if (ram.u8(rec1 + SCREEN17.phaseAt) === WALK9.retired) d0 |= 0x0002;   // $25CC28 / $25CC30
+  }
+  if (d0 === WALK9.bothBits) {                               // $25CC34 cmpi.w #$3,D0 / $25CC38 bne.s
+    ram.setU8(a5 + SCREEN9.state, WALK9.killState);          // $25CC3A move.b #$2,($2,A5)
+  }
+  // $25CC40 `4EBA FBD6` bsr.w -- the displacement word is at $25CC42 and -1066 from there is
+  // $25C818, so it runs UNCONDITIONALLY, on the same frame the kill is armed. $25CC44 rts.
+  pulse25C818(ram, ctx);
+}
+
+/** `$25CAEC..$25CB92` -- one LIVE record's pass: the eight sequential compares and the tail. */
+function recordWalk25CAEC(ram, rom, ctx, a5, a6, d7) {
+  // Eight compares against ONE byte, run in SEQUENCE. A handler that advances the state lets the
+  // next arm fire in the same pass, exactly as in slot [17].
+  for (const [i, phase] of SCREEN9.states.entries()) {
+    if (ram.u8(a6 + SCREEN17.phaseAt) !== phase) continue;
+    switch (phase) {
+      case 0x03:
+        phase3_25D306(ram, rom, ctx, a5, a6, d7);          // $25CAF4 -- leaves state 4 STANDING
+        break;
+      case 0x05:
+        phase5_25D39C(ram, rom, ctx, a5, a6, d7, DESC17.base[sideFromD7_25D4E4(d7)]);
+        break;
+      case 0x06:
+        phase6_25D4F0(ram, rom, ctx, a6, d7);              // $25CB1E
+        break;
+      // $25CB24 cmpi.b #$7,($1,A6) / $25CB2A bne.s / $25CB2C jsr $25D560 -- SLOT [9]'s OWN edge
+      // into the state-7 handler, and it sits FIFTH in the compare sequence, immediately after
+      // state 6's. That position is load-bearing: the compares are sequential, not else-if, and
+      // `$25D522` inside `$25D4F0` writes `($1,A6) = 7`, so a record that entered this pass in
+      // state 6 runs state 7 in the SAME frame. The order lives in `SCREEN9.states`, which the
+      // loop above iterates -- reordering these `case` labels for tidiness would not change it,
+      // but reordering that array would, and it must not be.
+      //
+      // Slot [17] reaches the same routine from `$25CF0A`/`$25CF12`. The draws are passed
+      // DIRECTLY here and injected as `ctx.selectDraws` in `main.js`; see `DRAWS9_25D800` for
+      // why the two callers cannot do the same thing.
+      //
+      // `$25D748 move.b #$8,($1,A6)` retires the record to state 8 and FALLS THROUGH into the
+      // draws, so state 8 is visible to them on that frame. Nothing dispatches 8 -- it is the
+      // retirement marker, it is not in `SCREEN9.states`, and it must not get an arm.
+      case 0x07:
+        phase7_25D560(ram, rom, ctx, a5, a6, d7, DRAWS9_25D800);   // $25CB2C
+        break;
+      case 0x04:
+        phase4_25D402(ram, rom, ctx, a5, a6, d7);          // $25CB02
+        break;
+      case 0x00:
+        phase0_25D010(ram, rom, ctx, a6, d7);              // $25CB3A
+        break;
+      case 0x01:
+        phase1_25D1DA(ram, rom, ctx, a5, a6, d7);          // $25CB48
+        break;
+      case 0x02:
+        phase2_25D164(ram, rom, ctx, a5, a6, d7,           // $25CB58
+          DESC17.base[sideFromD7_25D4E4(d7)]);
+        break;
+      // ALL EIGHT OF `SCREEN9.states` NOW HAVE AN ARM, so nothing in this file reaches `default:`
+      // any more. IT STAYS ANYWAY. It is the only thing that would catch a state added to
+      // `SCREEN9.states`/`SCREEN9.handlers` without an arm to run it -- which is exactly the hole
+      // state 7 sat in until W375, and reading this note's count is what would have found it.
+      default:
+        ctx.unported?.note(SCREEN9.handlers[i], `$${SCREEN9.handlers[i].toString(16).toUpperCase()
+          } -- slot [9]'s handler for state ${phase} on ($1,A6). Unread`);
+    }
+  }
+  walkTail25CB5E(ram, a6);                                   // $25CB5E..$25CB90, then $25CB92 bra
 }
 
 export const HANDLER2 = Object.freeze({

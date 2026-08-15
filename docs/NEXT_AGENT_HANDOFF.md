@@ -2,7 +2,89 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W378
+## START HERE -- W379
+
+### SLOT [9] ADVANCES. THE WHOLE CHAIN FROM COLD BOOT TO GAMEPLAY NOW RUNS.
+
+Cold `Game`, `boot()`, `$803957 = 1`, COIN1, P1 START, **and no input at all afterwards**:
+
+- record 0 walks 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> **7** on its own auto-confirm clock, hitting state 7
+  at **t+2058** past START
+- `$25D662 jsr $26070C` **fires**; the rank gate `$813082` goes **1 -> 0**
+- `$81315C` **is installed** = `$26086E` (base table 0)
+- `$813005` latches to 1, so the select-screen pulse stops as the cartridge intends
+- **The only stop left is `$28B5A8`**, object type 5's "not started" branch, thrown from `type5.js`
+  on the frame after the handoff.
+
+### NINE BYTES FROZE THE SCREEN, AND THE BUG WAS A MIS-DECODED OPCODE
+
+```
+25CB80  7001        moveq   #$1,D0
+25CB82  122E 002F   move.b  ($2F,A6),D1
+25CB86  8300        sbcd    D0,D1          <- NOT cmp.b D0,D1
+25CB88  6404        bcc     $25CB8E
+25CB8A  532E 002E   subq.b  #1,($2E,A6)
+25CB8E  1D41 002F   move.b  D1,($2F,A6)    <- stores SBCD's RESULT
+```
+
+**`$8300` is SBCD** (bits 15-12 `1000`, bits 8-4 `10000`, bit 3 = 0). A `cmp.b D0,D1` would be
+`$B200`. The port read it as a compare, concluded D1 was untouched, and wrote back the literal `1`
+from the `moveq`. **That pinned `($2F,A6)` at 1 from the first tick**: the borrow could never
+happen, `($2E,A6)` never left 5, `($30,A6)` was never set, and every record sat in state 1 waiting
+for a button. X is 0 on every path in, so it models `Dx - Dy`.
+
+`($2E,A6)/($2F,A6)` is the `$0599` auto-confirm clock `$25D010` seeds with ONE `move.w` (a word
+literal covering two byte fields), ticking once per two frames -- about 1000 frames per confirm.
+
+**THE TELL: an arithmetic opcode followed by a store of the register you believed was only read.**
+
+### `$25CB94` IS NOT THE TAIL OF THE WALK
+
+`$25CAE8 beq.w` has its displacement at `$25CAEA`, and `$25CAEA + $00AA = $25CB94`, so **`$25CB94`
+is where a DEAD RECORD goes -- the mid-screen join poll.** The loop's real seam is two bytes
+earlier, `$25CB92 bra.s -> $25CBF4`, and `$25CBFE dbra D7` (`51CF FEE6`, word at `$25CC00`, -282)
+returns to `$25CAE6`. The old note sat AFTER the loop, which is why it read as a once-a-frame
+continuation and was counted 6005 times.
+
+**On a 1P cold boot record 0 is already live** (`$25C8A2` sets it from the join mask), so it never
+reaches `$25CB94` at all. Porting `$25CB94` alone would have moved nothing.
+
+### A STALE NOTE HELD THE RANK POINTER HOSTAGE
+
+`objslot17.js` noted `$26077E bsr.w $260580` with a message listing four routines as unread. **W378
+ported all four into `rank.js` as `stageStart260580` and nobody removed the note**, so the only
+caller the cartridge gives that routine still did not call it -- and `$26089E`, the sole writer of
+`$81315C`, sits at the bottom of it. Slot [9] advancing therefore lowered `$813082` and left the
+pointer null, and `recompute2608D2` threw `UNPORTED $0` at t+2058. Note replaced with the call.
+
+**WHEN YOU PORT A ROUTINE, GREP THE TREE FOR NOTES NAMING IT.**
+
+### PORTED THIS WAVE
+
+| Range | Bytes | What |
+|---|---|---|
+| `$25CB5E..$25CB92` | 54 | per-record tail / BCD auto-confirm clock |
+| `$25CB94..$25CBF2` | 95 | join poll, two arms (`tst.w D7`) |
+| `$25CBF4..$25CC00` | 14 | `jsr $25E72E`, `lea ($70,A6),A6`, `dbra` |
+| `$25CC02..$25CC44` | 67 | teardown decision + `bsr.w $25C818` + `rts` |
+| `$25C818..$25C8A1` | 138 | palette pulse, `$813005` latch |
+| `$25E72E..$25E7B7` | 138 | per-record sprite -- **counted note** (`$25F1EC`, `$260A7C` unported) |
+
+`$25C88C` is `41F9` = `lea $812FC4,`**`A0`**, not A1.
+
+### `$28B5A8` IS DEFERRED, AND IT IS 56 BYTES OF NOTHING BUT CALLS
+
+`$28B5A8..$28B5DF`: **eight `jsr`s** (`$27E98A $28131E $288E0C $289084 $289AE0 $28AC3A $289F3A
+$26331E`), then `move.b #$1,($2,A5)` and `rts`. The routine is trivial; **all eight callees are
+unported**, so it is a wave of its own. It is currently an `unreached()` THROW in `src/type5.js`;
+converting it to a counted note means editing that file.
+
+### TWO NEW WINDOWS (546 -> 547 after dedup)
+
+`$25D1CA + $F` and `$25D3F6 + $C`, both bound by the same reader (`$25A158 move.b (A0)+,D4 /
+$25A15A tst.b / beq`), both ablated with positive controls, neither widening an existing window.
+
+## W378 NOTES
 
 ### COLD BOOT -> COIN -> START NOW SURVIVES 6008 FRAMES. IT USED TO DIE AT +4.
 

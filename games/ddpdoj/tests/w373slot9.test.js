@@ -546,6 +546,19 @@ test('W375 state 8 is the RETIREMENT MARKER: nothing dispatches it', { skip: SKI
   // $25CB5E is an UNSIGNED >= 7, so 8 skips the counter tail as well.
   assert.equal(ram.u8(a6 + SCREEN9.tailCount), 5,
     '$25CB5E skipped the tail for 8, as it does for 7');
-  // The ONLY note the frame files is the walk's own $25CB94 continuation -- no handler note at all.
-  assert.deepEqual(notes, [SCREEN9.after], 'state 8 files no handler note');
+  // W379: THE NOTE THIS USED TO NAME IS GONE, AND THE SUBJECT OF THE TEST IS UNCHANGED.
+  // `SCREEN9.after` ($25CB94) was a counted note for the whole tail; it is now ported, and
+  // $25CB94 turns out to be the DEAD-record join poll rather than a once-a-frame continuation.
+  // What the walk still counts is `$25CBF4 jsr $25E72E`, once per record -- TWICE here, because
+  // record 1 is dead and reaches the same site down the join-poll arm.
+  //
+  // The assertion that matters is the one about handlers, so it is now made directly instead of
+  // by implication: state 8 must not dispatch anything, whatever else the frame counts.
+  const { WALK9 } = await import('../src/objslot9.js');
+  assert.deepEqual(notes, [WALK9.draw, WALK9.draw],
+    'the only notes are the two $25CBF4 jsr $25E72E, one per record');
+  for (const h of SCREEN9.handlers) {
+    assert.ok(!notes.includes(h),
+      `state 8 files no handler note, and $${h.toString(16).toUpperCase()} is one`);
+  }
 });
