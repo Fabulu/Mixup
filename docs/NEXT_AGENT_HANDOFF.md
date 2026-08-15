@@ -33,6 +33,56 @@ So the living DaiOuJou docs are exactly three: **`DOCKET.md`, `ORCHESTRATOR_BRIE
 file.** `D12`'s claim that the reference docs "predate stages 3 and 4" was false and is corrected in
 place.
 
+### D41 ANSWERED: **COIN PLUS START IS NOT ENOUGH.** THREE THINGS BLOCK GAMEPLAY
+
+The recon traced it end to end. Wiring a coin key is correct and necessary and **will change nothing
+on screen**, because:
+
+1. **THE PORT HAS NO BOOT PATH AT ALL.** `Game` is constructed from a seed that is "a snapshot of
+   the board's main RAM at a sample point", and the page boots `assets/seed.bin.gz`, which is
+   **mid-stage-1**. There is no reset, no BIOS handoff, no attract mode -- `step()` is the seven-call
+   loop and nothing else. The cold init at `$23BFCC move.w #$8,D0 / jsr $241182 / move.w #$D,($4,A0)`
+   stages object type `$8` and **no code path in the port runs it.**
+2. **SLOT [8] `$25A770` IS THE CREDIT GATE, AND IT IS UNPORTED.** ~9 KB, the attract/title/demo
+   machine. Its head is the sequential-compare trap in person:
+
+       $25A7A6  jsr $23C956    -> D0 = coins A, D1 = coins B
+       $25A7AE  tst.w D0 / bne $25A7C0        COINS PENDING -> go
+       $25A7B2  jsr $23C932    -> credits A/B
+       $25A7BA  tst.w D0 / beq $25A82C        NO CREDIT -> stay in attract
+
+   Credits are consulted **only when coins are zero**. Both accessors return `(0,0)` on free play
+   (`$803808 == $12`), which is why free play has its own arm at `$25A796 bsr $25ACAC`.
+3. **THE COIN KEY CANNOT REGISTER A COIN YET.** Coin-port bits 0 and 1 never reach `$13CFBA`. They
+   go through **`$13CEC8`**, a two-record debounce reached only from `$1453D0` inside the **IRQ4**
+   body -- **and the port models only IRQ6.**
+
+**AND `src/isr.js`'s COIN BIT NAMES ARE WRONG.** `bitCoin1: 5` is **SERVICE**; the `btst #$0`/`#$1`
+at `$13D002`/`$13D02C` are not port bits at all, because `$13CFE2 bsr $13CF86` has already ORed the
+two PENDING flags in and `$13CFE4 or.w $803954,D1` can only contribute bits 5/6/7 (the
+`andi.w #$E0` mask). **The code is right; only the labels mislead** -- wire "insert coin" to that
+constant and you get the service switch.
+
+**THE TAP WINDOW IS REAL AND NARROW.** A credit needs the key held for 3..`$26` calls of `$13CEC8`,
+which runs once every two video frames: **6 to 76 video frames, about 0.1 s to 1.27 s.** Holding
+longer writes `$0001` and credits **nothing, silently**.
+
+**GOOD NEWS FROM THE SHIPPED SEED:** `$803808 = $00` (not free play), `$803857 = $01`,
+`$80395A = $01` -- it already carries ONE CREDIT -- and both debounce records are idle with
+`$803952 = $FFFF`, so `coinRead13CFBA` is safe to drive from frame one.
+
+**THE ORDER THAT ACTUALLY GETS THERE:**
+1. Coin input: `ctx.coinPort`, `$13CEC8`, the IRQ4 phase, the coin word and bindings, the bit
+   renames. Self-contained, unit-testable against `$80395A`. **Produces nothing visible.**
+2. The credit API: `$23C932`, `$23C956`, `$13CCB0`, `$13D3CC`, `$23C97A`, `$23C984` -- six routines,
+   together under 200 bytes, and the entire surface the front end calls.
+3. **`$25A770`.** That is the unit that turns a credit into a game.
+
+**AND THE SIX REGISTERED FRONT-END SLOTS ARE DOWNSTREAM OF ALL OF IT.** [7], [9], [13], [14], [15]
+and [17] sit AFTER a credit and a start; the mid-gameplay seed has no live object of those types, so
+`runObjectDriver` never calls them today. Registering them was right and it did not change what the
+page does.
+
 ### NEW DOCKET ITEM (owner, 2026-08-15): **CONTROLS TO ACTUALLY START THE GAME** -- filed as **D41**
 
 **D40 was already taken**, so it is D41 in `DOCKET.md`.

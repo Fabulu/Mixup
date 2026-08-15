@@ -10,7 +10,9 @@
 //     6 -> $25D4F0
 //
 // FOUR OF THE EIGHT ARE ALREADY PORTED, in `objslot17.js`, because they are literally the same
-// routines: `phase3_25D306`, `phase5_25D39C`, `phase6_25D4F0`. Reading this slot is also what
+// routines: `phase3_25D306`, `phase5_25D39C`, `phase6_25D4F0` and -- since W374 -- `phase7_25D560`.
+// W373 wrote "four" here while naming only three, because state 7's handler was the one still
+// missing; W374 ported it, so the count and the list finally agree. Reading this slot is also what
 // exposed slot [17]'s inner dispatch as a state machine rather than four flags -- two callers
 // disagreeing about one byte is what made the operand order visible.
 //
@@ -302,6 +304,12 @@ export function objSlot9(ram, rom, a5, ctx) {
           phase2_25D164(ram, rom, ctx, a5, a6, d7,           // $25CB58
             DESC17.base[sideFromD7_25D4E4(d7)]);
           break;
+        // STATE 7 IS THE ONLY ARM LEFT HERE, AND IT IS NOT AN "UNREAD ROUTINE" ANY MORE.
+        // `$25D560` IS ported -- `phase7_25D560` in `objslot17.js`, W374 -- and slot [17]'s
+        // dispatcher routes state 7 to it. What is missing is this slot's OWN edge into it, which
+        // needs `ctx.selectDraws` seeded the way `main.js`'s `[17]` entry seeds it, so the note
+        // stays until that is wired rather than being half-done here. The note text says "Unread",
+        // which is now wrong about the routine and right about this call site.
         default:
           ctx.unported?.note(SCREEN9.handlers[i], `$${SCREEN9.handlers[i].toString(16).toUpperCase()
             } -- slot [9]'s handler for state ${phase} on ($1,A6). Unread`);
@@ -493,9 +501,15 @@ function confirmAndDraw(ram, rom, ctx, a5, a6, d0, nextPhase, d7) {
   // makes the body live has to be deliberate.
   draw25EDF8(ram, rom, ctx, a6, d7);
   draw25EF30(ram, rom, ctx, a6, d7);                         // $25D284 / $25D4D4 jsr $25EF30
-  // $25D28A / $25D4DA jsr $25F074. The record state is 2 here (state 1's tail) or 5 (state 4's),
-  // and both are below 7, so BOTH call sites take the full eight-emit path. The slice-2-only arm
-  // is reachable only from $25D560's tail at $25D836, which is not ported.
+  // $25D28A / $25D4DA jsr $25F074. The record state is 2 here (state 1's tail) or 5 (state 4's) on
+  // a confirm frame, and still 1 or 4 on a non-confirm one -- see `confirmAndDraw`'s head. All four
+  // are below 7, so BOTH OF THESE call sites take the full eight-emit path.
+  //
+  // W373 said the slice-2-only arm "is reachable only from $25D560's tail at $25D836, which is not
+  // ported". The first half is still exactly right and the second is superseded: W374 ported
+  // $25D560 as `phase7_25D560` (objslot17.js) with its tail as `TAIL_25D560`, and `main.js`
+  // registers slot [17], so $25D836 -- `TAIL_25D560[6]` -- IS LIVE AT RUNTIME and the slice arm now
+  // has a real host. It still never runs from HERE, which is the only thing this line has to say.
   draw25F074(ram, rom, ctx, a6, d7);
 }
 
@@ -607,7 +621,12 @@ export const DRAW_25E220 = Object.freeze({
   ]),
 });
 
-/** `$25E220` -- the first of the SEVEN shared draws, called by both state 1 and state 4.
+/** `$25E220` -- the first of the shared draws, called by state 1's tail, state 4's, AND `$25D560`'s
+ *  (`TAIL_25D560[0]`, `$25D808`, ported in W374). W373 wrote "the SEVEN shared draws" here and "the
+ *  eight" everywhere else; both counts are real and neither is the number of routines. **EIGHT are
+ *  ported in this file. SEVEN run from any one call site**, and not the same seven:
+ *  `confirmAndDraw`'s two tails fire `$25EDF8` and never `$25E4D0`, `$25D560`'s tail fires
+ *  `$25E4D0` and never `$25EDF8`. This routine is in all three.
  *
  *  TWO GATES, and they are different kinds: `tst.w ($64,A6) / beq` returns when the WORD is zero,
  *  and `tst.b ($35,A6) / bne` returns when the BYTE is NON-zero. Both jump to the same `rts` at
@@ -738,7 +757,13 @@ export const DRAW_25E29E = Object.freeze({
  *  **AT TWO OF THE THREE CALL SITES IT DRAWS ITS LITERALS.** `$25D264` (state 1's tail) and
  *  `$25D4B4` (state 4's) arrive with `X = Y = 0` and the cursor at 0, so D1 is exactly `$48010000`,
  *  `$FE810000`, `$00010000`, `$00012800` and D6 is `$80008000` -- the no-zoom encoding. Only
- *  `$25D80E`, in `$25D560`'s tail, drives the fields, and that state is not ported.
+ *  `$25D80E`, in `$25D560`'s tail, drives the fields.
+ *
+ *  W373 added "and that state is not ported", which made the zoom path look like dead transcription.
+ *  **W374 PORTED IT**: `$25D560` is `phase7_25D560` in `objslot17.js`, `$25D80E` is `TAIL_25D560[1]`,
+ *  and `main.js` registers slot [17] -- so the literals-only reading above is the SPECIAL case now,
+ *  not the whole story, and the sixteen-entry ramp below is exercised on real frames. Which is also
+ *  why the `($60,A6)` bound check is worth keeping honest: it is no longer unreachable defence.
  *
  *  Reads: `($4E,A6)`, `($50,A6)`, `($60,A6)`, all WORDS. Inherited: **A6 only**. */
 export function draw25E29E(ram, rom, ctx, a6) {
@@ -990,7 +1015,8 @@ export function draw25EF30(ram, rom, ctx, a6, d7) {
 
 export const DRAW_25EDF8 = Object.freeze({
   addr: 0x25edf8, exit: 0x25ef2e, stub: 0x23dfb4,
-  // THE DEAD GATE. $25EE28 cmpi.b #$4,($1,A6) -- immediate word $0004 BEFORE displacement $0001.
+  // THE STATE GATE, called "THE DEAD GATE" by W373 and NOT dead -- W374 withdrew that; see the doc
+  // comment. $25EE28 cmpi.b #$4,($1,A6) -- immediate word $0004 BEFORE displacement $0001.
   gateAt: 0x01, gateValue: 0x04,
   cursorAt: 0x04, movedAt: 0x28, timerAt: 0x2a, animAt: 0x2c, phaseAt: 0x5c,
   timerReload: 0xb4,                         // $25EE3C / $25EE60 move.w #$B4,($2A,A6)
@@ -1088,7 +1114,10 @@ export function draw25EDF8(ram, rom, ctx, a6, d7) {
   let d0 = u16(u16(ram.u16(a6 + DRAW_25EDF8.cursorAt) * 2) * 2);
   a2 = rom.u32(a2 + d0);                                     // $25EE24 movea.l (0,A2,D0.w),A2
 
-  // THE DEAD GATE. $25EE28 cmpi.b #$4,($1,A6) / $25EE2E bne.w $25EF2E -- straight to the rts.
+  // THE STATE GATE, AND IT IS LIVE. $25EE28 cmpi.b #$4,($1,A6) / $25EE2E bne.w $25EF2E -- straight
+  // to the rts. W373 called this "THE DEAD GATE"; W374 withdrew that, because `confirmAndDraw`'s
+  // no-confirm path leaves ($1,A6) at 4 when the draws run. Read the doc comment before trusting
+  // any "dead" label on this screen.
   if (ram.u8(a6 + DRAW_25EDF8.gateAt) !== DRAW_25EDF8.gateValue) return;
 
   if (ram.u16(a6 + DRAW_25EDF8.movedAt) !== 0) {             // $25EE32 tst.w / $25EE36 beq.s $25EE48
@@ -1199,7 +1228,9 @@ export const DRAW_25F074 = Object.freeze({
   // $25F086 cmpi.b #$7,($1,A6) / bcs -- an UNSIGNED <, so states 0..6 run everything and 7..$FF
   // take `adda.l #$18,A0 / bra.w $25F128`. BOTH ARMS ARE LIVE; see the doc comment.
   stateAt: 0x01, stateLimit: 0x07, sliceSkip: 0x18,
-  // THE DEAD GATE. $25F0A8 cmpi.b #$4,($1,A6) -- immediate word $0004 BEFORE displacement $0001.
+  // THE EMIT-1 ART SWAP. $25F0A8 cmpi.b #$4,($1,A6) -- immediate word $0004 BEFORE displacement
+  // $0001. W373 named it "THE DEAD GATE" and W374 withdrew that; `deadGateValue` and `artEmit1Dead`
+  // are FOSSIL NAMES kept because the tests pin them, not a live claim. $0019A410 IS drawn.
   deadGateValue: 0x04, artEmit1: 0x0019a35c, artEmit1Dead: 0x0019a410,
   // Off A6. $2E is read as a WORD here; see the doc comment before "correcting" it.
   animAt: 0x2c, nibblesAt: 0x2e, shortAt: 0x38, cursorAt: 0x66,
@@ -1276,7 +1307,10 @@ function nibbleOffset25F074(ram, ctx, a6, spec) {
  *  via `lea ($10,A0),A0`, then emit 5..8. A full-image scan for the longword `$0025F074` finds
  *  exactly three operands, all `jsr`: `$25D28C` (state 1's confirm tail, `($1,A6)` = 2),
  *  `$25D4DC` (state 4's, = 5) and `$25D836` (`$25D560`'s tail, = 7 or 8). **Both arms are reachable
- *  as shipped**; only the full path has a host in the port today, because `$25D560` is not ported.
+ *  as shipped**, and W373's follow-on -- "only the full path has a host in the port today, because
+ *  `$25D560` is not ported" -- **NO LONGER HOLDS**. W374 ported `$25D560` as `phase7_25D560`
+ *  (`objslot17.js`); `$25D836` is `TAIL_25D560[6]`; `main.js` registers slot [17]. **BOTH ARMS HAVE
+ *  A LIVE HOST**, the slice arm through state 7/8 and the full path through this file's two tails.
  *
  *  **BOTH ART ARMS ARE LIVE. A W374 "DEAD GATE" CLAIM HERE WAS WITHDRAWN**, for the same reason as
  *  `$25EDF8`'s: `($1,A6)` at entry is NOT only ever 2, 5, 7 or 8. `$25D490 beq.w $25D4A4` skips the
@@ -1319,10 +1353,13 @@ export function draw25F074(ram, rom, ctx, a6, d7) {
     // outside it, which is why A0 reaches +$08 whether or not this fires.
     if (ram.u16(D.gateEmit1) !== 0) {
       let d2 = D.artEmit1;                                   // $25F0A2 move.l #$0019A35C,D2
-      // THE DEAD GATE. $25F0A8 cmpi.b #$4,($1,A6) / $25F0AE bne.s $25F0B6. Never taken as shipped:
-      // no caller can arrive in state 4. Transcribed, not folded away.
+      // THE ART SWAP, AND IT IS TAKEN. $25F0A8 cmpi.b #$4,($1,A6) / $25F0AE bne.s $25F0B6.
+      // W373 wrote "Never taken as shipped: no caller can arrive in state 4. Transcribed, not
+      // folded away." Transcribing it was right; the reason was wrong, and W374 withdrew it --
+      // `confirmAndDraw`'s no-confirm path skips the `move.b #$5,($1,A6)` and reaches the draws
+      // with ($1,A6) STILL 4, so this fires on every frame the player does not confirm.
       if (ram.u8(a6 + D.stateAt) === D.deadGateValue) {
-        d2 = D.artEmit1Dead;                                 // $25F0B0 -- UNREACHABLE
+        d2 = D.artEmit1Dead;                                 // $25F0B0 -- the state-4 art
       }
       // $25F0B6 move.w #$0458,D3 / $25F0BA move.w #$0012,D4 / $25F0BE jsr $23DFB4.
       enqueueRegistersThroughStub(ram, rom, D.stub, d1, d2, D.attr.e1, D.pal);
@@ -2003,9 +2040,19 @@ function half25E4D0(ram, rom, ctx, a6, h) {
  *  touched** -- this is the only one of the eight with no `$813098` loop gate at all.
  *  Inherited: **A6 and D7**.
  *
- *  **IT IS DELIBERATELY UNWIRED.** Its only call site is `$25D814`, inside `$25D560` -- state 7's
- *  handler, which is not ported. It is NOT in either of the two ported confirm tails, so it is
- *  exported and left unreferenced rather than being given an invented caller. */
+ *  **IT HAS ITS CALLER NOW.** W373 shipped this "deliberately unwired": its only call site is
+ *  `$25D814`, inside `$25D560` -- state 7's handler -- which was not ported, and it is NOT in
+ *  either of this file's two confirm tails, so it was exported and left unreferenced rather than
+ *  being given an invented caller. **W374 PORTED `$25D560`** as `phase7_25D560` (`objslot17.js`),
+ *  where `$25D814` is `TAIL_25D560[2]` -- UNGATED, so it fires on BOTH records -- and `main.js`
+ *  registers slot [17]. This routine runs on real frames.
+ *
+ *  **THE ORIGINAL WARNING STILL STANDS, FOR A NEW REASON: DO NOT ADD A CALL TO IT IN
+ *  `confirmAndDraw`.** It was "the callee with no caller" then; it is "the callee with the OTHER
+ *  caller" now. `$25D23A`/`$25D486` hold seven `jsr`s and `$25E4D0` is not among them, exactly as
+ *  `$25D800..$25D839` holds seven and `$25EDF8` is not among THOSE. **NO CALL SITE ANYWHERE RUNS
+ *  ALL EIGHT DRAWS** -- the two sets are seven each and differ by one call in each direction, and a
+ *  brief that says "all eight" is wrong about the cartridge. Counted from the dump both times. */
 export function draw25E4D0(ram, rom, ctx, a6, d7) {
   // $25E4D0 tst.w D7 -- a WORD test, so mask, the same reason `sideFromD7_25D4E4` and `draw25EF30`
   // do. `sideFromD7_25D4E4(d7)` IS this index: D7 != 0 -> 0 -> half A, D7 == 0 -> 1 -> half B.
