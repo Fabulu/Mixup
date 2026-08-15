@@ -21,25 +21,39 @@ reason. Worktree isolation is withdrawn as the port-contention fallback, so **se
 is the only concurrency control** -- and every shared draw lands in `src/objslot9.js`, so it is one port
 agent there regardless.
 
-### READ THIS BEFORE PORTING ANOTHER SLOT ROUTINE: **NONE OF THE FRONT-END SLOTS IS DISPATCHED**
+### **THE FRONT-END SLOTS ARE NOW REGISTERED.** `main.js` DISPATCHES 7, 9, 13, 15 AND 17
 
-`main.js`'s `defaultHandlers` registers dispatch indices **0, 1, 2, 3, 4, 5, 6, 10, 11** and
-**nothing else**. Slots **7, 9, 13, 15 and 17** -- the entire front end that W372, W373 and W374
-have been building -- are **NOT in the map**, and `objSlot7`, `objSlot9`, `objSlot13`, `objSlot15`
-and `objSlot17` are each referenced only inside their own file.
+Until W374 `defaultHandlers` held only **0, 1, 2, 3, 4, 5, 6, 10, 11**, so slots **7, 9, 13, 15 and
+17** -- the entire front end built across W372-W374 -- were referenced only inside their own files.
+**Four waves of screen work was driven by tests and unreachable from the driver.** The owner
+authorised connecting it with "fidelity above preserving our interim position", and it is done.
 
-**So every screen ported in the last three waves is driven by tests and unreachable from the
-driver.** The select screen this wave completed cannot appear in the running game. Nothing is
-broken -- the code is correct and covered -- but it is not yet CONNECTED.
+**HOW IT IS WIRED, because two details are not obvious:**
 
-**This is the highest-value non-porting item on the board.** Before writing another slot routine,
-consider registering what exists: `[11, ...]` (the tally screen) is the nearest working pattern for
-what a front-end entry looks like, and `makeHudObject` / `makeBackground` show the factory shape.
+* **The signature adapts.** `runObjectDriver` calls `h(ram, slot, slotIndex, ctx)`; the five
+  dispatchers take `(ram, rom, a5, ctx)`. `slotObject(fn, rom)` in `main.js` closes over `rom` and
+  drops the slot index, which none of the five reads. Same shape as `makeType5(rom)`.
+* **Slot [17] needs one thing more.** `phase7_25D560`'s draw tail takes its seven draws as INJECTED
+  data (`ctx.selectDraws`) rather than importing them, because `objslot9.js` already imports
+  `objslot17.js` and importing back would be a cycle. `main.js` seeds it as
+  `ctx.selectDraws ??= slot9` -- the `objslot9.js` module NAMESPACE, whose export names are exactly
+  `TAIL_25D560`'s keys. **It assigns IN PLACE rather than spreading `ctx`**: a fresh object per
+  frame would silently drop anything a subsystem writes onto `ctx` itself, and `??=` leaves a
+  caller that supplies its own set (the tests do) still winning.
 
-It also reframes the docket: the remaining slot work adds routines to screens that still cannot run,
-whereas wiring the dispatch turns three waves of finished work into something visible. **Weigh that
-before picking the next unit.** I did not do it this wave because it was not asked for and it is a
-behaviour change to the running game rather than a translation gap.
+**THE COVERAGE FAMILY MOVED, AND THAT IS THE POINT.** `top_objects` went **9/20 -> 14/20 ported**
+with `unknown` 11 -> 6 -- exactly the five, nothing else. Every other family in
+`w167coverage.test.js` printed identically, so nothing changed behaviour anywhere it should not
+have. `dojcoverage.py` derives the list live from `main.js` (`source_registries()` regexes the
+`defaultHandlers` slice), so there is **no duplicated list to keep in step**.
+
+`dojcoverage-baseline.json` still holds a W172-era `ported_registry` and was deliberately NOT
+refreshed: it is a one-way ratchet checked as `baseline - live` that only fails on LOSSES, so
+additions are a no-op for it, and git history shows it has not been regenerated since W172 despite
+many ports.
+
+**CONSEQUENCE FOR EVERY REMAINING NOTE IN THESE FILES:** the `note()`s inside slots 7, 9, 13, 15 and
+17 are **LIVE at runtime now**, not hypothetical. They will be counted on real frames.
 
 ### THE BIGGEST FINDING OF W374: `confirmAndDraw` HAD A REAL BUG, AND IT MADE ME CALL TWO LIVE GATES DEAD
 

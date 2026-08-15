@@ -68,8 +68,14 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   // W276: 8 -> 9. `$240F62[11] = $25DBB4`, the stage-clear screen, is registered in
   // `main.js` -- states 0 and 2 transcribed, state 1's gates and its menu cursor one
   // counted note. This is the number that moves when an OBJECT lands, so it is the
-  // one worth pinning: 9 of the 20 top-level dispatch entries now run.
-  assert.match(got.stdout, /top_objects: 9\/20 ported/);
+  // one worth pinning.
+  // W374: 9 -> 14 ported and 11 -> 6 unknown. W374 registered the five FRONT-END slots
+  // [7], [9], [13], [15] and [17] in `main.js`'s `defaultHandlers`. Their dispatchers
+  // were ported across W372-W374 and driven by tests, but never registered, so the
+  // driver could not reach them; registering them is the whole of this delta -- five
+  // entries move from `unknown` to `ported` and the 20-entry table and its 0 nulls do
+  // not move. 14 of the 20 top-level dispatch entries now run.
+  assert.match(got.stdout, /top_objects: 14\/20 ported, 6 unknown, 0 null/);
   assert.match(got.stdout, /type5_calls: 19\/23 ported/);
   // W229: 72 -> 76 ported and 54 -> 50 unknown, the four the Stage-4 waves added
   // after W217 (W218's $27C81A and $27DB30, W219's Type-$40 boss, W223's $41).

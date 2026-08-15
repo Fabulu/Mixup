@@ -47,6 +47,19 @@ import { makeStageClear } from './stageend.js';
 import { makeHudObject } from './hud.js';
 import { makeRankObject, announce260B30 } from './rank.js';
 import { tallyScreen25DBB4 } from './tallyscreen.js';
+// W374: the FRONT-END SLOTS. Ported across W372-W374 and, until this wave, never registered --
+// objSlot7/9/13/15/17 were each referenced only inside their own file, so four waves of screen work
+// was driven by tests and unreachable from the driver.
+//
+// `objslot9.js` is imported as a NAMESPACE on purpose. `phase7_25D560`'s draw tail takes its seven
+// draws as injected data keyed by the exact names that module exports (see `TAIL_25D560`), because
+// `objslot9.js` already imports `objslot17.js` and importing back would be a cycle. Passing the
+// namespace is what that injection point was designed for.
+import * as slot9 from './objslot9.js';
+import { objSlot7 } from './objslot7pool.js';
+import { objSlot13 } from './objslot13.js';
+import { objSlot15 } from './objslot15.js';
+import { objSlot17 } from './objslot17.js';
 import { SoundState, drainFrame, postWrapperWithRuntime,
   soundFrameInput } from './sound.js';
 import {
@@ -168,7 +181,40 @@ export function defaultHandlers(rom, vram, opts = {}) {
     // this was 900 unattributed notes a run, and now the notes name the state they
     // came from and the object's two working states actually run.
     [11, tallyScreen25DBB4],
+
+    // W374: THE FRONT END, REGISTERED. Entries [7], [9], [13], [15] and [17] were all ported
+    // across W372-W374 and none of them was in this map, so every screen the last three waves
+    // built was unreachable from the driver -- correct code that could not run.
+    //
+    // THE SIGNATURE ADAPTS. `runObjectDriver` calls `h(ram, slot, slotIndex, ctx)`; the five
+    // dispatchers take `(ram, rom, a5, ctx)`. `slotObject` is the same shape as `makeType5(rom)`
+    // and the other factories above: it closes over `rom` and drops the slot INDEX, which none of
+    // the five reads.
+    //
+    // PARTIAL, AND THEY SAY SO. Every one of these still carries counted `note()`s for the
+    // routines below it -- slot [9]'s `$25CB94` tail, slot [17]'s six state-7 callees, and the
+    // rest. Registering them is right for the same reason entry [5] gives: unattributed notes
+    // become notes that name the state they came from, and the working states actually run.
+    [7, slotObject(objSlot7, rom)],
+    [9, slotObject(slot9.objSlot9, rom)],
+    [13, slotObject(objSlot13, rom)],
+    [15, slotObject(objSlot15, rom)],
+    // Slot [17] is the ONE that needs more than the adapter. `phase7_25D560`'s draw tail takes its
+    // seven draws as injected data (`ctx.selectDraws`) rather than importing them, because
+    // `objslot9.js` already imports `objslot17.js`. Seed it ONCE, in place, rather than spreading
+    // `ctx` -- a fresh object per frame would silently drop anything a subsystem writes onto `ctx`
+    // itself. `??=` so a caller that supplies its own set (the tests do) still wins.
+    [17, (ram, slot, _slotIndex, ctx) => {
+      if (ctx) ctx.selectDraws ??= slot9;                // the namespace IS the keyed set
+      return objSlot17(ram, rom, slot, ctx);
+    }],
   ]);
+}
+
+/** Adapt a front-end slot dispatcher to `runObjectDriver`'s `(ram, slot, slotIndex, ctx)` call.
+ *  The five take `(ram, rom, a5, ctx)` and none of them reads the slot index. */
+function slotObject(fn, rom) {
+  return (ram, slot, _slotIndex, ctx) => fn(ram, rom, slot, ctx);
 }
 
 export class Game {
