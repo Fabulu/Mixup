@@ -350,7 +350,9 @@ test('W374 both draws go through $23DFB4, which resolves to bucket 0 register co
   });
 
 // ---------------------------------------------------------------------------
-// $25EDF8 -- the routine whose BODY IS UNREACHABLE AS SHIPPED.
+// $25EDF8. W374 first recorded its body as UNREACHABLE and WITHDREW that claim: the state write
+// it depended on is skipped by $25D244 beq.w $25D254, so a non-confirm frame reaches this with
+// ($1,A6) still 4. These tests pin the FUNCTION's gate, which is correct either way.
 //
 // `$25EE28 cmpi.b #$4,($1,A6) / bne $25EF2E` gates everything, and both callers write ($1,A6)
 // immediately before the jsr: `$25D24E move.b #$2` .. `$25D27E jsr`, and `$25D49A move.b #$5` ..
@@ -371,7 +373,7 @@ function arm25EDF8(ram, D, a6, { state = 4, cursor = 0, phase = 0, anim = 0, tim
   ram.setU16(D.mirror2, mirror2);
 }
 
-test('W374 $25EDF8 THE DEAD GATE: both real caller states emit NOTHING, only state 4 runs',
+test('W374 $25EDF8 gates on state 4: states 2 and 5 emit NOTHING, state 4 runs',
   { skip: SKIP }, async () => {
     const { draw25EDF8, DRAW_25EDF8: D, ram, rom, ctx } = await fx();
     const a6 = A6_REC0;
@@ -405,7 +407,7 @@ test('W374 $25EDF8 THE DEAD GATE: both real caller states emit NOTHING, only sta
     assert.equal(delta % REC, 0, `${delta} bytes is a whole multiple of ${REC}`);
   });
 
-test('W374 $25EDF8 dead gate, proved from the ROM: the operand order and BOTH callers',
+test('W374 $25EDF8 gate operand order and BOTH callers, proved from the ROM',
   { skip: SKIP }, async () => {
     const { DRAW_25EDF8: D, rom } = await fx();
     // $25EE28 cmpi.b #$4,($1,A6): opcode $0C2E, IMMEDIATE word $0004, THEN displacement $0001.
@@ -757,7 +759,7 @@ const TAB_B = 0x25f044;                   // side 1, the $25F080 override plus `
 /** Put a record into a known state. Only the seven fields $25F074 reads are touched. */
 function arm25F074(ram, D, a6, { state = 2, anim = 1, gate1 = 1, loop = 0, cursor = 0,
   nibbles = 0, short: shortAxis = 0 } = {}) {
-  ram.setU8(a6 + D.stateAt, state);       // ($1,A6) -- slice select AND the dead gate
+  ram.setU8(a6 + D.stateAt, state);       // ($1,A6) -- slice select AND the art gate
   ram.setU16(a6 + D.animAt, anim);        // ($2C,A6) -- gates emit 2 and the cursor advance
   ram.setU16(a6 + D.nibblesAt, nibbles);  // ($2E,A6) -- a WORD here, three nibbles
   ram.setU16(a6 + D.shortAt, shortAxis);  // ($38,A6) -- D5
@@ -808,35 +810,36 @@ test('W374 $25F074 THE SLICE SELECT: states 0..6 emit eight, 7..$FF emit the SAM
     }
   });
 
-test('W374 $25F074 THE DEAD GATE: emit 1 art is $0019A35C at every state a caller uses',
+test('W374 $25F074 emit 1 art is $0019A35C in states 2/5/7/8, and $0019A410 in state 4',
   { skip: SKIP }, async () => {
     const { draw25F074, DRAW_25F074: D, ram, rom, ctx } = await fx();
     const a6 = A6_REC0;
 
-    // ($1,A6) at entry is only ever 2, 5, 7 or 8. 7 and 8 skip emit 1 altogether; 2 and 5 draw it.
+    // 7 and 8 skip emit 1 altogether; 2, 4 and 5 draw it. State 4 IS reachable -- $25D490 beq.w
+    // $25D4A4 skips the move.b #$5 on a non-confirm frame -- so both arms below are live.
     for (const st of [2, 5]) {
       arm25F074(ram, D, a6, { state: st });
       const before = bytesUsed(ram);
       draw25F074(ram, rom, ctx, a6, 1);
       const e = emitsSince(ram, before);
       assert.equal(e[0].art, D.artEmit1,
-        `state ${st}: $25F0A8 cmpi.b #$4,($1,A6) NEVER matches, so emit 1's D2 is $0019A35C. `
-        + '$0019A410 is UNREACHABLE as shipped -- if this failed, the second arm went live');
+        `state ${st}: $25F0A8 cmpi.b #$4,($1,A6) does not match here, so emit 1's D2 is $0019A35C. `
+        + '$0019A410 is the state-4 arm; these states select the other one');
       assert.notEqual(e[0].art, D.artEmit1Dead, 'the $25F0B0 arm did not run');
       assert.equal(e[0].attr, D.attr.e1, 'emit 1 D3 = $0458');
       assert.equal(e[0].pal, D.pal, 'emit 1 D4 = $0012');
     }
 
-    // FORCED to 4 the second arm runs. Nothing in the shipped cartridge can do this: the three
-    // call sites write 2, 5, 7 and 8, and the compare is against 4.
+    // In state 4 the second arm runs, and state 4 IS reachable from $25D4CE on any frame the
+    // player does not confirm. W374 first claimed otherwise and withdrew it.
     arm25F074(ram, D, a6, { state: 4 });
     const before = bytesUsed(ram);
     draw25F074(ram, rom, ctx, a6, 1);
     assert.equal(emitsSince(ram, before)[0].art, D.artEmit1Dead,
-      'state 4 takes $25F0B0 -- the arm is real, it is simply never entered');
+      'state 4 takes $25F0B0 -- a live arm, reached on every non-confirm frame');
   });
 
-test('W374 $25F074 dead gate and slice select, proved from the ROM, with all THREE call sites',
+test('W374 $25F074 art gate and slice select, proved from the ROM, all THREE call sites',
   { skip: SKIP }, async () => {
     const { DRAW_25F074: D, rom } = await fx();
     // $25F086 cmpi.b #$7,($1,A6): opcode $0C2E, IMMEDIATE $0007 FIRST, displacement $0001 second.
@@ -852,7 +855,7 @@ test('W374 $25F074 dead gate and slice select, proved from the ROM, with all THR
     assert.equal(rom.u16(0x25f0aa), D.deadGateValue, '  ...$0004 FIRST');
     assert.equal(rom.u16(0x25f0ac), D.stateAt, '  ...$0001 SECOND');
     assert.equal(rom.u32(0x25f0a4), D.artEmit1, '$25F0A2 move.l #$0019A35C,D2');
-    assert.equal(rom.u32(0x25f0b2), D.artEmit1Dead, '$25F0B0 move.l #$0019A410,D2 -- UNREACHABLE');
+    assert.equal(rom.u32(0x25f0b2), D.artEmit1Dead, '$25F0B0 move.l #$0019A410,D2 -- the state-4 arm');
 
     // THREE call sites, and there are exactly three: a full-image scan for the longword $0025F074
     // finds these operands and no others. All three are `jsr` ($4EB9).
@@ -1268,3 +1271,457 @@ test('W374 $25F074 writes ONLY ($66,A6), and nothing else in RAM', { skip: SKIP 
   assert.deepEqual(moved, [D.cursorAt + 1],
     'only the low byte of ($66,A6) changed 0 -> 4; nothing else in the record or the two words');
 });
+
+// ---------------------------------------------------------------------------
+// $25E29E -- the SIXTH shared draw ported. Four unrolled arms, ONE of which emits, four zooming
+// emits through $23E2F2 (NOT $23DFB4), and the only live producer of scale index 56 in the corpus.
+// ---------------------------------------------------------------------------
+
+const A6_29E = A6_REC1;                   // $812F10, so a6 - $70 is still a valid address
+
+/** The four D1 longwords, written as the RESOLVED table rather than as the port's step-by-step
+ *  swaps, so that a swap read as decoration in `src/` cannot also be wrong here in the same way. */
+function d1of25E29E(x, y) {
+  const w = (v) => v & 0xffff;
+  return [
+    ((w(0x4801 + x) << 16) | w(-2 * y)) >>> 0,          // hi = $4801 + X, lo = -2Y
+    ((w(0xfe81 - x) << 16) | w(+2 * y)) >>> 0,          // hi = $FE81 - X, lo = +2Y
+    ((w(0x0001 - 2 * x) << 16) | w(-y)) >>> 0,          // hi = $0001 - 2X, lo = -Y   <-- FLIPPED
+    ((w(0x0001 + 2 * x) << 16) | w(0x2800 + y)) >>> 0,  // hi = $0001 + 2X, lo = $2800 + Y
+  ];
+}
+const D2_25E29E = [0x0019e310, 0x0019ebd4, 0x0019f498, 0x0019fb9c];
+const D3_25E29E = [0x14e0, 0x14e0, 0x3840, 0x3840];     // emits 2 and 4 INHERIT
+const D4_25E29E = [0x0010, 0x0010, 0x0010, 0x0010];     // emits 2, 3 and 4 INHERIT
+
+function arm25E29E(ram, D, a6, { x = 0, y = 0, cursor = 0 } = {}) {
+  ram.setU16(a6 + D.longAt, x);
+  ram.setU16(a6 + D.shortAt, y);
+  ram.setU16(a6 + D.cursorAt, cursor);
+}
+
+/** The expected records, built by driving `$23E2F2`'s OWN port with hand-resolved registers into a
+ *  SEPARATE Ram. This is not a re-implementation of the emitter -- it is the emitter, fed what the
+ *  cartridge feeds it, so the comparison is purely about $25E29E's register arithmetic. */
+async function reference25E29E(x, y, d6) {
+  const { enqueueZoomedRegisters } = await import('../src/spritequeue.js');
+  const { Ram } = await import('../src/ram.js');
+  const ram = new Ram();
+  const d1 = d1of25E29E(x, y);
+  for (let i = 0; i < 4; i++) {
+    enqueueZoomedRegisters(ram, 0, d1[i], D2_25E29E[i], D3_25E29E[i], D4_25E29E[i], d6);
+  }
+  return emitsSince(ram, 0);
+}
+
+test('W374 $25E29E is 481 bytes, ONE straight line, and only the LIVE arm reaches a jsr',
+  { skip: SKIP }, async () => {
+    const { DRAW_25E29E: D, rom } = await fx();
+    assert.equal(D.rts - D.addr + 1, D.bytes, 'the routine is 481 bytes');
+    assert.equal(rom.u16(D.rts), 0x4e75, '$25E47E rts');
+
+    // FOUR `jsr $23E2F2` in the whole routine, and every one of them inside the live arm.
+    const jsrs = [];
+    for (let a = D.addr; a < D.rts; a += 2) {
+      if (rom.u16(a) === 0x4eb9 && rom.u32(a + 2) === D.stub) jsrs.push(a);
+    }
+    assert.deepEqual(jsrs, D.emits.map((e) => e.at),
+      'exactly four jsr $23E2F2, at $25E322/$25E344/$25E36A/$25E38C');
+    for (const at of jsrs) {
+      assert.ok(at >= D.armLive.from && at < D.armLive.to,
+        `$${at.toString(16).toUpperCase()} is inside the live arm $25E2F2..$25E391`);
+    }
+    // ...and not one `jsr`, `jmp` or `bsr` of ANY kind lives in the three silent arms.
+    for (const arm of [D.armDeadHead, D.armDeadLsl, D.armDeadAsr]) {
+      for (let a = arm.from & ~1; a <= arm.to; a += 2) {
+        const w = rom.u16(a);
+        assert.ok(w !== 0x4eb9 && w !== 0x4ef9 && w !== 0x4eba && w !== 0x4efa
+          && (w & 0xff00) !== 0x6100,
+        `$${a.toString(16).toUpperCase()} in the DEAD arm $${arm.from.toString(16).toUpperCase()
+        }..$${arm.to.toString(16).toUpperCase()} is not a call or a branch (it is $${
+          w.toString(16).toUpperCase()})`);
+      }
+    }
+    // The four arms tile the routine exactly, with the rts left over.
+    assert.equal(D.armDeadHead.to + 1, D.armLive.from);
+    assert.equal(D.armLive.to + 1, D.armDeadLsl.from);
+    assert.equal(D.armDeadLsl.to + 1, D.armDeadAsr.from);
+    assert.equal(D.armDeadAsr.to + 1, D.rts);
+  });
+
+test('W374 $25E29E\'s three silent arms are DEAD: nothing in the image reaches into the body',
+  { skip: SKIP }, async () => {
+    const { DRAW_25E29E: D } = await fx();
+    const img = readFileSync(ROM);
+    const s16 = (v) => (v << 16) >> 16;
+    const LO = D.addr, HI = D.rts - 1;         // $25E29E..$25E47D, i.e. every byte but the rts
+
+    // 1. Absolute longwords: exactly three, all $0025E29E, all `jsr` operands.
+    const abs = [];
+    for (let a = 0; a + 4 <= img.length; a += 2) {
+      const v = img.readUInt32BE(a);
+      if (v >= LO && v <= HI) abs.push([a, v]);
+    }
+    assert.deepEqual(abs, [[0x25d266, D.addr], [0x25d4b6, D.addr], [0x25d810, D.addr]],
+      'the ONLY absolute references are the three jsr operands, and every one of them targets the '
+      + 'entry $25E29E -- nothing computes an address inside the body');
+    for (const [a] of abs) {
+      assert.equal(img.readUInt16BE(a - 2), 0x4eb9, `$${(a - 2).toString(16).toUpperCase()} jsr`);
+    }
+
+    // 2. 8-bit Bcc: none anywhere in the image lands inside the routine.
+    const b8 = [];
+    for (let a = 0; a + 2 <= img.length; a += 2) {
+      const w = img.readUInt16BE(a);
+      if ((w & 0xf000) !== 0x6000) continue;
+      const d = w & 0xff;
+      if (d === 0 || d === 0xff) continue;      // .w and .l forms, covered by the sweep below
+      const t = a + 2 + (d >= 0x80 ? d - 256 : d);
+      if (t >= LO && t <= HI) b8.push(a);
+    }
+    assert.deepEqual(b8, [], 'no 8-bit branch anywhere in the 6 MB image targets $25E29E..$25E47D');
+
+    // 3. Every 16-bit PC-relative displacement -- bra.w/bsr.w/Bcc.w AND every `4xFA` / (d16,PC)
+    //    extension word -- whose EXTENSION WORD is preceded by a real PC-relative opcode.
+    const pcrel = [];
+    for (let a = 2; a + 2 <= img.length; a += 2) {
+      const t = a + s16(img.readUInt16BE(a));
+      if (t < LO || t > HI) continue;
+      const op = img.readUInt16BE(a - 2);
+      // lea/movea/move (d16,PC) in any register: 4xFA; jmp/jsr (d16,PC): 4EFA/4EBA;
+      // bra.w/bsr.w/Bcc.w: 6xx0 with a zero displacement byte.
+      const isLea = (op & 0xf1ff) === 0x41fa;
+      const isJmp = op === 0x4efa || op === 0x4eba;
+      const isBr = (op & 0xf000) === 0x6000 && (op & 0x00ff) === 0x00;
+      if (isLea || isJmp || isBr) pcrel.push([a - 2, op, t]);
+    }
+    assert.deepEqual(pcrel, [], 'no PC-relative instruction anywhere in the image resolves into '
+      + '$25E29E..$25E47D. THIS IS THE EVIDENCE for the dead-arm claim: the head, the lsl arm and '
+      + 'the asr arm are unreachable, so their stores are overwritten before anything sees them');
+
+    // ...and the sweep is not vacuous: the routine's OWN lea at $25E2F2 is found when the range is
+    // opened by one longword to include the ramp it points at.
+    const own = [];
+    for (let a = 2; a + 2 <= img.length; a += 2) {
+      if (a + s16(img.readUInt16BE(a)) !== D.ramp) continue;
+      if ((img.readUInt16BE(a - 2) & 0xf1ff) === 0x41fa) own.push(a - 2);
+    }
+    assert.ok(own.includes(D.leaAt), `$25E2F2's own lea IS found by the same sweep (hits: ${
+      own.map((h) => '$' + h.toString(16).toUpperCase()).join(' ')}) -- so a null result above is a `
+      + 'real absence and not a broken scan');
+  });
+
+test('W374 $25E29E\'s lea is at $25E2F2, NOT $25E2EE -- the trap the project already fell into',
+  { skip: SKIP }, async () => {
+    const { DRAW_25E29E: D, rom } = await fx();
+    assert.equal(rom.u16(D.leaAt), 0x49fa, '$25E2F2 lea (d16,PC),A4');
+    assert.equal(rom.u16(D.leaExt), D.leaDisp, '  ...displacement $018C');
+    assert.equal(D.leaExt + D.leaDisp, D.ramp,
+      '68000 PC-relative: the PC is the EXTENSION WORD address, $25E2F4 + $18C = $25E480');
+    assert.equal(rom.u16(0x25e2f6), 0x4e71, '$25E2F6 nop -- padding between the lea and the adda');
+    assert.equal(rom.u32(0x25e2f8), 0xd8ee0060, '$25E2F8 adda.w ($60,A6),A4');
+    assert.equal(rom.u16(0x25e2fc), 0x2c14, '$25E2FC move.l (A4),D6 -- the ZOOM FLAGS');
+    // $25E2EE falls INSIDE `move.l #$0019FB9C,D2`, which starts at $25E2EC. Reading the ext word
+    // there gives a base of $25E47C and an off-by-one cursor -- a recon made exactly that error.
+    assert.equal(rom.u16(0x25e2ec), 0x243c, '$25E2EC move.l #<imm>,D2');
+    assert.equal(rom.u32(0x25e2ee), 0x0019fb9c, '  ...and $25E2EE is its IMMEDIATE, not an opcode');
+    assert.notEqual(0x25e2f0 + rom.u16(0x25e2f0), D.ramp,
+      'reading the lea at $25E2EE resolves to $25E47C, four bytes low -- the propagated error');
+  });
+
+test('W374 $25E29E emits EXACTLY FOUR sprites, through $23E2F2, whatever the fields hold',
+  { skip: SKIP }, async () => {
+    const { draw25E29E, DRAW_25E29E: D, ram, rom, ctx, notes } = await fx();
+    for (const x of [0, 0x0140, 0x3800]) {
+      for (const y of [0, 0x0100, 0x1c00]) {
+        for (const cursor of [0, 4, 0x3c]) {
+          arm25E29E(ram, D, A6_29E, { x, y, cursor });
+          const before = bytesUsed(ram);
+          draw25E29E(ram, rom, ctx, A6_29E);
+          const delta = bytesUsed(ram) - before;
+          assert.equal(delta % REC, 0,
+            `x=$${x.toString(16)} y=$${y.toString(16)} cur=$${cursor.toString(16)}: ${delta} `
+            + `bytes is a whole multiple of ${REC}`);
+          assert.equal(delta / REC, 4, '  ...and it is FOUR records -- no gate can suppress them');
+          assert.equal(emitsSince(ram, before).length, 4, '  ...as the decode agrees');
+        }
+      }
+    }
+    assert.deepEqual(notes, [], 'nothing is unported on any reachable field value');
+  });
+
+test('W374 $25E29E: D3 is written TWICE and D4 ONCE, and emits 2/3/4 INHERIT', { skip: SKIP },
+  async () => {
+    const { draw25E29E, DRAW_25E29E: D, ram, rom, ctx } = await fx();
+    // The cartridge fact first: in the WHOLE live arm there are two `move.w #imm,D3` ($363C) and
+    // exactly one `move.w #imm,D4` ($383C). A port that rebuilds either per emit contradicts this.
+    const d3w = [], d4w = [];
+    for (let a = D.armLive.from; a < D.armLive.to; a += 2) {
+      if (rom.u16(a) === 0x363c) d3w.push(a);
+      if (rom.u16(a) === 0x383c) d4w.push(a);
+    }
+    assert.deepEqual(d3w, [0x25e31a, 0x25e366], 'move.w #$14E0,D3 and move.w #$3840,D3, no more');
+    assert.deepEqual(d4w, [0x25e31e], 'move.w #$0010,D4 -- ONCE, before the first jsr');
+
+    arm25E29E(ram, D, A6_29E, { x: 0x0140, y: 0x0100, cursor: 8 });
+    const before = bytesUsed(ram);
+    draw25E29E(ram, rom, ctx, A6_29E);
+    const e = emitsSince(ram, before);
+    assert.equal(e.length, 4);
+    for (let i = 0; i < 4; i++) {
+      assert.equal(e[i].art, D2_25E29E[i], `emit ${i + 1} D2`);
+      assert.equal(e[i].attr, D3_25E29E[i], `emit ${i + 1} D3`);
+      assert.equal(e[i].pal, D4_25E29E[i], `emit ${i + 1} D4`);
+    }
+    assert.equal(e[1].attr, e[0].attr, 'emit 2 INHERITS D3 -- nothing writes it between the jsrs');
+    assert.equal(e[3].attr, e[2].attr, 'emit 4 INHERITS D3 = $3840, which is the index-56 size');
+    assert.notEqual(e[2].attr, e[1].attr, '  ...and emit 3 really does change it');
+    for (const r of e) assert.equal(r.pal, 0x0010, 'D4 is written once and inherited three times');
+  });
+
+test('W374 $25E29E\'s AXIS SPLIT: emits 1/2 move on the HIGH half, 3/4 on the LOW', { skip: SKIP },
+  async () => {
+    const { draw25E29E, DRAW_25E29E: D, ram, rom, ctx } = await fx();
+    // Cursor 0 -> D6 = $80008000, whose recentring is exactly zero on both axes, so the emitted
+    // words are D1 shifted and each record word depends on exactly ONE half of D1.
+    const run = (x, y) => {
+      arm25E29E(ram, D, A6_29E, { x, y, cursor: 0 });
+      const before = bytesUsed(ram);
+      draw25E29E(ram, rom, ctx, A6_29E);
+      return emitsSince(ram, before);
+    };
+    const base = run(0, 0);
+    const movedX = run(0x0140, 0);            // X only -- ($4E,A6), the LONG-axis accumulator
+    const movedY = run(0, 0x0140);            // Y only -- ($50,A6), the SHORT-axis one
+
+    for (const i of [0, 1]) {
+      assert.notEqual(movedX[i].d1hi, base[i].d1hi, `emit ${i + 1}: X moves the HIGH half`);
+      assert.equal(movedX[i].d1lo, base[i].d1lo, `emit ${i + 1}: X leaves the LOW half alone`);
+      assert.equal(movedY[i].d1hi, base[i].d1hi, `emit ${i + 1}: Y leaves the HIGH half alone`);
+      assert.notEqual(movedY[i].d1lo, base[i].d1lo, `emit ${i + 1}: Y moves the LOW half`);
+    }
+    for (const i of [2, 3]) {
+      // THE OPPOSITE WAY ROUND -- X still reaches the high half and Y the low one, but through the
+      // reversed swap shape at $25E354/$25E35E and $25E37A/$25E384. What separates the two shapes
+      // is WHICH field is doubled, and that is the assertion below.
+      assert.notEqual(movedX[i].d1hi, base[i].d1hi, `emit ${i + 1}: X moves the HIGH half`);
+      assert.equal(movedX[i].d1lo, base[i].d1lo, `emit ${i + 1}: X leaves the LOW half alone`);
+      assert.equal(movedY[i].d1hi, base[i].d1hi, `emit ${i + 1}: Y leaves the HIGH half alone`);
+      assert.notEqual(movedY[i].d1lo, base[i].d1lo, `emit ${i + 1}: Y moves the LOW half`);
+    }
+    // X reaches emits 1/2's high half ONCE, through `add.w ($4E,A6),D1` between two swaps, but
+    // emits 3/4's high half TWICE, through the doubled D0 that the final swap carries up. Read the
+    // swaps as decoration and both shapes collapse to the same one, which is what this catches.
+    const dx12 = ((movedX[0].d1hi & 0x07ff) - (base[0].d1hi & 0x07ff)) & 0x7ff;
+    const dx34 = ((base[2].d1hi & 0x07ff) - (movedX[2].d1hi & 0x07ff)) & 0x7ff;
+    assert.equal(dx34, dx12 * 2, 'emit 1 takes X once, emit 3 takes it TWICE (and negated)');
+  });
+
+test('W374 $25E29E DOUBLES: emit 1\'s low half moves by -2Y, emit 3\'s high half by -2X',
+  { skip: SKIP }, async () => {
+    const { draw25E29E, DRAW_25E29E: D, ram, rom, ctx } = await fx();
+    // The cartridge fact: two consecutive `sub.w D0,D1` ($9240 $9240) and two consecutive
+    // `add.w D0,D1` ($D240 $D240), not one of each with a shift.
+    assert.equal(rom.u32(0x25e310) >>> 0, 0x92409240, '$25E310/$25E312 sub.w D0,D1 TWICE');
+    assert.equal(rom.u32(0x25e33a) >>> 0, 0xd240d240, '$25E33A/$25E33C add.w D0,D1 TWICE');
+    assert.equal(rom.u32(0x25e35a) >>> 0, 0x92409240, '$25E35A/$25E35C sub.w D0,D1 TWICE');
+    assert.equal(rom.u32(0x25e380) >>> 0, 0xd240d240, '$25E380/$25E382 add.w D0,D1 TWICE');
+
+    const run = (x, y) => {
+      arm25E29E(ram, D, A6_29E, { x, y, cursor: 0 });
+      const before = bytesUsed(ram);
+      draw25E29E(ram, rom, ctx, A6_29E);
+      return emitsSince(ram, before);
+    };
+    // $40 in 1/64 px is exactly one pixel, so `asr.l #6` loses nothing and the deltas are exact.
+    const base = run(0, 0);
+    const oneY = run(0, 0x0040);
+    const oneX = run(0x0040, 0);
+
+    const lo = (r) => r.d1lo & 0x03ff;
+    const hi = (r) => r.d1hi & 0x07ff;
+    assert.equal((lo(base[0]) - lo(oneY[0])) & 0x3ff, 2,
+      'emit 1 low half moved by -2Y = -2 px for Y = 1 px, NOT -1');
+    assert.equal((lo(oneY[1]) - lo(base[1])) & 0x3ff, 2, 'emit 2 low half moved by +2Y');
+    assert.equal((hi(base[2]) - hi(oneX[2])) & 0x7ff, 2,
+      'emit 3 HIGH half moved by -2X = -2 px for X = 1 px, NOT -1');
+    assert.equal((hi(oneX[3]) - hi(base[3])) & 0x7ff, 2, 'emit 4 high half moved by +2X');
+    // ...while the SINGLE applications on emits 1/2's high half and 3/4's low half move by one.
+    assert.equal((hi(oneX[0]) - hi(base[0])) & 0x7ff, 1, 'emit 1 high half takes X ONCE');
+    assert.equal((lo(base[2]) - lo(oneY[2])) & 0x3ff, 1, 'emit 3 low half takes Y ONCE');
+  });
+
+test('W374 $25E29E\'s zoom ramp is sixteen longwords of $8000 + $800*i, on BOTH halves',
+  { skip: SKIP }, async () => {
+    const { DRAW_25E29E: D, rom } = await fx();
+    for (let i = 0; i < D.rampEntries; i++) {
+      const v = rom.u32(D.ramp + i * D.rampStep) >>> 0;
+      const half = (0x8000 + 0x800 * i) & 0xffff;
+      assert.equal((v >>> 16) & 0xffff, half, `ramp[${i}] long half is $${half.toString(16)}`);
+      assert.equal(v & 0xffff, half, `ramp[${i}] short half is the SAME -- both axes zoom together`);
+    }
+    assert.equal(rom.u32(D.ramp) >>> 0, 0x80008000,
+      'entry 0 is the NO-ZOOM encoding: grow set, zoom 0');
+    assert.equal(rom.u32(D.ramp + D.rampLast) >>> 0, 0xf800f800,
+      'entry 15, the last of the sixteen-frame zoom-in');
+    assert.equal(D.rampEntries * D.rampStep, D.rampBytes, '$25E480 + $40 covers all sixteen');
+    assert.equal(D.rampLast + D.rampStep, D.rampBytes, '  ...and $3C is the LAST valid cursor');
+  });
+
+test('W374 $25E29E indexes the ramp as $25E480 + ($60,A6), and $3C selects the last entry',
+  { skip: SKIP }, async () => {
+    const { draw25E29E, DRAW_25E29E: D, ram, rom, ctx } = await fx();
+    // $25D51C move.w #$0,($60,A6) is the only initialiser, $25D7B6 addq.w #$4 the only advance, and
+    // $25D7AC cmpi.w #$3C / beq skips that addq -- so the cursor is {0, 4, ..., $3C} and saturates.
+    assert.equal(rom.u32(0x25d51c) >>> 0, 0x3d7c0000, '$25D51C move.w #$0,($60,A6)');
+    assert.equal(rom.u16(0x25d520), D.cursorAt, '  ...the displacement $60');
+    assert.equal(rom.u32(0x25d7ac) >>> 0, 0x0c6e003c, '$25D7AC cmpi.w #$3C,($60,A6)');
+    assert.equal(rom.u16(0x25d7b0), D.cursorAt);
+    assert.equal(rom.u32(0x25d7b6) >>> 0, 0x586e0060,
+      '$25D7B6 addq.w #$4,($60,A6) -- the only advance');
+
+    for (const cursor of [0, 4, 8, 0x20, 0x3c]) {
+      arm25E29E(ram, D, A6_29E, { x: 0, y: 0, cursor });
+      const before = bytesUsed(ram);
+      draw25E29E(ram, rom, ctx, A6_29E);
+      const got = emitsSince(ram, before);
+      const flags = rom.u32(D.ramp + cursor) >>> 0;
+      assert.deepEqual(got, await reference25E29E(0, 0, flags),
+        `cursor $${cursor.toString(16)} selects ramp entry ${cursor / 4} = $${
+          flags.toString(16).toUpperCase()}`);
+      // ...and it is really the flags: the emitted words carry the ramp's own high bits.
+      for (const r of got) {
+        assert.equal(r.d1hi & 0xf800, (flags >>> 16) & 0xf800,
+          'the ramp longword is `or.l`-ed whole into the coords by $23E350');
+      }
+    }
+    // The LAST entry is genuinely different from the first, so "saturates on $3C" is observable.
+    assert.notEqual(rom.u32(D.ramp + D.rampLast) >>> 0, rom.u32(D.ramp) >>> 0);
+  });
+
+test('W374 $25E29E is the ONE live producer of scale index 56 -- ZOOM_REG, never SCALE_TABLE',
+  { skip: SKIP }, async () => {
+    const { draw25E29E, DRAW_25E29E: D, ram, rom, ctx } = await fx();
+    const { ZOOM_REG_SCALE_TABLE, SCALE_TABLE } = await import('../src/spritequeue.js');
+    const { u16, i16 } = await import('../src/ram.js');
+
+    // D3 = $3840 on emits 3 and 4, and $23E326 andi.w #$3E00 / $23E32A lsr.w #6 makes the ENTRY
+    // index ($3840 >> 8) & $3E = 56 -- the ONE index at which the two tables disagree.
+    assert.equal((0x3840 >> 8) & 0x3e, 56);
+    assert.equal(ZOOM_REG_SCALE_TABLE[56], 56, '$23E78C[56] is $23E9CE = 64x - 8x = x56');
+    assert.equal(SCALE_TABLE[56], 1, '$23E54A[56] is the x1 out-of-range GUARD');
+
+    // Cursor 4 -> D6 = $88008800, so ($80 - $88) = -8 and the recentring is NON-zero on both axes.
+    // With x1 it would be -8 on the long axis; with x56 it is -448. Nothing else distinguishes them.
+    const cursor = 4;
+    const d6 = rom.u32(D.ramp + cursor) >>> 0;
+    assert.equal(d6, 0x88008800);
+    arm25E29E(ram, D, A6_29E, { x: 0x0140, y: 0x0100, cursor });
+    const before = bytesUsed(ram);
+    draw25E29E(ram, rom, ctx, A6_29E);
+    const got = emitsSince(ram, before);
+
+    // $23E2F2's coordinate math, parameterised on the scales so both answers come from one piece of
+    // code. `withReg` is checked against the real emitter at the end of this test, so it cannot rot.
+    const longWordWith = (d1, scaleLong, scaleShort) => {
+      const shortAdj = i16(u16(0x80 - u16(d6 >>> 8)) * scaleShort);
+      const longAdj = i16(u16(0x80 - ((d6 >>> 24) & 0xff)) * scaleLong);
+      const long = u16(longAdj + i16((d1 >>> 16) & 0xffff));
+      const short = u16(shortAdj + i16(d1 & 0xffff));
+      const packed = (((long << 16) | short) | 0) >> 6;
+      return ((((packed & 0x07ff03ff) | d6) >>> 0) >>> 16) & 0xffff;
+    };
+    const d1 = d1of25E29E(0x0140, 0x0100);
+    // height $3840 & $1FF = $40 = 64 -> entry (64/2)/4 = 8 -> x8 on the SHORT axis, in both tables.
+    for (const i of [2, 3]) {
+      const withReg = longWordWith(d1[i], ZOOM_REG_SCALE_TABLE[56], ZOOM_REG_SCALE_TABLE[8]);
+      const withRec = longWordWith(d1[i], SCALE_TABLE[56], SCALE_TABLE[8]);
+      assert.notEqual(withReg, withRec,
+        `emit ${i + 1}: the two tables give DIFFERENT long-axis words, so this is a real test`);
+      assert.equal(got[i].d1hi, withReg,
+        `emit ${i + 1} carries the x56 recentring from $23E78C[56]. IF THIS FAILS, somebody `
+        + 'aliased ZOOM_REG_SCALE_TABLE to SCALE_TABLE, or pointed this draw at $23DFB4');
+      assert.notEqual(got[i].d1hi, withRec,
+        `emit ${i + 1} is NOT what $23E54A[56]'s x1 guard would give -- $25E29E is the only live `
+        + 'producer of index 56 in the corpus, so nothing else would catch the alias');
+    }
+    // Emits 1 and 2 pass D3 = $14E0, index $14 = 20, where the two tables AGREE -- which is exactly
+    // why the alias would be invisible without emits 3 and 4.
+    assert.equal((0x14e0 >> 8) & 0x3e, 20);
+    assert.equal(ZOOM_REG_SCALE_TABLE[20], SCALE_TABLE[20]);
+    // The whole four-record block matches the emitter driven with the resolved registers.
+    assert.deepEqual(got, await reference25E29E(0x0140, 0x0100, d6));
+  });
+
+test('W374 $25E29E at its two real call sites: X = Y = 0, cursor 0, D1 is the bare literals',
+  { skip: SKIP }, async () => {
+    const { draw25E29E, DRAW_25E29E: D, ram, rom, ctx } = await fx();
+    // $25D264 (state 1's tail) and $25D4B4 (state 4's) both arrive here. Only $25D80E, inside
+    // $25D560's tail, ever drives ($4E,A6)/($50,A6)/($60,A6) non-zero, and that state is not ported.
+    for (const at of [0x25d264, 0x25d4b4, 0x25d80e]) {
+      assert.equal(rom.u16(at), 0x4eb9, `$${at.toString(16).toUpperCase()} jsr`);
+      assert.equal(rom.u32(at + 2), D.addr, '  ...$25E29E');
+    }
+    // The four `move.l #imm,D1` of the live arm ARE the four D1 values when X = Y = 0.
+    const heads = [0x25e2fe, 0x25e328, 0x25e34a, 0x25e370];
+    const want = d1of25E29E(0, 0);
+    assert.deepEqual(want, [0x48010000, 0xfe810000, 0x00010000, 0x00012800]);
+    for (let i = 0; i < 4; i++) {
+      assert.equal(rom.u16(heads[i]), 0x223c, `$${heads[i].toString(16).toUpperCase()} move.l #,D1`);
+      assert.equal(rom.u32(heads[i] + 2) >>> 0, want[i], '  ...and its immediate');
+      assert.equal(D.emits[i].base >>> 0, want[i], '  ...matching the descriptor');
+    }
+    assert.equal(rom.u32(D.ramp) >>> 0, 0x80008000,
+      'and cursor 0 gives D6 = $80008000, the no-zoom flags');
+
+    arm25E29E(ram, D, A6_29E, { x: 0, y: 0, cursor: 0 });
+    const before = bytesUsed(ram);
+    draw25E29E(ram, rom, ctx, A6_29E);
+    assert.deepEqual(emitsSince(ram, before), await reference25E29E(0, 0, 0x80008000));
+  });
+
+test('W374 $25E29E writes NO RAM of its own, and reads $4E/$50/$60 but never $62', { skip: SKIP },
+  async () => {
+    const { draw25E29E, DRAW_25E29E: D, ram, rom, ctx } = await fx();
+    arm25E29E(ram, D, A6_29E, { x: 0x0140, y: 0x0100, cursor: 8 });
+    ram.setU16(A6_29E + 0x62, 0x7fff);        // ($62,A6) -- the DEAD head's field
+    const snap = () => {
+      const b = [];
+      for (let i = 0; i < 0x70; i++) b.push(ram.u8(A6_29E + i));
+      return b;
+    };
+    const before = snap();
+    const beforeBytes = bytesUsed(ram);
+    draw25E29E(ram, rom, ctx, A6_29E);
+    assert.deepEqual(snap(), before,
+      'not one byte of the record moved -- every write goes through $23E2F2 into the bucket');
+    const withJunk62 = emitsSince(ram, beforeBytes);
+
+    // ...and the DEAD head's field cannot reach an emit. Change it and nothing at all moves.
+    ram.setU16(A6_29E + 0x62, 0x0000);
+    const at2 = bytesUsed(ram);
+    draw25E29E(ram, rom, ctx, A6_29E);
+    assert.deepEqual(emitsSince(ram, at2), withJunk62,
+      '($62,A6) is read ONLY by the dead head at $25E2A6/$25E2C2/$25E2D4/$25E2E8, so it is invisible');
+  });
+
+test('W374 $25E29E notes rather than invents when ($60,A6) leaves the declared window',
+  { skip: SKIP }, async () => {
+    const { draw25E29E, DRAW_25E29E: D, ram, rom, ctx, notes } = await fx();
+    for (const cursor of [0x40, 0x02, 0xfffc]) {
+      arm25E29E(ram, D, A6_29E, { cursor });
+      const before = bytesUsed(ram);
+      draw25E29E(ram, rom, ctx, A6_29E);
+      assert.equal(bytesUsed(ram), before, `cursor $${cursor.toString(16)}: nothing is emitted`);
+    }
+    assert.deepEqual(notes, [D.leaAt, D.leaAt, D.leaAt],
+      'three notes at $25E2F2, the lea whose window $25E480 + $40 the cursor left');
+    // ...and every value $25D51C/$25D7AC/$25D7B6 can actually produce is silent.
+    for (let cursor = 0; cursor <= D.rampLast; cursor += D.rampStep) {
+      arm25E29E(ram, D, A6_29E, { cursor });
+      const before = bytesUsed(ram);
+      draw25E29E(ram, rom, ctx, A6_29E);
+      assert.equal(bytesUsed(ram) - before, 4 * REC, `cursor $${cursor.toString(16)} draws`);
+    }
+    assert.equal(notes.length, 3, 'no reachable cursor adds a note');
+  });

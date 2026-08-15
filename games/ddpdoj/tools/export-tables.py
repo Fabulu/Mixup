@@ -2906,6 +2906,18 @@ SHOT_WINDOWS.extend([
     (0x223EF8, 0x0040, "W373: slot [9] record-state-0 palette, bank 15 through $24150A. Sixty-four "
                        "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
                        "slot [17]; this one is slot [9]'s own"),
+    # ---- W374: $25E29E's zoom-flag ramp ------------------------------------------------------
+    (0x25E480, 0x0040, "W374: $25E29E's ZOOM-FLAG ramp, SIXTEEN longwords, read as move.l (A4),D6 "
+                       "with A4 = $25E480 + ($60,A6) and handed to $23E2F2 as its D6 zoom flags. "
+                       "Both halves are identical and equal $8000 + $800*i, i = 0..15 -- grow set "
+                       "on both axes with the zoom field counting 0..15, i.e. a sixteen-frame "
+                       "zoom-in. THE BOUND IS STATED BY THE CONSUMER, not by adjacency: the cursor "
+                       "($60,A6) is initialised only at $25D51C move.w #$0,($60,A6), advanced only "
+                       "at $25D7B6 addq.w #4, and capped by $25D7AC cmpi.w #$3C,($60,A6), so it "
+                       "takes exactly {0,4,..,$3C} = 16 entries and saturates. The lea is at "
+                       "$25E2F2 (49FA 018C, ext word at $25E2F4, +$18C), NOT at $25E2EE -- that "
+                       "address falls inside the move.l #$0019FB9C,D2 immediately before it, and "
+                       "reading it there gives a base of $25E47C and an off-by-one cursor"),
     # ---- W374: $25F074's three tables --------------------------------------------------------
     # All three bounds are stated by CODE and all three tile exactly against the next structure:
     # $25F014 + $30 = $25F044, $25F044 + $30 = $25F074 (the routine's own first opcode), and

@@ -252,7 +252,9 @@ test('W374/3 -- index 25 is x21 IN BOTH TABLES, and that is the cartridge',
 //   3. move.l #$0019F498,D2 / move.w #$3840,D3    <-- INDEX 56
 //   4. move.l #$0019FB9C,D2
 //
-// and D6 comes from `lea ($25E47C,PC),A4 / adda.w ($60,A6),A4 / move.l (A4),D6`,
+// and D6 comes from `lea ($25E480,PC),A4 / adda.w ($60,A6),A4 / move.l (A4),D6`,
+// (the `lea` is at $25E2F2 and resolves to $25E480; an earlier recon read it at $25E2EE, which
+// falls inside the preceding `move.l #$0019FB9C,D2` immediate and gives a base of $25E47C),
 // whose entry 0 (at $25E480) is $80008000 -- the no-zoom encoding -- and whose
 // entry 1 is $88008800.
 const D2_A = 0x0019e310, D3_A = 0x14e0;

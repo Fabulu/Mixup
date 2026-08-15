@@ -440,12 +440,29 @@ export function phase4_25D402(ram, rom, ctx, a5, a6, d7) {
  *  Drop the guard and the shared parts draw twice per frame.
  */
 function confirmAndDraw(ram, rom, ctx, a5, a6, d0, nextPhase, d7) {
-  if (ram.u8(a6 + HANDLER4.autoConfirm) === 0                // $25D23A / $25D486 tst.b ($30,A6)
-      && (d0 & HANDLER4.confirmMask) === 0) return;          // $25D240 / $25D48C andi.w #$70
-  ctx.soundPost?.(HANDLER4.confirmSound);                    // $25D248 / $25D494 jsr $28C6E0
-  ram.setU8(a6 + SCREEN17.phaseAt, nextPhase);               // $25D24E / $25D49A
-  if (nextPhase === HANDLER4.nextPhase) {
-    ram.setU8(a6 + HANDLER4.clearOnConfirm, 0);              // $25D4A0 -- state 4's tail ONLY
+  // **THE NO-CONFIRM PATH FALLS INTO THE DRAWS. IT DOES NOT RETURN.** `$25D244 beq.w $25D254`
+  // (extension word at `$25D246`, `+$E`) lands on `$25D254 move.l A4,-(SP)`, which is the FIRST
+  // instruction of the draw block -- not on the `rts` at `$25D292`. State 4's copy is the same
+  // shape: `$25D490 beq.w $25D4A4` skips `$25D49A move.b #$5,($1,A6)` and `$25D4A0 clr.w ($2E,A6)`
+  // and lands on its own `move.l A4,-(SP)`.
+  //
+  // So a frame with no confirm SKIPS the sound and the state write and STILL DRAWS. This was
+  // modelled as an early `return` until W374, which meant the whole screen drew only on the single
+  // frame the player pressed a button.
+  //
+  // It also decides what `($1,A6)` is when the draws run, which is load-bearing downstream: on a
+  // non-confirm frame it is still 1 (state 1's tail) or 4 (state 4's), NOT 2 or 5. That is why
+  // `$25EDF8`'s and `$25F074`'s `cmpi.b #$4,($1,A6)` gates DO fire -- W374 briefly recorded both as
+  // dead on the strength of the old early return, and both claims were withdrawn. Trap 10 exactly:
+  // the state byte advances mid-frame and a compare downstream sees the new value in the same pass.
+  const confirmed = ram.u8(a6 + HANDLER4.autoConfirm) !== 0  // $25D23A / $25D486 tst.b ($30,A6)
+    || (d0 & HANDLER4.confirmMask) !== 0;                    // $25D240 / $25D48C andi.w #$70
+  if (confirmed) {
+    ctx.soundPost?.(HANDLER4.confirmSound);                  // $25D248 / $25D494 jsr $28C6E0
+    ram.setU8(a6 + SCREEN17.phaseAt, nextPhase);             // $25D24E / $25D49A
+    if (nextPhase === HANDLER4.nextPhase) {
+      ram.setU8(a6 + HANDLER4.clearOnConfirm, 0);            // $25D4A0 -- state 4's tail ONLY
+    }
   }
 
   const guard = ram.u8(a5 + HANDLER4.sharedGuard);           // $25D256 / $25D4A6 bset #$0,($3,A5)
@@ -462,7 +479,11 @@ function confirmAndDraw(ram, rom, ctx, a5, a6, d0, nextPhase, d7) {
   // bucket, so reordering them reorders the sprites. $25D278/$25D27E/$25D284/$25D28A on state 1's
   // tail and $25D4C8/$25D4CE/$25D4D4/$25D4DA on state 4's.
   ctx.unported?.note(HANDLER4.drawsAlways[0], '$25E824 -- ungated draw. Unread');
-  // $25D27E / $25D4CE jsr $25EDF8. THE BODY NEVER RUNS: the `setU8(phaseAt, nextPhase)` near the
+  // $25D27E / $25D4CE jsr $25EDF8. WITHDRAWN CLAIM, kept as a warning: W374 recorded this as a
+  // call whose body never runs. It was wrong, and it was wrong because `confirmAndDraw` modelled
+  // the no-confirm path as an early `return`. On a non-confirm frame `($1,A6)` is still 4 here and
+  // the body DOES run. See the note on `confirmAndDraw` above. The stale reasoning was:
+  // THE BODY NEVER RUNS: the `setU8(phaseAt, nextPhase)` near the
   // top of this function has already put ($1,A6) at 2 (state 1's tail) or 5 (state 4's), and
   // $25EE28 gates the whole body on 4. So this call is an immediate rts as shipped, on both paths.
   // Wired faithfully anyway, and w374selectdraws.test.js pins the fact so a future change that
@@ -615,6 +636,173 @@ export function draw25E220(ram, rom, ctx, a6) {
     if (sp.op === 'addLowB') d1 = ((hi << 16) | u16(lo + offB)) >>> 0;   // $25E28A add.w, NO swap
     enqueueRegistersThroughStub(ram, rom, DRAW_25E220.stub, d1, sp.art, sp.attr, sp.pal);
   }
+}
+
+export const DRAW_25E29E = Object.freeze({
+  addr: 0x25e29e, rts: 0x25e47e, bytes: 481,
+  stub: 0x23e2f2,                            // the ZOOMING REGISTER family, bucket 0
+  // The FOUR unrolled arms. Only `live` reaches a `jsr`; the other three are dead stores.
+  armDeadHead: Object.freeze({ from: 0x25e29e, to: 0x25e2f1 }),
+  armLive: Object.freeze({ from: 0x25e2f2, to: 0x25e391 }),
+  armDeadLsl: Object.freeze({ from: 0x25e392, to: 0x25e40d }),
+  armDeadAsr: Object.freeze({ from: 0x25e40e, to: 0x25e47d }),
+  // Off A6, all WORDS. $62 is read by the DEAD head only and is deliberately not listed here.
+  longAt: 0x4e, shortAt: 0x50, cursorAt: 0x60,
+  // $25E2F2 lea ($25E480,PC),A4 -- the extension word is at $25E2F4 and $25E2F4 + $18C = $25E480.
+  ramp: 0x25e480, rampEntries: 16, rampStep: 0x04, rampLast: 0x3c,
+  rampBytes: 0x40,                           // the ONE declared ROM window: $25E480 + $40
+  leaAt: 0x25e2f2, leaExt: 0x25e2f4, leaDisp: 0x018c,
+  // The four emits, in ROM order. `op` names WHICH half the record offset lands on and which the
+  // doubled term does; see the doc comment. `d3`/`d4` are `null` where the cartridge INHERITS them.
+  emits: Object.freeze([
+    Object.freeze({ at: 0x25e322, base: 0x48010000, art: 0x0019e310, attr: 0x14e0, pal: 0x0010,
+      op: 'addLongHigh' }),                  // hi = $4801 + X, lo = -2Y
+    Object.freeze({ at: 0x25e344, base: 0xfe810000, art: 0x0019ebd4, attr: null, pal: null,
+      op: 'subLongHigh' }),                  // hi = $FE81 - X, lo = +2Y
+    Object.freeze({ at: 0x25e36a, base: 0x00010000, art: 0x0019f498, attr: 0x3840, pal: null,
+      op: 'subShortLow' }),                  // hi = $0001 - 2X, lo = -Y
+    Object.freeze({ at: 0x25e38c, base: 0x00012800, art: 0x0019fb9c, attr: null, pal: null,
+      op: 'addShortLow' }),                  // hi = $0001 + 2X, lo = $2800 + Y
+  ]),
+});
+
+/** `$25E29E` -- the second of the eight shared select-screen draws, `$25E29E..$25E47E`, 481 bytes,
+ *  ONE STRAIGHT LINE to the `rts` at `$25E47E`. **There is not a single branch, gate, `cmpi` or
+ *  `tst` in it**, and `($1,A6)` is never read. Its only gate is the caller's `bset #$0,($3,A5)`.
+ *
+ *  **IT IS FOUR UNROLLED ARMS OF FOUR REGISTER-LOAD GROUPS EACH, AND ONLY ONE ARM EMITS.**
+ *
+ *      $25E29E..$25E2F1  the HEAD    reads ($62,A6), 1x, groups 3/4 have no swap   -- NO jsr
+ *      $25E2F2..$25E391  **LIVE**    reads ($4E,A6) once and ($50,A6) twice        -- FOUR jsr
+ *      $25E392..$25E40D  the LSL arm same fields, `lsl.w #2,D0` = 4x, B's signs    -- NO jsr
+ *      $25E40E..$25E47D  the ASR arm `asr.w #1,D0` = 0.5x on group 1, 1x on 2/3/4  -- NO jsr
+ *
+ *  **THE THREE SILENT ARMS ARE DEAD STORES, PROVEN AND NOT ASSUMED.** A full 6 MB scan of the image
+ *  for every 8-bit `Bcc`, every 16-bit PC-relative displacement (`bra.w`/`bsr.w`/`Bcc.w` and every
+ *  `4xFA` / `(d16,PC)` extension word) and every absolute longword landing in `$25E29E..$25E47F`
+ *  returns **zero** references. The only references to the routine at all are the three `jsr`
+ *  operands at `$25D266`, `$25D4B6` and `$25D810`, all pointing at `$25E29E` itself. Every value the
+ *  three silent arms compute is overwritten by the next arm before anything can observe it, and the
+ *  head reads a **different RAM field** (`$62`, not `$4E`/`$50`) -- which is why "superseded variant,
+ *  disabled by deleting its `jsr`" is the natural reading. This is the same shipping-disablement
+ *  family as the dead gates in `$25EDF8` and `$25F074`, done with the knife rather than with an
+ *  unsatisfiable `cmpi.b`. **Only the live arm is modelled below**; the spans are recorded in
+ *  `DRAW_25E29E` and pinned by a test so that nobody later "discovers" them and assumes a gap.
+ *
+ *  **THE SWAP SHAPES ARE ASYMMETRIC AND THAT IS THE WHOLE POINT.** Emits 1 and 2 do
+ *  `swap / +/-($4E,A6) / swap / +/-D0 / +/-D0`, so the record offset lands on the **HIGH** half and
+ *  the doubled term on the LOW. Emits 3 and 4 do `+/-($50,A6) / swap / +/-D0 / +/-D0 / swap`, which
+ *  is the **opposite** way round. Read the swaps as decoration and every offset goes to the wrong
+ *  axis -- exactly what `$25E220`'s docstring already warns about. With `X = ($4E,A6)` and
+ *  `Y = ($50,A6)`, D1 resolves to (high = LONG axis):
+ *
+ *      1  ($4801 + X) : (-2Y)        art $0019E310  D3 $14E0  D4 $0010
+ *      2  ($FE81 - X) : (+2Y)        art $0019EBD4  D3 and D4 INHERITED
+ *      3  ($0001 - 2X) : (-Y)        art $0019F498  D3 $3840  D4 INHERITED
+ *      4  ($0001 + 2X) : ($2800 + Y) art $0019FB9C  D3 and D4 INHERITED
+ *
+ *  **THE DOUBLING IS TWO INSTRUCTIONS, NOT A SHIFT.** `$25E310`/`$25E312` are two separate
+ *  `sub.w D0,D1`, and likewise `$25E33A`/`$25E33C`, `$25E35A`/`$25E35C`, `$25E380`/`$25E382`.
+ *  Collapse either pair into one and the sprite lands at half its offset. **There are NO cancelling
+ *  immediates here**, unlike `$25E6CE` and `$25EF30`: every literal above is the final value.
+ *
+ *  **D3 AND D4 ARE INHERITED ACROSS THE `jsr`s, AND THAT IS LOAD-BEARING.** `$23E2F2` does
+ *  `movem.l D4/D7/A0,-(SP)` and never writes D1/D2/D3/D6, so D3, D4, D6, A4 and A6 all survive.
+ *  Rebuilding D3 per emit puts `$14E0` on emits 3 and 4 and loses the x56 scale below.
+ *
+ *  **D3 = `$3840` ON EMITS 3 AND 4 IS THE ONE INDEX WHERE THE TWO SCALE TABLES DISAGREE.** Its width
+ *  index is `$38 & $3E` = 56, and `ZOOM_REG_SCALE_TABLE[56]` is **x56** where `SCALE_TABLE[56]` is
+ *  the x1 out-of-range guard. This routine is the only live producer of that index in the corpus, so
+ *  aliasing the two tables would be invisible everywhere else and wrong here.
+ *
+ *  **D7 IS NEITHER READ NOR WRITTEN ANYWHERE IN THE 481 BYTES**, so there is no `d7` parameter and
+ *  no side select. `$23E2F2` preserves D7 regardless, so the caller's selector survives the call.
+ *  A4 is loaded locally at `$25E2F2` and clobbered; A0 is untouched. **The routine writes NO RAM at
+ *  all** -- every write goes through `$23E2F2` into the sprite bucket.
+ *
+ *  **THE ZOOM RAMP, AND A TRAP THE PROJECT ALREADY FELL INTO.** `D6 = (A4)` with
+ *  `A4 = $25E480 + ($60,A6)`: sixteen longwords whose halves are both `$8000 + $800*i`, i.e. grow
+ *  set on both axes and the zoom field counting 0..15 -- a sixteen-frame zoom-in. **The `lea` is at
+ *  `$25E2F2`, NOT `$25E2EE`.** `$25E2EE` falls inside the preceding `move.l #$0019FB9C,D2` (which
+ *  starts at `$25E2EC`), and reading the extension word there gives a base of `$25E47C` and an
+ *  off-by-one cursor. An earlier recon made exactly that error and it was propagated.
+ *
+ *  **THE CURSOR IS BOUNDED BY CODE, NOT BY ADJACENCY.** `($60,A6)` is initialised only at
+ *  `$25D51C move.w #$0,($60,A6)`, advanced only at `$25D7B6 addq.w #4,($60,A6)`, and that `addq` is
+ *  skipped by `$25D7AC cmpi.w #$3C,($60,A6) / beq`. So it takes exactly `{0, 4, ..., $3C}` and
+ *  saturates on the last entry, which is what makes `$25E480 + $40` the whole window.
+ *
+ *  **AT TWO OF THE THREE CALL SITES IT DRAWS ITS LITERALS.** `$25D264` (state 1's tail) and
+ *  `$25D4B4` (state 4's) arrive with `X = Y = 0` and the cursor at 0, so D1 is exactly `$48010000`,
+ *  `$FE810000`, `$00010000`, `$00012800` and D6 is `$80008000` -- the no-zoom encoding. Only
+ *  `$25D80E`, in `$25D560`'s tail, drives the fields, and that state is not ported.
+ *
+ *  Reads: `($4E,A6)`, `($50,A6)`, `($60,A6)`, all WORDS. Inherited: **A6 only**. */
+export function draw25E29E(ram, rom, ctx, a6) {
+  const D = DRAW_25E29E;
+  const x = ram.u16(a6 + D.longAt);                          // ($4E,A6), the LONG-axis accumulator
+  const y = ram.u16(a6 + D.shortAt);                         // ($50,A6), the SHORT-axis one
+  const cursor = ram.u16(a6 + D.cursorAt);                   // $25E2F8 adda.w ($60,A6),A4
+
+  // $25E2F2 lea ($25E480,PC),A4 / $25E2F6 nop / $25E2F8 adda.w / $25E2FC move.l (A4),D6. The `nop`
+  // is real cartridge padding between the lea and the adda; named rather than silently dropped.
+  if (cursor > D.rampLast || (cursor & (D.rampStep - 1)) !== 0) {
+    // $25D51C / $25D7AC / $25D7B6 bound ($60,A6) to {0, 4, ..., $3C}, and $25E480 + $40 is the only
+    // ROM window declared for this routine. Anything else is off the table -- do not invent it.
+    ctx.unported?.note(D.leaAt, `$${D.leaAt.toString(16).toUpperCase()} -- ($60,A6) = $${
+      cursor.toString(16).toUpperCase()} indexes the zoom-flag ramp outside $${
+      D.ramp.toString(16).toUpperCase()}..$${(D.ramp + D.rampBytes - 1).toString(16).toUpperCase()
+    }, the sixteen longwords $25D51C/$25D7AC/$25D7B6 bound it to. No ROM is read for that cursor`);
+    return;
+  }
+  const d6 = rom.u32(D.ramp + cursor) >>> 0;                 // $25E2FC move.l (A4),D6 -- ZOOM FLAGS
+
+  // D3 and D4 SURVIVE each `jsr $23E2F2` (`movem.l D4/D7/A0` and no write to D3), so they are
+  // carried in these two variables across the loop rather than rebuilt per emit.
+  let d3 = 0;                                                // $25E31A move.w #$14E0,D3
+  let d4 = 0;                                                // $25E31E move.w #$0010,D4
+
+  for (const e of D.emits) {
+    // D1 is carried as an explicit (high, low) pair so that every `swap` is a real step and the two
+    // opposite shapes stay visible side by side.
+    let hi = (e.base >>> 16) & 0xffff;
+    let lo = e.base & 0xffff;
+
+    if (e.op === 'addLongHigh' || e.op === 'subLongHigh') {
+      // EMITS 1 and 2. $25E304 / $25E32E swap -- the record offset goes to the HIGH half.
+      [hi, lo] = [lo, hi];
+      // $25E306 add.w ($4E,A6),D1 / $25E330 sub.w ($4E,A6),D1
+      lo = u16(e.op === 'addLongHigh' ? lo + x : lo - x);
+      [hi, lo] = [lo, hi];                                   // $25E30A / $25E334 swap -- back
+      const d0 = y;                                          // $25E30C / $25E336 move.w ($50,A6),D0
+      // $25E310 + $25E312 sub.w D0,D1 TWICE, and $25E33A + $25E33C add.w D0,D1 TWICE. Two separate
+      // instructions, hence -2Y and +2Y; one of each gives half the offset.
+      lo = u16(e.op === 'addLongHigh' ? lo - d0 : lo + d0);
+      lo = u16(e.op === 'addLongHigh' ? lo - d0 : lo + d0);
+    } else {
+      // EMITS 3 and 4, THE OPPOSITE SHAPE. $25E350 sub.w ($50,A6),D1 / $25E376 add.w ($50,A6),D1 --
+      // applied to the LOW half FIRST, with no swap before it.
+      lo = u16(e.op === 'subShortLow' ? lo - y : lo + y);
+      [hi, lo] = [lo, hi];                                   // $25E354 / $25E37A swap
+      const d0 = x;                                          // $25E356 / $25E37C move.w ($4E,A6),D0
+      // $25E35A + $25E35C sub.w D0,D1 TWICE, $25E380 + $25E382 add.w D0,D1 TWICE -- so -2X and +2X
+      // land on what is now the low half...
+      lo = u16(e.op === 'subShortLow' ? lo - d0 : lo + d0);
+      lo = u16(e.op === 'subShortLow' ? lo - d0 : lo + d0);
+      [hi, lo] = [lo, hi];                                   // $25E35E / $25E384 swap -- ...and the
+      // final swap puts the DOUBLED term on the HIGH half, the reverse of emits 1 and 2.
+    }
+
+    // $25E314 / $25E33E / $25E360 / $25E386 move.l #<art>,D2 -- rewritten at every emit.
+    const d2 = e.art;
+    // `null` here means the cartridge does NOT rewrite the register: $25E31A/$25E366 are the only
+    // two `move.w ..,D3` and $25E31E is the only `move.w ..,D4` in the live arm.
+    if (e.attr !== null) d3 = e.attr;
+    if (e.pal !== null) d4 = e.pal;
+
+    enqueueZoomedRegistersThroughStub(ram, rom, D.stub, ((hi << 16) | lo) >>> 0, d2, d3, d4, d6);
+  }
+  // $25E392 -- the LSL arm begins here and never runs. $25E47E rts.
 }
 
 export const DRAW_25E6CE = Object.freeze({
@@ -833,12 +1021,21 @@ export const DRAW_25EDF8 = Object.freeze({
 /** `$25EDF8` -- the third of the four ungated draws, `$25EDF8..$25EF2F`, and **AS SHIPPED IT IS AN
  *  IMMEDIATE `rts`.**
  *
- *  **THE BODY IS UNREACHABLE.** `$25EE28 cmpi.b #$4,($1,A6) / bne $25EF2E` gates everything below it
- *  on record state 4, and neither of the routine's two callers can arrive in state 4: both write
- *  `($1,A6)` a handful of instructions earlier. `$25D24E move.b #$2,($1,A6)` precedes `$25D27E jsr
- *  $25EDF8`, and `$25D49A move.b #$5,($1,A6)` precedes `$25D4CE jsr $25EDF8`. A scan of the whole
- *  6 MB image for the longword `$0025EDF8` finds EXACTLY TWO operands, at `$25D280` and `$25D4D0`,
- *  and both are those `jsr`. There is no third entry and no computed one.
+ *  **THE BODY IS LIVE. A W374 CLAIM THAT IT IS UNREACHABLE WAS WITHDRAWN -- read this before
+ *  trusting any "dead" claim on this screen.** `$25EE28 cmpi.b #$4,($1,A6) / bne $25EF2E` gates
+ *  everything below it on record state 4, and it DOES fire.
+ *
+ *  The withdrawn reasoning was: both callers write `($1,A6)` a few instructions earlier
+ *  (`$25D24E move.b #$2` before `$25D27E jsr`, `$25D49A move.b #$5` before `$25D4CE jsr`), and a
+ *  6 MB scan for the longword `$0025EDF8` finds exactly those two `jsr` operands and no third
+ *  entry. All of that is TRUE and it is not enough.
+ *
+ *  **What it missed is that those two writes are CONDITIONAL and the draws are not.**
+ *  `$25D244 beq.w $25D254` jumps PAST the state write and lands on the first instruction of the
+ *  draw block, so on any frame the player does not confirm, `($1,A6)` is still **4** when this runs
+ *  from `$25D4CE`. `confirmAndDraw` modelled that branch as an early `return`, which hid it. Trap
+ *  10 in one line: the state byte advances mid-frame, and a compare downstream sees whichever value
+ *  it actually has.
  *
  *  Nobody knows why. The gate is ported faithfully and the full body is ported anyway, and the dead
  *  gate is pinned by a test, so that a later change which makes the body live is a deliberate,
@@ -1078,10 +1275,11 @@ function nibbleOffset25F074(ram, ctx, a6, spec) {
  *  `$25D4DC` (state 4's, = 5) and `$25D836` (`$25D560`'s tail, = 7 or 8). **Both arms are reachable
  *  as shipped**; only the full path has a host in the port today, because `$25D560` is not ported.
  *
- *  **A DEAD GATE, the same shape as `$25EDF8`'s.** `($1,A6)` at entry is only ever 2, 5, 7 or 8, so
- *  `$25F0A8 cmpi.b #$4` never matches and emit 1's art is ALWAYS `$0019A35C`. `$0019A410` is
- *  unreachable as shipped. Both arms are transcribed and the fact is pinned by a test, so that a
- *  change which makes the second arm live has to be a deliberate, visible act.
+ *  **BOTH ART ARMS ARE LIVE. A W374 "DEAD GATE" CLAIM HERE WAS WITHDRAWN**, for the same reason as
+ *  `$25EDF8`'s: `($1,A6)` at entry is NOT only ever 2, 5, 7 or 8. `$25D490 beq.w $25D4A4` skips the
+ *  `move.b #$5,($1,A6)` and lands in the draw block, so on a non-confirm frame the state is still
+ *  **4** and `$25F0A8 cmpi.b #$4` fires. **`$0019A410` is reachable art, not unreachable.** Both
+ *  arms are transcribed, which was right; only the claim about which one runs was wrong.
  *
  *  **THE TWO GATES INSIDE THE FULL PATH SKIP DIFFERENT AMOUNTS.** `$80390C` skips EMIT 1 only --
  *  both `move.l (A0)+,D1` sit OUTSIDE it, so A0 lands on +$08 either way. `($2C,A6)` skips EMIT 2

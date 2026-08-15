@@ -21,6 +21,36 @@ reason. Worktree isolation is withdrawn as the port-contention fallback, so **se
 is the only concurrency control** -- and every shared draw lands in `src/objslot9.js`, so it is one port
 agent there regardless.
 
+### THE BIGGEST FINDING OF W374: `confirmAndDraw` HAD A REAL BUG, AND IT MADE ME CALL TWO LIVE GATES DEAD
+
+**`$25D244 beq.w $25D254` does NOT return. It lands on `$25D254 move.l A4,-(SP)`, the FIRST
+instruction of the draw block.** State 4's copy is the same: `$25D490 beq.w $25D4A4` skips
+`$25D49A move.b #$5,($1,A6)` and `$25D4A0 clr.w ($2E,A6)` and lands on its own `move.l A4,-(SP)`.
+
+So **a frame on which the player does not confirm skips the sound and the state write and STILL
+DRAWS.** `confirmAndDraw` modelled that branch as an early `return`, which meant **the whole select
+screen drew only on the single frame a button was pressed.** Fixed in W374.
+
+**TWO CLAIMS I SHIPPED THIS WAVE ARE WITHDRAWN AS A RESULT:**
+
+* **`$25EDF8`'s body is NOT unreachable.** On any non-confirm frame `($1,A6)` is still **4** at
+  `$25D4CE`, so `$25EE28 cmpi.b #$4` fires and the whole portrait body runs.
+* **`$25F074`'s art gate is NOT dead.** Same mechanism, so `$0019A410` is reachable art.
+
+**Why I got it wrong, because the shape will recur.** Everything I checked was true: both callers
+DO write `($1,A6)` a few instructions before the `jsr`, and a 6 MB scan for `$0025EDF8` really does
+find exactly two operands and no third entry. **What I never checked was whether those writes are
+CONDITIONAL.** They are, and the draws are not. It is trap 10 exactly -- the state byte advances
+mid-frame -- and I had trap 10 in front of me in every brief I wrote.
+
+**The rule this leaves:** before calling a gate dead because of what a caller writes, **check
+whether the caller can reach the call WITHOUT doing that write.** Resolve the branch that skips it.
+"The caller sets it to 2" is only an argument if the caller always sets it to 2.
+
+The docstrings, the wiring comment and the test names all now carry the withdrawn claim as a
+warning rather than as a fact, because the tests themselves were always right: they pin the
+FUNCTION's gate, which behaves correctly whichever state it is handed.
+
 ### W374 STATE: SUITE 2811/2811 ZERO SKIPS, GATE EXIT 0, 522 ROM WINDOWS
 
 Up from 2730 at the start of the wave. **Three more shared draws are PORTED, DRIVEN AND WIRED:**
@@ -596,6 +626,52 @@ underlying semantics ARE consistent -- side 1 always ends up with the NEGATED of
 **Read the branch, every time.** Combined with `sideFromD7_25D4E4` inverting (`u16(d7) !== 0 ? 0 : 1`)
 there are two independent inversions in play, and assuming a uniform convention across the family is
 exactly how a side-swap defect ships looking plausible.
+* **`$25E824` IS FULLY DECODED AND NOTHING IN IT IS DEAD.** `$25E824..$25EB2D`, **778 bytes** (not
+  777), plus `$25EB2E..$25EB63`, its 54-byte shared subroutine called five times by `bsr`.
+  **SEVEN emits, all `$23DFB4`, and NOTHING is inherited between them** -- my D4 scan was an
+  immediates-only floor, and the four it missed are `move.w ($A,A1),D4`, `($C,A1)`, `($E,A1)`,
+  `($10,A1)` table reads.
+
+  **`$25EB2E` is a DAMPED APPROACH.** A2 points at a three-word sub-block `{speed, tolerance,
+  position}`; each frame it steps the position by `$241812`'s dx, halves both speed and tolerance
+  once the remaining distance drops inside the tolerance, and snaps to the target when the tolerance
+  falls to `<= $20`. Seeded from `($60, $0C00)` the chain is `$60, $30, $18, $0C, $06, $03, $01, $00`.
+  Its D2 (the long-axis delta) is discarded one instruction later, so the motion is one-axis only.
+
+  **THE RECORD's `$0A..$27` IS FIVE 6-BYTE SUB-BLOCKS** `{speed, tolerance, position}` -- which is
+  what `HANDLER0.d1At: [0x14, 0x1a, 0x20, 0x26]` already half-noticed. It is a FIVE-element array
+  with `$0E` as element 0, and `HANDLER0.pairs`'s `$0A/$0C/$10/$12` are the speed/tolerance seeds of
+  elements 0 and 1; the other three are seeded by `$25E824`'s own fly-out arm.
+
+  **THE A1 TABLE IS A FLAT 13-WORD STRUCT, NOT AN ARRAY.** A1 is never advanced -- the only writes
+  to it are the two `lea` at `$25E828`/`$25E83A`. Fields: `+$00` HOME, `+$02` ANGLE for `$241812`,
+  `+$04` off-screen LIMIT, `+$06` fly-out STEP, `+$08` the D1 high-word BASE read by all seven
+  emits, `+$0A/$0C/$0E/$10` the D4 for emits 1/3/2/4, and `+$12/$14/$16/$18` emit 2's and emit 4's
+  high and low addends. **Bound stated by the largest displacement `$18` read with `add.w`, so `$1A`
+  bytes.** Independent corroboration: `HANDLER0.coord` in the existing port is
+  `[[0x1a00, 0xe600], [0x1e40, 0x5200]]`, which is EXACTLY `+$00` and `+$04` of the two tables.
+
+  **THE A0 TABLES ARE SEVEN ART LONGS BUT NOT IN EMIT ORDER**: entries 0..4 are the five sub-blocks'
+  static art in sub-block order, entries 5..6 are animation BASES used only by the state-1 blocks,
+  read as `add.l ($14,A0),D2` / `($18,A0)` with `(frame & 3) * $184` and `* $104`. **FOUR frames,
+  and the multiply yields a byte delta directly** -- not `$25EDF8`'s eight-frame index idiom.
+
+  **FOUR NEW ROM WINDOWS**, bounds from the displacements (tiling only as corroboration):
+  `$25E7B8 + $1C`, `$25E7D4 + $1C`, `$25E7F0 + $1A`, `$25E80A + $1A`.
+
+  **AND ONE EXPORT-SET CHANGE, NOT A WINDOW.** `$25EB2E` calls `$241812` with speed levels
+  `$60, $30, $18, $0C, $06, $03, $01, $00`. `export-tables.py`'s `speed_index_set()` yields
+  `range(32)` plus a few extras, so **`$60` (96) and `$30` (48) are OUTSIDE it** and
+  `MoveTables.quad()` would take its `unreached()` throw on the first select-screen frame. Both
+  pointers resolve correctly (`$200920[96] = $20D020`, `$200920[48] = $206EA0`), so only the JSON
+  `speed.quads` key set needs the two entries.
+
+  **`($2C,A6)` IS A CROSS-ROUTINE PRODUCER AND THE PORT HAS NO PRODUCER FOR IT TODAY.** `$25E824`
+  is its ONLY writer and `$25EDF8` and `$25F074` are its ONLY readers. It means "the selected item
+  finished sliding home this frame". Because `$25E824` is unported, it is permanently 0, so
+  `$25EDF8`'s timer arm and `$25F074`'s emit 2 plus its `($66,A6)` ramp advance are **both
+  permanently off**. Porting `$25E824` turns them on.
+
 * **`$25E4D0` is completely unread.** One call site, `$25D814`, ungated, and it is in `$25D560`'s
   tail only -- so it is reachable ONLY through state 7, never from states 1 or 4. Its SHAPE is
   known: `$25E4D0..$25E68D`, 958 bytes, ONE routine with two per-side halves opening
