@@ -71,6 +71,43 @@ The docstrings, the wiring comment and the test names all now carry the withdraw
 warning rather than as a fact, because the tests themselves were always right: they pin the
 FUNCTION's gate, which behaves correctly whichever state it is handed.
 
+### MY `$25D560` TREE SIZING WAS INCOMPLETE -- I SCANNED `jsr` AND MISSED EVERY `bsr`
+
+**The "about 1.9 KB, eleven routines, shallow" figure I committed earlier this wave is WRONG.** The
+sweep that produced it looked only for `4EB9`/`4EF9` and never for `61xx`. Re-run with `bsr`
+included:
+
+    $25F530  -> BSR $25F592                                      (missed)
+    $25FAA4  -> BSR $25FBF2, $25FC14; also jsr $240EBC, $28C6E0   (all four missed)
+    $26070C  -> BSR $260580                                      (missed)
+    $260A9A  -> BSR $260A20                                      (missed)
+    $25F456  -> genuinely nothing
+    $2603FE  -> jsr only, as recorded
+
+The newly found second level is 262 bytes across six routines:
+
+    $25F592  12 B  no calls          $260A20  20 B  no calls
+    $25FBF2  34 B  calls $256F14     $240EBC  76 B  no calls
+    $25FC14  84 B  calls $256F14, $256F78
+    $260580  36 B  BSR $25FD24, $25FF7A, $2604F4, $26051A   <-- FOUR more, still unmeasured
+
+**And it is NOT shallow.** `$260580` is 36 bytes that `bsr` out to four further routines, none of
+which I have measured. So the tree is deeper and wider than recorded, and `$25D560` is a bigger
+unit than the docket says. **Do not plan around the 1.9 KB figure.**
+
+**THE PATTERN, AND IT HAS NOW COST FOUR CLAIMS THIS WAVE.** Every one of my wrong claims came from
+an ad-hoc sweep that knew one instruction form and not its siblings:
+
+* `jsr`/`jmp` scanned, `bsr` missed -> this tree sizing, and the "`$25EB2E` has no caller" claim.
+* `$61` read as a conditional branch instead of `bsr` -> the "bail-out tail" claim.
+* `(d16,An)` displacement assumed at `a+2`, but `3D7C`/`1D7C` put it at `a+4` -> the "`($54,A6)` is
+  never written" near-miss.
+* Scanned 96 words for a sentinel that sat at word 122 -> the withdrawn `$FFFF` claim.
+
+**Write the sweep to cover every encoding of the thing you are asking about, and state which forms
+it covers.** A sweep that silently knows one form reports absence, and absence is exactly what gets
+recorded as a finding.
+
 ### `$25D560`'s HEAD IS THE TWO-PLAYER SYNCHRONISATION
 
     $25D560  jsr $25F530
