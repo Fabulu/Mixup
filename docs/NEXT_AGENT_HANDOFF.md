@@ -71,6 +71,33 @@ The docstrings, the wiring comment and the test names all now carry the withdraw
 warning rather than as a fact, because the tests themselves were always right: they pin the
 FUNCTION's gate, which behaves correctly whichever state it is handed.
 
+### `$25D560`'s HEAD IS THE TWO-PLAYER SYNCHRONISATION
+
+    $25D560  jsr $25F530
+    $25D566  tst.w D7 / beq.s $25D570
+    $25D56A  lea ($70,A6),A0          A0 = the OTHER record, the same +/-$70 idiom as $25EF30
+    $25D570  lea (-$70,A6),A0
+    $25D574  tst.w $813098 / bne.w $25D5A0     the loop counter, skips the whole block
+    $25D57E  jsr $25FAA4
+    $25D584  tst.b (A0) / beq.s $25D5B0        the OTHER record's active byte
+    $25D588  cmpi.b #$7,($1,A0)                <-- the OTHER record's STATE. TRAP 1: imm $0007
+                                                  BEFORE disp $0001
+    $25D58E  bne.w $25D800                     <-- straight to the DRAW TAIL, skipping everything
+    $25D592  tst.w ($5E,A6) / bne.w $25D5B0
+    $25D59A  move.w #$1,($5E,A6)               a once-only latch, like $812F80 later
+    $25D5A0  bsr.w $25D4E4                     sideFromD7_25D4E4, called as a SUBROUTINE
+    $25D5A4  addq.w #1,D0 / andi.w #$1,D0      -> the OTHER side's index
+
+**IT WAITS FOR THE OTHER RECORD TO REACH STATE 7.** If the other side is not there yet,
+`$25D58E bne.w $25D800` jumps straight to the draw tail, so the screen keeps drawing while only the
+advancing side's logic is skipped. That is the two-player rendezvous, and it is why this handler
+reads `($1,A0)` -- the other record's state -- rather than its own.
+
+**`$25D4E4` IS ALREADY PORTED** as `sideFromD7_25D4E4` in `objslot17.js`, but note it is reached
+here by `bsr` and its RESULT is then transformed (`addq.w #1 / andi.w #$1`) into the OTHER side's
+index. The port models it as a pure function returning 0 or 1, which is compatible -- just do not
+assume the caller wants its value unmodified.
+
 ### `$2603FE`'s TWO `stageCreate`s BOTH STAGE TYPE `$B` -- TRAP 12, WITH THE ANSWER KNOWN
 
     $260442  jsr $287084
