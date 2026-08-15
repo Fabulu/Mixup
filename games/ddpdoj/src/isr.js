@@ -295,6 +295,44 @@ export function coinPending13CF86(ram) {
   return d1;
 }
 
+/** `$18B0D6` -- THE COIN/SERVICE SOUND HOOK, and it is COUNTED AS UNPORTED, not posted.
+ *
+ *  THE SAME TREATMENT `irq6` GIVES `$18ACC0` at the top of this file, and for the same reason.
+ *  Both live in build A's BIOS-side range; `sound.js` maps only the `$28Cxxx` `WRAPPERS` (plus
+ *  `STREAMING_LEAVES`), and `postWrapper` THROWS on anything else BY DESIGN -- "an unmapped
+ *  wrapper is a loud gap, not a silent drop" (sound.js:366). All three arms below call this
+ *  BEFORE `coinage13CE22`, so routing it through `ctx.soundPost` means the FIRST CREDITED COIN
+ *  kills the frame instead of crediting. Adding a `WRAPPERS` row to make the post succeed would
+ *  be inventing an id/pan/channel the cartridge does not define here, so the call is counted.
+ *
+ *  WHAT IT IS, read out of `rip/sound/maincpu.bin` at RAW OFFSET $18B0D6 -- 26 bytes,
+ *  $18B0D6..$18B0EF:
+ *
+ *      48E7 FFFE     movem.l D0-D7/A0-A6,-(A7)
+ *      303C 0017     move.w  #$17,D0
+ *      323C 00FF     move.w  #$FF,D1
+ *      343C 0000     move.w  #$0,D2
+ *      4EBA FA68     jsr     $18AB50(pc)          ; $18B0E8 - $598
+ *      4CDF 7FFF     movem.l (A7)+,D0-D7/A0-A6
+ *      4E75          rts
+ *
+ *  i.e. a three-argument wrapper around `$18AB50` with D0=$17, D1=$FF, D2=0 -- the shape of a
+ *  sound post, and `$18B0F0` right behind it is the same seven instructions with D0=$1D, D1=$E4,
+ *  D2=1 into the same callee. THAT CALLEE IS UNREAD: `$18AB50` opens `tst.b $80380A / bne`,
+ *  `tst.w $80392A / bne`, `cmpi.w #$44,D0 / beq`, `tst.w $803926 / beq`, `cmpi.w #$17,D0 / bne`
+ *  and nobody in this port has followed those branches. So what it IS believed to be is written
+ *  down here and the call is COUNTED, never simulated from a guess.
+ *
+ *  Read under `unported` OR `unportedLog`: `Game#ctx()` carries the one log under both names
+ *  (main.js:485/495) and the older unit fixtures supply only the latter, so a count is never
+ *  dropped on account of which name the caller used.
+ */
+function coinHook18B0D6(ctx) {
+  (ctx?.unported ?? ctx?.unportedLog)?.note(COIN.arms.hook,
+    'coin/service sound hook $18B0D6..$18B0EF, from $13CFF0/$13D008/$13D032 -- movem, D0=$17, '
+    + 'D1=$FF, D2=0, jsr $18AB50; believed a sound post, callee UNREAD, so counted not invented');
+}
+
 /** `$13CFBA` -- the read and its three stores. Returns D1 as the cartridge leaves it: the pending
  *  bits ORed with the edge word, which is what the three arms below are tested against.
  *
@@ -318,13 +356,13 @@ export function coinRead13CFBA(ram, coinPortWord, ctx) {
   // clear. Written as three separate ifs it credits two slots on a frame where the cartridge
   // credits one, and only when two switches happen to edge together.
   if ((d1 & (1 << COIN.bitService)) !== 0) {                 // $13CFEA btst #$5,D1 -- SERVICE
-    ctx?.soundPost?.(COIN.arms.hook);                        // $13CFF0 jsr $18B0D6
+    coinHook18B0D6(ctx);                                     // $13CFF0 jsr $18B0D6 -- UNPORTED
     coinage13CE22(ram, COIN.creditA);                        // $13CFF6 lea $803958 / $13CFFC bsr
     return d1;                                               // $13D000 rts -- the rest is SKIPPED
   }
 
   if ((d1 & (1 << COIN.pendBitCoin1)) !== 0) {               // $13D002 btst #$0,D1 -- $803968 tapped
-    ctx?.soundPost?.(COIN.arms.hook);                        // $13D008 jsr $18B0D6
+    coinHook18B0D6(ctx);                                     // $13D008 jsr $18B0D6 -- UNPORTED
     coinage13CE22(ram, COIN.creditA);                        // $13D00E lea $803958 / $13D014 bsr
     // $13D018 -- the mechanical counter is NOT bumped on free play, so the DIP is read twice per
     // coin: once inside the converter and once here.
@@ -334,7 +372,7 @@ export function coinRead13CFBA(ram, coinPortWord, ctx) {
   }
 
   if ((d1 & (1 << COIN.pendBitCoin2)) !== 0) {               // $13D02C btst #$1,D1 -- $80396E tapped
-    ctx?.soundPost?.(COIN.arms.hook);                        // $13D032 jsr $18B0D6
+    coinHook18B0D6(ctx);                                     // $13D032 jsr $18B0D6 -- UNPORTED
     // $13D03E -- slot 2 gets its OWN credit block only when $80380B is EXACTLY 1; otherwise both
     // slots share slot 1's. The lea at $13D038 is done first and then undone at $13D04A.
     const block = ram.u8(COIN.dipSlot2) === 0x01 ? COIN.creditB : COIN.creditA;

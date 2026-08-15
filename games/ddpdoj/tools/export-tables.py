@@ -2512,6 +2512,17 @@ SHOT_WINDOWS.extend([
     # 2 + 8*8 = $42 bytes exactly.
     (0x25BAAA, 0x0042, "W303: $25B412's anim-object chain script, EIGHT nodes of four words "
                        "after the count word"),
+    # W375: `$25B3FA lea ($25BA46,PC),A0 / jsr $24641A` -- arm 2's init ($25B3DC) loads its OWN
+    # script before the screen body above runs. Extension word at $25B3FC holds $064A, so the EA
+    # is $25B3FC + $64A = $25BA46.
+    #
+    # This is a DIFFERENT format from W303's $25BAAA next door, despite being adjacent: $246710
+    # reads four words per node, but $24641A (which is $246410 entered with D6 = 0) reads
+    # FOURTEEN bytes per entry -- {fill.w, family.w, offset.w, target.l, words-1.w, timing.w}.
+    # Count word is 7, read by `$24643C move.w (A0)+,D0`, so the run is 2 + 7*14 = $64 exactly.
+    # That ends at $25BAAA, where the W303 window begins: the two abut with no gap and no overlap.
+    (0x25BA46, 0x0064, "W375: $25B3DC's anim-object script, SEVEN fourteen-byte entries after the "
+                       "count word; abuts W303's $25BAAA seam-free"),
     # W305: `$28F796..$28F7C2` copies TWELVE words per side out of two adjacent blocks --
     # $28F97C for P1 and $28F994 for P2, and $28F97C + $18 == $28F994 exactly. The two differ
     # in only two of the twelve words: an X ($0A40 vs $1000) and a flag (0 vs 1).

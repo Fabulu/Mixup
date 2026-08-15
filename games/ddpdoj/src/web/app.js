@@ -190,7 +190,11 @@ import { attachInput, pollInput, currentPortWord } from './input.js';
 // PORT: `currentPortWord()` is the inverse of build A's `$13D464` shuffle and
 // `currentCoinWord()` is a plain active-low word with no shuffle at all. The
 // two must never be mixed (src/web/input.js:126).
-import { currentCoinWord, tickCoinPulse, attachCoinKeys } from './input.js';
+import { currentCoinWord, tickCoinPulse, attachCoinKeys, clearCoin } from './input.js';
+// W375 -- `COIN.idle` ($FFFF, ACTIVE LOW = nothing pressed) is what the coin
+// port is pinned to during `.replay` PLAYBACK. The literal is never written out
+// here: it is the cartridge's idle level and it lives with the rest of $13CFBA.
+import { COIN } from '../isr.js';
 import { AudioController } from '../../../../shared/audio.js';
 import { soundRuntimeFromStage1Seed } from '../soundruntime.js';
 import { APPROVED_SOUND_POLICIES } from '../soundpolicy.js';
@@ -681,7 +685,11 @@ export function namedMisses(missing, n = 3) {
 export const SPRITE_SOURCES = Object.freeze(['port', 'capture']);
 export const DEFAULT_SPRITE_SOURCE = 'port';
 
-class Demo {
+// EXPORTED for `tests/w375coinwiring.test.js`. Constructing one needs a bundle,
+// a capture and a canvas, but `step()`, `inPlayback()` and `coinTick()` are
+// callable on a stub `this`, and testing the REAL methods is the difference
+// between checking the playback gate and checking a copy of it.
+export class Demo {
   // WAVE 101.  `rung` (optional) boots the port from a ladder checkpoint
   //  instead of the shipped seed.  It carries the rung's own RAM, BG ring,
   //  lf/vf and the manifest's intervention text; see `boot()` for how it is
@@ -737,7 +745,10 @@ class Demo {
       // W375 -- THE COIN PULSE ADVANCE. `Game#step` calls this at the ONE site
       // it calls `coinDebounce13CEC8`, i.e. once every two video frames, which
       // is the rate `currentCoinWord()`'s purity exists to protect.
-      coinTick: tickCoinPulse,
+      //
+      // GATED ON PLAYBACK for the same reason `coinPort` is, one call site down.
+      // See `Demo#coinTick`.
+      coinTick: () => this.coinTick(),
     });
     this.prevTilt = this.game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
     this.prevPos = [this.game.ram.u16(RAM.player1 + P.posY),
@@ -818,9 +829,38 @@ class Demo {
     return name;
   }
 
+  /** TRUE while a `.replay` is being fed to the visible Game.
+   *
+   *  THE REAL MECHANISM, and it is two conditions, not one. `this.playback` is
+   *  null until `startPlayback()` builds the descriptor, but it is NOT nulled at
+   *  the end -- `endPlayback()` sets `playback.ended` and leaves the descriptor
+   *  in place so the banner and the verdict survive. From that instant `step()`
+   *  is back on live input (`pw = currentPortWord()`), so anything gated on
+   *  playback must test BOTH, exactly as the poke list and the word feed below
+   *  already do. Gating on `this.playback` alone would freeze the coin port for
+   *  the rest of the session after one replay.
+   */
+  inPlayback() {
+    return !!(this.playback && !this.playback.ended);
+  }
+
+  /** W375 -- THE COIN PULSE ADVANCE, gated on playback. Handed to every `Game`
+   *  this Demo builds as its `coinTick` hook, which `Game#step` calls at the ONE
+   *  site it calls `coinDebounce13CEC8` (once per two video frames).
+   *
+   *  A METHOD rather than the bare `tickCoinPulse`, because during playback there
+   *  is no coin input at all: `step()` pins `coinPort` to `COIN.idle`, so a pulse
+   *  that kept counting down would be spending a press the Game never sees. The
+   *  pulse is coin INPUT state and it freezes with the rest of it.
+   */
+  coinTick() {
+    if (!this.inPlayback()) tickCoinPulse();
+  }
+
   /** ONE LOGIC FRAME of the port.  No pixel work happens in here. */
   step() {
     const g = this.game;
+    const inPlayback = this.inPlayback();
     this.prevPos = [g.ram.u16(RAM.player1 + P.posY), g.ram.u16(RAM.player1 + P.posX)];
     this.prevTilt = g.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;   // ($4e,A6)
     // WAVE 44 -- THE ONE-FRAME HOLD, and it is here rather than in `draw()` on
@@ -830,8 +870,7 @@ class Demo {
     // makes it independent of how often `draw()` runs: a mode change repaints
     // without stepping, and that must not shift the list by a frame.
     this.portList = portSpriteList(g.ram, this.romToPacked, this.listOpts);
-    const pokes = this.playback && !this.playback.ended
-      ? this.playback.pokes : LIVE_POKES;
+    const pokes = inPlayback ? this.playback.pokes : LIVE_POKES;
     for (const [a, val] of pokes) g.ram.setU8(a, val);
     // WAVE 131/132 -- THE INPUT WORD.  `pw` is computed once and used for the
     // REC tee (W131, when armed) and the step.  WAVE 132 PLAY replaces the live
@@ -840,7 +879,7 @@ class Demo {
     // owner watches is the picture the verifier is hashing.  The live poke
     // Live play uses the file's complete `poke` list, while ordinary play uses
     // the live intervention below; there is no hidden second write.
-    const pw = this.playback && !this.playback.ended
+    const pw = inPlayback
       ? this.playback.words[this.playback.i++]
       : currentPortWord();
     if (this.recorder) this.recorder.input(pw);
@@ -852,11 +891,17 @@ class Demo {
     // `coinin` encoding that would close it.
     //
     // AND IT IS NOT TEE'd INTO `this.recorder`, because there is nowhere in a v1
-    // file to put it -- which is exactly the hole `main.js` declares. It is also
-    // NOT suppressed during PLAY: a coin key pressed while a `.replay` is
-    // playing back perturbs the very state the verifier is hashing, for the same
-    // one reason. Both follow from the format, not from this line.
-    g.coinPort = currentCoinWord();
+    // file to put it -- which is exactly the hole `main.js` declares.
+    //
+    // WHICH IS PRECISELY WHY IT IS SUPPRESSED DURING PLAY. A `.replay` must
+    // reproduce from (initial state, recorded input words) and NOTHING ELSE
+    // (`NOTES-replay.md` constraint 1) -- that property is the whole of what the
+    // W132 verifier hashes. A coin word is a second per-frame input the file
+    // cannot carry, so leaving it live would let a key pressed by whoever is
+    // watching the playback credit a coin, move `$80395A`, and turn a green
+    // verify red with no record anywhere of what perturbed it. Pinned to
+    // `COIN.idle` the recorded run is bit-identical whatever the keyboard does.
+    g.coinPort = inPlayback ? COIN.idle : currentCoinWord();
     g.step(pw);
     if (this.recorder) this.recorder.feed();
     // WAVE 132 -- THE PLAYBACK DIGEST FEED.  After the step hashes the state the
@@ -864,7 +909,7 @@ class Demo {
     // The verifier's `feed()` is synchronous (it only grows a string); the
     // async hash work happens at period boundaries in `loop()` and at
     // end-of-portin in `endPlayback()`.
-    if (this.playback && !this.playback.ended) {
+    if (inPlayback) {
       const nBoundsBefore = this.playback.verifier.periodBounds.length;
       this.playback.verifier.feed();
       // A closed period is cheap to detect (feed pushed a char-offset bound) and
@@ -1003,8 +1048,15 @@ class Demo {
       videoFrame: seed.vf,
       bgSeed: beWords(bg),
       soundSink: this.soundController,
-      coinTick: tickCoinPulse,           // W375, as in the constructor above
+      // W375, as in the constructor above -- and gated the same way, so the
+      // pulse cannot advance while this Game is being fed a recording.
+      coinTick: () => this.coinTick(),
     });
+    // ...and the coin keys start CLEAR. The gate below freezes the pulse for the
+    // duration of the playback, so a key that was down when PLAY was pressed
+    // would otherwise still be down when the verdict lands and credit a coin the
+    // owner pressed for minutes ago. Same backstop `attachCoinKeys` runs on blur.
+    clearCoin();
 
     // Swap in the fresh Game and re-init the game-derived state.  `recorder` is
     // dropped (mutually exclusive); `onPlaybackUpdate` is left to the page.
@@ -1046,6 +1098,11 @@ class Demo {
   endPlayback() {
     if (!this.playback || this.playback.ended) return;
     this.playback.ended = true;
+    // W375 -- LIVE COIN INPUT RESUMES ON THE NEXT `step()` (`inPlayback()` is
+    // false from here), so clear the port on the way out for the same reason
+    // `playFrom` clears it on the way in: a key held through the playback must
+    // not become a credit the instant the verdict lands.
+    clearCoin();
     const pb = this.playback;
     const p = pb.verifier.finalize().then((result) => {
       pb.result = result;

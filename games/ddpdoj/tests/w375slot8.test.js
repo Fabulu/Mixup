@@ -19,6 +19,9 @@ async function fx({ dip = 0x00, dipCredit = 0x00 } = {}) {
   const IMG = readFileSync(ROM);
   const rom = {
     u32: (a) => IMG.readUInt32BE(a), u16: (a) => IMG.readUInt16BE(a), u8: (a) => IMG[a],
+    // W375b: `loadAnimObjects246410` reads the current-offset word SIGNED (`rom.i16`), so the
+    // fixture has to carry it too. `RomWindows#i16` is the same widening.
+    i16: (a) => IMG.readInt16BE(a),
     bytes: (a, n) => IMG.subarray(a, a + n),
   };
   const ram = new Ram();
@@ -550,27 +553,31 @@ test('W375 arm 2 advances to 12 when the ported $25B412 finishes, and holds whil
     const { hiscoreDefaults28841E } = await import('../src/hiscore.js');
     f.ram.setU8(f.a5 + f.SCREEN8.constructed, 1);
     f.ram.setU16(f.SCREEN8.state, 0x0002);
-    // **ARM 2 NEEDS TWO THINGS THIS PORT CANNOT YET PRODUCE FROM A COLD BOOT**, and both are
-    // seeded here rather than papered over:
-    //  1. `$812E60`, the chain handle. `$24681A` walks `($2C,handle)` with no null check, so a
-    //     zero handle throws "$2C is outside main RAM" -- and `$812E60` is written by `$25B3DC`,
-    //     arm 2's UNPORTED 52-byte init.
-    //  2. the high-score table itself. `drawStyles25B5E2` throws by address on a style value of
-    //     0, so the screen needs `$28841E`'s defaults, which reset installs.
-    // `w303hiscorestate.test.js` seeds exactly these two for exactly these reasons. This is the
-    // one place in this file where a note()'d callee is load-bearing rather than cosmetic.
-    hiscoreDefaults28841E(f.ram, f.rom);
-    f.ram.setU32(SCREEN_STATE.handle, 0x810346);   // a player slot with no chain -> check is 0
-    f.ram.setU16(SCREEN_STATE.timer, 3);
+    // **W375b: THE HANDLE IS NO LONGER SEEDED HERE.** This test used to write `$812E60` by hand
+    // and note `$25B3DC` as arm 2's missing init; `hiscoreInit25B3DC` now writes it for real, so
+    // seeding it would be seeding over the very thing under test. The ONE thing still seeded is
+    // the factory high-score table, and that is not scaffolding either -- `$23BF74 jsr $28841E`
+    // runs it fifty-eight bytes before `$23BFCC` stages this record. Without it
+    // `drawStyles25B5E2` reads a style value of 0 and throws by address.
+    hiscoreDefaults28841E(f.ram, f.rom);           // $23BF74
     f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
     assert.equal(f.ram.u16(f.SCREEN8.state), 0x0002, 'still 2');
     assert.equal(f.ram.u8(f.a5 + f.SCREEN8.inited), 1, 'and its init latched');
-    assert.ok(noteAddrs(f.notes).includes(0x25b3dc), '$25B3DC (the 52-byte init) is noted');
+    assert.ok(!noteAddrs(f.notes).includes(0x25b3dc), '$25B3DC is PORTED -- no longer noted');
     assert.ok(noteAddrs(f.notes).includes(0x2414be), 'and the palette install is counted');
-    assert.equal(f.ram.u16(SCREEN_STATE.state), 1, '$25B412 ran and advanced its OWN state');
+    assert.equal(f.ram.u32(SCREEN_STATE.handle), 0x810346, '$25B3DC installed the handle');
+    assert.equal(f.ram.u16(SCREEN_STATE.timer), 0x00f0, 'and the $F0 countdown');
+    assert.equal(f.ram.u16(SCREEN_STATE.state), 0, 'a LIVE chain holds $25B412 at its state 0');
+
+    // Retire the chain, and the screen frees it and steps its OWN state to 1 -- it is running.
+    for (const n of chainNodes(f.ram, 0x810346)) f.ram.setU16(n + 0x18, 0);
+    f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
+    assert.equal(f.ram.u16(SCREEN_STATE.state), 1, '$25B412 advanced its OWN state');
+    assert.equal(f.ram.u16(f.SCREEN8.state), 0x0002, 'while slot [8] holds at 2');
 
     // Drive $25B412's own state to 2 with a finished chain: it returns CARRY CLEAR.
     f.ram.setU16(SCREEN_STATE.state, 2);
+    f.ram.setU32(SCREEN_STATE.handle, 0x810346);   // a freed slot with no chain -> check is 0
     f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
     assert.equal(f.ram.u16(f.SCREEN8.state), 0x000c, '-> STATE 12');
     assert.equal(f.ram.u8(f.a5 + f.SCREEN8.inited), 0, 'and $25A764 re-armed arm 12\'s init');
@@ -687,3 +694,293 @@ test('W375 reset -> warning -> high score, and a coin -> credit screen -> gamepl
     assert.equal(f.ram.u16(last) & 0x7fff, 0x0009, 'slot [9] staged: the game starts');
     assert.equal(f.ram.u8(last + 0x04), 0x01, 'with P1 joined');
   });
+
+// =============================================================================================
+// W375b -- `$25B3DC`, ARM 2'S INIT, AND THE COLD BOOT IT UNBLOCKS.
+//
+// Every claim below is decoded from the raw image in the test itself. The brief for this wave
+// described `$25B3DC` as "about 52 bytes; clear $812E5C plus five words, set $812E5E := $F0,
+// load $25BA46 through $24641A into $812E60". Four of those clauses are wrong in detail and
+// the tests that follow are what settled them.
+
+/**
+ * THE COLD BOOT, in the cartridge's own order. `$23BF60..$23BFDC` is one straight line and the
+ * two calls that matter to slot [8] are fifty-eight bytes apart in it:
+ *
+ *     23BF74  jsr $28841E                 the FACTORY high-score table -> $803824..$8038B9
+ *     ...     five jsr $2414BE palette installs
+ *     23BFCC  move.w #$8,D0 / jsr $241182 / move.w #$D,($4,A0)      stage slot [8] at state 13
+ *
+ * So a faithful cold boot has the factory table in RAM BEFORE the record exists. That is not
+ * scaffolding: leaving it out makes `drawStyles25B5E2` read a style value of 0 and throw by
+ * address, because `subq.w #2` would index -2 into its own `rts`.
+ *
+ * **`Game#boot()` DOES NOT DO THIS.** `hiscoreDefaults28841E` is exported by `hiscore.js` and
+ * called only from tests; nothing in `src/` calls it. That is a live gap in the boot path and
+ * it belongs to `main.js`, not to this file -- recorded here so it is not lost.
+ */
+async function coldBootRam(f) {
+  const { hiscoreDefaults28841E } = await import('../src/hiscore.js');
+  hiscoreDefaults28841E(f.ram, f.rom);          // $23BF74
+  f.ram.setU16(f.a5 + f.SCREEN8.param, 0x000d); // $23BFD6 move.w #$D,($4,A0)
+  return f;
+}
+
+/** The chain-node addresses `loadAnimObjects246410` links off a root, in order, by walking
+ *  `($2C)` exactly the way `$24681A` does. */
+function chainNodes(ram, handle) {
+  const out = [];
+  let cur = ram.u32((handle >>> 0) + 0x2c);
+  while (cur !== 0 && out.length < 64) { out.push(cur); cur = ram.u32(cur + 0x2c); }
+  return out;
+}
+
+test('W375b $25B3DC is FIFTY-FOUR bytes and the routine before it ends in a jmp, not an rts',
+  { skip: SKIP }, async () => {
+    const { IMG, HISCORE_INIT } = await fx();
+    // Scanning BACK: $25B3D4 is `jmp $25A14C.l` -- a tail jump -- and $25B3DA is a `nop` pad.
+    // There is no preceding `rts` at all, so "scan back from the preceding rts" finds nothing.
+    assert.equal(IMG.readUInt16BE(0x25b3d4), 0x4ef9, '$25B3D4 jmp xxx.l');
+    assert.equal(IMG.readUInt32BE(0x25b3d6), 0x0025a14c, '  ...$25A14C, six bytes of jmp');
+    assert.equal(IMG.readUInt16BE(0x25b3da), 0x4e71, '$25B3DA nop -- the pad before the entry');
+    // Scanning FORWARD to its own rts.
+    assert.equal(IMG.readUInt16BE(0x25b410), 0x4e75, '$25B410 rts, and 4E75 is TWO bytes');
+    assert.equal(HISCORE_INIT.site, 0x25b3dc);
+    assert.equal(HISCORE_INIT.end, 0x25b412, 'the extent ends where $25B412 begins');
+    assert.equal(HISCORE_INIT.end - HISCORE_INIT.site, 54, 'FIFTY-FOUR bytes, not 52');
+    // And $25B412 -- the per-frame body arm 2 already ran -- is the very next instruction.
+    assert.equal(IMG.readUInt32BE(0x25b412), 0x48e7fffe, '$25B412 movem.l d0-d7/a0-a6,-(a7)');
+    // The entry saves and restores EVERY register, so the five words, the $F0 and the handle
+    // are the routine's entire effect.
+    assert.equal(IMG.readUInt32BE(0x25b3dc), 0x48e7fffe, '$25B3DC movem.l d0-d7/a0-a6,-(a7)');
+    assert.equal(IMG.readUInt32BE(0x25b40c), 0x4cdf7fff, '$25B40C movem.l (a7)+,d0-d7/a0-a6');
+  });
+
+test('W375b the clear is a dbra loop over FIVE words, not clr.w / clr.l / move.w #0',
+  { skip: SKIP }, async () => {
+    const { IMG, HISCORE_INIT } = await fx();
+    // $25B3E0 lea $812E5C.l,A0
+    assert.equal(IMG.readUInt16BE(0x25b3e0), 0x41f9, 'lea xxx.l,a0');
+    assert.equal(IMG.readUInt32BE(0x25b3e2), 0x00812e5c, '  ...$812E5C');
+    // $25B3E6 move.w #$4,D0 -- the COUNT, and with dbra that is FIVE iterations.
+    assert.equal(IMG.readUInt16BE(0x25b3e6), 0x303c, 'move.w #imm,d0');
+    assert.equal(IMG.readUInt16BE(0x25b3e8), 0x0004, '  ...#$4');
+    assert.equal(IMG.readUInt16BE(0x25b3ea), 0x7200, '$25B3EA moveq #$0,d1 -- the ZERO');
+    assert.equal(IMG.readUInt16BE(0x25b3ec), 0x30c1, '$25B3EC move.w d1,(a0)+ -- a WORD store');
+    assert.equal(IMG.readUInt16BE(0x25b3ee), 0x51c8, '$25B3EE dbra d0,disp');
+    // dbra's displacement: EA = the EXTENSION WORD's address + disp, $25B3F0 + $FFFC = $25B3EC.
+    assert.equal(0x25b3f0 + ((IMG.readUInt16BE(0x25b3f0) << 16) >> 16), 0x25b3ec,
+      'back to the store');
+    assert.equal(HISCORE_INIT.clearWords, 5, 'FIVE words: $812E5C $5E $60 $62 $64');
+    assert.equal(HISCORE_INIT.clearBase, 0x812e5c);
+    // None of the three forms the brief named is anywhere in the routine.
+    for (let a = 0x25b3dc; a < 0x25b412; a += 2) {
+      const w = IMG.readUInt16BE(a);
+      assert.notEqual(w, 0x4279, 'no clr.w abs.l at $' + a.toString(16).toUpperCase());
+      assert.notEqual(w, 0x42b9, 'no clr.l abs.l at $' + a.toString(16).toUpperCase());
+    }
+    // `33FC` DOES appear -- but exactly once, and it is the $F0 store, not a clear.
+    const at33fc = [];
+    for (let a = 0x25b3dc; a < 0x25b412; a += 2) {
+      if (IMG.readUInt16BE(a) === 0x33fc) at33fc.push(a);
+    }
+    assert.deepEqual(at33fc, [0x25b3f2], 'the only move.w #imm,abs.l is $25B3F2');
+  });
+
+test('W375b $812E5E := $F0 is a WORD IMMEDIATE, and a word literal is two byte fields',
+  { skip: SKIP }, async () => {
+    const { IMG, HISCORE_INIT, hiscoreInit25B3DC, ram, rom, ctx } = await fx();
+    // $25B3F2 33FC 00F0 00812E5E -- move.w #$F0,$812E5E.l. Ten bytes, no table anywhere in it.
+    assert.equal(IMG.readUInt16BE(0x25b3f2), 0x33fc, 'move.w #imm,abs.l');
+    assert.equal(IMG.readUInt16BE(0x25b3f4), 0x00f0, '  ...the IMMEDIATE $F0, not a table read');
+    assert.equal(IMG.readUInt32BE(0x25b3f6), 0x00812e5e, '  ...into $812E5E');
+    assert.equal(HISCORE_INIT.timer0, 0x00f0);
+    assert.equal(HISCORE_INIT.timer, 0x812e5e, 'and it is the $25B44C countdown');
+
+    // The two byte fields, proved through the port rather than argued.
+    ram.setU8(0x812e5e, 0xaa); ram.setU8(0x812e5f, 0xbb);
+    hiscoreInit25B3DC(ram, rom, ctx);
+    assert.equal(ram.u16(0x812e5e), 0x00f0, 'the word');
+    assert.equal(ram.u8(0x812e5e), 0x00, 'the HIGH byte is $00');
+    assert.equal(ram.u8(0x812e5f), 0xf0, 'and the LOW byte is $F0');
+  });
+
+test('W375b $24641A is $246410 with D6 = 0, takes A0 and returns D0', { skip: SKIP }, async () => {
+  const { IMG } = await fx();
+  // The two heads falling into ONE body at $246422.
+  assert.equal(IMG.readUInt32BE(0x246410), 0x48e77ff8, '$246410 movem.l d1-d7/a0-a4,-(a7)');
+  assert.equal(IMG.readUInt16BE(0x246414), 0x3c3c, '  move.w #imm,d6');
+  assert.equal(IMG.readUInt16BE(0x246416), 0x0001, '  ...#$1');
+  assert.equal(IMG.readUInt16BE(0x246418), 0x6008, '  bra.b -> $246422');
+  assert.equal(IMG.readUInt32BE(0x24641a), 0x48e77ff8, '$24641A the SAME movem');
+  assert.equal(IMG.readUInt16BE(0x24641e), 0x3c3c, '  move.w #imm,d6');
+  assert.equal(IMG.readUInt16BE(0x246420), 0x0000, '  ...#$0 -- the whole difference');
+  assert.equal(IMG.readUInt16BE(0x246422), 0x43f9, '$246422 lea xxx.l,a1 -- the shared body');
+  assert.equal(IMG.readUInt32BE(0x246424), 0x00810346, '  ...the three-slot root pool');
+  // A0 IS THE TABLE: $24643C move.w (a0)+,d0 is the entry count.
+  assert.equal(IMG.readUInt16BE(0x24643c), 0x3018, '$24643C move.w (a0)+,d0 -- the count');
+  // D0 IS THE RESULT, the one register the movem does not save ($7FF8 = d1-d7/a0-a4).
+  assert.equal(IMG.readUInt16BE(0x246508), 0x2009, '$246508 move.l a1,d0 -- the ROOT ADDRESS');
+  assert.equal(IMG.readUInt32BE(0x24650a), 0x4cdf1ffe, '  movem.l (a7)+,d1-d7/a0-a4: D0 survives');
+  assert.equal(IMG.readUInt16BE(0x24650e), 0x4e75);
+  assert.equal(IMG.readUInt16BE(0x246518), 0x70ff, '$246518 moveq #$FF,d0 -- the FAILURE value');
+  // ...and the caller stores that D0 as a LONG into $812E60.
+  assert.equal(IMG.readUInt16BE(0x25b400), 0x4eb9, '$25B400 jsr xxx.l');
+  assert.equal(IMG.readUInt32BE(0x25b402), 0x0024641a, '  ...$24641A');
+  assert.equal(IMG.readUInt16BE(0x25b406), 0x23c0, '$25B406 move.l d0,xxx.l');
+  assert.equal(IMG.readUInt32BE(0x25b408), 0x00812e60, '  ...$812E60');
+});
+
+test('W375b $25BA46 is a lea (d16,PC) away, and its bound is the CODE count word',
+  { skip: SKIP }, async () => {
+    const { IMG, HISCORE_INIT, rom } = await fx();
+    assert.equal(IMG.readUInt16BE(0x25b3fa), 0x41fa, '$25B3FA lea (d16,pc),a0');
+    // EA = the EXTENSION WORD's address plus the displacement: $25B3FC + $64A, NOT $25B3FA.
+    const disp = IMG.readUInt16BE(0x25b3fc);
+    assert.equal(disp, 0x064a);
+    assert.equal(0x25b3fc + disp, 0x25ba46, 'the extension word is at $25B3FC');
+    assert.notEqual(0x25b3fa + disp, 0x25ba46, 'and the instruction address would be wrong');
+    assert.equal(HISCORE_INIT.script, 0x25ba46);
+    assert.equal(IMG.readUInt16BE(0x25b3fe), 0x4e71, '$25B3FE nop, between the lea and the jsr');
+
+    // THE BOUND, stated by the code: `$24643C move.w (a0)+,d0` then fourteen bytes per entry.
+    assert.equal(rom.u16(HISCORE_INIT.script), HISCORE_INIT.scriptEntries, 'SEVEN entries');
+    assert.equal(HISCORE_INIT.entryStride, 14);
+    assert.equal(HISCORE_INIT.scriptLen, 2 + 7 * 14);
+    assert.equal(HISCORE_INIT.script + HISCORE_INIT.scriptLen, 0x25baaa,
+      'it ends exactly where W303 already-declared $25BAAA window begins');
+    // Every entry is `{fill.w, family.w, current-offset.w, target.l, words-1.w, timing.w}`, and
+    // all seven name family 0 -- the ONE family the three-entry $24627A table has to resolve
+    // for this script to load at all.
+    // The LONG sits at offset 6, after three words -- not at 4.
+    for (let i = 0; i < 7; i++) {
+      const e = 0x25ba48 + i * 14;
+      assert.equal(rom.u16(e + 2), 0x0000, 'entry ' + i + ' family 0');
+      assert.equal(rom.u16(e + 10), 0x001f, 'entry ' + i + ' is 32 words');
+      assert.equal(rom.u16(e + 12), 0x0002, 'entry ' + i + ' timing index 2');
+      const target = rom.u32(e + 6);
+      assert.ok(target >= 0x2254b8 && target <= 0x225938,
+        'entry ' + i + ' target $' + target.toString(16).toUpperCase() + ' is a ROM colour block');
+    }
+  });
+
+// ------------------------------------------------------------------ the port, on its own
+
+test('W375b hiscoreInit25B3DC clears five words, sets $F0 and installs a real handle',
+  { skip: SKIP }, async () => {
+    const { hiscoreInit25B3DC, HISCORE_INIT, ram, rom, ctx, notes } = await fx();
+    // Garbage in all five words plus a sixth, to prove the extent from both sides.
+    for (let i = 0; i < 6; i++) ram.setU16(0x812e5c + i * 2, 0xdead);
+
+    hiscoreInit25B3DC(ram, rom, ctx);
+
+    assert.equal(ram.u16(0x812e5c), 0x0000, '$812E5C cleared -- the screen state word');
+    assert.equal(ram.u16(0x812e5e), 0x00f0, '$812E5E cleared then set to $F0');
+    assert.equal(ram.u16(0x812e64), 0x0000, '$812E64 -- the FIFTH word, cleared');
+    assert.equal(ram.u16(0x812e66), 0xdead, 'and $812E66 is NOT touched -- five, not six');
+
+    // The handle: a RAM POINTER into the three-slot root pool at $810346, stride $30 -- not an
+    // index, which is what makes `($2C,handle)` in $24681A a plain read.
+    const handle = ram.u32(HISCORE_INIT.handle);
+    assert.equal(handle, 0x810346, 'the FIRST free root slot');
+    assert.equal(ram.u16(handle) & 0x8000, 0x8000, 'claimed');
+    assert.equal(ram.u16(handle + 0x04), 0x0000, '($4,root) = D6 = 0 -- the $24641A head');
+    // It really built the script's seven nodes, linked at ($2C).
+    const nodes = chainNodes(ram, handle);
+    assert.equal(nodes.length, 7, 'seven nodes, one per script entry');
+    assert.equal(nodes[0], 0x80fa86, 'from the twenty-slot pool at $80FA86, stride $70');
+    assert.equal(nodes[6], 0x80fa86 + 6 * 0x70);
+    for (const n of nodes) assert.equal(ram.u32(n + 0x18), 0xffff0000, 'lifetime seeded');
+    assert.equal(notes.length, 0, 'and nothing was deferred -- the whole routine is here');
+  });
+
+test('W375b $24681A walks the handle this init installs, instead of throwing at $2C',
+  { skip: SKIP }, async () => {
+    const { hiscoreInit25B3DC, HISCORE_INIT, ram, rom, ctx } = await fx();
+    const { chainCheck24681A } = await import('../src/stageend.js');
+
+    // THE COLD-BOOT FAILURE, shown directly: a zero handle is what $25B412 reads today.
+    assert.throws(() => chainCheck24681A(ram, ram.u32(HISCORE_INIT.handle)), /2C/i,
+      'a zero $812E60 reads address $2C');
+
+    hiscoreInit25B3DC(ram, rom, ctx);
+    // Seven nodes each carrying $FFFF in the lifetime WORD, summed as a word: 7 * $FFFF = $FFF9.
+    assert.equal(chainCheck24681A(ram, ram.u32(HISCORE_INIT.handle)), 0xfff9,
+      'the chain is alive, so the screen keeps running');
+  });
+
+// ------------------------------------------------------------------ THE PRIZE
+
+test('W375b a COLD BOOT survives 13 -> 2: the attract loop reaches the high-score screen',
+  { skip: SKIP }, async () => {
+    // A freshly zeroed Ram taken through `$23BF60..$23BFDC` -- the factory table, then the
+    // slot-[8] record with ($2,A5) zero and ($4,A5) = $D. Nothing else is set anywhere.
+    const f = await coldBootRam(await fx());
+    assert.equal(f.ram.u32(0x812e60), 0, '$812E60 starts at ZERO -- this is the whole problem');
+    assert.equal(f.ram.u16(0x812e5c), 0, 'and so does $812E5C, so $25B416 falls THROUGH');
+
+    f.objSlot8(f.ram, f.rom, f.a5, f.ctx);             // frame 1: arm 0 -> state 13
+    assert.equal(f.ram.u16(f.SCREEN8.state), 0x000d);
+    f.objSlot8(f.ram, f.rom, f.a5, f.ctx);             // frame 2: arm 13's init, and it RETURNS
+    assert.equal(f.ram.u16(f.a5 + f.SCREEN8.param), 0x012c, 'the $12C timeout is armed');
+
+    // Step the whole 300-frame warning screen. It must not throw either.
+    for (let i = 0; i < 0x12c; i++) f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
+    assert.equal(f.ram.u16(f.SCREEN8.state), 0x0002, '13 -> 2 on the 300th frame');
+    assert.equal(f.ram.u8(f.a5 + f.SCREEN8.inited), 0, '$25A764 re-armed arm 2 init gate');
+
+    // ===== THE FRAME THAT USED TO THROW `Unreached: $2C is outside main RAM`. =====
+    assert.doesNotThrow(() => f.objSlot8(f.ram, f.rom, f.a5, f.ctx),
+      'arm 2 inits through $25B3DC and then runs $25B412');
+
+    // The init ran: a real handle, and $812E5E holds the $F0 the screen counts down.
+    const handle = f.ram.u32(0x812e60);
+    assert.equal(handle, 0x810346, 'a plausible handle -- the first root slot, from $24641A');
+    assert.equal(f.ram.u16(0x812e5e), 0x00f0);
+    assert.equal(chainNodes(f.ram, handle).length, 7);
+    // And the screen body ran on the same frame: state 0 with a live chain neither frees nor
+    // advances, which is exactly what $25B412 does when $24681A reports non-zero.
+    assert.equal(f.ram.u16(0x812e5c), 0x0000, '$25B412 saw a LIVE chain and held at state 0');
+    assert.equal(f.ram.u16(f.SCREEN8.state), 0x0002, 'and slot [8] is still on arm 2');
+
+    // Twenty more attract frames, still no throw -- the loop is a loop.
+    assert.doesNotThrow(() => {
+      for (let i = 0; i < 20; i++) f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
+    }, 'the attract loop survives');
+    assert.equal(f.ram.u16(f.SCREEN8.state), 0x0002);
+
+    // Retire the chain the way the animation driver would, and the screen ADVANCES: it frees
+    // the chain through $246800 and steps $812E5C to 1. That proves $25B412 is really driving
+    // the handle $25B3DC installed, not merely failing to throw.
+    for (const n of chainNodes(f.ram, handle)) f.ram.setU16(n + 0x18, 0);
+    f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
+    assert.equal(f.ram.u16(0x812e5c), 0x0001, '$25B438 move.w #$1,$812E5C');
+    assert.equal(f.ram.u16(0x812e5e), 0x00ef, '$25B44C subq.w #1 -- the $F0 is counting down');
+    assert.equal(f.ram.u16(handle), 0x0000, '$246800 released the root slot');
+  });
+
+test('W375b arm 2 init runs ONCE, and it is ($3,A5) that says so', { skip: SKIP }, async () => {
+  const f = await coldBootRam(await fx());
+  f.ram.setU8(f.a5 + f.SCREEN8.constructed, 1);
+  f.ram.setU16(f.SCREEN8.state, 0x0002);
+  f.ram.setU8(f.a5 + f.SCREEN8.inited, 0);
+
+  f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
+  assert.equal(f.ram.u8(f.a5 + f.SCREEN8.inited), 1, '$25A918 latched the gate');
+  assert.equal(f.ram.u32(0x812e60), 0x810346);
+  assert.equal(f.ram.u16(0x810346 + 0x30), 0x0000, 'the SECOND root slot is untouched');
+
+  // A sentinel a re-init would have to clear ($25B3E0 first word).
+  f.ram.setU16(0x812e5c, 0x1234);
+  for (let i = 0; i < 5; i++) f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
+  assert.equal(f.ram.u16(0x812e5c), 0x1234, 'five more frames and the init did NOT re-run');
+  assert.equal(f.ram.u32(0x812e60), 0x810346, 'the handle is the same one');
+  assert.equal(f.ram.u16(0x810346 + 0x30), 0x0000, 'and no second chain was ever loaded');
+
+  // Clear the gate the way $25A764 does on a transition, and the init runs again -- claiming
+  // the NEXT root slot, because the first is still held.
+  f.ram.setU8(f.a5 + f.SCREEN8.inited, 0);
+  f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
+  assert.equal(f.ram.u16(0x812e5c), 0x0000, 'the sentinel is gone -- $25B3DC ran');
+  assert.equal(f.ram.u32(0x812e60), 0x810346 + 0x30, 'and it took the second root slot');
+});

@@ -1,8 +1,80 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-14 (W374)
+Updated: 2026-08-15 (W375)
 
-## START HERE -- W374
+## START HERE -- W375
+
+### SLOT [8] IS PORTED **AND REGISTERED**. DISPATCH IS 16 OF 20.
+
+`$240F62[8] = $25A770`, the attract sequencer and credit gate, is `src/objslot8.js` and is wired into
+`main.js`'s `defaultHandlers`. `w167coverage.test.js` asserts `top_objects: 16/20 ported, 4 unknown` --
+and `dojcoverage.py`'s `source_registries()` parses that number straight out of the `defaultHandlers`
+block, so the assertion IS the registry, not a hand-maintained copy of it.
+
+**The four still unknown: [12] `$28F3AC`, [16] `$256E7A`, [18] `$24902A`, [19] `$28EE88`.** No ported
+dispatcher exists for any of them.
+
+### D41 IS ANSWERED: COIN AND START ALONE NEVER REACHED THE GAME
+
+Three blockers, all now cleared: no boot path, slot [8] unported, and coin bits reaching the handler
+only via `$13CEC8` on the IRQ4 phase (which was not modelled). Coin input is live on the page
+(`Digit5`/`Digit6` = COIN1/COIN2, `Digit9` = SERVICE, `F2` = TEST).
+
+### `$25B3DC` (arm 2's init) LANDED, AND THE BRIEF WAS WRONG IN SIX PLACES
+
+Recorded because every correction is a trap from the list, and the next agent will meet them again:
+
+1. **54 bytes, not 52.** `$25B3DC..$25B411`.
+2. **No preceding `rts` to scan back from.** `$25B3D4` is `jmp $25A14C.l`, a TAIL JUMP, `nop`-padded.
+3. **FIVE words cleared, not six.** `move.w #$4,D0` + `dbra` is N+1 = 5: `$812E5C $5E $60 $62 $64`.
+   `$812E66` is untouched, and the test asserts that from both sides.
+4. **The clear is none of `clr.w`/`clr.l`/`move.w #$0000`.** It is `moveq #$0,D1` feeding
+   `move.w D1,(A0)+`. The one `33FC` in the routine is the `$F0` store, NOT a clear.
+5. **`$25BA46` is a DIFFERENT format from `$25BAAA` next door** despite being adjacent. See below.
+6. **An unmentioned `nop` at `$25B3FE`**, between the `lea` and the `jsr`.
+
+`$812E5E := $F0` is a `move.w` IMMEDIATE (`33FC`), and as a word literal it covers TWO byte fields:
+`$812E5E = $00`, `$812E5F = $F0`.
+
+### NEW ROM WINDOW: `$25BA46 + $64` (534 TOTAL)
+
+`$25B3FA lea ($25BA46,PC),A0` -- extension word at `$25B3FC` holds `$064A`, EA = `$25B3FC + $64A`.
+The script is read by `$24641A`, which is **`$246410` entered with D6 = 0** (both fall into one body at
+`$246422`), so it is **FOURTEEN bytes per entry**, `{fill.w, family.w, offset.w, target.l, words-1.w,
+timing.w}` -- not W303's four-words-per-node. Count word is 7, read by `$24643C move.w (A0)+,D0`, so
+`2 + 7*14 = $64`, ending exactly where `$25BAAA` begins. **The two windows abut with no gap and no
+overlap. Do not merge them; they are different formats.**
+
+`$24641A`'s contract, settled: **IN** A0 = table. **OUT** D0 -- the one register `movem.l D1-D7/A0-A4`
+does not save. `$246508 move.l A1,D0` returns a **RAM POINTER** (into the three-slot pool at `$810346`,
+stride `$30`), **not an index**, so `($2C,handle)` is a plain read. `$246518 moveq #$FF,D0` is failure.
+
+### TWO KNOWN GAPS ON THE BOOT PATH -- NEITHER IS SUBTLE
+
+- **`$28841E` is never called from `src/`.** The ROM runs `$23BF74 jsr $28841E` (the factory high-score
+  table) fifty-eight bytes before `$23BFCC` stages slot [8] at state `$D`, same straight line. Without
+  it `drawStyles25B5E2` reads a style of 0 and throws by address. `hiscore.js` exports
+  `hiscoreDefaults28841E`; only tests call it.
+- **`animobjects.js` returns `0` on load failure where the cartridge returns `$FFFFFFFF`**
+  (`$246518 moveq #$FF,D0`). Both are outside main RAM at `($2C,handle)` so the cold boot is
+  unaffected; it is counted with a `note(0x246518)` rather than papered over.
+
+### DOES THE ATTRACT LOOP SURVIVE A COLD BOOT?
+
+**Yes in the port's logic; not yet on the live page.** From freshly zeroed RAM with `($4,A5) = $D`:
+arm 0 -> state 13 -> 300 warning frames -> `13 -> 2` -> arm 2 inits through `$25B3DC` and runs
+`hiscoreScreen25B412` without throwing, for as many frames as you drive it. `$812E60` holds `$810346`,
+a real root with the script's seven nodes linked at `($2C)`. Retiring the node lifetimes makes the
+screen free the chain through `$246800` and step to its state 1 -- so the body genuinely drives the
+handle the init installed rather than merely failing to throw.
+
+**What stalls it (none of these throw; they make the loop terminate at state 12 rather than cycling):**
+`$259FF8` (warning screen draws nothing), `$23CFDE` (the credit line), the `$25AD02`/`$25AFD8` blink
+pair, and the four screen sub-machines that keep arms 1, 5, 9 and 12 holding instead of advancing.
+
+---
+
+## W374 NOTES
 
 ### THE FINISH LINE IS NAMED: D36 IS **DOJ WHITE LABEL**
 

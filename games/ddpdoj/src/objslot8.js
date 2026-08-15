@@ -22,11 +22,18 @@
 // SCOPE. This wave ports the SEQUENCER, not the screens. Arms 0, 5's teardown, 13 and 14, the
 // `$25ACAC` join handler, the `$25A770` credit gate and the `$25A82C` dispatch tail are here in
 // full. Every arm's screen sub-machine -- `$25BBB4 $25BD7C $25BDE0` (1 and 3), `$25C2AE $25C2EA`
-// (12), `$25C3E8 $25C424` (9), `$25C592 $25C6D4` (5), `$25B3DC` (2's init) -- is a wave of its own
-// and is NOTED. Arm 2's per-frame body is the exception: `hiscoreScreen25B412` is already ported in
-// `hiscorescreen.js`, so arm 2 really does advance to state 12 when the screen finishes.
+// (12), `$25C3E8 $25C424` (9), `$25C592 $25C6D4` (5) -- is a wave of its own and is NOTED. **ARM 2
+// IS WHOLE**: its per-frame body `hiscoreScreen25B412` is ported in `hiscorescreen.js`, and W375b
+// adds its init `$25B3DC` here as `hiscoreInit25B3DC`, so arm 2 initialises, runs and really does
+// advance to state 12 when the screen finishes.
 //
-// WHAT IS NOTED AND THEREFORE STILL STANDS BETWEEN THIS AND A BOOTABLE GAME: the five screen
+// **WHY `$25B3DC` WAS THE ONE THAT MATTERED.** `$25B412` reads `$812E60` as a chain handle and
+// `$24681A` walks `($2C,handle)` with no null check, so on a cold boot -- `$812E60` zero -- the
+// first frame after the `13 -> 2` transition threw `Unreached: $2C is outside main RAM`. `$25B3DC`
+// is what fills that handle, and with it in place the reset path `($4,A5) = $D -> arm 13 -> the
+// $12C timeout -> state 2 -> the high-score screen` runs without throwing.
+//
+// WHAT IS NOTED AND THEREFORE STILL STANDS BETWEEN THIS AND A BOOTABLE GAME: the four screen
 // sub-machines above, `$259FF8` (arm 13's sprite-string emitter -- the warning screen draws nothing
 // yet), `$23CFDE` (the credit / FREE PLAY line) and the `$25AD02`/`$25AFD8` blink-message pair.
 // None of them gates the state machine except through a carry this port cannot compute, which is
@@ -41,6 +48,7 @@ import { clear23C47A } from './stageend.js';
 import { clear25C57E } from './objslot9.js';
 import { menuDips23C932 } from './tallyscreen.js';
 import { hiscoreScreen25B412 } from './hiscorescreen.js';
+import { loadAnimObjects246410 } from './animobjects.js';
 
 export const SCREEN8 = Object.freeze({
   entry: 0x25a770, setState: 0x25a764, tail: 0x25a82c, table: 0x25a872, dispatch: 0x240f62,
@@ -258,6 +266,107 @@ function installTxBank(ram, rom, ctx, src, site, why) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// `$25B3DC` -- ARM 2'S INIT, and the one routine that stood between slot [8] and a cold boot.
+
+/**
+ * `$25B3DC` -- FIFTY-FOUR bytes, `$25B3DC..$25B411`, verified out of the raw image:
+ *
+ *     25B3DC  48e7fffe            movem.l  d0-d7/a0-a6,-(a7)
+ *     25B3E0  41f900812e5c        lea      $812E5C,a0
+ *     25B3E6  303c0004            move.w   #$4,d0
+ *     25B3EA  7200                moveq    #$0,d1
+ *     25B3EC  30c1                move.w   d1,(a0)+
+ *     25B3EE  51c8fffc            dbra     d0,$25B3EC
+ *     25B3F2  33fc00f000812e5e    move.w   #$F0,$812E5E
+ *     25B3FA  41fa064a            lea      ($25BA46,pc),a0
+ *     25B3FE  4e71                nop
+ *     25B400  4eb90024641a        jsr      $24641A
+ *     25B406  23c000812e60        move.l   d0,$812E60
+ *     25B40C  4cdf7fff            movem.l  (a7)+,d0-d7/a0-a6
+ *     25B410  4e75                rts
+ *
+ * FIVE THINGS THE BRIEF FOR THIS WAVE GOT WRONG, all settled by the opcodes above:
+ *
+ *   * It is 54 bytes, not 52, and the routine BEFORE it does not end in an `rts`: `$25B3D4`
+ *     is `jmp $25A14C.l`, a tail jump, padded by a `nop` at `$25B3DA`.
+ *   * It clears FIVE words, not six -- `$812E5C $5E $60 $62 $64`. `move.w #$4,D0` with `dbra`
+ *     is five iterations, and `$812E5C` is the FIRST of them rather than a separate clear.
+ *   * The clear is none of the three forms the brief listed. It is not `clr.w` (`4279`), not
+ *     `clr.l` (`42B9`) and not `move.w #$0000` (`33FC`): it is `moveq #$0,D1` feeding
+ *     `move.w D1,(A0)+` in a `dbra` loop, so the SIZE is a word and the COUNT is in D0.
+ *   * `$812E5E := $F0` is a `move.w` IMMEDIATE (`33FC 00F0`), not a table read -- and being a
+ *     word literal it covers two byte fields: `$812E5E` = `$00` and `$812E5F` = `$F0`.
+ *   * There is a `nop` at `$25B3FE`, between the `lea` and the `jsr`, that no summary mentions.
+ *
+ * `$25B3FA lea ($25BA46,PC),A0` is the extension-word rule again: the extension word lives at
+ * `$25B3FC` and the displacement is `$064A`, so the EA is `$25B3FC + $64A = $25BA46` -- NOT
+ * `$25B3FA + $64A`.
+ *
+ * **`$24641A` IS `$246410` WITH D6 = 0**, and `animobjects.js` already says so and already
+ * ports it: `$246410` is `movem.l D1-D7/A0-A4 / move.w #$1,D6 / bra $246422` and `$24641A` is
+ * `movem.l D1-D7/A0-A4 / move.w #$0,D6` falling into the same `$246422` body. Its contract,
+ * read off the body rather than assumed:
+ *
+ *   IN   A0 = the table. `$24643C move.w (A0)+,D0` is the entry count and every entry is
+ *             fourteen bytes.
+ *   OUT  **D0**, and D0 is the one register `movem.l D1-D7/A0-A4` does not save. `$246508
+ *        move.l A1,D0` returns the ROOT ADDRESS -- a RAM POINTER into the three-slot pool at
+ *        `$810346`, stride `$30` -- and `$246518 moveq #$FF,D0` is the failure.
+ *
+ * So the handle in `$812E60` is a **RAM POINTER, not an index**, and `($2C,handle)` in
+ * `$24681A` is a plain read of the root's link word. `chainCheck24681A` in `stageend.js`
+ * reads it exactly that way, which is why a zero `$812E60` throws at `$2C`.
+ */
+export const HISCORE_INIT = Object.freeze({
+  site: 0x25b3dc, end: 0x25b412,   // $25B3DC..$25B411 inclusive -- 54 bytes
+  clearBase: 0x812e5c,             // $25B3E0 lea $812E5C,A0
+  clearWords: 5,                   // $25B3E6 move.w #$4,D0 -- dbra runs 4,3,2,1,0
+  timer: 0x812e5e,                 // $25B3F2 move.w #$F0,$812E5E -- SCREEN_STATE.timer
+  timer0: 0x00f0,                  // the immediate, not a table read
+  handle: 0x812e60,                // $25B406 move.l D0 -- a LONG over $812E60 and $812E62
+  script: 0x25ba46,                // $25B3FA -- EA = $25B3FC + $64A
+  loader: 0x24641a,                // $25B400 -- $246410 with D6 = 0
+  // The bound the CODE states, not adjacency: `$24643C move.w (A0)+,D0` reads the count and
+  // the body consumes fourteen bytes per entry. `rom.u16($25BA46)` is 7, so the script is
+  // `2 + 7*14 = $64` bytes, `$25BA46..$25BAA9` -- and it ends exactly where W303's already
+  // declared `$25BAAA` window (`$25B412`'s own chain script) begins.
+  scriptEntries: 7, entryStride: 14, scriptLen: 0x64,
+});
+
+/**
+ * `$25B3DC` in full. The `movem.l D0-D7/A0-A6` pair at either end saves and restores every
+ * register, so this routine's whole effect is the five words, the `$F0` and the handle.
+ *
+ * **THE ROM WINDOW THIS NEEDS.** `$25BA46 + $64` is not in `tools/export-tables.py`'s window
+ * list -- the nearest declared window is W303's `$25BAAA + $42`, which starts one byte past
+ * this script's end. Under `RomWindows` the `rom.u16($25BA46)` below therefore raises
+ * `Unreached`. Widening a window is the coordinator's call, not this file's, so the need is
+ * REPORTED here with its code-stated bound rather than taken.
+ */
+export function hiscoreInit25B3DC(ram, rom, ctx) {
+  // $25B3EC/$25B3EE -- move.w D1,(A0)+ / dbra D0, with D1 = 0 from the moveq. FIVE words.
+  for (let i = 0; i < HISCORE_INIT.clearWords; i++) {
+    ram.setU16(HISCORE_INIT.clearBase + i * 2, 0);
+  }
+  // $25B3F2 -- a WORD immediate, written AFTER the loop already zeroed the same address.
+  ram.setU16(HISCORE_INIT.timer, HISCORE_INIT.timer0);
+  // $25B400 jsr $24641A -- the existing port, called with mode 0. It returns the root
+  // address; `move.l D0,$812E60` stores it as a LONG over the two words the loop just cleared.
+  const d0 = loadAnimObjects246410(ram, rom, HISCORE_INIT.script, 0);   // $24641A: D6 = 0
+  ram.setU32(HISCORE_INIT.handle, d0 >>> 0);                            // $25B406
+  if (d0 === 0) {
+    // `$246518 moveq #$FF,D0` -- the cartridge's failure value is $FFFFFFFF, and
+    // `loadAnimObjects246410` returns 0 for the same two failures (no free root, pool
+    // exhausted). Both are outside main RAM at `($2C,handle)`, so the screen throws either
+    // way and nothing here is invented; the DIVERGENCE is counted rather than papered over.
+    ctx?.unported?.note(0x246518,
+      '$25B400 jsr $24641A returned the port\'s failure marker 0, where the cartridge returns '
+      + '$FFFFFFFF (moveq #$FF,D0 at $246518). The animation-object root pool at $810346 or the '
+      + 'node pool at $80FA86 was full');
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // `$25ACAC` -- THE JOIN HANDLER, and the only way out of the front end.
 
 /**
@@ -342,7 +451,14 @@ function arm1(ram, a5, ctx) {
  *
  * `hiscoreScreen25B412` returns the carry as a boolean: `true` = still running, `false` =
  * finished. So the `bcs $25A948` at `$25A93E` is `if (!running) setState(12)`, and this arm
- * genuinely advances. Only its 52-byte init `$25B3DC` is missing.
+ * genuinely advances.
+ *
+ * **AND ITS INIT IS NOW REAL, which is what makes a cold boot survive.** `$25B412` opens with
+ * `cmpi.w #$0,$812E5C / bne` and then `move.l $812E60,D0 / jsr $24681A`, and `$24681A` walks
+ * `($2C,handle)` with no null check. On a freshly zeroed RAM `$812E5C` is 0, so the compare
+ * FALLS THROUGH, `$812E60` is 0, and the walk reads `$2C` -- `Unreached: $2C is outside main
+ * RAM`, on the first frame after `13 -> 2`. `hiscoreInit25B3DC` is the routine that puts a
+ * real root address in `$812E60`, and it runs here exactly once, gated by `($3,A5)`.
  */
 function arm2(ram, rom, a5, ctx) {
   if (ram.u8(a5 + SCREEN8.inited) === 0) {                     // $25A912/$25A916
@@ -350,9 +466,7 @@ function arm2(ram, rom, a5, ctx) {
     clearTx23C622(ctx.tx);                                     // $25A91E jsr $23C622
     // $25A924 lea $222638,A0 / $25A92A moveq #0,D0 / $25A92C jsr $2414BE
     installTxBank(ram, rom, ctx, SCREEN8.txPalMain, 0x25a92c, 'slot [8] arm 2 TX palette');
-    ctx?.unported?.note(0x25b3dc,
-      '$25A932 jsr $25B3DC -- 52 bytes, the high-score screen INIT. Its per-frame body $25B412 '
-      + 'IS ported (hiscorescreen.js) and runs below');
+    hiscoreInit25B3DC(ram, rom, ctx);                          // $25A932 jsr $25B3DC
   }
   if (!hiscoreScreen25B412(ram, rom, ctx)) {                   // $25A938 jsr / $25A93E bcs
     setState25A764(ram, a5, 0x0c);                             // $25A940/$25A944 -> state 12

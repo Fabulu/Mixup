@@ -36,11 +36,16 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { Game } from '../src/main.js';
-import { COIN } from '../src/isr.js';
-import { COIN_BITS } from '../src/web/input.js';
+import { COIN, coinRead13CFBA } from '../src/isr.js';
+import { COIN_BITS, setCoinKey, clearCoin, currentCoinWord } from '../src/web/input.js';
+import { SOUND_WRAPPERS, postWrapperWithRuntime, SoundState } from '../src/sound.js';
+import { UnportedLog } from '../src/unported.js';
+import { OBJ } from '../src/objdriver.js';
+import { Demo } from '../src/web/app.js';
 
 const SEED = fileURLToPath(new URL('../rip/web/seed.bin', import.meta.url));
 const TABLES = fileURLToPath(new URL('../rip/port/player.tables.json', import.meta.url));
+const APP = fileURLToPath(new URL('../src/web/app.js', import.meta.url));
 
 const seedBytes = new Uint8Array(readFileSync(SEED));
 const tablesJson = JSON.parse(readFileSync(TABLES, 'utf8'));
@@ -273,4 +278,273 @@ test('a player button in the $E0 mask does not credit', () => {
     g.step(0xffff & ~(1 << (i % 8)));
   }
   assert.equal(credits(g), before, 'no player button may ever produce a credit');
+});
+
+// ---------------------------------------------------------------------------------------------
+// 6 -- `$18B0D6`, THE COIN/SERVICE SOUND HOOK. THE DEFECT THE WIRING EXPOSED.
+//
+// All three of `$13CFBA`'s arms call `jsr $18B0D6` BEFORE `coinage13CE22`. The port routed that
+// through `ctx.soundPost`, and `sound.js` maps only the `$28Cxxx` `WRAPPERS` (plus
+// `STREAMING_LEAVES`) -- everything else THROWS, deliberately ("an unmapped wrapper is a loud
+// gap, not a silent drop", sound.js:366). So from the moment the coin chain was connected, the
+// FIRST CREDITED COIN would have thrown out of the ISR instead of crediting. Nothing could reach
+// it before this wave, which is why no test was red.
+//
+// `$18B0D6` is now COUNTED where `$18ACC0` already was -- `isr.js`'s `coinHook18B0D6` calls
+// `unported.note()` under the hook's own ROM address. Read out of the ROM (raw offset $18B0D6,
+// 26 bytes) it is `movem.l D0-D7/A0-A6,-(A7) / move.w #$17,D0 / move.w #$FF,D1 / move.w #$0,D2 /
+// jsr $18AB50 / movem.l (A7)+ / rts`: the shape of a sound post, into a callee nobody has read.
+//
+// The two tests below are the pair that matters. The first is the one that would have caught the
+// original defect; the second proves the fix NARROWED nothing -- every other unmapped address
+// still throws exactly as loudly as before.
+// ---------------------------------------------------------------------------------------------
+
+/** A dispatch type `defaultHandlers` does not claim, so a spy on it displaces nothing. The same
+ *  technique `w375ctxkeys.test.js` uses: `Game#ctx()` is private and the object driver's own
+ *  `h(ram, slot, slotIndex, ctx)` call is the only way to the REAL ctx. */
+const SPY_TYPE = 0x33;
+
+function captureCtx() {
+  const g = game();
+  assert.equal(g.handlers.has(SPY_TYPE), false,
+    `type $${SPY_TYPE.toString(16)} is a REAL handler now -- pick another spy type`);
+  let slotIndex = -1;
+  for (let i = 0; i < OBJ.slots; i++) {
+    if (g.ram.u16(OBJ.base + i * OBJ.stride + OBJ.typeOff) === 0) { slotIndex = i; break; }
+  }
+  assert.ok(slotIndex >= 0, 'the seed has no empty object slot -- this test cannot plant a record');
+  const a5 = OBJ.base + slotIndex * OBJ.stride;
+  for (let i = 0; i < OBJ.stride; i++) g.ram.setU8(a5 + i, 0);
+  g.ram.setU16(a5 + OBJ.typeOff, SPY_TYPE);
+  let ctx = null, calls = 0;
+  g.handlers.set(SPY_TYPE, (_ram, _slot, _i, c) => { calls++; ctx = c; });
+  g.coinPort = COIN.idle;
+  g.step(NO_PLAYER);
+  assert.equal(calls > 0, true, 'the spy handler never ran, so nothing below tests anything');
+  return { g, ctx };
+}
+
+/** The `$18B0D6` lines of an `UnportedLog` report, as `[count, line]`. */
+function hookNotes(log) {
+  return log.report()
+    .filter((l) => /\$18B0D6/.test(l))
+    .map((l) => [Number(l.trim().split(' ')[0]), l]);
+}
+
+test('W375: a credited coin does NOT throw, and $18B0D6 is COUNTED', () => {
+  // END TO END through the REAL `Game`, whose `ctx.soundPost` is `main.js`'s -- i.e. the real
+  // `postWrapperWithRuntime`, which throws on an unmapped address. Before the fix this test threw
+  // `sound.postWrapper: no wrapper at $18B0D6` out of `$13D008`, one instruction short of the
+  // credit.
+  const g = game();
+  const before = credits(g);
+  run(g, coinWord('COIN1'), 12);
+  run(g, COIN.idle, 6);
+
+  assert.equal(credits(g), before + 1, 'the coin must credit -- a throw here IS the defect');
+  const notes = hookNotes(g.unportedLog);
+  assert.equal(notes.length, 1,
+    `exactly one $18B0D6 note line, got ${JSON.stringify(g.unportedLog.report())}`);
+  assert.equal(notes[0][0], 1, 'one credited coin is one counted hook call, not zero and not two');
+  assert.match(notes[0][1], /jsr \$18AB50/,
+    'the note must say what the unported routine IS, or it is an address with no meaning');
+});
+
+test('W375: all three arms count the hook, with a ctx whose soundPost THROWS', () => {
+  // THE UNIT, driven directly, with the real sound layer as `soundPost`: `postWrapperWithRuntime`
+  // throws for anything outside `WRAPPERS`/`STREAMING_LEAVES`, which is exactly the behaviour the
+  // driver has. If `coinRead13CFBA` ever goes back to posting `$18B0D6`, every one of these
+  // throws instead of crediting.
+  const arms = [
+    // [the arm, what arms it]. SERVICE takes an EDGE rather than a RAM word, so its `arm` is
+    // empty and the two-call sequence below is what raises it.
+    ['SERVICE ($13CFF0)', () => {}],
+    ['COIN 1 ($13D008)', (ram) => ram.setU16(COIN.pendA, COIN.pendValue)],
+    ['COIN 2 ($13D032)', (ram) => ram.setU16(COIN.pendB, COIN.pendValue)],
+  ];
+
+  for (const [name, arm] of arms) {
+    const g = game();
+    const log = new UnportedLog();
+    const sound = new SoundState();
+    const ctx = {
+      unported: log,
+      unportedLog: log,
+      soundPost: (addr) => postWrapperWithRuntime(g.ram, sound, null, addr),
+    };
+    const before = credits(g);
+
+    arm(g.ram);
+    if (name.startsWith('SERVICE')) {
+      // `$13CFD6 and.w / andi.w #$E0` is `prev & now & $E0`: a RISING edge needs the previous RAW
+      // word to have the bit SET (not pressed) and the current one pressed.
+      coinRead13CFBA(g.ram, COIN.idle, ctx);
+      coinRead13CFBA(g.ram, coinWord('SERVICE'), ctx);
+    } else {
+      coinRead13CFBA(g.ram, COIN.idle, ctx);
+    }
+
+    assert.equal(credits(g), before + 1, `${name}: the credit must land`);
+    const notes = hookNotes(log);
+    assert.equal(notes.length, 1, `${name}: the hook must be COUNTED, not posted and not dropped`);
+    assert.equal(notes[0][0], 1, `${name}: one arm taken is one hook call`);
+  }
+});
+
+test('W375: every OTHER unmapped sound address still throws, from the REAL ctx', () => {
+  // THE NARROWING, PROVED. `main.js`'s `#ctx().soundPost` carried a `$18B0D6` guard while the fix
+  // lived in the wrong file; it is gone, and nothing replaced it. So the hook address itself
+  // throws again if anyone posts it -- which is safe precisely because `isr.js` no longer does --
+  // and so does its build-A neighbour `$18ACC0`.
+  const { ctx } = captureCtx();
+  assert.equal(typeof ctx.soundPost, 'function', 'Game#ctx() must still carry soundPost');
+
+  assert.throws(() => ctx.soundPost(COIN.arms.hook), /no wrapper at \$18B0D6/,
+    'the workaround in main.js must be GONE -- an unmapped address is a loud gap');
+  assert.throws(() => ctx.soundPost(0x18acc0), /no wrapper at \$18ACC0/,
+    'ISR6 jsr #3 is unmapped too, and must throw for anyone who posts it');
+
+  // ...and the throw is about being UNMAPPED, not about everything: a real wrapper still posts.
+  const mapped = Number(Object.keys(SOUND_WRAPPERS)[0]);
+  assert.ok(Number.isFinite(mapped) && mapped > 0, 'sound.js WRAPPERS is empty -- read that first');
+  assert.doesNotThrow(() => ctx.soundPost(mapped),
+    `$${mapped.toString(16).toUpperCase()} IS in WRAPPERS and must still post`);
+});
+
+// ---------------------------------------------------------------------------------------------
+// 7 -- COIN INPUT IS DEAD DURING `.replay` PLAYBACK.
+//
+// `NOTES-replay.md` constraint 1: a run derives from (initial state, input words) and NOTHING
+// ELSE. The coin word is a SECOND per-frame input and the v1 `.replay` format cannot carry it
+// (`portin.encoding === 'u16be'`, one word per logic frame, and `decodePortinWords` throws on
+// anything else) -- which is exactly why it must not be live while a recording plays back. A
+// coin key pressed by whoever is watching would move `$80395A` inside the state the W132 verifier
+// hashes and turn a green verify red, with nothing in the file to explain it.
+//
+// THE MECHANISM, verified rather than assumed. `Demo.playback` is null until `playFrom()` builds
+// the descriptor, and `endPlayback()` does NOT null it -- it sets `playback.ended` and leaves the
+// descriptor in place so the banner and the verdict survive. From that instant `step()` is back
+// on live input. So the gate is `playback && !playback.ended`, which is what `Demo#inPlayback()`
+// is, and gating on `this.playback` alone would freeze the coin port for the rest of the session
+// after one replay.
+//
+// These drive the REAL `Demo.prototype.step` on a stub `this`. A real `Demo` needs a bundle, a
+// capture and a canvas, none of which exist in `node --test`; the prototype call is the closest
+// honest thing, and it runs the actual gate rather than a copy of it.
+// ---------------------------------------------------------------------------------------------
+
+/** A `this` for `Demo.prototype.step` carrying only the fields that method reads. The `Game` is
+ *  built with the SAME `coinTick` wiring the `Demo` constructor uses. */
+function stubDemo(playback = null) {
+  const stub = {
+    game: null,
+    playback,
+    recorder: null,
+    romToPacked: new Map(),     // every sprite misses; `portSpriteList` writes no RAM
+    listOpts: {},
+    portList: null,
+    prevPos: null,
+    prevTilt: 0,
+    stepsRun: 0,
+    bundle: {},                 // `bundle.bg?.followColumn(..)` short-circuits, argument included
+    inPlayback: Demo.prototype.inPlayback,
+    coinTick: Demo.prototype.coinTick,
+    step: Demo.prototype.step,
+    endPlayback() { throw new Error('endPlayback reached -- give the fixture more words'); },
+  };
+  stub.game = new Game(seedBytes.slice(), tablesJson, {
+    palCatchUp: false,
+    coinTick: () => stub.coinTick(),
+  });
+  return stub;
+}
+
+/** A playback descriptor with everything `step()` touches and nothing else. `count` is far past
+ *  any frame these tests drive, so `endPlayback()` is never reached. */
+const fakePlayback = (frames) => ({
+  ended: false,
+  i: 0,
+  count: 1e9,
+  words: new Array(frames + 8).fill(NO_PLAYER),
+  pokes: [],
+  verifier: { periodBounds: [], feed() {} },
+});
+
+test('W375: Demo#inPlayback() is playback AND NOT ended, not merely playback', () => {
+  const call = (playback) => Demo.prototype.inPlayback.call({ playback });
+  assert.equal(call(null), false, 'no descriptor, no playback');
+  assert.equal(call({ ended: false }), true, 'a live descriptor IS playback');
+  assert.equal(call({ ended: true }), false,
+    'endPlayback() leaves the descriptor in place; live input resumes and so must the coin port');
+});
+
+test('W375: a held coin key credits NOTHING while a .replay plays back', () => {
+  clearCoin();                                  // module state is global -- start from idle
+  const FRAMES = 40;                            // > the 12-call pulse, i.e. long enough to credit
+  const stub = stubDemo(fakePlayback(FRAMES));
+  const before = credits(stub.game);
+  setCoinKey('COIN1', true);                    // the real web/input.js press, pulse armed
+
+  for (let i = 0; i < FRAMES; i++) stub.step();
+
+  assert.equal(stub.game.coinPort, COIN.idle,
+    'the coin port must be pinned to $FFFF for every frame of the playback');
+  assert.equal(credits(stub.game), before, 'a coin key must not credit during playback');
+  assert.equal(stub.game.ram.u16(COIN.pendA), 0, 'and no record may even reach the pending word');
+  assert.equal(stub.game.ram.u8(COIN.recA), 0, 'record 0 must never leave state 0');
+  // ...and the PULSE did not advance either, which is `Demo#coinTick`'s half of the gate. The key
+  // is still down, so the word still shows it: had `coinTick` kept ticking, 40 frames = 20
+  // debounce calls would have spent the whole 12-call pulse.
+  assert.notEqual(currentCoinWord(), COIN.idle,
+    'the coin pulse must be FROZEN during playback, not quietly spent');
+  clearCoin();
+});
+
+test('W375: the same key credits when NOT playing back', () => {
+  // The control for the test above: same fixture, same key, same frame count, `playback` null.
+  // Without this, "no credit during playback" could just mean the fixture never credits at all.
+  clearCoin();
+  const FRAMES = 40;
+  const stub = stubDemo(null);
+  const before = credits(stub.game);
+  setCoinKey('COIN1', true);
+
+  for (let i = 0; i < FRAMES; i++) stub.step();
+
+  assert.equal(credits(stub.game), before + 1, 'outside playback the same key must credit');
+  assert.equal(currentCoinWord(), COIN.idle,
+    'and the pulse must have been spent by Demo#coinTick, leaving the port idle again');
+  clearCoin();
+});
+
+test('W375: coin input comes BACK when the playback ends', () => {
+  // `endPlayback()` sets `ended` and leaves the descriptor; the coin port must go live again on
+  // the very next step, or one replay disables coins for the rest of the session.
+  clearCoin();
+  const pb = fakePlayback(8);
+  const stub = stubDemo(pb);
+  setCoinKey('COIN1', true);
+  stub.step();
+  assert.equal(stub.game.coinPort, COIN.idle, 'still playing -- port pinned');
+
+  pb.ended = true;
+  stub.step();
+  assert.notEqual(stub.game.coinPort, COIN.idle,
+    'after endPlayback the live coin word must reach the Game again');
+  assert.equal(stub.game.coinPort, currentCoinWord(), 'and it must be the LIVE word, unmodified');
+  clearCoin();
+});
+
+test('W375: both Games the page builds get the GATED coin tick', () => {
+  // `Demo#coinTick` is tested for real above, but neither `Demo`'s constructor nor `playFrom()`
+  // can run without a bundle and a canvas, so THAT the two `new Game(...)` sites pass the gated
+  // method -- rather than the raw `tickCoinPulse` -- is checked in the source text. Both sites
+  // matter: the constructor's Game is the live one and `playFrom`'s is the verify target itself.
+  const src = readFileSync(APP, 'utf8');
+  const gated = src.match(/coinTick: \(\) => this\.coinTick\(\)/g) ?? [];
+  assert.equal(gated.length, 2,
+    'both new Game(...) sites in web/app.js must pass the playback-gated tick');
+  assert.equal(/coinTick:\s*tickCoinPulse/.test(src), false,
+    'an ungated tickCoinPulse would advance the coin pulse during playback');
 });

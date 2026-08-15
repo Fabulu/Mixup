@@ -84,13 +84,17 @@ import { tallyScreen25DBB4 } from './tallyscreen.js';
 // namespace is what that injection point was designed for.
 import * as slot9 from './objslot9.js';
 import { objSlot7 } from './objslot7pool.js';
+import { objSlot8 } from './objslot8.js';
 import { objSlot13 } from './objslot13.js';
 // W375: slot [14], ported in W372 and left out of W374's registration pass.
 import { objSlot14 } from './objslot14.js';
 import { objSlot15 } from './objslot15.js';
 import { objSlot17 } from './objslot17.js';
+// `SOUND_WRAPPERS`/`STREAMING_LEAVES` were imported here only by W375's
+// `$18B0D6` guard in `#ctx().soundPost`; that guard moved into `isr.js` as a
+// counted `unported.note()`, so the two tables are no longer read in this file.
 import { SoundState, drainFrame, postWrapperWithRuntime,
-  soundFrameInput, SOUND_WRAPPERS, STREAMING_LEAVES } from './sound.js';
+  soundFrameInput } from './sound.js';
 import {
   PaletteState, flush24133C, catchUpObjectStream, catchUpBgPalette,
   catchUpTextPalette,
@@ -225,6 +229,15 @@ export function defaultHandlers(rom, vram, opts = {}) {
     // rest. Registering them is right for the same reason entry [5] gives: unattributed notes
     // become notes that name the state they came from, and the working states actually run.
     [7, slotObject(objSlot7, rom)],
+    // W375. $240F62[8] = $25A770, priority $0018 -- the ATTRACT SEQUENCER and credit gate
+    // (src/objslot8.js). It is the object that answers D41: coin and start alone do not reach the
+    // game, because this is the state machine that reads the credit counter, arms the join poll and
+    // stages the type it hands off to. Ported this wave; registering it takes the dispatch table to
+    // 16 of 20.
+    //
+    // Its arm sub-machines ($25BBB4, $25BD7C, $25BDE0, $25C2AE, $25C2EA, $25C3E8, $25C424, $25C592,
+    // $25C6D4) are counted notes, not calls -- the sequencer's own spine is what runs here.
+    [8, slotObject(objSlot8, rom)],
     [9, slotObject(slot9.objSlot9, rom)],
     [13, slotObject(objSlot13, rom)],
     // W375. $240F62[14] = $288C6C, priority $0014 -- the TRANSITIONAL object (src/objslot14.js): it
@@ -252,7 +265,8 @@ export function defaultHandlers(rom, vram, opts = {}) {
 }
 
 /** Adapt a front-end slot dispatcher to `runObjectDriver`'s `(ram, slot, slotIndex, ctx)` call.
- *  All six ([7], [9], [13], [14], [15], [17]) take `(ram, rom, a5, ctx)` and none reads the index. */
+ *  All seven ([7], [8], [9], [13], [14], [15], [17]) take `(ram, rom, a5, ctx)` and none reads
+ *  the index. */
 function slotObject(fn, rom) {
   return (ram, slot, _slotIndex, ctx) => fn(ram, rom, slot, ctx);
 }
@@ -498,41 +512,22 @@ export class Game {
       // sound wave removes. Runs the gate, tail, packer and ring enqueue from
       // src/sound.js; returns true if the cue posted. See sound.js.
       soundPost: (addr) => {
-        // W375 -- MEASURED THE MOMENT THE COIN CHAIN WAS FIRST DRIVEN, and it is
-        // a REAL GAP in another unit, recorded here rather than hidden.
+        // EVERY ADDRESS GOES STRAIGHT THROUGH, and an unmapped one THROWS.
         //
-        // All three of `$13CFBA`'s arms call `jsr $18B0D6` (isr.js:321/327/333,
-        // `COIN.arms.hook`). Every OTHER `soundPost` caller in this port passes a
-        // `$28Cxxx` WRAPPER address; `$18B0D6` is in build A's BIOS-side range,
-        // the same family as the `$18ACC0` that isr.js:53 counts as UNPORTED.
-        // `sound.js`'s `WRAPPERS` does not carry it and neither does
-        // `STREAMING_LEAVES`, so `postWrapper` throws by design ("an unmapped
-        // wrapper is a loud gap, not a silent drop", sound.js:364) -- and that
-        // throw lands at `isr.js:327`, BEFORE `coinage13CE22`, so until this
-        // wave's wiring existed nothing could reach it and from this wave the
-        // FIRST CREDITED COIN would kill the frame instead of crediting.
+        // W375 briefly guarded `$18B0D6` here: all three of `$13CFBA`'s arms
+        // called `ctx.soundPost(COIN.arms.hook)` with an address `sound.js` maps
+        // in neither `WRAPPERS` nor `STREAMING_LEAVES`, so the first credited
+        // coin threw before ever reaching `coinage13CE22`. That guard is GONE and
+        // the fix is at the call site: `isr.js`'s `coinHook18B0D6` counts the
+        // hook with `unported.note()` under its own ROM address, exactly as
+        // `irq6` already counted the neighbouring `$18ACC0`. A BIOS-range routine
+        // nobody has read is an UNPORTED CALL, not a sound post that needs
+        // special handling at the sound boundary.
         //
-        // COUNTED, NOT SWALLOWED, and NOT WEAKENED FOR ANYTHING ELSE:
-        //   * it applies to `COIN.arms.hook` ALONE -- every other unmapped
-        //     address still throws exactly as loudly as it did yesterday, and
-        //     `$28C170`'s deliberate throw (sound.js:105) is untouched;
-        //   * it goes to `unportedLog` under its own ROM address, so the hook is
-        //     a countable gap in the one place this port counts them;
-        //   * it is SELF-HEALING. The moment `$18B0D6` gains a row in
-        //     `WRAPPERS` or `STREAMING_LEAVES` the condition stops matching and
-        //     the real post runs, with nothing here to remember to delete.
+        // Nothing narrows the throw any more, and nothing should: an unmapped
+        // wrapper is a loud gap, not a silent drop (sound.js:366). A guard here
+        // would hide the next call site that gets the address wrong.
         //
-        // THE REAL FIX IS NOT IN THIS FILE. Either `sound.js` maps `$18B0D6`, or
-        // `isr.js` stops calling `soundPost` for it and calls `note()` instead
-        // the way it already does for `$18ACC0` -- and which of those is right is
-        // a question about a BIOS-range routine nobody has read yet, not about
-        // the main loop. Both files are owned elsewhere this wave.
-        if (addr === COIN.arms.hook
-            && !(addr in SOUND_WRAPPERS) && !STREAMING_LEAVES.has(addr)) {
-          this.unportedLog.note(addr,
-            'coin/service sound hook ($18B0D6) -- no row in sound.js WRAPPERS');
-          return false;
-        }
         // `$28CAFC->$28B884` synchronously installs the selected score group
         // before the leaf posts its ordinary four-byte door. Keep that side
         // effect ordered at the sound boundary; it is not a fifth payload byte.
