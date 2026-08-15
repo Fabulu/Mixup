@@ -2,7 +2,83 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W383
+## START HERE -- W384
+
+### THE GAME RUNS WITH **NO PLAYER**. THAT IS THE WHOLE STALL.
+
+**Object dispatch types 2 and 3 are NEVER CREATED** in 14,000 frames -- only `$1`, `$5`, `$9`, `$A`
+ever go live. `$8103E6` stays `$0000`, `$813090` stays 0, `$8130BE` (lives) stays 0.
+
+So `$2428A6 livePlayers2428A6` returns **0 forever**, so `$294F44`/`$294F4A` takes
+`$294F50 move.w #$78,$22(a5)` and **re-floors the boss's 10,800-frame timeout every 120 frames,
+permanently.** `boss.js`'s own header says "STAGE 1 ENDS EVEN IF THE BOSS IS NEVER SHOT" -- that is
+exactly the path being blocked. Proved end to end: spawn a player during the boss lock and `$294F32`
+reaches `$294DD4` on the very next expiry.
+
+### THE ODOMETER FREEZE IS **NOT A BUG** -- IT IS THE STAGE-1 BOSS LOCK, ON TIME
+
+`$8130CE` parks at 836 (`$0344`) because `$26214C` (scroll op `$0C`, FREEZE) latches `($8,A5)` at
+scroll-record time `t=$0344`, and its op-`$04` partner armed `loops=$FFFF` so `$261FA8` always takes
+the rewind branch. `$261324` is the ONLY reader of that flag and it guards exactly one instruction,
+`$26132C addq.w #$1,$8130CE`. **`background.js:61-70` already said so.** Stage 1 does not need the
+scroll released; it needs the boss to die.
+
+### I PUBLISHED A WRONG MEASUREMENT LAST WAVE. CORRECTED HERE.
+
+W383 reported, and I repeated in a commit message, that **"RAM is byte-identical at +10,000 and
++120,000"** and called the run a fixed point. **That is false.** Measured directly on `g.ram.b`:
+
+```
+bytes differing +10000 vs +120000: 3738   contiguous blocks: 1548
+```
+
+The stall agent independently measured 3,481 bytes / 57 blocks at +14,000 and 3,728 at +120,000.
+**The machine is doing plenty of work; it simply never progresses stage 1.** `w383coldboot.test.js`
+compares FOUR WORDS, which is why it read as identical. **Do not cite that test as evidence of a
+fixed point.**
+
+### THE THREE BLOCKERS, IN ORDER, WITH THE REAL FIRING SITES
+
+**Do them as ONE wave -- none of the three changes anything on its own.**
+
+1. **`rank.js`'s `$25FF7A` is a STALE STUB, and it is a LIVE CRASH TODAY.** `computedDispatch`'s
+   `DISP_25FF7A_TARGETS` maps requests 1 and 9 only and `unreached()`s the rest, claiming a
+   "per-player hyper/palette/sound servicer ... unported hyper subsystem (Wave B)". **False.**
+   `$25FF52` is the BONUS-LINE table; `tally.js` ports all nine lines and exports
+   `tallyDriver25FF7A`, **which nothing in `src/` calls.** `$2601F4` (line 4) is fully ported with 0
+   notes -- it seeds lives from `$2600CE[$80380E]` and `$26022E jsr $241182` creates the player
+   object. Wire `rank.js:395` and `rank.js:717` to it. **One file, fixes a live crash, worth doing
+   alone**: `$25FFA8` (request 1, the respawn, already wired) arms request **2** on lives exhaustion.
+2. **`$25FE42..$25FEDE`** (156 bytes, 29 instructions, inline table `$25FE22..$25FE41`), deferred at
+   `$260700 bsr.w $25FE42` in the `$2605C8` state-0 INIT. Fills BOTH `$24`-byte dispatcher entries
+   `$8130FA`/`$81311E`: `($8)` = lives pointer `$8130BE`/`$8130C0`, `($C,$E)`/`($10,$12)` = spawn
+   position, **`($14)` = the object type 2/3**, `($16)` = side; then creates types 0, 4, 4. Only
+   callee is `$241182`. **`rip/web/seed.bin` carries every one of those fields -- that is the
+   positive control.**
+3. **`$2603FE..$2604A8`** (171 bytes, 40 instructions). **The site that fires is
+   `objslot17.js:920 / $25D73E`** in `phase7_25D560` behind the `$812F80` latch -- **NOT**
+   `rank.js`'s `$260558`, which is gated on `$813080` and never opens. Runs `$260434 jsr $25FF38`
+   with D1 = 4. Callees `$287084`/`$2870E6` are 25 instructions each, pure RAM; `$287A5E` unread.
+   Creates two type-`$B` objects (`$240F62[11] = $25DBB4`, ported W276).
+
+**A FOURTH GAP APPEARS ONLY ONCE THE CHAIN RUNS:** `sound.js postWrapper` **throws** on `$28C170`
+from `boss.js bossClear242922`, where three other call sites `note()` it. Expect it.
+
+### `$261142` IS A RED HERRING FOR STAGE 1
+
+Its two callers `$26C7F4`/`$26D254` are the **stage-3** carrier (`stage3carrier.js`, closure
+`$26C266..$26D6EE`).
+
+### THE DIAGNOSIS IS PINNED, NOT NARRATED
+
+`tests/w384stall.test.js`, nine tests on one shared 14,000-frame run: the odometer frame and value
+and the `$0344` freeze; the refutation of the fixed point; types 2/3 never live with all four player
+words zero (seed as positive control); the boss alive with `$2428A6` = 0; `$294F50`'s re-floor **and
+its ablation** (one bit of `$8103E6` flips the branch); both deferrals by address, count and firing
+site; and the stale stub proved both ways -- `g.step()` throws `Unreached` at `$25FF7A` on request 4,
+while `tallyDriver25FF7A` on the same RAM seeds lives to 2 and stages dispatch type 2.
+
+## W383 NOTES
 
 ### THE COLD BOOT IS NOW DEFENDED BY A TEST, AND THE 120,000-FRAME CLAIM IS WEAKER THAN IT SOUNDS
 
