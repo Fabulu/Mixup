@@ -22,7 +22,7 @@
 // of pairs, not two arrays, and a port that gives each side its own three-byte block writes the
 // right values to the wrong addresses.
 
-import { u16 } from './ram.js';
+import { u16, i16 } from './ram.js';
 import { install24150A, install2414BE, paletteSet241688 } from './palette.js';
 import { clearTx23C622, txString25A14C } from './background.js';
 import { announcePost } from './rank.js';
@@ -222,6 +222,13 @@ export function objSlot17(ram, rom, a5, ctx) {
         phase5_25D39C(ram, rom, ctx, a5, a6, d7, DESC17.base[sideFromD7_25D4E4(d7)]);
         continue;
       }
+      if (phase === 0x07) {
+        // TRAP 10 AGAIN: $25D4F0 wrote 7 into ($1,A6) two compares ago, so on the frame state 6
+        // runs this handler runs too. The draw registry is whatever the caller put on `ctx`; see
+        // `phase7_25D560` for why it cannot simply be imported.
+        phase7_25D560(ram, rom, ctx, a5, a6, SCREEN17.recCount - 1 - r);
+        continue;
+      }
       ctx.unported?.note(SCREEN17.subHandlers[i],
         `$${SCREEN17.subHandlers[i].toString(16).toUpperCase()} -- slot [17]'s handler for state `
         + `${phase} on ($1,A6). Unread`);
@@ -395,4 +402,402 @@ export function phase3_25D306(ram, rom, ctx, a5, a6, d7) {
   ram.setU8(a6 + HANDLER3.tailCount, HANDLER3.tailCountValue);          // $25D38A
   ram.setU8(a6 + HANDLER3.tailClear, 0);                                // $25D390 clr.b
   ram.setU8(a6 + SCREEN17.phaseAt, HANDLER3.nextPhase);                 // $25D394 -- FOUR
+}
+
+// -------------------------------------------------------------------------------------------
+// `$25D560` -- THE STATE-7 HANDLER. 732 bytes, `$25D560..$25D83B`, ONE routine with ONE `rts`.
+// -------------------------------------------------------------------------------------------
+
+/** The `$25D800` draw tail, in ROM order. `gate` is the bit of `($3,A5)` that must be CLEAR for the
+ *  call to happen and `null` for the ungated ones; `d7` says whether the callee takes the side.
+ *
+ *  **IT IS SEVEN CALLS, NOT EIGHT.** Eight `draw25*` routines are ported in `objslot9.js`; this tail
+ *  calls `$25E4D0` and does NOT call `$25EDF8`, which is the exact opposite of `confirmAndDraw`'s
+ *  two tails. The brief this port was written from said "all eight draws still run" -- the ROM says
+ *  seven, and `$25D800..$25D839` holds exactly seven `4EB9` jsrs. Counted from the dump, not
+ *  assumed. */
+export const TAIL_25D560 = Object.freeze([
+  Object.freeze({ at: 0x25d808, addr: 0x25e220, fn: 'draw25E220', gate: 0, d7: false }),
+  Object.freeze({ at: 0x25d80e, addr: 0x25e29e, fn: 'draw25E29E', gate: 0, d7: false }),
+  Object.freeze({ at: 0x25d814, addr: 0x25e4d0, fn: 'draw25E4D0', gate: null, d7: true }),
+  Object.freeze({ at: 0x25d822, addr: 0x25e6ce, fn: 'draw25E6CE', gate: 1, d7: false }),
+  Object.freeze({ at: 0x25d828, addr: 0x25e824, fn: 'draw25E824', gate: null, d7: true }),
+  Object.freeze({ at: 0x25d82e, addr: 0x25ef30, fn: 'draw25EF30', gate: null, d7: true }),
+  Object.freeze({ at: 0x25d834, addr: 0x25f074, fn: 'draw25F074', gate: null, d7: true }),
+]);
+
+export const HANDLER7 = Object.freeze({
+  addr: 0x25d560, rts: 0x25d83a, bytes: 732, drawTail: 0x25d800,
+  otherRec: 0x70,                            // $25D56A lea ($70,A6) / $25D570 lea (-$70,A6)
+  loopCounter: 0x813098,                     // $25D574 tst.w -- the second-loop word
+  liveAt: 0x00, rendezvousAt: 0x01, rendezvous: 0x07,        // $25D584 / $25D588, on the OTHER rec
+  announceLatch: 0x5e, announce: 0x260a9a,   // $25D592 / $25D59A / $25D5AA
+  soundLatch: 0x812f82, sound: 0x28cb9c,     // $25D5B0 / $25D5BA / $25D5C2
+  frameAt: 0x32,                             // $25D5C8 addq.w #1 -- THE frame counter
+  // The two ACCELERATING ramps: a ceiling on the value, a per-frame bump on its own delta word.
+  rampA: Object.freeze({ at: 0x36, ceil: 0x3800, deltaAt: 0x3a, deltaStep: 0x0009 }),   // $25D5CC
+  rampB: Object.freeze({ at: 0x38, ceil: 0x1c00, deltaAt: 0x3c, deltaStep: 0x0004 }),   // $25D5E2
+  rampC: Object.freeze({ at: 0x3e, ceil: 0x7000, step: 0x0200 }),                       // $25D5F6
+  // ...and the two CROSS-GATED ones. Each is opened by a different field's threshold.
+  rampD: Object.freeze({ at: 0x48, ceil: 0x3800, step: 0x0033, openAt: 0x40, openBelow: 0x14c0 }),
+  rampE: Object.freeze({ at: 0x46, ceil: 0x7000, step: 0x0033, openAt: 0x48, openFrom: 0x0300 }),
+  palOnceAt: 0x0a, palSrc: 0x2243f8, palBank: 0x1a, palBytes: 0x40,   // $25D630/$25D63A/$25D640
+  handoff: 0x26070c, handoffBytes: 124, tailCall: 0x25f456, tailCallBytes: 218,
+  flashAt: 0x42, flashHoldAt: 0x44, flashHold: 0x0040, flashReload: 0x0003,   // $25D670..$25D69C
+  fuseAt: 0x40, fuseStep: 0x0026,
+  gateSlide: 0x00f0, gateRamp: 0x00aa, gateZoom: 0x0001,     // $25D6A0 / $25D754 / $25D784
+  slideFlagAt: 0x35, slideFlag: 0x01,        // $25D6AA move.b #$1,($35,A6) -- a BYTE, not a word
+  speedAt: 0x4c, speedCap: 0x0080, speedDecel: 2,            // $25D6B0 / $25D706 subq.w #2
+  travelAt: 0x4a, travelCap: 0x1800,                         // $25D6B8 / $25D6D0
+  doneAt: 0x5a, emitGateAt: 0x54,            // $25D6E6 / $25D716, and $25D6EE gates $25E4D0's emit 2
+  anchorAt: 0x56, pairLatch: 0x812f80, pairSite: 0x2603fe, pairBytes: 172,
+  nextPhase: 0x08,                           // $25D748 AND $25D74E -- BOTH records
+  tiltAt: 0x62, tiltStep: 0x0080, tiltCap: 0x2600, tiltClearAt: 0x64,        // $25D754..$25D782
+  delayAt: 0x6c, tickAt: 0x6a, reloadAt: 0x6b,               // $25D78E / $25D79E / $25D7A6
+  cursorAt: 0x60, cursorStep: 4, cursorCap: 0x003c,          // $25D7AC / $25D7B6
+  // THE $25D85C WALK. 122 word entries plus the $FFFF sentinel at $25D950 = 246 bytes, and the
+  // sentinel is INSIDE the window because $25D7DC reads it before $25D7E0 recognises it.
+  stepTable: 0x25d85c, stepEntries: 122, stepBytes: 0x00f6, stepSentinel: 0xffff,
+  stepCursorAt: 0x52, stepIntoAt: 0x4e, stepCeil: 0x3800,    // $25D7D4 / $25D7EE / $25D7C4
+  halfIntoAt: 0x50, halfCeil: 0x1c00,                        // $25D7F2 / $25D7FC
+  head: 0x25f530, headBytes: 80, headInner: 0x25f592, headInnerBytes: 560,   // $25D560
+  perFrame: 0x25faa4, perFrameBytes: 334,                    // $25D57E
+});
+
+const hex7 = (v) => `$${v.toString(16).toUpperCase()}`;
+
+/** `$25D800..$25D83A` -- THE DRAW TAIL, and it is a real label with TWO ways in: the fall-through
+ *  from `$25D7FC` and `$25D58E bne.w $25D800`, the rendezvous bail. That second edge is why the
+ *  screen keeps drawing off the previous frame's field values while the other side catches up.
+ *
+ *  THE ORDER IS LOAD-BEARING. All seven emit into bucket 0, so reordering them reorders sprites.
+ *
+ *  `draws` is the caller's registry. `objslot9.js` already imports `objslot17.js`, so importing the
+ *  draws back would close a cycle; they arrive as an argument or as `ctx.selectDraws` instead. An
+ *  absent one is a COUNTED NOTE per call site, never a silent skip. */
+function drawTail25D800(ram, rom, ctx, a5, a6, d7, draws) {
+  const fire = (e) => {
+    const fn = draws?.[e.fn];
+    if (typeof fn !== 'function') {
+      ctx.unported?.note(e.addr, `${hex7(e.addr)} -- the ${hex7(0x25d800)} tail's ${e.fn}, called `
+        + `from ${hex7(e.at)}. objslot9.js exports it and importing objslot9.js from objslot17.js `
+        + 'would close a cycle, so the tail takes its draws as an argument or as ctx.selectDraws. '
+        + 'Neither was supplied, so this sprite is NOT on screen');
+      return;
+    }
+    if (e.d7) fn(ram, rom, ctx, a6, d7); else fn(ram, rom, ctx, a6);
+  };
+
+  // $25D800 bset #$0,($3,A5) / bne.s $25D814. ($3,A5) is cleared ONCE PER FRAME by the dispatcher
+  // at $25CEC8, so the FIRST record through does the gated pairs and the second skips them, while
+  // the ungated ones run twice. Two separate bsets, each reading its own old bit -- not one write.
+  if (ram.bset8(a5 + SCREEN17.busy, 0) === 0) {
+    fire(TAIL_25D560[0]);                                    // $25D808 jsr $25E220
+    fire(TAIL_25D560[1]);                                    // $25D80E jsr $25E29E
+  }
+  fire(TAIL_25D560[2]);                                      // $25D814 jsr $25E4D0 -- UNGATED
+  if (ram.bset8(a5 + SCREEN17.busy, 1) === 0) {              // $25D81A bset #$1,($3,A5)
+    fire(TAIL_25D560[3]);                                    // $25D822 jsr $25E6CE
+  }
+  fire(TAIL_25D560[4]);                                      // $25D828 jsr $25E824
+  fire(TAIL_25D560[5]);                                      // $25D82E jsr $25EF30
+  fire(TAIL_25D560[6]);                                      // $25D834 jsr $25F074 -- $25D83A rts
+}
+
+/** `$25D560` -- THE STATE-7 HANDLER, shared by object-dispatch slots [17] and [9]. Seven hundred
+ *  and thirty-two bytes, one `rts`, and the routine that finally gives the already-ported
+ *  `draw25E4D0` a caller.
+ *
+ *  **THE RENDEZVOUS.** `$25D588 cmpi.b #$7,($1,A0)` reads the OTHER RECORD's state byte -- immediate
+ *  `$0007` before displacement `$0001`, the same operand order that turned this slot's four "flags"
+ *  into one state machine -- and `$25D58E bne.w $25D800` jumps STRAIGHT INTO THE DRAW TAIL. So on
+ *  every frame where the other side has not reached 7 the entire body is skipped: the frame counter
+ *  does not advance, no ramp moves, no latch is set, and the screen still draws off the values the
+ *  last frame left behind. That is the two-player wait, and modelling it as a bare `return` puts
+ *  the whole screen on black until both sides arrive.
+ *
+ *  **`$25D748` FALLS THROUGH.** `move.b #$8,($1,A6)` and `move.b #$8,($1,A0)` are followed by
+ *  `$25D754`, not by an `rts`, so state 8 is VISIBLE TO THE DRAWS ON THAT SAME FRAME. `draw25E824`
+ *  gates its blocks E/D/C on `cmpi.b #$4`/`#$7`, so those three go dark on the final frame -- which
+ *  is the observable difference between this and "advance the state and return".
+ *
+ *  **AND IT WRITES THE OTHER RECORD'S STATE TOO**, at `$25D74E`, before the dispatcher's walk has
+ *  reached that record. The partner therefore never runs state 7 again.
+ *
+ *  **D0 IS LIVE ACROSS THE WHOLE ROUTINE.** `$25D7FA asr.w #1,D0` reads whatever the last write to
+ *  D0 left there, and on two paths -- the `beq` at `$25D6FC` and the finished-already jump at
+ *  `$25D6EC` -- that write is not in this routine at all. It is tracked here rather than assumed,
+ *  and a use of a value some unported callee last touched files a note instead of inventing one.
+ *
+ *  @param draws the seven `draw25*` functions, by name. See `drawTail25D800`.
+ */
+export function phase7_25D560(ram, rom, ctx, a5, a6, d7, draws = ctx?.selectDraws) {
+  const H = HANDLER7;
+  ctx.unported?.note(H.head, `${hex7(H.head)} -- ${H.headBytes} bytes, and it bsr's the `
+    + `${H.headInnerBytes}-byte ${hex7(H.headInner)}. Unread`);            // $25D560 jsr $25F530
+
+  // D0, all thirty-two bits of it: $25D71C writes a LONG into it and `move.w` leaves the high half
+  // standing. `d0Site` is where the value came from, or 0 for "a callee this port has not read".
+  // $25F530 has just returned, so it starts UNKNOWN rather than at the caller's value.
+  let d0 = 0;
+  let d0Site = 0;
+  const setD0W = (v, site) => { d0 = (((d0 & 0xffff0000) | (v & 0xffff)) >>> 0); d0Site = site; };
+  const setD0L = (v, site) => { d0 = v >>> 0; d0Site = site; };
+
+  // $25D566 tst.w D7 / beq.s $25D570. `tst.w` reads the LOW WORD only, the same as $25D4E4's.
+  // D7 != 0 is record 0, whose partner is at +$70; D7 == 0 is record 1, whose partner is at -$70.
+  const a0 = u16(d7) !== 0 ? a6 + H.otherRec : a6 - H.otherRec;
+
+  // $25D574 tst.w $813098 / bne.w $25D5A0. A non-zero loop counter skips $25FAA4 and BOTH pair
+  // gates and lands ON the announce, which is therefore UNLATCHED on that path.
+  let announce = false;
+  if (ram.u16(H.loopCounter) !== 0) {
+    announce = true;
+  } else {
+    ctx.unported?.note(H.perFrame, `${hex7(H.perFrame)} -- ${H.perFrameBytes} bytes. Unread`);
+    d0Site = 0;                                              // $25D57E jsr $25FAA4 clobbers D0
+    if (ram.u8(a0 + H.liveAt) !== 0) {                       // $25D584 tst.b (A0) / beq.s $25D5B0
+      // $25D588 cmpi.b #$7,($1,A0) / $25D58E bne.w $25D800 -- THE RENDEZVOUS.
+      if (ram.u8(a0 + H.rendezvousAt) !== H.rendezvous) {
+        drawTail25D800(ram, rom, ctx, a5, a6, d7, draws);
+        return;
+      }
+      if (ram.u16(a6 + H.announceLatch) === 0) {             // $25D592 tst.w ($5E,A6)
+        ram.setU16(a6 + H.announceLatch, 1);                 // $25D59A -- once only, per record
+        announce = true;
+      }
+    }
+  }
+
+  if (announce) {
+    // $25D5A0 bsr.w $25D4E4 -> D0 = this record's side, then $25D5A4 addq.w #1 / $25D5A6 andi.w #$1
+    // INVERT it. The announcement is deliberately posted for the OPPOSITE side, exactly as
+    // $25D550 does in state 6's tail.
+    setD0W(sideFromD7_25D4E4(d7), 0x25d4e4);
+    setD0W(u16(d0 + 1) & 1, 0x25d5a6);
+    // $25D5AA jsr $260A9A. rank.js's announcePost owns this site as { state: $4, guard: true }, and
+    // $25D528's identical `bsr $25D4E4 / jsr $260A9A` pair is already routed through it by
+    // phase6_25D4F0 above. Same site, same D0 convention, so it is called rather than noted.
+    announcePost(ram, H.announce, u16(d0));
+    d0Site = 0;                                              // ...and $260A9A is free to clobber D0
+  }
+
+  if (ram.u16(H.soundLatch) === 0) {                         // $25D5B0 tst.w $812F82
+    ram.setU16(H.soundLatch, 1);                             // $25D5BA -- once per SCREEN, not rec
+    ctx.soundPost?.(H.sound);                                // $25D5C2 jsr $28CB9C (index 11, gp 1)
+    d0Site = 0;
+  }
+
+  // $25D5C8 addq.w #1,($32,A6) -- THE FRAME COUNTER. Every gate below reads it.
+  const frame = u16(ram.u16(a6 + H.frameAt) + 1);
+  ram.setU16(a6 + H.frameAt, frame);
+
+  // $25D5CC / $25D5E2 -- two ACCELERATING ramps: the delta word grows every frame and is then
+  // added. `bcc` is an UNSIGNED >=, so the ceiling stops them dead rather than clamping.
+  for (const r of [H.rampA, H.rampB]) {
+    if (ram.u16(a6 + r.at) >= r.ceil) continue;              // $25D5CC / $25D5E2 cmpi.w / bcc.s
+    ram.setU16(a6 + r.deltaAt, u16(ram.u16(a6 + r.deltaAt) + r.deltaStep));   // $25D5D4 / $25D5EC
+    setD0W(ram.u16(a6 + r.deltaAt), 0x25d5da);               // $25D5DA / $25D5F0 move.w (dn,A6),D0
+    ram.setU16(a6 + r.at, u16(ram.u16(a6 + r.at) + u16(d0)));                // $25D5DE / $25D5F4
+  }
+  if (ram.u16(a6 + H.rampC.at) < H.rampC.ceil) {             // $25D5F6 cmpi.w #$7000,($3E,A6)
+    ram.setU16(a6 + H.rampC.at, u16(ram.u16(a6 + H.rampC.at) + H.rampC.step));    // $25D5FE
+  }
+  // $25D604 / $25D60C -- TWO compares, one arm: ($48,A6) grows only while ($40,A6) is still under
+  // $14C0 and ($48,A6) itself is still under $3800. Either failing skips to $25D61A.
+  if (ram.u16(a6 + H.rampD.openAt) < H.rampD.openBelow && ram.u16(a6 + H.rampD.at) < H.rampD.ceil) {
+    ram.setU16(a6 + H.rampD.at, u16(ram.u16(a6 + H.rampD.at) + H.rampD.step));    // $25D614
+  }
+  // $25D61A cmpi.w #$300,($48,A6) / bcs.s $25D670 -- an UNSIGNED <, so this one opens FROM $300 up,
+  // the mirror of every other gate here. $25D622 then caps ($46,A6) at $7000.
+  if (ram.u16(a6 + H.rampE.openAt) >= H.rampE.openFrom && ram.u16(a6 + H.rampE.at) < H.rampE.ceil) {
+    ram.setU16(a6 + H.rampE.at, u16(ram.u16(a6 + H.rampE.at) + H.rampE.step));    // $25D62A
+
+    // $25D630 bset #$0,($A,A5) / bne.s $25D670 -- ONCE ONLY, and on the OBJECT record rather than
+    // the per-player one, so the two records share the single firing. State 0 clears ($A,A5).
+    if (ram.bset8(a5 + H.palOnceAt, 0) === 0) {
+      // $25D638 move.l A0,-(A7) exists ONLY because $25D63A's lea clobbers A0; $24150A itself
+      // restores it. $25D66E movea.l (A7)+,A0 puts the other record's pointer back.
+      if (ctx.palette) {
+        install24150A(ram, ctx.palette, H.palBank, rom.bytes(H.palSrc, H.palBytes),
+          0x25d642, `${hex7(H.addr)} state-7 palette, slot ${hex7(H.palBank)}`);
+      } else {
+        ctx.unported?.note(0x24150a, `$24150A bank ${H.palBank} <- ${hex7(H.palSrc)} from `
+          + `${hex7(0x25d642)} with no PaletteState on this chain`);
+      }
+      // $25D648 moveq #0,D0/D1/D2/D3/D4 then FOUR byte loads off A5 -- the per-side pair array
+      // state 0 seeds, read as ($8,A5)/($4,A5) for one side and ($9,A5)/($5,A5) for the other.
+      setD0L(ram.u8(a5 + 0x08), 0x25d652);                   // $25D648 moveq / $25D652 move.b
+      const d1 = ram.u8(a5 + 0x04);                          // $25D656
+      const d2 = ram.u8(a5 + 0x09);                          // $25D65A
+      const d3 = ram.u8(a5 + 0x05);                          // $25D65E -- and D4 stays 0
+      ctx.unported?.note(H.handoff, `${hex7(H.handoff)} -- ${H.handoffBytes} bytes, called with `
+        + `D0..D3 = ${u16(d0)}/${d1}/${d2}/${d3} off ($8,A5)/($4,A5)/($9,A5)/($5,A5) and D4 = 0. `
+        + 'Unread');                                         // $25D662 jsr $26070C
+      ctx.unported?.note(H.tailCall, `${hex7(H.tailCall)} -- ${H.tailCallBytes} bytes. Unread`);
+      d0Site = 0;                                            // both callees are free to clobber D0
+    }
+  }
+
+  // $25D670 -- the FLASH. While ($42,A6) is counting it holds ($44,A6) at $40, and the frame the
+  // count reaches zero it clears the hold. `subq / bne` skips the clear on every frame but the last.
+  if (ram.u16(a6 + H.flashAt) !== 0) {                       // $25D670 tst.w ($42,A6)
+    ram.setU16(a6 + H.flashHoldAt, H.flashHold);             // $25D676 move.w #$40,($44,A6)
+    const left = u16(ram.u16(a6 + H.flashAt) - 1);           // $25D67C subq.w #1,($42,A6)
+    ram.setU16(a6 + H.flashAt, left);
+    if (left === 0) ram.setU16(a6 + H.flashHoldAt, 0);       // $25D680 bne.s / $25D682 clr.w
+  }
+  // $25D686 -- the FUSE. `subi.w #$26` then `beq` OR a BORROW both land on $25D696, so hitting zero
+  // and undershooting zero are one arm: reload the flash with 3 and clear the fuse.
+  if (ram.u16(a6 + H.fuseAt) !== 0) {                        // $25D686 tst.w ($40,A6)
+    const res = ram.u16(a6 + H.fuseAt) - H.fuseStep;         // $25D68C subi.w #$26,($40,A6)
+    ram.setU16(a6 + H.fuseAt, u16(res));
+    if (res <= 0) {                                          // $25D692 beq.s / $25D694 bcc.s
+      ram.setU16(a6 + H.flashAt, H.flashReload);             // $25D696 move.w #$3,($42,A6)
+      ram.setU16(a6 + H.fuseAt, 0);                          // $25D69C clr.w ($40,A6)
+    }
+  }
+
+  // -----------------------------------------------------------------------------------------
+  // $25D6A0 -- THE SLIDE BLOCK, frame >= $F0 ONLY. `bcs.w $25D754` is an unsigned <.
+  // -----------------------------------------------------------------------------------------
+  if (frame >= H.gateSlide) {
+    ram.setU8(a6 + H.slideFlagAt, H.slideFlag);              // $25D6AA move.b #$1,($35,A6) -- BYTE
+
+    let toStateEight = false;
+    let finished = false;
+    if (ram.u16(a6 + H.speedAt) < H.speedCap) {              // $25D6B0 cmpi.w #$80,($4C,A6)
+      if (ram.u16(a6 + H.travelAt) >= H.travelCap) {         // $25D6B8 cmpi.w #$1800,($4A,A6)
+        finished = true;                                     //   ...-> $25D6E6
+      } else {
+        // ACCELERATE: the speed word grows by one a frame and is then added to the travel.
+        ram.setU16(a6 + H.speedAt, u16(ram.u16(a6 + H.speedAt) + 1));            // $25D6C0 addq.w
+        setD0W(ram.u16(a6 + H.speedAt), 0x25d6c4);                               // $25D6C4
+        ram.setU16(a6 + H.travelAt, u16(ram.u16(a6 + H.travelAt) + u16(d0)));    // $25D6C8
+      }                                                      // $25D6CC bra.w $25D754
+    } else if (ram.u16(a6 + H.travelAt) >= H.travelCap) {    // $25D6D0 cmpi.w #$1800,($4A,A6)
+      finished = true;                                       //   ...-> $25D6E6
+    } else {
+      // CRUISE: the speed word is capped at $80, so the travel grows by a constant.
+      setD0W(ram.u16(a6 + H.speedAt), 0x25d6da);             // $25D6DA
+      ram.setU16(a6 + H.travelAt, u16(ram.u16(a6 + H.travelAt) + u16(d0)));      // $25D6DE
+    }                                                        // $25D6E2 bra.w $25D754
+
+    if (finished) {
+      if (ram.u16(a6 + H.doneAt) !== 0) {                    // $25D6E6 tst.w ($5A,A6)
+        toStateEight = true;                                 // $25D6EC bne.w $25D748
+      } else {
+        ram.setU16(a6 + H.emitGateAt, 1);                    // $25D6EE -- gates draw25E4D0's emit 2
+        if (ram.u16(a6 + H.speedAt) !== 0) {                 // $25D6F4 cmpi.w #$0,($4C,A6)
+          setD0W(ram.u16(a6 + H.speedAt), 0x25d6fe);         // $25D6FE
+          ram.setU16(a6 + H.travelAt, u16(ram.u16(a6 + H.travelAt) + u16(d0)));  // $25D702
+          // $25D706 subq.w #2,($4C,A6): DECELERATE by two. `beq` and a BORROW are again one arm --
+          // a speed of 1 wraps to $FFFF and is caught by the fall-through, not by the bcc.
+          const left = ram.u16(a6 + H.speedAt) - H.speedDecel;
+          ram.setU16(a6 + H.speedAt, u16(left));
+          if (left <= 0) {                                   // $25D70A beq.w / $25D70E bcc.w
+            ram.setU16(a6 + H.speedAt, 0);                   // $25D712 clr.w ($4C,A6)
+            ram.setU16(a6 + H.doneAt, 1);                    // $25D716 -- the done latch
+            setD0L(ram.u32(a6 + H.anchorAt), 0x25d71c);      // $25D71C move.l ($56,A6),D0
+            let d1 = ram.u32(a0 + H.anchorAt);               // $25D720 move.l ($56,A0),D1
+            // $25D724 tst.w D7 / bne.w $25D72C -- the exg happens ONLY for record 1, so after it
+            // D0 is ALWAYS record 0's anchor and D1 ALWAYS record 1's, whichever record is running.
+            if (u16(d7) === 0) { const t = d0; setD0L(d1, 0x25d72a); d1 = t; }   // $25D72A exg
+            if (ram.u16(H.pairLatch) === 0) {                // $25D72C tst.w $812F80
+              ram.setU16(H.pairLatch, 1);                    // $25D736 -- cleared per screen
+              ctx.unported?.note(H.pairSite, `${hex7(H.pairSite)} -- ${H.pairBytes} bytes, called `
+                + `once with D0 = record 0's ($56) anchor ${hex7(d0 >>> 0)} and D1 = record 1's `
+                + `${hex7(d1 >>> 0)}. Unread`);              // $25D73E jsr $2603FE
+              d0Site = 0;
+            }
+          }
+        }
+      }
+    }
+
+    if (toStateEight) {
+      // $25D748 / $25D74E -- BOTH records to state 8, and then it FALLS THROUGH to $25D754 and on
+      // into the draws. State 8 is on the bytes while this frame's sprites are built.
+      ram.setU8(a6 + SCREEN17.phaseAt, H.nextPhase);         // $25D748 move.b #$8,($1,A6)
+      ram.setU8(a0 + SCREEN17.phaseAt, H.nextPhase);         // $25D74E move.b #$8,($1,A0)
+    }
+  }
+
+  // $25D754 -- the TILT, frame >= $AA. It clears ($64,A6) every frame it runs, then walks ($62,A6)
+  // up to $2600 in steps of $80 and CLAMPS. $25D774's blt is SIGNED where $25D754's bcs is not.
+  if (frame >= H.gateRamp) {
+    ram.setU16(a6 + H.tiltClearAt, 0);                       // $25D75E move.w #$0,($64,A6)
+    if (ram.u16(a6 + H.tiltAt) !== H.tiltCap) {              // $25D764 cmpi.w #$2600 / beq.w
+      ram.setU16(a6 + H.tiltAt, u16(ram.u16(a6 + H.tiltAt) + H.tiltStep));       // $25D76E addi.w
+      if (i16(ram.u16(a6 + H.tiltAt)) >= i16(H.tiltCap)) {   // $25D774 cmpi.w / $25D77C blt.w
+        ram.setU16(a6 + H.tiltAt, H.tiltCap);                // $25D77E -- the clamp
+      }
+    }
+  }
+
+  // $25D784 -- THE ZOOM CURSOR, frame >= 1, i.e. every frame the body runs at all.
+  if (frame >= H.gateZoom) {
+    let step = true;
+    if (ram.u16(a6 + H.delayAt) !== 0) {                     // $25D78E tst.w ($6C,A6)
+      const left = u16(ram.u16(a6 + H.delayAt) - 1);         // $25D796 subq.w #1,($6C,A6)
+      ram.setU16(a6 + H.delayAt, left);
+      if (left !== 0) step = false;                          // $25D79A bne.w $25D7BA
+    }
+    if (step) {
+      // $25D79E subq.b #1,($6A,A6) -- a BYTE, and $25D7A2 bcc.w gates on the BORROW, so the step
+      // fires when the tick goes BELOW zero and not when it reaches it. $25C922's `move.w #$2` is
+      // one word over TWO byte fields, leaving ($6A) = 0 and ($6B) = 2: the first step is therefore
+      // immediate, and the reload of 2 gives 2 -> 1 -> 0 -> borrow, a THREE-frame period.
+      const tick = ram.u8(a6 + H.tickAt) - 1;
+      ram.setU8(a6 + H.tickAt, tick & 0xff);
+      if (tick < 0) {
+        ram.setU8(a6 + H.tickAt, ram.u8(a6 + H.reloadAt));   // $25D7A6 move.b ($6B,A6),($6A,A6)
+        if (ram.u16(a6 + H.cursorAt) !== H.cursorCap) {      // $25D7AC cmpi.w #$3C,($60,A6)
+          ram.setU16(a6 + H.cursorAt, u16(ram.u16(a6 + H.cursorAt) + H.cursorStep));   // $25D7B6
+        }
+      }
+    }
+  }
+
+  // $25D7BA -- THE $25D85C WALK, frame >= $F0 again. Same threshold as the slide block, tested a
+  // second time because the slide block's three arms all branch here rather than falling through.
+  if (frame >= H.gateSlide) {
+    if (ram.u16(a6 + H.stepIntoAt) < H.stepCeil) {           // $25D7C4 cmpi.w #$3800,($4E,A6)
+      // $25D7CE lea ($25D85C,PC),A1 -- extension word at $25D7D0 plus $8C. $25D7D2 is a nop.
+      const d1 = ram.u16(a6 + H.stepCursorAt);               // $25D7D4 move.w ($52,A6),D1
+      ram.setU16(a6 + H.stepCursorAt, u16(d1 + 2));          // $25D7D8 addq.w #2,($52,A6)
+      if (i16(d1) < 0 || d1 > H.stepBytes - 2) {
+        // The bound is stated by CODE: $25D7E0's sentinel test parks the cursor, so nothing in the
+        // cartridge can walk past $25D950. A cursor outside the declared window reads no ROM.
+        ctx.unported?.note(0x25d7dc, `${hex7(0x25d7dc)} -- ($52,A6) = ${hex7(d1)} indexes the step `
+          + `table ${hex7(H.stepTable)}..${hex7(H.stepTable + H.stepBytes - 1)} outside the `
+          + `${H.stepEntries} entries and the ${hex7(H.stepSentinel)} sentinel $25D7E0 bounds it `
+          + 'to. No ROM is read for that cursor');
+      } else {
+        setD0W(rom.u16(H.stepTable + d1), 0x25d7dc);         // $25D7DC move.w (0,A1,D1.w),D0
+        if (u16(d0) === H.stepSentinel) {                    // $25D7E0 cmpi.w #$FFFF,D0
+          // IT SATURATES. The cursor is put back where it was, so every later frame re-reads the
+          // last real entry at D1 - 2 and the accumulator keeps climbing at a constant rate.
+          ram.setU16(a6 + H.stepCursorAt, d1);               // $25D7E6 subq.w #2,($52,A6)
+          setD0W(rom.u16(H.stepTable + d1 - 2), 0x25d7ea);   // $25D7EA move.w (-2,A1,D1.w),D0
+        }
+        ram.setU16(a6 + H.stepIntoAt, u16(ram.u16(a6 + H.stepIntoAt) + u16(d0)));     // $25D7EE
+      }
+    }
+    if (ram.u16(a6 + H.halfIntoAt) < H.halfCeil) {           // $25D7F2 cmpi.w #$1C00,($50,A6)
+      if (d0Site === 0) {
+        // $25D7FA reads D0 with NO write of its own. Reached through $25D7CC's bcc -- i.e. once
+        // ($4E,A6) has topped out -- the value is whatever the last write anywhere above left, and
+        // on the $25D6FC and $25D6EC paths that is an unported callee's leavings.
+        ctx.unported?.note(0x25d7fa, `${hex7(0x25d7fa)} asr.w #1,D0 -- D0 is INHERITED here, not `
+          + 'set: this path skipped $25D7DC and the last writer was a callee this port has not '
+          + `read. ($50,A6) is advanced by the tracked value ${hex7(u16(d0))} rather than by an `
+          + 'invented one');
+      }
+      setD0W(i16(u16(d0)) >> 1, 0x25d7fa);                   // $25D7FA asr.w #1,D0 -- ARITHMETIC
+      ram.setU16(a6 + H.halfIntoAt, u16(ram.u16(a6 + H.halfIntoAt) + u16(d0)));       // $25D7FC
+    }
+  }
+
+  drawTail25D800(ram, rom, ctx, a5, a6, d7, draws);          // $25D800..$25D83A rts
 }

@@ -149,9 +149,40 @@ Other things from the same decode, not yet independently verified by me:
   16 bytes each. **The bound is a `$FF` sentinel stated by `$256F14` at `$256F30`**, with a second
   `$7F` escape at `$256F2A` branching backward to `$256F1C`. Bound from the consumer, not adjacency.
 
-### `$25D560` IS FULLY DECODED. **732 BYTES**, AND STATE 8 IS VISIBLE TO THE DRAWS
+### `$25D560` IS PORTED (`phase7_25D560`), AND ITS TAIL IS **SEVEN** DRAWS, NOT EIGHT
 
-Not yet ported. The findings that change how it must be written:
+`objslot17.js`, wired into `objSlot17`'s inner dispatch as the state-7 arm, 24 driving tests, two
+new ROM windows, 14 mutations applied and all 14 caught. Its callees remain counted notes.
+
+**MY BRIEF CONTRADICTED ITSELF AND THE PORT AGENT CAUGHT IT.** `$25D800..$25D839` holds exactly
+**SEVEN** `jsr`s: `$25E220`, `$25E29E`, `$25E4D0`, `$25E6CE`, `$25E824`, `$25EF30`, `$25F074`. **It
+does NOT call `$25EDF8`** -- the opposite of `confirmAndDraw`'s two tails, which call `$25EDF8` and
+not `$25E4D0`. My flow listing said seven and my test spec said "all eight". A test now pins the
+seven in order AND pins `draw25EDF8`'s absence.
+
+**THE IMPORT CYCLE, AND HOW IT WAS AVOIDED.** `objslot9.js` already imports `objslot17.js`, so the
+tail cannot import back. The seven draws are **injected**: a trailing parameter defaulting to
+`ctx.selectDraws`, keyed by the names `objslot9.js` exports, so a caller passes the module namespace
+straight through. A missing entry is a counted note per call site, never a silent skip.
+**CAVEAT: nothing in production calls `objSlot17` yet, so no live path is missing its draws today --
+but whoever wires the dispatch MUST set `ctx.selectDraws`.**
+
+**TWO THINGS THE SPEC GOT WRONG, both found by porting it:**
+
+* **The CRUISE arm at `$25D6D0` is unreachable from a cold start.** `$25D6C0` makes travel the
+  triangular number of the speed, so travel passes `$1800` (6144) at speed 111 -- below the `$80`
+  (128) the cruise arm needs. The test forces it and says so, the way the `$25EDF8` state-4 tests do.
+* **`($50,A6)` gets half of the TABLE ENTRY, not half of what `($4E,A6)` got.** When `($4E,A6)` has
+  already topped `$3800`, `$25D7CC bcc` skips the read entirely and `$25D7FA` shifts an INHERITED
+  D0. Modelled with a provenance flag rather than assumed, and the inherited case files a note
+  instead of inventing a value.
+
+**AND ONE NUANCE WORTH KEEPING:** the frame on which the `$140` delay reaches zero **also steps**,
+because `$25D79A bne` falls through. That is exactly why the ramp is 320 + 3*14 and not 323 + 3*14.
+
+The decode below stands as written.
+
+### `$25D560`'s DECODE. **732 BYTES**, AND STATE 8 IS VISIBLE TO THE DRAWS
 
 * **`$25D748 move.b #$8,($1,A6)` FALLS THROUGH into the draws.** It sits at a LOWER address than
   `$25D800`, so **state 8 IS visible on that same frame**, and `draw25E824`'s blocks E/D/C gate on
@@ -398,7 +429,7 @@ broken page rather than as a failing test. The 31 are: 12 for `$25EDF8`, 9 for t
 emitter family, 3 for `$25F074`, 4 for `$25E824`, 1 for `$25E29E`'s ramp and 2 for `$25E4D0`.
 **None of them overlaps anything** -- checked against the full 529 after every declaration.
 
-### W374 STATE: SUITE 2851/2851 ZERO SKIPS, GATE EXIT 0, 529 ROM WINDOWS
+### W374 STATE: SUITE 2875/2875 ZERO SKIPS, GATE EXIT 0, 531 ROM WINDOWS
 
 Up from 2730 at the start of the wave. **Three more shared draws are PORTED, DRIVEN AND WIRED:**
 

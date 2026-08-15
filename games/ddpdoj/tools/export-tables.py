@@ -2906,6 +2906,22 @@ SHOT_WINDOWS.extend([
     (0x223EF8, 0x0040, "W373: slot [9] record-state-0 palette, bank 15 through $24150A. Sixty-four "
                        "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
                        "slot [17]; this one is slot [9]'s own"),
+    # ---- W374: $25D560's step table and its state-7 palette ----------------------------------
+    (0x25D85C, 0x00F6, "W374: $25D560's SLIDE STEP table -- 122 words plus the $FFFF sentinel at "
+                       "$25D950, 246 bytes. $25D7CE lea ($8C,PC),A1 resolves off the extension word "
+                       "at $25D7D0. THE SENTINEL IS INSIDE THE WINDOW ON PURPOSE: $25D7DC "
+                       "move.w (0,A1,D1.w),D0 READS it before $25D7E0 cmpi.w #$FFFF recognises it, "
+                       "so a window that stopped at the last real entry would fault on the frame "
+                       "the walk ends. The bound is that cmpi, not adjacency. Values are only "
+                       "$0000/$0020/$0040/$0080/$00C0/$0100, ramping. The walk SATURATES: $25D7E6 "
+                       "backs ($52,A6) up and $25D7EA re-reads the last real entry forever. Ends at "
+                       "$25D951, exactly adjacent to W276's (0x25D952, 0x003E)"),
+    (0x2243F8, 0x0040, "W374: $25D560's state-7 palette, bank $1A. $25D63A lea $2243F8,A0 / $25D640 "
+                       "moveq #$1A,D0 / $25D642 jsr $24150A, and $24150A is 16 longs = 64 bytes "
+                       "(moveq #$F + dbra over move.l (A0)+). The seven neighbouring $2240xx/$2241xx "
+                       "slot-17 palettes are already declared; this one was not, and without it "
+                       "rom.bytes($2243F8, 64) throws the moment a chain carrying a PaletteState "
+                       "reaches $25D630's once-only bset"),
     # ---- W374: $25E4D0's two tables ----------------------------------------------------------
     (0x25E4C0, 0x0010, "W374: $25E4D0's DATA PROLOGUE, sitting BELOW its own entry. Two 2-entry "
                        "longword tables: +$0 the art for emits 1 and 4 ($1520/$1BC4), +$8 the "
