@@ -33,6 +33,27 @@ So the living DaiOuJou docs are exactly three: **`DOCKET.md`, `ORCHESTRATOR_BRIE
 file.** `D12`'s claim that the reference docs "predate stages 3 and 4" was false and is corrected in
 place.
 
+### THE ORDER OF WORK AFTER SLOT [8] LANDS
+
+1. **`$23C956`** (36 B, UNCLAIMED) and **`$23C98E`/`$23C9F0`** (the credit consumers, prose only).
+   Together well under 200 bytes and they are the ENTIRE credit API slot [8] calls. Without them
+   slot [8]'s gate and its join handler both note instead of acting.
+2. **`$2412FE`** and **`$23BEEA`'s twenty initialisers** -- the rest of the boot routine. Its five
+   palette installs are already modelled in `palette.js`; **do not write a second copy**, and read
+   `palette.js`'s explanation of why `$2412FE` was deliberately not replayed before replaying it.
+3. **A page-level "boot the front end" entry point.** `Game` resumes from a mid-stage-1 seed and
+   `step()` is the seven-call loop only. Slot [8] can be reached without a full cold boot by staging
+   type 8 at state `$D` the way `$23BFCC` does -- that is a far smaller piece of work than a real
+   reset, and it is what would put the attract screen on the page.
+4. **Slot [8]'s arm sub-machines** -- `$25BBB4`, `$25BD7C`, `$25BDE0`, `$25C2AE`, `$25C2EA`,
+   `$25C3E8`, `$25C424`, `$25C592`, `$25C6D4`, and `$25B3DC`. Each is its own wave. **Arm 2's body
+   is already ported** (`hiscoreScreen25B412`).
+5. **The remaining four dispatch slots**: [12] `$28F3AC` (~76 B at its first `rts`, and it is the
+   real `[12] -> [8]` edge), [16] `$256E7A` (~74 B, the operator TEST menu), [18] `$24902A` (the
+   ASIC27 self-test, whose callees are compiled C with caller cleanup and a BLOCKING input spin at
+   `$24842C` that needs a DECISION, not a transcription), [19] `$28EE88` (~30 B).
+6. Then the rest of the docket toward **D36, DOJ WHITE LABEL, which is LAST**.
+
 ### USE `tools/claimed.py`. MY AD-HOC GREPS WERE WRONG THREE TIMES IN ONE CHECK.
 
 I ran a quick `grep -v "note(" | grep -v comment-lines` over the boot-path routines and it reported
