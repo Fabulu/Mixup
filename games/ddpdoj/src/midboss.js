@@ -811,9 +811,26 @@ export function handlerMidboss(ram, rom, a5, ctx) {
     freeEnemy(ram, a5);                                // $26B8E8 jmp $263762
     return;
   }
-  note(ctx, 0x28ac72, `$28AC72 sub-record spawn engine in the MIDBOSS rec $${
-    a5.toString(16)} -- the $81DB90 pool + the ($44,A5) advance are the gap; `
-    + `its result is unused by $26B8F6`);              // $26B8F0
+  // W382 LOOKED AT THIS AND LEFT IT A NOTE, with a different reason than the one
+  // that stood here. [M] `$26B8F0  4e b9 00 28 ac 72` -- unconditional, $26B8EE is
+  // a `4E71 nop`, so the CALL is not the problem and neither is the "result unused
+  // by $26B8F6" the old note led with (true of the RETURN, irrelevant to the side
+  // effects). The problem is the DATA. Type $0D's init writes $26B50E + 28*17 =
+  // $26B6EA to ($44,A5), and [M] that list is exactly one record:
+  //     $26B6EA  thr $2E60  d2 $00000000  d3 $10FFBF  script $28AF98
+  //     $26B6F8  $FFFF                                  <- the terminator
+  // and `$28AF98`'s first word is $000C, so `$28AFD4 + $C` selects descriptor
+  // $28B08E -- a FOURTH descriptor kind. cues.js covers type $84's closure only
+  // ($28B024/$28B042/$28B060) and `descriptor()` refuses anything else, so wiring
+  // the call would `unreached` the frame the midboss's HP first reaches $2E60.
+  // That is the $246410 shape: a spawner whose consumer is not ported. The three
+  // sibling sites in handlers.js WERE wired this wave, because [M] types $80/$82/
+  // $88 open their lists with $A001/$A000/$8000 -- negative, so `$28AC78 bmi`
+  // exits before any descriptor is touched. Porting $28B08E is what unblocks this.
+  note(ctx, 0x28ac72, `$28AC72 in the MIDBOSS rec $${a5.toString(16)} -- its one `
+    + `cue record ($26B6EA, threshold $2E60) selects descriptor $28B08E, which is `
+    + `outside the kind-0/4/8 closure cues.js ports; the spawn is skipped rather `
+    + `than made to throw`);                            // $26B8F0
 
   // $26B8F6 tst.w $8130D2 / bne $26BDF8 -- a WORD test here (type $85 uses a
   // LONG at $2759AC).  A paused frame draws and does nothing else.

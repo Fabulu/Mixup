@@ -2,7 +2,94 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W381
+## START HERE -- W382
+
+### THE 120,000-FRAME CLAIM: VERIFIED BY ME, BUT **NOT PINNED BY ANY COMMITTED TEST**
+
+W380 and W381 reported a 120,000-frame cold-boot soak. A later agent said flatly that **no such run
+exists in this tree**, and it was RIGHT about that: the longest committed loop is `i < 10799` in
+`w62stageend.test.js`. The figure came from ad-hoc agent measurements that were never persisted, and
+I repeated it in two commit messages before checking.
+
+**I have now run it myself with the real driver, and every number holds:**
+
+```
+handover: state=$E
+SURVIVED 120000 frames past START, no throw
+  $81315C=26086e   $813082=0   $8130CE=836
+```
+
+`$81315C = $26086E` is W378's rank base pointer, `$813082 = 0` the gate down, `$8130CE = 836` the
+plateau W380 reported and `damage.js:14` records W34 measuring. **The claim is true. It is still not
+a test.** Pinning it is a unit of its own, and until then do not cite it as proof of anything.
+
+**TWO HARNESS TRAPS that cost me three runs, recorded so the next person does not repeat them:**
+
+1. **`COIN_BITS.COIN1` is `0` -- a BIT INDEX, not a mask.** The word is
+   `(0xffff & ~(1 << COIN_BITS.COIN1))` = `$FFFE`. Writing `~COIN_BITS.COIN1` yields `$FFFF`, which
+   is idle, and the coin silently never registers.
+2. **`$13CEC8` credits only when the switch is held 3..`$26` of ITS OWN calls**, and it runs once
+   per two video frames, so **hold the coin for 6..76 frames.** A one-frame poke does nothing.
+
+Driving `objSlot8` RAW rather than through `Game#step()` throws at frame 342 (`$580B198 is outside
+main RAM`) in BOTH trees -- that is a harness artefact, no animation driver retires the chain.
+
+### SEVEN STALE NOTES FIXED, SIX OF SEVEN CALL SITES UNCONDITIONAL
+
+| Addr | Conditional? | Fixed |
+|---|---|---|
+| `$253564` | **No** -- six back-to-back `4EB9`s, the next starts exactly 6 bytes on, nowhere for a gate | 3 sites |
+| `$242922` | No | 3 sites |
+| `$24107C` | No. **Order is load-bearing**: it clears `createSp`, so the create must follow | 1 |
+| `$289004` | No inside each arm; the arms ARE the condition. D0 = 1 confirmed from `$296DFA 70 01` | 2 |
+| `$28F606` | **It IS the condition** (`$28F55A bcc.w`, frame >= `$738`). `$28F55C + $AA = $28F606` | 1 |
+| `$2878CC` | **YES** -- gated by the cap at `$253116 beq $253124`, which skips increment AND draw | 1 + P2 twin |
+| `$28AC72` | No at any of four | 3 of 4 |
+
+**`$296DFA` is the `moveq`; the `jsr` is `$296DFC`.** My brief had that wrong.
+
+### THE ONE LEFT UNFIXED, AND WHY IT IS THE RIGHT CALL
+
+**`midboss.js` `$26B8F0`.** The old note blamed the `$81DB90` pool and the `($44,A5)` advance --
+backwards, those are the routine's whole product and `cues.js` does both. **The real blocker is
+DATA**: `$26B6EA`'s script `$28AF98` resolves to descriptor `$28B08E`, and `cues.js descriptor()`
+covers type `$84`'s closure only, `unreached`ing anything else. **Wiring it would throw the frame the
+midboss's HP first reaches `$2E60`** -- strictly worse than the note. The note now names `$28B08E` as
+the actual blocker. **Port `$28B08E` to unblock it.**
+
+### `$28AC72`'s THREE FIXED SITES ARE FAITHFUL NO-OPS, AND THAT IS THE POINT
+
+Types `$80`/`$82`/`$88` open their `($44,A5)` lists with `$A001`/`$A000`/`$8000` -- **negative**, so
+`$28AC78 bmi` exits before any descriptor is touched. The three notes were pure log noise. The only
+site with real work is the midboss, which is the one that cannot be wired. (Also: **13** other call
+sites, not 14.)
+
+### `$8130BE` IS ONE ADDRESS WEARING TWO NAMES
+
+`POWER.counterP1 === HUDRAM.aliveP1 === $8130BE`. The "power counter" and the "lives word" are the
+SAME word, which is why bumping it redraws that row. Pinned in a test.
+
+### `hiscorename.js` HAS NO IMPORTER IN `src/`
+
+`nameFrameBands28F542` had **no production caller at all**, so "the TIMEOUT never commits the name"
+was a CONTRACT defect, not a runtime one. Its signature is now
+`(ram, rom, a4, ctx)` (house order, matching `nameCountdown28F4FC`), 5 call sites updated.
+
+### LINE ENDINGS: `src/` IS LF. TWO LEGACY TEST FILES ARE CRLF.
+
+An agent reported "this repo is CRLF throughout". **It is not.** All nine `src/` files touched this
+wave are 0 CRLF. But `w36handlers.test.js` (794) and `w62stageend.test.js` (844) WERE already CRLF at
+HEAD, and were correctly left that way -- converting them would be an 800-line diff for nothing.
+**Keep writing `src/` as LF; match the file you are in for those two.**
+
+### FOUR OFF-LIST TEST EDITS, ALL FORCED
+
+`w62stageend.test.js` (`BOSS_NOTED` 11 -> 9: leaving a table named NOTED claiming two ported
+routines are deferred is the exact defect this wave targets), `w308namecountdown.test.js` (the
+"limit arm is counted" assertion could not survive the arm running), `w61items.test.js` and
+`w36handlers.test.js` (the latter's `fixture()` left `($44,A5)` at zero, a state no cartridge is in).
+
+## W381 NOTES
 
 ### `claimed.py` WAS MISCLASSIFYING MOST OF THE TREE. FIXED.
 

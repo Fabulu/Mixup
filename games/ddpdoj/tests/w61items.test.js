@@ -766,11 +766,11 @@ test('$25310E caps at 20 and refuses with CARRY CLEAR -- which is why a 21st '
   + 'item is still collected normally and still scores $10', { skip: SKIP }, () => {
   const ram = new Ram();
   const { ctx } = ctxOf();
-  for (let n = 0; n < 25; n++) collect25310E(ram, ctx);
+  for (let n = 0; n < 25; n++) collect25310E(ram, ROM, ctx);
   assert.equal(ram.u16(POWER.counterP1), POWER.counterCap);
-  assert.equal(collect25310E(ram, ctx), false,
+  assert.equal(collect25310E(ram, ROM, ctx), false,
     '$253116 beq $253124 / rts -- NO carry, unlike kinds $0/$4/$8');
-  assert.equal(collect253126(ram, ctx), false);
+  assert.equal(collect253126(ram, ROM, ctx), false);
   assert.equal(ram.u16(POWER.counterP2), 1, 'and P2 has its own word');
   // The consequence, driven through the body: a capped kind $10 collection
   // takes the NORMAL tail and scores $10, not $1000.

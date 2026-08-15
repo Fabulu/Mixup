@@ -106,7 +106,7 @@
 
 import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
-import { txPrint240DC2 } from './hud.js';
+import { txPrint240DC2, livesRow2878CC } from './hud.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { drawByte242E24, RNG } from './rng.js';
 import { aim64, AimTables } from './aim.js';
@@ -1064,8 +1064,8 @@ function body27F1A6(ram, rom, ctx, a6, d1) {
   if (touch !== 0) {
     ctx.soundPost?.(0x28c678);  // WAVE A: BGM id=$22, $8130BE item cue ($27F1CA) --
       // the ONLY body that sounds BEFORE the P1/P2 fork
-    if ((touch & 0x1000) !== 0) collect25310E(ram, ctx);   // $27F1D8 jsr
-    else collect253126(ram, ctx);                          // $27F1E2 jsr
+    if ((touch & 0x1000) !== 0) collect25310E(ram, rom, ctx);  // $27F1D8 jsr
+    else collect253126(ram, rom, ctx);                         // $27F1E2 jsr
     collect27F54C(ram, rom, ctx, a6, ANIM_LISTS.a27F300);  // $27F1E8/$27F1EE
     return { collected: true };
   }
@@ -1552,20 +1552,33 @@ export function bcd242AC6(d0) {
 
 /** `$25310E` -- the `$8130BE` counter, P1.  **Capped at 20, and the refusal
  *  returns with CARRY CLEAR** (`beq $253124 / rts`), which is why kind `$10`'s
- *  body never tests it and a 21st item still scores `$10`. */
-export function collect25310E(ram, ctx) {
-  if (ram.u16(POWER.counterP1) === POWER.counterCap) return false;  // $25310E
+ *  body never tests it and a 21st item still scores `$10`.
+ *
+ *  W382: the note that stood on `$25311E` was wrong TWICE.  `$2878CC` is not
+ *  "the `$8130BE` icon row" of an unported subsystem -- it is P1's LIVES ROW,
+ *  ported since W116 as `hud.js livesRow2878CC`, and `$8130BE` is the very word
+ *  it draws (`POWER.counterP1` and `HUDRAM.aliveP1` are THE SAME ADDRESS, which
+ *  is why an item that bumps the counter redraws that row).  [M] the bytes:
+ *      $25310E  0c 79 00 14 00 81 30 be   cmpi.w #$14,$8130BE
+ *      $253116  67 0c                     beq $253124  -- the cap, and the only gate
+ *      $253118  52 79 00 81 30 be         addq.w #1,$8130BE
+ *      $25311E  4e b9 00 28 78 cc         jsr $2878CC  -- UNCONDITIONAL past the cap
+ *      $253124  4e 75                     rts
+ *  so the draw is reached on every uncapped collection and on none of the capped
+ *  ones.  `$253126` is the same five instructions on `$8130C0`/`$28795C`. */
+export function collect25310E(ram, rom, ctx) {
+  if (ram.u16(POWER.counterP1) === POWER.counterCap) return false;  // $25310E/$253116
   ram.setU16(POWER.counterP1, u16(ram.u16(POWER.counterP1) + 1));   // $253118
-  note(ctx, 0x2878cc, '$25311E jsr $2878CC -- the $8130BE icon row (up to five '
-    + 'a row), through $240DC2. That HUD subsystem is unported');
+  livesRow2878CC(ram, rom, ctx, 0);                                 // $25311E jsr $2878CC
   return false;
 }
-/** `$253126` -- the P2 mirror on `$8130C0`, HUD `$28795C`. */
-export function collect253126(ram, ctx) {
-  if (ram.u16(POWER.counterP2) === POWER.counterCap) return false;  // $253126
+/** `$253126` -- the P2 mirror on `$8130C0`, HUD `$28795C`, which is the SAME
+ *  ported body with `who = 1`. Fixed with its P1 twin: leaving one half noted
+ *  would draw one player's row and not the other's, which no cartridge does. */
+export function collect253126(ram, rom, ctx) {
+  if (ram.u16(POWER.counterP2) === POWER.counterCap) return false;  // $253126/$25312E
   ram.setU16(POWER.counterP2, u16(ram.u16(POWER.counterP2) + 1));   // $253130
-  note(ctx, 0x28795c, '$253136 jsr $28795C -- the P2 $8130C0 icon row, through '
-    + '$240DC2. Unported');
+  livesRow2878CC(ram, rom, ctx, 1);                                 // $253136 jsr $28795C
   return false;
 }
 

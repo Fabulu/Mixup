@@ -6,7 +6,9 @@
 import { u16, i16, i32 } from './ram.js';
 import { freeEnemy } from './initbody.js';
 import { scoreHit } from './score.js';
-import { livePlayers2428A6, bigBurst28B34A } from './boss.js';
+import {
+  livePlayers2428A6, bigBurst28B34A, clamp253564, bossClear242922,
+} from './boss.js';
 import { finalBlast2440E0 } from './boss2.js';
 import { applyVelocity } from './movement.js';
 import {
@@ -63,8 +65,8 @@ function placeBoss3Parts29C300(ram, a6) {
 function boss3Death29CA96(ram, a5, a6, ctx) {
   ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0xc0);
   note(ctx, 0x23c4d0, '$29CAA6 stage-3 boss death pause/flag block');
-  note(ctx, 0x253564, '$29CAAC stage-3 boss death clamp');
-  note(ctx, 0x242922, '$29CAB2 stage-3 boss death intervention');
+  clamp253564(ram);                 // $29CAAC jsr $253564 (UNCONDITIONAL)
+  bossClear242922(ram, ctx);        // $29CAB2 jsr $242922 (UNCONDITIONAL)
   ram.setU16(a6 + 0x86, 1);
   a1Clear259B34(ram);
   a4Clear2598A2(ram);

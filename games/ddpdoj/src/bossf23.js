@@ -47,6 +47,7 @@ import {
   BS, dist242494, bodyTail29314C, pickWaypoint2933DE, rampSpeed293400,
 } from './bossscripts.js';
 import { bossA5, bossA6 } from './boss.js';
+import { spawnEffect, B } from './effects.js';
 
 /** A byte, the way every `.b` operation in this file truncates. */
 const u8 = (v) => v & 0xff;
@@ -725,14 +726,45 @@ function emit23F7C6(ram, d1, d2, d3, d4) {
 }
 
 // ===========================================================================
+// $296DFA / $296E48 -- THE CARRIER'S DEATH EXPLOSION.
+//
+// The two arms are BYTE-IDENTICAL for 38 bytes, which is why one body serves
+// both.  Neither `jsr` is gated: the CONDITION is the arm itself (boss dying at
+// $296DDE, lifetime expired at $296E44), and both arms then run straight
+// through.  [M] the bytes:
+//     $296DFA  70 01                 moveq #$1,D0        <- the kind, from the
+//     $296DFC  4e b9 00 28 90 04     jsr $289004            bytes, not guessed
+//     $296E02  21 6e 00 02 00 02     move.l ($2,A6),($2,A0)
+//     $296E08  11 6e 00 1a 00 1a     move.b ($1A,A6),($1A,A0)
+//     $296E0E  10 2e 00 1b           move.b ($1B,A6),D0
+//     $296E12  d0 00                 add.b D0,D0
+//     $296E14  d0 00                 add.b D0,D0
+//     $296E16  11 40 00 1b           move.b D0,($1B,A0)
+//     $296E1A  31 7c 00 10 00 1e     move.w #$10,($1E,A0)
+// and $296E48..$296E6E is the same nine instructions at a +$4E displacement.
+//
+// TWO BYTE-SIZED WRITES INTO WORD FIELDS.  `($1A,A0)` is the HIGH byte of the
+// word `B.speed`, and `($1B,A0)` is `B.angle`, the low byte of the SAME word --
+// so the pair is one word built from two records' bytes, and a port that wrote
+// `setU16(e + B.speed, ...)` would destroy the angle it is about to store.
+// The angle is `add.b` TWICE, i.e. x4 truncated to a byte, not x2 and not a
+// 16-bit shift.
+function carrierExplode(ram, ctx, a6, siteAddr) {
+  const e = spawnEffect(ram, ctx, 0x01, siteAddr);        // moveq #$1,D0 / jsr $289004
+  ram.setU32(e + B.pos, ram.u32(a6 + 0x02));              // move.l ($2,A6),($2,A0)
+  ram.setU8(e + B.speed, ram.u8(a6 + B.speed));           // move.b ($1A,A6),($1A,A0)
+  ram.setU8(e + B.angle, u8(ram.u8(a6 + B.angle) * 4));   // 2x add.b D0,D0
+  ram.setU16(e + B.bucket, 0x10);                         // move.w #$10,($1E,A0)
+}
+
+// ===========================================================================
 // TYPE-$1E HANDLER -- `$296DD6`.  The carrier object's per-frame routine.
 // ===========================================================================
 export function handler1E_296DD6(ram, rom, a5, ctx) {
   const a6 = ram.u32(a5 + 0x06);
-  const note = (ad, what) => ctx.unportedLog?.note(ad, what);
   // $296DD6: boss death flag -> explode and free immediately.
   if ((ram.u8(W103.bossFlags) & 0x40) !== 0) {          // $296DD6/$296DDE
-    note(0x289004, '$296DFC jsr $289004 -- carrier death explosion (boss dying)');
+    carrierExplode(ram, ctx, a6, 0x296dfc);             // $296DFA/$296DFC
     freeEnemy(ram, a5);                                 // $296E20 jmp $263762
     return;
   }
@@ -751,7 +783,7 @@ export function handler1E_296DD6(ram, rom, a5, ctx) {
     const life = u8(ram.u8(a6 + 0x1a) - 1);             // $296E3C
     ram.setU8(a6 + 0x1a, life);
     if (life === 0) {                                   // $296E40 tst.b/bne
-      note(0x289004, '$296E4A jsr $289004 -- carrier death explosion');
+      carrierExplode(ram, ctx, a6, 0x296e4a);           // $296E48/$296E4A
       fire1EDeathFan(ram, rom, a5, a6);                 // $296E82..$296F20
       freeEnemy(ram, a5);                               // $296F24 jmp $263762
       return;

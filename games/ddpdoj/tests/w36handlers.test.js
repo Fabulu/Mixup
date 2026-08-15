@@ -61,6 +61,12 @@ function fixture(over = {}) {
   // Inside every bounds test AND inside $2425B2's box at $813096 = 0.
   ram.setU32(A6 + 0x02, 0x40002000);
   ram.setU8(A5 + 0x16, 1);                // has been on screen
+  // W382: `$275FD6 jsr $28AC72` is now LIVE, and $28AC72 opens with
+  // `movea.l ($44,A5),A1 / move.w (A1)+,D0`. A hand-built record left that zero,
+  // which is a state no cartridge is in: type $88's init at $275DA0 writes
+  // `$275ECC + 28 = $275EE8` there (src/initbody.js, `loadSubProto` + rec44).
+  // Any test here for a DIFFERENT type must override it with that type's script.
+  ram.setU32(A5 + 0x44, 0x275ee8);        // $275DA0's move.l A0,($44,A5)
   ram.setU16(0x813092, 1);                // stage 1
   ram.setU16(0x813096, 0);                // the box-table index
   ram.setU16(0x8103e6, 0x8000);           // P1 alive

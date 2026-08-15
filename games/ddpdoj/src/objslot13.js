@@ -24,7 +24,7 @@ import { readInput23D186 } from './tallyscreen.js';
 import { announcePost } from './rank.js';
 import { bgPause25FD82 } from './stageend.js';
 import { armRequest25FF38 } from './player.js';
-import { stageCreate, queueKill } from './objalloc.js';
+import { stageCreate, queueKill, objTableInit24107C } from './objalloc.js';
 
 export const SCREEN13 = Object.freeze({
   entry: 0x288a60, start: 0x2889cc, dispatch: 0x240f62,
@@ -208,8 +208,12 @@ function state4(ram, rom, ctx) {
   ctx.soundPost?.(0x28c170);                                 // $288A3C
   ctx.soundPost?.(0x28c0fc);                                 // $288A42
   ctx.clear24631C?.(ram);                                    // $288A48
-  ctx.unported?.note(0x24107c, '$288A4E jsr $24107C');
-  // $288A54 moveq #$E / $288A58 JMP $241182 -- a TAIL create of dispatch type $E, which is slot
+  // $288A4E jsr $24107C -- UNCONDITIONAL, four back-to-back `4EB9`s from $288A3C
+  // with nothing between them.  It destroys ALL TWENTY object slots (including
+  // this one) and resets the ID counter and both queue cursors, which is why the
+  // create below has to come AFTER it: $24107C clears `createSp`.
+  objTableInit24107C(ram);
+  // $288A54 move.w #$E,D0 / $288A58 JMP $241182 -- a TAIL create of dispatch type $E, which is slot
   // [14]. $241182 takes the priority from the DISPATCH TABLE; a bare 0 type-errors here.
   stageCreate(ram, SCREEN13.childType,
     (t) => rom.u16(SCREEN13.dispatch + t * 8 + 4));

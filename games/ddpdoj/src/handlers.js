@@ -1371,8 +1371,12 @@ function handler82(ram, rom, a5, ctx) {
 // else in this handler.
 function fire82(ram, rom, a5, a6, ctx) {
   const u = ctx.unported;
-  u?.note(0x28ac72, `$28AC72 sub-record spawn engine in $82 rec $${
-    a5.toString(16)}`);                                // $274858 jsr $28AC72
+  // W382. [M] `$274858  4e b9 00 28 ac 72` -- UNCONDITIONAL, and the very next
+  // instruction is `$27485E tst.l $8130D2`, exactly the shape the fourteen
+  // already-live sites have ($27410A, $2759A6, ...). `spawnCues28AC72` has been
+  // ported in cues.js since W173 and its drainer `runCueDriver28AD70` runs every
+  // frame from type5.js, so this is not the `$246410` case: the pool IS drained.
+  spawnCues28AC72(ram, rom, a5, a6);                   // $274858 jsr $28AC72
   // $27485E tst.l $8130D2 -- a LONG test, unlike $10's and $11's word tests.
   let toHeading = false;
   if (ram.u32(G.freeze) === 0) {                       // $27485E / $274864 bne
@@ -3765,8 +3769,11 @@ function handler80(ram, rom, a5, ctx) {
     }
   }
   ram.setU8(a6 + S.palette, d0);                       // $273AA0
-  u?.note(0x28ac72, '$28AC72 sub-record spawn engine in $80 rec $'
-    + a5.toString(16) + ' -- see the $85 note; its result is unused by $273AAA');
+  // W382. [M] `$273AA4  4e b9 00 28 ac 72` -- UNCONDITIONAL. The note here said
+  // "its result is unused by $273AAA", which is TRUE of the RETURN VALUE and
+  // beside the point: the routine's work is the `$81DB90` install and the
+  // `($44,A5)` advance, both side effects, and skipping the call skipped those.
+  spawnCues28AC72(ram, rom, a5, a6);                   // $273AA4 jsr $28AC72
   // $273AAA tst.l $8130D2 / bne $273C94 -- a freeze skips the fire AND both
   // turret aims and goes straight to the draw.
   if (ram.u32(G.freeze) === 0) {
@@ -4827,8 +4834,10 @@ function handler88(ram, rom, a5, ctx) {
     }
   }
   ram.setU8(a6 + S.palette, d0 & 0xff);                // $275FD2 move.b D0,($1D,A6)
-  u?.note(0x28ac72, `$28AC72 sub-record spawn engine in $88 rec $${
-    a5.toString(16)} -- the $81DB90 pool, driver $28AD70 also unported`);  // $275FD6
+  // W382. [M] `$275FD6  4e b9 00 28 ac 72` -- UNCONDITIONAL. The note here also
+  // claimed "driver $28AD70 also unported"; that is FALSE -- `runCueDriver28AD70`
+  // is cues.js:145 and type5.js runs it every frame as dispatch entry 3.
+  spawnCues28AC72(ram, rom, a5, a6);                   // $275FD6 jsr $28AC72
   // $275FDC: the MUZZLE ANIMATION, gated on the freeze and on the heading.
   if (ram.u16(G.freeze) === 0 && ram.u8(a6 + S.heading) < 0x40) {  // $275FDC/$275FEA
     ram.setU16(a6 + 0x06, 0xf400);                     // $275FE4 move.w #$F400,($6,A6)

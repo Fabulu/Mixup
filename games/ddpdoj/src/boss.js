@@ -125,9 +125,11 @@ export const BOSS_NOTED = Object.freeze({
   0x294134: '$293F66/$294016 jsr (A0) off $294134 -- timer-D dispatch, SOUND '
     + 'routines only ($28C25A/$28C274/$28C2A8/$28C2C2); no visuals',
   0x23c4d0: '$294DE4 jsr $23C4D0 -- the $8039xx pause/flag block',
-  0x253564: '$294DEA jsr $253564 -- the $811F8C clamp (recon 49 4: two '
-    + 'absolute-long references, both inside itself)',
-  0x242922: '$294DF0 jsr $242922 -- $28C170 + the two $FF intervention bytes',
+  // W382 dropped $253564 and $242922 from this table: both were ALREADY ported
+  // (clamp253564 / bossClear242922, both live from $2A6DD2/$2A6DBC since W372)
+  // and the three boss deaths were the only sites still deferring them.  The
+  // three `jsr`s at $294DEA/$294DF0, $298978/$29897E and $29CAAC/$29CAB2 are
+  // unconditional -- back-to-back `4EB9` with nothing between them.
   0x2599ec: '$294E62.. jsr $2599EC -- A3 stops for the parts\' own scripts',
 });
 
@@ -185,8 +187,8 @@ export function bossDeath294DD4(ram, rom, ctx, a5, a6) {
   ram.setU8(BOSS.bossFlags, ram.u8(BOSS.bossFlags) | 0x40);   // $294DD4 bset #6
   ram.setU8(BOSS.bossFlags, ram.u8(BOSS.bossFlags) | 0x80);   // $294DDC bset #7
   note(ctx, 0x23c4d0);                                 // $294DE4
-  note(ctx, 0x253564);                                 // $294DEA
-  note(ctx, 0x242922);                                 // $294DF0
+  clamp253564(ram);                                    // $294DEA jsr $253564 (UNCONDITIONAL)
+  bossClear242922(ram, ctx);                           // $294DF0 jsr $242922 (UNCONDITIONAL)
   ram.setU16(a6 + BOSS.dying, 1);                      // $294DF6 bsr $294F2A
   part1Death294E3E(ram, a5, a6, ctx);                  // $294DFA
   part2Death294E94(ram, a5, a6, ctx);                  // $294DFE

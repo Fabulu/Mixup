@@ -835,7 +835,9 @@ test('every emitter D-script 6 counts is keyed by the address it stands at',
     // $28B4BE, $242EC2) became real spawnEffect calls, not notes.  What remains
     // is SOUND ($28Cxxx), impact pool A ($2440E0), the anim-object loader
     // ($246410) and the timer-D SOUND dispatch ($294134).
-    assert.equal(Object.keys(BOSS_NOTED).length, 11);
+    // W382 dropped it from 11 to 9: $253564 and $242922 were already ported
+    // (clamp253564 / bossClear242922) and the three boss deaths now CALL them.
+    assert.equal(Object.keys(BOSS_NOTED).length, 9);
   });
 
 test('$292902 is in the handler registry -- 19 of 19 stage-1 script handlers',

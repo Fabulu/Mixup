@@ -353,9 +353,19 @@ export function nameCountdown28F4FC(ram, rom, a4, a5, ctx) {
 /**
  * `$28F542..$28F55C` -- the frame counter's two thresholds.
  *
- * @returns {'leadin'|'input'|'over'} `leadin` draws and ignores input, `over` is `$28F606`.
+ * @returns {'leadin'|'input'|'over'} `leadin` draws and ignores input, `over` COMMITS the name.
+ *
+ * **W382 -- `over` is not a deferral.** `$28F55A` is `64 00 00 AA`, a `bcc.w`, and trap 4 puts its
+ * target at the EXTENSION WORD's address plus the displacement: `$28F55C + $AA = $28F606`. That is
+ * `nameFinish28F606`, 140 lines below in this same file, so the timeout and the finish button share
+ * one body -- and the note that stood here, claiming the body "is not in this wave", was false.
+ *
+ * The branch lands on `$28F606` itself, NOT on `nameCommit`'s `$28F588`/`$28F598` head, so the
+ * empty-name test is SKIPPED: a timeout with nothing typed still runs `$28F606`, which writes the
+ * character under the cursor (or `DDP`, if the cursor is on END). `$28F606` then falls through
+ * `$28F674` into `$28F6A8`, which is why the commit tail runs here too.
  */
-export function nameFrameBands28F542(ram, a4, ctx) {
+export function nameFrameBands28F542(ram, rom, a4, ctx) {
   const n = u16(ram.u16(a4 + TIMEOUT.frame) + 1);          // $28F542 addq.w #1,($2,A4)
   ram.setU16(a4 + TIMEOUT.frame, n);
   if (n < TIMEOUT.leadIn) {                                // $28F54A cmpi.w #$30 / bcc
@@ -364,9 +374,8 @@ export function nameFrameBands28F542(ram, a4, ctx) {
     return 'leadin';                                       // $28F554 rts
   }
   if (n >= TIMEOUT.limit) {                                // $28F556 cmpi.w #$738 / bcc
-    ctx?.unportedLog?.note(0x28f606, '$28F55A bcc $28F606 -- the name-entry TIME LIMIT arm at '
-      + `frame $${TIMEOUT.limit.toString(16)} (${TIMEOUT.limit} frames, just over thirty `
-      + 'seconds at 60Hz); its body is not in this wave');
+    nameFinish28F606(ram, rom, a4);                        // $28F55A bcc.w $28F606
+    nameCommitTail28F6A8(ram, a4, ctx);                    // $28F606 falls into $28F674/$28F6A8
     return 'over';
   }
   return 'input';

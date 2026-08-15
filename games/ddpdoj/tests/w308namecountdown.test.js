@@ -201,9 +201,9 @@ test('W308 below `$30` frames the screen draws and ignores input', { skip: SKIP 
   const ram = factory();
   const w = world();
   ram.setU16(A4 + FRAME, 0x2e);
-  assert.equal(nameFrameBands28F542(ram, A4, w.ctx), 'leadin', 'frame $2F');
+  assert.equal(nameFrameBands28F542(ram, ROM, A4, w.ctx), 'leadin', 'frame $2F');
   assert.equal(ram.u16(A4 + FRAME), 0x2f, 'and the counter advanced');
-  assert.equal(nameFrameBands28F542(ram, A4, w.ctx), 'input', 'frame $30 is the first');
+  assert.equal(nameFrameBands28F542(ram, ROM, A4, w.ctx), 'input', 'frame $30 is the first');
 });
 
 test('W308 at or past `$738` frames the time limit arm takes over', { skip: SKIP }, () => {
@@ -211,21 +211,31 @@ test('W308 at or past `$738` frames the time limit arm takes over', { skip: SKIP
   // thing from the `($1E,A4)` countdown.
   const ram = factory();
   const w = world();
+  // W382: the `over` band now RUNS $28F606, which writes through `($30,A4)`, so the fixture has
+  // to carry a real entry row. It never did, because the arm used to be a note.
+  ram.setU32(A4 + NAME_REC.entry, 0x803838);
   ram.setU16(A4 + FRAME, 0x736);
-  assert.equal(nameFrameBands28F542(ram, A4, w.ctx), 'input', 'frame $737 still accepts input');
-  assert.equal(nameFrameBands28F542(ram, A4, w.ctx), 'over', 'and $738 does not');
-  const hit = w.log.report().find((r) => r.includes('$28F606'));
-  assert.ok(hit, 'the limit arm is counted');
-  assert.match(hit, /TIME LIMIT/);
+  assert.equal(nameFrameBands28F542(ram, ROM, A4, w.ctx), 'input', 'frame $737 still accepts input');
+  assert.equal(nameFrameBands28F542(ram, ROM, A4, w.ctx), 'over', 'and $738 does not');
+  // W382: the limit arm is no longer COUNTED, it RUNS. `$28F55A bcc.w` lands on $28F606, which is
+  // nameFinish28F606 in this same file, so the note that used to be asserted here was false.
+  // w382stalenotes.test.js asserts the effect instead: the name row is committed.
+  assert.ok(!w.log.report().some((r) => r.includes('$28F606')),
+    'the limit arm is no longer deferred');
 });
 
 test('W308 the frame counter always advances, on every band', { skip: SKIP }, () => {
   // `addq.w #1,($2,A4)` comes FIRST, before any test, so no band can stall it.
-  const ram = factory();
   const w = world();
+  // W382: the `over` band now COMMITS, and $28F6B6 arms `($1E,A4)` so $28F4FC diverts every later
+  // frame away from $28F542 -- the ROM cannot re-enter $28F606 with a committed name, and
+  // `nameFinish28F606` says so with an `unreached`. One machine per start keeps the scenario
+  // inside what the cartridge can be in; the property under test is unchanged.
   for (const start of [0, 0x2f, 0x100, 0x737, 0x800]) {
+    const ram = factory();
+    ram.setU32(A4 + NAME_REC.entry, 0x803838);
     ram.setU16(A4 + FRAME, start);
-    nameFrameBands28F542(ram, A4, w.ctx);
+    nameFrameBands28F542(ram, ROM, A4, w.ctx);
     assert.equal(ram.u16(A4 + FRAME), start + 1, `from $${start.toString(16)}`);
   }
 });

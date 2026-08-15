@@ -17,7 +17,10 @@ import {
   drawWord242EC2, drawWord24328E,
 } from './rng.js';
 import { aim64, slew64, AimTables } from './aim.js';
-import { livePlayers2428A6, bigBurst28B34A, bigBurst28B4BE } from './boss.js';
+import {
+  livePlayers2428A6, bigBurst28B34A, bigBurst28B4BE,
+  clamp253564, bossClear242922,
+} from './boss.js';
 import { applyVelocity, scrollCompensate } from './movement.js';
 import { dist242494, rampSpeed293400 } from './bossscripts.js';
 import { install24150A } from './palette.js';
@@ -134,8 +137,8 @@ function partDeath(ram, rom, a6, ctx, part) {
 function boss2Death298962(ram, rom, a5, a6, ctx) {
   ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0xc0);
   note(ctx, 0x23c4d0, '$298972 stage-2 boss death pause/flag block');
-  note(ctx, 0x253564, '$298978 stage-2 boss death clamp');
-  note(ctx, 0x242922, '$29897E stage-2 boss death intervention');
+  clamp253564(ram);                 // $298978 jsr $253564 (UNCONDITIONAL)
+  bossClear242922(ram, ctx);        // $29897E jsr $242922 (UNCONDITIONAL)
   ram.setU16(a6 + 0x146, 1);
   a1Clear259B34(ram);
   a4Clear2598A2(ram);
