@@ -91,9 +91,22 @@ The newly found second level is 262 bytes across six routines:
     $25FC14  84 B  calls $256F14, $256F78
     $260580  36 B  BSR $25FD24, $25FF7A, $2604F4, $26051A   <-- FOUR more, still unmeasured
 
-**And it is NOT shallow.** `$260580` is 36 bytes that `bsr` out to four further routines, none of
-which I have measured. So the tree is deeper and wider than recorded, and `$25D560` is a bigger
-unit than the docket says. **Do not plan around the 1.9 KB figure.**
+**And it is NOT shallow.** The third level, measured:
+
+    $25FD24   20 B  no calls              $25FF7A   46 B  no calls
+    $2604F4   38 B  jsr $241238 (PORTED), BSR $2604AA
+    $26051A  102 B  jsr $241182, $2414BE (PORTED), $241654, $26089E; BSR $2603FE
+    $256F14   56 B  jsr $240CF0 (PORTED)
+
+**`$26051A` contains a THIRD `stageCreate`**, so trap 12 applies three times in this tree, not
+twice. And it `bsr`s BACK into `$2603FE`, which is already in the tree above it -- so the call graph
+is not a tree at all, it has a cycle. **Model that before writing any of it.**
+
+Still unmeasured and unported: **`$2604AA`, `$241654`, `$26089E`**. Already ported and free:
+`$241238`, `$2414BE`, `$240CF0`, `$240EBC`, `$28C6E0`, `$25D990`, `$28CB9C`, `$24150A`, `$241182`.
+
+So `$25D560` is roughly 730 + 956 + 262 + 262 bytes and still open at the edges. **Do not plan
+around the 1.9 KB figure**; it is a large unit and it has a cycle in it.
 
 **THE PATTERN, AND IT HAS NOW COST FOUR CLAIMS THIS WAVE.** Every one of my wrong claims came from
 an ad-hoc sweep that knew one instruction form and not its siblings:
