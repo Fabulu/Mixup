@@ -71,6 +71,20 @@ The docstrings, the wiring comment and the test names all now carry the withdraw
 warning rather than as a fact, because the tests themselves were always right: they pin the
 FUNCTION's gate, which behaves correctly whichever state it is handed.
 
+### PUBLISH IS DUE NEXT WAVE (W375), AND W374 ADDED 31 WINDOWS -- `export-web.mjs` IS MANDATORY
+
+Last publish was W370 (`20260813164141`); the cadence is every FIFTH wave, so **W375 publishes**.
+**W374 took the window count from 498 to 529 -- THIRTY-ONE new windows.** So this is exactly the
+case the standing rule was written for:
+
+    node games/ddpdoj/tools/export-web.mjs      FIRST, from the repo root
+    node tools/publish.mjs --only ddpdoj        only then
+
+Skipping the first step ships a live page reading stale assets, and a bad window only shows up as a
+broken page rather than as a failing test. The 31 are: 12 for `$25EDF8`, 9 for the zooming-register
+emitter family, 3 for `$25F074`, 4 for `$25E824`, 1 for `$25E29E`'s ramp and 2 for `$25E4D0`.
+**None of them overlaps anything** -- checked against the full 529 after every declaration.
+
 ### W374 STATE: SUITE 2851/2851 ZERO SKIPS, GATE EXIT 0, 529 ROM WINDOWS
 
 Up from 2730 at the start of the wave. **Three more shared draws are PORTED, DRIVEN AND WIRED:**
