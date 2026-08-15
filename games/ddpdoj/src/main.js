@@ -400,6 +400,21 @@ export class Game {
       // it (every main-loop handler) does not reach the flush; the flush is
       // dispatched from `irq6`, which reads `ctx.txvram` itself.
       txvram: this.txvram,
+      // W375, THE SAME OBJECT UNDER THE FRONT END'S NAME. `clearTx23C622(ctx.tx)`
+      // is how three of the six front-end slots open their state 0 -- [9]
+      // ($25C9A0), [14] ($288BD4) and [17] ($25CDC0) -- and `txString25A14C(ctx.tx,
+      // ..)` is how [9] ($25D1AC) and [17] ($25D3DC) write their labels. All of
+      // them read `ctx.tx` UNGUARDED, so from the frame W374/W375 registered
+      // those slots in `defaultHandlers` each one threw
+      // "Cannot read properties of undefined (reading 'setLong')" the moment it
+      // reached state 0 (measured, driven through `runObjectDriver`).
+      // An ALIAS, not a rename: `irq6` dispatches the score-digit flush off
+      // `ctx.txvram` itself and twenty-eight other reads use that name, so
+      // renaming would move a one-key gap into every subsystem. `clearTx23C622`
+      // and `txString25A14C` only ever call `TxVram#setLong`, which is what
+      // `this.txvram` is -- the SAME object, so a write through either name is
+      // visible through the other.
+      tx: this.txvram,
       // colour banks -- the scroll VM's object stream ($2620F2), the bomb
       // ($260852/$26085C), three enemy init bodies, the boss and the stage
       // banner.  A caller that omits it gets the counted note it always had
@@ -450,6 +465,17 @@ export class Game {
       // makes "the port skipped an opcode" visible -- an unported CALLEE is
       // counted in unportedLog, but WHICH record reached it is here.
       video: this.video,
+      // W375, the same object under the front end's name, and for the same
+      // reason `tx` is above. `resetScrolls23C61E(ctx.videoRegs)` is slot [14]'s
+      // very first instruction ($288BCE) and `screenWipe23C6C6` (slot [7]'s
+      // state 0, $23C6C6) opens with it too. Both read `ctx.videoRegs`
+      // UNGUARDED, so registering [14] made it throw "Cannot set properties of
+      // undefined (setting 'tx_yscroll')" on its first frame (measured).
+      // `resetScrolls23C61E` writes exactly `tx_yscroll`, `tx_xscroll`,
+      // `bg_yscroll` and `bg_xscroll` -- four `VideoRegs` fields, which is what
+      // `this.video` is. An ALIAS, not a rename: the scroll VM and the ISR6
+      // upload path read `ctx.video`.
+      videoRegs: this.video,
       bgMutate: this.bgMutate,
       scrollEvent: (e) => {
         this.scrollEvents.push({ lf: this.logicFrame, ...e });
