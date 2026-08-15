@@ -671,8 +671,15 @@ test('W385 the two deferrals W384 counted are GONE from the census', () => {
     '$25D73E jsr $2603FE is a call now -- rank.js stagePair2603FE');
   // POSITIVE CONTROL: the census is not simply empty. Its neighbours in the same INIT are still
   // counted, so a broken `report()` cannot make the two assertions above pass.
-  assert.equal(noteCount(0x288574), 1, '$260704 jsr $288574 is STILL deferred, and counted once');
-  assert.equal(noteCount(0x259c4a), 1, '...as is $2605CE jsr $259C4A');
+  // **W392 RE-BASE: 1 -> 3, and it is a count of INITS.** `$288574` and `$259C4A` are both
+  // inside `$2605C8`, the rank object's state-0 init, and until W392 the only thing that staged
+  // dispatch type $A was the ship-select handoff -- once per run. Arm 5's demo screen stages it
+  // too (`$25C5E2 move.w #$A,D0 / $25C5E6 jsr $241182`), on every attract lap, so this 14,000-
+  // frame run holds three inits: the game's, and one for each demo after the game over. Pinning
+  // 1 would pin "the demo does not stage the object the cartridge has it stage".
+  assert.equal(noteCount(0x288574), 3, '$260704 jsr $288574 is STILL deferred, once per init');
+  assert.equal(noteCount(0x259c4a), 3, '...as is $2605CE jsr $259C4A, and the two counts AGREE, '
+    + 'which is what says three whole inits ran and not three stray notes');
 });
 
 // **W386 REWROTE PART (b) OF THIS TEST.** W385 asserted the run ends on a NAMED `Unreached` at

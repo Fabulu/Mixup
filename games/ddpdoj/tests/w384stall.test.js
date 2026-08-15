@@ -261,7 +261,14 @@ const RUN = (() => {
     if (o > odoPeak) { odoPeak = o; odoPeakFrame = f; }
     // The teardown is the frame `$2603DA` blanks the tally block's pointer word. While that word
     // is still live the snapshot is refreshed; the frame it goes to zero, the snapshot freezes.
-    if (g.ram.u32(TALLY.side0 + TALLY.ptr) !== 0) atTeardown = snapWatch();
+    // **W392 RE-BASE: FREEZE IT AT THE FIRST TEARDOWN.** Arm 5's demo screen stages dispatch
+    // type $A (`$25C5E2 move.w #$A,D0 / $25C5E6 jsr $241182`) on EVERY attract lap, and the rank
+    // object's state-0 init refills this block -- so the pointer comes back at +6,032 and again
+    // at +10,064 and the snapshot was being re-armed mid-demo, two thousand frames after the
+    // game over it exists to capture. `atTeardown` means "the last frame the GAME's player
+    // subsystem still existed", and freezing it on the first zero is what that sentence always
+    // said. Nothing is relaxed: the values it feeds are the same ones W385 and W388 measured.
+    if (!teardownFrame && g.ram.u32(TALLY.side0 + TALLY.ptr) !== 0) atTeardown = snapWatch();
     else if (!teardownFrame && atTeardown) teardownFrame = f;
     if (!bossFirstFrame && bossRec()) bossFirstFrame = f;
     if (!playerFrame && (g.ram.u16(P1REC) & 0x8000) !== 0) playerFrame = f;
@@ -389,13 +396,19 @@ test('W384 RAM is NOT a fixed point -- thousands of bytes move over the run\'s l
   // **AND W390 MOVES IT ONE MORE**: arm 9's screen (`$25C3E8`/`$25C424`) is ported, it drains ITS
   // two chains and `$25AA02` sets state 1.
   // **AND W391 ONE MORE AGAIN**: arm 1's demo screen (`$25BBB4`/`$25BD7C`) is ported, it drains
-  // its two chains and its $1E0 timer and `$25A908` sets state 5. Arm 5 is the new unported end
-  // of the chain -- its `$25C6D4` body is the LAST counted screen between here and a closed
-  // attract loop, because `teardown25A9B2` behind its carry is already ported. This test's
-  // CLAIM -- that RAM keeps moving -- is made by the byte-count assertions above and is
-  // untouched; only the incidental arm number could not survive, for the fifth wave running.
-  assert.equal(RUN.g.ram.u16(STATE), 0x0005,
-    'slot [8] is on arm 5 -- 2 -> 12 (W388), 12 -> 9 (W389), 9 -> 1 (W390), 1 -> 5 (W391)');
+  // its two chains and its $1E0 timer and `$25A908` sets state 5.
+  // **AND W392 ENDS THE SEQUENCE OF RE-BASES BY MAKING THE STATE WORD MEANINGLESS AS A RESTING
+  // PLACE.** Arm 5's `$25C592`/`$25C6D4` is ported, the carry comes out clear after its $10 and
+  // $960 counters run down, `$25A9AE` falls into `teardown25A9B2` and the machine goes back to
+  // state 2. There IS no resting arm: on this run slot [8] visits 2, 12, 9, 1 and 5 twice over
+  // and is on arm 1 at frame 14,000. Asserting a single number would be asserting where a
+  // 4,032-frame cycle happened to be when the loop counter ran out (trap 16). What this test's
+  // CLAIM needs -- that the machine is still moving -- is what the byte counts above already
+  // say; the state word can only say that it is somewhere ON the cycle, and that is what it
+  // asserts. (`w392arm5.test.js` SECTION 4 holds the frame-exact version, on a clean boot.)
+  assert.ok([0x1, 0x2, 0x5, 0x9, 0xc].includes(RUN.g.ram.u16(STATE)),
+    `slot [8] is somewhere on the attract cycle 2 -> 12 -> 9 -> 1 -> 5 -> 2 rather than parked `
+    + `off it; got $${RUN.g.ram.u16(STATE).toString(16)}`);
 });
 
 // =============================================================================================
@@ -565,9 +578,17 @@ test('W385 DEFERRAL 1 IS GONE: $25FE42 is rank.js playerRecords25FE42', () => {
   assert.equal(noteCount(0x25fe42), 0,
     '$260700 bsr.w $25FE42 is a CALL now -- no note at $25FE42 anywhere in the run');
   // POSITIVE CONTROL: its next-door neighbour in the SAME INIT is still deferred and still
-  // counted once, so the census is working and the assertion above means something.
-  assert.equal(noteCount(0x288574), 1,
-    '$260704 jsr $288574, the very next instruction, is STILL deferred and counted once');
+  // counted, so the census is working and the assertion above means something.
+  // **W392 RE-BASE: 1 -> 3.** The count was 1 because the rank object's state-0 init ran ONCE,
+  // at the handoff that started this game. Arm 5 stages dispatch type $A on every attract lap
+  // (`$25C5E2`/`$25C5E6`), so a 14,000-frame run that ends in a game over now runs the same
+  // init twice more, at +6,032 and +10,064. The number is a count of INITS, and there are three
+  // of them; asserting 1 would be asserting that the demo does not stage the object it stages.
+  assert.equal(noteCount(0x288574), 3,
+    '$260704 jsr $288574, the very next instruction, is STILL deferred -- once for the game and '
+    + 'once for each of the two demos arm 5 runs after the game over');
+  assert.equal(noteCount(0x2605c8), 3, '  ...and the enclosing $2605C8 init is counted the same '
+    + 'three times, which is what says the extra two are WHOLE inits and not stray notes');
 });
 
 test('W385 DEFERRAL 2 IS GONE: $2603FE is rank.js stagePair2603FE, and it ARMED REQUEST 4', () => {

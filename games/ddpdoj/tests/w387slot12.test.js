@@ -744,17 +744,58 @@ test('W387 SECTION 7: $28F368 kills THIS object and stages type 8 at state 2', (
 test('W387 SECTION 8: the loop closes onto the SAME machine a plain cold boot rests on', () => {
   // No coin, no START, nothing: the attract sequencer's own idle. If the handover landed the
   // machine anywhere else, "the loop closed" would be a word rather than a measurement.
+  //
+  // **W392 RE-BASES HOW THIS IS MEASURED, AND IT IS THE LAST TIME IT WILL NEED TO BE.** Every
+  // wave from W388 on re-pinned ONE state word at ONE frame, because the sequencer had a place
+  // it rested. It has none: arm 5's `$25C592`/`$25C6D4` is ported, its carry comes out clear
+  // after $10 + $960 - 1 = 2,415 frames and `teardown25A9B2` puts the machine back on arm 2.
+  // A single `assert.equal(g.ram.u16(STATE), N)` is now an assertion about where a 4,032-frame
+  // cycle happened to be when the loop counter ran out -- trap 16, and the third wave running.
+  // So the STRUCTURAL claim is measured structurally: the two runs walk the SAME ARM SEQUENCE.
+  // `leave2` is the high-score screen's own state word ($812E5C) ON THE FRAME the sequencer
+  // first reaches ARM 5 -- a fixed point of the cycle, well past arm 2, that both runs pass
+  // through. Reading it at the LAST frame instead compares two runs standing at different
+  // points of the same cycle, which is a phase difference reported as a divergence.
+  const arms = (game, frames) => {
+    const out = [];
+    let prev = -1, leave2 = -1;
+    for (let f = 1; f <= frames; f++) {
+      game.step(NO_PLAYER);
+      const a = game.ram.u16(STATE);
+      if (a !== prev) {
+        if (a === 5 && leave2 < 0) leave2 = game.ram.u16(0x812e5c);
+        out.push(a); prev = a;
+      }
+    }
+    return { seq: out, leave2 };
+  };
   const g = new Game(new Uint8Array(0x20000), tablesJson, { palCatchUp: false });
   g.boot();
   g.ram.setU8(0x803957, 1);
-  for (let f = 1; f <= 5000; f++) g.step(NO_PLAYER);
+  const coldRun = arms(g, 4400);
+  const cold = coldRun.seq;
+  const coldLeave2 = coldRun.leave2;
+  // The plain cold boot opens on arm 13, the warning screen, which only a RESET reaches.
+  assert.deepEqual(cold, [13, 2, 12, 9, 1, 5, 2], 'the plain cold boot walks one whole lap');
 
-  // W388: this was `0x0002`; W389: `0x000C`; W390: `0x0009`; W391: `0x0001` -- see the re-base
-  // note at the foot. Each wave ports one more screen and the resting place moves one arm on.
-  assert.equal(g.ram.u16(STATE), 0x0005, 'a plain cold boot rests at $812E56 = 5, arm 5');
-  assert.equal(RUN.g.ram.u16(STATE), g.ram.u16(STATE), '...and so does the run that looped back');
-  assert.equal(RUN.g.ram.u16(0x812e5c), g.ram.u16(0x812e5c),
-    '...with the high-score screen in the same internal state ($812E5C)');
+  // ...and the looped-back run, from the frame slot [12] handed dispatch type 8 back.
+  const gl = bootToGameplay();
+  for (let f = 1; f < RUN.firstEightBack; f++) gl.step(NO_PLAYER);
+  // The same 4,400 frames catch SEVEN transitions here and six there -- the loop-back enters
+  // the cycle one arm in, so its window reaches one arm further. Comparing the sequences means
+  // comparing the same NUMBER of them; comparing the raw lists would be reporting the window's
+  // offset as a divergence.
+  const loopedFull = arms(gl, 4400);
+  const looped = loopedFull.seq.slice(0, cold.length - 1);
+  assert.deepEqual(looped, cold.slice(1),
+    'the loop-back enters at state 2 -- $28F3A4 wrote ($4,A0) = 2 -- and from there it walks '
+    + 'the IDENTICAL arm sequence a reset does, arm 13 excepted. That is what "the loop closes '
+    + 'onto the same machine" means once the machine no longer stands still');
+  assert.equal(loopedFull.leave2, coldLeave2,
+    '...with the high-score screen in the same internal state ($812E5C) on the frame each run '
+    + 'reaches arm 5');
+  assert.equal(coldLeave2, 0x0002,
+    "...and that state is 2, left there by the $246800 on arm 2's way out");
   assert.ok(liveTypes(g).has(TYPE_8), 'and dispatch type 8 is live on both');
   assert.ok(RUN.types.has(TYPE_8));
 
@@ -777,11 +818,19 @@ test('W387 SECTION 8: the loop closes onto the SAME machine a plain cold boot re
   // `teardown25A9B2` -- the routine behind its carry, which writes `#$2` back into a fresh
   // record -- has been ported since W375.
   //
+  // **AND W392 CAME THROUGH AND ENDED THE SEQUENCE.** Arm 5's screen is ported, the carry comes
+  // out CLEAR, `$25A9AE` falls into `teardown25A9B2` and the sequencer goes back to arm 2. There
+  // is no "resting place" left to re-base -- there is a CYCLE, and the assertion above compares
+  // the two runs' walks through it rather than one word at one frame.
+  //
   // The STRUCTURAL claim this test carries is untouched and is the one that matters: the looped
-  // run and the plain cold boot land on the SAME machine. Both now rest at 5.
-  assert.equal(g.ram.u16(STATE), 0x0005, 'both runs rest on arm 5 (W391), not 1, 9, 12 or 2');
-  assert.equal(g.ram.u16(0x812e5c), 0x0002,
-    "...with the high-score screen's own state left at 2 by the $246800 on its way out");
+  // run and the plain cold boot land on the SAME machine.
+  assert.ok([0x1, 0x2, 0x5, 0x9, 0xc].includes(g.ram.u16(STATE)),
+    'both runs are ON the attract cycle 2 -> 12 -> 9 -> 1 -> 5 -> 2, not parked off it');
+  // The `$812E5C == 2` that stood here was read at the LAST frame of the window, and at +4,400
+  // the cold boot is 66 frames into its SECOND arm 2 -- `$25B3DC`'s five-word clear has already
+  // put the word back to 0 and the screen has stepped it to 1. The claim ("arm 2 left its own
+  // state at 2") is made ABOVE, at `leave2`, on a frame both runs actually share.
 });
 
 test('W388 SECTION 8 RE-BASE: objslot14.js hands queueKill the ID, and type $E really dies', () => {

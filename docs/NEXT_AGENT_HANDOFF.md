@@ -2,7 +2,93 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W391
+## START HERE -- W392
+
+### **THE ATTRACT LOOP CYCLES.**
+
+```
+[1,13] [302,2] [574,12] [878,9] [1182,1] [1918,5]
+[4334,2] [4606,12] [4910,9] [5214,1] [5950,5]
+[8366,2] [8638,12] [8942,9] [9246,1] [9982,5]
+```
+
+**Lap = exactly 4,032 frames, twice over.** `$803926` climbs 1919->4333 and 5951->8365 (2,415 frames
+each) and **`$803928` rotates 0 -> 1 -> 2, so three laps play THREE DIFFERENT DEMOS** from three
+`$800`-apart replay streams. `objslot8.js` now counts **no arm sub-machine at all**.
+
+### ARM 5 IS THE DEMO, AND MY THREE-QUESTIONS FRAMING HAD NO ANSWER
+
+**There is no chain.** An exhaustive scan of every `jsr`/`jmp abs.l` in both halves finds ZERO calls
+to `$24641A`, `$246710`, `$24681A` or `$246800`, and no handle word. The exit is two `subq.w #1`
+counters: `$812E84` = `$10` then `$812E86` = `$960`.
+
+**The states FALL THROUGH** (`$25C79A jsr $26070C` has no branch after it), so the arming frame also
+spends the first tick of `$812E86`: total `$10 + $960 - 1 = **2,415**, not 2,416.
+
+**The draw emits ZERO SPRITES.** `$25C6F8 jsr $240DC2` is `txPrint240DC2`, D0=`$88` D1=0 D2=5
+D3=`$1B`, both `dbra`s N+1 -> **168 TX cells a frame**, not one record in any bucket. It is a
+TX-printer screen.
+
+**Extent:** init `$25C592..$25C60B` (122 bytes, `4E75` AT `$25C60A`), body `$25C6D4..$25C807` (308),
+then a 16-byte table `$25C808..$25C817` bounded by the `48E7 FFFE` at `$25C818`.
+
+**Clear width: FIFTEEN words** (`$25C59E bsr.s $25C57E` -> `clear25C57E`, already exported by
+`objslot9.js`; `$812E82..$812E9F`). Arm 12 cleared 4, arm 1 six, arm 9 four. Its last four words are
+two longs but **NOT an object handle**: `$812E98` is a ROM demo-replay stream pointer and `$812E9C` a
+record buffer at `$300000`. **ORDER IS LOAD-BEARING:** `$803926` is raised, THEN the clear runs, THEN
+`$812E84`/`$812E86` are written -- both timers live inside the block the clear wipes.
+
+`$803926` -- which `SCREEN8` already carried as `dualGate` -- is the DEMO-RUNNING FLAG that the coin
+gate and `$26070C` both read. `$803928` is the demo index.
+
+### `$25C60C` IS CALLED BY NEITHER HALF
+
+It sits between them and reads all of arm 5's RAM. Its only caller is `$23D116`, inside `$23D0F8`,
+which `input.js` records as **never executing**. (Trap 20 again: `$25BF82` was the same shape.)
+
+Two **dead stores**, both transcribed: `$25C740 move.w #$2,$812E90` overwritten 8 bytes later by
+`#$1`, and `$25C738 move.b #$1,$812E94` overwritten whole by `$25C760 move.w D0,$812E94`.
+
+### THE ONE DEFERRAL, MEASURED BOTH WAYS -- AND IT NAMES THE NEXT UNIT
+
+`$26070C` is fully ported (`objslot17.js handoff26070C`) and its `$813082` gate really is armed by
+the type-`$A` record `$25C5E2` stages.
+
+- **With the real call:** identical 11 transitions, then `THREW at frame 5996: UNPORTED $24C4F8:
+  option formation 4` -- 31 frames into demo 1, whose ship is 4.
+- **Without:** 12,000 frames, three laps, no throw.
+
+Counted with that frame number in the note. **`$24C4F8`/`$24C690` (option formations 4 and 6) is what
+stands between "the attract loop cycles" and "the attract loop PLAYS THE DEMO".**
+
+### FOUR NEW WINDOWS (568), ABLATED FROM THE EXPORTED TABLES
+
+`$25C542+$3C` (ends AT `$25C57E`, the clear's own `lea`; abuts W390's `$25C530+$12`), `$2227F8+$20`
+(abuts W93's `$222778+$80`), `$25C808+$10`, `$239FB8+$1800` (three demo streams; `$800` stated twice
+-- by the pointer stride AND by `$25C62C cmpi.w #$800,D7`). Ablation makes the game throw by address
+at the exact reading frame (+1,919 for three of them, +1,934 for the streams). **Overlapping pairs:
+71 with and 71 without.**
+
+### THE CASCADE WAS NINE FILES, AND THE CAUSE IS WORTH KNOWING
+
+**Arm 5 stages dispatch type `$A`, so the rank object's state-0 init now runs ONCE PER ATTRACT LAP.**
+That is why `$288574`/`$259C4A` note counts went 1 -> 3 and why several "last frame" snapshots had to
+move to the teardown frame. `w387slot12` now compares the two runs' **arm sequences** rather than one
+word at one frame -- a better test than the one it replaced.
+
+**The stale-note guard has now fired on three consecutive waves' own text** and was **extended, not
+re-based**, each time.
+
+### NEXT UNITS, IN VALUE ORDER
+
+1. **`$24C4F8`/`$24C690`** -- option formations 4 and 6. Unblocks the demo actually playing.
+2. **A `$28BBxx`-tier posting path in `sound.js`** -- closes `$28C0FC`, `$28C170`, `$28CAE2` at once.
+3. **`$25AD02`** -- the blink ON half, 1,754 bytes.
+
+Also one-line: `stageend.js`'s `clear28E7A2` is private, and `bannerClear28E7A2` repeats its two
+lines because W392 did not own that file. Exporting it is the fix.
+
+## W391 NOTES
 
 ### `13 -> 2 -> 12 -> 9 -> 1 -> 5`. **EXACTLY ONE SCREEN LEFT.**
 

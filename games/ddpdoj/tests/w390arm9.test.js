@@ -370,7 +370,15 @@ test('W390 SECTION 3: arm 9 raises exactly one counted note, and it is NOT its o
     // kept, on ARM 5.
     assert.equal(/\$25BD7C|\$25BBB4/.test(report), false,
       'arm 1 is ported (W391), so neither half of it is counted any more');
-    assert.ok(/\$25C6D4/.test(report), 'arm 5\'s body IS counted; that is why the loop parks now');
+    // **W392: AND NEITHER IS ARM 5.** This line read `assert.ok(/\$25C6D4/)` with "that is why
+    // the loop parks now", and it could not survive for exactly the reason the line above it
+    // gives: `screen5Body25C6D4` is a live call. The point -- that the report names what is
+    // deferred and nothing else -- is kept, on the one deferral arm 5 does leave.
+    assert.equal(/\$25C592|\$25C6D4/.test(report), false,
+      'arm 5 is ported (W392), so neither half of it is counted any more, and the loop no '
+      + 'longer parks: it laps every 4,032 frames');
+    assert.ok(/\$26070C/.test(report), 'what arm 5 DOES leave counted is $26070C, its demo '
+      + 'handoff -- named, measured, and unable to gate anything');
   });
 
 test('W390 SECTION 3 ABLATION: hold the `$F0` timer and the screen never leaves state 1',
@@ -496,18 +504,33 @@ test('W390 SECTION 5: no source file still calls a PORTED routine a counted note
     // the test that caught W391's own stale text, exactly one wave after it caught W390's. Arms
     // 1 and 3's three routines join the list of things `main.js` may no longer call counted
     // notes. Trap 14 twice running, caught twice by the same assertion.
+    // **W392 EXTENDS IT A SECOND TIME, AND THE GUARD HAS NOW FIRED ON THREE CONSECUTIVE WAVES'
+    // OWN TEXT.** Arm 5's `$25C592` and `$25C6D4` join the list; with them the list names every
+    // screen sub-machine slot [8] has, so a fourth wave cannot add to it. Trap 14 three times
+    // running, caught three times by the same assertion -- extended, never re-based.
     for (const a of ['$25C2AE', '$25C2EA', '$25C3E8', '$25C424',
-      '$25BBB4', '$25BD7C', '$25BDE0']) {
+      '$25BBB4', '$25BD7C', '$25BDE0', '$25C592', '$25C6D4']) {
       assert.equal(new RegExp(`\\${a}[^\\n]*counted note`).test(block), false,
         `main.js no longer calls ${a} a counted note`);
     }
     assert.ok(/W390 CORRECTION/.test(block), 'and it says WHY the list changed');
     assert.ok(/W391 CORRECTION/.test(block), '...and why it changed again one wave later');
-    assert.ok(/\$25C6D4/.test(block), 'the ONE that IS still counted is named: arm 5');
+    assert.ok(/W392 CORRECTION/.test(block), '...and again one wave after that');
+    // W392 -- this line used to read `assert.ok(/\$25C6D4/)`, "the ONE that IS still counted is
+    // named: arm 5". It could not survive: `screen5Body25C6D4` is a live call in `objslot8.js`,
+    // and a note beside a live call is the very lie this guard exists to catch. What the line
+    // was checking -- that the block states truthfully how many arms are counted -- is kept, and
+    // the truthful number is now ZERO.
+    assert.ok(/NO arm sub-machine is counted/.test(block),
+      'the block says what is true today: not one arm of the sequencer is a counted note');
     assert.equal(/\$25BBB4, \$25BD7C, \$25BDE0 \(arms 1 and 3\)/.test(block), false,
       'and the sentence calling arms 1 and 3 counted is gone');
     assert.equal(/\$25C2AE, \$25C2EA, \$25C3E8, \$25C424/.test(block), false,
       'and the old four-in-a-row list is gone');
+    assert.equal(/ONLY arm sub-machine still counted/.test(block), false,
+      "and so is W391's sentence naming arm 5 as the last counted one");
+    assert.equal(/parks on 5/.test(block), false,
+      'and the claim that a cold boot PARKS is gone too -- it laps');
 
     // objslot8.js's own header made the same claim in two places.
     const src = readFileSync(here('../src/objslot8.js'), 'utf8');
@@ -516,9 +539,12 @@ test('W390 SECTION 5: no source file still calls a PORTED routine a counted note
       'objslot8.js no longer says arms 9 and 12 hold');
     assert.equal(/arms 1 and 5\*\* hold/.test(header), false,
       '...nor that arm 1 does, which W391 ported');
-    assert.ok(/\*\*arm 5\*\* holds/.test(header), '...it says arm 5 alone does');
-    assert.ok(/13 -> 2 -> 12 -> 9 -> 1 -> 5/.test(header),
-      'and names the path that is live today, all six arms of it');
+    assert.equal(/\*\*arm 5\*\* holds/.test(header), false,
+      '...nor that arm 5 does, which W392 ported');
+    assert.ok(/NO screen/.test(header) && /sub-machine is NOTED any more/.test(header),
+      '...it says no screen sub-machine is noted at all');
+    assert.ok(/13 -> 2 -> 12 -> 9 -> 1 -> 5 -> 2/.test(header),
+      'and names the path that is live today -- all six arms AND the lap back to arm 2');
   });
 
 test('W390 SECTION 5: w307namegrid.test.js no longer says W303 counted `$246710`\'s seeding',

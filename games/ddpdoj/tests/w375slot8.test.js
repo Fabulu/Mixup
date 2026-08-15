@@ -697,25 +697,32 @@ test('W375 states 4, 6, 7, 8, 10, 11 do nothing at all', { skip: SKIP }, async (
 // (`objslot8.js screen1Init25BBB4` / `screen1Body25BD7C`), so arm 1 notes neither half any more
 // and does not hold: it drains two chains and 480 timer frames and hands the machine to state 5,
 // which `w391arm1.test.js` SECTION 4 measures on a real cold boot as `13 -> 2 -> 12 -> 9 -> 1
-// -> 5`. **ARM 5 IS UNTOUCHED AND STILL ASSERTS EXACTLY WHAT IT DID**, and it is now the whole
-// of the counted tier -- which is why arm 5 is where the attract loop rests.
+// -> 5`.
 //
-// The loop is one screen from closing: arm 5's `$25A9AE bcs` guards `teardown25A9B2`, which is
-// already ported and writes `#$2` into the new record. `$25C592`/`$25C6D4` is the last piece.
-test('W375 the unported arms HOLD rather than inventing an advance', { skip: SKIP }, async () => {
-  const arms = [
-    { st: 0x5, init: 0x25c592, body: 0x25c6d4 },
-  ];
-  for (const arm of arms) {
-    const f = await gated();
-    f.ram.setU16(f.SCREEN8.state, arm.st);
-    f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
-    assert.ok(noteAddrs(f.notes).includes(arm.init), `state ${arm.st} notes its init`);
-    assert.ok(noteAddrs(f.notes).includes(arm.body), `state ${arm.st} notes its body`);
-    assert.equal(f.ram.u8(f.a5 + f.SCREEN8.inited), 1, '  ...but the init flag DID latch');
-    f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
-    assert.equal(f.ram.u16(f.SCREEN8.state), arm.st, '  ...and the state holds');
-  }
+// **W392 TAKES ARM 5 OUT, AND THE LIST IS NOW EMPTY.** This test was called "the unported arms
+// HOLD rather than inventing an advance" and it iterated a one-entry table -- arm 5. `$25C592`
+// and `$25C6D4` are ported (`objslot8.js screen5Init25C592` / `screen5Body25C6D4`), so the two
+// `assert.ok(noteAddrs(...).includes(...))` lines it was built around cannot survive: there is
+// no note to find. **The claim they were making is not weakened, it is inverted and made
+// measurable**: no arm of the sequencer is counted any more, and arm 5 holds state 5 for the
+// 2,415 frames its own down-counters state and then hands the machine on. The two frames driven
+// below are the head of that count, and `w392arm5.test.js` SECTION 4 drives the whole loop.
+test('W392 NO arm of the sequencer is counted any more, and arm 5 holds only while its counter '
+  + 'says so', { skip: SKIP }, async () => {
+  const f = await gated();
+  f.ram.setU16(f.SCREEN8.state, 0x5);
+  f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
+  assert.equal(noteAddrs(f.notes).includes(0x25c592), false, 'arm 5\'s INIT is not counted');
+  assert.equal(noteAddrs(f.notes).includes(0x25c6d4), false, 'arm 5\'s BODY is not counted');
+  assert.equal(f.ram.u8(f.a5 + f.SCREEN8.inited), 1, '  ...and the init flag DID latch');
+  // Both halves ran FOR REAL, which is what replaces the two note probes: the init armed the
+  // $10 and $960 counters and the body spent one frame of the first.
+  assert.equal(f.ram.u16(0x803926), 1, '$25C596 raised the demo flag');
+  assert.equal(f.ram.u16(0x812e84), 0x10 - 1, '$812E84 armed to $10 and ticked once');
+  assert.equal(f.ram.u16(0x812e86), 0x960, '$812E86 armed to $960 and NOT yet ticked');
+  f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
+  assert.equal(f.ram.u16(f.SCREEN8.state), 0x5, '  ...and the state holds while the carry is set');
+  assert.equal(f.ram.u16(0x812e84), 0x10 - 2, '  ...one more tick, not a park');
 });
 
 test('W375 $25A9B2, arm 5\'s teardown, restages slot [8] at state 2', { skip: SKIP }, async () => {

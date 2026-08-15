@@ -21,9 +21,9 @@
 //
 // SCOPE. W375 ported the SEQUENCER, not the screens. Arms 0, 5's teardown, 13 and 14, the
 // `$25ACAC` join handler, the `$25A770` credit gate and the `$25A82C` dispatch tail are here in
-// full. **W389 ported arm 12's `$25C2AE`/`$25C2EA`, W390 arm 9's `$25C3E8`/`$25C424`, and W391
-// arms 1 and 3's `$25BBB4 $25BD7C $25BDE0` -- so the ONLY screen sub-machine still NOTED is
-// `$25C592`/`$25C6D4` (arm 5)**, and it is the last one. **ARM 2
+// full. **W389 ported arm 12's `$25C2AE`/`$25C2EA`, W390 arm 9's `$25C3E8`/`$25C424`, W391
+// arms 1 and 3's `$25BBB4 $25BD7C $25BDE0`, and W392 arm 5's `$25C592`/`$25C6D4` -- so NO screen
+// sub-machine is NOTED any more.** Arm 5 was the last one. **ARM 2
 // IS WHOLE**: its per-frame body `hiscoreScreen25B412` is ported in `hiscorescreen.js`, and W375b
 // adds its init `$25B3DC` here as `hiscoreInit25B3DC`, so arm 2 initialises, runs and really does
 // advance to state 12 when the screen finishes.
@@ -34,17 +34,19 @@
 // is what fills that handle, and with it in place the reset path `($4,A5) = $D -> arm 13 -> the
 // $12C timeout -> state 2 -> the high-score screen` runs without throwing.
 //
-// WHAT IS NOTED AND THEREFORE STILL STANDS BETWEEN THIS AND A CLOSED ATTRACT LOOP: `$25C592`/
-// `$25C6D4`, arm 5's screen, and `$25AD02`, the blink message's ON half. Neither gates the state
-// machine except through a carry this port cannot compute, which is why **arm 5** holds instead
-// of advancing. Arms 0, 1, 2, 3, 9, 12, 13 and 14 are complete, and
-// `13 -> 2 -> 12 -> 9 -> 1 -> 5` and `3 -> 14 -> gameplay` are live paths today, measured on a
-// real cold boot at `+1, +302, +574, +878, +1182, +1918`.
+// **THE ATTRACT LOOP CLOSES, AND IT CYCLES.** W392 ports arm 5's `$25C592`/`$25C6D4`, so the
+// carry `$25A9AE bcs` reads really is computed: after `$10` + `$960` - 1 = 2,415 frames it comes
+// out CLEAR, `teardown25A9B2` restages slot [8] at state 2, and the sequencer goes round again.
+// Measured on a real cold boot, three laps of exactly 4,032 frames:
 //
-// **THE LOOP IS ONE SCREEN FROM CLOSING, AND THE PIECE BEHIND ARM 5 IS ALREADY HERE.** `$25A9AE
-// bcs` skips `teardown25A9B2`, which this file exports and which writes `#$2` into the record it
-// stages -- so a ported `$25C6D4` gives `1 -> 5 -> teardown -> 2` and the attract loop cycles on
-// its own. Arm 5's screen is the whole of what is left.
+//     13 -> 2 -> 12 -> 9 -> 1 -> 5 -> 2 -> 12 -> 9 -> 1 -> 5 -> 2 -> ...
+//     +1  +302 +574 +878 +1182 +1918 +4334 +4606 +4910 +5214 +5950 +8366
+//
+// Arms 0, 1, 2, 3, 5, 9, 12, 13 and 14 are complete and `3 -> 14 -> gameplay` is live too. What
+// is left NOTED in this file is presentation and sound, not a screen: `$25AD02` (the blink
+// message's ON half, a 1,754-byte dispatcher), the three `$28C0FC`/`$28C170` cue posts, arm 12's
+// `$25BB6C` TX plane block and `$28CAE2`, and arm 5's `$26070C` demo handoff. NONE of them gates
+// the state machine.
 //
 // **W377 CLOSED THE COIN CRASH AND HALF THE BLINK PAIR.** Arm 3's `$25A962 jsr $28C170` and the
 // three `jsr $28C0FC` in the two teardowns were `ctx.soundPost` calls, and BOTH addresses go
@@ -72,6 +74,9 @@ import { hiscoreScreen25B412 } from './hiscorescreen.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 // W389 -- arm 12's screen is arm 2's twin and uses the same three chain primitives.
 import { chainCheck24681A, chainFree246800, chainLoader246710 } from './stageend.js';
+// W392 -- arm 5's banner ($28E7F8/$28E7A2/$28E7DC) and its one-shot handoff ($26070C).
+import { SE, banner28E7F8 } from './stageend.js';
+import { txPrint240DC2 } from './hud.js';
 import {
   enqueueRegistersThroughStub, enqueueZoomedRegistersThroughStub,
 } from './spritequeue.js';
@@ -625,19 +630,310 @@ export function teardown25A9B2(ram, rom, ctx) {
 
 /** ARM 5, `$25A97C` -- the screen whose carry chooses the teardown above. `$25A994 move.w
  *  #$0,($4,A5)` clears its OWN parameter word during init, which is why the teardown's `#$2`
- *  has to go through A0. */
+ *  has to go through A0.
+ *
+ *  W392: both halves are real calls now. The carry is `screen5Body25C6D4`'s return, and `false`
+ *  -- carry CLEAR -- is what `$25A9AE bcs` lets fall into the teardown. */
 function arm5(ram, rom, a5, ctx) {
   if (ram.u8(a5 + SCREEN8.inited) === 0) {                     // $25A97C/$25A980
     ram.setU8(a5 + SCREEN8.inited, 1);                         // $25A982
-    ctx?.unported?.note(0x25c592, '$25A988 jsr $25C592 -- arm 5\'s screen INIT');
+    screen5Init25C592(ram, rom, ctx);                          // $25A988 jsr $25C592
     clearTx23C622(ctx.tx);                                     // $25A98E jsr $23C622
     ram.setU16(a5 + SCREEN8.param, 0);                         // $25A994 move.w #$0,($4,A5)
     // $25A99A lea $222618,A0 / $25A9A0 moveq #0,D0 / $25A9A2 jsr $2414BE
     installTxBank(ram, rom, ctx, SCREEN8.txPalWarn, 0x25a9a2, 'slot [8] arm 5 TX palette');
   }
-  ctx?.unported?.note(0x25c6d4,
-    '$25A9A8 jsr $25C6D4 -- arm 5\'s per-frame body. $25A9AE bcs skips $25A9B2, so CARRY CLEAR '
-    + 'runs teardown25A9B2 (ported and exported here). Unported, so this port holds at state 5');
+  if (!screen5Body25C6D4(ram, rom, ctx)) {                     // $25A9A8 jsr / $25A9AE bcs
+    teardown25A9B2(ram, rom, ctx);                             // $25A9B2 -- CARRY CLEAR only
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// W392 -- ARM 5'S SCREEN, `$25C592` (init) AND `$25C6D4` (body): **THE DEMO-PLAY SCREEN**.
+// ---------------------------------------------------------------------------------------------
+//
+// **THE BRIEF ASKED "WHICH CHAIN DOES THE EXIT WAIT ON?" AND THE ANSWER IS: NEITHER. THERE IS
+// NO CHAIN.** `$25C592` contains no `jsr $24641A`, no `jsr $246710`, no `$812E76`-style handle
+// and no `$24681A` poll anywhere in `$25C6D4`. Arms 12, 9 and 1 are chain screens; arm 5 is a
+// pair of DOWN-COUNTERS, and the whole exit is:
+//
+//   $25C726  subq.w #1,$812E84   /  bne  ->  state 0 lasts $10 = 16 frames
+//   $25C7AC  subq.w #1,$812E86   /  bne  ->  state 1 lasts $960 = 2,400 frames
+//
+// The two states FALL THROUGH ($25C79A jsr $26070C runs and then drops into `$25C7A0 cmpi.w
+// #$1`), so the frame that arms state 1 also takes the first tick off `$812E86` -- 16 + 2,400
+// frames of arm 5 with the exit ON the 2,415th, not the 2,416th.
+//
+// **AND IT IS NOT A "SCREEN" AT ALL. IT IS THE DEMO.** `$25C596 move.w #$1,$803926` raises the
+// same word the coin gate reads at `$25A7D2` and the handoff reads at `$26075E`; `$25C7FC`
+// drops it again on the way out. `$803928` is the demo INDEX and `$25C7DE`/`$25C7E4` rotate it
+// 0 -> 1 -> 2 -> 0, so three consecutive attract cycles play three different demos.
+//
+// THE CLEAR IS FIFTEEN WORDS AND ITS LAST FOUR ARE TWO POINTER LONGS -- question 2's shape a
+// third time, and wider than any arm so far. `$25C59E bsr.s $25C57E` is `clear25C57E`, which
+// `objslot9.js` already exports and this file already imported for the teardown:
+//
+//   25C57E  41f9 00812e82   lea $812E82,A0
+//   25C584  303c 000e       move.w #$E,D0     <- TRAP 2: dbra runs N+1 = FIFTEEN
+//   25C588  7200 / 30c1 / 51c8 fffc
+//
+// so `$812E82..$812E9F`, and `$812E98`/`$812E9C` are the demo replay stream and the record
+// buffer. **Order matters**: the clear runs AFTER `$803926` is raised and BEFORE the two
+// timers are written, so a port that hoisted it would zero `$812E84` and `$812E86` again.
+//
+// THE DRAW EMITS NO SPRITES. `$25C6F8 jsr $240DC2` is `txPrint240DC2` -- the TX printer W116
+// ported -- with D0=$88, D1=0, D2=5, D3=$1B, so `$240DDC`'s outer `dbra` runs SIX times and
+// `$240DF8`'s inner one TWENTY-EIGHT: **168 TX cells a frame and zero sprite-queue records**.
+// Arm 1 emitted seven sprites through two emitters; arm 5 emits none through either.
+//
+// FOUR CALLEES, AND WHAT EACH ONE IS:
+//   `$28E7A2` -- the banner buffer clear, `$81DFAC` + $28 words. Already transcribed in
+//                `stageend.js` as the PRIVATE `clear28E7A2`; the two lines below run over that
+//                file's own exported `SE.banner`/`SE.bannerWords` so the width cannot drift.
+//   `$28E7F8` -- `banner28E7F8`, exported by `stageend.js` and called for real. Both of its
+//                entry guards (`$81DFF8`, `$81DFF6`) are inside the block `$28E7A2` just
+//                cleared, so it is a genuine no-op until `$25C77A` arms it.
+//   `$28E7DC` -- one word, `$81DFF6 := 1`. That is what switches the banner on.
+//   `$23BDDA` -- `lea $80390A,A0 / move.w #$6,D0 / dbra`: SEVEN words (trap 2 again),
+//                `$80390A..$803916`. It resets the very counter the draw's parity reads.
+//   `$26070C` -- the one-shot handoff, and the ONE counted deferral in the pair. It is ported
+//                (`objslot17.js`'s `handoff26070C`) and its `$813082` gate really is armed by
+//                the type-$A record this arm stages, so calling it boots a stage for real --
+//                and the SECOND demo's ship then reaches an unported option formation 31 frames
+//                later. Measured both ways; see `handoffNote`.
+//
+// TWO DEAD STORES, both transcribed rather than tidied away, because a port that dropped them
+// would not be reading the same instructions the cartridge does:
+//   `$25C740 move.w #$2,$812E90` is overwritten by `$25C748 move.w #$1,$812E90` with nothing
+//   in between, and `$25C738 move.b #$1,$812E94` is overwritten by `$25C760 move.w D0,$812E94`
+//   -- a BYTE store into the high half of a word the next store replaces whole (trap 3).
+//
+// THE CODEC `$25C60C` IS **NOT** CALLED FROM HERE. Its single caller in the image is
+// `$23D116`, inside the raw input read `$23D0F8`, behind `tst.b $803940` -- and `input.js`'s
+// own header records that `$23D0F8` never executes in this port. So the demo streams are
+// primed by `$25C750..$25C76E` and then never advanced here; that is the cartridge's structure,
+// not an omission of this file's.
+export const ARM5SCREEN = Object.freeze({
+  init: 0x25c592, initEnd: 0x25c60c,     // $25C592..$25C60B -- `4E75` AT $25C60A (trap 5)
+  body: 0x25c6d4, bodyEnd: 0x25c808,     // $25C6D4..$25C807 -- `4E75` AT $25C806
+  initBytes: 0x7a, bodyBytes: 0x134,
+
+  demoFlag: 0x803926,                    // $25C596 move.w #$1 / $25C7FC move.w #$0
+  demoIndex: 0x803928,                   // $25C5B4 read / $25C7DE addq.w #1 / $25C7E4 cmpi #$3
+  demoCount: 3,
+
+  clear: 0x25c57e, clearBase: 0x812e82, clearWords: 15,   // $25C584 #$E + dbra (trap 2)
+  state: 0x812e82,                       // and the clear's FIRST word is the state
+  timerA: 0x812e84, timerAInit: 0x0010,  // $25C5A0 / $25C726
+  timerB: 0x812e86, timerBInit: 0x0960,  // $25C5A8 / $25C7AC
+  anim: 0x812e88,                        // $25C6E4 adda.w / $25C70C addq.w #4 / $25C712 andi #$F
+  animStep: 4, animMask: 0x000f,
+  x: 0x812e8a, y: 0x812e8c, w8e: 0x812e8e,   // $25C5C4/$25C5CA/$25C5D0, and $25C784/$25C78A
+  codecMode: 0x812e90,                   // $25C740 #$2 then $25C748 #$1 -- the first is DEAD
+  codecVal: 0x812e92, codecRun: 0x812e94,    // $25C738 a BYTE, $25C760 the WORD over it
+  codecOff: 0x812e96,                    // $25C756 / $25C76E addq.w #2
+  script: 0x812e98, recBuf: 0x812e9c,    // $25C5D6 / $25C5DC -- the clear's last four words
+
+  ptrTable: 0x25c542, ptrEntries: 3, tableBytes: 0x3c,
+  blocks: Object.freeze([0x25c54e, 0x25c55e, 0x25c56e]), blockBytes: 0x10,
+  animTable: 0x25c808, animEntries: 4, animTableBytes: 0x10,
+  demoScripts: Object.freeze([0x239fb8, 0x23a7b8, 0x23afb8]), scriptSpan: 0x800,
+
+  rankType: 0x0a,                        // $25C5E2 move.w #$A,D0 -- dispatch [10], $260794
+  palSrc: 0x2227f8, palBank: 0x0c,       // $25C5F6 lea / $25C5FC move.w #$C,D0
+  txPrint: 0x240dc2,                     // $25C6F8 jsr
+  drawD0: 0x0088, drawD1: 0x0000, drawD2: 0x0005, drawD3: 0x001b,   // $25C6EC..$25C6F6
+  drawRows: 6, drawCols: 28, drawCells: 168,   // both `dbra`s run N+1 (trap 2)
+  frameCounter: 0x80390a,                // $25C6FE move.w / $25C704 andi.w #$1
+  counterBase: 0x80390a, counterWords: 7,      // $23BDDA -- `move.w #$6,D0` + dbra
+  bannerClear: 0x28e7a2, banner: 0x28e7f8, bannerArm: 0x28e7dc,
+  counterClear: 0x23bdda, handoff: 0x26070c, codec: 0x25c60c,
+  handoffD2: 0x00ff, handoffD3: 0x00ff, handoffD4: 0x0001,   // $25C790/$25C794/$25C798
+});
+
+/** `$23BDDA` -- `lea $80390A,A0 / move.w #$6,D0 / moveq #0,D1 / move.w D1,(A0)+ / dbra`.
+ *  SEVEN words, `$80390A..$803916`, and the first of them is the free-running frame counter
+ *  `main.js`'s `#counters()` bumps -- so arm 5 restarts the demo's clock, it does not stop it. */
+function counterClear23BDDA(ram) {
+  for (let i = 0; i < ARM5SCREEN.counterWords; i++) {          // $23BDE0 #$6 + dbra = SEVEN
+    ram.setU16(ARM5SCREEN.counterBase + i * 2, 0);             // $23BDE6 move.w D1,(A0)+
+  }
+}
+
+/** `$28E7A2` -- `lea $81DFAC,A0 / move.w #$27,D0 / dbra`: FORTY words over the banner buffer.
+ *  `stageend.js` transcribed this in W124 as the private `clear28E7A2`; this runs over that
+ *  file's own exported `SE.banner` and `SE.bannerWords`, so the address and the width are one
+ *  definition even though the loop is written twice. Exporting the function instead is a
+ *  one-line change in a file W392 does not own. */
+function bannerClear28E7A2(ram) {
+  for (let i = 0; i <= SE.bannerWords - 1; i++) ram.setU16(SE.banner + i * 2, 0);
+}
+
+/**
+ * `$25C592..$25C60B`, 122 bytes -- ARM 5'S INIT. `movem.l D0-D7/A0-A6` at both ends (trap 9),
+ * so it is register-transparent and returns nothing; everything it does is in RAM.
+ *
+ *     25C592  48e7 fffe                 movem.l D0-D7/A0-A6,-(A7)
+ *     25C596  33fc 0001 00803926        move.w #$1,$803926        <- the DEMO flag, up
+ *     25C59E  61de                      bsr.s $25C57E             <- FIFTEEN words, $812E82..9F
+ *     25C5A0  33fc 0010 00812e84        move.w #$10,$812E84
+ *     25C5A8  33fc 0960 00812e86        move.w #$960,$812E86
+ *     25C5B0  41fa ff90                 lea ($25C542,PC),A0       <- trap 4: $25C5B2 - $70
+ *     25C5B4  3439 00803928             move.w $803928,D2
+ *     25C5BA  d442 / 25C5BC d442        add.w D2,D2 twice         <- index * 4, a WORD
+ *     25C5BE  2070 2000                 movea.l (A0,D2.w),A0      <- and D2.w SIGN-EXTENDS
+ *     25C5C2  3e18                      move.w (A0)+,D7
+ *     25C5C4  33d8 00812e8a             move.w (A0)+,$812E8A
+ *     25C5CA  33d8 00812e8c             move.w (A0)+,$812E8C
+ *     25C5D0  33d8 00812e8e             move.w (A0)+,$812E8E
+ *     25C5D6  23d8 00812e98             move.l (A0)+,$812E98      <- the replay stream
+ *     25C5DC  23d8 00812e9c             move.l (A0)+,$812E9C      <- the record buffer
+ *     25C5E2  303c 000a                 move.w #$A,D0
+ *     25C5E6  4eb9 00241182             jsr $241182               <- stage dispatch type $A
+ *     25C5EC  3147 0004                 move.w D7,($4,A0)         <- A0 is the STAGED record
+ *     25C5F0  4eb9 0028e7a2             jsr $28E7A2
+ *     25C5F6  41f9 002227f8             lea $2227F8,A0
+ *     25C5FC  303c 000c                 move.w #$C,D0             <- TX bank TWELVE, not 0
+ *     25C600  4eb9 002414be             jsr $2414BE
+ *     25C606  4cdf 7fff / 25C60A 4e75
+ *
+ * **TRAP 11 AGAIN, AND IT IS THE POINT OF THE ROUTINE.** `$241182` leaves the STAGED record in
+ * A0, so `$25C5EC move.w D7,($4,A0)` writes the demo INDEX into the new type-$A record's
+ * parameter word -- exactly the shape `teardown25A9B2`'s `#$2` has. Dispatch type $A is
+ * `$260794`, the rank object, and its state-0 init `$2605C8` is what sets `$813082` -- the
+ * one-shot gate the body's `$26070C` consumes sixteen frames later.
+ */
+export function screen5Init25C592(ram, rom, ctx) {
+  const A = ARM5SCREEN;
+  ram.setU16(A.demoFlag, 1);                                   // $25C596
+  clear25C57E(ram);                                            // $25C59E bsr.s -- FIFTEEN words
+  ram.setU16(A.timerA, A.timerAInit);                          // $25C5A0 -- AFTER the clear
+  ram.setU16(A.timerB, A.timerBInit);                          // $25C5A8
+  // $25C5B4/$25C5BA/$25C5BC/$25C5BE. The index is NOT bounded anywhere on this path; a value
+  // past 2 walks off the table and the ROM window throws by address, which is the honest
+  // outcome. `$25C7E4`'s `cmpi.w #$3` is the only thing keeping it in range.
+  const d2 = u16(ram.u16(A.demoIndex) * 4);                    // add.w D2,D2 twice, a WORD
+  let a0 = rom.u32(A.ptrTable + ((d2 << 16) >> 16));           // movea.l (A0,D2.w),A0
+  const d7 = rom.u16(a0); a0 += 2;                             // $25C5C2 move.w (A0)+,D7
+  ram.setU16(A.x, rom.u16(a0)); a0 += 2;                       // $25C5C4
+  ram.setU16(A.y, rom.u16(a0)); a0 += 2;                       // $25C5CA
+  ram.setU16(A.w8e, rom.u16(a0)); a0 += 2;                     // $25C5D0
+  ram.setU32(A.script, rom.u32(a0)); a0 += 4;                  // $25C5D6 -- a LONG
+  ram.setU32(A.recBuf, rom.u32(a0)); a0 += 4;                  // $25C5DC -- a LONG
+  const made = stageCreate(ram, A.rankType,                    // $25C5E2 #$A / $25C5E6 jsr
+    (t) => rom.u16(SCREEN8.dispatch + t * 8 + 4));
+  ram.setU16(made.addr + SCREEN8.param, d7);                   // $25C5EC move.w D7,($4,A0)
+  bannerClear28E7A2(ram);                                      // $25C5F0 jsr $28E7A2
+  // $25C5F6/$25C5FC/$25C600 -- bank $C, NOT the bank 0 `installTxBank` hard-codes.
+  if (ctx?.palette) {
+    install2414BE(ram, ctx.palette, A.palBank, rom.bytes(A.palSrc, 32), 0x25c600,
+      'slot [8] arm 5 demo-play TX palette');
+  } else {
+    ctx?.unported?.note(0x2414be, `$25C600 -- TX bank ${A.palBank} <- $${
+      A.palSrc.toString(16).toUpperCase()} with no PaletteState on this chain`);
+  }
+  return made;
+}
+
+/**
+ * `$25C79A jsr $26070C` -- **COUNTED, AND THE ONLY DEFERRAL IN THE PAIR THAT COSTS ANYTHING.**
+ *
+ * `handoff26070C` is exported by `objslot17.js` and it is fully live: `$813082` is set for real
+ * by the type-$A record `$25C592` stages (`rank.js`'s `rankInit2605C8`, `$260666`), so the call
+ * fires and `stageStart260580` boots a stage. W392 MEASURED it both ways on a real cold boot:
+ *
+ *   WITH the call   13 -> 2 -> 12 -> 9 -> 1 -> 5 -> 2 -> 12 -> 9 -> 1 -> 5
+ *                   +1, +302, +574, +878, +1182, +1918, +4334, +4606, +4910, +5214, +5950
+ *                   ...then THREW at +5,996:
+ *                   `UNPORTED $24C4F8: option formation 4` -- 31 frames into the SECOND demo.
+ *   WITHOUT it      the same eleven transitions, and 12,000 frames without a throw.
+ *
+ * The three demo blocks hand `$26070C` (style, ship) = (2,2), (0,4) and (2,6). Demo 0's pair is
+ * inside what `handlers.js` translated; demo 1's ship 4 lands on `$24C356`'s jump-table arm
+ * `$24C4F8`, which wave 4 did not port and which no file W392 owns can supply. So driving the
+ * handoff from here does not make the attract loop cycle -- it makes it die on the second lap,
+ * on a gap in the OPTION subsystem that has nothing to do with slot [8]. Counted, with the
+ * frame number, exactly as arm 3 counts `$28C170`.
+ *
+ * Nothing else in arm 5 reads what the handoff writes: `$813080`..`$81308A` and `$81315C` are
+ * never touched by `$25C592` or `$25C6D4`, and the exit is the `$812E86` counter alone.
+ */
+function handoffNote(ctx, d0, d1) {
+  ctx?.unported?.note(ARM5SCREEN.handoff,
+    `$25C79A jsr $26070C -- arm 5's demo handoff with D0=$${d0.toString(16).toUpperCase()}, `
+    + `D1=$${d1.toString(16).toUpperCase()}, D2=D3=$FF, D4=1. handoff26070C is ported and the `
+    + '$813082 gate really is set by the type-$A record this arm stages, so the call fires and '
+    + 'boots a stage -- and 31 frames into the SECOND demo it reaches $24C4F8, option formation '
+    + '4, which wave 4 did not port. Measured: +5,996 on a cold boot. Counted so the loop laps');
+}
+
+/**
+ * `$25C6D4..$25C807`, 308 bytes -- ONE FRAME OF THE DEMO SCREEN.
+ *
+ * @returns {boolean} the CARRY. `true` (`$25C7D0 ori #$1,SR`) means still running and
+ *   `$25A9AE bcs` skips the teardown; `false` (`$25C804 move.w D0,D0`, which the 68000 defines
+ *   as clearing C) means finished and the teardown runs. Same convention arms 9, 12 and 1 use,
+ *   reached by the same two instructions.
+ *
+ * THE TWO STATES ARE FALL-THROUGH, NOT ELSE-IF (trap 7). `$25C722 bne $25C7A0` and `$25C72C
+ * bne $25C7A0` both jump to the state-1 compare, and the state-0 body's last instruction is
+ * `$25C79A jsr $26070C`, which drops straight into it. So the arming frame is also the first
+ * counted frame of `$812E86`.
+ */
+export function screen5Body25C6D4(ram, rom, ctx) {
+  const A = ARM5SCREEN;
+  banner28E7F8(ram, ctx, rom);                                 // $25C6D8 jsr $28E7F8
+  // $25C6DE lea ($25C808,PC),A0 / $25C6E2 nop / $25C6E4 adda.w $812E88,A0 / $25C6EA move.l (A0),D4
+  const d4 = rom.u32(A.animTable + ram.u16(A.anim));
+  // $25C6EC #$88 / $25C6F0 #$0 / $25C6F4 moveq #$5 / $25C6F6 moveq #$1B / $25C6F8 jsr $240DC2.
+  // SIX rows of TWENTY-EIGHT cells, and not one sprite-queue record.
+  txPrint240DC2(ram, A.drawD0, A.drawD1, A.drawD2, A.drawD3, d4);
+  if ((ram.u16(A.frameCounter) & 1) === 0) {                   // $25C6FE/$25C704/$25C708 bne
+    // $25C70C addq.w #4 / $25C712 andi.w #$F -- four entries, two frames each.
+    ram.setU16(A.anim, (ram.u16(A.anim) + A.animStep) & A.animMask);
+  }
+  if (ram.u16(A.state) === 0) {                                // $25C71A cmpi.w #$0 / $25C722 bne
+    const t = u16(ram.u16(A.timerA) - 1);                      // $25C726 subq.w #1
+    ram.setU16(A.timerA, t);
+    if (t === 0) {                                             // $25C72C bne
+      ram.setU16(A.state, 1);                                  // $25C730
+      ram.setU8(A.codecRun, 1);                                // $25C738 a BYTE -- DEAD, see below
+      ram.setU16(A.codecMode, 2);                              // $25C740 -- DEAD, see below
+      ram.setU16(A.codecMode, 1);                              // $25C748 -- and this one wins
+      // $25C750 movea.l $812E98,A0 / $25C756 adda.w $812E96,A0: prime the replay stream from
+      // its first PAIR -- a run length and a value, the two fields `$25C60C` walks.
+      const p = (ram.u32(A.script) + ((ram.u16(A.codecOff) << 16) >> 16)) >>> 0;
+      ram.setU16(A.codecRun, rom.u8(p));                       // $25C75C moveq #0 / $25C75E/$25C760
+      ram.setU8(A.codecVal, rom.u8(p + 1));                    // $25C766 move.b ($1,A0),$812E92
+      ram.setU16(A.codecOff, u16(ram.u16(A.codecOff) + 2));    // $25C76E addq.w #2
+      counterClear23BDDA(ram);                                 // $25C774 jsr $23BDDA -- SEVEN words
+      ram.setU16(SE.dff6, 1);                                  // $25C77A jsr $28E7DC
+      // $25C780..$25C79A -- the ONE-SHOT HANDOFF, the same `$26070C` the ship-select screen
+      // fires. D0/D1 are the block's two words; D2/D3 are `#$FF` (both sides "not joined",
+      // which is what `$25F460`'s `bmi` skips) and D4 is 1, where a human's is 0.
+      handoffNote(ctx, ram.u16(A.x), ram.u16(A.y));            // $25C79A jsr $26070C
+    }
+  }
+  if (ram.u16(A.state) === 1) {                                // $25C7A0 cmpi.w #$1 -- FALL-THROUGH
+    const t = u16(ram.u16(A.timerB) - 1);                      // $25C7AC subq.w #1
+    ram.setU16(A.timerB, t);
+    if (t === 0) {                                             // $25C7B2 bne
+      // $25C7B6 jsr $23C608 -- `lea $B02000 / move.w #$0` then `lea $B03000 / move.w #$0`.
+      // NOT `$23C61E`: that one runs `$23C5F2` first and sets tx_xscroll to ONE. Arm 5 enters
+      // at $23C608 and touches the BACKGROUND pair only.
+      if (ctx?.videoRegs) { ctx.videoRegs.bg_yscroll = 0; ctx.videoRegs.bg_xscroll = 0; }
+      ctx?.bgVram?.clear23C638?.();                            // $25C7BC jsr $23C638
+      camReset(ram);                                           // $25C7C2 jsr $240B0E
+      // $25C7C8 bra $25C7D6 -- THE EXIT.
+      ram.setU16(A.codecMode, 0);                              // $25C7D6
+      const n = u16(ram.u16(A.demoIndex) + 1);                 // $25C7DE addq.w #1
+      // $25C7E4 cmpi.w #$3 / $25C7EC blt -- a SIGNED compare, and the reset writes zero.
+      ram.setU16(A.demoIndex, ((n << 16) >> 16) < A.demoCount ? n : 0);
+      ram.setU16(A.demoFlag, 0);                               // $25C7FC -- the demo flag, down
+      return false;                                            // $25C804 move.w D0,D0 -- C CLEAR
+    }
+  }
+  return true;                                                 // $25C7D0 ori #$1,SR -- C SET
 }
 
 // ---------------------------------------------------------------------------------------------

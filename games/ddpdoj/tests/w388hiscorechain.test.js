@@ -284,8 +284,24 @@ test('W388 SECTION 3: the attract sequencer ADVANCES 13 -> 2 -> 12 on a plain co
       [574, 12, 2],    // ...and SIXTEEN FRAMES LATER it drained. This line is the wave.
       [878, 9, 2],     // W389: arm 12's OWN screen is ported now, so it drains too and hands on
       [1182, 1, 2],    // W390: and so does arm 9's
-      [1918, 5, 2],    // W391: and so does arm 1's. Arm 5's $25C6D4 is the last counted screen
-    ], 'the full transition list, with no state visited twice');
+      [1918, 5, 2],    // W391: and so does arm 1's.
+      // **W392 -- AND HERE THE LIST STOPS BEING A LIST AND BECOMES A CYCLE.** Arm 5's screen
+      // ($25C592/$25C6D4) is ported, its $10 and $960 counters run down in 2,415 frames, the
+      // carry comes out CLEAR and $25A9AE falls into `teardown25A9B2`, which restages slot [8]
+      // at state 2. So the sequencer comes BACK to arm 2 -- and the test's old closing clause,
+      // "with no state visited twice", is exactly what could not survive. It is replaced by the
+      // stronger statement: the second lap repeats the first, sub-state for sub-state.
+      [4334, 2, 2],    // W392: the teardown's restaged record, arm 0 -> state 2
+      [4335, 2, 0],    // ...and $25B3DC's five-word clear puts the screen's own state back to 0
+      [4351, 2, 1],    // ...the $246410 chain finishes, 16 frames in, as it did at +319
+      [4590, 2, 2],    // ...the $F0 countdown fires and state 2's chain is built, as at +558
+      [4606, 12, 2],   // ...and it drains 16 frames later, as at +574
+      [4910, 9, 2],    // ...and arm 12 hands on after its own 304, as at +878
+    ], 'the full transition list, and the SECOND lap through arm 2 repeats the first');
+    // The lap is exact, which is what says this is a cycle and not a coincidence.
+    for (const [a, b] of [[302, 4334], [319, 4351], [558, 4590], [574, 4606], [878, 4910]]) {
+      assert.equal(b - a, 4032, `+${a} and +${b} are the same point of two consecutive laps`);
+    }
   });
 
 test('W388 SECTION 3: the head node is seeded with a REAL executor pointer, a constant target '
@@ -324,7 +340,13 @@ test('W388 SECTION 3: the chain really drains, and the palette really ends BLACK
     // W391 -- was `0x0001`. Arm 1 drains its two and its $1E0 timer and hands on to arm 5 at
     // +1,918. NOT ONE of these re-bases touches anything this test measures: arm 2's fade is
     // read at +574 in every one of them, and `paletteAtDone` is sampled on that frame.
-    assert.equal(RUN.g.ram.u16(STATE), 0x0005, 'the sequencer rests on arm 5 (W391)');
+    // **W392: THERE IS NO RESTING ARM ANY MORE.** Arm 5 hands the machine back to arm 2 at
+    // +4,334 and the cycle repeats every 4,032 frames, so at +5,000 the sequencer is on arm 9
+    // of the SECOND lap. Pinning one number here would be pinning the phase of a cycle against
+    // an arbitrary window length (trap 16); what the assertion can say is that it is on the
+    // cycle, and the frame-exact version lives in `w392arm5.test.js` SECTION 4.
+    assert.ok([0x1, 0x2, 0x5, 0x9, 0xc].includes(RUN.g.ram.u16(STATE)),
+      'the sequencer is ON the attract cycle at +5,000, not parked (W392)');
   });
 
 // ===============================================================================================
@@ -358,8 +380,13 @@ test('W388 SECTION 4 ABLATION: blank the ONE field the seeding adds and the mach
 
   // SIDE BY SIDE with the unablated run, so the delta is one field and not a memory.
   assert.equal(RUN.doneFrame, 574, 'WITH the seeding: arm 12 by +574...');
-  assert.equal(RUN.g.ram.u16(STATE), 0x0005,
-    '...and on through arm 12 (W389), arm 9 (W390) and arm 1 (W391) to arm 5');
+  // W392 -- was `0x0005`. The unablated machine does not rest anywhere any more, so the contrast
+  // this line draws is between a sequencer that VISITS FIVE ARMS and one stuck on a single one.
+  // That is a stronger contrast than two different numbers, and it is what the run measured.
+  assert.deepEqual([...new Set(RUN.marks.map((m) => m[1]))].sort((x, y) => x - y),
+    [1, 2, 5, 9, 12, 13],
+    '...and on through arm 12 (W389), arm 9 (W390), arm 1 (W391) and arm 5 (W392) and back to '
+    + 'arm 2 -- SIX distinct arms where the ablation above sees exactly one');
 });
 
 // ===============================================================================================
@@ -429,22 +456,36 @@ test('W388 SECTION 6: slot [12]\'s teardown wipes both spans on the REAL game-ov
     // ever zeroes. `$8103E6` is NOT a usable marker -- it goes to zero on its own at +3,065 when
     // the player object dies, which is a different event entirely.
     const PTR = TALLY.side0 + TALLY.ptr;
-    let ptrLive = 0, teardownFrame = 0, playerLive = false;
+    // **W392 RE-BASE: SNAPSHOT THE SIX WORDS ON THE TEARDOWN FRAME, NOT AT +14,000.** Arm 5's
+    // demo screen stages dispatch type $A (`$25C5E2`/`$25C5E6`) on every attract lap, and the
+    // rank object's state-0 init writes back into the `$81308C..$813157` span this test is
+    // watching -- so by +14,000 `$813156` reads 5, not 0. The claim is about what the TEARDOWN
+    // did, and the frame to read it on is the one it happened. Nothing is relaxed: the same six
+    // values, taken where they mean what the test says they mean.
+    let ptrLive = 0, teardownFrame = 0, playerLive = false, after = null;
     for (let f = 1; f <= 14000; f++) {
       g.step(NO_PLAYER);
       if (g.ram.u32(PTR) !== 0) { ptrLive = f; playerLive = playerLive || g.ram.u16(0x8103e6) !== 0; }
-      else if (ptrLive && !teardownFrame) teardownFrame = f;
+      else if (ptrLive && !teardownFrame) {
+        teardownFrame = f;
+        after = [0x8103e6, 0x812976, 0x81308c, 0x813156, 0x8130be, 0x8130c0]
+          .map((a) => g.ram.u16(a));
+      }
     }
     assert.ok(playerLive, 'POSITIVE CONTROL: the player subsystem really was live in this run');
     assert.ok(ptrLive > 1000, `POSITIVE CONTROL: ($8,$8130FA) was installed and held to +${ptrLive}`);
     assert.ok(teardownFrame > 4000,
       `and the teardown landed at +${teardownFrame}, after the game over`);
-    assert.equal(g.ram.u16(0x8103e6), 0, '$24A810 blanked the player span');
-    assert.equal(g.ram.u16(0x812976), 0, '...to its last word $812976');
-    assert.equal(g.ram.u16(0x81308c), 0, '$2603DA blanked the rank span');
-    assert.equal(g.ram.u16(0x813156), 0, '...to its last word $813156');
-    assert.equal(g.ram.u16(0x8130be), 0xffff, '...and re-armed $8130BE to $FFFF afterwards');
-    assert.equal(g.ram.u16(0x8130c0), 0xffff, '...and $8130C0');
+    assert.equal(after[0], 0, '$24A810 blanked the player span');
+    assert.equal(after[1], 0, '...to its last word $812976');
+    assert.equal(after[2], 0, '$2603DA blanked the rank span');
+    assert.equal(after[3], 0, '...to its last word $813156');
+    assert.equal(after[4], 0xffff, '...and re-armed $8130BE to $FFFF afterwards');
+    assert.equal(after[5], 0xffff, '...and $8130C0');
+    // ...and the span really is re-used afterwards, which is why the snapshot exists.
+    assert.notEqual(g.ram.u16(0x813156), 0,
+      'POSITIVE CONTROL: by +14,000 the demo has staged the rank object again and written back '
+      + 'into the wiped span -- so a +14,000 read would be measuring arm 5, not the teardown');
   });
 
 test('W388 SECTION 6: both clears are straight-line, which is why these two and not the third',

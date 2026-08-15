@@ -458,11 +458,22 @@ async function coldBootTrace(frames) {
 test('W391 SECTION 4: on a real cold boot the sequencer runs 13 -> 2 -> 12 -> 9 -> 1 -> 5',
   { skip: SKIP_T }, async () => {
     const { g, arms } = await coldBootTrace(8000);
-    assert.deepEqual(arms, [[1, 13], [302, 2], [574, 12], [878, 9], [1182, 1], [1918, 5]],
-      'W390 measured 13 -> 2 -> 12 -> 9 -> 1 and arm 1 PARKING at +1,182. It parks no more: '
+    // **W392 RE-BASE, AND IT IS THE ONE THIS TEST ASKED FOR.** The list ended at `[1918, 5]`
+    // and the line below it said arm 5's `$25C592`/`$25C6D4` "is the next wave". It was: they
+    // are ported, arm 5's $10 and $960 counters run down in 2,415 frames, the carry comes out
+    // CLEAR and `teardown25A9B2` restages slot [8] at state 2. So the trace continues, and
+    // asserting the six-entry list would now be asserting that the loop does not close.
+    // EVERYTHING THIS TEST IS NAMED FOR IS UNCHANGED: the first six transitions are identical,
+    // frame for frame, and they are still compared as a prefix.
+    assert.deepEqual(arms.slice(0, 6), [[1, 13], [302, 2], [574, 12], [878, 9], [1182, 1],
+      [1918, 5]],
+    'W390 measured 13 -> 2 -> 12 -> 9 -> 1 and arm 1 PARKING at +1,182. It parks no more: '
       + 'arm 1 runs 736 frames and hands the machine to state 5 at +1,918');
+    assert.deepEqual(arms.slice(6), [[4334, 2], [4606, 12], [4910, 9], [5214, 1], [5950, 5]],
+      '...and W392 ports arm 5, so at +4,334 the machine comes BACK to arm 2 and walks the '
+      + 'same four arms again. The attract loop cycles; it no longer rests anywhere');
     assert.equal(g.ram.u16(SCREEN8.state), 5,
-      'and at +8,000 the machine rests on arm 5, whose $25C592/$25C6D4 screen is the next wave');
+      'and at +8,000 it is mid-demo on the second lap -- arm 5 again, 2,050 frames in');
   });
 
 test('W391 SECTION 4: the exit is 607 frames AFTER the init chain drained, which is what proves '
@@ -538,6 +549,9 @@ test('W391 SECTION 4: 8,000 frames of the real machine and the sprite queue neve
     // a short run would never reach the wrap.
     const { g } = await coldBootTrace(8000);
     assert.ok(g.ram.u16(EMIT.counter) >= 0, 'the run completed without a throw');
+    // W392 -- still 5 at +8,000, but for a different reason: the SECOND lap's arm 5, not a
+    // parked one. The claim here is that 8,000 frames of the real machine do not overflow the
+    // queue, and a cycling sequencer exercises it harder than a parked one did.
     assert.equal(g.ram.u16(SCREEN8.state), 5, 'and ended where it should');
   });
 

@@ -4108,6 +4108,173 @@ def check_arm1_chain_scripts(d: bytes) -> None:
                     f"{why[:60]}. Declare a disjoint window, never widen one.")
 
 
+# ================== W392: SLOT [8] ARM 5, THE DEMO-PLAY SCREEN, FOUR WINDOWS ==================
+#
+# Arm 5 is NOT a chain screen.  `$25C592` calls neither `$24641A` nor `$246710`,
+# so it has no init script, no load script and no fade target -- the four blocks
+# below are a POINTER TABLE, a palette bank, an animation table and the demo
+# replay streams.  Every bound is stated by CODE.
+#
+#   $25C542  the three-entry demo pointer table `$25C5B0`'s lea names, followed
+#            immediately by the three $10-byte parameter blocks it points at
+#            ($25C54E, $25C55E, $25C56E -- the table's own payload, exactly as
+#            W391's $25F868 is).  $25C542 + $3C = $25C57E, which is `41F9
+#            00812E82`, the first instruction of the clear routine `$25C59E`'s
+#            own `bsr.s` targets.  The data ends where the code begins.
+#            Its low end abuts W390's arm-9 load script: $25C530 + $12 = $25C542.
+#   $2227F8  the TX palette bank `$25C5F6 lea $2227F8,A0 / $25C5FC move.w #$C,D0
+#            / $25C600 jsr $2414BE` installs.  $2414BE copies EIGHT LONGWORDS =
+#            $20 bytes, the same size W373's $222618 window is.  $222778 + $80 =
+#            $2227F8, so this ABUTS W93's four-bank block and overlaps nothing.
+#   $25C808  the four-entry animation table `$25C6DE lea ($25C808,PC),A0` names.
+#            Its bound is the MASK: `$25C712 andi.w #$F,$812E88` caps the index
+#            at $C and `$25C6EA move.l (A0),D4` reads four bytes there, so the
+#            last byte read is $25C817 and the window is $10.  $25C808 + $10 =
+#            $25C818, which is `48E7 FFFE` -- the `movem.l` opening the next
+#            routine.  Mask and code agree.
+#   $239FB8  the THREE demo replay streams, `$812E98`'s value for demo 0, 1 and
+#            2.  Their stride is stated twice over: the three pointers in the
+#            $25C542 blocks are $800 apart, and `$25C62C cmpi.w #$800,D7` is the
+#            codec's own end-of-stream test on the same offset word `$812E96`.
+#            3 x $800 = $1800.
+W392_ARM5_TABLE = 0x25C542
+W392_ARM5_BLOCKS = (0x25C54E, 0x25C55E, 0x25C56E)
+W392_ARM5_SCRIPTS = (0x239FB8, 0x23A7B8, 0x23AFB8)
+W392_SCRIPT_SPAN = 0x800
+SHOT_WINDOWS.append(
+    (0x25C542, 0x003C, "W392: slot [8] arm 5's demo pointer table ($25C5B0's "
+                       "lea) AND the three $10-byte parameter blocks it points "
+                       "at. $25C542+$3C = $25C57E, the `lea $812E82,A0` opening "
+                       "the clear $25C59E's bsr.s targets -- data ends at code"))
+SHOT_WINDOWS.append(
+    (0x2227F8, 0x0020, "W392: arm 5's TX palette bank $C, $25C5F6's lea into "
+                       "$2414BE with D0 = $C. $2414BE copies EIGHT LONGWORDS = "
+                       "$20. $222778+$80 = $2227F8, so this ABUTS W93's block"))
+SHOT_WINDOWS.append(
+    (0x25C808, 0x0010, "W392: arm 5's four-entry animation table, $25C6DE's "
+                       "lea. The bound is the MASK: $25C712 andi.w #$F caps the "
+                       "index at $C and $25C6EA move.l reads 4 there, so $10. "
+                       "$25C808+$10 = $25C818, the `48E7 FFFE` after it"))
+SHOT_WINDOWS.append(
+    (0x239FB8, 0x1800, "W392: arm 5's THREE demo replay streams ($239FB8, "
+                       "$23A7B8, $23AFB8), read through $812E98. The $800 "
+                       "stride is stated twice: by the three pointers in the "
+                       "$25C542 blocks and by $25C62C cmpi.w #$800,D7"))
+
+
+def check_arm5_demo_windows(d: bytes) -> None:
+    """W392.  Re-derive arm 5's pointer table, its palette bank, its animation
+    table and the three demo streams from the cartridge, so a wrong length or a
+    relocated block fails the export rather than the game."""
+    # ---- THE POINTER TABLE.  TRAP 4: the EA is the EXTENSION WORD's address
+    # plus the displacement, and this displacement is NEGATIVE.
+    if u16(d, 0x25C5B0) != 0x41FA:
+        raise SystemExit("$25C5B0 is no longer `lea (d16,PC),A0` -- arm 5 does "
+                         "not name a demo pointer table here.")
+    table = 0x25C5B2 + s16(u16(d, 0x25C5B2))
+    if table != W392_ARM5_TABLE:
+        raise SystemExit(f"$25C5B0's lea resolves to ${table:06X}, not "
+                         f"${W392_ARM5_TABLE:06X}.")
+    # THREE entries, and the count is stated by the WRAP, not by the table: the
+    # index $803928 is bumped at $25C7DE and reset at $25C7F0 when it reaches 3.
+    if u16(d, 0x25C7E4) != 0x0C79 or u16(d, 0x25C7E6) != 3 \
+            or u32(d, 0x25C7E8) != 0x00803928:
+        raise SystemExit("$25C7E4 is not `cmpi.w #$3,$803928`, so the demo "
+                         "pointer table has THREE entries only by assumption.")
+    for i, want in enumerate(W392_ARM5_BLOCKS):
+        got = u32(d, table + i * 4)
+        if got != want:
+            raise SystemExit(f"$25C542 entry [{i}] points at ${got:06X}, not "
+                             f"${want:06X}.")
+    # ...and the payload blocks are the table's own far end.  Entry [0] is the
+    # first block, and $10 bytes each lands the last one exactly at $25C57E.
+    if W392_ARM5_BLOCKS[0] != table + 12:
+        raise SystemExit("the first parameter block does not follow the three "
+                         "pointers, so $3C is not one contiguous window.")
+    if W392_ARM5_BLOCKS[-1] + 0x10 != 0x25C57E:
+        raise SystemExit("the last parameter block does not end at $25C57E.")
+    if table + 0x3C != 0x25C57E:
+        raise SystemExit("the W392 table window does not end at $25C57E.")
+    # THE BOUND, STATED BY THE CODE THAT FOLLOWS: $25C57E is the clear routine.
+    if u16(d, 0x25C57E) != 0x41F9 or u32(d, 0x25C580) != 0x00812E82:
+        raise SystemExit("$25C57E is not `lea $812E82,A0`, so the pointer "
+                         "table's $3C bound is not pinned by code.")
+    # ...and $25C59E's own bsr.s is what says that address is a ROUTINE.
+    if (u16(d, 0x25C59E) & 0xFF00) != 0x6100:
+        raise SystemExit("$25C59E is not a `bsr.s`.")
+    if 0x25C5A0 + ((u16(d, 0x25C59E) & 0xFF) - 0x100) != 0x25C57E:
+        raise SystemExit("$25C59E's bsr.s does not land on $25C57E.")
+    # ABUTTING IS NOT OVERLAPPING: W390's arm-9 load script ends where this begins.
+    if 0x25C530 + 0x12 != W392_ARM5_TABLE:
+        raise SystemExit("W390's $25C530 script no longer abuts W392's $25C542.")
+    # ---- THE PALETTE BANK.  An absolute lea, and the bank number beside it.
+    if u16(d, 0x25C5F6) != 0x41F9 or u32(d, 0x25C5F8) != 0x2227F8:
+        raise SystemExit("$25C5F6 is not `lea $2227F8,A0`.")
+    if u16(d, 0x25C5FC) != 0x303C or u16(d, 0x25C5FE) != 0x000C:
+        raise SystemExit("$25C5FC is not `move.w #$C,D0` -- arm 5's TX bank "
+                         "number is not 12 and the install site is unproven.")
+    if u16(d, 0x25C600) != 0x4EB9 or u32(d, 0x25C602) != 0x002414BE:
+        raise SystemExit("$25C600 is not `jsr $2414BE`, so $2227F8 is read by "
+                         "some other installer and $20 is not its size.")
+    if 0x222778 + 0x80 != 0x2227F8:
+        raise SystemExit("W93's $222778 block no longer abuts W392's $2227F8.")
+    # ---- THE ANIMATION TABLE.  TRAP 4 again, this time a POSITIVE displacement.
+    if u16(d, 0x25C6DE) != 0x41FA:
+        raise SystemExit("$25C6DE is no longer `lea (d16,PC),A0`.")
+    anim = 0x25C6E0 + s16(u16(d, 0x25C6E0))
+    if anim != 0x25C808:
+        raise SystemExit(f"$25C6DE's lea resolves to ${anim:06X}, not $25C808.")
+    # The MASK is the bound.  $25C712 `andi.w #$F,$812E88`, and $25C6EA is a
+    # `move.l (A0),D4` -- so index $C plus four bytes is $10, and no more.
+    if u16(d, 0x25C712) != 0x0279 or u16(d, 0x25C714) != 0x000F \
+            or u32(d, 0x25C716) != 0x00812E88:
+        raise SystemExit("$25C712 is not `andi.w #$F,$812E88`, so the animation "
+                         "table has no stated bound and $10 is a guess.")
+    if u16(d, 0x25C70C) != 0x5879 or u32(d, 0x25C70E) != 0x00812E88:
+        raise SystemExit("$25C70C is not `addq.w #4,$812E88`, so the table's "
+                         "entry stride is not four bytes.")
+    if u16(d, 0x25C6EA) != 0x2810:
+        raise SystemExit("$25C6EA is not `move.l (A0),D4`.")
+    if u16(d, 0x25C818) != 0x48E7:
+        raise SystemExit("$25C818 is not the `movem.l` opening the next "
+                         "routine, so the animation table's end is unproven.")
+    # ---- THE THREE DEMO STREAMS, out of the three parameter blocks.
+    for i, block in enumerate(W392_ARM5_BLOCKS):
+        if u16(d, block) != i:
+            raise SystemExit(f"block [{i}]'s first word is ${u16(d, block):04X}"
+                             f", not {i} -- the blocks are not in index order.")
+        script = u32(d, block + 8)
+        if script != W392_ARM5_SCRIPTS[i]:
+            raise SystemExit(f"block [{i}]'s replay stream is ${script:06X}, "
+                             f"not ${W392_ARM5_SCRIPTS[i]:06X}.")
+        if script != W392_ARM5_SCRIPTS[0] + i * W392_SCRIPT_SPAN:
+            raise SystemExit(f"block [{i}]'s stream is not ${W392_SCRIPT_SPAN:X}"
+                             f" past block [0]'s.")
+    # The stride is the codec's own end-of-stream test, on the same offset word.
+    if u16(d, 0x25C62C) != 0x0C47 or u16(d, 0x25C62E) != W392_SCRIPT_SPAN:
+        raise SystemExit("$25C62C is not `cmpi.w #$800,D7`, so the replay "
+                         "streams have no code-stated extent.")
+    if u16(d, 0x25C626) != 0x3E39 or u32(d, 0x25C628) != 0x00812E96:
+        raise SystemExit("$25C626 does not load D7 from $812E96, so the $800 "
+                         "compare is not about the stream offset at all.")
+    # ...and every one of the four windows must be DECLARED at that length.
+    for base, length in ((W392_ARM5_TABLE, 0x3C), (0x2227F8, 0x20),
+                         (0x25C808, 0x10), (W392_ARM5_SCRIPTS[0], 0x1800)):
+        decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == base]
+        if decl != [(base, length)]:
+            raise SystemExit(f"${base:06X} needs ${length:X} bytes; SHOT_WINDOWS "
+                             f"declares {[(hex(a), hex(n)) for a, n in decl]}.")
+        # NEVER WIDEN A NEIGHBOUR: each new window must overlap nothing.
+        for a, ln, why in SHOT_WINDOWS:
+            if (a, ln) == (base, length):
+                continue
+            if a < base + length and base < a + ln:
+                raise SystemExit(
+                    f"the W392 window [${base:06X}, ${base + length:06X}) "
+                    f"OVERLAPS the declared window [${a:06X}, ${a + ln:06X}) -- "
+                    f"{why[:60]}. Declare a disjoint window, never widen one.")
+
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
@@ -7912,6 +8079,7 @@ def build(d: bytes) -> dict:
     check_arm12_chain_scripts(d)               # W389 -- ARM 12'S TWO SCRIPTS
     check_arm9_chain_scripts(d)                # W390 -- ARM 9'S TWO SCRIPTS
     check_arm1_chain_scripts(d)                # W391 -- ARMS 1 AND 3'S SIX BLOCKS
+    check_arm5_demo_windows(d)                 # W392 -- ARM 5'S FOUR DEMO BLOCKS
     check_sample_windows()                     # W27D -- ICS sample tight union
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
