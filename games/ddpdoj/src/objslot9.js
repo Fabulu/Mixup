@@ -1716,3 +1716,300 @@ export function draw25E824(ram, rom, ctx, a6, d7) {
   }
   // $25EB2C rts
 }
+
+export const DRAW_25E4D0 = Object.freeze({
+  addr: 0x25e4d0, end: 0x25e68d, bytes: 446,
+  // The two `4E71` pads. They are INSIDE the extent: $25E5AE closes half A and $25E68C closes half B.
+  pads: Object.freeze([0x25e5ae, 0x25e68c]),
+  // The `rts` of the routine ABOVE this one. It is at $25E47E and NOT at $25E47C: $25E478
+  // `move.l #$0019FB9C,D2` occupies $25E478..$25E47D, so $25E47C..$25E47D is that immediate's tail.
+  // Recorded because a recon put it two bytes low and the figure was about to be propagated.
+  prevRts: 0x25e47e,
+  zoomStub: 0x23e2f2,                        // emits 1, 3, 4 and 6 -- the ZOOMING register family
+  stub: 0x23dfb4,                            // emits 2 and 5 -- the plain register enqueue
+  // The half select. $25E4D0 tst.w D7 / $25E4D2 beq.w $25E5B0 (extension word at $25E4D4, +$DC).
+  halfB: 0x25e5b0, beqExt: 0x25e4d4, beqDisp: 0x00dc,
+  // Off A6. These EIGHT are the only (d16,A6) offsets in the whole 446 bytes. `($1,A6)` is NOT among
+  // them: there is no `cmpi.b` on the state byte here, so the dead-gate trap does not arise.
+  sideAt: 0x02,                              // $25E504 / $25E5DE move.w ($2,A6),D5 -- the ART INDEX
+  xAt: 0x40, yAt: 0x44,                      // read 4x each: twice per half
+  zAt: 0x4a,                                 // read 2x -- and SUBTRACTED in BOTH halves
+  wAt: 0x50,                                 // read 4x, emits 3 and 6 ONLY, as TWO separate ops
+  gateAt: 0x54,                              // $25E52E / $25E608 tst.w -- gates EMIT 2/5 ONLY
+  channelAt: 0x56,                           // $25E4F4 / $25E5CE move.l D1 -- THE ONLY RAM WRITE
+  cursorAt: 0x60,                            // $25E522 / $25E5A2 / $25E5FC / $25E680 adda.w
+  mirror2: SCHED.mirror2,                    // $80390C -- the SECOND gate on emit 2/5
+  blink: RAM.frameCounterMod4,               // $803910 -- emit 2/5's four-frame blink
+  // THE DATA PROLOGUE, $25E4C0..$25E4CF, sitting BELOW the routine's own entry. TWO 2-entry
+  // longword tables, both indexed by `D5 = 4 * ($2,A6)`.
+  artTable: 0x25e4c0,                        // emits 1 and 4's D2:  $00001520 / $00001BC4
+  ptrTable: 0x25e4c8,                        // emits 2 and 5's A0:  $0025576E / $0025583A
+  geomTable: 0x255a22,                       // $25E540 lea $255A22,A1 -- ALREADY the port's glowGeom
+  sideCount: 2, sideStep: 0x04,              // $25E508/$25E50A add.w D5,D5 twice -> D5 in {0,4}
+  // The emit-2/5 art tables the pointer table reaches, indexed by `D0 = ($803910 << 1) & 4`.
+  blinkShift: 1, blinkMask: 0x0004, blinkFrames: 4,
+  // THE TWO RAMPS, both sixteen longwords at stride 4, both indexed by the SAME `($60,A6)`.
+  // $25E68E[i] == $25E480[15-i] entry for entry: $25E480 is the sixteen-frame zoom IN and this is
+  // the same ramp backwards, a zoom OUT. So emits 1/4 zoom OUT while emits 3/6 zoom IN.
+  rampOut: 0x25e68e,                         // emits 1 and 4 -- the routine's OWN window
+  rampIn: DRAW_25E29E.ramp,                  // emits 3 and 6 -- $25E480, SHARED with $25E29E
+  rampEntries: 16, rampStep: 0x04, rampLast: 0x3c, rampBytes: 0x40,
+  // The `lea`s, resolved from their own EXTENSION WORD addresses. Emits 1/4 carry a `nop` between
+  // the lea and the adda; emits 3/6 do NOT. Named so the asymmetry is checkable.
+  leaOutA: 0x25e51c, leaOutB: 0x25e5f6, nopAfterOut: Object.freeze([0x25e520, 0x25e5fa]),
+  leaInA: 0x25e59e, leaInB: 0x25e67c,
+  // The constants every half shares.
+  biasSwapped: 0xfe80,                       // $25E4E6 / $25E5C0 addi.w, on the LONG axis
+  undoHigh: 0xfa00,                          // $25E4FA / $25E5D4 addi.w, undone at $25E560/$25E63A
+  undoLow: 0xfc00,                           // $25E500 / $25E5DA addi.w, undone at $25E568/$25E642
+  attrE1: 0x0620,                            // $25E514 / $25E5EE move.w #$620,D3
+  palE2: 0x001a,                             // $25E570 / $25E64A move.w #$1A,D4
+  artE3: 0x0019d8ec,                         // $25E590 / $25E66A move.l #$19D8EC,D2
+  attrE3: 0x1668,                            // $25E596 / $25E670 move.w #$1668,D3
+  palE3: 0x0011,                             // $25E59A / $25E674 move.w #$11,D4
+  oriE6: 0x0040,                             // $25E678 ori.w #$40,D4 -- HALF B ONLY, $11 -> $51
+  // THE TWO HALVES, in the order `sideFromD7_25D4E4` numbers them: entry 0 is half A (D7 != 0,
+  // side 0), entry 1 is half B (D7 == 0, side 1). SEVEN differences and nothing else.
+  halves: Object.freeze([
+    Object.freeze({
+      at: 0x25e4d6, name: 'A',
+      base1: 0x37800d40,                     // 1. $25E4D6 move.l #$37800D40,D1
+      addXY: false,                          // 2. $25E4DC/$25E4E0 sub.w -- half B ADDs
+      bias: 0x0780,                          // 4. $25E4F0 addi.w #$780
+      palE1: 0x0000,                         // 5. $25E518 move.w #$0,D4
+      base3: 0x21810040, addXY3: false,      // 6. $25E57A + four sub.w
+      ori: 0x0000,                           // 7. no ori.w -- half B's is the one extra instruction
+      emits: Object.freeze([0x25e528, 0x25e574, 0x25e5a8]),
+    }),
+    Object.freeze({
+      at: 0x25e5b0, name: 'B',
+      base1: 0x37802a80,
+      addXY: true,
+      bias: 0xf880,
+      palE1: 0x0001,
+      base3: 0x21811d80, addXY3: true,
+      ori: 0x0040,
+      emits: Object.freeze([0x25e602, 0x25e64e, 0x25e686]),
+    }),
+  ]),
+});
+
+/** The cursor and side-index bound checks, shared by both halves. `null` means "in range"; anything
+ *  else is the note text that has already been filed. Both bounds are stated by CODE, not by
+ *  adjacency: `($60,A6)` is seeded at `$25D51C`, advanced by `$25D7B6 addq.w #4` and stopped by
+ *  `$25D7AC cmpi.w #$3C / beq`, and `($2,A6)` is wrapped to `{0,1}` by the state-1 handler's own
+ *  `$25D1FA bge` / `$25D1FC move.w #$1` and `$25D21E cmpi.w #$1` / `$25D226 move.w #$0`. */
+function bounds25E4D0(ctx, side, cursor) {
+  const D = DRAW_25E4D0;
+  const hex = (v) => `$${v.toString(16).toUpperCase()}`;
+  if (side >= D.sideCount) {
+    // $25E510 move.l (0,A0,D5.w),D2 with A0 = $25E4C0, and $25E546 with A0 = $25E4C8. The declared
+    // window is exactly $25E4C0..$25E4CF, which is the two tables and nothing else.
+    ctx.unported?.note(0x25e510, `${hex(0x25e510)} -- ($2,A6) = ${hex(side)} indexes the two-entry `
+      + `tables at ${hex(D.artTable)} and ${hex(D.ptrTable)} past their second entry. $25D1FA and `
+      + `$25D21E bound it to {0,1} and ${hex(D.artTable)}..${hex(D.artTable + 0x0f)} is the only `
+      + 'ROM declared for it. No ROM is read for that index');
+    return true;
+  }
+  if (cursor > D.rampLast || (cursor & (D.rampStep - 1)) !== 0) {
+    // Both ramps are $40 bytes and take the SAME cursor, so one check covers emits 1/4 and 3/6.
+    ctx.unported?.note(D.leaOutA, `${hex(D.leaOutA)} -- ($60,A6) = ${hex(cursor)} indexes the zoom `
+      + `ramps ${hex(D.rampOut)}..${hex(D.rampOut + D.rampBytes - 1)} (emits 1/4, the zoom OUT) and `
+      + `${hex(D.rampIn)}..${hex(D.rampIn + D.rampBytes - 1)} (emits 3/6, the zoom IN) outside the `
+      + 'sixteen longwords $25D51C/$25D7AC/$25D7B6 bound it to. No ROM is read for that cursor');
+    return true;
+  }
+  return false;
+}
+
+/** One half of `$25E4D0`. The two are PEERS, not mutually recursive: neither branches to the other,
+ *  unlike `$25EF30`'s pair. `h` carries the SEVEN differences and nothing else. */
+function half25E4D0(ram, rom, ctx, a6, h) {
+  const D = DRAW_25E4D0;
+  const cursor = ram.u16(a6 + D.cursorAt);
+  const side = ram.u16(a6 + D.sideAt);                        // $25E504 / $25E5DE move.w ($2,A6),D5
+  if (bounds25E4D0(ctx, side, cursor)) return;
+  // $25E508/$25E50A add.w D5,D5 TWICE -- D5 is a BYTE offset of 4 * ($2,A6), not an entry index.
+  const d5 = u16(u16(side * 2) * 2);
+  // **D5 IS INHERITED ACROSS THE EMIT-1 `jsr $23E2F2`** and is read again at $25E546 and $25E55A.
+  // $23E2F2 does `movem.l D4/D7/A0` and never touches D5, so it is loaded here ONCE.
+
+  const x = ram.u16(a6 + D.xAt);                              // ($40,A6)
+  const y = ram.u16(a6 + D.yAt);                              // ($44,A6)
+  const z = ram.u16(a6 + D.zAt);                              // ($4A,A6)
+
+  // ---- D1, built as an explicit (high, low) pair so every `swap` is a real step.
+  // $25E4D6 / $25E5B0 move.l #$37800D40,D1 (half B: #$37802A80).
+  let hi = (h.base1 >>> 16) & 0xffff;
+  let lo = h.base1 & 0xffff;
+  // $25E4DC/$25E4E0 sub.w, and $25E5B6/$25E5BA add.w. THE SHORT AXIS IS MIRRORED.
+  lo = u16(h.addXY ? lo + x : lo - x);
+  lo = u16(h.addXY ? lo + y : lo - y);
+  [hi, lo] = [lo, hi];                                       // $25E4E4 / $25E5BE swap
+  lo = u16(lo + D.biasSwapped);                              // $25E4E6 / $25E5C0 addi.w #$FE80
+  // $25E4EA sub.w ($4A,A6),D1 AND $25E5C4 sub.w ($4A,A6),D1 -- **SUB IN BOTH HALVES**. The LONG
+  // axis is NOT mirrored. Making this an `add` on half B is the single most plausible wrong port
+  // of this routine, and it is wrong: the cartridge really does subtract on both sides.
+  lo = u16(lo - z);
+  [hi, lo] = [lo, hi];                                       // $25E4EE / $25E5C8 swap
+  lo = u16(lo + h.bias);                                     // $25E4F0 addi.w #$780 (B: #$F880)
+
+  // ---- $25E4F4 / $25E5CE move.l D1,($56,A6). **THE ONLY RAM WRITE IN THE WHOLE 446 BYTES**, and
+  // it is a CROSS-ROUTINE CHANNEL of the same class as ($2C,A6). It is written ONLY by these two
+  // halves and read ONLY at $25D71C `move.l ($56,A6),D0`, which immediately also reads ($56,A0) --
+  // the OTHER record's copy -- `exg`s the pair on one side and feeds both to $2603FE behind a
+  // once-only latch on $812F80. $25D71C sits at a LOWER address than the $25D814 call that reaches
+  // this routine, so it consumes the value written on the PREVIOUS frame.
+  //
+  // **THE STORED VALUE IS EMIT 2's ANCHOR, not emit 1's and not emit 3's.** It is captured HERE,
+  // before the two `addi.w` below, and those two are exactly what $25E560/$25E568 subtract back off
+  // to rebuild emit 2's D1. Move this write one instruction later and the channel carries emit 1's
+  // coordinates instead, which is a different sprite by $600 on the long axis and $400 on the short.
+  ram.setU32(a6 + D.channelAt, ((hi << 16) | lo) >>> 0);
+
+  [hi, lo] = [lo, hi];                                       // $25E4F8 / $25E5D2 swap
+  lo = u16(lo + D.undoHigh);                                 // $25E4FA / $25E5D4 addi.w #$FA00
+  [hi, lo] = [lo, hi];                                       // $25E4FE / $25E5D8 swap
+  lo = u16(lo + D.undoLow);                                  // $25E500 / $25E5DA addi.w #$FC00
+
+  // ---- EMIT 1 / EMIT 4. Everything fresh. $25E51C lea ($25E68E,PC),A0 / $25E520 NOP / $25E522
+  // adda.w ($60,A6),A0 / $25E526 move.l (A0),D6. The `nop` is real cartridge padding between the
+  // lea and the adda -- named rather than silently dropped, because emits 3/6 do NOT have one.
+  const d6out = rom.u32(D.rampOut + cursor);                 // the zoom-OUT ramp
+  enqueueZoomedRegistersThroughStub(ram, rom, D.zoomStub, ((hi << 16) | lo) >>> 0,
+    rom.u32(D.artTable + d5),                                // $25E510 move.l (0,A0,D5.w),D2
+    D.attrE1,                                                // $25E514 move.w #$620,D3
+    h.palE1,                                                 // $25E518 move.w #$0,D4 (half B: #$1)
+    d6out);                                                  // $25E528 / $25E602 jsr $23E2F2
+
+  // ---- EMIT 2 / EMIT 5. TWO GATES, BOTH LIVE, and both skip THIS EMIT ONLY -- emit 3/6 below is
+  // reached either way and rebuilds every register from scratch, so the skipped path is safe.
+  // $25E52E tst.w ($54,A6) / beq.s and $25E534 tst.w $80390C / beq.s, both landing on $25E57A.
+  // **NEITHER SIDE FLIPS THIS EMIT.** Emits 2 and 5 are byte-identical apart from their branch
+  // displacements: same A1 struct, same D4 = $001A, same D3 out of the struct. That
+  // asymmetry-in-symmetry is real -- do not "fix" it by mirroring it like emits 1/4 and 3/6.
+  if (ram.u16(a6 + D.gateAt) !== 0 && ram.u16(D.mirror2) !== 0) {
+    // $25E53C lea ($25E4C8,PC),A0 / $25E546 movea.l (0,A0,D5.w),A0 -> $25576E or $25583A.
+    const a0 = rom.u32(D.ptrTable + d5);
+    // $25E54A move.w $803910,D0 / $25E550 lsl.w #1,D0 / $25E552 andi.w #$4,D0. The counter runs
+    // 0..3 and this collapses it to {0,0,4,4}: a 2-on/2-off FOUR-FRAME BLINK between two arts.
+    const d0 = u16(u16(ram.u16(D.blink) << D.blinkShift) & D.blinkMask);
+    const d2 = rom.u32(a0 + d0);                             // $25E556 move.l (0,A0,D0.w),D2
+    // $25E55A movea.l (0,A1,D5.w),A1 with A1 = $255A22 -> $255A2A (s=0) or $255A30 (s=1). Three
+    // words, read with `(A1)+` twice and then once more: the {bias, dx, size} layout shipsprite.js
+    // already calls `glowGeom`, which is an independent confirmation of the same three constants.
+    let a1 = rom.u32(D.geomTable + d5);
+    // **D1 IS INHERITED-AND-MODIFIED, not rebuilt.** $23E2F2 preserves D1 across emit 1's jsr, and
+    // these two `subi.w` are the exact inverses of $25E4FA and $25E500 -- they walk D1 back to the
+    // value ($56,A6) already holds, and then the struct's two words are added on top.
+    [hi, lo] = [lo, hi];                                     // $25E55E / $25E638 swap
+    lo = u16(lo - D.undoHigh);                               // $25E560 subi.w #$FA00 -- UNDOES $FA00
+    lo = u16(lo + rom.u16(a1));                              // $25E564 add.w (A1)+,D1 -- w0
+    a1 += 2;
+    [hi, lo] = [lo, hi];                                     // $25E566 / $25E640 swap
+    lo = u16(lo - D.undoLow);                                // $25E568 subi.w #$FC00 -- UNDOES $FC00
+    lo = u16(lo + rom.u16(a1));                              // $25E56C add.w (A1)+,D1 -- w1
+    a1 += 2;
+    const d3 = rom.u16(a1);                                  // $25E56E move.w (A1)+,D3 -- w2
+    a1 += 2;
+    void a1;
+    // $25E570 move.w #$1A,D4 / $25E574 jsr $23DFB4 -- the NON-zooming stub, and the only one here.
+    enqueueRegistersThroughStub(ram, rom, D.stub, ((hi << 16) | lo) >>> 0, d2, d3, D.palE2);
+  }
+
+  // ---- EMIT 3 / EMIT 6. EVERYTHING FRESH: nothing at all survives from emits 1 and 2 into this
+  // block, which is why the gate-skipped path above needs no repair. $25E57A move.l #$21810040,D1
+  // (half B: #$21811D80).
+  let hi3 = (h.base3 >>> 16) & 0xffff;                       // $2181 on BOTH halves
+  let lo3 = h.base3 & 0xffff;
+  // $25E580/$25E584 sub.w ($40,A6)/($44,A6) -- half B's $25E65A/$25E65E add.w. RE-READ from RAM,
+  // not carried from the top: that is what makes the "x4" read counts in the doc comment literal,
+  // and it is what would show if anything downstream ever started writing these fields.
+  const x3 = ram.u16(a6 + D.xAt);
+  const y3 = ram.u16(a6 + D.yAt);
+  lo3 = u16(h.addXY3 ? lo3 + x3 : lo3 - x3);
+  lo3 = u16(h.addXY3 ? lo3 + y3 : lo3 - y3);
+  // **$25E588 AND $25E58C ARE TWO SEPARATE `sub.w ($50,A6),D1`, NOT A SHIFT.** So the term is -2W
+  // (half B: +2W at $25E662/$25E666). Collapse the pair into one and the sprite lands at half its
+  // offset -- the same trap `$25E29E` and `$25E6CE` document.
+  const w = ram.u16(a6 + D.wAt);
+  lo3 = u16(h.addXY3 ? lo3 + w : lo3 - w);
+  lo3 = u16(h.addXY3 ? lo3 + w : lo3 - w);
+  // $25E59A move.w #$11,D4, then $25E678 ori.w #$40,D4 on HALF B ONLY -- the one extra instruction
+  // in the whole routine, and the only thing that separates emit 6's D4 ($51) from emit 3's ($11).
+  const pal3 = u16(D.palE3 | h.ori);
+  // $25E59E lea ($25E480,PC),A0 -- and there is **NO nop here**, where emits 1/4 have one.
+  const d6in = rom.u32(D.rampIn + cursor);                   // the zoom-IN ramp, SHARED with $25E29E
+  enqueueZoomedRegistersThroughStub(ram, rom, D.zoomStub, ((hi3 << 16) | lo3) >>> 0,
+    D.artE3, D.attrE3, pal3, d6in);                          // $25E5A8 / $25E686 jmp -- TAIL CALL
+}
+
+/** `$25E4D0` -- **THE EIGHTH AND LAST of the shared select-screen draws**, `$25E4D0..$25E68D`,
+ *  **446 bytes** and **THREE EMITS PER SIDE**. Its DATA PROLOGUE sits BELOW its entry, at
+ *  `$25E4C0..$25E4CF`, exactly as `$25EDF8`'s 660-byte block sits below its.
+ *
+ *  **IT IS TWO PEER HALVES, NOT A BODY PLUS A SUBROUTINE AND NOT A RECURSIVE PAIR.** `$25E4D0
+ *  tst.w D7 / beq.w $25E5B0` picks one and neither half branches to the other -- so unlike
+ *  `$25EF30` there is no `bsr`, no other-record `tst.b` and no possibility of both halves running
+ *  in one call. `sideFromD7_25D4E4` INVERTS D7, so **D7 != 0 is side 0 and takes HALF A**, and
+ *  **D7 == 0 is side 1 and takes HALF B**.
+ *
+ *  **SEVEN DIFFERENCES SEPARATE THE HALVES, AND ONE EXPECTED DIFFERENCE IS ABSENT.**
+ *
+ *      1  #$37800D40                 vs  #$37802A80
+ *      2  sub.w ($40)/($44)          vs  ADD.W both        -- the SHORT axis IS mirrored
+ *      3  sub.w ($4A,A6)             vs  sub.w ($4A,A6)    -- **SUB IN BOTH. NOT mirrored.**
+ *      4  addi.w #$780               vs  addi.w #$F880
+ *      5  move.w #$0,D4              vs  move.w #$1,D4
+ *      6  #$21810040 + four sub.w    vs  #$21811D80 + four ADD.W
+ *      7  (nothing)                  vs  $25E678 ori.w #$40,D4 -- the ONE extra instruction
+ *
+ *  Difference 3 is the one a port invents. The long axis is genuinely subtracted on both sides.
+ *
+ *  **EMITS 2 AND 5 ARE NOT MIRRORED EITHER.** They are byte-identical apart from their branch
+ *  displacements: the same `$255A22` struct, the same `D4 = $001A`, the same D3 out of the struct.
+ *  In a routine whose other four emits mirror cleanly that reads like an oversight; it is what the
+ *  cartridge does, and it is pinned by a test.
+ *
+ *  **THE ONLY RAM WRITE IS `($56,A6)`, AND IT IS A CROSS-ROUTINE CHANNEL.** Written ONLY at
+ *  `$25E4F4` and `$25E5CE`, read ONLY at `$25D71C move.l ($56,A6),D0`, which in the same breath
+ *  reads `($56,A0)` -- the OTHER record's copy -- `exg`s the pair on one side and hands both to
+ *  `$2603FE` behind a once-only latch on `$812F80`. `$25D71C` is at a LOWER address than the
+ *  `$25D814` call that reaches here, so it consumes the PREVIOUS frame's value. **The stored long
+ *  is EMIT 2's anchor**, captured before the `$FA00`/`$FC00` pair that emit 1 uses and that
+ *  `$25E560`/`$25E568` subtract straight back off. That is the only reason the write exists.
+ *
+ *  **TWO GATES, BOTH LIVE, AND BOTH SKIP EMIT 2 ONLY.** `tst.w ($54,A6)` (set by `$25D6EE move.w
+ *  #$1`, cleared by `$25D0BE clr.w`) and `tst.w $80390C` (`SCHED.mirror2`) both branch to the emit
+ *  3 head. **There is NO `cmpi.b` on `($1,A6)` anywhere in the routine and `($1,A6)` is never
+ *  read**, so the dead-gate trap that cost two withdrawn claims this wave does not arise here.
+ *
+ *  **FRESH VERSUS INHERITED.** Emits 1/4 are entirely fresh. Emits 2/5 inherit **D1** -- rebuilt by
+ *  undoing two `addi.w` and adding the struct's first two words -- and inherit **D5** across the
+ *  emit-1 `jsr $23E2F2`, where it is load-bearing at `$25E546` and `$25E55A`. (`$23E2F2` `movem`s
+ *  D4/D7/A0 and touches neither D5 nor D0.) Emits 3/6 are entirely fresh again, which is what makes
+ *  the gate-skipped path safe without any repair.
+ *
+ *  **THE TWO RAMPS ARE THE SAME RAMP BACKWARDS.** `$25E68E[i] == $25E480[15-i]` for all sixteen
+ *  entries. `$25E480` is `$25E29E`'s sixteen-frame zoom IN (`$8000 + $800*i`); `$25E68E` is that run
+ *  backwards, a zoom OUT. Both are indexed by the SAME `($60,A6)` in `{0, 4, ..., $3C}`, so on every
+ *  frame emits 1 and 4 zoom out exactly as far as emits 3 and 6 zoom in.
+ *
+ *  **THE `nop` ASYMMETRY IS REAL.** `$25E520` and `$25E5FA` pad between emit 1/4's `lea` and its
+ *  `adda.w`; emit 3/6's `lea` at `$25E59E`/`$25E67C` has no pad at all.
+ *
+ *  Reads: `($2,A6)`, `($40,A6)` x4, `($44,A6)` x4, `($4A,A6)` x2, `($50,A6)` x4 (emits 3/6 only),
+ *  `($54,A6)`, `($60,A6)` x4, `$80390C`, `$803910`, all WORDS. **`$813098` and `($2C,A6)` are NOT
+ *  touched** -- this is the only one of the eight with no `$813098` loop gate at all.
+ *  Inherited: **A6 and D7**.
+ *
+ *  **IT IS DELIBERATELY UNWIRED.** Its only call site is `$25D814`, inside `$25D560` -- state 7's
+ *  handler, which is not ported. It is NOT in either of the two ported confirm tails, so it is
+ *  exported and left unreferenced rather than being given an invented caller. */
+export function draw25E4D0(ram, rom, ctx, a6, d7) {
+  // $25E4D0 tst.w D7 -- a WORD test, so mask, the same reason `sideFromD7_25D4E4` and `draw25EF30`
+  // do. `sideFromD7_25D4E4(d7)` IS this index: D7 != 0 -> 0 -> half A, D7 == 0 -> 1 -> half B.
+  const side = u16(d7) !== 0 ? 0 : 1;                        // $25E4D2 beq.w $25E5B0 takes half B
+  half25E4D0(ram, rom, ctx, a6, DRAW_25E4D0.halves[side]);
+  // $25E5AE / $25E68C nop -- the two pads, and the last bytes of the routine's extent.
+}

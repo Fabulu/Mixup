@@ -2906,6 +2906,24 @@ SHOT_WINDOWS.extend([
     (0x223EF8, 0x0040, "W373: slot [9] record-state-0 palette, bank 15 through $24150A. Sixty-four "
                        "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
                        "slot [17]; this one is slot [9]'s own"),
+    # ---- W374: $25E4D0's two tables ----------------------------------------------------------
+    (0x25E4C0, 0x0010, "W374: $25E4D0's DATA PROLOGUE, sitting BELOW its own entry. Two 2-entry "
+                       "longword tables: +$0 the art for emits 1 and 4 ($1520/$1BC4), +$8 the "
+                       "pointers for emits 2 and 5 ($25576E/$25583A). Both indexed by D5 = 4 * "
+                       "($2,A6). THE BOUND IS THE INDEX, not adjacency: ($2,A6) is proven to be "
+                       "{0,1} by the state-1 handler's own wraps -- $25D1FA bge / $25D1FC "
+                       "move.w #$1 on the way down and $25D21E cmpi.w #$1 / $25D226 move.w #$0 on "
+                       "the way up, with $25D010/$25D022 seeding 0. So D5 is {0,4} and each table "
+                       "is exactly two entries"),
+    (0x25E68E, 0x0040, "W374: $25E4D0's D6 zoom ramp, SIXTEEN longwords -- and it is the EXACT "
+                       "MIRROR of $25E480's: $25E68E[i] == $25E480[15-i], verified entry by entry. "
+                       "$25E480 is the sixteen-frame zoom IN ($8000 + $800*i); this is the same "
+                       "ramp read backwards, a zoom OUT. So emits 1 and 4 zoom out over the same "
+                       "frames that emits 3 and 6, and all of $25E29E, zoom in. Same cursor and "
+                       "same code-stated bound: ($60,A6) is initialised at $25D51C, advanced only "
+                       "by $25D7B6 addq.w #4 and capped by $25D7AC cmpi.w #$3C, so it is "
+                       "{0,4,..,$3C} and move.l (A0),D6 at offset $3C ends at $25E6CD -- one byte "
+                       "below $25E6CE, which is draw25E6CE's first opcode"),
     # ---- W374: $25E824's four tables ---------------------------------------------------------
     # Bounds come from the LARGEST DISPLACEMENT each table is read at, not from adjacency. They do
     # also tile $25E7B8..$25E823 exactly, ending on the routine's own first opcode at $25E824, with

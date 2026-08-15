@@ -71,7 +71,7 @@ The docstrings, the wiring comment and the test names all now carry the withdraw
 warning rather than as a fact, because the tests themselves were always right: they pin the
 FUNCTION's gate, which behaves correctly whichever state it is handed.
 
-### W374 STATE: SUITE 2838/2838 ZERO SKIPS, GATE EXIT 0, 527 ROM WINDOWS
+### W374 STATE: SUITE 2851/2851 ZERO SKIPS, GATE EXIT 0, 529 ROM WINDOWS
 
 Up from 2730 at the start of the wave. **Three more shared draws are PORTED, DRIVEN AND WIRED:**
 
@@ -95,14 +95,41 @@ sprites on screen. `$25E6CE` is wired into the bit-1 arm.
 `confirmAndDraw` now takes **`d7`** as a trailing argument, because `$25EF30` needs the side to pick
 which record it reads across to. Both call sites pass it.
 
-**ONE OF THE EIGHT REMAINS: `$25E4D0`.** **SEVEN ARE PORTED**: `$25E220`, `$25E6CE`, `$25EF30`,
-`$25EDF8`, `$25F074`, `$25E29E` and `$25E824`.
+### **ALL EIGHT SHARED DRAWS ARE PORTED.** `$25E220`, `$25E29E`, `$25E4D0`, `$25E6CE`, `$25E824`, `$25EDF8`, `$25EF30`, `$25F074`.
 
-**`$25E4D0` IS THE LAST ONE**, and it is the only draw NOT reachable from states 1 or 4 -- its one
-call site `$25D814` is in `$25D560`'s tail, so it needs state 7. Shape already known:
-`$25E4D0..$25E68D`, 958 bytes, ONE routine with two per-side halves opening `tst.w D7 / beq.w
-$25E5B0`, three emits each (two via `$23E2F2`, one via `$23DFB4`), both halves `lea`ing the same
-`$25E68E` table.
+Seven are WIRED into `confirmAndDraw`. **`$25E4D0` is deliberately NOT wired and that is correct:**
+its only call site is `$25D814`, inside `$25D560`'s tail, and `$25D560` is unported. It is exported
+and unreferenced on purpose. **Do not "fix" that by adding it to `confirmAndDraw`** -- it is in
+neither of the two ported tails, and inventing a caller would draw it on the wrong screens.
+
+**`$25E4D0` is 446 bytes, not the 958 I first claimed** (`$25E4D0..$25E68D`, with `4E71` pads at
+`$25E5AE` and `$25E68C`), plus a 16-byte DATA PROLOGUE at `$25E4C0..$25E4CF` sitting BELOW its own
+entry. Two per-side halves that are **peers, not mutually recursive** -- unlike `$25EF30`. Three
+emits each.
+
+**Its `$25E68E` ramp is the EXACT MIRROR of `$25E480`'s** -- `$25E68E[i] == $25E480[15-i]`, verified
+all sixteen entries. `$25E480` is the sixteen-frame zoom IN; this is the same ramp read backwards, a
+zoom OUT. **So within one routine, emits 1 and 4 zoom OUT over the same frames that emits 3 and 6
+zoom IN**, off the same `($60,A6)` cursor.
+
+**Its long axis is NOT mirrored.** Half A subtracts `($40,A6)`/`($44,A6)` where half B adds -- but
+**both SUBTRACT `($4A,A6)`**. A port that mirrors all three looks symmetrical and is wrong.
+
+**`($56,A6)` IS A SECOND CROSS-ROUTINE CHANNEL, the same class as `($2C,A6)`.** Written ONLY by
+`$25E4D0`'s two halves, read ONLY at `$25D71C`, which also reads the OTHER record's `($56,A0)`,
+`exg`s the pair on one side and feeds it to `$2603FE` behind a once-only latch on `$812F80`.
+`$25D71C` is at a LOWER address than the `$25D814` call, so it consumes the PREVIOUS frame's value.
+**The stored value is emit 2's anchor**, not emit 1's or emit 3's -- that is the only reason the
+write exists.
+
+Two things the port found that are worth carrying:
+
+* **Bucket-0 D1 packing is `asr.l #6` on the FULL long**, so the emitted low word is contaminated by
+  the high word's low bits and masked to ten bits. **Emitted words are NOT linear in the record
+  fields.** A test asserting a linear relation will fail for the right reason and mislead; compare
+  against the real emitter instead.
+* **A two-byte sweep for `ori.w #imm,D4` (`0044`) has false positives** -- `0044` is also the
+  displacement word of `sub.w ($44,A6),D1`. Scan the full longword.
 
 ### `$25F074` IS PORTED, AND IT IS THE ONE WITH NO CANCELLING CHAINS
 
