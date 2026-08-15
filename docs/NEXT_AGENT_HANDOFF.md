@@ -71,6 +71,30 @@ The docstrings, the wiring comment and the test names all now carry the withdraw
 warning rather than as a fact, because the tests themselves were always right: they pin the
 FUNCTION's gate, which behaves correctly whichever state it is handed.
 
+### THE FOUR UNTOUCHED DISPATCH SLOTS ARE SMALL AT THEIR ENTRY
+
+Measured to each one's FIRST `rts`, so treat these as a FLOOR, not the routine's true end -- a
+dispatcher's arms usually live below its entry, the way `objSlot9`'s do:
+
+    [8]  $25A770   ~188 B to $25A82A   TEN distinct callees
+    [12] $28F3AC    ~76 B to $28F3F6   zero callees before the first rts
+    [16] $256E7A    ~74 B to $256EC2   zero
+    [19] $28EE88    ~30 B to $28EEA4   zero
+
+All four are UNPORTED (checked with a positive control). **Slot [14] `$288C6C` IS ported**
+(`objslot14.js`), which the old "nine slots untouched" line did not reflect.
+
+The full dispatch table `$240F62`, for reference -- handler and priority, twenty entries:
+
+    [0] $28D520/$0009  [1] $26127A/$001A  [2] $2491C0/$001C  [3] $249246/$001B
+    [4] $260B30/$0009  [5] $28B5E0/$0018  [6] $28D63C/$000A  [7] $290BE8/$001E
+    [8] $25A770/$000A  [9] $25CACA/$000A  [10] $260794/$001F [11] $25DBB4/$000A
+    [12] $28F3AC/$0009 [13] $288A60/$000B [14] $288C6C/$0014 [15] $291F66/$001E
+    [16] $256E7A/$001E [17] $25CEB8/$000A [18] $24902A/$000A [19] $28EE88/$001E
+
+**That table is also the trap-12 lookup**: `stageCreate`'s priority argument must be
+`rom.u16(0x240F62 + t * 8 + 4)`, and the column above is what it returns.
+
 ### PUBLISH IS DUE NEXT WAVE (W375), AND W374 ADDED 31 WINDOWS -- `export-web.mjs` IS MANDATORY
 
 Last publish was W370 (`20260813164141`); the cadence is every FIFTH wave, so **W375 publishes**.
