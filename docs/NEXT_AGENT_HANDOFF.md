@@ -33,6 +33,28 @@ So the living DaiOuJou docs are exactly three: **`DOCKET.md`, `ORCHESTRATOR_BRIE
 file.** `D12`'s claim that the reference docs "predate stages 3 and 4" was false and is corrected in
 place.
 
+### USE `tools/claimed.py`. MY AD-HOC GREPS WERE WRONG THREE TIMES IN ONE CHECK.
+
+I ran a quick `grep -v "note(" | grep -v comment-lines` over the boot-path routines and it reported
+`$23BEEA`, `$23C98E` and `$23C9F0` as PORTED. **All three are prose.** The filter failed because
+`objslot9.js:380` is a **continuation line of a `note()` string** -- it carries no `note(` and is not
+a comment, so both filters missed it. That is trap 17 in its purest form.
+
+`python tools/claimed.py <addrs>` gets it right, classifies every mention as CODE / NOTE / COMMENT,
+and warns `** THIN` when the only CODE mention is a bare address constant -- which is exactly how
+`$24107C` was correctly identified as named-but-never-implemented. **The brief already says to prefer
+it. Do.**
+
+**THE BOOT PATH, AUTHORITATIVE:**
+
+    $23BEEA   NO CODE LITERAL -- prose, plus its five palette installs modelled in palette.js
+    $2412FE   NO CODE LITERAL -- palette.js says explicitly it is NOT replayed, deliberately
+    $24107C   CLAIMED         -- ported W375, objalloc.js
+    $25A770   UNCLAIMED       -- the credit gate, ~3.2 KB
+    $23C956   UNCLAIMED       -- the coins accessor
+    $23C98E   NO CODE LITERAL -- P1 credit consumer, 3 of 5 mentions inside note() strings
+    $23C9F0   NO CODE LITERAL -- P2 credit consumer
+
 ### PART OF THE BOOT PATH IS ALREADY PORTED -- DO NOT DUPLICATE IT
 
 The recon reported `$23BEEA` as unported. **That is true of the routine as a whole and misleading
