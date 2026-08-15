@@ -387,12 +387,15 @@ test('W384 RAM is NOT a fixed point -- thousands of bytes move over the run\'s l
   // **W389 MOVES IT ONE ARM FURTHER AGAIN**, for the same incidental reason: arm 12's own screen
   // (`$25C2AE`/`$25C2EA`) is ported now, it drains its two chains and `$25AA2C` sets state 9.
   // **AND W390 MOVES IT ONE MORE**: arm 9's screen (`$25C3E8`/`$25C424`) is ported, it drains ITS
-  // two chains and `$25AA02` sets state 1. Arm 1 is the new unported end of the chain -- its
-  // `$25BD7C` demo body is the last counted screen between here and a closed attract loop. This
-  // test's CLAIM -- that RAM keeps moving -- is made by the byte-count assertions above and is
-  // untouched; only the incidental arm number could not survive, for the fourth wave running.
-  assert.equal(RUN.g.ram.u16(STATE), 0x0001,
-    'slot [8] is on arm 1 -- 2 -> 12 (W388), 12 -> 9 (W389), 9 -> 1 (W390)');
+  // two chains and `$25AA02` sets state 1.
+  // **AND W391 ONE MORE AGAIN**: arm 1's demo screen (`$25BBB4`/`$25BD7C`) is ported, it drains
+  // its two chains and its $1E0 timer and `$25A908` sets state 5. Arm 5 is the new unported end
+  // of the chain -- its `$25C6D4` body is the LAST counted screen between here and a closed
+  // attract loop, because `teardown25A9B2` behind its carry is already ported. This test's
+  // CLAIM -- that RAM keeps moving -- is made by the byte-count assertions above and is
+  // untouched; only the incidental arm number could not survive, for the fifth wave running.
+  assert.equal(RUN.g.ram.u16(STATE), 0x0005,
+    'slot [8] is on arm 5 -- 2 -> 12 (W388), 12 -> 9 (W389), 9 -> 1 (W390), 1 -> 5 (W391)');
 });
 
 // =============================================================================================

@@ -602,11 +602,12 @@ test('W389 SECTION 5: the two exits are arm 2\'s exactly -- carry SET runs, carr
     assert.equal(SCREEN12.emit, 0x23dece, 'which is the stub objslot8.js names');
   });
 
-// **W390 RE-BASES THE TAIL OF THIS LIST, AND ONLY THE TAIL.** Arm 9's screen ($25C3E8/$25C424)
-// is ported now too, so the machine does not stop at 9 either: it drains arm 9's two chains and
-// hands on to arm 1 at +1,182. Everything this test is NAMED for -- arm 12 running its screen and
-// advancing to 9 at +878 -- is measured unchanged; the fifth entry is new and arm 12's own screen
-// state is still checked at 2.
+// **W390 AND THEN W391 RE-BASE THE TAIL OF THIS LIST, AND ONLY THE TAIL.** Arm 9's screen
+// ($25C3E8/$25C424) is ported now too, so the machine does not stop at 9; and W391 ports arm 1's
+// ($25BBB4/$25BD7C), so it does not stop at 1 either -- it drains arm 1's two chains and its $1E0
+// timer and hands on to arm 5 at +1,918. Everything this test is NAMED for -- arm 12 running its
+// screen and advancing to 9 at +878 -- is measured unchanged; the fifth and sixth entries are new
+// and arm 12's own screen state is still checked at 2.
 test('W389 SECTION 5: on a real cold boot arm 12 RUNS ITS SCREEN and advances to arm 9',
   { skip: SKIP_T }, () => {
     const g = new Game(new Uint8Array(0x20000), tablesJson, { palCatchUp: false });
@@ -619,9 +620,9 @@ test('W389 SECTION 5: on a real cold boot arm 12 RUNS ITS SCREEN and advances to
       const s = g.ram.u16(0x812e56);
       if (s !== prev) { marks.push([f, s]); prev = s; }
     }
-    assert.deepEqual(marks, [[1, 13], [302, 2], [574, 12], [878, 9], [1182, 1]],
-      'the sequencer now runs 13 -> 2 -> 12 -> 9 -> 1 with no hand-holding. Arm 12 no longer '
-      + 'parks (W389) and arm 9 no longer parks either (W390)');
+    assert.deepEqual(marks, [[1, 13], [302, 2], [574, 12], [878, 9], [1182, 1], [1918, 5]],
+      'the sequencer now runs 13 -> 2 -> 12 -> 9 -> 1 -> 5 with no hand-holding. Arm 12 no '
+      + 'longer parks (W389), arm 9 no longer parks (W390) and arm 1 no longer parks (W391)');
     assert.deepEqual(marks.slice(0, 4).map((m) => m[1]), [13, 2, 12, 9],
       '...and the four this test was written for are unchanged, frame numbers included');
     // The two chains, in order, and both really drained.

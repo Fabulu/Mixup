@@ -242,9 +242,13 @@ export function defaultHandlers(rom, vram, opts = {}) {
     // 16 of 20.
     //
     // W390 CORRECTION -- this list was STALE (trap 14). W389 ported arm 12's $25C2AE/$25C2EA and
-    // W390 arm 9's $25C3E8/$25C424, and all four are real calls now. The arm sub-machines that
-    // are still counted notes are $25BBB4, $25BD7C, $25BDE0 (arms 1 and 3) and $25C592, $25C6D4
-    // (arm 5) -- the sequencer's own spine plus arms 2, 9 and 12 is what runs here.
+    // W390 arm 9's $25C3E8/$25C424, and all four are real calls now.
+    //
+    // W391 CORRECTION -- and it was stale AGAIN, one wave later, for the same reason. W391 ports
+    // arms 1 and 3's $25BBB4, $25BD7C and $25BDE0, so those three are real calls too. **The ONLY
+    // arm sub-machine still counted is $25C592 / $25C6D4 (arm 5)**, and the sequencer's spine
+    // plus arms 0, 1, 2, 3, 9, 12, 13 and 14 is what runs here. A cold boot walks
+    // 13 -> 2 -> 12 -> 9 -> 1 -> 5 at +1, +302, +574, +878, +1182, +1918 and parks on 5.
     [8, slotObject(objSlot8, rom)],
     [9, slotObject(slot9.objSlot9, rom)],
     // W387. $240F62[12] = $28F3AC, priority $0009 (read out of $240FC6, not carried as a

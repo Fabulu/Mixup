@@ -692,11 +692,18 @@ test('W375 states 4, 6, 7, 8, 10, 11 do nothing at all', { skip: SKIP }, async (
 // more and this test's `notes its init` assertion could not survive for either. Neither HOLDS
 // either: each drains its two chains and hands on -- 12 to 9, and 9 to 1 -- which
 // `w390arm9.test.js` SECTION 3 measures on a real cold boot as `13 -> 2 -> 12 -> 9 -> 1`.
-// **Arms 1 and 5 are untouched and still assert exactly what they did**, and they are now the
-// whole of the counted tier, which is why arm 1 is where the attract loop rests.
+//
+// **W391 TAKES ARM 1 OUT OF THIS LIST FOR THE SAME REASON.** `$25BBB4` and `$25BD7C` are ported
+// (`objslot8.js screen1Init25BBB4` / `screen1Body25BD7C`), so arm 1 notes neither half any more
+// and does not hold: it drains two chains and 480 timer frames and hands the machine to state 5,
+// which `w391arm1.test.js` SECTION 4 measures on a real cold boot as `13 -> 2 -> 12 -> 9 -> 1
+// -> 5`. **ARM 5 IS UNTOUCHED AND STILL ASSERTS EXACTLY WHAT IT DID**, and it is now the whole
+// of the counted tier -- which is why arm 5 is where the attract loop rests.
+//
+// The loop is one screen from closing: arm 5's `$25A9AE bcs` guards `teardown25A9B2`, which is
+// already ported and writes `#$2` into the new record. `$25C592`/`$25C6D4` is the last piece.
 test('W375 the unported arms HOLD rather than inventing an advance', { skip: SKIP }, async () => {
   const arms = [
-    { st: 0x1, init: 0x25bbb4, body: 0x25bd7c },
     { st: 0x5, init: 0x25c592, body: 0x25c6d4 },
   ];
   for (const arm of arms) {

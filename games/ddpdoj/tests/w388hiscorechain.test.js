@@ -283,7 +283,8 @@ test('W388 SECTION 3: the attract sequencer ADVANCES 13 -> 2 -> 12 on a plain co
       [558, 2, 2],     // the $F0 countdown fired and state 2's chain was built
       [574, 12, 2],    // ...and SIXTEEN FRAMES LATER it drained. This line is the wave.
       [878, 9, 2],     // W389: arm 12's OWN screen is ported now, so it drains too and hands on
-      [1182, 1, 2],    // W390: and so does arm 9's. Arm 1's $25BD7C is the last counted screen
+      [1182, 1, 2],    // W390: and so does arm 9's
+      [1918, 5, 2],    // W391: and so does arm 1's. Arm 5's $25C6D4 is the last counted screen
     ], 'the full transition list, with no state visited twice');
   });
 
@@ -319,9 +320,11 @@ test('W388 SECTION 3: the chain really drains, and the palette really ends BLACK
     assert.equal(RUN.animAtDone.nodes, 0, 'no chain is walked any more -- $246800 freed it');
     assert.equal(RUN.g.ram.u16(RUN.nodeSnapshot.head), 0, '...and the head node\'s id word is clear');
     // W389 -- was `0x000C`. Arm 12 drains its own two chains and hands on to arm 9 at +878.
-    // W390 -- was `0x0009`. Arm 9 drains ITS two and hands on to arm 1 at +1,182. NEITHER
-    // re-base touches anything this test measures: arm 2's fade is read at +574 either way.
-    assert.equal(RUN.g.ram.u16(STATE), 0x0001, 'the sequencer rests on arm 1 (W390)');
+    // W390 -- was `0x0009`. Arm 9 drains ITS two and hands on to arm 1 at +1,182.
+    // W391 -- was `0x0001`. Arm 1 drains its two and its $1E0 timer and hands on to arm 5 at
+    // +1,918. NOT ONE of these re-bases touches anything this test measures: arm 2's fade is
+    // read at +574 in every one of them, and `paletteAtDone` is sampled on that frame.
+    assert.equal(RUN.g.ram.u16(STATE), 0x0005, 'the sequencer rests on arm 5 (W391)');
   });
 
 // ===============================================================================================
@@ -355,8 +358,8 @@ test('W388 SECTION 4 ABLATION: blank the ONE field the seeding adds and the mach
 
   // SIDE BY SIDE with the unablated run, so the delta is one field and not a memory.
   assert.equal(RUN.doneFrame, 574, 'WITH the seeding: arm 12 by +574...');
-  assert.equal(RUN.g.ram.u16(STATE), 0x0001,
-    '...and on through arm 12 (W389) and arm 9 (W390) to arm 1');
+  assert.equal(RUN.g.ram.u16(STATE), 0x0005,
+    '...and on through arm 12 (W389), arm 9 (W390) and arm 1 (W391) to arm 5');
 });
 
 // ===============================================================================================

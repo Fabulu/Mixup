@@ -315,10 +315,14 @@ async function coldBootTrace(frames) {
 test('W390 SECTION 3: on a real cold boot the sequencer runs 13 -> 2 -> 12 -> 9 -> 1',
   { skip: SKIP_T }, async () => {
     const { g, arms, screen } = await coldBootTrace(4000);
-    assert.deepEqual(arms, [[1, 13], [302, 2], [574, 12], [878, 9], [1182, 1]],
+    // **W391 ADDS THE SIXTH ENTRY AND MOVES THE RESTING PLACE.** Arm 1's own screen
+    // ($25BBB4/$25BD7C) is ported now, so it drains two chains and 480 timer frames and hands
+    // on to arm 5 at +1,918. Everything this test is NAMED for -- arm 9 entered at +878 and
+    // LEAVING at +1,182 -- is measured unchanged, and so is every arm-9 screen number below.
+    assert.deepEqual(arms, [[1, 13], [302, 2], [574, 12], [878, 9], [1182, 1], [1918, 5]],
       'arm 9 is entered at +878 -- the frame W389 measured -- and LEAVES at +1,182');
     // W389's own cold-boot test measured 13 -> 2 -> 12 -> 9 and arm 9 PARKING. It parks no more.
-    assert.equal(g.ram.u16(SCREEN8.state), 1, 'and at +4,000 the machine rests on arm 1');
+    assert.equal(g.ram.u16(SCREEN8.state), 5, 'and at +4,000 the machine rests on arm 5 (W391)');
     // Arm 9's screen, frame by frame, and the numbers are the ROM's own.
     assert.deepEqual(screen, [[1, 0], [911, 1], [1150, 2]],
       'screen state 0 -> 1 at +911, 1 -> 2 at +1,150');
@@ -341,9 +345,12 @@ test('W390 SECTION 3: the exit is 271 frames AFTER the init chain drained, which
     assert.equal(left - startedState2, 32, 'the $246710 chain took 32 frames of its own to drain');
   });
 
+// **W391 WIDENS THIS RUN FROM 1,400 TO 2,200 FRAMES.** The arm the machine parks on is now arm
+// 5, reached at +1,918, and a 1,400-frame run cannot see its note at all -- trap 16 again, in
+// the smallest possible form.
 test('W390 SECTION 3: arm 9 raises exactly one counted note, and it is NOT its own halves',
   { skip: SKIP_T }, async () => {
-    const { g } = await coldBootTrace(1400);
+    const { g } = await coldBootTrace(2200);
     const report = g.unportedLog.report().join('\n');
     assert.ok(/\$25BB6C/.test(report), '$25BB6C is still counted -- it is a $900000 TX block');
     assert.equal(/\$25C3E8/.test(report), false,
@@ -356,8 +363,14 @@ test('W390 SECTION 3: arm 9 raises exactly one counted note, and it is NOT its o
     assert.ok(/\$25C318/.test(cue[0]), '...at $25C318, arm 12\'s site');
     assert.equal(/\$25C44A|\$25C452/.test(cue[0]), false,
       'and nothing attributes it to arm 9, which has no cue on that edge at all');
-    // Arm 1 is where it rests, and arm 1 IS still counted -- that is the honest state of things.
-    assert.ok(/\$25BD7C/.test(report), 'arm 1\'s demo body is counted; that is why the loop parks');
+    // **W391: ARM 1 IS NOT COUNTED ANY MORE.** This line used to read `assert.ok(/\$25BD7C/)`
+    // with "that is why the loop parks", and it could not survive: `screen1Body25BD7C` is a
+    // live call in `objslot8.js` and a note beside a live call is a lie about the port. The
+    // point the line was making -- that the report names the arm the machine rests on -- is
+    // kept, on ARM 5.
+    assert.equal(/\$25BD7C|\$25BBB4/.test(report), false,
+      'arm 1 is ported (W391), so neither half of it is counted any more');
+    assert.ok(/\$25C6D4/.test(report), 'arm 5\'s body IS counted; that is why the loop parks now');
   });
 
 test('W390 SECTION 3 ABLATION: hold the `$F0` timer and the screen never leaves state 1',
@@ -479,13 +492,20 @@ test('W390 SECTION 5: no source file still calls a PORTED routine a counted note
     const block = main.slice(main.indexOf('$240F62[8] = $25A770'),
       main.indexOf('W387. $240F62[12]'));
     assert.ok(block.length > 200, 'POSITIVE CONTROL: the slot [8] comment block was found');
-    for (const a of ['$25C2AE', '$25C2EA', '$25C3E8', '$25C424']) {
+    // **W391 EXTENDS THIS GUARD RATHER THAN RE-BASING IT**, because the guard did its job: it is
+    // the test that caught W391's own stale text, exactly one wave after it caught W390's. Arms
+    // 1 and 3's three routines join the list of things `main.js` may no longer call counted
+    // notes. Trap 14 twice running, caught twice by the same assertion.
+    for (const a of ['$25C2AE', '$25C2EA', '$25C3E8', '$25C424',
+      '$25BBB4', '$25BD7C', '$25BDE0']) {
       assert.equal(new RegExp(`\\${a}[^\\n]*counted note`).test(block), false,
         `main.js no longer calls ${a} a counted note`);
     }
     assert.ok(/W390 CORRECTION/.test(block), 'and it says WHY the list changed');
-    assert.ok(/\$25BD7C/.test(block) && /\$25C6D4/.test(block),
-      'the ones that ARE still counted are named: arms 1/3 and arm 5');
+    assert.ok(/W391 CORRECTION/.test(block), '...and why it changed again one wave later');
+    assert.ok(/\$25C6D4/.test(block), 'the ONE that IS still counted is named: arm 5');
+    assert.equal(/\$25BBB4, \$25BD7C, \$25BDE0 \(arms 1 and 3\)/.test(block), false,
+      'and the sentence calling arms 1 and 3 counted is gone');
     assert.equal(/\$25C2AE, \$25C2EA, \$25C3E8, \$25C424/.test(block), false,
       'and the old four-in-a-row list is gone');
 
@@ -494,8 +514,11 @@ test('W390 SECTION 5: no source file still calls a PORTED routine a counted note
     const header = src.slice(0, src.indexOf('import {'));
     assert.equal(/arms 1, 5, 9 and 12 hold/.test(header), false,
       'objslot8.js no longer says arms 9 and 12 hold');
-    assert.ok(/arms 1 and 5\*\* hold/.test(header), '...it says arms 1 and 5 do');
-    assert.ok(/13 -> 2 -> 12 -> 9 -> 1/.test(header), 'and names the path that is live today');
+    assert.equal(/arms 1 and 5\*\* hold/.test(header), false,
+      '...nor that arm 1 does, which W391 ported');
+    assert.ok(/\*\*arm 5\*\* holds/.test(header), '...it says arm 5 alone does');
+    assert.ok(/13 -> 2 -> 12 -> 9 -> 1 -> 5/.test(header),
+      'and names the path that is live today, all six arms of it');
   });
 
 test('W390 SECTION 5: w307namegrid.test.js no longer says W303 counted `$246710`\'s seeding',

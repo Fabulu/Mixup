@@ -2,7 +2,85 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W390
+## START HERE -- W391
+
+### `13 -> 2 -> 12 -> 9 -> 1 -> 5`. **EXACTLY ONE SCREEN LEFT.**
+
+Cold boot: `+1, +302, +574, +878, +1182, +1918`. Parks on arm 5 through 12,000 frames.
+
+**The only arm sub-machine still counted is `$25C592`/`$25C6D4`.** Everything behind it is already
+here: `$25A9AE bcs` guards `teardown25A9B2`, which `objslot8.js` exports and which writes `#$2` into
+the record it stages. **A ported `$25C6D4` closes `1 -> 5 -> teardown -> 2` and the loop cycles.**
+
+Also counted, none of it gating: `$25BB6C` (TX plane, three call sites), `$25AD02`, two unpostable
+cues, and `$25C22A`/`$25C252`/`$25C286` -- three operator-settings TX lines, a **DECLARED HOLD**:
+each needs its own pointer table plus four 32-byte strings exported, and `$80380D`/`$80380F` have no
+model in this port at all.
+
+### AN ABLATION THAT **PASSED**, AND WHY THAT IS THE HEADLINE
+
+Substituting `$23DECE` for `$23E2F2` in arm 1's draw -- **exactly the mistake the brief warned
+about** -- passed all 19 tests, because D2/D3 are identical through both emitters. The test was
+worthless and looked fine.
+
+The fix: record 6 carries D6 `$40004000`, so its long opens `$4`, which `$23DECE` **can never
+produce** (it ORs `$80008000` unconditionally). Coord-word assertions added, re-ablated to red.
+
+**When an ablation passes, the test is wrong, not the code.**
+
+### ARM 1 MATCHES NEITHER TEMPLATE, IN FOUR WAYS
+
+Arms 9/12 are `cmpi.w` fall-through chains on a state word. **Arm 1 is a `bset`/`btst` LATCH MACHINE
+on a BYTE at `$812E66`** plus one `tst.w` -- there is not a single `0C79` in the body.
+
+- init `$25BBB4..$25BBE5`, 50 bytes (`4E75` **AT** `$25BBE4`); body `$25BD7C..$25BE71`
+- the clear is **SIX words**, not four: the last two are the handle long at `$812E6E`, and **word 3
+  is ARM 3's latch**
+- timer is **`$1E0` = 480**, not `$F0`
+- it **does** produce a carry -- `$25BE6E 3000` is `move.w D0,D0`, not an `andi`. My brief said it
+  could not.
+
+**The draw is SEVEN sprites**: four via `$23DECE` plus three via **`$23E2F2`, the ZOOMING enqueue**,
+which neither template touches (arm 12 emits one, arm 9 two). `$25BE48` is six `bsr`s and **the
+fourth lands on `$25BF80`, a bare `4E75`** -- while the fully-formed enqueue at `$25BF82` has **ZERO
+references in `$250000..$270000`.**
+
+### THE EXIT WAITS ON THE SECOND CHAIN -- BUT THE OBVIOUS ABLATION PROVES NOTHING
+
+`$25BE26 move.l D0,$812E6E` overwrites the `$24641A` handle and `$25BE2E` reads that word; the
+`bset #1` latch makes it stronger than arm 9's compare, since once set the init wait is unreachable
+forever.
+
+**BUT both loaders allocate from the same player list at `$810346`, and the init chain is freed
+before `$246710` runs -- so `$25BE26` stores a value that is ALREADY THERE.** Init root and second
+root are the same address. Trap 18's shape. **The proof is the TIMING:** the ablation that deletes
+the wait moves the exit +1,918 -> **+1,311, exactly 607 frames early.**
+
+### ARM 3 SHARES ONLY THE INIT AND THE DRAW
+
+Not the body. `$25BDE0` is its own 24-instruction routine, and **`$25A96E` is `6100` (bsr.w), not
+`6500` (bcs)** -- **arm 3 never reads the carry.** My "porting it pays twice" was half right. Ported
+anyway: it installs six palette banks, driven on the real coin path over 1,598 frames.
+
+Also: **`$25BB6C` does not open `48E7`** -- it is `4EB9 0023C608`.
+
+### SIX NEW WINDOWS (564), AND THE VERIFIER HAD A HOLE
+
+`$25BFBA+$56`, `$25C010+$32`, `$25BC26+$34` (bound is the `cmpi.l #$FFFFFFFF` at `$25BD2A`),
+`$2259B8+$80`, `$25BAEC+$80`, `$23046C+$40`. Overlap count across the whole set: **71 without, 71
+with.** The verifier **did not originally check the zoom table was declared** and was strengthened.
+
+### TRAP 16 TWICE MORE, AND THE STALE-NOTE GUARD EARNED ITS KEEP
+
+`w387slot12`'s window went **5,400 -> 6,200** (loop-back reaches arm 5 at +6,032) -- second wave
+running that this test's window has been too short. `w390arm9`'s note run went **1,400 -> 2,200**.
+
+**W390's own stale-note guard fired on W391's text**, one wave after catching W390's. It was
+**extended rather than re-based**. `w390arm9.test.js`'s `assert.ok(/\$25BD7C/)` "that is why the loop
+parks" could not survive -- **a note beside a live call is a lie** -- so it now asserts that note
+ABSENT and arm 5's `$25C6D4` present.
+
+## W390 NOTES
 
 ### THE SEQUENCER RUNS `13 -> 2 -> 12 -> 9 -> 1`. THE LOOP IS TWO SCREENS FROM CLOSING.
 

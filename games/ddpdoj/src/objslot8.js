@@ -21,9 +21,9 @@
 //
 // SCOPE. W375 ported the SEQUENCER, not the screens. Arms 0, 5's teardown, 13 and 14, the
 // `$25ACAC` join handler, the `$25A770` credit gate and the `$25A82C` dispatch tail are here in
-// full. **W389 ported arm 12's `$25C2AE`/`$25C2EA` and W390 arm 9's `$25C3E8`/`$25C424`, so the
-// screen sub-machines still NOTED are `$25BBB4 $25BD7C $25BDE0` (arms 1 and 3) and
-// `$25C592 $25C6D4` (arm 5)** -- each a wave of its own. **ARM 2
+// full. **W389 ported arm 12's `$25C2AE`/`$25C2EA`, W390 arm 9's `$25C3E8`/`$25C424`, and W391
+// arms 1 and 3's `$25BBB4 $25BD7C $25BDE0` -- so the ONLY screen sub-machine still NOTED is
+// `$25C592`/`$25C6D4` (arm 5)**, and it is the last one. **ARM 2
 // IS WHOLE**: its per-frame body `hiscoreScreen25B412` is ported in `hiscorescreen.js`, and W375b
 // adds its init `$25B3DC` here as `hiscoreInit25B3DC`, so arm 2 initialises, runs and really does
 // advance to state 12 when the screen finishes.
@@ -34,13 +34,17 @@
 // is what fills that handle, and with it in place the reset path `($4,A5) = $D -> arm 13 -> the
 // $12C timeout -> state 2 -> the high-score screen` runs without throwing.
 //
-// WHAT IS NOTED AND THEREFORE STILL STANDS BETWEEN THIS AND A BOOTABLE GAME: the TWO remaining
-// screen sub-machines above and `$25AD02`, the blink message's ON half. Neither gates the state
-// machine except through a carry this port cannot compute, which is why **arms 1 and 5** hold
-// instead of advancing. Arms 0, 2, 3, 9, 12, 13 and 14 are complete, and
-// `13 -> 2 -> 12 -> 9 -> 1` and `3 -> 14 -> gameplay` are live paths today. **The attract loop
-// still does not CLOSE**: arm 9 hands state 1 to arm 1, whose `$25BD7C` demo body is the carry
-// nothing here can compute, so the sequencer parks on arm 1 rather than returning to 13.
+// WHAT IS NOTED AND THEREFORE STILL STANDS BETWEEN THIS AND A CLOSED ATTRACT LOOP: `$25C592`/
+// `$25C6D4`, arm 5's screen, and `$25AD02`, the blink message's ON half. Neither gates the state
+// machine except through a carry this port cannot compute, which is why **arm 5** holds instead
+// of advancing. Arms 0, 1, 2, 3, 9, 12, 13 and 14 are complete, and
+// `13 -> 2 -> 12 -> 9 -> 1 -> 5` and `3 -> 14 -> gameplay` are live paths today, measured on a
+// real cold boot at `+1, +302, +574, +878, +1182, +1918`.
+//
+// **THE LOOP IS ONE SCREEN FROM CLOSING, AND THE PIECE BEHIND ARM 5 IS ALREADY HERE.** `$25A9AE
+// bcs` skips `teardown25A9B2`, which this file exports and which writes `#$2` into the record it
+// stages -- so a ported `$25C6D4` gives `1 -> 5 -> teardown -> 2` and the attract loop cycles on
+// its own. Arm 5's screen is the whole of what is left.
 //
 // **W377 CLOSED THE COIN CRASH AND HALF THE BLINK PAIR.** Arm 3's `$25A962 jsr $28C170` and the
 // three `jsr $28C0FC` in the two teardowns were `ctx.soundPost` calls, and BOTH addresses go
@@ -59,7 +63,7 @@
 
 import { u16 } from './ram.js';
 import { clearTx23C622, clearSlotTable23C668, camReset } from './background.js';
-import { install2414BE } from './palette.js';
+import { install2414BE, install24150A, install2415E8 } from './palette.js';
 import { stageCreate, objTableInit24107C } from './objalloc.js';
 import { clear23C47A } from './stageend.js';
 import { clear25C57E } from './objslot9.js';
@@ -68,7 +72,9 @@ import { hiscoreScreen25B412 } from './hiscorescreen.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 // W389 -- arm 12's screen is arm 2's twin and uses the same three chain primitives.
 import { chainCheck24681A, chainFree246800, chainLoader246710 } from './stageend.js';
-import { enqueueRegistersThroughStub } from './spritequeue.js';
+import {
+  enqueueRegistersThroughStub, enqueueZoomedRegistersThroughStub,
+} from './spritequeue.js';
 import { txFontString259FF8, creditLine23CFDE, blinkOff25AFD8 } from './fronttext.js';
 
 export const SCREEN8 = Object.freeze({
@@ -454,18 +460,19 @@ function arm0(ram, a5, ctx) {
   clear23C47A(ram);                                            // $25A8D0 jsr $23C47A
 }
 
-/** ARM 1, `$25A8E6` -- the DEMO. Init clears TX and runs `$25BBB4`; every frame runs
- *  `$25BD7C`, whose CARRY CLEAR means "finished" and advances to state 5. Both are unported,
- *  so the port holds: an invented advance would skip the demo entirely. */
-function arm1(ram, a5, ctx) {
+/** ARM 1, `$25A8E6` -- the DEMO, and W391 ports both halves; see `ARM1SCREEN` below. Init
+ *  clears TX and runs `$25BBB4`; every frame runs `$25BD7C`, whose CARRY CLEAR means "finished"
+ *  and advances to state 5. `$25A904 bcs -> $25A910 rts` is the hold; `$25A908 move.w #$5,D0 /
+ *  $25A90C bsr.w $25A764` is the advance. */
+function arm1(ram, rom, a5, ctx) {
   if (ram.u8(a5 + SCREEN8.inited) === 0) {                     // $25A8E6 tst.b / $25A8EA bne
     ram.setU8(a5 + SCREEN8.inited, 1);                         // $25A8EC move.b #$1,($3,A5)
     clearTx23C622(ctx.tx);                                     // $25A8F2 jsr $23C622
-    ctx?.unported?.note(0x25bbb4, '$25A8F8 jsr $25BBB4 -- the demo screen INIT, shared with arm 3');
+    screen1Init25BBB4(ram, rom, ctx);                          // $25A8F8 jsr $25BBB4
   }
-  ctx?.unported?.note(0x25bd7c,
-    '$25A8FE jsr $25BD7C -- the demo per-frame body. $25A904 bcs skips the advance, so CARRY '
-    + 'CLEAR means finished -> state 5. Unported, so this port holds at state 1');
+  if (!screen1Body25BD7C(ram, rom, ctx)) {                     // $25A8FE jsr / $25A904 bcs
+    setState25A764(ram, a5, 0x05);                             // $25A908 move.w #$5 / $25A90C
+  }
 }
 
 /**
@@ -520,11 +527,11 @@ function arm2(ram, rom, a5, ctx) {
  * `hiscorescreen.js:544` already note this same address at their own call sites for this same
  * reason; arm 3 was the outlier that posted it. It is now the third counted deferral.
  */
-function arm3(ram, a5, ctx) {
+function arm3(ram, rom, a5, ctx) {
   if (ram.u8(a5 + SCREEN8.inited) === 0) {                     // $25A94A/$25A94E
     ram.setU8(a5 + SCREEN8.inited, 1);                         // $25A950
     clear24631C(ram, ctx, 0x25a956);                           // $25A956 jsr $24631C
-    ctx?.unported?.note(0x25bbb4, '$25A95C jsr $25BBB4 -- the credit screen INIT, shared with arm 1');
+    screen1Init25BBB4(ram, rom, ctx);                          // $25A95C jsr $25BBB4
     // $25A962 jsr $28C170 -- verified `4E B9 00 28 C1 70`. $28C170 -> $28BBAC D0=$15 (BGM
     // command), the tier sound.js has no posting path for.
     ctx?.unported?.note(SCREEN8.cueBgm,
@@ -532,7 +539,7 @@ function arm3(ram, a5, ctx) {
       + 'command), NOT the $28BB04 packer every sound.js WRAPPERS row describes, so posting it '
       + 'throws. Counted here exactly as background.js:1047 and hiscorescreen.js:544 count it');
   }
-  ctx?.unported?.note(0x25bde0, '$25A968 jsr $25BDE0 -- the credit screen per-frame body');
+  screen3Body25BDE0(ram, rom, ctx);                            // $25A968 jsr $25BDE0 -- no `bcs`
   joinPoll25ACAC(ram, a5, ctx);                                // $25A96E bsr.w $25ACAC
 }
 
@@ -911,6 +918,345 @@ function arm9(ram, rom, a5, ctx) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// W391 -- ARMS 1 AND 3'S SCREENS: `$25BBB4` (the SHARED init), `$25BD7C` (arm 1's body),
+// `$25BDE0` (arm 3's body) and `$25BE48` (the SHARED draw).
+// ---------------------------------------------------------------------------------------------
+//
+// **THE BRIEF CALLED THESE "arms 1 and 3" AS THOUGH ONE PORT SERVED BOTH BODIES. IT DOES NOT.**
+// What the two arms share is the INIT `$25BBB4` and the DRAW `$25BE48`. The bodies are two
+// different routines with nothing in common but the tail they branch to, and arm 3's is
+// twenty-four instructions where arm 1's is a state machine.
+//
+// THE INIT, `$25BBB4..$25BBE5` -- `4E75` sits AT `$25BBE4` (trap 5), so the routine is 50 bytes:
+//
+//   25BBB4  48e7 fffe                 movem.l D0-D7/A0-A6,-(A7)
+//   25BBB8  41f9 00812e66             lea $812E66,A0
+//   25BBBE  303c 0005 / 7200 / 30c1 / 51c8 fffc
+//                                     move.w #$5,D0 / moveq #0,D1 / move.w D1,(A0)+ / dbra
+//                                     -- **SIX words** (trap 2), not arm 9's four: $812E66,
+//                                     $68, $6A, $6C, $6E, $70. The last two ARE the handle
+//                                     long at $812E6E (trap 3, a third time).
+//   25BBCA  33fc 01e0 00812e6c        move.w #$1E0,$812E6C     <- 480, not arm 9/12's $F0
+//   25BBD2  6198                      bsr.s $25BB6C            <- the TX plane block, counted
+//   25BBD4  6100 0654                 bsr.w $25C22A            <- ext at $25BBD6 + $654
+//   25BBD8  6100 0678                 bsr.w $25C252            <- ext at $25BBDA + $678
+//   25BBDC  6100 06a8                 bsr.w $25C286            <- ext at $25BBDE + $6A8
+//   25BBE0  4cdf 7fff / 25BBE4 4e75
+//
+// **THE SIX-WORD BLOCK IS NOT ARM 9'S TRIPLE-PLUS-HANDLE.** `$812E66` is a BYTE OF BIT FLAGS,
+// `$812E68` is a phase word, `$812E6A` is ARM 3's one-shot latch, `$812E6C` is the timer and
+// `$812E6E` is the handle. A port that copied `ARM9SCREEN`'s four-word clear would leave
+// `$812E6E`/`$812E70` -- the handle -- uncleared, and arm 3's latch with it.
+//
+// THE BODY, `$25BD7C..$25BE71` -- **AND IT IS NOT A `cmpi.w` FALL-THROUGH CHAIN.** Arms 9 and 12
+// compare a state word against 0, 1, 2. Arm 1 uses `bset`/`btst` on a BYTE and one `tst.w`:
+//
+//   25BD7C  48e7 fffe                 movem.l D0-D7/A0-A6,-(A7)
+//   25BD80  08f9 0000 00812e66        bset #0,$812E66          <- a BYTE bset; Z = the OLD bit
+//   25BD88  6612                      bne.s $25BD9C            <- already latched, skip
+//   25BD8A  41fa 022e                 lea ($22E,PC),A0 -> $25BD8C + $22E = $25BFBA  (trap 4)
+//   25BD8E  4e71                      nop
+//   25BD90  4eb9 0024641a             jsr $24641A              <- THE INIT CHAIN
+//   25BD96  23c0 00812e6e             move.l D0,$812E6E
+//   25BD9C  0839 0001 00812e66        btst #1,$812E66
+//   25BDA4  662c                      bne.s $25BDD2
+//   25BDA6  2039 00812e6e / 4eb9 0024681a / 661e   the init chain's wait
+//   25BDB4  4eb9 00246800             jsr $246800              <- frees it
+//   25BDBA  7000 / 23c0 00812e6e      move.l #0,$812E6E
+//   25BDC2  08f9 0001 00812e66        bset #1,$812E66
+//   25BDCA  33fc 0001 00812e68        move.w #$1,$812E68
+//   25BDD2  4a79 00812e68 / 6700 006e tst.w $812E68 / beq.w -> $25BDDA + $6E = $25BE48 (DRAW)
+//   25BDDC  6000 002c                 bra.w -> $25BDDE + $2C = $25BE0A
+//
+//   25BE0A  4a79 00812e6c / 671c      tst.w $812E6C / beq.s $25BE2E
+//   25BE12  5379 00812e6c / 662e      subq.w #1,$812E6C / bne.s $25BE48   <- still counting
+//   25BE1A  41fa 01f4                 lea ($1F4,PC),A0 -> $25BE1C + $1F4 = $25C010  A SECOND SCRIPT
+//   25BE1E  4e71 / 4eb9 00246710      jsr $246710              <- A SECOND LOADER
+//   25BE26  23c0 00812e6e             move.l D0,$812E6E        <- **OVERWRITING** the init handle
+//   25BE2C  601a                      bra.s $25BE48
+//
+//   25BE2E  2039 00812e6e / 4eb9 0024681a / 6600 000c   the SECOND chain's wait
+//   25BE3E  4eb9 00246800             jsr $246800
+//   25BE44  6000 0024                 bra.w -> $25BE46 + $24 = $25BE6A  <- **THE FINISH EXIT**
+//
+// **WHICH CHAIN THE EXIT WAITS ON, ASKED FOR THE THIRD TIME AND ANSWERED FROM THE BYTES: THE
+// SECOND ONE.** `$25BE26 move.l D0,$812E6E` replaces the `$24641A` handle before `$25BE2E` ever
+// reads `$812E6E` again, exactly as `$25C474` does for arm 9. The `bset #1` latch makes it
+// stronger than arm 9's compare: once bit 1 is set, `$25BD9C`'s `btst` skips the init wait
+// forever, so nothing can re-enter it even if a later handle happened to look drained.
+//
+// **AND A MEASUREMENT THAT SURPRISED THIS WAVE, RECORDED BECAUSE THE NEXT READER WILL HIT IT.**
+// The two loaders allocate from the SAME three-slot player list at `$810346`, and by the time
+// `$25BE20` runs the init chain has been freed -- so `$246710` hands back the SAME ROOT ADDRESS
+// `$24641A` did. **`$25BE26` is therefore a value-identical store on every real frame.** The
+// distinction between "waits on the init chain" and "waits on the second chain" is NOT in the
+// handle's value; it is in the CONTENT that root heads, and it shows up only in the timing.
+// This is exactly the shape of trap 18 -- a comparison that silently accepts -- and it means an
+// ablation that deletes only the store proves nothing. The ablation in `w391arm1.test.js`
+// SECTION 4 deletes the WAIT instead, and it moves the exit by 607 frames.
+//
+// **THE TWO EXITS, AND THE CARRY IS NOT AN `andi`.**
+//
+//   25BE60  4cdf 7fff / 25BE64 007c 0001 / 25BE68 4e75   movem / **ori.w #$1,SR** / rts
+//   25BE6A  4cdf 7fff / 25BE6E 3000     / 25BE70 4e75   movem / **move.w D0,D0** / rts
+//
+// `$25BE64` is `007C`, `ORI #imm,SR`, not `003C` `ORI #imm,CCR` -- privileged, and bit 0 of SR
+// is the carry, so it SETS it. `$25BE6E 3000` is `move.w D0,D0`, which the 68000 defines as
+// clearing C and V. That is the finish. `$25A904 bcs -> $25A910 rts` skips the advance while
+// the carry is set, and `$25A908 move.w #$5,D0 / $25A90C bsr.w $25A764` is the advance.
+// **ARM 1 REALLY DOES GO TO STATE 5.**
+//
+// **THE DRAW IS NEITHER TEMPLATE'S, AND ONE OF ITS SIX CALLS IS A DELIBERATE NO-OP.**
+//
+//   25BE48  6100 00fe   -> $25BE4A + $FE  = $25BF48
+//   25BE4C  6100 00de   -> $25BE4E + $DE  = $25BF2C
+//   25BE50  6100 0112   -> $25BE52 + $112 = $25BF64
+//   25BE54  6100 012a   -> $25BE56 + $12A = **$25BF80**
+//   25BE58  6100 0144   -> $25BE5A + $144 = $25BF9E
+//   25BE5C  6100 fec8   -> $25BE5E - $138 = $25BD26
+//
+// Five are `move.l`/`move.w` register loads tail-jumping into `$23DECE` -- **except the fourth.**
+// `$25BF80` is `4E75`, a bare `rts`, and the fully-formed enqueue that follows it at `$25BF82`
+// (`D1 = $64003000`, `D2 = $334470`, `D3 = $410`) **is never called by anything**: a scan of
+// `$250000..$270000` for every `6000`/`6100` displacement and every `4EB9`/`4EF9` operand
+// landing on `$25BF82` returns ZERO references. It is a shipping-disabled draw of the same
+// family as `$25E29E`'s three dead arms, done by branching one instruction short. A port that
+// "helpfully" called `$25BF82` would put a sixth sprite on the screen that the board never
+// draws; a port that treated the `rts` as an error would refuse a correct branch.
+//
+// The sixth call is a TABLE WALK and it uses the ZOOMING enqueue, which neither template does:
+//
+//   25BD26  49fa fefe                 lea ($FEFE,PC),A4 -> $25BD28 - $102 = $25BC26  (trap 4)
+//   25BD2A  0c94 ffffffff / 6700 0020 cmpi.l #$FFFFFFFF,(A4) / beq.w -> $25BD32 + $20 = $25BD52
+//   25BD34  2214 / 242c 0008          move.l (A4),D1 / move.l ($8,A4),D2
+//   25BD3A  363c 0210 / 383c 0002     move.w #$210,D3 / move.w #$2,D4
+//   25BD42  2c2c 000c                 move.l ($C,A4),D6        <- the ZOOM longword
+//   25BD46  4eb9 0023e2f2             jsr $23E2F2              <- the ZOOM register enqueue
+//   25BD4C  49ec 0010 / 60d8          lea ($10,A4),A4 / bra.s -> $25BD52 - $28 = $25BD2A
+//
+// **SO ARM 1 EMITS SEVEN SPRITES A FRAME: FOUR through `$23DECE` and THREE through `$23E2F2`.**
+// Not one (arm 12) and not two (arm 9). Counted, and the test counts them too.
+//
+// THE BOUNDS ARE IN THE CODE, never in an absence (trap 8):
+//   * `$25BFBA` is `count 6` and `2 + 6*14 = $56` lands on `$25C010`, which is the address
+//     `$25BE1A`'s own `lea` names as the second script. The init script's end is the second
+//     script's start.
+//   * `$25C010` is `count 6` and `2 + 6*8 = $32` lands on `$25C042`, which is the address
+//     `$25C22A`'s `lea` names as the rank-string pointer table.
+//   * `$25BC26`'s walk is terminated by the `cmpi.l #$FFFFFFFF` at `$25BD2A`, and the
+//     `$FFFFFFFF` sits at `$25BC56` -- three `$10`-byte entries, $34 bytes with the terminator.
+//   * The five fade targets: `$2259B8 + $80` runs up to `$225A38`, which is W389's arm-12
+//     target, so the two ABUT. `$25BAEC + $80` runs up to `$25BB6C`, the `jsr $23C608` opening
+//     the TX plane block -- pinned by the CODE that follows it.
+//
+// FOUR CALLEES STAY COUNTED, and not one of them can gate the machine, whose only exit is the
+// `$246710` chain `$25BE2E` waits on:
+//   `$25BB6C` -- the same 19-instruction TX plane block arms 9 and 12 count.
+//   `$25C22A` / `$25C252` / `$25C286` -- three TX STRING draws in the init, each
+//     `lea (table,PC),A0 / moveq #0,D0 / move.b $80380x,D0 / add.w D0,D0 / add.w D0,D0 /
+//     movea.l (0,A0,D0.w),A0 / move.w #$0,D0 / move.w #$D-$10-$B,D1 / move.w #$0,D2` into
+//     `$25A14C` (`txString25A14C`, which IS ported). They are the operator-settings lines
+//     ("RANK: ..." at `$25C052`), indexed by the DIP bytes `$80380C`/`$80380D`/`$80380F`, and
+//     they run ONCE in the init. Counted rather than ported because each needs its own pointer
+//     table plus four 32-byte strings exported, and `$80380D`/`$80380F` have no model in this
+//     port at all -- `machine.js` names only `$80380C`. A DECLARED HOLD, not an oversight.
+export const ARM1SCREEN = Object.freeze({
+  init: 0x25bbb4, initEnd: 0x25bbe6,   // $25BBB4..$25BBE5 -- 50 bytes, `rts` AT $25BBE4
+  body: 0x25bd7c, bodyEnd: 0x25be72,   // $25BD7C..$25BE71 -- two exits, `rts` AT $25BE68/$25BE70
+  arm3Body: 0x25bde0, arm3BodyEnd: 0x25be0a,
+  flags: 0x812e66,                     // $25BD80/$25BDC2 bset -- a BYTE of bit flags
+  phase: 0x812e68,                     // $25BDCA move.w #$1 / $25BDD2 tst.w
+  arm3Latch: 0x812e6a,                 // $25BDE4 tst.w / $25BDEC move.w #$1 -- ARM 3's, not arm 1's
+  timer: 0x812e6c,                     // $25BBCA move.w #$1E0,$812E6C
+  timerInit: 0x1e0,                    // 480 frames, not arm 9/12's $F0
+  handle: 0x812e6e,                    // $25BD96 / $25BE26 move.l D0,$812E6E
+  clearWords: 6,                       // $25BBBE move.w #$5,D0 -- dbra runs SIX times
+  initScript: 0x25bfba,                // $25BD8A lea ($22E,PC) -- $24641A's, 14 bytes/entry
+  loadScript: 0x25c010,                // $25BE1A lea ($1F4,PC) -- $246710's, 8 bytes/entry
+  scriptNodes: 6,                      // both count words -- SIX, where arms 9/12 have two
+  initScriptBytes: 0x56, loadScriptBytes: 0x32,
+  txBlock: 0x25bb6c,                   // $25BBD2 bsr.s $25BB6C -- counted
+  txLines: Object.freeze([0x25c22a, 0x25c252, 0x25c286]),   // $25BBD4/$25BBD8/$25BBDC -- counted
+  dipBytes: Object.freeze([0x80380c, 0x80380d, 0x80380f]),  // what each of the three indexes on
+  draw: 0x25be48,                      // the tail BOTH arms branch to
+  emit: 0x23dece,                      // $25BF48 etc -- the plain register enqueue
+  zoomEmit: 0x23e2f2,                  // $25BD46 jsr $23E2F2 -- the ZOOMING register enqueue
+  zoomTable: 0x25bc26, zoomStride: 0x10, zoomEntries: 3, zoomTableBytes: 0x34,
+  zoomD3: 0x0210, zoomD4: 0x0002,      // $25BD3A / $25BD3E -- rebuilt per entry, not inherited
+  deadStub: 0x25bf80,                  // $25BE54's target: a BARE `rts`
+  deadDraw: 0x25bf82,                  // the enqueue it skips. ZERO references in the image
+  // The five `bsr`s of the draw tail IN ROM ORDER. `null` is `$25BF80`, and it is not an
+  // omission -- see the header. Keeping the slot makes the count five-with-one-dead rather
+  // than four, which is the difference between a transcription and a guess.
+  draws: Object.freeze([
+    Object.freeze({ at: 0x25bf48, d1: 0x1a000800, d2: 0x003344f8, d3: 0x20a0, d4: 0x0001 }),
+    Object.freeze({ at: 0x25bf2c, d1: 0x0e000200, d2: 0x00334f60, d3: 0x30c0, d4: 0x0000 }),
+    Object.freeze({ at: 0x25bf64, d1: 0x4a001c00, d2: 0x00334494, d3: 0x0260, d4: 0x0000 }),
+    null,                              // $25BE54 bsr $25BF80 -- `4E75`, and $25BF82 is dead
+    Object.freeze({ at: 0x25bf9e, d1: 0x04000400, d2: 0x00334efc, d3: 0x0620, d4: 0x0000 }),
+  ]),
+  emitsPerFrame: 7,                    // 4 through $23DECE + 3 through $23E2F2
+  // Arm 3's `$25BE72`: SIX palette installs of the same six blocks the init script FADES to.
+  // The credit screen shows them instantly; arm 1's demo fades into them over the chain.
+  arm3Palettes: 0x25be72,
+  arm3Bg: Object.freeze({ src: 0x23046c, bank: 0 }),         // $25BDF4/$25BDFE jsr $2415C4
+  arm3Spr: Object.freeze([                                   // $25BE72..$25BEBE, jsr $24150A x5
+    Object.freeze({ at: 0x25be7c, bank: 0, src: 0x2259f8 }),
+    Object.freeze({ at: 0x25be8c, bank: 1, src: 0x2259b8 }),
+    Object.freeze({ at: 0x25be9c, bank: 2, src: 0x222838 }),
+    Object.freeze({ at: 0x25beaa, bank: 3, src: 0x25baec }),
+    Object.freeze({ at: 0x25beb8, bank: 4, src: 0x25bb2c }),
+  ]),
+});
+
+/** `$25BBB4` -- the init BOTH arm 1 and arm 3 run. SIX words cleared (not four), the `$1E0`
+ *  timer armed, and four counted presentation calls. It loads NO chain: arm 1's body does that
+ *  itself on its first frame, behind the `bset #0` latch. */
+export function screen1Init25BBB4(ram, rom, ctx) {
+  void rom;
+  for (let i = 0; i < ARM1SCREEN.clearWords; i++) {            // $25BBBE #$5 + dbra = SIX
+    ram.setU16(ARM1SCREEN.flags + i * 2, 0);                   // $25BBC4 move.w D1,(A0)+
+  }
+  ram.setU16(ARM1SCREEN.timer, ARM1SCREEN.timerInit);          // $25BBCA move.w #$1E0
+  ctx?.unported?.note(ARM1SCREEN.txBlock, '$25BBD2 bsr.s $25BB6C -- the same 19-instruction TX '
+    + 'plane block arms 9 and 12 count from $25C418 and $25C2DE. Presentation; it cannot gate '
+    + 'the screen, whose only exit is the $246710 chain $25BE2E waits on');
+  for (let i = 0; i < ARM1SCREEN.txLines.length; i++) {
+    const site = 0x25bbd4 + i * 4;                             // $25BBD4 / $25BBD8 / $25BBDC
+    ctx?.unported?.note(ARM1SCREEN.txLines[i], `$${site.toString(16).toUpperCase()} bsr.w $${
+      ARM1SCREEN.txLines[i].toString(16).toUpperCase()} -- an operator-settings TX line, a `
+      + `longword pointer table indexed by the DIP byte $${
+        ARM1SCREEN.dipBytes[i].toString(16).toUpperCase()} and drawn through $25A14C. Runs `
+      + 'ONCE in the init and writes only the TX plane. Counted: the strings need their own '
+      + 'export and this port models no DIP byte but $80380C');
+  }
+}
+
+/**
+ * `$25BD7C` -- one frame of arm 1's DEMO screen. A `bset`/`btst` latch machine, NOT arms 9 and
+ * 12's `cmpi.w` fall-through.
+ *
+ * @returns {boolean} the CARRY: `true` ($25BE64 `ori.w #$1,SR`) means still running, `false`
+ *   ($25BE6E `move.w D0,D0`) means finished. `$25A904 bcs` skips the advance on `true`.
+ */
+export function screen1Body25BD7C(ram, rom, ctx) {
+  const before = ram.u8(ARM1SCREEN.flags);
+  ram.setU8(ARM1SCREEN.flags, before | 0x01);                  // $25BD80 bset #0 -- ALWAYS writes
+  if ((before & 0x01) === 0) {                                 // $25BD88 bne -- Z is the OLD bit
+    // $25BD8A lea ($22E,PC),A0 / $25BD90 jsr $24641A -- `$246410` with D6 = 0.
+    ram.setU32(ARM1SCREEN.handle,                              // $25BD96
+      loadAnimObjects246410(ram, rom, ARM1SCREEN.initScript, 0) >>> 0);
+  }
+  if ((ram.u8(ARM1SCREEN.flags) & 0x02) === 0) {               // $25BD9C btst #1 / $25BDA4 bne
+    if (chainCheck24681A(ram, ram.u32(ARM1SCREEN.handle)) === 0) {   // $25BDAC / $25BDB2 bne
+      chainFree246800(ram, ram.u32(ARM1SCREEN.handle));        // $25BDB4 jsr $246800
+      ram.setU32(ARM1SCREEN.handle, 0);                        // $25BDBA moveq #0 / $25BDBC
+      ram.setU8(ARM1SCREEN.flags, ram.u8(ARM1SCREEN.flags) | 0x02);   // $25BDC2 bset #1
+      ram.setU16(ARM1SCREEN.phase, 1);                         // $25BDCA move.w #$1,$812E68
+    }
+  }
+  if (ram.u16(ARM1SCREEN.phase) !== 0) {                       // $25BDD2 tst.w / $25BDD8 beq DRAW
+    if (ram.u16(ARM1SCREEN.timer) !== 0) {                     // $25BE0A tst.w / $25BE10 beq
+      const t = u16(ram.u16(ARM1SCREEN.timer) - 1);            // $25BE12 subq.w #1,$812E6C
+      ram.setU16(ARM1SCREEN.timer, t);
+      if (t === 0) {                                           // $25BE18 bne -> the draw
+        // $25BE1A/$25BE20 -- the SECOND script through the SECOND loader, and $25BE26
+        // OVERWRITES the init handle. This is the chain the exit below waits on. See the
+        // header: the store is value-identical on every real frame, because both loaders hand
+        // back the same freed root. The CONTENT is what differs, and the timing is what shows it.
+        ram.setU32(ARM1SCREEN.handle,                          // $25BE26
+          chainLoader246710(ram, rom, ARM1SCREEN.loadScript, ctx) >>> 0);
+      }
+    } else if (chainCheck24681A(ram, ram.u32(ARM1SCREEN.handle)) === 0) {  // $25BE2E/$25BE3A
+      chainFree246800(ram, ram.u32(ARM1SCREEN.handle));        // $25BE3E jsr $246800
+      return false;                                            // $25BE44 bra $25BE6A -- carry CLEAR
+    }
+  }
+  screen1Draw25BE48(ram, rom, ctx);                            // $25BE48..$25BE5F
+  return true;                                                 // $25BE64 ori.w #$1,SR
+}
+
+/** `$25BE48` -- the draw BOTH arms branch to. SEVEN sprites: four register enqueues through
+ *  `$23DECE`, a fifth `bsr` that lands on a bare `rts`, and a three-entry ZOOM table walk
+ *  through `$23E2F2`. */
+export function screen1Draw25BE48(ram, rom, ctx) {
+  void ctx;
+  for (const d of ARM1SCREEN.draws) {
+    if (d === null) continue;                                  // $25BE54 bsr $25BF80 -- `4E75`
+    enqueueRegistersThroughStub(ram, rom, ARM1SCREEN.emit, d.d1, d.d2, d.d3, d.d4);
+  }
+  // $25BE5C bsr $25BD26 -- `lea ($25BC26,PC),A4` and walk $10-byte entries until the
+  // `cmpi.l #$FFFFFFFF,(A4)` at $25BD2A hits. D3 and D4 are rebuilt inside the loop, so
+  // nothing is inherited across the `jsr` the way $25E29E's four emits inherit theirs.
+  let at = ARM1SCREEN.zoomTable;
+  while ((rom.u32(at) >>> 0) !== 0xffffffff) {                  // $25BD2A cmpi.l / $25BD30 beq
+    enqueueZoomedRegistersThroughStub(ram, rom, ARM1SCREEN.zoomEmit,
+      rom.u32(at), rom.u32(at + 8), ARM1SCREEN.zoomD3, ARM1SCREEN.zoomD4, rom.u32(at + 12));
+    at += ARM1SCREEN.zoomStride;                               // $25BD4C lea ($10,A4),A4
+  }
+}
+
+/**
+ * `$25BDE0` -- one frame of ARM 3's CREDIT screen, and it is NOT arm 1's body.
+ *
+ * Twenty-four instructions: a one-shot latch on `$812E6A` that installs the six palette blocks
+ * INSTANTLY -- the same six the init script fades toward -- and then an unconditional branch
+ * into the shared draw. There is no timer, no chain and no state.
+ *
+ *   25BDE0  48e7 fffe / 4a79 00812e6a / 665c    movem / tst.w $812E6A / bne.s $25BE48
+ *   25BDEC  33fc 0001 00812e6a                  move.w #$1,$812E6A
+ *   25BDF4  41f9 0023046c / 303c 0000 / 4eb9 002415c4    the BACKGROUND bank
+ *   25BE04  6100 006c                           bsr.w -> $25BE06 + $6C = $25BE72
+ *   25BE08  603e                                bra.s -> $25BE0A + $3E = $25BE48
+ *
+ * **IT ALWAYS RETURNS CARRY SET, AND NOTHING READS IT.** Every path reaches `$25BE48`, whose
+ * tail is `$25BE64 ori.w #$1,SR`. And `$25A96E` is `bsr.w $25ACAC` with no `bcs` in front of
+ * it, so arm 3 never advances on this body's account -- the credit screen leaves only through
+ * the join poll. That is the answer to "does porting arm 1 pay twice": it pays for the INIT
+ * and the DRAW, and arm 3's body is its own small routine.
+ */
+export function screen3Body25BDE0(ram, rom, ctx) {
+  if (ram.u16(ARM1SCREEN.arm3Latch) === 0) {                   // $25BDE4 tst.w / $25BDEA bne
+    ram.setU16(ARM1SCREEN.arm3Latch, 1);                       // $25BDEC move.w #$1,$812E6A
+    // $25BDF4 lea $23046C,A0 / $25BDFA move.w #$0,D0 / $25BDFE jsr $2415C4.
+    // `$2415C4` is the SIXTH entry of `palette.js`'s nine-routine family table: destination
+    // $80F086 + D0*64, sixteen longwords, dirty flag $80FA68. `install2415E8` is the SEVENTH,
+    // the (D1+1)-bank form of the SAME destination, so `d1 = 0` IS `$2415C4` -- one bank.
+    installBgBank(ram, rom, ctx, ARM1SCREEN.arm3Bg.src, ARM1SCREEN.arm3Bg.bank, 0x25bdfe);
+    screen3Palettes25BE72(ram, rom, ctx);                      // $25BE04 bsr.w $25BE72
+  }
+  screen1Draw25BE48(ram, rom, ctx);                            // $25BE08 bra.s $25BE48
+  return true;                                                 // $25BE64 ori.w #$1,SR
+}
+
+/** `$25BE72..$25BEBF` -- five `lea / move.w #bank,D0 / jsr $24150A`, banks 0..4, then `rts` AT
+ *  `$25BEBE`. The five sources are entries [0]..[4] of the init script's fade targets, which is
+ *  why the credit screen and the demo screen end up the same colour by different routes. */
+export function screen3Palettes25BE72(ram, rom, ctx) {
+  for (const p of ARM1SCREEN.arm3Spr) {
+    if (!ctx?.palette) {
+      ctx?.unported?.note(0x24150a, `$${p.at.toString(16).toUpperCase()} jsr $24150A -- sprite `
+        + `bank ${p.bank} <- $${p.src.toString(16).toUpperCase()} with no PaletteState on this `
+        + 'chain');
+      continue;
+    }
+    install24150A(ram, ctx.palette, p.bank, rom.bytes(p.src, 64), p.at,
+      `slot [8] arm 3's credit-screen palette`);
+  }
+}
+
+/** `$2415C4` through its `(D1+1)`-bank sibling `$2415E8`, guarded the way `installTxBank` is. */
+function installBgBank(ram, rom, ctx, src, bank, site) {
+  if (!ctx?.palette) {
+    ctx?.unported?.note(0x2415c4, `$${site.toString(16).toUpperCase()} jsr $2415C4 -- BG bank ${
+      bank} <- $${src.toString(16).toUpperCase()} with no PaletteState on this chain`);
+    return;
+  }
+  install2415E8(ram, ctx.palette, bank, 0, rom.bytes(src, 64), site,
+    `slot [8] arm 3's credit-screen background bank`);
+}
+
 /**
  * ARM 13, `$25ABF6` -- THE WARNING SCREEN, and the state reset stages the machine into.
  *
@@ -1063,9 +1409,9 @@ function dispatchTail25A82C(ram, rom, a5, ctx) {
   // which is $25A872 + state*4. There is NO bound anywhere on this path.
   switch (st) {
     case 0x0: arm0(ram, a5, ctx); return;                      // $25A8AE
-    case 0x1: arm1(ram, a5, ctx); return;                      // $25A8E6
+    case 0x1: arm1(ram, rom, a5, ctx); return;                 // $25A8E6
     case 0x2: arm2(ram, rom, a5, ctx); return;                 // $25A912
-    case 0x3: arm3(ram, a5, ctx); return;                      // $25A94A
+    case 0x3: arm3(ram, rom, a5, ctx); return;                 // $25A94A
     case 0x4: armRts(); return;                                // $25A974
     case 0x5: arm5(ram, rom, a5, ctx); return;                 // $25A97C
     case 0x6: armRts(); return;                                // $25A9E2

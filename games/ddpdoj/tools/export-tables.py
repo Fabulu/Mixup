@@ -3931,6 +3931,183 @@ def check_arm9_chain_scripts(d: bytes) -> None:
                     f"{why[:60]}. Declare a disjoint window, never widen one.")
 
 
+# ===================== W391: SLOT [8] ARMS 1 AND 3, SIX WINDOWS =====================
+#
+# Arm 1's demo screen and arm 3's credit screen share the init `$25BBB4` and the
+# draw `$25BE48`.  Between them they read SIX blocks the port had no window for.
+# Every bound below is stated by CODE -- by what FOLLOWS the block, or by a
+# terminator the walk itself compares against.  Nothing is proven by absence.
+#
+#   $25BFBA  arm 1's INIT chain script, `$25BD8A lea ($22E,PC)` into `$24641A`.
+#            Count 6 x 14-byte entries + the count word = $56, which ends
+#            EXACTLY at $25C010 -- the address `$25BE1A`'s own lea names as the
+#            second script.  The init script's end is the load script's start.
+#   $25C010  arm 1's state-1 chain script, `$25BE1A lea ($1F4,PC)` into
+#            `$246710`.  Count 6 x 8-byte entries + the count word = $32, ending
+#            EXACTLY at $25C042 -- the pointer table `$25C22A`'s lea names.
+#   $25BC26  the ZOOM draw table walked by `$25BD26`.  Its bound is not adjacency
+#            at all: `$25BD2A cmpi.l #$FFFFFFFF,(A4)` IS the terminator test, and
+#            the $FFFFFFFF sits at $25BC56.  Three $10-byte entries + the
+#            terminator long = $34.
+#   $2259B8  fade targets for init-script entries [1] and [0] ($2259B8 then
+#            $2259F8) -- two adjacent $40 banks.  $2259B8 + $80 = $225A38, which
+#            is W389's arm-12 target, so this ABUTS it and overlaps nothing.
+#   $25BAEC  fade targets for entries [3] and [4] ($25BAEC then $25BB2C).  Their
+#            bound is the CODE that follows: $25BAEC + $80 = $25BB6C, the
+#            `movem.l` opening the TX plane block both arms call.
+#   $23046C  entry [5]'s target, and the same block arm 3 hands to `$2415C4` as
+#            background bank 0.
+#
+# Entry [2]'s target $222838 is already inside W373's $222838+$40 and is NOT
+# re-declared.  The state-1 script needs no fade-target window at all: `$246710`
+# hardcodes `N.target` to $246BB8 (`$24677E move.l #$246BB8,($A,A2)`), already
+# inside W91's $246BB8+$80.
+SHOT_WINDOWS.append(
+    (0x25BFBA, 0x0056, "W391: slot [8] arm 1's INIT chain script, $25BD8A's lea "
+                       "into $24641A. Count 6 x 14-byte entries + the count word "
+                       "= $56, ending exactly at $25C010, the OTHER script"))
+SHOT_WINDOWS.append(
+    (0x25C010, 0x0032, "W391: slot [8] arm 1's state-1 chain script, $25BE1A's "
+                       "lea into $246710. Count 6 x 8-byte entries + the count "
+                       "word = $32, ending exactly at $25C042, the rank-string "
+                       "pointer table $25C22A's lea names"))
+SHOT_WINDOWS.append(
+    (0x25BC26, 0x0034, "W391: the ZOOM draw table $25BD26 walks, three $10-byte "
+                       "entries into $23E2F2 plus the $FFFFFFFF at $25BC56 that "
+                       "$25BD2A's cmpi.l tests. The terminator IS the bound"))
+SHOT_WINDOWS.append(
+    (0x2259B8, 0x0080, "W391: arm 1's INIT-chain fade TARGETS, entries [1] and "
+                       "[0] of $25BFBA ($2259B8 then $2259F8). Each has "
+                       "words-minus-one $001F and $246B2A's dbra runs N+1 = 32 "
+                       "words = $40 (trap 2). $2259B8+$80 ABUTS W389's $225A38"))
+SHOT_WINDOWS.append(
+    (0x25BAEC, 0x0080, "W391: arm 1's INIT-chain fade TARGETS, entries [3] and "
+                       "[4] of $25BFBA ($25BAEC then $25BB2C). Bounded by the "
+                       "CODE that follows: $25BAEC+$80 = $25BB6C, the movem.l "
+                       "opening the TX plane block $25BBD2 calls"))
+SHOT_WINDOWS.append(
+    (0x23046C, 0x0040, "W391: arm 1's INIT-chain fade TARGET, entry [5] of "
+                       "$25BFBA, and the same block arm 3's $25BDFE hands to "
+                       "$2415C4 as background bank 0. words-minus-one $001F"))
+
+
+def check_arm1_chain_scripts(d: bytes) -> None:
+    """W391.  Re-derive arm 1's two script windows, the zoom draw table and all
+    five fade targets from the cartridge, so a wrong length fails the export."""
+    INIT_LEA, LOAD_LEA = 0x25BD8A, 0x25BE1A
+    for lea, want_base, want_jsr, entry in ((INIT_LEA, 0x25BFBA, 0x0024641A, 14),
+                                            (LOAD_LEA, 0x25C010, 0x00246710, 8)):
+        if u16(d, lea) != 0x41FA:
+            raise SystemExit(f"${lea:06X} is ${u16(d, lea):04X}, not `41FA` "
+                             f"(lea (d16,PC),A0) -- arm 1 no longer names a "
+                             f"chain script here.")
+        # TRAP 4: the EA is the EXTENSION WORD's address plus the displacement.
+        base = lea + 2 + u16(d, lea + 2)
+        if base != want_base:
+            raise SystemExit(f"${lea:06X}'s lea resolves to ${base:06X}, not "
+                             f"${want_base:06X}.")
+        # Arm 1 carries the same `nop` between the lea and the jsr that arms 9
+        # and 12 do, so the jsr is at +6.  Checking it is what guarantees the
+        # ENTRY SIZE -- the table itself does not state it.
+        jsr_at = lea + 6
+        if u16(d, jsr_at) != 0x4EB9 or u32(d, jsr_at + 2) != want_jsr:
+            raise SystemExit(f"${jsr_at:06X} is not `jsr ${want_jsr:06X}` -- the "
+                             f"table at ${base:06X} is read by some other loader "
+                             f"and its {entry}-byte entry shape is not guaranteed.")
+        count = u16(d, base)
+        if count != 6:
+            raise SystemExit(f"${base:06X} declares {count} entries, not 6.")
+        length = 2 + count * entry
+        decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == base]
+        if decl != [(base, length)]:
+            raise SystemExit(f"${base:06X} needs ${length:X} bytes; SHOT_WINDOWS "
+                             f"declares {[(hex(a), hex(n)) for a, n in decl]}.")
+    # THE BOUND, STATED BY WHAT FOLLOWS THE FIRST TABLE.
+    if 0x25BFBA + 0x56 != 0x25C010:
+        raise SystemExit("the init script does not end at the load script.")
+    # ...and by what follows the second: $25C22A's own lea, read the same way.
+    if u16(d, 0x25C22A) != 0x41FA:
+        raise SystemExit("$25C22A is no longer `lea (d16,PC),A0`, so the load "
+                         "script's $32 bound is unproven.")
+    ptr_table = 0x25C22C + s16(u16(d, 0x25C22C))
+    if ptr_table != 0x25C042 or 0x25C010 + 0x32 != ptr_table:
+        raise SystemExit(f"$25C22A's lea resolves to ${ptr_table:06X}; the load "
+                         f"script's end is ${0x25C010 + 0x32:06X}.")
+    # THE ZOOM DRAW TABLE.  Its bound is the terminator its own walk tests for.
+    if u16(d, 0x25BD26) != 0x49FA:
+        raise SystemExit("$25BD26 is no longer `lea (d16,PC),A4`.")
+    zt = 0x25BD28 + s16(u16(d, 0x25BD28))
+    if zt != 0x25BC26:
+        raise SystemExit(f"$25BD26's lea resolves to ${zt:06X}, not $25BC26.")
+    if u16(d, 0x25BD2A) != 0x0C94 or u32(d, 0x25BD2C) != 0xFFFFFFFF:
+        raise SystemExit("$25BD2A is not `cmpi.l #$FFFFFFFF,(A4)`, so the zoom "
+                         "table has no stated terminator and no bound.")
+    n = 0
+    while u32(d, zt + n * 0x10) != 0xFFFFFFFF:
+        n += 1
+        if n > 64:
+            raise SystemExit("$25BC26 has no $FFFFFFFF within 64 entries.")
+    if n != 3 or n * 0x10 + 4 != 0x34:
+        raise SystemExit(f"$25BC26 walks {n} entries, so the window is "
+                         f"${n * 0x10 + 4:X} bytes, not $34.")
+    # ...and the window for it must actually be DECLARED at that length.  Without this the
+    # exporter happily drops the table and only the game throws, at run time, by address.
+    decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == zt]
+    if decl != [(zt, 0x34)]:
+        raise SystemExit(f"${zt:06X} needs $34 bytes; SHOT_WINDOWS declares "
+                         f"{[(hex(a), hex(n)) for a, n in decl]}.")
+    # THE FIVE FADE TARGETS, from the six 14-byte entries the init script carries.
+    for i, want_target in ((0, 0x2259F8), (1, 0x2259B8), (2, 0x222838),
+                           (3, 0x25BAEC), (4, 0x25BB2C), (5, 0x23046C)):
+        e = 0x25BFBC + i * 14
+        target, words_m1 = u32(d, e + 6), u16(d, e + 10)
+        if target != want_target:
+            raise SystemExit(f"$25BFBA entry [{i}] targets ${target:06X}, not "
+                             f"${want_target:06X}.")
+        if words_m1 != 0x001F:
+            raise SystemExit(f"$25BFBA entry [{i}] has words-minus-one "
+                             f"${words_m1:04X}, not $001F, so $40 is wrong.")
+        length = (words_m1 + 1) * 2
+        if not any(a <= target and target + length <= a + ln
+                   for a, ln, _ in SHOT_WINDOWS):
+            raise SystemExit(f"the fade target ${target:06X}+${length:X} is not "
+                             f"fully inside any declared window.")
+    # ABUTTING IS NOT OVERLAPPING, twice, and both are pinned by something real:
+    # W389's arm-12 target starts where this window ends, and the TX plane block
+    # is the CODE that ends the $25BAEC pair.
+    if 0x2259B8 + 0x80 != 0x225A38:
+        raise SystemExit("W391's $2259B8 pair no longer abuts W389's $225A38.")
+    if 0x25BAEC + 0x80 != 0x25BB6C:
+        raise SystemExit("the $25BAEC pair no longer ends at $25BB6C.")
+    # The TX plane block opens `4EB9 0023C608` -- a jsr, NOT the `48E7 fffe`
+    # movem every screen routine round here opens with.  It is the first of the
+    # nineteen instructions and it is what ends the palette pair.
+    if u16(d, 0x25BB6C) != 0x4EB9 or u32(d, 0x25BB6E) != 0x0023C608:
+        raise SystemExit("$25BB6C is not `jsr $23C608`, so the $25BAEC pair's "
+                         "bound is not pinned by the code that follows it.")
+    # ...and the last word BEFORE it is palette, not code.
+    if u16(d, 0x25BB6A) != 0x7FFF:
+        raise SystemExit("$25BB6A is not a palette word, so $25BAEC+$80 runs "
+                         "past the end of the two colour banks.")
+    # THE DEAD DRAW.  $25BE54's bsr lands on a bare `rts` at $25BF80 and the
+    # enqueue at $25BF82 is unreferenced.  If the cartridge ever stops saying so,
+    # objslot8.js's `draws[3] = null` is wrong and the screen loses a sprite.
+    if 0x25BE56 + u16(d, 0x25BE56) != 0x25BF80 or u16(d, 0x25BF80) != 0x4E75:
+        raise SystemExit("$25BE54's bsr no longer lands on a bare `rts`, so "
+                         "objslot8.js's null draw slot is wrong.")
+    # NEVER WIDEN A NEIGHBOUR: all six new windows must overlap nothing.
+    for base, length in ((0x25BFBA, 0x56), (0x25C010, 0x32), (0x25BC26, 0x34),
+                         (0x2259B8, 0x80), (0x25BAEC, 0x80), (0x23046C, 0x40)):
+        for a, ln, why in SHOT_WINDOWS:
+            if (a, ln) == (base, length):
+                continue
+            if a < base + length and base < a + ln:
+                raise SystemExit(
+                    f"the W391 window [${base:06X}, ${base + length:06X}) "
+                    f"OVERLAPS the declared window [${a:06X}, ${a + ln:06X}) -- "
+                    f"{why[:60]}. Declare a disjoint window, never widen one.")
+
+
 # W169 correction: W91's existing `$222A78..$2252F8` palette-family window
 # already contains every stage-2 spawn palette source `$2236F8..$2252F8`.
 # There is no deferred palette export here.  W169 installs the spawn program;
@@ -7734,6 +7911,7 @@ def build(d: bytes) -> dict:
     check_name_entry_fade_sources(d)           # W387 -- SLOT [12]'S FOUR SOURCES
     check_arm12_chain_scripts(d)               # W389 -- ARM 12'S TWO SCRIPTS
     check_arm9_chain_scripts(d)                # W390 -- ARM 9'S TWO SCRIPTS
+    check_arm1_chain_scripts(d)                # W391 -- ARMS 1 AND 3'S SIX BLOCKS
     check_sample_windows()                     # W27D -- ICS sample tight union
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
