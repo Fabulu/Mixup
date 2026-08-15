@@ -28,6 +28,56 @@ def forms(addr: str):
     return re.compile(r'(?<![0-9a-fA-F])(?:0x|\$|\$00)?' + a + r'(?![0-9a-fA-F])', re.I)
 
 
+# W381. Built with chr() on purpose: these three are the characters this file has to reason ABOUT,
+# and spelling them as literals means escaping quotes inside quotes, which is exactly how the line
+# this replaced acquired a stray backspace byte in the first place.
+QUOTES = chr(39) + chr(34) + chr(96)          # apostrophe, double quote, backtick
+BACKSLASH = chr(92)
+
+
+def _quoted_spans(line: str):
+    """Half-open [start, end) spans of every ' \" or ` string literal on one line.
+
+    W381. Backslash escapes are honoured so an escaped quote does not close the run. An unterminated
+    literal (a line continuation, or a lone apostrophe in a comment) runs to end of line, which is the
+    conservative direction: it can only make an address look MORE quoted, never less, and a false NOTE
+    is the failure this replaced.
+    """
+    spans, i, n = [], 0, len(line)
+    while i < n:
+        c = line[i]
+        if c in QUOTES:
+            j = i + 1
+            while j < n:
+                if line[j] == BACKSLASH:
+                    j += 2
+                    continue
+                if line[j] == c:
+                    break
+                j += 1
+            spans.append((i, min(j + 1, n)))
+            i = j + 1
+        else:
+            i += 1
+    return spans
+
+
+def _all_occurrences_quoted(line: str, pat) -> bool:
+    """True when EVERY spelling of the address on this line sits inside a string literal.
+
+    W381. Occurrences are found with `pat`, the same compiled pattern the scan uses, so `$260A88`,
+    `0x260a88` and `$00260a88` are all counted. Returns False when there is no match at all, so a
+    caller that has already established a hit cannot be told the hit is quoted.
+    """
+    spans = _quoted_spans(line)
+    found = False
+    for m in pat.finditer(line):
+        found = True
+        if not any(s <= m.start() < e for s, e in spans):
+            return False
+    return found
+
+
 def scan(addr: str):
     pat = forms(addr)
     hits = []
@@ -59,7 +109,19 @@ def scan(addr: str):
                 # NOT ported that address. Counting it as a claim gave a false CLAIMED on $23C98E, whose
                 # only mentions were in my own note text -- the exact inverse of the eight duplicates this
                 # tool was built for, so both directions now have to be distinguished.
-                elif re.search(r'(note|unreached)\s*\(', line) or "'" in line or '`' in line:
+                # W381 MAKES THIS POSITIONAL, AND REPAIRS A CORRUPT BYTE. The line read
+                #     elif re.search(r'<0x08>(note|unreached)...', line) or "'" in line or '`' in line
+                # with a LITERAL BACKSPACE where `\b` was meant, so that first regex could never match
+                # anything and only the quote test was ever firing. And the quote test asked whether the
+                # LINE held a single quote or backtick ANYWHERE -- which most JavaScript does -- so it
+                # classed the line NOTE regardless of where the address sat. That reported $28131E as
+                # "likely genuinely unported" when bullets.js has ported it for waves: its declaration is
+                # `poolClear: 0x28131e,` trailed by a comment containing a backtick, and the address is
+                # not inside a string at all. The blast radius was every line carrying a string literal.
+                #
+                # The real question is whether EVERY occurrence of the address sits inside a string. One
+                # occurrence outside quotes is a genuine code reference, whatever else is on the line.
+                elif _all_occurrences_quoted(line, pat):
                     kind = 'NOTE'
                 else:
                     kind = 'CODE'

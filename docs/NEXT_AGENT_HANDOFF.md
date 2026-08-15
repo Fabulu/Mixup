@@ -2,7 +2,101 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W380
+## START HERE -- W381
+
+### `claimed.py` WAS MISCLASSIFYING MOST OF THE TREE. FIXED.
+
+**Line 62 read** `elif re.search(r'<0x08>(note|unreached)...', line) or "'" in line or '`' in line:`
+-- with a **LITERAL BACKSPACE BYTE** where `\b` was meant, so that regex could never match anything
+and **only the quote test was ever firing**. And the quote test asked whether the LINE held a single
+quote or a backtick ANYWHERE, which most JavaScript does. **Every line carrying a string literal was
+classed NOTE regardless of where the address sat.**
+
+That is why `$28131E` reported "likely genuinely unported" while `bullets.js` had ported it for
+waves: its declaration is `poolClear: 0x28131e,` trailed by a comment containing a backtick.
+
+Now positional: `_all_occurrences_quoted(line, pat)` is true only when EVERY occurrence of the
+address sits inside a string literal, found with the same `pat` the scan uses so `$260A88`,
+`0x260a88` and `$00260a88` all count. Verified BOTH directions -- `$28131E` is now CLAIMED with 5
+CODE hits, and `$253564` still reports 3 NOTE hits for its real `note(ctx, 0x253564)` deferrals.
+
+**Any port-status judgement made before W381 on a "NOTE"/"unported" verdict is suspect. Re-check it.**
+
+### THE FOUR STALE NOTES ARE FIXED, AND THERE WERE MORE
+
+`rebuildWorld25FD38` now issues all eight resets in ROM order. `$28131E` is **TWO** loops: it clears
+`$1A49+1` words from `$817F8C`, then `$281330` walks 210 slots at stride `$40` writing `#$FFFF` to
+`($2,A0)`. **A port running only the clear leaves every slot's `+$02` at 0 instead of parked.**
+
+**Order does not matter, and that is measured, not assumed.** The eight ranges are pairwise disjoint:
+
+```
+$26331E $81332C..$816B79   $27E98A $816B7A..$8171BD
+$28131E $817F8C..$81B41F   $288E0C $81B732..$81C8EB
+$289084 $81C8EC..$81CDED   $289AE0 $81CDEE..$81D393
+$289F3A $81D394..$81DB8F   $28AC3A $81DB90..$81DD0F
+```
+
+`$263386`'s install writes `$815EA8`, which lies inside `$26331E`'s OWN range and is written after
+that range is zeroed; `$8132CC`/`$8132D0` lie below every base. A test reddens if `$815EA8` is moved
+into a later clear's range -- the case where order WOULD matter.
+
+A second stale note in the same file: `$2875B4` at the banner teardown, ported in `hyper.js` since
+W163. **The note also swallowed FOUR GATES** (`$28EAA8 tst.w $8103E6 / bpl`, `$28EAB0 tst.w $81B63E
+/ bne`, and the byte-identical P2 mirror), so both calls are now made under them.
+
+### THE STALE-NOTE SWEEP: 487 SITES, AND THE TIERS ARE THE ROADMAP
+
+487 `note(`/`unreached(` sites in `src/`, 185 distinct literal addresses. 137 note and 101 unreached
+sites take a COMPUTED address and were resolved only where a literal reaches them, **so this is
+thorough but not provably exhaustive.**
+
+**TIER 1 -- stale notes skipping a call the tree can already make. These are live defects.**
+
+| Addr | Note sites | Port | Effect |
+|---|---|---|---|
+| `$253564` | `boss.js:188`, `boss2.js:137`, `boss3.js:66` | `boss.js:1221` | `$811F8C` never clamped to `$14` on the stage 1/2/3 boss deaths |
+| `$242922` | `boss.js:189`, `boss2.js:138`, `boss3.js:67` | `boss.js:1209` | `$81296E := 1` and two per-player `+$3E := $FF` never happen |
+| `$24107C` | `objslot13.js:211` | `objalloc.js:348` | state 4's object-table reset never runs before the type-`$E` create |
+| `$289004` | `bossf23.js:735`, `:754` | `effects.js:373` | type-`$1E` carrier's death explosion never spawns |
+| `$28F606` | `hiscorename.js:367` | `hiscorename.js:507`, **same file, 140 lines below** | name-entry TIMEOUT never commits the name |
+| `$2878CC` | `items.js:1559` | `hud.js:1304` | the LIVES ROW (the note also mis-describes it as the `$8130BE` icon row) |
+| `$28AC72` | `handlers.js:1374`, `:3768`, `:4830`, `midboss.js:814` | `cues.js:72` | sub-record cue spawns skipped in types `$82`/`$80`/`$88` and the midboss |
+| `$246410` | 5 sites | `animobjects.js:57` | **HALF-STALE, LEFT DELIBERATELY**: the loader is ported, the engine that DRAINS the chain is not, so running it would seed chains nothing drains |
+
+**TIER 2 -- port exists, caller lacks the ctx object. ONE WIRING CLOSES FIFTEEN.**
+`$24150A`/`$24157A`/`$2415E8`/`$2414BE`/`$241688` are noted at **15 sites**, all saying "no
+PaletteState on this ctx/chain". Ports at `palette.js:231/288/321/371/682/762`. **One `ctx.palette`
+wiring closes all fifteen**, and `$26D7D0` (`handlers.js:3089`) with them. Separately `$23C668` is 5
+sites blocked on `Game#ctx()` carrying no `slotTable`, and `$24631C` has TWO private
+implementations (`objslot8.js:265`, `stageend.js:280`), neither exported.
+
+**TIER 3 -- pure log noise.** `$2599EC` at `boss.js:158` and `:170`: the line immediately above each
+already calls the port. Inflates the unported log for nothing.
+
+**TIER 4 -- checked and cleared, so nobody re-checks them.** Range guards inside the very function
+that ports the address (`palette.js`, `spawn.js`, `background.js`, `bee.js`, `bullets.js`,
+`handlers.js`, `vectors.js`, `bossarrival.js`, `mover.js`), the six null-ROM fixture paths in
+`hud.js`, and the in-file gap notes in `tallyscreen.js`/`background.js`/`bee.js`.
+
+### THREE FILES STILL CALL `$28B5A8` UNREACHABLE, AND ONE IS FLATLY WRONG
+
+`effects.js:247`, `items.js:240`, `spark.js:250` all describe object type 5's "not started" branch
+as something `type5.js` throws for. **W380 made it real.** `spark.js:250` adds "nothing in the port
+reaches this today", now false twice over.
+
+**`bee.js:276` is factually wrong**: it says `clearPoolA` (`$27F87C`) is "called from
+`rebuildWorld25FD38` next to `clearItemPool`". `$25FD38` has no `jsr $27F87C`. The real caller is
+`$2606E8`, named correctly in `rank.js:430/459`.
+
+### THE 120,000-FRAME RUN IS A NO-REGRESSION CHECK, NOT EVIDENCE FOR THIS FIX
+
+Stated plainly because it would be easy to overclaim: `$813092` is still 0 at frame 120,000, so that
+run **never reaches a stage advance** and never executes `rebuildWorld25FD38`. The evidence for the
+pool fix is W381/6..10 and their ablations, which dirty each pool and assert both that it is zeroed
+and that its NEIGHBOUR survived.
+
+## W380 NOTES
 
 ### THE BOOT CHAIN IS COMPLETE. 120,000 FRAMES, NO THROW.
 

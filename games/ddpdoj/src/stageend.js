@@ -82,6 +82,14 @@ import { bcdAdd, scoreByMask } from './score.js';
 import { enqueueRegistersThroughStub, enqueueRegisters, enqueueRequest } from './spritequeue.js';
 import { install24150A } from './palette.js';
 import { clearEffectPool, clearSubEffectPool } from './effects.js';
+// W381 -- the four resets `$25FD38` had been COUNTING since W62.  All four have
+// had a port for at least a wave; see the block comment above `rebuildWorld25FD38`.
+import { clearPoolC289AE0, clearCuePool28AC3A } from './poolclear.js';
+import { clearPool as clearSparkPool289F3A } from './spark.js';
+import { poolClear as clearBulletPool28131E, poolPark as parkBulletSlots281330 }
+  from './bullets.js';
+// W381 -- `$28EAB8`/`$28EACE`'s callee, ported since W163 and counted here since W125.
+import { flushPendingHyper2875B4 } from './hyper.js';
 import { emit23F82A } from './bossarrival.js';
 
 export const SE = {
@@ -160,6 +168,71 @@ export function wipeStageBlock25FD24(ram) {
  * `$25FD38` -- **REBUILD THE WORLD.**  The wipe, eight subsystem resets, and a
  * NEW type-1 background object whose `($6,A0)` -- the entry clock -- is
  * explicitly ZERO (`$25FD7A`).  Stage 2 enters at clock 0, not at `$0038`.
+ *
+ * ==========================================================================
+ * W381 -- THE FOUR COUNTED NOTES ARE GONE, AND THEY WERE A LIVE DEFECT
+ * ==========================================================================
+ * W62 wrote four of the eight resets as `note()` deferrals because their
+ * subsystems had no port.  Three of the four acquired one WITHOUT THIS FILE
+ * BEING TOUCHED -- the classic stale counted note:
+ *
+ *   $289AE0  poolclear.js clearPoolC289AE0      W380
+ *   $28AC3A  poolclear.js clearCuePool28AC3A    W380
+ *   $289F3A  spark.js     clearPool             W53
+ *   $28131E  bullets.js   poolClear + poolPark  earlier still
+ *
+ * So from W53 to W380 a stage advance left the SHOT-SPARK pool and the BULLET
+ * pool full of the previous stage's live records while `$25FD24` had already
+ * zeroed the clock they were timed against.  That is not untidiness: `$28A098`
+ * walks pool E off ONE count word for both halves, and `$281D9A` walks all 210
+ * bullet slots, so both drivers ran stale records into stage N+1.
+ *
+ * The bytes, re-swept this wave, are the whole order:
+ *
+ *   25fd38: 61 ea               bsr.b   $25FD24
+ *   25fd3a: 4eb9 0026331e       jsr     $26331E   enemy subsystem + INSTALL
+ *   25fd40: 4eb9 00288e0c       jsr     $288E0C   pool B
+ *   25fd46: 4eb9 00289084       jsr     $289084   pool D
+ *   25fd4c: 4eb9 00289ae0       jsr     $289AE0   pool C
+ *   25fd52: 4eb9 0028ac3a       jsr     $28AC3A   the CUE pool
+ *   25fd58: 4eb9 00289f3a       jsr     $289F3A   pool E, the shot spark
+ *   25fd5e: 4eb9 0027e98a       jsr     $27E98A   the ITEM pool
+ *   25fd64: 4eb9 0028131e       jsr     $28131E   the BULLET pool + 210 parks
+ *   25fd6a: 303c 0001           move.w  #$1,D0
+ *   25fd6e: 4eb9 00241182       jsr     $241182
+ *   25fd74: 23c0 00813144       move.l  D0,$813144
+ *   25fd7a: 317c 0000 0006      move.w  #$0,($6,A0)
+ *   25fd80: 4e75                rts
+ *
+ * **`$28131E` IS TWO LOOPS, NOT ONE**, and a port that ran only the clear would
+ * leave all 210 slots' `($2,A0)` at 0 instead of $FFFF:
+ *
+ *   28131e: 41f9 00817f8c  lea $817F8C,A0 / 303c 1a49 move.w #$1A49,D0
+ *   281328: 7200 moveq #0,D1 / 30c1 move.w D1,(A0)+ / 51c8 fffc dbra
+ *   281330: 41f9 00817f8e  lea $817F8E,A0 / 303c 00d1 move.w #$D1,D0
+ *   28133a: 30bc ffff move.w #$FFFF,(A0) / 41e8 0040 lea ($40,A0),A0 / dbra
+ *   281346: 4e75
+ *
+ * `$1A49`+1 = `$1A4A` = 6,730 words and `$D1`+1 = 210 slots -- trap 2 in both
+ * halves, and both are already right in `bullets.js`.
+ *
+ * **ORDER IS IRRELEVANT HERE**, and that is a measurement rather than a hope.
+ * `$28B5A8` issues the SAME EIGHT in a different order ($27E98A $28131E
+ * $288E0C $289084 $289AE0 $28AC3A $289F3A $26331E -- the install LAST rather
+ * than FIRST).  The eight ranges are pairwise disjoint:
+ *
+ *   $26331E  $81332C..$816B79     $27E98A  $816B7A..$8171BD
+ *   $28131E  $817F8C..$81B41F     $288E0C  $81B732..$81C8EB
+ *   $289084  $81C8EC..$81CDED     $289AE0  $81CDEE..$81D393
+ *   $289F3A  $81D394..$81DB8F     $28AC3A  $81DB90..$81DD0F
+ *
+ * and the only non-clearing side effect in the eight -- `$263386`'s install --
+ * writes `$8132CC`, `$8132D0`, `$815EA8` and protection slot `$1F`.  `$815EA8`
+ * lies inside `$26331E`'s OWN range and is written after that range is zeroed;
+ * `$8132CC`/`$8132D0` lie BELOW every one of the eight bases.  So no reset can
+ * undo another's work in either order, and `$28131E`'s park survives because
+ * nothing else writes `$817F8C..$81B41F`.  The order is transcribed anyway,
+ * because the ROM's order is the thing being ported.
  */
 export function rebuildWorld25FD38(ram, ctx) {
   wipeStageBlock25FD24(ram);                           // $25FD38 bsr $25FD24
@@ -169,14 +242,12 @@ export function rebuildWorld25FD38(ram, ctx) {
   ctx.stageEndEvent?.('spawn-install', ram.u32(0x8132cc));
   clearEffectPool(ram);                                 // $25FD40 jsr $288E0C
   clearSubEffectPool(ram);                              // $25FD46 jsr $289084
-  // $25FD4C..$25FD58 -- these three subsystem resets remain deferred.
-  for (const a of [0x289ae0, 0x28ac3a, 0x289f3a]) {
-    note(ctx, a, `$25FD38's subsystem reset $${a.toString(16).toUpperCase()} `
-      + `-- counted, not run (W62 ports the stage machine, not the subsystems)`);
-  }
-  clearItemPool(ram);                                  // $25FD5E jsr $27E98A
-  note(ctx, 0x28131e, `$25FD38's subsystem reset $28131E -- counted, not run `
-    + `(W62 ports the stage machine, not the subsystem)`); // $25FD64
+  clearPoolC289AE0(ram);                                // $25FD4C jsr $289AE0
+  clearCuePool28AC3A(ram);                              // $25FD52 jsr $28AC3A
+  clearSparkPool289F3A(ram);                            // $25FD58 jsr $289F3A
+  clearItemPool(ram);                                   // $25FD5E jsr $27E98A
+  clearBulletPool28131E(ram);                           // $25FD64 jsr $28131E ..
+  parkBulletSlots281330(ram);                           //   ..and its second loop
   const r = stageCreate(ram, 1, (t) => ctx.rom.u16(SE.dispatch + t * 8 + 4));
   ram.setU32(SE.bgHandle, r.ok ? ram.u32(r.addr + ALLOC.idOff) : 0);   // $25FD74
   ram.setU16(r.addr + 0x06, 0);                        // $25FD7A -- ENTRY CLOCK 0
@@ -1388,9 +1459,35 @@ function bannerSlideOutStep(ram, ctx) {
   if (ram.u16(BANNER.dfec) !== 0) return;                   // $28EA98 tst (a4)/bne
   ram.setU16(BANNER.dfec + 2, 1);                           // $28EA9C $2(a4) := 1
   ram.setU16(0x81b6e4, 0);                                  // $28EAA2 clr $81B6E4
-  // $28EAB8/$28EACE jsr $2875B4/$287616 -- P1/P2 hyper-end checks (presentation)
-  note(ctx, 0x2875b4, '$28EAB8 jsr $2875B4 / $28EACE jsr $287616 -- P1/P2 hyper-end '
-    + 'checks on banner teardown. Counted');
+  // W381 -- the SECOND stale counted note this file carried.  `$2875B4` and its
+  // P2 mirror `$287616` are `hyper.js flushPendingHyper2875B4`, which has served
+  // both since W163 (`bomb.js flushPendingGrants2875B4` is a delegate, not a
+  // second port), so the note was deferring a call the tree could already make.
+  //
+  // AND THE NOTE HID THE FOUR GATES, which is brief trap 7 -- these sequential
+  // `tst.w`s DO branch away, so they are a chain and not a ladder:
+  //
+  //   28eaa8: 4a79 008103e6   tst.w   $8103E6      P1's record
+  //   28eaae: 6a 0e           bpl.b   $28EABE      NOT negative -> skip P1
+  //   28eab0: 4a79 0081b63e   tst.w   $81B63E      P1's HYPER-ACTIVE word
+  //   28eab6: 66 06           bne.b   $28EABE      hyper still up -> skip P1
+  //   28eab8: 4eb9 002875b4   jsr     $2875B4
+  //   28eabe: 4a79 00810448   tst.w   $810448      ...and the P2 mirror,
+  //   28eac4: 6a 0e           bpl.b   $28EAD4      byte for byte
+  //   28eac6: 4a79 0081b640   tst.w   $81B640
+  //   28eacc: 66 06           bne.b   $28EAD4
+  //   28eace: 4eb9 00287616   jsr     $287616
+  //
+  // The `bpl` displacements are measured from the FOLLOWING instruction
+  // ($28EAB0 + $0E = $28EABE, $28EAC6 + $0E = $28EAD4), and both `bne`s land on
+  // the same two targets.  A port that called the flush unconditionally would
+  // hand items to a dead player, or to one whose hyper has not ended yet.
+  for (const [rec, hyperWord, p2] of [[SE.p1, 0x81b63e, false],
+    [SE.p2, 0x81b640, true]]) {
+    if ((ram.u16(rec) & 0x8000) === 0) continue;            // $28EAAE/$28EAC4 bpl
+    if (ram.u16(hyperWord) !== 0) continue;                 // $28EAB6/$28EACC bne
+    flushPendingHyper2875B4(ram, ctx.rom, ctx, p2);         // $28EAB8/$28EACE
+  }
   ram.setU16(BANNER.dff6, 0);                               // $28EAD4 clr $81DFF6 -- THE CLEARER
   ram.setU16(a6, 0);                                        // $28EADA clr (a6)
 }
