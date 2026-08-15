@@ -127,6 +127,81 @@ an ad-hoc sweep that knew one instruction form and not its siblings:
 it covers.** A sweep that silently knows one form reports absence, and absence is exactly what gets
 recorded as a finding.
 
+### A BEHAVIOURAL QUESTION IN `$25FAA4` TO SETTLE BEFORE PORTING IT
+
+`$25FB30 btst #0,D0` and `$25FB54 btst #1,D0` test **D0**, not `$813072`. D0 comes from the
+`$23D16C`/`$23D17E` bare loads (`($803970)` and `($803976)`, 8 bytes each, and **neither clears D0's
+high word**). The button gate a few instructions later at `$25FB78` DOES use the P1-or-P2 OR held in
+`$813072`.
+
+**So cursor movement responds to P2 alone whenever P2 is enabled, while confirm respects both.**
+That asymmetry is either faithful or a cartridge quirk, and it wants a decision BEFORE the port
+rather than a "fix" after. Transcribe what the bytes say and note the asymmetry; do not unify the
+two gates because they look like they should match.
+
+Other things from the same decode, not yet independently verified by me:
+
+* `$25FB74` and `$25FBCA` are **two more `bsr.w $25FC14`**, beyond the `$25FAD6` already found.
+* `$28C6FA` and `$28C6E0` take **no register arguments** -- both `movem` everything and set their own
+  D0/D1/D2. `$28C6E0`'s real argument is the memory word `$80393A`, written by the
+  `move.w ($813074),($80393A)` immediately before the call.
+* A ROM data window will be needed at **`$25FC68` / `$25FC78`** -- "1 ROUND GAME" / "2 ROUND GAME",
+  16 bytes each. **The bound is a `$FF` sentinel stated by `$256F14` at `$256F30`**, with a second
+  `$7F` escape at `$256F2A` branching backward to `$256F1C`. Bound from the consumer, not adjacency.
+
+### `$25D560` IS FULLY DECODED. **732 BYTES**, AND STATE 8 IS VISIBLE TO THE DRAWS
+
+Not yet ported. The findings that change how it must be written:
+
+* **`$25D748 move.b #$8,($1,A6)` FALLS THROUGH into the draws.** It sits at a LOWER address than
+  `$25D800`, so **state 8 IS visible on that same frame**, and `draw25E824`'s blocks E/D/C gate on
+  `cmpi.b #$4`/`#$7` -- so on the final frame **those three blocks do not draw**. Do NOT port
+  `$25D748` as "advance and we are done".
+* **`$25D74E` writes state 8 into the OTHER record too**, and the dispatcher loop has not reached
+  record 1 yet. So on that frame record 1 matches none of `cmpi.b #$3/#$5/#$6/#$7`, **runs no
+  handler at all**, and its four ungated draws are skipped for that one frame.
+* **`($3,A5)` is cleared ONCE PER FRAME at `$25CEC8`, before the two-record loop.** So the
+  `bset`-gated draws fire for **record 0 only**; record 1 finds the bits set. `$25E4D0`, `$25E824`,
+  `$25EF30` and `$25F074` are ungated and run **TWICE per frame, once per record**.
+* **Trap 10, worst form:** `$25D4F0` (state 6) writes `($1,A6) = 7` at `$25D522`, and the very next
+  compare in the dispatch chain is `cmpi.b #$7`. **So `$25D560` runs in the SAME FRAME as
+  `$25D4F0`.**
+* **State 8 is polled after the loop** at `$25CF20..$25CF5E`: both records done -> `($2,A5) = 2` ->
+  `$25CEC0` tears the object down next frame. An INACTIVE record counts as done. That is the
+  retirement path in full.
+
+**THE ZOOM PERIOD IS TRAP 4, AND I HAD IT WRONG.** `$25C922 move.w #$2,($6A,A0)` is a WORD literal
+covering TWO byte fields: it sets **`($6A) = $00` and `($6B) = $02`**. `subq.b #1` from 0 borrows, so
+the FIRST step fires immediately, then the reload of 2 gives `2 -> 1 -> 0 -> borrow`. **Period is 3
+frames per step, not `($6B)+1` in general.** With `($6C,A6) = $140` = 320 frames of delay first, the
+full 15-step ramp is **320 + 3*14 = 362 frames** of state 7.
+
+**`$24150A` IS THE PALETTE INSTALLER, NOT `stageCreate`, AND IT RESTORES A0.** So the trap-11
+reasoning about A0 at `$25D638` was wrong: the `move.l A0,-(A7)` exists only because the next `lea`
+clobbers A0, and neither `$26070C` nor `$25F456` reads it.
+
+**`$2603FE` HAS TWO CALLS AN ABSOLUTE GREP CANNOT SEE:** `jsr ($FB02,PC)` and `jsr ($FAC4,PC)`, both
+resolving to **`$25FF38`**, which is ALREADY PORTED as `armRequest25FF38` in `player.js`. Both post
+request `#$4` to side D0.
+
+**A SUBTLETY TO REPRODUCE, NOT FIX:** `move.w #$B,D0` writes only D0's LOW word, so D0's high word is
+still the anchor's high word from `($56,A6)`. `$241182` then does `ori.w #$8000,D0` and
+`$260456 move.l D0,($1C,A2)` stores a LONG. So `($1C,A2)` receives
+`(anchorHigh << 16) | $800B`, **not** `$0000800B`.
+
+**`$25F592` IS NEW AND LARGE:** 560 bytes (`$25F592..$25F7C1`), four exits, reached only by the two
+`bsr.w` in `$25F530`. It was in nobody's list.
+
+**CONFIRMED AGAINST MY OWN HAND DECODE:** the `$25D85C` sentinel at `$25D950` (122 entries, 246-byte
+window including the sentinel, which `$25D7DC` reads); `$25D83C` unreferenced, now proven
+**exhaustively** -- zero absolute longwords, zero PC-relative forms across a strict superset of the
+16-bit displacement reach, and unreachable via `$25D7EA` because `$25D85C[0]` is `$0020`. **Do not
+declare a window for `$25D83C`.**
+
+**ONE CONFLICT I RESOLVED MYSELF:** the recon lists `$256F78` as 24 bytes ending `$256F8F`; its own
+sub-agent said 28, and **28 is right** -- `$256F8E` is `4EF9 0024 0CF0`, a six-byte `jmp abs.l`
+ending at `$256F93`, with a `4E71` pad at `$256F94`.
+
 ### `$25D560`'s HEAD IS THE TWO-PLAYER SYNCHRONISATION
 
     $25D560  jsr $25F530
