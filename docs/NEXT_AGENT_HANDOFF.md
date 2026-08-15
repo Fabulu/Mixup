@@ -71,6 +71,21 @@ The docstrings, the wiring comment and the test names all now carry the withdraw
 warning rather than as a fact, because the tests themselves were always right: they pin the
 FUNCTION's gate, which behaves correctly whichever state it is handed.
 
+### STATE 8 IS HOW A RECORD RETIRES, AND NOTHING SERVES IT
+
+`$25D560` contains **no `cmpi.b` against `($1,A6)` at all** -- it is reached by dispatch, not by
+self-gating, so the dead-gate trap that cost two claims this wave does not arise in it. It writes
+the state byte exactly once: `$25D748 move.b #$8,($1,A6)` (and `$25D74E` the same to `($1,A0)`, the
+other record).
+
+**And NOTHING handles state 8.** `SCREEN9.states` is `[3,4,5,6,7,0,1,2]` and `SCREEN17.subStates`
+is `[3,5,6,7]`. On top of that, slot [9]'s per-record tail is skipped for states `>= 7`
+(`$25CB5E cmpi.b #$7 / bcc`, an UNSIGNED test). So a record in state 8 has **no arm and no tail**:
+it is still walked, and it does nothing.
+
+**That is the retirement mechanism**, and it is worth knowing before porting `$25D560`: the handler's
+job ends by parking both records where the machine will ignore them. Do not "fix" the missing arm.
+
 ### TRAP 1 BITES SCANNERS, NOT JUST READERS -- CHECK YOUR OWN GREP
 
 Scanning for writers of `($54,A6)` with "displacement word at `a+2`, mode 5, reg 6" returned only
