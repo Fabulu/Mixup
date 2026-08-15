@@ -71,13 +71,41 @@ The docstrings, the wiring comment and the test names all now carry the withdraw
 warning rather than as a fact, because the tests themselves were always right: they pin the
 FUNCTION's gate, which behaves correctly whichever state it is handed.
 
-### A WITHDRAWN CLAIM ABOUT `$25D85C`, AND A TABLE NOBODY HAD NOTICED
+### THE SLIDE-ACCUMULATOR MECHANIC, FULLY DECODED -- AND `$25D85C`'s REAL BOUND
 
-**`$25D85C` IS NOT `$FFFF`-TERMINATED.** That claim was recorded earlier this wave and I repeated it;
-a scan of 96 words from `$25D85C` finds **no `$FFFF` at all**. Whatever bounds it is in the code that
-indexes it, not a sentinel. Its first 24 words are mostly zero -- `$20` at words 0 and 2, `$40` at
-word 4, another `$40` at word 17 -- so if it is the D0 source for the slide accumulators, most
-entries contribute nothing, and that sparseness is itself the finding.
+**`$25D85C..$25D951`: 122 entries plus the `$FFFF` terminator at `$25D950`, so 246 bytes (`$F6`).**
+
+I withdrew the "`$FFFF`-terminated" claim mid-wave on the strength of a 96-word scan and **that
+withdrawal was wrong** -- the sentinel is at word **122**. Scan far enough before contradicting a
+claim, and prefer finding the test in the CODE to hunting for the value in the data: `$25D7E0
+cmpi.w #$FFFF,D0` settles it regardless of where the sentinel sits.
+
+    $25D7C4  cmpi.w #$3800,($4E,A6)
+    $25D7CA  bcc.w  $25D7F2            already capped -> skips BOTH accumulators, not just one
+    $25D7CE  lea    ($25D85C,PC),A1    ext@$25D7D0 +$8C
+    $25D7D2  nop
+    $25D7D4  move.w ($52,A6),D1
+    $25D7D8  addq.w #2,($52,A6)        the cursor advances by TWO every frame
+    $25D7DC  move.w (0,A1,D1.w),D0
+    $25D7E0  cmpi.w #$FFFF,D0
+    $25D7E4  bne.s  $25D7EE
+    $25D7E6  subq.w #2,($52,A6)        on the terminator, back the cursor up
+    $25D7EA  move.w (-2,A1,D1.w),D0    and re-read the PREVIOUS entry
+    $25D7EE  add.w  D0,($4E,A6)
+    $25D7F2  cmpi.w #$1C00,($50,A6)
+    $25D7F8  bcc.s  $25D800
+    $25D7FA  asr.w  #1,D0              HALF the same step
+    $25D7FC  add.w  D0,($50,A6)
+
+**IT SATURATES, it does not wrap or stop.** Once the cursor hits the terminator it backs up and
+re-reads the last real entry forever, so the step sticks at its final value. **And `($50,A6)`
+receives exactly HALF of what `($4E,A6)` does** -- `asr.w #1` on the same D0 -- under independent
+caps of `$3800` and `$1C00`.
+
+**`$25D83C` STILL HAS NO REFERENCE ANYWHERE IN THE IMAGE** -- no absolute longword, and the only
+PC-relative `lea` in `$25D000..$25E000` landing in either table resolves to `$25D85C`. Since the
+read is `(0,A1,D1.w)` and there is also a `(-2,A1,D1.w)`, **a small enough cursor would reach below
+`$25D85C` into it**. Open: whether `$25D83C` is reachable at all or belongs to something else.
 
 **AND THERE IS A SECOND TABLE AT `$25D83C` THAT NOTHING HAD RECORDED.** `$25D83A` is `$25D560`'s
 `rts`; `$25D83C..$25D85B` is **sixteen words, 32 bytes, ending EXACTLY where `$25D85C` begins**:
