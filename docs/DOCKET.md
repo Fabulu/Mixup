@@ -19,6 +19,18 @@ D37 endings) plus the new **D41 controls to start the game**. **D36, the second 
 cartridge -- DoDonPachi DaiOuJou WHITE LABEL -- is LAST in order and is the project's definition of
 done.** Nothing has been decoded for it.
 
+**D41's central question is ANSWERED as of this wave and the item is largely closed** -- see D41
+below. Coin and start alone were NOT sufficient; three blockers stood behind them (no boot path,
+slot [8] unported, the `$13CEC8` IRQ4 coin path unmodelled) and all three are cleared. A cold boot
+now reaches a drawing screen through the cartridge's own path, and coin is bound on the page. What
+remains under D41 is cosmetic-but-stalling: four things that do not throw but keep the attract loop
+terminating at state 12 rather than cycling.
+
+**DISPATCH IS 16 OF 20.** The four without any ported handler: [12] `$28F3AC`, [16] `$256E7A`,
+[18] `$24902A`, [19] `$28EE88`. `w167coverage.test.js` asserts the count, and `dojcoverage.py`
+parses it straight out of `main.js`'s `defaultHandlers` block, so the assertion is the registry
+rather than a copy of it.
+
 Two entries in the D33/D34 material below are marked SUPERSEDED in place rather than deleted: the
 "eleven untouched dispatch slots" count (six are ported now) and W373's "still open" list for slot
 [9] (all of it landed in W374). The superseded text is kept because the reasoning that produced it
@@ -2003,11 +2015,43 @@ cross-game plan for this layer and it preserves the same rule.
 **Where the work lands:** `src/web/input.js` is the live browser input layer. `games/ddpdoj/.scratch/`
 holds a stale copy of it that is NOT the live tree -- do not edit that one.
 
-**OPEN, and deliberately not guessed at here:** a read-only recon is mapping the two ports' bit
-layouts, the boot-to-play sequence, and **whether coin plus start is even SUFFICIENT to reach
-gameplay** -- the port starts mid-game today, so the front end may have to run first (D33, D34), and
-that is exactly what the recon is for. Nothing above depends on its answer; everything above is
-measured. Do not act on a prediction of it.
+**THE RECON'S QUESTION IS ANSWERED (W375, 2026-08-15): NO, COIN PLUS START WAS NOT SUFFICIENT.**
+The paragraph that stood here left it open. Three blockers stood behind the one unset field, and all
+three are now cleared:
+
+1. **There was no boot path at all.** `Game` resumed from a mid-stage-1 seed and `Game#boot()` did
+   not exist -- not as a stub, not in any form. It now ports `$23BF74`, which is not a routine entry
+   but 23 `jsr`s into `$23BEEA`, and which never returns (it falls into the seven-call main loop and
+   `bra`s back forever). See `src/frontend.js`.
+2. **Slot [8], `$25A770`, was unported.** It is the attract sequencer and credit gate -- the state
+   machine that reads the credit counter, arms the join poll and stages the type it hands off to.
+   Now `src/objslot8.js`, and REGISTERED in `main.js`, taking dispatch to 16 of 20.
+3. **Coin bits reach the handler only via `$13CEC8` on the IRQ4 phase, which was not modelled.**
+   Ported and driven from `main.js`'s `coinTick` hook.
+
+**COIN IS NOW BOUND AND LIVE**: `Digit5` = COIN1, `Digit6` = COIN2, `Digit9` = SERVICE, `F2` = TEST,
+in `src/web/input.js` alongside the existing `Enter: 'START'`. The two ports stayed separate all the
+way out to the browser, exactly as the trap above requires -- `currentCoinWord()` is its own pure
+function feeding `$C08004`, and it never touches the `$C08000` player word.
+
+**A cold boot now reaches a DRAWING screen through the cartridge's own path**: from
+`new Game(new Uint8Array(0x20000), tables, {palCatchUp: false})`, `boot()` then `step()` gives slot
+[8] as type `$8008` at state `$D` on frame 1, 300 warning frames, `$D -> 2` at frame 302, and 101
+terminated display-list entries from there on.
+
+**STILL OPEN, and these are cosmetic-but-stalling rather than blocking** -- none of them throws, they
+make the attract loop terminate at state 12 instead of cycling: `$259FF8` (the warning screen draws
+nothing), `$23CFDE` (the credit line, so an inserted coin is invisible), the `$25AD02`/`$25AFD8`
+blink pair, and the four screen sub-machines that keep arms 1, 5, 9 and 12 holding.
+
+**REPLAY HOLE, STATED NOT HIDDEN:** `Game` now has a SECOND per-frame input, `this.coinPort`, and
+the `.replay` v1 format does not carry it (`src/web/replay.js` fixes one `u16be` word per logic
+frame and `decodePortinWords` throws on anything else). A recording made while coining up replays
+with `COIN.idle` and diverges on credit count. Recordings with no coin key touched are unaffected,
+which is every existing fixture. `step()`'s signature is deliberately unchanged: a second per-frame
+word is a FORMAT VERSION BUMP, not an argument. The honest fix is a v2 encoding with a sibling
+`coinin` block of the same shape, `validateReplay` requiring matching counts, and a v1 file read
+back as all `$FFFF` -- which is exactly what a v1 run already means.
 
 ### D36: THE SECOND GAME IN THE ROM -- **DEFINITELY LAST, AND IT IS THE FINISH LINE**
 
