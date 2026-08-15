@@ -33,6 +33,26 @@ So the living DaiOuJou docs are exactly three: **`DOCKET.md`, `ORCHESTRATOR_BRIE
 file.** `D12`'s claim that the reference docs "predate stages 3 and 4" was false and is corrected in
 place.
 
+### THE PATTERN BEHIND ALL FIVE BUGS FIXED THIS WAVE: THEY NEEDED DRIVING, NOT TESTING
+
+Every one was in code that passed its own unit tests and had passed them for waves:
+
+1. **`confirmAndDraw`'s early `return`** -- the screen drew only on the single frame a button was
+   pressed. Found by reading the branch target, not by a test.
+2. **`bee.js`'s `offset & 0xffff`** -- collapsed type `$1B`'s four-corner death burst to a segment.
+   Invisible until someone read what the callers actually pass.
+3. **`ctx.tx` / `ctx.videoRegs`** -- four slots threw the moment they ran from the driver. They had
+   never run from the driver.
+4. **`ctx.unported` being a no-op** -- about 30 counted notes emitting into nothing, so the very
+   mechanism that makes gaps visible was switched off for the front end.
+5. **`$18B0D6` throwing before `coinage13CE22`** -- the FIRST CREDITED COIN would have killed the
+   frame. The debounce had 27 passing tests; none of them posted a sound.
+
+**Four of the five were only reachable once something was CONNECTED** -- registered in
+`defaultHandlers`, or wired from a key to a counter. **A unit test of a routine in isolation cannot
+find them**, and this project's suite is overwhelmingly unit tests. When you connect a subsystem for
+the first time, expect a bug, and drive the whole path before believing it.
+
 ### SLOT [8] IS PORTED. **IT IS NOT REGISTERED YET** -- DO THAT FIRST.
 
 `objSlot8(ram, rom, a5, ctx)` in `src/objslot8.js`, 700 lines, 35 tests, no new ROM windows. **It is
