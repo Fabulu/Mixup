@@ -733,7 +733,8 @@ test('W402 SECTION 7: the $27017E window TRUNCATED past its terminator -- the wa
 test('W402 SECTION 8: 585 windows, overlap still 71, and the two TILE onto W341\'s $2701C8',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 590, '583 windows since W400, 585 after this wave, 590 since W404');
+    assert.equal(ws.length, 593, '583 windows since W400, 585 after this wave, 590 after W404, '
+      + '593 since W405');
     const mine = [T4C.deathListA, T4C.deathListB];
     for (const a of mine) {
       assert.equal(ws.filter(([b2]) => b2 === a).length, 1,

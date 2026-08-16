@@ -216,8 +216,11 @@ test('W403 SECTION 1: every `jsr`/`jmp` in both new spans lands somewhere, and T
     assert.equal(l(0x2a6e6e), 0x816e0180, '  ...$2A6E6E `816E 0180` or.w D0,($180,A6)');
     assert.equal(w(0x2a6e72), 0x4e75, '  ...and $2A6E72 4E75: three instructions, eight bytes');
 
-    // ...and the two the CHAIN then hands to that are not ported, counted with measured extents.
-    for (const [id, want] of [[0x0d, 0x60], [0x0f, 0x46], [0x05, 0x3aa], [0x13, 0x32]]) {
+    // ...and the ones the CHAIN then hands to that are not ported, counted with measured
+    // extents. W405 CORRECTION: A4 $D was on this list and is now RUN, so it moved out of
+    // `HIBACHI_END_COUNTED` -- its $60 is still measured here, from the table itself.
+    for (const [id, want, ported] of [[0x0d, 0x60, true], [0x0f, 0x46, false],
+      [0x05, 0x3aa, false], [0x13, 0x32, false]]) {
       const here2 = l(HIBACHI_A4.table + id * 8);
       const next = Math.min(...[...Array(HIBACHI_A4.pairs).keys()]
         .map((i) => l(HIBACHI_A4.table + i * 8))
@@ -225,7 +228,12 @@ test('W403 SECTION 1: every `jsr`/`jmp` in both new spans lands somewhere, and T
       assert.equal(next - here2, want,
         `A4 $${id.toString(16).toUpperCase()} is $${want.toString(16)} bytes, table entry to `
         + 'table entry');
-      assert.equal(HIBACHI_END_COUNTED[id].bytes, want, '  ...and hibachiend.js says so');
+      if (ported) {
+        assert.equal(HIBACHI_END_COUNTED[id], undefined,
+          '  ...and W405 ports it, so hibachiend.js no longer counts it');
+      } else {
+        assert.equal(HIBACHI_END_COUNTED[id].bytes, want, '  ...and hibachiend.js says so');
+      }
     }
   });
 
@@ -471,20 +479,20 @@ function runReal(b, frames) {
   return out;
 }
 
-test('W403 SECTION 4: THE REAL PATH reaches $2A689C on frame 321 -- W404 then ran it',
+test('W403 SECTION 4: THE REAL PATH reaches $2A689C on frame 321 -- W404 and W405 then ran it',
   { skip: SKIP }, () => {
     const b = realPath();
     const r = runReal(b, 1200);
 
     assert.equal(r.push?.speed, 0x0010, 'W399\'s chain still fires: $2A5D28 pushed $0010');
     assert.equal(r.push.frame, 192, '  ...on frame 192, not 193 -- SECTION 3\'s fall-through');
-    // W404 PORTED A4 $A AND A1 GUN 5, so this run no longer stops on frame 321. What W403
-    // measured is unchanged and is still asserted below by its bytes: $2A689C IS $2A5886[$A]'s
-    // init, script 2 IS what starts it, and it DOES wait on A1 gun 5. Only the consequence
-    // moved -- the wait now ends, and `tests/w404hibachiguns.test.js` owns the new stop.
-    assert.deepEqual(r.stopped, { frame: 982, at: 0x2a8516, name: 'Unreached' },
-      'the run now stops on frame 982 at $2A8516, A1 gun 7\'s init, 661 frames further on');
-    assert.equal(r.secondFormFrames, 789,
+    // W404 PORTED A4 $A AND A1 GUN 5, so this run no longer stops on frame 321. W405 CORRECTION:
+    // it no longer stops on 982 either -- guns 7 and 8 and A4 $D are ported, so these 1,200
+    // frames contain no stop at all. What W403 measured is unchanged and is still asserted below
+    // by its bytes: $2A689C IS $2A5886[$A]'s init, script 2 IS what starts it, and it DOES wait
+    // on A1 gun 5. Only the consequence moved; `tests/w405hibachiguns78.test.js` owns the stop.
+    assert.equal(r.stopped, null, 'the run no longer stops inside 1,200 frames at all');
+    assert.equal(r.secondFormFrames, 1200 - 192,
       'and HIBACHI\'s SECOND FORM has owned every frame since 193. ($10E,A6) is set by the '
       + 'SCHEDULER half of frame 192, after the body half of that frame has already run, so '
       + 'frame 193 is the first one the second form owns -- and W399 stopped on it');
@@ -883,7 +891,7 @@ test('W403 SECTION 6: the kind table REMOVED -- script 3\'s per-frame emitter, n
 test('W403 SECTION 7: 585 windows, overlap still 71, and NOTHING in the unit reads ROM',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 590, '585 windows through W403, which declared none; W404 added '
+    assert.equal(ws.length, 593, '585 windows through W403, which declared none; W404 added '
       + 'five for the two A1 gun tables and the gun data blocks');
     const pairs = (list) => {
       let n = 0;

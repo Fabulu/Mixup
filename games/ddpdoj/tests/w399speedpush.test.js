@@ -438,12 +438,12 @@ test('W399 SECTION 3: the boss dies, $2A5D28 fires on frame 192, and the scroll 
     assert.equal(b.ram.u16(A5BG + BGO_SPEEDBG), 0x0100,
       'at speed $0100 -- the top of the script\'s own ramp, $261EC0 t=$0350');
 
-    // ---- WHERE THE RUN STOPS, and which kind of stop it is. This one is a PORT stop.
-    assert.deepEqual(r.stopped, { frame: 982, at: 0x2a8516, name: 'Unreached' },
-      'W404: A4 $A and A1 gun 5 are ported, so the run no longer stops on frame 321 -- gun 5 '
-      + 'fires 40 volleys and retires, A4 $B runs gun 6, A4 $C starts gun 7, and THAT is the '
-      + 'stop now: $2A8516, $2A72C8[7].init, 661 frames further on. Still a PORT stop, and '
-      + 'still inside HIBACHI\'s phase-B attack loop rather than on the ending chain');
+    // ---- WHERE THE RUN STOPS. W405 CORRECTION: nowhere inside 1,200 frames. W404 ported
+    // A4 $A/$B/$C and guns 5 and 6 and moved the stop to $2A8516; W405 ports guns 7 and 8 and
+    // A4 $D, which closes the attack loop, so the first stop is now A4 $F at $2A6A30 on frame
+    // 2928 -- past the end of this run, and owned by `tests/w405hibachiguns78.test.js`.
+    assert.equal(r.stopped, null,
+      'the scroll chain this file is about now runs its whole 1,200 frames unbroken');
   });
 
 test('W399 SECTION 3: the FIRST-LOOP arm takes the other branch and the scroll never moves',
@@ -710,8 +710,9 @@ test('W399 SECTION 7: 575 windows, the overlap count still 71, and all five sit 
     const ws = WINDOWS();
     // W400 declared eight more (type $44's init stub, its prototype pair and five data tables),
     // so this file's total moves and its own five-window claims below do not.
-    assert.equal(ws.length, 590, '570 windows before W399, 575 after it, 583 after W400, 585 '
-      + 'after W402, and 590 since W404 declared the two A1 gun tables and three gun data blocks');
+    assert.equal(ws.length, 593, '570 windows before W399, 575 after it, 583 after W400, 585 '
+      + 'after W402, 590 after W404 (two A1 gun tables and three gun data blocks), and 593 '
+      + 'since W405 added the templates of guns 7 and 8 and gun 7 block table');
     const mine = [HIBACHI_A4.table, HIBACHI_A4.poolCTable, HIBACHI_A4.kindTable,
       HIBACHI_A4.s1Anim, HIBACHI_A4.s3Anim];
     for (const a of mine) {

@@ -4591,6 +4591,31 @@ SHOT_WINDOWS.append(
                        "walks the cursor DOWN from the $14 $2A8488 reloads, so "
                        "$14/4 + 1 = six entries and the extent is $18"))
 
+# ---------------------------------------------------------------- W405: GUNS 7 AND 8
+# Three more data blocks, all named by a `lea (d16,PC)` that is decoded and never
+# assumed.  The pointer table's four entries are bounded by its OWN LOWEST POINTER:
+# $2A8690 is base + $10, so an entry [4] would sit inside block 3.
+W405_GUN7_BLOCKS = 0x2A8680
+W405_GUN7_BLOCK_LEN = 0x50         # $2A8618 subi.w #$10 with a $40 reload: 5 strides
+W405_GUN7_BLOCKS_N = 4
+SHOT_WINDOWS.append(
+    (0x2A84E4, 0x0012, "W405: A1 gun 7's slot template, $2A8516's lea (TRAP 4: "
+                       "$2A8518 - $34). `moveq #$8` + dbra is NINE words, copied "
+                       "to ($2,A4)..($13,A4). It tiles onto $2A84CC + $18"))
+SHOT_WINDOWS.append(
+    (0x2A8680, 0x0150, "W405: A1 gun 7's FOUR-longword block pointer table and "
+                       "the four 80-byte blocks of 8-byte {delta.l, bias.w, "
+                       "angle.w} records behind it, $2A8590's lea (TRAP 4: "
+                       "$2A8592 + $EE), indexed by ($6,A4)*4 and stepped by "
+                       "($12,A4). Bounds: the table's own lowest pointer is "
+                       "$2A8690 = base + $10, so there are exactly four; each "
+                       "block is $40 + $10 = $50 from $2A8618's subi.w #$10 and "
+                       "$2A8620's #$40 reload; and base + $150 = $2A87D0, which "
+                       "is exactly what $2A8800's lea names as gun 8's template"))
+SHOT_WINDOWS.append(
+    (0x2A87D0, 0x0010, "W405: A1 gun 8's slot template, $2A8800's lea (TRAP 4: "
+                       "$2A8802 - $32). `moveq #$7` + dbra is EIGHT words"))
+
 
 def check_hibachi_a1_windows(d: bytes) -> None:
     """W404.  HIBACHI's TWO A1 gun tables and the three data blocks guns 5 and 6 read.
@@ -4681,6 +4706,78 @@ def check_hibachi_a1_windows(d: bytes) -> None:
                          "measured no `swap D0`.")
     if u16(d, 0x2A840E) != 0x302C or u16(d, 0x2A8410) != 0x000A:
         raise SystemExit("$2A840E no longer overwrites D0's low word with ($A,A4).")
+
+    # ---- W405: GUNS 7 AND 8.  The same `lea (d16,PC),A0 / lea ($2,A4),A1 /
+    # moveq #n / move.w (A0)+,(A1)+ / dbra` head, decoded the same way.
+    for site, want, words in ((0x2A8516, 0x2A84E4, 9), (0x2A8800, 0x2A87D0, 8)):
+        if u16(d, site) != 0x41FA:
+            raise SystemExit(f"${site:06X} is not `lea (d16,PC),A0`.")
+        got = site + 2 + s16(u16(d, site + 2))
+        if got != want:
+            raise SystemExit(f"${site:06X}'s lea lands on ${got:06X}, not ${want:06X}.")
+        if u16(d, site + 4) != 0x43EC or u16(d, site + 6) != 0x0002:
+            raise SystemExit(f"${site + 4:06X} is not `lea ($2,A4),A1`.")
+        n = d[site + 9]
+        if u16(d, site + 8) != (0x7000 | n) or u16(d, site + 10) != 0x32D8:
+            raise SystemExit(f"${site + 8:06X} is not `moveq #${n:X},D0 / "
+                             "move.w (A0)+,(A1)+`.")
+        if u16(d, site + 12) != 0x51C8 or s16(u16(d, site + 14)) != -4:
+            raise SystemExit(f"${site + 12:06X} is not `dbra D0,${site + 10:06X}`.")
+        if n + 1 != words:
+            raise SystemExit(f"${site:06X} copies {n + 1} words, not {words}.")
+    # ---- gun 7's BLOCK POINTER TABLE, and the three bounds on its $150.
+    if u16(d, 0x2A8590) != 0x47FA:
+        raise SystemExit("$2A8590 is not `lea (d16,PC),A3`.")
+    got = 0x2A8592 + s16(u16(d, 0x2A8592))
+    if got != W405_GUN7_BLOCKS:
+        raise SystemExit(f"$2A8590's lea lands on ${got:06X}, not ${W405_GUN7_BLOCKS:06X}.")
+    # (1) the index is a BYTE scaled by four -- `move.b ($6,A4),D4 / add.w D4,D4`
+    # twice -- and (2) the table's own lowest pointer is base + 4*4, which is what
+    # says there are four entries and not five.
+    if u16(d, 0x2A8598) != 0x182C or u16(d, 0x2A859A) != 0x0006:
+        raise SystemExit("$2A8598 is not `move.b ($6,A4),D4`.")
+    if u16(d, 0x2A859C) != 0xD844 or u16(d, 0x2A859E) != 0xD844:
+        raise SystemExit("$2A859C is not `add.w D4,D4` twice, so the index stride "
+                         "is not four.")
+    ptrs = [u32(d, W405_GUN7_BLOCKS + i * 4) for i in range(W405_GUN7_BLOCKS_N)]
+    if min(ptrs) != W405_GUN7_BLOCKS + W405_GUN7_BLOCKS_N * 4:
+        raise SystemExit(
+            f"gun 7's lowest block pointer is ${min(ptrs):06X}, not "
+            f"${W405_GUN7_BLOCKS + W405_GUN7_BLOCKS_N * 4:06X}; the pointer table "
+            "no longer has exactly four entries.")
+    # (3) each block is $50: the cursor is reloaded with $40 and stepped by $10,
+    # and the blocks are contiguous in that stride.
+    if u16(d, 0x2A8618) != 0x046C or u16(d, 0x2A861A) != 0x0010:
+        raise SystemExit("$2A8618 is not `subi.w #$10,(d16,A4)`.")
+    if u16(d, 0x2A8620) != 0x397C or u16(d, 0x2A8622) != 0x0040:
+        raise SystemExit("$2A8620 does not reload ($12,A4) with $40.")
+    if sorted(ptrs) != [min(ptrs) + i * W405_GUN7_BLOCK_LEN
+                        for i in range(W405_GUN7_BLOCKS_N)]:
+        raise SystemExit("gun 7's four blocks are not contiguous at $50 apart.")
+    end = max(ptrs) + W405_GUN7_BLOCK_LEN
+    if end != W405_GUN7_BLOCKS + 0x150 or end != 0x2A87D0:
+        raise SystemExit(f"gun 7's block set ends at ${end:06X}, not at $2A87D0, "
+                         "which is where $2A8800's lea puts gun 8's template.")
+    # ---- THE ONE FIELD NO TEST CAN OBSERVE.  `$2A85AE add.w (A3)+,D0` adds each record's
+    # middle word to the speed bias, and all forty of them are $0000 in this build, so the
+    # port transcribes an add nothing can measure.  Guard it here instead: if a later build
+    # ever puts a non-zero there, the export fails and the label stops being true quietly.
+    if u16(d, 0x2A85AE) != 0xD05B:
+        raise SystemExit("$2A85AE is not `add.w (A3)+,D0`; gun 7's record layout has changed.")
+    for i in range(W405_GUN7_BLOCKS_N):
+        base = u32(d, W405_GUN7_BLOCKS + i * 4)
+        for r in range(W405_GUN7_BLOCK_LEN // 8):
+            if u16(d, base + r * 8 + 4) != 0:
+                raise SystemExit(
+                    f"gun 7's record {r} of ${base:06X} has bias "
+                    f"${u16(d, base + r * 8 + 4):04X}, not $0000. W405 labelled `$2A85AE "
+                    "add.w (A3)+,D0` an unobservable equivalence BECAUSE all forty were zero; "
+                    "it is now observable and the port's test set does not cover it.")
+
+    # ---- gun 8's `bsr.w` back into its OWN init, on the retire path.
+    if u16(d, 0x2A896A) != 0x6100 or 0x2A896C + s16(u16(d, 0x2A896C)) != 0x2A8800:
+        raise SystemExit("$2A896A is not `bsr.w $2A8800`; gun 8 no longer re-seeds "
+                         "its own slot as it retires.")
 
 
 def check_option_formation_windows(d: bytes) -> None:

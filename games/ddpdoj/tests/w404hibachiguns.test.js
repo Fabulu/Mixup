@@ -293,36 +293,35 @@ function runReal(b, frames) {
   return out;
 }
 
-test('W404 SECTION 4: the real path runs 661 frames PAST 321 and stops at $2A8516 -- a PORT stop',
+// W405 CORRECTION. This test asserted "the run stops on frame 982 at $2A8516". It does not any
+// more: W405 ports gun 7, gun 8 and A4 $D, so 2,000 frames now contain NO stop at all and the
+// first three links of the loop are only the beginning of it. What is still W404's finding, and
+// is kept here, is the timing of guns 5 and 6 and the shape of the four arrows. Where the path
+// goes after the loop is W405's deliverable and is asserted in `w405hibachiguns78.test.js`.
+test('W404 SECTION 4: guns 5 and 6 run and RETIRE, and the four arrows are a closed loop',
   { skip: SKIP }, () => {
     const b = realPath();
     const r = runReal(b, 2000);
 
-    assert.deepEqual(r.stopped, { frame: 982, at: 0x2a8516, name: 'Unreached' },
-      'the run now stops on frame 982 at $2A8516, A1 GUN 7\'s init -- 661 frames past W403\'s '
-      + 'frame-321 stop at $2A689C');
-    // The two guns this wave ports, measured: when each was started and when it retired itself.
-    assert.deepEqual(r.a1, [[321, '5'], [627, ''], [691, '6'], [901, ''], [982, '7']],
+    assert.equal(r.stopped, null,
+      'W405 CORRECTION: 2,000 frames no longer contain a stop -- gun 7 ($2A8516) is ported');
+    // The two guns W404 ported, measured: when each was started and when it retired itself.
+    assert.deepEqual(r.a1.slice(0, 5), [[321, '5'], [627, ''], [691, '6'], [901, ''], [982, '7']],
       'A1 slot history: gun 5 frames 321..626, gun 6 frames 691..900, gun 7 dispatched on 982. '
-      + 'Both ported guns RETIRE -- $2A8338 and $2A84C2 moveq / jsr $259B08 -- so the wait '
+      + 'Both W404 guns RETIRE -- $2A8338 and $2A84C2 moveq / jsr $259B08 -- so the wait '
       + 'really ends and A4 $A -> $B -> $C really hands over');
 
-    // ---- **WHICH KIND OF STOP.** The same three tests W403 used, on the new address.
-    //   (a) it is a live table entry the cartridge dispatches through;
+    // ---- THE ADDRESSES THAT USED TO BE THE STOP, still read out of the image.
     assert.equal(l(HIBACHI_A1.main + 7 * 8), 0x2a8516,
-      '(a) $2A72C8[7].init IS $2A8516 -- a live A1 entry, reached by $2597BE jsr (A0)');
+      '$2A72C8[7].init IS $2A8516 -- a live A1 entry, reached by $2597BE jsr (A0)');
     assert.equal(w(0x2a8516), 0x41fa,
       '  ...and `41FA` lea (d16,PC),A0 stands there: ordinary code, not an rts and not a park');
-    //   (b) something the cartridge wrote is what routed us there;
-    assert.equal(w(0x2a6952), 0x7007, '(b) $2A6952 moveq #$7,D0 -- A4 $C, which this port RAN');
+    assert.equal(w(0x2a6952), 0x7007, '$2A6952 moveq #$7,D0 -- A4 $C, which routed us in');
     assert.equal(l(0x2a6956), 0x00259a18, '  ...$2A6954 jsr $259A18, the A1 start');
-    //   (c) the code at that address has somewhere to go.
-    assert.equal(w(0x2a8538), 0x4a79, '(c) $2A8538, gun 7\'s step, opens tst.w...');
-    assert.equal(l(0x2a853a), HIBACHI_A1.freeze, '  ...$8130D4: it has a next frame');
-    assert.equal(HIBACHI_A1_COUNTED[7].bytes, 0x2ea,
-      '  ...and it is $2EA bytes, counted, table entry to table entry');
+    assert.equal(w(0x2a8538), 0x4a79, '$2A8538, gun 7\'s step, opens tst.w...');
+    assert.equal(l(0x2a853a), HIBACHI_A1.freeze, '  ...$8130D4');
 
-    // ---- AND THE STOP IS IN A LOOP, NOT ON A CHAIN. $A -> gun 5 -> $B -> gun 6 -> $C ->
+    // ---- AND IT IS A LOOP, NOT A CHAIN. $A -> gun 5 -> $B -> gun 6 -> $C ->
     // gun 7 -> $D -> gun 8 -> $A. Every arrow is a `moveq / jsr` read out of the image.
     const chain = [[0x2a68c8, 0x0b], [0x2a6924, 0x0c], [0x2a6964, 0x0d], [0x2a69bc, 0x0a]];
     for (const [site, next] of chain) {
@@ -330,14 +329,13 @@ test('W404 SECTION 4: the real path runs 661 frames PAST 321 and stops at $2A851
         `$${site.toString(16)} moveq #$${next.toString(16).toUpperCase()},D0`);
       assert.equal(l(site + 4), 0x0025980c, '  ...jsr $25980C');
     }
-    assert.equal(HIBACHI_END_COUNTED[0x0d].bytes, 0x60,
-      'and A4 $D, the one link of the loop still counted, is $60 bytes');
+    assert.equal(HIBACHI_END_COUNTED[0x0d], undefined,
+      'and A4 $D is no longer counted either: W405 runs it');
   });
 
-test('W404 SECTION 4: 1,260 bullets, and every count is the volley arithmetic', { skip: SKIP },
-  () => {
+test('W404 SECTION 4: the volley counts of guns 5 and 6 are the template arithmetic',
+  { skip: SKIP }, () => {
     const r = runReal(realPath(), 2000);
-    assert.equal(r.shots, 1260, 'the run fires 1,260 bullets where W403\'s fired none');
     // Gun 5: ($4,A4) = $27 from the template + ($1DA,A6) = 0, so FORTY volleys, and
     // `$2A821E btst #$0,($4,A4)` gives the seven-shot aimed fan to half of them.
     assert.equal(r.bySite.get(0x2a8288), 20 * 7, '$2A8288: 20 aimed fans x 7 = 140');
@@ -347,11 +345,15 @@ test('W404 SECTION 4: 1,260 bullets, and every count is the volley arithmetic', 
     assert.equal(r.bySite.get(0x2a842e), 60 * 3, '$2A842E: group 2, three shots x 60');
     assert.equal(r.bySite.get(0x2a8452), 60 * 2, '$2A8452: group 3, two shots x 60');
     assert.equal(r.bySite.get(0x2a846c), 60 * 3, '$2A846C: group 4, three shots x 60');
-    assert.equal(140 + 520 + 600, 1260, '  ...and 140 + 520 + 600 is the whole run');
+    // W405 CORRECTION: 140 + 520 + 600 was the WHOLE run when gun 7 was a stop. It is now
+    // the first three links only, and gun 7's own 540 follow inside the same 2,000 frames.
+    assert.equal(140 + 520 + 600, 1260, 'guns 5 and 6 together are 1,260 of them');
+    assert.equal(r.shots, 1260 + 4 * 135 + 7 * 2 * 62,
+      '  ...and the rest is gun 7 (135 volleys of four) and as much of gun 8 as fits');
     // The template bytes those two counts come from, read back out of the image so the
     // arithmetic is not a coincidence of the bench's initial state.
     assert.equal(IMG[HIBACHI_A1.gun5Template + 2], 0x27, 'gun 5\'s template ($4,A4) is $27');
-    assert.equal(IMG[HIBACHI_A1.gun6Template + 2], 0x3b, 'gun 6\'s template ($4,A4) is $3B');
+    assert.equal(IMG[HIBACHI_A1.gun6Template + 2], 0x3b, 'gun 6\'s template ($4,A4) is $3b');
   });
 
 // ===============================================================================================
@@ -899,7 +901,8 @@ test('W404 SECTION 7: five new windows, 590, and each bounded by an instruction 
   { skip: SKIP }, () => {
     const set = new Map(WINDOWS());
     assert.equal(set.size, tables.rom.windows.length, 'no duplicate window bases');
-    assert.equal(tables.rom.windows.length, 590, '590 windows, 585 + this wave\'s five');
+    assert.equal(tables.rom.windows.length, 593,
+      'W405 CORRECTION: 593 windows -- 585 + W404\'s five + W405\'s three');
 
     // 1 + 2 -- the two tables, at exactly 14 pairs each.
     for (const base of [HIBACHI_A1.main, HIBACHI_A1.alt]) {
@@ -997,9 +1000,11 @@ test('W404 SECTION 7: every counted gun\'s extent is MEASURED from the image, no
     assert.equal(w(HIBACHI_A1_ALT_END - 2), 0x4e75,
       '$2AA23E `4E75` sits AT the alt set\'s last address (TRAP 5: not one past it)');
     // The whole main gun block, stated once so a reader can check the arithmetic in one line.
+    // W405 CORRECTION: the ported set is now four guns, so the four extents come out of the
+    // counted sum and back in here by name.
     assert.equal(HIBACHI_A1.alt - l(HIBACHI_A1.main),
       Object.values(HIBACHI_A1_COUNTED).reduce((s, c) => s + c.bytes, 0)
-      + 0x1b4 + 0x1a6,
-      'the fourteen main-table guns fill $2A738A..$2A92A8 exactly -- $1F1E, of which this wave '
-      + 'runs $1B4 (gun 5) + $1A6 (gun 6) = $35A');
+      + 0x1b4 + 0x1a6 + 0x2ea + 0x1ba,
+      'the fourteen main-table guns fill $2A738A..$2A92A8 exactly -- $1F1E, of which the port '
+      + 'now runs $1B4 (gun 5) + $1A6 (gun 6) + $2EA (gun 7) + $1BA (gun 8) = $8FE');
   });

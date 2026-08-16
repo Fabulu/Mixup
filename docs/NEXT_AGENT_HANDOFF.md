@@ -1,8 +1,71 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-16 (W404)
+Updated: 2026-08-16 (W405)
 
-## START HERE -- W404
+## START HERE -- W405
+
+### THE ATTACK LOOP IS CLOSED, AND IT IS PHASE A'S, NOT PHASE B'S
+
+Guns 7 and 8 and A4 `$D` are ported, and the cycle
+`A4 $A -> gun 5 -> A4 $B -> gun 6 -> A4 $C -> gun 7 -> A4 $D -> gun 8 -> A4 $A` now runs a full lap
+with no stop in it: gun 5 frames 321..626, gun 6 691..900, gun 7 982..1440, gun 8 1537..2107, A4 $A
+again on 2172, gun 5 again on 2173. Bullets on the real path went 1,260 -> **3,745**.
+
+**W404's section called this phase B's loop and that was wrong.** `($10E,A6)` is 1 on every frame of
+it; the only route in is `$2A5F80 moveq #$A / jsr $25980C` in A4 script 2's tail, four instructions
+after `$2A5F40` writes the 1 that selects phase A.
+
+### WHAT ENDS THE LOOP IS A4 $D ITSELF, ON FRAME 2608 EXACTLY
+
+`$2A6984 move.b #$C,($1A,A5)` and `$2A69A6 move.b #$4,($1A,A5)` write the **high byte** of the word
+that `$2A7088 subq.w #$1,($1A,A5)` counts down: phase A's death timer. Gun 8 starts on 1537, the
+`$04` write makes the word `$042F`, and `$042F` = 1,071 frames later `$2A7008` runs, wipes every A1
+and A4 slot (which is what tears A4 $B out mid-run), and the tail jumps A4 3 -> A4 4 -> A4 $F.
+
+**New stop: frame 2928 at `$2A6A30`, a PORT stop, and it is NOT in the attack loop.** It is one link
+down the ending chain: `$2A5886[$F].init` is `$2A6A30`, `397C` (ordinary code) stands there,
+`$2A640C moveq #$F / jsr $25980C` in the already-ported A4 script 4 routed us in, and `$2A6A4A
+moveq #$9 / jsr $259A18` shows it waits on **A1 gun 9** (`$2A89BA`, counted at `$1C2`).
+
+### SEVENTY ABLATIONS, SEVEN GREEN, SIX OF THEM REAL
+
+The six holes were all cases where a constant happened to agree with its mutation on the one input
+the test drove: gun 7's mirror round is only visible on ODD angles and the driven block holds even
+ones; the `bchg` only shows across a block boundary; the block ramp only in a bullet's SPEED; gun 8's
+jitter only when the drawn RNG byte is >= `$80`; and its two bounce limits only mid-band, since
+signed and unsigned agree exactly AT `$30` and `$D0`. New tests drive each of those inputs.
+
+The seventh is a labelled equivalence: all forty of gun 7's records carry `$0000` in the bias word,
+so `$2A85AE add.w (A3)+,D0` is unobservable. `export-tables.py` now fails loudly if any of the forty
+ever reads non-zero, so the equivalence cannot rot silently.
+
+### WINDOWS: THREE NEW, 593
+
+`$2A8680 + $150` (the pointer table and its four blocks, bounded three ways -- the table's own lowest
+pointer, the `$50` block stride from `$2A8618 subi.w #$10` against `$2A8620`'s `#$40`, and
+`base + $150 = $2A87D0` which is exactly what `$2A8800`'s lea names), plus **two the brief said were
+not needed**: `$2A84E4 + $12` (W404's `$2A84CC + $18` ends one byte short) and `$2A87D0 + $10` (gun 8
+copies eight template words as well as walking `$26BFFC`).
+
+### TWO MORE ROM ODDITIES
+
+`$2A896A bsr.w $2A8800` is on the RETIRE path, three instructions before `$259B08` clears the slot,
+so everything it writes to RAM is dead -- but its two RNG draws still bump the shared `$803917`
+counter, and that IS measured. And the shipped gun-7 template starts `($6,A4)` at 2, so pointer
+**[3]**, the `+-10/+-5` block, is unreachable in play.
+
+### VERIFIED
+
+Suite **3590 pass / 0 fail / 0 skipped** (3562 before; +28). Gate **exit 0** from its own exit code.
+`export-tables.py --verify` **OK at 593 windows**. No publish: cadence is every fifth wave, last was
+W402, so the next is due at W407.
+
+### NEXT
+
+**A1 gun 9 `$2A89BA`** (`$1C2`, counted) and **A4 `$F` `$2A6A30`** (`$46`). That is what the frame-2928
+stop waits on, and it is on the ending chain rather than the attack loop.
+
+## W404 NOTES
 
 ### THE "FIFTEEN-ENTRY A1 GUN TABLE" IS FOURTEEN, AND THERE ARE TWO OF THEM
 
@@ -33,8 +96,13 @@ from the other, and this file registers A1 init and step separately for exactly 
 ### THE FRAME-321 STOP WAS NOT A LEAF -- IT IS A FOUR-LINK CLOSED LOOP
 
 `A4 $A -> gun 5 -> A4 $B -> gun 6 -> A4 $C -> gun 7 -> A4 $D -> gun 8 -> A4 $A`. Every arrow is a
-`moveq / jsr $25980C` or `/ jsr $259A18` read out of the image. It is HIBACHI phase B's ATTACK
-CYCLE, not a step of the ending, so nothing behind `$2A689C` was ever going to end the stage.
+`moveq / jsr $25980C` or `/ jsr $259A18` read out of the image. It is HIBACHI's ATTACK CYCLE, not a
+step of the ending, so nothing behind `$2A689C` was ever going to end the stage.
+
+**W405 CORRECTION: this section said "phase B's" and that is wrong. It is phase A's.** `$2A5F80
+moveq #$A / jsr $25980C`, the only route into A4 $A, sits in A4 script 2's tail, and `$2A5F40 1D7C
+0001 010E` four instructions earlier is the write that selects `$2A6F1C` = phase A. Measured:
+`($10E,A6)` is 1 on every frame of the loop and only becomes 2 at `$2A637A`, after phase A is dead.
 
 Ported: **`src/hibachiguns.js`** (new) -- A1 guns **5** (`$2A81BC/$2A8206`, `$1B4`) and **6**
 (`$2A8370/$2A8396`, `$1A6`), and A4 **$A**, **$B**, **$C**. **The real path now runs to frame 982**
