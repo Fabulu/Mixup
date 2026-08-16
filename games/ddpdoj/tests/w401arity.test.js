@@ -64,13 +64,20 @@ function world() {
   // entries). $7FFF here makes $49 throw Unreached for a reason that has nothing to do with the
   // defect under test, so the pool is set with a zero low half.
   ram.setU32(A5 + 0x1a, 0x00010000);
+  // W402: the burst pair is no longer the only thing arm B spawns -- $270030 walks $27017E through
+  // $26C74E FIRST, and those six rows land in the same pool. Attribution by SITE is what keeps the
+  // angle assertion below about the bursts and not about the list.
+  const bursts = [];
   const ctx = {
     tables: TABLES, rom: ROM, aim: HAVE ? new AimTables(ROM) : null,
     unported: log, unportedLog: log, notes: log,
     bulletSpawn: () => {}, soundPost: () => {},
+    effectSpawn: (kind, site, slot) => {
+      if (site === 0x270056 || site === 0x27007c) bursts.push(slot);
+    },
   };
   for (const b of BUCKETS) ram.setU16(b.counter, 0);
-  return { ram, ctx, log };
+  return { ram, ctx, log, bursts };
 }
 
 const run = (f, addr) => handlerMap().get(addr)(f.ram, ROM, A5, f.ctx);
@@ -186,13 +193,16 @@ test('W401 both bursts draw from $242B3C, not $242EC2', { skip: SKIP_IMG }, () =
 
 test('W401 type $4C\'s retire emitter RUNS -- the branch that threw ReferenceError',
   { skip: SKIP_RUN }, () => {
-    // ($9F,A6) non-zero enters $26FFE8's body; ($86,A6) != 2 falls past the retire arm into the
-    // emitter. Nothing in the whole suite had ever set both, which is the entire reason a call to
-    // an undeclared function shipped.
+    // ($9F,A6) non-zero enters $26FFE8's body. Nothing in the whole suite had ever set it, which
+    // is the entire reason a call to an undeclared function shipped.
+    // W402: ($86,A6) = 1 with the countdown one frame from zero is what reaches the emitter now.
+    // When this was written the port had no gate, so ($86,A6) = 0 reached it as well; $270014 says
+    // otherwise and $270094 -- arm C -- is what ($86,A6) = 0 really runs.
     const f = world();
     f.ram.setU16(A6 + T4C.damageAccumAt, 0x7fff);
     f.ram.setU8(A6 + 0x9f, 1);
-    f.ram.setU8(A6 + 0x86, 0);
+    f.ram.setU8(A6 + 0x86, 1);
+    f.ram.setU8(A6 + 0x88, 1);
     assert.doesNotThrow(() => run(f, T4C.handler), 'the retire emitter frame');
   });
 
@@ -204,7 +214,8 @@ test('W401 the two bursts land at the EXACT 32-bit biased positions', { skip: SK
   f.ram.setU16(A6 + 0x02, 0x2000);
   f.ram.setU16(A6 + 0x04, 0x2000);
   f.ram.setU8(A6 + 0x9f, 1);
-  f.ram.setU8(A6 + 0x86, 0);
+  f.ram.setU8(A6 + 0x86, 1);          // W402: arm B, gated at $270014 -- this read 0 before the gate
+  f.ram.setU8(A6 + 0x88, 1);          // ...with $27001E's countdown one frame from zero
   const pos = f.ram.u32(A6 + 0x02);
   run(f, T4C.handler);
   // $26FFF0 subi.w #$40,($2,A6) runs BEFORE the emitter, so the base is the DECREMENTED position.
@@ -233,14 +244,12 @@ test('W401 the burst ANGLES prove the emitter draws from $242B3C', { skip: SKIP_
   f.ram.setU16(0x803916, SEED);
   f.ram.setU16(A6 + T4C.damageAccumAt, 0x7fff);
   f.ram.setU8(A6 + 0x9f, 1);
-  f.ram.setU8(A6 + 0x86, 0);
+  f.ram.setU8(A6 + 0x86, 1);          // W402: arm B's gate, and its countdown
+  f.ram.setU8(A6 + 0x88, 1);
   run(f, T4C.handler);
 
-  const actual = [];
-  for (let n = 0; n < POOL_B.slots; n++) {
-    const a0 = POOL_B.base + n * POOL_B.stride;
-    if (f.ram.u16(a0 + B.status) !== 0) actual.push(f.ram.u8(a0 + B.angle));
-  }
+  assert.equal(f.bursts.length, 10, 'ten particles, from the two $28B4BE sites in arm B');
+  const actual = f.bursts.map((a0) => f.ram.u8(a0 + B.angle));
 
   // Replay the draw sequence on a mirror: one emitter draw per burst, then $28B4BE's five
   // per-particle draws ($28B4DC jsr $242B3C / $28B4E2 asr.b #2 / $28B4E4 add.b).
@@ -269,10 +278,13 @@ test('W401 the burst ANGLES prove the emitter draws from $242B3C', { skip: SKIP_
 
 // ============================== THE GAP THIS UNIT DID NOT CLOSE, PINNED TO BYTES ===
 //
-// `retireCheck4C` transcribes the BODY of one of $26FFE8's three arms. These assertions exist so
-// the gap cannot quietly drift, and so the next unit starts from bytes rather than from prose.
+// W401: `retireCheck4C` transcribed the BODY of one of $26FFE8's three arms, and these assertions
+// existed so the gap could not quietly drift. W402 CLOSED IT -- all three arms are ported and
+// `tests/w402retire.test.js` drives them. The assertions below are unchanged and still true of the
+// cartridge; only the prose that called the other two arms MISSING has been corrected, because a
+// stale note's text is exactly what trap 14 is about.
 
-test('W401 $26FFE8 has THREE arms on ($86,A6) and the port implements one and a half',
+test('W401 $26FFE8 has THREE arms on ($86,A6) -- W402 ported the two that were missing',
   { skip: SKIP_IMG }, () => {
     assert.equal(IMG.readUInt32BE(0x26ffe8), 0x4a2e009f, '$26FFE8 tst.b ($9F,A6)');
     // arm A: == 2, ported.
@@ -280,15 +292,15 @@ test('W401 $26FFE8 has THREE arms on ($86,A6) and the port implements one and a 
     assert.equal(IMG.readUInt32BE(0x270002), 0x00020086, '... #$2,($86,A6)');
     // arm B: == 1. THE GATE AND THE COUNTDOWN ARE NOT IN THE PORT.
     assert.equal(IMG.readUInt16BE(0x270014), 0x0c2e, '$270014 cmpi.b');
-    assert.equal(IMG.readUInt32BE(0x270016), 0x00010086, '... #$1,($86,A6) -- the MISSING gate');
-    assert.equal(IMG.readUInt32BE(0x27001e), 0x532e0088, '$27001E subq.b #1,($88,A6) -- MISSING');
+    assert.equal(IMG.readUInt32BE(0x270016), 0x00010086, '... #$1,($86,A6) -- the gate; W402');
+    assert.equal(IMG.readUInt32BE(0x27001e), 0x532e0088, '$27001E subq.b #1,($88,A6) -- W402');
     assert.equal(IMG.readUInt16BE(0x270082), 0x4eb9, '$270082 jsr');
-    assert.equal(IMG.readUInt32BE(0x270084), 0x0028c310, '... $28C310, the cue -- MISSING');
-    assert.equal(IMG.readUInt32BE(0x270088), 0x1d7c0010, '$270088 move.b #$10,($88,A6) -- MISSING');
-    assert.equal(IMG.readUInt32BE(0x27008e), 0x1d7c0002, '$27008E move.b #$2,($86,A6) -- MISSING');
+    assert.equal(IMG.readUInt32BE(0x270084), 0x0028c310, '... $28C310, the cue -- W402');
+    assert.equal(IMG.readUInt32BE(0x270088), 0x1d7c0010, '$270088 move.b #$10,($88,A6) -- W402');
+    assert.equal(IMG.readUInt32BE(0x27008e), 0x1d7c0002, '$27008E move.b #$2,($86,A6) -- W402');
     // arm C: == 0. ABSENT ENTIRELY.
     assert.equal(IMG.readUInt16BE(0x270094), 0x0c2e, '$270094 cmpi.b');
-    assert.equal(IMG.readUInt32BE(0x270096), 0x00000086, '... #$0,($86,A6) -- the arm not ported');
+    assert.equal(IMG.readUInt32BE(0x270096), 0x00000086, '... #$0,($86,A6) -- the arm W402 ported');
     // TRAP 3: ONE WORD LITERAL COVERS TWO BYTE FIELDS -- $88 = $10 and $89 = $06.
     assert.equal(IMG.readUInt16BE(0x27011c), 0x3d7c, '$27011C move.w #imm,(d16,A6)');
     assert.equal(IMG.readUInt32BE(0x27011e), 0x10060088, '... #$1006,($88,A6) -- $88=$10, $89=$06');
@@ -300,9 +312,9 @@ test('W401 $26FFE8 has THREE arms on ($86,A6) and the port implements one and a 
 test('W401 $270122 is the ONLY writer of ($86,A6) = 1 that can reach a type-$4C record',
   { skip: SKIP_IMG }, () => {
     // TRAP 25: a branch is invisible until something sets its byte. Arm B is gated on ($86,A6)==1
-    // and the sole instruction in the 6 MB image that stores 1 there sits at $270122 -- inside the
-    // arm the port does NOT have. So arm B is unreachable in play until arm C is ported, and the
-    // emitter the port DOES run fires in a state the cartridge never reaches.
+    // and the sole instruction in the $2xxxxx program that stores 1 there sits at $270122 -- which
+    // was inside the arm the port did not have, so arm B was unreachable in play. W402 ported arm C
+    // and measured the consequence: the burst now fires on frame 124 of the retire and not before.
     const pat = Buffer.from([0x1d, 0x7c, 0x00, 0x01, 0x00, 0x86]);
     const at = [];
     for (let i = IMG.indexOf(pat); i !== -1; i = IMG.indexOf(pat, i + 1)) at.push(i);

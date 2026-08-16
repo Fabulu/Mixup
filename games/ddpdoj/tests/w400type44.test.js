@@ -38,7 +38,7 @@
 // SECTION 5  the element gate, and the second thing both pushes do
 // SECTION 6  what is COUNTED, with measured byte extents, and the sum
 // SECTION 7  ABLATED FROM THE EXPORTED TABLES -- eight shapes, eight throws
-// SECTION 8  the window set: 583, the overlap count, the neighbours
+// SECTION 8  the window set: 585 (583 when this wave landed), the overlap count, the neighbours
 // ===============================================================================================
 
 import test from 'node:test';
@@ -769,10 +769,12 @@ test('W400 SECTION 7: the death lists removed -- two DIFFERENT throws, two phase
 // SECTION 8 -- THE WINDOW SET.
 // ===============================================================================================
 
-test('W400 SECTION 8: 583 windows, the overlap count still 71, and all eight sit in open ground',
+test('W400 SECTION 8: 585 windows, the overlap count still 71, and all eight sit in open ground',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 583, '575 windows before this wave, 583 after');
+    assert.equal(ws.length, 585, '575 windows before this wave, 583 after; 585 since W402 added '
+      + 'type $4C\'s two retire lists, which is why this number is a running total and not a claim '
+      + 'about this wave');
     const mine = [T44.init, T44.recordProto, T44.animTable, T44.waypoints, T44.state0Thresh,
       T44.deathListA, T44.deathListB, T44.animScript];
     for (const a of mine) {

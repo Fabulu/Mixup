@@ -65,9 +65,14 @@
 //   * `$26EB3A andi.w #$FFFE,SR` / `$26EB40 ori.w #$1,SR` -- the death sequence returns a CARRY and
 //     its only caller (`$26E172 bsr.w`) never branches on it.  Returned anyway: trap 22 says dead
 //     stores are transcribed, not tidied.
-//   * ITS TWIN USES A DIFFERENT RNG.  Type `$4C`'s `$270014` burst pair is structurally identical --
-//     same `$40`/`$C0` quarter turns, same `$F8000800`/`$01FFF800` biases, same D3 = `$C`, same
-//     D0 = 0 -- but draws from `$242EC2` where `$26EA48` draws from `$242B3C`.
+//   * THE TWIN IS A WHOLE MACHINE, NOT A PAIR.  Type `$4C`'s `$270014` burst pair is structurally
+//     identical -- same `$40`/`$C0` quarter turns, same `$F8000800`/`$01FFF800` biases, same
+//     D3 = `$C`, same D0 = 0 -- and W402 measured that the whole THREE-ARM machine matches, not
+//     just the pair: `$270000`/`$270014`/`$270094` against `$26EA12`/`$26EA26`/`$26EAA6`, on
+//     `($86,A6)` against `($A6,A6)`.  Its two lists, `$270134` and `$27017E`, are BYTE FOR BYTE
+//     `$26EB46` and `$26EB90` over all `$94` bytes (`check_type4c_retire_windows` asserts it).
+//     W402 CORRECTION: this line used to end "but draws from `$242EC2`".  It does not; both
+//     routines draw from `$242B3C` at every one of their four sites.
 //
 // WHAT THIS FILE PORTS AND WHAT IT COUNTS -- byte extents measured, never estimated:
 //
@@ -403,8 +408,12 @@ function deathSequence26EA00(ram, rom, a6, ctx) {
     if (ram.u8(a6 + T44.deathTickAt) === 0) {               // $26EA34 bne -- fires AT ZERO
       const pos = ram.u32(a6 + 0x02);                       // $26EA38 move.l ($2,A6),D2
       walkDeathSpawns270D92(ram, rom, ctx, T44.deathListB, pos, 0x26ea42, T44.deathAnim);
-      // $26EA48..$26EA93 -- the QUARTER-TURN PAIR, structurally identical to type $4C's $270014 and
-      // drawing from a DIFFERENT generator: $242B3C here, $242EC2 there.
+      // $26EA48..$26EA93 -- the QUARTER-TURN PAIR, structurally identical to type $4C's $270014.
+      // W402 CORRECTION: this said the two draw from DIFFERENT generators, "$242B3C here, $242EC2
+      // there". They do not. $270036 and $27005C are both `4e b9 00 24 2b 3c`, the same six bytes
+      // as this routine's own $26EA48 and $26EA6E and as stage 3's $26C83C/$26C862 -- SIX sites,
+      // one generator. W401 fixed the code in handlers.js and left this sentence standing, which
+      // is trap 14 exactly: a stale note's TEXT can be wrong.
       for (const [turn, bias] of T44.burstTurns) {
         const r = drawByte242B3C(ram, rom);                 // $26EA4A / $26EA70 jsr $242B3C
         bigBurst28B4BE(ram, rom, ctx, u32(pos + bias),      // $26EA5A / $26EA80 addi.l

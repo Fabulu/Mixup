@@ -671,7 +671,8 @@ test('W399 SECTION 7: 575 windows, the overlap count still 71, and all five sit 
     const ws = WINDOWS();
     // W400 declared eight more (type $44's init stub, its prototype pair and five data tables),
     // so this file's total moves and its own five-window claims below do not.
-    assert.equal(ws.length, 583, '570 windows before W399, 575 after it, 583 since W400');
+    assert.equal(ws.length, 585, '570 windows before W399, 575 after it, 583 after W400, 585 '
+      + 'since W402');
     const mine = [HIBACHI_A4.table, HIBACHI_A4.poolCTable, HIBACHI_A4.kindTable,
       HIBACHI_A4.s1Anim, HIBACHI_A4.s3Anim];
     for (const a of mine) {

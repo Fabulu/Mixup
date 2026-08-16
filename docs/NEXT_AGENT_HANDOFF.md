@@ -2,7 +2,82 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W401
+## START HERE -- W402
+
+### 4,000 PARTICLES BECAME 10, AND THE RECORD NOW ACTUALLY RETIRES
+
+Same bench, 400 frames, real init state, pool B cleared per frame so the count cannot saturate:
+
+| | burst particles | frames that burst | arm-C rows | `$28C310` | retire armed |
+|---|---|---|---|---|---|
+| **before** | **4000** | **all 400** | 0 | never | **never** |
+| **after** | **10** | **1 (frame 124)** | 12 | once | **frame 125** |
+
+4000 = 10 x 400. The old port had arm B's body **with no gate**, so every frame with `$86 != 2`
+fired it -- and since nothing could write `$86 = 2`, the record never reached arm A and never retired.
+
+**The `$86 == 1` arm is reachable in play now**, measured through the real init body `$26F4E2`, not
+by hand-setting fields: arm C emits on frames 9, 18, 27 ... 108 (twelve rows, six per pass, one every
+ninth frame); frame 108 is both the twelfth row and where `$270122` writes `$86 = 1`; arm B's
+`$10`-frame countdown fires the burst on **124** and promotes 1 -> 2; arm A arms on **125**.
+
+### THE "TWIN" WAS A TRAP AND THE AGENT REFUSED IT
+
+Diffing all `$8C` bytes of `$2700A2..$27012C` against `$26C8A8`: **18 bytes differ, 9 register-field
+and 9 displacement, and NO opcode, immediate or branch displacement differs at all.**
+
+Field map `$25->$86`, `$26->$88`, `$27->$89`, `$28->$8C`, `$2A->$8A` -- shifts of **+$61, +$62, +$62,
++$64, +$60**. **Not a base shift**, and the two records order the pair **oppositely** (carrier loop
+`$28` BELOW cursor `$2A`; type `$4C` loop `$8C` ABOVE cursor `$8A`). **Aliasing on "twin" would have
+put three of five fields on the wrong byte.**
+
+Arm B is not a byte twin either: the carrier has an extra `move.w #$0,($2C,A5)` + `lea` + `jsr
+$246410` (`$12` bytes) and reaches `$26C74E` by `bsr.w` (4) where the retire arm uses
+`jsr <abs.l>` (6). **The arms end `$10` apart, not `$12`.**
+
+### THREE THINGS MY BRIEF GOT WRONG
+
+1. **`$26C74E` is NOT served by `clearSubEffectPool`.** It is `walkDeathSpawns270D92(..., anim=$10)`.
+   `clearSubEffectPool` is `$289084`, a 1,282-byte pool clear with no list, no A1 and no `$289004`
+   call. **`claimed.py` misattributes it because the `$270D92` docstring sits after that function's
+   body** -- another way that tool misleads.
+2. **`$270122` is NOT the only such instruction in 6 MB.** `1d 7c 00 01 00 86` occurs **twice**,
+   `$16F176` and `$270122`, and **W401's own test already said so.** The claim holds only for the
+   `$2xxxxx` program; `$16F068` is a second build with different `jsr` targets.
+3. **Arm C's body is 33 instructions, `$270094..$270127`** -- 35 only if you count the shared tail in.
+
+### A THIRD WRONG COPY THE BRIEF NEVER MENTIONED
+
+`emitRows` was a **third** copy of the `$26C74E` walk with bucket `$C` and an **invented**
+`($10,A0) = 2`; `emitOneRow` had the same two errors. Both fixed, and `emitRows` **deleted** in
+favour of `walkDeathSpawns270D92`.
+
+### TWO ABLATIONS CAME BACK GREEN AND BOTH WERE REAL HOLES
+
+Eleven ablations by patch-test-revert. **C2 (arm C's bucket `$10 -> $C`) and C10 (`emitOneRow`'s
+bucket) had no test driving them** -- two new tests added, both now redden.
+
+**One green is a labelled CONTROL, not an ablation:** writing `$1006` as one `setU16` to `($88,A6)`
+is big-endian-identical to the two byte fields, so it cannot redden. Kept in the audit and named.
+
+### TWO NEW WINDOWS (585) THAT TILE EXACTLY
+
+`$270134 + $4A` (bound code-stated at `$270104 cmpi.w #$48` with the `$C` stride at `$2700FE`) and
+`$27017E + $4A` (**here the terminator IS the loop's only exit**). They tile onto W341's `$2701C8 +
+$E`: `$270134 + $4A + $4A = $2701C8`, and `$2701C8 + $E = $2701D6`, type `$4E`'s init. Both `lea`
+targets are **recomputed from the displacement** in the verifier, never written down.
+
+**Five ablation shapes, five distinct throws**, including two truncations that throw *after* a slot
+was already allocated or six rows already spawned. Overlap **71**.
+
+### `($8C,A6)` HAS EXACTLY ONE WRITER, AND THE PROTOTYPE IS VARIABLE-LENGTH
+
+A scan of `$26F4DA..$2701C8` finds one instruction touching it, `$270114 subq.w`. Its value comes
+from the sub-record prototype -- **measured through `loadSubProto`, because the prototype is
+variable-length (16 or 28 table bytes per `$20` record bytes) and counting `$20` per part off
+`$26F566` gives the wrong byte** and would have said `$4A79`.
+
+## W401 NOTES
 
 ### BOTH DEFECTS FIXED, AND THE ROM SETTLED THE ARITY
 

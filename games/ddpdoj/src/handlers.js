@@ -9425,6 +9425,36 @@ const T4C = Object.freeze({
   states: Object.freeze([
     0x26f8a6, 0x26f90e, 0x26fbd4, 0x26fcf2, 0x26fd66, 0x26feca, 0x26ff3e, 0x26ff56,
   ]),
+
+  // W402: $26FFE8's THREE ARMS, and the fields they run on. Part 5's $06/$08/$09/$0A/$0C, which is
+  // why every displacement below is $80 + the part offset. The shape is type $44's death sequence
+  // ($26EA00, stage5type44.js) with different field names and different lists: phase 2 arms the
+  // retire, phase 1 fires the one-shot burst, phase 0 walks a table one row per tick.
+  //
+  // ($8C,A6) IS THE ONE FIELD NOTHING ELSE IN THE IMAGE TOUCHES. A scan of $26F4DA..$2701C8 for
+  // `(d16,A6)` with d16 = $8C finds exactly one instruction, $270114's `subq.w #1,($8C,A6)`; the
+  // only other $008C word in the span is $27009A's branch DISPLACEMENT. So its value comes from the
+  // sub-record prototype and from nowhere else, and it is 2 (measured through `loadSubProto`, not
+  // read off the table -- the prototype is variable-length, 16 or 28 table bytes per $20 record
+  // bytes, so counting $20 per part off $26F566 gives the wrong byte).
+  deathPhaseAt: 0x86,                         // $270000/$270014/$270094 -- tested 2, then 1, then 0
+  deathTickAt: 0x88, deathReloadAt: 0x89,     // $2700A6 move.b ($89,A6),($88,A6)
+  deathCursorAt: 0x8a, deathLoopAt: 0x8c,     // $2700B8 adda.w / $270114 subq.w
+  deathListA: 0x270134, deathListAStride: 0x0c, deathListAEnd: 0x48,   // $270104 cmpi.w #$48
+  deathListB: 0x27017e,                       // $27002A lea / $270030 jsr $26C74E
+  deathAnim: 0x10,                            // $2700DA move.w #$10,($1E,A0), and $26C74E's own
+  deathReload: 0x1006,                        // $27011C -- ONE word over ($88) = $10 and ($89) = $06
+  deathPhase1Tick: 0x10,                      // $270088 move.b #$10,($88,A6) -- a GENUINE move.b
+  deathCueA: 0x28c274, deathCueB: 0x28c310,   // $2700AC / $270082
+  burstBucket: 0x0c,                          // $27004E/$270074 move.w #$C,D3
+  // $270036..$270080. The site addresses are the two `jsr $28B4BE`, $270056 and $27007C -- one per
+  // turn, because attributing both to one address is how $26C85C/$26C882 got recorded as
+  // $26C8CA/$26C8F4 in stage3carrier.js.
+  burstTurns: Object.freeze([
+    Object.freeze([0x40, 0xf8000800, 0x270056]),
+    Object.freeze([0xc0, 0x01fff800, 0x27007c]),
+  ]),
+  retireArmAt: 0x9e, dyingAt: 0x9f,           // $27000A / $26FFE8's own gate
 });
 
 // ============================================ TYPE $B0 -- HIBACHI (W357/W360) ============
@@ -9871,61 +9901,119 @@ function state2_4C(ram, rom, a5, a6, ctx) {
   ram.setU8(a6 + 0x34, c);
   if (c === 0) setState4C(ram, a6, 3);                       // $26FCCA/$26FCCC
 }
-/** `$26FFE8` -- the RETIRE PREDICATE. Returns a boolean the ROM carries in the CARRY flag, through the
- *  shared stubs `$270128` (clear) and `$27012E` (set). $4C's single caller IGNORES the return, so do
- *  not invent a branch on it; what matters is the ($9E,A6) it arms. */
+/** `$26FFE8` -- the RETIRE PREDICATE, ALL THREE ARMS (W402).
+ *
+ *  Returns a boolean the ROM carries in the CARRY flag, through the shared stubs `$270128`
+ *  (`andi.w #$FFFE,SR`, clear) and `$27012E` (`ori.w #$1,SR`, set). $4C's single caller
+ *  (`$26F6E4 bsr.w`) IGNORES the return, so do not invent a branch on it; what matters is the
+ *  ($9E,A6) arm A sets.
+ *
+ *  ($86,A6) is tested 2, then 1, then 0 -- so a phase promoted this frame does NOT also run this
+ *  frame, because the `cmpi.b` that would catch it is already behind the cursor. Same order and
+ *  same reasoning as type $44's `deathSequence26EA00` (stage5type44.js), which is this routine
+ *  under different field names and different lists:
+ *
+ *      $4C  ($86) ($88) ($89) ($8A) ($8C)   lists $27017E / $270134
+ *      $44  ($A6) ($A8) ($A9) ($AA) ($AC)   lists $26EB90 / $26EB46   -- BYTE FOR BYTE THE SAME
+ *                                                                        $94 of table data
+ *
+ *  W402 CORRECTS W401. The port had only arm B's BODY: no `($86,A6) == 1` gate, no countdown, no
+ *  `$26C74E` walk, no cue and no tail, so it fired the burst pair on EVERY retire frame where
+ *  ($86,A6) != 2. And arm C was absent entirely -- which mattered because `$270122` is the only
+ *  instruction that can store 1 into ($86,A6) on a $4C record, so arm B was UNREACHABLE and the
+ *  port was running, every frame, a block the cartridge reaches once. */
 function retireCheck4C(ram, rom, a5, a6, ctx) {
-  if (ram.u8(a6 + 0x9f) === 0) return false;                 // $26FFE8 tst.b ($9F,A6) / beq $270128
+  if (ram.u8(a6 + T4C.dyingAt) === 0) return false;          // $26FFE8 tst.b ($9F,A6) / beq $270128
   ram.setU16(a6 + 0x02, u16(ram.u16(a6 + 0x02) - 0x40));     // $26FFF0 subi.w #$40,($2,A6)
   armScreenClear243E02(ram, ctx, ram.u16(a6 + T4C.hitMaskTo), 0x26fffa);   // $26FFF6/$26FFFA
-  if (ram.u8(a6 + 0x86) === 2) {                             // $270000 cmpi.b #$2,($86,A6)
-    ram.setU8(a6 + 0x9e, 1);                                 // $27000A -- acted on NEXT frame
-    return true;                                             // $270010 bra $27012E, carry SET
+
+  // ---- ARM A ($270000), ($86,A6) == 2: hand the record to the prologue's retire and stop.
+  if (ram.u8(a6 + T4C.deathPhaseAt) === 2) {                 // $270000 cmpi.b #$2,($86,A6)
+    ram.setU8(a6 + T4C.retireArmAt, 1);                      // $27000A -- acted on NEXT frame
+    return true;                                             // $270010 bra.w $27012E, carry SET
   }
-  // $270014.. -- the effect emitter. QUARTER-TURN PAIRS: one shared angle, +$40 on one side and +$C0
-  // on the other, with MIRRORED position biases. One constant for both stacks them on one bearing.
-  // The proven transcription of this exact shape is `stage5type44.js:401` ($26EA26, W400); type $44's
-  // ($A6,A6)/($A8,A6) are this routine's ($86,A6)/($88,A6) under different names.
-  //
-  // ============================ W401: THIS ARM IS ONE THIRD OF $26FFE8 =========================
-  // `$26FFE8` has THREE arms on ($86,A6) and the port transcribes the body of ONE. Verified by
-  // `tools/aligned.py sweep` and asserted byte-for-byte in `tests/w401arity.test.js`:
-  //
-  //   $86 == 2  ported above.
-  //   $86 == 1  THIS block -- but the ENTRY TEST AND THE TAIL ARE BOTH MISSING:
-  //               $270014 `0c 2e 00 01 00 86` cmpi.b #$1,($86,A6) / $27001A bne.w -> $270094
-  //               $27001E `53 2e 00 88`       subq.b #1,($88,A6)  / $270022 bne.w -> $270094
-  //               $27002A `43 fa 01 52`       lea ($27017E,PC),A1 / $270030 jsr $26C74E
-  //               $270082 `4e b9 00 28 c3 10` jsr $28C310  (the cue; cf. T44.deathCueB)
-  //               $270088 move.b #$10,($88,A6) / $27008E move.b #$2,($86,A6)
-  //             so the port fires the bursts on EVERY retire frame with ($86,A6) != 2, where the
-  //             cartridge fires them ONCE, only at ($86,A6) == 1, and only as ($88,A6) hits zero.
-  //   $86 == 0  ABSENT ENTIRELY -- 35 instructions, $270094..$27012C. It is an instruction-for-
-  //             instruction twin of stage 3's carrier finale at $26C8A8 (stage3carrier.js:400),
-  //             walking a $C-stride list at $270134 to a code-stated $48 bound ($270104 cmpi.w
-  //             #$48,($8A,A6)), and it ENDS at $27011C `3d 7c 10 06 00 88` move.w #$1006,($88,A6)
-  //             -- ONE WORD covering TWO byte fields, $88=$10 and $89=$06 -- then $270122
-  //             `1d 7c 00 01 00 86` move.b #$1,($86,A6), which is THE ONLY WRITER OF ($86,A6)=1
-  //             in the whole 6 MB. Nothing else arms the arm below, so with $86 == 0 out of the
-  //             record prototype this block is UNREACHABLE in play until $270094 is ported.
-  //
-  // Porting the two missing arms needs ROM windows for $27017E and $270134, so it is its own unit.
-  // ============================================================================================
-  for (const [turn, bias] of [[0x40, 0xf8000800], [0xc0, 0x01fff800]]) {
-    // W401: this was `drawWord242EC2`. $270036 and $27005C are BOTH `4e b9 00 24 2b 3c` = jsr
-    // $242B3C, and EVERY `jsr $28B4BE` in the $26Cxxx/$26Exxx/$270xxx family draws from $242B3C.
-    // (stage5type44.js:406 records the opposite -- "$242B3C here, $242EC2 there" -- and is wrong.)
-    const r = drawByte242B3C(ram, rom);                      // $270036 / $27005C jsr $242B3C
-    bigBurst28B4BE(ram, rom, ctx,                            // $270056 / $27007C jsr $28B4BE
-      // $270048 / $27006E `06 82 f8 00 08 00` addi.l #$F8000800,D2 -- a FULL 32-bit add, so no
-      // packed half-word helper. W401: this read `packedAdd(...)`, a non-exported local in
-      // stage3carrier.js that was never imported here -- a ReferenceError on every frame that
-      // reached this arm, and nothing drove it.
-      u32(ram.u32(a6 + 0x02) + bias),
-      (((r << 1) & 0xff) + turn) & 0xff,                     // $27003C asl.b #1 / $270040 addi.b
-      0, 0x0c, 0x270056);                                    // $270052 D0=0, $27004E D3=$C
+
+  // ---- ARM B ($270014), ($86,A6) == 1: the ONE-SHOT finale.
+  // $27001A and $270022 both branch to $270094, the arm-C test -- NOT to the exit -- so a
+  // non-firing frame still falls into arm C's `cmpi.b #$0`, which fails, which is what makes the
+  // two branches equivalent to a fall-through. Transcribed as the fall-through the flow really is.
+  if (ram.u8(a6 + T4C.deathPhaseAt) === 1) {                 // $270014 cmpi.b #$1,($86,A6)
+    // `subq.b` then `bne`: this arm fires AT ZERO, unlike arm C's `subq.b`/`bcc` below, which
+    // fires on the UNDERFLOW. The two conventions sit eight instructions apart in one routine.
+    ram.setU8(a6 + T4C.deathTickAt, (ram.u8(a6 + T4C.deathTickAt) - 1) & 0xff);   // $27001E
+    if (ram.u8(a6 + T4C.deathTickAt) === 0) {                // $270022 bne.w $270094
+      const pos = ram.u32(a6 + 0x02);                        // $270026 move.l ($2,A6),D2
+      // $27002A lea ($27017E,PC),A1 / $270030 jsr $26C74E. $26C74E is `walkDeathSpawns270D92`'s
+      // twin: identical field for field, differing ONLY in the ($1E,A0) literal, which is $10.
+      walkDeathSpawns270D92(ram, rom, ctx, T4C.deathListB, pos, 0x270030, T4C.deathAnim);
+      // $270036..$270080 -- the QUARTER-TURN PAIR. One shared angle, +$40 on one side and +$C0 on
+      // the other, with MIRRORED position biases. One constant for both stacks them on one bearing.
+      for (const [turn, bias, site] of T4C.burstTurns) {
+        // W401: this was `drawWord242EC2`. $270036 and $27005C are BOTH `4e b9 00 24 2b 3c` = jsr
+        // $242B3C, and EVERY `jsr $28B4BE` in the $26Cxxx/$26Exxx/$270xxx family draws from $242B3C.
+        const r = drawByte242B3C(ram, rom);                  // $270036 / $27005C jsr $242B3C
+        bigBurst28B4BE(ram, rom, ctx,                        // $270056 / $27007C jsr $28B4BE
+          // $270048 / $27006E `06 82 f8 00 08 00` addi.l #$F8000800,D2 -- a FULL 32-bit add, so no
+          // packed half-word helper. W401: this read `packedAdd(...)`, a non-exported local in
+          // stage3carrier.js that was never imported here -- a ReferenceError on every frame that
+          // reached this arm, and nothing drove it.
+          u32(pos + bias),
+          (((r << 1) & 0xff) + turn) & 0xff,                 // $27003C asl.b #1 / $270040 addi.b
+          0, T4C.burstBucket, site);                         // $270052 D0=0, $27004E D3=$C
+      }
+      ctx.soundPost?.(T4C.deathCueB);                        // $270082 jsr $28C310
+      ram.setU8(a6 + T4C.deathTickAt, T4C.deathPhase1Tick);  // $270088 move.b #$10,($88,A6)
+      ram.setU8(a6 + T4C.deathPhaseAt, 2);                   // $27008E move.b #$2,($86,A6)
+    }
   }
-  return false;
+
+  // ---- ARM C ($270094), ($86,A6) == 0: the TABLE WALK, one row per tick, and the ONLY writer of
+  // ($86,A6) = 1 in this program. Reached by fall-through from arm B as well as directly.
+  if (ram.u8(a6 + T4C.deathPhaseAt) !== 0) return false;     // $270094 cmpi.b #$0 / $27009A bne.w
+  // $27009E `subq.b #1,($88,A6)` / $2700A2 `bcc.w $270128` -- the UNDERFLOW convention: the borrow
+  // that sets carry only happens when the byte WAS zero, so it acts on the frame after it hits 0.
+  const tick = ram.u8(a6 + T4C.deathTickAt);
+  ram.setU8(a6 + T4C.deathTickAt, (tick - 1) & 0xff);
+  if (tick !== 0) return false;                              // $2700A2 bcc.w -- carry CLEAR
+  ram.setU8(a6 + T4C.deathTickAt, ram.u8(a6 + T4C.deathReloadAt));   // $2700A6 reload FROM +$89
+  ctx.soundPost?.(T4C.deathCueA);                            // $2700AC jsr $28C274
+
+  // $2700B2 lea ($270134,PC),A1 / $2700B8 adda.w ($8A,A6),A1 -- INDEXED, not walked: the $FFFF at
+  // $27017C is never read, and $270104's `cmpi.w #$48` is the only thing that bounds the cursor.
+  const cursor = ram.u16(a6 + T4C.deathCursorAt);
+  if (cursor >= T4C.deathListAEnd) {
+    unreached(0x2700b2, `type $4C's retire cursor ($8A,A6) is $${cursor.toString(16)}, past the SIX `
+      + '12-byte rows at $270134; $270104\'s cmpi.w #$48 is the only thing that bounds it');
+  }
+  const at = T4C.deathListA + cursor;
+  const d1 = rom.u16(at);                                    // $2700BC move.w (A1)+,D1
+  const slot = spawnEffect(ram, ctx, rom.u16(at + 2), 0x2700c0);   // $2700BE/$2700C0 jsr $289004
+  if (slot) {
+    ram.setU8(slot + 0x1c, rom.u16(at + 4) & 0xff);          // $2700C6/$2700C8 move.b D0,($1C,A0)
+    ram.setU16(slot + 0x18, d1);                             // $2700CC move.w D1,($18,A0)
+    ram.setU32(slot + 0x26, rom.u32(at + 6));                // $2700D0 move.l (A1)+,($26,A0)
+    ram.setU32(slot + 0x02, ram.u32(a6 + 0x02));             // $2700D4 move.l ($2,A6),($2,A0)
+    // TRAP 1: `31 7c 00 10 00 1e` is the IMMEDIATE $10 and THEN the displacement $1E. Reading the
+    // two the other way round is what left `bucket = $C` in stage3carrier.js's copy of this block.
+    ram.setU16(slot + 0x1e, T4C.deathAnim);                  // $2700DA move.w #$10,($1E,A0)
+    ram.setU16(slot + 0x12, 0);                              // $2700E0
+    ram.setU16(slot + 0x14, 0);                              // $2700E6
+    ram.setU8(slot + 0x1a, ram.u8(a6 + 0x1a));               // $2700EC move.b ($1A,A6),($1A,A0)
+    ram.setU8(slot + 0x1b, (ram.u8(a6 + 0x1b) * 4) & 0xff);  // $2700F2 add.b D0,D0 TWICE
+  }
+  const next = u16(cursor + T4C.deathListAStride);           // $2700FE addi.w #$C,($8A,A6)
+  ram.setU16(a6 + T4C.deathCursorAt, next);
+  if (next !== T4C.deathListAEnd) return false;              // $270104 cmpi.w #$48 / $27010A bne.w
+  ram.setU16(a6 + T4C.deathCursorAt, 0);                     // $27010E move.w #$0,($8A,A6)
+  const loops = u16(ram.u16(a6 + T4C.deathLoopAt) - 1);      // $270114 subq.w #1,($8C,A6)
+  ram.setU16(a6 + T4C.deathLoopAt, loops);
+  if (loops !== 0) return false;                             // $270118 bne.w $270128
+  // TRAP 3: ONE WORD LITERAL, TWO BYTE FIELDS. $88 = $10 (the tick arm B counts down) and
+  // $89 = $06 (a reload arm C will never read again, because $86 leaves 0 on the next line).
+  ram.setU8(a6 + T4C.deathTickAt, T4C.deathReload >> 8);     // $27011C move.w #$1006,($88,A6)
+  ram.setU8(a6 + T4C.deathReloadAt, T4C.deathReload & 0xff);
+  ram.setU8(a6 + T4C.deathPhaseAt, 1);                       // $270122 move.b #$1,($86,A6)
+  return false;                                              // $270128 andi.w #$FFFE,SR
 }
 
 /** `$26F9A2` -- PART 3's animator. Fires from the drawn muzzle, then RETRACTS the two draw offsets. */

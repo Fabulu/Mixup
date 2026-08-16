@@ -2920,6 +2920,32 @@ SHOT_WINDOWS.extend([
                        "node, $2701C8..$2701D5, ending where code begins"),
 ])
 
+# W402: type $4C's RETIRE PREDICATE $26FFE8, and the two lists its two missing arms read.
+#
+#   $270134 + $4A   the arm-C explosion list -- SIX 12-byte rows then $FFFF at $27017C. The $48 is
+#                   CODE-STATED at `$270104 cmpi.w #$48,($8A,A6)`, and the cursor advances by $C
+#                   ($2700FE addi.w #$C,($8A,A6)), so six rows. The walk INDEXES this table
+#                   ($2700B2 lea ($270134,PC),A1 / $2700B8 adda.w ($8A,A6),A1) and never reads the
+#                   terminator, which is exactly why the last two bytes are worth exporting: they
+#                   are what pins the far end against the list below.
+#   $27017E + $4A   the list arm B hands to $26C74E ($27002A lea ($27017E,PC),A1 / $270030 jsr) --
+#                   six 12-byte rows then $FFFF at $2701C6, and HERE the terminator IS the loop's
+#                   only exit (walkDeathSpawns270D92).
+#
+# The two windows TILE with W341's above: $270134 + $4A + $4A = $2701C8. No gap, no overlap, and
+# the far end is the $246520 caller table W341 already declared.
+#
+# BOTH BLOCKS ARE BYTE FOR BYTE TYPE $44's, $26EB46 and $26EB90 (W400's windows). $94 bytes
+# identical, including the two $FFFF words. That is a MEASUREMENT, not a licence to alias: W400's
+# own $26EB46 comment records the same shape and the two types read them through different fields
+# ($AA/$AC there, $8A/$8C here), so both are declared.
+SHOT_WINDOWS.extend([
+    (0x270134, 0x004A, "W402: type $4C's arm-C explosion list -- SIX 12-byte rows then $FFFF, "
+                       "$270134..$27017D, bounded by $270104's cmpi.w #$48"),
+    (0x27017E, 0x004A, "W402: type $4C's $26C74E retire-spawn list -- six 12-byte rows then $FFFF, "
+                       "$27017E..$2701C7, ending exactly where W341's $2701C8 window begins"),
+])
+
 # W341: type $4C's state machine. `$26F858` is the SETTER (cmp.w ($26,A6),D0 / early-out / set and
 # clr.w ($28,A6)); `$26F86A` is a SEPARATE entry that dispatches through this table and then tail-jumps
 # to $2417DE (applyVelocityA6).
@@ -7382,6 +7408,90 @@ def check_type44_windows(d: bytes) -> None:
                 f"window here is a throw on a player's machine, not a failure in this tool.")
 
 
+def check_type4c_retire_windows(d: bytes) -> None:
+    """W402.  THE TWO LISTS `$26FFE8`'s MISSING ARMS READ, EVERY EXTENT FROM AN INSTRUCTION.
+
+    `$26FFE8` is type $4C's retire predicate and has THREE arms on `($86,A6)`, tested 2, then 1,
+    then 0.  Arm B (`$270014`) walks the list at `$27017E` through `$26C74E`; arm C (`$270094`)
+    INDEXES the table at `$270134` by `($8A,A6)`.  Both `lea (d16,PC)` targets are recomputed here
+    from the displacement rather than written down as constants, because trap 4 -- the target is
+    the EXTENSION WORD's address plus the displacement, not the opcode's -- has produced a wrong
+    address in this port before, and a window declared at a wrong base verifies perfectly.
+    """
+    # 1. The two lea sites, and the jsr that consumes the first list.
+    if u16(d, 0x27002A) != 0x43FA:
+        raise SystemExit(
+            f"$27002A is ${u16(d, 0x27002A):04X} and must be $43FA, `lea (d16,PC),A1`.")
+    if 0x27002C + u16(d, 0x27002C) != 0x27017E:
+        raise SystemExit(
+            f"$27002A's lea reaches ${0x27002C + u16(d, 0x27002C):06X}, not $27017E -- the target "
+            f"is the EXTENSION WORD's address ($27002C) plus the displacement, never the opcode's.")
+    if u16(d, 0x270030) != 0x4EB9 or u32(d, 0x270032) != 0x0026C74E:
+        raise SystemExit(
+            f"$270030 must be `jsr $26C74E`; it is ${u16(d, 0x270030):04X} "
+            f"${u32(d, 0x270032):08X}. That call is what makes $27017E a 12-byte, "
+            f"$FFFF-terminated walk list rather than an indexed table.")
+    if u16(d, 0x2700B2) != 0x43FA:
+        raise SystemExit(
+            f"$2700B2 is ${u16(d, 0x2700B2):04X} and must be $43FA, `lea (d16,PC),A1`.")
+    if 0x2700B4 + u16(d, 0x2700B4) != 0x270134:
+        raise SystemExit(
+            f"$2700B2's lea reaches ${0x2700B4 + u16(d, 0x2700B4):06X}, not $270134.")
+    if u16(d, 0x2700B8) != 0xD2EE or u16(d, 0x2700BA) != 0x008A:
+        raise SystemExit(
+            f"$2700B8 must be `adda.w ($8A,A6),A1`; it is ${u16(d, 0x2700B8):04X} "
+            f"${u16(d, 0x2700BA):04X}. That is what says $270134 is INDEXED, not walked.")
+
+    # 2. The $48 is code-stated, and so is the $C stride that makes it six rows.
+    if u16(d, 0x270104) != 0x0C6E or u16(d, 0x270106) != 0x0048:
+        raise SystemExit(
+            f"$270104 must be `cmpi.w #$48,($8A,A6)`; it is ${u16(d, 0x270104):04X} "
+            f"${u16(d, 0x270106):04X}. That immediate bounds the $270134 list at SIX 12-byte rows.")
+    if u16(d, 0x2700FE) != 0x066E or u16(d, 0x270100) != 0x000C:
+        raise SystemExit(
+            f"$2700FE must be `addi.w #$C,($8A,A6)`; it is ${u16(d, 0x2700FE):04X} "
+            f"${u16(d, 0x270100):04X}. $48 / $C = 6 needs BOTH halves stated.")
+
+    # 3. Each list's own terminator, six rows in.
+    for base in (0x270134, 0x27017E):
+        if u16(d, base + 0x48) != 0xFFFF:
+            raise SystemExit(
+                f"${base:06X} + $48 is ${u16(d, base + 0x48):04X} and must be $FFFF -- six "
+                f"12-byte rows then the terminator is what both $4A lengths are made of.")
+
+    # 4. THE TILING. $270134 + $4A + $4A is W341's $2701C8 caller table exactly.
+    if 0x270134 + 0x4A + 0x4A != 0x2701C8:
+        raise SystemExit("the two W402 windows must tile onto W341's $2701C8; they do not.")
+    if u16(d, 0x2701C8) != 0x0001:
+        raise SystemExit(
+            f"$2701C8's count word is ${u16(d, 0x2701C8):04X} and must be 1 -- if it is not, the "
+            f"far end of the $27017E window is landing on something other than W341's table.")
+
+    # 5. The bucket the emit writes is the LITERAL $10 at ($1E,A0), not a register.  TRAP 1:
+    #    `31 7C 00 10 00 1E` is the IMMEDIATE $10 and THEN the displacement $1E, and reading it the
+    #    other way round is what put `bucket = $C` into two shipped copies of this shape.
+    if u32(d, 0x2700DA) != 0x317C0010 or u16(d, 0x2700DE) != 0x001E:
+        raise SystemExit(
+            f"$2700DA must be `move.w #$10,($1E,A0)`; it is ${u32(d, 0x2700DA):08X} "
+            f"${u16(d, 0x2700DE):04X}. Immediates come BEFORE displacements.")
+
+    # 6. AND THE BLOCKS ARE TYPE $44's, BYTE FOR BYTE.  Measured, not assumed: this is the check
+    #    that would catch a one-byte divergence of the kind W396 and W400 both found.
+    if d[0x270134:0x2701C8] != d[0x26EB46:0x26EBDA]:
+        raise SystemExit(
+            "$270134..$2701C7 must equal $26EB46..$26EBD9 byte for byte -- W400 declared type "
+            "$44's copy and this wave declares type $4C's; if they ever diverge, the aliasing "
+            "note in handlers.js and stage5type44.js is what has to change, not this check.")
+
+    # 7. And the windows themselves are at least the lengths derived above.
+    for base, need in ((0x270134, 0x004A), (0x27017E, 0x004A)):
+        declared = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == base]
+        if not declared or declared[0][1] < need:
+            raise SystemExit(
+                f"the ${base:06X} window is {declared} and must be at least ${need:X} -- a short "
+                f"window here is a throw on a player's machine, not a failure in this tool.")
+
+
 def check_boss_a4_extent(d: bytes) -> None:
     """W64 (B2).  W62's `$294F68` window was FIVE pairs and the table is SEVEN.
 
@@ -8751,6 +8861,7 @@ def build(d: bytes) -> dict:
     check_option_formation_windows(d)          # W393 -- FORMATIONS 4 AND 6
     check_hibachi_a4_windows(d)                # W399 -- HIBACHI'S A4 TABLE + ENDING DATA
     check_type44_windows(d)                    # W400 -- TYPE $44'S PROTOTYPES AND FIVE TABLES
+    check_type4c_retire_windows(d)             # W402 -- $26FFE8'S TWO RETIRE LISTS
     check_sample_windows()                     # W27D -- ICS sample tight union
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)

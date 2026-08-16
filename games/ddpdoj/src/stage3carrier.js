@@ -11,11 +11,11 @@ import { enqueueRegistersThroughStub, enqueueThroughStub,
   enqueueZoomedThroughStub } from './spritequeue.js';
 import { fire as fireBullet, WriteLog } from './bullets.js';
 import { scoreHit, scoreKill } from './score.js';
-import { spawnEffect, B } from './effects.js';
+import { spawnEffect, B, walkDeathSpawns270D92 } from './effects.js';
 import { armScreenClear } from './midboss.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 import { bigBurst28B4BE } from './boss.js';
-import { drawByte242B3C, drawWord242EC2 } from './rng.js';
+import { drawByte242B3C } from './rng.js';
 
 const u32 = (v) => (v >>> 0) % 0x100000000;
 const G = {
@@ -61,35 +61,31 @@ function bullet(ram, rom, ctx, a5, site, entry, regs) {
   return out;
 }
 
-function emitRows(ram, rom, ctx, table, pos, bucket) {
-  for (let p = table; ; p += 12) {
-    const delay = rom.u16(p);
-    if (delay === 0xffff) return;
-    const e = spawnEffect(ram, ctx, rom.u16(p + 2), p);
-    ram.setU8(e + B.f1c, rom.u16(p + 4));
-    ram.setU16(e + B.delay, delay);
-    ram.setU32(e + B.nudge, rom.u32(p + 6));
-    ram.setU32(e + B.pos, pos);
-    ram.setU16(e + B.bucket, bucket);
-    ram.setU16(e + B.hook, 2);
-    ram.setU16(e + B.sub12, 0);
-    ram.setU16(e + B.sub14, 0);
-    ram.setU16(e + B.speed, rom.u16(p + 10));
-  }
-}
+// W402: `emitRows` WAS A THIRD, WRONG COPY OF `$26C74E`. Both of its call sites are that routine --
+// $26C7A8 `61 a4` bsr.s and $26C838 `61 00 ff 14` bsr.w, both resolving to $26C74E -- and $26C74E
+// writes `move.w #$10,($1E,A0)` at $26C772 and NOTHING to ($10,A0). This copy wrote the bucket from
+// a caller argument ($0C at both sites) and invented `($10,A0) = 2`. `walkDeathSpawns270D92` is the
+// same code with the ($1E,A0) literal as its `anim` parameter, which is what it was built for
+// (effects.js: "$26C74E IS THIS ROUTINE'S TWIN AND IS SERVED BY THE SAME CODE"), so the duplicate
+// is gone rather than repaired.
+const C74E_ANIM = 0x10;                        // $26C772 move.w #$10,($1E,A0)
 
+// `$26C8A8`'s single-row emit. THE SAME FIELD SET as $26C74E's loop body bar the last two: this one
+// takes the speed and the heading from the RECORD ($1A,A6)/($1B,A6) instead of from the row, and the
+// heading is doubled TWICE with byte adds. $270094 (type $4C) is the same block against ($8A,A6).
 function emitOneRow(ram, rom, ctx, row, pos, speed, heading) {
   const e = spawnEffect(ram, ctx, rom.u16(row + 2), row);
-  ram.setU8(e + B.f1c, rom.u16(row + 4));
-  ram.setU16(e + B.delay, rom.u16(row));
-  ram.setU32(e + B.nudge, rom.u32(row + 6));
-  ram.setU32(e + B.pos, pos);
-  ram.setU16(e + B.bucket, 0x0c);
-  ram.setU16(e + B.hook, 2);
-  ram.setU16(e + B.sub12, 0);
-  ram.setU16(e + B.sub14, 0);
-  ram.setU8(e + B.speed, speed);
-  ram.setU8(e + B.angle, heading * 4);
+  ram.setU8(e + B.f1c, rom.u16(row + 4));      // $26C8CE move.b D0,($1C,A0)
+  ram.setU16(e + B.delay, rom.u16(row));       // $26C8D2 move.w D1,($18,A0)
+  ram.setU32(e + B.nudge, rom.u32(row + 6));   // $26C8D6 move.l (A1)+,($26,A0)
+  ram.setU32(e + B.pos, pos);                  // $26C8DA move.l ($2,A6),($2,A0)
+  // W402: this was `bucket = $0C` plus a `($10,A0) = 2` that no instruction in the arm performs.
+  // TRAP 1 -- `31 7c 00 10 00 1e` is the IMMEDIATE $10 and THEN the displacement $1E.
+  ram.setU16(e + B.bucket, C74E_ANIM);         // $26C8E0 move.w #$10,($1E,A0)
+  ram.setU16(e + B.sub12, 0);                  // $26C8E6
+  ram.setU16(e + B.sub14, 0);                  // $26C8EC
+  ram.setU8(e + B.speed, speed);               // $26C8F2 move.b ($1A,A6),($1A,A0)
+  ram.setU8(e + B.angle, (heading * 4) & 0xff);   // $26C8F8 add.b D0,D0 TWICE
 }
 
 function sideBroken(ram, a6, off) { return ram.u8(a6 + off + 0x0e) !== 0; }
@@ -98,7 +94,9 @@ function breakSide12(ram, rom, ctx, a6, off) {
   if (sideBroken(ram, a6, off)) return;
   ram.setU8(a6 + off + 0x0e, 1);
   ram.setU16(a6 + off, 0x8000);
-  emitRows(ram, rom, ctx, 0x26c65a, ram.u32(a6 + off + 2), 0x0c);
+  // $26C7A0 lea ($26C65A,PC),A1 / $26C7A4 move.l ($22,A6),D2 / $26C7A8 `61 a4` bsr.s $26C74E.
+  walkDeathSpawns270D92(ram, rom, ctx, 0x26c65a,
+    ram.u32(a6 + off + 2), 0x26c7a8, C74E_ANIM);
   ctx.soundPost?.(0x28c2dc);
 }
 
@@ -415,16 +413,26 @@ function death12(ram, rom, ctx, a5, a6) {
   if (stage === 1) {
     const n = (ram.u8(a5 + 0x26) - 1) & 0xff; ram.setU8(a5 + 0x26, n);
     if (n !== 0) return;
-    ram.setU16(a5 + 0x2c, 0);
-    loadAnimObjects246410(ram, rom, 0x26c9ce);
-    emitRows(ram, rom, ctx, 0x26c984, ram.u32(a6 + 2), 0x0c);
-    let r = drawWord242EC2(ram, rom) & 0xff;
-    bigBurst28B4BE(ram, rom, ctx, packedAdd(ram.u32(a6 + 2), 0xf8000800),
-      u16(r * 2 + 0x40), 0, 0x0c, 0x26c8ca);
-    r = drawWord242EC2(ram, rom) & 0xff;
-    bigBurst28B4BE(ram, rom, ctx, packedAdd(ram.u32(a6 + 2), 0x01fff800),
-      u16(r * 2 + 0xc0), 0, 0x0c, 0x26c8f4);
-    ctx.soundPost?.(0x28c310);
+    ram.setU16(a5 + 0x2c, 0);                                  // $26C81C
+    loadAnimObjects246410(ram, rom, 0x26c9ce);                 // $26C822/$26C828 jsr $246410
+    // $26C832 lea ($26C984,PC),A1 / $26C838 `61 00 ff 14` bsr.w $26C74E ($26C83A - $EC).
+    walkDeathSpawns270D92(ram, rom, ctx, 0x26c984,
+      ram.u32(a6 + 2), 0x26c838, C74E_ANIM);
+    // W402: THREE corrections in four lines, all from the bytes.
+    //   * $26C83C and $26C862 are both `4e b9 00 24 2b 3c` = jsr $242B3C. This read $242EC2.
+    //   * the two `jsr $28B4BE` sites are $26C85C and $26C882. This cited $26C8CA and $26C8F4,
+    //     which are inside the NEXT arm ($26C8A8's) and are not jsr instructions at all.
+    //   * the angle is built with BYTE operations -- `e3 00` asl.b #1,D0 / `12 00` move.b D0,D1 /
+    //     `06 01 00 40` addi.b #$40,D1 -- and was transcribed as `u16(r * 2 + 0x40)`. That one is
+    //     NOT a live defect and is not counted as one: `setU8` masks, and `(r*2 + $40) & $FF`
+    //     equals `((r*2 & $FF) + $40) & $FF` for every r. Corrected for the transcription only.
+    for (const [turn, bias, site] of [[0x40, 0xf8000800, 0x26c85c], [0xc0, 0x01fff800, 0x26c882]]) {
+      const r = drawByte242B3C(ram, rom);                      // $26C83C / $26C862 jsr $242B3C
+      bigBurst28B4BE(ram, rom, ctx, packedAdd(ram.u32(a6 + 2), bias),   // $26C84E/$26C874 addi.l
+        (((r << 1) & 0xff) + turn) & 0xff,
+        0, 0x0c, site);                                        // $26C858 D0 = 0, $26C854 D3 = $C
+    }
+    ctx.soundPost?.(0x28c310);                                 // $26C888 jsr $28C310
     ram.setU8(a5 + 0x26, 0x10); ram.setU8(a5 + 0x25, 2); return;
   }
   const n = (ram.u8(a5 + 0x26) - 1) & 0xff; ram.setU8(a5 + 0x26, n);
