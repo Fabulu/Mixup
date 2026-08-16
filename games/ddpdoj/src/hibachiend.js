@@ -492,8 +492,17 @@ export const HIBACHI_END_COUNTED = Object.freeze({
   // rather than stopping inside it.
   0x14: { init: 0x2a6b7a, step: 0x2a6b80, bytes: 0x001a, why: 'script 1 first-loop arm ($2A5CB6); '
     + 'waits $80 frames then jsr $2595E8, which SUSPENDS and ends the stage' },
-  0x0f: { init: 0x2a6a30, step: 0x2a6a36, bytes: 0x0046, why: 'script 4 hands to it ($2A640E); '
-    + 'the same A1-gun wait shape as $A ($2A6A4C/$2A6A54 on gun script 9)' },
+  // W406: $0F is no longer here -- `src/hibachiguns.js` runs it, together with A1 gun 9, and
+  // the real path now takes the whole `$F -> gun 9` link instead of stopping in front of it.
+  0x10: { init: 0x2a6a76, step: 0x2a6a7c, bytes: 0x0040, why: 'the THIRD link of phase B\'s gun '
+    + 'loop. A4 $11 starts it ($2A6AEA), it waits on A1 gun $A ($2A6A92/$2A6A9A) and hands BACK '
+    + 'to $F ($2A6AA2 moveq #$F)' },
+  0x11: { init: 0x2a6ab6, step: 0x2a6abc, bytes: 0x0046, why: 'the SECOND link: A4 $F starts it '
+    + '($2A6A5E), it waits on A1 gun $B ($2A6AD2/$2A6AE0) and hands to $10 ($2A6AE8). W406\'s '
+    + 'stop stands at its init $2A6AB6' },
+  0x12: { init: 0x2a6afc, step: 0x2a6b08, bytes: 0x004c, why: 'the same shape over A1 gun $C, '
+    + 'and it hands to $F ($2A6B34) -- but NO `moveq #$12 / jsr $25980C` exists anywhere in '
+    + '$2A4000..$2AB000, so nothing in the boss ROM starts it. It is an ENTRY, not a link' },
   0x05: { init: 0x2a6418, step: 0x2a6458, bytes: 0x03aa, why: 'phase B\'s death hands to it '
     + '($2A728C jmp $25980C with D0 = 5) -- the LAST link this wave reaches' },
   0x13: { init: 0x2a6b48, step: 0x2a6b56, bytes: 0x0032, why: 'phase B\'s $23000 phase check '

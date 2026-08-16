@@ -4616,6 +4616,19 @@ SHOT_WINDOWS.append(
     (0x2A87D0, 0x0010, "W405: A1 gun 8's slot template, $2A8800's lea (TRAP 4: "
                        "$2A8802 - $32). `moveq #$7` + dbra is EIGHT words"))
 
+# ---------------------------------------------------------------- W406: GUN 9
+# ONE new window.  Gun 9 reads no muzzle table and no vector table: its D3 is the
+# literal `$2A8A5E move.l #$FA000000,D3`, so the template is the whole of its ROM
+# data.  Bounds, none of them an absence: the `lea` names $2A898C; `moveq #$6` +
+# dbra is SEVEN words, so $E bytes; and $2A899A -- base + $E -- is where the eight
+# `$002A89BA` self-pointers begin, the same blob shape every other gun carries.
+W406_GUN9_TEMPLATE = 0x2A898C
+SHOT_WINDOWS.append(
+    (0x2A898C, 0x000E, "W406: A1 gun 9's slot template, $2A89BA's lea (TRAP 4: "
+                       "$2A89BC - $30). `moveq #$6` + dbra is SEVEN words, "
+                       "copied to ($2,A4)..($F,A4). Bounded above by $2A899A, "
+                       "where gun 9's eight $002A89BA self-pointers begin"))
+
 
 def check_hibachi_a1_windows(d: bytes) -> None:
     """W404.  HIBACHI's TWO A1 gun tables and the three data blocks guns 5 and 6 read.
@@ -4778,6 +4791,63 @@ def check_hibachi_a1_windows(d: bytes) -> None:
     if u16(d, 0x2A896A) != 0x6100 or 0x2A896C + s16(u16(d, 0x2A896C)) != 0x2A8800:
         raise SystemExit("$2A896A is not `bsr.w $2A8800`; gun 8 no longer re-seeds "
                          "its own slot as it retires.")
+
+    # ---- W406: GUN 9.  Same template head, decoded the same way, SEVEN words.
+    if u16(d, 0x2A89BA) != 0x41FA:
+        raise SystemExit("$2A89BA is not `lea (d16,PC),A0`.")
+    got = 0x2A89BC + s16(u16(d, 0x2A89BC))
+    if got != W406_GUN9_TEMPLATE:
+        raise SystemExit(f"$2A89BA's lea lands on ${got:06X}, not "
+                         f"${W406_GUN9_TEMPLATE:06X}.")
+    if u16(d, 0x2A89C2) != 0x7006 or u16(d, 0x2A89C4) != 0x32D8:
+        raise SystemExit("$2A89BA does not copy `moveq #$6` + 1 = SEVEN words.")
+    # The window's upper bound is a POSITIVE witness: the eight self-pointers.
+    for i in range(8):
+        if u32(d, W406_GUN9_TEMPLATE + 0x0E + i * 4) != 0x002A89BA:
+            raise SystemExit(
+                f"${W406_GUN9_TEMPLATE + 0x0E + i * 4:06X} is not $002A89BA; the "
+                "eight self-pointers that bound gun 9's template are gone.")
+    # ---- THE FREEZE ARM GUN 9 DOES NOT HAVE.  Stated as what DOES stand at the
+    # step entry, never as an absence: nine of the fourteen steps open `tst.w
+    # $8130D4`, and $2A89F4 opens on the countdown itself.
+    if u16(d, 0x2A89F4) != 0x532C or u16(d, 0x2A89F6) != 0x0002 \
+            or u16(d, 0x2A89F8) != 0x6502 or u16(d, 0x2A89FA) != 0x4E75:
+        raise SystemExit("$2A89F4 is not `subq.b #$1,($2,A4) / bcs.s / rts`; gun "
+                         "9's step no longer opens straight on its countdown.")
+    # ---- D3 IS A LITERAL in both of gun 9's arms, not a $26BFFC lookup, which is
+    # why gun 9 declares no vector-table window of its own.
+    for site in (0x2A8A5E, 0x2A8A96):
+        if u16(d, site) != 0x263C or u32(d, site + 2) != 0xFA000000:
+            raise SystemExit(f"${site:06X} is not `move.l #$FA000000,D3`.")
+    # ---- PHASE B'S LOOP IS THREE LINKS AND ITS ORDER IS NOT ID ORDER.  Each arrow
+    # is read as `moveq #n / jsr $25980C` at the named address.
+    for site, want in ((0x2A6A5C, 0x11), (0x2A6AE8, 0x10), (0x2A6AA2, 0x0F),
+                       (0x2A6B34, 0x0F)):
+        if u16(d, site) != (0x7000 | want) or u32(d, site + 4) != 0x0025980C:
+            raise SystemExit(
+                f"${site:06X} is not `moveq #${want:X},D0 / jsr $25980C`; phase B's "
+                "gun loop is no longer $F -> $11 -> $10 -> $F.")
+    # ...and NOTHING starts $12.  A positive enumeration, not an absence: every
+    # `moveq #n,D0 / jsr $25980C` in the boss ROM is listed and $12 is not among
+    # the n's, so A4 $12 is an entry point rather than a link.
+    starts = {d[a + 1] for a in range(0x2A4000, 0x2AB000, 2)
+              if u16(d, a) & 0xFF00 == 0x7000 and u16(d, a + 2) == 0x4EB9
+              and u32(d, a + 4) == 0x0025980C}
+    if 0x12 in starts:
+        raise SystemExit("something now starts A4 $12; W406 measured that nothing "
+                         "in $2A4000..$2AB000 does.")
+    for want in (0x0F, 0x10, 0x11):
+        if want not in starts:
+            raise SystemExit(f"nothing starts A4 ${want:X} any more; phase B's gun "
+                             "loop has come apart.")
+    # ---- PHASE B'S DEATH TIMER, re-armed by the loop the same way phase A's was.
+    for site, imm in ((0x2A6A6C, 0x0C), (0x2A6AD8, 0x04)):
+        if u16(d, site) != 0x1D7C or u16(d, site + 2) != imm \
+                or u16(d, site + 4) != 0x001A:
+            raise SystemExit(f"${site:06X} is not `move.b #${imm:X},($1A,A5)`.")
+    if u16(d, 0x2A7088) != 0x536D or u16(d, 0x2A708A) != 0x001A:
+        raise SystemExit("$2A7088 is not `subq.w #$1,($1A,A5)`, so those two byte "
+                         "writes are no longer the high half of a countdown.")
 
 
 def check_option_formation_windows(d: bytes) -> None:

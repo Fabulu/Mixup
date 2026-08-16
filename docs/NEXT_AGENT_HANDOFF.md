@@ -1,8 +1,75 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-16 (W405)
+Updated: 2026-08-16 (W406)
 
-## START HERE -- W405
+## START HERE -- W406
+
+### W403 DROPPED PHASE B'S EXIT, AND NOTHING NOTICED FOR THREE WAVES
+
+`$2A7226 4EFA 006C` is `jmp $2A7294`, and all three ways out of `$2A71C6` land on it. W403 did not
+port it. The consequence was invisible because it is a store with no consumer: `bossExitShared` had
+**no phase-B caller at all**, so `$2A7088 subq.w #$1,($1A,A5)` never ran for phase B, and A4 `$F`'s
+closing `$2A6A6C move.b #$C,($1A,A5)` went nowhere. Measured: `($1A,A5)` sat at `$6270` for all 390
+frames between A4 script 4 and A4 `$F`. Fixed in `src/hibachi2.js`.
+
+This is the shape to watch for: **a missing jump does not throw, it just quietly removes a caller.**
+
+### A1 GUN 9 AND A4 $F ARE PORTED; THE PATH RUNS TO FRAME 3317
+
+Gun 9 `$2A89BA/$2A89F4`: `$1C2` table-entry to table-entry, of which **`$156` is code**. Bounded by
+`4E75` AT `$2A8B0E` which `$2A8AE8`'s `bcc.w` lands on exactly, by gun `$A`'s template at `$2A8B4C`
+(so `$2A8B10..$2A8B7B` is gun `$A`'s data, not gun 9's), and by `$2A72C8[$A].init`. Sixteen shots a
+volley in two mirrored arms picked by `btst #$0,($4,A4)`, sweeping +-1 per volley inside a **signed**
+band `[-$20,+$20]` -- `$2A8AD0 6C00` is BGE, not BCC. Bullets went 3,745 -> **4,865**.
+
+New stop: **frame 3317 at `$2A6AB6`**, A4 `$11`'s init, a PORT stop waiting on gun `$B`.
+
+### TWO CONVENTIONS THE LAST THREE WAVES STATED TOO BROADLY
+
+1. **Not every gun has a freeze arm.** `4A79 008130D4` stands at ten of the fourteen step entries;
+   **guns 9, `$A` and `$D` have none**. `$2A89F4` is `532C 0002 / 6502 / 4E75`. A frozen gun 9 keeps
+   burning volleys and stepping its sweep, and the spawn core's own gate `$2814BA` discards them.
+2. **The scripts do not run in id order and `$12` is an orphan.** `$F -> $11 -> $10 -> $F` is a
+   closed three-link loop (`$2A6A5C moveq #$11`, `$2A6AE8 moveq #$10`, `$2A6AA2 moveq #$F`), and an
+   enumeration of every `moveq #n / jsr $25980C` in `$2A4000..$2AB000` yields 17 ids with `$12` not
+   among them.
+
+### THE ENDING CHAIN STILL DOES NOT COMPLETE, IN THE CARTRIDGE'S OWN TERMS
+
+Completing means `$2595E8` suspending the stage. Only A4 `$14` reaches it, and only script 1's
+first-loop arm starts A4 `$14`. This bench is the other arm, so the route out is phase B's death
+(`$2A722E`) into A4 `5`, still counted at `$3AA`. Do not report "the ending runs" on the grounds that
+a run did not stop.
+
+### SIXTY ABLATIONS, FIVE GREEN, FOUR REAL
+
+The byte cap's `bls` vs `bcc` agree everywhere except AT `$1E`; two phase-B arms were never driven
+because the real path only takes the middle one; and `pickTarget(a5)` vs `(a6)` pick the same record
+whenever only one player is alive. One mutation was invalid (a no-op both consumers mask) and was
+replaced by one that reddens. One is a labelled equivalence: D1's bits 8..15 have no consumer, since
+`$28158E`/`$281596` are `move.b` and gun 9's D3 is a literal rather than a `$26BFFC` index.
+
+### WINDOWS: ONE NEW, 594
+
+`$2A898C + $E`, gun 9's template. Three bounds: `$2A89BA`'s own `lea`, `moveq #$6` + `dbra` = 7 words
+(n+1), and `base + $E = $2A899A` where the eight `$002A89BA` self-pointers begin.
+
+### VERIFIED
+
+Suite **3615 pass / 0 fail / 0 skipped** (3590 before; +25). Gate **exit 0** from its own exit code.
+`export-tables.py --verify` **OK at 594 windows**.
+
+### PUBLISH IS DUE NEXT WAVE
+
+W407 is the fifth since W402. **Run `export-web.mjs` BEFORE `publish.mjs`** -- W404, W405 and W406
+all added windows, so publishing without regenerating serves stale assets.
+
+### NEXT
+
+**A1 gun `$B` `$2A8C9A`** (`$236`, counted) and **A4 `$11` `$2A6AB6`** (`$46`), which is what the
+frame-3317 stop waits on. A4 `$10` (`$40`) closes the three-link loop behind it.
+
+## W405 NOTES
 
 ### THE ATTACK LOOP IS CLOSED, AND IT IS PHASE A'S, NOT PHASE B'S
 

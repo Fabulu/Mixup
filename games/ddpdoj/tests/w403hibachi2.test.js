@@ -219,7 +219,9 @@ test('W403 SECTION 1: every `jsr`/`jmp` in both new spans lands somewhere, and T
     // ...and the ones the CHAIN then hands to that are not ported, counted with measured
     // extents. W405 CORRECTION: A4 $D was on this list and is now RUN, so it moved out of
     // `HIBACHI_END_COUNTED` -- its $60 is still measured here, from the table itself.
-    for (const [id, want, ported] of [[0x0d, 0x60, true], [0x0f, 0x46, false],
+    // W406 CORRECTION: A4 $F followed A4 $D out of the list -- `src/hibachiguns.js` runs it,
+    // and its $46 is still measured here from the table itself.
+    for (const [id, want, ported] of [[0x0d, 0x60, true], [0x0f, 0x46, true],
       [0x05, 0x3aa, false], [0x13, 0x32, false]]) {
       const here2 = l(HIBACHI_A4.table + id * 8);
       const next = Math.min(...[...Array(HIBACHI_A4.pairs).keys()]
@@ -545,7 +547,14 @@ function second({ sel = 1, hit = 0, pool = null, timeout = 0x6270, install = tru
   const ctx = { unportedLog: log, unported: log, soundPost() {} };
   // `install: false` leaves $812D38 zero, so $2596C6's walk is skipped entirely and the
   // body is the only thing running. SECTION 7 needs that to read no ROM at all.
-  if (install) installScripts(ram, ROM, { a4: HIBACHI_A4.table });
+  //
+  // **W406: THE A1 TABLE IS INSTALLED TOO, AND IT WAS NOT BEFORE.** `$2A4306 lea $2A72C8,A1`
+  // and `$2A4318 lea $2A5886,A4` are both in `$2A42DC`'s install block, and a bench with only
+  // the A4 half leaves `$812BD4` zero, so `$259782 tst.l / beq` skips the entire A1 walk. Every
+  // A4 script in this chain that WAITS on a gun then waits for ever, because the gun it started
+  // is never dispatched and never retires. That is exactly what A4 $F does, and with W406
+  // running $F it is what this bench would have reported as "no stop at all".
+  if (install) installScripts(ram, ROM, { a4: HIBACHI_A4.table, a1: 0x2A72C8 });
   ram.setU32(REC + 0x06, SUB);
   ram.setU32(SUB + 0x02, 0x38001c00);
   ram.setU16(0x8103e6, 0x8000);                // P1 out -> $2428A6 returns $10
@@ -595,7 +604,9 @@ function drive(b, frames) {
 test('W403 SECTION 5: phase A dies of DAMAGE and the whole ending chain runs to A4 $F',
   { skip: SKIP }, () => {
     const b = second({ sel: 1, hit: 0x140, pool: 0x100 });
-    const r = drive(b, 500);
+    // W406: 500 frames no longer reach the stop -- A4 $F and A1 gun 9 are ported now and
+    // together they are 389 frames of real work, not a throw.
+    const r = drive(b, 1200);
 
     // ---- phase A's death, frame 1. Its OWN flag byte, not form 1's.
     assert.equal(r.marks.deathA, 1, '$2A7040 move.b #$1,($15E,A6) on frame 1');
@@ -604,9 +615,14 @@ test('W403 SECTION 5: phase A dies of DAMAGE and the whole ending chain runs to 
       '  ...and $2A7008 jsr $28C170 was counted, phase A\'s own BGM cue');
 
     // ---- $2A7076 handed to A4 3, which is W399's script 3, and it pushed $0200.
-    assert.equal(b.ram.u16(SCHED.a4Base) & 0xff, 0x0f,
-      'when the run stops, slot 0 carries A4 $F -- script 3 ran, script 4 ran, and script 4 '
-      + 'handed on');
+    // W406: A4 $F used to be parked in slot 0 when the run stopped, because it was the stop.
+    // It now runs to completion and `$2A6A72 clr.w (A4)` frees that slot, so the witness is
+    // the id the LIVE slot carries, which is the link $F handed to.
+    assert.deepEqual([...Array(SCHED.a4Slots).keys()]
+      .map((i) => b.ram.u16(SCHED.a4Base + i * SCHED.a4Stride))
+      .filter((v) => v !== 0).map((v) => v & 0xff), [0x11],
+      'when the run stops exactly one A4 slot is live and it carries $11 -- script 3 ran, '
+      + 'script 4 ran, $F ran, and $2A6A5C moveq #$11 handed on');
     assert.equal(r.marks.phaseB, 192,
       '$2A637A set ($10E,A6) = 2 on frame 192: script 3 spends $C0 from frame 1 (the '
       + 'fall-through), reaches $2A61E8 on frame 192, and script 4\'s init runs in the same pass '
@@ -624,13 +640,19 @@ test('W403 SECTION 5: phase A dies of DAMAGE and the whole ending chain runs to 
     assert.equal(b.ram.u8(SUB + 0xed), 0x17, 'phase B wrote ($ED,A6) = $17');
     assert.equal(b.ram.u8(SUB + 0xe9), 0, '  ...and nothing wrote form 1\'s fourth quad byte');
 
-    // ---- WHERE IT STOPS. Another PORT stop, one link further on.
+    // ---- WHERE IT STOPS. W406: A4 $F is RUN now, and the stop moved 389 frames on, to the
+    // NEXT link of phase B's gun loop. 389 = $F's $60 wait less the frame its init shares
+    // with its step (95) + gun 9's 293 frames + the frame $11's init is dispatched.
+    assert.equal(l(HIBACHI_A4.table + 0x0f * 8), 0x2a6a30, '$2A5886[$F].init is $2A6A30');
+    assert.equal(HIBACHI_END_COUNTED[0x0f], undefined,
+      '  ...and W406 runs it, so hibachiend.js no longer counts it');
     assert.deepEqual([r.stopped.frame, r.stopped.at, r.stopped.name],
-      [321, 0x2a6a30, 'Unreached'],
-      'the chain stops on frame 321 at $2A6A30, A4 $F -- script 4\'s $80-frame handover '
-      + '($2A640C moveq #$F), and $2A6A4C waits on A1 gun script 9 exactly as $A waits on 5');
-    assert.equal(l(HIBACHI_A4.table + 0x0f * 8), 0x2a6a30, '  ...$2A5886[$F].init is $2A6A30');
-    assert.equal(HIBACHI_END_COUNTED[0x0f].bytes, 0x46, '  ...and it is $46 bytes');
+      [710, 0x2a6ab6, 'Unreached'],
+      'the chain stops on frame 710 at $2A6AB6, A4 $11 -- which $2A6A5C moveq #$11 starts once '
+      + 'gun 9 retires, and which waits on A1 gun $B the way $F waits on gun 9');
+    assert.equal(710 - 321, 95 + 293 + 1,
+      '  ...and the 389 frames between the two stops are $F\'s wait, gun 9\'s run and one '
+      + 'dispatch, not a number the run happened to land on');
   });
 
 test('W403 SECTION 5: phase A also dies of the TIMEOUT, on frame 25200 exactly -- a LONG run',
@@ -648,8 +670,9 @@ test('W403 SECTION 5: phase A also dies of the TIMEOUT, on frame 25200 exactly -
     assert.equal(r.marks.phaseB, 0x6270 + 191,
       '  ...with script 3\'s 192 frames after it, so phase B starts on frame 25391');
     assert.deepEqual([r.stopped.frame, r.stopped.at, r.stopped.name],
-      [0x6270 + 320, 0x2a6a30, 'Unreached'],
-      '  ...and the same A4 $F stop, 320 frames after the death');
+      [0x6270 + 709, 0x2a6ab6, 'Unreached'],
+      '  ...and the same A4 $11 stop the DAMAGE arm reaches, 709 frames after the death: the '
+      + 'ending chain past phase A does not depend on which way phase A died');
   });
 
 test('W403 SECTION 5: phase B dies of damage and hands to A4 5 -- the last link this wave reaches',
@@ -891,8 +914,8 @@ test('W403 SECTION 6: the kind table REMOVED -- script 3\'s per-frame emitter, n
 test('W403 SECTION 7: 585 windows, overlap still 71, and NOTHING in the unit reads ROM',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 593, '585 windows through W403, which declared none; W404 added '
-      + 'five for the two A1 gun tables and the gun data blocks');
+    assert.equal(ws.length, 594, '585 windows through W403, which declared none; W404 added '
+      + 'five for the two A1 gun tables and the gun data blocks, W405 three and W406 one');
     const pairs = (list) => {
       let n = 0;
       for (let i = 0; i < list.length; i++) {

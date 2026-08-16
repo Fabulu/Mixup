@@ -71,8 +71,27 @@
 // tail hands to A4 3 -> A4 4 -> A4 $F.  Porting $D is therefore what lets the
 // BOSS's phase A end at all, not merely what closes the cycle.
 //
-// The parallel loop {6,7,8,9} x {gun 0,1,2,3} and the chain {$F,$10,$11,$12} x
-// {gun 9,$A,$B,$C} have the same shape and are reached by other entries.
+// ============================================================================
+// PHASE B'S LOOP IS THREE LINKS, NOT FOUR, AND ITS ORDER IS NOT ID ORDER.  W406.
+// ============================================================================
+// W405's handoff called `{$F, $10, $11, $12} x {gun 9, $A, $B, $C}` a chain.  It
+// is a CLOSED LOOP of THREE, and $12 is not in it.  Every `moveq #n / jsr
+// $25980C` in `$2A4000..$2AB000` was enumerated to say so:
+//
+//   A4 $F  $2A6A30 -> gun 9  -> $2A6A5C moveq #$11 -> A4 $11
+//   A4 $11 $2A6AB6 -> gun $B -> $2A6AE8 moveq #$10 -> A4 $10
+//   A4 $10 $2A6A76 -> gun $A -> $2A6AA2 moveq #$F  -> A4 $F
+//   A4 $12 $2A6AFC -> gun $C -> $2A6B34 moveq #$F  -> A4 $F, one way only
+//
+// and the enumeration finds **no `moveq #$12` at all**, so nothing in the boss
+// ROM starts $12.  A4 script 4's `$2A640C moveq #$F` is the only door in.
+//
+// This wave ports the first link, `$F` + gun 9.  `($1A,A5)`, phase B's death
+// timer, is re-armed by the loop exactly as phase A's was: `$2A6A6C move.b
+// #$C,($1A,A5)` on $F's hand-over and `$2A6AD8 move.b #$4,($1A,A5)` on $11's, so
+// the word `$2A7088` counts down inside the phase-B exit twin `$2A7294`.
+//
+// The parallel loop {6,7,8,9} x {gun 0,1,2,3} is reached by other entries.
 //
 // ============================================================================
 // WHAT EACH GUN'S SLOT HOLDS -- IT IS A COPIED TEMPLATE, NOT LOOSE FIELDS
@@ -155,12 +174,19 @@ export const HIBACHI_A1 = Object.freeze({
   gun7BlockLen: 0x50,              // $2A8618 subi.w #$10 against $2A8620's #$40
   gun7RecordLen: 8,                // {delta.l, bias.w, angle.w}
   gun8Init: 0x2a8800, gun8Step: 0x2a883a, gun8Template: 0x2a87d0,
+  gun9Init: 0x2a89ba, gun9Step: 0x2a89f4, gun9Template: 0x2a898c,
+  gun9Code: 0x2a8b0e,              // W406: `4E75` AT that address, gun 9's last instruction
   vectors: 0x26bffc,               // $2A8274 / $2A82B6 / $2A88E2 lea $26BFFC,A1
   spawn: 0x2817c2,                 // bank B's core, called direct
   freeze: 0x8130d4,
   selP1: 0x8103e6, selP2: 0x810448,
   /** A4 ids this file registers, and the gun each waits on. */
-  a4Waits: Object.freeze({ 0x0a: 5, 0x0b: 6, 0x0c: 7, 0x0d: 8 }),
+  a4Waits: Object.freeze({ 0x0a: 5, 0x0b: 6, 0x0c: 7, 0x0d: 8, 0x0f: 9 }),
+  /** W406: the three guns whose STEP has no `tst.w $8130D4` anywhere in it.
+   *  `4A79 008130D4` stands AT ten of the fourteen step entries; gun $C's is
+   *  eight bytes in, at $2A8F24, behind a `moveq #$C / jsr $259B08`; and these
+   *  three have none at all. */
+  noFreezeSteps: Object.freeze([0x2a89f4, 0x2a8bc0, 0x2a90e0]),
 });
 
 const AIM_TABLES = new WeakMap();
@@ -186,8 +212,14 @@ function copyTemplate(ram, rom, a4, tpl, words) {
 }
 
 /**
- * The head every gun STEP shares, `tst.w $8130D4 / bne.w <own init> / subq.b
- * #$1,($2,A4) / bcs.s <body> / rts`.
+ * The head TEN of the fourteen gun STEPs share, `tst.w $8130D4 / bne.w <own
+ * init> / subq.b #$1,($2,A4) / bcs.s <body> / rts`.
+ *
+ * **W406: IT IS NOT ALL FOURTEEN.**  `4A79 008130D4` stands at the step entries
+ * of guns 0..8 and $B and at NEITHER `$2A89F4` (gun 9), `$2A8BC0` (gun $A, which
+ * opens `4279 clr.w $8130DC` -- a DIFFERENT word) nor `$2A90E0` (gun $D).  Gun
+ * $C's is eight bytes past its entry.  Gun 9 is written without this helper for
+ * exactly that reason; see its own header.
  *
  * **THE FREEZE ARM BRANCHES BACKWARD INTO THE INIT, NOT FORWARD TO THE RTS**,
  * which is the opposite of what every A4 script in `$2A67C2..$2A6B7A` does with
@@ -728,7 +760,149 @@ export function gun8Step2A883A(ram, rom, ctx, a4, a5, a6) {
 }
 
 // ===========================================================================
-// THE A4 DRIVERS -- $2A689C, $2A68D4, $2A6930, $2A6970
+// GUN 9 -- $2A89BA / $2A89F4.  W406.  HIBACHI's PHASE B gun, and the first one
+// in the table whose step has NO FREEZE ARM.
+// ===========================================================================
+/**
+ * `$2A89BA` -- SEVEN template words (`moveq #$6`), one hard-coded byte, ONE RNG
+ * draw and two ramps.
+ *
+ * The template is `1080 4545 0300 0009 0007 0007 0001`, so `($8,A4)` is the
+ * speed bias `$0009` and `($A,A4)` and `($C,A4)` are the two bullet KINDS, both
+ * `$0007`.  `($E,A4)` is the word `$0001`, and **that one word covers two byte
+ * fields** (TRAP 3): `$2A89CA move.b #$20,($E,A4)` overwrites the high half with
+ * the sweep's starting offset `$20` and leaves `$01` in `($F,A4)` as its step.
+ *
+ * `$2A89D0 jsr $242EC2 / $2A89D6 bpl.w` is the SAME DEAD ARM guns 5 and 8 have:
+ * `$242EC2` ends `move.b (A0,D0.w),D0 / rts` with no `ext.w`, so bit 15 is
+ * always clear, `bpl` is always taken and `$2A89DA neg.b ($F,A4)` never runs.
+ * Both arms are transcribed rather than folded away.
+ *
+ * **AND THERE IS NO `$242E24` DRAW.**  Gun 5 seeds `($10,A4)` from one and gun 8
+ * seeds `($10,A4)` from one; gun 9's sweep start is the CONSTANT `$20`, so this
+ * init makes exactly ONE draw where those two make two.  That difference is
+ * observable in `$803917`, the shared draw counter.
+ */
+export function gun9Init2A89BA(ram, rom, a4, a6) {
+  copyTemplate(ram, rom, a4, HIBACHI_A1.gun9Template, 7);   // $2A89BA..$2A89C8
+  ram.setU8(a4 + 0x0e, 0x20);                          // $2A89CA move.b #$20,($E,A4)
+  if (i16(drawWord242EC2(ram, rom)) < 0) {             // $2A89D0 jsr / $2A89D6 bpl.w
+    ram.setU8(a4 + 0x0f, u8(-ram.u8(a4 + 0x0f)));      // $2A89DA neg.b ($F,A4) -- DEAD
+  }
+  ram.setU16(a4 + 0x08, u16(ram.u16(a4 + 0x08)
+    + ram.u16(a6 + 0x1f8)));                           // $2A89DE/$2A89E2 add.w D0,($8,A4)
+  const d0b = ram.u8(a6 + 0x1f6);                      // $2A89E6 move.b ($1F6,A6),D0
+  ram.setU8(a4 + 0x04, u8(ram.u8(a4 + 0x04) + d0b));   // $2A89EA add.b D0,($4,A4)
+  ram.setU8(a4 + 0x05, u8(ram.u8(a4 + 0x05) + d0b));   // $2A89EE add.b D0,($5,A4)
+}
+
+/**
+ * `$2A89F4` -- sixteen shots a volley, in one of TWO MIRRORED arms, off a sweep
+ * that is an OFFSET FROM THE AIM rather than an absolute heading.
+ *
+ * **THE STEP HAS NO `tst.w $8130D4`.**  `$2A89F4` is `subq.b #$1,($2,A4) / bcs.s
+ * / rts` and nothing else: where guns 5, 6, 7 and 8 open with the freeze test
+ * that branches BACKWARD into their own init, this one has no freeze arm at all.
+ * `4A79 008130D4` stands at TEN of the fourteen step entries in `$2A72C8` and
+ * at neither `$2A89F4`, `$2A8BC0` nor `$2A90E0`.  The consequence is real: while
+ * `$8130D4` is set gun 9 keeps counting volleys down and keeps stepping its
+ * sweep, and it is the SPAWN CORE's own gate (`$2814BA` adds `$8130D4` in) that
+ * throws the shots away.  A frozen gun 5 re-seeds and restarts; a frozen gun 9
+ * burns its whole magazine and retires.
+ *
+ * **THE TWO ARMS ARE A MIRROR PAIR AND THEY USE DIFFERENT KIND FIELDS.**
+ * `$2A8A3E btst #$0,($4,A4)` picks by the volley counter's low bit, exactly as
+ * gun 5's does.  Odd volleys `add.b ($E,A4),D1` and take the kind from
+ * `($C,A4)`; even volleys restore the untouched aim from D5, `sub.b ($E,A4),D1`
+ * and take the kind from `($A,A4)`.  In the shipped template both kind words are
+ * `$0007`, so the two arms are indistinguishable by kind on the cartridge -- a
+ * LABELLED EQUIVALENCE, and the test asserts the ROM words rather than the port.
+ *
+ * **D3 IS A CONSTANT, NOT A `$26BFFC` LOOKUP.**  `$2A8A5E move.l #$FA000000,D3`
+ * in both arms, so every one of gun 9's bullets is spawned `$0600` ABOVE the
+ * boss's own Y (`$28159C tst.l D3 / add.w`, high word onto axis A) and at zero
+ * horizontal offset.  Guns 5 and 8 index the 64-longword vector table for this;
+ * gun 9 does not, and declares no window for one.
+ *
+ * **`$2A8A2C move.w D2,D6 / $2A8A2E move.w D3,D7` ARE DEAD STORES** (TRAP 22).
+ * Both arms reload D6 with `#$5` and D7 with `#$F` before the volley loop and
+ * nothing between reads either, so the target coordinates they save are never
+ * used.  Gun 6 has the same pair at `$2A83D8`; transcribed by omission, with
+ * this note, because nothing observes a register.
+ */
+export function gun9Step2A89F4(ram, rom, ctx, a4, a5, a6) {
+  // $2A89F4 subq.b #$1,($2,A4) / $2A89F8 bcs.s $2A89FC / $2A89FA rts.  NO FREEZE
+  // TEST -- see the header.  `gunTick` is deliberately NOT called here, and the
+  // mutation below is "gun 9 has its siblings' freeze head after all".
+  if (mut('gun9-freeze-arm') && ram.u16(HIBACHI_A1.freeze) !== 0) {
+    gun9Init2A89BA(ram, rom, a4, a6);
+    return;
+  }
+  const t = ram.u8(a4 + 0x02);
+  ram.setU8(a4 + 0x02, u8(t - 1));
+  if (t !== 0) return;                                 // the BORROW is the body
+
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x06));             // $2A89FC move.b ($6,A4),($2,A4)
+  const tgt = pickTarget(ram, a5);                     // $2A8A02..$2A8A24
+  if (tgt !== null) {                                  // $2A8A20 bpl.w $2A8ADE
+    // $2A8A26 movem.w ($2,A0),D2-D3 / $2A8A30 movem.w ($2,A6),D0-D1
+    const ty = ram.u16(tgt + 0x02), tx = ram.u16(tgt + 0x04);
+    const aim = aim256(aimTables(rom),                 // $2A8A36 jsr $2422A2
+      ram.u16(a6 + 0x02), ram.u16(a6 + 0x04), ty, tx);
+    const d5 = u16(aim);                               // $2A8A3C move.w D1,D5
+    const odd = (ram.u8(a4 + 0x04) & 1) !== 0;         // $2A8A3E btst #$0,($4,A4)
+    const sweep = ram.u8(a4 + 0x0e);
+    // $2A8A48 add.b ($E,A4),D1  /  $2A8A7E move.w D5,D1 + $2A8A80 sub.b ($E,A4),D1.
+    // BYTE arithmetic on a WORD register: no carry crosses into bits 8..15, and
+    // `$2A8A4C subi.w #$23,D1` that follows is a WORD subtract on the result.
+    // Only bits 0..7 ever leave, through the core's `move.b D1,($B,A0)`.
+    let d1 = u16((d5 & 0xff00) | u8(odd ? d5 + sweep : d5 - sweep));
+    d1 = u16(d1 - 0x23);                               // $2A8A4C / $2A8A84 subi.w #$23,D1
+    // $2A8A50 move.w ($8,A4),D0 / swap D0 / move.w ($C,A4)|($A,A4),D0 -- the
+    // {bias, kind} longword built by hand, where gun 5 loads it with one move.l.
+    const kind = ram.u16(a4 + (odd ? 0x0c : 0x0a));    // $2A8A56 / $2A8A8E
+    const d0 = (((ram.u16(a4 + 0x08) << 16) >>> 0) | kind) >>> 0;
+    const d2 = ram.u32(a6 + 0x02);                     // $2A8A5A / $2A8A92 move.l ($2,A6),D2
+    const d3 = 0xfa000000;                             // $2A8A5E / $2A8A96 move.l #$FA000000,D3
+    const site = odd ? 0x2a8a6e : 0x2a8aa6;
+    for (let k = 0; k < 16; k++) {                     // $2A8A6A moveq #$F + dbra: SIXTEEN
+      shot(ram, rom, ctx, site, { d0, d1, d2, d3, d4: 0, d5, a5 });   // $2A8A64 moveq #$0,D4
+      d1 = u16((d1 & 0xff00) | u8(d1 + 5));            // $2A8A74 add.b D6,D1 with D6 = #$5
+    }
+
+    // ---- $2A8AB2.  THE BOUNCE, and both limits are SIGNED and symmetric:
+    // `$2A8ABE cmpi.b #$20 / bgt.w` reverses above +$20 and `$2A8AD0 cmpi.b #$E0
+    // / bge.w` -- which SKIPS the negate -- reverses below -$20.  `$6C` is BGE,
+    // not BCC: gun 5's band is unsigned and this one is not.
+    const step = ram.u8(a4 + 0x0f);                    // $2A8AB2 move.b ($F,A4),D1
+    const next = u8(sweep + step);                     // $2A8ABA / $2A8ACC add.b D1,($E,A4)
+    ram.setU8(a4 + 0x0e, next);
+    const bounce = (step & 0x80) !== 0                 // $2A8AB6 bmi.w $2A8ACC
+      ? i8(next) < i8(0xe0)                            // $2A8AD0 cmpi.b #$E0 / bge.w skips
+      : i8(next) > 0x20;                               // $2A8ABE cmpi.b #$20 / bgt.w negates
+    if (bounce) ram.setU8(a4 + 0x0f, u8(-step));       // $2A8ADA neg.b ($F,A4)
+  }
+
+  ram.setU8(a5 + 0x03, ram.u8(a5 + 0x03) ^ 1);         // $2A8ADE bchg #$0,($3,A5)
+  const n = ram.u8(a4 + 0x04);                         // $2A8AE4 subq.b #$1,($4,A4)
+  ram.setU8(a4 + 0x04, u8(n - 1));
+  if (n !== 0) return;                                 // $2A8AE8 bcc.w $2A8B0E
+
+  // $2A8AEC.  TWO ramps and no dead store: gun 9 is the only one of the five
+  // that does NOT reload ($2,A4) from ($3,A4) on the way out, and the only one
+  // whose WORD ramp is tested UNSIGNED (`$2A8B00 64` bcc.s, where gun 5's
+  // $2A832C is `6C` bge.s).
+  if (ram.u8(a6 + 0x1f6) < 0x1e) {                     // $2A8AEC cmpi.b #$1E / bcc.s
+    ram.setU8(a6 + 0x1f6, u8(ram.u8(a6 + 0x1f6) + 0x14));      // $2A8AF4 addi.b #$14
+  }
+  if (ram.u16(a6 + 0x1f8) < 2) {                       // $2A8AFA cmpi.w #$2 / bcc.s -- UNSIGNED
+    ram.setU16(a6 + 0x1f8, u16(ram.u16(a6 + 0x1f8) + 1));      // $2A8B02 addq.w #$1
+  }
+  a1Stop259B08(ram, 9);                                // $2A8B06 moveq #$9 / $2A8B08 jsr
+}
+
+// ===========================================================================
+// THE A4 DRIVERS -- $2A689C, $2A68D4, $2A6930, $2A6970, $2A6A30
 // ===========================================================================
 //
 // All three are the same six-part shape and only the constants move:
@@ -842,6 +1016,49 @@ export function a4D2A6970(ram, a4, a5, init) {
   ram.setU16(a4, 0);                                   // $2A69CC clr.w (A4)
 }
 
+/**
+ * `$2A6A30` / `$2A6A36` -- W406.  Delay `$60`, gun 9, then A4 **`$11`**.
+ *
+ * **IT HANDS TO `$11`, NOT TO `$10`, AND THAT MAKES THE ENDING CHAIN A LOOP.**
+ * W405's handoff called `{$F, $10, $11, $12} x {gun 9, $A, $B, $C}` a chain in
+ * id order.  Every arrow read out of the image says otherwise:
+ *
+ *   $2A6A5C moveq #$11 -> A4 $11  ($2A6AB6), which waits on gun $B
+ *   $2A6AE8 moveq #$10 -> A4 $10  ($2A6A76), which waits on gun $A
+ *   $2A6AA2 moveq #$F  -> A4 $F   -- back here
+ *
+ * so `$F -> $11 -> $10 -> $F` is a CLOSED THREE-LINK LOOP, phase B's answer to
+ * phase A's four-link one, and `$12` is not in it: `$2A6B34 moveq #$F` only
+ * feeds INTO `$F`, and no `moveq #$12 / jsr $25980C` exists anywhere in
+ * `$2A4000..$2AB000`, so nothing in the boss ROM starts `$12` at all.
+ *
+ * **AND `$2A6A6C move.b #$C,($1A,A5)` IS PHASE B's DEATH TIMER**, the same trap
+ * A4 $D springs on phase A: `($1A,A5)` is the WORD that `$2A7088 subq.w #$1`
+ * walks down inside the exit twin `$2A7294`, and this writes its HIGH byte.
+ * `$2A6AD8 move.b #$4,($1A,A5)` in A4 $11 rewrites it to `$04xx` one link later,
+ * so phase B's timeout is re-armed by its own gun loop exactly as phase A's was.
+ * Note the position: unlike A4 $D's, this write is on the HAND-OVER path, after
+ * the gun has retired, not in the init.
+ *
+ * The freeze test at `$2A6A3C` branches FORWARD to the shared `rts` at
+ * `$2A6A74`, which is the A4 convention and the opposite of gun 9's -- gun 9 has
+ * no freeze test at all.  Neither may be assumed from the other.
+ */
+export function a4F2A6A30(ram, a4, a5, init) {
+  if (init) ram.setU16(a4 + 0x02, 0x0060);             // $2A6A30 move.w #$60,($2,A4)
+  if (ram.u16(a4 + 0x02) !== 0) {                      // $2A6A36 tst.w / $2A6A3A beq.s $2A6A52
+    if (ram.u16(HIBACHI_A1.freeze) !== 0) return;      // $2A6A3C / $2A6A42 bne.s $2A6A74
+    ram.setU16(a4 + 0x02, u16(ram.u16(a4 + 0x02) - 1));       // $2A6A44 subq.w #$1
+    if (ram.u16(a4 + 0x02) !== 0) return;              // $2A6A48 bne.s $2A6A74
+    a1Start259A18(ram, 9);                             // $2A6A4A/$2A6A4C
+  }
+  if (a1Running259A4A(ram, 9)) return;                 // $2A6A52/$2A6A54/$2A6A5A bcs.s
+  a4Start25980C(ram, 0x11);                            // $2A6A5C/$2A6A5E -- $11, NOT $10
+  seqStart2598D0(ram, 9);                              // $2A6A64/$2A6A66
+  ram.setU8(a5 + 0x1a, 0x0c);                          // $2A6A6C move.b #$C,($1A,A5)
+  ram.setU16(a4, 0);                                   // $2A6A72 clr.w (A4) -- 4254, the SLOT
+}
+
 // ===========================================================================
 // the registrations
 // ===========================================================================
@@ -867,6 +1084,11 @@ registerScript(HIBACHI_A1.gun8Init, (ram, rom, ctx, a4) =>
 registerScript(HIBACHI_A1.gun8Step, (ram, rom, ctx, a4) =>
   gun8Step2A883A(ram, rom, ctx, a4, bossA5(ctx, HIBACHI_A1.gun8Step),
     bossA6(ctx, HIBACHI_A1.gun8Step)));
+registerScript(HIBACHI_A1.gun9Init, (ram, rom, ctx, a4) =>
+  gun9Init2A89BA(ram, rom, a4, bossA6(ctx, HIBACHI_A1.gun9Init)));
+registerScript(HIBACHI_A1.gun9Step, (ram, rom, ctx, a4) =>
+  gun9Step2A89F4(ram, rom, ctx, a4, bossA5(ctx, HIBACHI_A1.gun9Step),
+    bossA6(ctx, HIBACHI_A1.gun9Step)));
 
 // The A4 pairs are the other way round: the word before each step is an
 // operand, so the init entry runs the init AND the step in one dispatch, which
@@ -883,11 +1105,15 @@ registerScript(0x2a6970, (ram, rom, ctx, a4) =>
   a4D2A6970(ram, a4, bossA5(ctx, 0x2a6970), true));
 registerScript(0x2a698a, (ram, rom, ctx, a4) =>
   a4D2A6970(ram, a4, bossA5(ctx, 0x2a698a), false));
+registerScript(0x2a6a30, (ram, rom, ctx, a4) =>
+  a4F2A6A30(ram, a4, bossA5(ctx, 0x2a6a30), true));
+registerScript(0x2a6a36, (ram, rom, ctx, a4) =>
+  a4F2A6A30(ram, a4, bossA5(ctx, 0x2a6a36), false));
 
 /** The A1 ids whose init AND step this file registers. */
-export const HIBACHI_A1_SCRIPTS = Object.freeze([5, 6, 7, 8]);
+export const HIBACHI_A1_SCRIPTS = Object.freeze([5, 6, 7, 8, 9]);
 /** The A4 ids this file registers, on top of `hibachiend.js`'s 1..4. */
-export const HIBACHI_GUN_A4_SCRIPTS = Object.freeze([0x0a, 0x0b, 0x0c, 0x0d]);
+export const HIBACHI_GUN_A4_SCRIPTS = Object.freeze([0x0a, 0x0b, 0x0c, 0x0d, 0x0f]);
 
 /**
  * Every A1 gun id the boss can start that this wave does NOT run, with the byte
@@ -902,12 +1128,10 @@ export const HIBACHI_A1_COUNTED = Object.freeze({
   0x02: { init: 0x2a7ab2, step: 0x2a7b20, bytes: 0x03b2, why: 'A4 8 ($2A683C)' },
   0x03: { init: 0x2a7e64, step: 0x2a7e96, bytes: 0x01f6, why: 'A4 9 ($2A687A)' },
   0x04: { init: 0x2a805a, step: 0x2a806c, bytes: 0x0162, why: 'A4 $E ($2A6A16)' },
-  0x09: { init: 0x2a89ba, step: 0x2a89f4, bytes: 0x01c2, why: 'A4 $F ($2A6A4C) -- the OTHER '
-    + 'wait W403 named. It is NOT in the attack loop: the only route to it is A4 $F, which A4 '
-    + 'script 4 starts once phase A has died, so it is one link further down the ENDING chain '
-    + 'and W405\'s stop ($2A6A30, A4 $F\'s init) stands in front of it' },
-  0x0a: { init: 0x2a8b7c, step: 0x2a8bc0, bytes: 0x011e, why: 'A4 $10 ($2A6A92)' },
-  0x0b: { init: 0x2a8c9a, step: 0x2a8cb2, bytes: 0x0236, why: 'A4 $11 ($2A6AD2)' },
+  0x0a: { init: 0x2a8b7c, step: 0x2a8bc0, bytes: 0x011e, why: 'A4 $10 ($2A6A92) -- and A4 $10 '
+    + 'is the THIRD link of phase B\'s loop, $F -> $11 -> $10 -> $F' },
+  0x0b: { init: 0x2a8c9a, step: 0x2a8cb2, bytes: 0x0236, why: 'A4 $11 ($2A6AD2) -- the SECOND '
+    + 'link, and W406\'s stop stands at its init $2A6AB6' },
   0x0c: { init: 0x2a8ed0, step: 0x2a8f1c, bytes: 0x01d4, why: 'A4 $12 ($2A6B1E)' },
   0x0d: { init: 0x2a90a4, step: 0x2a90e0, bytes: 0x0204, why: 'A4 $13 ($2A6B6C); bounded '
     + 'ABOVE by the alt table $2A92A8 itself, a positive witness' },

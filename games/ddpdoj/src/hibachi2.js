@@ -273,9 +273,24 @@ function phaseBDeath2A722E(ram, ctx, a5, a6) {
   a4Start25980C(ram, HIBACHI2.phaseBNext);             // $2A728A/$2A728C jmp $25980C, D0 = 5
 }
 
-/** `$2A7180..$2A7229` -- phase B's JOIN, and its own phase check.  Reached from the no-hit
- *  tail, from the invulnerable arm, from the refill arm and from `$2A7106`'s rejoin. */
+/**
+ * `$2A7180..$2A7229` -- phase B's JOIN, and its own phase check.  Reached from the no-hit
+ * tail, from the invulnerable arm, from the refill arm and from `$2A7106`'s rejoin.
+ *
+ * **W406: IT ENDS IN `$2A7226 4EFA 006C`, A `jmp $2A7294` -- THE EXIT -- AND W403 DROPPED IT.**
+ * TRAP 4 on the displacement ($2A7228 + $6C) and TRAP 20 on the arms: `$2A71CA 66 5A` and
+ * `$2A71D6 6A 4E` both land on $2A7226 as well, so ALL THREE ways out of the phase check go
+ * to the exit and NOT to an `rts`.  W403 wrote the first two as `return` and left the third
+ * falling off the end of the function, so `bossExitShared` -- and with it `$2A7088 subq.w
+ * #$1,($1A,A5)` -- never ran for phase B at all.  Measured on the real path before the fix:
+ * `($1A,A5)` sat at `$6270` for all 390 frames between A4 script 4 and A4 $F, which is what
+ * exposed it, because A4 $F's `move.b #$C,($1A,A5)` is only a timer if something counts it.
+ * Phase B could not die of its timeout, and `HIBACHI2.exits`'s third entry named a routine
+ * with no caller.
+ */
 function phaseBJoin2A7180(ram, ctx, a5, a6) {
+  const exit = () => bossExitShared(ram, ctx, a5, a6,
+    () => phaseBDeath2A722E(ram, ctx, a5, a6));        // $2A7226 jmp $2A7294
   ram.setU32(a5 + 0x1c, ram.u32(a5 + 0x16));           // $2A7180 move.l ($16,A5),($1C,A5)
   let d0 = 0x0500;                                     // $2A7186 move.w #$500,D0
   if (ram.u16(a6 + 0x13a) !== 0) {                     // $2A718A tst.w / $2A718E beq $2A7198
@@ -299,8 +314,10 @@ function phaseBJoin2A7180(ram, ctx, a5, a6) {
   // $2A71C6.. -- phase B's OWN phase check.  Same $23000 threshold as form 1's $2A6D42 and
   // nothing else in common: a different latch byte, no $813098 test, and it starts the main
   // sequencer as well as an A4 script.
-  if (ram.u8(a6 + HIBACHI2.phaseBPhaseLatch) !== 0) return;   // $2A71C6 tst.b / $2A71CA bne
-  if ((u32(ram.u32(a5 + 0x16) - HIBACHI2.phaseBPhaseHp) & 0x80000000) === 0) return; // /$2A71D6
+  if (ram.u8(a6 + HIBACHI2.phaseBPhaseLatch) !== 0) { exit(); return; }  // $2A71C6 / $2A71CA bne
+  if ((u32(ram.u32(a5 + 0x16) - HIBACHI2.phaseBPhaseHp) & 0x80000000) === 0) {
+    exit(); return;                                    // $2A71D6 bpl.s $2A7226
+  }
   a1Clear259B34(ram);                                  // $2A71D8
   a4Clear2598A2(ram);                                  // $2A71DE
   seqStart2598D0(ram, HIBACHI2.phaseBPhaseSeq);        // $2A71E4/$2A71E6 -- form 1 has NO seq
@@ -312,6 +329,7 @@ function phaseBJoin2A7180(ram, ctx, a5, a6) {
   ram.setU16(0x81b418, 1);                             // $2A7210
   ram.setU16(0x81b41a, 1);                             // $2A7218
   armScreenClearMode(ram, ctx, 0, 'HIBACHI phase B $23000', 0xffff, 0x243dd0);   // $2A7220
+  exit();                                              // $2A7226 jmp $2A7294 -- the FALL-THROUGH
 }
 
 /** `$2A70BE..$2A70E3` -- the tail BOTH the no-hit arm and `$2A711C`'s rejoin run. */
