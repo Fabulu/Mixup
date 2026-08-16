@@ -76,6 +76,10 @@ import { runStageAdvance242952 } from './stageend.js';
 // W372: $243DD0 is a THIRD entry of this, not a routine of its own -- same guard, same
 // $81B410/$81B412 pair, differing only in the mode it arms.
 import { armScreenClearMode } from './midboss.js';
+// W403: HIBACHI's SECOND FORM. This is a CYCLE -- hibachi2.js imports bossDecide2428A6,
+// clamp253564 and bossClear242922 back out of this file -- and it is the same shape as the
+// `import './hibachiend.js'` below. Nothing on either side runs at module-evaluation time.
+import { hibachiSecondForm2A6F12, bossExitShared } from './hibachi2.js';
 import { enqueueRegisters } from './spritequeue.js';
 import { spawnEffect, B } from './effects.js';
 import { drawByte242B3C, drawWord242EC2 } from './rng.js';
@@ -1274,19 +1278,29 @@ export function bossDecide2428A6(ram) {
  *  damage, and appear only in the draw chain. "The eleven" is two groups with different jobs. */
 const HIBACHI_PARTS = Object.freeze([0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0, 0x1a0]);
 
-/** `$2A6EDC` -- the body's EXIT, reached by `jmp` from both arms of the phase check. It counts
- *  `($1A,A5)` down and, when it expires, asks `$2428A6` a SECOND time and reloads `$78`. */
-function bossExit2A6EDC(ram, a5) {
-  const left = u16(ram.u16(a5 + 0x1a) - 1);                  // $2A6EE6 subq.w #1,($1A,A5)
-  ram.setU16(a5 + 0x1a, left);
-  if (left !== 0) return;                                    // $2A6EEA bne
-  if (bossDecide2428A6(ram) !== 0) return;                   // $2A6EEE/$2A6EF4 -- the SECOND ask
-  ram.setU16(a5 + 0x1a, 0x78);                               // $2A6EFA move.w #$78,($1A,A5)
+/** `$2A6EDC` -- the body's EXIT, reached by `jmp` from both arms of the phase check.
+ *
+ *  **W403 CORRECTION, TWICE.** This routine is 52 bytes and it is BYTE-IDENTICAL to `$2A707E`
+ *  and `$2A7294`, the second form's two exits, but for the one word of `bra.w` displacement
+ *  that names each one's death block ($FE80 here, $FF5A and $FF6A there). Writing the second
+ *  form showed that the version shipped here since W372 had lost two of the three tests:
+ *
+ *    1. `$2A6EDC 4a79 008130d2 / 6600 002a` -- the FREEZE GATE. `($1A,A5)` is not counted down
+ *       at all while `$8130D2` is set, and this counted it every frame.
+ *    2. `$2A6EF6 6600 000c` targets `$2A6F04`, which is `move.w #$0,($10A,A6)` and then
+ *       `$2A6F0A 6000 FE80` -> $2A6F0C - $180 = `$2A6D8C`, THE ENDING BLOCK. The port
+ *       `return`ed instead, so the timeout route into HIBACHI's death did not exist.
+ *
+ *  It is now `bossExitShared`, called with this site's own death block, so the three cannot
+ *  drift apart again. */
+function bossExit2A6EDC(ram, rom, ctx, a5, a6) {
+  bossExitShared(ram, ctx, a5, a6,
+    () => bossEnding2A6D8C(ram, rom, a5, a6, ctx));           // $2A6F0A bra.w $2A6D8C
 }
 
 /** `$2A6D42` -- the phase check. Self-latching on `($10C,A6)`, first loop only, and below `$23000` it
  *  switches the boss's whole script set. Both arms exit through `$2A6EDC`. */
-function bossPhase2A6D42(ram, a5, a6, ctx) {
+function bossPhase2A6D42(ram, rom, a5, a6, ctx) {
   if (ram.u8(a6 + 0x10c) === 0                               // $2A6D42 tst.b / bne
       && ram.u16(0x813098) === 0                             // $2A6D48 tst.w $813098 / bne
       && (u32(ram.u32(a5 + 0x16) - 0x23000) & 0x80000000) !== 0) {   // $2A6D52/$2A6D5C bpl
@@ -1297,7 +1311,7 @@ function bossPhase2A6D42(ram, a5, a6, ctx) {
     ram.setU8(a6 + 0x10c, 1);                                // $2A6D78 -- and the latch
     armScreenClearMode(ram, ctx, 0, 'HIBACHI $23000 phase', 0xffff, 0x243dd0);   // $2A6D7E
   }
-  bossExit2A6EDC(ram, a5);                                   // $2A6D84 jmp $2A6EDC
+  bossExit2A6EDC(ram, rom, ctx, a5, a6);                     // $2A6D84 jmp $2A6EDC
 }
 
 /** `$2A6D8C` -- the ENDING block, reached only when `$2428A6` says a player is out. */
@@ -1339,20 +1353,19 @@ function bossEnding2A6D8C(ram, rom, a5, a6, ctx) {
 export function bossBody2A6B94(ram, rom, a5, a6, ctx) {
   if (ram.u16(a6 + 0x106) !== 0) return;                     // $2A6B94 -- switched off by the ending
 
-  // $2A6B9C tst.b ($10E,A6) / $2A6BA0 bne.w $2A6F12 -- THE SECOND FORM'S OWN BODY, and W372
+  // $2A6B9C tst.b ($10E,A6) / $2A6BA0 bne.w $2A6F12 -- THE SECOND FORM'S OWN BODY. W372
   // transcribed it into TB0 (`bodySecondGateSite`/`bodySecondGateTarget`) without ever
-  // branching on it. Nothing set the byte, so the omission was invisible; W399's A4 script 2
-  // sets it ($2A5F40 move.b #$1,($10E,A6)) and from that frame on the cartridge runs $2A6F12 --
-  // a DIFFERENT body over the parts $140/$160, with its own $11800 threshold and its own death
-  // at $2A7000..$2A7076. Falling through to the first form's code here would damage-reduce
-  // eight parts that are no longer armed and never reach the second form's death, so this stops
-  // by address instead of doing something plausible.
+  // branching on it, W399's A4 script 2 made the byte reachable ($2A5F40 move.b #$1), and W403
+  // PORTS the body: src/hibachi2.js, $2A6F12..$2A72C7, $3B6 bytes.
+  //
+  // W403 CORRECTION to the note this replaces: `$2A6F12` is not "the second form", it is a
+  // `cmpi.b #$1,($10E,A6)` whose `bne.w` splits into TWO bodies -- phase A at $2A6F1C (parts
+  // $140/$160, threshold $11800, death tail-jumps A4 3) and phase B at $2A70B4 (part $180,
+  // threshold $15000, death tail-jumps A4 5). ($10E,A6) is a SELECTOR with three states, not
+  // a flag, and $2A637A in A4 script 4 is what writes the second one.
   if (ram.u8(a6 + 0x10e) !== 0) {
-    unreached(0x2a6f12, '$2A6BA0 bne.w $2A6F12 -- HIBACHI\'s SECOND FORM. ($10E,A6) is set, so '
-      + 'the cartridge leaves this body entirely and runs $2A6F12 (parts $140/$160, threshold '
-      + '$11800 at $2A6F3C, death $2A7000..$2A7076 which tail-jumps a4Start($3)). W399 ports the '
-      + 'A4 ending scripts that SET this byte and counts the body behind it: $2A6F12..$2A707C is '
-      + '$16A bytes and its death tail $2A707E..$2A72C6 is $248 more');
+    hibachiSecondForm2A6F12(ram, rom, ctx, a5, a6);
+    return;
   }
 
   // $2A6BA2..$2A6BC6 -- OR every armed part's flags, mask $5C: ONE hit test across the whole boss.
@@ -1366,7 +1379,7 @@ export function bossBody2A6B94(ram, rom, a5, a6, ctx) {
     if (ram.u32(a5 + 0x16) < 0xeb33 && ram.u16(0x8130ca) === 0) {
       for (let i = 0; i < 4; i++) ram.setU8(a6 + 0xe6 + i, 0x19);              // $2A6BF6..
     }
-    bossPhase2A6D42(ram, a5, a6, ctx);                       // both arms JOIN here
+    bossPhase2A6D42(ram, rom, a5, a6, ctx);                  // both arms JOIN here
     return;
   }
 
@@ -1376,18 +1389,41 @@ export function bossBody2A6B94(ram, rom, a5, a6, ctx) {
   ram.setU16(a6 + 0x10a, hit);                               // $2A6C2E
   scoreHit(ram, ctx, a6, hit);                               // $2A6C32 -- ONCE for the boss
 
-  // $2A6C38..$2A6C7C -- read the quad back and write it out flashed. The first byte is REMAPPED
-  // $19 -> $10; the other three are XORed with THREE DIFFERENT constants. One XOR for all four
-  // flashes the wrong colours while every store stays individually correct.
-  const q0 = ram.u8(a6 + 0xe6) === 0x19 ? 0x10 : ram.u8(a6 + 0xe6);
-  ram.setU8(a6 + 0xe6, q0);                                  // $2A6C62
-  ram.setU8(a6 + 0xe7, ram.u8(a6 + 0xe7) ^ 0x0e);            // $2A6C66/$2A6C6A
-  ram.setU8(a6 + 0xe8, ram.u8(a6 + 0xe8) ^ 0x0d);            // $2A6C6E/$2A6C72
-  ram.setU8(a6 + 0xe9, ram.u8(a6 + 0xe9) ^ 0x09);            // $2A6C76/$2A6C7A
+  // $2A6C38..$2A6C7C -- read the quad back and write it out flashed.
+  //
+  // **W403 CORRECTION, from `$2A6F7A`'s three-byte copy of this exact block.** The comment that
+  // stood here said "the first byte is REMAPPED $19 -> $10; the other three are XORed", and the
+  // code did that. The ROM does neither half of it:
+  //
+  //   2a6c48  0c00 0019      cmpi.b #$19,D0        the test is on D0 = ($E6,A6) ALONE
+  //   2a6c4c  6610           bne.s  $2A6C5E
+  //   2a6c4e  103c 0010 / 143c 0011 / 163c 0012 / 183c 0016   ...and its arm reloads ALL FOUR
+  //   2a6c5e  0a00 000f      eori.b #$0F,D0        <- ($E6,A6) IS XORed, with a FOURTH constant
+  //   2a6c62  1d40 00e6
+  //
+  // so the port was dropping `$2A6C5E` entirely and leaving ($E7)/($E8)/($E9) unreloaded on the
+  // arm that reloads them. TRAP 14 exactly: the comment claimed a shape the bytes do not have.
+  let q0 = ram.u8(a6 + 0xe6);                                // $2A6C38
+  let q1 = ram.u8(a6 + 0xe7);                                // $2A6C3C
+  let q2 = ram.u8(a6 + 0xe8);                                // $2A6C40
+  let q3 = ram.u8(a6 + 0xe9);                                // $2A6C44
+  if (q0 === 0x19) {                                         // $2A6C48/$2A6C4C bne $2A6C5E
+    q0 = 0x10; q1 = 0x11; q2 = 0x12; q3 = 0x16;              // $2A6C4E/52/56/5A
+  }
+  ram.setU8(a6 + 0xe6, q0 ^ 0x0f);                           // $2A6C5E/$2A6C62
+  ram.setU8(a6 + 0xe7, q1 ^ 0x0e);                           // $2A6C66/$2A6C6A
+  ram.setU8(a6 + 0xe8, q2 ^ 0x0d);                           // $2A6C6E/$2A6C72
+  ram.setU8(a6 + 0xe9, q3 ^ 0x09);                           // $2A6C76/$2A6C7A
 
   // $2A6C7E..$2A6CC6 -- the MINIMUM of the parts' $18 accumulators, then all of them re-armed.
-  let lo = ram.u16(a6 + 0x18);
-  for (const p of HIBACHI_PARTS) { const v = ram.u16(a6 + p + 0x18); if (v < lo) lo = v; }
+  // W403: `$2A6C86 6F04` is `ble.s`, so the seven compares are SIGNED. This was an unsigned
+  // `<`, which disagrees the moment an accumulator passes $7FFF -- and $2A6FB8 in the second
+  // form is the same `6F04` over two parts instead of eight.
+  let lo = i16(ram.u16(a6 + 0x18));                          // $2A6C7E move.w ($18,A6),D4
+  for (const p of HIBACHI_PARTS) {                           // $2A6C82 cmp.w / $2A6C86 ble.s
+    const v = i16(ram.u16(a6 + p + 0x18));
+    if (lo > v) lo = v;
+  }
   for (const p of HIBACHI_PARTS) ram.setU16(a6 + p + 0x18, 0x7fff);
 
   // $2A6CEE -- damage taken, gated, off the 32-bit pool; death is a SIGN test, as in $4C.
@@ -1409,7 +1445,7 @@ export function bossBody2A6B94(ram, rom, a5, a6, ctx) {
       ram.setU32(a5 + 0x16, 0x200);                          // $2A6D06 -- REFILL, the fight goes on
     }
   }
-  bossPhase2A6D42(ram, a5, a6, ctx);                         // every remaining arm JOINS here
+  bossPhase2A6D42(ram, rom, a5, a6, ctx);                    // every remaining arm JOINS here
 }
 
 export function handler2A4606(ram, rom, a5, ctx) {

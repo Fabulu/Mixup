@@ -1,8 +1,83 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-15 (W375)
+Updated: 2026-08-16 (W403)
 
-## START HERE -- W402
+## START HERE -- W403
+
+### HIBACHI'S "SECOND FORM" IS TWO BODIES, NOT ONE, AND `($10E,A6)` PICKS BETWEEN THREE
+
+`$2A6F12 0C2E 0001 010E` is `cmpi.b #$1,($10E,A6)` -- an **equality** test, not a flag test -- and
+`$2A6F18 6600 019A` sends everything that is not 1 on to `$2A70B4`. So the byte is a three-state
+selector and the brief's singular "the second form" was wrong:
+
+| `($10E,A6)` | body | parts | threshold | quad | death tail |
+|---|---|---|---|---|---|
+| 0 | `$2A6BA2` form 1 | `$00 $20 $40 $60 $80 $A0 $C0 $1A0` | `$EB33` | 4 bytes `$E6..$E9` | `$2A6D8C`, ending block |
+| 1 | `$2A6F1C` phase A | `$140` `$160` | `$11800` | 3 bytes `$E6..$E8` | `$2A7008`, `jmp $25980C` D0=3 |
+| 2 | `$2A70B4` phase B | `$180` | `$15000` | 1 byte `$ED` = `$17` | `$2A722E`, `jmp $25980C` D0=5 |
+
+**Exactly two writers in 6 MB** (scanning the six-byte `1D7C vvvv 010E` shape, mirrored in build A at
+`$1A4A0E`/`$1A4E16`): `$2A5F40` writes 1 (A4 script 2) and **`$2A637A` writes 2** (A4 script 4).
+
+Ported: **`src/hibachi2.js`** (new) `$2A6F12..$2A72C7`, `$3B6`, 214 instructions; and
+**A4 script 4** `$2A62FA..$2A6417`, `$11E`, into `hibachiend.js`. Extent bounded three ways, none an
+absence: `$2A72C6 4E75` sits AT the last address three branches reach, `$2A72C8` is the A1 gun table
+`$2A4306 lea $2A72C8,A1` installs, and `$2A72C2 6000 FF6A` is the last branch and points backward.
+
+### THE FRAME NUMBERS IN W399 WERE ALL ONE TOO HIGH
+
+`table[id].step - table[id].init` is exactly the init's instruction bytes in **21 of 21** A4 pairs,
+and the word before every step is an operand, never `4E75`. **`$2596FA jsr (A0)` on the init frame
+runs the step too**, so every countdown starts a frame early: push 193->192, park release 224->223,
+far end 526->525. `w399speedpush.test.js` corrected throughout. Nothing was loosened -- the gate test
+that used to assert the throw now asserts the branch RUNS, with both arms of the `$11800` compare.
+
+### THE REAL PATH NOW ENDS AT $2A689C ON FRAME 321, AND IT IS A PORT STOP
+
+Phase B ran frames 193..320 first. Three deciding bytes: `$2A5886[$A].init` **is** `$2A689C`, a live
+table entry; `$2A689C 397C` is `move.w #imm,(d16,A4)`, ordinary code, not an `rts` and not a park;
+and `$2A68B8 jsr $259A18` / `$2A68C6 650A bcs` show A4 `$A` **waits on A1 gun script 5** -- so what
+is behind it is the fifteen-entry A1 table at `$2A72C8`, a different unit. Counted at `$38` bytes.
+
+Phase A also dies of its timeout on **frame 25200 exactly** (`$6270`) -- witnessed only because the
+run was 26,000 frames; a 500-frame one sees nothing.
+
+### FIVE ABLATIONS CAME BACK GREEN AND FOUR WERE REAL HOLES
+
+18 source mutations, first pass **5 green**: phase A's `eori.b #$0F` on `($E6,A6)`, its `$19` arm
+reloading all three, its `$80000` kill value, script 4's `($1C,A5)` shadow, and form 1's seven-way
+signed minimum. Four new tests close them. The fifth is a genuine **labelled equivalence**:
+`$2A7180` rewrites the same value on phase B's first frame, so it is observable in one frame only.
+Second pass: **18 of 18 red.**
+
+### TWO MORE FORM-1 DEFECTS, FOUND BY PORTING PHASE A'S COPY OF THE SAME BLOCK
+
+`$2A6C5E 0A00 000F` was dropped (the port stored `($E6,A6)` unXORed); `$2A6C4C`'s `$19` arm reloads
+**all four** registers, not one; and `$2A6C86 6F04` is `ble.s`, so the seven-way minimum is **signed**
+where the port compared unsigned. Separately the three exits `$2A6EDC`/`$2A707E`/`$2A7294` are
+52-byte twins differing in one `bra.w` word, and sharing them exposed that `boss.js`'s hand-written
+`$2A6EDC` was missing the `$8130D2` freeze gate **and** the whole `$2A6F04 -> $2A6D8C` arm. That arm
+is HIBACHI's timeout route into death, and no run had ever taken it. Tenth wave of twin-repair.
+
+### WINDOWS: NONE ADDED, 585 STANDS
+
+At the 214 real instruction boundaries there is no `lea` of any mode, and every absolute-long operand
+is RAM. A naive 2-byte scan disagrees -- it calls `$2A7196` a `lea` when that is the middle of
+`$2A7194 303C 0800`. The test settles it by **running both bodies against an empty window set**, with
+one named exception: phase A's kill reaches `$28615E`, whose `$287DF0` table was windowed long ago.
+
+### VERIFIED
+
+Suite **3536 pass / 0 fail / 0 skipped** (3511 before; +25). Gate **exit 0**, read from its own exit
+code. `export-tables.py --verify` **OK at 585 windows**, unchanged. No publish this wave: no windows
+moved, and the cadence is every fifth wave (last publish W402, build `20260816090649`).
+
+### NEXT
+
+`$2A72C8`, the fifteen-entry **A1 gun table** -- it is what both `$2A689C` and `$2A6A30` wait on, so
+it is the single thing standing between here and the ending chain running unbroken.
+
+## W402 NOTES
 
 ### 4,000 PARTICLES BECAME 10, AND THE RECORD NOW ACTUALLY RETIRES
 

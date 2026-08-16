@@ -41,6 +41,17 @@
 // SECTION 5  ABLATED FROM THE EXPORTED TABLES -- five shapes, five throws, each named
 // SECTION 6  what the run then reaches, with measured byte extents
 // SECTION 7  the window set: 575, the overlap count, and the neighbours
+//
+// **W403 UPDATED EVERY FRAME NUMBER IN SECTIONS 3-5, AND THE STOP IN SECTIONS 3 AND 6.**
+// Two findings of that wave, both bytes, moved them; nothing here was loosened:
+//   * NOT ONE of the twenty-one A4 pairs in $2A5886 puts an `rts` between its init and its
+//     step -- `table[id].step - table[id].init` is exactly the init's instruction bytes in
+//     all 21 -- so `$2596FA jsr (A0)` on the init frame runs the STEP TOO. src/hibachiend.js
+//     now transcribes that fall-through, and every countdown starts one frame earlier:
+//     the push moves 193 -> 192, the park release 224 -> 223, the far end 526 -> 525.
+//   * `$2A6F12` is PORTED (src/hibachi2.js), so the run no longer stops there. It runs on to
+//     frame 321 and stops at `$2A689C`, A4 script $A -- still a PORT stop, and still not a
+//     cartridge stop. See tests/w403hibachi2.test.js.
 // ===============================================================================================
 
 import test from 'node:test';
@@ -291,8 +302,8 @@ test('W399 SECTION 2: nine callers of $261100, FOUR of them unclaimed and two pu
       '$2A5886[3] is $2A5A28, A4 script 1\'s STEP');
     assert.ok(HIBACHI_A4.s1Step < 0x2a5d28 && 0x2a5d28 < HIBACHI_A4.s2Init,
       '  ...and $2A5D28 is inside it, between entry [3] and entry [4]');
-    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort(), [1, 2, 3],
-      'the wave registers A4 1, 2 and 3, init and step');
+    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort(), [1, 2, 3, 4],
+      'A4 1, 2 and 3 from this wave, and 4 from W403 -- init and step');
     for (const id of HIBACHI_END_SCRIPTS) {
       for (const off of [0, 4]) {
         assert.ok(scriptAddresses().includes(l(HIBACHI_A4.table + id * 8 + off)),
@@ -377,7 +388,7 @@ function run(b, frames) {
   return out;
 }
 
-test('W399 SECTION 3: the boss dies, $2A5D28 fires on frame 193, and the scroll leaves $0346',
+test('W399 SECTION 3: the boss dies, $2A5D28 fires on frame 192, and the scroll leaves $0346',
   { skip: SKIP }, () => {
     const b = bench();
     // The park is real BEFORE anything is pushed: the init's own pre-fill stops at column 224.
@@ -389,27 +400,33 @@ test('W399 SECTION 3: the boss dies, $2A5D28 fires on frame 193, and the scroll 
 
     // ---- THE CHAIN, and every step of it is the cartridge's own.
     assert.deepEqual(r.push, { kind: 'hibachiPush', at: HIBACHI_A4.push1At, speed: 0x0010,
-      next: 2, frame: 193 },
-    '$2A5D28 pushed $0010 on frame 193: A4 script 1\'s init on frame 1 loads ($2,A4) = $C0 and '
-    + 'its step spends one per frame, so the 192nd step is frame 193');
+      next: 2, frame: 192 },
+    '$2A5D28 pushed $0010 on frame 192: A4 script 1\'s init loads ($2,A4) = $C0 and FALLS '
+    + 'THROUGH into its own step ($2A5A26 is not an rts), so the first decrement is on frame '
+    + '1 and the 192nd is frame 192');
     assert.equal(b.ram.u16(BGRAM.extSpeedBg), 0x0010,
       'the push landed in $813182 -- and $2612BC consumed it into ($1C,A5)');
     // `$2A5D36` is `4254` = `clr.w (A4)`, the SLOT, not `clr.w D4`. Slot 0 is empty and slot 1
     // carries script 2 with its init already run ($8102, bit 0 set by `$2596E4 bset`). Reading
     // that opcode as a register write would leave the finished script stepping for ever.
-    assert.deepEqual([0, 1, 2, 3, 4].map((i) => b.ram.u16(SCHED.a4Base + i * SCHED.a4Stride)),
-      [0, 0x8102, 0, 0, 0], 'script 1 retired its own slot and script 2 took the next one');
+    // W403: a SEPARATE 192-frame run, because the 1,200-frame one above carries on into A4 $A
+    // and slot 0 holds $810A by the end of it. The claim is about the handover frame.
+    const handover = bench();
+    run(handover, 192);
+    assert.deepEqual([0, 1, 2, 3, 4].map(
+      (i) => handover.ram.u16(SCHED.a4Base + i * SCHED.a4Stride)),
+    [0, 0x8102, 0, 0, 0], 'script 1 retired its own slot and script 2 took the next one');
 
     // ---- **THE THING NO RUN HAD EVER DONE.**
-    assert.equal(r.leftPark, 224,
-      'the clock passed $0346 on frame 224: the accumulator needs $200 of scroll per tick and '
+    assert.equal(r.leftPark, 223,
+      'the clock passed $0346 on frame 223: the accumulator needs $200 of scroll per tick and '
       + 'the pushed speed is $0010, so 32 frames after the push (TRAP 2 is not this one -- '
-      + '$26131A is a compare, and 193 + 31 = 224)');
+      + '$26131A is a compare, and 192 + 31 = 223)');
     assert.equal(r.maxPtr, STAGE5_PAL,
       'the cursor reached $22FAE0 -- $261252[4], the stream\'s far end -- and stopped there');
     assert.equal((r.maxPtr - STAGE5_COLS) / 36, 252, '  = all 252 columns of the stream');
-    assert.equal(r.reached, 526, '  ...on frame 526');
-    assert.equal(r.rewound, 527, 'and frame 527 is the op-$04 REPEAT at $261EC8');
+    assert.equal(r.reached, 525, '  ...on frame 525');
+    assert.equal(r.rewound, 526, 'and frame 526 is the op-$04 REPEAT at $261EC8');
     assert.equal(r.rewoundFrom, STAGE5_PAL, '  ...rewinding FROM $22FAE0');
     assert.equal(r.rewoundTo, STAGE5_COLS + 224 * 36, '  ...back to column 224, -28 columns');
     assert.equal(b.ram.u16(BGRAM.clock), 0x03b4, 'and the clock is at $03B4, the REPEAT\'s time');
@@ -417,10 +434,11 @@ test('W399 SECTION 3: the boss dies, $2A5D28 fires on frame 193, and the scroll 
       'at speed $0100 -- the top of the script\'s own ramp, $261EC0 t=$0350');
 
     // ---- WHERE THE RUN STOPS, and which kind of stop it is. This one is a PORT stop.
-    assert.deepEqual(r.stopped, { frame: 195, at: 0x2a6f12, name: 'Unreached' },
-      'the handler stops at $2A6F12 on frame 195 -- A4 script 2 set ($10E,A6) on frame 194 and '
-      + 'HIBACHI\'s SECOND FORM is not ported. That is a PORT stop, not the cartridge stop W398 '
-      + 'reported: the scroll above is already released and runs on without the handler');
+    assert.deepEqual(r.stopped, { frame: 321, at: 0x2a689c, name: 'Unreached' },
+      'W403: $2A6F12 is ported, so the run no longer stops there -- HIBACHI\'s second form '
+      + 'runs 129 frames of phase A and the stop moves to $2A689C, A4 script $A, which script '
+      + '2 starts $80 frames after its handover. Still a PORT stop, and $A is not part of the '
+      + 'ending: $2A68B8/$2A68C0 start and WAIT ON A1 gun script 5');
   });
 
 test('W399 SECTION 3: the FIRST-LOOP arm takes the other branch and the scroll never moves',
@@ -436,7 +454,7 @@ test('W399 SECTION 3: the FIRST-LOOP arm takes the other branch and the scroll n
     // The arm that DID run: 21 pool-C rows counted, then A4 $14.
     assert.ok(b.log.report().some((s) => s.startsWith('     21 x $289B22')),
       'the first-loop arm counted $289B22 twenty-one times ($2A5C9A moveq #$14 + dbra)');
-    assert.deepEqual(r.stopped, { frame: 193, at: 0x2a6b7a, name: 'Unreached' },
+    assert.deepEqual(r.stopped, { frame: 192, at: 0x2a6b7a, name: 'Unreached' },
       'and it handed to A4 $14 = $2A6B7A on the SAME frame -- $25980C fills the first EMPTY '
       + 'slot, which is slot 1, and $2596D6\'s walk has not reached slot 1 yet when script 1 '
       + 'returns, so the new script\'s init runs inside the same pass');
@@ -451,8 +469,8 @@ test('W399 SECTION 3: the $80393A flag alone takes the pushing arm -- the two te
     const b = bench({ loopWord: 0, flag393a: 1 });
     const r = run(b, 400);
     assert.equal(r.push?.speed, 0x0010, 'loop word CLEAR, $80393A set, and $2A5D28 still fires');
-    assert.equal(r.push.frame, 193, '  ...on the same frame');
-    assert.equal(r.leftPark, 224, '  ...and the scroll still leaves the park on frame 224');
+    assert.equal(r.push.frame, 192, '  ...on the same frame');
+    assert.equal(r.leftPark, 223, '  ...and the scroll still leaves the park on frame 223');
   });
 
 // ===============================================================================================
@@ -480,17 +498,17 @@ test('W399 SECTION 4: $2A61E0 pushes $0200, and its only starter is the second f
     a4Start25980C(b.ram, 3);                            // $2A7076 jmp $25980C with D0 = 3
     const r = run(b, 1200);
     assert.deepEqual(r.push, { kind: 'hibachiPush', at: HIBACHI_A4.push2At, speed: 0x0200,
-      next: 4, frame: 193 }, '$2A61E0 pushed $0200 on frame 193 -- the same $C0 countdown');
+      next: 4, frame: 192 }, '$2A61E0 pushed $0200 on frame 192 -- the same $C0 countdown');
     assert.equal(r.speedOnPushFrame, 0x0200,
       '$2612BC put $0200 into ($1C,A5) on that frame: 512/64 = EIGHT pixels a frame, 32x the '
       + 'first push. It does not STAY $0200 -- the script\'s own ramp overwrites it as soon as '
       + 'the clock it unfroze starts moving, which is the whole point of the push');
-    assert.equal(r.leftPark, 193,
+    assert.equal(r.leftPark, 192,
       'and at that speed the clock leaves $0346 on the SAME frame as the push, not 31 later: '
       + '$26131A tests the accumulator against $200 and $0200 is exactly one frame of it');
     assert.equal(r.maxPtr, STAGE5_PAL, '  ...and the cursor still stops at $22FAE0');
-    assert.ok(r.reached > 0 && r.reached < 526,
-      `  ...reaching it on frame ${r.reached}, sooner than the $0010 push's 526`);
+    assert.ok(r.reached > 0 && r.reached < 525,
+      `  ...reaching it on frame ${r.reached}, sooner than the $0010 push's 525`);
   });
 
 // ===============================================================================================
@@ -531,7 +549,7 @@ test('W399 SECTION 5: the A4 table TRUNCATED to two pairs -- A SHORT WINDOW SURV
     const e = caught(() => {
       for (let f = 1; f <= 300; f++) handler2A4606(b.ram, b.ROM, REC, b.ctx);
     });
-    assert.equal(pushed?.speed, 0x0010, 'the push still happened -- 193 frames in');
+    assert.equal(pushed?.speed, 0x0010, 'the push still happened -- 192 frames in');
     assert.ok(e, '...and the very next frame does not');
     assert.equal(e.romAddress, HIBACHI_A4.table + 2 * 8,
       'it throws at $2A5896, id 2\'s init pointer, the first longword past the cut');
@@ -574,22 +592,23 @@ test('W399 SECTION 5: script 3\'s animation chain REMOVED -- a DIFFERENT throw, 
     });
     assert.ok(e, '$2A61D2 jsr $246410 must refuse');
     assert.equal(e.romAddress, HIBACHI_A4.s3Anim, 'and it names $2A627A, its own count word');
-    assert.equal(f, 193, '  ...on frame 193, one instruction BEFORE the $0200 push at $2A61E0');
+    assert.equal(f, 192, '  ...on frame 192, one instruction BEFORE the $0200 push at $2A61E0');
     assert.equal(b.ram.u16(BGRAM.extSpeedBg), 0,
       '  ...and nothing was pushed, which is how the order of $2A61CC and $2A61D8 is fixed');
   });
 
-test('W399 SECTION 5: the kind table REMOVED -- the per-frame emitter throws on frame 5',
+test('W399 SECTION 5: the kind table REMOVED -- the per-frame emitter throws on frame 4',
   { skip: SKIP }, () => {
     // ($4,A4) = 3 from the init's ONE `move.w #$0303` (TRAP 3), and `subq.b` + `bcc` fires on
-    // UNDERFLOW, so the first explosion is the fourth step frame = frame 5.
+    // UNDERFLOW, so the first explosion is the fourth step frame -- which is frame 4, not 5,
+    // because W403's init fall-through makes frame 1 the first STEP frame and not the init.
     const b = bench({ romSpec: reshaped(HIBACHI_A4.kindTable, null) });
     let f = 0;
     const e = caught(() => {
       for (f = 1; f <= 50; f++) handler2A4606(b.ram, b.ROM, REC, b.ctx);
     });
     assert.ok(e, '$2A5D6E reads the table every time the counter underflows');
-    assert.equal(f, 5, 'and the fourth step frame is frame 5');
+    assert.equal(f, 4, 'and the fourth step frame is frame 4');
     assert.ok(e.romAddress >= HIBACHI_A4.kindTable
       && e.romAddress < HIBACHI_A4.kindTable + 0x10,
     `it throws inside $2A5DC8..$2A5DD7 (at $${e.romAddress.toString(16).toUpperCase()}) -- the `
@@ -611,7 +630,7 @@ test('W399 SECTION 5: the pool-C rows REMOVED -- only the FIRST-LOOP arm notices
       for (f = 1; f <= 200; f++) handler2A4606(first.ram, first.ROM, REC, first.ctx);
     });
     assert.ok(e, 'and the first-loop arm dies on the same frame it would have pushed');
-    assert.equal(f, 193, '  ...frame 193');
+    assert.equal(f, 192, '  ...frame 192');
     assert.equal(e.romAddress, HIBACHI_A4.poolCTable, '  ...at $2A5CC0, row 0');
   });
 
@@ -619,7 +638,7 @@ test('W399 SECTION 5: the pool-C rows REMOVED -- only the FIRST-LOOP arm notices
 // SECTION 6 -- WHAT THE RUN THEN REACHES. Counted, with the extents measured.
 // ===============================================================================================
 
-test('W399 SECTION 6: the four A4 ids the chain hands to and does not run, by byte extent',
+test('W399 SECTION 6: every A4 id the chain hands to and does not run, by byte extent',
   { skip: SKIP }, () => {
     for (const [id, c] of Object.entries(HIBACHI_END_COUNTED)) {
       const n = Number(id);
@@ -646,7 +665,7 @@ test('W399 SECTION 6: the four A4 ids the chain hands to and does not run, by by
     assert.equal(l(0x2a4308), 0x2a72c8, '  ...$2A4306 lea $2A72C8,A1');
   });
 
-test('W399 SECTION 6: the second-form gate is a BRANCH now, not just a TB0 field',
+test('W399 SECTION 6: the second-form gate is a LIVE branch into src/hibachi2.js',
   { skip: SKIP }, () => {
     assert.equal(w(0x2a6b9c), 0x4a2e, '$2A6B9C tst.b');
     assert.equal(w(0x2a6b9e), 0x010e, '  ...($10E,A6)');
@@ -655,11 +674,26 @@ test('W399 SECTION 6: the second-form gate is a BRANCH now, not just a TB0 field
     // And the byte that arms it is written by A4 script 2, which is why nothing had reached it.
     assert.equal(l(0x2a5f40), 0x1d7c0001, '$2A5F40 move.b #$1,...');
     assert.equal(w(0x2a5f44), 0x010e, '  ...($10E,A6) -- inside A4 script 2\'s step');
-    // The port stops here rather than running the first form's code for the second form.
+    // W403: the branch now GOES somewhere. With the byte set the frame does not throw, and
+    // phase A's own first three stores land -- $2A6F2A/$2A6F30/$2A6F36 write THREE animation
+    // bytes where the first form's $2A6BC8 writes FOUR.
     const b = bench();
     b.ram.setU8(SUB + 0x10e, 1);
-    const e = caught(() => handler2A4606(b.ram, b.ROM, REC, b.ctx));
-    assert.equal(e?.romAddress, 0x2a6f12, 'bossBody2A6B94 stops by address when the byte is set');
+    assert.equal(caught(() => handler2A4606(b.ram, b.ROM, REC, b.ctx)), null,
+      'bossBody2A6B94 branches into hibachi2.js instead of stopping by address');
+    assert.deepEqual([0xe6, 0xe7, 0xe8].map((o) => b.ram.u8(SUB + o)), [0x19, 0x19, 0x19],
+      '  ...and phase A wrote its three animation bytes -- $19 in ALL THREE, because this\n'
+      + '     bench\'s pool is $10, below $2A6F3C\'s $11800, so $2A6F52\'s moveq #$19 reaches\n'
+      + '     $2A6F54/$2A6F58/$2A6F5C. Form 1 writes that same $19 to FOUR bytes, $E6..$E9');
+    assert.equal(b.ram.u8(SUB + 0xe9), 0,
+      '  ...and NOT a fourth: $E9 is form 1\'s ($2A6C02 writes $19 there), phase A has none');
+    // The OTHER arm of the same test, so the $11800 compare is proven and not assumed.
+    const high = bench();
+    high.ram.setU8(SUB + 0x10e, 1);
+    high.ram.setU32(REC + 0x16, 0x11800);
+    handler2A4606(high.ram, high.ROM, REC, high.ctx);
+    assert.deepEqual([0xe6, 0xe7, 0xe8].map((o) => high.ram.u8(SUB + o)), [0x10, 0x11, 0x12],
+      '  ...and a pool of exactly $11800 takes the bcc: $10/$11/$12 stand');
   });
 
 // ===============================================================================================

@@ -89,7 +89,7 @@
 import { u16, i16 } from './ram.js';
 import {
   registerScript, a4Start25980C, a2Stop25994A, a2Run2598E6, a2StopAll259924,
-  seqStart2598D0,
+  seqStart2598D0, seqStop2598BE, a3Start259962,
 } from './scheduler.js';
 import { pushExternalSpeed } from './background.js';
 import { loadAnimObjects246410 } from './animobjects.js';
@@ -108,6 +108,7 @@ export const HIBACHI_A4 = Object.freeze({
   s1Init: 0x2a5a1c, s1Step: 0x2a5a28,
   s2Init: 0x2a5ea0, s2Step: 0x2a5eb8,
   s3Init: 0x2a5f8e, s3Step: 0x2a5fa2,
+  s4Init: 0x2a62fa, s4Step: 0x2a6312,       // W403 -- the $11E bytes W399 counted
   // the DATA the three of them read
   poolCTable: 0x2a5cc0, poolCRows: 21,      // $2A5C9A moveq #$14,D7 + dbra -- TRAP 2, N+1
   kindTable: 0x2a5dc8, kindEntries: 8,      // $2A5D62 andi.w #$7,D0 / $2A5D66 add.w D0,D0
@@ -380,24 +381,122 @@ function s3Step2A5FA2(ram, rom, ctx, a4) {
     speed: HIBACHI_A4.push2Speed, next: 4 });
 }
 
+// =============================== A4 SCRIPT 4 -- THE HANDOVER TO THE SECOND FORM'S PHASE B
+// W403. `$2A62FA..$2A6417`, $11E bytes, which W399 counted. It is the ONLY other writer of
+// `($10E,A6)` in the whole 6 MB image, and what it writes is `2` -- so it is what makes
+// `$2A6F12 cmpi.b #$1` take its `bne.w` and run `$2A70B4` instead of `$2A6F1C`. Without it
+// `src/hibachi2.js`'s phase B is unreachable, which is why it is ported here and not counted.
+
+/** `$2A62FA`. Four stores and NO `rts` -- see the registration note below. */
+function s4Init2A62FA(ram, a4) {
+  ram.setU16(a4 + 0x02, 0x0001);                         // $2A62FA
+  ram.setU16(a4 + 0x04, 0x0080);                         // $2A6300 -- a WORD, as script 2's is
+  ram.setU16(0x8130dc, 0);                               // $2A6306 clr.w $8130DC
+  shakeOff23C4E0(ram);                                   // $2A630C jsr $23C4E0
+}
+
+/** `$2A6312`. Frame 1: hand the whole boss over to phase B. Then $80 frames, then A4 $F. */
+function s4Step2A6312(ram, rom, ctx, a4) {
+  void rom;
+  const a5 = bossA5(ctx, 0x2a6312);
+  const a6 = bossA6(ctx, 0x2a6312);
+  if (ram.u16(a4 + 0x02) === 0) {                        // $2A6312 tst.w / $2A6316 beq $2A6404
+    const hold = u16(ram.u16(a4 + 0x04) - 1);            // $2A6404 subq.w #1,($4,A4)
+    ram.setU16(a4 + 0x04, hold);
+    if (hold !== 0) return;                              // $2A6408 bne -> the rts
+    a4Start25980C(ram, 0x0f);                            // $2A640C/$2A640E
+    ram.setU16(a4, 0);                                   // $2A6414 clr.w (A4) -- 4254, the SLOT
+    return;
+  }
+  const left = u16(ram.u16(a4 + 0x02) - 1);              // $2A631A subq.w #1,($2,A4)
+  ram.setU16(a4 + 0x02, left);
+  if (left !== 0) return;                                // $2A631E bne -> the rts
+
+  ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x02);          // $2A6322 bset #1 -- bit 1, mask $02
+  ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x10);          // $2A632A bset #4
+  for (const id of [0x0b, 0x0c, 0x0d, 0x0f]) a2Stop25994A(ram, id);   // $2A6332..$2A634C
+  a2Run2598E6(ram, 0x10);                                // $2A6352/$2A6354
+  a3Start259962(ram, 6);                                 // $2A635A/$2A635C
+  a3Start259962(ram, 7);                                 // $2A6362/$2A6364
+  seqStop2598BE(ram);                                    // $2A636A/$2A636C -- D0 = 3 is IGNORED:
+  //   $2598BE is `move.w #$FFFF,$81298A / rts` and reads no register at all.
+  seqStart2598D0(ram, 4);                                // $2A6372/$2A6374
+  ram.setU8(a6 + 0x10e, 2);                              // $2A637A -- PHASE B. THE selector.
+  ram.setU16(0x81309c, 0xffff);                          // $2A6380
+  // $2A6388 move.l #$46000,D0 -- ONE immediate into BOTH the pool and its shadow.
+  ram.setU32(a5 + 0x16, 0x00046000);                     // $2A638E
+  ram.setU32(a5 + 0x1c, 0x00046000);                     // $2A6392 -- what $2A7116 restores from
+  ram.setU32(0x81b626, 0x00000500);                      // $2A6396
+  ram.setU32(0x81b62a, a5 + 0x16);                       // $2A63A0 lea ($16,A5),A0 / $2A63A4
+  ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x01);          // $2A63AA bset #0,$8130F8
+  ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x04);          // $2A63B2 bset #2,$8130F8
+  ram.setU8(0x8130f9, ram.u8(0x8130f9) | 0x01);          // $2A63BA bset #0,$8130F9 -- the NEXT byte
+  ram.setU16(a6 + 0x108, 0);                             // $2A63C2 jsr $2A6E30 -- vulnerable
+  ram.setU16(a6 + 0x180, ram.u16(a6 + 0x180) | 0xa001);  // $2A63C8 jsr $2A6E6A -- part $180 only
+  ram.setU16(a6 + 0x106, 0);                             // $2A63CE jsr $2A6ECE -- body back ON
+  ram.setU16(0x81b414, 1);                               // $2A63D4
+  ram.setU16(0x81b416, 1);                               // $2A63DC
+  ram.setU16(0x81b418, 1);                               // $2A63E4
+  ram.setU16(0x81b41a, 1);                               // $2A63EC
+  note(ctx, 0x23c4d0);                                   // $2A63F4 jsr $23C4D0
+  ctx.soundPost?.(0x28cc14);                             // $2A63FA jsr $28CC14
+  // $2A6400 bra.w $2A6416 -- the shared rts.
+}
+
 // ------------------------------------------------------------------------- the registrations
-registerScript(HIBACHI_A4.s1Init, (ram, rom, ctx, a4) => s1Init2A5A1C(ram, a4));
+//
+// **THE INIT IS NOT A ROUTINE OF ITS OWN.**  W403, and it was wrong in every one of W399's
+// three scripts.  Not one of HIBACHI's twenty-one A4 pairs puts an `rts` between the init and
+// the step: in all 21, `table[id].step - table[id].init` is exactly the init's instruction
+// bytes and the word immediately before the step entry is the init's LAST OPERAND.
+//
+//   $2A5A1C  397C 00C0 0002 / 397C 0303 0004            then $2A5A28, the step
+//   $2A5EA0  397C 0001 0002 / ... / 4EB9 0023C4E0       then $2A5EB8, the step
+//   $2A62FA  397C 0001 0002 / ... / 4EB9 0023C4E0       then $2A6312, the step
+//
+// `$2596FA jsr (A0)` enters at the INIT pointer on the first frame, so the cartridge runs the
+// init AND the step in that one call.  (Contrast the stage-1 boss's part scripts, `$29393A`
+// and `$293B82`: the word before each of those steps IS `4E75`.  The convention is per-table,
+// so this cannot be assumed either way -- it has to be read.)
+//
+// Every frame number in this chain moves by one because of it.
+const initThenStep = (init, step) => (ram, rom, ctx, a4) => { init(ram, rom, ctx, a4); step(ram, rom, ctx, a4); };
+
+registerScript(HIBACHI_A4.s1Init, initThenStep(
+  (ram, rom, ctx, a4) => s1Init2A5A1C(ram, a4),
+  (ram, rom, ctx, a4) => s1Step2A5A28(ram, rom, ctx, a4)));
 registerScript(HIBACHI_A4.s1Step, (ram, rom, ctx, a4) => s1Step2A5A28(ram, rom, ctx, a4));
-registerScript(HIBACHI_A4.s2Init, (ram, rom, ctx, a4) => s2Init2A5EA0(ram, ctx, a4));
+registerScript(HIBACHI_A4.s2Init, initThenStep(
+  (ram, rom, ctx, a4) => s2Init2A5EA0(ram, ctx, a4),
+  (ram, rom, ctx, a4) => s2Step2A5EB8(ram, rom, ctx, a4)));
 registerScript(HIBACHI_A4.s2Step, (ram, rom, ctx, a4) => s2Step2A5EB8(ram, rom, ctx, a4));
-registerScript(HIBACHI_A4.s3Init, (ram, rom, ctx, a4) => s3Init2A5F8E(ram, a4));
+registerScript(HIBACHI_A4.s3Init, initThenStep(
+  (ram, rom, ctx, a4) => s3Init2A5F8E(ram, a4),
+  (ram, rom, ctx, a4) => s3Step2A5FA2(ram, rom, ctx, a4)));
 registerScript(HIBACHI_A4.s3Step, (ram, rom, ctx, a4) => s3Step2A5FA2(ram, rom, ctx, a4));
+registerScript(HIBACHI_A4.s4Init, initThenStep(
+  (ram, rom, ctx, a4) => s4Init2A62FA(ram, a4),
+  (ram, rom, ctx, a4) => s4Step2A6312(ram, rom, ctx, a4)));
+registerScript(HIBACHI_A4.s4Step, (ram, rom, ctx, a4) => s4Step2A6312(ram, rom, ctx, a4));
 
 /** The A4 ids whose init AND step this file registers. A test asserts this against the
  *  cartridge's own table rather than against the list above. */
-export const HIBACHI_END_SCRIPTS = Object.freeze([1, 2, 3]);
+export const HIBACHI_END_SCRIPTS = Object.freeze([1, 2, 3, 4]);
 
 /** Every A4 id the chain hands to that is NOT ported, with the byte extent each occupies
  *  between its table entry and the next one. Counted, with the numbers measured. */
 export const HIBACHI_END_COUNTED = Object.freeze({
   0x00: { init: 0x2a592e, step: 0x2a597c, bytes: 0x00ee, why: 'the OPENING script $2A42D8 starts' },
-  0x0a: { init: 0x2a689c, step: 0x2a68a2, bytes: 0x0038, why: 'script 2 hands to it ($2A5F82)' },
+  0x0a: { init: 0x2a689c, step: 0x2a68a2, bytes: 0x0038, why: 'script 2 hands to it ($2A5F82). '
+    + 'It is not part of the ending at all: $2A68B8 jsr $259A18 / $2A68C0 jsr $259A4A start and '
+    + 'WAIT ON A1 gun script 5, so behind it is the fifteen-entry A1 table at $2A72C8, a '
+    + 'different unit. THE REAL PATH STOPS HERE' },
   0x14: { init: 0x2a6b7a, step: 0x2a6b80, bytes: 0x001a, why: 'script 1 first-loop arm ($2A5CB6); '
     + 'waits $80 frames then jsr $2595E8, which SUSPENDS and ends the stage' },
-  0x04: { init: 0x2a62fa, step: 0x2a6312, bytes: 0x011e, why: 'script 3 hands to it ($2A61E8)' },
+  0x0f: { init: 0x2a6a30, step: 0x2a6a36, bytes: 0x0046, why: 'script 4 hands to it ($2A640E); '
+    + 'the same A1-gun wait shape as $A ($2A6A4C/$2A6A54 on gun script 9)' },
+  0x05: { init: 0x2a6418, step: 0x2a6458, bytes: 0x03aa, why: 'phase B\'s death hands to it '
+    + '($2A728C jmp $25980C with D0 = 5) -- the LAST link this wave reaches' },
+  0x13: { init: 0x2a6b48, step: 0x2a6b56, bytes: 0x0032, why: 'phase B\'s $23000 phase check '
+    + 'starts it ($2A71EE), alongside main sequencer $B' },
 });
