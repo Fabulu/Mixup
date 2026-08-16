@@ -52,7 +52,7 @@ test('W217 pins the complete Type-A1 closure and sixteen new frames',
     assert.ok(h);
     assert.deepEqual([h.entries, h.distinct, h.added, h.already],
       [16, 16, 16, 0]);
-    assert.equal(manifest.spr.streamCount, 4263);
+    assert.equal(manifest.spr.streamCount, 4267);
   });
 
 test('W217 real clock-$236 spawn animates, draws, and retires on re-entry',

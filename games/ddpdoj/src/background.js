@@ -672,6 +672,66 @@ export const BGELEM_HANDLERS = [
     yPos: 0x2F20, kind: 0x16, thr: 0x5C00, v: 'lbge', gate: false,
     emit: 0x23DF2A },
   { stage: 3, id: 6, ctor: 0x26301A, upd: 0x262FE6, data: 0x2B01D0, yPos: 0x3520, kind: 0x56, thr: 0x6800, v: 'lbge', gate: false, emit: 0x23DF2A, kindWord: true },
+
+  // W397. Internal stage index 4, human Stage 5 -- THE LAST BGELEM TABLE, and
+  // with it the family is closed: five tables, 46 rows, every constructor the
+  // cartridge names.
+  //
+  // **THE EXTENT IS BOUNDED BY THE POINTER ARRAY ITSELF, NOT BY A NEXT ENTRY.**
+  // W394/W395/W396 each took `$262302 + n*4` and `$262302 + (n+1)*4`. THAT RULE
+  // RUNS OUT HERE: `$262302` has exactly FIVE entries and this is the last, so
+  // there is no entry 5 to read -- `$262316` is the first instruction of the
+  // slot-clear routine (`41F9 008131C8`, `lea $8131C8,A0`, the 130-word clear
+  // and the table install this file transcribes in `backgroundInit`). The bound
+  // is the ARRAY'S OWN BASE, and that base is stated by the code rather than
+  // typed in:
+  //
+  //     $262328  41FA FFD8   lea (-$28,PC),A0
+  //
+  // TRAP 4: the target is the EXTENSION WORD's address plus the displacement,
+  // `$26232A - $28 = $262302`. So the table runs `$2622F2..$262301` and
+  // `($262302 - $2622F2) / 4` = FOUR entries. Nothing here proves an extent by
+  // asserting an absence, and nothing counts to four.
+  //
+  // ALL FOUR ARE THE PLAIN $52-BYTE UNIT -- `2D7C <data> 0010`, `3D7C <yPos>
+  // 0014`, `2D7C <upd> 0008`, `1D7C <kind> 000D`, `4E75` AT ctor+$1C (trap 5),
+  // the $32-byte updater at ctor+$1E and a `4E71 nop` filler at ctor+$50. NOT
+  // ONE IS COMPLEX: internal stage 2's id 7 (`$262982`) installs `$2629AE`,
+  // which reverse-walks the 32-pair table `$262A4C` and hides 64 streams behind
+  // one handler; there is nothing of that kind here. And NOT ONE IS A
+  // DUPLICATE: four entries, four distinct `data`, four distinct `upd`, unlike
+  // internal stage 3 where ids 0 and 6 are one element with two `kind` words.
+  //
+  // **THE TWO FLIPPING CONSTANTS LAND IN A COMBINATION NEITHER NEIGHBOUR HAS,
+  // AND THAT IS THE WHOLE REASON EVERY ONE OF THE FOUR WAS DECODED:**
+  //
+  //                       upd+$0C branch     upd+$2E emitter
+  //     internal stage 2  6E00 bgt.w         $23DEFC  bucket 1
+  //     internal stage 3  6C00 bge.w         $23DF2A  bucket 2
+  //     THIS TABLE        6C00 bge.w         $23DEFC  bucket 1
+  //
+  // The displacement after the branch is `$0006` in all three, so `upd+$0C` is
+  // the only tell (trap 19). A row copied from the block above would carry the
+  // right branch and the WRONG bucket; a row copied from W394's block would
+  // carry the right bucket and the WRONG branch -- and either way every test in
+  // the tree would still pass, which is exactly what W394 warned about. Both
+  // bytes are read out of the image in `tools/export-web.mjs`'s fifth arm and
+  // in `tests/w397stage5art.test.js` SECTION 1.
+  //
+  // `kind` is $17 for all four and it is the BYTE form (`1D7C 0017 000D`), so
+  // no row here is `kindWord`. Over the whole $1E-byte constructor the four
+  // differ ONLY at +$3/+$4/+$5 (`data`), +$A/+$B (`yPos`) and +$12/+$13 (`upd`
+  // low word); over the whole $34-byte updater they differ ONLY at +$A, the
+  // `addi.l` threshold's high byte. Asserted as byte-diffs in the test.
+  //
+  // `data` is a SPRITE-MASK offset. `$31975C` sits a long way from the other
+  // three and it resolves in the same `sprmask` chain as they do -- [M] 3,746
+  // mask words against 2,402 / 5,762 / 722 -- so the distance is nothing but
+  // where the art lives.
+  { stage: 4, id: 0, ctor: 0x2631D4, upd: 0x2631F2, data: 0x3053A0, yPos: 0x1EA0, kind: 0x17, thr: 0x3C00, v: 'lbge', gate: false, emit: 0x23DEFC },
+  { stage: 4, id: 1, ctor: 0x263226, upd: 0x263244, data: 0x305D04, yPos: 0x2920, kind: 0x17, thr: 0x5000, v: 'lbge', gate: false, emit: 0x23DEFC },
+  { stage: 4, id: 2, ctor: 0x263278, upd: 0x263296, data: 0x307388, yPos: 0x1250, kind: 0x17, thr: 0x2400, v: 'lbge', gate: false, emit: 0x23DEFC },
+  { stage: 4, id: 3, ctor: 0x2632CA, upd: 0x2632E8, data: 0x31975C, yPos: 0x1B20, kind: 0x17, thr: 0x3400, v: 'lbge', gate: false, emit: 0x23DEFC },
 ];
 const BGELEM_BY_CTOR = new Map(BGELEM_HANDLERS.map((h) => [h.ctor, h]));
 const BGELEM_BY_UPD = new Map(BGELEM_HANDLERS.map((h) => [h.upd, h]));

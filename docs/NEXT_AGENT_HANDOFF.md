@@ -2,7 +2,68 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W396
+## START HERE -- W397
+
+### **THE BGELEM FAMILY IS COMPLETE.** FIVE TABLES, 46 ROWS, ALL EXTENTS FROM THE CARTRIDGE.
+
+`$26224A $26227E $26229E $2622D6 $2622F2`, extents **13 / 8 / 14 / 7 / 4**, one harvest row per table
+covering every entry. Asserted as its own test.
+
+### THERE IS NO ENTRY 5, AND THE ARRAY'S BASE IS STATED BY EXACTLY ONE INSTRUCTION
+
+`$262302` holds **five longwords**; `$262316` is `41F9 008131C8` (`lea $8131C8,A0`), then the 130-word
+slot clear `backgroundInit` already transcribes. **The only statement of the array's base in the
+cartridge is `$262328 41FA FFD8 lea (-$28,PC),A0`** -- trap 4, `$26232A - $28 = $262302`.
+
+**The arm decodes THAT INSTRUCTION and reads the array through its target**, rather than comparing to
+a typed constant. Stronger than the bound I briefed. (The first draft compared the `lea`'s target to
+a constant, which made the entry-count guard **unreachable by any image mutation** -- restructured.)
+
+### TWO INDEPENDENT TELLS, POINTING AT DIFFERENT NEIGHBOURS
+
+| table | `upd+$0C` | `upd+$2E` |
+|---|---|---|
+| internal stage 2 (14) | `6E00 bgt.w` | `$23DEFC` bucket 1 |
+| internal stage 3 (7) | `6C00 bge.w` | `$23DF2A` bucket 2 |
+| **internal stage 4 (4)** | **`6C00 bge.w`** | **`$23DEFC` bucket 1** |
+
+**This pair exists in NEITHER neighbour.** Copy from stage 2 and you get the right bucket with the
+wrong branch; from stage 3, the right branch with the wrong bucket. My "the byte at `upd+$0C` is the
+only tell" was **half true** -- there are two, and they disagree about which table to fear.
+
+All four here are `kind $17` (stage 2 was `$16` throughout, stage 3 mixed), plain shape, `4E75` AT
+ctor+`$1C`, no `kindWord`, **no duplicates, no complex entry, 4 distinct streams.** `distinct ===
+entries` happens to hold, and is asserted as a MEASUREMENT of this table with ablations in **both**
+directions -- shared descriptor and shared updater -- because stage 3's pair shares both and a table
+could collide in one without the other.
+
+### THE TILES ARE IN THE SHEET
+
+All four were absent before. `streamCount` 4263 -> **4267**, shard 11 streams 818 -> **822**,
+`maskLen` +12,632. **12,624 mask words identical against raw ROM at the packed bases**, all four
+headers asserted re-based. `$31975C` resolves in the **same** sprmask chain despite the distance.
+
+### TRAP 21 CAUGHT ONE OF ITS OWN TESTS
+
+A `$22D770` test **passed with the whole wave reverted** -- of course it did, it states a
+pre-existing limit. **Demoted to a helper inside a test that is actually red.** 19 tests measured red
+at HEAD, not assumed; 12 ablations, 12 throws, each naming its own address.
+
+### NEXT: `$22D770` -- STAGE 5's MAP COLUMN STREAM IS IN NO WINDOW
+
+**The Stage-5 background VM cannot start at all.** `backgroundInit`'s 15-column pre-fill reads
+`$22D770`, and it is in no exported ROM window. The other four stages' streams are declared:
+`$225B78 $228658 $22A5F8 $22B1E8`.
+
+**So no run has ever spawned one of these four via op `$10`, and nothing claims otherwise** (trap
+23). What a run does witness, through `backgroundFrame`'s frozen branch: all four updaters resolved
+through `BGELEM_BY_UPD`, **4 records into bucket 1 and 0 into bucket 2**, and the `6C00` byte made
+visible at the despawn edge -- at a true sum of exactly 0 these live where internal stage 2's id 0
+(`6E00`) dies, in the same harness.
+
+**That needs a code-stated column count. A map wave, not a BGELEM one.**
+
+## W396 NOTES
 
 ### THE STAGE-4 TABLE EMITS INTO THE **OTHER** BUCKET, AND `bge` NOT `bgt`
 

@@ -1301,7 +1301,22 @@ try {
         // of those three HAD moved, this wave would have changed something it
         // does not claim to touch, and leaving them standing is what makes this
         // gate able to say so.
-        11: { streams: 818, records: 12849, distinct: 103, first: 315,
+        // W397: streams 818 -> 822 and NOTHING ELSE MOVED, for the third time
+        // running and with the same argument as the two lines directly above.
+        // The exporter gained its FIFTH and LAST BGELEM art arm -- internal
+        // stage index 4, human Stage 5, the four-entry table $2622F2 -- and its
+        // four streams ($3053A0 $305D04 $307388 $31975C) were in no shard
+        // before and all four land in this one.  `streams` is the ONLY field
+        // this wave invalidates by construction, and it is the only one changed.
+        // `records`, `distinct` and `first` ARE UNTOUCHED WITNESSES: this is a
+        // STAGE-1 window, `$8132C8` holds `$26224A` for the whole of it, and
+        // `elemSpawn` can only reach a constructor through that pointer, so
+        // stage 1 cannot construct an internal stage-4 element and cannot draw
+        // one of these four pictures.  Had any of the three moved, this wave
+        // would have changed something it does not claim to touch -- leaving
+        // them standing is what makes this gate able to say so, and a gate
+        // loosened here is a gate that stops working.
+        11: { streams: 822, records: 12849, distinct: 103, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };

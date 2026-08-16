@@ -86,7 +86,7 @@ test('W211 static Stage-4 census, resource, terrain, and opening closure',
   assert.equal(art.endsAt, '$2622F2',
     'and it ends AT the pointer array\'s entry 4 -- the bound is the '
     + 'cartridge\'s, not a count typed into the exporter');
-  assert.equal(manifest.spr.streamCount, 4263);
+  assert.equal(manifest.spr.streamCount, 4267);
 });
 
 test('W211 real Stage-4 opening installs terrain, draws id 5, and pulses A6',
