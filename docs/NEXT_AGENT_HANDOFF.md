@@ -2,7 +2,93 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W397
+## START HERE -- W398
+
+### ALL FOUR STAGE-5 ELEMENTS SPAWN. THE VM STARTS.
+
+```
+init ok. 15 columns pre-filled, $262332 installed $2622F2
+id=0 h=$2631D4 t=$004A frame=1185    id=1 h=$263226 t=$0068 frame=1665
+id=2 h=$263278 t=$0090 frame=2305    id=3 h=$2632CA t=$0177 frame=6769
+```
+
+Each carries its own `data`/`yPos`/`upd`/`kind` from W397's registry; **id 3 REUSES SLOT 0** because
+the first three are long dead by clock `$0177`.
+
+### THE FOUR EXISTING WINDOWS ARE **NOT** BOUNDED BY ONE STATEMENT
+
+W192 and W211 each say *"ending exactly at Stage N+1's column stream"*. **That is a CONSEQUENCE, not
+a bound** -- `$261266` holds exactly five longwords and `$22D770` is the fifth, so repeating it here
+would have been trap 8.
+
+**What actually ends all five is the SIBLING pointer table `$261252`**, read at the same `$813096`
+index by the same shape of code:
+
+```
+$2611D6  43FA 008E   lea (d16,PC),A1   TRAP 4: $2611D8 + $8E = $261266  -> BASE $22D770
+$2611B4  41FA 009E   lea (d16,PC),A0   TRAP 4: $2611B4 + $9E = $261252  -> END  $22FAE0
+$2611C2  721F        moveq #$1F,D1     32 banks (TRAP 2)
+$2415F6  700F        16 longs per bank -> $800
+```
+
+Span = `[$261266[i], $261252[i] + $800)`. Measured **248 / 168 / 28 / 210 / 252** columns. The four
+earlier declarations obey it in **two different shapes** -- stages 1 and 2 split into two windows
+each, stages 3 and 4 declare one -- so **the only statement true of all four is about the UNION.**
+
+**THERE IS NO `dbra` AND NO `cmpi` THAT COUNTS COLUMNS.** `$2611E0` turns the clock into
+`(clock >> 2) * 36` with no bound check and `$26134E` walks nine longs a column forever. The count is
+a **division**: `$22FAE0 - $22D770 = $2370` over the 36-byte stride the shifts build = **252**.
+
+### TRAP 23, NEW FORM: **THE RUN STOPS FOR A CARTRIDGE REASON**
+
+**The scroll parks at clock `$0346` on the script's own `SPEED $0000` record** (`$261E88`). The clock
+is driven BY the scroll, so it never advances again -- **120,000 frames get no further than 40,000**,
+stopping at **column 224 of 252**.
+
+**A wave that sized this window from a free run would have declared 224 and been wrong.** Released
+the way the ROM does (`$261100`), the cursor's high-water mark is **exactly `$22FAE0`**, the address
+`$261252[4]` states, and the op-`$04` REPEAT at `$261EC8` catches it there. **The run confirms the
+code-stated size; it did not set it.**
+
+### NEW WINDOW `$22D770 + $2B70` (570), ABLATED THREE WAYS
+
+Not one shape but three, each throwing at a different address: window removed -> `$22D770` on
+`backgroundInit`; truncated to the 15-column pre-fill -> **init PASSES** and frame 64 throws
+`$22D98C`; truncated to columns only -> the `$2415E8` upload throws `$22FAE0` asking 2048 bytes.
+Overlap **71 with and without**. `$22B1E8 + $2588` ends exactly at `$22D770`; above `$2302E0` the
+next window is `$23046C` (W391), a real gap.
+
+### A HARNESS BUG WORTH KNOWING
+
+Without the per-frame sprite-bucket drain (`$23D70C`), the elements' 12-byte records **overran
+bucket 1's 3,012-byte buffer and overwrote A5's `colPtr` at frame 2,487**, producing a bogus
+`$178165`. **Not a port bug** -- exactly the overrun `src/spritequeue.js` documents.
+
+### `w397stage5art.test.js` ASSERTED THIS WAVE COULD NOT HAPPEN
+
+Its `assertStage5VmCannotStart` required `backgroundInit` to **throw**, with the comment "declaring
+it is a MAP wave, not this one". This is that wave. Inverted in place to `assertStage5VmNowStarts`,
+stale header paragraph fixed (trap 14), **all 19 of its tests and all twelve SECTION 6 ablations
+still pass.**
+
+### NEXT: `$2A5D28` -- THE ENEMY THAT RELEASES THE `$0346` PARK
+
+`claimed.py` says **UNCLAIMED**:
+
+```
+$2A5D20  303C 0010 / 323C 0010    move.w #$10,D0 / #$10,D1
+$2A5D28  4EB9 00261100            jsr $261100      <- the external speed push
+$2A5D2E  7002 / 4EB9 0025980C / 4254 / 4E75
+```
+
+**`$0010` is exactly the speed the script's NEXT record (`t=$0347`) sets**, so this is the stage-5
+counterpart of `$26B73A`. Its sibling **`$2A61E0` pushes `$0200` and is also unclaimed.** Both sit
+above every declared `$2Axxxx` window, so this is a real port unit with a real ROM window behind it.
+
+**Until it lands, the stage-5 background stops dead at column 224 and the last 28 columns of terrain
+are unreachable on the board.**
+
+## W397 NOTES
 
 ### **THE BGELEM FAMILY IS COMPLETE.** FIVE TABLES, 46 ROWS, ALL EXTENTS FROM THE CARTRIDGE.
 

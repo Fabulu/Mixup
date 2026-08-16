@@ -513,6 +513,31 @@ SHOT_WINDOWS.extend([
     (0x22B1E8, 0x2588, "W211: STAGE-4 background dependency span: 210 columns "
                        "x 36 bytes followed by 32 palette banks, ending "
                        "exactly at Stage 5's column stream $22D770"),
+    # W398 -- THE LAST COLUMN STREAM, and the ONE the family's own rule does not
+    # bound the way it bounds the other four.  W192 and W211 each ran their span
+    # "up to the NEXT stage's column stream"; $261266 holds exactly five
+    # longwords and this is the fifth, so THERE IS NO NEXT STREAM to stop at.
+    # The bound is the SIBLING table $261252, read at the same index by the same
+    # `$813096`, plus the palette block's own counted length:
+    #
+    #   $2611D0  3039 00813096   move.w $813096,D0        (stage * 4)
+    #   $2611D6  43FA 008E       lea ($261266,PC),A1      TRAP 4: $2611D8+$8E
+    #   $2611DE  2251            movea.l (A1),A1          -> $22D770  the BASE
+    #   $2611B2  41FA 009E       lea ($261252,PC),A0      TRAP 4: $2611B4+$9E
+    #   $2611BE  2050            movea.l (A0),A0          -> $22FAE0  the END
+    #   $2611C2  721F            moveq #$1F,D1            32 banks (TRAP 2)
+    #   $2415F6  700F / 51C8     16 longs per bank        = $800 total
+    #
+    # $22FAE0 - $22D770 = $2370 = 252 columns of the 36-byte stride $2611EA..
+    # $2611EE builds (D0*4 + D0*32).  The span therefore ends at $22FAE0 + $800
+    # = $2302E0, and NOTHING here asserts an absence: both ends are read out of
+    # the cartridge's own pointer tables.  `check_stage5_bg_span` re-derives
+    # every number above, and checks that the SAME rule reproduces the other
+    # four stages' declarations.
+    (0x22D770, 0x2B70, "W398: STAGE-5 background dependency span: 252 columns "
+                       "x 36 bytes ($22D770..$22FAE0, bounded by $261252[4]) "
+                       "followed by that stage's 32 palette banks, ending at "
+                       "$2302E0"),
     (0x278962, 0x008C, "W211: Stage-4 opening type $A6 stub, init, prototype, "
                        "and invisible pulse handler through $2789EE"),
     (0x263180, 0x0054, "W211: Stage-4 clock-zero BGELEM id 5 constructor, "
@@ -7915,6 +7940,186 @@ def check_bg_palette_and_fade(d: bytes) -> None:
                          "divider's reload.")
 
 
+# W398 -- THE FIVE BACKGROUND COLUMN STREAMS, AND THE ONLY BOUND THAT STATES
+# WHERE EACH ONE ENDS.
+def i16s(v: int) -> int:
+    """A raw 16-bit word as a SIGNED displacement."""
+    return v - 0x10000 if v & 0x8000 else v
+
+
+BGCOL_LEA = 0x2611D6              # $2611D6 43FA 008E lea ($261266,PC),A1
+BGCOL_TABLE = 0x261266            # ...as the `lea` above states it
+BGCOL_STAGE5 = 0x22D770           # [M] $261266[4] -- the base this wave declares
+BGPAL_STAGE5 = 0x22FAE0           # [M] $261252[4] -- and the address that ENDS it
+BGCOL_ROWS = 9                    # $261358 moveq #$8,D6 -- 9 longs per column
+BGCOL_STRIDE = 36                 # $2611EA..$2611EE build D0*4 + D0*32
+
+
+def check_stage5_bg_span(d: bytes) -> None:
+    """W398.  Stage 5's map column stream `$22D770` and the palette block that
+    ends it, plus the RULE that bounds the other four streams.
+
+    **WHAT MAKES THIS ONE DIFFERENT.**  W192 and W211 each bounded a stream by
+    the NEXT stream's base -- "ending exactly at Stage N+1's column stream".
+    `$261266` holds five longwords and this is the fifth, so that rule has no
+    fifth term and repeating it would be proving an extent by asserting an
+    absence (trap 8).  What actually bounds every one of the five, including
+    the first four, is the SIBLING pointer table `$261252`, read at the same
+    `$813096` index by the same shape of code:
+
+        $2611D0  3039 00813096   move.w $813096,D0        stage * 4
+        $2611D6  43FA 008E       lea (d16,PC),A1          -> $261266
+        $2611DC  D2C0            adda.w D0,A1
+        $2611DE  2251            movea.l (A1),A1          -> the column stream
+        $2611B2  41FA 009E       lea (d16,PC),A0          -> $261252
+        $2611B8  D0F9 00813096   adda.w $813096,A0
+        $2611BE  2050            movea.l (A0),A0          -> the palette block
+
+    ...and the palette block's own length is counted twice over, both `dbra`
+    N+1 (trap 2): `$2611C2 moveq #$1F,D1` is 32 banks and `$2415F6 moveq
+    #$F,D0` + `$2415FA 51C8 FFFC` is 16 longs = 64 bytes each, so $800.
+
+    So for EVERY stage i the dependency span is
+    `[$261266[i], $261252[i] + $800)`, and the check below shows the four
+    already-declared stages obey it before it applies it to the fifth.  The
+    36-byte column stride comes out of `$2611EA..$2611EE` rather than being
+    typed, which is what turns `$22FAE0 - $22D770` into "252 columns".
+    """
+    # ---- the two `lea`s, decoded.  TRAP 4: the target is the EXTENSION WORD's
+    # address plus the displacement, NOT the opcode's.
+    if u16(d, BGCOL_LEA) != 0x43FA:
+        raise SystemExit(
+            f"${BGCOL_LEA:06X} is ${u16(d, BGCOL_LEA):04X}, not `43FA` "
+            f"`lea (d16,PC),A1` -- the BG column-stream pointer table is no "
+            f"longer named by that instruction and src/background.js "
+            f"BGTAB.colStream is written under it.")
+    col_table = BGCOL_LEA + 2 + i16s(u16(d, BGCOL_LEA + 2))
+    if col_table != BGCOL_TABLE:
+        raise SystemExit(
+            f"${BGCOL_LEA:06X}'s displacement resolves to ${col_table:06X}, "
+            f"not ${BGCOL_TABLE:06X}.")
+    if u16(d, 0x2611B2) != 0x41FA:
+        raise SystemExit(f"$2611B2 is ${u16(d, 0x2611B2):04X}, not `41FA` "
+                         f"`lea (d16,PC),A0`.")
+    pal_table = 0x2611B4 + i16s(u16(d, 0x2611B4))
+    if pal_table != BGPAL_TABLE:
+        raise SystemExit(
+            f"$2611B2's displacement resolves to ${pal_table:06X}, not "
+            f"${BGPAL_TABLE:06X} -- the two tables must be SIBLINGS indexed by "
+            f"the same $813096 for the bound below to mean anything.")
+    # ---- ...and both really are indexed by the same word.
+    if u16(d, 0x2611D0) != 0x3039 or u32(d, 0x2611D2) != 0x813096:
+        raise SystemExit("$2611D0 is not `move.w $813096.l,D0` -- the column "
+                         "stream is no longer chosen by the stage index.")
+    if u16(d, 0x2611DC) != 0xD2C0 or u16(d, 0x2611DE) != 0x2251:
+        raise SystemExit("$2611DC/$2611DE are not `adda.w D0,A1 / movea.l "
+                         "(A1),A1`; the table holds POINTERS to streams.")
+    if u16(d, 0x2611B8) != 0xD0F9 or u32(d, 0x2611BA) != 0x813096:
+        raise SystemExit("$2611B8 is not `adda.w $813096.l,A0`.")
+    # ---- the 36-byte column stride, from the shifts that build it.
+    if u16(d, 0x2611E8) != 0x3200 or u16(d, 0x2611EA) != 0xD241 \
+            or u16(d, 0x2611EC) != 0xD241 or u16(d, 0x2611EE) != 0xEB48 \
+            or u16(d, 0x2611F0) != 0xD041:
+        raise SystemExit(
+            "$2611E8..$2611F0 are not `move.w D0,D1 / add.w D1,D1 / add.w "
+            "D1,D1 / lsl.w #$5,D0 / add.w D1,D0` -- the column stride is D0*4 "
+            f"+ D0*32 = {BGCOL_STRIDE}, and every column count below is that "
+            "division.  A different stride and '252 columns' is fiction.")
+    if u16(d, 0x261358) != 0x7C08:
+        raise SystemExit(
+            f"$261358 is ${u16(d, 0x261358):04X}, not `moveq #$8,D6` -- the "
+            f"per-column loop is {BGCOL_ROWS} longs (dbra is N+1, TRAP 2) and "
+            f"{BGCOL_ROWS} * 4 is the {BGCOL_STRIDE}-byte stride above.")
+    # ---- the palette block's length, counted rather than typed.
+    if u16(d, 0x2611C2) != 0x721F:
+        raise SystemExit(f"$2611C2 is ${u16(d, 0x2611C2):04X}, not `moveq "
+                         f"#$1F,D1`.")
+    if u16(d, 0x2415F6) != 0x700F or u16(d, 0x2415FA) != 0x51C8 \
+            or u16(d, 0x2415FC) != 0xFFFC or u16(d, 0x2415FE) != 0x51C9:
+        raise SystemExit(
+            "$2415F6..$2415FE are not `moveq #$F,D0 / move.l (A0)+,(A1)+ / "
+            "dbra D0 / dbra D1` -- the palette bank is no longer 16 longs and "
+            "the $800 that ends every one of these five spans is wrong.")
+    banks = u16(d, 0x2611C2) & 0xFF                      # moveq #$1F,D1
+    longs = u16(d, 0x2415F6) & 0xFF                      # moveq #$F,D0
+    pal_len = (banks + 1) * (longs + 1) * 4              # TRAP 2, twice
+    if pal_len != 0x800:
+        raise SystemExit(f"the counted palette block is ${pal_len:X}, not $800")
+    # ---- THE RULE, applied to all five.  Each span is
+    # [colTable[i], palTable[i] + palLen), and for i in 0..3 the declared
+    # windows must already cover exactly that.
+    spans = []
+    for i in range(5):
+        col = u32(d, col_table + i * 4)
+        pal = u32(d, pal_table + i * 4)
+        if pal <= col:
+            raise SystemExit(
+                f"$261252[{i}] = ${pal:06X} is not ABOVE $261266[{i}] = "
+                f"${col:06X}; the palette block no longer follows its own "
+                f"stage's columns and the whole family bound is void.")
+        if (pal - col) % BGCOL_STRIDE:
+            raise SystemExit(
+                f"stage {i}: ${pal:06X} - ${col:06X} = ${pal - col:X} is not a "
+                f"whole number of {BGCOL_STRIDE}-byte columns, so one of the "
+                f"two pointers is not what this bound reads it as.")
+        spans.append((col, pal, (pal - col) // BGCOL_STRIDE))
+    # The four ALREADY-DECLARED stages: the same rule, checked against what is
+    # in SHOT_WINDOWS today.  Stages 1 and 2 split the span into two windows
+    # (W13 + W92, W133 + W124); stages 3 and 4 declare it as one (W192, W211).
+    # Either shape is fine; what must hold is that the union covers the span
+    # exactly and nothing outside it.
+    for i, (col, pal, ncols) in enumerate(spans[:4]):
+        end = pal + pal_len
+        mine = sorted((a, ln) for a, ln, _ in SHOT_WINDOWS if col <= a < end)
+        if not mine or mine[0][0] != col:
+            raise SystemExit(
+                f"stage {i}: no declared window starts at ${col:06X}, which "
+                f"$261266[{i}] names as that stage's column stream.")
+        reach = mine[0][0]
+        for a, ln in mine:
+            if a > reach:
+                raise SystemExit(
+                    f"stage {i}: the declared windows over ${col:06X}..${end:06X}"
+                    f" leave a HOLE at ${reach:06X}; that span is one "
+                    f"dependency and a hole in it is a throw on the board.")
+            reach = max(reach, a + ln)
+        if reach != end:
+            raise SystemExit(
+                f"stage {i}: the declared windows reach ${reach:06X}; the rule "
+                f"$261266[{i}] .. $261252[{i}] + ${pal_len:X} ends at "
+                f"${end:06X} ({ncols} columns + {banks + 1} palette banks).")
+    # ---- ...AND THE FIFTH, which is this wave's window.
+    col5, pal5, ncols5 = spans[4]
+    if (col5, pal5) != (BGCOL_STAGE5, BGPAL_STAGE5):
+        raise SystemExit(
+            f"$261266[4]/$261252[4] read ${col5:06X}/${pal5:06X}, not "
+            f"${BGCOL_STAGE5:06X}/${BGPAL_STAGE5:06X} -- stage 5's background "
+            f"data moved and the W398 window is declared for the old place.")
+    want = pal5 + pal_len - col5
+    decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == col5]
+    if decl != [(col5, want)]:
+        raise SystemExit(
+            f"the W398 stage-5 background window is declared {decl} and must "
+            f"be (${col5:06X}, ${want:X}) -- {ncols5} columns x "
+            f"{BGCOL_STRIDE} B up to $261252[4] = ${pal5:06X}, then "
+            f"{banks + 1} palette banks of {(longs + 1) * 4} B.  A SHORT "
+            f"WINDOW IS NOT CAUGHT BY A SHORT RUN (trap 23): the 15-column "
+            f"pre-fill at $2611FC touches only the first "
+            f"{15 * BGCOL_STRIDE} B of it.")
+    # The far end must stay a GAP, not run into the next declared window: the
+    # stage-1 spawn script $230C6C is the nearest thing above it.
+    end5 = col5 + want
+    above = min((a for a, _, _ in SHOT_WINDOWS if a >= end5), default=None)
+    if above is None or above < end5:
+        raise SystemExit(
+            f"the W398 window ends at ${end5:06X} and overruns the next "
+            f"declared window at ${above:06X}.")
+    print(f"  stage5-bg-span: ${col5:06X} + ${want:X} = {ncols5} columns x "
+          f"{BGCOL_STRIDE} B + {banks + 1} palette banks, ending ${end5:06X}; "
+          f"the same rule reproduces all four earlier stages "
+          f"({', '.join(str(s[2]) for s in spans[:4])} columns).")
+
+
 # W93.  The five RESET-path text installs, and the routine they go through.
 TX_BOOT = ((0x23BF86, 0x222638, 0x7000), (0x23BF94, 0x222658, 0x7001),
            (0x23BFA2, 0x222678, 0x7002), (0x23BFB0, 0x222698, 0x7003),
@@ -8221,6 +8426,7 @@ def build(d: bytes) -> dict:
     check_beam_impact_extents(d)               # W90 -- THE LASER's IMPACT
     check_palette_upload_family(d)             # W91 -- THE SPRITE PALETTE
     check_bg_palette_and_fade(d)               # W92 -- THE BACKGROUND THIRD
+    check_stage5_bg_span(d)                    # W398 -- STAGE-5 COLUMN STREAM
     check_text_palette_boot(d)                 # W93 -- THE RESET PATH'S FIVE
     check_stage2_boot_data(d)                  # W133 -- STAGE-2 BG boot windows
     check_stage2_spawn_data(d)                 # W169 -- reset/install + spawn span

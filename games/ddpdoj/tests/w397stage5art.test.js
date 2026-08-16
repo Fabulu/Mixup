@@ -53,18 +53,25 @@
 //      stream count moves in ELEVEN test files, shard 11's row moves in `tools/webgate.mjs`, and
 //      `tests/w395stage2art.test.js` and `tests/w396stage4art.test.js` SECTION 4's bundle-wide
 //      totals move by construction. All named in the wave report.
-//   6. **THE ONE THING THE BRIEF ASKS FOR THAT NO RUN CAN WITNESS.** The port's Stage-5 background
-//      VM cannot be started at all: `backgroundInit`'s 15-column pre-fill reads `$22D770`, stage
-//      5's map column stream, and that address is in NO exported ROM window. So nothing in this
-//      file claims a scroll script requested one of these four. SECTION 5 says exactly what it
-//      ran and exactly what it did not -- trap 23, stated rather than papered over.
+//   6. **THE ONE THING THE BRIEF ASKS FOR THAT NO RUN CAN WITNESS** -- AT W397. The port's Stage-5
+//      background VM could not be started at all: `backgroundInit`'s 15-column pre-fill reads
+//      `$22D770`, stage 5's map column stream, and that address was in NO exported ROM window. So
+//      nothing in this file claimed a scroll script had requested one of these four. SECTION 5
+//      said exactly what it ran and exactly what it did not -- trap 23, stated rather than
+//      papered over.
+//      **W398 DECLARED `$22D770 + $2B70` AND THE LIMIT IS GONE.** SECTION 5's control is inverted
+//      in place (`assertStage5VmNowStarts`) and `tests/w398stage5map.test.js` SECTION 2 witnesses
+//      all four of these rows spawning through op $10 at frames 1,185 / 1,665 / 2,305 / 6,769 of
+//      a cold init. Nothing else in this file moved: this paragraph and that one assertion are
+//      the whole of it, and every SECTION 6 ablation is an untouched witness.
 //
 // SECTION 1  the four units, decoded byte by byte (no test of its own -- see the block there)
 // SECTION 2  THE LEDGER and THE OFFSETS: all four in the bundle, inside shard 11's span
 // SECTION 3  **THE PIXELS**, compared against the mask ROM word for word
 // SECTION 4  BEFORE AND AFTER, COUNTED: 4,263 -> 4,267 streams, 818 -> 822 on shard 11
 // SECTION 5  THE PORT: the driver resolves all four, stages all four into BUCKET 1, and the
-//            `6C00` byte is made VISIBLE at the despawn edge -- plus what no run witnesses
+//            `6C00` byte is made VISIBLE at the despawn edge -- plus, since W398, the fact that
+//            the Stage-5 VM now starts at all
 // SECTION 6  ABLATED FROM THE IMAGE -- twelve guards, twelve throws, each named by address, and
 //            the no-new-window statement, inside the first of them
 // ===============================================================================================
@@ -561,9 +568,10 @@ test('W397 SECTION 5: the port\'s own element driver resolves all four updaters 
   + 'four into BUCKET 1', { skip: SKIP }, () => {
     assertUpdaters();
     assertTheCombinationIsNew();
-    // ...and the SCOPE of what follows, measured before it is claimed: no op $10 request reaches
-    // any of this, because the port's Stage-5 background VM refuses to start at all.
-    assertStage5VmCannotStart();
+    // ...and the SCOPE of what follows. At W397 this measured a LIMIT: no op $10 request reached
+    // any of this, because the port's Stage-5 background VM refused to start at all. W398
+    // declared $22D770 and the limit is gone, so the same control now measures the opposite.
+    assertStage5VmNowStarts();
     // arg = 0, so the high word is 0 and every threshold keeps its element alive.
     const rows = S4.map((h) => ({ h, arg: 0 }));
     const { ROM, ram, vram, ctx } = frozenFrameHarness(rows);
@@ -632,38 +640,36 @@ test('W397 SECTION 5: `6C00 bge.w` is VISIBLE in the port -- a true sum of exact
       + 'row copied from that block into this table would have been wrong in exactly it');
   });
 
-/** **WHAT NO RUN WITNESSES, MEASURED RATHER THAN ASSUMED.** TRAP 23. This is the reason there is
- *  no cold boot and no 5,900-frame drive in this file: the port refuses stage 5's map column
- *  stream BY ADDRESS on the first frame of `backgroundInit`, long before any op $10 could ask for
- *  an element.
+/** **WHAT NO RUN WITNESSED AT W397, AND WHAT W398 THEN WITNESSED.** TRAP 23, both halves.
  *
- *  **IT HAS NO `test()` OF ITS OWN, AND THAT IS TRAP 21.** It was one, and it PASSED with this
- *  whole wave reverted -- of course it did: it is a statement about a limit that existed before
- *  the wave and still exists after it. A test that cannot go red without its fix is not a test,
- *  so it became this: a positive control, asserted inside the first SECTION 5 test, which IS red
- *  without the four rows. */
-function assertStage5VmCannotStart() {
-  let msg = null;
-  try {
-    const ROM = new RomWindows(JSON.parse(readFileSync(TABLES, 'utf8')).rom);
-    const ram = new Ram();
-    const vram = new BgVram();
-    const ctx = { unportedLog: new UnportedLog(), soundPost() {} };
-    ram.setU16(BGRAM.stageX4, 16);            // internal stage index 4 -- human Stage 5
-    backgroundInit(ram, ROM, vram, ctx, 0x80e240);   // a fresh Ram: entry clock 0
-  } catch (e) {
-    msg = e.message;
-  }
-  assert.ok(msg, 'backgroundInit must refuse, not complete');
-  assert.match(msg, /\$22D770/,
-    'and it names stage 5\'s column stream, which is in no exported ROM window. The other four '
-    + 'stages\' streams are exported ($225B78 $228658 $22A5F8 $22B1E8); this one is not, and '
-    + 'declaring it is a MAP wave, not this one');
-  assert.match(msg, /outside every ROM window/);
-  // ...and this wave declares NO new window, because the only program-ROM address the PORT
+ *  At W397 this asserted the opposite: `backgroundInit` REFUSED, naming `$22D770` -- stage 5's map
+ *  column stream, which was in no exported ROM window -- on the first frame, long before any op
+ *  $10 could ask for an element. That is why this file has no cold boot and no 5,900-frame drive,
+ *  and the comment ended "declaring it is a MAP wave, not this one".
+ *
+ *  **W398 IS THAT MAP WAVE**, and it inverted exactly this assertion and nothing else in this
+ *  file: `$22D770 + $2B70` is declared, the init completes, and `tests/w398stage5map.test.js`
+ *  SECTION 2 drives all four of THESE rows into being spawned by op $10 at frames 1,185 / 1,665 /
+ *  2,305 / 6,769. Everything below the init call is W397's own and is untouched.
+ *
+ *  **IT STILL HAS NO `test()` OF ITS OWN, AND THAT IS STILL TRAP 21.** It is a positive control
+ *  asserted inside the first SECTION 5 test, which IS red without the four rows; on its own it
+ *  would pass with this whole wave reverted. */
+function assertStage5VmNowStarts() {
+  const ROM = new RomWindows(JSON.parse(readFileSync(TABLES, 'utf8')).rom);
+  const ram = new Ram();
+  const vram = new BgVram();
+  const ctx = { unportedLog: new UnportedLog(), soundPost() {} };
+  ram.setU16(BGRAM.stageX4, 16);            // internal stage index 4 -- human Stage 5
+  assert.doesNotThrow(() => backgroundInit(ram, ROM, vram, ctx, 0x80e240),  // fresh Ram: clock 0
+    'W398 declared $22D770, so the 15-column pre-fill reads instead of throwing');
+  assert.equal(vram.columnsWritten, 15, '  ...fifteen columns of stage 5 terrain');
+  assert.equal(ram.u32(0x8132c8), STAGE5_TABLE,
+    '  ...and $262332 installed $2622F2, the table whose four rows THIS file transcribes');
+  // ...and W397 still declares NO new window, because the only program-ROM address the PORT
   // dereferences for these four elements is the table $2622F2 through `elemSpawn`'s
   // `rom.u32(tab + id*4)`, which the WAVE 13 window $262240 + $100 already covers -- asserted
-  // cell by cell in SECTION 6's first test.
+  // cell by cell in SECTION 6's first test. $22D770 is the MAP's dependency, not theirs.
 }
 
 // ===============================================================================================
