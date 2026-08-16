@@ -1,0 +1,403 @@
+// HIBACHI'S ENDING -- A4 SCRIPTS 1, 2 AND 3, AND BOTH EXTERNAL SPEED PUSHES.  W399.
+//
+// ============================================================================
+// WHAT THIS FILE IS
+// ============================================================================
+// `$2A5D28` and `$2A61E0` are the last two unported `jsr $261100` sites inside the boss ROM.
+// They are NOT enemy handlers: they are A4 SCRIPTS of HIBACHI, dispatched through
+// `$2596C6`'s five-slot A4 walk off the table `$2A5886` that `src/initbody.js`'s `$2A42DC`
+// body already installs.  `src/boss.js` has called `a4Start25980C(ram, 1)` from
+// `bossEnding2A6D8C` (`$2A6E20`, a tail `jmp`) since W372 -- so the ENTRY to this chain has
+// been live and every one of its links threw by address.  This file is those links.
+//
+// THE CHAIN, and every arrow is a `jsr $25980C` read out of the image:
+//
+//   $2A6E20  ending block      -> A4 1   (init $2A5A1C, step $2A5A28)
+//   $2A5CB6  script 1, arm A   -> A4 $14 (init $2A6B7A, step $2A6B80)  the FIRST-LOOP exit
+//   $2A5D30  script 1, arm B   -> A4 2   (init $2A5EA0, step $2A5EB8)  after PUSH $0010
+//   $2A5F82  script 2          -> A4 $A  (init $2A689C, step $2A68A2)  COUNTED, not ported
+//   $2A7076  phase-2 death     -> A4 3   (init $2A5F8E, step $2A5FA2)
+//   $2A61E8  script 3          -> A4 4   (init $2A62FA, step $2A6312)  COUNTED, not ported
+//
+// ============================================================================
+// THE PUSH IS NOT ON THE FIRST-LOOP PATH, AND THE BRIEF FOR THIS WAVE SAID IT WAS
+// ============================================================================
+// Script 1's one-shot block ends in a TWO-TEST fork whose arms are exclusive:
+//
+//   2a5c7a  4a79 00813098   tst.w $813098   / 2a5c80  6600 0092  bne $2a5d14
+//   2a5c84  4a79 0080393a   tst.w $80393A   / 2a5c8a  6600 0088  bne $2a5d14
+//
+// Falling past BOTH -- loop 1 with `$80393A` clear, the ordinary first credit -- takes
+// `$2A5C8E`: a sound, `$259924` (stop every A2 object), twenty-one `$289B22` pool-C spawns,
+// and `a4Start($14)`.  A4 $14 is `$2A6B7A`: wait $80 frames, `jsr $2595E8`, and the stage
+// SUSPENDS -- `handler2A4606`'s `bcc` then takes `$242952` and the game advances.  **No
+// speed push happens on that path at all, and none is needed: the stage ends.**
+//
+// `$2A5D28` is the OTHER arm.  It runs when `$813098` (the loop word) or `$80393A` is
+// non-zero, and it is the arm that keeps playing: push `$0010` into the background object
+// and hand over to A4 2, which arms HIBACHI's SECOND FORM (`($10E,A6) := 1` at `$2A5F40`,
+// which is exactly the byte `$2A6BA0 bne.w $2A6F12` tests).  `$2A61E0`'s `$0200` push is
+// three scripts further on, after that second form dies.
+//
+// ============================================================================
+// WHAT THE PUSH IS FOR -- THE STAGE-5 SCROLL PARK
+// ============================================================================
+// Internal stage 4's background script parks the scroll on its own record:
+//
+//   $261E88  t=$0346  op $08 SPEED $0000
+//
+// and the clock is driven BY the scroll (`$26131A cmpi.w #$200` on an accumulator fed by
+// `($1C,A5)`), so nothing inside the VM can ever release it -- W398 measured 20,000 frames
+// stuck at column 224 of 252.  The records the park hides are an ACCELERATION RAMP:
+// $0347 $0010, $0348 $0015, $0349 $0020, $034A $0040, $034C $0080, $034E $00C0, $0350 $0100,
+// and `$0010` is the value `$2A5D20`/`$2A5D24` load.  The boss's death is the release.
+//
+// ============================================================================
+// 504 BYTES OF SCRIPT 3'S STEP ARE JUMPED OVER
+// ============================================================================
+// `$2A5FD0 6000 01fa` is an UNCONDITIONAL `bra` from $2A5FD2 + $1FA = $2A61CC, and the nine
+// `$289004` allocations at `$2A5FD4..$2A61CB` are its shadow.  No `jsr`, no `jmp` and no
+// Bcc anywhere in $2A2000..$2A9000 targets a byte of that block, so it is not "the arm this
+// port does not take" -- it is unreachable code, and the port transcribes the `bra` rather
+// than the block.  (TRAP 20 in a new shape: not a routine with zero callers, a BLOCK with
+// zero entries.)
+//
+// ============================================================================
+// TWO NEARLY-IDENTICAL PER-FRAME EMITTERS THAT DIFFER IN TWO PLACES
+// ============================================================================
+// `$2A5D3A` (script 1) and `$2A61F2` (script 3) are the same eleven-call shape off the same
+// eight-word kind table `$2A5DC8`, and they are NOT the same routine:
+//
+//   $2A5DA6  jsr $24328E / move.w D0,D1 / asr.w #1,D1 / add.w D1,D0 / addi.w #-$800,D0
+//   $2A625C  jsr $24328E / move.w D0,D1 /                            addi.w #-$800,D0
+//
+// Script 1 biases ($26,A0) by x + (x >> 1) - $800; script 3 by x - $800, and its `move.w
+// D0,D1` is a DEAD STORE (TRAP 22 -- transcribed, not tidied).  Sharing one helper between
+// them would be a 1.5x error on half the explosions, so they are written twice.
+// `src/stage4type9f.js`'s `randomDeathEffect` is a THIRD sibling of the same shape with a
+// third arithmetic (x * 1.75) and its own table `$27C808`.
+//
+// ============================================================================
+// WHAT IS COUNTED RATHER THAN RUN
+// ============================================================================
+// `HIBACHI_END_NOTED` below, and every entry says which instruction it stands at.  The two
+// that matter: `$289B22` (pool C's third allocator, only `$289AF4`/`$289B50` are ported) on
+// the first-loop arm, and `$23C4D0` -- which `src/boss.js` has noted since W357 and
+// `tests/w382stalenotes.test.js` asserts, so it stays a note here for consistency rather
+// than being ported behind that test's back.
+
+import { u16, i16 } from './ram.js';
+import {
+  registerScript, a4Start25980C, a2Stop25994A, a2Run2598E6, a2StopAll259924,
+  seqStart2598D0,
+} from './scheduler.js';
+import { pushExternalSpeed } from './background.js';
+import { loadAnimObjects246410 } from './animobjects.js';
+import { spawnEffect, clearEffectPool, B } from './effects.js';
+import { drawWord242EC2, drawByte2431F4, drawWord24328E } from './rng.js';
+import { finalBlast2440E0 } from './boss2.js';
+import { finalBurst27CBB6 } from './stage4type9f.js';
+import { bossA5, bossA6 } from './boss.js';
+
+/** Every address in this file's flow that is real ROM data or a real ROM entry point, so a
+ *  test can assert the map instead of a prose claim. */
+export const HIBACHI_A4 = Object.freeze({
+  table: 0x2a5886,                 // $2A4318 lea $2A5886,A4 -> $2A432E jsr $259554
+  pairs: 21,                       // $2A5886 + 21*8 = $2A592E = entry [0].init, the table's end
+  endScript: 1,                    // $2A6E20 jmp $25980C with D0 = 1
+  s1Init: 0x2a5a1c, s1Step: 0x2a5a28,
+  s2Init: 0x2a5ea0, s2Step: 0x2a5eb8,
+  s3Init: 0x2a5f8e, s3Step: 0x2a5fa2,
+  // the DATA the three of them read
+  poolCTable: 0x2a5cc0, poolCRows: 21,      // $2A5C9A moveq #$14,D7 + dbra -- TRAP 2, N+1
+  kindTable: 0x2a5dc8, kindEntries: 8,      // $2A5D62 andi.w #$7,D0 / $2A5D66 add.w D0,D0
+  s1Anim: 0x2a5dda, s1AnimCount: 14,        // $2A5C6E lea, TRAP 4: $2A5C70 + $16A
+  s3Anim: 0x2a627a, s3AnimCount: 9,         // $2A61CC lea, TRAP 4: $2A61CE + $AC
+  animStride: 14,                           // $246410's entry: fill.w family.w cur.w tgt.l n.w t.w
+  // the two pushes
+  push1At: 0x2a5d28, push1Speed: 0x0010,
+  push2At: 0x2a61e0, push2Speed: 0x0200,
+  // the fork
+  forkLoopWord: 0x813098, forkFlag: 0x80393a,
+  firstLoopExit: 0x14,                      // $2A5CB4 moveq #$14 -> A4 $14 -> $2595E8 SUSPEND
+  // script 3's shadow
+  deadBlockFrom: 0x2a5fd4, deadBlockTo: 0x2a61cc,
+});
+
+/** Counted, not run.  Address -> the instruction that stands there. */
+export const HIBACHI_END_NOTED = Object.freeze({
+  0x289b22: '$2A5CAA jsr $289B22 -- pool C\'s THIRD allocator, twenty-one times off the '
+    + '$2A5CC0 longword table. src/effects.js ports $289AF4 and $289B50; this one is a '
+    + 'different entry and only the first-loop arm reaches it',
+  0x23c4d0: '$2A5F66 jsr $23C4D0 -- the $8039xx pause/flag block. It is `clr.w $803934 / '
+    + 'move.w #$1,$803936 / rts`, but src/boss.js has counted it since W357 and '
+    + 'tests/w382stalenotes.test.js asserts that note, so it stays counted here too',
+});
+
+const note = (ctx, a) => (ctx.unported ?? ctx.unportedLog)?.note(a, HIBACHI_END_NOTED[a]
+  ?? 'W399 HIBACHI ending');
+
+// ---------------------------------------------------------------- the $8039xx setters
+// Five three-instruction routines at $23C4A0/B0/C0/D0/E0, read out of the image this wave.
+// `$23C4C0` has no caller here and is not written.
+const shakeMode23C4A0 = (ram) => {                       // $23C4A0
+  ram.setU16(0x803934, 1);
+  ram.setU16(0x803936, 0);
+};
+const shakeMode23C4B0 = (ram) => {                       // $23C4B0
+  ram.setU16(0x803934, 6);
+  ram.setU16(0x803936, 0);
+};
+const shakeOff23C4E0 = (ram) => { ram.setU16(0x803934, 0); };   // $23C4E0 -- ONE store, no $803936
+
+/** `$260E36` -- arm screen-shake mode 1 and zero its cursor and both offsets. The same four
+ *  stores `src/boss2.js`'s `finalBlast2440E0` ends with; written out here because script 1
+ *  reaches `$260E36` on its own, without `$2440E0`. */
+function shakeStart260E36(ram) {
+  ram.setU16(0x813186, 1);                               // $260E36
+  ram.setU16(0x813188, 0);                               // $260E3E
+  ram.setU16(0x80b054, 0);                               // $260E46
+  ram.setU16(0x80b056, 0);                               // $260E4E
+}
+
+/** One `$289004` allocation plus its field writes, in the ROM's order. `nudgeLo`, `speed`
+ *  and `delay` are `null` where the block does not write them -- the FIRST of script 1's
+ *  nine writes only four fields and a loop over a uniform row would invent three stores. */
+function emit(ram, ctx, kind, pos, site, nudgeHi, nudgeLo, speed, sub12, sub14, delay) {
+  const a0 = spawnEffect(ram, ctx, kind, site);          // $289004
+  ram.setU32(a0 + B.pos, pos);                           // move.l ($2,A6),($2,A0)
+  ram.setU16(a0 + B.bucket, 0x0010);                     // move.w #$10,($1E,A0)
+  ram.setU16(a0 + B.nudge, nudgeHi);                     // move.w #...,($26,A0)
+  if (nudgeLo !== null) ram.setU16(a0 + B.nudge + 2, nudgeLo);    // ($28,A0)
+  if (speed !== null) ram.setU16(a0 + B.speed, speed);   // ($1A,A0)
+  ram.setU16(a0 + B.sub12, sub12);                       // ($12,A0)
+  ram.setU16(a0 + B.sub14, sub14);                       // ($14,A0)
+  if (delay !== null) ram.setU16(a0 + B.delay, delay);   // ($18,A0)
+  return a0;
+}
+
+/** Script 1's nine, `$2A5A36..$2A5C2C`, in the order the block writes them.  Rows are
+ *  [kind, site, nudgeHi, nudgeLo, speed, sub12, sub14, delay]. */
+const S1_ROWS = Object.freeze([
+  [0x0d, 0x2a5a3a, 0x1400, null, null, 0x0000, 0x0400, null],
+  [0x85, 0x2a5a62, 0x1400, 0x0600, 0x0658, 0x0000, 0x0000, 0x0002],
+  [0x0d, 0x2a5a9c, 0x0c00, 0xfe00, 0x06a8, 0x0000, 0x0000, 0x0002],
+  [0x85, 0x2a5ad6, 0x0400, 0xfc00, 0x0a88, 0x0000, 0x0400, 0x0006],
+  [0x0d, 0x2a5b10, 0x0600, 0x0400, 0x0a78, 0x0000, 0x0400, 0x0004],
+  [0x85, 0x2a5b4a, 0xf600, 0x0a00, 0x0a70, 0x0000, 0x0400, 0x000a],
+  [0x0d, 0x2a5b84, 0xf000, 0xfe00, 0x0588, 0x0000, 0x0400, 0x0008],
+  [0x85, 0x2a5bbe, 0xe000, 0xfc00, 0x04a0, 0x0000, 0x0400, 0x0008],
+  [0x0d, 0x2a5bf8, 0xd800, 0x0400, 0x0460, 0x0000, 0x0400, 0x0008],
+]);
+
+/** `$2A5D3A` -- script 1's per-frame explosion.  `subq.b` + `bcc` is the UNDERFLOW
+ *  convention, so the reload at `($5,A4)` lands on the frame AFTER the counter passes zero.
+ *  `($4,A4)` and `($5,A4)` are the two halves of the init's ONE `move.w #$0303` (TRAP 3). */
+function frameBurst2A5D3A(ram, rom, ctx, a4, a6) {
+  const c = ram.u8(a4 + 0x04);
+  ram.setU8(a4 + 0x04, u16(c - 1) & 0xff);               // $2A5D3A subq.b #1,($4,A4)
+  if (c !== 0) return;                                   // $2A5D3E bcc -> the rts
+  ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));               // $2A5D40 move.b ($5,A4),($4,A4)
+  // $2A5D46/$2A5D4C/$2A5D52/$2A5D54/$2A5D5A -- A0 is $28C274 unless the draw is NEGATIVE.
+  ctx.soundPost?.(i16(drawWord242EC2(ram, rom)) < 0 ? 0x28c28e : 0x28c274);
+  const kind = rom.u16(HIBACHI_A4.kindTable
+    + (drawWord242EC2(ram, rom) & 7) * 2);               // $2A5D5C..$2A5D6E
+  const a0 = spawnEffect(ram, ctx, kind, 0x2a5d72);      // $2A5D72 jsr $289004
+  ram.setU32(a0 + B.pos, ram.u32(a6 + 0x02));            // $2A5D78
+  ram.setU16(a0 + B.bucket, 0x0010);                     // $2A5D7E
+  ram.setU16(a0 + B.sub12, 0);                           // $2A5D84
+  ram.setU16(a0 + B.sub14, 0x0800);                      // $2A5D8A
+  ram.setU8(a0 + B.speed, u16(drawByte2431F4(ram, rom) + 3) & 0xff);   // $2A5D90/$2A5D96/$2A5D98
+  ram.setU8(a0 + B.angle, drawWord242EC2(ram, rom) & 0xff);            // $2A5D9C/$2A5DA2
+  // $2A5DA6..$2A5DB6 -- x + (x >> 1) - $800. `asr.w #1` is ARITHMETIC, so a negative draw
+  // halves toward minus infinity; `>> 1` on the sign-extended value is that.
+  const x = i16(drawWord24328E(ram, rom));
+  ram.setU16(a0 + B.nudge, u16(x + (x >> 1) - 0x800));
+  // $2A5DBA..$2A5DC2 -- y >> 1, and NOTHING added. Script 3's copy differs here too.
+  ram.setU16(a0 + B.nudge + 2, u16(i16(drawWord24328E(ram, rom)) >> 1));
+}
+
+/** `$2A61F2` -- script 3's per-frame explosion. Same eleven calls, TWO different lines. */
+function frameBurst2A61F2(ram, rom, ctx, a4, a6) {
+  const c = ram.u8(a4 + 0x04);
+  ram.setU8(a4 + 0x04, u16(c - 1) & 0xff);               // $2A61F2 subq.b #1,($4,A4)
+  if (c !== 0) return;                                   // $2A61F6 bcc -> the rts
+  ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));               // $2A61F8
+  ctx.soundPost?.(i16(drawWord242EC2(ram, rom)) < 0 ? 0x28c28e : 0x28c274);
+  const kind = rom.u16(HIBACHI_A4.kindTable
+    + (drawWord242EC2(ram, rom) & 7) * 2);               // $2A6214..$2A6224
+  const a0 = spawnEffect(ram, ctx, kind, 0x2a6228);      // $2A6228 jsr $289004
+  ram.setU32(a0 + B.pos, ram.u32(a6 + 0x02));            // $2A622E
+  ram.setU16(a0 + B.bucket, 0x0010);                     // $2A6234
+  ram.setU16(a0 + B.sub12, 0);                           // $2A623A
+  ram.setU16(a0 + B.sub14, 0x0800);                      // $2A6240
+  ram.setU8(a0 + B.speed, u16(drawByte2431F4(ram, rom) + 3) & 0xff);   // $2A6246/$2A624C/$2A624E
+  ram.setU8(a0 + B.angle, drawWord242EC2(ram, rom) & 0xff);            // $2A6252/$2A6258
+  // $2A625C..$2A6268 -- x - $800. `move.w D0,D1` at $2A6262 writes D1 and NOTHING reads it
+  // again: a dead store, kept as a comment rather than as JavaScript that does nothing.
+  ram.setU16(a0 + B.nudge, u16(i16(drawWord24328E(ram, rom)) - 0x800));
+  ram.setU16(a0 + B.nudge + 2, u16(i16(drawWord24328E(ram, rom)) >> 1));  // $2A626C..$2A6274
+}
+
+// =============================================================== A4 SCRIPT 1 -- THE ENDING
+/** `$2A5A1C`. Two stores, and the second is ONE word covering TWO byte fields (TRAP 3):
+ *  `($4,A4)` = 3 is the explosion counter and `($5,A4)` = 3 is its reload. */
+function s1Init2A5A1C(ram, a4) {
+  ram.setU16(a4 + 0x02, 0x00c0);                         // $2A5A1C move.w #$C0,($2,A4)
+  ram.setU16(a4 + 0x04, 0x0303);                         // $2A5A22 move.w #$303,($4,A4)
+}
+
+/** `$2A5A28`. 192 frames of explosions, then the one-shot block and the FORK. */
+function s1Step2A5A28(ram, rom, ctx, a4) {
+  // A6 only: $2A5A28's step reads ($2,A6) nine times and never touches A5. Script 2's init is
+  // the one that needs A5 ($2A5EAC), so the guard belongs there and not here.
+  const a6 = bossA6(ctx, 0x2a5a28);
+  const left = u16(ram.u16(a4 + 0x02) - 1);              // $2A5A28 subq.w #1,($2,A4)
+  ram.setU16(a4 + 0x02, left);
+  if (left !== 0) { frameBurst2A5D3A(ram, rom, ctx, a4, a6); return; }   // $2A5A2C bne $2A5D3A
+
+  clearEffectPool(ram);                                  // $2A5A30 jsr $288E0C
+  const pos = ram.u32(a6 + 0x02);
+  for (const [kind, site, nHi, nLo, spd, s12, s14, dly] of S1_ROWS) {
+    emit(ram, ctx, kind, pos, site, nHi, nLo, spd, s12, s14, dly);
+  }
+  // $2A5C2E..$2A5C50 -- the position is nudged for TWO `$27CBB6` bursts and restored from
+  // the stack as a LONG, so BOTH halves come back. `addi.w` on ($2,A6) and ($4,A6) is
+  // per-word wrap, not a 32-bit add.
+  const saved = ram.u32(a6 + 0x02);                      // $2A5C2E move.l ($2,A6),-(A7)
+  ram.setU16(a6 + 0x02, u16(ram.u16(a6 + 0x02) + 0xf400));   // $2A5C32 addi.w #-$C00
+  ram.setU16(a6 + 0x04, u16(ram.u16(a6 + 0x04) + 0xf100));   // $2A5C38 addi.w #-$F00
+  finalBurst27CBB6(ram, ctx, a6);                        // $2A5C3E jsr $27CBB6
+  ram.setU16(a6 + 0x04, u16(ram.u16(a6 + 0x04) + 0x1e00));   // $2A5C44 addi.w #$1E00
+  finalBurst27CBB6(ram, ctx, a6);                        // $2A5C4A jsr $27CBB6
+  ram.setU32(a6 + 0x02, saved);                          // $2A5C50 move.l (A7)+,($2,A6)
+
+  ram.setU16(0x803930, 0x0014);                          // $2A5C54
+  shakeStart260E36(ram);                                 // $2A5C5C jsr $260E36
+  shakeOff23C4E0(ram);                                   // $2A5C62 jsr $23C4E0
+  shakeMode23C4B0(ram);                                  // $2A5C68 jsr $23C4B0
+  loadAnimObjects246410(ram, rom, HIBACHI_A4.s1Anim);    // $2A5C6E lea / $2A5C74 jsr $246410
+
+  // ---- THE FORK. Both `bne`s go to the SAME target, so this is an OR, not a nest.
+  if (ram.u16(HIBACHI_A4.forkLoopWord) !== 0            // $2A5C7A tst.w $813098 / bne
+    || ram.u16(HIBACHI_A4.forkFlag) !== 0) {            // $2A5C84 tst.w $80393A / bne
+    shakeMode23C4A0(ram);                                // $2A5D14 jsr $23C4A0
+    ctx.soundPost?.(0x28c310);                           // $2A5D1A jsr $28C310
+    // ================= $2A5D28 -- THE STAGE-5 SPEED PUSH =================
+    pushExternalSpeed(ram, HIBACHI_A4.push1Speed, HIBACHI_A4.push1Speed);   // $2A5D20/24/28
+    a4Start25980C(ram, 2);                               // $2A5D2E/$2A5D30
+    ram.setU16(a4, 0);                                   // $2A5D36 clr.w (A4) -- 4254 is (A4)
+    ctx.scrollEvent?.({ kind: 'hibachiPush', at: HIBACHI_A4.push1At,
+      speed: HIBACHI_A4.push1Speed, next: 2 });
+    return;                                              // $2A5D38 rts
+  }
+  // ---- the FIRST-LOOP arm: no push, and A4 $14 suspends the stage 128 frames later.
+  ctx.soundPost?.(0x28c392);                             // $2A5C8E jsr $28C392
+  a2StopAll259924(ram);                                  // $2A5C94 jsr $259924
+  for (let i = 0; i < HIBACHI_A4.poolCRows; i++) {       // $2A5C9A moveq #$14,D7 + dbra: 21
+    void rom.u32(HIBACHI_A4.poolCTable + i * 4);         // $2A5CA6 move.l (A3)+,D2
+    note(ctx, 0x289b22);                                 // $2A5CAA jsr $289B22
+  }
+  a4Start25980C(ram, HIBACHI_A4.firstLoopExit);          // $2A5CB4/$2A5CB6
+  ram.setU16(a4, 0);                                     // $2A5CBC clr.w (A4)
+}
+
+// =============================================================== A4 SCRIPT 2 -- THE HANDOVER
+/** `$2A5EA0`. `($2,A4)` = 1, so the step's very first frame falls into the one-shot. */
+function s2Init2A5EA0(ram, ctx, a4) {
+  ram.setU16(a4 + 0x02, 0x0001);                         // $2A5EA0
+  ram.setU16(a4 + 0x04, 0x0080);                         // $2A5EA6 -- a WORD here, not a pair
+  ram.setU16(bossA5(ctx, 0x2a5eac) + 0x1a, 0x6270);      // $2A5EAC move.w #$6270,($1A,A5)
+  shakeOff23C4E0(ram);                                   // $2A5EB2 jsr $23C4E0
+}
+
+/** `$2A5EB8`. Frame 1: retire the ten opening A2 objects, run four new ones, restart the
+ *  main sequencer on script 1, and ARM THE SECOND FORM. Then $80 frames, then A4 $A. */
+function s2Step2A5EB8(ram, rom, ctx, a4) {
+  void rom;
+  const a5 = bossA5(ctx, 0x2a5eb8);
+  const a6 = bossA6(ctx, 0x2a5eb8);
+  if (ram.u16(a4 + 0x02) !== 0) {                        // $2A5EB8 tst.w ($2,A4) / beq $2A5F78
+    const left = u16(ram.u16(a4 + 0x02) - 1);            // $2A5EC0 subq.w #1,($2,A4)
+    ram.setU16(a4 + 0x02, left);
+    if (left !== 0) return;                              // $2A5EC4 bne -> the rts
+    // $2A5EC8..$2A5F16 -- the SAME ten ids $2A4334 started, in the SAME non-sequential
+    // order: 0 1 9 2 5 4 3 8 7 6. (The init body's order is 0 1 2 5 4 3 8 7 6 9 -- NOT the
+    // same list read backwards, and not the same order. Both are transcribed as written.)
+    for (const id of [0, 1, 9, 2, 5, 4, 3, 8, 7, 6]) a2Stop25994A(ram, id);
+    for (const id of [0x0b, 0x0c, 0x0d, 0x0f]) a2Run2598E6(ram, id);   // $2A5F18..$2A5F36
+    seqStart2598D0(ram, 1);                              // $2A5F38 moveq #1 / jsr $2598D0
+    ram.setU8(a6 + 0x10e, 1);                            // $2A5F40 -- $2A6BA0's gate byte
+    ram.setU16(a6 + 0x172, 0);                           // $2A5F46
+    ram.setU32(a5 + 0x16, 0x0002bc00);                   // $2A5F4C -- the SECOND form's pool
+    ram.setU16(a6 + 0x108, 0);                           // $2A5F54 jsr $2A6E30 -- vulnerable
+    ram.setU16(a6 + 0x140, ram.u16(a6 + 0x140) | 0xa001);   // $2A5F5A jsr $2A6E5C
+    ram.setU16(a6 + 0x160, ram.u16(a6 + 0x160) | 0xa001);   //   ...both parts of form two
+    ram.setU16(a6 + 0x106, 0);                           // $2A5F60 jsr $2A6ECE -- body back ON
+    note(ctx, 0x23c4d0);                                 // $2A5F66 jsr $23C4D0
+    ram.setU16(0x81309c, 2);                             // $2A5F6C
+    return;                                              // $2A5F74 bra -> the rts
+  }
+  const hold = u16(ram.u16(a4 + 0x04) - 1);              // $2A5F78 subq.w #1,($4,A4)
+  ram.setU16(a4 + 0x04, hold);
+  if (hold !== 0) return;                                // $2A5F7C bne -> the rts
+  a4Start25980C(ram, 0x0a);                              // $2A5F80/$2A5F82
+  ram.setU16(a4, 0);                                     // $2A5F88 clr.w (A4)
+}
+
+// ========================================== A4 SCRIPT 3 -- THE SECOND FORM'S DEATH, AND $0200
+/** `$2A5F8E`. Same $C0 / $0303 pair as script 1's init, plus a main-sequencer restart. */
+function s3Init2A5F8E(ram, a4) {
+  ram.setU16(a4 + 0x02, 0x00c0);                         // $2A5F8E
+  ram.setU16(a4 + 0x04, 0x0303);                         // $2A5F94 -- TRAP 3 again
+  seqStart2598D0(ram, 3);                                // $2A5F9A/$2A5F9C
+}
+
+/** `$2A5FA2`. 192 frames of explosions, then FIVE calls and a `bra` over 504 dead bytes to
+ *  the tail that pushes `$0200`. */
+function s3Step2A5FA2(ram, rom, ctx, a4) {
+  const a6 = bossA6(ctx, 0x2a5fa2);
+  const left = u16(ram.u16(a4 + 0x02) - 1);              // $2A5FA2 subq.w #1,($2,A4)
+  ram.setU16(a4 + 0x02, left);
+  if (left !== 0) { frameBurst2A61F2(ram, rom, ctx, a4, a6); return; }   // $2A5FA6 bne $2A61F2
+
+  ctx.soundPost?.(0x28c310);                             // $2A5FAA jsr $28C310
+  // $2A5FB0..$2A5FC0 -- a WORD push/pop this time ($3F2E/$3D5F), not script 1's long, and
+  // only ($2,A6) is touched, so a long restore would say something the ROM does not.
+  const savedHi = ram.u16(a6 + 0x02);                    // $2A5FB0 move.w ($2,A6),-(A7)
+  ram.setU16(a6 + 0x02, u16(savedHi + 0x1400));          // $2A5FB4 addi.w #$1400,($2,A6)
+  finalBlast2440E0(ram, rom, ctx, a6);                   // $2A5FBA jsr $2440E0
+  ram.setU16(a6 + 0x02, savedHi);                        // $2A5FC0 move.w (A7)+,($2,A6)
+  shakeStart260E36(ram);                                 // $2A5FC4 jsr $260E36
+  shakeMode23C4A0(ram);                                  // $2A5FCA jsr $23C4A0
+  // $2A5FD0 bra $2A61CC -- OVER $2A5FD4..$2A61CB. See this file's header.
+  loadAnimObjects246410(ram, rom, HIBACHI_A4.s3Anim);    // $2A61CC lea / $2A61D2 jsr $246410
+  // ================= $2A61E0 -- THE SECOND SPEED PUSH =================
+  pushExternalSpeed(ram, HIBACHI_A4.push2Speed, HIBACHI_A4.push2Speed);   // $2A61D8/DC/E0
+  a4Start25980C(ram, 4);                                 // $2A61E6/$2A61E8
+  ram.setU16(a4, 0);                                     // $2A61EE clr.w (A4)
+  ctx.scrollEvent?.({ kind: 'hibachiPush', at: HIBACHI_A4.push2At,
+    speed: HIBACHI_A4.push2Speed, next: 4 });
+}
+
+// ------------------------------------------------------------------------- the registrations
+registerScript(HIBACHI_A4.s1Init, (ram, rom, ctx, a4) => s1Init2A5A1C(ram, a4));
+registerScript(HIBACHI_A4.s1Step, (ram, rom, ctx, a4) => s1Step2A5A28(ram, rom, ctx, a4));
+registerScript(HIBACHI_A4.s2Init, (ram, rom, ctx, a4) => s2Init2A5EA0(ram, ctx, a4));
+registerScript(HIBACHI_A4.s2Step, (ram, rom, ctx, a4) => s2Step2A5EB8(ram, rom, ctx, a4));
+registerScript(HIBACHI_A4.s3Init, (ram, rom, ctx, a4) => s3Init2A5F8E(ram, a4));
+registerScript(HIBACHI_A4.s3Step, (ram, rom, ctx, a4) => s3Step2A5FA2(ram, rom, ctx, a4));
+
+/** The A4 ids whose init AND step this file registers. A test asserts this against the
+ *  cartridge's own table rather than against the list above. */
+export const HIBACHI_END_SCRIPTS = Object.freeze([1, 2, 3]);
+
+/** Every A4 id the chain hands to that is NOT ported, with the byte extent each occupies
+ *  between its table entry and the next one. Counted, with the numbers measured. */
+export const HIBACHI_END_COUNTED = Object.freeze({
+  0x00: { init: 0x2a592e, step: 0x2a597c, bytes: 0x00ee, why: 'the OPENING script $2A42D8 starts' },
+  0x0a: { init: 0x2a689c, step: 0x2a68a2, bytes: 0x0038, why: 'script 2 hands to it ($2A5F82)' },
+  0x14: { init: 0x2a6b7a, step: 0x2a6b80, bytes: 0x001a, why: 'script 1 first-loop arm ($2A5CB6); '
+    + 'waits $80 frames then jsr $2595E8, which SUSPENDS and ends the stage' },
+  0x04: { init: 0x2a62fa, step: 0x2a6312, bytes: 0x011e, why: 'script 3 hands to it ($2A61E8)' },
+});

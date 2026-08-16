@@ -2,7 +2,81 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W398
+## START HERE -- W399
+
+### THE SCROLL PASSES `$0346` AND REACHES COLUMN 252
+
+- **frame 193** -- `$2A5D28` pushes `$0010`
+- **frame 224** -- the clock passes `$0346`
+- **frame 526** -- the cursor reaches `$22FAE0`, **column 252 of 252**
+- **frame 527** -- the op-`$04` REPEAT at `$261EC8` rewinds to column 224, clock `$03B4`, speed `$0100`
+
+`$2A61E0`'s `$0200` push leaves the park on the **same frame**, because `$0200` is exactly one frame
+of the `$200` accumulator.
+
+### THEY ARE NOT ENEMIES. THEY ARE **HIBACHI's A4 SCRIPTS**.
+
+Type `$B0`, the stage-5 boss, spawned at `t=$031A`, dispatched by `$2596C6`'s five-slot A4 walk off
+the table `$2A5886` that `initbody.js`'s already-ported `$2A42DC` installs. **The handler `$2A4606`
+has been ported since W363** -- what was missing was **six `registerScript` calls**. New file
+`src/hibachiend.js`.
+
+Both extents are bounded from **two** directions: the A4 table entry above, and each chain's own
+count word (`$2A5DDA` count `$E` -> `2+14*14=$C6` lands exactly on entry [2].init).
+
+### THE UNCLAIMED SET WAS **FOUR**, NOT TWO
+
+`$261100` has **nine callers** and four were unclaimed. **`$26E04C` and `$26E152` push `$0020`**, not
+`$0010`, and live in type `$44`'s handler `$26E02A` (`$267824 + $44*8 + 4`), which type `$43` spawns
+at ramp `$3C`. Handler extent **`$BBE`**. **That is the far closer counterpart of `$26B73A`**, and
+this wave did not port it.
+
+### `$2A5D28` IS NOT ON THE FIRST-LOOP PATH
+
+`$2A5C7A tst.w $813098 / bne` **or** `$2A5C84 tst.w $80393A / bne`. Falling past both -- **the
+ordinary first credit** -- takes `$2A5C8E` -> 21 `$289B22` rows -> A4 `$14` -> `jsr $2595E8` and the
+stage **suspends**. No push, and none needed. Tested on all three combinations; the first-loop bench
+sits at column 224 for 1,200 frames. **The 28 unreachable columns are a SECOND-LOOP feature.**
+
+### THREE DECODE FINDINGS
+
+1. **`4254` is `clr.w (A4)`** -- mode 010 reg 100, **the SLOT, not `clr.w D4`.** Read as a register
+   write, a finished script steps for ever. Asserted via slot state `[0, $8102, 0, 0, 0]`.
+2. **`$2A6BA0 bne.w $2A6F12` was recorded in `TB0` and never branched on**, so `bossBody2A6B94` ran
+   the first form's code regardless. **Invisible, because nothing set the byte** until A4 script 2
+   (`$2A5F40 move.b #$1,($10E,A6)`) made it reachable. `boss.js` now stops there by address.
+3. **504 DEAD BYTES WITH ZERO ENTRIES.** `$2A5FD0 6000 01fa` is an unconditional `bra` over
+   `$2A5FD4..$2A61CB`, and **no `jsr`, `jmp` or Bcc in `$2A2000..$2A9000` targets a byte of it.**
+   Trap 20 in a new shape -- not an uncalled routine but an unreachable block.
+
+Also: the two per-frame emitters are **not** one routine. `$2A5DAE asr.w #1,D1 / add.w D1,D0` exists
+in script 1 and not in script 3, so the biases are `x + (x>>1) - $800` and `x - $800`;
+`stage4type9f.js`'s `randomDeathEffect` is a **third** sibling at `x * 1.75`. Driven from identical
+RNG state, difference asserted as exactly `x >> 1`.
+
+### THE HANDLER'S STOP IS A **PORT** STOP, AND THAT DISTINCTION IS THE POINT
+
+It stops at **`$2A6F12`, frame 195** -- HIBACHI's second form (`$2A6F12..$2A72C8`, `$3B6`) is not
+ported. **The scroll was already released and runs on without it.** Compare W398's park, which was a
+CARTRIDGE stop. Establish which kind before reporting one.
+
+### FIVE NEW WINDOWS (575), FIVE ABLATION SHAPES, FIVE DISTINCT THROWS
+
+`$2A5886+$A8`, `$2A5CC0+$54`, `$2A5DC8+$10`, `$2A5DDA+$C6`, `$2A627A+$80`, all re-derived by
+`check_hibachi_a4_windows`. Overlap **71 with and without**. Notably: table **truncated** to two
+pairs -> the push still fires at 193 and throws `$2A5896` at 194; `$2A5DDA` truncated to its count
+word -> throws `$2A5DDC`.
+
+**The trap-21 audit found a hole** -- removing script 3's `$246410` call reddened nothing -- and the
+fifth window ablation was added to close it.
+
+### NEXT
+
+**`$26E04C`/`$26E152` in type `$44`'s handler `$26E02A`** (`$BBE`), the real `$26B73A` counterpart.
+Then HIBACHI's second form (`$3B6`). Counted with extents: A4 `$00` `$EE`, A4 `$0A` `$38`, A4 `$14`
+`$1A`, A4 `$04` `$11E`, the dead block 504, the A2/A0/A3 script sets.
+
+## W398 NOTES
 
 ### ALL FOUR STAGE-5 ELEMENTS SPAWN. THE VM STARTS.
 

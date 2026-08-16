@@ -1183,6 +1183,13 @@ import './bossarrival.js';
 // `dist242494`, `bodyTail29314C` and `pickWaypoint2933DE` out of
 // `bossscripts.js`, and `bossA5`/`bossA6` back out of this file.
 import './bossf23.js';
+// W399 -- HIBACHI's OWN A4 chain registers itself, the same way and for the same reason.
+// `bossEnding2A6D8C` below has ended in `a4Start25980C(ram, 1)` since W372 and every link it
+// reached threw by address, because nothing had registered `$2A5886`'s scripts. This import
+// is six `registerScript` calls (A4 1, 2 and 3, INIT and STEP) and it is what makes
+// `$2A5D28`'s and `$2A61E0`'s external speed pushes reachable. It imports `bossA5`/`bossA6`
+// back out of this file, both hoisted function declarations, so the cycle resolves.
+import './hibachiend.js';
 
 // $2A4606 -- HIBACHI's handler, all 170 bytes of it. See TB0 for the structure and its four
 // independent confirmations.
@@ -1332,6 +1339,22 @@ function bossEnding2A6D8C(ram, rom, a5, a6, ctx) {
 export function bossBody2A6B94(ram, rom, a5, a6, ctx) {
   if (ram.u16(a6 + 0x106) !== 0) return;                     // $2A6B94 -- switched off by the ending
 
+  // $2A6B9C tst.b ($10E,A6) / $2A6BA0 bne.w $2A6F12 -- THE SECOND FORM'S OWN BODY, and W372
+  // transcribed it into TB0 (`bodySecondGateSite`/`bodySecondGateTarget`) without ever
+  // branching on it. Nothing set the byte, so the omission was invisible; W399's A4 script 2
+  // sets it ($2A5F40 move.b #$1,($10E,A6)) and from that frame on the cartridge runs $2A6F12 --
+  // a DIFFERENT body over the parts $140/$160, with its own $11800 threshold and its own death
+  // at $2A7000..$2A7076. Falling through to the first form's code here would damage-reduce
+  // eight parts that are no longer armed and never reach the second form's death, so this stops
+  // by address instead of doing something plausible.
+  if (ram.u8(a6 + 0x10e) !== 0) {
+    unreached(0x2a6f12, '$2A6BA0 bne.w $2A6F12 -- HIBACHI\'s SECOND FORM. ($10E,A6) is set, so '
+      + 'the cartridge leaves this body entirely and runs $2A6F12 (parts $140/$160, threshold '
+      + '$11800 at $2A6F3C, death $2A7000..$2A7076 which tail-jumps a4Start($3)). W399 ports the '
+      + 'A4 ending scripts that SET this byte and counts the body behind it: $2A6F12..$2A707C is '
+      + '$16A bytes and its death tail $2A707E..$2A72C6 is $248 more');
+  }
+
   // $2A6BA2..$2A6BC6 -- OR every armed part's flags, mask $5C: ONE hit test across the whole boss.
   let hit = 0;
   for (const p of HIBACHI_PARTS) hit |= ram.u8(a6 + p);
@@ -1399,6 +1422,14 @@ export function handler2A4606(ram, rom, a5, ctx) {
   // A6 is the sub-record, exactly as the per-frame driver hands it to every other handler. It was
   // not in scope here because this handler never needed it while the body was a note().
   const a6 = ram.u32(a5 + BOSS.subRec);
+  // W399: A5 AND A6 ARE LIVE ACROSS THE WHOLE FRAME ON THE BOARD, exactly as they are for the
+  // stage-1 boss, and `$25962E` two lines below dispatches A4 scripts that read both --
+  // `$2A5EAC move.w #$6270,($1A,A5)` and `$2A5A40 move.l ($2,A6),($2,A0)`. The port has no
+  // register file, so the handler publishes both for the frame it owns and `bossA5`/`bossA6`
+  // throw by address if a script is ever dispatched when nothing did. Same line, same reason,
+  // as `handlerBoss292902` above; it was simply never needed while the A4 table was unported.
+  ctx.bossSubRec = a6;
+  ctx.bossRec = a5;
   bossBody2A6B94(ram, rom, a5, a6, ctx);
 
   // $2A460C -- the clear test. Carry SET means the boss is done.

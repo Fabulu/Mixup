@@ -455,6 +455,17 @@ test('every registered script address is in an installed boss scheduler table',
     for (let i = 0; i < 12; i++) legal.push(ROM.u32(0x29ef54 + i * 4));
     assert.strictEqual(ROM.u32(0x29ef54 + 12 * 4) >>> 0, 0xffffffff,
       'the Stage-4 A2 list is twelve longwords and a $FFFFFFFF terminator');
+    // W399 carries HIBACHI's A4 table, which `initbody.js`'s $2A42DC body installs
+    // ($2A4318 lea $2A5886,A4 / $2A432E jsr $259554) and which W399 is the first wave to
+    // register scripts out of.  TWENTY-ONE pairs, and the extent is the table's OWN entry
+    // [0]: $2A5886 + 21*8 = $2A592E, which IS that entry -- the same pin
+    // `check_hibachi_a4_windows` asserts out of the image.  The claim and the negative case
+    // at the foot are unchanged.
+    for (let i = 0; i < 21; i++) {                     // A4, $2A5886
+      legal.push(ROM.u32(0x2a5886 + i * 8), ROM.u32(0x2a5886 + i * 8 + 4));
+    }
+    assert.strictEqual(ROM.u32(0x2a5886) >>> 0, 0x2a5886 + 21 * 8,
+      'entry [0] IS $2A5886 + 21*8, so the table ends where its own first script begins');
     for (const s of scriptAddresses()) {
       if (s === 0x111111 || s === 0x222222) continue;   // this file's own fake
       assert.ok(legal.includes(s),

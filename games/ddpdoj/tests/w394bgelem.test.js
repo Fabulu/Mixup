@@ -432,11 +432,13 @@ const WINDOWS = () => tables.rom.windows.map(
 test('W394 SECTION 6: no new window -- the two addresses the port reads are already covered',
   { skip: SKIP_T }, () => {
     const ws = WINDOWS();
-    // W398 moved this ONE number and nothing else in this file: it declared $22D770, stage 5's
-    // map column stream, so the set is 570. The claim this line makes -- that W394 itself added
-    // no window -- is unchanged; the two `covers()` assertions below are its real content and
-    // they are untouched witnesses.
-    assert.equal(ws.length, 570, 'the exported set was 569 windows at W394 and is 570 since W398');
+    // W398 and then W399 moved this ONE number and nothing else in this file: W398 declared
+    // $22D770, stage 5's map column stream, and W399 declared HIBACHI's A4 script table plus the
+    // four data blocks its ending scripts read, so the set is 575. The claim this line makes --
+    // that W394 itself added no window -- is unchanged; the two `covers()` assertions below are
+    // its real content and they are untouched witnesses.
+    assert.equal(ws.length, 575, 'the exported set was 569 windows at W394, 570 after W398, and '
+      + 'is 575 since W399');
     const covers = (a) => ws.filter(([b, len]) => a >= b && a < b + len);
     // ONE: the per-stage table. `elemSpawn` does `rom.u32(tab + id*4)` and `backgroundInit` does
     // `rom.u32($262302 + stage*4)`; both are inside W-earlier `$262240 + $100`.

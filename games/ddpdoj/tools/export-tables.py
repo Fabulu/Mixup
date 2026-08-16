@@ -4325,6 +4325,163 @@ W393_ROTATE_ENTRIES = 0x21          # $24C80C cmpi.b #$20,D5 -- indices 0..$20
 W393_FORMATION_ARMS = (0x24C390, 0x24C4F8, 0x24C690)
 W393_POD_SPAWNS = (0x24D480, 0x24D5DA, 0x24D75C)
 
+# ---- W399: HIBACHI'S A4 SCRIPT TABLE AND THE FOUR BLOCKS ITS ENDING SCRIPTS READ ------------
+#
+# `$2A4318 lea $2A5886,A4` + `$2A432E jsr $259554` installs the table; `$2596DE lsl.w #$3` and
+# `$2596EC addq.w #$4` index it as EIGHT bytes per script id, init at +0 and step at +4.  Four
+# separate blocks of data hang off the three ending scripts, and each has its own bound in the
+# code.  NOT ONE of them is bounded by "nothing else seems to be there" (trap 8):
+#
+#   $2A5886  the table.  21 pairs, and the extent is the table's OWN first entry: every entry
+#            is a $2A5xxx/$2A6xxx pointer and the smallest of them, `[0].init = $2A592E`, is
+#            $2A5886 + 21*8.  The data ends exactly where the first script it names begins.
+#            Confirmed independently by the highest id any `jsr`/`jmp $25980C` in the boss's
+#            own code loads: `$2A5CB6 moveq #$14` -> id 20 -> the 21st pair.
+#   $2A5CC0  script 1's first-loop pool-C rows.  `$2A5C9A moveq #$14,D7` + `$2A5CB0 dbra` is
+#            TRAP 2: 21 iterations of `$2A5CA6 move.l (A3)+,D2` = $54 bytes.
+#   $2A5DC8  the shared explosion-kind words.  `$2A5D62 andi.w #$7,D0` + `$2A5D66 add.w D0,D0`
+#            caps the index at $E and `$2A5D6E move.w (A1,D0.w),D0` reads a word there: $10.
+#            $2A61F2's copy reads the SAME table through `$2A6220 lea ($2A5DC8,PC),A1`.
+#   $2A5DDA  script 1's animation chain, and $2A627A script 3's.  Both are $246410 scripts:
+#            a COUNT word then count * 14 bytes, and `animobjects.js loadAnimObjects246410`
+#            reads exactly that.  $2A5DDA holds $000E -> 2 + 14*14 = $C6, landing on $2A5EA0,
+#            which the A4 table names as script 2's init.  $2A627A holds $0009 -> 2 + 9*14 =
+#            $80, landing on $2A62FA, which the table names as script 4's init.  Both blocks
+#            END ON A TABLE ENTRY, which is a bound from two independent directions.
+W399_A4_TABLE = 0x2A5886
+W399_A4_PAIRS = 21
+W399_A4_FIRST = 0x2A592E          # entry [0].init, and the table's end
+W399_KIND_TABLE = 0x2A5DC8
+W399_POOLC_TABLE = 0x2A5CC0
+W399_ANIM = ((0x2A5DDA, 0x2A5C6E, 0x2A5EA0, 4), (0x2A627A, 0x2A61CC, 0x2A62FA, 8))
+W399_ANIM_STRIDE = 14
+SHOT_WINDOWS.append(
+    (0x2A5886, 0x00A8, "W399: HIBACHI's A4 script table, $2A4318's lea -- 21 "
+                       "{init,step} pairs read by $2596C6's five-slot walk as "
+                       "rom.u32(table + id*8 [+4]). The extent is the table's "
+                       "OWN entry [0]: $2A5886 + 21*8 = $2A592E = [0].init, so "
+                       "the pointers end where the first script begins. Also "
+                       "the highest id any jsr/jmp $25980C loads is $14"))
+SHOT_WINDOWS.append(
+    (0x2A5CC0, 0x0054, "W399: A4 script 1's FIRST-LOOP pool-C rows, $2A5C9C's "
+                       "lea. $2A5C9A moveq #$14,D7 + $2A5CB0 dbra is 21 (TRAP "
+                       "2) and each pass does move.l (A3)+,D2, so $54. Ends at "
+                       "$2A5D14, the jsr $23C4A0 the OTHER arm branches to"))
+SHOT_WINDOWS.append(
+    (0x2A5DC8, 0x0010, "W399: the explosion-kind words BOTH per-frame emitters "
+                       "read ($2A5D68 and $2A6220 lea the same address). Bound "
+                       "is the MASK: $2A5D62 andi.w #$7 then add.w D0,D0 caps "
+                       "the byte index at $E and a word is read there"))
+SHOT_WINDOWS.append(
+    (0x2A5DDA, 0x00C6, "W399: A4 script 1's $246410 animation chain, $2A5C6E's "
+                       "lea (TRAP 4: $2A5C70 + $16A). Count word $000E times "
+                       "the loader's 14-byte entry plus the count = $C6, and "
+                       "$2A5DDA+$C6 = $2A5EA0 = A4 table entry [2].init"))
+SHOT_WINDOWS.append(
+    (0x2A627A, 0x0080, "W399: A4 script 3's $246410 animation chain, $2A61CC's "
+                       "lea (TRAP 4: $2A61CE + $AC). Count word $0009 times 14 "
+                       "plus the count = $80, and $2A627A+$80 = $2A62FA = A4 "
+                       "table entry [4].init"))
+
+
+def check_hibachi_a4_windows(d: bytes) -> None:
+    """W399.  HIBACHI's A4 table and the four data blocks its ending scripts read.
+
+    Every number below is re-derived from the image.  The two `lea`s are decoded
+    rather than trusted, the two animation chains are sized from their own count
+    words, and the two per-frame emitters are checked to read the SAME kind
+    table -- because the thing this wave found is that they are otherwise NOT
+    the same routine (`$2A5DAE asr.w #1,D1 / add.w D1,D0` exists in one and not
+    the other), and a shared window is the only thing they legitimately share.
+    """
+    # ---- THE TABLE.  Every entry a boss-local pointer, and the minimum of them
+    # IS the extent.  A table that grew would push entry [0] up and be caught.
+    lo = None
+    for i in range(W399_A4_PAIRS):
+        for half, off in (("init", 0), ("step", 4)):
+            v = u32(d, W399_A4_TABLE + i * 8 + off)
+            if not 0x2A5000 <= v < 0x2A7000:
+                raise SystemExit(
+                    f"$2A5886[{i}].{half} is ${v:08X} and must be a HIBACHI-local "
+                    f"pointer -- the 21-pair extent is derived from these.")
+            lo = v if lo is None else min(lo, v)
+    if lo != W399_A4_FIRST or W399_A4_TABLE + W399_A4_PAIRS * 8 != W399_A4_FIRST:
+        raise SystemExit(
+            f"$2A5886's lowest entry is ${lo:06X}; it must be ${W399_A4_FIRST:06X}, "
+            f"which is also $2A5886 + {W399_A4_PAIRS}*8. That coincidence IS the "
+            f"window's bound and it no longer holds.")
+    # ---- and the install that names it, so the window cannot outlive its reader.
+    if u16(d, 0x2A4318) != 0x49F9 or u32(d, 0x2A431A) != W399_A4_TABLE:
+        raise SystemExit(
+            f"$2A4318 is not `lea ${W399_A4_TABLE:06X},A4` -- HIBACHI's init body "
+            f"no longer installs this table as A4.")
+    # ---- THE POOL-C ROWS.  `moveq #$14,D7` is 21 through the dbra (trap 2).
+    if u16(d, 0x2A5C9A) != 0x7E14 or u32(d, 0x2A5CB0) != 0x51CFFFF0:
+        raise SystemExit(
+            f"$2A5C9A/$2A5CB0 are ${u16(d, 0x2A5C9A):04X}/${u32(d, 0x2A5CB0):08X}; "
+            f"the 21-row count of the $2A5CC0 window comes from `moveq #$14,D7` "
+            f"plus `dbra D7,-$10`.")
+    # ---- THE KIND TABLE.  Read by BOTH emitters, through two different `lea`s.
+    for site, opword in ((0x2A5D68, 0x43FA), (0x2A6220, 0x43FA)):
+        if u16(d, site) != opword:
+            raise SystemExit(f"${site:06X} is not `lea (d16,PC),A1`.")
+        ea = site + 2 + i16s(u16(d, site + 2))
+        if ea != W399_KIND_TABLE:
+            raise SystemExit(
+                f"${site:06X} resolves to ${ea:06X}, not ${W399_KIND_TABLE:06X} -- "
+                f"the two per-frame emitters no longer share one kind table.")
+    if u32(d, 0x2A5D62) != 0x02400007 or u16(d, 0x2A5D66) != 0xD040:
+        raise SystemExit(
+            "$2A5D62/$2A5D66 are no longer `andi.w #$7,D0 / add.w D0,D0`; that "
+            "mask is the only bound the $2A5DC8 window has.")
+    # ---- THE TWO ANIMATION CHAINS.  Sized from their own count words, and each
+    # one has to LAND on the A4 table entry the port dispatches next.
+    for base, lea, ends_at, entry in W399_ANIM:
+        if u16(d, lea) != 0x41FA:
+            raise SystemExit(f"${lea:06X} is not `lea (d16,PC),A0`.")
+        ea = lea + 2 + i16s(u16(d, lea + 2))
+        if ea != base:
+            raise SystemExit(
+                f"${lea:06X} resolves to ${ea:06X}, not ${base:06X} (TRAP 4: the "
+                f"target is the EXTENSION WORD's address plus the displacement).")
+        count = u16(d, base)
+        span = 2 + count * W399_ANIM_STRIDE
+        if base + span != ends_at:
+            raise SystemExit(
+                f"${base:06X} counts {count} entries, so 2 + {count}*"
+                f"{W399_ANIM_STRIDE} = ${span:X} and it ends at ${base + span:06X}, "
+                f"not ${ends_at:06X}.")
+        if u32(d, W399_A4_TABLE + entry * 4) != ends_at:
+            raise SystemExit(
+                f"$2A5886[{entry}] is ${u32(d, W399_A4_TABLE + entry * 4):06X}, not "
+                f"${ends_at:06X} -- the animation chain no longer ends on the A4 "
+                f"entry, and that adjacency is half of this window's bound.")
+    # ---- and the two pushes themselves, so a moved routine fails the export.
+    for site, speed in ((0x2A5D28, 0x0010), (0x2A61E0, 0x0200)):
+        if u32(d, site) != 0x4EB90026 or u16(d, site + 4) != 0x1100:
+            raise SystemExit(f"${site:06X} is no longer `jsr $261100`.")
+        if u16(d, site - 8) != 0x303C or u16(d, site - 6) != speed:
+            raise SystemExit(
+                f"${site - 8:06X} does not load D0 = ${speed:04X}; the external "
+                f"speed push at ${site:06X} pushes something else now.")
+    # ---- THE 504 DEAD BYTES.  `$2A5FD0 bra.w` jumps the whole block, and the
+    # port transcribes the branch rather than the block, so the export states it.
+    if u16(d, 0x2A5FD0) != 0x6000:
+        raise SystemExit("$2A5FD0 is no longer `bra.w`.")
+    if 0x2A5FD2 + u16(d, 0x2A5FD2) != 0x2A61CC:
+        raise SystemExit(
+            f"$2A5FD0's target is ${0x2A5FD2 + u16(d, 0x2A5FD2):06X}, not $2A61CC "
+            f"-- A4 script 3's step no longer skips $2A5FD4..$2A61CB.")
+    # ---- and the fork the push hangs off, which is what makes it a SECOND-LOOP
+    # event rather than the ordinary ending.
+    for site, glob in ((0x2A5C7A, 0x00813098), (0x2A5C84, 0x0080393A)):
+        if u16(d, site) != 0x4A79 or u32(d, site + 2) != glob:
+            raise SystemExit(f"${site:06X} is not `tst.w ${glob:06X}`.")
+        if u16(d, site + 6) != 0x6600 or site + 8 + u16(d, site + 8) != 0x2A5D14:
+            raise SystemExit(
+                f"${site + 6:06X} is not a `bne.w` to $2A5D14 -- the two tests no "
+                f"longer share one target and the arm is not an OR.")
+
 
 def check_option_formation_windows(d: bytes) -> None:
     """W393.  Re-derive the two option-pod spawn pointer blocks formations 4 and
@@ -8437,6 +8594,7 @@ def build(d: bytes) -> dict:
     check_arm1_chain_scripts(d)                # W391 -- ARMS 1 AND 3'S SIX BLOCKS
     check_arm5_demo_windows(d)                 # W392 -- ARM 5'S FOUR DEMO BLOCKS
     check_option_formation_windows(d)          # W393 -- FORMATIONS 4 AND 6
+    check_hibachi_a4_windows(d)                # W399 -- HIBACHI'S A4 TABLE + ENDING DATA
     check_sample_windows()                     # W27D -- ICS sample tight union
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)

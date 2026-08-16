@@ -66,7 +66,10 @@ const BLAST_ROWS = Object.freeze([
   [0x0d, 0xd400, 0x0400, 0x0460, 0x0400, 0x0a, 0x27cdf2],
 ]);
 
-function finalBurst27CBB6(ram, ctx, root) {
+/** W399 exported it: HIBACHI's A4 script 1 calls the SAME `$27CBB6` twice, at $2A5C3E and
+ *  $2A5C4A, and a second transcription of a twelve-row table is how two copies end up with
+ *  each other's constants. The body is unchanged. */
+export function finalBurst27CBB6(ram, ctx, root) {
   ctx.soundPost?.(0x28c2c2);
   for (const [kind, ny, nx, speed, sub14, delay, site] of BLAST_ROWS) {
     const e = spawnEffect(ram, ctx, kind, site);
