@@ -2,7 +2,76 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W394
+## START HERE -- W395
+
+### THE STAGE'S ART IS IN THE SHEET, PROVED AT THE PIXEL LEVEL
+
+| | before | after |
+|---|---|---|
+| `spr.streamCount` | 4,244 | **4,258** |
+| shard 11 streams | 799 | **813** |
+| shard 11 `maskLen` | 1,051,702 | **1,138,178** (+86,476) |
+| `spr.maskUsed` | 2,328,784 | **2,415,260** (+86,476) |
+
++86,476 is exactly the sum of the fourteen chain extents, and **no other shard's membership moved.**
+
+**The proof is the pixels, not the bookkeeping:** `mask.shard11.u16.gz` inflated and compared against
+`rip/rom/cave_b04401w064.u1` at each packed base -- **86,448 mask words, ZERO differences** (the
+extents less their fourteen two-word headers, which are asserted **re-based, not copied**). A real
+cold boot to +10,600 reads `$290F10` off bucket 1 record 0 and finds it at base 1,049,696 inside
+shard 11's span.
+
+**All fourteen were new** -- `14 entries, 14 distinct, 14 added, 0 already`. The whole stage really
+had no picture.
+
+### "STAGE 2" IS AMBIGUOUS AND MY BRIEF USED BOTH SENSES AT ONCE
+
+The exporter already calls `stage === 1` "stage 2" (`STAGE2_BGELEM_TABLE = 0x26227E`) and
+`stage === 3` "Stage 4". **By its own convention these fourteen are STAGE 3**, and the new constants
+are `STAGE3_BGELEM_TABLE`/`STAGE4_BGELEM_TABLE`. Internal index 2 = human Stage 3. Say which you mean.
+
+### THE FOURTH ARM DIFFERS FROM THE OTHER THREE IN THREE DECODED WAYS
+
+1. **The extent is the CARTRIDGE's, not a hard-coded count.** `$262302` entry 2 = `$26229E`, entry 3
+   = `$2622D6`, so `(to-from)/4 = 14`. Both cells asserted; **the arm refuses if either moves.**
+2. **No complex entry.** Arm 1's entry 7 reverse-walks a 32-pair table, so 64 streams hide behind one
+   handler. All fourteen here are the plain shape, verified byte for byte.
+3. **The emitter is ASSERTED, and it is a different one** -- `$23DEFC` (bucket 1) against stage 2's
+   `$23DF2A`. Aliasing would have put the whole stage in the wrong bucket.
+
+**`thr` varies less than I said:** four values over fourteen rows, `$7000` on **eleven**. The
+fourteen `$34`-byte updaters differ from each other in **ONE BYTE TOTAL** (`+$0A`, the `addi.l`
+immediate's high byte).
+
+### THE GATE MOVED BY ONE NUMBER, AND THREE WITNESSES WERE LEFT STANDING
+
+`webgate.mjs`'s `EXP52` row 11 went `streams: 799 -> 813`. **`records`, `distinct` and `first` are
+untouched** because they are a STAGE-1 window and **stage 1 cannot construct a stage-3 element**
+(`$8132C8` holds `$26224A`, not `$26229E`) -- so they remain independent witnesses that the added art
+changed nothing the scenario draws. That is updating an expectation the change invalidates by
+construction, **not loosening the gate**. Reviewed byte for byte before commit.
+
+Eleven test files pin `spr.streamCount` and all eleven move together; `w218`'s own message documents
+that as the standing procedure.
+
+### TWO ABLATIONS STAYED GREEN AND WERE FOLDED IN, NOT BANKED
+
+Rebuilt from `git show HEAD:...export-web.mjs`: 8 fail / 2 pass. The two green ones were pure
+cartridge truth (trap 21), so they became positive controls of the ablation section. **All 8 now go
+red at HEAD.** Three ablations mutate a private copy of the image via a new `--cpu` flag and each
+throws by address: `$262302`, `$262D8A`, `$262B6A`.
+
+### NEXT: THE STAGE-4 REMAINDER, OR INTERNAL INDEX 4
+
+**Stage 4 is a single ported row** (id 5 of `$2622D6`) against a `$2622D6..$2622F1` table of **seven**
+entries -- **six constructors ported by nothing**, and its extent is stated by the same pointer array
+this wave proved out. That is the smaller unit.
+
+**Internal index 4 (human Stage 5) has NO BGELEM rows at all**, and `$262302` entry 4 = `$2622F2`
+with no entry 5 (`$41F90081` is code), so **the array's own extent needs a bound found in
+`$262332`'s indexing, not in an absence** (trap 8).
+
+## W394 NOTES
 
 ### ALL THREE DEMOS PLAY. 60,000 FRAMES, FOURTEEN ATTRACT LAPS, NO THROW.
 

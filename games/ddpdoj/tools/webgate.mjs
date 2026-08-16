@@ -1279,7 +1279,14 @@ try {
         // bucket is counted HERE now.  That is why `distinct` went UP by six
         // rather than down -- this stage draws the same pictures and six more of
         // them are on shard 11.  Nothing lost art: 12849 DRAWN of 12849.
-        11: { streams: 799, records: 12849, distinct: 103, first: 315,
+        // W395: streams 799 -> 813 and NOTHING ELSE MOVED.  The exporter gained
+        // its fourth BGELEM art arm -- internal stage index 2, the fourteen
+        // elements W394 ported -- and all fourteen streams are new and land in
+        // this shard.  `records`, `distinct` and `first` are a STAGE-1 window,
+        // and stage 1 cannot construct a stage-3 element (`$8132C8` holds
+        // `$26224A`, not `$26229E`), so those three are untouched witnesses
+        // that the added art changed nothing this scenario draws.
+        11: { streams: 813, records: 12849, distinct: 103, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };

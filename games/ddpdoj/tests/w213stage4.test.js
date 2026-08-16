@@ -62,7 +62,7 @@ test('W213 exact type-$A2 closure, eight occurrences, and 23 live streams',
   const art = manifest.spr.harvest.find((h) => h.at === '$27D39C');
   assert.ok(art, '23-entry type-$A2 live art harvest');
   assert.deepEqual([art.entries, art.distinct, art.added], [23, 23, 23]);
-  assert.equal(manifest.spr.streamCount, 4244);
+  assert.equal(manifest.spr.streamCount, 4258);
 });
 
 test('W213 real clock-$36 pair draws, mirrors fire, and performs lingering death',

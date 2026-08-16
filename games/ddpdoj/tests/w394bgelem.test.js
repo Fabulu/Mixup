@@ -26,10 +26,12 @@
 //      dereferences an element's `data`, it only stages the pointer, and the two addresses it
 //      DOES read -- the table at `$26229E` and the emit stub at `$23DEFC` -- are already inside
 //      W-earlier windows `$262240+$100` and `$23D760+$962`. SECTION 6 ablates both to prove they
-//      are load-bearing rather than assumed. **What IS still missing is the web build's sprite
-//      sheet: `tools/export-web.mjs` harvests BGELEM art for `stage === 0`, `1` and `3` and has
-//      no arm for `stage === 2`, so these fourteen streams have no picture.** That file is not
-//      this wave's to edit; SECTION 5 names the fourteen stream addresses so the next wave can.
+//      are load-bearing rather than assumed. **What was still missing at W394 was the web
+//      build's sprite sheet: `tools/export-web.mjs` harvested BGELEM art for `stage === 0`, `1`
+//      and `3` and had no arm for `stage === 2`, so these fourteen streams had no picture.** That
+//      file was not W394's to edit; SECTION 5 names the fourteen stream addresses, and **W395
+//      added the fourth arm and harvested them** -- `tests/w395stage2art.test.js` compares the
+//      shipped shard-11 mask body against the mask ROM word for word.
 //   4. "Expect more behind it." There is nothing behind it. SECTION 5 runs 20,000 frames -- five
 //      complete 4,032-frame attract laps, fifteen demos -- with no throw at all.
 //
@@ -369,12 +371,13 @@ test('W394 SECTION 5: what demo 2 ACTUALLY asks for is ONE of the fourteen, and 
     assert.equal(13 * UNIT, 0x42a);
   });
 
-test('W394 SECTION 5: the fourteen art streams the WEB build still has no picture for',
+test('W394 SECTION 5: the fourteen art streams the WEB build had no picture for',
   { skip: SKIP }, () => {
-    // Named here rather than harvested, because `tools/export-web.mjs` is not this wave's file.
-    // Its three BGELEM harvest arms filter `stage === 0`, `stage === 1` and `stage === 3`; there
-    // is no `stage === 2` arm, so these fourteen streams are absent from the sprite sheet and
-    // internal stage 2 will render the W86 black terrain on the live build. They are offsets
+    // Named here rather than harvested, because `tools/export-web.mjs` was not W394's file. Its
+    // three BGELEM harvest arms filtered `stage === 0`, `stage === 1` and `stage === 3`; there
+    // was no `stage === 2` arm, so these fourteen streams were absent from the sprite sheet and
+    // internal stage 2 rendered the W86 black terrain on the live build. **W395 ADDED THE FOURTH
+    // ARM** off this very list; the sheet side is `tests/w395stage2art.test.js`. They are offsets
     // into the sprite MASK rom, not the program rom -- do not read them in `maincpu.bin`.
     assert.deepEqual(S2.map((h) => h.data), [
       0x290f10, 0x292094, 0x294018, 0x295f9c, 0x2961a0, 0x298124, 0x29a0a8,
