@@ -2,7 +2,74 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W400
+## START HERE -- W401
+
+### BOTH DEFECTS FIXED, AND THE ROM SETTLED THE ARITY
+
+**`packedAdd`** was a non-exported local in `stage3carrier.js:34`, never imported. But it was standing
+in for `$270048` `06 82 f8 00 08 00` = **`addi.l #$F8000800,D2`, a FULL 32-BIT ADD** -- no packed
+helper is involved, and `stage3carrier.js` has three different packed helpers, so picking one by name
+was a real hazard. Inlined instead.
+
+**`handlers.js:103`'s own comment ALREADY CLAIMED THE FIX WAS APPLIED.** A note describing work
+nobody did (trap 14). The note is now true.
+
+**`scrollCompensate`: the ROM settles it, not the majority.** `$24179E` is six instructions whole --
+`tst.w $8130D2` / `bne.w` / `move.l $80B03C,D0` / `swap` / `add.w D0,($2,A6)` / `rts`. **Two RAM
+reads, one RAM write, NO ROM operand and NO `jsr`.** There is nothing for a `rom` or `unported`
+argument to describe. `movement.js` was already right and is **unchanged**.
+
+### MY BRIEF WAS WRONG THREE WAYS ON A DEFECT I HAD ALREADY MEASURED
+
+- **Line numbers off by exactly 4** (2490 -> 2494, and so on). Types were right.
+- **EIGHT bad sites, not six** -- it missed `handlers.js:8854` (`$2724B6`, type `$55`) and
+  `handlers.js:8993` (`$271110`, type `$46`). Both threw identically.
+- **TWENTY-ONE call sites total, not ten** -- thirteen correct ones, including `boss2.js:298`,
+  `midboss.js:686`/`:839`, `movement.js:237`, `stage4typea3.js:100`.
+
+### A SIBLING IN A DIFFERENT SHAPE: THE WRONG RNG
+
+`$270036` and `$27005C` are both `4e b9 00 24 2b 3c` = **`jsr $242B3C`**, and every `jsr $28B4BE` in
+the `$26Cxxx`/`$26Exxx`/`$270xxx` family draws from `$242B3C`. The port drew from `drawWord242EC2`.
+Fixed here.
+
+**STILL WRONG, not this agent's files:** `stage3carrier.js:420,423` has the same error **and two
+wrong site addresses** (cites `$26C8CA`/`$26C8F4`; the real ones are `$26C85C`/`$26C882`).
+`stage5type44.js:406` states the opposite in prose and is wrong.
+
+### THE BIGGER FIND: `$26FFE8` IS ONE-THIRD PORTED, AND TRAP 25 MAKES IT WORSE
+
+`retireCheck4C` transcribes the body of **one of three arms**.
+
+- **`$86 == 1` arm**: the gate (`$270014`), the countdown (`$27001E`), `$27002A lea ($27017E,PC),A1`
+  + `$270030 jsr $26C74E`, `$270082 jsr $28C310` and the tail are **all missing**. **The port fires
+  the bursts on every retire frame with `$86 != 2`; the cartridge fires them once.**
+- **`$86 == 0` arm**: **absent entirely**, 35 instructions `$270094..$27012C`, an
+  instruction-for-instruction twin of stage 3's carrier finale at `$26C8A8`. Ends
+  `$27011C 3d 7c 10 06 00 88` -- **one word covering two byte fields** (trap 3).
+- **TRAP 25: `$270122` is the ONLY instruction in the 6 MB that stores 1 into `($86,A6)`, and it
+  lives in the UNPORTED arm.** So **the arm the port does run is unreachable in play as written.**
+
+Bonus: **`$16F068` is an instruction-for-instruction twin of `$270014` with DIFFERENT `jsr` targets**
+(`$16B7B0`, `$142E8C`) -- the image carries a second build of this code. `claimed.py`: UNCLAIMED.
+
+### THE ABLATION AUDIT CAUGHT ITSELF AGAIN
+
+A4 (RNG restored) **reddened nothing**, because the ROM-byte test did not drive the port and both
+generators bump the same counter and read the same state word, differing only in the table indexed.
+Replaced with a test that replays the draw sequence, asserts ten particle angles, **and asserts the
+seed actually separates the two generators -- or it asserts nothing.** Nine ablations, zero silent.
+
+### NEXT: PORT `$26FFE8`'s TWO MISSING ARMS
+
+Templates already exist at `stage5type44.js:401` and `stage3carrier.js:400`. Needs **two new ROM
+windows** -- `$27017E` (the `$26C74E` list) and `$270134` (`$C` stride, **code-stated bound `$48`
+from `$270104 cmpi.w #$48,($8A,A6)`**) -- each with a `check_*` verifier.
+
+Two things for that agent: **`$26C74E` is already served by `effects.js`'s `clearSubEffectPool` with
+`($1E,A0) = $10`**, and the same wave should fix `stage3carrier.js:420,423`.
+
+## W400 NOTES
 
 ### TWO PRE-EXISTING DEFECTS FOUND, NOT FIXED -- BOTH ARE LIVE
 

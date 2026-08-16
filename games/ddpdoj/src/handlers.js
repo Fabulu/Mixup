@@ -2491,7 +2491,7 @@ function handler49(ram, rom, a5, ctx) {
     ram.setU8(a5 + 0x16, 1);                              // $2716CC move.b #$1,($16,A5)
   }
 
-  scrollCompensate(ram, rom, a5, ctx.unported);            // $2716D2 jsr $24179E
+  scrollCompensate(ram, a5);                           // $2716D2 jsr $24179E
   // $2716D8 `tst.w $271774.l` IS OMITTED ON PURPOSE. $271774 is inside this routine and the word
   // there is $41FA -- the `lea` opcode -- so it reads code as data, and $2716DE `subq.b` overwrites
   // every flag before $2716E2 `bcc` reads carry. It has no effect. Third instance in stage 5 of this
@@ -2644,7 +2644,7 @@ function handler4A(ram, rom, a5, ctx) {
   // $271B06 -- THE FREEZE SKIPS TO THE DRAW, so the ring does NOT advance. $49's freeze branches INTO
   // its counter step and keeps sweeping. Opposite behaviour from the same idiom: do not unify them.
   if (ram.u16(G.freeze) !== 0) { draw4A(ram, rom, a5, a6); return; }
-  scrollCompensate(ram, rom, a5, ctx.unported);             // $271B10 jsr $24179E
+  scrollCompensate(ram, a5);                           // $271B10 jsr $24179E
   // $271B16 `jsr $2714AE` is OMITTED: $2714AE is a bare `rts` and both of its callers target it, so
   // the body at $2714B0 has no reachable entry point in this build (W336). Porting that body would
   // add spawns the board does not make.
@@ -2789,7 +2789,7 @@ function handler4B(ram, rom, a5, ctx) {
   // is $4A's behaviour, not $49's, whose freeze runs into its counter step. Same idiom, and the band
   // does not agree on it.
   if (ram.u16(G.freeze) !== 0) { draw4B(ram, rom, a5, a6); return; }   // $271DE0 bne $271E80
-  scrollCompensate(ram, rom, a5, ctx.unported);             // $271DE4 jsr $24179E
+  scrollCompensate(ram, a5);                           // $271DE4 jsr $24179E
   if (due8(ram, a5 + 0x1a)) {                              // $271DEA subq.b #1 / bcc $271E80
     ram.setU8(a5 + 0x1a, ram.u8(a5 + 0x1b));               // $271DF2
     const next = u16(ram.u16(a5 + 0x1c) + T4B.sweepStep);   // $271DF8 addq.w #4
@@ -2919,7 +2919,7 @@ function handler48(ram, rom, a5, ctx) {
 
   // **NO FREEZE TEST HERE.** $2713CE falls straight into $2713D4. Its three siblings all gate on
   // $8130D2/$8130D4 at this point and $48 does not; adding one would silence a fan the board keeps firing.
-  scrollCompensate(ram, rom, a5, ctx.unported);             // $2713D4 jsr $24179E
+  scrollCompensate(ram, a5);                           // $2713D4 jsr $24179E
   // $2713DA `bsr $2714AE` is OMITTED: $2714AE is a bare `rts` sitting between this handler and the
   // Version-B-disabled body at $2714B0 (W336/W338). Both of its callers target the stub.
   if (ram.u8(a6 + T48.deadFlag) === 0) {                    // $2713DE tst.b ($3F,A6) / bne $271488
@@ -3047,7 +3047,7 @@ function handler47(ram, rom, a5, ctx) {
     ram.setU8(a5 + 0x16, 1);                               // $26D8CC
   }
 
-  scrollCompensate(ram, rom, a5, ctx.unported);             // $26D8D2 jsr $24179E
+  scrollCompensate(ram, a5);                           // $26D8D2 jsr $24179E
   if (ram.u8(a6 + T47.deadFlag) !== 0) { draw47(ram, rom, a5, a6); return; }   // $26D8D8 bne $26DAC8
 
   // $26D8E0 -- ($17,A5) IS A STATE NUMBER HERE, not the band's mirror flag, and ($1C,A5) is a WORD
@@ -3180,7 +3180,7 @@ function handler43(ram, rom, a5, ctx) {
 
   // $26DE3C -- ($17,A5) IS A STATE NUMBER, as in $47 and unlike all four band members.
   if (ram.u8(a5 + 0x17) === 0) {
-    scrollCompensate(ram, rom, a5, ctx.unported);           // $26DE46 jsr $24179E
+    scrollCompensate(ram, a5);                         // $26DE46 jsr $24179E
     const next = u16(ram.u16(a5 + 0x1e) - 1);               // $26DE4C subq.w #1,($1E,A5) / bne
     ram.setU16(a5 + 0x1e, next);
     if (next === 0) ram.setU8(a5 + 0x17, 1);                // $26DE54
@@ -8851,7 +8851,7 @@ function handler55(ram, rom, a5, ctx) {
   // $2724AA -- back LAST frame's sinusoid offset OUT before anything re-applies it. Accumulating
   // instead walks the record off screen at one offset per frame.
   ram.setU16(a6 + 0x02, u16(ram.u16(a6 + 0x02) - ram.u16(a5 + T55.offsetAt)));
-  scrollCompensate(ram, rom, a5, ctx.unported);              // $2724B6 jsr $24179E
+  scrollCompensate(ram, a5);                           // $2724B6 jsr $24179E
 
   // $2724BC -- TWO sequential adds. The carry comes off the SECOND and they must NOT be folded into
   // one addi.w #$8800: same sum, different carry, opposite despawn decision.
@@ -8990,7 +8990,7 @@ function handler46(ram, rom, a5, ctx) {
   } else {
     ram.setU8(a5 + T46.onScreenAt, 1);                    // $27110A
   }
-  scrollCompensate(ram, rom, a5, ctx.unported);           // $271110 jsr $24179E
+  scrollCompensate(ram, a5);                           // $271110 jsr $24179E
 
   // $271116 -- the whole-path pause. Distinct from $55's volley-only $8130D4.
   if (ram.u16(T46.pauseAll) !== 0) { tail46(ram, rom, a5, a6); return; }
@@ -9884,13 +9884,45 @@ function retireCheck4C(ram, rom, a5, a6, ctx) {
   }
   // $270014.. -- the effect emitter. QUARTER-TURN PAIRS: one shared angle, +$40 on one side and +$C0
   // on the other, with MIRRORED position biases. One constant for both stacks them on one bearing.
-  // W372: this is `bigBurst28B4BE`, and STAGE 3'S CARRIER already does it with the SAME two biases and
-  // the SAME quarter turns (stage3carrier.js:422). Read that call site, do not reinvent the shape.
+  // The proven transcription of this exact shape is `stage5type44.js:401` ($26EA26, W400); type $44's
+  // ($A6,A6)/($A8,A6) are this routine's ($86,A6)/($88,A6) under different names.
+  //
+  // ============================ W401: THIS ARM IS ONE THIRD OF $26FFE8 =========================
+  // `$26FFE8` has THREE arms on ($86,A6) and the port transcribes the body of ONE. Verified by
+  // `tools/aligned.py sweep` and asserted byte-for-byte in `tests/w401arity.test.js`:
+  //
+  //   $86 == 2  ported above.
+  //   $86 == 1  THIS block -- but the ENTRY TEST AND THE TAIL ARE BOTH MISSING:
+  //               $270014 `0c 2e 00 01 00 86` cmpi.b #$1,($86,A6) / $27001A bne.w -> $270094
+  //               $27001E `53 2e 00 88`       subq.b #1,($88,A6)  / $270022 bne.w -> $270094
+  //               $27002A `43 fa 01 52`       lea ($27017E,PC),A1 / $270030 jsr $26C74E
+  //               $270082 `4e b9 00 28 c3 10` jsr $28C310  (the cue; cf. T44.deathCueB)
+  //               $270088 move.b #$10,($88,A6) / $27008E move.b #$2,($86,A6)
+  //             so the port fires the bursts on EVERY retire frame with ($86,A6) != 2, where the
+  //             cartridge fires them ONCE, only at ($86,A6) == 1, and only as ($88,A6) hits zero.
+  //   $86 == 0  ABSENT ENTIRELY -- 35 instructions, $270094..$27012C. It is an instruction-for-
+  //             instruction twin of stage 3's carrier finale at $26C8A8 (stage3carrier.js:400),
+  //             walking a $C-stride list at $270134 to a code-stated $48 bound ($270104 cmpi.w
+  //             #$48,($8A,A6)), and it ENDS at $27011C `3d 7c 10 06 00 88` move.w #$1006,($88,A6)
+  //             -- ONE WORD covering TWO byte fields, $88=$10 and $89=$06 -- then $270122
+  //             `1d 7c 00 01 00 86` move.b #$1,($86,A6), which is THE ONLY WRITER OF ($86,A6)=1
+  //             in the whole 6 MB. Nothing else arms the arm below, so with $86 == 0 out of the
+  //             record prototype this block is UNREACHABLE in play until $270094 is ported.
+  //
+  // Porting the two missing arms needs ROM windows for $27017E and $270134, so it is its own unit.
+  // ============================================================================================
   for (const [turn, bias] of [[0x40, 0xf8000800], [0xc0, 0x01fff800]]) {
-    const r = drawWord242EC2(ram, rom) & 0xff;               // $27005C-family RNG, before each burst
-    bigBurst28B4BE(ram, rom, ctx,                            // $270056 / $270082 jsr $28B4BE
-      packedAdd(ram.u32(a6 + 0x02), bias),                   // $270048 / $27006E addi.l
-      u16(r * 2 + turn),                                     // $27003C asl.b #1 then +$40 / +$C0
+    // W401: this was `drawWord242EC2`. $270036 and $27005C are BOTH `4e b9 00 24 2b 3c` = jsr
+    // $242B3C, and EVERY `jsr $28B4BE` in the $26Cxxx/$26Exxx/$270xxx family draws from $242B3C.
+    // (stage5type44.js:406 records the opposite -- "$242B3C here, $242EC2 there" -- and is wrong.)
+    const r = drawByte242B3C(ram, rom);                      // $270036 / $27005C jsr $242B3C
+    bigBurst28B4BE(ram, rom, ctx,                            // $270056 / $27007C jsr $28B4BE
+      // $270048 / $27006E `06 82 f8 00 08 00` addi.l #$F8000800,D2 -- a FULL 32-bit add, so no
+      // packed half-word helper. W401: this read `packedAdd(...)`, a non-exported local in
+      // stage3carrier.js that was never imported here -- a ReferenceError on every frame that
+      // reached this arm, and nothing drove it.
+      u32(ram.u32(a6 + 0x02) + bias),
+      (((r << 1) & 0xff) + turn) & 0xff,                     // $27003C asl.b #1 / $270040 addi.b
       0, 0x0c, 0x270056);                                    // $270052 D0=0, $27004E D3=$C
   }
   return false;
