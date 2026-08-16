@@ -72,10 +72,21 @@ test('W211 static Stage-4 census, resource, terrain, and opening closure',
   const bg = manifest.gfx.bg.shards.find((s) => s.kind === 'stage4');
   assert.ok(bg, 'Stage-4 deferred background shard');
   assert.equal(bg.tiles, 1890);
-  const art = manifest.spr.harvest.find((h) => h.at === '$2622EA');
-  assert.ok(art, 'clock-0 Stage-4 BGELEM id-5 art harvest');
-  assert.deepEqual([art.entries, art.distinct], [1, 1]);
-  assert.equal(manifest.spr.streamCount, 4258);
+  // W396 WIDENED THIS ROW, and this assertion is updated rather than deleted.
+  // W211 harvested the SINGLE table cell `$2622EA` (id 5) and pinned it as
+  // `[entries 1, distinct 1]`. The exporter's arm now reads the whole seven-
+  // entry table `$2622D6..$2622F1` whose extent the pointer array `$262302`
+  // states, so the ledger row moved to the TABLE's base and carries
+  // `[7, 6]` -- seven elements, six distinct streams, because ids 0 and 6 share
+  // `$2B01D0`. Id 5's own harvest is unchanged and still asserted, one line
+  // down: it is the entry the clock-0 script requests.
+  const art = manifest.spr.harvest.find((h) => h.at === '$2622D6');
+  assert.ok(art, 'Stage-4 BGELEM art harvest, the whole $2622D6 table');
+  assert.deepEqual([art.entries, art.distinct], [7, 6]);
+  assert.equal(art.endsAt, '$2622F2',
+    'and it ends AT the pointer array\'s entry 4 -- the bound is the '
+    + 'cartridge\'s, not a count typed into the exporter');
+  assert.equal(manifest.spr.streamCount, 4263);
 });
 
 test('W211 real Stage-4 opening installs terrain, draws id 5, and pulses A6',

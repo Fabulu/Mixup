@@ -625,12 +625,53 @@ export const BGELEM_HANDLERS = [
   { stage: 2, id: 12, ctor: 0x262F24, upd: 0x262F42, data: 0x2A3AE0, yPos: 0x3920, kind: 0x16, thr: 0x7000, v: 'lbgt', gate: false, emit: 0x23DEFC },
   { stage: 2, id: 13, ctor: 0x262F76, upd: 0x262F94, data: 0x2A5A64, yPos: 0x1E70, kind: 0x16, thr: 0x3C00, v: 'lbgt', gate: false, emit: 0x23DEFC },
 
-  // W211. Internal stage index 3, human Stage 4. Script 0 requests id 5 at
-  // clock 0, before the first enemy record. The other Stage-4 rows stay loud
-  // until their chronological scroll-script clocks are delivered.
+  // W211/W396. Internal stage index 3, human Stage 4. W211 ported ONE row --
+  // id 5, the element script 0 requests at clock 0 -- and left the other six
+  // to `unreached`. W396 ported the rest.
+  //
+  // THE EXTENT IS THE POINTER ARRAY'S, exactly as W394/W395 took internal stage
+  // 2's: `$262302 + 3*4` = `$2622D6` and `$262302 + 4*4` = `$2622F2`, so
+  // `($2622F2 - $2622D6) / 4` = SEVEN entries and the next stage's table is the
+  // bound. Nothing here is a counted absence.
+  //
+  // ALL SEVEN ARE THE PLAIN SHAPE, and `tests/w396stage4art.test.js` §1 decodes
+  // every byte of all seven rather than pattern-matching them:
+  //
+  //     2D7C <data> 0010    move.l #data,($10,A6)
+  //     3D7C <yPos> 0014    move.w #yPos,($14,A6)
+  //     2D7C <upd>  0008    move.l #upd,($8,A6)
+  //     1D7C <kind> 000D    move.b #kind,($D,A6)      ids 0..5
+  //     3D7C <kind> 000C    move.w #kind,($C,A6)      id 6 ONLY -- trap 3
+  //     4E75                rts, AT ctor+$1C (trap 5)
+  //
+  // NOT ONE IS COMPLEX. Internal stage 2's id 7 (`$262982`) installs `$2629AE`,
+  // which reverse-walks the 32-pair table `$262A4C`; nothing of that kind is
+  // here. Every updater is the $32-byte common shape and each carries its OWN
+  // address, so seven rows are seven elements, not 64 streams behind one.
+  //
+  // ALL SEVEN JUMP TO `$23DF2A`, BUCKET 2, at `upd+$2C`. That is the OPPOSITE
+  // of internal stage 2, whose fourteen all end `4EF9 0023DEFC` (bucket 1), and
+  // it is checked here and in `tools/export-web.mjs` rather than assumed --
+  // W394's finding was that an aliased updater puts a whole stage in the wrong
+  // bucket while every test still passes.
+  //
+  // **IDS 0 AND 6 ARE THE SAME PICTURE WITH A DIFFERENT `kind`.** `$262FC8` and
+  // `$26301A` write byte-identical `data` (`$2B01D0`), `yPos` (`$3520`) and
+  // `update` (`$262FE6` -- literally the same updater, so `BGELEM_BY_UPD`
+  // collides exactly as W168's stage-1 ids 2/4 and 3/5 already do, and harmlessly:
+  // `thr`/`v`/`emit`/`gate` are identical by construction and `kind` is read
+  // back out of the SLOT, never out of `h`). The only difference in the two
+  // constructors is the last instruction: `1D7C 0016 000D` against
+  // `3D7C 0056 000C`. So the stage has SEVEN elements and SIX distinct streams.
+  { stage: 3, id: 0, ctor: 0x262FC8, upd: 0x262FE6, data: 0x2B01D0, yPos: 0x3520, kind: 0x16, thr: 0x6800, v: 'lbge', gate: false, emit: 0x23DF2A },
+  { stage: 3, id: 1, ctor: 0x263038, upd: 0x263056, data: 0x2CE658, yPos: 0x0F20, kind: 0x17, thr: 0x1C00, v: 'lbge', gate: false, emit: 0x23DF2A },
+  { stage: 3, id: 2, ctor: 0x26308A, upd: 0x2630A8, data: 0x2CEE3C, yPos: 0x0F20, kind: 0x16, thr: 0x1C00, v: 'lbge', gate: false, emit: 0x23DF2A },
+  { stage: 3, id: 3, ctor: 0x2630DC, upd: 0x2630FA, data: 0x2CF620, yPos: 0x0F20, kind: 0x17, thr: 0x1C00, v: 'lbge', gate: false, emit: 0x23DF2A },
+  { stage: 3, id: 4, ctor: 0x26312E, upd: 0x26314C, data: 0x2CFE04, yPos: 0x0F20, kind: 0x17, thr: 0x1C00, v: 'lbge', gate: false, emit: 0x23DF2A },
   { stage: 3, id: 5, ctor: 0x263180, upd: 0x26319E, data: 0x2CCC74,
     yPos: 0x2F20, kind: 0x16, thr: 0x5C00, v: 'lbge', gate: false,
     emit: 0x23DF2A },
+  { stage: 3, id: 6, ctor: 0x26301A, upd: 0x262FE6, data: 0x2B01D0, yPos: 0x3520, kind: 0x56, thr: 0x6800, v: 'lbge', gate: false, emit: 0x23DF2A, kindWord: true },
 ];
 const BGELEM_BY_CTOR = new Map(BGELEM_HANDLERS.map((h) => [h.ctor, h]));
 const BGELEM_BY_UPD = new Map(BGELEM_HANDLERS.map((h) => [h.upd, h]));

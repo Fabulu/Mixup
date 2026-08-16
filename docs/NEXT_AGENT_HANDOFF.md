@@ -2,7 +2,71 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W395
+## START HERE -- W396
+
+### THE STAGE-4 TABLE EMITS INTO THE **OTHER** BUCKET, AND `bge` NOT `bgt`
+
+Internal index 3 (human Stage 4), `$2622D6`, seven entries (extent
+`($2622F2 - $2622D6)/4`). **ALL SEVEN target `$23DF2A` -- bucket 2 -- where W395's fourteen targeted
+`$23DEFC`, bucket 1.** And **all seven carry `6C00 bge.w`** where W395's fourteen carried
+`6E00 bgt.w`, same displacement `$0006`. **One byte, the other way round, twice.**
+
+**A row copied from the W395 block would be wrong in exactly those byte pairs, and every test would
+still pass.** Do not carry constants across tables.
+
+The six updaters differ from each other in **one byte total** (`+$0A`, the `addi.l` immediate's high
+byte), `$34` bytes otherwise identical.
+
+### SEVEN ROWS ARE SIX STREAMS: IDS 0 AND 6 ARE ONE ELEMENT WITH TWO `kind` WORDS
+
+Byte-identical `data`/`yPos`/`upd`; they differ only at ctor+`$16`/`$19`/`$1B` --
+`1D7C 0016 000D` against `3D7C 0056 000C` (**trap 3, one word over two byte fields**).
+
+**So W395's arm rule `distinct === entries` is FALSE HERE.** Copying it would assert a claim the
+cartridge contradicts. The arm now enforces the structural rule instead: **rows sharing art must
+share their updater**, plus the measured one-pair count.
+
+Five streams are new (`$2CCC74` was already in as W211's single cell). `streamCount` 4258 -> **4263**,
+shard 11 `streams` 813 -> **818**, `maskLen` +15,562. **22,176 mask words compared against raw ROM at
+each packed base, zero differences**, all six headers proven re-based.
+
+### THE GATE MOVED BY ONE FIELD AGAIN, WITNESSES HELD
+
+`11: { streams: 813 -> 818 }`. `records: 12849`, `distinct: 103`, `first: 315` untouched and **still
+passing** -- W58 is a stage-1 window, `$8132C8` holds `$26224A` throughout it, and `elemSpawn`
+reaches a constructor only through that pointer, so stage 1 cannot construct an internal stage-3
+element. Verified in the diff before commit.
+
+### TRAP 23 RESPECTED WITHOUT BEING ASKED
+
+The Stage-4 background VM now runs 5,900 frames cold and constructs ids 5 / 1 / 2 at frames
+1 / 2,625 / 5,761. **Ids 0, 3, 4 and 6 are ported with art in the sheet but NO RUN HAS WITNESSED
+THEM**, and the test claims only what it saw. At HEAD that run threw at frame 2,625:
+`UNPORTED $263038 ... (id 1)`.
+
+**The harness's own frontier is frame 5,968**, where `$26134E`'s map-column pointer walks to
+`$83E0002C` and `rom.u32` refuses it by address.
+
+### NEXT: `$2622F2` -- THE **LAST** BGELEM TABLE
+
+Internal index 4 (human Stage 5). **Four entries**, bounded by the pointer array itself
+(`($262302 - $2622F2)/4 = 4`): `$2631D4`/`$263226`/`$263278`/`$2632CA`, `$52` stride, all plain shape
+with `4E75` at ctor+`$1C`, streams `$3053A0 $305D04 $307388 $31975C`.
+
+**All four emit into `$23DEFC`, bucket 1 -- the other bucket AGAIN.** Do not alias them onto the
+stage-4 rows. Ported by nothing, harvested by nothing.
+
+(The pointer array is exactly five longs: entry 5 reads `$41F90081`, which is the `lea $8131C8,A0`
+at `$262316`.)
+
+### LEDGER CASCADE NOW TOUCHES W395's OWN TEST
+
+`w395stage2art.test.js` SECTION 4's six bundle-wide totals move by construction; each now reads
+`BEFORE.x + <W395 term> + <W396 term>` with both named, so it still states what W395 did. SECTIONS 2
+and 3 there are untouched -- they are about those fourteen, not the bundle. `w211stage4.test.js`'s
+harvest assertion moved `$2622EA` -> `$2622D6` with `[7, 6]` and a new `endsAt` check.
+
+## W395 NOTES
 
 ### THE STAGE'S ART IS IN THE SHEET, PROVED AT THE PIXEL LEVEL
 

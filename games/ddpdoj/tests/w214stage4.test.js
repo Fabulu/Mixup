@@ -56,7 +56,7 @@ test('W214 exact type-$9C root/satellite closure, eleven records, and four new s
   const art = manifest.spr.harvest.find((h) => h.at === '$27B07C');
   assert.ok(art, 'four-frame type-$9C root animation harvest');
   assert.deepEqual([art.entries, art.distinct, art.added], [4, 4, 4]);
-  assert.equal(manifest.spr.streamCount, 4258);
+  assert.equal(manifest.spr.streamCount, 4263);
 });
 
 test('W214 real clock-$E5 root initializes five satellite pairs, fires, draws, and dies',

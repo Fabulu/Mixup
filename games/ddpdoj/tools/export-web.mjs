@@ -2368,8 +2368,8 @@ const STAGE2_BGELEM_TABLE = 0x26227e;
 // nine of the fourteen land inside stage-2/stage-4 boss code in `maincpu.bin`
 // and that is arithmetic coincidence, pinned in `tests/w394bgelem.test.js`.
 const STAGE3_BGELEM_TABLE = 0x26229e;
-/** entry 3 of the same array -- internal stage 3 / human Stage 4, whose id-5
- *  cell the W211 arm below harvests. Here it is only the BOUND. */
+/** entry 3 of the same array -- internal stage 3 / human Stage 4, all SEVEN
+ *  cells of which the W396 arm below harvests. Here it is only the BOUND. */
 const STAGE4_BGELEM_TABLE = 0x2622d6;
 const BGELEM_TABLE_PTRS = 0x262302;
 {
@@ -2462,43 +2462,205 @@ const BGELEM_TABLE_PTRS = 0x262302;
     + 'TERRAIN');
 }
 
-// ------------------------------------------------------------------ WAVE 211
-// Stage 4's clock-0 script requests BGELEM id 5 before its first enemy. Keep
-// the opening harvest tied to the live constructor registry and to the exact
-// id-5 table cell; later Stage-4 elements remain named frontiers rather than
-// being speculatively bundled.
-const STAGE4_BGELEM_ID5 = STAGE4_BGELEM_TABLE + 5 * 4;
+// ------------------------------------------------------- WAVE 211, WIDENED BY
+// ------------------------------------------------------------------ WAVE 396
+//
+// W211 harvested ONE CELL of internal stage index 3's table -- `$2622D6 + 5*4`,
+// the element script 0 requests at clock 0 -- and left the other six entries to
+// `src/background.js`'s `unreached`. W394/W395 then ported and harvested the
+// whole of internal stage 2, so this was the last BGELEM table in the game with
+// a subset arm. W396 ported the six and harvests all seven here.
+//
+// THE EXTENT IS THE POINTER ARRAY'S, the same bound the arm above uses one cell
+// along: `$262302` entry 3 is `$2622D6` and entry 4 is `$2622F2`, so
+// `(to - from) / 4` = SEVEN. Both cells are asserted below, so the table's
+// length is the cartridge's statement and not a count typed into this file.
+//
+// **HOW THIS ARM DIFFERS FROM THE STAGE-2 ARM ABOVE**, each difference a decoded
+// byte rather than an analogy:
+//
+//   * THE EMITTER IS THE OTHER ONE. Internal stage 2's fourteen updaters end
+//     `4EF9 0023DEFC` (bucket 1); all SEVEN of these end `4EF9 0023DF2A`
+//     (bucket 2) at `upd+$2C`/`upd+$2E`. The field is checked here for the same
+//     reason it is checked there -- W394 found that aliasing a near-identical
+//     updater would have put a whole stage in the wrong sprite bucket with
+//     every test still green -- but the CONSTANT is the opposite one, and a row
+//     copied from the block above would be wrong in exactly that byte pair.
+//   * `bge.w`, NOT `bgt.w`. All seven carry `6C00` at `upd+$0C` where internal
+//     stage 2's fourteen carry `6E00`. Same displacement `$0006` in both, so
+//     TRAP 19 applies: one byte, and it decides whether an element survives a
+//     true sum of exactly 0. Every row here is therefore `lbge`.
+//   * SEVEN ENTRIES, SIX DISTINCT STREAMS. The stage-2 arm refuses unless the
+//     distinct count EQUALS the entry count. That rule is false here and
+//     asserting it would assert a claim the cartridge contradicts: `$262FC8`
+//     (id 0) and `$26301A` (id 6) write the same `$2B01D0` descriptor, the same
+//     `$3520` Y and the same `$262FE6` updater, and differ only in their last
+//     instruction -- `1D7C 0016 000D` (`move.b #$16,($D,A6)`) against
+//     `3D7C 0056 000C` (`move.w #$56,($C,A6)`, TRAP 3: one word literal over
+//     two byte fields). So the invariant enforced below is the STRUCTURAL one
+//     -- rows that share art must share their updater -- plus the measured fact
+//     that exactly one such pair exists.
+//   * NOT ONE ENTRY IS COMPLEX. Internal stage 2's id 7 installs `$2629AE`,
+//     which reverse-walks the 32-pair table `$262A4C` and hides 64 streams
+//     behind one handler. All seven rows here are the plain
+//     `2D7C <data> 0010` shape with the `4E75` at `ctor+$1C`, so this arm
+//     harvests at most one stream per row.
+//
+// `data` is a SPRITE-MASK offset and is resolved by `romExtent` against
+// `sprmask`, never against `maincpu.bin`.
+const STAGE4_BGELEM_END = 0x2622f2;
 {
   const handlers = BGELEM_HANDLERS.filter((h) => h.stage === 3);
-  if (handlers.length !== 1 || handlers[0].id !== 5) {
-    throw new Error(`Stage-4 opening BGELEM registry has ${handlers.length} rows; `
-      + 'W211 owns exactly id 5 at clock 0');
+  // THE EXTENT, STATED BY THE CARTRIDGE.
+  const from = romBe32(BGELEM_TABLE_PTRS + 3 * 4);
+  const to = romBe32(BGELEM_TABLE_PTRS + 4 * 4);
+  if (from !== STAGE4_BGELEM_TABLE || to !== STAGE4_BGELEM_END) {
+    throw new Error(`the per-stage handler-table array $${
+      BGELEM_TABLE_PTRS.toString(16)} names $${from.toString(16)} for internal `
+      + `stage 3 and $${to.toString(16)} for stage 4; this file expects $${
+        STAGE4_BGELEM_TABLE.toString(16)} bounded by $${
+        STAGE4_BGELEM_END.toString(16)}. The extent of the art below is that `
+      + 'pair, not a typed-in count.');
   }
-  const h = handlers[0];
-  if (romBe32(STAGE4_BGELEM_ID5) !== h.ctor) {
-    throw new Error(`Stage-4 BGELEM id 5 table names $${
-      romBe32(STAGE4_BGELEM_ID5).toString(16)} but the live registry names $${
-      h.ctor.toString(16)}`);
+  if ((to - from) / 4 !== handlers.length) {
+    throw new Error(`internal stage 3's handler table is $${
+      (to - from).toString(16)} bytes = ${(to - from) / 4} entries and `
+      + `src/background.js carries ${handlers.length} \`stage: 3\` rows. The `
+      + 'cartridge decides how many elements the stage has; a short registry '
+      + 'ships a subset of the terrain and a long one indexes the next stage.');
   }
-  if (romBe16(h.ctor) !== 0x2d7c || romBe16(h.ctor + 6) !== 0x0010
-      || romBe32(h.ctor + 2) !== h.data) {
-    throw new Error('Stage-4 BGELEM id 5 constructor no longer writes its '
-      + 'registry descriptor to ($10,A6)');
+  // ---------------------------------------------------------------- PASS ONE
+  // THE TABLE, DECODED OUT OF THE IMAGE ALONE. Nothing here reads the registry,
+  // so these refusals stand even if `src/background.js` is wrong in exactly the
+  // way the pass below would otherwise hide.
+  const romCtor = [], romData = [], romUpd = [];
+  for (let i = 0; i < handlers.length; i++) {
+    const c = romBe32(STAGE4_BGELEM_TABLE + i * 4);
+    romCtor.push(c);
+    // $262FC8 `2D7C 002B01D0 0010` -- move.l #imm,($10,A6). `0014` at +$6 would
+    // be the Y constant (`3D7C` at +$8 writes that), a different field.
+    if (romBe16(c) !== 0x2d7c || romBe16(c + 6) !== 0x0010) {
+      throw new Error(`internal stage 3 background element ${i}: $${
+        c.toString(16)} is not \`move.l #imm,($10,A6)\` -- it reads ${
+        romBe16(c).toString(16)} ... ${romBe16(c + 6).toString(16)}`);
+    }
+    // $262FD6 `2D7C 00262FE6 0008` -- move.l #upd,($8,A6), the third
+    // instruction. The registry's `upd` is read out of THIS, never assumed from
+    // ctor+$1E, because ids 0 and 6 prove a constructor can install an updater
+    // that is not the code following it.
+    if (romBe16(c + 0x0e) !== 0x2d7c || romBe16(c + 0x14) !== 0x0008) {
+      throw new Error(`internal stage 3 background element ${i}: $${
+        (c + 0x0e).toString(16)} is not \`move.l #upd,($8,A6)\` -- it reads ${
+        romBe16(c + 0x0e).toString(16)} ... ${romBe16(c + 0x14).toString(16)}`);
+    }
+    // TRAP 5: the `4E75` sits AT ctor+$1C, so the unit is $1E bytes. A
+    // constructor that ran on past here would write fields this arm never read.
+    if (romBe16(c + 0x1c) !== 0x4e75) {
+      throw new Error(`internal stage 3 background element ${i}: $${
+        c.toString(16)} does not close with \`4E75 rts\` AT ctor+$1C -- it `
+        + `reads ${romBe16(c + 0x1c).toString(16)}. The five-instruction `
+        + 'constructor is what makes `data` readable out of ctor+2.');
+    }
+    romData.push(romBe32(c + 2));
+    romUpd.push(romBe32(c + 0x10));
   }
-  const already = streams.has(h.data) ? 1 : 0;
-  if (!already) {
-    streams.set(h.data, romExtent(h.data));
+  // SHARED ART MEANS A SHARED UPDATER. `elemConstruct` writes ($10,A6) once and
+  // nothing else ever writes it, so two entries carrying the same descriptor are
+  // the SAME element drawn with a different `kind`; on this table they are also
+  // literally the same `move.l #upd,($8,A6)` immediate. Two entries that shared
+  // art WITHOUT sharing an updater would be two different behaviours reading one
+  // picture, which is the shape a mis-transcribed descriptor takes.
+  const byData = new Map();
+  for (let i = 0; i < romData.length; i++) {
+    if (!byData.has(romData[i])) byData.set(romData[i], []);
+    byData.get(romData[i]).push(i);
+  }
+  for (const [d, ids] of byData) {
+    if (ids.length === 1) continue;
+    if (new Set(ids.map((i) => romUpd[i])).size !== 1) {
+      throw new Error(`internal stage 3 entries ${ids.join('/')} all install $${
+        d.toString(16)} through \`move.l #imm,($10,A6)\` but not one updater (${
+        ids.map((i) => '$' + romUpd[i].toString(16)).join('/')}) -- $${
+        ids.map((i) => romCtor[i].toString(16)).join(' $')}. On this table `
+        + 'shared art is one element with two `kind` bytes, never two elements.');
+    }
+  }
+  // ...and EXACTLY ONE such pair exists: entries 0 and 6, `$2B01D0`, updater
+  // `$262FE6`. MEASURED, and stated as a number so that a seventh distinct
+  // descriptor appearing (or a sixth vanishing) is a refusal rather than a
+  // quietly different harvest.
+  if (handlers.length - byData.size !== 1) {
+    throw new Error(`internal stage 3's table $${
+      STAGE4_BGELEM_TABLE.toString(16)} has ${handlers.length} entries and ${
+      byData.size} distinct descriptors (${
+      [...byData.keys()].map((d) => '$' + d.toString(16)).join(' ')
+    }); the cartridge has exactly ONE duplicate pair here -- $2B01D0, entries 0 `
+      + 'and 6, whose constructors $262FC8 and $26301A differ only in the `kind` '
+      + 'instruction, $262FDE `1D7C 0016 000D` against $263030 `3D7C 0056 000C`. '
+      + 'Any other count means the harvest is not the table.');
+  }
+
+  // ---------------------------------------------------------------- PASS TWO
+  // THE REGISTRY, AGAINST WHAT PASS ONE DECODED.
+  let added = 0, already = 0;
+  const seen = new Set();
+  for (let i = 0; i < handlers.length; i++) {
+    const h = handlers[i];
+    if (h.id !== i) {
+      throw new Error(`internal stage 3 row ${i} carries id ${h.id}; these rows `
+        + 'are indexed by op $10\'s id through this very table');
+    }
+    if (romCtor[i] !== h.ctor) {
+      throw new Error(`internal stage 3 background element ${i}: the `
+        + `cartridge's own table $${STAGE4_BGELEM_TABLE.toString(16)} names $${
+          romCtor[i].toString(16)} and src/background.js's row ${i} is $${
+          h.ctor.toString(16)}`);
+    }
+    if (romData[i] !== h.data) {
+      throw new Error(`internal stage 3 background element ${i} ($${
+        h.ctor.toString(16)}): the cartridge writes $${romData[i].toString(16)} `
+        + `into ($10,A6) and src/background.js says $${h.data.toString(16)}. `
+        + 'The port would draw one picture and simulate another.');
+    }
+    if (romUpd[i] !== h.upd) {
+      throw new Error(`internal stage 3 background element ${i} ($${
+        h.ctor.toString(16)}): the cartridge writes $${romUpd[i].toString(16)} `
+        + `into ($8,A6) and src/background.js says $${h.upd.toString(16)}. `
+        + 'The updater is what `elemDriver` looks the row up BY, so a wrong one '
+        + 'runs another element\'s despawn test against this one\'s slot.');
+    }
+    // $26319E+$2C `4EF9 0023DF2A` -- the updater's tail jump. BUCKET 2, against
+    // internal stage 2's $23DEFC. This is the byte pair that makes these seven
+    // rows their own family rather than aliases of $262B6A.
+    if (romBe16(h.upd + 0x2c) !== 0x4ef9 || romBe32(h.upd + 0x2e) !== h.emit
+        || h.emit !== 0x23df2a) {
+      throw new Error(`internal stage 3 background element ${i}: updater $${
+        h.upd.toString(16)} does not end \`4EF9 $23DF2A\` -- it reads ${
+        romBe16(h.upd + 0x2c).toString(16)} $${
+        romBe32(h.upd + 0x2e).toString(16)} against registry $${
+        (h.emit >>> 0).toString(16)}. A row aliased onto internal stage 2's `
+        + 'updater would put this stage\'s terrain in the wrong sprite bucket.');
+    }
+    seen.add(h.data);
+    if (streams.has(h.data)) { already++; continue; }
+    streams.set(h.data, romExtent(h.data));  // throws unless a stream start
     shardOfStream.set(h.data, STRUCT_SHARD);
+    added++;
   }
-  const added = already ? 0 : 1;
-  harvested += added;
-  harvestAlready += already;
-  harvestReport.push({ shard: STRUCT_SHARD, base: STAGE4_BGELEM_ID5,
-    entries: 1, stride: 4, runsTo: 1, endsAt: STAGE4_BGELEM_ID5 + 4,
-    distinct: 1, added, already,
-    why: 'W211 Stage-4 clock-0 BGELEM id 5: constructor $263180 immediate '
-      + 'descriptor $2CCC74, before the first enemy record' });
-  console.log(`  Stage-4 opening background element: 1 stream, ${added} new`);
+  harvested += added; harvestAlready += already;
+  harvestReport.push({ shard: STRUCT_SHARD, base: STAGE4_BGELEM_TABLE,
+    entries: handlers.length, stride: 4, runsTo: handlers.length,
+    endsAt: STAGE4_BGELEM_TABLE + handlers.length * 4,
+    distinct: seen.size, added, already,
+    why: 'W396 INTERNAL STAGE 3 (human Stage 4): all 7 elements\' own sprites, '
+      + 'six distinct streams (ids 0 and 6 share $2B01D0), extent taken from '
+      + 'the per-stage pointer array $262302 (entry 3 $2622D6 bounded by entry '
+      + '4 $2622F2) and each descriptor read out of its own `move.l '
+      + '#imm,($10,A6)`. W211 shipped id 5 alone; the other six drew the W86 '
+      + 'BLACK TERRAIN' });
+  console.log(`  internal stage-3 background elements: ${handlers.length} `
+    + `handlers, ${seen.size} distinct streams, ${added} new -- STAGE 4's `
+    + 'TERRAIN');
 }
 
 // W212: type $9B stores its two direct sprite descriptors in consecutive

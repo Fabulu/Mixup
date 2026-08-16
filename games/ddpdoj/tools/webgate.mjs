@@ -1286,7 +1286,22 @@ try {
         // and stage 1 cannot construct a stage-3 element (`$8132C8` holds
         // `$26224A`, not `$26229E`), so those three are untouched witnesses
         // that the added art changed nothing this scenario draws.
-        11: { streams: 813, records: 12849, distinct: 103, first: 315,
+        // W396: streams 813 -> 818 and NOTHING ELSE MOVED, for the same reason
+        // and with the same argument as W395's line directly above.  The
+        // exporter's Stage-4 BGELEM arm widened from ONE table cell ($2622EA,
+        // id 5) to the whole seven-entry table $2622D6..$2622F1, so the six
+        // elements W396 ported bring five streams that were in no shard before
+        // ($2B01D0 $2CE658 $2CEE3C $2CF620 $2CFE04; $2CCC74 was already here as
+        // W211's single cell) and all five land in this shard.
+        // `records`, `distinct` and `first` ARE UNTOUCHED WITNESSES, not
+        // re-pinned numbers: this is the same STAGE-1 window, `$8132C8` holds
+        // `$26224A` throughout it, and `elemSpawn` can only reach a constructor
+        // through that pointer -- so stage 1 cannot construct an internal
+        // stage-3 element and cannot draw one of these five pictures.  If any
+        // of those three HAD moved, this wave would have changed something it
+        // does not claim to touch, and leaving them standing is what makes this
+        // gate able to say so.
+        11: { streams: 818, records: 12849, distinct: 103, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };
