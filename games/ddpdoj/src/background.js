@@ -570,6 +570,61 @@ export const BGELEM_HANDLERS = [
   { stage: 1, ctor: 0x262930, upd: 0x26294E, data: 0x27B49C, yPos: 0x1220, kind: 0x15, thr: 0x2400, v: 'lbge', gate: false, emit: 0x23DF2A },
   { stage: 1, ctor: 0x262982, upd: 0x2629AE, complex: 'stage2-pair', animTable: 0x262A4C, animPairs: 32 },
 
+  // W394. Internal stage index 2, human Stage 3 -- **demo 2's stage**, and the
+  // reason a cold boot died at +10,514 on `$262B4C`. `$262302 + 2*4` names the
+  // table `$26229E`, and the NEXT stage's pointer (`$2622D6`) bounds it: $38
+  // bytes, FOURTEEN entries. That is the extent, stated by the pointer array
+  // rather than by an absence.
+  //
+  // ALL FOURTEEN ARE THE SAME $52-BYTE UNIT: an $1E-byte constructor of exactly
+  // the five instructions above (`rts` AT ctor+$1C, trap 5), a $32-byte updater
+  // at ctor+$1E, and a `4E71 nop` filler at ctor+$50. Every field below is read
+  // out of the instruction that writes it, and the opcode and displacement of
+  // each of those instructions is asserted in `tests/w394bgelem.test.js`; not
+  // one constant is typed in.
+  //
+  // **THE BRIEF SAID `$262B6A` DIFFERS FROM THE PORTED `$2627CA` IN TWO BYTES.
+  // IT IS FOUR, AND NONE OF THEM IS A DISPLACEMENT:**
+  //
+  //   +$0A  $262B74 = $70  vs  $2627D4 = $5C   the `addi.l` threshold's high
+  //                                            byte: #$7000 against #$5C00
+  //   +$0C  $262B76 = $6E  vs  $2627D6 = $6C   the CONDITION, not a target.
+  //                                            `6E00` is `bgt.w`, `6C00` is
+  //                                            `bge.w`; the displacement word
+  //                                            that follows is $0006 in BOTH,
+  //                                            so both branch to ctor+$32.
+  //                                            bge keeps an element alive on a
+  //                                            true sum of exactly 0, bgt kills
+  //                                            it -- one frame of difference at
+  //                                            the despawn edge, which is why
+  //                                            this row is `lbgt` and $2627CA's
+  //                                            is `lbge`.
+  //   +$30  $262B9A = $DE  vs  $2627FA = $DF   the `4EF9 jmp` target's low word:
+  //   +$31  $262B9B = $FC  vs  $2627FB = $2A   $23DEFC (bucket 1) against
+  //                                            $23DF2A (bucket 2). A DIFFERENT
+  //                                            EMITTER, and aliasing the
+  //                                            updater would have put every one
+  //                                            of these elements in the wrong
+  //                                            sprite bucket.
+  //
+  // All fourteen carry `6E00` and jump to `$23DEFC`, so the whole stage is
+  // `lbgt` into bucket 1. `kind` is $16 for all fourteen as well; only `data`,
+  // `yPos` and `thr` vary.
+  { stage: 2, id: 0, ctor: 0x262B4C, upd: 0x262B6A, data: 0x290F10, yPos: 0x38A0, kind: 0x16, thr: 0x7000, v: 'lbgt', gate: false, emit: 0x23DEFC },
+  { stage: 2, id: 1, ctor: 0x262B9E, upd: 0x262BBC, data: 0x292094, yPos: 0x3920, kind: 0x16, thr: 0x7000, v: 'lbgt', gate: false, emit: 0x23DEFC },
+  { stage: 2, id: 2, ctor: 0x262BF0, upd: 0x262C0E, data: 0x294018, yPos: 0x3920, kind: 0x16, thr: 0x7000, v: 'lbgt', gate: false, emit: 0x23DEFC },
+  { stage: 2, id: 3, ctor: 0x262C42, upd: 0x262C60, data: 0x295F9C, yPos: 0x1040, kind: 0x16, thr: 0x2000, v: 'lbgt', gate: false, emit: 0x23DEFC },
+  { stage: 2, id: 4, ctor: 0x262C94, upd: 0x262CB2, data: 0x2961A0, yPos: 0x3920, kind: 0x16, thr: 0x7000, v: 'lbgt', gate: false, emit: 0x23DEFC },
+  { stage: 2, id: 5, ctor: 0x262CE6, upd: 0x262D04, data: 0x298124, yPos: 0x3920, kind: 0x16, thr: 0x7000, v: 'lbgt', gate: false, emit: 0x23DEFC },
+  { stage: 2, id: 6, ctor: 0x262D38, upd: 0x262D56, data: 0x29A0A8, yPos: 0x3920, kind: 0x16, thr: 0x7000, v: 'lbgt', gate: false, emit: 0x23DEFC },
+  { stage: 2, id: 7, ctor: 0x262D8A, upd: 0x262DA8, data: 0x29C02C, yPos: 0x1720, kind: 0x16, thr: 0x2C00, v: 'lbgt', gate: false, emit: 0x23DEFC },
+  { stage: 2, id: 8, ctor: 0x262DDC, upd: 0x262DFA, data: 0x29CC90, yPos: 0x3890, kind: 0x16, thr: 0x7000, v: 'lbgt', gate: false, emit: 0x23DEFC },
+  { stage: 2, id: 9, ctor: 0x262E2E, upd: 0x262E4C, data: 0x29DC54, yPos: 0x3920, kind: 0x16, thr: 0x7000, v: 'lbgt', gate: false, emit: 0x23DEFC },
+  { stage: 2, id: 10, ctor: 0x262E80, upd: 0x262E9E, data: 0x29FBD8, yPos: 0x3920, kind: 0x16, thr: 0x7000, v: 'lbgt', gate: false, emit: 0x23DEFC },
+  { stage: 2, id: 11, ctor: 0x262ED2, upd: 0x262EF0, data: 0x2A1B5C, yPos: 0x3920, kind: 0x16, thr: 0x7000, v: 'lbgt', gate: false, emit: 0x23DEFC },
+  { stage: 2, id: 12, ctor: 0x262F24, upd: 0x262F42, data: 0x2A3AE0, yPos: 0x3920, kind: 0x16, thr: 0x7000, v: 'lbgt', gate: false, emit: 0x23DEFC },
+  { stage: 2, id: 13, ctor: 0x262F76, upd: 0x262F94, data: 0x2A5A64, yPos: 0x1E70, kind: 0x16, thr: 0x3C00, v: 'lbgt', gate: false, emit: 0x23DEFC },
+
   // W211. Internal stage index 3, human Stage 4. Script 0 requests id 5 at
   // clock 0, before the first enemy record. The other Stage-4 rows stay loud
   // until their chronological scroll-script clocks are delivered.

@@ -841,7 +841,13 @@ test('W393 SECTION 5: THE DEMOS PLAY. Past +5,996, and all three formations run'
     assert.equal(formations.get('4:rotate').frames, 754,
       'formation 4 runs for 754 frames -- 31 of which W392 never saw');
     assert.equal(formations.get('2:rotate').frames, 1264, 'formation 2 for 1,264');
-    assert.equal(formations.get('6:rotate').frames, 443, 'formation 6 for 443');
+    // **W394 CORRECTION.** This read 443, and 443 was not formation 6's length -- it was the
+    // distance from demo 2's first option frame (+9,999) to the frame the port DIED on (+10,514,
+    // `$262B4C`). With internal stage 2's fourteen background-element constructors ported the
+    // demo runs to its own end and formation 6 gets its real 732 frames, which is 289 more than
+    // any measurement before this wave could see. A number produced by a crash is not a
+    // measurement of the thing that crashed.
+    assert.equal(formations.get('6:rotate').frames, 732, 'formation 6 for 732 -- see W394');
     // "2:rotate" and "6:rotate" are bookkeeping (those formations have no bit-2 arm); what the
     // key really says about formation 4 is that bit 2 was CLEAR on all 754 frames.
     assert.deepEqual([...formations.get('4:rotate').states].sort(), [0x8000, 0x8001, 0x8003],
@@ -864,16 +870,18 @@ test('W393 SECTION 5: **THE DEMOS NEVER FIRE**, so a cold boot cannot reach any 
       + 'records as never executing in this port');
   });
 
-test('W393 SECTION 5: what is left is $262B4C, and it is a BACKGROUND ELEMENT, not an option',
+test('W393 SECTION 5: what WAS left is $262B4C, a BACKGROUND ELEMENT and never an option',
   { skip: SKIP_T }, () => {
+    // **W394 CORRECTION.** This test opened `assert.ok(threw, 'demo 2 does still die')` and then
+    // pinned +10,514 and `$262B4C`. It cannot survive W394, which ports `$262B4C` and the other
+    // thirteen constructors of the same table -- demo 2 does NOT still die. What the test was
+    // really for is the SECOND half: that the thing in the way was never the option subsystem.
+    // That half is kept, and the first half is inverted rather than deleted.
     const { threw } = coldBoot(12000);
-    assert.ok(threw, 'demo 2 does still die');
-    assert.equal(threw.f, 10514, '532 frames into demo 2, not 31');
-    assert.equal(threw.e.romAddress, 0x262b4c, 'and the address is $262B4C');
-    assert.match(threw.e.message, /BGELEM constructor/, '  ...a BG-element constructor');
-    assert.equal(/\$24C4F8|\$24C690|option formation/.test(threw.e.message), false,
-      'NOTHING in the option subsystem is left in the way');
-    // THIRTY BYTES, and the far end is pinned by the `rts` AT the last address (trap 5).
+    assert.equal(threw, null,
+      'demo 2 no longer dies at all; see tests/w394bgelem.test.js SECTION 5');
+    // The routine itself is unchanged in the cartridge, and W393's byte measurements of it were
+    // right. They stay, because they are what W394's registry row was built from.
     assert.equal(w(0x262b4c), 0x2d7c, '$262B4C move.l #imm,(d16,A6)');
     assert.equal(l(0x262b4e), 0x00290f10, '  ...#$290F10');
     assert.equal(w(0x262b5a), 0x2d7c, '$262B5A move.l #imm,(d16,A6)');

@@ -2,7 +2,74 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W393
+## START HERE -- W394
+
+### ALL THREE DEMOS PLAY. 60,000 FRAMES, FOURTEEN ATTRACT LAPS, NO THROW.
+
+`THREW at frame 10514` is gone. Laps are exactly 4,032 frames each; the test pins 20,000 (five
+laps). W392's sixteen transitions are unchanged.
+
+Demo 2 spawns **exactly one** stage-2 element, id 0, at **+10,514** -- the very frame that used to
+die -- and it lives 2,487 slot-frames to the demo's end. Bucket 1 record 0 reads
+`800F 83E0 | 00290F10 | 38A0 | 0016`: the row's own art, yPos and kind.
+
+### THE "TWO-BYTE DIFF" WAS FOUR BYTES, AND ALIASING WOULD HAVE BEEN A SILENT BUG
+
+My brief said the updater differed from `$2627CA` in two bytes, one being a branch displacement.
+**Wrong on both counts:**
+
+| off | `$262B6A` | `$2627CA` | what it is |
+|---|---|---|---|
+| +$0A | `70` | `5C` | `addi.l` threshold `#$7000` vs `#$5C00` |
+| +$0C | `6E` | `6C` | **THE CONDITION**: `6E00 bgt.w` vs `6C00 bge.w`. The displacement at +$0E is `$0006` in BOTH |
+| +$30/$31 | `DE FC` | `DF 2A` | **THE EMIT TARGET**: `$23DEFC` vs `$23DF2A`, which `resolveEmitStub` sends to **bucket 1 vs bucket 2** |
+
+**Aliasing would have queued every element of the stage into the WRONG SPRITE BUCKET and kept it
+alive one frame longer at the despawn edge.** Driven at a true sum of exactly 0, where the `bgt`
+element dies in the same frame the `bge` element lives, in one pass of the real driver.
+
+**A BGELEM constructor** writes four fields into the A6 slot and returns: `data`
+(`move.l #imm,($10,A6)`), `yPos` (`move.w #imm,($14,A6)`), `update` (`move.l #imm,($8,A6)`), `kind`
+(`move.b #imm,($D,A6)` -- a word literal covering byte + pad, trap 3). The updater ends in `4EF9`
+and **never returns**; it tail-jumps into the emitter.
+
+### IT WAS FOURTEEN ROWS, NOT ONE
+
+`$262302 + 2*4` names `$26229E`, and the NEXT stage's pointer `$2622D6` bounds it: `$38` bytes = 14
+entries, each a flat `$52`-byte unit (`$1E` ctor + `$32` updater + `4E71` filler). All fourteen are
+`kind $16`, `lbgt`, `emit $23DEFC`; only `data`/`yPos`/`thr` vary. **Ids 1..13 are ported but never
+reached by a cold boot** -- transcribed, not deferred.
+
+### A MEASUREMENT THAT WAS SILENTLY WRONG
+
+`w393options.test.js` asserted `formations.get('6:rotate').frames === 443`. **443 was never formation
+6's length -- it was the distance from +9,999 to the crash at +10,514.** The real value is **732**.
+A number that only looked right because the run ended.
+
+### NO NEW WINDOWS, AND THE `data` VALUES ARE NOT PROGRAM-ROM ADDRESSES
+
+The port reads exactly two things and both windows predate this wave: the table via `$262240+$100`
+and the emit stub via `$23D760+$962`. Ablated from the exported tables: without `$23D760` the boot
+dies at **+303** on `$23DECE`; without `$262240` at **+1,935** on `$262302`. Overlap 71 either way.
+
+**`export-web.mjs romExtent` resolves the fourteen `data` values against `sprmask`, not
+`maincpu.bin`.** Nine of them numerically fall inside stage-2/stage-4 BOSS CODE windows -- that is
+arithmetic coincidence, pinned in the test so nobody misreads it as coverage.
+
+### NEXT: `export-web.mjs` HAS NO `stage === 2` ART ARM
+
+It has arms for stages 0, 1 and 3. The fourteen streams
+`$290F10 $292094 $294018 $295F9C $2961A0 $298124 $29A0A8 $29C02C $29CC90 $29DC54 $29FBD8 $2A1B5C
+$2A3AE0 $2A5A64` are **absent from the sprite sheet** -- W86's black terrain, on internal stage 2.
+The elements are live in the queue with correct art pointers; the art itself is not harvested.
+
+### `rank.js`'s STALE LINE IS GONE, AND NOTHING ASSERTED IT
+
+Line 142's "which NOTES `$260580` instead of running it" was false since W378. **A grep over
+`tests/` finds no quote of it, which is why it survived two waves.** Replaced with a driven proof:
+`$81315C` goes non-zero at +1,934 with `$260874`.
+
+## W393 NOTES
 
 ### DEMOS 0 AND 1 PLAY. DEMO 2 DIES ON A **BACKGROUND** GAP, NOT AN OPTION.
 

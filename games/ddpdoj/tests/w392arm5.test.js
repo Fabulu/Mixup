@@ -532,11 +532,16 @@ test('W392 SECTION 4: THE LOOP CYCLES. Arm 2 runs a SECOND time at +4,334 and a 
     // because +12,000 is no longer reached -- and the reason is that the machine really IS
     // mid-demo on lap 3, playing one, which is what W392 could not measure.
     assert.equal(g.ram.u16(SCREEN8.state), 5, 'the run ends mid-demo on lap 3');
-    assert.equal(threw?.f, 10514, '...at +10,514');
-    assert.equal(threw?.e?.romAddress, 0x262b4c,
-      '...on $262B4C, an unported BGELEM constructor demo 2\'s stage asks for. It is 532 frames '
-      + 'into the third demo and it is not in the attract sequencer or the option subsystem; '
-      + 'see w393options.test.js SECTION 5');
+    // **W394 CORRECTION, AND IT IS THE THIRD TIME THIS PAIR OF LINES HAS MOVED.** They read
+    // `assert.equal(threw?.f, 10514)` and `assert.equal(threw?.e?.romAddress, 0x262b4c)`. They
+    // CANNOT survive W394: `$262B4C` and the other thirteen constructors of internal stage 2's
+    // element table are ported (`src/background.js BGELEM_HANDLERS`, `tests/w394bgelem.test.js`),
+    // so the run no longer ends at all. +12,000 is reached, and so is +20,000. The assertion is
+    // inverted rather than deleted, because "the run does not end" is the fact this test's own
+    // header paragraph is about.
+    assert.equal(threw, null, 'and it does NOT end: 12,000 frames, no throw. W392 measured '
+      + 'three laps and a park; W393 measured three laps and a death at +10,514 on $262B4C; '
+      + 'W394 ports that constructor and the loop simply keeps cycling');
   });
 
 test('W392 SECTION 4: $803926 is up for exactly the 2,415 frames of arm 5, and $803928 rotates',

@@ -139,7 +139,16 @@ const note = (ctx, a, w) => (ctx?.unportedLog ?? ctx?.unported)?.note(a, w);
 //     tail of `$26051A`, whose only caller is `$26059A bsr $26051A` inside
 //     `$260580`, whose only caller is `$26077E bsr.w $260580` at the tail of
 //     `$26070C` -- the one-shot handoff `objslot17.js` ports as
-//     `handoff26070C`, which NOTES `$260580` instead of running it.
+//     `handoff26070C`.
+//
+//     **W394: THAT SENTENCE USED TO END "which NOTES `$260580` instead of
+//     running it", AND IT HAD BEEN A LIE SINCE W378.** `$26077E` is a CALL:
+//     `src/objslot17.js` imports `stageStart260580` from this file and invokes
+//     it (`objslot17.js` `stageStart260580(ram, rom, ctx, d6, d7, a5);`), with
+//     its own comment eleven lines above reading "**AND THIS IS A CALL NOW, NOT
+//     A NOTE.**". Nothing asserted the stale wording -- `grep` over `tests/`
+//     finds no test quoting it -- so it survived sixteen waves purely because a
+//     comment beside a live call is invisible. Trap 14, in its own words.
 //  2. **The cartridge never lets the recompute run before that handoff.**
 //     `$260666 move.w #$1,$813082` in the state-0 INIT raises the very gate
 //     `$2607A8 tst.w $813082 / bne $260808` tests, and the ONLY thing that
