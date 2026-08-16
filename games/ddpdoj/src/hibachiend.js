@@ -494,12 +494,8 @@ export const HIBACHI_END_COUNTED = Object.freeze({
     + 'waits $80 frames then jsr $2595E8, which SUSPENDS and ends the stage' },
   // W406: $0F is no longer here -- `src/hibachiguns.js` runs it, together with A1 gun 9, and
   // the real path now takes the whole `$F -> gun 9` link instead of stopping in front of it.
-  0x10: { init: 0x2a6a76, step: 0x2a6a7c, bytes: 0x0040, why: 'the THIRD link of phase B\'s gun '
-    + 'loop. A4 $11 starts it ($2A6AEA), it waits on A1 gun $A ($2A6A92/$2A6A9A) and hands BACK '
-    + 'to $F ($2A6AA2 moveq #$F)' },
-  0x11: { init: 0x2a6ab6, step: 0x2a6abc, bytes: 0x0046, why: 'the SECOND link: A4 $F starts it '
-    + '($2A6A5E), it waits on A1 gun $B ($2A6AD2/$2A6AE0) and hands to $10 ($2A6AE8). W406\'s '
-    + 'stop stands at its init $2A6AB6' },
+  // W407: $10 and $11 are no longer here -- `src/hibachiguns.js` runs both, together with A1
+  // gun $B, so two of phase B's three links are live and the stop has moved on to gun $A.
   0x12: { init: 0x2a6afc, step: 0x2a6b08, bytes: 0x004c, why: 'the same shape over A1 gun $C, '
     + 'and it hands to $F ($2A6B34) -- but NO `moveq #$12 / jsr $25980C` exists anywhere in '
     + '$2A4000..$2AB000, so nothing in the boss ROM starts it. It is an ENTRY, not a link' },

@@ -4629,6 +4629,21 @@ SHOT_WINDOWS.append(
                        "copied to ($2,A4)..($F,A4). Bounded above by $2A899A, "
                        "where gun 9's eight $002A89BA self-pointers begin"))
 
+# ---------------------------------------------------------------- W407: GUN $B
+# ONE new window, and for the same reason gun 9 needed only one: gun $B's D3 is
+# the literal `$2A8D34 move.l #$FA000000,D3`, so it reads no vector table and no
+# muzzle table.  Bounds, none of them an absence: `$2A8C9A`'s lea names $2A8C70;
+# `moveq #$4` + dbra is FIVE words, so $A bytes; and $2A8C7A -- base + $A -- is
+# where gun $B's eight `$002A8C9A` self-pointers begin.
+W407_GUNB_TEMPLATE = 0x2A8C70
+SHOT_WINDOWS.append(
+    (0x2A8C70, 0x000A, "W407: A1 gun $B's slot template, $2A8C9A's lea (TRAP 4: "
+                       "$2A8C9C - $2C). `moveq #$4` + dbra is FIVE words, "
+                       "copied to ($2,A4)..($B,A4); ($C,A4)/($D,A4) come from "
+                       "$2A8CAA's own move.w #$404 and are not in the window. "
+                       "Bounded above by $2A8C7A, where gun $B's eight "
+                       "$002A8C9A self-pointers begin"))
+
 
 def check_hibachi_a1_windows(d: bytes) -> None:
     """W404.  HIBACHI's TWO A1 gun tables and the three data blocks guns 5 and 6 read.
@@ -4848,6 +4863,91 @@ def check_hibachi_a1_windows(d: bytes) -> None:
     if u16(d, 0x2A7088) != 0x536D or u16(d, 0x2A708A) != 0x001A:
         raise SystemExit("$2A7088 is not `subq.w #$1,($1A,A5)`, so those two byte "
                          "writes are no longer the high half of a countdown.")
+
+    # ---- W407: GUN $B.  Template head, decoded the same way, FIVE words.
+    if u16(d, 0x2A8C9A) != 0x41FA:
+        raise SystemExit("$2A8C9A is not `lea (d16,PC),A0`.")
+    got = 0x2A8C9C + s16(u16(d, 0x2A8C9C))
+    if got != W407_GUNB_TEMPLATE:
+        raise SystemExit(f"$2A8C9A's lea lands on ${got:06X}, not "
+                         f"${W407_GUNB_TEMPLATE:06X}.")
+    if u16(d, 0x2A8CA2) != 0x7004 or u16(d, 0x2A8CA4) != 0x32D8:
+        raise SystemExit("$2A8C9A does not copy `moveq #$4` + 1 = FIVE words.")
+    for i in range(8):
+        if u32(d, W407_GUNB_TEMPLATE + 0x0A + i * 4) != 0x002A8C9A:
+            raise SystemExit(
+                f"${W407_GUNB_TEMPLATE + 0x0A + i * 4:06X} is not $002A8C9A; the "
+                "eight self-pointers that bound gun $B's template are gone.")
+    # ($C,A4)/($D,A4) are ONE word literal in the init, not template bytes.
+    if u16(d, 0x2A8CAA) != 0x397C or u16(d, 0x2A8CAC) != 0x0404 \
+            or u16(d, 0x2A8CAE) != 0x000C:
+        raise SystemExit("$2A8CAA is not `move.w #$404,($C,A4)`.")
+    # ---- THE FREEZE ARM THAT RETIRES.  Nine of the fourteen `bne.w`s land on
+    # their own init; gun $B's lands FORWARD on its own retire tail.  Stated as
+    # the decoded displacement of every one of them, so nothing is an absence.
+    a1_table = 0x2A72C8
+    back, other = [], {}
+    for i in range(14):
+        step = u32(d, a1_table + i * 8 + 4)
+        if u16(d, step) != 0x4A79 or u32(d, step + 2) != 0x008130D4:
+            continue
+        if u16(d, step + 6) != 0x6600:
+            raise SystemExit(f"gun ${i:X}'s freeze test is not followed by `6600`.")
+        tgt = step + 8 + s16(u16(d, step + 8))
+        if tgt == u32(d, a1_table + i * 8):
+            back.append(i)
+        else:
+            other[i] = tgt
+    if back != list(range(9)) or other != {0x0B: 0x2A8E84}:
+        raise SystemExit(
+            "the A1 freeze arms have moved: W407 measured guns 0..8 branching "
+            "BACK to their own init and gun $B branching FORWARD to $2A8E84, its "
+            f"own retire tail. Now: back={back}, other={other}.")
+    if u16(d, 0x2A8E84) != 0x086D or u16(d, 0x2A8E88) != 0x0003 \
+            or u16(d, 0x2A8E8A) != 0x700B or u32(d, 0x2A8E8E) != 0x00259B08:
+        raise SystemExit("$2A8E84 is not `bchg #$0,($3,A5) / moveq #$B / jsr "
+                         "$259B08`, so gun $B's freeze arm no longer retires it.")
+    # ---- THE AIM GUN $B THROWS AWAY.  `$2A8D0A jsr $2422A2` then, one
+    # instruction later, `move.w #$80,D1` over the answer.
+    if u16(d, 0x2A8D0A) != 0x4EB9 or u32(d, 0x2A8D0C) != 0x002422A2:
+        raise SystemExit("$2A8D0A is not `jsr $2422A2`.")
+    if u16(d, 0x2A8D10) != 0x323C or u16(d, 0x2A8D12) != 0x0080:
+        raise SystemExit("$2A8D10 is not `move.w #$80,D1`; gun $B's aim is no "
+                         "longer overwritten and the port's constant heading is "
+                         "no longer what the ROM fires.")
+    # ...and the gate that makes the aim block run on volley ONE only.
+    if u16(d, 0x2A8CCA) != 0x142C or u16(d, 0x2A8CCC) != 0x0004 \
+            or u16(d, 0x2A8CCE) != 0xB42C or u16(d, 0x2A8CD0) != 0x0005:
+        raise SystemExit("$2A8CCA is not `move.b ($4,A4),D2 / cmp.b ($5,A4),D2`.")
+    if d[W407_GUNB_TEMPLATE + 2] != d[W407_GUNB_TEMPLATE + 3]:
+        raise SystemExit("gun $B's template no longer holds ($4,A4) == ($5,A4), "
+                         "so $2A8CD2's bne.w no longer makes the aim block a "
+                         "first-volley-only block.")
+    # ---- THE EIGHT KIND STEPS, read as the opcodes themselves.
+    for base in (0x2A8D42, 0x2A8DEA):
+        want = (0x5240, 0x5240, 0x5240, 0x5340, 0x5340, 0x5340, 0x5240, 0x5240)
+        for k, op in enumerate(want):
+            at = base + k * 0x10
+            if u16(d, at) != op:
+                raise SystemExit(
+                    f"${at:06X} is ${u16(d, at):04X}, not ${op:04X}; gun $B's "
+                    "kind no longer walks 3,4,5,6,5,4,3,4,5.")
+            if u16(d, at + 2) != 0x0680 or u32(d, at + 4) != 0x00030000:
+                raise SystemExit(f"${at + 2:06X} is not `addi.l #$30000,D0`.")
+    # ---- A4 $11 AND A4 $10, the two links this wave runs.
+    if u16(d, 0x2A6AD8) != 0x1D7C or u16(d, 0x2A6ADA) != 0x0004 \
+            or u16(d, 0x2A6ADC) != 0x001A:
+        raise SystemExit("$2A6AD8 is not `move.b #$4,($1A,A5)`.")
+    # ...and the write really does sit between the START and the WAIT, which is
+    # A4 $D's arrangement and NOT A4 $F's.  Read as the four opcodes around it.
+    if u16(d, 0x2A6AD0) != 0x700B or u32(d, 0x2A6AD4) != 0x00259A18 \
+            or u16(d, 0x2A6ADE) != 0x700B or u32(d, 0x2A6AE2) != 0x00259A4A:
+        raise SystemExit("A4 $11's ($1A,A5) write no longer sits between "
+                         "`moveq #$B / jsr $259A18` and `moveq #$B / jsr $259A4A`.")
+    for site, seq in ((0x2A6AF2, 8), (0x2A6AAC, 4), (0x2A6A66, 9)):
+        if u16(d, site - 2) != (0x7000 | seq) or u16(d, site) != 0x4EB9 \
+                or u32(d, site + 2) != 0x002598D0:
+            raise SystemExit(f"${site:06X} is not `moveq #${seq:X} / jsr $2598D0`.")
 
 
 def check_option_formation_windows(d: bytes) -> None:

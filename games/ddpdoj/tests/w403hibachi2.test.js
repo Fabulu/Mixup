@@ -605,8 +605,9 @@ test('W403 SECTION 5: phase A dies of DAMAGE and the whole ending chain runs to 
   { skip: SKIP }, () => {
     const b = second({ sel: 1, hit: 0x140, pool: 0x100 });
     // W406: 500 frames no longer reach the stop -- A4 $F and A1 gun 9 are ported now and
-    // together they are 389 frames of real work, not a throw.
-    const r = drive(b, 1200);
+    // together they are 389 frames of real work, not a throw. W407: $11, gun $B and $10 add
+    // another 699, so the budget doubles again.
+    const r = drive(b, 2400);
 
     // ---- phase A's death, frame 1. Its OWN flag byte, not form 1's.
     assert.equal(r.marks.deathA, 1, '$2A7040 move.b #$1,($15E,A6) on frame 1');
@@ -620,9 +621,10 @@ test('W403 SECTION 5: phase A dies of DAMAGE and the whole ending chain runs to 
     // the id the LIVE slot carries, which is the link $F handed to.
     assert.deepEqual([...Array(SCHED.a4Slots).keys()]
       .map((i) => b.ram.u16(SCHED.a4Base + i * SCHED.a4Stride))
-      .filter((v) => v !== 0).map((v) => v & 0xff), [0x11],
-      'when the run stops exactly one A4 slot is live and it carries $11 -- script 3 ran, '
-      + 'script 4 ran, $F ran, and $2A6A5C moveq #$11 handed on');
+      .filter((v) => v !== 0).map((v) => v & 0xff), [0x10],
+      'when the run stops exactly one A4 slot is live and it carries $10 -- script 3 ran, '
+      + 'script 4 ran, $F ran, $2A6A5C moveq #$11 handed on, $11 ran and $2A6AE8 moveq #$10 '
+      + 'handed on again (W407 CORRECTION: it was $11 while $11 was the stop)');
     assert.equal(r.marks.phaseB, 192,
       '$2A637A set ($10E,A6) = 2 on frame 192: script 3 spends $C0 from frame 1 (the '
       + 'fall-through), reaches $2A61E8 on frame 192, and script 4\'s init runs in the same pass '
@@ -640,19 +642,21 @@ test('W403 SECTION 5: phase A dies of DAMAGE and the whole ending chain runs to 
     assert.equal(b.ram.u8(SUB + 0xed), 0x17, 'phase B wrote ($ED,A6) = $17');
     assert.equal(b.ram.u8(SUB + 0xe9), 0, '  ...and nothing wrote form 1\'s fourth quad byte');
 
-    // ---- WHERE IT STOPS. W406: A4 $F is RUN now, and the stop moved 389 frames on, to the
-    // NEXT link of phase B's gun loop. 389 = $F's $60 wait less the frame its init shares
-    // with its step (95) + gun 9's 293 frames + the frame $11's init is dispatched.
+    // ---- WHERE IT STOPS. W407: A4 $11, A1 gun $B and A4 $10 are RUN now, and the stop moved
+    // another 699 frames on, to A1 gun $A -- the last unported member of phase B's loop.
     assert.equal(l(HIBACHI_A4.table + 0x0f * 8), 0x2a6a30, '$2A5886[$F].init is $2A6A30');
     assert.equal(HIBACHI_END_COUNTED[0x0f], undefined,
       '  ...and W406 runs it, so hibachiend.js no longer counts it');
+    assert.equal(HIBACHI_END_COUNTED[0x11], undefined, '  ...and W407 runs $11');
+    assert.equal(HIBACHI_END_COUNTED[0x10], undefined, '  ...and $10');
     assert.deepEqual([r.stopped.frame, r.stopped.at, r.stopped.name],
-      [710, 0x2a6ab6, 'Unreached'],
-      'the chain stops on frame 710 at $2A6AB6, A4 $11 -- which $2A6A5C moveq #$11 starts once '
-      + 'gun 9 retires, and which waits on A1 gun $B the way $F waits on gun 9');
-    assert.equal(710 - 321, 95 + 293 + 1,
-      '  ...and the 389 frames between the two stops are $F\'s wait, gun 9\'s run and one '
-      + 'dispatch, not a number the run happened to land on');
+      [1409, 0x2a8b7c, 'Unreached'],
+      'the chain stops on frame 1409 at $2A8B7C, A1 gun $A -- which $2A6A92 jsr $259A18 starts '
+      + 'from A4 $10, the third link of the loop');
+    assert.equal(1409 - 321, 95 + 293 + 1 + 95 + 507 + 1 + 96,
+      '  ...and the 1,088 frames between W403\'s stop and this one are $F\'s wait (95), gun 9\'s '
+      + 'run (293), $11\'s dispatch, $11\'s wait (95), gun $B\'s run (507), $10\'s dispatch and '
+      + '$10\'s wait (96) -- not a number the run happened to land on');
   });
 
 test('W403 SECTION 5: phase A also dies of the TIMEOUT, on frame 25200 exactly -- a LONG run',
@@ -664,15 +668,15 @@ test('W403 SECTION 5: phase A also dies of the TIMEOUT, on frame 25200 exactly -
     const short = drive(second({ sel: 1 }), 500);
     assert.equal(short.marks.deathA, undefined,
       'A 500-FRAME RUN SEES NOTHING: phase A idles on the no-hit arm the whole way');
-    const r = drive(b, 26000);
+    const r = drive(b, 27000);
     assert.equal(r.marks.deathA, 0x6270,
       'and the death lands on frame 25200 = $6270, the value $2A5EAC loads into ($1A,A5)');
     assert.equal(r.marks.phaseB, 0x6270 + 191,
       '  ...with script 3\'s 192 frames after it, so phase B starts on frame 25391');
     assert.deepEqual([r.stopped.frame, r.stopped.at, r.stopped.name],
-      [0x6270 + 709, 0x2a6ab6, 'Unreached'],
-      '  ...and the same A4 $11 stop the DAMAGE arm reaches, 709 frames after the death: the '
-      + 'ending chain past phase A does not depend on which way phase A died');
+      [0x6270 + 1408, 0x2a8b7c, 'Unreached'],
+      '  ...and the same A1 gun $A stop the DAMAGE arm reaches, 1,408 frames after the death: '
+      + 'the ending chain past phase A does not depend on which way phase A died');
   });
 
 test('W403 SECTION 5: phase B dies of damage and hands to A4 5 -- the last link this wave reaches',
@@ -914,7 +918,7 @@ test('W403 SECTION 6: the kind table REMOVED -- script 3\'s per-frame emitter, n
 test('W403 SECTION 7: 585 windows, overlap still 71, and NOTHING in the unit reads ROM',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 594, '585 windows through W403, which declared none; W404 added '
+    assert.equal(ws.length, 595, '585 windows through W403, which declared none; W404 added '
       + 'five for the two A1 gun tables and the gun data blocks, W405 three and W406 one');
     const pairs = (list) => {
       let n = 0;

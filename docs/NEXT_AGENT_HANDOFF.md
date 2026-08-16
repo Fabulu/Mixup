@@ -1,8 +1,69 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-16 (W406)
+Updated: 2026-08-16 (W407)
 
-## START HERE -- W406
+## START HERE -- W407
+
+### THE BRIEF SAID THIS WOULD CLOSE A LOOP. IT DOES NOT, AND THE AGENT SAID SO.
+
+`$F -> $11 -> $10 -> $F` is real. But **a three-link loop needs three guns and this unit had one**:
+`$10` waits on **A1 gun `$A` `$2A8B7C`**, which is still unported. Porting gun `$B` and A4 `$11`/`$10`
+advances the path one gun further and hands the next agent a gun, not a script.
+
+Take the general lesson: **a coordinator's framing is a hypothesis, not a finding.** If the unit does
+not do what the brief predicted, report what it does.
+
+### GUN $B HAS A THIRD FREEZE BEHAVIOUR, AND W406'S RULE MISSED IT
+
+W406 said ten of fourteen guns have a `4A79 008130D4` freeze arm. The TEST yes, the ARM no. All
+fourteen displacements decoded: guns 0..8 branch backward into their own init, but **`$2A8CB8 6600
+01CA` lands FORWARD on `$2A8E84`**, gun `$B`'s own retire tail (`bchg #$0,($3,A5) / moveq #$B /
+jsr $259B08`). A frozen gun `$B` **clears its A1 slot** and A4 `$11` walks on the next frame. Three
+behaviours, not two, so gun `$B` does not use `gunTick`.
+
+### GUN $B COMPUTES AN AIM AND THROWS IT AWAY
+
+`$2A8D0A jsr $2422A2`, then `$2A8D10 323C 0080` writes `#$80` straight over the answer, and it is
+that constant `$2A8D14 move.b D1,($7,A4)` stores. Worse, `$2A8CCA move.b ($4,A4),D2 / cmp.b
+($5,A4),D2 / bne.w $2A8D18` runs the block on volley **one only**, because nothing in the gun ever
+writes `($5,A4)`. So the heading is `$80` for the whole run and from volley two the gun keeps firing
+after both players are dead. Driven: targets at `($6000,$0200)` and `($2000,$2400)` produce
+byte-identical volleys. Gun `$B` is also the only ported gun with **no A6 ramp at all**, so it fires
+the same pattern every lap.
+
+### EXTENTS, AND WHY ENTRY-TO-ENTRY IS NOT CODE LENGTH
+
+Gun `$B` is `$236` table-entry to table-entry of which **`$1FA` is code**; the trailing `$3C` is
+`$1C + $20`, gun `$C`'s 14-word template plus its eight self-pointers. This is now the third wave
+running where the two numbers differ, so treat entry-to-entry as an upper bound and nothing more.
+
+### NEW STOP: FRAME 4016 AT $2A8B7C, A PORT STOP
+
+`$2A72C8[$A].init` IS `$2A8B7C`, `41FA lea` stands there, and this wave's own A4 `$10` (`$2A6A90
+moveq #$A / jsr $259A18`) is what routed us in. Frames 3317 -> 4016; spawn calls 4,865 -> **8,105**.
+
+### 59 ABLATIONS, SIX GREEN, ONE REAL AND TWO INVALID
+
+The real hole: reversing each arm's `jsr` site list was invisible because every per-site count is 180
+either way. The new test derives the eighteen sites by scanning for `4EB9 002817C2` and asserts
+ascending order plus the `$10` stride and `$28` gap. Two mutations were **invalid** (a `k < 10` that
+never fires, an `addi.l #$30000` provably identical to a word add) and were replaced with ones that
+redden. Three are proved equivalences, not weakened tests. `export-tables.py` now fails loudly if any
+of them rot.
+
+### VERIFIED AND PUBLISHED
+
+Suite **3644 pass / 0 fail / 0 skipped** (3615 before; +29). Gate **exit 0**. `--verify` **OK at 595
+windows** (one new: `$2A8C70 + $A`). This was the fifth wave since W402, so `export-web.mjs` ran
+BEFORE `publish.mjs`.
+
+### NEXT
+
+**A1 gun `$A` `$2A8B7C`** -- `$11E` entry-to-entry, `$F4` of code (`4E75` AT `$2A8C6E`, after
+`$2A8C66 moveq #$A / jsr $259B08`), the remaining `$3C` being gun `$B`'s template and blob. That is
+the frame-4016 stop, and it is the third member that actually closes the `$F/$10/$11` loop.
+
+## W406 NOTES
 
 ### W403 DROPPED PHASE B'S EXIT, AND NOTHING NOTICED FOR THREE WAVES
 
