@@ -2,7 +2,82 @@
 
 Updated: 2026-08-15 (W375)
 
-## START HERE -- W399
+## START HERE -- W400
+
+### TWO PRE-EXISTING DEFECTS FOUND, NOT FIXED -- BOTH ARE LIVE
+
+1. **`handlers.js:9887` calls `packedAdd`, which is NEITHER DECLARED NOR IMPORTED in that file.**
+   `retireCheck4C` (type `$4C`'s retire predicate) throws `ReferenceError` when
+   `($9F,A6) != 0 && ($86,A6) != 2`. **No test reaches it.**
+2. **`movement.js` exports `scrollCompensate(ram, a5)`, but SIX sites call it with FOUR arguments** --
+   `handlers.js` lines 2490, 2643, 2788, 2918, 3046, 3179 (types `$49/$4A/$4B/$48/$47/$43`).
+   **Run it and you get `RangeError: [object Object]6 is outside main RAM`.** Four other sites use
+   the correct two-argument form.
+
+### MY "WHICH KIND OF STOP" QUESTION PRESUPPOSED A STOP THAT DOES NOT EXIST
+
+**There is no `SPEED $0000` anywhere in stage 5's scroll script before `t=$0346`.** This is a
+**slowdown the push cancels early**, not a park. **A frame counter would have shown a moving scroll
+on both sides and told you nothing.** The bytes that decide it: `$261DFC` (`t=$00B0 SPEED $0010`)
+and `$261E14` (`t=$00E0 SPEED $0020`).
+
+- **Killed:** push #2 fires at clock `$00B7`, **1,534 frames before the script would have.**
+- **Left alone:** clock reaches `$00E0` at frame 1536, the script sets `$0020` itself, and push #1
+  is a **no-op** -- exactly the shape W17 measured for `$26B73A`.
+
+### "PUSHES `$0020` NOT `$0010`" IS NOT A DISCRIMINATOR
+
+**SEVEN of the nine `$261100` callers push `$0020`.** `handlers.js` T4C has carried
+`// pushExternalSpeed, D0 = D1 = $20` since W372. **The real discriminator is the `$8130D8..$E0` word
+each caller touches, one per set piece.**
+
+And the pushes do **two** things: each is preceded by `move.w #$0,$8130DA`, which is
+`background.js` `BGRAM.elemGate` -- the word `$2623C2` tests at the head of **every** background-element
+updater, and which `$26DF6A` in type `$44`'s own init **sets**. So the object freezes the background
+elements on spawn and each push releases them. Invisible from the push alone.
+
+### THE HANDLER'S FAMILY IS TYPE `$4C`, NOT `$26B73A`
+
+`$26E02A`, extent **`$BBE`**, both bounds from the cartridge: upper is `$267824 + $53*8 = $26EBE8`,
+**type `$53`'s init stub** -- the family ends where its own child's code begins, because
+`$26E9E2 moveq #$53,D0` is what fire mode 1 spawns. Lower is `$26DF82 + 6*28 = $26E02A` exactly.
+
+Same `$40`/`$C0` quarter-turn burst pair as `$4C`, same biases, same D3 `$C`, and a **byte-for-byte
+identical 14-byte `$246520` script**. It differs only in the RNG (`$242B3C` vs `$242EC2`).
+
+**PORTED `$626`, COUNTED `$598`, and `$626 + $598 = $BBE`** with every piece beginning where the last
+ended, asserted row by row. The counted half is the firing half; nothing in it writes `($BE,A6)`,
+`($BF,A6)`, `($17,A5)`, `($18,A5)` or `$8130DA`.
+
+### THE ABLATION AUDIT: THREE OF THIRTEEN REDDENED NOTHING
+
+- **M7** -- states 3/4 with the word literal in one field (**the classic trap-3 read**): silent.
+- **M8** -- shadow trail added to the LOW half instead of the high: silent.
+- **M9** -- threshold walk read as `bge` instead of `bgt`: silent.
+
+Three tests added. **M9 needed the ONE boundary where consecutive table values differ**
+(`$01C0`,1)/(`$0200`,2) -- every other row passes either reading. After the fix all thirteen redden.
+
+### `$26E2B6` HAS NO READER IN 6 MB
+
+A `$62`-byte threshold table shaped exactly like the three that are read, and **no reader anywhere in
+the image** (trap 20). Its value column steps by **2** where `$26E3FE`'s, 72 bytes later, steps by
+**1** (trap 19).
+
+### EIGHT NEW WINDOWS (583), OVERLAP 71 FOR THE NINTH WAVE
+
+Each bound stated by code, each ablated, and **three ablated by TRUNCATION** so the throw moves to a
+different address (`$26DF7C` -> `$26E028`, `$26E2A2` -> `$26E2B2`, `$26E3FE` -> `$26E45E`).
+
+### A BENCH HAZARD THAT COST AN HOUR
+
+Without `resetSpriteQueueCounters` per frame, **bucket 0's counter runs past its buffer after ~440
+frames and the overflow lands in the sub-record pool at `$8152xx`.** It looks exactly like a port
+bug. The bench calls it and says why.
+
+`enemy_types` is now **95/256 ported, 31 unknown**.
+
+## W399 NOTES
 
 ### THE SCROLL PASSES `$0346` AND REACHES COLUMN 252
 

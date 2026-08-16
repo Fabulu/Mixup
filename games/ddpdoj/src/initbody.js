@@ -2526,4 +2526,25 @@ BODY.set(0x268d26, (ram, rom, a5, a6, unported, tablesArg, palette) => {
   ram.setU8(a5 + R.rec1D, rom.u8(row + 1));                // $268DCC move.b (A0)+,($1D,A5)
 });
 
+// --- type $44 ($26DF40 init, $26DF48 body): stage 5's three-part scroll-releasing set piece, the
+// object type $43 spawns at its ramp step $3C.  MUST STAY ABOVE `INIT_BODY_ADDRESSES` below.
+//
+// **THE ORDER OF THE FIRST THREE LINES IS THE WHOLE BODY.**  `$26DF54 move.l ($16,A5),($2,A6)` reads
+// the position type $43 stashed there (`$26DECC move.l ($2,A6),($16,A0)`), and `$26DF64 jsr $26377A`
+// then OVERWRITES `($16,A5)` with the record prototype.  Copy the prototype first and this object
+// spawns at $00015000 instead of where its parent put it.  It is also the reason the record's HP
+// pool is a LONG at `($18,A5)`: `$26DF7C`'s three words are $0000, $0001, $5000, so `($16,A5)` = 0
+// and the long at `($18,A5)` is `$00015000`.
+//
+// It reads NO position through `$263808` and installs NO palette bank -- the only two globals it
+// touches are `$8130DA` (the background-element gate, which BOTH of its handler's `$261100` pushes
+// clear) and `$81B414` (the one-word budget arm $47 and $4C also set).
+BODY.set(0x26df48, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x26df82);                // $26DF48..$26DF50 jsr $2637A2, SIX x 28
+  ram.setU32(a6 + 0x02, ram.u32(a5 + 0x16));               // $26DF54 -- BEFORE the record proto
+  loadRecordProto(ram, rom, a5, 0x26df7c, 0x02);           // $26DF5A..$26DF64 D0+1 = THREE words
+  ram.setU16(0x8130da, 1);                                 // $26DF6A -- the background-element gate
+  ram.setU16(0x81b414, 1);                                 // $26DF72 -- the budget arm
+});
+
 export const INIT_BODY_ADDRESSES = [...BODY.keys()];

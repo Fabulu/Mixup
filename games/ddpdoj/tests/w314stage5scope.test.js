@@ -225,8 +225,13 @@ test('W317 FOUR of the thirteen spawn an UNPORTED child, so record count is the 
     // THREE now have an unported child, and which child. W351 ported $55, so $46's entry moved to the
     // list below rather than being deleted -- deleting it would lose the only machine-checked record of
     // the $46 -> $55 edge, which is exactly what made $55 worth porting.
+    // W400: `[0x43, 0x10e, [0x44]]` MOVED to the ported list below. $44 is now handler44
+    // (`src/stage5type44.js`), so the "and $44 is unported" half of this assertion is false and
+    // keeping it here would fail. The scan half is kept, in the second loop, for the reason the
+    // comment above gives: the $43 -> $44 edge is the only machine-checked record of why $44 was
+    // worth porting at all, and deleting the row would lose it.
     for (const [t, span, kids] of [[0x48, 0x264, [0x54]],
-      [0x43, 0x10e, [0x44]], [0x4c, 0xbe4, [0x4e, 0x50, 0x52, 0x58]]]) {
+      [0x4c, 0xbe4, [0x4e, 0x50, 0x52, 0x58]]]) {
       const got = spawnsOf(typeEntry(t).handler, span);
       for (const k of kids) {
         assert.ok(got.has(k), `type $${t.toString(16)} spawns $${k.toString(16)}`);
@@ -234,11 +239,12 @@ test('W317 FOUR of the thirteen spawn an UNPORTED child, so record count is the 
       }
     }
     // Same treatment W319 gave $8E and W323 gave $1B: keep the scan assertion, flip the ported claim.
-    for (const [t, span, kids] of [[0x46, 0x1a2, [0x55]]]) {
+    for (const [t, span, kids] of [[0x46, 0x1a2, [0x55]], [0x43, 0x10e, [0x44]]]) {
       const got = spawnsOf(typeEntry(t).handler, span);
       for (const k of kids) {
         assert.ok(got.has(k), `type $${t.toString(16)} still spawns $${k.toString(16)}`);
-        assert.ok(map.has(typeEntry(k).handler), `and W351 PORTED $${k.toString(16)}`);
+        assert.ok(map.has(typeEntry(k).handler),
+          `and it is PORTED (W351 for $55, W400 for $44)`);
       }
     }
     // `$8E` was the biggest standalone one and W319 took it; `$1B` (5 records) was next and W323

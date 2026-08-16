@@ -669,7 +669,9 @@ test('W399 SECTION 6: the second-form gate is a BRANCH now, not just a TB0 field
 test('W399 SECTION 7: 575 windows, the overlap count still 71, and all five sit in open ground',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 575, '570 windows before this wave, 575 after');
+    // W400 declared eight more (type $44's init stub, its prototype pair and five data tables),
+    // so this file's total moves and its own five-window claims below do not.
+    assert.equal(ws.length, 583, '570 windows before W399, 575 after it, 583 since W400');
     const mine = [HIBACHI_A4.table, HIBACHI_A4.poolCTable, HIBACHI_A4.kindTable,
       HIBACHI_A4.s1Anim, HIBACHI_A4.s3Anim];
     for (const a of mine) {

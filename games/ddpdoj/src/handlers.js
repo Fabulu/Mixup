@@ -136,6 +136,10 @@ import { handlerA1 } from './stage4typea1.js';
 import { handler9F, handlerA4 } from './stage4type9f.js';
 import { handler41 } from './stage4type41.js';
 import { handler42 } from './stage4type42.js';
+// W400: type $44, the object type $43 spawns at its ramp step $3C. It owns the last two unclaimed
+// callers of `$261100` ($26E04C and $26E152), and both of them also clear `$8130DA`, the
+// background-element gate its own init body sets. Its own file because the family is $BBE bytes.
+import { handler44 } from './stage5type44.js';
 import { handlerBoss29EF0A } from './boss4.js';
 
 /** `addi.l` -- a 32-bit add, where the low half's carry REACHES the high half.
@@ -8664,6 +8668,7 @@ const HANDLERS = new Map([
   [0x27133a, handler48],          // W339: Stage-5 five-way aimed fan turret $48
   [0x26d7d0, handler47],          // W340: Stage-5 scroll-stopping set-piece $47 ($E2 records)
   [0x26de32, handler43],          // W341: Stage-5 screen-anchored three-state effect object $43
+  [0x26e02a, handler44],          // W400: $43's ramp-$3C child -- the LAST two $261100 pushes
   [0x29ef0a, handlerBoss29EF0A],  // W219: Stage-4 Type-$40 boss bootstrap
   [0x2a3840, handler41],          // W223: Stage-4 boss A1/E5 missile type $41
   [0x2a3af6, handler42],          // W256: Stage-4 boss children type $42

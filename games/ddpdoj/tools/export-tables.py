@@ -2852,6 +2852,54 @@ SHOT_WINDOWS.extend([
     (0x26DF00, 0x0040, "W341: type $43's SIXTEEN draw longwords, $26DF00..$26DF3F"),
 ])
 
+# W400: type $44 ($26DF40 init / $26DF48 initBody / $26E02A handler), the object type $43 spawns at
+# its ramp step $3C and the owner of the LAST TWO unclaimed callers of $261100.  Seven windows, and
+# every extent below is stated by an instruction:
+#
+#   $26DF7C + $AE   the record prototype (THREE words, $26DF60 `moveq #$2,D0`) immediately followed
+#                   by the sub-record prototype (SIX long-form 28-byte entries, $26DF40
+#                   `move.w #$5,($4,A5)`).  $26DF7C + 6 + 6*28 = $26E02A, which is the HANDLER: this
+#                   is the ZERO-overlap case of the depth rule that gave $47 sixteen bytes and $4C
+#                   twenty.  The three record words are $0000/$0001/$5000, so ($16,A5) is 0 and the
+#                   HP pool -- a LONG at ($18,A5), read by $26E11A `sub.l D2,($18,A5)` -- is $15000.
+#   $26E2A2 + $14   the FIVE-entry anim jump table.  $26E274 is the ONLY writer of ($66,A6) and its
+#                   five callers ($26E082 #4, $26E138 #3, $26E864 #0, $26E9A0 #1, $26E9B2 #2) pass
+#                   0..4, so five is a scan result and not a row count.  Entry [5] would be
+#                   $00400001, the first word pair of the table below, not a code address.
+#   $26E3DA + $24   anim state 0's NINE waypoint pairs.  `$26E38A cmpi.w #$24,($6A,A6)` IS the
+#                   extent: the cursor advances by 4 and wraps at $24, so the table is nine rows.
+#   $26E3FE + $62   anim state 0's speed-by-distance table -- (threshold, value) WORD PAIRS with
+#                   the $FFFF terminator at $26E45C, ending $26E45F, where state 1's code begins.
+#   $26EB46 + $4A   the death sequence's explosion list: SIX 12-byte rows then $FFFF at $26EB8E.
+#                   `$26EB16 cmpi.w #$48,($AA,A6)` states the $48; the terminator the walk never
+#                   reads is what makes the last two bytes worth exporting.
+#   $26EB90 + $4A   the list phase 1 hands to $26C74E -- six 12-byte rows then $FFFF at $26EBD8,
+#                   and here the terminator IS the loop's only exit (walkDeathSpawns270D92).
+#   $26EBDA + $E    the $246520 caller table push #2 hands to A0: a COUNT word (1) then ONE 12-byte
+#                   node.  BYTE FOR BYTE identical to type $4C's at $2701C8, W341's window, down to
+#                   the $001F words and the $00225238 target -- two stage-5 set pieces, one fade.
+SHOT_WINDOWS.extend([
+    (0x26DF40, 0x0008, "W400: type $44's init stub -- `move.w #$5,($4,A5) / rts`, six bytes plus "
+                       "the rts, $26DF40..$26DF47, ending exactly at init+8 ($26DF48), the body. "
+                       "`initDispatch` reads the run-length at init+2, so this is CODE read as "
+                       "data, the same way ENEMY_INIT_STUBS above are"),
+    (0x26DF7C, 0x00AE, "W400: type $44's 3-word record prototype and ALL SIX sub prototypes, "
+                       "$26DF7C..$26E029 -- ending EXACTLY at its handler $26E02A, zero overlap"),
+    (0x26E2A2, 0x0014, "W400: type $44's FIVE-entry anim jump table, $26E2A2..$26E2B5 -- $26E318, "
+                       "$26E460, $26E588, $26E7C4, $26E7D6"),
+    (0x26E3DA, 0x0024, "W400: type $44 anim state 0's NINE waypoint pairs, $26E3DA..$26E3FD, "
+                       "bounded by $26E38A's cmpi.w #$24"),
+    (0x26E3FE, 0x0062, "W400: type $44 anim state 0's speed-by-distance pairs, $26E3FE..$26E45F, "
+                       "$FFFF-terminated and ending where anim state 1's code begins"),
+    (0x26EB46, 0x004A, "W400: type $44's death explosion list -- SIX 12-byte rows then $FFFF, "
+                       "$26EB46..$26EB8F, bounded by $26EB16's cmpi.w #$48"),
+    (0x26EB90, 0x004A, "W400: type $44's $26C74E death-spawn list -- six 12-byte rows then $FFFF, "
+                       "$26EB90..$26EBD9"),
+    (0x26EBDA, 0x000E, "W400: type $44's $246520 caller table -- a count word (1) then one 12-byte "
+                       "node, $26EBDA..$26EBE7, ending where type $53's init $26EBE8 begins. Byte "
+                       "for byte identical to type $4C's at $2701C8"),
+])
+
 # W341: `$246520`'s two dispatch tables, and $4C's caller table.
 #   $24627A + $18   THREE 8-byte entries, indexed by a caller word used as a BYTE offset. Index 3 is
 #                   $48E77F00 -- an INSTRUCTION -- so only 0, 8 and $10 are reachable and the port
@@ -7227,6 +7275,113 @@ def check_hud_popup_item_extents(d: bytes) -> None:
             f"the hi-score walk (W115).")
 
 
+def check_type44_windows(d: bytes) -> None:
+    """W400.  TYPE $44'S SEVEN WINDOWS, EVERY EXTENT RE-DERIVED FROM AN INSTRUCTION.
+
+    The family is `$26E02A + $BBE`, and BOTH of its bounds come out of the cartridge's own
+    type table rather than out of an absence: `$267824 + $44*8 + 4` is the handler and
+    `$267824 + $53*8` is `$26EBE8`, the next type's init stub, which is where the last data
+    table ends.  Everything below is checked against the image so a table that moved stops
+    the export instead of silently shortening a window.
+    """
+    # 1. The two type-table entries that bound the family.
+    if u32(d, 0x267824 + 0x44 * 8 + 4) != 0x0026E02A:
+        raise SystemExit(
+            f"$267824 + $44*8 + 4 is ${u32(d, 0x267824 + 0x44 * 8 + 4):08X}; type $44's handler "
+            f"must be $26E02A -- every window below is positioned relative to it.")
+    if u32(d, 0x267824 + 0x44 * 8) != 0x0026DF40:
+        raise SystemExit("$267824 + $44*8 must be $26DF40, type $44's init stub.")
+    if u32(d, 0x267824 + 0x53 * 8) != 0x0026EBE8:
+        raise SystemExit(
+            f"$267824 + $53*8 is ${u32(d, 0x267824 + 0x53 * 8):08X}; type $53's init must be "
+            f"$26EBE8 -- that is the ONLY code-stated upper bound on type $44's family, and "
+            f"the $26EBDA window ends exactly there.")
+    if u16(d, 0x26DF40) != 0x3B7C or u16(d, 0x26DF42) != 0x0005:
+        raise SystemExit(
+            "$26DF40 must be `move.w #$5,($4,A5)` -- ($4,A5) = 5 is what makes $2637A2 copy SIX "
+            "sub-record prototypes, and six is the whole of the $26DF7C window's length.")
+    if u16(d, 0x26DF60) != 0x303C or u16(d, 0x26DF62) != 0x0002:
+        raise SystemExit("$26DF60 must be `move.w #$2,D0` -- D0+1 = THREE record-prototype words.")
+
+    # 2. $26DF7C + $AE.  Three words, then six LONG-FORM ($8000 bit set) 28-byte entries, landing
+    #    exactly on the handler.  A short-form entry would be 16 bytes and the sum would not close.
+    at = 0x26DF7C + 3 * 2
+    for i in range(6):
+        flags = u16(d, at)
+        if not flags & 0x8000:
+            raise SystemExit(
+                f"type $44 sub prototype [{i}] at ${at:06X} is ${flags:04X}; bit 15 clear is "
+                f"$2637C2's SHORT form (16 table bytes), which would make the $26DF7C window the "
+                f"wrong length. All six must be long-form.")
+        at += 28
+    if at != 0x26E02A:
+        raise SystemExit(
+            f"type $44's six sub prototypes end at ${at:06X} and must end at $26E02A, the handler. "
+            f"$26DF7C + 6 + 6*28 is the ZERO-overlap case of the depth rule.")
+    if u32(d, 0x26DF7C) != 0x00000001 or u16(d, 0x26DF80) != 0x5000:
+        raise SystemExit(
+            f"type $44's record prototype must be $0000 $0001 $5000 -- the long at ($18,A5) is the "
+            f"HP pool $26E11A subtracts from, and $00015000 is the number the port asserts.")
+
+    # 3. $26E2A2 + $14.  The five entries, and the proof there is no sixth.
+    want = (0x0026E318, 0x0026E460, 0x0026E588, 0x0026E7C4, 0x0026E7D6)
+    for i, v in enumerate(want):
+        got = u32(d, 0x26E2A2 + i * 4)
+        if got != v:
+            raise SystemExit(
+                f"$26E2A2[{i}] is ${got:08X} and must be ${v:08X} -- type $44's anim dispatch "
+                f"indexes this table by ($66,A6)*4 with no bound check.")
+    if u32(d, 0x26E2A2 + 5 * 4) != 0x00400001:
+        raise SystemExit(
+            f"$26E2A2[5] is ${u32(d, 0x26E2A2 + 5 * 4):08X}; it must be $00400001, the first pair "
+            f"of the $26E2B6 table, which is what proves the jump table is FIVE entries.")
+    if u16(d, 0x26E290) != 0xD040 or u16(d, 0x26E294) != 0xD0C0:
+        raise SystemExit("$26E290 must be `add.w D0,D0` twice then `adda.w D0,A0` -- the index is *4.")
+
+    # 4. $26E3DA + $24.  The bound is the cartridge's own wrap test.
+    if u16(d, 0x26E38A) != 0x0C6E or u16(d, 0x26E38C) != 0x0024:
+        raise SystemExit(
+            f"$26E38A must be `cmpi.w #$24,($6A,A6)`; it is ${u16(d, 0x26E38A):04X} "
+            f"${u16(d, 0x26E38C):04X}. That immediate IS the waypoint table's length.")
+
+    # 5. $26E3FE + $62.  The terminator, and the code that follows it.
+    if u16(d, 0x26E45E) != 0xFFFF:
+        raise SystemExit(
+            f"$26E45E is ${u16(d, 0x26E45E):04X} and must be $FFFF -- the terminator that ends "
+            f"anim state 0's threshold table $2 before anim state 1's code at $26E460.")
+    if u16(d, 0x26E460) != 0x0C6E:
+        raise SystemExit("$26E460 must be `cmpi.w`, anim state 1's first instruction.")
+
+    # 6/7. The two death lists.  One is bounded by an immediate, the other by its terminator.
+    if u16(d, 0x26EB16) != 0x0C6E or u16(d, 0x26EB18) != 0x0048:
+        raise SystemExit(
+            f"$26EB16 must be `cmpi.w #$48,($AA,A6)`; it is ${u16(d, 0x26EB16):04X} "
+            f"${u16(d, 0x26EB18):04X}. That immediate bounds the $26EB46 list at SIX 12-byte rows.")
+    for base in (0x26EB46, 0x26EB90):
+        if u16(d, base + 0x48) != 0xFFFF:
+            raise SystemExit(
+                f"${base:06X} + $48 is ${u16(d, base + 0x48):04X} and must be $FFFF -- six "
+                f"12-byte rows then the terminator is what both $4A lengths are made of.")
+
+    # 8. $26EBDA + $E, and the claim that it is byte for byte type $4C's.
+    if d[0x26EBDA:0x26EBE8] != d[0x2701C8:0x2701D6]:
+        raise SystemExit(
+            "$26EBDA..$26EBE7 must equal $2701C8..$2701D5 byte for byte -- type $44 and type $4C "
+            "hand $246520 the SAME 14-byte script, and W341 already declared the $4C copy.")
+    if u16(d, 0x26EBDA) != 0x0001:
+        raise SystemExit("$26EBDA's count word must be 1 -- one 12-byte node, so 2 + 12 = $E.")
+
+    # 9. And the windows themselves are at least the lengths derived above.
+    for base, need in ((0x26DF40, 0x0008), (0x26DF7C, 0x00AE), (0x26E2A2, 0x0014), (0x26E3DA, 0x0024),
+                       (0x26E3FE, 0x0062), (0x26EB46, 0x004A), (0x26EB90, 0x004A),
+                       (0x26EBDA, 0x000E)):
+        declared = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == base]
+        if not declared or declared[0][1] < need:
+            raise SystemExit(
+                f"the ${base:06X} window is {declared} and must be at least ${need:X} -- a short "
+                f"window here is a throw on a player's machine, not a failure in this tool.")
+
+
 def check_boss_a4_extent(d: bytes) -> None:
     """W64 (B2).  W62's `$294F68` window was FIVE pairs and the table is SEVEN.
 
@@ -8595,6 +8750,7 @@ def build(d: bytes) -> dict:
     check_arm5_demo_windows(d)                 # W392 -- ARM 5'S FOUR DEMO BLOCKS
     check_option_formation_windows(d)          # W393 -- FORMATIONS 4 AND 6
     check_hibachi_a4_windows(d)                # W399 -- HIBACHI'S A4 TABLE + ENDING DATA
+    check_type44_windows(d)                    # W400 -- TYPE $44'S PROTOTYPES AND FIVE TABLES
     check_sample_windows()                     # W27D -- ICS sample tight union
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)

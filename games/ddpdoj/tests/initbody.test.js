@@ -184,7 +184,13 @@ test('the Stage-1 through W223 Stage-4 bodies are dispatched', () => {
   // W372: 86 -> 87, type $1A's body $268D26 -- the last stage-5 type that could not spawn.
   assert.ok(INIT_BODY_ADDRESSES.includes(0x268d26),
     'W372: type $1A body $268D26 -- without it every $1A spawn threw and stage 5 had a hole');
-  assert.equal(INIT_BODY_ADDRESSES.length, 87,
+  // W400: 87 -> 88, type $44's body $26DF48. It is spawned by type $43's ramp step $3C and by
+  // NOTHING in any stage script, so no `missingOf` census could ever have asked for it; it is
+  // registered because W400 ports the handler and a registered handler the driver cannot reach is
+  // worth nothing (w346's W369 lesson, arriving from the deferred side this time).
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x26df48),
+    'W400: type $44 body $26DF48 -- the object type $43 spawns at its ramp step $3C');
+  assert.equal(INIT_BODY_ADDRESSES.length, 88,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
     + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
     + `W170's $277836, W171's $276946, W172's $27751C, W173's $275154, `
@@ -198,7 +204,7 @@ test('the Stage-1 through W223 Stage-4 bodies are dispatched', () => {
     + `W203's $266D36, W207's $29EAE2, W209's $29E580, W211's $27896A, `
     + `W212's $27AC4A, W213's $27CFAC, W214's $27AD96, W215's `
     + `$27B2FE/$27C28E, W216's $27D404, and W217's $27CEB4, W218's $27C5BE/$27DA78, W219's $29EC82, and W223's $2A37E4, and W254's $2A3952, `
-    + `W316's $270DD8, W317's $2659E4, W319's $27640C, and W323's $26925E`);
+    + `W316's $270DD8, W317's $2659E4, W319's $27640C, W323's $26925E, and W400's $26DF48`);
 });
 
 test('runInitBodyAddr throws on an unknown body address', () => {

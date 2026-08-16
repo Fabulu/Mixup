@@ -466,11 +466,13 @@ test('W398 SECTION 4: truncated to the columns -- the palette half of the window
 test('W398 SECTION 5: the window set, the overlap count still 71, and the span abuts W211 exactly',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    // W399 moved this ONE number and nothing else in this file: it declared HIBACHI's A4 script
-    // table and the four data blocks its ending scripts read, so the set is 575. Everything
-    // below -- the overlap count, both abutments, the five column streams -- is untouched, and
-    // the five new windows are $2A5xxx/$2A6xxx, nowhere near this wave's span.
-    assert.equal(ws.length, 575, '569 windows at W394, 570 after W398, 575 since W399');
+    // W399 and then W400 moved this ONE number and nothing else in this file: W399 declared
+    // HIBACHI's A4 script table and the four data blocks its ending scripts read, and W400
+    // declared type $44's eight, so the set is 583. Everything below -- the overlap count, both
+    // abutments, the five column streams -- is untouched, and neither wave's windows are anywhere
+    // near this wave's span ($2A5xxx/$2A6xxx for W399, $26Dxxx/$26Exxx for W400).
+    assert.equal(ws.length, 583, '569 windows at W394, 570 after W398, 575 after W399, 583 '
+      + 'since W400');
     assert.equal(ws.filter(([a]) => a === STAGE5_COLS).length, 1, '$22D770 is declared once');
 
     const pairs = (list) => {

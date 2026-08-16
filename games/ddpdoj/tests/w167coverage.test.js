@@ -106,7 +106,10 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   // W339: 86 -> 87 ported and 40 -> 39 unknown, stage-5 type $48 ($27133A). Band closed.
   // W340: 87 -> 88 ported and 39 -> 38 unknown, stage-5 type $47 ($26D7D0), $E2 records.
   // W341: 88 -> 89 ported and 38 -> 37 unknown, stage-5 type $43 ($26DE32).
-  assert.match(got.stdout, /enemy_types: 94\/256 ported, 32 unknown, 130 null/);
+  // W400: 94 -> 95 ported and 32 -> 31 unknown, type $44 ($26E02A). It is the first entry this
+  // count has taken that NO stage script names: type $43 spawns it at ramp step $3C, so it was
+  // never in `w314stage5scope`'s work list and the number moved anyway.
+  assert.match(got.stdout, /enemy_types: 95\/256 ported, 31 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
   assert.match(got.stdout, /stage3_spawn_script: 414\/414 ported, 0 unknown, 0 null/);
