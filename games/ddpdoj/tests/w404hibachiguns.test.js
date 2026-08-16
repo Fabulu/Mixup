@@ -901,9 +901,9 @@ test('W404 SECTION 7: five new windows, 590, and each bounded by an instruction 
   { skip: SKIP }, () => {
     const set = new Map(WINDOWS());
     assert.equal(set.size, tables.rom.windows.length, 'no duplicate window bases');
-    assert.equal(tables.rom.windows.length, 595,
-      'W407 CORRECTION: 595 windows -- 585 + W404\'s five + W405\'s three + W406\'s one '
-      + '+ W407\'s one');
+    assert.equal(tables.rom.windows.length, 596,
+      'W408 CORRECTION: 596 windows -- 585 + W404\'s five + W405\'s three + W406\'s one '
+      + '+ W407\'s one + W408\'s one');
 
     // 1 + 2 -- the two tables, at exactly 14 pairs each.
     for (const base of [HIBACHI_A1.main, HIBACHI_A1.alt]) {
@@ -1001,12 +1001,12 @@ test('W404 SECTION 7: every counted gun\'s extent is MEASURED from the image, no
     assert.equal(w(HIBACHI_A1_ALT_END - 2), 0x4e75,
       '$2AA23E `4E75` sits AT the alt set\'s last address (TRAP 5: not one past it)');
     // The whole main gun block, stated once so a reader can check the arithmetic in one line.
-    // W407 CORRECTION: the ported set is now SIX guns, so gun $B's $236 leaves the counted sum
-    // and comes back in here by name, the way W405's two and W406's one did.
+    // W408 CORRECTION: the ported set is now SEVEN guns, so gun $A's $11E leaves the counted
+    // sum and comes back in here by name, the way W405's two, W406's one and W407's one did.
     assert.equal(HIBACHI_A1.alt - l(HIBACHI_A1.main),
       Object.values(HIBACHI_A1_COUNTED).reduce((s, c) => s + c.bytes, 0)
-      + 0x1b4 + 0x1a6 + 0x2ea + 0x1ba + 0x1c2 + 0x236,
+      + 0x1b4 + 0x1a6 + 0x2ea + 0x1ba + 0x1c2 + 0x11e + 0x236,
       'the fourteen main-table guns fill $2A738A..$2A92A8 exactly -- $1F1E, of which the port '
       + 'now runs $1B4 (gun 5) + $1A6 (gun 6) + $2EA (gun 7) + $1BA (gun 8) + $1C2 (gun 9) '
-      + '+ $236 (gun $B) = $CF6');
+      + '+ $11E (gun $A) + $236 (gun $B) = $E14');
   });

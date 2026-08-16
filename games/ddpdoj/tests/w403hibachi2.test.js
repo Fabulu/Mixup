@@ -595,7 +595,21 @@ function drive(b, frames) {
     // this line would report the death as never having happened.
     if (b.ram.u8(SUB + 0x15e) && !out.marks.deathA) out.marks.deathA = f;
     if (b.ram.u8(SUB + 0x15f) && !out.marks.deathB) out.marks.deathB = f;
-    if (b.ram.u8(SUB + 0x10e) === 2 && !out.marks.phaseB) out.marks.phaseB = f;
+    // W408: SNAPSHOT script 4's handover HERE, on the frame it runs. Reading those six fields
+    // at the end of the run held only while the run stopped inside phase B's gun loop; gun $A
+    // is ported now, so phase B reaches its own death and `$2A7238 move.l #$FFFFFFFF,($16,A5)`
+    // overwrites two of them. The claim is about what script 4 wrote, so measure it then.
+    if (b.ram.u8(SUB + 0x10e) === 2 && !out.marks.phaseB) {
+      out.marks.phaseB = f;
+      out.s4 = {
+        a5_16: b.ram.u32(REC + 0x16),
+        a5_1c: b.ram.u32(REC + 0x1c),
+        a6_180: b.ram.u16(SUB + 0x180),
+        a6_106: b.ram.u16(SUB + 0x106),
+        g81309c: b.ram.u16(0x81309c),
+        g81b62a: b.ram.u32(0x81b62a),
+      };
+    }
     if (out.stopped) break;
   }
   return out;
@@ -611,7 +625,11 @@ test('W403 SECTION 5: phase A dies of DAMAGE and the whole ending chain runs to 
 
     // ---- phase A's death, frame 1. Its OWN flag byte, not form 1's.
     assert.equal(r.marks.deathA, 1, '$2A7040 move.b #$1,($15E,A6) on frame 1');
-    assert.equal(b.ram.u8(SUB + 0x15f), 0, '  ...and NOT $15F, which is phase B\'s');
+    // W408 CORRECTION: this used to read `($15F,A6) === 0` at the end of the run, which held
+    // only because the run stopped before phase B could die. Gun $A is ported now, so phase B
+    // runs to its OWN timeout and DOES set its flag -- 1,839 frames later, never on frame 1.
+    assert.deepEqual([r.marks.deathA, r.marks.deathB], [1, 1840],
+      '  ...and NOT $15F, which is phase B\'s: that one is set on 1840, not on 1');
     assert.ok(b.log.report().some((s) => s.includes('$28C170')),
       '  ...and $2A7008 jsr $28C170 was counted, phase A\'s own BGM cue');
 
@@ -619,44 +637,47 @@ test('W403 SECTION 5: phase A dies of DAMAGE and the whole ending chain runs to 
     // W406: A4 $F used to be parked in slot 0 when the run stopped, because it was the stop.
     // It now runs to completion and `$2A6A72 clr.w (A4)` frees that slot, so the witness is
     // the id the LIVE slot carries, which is the link $F handed to.
+    // W408 CORRECTION: the live id is now **5**. $10 ran too, phase B timed out inside gun $A,
+    // and `$2A728C jmp $25980C` with D0 = 5 filled the slot before A4 5's own init threw.
     assert.deepEqual([...Array(SCHED.a4Slots).keys()]
       .map((i) => b.ram.u16(SCHED.a4Base + i * SCHED.a4Stride))
-      .filter((v) => v !== 0).map((v) => v & 0xff), [0x10],
-      'when the run stops exactly one A4 slot is live and it carries $10 -- script 3 ran, '
-      + 'script 4 ran, $F ran, $2A6A5C moveq #$11 handed on, $11 ran and $2A6AE8 moveq #$10 '
-      + 'handed on again (W407 CORRECTION: it was $11 while $11 was the stop)');
+      .filter((v) => v !== 0).map((v) => v & 0xff), [0x05],
+      'when the run stops exactly one A4 slot is live and it carries 5 -- script 3 ran, '
+      + 'script 4 ran, $F ran, $2A6A5C moveq #$11 handed on, $11 ran, $2A6AE8 moveq #$10 handed '
+      + 'on, $10 ran gun $A, and phase B\'s timeout handed to A4 5');
     assert.equal(r.marks.phaseB, 192,
       '$2A637A set ($10E,A6) = 2 on frame 192: script 3 spends $C0 from frame 1 (the '
       + 'fall-through), reaches $2A61E8 on frame 192, and script 4\'s init runs in the same pass '
       + 'and falls into its own step');
 
     // ---- script 4's handover, every store checked against its instruction.
-    assert.equal(b.ram.u32(REC + 0x16), 0x00046000, '$2A638E ($16,A5) = $46000');
-    assert.equal(b.ram.u32(REC + 0x1c), 0x00046000, '$2A6392 ($1C,A5) = the same');
-    assert.equal(b.ram.u16(SUB + 0x180) & 0xa001, 0xa001, '$2A63C8 armed part $180');
-    assert.equal(b.ram.u16(SUB + 0x106), 0, '$2A63CE turned the body back ON');
-    assert.equal(b.ram.u16(0x81309c), 0xffff, '$2A6380 $81309C = $FFFF');
-    assert.equal(b.ram.u32(0x81b62a), REC + 0x16, '$2A63A4 stored `lea ($16,A5),A0`');
+    assert.equal(r.s4.a5_16, 0x00046000, '$2A638E ($16,A5) = $46000');
+    assert.equal(r.s4.a5_1c, 0x00046000, '$2A6392 ($1C,A5) = the same');
+    assert.equal(r.s4.a6_180 & 0xa001, 0xa001, '$2A63C8 armed part $180');
+    assert.equal(r.s4.a6_106, 0, '$2A63CE turned the body back ON');
+    assert.equal(r.s4.g81309c, 0xffff, '$2A6380 $81309C = $FFFF');
+    assert.equal(r.s4.g81b62a, REC + 0x16, '$2A63A4 stored `lea ($16,A5),A0`');
 
     // ---- and phase B ran. $2A70BE is the only writer of ($ED,A6) on the no-hit path.
     assert.equal(b.ram.u8(SUB + 0xed), 0x17, 'phase B wrote ($ED,A6) = $17');
     assert.equal(b.ram.u8(SUB + 0xe9), 0, '  ...and nothing wrote form 1\'s fourth quad byte');
 
-    // ---- WHERE IT STOPS. W407: A4 $11, A1 gun $B and A4 $10 are RUN now, and the stop moved
-    // another 699 frames on, to A1 gun $A -- the last unported member of phase B's loop.
+    // ---- WHERE IT STOPS. W408: A1 gun $A is RUN now, so phase B's gun loop stops the chain
+    // nowhere and the stop is phase B's OWN timeout handing to A4 script 5.
     assert.equal(l(HIBACHI_A4.table + 0x0f * 8), 0x2a6a30, '$2A5886[$F].init is $2A6A30');
     assert.equal(HIBACHI_END_COUNTED[0x0f], undefined,
       '  ...and W406 runs it, so hibachiend.js no longer counts it');
     assert.equal(HIBACHI_END_COUNTED[0x11], undefined, '  ...and W407 runs $11');
     assert.equal(HIBACHI_END_COUNTED[0x10], undefined, '  ...and $10');
     assert.deepEqual([r.stopped.frame, r.stopped.at, r.stopped.name],
-      [1409, 0x2a8b7c, 'Unreached'],
-      'the chain stops on frame 1409 at $2A8B7C, A1 gun $A -- which $2A6A92 jsr $259A18 starts '
-      + 'from A4 $10, the third link of the loop');
-    assert.equal(1409 - 321, 95 + 293 + 1 + 95 + 507 + 1 + 96,
-      '  ...and the 1,088 frames between W403\'s stop and this one are $F\'s wait (95), gun 9\'s '
-      + 'run (293), $11\'s dispatch, $11\'s wait (95), gun $B\'s run (507), $10\'s dispatch and '
-      + '$10\'s wait (96) -- not a number the run happened to land on');
+      [1840, 0x2a6418, 'Unreached'],
+      'the chain stops on frame 1840 at $2A6418, A4 script 5 -- which $2A728C jmp $25980C '
+      + 'starts when phase B\'s ($1A,A5) reaches zero');
+    assert.equal(1840 - 321, 95 + 293 + 1 + 95 + 507 + 1 + 96 + 431,
+      '  ...and the 1,519 frames between W403\'s stop and this one are $F\'s wait (95), gun 9\'s '
+      + 'run (293), $11\'s dispatch, $11\'s wait (95), gun $B\'s run (507), $10\'s dispatch, '
+      + '$10\'s wait (96) and 431 frames of gun $A before the timer ran out -- not a number the '
+      + 'run happened to land on');
   });
 
 test('W403 SECTION 5: phase A also dies of the TIMEOUT, on frame 25200 exactly -- a LONG run',
@@ -668,15 +689,15 @@ test('W403 SECTION 5: phase A also dies of the TIMEOUT, on frame 25200 exactly -
     const short = drive(second({ sel: 1 }), 500);
     assert.equal(short.marks.deathA, undefined,
       'A 500-FRAME RUN SEES NOTHING: phase A idles on the no-hit arm the whole way');
-    const r = drive(b, 27000);
+    const r = drive(b, 28000);
     assert.equal(r.marks.deathA, 0x6270,
       'and the death lands on frame 25200 = $6270, the value $2A5EAC loads into ($1A,A5)');
     assert.equal(r.marks.phaseB, 0x6270 + 191,
       '  ...with script 3\'s 192 frames after it, so phase B starts on frame 25391');
     assert.deepEqual([r.stopped.frame, r.stopped.at, r.stopped.name],
-      [0x6270 + 1408, 0x2a8b7c, 'Unreached'],
-      '  ...and the same A1 gun $A stop the DAMAGE arm reaches, 1,408 frames after the death: '
-      + 'the ending chain past phase A does not depend on which way phase A died');
+      [0x6270 + 1839, 0x2a6418, 'Unreached'],
+      '  ...and the same A4 script 5 stop the DAMAGE arm reaches, 1,839 frames after the '
+      + 'death: the ending chain past phase A does not depend on which way phase A died');
   });
 
 test('W403 SECTION 5: phase B dies of damage and hands to A4 5 -- the last link this wave reaches',
@@ -918,8 +939,9 @@ test('W403 SECTION 6: the kind table REMOVED -- script 3\'s per-frame emitter, n
 test('W403 SECTION 7: 585 windows, overlap still 71, and NOTHING in the unit reads ROM',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 595, '585 windows through W403, which declared none; W404 added '
-      + 'five for the two A1 gun tables and the gun data blocks, W405 three and W406 one');
+    assert.equal(ws.length, 596, '585 windows through W403, which declared none; W404 added '
+      + 'five for the two A1 gun tables and the gun data blocks, W405 three, W406 one, W407 '
+      + 'one and W408 one');
     const pairs = (list) => {
       let n = 0;
       for (let i = 0; i < list.length; i++) {

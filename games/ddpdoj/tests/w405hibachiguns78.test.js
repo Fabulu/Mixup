@@ -303,9 +303,10 @@ test('W405 SECTION 3: the attack loop CLOSES -- a full lap, and no stop anywhere
     // NOTE: this file's `runReal` joins the A1 ids in DECIMAL, so gun $B reads 11 and gun $A
     // reads 10. (W406's and W407's copies use hex; the number is the same slot either way.)
     assert.deepEqual(r.a1.slice(10),
-      [[3023, '9'], [3316, ''], [3412, '11'], [3919, ''], [4016, '10']],
-      '  ...and after the loop is torn down, phase B\'s guns -- which are NOT in it. W407 '
-      + 'CORRECTION: gun $B ran too, and the history now ends on gun $A\'s slot');
+      [[3023, '9'], [3316, ''], [3412, '11'], [3919, ''], [4016, '10'], [4447, '']],
+      '  ...and after the loop is torn down, phase B\'s guns -- which are NOT in it. W408 '
+      + 'CORRECTION: gun $A ran too, from 4016, and its slot is cleared on 4447 by the '
+      + 'phase-B wipe rather than by its own retire');
     assert.deepEqual(r.a4.map(([f, v]) => [f, v]).slice(0, 7), [
       [1, '1'], [192, '2'], [320, 'a'], [628, 'b'], [902, 'c'], [1442, 'd'], [2172, 'a'],
     ], 'A4 slot history: 1 -> 2 -> $A -> $B -> $C -> $D -> $A. Every hand-over is a `moveq / '
@@ -356,47 +357,50 @@ test('W405 SECTION 3: what ends the loop is A4 $D\'s own ($1A,A5) byte, and the 
     // ---- WHERE IT GOES. A4 3 (phase A's death tail), A4 4 (which writes phase B), A4 $F.
     // W406 CORRECTION: $F is no longer last -- it now RUNS, and hands to $11.
     // W407 CORRECTION: $11 and $10 run too, so the history ends one link further round.
-    assert.deepEqual(r.a4.slice(-6).map(([, v]) => v), ['b', '3', '4', 'f', '11', '10'],
-      'A4 $B is torn down mid-run by $2A7032 a4Clear2598A2, and the tail runs 3 -> 4 -> $F');
+    assert.deepEqual(r.a4.slice(-7).map(([, v]) => v), ['b', '3', '4', 'f', '11', '10', '5'],
+      'A4 $B is torn down mid-run by $2A7032 a4Clear2598A2, and the tail runs 3 -> 4 -> $F. '
+      + 'W408 CORRECTION: gun $A is ported, so phase B runs on to its OWN timeout and A4 5 '
+      + 'takes over on 4447');
     assert.equal(w(0x2a7074), 0x7003, '$2A7074 `7003` moveq #$3,D0 -- phase A\'s death tail');
     assert.equal(w(0x2a7076), 0x4ef9, '  ...$2A7076 `4EF9` JMP, not jsr: it never comes back');
     assert.equal(l(0x2a7078), 0x0025980c, '  ...$25980C');
     assert.equal(w(0x2a640c), 0x700f, '$2A640C `700F` moveq #$F,D0 -- A4 script 4\'s hand-over');
     assert.equal(l(0x2a6410), 0x0025980c, '  ...jsr $25980C');
 
-    // ---- **WHICH KIND OF STOP.** W407: $2A6AB6, $2A6A76 and A1 gun $B are all ported now, so
-    // the stop moved another 699 frames on, to A1 gun $A -- and the three tests are the same.
-    assert.deepEqual(r.stopped, { frame: 4016, at: 0x2a8b7c, name: 'Unreached' },
-      'the run now stops on frame 4016 at $2A8B7C -- 3,034 frames past W404\'s 982');
+    // ---- **WHICH KIND OF STOP.** W408: gun $A is ported too, so phase B's gun loop stops the
+    // path nowhere -- it runs on to phase B's OWN timeout and stops one unit further, at A4
+    // script 5. The three tests are the same three.
+    assert.deepEqual(r.stopped, { frame: 4447, at: 0x2a6418, name: 'Unreached' },
+      'the run now stops on frame 4447 at $2A6418 -- 3,465 frames past W404\'s 982');
     //   (a) it is a live table entry the cartridge dispatches through;
-    assert.equal(l(HIBACHI_A1.main + 0x0a * 8), 0x2a8b7c,
-      '(a) $2A72C8[$A].init IS $2A8B7C, reached by $2597BE jsr (A0)');
-    assert.equal(w(0x2a8b7c), 0x41fa,
-      '  ...and `41FA` lea (d16,PC),A0 stands there: ordinary code, not an rts, not a park');
-    //   (b) something the cartridge wrote is what routed us there, and it is A4 $10's own arm;
-    assert.equal(w(0x2a6a90), 0x700a, '(b) $2A6A90 `700A` moveq #$A,D0');
-    assert.equal(l(0x2a6a94), 0x00259a18, '  ...$2A6A92 jsr $259A18 -- A4 $10 starts A1 gun $A');
-    assert.equal(HIBACHI_A1_COUNTED[0x0a].init, 0x2a8b7c,
-      '  ...and hibachiguns.js counts it at $11E bytes');
-    //   (c) the code at that address has somewhere to go: A4 $10 hands back to $F.
-    assert.equal(w(0x2a6aa2), 0x700f, '(c) $2A6AA2 moveq #$F,D0');
-    assert.equal(l(0x2a6aa6), 0x0025980c, '  ...$2A6AA4 jsr $25980C, which closes the loop');
-    // ...and it is a PORT stop and not a data stop: the gun is not registered.
+    assert.equal(l(HIBACHI_A4.table + 5 * 8), 0x2a6418, '(a) $2A5886[5].init IS $2A6418');
+    assert.equal(w(0x2a6418), 0x303c,
+      '  ...and `303C move.w #imm,D0` stands there: ordinary code, not an rts, not a park');
+    //   (b) something the cartridge wrote is what routed us there -- phase B's death tail;
+    assert.equal(w(0x2a728a), 0x7005, '(b) $2A728A `7005` moveq #$5,D0');
+    assert.equal(l(0x2a728e), 0x0025980c, '  ...$2A728C jmp $25980C, a TAIL call');
+    //   (c) and gun $A, which W405 and W407 both stopped in front of, now runs.
+    assert.equal(w(0x2a6a90), 0x700a, '(c) $2A6A90 `700A` moveq #$A,D0 -- A4 $10 starts gun $A');
+    assert.equal(l(0x2a6a94), 0x00259a18, '  ...$2A6A92 jsr $259A18');
+    assert.equal(HIBACHI_A1_COUNTED[0x0a], undefined,
+      '  ...and hibachiguns.js no longer counts it: W408 runs it');
+    // ...and it is a PORT stop and not a data stop: the A4 script is not registered.
     const reg = new Set(scriptAddresses());
-    assert.ok(!reg.has(0x2a8b7c), 'A1 gun $A is not registered by any file');
-    assert.ok(!reg.has(0x2a8bc0), '  ...and neither is its step');
-    // ...while the two THIS wave's stop stood on now are, and so are W406's and W407's.
+    assert.ok(!reg.has(0x2a6418), 'A4 script 5 is not registered by any file');
+    // ...while everything W405's, W406's, W407's and W408's stops stood on now is.
     assert.ok(reg.has(0x2a6a30) && reg.has(0x2a89ba), 'A4 $F and gun 9 both ARE registered');
     assert.ok(reg.has(0x2a6ab6) && reg.has(0x2a8c9a), '  ...and A4 $11 and gun $B');
+    assert.ok(reg.has(0x2a6a76) && reg.has(0x2a8b7c), '  ...and A4 $10 and gun $A');
   });
 
 test('W405 SECTION 3: 3,745 bullets, and every count is somebody\'s volley arithmetic',
   { skip: SKIP }, () => {
     const r = runReal(realPath(), 8000);
     // W406 CORRECTION: 4,865 -- gun 9's 1,120 on top of this wave's 3,745.
-    // W407 CORRECTION: 8,105 -- gun $B's 3,240 on top of that. Each later half is checked in
-    // its own wave's file; the counts below are unchanged.
-    assert.equal(r.shots, 8105, 'the run fires 8,105 where W404\'s fired 1,260');
+    // W407 CORRECTION: 8,105 -- gun $B's 3,240 on top of that.
+    // W408 CORRECTION: 8,825 -- gun $A's 720 on top of that. Each later half is checked in its
+    // own wave's file; the counts below are unchanged.
+    assert.equal(r.shots, 8825, 'the run fires 8,825 where W404\'s fired 1,260');
     // ---- GUN 7. THREE blocks x their own volley counts, four shots each.
     // ($4,A4) = $1D, and `$2A8634 cmpi.b #$3B / bcc.s` lets `$2A863C addi.b #$F` raise the
     // RELOAD twice before it sticks: $1D -> $2C -> $3B. So 30 + 45 + 60 = 135 volleys.
@@ -1080,9 +1084,9 @@ test('W405 SECTION 7: three new windows, 593, each sized by its own instructions
   () => {
     const set = new Map(tables.rom.windows.map(
       (x) => [parseInt(String(x.base).replace('$', ''), 16), x.len]));
-    assert.equal(tables.rom.windows.length, 595,
-      'W407 CORRECTION: 595 windows -- 590 + this wave\'s three + W406\'s gun 9 template '
-      + '+ W407\'s gun $B template');
+    assert.equal(tables.rom.windows.length, 596,
+      'W408 CORRECTION: 596 windows -- 590 + this wave\'s three + W406\'s gun 9 template '
+      + '+ W407\'s gun $B template + W408\'s gun $A template');
 
     // 1 + 3 -- the two slot templates, sized from their own `moveq` (TRAP 2: dbra is n+1).
     for (const [site, base, words] of [[HIBACHI_A1.gun7Init, HIBACHI_A1.gun7Template, 9],
@@ -1124,7 +1128,8 @@ test('W405 SECTION 7: guns 7 and 8 are PORTED, and the counted list shrank by ex
   { skip: SKIP }, () => {
     // W406 CORRECTION: gun 9 and A4 $F joined the ported sets.
     // W407 CORRECTION: gun $B, A4 $10 and A4 $11 joined them too.
-    assert.deepEqual([...HIBACHI_A1_SCRIPTS], [5, 6, 7, 8, 9, 0x0b], 'six A1 ids are ported now');
+    assert.deepEqual([...HIBACHI_A1_SCRIPTS], [5, 6, 7, 8, 9, 0x0a, 0x0b],
+      'W408 CORRECTION: SEVEN A1 ids are ported now');
     assert.deepEqual([...HIBACHI_GUN_A4_SCRIPTS],
       [0x0a, 0x0b, 0x0c, 0x0d, 0x0f, 0x10, 0x11], '  ...and seven A4');
     for (const id of [7, 8]) {

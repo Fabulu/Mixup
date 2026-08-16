@@ -4645,6 +4645,22 @@ SHOT_WINDOWS.append(
                        "$002A8C9A self-pointers begin"))
 
 
+# ---------------------------------------------------------------- W408: GUN $A
+# ONE new window, and gun $A needs only one for the same reason gun 5 and gun 8
+# need none beyond their templates: its muzzle offsets come out of $26BFFC, the
+# 64-longword vector table W31/W176 already covers inside $26BE70 + $28C, which
+# is NOT widened here.  Bounds on the template, none of them an absence: the
+# `lea` at $2A8B7C names $2A8B4C; `moveq #$7` + dbra is EIGHT words, so $10
+# bytes; and $2A8B5C -- base + $10 -- is where gun $A's eight $002A8B7C
+# self-pointers begin, the eighth of which ends AT $2A8B7C, the code itself.
+W408_GUNA_TEMPLATE = 0x2A8B4C
+SHOT_WINDOWS.append(
+    (0x2A8B4C, 0x0010, "W408: A1 gun $A's slot template, $2A8B7C's lea (TRAP 4: "
+                       "$2A8B7E - $32). `moveq #$7` + dbra is EIGHT words, "
+                       "copied to ($2,A4)..($11,A4). Bounded above by $2A8B5C, "
+                       "where gun $A's eight $002A8B7C self-pointers begin"))
+
+
 def check_hibachi_a1_windows(d: bytes) -> None:
     """W404.  HIBACHI's TWO A1 gun tables and the three data blocks guns 5 and 6 read.
 
@@ -4948,6 +4964,107 @@ def check_hibachi_a1_windows(d: bytes) -> None:
         if u16(d, site - 2) != (0x7000 | seq) or u16(d, site) != 0x4EB9 \
                 or u32(d, site + 2) != 0x002598D0:
             raise SystemExit(f"${site:06X} is not `moveq #${seq:X} / jsr $2598D0`.")
+
+    # ---- W408: GUN $A.  Template head, decoded the same way, EIGHT words.
+    if u16(d, 0x2A8B7C) != 0x41FA:
+        raise SystemExit("$2A8B7C is not `lea (d16,PC),A0`.")
+    got = 0x2A8B7E + s16(u16(d, 0x2A8B7E))
+    if got != W408_GUNA_TEMPLATE:
+        raise SystemExit(f"$2A8B7C's lea lands on ${got:06X}, not "
+                         f"${W408_GUNA_TEMPLATE:06X}.")
+    if u16(d, 0x2A8B84) != 0x7007 or u16(d, 0x2A8B86) != 0x32D8:
+        raise SystemExit("$2A8B7C does not copy `moveq #$7` + 1 = EIGHT words.")
+    for i in range(8):
+        if u32(d, W408_GUNA_TEMPLATE + 0x10 + i * 4) != 0x002A8B7C:
+            raise SystemExit(
+                f"${W408_GUNA_TEMPLATE + 0x10 + i * 4:06X} is not $002A8B7C; the "
+                "eight self-pointers that bound gun $A's template are gone.")
+    # ---- WHAT STANDS AT GUN $A'S STEP ENTRY.  Never an absence: nine of the
+    # fourteen steps open `tst.w $8130D4`; this one opens `clr.w $8130DC`, a
+    # DIFFERENT word, and there is no freeze test anywhere in its $F4 bytes.
+    if u16(d, 0x2A8BC0) != 0x4279 or u32(d, 0x2A8BC2) != 0x008130DC:
+        raise SystemExit("$2A8BC0 is not `clr.w $8130DC`; gun $A's step no "
+                         "longer opens on the proximity global.")
+    if u16(d, 0x2A8BD4) != 0x33FC or u16(d, 0x2A8BD6) != 0x0001 \
+            or u32(d, 0x2A8BD8) != 0x008130DC:
+        raise SystemExit("$2A8BD4 is not `move.w #$1,$8130DC`.")
+    if u16(d, 0x2A8BC6) != 0x4EB9 or u32(d, 0x2A8BC8) != 0x00242438 \
+            or u16(d, 0x2A8BCC) != 0x0C40 or u16(d, 0x2A8BCE) != 0x2000 \
+            or u16(d, 0x2A8BD0) != 0x6400:
+        raise SystemExit("$2A8BC6 is not `jsr $242438 / cmpi.w #$2000,D0 / "
+                         "bcc.w`; gun $A's proximity gate has changed shape.")
+    # ...and $242438 really is min-over-both, read as its own two `bsr.s`s.
+    if u32(d, 0x24243A) != 0x008103E6 or u32(d, 0x242444) != 0x00810448:
+        raise SystemExit("$242438 no longer measures $8103E6 then $810448.")
+    for site in (0x24243E, 0x242448):
+        if d[site] != 0x61 or site + 2 + d[site + 1] != 0x242486:
+            raise SystemExit(f"${site:06X} is not `bsr.s $242486`.")
+    if u16(d, 0x242486) != 0x303C or u16(d, 0x242488) != 0x7FFF \
+            or u16(d, 0x24248A) != 0x4A50 or u16(d, 0x24248C) != 0x6A28:
+        raise SystemExit("$242486 is not `move.w #$7FFF,D0 / tst.w (A0) / "
+                         "bpl.s`, so a DEAD player no longer measures $7FFF.")
+    if u16(d, 0x242494) != 0x4CAE or u16(d, 0x242496) != 0x0003 \
+            or u16(d, 0x242498) != 0x0002:
+        raise SystemExit("$242494 is not `movem.w ($2,A6),D0-D1`, so $242486 no "
+                         "longer falls into the $24249A distance body.")
+    # ---- GUN $A'S RING: twelve shots $15 apart from ONE jsr site, and the
+    # $26BFFC lookup that gives each its muzzle.  All read as opcodes.
+    if u16(d, 0x2A8C0A) != 0x7E0B or u16(d, 0x2A8C06) != 0x1C3C \
+            or u16(d, 0x2A8C08) != 0x0015:
+        raise SystemExit("$2A8C06 is not `move.b #$15,D6 / moveq #$B,D7`; gun "
+                         "$A's ring is no longer twelve shots $15 apart.")
+    if u16(d, 0x2A8BEA) != 0x43F9 or u32(d, 0x2A8BEC) != 0x0026BFFC:
+        raise SystemExit("$2A8BEA is not `lea $26BFFC,A1`.")
+    if u16(d, 0x2A8C00) != 0x2A3C or u32(d, 0x2A8C02) != 0xFA000000:
+        raise SystemExit("$2A8C00 is not `move.l #$FA000000,D5`.")
+    sites = [a for a in range(0x2A8BC0, 0x2A8C6E, 2)
+             if u16(d, a) == 0x4EB9 and u32(d, a + 2) == 0x002817C2]
+    if sites != [0x2A8C1A]:
+        raise SystemExit(f"gun $A's spawn sites are {[hex(s) for s in sites]}, "
+                         "not the single $2A8C1A W408 measured.")
+    # ---- AND THE KIND IS 28, WHOSE SPAWN-INIT AND MOVER CLOSE THE CIRCLE BACK
+    # ONTO $8130DC.  If either moves, the port's header is wrong, loudly.
+    if u16(d, W408_GUNA_TEMPLATE + 8) != 0x001C:
+        raise SystemExit("gun $A's template ($A,A4) is no longer $001C, kind 28.")
+    if u32(d, 0x2815C6 + 4 * 28) != 0x00281930:
+        raise SystemExit("$2815C6[28] no longer points at $281930, the "
+                         "spawn-init that copies ($3,A5) into the bullet.")
+    if u16(d, 0x2832B0) != 0x4A79 or u32(d, 0x2832B2) != 0x008130DC:
+        raise SystemExit("$2832B0 is not `tst.w $8130DC`; kind 28's mover no "
+                         "longer reads the global gun $A writes.")
+    # ---- GUN $A NEITHER SELECTS A TARGET NOR TOGGLES THE SELECTION.  Stated as
+    # an enumeration of what its $F4 bytes DO call, not as an absence.
+    calls = sorted({u32(d, a + 2) for a in range(0x2A8B7C, 0x2A8C6E, 2)
+                    if u16(d, a) == 0x4EB9})
+    if calls != [0x00242438, 0x00242EC2, 0x00259B08, 0x002817C2]:
+        raise SystemExit(
+            "gun $A's absolute calls are now "
+            f"{[hex(c) for c in calls]}; W408 measured exactly $242438, $242EC2, "
+            "$2817C2 and $259B08 -- no $24270A and no $2422A2.")
+    # ---- THE $242EC2 DRAW IS STORED, not sign-tested, which is what separates
+    # gun $A's init from the identical-looking arms in guns 5, 8 and 9.
+    if u16(d, 0x2A8BA8) != 0x4EB9 or u32(d, 0x2A8BAA) != 0x00242EC2 \
+            or u16(d, 0x2A8BAE) != 0x1940 or u16(d, 0x2A8BB0) != 0x0011:
+        raise SystemExit("$2A8BA8 is not `jsr $242EC2 / move.b D0,($11,A4)`.")
+    # ---- THE SPIN ALTERNATOR: `tst.b ($1F0,A6)` in the init against `not.b`
+    # ($1F0,A6) in the retire tail, one byte, two instructions.
+    if u16(d, 0x2A8BB2) != 0x4A2E or u16(d, 0x2A8BB4) != 0x01F0 \
+            or u16(d, 0x2A8C3C) != 0x462E or u16(d, 0x2A8C3E) != 0x01F0:
+        raise SystemExit("gun $A's ($1F0,A6) alternator is gone: $2A8BB2 must be "
+                         "`tst.b ($1F0,A6)` and $2A8C3C `not.b ($1F0,A6)`.")
+    if u16(d, 0x2A8BBA) != 0x442C or u16(d, 0x2A8BBC) != 0x0010:
+        raise SystemExit("$2A8BBA is not `neg.b ($10,A4)`.")
+    # ---- THE ORPHAN BLOCK $2A8B10..$2A8B4B.  Asserted as its CONTENT, so that a
+    # future reader meets the bytes rather than rediscovering the gap.
+    if u32(d, 0x2A8B10) != 0x00230005 or u32(d, 0x2A8B34) != 0x0080F640 \
+            or u32(d, 0x2A8B48) != 0xF5C00940:
+        raise SystemExit(
+            "$2A8B10..$2A8B4B is no longer the nine {bias,kind} longwords plus "
+            "six {dY,dX} muzzle longwords W408 measured between gun 9's `4E75` "
+            "and gun $A's template.")
+    if 0x2A8B0E + 2 != 0x2A8B10 or u16(d, 0x2A8B0E) != 0x4E75:
+        raise SystemExit("$2A8B0E is not gun 9's `4E75`, so the orphan block no "
+                         "longer starts where W408 measured it.")
 
 
 def check_option_formation_windows(d: bytes) -> None:

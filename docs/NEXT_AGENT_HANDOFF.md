@@ -1,8 +1,78 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-16 (W407)
+Updated: 2026-08-16 (W408)
 
-## START HERE -- W407
+## START HERE -- W408
+
+### THE LOOP CLOSES IN THE ROM AND NEVER IN PLAY, AND THE ARITHMETIC SAYS WHY
+
+All seven guns and six scripts of `$F -> $11 -> $10 -> $F` are registered and all three arrows
+exist. **The real path still never executes `$2A6AA2`.** `$2A6AD8 move.b #$4,($1A,A5)` re-arms phase
+B's timer to `$04xx` when gun `$B` starts, and one lap costs gun `$B` 507 frames + A4 `$10`'s `$60`
++ gun `$A`'s **minimum** `$352` = **1,455 frames against a ceiling of `$04FF` = 1,279**. A shortfall
+of `$B0`, and it is structural: `($1F1,A6)` only ever grows, so gun `$A` can only get longer.
+
+**"Closed" in the arrows and "reachable" in play are different claims.** Do not report the first as
+if it were the second.
+
+### NEW STOP: FRAME 4447 AT $2A6418, A4 SCRIPT 5, A PORT STOP
+
+`$2A5886[5].init` IS `$2A6418`, `303C 000E` (ordinary code) stands there, and `$2A728A moveq #$5 /
+jmp $25980C` in phase B's death tail routed us in. Counted at `$3AA`. Measured: timer `$040B` written
+on 3412, and 3412 + 1035 = 4447 exactly.
+
+**The ending is no nearer.** Completion is `$2595E8`; only A4 `$14` reaches it (`$2A5CB4 moveq #$14`)
+and only script 1's first-loop arm starts `$14`. Closing a loop is not progress toward an exit that
+lies outside it.
+
+### GUN $A IS THE ODD ONE OUT THREE WAYS
+
+It neither aims, nor selects a player, nor toggles `($3,A5)`. Its four absolute calls are exactly
+`$242438`, `$242EC2`, `$2817C2`, `$259B08` -- no `$24270A`, no `$2422A2`, no `086D`. Driven: with
+both players dead it fires the same twelve bullets. Its ring is kind **28**, the tracker, and gun `$A`
+writes the global they read: `$2832B0 tst.w $8130DC` reads the word `$2A8BC0`/`$2A8BD4` rewrite every
+frame the gun exists. D4 (`$00030016`) is a real parameter here where every other gun passes zero.
+`tst.b ($1F0,A6) / neg.b ($10,A4)`, paired with `$2A8C3C not.b ($1F0,A6)` in the retire tail, makes
+the ring alternate direction run to run.
+
+### $2A8B10..$2A8B4B IS $3C BYTES NOTHING POINTS AT
+
+Nine `{bias, kind}` longwords and six `{dY, dX}` muzzle longwords, sitting between gun 9's `4E75` and
+gun `$A`'s template. Gun 9 and gun `$A` have exactly one `lea (d16,PC)` each and neither names it; no
+longword in the 6 MB image lands inside it. **The layout rule `[code][template][8 longwords][code]`
+has a fourth thing in it here.** No window declared, since nothing reads it.
+
+### A NUMBER COPIED ONE GUN TOO FAR
+
+W407's handoff said gun `$A`'s trailing data was `$3C`. It is **`$2A`** (`$11E - $F4` = `$A` template
++ `$20` pointers). `$3C` is gun `$B`'s own trailing figure. `HIBACHI_A1_COUNTED` had the same error;
+both corrected. Entry-to-entry minus code is a per-gun number, not a constant.
+
+### 47 ABLATIONS, FOUR GREEN, ONE INVALID
+
+All four holes were the same shape: three ramp caps that every test drove from zero, where a single
+`addi` never reaches any cap. New tests drive each at `cap - 1` AND at the cap. One mutation was
+**invalid** -- `u8` vs `u16` on the ring index is provably the same routine, since `andi.w #$FC`
+clears bit 8 -- and was replaced by two mutations of the index itself, both red. 47 of 47 red.
+
+### VERIFIED
+
+Suite **3668 pass / 0 fail / 0 skipped** (3644 before; +24). Gate **exit 0**. `--verify` **OK at 596
+windows** (one new: `$2A8B4C + $10`).
+
+### PUBLISH STATE, READ THIS
+
+W407's publish **REFUSED** and was right to: I started it while the next agent was mid-edit, so it
+ran the suite against half-written files and reported 23 failures that do not exist in the committed
+tree. Publish is a whole-tree action. **Run `export-web.mjs` then `publish.mjs` BEFORE dispatching
+the next agent, or wait until the tree is quiet.** The W407 publish is still owed.
+
+### NEXT
+
+**A4 script 5 `$2A6418`** (`$3AA`, counted), phase B's death tail, which is the frame-4447 stop and
+is on the ending chain rather than in either attack loop.
+
+## W407 NOTES
 
 ### THE BRIEF SAID THIS WOULD CLOSE A LOOP. IT DOES NOT, AND THE AGENT SAID SO.
 
