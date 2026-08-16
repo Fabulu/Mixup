@@ -217,7 +217,7 @@ test('W403 SECTION 1: every `jsr`/`jmp` in both new spans lands somewhere, and T
     assert.equal(w(0x2a6e72), 0x4e75, '  ...and $2A6E72 4E75: three instructions, eight bytes');
 
     // ...and the two the CHAIN then hands to that are not ported, counted with measured extents.
-    for (const [id, want] of [[0x0a, 0x38], [0x0f, 0x46], [0x05, 0x3aa], [0x13, 0x32]]) {
+    for (const [id, want] of [[0x0d, 0x60], [0x0f, 0x46], [0x05, 0x3aa], [0x13, 0x32]]) {
       const here2 = l(HIBACHI_A4.table + id * 8);
       const next = Math.min(...[...Array(HIBACHI_A4.pairs).keys()]
         .map((i) => l(HIBACHI_A4.table + i * 8))
@@ -438,7 +438,10 @@ function realPath({ romSpec = null, loopWord = 1, flag393a = 0 } = {}) {
   ram.setU16(BGRAM.stageX4, STAGE5_X4);
   ram.setU16(A5BG + 0x06, 0x0344);
   backgroundInit(ram, ROM, vram, ctx, A5BG);
-  installScripts(ram, ROM, { a4: HIBACHI_A4.table });
+  // W404: A1 as well. `$2A4306 lea $2A72C8,A1` sits four instructions above the A4 lea and
+  // `$25959C` stores it at $812BD4; without it `$259782 tst.l / beq` skips the whole A1 walk
+  // and a gun A4 $A starts could never step or retire.
+  installScripts(ram, ROM, { a4: HIBACHI_A4.table, a1: 0x2a72c8 });
   ram.setU32(REC + 0x06, SUB);
   ram.setU32(REC + 0x16, 0x00000010);
   ram.setU32(SUB + 0x02, 0x38001c00);
@@ -468,19 +471,23 @@ function runReal(b, frames) {
   return out;
 }
 
-test('W403 SECTION 4: THE REAL PATH runs to frame 321 and stops at $2A689C -- a PORT stop',
+test('W403 SECTION 4: THE REAL PATH reaches $2A689C on frame 321 -- W404 then ran it',
   { skip: SKIP }, () => {
     const b = realPath();
     const r = runReal(b, 1200);
 
     assert.equal(r.push?.speed, 0x0010, 'W399\'s chain still fires: $2A5D28 pushed $0010');
     assert.equal(r.push.frame, 192, '  ...on frame 192, not 193 -- SECTION 3\'s fall-through');
-    assert.deepEqual(r.stopped, { frame: 321, at: 0x2a689c, name: 'Unreached' },
-      'the run stops on frame 321 at $2A689C, A4 script $A\'s init');
-    assert.equal(r.secondFormFrames, 128,
-      'and HIBACHI\'s SECOND FORM ran 128 frames before it, frames 193..320. ($10E,A6) is set '
-      + 'by the SCHEDULER half of frame 192, after the body half of that frame has already '
-      + 'run, so frame 193 is the first one the second form owns -- and W399 stopped on it');
+    // W404 PORTED A4 $A AND A1 GUN 5, so this run no longer stops on frame 321. What W403
+    // measured is unchanged and is still asserted below by its bytes: $2A689C IS $2A5886[$A]'s
+    // init, script 2 IS what starts it, and it DOES wait on A1 gun 5. Only the consequence
+    // moved -- the wait now ends, and `tests/w404hibachiguns.test.js` owns the new stop.
+    assert.deepEqual(r.stopped, { frame: 982, at: 0x2a8516, name: 'Unreached' },
+      'the run now stops on frame 982 at $2A8516, A1 gun 7\'s init, 661 frames further on');
+    assert.equal(r.secondFormFrames, 789,
+      'and HIBACHI\'s SECOND FORM has owned every frame since 193. ($10E,A6) is set by the '
+      + 'SCHEDULER half of frame 192, after the body half of that frame has already run, so '
+      + 'frame 193 is the first one the second form owns -- and W399 stopped on it');
 
     // ---- **WHICH KIND OF STOP, AND THE BYTES THAT DECIDE IT.**
     //
@@ -504,10 +511,11 @@ test('W403 SECTION 4: THE REAL PATH runs to frame 321 and stops at $2A689C -- a 
     assert.equal(l(0x2a68c0), 0x4eb90025, '  ...and $2A68C0 jsr $259A4A waits on it');
     assert.equal(w(0x2a68c6), 0x650a,
       '  ...and $2A68C6 is `650A`, bcs (TRAP 6: not bsr.w) -- the wait\'s own branch');
-    // So what is behind $A is the A1 gun table at $2A72C8, a different unit. The extent is
-    // counted, not guessed: $2A5886[$A].init to $2A5886[$B].init.
-    assert.equal(l(HIBACHI_A4.table + 0x0b * 8) - l(HIBACHI_A4.table + 0x0a * 8),
-      HIBACHI_END_COUNTED[0x0a].bytes, 'A4 $A is $38 bytes, $2A689C..$2A68D3');
+    // So what is behind $A is the A1 gun table at $2A72C8. W403 counted it at $38 bytes,
+    // table entry to table entry, and W404 ported exactly that span -- the number is kept here
+    // because it is the measurement, not the deferral.
+    assert.equal(l(HIBACHI_A4.table + 0x0b * 8) - l(HIBACHI_A4.table + 0x0a * 8), 0x38,
+      'A4 $A is $38 bytes, $2A689C..$2A68D3');
 
     // THE CONTRAST, so "port stop" is not just an assertion. The first-loop arm ends in a
     // CARTRIDGE stop of a third kind: A4 $14 reaches `$2595E8` and SUSPENDS the stage on
@@ -875,7 +883,8 @@ test('W403 SECTION 6: the kind table REMOVED -- script 3\'s per-frame emitter, n
 test('W403 SECTION 7: 585 windows, overlap still 71, and NOTHING in the unit reads ROM',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 585, '585 windows since W402, and W403 declares none');
+    assert.equal(ws.length, 590, '585 windows through W403, which declared none; W404 added '
+      + 'five for the two A1 gun tables and the gun data blocks');
     const pairs = (list) => {
       let n = 0;
       for (let i = 0; i < list.length; i++) {

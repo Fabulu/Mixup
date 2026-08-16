@@ -69,6 +69,7 @@ import { POOL_B, B } from '../src/effects.js';
 import { installScripts, SCHED, a4Start25980C, scriptAddresses } from '../src/scheduler.js';
 import { handler2A4606 } from '../src/boss.js';
 import { HIBACHI_A4, HIBACHI_END_SCRIPTS, HIBACHI_END_COUNTED } from '../src/hibachiend.js';
+import { HIBACHI_A1 } from '../src/hibachiguns.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -337,7 +338,11 @@ function bench({ romSpec = null, loopWord = 1, flag393a = 0, entryClock = 0x0344
   ram.setU16(A5BG + BGO_ENTRYCLOCK, entryClock);        // ($6,A5) -> $26114C
   backgroundInit(ram, ROM, vram, ctx, A5BG);
 
-  installScripts(ram, ROM, { a4: HIBACHI_A4.table });   // $2A4318 / $2A432E
+  // W404: A1 TOO. `$2A4306 lea $2A72C8,A1` is four instructions above `$2A4318`'s A4 lea and
+  // `$25959C move.l A1,$812BD4` stores it, so a bench that installs only A4 leaves `$259782
+  // tst.l / beq` skipping the whole A1 walk -- and A4 $A's wait on gun 5 could then never end
+  // for a reason belonging to the bench and not to the cartridge.
+  installScripts(ram, ROM, { a4: HIBACHI_A4.table, a1: HIBACHI_A1.main });   // $2A4306/$2A4318
 
   ram.setU32(REC + 0x06, SUB);                          // ($6,A5) -- the sub-record
   ram.setU32(REC + 0x16, 0x00000010);                   // an all-but-spent HP pool
@@ -434,11 +439,11 @@ test('W399 SECTION 3: the boss dies, $2A5D28 fires on frame 192, and the scroll 
       'at speed $0100 -- the top of the script\'s own ramp, $261EC0 t=$0350');
 
     // ---- WHERE THE RUN STOPS, and which kind of stop it is. This one is a PORT stop.
-    assert.deepEqual(r.stopped, { frame: 321, at: 0x2a689c, name: 'Unreached' },
-      'W403: $2A6F12 is ported, so the run no longer stops there -- HIBACHI\'s second form '
-      + 'runs 129 frames of phase A and the stop moves to $2A689C, A4 script $A, which script '
-      + '2 starts $80 frames after its handover. Still a PORT stop, and $A is not part of the '
-      + 'ending: $2A68B8/$2A68C0 start and WAIT ON A1 gun script 5');
+    assert.deepEqual(r.stopped, { frame: 982, at: 0x2a8516, name: 'Unreached' },
+      'W404: A4 $A and A1 gun 5 are ported, so the run no longer stops on frame 321 -- gun 5 '
+      + 'fires 40 volleys and retires, A4 $B runs gun 6, A4 $C starts gun 7, and THAT is the '
+      + 'stop now: $2A8516, $2A72C8[7].init, 661 frames further on. Still a PORT stop, and '
+      + 'still inside HIBACHI\'s phase-B attack loop rather than on the ending chain');
   });
 
 test('W399 SECTION 3: the FIRST-LOOP arm takes the other branch and the scroll never moves',
@@ -705,8 +710,8 @@ test('W399 SECTION 7: 575 windows, the overlap count still 71, and all five sit 
     const ws = WINDOWS();
     // W400 declared eight more (type $44's init stub, its prototype pair and five data tables),
     // so this file's total moves and its own five-window claims below do not.
-    assert.equal(ws.length, 585, '570 windows before W399, 575 after it, 583 after W400, 585 '
-      + 'since W402');
+    assert.equal(ws.length, 590, '570 windows before W399, 575 after it, 583 after W400, 585 '
+      + 'after W402, and 590 since W404 declared the two A1 gun tables and three gun data blocks');
     const mine = [HIBACHI_A4.table, HIBACHI_A4.poolCTable, HIBACHI_A4.kindTable,
       HIBACHI_A4.s1Anim, HIBACHI_A4.s3Anim];
     for (const a of mine) {
@@ -736,8 +741,9 @@ test('W399 SECTION 7: 575 windows, the overlap count still 71, and all five sit 
     assert.equal(below, 0x2a4606,
       'the nearest window below is W369\'s $2A443C+$1CA, ending at $2A4606 -- $1280 bytes clear');
     const above = Math.min(...others.filter(([a]) => a >= HIBACHI_A4.s3Anim + 0x80).map(([a]) => a));
-    assert.ok(above > 0x2a62fa + 0x1000,
-      `the nearest window above $2A62FA is $${above.toString(16).toUpperCase()}, well clear`);
+    assert.equal(above, HIBACHI_A1.main,
+      'the nearest window above $2A62FA is W404\'s A1 gun table $2A72C8 -- $F4E bytes clear of '
+      + 'the end of this wave\'s last block, and the two do not touch');
 
     // And the five together are exactly what the port reads, not a byte more.
     assert.equal(mine.reduce((s, a) => s + ws.find(([b]) => b === a)[1], 0),

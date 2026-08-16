@@ -487,10 +487,12 @@ export const HIBACHI_END_SCRIPTS = Object.freeze([1, 2, 3, 4]);
  *  between its table entry and the next one. Counted, with the numbers measured. */
 export const HIBACHI_END_COUNTED = Object.freeze({
   0x00: { init: 0x2a592e, step: 0x2a597c, bytes: 0x00ee, why: 'the OPENING script $2A42D8 starts' },
-  0x0a: { init: 0x2a689c, step: 0x2a68a2, bytes: 0x0038, why: 'script 2 hands to it ($2A5F82). '
-    + 'It is not part of the ending at all: $2A68B8 jsr $259A18 / $2A68C0 jsr $259A4A start and '
-    + 'WAIT ON A1 gun script 5, so behind it is the fifteen-entry A1 table at $2A72C8, a '
-    + 'different unit. THE REAL PATH STOPS HERE' },
+  // W404: $0A is no longer here -- `src/hibachiguns.js` ports it, together with $0B and $0C and
+  // A1 guns 5 and 6, and the real path now runs the {$A,$B,$C,$D} attack loop. $0D is what that
+  // loop reaches and this file does not run.
+  0x0d: { init: 0x2a6970, step: 0x2a698a, bytes: 0x0060, why: 'A4 $C hands to it ($2A6966); '
+    + 'it waits on A1 gun 8 ($2A89BA) and then loops back to $A, closing HIBACHI phase B\'s '
+    + 'attack cycle' },
   0x14: { init: 0x2a6b7a, step: 0x2a6b80, bytes: 0x001a, why: 'script 1 first-loop arm ($2A5CB6); '
     + 'waits $80 frames then jsr $2595E8, which SUSPENDS and ends the stage' },
   0x0f: { init: 0x2a6a30, step: 0x2a6a36, bytes: 0x0046, why: 'script 4 hands to it ($2A640E); '

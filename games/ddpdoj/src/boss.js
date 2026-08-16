@@ -1194,6 +1194,11 @@ import './bossf23.js';
 // `$2A5D28`'s and `$2A61E0`'s external speed pushes reachable. It imports `bossA5`/`bossA6`
 // back out of this file, both hoisted function declarations, so the cycle resolves.
 import './hibachiend.js';
+// W404 -- the A1 GUN table `$2A72C8` and the three A4 scripts that drive it (A4 $A, $B and $C).
+// Same cycle, same resolution: four `registerScript` calls for A1 guns 5 and 6, six for the A4
+// pair entries. Without it every A1 slot the ending chain starts threw by address, because
+// `$2A4306`'s table had never had a single script registered against it.
+import './hibachiguns.js';
 
 // $2A4606 -- HIBACHI's handler, all 170 bytes of it. See TB0 for the structure and its four
 // independent confirmations.

@@ -4557,6 +4557,132 @@ def check_hibachi_a4_windows(d: bytes) -> None:
                 f"longer share one target and the arm is not an OR.")
 
 
+# ---------------------------------------------------------------- W404: THE A1 GUN TABLE
+# `$2A4306 lea $2A72C8,A1` and `$2A4328 lea $2A92A8,A1` install TWO tables, and the
+# branch between them (`$2A431E tst.w $813098 / bne`) picks the second on the FIRST
+# loop only.  Both are FOURTEEN {init, step} pairs, not fifteen: `$2A7338` holds
+# `4254 4E75` (clr.w (A4) / rts) where entry [14] would begin, and `$2A9318` holds the
+# head of a data blob.  The two tables' ids 5..$D are the SAME nine pairs.
+W404_A1_MAIN = 0x2A72C8
+W404_A1_ALT = 0x2A92A8
+W404_A1_PAIRS = 14
+W404_A1_SHARED = 5                 # ids 5..$D are identical in the two tables
+SHOT_WINDOWS.append(
+    (0x2A72C8, 0x0070, "W404: HIBACHI's A1 GUN table, $2A4306's lea -- 14 "
+                       "{init,step} pairs read by $2596C6's ten-slot A1 walk as "
+                       "rom.u32(table + id*8 [+4]). Bound: $2A7338, where entry "
+                       "[14] would start, is `4254 4E75` (clr.w (A4) / rts), and "
+                       "the highest id any moveq/jsr $259A18 loads is $D"))
+SHOT_WINDOWS.append(
+    (0x2A92A8, 0x0070, "W404: the LOOP-ZERO A1 gun table, $2A4328's lea, which "
+                       "$2A431E tst.w $813098 / bne SKIPS on every later loop. "
+                       "Same 14 pairs; ids 0..4 differ and ids 5..$D are byte "
+                       "identical to $2A72C8's"))
+SHOT_WINDOWS.append(
+    (0x2A818C, 0x0010, "W404: A1 gun 5's slot template, $2A81BC's lea (TRAP 4: "
+                       "$2A81BE - $32). `moveq #$7` + dbra is EIGHT words, copied "
+                       "to ($2,A4)..($11,A4) by $2A81C6 move.w (A0)+,(A1)+"))
+SHOT_WINDOWS.append(
+    (0x2A8342, 0x000E, "W404: A1 gun 6's slot template, $2A8370's lea (TRAP 4: "
+                       "$2A8372 - $30). `moveq #$6` + dbra is SEVEN words"))
+SHOT_WINDOWS.append(
+    (0x2A84CC, 0x0018, "W404: A1 gun 6's SIX muzzle-offset longwords, $2A83FC's "
+                       "lea (TRAP 4: $2A83FE + $CE). $2A8482 subq.w #$4,($E,A4) "
+                       "walks the cursor DOWN from the $14 $2A8488 reloads, so "
+                       "$14/4 + 1 = six entries and the extent is $18"))
+
+
+def check_hibachi_a1_windows(d: bytes) -> None:
+    """W404.  HIBACHI's TWO A1 gun tables and the three data blocks guns 5 and 6 read.
+
+    Nothing here asserts an absence.  The entry count is bounded by what STANDS at
+    entry [14] in both tables, the two `lea`s are decoded from their displacements,
+    and the muzzle table's length comes from its own reload constant and stride.
+    """
+    # ---- THE TWO INSTALLS.  `lea <abs.l>,A1` is `43F9`, and the branch between
+    # them decides which one survives.
+    for site, want in ((0x2A4306, W404_A1_MAIN), (0x2A4328, W404_A1_ALT)):
+        if u16(d, site) != 0x43F9 or u32(d, site + 2) != want:
+            raise SystemExit(f"${site:06X} is not `lea ${want:06X},A1`.")
+    if u16(d, 0x2A431E) != 0x4A79 or u32(d, 0x2A4320) != 0x00813098:
+        raise SystemExit("$2A431E is not `tst.w $813098`, so the two A1 tables "
+                         "are no longer chosen by the loop word.")
+    if u16(d, 0x2A4324) != 0x6600 or 0x2A4326 + u16(d, 0x2A4326) != 0x2A432E:
+        raise SystemExit("$2A4324's bne.w no longer skips $2A4328's lea.")
+
+    # ---- FOURTEEN PAIRS, and the POSITIVE witness at entry [14] in both tables.
+    for base, tail in ((W404_A1_MAIN, 0x42544E75), (W404_A1_ALT, 0x20800202)):
+        end = base + W404_A1_PAIRS * 8
+        if u32(d, end) != tail:
+            raise SystemExit(
+                f"${end:06X}, where ${base:06X}[14] would begin, holds "
+                f"${u32(d, end):08X} and not ${tail:08X}; the A1 table may have "
+                f"grown past fourteen pairs.")
+        for i in range(W404_A1_PAIRS):
+            ini, step = u32(d, base + i * 8), u32(d, base + i * 8 + 4)
+            if not 0x2A7000 <= ini < 0x2AB000 or not 0x2A7000 <= step < 0x2AB000:
+                raise SystemExit(f"${base:06X}[{i}] is (${ini:06X}, ${step:06X}), "
+                                 "not a pair of boss-local pointers.")
+            # THE A1 CONVENTION, the opposite of the A4 table's: `4E75` stands at
+            # step - 2 in all fourteen, so the init does NOT fall through.
+            if u16(d, step - 2) != 0x4E75:
+                raise SystemExit(
+                    f"${base:06X}[{i}].step ${step:06X} is not preceded by 4E75; "
+                    "the A1 init/step convention is not what W404 read.")
+    # ...and the nine pairs the two tables SHARE, pointer for pointer.
+    for i in range(W404_A1_SHARED, W404_A1_PAIRS):
+        a = d[W404_A1_MAIN + i * 8:W404_A1_MAIN + i * 8 + 8]
+        b = d[W404_A1_ALT + i * 8:W404_A1_ALT + i * 8 + 8]
+        if a != b:
+            raise SystemExit(f"A1 id {i} differs between the two tables; guns 5 "
+                             "and 6 are no longer loop-independent.")
+
+    # ---- THE THREE DATA BLOCKS.  Every `lea (d16,PC)` decoded, never trusted.
+    for site, want, words in ((0x2A81BC, 0x2A818C, 8), (0x2A8370, 0x2A8342, 7)):
+        if u16(d, site) != 0x41FA:
+            raise SystemExit(f"${site:06X} is not `lea (d16,PC),A0`.")
+        got = site + 2 + s16(u16(d, site + 2))
+        if got != want:
+            raise SystemExit(f"${site:06X}'s lea lands on ${got:06X}, not ${want:06X}.")
+        # `lea ($2,A4),A1` is the destination, then `moveq #n` + `move.w
+        # (A0)+,(A1)+` + `dbra`, which is n+1 WORDS (TRAP 2).
+        if u16(d, site + 4) != 0x43EC or u16(d, site + 6) != 0x0002:
+            raise SystemExit(f"${site + 4:06X} is not `lea ($2,A4),A1`, so the "
+                             "template is not copied into the slot at +$2.")
+        n = d[site + 9]
+        if u16(d, site + 8) != (0x7000 | n) or u16(d, site + 10) != 0x32D8:
+            raise SystemExit(f"${site + 8:06X} is not `moveq #${n:X},D0 / "
+                             "move.w (A0)+,(A1)+`.")
+        if u16(d, site + 12) != 0x51C8 or s16(u16(d, site + 14)) != -4:
+            raise SystemExit(f"${site + 12:06X} is not `dbra D0,{site + 10:06X}`.")
+        if n + 1 != words:
+            raise SystemExit(f"${site:06X} copies {n + 1} words, not {words}.")
+    if u16(d, 0x2A83FC) != 0x47FA:
+        raise SystemExit("$2A83FC is not `lea (d16,PC),A3`.")
+    got = 0x2A83FE + s16(u16(d, 0x2A83FE))
+    if got != 0x2A84CC:
+        raise SystemExit(f"$2A83FC's lea lands on ${got:06X}, not $2A84CC.")
+    # ...and its length, from the cursor's own stride and reload.
+    if u16(d, 0x2A8482) != 0x596C or u16(d, 0x2A8484) != 0x000E:
+        raise SystemExit("$2A8482 is not `subq.w #$4,($E,A4)`, so the muzzle "
+                         "cursor's stride is not 4.")
+    if u16(d, 0x2A8488) != 0x397C or u16(d, 0x2A848A) != 0x0014:
+        raise SystemExit("$2A8488 does not reload ($E,A4) with $14.")
+    if 0x0014 + 4 != 0x18:
+        raise SystemExit("the muzzle window's extent no longer follows.")
+
+    # ---- THE DEAD STORE the port transcribes by omission, stated here so the
+    # export fails if a later build ever puts the `swap D0` back.
+    if u16(d, 0x2A83F4) != 0x302C or u16(d, 0x2A83F6) != 0x0008:
+        raise SystemExit("$2A83F4 is not `move.w ($8,A4),D0`; gun 6's dead speed "
+                         "bias has changed shape.")
+    if u16(d, 0x2A8400) != 0x4E71:
+        raise SystemExit("$2A8400 is not a `nop`; something now sits where W404 "
+                         "measured no `swap D0`.")
+    if u16(d, 0x2A840E) != 0x302C or u16(d, 0x2A8410) != 0x000A:
+        raise SystemExit("$2A840E no longer overwrites D0's low word with ($A,A4).")
+
+
 def check_option_formation_windows(d: bytes) -> None:
     """W393.  Re-derive the two option-pod spawn pointer blocks formations 4 and
     6 read, and the rotation vector table `$24C7F8` indexes, from the cartridge.
@@ -8860,6 +8986,7 @@ def build(d: bytes) -> dict:
     check_arm5_demo_windows(d)                 # W392 -- ARM 5'S FOUR DEMO BLOCKS
     check_option_formation_windows(d)          # W393 -- FORMATIONS 4 AND 6
     check_hibachi_a4_windows(d)                # W399 -- HIBACHI'S A4 TABLE + ENDING DATA
+    check_hibachi_a1_windows(d)                # W404 -- HIBACHI'S TWO A1 GUN TABLES
     check_type44_windows(d)                    # W400 -- TYPE $44'S PROTOTYPES AND FIVE TABLES
     check_type4c_retire_windows(d)             # W402 -- $26FFE8'S TWO RETIRE LISTS
     check_sample_windows()                     # W27D -- ICS sample tight union

@@ -466,6 +466,16 @@ test('every registered script address is in an installed boss scheduler table',
     }
     assert.strictEqual(ROM.u32(0x2a5886) >>> 0, 0x2a5886 + 21 * 8,
       'entry [0] IS $2A5886 + 21*8, so the table ends where its own first script begins');
+    // W404 carries HIBACHI's A1 GUN table, installed by the SAME body four instructions above
+    // the A4 lea ($2A4306 lea $2A72C8,A1), and its loop-zero twin ($2A4328 lea $2A92A8,A1,
+    // which $2A4324's bne.w skips whenever $813098 is non-zero). FOURTEEN pairs each, not
+    // fifteen -- `tests/w404hibachiguns.test.js` SECTION 1 carries the four witnesses for the
+    // count, including the `4254 4E75` that stands where entry [14] would begin.
+    for (const base of [0x2a72c8, 0x2a92a8]) {
+      for (let i = 0; i < 14; i++) {
+        legal.push(ROM.u32(base + i * 8), ROM.u32(base + i * 8 + 4));
+      }
+    }
     for (const s of scriptAddresses()) {
       if (s === 0x111111 || s === 0x222222) continue;   // this file's own fake
       assert.ok(legal.includes(s),

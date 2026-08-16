@@ -1,8 +1,107 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-16 (W403)
+Updated: 2026-08-16 (W404)
 
-## START HERE -- W403
+## START HERE -- W404
+
+### THE "FIFTEEN-ENTRY A1 GUN TABLE" IS FOURTEEN, AND THERE ARE TWO OF THEM
+
+`$2A72C8` holds **fourteen** `{init, step}` pairs, `$2A72C8..$2A7337`, bounded four ways and not
+one of them an absence:
+
+1. `$2A7338`, where entry [14] would begin, is `4254 4E75` -- `clr.w (A4) / rts`, two
+   INSTRUCTIONS. As a pointer that is `$42544E75`, past the end of a 6 MB image.
+2. `$2A4328 lea $2A92A8,A1` installs a **second** gun table whose entry [14] is `$20800202`, the
+   head of a data blob. Two independent copies, both stopping after fourteen.
+3. `4E75` stands at `step - 2` in all fourteen pairs of both tables, and at neither fifteenth.
+4. Every `moveq #n,D0 / jsr $259A18`, `$259A4A` and `$259B08` in `$2A4000..$2AB000` loads n in
+   **0..$D**, and all fourteen are used.
+
+**`$2A431E tst.w $813098 / $2A4324 bne.w $2A432E` SKIPS the second `lea`**, so the FIRST loop gets
+`$2A92A8` and every later loop keeps `$2A72C8`. `initbody.js` had read that branch right since
+W369; what nobody had read is that **ids 5..$D are byte-identical between the two tables** and only
+0..4 differ. Both waits the ending chain stops on -- gun 5 and gun 9 -- are inside the shared run,
+so this wave is loop-independent.
+
+### THE A1 CONVENTION IS THE EXACT OPPOSITE OF THE A4 CONVENTION
+
+W403's rule was "not one of `$2A5886`'s twenty-one A4 pairs puts an `rts` between init and step".
+**All fourteen A1 pairs do**, 28 of 28 across the two tables. A1 inits run ALONE on the first frame
+and A1 countdowns start at their nominal value. The convention is per table; neither may be assumed
+from the other, and this file registers A1 init and step separately for exactly that reason.
+
+### THE FRAME-321 STOP WAS NOT A LEAF -- IT IS A FOUR-LINK CLOSED LOOP
+
+`A4 $A -> gun 5 -> A4 $B -> gun 6 -> A4 $C -> gun 7 -> A4 $D -> gun 8 -> A4 $A`. Every arrow is a
+`moveq / jsr $25980C` or `/ jsr $259A18` read out of the image. It is HIBACHI phase B's ATTACK
+CYCLE, not a step of the ending, so nothing behind `$2A689C` was ever going to end the stage.
+
+Ported: **`src/hibachiguns.js`** (new) -- A1 guns **5** (`$2A81BC/$2A8206`, `$1B4`) and **6**
+(`$2A8370/$2A8396`, `$1A6`), and A4 **$A**, **$B**, **$C**. **The real path now runs to frame 982**
+and stops at `$2A8516`, A1 gun 7's init -- 661 frames further on, and 1,260 bullets where W403's run
+fired none. Still a PORT stop, by the same three tests: `$2A72C8[7].init` IS `$2A8516`, `41FA` lea
+stands there, and A4 $C's `moveq #$7 / jsr $259A18` is what routed us in.
+
+### ANOTHER DECODING TRAP: THE FREEZE ARM BRANCHES *BACKWARD*
+
+Every gun STEP opens `tst.w $8130D4 / bne.w <its own init>` (`$2A820C 6600 FFAE` from `$2A820E` is
+`-$52` = `$2A81BC`), where every A4 script's identically-placed `tst.w $8130D4` branches FORWARD to
+an `rts`. **A frozen gun re-seeds its whole slot from the template every frame** and restarts its
+pattern when the freeze lifts; a frozen A4 script merely waits.
+
+### TWO ROM DEFECTS, ONE OF THEM MEASURABLE IN EVERY BULLET GUN 6 FIRES
+
+`$2A83F4 302C 0008` is `move.w ($8,A4),D0` -- a **dead store**. `($8,A4)` is gun 6's speed bias,
+every other gun in the family loads its `{bias, kind}` pair with `move.l`, `$2A840E move.w
+($A,A4),D0` overwrites the low word eight instructions later, and `$2A8400` is a `4E71 nop` where a
+`swap D0` would fit. The build-A twin at `$1A6EB6` has the same `move.w` and the same `nop`, so it
+is the ROM. The consequence is real: the bias comes from `$242E24`'s ZERO high word instead, the
+four groups fire at 0, 5, $A, $E through `addi.l`s that ACCUMULATE, and gun 6's own `add.w D0,
+($8,A4)` ramp is unobservable. Second defect: gun 5 writes `($5,A4)` and never reads it, where
+guns 6 and 7 both reload `($4,A4)` from it.
+
+### THE BENCH ITSELF WAS LYING FOR TWO WAVES, AND THAT IS THE WORST BUG THIS WAVE FOUND
+
+W399's and W403's `realPath` installed **only** the A4 table, so `$812BD4` stayed zero and
+`$259782 tst.l / beq` **skipped the entire A1 walk**. A gun that A4 $A started could never step and
+never retire. Every conclusion either wave drew about "which kind of stop ends the path" was drawn
+on a bench where the guns could not run at all -- the stop was real, but its reading was not
+earned. Both benches now install A1 exactly as `$2A4306` does.
+
+Read this as the standing lesson: **a stop is only as trustworthy as the bench that produced it.**
+Before reporting where the path ends, check that everything the cartridge installs is installed.
+
+### FIFTY-TWO ABLATIONS, TWENTY-TWO GREEN ON THE FIRST PASS
+
+Patch-test-revert over `src/hibachiguns.js`. First pass **22 GREEN** -- every angle constant
+(`-$36`/`+$12`, `-$3C`/`+$A`, the `$F0C0` aim bias, gun 6's `-$20` jitter and its `-1,+1 / 0,-2,+2`
+offsets), the `$26BFFC` index's `+2`, the `$F0C00000` muzzle bias, both `bchg ($3,A5)` sites, the
+`$50` bounce limit, all five ramp caps, gun 6's muzzle wrap and its two kind fields. Eight new tests
+read the BULLET RECORDS back (`($1B,A0)` direction, `($2,A0)`/`($4,A0)` position, `($0,A0)` kind,
+`($1A,A0)` speed) instead of counting shots. Third pass: **52 of 52 RED, zero green.**
+
+### WINDOWS: FIVE NEW, 590
+
+`$2A72C8 + $70` and `$2A92A8 + $70` (the two tables), `$2A818C + $10` and `$2A8342 + $E` (the two
+slot templates, sized from their own `moveq` -- `dbra` is n+1), `$2A84CC + $18` (gun 6's six muzzle
+longwords, sized from `$2A8482 subq.w #$4` and `$2A8488`'s `#$14`). `$26BFFC`, which gun 5 walks
+64 longwords of, was already inside W31/W176's `$26BE70 + $28C` and was **not** widened.
+
+### VERIFIED
+
+Suite **3562 pass / 0 fail / 0 skipped** (3536 before; +26). Gate **exit 0**, read from its own exit
+code. `export-tables.py --verify` **OK at 590 windows**. No publish this wave: the cadence is every
+fifth and the last was W402.
+
+### NEXT
+
+**A1 gun 7 `$2A8516` ($2EA bytes) and gun 8 `$2A8800` ($1BA)**, plus A4 $D. That closes the attack
+loop with no port stop in it at all. Gun 7 needs one new window: `$2A8680 + $150`, a four-longword
+pointer table over four 80-byte blocks of 8-byte `{delta, bias, angle}` records, indexed by
+`($6,A4)` and stepped by `($12,A4)` in `$10` strides. Gun 8 needs none -- it walks `$26BFFC` like
+gun 5 -- but note `$2A896A 6100 FE94` is a `bsr.w` back into its OWN init.
+
+## W403 NOTES
 
 ### HIBACHI'S "SECOND FORM" IS TWO BODIES, NOT ONE, AND `($10E,A6)` PICKS BETWEEN THREE
 
