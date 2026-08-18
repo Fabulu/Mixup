@@ -20,6 +20,19 @@ text:
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
 
+## PUBLISHED: build `20260818210139`, confirmed live 2026-08-18
+
+W422 was the fifth wave since the last publish (W412, W417, W422), so this was the standing
+cadence, not an ad-hoc push. `export-web.mjs` ran BEFORE `publish.mjs`. The publish ran its own
+full chain -- gradius tests and gate, ddpdoj tests and gate, batman gate -- and polled until three
+consecutive checks agreed the new build was live.
+
+**WHAT THE OWNER GETS IN THIS BUILD:** the sound-lag ceiling (D54), the audio visibility backstop
+(D57), pool-A kind 5 with its collected popup (W422), and the build-scoped shell URLs (D53) that
+mean they no longer have to ctrl-shift-R.
+
+**NEXT PUBLISH FALLS AT W427.**
+
 ## W422 LANDED -- POOL-A KIND 5, VERIFIED BY THE COORDINATOR
 
 `$27FF9A..$280081`, `$E8`, all code, **ZERO trailing bytes** -- a FOURTH gap shape, after W418's
