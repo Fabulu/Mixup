@@ -123,8 +123,9 @@ test('W403 SECTION 1: exactly TWO instructions in 6 MB write ($10E,A6), and they
     // The second writer is inside A4 script 4, which W399 counted and W403 ports.
     assert.ok(HIBACHI_A4.s4Init <= 0x2a637a && 0x2a637a < 0x2a6418,
       '$2A637A is inside A4 script 4, $2A62FA..$2A6417');
-    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort(), [1, 2, 3, 4],
-      '  ...and script 4 is registered now, so phase B is reachable and not dead code');
+    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort(), [1, 2, 3, 4, 5],
+      '  ...and script 4 is registered now, so phase B is reachable and not dead code '
+      + '(W409 added script 5, phase B\'s own death tail)');
     for (const off of [0, 4]) {
       assert.ok(scriptAddresses().includes(l(HIBACHI_A4.table + 4 * 8 + off)),
         `$2A5886[4]${off ? '.step' : '.init'} is registered with the scheduler`);
@@ -222,7 +223,7 @@ test('W403 SECTION 1: every `jsr`/`jmp` in both new spans lands somewhere, and T
     // W406 CORRECTION: A4 $F followed A4 $D out of the list -- `src/hibachiguns.js` runs it,
     // and its $46 is still measured here from the table itself.
     for (const [id, want, ported] of [[0x0d, 0x60, true], [0x0f, 0x46, true],
-      [0x05, 0x3aa, false], [0x13, 0x32, false]]) {
+      [0x05, 0x3aa, true], [0x13, 0x32, false]]) {
       const here2 = l(HIBACHI_A4.table + id * 8);
       const next = Math.min(...[...Array(HIBACHI_A4.pairs).keys()]
         .map((i) => l(HIBACHI_A4.table + i * 8))
@@ -593,6 +594,8 @@ function drive(b, frames) {
     // The marks are read AFTER the catch, not inside the try: a death that hands to an
     // unported script throws in the SCHEDULER half of the same frame, and a `break` before
     // this line would report the death as never having happened.
+    // W409: the chain no longer stops at all -- A4 script 5 is ported and it SUSPENDS.
+    if (b.ram.u16(SCHED.suspend) !== 0 && !out.marks.suspend) out.marks.suspend = f;
     if (b.ram.u8(SUB + 0x15e) && !out.marks.deathA) out.marks.deathA = f;
     if (b.ram.u8(SUB + 0x15f) && !out.marks.deathB) out.marks.deathB = f;
     // W408: SNAPSHOT script 4's handover HERE, on the frame it runs. Reading those six fields
@@ -612,6 +615,9 @@ function drive(b, frames) {
     }
     if (out.stopped) break;
   }
+  out.a4live = [...Array(SCHED.a4Slots).keys()]
+    .map((i) => b.ram.u16(SCHED.a4Base + i * SCHED.a4Stride))
+    .filter((v) => v !== 0).map((v) => v & 0xff);
   return out;
 }
 
@@ -641,10 +647,10 @@ test('W403 SECTION 5: phase A dies of DAMAGE and the whole ending chain runs to 
     // and `$2A728C jmp $25980C` with D0 = 5 filled the slot before A4 5's own init threw.
     assert.deepEqual([...Array(SCHED.a4Slots).keys()]
       .map((i) => b.ram.u16(SCHED.a4Base + i * SCHED.a4Stride))
-      .filter((v) => v !== 0).map((v) => v & 0xff), [0x05],
-      'when the run stops exactly one A4 slot is live and it carries 5 -- script 3 ran, '
-      + 'script 4 ran, $F ran, $2A6A5C moveq #$11 handed on, $11 ran, $2A6AE8 moveq #$10 handed '
-      + 'on, $10 ran gun $A, and phase B\'s timeout handed to A4 5');
+      .filter((v) => v !== 0).map((v) => v & 0xff), [],
+      'no A4 slot is live when the run ENDS -- script 3 ran, script 4 ran, $F ran, $2A6A5C '
+      + 'moveq #$11 handed on, $11 ran, $2A6AE8 moveq #$10 handed on, $10 ran gun $A, phase '
+      + 'B\'s timeout handed to A4 5, and W409 ports A4 5 so it retired ITSELF');
     assert.equal(r.marks.phaseB, 192,
       '$2A637A set ($10E,A6) = 2 on frame 192: script 3 spends $C0 from frame 1 (the '
       + 'fall-through), reaches $2A61E8 on frame 192, and script 4\'s init runs in the same pass '
@@ -669,10 +675,15 @@ test('W403 SECTION 5: phase A dies of DAMAGE and the whole ending chain runs to 
       '  ...and W406 runs it, so hibachiend.js no longer counts it');
     assert.equal(HIBACHI_END_COUNTED[0x11], undefined, '  ...and W407 runs $11');
     assert.equal(HIBACHI_END_COUNTED[0x10], undefined, '  ...and $10');
-    assert.deepEqual([r.stopped.frame, r.stopped.at, r.stopped.name],
-      [1840, 0x2a6418, 'Unreached'],
-      'the chain stops on frame 1840 at $2A6418, A4 script 5 -- which $2A728C jmp $25980C '
-      + 'starts when phase B\'s ($1A,A5) reaches zero');
+    // W409: THERE IS NO STOP. A4 script 5 is ported, phase B's timeout hands to it on 1840,
+    // and 442 frames later `$2A6466 jsr $2595E8` suspends the stage.
+    assert.equal(r.stopped, null, 'nothing throws anywhere in the chain now');
+    assert.equal(r.marks.deathB, 1840,
+      'phase B\'s timeout still lands on 1840 -- which $2A728C jmp $25980C turns '
+      + 'into A4 script 5');
+    assert.equal(r.marks.suspend, 2282, '  ...and $2595E8 fires 442 frames later, on 2282');
+    assert.equal(1840 + 442, 2282,
+      '  ...442 being A4 script 5\'s own length: 31 + 266 + 9 + 8 + $80');
     assert.equal(1840 - 321, 95 + 293 + 1 + 95 + 507 + 1 + 96 + 431,
       '  ...and the 1,519 frames between W403\'s stop and this one are $F\'s wait (95), gun 9\'s '
       + 'run (293), $11\'s dispatch, $11\'s wait (95), gun $B\'s run (507), $10\'s dispatch, '
@@ -694,10 +705,12 @@ test('W403 SECTION 5: phase A also dies of the TIMEOUT, on frame 25200 exactly -
       'and the death lands on frame 25200 = $6270, the value $2A5EAC loads into ($1A,A5)');
     assert.equal(r.marks.phaseB, 0x6270 + 191,
       '  ...with script 3\'s 192 frames after it, so phase B starts on frame 25391');
-    assert.deepEqual([r.stopped.frame, r.stopped.at, r.stopped.name],
-      [0x6270 + 1839, 0x2a6418, 'Unreached'],
-      '  ...and the same A4 script 5 stop the DAMAGE arm reaches, 1,839 frames after the '
-      + 'death: the ending chain past phase A does not depend on which way phase A died');
+    assert.equal(r.stopped, null, '  ...and nothing throws on this arm either');
+    assert.equal(r.marks.deathB, 0x6270 + 1839,
+      '  ...phase B times out 1,839 frames after phase A died, exactly as on the DAMAGE arm: '
+      + 'the ending chain past phase A does not depend on which way phase A died');
+    assert.equal(r.marks.suspend, 0x6270 + 1839 + 442,
+      '  ...and A4 script 5 suspends the stage 442 frames after that, on 27481');
   });
 
 test('W403 SECTION 5: phase B dies of damage and hands to A4 5 -- the last link this wave reaches',
@@ -712,12 +725,15 @@ test('W403 SECTION 5: phase B dies of damage and hands to A4 5 -- the last link 
       '$2A722E/$2A7236 bset #6 and #7 -- which phase A\'s death does NOT do');
     assert.equal(b.ram.u16(SUB + 0x180), 0x8000, '$2A7276 re-armed part $180');
     assert.equal(b.ram.u8(SUB + 0xed), 0x17, '$2A727C ($ED,A6) = $17');
-    assert.deepEqual([r.stopped.frame, r.stopped.at, r.stopped.name],
-      [1, 0x2a6418, 'Unreached'],
-      '$2A728C jmp $25980C with D0 = 5 -- and A4 5 is unported, so this is a PORT stop at '
-      + '$2A6418 on the same frame');
+    assert.equal(r.stopped, null,
+      '$2A728C jmp $25980C with D0 = 5 -- and W409 ports A4 5, so nothing throws');
+    assert.deepEqual(r.a4live, [0x05],
+      '  ...the A4 slot carries 5 from the first frame, and 50 frames is not enough for its '
+      + '443, so it is still running when the drive stops');
     assert.equal(l(HIBACHI_A4.table + 5 * 8), 0x2a6418, '  ...$2A5886[5].init is $2A6418');
-    assert.equal(HIBACHI_END_COUNTED[0x05].bytes, 0x03aa, '  ...and it is $3AA bytes, counted');
+    assert.equal(HIBACHI_END_COUNTED[0x05], undefined, '  ...and it is no longer COUNTED');
+    assert.ok(scriptAddresses().includes(0x2a6418), '  ...its init is registered');
+    assert.ok(scriptAddresses().includes(0x2a6458), '  ...and so is its step');
   });
 
 test('W403 SECTION 5: phase B\'s $23000 check fires ONCE and starts A4 $13 and sequencer $B',
@@ -939,7 +955,7 @@ test('W403 SECTION 6: the kind table REMOVED -- script 3\'s per-frame emitter, n
 test('W403 SECTION 7: 585 windows, overlap still 71, and NOTHING in the unit reads ROM',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 596, '585 windows through W403, which declared none; W404 added '
+    assert.equal(ws.length, 599, '585 windows through W403, which declared none; W404 added '
       + 'five for the two A1 gun tables and the gun data blocks, W405 three, W406 one, W407 '
       + 'one and W408 one');
     const pairs = (list) => {

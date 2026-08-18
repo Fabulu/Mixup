@@ -293,7 +293,8 @@ function realPath() {
 }
 
 function runReal(b, frames) {
-  const out = { stopped: null, shots: 0, bySite: new Map(), a1: [], a4: [], timer: [] };
+  const out = { stopped: null, suspend: null, shots: 0, bySite: new Map(),
+    a1: [], a4: [], timer: [] };
   b.ctx.bulletSpawn = (site) => {
     out.shots += 1;
     out.bySite.set(site, (out.bySite.get(site) ?? 0) + 1);
@@ -315,6 +316,7 @@ function runReal(b, frames) {
       .filter((v) => v !== 0).map((v) => (v & 0xff).toString(16)).join(',');
     if (live4 !== prev4) { out.a4.push([f, live4]); prev4 = live4; }
     if (!out.stopped) out.timer.push(b.ram.u16(REC + 0x1a));
+    if (out.suspend === null && b.ram.u16(SCHED.suspend) !== 0) out.suspend = f;
     resetSpriteQueueCounters(b.ram);
     backgroundFrame(b.ram, b.ROM, b.vram, b.ctx, A5BG);
   }
@@ -331,11 +333,15 @@ test('W407 SECTION 3: the real path reaches frame 4016 and stops at A1 gun $A', 
     assert.deepEqual(r.a1.slice(-6),
       [[3023, '9'], [3316, ''], [3412, 'b'], [3919, ''], [4016, 'a'], [4447, '']],
       'gun 9 3023..3315, then gun $B 3412..3918, then gun $A 4016..4446');
-    assert.deepEqual(r.a4.slice(-4).map(([, v]) => v), ['f', '11', '10', '5'],
+    // W409 CORRECTION: A4 script 5 runs and retires itself, so the history gains a final
+    // empty entry behind the 5.
+    assert.deepEqual(r.a4.slice(-5, -1).map(([, v]) => v), ['f', '11', '10', '5'],
       'and the A4 history ends $F -> $11 -> $10 -> 5, phase B\'s own timeout');
+    assert.equal(r.a4[r.a4.length - 1][1], '',
+      '  ...and then nothing, because $2A646C clr.w (A4) frees the slot');
 
     // ---- THE ARITHMETIC OF THE 699 FRAMES, every number somebody's instruction.
-    assert.equal(r.a4[r.a4.length - 3][0], 3317, 'A4 $11 is dispatched first on 3317');
+    assert.equal(r.a4[r.a4.length - 4][0], 3317, 'A4 $11 is dispatched first on 3317');
     assert.equal(3412 - 3317, 0x5f,
       '  ...and gun $B starts $5F later: the init writes #$60 and FALLS THROUGH into the step, '
       + 'which spends one on the same frame (TRAP: the A4 convention)');
@@ -343,14 +349,17 @@ test('W407 SECTION 3: the real path reaches frame 4016 and stops at A1 gun $A', 
       'gun $B runs 507 frames: the init ALONE on 3412 (the A1 convention), $10 + 1 STEP frames '
       + 'to the first borrow, then 179 gaps -- 44 of them $4 + 1 because ($C,A4) reached zero '
       + 'and 135 of them ($6,A4) + 1');
-    assert.equal(r.a4[r.a4.length - 2][0], 3920, 'A4 $10 takes over on 3920');
+    assert.equal(r.a4[r.a4.length - 3][0], 3920, 'A4 $10 takes over on 3920');
     assert.equal(4016 - 3920, 0x60, '  ...and asks for gun $A $60 frames later');
 
     // ---- **WHICH KIND OF STOP.** W408 CORRECTION: not here any more. Gun $A runs, and the
     // path goes on to phase B's timeout and stops at A4 script 5 on 4447. What THIS wave
     // measured about $2A8B7C stands and is kept, as what the next link is made of.
-    assert.deepEqual(r.stopped, { frame: 4447, at: 0x2a6418, name: 'Unreached' },
-      'the run stops on frame 4447 at $2A6418 -- 1,130 frames past W406\'s 3317');
+    // W409 CORRECTION: there is no stop left. A4 script 5 is ported, it takes the slot on
+    // 4447 and ends the stage 442 frames later.
+    assert.equal(r.stopped, null, 'nothing throws anywhere in 8,000 frames');
+    assert.equal(r.a4[r.a4.length - 2][0], 4447, 'A4 script 5 takes the slot on 4447');
+    assert.equal(r.suspend, 4889, '  ...and $2595E8 suspends the stage on 4889');
     //   (a) a live table entry the cartridge dispatches through, with ordinary code at it;
     assert.equal(l(HIBACHI_A1.main + 0x0a * 8), 0x2a8b7c, '(a) $2A72C8[$A].init IS $2A8B7C');
     assert.equal(w(0x2a8b7c), 0x41fa, '  ...and `41FA lea` stands there, not an rts');
@@ -363,13 +372,14 @@ test('W407 SECTION 3: the real path reaches frame 4016 and stops at A1 gun $A', 
     assert.ok(new Set(scriptAddresses()).has(0x2a8b7c),
       '  ...and gun $A IS registered, since W408');
 
-    // ---- **WHAT "COMPLETING" WOULD MEAN, in the cartridge's own terms.** It has NOT happened,
-    // and closing this loop would not make it happen either: a closed loop is a loop. The
-    // ending is over when `$2595E8` suspends the stage, which only A4 $14 reaches, and A4 $14
-    // is only started by script 1's FIRST-LOOP arm. This bench is the other arm.
-    assert.equal(w(0x2a5cb4), 0x7014, '$2A5CB4 moveq #$14 -- the only start of the suspend link');
+    // ---- **WHAT "COMPLETING" MEANS.** W409 CORRECTION: W407's note here said only A4 $14
+    // reaches `$2595E8`. It is not the only one -- `$2A6466` is a second `jsr $2595E8`, inside
+    // A4 script 5, and script 5 is exactly where this bench's arm goes. Both arms of script
+    // 1's fork have an ending; they just have a different one each.
+    assert.equal(w(0x2a5cb4), 0x7014, '$2A5CB4 moveq #$14 -- the FIRST-loop arm\'s link');
     assert.equal(w(0x2a728a), 0x7005, '$2A728A moveq #$5 / $2A728C jmp -- phase B\'s death tail');
-    assert.equal(HIBACHI_END_COUNTED[0x05].bytes, 0x03aa, '  ...and A4 5 is still counted');
+    assert.equal(l(0x2a6468), 0x002595e8, '$2A6466 jsr $2595E8 -- A4 script 5\'s own suspend');
+    assert.equal(HIBACHI_END_COUNTED[0x05], undefined, '  ...and A4 5 is ported, not counted');
   });
 
 test('W407 SECTION 3: 8,105 spawn calls, and gun $B\'s 3,240 are 180 volleys of EIGHTEEN',
@@ -965,8 +975,9 @@ test('W407 SECTION 7: ONE new window, 595, bounded three ways and none of them a
     const set = new Map(tables.rom.windows.map(
       (x) => [parseInt(String(x.base).replace('$', ''), 16), x.len]));
     assert.equal(set.size, tables.rom.windows.length, 'no duplicate window bases');
-    assert.equal(tables.rom.windows.length, 596,
-      'W408 CORRECTION: 596 windows, 594 + this wave\'s one + W408\'s gun $A template');
+    assert.equal(tables.rom.windows.length, 599,
+      'W409 CORRECTION: 599 windows, 594 + this wave\'s one + W408\'s gun $A template '
+      + 'and W409\'s three A4 script 5 blocks');
 
     // (1) the `lea` NAMES the base. TRAP 4: extension-word address plus displacement.
     assert.equal(w(HIBACHI_A1.gunBInit), 0x41fa, '$2A8C9A `41FA` lea (d16,PC),A0');

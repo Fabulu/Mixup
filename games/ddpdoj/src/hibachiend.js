@@ -1,4 +1,4 @@
-// HIBACHI'S ENDING -- A4 SCRIPTS 1, 2 AND 3, AND BOTH EXTERNAL SPEED PUSHES.  W399.
+// HIBACHI'S ENDING -- A4 SCRIPTS 1..5, AND BOTH EXTERNAL SPEED PUSHES.  W399, W403, W409.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -17,7 +17,12 @@
 //   $2A5D30  script 1, arm B   -> A4 2   (init $2A5EA0, step $2A5EB8)  after PUSH $0010
 //   $2A5F82  script 2          -> A4 $A  (init $2A689C, step $2A68A2)  COUNTED, not ported
 //   $2A7076  phase-2 death     -> A4 3   (init $2A5F8E, step $2A5FA2)
-//   $2A61E8  script 3          -> A4 4   (init $2A62FA, step $2A6312)  COUNTED, not ported
+//   $2A61E8  script 3          -> A4 4   (init $2A62FA, step $2A6312)  W403 ports it
+//   $2A728C  phase B's death   -> A4 5   (init $2A6418, step $2A6458)  W409 ports it
+//
+// W409: the last line is the SECOND ending.  `$2A6466 jsr $2595E8` is A4 script 5's own
+// suspend, so script 1's fork has an ending on BOTH arms -- $14 on the first-loop arm and
+// this one on the other -- and the run no longer stops anywhere in the chain.
 //
 // ============================================================================
 // THE PUSH IS NOT ON THE FIRST-LOOP PATH, AND THE BRIEF FOR THIS WAVE SAID IT WAS
@@ -90,14 +95,18 @@ import { u16, i16 } from './ram.js';
 import {
   registerScript, a4Start25980C, a2Stop25994A, a2Run2598E6, a2StopAll259924,
   seqStart2598D0, seqStop2598BE, a3Start259962,
+  suspend2595E8, fadeArm259B7E, fadeDone259B9E,
 } from './scheduler.js';
 import { pushExternalSpeed } from './background.js';
-import { loadAnimObjects246410 } from './animobjects.js';
+import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
+import { install24150A } from './palette.js';
 import { spawnEffect, clearEffectPool, B } from './effects.js';
-import { drawWord242EC2, drawByte2431F4, drawWord24328E } from './rng.js';
+import {
+  drawWord242EC2, drawByte2431F4, drawWord24328E, drawByte242B3C,
+} from './rng.js';
 import { finalBlast2440E0 } from './boss2.js';
 import { finalBurst27CBB6 } from './stage4type9f.js';
-import { bossA5, bossA6 } from './boss.js';
+import { bossA5, bossA6, bigBurst28B34A } from './boss.js';
 
 /** Every address in this file's flow that is real ROM data or a real ROM entry point, so a
  *  test can assert the map instead of a prose claim. */
@@ -109,6 +118,17 @@ export const HIBACHI_A4 = Object.freeze({
   s2Init: 0x2a5ea0, s2Step: 0x2a5eb8,
   s3Init: 0x2a5f8e, s3Step: 0x2a5fa2,
   s4Init: 0x2a62fa, s4Step: 0x2a6312,       // W403 -- the $11E bytes W399 counted
+  s5Init: 0x2a6418, s5Step: 0x2a6458,       // W409 -- the $3AA W408 counted
+  // A4 5's own data, all four bases named by a `lea` that is decoded rather than assumed
+  s5Emit: 0x2a6688, s5EmitRows: 16, s5EmitStride: 8,   // $2A657E and $2A6628, the SAME base
+  s5EmitWrap: 0x0080,                       // $2A65CC / $2A6662 cmpi.w #$80,($8,A4)
+  s5Anim410: 0x2a670a, s5Anim410Count: 6,   // $2A64BA lea, TRAP 4: $2A64BC + $24E
+  s5Anim520: 0x2a676e, s5Anim520Count: 2,   // $2A6428 lea, TRAP 4: $2A642A + $344
+  animNoFillStride: 12,                     // $246520's entry: family.w cur.w tgt.l n.w t.w
+  s5DeadRow: 0x2a6760,                      // a SEVENTH $246410 record the count of 6 never reads
+  s5Suspend: 0x2a6466,                      // jsr $2595E8 -- the SECOND site, not A4 $14's
+  s5WhiteBank: 0x0e, s5WhiteSrc: 0x246bf8,  // $2A6418 moveq-shaped move.w #$E,D0 / $2A641C lea
+  s0Anim: 0x2a6788,                         // A4 script 0's chain -- $2A5A04's lea, NOT A4 5's
   // the DATA the three of them read
   poolCTable: 0x2a5cc0, poolCRows: 21,      // $2A5C9A moveq #$14,D7 + dbra -- TRAP 2, N+1
   kindTable: 0x2a5dc8, kindEntries: 8,      // $2A5D62 andi.w #$7,D0 / $2A5D66 add.w D0,D0
@@ -133,6 +153,9 @@ export const HIBACHI_END_NOTED = Object.freeze({
   0x23c4d0: '$2A5F66 jsr $23C4D0 -- the $8039xx pause/flag block. It is `clr.w $803934 / '
     + 'move.w #$1,$803936 / rts`, but src/boss.js has counted it since W357 and '
     + 'tests/w382stalenotes.test.js asserts that note, so it stays counted here too',
+  0x24150a: '$2A6422 jsr $24150A -- A4 script 5\'s bank $E <- $246BF8 (32 x $7FFF, WHITE). '
+    + 'RUN when ctx.palette is present and counted when it is not, exactly as '
+    + 'src/background.js and src/bossarrival.js do at their own $24150A sites',
 });
 
 const note = (ctx, a) => (ctx.unported ?? ctx.unportedLog)?.note(a, HIBACHI_END_NOTED[a]
@@ -443,6 +466,240 @@ function s4Step2A6312(ram, rom, ctx, a4) {
   // $2A6400 bra.w $2A6416 -- the shared rts.
 }
 
+// ================================ A4 SCRIPT 5 -- PHASE B'S DEATH TAIL, AND THE SECOND SUSPEND
+//
+// W409.  `$2A6418..$2A6687` is CODE and `$2A6688..$2A6787` is its own data; the `$3AA` W408
+// counted entry-to-entry runs on to `$2A67C1` and the last `$3A` of it belong to A4 SCRIPT 0
+// (`$2A5A04 lea` names `$2A6788`).  Three numbers, not one -- see the extents note below.
+//
+// **THE BRIEF FOR THIS WAVE SAID ONLY A4 `$14` REACHES `$2595E8`.  IT DOES NOT.**  A scan of
+// every longword in `$2A4000..$2AB000` finds exactly TWO `4EB9 002595E8`:
+//
+//   $2A6B88   in A4 $14   -- script 1's FIRST-LOOP arm reaches it ($2A5CB4 moveq #$14)
+//   $2A6466   HERE        -- and phase B's death tail reaches it ($2A728A moveq #$5)
+//
+// so this unit is not "one link past the loop", it is THE OTHER ENDING.  `$2A646C 4254` is
+// `clr.w (A4)` (TRAP 5) immediately after, so the suspend fires exactly once.
+//
+// THE FIVE STATES, and `($2,A4)` is tested in the order 4, 3, 2, 1, 0 -- descending, so a
+// state that has just been written is not re-entered on the same frame:
+//
+//   0  $2A65F2  16 spawns off $2A6688, one every ($6,A4)+1 frames, then arm state 1
+//   1  $2A64E0  the long burn: a $28B34A blast every ($10,A4)+1, a ramp on ($7,A4)/($C,A4),
+//               and 16 more spawns whose cadence ACCELERATES as ($7,A4) falls to 2
+//   2  $2A64AA  wait for the fade state 1 armed, then load the $246410 chain
+//   3  $2A6470  8 frames, then $2440E0 with ($2,A6) pushed DOWN $1400
+//   4  $2A6458  $80 frames, then $2595E8 -- THE SUSPEND -- and clr.w (A4)
+//
+// `($13,A4)` LOOKS uninitialised and is not: `$2A6454 426C 0012` is `clr.w ($12,A4)`, a WORD,
+// so it zeroes `($12,A4)` AND `($13,A4)` -- the same TRAP 3 the two `move.w #$0101` / `#$2020`
+// stores play, one word over two byte fields.  `$2A656C subq.b #1,($13,A4)` therefore borrows
+// on its FIRST use and reloads to 4, and the port must clear it as a word or that first cue
+// would fire 256 spawns late.  ($4,A4) really is untouched by the init: states 2 and 3 write
+// it before either of the two states that read it runs.
+//
+// THE EXTENT, THREE BOUNDS, and which kind each one is:
+//   (1) POSITIVE: `4E75` sits AT `$2A6686` -- the last address, not one past it -- and it is
+//       the target of the four widest forward branches in the routine ($2A65F8, $2A6600,
+//       $2A6668, $2A6672 all resolve to $2A6686).
+//   (2) POSITIVE: `$2A6688` is a table BASE, named twice by this routine's own
+//       `lea (d16,PC),A1` -- $2A657E ($2A6580 + $108) and $2A6628 ($2A662A + $5E).
+//   (3) CONSEQUENCE: every branch displacement in `$2A6418..$2A6686` was resolved and not one
+//       lands outside it, so the aligned sweep's boundary set closes.
+// and the DATA's far end is bounded by a fourth `lea` that belongs to a DIFFERENT unit:
+// `$2A5A04 lea` (inside A4 script 0, `$2A592E..$2A5A1B`, still counted) names `$2A6788`, and
+// `$2A676E + $1A` is exactly that.  So A4 5's data stops where script 0's begins.
+//
+// **AND `$2A6760..$2A676D` IS A SEVENTH `$246410` RECORD NOTHING READS.**  `$2A670A` holds
+// `$0006` and `$24643C move.w (A0)+,D0` / `$2464E8 subq.w #1,D0 / beq` runs the body exactly
+// six times, so the window is `$56` and the fourteen bytes after it -- structurally a
+// perfect seventh record, `7FFF 0008 0740 00230220 001F 0006`, continuing the ascending
+// target series -- are dead.  Left with NO window, like W408's `$2A8B10` orphan, and named
+// here so the next reader does not "discover" it.
+
+/** `$2A6688`'s row, read straight out of ROM by both emitters.  Four words: the effect KIND,
+ *  a word whose LOW BYTE is `($1C,A0)`, and the `($26,A0)` nudge longword. */
+const s5Row = (rom, base, index) => ({
+  kind: rom.u16(base + index),
+  f1c: rom.u16(base + index + 2) & 0xff,
+  nudge: rom.u32(base + index + 4),
+});
+
+/** `subq.b #1,(d16,A4)` + `bcc`, the UNDERFLOW convention: the body runs on the frame the
+ *  byte passes zero, i.e. every `reload + 1` frames. */
+function dueByte5(ram, addr) {
+  const old = ram.u8(addr);
+  ram.setU8(addr, u16(old - 1) & 0xff);
+  return old === 0;
+}
+
+/** `$2A6418`.  Two loads and seven stores, and NO `rts` -- `$2A6454 clr.w ($12,A4)` is four
+ *  bytes and `$2A6458` is the step, so `$2596FA jsr (A0)` runs both on the first frame. */
+export function s5Init2A6418(ram, rom, ctx, a4) {
+  // $2A6418 move.w #$E,D0 / $2A641C lea $246BF8,A0 / $2A6422 jsr $24150A
+  if (ctx.palette) {
+    install24150A(ram, ctx.palette, HIBACHI_A4.s5WhiteBank,
+      rom.bytes(HIBACHI_A4.s5WhiteSrc, 64), 0x2a6422, 'HIBACHI A4 5, phase B death tail');
+  } else {
+    note(ctx, 0x24150a);
+  }
+  // $2A6428 lea ($344,PC),A0 -> $2A676E / $2A642C nop / $2A642E jsr $246520 -- the NO-FILL
+  // loader, whose entry is TWELVE bytes and not $246410's fourteen.
+  loadAnimObjects246520(ram, rom, HIBACHI_A4.s5Anim520);
+  ram.setU16(a4 + 0x02, 0);                              // $2A6434 clr.w ($2,A4) -- state 0
+  ram.setU16(a4 + 0x06, 0x0101);                         // $2A6438 -- ONE word, TWO byte fields
+  ram.setU16(a4 + 0x08, 0);                              // $2A643E
+  ram.setU16(a4 + 0x0a, 1);                              // $2A6444
+  ram.setU8(a4 + 0x0c, 0);                               // $2A644A clr.b ($C,A4) -- a BYTE
+  ram.setU16(a4 + 0x10, 0x2020);                         // $2A644E -- again TWO byte fields
+  ram.setU16(a4 + 0x12, 0);                              // $2A6454
+}
+
+/** `$2A6458`.  The five-state machine, transcribed in the ROM's own test order. */
+export function s5Step2A6458(ram, rom, ctx, a4) {
+  const a6 = bossA6(ctx, 0x2a6458);
+  const state = ram.u16(a4 + 0x02);
+
+  // ---- STATE 4 ($2A6458) -- THE SUSPEND.  $80 frames, then the stage ends.
+  if (state === 4) {                                     // $2A6458 cmpi.w #$4,($2,A4)
+    const left = u16(ram.u16(a4 + 0x04) - 1);            // $2A6460 subq.w #1,($4,A4)
+    ram.setU16(a4 + 0x04, left);
+    if (left !== 0) return;                              // $2A6464 bne.s -> $2A646E, the rts
+    suspend2595E8(ram);                                  // $2A6466 jsr $2595E8
+    ram.setU16(a4, 0);                                   // $2A646C 4254 clr.w (A4) -- the SLOT
+    ctx.bossEvent?.('suspend', 0x2a6466);
+    return;
+  }
+
+  // ---- STATE 3 ($2A6470) -- eight frames, then the shared final blast.
+  if (state === 3) {                                     // $2A6470 cmpi.w #$3,($2,A4)
+    const left = u16(ram.u16(a4 + 0x04) - 1);            // $2A647A subq.w #1,($4,A4)
+    ram.setU16(a4 + 0x04, left);
+    if (left !== 0) return;                              // $2A647E bne.w -> falls to the rts
+    // $2A6482 move.w ($2,A6),-(A7) is a WORD push, so only ($2,A6) -- Y -- is saved and
+    // restored; ($4,A6) is untouched throughout.  $1400 DOWN the screen for the blast only.
+    const savedY = ram.u16(a6 + 0x02);                   // $2A6482
+    ram.setU16(a6 + 0x02, u16(savedY + 0x1400));         // $2A6486 addi.w #$1400,($2,A6)
+    finalBlast2440E0(ram, rom, ctx, a6);                 // $2A648C jsr $2440E0
+    ram.setU16(a6 + 0x02, savedY);                       // $2A6492 move.w (A7)+,($2,A6)
+    ram.setU16(a4 + 0x04, 0x0080);                       // $2A6496
+    ram.setU16(a4 + 0x02, 4);                            // $2A649C -- state 4
+    ctx.soundPost?.(0x28c392);                           // $2A64A2 jsr $28C392
+    return;
+  }
+
+  // ---- STATE 2 ($2A64AA) -- wait out the fade state 1 armed, then the SECOND chain.
+  if (state === 2) {                                     // $2A64AA cmpi.w #$2,($2,A4)
+    if (fadeDone259B9E(ram)) return;                     // $2A64B2 jsr $259B9E / $2A64B8 bcs.s
+    // $2A64BA lea ($24E,PC),A0 -> $2A670A / $2A64BE nop / $2A64C0 jsr $246410 -- the WITH-FILL
+    // loader this time, six records of fourteen bytes.
+    loadAnimObjects246410(ram, rom, HIBACHI_A4.s5Anim410);
+    a2StopAll259924(ram);                                // $2A64C6 jsr $259924
+    ram.setU16(a4 + 0x0a, 1);                            // $2A64CC
+    ram.setU16(a4 + 0x02, 3);                            // $2A64D2 -- state 3
+    ram.setU16(a4 + 0x04, 8);                            // $2A64D8
+    return;
+  }
+
+  // ---- STATE 1 ($2A64E0) -- THE BURN.  Three independent counters and one exit.
+  if (state === 1) {                                     // $2A64E0 cmpi.w #$1,($2,A4)
+    // (a) $2A64EA -- the $28B34A blast, every ($11,A4) + 1 frames.
+    if (dueByte5(ram, a4 + 0x10)) {                      // $2A64EA subq.b / $2A64EE bcc.s
+      ram.setU8(a4 + 0x10, ram.u8(a4 + 0x11));           // $2A64F0
+      const angle = drawWord242EC2(ram, rom) & 0xff;     // $2A64F6 jsr / $2A64FC move.b D0,D1
+      const root = ram.u32(a6 + 0x02);                   // $2A64FE move.l ($2,A6),D2
+      const dx = i16(drawWord24328E(ram, rom)) >> 2;     // $2A6502 / $2A6508 asr.w #2 -- the LOW
+      const dy = (i16(drawWord24328E(ram, rom)) >> 1) - 0x1000;  // $2A650E/$2A6514/$2A6518, HIGH
+      const pos = ((u16((root >>> 16) + dy) << 16) | u16((root & 0xffff) + dx)) >>> 0;
+      // $2A651E move.w #$8,D3 (the bucket) / $2A6522 move.w #$0,D0 -- and D0 is $28B34A's
+      // `$28B35C moveq #$5,D0 / $28B35E lsr.w D6,D0` SHIFT.  Zero, so the eight speeds are the
+      // table's own, which is what `bigBurst28B34A` transcribes.
+      bigBurst28B34A(ram, rom, ctx, pos, angle, 8, 0x2a6526);   // $2A6526 jsr $28B34A
+      if (ram.u8(a4 + 0x07) !== 2) {                     // $2A652C cmpi.b #$2,($7,A4) / beq.s
+        ctx.soundPost?.(0x28c2c2);                       // $2A6534 jsr $28C2C2
+      }
+    }
+    // (b) $2A653A -- the RAMP.  ($7,A4) walks $10 down to 2 and ($C,A4) walks up, and both
+    // stop dead at 2 because the guard is `cmpi.b #$2` and not a `bne` on zero.
+    if (dueByte5(ram, a4 + 0x0e)) {                      // $2A653A subq.b / $2A653E bcc.s
+      ram.setU8(a4 + 0x0e, ram.u8(a4 + 0x0f));           // $2A6540
+      if (ram.u8(a4 + 0x07) !== 2) {                     // $2A6546 / $2A654C beq.s
+        ram.setU8(a4 + 0x07, u16(ram.u8(a4 + 0x07) - 1) & 0xff);   // $2A654E subq.b #1
+        ram.setU8(a4 + 0x0c, u16(ram.u8(a4 + 0x0c) + 1) & 0xff);   // $2A6552 addq.b #1
+      }
+    }
+    // (c) $2A6556 -- the SPAWN, whose reload is ($7,A4) itself, so (b) makes it accelerate.
+    if (!dueByte5(ram, a4 + 0x06)) return;               // $2A655A bcc.w -> the rts
+    ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));             // $2A655E
+    if (ram.u8(a4 + 0x07) !== 2                          // $2A6564 / $2A656A beq.s $2A657E
+      && dueByte5(ram, a4 + 0x13)) {                     // $2A656C subq.b / $2A6570 bcc.s
+      ram.setU8(a4 + 0x13, 4);                           // $2A6572 -- an IMMEDIATE, not a reload
+      ctx.soundPost?.(0x28c28e);                         // $2A6578 jsr $28C28E
+    }
+    {
+      const row = s5Row(rom, HIBACHI_A4.s5Emit, ram.u16(a4 + 0x08));  // $2A657E lea / $2A6584
+      const a0 = spawnEffect(ram, ctx, row.kind, 0x2a658a);    // $2A6588/$2A658A jsr $289004
+      ram.setU8(a0 + B.f1c, row.f1c);                    // $2A6590/$2A6592 move.b -- LOW byte
+      ram.setU32(a0 + B.nudge, row.nudge);               // $2A6596 move.l (A1)+,($26,A0)
+      ram.setU32(a0 + B.pos, ram.u32(a6 + 0x02));        // $2A659A
+      ram.setU16(a0 + B.bucket, 0x0008);                 // $2A65A0 -- EIGHT, not script 1's $10
+      // $2A65A6..$2A65B8 -- all BYTE arithmetic, and both shifts are ARITHMETIC.
+      const jitter = (drawByte242B3C(ram, rom) << 24) >> 24;      // $2A65A6 jsr $242B3C
+      const ramp = (ram.u8(a4 + 0x0c) << 24) >> 24;              // $2A65B0 move.b ($C,A4),D1
+      ram.setU8(a0 + B.speed, ((jitter >> 2) + 2 + (ramp >> 1)) & 0xff);   // $2A65AC/AE/B4/B6/B8
+      ram.setU8(a0 + B.angle, drawWord242EC2(ram, rom) & 0xff);  // $2A65BC/$2A65C2
+    }
+    const next = u16(ram.u16(a4 + 0x08) + 8);            // $2A65C6 addi.w #$8,($8,A4)
+    ram.setU16(a4 + 0x08, next);
+    if (next !== HIBACHI_A4.s5EmitWrap) return;          // $2A65CC cmpi.w #$80 / $2A65D2 bne.s
+    ram.setU16(a4 + 0x08, 0);                            // $2A65D4
+    if (ram.u8(a4 + 0x07) !== 2) return;                 // $2A65D8 / $2A65DE bne.s -- the ONLY
+    fadeArm259B7E(ram, 0x0e);                            // $2A65E0 move.w #$E,D0 / $2A65E4
+    ram.setU16(a4 + 0x02, 2);                            // $2A65EA -- state 2
+    return;
+  }
+
+  // ---- STATE 0 ($2A65F2) -- sixteen spawns and a two-arm sound cue.
+  if (state !== 0) return;                               // $2A65F8 bne.w -> $2A6686, the rts
+  if (!dueByte5(ram, a4 + 0x06)) return;                 // $2A65FC subq.b / $2A6600 bcc.w
+  ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));               // $2A6604
+  // $2A660A bchg #$0,($12,A4) is a BYTE operation on memory and Z is the bit BEFORE the
+  // change, so `$2A6610 bne` skips when the bit WAS set: the cue fires every OTHER spawn.
+  const toggle = ram.u8(a4 + 0x12);
+  ram.setU8(a4 + 0x12, toggle ^ 1);
+  if ((toggle & 1) === 0) {
+    // $2A6612 lea $28C274,A0 / $2A6618 jsr $242EC2 / $2A661E bpl.s / $2A6620 lea $28C28E,A0.
+    // **THE `bpl` READS BIT 7, NOT BIT 15.**  $242EC2 ends `move.b (A0,D0.w),D0` and then
+    // `movea.l (A7)+,A0 / rts`, neither of which touches the CCR, so N at $2A661E is the MSB
+    // of the TABLE BYTE.  Testing the returned word's sign instead tests a bit of `$803916`'s
+    // high half that is always clear, and picks $28C274 every time.
+    ctx.soundPost?.((drawWord242EC2(ram, rom) & 0x80) !== 0 ? 0x28c28e : 0x28c274);
+  }
+  {
+    const row = s5Row(rom, HIBACHI_A4.s5Emit, ram.u16(a4 + 0x08));   // $2A6628 lea / $2A662E
+    const a0 = spawnEffect(ram, ctx, row.kind, 0x2a6634);   // $2A6632/$2A6634 jsr $289004
+    ram.setU8(a0 + B.f1c, row.f1c);                      // $2A663A/$2A663C
+    ram.setU32(a0 + B.nudge, row.nudge);                 // $2A6640
+    ram.setU32(a0 + B.pos, ram.u32(a6 + 0x02));          // $2A6644
+    ram.setU16(a0 + B.bucket, 0x0008);                   // $2A664A
+    ram.setU16(a0 + B.sub12, 0);                         // $2A6650 -- state 1's spawn writes
+    ram.setU16(a0 + B.sub14, 0);                         // $2A6656 -- neither of these two
+  }
+  const next = u16(ram.u16(a4 + 0x08) + 8);              // $2A665C addi.w #$8,($8,A4)
+  ram.setU16(a4 + 0x08, next);
+  // $2A6668 is `65` BCS -- branch while the index is BELOW $80 -- where state 1's twin at
+  // $2A65D2 is `66` BNE.  Same effect on this walk, different instruction, so it is written
+  // as the ROM has it.
+  if (next < HIBACHI_A4.s5EmitWrap) return;
+  ram.setU16(a4 + 0x08, 0);                              // $2A666A
+  const passes = u16(ram.u16(a4 + 0x0a) - 1);            // $2A666E subq.w #1,($A,A4)
+  ram.setU16(a4 + 0x0a, passes);
+  if (passes !== 0) return;                              // $2A6672 bne.s -> the rts
+  ram.setU16(a4 + 0x06, 0x2010);                         // $2A6674 -- ($6,A4) $20, ($7,A4) $10
+  ram.setU16(a4 + 0x0e, 0x1111);                         // $2A667A -- ($E,A4) and ($F,A4)
+  ram.setU16(a4 + 0x02, 1);                              // $2A6680 -- state 1
+}
+
 // ------------------------------------------------------------------------- the registrations
 //
 // **THE INIT IS NOT A ROUTINE OF ITS OWN.**  W403, and it was wrong in every one of W399's
@@ -478,10 +735,14 @@ registerScript(HIBACHI_A4.s4Init, initThenStep(
   (ram, rom, ctx, a4) => s4Init2A62FA(ram, a4),
   (ram, rom, ctx, a4) => s4Step2A6312(ram, rom, ctx, a4)));
 registerScript(HIBACHI_A4.s4Step, (ram, rom, ctx, a4) => s4Step2A6312(ram, rom, ctx, a4));
+registerScript(HIBACHI_A4.s5Init, initThenStep(
+  (ram, rom, ctx, a4) => s5Init2A6418(ram, rom, ctx, a4),
+  (ram, rom, ctx, a4) => s5Step2A6458(ram, rom, ctx, a4)));
+registerScript(HIBACHI_A4.s5Step, (ram, rom, ctx, a4) => s5Step2A6458(ram, rom, ctx, a4));
 
 /** The A4 ids whose init AND step this file registers. A test asserts this against the
  *  cartridge's own table rather than against the list above. */
-export const HIBACHI_END_SCRIPTS = Object.freeze([1, 2, 3, 4]);
+export const HIBACHI_END_SCRIPTS = Object.freeze([1, 2, 3, 4, 5]);
 
 /** Every A4 id the chain hands to that is NOT ported, with the byte extent each occupies
  *  between its table entry and the next one. Counted, with the numbers measured. */
@@ -499,8 +760,8 @@ export const HIBACHI_END_COUNTED = Object.freeze({
   0x12: { init: 0x2a6afc, step: 0x2a6b08, bytes: 0x004c, why: 'the same shape over A1 gun $C, '
     + 'and it hands to $F ($2A6B34) -- but NO `moveq #$12 / jsr $25980C` exists anywhere in '
     + '$2A4000..$2AB000, so nothing in the boss ROM starts it. It is an ENTRY, not a link' },
-  0x05: { init: 0x2a6418, step: 0x2a6458, bytes: 0x03aa, why: 'phase B\'s death hands to it '
-    + '($2A728C jmp $25980C with D0 = 5) -- the LAST link this wave reaches' },
+  // W409: 5 is no longer here -- this file runs it. Its $3AA entry-to-entry is $270 of code,
+  // $100 of its own data and $3A that belong to A4 script 0 ($2A5A04's lea names $2A6788).
   0x13: { init: 0x2a6b48, step: 0x2a6b56, bytes: 0x0032, why: 'phase B\'s $23000 phase check '
     + 'starts it ($2A71EE), alongside main sequencer $B' },
 });

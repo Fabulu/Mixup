@@ -2188,3 +2188,42 @@ findable at the top, and to move settled waves into an archive that is still in 
 **Suggested shape, owner to confirm:** keep the last three waves in `NEXT_AGENT_HANDOFF.md`, move
 everything older to `docs/worklog/`, refresh this file's headers and standing block, and add a check
 that a new docket ID is not already in use.
+
+### D48: THE RNG SIGN TEST READS THE WRONG BIT, IN ELEVEN PLACES ACROSS FIVE FILES
+
+Found by the W409 porter while porting A4 script 5, and **not fixed there** -- it is out of that
+unit's scope and changes behaviour in five files, so it needs its own wave.
+
+**The cartridge tests bit 7. The port tests bit 15.** `$242EC2` ends:
+
+    $242ED6  10 30 00 00   move.b (A0,D0.w),D0
+    $242EDA  20 5f         movea.l (A7)+,A0
+    $242EDC  4e 75         rts
+
+Verified against `rip/sound/maincpu.bin` by the coordinator, independently of the agent's report.
+**MOVEA does not affect the CCR and neither does RTS**, so the last instruction to touch N is the
+`move.b`, and N is bit 7 of the table byte. Every `bpl` after `jsr $242EC2` therefore branches on
+bit 7.
+
+The port reads `i16(drawWord242EC2(...)) < 0`, which is bit 15 of the returned word -- a different
+bit, carried down from `$242EC8 move.w $803916,D0` and untouched by the byte load. `src/rng.js`'s
+own doc comment says bit 15, so the error is documented as if it were correct.
+
+**The eleven sites**, all confirmed present by grep:
+
+    src/hibachiend.js:226, 250          ($2A5D52, $2A6222)
+    src/hibachiguns.js:370, 730, 868    ($2A81DA, $2A881E, $2A89D0)
+    src/initbody.js:653, 1710, 1764, 2309
+    src/stage4type9d.js:198             (inverted form, `>= 0`)
+    src/stage4type9f.js:88
+
+**It is measurable, not theoretical.** W409's own unit is written correctly (`& 0x80`) and its state
+0 emits **5 x `$28C274` and 3 x `$28C28E`** across eight cues. The bit-15 reading gives 8 and 0 --
+the second sound never plays at all. Expect the same shape at the other ten: one arm dead.
+
+**Wave shape.** This is a coordinator-scale item. Do NOT let one porter change eleven call sites on
+the strength of this note. Fix `rng.js` to expose the flag the hardware sets, correct its doc
+comment, then take the sites in small groups with a measurement at each -- several are `if` arms
+whose dead branch has never run, so tests that pass today may be pinning the wrong behaviour, and
+that is exactly the shape that produces a green ablation.
+

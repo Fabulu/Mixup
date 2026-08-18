@@ -39,7 +39,73 @@ and `$817F88`/`$817F8A` (P2), zeroed in `player.js:176`, with the tier logic at 
 **D46. There is no start-of-game menu.** This one is EXPECTED, not a regression: it is docket item
 **D33, the main screen**, and nothing of it is decoded yet. Say so rather than treating it as a bug.
 
-## START HERE -- W408
+## START HERE -- W409
+
+### THE ENDING COMPLETES. NOT "DOES NOT STOP" -- COMPLETES, BY THE CARTRIDGE'S OWN STORE.
+
+A4 script 5 takes the slot on frame 4447 and **`$812E06` goes to 1 on frame 4889**, which is
+`$2A6466 jsr $2595E8`, the stage-over store. States `[4447,0] [4478,1] [4744,2] [4753,3] [4761,4]`,
+and `4761 + $80 = 4889` exactly. `$2A646C clr.w (A4)` frees the slot on the same frame. Nothing
+throws in 12,000 frames on the W404 bench.
+
+**MY BRIEF WAS WRONG AND SO WERE THE LAST FOUR HANDOFFS.** I wrote "only A4 `$14` reaches
+`$2595E8`" and repeated it as the reason the ending was never nearer. A scan of `$2A4000..$2AB000`
+finds **two** `4EB9 002595E8`: `$2A6B88` (A4 `$14`) and **`$2A6466`, in this unit**. Script 1's fork
+has an ending on EACH arm, and the arm every bench has been running is now complete.
+
+### WHAT IS STILL OUT: A4 `$14` (`$2A6B7A`, `$1A`) is the OTHER arm's ending, still counted, as are
+A4 `$12`, `$13` and A4 script 0.
+
+### ENTRY-TO-ENTRY OVERSHOT AGAIN, AND THIS TIME BY TWO UNITS
+
+`$3AA` splits three ways, not two: `$270` code, `$100` this script's own data, and **`$3A` belonging
+to A4 script 0**, which is two thousand bytes away and names it with `$2A5A04 lea ($D82,PC),A0`.
+Fourth wave running. Treat entry-to-entry as an upper bound and nothing else.
+
+### 79 ABLATIONS, 21 GREEN ON THE FIRST PASS -- THE WORST RATIO YET
+
+All 21 were in blocks the tests **counted but never read**: the entire `$28B34A` blast (5), the
+entire state-1 spawn record (6), both `cmpi.b #$2` guards, two reload fields, `$259924`, and the
+palette install, which was invisible because no test supplied a `ctx.palette`. Ten new tests read
+records back. Pass 2 still had 2 green: `dx >> 2 -> >> 1` survived **because the default RNG state
+draws a dx of zero**. Fixed by driving `$803916 = 7`. Pass 3: 79 of 79 red.
+
+Two mutations were INVALID and were replaced, both stated in the test file: a state guard no value
+can separate, and a byte read where all sixteen source words are `$0000`.
+
+### A PORT-WIDE DEFECT WAS FOUND HERE AND DELIBERATELY NOT FIXED: SEE DOCKET D48
+
+`bpl` after `jsr $242EC2` tests **bit 7**, because `$242ED6 move.b (A0,D0.w),D0` is the last
+instruction to touch N and neither the `movea.l` nor the `rts` after it does. The port tests bit 15
+in **eleven places across five files**, and `rng.js`'s doc comment states bit 15 as if correct.
+Coordinator verified the ROM bytes independently. This unit is written correctly and measures the
+difference: 5 x `$28C274` + 3 x `$28C28E` where the bit-15 reading gives 8 and 0.
+
+**Do not fix it in a porting wave.** It changes behaviour at eleven sites, several of them `if` arms
+whose dead branch has never executed, so today's green tests may be pinning the wrong behaviour.
+
+### WINDOWS: THREE NEW, 599
+
+`$2A6688 + $80` (emitter rows), `$2A670A + $56` (a `$246410` chain -- and `$246410` is
+`move.w (A0)+,D0 / subq.w #1,D0 / beq`, **not** a `dbra`, so a count of 6 means 6), and
+`$2A676E + $1A` (a `$246520` chain whose entry is twelve bytes with no fill word).
+
+### VERIFIED
+
+Suite **3698 pass / 0 fail / 0 skipped** (3668 before; +30). Gate **exit 0**. `--verify` **OK at 599
+windows**.
+
+### PUBLISH STATE, CORRECTED
+
+W408's section said the W407 publish was still owed. **It is not.** It was run against a quiet tree
+after W408 landed and confirmed live as build **`20260816181806`**. Next publish falls at W412.
+
+### NEXT
+
+The owner's play report, **docket D42..D47**, outranks further HIBACHI internals. After that,
+**D48**, then A4 `$14` for the other arm's ending.
+
+## W408 NOTES
 
 ### THE LOOP CLOSES IN THE ROM AND NEVER IN PLAY, AND THE ARITHMETIC SAYS WHY
 

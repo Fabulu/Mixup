@@ -303,8 +303,8 @@ test('W399 SECTION 2: nine callers of $261100, FOUR of them unclaimed and two pu
       '$2A5886[3] is $2A5A28, A4 script 1\'s STEP');
     assert.ok(HIBACHI_A4.s1Step < 0x2a5d28 && 0x2a5d28 < HIBACHI_A4.s2Init,
       '  ...and $2A5D28 is inside it, between entry [3] and entry [4]');
-    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort(), [1, 2, 3, 4],
-      'A4 1, 2 and 3 from this wave, and 4 from W403 -- init and step');
+    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort(), [1, 2, 3, 4, 5],
+      'A4 1, 2 and 3 from this wave, 4 from W403 and 5 from W409 -- init and step');
     for (const id of HIBACHI_END_SCRIPTS) {
       for (const off of [0, 4]) {
         assert.ok(scriptAddresses().includes(l(HIBACHI_A4.table + id * 8 + off)),
@@ -710,10 +710,10 @@ test('W399 SECTION 7: 575 windows, the overlap count still 71, and all five sit 
     const ws = WINDOWS();
     // W400 declared eight more (type $44's init stub, its prototype pair and five data tables),
     // so this file's total moves and its own five-window claims below do not.
-    assert.equal(ws.length, 596, '570 windows before W399, 575 after it, 583 after W400, 585 '
+    assert.equal(ws.length, 599, '570 windows before W399, 575 after it, 583 after W400, 585 '
       + 'after W402, 590 after W404 (two A1 gun tables and three gun data blocks), 593 '
-      + 'after W405, 594 after W406, 595 after W407, and 596 since W408 added A1 gun $A '
-      + 'template');
+      + 'after W405, 594 after W406, 595 after W407, 596 after W408 added A1 gun $A\'s '
+      + 'template, and 599 since W409 declared A4 script 5\'s three blocks');
     const mine = [HIBACHI_A4.table, HIBACHI_A4.poolCTable, HIBACHI_A4.kindTable,
       HIBACHI_A4.s1Anim, HIBACHI_A4.s3Anim];
     for (const a of mine) {
@@ -743,9 +743,15 @@ test('W399 SECTION 7: 575 windows, the overlap count still 71, and all five sit 
     assert.equal(below, 0x2a4606,
       'the nearest window below is W369\'s $2A443C+$1CA, ending at $2A4606 -- $1280 bytes clear');
     const above = Math.min(...others.filter(([a]) => a >= HIBACHI_A4.s3Anim + 0x80).map(([a]) => a));
-    assert.equal(above, HIBACHI_A1.main,
-      'the nearest window above $2A62FA is W404\'s A1 gun table $2A72C8 -- $F4E bytes clear of '
-      + 'the end of this wave\'s last block, and the two do not touch');
+    // W409 CORRECTION: the nearest neighbour above is no longer W404\'s A1 gun table. A4
+    // script 5\'s own emitter rows $2A6688 are declared now, $388 bytes past the end of this
+    // wave\'s last block -- and they still do not touch it.
+    assert.equal(above, 0x2a6688,
+      'the nearest window above $2A62FA is W409\'s A4 script 5 emitter rows $2A6688');
+    assert.equal(0x2a6688 - (HIBACHI_A4.s3Anim + 0x80), 0x38e,
+      '  ...$38E bytes clear of the end of this wave\'s last block, and the two do not touch');
+    assert.ok(0x2a6688 < HIBACHI_A1.main,
+      '  ...and W404\'s A1 gun table $2A72C8 is further up still');
 
     // And the five together are exactly what the port reads, not a byte more.
     assert.equal(mine.reduce((s, a) => s + ws.find(([b]) => b === a)[1], 0),

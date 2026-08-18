@@ -438,9 +438,9 @@ test('W394 SECTION 6: no new window -- the two addresses the port reads are alre
     // pair and five data tables, so the set is 583. The claim this line makes -- that W394 itself
     // added no window -- is unchanged; the two `covers()` assertions below are its real content
     // and they are untouched witnesses.
-    assert.equal(ws.length, 596, 'the exported set was 569 windows at W394, 570 after W398, '
+    assert.equal(ws.length, 599, 'the exported set was 569 windows at W394, 570 after W398, '
       + '575 after W399, 583 after W400, 585 after W402, 590 after W404, 593 after W405, '
-      + '594 after W406, 595 after W407, and is 596 since W408 declared A1 gun $A\'s template');
+      + '594 after W406, 595 after W407, 596 since W408 declared A1 gun $A\'s template, and is 599 since W409 declared A4 script 5\'s three blocks');
     const covers = (a) => ws.filter(([b, len]) => a >= b && a < b + len);
     // ONE: the per-stage table. `elemSpawn` does `rom.u32(tab + id*4)` and `backgroundInit` does
     // `rom.u32($262302 + stage*4)`; both are inside W-earlier `$262240 + $100`.

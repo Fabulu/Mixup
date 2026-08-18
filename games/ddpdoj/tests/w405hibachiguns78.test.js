@@ -260,7 +260,8 @@ function realPath() {
 }
 
 function runReal(b, frames) {
-  const out = { stopped: null, shots: 0, bySite: new Map(), a1: [], a4: [], phase: new Set() };
+  const out = { stopped: null, suspend: null, shots: 0, bySite: new Map(),
+    a1: [], a4: [], phase: new Set() };
   b.ctx.bulletSpawn = (site) => {
     out.shots += 1;
     out.bySite.set(site, (out.bySite.get(site) ?? 0) + 1);
@@ -282,6 +283,7 @@ function runReal(b, frames) {
       .filter((v) => v !== 0).map((v) => (v & 0xff).toString(16)).join(',');
     if (live4 !== prev4) { out.a4.push([f, live4]); prev4 = live4; }
     if (!out.stopped) out.phase.add(b.ram.u8(SUB + 0x10e));
+    if (out.suspend === null && b.ram.u16(SCHED.suspend) !== 0) out.suspend = f;
     resetSpriteQueueCounters(b.ram);
     backgroundFrame(b.ram, b.ROM, b.vram, b.ctx, A5BG);
   }
@@ -317,8 +319,11 @@ test('W405 SECTION 3: the attack loop CLOSES -- a full lap, and no stop anywhere
       + 'the gun and not part of the wait');
 
     // ---- NOTHING IN THE LOOP IS A STOP. Every frame from 321 to 2548 ran.
-    assert.ok(r.stopped.frame > 2548,
-      `the run does not stop inside the loop -- it reached frame ${r.stopped.frame}`);
+    // W409 CORRECTION: there is no stop at all any more -- A4 script 5 is ported and the
+    // stage SUSPENDS on 4889, which is 2,341 frames past the end of the loop.
+    assert.equal(r.stopped, null, 'the run does not stop inside the loop, or anywhere else');
+    assert.equal(r.suspend, 4889,
+      `the loop ends on 2548 and the stage suspends on ${r.suspend}, well past it`);
     // ---- AND EVERY FRAME OF IT IS PHASE **A**, where the brief said phase B.
     assert.deepEqual([...r.phase].sort(), [0, 1, 2],
       '($10E,A6) is 0 before A4 script 2, then 1 -- PHASE A -- for the whole loop, and only '
@@ -357,7 +362,8 @@ test('W405 SECTION 3: what ends the loop is A4 $D\'s own ($1A,A5) byte, and the 
     // ---- WHERE IT GOES. A4 3 (phase A's death tail), A4 4 (which writes phase B), A4 $F.
     // W406 CORRECTION: $F is no longer last -- it now RUNS, and hands to $11.
     // W407 CORRECTION: $11 and $10 run too, so the history ends one link further round.
-    assert.deepEqual(r.a4.slice(-7).map(([, v]) => v), ['b', '3', '4', 'f', '11', '10', '5'],
+    assert.deepEqual(r.a4.slice(-8, -1).map(([, v]) => v),
+      ['b', '3', '4', 'f', '11', '10', '5'],
       'A4 $B is torn down mid-run by $2A7032 a4Clear2598A2, and the tail runs 3 -> 4 -> $F. '
       + 'W408 CORRECTION: gun $A is ported, so phase B runs on to its OWN timeout and A4 5 '
       + 'takes over on 4447');
@@ -370,8 +376,11 @@ test('W405 SECTION 3: what ends the loop is A4 $D\'s own ($1A,A5) byte, and the 
     // ---- **WHICH KIND OF STOP.** W408: gun $A is ported too, so phase B's gun loop stops the
     // path nowhere -- it runs on to phase B's OWN timeout and stops one unit further, at A4
     // script 5. The three tests are the same three.
-    assert.deepEqual(r.stopped, { frame: 4447, at: 0x2a6418, name: 'Unreached' },
-      'the run now stops on frame 4447 at $2A6418 -- 3,465 frames past W404\'s 982');
+    // W409 CORRECTION: A4 script 5 is ported, so there is no stop. It takes the slot on
+    // 4447 and 442 frames later `$2A6466 jsr $2595E8` ends the stage.
+    assert.equal(r.stopped, null, 'nothing throws anywhere in 8,000 frames');
+    assert.equal(r.a4[r.a4.length - 2][0], 4447, 'A4 script 5 takes the slot on 4447');
+    assert.equal(r.suspend, 4889, '  ...and $2595E8 fires 442 frames later');
     //   (a) it is a live table entry the cartridge dispatches through;
     assert.equal(l(HIBACHI_A4.table + 5 * 8), 0x2a6418, '(a) $2A5886[5].init IS $2A6418');
     assert.equal(w(0x2a6418), 0x303c,
@@ -384,9 +393,10 @@ test('W405 SECTION 3: what ends the loop is A4 $D\'s own ($1A,A5) byte, and the 
     assert.equal(l(0x2a6a94), 0x00259a18, '  ...$2A6A92 jsr $259A18');
     assert.equal(HIBACHI_A1_COUNTED[0x0a], undefined,
       '  ...and hibachiguns.js no longer counts it: W408 runs it');
-    // ...and it is a PORT stop and not a data stop: the A4 script is not registered.
+    // W409: and A4 script 5 IS registered now, which is why there is no stop left to name.
     const reg = new Set(scriptAddresses());
-    assert.ok(!reg.has(0x2a6418), 'A4 script 5 is not registered by any file');
+    assert.ok(reg.has(0x2a6418) && reg.has(0x2a6458),
+      'A4 script 5 -- both halves -- is registered by src/hibachiend.js');
     // ...while everything W405's, W406's, W407's and W408's stops stood on now is.
     assert.ok(reg.has(0x2a6a30) && reg.has(0x2a89ba), 'A4 $F and gun 9 both ARE registered');
     assert.ok(reg.has(0x2a6ab6) && reg.has(0x2a8c9a), '  ...and A4 $11 and gun $B');
@@ -1084,9 +1094,9 @@ test('W405 SECTION 7: three new windows, 593, each sized by its own instructions
   () => {
     const set = new Map(tables.rom.windows.map(
       (x) => [parseInt(String(x.base).replace('$', ''), 16), x.len]));
-    assert.equal(tables.rom.windows.length, 596,
-      'W408 CORRECTION: 596 windows -- 590 + this wave\'s three + W406\'s gun 9 template '
-      + '+ W407\'s gun $B template + W408\'s gun $A template');
+    assert.equal(tables.rom.windows.length, 599,
+      'W409 CORRECTION: 599 windows -- 590 + this wave\'s three + W406\'s gun 9 template '
+      + '+ W407\'s gun $B template + W408\'s gun $A template + W409\'s three');
 
     // 1 + 3 -- the two slot templates, sized from their own `moveq` (TRAP 2: dbra is n+1).
     for (const [site, base, words] of [[HIBACHI_A1.gun7Init, HIBACHI_A1.gun7Template, 9],

@@ -280,7 +280,8 @@ function realPath() {
 }
 
 function runReal(b, frames) {
-  const out = { stopped: null, shots: 0, bySite: new Map(), a1: [], a4: [], timer: [] };
+  const out = { stopped: null, suspend: null, shots: 0, bySite: new Map(),
+    a1: [], a4: [], timer: [] };
   b.ctx.bulletSpawn = (site) => {
     out.shots += 1;
     out.bySite.set(site, (out.bySite.get(site) ?? 0) + 1);
@@ -302,6 +303,7 @@ function runReal(b, frames) {
       .filter((v) => v !== 0).map((v) => (v & 0xff).toString(16)).join(',');
     if (live4 !== prev4) { out.a4.push([f, live4]); prev4 = live4; }
     if (!out.stopped) out.timer.push(b.ram.u16(REC + 0x1a));
+    if (out.suspend === null && b.ram.u16(SCHED.suspend) !== 0) out.suspend = f;
     resetSpriteQueueCounters(b.ram);
     backgroundFrame(b.ram, b.ROM, b.vram, b.ctx, A5BG);
   }
@@ -321,11 +323,13 @@ test('W406 SECTION 3: the real path reaches frame 3317 and stops at A4 $11', { s
     assert.deepEqual(r.a1.slice(-7, -4), [[2549, ''], [3023, '9'], [3316, '']],
       'the A1 history has the attack loop\'s last gun retiring on 2549 and then gun 9, '
       + 'alone, from 3023 to 3315');
-    assert.deepEqual(r.a4.slice(-5, -2).map(([, v]) => v), ['4', 'f', '11'],
+    // W409 CORRECTION: A4 script 5 retires ITSELF now, so the history gains a final empty
+    // entry and every slice below moves by one.
+    assert.deepEqual(r.a4.slice(-6, -3).map(([, v]) => v), ['4', 'f', '11'],
       'and the A4 history runs script 4 -> $F -> $11');
 
     // ---- THE ARITHMETIC OF THE 389 FRAMES, every number somebody's instruction.
-    const [fStart] = r.a4[r.a4.length - 4];           // the frame A4 $F appears
+    const [fStart] = r.a4[r.a4.length - 5];           // the frame A4 $F appears
     assert.equal(fStart, 2927, 'A4 $F is started on 2927 by $2A640E');
     assert.equal(r.a1[r.a1.length - 6][0], 3023, '  ...and gun 9 starts on 3023');
     assert.equal(3023 - 2928, 0x5f,
@@ -341,33 +345,37 @@ test('W406 SECTION 3: the real path reaches frame 3317 and stops at A4 $11', { s
     // W407 CORRECTION: A4 $11 and gun $B are ported, so the stop moved 699 frames on to A1
     // gun $A. W408 CORRECTION: gun $A is ported too, so it moved another 431 frames on to A4
     // script 5 -- phase B\'s own timeout, past the gun loop altogether. Same three tests.
-    assert.deepEqual(r.stopped, { frame: 4447, at: 0x2a6418, name: 'Unreached' },
-      'the run stops on frame 4447 at $2A6418 -- 1,519 frames past W405\'s 2928');
+    // W409 CORRECTION: A4 script 5 is ported and there is NO stop. Same three tests, on
+    // the end the cartridge itself names instead.
+    assert.equal(r.stopped, null, 'nothing throws anywhere in 8,000 frames');
+    assert.equal(r.suspend, 4889, 'the stage suspends on 4889, 1,572 frames past W406\'s 3317');
     //   (a) a live table entry the cartridge dispatches through, with ordinary code at it;
     assert.equal(l(HIBACHI_A4.table + 5 * 8), 0x2a6418, '(a) $2A5886[5].init IS $2A6418');
     assert.equal(w(0x2a6418), 0x303c, '  ...and `303C` stands there, not an rts and not a park');
     //   (b) what routed us there is phase B\'s death tail, a `moveq / jmp $25980C`;
     assert.equal(w(0x2a728a), 0x7005, '(b) $2A728A `7005` moveq #$5,D0');
     assert.equal(l(0x2a728e), 0x0025980c, '  ...$2A728C jmp $25980C');
-    assert.equal(HIBACHI_END_COUNTED[0x05].bytes, 0x03aa, '  ...A4 5, counted at $3AA bytes');
+    assert.equal(HIBACHI_END_COUNTED[0x05], undefined, '  ...A4 5 is RUN now, not counted');
     //   (c) and this wave's own link really did run: $F started $11, which started gun $B.
     assert.equal(w(0x2a6a5c), 0x7011, '(c) $2A6A5C `7011` moveq #$11,D0');
     assert.equal(l(0x2a6a60), 0x0025980c, '  ...$2A6A5E jsr $25980C, in A4 $F\'s hand-over');
     assert.equal(w(0x2a6ad0), 0x700b, '  ...and $2A6AD0 moveq #$B / $2A6AD2 jsr $259A18');
     // ...and it is a PORT stop and not a data stop.
     const reg = new Set(scriptAddresses());
-    assert.ok(!reg.has(0x2a6418), 'A4 script 5 is not registered');
+    assert.ok(reg.has(0x2a6418), 'A4 script 5 IS registered -- W409');
     assert.ok(reg.has(0x2a6a30) && reg.has(0x2a6a36), '  ...while A4 $F\'s pair IS');
     assert.ok(reg.has(0x2a89ba) && reg.has(0x2a89f4), '  ...and gun 9\'s');
     assert.ok(reg.has(0x2a8b7c) && reg.has(0x2a8bc0), '  ...and gun $A\'s, since W408');
 
-    // ---- **WHAT "COMPLETING" WOULD MEAN, in the cartridge's own terms.** It has NOT happened.
-    // The ending is over when `$2595E8` suspends the stage, which only A4 $14 reaches, and A4
-    // $14 is only started by script 1's FIRST-LOOP arm. This bench is loop 1 with $80393A set,
-    // i.e. the other arm, so the route out is phase B's DEATH -> A4 5.
-    assert.equal(w(0x2a5cb4), 0x7014, '$2A5CB4 moveq #$14 -- the only start of the suspend link');
+    // ---- **WHAT "COMPLETING" MEANS, in the cartridge's own terms.** W409 CORRECTION: W406's
+    // note here said `$2595E8` is reached only by A4 $14. The image holds TWO `jsr $2595E8`
+    // and the other is `$2A6466`, inside A4 script 5 -- the very link this bench takes. So
+    // this arm has its own ending and does not need $14 at all.
+    assert.equal(w(0x2a5cb4), 0x7014, '$2A5CB4 moveq #$14 -- the FIRST-loop arm\'s link');
     assert.equal(w(0x2a728a), 0x7005, '$2A728A moveq #$5 / $2A728C jmp -- phase B\'s death tail');
-    assert.equal(HIBACHI_END_COUNTED[0x05].bytes, 0x03aa, '  ...and A4 5 is still counted');
+    assert.equal(w(0x2a6466), 0x4eb9, '$2A6466 `4EB9` jsr');
+    assert.equal(l(0x2a6468), 0x002595e8, '  ...$2595E8, A4 script 5\'s OWN suspend');
+    assert.equal(HIBACHI_END_COUNTED[0x05], undefined, '  ...and A4 5 is ported, not counted');
   });
 
 test('W406 SECTION 3: 4,865 bullets, and gun 9\'s 1,120 are 70 volleys of SIXTEEN in two arms',
@@ -973,9 +981,9 @@ test('W406 SECTION 7: ONE new window, 594, bounded three ways and none of them a
     const set = new Map(tables.rom.windows.map(
       (x) => [parseInt(String(x.base).replace('$', ''), 16), x.len]));
     assert.equal(set.size, tables.rom.windows.length, 'no duplicate window bases');
-    assert.equal(tables.rom.windows.length, 596,
-      'W408 CORRECTION: 596 windows -- 593 + this wave\'s one + W407\'s gun $B template '
-      + '+ W408\'s gun $A template');
+    assert.equal(tables.rom.windows.length, 599,
+      'W409 CORRECTION: 599 windows -- 593 + this wave\'s one + W407\'s gun $B template '
+      + '+ W408\'s gun $A template + W409\'s three');
 
     // (1) the `lea` NAMES the base. TRAP 4: extension-word address plus displacement.
     assert.equal(w(HIBACHI_A1.gun9Init), 0x41fa, '$2A89BA `41FA` lea (d16,PC),A0');

@@ -274,7 +274,8 @@ function realPath() {
 }
 
 function runReal(b, frames) {
-  const out = { stopped: null, shots: 0, bySite: new Map(), a1: [], a4: [], timer: [], prox: [] };
+  const out = { stopped: null, suspend: null, shots: 0, bySite: new Map(),
+    a1: [], a4: [], timer: [], prox: [] };
   b.ctx.bulletSpawn = (site) => {
     out.shots += 1;
     out.bySite.set(site, (out.bySite.get(site) ?? 0) + 1);
@@ -299,6 +300,7 @@ function runReal(b, frames) {
       out.timer.push(b.ram.u16(REC + 0x1a));
       out.prox.push(b.ram.u16(HIBACHI_A1.proximity));
     }
+    if (out.suspend === null && b.ram.u16(SCHED.suspend) !== 0) out.suspend = f;
     resetSpriteQueueCounters(b.ram);
     backgroundFrame(b.ram, b.ROM, b.vram, b.ctx, A5BG);
   }
@@ -314,29 +316,40 @@ test('W408 SECTION 3: the real path reaches frame 4447 and stops at A4 SCRIPT 5,
       [[3412, 'b'], [3919, ''], [4016, 'a'], [4447, '']],
       'gun $B 3412..3918, then gun $A 4016..4446, whose slot is CLEARED on 4447 by the '
       + 'phase-B wipe and not by its own $259B08');
-    assert.deepEqual(r.a4.slice(-4).map(([, v]) => v), ['f', '11', '10', '5'],
+    // W409 CORRECTION: one more entry -- A4 script 5 is ported and frees its own slot.
+    assert.deepEqual(r.a4.slice(-5, -1).map(([, v]) => v), ['f', '11', '10', '5'],
       'and the A4 history ends $F -> $11 -> $10 -> **5**, not $F -> $11 -> $10 -> $F');
 
     // ---- **THE CLOSING ARROW NEVER RUNS.** A4 $10 keeps its slot until the wipe takes it.
-    assert.equal(r.a4[r.a4.length - 2][0], 3920, 'A4 $10 is dispatched on 3920');
+    assert.equal(r.a4[r.a4.length - 3][0], 3920, 'A4 $10 is dispatched on 3920');
     assert.equal(4016 - 3920, 0x60, '  ...and asks for gun $A $60 frames later');
-    assert.equal(r.a4[r.a4.length - 1][0], 4447,
+    assert.equal(r.a4[r.a4.length - 2][0], 4447,
       '  ...and the NEXT change to the A4 slots is the wipe, so $10 never handed to $F');
 
     // ---- WHY: phase B's timer, re-armed to $04xx on 3412, reaches zero on 4447.
+    // W409: the run no longer stops on 4447, so `r.timer` keeps recording past phase B's
+    // death and picks up the reloads that follow it. The window this claim is about is the
+    // stretch BEFORE the death, so it is bounded explicitly rather than by where a throw
+    // happened to end the sampling -- which is exactly the kind of number the briefs warn
+    // about ("never trust a number produced by a run that ENDED at that point").
     const jumps = [];
-    for (let i = 3000; i < r.timer.length; i++) {
+    for (let i = 3000; i < 4447; i++) {
       if (r.timer[i] !== r.timer[i - 1] - 1) jumps.push([i + 1, r.timer[i - 1], r.timer[i]]);
     }
     assert.deepEqual(jumps, [[3317, 0x606b, 0x0c6a], [3412, 0x0c0c, 0x040b]],
       'the only two discontinuities are A4 $F\'s $C and A4 $11\'s $4 over the HIGH byte');
     assert.equal(3412 + 0x040b, 4447, '  ...and $040B frames after 3412 is exactly 4447');
-    assert.equal(r.timer[r.timer.length - 1], 1, '  ...the last frame it ran, the word was 1');
+    assert.equal(r.timer[4445], 1,
+      '  ...and the last frame phase B counted it, the word was 1');
+    assert.equal(r.timer[4446], 0, '  ...so on 4447 it reaches ZERO and the death fires');
 
     // ---- **WHICH KIND OF STOP.** A PORT stop, on an A4 script, and none of the three tests
     // is an absence.
-    assert.deepEqual(r.stopped, { frame: 4447, at: A4_5_INIT, name: 'Unreached' },
-      'the run stops on frame 4447 at $2A6418 -- 431 frames past W407\'s 4016');
+    // W409 CORRECTION: A4 script 5 is ported, so 4447 is where it STARTS and not where the
+    // run stops. Same three tests, applied to the hand-over instead of to a throw.
+    assert.equal(r.stopped, null, 'nothing throws anywhere in 9,000 frames');
+    assert.equal(r.suspend, 4889,
+      '  ...the stage suspends on 4889, 442 frames after A4 script 5 took the slot on 4447');
     //   (a) a live table entry the cartridge dispatches through, with ordinary code at it;
     assert.equal(l(HIBACHI_A4.table + 5 * 8), A4_5_INIT, '(a) $2A5886[5].init IS $2A6418');
     assert.equal(w(A4_5_INIT), 0x303c, '  ...and `303C move.w #imm,D0` stands there, not an rts');
@@ -347,8 +360,8 @@ test('W408 SECTION 3: the real path reaches frame 4447 and stops at A4 SCRIPT 5,
     assert.equal(w(0x2a728c), 0x4ef9, '  ...$2A728C `4EF9` JMP, a tail call');
     assert.equal(l(0x2a728e), 0x0025980c, '  ...to $25980C');
     //   (c) and it is a whole unit further on, still counted at its measured extent.
-    assert.equal(HIBACHI_END_COUNTED[0x05].bytes, 0x03aa, '(c) A4 5 is counted at $3AA bytes');
-    assert.ok(!new Set(scriptAddresses()).has(A4_5_INIT), '  ...and is not registered');
+    assert.equal(HIBACHI_END_COUNTED[0x05], undefined, '(c) A4 5 is no longer counted');
+    assert.ok(new Set(scriptAddresses()).has(A4_5_INIT), '  ...W409 registers it');
 
     // ---- **WHAT "COMPLETING" WOULD MEAN, in the cartridge's own terms.** Closing the loop did
     // NOT move the ending nearer: the ending is over when `$2595E8` suspends the stage, only
@@ -933,7 +946,8 @@ test('W408 SECTION 7: ONE new window, 596, bounded three ways and none of them a
     const set = new Map(tables.rom.windows.map(
       (x) => [parseInt(String(x.base).replace('$', ''), 16), x.len]));
     assert.equal(set.size, tables.rom.windows.length, 'no duplicate window bases');
-    assert.equal(tables.rom.windows.length, 596, '596 windows, 595 + this wave\'s one');
+    assert.equal(tables.rom.windows.length, 599,
+      'W409 CORRECTION: 599 windows -- 595 + this wave\'s one + W409\'s three');
 
     // (1) the `lea` NAMES the base. TRAP 4: extension-word address plus displacement.
     assert.equal(w(HIBACHI_A1.gunAInit), 0x41fa, '$2A8B7C `41FA` lea (d16,PC),A0');

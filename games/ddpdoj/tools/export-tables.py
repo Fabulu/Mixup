@@ -4661,6 +4661,135 @@ SHOT_WINDOWS.append(
                        "where gun $A's eight $002A8B7C self-pointers begin"))
 
 
+# ------------------------------------------------- W409: A4 SCRIPT 5's THREE DATA BLOCKS
+#
+# `$2A6418..$2A67C1` is the $3AA W408 counted entry-to-entry.  It is THREE things:
+# $270 of code ($2A6418..$2A6687, `4E75` AT $2A6686), $100 of A4 5's own data, and a
+# trailing $3A that belongs to A4 SCRIPT 0 -- `$2A5A04 lea` names $2A6788, and that
+# is script 0's chain, not script 5's.  The three windows below are script 5's:
+#
+#   $2A6688 + $80  the emitter rows.  TWO `lea (d16,PC),A1` in the SAME routine name
+#                  it ($2A657E -> $2A6580 + $108, $2A6628 -> $2A662A + $5E), each row
+#                  is `move.w (A1)+` twice plus `move.l (A1)+` = 8 bytes, and the far
+#                  end is the WRAP: `cmpi.w #$80,($8,A4)` at $2A65CC and $2A6662.
+#   $2A670A + $56  the $246410 chain state 2 loads.  Count word $0006 times the
+#                  fourteen-byte entry plus the count.  **$2A6760..$2A676D is a
+#                  SEVENTH record the count never reaches** and is deliberately NOT
+#                  in the window; its content is asserted below so it cannot rot
+#                  unnoticed, exactly as W408 did with the $2A8B10 orphan.
+#   $2A676E + $1A  the $246520 chain the INIT loads.  $246520's entry is TWELVE bytes
+#                  (no fill word), so 2 + 2*12 = $1A -- and $2A676E + $1A = $2A6788,
+#                  which is A4 script 0's own base.  A far end named by another
+#                  unit's `lea` is a positive witness, not an absence.
+W409_A4_5_INIT = 0x2A6418
+W409_A4_5_CODE_END = 0x2A6686      # `4E75` AT that address, TRAP 5
+W409_EMIT = 0x2A6688
+W409_ANIM410 = 0x2A670A
+W409_ANIM520 = 0x2A676E
+W409_DEAD_ROW = 0x2A6760           # the seventh $246410 record, $E bytes, unread
+W409_S0_ANIM = 0x2A6788            # A4 script 0's chain -- $2A5A04's lea
+W409_NOFILL_STRIDE = 12
+SHOT_WINDOWS.append(
+    (0x2A6688, 0x0080, "W409: A4 script 5's emitter rows, named by BOTH of its "
+                       "leas ($2A657E and $2A6628 resolve to the same base). "
+                       "Each row is move.w (A1)+ / move.w (A1)+ / move.l (A1)+ "
+                       "= 8 bytes and the index wraps at $80 ($2A65CC and "
+                       "$2A6662 cmpi.w #$80,($8,A4)), so 16 rows"))
+SHOT_WINDOWS.append(
+    (0x2A670A, 0x0056, "W409: A4 script 5's $246410 animation chain, $2A64BA's "
+                       "lea (TRAP 4: $2A64BC + $24E). Count word $0006 times "
+                       "the loader's 14-byte entry plus the count = $56. The "
+                       "fourteen bytes after it ($2A6760) are a SEVENTH record "
+                       "the count of six never reads and are NOT covered"))
+SHOT_WINDOWS.append(
+    (0x2A676E, 0x001A, "W409: A4 script 5's $246520 animation chain, $2A6428's "
+                       "lea (TRAP 4: $2A642A + $344). $246520's entry is TWELVE "
+                       "bytes -- no fill word -- so 2 + 2*12 = $1A, and "
+                       "$2A676E+$1A = $2A6788, the base A4 SCRIPT 0's own "
+                       "$2A5A04 lea names. The far end is another unit's table"))
+
+
+def check_hibachi_a4_5_windows(d: bytes) -> None:
+    """W409.  A4 script 5's three blocks, every bound re-derived from the image.
+
+    NOTHING HERE IS AN ABSENCE.  The code end is an `rts` AT its address, each
+    window base is a decoded `lea` displacement, each length comes from either a
+    count word times its loader's own stride or from the `cmpi` that wraps the
+    index, and the last far end is a `lea` that belongs to a DIFFERENT script.
+    """
+    # ---- THE TABLE ENTRY AND THE CODE END.
+    if u32(d, W399_A4_TABLE + 5 * 8) != W409_A4_5_INIT \
+            or u32(d, W399_A4_TABLE + 5 * 8 + 4) != 0x2A6458:
+        raise SystemExit("$2A5886[5] is no longer {$2A6418, $2A6458}.")
+    if u16(d, W409_A4_5_CODE_END) != 0x4E75:
+        raise SystemExit(f"${W409_A4_5_CODE_END:06X} is not `4E75`; A4 script 5's "
+                         "code no longer ends AT that address (TRAP 5).")
+    if W409_EMIT != W409_A4_5_CODE_END + 2:
+        raise SystemExit("the emitter rows no longer start right after the rts.")
+    # ---- THE EMITTER ROWS: two `lea`s, one base, and the wrap that sizes it.
+    for site in (0x2A657E, 0x2A6628):
+        if u16(d, site) != 0x43FA:
+            raise SystemExit(f"${site:06X} is not `lea (d16,PC),A1`.")
+        ea = site + 2 + s16(u16(d, site + 2))
+        if ea != W409_EMIT:
+            raise SystemExit(
+                f"${site:06X} resolves to ${ea:06X}, not ${W409_EMIT:06X} -- A4 "
+                f"script 5's two emitters no longer share one row table.")
+    for site in (0x2A65CC, 0x2A6662):
+        if u16(d, site) != 0x0C6C or u16(d, site + 2) != 0x0080 \
+                or u16(d, site + 4) != 0x0008:
+            raise SystemExit(
+                f"${site:06X} is not `cmpi.w #$80,($8,A4)`; that wrap is the only "
+                f"bound the ${W409_EMIT:06X} window's length has.")
+    if u16(d, 0x2A65C6) != 0x066C or u16(d, 0x2A65C8) != 0x0008 \
+            or u16(d, 0x2A65CA) != 0x0008:
+        raise SystemExit("$2A65C6 is not `addi.w #$8,($8,A4)`, so the row stride "
+                         "is no longer 8 and 16 rows is no longer $80 bytes.")
+    # ---- THE TWO CHAINS.  Each sized from its OWN count word times its OWN loader's
+    # stride, and the second one has to LAND on script 0's base.
+    for base, lea, stride, span in ((W409_ANIM410, 0x2A64BA, W399_ANIM_STRIDE, 0x56),
+                                    (W409_ANIM520, 0x2A6428, W409_NOFILL_STRIDE, 0x1A)):
+        if u16(d, lea) != 0x41FA:
+            raise SystemExit(f"${lea:06X} is not `lea (d16,PC),A0`.")
+        ea = lea + 2 + s16(u16(d, lea + 2))
+        if ea != base:
+            raise SystemExit(
+                f"${lea:06X} resolves to ${ea:06X}, not ${base:06X} (TRAP 4: the "
+                f"target is the EXTENSION WORD's address plus the displacement).")
+        got = 2 + u16(d, base) * stride
+        if got != span:
+            raise SystemExit(
+                f"${base:06X} counts {u16(d, base)} entries of {stride} bytes, so "
+                f"the block is ${got:X} and not ${span:X}.")
+    if W409_ANIM520 + 0x1A != W409_S0_ANIM:
+        raise SystemExit("the $246520 chain no longer ends at $2A6788.")
+    if u16(d, 0x2A5A04) != 0x41FA or 0x2A5A06 + s16(u16(d, 0x2A5A06)) != W409_S0_ANIM:
+        raise SystemExit(
+            "$2A5A04 no longer names $2A6788 -- that lea belongs to A4 SCRIPT 0 and "
+            "it is what bounds A4 script 5's data from above.")
+    # ---- THE SEVENTH RECORD NOBODY READS.  Asserted as content, so the next reader
+    # meets the bytes instead of rediscovering the gap (W408's $2A8B10 precedent).
+    if W409_ANIM410 + 0x56 != W409_DEAD_ROW:
+        raise SystemExit("the $246410 chain no longer ends at $2A6760.")
+    if u16(d, W409_DEAD_ROW) != 0x7FFF or u16(d, W409_DEAD_ROW + 2) != 0x0008 \
+            or u32(d, W409_DEAD_ROW + 6) != 0x00230220 \
+            or W409_DEAD_ROW + W399_ANIM_STRIDE != W409_ANIM520:
+        raise SystemExit(
+            "$2A6760 is no longer the unread SEVENTH $246410 record W409 measured "
+            "(`7FFF 0008 0740 00230220 001F 0006`, ending AT $2A676E).")
+    # ---- AND THE SECOND `jsr $2595E8`.  W408's handoff said A4 $14 was the only
+    # route to the suspend; the image holds exactly two and this is the other.
+    sites = [a for a in range(0x2A4000, 0x2AB000, 2)
+             if u32(d, a) == 0x002595E8 and u16(d, a - 2) == 0x4EB9]
+    if sites != [0x2A6468, 0x2A6B8A]:
+        raise SystemExit(
+            f"the boss ROM's `jsr $2595E8` sites are now {[hex(a - 2) for a in sites]}; "
+            "W409 measured exactly $2A6466 (A4 script 5) and $2A6B88 (A4 $14).")
+    if u16(d, 0x2A646C) != 0x4254:
+        raise SystemExit("$2A646C is not `clr.w (A4)`, so A4 script 5's suspend no "
+                         "longer retires its own slot and could fire twice.")
+
+
 def check_hibachi_a1_windows(d: bytes) -> None:
     """W404.  HIBACHI's TWO A1 gun tables and the three data blocks guns 5 and 6 read.
 
@@ -9370,6 +9499,7 @@ def build(d: bytes) -> dict:
     check_arm5_demo_windows(d)                 # W392 -- ARM 5'S FOUR DEMO BLOCKS
     check_option_formation_windows(d)          # W393 -- FORMATIONS 4 AND 6
     check_hibachi_a4_windows(d)                # W399 -- HIBACHI'S A4 TABLE + ENDING DATA
+    check_hibachi_a4_5_windows(d)              # W409 -- A4 SCRIPT 5'S THREE BLOCKS
     check_hibachi_a1_windows(d)                # W404 -- HIBACHI'S TWO A1 GUN TABLES
     check_type44_windows(d)                    # W400 -- TYPE $44'S PROTOTYPES AND FIVE TABLES
     check_type4c_retire_windows(d)             # W402 -- $26FFE8'S TWO RETIRE LISTS
