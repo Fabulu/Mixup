@@ -2388,3 +2388,31 @@ record whose biased near edge is `>= $9800`, and D6 is a `$2800` coordinate bias
 `bomb.js` warns in the same comment that a port which hoisted the mask read would get D6 wrong.
 Confirm the port takes the bias arm, since a wrong D6 moves every comparison.
 
+
+### D51: THE MEDAL NOW SPAWNS BUT HAS NO EXPORTED ART, SO IT CANNOT DRAW ON THE PUBLISHED PAGE
+
+Found by the W412 agent while measuring D42. **This blocks D49 from actually being finished from the
+owner's point of view**, and it must not be missed: W411 made the medal spawn, and the owner will
+still see nothing.
+
+`$1BE2CC` -- kind index 2's sprite, the gold disc -- is the **top missing-art offset in every run**:
+28 misses per 900 frames before the laser fix, 39 after, with `$1BE300 $1BE334 $1BE368 ...` behind
+it. **32 medals spawn per 5,400 frames and not one of them can be drawn.**
+
+The port allocates the record, runs its body, walks its animation and hands the draw a source offset
+that the exported sheet has no entry for, so the sprite is dropped silently at composite time. The
+game logic is right; the asset pipeline never learned the address.
+
+**What it needs:** a window in `export-tables.py` covering `$1BE2CC` and its animation run, plus a
+shard entry in `export-web.mjs` so the cells reach the packed map. Then `export-web.mjs` BEFORE
+`publish.mjs`, per the standing rule.
+
+**Sequencing warning.** This is a wave of its own and it touches the asset pipeline, not the port.
+Do not fold it into a porting wave: a window added without the matching shard produces a sheet that
+verifies clean and still draws nothing, which is the same silent-failure shape as the star-collect
+test that stood for eight waves.
+
+**Check the other newly-spawning kinds at the same time.** W411 wired ten death arms; if kind 2 was
+missing from the sheet, confirm every kind those arms can allocate is present before declaring this
+closed, rather than fixing the one offset the measurement happened to name.
+

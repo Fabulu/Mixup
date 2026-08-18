@@ -461,9 +461,9 @@ export function buildBeam(ram, ctx, b) {
     ram.setU16(opt + 0x4e, 0);                              // $24CBBE clr.w
     ram.setU16(rec + 0x0e, ram.u16(rec + 0x1c));            // $24CBC2 move.w
     ram.setU16(rec + 0x0c, 0);                              // $24CBC8 clr.w
-    beamHeadWindow(ram, rec, word);                         // $24CBCC..$24CBE6
+    beamHeadWindow(ram, opt, rec, word);                    // $24CBCC..$24CBE6
   } else if (ram.u16(rec + 0x0c) !== 0) {                   // $24CB9A tst.w
-    beamHeadWindow(ram, rec, word);                         // $24CBCC..$24CBE6
+    beamHeadWindow(ram, opt, rec, word);                    // $24CBCC..$24CBE6
   } else {
     let go = true;
     if (ram.u16(blk + 0x16) !== 0) {                        // $24CBA0 tst.w
@@ -504,10 +504,30 @@ export function buildBeam(ram, ctx, b) {
   }
 }
 
-/** `$24CBCC..$24CBE6` -- the beam's visible WINDOW, recomputed whenever the
- *  head is complete (`($c,A3)`) or the record's bit 4 is up. */
-function beamHeadWindow(ram, rec, word) {
-  ram.bclr8(rec + 0x01, 7);                                 // $24CBCC bclr #7
+/**
+ * `$24CBCC..$24CBE6` -- the beam's visible WINDOW, recomputed whenever the
+ * head is complete (`($c,A3)`) or the record's bit 4 is up.
+ *
+ * **`$24CBCC` IS `08 ae 00 07 00 01` = `bclr #7,($1,A6)` -- A6, THE OPTION
+ * BLOCK, and not A3.** This routine's other five instructions are all on A3, so
+ * a helper that took `rec` and `word` looked complete and was not; the register
+ * is what the extraction dropped. W411 (D42) read the bytes: `08 ae` is
+ * `(d16,A6)` (mode 5, reg 6) where `08 ab` would be A3, and a whole-image scan
+ * of $240000..$2B0000 finds **zero** `bclr #7,($1,A3)` anywhere -- so the byte
+ * the port used to clear had no instruction behind it at all.
+ *
+ * IT IS THE OTHER HALF OF `$24CBB2 bset #$7,($1,A6) / beq $24CCD0`. That `bset`
+ * lays the beam HEAD (pool slot 27, `$811802`) on the frame the bit goes up, so
+ * the bit is "a head is already out there" and THIS is what retires it: a HIT
+ * (`btst #4,(A3)`, i.e. `$2454AC`/`$2455AE ori.w #$1001` in the damage pass) or
+ * a completed beam (`($c,A3)`) clears it and the next quiet frame lays a NEW
+ * head, which then runs up the beam to the thing that was hit. Clearing the
+ * WRONG byte left the bit up for the whole hold, so the head was laid **once
+ * per press** -- W410 measured slot 27 live for exactly 11 frames out of 3,000
+ * and no block-7 overlap at all in 5,400.
+ */
+function beamHeadWindow(ram, opt, rec, word) {
+  ram.bclr8(opt + OPT.flags1, 7);                           // $24CBCC bclr #7
   const d1 = ram.u16(rec + 0x10);                           // $24CBD2 move.w
   ram.setU16(word, d1);                                     // $24CBD8 move.w
   ram.setU16(rec + 0x12, d1);                               // $24CBDA move.w
@@ -1048,8 +1068,20 @@ export function runBeamDraw(ram, ctx) {
     ram.setU16(a6 + 0x10, nx < 0 ? ram.u16(a6 + 0x18) : u16(nx));  // $2550A6/$2550A8
 
     // $2550AE..$2550C6 -- the draw's own gate, and it is NOT the handlers'.
+    //
+    // **THE THIRD TEST IS MIRRORED BETWEEN THE PLAYERS AND THE PORT USED TO
+    // SHARE P1's.**  `$2550BE tst.w $80390C` is followed by `66 06` (`bne`,
+    // skip) and P2's `$255144 tst.w $80390C` by `67 08` (`beq`, skip) -- so
+    // when `$81308C` is zero P1 draws on the frames the alternation word is
+    // ZERO and P2 on the frames it is NON-zero, which is how the two beams
+    // share the budget instead of flickering together.  W411 read the bytes;
+    // `phase` above is exactly the term the impact gate already needed.
+    // UNEXERCISED ON EVERY BENCH IN THIS REPO: `$81308C` is the ONE-PLAYER flag
+    // (`machine.js onePlayerFlag`) and is 1 on all 5,400 frames of the lf2000
+    // laser-hold rung, so both arms of this line are the same there.
     if (ram.u16(b.sound2) !== 0) continue;                  // $2550AE tst.w/bne
-    if (ram.u16(0x81308c) === 0 && ram.u16(0x80390c) !== 0) continue;  // $2550B6
+    if (ram.u16(0x81308c) === 0                             // $2550B6 / $25513C
+        && (b.d7 ? phase : !phase)) continue;               // $2550BE / $255144
     enqueueThroughStub(ram, ctx.rom, LASER.emitStub, a6);   // $2550C6 jsr
     emitted++;
   }

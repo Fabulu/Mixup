@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W411)
+Updated: 2026-08-18 (W412)
 
 ## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
 
@@ -20,7 +20,84 @@ text:
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
 
-## START HERE -- W411 (docket D49)
+## START HERE -- W412 (docket D42)
+
+### THE HYPER LASER'S HIT ANIMATION WAS NEVER MISSING. ONE REGISTER WAS WRONG.
+
+`$24CBCC` is `08 ae 00 07 00 01` = `bclr #7,($1,A6)`. **`08 ae` is mode 5, register 6.** The port
+read it as A3, because every other instruction in `$24CBBE..$24CBE6` is on A3 and the helper's
+signature made A3 look right. Coordinator decoded the effective address independently. A scan of
+`$240000..$2B0000` finds **zero** `bclr #7,($1,A3)`: the byte the port cleared has no instruction
+behind it, and `$24CBBE clr.w ($4E,A6)` was already ported as `opt + $4E`, which pins A6.
+
+So `$24CBB2 bset #$7,($1,A6) / beq` means "a head is already out there", and `$24CBCC` **retires it
+on a hit or a completed beam**. The next quiet frame lays a NEW head at the beam's current reach.
+**That relaunched pulse IS the hit animation.**
+
+| measured, 5,400 frames | HEAD | fixed |
+|---|---|---|
+| slot 27 (`$811802`) live frames | 24 | **742** |
+| block-7 overlaps | **0** | **84** |
+| type-1 body segment, 900 frames | 11 | **166** |
+
+**W410's conclusion that the bee's rarity might be authentic is WITHDRAWN.** It was this defect.
+D24's "missing hit sprites" is very likely the same one.
+
+### THE EMITTER WAS FINE AND MY THREE QUESTIONS ALL ANSWERED "FINE"
+
+`spawnBeamImpact289FC0` fires **297 times per 900 frames**, every frame the phase allows. Pool E
+took 301 records, the driver drained 9,625, the sheet drew 81,618 of 81,676 with zero misses
+attributable to the impact range. Reached, bodied, drawn, art present. **The defect was two files
+away.** Asking "is this line reached" was the wrong question.
+
+**Two measurement traps that cost the agent runs, and will cost you one:**
+- `ctx.beamImpacts` at `laser.js:1058` is `=`, not `+=`. Read once at the end, you see ONE frame.
+- Bucket 20's counter `$80AFDE` reads 0 after `step()` because call #4's tail zeroes all thirty.
+
+### A REAL PLAYER ASYMMETRY, IN THE DRAW GATE, UNEXERCISED HERE
+
+`$2550C4` is `bne` (P1) and `$25514A` is `beq` (P2) on the same `tst.w $80390C`. The port had P1's
+form for both. Fixed. **Unexercised on every bench in this repo** -- `$81308C` is 1 on all 5,400
+frames -- and labelled as such rather than claimed as tested.
+
+Note the cartridge's own arithmetic: in genuine two-player play **neither** impact fires, since both
+blocks `beq`-skip on `$81308C`. That is the ROM, not a bug.
+
+### D48 HAS TWELVE SITES, NOT ELEVEN
+
+`src/spark.js fillTail28A252`'s `$28A25E bpl` is a twelfth `bpl`-after-`$242EC2` site the docket does
+not list. Fixed HERE because it is inside this unit; **the other eleven were left alone.** 60 of the
+128 reachable `$242EDE` bytes have bit 7 set, so it fires on ~47% of impact sparks and moves the
+angle base `$18 -> $28`. The file's own note called that arm unreachable.
+
+### ONE GATE BASELINE MOVED AND IT IS NOT CALLED AN RNG SHIFT
+
+W90: `beamLive` 1037 -> 1003, `entries` 519 -> 502, `records` 17283 -> 16731. **`distinct` HELD at
+35/35, `first` HELD at step 31**, NO ART 0, pending 0. The agent explicitly declined to call this an
+RNG shift: `beamLive` moved because the head cadence changes the segment population and therefore
+`$254FE6`/`$254FA8`. **That is the standard to hold a baseline move to** -- name the mechanism, or
+do not move it.
+
+Three existing tests moved by one frame (`w227death`, `w228respawn`, `w231playerinit`), isolated by
+running each fix alone: it is the extra pool-E allocations drawing `$242FFC`, the mechanism W324
+already recorded.
+
+### `laser.js`'s OWN DOC IS WRONG TWICE
+
+It claims "P1 `$255042..$2550CA`, P2 `$2550CC..$255154`, two `rts`". There is **no `rts` at
+`$2550CA`** -- P1 falls THROUGH into P2's `lea`. P2's `bpl.w` at `$2550D4` targets `$255040`, a
+`4E75` sitting BEFORE the routine, and `$255154`/`$255156` are both `4E75` used by different skips.
+
+### NEXT, AND ONE OF THEM IS URGENT
+
+**D51 (new): the medal has no exported art.** W411 made it spawn; `$1BE2CC` is the top missing-art
+offset in every run and 32 medals per 5,400 frames cannot draw. **The owner will still see nothing
+until the asset pipeline learns the address.** It is an asset wave, not a port wave.
+
+Then **D43** (laser bomb, owner-corrected), **D50** (late crater), **D48**'s remaining eleven, the
+frame-6495 kind-8 throw, and A4 `$14`.
+
+## W411 NOTES
 
 ### A TEST WAS PINNING A DEFECT, AND IT COST EIGHT WAVES
 

@@ -132,7 +132,16 @@ test('W228 a real death respawns and keeps running',
     // two frames earlier. The 767/1207/497/838/1278 frames in the comment above are from the
     // pre-W324 port and will each have shifted too; only 424 and the invariants below are
     // asserted, so they are left as the narrative they are rather than re-measured here.
-    assert.equal(died, 424);
+    // W411 (docket D42): 424 -> 423, and it is the SAME MECHANISM W324 recorded one
+    // line up. `$24CBCC` is `bclr #$7,($1,A6)` -- the OPTION BLOCK -- and the port was
+    // clearing the beam RECORD's byte, so the beam HEAD was laid once per press instead
+    // of once per hit. It is now laid repeatedly, each laying puts a type-1 BODY segment
+    // in pool slot 27, and that segment's `($26,A6)` divider is the only caller of
+    // `$289F96`, whose `fillSlot` draws `$242FFC`. More allocations, more draws on the
+    // shared `$803916`, every later event one frame earlier. MEASURED as an RNG shift and
+    // not an art change: with `src/spark.js`'s D48 fix alone and `src/laser.js` at HEAD the
+    // frame is still 424; with the laser fix alone it is 423.
+    assert.equal(died, 423);
     assert.equal(g.ram.u16(COUNT), 1, 'one life spent');
     assert.equal(g.ram.u16(ENTRY), 0, 'and the dispatcher is idle again');
     assert.equal(g.ram.u8(RAM.player1) & 1, 0, 'the death bit is clear');

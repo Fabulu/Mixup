@@ -67,7 +67,8 @@ test('W227 a real death runs its animation and reset instead of stopping',
     // W324: the window's end moves with the death, 496 -> 494. It has to: the reset used to
     // land at 497 and now lands at 495, so stopping at 496 would step PAST the reset and find
     // the option block re-armed at $8001 by the respawn instead of cleared by the death.
-    for (let f = 92; f <= 494; f++) {
+    // W411: 494 -> 493, for the same one-frame shift the note below records.
+    for (let f = 92; f <= 493; f++) {
       g.step(shot);
       if (!died && (g.ram.u8(RAM.player1 + P.state) & 1) !== 0) died = f;
     }
@@ -82,7 +83,16 @@ test('W227 a real death runs its animation and reset instead of stopping',
     // is this port with the draws, 426 was this port without them, and only an oracle trace
     // of the death frame can say which matches the machine. What IS established is that the
     // board makes the call, so making it is the more faithful of the two.
-    assert.equal(died, 424, 'the player dies where the RNG draws now put it');
+    // W411 (docket D42): 424 -> 423, and it is the SAME MECHANISM W324 recorded one
+    // line up. `$24CBCC` is `bclr #$7,($1,A6)` -- the OPTION BLOCK -- and the port was
+    // clearing the beam RECORD's byte, so the beam HEAD was laid once per press instead
+    // of once per hit. It is now laid repeatedly, each laying puts a type-1 BODY segment
+    // in pool slot 27, and that segment's `($26,A6)` divider is the only caller of
+    // `$289F96`, whose `fillSlot` draws `$242FFC`. More allocations, more draws on the
+    // shared `$803916`, every later event one frame earlier. MEASURED as an RNG shift and
+    // not an art change: with `src/spark.js`'s D48 fix alone and `src/laser.js` at HEAD the
+    // frame is still 424; with the laser fix alone it is 423.
+    assert.equal(died, 423, 'the player dies where the RNG draws now put it');
     assert.equal(g.ram.u16(OPTION_BLOCKS[0].opt), 0,
       'and its option block is cleared, not stepped');
     assert.equal(g.ram.u16(0x8130fa), 1,

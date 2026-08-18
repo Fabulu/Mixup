@@ -1564,8 +1564,24 @@ try {
         // 17281 -> 17283. The ten wired death arms allocate, the allocations draw from
         // the shared RNG, and the beam's own cadence moves with it. `distinct` and
         // `first` held, which is what says the ART side did not change.
-        const EXP90 = { frames: 1500, entries: 519, records: 17283,
-          distinct: 35, first: 31, beamLive: 1037 };
+        //
+        // W411 AGAIN (docket D42), and this one is NOT only an RNG shift, so it is
+        // labelled as what it is: beamLive 1037 -> 1003, entries 519 -> 502, records
+        // 17283 -> 16731. `$24CBCC` is `08 ae 00 07 00 01` = `bclr #$7,($1,A6)`, the
+        // OPTION BLOCK, and `src/laser.js` was clearing the beam RECORD's `+$1` -- an
+        // address no instruction in $240000..$2B0000 writes. Bit 7 is "a head is already
+        // out there"; clearing the wrong byte left it up for the whole hold, so pool slot
+        // 27 was laid ONCE per press. It is now laid once per hit and once per completed
+        // beam, which changes the segment population, and `$254FE6`/`$254FA8` -- the
+        // instructions that raise and clear `$811F32` -- move with it. So `beamLive` is a
+        // real behaviour change and not a fingerprint drift.
+        //
+        // WHAT HELD, and it is the whole reason this baseline may move: `distinct` 35 of
+        // 35, `first` step 31, `NO ART` 0, `pending` 0, ADJACENT-FRAME entries 0 and
+        // WRONG-$80390C-phase entries 0. The art side and the cadence rule -- the two
+        // things this row exists to defend -- are untouched; only counts moved.
+        const EXP90 = { frames: 1500, entries: 502, records: 16731,
+          distinct: 35, first: 31, beamLive: 1003 };
         const runW90 = (frames, drop) => {
           const g = new Game(bundle.seed, bundle.tables, {
             logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
