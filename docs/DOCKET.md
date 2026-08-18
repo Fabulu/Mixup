@@ -2537,6 +2537,36 @@ measurable rather than guessed at.
 audible in the graph, and report the distribution over a run rather than a single figure. A fixed
 offset and a growing one have different causes and different fixes.
 
+**COORDINATOR'S MEASUREMENT, 2026-08-18, before any wave is spent.** The mechanism is almost
+certainly a BACKLOG, and the arithmetic fits the owner's "about 1 second" exactly:
+
+- `sound.js` enqueues cues onto a **100-slot ring** at `$81DD1E`, head `$81DEAE`, tail `$81DEB0`.
+- `drainFrame` dequeues **exactly ONE longword per frame** -- `$18ACE0`, the BIOS pump. That is
+  faithful to the cartridge and must NOT be "fixed" by draining faster.
+- At 60 fps, **one cue per frame means 60 queued cues IS one second of lag**, and a 100-slot ring
+  can hold over 1.6 seconds before it even starts dropping.
+
+**So the question is not the drain rate. It is whether the port ENQUEUES more than the cartridge
+does.** The drain is the cartridge's; the posts are ours.
+
+**THE MEASUREMENT THAT SETTLES IT**, and it is cheap: run a bench and record ring DEPTH
+(`tail - head`, modulo the 400-byte span) every frame.
+- **Depth grows monotonically** -> the port over-posts. Then find which cue: count posts per
+  address per frame and look for one firing every frame instead of once per event.
+- **Depth stays near zero and the lag is still there** -> it is not the ring at all; it is the web
+  audio layer, and this item moves out of `sound.js` entirely.
+- Watch `frameDrops` too: if the ring is overflowing, the port is not merely late, it is **losing
+  cues**, and the owner would eventually notice missing sounds as well as late ones.
+
+**THE PRIME SUSPECT, and it is already written down in D52:** a cue posted **once per frame while a
+record lives** rather than once per event. The collected item record survives its transform, so a
+collect arm that re-enters would post on every frame of it. One such cue at 60 posts a second, into
+a queue that drains 1 a frame, produces exactly this symptom and grows with activity.
+
+**ASK THE OWNER FIRST:** does the delay GROW during heavy play or stay fixed? A growing delay
+confirms the backlog and points at the over-posting cue; a fixed delay exonerates the ring entirely
+and sends the wave to the audio layer. One sentence saves the measurement.
+
 **Not urgent relative to D53**, but it is the kind of defect that makes everything feel wrong even
 when the port is exactly right.
 
