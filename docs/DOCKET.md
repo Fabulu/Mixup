@@ -3007,3 +3007,42 @@ is not the explanation.
 
 `stats()` reports `resyncs` alongside `stale`, so the next report is answerable from the numbers.
 
+
+### D58 DIAGNOSED: THE `$28BBAC` TIER HAS NO POSTING PATH, SO FIVE CUES ARE COUNTED INSTEAD OF PLAYED
+
+> "boss explosion doesn't have a sound on level one. None of the other levels likely do either"
+
+**The owner's guess that other levels are affected too is right, and for a structural reason:
+these are not per-level cues.** One shared posting gap silences all of them.
+
+`sound.js`'s `WRAPPERS` table describes exactly one packer, `$28BB04` -- every row sets THREE
+immediates (id, pan, channel). **`$28C170` is a different shape entirely:**
+
+    28C174  move.w #$15,D0      28BBAC  lsl.w #8,D0        the OTHER packer
+    28C178  moveq  #0,D1        28BBAE  or.w  D1,D0
+    28C17A  jsr $28BBAC         28BBB0  swap  D0
+                                28BBB2  move.w #$0,D0
+                                28BBB6  bra $28BAA0        the ring enqueue
+
+So the longword is `((D0<<8|D1)<<16)` with a **ZERO low word** -- no id byte, no channel nibble,
+no gate, no pan tail. `$28C170` posts **`$15000000`**. `$28C186` is its sibling (D0=`$16`, D1 from
+the caller). Giving either a `WRAPPERS` row would invent an id, a pan and a channel the cartridge
+never loads; `postWrapper` correctly throws `no wrapper at $28C170` instead.
+
+**FIVE SITES ARE WAITING ON THIS, and they are all things the owner would notice:**
+
+    boss.js:1238      $242922  the BOSS-CLEAR cue          <-- D58
+    boss.js:1326      $2A6D8C  the ENDING block's cue
+    objslot13.js:333  $288A3C  slot 13 state 4, GAME OVER
+    hibachi2.js:169   $2A7008
+    background.js:1203  the scroll VM's CUE op
+
+**UNIT: give the `$28BBAC` tier its own posting path** -- a second, separate path, NOT a row in
+`WRAPPERS`. Then convert the five `note()` calls into real posts. That is one small unit and it
+lights up a boss clear, a game over and an ending.
+
+**ONE HONEST CAVEAT, do not skip it.** The owner said "explosion", and what is proven silent here
+is the boss-CLEAR cue. Whether the explosion SFX is this cue or a separate one is **not
+established**. Confirm which cue the owner is missing before declaring D58 closed -- the D56
+mistake was exactly this, closing an item on a bench that never exercised the reported thing.
+
