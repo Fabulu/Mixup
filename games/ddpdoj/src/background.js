@@ -1200,10 +1200,18 @@ function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut) {
           ram.setU16(BGRAM.cueCount, rom.u16(a2)); a2 += 2;
           ram.setU32(BGRAM.cueCall, rom.u32(a2)); a2 += 4;
         } else if (sub === 1) {                            // $2621C4
-          note(0x28c170, '$28C170 -> $28BBAC D0=$15 (BGM command)');
+          // W425 (D58): a REAL post now. $28C170 sets both D0 ($15) and D1 (0) itself, so the
+          // address is the whole command and `soundPost` can carry it. No gate: $28BBAC branches
+          // straight to the ring enqueue $28BAA0.
+          ctx.soundPost?.(0x28c170);                       // $2621C4 jsr $28C170
           ctx.scrollEvent?.({ op, recTime, kind: 'cue', sub });
         } else if (sub === 2) {                            // $2621CC
           const d1 = rom.u16(a2); a2 += 2;
+          // STILL COUNTED, AND NOT BY OVERSIGHT. $28C186 takes D1 FROM THE CALLER and this is the
+          // site that proves why an address-only post would be wrong: D1 is read out of the stage
+          // script, word by word, and is not always 0. Posting it by address alone would send
+          // command $1600 for every cue the script ever writes. It needs an explicit-D1 call
+          // (`postBgmCommand(ram, sound, 0x28c186, d1)`) that the scroll VM has no `sound` for.
           note(0x28c186, `$28C186 -> $28BBAC D0=$16 D1=$${d1.toString(16)
             .toUpperCase().padStart(4, '0')} (BGM command)`);
           ctx.scrollEvent?.({ op, recTime, kind: 'cue', sub, d1 });

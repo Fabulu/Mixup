@@ -168,6 +168,8 @@ const RUN = (() => {
   return {
     g, firstD, firstE, firstC, fadeDone, matchedAtFirstE, stoppedAt, stopError, lastFrame,
     notesAt4079, current: cur(), currentAtFadeDone, rom, notes: g.unportedLog.report(),
+    // W425 (D58): the `$28BBAC`-tier command as the DRAIN saw it, not as a call site meant it.
+    bgmCommands: g.sound.doorLog.filter((d) => d.word === 0x15000000).length,
   };
 })();
 
@@ -507,12 +509,21 @@ test('W386 the fade RUNS: 32 staging words converge on the 32 ROM words, exactly
 // 6 -- WHAT IS BEHIND IT. COUNTED, WITH THE EXTENTS MEASURED.
 // ===============================================================================================
 
-test('W386 the two sound posts on the game-over path are STILL counted, not thrown', () => {
-  // objslot13.js:208/209. `sound.js`'s header forbids $28C170 a WRAPPERS row (it goes through
-  // the $28BBAC packer) and $28C0FC is in ENTRY, not WRAPPERS. Both stay counted, and this run
-  // is the proof they are REACHED rather than hypothetical.
-  assert.ok(noteCount(0x28c170) >= 1, '$288A3C jsr $28C170 counted');
-  assert.ok(noteCount(0x28c0fc) >= 1, '$288A42 jsr $28C0FC counted');
+// **W425 (D58) SPLIT THIS TEST'S PAIR, AND THE PAIR WAS THE MISTAKE.** W386 treated `$288A3C` and
+// `$288A42` as one fact: two back-to-back `4EB9`s, both unpostable, both counted. The BYTES are a
+// pair -- that half is still asserted below and is unchanged -- but the PACKERS are not:
+//
+//   $288A3C  jsr $28C170  ->  $28BBAC   D0=$15, D1=0 set by the callee itself. POSTS since W425.
+//   $288A42  jsr $28C0FC  ->  $28BB76   entered with the caller's inherited D0..D3. Still counted.
+//
+// The game-over screen makes a sound now. `$28C0FC` is a THIRD packer and closing it means
+// tracking registers across four back-to-back calls, which is a different unit.
+test('W425 the game-over cue $28C170 POSTS; its neighbour $28C0FC is still counted', () => {
+  assert.equal(noteCount(0x28c170), 0,
+    '$288A3C jsr $28C170 is no longer deferred -- it is posted');
+  assert.ok(RUN.bgmCommands >= 1,
+    'and $15000000 was DRAINED from the ring, so the game over is audible, not just non-throwing');
+  assert.ok(noteCount(0x28c0fc) >= 1, '$288A42 jsr $28C0FC is STILL counted');
   assert.equal(l(0x288a3c), 0x4eb90028, '$288A3C is a 4EB9...');
   assert.equal(l(0x288a3e), 0x0028c170, '  ...jsr $28C170');
   assert.equal(l(0x288a42), 0x4eb90028, '$288A42 is the next 4EB9, back to back...');
@@ -547,9 +558,11 @@ test('W386 the deferrals behind the screen are slot [12]\'s, and they stop nothi
   // **W388.** `$24676A` used to appear here too -- `$246710`'s per-node content seeding, reached
   // because the attract screen slot [12] stages runs `hiscoreInit25B3DC`. It is PORTED now
   // (`animobjects.js seedChainContent24676A`), so it has left the census, the high-score screen
-  // finishes instead of holding, and the sequencer reaches arm 12. The three lines that replace
-  // it are `$28C170` (the screen-end cue at `$25B4C8`) and arm 12's `$25C2AE` / `$25C2EA`. None
-  // of them is slot [12]'s, which is what the `sites` assertion above actually pins.
+  // finishes instead of holding, and the sequencer reaches arm 12. The lines that replaced it
+  // were `$28C170` (the screen-end cue at `$25B4C8`) and arm 12's `$25C2AE` / `$25C2EA`.
+  // **W425 (D58) TOOK `$28C170` BACK OUT AGAIN**, this time by porting it rather than by moving
+  // it: the `$28BBAC` tier has a posting path now, so the screen-end cue is posted and only arm
+  // 12's two remain. None of them is slot [12]'s, which is what the `sites` assertion pins.
   assert.ok(grown.length <= 7, `seven new census lines at most; got ${grown.length}`);
   assert.ok(!grown.some((k) => k.includes('$24676A')),
     '$24676A is GONE from the census -- the seeding it counted is ported');
@@ -656,8 +669,10 @@ test('W386 nothing else on the game-over path needs a window: no note names a RO
   // chain drains, `$25B4D2` reports finished, and the sequencer moves to arm 12. So one line
   // LEAVES the census and three arrive: `$28C170` (`$25B4C8`, the screen-end cue, reachable for
   // the first time), and `$25C2AE` / `$25C2EA`, arm 12's init and body -- the NEXT screen's
-  // deferral, which is progress rather than regression. The claim is unchanged and still asserted
-  // below by the loop, not by the count.
+  // deferral, which is progress rather than regression. **W425 (D58) DROPS `$28C170` FROM THAT
+  // LIST -- it is posted now, not deferred -- so the arrivals are two, not three.** The bound
+  // below is an upper bound and is deliberately not re-tightened: the claim this test exists for
+  // is that NONE of them is a window miss, and that is asserted by the loop, not by the count.
   const behind = RUN.notes.filter((s) => !RUN.notesAt4079.has(s.split(' x ')[1]));
   assert.ok(behind.length <= 7, `at most seven census lines are new; got ${behind.length}`);
   assert.ok(!behind.some((s) => s.includes('$24676A')),

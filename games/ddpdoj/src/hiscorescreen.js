@@ -549,8 +549,10 @@ export function hiscoreScreen25B412(ram, rom, ctx) {
     if (chainCheck24681A(ram, ram.u32(SCREEN_STATE.handle)) === 0) {  // $25B480 / $25B486
       chainFree246800(ram, ram.u32(SCREEN_STATE.handle));   // $25B488
       // $25B48E bra $25B4C8 -- the ONLY path that skips the draw.
-      ctx?.unportedLog?.note(SCREEN_STATE.endCue,
-        '$25B4C8 jsr $28C170 -- the screen-end BGM cue, the same one tally.js names as cueA');
+      // W425 (D58): a REAL post. $28C170 is the $28BBAC tier, which `sound.js` could not pack
+      // until W423 built it a second path; it has no WRAPPERS row and no gate, and the address
+      // carries the whole command because $28C170 sets both D0 ($15) and D1 (0) itself.
+      ctx?.soundPost?.(SCREEN_STATE.endCue);               // $25B4C8 jsr $28C170
       return false;                                         // $25B4D2 move.w D0,D0
     }
   }

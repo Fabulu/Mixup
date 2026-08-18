@@ -87,9 +87,10 @@
 // ============================================================================
 // WHAT IS COUNTED RATHER THAN RUN
 // ============================================================================
-// Two calls, both already counted elsewhere in the port for the same reasons: `$28C170`
-// (phase A's death BGM cue, the cue `bossEnding2A6D8C` counts at `$2A6D8C`) and `$23C4D0`
-// (the `$8039xx` pause block, counted in `boss.js` since W357 behind `w382stalenotes`).
+// ONE call now, not two. **W425 (D58) TOOK `$28C170` OFF THIS LIST**: phase A's death BGM cue is
+// a real `ctx.soundPost?.(0x28c170)` since `sound.js` grew the `$28BBAC`-tier posting path, the
+// same conversion `bossEnding2A6D8C` took at `$2A6D8C`. What remains counted is `$23C4D0` (the
+// `$8039xx` pause block, counted in `boss.js` since W357 and pinned by `w382stalenotes`).
 
 import { u16, u32, i16 } from './ram.js';
 import { scoreHit, scoreKill } from './score.js';
@@ -130,10 +131,12 @@ export const HIBACHI2 = Object.freeze({
   freezeWord: 0x8130d2,                // the gate `bossExit2A6EDC` was missing
 });
 
-/** Counted, not run.  Address -> the instruction that stands there. */
+/** Counted, not run.  Address -> the instruction that stands there.
+ *
+ *  **W425 (D58) REMOVED `$28C170` FROM THIS TABLE.** It is no longer counted because it is no
+ *  longer deferred: `phaseADeath2A7008` posts it. Leaving the key here would have kept the census
+ *  reporting a gap that is closed, which is the exact failure `w382stalenotes` exists to catch. */
 export const HIBACHI2_NOTED = Object.freeze({
-  0x28c170: '$2A7008 jsr $28C170 -- phase A\'s death BGM cue, the same unmapped cue '
-    + 'bossEnding2A6D8C counts at $2A6D8C',
   0x23c4d0: '$2A700E / $2A723E jsr $23C4D0 -- the $8039xx pause/flag block, counted in '
     + 'boss.js since W357 and asserted by tests/w382stalenotes.test.js',
 });
@@ -166,7 +169,9 @@ export function bossExitShared(ram, ctx, a5, a6, death) {
 /** `$2A7008..$2A707B`. Ends in `$2A7076 4EF9 0025980C` -- a `jmp`, so A4 3 is a tail call and
  *  the block never returns to the exit that branched here. */
 function phaseADeath2A7008(ram, ctx, a5, a6) {
-  note(ctx, 0x28c170);                                 // $2A7008 jsr $28C170
+  // $2A7008 jsr $28C170 -- phase A's death BGM cue, the $28BBAC-tier command ($15000000).
+  // Posted, not counted, since W425/D58; there is no gate on that path.
+  ctx.soundPost?.(0x28c170);                           // $2A7008 jsr $28C170
   note(ctx, 0x23c4d0);                                 // $2A700E jsr $23C4D0
   ram.setU16(a5 + 0x1a, 0x6270);                       // $2A7014 move.w #$6270,($1A,A5)
   clamp253564(ram);                                    // $2A701A jsr $253564
@@ -254,7 +259,14 @@ function phaseA2A6F1C(ram, rom, ctx, a5, a6) {
 
 // ====================================================================== PHASE B -- $2A70B4
 /** `$2A722E..$2A7291`.  NOT phase A's death with different constants: it has the two `$8130F8`
- *  bsets and `$242922` that phase A lacks, and lacks phase A's `$28C170` and `($1A,A5)`. */
+ *  bsets and `$242922` that phase A lacks, and lacks phase A's `$28C170` and `($1A,A5)`.
+ *
+ *  **W425 (D58): IT STILL REACHES `$28C170` ANYWAY, THROUGH `$242922`.** The sentence above
+ *  is about the INSTRUCTION and is right; it was read for years as "phase B does not cue",
+ *  which is wrong. `bossClear242922`'s first instruction is `jsr $28C170`, so BOTH deaths
+ *  post the command -- phase A directly at `$2A7008`, phase B one call deeper at `$2A724A`.
+ *  `tests/w425bossexplosion.test.js` and `w403hibachi2.test.js` both count it now, which is
+ *  only possible because it stopped being a note. */
 function phaseBDeath2A722E(ram, ctx, a5, a6) {
   ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x40);        // $2A722E bset #6
   ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x80);        // $2A7236 bset #7

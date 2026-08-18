@@ -301,16 +301,48 @@ test('W303 state 2 keeps drawing while its chain is alive', { skip: SKIP }, () =
   assert.ok(count(fresh, MAIN) > 0, 'and it drew');
 });
 
-test('W303 the end cue is counted, and it is one tally.js already names', { skip: SKIP }, () => {
+// **W425 (D58) INVERTED THIS TEST, AND THE INVERSION IS THE POINT.** It used to assert that
+// `$25B4C8`'s end cue was COUNTED. That was right when it was written and became the defect the
+// owner reported: `sound.js` had exactly one packer (`$28BB04`, three immediates) and `$28C170`
+// belongs to a different one (`$28BBAC`: `move.w #$15,D0` / `moveq #0,D1`, packing a longword
+// with a ZERO low word), so there was nothing to post it with and the screen ended in silence.
+// W423 built that tier its own path and W425 made `postWrapper` dispatch to it. The cue POSTS
+// now, so the old assertion would pin a silence rather than a behaviour -- it is rewritten to
+// say the opposite, not deleted, because a note that became a post is a real change.
+test('W425 the end cue is POSTED, not counted -- $28C170 goes through the $28BBAC tier',
+  { skip: SKIP }, () => {
+    const ram = factory();
+    const w = world();
+    const cues = [];
+    w.ctx.soundPost = (a) => { cues.push(a); return true; };
+    ram.setU16(SCREEN_STATE.state, 2);
+    ram.setU32(SCREEN_STATE.handle, 0x810346);
+    // POSITIVE CONTROL: nothing has cued before the chain is found finished.
+    assert.deepEqual(cues, [], 'nothing posted before the frame runs');
+    assert.equal(hiscoreScreen25B412(ram, ROM, w.ctx), false, 'the screen reports finished');
+    assert.deepEqual(cues, [0x28c170], '$25B4C8 posts $28C170, exactly once');
+    assert.equal(w.log.report().find((r) => r.includes('$28C170')), undefined,
+      'and it is NOT counted as unported any anymore -- a note here would be the stale note '
+      + 'w382stalenotes exists to catch');
+    assert.equal(SCREEN_STATE.endCue, 0x28c170);
+  });
+
+test('W425 the end cue fires ONLY on the frame the chain finishes', { skip: SKIP }, () => {
+  // The negative half. `$25B48E bra $25B4C8` is the only path that skips the draw, so a live
+  // chain must post nothing at all -- otherwise the screen would retrigger the cue every frame.
   const ram = factory();
   const w = world();
+  const cues = [];
+  w.ctx.soundPost = (a) => { cues.push(a); return true; };
   ram.setU16(SCREEN_STATE.state, 2);
+  // A LIVE chain: the handle links to one node whose `$18` life word is non-zero, so
+  // `chainCheck24681A` sums to something and `$25B486 bne` keeps the screen running.
   ram.setU32(SCREEN_STATE.handle, 0x810346);
-  hiscoreScreen25B412(ram, ROM, w.ctx);
-  const hit = w.log.report().find((r) => r.includes('$28C170'));
-  assert.ok(hit, '$28C170 is counted');
-  assert.match(hit, /cueA/, 'and pointed at where the port already knows it');
-  assert.equal(SCREEN_STATE.endCue, 0x28c170);
+  ram.setU32(0x810346 + 0x2c, 0x810400);    // handle -> node
+  ram.setU16(0x810400 + 0x18, 0x0001);      // node's life word, non-zero
+  ram.setU32(0x810400 + 0x2c, 0);           // and the chain ends there
+  assert.equal(hiscoreScreen25B412(ram, ROM, w.ctx), true, 'still running');
+  assert.deepEqual(cues, [], 'and it posted nothing');
 });
 
 test('W303 `$25B492` is now ELEVEN of eleven', { skip: SKIP }, () => {

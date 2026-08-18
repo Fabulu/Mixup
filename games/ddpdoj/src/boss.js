@@ -112,10 +112,23 @@ export const BOSS = {
  *  W107 CORRECTION: the `$289004` allocator, the `$2938AE`/`$2938F2` table
  *  bursts and the `$28B4BE` big burst are NO LONGER NOTES -- they are real
  *  `spawnEffect` calls now (D-script 6's death explosion, ported this wave off
- *  `src/effects.js` which W54 shipped).  The entries that remain are SOUND
- *  (`$28Cxxx`), the impact-pool-A `$2440E0` (W52's refusal), the
- *  animation-object loader `$246410` (the presentation tier) and the timer-D
- *  dispatch (sound routines off `$294134`). */
+ *  `src/effects.js` which W54 shipped).
+ *
+ *  **W425 (D58) TOOK FOUR MORE OUT, AND THREE OF THEM WERE ALREADY DEAD.**
+ *  `$294134` is ported this wave (`d6TimerDSound`) -- that is the real removal.
+ *  The other three, `$28C392`, `$28C2C2` and `$28C2A8`, were listed here as
+ *  deferred SOUND and have been real `ctx.soundPost` calls since Wave A: NOT ONE
+ *  `note()` in this file has passed those addresses for hundreds of waves, so
+ *  the table documented three gaps that did not exist. They never reached a
+ *  census -- nothing called them -- so this was a lie in the DOCUMENTATION and
+ *  not in the count, which is precisely why it survived so long. Same shape as
+ *  W418's fifth lie and W422's `bee.js` bound: a true statement resting on a
+ *  false explanation, or in this case a false statement nothing ever read.
+ *
+ *  What is left is genuinely deferred: the impact-pool-A `$2440E0` (W52's
+ *  refusal), the animation-object loader `$246410` (the presentation tier), the
+ *  hit-stop driver `$243DD0`, the `$8039xx` pause block `$23C4D0` and the A3
+ *  stops `$2599EC`. Every one of them has a live `note()` call above. */
 export const BOSS_NOTED = Object.freeze({
   0x243dd0: '$292912/$294C68/$294D4C jsr $243DD0 -- the hit-stop / screen-shake '
     + 'driver (170 instructions, no reader in the stage-end chain)',
@@ -123,11 +136,6 @@ export const BOSS_NOTED = Object.freeze({
     + 'left it',
   0x246410: '$293F18 / $29407C / $28D770 jsr $246410 -- the ANIMATION-OBJECT '
     + 'loader (286 instructions), the presentation tier',
-  0x28c392: '$293EE6 jsr $28C392 -- SOUND (the $28Cxxx family, deferred whole)',
-  0x28c2c2: '$293FDC/$29411E jsr $28C2C2 -- SOUND',
-  0x28c2a8: '$2940A2/$293A4E/$293C92 jsr $28C2A8 -- SOUND',
-  0x294134: '$293F66/$294016 jsr (A0) off $294134 -- timer-D dispatch, SOUND '
-    + 'routines only ($28C25A/$28C274/$28C2A8/$28C2C2); no visuals',
   0x23c4d0: '$294DE4 jsr $23C4D0 -- the $8039xx pause/flag block',
   // W382 dropped $253564 and $242922 from this table: both were ALREADY ported
   // (clamp253564 / bossClear242922, both live from $2A6DD2/$2A6DBC since W372)
@@ -407,6 +415,49 @@ const D6 = {   // the slot's own fields, all relative to A4
   tD: 0x12, tDr: 0x13, cursor14: 0x14,
 };
 
+/**
+ * `$294134` -- THE TIMER-D SOUND TABLE. **THE BOSS EXPLOSION'S OWN RATTLE, AND IT
+ * IS NOT THE CUE DOCKET D58 WAS OPENED ON.**
+ *
+ * The owner reported "boss explosion doesn't have a sound on level one". D58 was
+ * diagnosed as `$28C170`, and that WAS silent and is ported this wave -- but
+ * `$28C170` is the boss-CLEAR cue, one shot at `$242922`. The repeated bangs that
+ * run for the whole death animation come from HERE, and this was a counted note
+ * for the same 400-odd waves, from `BOSS_NOTED[0x294134]`.
+ *
+ *     293F5A  41FA 01D8       lea ($1D8,PC),A0     -> $293F5C + $1D8 = $294134
+ *     293F60  D0EC 0014       adda.w ($14,A4),A0   the cursor, stepping by 4
+ *     293F64  2050            movea.l (A0),A0      the entry IS an address
+ *     293F66  4E90            jsr (A0)             ...and it is CALLED
+ *     293F68  586C 0014       addq.w #4,($14,A4)
+ *     293F6C  026C 001F 0014  andi.w #$1F,($14,A4) -> $20 bytes = EIGHT entries
+ *
+ * `$29400A` is byte-identical (`lea ($128,PC)` off `$29400C`, the same table), so
+ * states 2 and 3 share one cursor and one walk. The eight longwords are all
+ * ORDINARY `WRAPPERS` rows, which is why this needs no new packer and nothing is
+ * invented:
+ *
+ *     $28C25A $28C274 $28C25A $28C274 $28C2A8 $28C25A $28C2C2 $28C2A8
+ *        id 0    id 1    id 0    id 1    id 3    id 0    id 4    id 3
+ *
+ * READ THE TABLE, DO NOT INLINE IT. The cursor is 68k state that survives the
+ * frame and the wrap is `andi.w #$1F`, so a JS array of eight constants would be
+ * a second copy of a cartridge table with no check that it still matches. The
+ * ROM window `$294134`/$20 is declared in `tools/export-tables.py` (W425).
+ */
+const D6_TIMER_D_TABLE = 0x294134;
+const D6_TIMER_D_MASK = 0x1f;                          // $293F6C / $294012 andi.w #$1F
+
+/** One timer-D tick: post the cue the cursor points at, THEN advance it. The
+ *  order is the ROM's -- `jsr (A0)` at `$293F66` precedes `addq.w #4` at
+ *  `$293F68` -- and reversing it would play the whole rattle one bang out of
+ *  step, starting on entry 1 and never playing entry 0 on the first lap. */
+function d6TimerDSound(ram, rom, ctx, a4) {
+  const cursor = ram.u16(a4 + D6.cursor14) & D6_TIMER_D_MASK;
+  ctx.soundPost?.(rom.u32(D6_TIMER_D_TABLE + cursor));  // $293F64 movea.l / $293F66 jsr (A0)
+  ram.setU16(a4 + D6.cursor14, u16(cursor + 4) & D6_TIMER_D_MASK);   // $293F68 / $293F6C
+}
+
 /** `$293DC6` -- D-script 6's INIT.  **`$2(a4) := 0`**, which is what makes the
  *  step's state-6 arm unreachable on the arming frame (see the header). */
 function d6Init293DC6(ram, rom, ctx, a4) {
@@ -652,8 +703,7 @@ function d6Step293E04(ram, rom, ctx, a4) {
   if (st() === 3) {
     if (!decByteBcc(ram, a4 + D6.tD)) {                // $293F4C
       ram.setU8(a4 + D6.tD, ram.u8(a4 + D6.tDr));      // $293F54
-      note(ctx, 0x294134);                             // $293F66 jsr (A0) off $294134 -- timer-D SOUND
-      ram.setU16(a4 + D6.cursor14, u16(ram.u16(a4 + D6.cursor14) + 4) & 0x1f);
+      d6TimerDSound(ram, rom, ctx, a4);                // $293F5A..$293F72 -- THE EXPLOSION RATTLE
     }
     if (!decByteBcc(ram, a4 + D6.tC)) {                // $293F72
       ram.setU8(a4 + D6.tC, ram.u8(a4 + D6.tCr));      // $293F7A
@@ -675,8 +725,8 @@ function d6Step293E04(ram, rom, ctx, a4) {
     } else {
       if (!decByteBcc(ram, a4 + D6.tD)) {              // $293FFC
         ram.setU8(a4 + D6.tD, ram.u8(a4 + D6.tDr));    // $294004
-        note(ctx, 0x294134);                           // $294016 jsr (A0) off $294134 -- timer-D SOUND
-        ram.setU16(a4 + D6.cursor14, u16(ram.u16(a4 + D6.cursor14) + 4) & 0x1f);
+        // $29400A..$294016 -- BYTE-IDENTICAL to state 3's walk, same table, same cursor.
+        d6TimerDSound(ram, rom, ctx, a4);              // $29400A..$294018
       }
       if (!decByteBcc(ram, a4 + D6.tC)) {              // $294022
         ram.setU8(a4 + D6.tC, ram.u8(a4 + D6.tCr));    // $29402A
@@ -1126,6 +1176,14 @@ export const W82 = {
   d7Anim2943B0, obj2_292952, obj3_292BFA, obj4_292E0A, obj5_292E3E, OBJ5_LIMBS,
 };
 
+/** Exported for `tests/w425bossexplosion.test.js` (DOCKET D58). D-script 6 is
+ *  reachable only through `registerScript`/`runScript`, which the scheduler does
+ *  not export, so the death animation's own step and its timer-D sound walk are
+ *  published here the way `W82` publishes the object routines. */
+export const W425 = {
+  d6Step293E04, d6TimerDSound, D6, D6_TIMER_D_TABLE, D6_TIMER_D_MASK,
+};
+
 // ============================================================== $292902
 /**
  * `$292902` -- THE STAGE-1 BOSS'S PER-FRAME HANDLER.  Ten instructions, every
@@ -1223,21 +1281,28 @@ import './hibachiguns.js';
  *  record's `+$3E`, not to a global. A port that wrote both unconditionally, or wrote one shared
  *  flag, would intervene for a player the cartridge leaves alone.
  *
- *  **W385: `$28C170` IS A COUNTED NOTE HERE NOW, NOT A `soundPost`.** The comment above used to
- *  say "its only callee `$28C170` is already ported". IT IS NOT. `$28C170` has no row in
- *  `sound.js`'s `WRAPPERS` and must never be given one -- see that file's header: it loads D0/D1
- *  and calls `$28BBAC`, a DIFFERENT packer from the `$28BB04` every `WRAPPERS` row describes, with
- *  no id, no pan and no channel nibble, so `postWrapper` THROWS `no wrapper at $28C170`. Until
- *  W385 nothing could reach this line, because no cold-boot run had a player to clear the boss
- *  over; `objslot8.js:502` had already found and fixed the same defect on the coin path and its
- *  comment names this exact site as one of five that would throw the same way when reached.
- *  `background.js:1047` and `hiscorescreen.js:544` count it the same way. */
+ *  **W425 (D58): `$28C170` IS A REAL POST AGAIN, AND THIS IS THE OWNER'S REPORT.** The history
+ *  matters because both earlier readings were half right. W385 turned it from a throwing
+ *  `soundPost` into a counted note, correctly: `$28C170` has no row in `sound.js`'s `WRAPPERS`
+ *  and must never be given one -- it loads D0/D1 and calls `$28BBAC`, a DIFFERENT packer from the
+ *  `$28BB04` every `WRAPPERS` row describes, with no id, no pan and no channel nibble. What W385
+ *  could not do was post it at all, because no path existed. W423 built that path
+ *  (`postBgmCommand`, the `$28BBAC` tier) and W425 wired `postWrapper` to dispatch to it, so
+ *  `ctx.soundPost?.(0x28c170)` now enqueues $15000000 with NO `WRAPPERS` row invented. Both
+ *  statements are true at once: no row, and no throw.
+ *
+ *  **THERE IS NO GATE ON THIS PATH.** `$28BBAC` branches straight to the ring enqueue `$28BAA0`;
+ *  it never reaches `$28C02A`/`$28C0AE`, so nothing here consults `gatePasses`. Routing it
+ *  through a gate would silence a boss clear whenever the gate happened to be down -- the defect
+ *  D58 is about, reintroduced one layer lower.
+ *
+ *  **THIS IS NOT THE WHOLE OF THE OWNER'S REPORT.** They said "explosion"; this cue is the boss
+ *  CLEAR. The repeated explosion rattle of the death animation is the timer-D dispatch off
+ *  `$294134` (`d6Step293E04`, states 2 and 3) -- see `BOSS_NOTED` and the note there. */
 export function bossClear242922(ram, ctx) {
-  // $242922 jsr $28C170 -- $28C170 -> $28BBAC D0=$15 (BGM command), the tier sound.js has no
-  // posting path for. Counted exactly as objslot8.js arm3 counts it.
-  ctx.unported?.note(0x28c170, '$242922 jsr $28C170 -- the boss-clear BGM cue. $28C170 -> '
-    + '$28BBAC D0=$15 (BGM command), NOT the $28BB04 packer every sound.js WRAPPERS row '
-    + 'describes, so posting it throws. Counted here as objslot8.js:522 counts its own');
+  // $242922 jsr $28C170 -- the boss-clear BGM cue. $28C170 -> $28BBAC D0=$15, posted through
+  // sound.js's second path (postBgmCommand), NOT through a WRAPPERS row. D58 / W425.
+  ctx.soundPost?.(0x28c170);                                 // $242922 jsr $28C170
   ram.setU16(0x81296e, 1);                                   // $242928 move.w #$1,$81296E
   for (const [rec, at] of [[0x8103e6, 0x810424], [0x810448, 0x810486]]) {
     if ((ram.u16(rec) & 0x8000) === 0) continue;             // $242930/$242940 tst.w / bpl SKIPS
@@ -1321,10 +1386,9 @@ function bossPhase2A6D42(ram, rom, a5, a6, ctx) {
 
 /** `$2A6D8C` -- the ENDING block, reached only when `$2428A6` says a player is out. */
 function bossEnding2A6D8C(ram, rom, a5, a6, ctx) {
-  // $2A6D8C jsr $28C170 -- the same unmapped BGM cue `bossClear242922` above counts, for the
-  // same reason. W385.
-  ctx.unported?.note(0x28c170, '$2A6D8C jsr $28C170 -- the ENDING block\'s BGM cue. $28C170 -> '
-    + '$28BBAC D0=$15 (BGM command), NOT the $28BB04 packer sound.js WRAPPERS describes');
+  // $2A6D8C jsr $28C170 -- the ENDING block's BGM cue, the same $28BBAC-tier command
+  // `bossClear242922` posts, through the same path. W425 / D58.
+  ctx.soundPost?.(0x28c170);                                 // $2A6D8C jsr $28C170
   ctx.unported?.note(0x23c4d0, '$2A6D92 jsr $23C4D0 -- the $8039xx pause/flag block, noted in '
     + 'boss.js since W357 and still not ported');
   if (ram.u16(0x813098) === 0 && ram.u16(0x80393a) === 0) {  // $2A6D98/$2A6DA2

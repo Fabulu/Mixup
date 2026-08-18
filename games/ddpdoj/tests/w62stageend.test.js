@@ -853,12 +853,33 @@ test('every emitter D-script 6 counts is keyed by the address it stands at',
         `$${Number(k).toString(16)} must name its own call site`);
     }
     // W107 dropped this from 14 to 11: the death emitters ($289004, $2938AE,
-    // $28B4BE, $242EC2) became real spawnEffect calls, not notes.  What remains
-    // is SOUND ($28Cxxx), impact pool A ($2440E0), the anim-object loader
-    // ($246410) and the timer-D SOUND dispatch ($294134).
+    // $28B4BE, $242EC2) became real spawnEffect calls, not notes.
     // W382 dropped it from 11 to 9: $253564 and $242922 were already ported
     // (clamp253564 / bossClear242922) and the three boss deaths now CALL them.
-    assert.equal(Object.keys(BOSS_NOTED).length, 9);
+    //
+    // **W425 (D58) DROPS IT FROM 9 TO 5, AND ONLY ONE OF THE FOUR IS A PORT.**
+    // $294134 -- the timer-D dispatch, the boss death animation's EXPLOSION
+    // rattle -- is ported this wave as `d6TimerDSound`, walking the eight
+    // cue-wrapper addresses the cartridge holds at $294134.
+    // The other three, $28C392 / $28C2C2 / $28C2A8, were listed as deferred
+    // SOUND and were never deferred at all: they have been real
+    // `ctx.soundPost` calls since Wave A and NO `note()` in boss.js has passed
+    // those addresses since. The table described three gaps that did not exist,
+    // and nothing read it, so no census was ever wrong -- which is exactly why
+    // it survived. A documentation lie with no assertion over it.
+    assert.equal(Object.keys(BOSS_NOTED).length, 5);
+
+    // THE GUARD THAT WOULD HAVE CAUGHT IT, added W425: every key must be an
+    // address this file's own `note()` actually raises. Read straight out of
+    // src/boss.js so the next dead entry reds here instead of accumulating.
+    const src = fs.readFileSync(new URL('../src/boss.js', import.meta.url), 'utf8');
+    const raised = new Set([...src.matchAll(/note\(ctx, (0x[0-9a-f]+)\)/g)]
+      .map((m) => Number(m[1])));
+    assert.ok(raised.size >= 5, 'POSITIVE CONTROL: the scan found note() calls at all');
+    for (const k of Object.keys(BOSS_NOTED).map(Number)) {
+      assert.ok(raised.has(k),
+        `$${k.toString(16).toUpperCase()} is in BOSS_NOTED but nothing note()s it`);
+    }
   });
 
 test('$292902 is in the handler registry -- 19 of 19 stage-1 script handlers',

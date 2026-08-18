@@ -73,10 +73,12 @@ const ENTRY = {
  * debounce guard ('deb') that suppresses retriggering until the drain has ticked
  * the counter down to zero.
  *
- * W375 -- WHAT IS NOT IN HERE, AND WHY `$28C170` MUST NOT BE ADDED. Slot [7]'s
- * state 0 ends `$290B26 jsr $28C170`, and five other ported call sites post the
- * same address (objslot13.js:208, boss.js:1210/1284, tally.js:400,
- * hiscorescreen.js's `endCue`). Decoded off the image, `$28C170` is:
+ * W375 -- WHAT IS NOT IN HERE, AND WHY `$28C170` STILL MUST NOT BE ADDED. Slot
+ * [7]'s state 0 ends `$290B26 jsr $28C170`, and eight other ported call sites
+ * reach the same address (objslot13.js state 4, boss.js `bossClear242922` and
+ * `bossEnding2A6D8C`, hibachi2.js `phaseADeath2A7008`, background.js's scroll-VM
+ * CUE op, objslot8.js arm 3, tally.js's `BONUS5.cueA`, hiscorescreen.js's
+ * `endCue`). Decoded off the image, `$28C170` is:
  *
  *     28C170  48E7 FFFE       movem.l D0-D7/A0-A6,-(A7)
  *     28C174  303C 0015       move.w  #$15,D0
@@ -98,12 +100,17 @@ const ENTRY = {
  *
  * so the longword is `((D0<<8|D1)<<16)` with a ZERO low word -- no id byte, no
  * channel nibble, no gate and no pan tail. `$28C170` therefore posts $15000000.
- * $28C186 is its sibling (D0=$16, D1 from the caller), and the scroll VM's CUE
- * op already counts both by name rather than posting them (background.js:1047
- * and :1051). Giving `$28C170` a row here would invent an id, a pan and a channel
- * the cartridge never loads, and would run it through a gate and a pan tail it
- * never touches. The `no wrapper at $28C170` throw is the honest state until the
- * `$28BBAC` tier gets its own posting path. */
+ * $28C186 is its sibling (D0=$16, D1 from the caller). Giving `$28C170` a row
+ * here would invent an id, a pan and a channel the cartridge never loads, and
+ * would run it through a gate and a pan tail it never touches.
+ *
+ * **W425 -- THE THROW IS GONE AND THE ROW IS STILL FORBIDDEN.** Those two are
+ * not the same statement, which is the whole point of D58. W423 built the
+ * separate path (`BGM_COMMANDS` / `postBgmCommand`, below) and W425 taught
+ * `postWrapper` to DISPATCH to it, exactly as it already dispatches to
+ * `postStreamingLeaf`. So `ctx.soundPost?.(0x28c170)` now posts $15000000 for
+ * real, and `$28C170` still has no `WRAPPERS` row, because it never had this
+ * table's shape and never will. */
 const WRAPPERS = {
   0x28C25A: { id: 0x00, pan: 0xB4, ch: 0x1E, entry: 0x28C0AE }, // SFX id=0 (40x)
   0x28C274: { id: 0x01, pan: 0x9E, ch: 0x1E, entry: 0x28C0AE },
@@ -356,12 +363,33 @@ export function postEntry(ram, sound, entryAddr, id, panArg, chan) {
 
 /** Post by WRAPPER address -- the API every note() site calls. Looks up the
  *  wrapper, applies its debounce guard if any, and runs the entry. This replaces
- *  `note(ctx, 0x28Cxxx, '...')` one-for-one. */
+ *  `note(ctx, 0x28Cxxx, '...')` one-for-one.
+ *
+ *  W425 (D58): this is an ADDRESS DISPATCHER, not one packer's implementation.
+ *  It already forks to `postStreamingLeaf` for the `$28CB38` family; `$28C170`
+ *  is the same kind of fork to `postBgmCommand`. Keeping the fork here rather
+ *  than at each call site is what let ONE change light up nine sites, and it is
+ *  why `ctx.soundPost` needed nothing: main.js hands every address through
+ *  `postWrapperWithRuntime` -> here. */
 export function postWrapper(ram, sound, wrapperAddr) {
   const w = WRAPPERS[wrapperAddr];
   if (!w) {
     if (STREAMING_LEAVES.has(wrapperAddr)) {
       return postStreamingLeaf(ram, sound, wrapperAddr);
+    }
+    // W425 -- THE `$28BBAC` TIER. ONLY `$28C170` MAY COME THROUGH AN
+    // ADDRESS-ONLY API. It sets BOTH registers itself (`move.w #$15,D0` /
+    // `moveq #0,D1`), so the address is the whole command. Its sibling
+    // `$28C186` takes D1 FROM THE CALLER: accepting it here would post D1 = 0
+    // for every caller, silently and wrongly -- background.js's cue sub-op 2
+    // reads a REAL D1 out of the stage script. So it is refused, loudly, with
+    // the call it should have made.
+    if (wrapperAddr === 0x28C170) return postBgmCommand(ram, sound, wrapperAddr);
+    if (BGM_COMMANDS[wrapperAddr] !== undefined) {
+      throw new Error(`sound.postWrapper: $${wrapperAddr.toString(16).toUpperCase()} is a `
+        + `$28BBAC-tier command that takes D1 FROM THE CALLER -- call `
+        + `postBgmCommand(ram, sound, $${wrapperAddr.toString(16).toUpperCase()}, d1) with the `
+        + `caller's own D1 instead of posting it by address`);
     }
     // An unmapped wrapper is a loud gap, not a silent drop.
     throw new Error(`sound.postWrapper: no wrapper at $${wrapperAddr.toString(16).toUpperCase()}`
@@ -406,6 +434,15 @@ export function postWrapper(ram, sound, wrapperAddr) {
  *
  * A full ring still drops, exactly as every other path drops: the 68k sets the
  * interrupt mask and returns.
+ *
+ * **W425 -- HOW CALL SITES REACH THIS, AND WHY ONLY ONE OF THE TWO.**
+ * `postWrapper` dispatches `$28C170` here, so every `ctx.soundPost?.(0x28c170)`
+ * works and the nine sites that reach it stayed one-liners. `$28C186` is NOT
+ * dispatched and must be called through `postBgmCommand` with an explicit `d1`:
+ * two of its three sites pass 0 (`$291FAA` and `$28DE72`, both `moveq #0,D1`),
+ * but the scroll VM's cue sub-op 2 reads a REAL D1 word out of the stage script
+ * (`background.js`, `$2621CC`), so an address-only post would send command $1600
+ * for every one of them. `postWrapper` refuses it loudly rather than defaulting.
  */
 export const BGM_COMMANDS = {
   0x28C170: 0x15,   // boss clear / ending / game over -- D1 always 0 at the call sites

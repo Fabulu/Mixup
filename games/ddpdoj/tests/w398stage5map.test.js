@@ -471,10 +471,10 @@ test('W398 SECTION 5: the window set, the overlap count still 71, and the span a
     // declared type $44's eight, so the set is 583. Everything below -- the overlap count, both
     // abutments, the five column streams -- is untouched, and neither wave's windows are anywhere
     // near this wave's span ($2A5xxx/$2A6xxx for W399, $26Dxxx/$26Exxx for W400).
-    assert.equal(ws.length, 606, '569 windows at W394, 570 after W398, 575 after W399, 583 '
+    assert.equal(ws.length, 607, '569 windows at W394, 570 after W398, 575 after W399, 583 '
       + 'after W400, 585 after W402, 590 after W404, 593 after W405, 594 after W406, 595 '
       + 'after W407, 596 after W408, 599 since W409'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606. W425 declares $294134 ($20), the timer-D SOUND dispatch table of D-script 6 -- the eight cue-wrapper addresses the boss DEATH ANIMATION walks with `movea.l (A0),A0 / jsr (A0)`, which is the explosion rattle DOCKET D58 was opened on. The $294154 window from W107 ABUTS it and is NOT widened: the two are read by different routines for different reasons, and the overlap count is unchanged. So 607.');
     assert.equal(ws.filter(([a]) => a === STAGE5_COLS).length, 1, '$22D770 is declared once');
 
     const pairs = (list) => {

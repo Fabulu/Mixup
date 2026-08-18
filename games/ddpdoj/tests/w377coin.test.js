@@ -14,21 +14,27 @@
 // What it threw was `sound.postWrapper: no wrapper at $28C170`, from `objslot8.js` arm 3's
 // `ctx?.soundPost?.(SCREEN8.cueBgm)` at `$25A962`.
 //
-// **THE FIX IS AT THE CALL SITE AND NOWHERE ELSE.** `$28C170` MUST NOT be added to `WRAPPERS`:
-// `src/sound.js`'s own header (lines 76-106) decodes it and shows it calls `$28BBAC`, a
-// different packer from the `$28BB04` that every `WRAPPERS` row describes -- no id, no pan, no
-// channel nibble. A row for it would be three invented fields. `background.js:1047` and
-// `hiscorescreen.js:544` have always counted this exact address with `note()` at their own call
-// sites; arm 3 was the one place that posted it instead. It now counts it too.
+// W377's fix was at the call site: arm 3 stopped posting the address and counted it instead.
+// `$28C170` MUST NOT be added to `WRAPPERS` -- `src/sound.js`'s own header decodes it and shows
+// it calls `$28BBAC`, a different packer from the `$28BB04` that every `WRAPPERS` row describes,
+// with no id, no pan and no channel nibble. A row for it would be three invented fields.
 //
-// THE FIRST TWO TESTS FAIL WITHOUT THAT ONE-LINE CHANGE, and the first fails by THROWING, which
-// is the whole point: it drives the real `Game`, the real ISR, the real debounce and the real
-// object driver, not a fixture that stands in for them. (Proved by ablation: restoring
-// `ctx?.soundPost?.(SCREEN8.cueBgm)` reds tests 1 and 2 with
-// `sound.postWrapper: no wrapper at $28C170`.)
+// **W425 (DOCKET D58) UPDATED SECTIONS 1, 2 AND 3, AND THE REASON IS NOT THAT W377 WAS WRONG.**
+// W377 could only choose between a crash and a silence, because `sound.js` had one packer.
+// W423 built the `$28BBAC` tier its own posting path (`postBgmCommand`) and W425 made
+// `postWrapper` DISPATCH to it, exactly as it already dispatches to `postStreamingLeaf`. So the
+// third option exists now: arm 3 posts the cue, nothing throws, and `$28C170` still has no
+// `WRAPPERS` row. **"NO ROW" AND "NO POST" WERE TREATED AS ONE CLAIM FOR EIGHT WAVES AND THEY
+// ARE TWO.** Section 3 below now pins both halves separately so they cannot merge again.
 //
-// SECTION 4 IS A SECOND INSTANCE OF THE SAME DEFECT, found while fixing the first: `$28C0FC`,
-// posted at three more sites in `objslot8.js`, two of them inside the coin teardown itself.
+// This mattered to a player, not just to a census: the owner reported the boss explosion having
+// no sound, and one missing posting path had silenced NINE call sites at once -- this credit
+// screen, the boss clear, the ending, the game over, HIBACHI's phase-A death, the scroll VM's
+// cue op, slot [7]'s state 0, the tally screen and the high-score screen.
+//
+// SECTION 4 IS A DIFFERENT DEFECT THAT LOOKED LIKE THE SAME ONE: `$28C0FC`, posted at three more
+// sites in `objslot8.js`. It is `$28BB76`, a THIRD packer, and W425 did not close it -- which is
+// why `postBgmCommand` refuses anything outside its two-member tier.
 // SECTION 5 (below) is unit B's half: `$25AFD8`, ported for real.
 
 import test from 'node:test';
@@ -39,7 +45,7 @@ import { fileURLToPath } from 'node:url';
 import { Game } from '../src/main.js';
 import { COIN } from '../src/isr.js';
 import { COIN_BITS } from '../src/web/input.js';
-import { SOUND_WRAPPERS, STREAMING_LEAVES, postWrapper, SoundState } from '../src/sound.js';
+import { SOUND, SOUND_WRAPPERS, STREAMING_LEAVES, postWrapper, SoundState } from '../src/sound.js';
 import { SCREEN8, setState25A764 } from '../src/objslot8.js';
 import { ALLOC } from '../src/objalloc.js';
 import { FRONTTEXT } from '../src/fronttext.js';
@@ -90,18 +96,21 @@ const noted = (g, addr) =>
 // ---------------------------------------------------------------------------------------------
 // 1 -- THE REGRESSION. THE REAL PATH, END TO END.
 //
-// This is the test the wave exists for. Ablate the fix in `objslot8.js` arm 3 -- put back
-// `ctx?.soundPost?.(SCREEN8.cueBgm)` -- and it fails like this:
+// This is the test the wave exists for. Before W377, `g.step()` on the frame after the coin
+// credits threw:
 //
 //   Error: sound.postWrapper: no wrapper at $28C170 -- add it to WRAPPERS or fix the call site
 //
-// thrown out of `g.step()` on the frame after the coin credits. Nothing is stubbed: the coin
-// arrives on `$C08004`, `$13CEC8` debounces it across IRQ4 phases, `$13CFBA`/`$13CF86` consume
-// the pending word, `coinage13CE22` credits `$80395A`, `$25A7C0` tears the screen down and
-// restages, and arm 3's init is reached by the object driver.
+// Nothing is stubbed: the coin arrives on `$C08004`, `$13CEC8` debounces it across IRQ4 phases,
+// `$13CFBA`/`$13CF86` consume the pending word, `coinage13CE22` credits `$80395A`, `$25A7C0`
+// tears the screen down and restages, and arm 3's init is reached by the object driver.
+//
+// W425: the survival is unchanged, but the REASON is now that the address resolves rather than
+// that the line was demoted to a note. Ablate `postWrapper`'s `$28C170` dispatch and this reds
+// again with the same message.
 // ---------------------------------------------------------------------------------------------
 
-test('W377 a cold boot SURVIVES a coin: arm 3 counts $28C170 instead of throwing on it', () => {
+test('W425 a cold boot SURVIVES a coin, and arm 3 POSTS $28C170 rather than throwing', () => {
   const g = coldGame();
   g.boot();
   g.ram.setU8(COINAGE, 1);                        // the service-menu dip; see COINAGE above
@@ -128,15 +137,20 @@ test('W377 a cold boot SURVIVES a coin: arm 3 counts $28C170 instead of throwing
 });
 
 // ---------------------------------------------------------------------------------------------
-// 2 -- THE CUE IS COUNTED, NOT SWALLOWED.
+// 2 -- THE CUE REACHES THE RING, AND IS NOT COUNTED ANY MORE.
 //
-// A crash fixed by deleting the line would pass test 1 just as well, and would be exactly the
-// silent no-op `src/unported.js` exists to prevent. So: the log must NAME `$28C170`, and it must
-// name it against arm 3's own call site `$25A962` rather than one of the two pre-existing
-// counters in `background.js` / `hiscorescreen.js`, neither of which runs on this path.
+// **THIS SECTION IS THE INVERSE OF WHAT IT WAS, AND THE INVERSION IS THE BEHAVIOUR CHANGE.**
+// W377 asserted the log must NAME `$28C170` against arm 3's own call site, because a crash fixed
+// by deleting the line would pass test 1 just as well -- exactly the silent no-op
+// `src/unported.js` exists to prevent. That guard is still needed and it has simply moved: a
+// deleted line now shows up as a MISSING POST rather than a missing note. So this asserts the
+// ring, and asserts the note is gone, because a note that survives its own port is the stale
+// note `w382stalenotes` exists to catch.
+//
+// $28C170 posts $15000000: `((D0<<8|D1)&$FFFF)<<16` with D0=$15, D1=0, and a ZERO low word.
 // ---------------------------------------------------------------------------------------------
 
-test('W377 the surviving run COUNTS $28C170 against $25A962, loudly and by address', () => {
+test('W425 the surviving run POSTS $15000000 for $25A962 and counts nothing', () => {
   const g = coldGame();
   g.boot();
   g.ram.setU8(COINAGE, 1);
@@ -144,43 +158,64 @@ test('W377 the surviving run COUNTS $28C170 against $25A962, loudly and by addre
 
   assert.deepEqual(noted(g, 0x28c170), [],
     'POSITIVE CONTROL: before the coin, nothing on this path has cued $28C170');
+  const before = g.sound.doorLog.filter((d) => d.word === 0x15000000).length;
+  assert.equal(before, 0, 'POSITIVE CONTROL: and no $15000000 has been drained either');
 
   run(g, coinWord('COIN1'), 12);
   run(g, COIN.idle, 12);
 
-  const keys = noted(g, 0x28c170);
-  assert.equal(keys.length, 1, 'exactly one distinct $28C170 deferral is counted');
-  assert.match(keys[0], /\$25A962 jsr \$28C170/, 'and it names ARM 3\'s call site');
-  assert.match(keys[0], /\$28BBAC/, 'and says which packer it goes through');
-  assert.equal(g.unportedLog.calls.get(keys[0]), 1,
-    'arm 3\'s init runs ONCE -- ($3,A5) latches it, so the note is not a per-frame spam');
+  // The drain moves one longword per frame, so twelve idle frames are plenty for one cue.
+  const drained = g.sound.doorLog.filter((d) => d.word === 0x15000000);
+  assert.equal(drained.length, 1,
+    'arm 3 posted $15000000 exactly once -- ($3,A5) latches the init, so it is not per-frame');
+  assert.equal(drained[0].type, 0x15, 'the command byte is $15, out of `move.w #$15,D0`');
+  assert.equal(drained[0].word & 0xffff, 0,
+    'and the low word is ZERO -- no id, no channel nibble, which is what $28BBAC packs');
 
-  // The report is what the runner prints; if the deferral is not in there it is invisible.
-  assert.ok(g.unportedLog.report().some((s) => s.includes('$28C170')),
-    'and it appears in the printed unported report');
+  assert.deepEqual(noted(g, 0x28c170), [],
+    'and $28C170 is NOT counted as unported: it is posted, so a note would be a lie');
 });
 
 // ---------------------------------------------------------------------------------------------
-// 3 -- THE FIX IS NOT "ADD IT TO WRAPPERS". This asserts the thing the brief forbids stays
-// forbidden: `$28C170` has no row, is not a streaming leaf, and `postWrapper` still throws on
-// it. If a later wave adds a row it will have to delete this test on purpose, having read
-// sound.js:76-106 first.
+// 3 -- THE FIX IS STILL NOT "ADD IT TO WRAPPERS", AND THAT IS NOW A SEPARATE CLAIM FROM
+// "IT THROWS". W377 wrote them as one test and they are two facts:
+//
+//   (a) `$28C170` has no `WRAPPERS` row and is not a streaming leaf. STILL TRUE, permanently:
+//       it has none of that table's three immediates and a row would invent all three.
+//   (b) `postWrapper` throws on it. NO LONGER TRUE, and it never followed from (a). W425 made
+//       `postWrapper` DISPATCH to `postBgmCommand` for this one address, the same way it
+//       already dispatches to `postStreamingLeaf` for the `$28CB38` family.
+//
+// Conflating (a) with (b) is what kept nine call sites silent for eight waves, so both are
+// pinned here, separately, with the pack asserted so a future row cannot slip in unnoticed.
 // ---------------------------------------------------------------------------------------------
 
-test('W377 $28C170 still has no WRAPPERS row and postWrapper still throws on it', () => {
-  assert.equal(SOUND_WRAPPERS[0x28c170], undefined, '$28C170 has no wrapper row');
+test('W425 $28C170 still has NO WRAPPERS row, and posting it no longer throws', () => {
+  assert.equal(SOUND_WRAPPERS[0x28c170], undefined, '(a) $28C170 has no wrapper row');
   assert.equal(STREAMING_LEAVES.has(0x28c170), false, 'and it is not a streaming leaf either');
 
   const ram = new Ram();
   const sound = new SoundState();
-  assert.throws(() => postWrapper(ram, sound, 0x28c170),
-    /no wrapper at \$28C170/, 'posting it is still a loud gap');
+  // (b) it posts, and it posts the $28BBAC shape -- NOT a packLongword with invented fields.
+  assert.equal(postWrapper(ram, sound, 0x28c170), true, '(b) posting it succeeds');
+  assert.equal(ram.u32(SOUND.ring), 0x15000000,
+    'and what landed is $15000000: packed word high, low word ZERO');
 
-  // POSITIVE CONTROL: an address that IS a WRAPPERS row posts without throwing, so the
-  // assertion above is about $28C170 and not about `postWrapper` being broken. $28C5B0 is
-  // arm 3's neighbour in the coin teardown's two pairs and it stays a real `soundPost`.
+  // ITS SIBLING IS STILL REFUSED BY ADDRESS, and that refusal is deliberate. `$28C186` takes D1
+  // FROM THE CALLER (`background.js`'s cue sub-op 2 reads a real D1 out of the stage script), so
+  // an address-only post would send command $1600 for every one of them. Loud, not silent.
+  assert.throws(() => postWrapper(ram, sound, 0x28c186),
+    /takes D1 FROM THE CALLER/, '$28C186 must be posted with an explicit D1');
+
+  // POSITIVE CONTROL: an address that IS a WRAPPERS row posts too, so the assertions above are
+  // about these two addresses and not about `postWrapper` being broken. $28C5B0 is arm 3's
+  // neighbour in the coin teardown's two pairs and it stays an ordinary `soundPost`.
   assert.ok(SOUND_WRAPPERS[SCREEN8.cueWrapper], '$28C5B0 IS a WRAPPERS row');
   assert.doesNotThrow(() => postWrapper(ram, sound, SCREEN8.cueWrapper));
+
+  // NEGATIVE CONTROL: an address in neither table is still a loud gap.
+  assert.throws(() => postWrapper(ram, sound, 0x28c0fc),
+    /no wrapper at \$28C0FC/, '$28C0FC is $28BB76, a third packer, and is NOT closed by this');
 });
 
 // ---------------------------------------------------------------------------------------------

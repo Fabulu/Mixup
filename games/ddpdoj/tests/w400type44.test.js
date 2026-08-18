@@ -772,10 +772,10 @@ test('W400 SECTION 7: the death lists removed -- two DIFFERENT throws, two phase
 test('W400 SECTION 8: 585 windows, the overlap count still 71, and all eight sit in open ground',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 606, '575 windows before this wave, 583 after; 585 after W402, 590 after W404, 593 after W405, 594 after W406, 595 after W407, 596 after W408 and 599 since W409 added A4 script 5\'s three blocks; W408 added '
+    assert.equal(ws.length, 607, '575 windows before this wave, 583 after; 585 after W402, 590 after W404, 593 after W405, 594 after W406, 595 after W407, 596 after W408 and 599 since W409 added A4 script 5\'s three blocks; W408 added '
       + 'type $4C\'s two retire lists, which is why this number is a running total and not a claim '
       + 'about this wave'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606. W425 declares $294134 ($20), the timer-D SOUND dispatch table of D-script 6 -- the eight cue-wrapper addresses the boss DEATH ANIMATION walks with `movea.l (A0),A0 / jsr (A0)`, which is the explosion rattle DOCKET D58 was opened on. The $294154 window from W107 ABUTS it and is NOT widened: the two are read by different routines for different reasons, and the overlap count is unchanged. So 607.');
     const mine = [T44.init, T44.recordProto, T44.animTable, T44.waypoints, T44.state0Thresh,
       T44.deathListA, T44.deathListB, T44.animScript];
     for (const a of mine) {

@@ -45,8 +45,9 @@ const SKIP_IMG = IMG ? SKIP : 'the ROM image is absent; skip, not pass';
 
 const world = () => {
   const log = new UnportedLog();
-  return { log, ctx: { rom: ROM, tables: MT, unported: log, unportedLog: log, notes: log,
-    soundPost: () => {}, clear24631C: () => {} } };
+  const cues = [];
+  return { log, cues, ctx: { rom: ROM, tables: MT, unported: log, unportedLog: log, notes: log,
+    soundPost: (a) => { cues.push(a); return true; }, clear24631C: () => {} } };
 };
 /** The two player records the way `$2428A6` wants to see them: P1 PLAYABLE. */
 function playersAlive(ram) {
@@ -143,6 +144,7 @@ test('W382 the stage-3 boss death runs both of them too', { skip: SKIP }, () => 
 test('W382 neither address is counted as unported on any of the three deaths',
   { skip: SKIP }, () => {
     const seen = [];
+    const cued = [];
     for (const run of [
       (w) => {
         const ram = new Ram(); playersAlive(ram);
@@ -162,6 +164,7 @@ test('W382 neither address is counted as unported on any of the three deaths',
       const w = world();
       run(w);
       seen.push(w.log.report().join('\n'));
+      cued.push(w.cues);
     }
     // **W385 TIGHTENED THESE THREE MATCHES FROM THE PROSE TO THE KEY.** `UnportedLog.report()`
     // lines are `N x $ADDR text`, so `/\$242922/` matched the ADDRESS OF A NOTE and also any
@@ -171,15 +174,26 @@ test('W382 neither address is counted as unported on any of the three deaths',
     // "$242922 is deferred", which it is not: the ROUTINE is fully ported and one CALLEE inside
     // it is counted. Anchoring on ` x $ADDR ` is the fix, and it is the same key-match
     // `w384stall.test.js` uses for exactly this reason.
+    //
+    // **W425 (D58) TURNED THE $28C170 CONTROL INSIDE OUT, WHICH IS WHAT THIS FILE IS FOR.**
+    // W385's positive control asserted `$28C170` WAS counted, and it was: `sound.js` had no
+    // packer for the `$28BBAC` tier, so the boss-clear cue could only be deferred. W423 built
+    // that path and W425 dispatched to it, so the note is now exactly the thing this file is
+    // named after -- a note that no longer reflects reality -- and it is asserted ABSENT.
+    // The control it provided is not lost, it is stronger: the cue must have been POSTED, on
+    // all three deaths, which no census can fake.
     const deferred = (r, addr) => new RegExp(` x \\$${addr} `).test(r);
     for (const [n, r] of seen.entries()) {
       assert.ok(!deferred(r, '253564'), `stage ${n + 1} no longer defers $253564`);
       assert.ok(!deferred(r, '242922'), `stage ${n + 1} no longer defers $242922`);
       assert.ok(deferred(r, '23C4D0'), `stage ${n + 1} still defers $23C4D0, which is real`);
-      // POSITIVE CONTROL for the tightening: the note W385 added IS there, under its own
-      // address, so the assertion above is not passing because the census went empty.
-      assert.ok(deferred(r, '28C170'),
-        `stage ${n + 1} counts $28C170, the cue $242922 calls and sound.js cannot pack`);
+      assert.ok(!deferred(r, '28C170'),
+        `stage ${n + 1} no longer defers $28C170 -- W425 posts it (D58)`);
+      // POSITIVE CONTROL, and it is the owner's actual report: every one of the three boss
+      // deaths reaches `$242922` and that routine's FIRST instruction is the BGM cue. If this
+      // list is empty the death is silent, which is the defect D58 was opened for.
+      assert.deepEqual(cued[n], [0x28c170],
+        `stage ${n + 1}'s death POSTS the boss-clear cue $28C170, exactly once`);
     }
   });
 

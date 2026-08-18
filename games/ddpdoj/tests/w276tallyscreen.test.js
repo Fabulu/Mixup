@@ -909,6 +909,13 @@ test('W293 the kill takes a POINTER, so the port must DEREFERENCE', { skip: SKIP
     'and NOT the address of the field');
 });
 
+// **W425 (D58) DID NOT CHANGE THIS TEST AND THAT IS WORTH SAYING OUT LOUD.** It has always
+// asserted that line 5 POSTS `$28C170`, and it has always passed -- because `f.ctx.soundPost` is
+// a stub that records the address instead of packing it. Against the REAL driver this same call
+// threw `no wrapper at $28C170` for eight waves, and the test could not see it. That is the
+// stub-shaped lie: a green assertion about an address, over a `soundPost` that never runs
+// `sound.js`. It is honest now (W425 gave the `$28BBAC` tier a posting path, so the real driver
+// packs $15000000 here too), and the reason it is honest is not that the test got better.
 test('W293 line 5 plays BOTH cues and creates ONE type-$E object', { skip: SKIP }, () => {
   const cues = [];
   const f = world();

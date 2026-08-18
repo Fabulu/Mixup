@@ -174,7 +174,13 @@ test('W403 SECTION 1: $3B6 bytes, bounded three ways, and NONE of them an absenc
     }
   });
 
-test('W403 SECTION 1: every `jsr`/`jmp` in both new spans lands somewhere, and TWO are counted',
+// **W425 (D58): "TWO ARE COUNTED" IS NOW "ONE IS COUNTED, ONE IS POSTED".** `$28C170` left
+// `HIBACHI2_NOTED` because it stopped being deferred, not because anyone decided it was
+// uninteresting: `sound.js` grew the `$28BBAC`-tier posting path and `phaseADeath2A7008` posts
+// the cue. What this section really checks is unchanged -- that EVERY callee in both spans is
+// accounted for, and that the accounting in `src/hibachi2.js` matches -- so the two callees are
+// still listed by address here, and only their disposition differs.
+test('W425 SECTION 1: every `jsr`/`jmp` in both new spans lands somewhere; ONE is counted',
   { skip: SKIP }, () => {
     // The completeness check the extent alone does not give. `4EB9` and `4EF9` are the only two
     // opcodes that leave these spans, and each one's longword is read back rather than listed.
@@ -188,14 +194,15 @@ test('W403 SECTION 1: every `jsr`/`jmp` in both new spans lands somewhere, and T
     }
     assert.equal(targets.size, 23, 'twenty-three distinct callees across the second form and A4 4');
 
-    // The two that are NOT run, and nothing else is deferred. Both are already counted elsewhere
-    // in the port for reasons this file does not get to change (TRAP 15 is not this: neither is
-    // in an `else`, and `tests/w382stalenotes.test.js` pins the $23C4D0 one).
+    // The two sound/pause callees the spans reach. Both are handled elsewhere in the port for
+    // reasons this file does not get to change (TRAP 15 is not this: neither is in an `else`,
+    // and `tests/w382stalenotes.test.js` pins the $23C4D0 one).
     assert.deepEqual([...targets.keys()].filter((t) => t in HIBACHI2_NOTED
       || t === 0x23c4d0 || t === 0x28c170).sort(), [0x23c4d0, 0x28c170],
-    'the counted pair is $23C4D0 and $28C170');
-    assert.deepEqual(Object.keys(HIBACHI2_NOTED).map(Number).sort(), [0x23c4d0, 0x28c170],
-      '  ...and src/hibachi2.js declares exactly those two');
+    'both $23C4D0 and $28C170 are reached from these spans');
+    assert.deepEqual(Object.keys(HIBACHI2_NOTED).map(Number).sort(), [0x23c4d0],
+      '  ...and src/hibachi2.js declares ONE of them counted: $23C4D0. $28C170 is POSTED '
+      + '(W425/D58), so leaving it in the table would report a gap that is closed');
 
     // Every OTHER target is either a scheduler/ledger routine the port already has, or one of
     // the five three-instruction setters inside HIBACHI's own ROM that this port inlines.
@@ -545,7 +552,10 @@ function second({ sel = 1, hit = 0, pool = null, timeout = 0x6270, install = tru
   const ROM = new RomWindows(tables.rom);
   const ram = new Ram();
   const log = new UnportedLog();
-  const ctx = { unportedLog: log, unported: log, soundPost() {} };
+  // W425 (D58): the cues are CAPTURED now rather than discarded. `$2A7008 jsr $28C170` used to
+  // be a counted note and is a real post, so the bench has to be able to see it land.
+  const cues = [];
+  const ctx = { unportedLog: log, unported: log, soundPost: (a) => { cues.push(a); return true; } };
   // `install: false` leaves $812D38 zero, so $2596C6's walk is skipped entirely and the
   // body is the only thing running. SECTION 7 needs that to read no ROM at all.
   //
@@ -575,7 +585,7 @@ function second({ sel = 1, hit = 0, pool = null, timeout = 0x6270, install = tru
     ram.setU16(SUB + hit + 0x18, 0);           // -> the full $7FFF of damage
     if (sel === 1) ram.setU16(SUB + (hit === 0x140 ? 0x178 : 0x158), 0x7fff);
   }
-  return { ROM, ram, ctx, log };
+  return { ROM, ram, ctx, log, cues };
 }
 
 /** The FIRST form on the same bench -- SECTION 2's two defects live here. */
@@ -636,8 +646,26 @@ test('W403 SECTION 5: phase A dies of DAMAGE and the whole ending chain runs to 
     // runs to its OWN timeout and DOES set its flag -- 1,839 frames later, never on frame 1.
     assert.deepEqual([r.marks.deathA, r.marks.deathB], [1, 1840],
       '  ...and NOT $15F, which is phase B\'s: that one is set on 1840, not on 1');
-    assert.ok(b.log.report().some((s) => s.includes('$28C170')),
-      '  ...and $2A7008 jsr $28C170 was counted, phase A\'s own BGM cue');
+    // **W425 (D58) INVERTED THIS ASSERTION.** `$2A7008 jsr $28C170` was a COUNTED note, because
+    // `sound.js` had no packer for the `$28BBAC` tier -- so HIBACHI's phase-A death was silent.
+    // It posts now. Asserting the note would pin the silence, so the cue is asserted instead,
+    // and the note is asserted GONE.
+    // 2,400 frames of the ending chain post other cues too ($28C274, $28C28E, ordinary WRAPPERS
+    // rows), so this counts THIS address rather than asserting the whole list.
+    //
+    // **IT IS TWO, NOT ONE, AND THE SECOND ONE IS A FINDING THIS BENCH COULD NOT SEE BEFORE.**
+    // Phase A posts it directly at `$2A7008`. Phase B's death block `$2A722E` has no `$28C170`
+    // of its own -- the comment on `phaseBDeath2A722E` says exactly that and is right -- but it
+    // calls `$2A724A jsr $242922`, and `bossClear242922`'s FIRST instruction is the same cue.
+    // So both deaths cue, from different places, and this run has both (deathA frame 1, deathB
+    // frame 1840). The old note-based assertion was a `some()` and would have read 1, 2 or 50
+    // identically.
+    assert.equal(b.cues.filter((c) => c === 0x28c170).length, 2,
+      '  ...$28C170 was POSTED TWICE: $2A7008 for phase A, and $2A724A -> $242922 for phase B');
+    assert.equal(b.cues[0], 0x28c170,
+      '  ...and the first is the FIRST cue of the run, which is $2A7008\'s position in the block');
+    assert.equal(b.log.report().some((s) => s.includes('$28C170')), false,
+      '  ...and it is NOT also counted: a note that survives its own port is a stale note');
 
     // ---- $2A7076 handed to A4 3, which is W399's script 3, and it pushed $0200.
     // W406: A4 $F used to be parked in slot 0 when the run stopped, because it was the stop.
@@ -955,10 +983,10 @@ test('W403 SECTION 6: the kind table REMOVED -- script 3\'s per-frame emitter, n
 test('W403 SECTION 7: 585 windows, overlap still 71, and NOTHING in the unit reads ROM',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 606, '585 windows through W403, which declared none; W404 added '
+    assert.equal(ws.length, 607, '585 windows through W403, which declared none; W404 added '
       + 'five for the two A1 gun tables and the gun data blocks, W405 three, W406 one, W407 '
       + 'one and W408 one'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606. W425 declares $294134 ($20), the timer-D SOUND dispatch table of D-script 6 -- the eight cue-wrapper addresses the boss DEATH ANIMATION walks with `movea.l (A0),A0 / jsr (A0)`, which is the explosion rattle DOCKET D58 was opened on. The $294154 window from W107 ABUTS it and is NOT widened: the two are read by different routines for different reasons, and the overlap count is unchanged. So 607.');
     const pairs = (list) => {
       let n = 0;
       for (let i = 0; i < list.length; i++) {

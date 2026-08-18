@@ -44,8 +44,9 @@
 //
 // Arms 0, 1, 2, 3, 5, 9, 12, 13 and 14 are complete and `3 -> 14 -> gameplay` is live too. What
 // is left NOTED in this file is presentation and sound, not a screen: `$25AD02` (the blink
-// message's ON half, a 1,754-byte dispatcher), the three `$28C0FC`/`$28C170` cue posts, and arm
-// 12's `$25BB6C` TX plane block and `$28CAE2`. NONE of them gates the state machine.
+// message's ON half, a 1,754-byte dispatcher), the three `$28C0FC` cue posts, and arm 12's
+// `$25BB6C` TX plane block and `$28CAE2`. NONE of them gates the state machine. **W425 took
+// arm 3's `$28C170` off this list -- it POSTS now (D58); see `arm3`.**
 //
 // **W393 CORRECTION: arm 5's `$26070C` IS NO LONGER NOTED.** It is a real `jsr` now (see
 // `handoffCall`), so the attract loop's three demos BOOT A STAGE and play. W392 had to count it
@@ -56,9 +57,11 @@
 //
 // **W377 CLOSED THE COIN CRASH AND HALF THE BLINK PAIR.** Arm 3's `$25A962 jsr $28C170` and the
 // three `jsr $28C0FC` in the two teardowns were `ctx.soundPost` calls, and BOTH addresses go
-// through the `$28BBAC`/`$28BB76` packers that `sound.js` has no posting path for -- so posting
+// through the `$28BBAC`/`$28BB76` packers that `sound.js` had no posting path for -- so posting
 // either THREW. On a cold boot the first one killed the run one frame after a coin credited.
-// All four are counted deferrals now; see `arm3` and `cueStreamNote`. `$25AFD8`, the OFF half of
+// **W425 (D58) SPLIT THAT PAIR.** `sound.js` grew the `$28BBAC` tier, so arm 3's `$28C170` POSTS
+// again ($15000000, no `WRAPPERS` row, no gate). The three `$28C0FC` are `$28BB76` -- a third
+// packer -- and stay counted; see `arm3` and `cueStreamNote`. `$25AFD8`, the OFF half of
 // the blink message, is ported in `fronttext.js` and called for real from the tail. `$25AD02`,
 // the ON half, is NOT the mirror of it -- it is a 1,754-byte dispatcher through $25B3DB with two
 // embedded data blocks and a second copy for separate credit pools -- and stays noted.
@@ -524,32 +527,27 @@ function arm2(ram, rom, a5, ctx) {
  * `$25A962 jsr $28C170` -- a BGM cue in the init that the brief for this wave did not list.
  * Verified at `$25A962: 4E B9 00 28 C1 70`, and `$28C170` is an already-known cue.
  *
- * **W377: THAT CUE IS A COUNTED NOTE, NOT A `soundPost`, AND THAT IS WHAT KILLED THE COIN.**
- * `$28C170` has no row in `sound.js`'s `WRAPPERS` and must not be given one -- see that file's
- * header: it loads D0/D1 and calls `$28BBAC`, a DIFFERENT packer from the `$28BB04` every
- * `WRAPPERS` row describes, with no id, no pan and no channel nibble. `postWrapper` therefore
- * THROWS `no wrapper at $28C170`. Five other files still post it (`boss.js:1210` and `:1284`,
- * `objslot13.js:208`, `objslot7pool.js:556`, `tally.js:400`) and every one of them will throw the
- * same way when reached -- but arm 3 was the only one ON THE COLD-BOOT COIN PATH, and the others
- * are not this file's to change.
+ * **W377 MADE THAT CUE A COUNTED NOTE BECAUSE POSTING IT KILLED THE COIN. W425 (D58) MAKES IT A
+ * REAL POST AGAIN, AND THE THING THAT CHANGED IS IN `sound.js`, NOT HERE.** `$28C170` still has
+ * no row in `WRAPPERS` and still must not be given one -- it loads D0/D1 and calls `$28BBAC`, a
+ * DIFFERENT packer from the `$28BB04` every `WRAPPERS` row describes, with no id, no pan and no
+ * channel nibble. What W423/W425 added is a SECOND path (`postBgmCommand`, dispatched from
+ * `postWrapper`), so the address now posts the bare longword $15000000 and invents nothing. No
+ * gate is consulted: `$28BBAC` branches straight to the ring enqueue `$28BAA0`.
  *
- * On a cold boot that throw is reached by the shortest path a player has: insert a coin ->
- * `$80395A` 0 -> 1 -> the entry's coin gate tears down and restages at state 3 -> the very next
- * frame arm 3's init runs this line and the run dies. `background.js:1047` and
- * `hiscorescreen.js:544` already note this same address at their own call sites for this same
- * reason; arm 3 was the outlier that posted it. It is now the third counted deferral.
+ * The crash W377 fixed was real and its path is worth keeping: insert a coin -> `$80395A` 0 -> 1
+ * -> the entry's coin gate tears down and restages at state 3 -> the very next frame arm 3's init
+ * ran this line and the run died. Arm 3 was one of nine sites reaching `$28C170`; all nine post
+ * now, and the run survives because the address resolves, not because the line was removed.
  */
 function arm3(ram, rom, a5, ctx) {
   if (ram.u8(a5 + SCREEN8.inited) === 0) {                     // $25A94A/$25A94E
     ram.setU8(a5 + SCREEN8.inited, 1);                         // $25A950
     clear24631C(ram, ctx, 0x25a956);                           // $25A956 jsr $24631C
     screen1Init25BBB4(ram, rom, ctx);                          // $25A95C jsr $25BBB4
-    // $25A962 jsr $28C170 -- verified `4E B9 00 28 C1 70`. $28C170 -> $28BBAC D0=$15 (BGM
-    // command), the tier sound.js has no posting path for.
-    ctx?.unported?.note(SCREEN8.cueBgm,
-      '$25A962 jsr $28C170 -- the credit screen\'s BGM cue. $28C170 -> $28BBAC D0=$15 (BGM '
-      + 'command), NOT the $28BB04 packer every sound.js WRAPPERS row describes, so posting it '
-      + 'throws. Counted here exactly as background.js:1047 and hiscorescreen.js:544 count it');
+    // $25A962 jsr $28C170 -- verified `4E B9 00 28 C1 70`. The credit screen's BGM cue,
+    // $28BBAC-tier ($15000000). Posted since W425/D58.
+    ctx?.soundPost?.(SCREEN8.cueBgm);                          // $25A962 jsr $28C170
   }
   screen3Body25BDE0(ram, rom, ctx);                            // $25A968 jsr $25BDE0 -- no `bcs`
   joinPoll25ACAC(ram, a5, ctx);                                // $25A96E bsr.w $25ACAC
@@ -563,8 +561,10 @@ function armRts() { /* $25A974 / $25A9E2 / $25A9E4 / $25AA0C / $25AA0E -- rts */
  * `$28C0FC` -- THE SECOND CUE IN THIS FILE THAT `soundPost` CANNOT POST, COUNTED AT ITS THREE
  * CALL SITES. W377.
  *
- * Exactly the same defect as arm 3's `$28C170`, found while fixing it, in the same file, and one
- * of the three sites is on the coin path itself. Decoded off the image:
+ * Found while fixing arm 3's `$28C170` and BELIEVED to be the same defect; W425 proved it is
+ * not. Both were unpostable, but through different packers -- `$28C170` is `$28BBAC` and has a
+ * posting path since D58, this is `$28BB76` and does not. One of the three sites is on the coin
+ * path itself. Decoded off the image:
  *
  *     28C0FC  48E7 FFFE       movem.l D0-D7/A0-A6,-(A7)
  *     28C100  4EB9 0028BB76   jsr     $28BB76
@@ -594,14 +594,18 @@ function armRts() { /* $25A974 / $25A9E2 / $25A9E4 / $25AA0C / $25AA0E -- rts */
  *                carry, so it is a time bomb rather than a live crash.
  * Both coin sites were proved to throw before this change; see `w377coin.test.js`.
  *
- * A `$28BBxx`-tier posting path in `sound.js` would close all of these AND `$28C170` at once, and
- * that is a sound wave, not this file's to write. Until then: counted, never invented.
+ * **W425 CORRECTS THIS BLOCK'S OWN PREDICTION.** It used to say a `$28BBxx`-tier posting path
+ * "would close all of these AND `$28C170` at once". THE TIER PATH SHIPPED (W423/W425, D58) AND IT
+ * CLOSED `$28C170` ONLY. `$28C0FC` is a different packer again -- `$28BB76`, not `$28BBAC` -- so
+ * `postBgmCommand` refuses it by design and these three stay counted. One prediction, two
+ * addresses, and it was right about one of them; recorded rather than quietly deleted.
  */
 function cueStreamNote(ctx, site) {
   ctx?.unported?.note(SCREEN8.cueStream,
     `$${site.toString(16).toUpperCase()} jsr $28C0FC -- $28C0FC -> $28BB76 posts the bare `
     + 'longword $10000000 (type $10), NOT the $28BB04 packer every sound.js WRAPPERS row '
-    + 'describes, so posting it throws. Counted, as arm 3 counts $28C170');
+    + 'describes, so posting it throws. Arm 3\'s $28C170 was the OTHER half of this pair and '
+    + 'it posts now (W425/D58); this one does not, because $28BB76 is a third packer');
 }
 
 /**
@@ -617,8 +621,9 @@ function cueStreamNote(ctx, site) {
  * `$241182` also takes the priority from the DISPATCH TABLE (`$240F62 + t*8 + 4`), never from
  * the caller -- hence the callback.
  *
- * **W377: `$25A9DA jsr $28C0FC` IS A COUNTED NOTE FOR THE SAME REASON ARM 3'S `$28C170` IS.**
- * See `cueStreamNote` below.
+ * **W377: `$25A9DA jsr $28C0FC` IS A COUNTED NOTE.** W377 gave the reason as "the same reason
+ * arm 3's `$28C170` is"; W425 ported `$28C170` and did NOT port this, so the shared reason was
+ * never the real one. See `cueStreamNote` below for the reason that survives.
  */
 export function teardown25A9B2(ram, rom, ctx) {
   objTableInit24107C(ram);                                     // $25A9B2 jsr $24107C
@@ -978,8 +983,9 @@ export function screen5Body25C6D4(ram, rom, ctx) {
 //   `$25BB6C` -- 19 instructions writing `$900000`, the TX tile plane. Presentation, unclaimed by
 //                any file in the port, and the same tier as arm 1/3's `$25BBB4` next door.
 //   `$28CAE2` -- `move.w #$44,D0 / #$FF,D1 / #$14,D2 / bsr $28C02A`, a sound post through a
-//                different packer than `sound.js`'s `WRAPPERS` describes. Counted for the same
-//                reason arm 3's `$28C170` is: posting it would THROW.
+//                different packer than `sound.js`'s `WRAPPERS` describes. Counted because
+//                posting it would THROW. (W425: this used to say "for the same reason arm 3's
+//                `$28C170` is" -- arm 3's posts now, and this still does not.)
 export const SCREEN12 = Object.freeze({
   init: 0x25c2ae, initEnd: 0x25c2ea,   // $25C2AE..$25C2E9 -- 60 bytes, `rts` AT $25C2E8
   body: 0x25c2ea,
@@ -1025,8 +1031,9 @@ export function screen12Body25C2EA(ram, rom, ctx) {
       chainFree246800(ram, ram.u32(SCREEN12.handle));          // $25C30A jsr $246800
       ram.setU16(SCREEN12.state, 1);                           // $25C310
       ctx?.unported?.note(SCREEN12.cue, '$25C318 jsr $28CAE2 -- D0=$44, D1=$FF, D2=$14 into '
-        + '$28C02A. Counted for the same reason arm 3\'s $28C170 is: it is not a $28BB04 '
-        + 'wrapper, so postWrapper throws on it');
+        + '$28C02A. It is not a $28BB04 wrapper and it is not the $28BBAC tier W425 ported '
+        + 'either -- it sets THREE registers and enters $28C02A directly -- so postWrapper '
+        + 'throws on it and it stays counted');
     }
   }
   if (ram.u16(SCREEN12.state) === 1) {                         // $25C31E -- FALLS THROUGH

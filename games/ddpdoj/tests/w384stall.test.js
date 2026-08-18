@@ -131,6 +131,13 @@
 // `boss.js bossClear242922` inside `$294DD4`. Measured by driving the whole chain from a harness
 // (see the wave report). That is a wave, not a bounded fix, so this file measures and does not
 // patch.
+//
+// **W425 UPDATE (DOCKET D58): THAT FOURTH GAP IS CLOSED, AND IT TOOK TWO WAVES.** W385 made the
+// throw a counted note, which stopped the crash and left the boss clear SILENT -- the owner
+// reported it as "boss explosion doesn't have a sound on level one". W423 built `$28BBAC` its own
+// packing path and W425 made `postWrapper` dispatch to it, so `$28C170` posts $15000000 and still
+// has no `WRAPPERS` row. The paragraph above is left as written because its MEASUREMENT was
+// correct; only its future tense has expired.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

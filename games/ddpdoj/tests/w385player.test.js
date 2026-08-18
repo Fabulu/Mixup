@@ -47,10 +47,14 @@
 //
 // 5. **"`sound.js postWrapper` throws on `$28C170` from `boss.js bossClear242922`."** The address
 //    is right and the site is not. On a real cold boot the throw arrives from
-//    **`objslot13.js:208`** (`$288A3C`, slot [13] state 4, the GAME-OVER screen) at frame +4,079,
+//    **`objslot13.js`** (`$288A3C`, slot [13] state 4, the GAME-OVER screen) at frame +4,079,
 //    because a run with no input loses its last life at +4,075 -- it never gets near the boss.
 //    And there are TWO unmapped posts at that site, not one: `$288A42 jsr $28C0FC` throws as well,
 //    because `$28C0FC` is in `sound.js`'s `ENTRY` table and not in `WRAPPERS` (SECTION 7).
+//    **W425 (D58) CLOSED THE FIRST OF THOSE TWO AND NOT THE SECOND**, and the split is the
+//    finding: `$28C170` reaches `$28BBAC` and now has its own posting path, while `$28C0FC`
+//    reaches `$28BB76` -- a third packer, entered with the caller's inherited registers -- and
+//    is still a counted gap. They only ever looked like one defect.
 //
 // ===============================================================================================
 // AND THE HONEST ANSWER TO "DOES STAGE 1 END"
@@ -84,6 +88,7 @@ import { HUDRAM, slideArm287A5E, scoreDrainInit287084 } from '../src/hud.js';
 import { BOSS, livePlayers2428A6, bossTimeout294F32 } from '../src/boss.js';
 import { RANK, playerRecords25FE42, stagePair2603FE } from '../src/rank.js';
 import { RomWindows } from '../src/rom.js';
+import { SOUND_WRAPPERS } from '../src/sound.js';
 import { Unreached } from '../src/unported.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -175,6 +180,10 @@ const RUN = (() => {
     liveHigh, liveBitsHigh,
     stoppedAt, stopError, lastLive, diffBytes, diffBlocks: diffBlocks.size,
     notes: g.unportedLog.report(),
+    // W425 (D58): the `$28BBAC`-tier command, counted where it actually landed. `drainFrame`
+    // moves one longword per frame into `doorLog`, so this is what the sound hardware saw --
+    // not what a call site intended.
+    bgmCommands: g.sound.doorLog.filter((d) => d.word === 0x15000000).length,
   };
 })();
 
@@ -641,20 +650,27 @@ test('W385 with the player this wave creates, $294F32 does NOT re-floor and reac
       'and $294F50 RE-FLOORS to 120 again -- which is the state the whole run was stuck in');
   });
 
-test('W385 $28C170 is a COUNTED NOTE on the boss-clear path, not a throwing soundPost', () => {
-  // `bossClear242922` is what `$294DD4` calls at `$294DF0`, and it used to `ctx.soundPost` an
-  // address `sound.js` has no WRAPPERS row for -- so the test above would have thrown inside
-  // `$294DD4` rather than reaching `$294E34`. The note is what makes that path survivable.
-  assert.equal(w(0x294df0), 0x4eb9, '$294DF0 jsr (xxx).L');
-  assert.equal(l(0x294df2), 0x00242922, '  ...$242922, bossClear242922');
-  assert.equal(w(0x242922), 0x4eb9, '$242922 jsr (xxx).L');
-  assert.equal(l(0x242924), 0x0028c170, '  ...$28C170');
-  // ...and $28C170 really is the $28BBAC shape sound.js refuses, not a $28BB04 wrapper.
-  assert.equal(w(0x28c174), 0x303c, '$28C174 move.w #imm,D0');
-  assert.equal(w(0x28c176), 0x0015, '  ...#$15, a BGM command');
-  assert.equal(w(0x28c178), 0x7200, '$28C178 moveq #0,D1 -- and that is ALL it sets');
-  assert.equal(l(0x28c17c), 0x0028bbac, '$28C17A jsr $28BBAC -- NOT $28BB04');
-});
+// **W425 (D58) RENAMED AND REPOINTED THIS TEST, AND THE BYTES IN IT DID NOT MOVE.** It used to
+// be called "$28C170 is a COUNTED NOTE on the boss-clear path, not a throwing soundPost", which
+// was true when W385 wrote it and stopped being true when `sound.js` grew a second posting path.
+// Every disassembly assertion below is unchanged, because the CARTRIDGE has not changed -- what
+// changed is the port's ability to pack this shape. The last assertion is the new one and it is
+// the point: `$28C170` is not a `$28BB04` wrapper and must never be given a `WRAPPERS` row, AND
+// it posts. Those were treated as one claim for eight waves and they are two.
+test('W425 the boss-clear path reaches $28C170, and it is the $28BBAC shape, not a WRAPPERS row',
+  () => {
+    assert.equal(w(0x294df0), 0x4eb9, '$294DF0 jsr (xxx).L');
+    assert.equal(l(0x294df2), 0x00242922, '  ...$242922, bossClear242922');
+    assert.equal(w(0x242922), 0x4eb9, '$242922 jsr (xxx).L');
+    assert.equal(l(0x242924), 0x0028c170, '  ...$28C170');
+    // ...and $28C170 really is the $28BBAC shape, which is why it gets its own path.
+    assert.equal(w(0x28c174), 0x303c, '$28C174 move.w #imm,D0');
+    assert.equal(w(0x28c176), 0x0015, '  ...#$15, a BGM command');
+    assert.equal(w(0x28c178), 0x7200, '$28C178 moveq #0,D1 -- and that is ALL it sets');
+    assert.equal(l(0x28c17c), 0x0028bbac, '$28C17A jsr $28BBAC -- NOT $28BB04');
+    assert.equal(SOUND_WRAPPERS[0x28c170], undefined,
+      'so it has no WRAPPERS row, and giving it one would invent an id, a pan and a channel');
+  });
 
 // =============================================================================================
 // 7 -- WHAT STOPS A COLD BOOT NOW, AND IT IS NOT THIS SUBSYSTEM.
@@ -707,11 +723,17 @@ test('W386 the cold boot reaches GAME OVER, and no longer stops on the game-over
     assert.ok(RUN.lastLive > RUN.firstPlayerFrame,
       'well past the frame the player was created on, which is what W385 built');
 
-    // (c) THE TWO SOUND POSTS ON THE WAY THERE ARE COUNTED, NOT THROWN. Both are reached: this
-    // run walked through slot [13] state 4 to get where it stopped.
-    assert.ok(noteCount(0x28c170) >= 1, '$288A3C jsr $28C170 is counted');
-    assert.ok(noteCount(0x28c0fc) >= 1, '$288A42 jsr $28C0FC is counted -- $28C0FC is in '
-      + 'sound.js ENTRY, not WRAPPERS, so posting it throws too');
+    // (c) THE TWO SOUND CALLS ON THE WAY THERE, AND W425 SPLIT THEM APART. They used to be a
+    // matched pair -- both counted, both unpostable -- and they are not the same defect:
+    // `$28C170` is `$28BBAC` and now POSTS, `$28C0FC` is `$28BB76` and still cannot, because it
+    // is entered with the caller's inherited D0..D3 and a post would invent all of them.
+    // Both are reached: this run walked through slot [13] state 4.
+    assert.equal(noteCount(0x28c170), 0,
+      '$288A3C jsr $28C170 is no longer counted -- it is posted (D58 / W425)');
+    assert.ok(RUN.bgmCommands >= 1,
+      'and $15000000 reached the sound ring and was DRAINED, which is the audible half');
+    assert.ok(noteCount(0x28c0fc) >= 1, '$288A42 jsr $28C0FC is STILL counted -- $28C0FC is in '
+      + 'sound.js ENTRY, not WRAPPERS, and $28BB76 is a third packer this wave did not close');
   });
 
 test('W385 the run is not a fixed point: the machine is doing work right up to the stop', () => {

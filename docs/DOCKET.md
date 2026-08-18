@@ -3250,3 +3250,45 @@ about our BENCHES, not about the code, and it is the same distinction D60 turned
 animation does. D56 already records me closing this item once on a bench where the word "hyper"
 appeared only in the test's title.
 
+
+### D58 CLOSED BY W425 -- AND THE EXPLOSION WAS **NOT** THE CUE THE DIAGNOSIS NAMED
+
+**THE CAVEAT SAVED THIS ITEM.** D58's diagnosis said the boss-clear cue `$28C170` was silent, and
+insisted the wave establish whether the owner's "explosion" was that cue or a different one before
+closing. **It was a different one.** Closing on `$28C170` alone would have been the D56 mistake
+exactly.
+
+The stage-1 boss death `$294DD4` does TWO things:
+
+1. `$294DF0 jsr $242922` -> `$28C170`. ONE cue, at the moment the fight ends. That is D58's
+   original diagnosis, and it was genuinely silent.
+2. `$294E34 moveq #$6 / jmp $259962` arms A3 script 6, the death ANIMATION. Its states 2 and 3 tick
+   timer D and dispatch through `lea ($1D8,PC),A0` -> **`$294134`**, an eight-entry table of cue
+   wrappers, masked `andi.w #$1F`. **THOSE ARE THE REPEATED BANGS**, and `boss.js` had been
+   counting the whole dispatch as ONE note.
+
+Verified from the image by the coordinator: `$293F5C + $1D8 = $294134` (extension-word rule), and
+the table reads `$28C25A $28C274 $28C25A $28C274 $28C2A8 $28C25A $28C2C2 $28C2A8`.
+
+**THE BRIEF SAID FIVE SITES. THERE WERE NINE**, and two were LIVE THROWS rather than notes
+(`objslot7pool.js $290B26`, `tally.js $260326`). All nine post now; no `note()` for `$28C170`
+remains anywhere in `src/`.
+
+New window `(0x294134, 0x20)`. **It ABUTS W107's `(0x294154, ...)` and did not widen it** --
+confirmed by the coordinator. 606 -> 607 windows.
+
+**TWO PRE-EXISTING LIES CORRECTED, both the W418 shape again:**
+- `BOSS_NOTED` listed `$28C392`, `$28C2C2` and `$28C2A8` as deferred SOUND. **No `note()` in
+  `boss.js` has passed those since Wave A** -- they have been real `soundPost` calls all along.
+  Three documented gaps that did not exist, invisible because nothing read the table. Now
+  `w62stageend.test.js` scans `boss.js` and fails on any dead key, so it cannot recur.
+- `objslot8.js` predicted a `$28BBxx` path "would close all of these AND `$28C170` at once". It
+  closed `$28C170` only: `$28C0FC` is `$28BB76`, a THIRD packer.
+
+**STILL OPEN, NAMED BY THE WAVE:** `objslot15.js:179` is a live throw and always was. It calls
+`ctx.soundPost?.(0x28c186)`, whose D1 comes from the caller (0 here, verified). Fixing it needs a
+ctx-level D1-carrying API. **Not D58; open it as its own unit.**
+
+Verified by the coordinator on a quiet tree: **3928 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at **607 windows**, and no line-ending violations across 32 files.
+

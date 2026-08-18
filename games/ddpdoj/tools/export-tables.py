@@ -2272,6 +2272,34 @@ SHOT_WINDOWS.extend([
 # table's far end is pinned by the `$FFFF` terminator AND by code (the routines
 # that follow them in the boss bank), sized from the image this export.
 SHOT_WINDOWS.extend([
+    # W425 (DOCKET D58) -- D-SCRIPT 6'S TIMER-D SOUND TABLE, `$294134`. THE BOSS
+    # EXPLOSION'S OWN RATTLE, and the owner's report is about this and not about
+    # the boss-CLEAR cue that W425's main unit ported.
+    #
+    #     293F5A  41FA 01D8   lea ($1D8,PC),A0   -> $293F5C + $1D8 = $294134
+    #     293F5E  4E71        nop
+    #     293F60  D0EC 0014   adda.w ($14,A4),A0    the cursor
+    #     293F64  2050        movea.l (A0),A0       the TABLE ENTRY is an address
+    #     293F66  4E90        jsr (A0)              ...and it is CALLED
+    #     293F68  586C 0014   addq.w #4,($14,A4)
+    #     293F6C  026C 001F 0014  andi.w #$1F,($14,A4)   -> EIGHT entries, wrapped
+    #
+    # `$29400A` is the byte-identical copy in state 2 (`lea ($128,PC)` off
+    # $29400C, the same $294134).  The eight longwords are ALL ordinary WRAPPERS
+    # rows, so nothing here needs inventing:
+    #
+    #     $28C25A $28C274 $28C25A $28C274 $28C2A8 $28C25A $28C2C2 $28C2A8
+    #
+    # $20 bytes exactly: the `andi.w #$1F` bounds the walk and $294154 (the
+    # state-0 burst table below) pins the far end, so this is an EXACT extent
+    # rather than an upper bound.  Declared as its own window; $294154's is NOT
+    # widened, because the two are read by different routines for different
+    # reasons and a merged window would hide either one moving.
+    (0x294134, 0x0020, "W425: D-script 6 timer-D SOUND dispatch table $294134 -- "
+                       "eight cue-wrapper ADDRESSES walked by $293F60/$29400A's "
+                       "`adda.w ($14,A4),A0 / movea.l (A0),A0 / jsr (A0)`, "
+                       "wrapped by `andi.w #$1F`. The boss death animation's "
+                       "explosion rattle (D58)"),
     # D-script 6's state-0 burst table (`$29412E bsr $2938AE`, A1 = $294154).
     # Eight 12-byte entries then $FFFF at $2941B4; entry 7's loopctl=$0001 arms
     # timer A.  The window includes the $FFFF word (the helper reads it).

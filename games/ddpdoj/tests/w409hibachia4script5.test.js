@@ -765,8 +765,8 @@ test('W409 SECTION 7: THREE new windows, 599, and three bounds on each', { skip:
   const set = new Map(tables.rom.windows.map(
     (x) => [parseInt(String(x.base).replace('$', ''), 16), x.len]));
   assert.equal(set.size, tables.rom.windows.length, 'no duplicate window bases');
-  assert.equal(tables.rom.windows.length, 606, '599 windows, 596 + this wave\'s three'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606.');
+  assert.equal(tables.rom.windows.length, 607, '599 windows, 596 + this wave\'s three'
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606. W425 declares $294134 ($20), the timer-D SOUND dispatch table of D-script 6 -- the eight cue-wrapper addresses the boss DEATH ANIMATION walks with `movea.l (A0),A0 / jsr (A0)`, which is the explosion rattle DOCKET D58 was opened on. The $294154 window from W107 ABUTS it and is NOT widened: the two are read by different routines for different reasons, and the overlap count is unchanged. So 607.');
 
   // ---- $2A6688 + $80.
   assert.equal(set.get(HIBACHI_A4.s5Emit), 0x80, '$2A6688 + $80');

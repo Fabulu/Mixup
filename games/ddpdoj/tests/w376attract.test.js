@@ -717,14 +717,19 @@ test('W376 the credit line appears the frame AFTER 13 -> 2, because arm 2\'s ini
   assert.equal(txColumn(g.txvram, 3), '..........CREDITS:0');
 });
 
-// **W377 REWROTE THIS TEST'S ENDING, BECAUSE THE ENDING WAS THE BUG.**
-// It used to assert that `g.step()` THROWS `no wrapper at $28C170` one frame after the credit
-// line updates -- i.e. it pinned the crash that made a coin unsurvivable on a cold boot. Arm 3
-// now COUNTS `$28C170` instead of posting it (`objslot8.js`; `sound.js`'s header forbids giving
-// that address a `WRAPPERS` row), so the step returns cleanly and the run continues. The claim
-// this test still makes -- the coin changes what is on screen, `CREDITS:0` -> `CREDITS:1` -- is
-// unchanged and is now checked on a run that SURVIVES. See `w377coin.test.js`.
-test('W377 A COIN CHANGES WHAT IS ON SCREEN: CREDITS:0 -> CREDITS:1, and the run SURVIVES it',
+// **THIS TEST'S ENDING HAS BEEN REWRITTEN TWICE AND THE CLAIM IN THE MIDDLE NEVER MOVED.**
+// The claim is: a coin changes what is on screen, `CREDITS:0` -> `CREDITS:1`. What changed twice
+// is the fate of `$25A962 jsr $28C170` one frame later.
+//
+//   W376  asserted `g.step()` THROWS `no wrapper at $28C170` -- it pinned the crash that made a
+//         coin unsurvivable on a cold boot.
+//   W377  made arm 3 COUNT the cue instead, so the step returned cleanly. Survivable, silent.
+//   W425  (D58) gives the `$28BBAC` tier a real posting path, so the cue is POSTED. Survivable
+//         AND audible. `$28C170` still has no `WRAPPERS` row; it never needed one.
+//
+// So the run must still survive -- that half is unchanged -- and the cue must now be ABSENT from
+// the unported report, because it is no longer deferred. See `w377coin.test.js`.
+test('W425 A COIN CHANGES WHAT IS ON SCREEN: CREDITS:0 -> CREDITS:1, the run SURVIVES and CUES',
   { skip: SKIP }, async () => {
   const { COIN } = await import('../src/isr.js');
   const { COIN_BITS } = await import('../src/web/input.js');
@@ -754,11 +759,16 @@ test('W377 A COIN CHANGES WHAT IS ON SCREEN: CREDITS:0 -> CREDITS:1, and the run
   assert.equal(g.ram.u16(0x812e56), 0x0003);
 
   // The next frame's TAIL draws the credit line with the new count, and then arm 3's init runs
-  // `$25A962 jsr $28C170` -- which is COUNTED now, not posted, so the frame completes.
-  assert.doesNotThrow(() => g.step(0xffff), 'W377: arm 3 no longer throws on $28C170');
+  // `$25A962 jsr $28C170` -- which POSTS now, so the frame completes.
+  const postsBefore = g.sound.postCount;
+  assert.doesNotThrow(() => g.step(0xffff), 'W425: arm 3 does not throw on $28C170');
   assert.equal(txColumn(g.txvram, 3), '..........CREDITS:1', 'the credit line updated');
-  assert.ok(g.unportedLog.report().some((s) => s.includes('$28C170')),
-    'and the cue it cannot post is on the unported report rather than gone');
+  // THE STATE TRACE. A survived frame proves only that nothing threw; this proves the cue
+  // reached the ring, which is the difference between W377's fix and W425's.
+  assert.ok(g.sound.postCount > postsBefore,
+    'the credit screen POSTED a cue on the frame arm 3 initialised');
+  assert.equal(g.unportedLog.report().some((s) => s.includes('$28C170')), false,
+    'and $28C170 is NOT on the unported report -- it is posted, not deferred');
   // And it keeps running: thirty more frames of arm 3 with the credit still in hand.
   for (let i = 0; i < 30; i++) g.step(0xffff);
   assert.equal(g.ram.u16(0x812e56), 0x0003, 'still on the credit screen');

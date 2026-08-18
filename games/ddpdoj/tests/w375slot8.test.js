@@ -214,9 +214,12 @@ test('W375 states $E, $3 and $D skip the credit check entirely', { skip: SKIP },
 // INDEPENDENT pairs, not one pair with two conditions". What changed is that the `$28C0FC` half
 // of each pair is now a COUNTED NOTE rather than a `soundPost`: `$28C0FC` has no `WRAPPERS` row
 // and is not a streaming leaf, so against the real driver posting it threw
-// `no wrapper at $28C0FC` -- the same defect as arm 3's `$28C170`, and `$25A7FA` is reachable by
-// a player (state 12 + a coin). See `w377coin.test.js`. The `$28C5B0` half IS a real wrapper and
-// still posts. So each pair now shows up as one cue AND one note, and the note carries its own
+// `no wrapper at $28C0FC` -- the same defect arm 3's `$28C170` had, and `$25A7FA` is reachable by
+// a player (state 12 + a coin). See `w377coin.test.js`. **W425 SPLIT THAT PAIRING**: arm 3's
+// `$28C170` posts again through the `$28BBAC` tier, while `$28C0FC` is `$28BB76` -- a third
+// packer, entered with the caller's inherited registers -- and stays counted. The `$28C5B0` half
+// IS a real wrapper and still posts. So each pair still shows up as one cue AND one note, and the
+// note carries its own
 // call-site address, which is a STRICTLY STRONGER probe than two identical `0x28c0fc` entries:
 // it distinguishes `$25A7E2` from `$25A7FA`, which the old cue list could not.
 test('W375/W377 the coin teardown\'s two sound pairs are independent, not one',
@@ -645,16 +648,22 @@ test('W375 arm 2 advances to 12 when the ported $25B412 finishes, and holds whil
     assert.equal(f.ram.u8(f.a5 + f.SCREEN8.inited), 0, 'and $25A764 re-armed arm 12\'s init');
   });
 
-// **W377 CHANGED WHAT THIS TEST ASSERTS, AND THE OLD ASSERTION WAS ASSERTING A BUG.**
-// It used to require `f.cues` to be `[0x28c170]`, i.e. that arm 3's init POSTS `$28C170`
-// through `ctx.soundPost`. Against the real driver that post is not a cue, it is a THROW:
-// `sound.js` has no `WRAPPERS` row for `$28C170` and its header says it must never get one
-// (`$28C170` goes through the `$28BBAC` packer, not `$28BB04`). So the assertion was pinning
-// the exact line that killed a cold-boot run one frame after a coin credited -- see
-// `w377coin.test.js`. Arm 3 now COUNTS the cue, the way `background.js:1047` and
-// `hiscorescreen.js:544` have always counted this same address, and this test asserts that:
-// the note is present AND `soundPost` is never reached.
-test('W377 arm 3 polls $25ACAC every frame and COUNTS $28C170 rather than posting it',
+// **THIS TEST HAS BEEN INVERTED TWICE AND BOTH INVERSIONS WERE RIGHT AT THE TIME.** The history
+// is the finding, so it is kept rather than compressed:
+//
+//   W375  asserted `f.cues == [0x28c170]` -- arm 3 POSTS the cue. Against the real driver that
+//         was not a cue, it was a THROW, and it killed a cold-boot run one frame after a coin
+//         credited (`w377coin.test.js`).
+//   W377  asserted the opposite -- arm 3 COUNTS it -- which stopped the crash and left the
+//         credit screen silent, because `sound.js` had no packer for the `$28BBAC` tier.
+//   W425  asserts the post again, for a reason NEITHER of the first two had available: D58
+//         built that tier its own posting path (`postBgmCommand`) and made `postWrapper`
+//         dispatch to it. `$28C170` STILL has no `WRAPPERS` row and still must never get one.
+//         "No row" and "no post" were conflated for eight waves; they are different claims.
+//
+// So the assertion below is W375's shape with W425's reason, and the note must now be ABSENT --
+// a counted note here would be the stale note `w382stalenotes` exists to catch.
+test('W425 arm 3 polls $25ACAC every frame and POSTS $28C170 through the $28BBAC tier',
   { skip: SKIP }, async () => {
   const f = await fx();
   f.ram.setU8(f.a5 + f.SCREEN8.constructed, 1);
@@ -662,9 +671,10 @@ test('W377 arm 3 polls $25ACAC every frame and COUNTS $28C170 rather than postin
   f.ram.setU16(f.SCREEN8.p1Raw, 0x8000);
   f.ram.setU8(f.SCREEN8.creditA, 1);
   f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
-  assert.deepEqual(f.cues, [], 'arm 3 posts NO wrapper cue -- $28C170 has no wrapper to post');
-  assert.ok(noteAddrs(f.notes).includes(0x28c170),
-    '$25A962 jsr $28C170 -- verified in the ROM at $25A962, counted as an unported cue');
+  assert.deepEqual(f.cues, [0x28c170],
+    '$25A962 jsr $28C170 -- the credit screen\'s BGM cue, posted by address');
+  assert.equal(noteAddrs(f.notes).includes(0x28c170), false,
+    'and NOT counted as unported any more -- it is not deferred, it is done');
   assert.ok(f.clears.includes(0x24631c), '$25A956 jsr $24631C');
   assert.equal(f.ram.u16(f.SCREEN8.state), 0x000e, 'and the poll joined, on COIN play');
   assert.equal(f.ram.u8(f.SCREEN8.creditA), 0);
