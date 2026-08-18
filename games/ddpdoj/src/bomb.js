@@ -1210,16 +1210,35 @@ function beamBox2456A6(ram) {
 /** `$245788..$2457EC`, `$24589E..$2458F4` and `$245978..$2459C0` -- the SAME
  *  AABB against ONE bomb record, at three call sites with three different
  *  starting records and counts.  The bullets' site passes `d0 === d1` and
- *  `d2 === d3`, i.e. a POINT, and that is the only difference. */
+ *  `d2 === d3`, i.e. a POINT, and that is the only difference.
+ *
+ *  **ALL FOUR TESTS ARE UNSIGNED, AND W413 FIXED THEM.**  `$2457A0`, `$2457A8`,
+ *  `$2457B8`, `$2457C0` are `65 xx` -- `bcs`, the CARRY, i.e. unsigned LOWER --
+ *  and so are their twins at `$2458B6`/`$2458BE`/`$2458CE`/`$2458D6` and
+ *  `$245990`/`$245998`/`$2459A8`/`$2459B0`.  The first draft wrote all twelve
+ *  as `i16(...)` signed compares while quoting `bcs` in the comment beside
+ *  them, which is the shape W411 warns about: a wrong reading with the right
+ *  citation next to it.
+ *
+ *  **IT IS NOT A CORNER CASE, IT IS THE TOP OF THE SCREEN.**  Every coordinate
+ *  here carries D6's `$2800` bias, so a raw Y of `$5800` and up biases to
+ *  `$8000` and up and reads NEGATIVE as `i16`.  `[M]` the stage-1 boss's own
+ *  sub-record, taken verbatim from the board's RAM at lf9,000
+ *  (`$81523C`: Y `$697D`, half-extents `$0E00`/`$1780`/`$0800`/`$0800`), has a
+ *  biased far edge of `$9F7D` on EVERY checkpoint of the fight, and the beam's
+ *  own segments bias past `$8000` from segment 24 outward.  Signed, ten
+ *  intersecting segments were rejected -- nine at test 1, one at test 2 -- and
+ *  `$812954` stayed 0, so `$2457FA tst.w / beq` skipped the ONE pool-B hit and
+ *  the boss took nothing for all 131 damage frames.  Unsigned, it takes it. */
 function recordHitsBox(ram, a6, d6, d0, d1, d2, d3) {
-  const d4y = i16(u16(u16(ram.u16(a6 + 0x02) + d6) + ram.u16(a6 + 0x10)));
-  if (d4y < i16(d1)) return false;                     // $24579E cmp.w D1,D4/bcs
-  const d5y = i16(u16(u16(ram.u16(a6 + 0x02) + d6) - ram.u16(a6 + 0x12)));
-  if (i16(d0) < d5y) return false;                     // $2457A6 cmp.w D5,D0/bcs
-  const d4x = i16(u16(u16(ram.u16(a6 + 0x04) + d6) + ram.u16(a6 + 0x14)));
-  if (d4x < i16(d3)) return false;                     // $2457B6 cmp.w D3,D4/bcs
-  const d5x = i16(u16(u16(ram.u16(a6 + 0x04) + d6) - ram.u16(a6 + 0x16)));
-  if (i16(d2) < d5x) return false;                     // $2457BE cmp.w D5,D2/bcs
+  const d4y = u16(u16(ram.u16(a6 + 0x02) + d6) + ram.u16(a6 + 0x10));
+  if (d4y < d1) return false;                          // $24579E cmp.w D1,D4/bcs
+  const d5y = u16(u16(ram.u16(a6 + 0x02) + d6) - ram.u16(a6 + 0x12));
+  if (d0 < d5y) return false;                          // $2457A6 cmp.w D5,D0/bcs
+  const d4x = u16(u16(ram.u16(a6 + 0x04) + d6) + ram.u16(a6 + 0x14));
+  if (d4x < d3) return false;                          // $2457B6 cmp.w D3,D4/bcs
+  const d5x = u16(u16(ram.u16(a6 + 0x04) + d6) - ram.u16(a6 + 0x16));
+  if (d2 < d5x) return false;                          // $2457BE cmp.w D5,D2/bcs
   return true;
 }
 

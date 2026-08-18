@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W412)
+Updated: 2026-08-18 (W413)
 
 ## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
 
@@ -20,7 +20,88 @@ text:
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
 
-## START HERE -- W412 (docket D42)
+## START HERE -- W413 (docket D43)
+
+### THE LASER BOMB'S BOX WAS SIGNED. THE CARTRIDGE'S IS UNSIGNED.
+
+`$2457A0 $2457A8 $2457B8 $2457C0` are all `65 xx` = **`bcs`, unsigned lower**. A signed compare would
+be `6D`. Coordinator verified all four bytes. `recordHitsBox` in `src/bomb.js` wrote them as
+`i16(...)` **while quoting `bcs` in the comment beside each one**, and the same slip sits on the
+eight twins at `$2458B6/$2458BE/$2458CE/$2458D6` and `$245990/$245998/$2459A8/$2459B0`.
+
+**Why it mattered:** every coordinate here carries D6's `$2800` bias, so a raw Y of `$5800` or more
+biases past `$8000` and reads NEGATIVE when signed. The boss's biased far edge is `$9F7D` on every
+checkpoint of the fight, and the beam's own segments cross `$8000` from segment 24 out.
+
+| 131 damage frames | HEAD | fixed |
+|---|---|---|
+| box test passes | yes | yes |
+| intersecting segments found | **0** | **10** |
+| pool-B hits `$2457FA` | **0** | **64** |
+| boss HP | `$7FFF` untouched | `$FDFF` |
+
+`$7FFF - 64 * $208 = $FDFF` exactly.
+
+### THE BRIEF'S TWO-WAY FRAMING EXCLUDED THE ACTUAL ANSWER
+
+I asked whether the boss "never intersects" or "intersects but loses the nearest test". **Neither.**
+It intersected, nothing beat it, and `$812954` was still 0 -- the port's own comparison rejected all
+ten segments, so the nearest test was never reached. Hunting for "what won" would have burned the
+wave. **When a brief offers two options, the answer may be a third; say so.**
+
+### THE POOL ORDER IN MY BRIEF WAS BACKWARDS, AND IT IS LOAD-BEARING
+
+The ROM runs **pool B first** (`$24571A`), pool A second (`$24581C`), and `$245886`/`$24588E` make
+the pool-B target **SHADOW** pool A: anything behind the nearest pool-B record takes nothing. Pinned
+as its own test row.
+
+### WHAT ACTUALLY LIVES WHERE, MEASURED
+
+Pool B is the 50-slot special pool, selected by class byte **bit 7 or bit 5** (`$2635B8 tst.b / bpl`,
+`$2635C6 btst #5 / bne`). The boss is `$81523C` = **slot 101 of 150, pool B index 1**.
+
+**And in a boss fight pool A is 0 of 100 live for the entire encounter** (lf8500..lf19250). So the
+laser bomb's "hit everything for `$1E0`" pass has nothing to hit, and its only damage is one `$208`
+per frame to the nearest pool-B record. That is the cartridge, not a defect.
+
+Once fixed, the boss BODY wins the nearest test on 37 of 50 checkpoints; its two arms and midboss
+parts take it on the other 13. Also the cartridge.
+
+### D6 AND THE $9800 REJECT WERE BOTH FINE, AND THERE IS A SECOND D6 WRITE
+
+`$24518A 3c 3c 28 00` sets D6 = `$2800`; the mask read `$24563E` is past `$245636 bne`. **But there
+is a SECOND `move.w #$2800,D6` at `$24535A`**, inside a subroutine that `movem.l D0-D7/A0-A6` saves
+and restores. A narrower reader would conclude D6 is rewritten. `$245776 0c 41 98 00 / 64 a8` is
+`bcc`, unsigned, and the boss's `d1 = $79FD` passes it -- that reject was never the problem.
+
+### TWO MORE THINGS THE BRIEF MISSED
+
+- **The bullets are not a sideshow.** They share `recordHitsBox`, carried the same defect, and their
+  erased count moved the OPPOSITE way (19 -> 14), because the signed form was wrong in BOTH
+  directions depending on which side of `$8000` an edge fell.
+- Pool A's inner loop breaks only on `bmi $2458F8` (HP negative), so **one pool-A enemy can take
+  several `$1E0` hits in a single frame** -- 2 and 3 were measured.
+
+### GATE: NO BASELINE MOVED
+
+`w65beamgate`'s informational counters moved (poolA 51 -> 54, bullets erased 19 -> 14, chain 64 ->
+55) with a named mechanism, not "RNG shift": the signed form was wrong in both directions, so a rise
+and a fall are both expected, and the changed kill frames drive `$81B636`. Its pass/fail is 13/9 on
+HEAD and 13/9 now. `w64bombgate` and `midbossgate` failures are **byte-identical on HEAD**,
+pre-existing.
+
+### VERIFIED
+
+Suite **3748 pass / 0 fail / 0 skipped** (3735 before; +13). Gate **exit 0**. `--verify` **OK at 600
+windows**. No new windows.
+
+### NEXT
+
+**D51** is the urgent one: the medal spawns but has **no exported art**, so the owner still sees
+nothing. Asset-pipeline wave, not a port wave. Then **D50** (late crater), **D48**'s remaining ten
+sites, the frame-6495 kind-8 throw, and A4 `$14`.
+
+## W412 NOTES
 
 ### THE HYPER LASER'S HIT ANIMATION WAS NEVER MISSING. ONE REGISTER WAS WRONG.
 
