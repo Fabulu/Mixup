@@ -130,6 +130,30 @@
 // feed and a chain break the beam has not got.  The correct change was to name
 // the address of the rank feeder `$2867B4` so the wave that ports `$286A82`
 // cannot ship one without the other, and to say -- here -- which laser this is.
+//
+// ============ D60: "TWO GATES AWAY FROM REACHABLE" IS WRONG. BOTH OPEN. =====
+//
+// **THE OWNER EXECUTED THIS PATH IN THE LIVE BUILD** and got `$286AAA IS NOT
+// PORTED YET` -- stage-2 boss, `c` (laser) held, `y` (bomb) pressed on top of
+// it, at the instant the fight starts.  So read the paragraph above as what it
+// actually is: **a measurement of the BENCH, not of the game.**  Those 600
+// frames held the beam with no boss and no bomb, and neither gate could have
+// been open in them.  A zero measured over runs that never enter the state
+// says nothing about whether the state is reachable.
+//
+//   * **bit 2 is set BY THIS PORT, at boss arrival.**  A whole-image scan finds
+//     `bset #2,$8130F8` at exactly six sites -- `$29279C`, `$2971F0`,
+//     `$29BCBC`, `$29ED3A`, `$2A5994`, `$2A63B2` -- each immediately preceded
+//     by `bset #0`.  `initbody.js:1161`, `:1226` and `:1256` already write that
+//     pair as `| 0x05`.  Hence "just when fight was about to start".
+//
+//   * **gate 2 is opened by the owner's own input.**  `$811F72` is the
+//     bomb-laser's record and `$24989E bset #$0,($1,A6)` inside the bomb is the
+//     only thing that selects it.  Bomb-while-lasering IS that instruction.
+//
+// The conclusion above still holds for the wave that wrote it: porting the BEAM
+// alone must not touch these arms.  What does not hold is the reachability
+// claim.  **Do not re-derive "the arm is dead" from the numbers above.**
 //            $28D520  the per-frame half, above.
 //
 // ============================== THE BCD, AND THE TRAP ========================
