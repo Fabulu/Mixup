@@ -12,6 +12,20 @@ The section headings below still read "Fixed" and "Open, in priority order" from
 day the docket was opened; the per-item markers are authoritative, and D12 covers
 that drift.
 
+**STILL TRUE AS OF W408.** The per-item markers are the authority; the section
+headings are not. D47 covers fixing this properly.
+
+**STANDING AS OF W408 (2026-08-18).** Dispatch is **17 of 20**, not 16: `[12] $28F3AC` has been
+ported since the block below was written, so the three without a handler are `[16] $256E7A`,
+`[18] $24902A`, `[19] $28EE88`. The newest items are **D42..D47**, opened from a play session on
+build `20260816181806` and appended at the end of this file; they outrank further boss internals.
+**D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
+wave plus two in `NEXT_AGENT_HANDOFF.md`, archive older waves into `docs/worklog/` unedited, refresh
+the stale headers here, and check that a new docket ID is free before using it. The handoff split is
+DONE (`docs/worklog/ddpdoj/ARCHIVE-handoff-W405-and-older.md`); the ID check is not yet written.
+
+**The block that follows is kept as written on 2026-08-15 and is superseded above.**
+
 **STANDING AS OF W375 (2026-08-15).** The docket now runs D1..D41 and its centre of gravity has
 moved: the play-session defects D1..D32 are almost all closed, and the open bulk is the **front
 end** the owner added on 2026-08-13 (D33 main screen, D34 character select, D35 life and coin,
