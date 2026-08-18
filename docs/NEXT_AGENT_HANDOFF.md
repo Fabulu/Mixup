@@ -1,10 +1,10 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W421)
+Updated: 2026-08-18 (W423)
 
 ## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
 
-Live items: **D42 D43 D46 D48 D50**. Closed by W410/W411: **D44 D45**. **D47** (docs pass) is done.
+Live items: **D42 D43 D46 D48 D50 D55 D56 D57 D58 D59**. Closed: **D44 D45** (W410/W411), **D47** (docs), **D53** (W421, build-scoped shell URLs), **D54** (W423, below). **D59 is the newest and the owner rates it high**: bees gate loop 2 and the true ending.
 
 **THE TRIAGE THAT USED TO SIT HERE WAS WRONG IN THREE OF FIVE ITEMS AND HAS BEEN DELETED.** It is
 still in git history if you want it. What it got wrong, because the pattern matters more than the
@@ -19,6 +19,80 @@ text:
 
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
+
+## START HERE: D60 IS A HARD STOP AND THE RECON IS ALREADY DONE
+
+The owner hit **`$286AAA IS NOT PORTED YET`** in the live build. The port refused rather than
+inventing frames, which is right, but the run ends. **It outranks everything else in the docket.**
+
+Their reproduction, exact: **stage-2 boss, `c` (laser) HELD, `y` (bomb) pressed on top of it, at
+the instant the fight starts.**
+
+**DO NOT REDO THE RECON. It is in `docs/DOCKET.md` under D60 and the bytes are swept.** All three
+gates are open in that scenario:
+
+1. `$8130F8` bit 2 -- **set by this port already**, at boss arrival. `bset #2,$8130F8` exists at
+   exactly six ROM sites, each preceded by `bset #0`; `initbody.js:1161`, `:1226`, `:1256` write
+   that pair as `| 0x05`. Hence "just when fight was about to start".
+2. `$811F72`'s sign -- the **bomb-laser's** record, selected only by `$24989E bset #$0,($1,A6)`
+   inside the bomb. Bomb-while-lasering IS that instruction.
+3. the hit -- the stage-2 boss supplies it.
+
+**THE LESSON, AND IT HAS NOW COST FOUR ITEMS.** `score.js` said this arm was "two independent gates
+away from reachable" on the strength of 600 frames in which the beam was held with no boss and no
+bomb. **It measured the bench.** A zero collected over runs that never enter the state says nothing
+about the state. That note is corrected in place (D60 block in `score.js`) -- read it before you
+trust any other "never observed" claim in this repo. The owner said it first and plainly:
+*"hyper has been fucked for a long time and you keep saying you found it"*.
+
+**Unit: port `$286AAA`, `$286A82`'s shared tail, and `$2867B4`.** The bench is fully determined:
+bit 2 up, bomb-laser selected so `$811F72` is live and NEGATIVE, then post a hit. **If the bench
+does not reach `$286AAA`, the bench is wrong, not the game.**
+
+**Check D56, D59 and D43 against this before spending a wave on any of them.** All three involve
+the same weapon or the same beam muzzle, and this may be their common cause.
+
+## W423 -- D54 IS FIXED, AND THE FIX WAS NOT WHERE THE DOCKET SAID
+
+**THE OWNER'S OWN NUMBER DISPROVED MY ANALYSIS, and that is the lesson worth keeping.** I had
+blamed the game-side sound ring for the lag. The ring is 100 slots drained ONE PER FRAME, so
+1.67 s is its arithmetic ceiling. The owner measured **five seconds**. A number that cannot fit
+in the thing you blamed is a proof, not a discrepancy -- so a second queue had to exist.
+
+**It did, and it is not in `games/ddpdoj/` at all** -- which is why my first grep found nothing.
+It is `chip.outLen` in `shared/audio.js`, backed by `ics2115.js:220 _ensureOut`, which **doubles
+its Float32Array forever with no ceiling**.
+
+**WHY THE EXISTING VALVE DID NOT COVER IT.** `MAX_BACKLOG_FRAMES = 15` caps how many logic frames
+ONE pump may turn into samples. 15 frames is 250 ms of audio, produced during the 16.7 ms of real
+time one rAF costs. So a valve working exactly as designed still leaves ~233 ms of undrained
+samples behind on every catch-up burst, permanently. **It bounds the growth rate; nothing bounded
+the buffer.** That is also why "I switched window focus a lot" made it worse each time -- every
+hide/show is one more burst.
+
+MEASURED, 30-frame bursts, before and after `MAX_BUFFERED_S = 0.25`:
+
+    bursts     before      after
+      1        0.153 s     0.153 s
+      5        1.099 s     0.219 s
+     10        2.268 s     0.221 s
+     20        4.605 s     0.226 s        <- the owner's "about 5 seconds"
+     40        9.280 s     0.234 s
+
+Steady 60 Hz play is untouched: 0.016 s buffered, `stale = 0`, `dropped = 0` over 600 frames.
+
+**THE OWNER'S DECISION WAS "CATCH UP THE BACKLOG, KEEP EVERY CUE", AND THE FIX HONOURS IT.** The
+trim discards *rendered samples*, never a `frame()` call, so every cue still reaches the chip and
+chip state cannot diverge from the driver. A test asserts exactly that (all 1,240 posted frames
+applied). Dropping cues instead would leave notes that never stop.
+
+Six tests in `shared/audio.test.js` section 5. **Three of them were proven to FAIL with the trim
+call commented out** (19, 21, 23); the other three are guards that must hold under both readings.
+
+**D57 IS PROBABLY THE SAME ROOT CAUSE AND IS STILL OPEN.** The owner's stuck looping sound also
+followed a tab-away. This wave bounds the LAG; it does not add the visibility backstop that
+`input.js` has at `:24`, `:216` and `:418` and audio still lacks. Do that next, and check whether
+it also closes D57 on its own.
 
 ## THE STANDING "WIRE THE FRONT-END SLOTS" INSTRUCTION IS ALREADY DONE
 
