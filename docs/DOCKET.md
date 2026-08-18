@@ -2074,3 +2074,103 @@ endpoint is now named.
 **NOTHING HAS BEEN DECODED FOR IT.** No entry point, no region bound, no dispatch table. When its turn
 comes, the first job is to locate its reset vector and bound its region, not to assume it mirrors Black
 Label's layout.
+
+---
+
+## OPENED 2026-08-18 FROM A PLAY SESSION ON BUILD 20260816181806
+
+The owner played the live build and reported five things, then asked for a sixth. **These outrank
+further HIBACHI boss internals**: they are visible in the first minute of play and the boss work is
+not. What follows each item is a FIRST LOOK from the source, explicitly not a finding. Confirm
+against the image before porting.
+
+**Numbering note: D41 was already taken** by "controls to actually start the game", so this batch
+runs D42..D47. An earlier version of this text in `NEXT_AGENT_HANDOFF.md` numbered it D41..D45 and
+collided; that section has been corrected to match these numbers.
+
+### D42: THE HYPER LASER HAS NO HIT ANIMATION
+
+> "hyper laser still has no hit animation"
+
+**The emitter is not missing.** `src/laser.js:1031` calls `spawnBeamImpact289FC0(...)` and counts
+the result into `ctx.beamImpacts` at line 1058. So the question is not "is it ported" but one of:
+is that line reached with the beam actually on a target, does the spawned effect draw, or does only
+P1's block spawn it -- line 1020 records that P1's block spawns the impact "in eleven other places",
+which is the sort of asymmetry that produces exactly this symptom for P2.
+
+**First job:** measure `ctx.beamImpacts` on a bench with the laser held on a live target, for both
+players. If it is non-zero, the defect is downstream in drawing, not in the spawn.
+
+### D43: THE LASER BOMB DOES NOT HIT THE BOSS
+
+> "laser bomb doesn't actually hit the boss and maybe other stuff either"
+
+**There are two different screen-clear paths and they are not the same routine.** `src/bomb.js:329`
+is explicit: `$243DA0` is the bomb's entry and is **NOT** the midboss's, whose sibling `$243E7C`
+arms `$81B412 := $0` and **walks the 210 slots**. A bomb that clears the slot walk but never
+reaches whatever the boss is registered in would look exactly like this.
+
+**First job:** read both routines and establish which pools each one touches, then check which pool
+HIBACHI's record lives in. The owner's "and maybe other stuff either" is a real lead -- do not scope
+this to the boss alone until the pools are mapped.
+
+### D44: ONLY MID-BOSSES LEAVE STARS
+
+> "only mid bosses leave stars and nothing else"
+
+**The allocator is not the problem.** `src/items.js` has **zero** deferrals, and `spawnItem` is
+called from six sites: `boss.js:390`/`394`, `handlers.js:1735`/`1738`/`3263`, `player.js:213` and
+`stage4type9d.js:238`.
+
+**The likely cause is coverage, not wiring: 95 of 256 enemy types are ported, 130 are null, and 31
+are unported.** If the droppers are among those 31, nothing they kill can spawn. Check the drop
+path per type before touching the item code.
+
+### D45: NOTHING LEAVES MEDALS
+
+> "nothing leaves medals"
+
+**READ `src/bee.js:796` BEFORE STARTING.** The medal IS the bee: `bee.js` opens "THE BEE (yellow
+medal) -- POOL A's reserved ten. WAVE 111", and its header records that W111 was opened by the
+owner reporting *the same complaint*, and that the agent then "spent a wave's worth of attention on
+a path that had been closed". Do not repeat that wave.
+
+Fields: the medal accumulators are `$817F84`/`$817F86` (P1) and `$817F88`/`$817F8A` (P2), zeroed at
+`src/player.js:176`; the tier compound is `$2854E0` in `src/hud.js:2189`; `$280BCE[1] = $280CEE` is
+kind 1, the medal.
+
+### D46: THERE IS NO START-OF-GAME MENU
+
+> "there is no start of game menu"
+
+**This is EXPECTED and is not a regression.** It is **D33, the main screen**, and nothing of it has
+been decoded. It is also distinct from D41: D41 is coin and start reaching the game at all, which is
+largely closed; D46 is the menu that should stand in front of it.
+
+**Report it as unbuilt, not as broken.** The honest statement to the owner is that the front end
+was never ported, not that something stopped working.
+
+### D47: THE DOCS HAVE DRIFTED AND NEED A PASS
+
+> "add a docs update to the docket"
+
+Concrete drift already identified, all of it evidence for the item rather than the whole of it:
+
+1. **This file's own headings lie.** The section headers still read "Fixed" and "Open, in priority
+   order" from the day the docket was opened; the per-item markers are authoritative. D12 has
+   covered that drift since W279 and it is still true.
+2. **The standing summary is stale.** The header block says "STANDING AS OF W375" and "DISPATCH IS
+   16 OF 20" naming four unported slots. Dispatch is **17 of 20**; `[12] $28F3AC` has been ported
+   since. The live figure is three: `[16] $256E7A`, `[18] $24902A`, `[19] $28EE88`.
+3. **`NEXT_AGENT_HANDOFF.md` is 13,299 lines.** It has grown a "START HERE" section per wave with
+   every prior wave demoted below, and nothing is ever retired. It is the first thing every agent
+   reads, and most of it is now archaeology.
+4. **The numbering collision this batch just caused** shows nothing checks docket IDs.
+
+**Do not rewrite history.** The wave notes are the project's memory and several have caught real
+defects precisely because an old claim was still readable. The job is to make the CURRENT state
+findable at the top, and to move settled waves into an archive that is still in the repo.
+
+**Suggested shape, owner to confirm:** keep the last three waves in `NEXT_AGENT_HANDOFF.md`, move
+everything older to `docs/worklog/`, refresh this file's headers and standing block, and add a check
+that a new docket ID is not already in use.

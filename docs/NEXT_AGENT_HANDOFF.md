@@ -2,37 +2,41 @@
 
 Updated: 2026-08-18 (W408)
 
-## DOCKET -- OWNER'S PLAY REPORT, 2026-08-18, FIVE ITEMS
+## DOCKET -- OWNER'S PLAY REPORT, 2026-08-18: SEE docs/DOCKET.md D42..D47
+
+**These live in `docs/DOCKET.md` as D42..D47, which is authoritative.** This copy first
+numbered them D41..D45 and collided with the existing D41 (coin and start); corrected here.
+D47, a documentation pass, is in the docket file only.
 
 The owner played live build `20260816181806` and reported five defects. **These outrank further
 HIBACHI internals**, because they are things a player sees in the first minute and the boss work is
 not. Triage below is a first look, NOT a finding -- confirm each against the image before porting.
 
-**D41. The hyper laser has no hit animation.** `src/laser.js` DOES spawn one:
+**D42. The hyper laser has no hit animation.** `src/laser.js` DOES spawn one:
 `spawnBeamImpact289FC0` at line 1031, counted into `ctx.beamImpacts`. So the emitter exists and the
 question is whether it is reached, whether the effect draws, or whether only P1's block spawns it
 (line 1020 says the impact is spawned from P1's block for reasons documented there). Start by
 measuring `ctx.beamImpacts` on a real bench with the laser actually on a target.
 
-**D42. The laser bomb does not hit the boss** (and possibly other things). `src/bomb.js:329`
+**D43. The laser bomb does not hit the boss** (and possibly other things). `src/bomb.js:329`
 documents `$243DA0` as the bomb's screen-clear entry and is explicit that it is **NOT** the
 midboss's, whose sibling `$243E7C` arms `$81B412` and walks the 210 slots. So there are two
 different clear paths and the boss may simply not be on the one the bomb takes. Read both.
 
-**D43. Only mid-bosses leave stars.** Item spawning is wired (`spawnItem` is called from
+**D44. Only mid-bosses leave stars.** Item spawning is wired (`spawnItem` is called from
 `boss.js`, `handlers.js` x3, `player.js`, `stage4type9d.js`), and `items.js` has ZERO deferrals. So
 the allocator is not the problem. Most likely the per-enemy drop is gated on enemy types that are
 not ported: **95 of 256 types ported, 130 null, 31 unported**. Check whether the unported types are
 the ones that should drop.
 
-**D44. Nothing leaves medals.** Note `src/bee.js` is titled "THE BEE (yellow medal)" and its header
+**D45. Nothing leaves medals.** Note `src/bee.js` is titled "THE BEE (yellow medal)" and its header
 records that a PREVIOUS wave (W111) was opened by the owner reporting too few medals, and that the
 agent "spent a wave's worth of attention on a path that had been closed". **Read `bee.js:796` before
 starting** so this wave does not repeat that. The medal accumulators are `$817F84`/`$817F86` (P1)
 and `$817F88`/`$817F8A` (P2), zeroed in `player.js:176`, with the tier logic at `$2854E0` in
 `hud.js`.
 
-**D45. There is no start-of-game menu.** This one is EXPECTED, not a regression: it is docket item
+**D46. There is no start-of-game menu.** This one is EXPECTED, not a regression: it is docket item
 **D33, the main screen**, and nothing of it is decoded yet. Say so rather than treating it as a bug.
 
 ## START HERE -- W408
