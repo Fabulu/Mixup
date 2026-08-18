@@ -3380,3 +3380,41 @@ collect cue `$28C62A` is posted from its own body, not from the shared `COLLECT_
 probe above already produces a live bee at frame 34, so the hard part is done. **And measure the
 COLLECT, not the overlap** -- that distinction has now cost this item two waves.
 
+
+### D59 FOLLOW-UP -- ALL THREE PARTS OF THE OWNER'S SENTENCE MEASURED. ALL THREE **WORK**.
+
+> "I can't shoot them, free them, or collect them."
+
+Three probes on the W69 stage-1 laser-hold rung, each measuring the THING ITSELF and never an
+overlap:
+
+    SHOOT    carrier pinned onto block 7's own A2 (the muzzle $811802), beam left to do the work:
+             HP $000A -> $FF74, DIED frame 33.                                  WORKS
+    FREE     a bee was allocated from the reserved ten on frame 34.             WORKS
+    COLLECT  bee driven onto the ship: P1-touch bit frame 1, collected bit
+             frame 2, `$817F80` incremented frame 2.                            WORKS
+    UNAIDED  bee left ENTIRELY alone: it drifts down on its own from $5C16
+             toward the ship at ~32 units/frame and IS COLLECTED. Count 0 -> 1. WORKS
+
+**SO THE PORT SHOOTS, KILLS, DROPS, FLIES AND COLLECTS BEES CORRECTLY.** Every hypothesis this
+docket has raised for D59 is now dead, and each died to a measurement rather than an argument:
+the position gates, the damage pass, the drop, and the collect.
+
+**WHY NOBODY SAW THIS BEFORE, and it is the recurring lesson**: `w285medallive.test.js`'s header
+says *"no scenario in the tree kills a carrier -- the laser-hold ladder parks the ship at the
+bottom centre and only kills what enters the beam."* **No bench had ever put a carrier in the
+beam.** Every zero measured about block 7 was a fact about the bench. Same shape as D56 and D60.
+
+**THE ONE CAVEAT, AND IT IS MINE.** I pinned the carrier onto the MUZZLE, which sits at the top of
+the beam, so the bee spawned about 21,500 units from the ship and took roughly 670 frames -- ELEVEN
+SECONDS -- to drift down. **That distance is an artifact of my setup, not a measurement of the
+game**: a real carrier dies wherever it happens to be. The probes prove the PATH works. They do
+**not** prove the timing is right, and I am not claiming they do.
+
+**WHERE D59 GOES NEXT.** Not into the damage, drop or collect code -- those are measured and
+correct. The remaining candidates are (a) that the owner's bees are unreachable in practice rather
+than unimplemented, which would be a TIMING or POSITION question and is what the caveat above
+leaves open, and (b) something the node bench does not reproduce about the live web build.
+**Ask the owner where on the screen they see the flickering bees**, because that single answer
+separates those two and neither can be settled from here.
+
