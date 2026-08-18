@@ -4,6 +4,19 @@ Defects seen while playing the live build, in the owner's words, with the
 port-side finding underneath. Nothing counts as fixed until a worklog says so and
 a focused smoke proves it.
 
+## HEADING CONVENTION -- READ THIS BEFORE ADDING A SECTION
+
+`docket_ids.py` treats `### D<N>:` and `### D<N>.` as a **DEFINITION** of item N. So a follow-up
+written as `### D59: more about the bees` silently declares a SECOND D59 and two items answer to
+one name -- the exact failure D47 built the tool to catch.
+
+**Define an item once. Every later section about it starts `### D<N> FOLLOW-UP -- ...`,
+`### D<N> UPDATE ...` or `### D<N> CLOSED BY ...`** -- anything except a colon or full stop
+straight after the number.
+
+**And run `python games/ddpdoj/tools/docket_ids.py` and READ ITS OUTPUT before you commit.** It
+exits 1 on a duplicate. I have tripped this twice, and the second time I pushed before reading it.
+
 Opened 2026-08-10 from a play session on the shipped web build.
 
 **Standing as of W279: eleven of the first twelve closed; of the five new items,
@@ -3293,7 +3306,7 @@ Verified by the coordinator on a quiet tree: **3928 pass / 0 fail / 0 skipped**,
 31 PASS / 0 FAIL, `--verify` OK at **607 windows**, and no line-ending violations across 32 files.
 
 
-### D59: THE `$245248` LEAD IS **DEAD**. I MEASURED IT AND IT IS WRONG.
+### D59 FOLLOW-UP -- THE `$245248` LEAD IS **DEAD**. I MEASURED IT AND IT IS WRONG.
 
 The entry above said: *"If both are in range, both gates are innocent and this whole line of
 enquiry is dead -- say so, and delete it."* **Here is the measurement, and it says exactly that.**
