@@ -2227,3 +2227,79 @@ comment, then take the sites in small groups with a measurement at each -- sever
 whose dead branch has never run, so tests that pass today may be pinning the wrong behaviour, and
 that is exactly the shape that produces a green ablation.
 
+
+### D44/D45 DIAGNOSED (W410, 2026-08-18) -- ONE SHARED GATE, AND THE TRIAGE WAS WRONG
+
+**Nothing was changed. This is a diagnosis, and the fix it points to is a PORT, not a wire.**
+
+**The triage in D44/D45 named the wrong subsystem.** `src/items.js` is pool family SIX (`$27E812`,
+`$816B7A`) -- P capsules, bombs, hyper stock. Stars, medals and bees are **impact POOL A**
+(`$8171BE`, 80 slots of `$2C`), whose allocator is `$27F8FC`, reached by **four entries that fall
+into one another**:
+
+    $27F8EE  moveq #$0,D1            D1 = 0, D2 from caller
+    $27F8F0  andi.w #$FF,D2 / lsl.w #2,D2 / bra $27F8FC
+    $27F8F8  moveq #$0,D1            D1 = D2 = 0
+    $27F8FA  moveq #$0,D2            D1 from caller, D2 = 0
+    $27F8FC  movem.l / lea $8171BE,A0 / move.w #$45,D7      the one 70-slot scan
+
+**`src/bee.js` ports only `$27F8F0`.** A scan of the 6 MB image for `4EB9/4EF9 0027F8xx` finds 26
+call sites, no `bsr`, and no longword pointing at any entry, so the caller set is CLOSED. Eight are
+wired; **thirteen are `ctx.unported.note()`, and ten of those are enemy death arms inside FULLY
+PORTED handlers** (types `$84 $88 $89 $8B $8E $8F $90 $91 $94 $97`).
+
+**Measured, 5400 frames, fire held:** 18 pool-A records delivered, all kind index 0, all on the
+frame the midboss dies, all from `$281D2E jsr $27F8F8` with `D0 = $81B412 = 0` -- **the bullet
+cancel**, which `bulletdriver.js` does wire. Refused: `$27F8EE` 11, `$27F8FA` 21, `$27F8F8` 1440.
+
+**So the mid-boss "stars" are cancelled bullets, and no enemy death arm in the cartridge drops a
+star.** One shared gate, as suspected. **It is NOT the 31 unported types** -- every one of the ten
+refusing handlers is ported, and the same run shows nineteen enemy types spawning and dying
+normally. That hypothesis of mine is dead; do not revive it.
+
+**THE MEDAL IS KIND INDEX 2, NOT KIND 1.** Kind 1/16 is the bee (`$1BCA34`, 6x24). Kind 2 is
+`$1BE2CC`, 4x24, a shaded gold disc, and its body `$27FE0E` is the star's collect arm on a different
+counter. The result screen `$28DB70` reads **four independent word counters, not two lo/hi pairs**:
+`$817F86`/`$817F8A` is the star's, valued **x10**; `$817F84`/`$817F88` is kind 2's, valued **x20**.
+A gold disc worth double, dropped by ten enemy death arms, is what the owner calls the medal -- and
+it is exactly what never spawns. My triage's `$2854E0` pointer was also wrong: that is the stage-end
+tally drain on `$81B616`, unrelated.
+
+**W111 was right and was NOT repeated.** The bee path is complete: forcing ten type-`$8A` carriers
+into the state a kill leaves produced **10 bees, nothing threw**; the control run produced 0. The
+bee never appears because **the carrier is never damaged**. Sub-proto word 0 is `$8100`: bit 13
+clear so the ordinary shot pass `$244F90 andi #$2000` skips it, bit 5 clear so block 8 and the
+beam's own pass skip it. **Only block 7 accepts it** (`btst #$5` OR `btst #$0`, and `$81` has bit
+0), and block 7's A2 is `$811802`, beam slot 27, the **laser muzzle** -- live for exactly 11 frames
+per press, because `$24CBB2 bset #$7,($1,A6)` lays the head once and never clears it while the
+button is held. Overlaps in 5400 frames: **0**.
+
+**So the medal complaint has two independent causes and the docket has only ever chased one.**
+Whether that 11-frame muzzle window is authentic belongs with **D42**, not here.
+
+**D48 IS NOT THE CAUSE.** All four `initbody.js` sites were checked first: `:653` sets type `$83`'s
+`($38,A5)`, `:1710` ORs `$40` into type `$9C`'s `($1,A6)`, `:1764` mirrors a drift, `:2309` negates
+`($2A,A5)`. None gates a drop. Clean negative -- the next wave need not detour.
+
+### D49: PORT POOL-A KIND INDEX 2 AND WIRE THE TEN REFUSED DEATH DROPS
+
+The fix D44/D45 points to. **Wiring alone would be a REGRESSION today**: `bee.js runBody` dispatches
+only `$27FACC`, `$27FA30`, `$280082`, `$28016A` and throws `unreached` on anything else, so wiring
+the ten sites would turn 32 silent notes into 32 named throws on the frame after each enemy death.
+
+Order, from the W410 measurement:
+
+1. **Port `$27FE0E`**, kind index 2's body. Collect arm is `$27F9EE`'s shape on `$817F84`/`$817F88`,
+   20 instructions to `$27FE5A`; the ordinary-step arm starts at `$27FE6E` and needs a window.
+   `IMPACT_FINISH[0x08]` (`$280CF8`) and the template `$280EC6` are already ported.
+2. Wire the five `$27F8EE` sites as `allocPoolA27F8F0(kind, 0, layer, a6)`. `$27F8EE` is provably
+   `$27F8F0` with `D1 = 0`. Type `$8B`'s `D0` comes from `($18,A5)`, loaded `$0008` by its prototype
+   at `$27685E` -- range-check it rather than assume.
+3. Wire the five `$27F8FA` sites as `allocPoolA27F8F0(kind, vector, 0, a6)`; every vector table is
+   already read by the port.
+4. **`$279990` (type `$90`) is a pure wire needing no new body** -- `D0 = $10`, kind index 4, whose
+   body `$27FA30` is ported. Cheapest real drop in the list; consider it first as a proof.
+5. `$281E3A`/`$282016` last: 1440 refusals per 5400 frames, bullets freeing off-screen, born out of
+   bounds and freed by `$27FA96 bmi`. Real but invisible, and expect a large bullet-test blast
+   radius.
+
