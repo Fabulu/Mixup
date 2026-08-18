@@ -3180,3 +3180,32 @@ carrier still did not die, which would point at HP or at the kill path instead.
 **BEFORE RELYING ON THE 84, FIND WHICH COUNTER PRODUCED IT.** The two readings send the next wave
 to opposite places, and picking one without checking is how D42 was closed wrongly.
 
+
+### D59: THERE ARE **TWO** POSITION GATES ON THE CARRIER, AND ONE MEASUREMENT SETTLES BOTH
+
+Beside `$245248`, the bee fill has its own. `bee.js:331`, describing `$280B3E`:
+
+> "If the spawn position is off-screen the fill ABORTS (`$280B2A`): undoes the count bump, frees
+> the slot, returns. **So a carrier that dies off-screen drops nothing.**"
+
+So the carrier is gated on position TWICE, by two unrelated routines:
+
+    $245248  position >= $6F00 unsigned  ->  FLICKERS, takes no damage
+    $280B2A  spawn position off-screen   ->  dies, drops NO BEE
+
+**THAT IS THE OWNER'S REPORT IN TWO LINES: "I can't shoot them, free them, or collect them."**
+Cannot shoot = gate one. Cannot free = gate two. Cannot collect = nothing was ever spawned to
+collect. A single wrong position explains all three symptoms without needing three bugs.
+
+**BOTH GATES ARE FAITHFUL TRANSCRIPTIONS.** Neither is a porting defect. So the question is not
+"which gate is wrong" but **"is our port putting the carrier somewhere the cartridge does not?"**
+
+**ONE MEASUREMENT SETTLES IT.** On a bench with a carrier present and shot at, print the carrier's
+position word every frame: `($2,A5)` on the enemy record for gate one, and `($2,A6)` on the
+sub-record for gate two. If either is in a rejected band while the owner can SEE the object, the
+position is the bug and both gates are behaving correctly. If both are in range, both gates are
+innocent and this whole line of enquiry is dead -- **say so, and delete it**.
+
+This is still a hypothesis. It is a much better shaped one than "the bees are broken", because it
+predicts all three symptoms from one quantity and it names the number to print.
+
