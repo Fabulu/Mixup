@@ -2605,6 +2605,37 @@ Options, none obviously right:
 **Option 1 is the most faithful in spirit and the least faithful to the letter.** That trade is the
 owner's call, and it is exactly the kind of question D40 exists for.
 
+**THE OWNER DECIDED, 2026-08-18:** *"would be nice to have a way to make sure it stayed synced."*
+
+**So: OPTION 1. Catch up, and keep every cue.** Dropping sounds (option 2) is rejected -- the owner
+asked for sync, not for silence, and losing cues would trade one audible defect for another. Option
+3 is rejected as too blunt: it needs a definition of "stalling" and it suppresses audio exactly when
+the game is busiest.
+
+**WHY THIS IS NOT A FIDELITY BREACH, and the argument matters because this project's standing rule
+is fidelity over convenience.** On the real board the drain is one per frame AND the frame period is
+always 1/60s, so those two facts together mean a cue plays a fixed, small time after it is posted.
+The port can only guarantee the first. When frames stall, holding the drain at one per frame stops
+being faithful to the cartridge and starts being faithful to an accident of the port's own
+scheduling -- the cue plays LATER than the hardware would ever have played it. **Draining the
+backlog restores the cartridge's actual timing relationship. It diverges from the letter of
+`$18ACE0` only in a state `$18ACE0` can never be in.**
+
+**IMPLEMENTATION SHAPE, to be measured not assumed:**
+- Drain one per frame in the normal case, so nothing changes when there is no backlog. **A bench with
+  a healthy ring must be byte-identical to today** -- assert that, or the change is unbounded.
+- While depth exceeds a small threshold, drain extra per frame until it converges, rather than
+  flushing at once: a flush would replay a second of stale cues in one frame, which sounds worse
+  than the lag.
+- Cap the catch-up rate so a pathological backlog cannot monopolise a frame.
+- **The gate fingerprints will move if the drain order changes under load.** Decompose any baseline
+  move and say which fields held; do not call it an RNG shift.
+
+**PROVE IT THE WAY D53 WAS PROVEN:** simulate slow startup frames, show the depth rising and then
+returning to zero, and show a normal boot unchanged. **A single clean run is not evidence** -- the
+defect only appears under load, so the test must create the load.
+
+
 **ASK THE OWNER FIRST:** does the delay GROW during heavy play or stay fixed? A growing delay
 confirms the backlog and points at the over-posting cue; a fixed delay exonerates the ring entirely
 and sends the wave to the audio layer. One sentence saves the measurement.
