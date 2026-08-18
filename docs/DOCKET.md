@@ -2700,3 +2700,55 @@ merely close.
 arithmetic that decides which shard gets promoted". Whatever changes here must keep that intact and
 add cases for the fill behaviour. **Make the new test fail on HEAD first.**
 
+
+### D56: THE HYPER LASER STILL HAS NO HIT ANIMATION, AND D42 WAS CLOSED ON A BENCH THAT HAD NO HYPER
+
+> "If you push laser and then bomb when you have a hyper, and then you continue firing your
+> laser... that still lacks the hit animation"
+> "I remember this being an issue for normal laser too but we eventually got it, bomb laser seems
+> to be doing fine, but hyper has been fucked for a long time and you keep saying you found it"
+> "bomb is just the trigger for hyper, there is no bomb -- you activate hyper by pressing bomb
+> while lasering"
+
+Owner, 2026-08-18. **The complaint about repeated false claims is correct and is the most important
+line in this item.**
+
+**WHAT W412 ACTUALLY PROVED, AND WHAT WAS CLAIMED.** W412 found a real defect -- `$24CBCC` is
+`bclr #7,($1,A6)` and the port had it on A3, so the beam head was never retired -- and fixing it
+moved the muzzle slot from 24 live frames to 742. That fix is real and the owner confirms the
+**normal** laser is now correct.
+
+**But the bench was `stage1-laser-hold`, fire held, with NO HYPER ACTIVE.** The word "hyper" appears
+in `tests/w412laserhead.test.js` exactly ONCE -- in its title. **The hyper path was never
+exercised, and the coordinator reported the hyper laser as fixed anyway.** That is the overclaim,
+and it is the fourth time this project has drawn a conclusion from a bench that could not have
+produced the behaviour it was reasoning about (W399/W403 installed only the A4 table; W410 called a
+rarity authentic when it was a one-register bug; W411 had to force carrier state to prove a path).
+
+**THE MECHANISM, AND IT IS A HYPOTHESIS UNTIL A BENCH WITH A LIVE HYPER SAYS OTHERWISE:**
+
+- `$249A92 bset #$7,($1,A6)` sets bit 7 of the record's `flags1`.
+- It sits at `$249A92`, **inside the HYPER arm** -- `BOMB.hyperArm = $249868`, and `bomb.js:171`
+  labels that arm "the NON-ZERO arm. **NOT the bomb**", which matches the owner exactly: bomb is
+  only the trigger, there is no bomb.
+- The laser reads the SAME bit as "a head is already out there": `$24CBB2 bset #$7,($1,A6) / beq
+  $24CCD0` lays a head only when the bit was CLEAR (`laser.js:478`, `if (!ram.bset8(...)) toHead`).
+- The only clears are `$24CBCC` (`laser.js:530`) which runs **inside the head path**, and `$25279A`
+  (`laser.js:342`).
+
+**So activating hyper sets the flag, the laser then sees it set and skips laying a head, and the one
+clear that would release it lives on the path that is now skipped.** The head is never re-laid, and
+the relaunched head IS the hit animation. That explains every clause of the report: normal laser
+fine (nothing sets it), the trigger being what breaks it, and it persisting while you keep firing.
+
+**THE HARD REQUIREMENT FOR THIS WAVE, AND NO CLAIM WITHOUT IT:** the bench MUST have a hyper granted
+and activated by the bomb input while the laser is held. **Measure the muzzle slot's live frames and
+the block-7 overlaps across the activation** -- before, during and after. A run that never activates
+a hyper proves nothing about hyper, however green it is.
+
+**Also verify, do not assume:** whether the hyper arm's A6 is the same block the laser's `$24CBB2`
+reads. The port maps one as `rec + P.flags1` and the other as `opt + OPT.flags1`; both are offset
+`$01` (`machine.js:81` and `:157`) but they are different bases, and **W412's entire defect was
+exactly this class of mistake -- the same instruction text read against the wrong base.** If they
+are different blocks, this hypothesis is wrong and the real cause is elsewhere; say so.
+
