@@ -20,6 +20,24 @@ text:
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
 
+## THE STANDING "WIRE THE FRONT-END SLOTS" INSTRUCTION IS ALREADY DONE
+
+The half-hourly alarm still says *"Wire the front-end slots (7, 9, 13, 15, 17) into main.js's
+defaultHandlers -- the owner explicitly authorised this. Whoever wires objSlot17 MUST set
+ctx.selectDraws."* **All five are wired and slot 17 does set it.** Verified 2026-08-18:
+
+    main.js:237  [7,  slotObject(objSlot7, rom)]
+    main.js:258  [9,  slotObject(slot9.objSlot9, rom)]
+    main.js:275  [13, slotObject(objSlot13, rom)]
+    main.js:287  [15, slotObject(objSlot15, rom)]
+    main.js:293  [17, ...]  ->  ctx.selectDraws ??= slot9
+
+Slot 17 uses `??=` deliberately so a caller supplying its own set still wins, and the comment above
+it explains why `ctx` is seeded in place rather than replaced per frame.
+
+**This is D47's drift, in the alarm text rather than in a doc.** Do not spend a wave on it. If the
+alarm still says this next session, that is the alarm being stale, not the work being undone.
+
 ## START HERE -- W421 (docket D53, the staleness weapon)
 
 ### IT WAS NOT A RACE. IT WAS EVERY DEPLOY, AND IT LATCHED.
