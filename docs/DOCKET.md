@@ -2945,3 +2945,39 @@ and possibly for carriers not taking damage (D59, whose only damage source is th
 
 Unit: port `$286AAA` plus `$286A82` and `$2867B4`. Declare new ROM windows, never widen.
 
+
+### D60 RECON (coordinator, inline): ALL THREE GATES IDENTIFIED, AND THE "NEVER 0" NOTE IS WRONG
+
+The refusal names one gate. There are three, and every one of them is open in the owner's exact
+scenario. This is why it fired for them and never for us.
+
+**GATE 1 -- `$8130F8` bit 2. IT IS SET AT BOSS ARRIVAL, IN OUR OWN PORT.** A whole-image scan of
+every static bit operation on `$8130F8` finds `bset #2` at exactly six sites -- `$29279C`,
+`$2971F0`, `$29BCBC`, `$29ED3A`, `$2A5994`, `$2A63B2` -- and **every one is immediately preceded by
+`bset #0,$8130F8`**. The port already implements that pair as `| 0x05` at `initbody.js:1161`,
+`:1226` and `:1256`. So the bit goes up when a boss arrives, which is precisely when the owner saw
+it: *"just when fight was about to start"*.
+
+**`score.js` line ~127 says `$8130F8` bit 2 "was 0 on all 600" frames and calls the arm "two
+independent gates away from reachable". That note is measuring the bench.** Its 600 frames held the
+beam with no boss and no bomb. Neither gate could have been open. **Correct the note as part of
+this unit** -- leaving it invites the next agent to re-derive that the path is dead.
+
+**GATE 2 -- `$811F72`'s sign, and this is the bomb-laser, not the beam.** W45 established
+`$811F72` is the **BOMB-LASER's** 45 x $30 record, and the only thing that selects that weapon is
+**`$24989E bset #$0,($1,A6)`, INSIDE THE BOMB**. The owner's input is `y` (bomb) pressed while `c`
+(laser) is held. **That is the instruction that opens gate 2**, and it is also exactly the weapon
+of the owner's D43 report -- *"If you use laser while firing bomb, a stronger laser comes out"*.
+
+**GATE 3 -- the hit itself.** `$286876 btst #2` is reached from the score post of a hit, so a boss
+had to be present to be hit. Stage-2 boss supplies it.
+
+**SO THE PORT BRIEF'S BENCH IS FULLY DETERMINED, and nothing about it is guesswork:** set
+`$8130F8` bit 2 (or run boss arrival), select the bomb-laser via `$24989E`'s bit so `$811F72` is
+live and negative, then post a hit. **If that bench does not reach `$286AAA`, the bench is wrong,
+not the game** -- the owner has already proved the path executes.
+
+**AND NOTE WHAT THIS MEANS FOR D43.** That report was never fully closed, and the weapon it names
+is the same weapon that opens gate 2 here. Re-read D43 against this before treating them as
+separate items.
+
