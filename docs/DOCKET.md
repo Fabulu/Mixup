@@ -2303,3 +2303,44 @@ Order, from the W410 measurement:
    bounds and freed by `$27FA96 bmi`. Real but invisible, and expect a large bullet-test blast
    radius.
 
+
+### D50: THE GROUND CRATER APPEARS A FEW FRAMES AFTER THE DEATH, NOT ON IT
+
+> "There seems to be an issue with some of the enemies who die not leaving craters right away when
+> dead as they should, the craters come a tiny bit later"
+
+Reported by the owner 2026-08-18 on live build `20260816181806`, playing from the start of the game
+with fire held. **Note the qualifier "some of the enemies"** -- that is a lead, not filler. If it
+were every enemy the cause would be one shared timer; if it is some, the cause is more likely a
+per-type list or a per-type death sequence, and the first job is to establish WHICH types lag.
+
+**Vocabulary warning for whoever takes this.** The port has no `crater`, `scorch`, `decal` or
+`groundMark` anywhere. The owner's "crater" is the ground mark a dying enemy leaves, and in the port
+it will be a **death spawn**: `walkDeathSpawns270D92` in `src/effects.js:336`, called from at least
+six sites in `handlers.js` (`:2455 :2561 :2770 :2846 :2997 :8839`) plus a separate
+`T1B.deathSpawns` list at `:3337`. There are also nine distinct `deathSeqNN` functions. **Do not
+grep for the owner's word; grep for the mechanism.**
+
+**First job is a measurement, not a theory.** Take one enemy type the owner would meet in the first
+few seconds, kill it on a bench, and record the frame its death is registered against the frame the
+ground mark's record is allocated and the frame it first draws. "A tiny bit later" is a frame count
+and should be reported as one. A lag of exactly one frame and a lag of eight have completely
+different causes.
+
+**Shapes to consider, in the order they cost:**
+1. The spawn happens on the correct frame but the record's first drawn animation frame is blank or
+   its anim cursor starts one entry late.
+2. The death sequence walks its spawn list on a later frame than the cartridge does -- an init/step
+   ordering error. **This project has hit exactly that trap before**: `$2596FA jsr (A0)` runs an
+   A4 script's init AND step on the same frame, and W403 found every countdown in W399 was one frame
+   out because the port ran them on separate frames.
+3. The mark is allocated into a pool whose driver runs later in the frame than the drawing pass,
+   so it misses one composite.
+
+**Do not assume this is cosmetic-only.** If the mark is late because the whole death spawn list is
+walked late, anything else on that list (debris, sound cue, score popup) is late by the same amount
+and the owner has only noticed the most visible one.
+
+Related: **D49** is porting other pool-A drops right now and touches `src/bee.js`, not `effects.js`.
+Check whether D49 has landed before starting, so the two do not collide.
+
