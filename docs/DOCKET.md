@@ -3292,3 +3292,43 @@ ctx-level D1-carrying API. **Not D58; open it as its own unit.**
 Verified by the coordinator on a quiet tree: **3928 pass / 0 fail / 0 skipped**, gate exit 0 with
 31 PASS / 0 FAIL, `--verify` OK at **607 windows**, and no line-ending violations across 32 files.
 
+
+### D59: THE `$245248` LEAD IS **DEAD**. I MEASURED IT AND IT IS WRONG.
+
+The entry above said: *"If both are in range, both gates are innocent and this whole line of
+enquiry is dead -- say so, and delete it."* **Here is the measurement, and it says exactly that.**
+
+Harness reused from `w285medallive.test.js` (the W69 stage-1 laser-hold rung), 3,000 frames with
+fire held, sampling every live type-`$8A` carrier every third frame:
+
+    carrier position samples          1292
+    sub-record IS a pool-A slot       1292 / 1292      <- the right word is being read
+    ($2,A6) range                     $0000 .. $FFC0
+    samples >= $6F00 (REJECTED)        139  = 10.8%
+
+    by high nibble:  $0xxx 194   $1xxx 129   $2xxx 126   $3xxx 129   $4xxx 165
+                     $5xxx 210   $6xxx 215   $7xxx  67*  $Fxxx  57*     (* rejected)
+
+**THE CARRIER IS BELOW THE GUARD AND FULLY DAMAGEABLE ON ABOUT 89% OF FRAMES.** The rejected 10.8%
+are the `$Fxxx` band (negative Y, above the screen, still entering) and `$7xxx` (leaving) -- which
+is precisely what an off-screen guard is *for*. `$245248` is behaving correctly and **it does not
+explain "I can't shoot them"**.
+
+**SO THE TWO-GATE STORY IS WRONG.** It was a tidy hypothesis that predicted all three symptoms from
+one quantity, and it is false. Recorded here rather than quietly dropped, because the next agent
+would otherwise re-derive it from the same two gates -- they are still both there, still both real,
+and still both innocent.
+
+**WHAT THIS DOES ESTABLISH, and it is worth keeping:**
+- the carrier's sub-record IS a pool-A slot, 1292 of 1292, so block 7 walks the right records;
+- carriers are plentiful in a live run (1292 sightings in 3,000 frames);
+- the position words are ordinary and on-screen.
+
+**WHERE D59 NOW POINTS.** Not at position. The remaining candidates from the original entry are
+untouched: whether the owner's "flickering" is the CARRIER or a released BEE, and whether the
+block-7 overlap actually applies damage. **And the unresolved question from the caveat above still
+governs: find which counter produced W412's "84" before trusting it.** `w285medallive.test.js`'s
+own header says *"no scenario in the tree kills a carrier -- the laser-hold ladder parks the ship
+at the bottom centre and only kills what enters the beam"*, which is a strong hint that no bench
+has ever put a carrier IN the beam. **That, not the gates, is the thing to fix next.**
+
