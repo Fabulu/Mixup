@@ -731,7 +731,20 @@ try {
 // anything else useful), on orientationchange (a phone rotating changes the
 // stage's shape without a resize on some browsers) and on visualViewport resize
 // (the URL bar sliding away only moves the visual viewport).
-const fit = () => fitCanvas(canvas, stage, mode);
+// D55 -- THE OWNER: "Always preserve aspect ratio, but we need to use full
+// possible screen of any device we're on."  W268 gave the page a FULL button;
+// what it did not give it was the SCREEN, because pickScale floors to a whole
+// multiple and everything up to the next one stayed black bar.
+//
+// `fill` is passed ONLY here, and only while actually fullscreen.  The windowed
+// page keeps the whole-number scale, which exists because of a defect reported
+// from play (see pickScale) -- and pickScale still floors below 2x even in fill,
+// so the range that defect was reported in is unchanged.
+//
+// It reads the DOCUMENT rather than a flag of our own, so that leaving fullscreen
+// by Escape -- which fires no click -- still fits the windowed way.
+const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+const fit = () => fitCanvas(canvas, stage, mode, { fill: isFull() });
 addEventListener('resize', fit);
 addEventListener('orientationchange', fit);
 window.visualViewport?.addEventListener('resize', fit);

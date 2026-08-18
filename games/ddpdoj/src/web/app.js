@@ -272,18 +272,50 @@ const LIVE_POKES = Object.freeze([[0x810424, 0xff]]);
  * orientations.  The CSS box it returns is `device / dpr`, which is what puts
  * the picture back on whole device pixels; the test asserts the round trip.
  *
+ * ============================ D55: `fill`, AND WHY IT IS OPT-IN =============
+ *
+ * THE OWNER: "We also definitely need a full screen mode in all configurations.
+ * Always preserve aspect ratio, but we need to use full possible screen of any
+ * device we're on."
+ *
+ * Fullscreen already existed (W268/D10). What it did NOT do was USE the screen:
+ * flooring to a whole scale throws away everything up to the next multiple, and
+ * on a 1440p display in tate that is most of the picture's potential height.
+ * The owner is not asking for a button they already have; they are asking for
+ * the bars to go.
+ *
+ * **THE FLOOR ABOVE IS NOT A MISTAKE AND IS NOT REMOVED.** It is there because
+ * of a defect reported from play, and it still governs the WINDOWED page, which
+ * is where small scales live and where uneven pixels are most visible. `fill`
+ * is opt-in and the page passes it only in fullscreen.
+ *
+ * **AND `fill` STILL FLOORS BELOW 2.** Between 1x and 2x a fractional scale
+ * makes some source pixels one device pixel wide and others two -- a 100%
+ * difference, which is exactly the tetris-pieces defect. Above 2x the worst
+ * case is 3 against 4, and the screen the owner is asking us to use is worth
+ * more than that. So the old rule keeps the range it was reported in.
+ *
+ * The aspect ratio is preserved in both paths: ONE scale for both axes, never
+ * two. That is the half of the owner's sentence that is not negotiable.
+ *
  * @param {{w:number,h:number}} pic  PICTURES.tate or PICTURES.yoko
  * @param availCssW,availCssH  the container's size in CSS pixels
+ * @param {{fill?:boolean}} opts  fill: use the whole box (fullscreen only)
  */
-export function pickScale(pic, availCssW, availCssH, dpr = 1) {
+export function pickScale(pic, availCssW, availCssH, dpr = 1, opts = {}) {
   const d = dpr > 0 ? dpr : 1;
   const availW = Math.max(0, availCssW) * d;
   const availH = Math.max(0, availCssH) * d;
+  // ONE scale for both axes. Two would stretch, and the owner asked for the
+  // aspect ratio to be preserved before they asked for the screen to be used.
+  const exact = Math.min(availW / pic.w, availH / pic.h);
   // Math.max(1, ...) so a viewport too small for even 1:1 shows 1:1 and
   // overflows rather than showing a resampled sub-pixel picture.
-  const scale = Math.max(1, Math.floor(Math.min(availW / pic.w, availH / pic.h)));
+  const whole = Math.max(1, Math.floor(exact));
+  const scale = (opts.fill && exact >= 2) ? exact : whole;
+  const integral = scale === Math.floor(scale);
   const deviceW = pic.w * scale, deviceH = pic.h * scale;
-  return { scale, deviceW, deviceH, cssW: deviceW / d, cssH: deviceH / d };
+  return { scale, integral, deviceW, deviceH, cssW: deviceW / d, cssH: deviceH / d };
 }
 
 /**
@@ -293,17 +325,18 @@ export function pickScale(pic, availCssW, availCssH, dpr = 1) {
  * decides the CSS box.  No transform is ever applied (see PRESENTATION above).
  */
 export function fitCanvas(canvas, container = canvas.parentElement,
-  mode = DEFAULT_MODE) {
+  mode = DEFAULT_MODE, opts = {}) {
   const pic = PICTURES[mode] ?? PICTURES[DEFAULT_MODE];
   const dpr = window.devicePixelRatio || 1;
   const fit = pickScale(pic,
     container?.clientWidth || window.innerWidth,
-    container?.clientHeight || window.innerHeight, dpr);
+    container?.clientHeight || window.innerHeight, dpr, opts);
   canvas.style.width = `${fit.cssW}px`;
   canvas.style.height = `${fit.cssH}px`;
   canvas.style.imageRendering = 'pixelated';
   canvas.style.transform = 'none';        // belt and braces: never a CSS rotate
   canvas.dataset.scale = String(fit.scale);
+  canvas.dataset.integral = String(fit.integral);
   canvas.dataset.mode = mode;
   return fit;
 }

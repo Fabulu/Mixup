@@ -3046,3 +3046,40 @@ is the boss-CLEAR cue. Whether the explosion SFX is this cue or a separate one i
 established**. Confirm which cue the owner is missing before declaring D58 closed -- the D56
 mistake was exactly this, closing an item on a bench that never exercised the reported thing.
 
+
+### D55 FIXED BY W423: FULLSCREEN NOW USES THE SCREEN
+
+> "We also definitely need a full screen mode in all configurations. Always preserve aspect ratio,
+> but we need to use full possible screen of any device we're on."
+
+**THE BUTTON ALREADY EXISTED.** W268 (D10) shipped it, which is why this looked like a duplicate
+and is not. What it did not do was USE the screen: `pickScale` floors to a whole multiple, so
+everything between one multiple and the next stayed black bar.
+
+**THE OWNER'S SENTENCE ALSO SETTLED THE QUESTION THIS ITEM WAS BLOCKED ON.** It had been recorded
+as needing their call on integer-versus-fractional scaling. "Use full possible screen of any device
+we're on" is that call, and "always preserve aspect ratio" is the constraint it comes with -- so
+ONE scale for both axes, never two.
+
+MEASURED, picture area recovered, every configuration:
+
+    1080p tate   2   -> 2.41   +45.3%      iPhone 14 Pro tate  5 -> 5.26   +10.8%
+    1080p yoko   4   -> 4.29   +14.8%      iPhone 14 Pro yoko  2 -> 2.63   +73.1%
+    1440p tate   3   -> 3.21   +14.8%      iPad Pro 11 tate    5 -> 5.33   +13.7%
+    1440p yoko   5   -> 5.71   +30.6%      iPad Pro 11 yoko    3 -> 3.72   +54.0%
+    4K tate      4   -> 4.82   +45.3%      Pixel 7 tate        4 -> 4.83   +45.7%
+    4K yoko      8   -> 8.57   +14.8%      Pixel 7 yoko        2 -> 2.41   +45.7%
+
+**THE FLOOR IS NOT REMOVED, AND THAT IS THE CAREFUL PART.** It exists because of a defect reported
+from play -- the Batman port's dithered circle came out looking like tetris pieces on a fractional
+scale. So `fill` is opt-in, the page passes it ONLY while actually fullscreen, and **`fill` still
+floors below 2x**: between 1x and 2x the uneven pixels differ by 100% (one device pixel against
+two), which IS that defect. Above 2x the worst case is 3 against 4.
+
+The page reads `document.fullscreenElement` rather than a flag of its own, so leaving fullscreen
+with Escape -- which fires no click -- still fits the windowed way.
+
+Seven tests in `w423fullscreenfill.test.js`; **three were proven to fail with the fill branch
+disabled**, and the other four are guards that must hold under both readings, including "the
+windowed path is byte-identical to the pre-D55 arithmetic".
+
