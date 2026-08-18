@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W416)
+Updated: 2026-08-18 (W417)
 
 ## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
 
@@ -20,7 +20,103 @@ text:
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
 
-## START HERE -- W416 (docket D48)
+## START HERE -- W417
+
+### STAGE 2 IS REACHABLE. THE BOOT BLOCKER IS GONE.
+
+`$813092` goes **0 -> 1 on frame 8490** and the run continues **1,182 frames into stage 2**. Five
+stage-2-only enemy types spawn and are handled: **`$29 $2B $8D $8F $95`**. Every wave that has been
+blocked on "no bench can reach stage 2" is unblocked -- W411 had to abandon its own step-1 proof for
+exactly this reason.
+
+| hold | HEAD | now |
+|---|---|---|
+| shot | **6480 `$280252`** | **9672 `$288610`** |
+| auto | 11285 `$288610` | identical |
+| auto+down | 11985 `$288610` | identical |
+| none, auto+left, auto+right | clean to 12000 | clean to 12000 |
+
+**Next stop `$288610`, a PORT STOP in stage 2**, pre-existing and unrelated: `$288618 move.w (A4),D0`
+reads 3, `$28861E 41FA 0018` from PC `$288620` gives the table at `$288638`, whose five longs make
+entry 3 = `$28875E`, where `rank.js computedDispatch` throws.
+
+### IT WAS NEVER ONE KIND. IT IS EIGHT KINDS, ONE ROUTINE.
+
+A byte diff settles it: kinds 8 vs 12, 9 vs 13, 10 vs 14, 11 vs 15 differ in **exactly two bytes**
+(the `btst` bit, one byte of the counter address), and 8's tail from `+$24` matches 9's from `+$28`
+in all but three constants. **Porting only kind 8 would have moved the wall by one press** -- 9, 10
+and 11 are hyper stock 3, 4 and 5, the very next stops.
+
+They are the **hyper-bank cancel stars**: `grantHyper287682` arms `$81B412 := $20`, and `$255326`
+`$FFFF $20 $24 $28 $2C` by stock is the D0 at `$281D2E jsr $27F8F8`. Each record **homes on the
+player** -- `$242296` is `aim256` entered PAST its target select.
+
+### A DEFECT FELL OUT OF THE FILL, NOT THE BODY
+
+`$280BCE[8..15]`'s whole arm is `$280D8C..$280DB8`: owner, `andi.w #$F,D7 / move.b D7,($1A,A0)`,
+`clr.b ($1E,A0)`, one `$242EC2` hook add, `rts`. **There is no shared speed body.** W287 read the
+heads and stopped. The port ran the shared body anyway: **four RNG draws per allocation where the
+cartridge makes one**, `($1A,A0)` written from a speed ramp instead of D7, and `($1E,A0)` left
+holding the previous tenant's byte. `sharedSpeedBody` has been a field since W312 and **nothing ever
+read it**; it is read now.
+
+**The real risk this wave was two hundred lines from the address in my brief.** I pointed at the
+body; the regression lived in the fill.
+
+### KIND 3 DONE TOO, AND ITS ART WAS THE ONLY ART MISSING
+
+`$27FED2` is `$27FE0E` with four constants moved; its step `$27FF36` is `$27FE6E` on ring `$1BE94C`
+stride `$C4` wrap `$1BF58C`, whose wrap forces the timer to **`$2`** where kind 2's forces `$1`. Not
+reached on any bench here, ported because it was a live latent throw.
+
+**Art, read out of `assets/spr/streams.u32.gz`, not assumed:** four of the five rings were ALREADY
+shipped 16/16. Only kind 3's `$1BE94C` was 0/16, now 16/16. **W414's missing selector
+`$00010004 -> $1E24DC` is NOT needed by kinds 9/13** -- none of the eight reaches `$280FDC`; they
+write `($10,A6)` and free. Only kind 5 still needs it.
+
+### 44 ABLATIONS, 3 GREEN, AND ONE WAS W416'S TRAP AGAIN
+
+`$280D9C clr.b ($1E,A0)` passed under BOTH readings because a fresh `Ram()` leaves `+$1E` at 0. The
+test now **dirties the slot first** -- a recycled pool slot really does carry the previous tenant's
+byte -- and asserts the consequence. The other two were a score read from the image instead of the
+accumulator, and a "sprite is inside the ring" assertion true of the bare base as well.
+
+**Two mutations are provably untestable and are NAMED rather than faked**: `and.b -> and.w` on
+`$2802BE` (the field is four bits, no input separates them) and dropping `$2802E6 beq` (the skipped
+instructions re-store identical values).
+
+### WINDOWS, SHARD, AND A BASELINE THAT HELD WHERE IT MATTERED
+
+`--verify` **OK at 600, unchanged** -- no `maincpu` window; the aim constants are `[M]` literals
+asserted against the image. One new `STRUCTURE_RANGES` row `[0x1be94c, 0x1bf58c, 16]`, bounded three
+ways. `streamCount` 4,291 -> **4,307**, 16 added and 0 removed, shard 11 the only shard that moves.
+
+W58 shard 11: `streams 846 -> 862`, and **`records` HELD at 15,903, `distinct` HELD at 127, `first`
+HELD at 315**. Records holding is the witness that this was an addition and not a repack: kind 3
+never spawns on that window, so it cannot draw one of the sixteen.
+
+### TWO THINGS THE BRIEF GOT WRONG, AND ONE HOUSEKEEPING NOTE
+
+- **"frame 6495"** is **6480** on this tree, and only on `hold=shot`. **"45 records at once"** is
+  **29**, peak pool-A population 39.
+- `src/rank.js:885`'s prose says `$288610`'s jump table is `$288568`; the encoding gives `$288638`,
+  which is what `RANK.disp288610Jump` correctly holds. **Prose wrong, code right.** Left alone.
+- `tools/webgate.mjs` was **CRLF throughout on HEAD**. The agent's 16 added lines were LF, leaving it
+  mixed; coordinator restored the file to uniform CRLF, which keeps the diff at 17 lines instead of
+  rewriting 2,293 unrelated ones.
+
+### VERIFIED
+
+Suite **3805 pass / 0 fail / 0 skipped** (3774 before; +31). Gate **exit 0**, 31 PASS / 0 FAIL.
+`--verify` **OK at 600 windows**. `export-web.mjs` run BEFORE the gate.
+
+### NEXT
+
+**`$288610` in stage 2** is the new frontier and is now reachable. Also open: the pool-C guard
+narrower than the ROM (`handlers.js:2014`), kind 5's missing selector, A4 `$14` for the ending's
+other arm, and on toward D36.
+
+## W416 NOTES
 
 ### FIFTEEN WRONG SITES, NOT ELEVEN AND NOT TWELVE
 

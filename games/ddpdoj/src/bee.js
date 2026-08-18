@@ -100,6 +100,9 @@ import { bcd242AC6 } from './items.js';
 import { grantHyper287682 } from './hyper.js';
 import { drawByte242B3C, drawByte2431F4, drawByte242E24, drawSigned242FDE,
   drawWord242EC2 } from './rng.js';
+// W417: kinds 8..15 call `$242296`, which is `$242290`'s SECOND HALF -- aim256 with
+// A0 already supplied -- so the entry is `aim256` itself and not `aim256AtTarget`.
+import { AimTables, aim256 } from './aim.js';
 
 // ============================== THE GEOMETRY ================================
 
@@ -170,6 +173,8 @@ export const POOL_A = Object.freeze({
   medalP1Total: 0x817f84,    // $27FE1E lea $817F84,A0
   medalP2Total: 0x817f88,    // $27FE2A lea $817F88,A0
   kind2Body: 0x27fe0e,       // dispatch index 2 -- the gold disc
+  kind3Body: 0x27fed2,       // W417: dispatch index 3 -- the gold disc worth eight
+  kind3Step: 0x27ff36,       // its ordinary step arm
   kind2Collect: 0x27fe0e,    // its collect arm falls out of the same head
   kind2Step: 0x27fe6e,       // the ordinary step arm
   kind0Collect: 0x27f9ee,    // $27FA34 bne -- kind 0/4's collect arm, BACKWARD
@@ -177,6 +182,9 @@ export const POOL_A = Object.freeze({
   collectTable: 0x280f34,    // $280FE0 lea (-$AE,PC),A0
   collectSelectors: 3,       // $00050000, $00050004, $00010008 -- the whole image
   collectSpriteEntries: 10,  // ten longwords per sprite table
+  // W287's field, W417's name: `($24,A0)` is the PLAYER RECORD hooks 8..15 write and
+  // kinds 8..15's bodies read back with `$2802C4 movea.l ($24,A6),A0`.
+  ownerAt: 0x24,
 });
 
 /** Deliberate-red seam used only by W166's causal regression. */
@@ -476,6 +484,9 @@ const FINISH_FAMILY = Object.freeze(Object.fromEntries(
     return [idx * 4, Object.freeze({
       hooks: FINISH_FAMILY_BLOCKS[n % 4],
       status: null,                          // none of the eight writes one
+      // W417: and none of the eight does the shared speed/angle work either --
+      // `$280D94..$280DB8` is the WHOLE arm.  See `fillGeneralImpact280B3E`.
+      sharedSpeedBody: false,
       site,
       // $280D8C for 8..11, $280D94's own arm for 12..15
       owner: n < 4 ? RAM.player1 : RAM.player2,
@@ -594,16 +605,21 @@ export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) 
   }
   for (let i = 0; i < POOL_A.generalSlots; i++) {
     const slot = POOL_A.base + i * POOL_A.stride;
-    if (ram.u16(slot) === 0)
+    if (ram.u16(slot) === 0) {
+      // $27F906 move.w #$45,D7 / $27F914 dbra -- D7 is 69 at slot 0 and counts DOWN,
+      // and hooks 8..15 store its low nibble in the record.  It is a parameter of the
+      // fill, not a local of the scan, which is why it is threaded rather than derived.
+      const d7 = (POOL_A.generalSlots - 1) - i;
       return fillGeneralImpact280B3E(ram, rom, ctx, slot, kind,
-        offset, d2, carrierA6, spec);
+        offset, d2, carrierA6, spec, d7);
+    }
   }
   note(ctx, 0x27f8f0, '$27F8F0 general Pool-A allocation dropped: all 70 slots full');
   return null;
 }
 
 function fillGeneralImpact280B3E(ram, rom, ctx, slot, kind, offset, d2,
-  carrierA6, spec) {
+  carrierA6, spec, d7 = 0) {
   ram.setU16(POOL_A.liveCount, u16(ram.u16(POOL_A.liveCount) + 1));
   ram.setU16(slot + B.status, kind | 0x8000);
 
@@ -657,6 +673,46 @@ function fillGeneralImpact280B3E(ram, rom, ctx, slot, kind, offset, d2,
     return slot;                                          // $280D0E rts
   }
 
+  // W417 -- AND SO DO HOOKS 8..15, WHICH W287 DID NOT NOTICE.
+  //
+  // W287 read the eight entries' HEADS ($280D76/$280D7C/$280D82/$280D88 and
+  // $280D3E/$280D4C/$280D5A/$280D68) and their two shared arms, and recorded the hook
+  // BLOCK and the player record.  It never read the arm to its `rts`.  The whole of
+  // `$280D8C..$280DB8` is
+  //
+  //     280d8c  21 7c 00810 3e6 0024   move.l #$8103E6,($24,A0)   (12..15: $810448)
+  //     280d94  02 47 00 0f            andi.w #$F,D7
+  //     280d98  11 47 00 1a            move.b D7,($1A,A0)
+  //     280d9c  42 28 00 1e            clr.b  ($1E,A0)
+  //     280da0  2e 00                  move.l D0,D7
+  //     280da2  4e b9 00242ec2         jsr    $242EC2
+  //     280da8  02 80 0000000e         andi.l #$E,D0
+  //     280dae  30 33 00 00            move.w (A3,D0.w),D0
+  //     280db2  d1 a8 00 0a            add.l  D0,($A,A0)
+  //     280db6  20 07                  move.l D7,D0
+  //     280db8  4e 75                  rts
+  //
+  // and there is **no `$420`, no `bsr $280C84`, no `$2431F4`, no `$242FDE` and no
+  // `$241812`** anywhere in it.  The port ran the shared speed body for these eight
+  // anyway, which made THREE RNG draws the cartridge does not make on every one of
+  // them, wrote `($1A,A0)` from a speed ramp instead of from D7, left `($1E,A0)`
+  // holding the previous tenant's byte, and cached a velocity the bodies below
+  // overwrite from `$241D34` on their first frame.  `sharedSpeedBody` existed as a
+  // field since W312 and was never actually read; it is read now.
+  //
+  // **D7 IS THE SLOT SCAN COUNTER**, not a random number: `$27F906 move.w #$45,D7`
+  // and `$27F914 dbra`, so the free slot at index `i` is found with D7 = 69 - i and
+  // `($1A,A0)` becomes `(69 - i) & $F`.  The bodies AND it with the pause word.
+  if (!spec.sharedSpeedBody) {
+    ram.setU32(slot + POOL_A.ownerAt, spec.owner);        // $280D8C / $280D42
+    ram.setU8(slot + B.speed, d7 & 0x0f);                 // $280D94/$280D98
+    ram.setU8(slot + B.hitCount, 0);                      // $280D9C clr.b ($1E,A0)
+    const evenPhase = (drawWord242EC2(ram, rom) & 0x0e) >> 1;  // $280DA2/$280DA8
+    ram.setU32(slot + B.sprite,                           // $280DAE/$280DB2 add.l
+      (ram.u32(slot + B.sprite) + spec.hookOffsets[evenPhase]) >>> 0);
+    return slot;                                          // $280DB8 rts
+  }
+
   // `$280DEA/$280E1A`: initial even animation phase, then the shared random
   // speed/angle hook and cached `$241812` velocity.
   ram.setU16(slot + B.speed, 0x0420);
@@ -706,13 +762,10 @@ function fillGeneralImpact280B3E(ram, rom, ctx, slot, kind, offset, d2,
     ram.setU16(slot + B.status,
       (ram.u16(slot + B.status) & 0xff83) | spec.status);
   }
-  // W287: hooks 8..15 also write WHICH PLAYER the impact belongs to.
-  // `$280D8C move.l #$8103E6,($24,A0)` for 8..11 and `$810448` for 12..15 -- the
-  // only field the eight add on top of the shared fill, and the only reason they are
-  // eight entries rather than four.
-  if (spec.owner !== undefined) {
-    ram.setU32(slot + 0x24, spec.owner);
-  }
+  // W417: the owner write used to sit HERE, after the shared speed body, on the
+  // strength of W287's reading that hooks 8..15 were "the shared fill plus one
+  // field".  They are not: the eight return above, before any of this, and the
+  // owner write is theirs alone.  Nothing that reaches this line has an owner.
   return slot;
 }
 
@@ -1077,6 +1130,257 @@ function medalStep27FE6E(ram, rom, a6) {
   return { emitted: true };
 }
 
+// ============ $27FED2, KIND INDEX 3 -- AND KINDS 8..15, THE HYPER CANCEL =====
+
+/**
+ * `$27FED2` -- POOL-A KIND INDEX 3, and it is kind 2 with four constants moved.
+ *
+ * Head, byte for byte against `$27FE0E`:
+ *
+ *     27fed2: tst.w $8130F8 / bmi $27FF26     the boss flag frees it outright
+ *     27feda: andi.w #$1800,D1 / beq $27FF36  bits 11/12 -> the collect arm
+ *
+ * The collect arm is `$27FE1C`'s twenty instructions with the ADD $2 rather than
+ * $1, the score `$1000` rather than `$50`, the selector `$00010008` rather than
+ * `$00050000` and the sound `$28C610` rather than `$28C5E4` -- so it is the medal
+ * on the medal's own counters, worth eight times as much.  The step `$27FF36` is
+ * `$27FE6E` with the animation ring `$1BE94C` / stride `$C4` / wrap `$1BF58C`, and
+ * the wrap forces the timer to **$2**, where kind 2's forces it to $1.
+ *
+ * ART, MEASURED: [M] before W417 the shipped bundle held 0 of the 16 streams
+ * `$1BE94C + n * $C4`, where it holds 16 of 16 for kind 2's `$1BE2CC` ring.  W417
+ * ships the `STRUCTURE_RANGES` row in the same wave as this body, because W414's
+ * lesson is that a body without its art allocates, animates and silently fails to
+ * draw.
+ */
+function poolAKind3Body27FED2(ram, rom, ctx, a6, d1) {
+  if ((ram.u16(POOL_A.twoPlayer) & 0x8000) !== 0) {       // $27FED8 bmi $27FF26
+    return offscreenFree27FC7C(ram, a6);
+  }
+  if ((d1 & 0x1800) !== 0) {                              // $27FEDE beq $27FF36
+    return poolACollectArm(ram, rom, ctx, a6, d1, COLLECT_ARMS.bigMedal27FED2);
+  }
+  return kind3Step27FF36(ram, rom, a6);
+}
+
+/** `$27FF36` -- kind 3's ordinary step: `$27FE6E` with a different ring. */
+function kind3Step27FF36(ram, rom, a6) {
+  if (ram.u16(POOL_A.freeze) === 0) {                     // $27FF36 tst.w / $27FF3C bne
+    ram.setU16(a6 + B.pos,                                // $27FF44 add.w D0,($2,A6)
+      u16(ram.u16(a6 + B.pos) + ram.u16(POOL_A.scrollLong))); // $27FF3E move.w $80B03C
+  }
+  const pos = ram.u32(a6 + B.pos);                        // $27FF48 move.l ($2,A6),D0
+  let px = u16((pos & 0xffff) + 0x1c00);                  // $27FF4C addi.w #$1C00
+  px = u16(px + ram.u16(0x813172));                       // $27FF50 add.w $813172
+  px = u16(px + 0x9000);                                  // $27FF56 addi.w #$9000
+  let free = px < 0x9000;                                 // $27FF5A bcs $27FF66
+  if (!free) {
+    let py = u16((pos >>> 16) + 0x0800);                  // $27FF5C swap / $27FF5E
+    py = u16(py + 0x7800);                                // $27FF62 addi.w #$7800
+    free = py < 0x7800;                                   // $27FF66 bcs $27FF26
+  }
+  if (free) return offscreenFree27FC7C(ram, a6);
+  if (due8(ram, a6 + B.blinkTimer)) {                     // $27FF68/$27FF6C bcc $27FF92
+    ram.setU8(a6 + B.blinkTimer, ram.u8(a6 + B.blinkTimer + 1)); // $27FF6E
+    ram.setU32(a6 + B.sprite, (ram.u32(a6 + B.sprite) + 0xc4) >>> 0); // $27FF78
+    if (ram.u32(a6 + B.sprite) === 0x001bf58c) {          // $27FF7E cmpi.l / bne
+      ram.setU32(a6 + B.sprite, 0x001be94c);              // $27FF86 move.l #$1BE94C
+      // $27FF8C move.b #$2,($18,A6) -- kind 2's twin forces $1 here.  TWO, not one.
+      ram.setU8(a6 + B.blinkTimer, 0x02);
+    }
+  }
+  enqueueThroughStub(ram, rom, ram.u32(a6 + B.layerEmitter), a6); // $27FF92/$27FF96
+  return { emitted: true };
+}
+
+/**
+ * `$280252` -- POOL-A KINDS 8..15, THE HYPER-BANK CANCEL STARS, AND THEY ARE ONE
+ * ROUTINE OVER SEVEN CONSTANTS.
+ *
+ * **This is the throw that stopped every full boot in this repo.** `hyper.js`
+ * `grantHyper287682` banks a hyper while one is already running and arms
+ * `$81B412 := $20` (`$2C` on the fifth); `requestHyper249868` reads `$255326` and
+ * arms `$20 $24 $28 $2C` by stock ($30..$3C for P2).  Both go through the bullet
+ * cancel `$281D2E jsr $27F8F8`, whose D0 IS that word -- so the cancel's 45-odd
+ * records arrive as pool-A kind index 8, 9, 10 or 11.
+ *
+ * `$27F99E`'s eight bodies are `$280252 $28036A $280486 $2805A2 $2806BE $2807D6
+ * $2808F2 $280A0E`, and [M] a byte diff of the eight says they are ONE routine:
+ *
+ *   - `$280252` and `$2806BE` differ in exactly TWO bytes: the `btst` bit
+ *     (`#$C` = P1 against `#$B` = P2) and one byte of the counter address
+ *     (`$817F86` against `$817F8A`).  Same for 9/13, 10/14 and 11/15.
+ *   - `$28036A` differs from `$280486` in SIX bytes: the `moveq` add, two bytes of
+ *     the selector, the score long, and the three animation constants.
+ *   - `$280252`'s tail from `+$24` matches `$28036A`'s from `+$28` (the `moveq #$50`
+ *     is four bytes shorter than `move.l #$100,D0`) in ALL BUT THREE constants:
+ *     the animation stride, the wrap and the base.
+ *
+ * So eight bodies, one shape, and the shape is:
+ *
+ *     280252: btst #$C,D1 / beq $280294       ONLY P1 collects kinds 8..11; a
+ *                                             record P2 touches runs the step
+ *     280258: counter += add, clamped $3E7    the STAR pair $817F86/$817F8A
+ *     28026c: move.l #selector,($10,A6)       written and NEVER READ -- these eight
+ *                                             do NOT `bra $280FDC`
+ *     280274: D0 = score / D1 = (A6) / jsr $286128 / jsr $28C5E4
+ *     280284: moveq #0 / (A6) / ($2,A6) / subq.w #1,$817F7E / rts    the FREE
+ *
+ *     280294: tst.b ($1E,A6) / bne $2802B8    the ONE-SHOT init
+ *     28029a:   jsr $242296 / move.b D1,($1B,A6) / moveq #$40,D0 / jsr $241D34
+ *     2802ac:   movem.w D2/D3,($20,A6) / move.b #$1,($1E,A6)
+ *     2802b8: move.w $803912,D0 / and.b ($1A,A6),D0 / bne $2802FA    paused: coast
+ *     2802c4: movea.l ($24,A6),A0 / tst.w (A0) / bmi $2802DC
+ *     2802cc:   ...the owner is GONE: free the record
+ *     2802dc: jsr $242296 / cmp.b ($1B,A6),D1 / beq $2802FA          re-aim
+ *     2802e8:   move.b D1,($1B,A6) / moveq #$40,D0 / jsr $241D34 / movem.w
+ *     2802fa: movem.w ($20,A6),D2/D3 / add.w D2,($2,A6) / add.w D3,($4,A6)
+ *     280308: the OLD-ZERO BORROW animation on the ring
+ *     28032c: cmpi.w #$28,$817F7E / bcs        under $28 live it always draws
+ *     280338: |own X - owner X| < $600 / bcs   ...and near its owner it always draws
+ *     280352: 1 & D7 vs $80390C / beq          otherwise it thins by walk parity
+ *     280360: jmp $23EBA0
+ *
+ * **THE RECORD HOMES ON THE PLAYER.** `($24,A6)` is the field W287's fill hook
+ * writes -- `$8103E6` for kinds 8..11 and `$810448` for 12..15 -- and `$242296` is
+ * `aim256` entered PAST its target select, with A0 supplied by the caller.  That is
+ * the hyper's autocollect: the cancelled bullets turn into stars that fly to the
+ * ship at the fixed speed index `$40` and score on contact.
+ *
+ * **THE FIRST `$242296` AIMS AT THE DISPATCH TABLE'S OWN POINTER, AND THAT IS THE
+ * CARTRIDGE.** `$27F988 lea ($27F99E,PC),A0 / adda.w D0,A0 / movea.l (A0),A0 /
+ * jsr (A0)` leaves A0 = the BODY ADDRESS, and `$28029A` calls `$242296` before
+ * anything reloads A0 -- so the "target" it reads from `($2,A0)`/`($4,A0)` is the
+ * body's own second and third words, i.e. its `btst` operand and its `beq`.  For
+ * `$280252` that is Y = `$000C`, X = `$673C`.  [M] carried per site below and
+ * asserted against the image in `w417poolakind8.test.js`.
+ *
+ * It is DEAD on every unpaused frame: `$2802DC` re-aims with the real A0 and
+ * overwrites `($1B,A6)` and the cached pair on the SAME frame.  It survives only
+ * when `$803912`'s low byte AND `($1A,A6)` is non-zero, which is a paused frame.
+ * Transcribed rather than skipped, because "it cannot matter" is not a measurement.
+ *
+ * ART, MEASURED: [M] all four rings are in the shipped bundle, 16 of 16 streams
+ * each -- `$1BCACC` s`$24` (W266), `$1BCD0C` s`$34` (W266), `$1BD04C` s`$64` and
+ * `$1BD68C` s`$C4` (W216's kinds 18/19, the SAME two rings).  Nothing to ship.
+ */
+const HYPER_STAR = Object.freeze({
+  0x20: Object.freeze({ site: 0x280252, bit: 0x1000, counter: 0x817f86, add: 1,
+    selector: 0x00050000, score: 0x50, sound: 0x28c5e4,
+    step: 0x24, wrap: 0x001bcd0c, base: 0x001bcacc, aimY: 0x000c, aimX: 0x673c }),
+  0x24: Object.freeze({ site: 0x28036a, bit: 0x1000, counter: 0x817f86, add: 2,
+    selector: 0x00010004, score: 0x100, sound: 0x28c5e4,
+    step: 0x34, wrap: 0x001bd04c, base: 0x001bcd0c, aimY: 0x000c, aimX: 0x6740 }),
+  0x28: Object.freeze({ site: 0x280486, bit: 0x1000, counter: 0x817f86, add: 4,
+    selector: 0x00050004, score: 0x500, sound: 0x28c5e4,
+    step: 0x64, wrap: 0x001bd68c, base: 0x001bd04c, aimY: 0x000c, aimX: 0x6740 }),
+  0x2c: Object.freeze({ site: 0x2805a2, bit: 0x1000, counter: 0x817f86, add: 8,
+    selector: 0x00010008, score: 0x1000, sound: 0x28c5e4,
+    step: 0xc4, wrap: 0x001be2cc, base: 0x001bd68c, aimY: 0x000c, aimX: 0x6740 }),
+  0x30: Object.freeze({ site: 0x2806be, bit: 0x0800, counter: 0x817f8a, add: 1,
+    selector: 0x00050000, score: 0x50, sound: 0x28c5e4,
+    step: 0x24, wrap: 0x001bcd0c, base: 0x001bcacc, aimY: 0x000b, aimX: 0x673c }),
+  0x34: Object.freeze({ site: 0x2807d6, bit: 0x0800, counter: 0x817f8a, add: 2,
+    selector: 0x00010004, score: 0x100, sound: 0x28c5e4,
+    step: 0x34, wrap: 0x001bd04c, base: 0x001bcd0c, aimY: 0x000b, aimX: 0x6740 }),
+  0x38: Object.freeze({ site: 0x2808f2, bit: 0x0800, counter: 0x817f8a, add: 4,
+    selector: 0x00050004, score: 0x500, sound: 0x28c5e4,
+    step: 0x64, wrap: 0x001bd68c, base: 0x001bd04c, aimY: 0x000b, aimX: 0x6740 }),
+  0x3c: Object.freeze({ site: 0x280a0e, bit: 0x0800, counter: 0x817f8a, add: 8,
+    selector: 0x00010008, score: 0x1000, sound: 0x28c5e4,
+    step: 0xc4, wrap: 0x001be2cc, base: 0x001bd68c, aimY: 0x000b, aimX: 0x6740 }),
+});
+
+/** Body ADDRESS -> its constants, for `runBody`'s dispatch. */
+const HYPER_STAR_BY_BODY = new Map(
+  Object.values(HYPER_STAR).map((s) => [s.site, s]));
+
+const AIM_TABLES = new WeakMap();
+function aimTables(rom) {
+  let t = AIM_TABLES.get(rom);
+  if (!t) { t = new AimTables(rom); AIM_TABLES.set(rom, t); }
+  return t;
+}
+
+/** `$242296` -- `aim256` entered PAST its target select, A0 from the CALLER. */
+function aim256FromA0242296(rom, ram, a6, tgtY, tgtX) {
+  return aim256(aimTables(rom), ram.u16(a6 + B.pos), ram.u16(a6 + B.posX),
+    tgtY, tgtX);                                          // $242296/$24229C/$2422A2
+}
+
+/** `$2802A0..$2802B0` and `$2802E8..$2802F8` -- store the heading and cache the
+ *  `$241D34` pair at the fixed speed index `$40`. */
+function hyperStarAim(ram, rom, ctx, a6, dir) {
+  ram.setU8(a6 + B.angle, dir & 0xff);                    // move.b D1,($1B,A6)
+  const v = ctx.tables.shotVector(0x40, dir & 0xff);      // moveq #$40,D0 / jsr $241D34
+  ram.setU16(a6 + B.waypoint, u16(v.dy));                 // movem.w D2/D3,($20,A6)
+  ram.setU16(a6 + B.waypoint + 2, u16(v.dx));
+}
+
+function hyperStarBody280252(ram, rom, ctx, a6, d1, spec, remaining) {
+  // $280252 btst #$C,D1 (kinds 8..11) or #$B (12..15).  ONE bit, not `andi #$1800`:
+  // a kind-8 record P2 flies into is NOT collected, it just keeps stepping.
+  if ((d1 & spec.bit) !== 0) {
+    let v = u16(ram.u16(spec.counter) + spec.add);        // $280258/$280260 add.w
+    if (v >= 0x03e8) v = 0x03e7;                          // $280262 cmpi / bcs / move.w
+    ram.setU16(spec.counter, v);
+    // $28026C move.l #selector,($10,A6).  DEAD: unlike the four arms that share
+    // `$280FDC`, this one falls into the free below and nothing reads ($10,A6)
+    // again.  W414's missing selector art $00010004 -> $1E24DC is therefore NOT
+    // needed by kinds 9 and 13 -- only by kind 5, which is still unported.
+    ram.setU32(a6 + B.hitLongA, spec.selector);
+    scoreByMask(ram, spec.score, ram.u8(a6 + B.status)); // $280274/$280276/$280278
+    ctx.soundPost?.(spec.sound);                          // $28027E jsr $28C5E4
+    return { ...offscreenFree27FC7C(ram, a6), collected: true };  // $280284..$280292
+  }
+
+  // $280294 tst.b ($1E,A6) / bne -- the fill hook cleared it, so this runs once.
+  if (ram.u8(a6 + B.hitCount) === 0) {
+    hyperStarAim(ram, rom, ctx, a6,                       // $28029A jsr $242296
+      aim256FromA0242296(rom, ram, a6, spec.aimY, spec.aimX));
+    ram.setU8(a6 + B.hitCount, 0x01);                     // $2802B2 move.b #$1,($1E,A6)
+  }
+
+  // $2802B8 move.w $803912,D0 / $2802BE and.b ($1A,A6),D0 / bne.  A BYTE and, so
+  // only the LOW byte of the pause word takes part, and ($1A,A6) is the fill's
+  // `D7 & $F` slot nibble -- see `fillGeneralImpact280B3E`.
+  if (((ram.u16(POOL_A.pause) & 0xff) & ram.u8(a6 + B.speed)) === 0) {
+    const owner = ram.u32(a6 + POOL_A.ownerAt);           // $2802C4 movea.l ($24,A6),A0
+    if ((ram.u16(owner) & 0x8000) === 0) {                // $2802C8 tst.w (A0) / bmi
+      return offscreenFree27FC7C(ram, a6);                // $2802CC..$2802DA
+    }
+    const dir = aim256FromA0242296(rom, ram, a6,          // $2802DC jsr $242296
+      ram.u16(owner + 0x02), ram.u16(owner + 0x04));
+    // $2802E2 cmp.b ($1B,A6),D1 / beq -- an unchanged heading keeps the cached pair.
+    if ((dir & 0xff) !== ram.u8(a6 + B.angle)) hyperStarAim(ram, rom, ctx, a6, dir);
+  }
+
+  // $2802FA movem.w ($20,A6),D2/D3 -- D2 moves the LONG axis, D3 the short one.
+  ram.setU16(a6 + B.pos, u16(ram.u16(a6 + B.pos) + ram.u16(a6 + B.waypoint)));
+  ram.setU16(a6 + B.posX, u16(ram.u16(a6 + B.posX) + ram.u16(a6 + B.waypoint + 2)));
+
+  if (due8(ram, a6 + B.blinkTimer)) {                     // $280308/$28030C bcc
+    ram.setU8(a6 + B.blinkTimer, ram.u8(a6 + B.blinkTimer + 1)); // $28030E
+    const next = (ram.u32(a6 + B.sprite) + spec.step) >>> 0;     // $280318 addi.l
+    ram.setU32(a6 + B.sprite, next === spec.wrap ? spec.base : next); // $28031E/$280326
+  }
+
+  // $28032C cmpi.w #$28,$817F7E / bcs $280360.  Kind 0's twin uses $3C.
+  if (ram.u16(POOL_A.liveCount) >= 0x28) {
+    // $280338..$28034E -- and the exemption kind 0 does NOT have: a record within
+    // $600 of its owner on the SHORT axis always draws, however busy the pool is.
+    const owner = ram.u32(a6 + POOL_A.ownerAt);           // $280338 movea.l ($24,A6),A0
+    let d0 = u16(ram.u16(a6 + B.posX) - ram.u16(owner + 0x04)); // $280340/$280344 sub.w
+    if ((d0 & 0x8000) !== 0) d0 = u16(-d0);               // $280346 bpl / $280348 neg.w
+    if (d0 >= 0x0600                                      // $28034A cmpi.w / $28034E bcs
+      && (remaining & 1) === ram.u16(POOL_A.collisionPhase)) {
+      return undefined;                                   // $28035C beq $280368 (rts)
+    }
+  }
+  enqueueThroughStub(ram, rom, 0x23eba0, a6);             // $280360 jmp $23EBA0
+  return { emitted: true };
+}
+
 function runBody(ram, rom, ctx, a6, d1, body, remaining) {
   if (body === POOL_A.body) return beeBody27FACC(ram, rom, ctx, a6, d1);
   // Kinds 0 and 4 share $27FA30 -- DISPATCH[0] and DISPATCH[4] are the same address.
@@ -1084,6 +1388,12 @@ function runBody(ram, rom, ctx, a6, d1, body, remaining) {
     return poolAKind0Body27FA30(ram, rom, ctx, a6, d1, remaining);
   if (body === POOL_A.kind2Body)
     return poolAKind2Body27FE0E(ram, rom, ctx, a6, d1);
+  if (body === POOL_A.kind3Body)                          // W417
+    return poolAKind3Body27FED2(ram, rom, ctx, a6, d1);
+  // W417: $27F99E's indices 8..15 are ONE routine over seven constants -- the
+  // hyper-bank cancel stars, and the throw that stopped every full boot here.
+  const hyper = HYPER_STAR_BY_BODY.get(body);
+  if (hyper) return hyperStarBody280252(ram, rom, ctx, a6, d1, hyper, remaining);
   if (body === 0x280082)
     return stage4ImpactBody(ram, rom, ctx, a6, d1,
       IMPACT_KIND[KIND.stage4Impact18], remaining);
@@ -1092,9 +1402,10 @@ function runBody(ram, rom, ctx, a6, d1, body, remaining) {
       IMPACT_KIND[KIND.stage4Impact19], remaining);
   unreached(body, `$27F992 jsr (A0) -- the kind dispatch sent a live pool-A `
     + `record to $${body.toString(16).toUpperCase()}, which is not the bee body `
-    + `($27FACC), kind 0/4's ($27FA30), kind 2's ($27FE0E) or Stage-4 kind 18/19's. `
-    + `This remaining pool-A kind is not ported; its `
-    + `D0 sources at the eleven general-allocator call sites are unattributed. `
+    + `($27FACC), kind 0/4's ($27FA30), kind 2's ($27FE0E), kind 3's ($27FED2), `
+    + `the hyper-cancel eight (indices 8..15) or Stage-4 kind 18/19's. `
+    + `The three that remain are indices 5, 17 ($27FF9A) and the popup arms; `
+    + `their D0 sources at the general-allocator call sites are unattributed. `
     + `Record at $${a6.toString(16).toUpperCase()}, status $${
       d1.toString(16).toUpperCase()}`);
 }
@@ -1228,6 +1539,15 @@ const COLLECT_ARMS = Object.freeze({
     collectP1: POOL_A.medalP1Total, collectP2: POOL_A.medalP2Total,
     collectAdd: 1, collectScore: 0x50, collectSelector: 0x00050000,
     collectSound: 0x28c5e4,
+  }),
+  // W417 -- $27FEE0, kind index 3.  The SAME twenty instructions as kind 2's on the
+  // SAME pair of counters, with all four constants moved: [M] `$27FEE0 moveq #$2`,
+  // `$27FF00 move.l #$00010008,($10,A6)`, `$27FF08 move.l #$1000,D0` and
+  // `$27FF16 jsr $28C610`.  A gold disc worth eight of kind 2's.
+  bigMedal27FED2: Object.freeze({
+    collectP1: POOL_A.medalP1Total, collectP2: POOL_A.medalP2Total,
+    collectAdd: 2, collectScore: 0x1000, collectSelector: 0x00010008,
+    collectSound: 0x28c610,
   }),
 });
 

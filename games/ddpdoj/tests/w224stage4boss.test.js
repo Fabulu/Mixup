@@ -127,7 +127,11 @@ test('W224 pins the F1/MAIN2/MAIN3/D0 slice, its dispatch entries, and its asset
     // sixteen-frame animation and the eight-frame collected popup the star shares
     // with it -- TWENTY-FOUR streams, all into shard 11. This file's own harvest
     // assertions above are the untouched witnesses: none of them moved.
-    assert.equal(manifest.spr.streamCount, 4291);
+    // W417: 4,291 -> 4,307. The exporter gained pool-A kind index 3's OWN sixteen-frame
+    // animation ($1BE94C..$1BF4C8, stride $C4), whose body W417 ports in the same wave;
+    // all sixteen land on shard 11. This file's own harvest assertions above are the
+    // untouched witnesses: none of them moved.
+    assert.equal(manifest.spr.streamCount, 4307);
   });
 
 test('W224 the $23000 threshold destroys the body and D0 swaps the damaged one in',

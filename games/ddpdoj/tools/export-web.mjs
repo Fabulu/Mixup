@@ -2098,6 +2098,27 @@ const STRUCTURE_RANGES = Object.freeze([
     + 'the star\'s and the medal\'s. $280F64[5], eight frames of stride $44, closed '
     + 'by $280F64[6] = $1E19BC and by $2810CA reaching base + 7 x $44. [M] 1,340 '
     + 'records skipped as missing art in 5,400 frames'],
+  // ------------------------------------------------------------------ WAVE 417
+  // POOL-A KIND INDEX 3, the SECOND gold disc, whose body W417 ports.
+  //
+  // The extent is the cartridge's own wrap, the way W414 took kind 2's:
+  //
+  //     $27FF74  41 ee 00 0a           lea ($A,A6),A0
+  //     $27FF78  06 90 00 00 00 c4     addi.l #$C4,(A0)     the stride
+  //     $27FF7E  0c 90 00 1b f5 8c     cmpi.l #$1BF58C,(A0) the wrap
+  //     $27FF86  20 bc 00 1b e9 4c     move.l #$1BE94C,(A0) the base
+  //
+  // so [$1BE94C, $1BF58C) at stride $C4 = $C40 / $C4 = SIXTEEN frames.  Pinned a
+  // second time by template 3 ($280EDC), whose sprite long is $1BE94C, and a third
+  // by the HARVEST above, whose own base $1BF58C is where this one stops.
+  //
+  // [M] before this row the shipped bundle held 0 of these 16 streams, against 16
+  // of 16 for kind 2's $1BE2CC ring -- so W414's two-halves note ("its art is also
+  // absent") was still true and this is what closes it.
+  [0x1be94c, 0x1bf58c, 16, 'W417: pool-A kind index 3\'s own animation, stride $C4. '
+    + 'Bounded by $27FF7E cmpi.l #$1BF58C -- the body\'s own wrap -- by template 3 '
+    + '$280EDC\'s sprite long, and by the $1BF58C harvest that starts where this '
+    + 'one ends. [M] 0 of 16 present before this row'],
   // ------------------------------------------------------------------ WAVE 267
   // THE REST OF DOCKET D4.  W266 shipped the three impact animations and left six runs;
   // W267 built the `--extent` stride-walk probe (see `romExtent` above) and asked the
@@ -2189,7 +2210,7 @@ const STRUCTURE_STREAMS = Object.freeze([
   0x1727c4, 0x172d18, 0x1928bc, 0x192a48,
 ]);
 {
-  if (STRUCTURE_STREAMS.length !== 10 || STRUCTURE_RANGES.length !== 31) {
+  if (STRUCTURE_STREAMS.length !== 10 || STRUCTURE_RANGES.length !== 32) {
     throw new Error(`STRUCTURE_STREAMS holds ${STRUCTURE_STREAMS.length} `
       + `addresses and there are ${STRUCTURE_RANGES.length} chain ranges; `
       + 'W58 measured 18 and 4, W66 added the fifth ($12D430, 8 frames), and '
@@ -2200,7 +2221,10 @@ const STRUCTURE_STREAMS = Object.freeze([
       + 'chain with the --extent probe. W275 added FIVE for the ship dying '
       + 'animation, whose 49 descriptors were all missing from the sheet, and '
       + 'W414 added TWO for docket D51 -- pool-A kind 2 own sixteen frames, '
-      + 'plus the eight-frame collected popup the star shares with it.');
+      + 'plus the eight-frame collected popup the star shares with it. W417 added '
+      + 'ONE: pool-A kind index 3\'s sixteen frames at $1BE94C, whose body it ports '
+      + 'in the same wave. Kinds 8..15, which it also ports, needed NOTHING -- [M] '
+      + 'all four of their rings are already 16 of 16 in the bundle.');
   }
   let added = 0, already = 0, chained = 0;
   for (const [base, endsAt, count, why] of STRUCTURE_RANGES) {

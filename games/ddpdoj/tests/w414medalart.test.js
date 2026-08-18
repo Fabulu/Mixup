@@ -176,20 +176,33 @@ test('W414 all eight collected-popup frames are in the shipped sheet',
 
 // ============ 4. THE GAP THIS WAVE FOUND AND DID NOT CLOSE
 
-test('W414 pool-A kind 3 has neither a body nor a picture, and both are named',
+test('W414 pool-A kind 3 -- W417 CLOSED BOTH HALVES, and this is the record',
   { skip: SKIP_IMG }, () => {
-    // Reported rather than fixed, and asserted so it cannot quietly become half
-    // true. Kind index 3 IS allocatable today -- `handlers.js` passes D0 = $C at
-    // $279D64 and $279F3C, wired by W374 -- but `bee.js runBody` dispatches five
-    // bodies and $27FED2 is not one of them, so such a record throws `unreached`
-    // BEFORE anything asks for its art. Shipping the picture first would be art
-    // no measurement in this repo can show drawing.
+    // W414 REPORTED THIS AND DID NOT FIX IT, and its own text was:
+    //
+    //   "Kind index 3 IS allocatable today -- `handlers.js` passes D0 = $C at
+    //    $279D64 and $279F3C, wired by W374 -- but `bee.js runBody` dispatches
+    //    five bodies and $27FED2 is not one of them, so such a record throws
+    //    `unreached` BEFORE anything asks for its art. Shipping the picture
+    //    first would be art no measurement in this repo can show drawing."
+    //
+    // W417 ported `$27FED2` and shipped the picture IN THE SAME WAVE, which is
+    // the only order that leaves nothing half true.  The two addresses W414
+    // measured are still asserted, because they are what the fix had to match;
+    // what has been INVERTED is the `false` below.  It is inverted rather than
+    // deleted so that a later wave that drops either half fails HERE as well as
+    // in `w417poolakind8.test.js`.
     assert.equal(u32(0x27f99e + 3 * 4), 0x27fed2, 'kind 3 body');
     assert.equal(u32(u32(0x280e4a + 3 * 4) + 4), 0x1be94c, 'kind 3 sprite');
     if (STREAMS) {
-      assert.equal(STREAMS.has(0x1be94c), false,
-        'kind 3 art is still absent -- when $27FED2 is ported, this is the '
-        + 'window that has to land with it: $1BE94C, 16 frames of stride $C4, '
-        + 'closed by $1BF58C');
+      assert.equal(STREAMS.has(0x1be94c), true,
+        'W417: $1BE94C, 16 frames of stride $C4, closed by $1BF58C -- the window '
+        + 'W414 named is now in the bundle');
+      for (let n = 0; n < 16; n++) {
+        assert.equal(STREAMS.has(0x1be94c + n * 0xc4), true,
+          `frame ${n} at $${(0x1be94c + n * 0xc4).toString(16)}`);
+      }
+      assert.equal(STREAMS.has(0x1be94c + 16 * 0xc4), true,
+        '$1BF58C itself is the HARVEST base that closes the run, not a 17th frame');
     }
   });

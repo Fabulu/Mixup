@@ -1357,7 +1357,23 @@ try {
         // as missing art and this line could not see them.  `drawn === rec`,
         // `pend === 0` and `named === 0` are unchanged, which is what says the
         // 2,918 are DRAWN and not merely counted.
-        11: { streams: 846, records: 15903, distinct: 127, first: 315,
+        // W417: streams 846 -> 862, and `records`, `distinct` and `first` ALL
+        // HOLD -- 15903, 127 and 315, unchanged from W414's own numbers.  The
+        // exporter gained exactly SIXTEEN streams, pool-A kind index 3's own
+        // animation $1BE94C..$1BF4C8 at stride $C4, and all sixteen land here.
+        // [M] before/after the bundle diff is `4291 -> 4307` streams with 16
+        // ADDED and 0 REMOVED, every added offset in that one run, and shard 11
+        // is the ONLY shard whose stream count moves.
+        //
+        // `records` HOLDING is the witness that says this is an addition and not
+        // a reshuffle: kind 3 is allocated only by type $92's tail ($279D64) and
+        // $279F3C, and [M] a 12,000-frame boot with fire held reaches pool-A
+        // kind indices 0, 1, 2 and 8 and NEVER kind 3 -- so this window cannot
+        // draw one of the sixteen and must report the same 15,903.  Had records
+        // moved, the row would have claimed streams that something else asks
+        // for.  The picture is shipped so the body W417 ports is not W414's
+        // "allocates, animates and silently fails to draw" all over again.
+        11: { streams: 862, records: 15903, distinct: 127, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };

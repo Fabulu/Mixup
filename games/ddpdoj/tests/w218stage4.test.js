@@ -84,7 +84,9 @@ test('W218 pins the type-$9F/$A4 closures and complete live art set',
     // sixteen-frame animation and the eight-frame collected popup the star shares
     // with it -- TWENTY-FOUR streams, all into shard 11. This file's own harvest
     // assertions above are the untouched witnesses: none of them moved.
-    assert.equal(manifest.spr.streamCount, 4291,
+    // W417: 4,291 -> 4,307. Pool-A kind index 3's own sixteen-frame animation
+    // ($1BE94C..$1BF4C8, stride $C4), whose body W417 ports in the same wave.
+    assert.equal(manifest.spr.streamCount, 4307,
       'W220 adds 64 live boss-part streams after the arrival body; W275 adds the 50 '
       + 'of the ship\'s dying animation, which is why this number moves whenever a '
       + 'wave harvests art. TWELVE test files pin it -- these eleven and W397 SECTION 4 '

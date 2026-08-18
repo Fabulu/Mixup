@@ -145,6 +145,13 @@ const DISTINCT_WORDS = 2402 + 5762 + 722 + 3746;          // 12,632
  *  below is therefore W397's four PLUS this, and each addend names its own wave. */
 const W414 = Object.freeze({ streams: 24, maskWords: 1328, colWords: 2327 });
 
+// W417 ships pool-A kind index 3's OWN sixteen-frame animation ($1BE94C..$1BF4C8, stride $C4)
+// in the same wave as its body $27FED2 -- SIXTEEN streams, all new, all on shard 11.  [M] the
+// bundle diff over the export is `4,291 -> 4,307` with 16 added and 0 removed, and shard 11 is
+// the only shard whose stream count moves.  Its term is separate and named, so this test still
+// says what its own wave did.
+const W417 = Object.freeze({ streams: 16, maskWords: 3104, colWords: 9888 });
+
 // -------------------------------------------------------------------------- the bundle, decoded
 
 /** `spr/streams.u32.gz` is `planes-delta-1`: three planes of `streamCount` entries, planes 0 and
@@ -454,18 +461,20 @@ test('W397 SECTION 3: shard 11\'s shipped mask body IS the cartridge\'s, word fo
 test('W397 SECTION 4: the bundle grew by exactly these four and by nothing else',
   { skip: SKIP }, () => {
     const { manifest, rows, shard } = bundle();
-    assert.equal(manifest.spr.streamCount, BEFORE.streamCount + 4 + W414.streams,
+    assert.equal(manifest.spr.streamCount, BEFORE.streamCount + 4 + W414.streams + W417.streams,
       '4,263 -> 4,267 by W397\'s four, then -> 4,291 by W414\'s twenty-four. This '
       + 'number is pinned in TWELVE test files and all twelve move together; the claim is '
       + '"the bundle is what the tree measured", never a floor');
-    assert.equal(shard.streams, BEFORE.shard11Streams + 4 + W414.streams,
-      '818 -> 822 -> 846 streams on shard 11');
-    assert.equal(shard.maskLen, BEFORE.shard11MaskLen + DISTINCT_WORDS + W414.maskWords,
+    assert.equal(shard.streams, BEFORE.shard11Streams + 4 + W414.streams + W417.streams,
+      '818 -> 822 -> 846 -> 862 streams on shard 11');
+    assert.equal(shard.maskLen,
+      BEFORE.shard11MaskLen + DISTINCT_WORDS + W414.maskWords + W417.maskWords,
       '1,153,740 -> 1,166,372 mask words: 2,402 + 5,762 + 722 + 3,746, the four NEW extents; '
       + 'then -> 1,167,700 for W414\'s 800 + 528');
-    assert.equal(shard.colLen, BEFORE.shard11ColLen + 41127 + W414.colWords,
+    assert.equal(shard.colLen, BEFORE.shard11ColLen + 41127 + W414.colWords + W417.colWords,
       '3,219,388 -> 3,260,515 -> 3,262,842 colour words');
-    assert.equal(manifest.spr.maskUsed, BEFORE.maskUsed + DISTINCT_WORDS + W414.maskWords,
+    assert.equal(manifest.spr.maskUsed,
+      BEFORE.maskUsed + DISTINCT_WORDS + W414.maskWords + W417.maskWords,
       'and the whole packed mask space grew by the same 12,632, then by the same 1,328: '
       + 'nothing else was added');
 
@@ -477,7 +486,10 @@ test('W397 SECTION 4: the bundle grew by exactly these four and by nothing else'
     // fetches LAST, while the fireball the same death spawns is shard 9, fetched
     // fifth. Index 9 is 269 + 8 and index 17 is 1239 - 8; `streamCount` is
     // UNCHANGED, and the sum assertion below is what proves the move was a move.
-    const SIZES = [166, 67, 32, 54, 17, 70, 96, 298, 72, 277, 407, 846, 139, 228, 90, 4, 37,
+    // W417: index 11 is 846 + W417's SIXTEEN (pool-A kind index 3's own animation).
+    // Every other entry is untouched, which is still the assertion -- the row was an
+    // ADDITION to one shard and the sum below is what proves it.
+    const SIZES = [166, 67, 32, 54, 17, 70, 96, 298, 72, 277, 407, 862, 139, 228, 90, 4, 37,
       1231, 160];
     assert.deepEqual(manifest.spr.shards.map((s) => s.streams), SIZES,
       'every other shard holds exactly what it held before');
@@ -493,7 +505,7 @@ test('W397 SECTION 4: the bundle grew by exactly these four and by nothing else'
         sum += r.maskWords; n++;
       }
     }
-    assert.equal(n, 822 + W414.streams,
+    assert.equal(n, 822 + W414.streams + W417.streams,
       'all 846 of shard 11\'s streams are in the published list');
     assert.equal(sum, shard.maskLen,
       'and their extents sum to the span exactly -- every stream owns its own mask block, which '
