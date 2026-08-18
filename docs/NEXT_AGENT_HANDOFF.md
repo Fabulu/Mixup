@@ -20,6 +20,55 @@ text:
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
 
+## RECON BANKED -- A4 SCRIPT $14, THE FIRST-LOOP ENDING (coordinator, 2026-08-18)
+
+Two dispatches at this unit died to server errors (one mid-response after recon, one 529 at
+startup), both leaving the tree clean. Rather than spend a third on re-deriving, the coordinator did
+the recon inline. **It is banked here so the porting attempt starts from it.**
+
+### THE WHOLE UNIT IS SIX INSTRUCTIONS
+
+    $2A6B7A  39 7c 00 80 00 02   move.w #$80,($2,A4)    init: load 128
+    $2A6B80  53 6c 00 02         subq.w #1,($2,A4)      step: count down
+    $2A6B84  66 00 00 0a         bne.w  -> $2A6B90      ext word $2A6B86 + $0A
+    $2A6B88  4e b9 00 25 95 e8   jsr $2595E8            THE ENDING STORE
+    $2A6B8E  42 54               clr.w (A4)             free the slot -- TRAP: 4254 is clr.w (A4)
+    $2A6B90  4e 75               rts
+
+Wait 128 frames, suspend the stage, free the slot. That is all it does.
+
+### THE `$1A` FIGURE IS A THIRD VARIANT OF THE ENTRY-TO-ENTRY STORY
+
+**Code is `$18`** (`$2A6B7A..$2A6B91`). `$2A6B92..$2A6B93` is two bytes of padding, and **`$2A6B94`
+is `bossBody2A6B94`, a different unit already ported** (`claimed.py`: 13 mentions, 4 in code). So
+`$1A` = `$18` code + 2 padding. Not the next unit's data (W419), not the unit's own tables (W418) --
+**alignment**. Three shapes now; the gap still is not a signal.
+
+**Entry-to-entry cannot bound this one at all**: `$14` is the LAST table entry. Index 21 reads
+`$70004EB9`, which is `moveq #0,D0 / jsr` -- code, not a pointer -- confirming W403's "the table ends
+where its own first script begins".
+
+### THE TWO ENDINGS ARE NOT THE SAME JOB, AND THAT ANSWERS THE OPEN QUESTION
+
+| | A4 `$14` (first loop) | A4 script 5 (second loop, W409) |
+|---|---|---|
+| code | **`$18`, six instructions** | **`$270`, five-state machine** |
+| does | wait 128, suspend, free | 16 spawns, `$28B34A` blast, three ramps, `$246410` chain, `($2,A6) += $1400` push, THEN suspend |
+
+**Exactly ONE starter**, from a scan of `$2A0000..$2AB000` for `moveq #$14` followed by
+`jsr`/`jmp $25980C`: **`$2A5CB4`**, which is script 1's first-loop arm, as the handoff said.
+
+So the cartridge gives the first loop a bare 128-frame beat before the stage ends, and saves the
+whole finale for the second. **A wave that assumed the two arms were variants of one routine would
+have gone looking for structure that is not there.**
+
+### WHAT IS LEFT FOR THE PORTER
+
+The body is trivial. The work is the test: read the slot's `($2,A4)` back across the 128 frames, and
+prove the `$2595E8` store fires on the frame the counter hits zero and not before. **Dirty `($2,A4)`
+before the init** -- a recycled slot carries the previous tenant's word, which is the trap that has
+now bitten three waves (W417, W418, W419).
+
 ## START HERE -- W419
 
 ### MY BRIEF NAMED THE WRONG KINDS, AND ACTING ON IT WOULD HAVE SHIPPED DEAD RECORDS
