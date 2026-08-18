@@ -3123,3 +3123,39 @@ Verified by me on a quiet tree: 3919 pass / 0 fail / 0 skipped, gate exit 0 with
 **RE-CHECK D56 AND D59 AGAINST THIS.** The recon named this as their possible common cause, and it
 is now ported. That check is cheap and has not been done.
 
+
+### D59 LEAD (coordinator, verified from the bytes): FLICKER AND DAMAGE ARE SEPARATED BY ONE GUARD
+
+> "Many places I can see bees flickering. But I can't shoot them, free them, or collect them."
+
+**"FLICKERING BUT NOT DYING" IS A STATE THE CARTRIDGE CAN ACTUALLY BE IN, and block 7 is where.**
+Swept this session, `$245246..$245250`:
+
+    $245246  89 55                 or.w D4,(A5)             <- THE HIT BITS. This is the flash.
+    $245248  0c 6d 6f 00 00 02     cmpi.w #$6F00,($2,A5)
+    $24524E  64 04                 bcc.s -> $245254         <- bcc is UNSIGNED
+    $245250  9b 6d 00 18           sub.w D5,($18,A5)        <- the HP subtract, SKIPPED
+    $245254  4b ed 00 20           lea ($20,A5),A5
+
+The hit bits are OR'd BEFORE the guard and the HP subtract comes AFTER it. So any record whose
+`($2,A5)` reads `>= $6F00` **UNSIGNED** flashes on every overlap and never loses a point of HP.
+And because the test is unsigned, that band includes every NEGATIVE Y (`$8000..$FFFF`), not just
+large positive ones.
+
+`src/damage.js` already transcribes this correctly (`if (ram.u16(rec + 0x02) >= 0x6f00) continue;`
+sits between the `or.w` and the subtract). **So this is not a porting defect -- it is the
+cartridge's own behaviour, and that is what makes it a lead rather than a fix.**
+
+**THE CHECK, and it is cheap:** on a bench where a bee carrier is present and being shot at,
+**print `($2,A5)` for the carrier's record on the frames block 7 overlaps it.** If it reads
+`>= $6F00`, the carrier is being placed at a Y this guard rejects and the flicker-without-death is
+fully explained -- and the question becomes why our port puts it there when the cartridge does not.
+If it reads below `$6F00`, this lead is dead and the entry says so.
+
+**THIS IS ALSO THE ANSWER TO THE DOCKET'S THIRD POSSIBILITY.** D59 already warned that W412
+measured OVERLAPS, not kills, and that "an overlap is not a kill". `$245248` is precisely a place
+where an overlap produces a flash and no kill. **Measure deaths, never overlaps.**
+
+**DO NOT CLOSE D59 ON THIS WITHOUT THE MEASUREMENT.** It is a hypothesis with a named check, not a
+finding. Closing an item on reasoning that was never exercised is the D56 mistake.
+
