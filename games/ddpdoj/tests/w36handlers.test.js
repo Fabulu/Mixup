@@ -625,13 +625,23 @@ test('$88\'s death scores $115 -- a move.l, not a moveq -- and notes five gaps',
     assert.equal(ram.u32(0x81b4c0) >>> 0, 0x00000116,
       'the packed-BCD pending score is $1 (the hit) + $115 (the kill)');
     const n = log.report().join('\n');
-    for (const a of ['$28C2DC', '$289B22', '$27F8FA']) {
+    // W411 (docket D49) REMOVES `$27F8FA` from this list: type $88's seven-vector
+    // loop is wired, so it leaves seven pool-A records instead of one note. The two
+    // that remain are still gaps.
+    for (const a of ['$28C2DC', '$289B22']) {
       assert.match(n, new RegExp(a.replace('$', '\\$')), `${a} is COUNTED`);
     }
     // W54: `$289004` left that list because it is no longer a gap.  Type $88's
     // death arm ($2762C6 / $276304 / $276348 / $27638E) makes FOUR allocations,
     // and all four ask pool D for TWO records apiece -- which is THE REFUSAL.
     assert.doesNotMatch(n, /\$289004 /, '$289004 is SPAWNED now, not counted');
+    assert.doesNotMatch(n, /\$27F8FA/, '$27F8FA is DROPPED now, not counted');
+    let discs = 0;
+    for (let i = 0; i < 80; i++) {
+      const st = ram.u16(0x8171be + i * 0x2c);
+      if (st !== 0 && ((st & 0x7c) >> 2) === 2) discs++;
+    }
+    assert.equal(discs, 7, 'seven gold discs, one per $2763E8 vector');
     let live = 0;
     for (let i = 0; i < 80; i++) if (ram.u16(0x81b732 + i * 0x38) !== 0) live++;
     assert.equal(live, 4, 'four pool-B records, one per $289004 in $2762C4');

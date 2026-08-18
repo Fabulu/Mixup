@@ -1,45 +1,112 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W408)
+Updated: 2026-08-18 (W411)
 
-## DOCKET -- OWNER'S PLAY REPORT, 2026-08-18: SEE docs/DOCKET.md D42..D47
+## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
 
-**These live in `docs/DOCKET.md` as D42..D47, which is authoritative.** This copy first
-numbered them D41..D45 and collided with the existing D41 (coin and start); corrected here.
-D47, a documentation pass, is in the docket file only.
+Live items: **D42 D43 D46 D48 D50**. Closed by W410/W411: **D44 D45**. **D47** (docs pass) is done.
 
-The owner played live build `20260816181806` and reported five defects. **These outrank further
-HIBACHI internals**, because they are things a player sees in the first minute and the boss work is
-not. Triage below is a first look, NOT a finding -- confirm each against the image before porting.
+**THE TRIAGE THAT USED TO SIT HERE WAS WRONG IN THREE OF FIVE ITEMS AND HAS BEEN DELETED.** It is
+still in git history if you want it. What it got wrong, because the pattern matters more than the
+text:
 
-**D42. The hyper laser has no hit animation.** `src/laser.js` DOES spawn one:
-`spawnBeamImpact289FC0` at line 1031, counted into `ctx.beamImpacts`. So the emitter exists and the
-question is whether it is reached, whether the effect draws, or whether only P1's block spawns it
-(line 1020 says the impact is spawned from P1's block for reasons documented there). Start by
-measuring `ctx.beamImpacts` on a real bench with the laser actually on a target.
+- D44/D45: it named `items.js`, which is the WRONG SUBSYSTEM (P capsules). Stars and medals are
+  pool A. It then blamed the 31 unported enemy types; every one of the ten refusing handlers was
+  ported. Both guesses were mine and both were wrong.
+- D45: it called kind 1 the medal. Kind 1 is the bee. The medal is kind 2.
+- D43: it described the ordinary bomb's screen clear. **The owner corrected me**: the report is the
+  LASER BOMB, a separate weapon with its own damage pass `$2456A6`.
 
-**D43. The laser bomb does not hit the boss** (and possibly other things). `src/bomb.js:329`
-documents `$243DA0` as the bomb's screen-clear entry and is explicit that it is **NOT** the
-midboss's, whose sibling `$243E7C` arms `$81B412` and walks the 210 slots. So there are two
-different clear paths and the boss may simply not be on the one the bomb takes. Read both.
+**Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
+D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
 
-**D44. Only mid-bosses leave stars.** Item spawning is wired (`spawnItem` is called from
-`boss.js`, `handlers.js` x3, `player.js`, `stage4type9d.js`), and `items.js` has ZERO deferrals. So
-the allocator is not the problem. Most likely the per-enemy drop is gated on enemy types that are
-not ported: **95 of 256 types ported, 130 null, 31 unported**. Check whether the unported types are
-the ones that should drop.
+## START HERE -- W411 (docket D49)
 
-**D45. Nothing leaves medals.** Note `src/bee.js` is titled "THE BEE (yellow medal)" and its header
-records that a PREVIOUS wave (W111) was opened by the owner reporting too few medals, and that the
-agent "spent a wave's worth of attention on a path that had been closed". **Read `bee.js:796` before
-starting** so this wave does not repeat that. The medal accumulators are `$817F84`/`$817F86` (P1)
-and `$817F88`/`$817F8A` (P2), zeroed in `player.js:176`, with the tier logic at `$2854E0` in
-`hud.js`.
+### A TEST WAS PINNING A DEFECT, AND IT COST EIGHT WAVES
 
-**D46. There is no start-of-game menu.** This one is EXPECTED, not a regression: it is docket item
-**D33, the main screen**, and nothing of it is decoded yet. Say so rather than treating it as a bug.
+`$27FA34` is `66 b8`: a **backward** `bne` to `$27F9EE`, the star's collect arm. `bee.js` read it as
+"bits 11 or 12 set and it does NOTHING", and `w265poolakind0.test.js` **asserted that reading**. So
+since W265 a star the player flew into was never collected, never scored, never counted. Coordinator
+verified the bytes independently: `$27FA34 + 2 - $48 = $27F9EE`.
 
-## START HERE -- W409
+**This is the shape to fear.** Not a wrong constant a test would catch, but a wrong reading a test
+was defending. When an ablation of that line passed, the test agreed with the port and both were
+wrong together. Treat "the test pins it" as evidence about the TEST until you have read the bytes.
+
+### THE OWNER'S D44/D45 HAD TWO INDEPENDENT CAUSES, AND BOTH ARE NOW FIXED
+
+Ten enemy death arms called three unported entries of the pool-A allocator and logged a deferral
+instead of dropping. Kind index 2, the medal, had no body at all. Measured, lf2000, 5400 frames:
+
+| | before | after |
+|---|---|---|
+| pool-A delivered | 18 | **58** |
+| kind 2 (medal) | 0 | **32** |
+| `$817F84` medal P1 | 0 | **15** |
+| `$817F86` star P1 | 0 | **4** |
+| `$27F8EE` / `$27F8FA` refusals | 11 / 21 | **0 / 0** |
+
+`$27F8F8`'s 1440 refusals are the bullet mover freeing off-screen: real, invisible, DEFERRED.
+
+### THE ORDER IN MY BRIEF WAS BACKWARDS AND THE AGENT SAID SO
+
+I ordered type `$90` first as a cheap proof needing no new body. `$90` is a **stage-2** type that
+never spawns on any bench in this repo, and reaching stage 2 hits a **pre-existing** throw at frame
+6495 (`$280252`, kind index 8, 45 records at once, a bullet cancel with `$81B412 != 0`). The agent
+proved it pre-existing by reverting to `HEAD`: original throws at 6495, its tree at 6443, a 52-frame
+RNG shift and not a regression. **That throw is still there and is nobody's fix yet.**
+
+### FIVE GATE BASELINES MOVED, AND WHY THAT IS NOT A COVER-UP
+
+W52/W53/W54/W58/W90 fingerprints shifted because real allocations now draw from the shared RNG
+counter `$803917`. **`distinct` and `first` held on every shard** -- that is the witness that the ART
+side did not change and only counts moved. Coordinator checked the diff. If you ever move a baseline
+without being able to say which fields held, stop.
+
+### FOUR MORE DECODING ERRORS FOUND IN ALREADY-SHIPPED CODE
+
+- **`hitShortB` was wrong for both stage-4 kinds.** W216 wrote the ordinary body's sprite advance
+  where `$281010 move.w (A0)+,($16,A6)` reads a table: `$0054` for kind 18 (port said `$0064`),
+  `$0064` for kind 19 (port said `$00C4`).
+- **`andi.w #$F8DF` clears bits 10, 9, 8 and 5, not 13.** Bit 5 is INSIDE the kind field, so the
+  instruction edits the kind index of any record carrying it.
+- **`$279B16` is `movem.W`, not `movem.L`** -- `4C9C` has bit 6 clear. Read as long, type `$91`
+  would run 257 passes off a seven-entry table. `aligned.py` prints the bytes right; the size bit is
+  on the reader.
+- **The `$27F8FA` bounds tests are CARRY tests, not sign tests.** `addi.w #$800 / addi.w #$7800 /
+  bcs` frees `[$8000,$F7FF]` and lets `[$F800,$FFFF]` through, because the first add wraps it back
+  down. A `bmi` port would free the whole top half.
+
+### THE ALLOCATOR HAS FIVE ENTRIES AND SEVEN CALLERS, NOT FOUR AND FIVE
+
+`$27F8E6` is a fifth entry, called from `$288ABE`. `$27EF90` and `$27F294` also call `$27F8EE`,
+outside `handlers.js`. The docket's four-entry list is incomplete.
+
+### ONE WIRE IS WRITTEN BUT UNREACHABLE, AND IT IS LABELLED AS SUCH
+
+Type `$8E`'s drop calls `$27664E jsr $289AF4` before `$27665A`, and pool C's absolute allocator
+refuses kind `$8`, so the whole arm throws. The wire is cited and correct; it needs pool C kind `$8`
+first. The agent wrote that in the test file rather than writing a test that pretends.
+
+### 47 ABLATIONS, 9 GREEN, 2 INVALID
+
+All nine were values a test wrote and never read back. Two mutations were provably untestable
+(`u8 & 0x80` is the same bit as `u16 & 0x8000`; the `$8E` arm throws earlier) and were replaced.
+Pass 3: 47 of 47 red.
+
+### VERIFIED
+
+Suite **3729 pass / 0 fail / 0 skipped** (3698 before; +31). Gate **exit 0**. `--verify` **OK at 600
+windows** (one new: `$280F34 + $A8`). `export-web.mjs` was run before the gate.
+
+### NEXT
+
+**D42** (hyper laser hit animation -- it also owns the bee's 11-frame muzzle window from W410),
+**D43** (the laser bomb's nearest-only pool B, corrected by the owner), **D50** (the late crater),
+**D48** (the wrong-bit RNG at eleven sites), then A4 `$14`. The frame-6495 kind-8 throw needs an
+owner too.
+
+## W409 NOTES
 
 ### THE ENDING COMPLETES. NOT "DOES NOT STOP" -- COMPLETES, BY THE CARTRIDGE'S OWN STORE.
 

@@ -946,8 +946,9 @@ test('W408 SECTION 7: ONE new window, 596, bounded three ways and none of them a
     const set = new Map(tables.rom.windows.map(
       (x) => [parseInt(String(x.base).replace('$', ''), 16), x.len]));
     assert.equal(set.size, tables.rom.windows.length, 'no duplicate window bases');
-    assert.equal(tables.rom.windows.length, 599,
-      'W409 CORRECTION: 599 windows -- 595 + this wave\'s one + W409\'s three');
+    assert.equal(tables.rom.windows.length, 600,
+      'W409 CORRECTION: 599 windows -- 595 + this wave\'s one + W409\'s three'
+      + ' W411 declares $280F34, the collected-impact transform table, so 600.');
 
     // (1) the `lea` NAMES the base. TRAP 4: extension-word address plus displacement.
     assert.equal(w(HIBACHI_A1.gunAInit), 0x41fa, '$2A8B7C `41FA` lea (d16,PC),A0');

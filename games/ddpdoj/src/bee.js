@@ -163,6 +163,20 @@ export const POOL_A = Object.freeze({
   pause: 0x803912,
   collectP1Total: 0x817f86,
   collectP2Total: 0x817f8a,
+  // W411: the OTHER pair. `$28DB70`'s result screen reads FOUR independent words,
+  // not two lo/hi pairs: $817F86/$817F8A is the star's ($27F9EE lea $817F86) and
+  // $817F84/$817F88 is kind index 2's ($27FE1E lea $817F84). P1 is the `btst #$C`
+  // arm in both.
+  medalP1Total: 0x817f84,    // $27FE1E lea $817F84,A0
+  medalP2Total: 0x817f88,    // $27FE2A lea $817F88,A0
+  kind2Body: 0x27fe0e,       // dispatch index 2 -- the gold disc
+  kind2Collect: 0x27fe0e,    // its collect arm falls out of the same head
+  kind2Step: 0x27fe6e,       // the ordinary step arm
+  kind0Collect: 0x27f9ee,    // $27FA34 bne -- kind 0/4's collect arm, BACKWARD
+  collectTransform: 0x280fdc, // the shared collected transform
+  collectTable: 0x280f34,    // $280FE0 lea (-$AE,PC),A0
+  collectSelectors: 3,       // $00050000, $00050004, $00010008 -- the whole image
+  collectSpriteEntries: 10,  // ten longwords per sprite table
 });
 
 /** Deliberate-red seam used only by W166's causal regression. */
@@ -947,7 +961,14 @@ function due8(ram, addr) {
  * dbra counter, which is why the driver threads it through.
  */
 function poolAKind0Body27FA30(ram, rom, ctx, a6, d1, remaining) {
-  if ((d1 & 0x1800) !== 0) return undefined;              // $27FA30/$27FA34 bne
+  // W411 CORRECTS W265. `$27FA34` is `66 b8` -- `bne` with an $B8 = -$48
+  // displacement off $27FA36, i.e. **$27F9EE, BACKWARD**, the collect arm that sits
+  // between the dispatch table and this body. W265 read it as "bits 11 or 12 set and
+  // it does NOTHING at all" and its test pinned that, so a star the player touched
+  // was never collected, never scored and never counted -- half of docket D44.
+  if ((d1 & 0x1800) !== 0) {                              // $27FA30/$27FA34 bne $27F9EE
+    return poolACollectArm(ram, rom, ctx, a6, d1, COLLECT_ARMS.star27F9EE);
+  }
   if (due8(ram, a6 + 0x18)) {                             // $27FA36 subq.b/bcc
     ram.setU8(a6 + 0x18, ram.u8(a6 + 0x19));              // $27FA3C
     const next = (ram.u32(a6 + B.sprite) + 0x24) >>> 0;   // $27FA46 addi.l #$24
@@ -978,11 +999,91 @@ function poolAKind0Body27FA30(ram, rom, ctx, a6, d1, remaining) {
   return undefined;
 }
 
+/**
+ * `$27FE0E` -- POOL-A KIND INDEX 2'S BODY, the GOLD DISC (docket D44/D45's medal).
+ * Art `$1BE2CC`, 4 x 24, template `$280EC6`, finish hook `$280CF8` (the jitter), and
+ * the counters `$817F84`/`$817F88` that `$28DB70` values at TWENTY on the result
+ * screen where the star's `$817F86`/`$817F8A` are worth ten.
+ *
+ * The head is three tests and nothing else:
+ *
+ *     27fe0e: tst.w $8130F8 / bmi $27FE5E    the boss flag -- bit 15 of the WORD is
+ *                                            bit 7 of the byte $294DDC bset #$7 sets,
+ *                                            and it FREES the record outright
+ *     27fe16: andi.w #$1800,D1 / beq $27FE6E bits 11/12 -> the collect arm below,
+ *                                            otherwise the ordinary step
+ *
+ * `$27FE5E` is `moveq #0 / move.w D0,(A6) / move.w D0,($2,A6) / subq.w #1,$817F7E /
+ * rts` -- the same five instructions as `$27FC7C`, which is why this reuses it.
+ */
+function poolAKind2Body27FE0E(ram, rom, ctx, a6, d1) {
+  // $27FE0E tst.w $8130F8 / $27FE14 bmi. A WORD test, so it is bit 15 of the word =
+  // bit 7 of the byte at $8130F8 -- `boss.js`'s `bset #$7`. Not the $242EC2 hazard
+  // (docket D48): nothing was drawn here, the flag is read straight out of RAM.
+  if ((ram.u16(0x8130f8) & 0x8000) !== 0) {               // $27FE14 bmi $27FE5E
+    return offscreenFree27FC7C(ram, a6);
+  }
+  if ((d1 & 0x1800) !== 0) {                              // $27FE1A beq $27FE6E
+    return poolACollectArm(ram, rom, ctx, a6, d1, COLLECT_ARMS.medal27FE0E);
+  }
+  return medalStep27FE6E(ram, rom, a6);
+}
+
+/**
+ * `$27FE6E` -- kind 2's ordinary step.  It has NO velocity of its own: the driver
+ * already moved the short axis by `$813176`, and this adds `$80B03C` to the long one
+ * unless motion is frozen.  Then the bounds test, the animation, and the emit.
+ *
+ * The bounds test is the bee's `$27FCA8` shape with the two arms in the other order,
+ * and both are `addi.w` CARRY tests rather than sign tests, which is not the same
+ * thing: `$27FE96 addi.w #$800 / $27FE9A addi.w #$7800` frees a long axis in
+ * `[$8000,$F7FF]` and lets `[$F800,$FFFF]` through, because the first `addi.w` wraps
+ * it back down before the second one can carry.
+ */
+function medalStep27FE6E(ram, rom, a6) {
+  if (ram.u16(POOL_A.freeze) === 0) {                     // $27FE6E tst.w / $27FE74 bne
+    ram.setU16(a6 + B.pos,                                // $27FE7C add.w D0,($2,A6)
+      u16(ram.u16(a6 + B.pos) + ram.u16(POOL_A.scrollLong))); // $27FE76 move.w $80B03C
+  }
+  const pos = ram.u32(a6 + B.pos);                        // $27FE80 move.l ($2,A6),D0
+  let px = u16((pos & 0xffff) + 0x1c00);                  // $27FE84 addi.w #$1C00
+  px = u16(px + ram.u16(0x813172));                       // $27FE88 add.w $813172
+  px = u16(px + 0x9000);                                  // $27FE8E addi.w #$9000
+  let free = px < 0x9000;                                 // $27FE92 bcs $27FE9E
+  if (!free) {
+    let py = u16((pos >>> 16) + 0x0800);                  // $27FE94 swap / $27FE96
+    py = u16(py + 0x7800);                                // $27FE9A addi.w #$7800
+    free = py < 0x7800;                                   // $27FE9E bcs $27FE5E
+  }
+  if (free) return offscreenFree27FC7C(ram, a6);
+
+  // $27FEA0 subq.b #$1,($18,A6) / bcc -- the OLD-ZERO BORROW on the BYTE at +$18,
+  // which is the HIGH byte of the word the fill's jitter hook ($280D04 add.b) seeded
+  // with $01 + a random 0..31.  The reload comes from ($19,A6), the template's $01.
+  if (due8(ram, a6 + B.blinkTimer)) {                     // $27FEA4 bcc $27FECA
+    ram.setU8(a6 + B.blinkTimer, ram.u8(a6 + B.blinkTimer + 1)); // $27FEA6
+    // $27FEB0 addi.l #$34,(A0) writes FIRST; the compare then replaces it, so the
+    // record never holds $1BE60C.  On the wrap the timer is forced to 1, NOT to the
+    // reload byte -- one instruction that makes the wrap frame a beat longer.
+    ram.setU32(a6 + B.sprite, (ram.u32(a6 + B.sprite) + 0x34) >>> 0); // $27FEB0
+    if (ram.u32(a6 + B.sprite) === 0x001be60c) {          // $27FEB6 cmpi.l / bne
+      ram.setU32(a6 + B.sprite, 0x001be2cc);              // $27FEBE move.l #$1BE2CC
+      ram.setU8(a6 + B.blinkTimer, 0x01);                 // $27FEC4 move.b #$1,($18,A6)
+    }
+  }
+  // $27FECA movea.l ($28,A6),A0 / $27FECE jmp (A0) -- the record's OWN layer emitter,
+  // not kind 0's fixed $23EBA0.
+  enqueueThroughStub(ram, rom, ram.u32(a6 + B.layerEmitter), a6);
+  return { emitted: true };
+}
+
 function runBody(ram, rom, ctx, a6, d1, body, remaining) {
   if (body === POOL_A.body) return beeBody27FACC(ram, rom, ctx, a6, d1);
   // Kinds 0 and 4 share $27FA30 -- DISPATCH[0] and DISPATCH[4] are the same address.
   if (body === 0x27fa30)
     return poolAKind0Body27FA30(ram, rom, ctx, a6, d1, remaining);
+  if (body === POOL_A.kind2Body)
+    return poolAKind2Body27FE0E(ram, rom, ctx, a6, d1);
   if (body === 0x280082)
     return stage4ImpactBody(ram, rom, ctx, a6, d1,
       IMPACT_KIND[KIND.stage4Impact18], remaining);
@@ -991,7 +1092,8 @@ function runBody(ram, rom, ctx, a6, d1, body, remaining) {
       IMPACT_KIND[KIND.stage4Impact19], remaining);
   unreached(body, `$27F992 jsr (A0) -- the kind dispatch sent a live pool-A `
     + `record to $${body.toString(16).toUpperCase()}, which is not the bee body `
-    + `($27FACC) or Stage-4 kind 18/19. This remaining pool-A kind is not ported; its `
+    + `($27FACC), kind 0/4's ($27FA30), kind 2's ($27FE0E) or Stage-4 kind 18/19's. `
+    + `This remaining pool-A kind is not ported; its `
     + `D0 sources at the eleven general-allocator call sites are unattributed. `
     + `Record at $${a6.toString(16).toUpperCase()}, status $${
       d1.toString(16).toUpperCase()}`);
@@ -1004,36 +1106,137 @@ function freePoolA(ram, a6) {
   return { freed: true };
 }
 
-function collectStage4Impact(ram, rom, ctx, a6, d1, spec) {
-  const total = (d1 & 0x1000) !== 0
-    ? POOL_A.collectP1Total : POOL_A.collectP2Total;
-  ram.setU16(total, Math.min(0x03e7, ram.u16(total) + spec.collectAdd));
-  ram.setU32(a6 + B.hitLongA, spec.collectSelector);
-  scoreByMask(ram, spec.collectScore, ram.u8(a6 + B.status));
-  ctx.soundPost?.(spec.collectSound);
-  ram.setU8(a6 + 1, 0x84);
+// ================= $280FDC, THE COLLECTED TRANSFORM, AND ITS TABLE ===========
+//
+// W411. **Four collect arms share one tail, and the tail is table-driven.**
+// `$27F9EE` (kinds 0/4), `$27FE0E` (kind 2), `$2800A8` (kinds 6/18) and `$280190`
+// (kinds 7/19) each write a SELECTOR long to `($10,A6)` and `bra $280FDC`, which
+// reads everything else out of the cartridge:
+//
+//   $280FDC  move.l ($10,A6),D0
+//   $280FE0  lea (-$AE,PC),A0          -> $280F34, three longword selectors
+//   $280FE4  movea.l (A0,D0.w),A0      the selector's LOW word is a BYTE OFFSET
+//   $280FE8  swap D0 / add.w D0,D0 / add.w D0,D0
+//                                      its HIGH word becomes a longword index
+//   $280FEE  movea.l (A0)+,A2          the descriptor's sprite-table base
+//   $280FF0  lea (A6),A1
+//   $280FF2  andi.w #$F8DF,(A1)+       status: clear bits 10, 9, 8 and 5 -- F=1111,
+//                                     8=1000, D=1101, F=1111, so bit 13 (the x2
+//                                     flag) SURVIVES and bit 5 is inside the kind
+//   $280FF6  addi.l #$6000000,(A1)+    the LONG axis moves $0600, as a LONG add
+//   $280FFC  move.l (A0)+,(A1)+        +$06 the sprite offset pair
+//   $280FFE  move.l (0,A2,D0.w),(A1)+  +$0A the collected sprite
+//   $281002  move.w (A0)+,(A1)+        +$0E the size
+//   $281010  move.w (A0)+,($16,A6)     +$16 the collected animation STEP
+//
+// **The step is the table's, not the body's**, and W216 got both stage-4 kinds
+// wrong by reusing `spec.step` (the ORDINARY sprite advance) for it: $0064 where
+// the cartridge says $0054, and $00C4 where it says $0064. Reading $280F34
+// removes the possibility of that class of error for every kind at once.
+//
+// Only THREE selectors exist in the 6 MB image, which is what bounds the pointer
+// run: $00050000, $00050004, $00010008. See the window's own note.
+function collectTransform280FDC(rom, selector) {
+  const idx = selector & 0xffff;                          // $280FE4 (A0,D0.w)
+  if ((idx & 3) !== 0 || idx >= POOL_A.collectSelectors * 4) {
+    unreached(0x280fe4, `$280FE4 movea.l (A0,D0.w),A0 -- the selector at ($10,A6) `
+      + `is $${(selector >>> 0).toString(16).toUpperCase()}, whose low word $${
+        idx.toString(16).toUpperCase()} is not one of the THREE longword offsets `
+      + `$280F34 holds (0, 4, 8). Every collect arm in the image writes $00050000, `
+      + `$00050004 or $00010008; a fourth one means a collect arm this port has not read`);
+  }
+  const rec = rom.u32(POOL_A.collectTable + idx);         // the 12-byte descriptor
+  const base = rom.u32(rec);                              // $280FEE movea.l (A0)+,A2
+  const d0 = u16(((selector >>> 16) & 0xffff) * 4);       // $280FE8 swap / add / add
+  if (d0 >= POOL_A.collectSpriteEntries * 4) {
+    unreached(0x280ffe, `$280FFE move.l (0,A2,D0.w),(A1)+ -- the selector's high word `
+      + `$${((selector >>> 16) & 0xffff).toString(16).toUpperCase()} indexes past the `
+      + `${POOL_A.collectSpriteEntries} longwords of the sprite table at $${
+        base.toString(16).toUpperCase()}`);
+  }
+  return {
+    sprite: rom.u32(base + d0),                           // $280FFE
+    off: rom.u32(rec + 4),                                // $280FFC move.l (A0)+
+    size: rom.u16(rec + 8),                               // $281002 move.w (A0)+
+    step: rom.u16(rec + 10),                              // $281010 move.w (A0)+
+  };
+}
 
-  ram.setU16(a6 + B.status, ram.u16(a6 + B.status) & 0xf8df);
-  ram.setU32(a6 + B.pos, (ram.u32(a6 + B.pos) + 0x06000000) >>> 0);
-  ram.setU32(a6 + B.spriteOff, spec.collectOff);
-  ram.setU32(a6 + B.sprite, spec.collectSprite);
-  ram.setU16(a6 + B.size, spec.collectSize);
-  ram.setU16(a6 + B.hitLongB, 0x0010);
-  ram.setU16(a6 + B.hitShortA, 0x0202);
-  ram.setU16(a6 + B.hitShortB, spec.step);
-  ram.setU8(a6 + B.blinkTimer, 0x07);
-  ram.setU8(a6 + B.blinkTimer + 1, 0x0f);
-  ram.setU16(a6 + B.tpl1C, 0x001d);
+/** `$280FDC` -- the shared collected transform, everything after the per-kind
+ *  counter, score, cue and `move.b #$84,($1,A6)`. */
+function collectedTransform280FDC(ram, rom, ctx, a6) {
+  const t = collectTransform280FDC(rom, ram.u32(a6 + B.hitLongA));
+  ram.setU16(a6 + B.status, ram.u16(a6 + B.status) & 0xf8df);   // $280FF2
+  ram.setU32(a6 + B.pos, (ram.u32(a6 + B.pos) + 0x06000000) >>> 0); // $280FF6
+  ram.setU32(a6 + B.spriteOff, t.off);                    // $280FFC
+  ram.setU32(a6 + B.sprite, t.sprite);                    // $280FFE
+  ram.setU16(a6 + B.size, t.size);                        // $281002
+  ram.setU16(a6 + B.hitLongB, 0x0010);                    // $281004
+  ram.setU16(a6 + B.hitShortA, 0x0202);                   // $28100A
+  ram.setU16(a6 + B.hitShortB, t.step);                   // $281010
+  ram.setU8(a6 + B.blinkTimer, 0x07);                     // $281014
+  ram.setU8(a6 + B.blinkTimer + 1, 0x0f);                 // $28101A
+  ram.setU16(a6 + B.tpl1C, 0x001d);                       // $281020
 
-  const position = u16(ram.u16(POOL_A.scrollShort) + ram.u16(a6 + B.posX));
-  const direction = position >= 0x1c00 ? 0x30 : 0x10;
-  let speed = drawByte242B3C(ram, rom);
+  const position = u16(ram.u16(POOL_A.scrollShort) + ram.u16(a6 + B.posX)); // $281026
+  const direction = position >= 0x1c00 ? 0x30 : 0x10;     // $281030..$281038
+  let speed = drawByte242B3C(ram, rom);                   // $28103A
   speed = (speed << 24) >> 24;
-  if (speed < 0) speed = -speed;
-  speed = (speed & 6) + 6;
-  const v = ctx.tables.vector(speed, direction);
-  ram.setU16(a6 + B.speed, v.dx);
+  if (speed < 0) speed = -speed;                          // $281040 bpl / $281042 neg.b
+  speed = (speed & 6) + 6;                                // $281044/$281048
+  const v = ctx.tables.vector(speed, direction);          // $28104A jsr $241812
+  ram.setU16(a6 + B.speed, v.dx);                         // $281050 move.w D3,($1A,A6)
+}
+
+/**
+ * W411 -- THE COLLECT ARM, and it is ONE routine with five constants.
+ *
+ *   kind      arm       counters               add  score  selector
+ *   0 and 4   $27F9EE   $817F86 / $817F8A       1    $50   $00050000
+ *   2         $27FE0E   $817F84 / $817F88       1    $50   $00050000
+ *   6 and 18  $2800A8   $817F86 / $817F8A       4   $500   $00050004
+ *   7 and 19  $280190   $817F86 / $817F8A       8  $1000   $00010008
+ *
+ * `$27F9EE` and `$27FE0E`'s twenty instructions are byte-identical apart from the
+ * two `lea`s, which is what says the second is the first "on a different counter"
+ * rather than a routine to read again.
+ */
+function poolACollectArm(ram, rom, ctx, a6, d1, spec) {
+  // $27FE24 btst #$C,D1 / bne -- bit 12 is P1, and the P2 counter is the FALL-THROUGH.
+  const total = (d1 & 0x1000) !== 0 ? spec.collectP1 : spec.collectP2;
+  let v = u16(ram.u16(total) + spec.collectAdd);          // $27FE1C moveq / $27FE30 add.w
+  if (v >= 0x03e8) v = 0x03e7;                            // $27FE32 cmpi / bcs / move.w
+  ram.setU16(total, v);
+  ram.setU32(a6 + B.hitLongA, spec.collectSelector);      // $27FE3C move.l #...,($10,A6)
+  scoreByMask(ram, spec.collectScore, ram.u8(a6 + B.status)); // $27FE44/$27FE46/$27FE48
+  ctx.soundPost?.(spec.collectSound);                     // $27FE4E jsr $28C5E4
+  ram.setU8(a6 + 1, 0x84);                                // $27FE54 move.b #$84,($1,A6)
+  collectedTransform280FDC(ram, rom, ctx, a6);            // $27FE5A bra $280FDC
   return { collected: true };
+}
+
+/** The three collect-arm constant sets that are not the bee's. */
+const COLLECT_ARMS = Object.freeze({
+  // $27F9EE, reached by $27FA34's BACKWARD `bne`.  Kinds 0 and 4 -- the star.
+  star27F9EE: Object.freeze({
+    collectP1: POOL_A.collectP1Total, collectP2: POOL_A.collectP2Total,
+    collectAdd: 1, collectScore: 0x50, collectSelector: 0x00050000,
+    collectSound: 0x28c5e4,
+  }),
+  // $27FE0E's own tail.  Kind 2 -- the gold disc, on the OTHER pair of counters.
+  medal27FE0E: Object.freeze({
+    collectP1: POOL_A.medalP1Total, collectP2: POOL_A.medalP2Total,
+    collectAdd: 1, collectScore: 0x50, collectSelector: 0x00050000,
+    collectSound: 0x28c5e4,
+  }),
+});
+
+function collectStage4Impact(ram, rom, ctx, a6, d1, spec) {
+  return poolACollectArm(ram, rom, ctx, a6, d1, {
+    collectP1: POOL_A.collectP1Total, collectP2: POOL_A.collectP2Total,
+    collectAdd: spec.collectAdd, collectScore: spec.collectScore,
+    collectSelector: spec.collectSelector, collectSound: spec.collectSound,
+  });
 }
 
 function stage4ImpactBody(ram, rom, ctx, a6, d1, spec, remaining) {

@@ -199,12 +199,36 @@ test('W173/6 death scores 162, posts sound, makes five effects, and frees',
   assert.deepEqual(c.kills, [[0x162, 0x10]]);
   assert.deepEqual(c.sounds, [0x28c2dc]);
   assert.equal(c.unported.report().filter((x) => x.includes('$289B22')).length, 2);
-  assert.equal(c.unported.report().filter((x) => x.includes('$27F8FA')).length, 1);
+  // W411 (docket D49): the seven-vector `$2756A8 jsr $27F8FA` loop drops seven now.
+  const drops = poolA(ram);
+  assert.equal(drops.length, 7, '`moveq #$6,D6` + dbra is SEVEN');
+  assert.ok(drops.every((d) => d.kind === 2), 'all kind index 2');
+  const base = ram.u32(A6 + 0x02);
+  const want = [0x08000000, 0x04000400, 0x0400fc00, 0x00000000,
+    0xfc000400, 0xfc00fc00, 0xf8000000]
+    .map((v) => ((base + v) >>> 0))
+    .map((q) => `${(q >>> 16) & 0xffff},${q & 0xffff}`).sort();
+  assert.deepEqual(drops.map((d) => `${d.y},${d.x}`).sort(), want,
+    'the seven $2757F6 longs, each added to ($2,A6) as a LONG so the low half carries');
   const kinds = Array.from({ length: 5 }, (_, i) =>
     ram.u16(0x81b732 + i * 0x38) & 0xff);
   assert.deepEqual(kinds, [0x85, 0x0d, 0x0d, 0x0c, 0x85]);
   assert.equal(ram.u16(0x81b732 + B.bucket), 0x10);
 });
+
+
+/** W411: every live pool-A record, as {kind index, long axis, short axis}. The ten
+ *  enemy death arms that used to be `$27F8EE`/`$27F8FA` notes now leave records, so
+ *  the assertion that used to count a note reads the pool instead. */
+function poolA(ram) {
+  const out = [];
+  for (let i = 0; i < 80; i++) {
+    const a = 0x8171be + i * 0x2c;
+    const st = ram.u16(a);
+    if (st !== 0) out.push({ kind: (st & 0x7c) >> 2, y: ram.u16(a + 2), x: ram.u16(a + 4) });
+  }
+  return out;
+}
 
 test('W173/7 bounded board attempt stays explicitly negative', () => {
   const evidence = JSON.parse(readFileSync(evidencePath, 'utf8'));

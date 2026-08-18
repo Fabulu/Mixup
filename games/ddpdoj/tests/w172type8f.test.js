@@ -174,12 +174,29 @@ test('W172/5 death is two-stage with exact effects, fixed art, notes, and free',
   assert.deepEqual(c.sounds, [0x28c25a]);
   assert.deepEqual(c.kills, [[0x08, 0x10], [0x08, 0x10]]);
   assert.equal(c.unported.report().filter((x) => x.includes('$289AF4')).length, 1);
-  assert.equal(c.unported.report().filter((x) => x.includes('$27F8EE')).length, 1);
+  // W411 (docket D49): `$2777E2 jsr $27F8EE` was a counted note and is now a DROP.
+  const drops = poolA(ram);
+  assert.equal(drops.length, 1, 'one gold disc, D1 = 0 so it lands on the carrier');
+  assert.equal(drops[0].kind, 2, 'kind index 2, from `$2777DC moveq #$8,D0`');
   const second = 0x81b732 + 0x38;
   assert.equal(ram.u16(second) & 0xff, 0x0c);
   assert.equal(ram.u32(second + B.nudge), 0xfc00fe00);
   assert.equal(ram.u16(second + B.hook), 1);
 });
+
+
+/** W411: every live pool-A record, as {kind index, long axis, short axis}. The ten
+ *  enemy death arms that used to be `$27F8EE`/`$27F8FA` notes now leave records, so
+ *  the assertion that used to count a note reads the pool instead. */
+function poolA(ram) {
+  const out = [];
+  for (let i = 0; i < 80; i++) {
+    const a = 0x8171be + i * 0x2c;
+    const st = ram.u16(a);
+    if (st !== 0) out.push({ kind: (st & 0x7c) >> 2, y: ram.u16(a + 2), x: ram.u16(a + 4) });
+  }
+  return out;
+}
 
 test('W172/6 controlled evidence records the bounded no-stage-2 result without promotion',
   { skip: !existsSync(evidencePath) ? 'controlled MAME evidence pending' : false }, () => {

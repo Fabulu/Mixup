@@ -177,16 +177,49 @@ test('W265 a BUSY pool thins the draw by parity instead of dropping records',
       'no record was freed to achieve it');
   });
 
-test('W265 bits 11 or 12 in the status make the body do NOTHING', { skip: SKIP }, () => {
-  // $27FA30 andi.w #$1800,D1 / bne -- it returns to the walk without touching anything.
-  for (const bit of [0x0800, 0x1000]) {
+test('W411 bits 11 or 12 run the COLLECT ARM, not nothing', { skip: SKIP }, () => {
+  // W265 READ THIS BRANCH BACKWARDS AND THIS TEST PINNED THE ERROR. `$27FA34` is
+  // `66 b8`: `bne` with displacement $B8 = -$48 off $27FA36, i.e. **$27F9EE**, which
+  // is the twenty-instruction collect arm sitting between the dispatch table
+  // ($27F99E..$27F9ED) and this body. There is no arm that "does nothing"; the old
+  // assertion below (no speed ramp, no movement) is still true, but only because the
+  // collect arm does neither of those things either -- it was a test that counted
+  // fields the branch never touches on EITHER side. Read the RECORD back instead.
+  for (const [bit, counter, other] of [
+    [0x1000, POOL_A.collectP1Total, POOL_A.collectP2Total],   // btst #$C -> P1
+    [0x0800, POOL_A.collectP2Total, POOL_A.collectP1Total],   // the fall-through
+  ]) {
     const f = world();
     const slot = kind0(f);
     f.ram.setU16(slot, f.ram.u16(slot) | bit);
-    f.ram.setU8(slot + 0x1a, 7);
-    const pos = f.ram.u32(slot + 0x02);
     drive(f);
-    assert.equal(f.ram.u8(slot + 0x1a), 7, `bit $${bit.toString(16)}: no ramp`);
-    assert.equal(f.ram.u32(slot + 0x02), pos, 'and no movement');
+    assert.equal(f.ram.u16(counter), 1,
+      `bit $${bit.toString(16)}: $27F9EE moveq #$1 / add.w D0,(A0) bumped its counter`);
+    assert.equal(f.ram.u16(other), 0, 'and only its own');
+    // $27FA0E writes the selector $00050000 to ($10,A6); $281004 move.w #$10,($12,A6)
+    // then overwrites its LOW word, so the long that survives is $00050010.
+    assert.equal(f.ram.u32(slot + 0x10), 0x00050010,
+      '$27FA0E selector, with $281004 having reclaimed the low half');
+    assert.equal(f.ram.u8(slot + 0x01), 0x84,
+      '$27FA26 move.b #$84,($1,A6) -- bit 7 of the low byte, which is what');
+    assert.equal(f.ram.u32(slot + 0x0a), 0x001e179c,
+      '$280FFE move.l (0,A2,D0.w) -- selector $00050000 resolves to $280F64[5]');
+    assert.equal(f.ram.u16(slot + 0x16), 0x0044,
+      "$281010 move.w (A0)+,($16,A6) -- the TABLE's step, not the body's");
+    assert.equal(f.ram.u16(slot + 0x1c), 0x001d, '$281020 move.w #$1D,($1C,A6)');
+  }
+});
+
+test('W411 the collect arm clamps its counter at $3E7', { skip: SKIP }, () => {
+  // $27FA04 cmpi.w #$3E8,(A0) / bcs / move.w #$3E7,(A0) -- so $3E7 is a fixed point
+  // and $3E6 is the last value that can still grow.
+  for (const [start, want] of [[0x03e6, 0x03e7], [0x03e7, 0x03e7]]) {
+    const f = world();
+    const slot = kind0(f);
+    f.ram.setU16(POOL_A.collectP1Total, start);
+    f.ram.setU16(slot, f.ram.u16(slot) | 0x1000);
+    drive(f);
+    assert.equal(f.ram.u16(POOL_A.collectP1Total), want,
+      `$${start.toString(16)} -> $${want.toString(16)}`);
   }
 });

@@ -154,6 +154,18 @@ test('W179/4 retarget and paired $281420 fire use the live heading/vector tables
     ROM.u32(TYPE97_ART.headingTable + ((heading & 0x3e) << 1)));
 });
 
+
+/** W411: every live pool-A record, as {kind index, long axis, short axis}. */
+function poolA(ram) {
+  const out = [];
+  for (let i = 0; i < 80; i++) {
+    const a = 0x8171be + i * 0x2c;
+    const st = ram.u16(a);
+    if (st !== 0) out.push({ kind: (st & 0x7c) >> 2, y: ram.u16(a + 2), x: ram.u16(a + 4) });
+  }
+  return out;
+}
+
 test('W179/5 lethal damage scores $88, creates exact effects and frees immediately',
   { skip: SKIP }, () => {
   const ram = fixture();
@@ -176,5 +188,15 @@ test('W179/5 lethal damage scores $88, creates exact effects and frees immediate
     [0xfc000000, 0xf6000000]);
   const notes = c.unported.report().join('\n');
   assert.match(notes, /\$289B22/);
-  assert.match(notes, /\$27F8FA x5 type \$97 death/);
+  // W411 (docket D49): `$2781CA jsr $27F8FA` x5 was a counted note and is now five
+  // gold discs. `moveq #$4,D6` + dbra is FIVE, which is what makes the count an
+  // assertion rather than a restatement of the table's length.
+  const drops = poolA(ram);
+  assert.equal(drops.length, 5);
+  assert.ok(drops.every((d) => d.kind === 2));
+  const base = ram.u32(A6 + 0x02);
+  const want = [0x04000400, 0x0400fc00, 0x00000000, 0xfc00fc00, 0xfc000400]
+    .map((v) => ((base + v) >>> 0))
+    .map((q) => `${(q >>> 16) & 0xffff},${q & 0xffff}`).sort();
+  assert.deepEqual(drops.map((d) => `${d.y},${d.x}`).sort(), want);
 });

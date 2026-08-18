@@ -1094,9 +1094,10 @@ test('W405 SECTION 7: three new windows, 593, each sized by its own instructions
   () => {
     const set = new Map(tables.rom.windows.map(
       (x) => [parseInt(String(x.base).replace('$', ''), 16), x.len]));
-    assert.equal(tables.rom.windows.length, 599,
+    assert.equal(tables.rom.windows.length, 600,
       'W409 CORRECTION: 599 windows -- 590 + this wave\'s three + W406\'s gun 9 template '
-      + '+ W407\'s gun $B template + W408\'s gun $A template + W409\'s three');
+      + '+ W407\'s gun $B template + W408\'s gun $A template + W409\'s three'
+      + ' W411 declares $280F34, the collected-impact transform table, so 600.');
 
     // 1 + 3 -- the two slot templates, sized from their own `moveq` (TRAP 2: dbra is n+1).
     for (const [site, base, words] of [[HIBACHI_A1.gun7Init, HIBACHI_A1.gun7Template, 9],

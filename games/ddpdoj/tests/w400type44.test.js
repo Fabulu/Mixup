@@ -772,9 +772,10 @@ test('W400 SECTION 7: the death lists removed -- two DIFFERENT throws, two phase
 test('W400 SECTION 8: 585 windows, the overlap count still 71, and all eight sit in open ground',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 599, '575 windows before this wave, 583 after; 585 after W402, 590 after W404, 593 after W405, 594 after W406, 595 after W407, 596 after W408 and 599 since W409 added A4 script 5\'s three blocks; W408 added '
+    assert.equal(ws.length, 600, '575 windows before this wave, 583 after; 585 after W402, 590 after W404, 593 after W405, 594 after W406, 595 after W407, 596 after W408 and 599 since W409 added A4 script 5\'s three blocks; W408 added '
       + 'type $4C\'s two retire lists, which is why this number is a running total and not a claim '
-      + 'about this wave');
+      + 'about this wave'
+      + ' W411 declares $280F34, the collected-impact transform table, so 600.');
     const mine = [T44.init, T44.recordProto, T44.animTable, T44.waypoints, T44.state0Thresh,
       T44.deathListA, T44.deathListB, T44.animScript];
     for (const a of mine) {

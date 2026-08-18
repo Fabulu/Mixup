@@ -123,6 +123,18 @@ test('W177/4 lethal damage scores $13, posts sound and creates three exact kind-
   assert.equal(effect(1, B.f1c, 'u8'), 0x40);
 });
 
+
+/** W411: every live pool-A record, as {kind index, long axis, short axis}. */
+function poolA(ram) {
+  const out = [];
+  for (let i = 0; i < 80; i++) {
+    const a = 0x8171be + i * 0x2c;
+    const st = ram.u16(a);
+    if (st !== 0) out.push({ kind: (st & 0x7c) >> 2, y: ram.u16(a + 2), x: ram.u16(a + 4) });
+  }
+  return out;
+}
+
 test('W177/5 death tail draws through byte zero, then requests seven ROM vectors and frees',
   { skip: SKIP }, () => {
   const ram = fixture();
@@ -133,10 +145,16 @@ test('W177/5 death tail draws through byte zero, then requests seven ROM vectors
   assert.notEqual(ram.u16(A5), 0, 'original linger 1 has no borrow and still draws');
   runHandler(0x279b2e, ram, ROM, A5, c.ctx);
   assert.equal(ram.u16(A5), 0, 'original linger 0 underflows and frees');
-  const notes = c.unported.report().filter((x) => x.includes('$27F8FA'));
-  assert.equal(notes.length, 1);
-  for (const vector of [0x0c000100, 0x0800ff00, 0x04000100, 0x0000ff00,
-    0xfc000100, 0xf800ff00, 0xf4000100]) {
-    assert.match(notes[0], new RegExp(`\\$${vector.toString(16).toUpperCase()}`));
-  }
+  // W411 (docket D49): seven records, not a note -- and D0/D6 come from `movem.W`
+  // ($279B16 `4C9C`, bit 6 CLEAR), so they are the WORDS $0008 and $0006 at $279CA8.
+  const base = ram.u32(A6 + 0x02);
+  const drops = poolA(ram);
+  assert.equal(drops.length, 7, 'dbra on the word $0006');
+  assert.ok(drops.every((d) => d.kind === 2), 'D0 is the word $0008');
+  const want = [0x0c000100, 0x0800ff00, 0x04000100, 0x0000ff00,
+    0xfc000100, 0xf800ff00, 0xf4000100]
+    .map((v) => ((base + v) >>> 0))
+    .map((q) => `${(q >>> 16) & 0xffff},${q & 0xffff}`).sort();
+  assert.deepEqual(drops.map((d) => `${d.y},${d.x}`).sort(), want,
+    'each of the seven $279CAC longs added to ($2,A6) as a LONG');
 });

@@ -1466,7 +1466,6 @@ function draw82(ram, rom, a5, a6) {
 // on death spawns effects + `$27F8EE` (W29) + free.  flow.py TRUE span
 // `$27687E..$276936` (190 B, 47 insns -- the smallest of the six).
 function handler8B(ram, rom, a5, ctx) {
-  const { unported: u } = ctx;
   const a6 = ram.u32(a5 + 0x06);
   // $27687E: a stage-kill gate.  $8130F8 bit 7 set -> free immediately.
   if ((ram.u8(0x8130f8) & 0x80) !== 0) { freeEnemy(ram, a5); return; } // tst.b $8130F8 / bmi
@@ -1501,7 +1500,27 @@ function handler8B(ram, rom, a5, ctx) {
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $2768EA tst.w $18 / bmi
       scoreKill(ram, rom, ctx, 0x01, d1);              // $2768F2/$2768F4 jsr $28615E
       ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst      // jsr $28C25A
-      u?.note(0x27f8ee, `$27F8EE $8B death routine (W29) rec $${a5.toString(16)}`);
+      // W411 (docket D49): THE DROP. `$276900 move.w ($18,A5),D0 / $276904 move.b
+      // ($1F,A6),D2 / $276908 jsr $27F8EE`, and `$27F8EE` is `moveq #$0,D1` falling
+      // into `$27F8F0` -- so D1 = 0 and the impact lands exactly on the carrier.
+      //
+      // D0 IS RANGE-CHECKED RATHER THAN ASSUMED. ($18,A5) is the SECOND word of the
+      // record prototype at $27685E (`00 00 00 08`, `loadRecordProto(.., 0x01)` in
+      // initbody.js:418 copying two words to ($16,A5)/($18,A5)), and a scan of
+      // $276600..$276A00 for a `move.b/move.w` to ($18,A5) finds exactly one, at
+      // $2769BA, which is past this handler's own end ($276936) and belongs to
+      // another type. So $0008 -- kind index 2, the gold disc -- is the only value
+      // this site can pass, and anything else is a measurement that changed.
+      const kindD0 = ram.u16(a5 + 0x18);               // $276900 move.w ($18,A5),D0
+      if (kindD0 !== 0x0008) {
+        unreached(0x276908, `$276908 jsr $27F8EE with D0 = $${
+          kindD0.toString(16).toUpperCase()} out of ($18,A5). The type $8B record `
+          + `prototype $27685E loads $0008 there and nothing in $276600..$276A00 `
+          + `writes ($18,A5) again, so a different kind index means the prototype `
+          + `or a new writer has been found -- read it before trusting this drop`);
+      }
+      allocPoolA27F8F0(ram, rom, ctx, kindD0, 0,
+        ram.u8(a6 + S.f1f), a6);                       // $276904/$276908
       // W54: SPAWNED.  $27690E moveq #$1 / $276910 jsr $289004, then
       // $276916..$276932 -- the $278320 remap and the $24179E hook.
       {
@@ -1993,11 +2012,12 @@ function death8E(ram, rom, a5, a6, ctx) {
   // the one underneath it. Using the wrapper would index a remap table this call site never names.
   const d1 = rom.u16(T8E.deathWords + idx * 2);
   spawnPoolC289B50(ram, rom, ctx, 8, d1, ram.u32(a6 + 0x02), 0x289af4);   // $27664E, D0 = 8
-  // $27665A jsr $27F8EE with D0 = 8 and D2 = ($1E,A6) -- the death routine `handlers.js` already
-  // counts at three sites, one of them type $89's with these exact registers. The same deferral,
-  // not a new one.
-  ctx.unported?.note(0x27f8ee, `$27F8EE $8E death routine (D0=$8, D2=($1E,A6)=${idx}) -- the `
-    + `same routine and the same registers type $89 counts at $2A2xxx; deferred alike`);
+  // W411 (docket D49): THE DROP. `$27654C moveq #$8,D0 / $276656 move.w ($1E,A6),D2 /
+  // $27665A jsr $27F8EE`. D1 = 0 from `$27F8EE moveq`, so the gold disc lands on the
+  // carrier; D2 is the DISPLAY LAYER, masked to a byte by `$27F8F0 andi.w #$FF` and
+  // indexed into the six emitter rows at $280BB6. The same word this arm just used as
+  // the $278314 index, so its range is the six the throw above already bounds.
+  allocPoolA27F8F0(ram, rom, ctx, 0x08, 0, idx, a6);     // $276654/$276656/$27665A
   const eff = spawnEffect(ram, ctx, T8E.deathEffect);    // $276662 jsr $289004, D0 = $C
   if (eff) ram.setU32(eff + 0x02, ram.u32(a6 + 0x02));   // $276668
   freeEnemy(ram, a5);
@@ -4787,8 +4807,10 @@ function deathSeq89(ram, rom, a5, ctx, d1) {
   scoreKill(ram, rom, ctx, 0x34, d1);                  // $27749C/$27749E jsr $28615E
   ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst          // $2774A4
   noteEffect(u, 0x289af4, a5, 'D0=$8 secondary');      // $2774BC (D1 from $278314)
-  u?.note(0x27f8ee, `$27F8EE $89 death routine (D0=$8, D2=($1E,A6)) rec $${
-    a5.toString(16)}`);                                // $2774C8
+  // W411 (docket D49): THE DROP. `$2774C2 moveq #$8,D0 / $2774C4 move.w ($1E,A6),D2 /
+  // $2774C8 jsr $27F8EE` -- byte-for-byte the shape types $8E, $8F and $94 use.
+  allocPoolA27F8F0(ram, rom, ctx, 0x08, 0,
+    ram.u16(a6 + 0x1e), a6);                           // $2774C2/$2774C4/$2774C8
   // W54: SPAWNED.  $2774CE moveq #$C / $2774D0 jsr $289004, then
   // $2774D6..$277506's eight writes -- and ($12,A0) = 1 here, i.e. this
   // arm asks pool D for TWO records (`src/effects.js` §THE REFUSAL).
@@ -5047,8 +5069,12 @@ function deathSeq88(ram, rom, a5, ctx, d1) {
   ctx.soundPost?.(0x28c2dc);                       // WAVE A: BGM id=5, death burst          // $27628A
   noteEffect(u, 0x289b22, a5, 'D0=$C, D2=$FFFFFA00');  // $27629C
   noteEffect(u, 0x289b22, a5, 'D0=$C, D2=$00000600');  // $2762A8
-  u?.note(0x27f8fa, `$27F8FA x7 (D0=$8, D1 from $2763E8) in $88's death rec $${
-    a5.toString(16)}`);                                // $2762BA (dbra x7)
+  // W411 (docket D49): SEVEN gold discs. `$2762AE moveq #$8,D0 / $2762B0 lea
+  // ($2763E8,PC),A4 / $2762B6 moveq #$6,D6 / $2762B8 move.l (A4)+,D1 / $2762BA jsr
+  // $27F8FA / $2762C0 dbra` -- seven longs, ending where $276404 `3B7C` is code again.
+  for (let i = 0; i < 7; i++) {                        // $2762C0 dbra D6
+    allocPoolA27F8F0(ram, rom, ctx, 0x08, rom.u32(0x2763e8 + i * 4), 0, a6); // $2762BA
+  }
   // W54: SPAWNED, all four.  Same $278320 prologue, four different tails.
   // Each writes ($12,A0) = 1 -- TWO pool-D records apiece, all refused.
   for (const [kind, site, sub14, nudge, speedAngle] of [
@@ -5785,8 +5811,10 @@ function death8f(ram, rom, a5, a6, ctx, d1) {
   // targets general pool-A kind 2, not the bee-only reserved-ten allocator.
   noteEffect(ctx.unported, 0x289af4, a5,
     `D0=$8 secondary, D1=$${rom.u16(0x278314 + ram.u16(a6 + S.anim) * 2).toString(16)}`);
-  ctx.unported?.note(0x27f8ee, `$27F8EE type $8F second death `
-    + `(D0=$8, D2=$${ram.u16(a6 + S.anim).toString(16)}) rec $${a5.toString(16)}`);
+  // W411 (docket D49): THE DROP. `$2777DC moveq #$8,D0 / $2777DE move.w ($1E,A6),D2 /
+  // $2777E2 jsr $27F8EE`.
+  allocPoolA27F8F0(ram, rom, ctx, 0x08, 0,
+    ram.u16(a6 + S.anim), a6);                         // $2777DC/$2777DE/$2777E2
   effect8f(ram, rom, a6, ctx, 0x0c, REMAP.shared278320, 0x2777ea, true);
   freeEnemy(ram, a5);                                 // $277826
 }
@@ -5887,9 +5915,13 @@ function death84(ram, rom, a5, a6, ctx, d1) {
   ctx.soundPost?.(0x28c2dc);
   noteEffect(ctx.unported, 0x289b22, a5, 'D0=$C, D2=$F8000000');
   noteEffect(ctx.unported, 0x289b22, a5, 'D0=$C, D2=$08000000');
+  // W411 (docket D49): SEVEN gold discs in a ring. `$27569C moveq #$8,D0 /
+  // $27569E lea ($2757F6,PC),A4 / $2756A4 moveq #$6,D6 / $2756A6 move.l (A4)+,D1 /
+  // $2756A8 jsr $27F8FA / $2756AE dbra D6,$2756A6` -- `dbra` on 6 is SEVEN passes and
+  // the table is exactly seven longs ($275812 `3B7C` is code). `$27F8FA moveq #$0,D2`
+  // falls into `$27F8FC` WITHOUT `$27F8F0`'s mask and shift, so the layer is row 0.
   const vectors = Array.from({ length: 7 }, (_, i) => rom.u32(0x2757f6 + i * 4));
-  ctx.unported?.note(0x27f8fa, `$27F8FA x7 type $84 death D0=$8, D1=[${vectors
-    .map((x) => `$${x.toString(16).toUpperCase()}`).join(' ')}] rec $${a5.toString(16)}`);
+  for (const v of vectors) allocPoolA27F8F0(ram, rom, ctx, 0x08, v, 0, a6); // $2756A8
   for (const [kind, site, sub14, nudge, speed] of [
     [0x85, 0x2756b6, 0x0400, 0x04000000, null],
     [0x0d, 0x2756e8, 0x0000, 0xfa00fe00, 0x03a0],
@@ -6090,8 +6122,12 @@ function handler90(ram, rom, a5, ctx) {
       for (let n = 0; n <= count; n++) {               // $279996 dbra D6
         const index = drawByte2431F4(ram, rom);        // exact shared RNG side effect
         const d1fx = (0x08c00000 | rom.u16(0x279a92 + index * 2)) >>> 0;
-        ctx.unported?.note(0x27f8fa, `$27F8FA type $90 damage particle `
-          + `D0=$10, D1=$${d1fx.toString(16).toUpperCase()} rec $${a5.toString(16)}`);
+        // W411 (docket D49). `$279990 jsr $27F8FA` -- D0 = $10 from `$27998E moveq`,
+        // D1 = the packed offset above, D2 = 0 because `$27F8FA moveq #$0,D2` falls
+        // into `$27F8FC` WITHOUT passing through `$27F8F0`'s mask and shift.
+        // Kind index 4 shares kind 0's body `$27FA30`, already ported, so this site
+        // needed no new body: it is the cheapest of the ten and it is the proof.
+        allocPoolA27F8F0(ram, rom, ctx, 0x10, d1fx, 0, a6);   // $279990
       }
       ram.setU16(a5 + R.cooldown, ram.u16(a5 + R.cooldown) - 0x0100);
     }
@@ -6636,9 +6672,20 @@ function tail91(ram, rom, a5, a6, ctx) {
   ram.setU8(a5 + 0x17, linger - 1);                     // $279B08 subq.b #1
   if (linger !== 0) { emit91(ram, rom, a6); return; }   // $279B0C bcc $279BA4
 
-  const vectors = Array.from({ length: 7 }, (_, i) => rom.u32(0x279cac + i * 4));
-  ctx.unported?.note(0x27f8fa, `$27F8FA x7 type $91 death D0=$8, D1=[${vectors
-    .map((x) => `$${x.toString(16).toUpperCase()}`).join(' ')}] rec $${a5.toString(16)}`);
+  // W411 (docket D49): SEVEN gold discs, and this one carries a trap. `$279B10 lea
+  // ($279CA8,PC),A4 / $279B16 movem.w (A4)+,D0/D6` is `4C9C`, and bit 6 of `4C9C` is
+  // ZERO -- **movem.W, not movem.L**. So D0 and D6 come from the two WORDS $0008 and
+  // $0006 at $279CA8/$279CAA (sign-extended into the longs), the vectors start at
+  // $279CAC, and `dbra` on 6 is seven passes. Read as movem.l it would be D0 =
+  // $00080006 and D6 = $0C000100, i.e. 257 passes off the end of a seven-entry table.
+  // The seven longs end at $279CC8, where `3B7C` is code.
+  const kindD0 = i16(rom.u16(0x279ca8));               // $279B16 movem.w, first word
+  const count = i16(rom.u16(0x279caa));                // ...and the second, the dbra
+  const vectors = Array.from({ length: count + 1 },
+    (_, i) => rom.u32(0x279cac + i * 4));
+  for (const v of vectors) {                           // $279B22 dbra D6
+    allocPoolA27F8F0(ram, rom, ctx, kindD0, v, 0, a6); // $279B1A/$279B1C
+  }
   freeEnemy(ram, a5);                                   // $279B26 jmp $263762
 }
 
@@ -6800,10 +6847,11 @@ function death97(ram, rom, a5, a6, ctx, d1) {
   const burstBucket = rom.u16(0x278314 + selector * 2);
   noteEffect(ctx.unported, 0x289b22, a5,
     `D0=$C, D1=$${burstBucket.toString(16).toUpperCase()}, D2=$FE000000`);
+  // W411 (docket D49): FIVE gold discs. `$2781BE moveq #$8,D0 / $2781C0 lea
+  // ($278288,PC),A4 / $2781C6 moveq #$4,D6` -- `dbra` on 4 is FIVE passes, and five
+  // longs is where $27829C's emit dispatch begins, so the count pins the table.
   const vectors = Array.from({ length: 5 }, (_, i) => rom.u32(0x278288 + i * 4));
-  ctx.unported?.note(0x27f8fa, `$27F8FA x5 type $97 death D0=$8, D1=[${vectors
-    .map((v) => `$${v.toString(16).toUpperCase().padStart(8, '0')}`).join(',')}]
-    rec $${a5.toString(16)}`);
+  for (const v of vectors) allocPoolA27F8F0(ram, rom, ctx, 0x08, v, 0, a6); // $2781CA
   effect97(ram, rom, a6, ctx, 0x0d, 0x2781d6, 0x0400, 0xfc000000);
   effect97(ram, rom, a6, ctx, 0x08, 0x278224, 0x0000, 0xf6000000);
   freeEnemy(ram, a5);                                  // $278270
@@ -6945,8 +6993,10 @@ function emit94(ram, rom, a6) {
 function death94(ram, rom, a5, a6, ctx, d1) {
   ctx.soundPost?.(0x28c2c2);                           // $27A36C
   scoreKill(ram, rom, ctx, 0x34, d1);                 // $27A372..$27A374
-  ctx.unported?.note(0x27f8ee, `$27F8EE type $94 death D0=$8, D2=$${ram
-    .u16(a6 + S.anim).toString(16).toUpperCase()} rec $${a5.toString(16)}`);
+  // W411 (docket D49): THE DROP. `$27A37A moveq #$8,D0 / $27A37C move.w ($1E,A6),D2 /
+  // $27A380 jsr $27F8EE`.
+  allocPoolA27F8F0(ram, rom, ctx, 0x08, 0,
+    ram.u16(a6 + S.anim), a6);                         // $27A37A/$27A37C/$27A380
   const e = effectArmShared278320(ram, rom, ctx, a6, 0x0c, 0x27a388);
   ram.setU16(e + B.sub12, 1);
   ram.setU16(e + B.sub14, 0);

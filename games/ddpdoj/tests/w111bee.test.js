@@ -235,22 +235,32 @@ test('MUST-FAIL 3: a bee past the Y boundary is freed and count decrements',
 });
 
 // ============================================================ MUST-FAIL 4
-// Refusal.  RED: the driver did not exist, so a kind-2 record would silently
-// no-op.  GREEN: the driver dispatches and THROWS on the unported kind-2 body.
+// W411 TURNS THIS ONE ROUND. RED (W110): no driver, so a kind-2 record silently
+// no-oped. GREEN (W111): the driver dispatched and THREW by address, naming
+// $27FE0E. GREEN (W411, docket D49): $27FE0E is ported, so the same record now
+// RUNS -- and the thing worth asserting is that it runs kind 2's body and not the
+// bee's, which is a difference the throw used to carry and an assertion must now.
 
-test('MUST-FAIL 4: a kind-2 record in the pool THROWS by address', { skip: SKIP }, () => {
+test('W411 a kind-2 record in the pool runs $27FE0E, not the bee body',
+  { skip: SKIP }, () => {
   const ram = freshRam();
   const ctx = ctxOf(ram);
   // Poke kind 2 directly into slot 70 (bypass the allocator's REFUSAL).
   // Kind index 2 = $08 in bits 6..2; status = $8008.
   const a6 = POOL_A.reservedBase;
   ram.setU16(a6 + B.status, 0x8008);                      // allocated | kind 2
+  ram.setU16(a6 + B.pos, 0x2000);                         // on screen on both axes
+  ram.setU16(a6 + B.posX, 0x2000);
+  ram.setU32(a6 + B.layerEmitter, 0x0023d762);            // layer row 0
   ram.setU16(POOL_A.liveCount, 1);
-  assert.throws(
-    () => runPoolADriver(ram, ROM, ctx),
-    /27FE0E|27facc|27F95A/,
-    'the driver THROWS on a kind-2 body (not the bee), by address',
-  );
+  ram.setU8(a6 + B.blinkTimer, 0);                        // due, so the step is visible
+  ram.setU8(a6 + B.blinkTimer + 1, 1);
+  ram.setU32(a6 + B.sprite, 0x001be2cc);
+  const t = runPoolADriver(ram, ROM, ctx);
+  assert.equal(t.live, 1);
+  assert.equal(ram.u32(a6 + B.sprite), 0x001be300,
+    '$27FEB0 addi.l #$34 -- kind 2 steps $34, where the bee body would blink $1BCA34');
+  assert.deepEqual(ctx.unportedLog.report(), [], 'and nothing was refused');
 });
 
 test('REFUSAL: allocBee27F92A rejects a non-bee kind (kind 3)', { skip: SKIP }, () => {

@@ -54,8 +54,14 @@ test('W264 the template table is TWENTY longwords, pinned by its own contents',
     for (const p of ptrs) assert.ok(p >= 0x280e9a && p <= 0x280f1e, `$${p.toString(16)}`);
     // Twenty pointers, SEVEN distinct templates.
     assert.equal(new Set(ptrs).size, 7);
-    assert.throws(() => ROM.u32(0x280f34), (e) => e.name === 'Unreached',
-      'and the window stops after the last template');
+    // W411: $280F34 used to be outside every window and this line asserted the throw.
+    // It is now the FIRST LONGWORD of the collected transform's own table, which is
+    // the same bound stated the other way round -- W264's window still ends exactly
+    // there, and the value at $280F34 is a POINTER INTO $280F40 rather than a template.
+    assert.equal(ROM.u32(0x280f34), 0x00280f40,
+      'the W264 window ends where the W411 window begins, on a selector');
+    assert.throws(() => ROM.u32(0x280fdc), (e) => e.name === 'Unreached',
+      'and $280FDC, the transform routine itself, is code and in no window');
   });
 
 test('W264 the ROM read reproduces both hand-measured sets EXACTLY',

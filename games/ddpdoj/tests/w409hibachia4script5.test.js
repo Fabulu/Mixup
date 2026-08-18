@@ -762,7 +762,8 @@ test('W409 SECTION 7: THREE new windows, 599, and three bounds on each', { skip:
   const set = new Map(tables.rom.windows.map(
     (x) => [parseInt(String(x.base).replace('$', ''), 16), x.len]));
   assert.equal(set.size, tables.rom.windows.length, 'no duplicate window bases');
-  assert.equal(tables.rom.windows.length, 599, '599 windows, 596 + this wave\'s three');
+  assert.equal(tables.rom.windows.length, 600, '599 windows, 596 + this wave\'s three'
+      + ' W411 declares $280F34, the collected-impact transform table, so 600.');
 
   // ---- $2A6688 + $80.
   assert.equal(set.get(HIBACHI_A4.s5Emit), 0x80, '$2A6688 + $80');

@@ -983,7 +983,11 @@ try {
         // the ship fires for the whole window, as it did. +199 over 1199 frames
         // is +0.17 records a frame, which is the shot-lifetime consequence of
         // more enemies being present to absorb them.
-        6: { streams: 96, records: 22665, distinct: 30, first: 1,
+        // W411 (docket D49): 22665 -> 22684. Wiring the ten enemy death arms puts
+        // real pool-A allocations into the frame, and each one draws from the SHARED
+        // RNG counter $803917, so every downstream stream shifts. These numbers are a
+        // whole-run fingerprint, not a claim about the shots themselves.
+        6: { streams: 96, records: 22684, distinct: 30, first: 1,
           what: 'THE PLAYER\'S SHOTS ($2554EA/$255502 + the pods\' $24D2FC/$24D35C)' },
         // 36 distinct images, not 32: W81 wired type $10's and $82's fans and
         // [M] they reach four bullet images this window had never produced.
@@ -1025,7 +1029,8 @@ try {
         // held. FOUR spans over the window and the shape is the same one W84
         // recorded: a spark is a shot CONNECTING, so this tracks the shot count
         // above rather than moving on its own.
-        8: { streams: 72, records: 9935, distinct: 35, first: 24,
+        // W411 (docket D49): 9935 -> 9994, the same shared-RNG shift.
+        8: { streams: 72, records: 9994, distinct: 35, first: 24,
           what: 'THE IMPACT SPARK (pool E, $289F54 -> $28A098, bucket 20)' },
         // WAVE 54 -- THE ENEMY DEATH EXPLOSION, the SAME window and the SAME
         // four absolute port-side fields.  `streams` is 269, THE WHOLE OF BOTH
@@ -1040,7 +1045,8 @@ try {
         // W321: 6031 -> 6091, with `streams` 269, `distinct` 204 and `first` 24
         // held. THREE spans. W84's sentence still applies unchanged: more
         // connections, more kills -- the spark's own consequence.
-        9: { streams: 269, records: 6091, distinct: 204, first: 24,
+        // W411 (docket D49): 6091 -> 6079, the same shared-RNG shift.
+        9: { streams: 269, records: 6079, distinct: 204, first: 24,
           what: 'THE ENEMY DEATH EXPLOSION (pool B, $289004 -> $288E4E)' },
         // WAVE 61 -- THE ITEM.  `streams` is 139, THE WHOLE OF ALL TEN TABLES,
         // including the sixteen frames and the collected animation belonging to
@@ -1316,7 +1322,8 @@ try {
         // would have changed something it does not claim to touch -- leaving
         // them standing is what makes this gate able to say so, and a gate
         // loosened here is a gate that stops working.
-        11: { streams: 822, records: 12849, distinct: 103, first: 315,
+        // W411 (docket D49): 12849 -> 12985, the same shared-RNG shift.
+        11: { streams: 822, records: 12985, distinct: 103, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };
@@ -1553,8 +1560,12 @@ try {
         // The two assertions that carry the wave's meaning are STILL untouched
         // and still pass. That is the point: the effect's cadence rule survives a
         // change that moved every count around it.
-        const EXP90 = { frames: 1500, entries: 520, records: 17281,
-          distinct: 35, first: 31, beamLive: 1039 };
+        // W411 (docket D49): beamLive 1039 -> 1037, entries 520 -> 519, records
+        // 17281 -> 17283. The ten wired death arms allocate, the allocations draw from
+        // the shared RNG, and the beam's own cadence moves with it. `distinct` and
+        // `first` held, which is what says the ART side did not change.
+        const EXP90 = { frames: 1500, entries: 519, records: 17283,
+          distinct: 35, first: 31, beamLive: 1037 };
         const runW90 = (frames, drop) => {
           const g = new Game(bundle.seed, bundle.tables, {
             logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,

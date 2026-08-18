@@ -151,6 +151,18 @@ test('W180/4 distance carry preserves salvo but dead targets consume it',
   assert.equal(cd.bullets.length, 0);
 });
 
+
+/** W411: every live pool-A record, as {kind index, long axis, short axis}. */
+function poolA(ram) {
+  const out = [];
+  for (let i = 0; i < 80; i++) {
+    const a = 0x8171be + i * 0x2c;
+    const st = ram.u16(a);
+    if (st !== 0) out.push({ kind: (st & 0x7c) >> 2, y: ram.u16(a + 2), x: ram.u16(a + 4) });
+  }
+  return out;
+}
+
 test('W180/5 lethal damage scores $34, arms exact kind-$0C effect and frees',
   { skip: SKIP }, () => {
   const ram = fixture();
@@ -169,5 +181,10 @@ test('W180/5 lethal damage scores $34, arms exact kind-$0C effect and frees',
   assert.equal(effect(B.sub14), 0);
   assert.equal(effect(B.nudge, 'u32'), 0xfd000000);
   assert.equal(effect(B.hook), 1);
-  assert.match(c.unported.report().join('\n'), /\$27F8EE type \$94 death D0=\$8/);
+  // W411 (docket D49): `$27A380 jsr $27F8EE` was a counted note and is now ONE gold
+  // disc on the carrier, because $27F8EE's `moveq #$0,D1` gives it no offset at all.
+  const drops = poolA(ram);
+  assert.equal(drops.length, 1);
+  assert.equal(drops[0].kind, 2);
+  assert.equal(drops[0].y, (ram.u32(A6 + 0x02) >>> 16) & 0xffff);
 });

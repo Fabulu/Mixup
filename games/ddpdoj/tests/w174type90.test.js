@@ -131,6 +131,18 @@ test('W174/4 HP gate revives above $3C00, then installs the second threshold bel
   assert.equal(ram.u16(A5 + 0x18), 0x0300);
 });
 
+
+/** W411: every live pool-A record, as {kind index, long axis, short axis}. */
+function poolA(ram) {
+  const out = [];
+  for (let i = 0; i < 80; i++) {
+    const a = 0x8171be + i * 0x2c;
+    const st = ram.u16(a);
+    if (st !== 0) out.push({ kind: (st & 0x7c) >> 2, y: ram.u16(a + 2), x: ram.u16(a + 4) });
+  }
+  return out;
+}
+
 test('W174/5 threshold particles consume ROM RNG indices and subtract threshold once',
   { skip: SKIP }, () => {
   const ram = fixture();
@@ -140,16 +152,38 @@ test('W174/5 threshold particles consume ROM RNG indices and subtract threshold 
   ram.setU16(A6 + 0x18, 0x0500);
   ram.setU8(A6, ram.u8(A6) | 0x10);
   ram.setU16(0x803916, 0);
+  // W411: THE FIXTURE'S OWN X WAS OFF-SCREEN FOR THE DROP. `$280B68`'s abort is
+  // `X + $E00 + $813172 + $AC00` carrying, and the fixture sits at X = $4000, so
+  // every particle offset from $0600 up ($279A92 has three of the four) lands past
+  // it and `$280B2A` undoes the allocation. The note-counting version of this test
+  // could not see that, because a note is written before the fill runs. Move the
+  // carrier on screen so the assertion is about the loop and not about the abort.
+  ram.setU32(A6 + 0x02, 0x20002000);
   runHandler(0x279898, ram, ROM, A5, c.ctx);
-  const notes = c.unported.report().filter((x) => x.includes('$27F8FA'));
-  assert.equal(notes.length, 2);
-  const expected = [1, 2].map((state) => {
+  // W411 (docket D49): `$279990 jsr $27F8FA` was a counted note and is now a real
+  // pool-A record at kind index FOUR ($27998E moveq #$10), the one site of the ten
+  // whose D0 is not $8. `$280BCE[4]` ends `clr.b ($1,A0)`, which wipes the index out
+  // of the status word, so the drop is identified by its POSITION and not its kind.
+  const drops = poolA(ram);
+  assert.equal(drops.length, 2, 'DBRA on 1 is two records');
+  const base = ram.u32(A6 + 0x02);
+  // ...and the RNG indices are 1 and SIX, not 1 and 2. `$803917` is one shared byte
+  // counter for the whole machine, and the fill this loop now reaches draws FOUR more
+  // times per record ($242EC2 the animation phase, $242B3C the speed, $242FDE the
+  // angle spread, $2431F4 the angle). So each pass costs five draws, not one, and the
+  // second particle reads $24324E[6]. The note-counting version of this test could not
+  // see that either -- the note was written before the fill ran.
+  const PER_PASS = 5;
+  const expected = [1, 1 + PER_PASS].map((state) => {
     const index = ROM.u8(0x24324e + state);
-    return `$${(0x08c00000 | ROM.u16(0x279a92 + index * 2)).toString(16).toUpperCase()}`;
-  });
-  assert.deepEqual(notes.map((x) => expected.find((v) => x.includes(v))).sort(),
-    expected.sort(), 'hardcoding one particle vector instead of indexing the ROM table makes this red');
-  assert.equal(ram.u8(0x803917), 2, 'each DBRA iteration consumes one shared RNG draw');
+    return ((base + ((0x08c00000 | ROM.u16(0x279a92 + index * 2)) >>> 0)) >>> 0);
+  }).map((q) => `${(q >>> 16) & 0xffff},${q & 0xffff}`).sort();
+  assert.deepEqual(drops.map((d) => `${d.y},${d.x}`).sort(), expected,
+    'hardcoding one particle vector instead of indexing the ROM table makes this red');
+  assert.ok(drops.every((d) => d.kind === 0),
+    '$280D2A clr.b ($1,A0) -- hook 4 erases the index, and 0 and 4 share $27FA30');
+  assert.equal(ram.u8(0x803917), 2 * PER_PASS,
+    'two passes, each one particle draw plus the four the fill makes');
   assert.equal(ram.u16(A5 + 0x18), 0x0500, 'threshold subtract happens once after the loop');
 });
 
