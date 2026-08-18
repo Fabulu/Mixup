@@ -89,10 +89,55 @@ applied). Dropping cues instead would leave notes that never stop.
 Six tests in `shared/audio.test.js` section 5. **Three of them were proven to FAIL with the trim
 call commented out** (19, 21, 23); the other three are guards that must hold under both readings.
 
-**D57 IS PROBABLY THE SAME ROOT CAUSE AND IS STILL OPEN.** The owner's stuck looping sound also
-followed a tab-away. This wave bounds the LAG; it does not add the visibility backstop that
-`input.js` has at `:24`, `:216` and `:418` and audio still lacks. Do that next, and check whether
-it also closes D57 on its own.
+**D57 IS FIXED TOO -- see below.** It was the same family, not the same line. The owner's stuck looping sound also
+followed a tab-away. 
+
+## W423 -- D57 AND D58, THE REST OF THE AUDIO CLUSTER
+
+**D57 IS FIXED. THE ASYMMETRY WAS THE WHOLE FINDING.** `input.js:246` wires `blur`, `pagehide`
+AND `visibilitychange` and clears the entire button mask, because a key held when focus is lost
+never sends its keyup. **Audio had the identical hole and no backstop at all** -- a search of
+`games/ddpdoj/src/web/` found no audio listener for any of the three. That is both halves of the
+owner's report: a sound that "kept looping and it never goes away" after tabbing back, and level 2
+running seconds behind after switching focus repeatedly.
+
+`AudioController.resync()` drops the pending queue, the rendered samples on both sides of the
+resampler, and disarms the scheduling clock so the next pump re-arms at NOW. Wired on all three
+events, both edges, to the target and to `globalThis` (a canvas target never sees
+`visibilitychange`, which fires at `document`).
+
+**THE CHIP IS DELIBERATELY NOT RESET.** Voices and envelopes are the game's state; zeroing them
+would silence music the driver still believes is playing and nothing would restart it -- a
+stuck-silent bug traded for a stuck-looping one. A test pins it.
+
+**RULED OUT, DO NOT RE-CHECK: the backlog valve does not lose cues.** `ics2115.frame` calls
+`applyLog(log)` unconditionally, before `emit` is consulted, so even a fully dropped batch applies
+every register write. A lost note-off was the obvious explanation for the stuck loop and it is not
+the explanation.
+
+**D58 IS HALF DONE AND THE SECOND HALF IS SPECIFIED.** `sound.js` had ONE posting path, for
+`$28BB04`, whose `WRAPPERS` rows all set three immediates. `$28C170` sets two registers and reaches
+**`$28BBAC`**, which packs `((D0<<8|D1) & $FFFF) << 16` with a ZERO low word -- no id, no channel,
+no gate, no pan tail. A `WRAPPERS` row would invent three fields the cartridge never loads, which
+is why `postWrapper` threw instead. **That one gap silenced five sites**, which is why the owner
+was right that other levels are affected too: these are not per-level cues.
+
+`postBgmCommand` now exists and is tested (10/10). **STEP 2 IS CONVERTING THE FIVE `note()` CALLS:**
+
+    boss.js:1238      $242922  the BOSS-CLEAR cue          <-- the owner's report
+    boss.js:1326      $2A6D8C  the ENDING block's cue
+    objslot13.js:333  $288A3C  slot 13 state 4, GAME OVER
+    hibachi2.js:169   $2A7008
+    background.js:1203  the scroll VM's CUE op
+
+**THE TRAP, and it is in the tests: there is NO GATE on this path.** `$28BBAC` branches straight to
+`$28BAA0`. Sending these through the SFX or BGM gate would silence a boss clear whenever the gate
+was down -- the defect, reintroduced one layer lower.
+
+**AND ONE HONEST CAVEAT.** The owner said "explosion"; what is proven silent is the boss-CLEAR
+cue. Whether the explosion SFX is this cue or a separate one is NOT established. **Confirm which
+cue is missing before closing D58** -- closing an item on a bench that never exercised the reported
+thing is exactly the D56 mistake.
 
 ## THE STANDING "WIRE THE FRONT-END SLOTS" INSTRUCTION IS ALREADY DONE
 
