@@ -1060,7 +1060,21 @@ try {
         // W411's numbers UNCHANGED and the 10,667 records fall on exactly the 8
         // moved streams.  Pool C's own first record here is frame 27; `first`
         // stays 24 because pool B still gets there first.
-        9: { streams: 277, records: 16746, distinct: 212, first: 24,
+        // W419: 277 -> 313 streams, and EVERY OTHER FIELD IN THIS ROW HELD --
+        // records 16,746, distinct 212, first 24, and the run still reports
+        // 16,746 DRAWN of 16,746 with 0 pending and 0 with no art.  That is
+        // the decomposition: the wave ADDED 36 streams to this shard and
+        // changed nothing the port emits.  They are pool C's other three
+        // death-satellite families -- kinds 0, 8 and $C of the four templates
+        // at $289DEA, three animation lists of four cells each -- shipped
+        // alongside opening `$289B50`'s kind guard from kind 4 alone to the
+        // table's real domain.  `distinct` does NOT move because this window
+        // is 1,200 frames of stage 1 from the shipped seed, where the only
+        // pool-C producer is type $11/$10's kind-4 mark; the new families
+        // belong to type $8E and to the unported $289B22 callers.  A shard
+        // that carries art nothing in the window reaches is exactly what W53
+        // 1.3 and W415's own `why` say a shard is for.
+        9: { streams: 313, records: 16746, distinct: 212, first: 24,
           what: 'THE ENEMY DEATH EXPLOSION (pool B, $289004 -> $288E4E) AND '
             + 'THE GROUND MARK (pool C, $289B50 -> $289B80) -- W415' },
         // WAVE 61 -- THE ITEM.  `streams` is 139, THE WHOLE OF ALL TEN TABLES,

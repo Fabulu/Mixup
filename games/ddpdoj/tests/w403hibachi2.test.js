@@ -955,10 +955,10 @@ test('W403 SECTION 6: the kind table REMOVED -- script 3\'s per-frame emitter, n
 test('W403 SECTION 7: 585 windows, overlap still 71, and NOTHING in the unit reads ROM',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 605, '585 windows through W403, which declared none; W404 added '
+    assert.equal(ws.length, 606, '585 windows through W403, which declared none; W404 added '
       + 'five for the two A1 gun tables and the gun data blocks, W405 three, W406 one, W407 '
       + 'one and W408 one'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606.');
     const pairs = (list) => {
       let n = 0;
       for (let i = 0; i < list.length; i++) {

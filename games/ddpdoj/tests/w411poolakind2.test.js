@@ -494,13 +494,16 @@ test('W411 type $8B REFUSES a D0 the prototype cannot produce', { skip: SKIP }, 
     /\$276908 jsr \$27F8EE with D0 = \$C/);
 });
 
-// TYPE $8E'S DROP CANNOT BE DRIVEN, AND THAT IS A FINDING RATHER THAN AN OMISSION.
+// TYPE $8E'S DROP COULD NOT BE DRIVEN WHEN THIS FILE WAS WRITTEN, AND W419 UNBLOCKED IT.
 // `death8E` reaches `$27664E jsr $289AF4` BEFORE `$27665A jsr $27F8EE`, and pool C's
-// absolute allocator refuses kind $8 ("not the translated kind-4 template selected by
-// type $37"). So the whole arm throws today and the drop below it is unreachable --
-// which is also why the 5400-frame census never counted a $27F8EE note from $27665A.
-// The wire is written and cited; nothing here can exercise it until pool C kind $8 is
-// ported. Stating that is better than a test that pretends otherwise.
+// absolute allocator used to refuse kind $8 ("not the translated kind-4 template
+// selected by type $37"), so the whole arm threw and the drop below it was
+// unreachable -- which is also why the 5400-frame census never counted a $27F8EE note
+// from $27665A. W419 opened that guard to the table's real domain (kinds 0, 4, 8 and
+// $C) and harvested the missing art, so the arm now runs to the end;
+// `w419poolckinds.test.js` traces the pool-C record it leaves. THE NOTE IS KEPT AND
+// CORRECTED rather than deleted: W418 found a test whose stated reason had been false
+// for 45 waves while its assertion held, and a stale explanation is that same defect.
 
 test('W411 types $8F and $94 pass ($1E,A6) as the LAYER', { skip: SKIP }, () => {
   // `$2777DE` and `$27A37C` are both `move.w ($1E,A6),D2`, which `$27F8F0` masks to a

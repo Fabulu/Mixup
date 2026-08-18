@@ -733,9 +733,9 @@ test('W402 SECTION 7: the $27017E window TRUNCATED past its terminator -- the wa
 test('W402 SECTION 8: 585 windows, overlap still 71, and the two TILE onto W341\'s $2701C8',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
-    assert.equal(ws.length, 605, '583 windows since W400, 585 after this wave, 590 after W404, '
+    assert.equal(ws.length, 606, '583 windows since W400, 585 after this wave, 590 after W404, '
       + '593 after W405, 594 after W406, 595 after W407, 596 after W408, 599 since W409'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606.');
     const mine = [T4C.deathListA, T4C.deathListB];
     for (const a of mine) {
       assert.equal(ws.filter(([b2]) => b2 === a).length, 1,

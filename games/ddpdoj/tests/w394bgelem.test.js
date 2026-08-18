@@ -438,10 +438,10 @@ test('W394 SECTION 6: no new window -- the two addresses the port reads are alre
     // pair and five data tables, so the set is 583. The claim this line makes -- that W394 itself
     // added no window -- is unchanged; the two `covers()` assertions below are its real content
     // and they are untouched witnesses.
-    assert.equal(ws.length, 605, 'the exported set was 569 windows at W394, 570 after W398, '
+    assert.equal(ws.length, 606, 'the exported set was 569 windows at W394, 570 after W398, '
       + '575 after W399, 583 after W400, 585 after W402, 590 after W404, 593 after W405, '
       + '594 after W406, 595 after W407, 596 since W408 declared A1 gun $A\'s template, and is 599 since W409 declared A4 script 5\'s three blocks'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606.');
     const covers = (a) => ws.filter(([b, len]) => a >= b && a < b + len);
     // ONE: the per-stage table. `elemSpawn` does `rom.u32(tab + id*4)` and `backgroundInit` does
     // `rom.u32($262302 + stage*4)`; both are inside W-earlier `$262240 + $100`.

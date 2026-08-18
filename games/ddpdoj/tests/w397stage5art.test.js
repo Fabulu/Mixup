@@ -152,6 +152,17 @@ const W414 = Object.freeze({ streams: 24, maskWords: 1328, colWords: 2327 });
 // says what its own wave did.
 const W417 = Object.freeze({ streams: 16, maskWords: 3104, colWords: 9888 });
 
+// W419 ships pool C's OTHER THREE death-satellite families in the same wave as the guard that
+// reaches them.  `$289DEA` is indexed by `kind & $3C` and holds FOUR templates -- kinds 0, 4, 8
+// and $C -- and only kind 4's eight streams were in the bundle; the port's allocator refused
+// everything else, so `handlers.js:2014` (type $8E's death, `moveq #$8`) threw.  THIRTY-SIX
+// streams, all new, all onto SHARD 9, beside the explosion the same death spawns.  [M] the
+// bundle diff over the export is `4,307 -> 4,343` with 36 added and 0 removed; shard 9 goes
+// 277 -> 313 streams and 158,466 -> 166,218 mask words, and `spr.maskUsed` grows by that SAME
+// 7,752 -- so nothing outside shard 9 moved.  Shard 11 is untouched, which is why its terms
+// below do NOT carry a W419 addend.
+const W419 = Object.freeze({ streams: 36, maskWords: 7752, colWords: 23109 });
+
 // -------------------------------------------------------------------------- the bundle, decoded
 
 /** `spr/streams.u32.gz` is `planes-delta-1`: three planes of `streamCount` entries, planes 0 and
@@ -461,7 +472,8 @@ test('W397 SECTION 3: shard 11\'s shipped mask body IS the cartridge\'s, word fo
 test('W397 SECTION 4: the bundle grew by exactly these four and by nothing else',
   { skip: SKIP }, () => {
     const { manifest, rows, shard } = bundle();
-    assert.equal(manifest.spr.streamCount, BEFORE.streamCount + 4 + W414.streams + W417.streams,
+    assert.equal(manifest.spr.streamCount,
+      BEFORE.streamCount + 4 + W414.streams + W417.streams + W419.streams,
       '4,263 -> 4,267 by W397\'s four, then -> 4,291 by W414\'s twenty-four. This '
       + 'number is pinned in TWELVE test files and all twelve move together; the claim is '
       + '"the bundle is what the tree measured", never a floor');
@@ -474,7 +486,8 @@ test('W397 SECTION 4: the bundle grew by exactly these four and by nothing else'
     assert.equal(shard.colLen, BEFORE.shard11ColLen + 41127 + W414.colWords + W417.colWords,
       '3,219,388 -> 3,260,515 -> 3,262,842 colour words');
     assert.equal(manifest.spr.maskUsed,
-      BEFORE.maskUsed + DISTINCT_WORDS + W414.maskWords + W417.maskWords,
+      BEFORE.maskUsed + DISTINCT_WORDS + W414.maskWords + W417.maskWords
+        + W419.maskWords,
       'and the whole packed mask space grew by the same 12,632, then by the same 1,328: '
       + 'nothing else was added');
 
@@ -489,7 +502,7 @@ test('W397 SECTION 4: the bundle grew by exactly these four and by nothing else'
     // W417: index 11 is 846 + W417's SIXTEEN (pool-A kind index 3's own animation).
     // Every other entry is untouched, which is still the assertion -- the row was an
     // ADDITION to one shard and the sum below is what proves it.
-    const SIZES = [166, 67, 32, 54, 17, 70, 96, 298, 72, 277, 407, 862, 139, 228, 90, 4, 37,
+    const SIZES = [166, 67, 32, 54, 17, 70, 96, 298, 72, 313, 407, 862, 139, 228, 90, 4, 37,
       1231, 160];
     assert.deepEqual(manifest.spr.shards.map((s) => s.streams), SIZES,
       'every other shard holds exactly what it held before');

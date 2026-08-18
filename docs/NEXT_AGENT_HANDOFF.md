@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W418)
+Updated: 2026-08-18 (W419)
 
 ## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
 
@@ -20,7 +20,102 @@ text:
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
 
-## START HERE -- W418
+## START HERE -- W419
+
+### MY BRIEF NAMED THE WRONG KINDS, AND ACTING ON IT WOULD HAVE SHIPPED DEAD RECORDS
+
+I wrote that `$289DEA` has real entries for kinds **0, 8, `$C` and `$10`**. Coordinator read the
+table directly:
+
+    +$00 kind  0 -> $289E0A      +$10 kind 16 -> $289E7A  <-- repeated
+    +$04 kind  4 -> $289E26      +$14 kind 20 -> $289E7A  <-- repeated
+    +$08 kind  8 -> $289E42      +$18 kind 24 -> $289E7A  <-- repeated
+    +$0C kind 12 -> $289E5E      +$1C kind 28 -> $289E7A  <-- repeated
+
+**Wrong twice.** Kind **4** is one of the four real entries (it is the already-ported one, and
+leaving it out reads as if it were not in the table). Kind **`$10` is NOT real** -- `+$10..+$1C` are
+four copies of one pointer, and the word at `$289E7A` is `$0022`, **bit 15 CLEAR**, so a record
+filled from it is born dead and the driver never steps it. Guard is now `(kind & $3C) > $0C`.
+
+The caller side agrees: `$267F4E cmpi.w #$3,D0 / bgt` and `$267F56 tst.w D0 / bmi` both land past
+the `jsr`, and a whole-image scan finds **eight** call sites passing only 0, 4, 8 and `$C`.
+
+### A REPORT WHOSE CONCLUSION WAS RIGHT AND WHOSE REASON WAS WRONG
+
+The agent justified `$289E7A` as "`$289E0A + $10`, the kind-0 template's own list 0". **That
+arithmetic gives `$289E1A`.** The templates are `$1C` each and adjacent, so `$289E5E + $1C =
+$289E7A`: it is simply **the first byte past the four templates**. The conclusion holds and the
+stated reason does not.
+
+**That is W418's fifth lie-shape ("stated reason false, assertion true") appearing in a REPORT
+rather than a test.** Check reasons, not just conclusions -- including mine and including a
+subagent's.
+
+### THE UNIT WAS NOT ONE FILE, AND THE OLD WINDOW ENDED ON THE EXACT LONG NEEDED
+
+Opening the guard alone throws `longword at $289EDA is outside every ROM window` one instruction
+later, because W194's `$289B50 + $38A` **ends exactly at `$289EDA`** -- the long kind 8's list 0
+starts at. New window `$289EDA + $60`, 605 -> **606**, bounded three ways, and its end `$289F3A` is
+`41F9 0081D394 lea`, the first instruction of pool E's clear, ported since W53 as a different unit
+that already owns it.
+
+### THE ART WAS 36 STREAMS, NOT 24
+
+W415 counted kinds 8 and `$C` and missed kind 0's twelve, equally absent and equally inside the
+domain the guard now accepts. Families are 12/8/12/12 (kind 4's list 2 duplicates list 1). Before:
+kind 4 had its 8, kinds 0/8/`$C` had **zero**. After: all 36 present, every stream's `maskWords`
+equal to its family's need exactly.
+
+**`streamCount` 4307 -> 4343**, shard 9 only: streams 277 -> 313, `maskLen` +7,752, and
+`spr.maskUsed` grew by that **same** 7,752, so nothing outside shard 9 moved. Shard 11 held exactly.
+
+Gate shard-9 row: **records 16,746, distinct 212, first 24, 16,746 DRAWN of 16,746, 0 pending, 0
+with no art ALL HELD**; only `streams` moved.
+
+### TYPE $8E'S DEATH, TRACED RATHER THAN ASSERTED
+
+Before: threw, count 0 -> 0, no spawn. After, six frames of state: the record cycles kind 8's list 0
+in the cartridge's **descending** cursor order (4, 0, `$C`, 8, 4, 0), reaches the display list, and
+`portSpriteList` **draws** it every frame against the shipped bundle -- `skipped` 0, `missing` empty.
+
+The agent explicitly declined to claim boot progress from a green playgate, per W418. **Copy that.**
+
+### 37 ABLATIONS, 3 GREEN, 1 INVALID -- AND THE INVALID ONE IS INSTRUCTIVE
+
+The replacement mutation ALSO went green, because **`$278320` is a byte-identical second run of the
+same six words**, so no fixture can separate the two sites. Pinned instead against `$276642 lea
+(d16,PC),A0`'s displacement, with the byte-identity asserted as the reason. **When two sites are
+byte-identical, no test can tell them apart -- pin the thing that differs.**
+
+Four exporter mutations were caught by the exporters themselves rather than by tests.
+
+### A NEW MEASUREMENT TRAP
+
+`spr/streams.u32.gz` first-differences **planes 0 AND 1**. Reading plane 1 without accumulating
+gives every stream a base of a few hundred, files them all under shard 0, and makes a shard
+assertion **say nothing while passing**. It cost a reading; the decode is now commented in the test.
+
+### KIND 5 IS OUT OF SCOPE AND WHY
+
+Kind 5 is **pool A** (`DISPATCH[5] = $27FF9A`, unported), not pool C. It will need all eight of
+`$1E24DC..$1E2648` stride `$34`, all still absent, **plus** the body.
+
+### VERIFIED
+
+Suite **3851 pass / 0 fail / 0 skipped** (3837 before; +14). Gate **exit 0**. `--verify` **OK at
+606 windows**. `export-web.mjs` run BEFORE the gate.
+
+**COUNT DISCREPANCY, RECORDED NOT SMOOTHED.** The agent reported **3866**. On the committed tree,
+with its new test file present, the coordinator measures **3851** -- fifteen fewer. Zero fail and
+zero skip both ways, and the gate and window verify agree, so the tree is green either way. The
+committed number is the measured one. If a future wave finds fifteen tests that only run under
+some other condition, that is the explanation and it should be written down.
+
+### NEXT
+
+A4 `$14` for the ending's other arm; kind 5 (body + eight streams); the front-end slot wiring; D36.
+
+## W418 NOTES
 
 ### A GREEN PLAYGATE MEANT THE GAME WAS STUCK. READ THIS BEFORE YOU TRUST A RUN.
 

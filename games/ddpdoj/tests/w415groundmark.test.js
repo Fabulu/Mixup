@@ -102,7 +102,11 @@ function markStreams() {
 
 test('W415 $2688BA is type $11 jsr $289AF4 -- the ground mark, kind 4',
   { skip: SKIP_IMG }, () => {
-  // $2688A8 moveq #$4,D0 -- POOL C KIND 4, the only kind $289B50 accepts.
+  // $2688A8 moveq #$4,D0 -- POOL C KIND 4. When this file was written it was the
+  // only kind `$289B50` accepted; W419 measured the table's real domain (kinds
+  // 0, 4, 8 and $C -- `$289DEA`'s four distinct longs, and `$267F4E cmpi.w #$3`
+  // from the caller side) and opened the guard. THE MARK IS STILL KIND 4; what
+  // changed is that it is no longer the only one.
   assert.deepEqual(bytes(0x2688a8, 2), [0x70, 0x04]);
   assert.deepEqual(bytes(0x2688aa, 2), [0x72, 0x00]);      // moveq #$0,D1
   assert.deepEqual(bytes(0x2688ac, 4), [0x12, 0x2e, 0x00, 0x1f]); // move.b ($1F,A6),D1

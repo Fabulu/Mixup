@@ -770,6 +770,27 @@ SHOT_WINDOWS.extend([
     (0x289B50, 0x038A, "W194: type-$37 pool-C dependency: absolute allocator, "
                        "driver, collision-aware fill, kind-4 template and "
                        "all three four-frame descriptor lists"),
+    # W419.  The $289B50 window above stops at $289EDA, one long short of the
+    # kind-8 template's list 0.  $289DEA is indexed by `kind & $3C` and holds
+    # FOUR real templates ($289E0A/$289E26/$289E42/$289E5E); the W194 window
+    # carries the first two families' lists and stops, so `handlers.js:2014`
+    # (type $8E, moveq #$8) could not read its own art pointers even with the
+    # allocator's guard opened.  This window is the remaining two families'
+    # twelve pointers each, and it is bounded on both sides by positive
+    # witnesses rather than by a gap:
+    #   start  $289E42+$10 = $289EDA is the kind-8 template's list-0 pointer,
+    #          and $289B50+$38A is exactly $289EDA.
+    #   count  each list is FOUR longs, pinned by the templates' own wrap word
+    #          $000C ($289B50 sets the cursor to `$24311A * 4` and the driver
+    #          reloads it from ($12) on the borrow, so it is only ever 0/4/8/$C).
+    #          2 families x 3 lists x 4 longs = 24 longs = $60.
+    #   end    $289F3A is `41 F9 00 81 D3 94 lea $81D394,A0`, the first
+    #          instruction of pool E's clear -- ported since W53 as
+    #          `spark.js clearPool`, a DIFFERENT unit that already owns it.
+    (0x289EDA, 0x0060, "W419: pool-C kind-$8 and kind-$C descriptor lists, "
+                       "$289E42+$10 and $289E5E+$10, four longs each by the "
+                       "templates' own $000C wrap, ending at $289F3A where "
+                       "pool E's clear begins"),
     (0x27307A, 0x0100, "W193: type $36 exact 64-long paired bullet-vector "
                        "table used by its upper and lower batteries"),
     (0x272CFA, 0x0080, "W193: type $36 exact 32-long upper-attachment sprite "

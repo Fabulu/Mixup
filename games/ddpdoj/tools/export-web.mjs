@@ -332,6 +332,31 @@ const HARVEST = Object.freeze([
   [EFFECT_SHARD, 0x289eca, 4, 4, 28, 0x289f3a,
     'pool-C kind-4 death satellite animation list 2, duplicating list 1; the '
       + 'remaining valid-pointer run belongs to adjacent pool-C families'],
+  // W419 -- THE OTHER HALF OF THE GUARD.  `$289DEA` is indexed by `kind & $3C`
+  // and holds FOUR real templates, not one: $289E0A (kind 0), $289E26 (kind 4,
+  // the three rows above), $289E42 (kind 8) and $289E5E (kind $C).  Entries
+  // +$10..+$1C are four copies of $289E7A, which is kind 0's own list 0 and not
+  // a template at all.  `$267F4E cmpi.w #$3,D0 / bgt` + two `add.w D0,D0` is the
+  // cartridge stating that domain from the caller side, and `handlers.js:2014`
+  // (type $8E's death, `moveq #$8`) is a ported caller sitting in it.
+  //
+  // [M] against the shipped bundle before this change: kind 4's eight streams
+  // present, and ALL THIRTY-SIX of kinds 0, 8 and $C absent.  Opening the
+  // allocator's guard without these rows would put ground marks on screen with
+  // no art -- W414's kind-3 shape and W415's own warning.  Each row is one
+  // family's three animation lists laid out CONTIGUOUSLY, twelve longs, and the
+  // four-per-list count is the templates' own wrap word $000C, exactly as the
+  // three kind-4 rows above take theirs.
+  [EFFECT_SHARD, 0x289e7a, 12, 4, 48, 0x289f3a,
+    'pool-C kind-0 death satellite, all three animation lists ($289E0A+$10); '
+      + 'the smallest of the four families, $0210 = 1 wide x 16 high'],
+  [EFFECT_SHARD, 0x289eda, 12, 4, 24, 0x289f3a,
+    'pool-C kind-8 death satellite, all three animation lists ($289E42+$10) -- '
+      + 'THE MARK TYPE $8E LEAVES, $27664E moveq #$8; $0830 = 4 wide x 48 high'],
+  [EFFECT_SHARD, 0x289f0a, 12, 4, 12, 0x289f3a,
+    'pool-C kind-$C death satellite, all three animation lists ($289E5E+$10); '
+      + 'the largest, $0C48 = 6 wide x 72 high, and the kind the unported third '
+      + 'allocator $289B22 spawns'],
   [17, TYPE36_ART.upperTable, TYPE36_ART.headings, 4,
     192, 0x272ffa,
     'stage-3 type $36 upper attachments. Heading is rounded to one of 32 '
@@ -1230,11 +1255,18 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
     || r.base === 0x267160);
   if (unique.size !== 64 || [...unique].some((a) => !chain.has(a))
       || w203Rows.length !== 2 || w203Rows.some((r) => r.added !== 32 || r.already !== 0)
-      || w203StreamsBefore !== 166 || streams.size !== 1975) {
+      || w203StreamsBefore !== 166 || streams.size !== 2011) {
     throw new Error(`W203 type $16 art harvest drifted: ${unique.size} distinct `
       + `pointers, ${w203StreamsBefore} pre-harvest streams, ${streams.size} total; `
-      + 'expected 64 on the $F4 chain, 166 before, and 1975 after this harvest');
+      + 'expected 64 on the $F4 chain, 166 before, and 2011 after this harvest');
   }
+  // W419 MOVED THE LAST NUMBER ONLY, 1975 -> 2011, AND IT IS DECOMPOSED HERE.
+  // The three pool-C rows added above are the whole of it: 3 families x 12
+  // pointers, all distinct, none already present ([M] against the previous
+  // bundle: 36 of 36 absent).  The other four terms HELD -- `unique.size` 64,
+  // the $F4 chain membership, `w203StreamsBefore` 166 (it is sampled BEFORE the
+  // harvest loop, so no harvest row can move it) and both W203 rows at
+  // added 32 / already 0.  1975 + 36 = 2011.
 }
 // W205 A2 object 1 carries its fixed hull as an immediate rather than a table.
 for (const offs of [0x000a3514]) {

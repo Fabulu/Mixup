@@ -841,15 +841,41 @@ function poolCCollision289C54(ram, slot) {
 }
 
 /**
- * `$289B50`, pool-C's absolute-position allocator. W194's type `$37` reaches
- * kind 4 directly on death; the other table entries remain guarded until a
- * translated caller makes their templates runtime dependencies.
+ * `$289B50`, pool-C's absolute-position allocator.
+ *
+ * W419 -- THE GUARD'S DOMAIN, TAKEN FROM THE CARTRIDGE AND NOT FROM ONE CALLER.
+ * `$289DD2 andi.w #$3C,D3` / `$289DDC movea.l (0,A2,D3.w),A2` (and `$289C3E` /
+ * `$289C48`, the byte-identical pair in `$289AF4`'s fill) index `$289DEA` by
+ * `kind & $3C` as a BYTE offset into a table of longs, so the table's own reach
+ * is what decides which kinds exist. It holds
+ *
+ *   +$00 $00289E0A   +$04 $00289E26   +$08 $00289E42   +$0C $00289E5E
+ *   +$10 $00289E7A   +$14 $00289E7A   +$18 $00289E7A   +$1C $00289E7A
+ *
+ * and `$289E7A` IS NOT A TEMPLATE -- it is the kind-0 template's own list 0
+ * (`$289E0A+$10`). Its first word is `$0022`, bit 15 CLEAR, so a record filled
+ * from it is born dead and `$289B80` never steps it. Four entries are real, and
+ * `$289E7A` x4 is padding to a power of two.
+ *
+ * The cartridge says the same thing from the caller side. `$267F48 jsr $259C42`
+ * / `$267F4E cmpi.w #$3,D0` / `$267F52 bgt` / `$267F56 tst.w D0` / `$267F58 bmi`
+ * / `$267F5C add.w D0,D0` / `$267F5E add.w D0,D0` clamps a random draw to 0..3
+ * and quadruples it, so that one call site alone passes 0, 4, 8 and $C -- the
+ * whole domain and nothing above it.
+ *
+ * A whole-image scan for the two encoded targets finds EIGHT call sites and no
+ * more: `$264830` is the only `jsr $289B50` (moveq #$4); the other seven are
+ * `jsr $289AF4` -- `$2673E6 $26821E $2688BA` (moveq #$4), `$27664E $2774BC
+ * $2777D6` (moveq #$8) and `$267F62`, the clamped draw above. Kind $C also
+ * arrives through the THIRD allocator `$289B22`, which is not ported.
  */
 export function spawnPoolC289B50(ram, rom, ctx, kind, bucket, position,
   siteAddr = 0x289b50) {
-  if ((kind & 0x3c) !== 4) {
+  if ((kind & 0x3c) > 0x0c) {
     unreached(siteAddr, `pool C absolute allocator kind $${kind.toString(16)} `
-      + `is not the translated kind-4 template selected by type $37`);
+      + `indexes $289DEA at +$${(kind & 0x3c).toString(16)}, past the four real `
+      + `templates; +$10..+$1C all hold $289E7A, which is kind 0's list 0 and `
+      + `whose first word $0022 has bit 15 clear -- a record born dead`);
   }
   const narrow = ram.u16(0x813098) !== 0 || ram.u16(0x81308c) === 0;
   const limit = narrow ? POOL_C.slotsNarrow : POOL_C.slots;

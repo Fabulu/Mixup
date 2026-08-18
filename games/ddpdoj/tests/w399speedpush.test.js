@@ -710,11 +710,11 @@ test('W399 SECTION 7: 575 windows, the overlap count still 71, and all five sit 
     const ws = WINDOWS();
     // W400 declared eight more (type $44's init stub, its prototype pair and five data tables),
     // so this file's total moves and its own five-window claims below do not.
-    assert.equal(ws.length, 605, '570 windows before W399, 575 after it, 583 after W400, 585 '
+    assert.equal(ws.length, 606, '570 windows before W399, 575 after it, 583 after W400, 585 '
       + 'after W402, 590 after W404 (two A1 gun tables and three gun data blocks), 593 '
       + 'after W405, 594 after W406, 595 after W407, 596 after W408 added A1 gun $A\'s '
       + 'template, and 599 since W409 declared A4 script 5\'s three blocks'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606.');
     const mine = [HIBACHI_A4.table, HIBACHI_A4.poolCTable, HIBACHI_A4.kindTable,
       HIBACHI_A4.s1Anim, HIBACHI_A4.s3Anim];
     for (const a of mine) {

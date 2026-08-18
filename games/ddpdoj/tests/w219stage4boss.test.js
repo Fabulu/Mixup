@@ -80,7 +80,14 @@ test('W219 pins the final Stage-4 record, arrival closure, and 16 live streams',
     // animation ($1BE94C..$1BF4C8, stride $C4), whose body W417 ports in the same wave;
     // all sixteen land on shard 11. This file's own harvest assertions above are the
     // untouched witnesses: none of them moved.
-    assert.equal(manifest.spr.streamCount, 4307);
+    // W419: 4,307 -> 4,343. Pool C's kind-0, kind-8 and kind-$C death satellites --
+    // THREE families x three animation lists x four cells = 36 distinct streams, all
+    // new, all onto shard 9 beside the explosion they accompany. W419 opened
+    // `$289B50`'s guard from kind 4 alone to the table's real domain, and art with no
+    // guard behind it is the half W415 refused to ship on its own. [M] shard 9 goes
+    // 277 -> 313 streams, its maskLen 158,466 -> 166,218 and `spr.maskUsed` by the SAME
+    // 7,752 -- so nothing but these 36 moved. Shard 11 held at 862/1,170,804/3,272,730.
+    assert.equal(manifest.spr.streamCount, 4343);
   });
 
 test('W219 real clock-$2E8 spawn runs F0, MAIN0, and the visible body same pass',
