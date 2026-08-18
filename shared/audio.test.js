@@ -19,7 +19,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { Resampler, AudioOut, AudioController,
-         CHUNK, LOOKAHEAD_S, MAX_BACKLOG_FRAMES, MASTER_GAIN } from './audio.js';
+         CHUNK, LOOKAHEAD_S, MAX_BACKLOG_FRAMES, MAX_BUFFERED_S,
+         MASTER_GAIN } from './audio.js';
 
 // ------------------------------------------------------------- helpers
 
@@ -418,4 +419,126 @@ test('AudioController: stats reports locked status with no engine, numbers with 
   assert.equal(ac.stats().status, 'muted');
 
   delete globalThis.AudioContext;
+});
+
+// ===========================================================================
+// 5. W423 -- DOCKET D54. THE RENDERED BUFFER HAS A CEILING.
+//
+// THE OWNER'S REPORT, twice: "sound lags behind by about 1 second", then
+// "in level 2 sound is now like 5 seconds behind [...] but I switched window
+// focus a lot".
+//
+// THE DOCKET'S FIRST ANALYSIS BLAMED THE GAME-SIDE RING AND WAS WRONG, and the
+// owner's own number is what disproved it: that ring is 100 slots drained one
+// per frame, so 1.67 s is its arithmetic ceiling. Five seconds cannot fit in
+// it. A second queue had to exist, and it is here -- `chip.outLen`, whose
+// backing store `ics2115._ensureOut` DOUBLES without limit.
+//
+// WHY `MAX_BACKLOG_FRAMES` DID NOT ALREADY COVER THIS. It bounds one pump to
+// 15 frames of emitted samples. 15 frames is 250 ms of audio, produced in the
+// 16.7 ms of real time one rAF costs. So a valve working exactly as designed
+// still leaves ~233 ms behind on every catch-up burst, permanently. The valve
+// bounds the growth RATE. Only section 5 bounds the BUFFER.
+//
+// Measured before the fix, 30-frame bursts: 1 burst 0.153 s, 5 -> 1.099 s,
+// 10 -> 2.268 s, 20 -> 4.605 s, 40 -> 9.280 s. Linear and unbounded, and the
+// owner's "about 5 seconds" sits right at 20 bursts of window-focus churn.
+// ===========================================================================
+
+/** Drive `out` through `bursts` catch-up bursts, returning buffered seconds. */
+function churn(out, ctx, chip, { burst, bursts, settle = 30 }) {
+  const step = 1 / 60;
+  for (let b = 0; b < bursts; b++) {
+    for (let i = 0; i < burst; i++) out.frame(null);   // one rAF, many logic frames
+    out.pump();
+    ctx.currentTime += step;
+    for (let i = 0; i < settle; i++) { out.frame(null); out.pump(); ctx.currentTime += step; }
+  }
+  return chip.outLen / chip.sourceRate;
+}
+
+test('D54: repeated catch-up bursts do NOT accumulate buffered audio', () => {
+  const ctx = new FakeCtx(48000);
+  const chip = makeSineChip(48000, 2);
+  const out = new AudioOut(ctx, () => chip);
+  // settle into steady state first, so the burst effect is what is measured
+  for (let i = 0; i < 120; i++) { out.frame(null); out.pump(); ctx.currentTime += 1 / 60; }
+
+  const after5 = churn(out, ctx, chip, { burst: 30, bursts: 5 });
+  const after40 = churn(out, ctx, chip, { burst: 30, bursts: 35 });
+
+  // THE DEFECT WAS GROWTH. Unfixed these measured 1.099 s and 9.280 s: eight
+  // times as much lag for eight times the churn. Bounded, they must not differ.
+  assert.ok(after40 <= MAX_BUFFERED_S,
+    `40 bursts left ${after40.toFixed(3)} s buffered, ceiling is ${MAX_BUFFERED_S} s`);
+  assert.ok(after40 - after5 < 0.05,
+    `lag must not grow with churn: 5 bursts ${after5.toFixed(3)} s vs 40 bursts `
+    + `${after40.toFixed(3)} s`);
+});
+
+test('D54: ordinary play never reaches the ceiling and so drops NOTHING', () => {
+  // The trap this test exists to catch: a ceiling low enough to trigger during
+  // normal frames would trade the owner's lag for the owner's audio.
+  const ctx = new FakeCtx(48000);
+  const chip = makeSineChip(48000, 2);
+  const out = new AudioOut(ctx, () => chip);
+  for (let i = 0; i < 600; i++) { out.frame(null); out.pump(); ctx.currentTime += 1 / 60; }
+  assert.equal(out.stale, 0, 'ten seconds of clean 60 Hz play discards no samples');
+  assert.equal(out.dropped, 0, 'and the backlog valve never opens either');
+  assert.ok(chip.outLen / chip.sourceRate < MAX_BUFFERED_S,
+    'steady state sits below the ceiling with room to spare');
+});
+
+test('D54: the ceiling is enforced on the RESAMPLED path too', () => {
+  // DOJ is the resampled path: the chip runs ~33.8 kHz into a 48 kHz context.
+  // Samples pool on BOTH sides of the resampler, so capping only the chip
+  // would leave the same unbounded queue one stage downstream.
+  const ctx = new FakeCtx(48000);
+  const chip = makeSineChip(33868, 2);
+  const out = new AudioOut(ctx, () => chip);
+  for (let i = 0; i < 120; i++) { out.frame(null); out.pump(); ctx.currentTime += 1 / 60; }
+  const after = churn(out, ctx, chip, { burst: 30, bursts: 40 });
+  assert.ok(after <= MAX_BUFFERED_S,
+    `chip side: ${after.toFixed(3)} s buffered, ceiling ${MAX_BUFFERED_S} s`);
+  assert.ok(out.resampler, 'the resampled path really was the one exercised');
+  const held = out.resampler.outLen / ctx.sampleRate;
+  assert.ok(held <= MAX_BUFFERED_S + 0.01,
+    `resampler side: ${held.toFixed(3)} s held past the ceiling`);
+});
+
+test('D54: EVERY cue still reaches the chip -- only rendered samples are dropped', () => {
+  // The owner's decision on this item was "catch up the backlog, keep every
+  // cue". Trimming must therefore never skip a `frame()` call: cues are chip
+  // STATE, and state that never arrives is a note that never plays, or worse a
+  // note that never stops. What section 5 throws away is only rendering.
+  const ctx = new FakeCtx(48000);
+  let applied = 0;
+  const chip = makeSineChip(48000, 2);
+  const inner = chip.frame.bind(chip);
+  chip.frame = (log, emit) => { applied++; return inner(log, emit); };
+  const out = new AudioOut(ctx, () => chip);
+  const TOTAL = 40 * 31;                       // bursts of 30 plus one settle frame each
+  for (let b = 0; b < 40; b++) {
+    for (let i = 0; i < 30; i++) out.frame(null);
+    out.pump();
+    ctx.currentTime += 1 / 60;
+    out.frame(null); out.pump(); ctx.currentTime += 1 / 60;
+  }
+  assert.equal(applied, TOTAL,
+    'every posted frame was applied to the chip, including the ones whose samples were dropped');
+});
+
+test('D54: stats() reports the discarded count, so this is visible in the field', () => {
+  // The owner diagnoses from the on-screen stats. A silent trim would make the
+  // next report of lag unanswerable.
+  const ctx = new FakeCtx(48000);
+  const chip = makeSineChip(48000, 2);
+  const out = new AudioOut(ctx, () => chip);
+  for (let i = 0; i < 120; i++) { out.frame(null); out.pump(); ctx.currentTime += 1 / 60; }
+  churn(out, ctx, chip, { burst: 30, bursts: 10 });
+  assert.ok(out.stale > 0, 'the trim actually ran during the churn');
+  const ac = new AudioController(null);
+  ac.out = out;
+  ac.status = 'on';
+  assert.equal(ac.stats().stale, out.stale, 'and stats() surfaces it');
 });

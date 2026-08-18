@@ -61,6 +61,23 @@ export const START_LATENCY_S = 0.05;
 export const MAX_BACKLOG_FRAMES = 15;
 
 /**
+ * THE RENDERED-SAMPLE CEILING, in seconds. `MAX_BACKLOG_FRAMES` bounds how many
+ * logic frames one pump may turn into SAMPLES; it does not bound how many
+ * samples pile up ACROSS pumps, and those are two different things.
+ *
+ * Measured under D54: a catch-up burst emits 15 frames = 250 ms of audio while
+ * real time advances one rAF = 16.7 ms, so every burst leaves ~233 ms of
+ * undrained samples behind for good, and `ics2115._ensureOut` doubles its
+ * buffer to hold them. Twenty bursts measured 4.6 s of lag -- which is the
+ * owner's report of "about 5 seconds behind" after "I switched window focus a
+ * lot", and it grows without limit.
+ *
+ * 0.25 s is above any honest steady state (one rAF of samples plus LOOKAHEAD_S
+ * of scheduled audio is ~137 ms) so ordinary play never reaches it.
+ */
+export const MAX_BUFFERED_S = 0.25;
+
+/**
  * Master volume. Gradius's mixer ceiling is 0.63 (see apu.js), so this is
  * headroom. DOJ's 32-voice sum is caught by the limiter before it can clip.
  */
@@ -259,11 +276,15 @@ export class AudioOut {
     this.nextTime = -1;          // -1 = nothing scheduled yet
     this.underruns = 0;
     this.dropped = 0;
+    /** Stale SOURCE samples discarded to hold the buffer at MAX_BUFFERED_S. */
+    this.stale = 0;
     this.frames = 0;
     /** Lazily built, only when sourceRate !== ctx.sampleRate. */
     this.resampler = null;
     /** Reused source-side temp buffers for the resample path. */
     this._src = null;
+    /** Reused scratch the trim drains stale samples into, then forgets. */
+    this._junk = null;
   }
 
   /**
@@ -307,6 +328,13 @@ export class AudioOut {
       if (!emit) this.dropped++;
       chip.frame(entry, emit);
     }
+
+    // ---- 1b. hold the RENDERED buffer to its ceiling -----------------------
+    // Step 1's valve limits how fast this can grow. Only this bounds it. Every
+    // cue in the burst still reached the chip above -- what is dropped here is
+    // rendered output that is already too old to be worth hearing, so state
+    // stays exact and only the wait disappears.
+    this._trim();
 
     // ---- 2. resync against the AudioContext clock --------------------------
     if (this.nextTime < 0) this.nextTime = ctx.currentTime + START_LATENCY_S;
@@ -369,6 +397,36 @@ export class AudioOut {
       res.drainOutput(CHUNK, dests);
       this._schedule(buf);
     }
+  }
+
+  /**
+   * Discard the OLDEST samples past the ceiling, on both sides of the
+   * resampler. Oldest, not newest: the newest are the ones about to be heard,
+   * and dropping those would make the game sound like it was skipping instead
+   * of catching up.
+   */
+  _trim() {
+    const chip = this.chip;
+    const capSrc = Math.ceil(MAX_BUFFERED_S * chip.sourceRate);
+    if (chip.outLen > capSrc) this.stale += this._discard(chip, chip.outLen - capSrc,
+      chip.channels, (n, d) => chip.drain(n, d));
+
+    const res = this.resampler;
+    if (res) {
+      const capOut = Math.ceil(MAX_BUFFERED_S * this.ctx.sampleRate);
+      if (res.outLen > capOut) this._discard(res, res.outLen - capOut,
+        chip.channels, (n, d) => res.drainOutput(n, d));
+    }
+  }
+
+  /** Drain `n` samples into a reused scratch buffer and throw them away. */
+  _discard(_owner, n, channels, drainFn) {
+    if (!this._junk || this._junk[0].length < n) {
+      this._junk = new Array(channels);
+      for (let c = 0; c < channels; c++) this._junk[c] = new Float32Array(n);
+    }
+    drainFn(n, this._junk);
+    return n;
   }
 
   /** Schedule one filled buffer at nextTime and advance the clock. */
@@ -583,6 +641,7 @@ export class AudioController {
       backlog: this.out.queue.length,
       dropped: this.out.dropped,
       underruns: this.out.underruns,
+      stale: this.out.stale,
       preReadyFrames: this.preReadyFrames,
     };
   }
