@@ -98,7 +98,50 @@ that basis, and then put the same wrong claim in W424's brief. **The repo is LF 
 
     python -c "d=open(P,'rb').read(); print(d.count(b'\r\n'), d.count(b'\n')-d.count(b'\r\n'))"
 
-### NEXT UNIT: D58 STEP 2 -- BRIEF ALREADY WRITTEN
+### D58 IS CLOSED. THE EXPLOSION WAS NOT THE CUE THE DIAGNOSIS NAMED.
+
+**THE CAVEAT SAVED THE ITEM, so keep writing them.** D58 said the boss-CLEAR cue was silent and
+demanded the wave establish whether the owner's "explosion" was that cue or another before closing.
+**It was another.** The death `$294DD4` posts `$28C170` once at fight end AND arms A3 script 6,
+whose states 2 and 3 dispatch through `lea ($1D8,PC),A0` -> **`$294134`**, eight cue wrappers masked
+`andi.w #$1F`. **Those are the repeated bangs**, and `boss.js` counted the whole dispatch as one
+note. Closing on `$28C170` alone would have been D56 again.
+
+**MY BRIEF SAID FIVE SITES. THERE WERE NINE**, two of them live throws. Assume a brief's site list
+is a floor, never a ceiling.
+
+**TWO MORE W418-SHAPE LIES FOUND.** `BOSS_NOTED` listed three addresses as deferred SOUND that no
+`note()` has passed since Wave A -- real `soundPost` calls all along, three documented gaps that
+did not exist, invisible **because nothing read the table**. `w62stageend.test.js` now scans
+`boss.js` and fails on a dead key. **That is the general fix for this shape: make something READ
+the bookkeeping.** This lie-shape has now appeared four times.
+
+### NEXT UNIT: `objslot15.js:179`, A LIVE THROW THAT ALWAYS WAS
+
+It calls `ctx.soundPost?.(0x28c186)` and still throws. `$28C186` takes D1 FROM THE CALLER, so it
+cannot go through the address-only API -- **and that is not pedantry**: `background.js`'s cue
+sub-op 2 reads a real D1 word out of the stage script, so an address-only path would post `$1600`
+for every caller. The unit is a ctx-level D1-carrying API plus that one site. Its own D1 is 0,
+verified (`$291FA6: 2b40 0008 / 7200 / 4eb9 0028c186`).
+
+### PUBLISH AT W427 -- AND W425 ADDED A ROM WINDOW
+
+606 -> 607. `export-web.mjs` MUST run before `publish.mjs`.
+
+### STILL OPEN, WITH LEADS WORTH READING BEFORE TOUCHING THEM
+
+**D59 (bees)** -- there are TWO position gates on the carrier, in unrelated routines: `$245248`
+(position >= `$6F00` unsigned -> flickers, NO damage) and `$280B2A` (spawn off-screen -> dies,
+drops NOTHING). Between them they reproduce the owner's sentence exactly. **One wrong position
+explains all three symptoms.** Both gates are faithful, so the question is whether the port puts
+the carrier somewhere the cartridge does not. Print `($2,A5)` and `($2,A6)`.
+
+**D56 (hyper laser)** -- bomb-while-lasering selects the BOMB-LASER, so the weapon is damaged by
+`$2456A6`, which flashes **exactly one enemy per frame** (pool B's nearest). **Both guards into it
+are FALSE on every bench here**, so not one line of it has ever run in a test. **The unit is a
+bench before it is a fix.**
+
+
 
 Convert the five `$28C170` sites from counted notes into real posts. `postBgmCommand` and
 `BGM_COMMANDS` already exist in `sound.js` with ten tests. **Only `$28C170` may go through
