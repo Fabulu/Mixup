@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W419)
+Updated: 2026-08-18 (W420)
 
 ## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
 
@@ -19,6 +19,69 @@ text:
 
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
+
+## START HERE -- W420 (coordinator-ported)
+
+### FOUR DISPATCHES DIED TO SERVER ERRORS, SO THE COORDINATOR DID IT INLINE
+
+Three agents at this unit terminated on API errors (one mid-response after recon, two 529s), each
+leaving the tree clean. The recon was banked after the second; after the third the coordinator
+ported the unit and wrote its test inline. **The lesson is procedural: when a unit is small and the
+recon is already banked, a fourth dispatch is worse than doing it.** Verify the work, not the author.
+
+### A4 SCRIPT $14 IS SIX INSTRUCTIONS
+
+    $2A6B7A  39 7c 00 80 00 02   move.w #$80,($2,A4)
+    $2A6B80  53 6c 00 02         subq.w #1,($2,A4)
+    $2A6B84  66 00 00 0a         bne.w -> $2A6B90    ext word $2A6B86 + $0A
+    $2A6B88  4e b9 00 25 95 e8   jsr $2595E8
+    $2A6B8E  42 54               clr.w (A4)          TRAP: 4254 is clr.w (A4)
+    $2A6B90  4e 75               rts
+
+Wait 128 frames, suspend the stage, free the slot on the same frame.
+
+### THE `$1A` WAS `$18` OF CODE PLUS TWO BYTES OF ALIGNMENT -- A THIRD SHAPE
+
+W418's gap held the unit's own tables; W419's held the next unit's data; **this one is padding**,
+because `$2A6B94` is `bossBody2A6B94`, ported long ago. Three shapes now. **The gap size is not a
+signal, and neither is its content.**
+
+**Entry-to-entry cannot bound this one at all**: `$14` is the LAST table entry. Index 21 reads
+`$70004EB9` -- `moveq #0,D0 / jsr`, code not a pointer -- and `table + 21*8` equals entry [0].init
+exactly, which is W403's own witness that the table ends where its first script begins.
+
+### THE TWO ENDINGS ARE NOT VARIANTS OF ONE ROUTINE
+
+A scan for `moveq #$14` before `jsr`/`jmp $25980C` over `$2A0000..$2AB000` finds **exactly one**
+starter, `$2A5CB4`, script 1's first-loop arm.
+
+| | A4 `$14` (first loop) | A4 script 5 (second loop, W409) |
+|---|---|---|
+| code | **`$18`, six instructions** | **`$270`, five-state machine** |
+| does | wait 128, suspend, free | 16 spawns, blast, three ramps, chain, position push, THEN suspend |
+
+**The cartridge gives loop one a bare beat and saves the finale for loop two.** A wave assuming
+symmetry would have hunted for structure that is not there.
+
+### THE TEST DIRTIES THE SLOT, AND THAT IS WHAT MAKES IT WORTH ANYTHING
+
+Four ablations, all red, control and restore green:
+
+| ablation | result |
+|---|---|
+| beat `$80` -> `$40` | 4 fail |
+| store one frame early | 2 fail |
+| slot not freed | 1 fail |
+| **init ORs instead of stores** | **2 fail** |
+
+That last one **passes on a fresh `Ram()`** -- `0 | $80` is `$80`. It only reddens because SECTION 6
+seeds the field with `$0001 $007F $0081 $FFFF $8000` first. **That trap has now caught W417, W418
+and W419.** Where a field can carry a previous tenant's value, dirty it before asserting.
+
+### VERIFIED
+
+Suite, gate and window verify all run by the coordinator on the committed tree. Figures in the
+commit message are the measured ones.
 
 ## RECON BANKED -- A4 SCRIPT $14, THE FIRST-LOOP ENDING (coordinator, 2026-08-18)
 

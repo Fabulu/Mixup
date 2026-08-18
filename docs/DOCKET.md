@@ -2416,3 +2416,127 @@ test that stood for eight waves.
 missing from the sheet, confirm every kind those arms can allocate is present before declaring this
 closed, rather than fixing the one offset the measurement happened to name.
 
+
+### D52: DO THE COLLECT SOUNDS ACTUALLY FIRE? **MEDALS CONFIRMED GOOD BY THE OWNER** -- STAR AND BEE REMAIN
+
+**NARROWED 2026-08-18, same session it was opened.** The owner played the live build and reported: *"The sounds for medals are good"*. So the shared collect arm, `ctx.soundPost`, `sound.js`'s mapping and the whole chain from `poolACollectArm` to the audio layer are all **proven working in play** for kind 2. **That is the strongest evidence in this item and it was free.**
+
+**What that leaves**, and it is a much smaller question than the one first written:
+- **the star** (kinds 0/4, `$27F9EE`) -- shares the SAME cue `$28C5E4` and the SAME arm as the medal, so it is now very likely fine; the residual doubt is only that its collect arm was dead until W411 and may differ in reachability, not in wiring;
+- **the bee** (`$27FC6C`, cue `$28C62A`) -- posted from its OWN body, not the shared arm, so the medal result says nothing about it;
+- **kind 3** (`$27FED2`, cue `$28C610`) -- not reached on any bench here at all.
+
+**Ask the owner about the star and the bee before spending a wave on either.** One sentence from a play session settled the medal; the same may settle these. Only measure what a play report cannot answer.
+
+The original item, kept because its cautions still apply to the bee:
+
+> "I think medals have sounds too, maybe stars as well and bees too. Those are important"
+> "sounds when collected I mean"
+
+Owner, 2026-08-18. **The wiring exists. That is not the same as the sound being heard, and these
+paths are all new**, so nobody has ever observed them firing.
+
+**What is already true, checked by the coordinator:**
+
+| pickup | collect cue | in `sound.js`? |
+|---|---|---|
+| star (kinds 0/4), `$27F9EE` | `$28C5E4` | **mapped** |
+| medal (kind 2), `$27FE0E` | `$28C5E4` | **mapped** |
+| big medal (kind 3), `$27FED2` | `$28C610` | **mapped** |
+| bee, `$27FC6C` | `$28C62A` | **mapped** |
+
+All four go through `poolACollectArm`'s `ctx.soundPost?.(spec.collectSound)` (`bee.js:1523`), and
+`main.js:547` passes every address straight to `sound.js`, where **an unmapped address THROWS** --
+so a silent drop is not the failure mode here. A wrong or missing post is.
+
+**WHY THIS STILL NEEDS MEASURING.** Every one of these paths is days old:
+- the star's collect arm was **dead until W411** -- `$27FA34`'s backward `bne` was read as a no-op
+  and a test defended that reading for eight waves;
+- the medal did not **spawn** until W411 and had no **art** until W414;
+- kind 3 was ported in W417 and **is not reached on any bench here**.
+
+So "the code posts a cue" is inference. **The deliverable is a measurement**: drive a real collect
+for each pickup and record that `soundPost` was called, with which address, exactly once per
+collect, and that `sound.js` resolved it to a wrapper rather than throwing.
+
+**Specific things to check, each of which has bitten this project:**
+1. **Once per collect, not once per frame.** The collected record lives on for its transform
+   (`$280FDC`); if the arm re-enters, the cue re-posts. Count posts against collects.
+2. **The `ctx.soundPost?.` optional-call.** If `ctx.soundPost` is undefined on some bench the post
+   silently vanishes -- that is exactly how `ctx.menuCarry28D53C` hid a dead arm for 45 waves
+   (W418). Assert the sink is present, not just that the call site exists.
+3. **P1 versus P2.** `$27FE24 btst #$C,D1` picks the counter pair; confirm the cue is not on one
+   arm only, the way the impact draw gate was (W412).
+4. **The bee's is a different address** (`$28C62A`, `bee.js:1872`) and is posted from its own body,
+   not the shared arm. Do not assume the shared arm covers it.
+
+**If they all fire, say so with the counts and close this.** A null result that is measured is worth
+more than a fix that is guessed.
+
+### D53: THE PAGE SERVED A STALE MIX AND ONLY A HARD RELOAD FIXED IT
+
+> "website for gbtman.pages.dev gave me an error when selecting dodonpachi. Only cleared when I
+> ctrl shift r'd. We need a weapon against this staleness."
+
+Owner, 2026-08-18. **This outranks port work when it recurs**, because a stale mix produces errors
+that look exactly like port defects and can burn a whole wave being chased in the wrong place.
+
+**IT IS NOT THE HTTP HEADERS.** `dist/_headers` already sets `no-cache` on `/*` and `/games/*`, and
+`no-store, must-revalidate` on `/` and `/index.html`. Those are as strong as headers get.
+
+**IT IS THE SERVICE WORKER**, `dist/games/ddpdoj/sw.js`, registered at `index.html:908`. A service
+worker survives an ordinary reload and is bypassed by Ctrl-Shift-R, which is exactly the symptom
+described. Its design is mostly right and should not be torn up: caches are build-scoped
+(`ddpdoj-shell-${BUILD}` / `ddpdoj-assets-${BUILD}`, `BUILD` rewritten by `build-dist.mjs`), old
+caches are deleted on activate, `skipWaiting` and `clients.claim` are both called, and a previous
+wave already fixed `caches.match` searching every cache on the origin.
+
+**THE REMAINING HOLE, and it fits the report exactly: asset URLs are NOT content-hashed.** So the
+same URL means different bytes across builds, and the failure is a race rather than a logic error:
+
+1. A deploy lands. The user opens the page. The **OLD** worker is still the active one.
+2. The navigation is network-first, so the browser gets the **NEW** HTML.
+3. That HTML requests its modules and assets by **unchanged URLs**, and the old worker answers them
+   **cache-first out of its own shell cache** -- old bytes.
+4. New HTML plus old modules is the mix, and the error follows.
+5. The new worker installs, claims, and deletes the old caches, so a hard reload looks like a fix
+   and the next visit is clean. **That is why it appears intermittent.**
+
+**Fixes, cheapest first. Do not do all of them.**
+1. **Content-hash the asset filenames** in `build-dist.mjs`. Then a new build cannot be answered
+   from an old cache, because the URL differs. This closes the hole rather than narrowing the race,
+   and it makes the aggressive headers unnecessary for those files.
+2. Or stamp the build id into the shell request URLs (`?v=BUILD`), which is the same idea with less
+   plumbing and a slightly dirtier cache.
+3. Or make the shell network-first as well. Simplest, and it gives up the offline shell.
+
+**Whatever is chosen, prove it the way this project proves everything else:** deploy twice in a row
+and show that a page loaded against build N, without a hard reload, ends up running build N+1's
+modules and not a mixture. **A single clean load is not evidence** -- the failure is a race and will
+pass most of the time.
+
+### D54: SOUND LAGS ABOUT ONE SECOND BEHIND THE ACTION
+
+> "I also have this issue where sound lags behind by about 1 second"
+
+Owner, 2026-08-18, same session as D53. **Roughly one second is a very large number** -- far beyond
+scheduling jitter -- so it is a buffering or queue-depth fact, not a timing wobble, and it should be
+measurable rather than guessed at.
+
+**Start by deciding WHERE the second is**, because the three candidates need different fixes:
+1. **Emission**: the port posts cues into a ring (`ctx.soundPost` -> `sound.js`). If the ring is
+   drained slower than it fills, the delay grows with activity rather than staying constant. **Ask
+   the owner whether the lag grows during heavy play or stays fixed** -- that one answer separates
+   this case from the other two.
+2. **The audio graph**: a large buffer or a scheduled start offset in the web audio layer costs a
+   fixed delay regardless of load.
+3. **The frame clock**: if cues are posted against emulated frames but played against wall time, and
+   the two drift, the gap accumulates.
+
+**Measure it, do not infer it:** timestamp a cue at `soundPost` and at the moment it is actually
+audible in the graph, and report the distribution over a run rather than a single figure. A fixed
+offset and a growing one have different causes and different fixes.
+
+**Not urgent relative to D53**, but it is the kind of defect that makes everything feel wrong even
+when the port is exactly right.
+

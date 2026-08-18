@@ -303,7 +303,7 @@ test('W399 SECTION 2: nine callers of $261100, FOUR of them unclaimed and two pu
       '$2A5886[3] is $2A5A28, A4 script 1\'s STEP');
     assert.ok(HIBACHI_A4.s1Step < 0x2a5d28 && 0x2a5d28 < HIBACHI_A4.s2Init,
       '  ...and $2A5D28 is inside it, between entry [3] and entry [4]');
-    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort(), [1, 2, 3, 4, 5],
+    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort((a, b) => a - b), [1, 2, 3, 4, 5, 0x14],
       'A4 1, 2 and 3 from this wave, 4 from W403 and 5 from W409 -- init and step');
     for (const id of HIBACHI_END_SCRIPTS) {
       for (const off of [0, 4]) {
@@ -459,10 +459,14 @@ test('W399 SECTION 3: the FIRST-LOOP arm takes the other branch and the scroll n
     // The arm that DID run: 21 pool-C rows counted, then A4 $14.
     assert.ok(b.log.report().some((s) => s.startsWith('     21 x $289B22')),
       'the first-loop arm counted $289B22 twenty-one times ($2A5C9A moveq #$14 + dbra)');
-    assert.deepEqual(r.stopped, { frame: 192, at: 0x2a6b7a, name: 'Unreached' },
-      'and it handed to A4 $14 = $2A6B7A on the SAME frame -- $25980C fills the first EMPTY '
-      + 'slot, which is slot 1, and $2596D6\'s walk has not reached slot 1 yet when script 1 '
-      + 'returns, so the new script\'s init runs inside the same pass');
+    // W420 CORRECTION. This used to assert a STOP here -- { frame: 192, at: $2A6B7A } --
+    // because A4 $14 was unported. It is ported now, so the hand-over is no longer a throw,
+    // and this bench is the FIRST in the repo that actually drives the first-loop ending.
+    assert.equal(r.stopped, null, 'W420: A4 $14 is ported, so the hand-over no longer throws');
+    // THE STATE TRACE: the hand-over is still on frame 192, and 192 + $80 = 320, so the
+    // stage is over well inside the 1,200 frames this bench runs.
+    assert.equal(b.ram.u16(SCHED.suspend), 1,
+      'W420: the FIRST-loop ending COMPLETES -- $2595E8 stored 1 within the run');
     assert.equal(l(HIBACHI_A4.table + HIBACHI_A4.firstLoopExit * 8), 0x2a6b7a,
       '$2A5886[$14].init is $2A6B7A');
     assert.equal(l(0x2a6b88), 0x4eb90025, '$2A6B88 is `jsr $2595E8`, the global SUSPEND...');

@@ -119,6 +119,7 @@ export const HIBACHI_A4 = Object.freeze({
   s3Init: 0x2a5f8e, s3Step: 0x2a5fa2,
   s4Init: 0x2a62fa, s4Step: 0x2a6312,       // W403 -- the $11E bytes W399 counted
   s5Init: 0x2a6418, s5Step: 0x2a6458,       // W409 -- the $3AA W408 counted
+  s14Init: 0x2a6b7a, s14Step: 0x2a6b80,     // W420 -- $18 of code, NOT the $1A counted
   // A4 5's own data, all four bases named by a `lea` that is decoded rather than assumed
   s5Emit: 0x2a6688, s5EmitRows: 16, s5EmitStride: 8,   // $2A657E and $2A6628, the SAME base
   s5EmitWrap: 0x0080,                       // $2A65CC / $2A6662 cmpi.w #$80,($8,A4)
@@ -721,6 +722,49 @@ export function s5Step2A6458(ram, rom, ctx, a4) {
 // Every frame number in this chain moves by one because of it.
 const initThenStep = (init, step) => (ram, rom, ctx, a4) => { init(ram, rom, ctx, a4); step(ram, rom, ctx, a4); };
 
+// ===========================================================================
+// W420 -- A4 SCRIPT $14, `$2A6B7A`, HIBACHI'S **FIRST-LOOP** ENDING
+// ===========================================================================
+//
+// Six instructions, and the whole of it:
+//
+//   $2A6B7A  39 7c 00 80 00 02   move.w #$80,($2,A4)    init: load 128
+//   $2A6B80  53 6c 00 02         subq.w #1,($2,A4)      step: count down
+//   $2A6B84  66 00 00 0a         bne.w  -> $2A6B90      ext word $2A6B86 + $0A
+//   $2A6B88  4e b9 00 25 95 e8   jsr $2595E8            the ending store
+//   $2A6B8E  42 54               clr.w (A4)             free the slot (TRAP: 4254)
+//   $2A6B90  4e 75               rts
+//
+// **CODE IS `$18`**, `$2A6B7A..$2A6B91`.  `$2A6B92..$2A6B93` is two bytes of ALIGNMENT and
+// `$2A6B94` is `bossBody2A6B94`, a unit ported long ago -- so the `$1A` this file used to
+// count is `$18` + padding.  A third shape for that gap: W419's trailing bytes were the
+// unit's own tables and W418's were the next unit's, and here it is neither.
+//
+// **Entry-to-entry cannot bound this one at all**: `$14` is the LAST table entry, and index
+// 21 reads `$70004EB9` -- `moveq #0,D0 / jsr`, code and not a pointer, which is the same
+// witness W403 used for "the table ends where its own first script begins".
+//
+// **THE TWO ENDINGS ARE NOT VARIANTS OF ONE ROUTINE.**  A scan of `$2A0000..$2AB000` for
+// `moveq #$14` before a `jsr`/`jmp $25980C` finds exactly ONE starter, `$2A5CB4`, script 1's
+// first-loop arm.  A4 script 5 -- the second-loop arm, W409 -- is `$270` of code that runs
+// sixteen spawns, a `$28B34A` blast, three ramps, a `$246410` chain and a `($2,A6) += $1400`
+// push BEFORE its own `$2595E8`.  This one waits and ends.  The cartridge gives loop one a
+// bare beat and saves the finale for loop two.
+
+/** `$2A6B7A`.  One store: the 128-frame beat. */
+export function s14Init2A6B7A(ram, a4) {
+  ram.setU16(a4 + 0x02, 0x0080);                         // $2A6B7A move.w #$80,($2,A4)
+}
+
+/** `$2A6B80`.  Count down; on zero suspend the stage and free the slot, both same frame. */
+export function s14Step2A6B80(ram, a4) {
+  const left = u16(ram.u16(a4 + 0x02) - 1);              // $2A6B80 subq.w #1,($2,A4)
+  ram.setU16(a4 + 0x02, left);
+  if (left !== 0) return;                                // $2A6B84 bne.w -> $2A6B90 (the rts)
+  suspend2595E8(ram);                                    // $2A6B88 jsr $2595E8
+  ram.setU16(a4, 0);                                     // $2A6B8E clr.w (A4) -- 4254, the SLOT
+}
+
 registerScript(HIBACHI_A4.s1Init, initThenStep(
   (ram, rom, ctx, a4) => s1Init2A5A1C(ram, a4),
   (ram, rom, ctx, a4) => s1Step2A5A28(ram, rom, ctx, a4)));
@@ -741,10 +785,14 @@ registerScript(HIBACHI_A4.s5Init, initThenStep(
   (ram, rom, ctx, a4) => s5Init2A6418(ram, rom, ctx, a4),
   (ram, rom, ctx, a4) => s5Step2A6458(ram, rom, ctx, a4)));
 registerScript(HIBACHI_A4.s5Step, (ram, rom, ctx, a4) => s5Step2A6458(ram, rom, ctx, a4));
+registerScript(HIBACHI_A4.s14Init, initThenStep(
+  (ram, rom, ctx, a4) => s14Init2A6B7A(ram, a4),
+  (ram, rom, ctx, a4) => s14Step2A6B80(ram, a4)));
+registerScript(HIBACHI_A4.s14Step, (ram, rom, ctx, a4) => s14Step2A6B80(ram, a4));
 
 /** The A4 ids whose init AND step this file registers. A test asserts this against the
  *  cartridge's own table rather than against the list above. */
-export const HIBACHI_END_SCRIPTS = Object.freeze([1, 2, 3, 4, 5]);
+export const HIBACHI_END_SCRIPTS = Object.freeze([1, 2, 3, 4, 5, 0x14]);
 
 /** Every A4 id the chain hands to that is NOT ported, with the byte extent each occupies
  *  between its table entry and the next one. Counted, with the numbers measured. */
@@ -753,8 +801,8 @@ export const HIBACHI_END_COUNTED = Object.freeze({
   // W404/W405: $0A..$0D are no longer here -- `src/hibachiguns.js` ports all four, together
   // with A1 guns 5, 6, 7 and 8, and the real path now RUNS the {$A,$B,$C,$D} attack loop
   // rather than stopping inside it.
-  0x14: { init: 0x2a6b7a, step: 0x2a6b80, bytes: 0x001a, why: 'script 1 first-loop arm ($2A5CB6); '
-    + 'waits $80 frames then jsr $2595E8, which SUSPENDS and ends the stage' },
+  // W420: $14 is no longer here -- this file runs it. Its $1A is $18 of CODE plus two
+  // bytes of alignment before `bossBody2A6B94`, not another unit's data.
   // W406: $0F is no longer here -- `src/hibachiguns.js` runs it, together with A1 gun 9, and
   // the real path now takes the whole `$F -> gun 9` link instead of stopping in front of it.
   // W407: $10 and $11 are no longer here -- `src/hibachiguns.js` runs both, together with A1

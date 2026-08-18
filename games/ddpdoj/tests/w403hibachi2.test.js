@@ -123,7 +123,7 @@ test('W403 SECTION 1: exactly TWO instructions in 6 MB write ($10E,A6), and they
     // The second writer is inside A4 script 4, which W399 counted and W403 ports.
     assert.ok(HIBACHI_A4.s4Init <= 0x2a637a && 0x2a637a < 0x2a6418,
       '$2A637A is inside A4 script 4, $2A62FA..$2A6417');
-    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort(), [1, 2, 3, 4, 5],
+    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort((a, b) => a - b), [1, 2, 3, 4, 5, 0x14],
       '  ...and script 4 is registered now, so phase B is reachable and not dead code '
       + '(W409 added script 5, phase B\'s own death tail)');
     for (const off of [0, 4]) {

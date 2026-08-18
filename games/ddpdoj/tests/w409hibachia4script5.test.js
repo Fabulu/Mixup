@@ -286,13 +286,16 @@ test('W409 SECTION 3: THE RUN NO LONGER STOPS -- $2595E8 fires on frame 4889 and
   assert.ok(new Set(scriptAddresses()).has(A4_5_INIT), '(c) $2A6418 is registered');
   assert.ok(new Set(scriptAddresses()).has(HIBACHI_A4.s5Step), '  ...and $2A6458');
   assert.equal(HIBACHI_END_COUNTED[0x05], undefined, '  ...and it is out of the counted list');
-  assert.deepEqual([...HIBACHI_END_SCRIPTS], [1, 2, 3, 4, 5], '  ...and in the ported one');
+  assert.deepEqual([...HIBACHI_END_SCRIPTS], [1, 2, 3, 4, 5, 0x14],
+    '  ...and in the ported one -- W420 added $14, the FIRST-loop ending');
 
   // ---- WHAT IS STILL NOT REACHED, stated so the next reader is not misled: this bench is
-  // script 1's SECOND-loop arm. A4 $14 -- the FIRST-loop arm's ending -- is still counted and
-  // still unported, and nothing here runs it.
-  assert.equal(HIBACHI_END_COUNTED[0x14].bytes, 0x001a, 'A4 $14 is still counted, at $1A');
-  assert.ok(!new Set(scriptAddresses()).has(0x2a6b7a), '  ...and $2A6B7A is not registered');
+  // script 1's SECOND-loop arm. A4 $14 -- the FIRST-loop arm's ending -- is PORTED as of W420,
+  // but nothing on THIS arm runs it, and that is the point of the assertion below.
+  assert.equal(HIBACHI_END_COUNTED[0x14], undefined,
+    'W420: A4 $14 is no longer counted -- hibachiend.js runs it');
+  assert.ok(new Set(scriptAddresses()).has(0x2a6b7a),
+    '  ...and $2A6B7A IS registered now');
   assert.equal(r.a4.filter(([, v]) => v.split(',').includes('14')).length, 0,
     '  ...and this run never dispatches it');
 
