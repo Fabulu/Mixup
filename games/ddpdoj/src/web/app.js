@@ -1649,6 +1649,30 @@ export async function boot(canvas, opts = {}) {
   // normalized vocabulary and these four switches are not in it; it brings its
   // own blur / pagehide / visibilitychange backstop for the same reason.
   attachCoinKeys(opts.target);
+  // D57 -- THE AUDIO BACKSTOP, the one `attachInput` has had since W375 and
+  // sound has not. While a tab is hidden rAF stops, so logic frames stop, and
+  // on return the catch-up loop posts every missed frame at once. The owner
+  // heard both halves of that: a sound that "kept looping and it never goes
+  // away" after tabbing back, and level 2 running five seconds behind after
+  // switching focus repeatedly.
+  //
+  // ALL THREE EVENTS, deliberately, exactly as `input.js:246` does: `blur`
+  // alone misses a tab switch that keeps the window focused, `visibilitychange`
+  // alone misses an alt-tab to another application, and `pagehide` is the only
+  // one a bfcache navigation fires. Firing twice is harmless -- a resync with
+  // nothing queued does nothing.
+  //
+  // It runs on BOTH edges. Hiding drops what will never be heard in time;
+  // showing drops whatever accumulated in the gap before the first pump can
+  // schedule it. `sound.resync()` is a no-op until the arming gesture.
+  {
+    const target = opts.target ?? globalThis;
+    const backstop = () => sound.resync();
+    for (const ev of ['blur', 'pagehide', 'visibilitychange']) {
+      target.addEventListener?.(ev, backstop);
+      if (target !== globalThis) globalThis.addEventListener?.(ev, backstop);
+    }
+  }
 
   const frame = (t) => {
     if (!demo.running) return;

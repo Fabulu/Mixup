@@ -542,3 +542,93 @@ test('D54: stats() reports the discarded count, so this is visible in the field'
   ac.status = 'on';
   assert.equal(ac.stats().stale, out.stale, 'and stats() surfaces it');
 });
+
+// ===========================================================================
+// 6. W423 -- DOCKET D57. THE VISIBILITY BACKSTOP AUDIO DID NOT HAVE.
+//
+// THE OWNER, twice: "Clicked some other tabs, game went silent as it should.
+// Came back, started level 2, and now a sound probably from before kept looping
+// and it never goes away", then "in level 2 sound is now like 5 seconds behind,
+// [...] but I switched window focus a lot".
+//
+// THE ASYMMETRY IS THE FINDING. `games/ddpdoj/src/web/input.js:246` wires
+// `blur`, `pagehide` AND `visibilitychange` and clears the whole button mask,
+// because a key held when focus is lost never sends its keyup. Audio had the
+// identical hole -- a tab-away leaves logic frames that all land at once on
+// return -- and a grep of `games/ddpdoj/src/web/` finds NO audio listener for
+// any of the three.
+//
+// WHAT WAS RULED OUT, so nobody re-checks it: the backlog valve does NOT lose
+// cues. `ics2115.frame` calls `applyLog(log)` unconditionally, before `emit` is
+// consulted, so a dropped batch still applies every register write.
+// ===========================================================================
+
+test('D57: resync drops the pending backlog outright', () => {
+  const ctx = new FakeCtx(48000);
+  const chip = makeSineChip(48000, 2);
+  const out = new AudioOut(ctx, () => chip);
+  for (let i = 0; i < 600; i++) out.frame(null);      // a ten-second tab-away
+  assert.equal(out.queue.length, 600, 'the backlog really is there to drop');
+  out.resync();
+  assert.equal(out.queue.length, 0, 'queued frames are gone');
+  assert.equal(chip.outLen, 0, 'and so are the rendered samples');
+  assert.equal(out.resyncs, 1);
+});
+
+test('D57: after a resync the clock re-arms at NOW, not where it left off', () => {
+  // The stale scheduling clock is the mechanism behind "five seconds behind":
+  // nextTime keeps its old value and every later chunk inherits the offset.
+  const ctx = new FakeCtx(48000);
+  const chip = makeSineChip(48000, 2);
+  const out = new AudioOut(ctx, () => chip);
+  for (let i = 0; i < 60; i++) { out.frame(null); out.pump(); ctx.currentTime += 1 / 60; }
+  ctx.currentTime += 10;                             // the tab was hidden ten seconds
+  out.resync();
+  assert.equal(out.nextTime, -1, 'the clock is disarmed, so the next pump re-arms it');
+  out.frame(null);
+  out.pump();
+  assert.ok(out.nextTime > ctx.currentTime,
+    'and it re-armed AHEAD of the current time, not ten seconds behind it');
+  assert.ok(out.nextTime - ctx.currentTime < 0.5,
+    `re-armed ${(out.nextTime - ctx.currentTime).toFixed(3)} s out, which must be one latency`);
+});
+
+test('D57: resync does NOT reset the chip -- the game keeps its voices', () => {
+  // The trap. Zeroing the chip would silence music the driver still believes is
+  // playing, and nothing would ever restart it: a stuck-silent bug traded for a
+  // stuck-looping one. Only pending work and rendered samples may go.
+  const ctx = new FakeCtx(48000);
+  const chip = makeSineChip(48000, 2);
+  let reset = 0;
+  chip.reset = () => { reset++; };
+  const out = new AudioOut(ctx, () => chip);
+  for (let i = 0; i < 30; i++) { out.frame(null); out.pump(); ctx.currentTime += 1 / 60; }
+  out.resync();
+  assert.equal(reset, 0, 'the chip was never reset');
+  out.frame(null);
+  out.pump();
+  assert.ok(chip.outLen >= 0 && ctx.starts.length > 0,
+    'and it goes straight back to producing audio afterwards');
+});
+
+test('D57: the controller exposes resync and it is safe before a gesture', () => {
+  // Before the arming gesture there is no engine at all. The page wires the
+  // backstop at load, so an unarmed resync must be a no-op rather than a throw.
+  const ac = new AudioController(null);
+  assert.equal(typeof ac.resync, 'function', 'the page-facing object exposes it');
+  assert.doesNotThrow(() => ac.resync(), 'and calling it unarmed does nothing');
+  assert.equal(ac.stats().status, 'locked', 'still locked, still nothing scheduled');
+});
+
+test('D57: stats() reports the resync count', () => {
+  const ctx = new FakeCtx(48000);
+  const chip = makeSineChip(48000, 2);
+  const out = new AudioOut(ctx, () => chip);
+  const ac = new AudioController(null);
+  ac.out = out;
+  ac.status = 'on';
+  assert.equal(ac.stats().resyncs, 0);
+  ac.resync();
+  ac.resync();
+  assert.equal(ac.stats().resyncs, 2, 'two backstop firings are visible in the field');
+});

@@ -278,6 +278,8 @@ export class AudioOut {
     this.dropped = 0;
     /** Stale SOURCE samples discarded to hold the buffer at MAX_BUFFERED_S. */
     this.stale = 0;
+    /** How many times `resync()` dropped a backlog outright. */
+    this.resyncs = 0;
     this.frames = 0;
     /** Lazily built, only when sourceRate !== ctx.sampleRate. */
     this.resampler = null;
@@ -427,6 +429,33 @@ export class AudioOut {
     }
     drainFn(n, this._junk);
     return n;
+  }
+
+  /**
+   * DROP THE BACKLOG AND RE-ARM THE CLOCK. For a visibility change: while a tab
+   * is hidden rAF stops, so logic frames stop, and on return the catch-up loop
+   * posts every missed frame at once. `_trim` bounds what that costs; this
+   * removes it entirely, which is what the owner asked for -- "would be nice to
+   * have a way to make sure it stayed synced".
+   *
+   * The CHIP IS NOT RESET. Its voices, envelopes and length counters are the
+   * game's state, and zeroing them would silence music the driver still thinks
+   * is playing and never restart it. Only the pending work and the rendered
+   * samples go, so what plays after a resync is the game's present, not its
+   * past.
+   */
+  resync() {
+    this.queue.length = 0;
+    if (this.chip.outLen > 0) {
+      this.stale += this._discard(this.chip, this.chip.outLen, this.chip.channels,
+        (n, d) => this.chip.drain(n, d));
+    }
+    const res = this.resampler;
+    if (res && res.outLen > 0) {
+      this._discard(res, res.outLen, this.chip.channels, (n, d) => res.drainOutput(n, d));
+    }
+    this.nextTime = -1;                 // the next pump re-arms at currentTime + START_LATENCY_S
+    this.resyncs++;
   }
 
   /** Schedule one filled buffer at nextTime and advance the clock. */
@@ -613,6 +642,22 @@ export class AudioController {
     this.out?.setMuted(this.muted);
   }
 
+  /**
+   * D57 -- THE VISIBILITY BACKSTOP AUDIO DID NOT HAVE. `input.js` has had one
+   * on `blur` / `pagehide` / `visibilitychange` since W375, because a key held
+   * when a tab loses focus never sends its keyup and would stay down forever.
+   * Sound had the same hole and no such backstop: a tab-away leaves a backlog
+   * of logic frames that all arrive at once on return, and the owner heard the
+   * result twice -- a sound "kept looping and it never goes away", then level 2
+   * running five seconds behind.
+   *
+   * Safe to call when nothing is armed; before a gesture there is no engine and
+   * nothing to drop.
+   */
+  resync() {
+    this.out?.resync();
+  }
+
   /** Permanently surface an async asset/runtime failure without stopping play. */
   fail(error) {
     if (this.status === 'failed') return;
@@ -642,6 +687,7 @@ export class AudioController {
       dropped: this.out.dropped,
       underruns: this.out.underruns,
       stale: this.out.stale,
+      resyncs: this.out.resyncs,
       preReadyFrames: this.preReadyFrames,
     };
   }

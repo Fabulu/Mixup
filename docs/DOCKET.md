@@ -2981,3 +2981,29 @@ not the game** -- the owner has already proved the path executes.
 is the same weapon that opens gate 2 here. Re-read D43 against this before treating them as
 separate items.
 
+
+### D57 FIXED BY W423 -- AUDIO NOW HAS THE BACKSTOP INPUT HAS HAD SINCE W375
+
+**THE ASYMMETRY WAS THE WHOLE FINDING.** `input.js:246` wires `blur`, `pagehide` AND
+`visibilitychange` and clears the entire button mask, because a key held when focus is lost never
+sends its keyup. Audio had the identical hole -- a tab-away leaves logic frames that all arrive at
+once on return -- and a search of `games/ddpdoj/src/web/` found **no audio listener for any of the
+three**. It has one now, on all three events and on both edges, attached to the target and to
+`globalThis` (a canvas target would never see `visibilitychange`, which fires at `document`).
+
+`AudioController.resync()` drops the pending queue, the rendered samples on both sides of the
+resampler, and disarms the scheduling clock so the next pump re-arms at NOW instead of inheriting
+an offset ten seconds stale. It is a no-op before the arming gesture.
+
+**THE CHIP IS DELIBERATELY NOT RESET, and that is the trap this could have walked into.** Voices,
+envelopes and length counters are the game's state. Zeroing them would silence music the driver
+still believes is playing and nothing would restart it -- a stuck-silent bug traded for a
+stuck-looping one. A test pins that the chip is never reset and that audio resumes after a resync.
+
+**RULED OUT, so nobody re-checks it: the backlog valve does not lose cues.** `ics2115.frame` calls
+`applyLog(log)` unconditionally, before `emit` is consulted, so even a fully dropped batch still
+applies every register write. A lost note-off was the obvious explanation for the stuck loop and it
+is not the explanation.
+
+`stats()` reports `resyncs` alongside `stale`, so the next report is answerable from the numbers.
+
