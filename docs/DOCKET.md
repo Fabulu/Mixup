@@ -3159,3 +3159,24 @@ where an overlap produces a flash and no kill. **Measure deaths, never overlaps.
 **DO NOT CLOSE D59 ON THIS WITHOUT THE MEASUREMENT.** It is a hypothesis with a named check, not a
 finding. Closing an item on reasoning that was never exercised is the D56 mistake.
 
+
+### D59 LEAD, CAVEAT ON MY OWN ENTRY: I CANNOT CONFIRM WHAT W412'S "84" COUNTED
+
+The entry above repeats "W412 measured OVERLAPS, not kills". **I inherited that from the earlier
+docket text and did not verify it.** There is no `w412*` test file in `games/ddpdoj/tests/`, so the
+number cannot be checked from where it is quoted.
+
+**AND THE PORT CUTS AGAINST IT.** In `damage.js` the counter increments AFTER the guard:
+
+    ram.setU16(rec, ... | hitBits);                       // the flicker
+    if (ram.u16(rec + 0x02) >= 0x6f00) continue;          // $245248 -- SKIPS, no count
+    ram.setU16(rec + 0x18, u16(... - d5));                // the damage
+    hits++;                                                // <-- only reached when damage landed
+
+So `hits` already EXCLUDES guard-skipped records. **If W412's 84 came from this function's return
+value, it counted DAMAGE EVENTS and the lead above is much weaker** -- 84 real hits landed and the
+carrier still did not die, which would point at HP or at the kill path instead.
+
+**BEFORE RELYING ON THE 84, FIND WHICH COUNTER PRODUCED IT.** The two readings send the next wave
+to opposite places, and picking one without checking is how D42 was closed wrongly.
+
