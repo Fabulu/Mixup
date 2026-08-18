@@ -2344,3 +2344,47 @@ and the owner has only noticed the most visible one.
 Related: **D49** is porting other pool-A drops right now and touches `src/bee.js`, not `effects.js`.
 Check whether D49 has landed before starting, so the two do not collide.
 
+
+### D43 CORRECTED BY THE OWNER, 2026-08-18 -- IT IS THE LASER BOMB, A DIFFERENT WEAPON
+
+> "I think you might not have gotten my bomb laser report correct. If you use laser while firing
+> bomb, a stronger laser comes out instead of a bomb. That one does not hit first boss and maybe
+> other stuff."
+
+**My original D43 was wrong and should not be worked from.** I read "laser bomb" as the ordinary
+bomb's screen clear and pointed at `$243DA0` versus the midboss's `$243E7C`. That is the wrong
+weapon entirely. Holding laser while bombing produces the **LASER BOMB**, a separate weapon with its
+own driver `$255FE2` and its own damage pass `$2456A6`, both already ported in `src/bomb.js` (W65).
+
+**The two weapons do not share a damage routine.** `src/bomb.js:1151` documents it:
+
+* ordinary bomb `$245638` -- walks **150 fixed slots of `$20` from `$81459C`** and takes `$50` off
+  everything whose box is on screen.
+* laser bomb `$2456A6` -- builds a bounding box over the beam, then asks THREE pools:
+  * **POOL A** `$81459C`, **100 slots** -- hits **every** intersecting one for `$1E0`.
+  * **POOL B** `$81521C`, **50 slots** -- finds the **NEAREST** intersecting one only, records it in
+    `$812952`/`$812954`, and hits **exactly one** for `$208`.
+  * BULLETS `$817F8C` -- erases every one inside.
+
+**THE ARITHMETIC IS THE LEAD.** `$81459C + 100 * $20 = $81521C`, and `100 + 50 = 150`. **Pool A and
+pool B are the same contiguous 150 slots the ordinary bomb walks, split in two and treated
+completely differently.** The ordinary bomb damages all 150. The laser bomb damages the first 100
+freely but only ONE record out of the last 50.
+
+**So the first question is which half the boss sits in.** If the boss record is in the last 50, the
+laser bomb hits it only when it is the nearest intersecting record, and anything nearer -- a part, a
+turret, another enemy -- takes the single hit instead. That would match the owner's report exactly,
+including the "and maybe other stuff" for whatever else lives up there.
+
+**Do not assume it is a port defect.** `$2456A6` is 266 instructions and the nearest-only rule is
+the cartridge's, so the ported behaviour may be faithful and the real bug elsewhere (the box, the
+`$245776 cmpi #$9800` reject, or the arming test). **Measure first:** on a bench with the first boss
+present, log which pool index the boss record occupies, whether it intersects the beam box, and what
+`$812952`/`$812954` end up holding. A boss that never intersects and a boss that intersects but
+loses the nearest test are different bugs.
+
+Second lead, cheaper to check and worth doing first: `$245776 cmpi.w #$9800 / bcc` rejects any
+record whose biased near edge is `>= $9800`, and D6 is a `$2800` coordinate bias, not the hit mask.
+`bomb.js` warns in the same comment that a port which hoisted the mask read would get D6 wrong.
+Confirm the port takes the bias arm, since a wrong D6 moves every comparison.
+
