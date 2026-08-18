@@ -2824,3 +2824,63 @@ two files away in a register. And **an unmapped address THROWS rather than going
 and the owner has confirmed medals DO sound. So the audio chain works in general, which makes shape
 3 less likely than it looks.
 
+
+### D54 UPDATE: FIVE SECONDS PROVES A SECOND QUEUE THE ANALYSIS DID NOT ACCOUNT FOR
+
+> "in level 2 sound is now like 5 seconds behind, the looping stopped, but I switched window focus
+> a lot"
+
+Owner, 2026-08-18. **This breaks the coordinator's own arithmetic, and that is the useful part.**
+
+The ring is **100 slots** drained **one per frame**, so at 60 fps it can hold **1.67 seconds at
+absolute most**. The owner measured **five**. Therefore:
+
+**THE RING IS NOT THE ONLY QUEUE. There is a second one downstream, and it is unbounded.** Any wave
+that fixes only the ring will move the number and not the defect.
+
+It also confirms the mechanism's shape: **"I switched window focus a lot"** and the lag grew with
+each switch. That is a backlog accumulating per hide/show cycle -- frames stop while posts do not --
+which ties D54 and **D57** together as very likely one root cause with two symptoms.
+
+**FIND THE SECOND QUEUE FIRST.** `main.js:547 soundPost` hands to `sound.js`, and `AudioContext`
+appears in `src/web/app.js` and the page. **Where do cues wait between `sound.js` and the audio
+graph, and what bounds that?** Nothing above the audio layer can be trusted until that is named.
+
+### D59: BEES FLICKER BUT CANNOT BE SHOT, FREED OR COLLECTED
+
+> "Many places I can see bees flickering. But I can't shoot them, free them, or collect them. We
+> have a big bee issue since bees are so important as a clear criterion for the better ending or
+> second loop or Hibachi or something"
+
+Owner, 2026-08-18. **The owner is right about the stakes**: the bee count gates the loop-2 and true
+ending conditions, so this is not cosmetic.
+
+**WHAT IS ALREADY MEASURED, and it makes this stranger than it looks.** W410 proved the bee path is
+COMPLETE: forcing ten carriers into the state a kill leaves produced **ten bees, nothing threw**,
+against a control of zero. So allocation, fill, driver, body and draw all work.
+
+**The carrier is the problem, and W410 found why.** Sub-proto word 0 is `$8100`:
+- the ordinary shot pass `$244F90 andi #$2000` needs **bit 13** -- clear, so it skips;
+- block 8 and the beam's own pass `$245472 btst #$5` need **bit 5** -- clear, so they skip;
+- **only block 7 accepts it** (`$245218 btst #$5,D4` OR `$24521E btst #$0,D4`, and `$81` has bit 0).
+
+**And block 7's A2 is `$811802` -- beam slot 27, the laser MUZZLE.** W410 measured zero overlaps in
+5,400 frames because the muzzle was live 24 frames total. **W412 fixed that** (`$24CBCC` on the
+wrong register): muzzle 24 -> **742** live frames, block-7 overlaps **0 -> 84**.
+
+**SO BEES SHOULD BE HITTABLE IN THE PUBLISHED BUILD AND THE OWNER SAYS THEY ARE NOT.** That is the
+whole item. Possibilities, and the first two are cheap to separate:
+
+1. **D56 is the cause.** If activating hyper leaves the head flag set, the muzzle stops being laid
+   again -- and the muzzle is the ONLY thing that can damage a carrier. **Ask whether bees are
+   hittable BEFORE any hyper is used in the run.** If they are, D56 and D59 are one bug.
+2. **"Flickering" may be the carrier, not the bee.** Establish which object the owner is seeing.
+   A carrier that flickers and cannot be shot is a different report from a released bee that cannot
+   be collected, and they have different fixes.
+3. The 84 overlaps are real but land somewhere that does not damage -- W412 measured overlaps, not
+   deaths. **An overlap is not a kill; check the damage actually applied.**
+
+**DO NOT REPEAT W111.** `bee.js:796` records a wave burned on an already-closed path. And do not
+repeat W412's error either: **measure on a bench where a carrier is actually present and shot at**,
+and report kills, not overlaps.
+
