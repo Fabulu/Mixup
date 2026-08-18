@@ -882,7 +882,9 @@ function fanOut260984(ram, r) {
  *  **4** on a cold boot and `$25FFA8` arms request **2** whenever a side runs out
  *  of lives, so both of those walked straight into the `unreached()`.
  *
- *  `$288610`'s own table (`$81B706`/`$81B71C`, jump table `$288568`) is a
+ *  `$288610`'s own table (`$81B706`/`$81B71C`, jump table `$288638` -- W417 [M]: `$28861E 41FA 0018` from PC `$288620`
+ *  gives `$288638`, which is what `RANK.disp288610Jump` has always held; this
+ *  line used to say `$288568` and was prose-only wrong) is a
  *  different table with different targets and IS still unread, so the throw below
  *  stays exactly as it was for that one -- with the prose corrected to say which
  *  dispatcher it is talking about.
