@@ -2884,3 +2884,64 @@ whole item. Possibilities, and the first two are cheap to separate:
 repeat W412's error either: **measure on a bench where a carrier is actually present and shot at**,
 and report kills, not overlaps.
 
+
+### D54 RESOLVED BY W423 -- THE SECOND QUEUE WAS `chip.outLen`
+
+Found, measured and bounded. **It was not in `games/ddpdoj/` at all**, which is why the first
+search for it came up empty: it is `shared/audio.js`, backed by `ics2115.js:220 _ensureOut`, a
+Float32Array that **doubles forever with no ceiling**.
+
+`MAX_BACKLOG_FRAMES = 15` bounds one pump to 250 ms of emitted audio, produced in the 16.7 ms one
+rAF costs -- so every catch-up burst leaves ~233 ms behind **permanently**. The valve bounded the
+rate; nothing bounded the buffer. Each window-focus switch is one more burst, which is exactly the
+shape the owner described.
+
+    bursts of 30 frames    before      after MAX_BUFFERED_S = 0.25
+       5                   1.099 s     0.219 s
+      20                   4.605 s     0.226 s      <- the owner's "about 5 seconds"
+      40                   9.280 s     0.234 s
+
+Steady 60 Hz play is untouched: 0.016 s buffered, nothing discarded over 600 frames.
+
+**The owner's "catch up the backlog, keep every cue" is honoured literally.** The trim throws away
+rendered SAMPLES, never a `frame()` call, so every cue still reaches the chip and its state cannot
+drift from the driver's. A test pins that. `stats()` now reports `stale` so the next report of lag
+is answerable from the on-screen numbers.
+
+**D57 is still open and is likely the same root cause.** This bounds the lag; it does not give
+audio the visibility backstop `input.js` has three of.
+
+
+### D60: UNPORTED `$286AAA` -- THE LASER SCORE MACHINE, REACHED BY HYPER AT THE STAGE-2 BOSS
+
+> "reached boss of level 2, hit c to shoot, went over and hit y while having c pressed, and got this
+> just when fight was about to start: $286AAA IS NOT PORTED YET."
+
+Owner, 2026-08-18. **THIS IS A HARD STOP, not a cosmetic defect.** The port refuses rather than
+inventing frames, which is correct behaviour, but the run is over. It outranks the rest of the
+docket for that reason alone.
+
+**THE REPRODUCTION IS EXACT AND THE OWNER HANDED IT TO US:** stage-2 boss, laser held (`c`), then
+hyper triggered (`y`) while still holding it, at the moment the fight starts. Any bench for this
+MUST do all three -- hold the laser, activate hyper on top of it, and be at the boss.
+
+**WHAT THE REFUSAL SAYS.** `$28687E bne $286AAA` is the `$400` arm's OTHER entry. It lands INSIDE
+`$286A82`'s body (`$286AAA move.l D0,D3 / tst.w $811F72`) and shares its 282-byte tail. The gate is
+`$8130F8` **bit 2**, and that bit has been **0 on every frame of every run in this repo** --
+including 601 steps of a live beam in W51. So reaching it means the laser SCORE machine `$286A82`
+is live, and `$286A82` needs `$2867B4` ported with it (`37-recon-laser` section 9.8).
+
+**THIS IS THE THIRD TIME HYPER HAS BEEN THE UNDER-TESTED PATH, and the owner said so first:**
+*"hyper has been fucked for a long time and you keep saying you found it"*. D56 records me closing
+an item on a bench where the word "hyper" appeared once, in the test's title. **`$8130F8` bit 2
+being 0 in every run in the repo is not evidence the path is dead -- it is evidence no bench has
+ever activated hyper while lasering.** Treat a zero measured over benches that never enter the
+state as measuring the bench, not the game.
+
+**IT MAY ALSO BE D56 AND D59's ANSWER.** If hyper-while-lasering drives the beam into a scoring
+arm no bench has run, that is a plausible common cause for the missing hyper hit animation (D56)
+and possibly for carriers not taking damage (D59, whose only damage source is the beam muzzle).
+**Port this first and re-check both before spending a wave on either.**
+
+Unit: port `$286AAA` plus `$286A82` and `$2867B4`. Declare new ROM windows, never widen.
+
