@@ -375,28 +375,41 @@ test('W396 SECTION 3: shard 11\'s shipped mask body IS the cartridge\'s, word fo
 // SECTIONS 2 and 3 -- these seven rows' own offsets and their pixels -- did not move at all.
 const W397 = Object.freeze({ streams: 4, maskWords: 12632, colWords: 41127 });
 
+// **W414 (DOCKET D51) MOVED THEM AGAIN, AND THE NOTE ABOVE THAT W397 WAS THE LAST IS WRONG.**
+// W397 was the last BGELEM wave; it was never the last wave that can add a stream. W414 shipped
+// pool-A kind index 2's own sixteen-frame animation ($1BE2CC..$1BE5D8, stride $34) and the
+// eight-frame collected popup the star shares with it ($1E179C..$1E1978, stride $44) -- the
+// medal the owner reported missing. TWENTY-FOUR streams, all new, all on shard 11. Its term is
+// the next one below, named and separate, so this test still says what its own wave did.
+const W414 = Object.freeze({ streams: 24, maskWords: 1328, colWords: 2327 });
+
 test('W396 SECTION 4: the bundle grew by exactly these five and by nothing else',
   { skip: SKIP }, () => {
     const { manifest, rows, shard } = bundle();
     // FIVE, not six: $2CCC74 was already in the bundle as W211's single harvested cell, so the
     // arm adds six streams where one of them replaces an entry that was already there.
-    assert.equal(manifest.spr.streamCount, BEFORE.streamCount + 5 + W397.streams,
-      '4,258 -> 4,263 (W396) -> 4,267 (W397) streams. This number is pinned in ELEVEN test files '
-      + 'and all eleven move together; the claim is "the bundle is what the tree measured", never '
-      + 'a floor');
-    assert.equal(shard.streams, BEFORE.shard11Streams + 5 + W397.streams,
-      '813 -> 818 -> 822 streams on shard 11');
-    assert.equal(shard.maskLen, BEFORE.shard11MaskLen + 15562 + W397.maskWords,
-      '1,138,178 -> 1,153,740 -> 1,166,372 mask words: 7,490 + 2,018 x 4 = the five NEW extents, '
-      + 'with $2CCC74\'s 6,626 already counted, then W397\'s four');
-    assert.equal(shard.colLen, BEFORE.shard11ColLen + 35647 + W397.colWords,
-      '3,183,741 -> 3,219,388 -> 3,260,515 colour words');
-    assert.equal(manifest.spr.maskUsed, BEFORE.maskUsed + 15562 + W397.maskWords,
-      'and the whole packed mask space grew by the same amount both times: nothing else was '
-      + 'added');
+    assert.equal(manifest.spr.streamCount,
+      BEFORE.streamCount + 5 + W397.streams + W414.streams,
+      '4,258 -> 4,263 (W396) -> 4,267 (W397) -> 4,291 (W414) streams. This number is pinned in '
+      + 'TWELVE test files and all twelve move together; the claim is "the bundle is what the '
+      + 'tree measured", never a floor');
+    assert.equal(shard.streams, BEFORE.shard11Streams + 5 + W397.streams + W414.streams,
+      '813 -> 818 -> 822 -> 846 streams on shard 11');
+    assert.equal(shard.maskLen,
+      BEFORE.shard11MaskLen + 15562 + W397.maskWords + W414.maskWords,
+      '1,138,178 -> 1,153,740 -> 1,166,372 -> 1,167,700 mask words: 7,490 + 2,018 x 4 = the '
+      + 'five NEW extents, with $2CCC74\'s 6,626 already counted, then W397\'s four and '
+      + 'W414\'s twenty-four');
+    assert.equal(shard.colLen, BEFORE.shard11ColLen + 35647 + W397.colWords + W414.colWords,
+      '3,183,741 -> 3,219,388 -> 3,260,515 -> 3,262,842 colour words');
+    assert.equal(manifest.spr.maskUsed,
+      BEFORE.maskUsed + 15562 + W397.maskWords + W414.maskWords,
+      'and the whole packed mask space grew by the same amount all three times: nothing else '
+      + 'was added');
 
     // NO SHARD BUT 11 CHANGED MEMBERSHIP, in either wave.
-    const SIZES = [166, 67, 32, 54, 17, 70, 96, 298, 72, 269, 407, 822, 139, 228, 90, 4, 37,
+    // Index 11 is 822 + W414's 24; every other entry is untouched, which IS the assertion.
+    const SIZES = [166, 67, 32, 54, 17, 70, 96, 298, 72, 269, 407, 846, 139, 228, 90, 4, 37,
       1239, 160];
     assert.deepEqual(manifest.spr.shards.map((s) => s.streams), SIZES,
       'every other shard holds exactly what it held before');
@@ -412,7 +425,8 @@ test('W396 SECTION 4: the bundle grew by exactly these five and by nothing else'
         sum += r.maskWords; n++;
       }
     }
-    assert.equal(n, 822, 'all 822 of shard 11\'s streams are in the published list');
+    assert.equal(n, 822 + W414.streams,
+      'all 846 of shard 11\'s streams are in the published list');
     assert.equal(sum, shard.maskLen,
       'and their extents sum to the span exactly -- every stream owns its own mask block, which '
       + 'is what makes rewriting each header safe');

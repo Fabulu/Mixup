@@ -80,11 +80,16 @@ test('W218 pins the type-$9F/$A4 closures and complete live art set',
       assert.equal(h.entries, entries);
       assert.equal(h.distinct, entries);
     }
-    assert.equal(manifest.spr.streamCount, 4267,
+    // W414 (docket D51): 4,267 -> 4,291. The exporter gained pool-A kind index 2's
+    // sixteen-frame animation and the eight-frame collected popup the star shares
+    // with it -- TWENTY-FOUR streams, all into shard 11. This file's own harvest
+    // assertions above are the untouched witnesses: none of them moved.
+    assert.equal(manifest.spr.streamCount, 4291,
       'W220 adds 64 live boss-part streams after the arrival body; W275 adds the 50 '
       + 'of the ship\'s dying animation, which is why this number moves whenever a '
-      + 'wave harvests art. Eleven test files pin it and all eleven get bumped '
-      + 'together -- the claim is "the bundle is what the tree measured", not a floor');
+      + 'wave harvests art. TWELVE test files pin it -- these eleven and W397 SECTION 4 '
+      + '-- and all twelve get bumped together; the claim is "the bundle is what the '
+      + 'tree measured", not a floor');
   });
 
 test('W218 real clock-$266 spawn damages, sheds a live fragment, and draws it',

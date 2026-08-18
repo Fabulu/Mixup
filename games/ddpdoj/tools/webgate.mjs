@@ -1323,7 +1323,26 @@ try {
         // them standing is what makes this gate able to say so, and a gate
         // loosened here is a gate that stops working.
         // W411 (docket D49): 12849 -> 12985, the same shared-RNG shift.
-        11: { streams: 822, records: 12985, distinct: 103, first: 315,
+        // W414 (docket D51): streams 822 -> 846, records 12985 -> 15903,
+        // distinct 103 -> 127, and `first` HELD at 315.  THE MECHANISM IS
+        // ADDITIVE AND IT IS DECOMPOSED, not asserted: the exporter gained
+        // exactly TWENTY-FOUR streams -- pool-A kind 2's own sixteen-frame
+        // animation $1BE2CC..$1BE5D8 and the eight-frame collected popup
+        // $1E179C..$1E1978 -- and both land in this shard.  [M] on this
+        // identical 1500-frame scenario the shard-11 records split
+        // 12,985 + 2,918: the 12,985 sit on the streams that were already
+        // here, over the SAME 103 distinct images, and every one of the
+        // 2,918 sits on one of the 24 new offsets, over 24 distinct.  The old
+        // baseline is still inside this number rather than replaced by it.
+        //
+        // AND THE COUNTER ONLY SEES THEM NOW BECAUSE OF WHAT IT COUNTS:
+        // `t.rec++` is gated on `map.get(offs)?.[2] === 11`, so a record whose
+        // stream is in NO shard is not counted at all.  The port was already
+        // emitting these 2,918 records before this wave -- they were skipped
+        // as missing art and this line could not see them.  `drawn === rec`,
+        // `pend === 0` and `named === 0` are unchanged, which is what says the
+        // 2,918 are DRAWN and not merely counted.
+        11: { streams: 846, records: 15903, distinct: 127, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };

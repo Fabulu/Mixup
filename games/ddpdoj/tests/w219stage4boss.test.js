@@ -72,7 +72,11 @@ test('W219 pins the final Stage-4 record, arrival closure, and 16 live streams',
       '0029ec7a0029ef0a');
     const h = manifest.spr.harvest.find((x) => x.at === '$29F414');
     assert.deepEqual([h.entries, h.distinct, h.added], [16, 16, 16]);
-    assert.equal(manifest.spr.streamCount, 4267);
+    // W414 (docket D51): 4,267 -> 4,291. The exporter gained pool-A kind index 2's
+    // sixteen-frame animation and the eight-frame collected popup the star shares
+    // with it -- TWENTY-FOUR streams, all into shard 11. This file's own harvest
+    // assertions above are the untouched witnesses: none of them moved.
+    assert.equal(manifest.spr.streamCount, 4291);
   });
 
 test('W219 real clock-$2E8 spawn runs F0, MAIN0, and the visible body same pass',

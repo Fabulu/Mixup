@@ -62,7 +62,11 @@ test('W213 exact type-$A2 closure, eight occurrences, and 23 live streams',
   const art = manifest.spr.harvest.find((h) => h.at === '$27D39C');
   assert.ok(art, '23-entry type-$A2 live art harvest');
   assert.deepEqual([art.entries, art.distinct, art.added], [23, 23, 23]);
-  assert.equal(manifest.spr.streamCount, 4267);
+  // W414 (docket D51): 4,267 -> 4,291. The exporter gained pool-A kind index 2's
+  // sixteen-frame animation and the eight-frame collected popup the star shares
+  // with it -- TWENTY-FOUR streams, all into shard 11. This file's own harvest
+  // assertions above are the untouched witnesses: none of them moved.
+  assert.equal(manifest.spr.streamCount, 4291);
 });
 
 test('W213 real clock-$36 pair draws, mirrors fire, and performs lingering death',

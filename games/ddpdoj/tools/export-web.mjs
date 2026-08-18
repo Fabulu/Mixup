@@ -2023,6 +2023,57 @@ const STRUCTURE_RANGES = Object.freeze([
     + '$680 gap ($1BE2CC + $340), ending at template 3\'s sprite. The first half was '
     + 'already shipped; a harvest that assumed one family per template gap missed '
     + 'this one'],
+  // ------------------------------------------------------------------ WAVE 414
+  // DOCKET D51 -- THE MEDAL, AND THE SENTENCE ABOVE IS WRONG.
+  //
+  // "The first half was already shipped" is FALSE and has been since W266.  [M]
+  // $1BE2CC is not in the shipped manifest at all: it appears there exactly once,
+  // as the `endsAt` of the $1BD68C run, and an `endsAt` is EXCLUSIVE.  W411 gave
+  // kind index 2 -- the gold disc the owner calls the medal -- a body, so it now
+  // allocates, moves and animates, and [M] on stage1-laser-hold lf2000 with fire
+  // held it asks for these sixteen streams 18,714 times in 5,400 frames and draws
+  // NONE of them.  $1BE2CC alone is 1,631 of those and is the top missing offset
+  // in every run this repo takes.
+  //
+  // THE EXTENT IS THE CARTRIDGE'S OWN WRAP, NOT AN ASSUMED SIXTEEN.  Kind 2's own
+  // step $27FE6E ends
+  //
+  //     $27FEAC  41 ee 00 0a           lea ($A,A6),A0        the descriptor field
+  //     $27FEB0  06 90 00 00 00 34     addi.l #$34,(A0)      the stride
+  //     $27FEB6  0c 90 00 1b e6 0c     cmpi.l #$1BE60C,(A0)  the wrap
+  //     $27FEBC  66 0c                 bne
+  //     $27FEBE  20 bc 00 1b e2 cc     move.l #$1BE2CC,(A0)  the base
+  //
+  // so the run is [$1BE2CC, $1BE60C) at stride $34 = $340 / $34 = SIXTEEN frames,
+  // pinned twice over the same way $1BCACC's is: the body's own wrap AND the row
+  // above, whose base $1BE60C is where this one stops.  The stride walk agrees and
+  // says nothing more -- it reports $1BE2CC..$1BE94C as 32 streams of ONE stride,
+  // which is the two families the W266 comment already named.
+  [0x1be2cc, 0x1be60c, 16, 'W414 D51 THE MEDAL: pool-A kind index 2\'s own '
+    + 'animation, stride $34 -- the FIRST of the two families in template 2\'s $680 '
+    + 'gap, and it was never shipped. Bounded by $27FEB6 cmpi.l #$1BE60C, the body\'s '
+    + 'own wrap, and by the row above, which starts where this one ends. [M] 18,714 '
+    + 'records skipped as missing art in 5,400 frames before this row existed'],
+  // AND THE MEDAL HAS A SECOND PICTURE, WHICH THE SAME MEASUREMENT NAMED.
+  //
+  // Collecting one runs `$27FE5A bra $280FDC`, the shared collected transform, and
+  // that swaps the record onto a popup animation out of a table.  [M] the same
+  // 5,400 frames skip $1E179C..$1E1978 another 1,340 times.  It is NOT medal-only:
+  // kinds 0 and 4 -- the STAR -- write the same selector $00050000, so this row is
+  // also the picture the star-collect arm W411 unblocked cannot draw either.
+  //
+  // THE EIGHT IS THE CARTRIDGE'S, TWICE OVER.  `$280F34`'s first descriptor points
+  // at the sprite table $280F64, whose ten longs are exactly $220 = 8 x $44 apart,
+  // so entry 5 ($1E179C) ends where entry 6 ($1E19BC) begins; and `$2810CA` adds
+  // $44 once per tick while the phase byte counts 7 down to 0 and SUBTRACTS after
+  // it goes negative, so a collected record reaches base + 7 x $44 and no further.
+  // Both give the same eight frames.  The stride-$44 chain runs 40 streams from
+  // here to $1E223C; those are the other NINE table entries, and shipping them
+  // would be shipping nine animations no selector in the image reaches.
+  [0x1e179c, 0x1e19bc, 8, 'W414 D51: the COLLECTED popup for selector $00050000 -- '
+    + 'the star\'s and the medal\'s. $280F64[5], eight frames of stride $44, closed '
+    + 'by $280F64[6] = $1E19BC and by $2810CA reaching base + 7 x $44. [M] 1,340 '
+    + 'records skipped as missing art in 5,400 frames'],
   // ------------------------------------------------------------------ WAVE 267
   // THE REST OF DOCKET D4.  W266 shipped the three impact animations and left six runs;
   // W267 built the `--extent` stride-walk probe (see `romExtent` above) and asked the
@@ -2114,7 +2165,7 @@ const STRUCTURE_STREAMS = Object.freeze([
   0x1727c4, 0x172d18, 0x1928bc, 0x192a48,
 ]);
 {
-  if (STRUCTURE_STREAMS.length !== 10 || STRUCTURE_RANGES.length !== 29) {
+  if (STRUCTURE_STREAMS.length !== 10 || STRUCTURE_RANGES.length !== 31) {
     throw new Error(`STRUCTURE_STREAMS holds ${STRUCTURE_STREAMS.length} `
       + `addresses and there are ${STRUCTURE_RANGES.length} chain ranges; `
       + 'W58 measured 18 and 4, W66 added the fifth ($12D430, 8 frames), and '
@@ -2123,7 +2174,9 @@ const STRUCTURE_STREAMS = Object.freeze([
       + 'impact-pool animations, each sixteen frames ending on a template sprite, and '
       + 'W267 added SIXTEEN more for the rest of docket D4, every extent read off the '
       + 'chain with the --extent probe. W275 added FIVE for the ship dying '
-      + 'animation, whose 49 descriptors were all missing from the sheet.');
+      + 'animation, whose 49 descriptors were all missing from the sheet, and '
+      + 'W414 added TWO for docket D51 -- pool-A kind 2 own sixteen frames, '
+      + 'plus the eight-frame collected popup the star shares with it.');
   }
   let added = 0, already = 0, chained = 0;
   for (const [base, endsAt, count, why] of STRUCTURE_RANGES) {

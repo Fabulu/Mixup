@@ -73,7 +73,11 @@ test('W220 pins D9/D10 and the complete six-object visible asset set',
       const h = manifest.spr.harvest.find((x) => x.at === at);
       assert.deepEqual([h.entries, h.distinct, h.added], [entries, entries, entries]);
     }
-    assert.equal(manifest.spr.streamCount, 4267);
+    // W414 (docket D51): 4,267 -> 4,291. The exporter gained pool-A kind index 2's
+    // sixteen-frame animation and the eight-frame collected popup the star shares
+    // with it -- TWENTY-FOUR streams, all into shard 11. This file's own harvest
+    // assertions above are the untouched witnesses: none of them moved.
+    assert.equal(manifest.spr.streamCount, 4291);
   });
 
 test('W220 MAIN0 terminal runs D9, D10, and six boss draws in the same pass',

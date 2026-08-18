@@ -52,7 +52,11 @@ test('W217 pins the complete Type-A1 closure and sixteen new frames',
     assert.ok(h);
     assert.deepEqual([h.entries, h.distinct, h.added, h.already],
       [16, 16, 16, 0]);
-    assert.equal(manifest.spr.streamCount, 4267);
+    // W414 (docket D51): 4,267 -> 4,291. The exporter gained pool-A kind index 2's
+    // sixteen-frame animation and the eight-frame collected popup the star shares
+    // with it -- TWENTY-FOUR streams, all into shard 11. This file's own harvest
+    // assertions above are the untouched witnesses: none of them moved.
+    assert.equal(manifest.spr.streamCount, 4291);
   });
 
 test('W217 real clock-$236 spawn animates, draws, and retires on re-entry',

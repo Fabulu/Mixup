@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W413)
+Updated: 2026-08-18 (W414)
 
 ## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
 
@@ -20,7 +20,89 @@ text:
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
 
-## START HERE -- W413 (docket D43)
+## START HERE -- W414 (docket D51)
+
+### THE MEDAL DRAWS. 20,079 DROPPED RECORDS -> 25, ACCOUNTED FOR ONE FOR ONE.
+
+Bench lf2000, fire held, 5,400 frames, against the shipped bundle:
+
+| | before | after |
+|---|---|---|
+| records emitted | 556,610 | **556,610** (the port did not change) |
+| skipped as missing art | 20,079 | **25** |
+| distinct missing offsets | 25 | **1** (`$000000`, pre-existing) |
+| `$1BE2CC` missing | 1,631 | **0** |
+| medal family drawn | 0 of 18,714 | **18,714 of 18,714** |
+
+`18,714 + 1,340 + 25 = 20,079` exactly. **That is the standard of proof this item demanded** -- a
+drawn-sprite measurement, not a clean `--verify`.
+
+### THE ITEM WAS ONE FAMILY SHORT, AND THE SECOND ONE MATTERED
+
+The same measurement named `$1E179C x8`, the **collected popup**. Kinds 0/4 write the same selector
+`$00050000`, so **the star's collect arm that W411 unblocked could not draw either.** Fixing only
+`$1BE2CC` would have left the medal blinking out of existence the instant the player touched it.
+
+### THE EXTENT CAME FROM THE CARTRIDGE'S OWN WRAP, NOT FROM THE STAR
+
+`$27FEB0 addi.l #$34,(A0)` / `$27FEB6 cmpi.l #$1BE60C,(A0)` / `$27FEBE move.l #$1BE2CC,(A0)`.
+`$340 / $34 = 16`. Coordinator verified those bytes. **A stride walk reports 32 streams** across
+`$1BE2CC..$1BE94C`, which is two families; only the `cmpi.l` says where the first stops. Do not take
+an extent from a neighbour's frame count.
+
+### MY BRIEF WAS WRONG ABOUT THE PIPELINE ITSELF
+
+- **"Declare the window in `export-tables.py`"** -- wrong tool. That file is `maincpu` only; sprite
+  art lives in the mask ROM. `--verify` correctly stays at **600 windows**.
+- **"Then add the matching shard entry"** -- they are the SAME LINE. A `STRUCTURE_RANGES` row in
+  `export-web.mjs` is the shard entry (`shardOfStream.set(a, STRUCT_SHARD)`). The two-file split I
+  warned about does not exist.
+- **`$1BE2CC` is 2x24, not 4x24.** The size word is `$0418` and wide is bits 14..9. The docket's
+  "6x24 bee" and "4x16 star" are the same nibble misread. Harmless as a label, **load-bearing for
+  the extent check**, since `portSpriteList` counts a present-but-short stream as missing.
+
+### THE BASELINE MOVE WAS DECOMPOSED, NOT ASSERTED
+
+W58 shard 11: streams 822 -> 846, records 12,985 -> 15,903, distinct 103 -> 127, **`first` held at
+315**, `drawn === rec` / `pend 0` / `named 0` unchanged. The split is exact: 12,985 sit on the old
+streams over the same 103 images, and all 2,918 sit on the 24 new offsets. The counter only sees
+them now because `t.rec++` is gated on the stream being in a shard -- **a record whose stream is in
+no shard was never counted at all.** Bundle-wide: +24 streams, +1,328 mask, +2,327 colour =
+`16 x 50 + 8 x 66` exactly.
+
+W395/W396/W397 got a separate named `W414` term rather than a rewritten `BEFORE`, so each still says
+what its own wave did. Copy that habit.
+
+### TWO NAMED GAPS, NEITHER REACHABLE TODAY
+
+- **Kind 3** is allocated by `handlers.js` at `$279D64`/`$279F3C` (W374) but `bee.js runBody` has no
+  body for `$27FED2`, so such a record throws `unreached` **before** anything asks for art. Its art
+  `$1BE94C` is also absent. Shipping the picture alone would be art no measurement could show
+  drawing, so both halves are named in the test instead.
+- Selector `$00010004` -> `$1E24DC x8` is missing; written only by kinds 5/9/13, all unported.
+
+**`bee.js:1138`'s "only THREE selectors exist in the 6 MB image" is wrong** -- a scan finds four:
+`$00010004 $00010008 $00050000 $00050004`. The port's bound is still right (three distinct LOW
+words); the sentence is not.
+
+### ON THE LIVE PAGE THE MEDAL ARRIVES A BEAT LATE, AND THAT IS PARITY
+
+Shard 11 is 3.8 MB and **18th of 19 in `SPR_ORDER`**, so it is `pending` until it lands and
+`demand()` promotes it the first frame a medal asks. **The stars and impact explosions already
+behave this way.** Not a regression -- but do not confuse it with D50, the late crater, which is a
+different mechanism entirely.
+
+### VERIFIED
+
+Suite **3754 pass / 0 fail / 0 skipped** (3748 before; +6). Gate **exit 0**, 31 PASS / 0 FAIL.
+`export-web.mjs` exit 0, run BEFORE the gate. `--verify` **OK at 600 windows**, unchanged.
+
+### NEXT
+
+**D50** (the late crater -- get a frame count before a theory), **D48**'s remaining ten wrong-bit
+sites, the frame-6495 kind-8 throw, kind 3's missing body, and A4 `$14`.
+
+## W413 NOTES
 
 ### THE LASER BOMB'S BOX WAS SIGNED. THE CARTRIDGE'S IS UNSIGNED.
 

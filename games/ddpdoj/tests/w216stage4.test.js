@@ -59,7 +59,11 @@ test('W216 exact Type-A3 closure and 49 newly shipped streams', { skip: SKIP }, 
     assert.deepEqual([h.entries, h.distinct, h.added, h.already],
       [entries, distinct, added, already]);
   }
-  assert.equal(manifest.spr.streamCount, 4267);
+  // W414 (docket D51): 4,267 -> 4,291. The exporter gained pool-A kind index 2's
+  // sixteen-frame animation and the eight-frame collected popup the star shares
+  // with it -- TWENTY-FOUR streams, all into shard 11. This file's own harvest
+  // assertions above are the untouched witnesses: none of them moved.
+  assert.equal(manifest.spr.streamCount, 4291);
 });
 
 test('W216 real clock-$234 carrier dies into Pool-A 18/19 and collects visibly',

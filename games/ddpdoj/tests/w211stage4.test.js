@@ -86,7 +86,11 @@ test('W211 static Stage-4 census, resource, terrain, and opening closure',
   assert.equal(art.endsAt, '$2622F2',
     'and it ends AT the pointer array\'s entry 4 -- the bound is the '
     + 'cartridge\'s, not a count typed into the exporter');
-  assert.equal(manifest.spr.streamCount, 4267);
+  // W414 (docket D51): 4,267 -> 4,291. The exporter gained pool-A kind index 2's
+  // sixteen-frame animation and the eight-frame collected popup the star shares
+  // with it -- TWENTY-FOUR streams, all into shard 11. This file's own harvest
+  // assertions above are the untouched witnesses: none of them moved.
+  assert.equal(manifest.spr.streamCount, 4291);
 });
 
 test('W211 real Stage-4 opening installs terrain, draws id 5, and pulses A6',
