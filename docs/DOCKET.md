@@ -3345,3 +3345,38 @@ own header says *"no scenario in the tree kills a carrier -- the laser-hold ladd
 at the bottom centre and only kills what enters the beam"*, which is a strong hint that no bench
 has ever put a carrier IN the beam. **That, not the gates, is the thing to fix next.**
 
+
+### D59 FOLLOW-UP -- I PUT A CARRIER IN THE BEAM. SHOOTING AND FREEING **WORK**.
+
+No scenario in this tree had ever done it. `w285medallive.test.js`'s header says why: *"the
+laser-hold ladder parks the ship at the bottom centre by design and only kills what enters the
+beam."* So every zero this project has measured about block 7 and the carrier is a fact about the
+BENCH. This probe removes that.
+
+Method: read block 7's own A2, the beam muzzle `$811802`, and pin a live carrier onto the muzzle's
+position each frame. No forced hit bit, no forced HP -- **the beam does the work**. Measured on the
+W69 stage-1 laser-hold rung:
+
+    muzzle live                  73 of 400 frames      <- W412's fix is holding
+    carrier HP at start          $000A
+    carrier HP low-water         $FF74                 <- NEGATIVE. It took real damage.
+    carrier DIED                 frame 33
+    A BEE WAS ALLOCATED          frame 34
+
+**SO THE PATH WORKS END TO END IN A LIVE RUN: beam -> block 7 damage -> carrier death -> bee
+dropped.** "Cannot shoot" and "cannot free" are **not** defects in the damage pass or the drop.
+
+**THAT RETIRES BOTH OF MY HYPOTHESES.** The position gates were innocent (measured above), and now
+the damage and drop are innocent too. Two tidy stories, both dead, both measured rather than
+argued.
+
+**WHAT IS LEFT, and it is now a much smaller target.** The owner said three things: *"I can't shoot
+them, free them, or collect them."* Two are disproved. **The remaining one is COLLECT** -- and the
+owner's word was *"flickering"*, which may be describing a RELEASED BEE that cannot be picked up
+rather than a carrier that cannot be hit. D52's open question is exactly this: the bee's own
+collect cue `$28C62A` is posted from its own body, not from the shared `COLLECT_ARMS`.
+
+**NEXT UNIT FOR D59: drive a released bee into the ship and see whether it is collected.** The
+probe above already produces a live bee at frame 34, so the hard part is done. **And measure the
+COLLECT, not the overlap** -- that distinction has now cost this item two waves.
+
