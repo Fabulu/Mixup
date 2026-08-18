@@ -361,7 +361,14 @@ test('W386 ABLATION: remove ONLY this window and the same cold boot dies at $225
   // entered and timing index 5 seeds that countdown at 2: +4,080 takes it 2 -> 1, +4,081 takes
   // it 1 -> 0, and only +4,082 borrows. W385's own assertion was a RANGE (3,900..4,300), so
   // the prose was never checked. This asserts the frame as a bare number instead.
-  assert.equal(at, 4082, 'at frame +4,082 past START, three $24683E calls after the +4,080 load');
+  // **W418 MOVED IT ONE FRAME EARLIER, TO +4,081, AND THE REASON IS ONE `bra`.** `$288B5E bcc
+  // $288B6C` / `$288B62 move.b #$4,($2,A5)` / **`$288B68 bra $288A3C`** -- the exit arm sets the
+  // state AND RUNS state 4's body in the SAME frame. `objslot13.js exitArm` used to set the byte
+  // and return, deferring `$24107C` and the type-$E create to the next frame. Everything
+  // downstream of slot [13] therefore shifted by exactly one frame and by nothing else: firstE,
+  // firstC, the type-8 return and this frontier all moved -1, and `firstD` (slot [13]'s own
+  // arrival, which is upstream) did not move at all. The relative claims below are untouched.
+  assert.equal(at, 4081, 'at frame +4,081 past START, three $24683E calls after the +4,079 load');
   assert.equal(at - RUN.firstE, 2, '...i.e. two frames after the chain appeared');
   assert.equal(w(0x246b38 + 5 * 4), 2, 'and 2 is exactly the reload timing index 5 selects');
 
@@ -444,12 +451,17 @@ test('W386 the cold boot reaches the game-over screen and DOES NOT STOP', () => 
   assert.equal(RUN.lastFrame, 5000, 'and every one of those frames completed');
 
   // The chain, by frame. Each of these is a DIFFERENT object dispatch type entering the table.
+  // W418: firstD is UPSTREAM of the change and did not move; the two below are downstream of
+  // `$288B68 bra $288A3C` and each moved by exactly one frame. See SECTION 4's note.
   assert.equal(RUN.firstD, 4077, 'type $D -- objslot13.js, the GAME-OVER object, at +4,077');
-  assert.equal(RUN.firstE, 4080, 'type $E -- objslot14.js, which loads the $288C2E table, at +4,080');
-  assert.equal(RUN.firstC, 4414, 'type $C -- the handover, at +4,414');
+  assert.equal(RUN.firstE, 4079, 'type $E -- objslot14.js, which loads the $288C2E table, at +4,079');
+  assert.equal(RUN.firstC, 4413, 'type $C -- the handover, at +4,413');
+  assert.equal(RUN.firstE - RUN.firstD, 2,
+    'slot [13] hands over TWO frames after it appears, not three: its exit arm no longer '
+    + 'defers state 4 by a frame');
 
-  // AND THE FRAME W385 DIED ON IS INSIDE THAT. +4,081 is the first `$24683E` after the chain
-  // was loaded, which is precisely why the ablation above lands there.
+  // AND THE FRAME W385 DIED ON IS INSIDE THAT. The first `$24683E` after the chain was loaded is
+  // what the ablation above lands on, and it is still strictly between the load and the handover.
   assert.ok(RUN.firstE < 4081 && 4081 < RUN.firstC,
     'the ablated frontier +4,081 sits between the load and the handover');
 });

@@ -40,11 +40,22 @@
 // the build-A `$187xxx` ISR region.  So both are CORPUS NO-OPS: the board reads
 // 0, skips, returns; the port does the same.  Nonzero indices (a future hyper
 // wave) hit `unreached()` rather than calling an unported target.
+//
+// **W418 -- TWO SENTENCES ABOVE ARE NOW WRONG AND ARE CORRECTED HERE RATHER
+// THAN DELETED**, because the corpus claim they support is still true and the
+// reasons matter.  (a) `$288610`'s writers are NOT "the unported hyper-setup
+// $2885xx": `$288598`/`$2885C6` are `objslot13.js selectSet288598` and
+// `selectAdvance2885C6`, ported since W373, and they are the CONTINUE panel's
+// selectors, not hyper setup.  (b) "a future hyper wave" is wrong about which
+// wave: a full boot now reaches index **3** on three of six playgate holds, and
+// the four targets are `src/continuescreen.js` as of this wave.  `$25FF7A`'s
+// half of the paragraph stands as W385 left it.
 
 import { RAM } from './machine.js';
 import { unreached } from './unported.js';
 import { queueKill, stageCreate, ALLOC } from './objalloc.js';
 import { tallyDriver25FF7A } from './tally.js';
+import { DISP_288610_TARGETS } from './continuescreen.js';
 import { armRequest25FF38 } from './player.js';
 import {
   txPrint240DC2, txPrint240EBC, scoreDrainInit287084, slideArm287A5E,
@@ -70,7 +81,9 @@ export const RANK = {
   frameCopy: 0x8130CA,      // $2607D4 move.w D0 -- $80390A & $0E
   clock: 0x8130C6,          // $2607E4 addq.l #1 -- THE RANK CLOCK (24.8 fixed)
   recompute: 0x2608D2,      // $2607EA jsr -- the recompute + clamp + fan-out
-  callee288610: 0x288610,   // $2607F0 jsr -- computed-call dispatcher (corpus no-op)
+  callee288610: 0x288610,   // $2607F0 jsr -- computed-call dispatcher.  A no-op on the SEED
+                            //   corpus (both index words are 0 there), NOT in general: W418 ports
+                            //   all four of its jump-table targets as src/continuescreen.js.
   loopWord: 0x813098,       // $2607F6 tst.w -- 0 = loop 1, !=0 = loop 2+
   loop2Hud: 0x81B414,       // $260800 move.w #$1 -- set on loop 2+
   // the recompute $2608D2
@@ -82,7 +95,7 @@ export const RANK = {
   powerP1: 0x81B646,        // $260902 move.w -- power P1 (the 16*max term)
   powerP2: 0x81B648,        // $260908 cmp.w -- power P2
   rankOut: 0x81309E,        // $260944 move.w D1 -- THE RANK OUTPUT word
-  // computed-call dispatcher $288610 (corpus no-op)
+  // computed-call dispatcher $288610 -- the CONTINUE panel (W418, src/continuescreen.js)
   disp288610Table: 0x81B706,// $288610 lea -- 2-entry table, stride $16
   disp288610Stride: 0x16,
   disp288610Jump: 0x288638, // $28861E lea (PC) -- the jump table
@@ -885,11 +898,14 @@ function fanOut260984(ram, r) {
  *  `$288610`'s own table (`$81B706`/`$81B71C`, jump table `$288638` -- W417 [M]: `$28861E 41FA 0018` from PC `$288620`
  *  gives `$288638`, which is what `RANK.disp288610Jump` has always held; this
  *  line used to say `$288568` and was prose-only wrong) is a
- *  different table with different targets and IS still unread, so the throw below
- *  stays exactly as it was for that one -- with the prose corrected to say which
- *  dispatcher it is talking about.
+ *  different table with different targets, and **W418 read all four of them**:
+ *  `$288638`'s five longs are `0 / $28864C / $28871C / $28875E / $288952` and the
+ *  four non-zero ones are the CONTINUE panel's prompt, wipe, count and clear, now
+ *  `src/continuescreen.js DISP_288610_TARGETS`.  The `unreached()` below is
+ *  therefore latent for BOTH dispatchers and live for neither; it stays because
+ *  an index outside `1..4` is a real gap and must stay loud.
  */
-function computedDispatch(ram, ctx, tableAddr, stride, jumpTable, jsrSite,
+function computedDispatch(ram, rom, ctx, tableAddr, stride, jumpTable, jsrSite,
   targets = null) {
   for (let e = 0; e < 2; e++) {             // $288616 moveq #$1,D7 ; dbra D7
     const entry = tableAddr + e * stride;   // $28862E/$288632 lea ($16,A4),A4
@@ -898,7 +914,7 @@ function computedDispatch(ram, ctx, tableAddr, stride, jumpTable, jsrSite,
     // $288624 add.w D0,D0 ; $288626 add.w D0,D0 (idx*4) ; $288628 adda.w D0,A0
     // ; $28862A movea.l (A0),A0 ; $28862C jsr (A0).
     const target = targets?.[idx];
-    if (target) { target(ram, ctx, entry); continue; }
+    if (target) { target(ram, rom, ctx, entry); continue; }
     unreached(jsrSite, `$${jsrSite.toString(16).toUpperCase()} computed-call `
       + `dispatcher: entry $${entry.toString(16).toUpperCase()} index `
       + `$${idx.toString(16)} is nonzero, so it would jsr the jump-table `
@@ -941,11 +957,13 @@ function perFrame2607A8(ram, rom, ctx) {
     ram.setU32(RANK.clock, (ram.u32(RANK.clock) + 1) >>> 0); // $2607E4 addq.l #1
   }
   recompute2608D2(ram, rom);                      // $2607EA jsr $2608D2
-  // $2607F0 jsr $288610 -- the computed-call dispatcher (corpus no-op).  The
-  // state-1 body's FIRST callee is `$2607A4 jsr ($25FF7A,PC)`, run from the
-  // state-machine entry below; $288610 is the SECOND.
-  computedDispatch(ram, ctx, RANK.disp288610Table, RANK.disp288610Stride,
-    RANK.disp288610Jump, RANK.callee288610);
+  // $2607F0 jsr $288610 -- the computed-call dispatcher.  The state-1 body's FIRST
+  // callee is `$2607A4 jsr ($25FF7A,PC)`, run from the state-machine entry below;
+  // $288610 is the SECOND.  W418: it is a no-op only while both index words are 0.
+  // `objslot13.js` posts 1, 2, 3 and 4 into them and this drives the CONTINUE panel,
+  // which is why the rank object dying (state 4's $24107C) also stops the panel drawing.
+  computedDispatch(ram, rom, ctx, RANK.disp288610Table, RANK.disp288610Stride,
+    RANK.disp288610Jump, RANK.callee288610, DISP_288610_TARGETS);
   // $2607F6 tst.w $813098 / beq $260808 -- loop 1 -> rts; loop 2+ sets $81B414.
   if (ram.u16(RANK.loopWord) !== 0) {
     ram.setU16(RANK.loop2Hud, 1);                 // $260800 move.w #$1,$81B414

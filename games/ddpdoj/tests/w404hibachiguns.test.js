@@ -911,10 +911,10 @@ test('W404 SECTION 7: five new windows, 590, and each bounded by an instruction 
   { skip: SKIP }, () => {
     const set = new Map(WINDOWS());
     assert.equal(set.size, tables.rom.windows.length, 'no duplicate window bases');
-    assert.equal(tables.rom.windows.length, 600,
+    assert.equal(tables.rom.windows.length, 605,
       'W409 CORRECTION: 599 windows -- 585 + W404\'s five + W405\'s three + W406\'s one '
       + '+ W407\'s one + W408\'s one + W409\'s three'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605.');
 
     // 1 + 2 -- the two tables, at exactly 14 pairs each.
     for (const base of [HIBACHI_A1.main, HIBACHI_A1.alt]) {

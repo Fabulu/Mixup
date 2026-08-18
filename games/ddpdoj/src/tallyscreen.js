@@ -123,6 +123,61 @@ export function menuCarry28D53C(ram) {
   return ram.u16(SCREEN11.carryWord) !== 0;
 }
 
+/** `$23C796`'s four SNAPSHOT bytes -- one per (side, counter). The routine below compares each
+ *  live counter against its snapshot and OVERWRITES the snapshot as it answers, so it is a
+ *  read-and-clear edge detector, not a pure predicate. W418. */
+const COIN_SNAPSHOT = Object.freeze({
+  coinA: 0x803958, creditA: 0x80395a,     // the live pair, `fronttext.js FRONTTEXT` names them
+  coinB: 0x80395e, creditB: 0x803960,
+  snapCoinA: 0x80395b, snapCreditA: 0x80395c,
+  snapCoinB: 0x803961, snapCreditB: 0x803962,
+  dipSlot2: 0x80380b,                     // 1 = SEPARATE credit pools, `$23C7DA`/`$23C808`
+});
+
+/**
+ * `$23C796` -- HAS THIS SIDE'S COIN OR CREDIT COUNT MOVED SINCE THE LAST LOOK? Carry SET means
+ * yes. `$23C82C ori.w #$1,SR` is true and `$23C832 andi.w #$FFFE,SR` is false, the same
+ * flag-as-return-value shape `menuCarry28D53C` above already has.
+ *
+ * **IT IS AN EDGE DETECTOR WITH SIDE EFFECTS.** Each arm writes the live byte into its snapshot
+ * before answering true, so calling it twice in a frame answers true then false. `$288B7C` (slot
+ * [13]'s continue countdown) is the caller that matters: an inserted coin makes this true and
+ * `$288B86 bsr $2889CC` re-stamps the nine seconds.
+ *
+ * **AND ON SIDE 1 IT WATCHES P1's COUNTERS UNLESS THE DIP SAYS OTHERWISE.** `$23C7D4` loads
+ * `$803958` -- P1's coin byte -- and only `$23C7DA cmpi.b #$1,$80380B / bne` past the
+ * `$23C7E6 move.b $80395E,D0` replaces it with P2's. With a SHARED credit pool both sides really
+ * do watch the same two counters, and a rewrite that "fixed" the address would break free play.
+ *
+ * @param d0 the side word, `($7,A5)` at every caller.
+ */
+export function coinChanged23C796(ram, d0) {
+  const S = COIN_SNAPSHOT;
+  if (u16(d0) === 0) {                                     // $23C796 tst.w D0 / $23C798 bne $23C7D4
+    const coin = ram.u8(S.coinA);                          // $23C79C move.b $803958,D0
+    if (coin !== ram.u8(S.snapCoinA)) {                    // $23C7A2/$23C7A8 cmp.b D0,D1 / beq
+      ram.setU8(S.snapCoinA, coin);                        // $23C7AE move.b D0,$80395B
+      return true;                                         // $23C7B4 bra $23C82C -- ori #$1,SR
+    }
+    const credit = ram.u8(S.creditA);                      // $23C7B8 move.b $80395A,D0
+    if (credit === ram.u8(S.snapCreditA)) return false;    // $23C7C4/$23C7C6 beq $23C832
+    ram.setU8(S.snapCreditA, credit);                      // $23C7CA move.b D0,$80395C
+    return true;                                           // $23C7D0 bra $23C82C
+  }
+  const separate = ram.u8(S.dipSlot2) === 1;
+  let coin = ram.u8(S.coinA);                              // $23C7D4 -- P1's, on purpose
+  if (separate) coin = ram.u8(S.coinB);                    // $23C7DA cmpi.b #$1 / bne / $23C7E6
+  if (coin !== ram.u8(S.snapCoinB)) {                      // $23C7EC/$23C7F2/$23C7F4 beq $23C802
+    ram.setU8(S.snapCoinB, coin);                          // $23C7F8 move.b D0,$803961
+    return true;                                           // $23C7FE bra $23C82C
+  }
+  let credit = ram.u8(S.creditA);                          // $23C802 -- P1's, on purpose
+  if (separate) credit = ram.u8(S.creditB);                // $23C808 cmpi.b #$1 / bne / $23C814
+  if (credit === ram.u8(S.snapCreditB)) return false;      // $23C81A/$23C820/$23C822 beq $23C832
+  ram.setU8(S.snapCreditB, credit);                        // $23C826 move.b D0,$803962
+  return true;                                             // falls into $23C82C
+}
+
 /**
  * `$23C932` -- the two menu DIP bytes, or zeroes.
  *

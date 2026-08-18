@@ -396,9 +396,13 @@ test('W387 SECTION 2 ABLATION: remove ONLY $225478 and it dies there instead', (
 // SECTION 3 -- THE REAL COLD BOOT. THE LOOP CLOSES.
 // ===============================================================================================
 
-test('W387 SECTION 3: dispatch type $C arrives at +4,414 and INITIALISES on that same frame', () => {
-  assert.equal(RUN.firstC, 4414, 'slot [14] stages type $C at +4,414, as W386 measured');
-  assert.equal(RUN.initFrame, 4414,
+test('W387 SECTION 3: dispatch type $C arrives at +4,413 and INITIALISES on that same frame', () => {
+  // **W418: -1 FRAME, AND IT IS ONE `bra`.** `$288B68 bra $288A3C` makes slot [13]'s exit run
+  // state 4's body in the SAME frame it sets the state byte; `objslot13.js exitArm` used to
+  // return instead. The whole chain downstream of slot [13] moved by exactly one frame -- the
+  // SAME-FRAME claim this test is actually about (`firstC === initFrame`) is untouched.
+  assert.equal(RUN.firstC, 4413, 'slot [14] stages type $C at +4,413, as W386 measures it');
+  assert.equal(RUN.initFrame, RUN.firstC,
     'and $28F3AC state 0 runs on the SAME frame: commitCreates drains before the walk');
   assert.equal(RUN.ownedAtInit, 0,
     '$8130CC is $00 on this boot -- NOBODY OWES A NAME, so the screen is a pass-through');
@@ -406,9 +410,12 @@ test('W387 SECTION 3: dispatch type $C arrives at +4,414 and INITIALISES on that
 });
 
 test('W387 SECTION 3: THE FRONT-END LOOP CLOSES -- type 8 is back, staged at state 2', () => {
-  assert.equal(RUN.firstEightBack, 4416,
+  assert.equal(RUN.firstEightBack, 4415,
     'dispatch type 8, the ATTRACT SEQUENCER, is live again two frames after type $C arrived');
-  assert.equal(RUN.cGone, 4416, 'and type $C is gone on the same frame -- $28F37A killed it');
+  assert.equal(RUN.firstEightBack - RUN.firstC, 2,
+    '...and TWO is the claim; the absolute frame moved -1 in W418 with everything else '
+    + 'downstream of slot [13]');
+  assert.equal(RUN.cGone, 4415, 'and type $C is gone on the same frame -- $28F37A killed it');
   assert.equal(RUN.childStateWord, SLOT12.childState,
     '$28F3A4 move.w #$2,($4,A0) put arm 2 in the new record, through A0 and not A5');
   assert.equal(RUN.stateAtHandover, 0x0002,

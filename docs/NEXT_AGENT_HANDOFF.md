@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W417)
+Updated: 2026-08-18 (W418)
 
 ## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
 
@@ -20,7 +20,96 @@ text:
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
 
-## START HERE -- W417
+## START HERE -- W418
+
+### A GREEN PLAYGATE MEANT THE GAME WAS STUCK. READ THIS BEFORE YOU TRUST A RUN.
+
+Between porting entry 3 and repairing `objslot13.js`, **all six holds ran 30,000 frames with no
+throw -- because the game could never leave the continue screen.** `mark` sat at 9 for all 1,337
+recorded state changes and the cue never fired.
+
+**"How far does a boot get" needs a STATE TRACE, not an absence of throws.** An absence of throws is
+equally consistent with progress and with a stall, and this project has now produced both.
+
+### THE DEFECT WAS IN A DIFFERENT FILE, AND THE LINE HAD NEVER RUN
+
+`objslot13.js menuArm` opened with `if (!ctx.menuCarry28D53C?.(ram)) return;` and **nothing anywhere
+in the tree assigns `ctx.menuCarry28D53C`** -- coordinator verified against HEAD. `undefined` ->
+`!undefined` -> return, so `$288B0A..$288BAC` has been dead since **W373**. Two faults on one line:
+the missing ctx key, and the SENSE -- `$288B06` is `65` = `bcs`, carry SET means busy means abandon.
+
+`$288B14 beq` and `$288B1E bcc` branch to `$288B3C`/`$288B36`; they are **not returns**. That is
+where the nine seconds live. After the repair: 9 -> 0 at exactly 61 frames a step, then the borrow.
+
+### FIVE OF SIX HOLDS NOW REACH THE ATTRACT LOOP, AND THE STOP IS A CARTRIDGE PARK
+
+| hold | panel opens | times out | type $E | type $C | attract |
+|---|---|---|---|---|---|
+| shot | f9671 | f10281 | f10282 | f10616 | **f10620** |
+| auto | f11284 | f11894 | f11895 | f12229 | **f12233** |
+| none | f18800 | f19409 | f19410 | f19744 | **f19748** |
+
+Next stop is **not a port stop**: type `$8` recycling with the object table empty and `$813092` back
+to 0. `$288B4E 6C 00 00 26 bge` falls through, `$288B62 move.b #$4,($2,A5)`, `$288B68 bra $288A3C`,
+whose `$288A4E jsr $24107C` wipes all 20 slots.
+
+### THE FOUR JUMP-TABLE ENTRIES ARE ONE PANEL, NOT FOUR PEERS
+
+Entry 1's `$288652 bcs $28872A` jumps **INTO** entry 2 past its state test. All four are written by
+`objslot13.js`, ported since W373. New `src/continuescreen.js`.
+
+Entry 3 itself was correct in about 40 lines. **My brief framed it as the unit and was wrong**; its
+own sentence "the defect may not be where the address points" was the useful part.
+
+### ENTRY-TO-ENTRY OVERSHOT FOR TWO ENTRIES AND WAS EXACT FOR TWO
+
+`$28864C` `$B0` code + `$20` data; `$28871C` `$42` **exact**; `$28875E` `$10C` code + `$E8` data
+(entry-to-entry `$1F4`, overshooting by 232 -- 46%); `$288952` `$38` **exact**. **The gap size is
+not a signal.** And here the trailing bytes were this unit's OWN tables, not the next unit's.
+
+`$2888AE`'s eighteenth long **exists and is unreachable** -- `$2887EE cmpi.w #$44` caps the offset,
+so the window is `$44`, not the `$48` a stride walk gives.
+
+### THE ART WAS COMPLETELY ABSENT AND THE ARITHMETIC PROVES IT
+
+`tx.tileno` held **260** tiles; the panel needs **2,328**. After the fix: **2,588 = 260 + 2,328
+exactly**, so all 2,328 were missing and none collided. This is **TX tilemap art, not sprite
+streams** -- no shard row moved and `streamCount` did not change.
+
+**A measurement trap:** the agent's first read of `tx.tileno.u16.gz` was big-endian and produced
+garbage. It is host little-endian.
+
+### A TEST WHOSE STATED REASON WAS FALSE, FOR 45 WAVES
+
+`w375ctxkeys.test.js`'s inventory said "`$28D53C`. Not ported." It has been ported since **W278**;
+`tallyscreen.js` exports it and two files call it. **An inventory built to make silent gaps visible
+made one invisible.**
+
+Add this to the family: not only "a test that passes under both readings" (W416) and "a test
+defending a wrong reading" (W411), but **"a test whose stated REASON is false while its assertion
+happens to hold"**.
+
+### 51 ABLATIONS, 3 GREEN, 1 INVALID
+
+All three greens were fresh-`Ram` artefacts or single-input tests: a clear invisible because both
+fields start 0 (**W417's trap for the third time**), a side-choice tested on one side only, and a
+credit arm short-circuited by the coin arm. One mutation matched two sites and was replaced with a
+unique-context pattern.
+
+### VERIFIED
+
+Suite **3837 pass / 0 fail / 0 skipped** (3805 before; +32). Gate **exit 0**, no baseline moved.
+`--verify` **OK at 605** (was 600; five new windows, +260 bytes). `export-web.mjs` run BEFORE the
+gate. **18 pre-existing tests moved and every one is decomposed** -- notably W386/W387's four frame
+numbers each moved by exactly -1 while `firstD`, upstream of the change, **HELD**. That uniformity
+is the witness.
+
+### NEXT
+
+The attract park is a cartridge state, not a stop. Open: the pool-C guard narrower than the ROM
+(`handlers.js:2014`), kind 5's missing selector, A4 `$14` for the ending's other arm, and D36.
+
+## W417 NOTES
 
 ### STAGE 2 IS REACHABLE. THE BOOT BLOCKER IS GONE.
 

@@ -18,9 +18,17 @@
 //
 // IT CHAINS. State 4 stages dispatch type `$E`, which is slot [14], and slot [14] stages type `$C`.
 // The front end is a chain of screens handing over through `$241182`, not a set of peers.
+//
+// **W418 -- THIS IS THE CONTINUE SCREEN, AND HALF OF IT HAD NEVER RUN.** State 1's tail
+// `$288B00..$288BAC` -- `menuArm` below -- returned at its first line for the whole life of this
+// file, because that line tested `ctx.menuCarry28D53C`, a ctx field nothing in the tree writes.
+// The nine-second countdown lives in there, so `$81B710` stayed at the `$2889CC` stamp of 9 and
+// the screen could never time out. `src/continuescreen.js` is the panel those nine seconds are
+// drawn on: `selectSet288598`/`selectAdvance2885C6` below post the index and `$288610` (the rank
+// object's second callee) runs the body. See `menuArm`'s own note for the two faults on one line.
 
 import { u16 } from './ram.js';
-import { readInput23D186 } from './tallyscreen.js';
+import { readInput23D186, menuCarry28D53C, coinChanged23C796 } from './tallyscreen.js';
 import { announcePost } from './rank.js';
 import { bgPause25FD82 } from './stageend.js';
 import { armRequest25FF38 } from './player.js';
@@ -37,9 +45,15 @@ export const SCREEN13 = Object.freeze({
   selA: 0x81b706, selB: 0x81b71c,
   gateA: 0x813098, gateB: 0x813092, gateBValue: 0x04, dip: 0x803809,
   childType: 0x0e, announceSite: 0x260a88,
-  // $2889CC writes ONE word literal into TWO byte fields: ($4,A5) = $09 and ($5,A5) = $3C. Only the
-  // high byte is read back out, which is why both halves are named.
+  // $2889CC writes ONE word literal into TWO byte fields: ($4,A5) = $09 and ($5,A5) = $3C.
+  // **W418: BOTH halves are read back out.** `($4,A5)` is the CONTINUE panel's seconds digit and
+  // `($5,A5)` is its frame tick, and `$288B3C subq.b #1,($5,A5)` / `$288B4A subq.b #1,($4,A5)` are
+  // the nine-second countdown. The note that used to sit here said only the high byte was read;
+  // that was true of the port because the arm those two live in had never run, not of the ROM.
   markValue: 0x093c,
+  frameTick: 0x05,        // ($5,A5) -- $288B3C's byte, reloaded from $288B44's #$3C
+  tickReload: 0x3c,       // $288B44 move.b #$3C,($5,A5) -- markValue's own LOW byte
+  markSinkA: 0x81b710,    // $288B98 move.b D0,$81B710 -- ABSOLUTE, side A's block, either side
   inputMask: 0x70, requestArg: 0x08,
   // W389 -- `$241292 lea ($4C,A5),A0`. The object's ID LONG, and `queueKill`'s real argument.
   idAt: 0x4c,
@@ -174,29 +188,95 @@ function state1(ram, rom, a5, ctx) {
   menuArm(ram, rom, a5, ctx, desc);                          // $288AD6 bra $288B00
 }
 
-/** `$288B00` -- the MENU arm: carry test, the descriptor's edge read, then a request. */
+/**
+ * `$288B00..$288BAC` -- the MENU arm, **all of it**.
+ *
+ * **W418: THIS FUNCTION HAD NEVER RUN A SINGLE INSTRUCTION, AND ITS FIRST LINE WAS BACKWARDS.**
+ * Two independent faults on one line:
+ *
+ *  1. `ctx.menuCarry28D53C` **has no writer anywhere in the tree.** `main.js` builds the ctx and
+ *     never sets that field, so `ctx.menuCarry28D53C?.(ram)` was `undefined` on every call for the
+ *     whole life of this file, `!undefined` is `true`, and the function returned at line one.
+ *     Every instruction below it was dead. `continuescreen.js` imports the real helper from
+ *     `tallyscreen.js`; so does this file now.
+ *  2. **`$288B06` is `65 00 00 A4` -- `bcs $288BAC`, and `$288BAC` is the `rts`.** Carry SET is
+ *     "the menu is busy, abandon", exactly as `tallyscreen.js:916` and `objslot8.js` already read
+ *     the same `$28D53C` result. The port's `if (!carry) return` was the inverse of that.
+ *
+ * WHAT WAS MISSING BELOW THEM IS THE CONTINUE COUNTDOWN. `$288B14 beq` and `$288B1E bcc` are NOT
+ * returns -- they branch to `$288B3C` and `$288B36`, the frame tick and its reset -- and
+ * `$288B3C`/`$288B4A` are the nine-second countdown whose digit `continuescreen.js` entry 3 draws.
+ * With this arm dead, `$81B710` stayed at the `$2889CC` stamp of 9 forever: measured over a full
+ * boot, `hold=shot` sat on `mark=9` for all 1,337 recorded state changes of the panel and the
+ * `$28C6AC` cue never fired once. The panel could never time out, so the six playgate holds ran
+ * 30,000 frames "clean" -- **a green produced by a stall, which is the shape trap 21 is about.**
+ *
+ * THE TWO `bge`s ARE `$6C`, SIGNED, AND ON BYTES. `subq.b #1` on 0 gives `$FF`, which is negative
+ * as an int8 and is the borrow that reloads. Reading them as `bcc` (`$64`) would have been the
+ * same answer here only because neither counter ever passes `$80`, so the distinction is asserted
+ * from the opcode byte rather than from behaviour.
+ */
 function menuArm(ram, rom, a5, ctx, desc) {
-  if (!ctx.menuCarry28D53C?.(ram)) return;                   // $288B00 jsr $28D53C / $288B06 bcs
+  if (menuCarry28D53C(ram)) return;                          // $288B00 jsr / $288B06 bcs $288BAC
   const d0 = readInput23D186(ram,                            // $288B0A movea.l ($C,A4),A0 / jsr (A0)
     rom.u32(desc + SCREEN13.dEdge) === 0x23d186 ? 0 : 1);
-  if ((d0 & SCREEN13.inputMask) === 0) return;               // $288B10 andi.w #$70 / beq
-  if (!runGate25FE00(ram)) return;                           // $288B18 jsr $25FE00 / $288B1E bcc
-  armRequest25FF38(ram, ram.u8(a5 + SCREEN13.side),          // $288B22 moveq #0 / $288B24 move.b
-    SCREEN13.requestArg);                                    // $288B28 move.w #$8,D1 / $288B2C
+  if ((d0 & SCREEN13.inputMask) !== 0) {                     // $288B10 andi.w #$70 / beq $288B3C
+    if (runGate25FE00(ram)) {                                // $288B18 jsr $25FE00 / bcc $288B36
+      armRequest25FF38(ram, ram.u8(a5 + SCREEN13.side),      // $288B22 moveq #0 / $288B24 move.b
+        SCREEN13.requestArg);                                // $288B28 move.w #$8,D1 / $288B2C
+    } else {
+      // $288B36 -- pressing the button with the run gate CLOSED restarts the frame tick rather
+      // than doing nothing. It is the only writer of ($5,A5) other than the stamp and the reload.
+      ram.setU8(a5 + SCREEN13.frameTick, 0);                 // $288B36 move.b #$0,($5,A5)
+    }
+  }
+  // $288B3C -- THE NINE-SECOND COUNTDOWN, frame tick then seconds.
+  const tick = (ram.u8(a5 + SCREEN13.frameTick) - 1) & 0xff; // $288B3C subq.b #1,($5,A5)
+  ram.setU8(a5 + SCREEN13.frameTick, tick);
+  if (((tick << 24) >> 24) < 0) {                            // $288B40 bge.w $288B76 -- $6C, SIGNED
+    ram.setU8(a5 + SCREEN13.frameTick, SCREEN13.tickReload); // $288B44 move.b #$3C,($5,A5)
+    const secs = (ram.u8(a5 + SCREEN13.mark) - 1) & 0xff;    // $288B4A subq.b #1,($4,A5)
+    ram.setU8(a5 + SCREEN13.mark, secs);
+    if (((secs << 24) >> 24) < 0) {                          // $288B4E bge.w $288B76
+      exitArm(ram, rom, a5, ctx, desc);                      // falls into $288B52
+      return;
+    }
+  }
+  // $288B76 -- the tail. A coin inserted during the countdown RESTARTS it, and the seconds digit
+  // is republished into the panel's own record.
+  if (coinChanged23C796(ram, ram.u8(a5 + SCREEN13.side))) {  // $288B76/$288B7C / $288B82 bcc
+    stampMark2889CC(ram, rom, a5);                           // $288B86 bsr $2889CC
+  }
+  if (runGate25FE00(ram)) {                                  // $288B8A jsr $25FE00 / bcc $288BA2
+    // $288B94/$288B98 -- ABSOLUTE $81B710. Side 1 running with the gate open writes side 0's
+    // block, the same cross-side shape `selectAdvance2885C6` documents at $2885FA. NOT ($10,A4).
+    ram.setU8(SCREEN13.markSinkA, ram.u8(a5 + SCREEN13.mark));
+    return;
+  }
+  // $288BA2 -- gate closed: through the DESCRIPTOR's own RAM pointer, so this one IS per-side.
+  ram.setU8(rom.u32(desc + SCREEN13.dRam), ram.u8(a5 + SCREEN13.mark)); // $288BA2..$288BAA
 }
 
-/** `$288B52` -- the EXIT arm, taken by both closed gates. It runs the descriptor's FIRST code
- *  pointer and, if the run gate is open, advances to state 4. */
+/** `$288B52` -- the EXIT arm, taken by both closed gates AND by the countdown running out. It runs
+ *  the descriptor's FIRST code pointer and then **branches into another state's body in the same
+ *  frame**: `$288B68 bra $288A3C` is state 4 and `$288B72 bra $288A22` is state 3's head, which
+ *  itself falls into state 2. W418 wires both; before this wave the arm set the state byte and
+ *  returned, deferring the body by one frame. */
 function exitArm(ram, rom, a5, ctx, desc) {
   ctx.unported?.note(rom.u32(desc + SCREEN13.dEntry),
     `$288B52 movea.l ($4,A4),A0 / jsr (A0) -- the descriptor's FIRST code pointer, $23C97A for `
     + `side 0 and $23C984 for side 1. Unported, and it is the only one of the three this port has `
     + `no name for`);
   if (!runGate25FE00(ram)) {                                 // $288B58 jsr $25FE00 / $288B5E bcc
-    ram.setU8(a5 + SCREEN13.state, 3);                       // $288B6C -- via $288B68's bra
+    ram.setU8(a5 + SCREEN13.state, 3);                       // $288B6C
+    // $288B72 bra $288A22 -- state 3's head, THIS frame: set state 2, stamp, fall into state 2.
+    ram.setU8(a5 + SCREEN13.state, 2);                       // $288A22
+    stampMark2889CC(ram, rom, a5);                           // $288A28 bsr $2889CC
+    state2(ram, a5);                                         // falls through to $288A2A
     return;
   }
   ram.setU8(a5 + SCREEN13.state, 4);                         // $288B62
+  state4(ram, rom, ctx);                                     // $288B68 bra $288A3C -- THIS frame
 }
 
 /** `$288A2A` -- STATE 2. Two instructions and a tail kill.

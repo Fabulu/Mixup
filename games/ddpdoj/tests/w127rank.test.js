@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { Ram } from '../src/ram.js';
 import { UnportedLog } from '../src/unported.js';
 import { RAM } from '../src/machine.js';
+import { TxVram } from '../src/background.js';
 import {
   RANK, RANK_DEVIATION, recompute2608D2, makeRankObject,
 } from '../src/rank.js';
@@ -192,14 +193,41 @@ test('$288610 and $25FF7A walk tables whose index words are ALL 0 on the seed',
     assert.equal(ram.u16(RANK.rankOut), SEED_RANK);
   });
 
-test('a nonzero dispatcher index throws Unreached at the jsr site (loud, by address)',
+test('an index OUTSIDE 1..4 throws Unreached at the jsr site (loud, by address)',
   { skip: SKIP }, () => {
+    // **W418 CHANGED WHAT "NONZERO" MEANS HERE.** `$288638` holds FIVE longs and the four
+    // non-zero ones are the continue panel's prompt, wipe, count and clear, ported this wave as
+    // `src/continuescreen.js DISP_288610_TARGETS`. Indices 1..4 therefore RUN now (the next
+    // assertion drives all four), and the throw this test exists for is the one that still
+    // matters: an index the jump table does not have.
     const ram = seedRam();
-    ram.setU16(RANK.disp288610Table, 1);  // a state the corpus never produces
+    ram.setU16(RANK.disp288610Table, 5);   // past the end of $288638's five longs
     const rank = makeRankObject(ROM);
     assert.throws(() => rank(ram, SLOT0, 0, ctxOf()),
       (e) => e.romAddress === RANK.callee288610,
-      'nonzero index must throw carrying the $288610 jsr site');
+      'an out-of-table index must throw carrying the $288610 jsr site');
+  });
+
+test('W418 indices 1..4 dispatch into the continue panel instead of throwing',
+  { skip: SKIP }, () => {
+    for (const idx of [1, 2, 3, 4]) {
+      const ram = seedRam();
+      // The panel draws through the TX defer buffer and through TxVram, so the ctx needs both
+      // armed -- exactly what `Game#ctx()` supplies on the real driver.
+      ram.setU32(0x80b058, 0xffffffff);
+      ram.setU32(0x80c8d8, 0x80b058);
+      ram.setU16(RANK.disp288610Table, idx);
+      const ctx = { ...ctxOf(), tx: new TxVram(), soundPost: () => true };
+      const rank = makeRankObject(ROM);
+      rank(ram, SLOT0, 0, ctx);            // no throw
+      // Each body writes something a reader can see: 1 and 3 advance the state word, 2 and 4
+      // retire by clearing the index. Reading a RECORD back, not counting a call.
+      if (idx === 1 || idx === 3) {
+        assert.equal(ram.u16(RANK.disp288610Table + 2), 1, `index ${idx} advanced the state`);
+      } else {
+        assert.equal(ram.u16(RANK.disp288610Table), 0, `index ${idx} retired itself`);
+      }
+    }
   });
 
 // ===========================================================================

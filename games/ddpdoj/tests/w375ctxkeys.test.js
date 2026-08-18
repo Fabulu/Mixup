@@ -376,7 +376,14 @@ const KNOWN_MISSING_OPTIONAL = Object.freeze({
   clear24631C: '$24631C, the animation-object table clear. Not ported.',
   rankByte: '$242E24. Ported as makeRankObject\'s own read; not on ctx, so slot [14] state 1 '
     + 'takes rank 0 and always picks tableA.',
-  menuCarry28D53C: '$28D53C. Not ported.',
+  // `menuCarry28D53C` LEFT THIS INVENTORY IN W418, and its line here was FALSE the whole time.
+  // It said "$28D53C. Not ported." -- but `$28D53C` has been `tallyscreen.js menuCarry28D53C`
+  // since W278, and `objslot8.js` and `tallyscreen.js` itself both call it directly. The one
+  // guarded read was `objslot13.js:179`, whose `!ctx.menuCarry28D53C?.(ram)` therefore returned
+  // at the FIRST LINE of `$288B00` on every frame for 45 waves, taking the continue screen's
+  // nine-second countdown with it. This inventory is meant to make a silent gap visible; a wrong
+  // reason in it made a real one invisible instead. **Check that the reason is still true when
+  // you add a line here, and again when you read one.**
   menuGate2901E0: 'objslot7pool.js:563 -- an OVERRIDE by design: `(ctx.menuGate2901E0 ?? '
     + 'menuGate2901E0)` falls back to the module\'s own ported gate. Absent from ctx on purpose.',
   load246710: '$246710, the animation-resource load. Not ported.',

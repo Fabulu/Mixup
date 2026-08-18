@@ -992,10 +992,10 @@ test('W406 SECTION 7: ONE new window, 594, bounded three ways and none of them a
     const set = new Map(tables.rom.windows.map(
       (x) => [parseInt(String(x.base).replace('$', ''), 16), x.len]));
     assert.equal(set.size, tables.rom.windows.length, 'no duplicate window bases');
-    assert.equal(tables.rom.windows.length, 600,
+    assert.equal(tables.rom.windows.length, 605,
       'W409 CORRECTION: 599 windows -- 593 + this wave\'s one + W407\'s gun $B template '
       + '+ W408\'s gun $A template + W409\'s three'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605.');
 
     // (1) the `lea` NAMES the base. TRAP 4: extension-word address plus displacement.
     assert.equal(w(HIBACHI_A1.gun9Init), 0x41fa, '$2A89BA `41FA` lea (d16,PC),A0');

@@ -9527,6 +9527,7 @@ def build(d: bytes) -> dict:
     check_hibachi_a1_windows(d)                # W404 -- HIBACHI'S TWO A1 GUN TABLES
     check_type44_windows(d)                    # W400 -- TYPE $44'S PROTOTYPES AND FIVE TABLES
     check_type4c_retire_windows(d)             # W402 -- $26FFE8'S TWO RETIRE LISTS
+    check_continue_panel_windows(d)            # W418 -- THE CONTINUE PANEL'S 5 WINDOWS
     check_sample_windows()                     # W27D -- ICS sample tight union
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
@@ -9780,6 +9781,140 @@ def verify(t: dict) -> list[str]:
         if any(w32(vbase + 4 * i) != 0 for i in range(2 * QUAD_ENTRIES)):
             bad.append("velocity speed level 0 is not all zeros")
     return bad
+
+
+# ================ W418: THE CONTINUE PANEL'S TWO STRINGS AND THREE TABLES =====
+#
+# `$288610`'s jump table `$288638` has five longs and four real bodies -- the
+# continue panel's prompt, wipe, count and clear (`src/continuescreen.js`).  The
+# five windows below are everything those bodies read out of `maincpu`, and every
+# extent comes from an instruction: three `lea (d16,PC)` bases, two `cmpi.w`
+# wraps and one adjacency to the next body's first opcode.
+SHOT_WINDOWS.append(
+    (0x2886FC, 0x0010, "W418: the CONTINUE panel's prompt string, ' CONTINUE     ' and its NUL, "
+                       "handed to $25A14C by the lea at $2886B6 (TRAP 4: the target is the "
+                       "EXTENSION WORD's address $2886B8 plus $44). $25A158 move.b (A0)+ / "
+                       "$25A15A tst.b / beq stops on the NUL at $28870A, so FIFTEEN bytes are "
+                       "read; the window is $10 because $28870C is the blank string's own lea "
+                       "target and the pair tiles exactly onto entry 2's first opcode"))
+SHOT_WINDOWS.append(
+    (0x28870C, 0x0010, "W418: the CONTINUE panel's BLANK string -- fourteen $20s and a NUL, the "
+                       "erase for the prompt above. THREE leas name it and all three resolve "
+                       "here: $288792 ($288794 - $88), $2887A8 ($2887AA - $9E) and $28874A "
+                       "($28874C - $40). Bounded above by ADJACENCY: $28871C is jump-table "
+                       "entry 2's first opcode, tst.w ($2,A4)"))
+SHOT_WINDOWS.append(
+    (0x28886A, 0x0044, "W418: entry 3's BANNER ring, reached lea ($9C,PC) at $2887CC ($2887CE + "
+                       "$9C). SEVENTEEN longs, and the length is the cartridge's OWN wrap rather "
+                       "than a stride walk: $2887EA addq.w #$4,($10,A4) / $2887EE cmpi.w #$44 / "
+                       "bne, so the largest offset ever read is $40 and $44 bytes is the exact "
+                       "reachable extent. There IS an eighteenth long at $2888AE, $50 past the "
+                       "seventeenth like every other step, and the wrap makes it UNREACHABLE -- "
+                       "it is deliberately outside this window, the same way $25D1D9's pad is "
+                       "outside W373's. A stride walk would have declared $48 and been wrong"))
+SHOT_WINDOWS.append(
+    (0x2888B2, 0x0028, "W418: entry 3's DIGIT POINTER table, reached lea ($B2,PC) at $2887FE "
+                       "($288800 + $B2) and indexed by ($A,A4) * 4 -- the seconds digit, which "
+                       "objslot13.js stamps from markValue $093C's high byte. TEN longs, one per "
+                       "decimal digit, $2888DA..$288946 in $C steps; the table ends exactly where "
+                       "its own entry [0] begins, which is what bounds it"))
+SHOT_WINDOWS.append(
+    (0x2888DA, 0x0078, "W418: entry 3's TEN digit groups, THREE longs each, the blink frames the "
+                       "pointer table above points at. $C per group from the pointers' own "
+                       "spacing and from $288840 cmpi.w #$C,($14,A4) / $288846 blt, which wraps "
+                       "the in-group offset at three. 10 * $C = $78 and $2888DA + $78 = $288952, "
+                       "which is jump-table entry 4's first opcode -- adjacency to code, not a "
+                       "plausibility scan"))
+
+
+def check_continue_panel_windows(d: bytes) -> None:
+    """W418.  THE CONTINUE PANEL: the jump table, both strings and all three tables.
+
+    Nothing here is an absence.  The jump table's base is a decoded `lea`
+    displacement, each of its four bodies ends on an `rts` AT its last address,
+    both string bases are decoded `lea`s and both stop on a NUL this check reads,
+    and both table lengths come from a `cmpi.w` the routine itself executes.
+    """
+    # ---- 1. THE JUMP TABLE. $28861E 41FA 0018 from the EXTENSION WORD at $288620.
+    if u16(d, 0x28861E) != 0x41FA:
+        raise SystemExit(f"$28861E is ${u16(d, 0x28861E):04X} and must be $41FA, lea (d16,PC),A0.")
+    jt = 0x288620 + s16(u16(d, 0x288620))
+    if jt != 0x288638:
+        raise SystemExit(
+            f"$28861E's lea reaches ${jt:06X}, not $288638 -- the target is the EXTENSION WORD's "
+            f"address ($288620) plus the displacement, never the opcode's.")
+    want = (0x00000000, 0x0028864C, 0x0028871C, 0x0028875E, 0x00288952)
+    got = tuple(u32(d, jt + 4 * i) for i in range(5))
+    if got != want:
+        raise SystemExit(
+            f"$288638's five longs are {[hex(x) for x in got]} and must be {[hex(x) for x in want]} "
+            f"-- src/continuescreen.js DISP_288610_TARGETS is keyed on exactly those four bodies.")
+
+    # ---- 2. EACH BODY ENDS ON AN rts AT ITS LAST ADDRESS (TRAP 5: 4E75 SITS AT it).
+    for body, end in ((0x28864C, 0x2886FA), (0x28871C, 0x28875C),
+                      (0x28875E, 0x288868), (0x288952, 0x288988)):
+        if u16(d, body) not in (0x4EB9, 0x4A6C):
+            raise SystemExit(
+                f"${body:06X} starts ${u16(d, body):04X}; entries 2/3/4 start tst.w ($2,A4) "
+                f"(4A6C) and entry 1 starts jsr $28D53C (4EB9).")
+        if u16(d, end) != 0x4E75:
+            raise SystemExit(
+                f"${end:06X} is ${u16(d, end):04X} and must be $4E75 -- the body's code no longer "
+                f"ends AT that address, so an extent below is stale.")
+
+    # ---- 3. BOTH STRINGS, base from a lea and length from the NUL $25A14C stops on.
+    for site, base in ((0x2886B6, 0x2886FC), (0x288792, 0x28870C),
+                       (0x2887A8, 0x28870C), (0x28874A, 0x28870C)):
+        if u16(d, site) != 0x41FA:
+            raise SystemExit(f"${site:06X} is not lea (d16,PC),A0.")
+        ea = site + 2 + s16(u16(d, site + 2))
+        if ea != base:
+            raise SystemExit(f"${site:06X} resolves to ${ea:06X}, not ${base:06X}.")
+    if d[0x2886FC:0x28870A] != b" CONTINUE     ":
+        raise SystemExit(f"$2886FC is not the CONTINUE prompt; it is {d[0x2886FC:0x28870A]!r}.")
+    if d[0x28870A] != 0:
+        raise SystemExit("$28870A is not the prompt string's NUL; the $25A14C walk would run on.")
+    if d[0x28870C:0x28871A] != b" " * 14 or d[0x28871A] != 0:
+        raise SystemExit("$28870C is not fourteen blanks and a NUL -- the erase would not erase.")
+
+    # ---- 4. THE BANNER RING: the lea, the wrap, and the 18th long the wrap excludes.
+    if u16(d, 0x2887CC) != 0x41FA or 0x2887CE + s16(u16(d, 0x2887CE)) != 0x28886A:
+        raise SystemExit("$2887CC's lea no longer reaches $28886A.")
+    if u16(d, 0x2887EE) != 0x0C6C or u16(d, 0x2887F0) != 0x0044 or u16(d, 0x2887F2) != 0x0010:
+        raise SystemExit(
+            f"$2887EE must be cmpi.w #$44,($10,A4); it is ${u16(d, 0x2887EE):04X} "
+            f"${u16(d, 0x2887F0):04X} ${u16(d, 0x2887F2):04X}. That immediate IS the window length.")
+    if u16(d, 0x2887EA) != 0x586C or u16(d, 0x2887EC) != 0x0010:
+        raise SystemExit("$2887EA must be addq.w #$4,($10,A4) -- $44 / 4 = 17 needs both halves.")
+    for i in range(1, 17):
+        step = u32(d, 0x28886A + 4 * i) - u32(d, 0x28886A + 4 * (i - 1))
+        if step != (0xA00000 if i == 1 else 0x500000):
+            raise SystemExit(
+                f"$28886A[{i}] steps ${step:X}; the ring is +$A00000 once then +$500000, and a "
+                f"break in that would mean the seventeen longs are not one table.")
+    if 0x28886A + 0x0044 + 4 != 0x2888B2:
+        raise SystemExit("the eighteenth long is no longer the only thing between the two tables.")
+
+    # ---- 5. THE DIGIT POINTERS AND THEIR TEN GROUPS.
+    if u16(d, 0x2887FE) != 0x41FA or 0x288800 + s16(u16(d, 0x288800)) != 0x2888B2:
+        raise SystemExit("$2887FE's lea no longer reaches $2888B2.")
+    for i in range(10):
+        if u32(d, 0x2888B2 + 4 * i) != 0x2888DA + 0xC * i:
+            raise SystemExit(
+                f"$2888B2[{i}] is ${u32(d, 0x2888B2 + 4 * i):06X} and must be "
+                f"${0x2888DA + 0xC * i:06X} -- the ten groups are $C apart and that spacing is "
+                f"half of what bounds the $78 window.")
+    if u16(d, 0x288840) != 0x0C6C or u16(d, 0x288842) != 0x000C or u16(d, 0x288844) != 0x0014:
+        raise SystemExit(
+            f"$288840 must be cmpi.w #$C,($14,A4); it is ${u16(d, 0x288840):04X} "
+            f"${u16(d, 0x288842):04X} ${u16(d, 0x288844):04X}. It is the other half.")
+    if d[0x288846] != 0x6D:
+        raise SystemExit(
+            f"$288846 is ${d[0x288846]:02X} and must be $6D (blt). $6C would be bge and the "
+            f"port would wrap the digit ring one frame early.")
+    if 0x2888DA + 0x78 != 0x288952:
+        raise SystemExit("the ten groups no longer end where jump-table entry 4 begins.")
+
 
 
 def main() -> int:

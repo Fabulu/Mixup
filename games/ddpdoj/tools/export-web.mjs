@@ -3876,6 +3876,48 @@ for (const [at, count, name] of TX_TABLES_W161) {
   txRomSources.push({ at, count, name });
 }
 for (let i = 0; i < 16; i++) txUsed.add(0xc030 + i); // $2843A8 score glyphs
+
+// W418 -- THE CONTINUE PANEL'S TX ART, and it was 2,317 of 2,328 tiles short.
+//
+// `src/continuescreen.js` ports `$288610`'s four jump-table bodies this wave. Entry 3 animates a
+// 4-by-20 banner off the 17-long ring at `$28886A` and an 8-by-4 seconds digit off the ten 3-long
+// groups at `$2888B2`; entries 1 and 2 print two NUL-terminated strings through `$25A14C`, which
+// uses the CHARACTER BYTE ITSELF as the tile number. MEASURED against the shipped sheet before
+// this block existed: 1,353 of the banner's tiles, 956 of the digit's and all 8 glyphs were
+// absent, so the ported panel would have drawn nothing -- the two-halves shape W414 recorded for
+// the medal, where a correct port and a missing picture look identical on screen.
+//
+// EVERY COUNT HERE IS THE PRINTER'S OWN REGISTERS, not a guess at a sprite's size:
+//   * the banner is `$240DC2` at D2=3 / D3=$13, so (3+1) * ($13+1) = 80 cells, each +1 tile
+//     (`$240DEE addi.l #$10000,D4`) and NO inter-column stride -- the base variant adds 0.
+//   * the digit is `$240E1A` at D2=7 / D3=3 / D5=$C, so 8 columns of 4 cells; +1 per cell and
+//     `((D5 - D3 - 1) & $FFFF)` = 8 more between columns, i.e. 12 tiles per column.
+//   * each string stops on the NUL that `$25A158 move.b (A0)+ / $25A15A tst.b / beq` tests.
+// The ring length is the cartridge's own `$2887EE cmpi.w #$44` (17 longs) and the group count is
+// `$2888B2`'s ten pointers, each `$C` apart, which `export-tables.py` also asserts.
+{
+  const cells = (cols, rows, colStride) => {
+    const out = [];
+    for (let c = 0; c <= cols; c++) for (let r = 0; r <= rows; r++) out.push(c * colStride + r);
+    return out;
+  };
+  const bannerCells = cells(3, 0x13, 0x13 + 1);          // 80, contiguous: 0..79
+  const digitCells = cells(7, 3, 0xc);                   // 8 columns of 4, 12 apart
+  for (let f = 0; f < 17; f++) {
+    const base = (romBe32(0x28886a + f * 4) >>> 16) & 0xffff;
+    for (const c of bannerCells) txUsed.add((base + c) & 0xffff);
+  }
+  for (let d = 0; d < 10; d++) {
+    const group = romBe32(0x2888b2 + d * 4);
+    for (let f = 0; f < 3; f++) {
+      const base = (romBe32(group + f * 4) >>> 16) & 0xffff;
+      for (const c of digitCells) txUsed.add((base + c) & 0xffff);
+    }
+  }
+  for (const at of [0x2886fc, 0x28870c]) {
+    for (let a = at; cpuBytes[a]; a++) txUsed.add(cpuBytes[a]);
+  }
+}
 for (const word of [0x054f000a, 0x053d000a, 0x0404000a,
   0x03ee000a, 0x0414000a]) txUsed.add((word >>> 16) & 0xffff);
 

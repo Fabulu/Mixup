@@ -471,10 +471,10 @@ test('W398 SECTION 5: the window set, the overlap count still 71, and the span a
     // declared type $44's eight, so the set is 583. Everything below -- the overlap count, both
     // abutments, the five column streams -- is untouched, and neither wave's windows are anywhere
     // near this wave's span ($2A5xxx/$2A6xxx for W399, $26Dxxx/$26Exxx for W400).
-    assert.equal(ws.length, 600, '569 windows at W394, 570 after W398, 575 after W399, 583 '
+    assert.equal(ws.length, 605, '569 windows at W394, 570 after W398, 575 after W399, 583 '
       + 'after W400, 585 after W402, 590 after W404, 593 after W405, 594 after W406, 595 '
       + 'after W407, 596 after W408, 599 since W409'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605.');
     assert.equal(ws.filter(([a]) => a === STAGE5_COLS).length, 1, '$22D770 is declared once');
 
     const pairs = (list) => {
