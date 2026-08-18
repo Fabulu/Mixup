@@ -681,10 +681,14 @@ SHOT_WINDOWS.extend([
     # W411 (DOCKET D49): `$280FDC`, the COLLECTED transform's own table, which begins
     # exactly where W264's window ends. `$280FE0 lea (-$AE,PC),A0` resolves to $280F34
     # and `$280FE4 movea.l (A0,D0.w),A0` indexes it with the LOW word of the selector
-    # every collect arm writes to `($10,A6)`. Three selectors exist in the whole image
-    # ($00050000 at $27FA0E/$27FE3C/$28026C/$2806D8, $00050004 at $2800A8/$2804A0/
-    # $28090C, $00010008 at $27FF00/$280190/$2805BC/$280A28), so the pointer run is
-    # THREE longwords and its own first target, $280F40, pins the end.
+    # every collect arm writes to `($10,A6)`. W422 CORRECTS THE REASON, NOT THE BOUND:
+    # [M] a scan of every `move.l #imm,($10,A6)` in the image finds FOUR selector
+    # values, not three -- $00050000 ($27FA0E/$27FE3C/$28026C/$2806D8), $00050004
+    # ($2800A8/$2804A0/$28090C), $00010008 ($27FF00/$280190/$2805BC/$280A28) and
+    # $00010004 ($27FFC0, kind 5's live arm, plus $280384/$2807F0 where hyper kinds
+    # 9/13 write it and then free without reaching $280FDC). The pointer run is
+    # still THREE longwords because $280FE4 indexes with the selector's LOW word
+    # and only 0, 4 and 8 occur; its own first target, $280F40, pins the end.
     #
     # Each pointer names a 12-byte descriptor -- {sprite-table base, sprite offset pair,
     # size, animation step} -- read by `$280FEE movea.l (A0)+,A2 / $280FFC move.l (A0)+ /

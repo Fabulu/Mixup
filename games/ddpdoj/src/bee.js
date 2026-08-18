@@ -175,12 +175,24 @@ export const POOL_A = Object.freeze({
   kind2Body: 0x27fe0e,       // dispatch index 2 -- the gold disc
   kind3Body: 0x27fed2,       // W417: dispatch index 3 -- the gold disc worth eight
   kind3Step: 0x27ff36,       // its ordinary step arm
+  // W422: dispatch indices 5 AND 17 are the SAME address.  Allocated as D0 = $44,
+  // whose hook $280DBA rewrites the status to $14 -- index 5 -- exactly the way
+  // D0 = $48/$4C become indices 6/7.  D0 = $14 reaches it un-normalised.
+  kind5Body: 0x27ff9a,
+  kind5Step: 0x27ffe6,       // its ordinary step arm
   kind2Collect: 0x27fe0e,    // its collect arm falls out of the same head
   kind2Step: 0x27fe6e,       // the ordinary step arm
   kind0Collect: 0x27f9ee,    // $27FA34 bne -- kind 0/4's collect arm, BACKWARD
   collectTransform: 0x280fdc, // the shared collected transform
   collectTable: 0x280f34,    // $280FE0 lea (-$AE,PC),A0
-  collectSelectors: 3,       // $00050000, $00050004, $00010008 -- the whole image
+  // THREE DESCRIPTOR POINTERS, NOT THREE SELECTORS.  W411's note said "$00050000,
+  // $00050004, $00010008 -- the whole image"; [M] a scan of every
+  // `move.l #imm,($10,A6)` in the 6 MB image finds a FOURTH value, $00010004, at
+  // $27FFC0 (kind 5, live) and at $280384/$2807F0 (hyper kinds 9/13, dead -- they
+  // free without reaching $280FDC).  The bound is still three, because $280FE4
+  // indexes with the selector's LOW word and $00010004 shares low word 4 with
+  // $00050004.  Right conclusion, wrong stated reason, until W422 measured it.
+  collectSelectors: 3,       // low words 0, 4 and 8 -- $280F34's three pointers
   collectSpriteEntries: 10,  // ten longwords per sprite table
   // W287's field, W417's name: `($24,A0)` is the PLAYER RECORD hooks 8..15 write and
   // kinds 8..15's bodies read back with `$2802C4 movea.l ($24,A6),A0`.
@@ -1193,6 +1205,103 @@ function kind3Step27FF36(ram, rom, a6) {
   return { emitted: true };
 }
 
+// ============ $27FF9A, POOL-A KIND INDEX 5 -- AND INDEX 17 IS THE SAME ======
+
+/**
+ * `$27FF9A` -- POOL-A KIND INDEX 5, and `DISPATCH[17]` is the SAME address, so
+ * this one function closes the LAST two of `$27F99E`'s twenty entries.
+ *
+ * **IT IS KIND 0'S BODY WITH ITS OWN COLLECT ARM AND THREE MOVED CONSTANTS**, not
+ * kind 2's.  Read the two side by side and the whole unit is four differences:
+ *
+ * | | kind 0 `$27FA30` | kind 5 `$27FF9A` |
+ * |---|---|---|
+ * | head | `andi.w #$1800,D1 / bne $27F9EE` **backward** | `andi.w #$1800,D1 / beq $27FFE6` |
+ * | collect | `$27F9EE`, add 1, `$50`, `$00050000` | `$27FFA0`, add **2**, **`$100`**, **`$00010004`** |
+ * | ring | `$1BCACC` stride `$24` wrap `$1BCD0C` | **`$1BCD0C` stride `$34` wrap `$1BD04C`** |
+ * | cull | `$27FA96 6B` **bmi** -- long axis < 0 | `$280046 cmpi.w #$FE00 / $28004C 6D` **blt** |
+ *
+ * Everything between -- the old-zero borrow, the pause and freeze gates, the speed
+ * ramp, the `$241812` recompute and cache, the `$3C` busy threshold, the walk-parity
+ * thinning and the `jmp $23EBA0` -- is byte-identical to `$27FA36..$27FAB7`.
+ *
+ * **THE CULL IS THE ONE THAT MATTERS AND IT IS NOT A SIGN TEST.**  `$6D` is BLT,
+ * signed, against `$FE00`, so this record survives a long axis in `[-$200, 0)`
+ * where kind 0's `bmi` frees it.  A port that reused kind 0's `bmi` would drop the
+ * record 512 units early, every time, and no fresh-`Ram` fixture would notice
+ * because a fresh slot never sits in that band.
+ *
+ * WHO ALLOCATES IT: `$280BCE[17] = $280DBA`, reached with D0 = `$44`.  Its last two
+ * instructions are `$280DE0 andi.w #$FF83,(A0)` / `$280DE4 ori.w #$14,(A0)`, which
+ * rewrites the status to `$14` -- kind index 5 -- exactly as `$48`/`$4C` become 6
+ * and 7.  The template it picks, `$280E4A[$44] = $280EF2`, carries sprite
+ * `$001BCD0C`, **the very base this body's wrap restores**, which is the third
+ * independent witness that `$44` is this kind's allocation and not a guess.
+ *
+ * **IT IS NOT REACHABLE IN THIS IMAGE, AND THAT IS A MEASUREMENT.**  [M] every
+ * reference to the six entry addresses in `$27F8E6..$27F92A` is one of TWENTY-SEVEN
+ * `jsr` operands (`$27F8E6` x1 -- which is not the allocator at all but the ladder
+ * cursor's clear -- `$27F8EE` x7, `$27F8F0` x9, `$27F8F8` x4, `$27F8FA` x5,
+ * `$27F92A` x1).  Each long appears nowhere else in the 6 MB image, so there is no
+ * indirect call through a table either, and not one of the twenty-seven passes
+ * D0 = `$14` or `$44`.  So no bench here can produce a kind-5 record and this port
+ * claims no state trace for one.  It is ported because the dispatch table has it
+ * twice and because W419 left it as the last live latent throw in `runBody`.
+ *
+ * ART, MEASURED: the LIVE ring `$1BCD0C + n * $34` is [M] 16 of 16 in the shipped
+ * bundle already -- hyper kinds 9 and 13 share it.  What was missing is the
+ * COLLECTED popup: selector `$00010004` picks `$280F34`'s descriptor 1 (low word 4),
+ * whose sprite table `$280F8C`[1] is `$1E24DC` and whose animation step is
+ * **`$0054`**, and [M] all eight of those frames were absent.  W422 ships them.
+ */
+function poolAKind5Body27FF9A(ram, rom, ctx, a6, d1, remaining) {
+  if ((d1 & 0x1800) !== 0) {                              // $27FF9A/$27FF9E beq $27FFE6
+    return poolACollectArm(ram, rom, ctx, a6, d1, COLLECT_ARMS.item27FFA0);
+  }
+  return kind5Step27FFE6(ram, rom, ctx, a6, remaining);
+}
+
+/** `$27FFE6` -- kind 5's ordinary step: `$27FA36` with the other ring and the
+ *  `$FE00` cull. */
+function kind5Step27FFE6(ram, rom, ctx, a6, remaining) {
+  if (due8(ram, a6 + B.blinkTimer)) {                     // $27FFE6 subq.b / $27FFEA bcc
+    ram.setU8(a6 + B.blinkTimer, ram.u8(a6 + B.blinkTimer + 1));  // $27FFEC
+    // $27FFF2 lea ($A,A6),A0 / $27FFF6 addi.l #$34,(A0) -- the add lands FIRST and the
+    // compare then replaces it, so the record never holds $1BD04C.  Unlike kind 2's
+    // and kind 3's wraps this one does NOT force the timer on the wrap frame.
+    const next = (ram.u32(a6 + B.sprite) + 0x34) >>> 0;   // $27FFF6 addi.l #$34
+    ram.setU32(a6 + B.sprite,                             // $27FFFC cmpi.l / $280002 bne
+      next === 0x001bd04c ? 0x001bcd0c : next);           // $280004 move.l #$1BCD0C
+  }
+  if (ram.u16(POOL_A.pause) === 0) {                      // $28000A tst.w / $280010 bne
+    if (ram.u16(POOL_A.freeze) === 0) {                   // $280012 tst.w / $280018 bne
+      ram.setU8(a6 + B.speed, (ram.u8(a6 + B.speed) + 1) & 0xff); // $28001A addq.b
+    }
+    const v = ctx.tables.vector(ram.u8(a6 + B.speed),     // $28002A jsr $241812
+      ram.u8(a6 + B.angle) & 0x3f);                       // $280024 moveq / $280026 and.b
+    ram.setU16(a6 + 0x20, v.dy);                          // $280030 move.w D2,($20,A6)
+    ram.setU16(a6 + 0x22, v.dx);                          // $280034 move.w D3,($22,A6)
+  }
+  // $280038..$280044 -- D2 is the cached pair: its LOW half moves the short axis and
+  // its HIGH half, after the swap, the long one.
+  ram.setU16(a6 + B.posX, u16(ram.u16(a6 + B.posX) + ram.u16(a6 + 0x22)));
+  ram.setU16(a6 + B.pos, u16(ram.u16(a6 + B.pos) + ram.u16(a6 + 0x20)));
+  // $280046 cmpi.w #$FE00,($2,A6) / $28004C 6D = BLT, SIGNED -- not kind 0's bare
+  // `bmi`, and not `bcs` either.  The record lives until the long axis is below
+  // -$200.
+  if (i16(ram.u16(a6 + B.pos)) < i16(0xfe00)) {
+    return offscreenFree27FC7C(ram, a6);                  // $280072..$280080
+  }
+  // $28004E cmpi.w #$3C,$817F7E / $280056 bcs -- kind 0's threshold exactly, and the
+  // hyper stars' is $28.
+  if (ram.u16(POOL_A.liveCount) >= 0x3c
+    && (remaining & 1) === ram.u16(POOL_A.collisionPhase)) { // $28005A..$280064 beq
+    return undefined;                                     // $280070 rts
+  }
+  enqueueThroughStub(ram, rom, 0x23eba0, a6);             // $280068 jmp $23EBA0
+  return { emitted: true };
+}
+
 /**
  * `$280252` -- POOL-A KINDS 8..15, THE HYPER-BANK CANCEL STARS, AND THEY ARE ONE
  * ROUTINE OVER SEVEN CONSTANTS.
@@ -1390,6 +1499,10 @@ function runBody(ram, rom, ctx, a6, d1, body, remaining) {
     return poolAKind2Body27FE0E(ram, rom, ctx, a6, d1);
   if (body === POOL_A.kind3Body)                          // W417
     return poolAKind3Body27FED2(ram, rom, ctx, a6, d1);
+  // W422: dispatch indices 5 AND 17 are both $27FF9A -- kind 0's body with its own
+  // collect arm, the $1BCD0C ring and a signed $FE00 cull.
+  if (body === POOL_A.kind5Body)
+    return poolAKind5Body27FF9A(ram, rom, ctx, a6, d1, remaining);
   // W417: $27F99E's indices 8..15 are ONE routine over seven constants -- the
   // hyper-bank cancel stars, and the throw that stopped every full boot here.
   const hyper = HYPER_STAR_BY_BODY.get(body);
@@ -1400,12 +1513,16 @@ function runBody(ram, rom, ctx, a6, d1, body, remaining) {
   if (body === 0x28016a)
     return stage4ImpactBody(ram, rom, ctx, a6, d1,
       IMPACT_KIND[KIND.stage4Impact19], remaining);
+  // W422: ALL TWENTY entries of $27F99E now have a translated body, so reaching
+  // this line means the DISPATCH TABLE itself no longer matches the image.
   unreached(body, `$27F992 jsr (A0) -- the kind dispatch sent a live pool-A `
-    + `record to $${body.toString(16).toUpperCase()}, which is not the bee body `
-    + `($27FACC), kind 0/4's ($27FA30), kind 2's ($27FE0E), kind 3's ($27FED2), `
-    + `the hyper-cancel eight (indices 8..15) or Stage-4 kind 18/19's. `
-    + `The three that remain are indices 5, 17 ($27FF9A) and the popup arms; `
-    + `their D0 sources at the general-allocator call sites are unattributed. `
+    + `record to $${body.toString(16).toUpperCase()}, which is not one of the `
+    + `SEVEN distinct bodies $27F99E's twenty entries name: the bee ($27FACC, `
+    + `indices 1 and 16), kind 0/4's ($27FA30), kind 2's ($27FE0E), kind 3's `
+    + `($27FED2), kind 5/17's ($27FF9A), the hyper-cancel eight (indices 8..15, `
+    + `one routine at $280252..$280A0E) and Stage-4 kind 6/18's ($280082) and `
+    + `7/19's ($28016A). Since W422 the table is covered end to end, so this `
+    + `address came from a DISPATCH entry that no longer matches the cartridge. `
     + `Record at $${a6.toString(16).toUpperCase()}, status $${
       d1.toString(16).toUpperCase()}`);
 }
@@ -1445,8 +1562,9 @@ function freePoolA(ram, a6) {
 // the cartridge says $0054, and $00C4 where it says $0064. Reading $280F34
 // removes the possibility of that class of error for every kind at once.
 //
-// Only THREE selectors exist in the 6 MB image, which is what bounds the pointer
-// run: $00050000, $00050004, $00010008. See the window's own note.
+// FOUR selector VALUES exist in the 6 MB image -- $00050000, $00050004, $00010008
+// and $00010004 -- but only THREE distinct LOW words (0, 4, 8), and the low word is
+// what indexes the pointer run.  W422 measured the fourth; see `collectSelectors`.
 function collectTransform280FDC(rom, selector) {
   const idx = selector & 0xffff;                          // $280FE4 (A0,D0.w)
   if ((idx & 3) !== 0 || idx >= POOL_A.collectSelectors * 4) {
@@ -1548,6 +1666,20 @@ const COLLECT_ARMS = Object.freeze({
     collectP1: POOL_A.medalP1Total, collectP2: POOL_A.medalP2Total,
     collectAdd: 2, collectScore: 0x1000, collectSelector: 0x00010008,
     collectSound: 0x28c610,
+  }),
+  // W422 -- $27FFA0, kind index 5 (and 17).  Kind 3's twenty instructions on the
+  // STAR pair, worth $100.  [M] $27FFA0..$27FFE5 and $27FEE0..$27FF25 are
+  // byte-identical except for the two `lea`s, the selector long, the score long,
+  // the `jsr` target and the `bra.w` displacement -- asserted in w422's SECTION 4.
+  //
+  // THE `lea` ORDER IS THE OTHER WAY ROUND FROM THE COMMENT ON THIS TABLE and the
+  // sense is the same: `$27FFA2 lea $817F86,A0` loads P1 FIRST, `$27FFA8 btst #$C,D1`
+  // / `$27FFAC bne` SKIPS the second `lea`, so bit 12 set keeps P1 and the P2 `lea`
+  // at $27FFAE is the FALL-THROUGH.  `poolACollectArm`'s ternary is already that.
+  item27FFA0: Object.freeze({
+    collectP1: POOL_A.collectP1Total, collectP2: POOL_A.collectP2Total,
+    collectAdd: 2, collectScore: 0x100, collectSelector: 0x00010004,
+    collectSound: 0x28c5e4,
   }),
 });
 

@@ -77,7 +77,12 @@ test('W213 exact type-$A2 closure, eight occurrences, and 23 live streams',
   // guard behind it is the half W415 refused to ship on its own. [M] shard 9 goes
   // 277 -> 313 streams, its maskLen 158,466 -> 166,218 and `spr.maskUsed` by the SAME
   // 7,752 -- so nothing but these 36 moved. Shard 11 held at 862/1,170,804/3,272,730.
-  assert.equal(manifest.spr.streamCount, 4343);
+  // W422: 4,343 -> 4,351. Pool-A kind index 5's COLLECTED popup -- eight frames at
+  // $1E24DC stride $54, shipped in the same wave as its body $27FF9A. All eight land
+  // on shard 11 beside the star's and kind 18's popups. [M] shard 11 goes 862 -> 870
+  // streams and 1,170,804 -> 1,171,460 mask words, `spr.maskUsed` grows by the SAME
+  // 656, and shard 9 HELD at 313/166,218 -- so nothing but these 8 moved.
+  assert.equal(manifest.spr.streamCount, 4351);
 });
 
 test('W213 real clock-$36 pair draws, mirrors fire, and performs lingering death',

@@ -1387,7 +1387,22 @@ try {
         // moved, the row would have claimed streams that something else asks
         // for.  The picture is shipped so the body W417 ports is not W414's
         // "allocates, animates and silently fails to draw" all over again.
-        11: { streams: 862, records: 15903, distinct: 127, first: 315,
+        //
+        // W422: streams 862 -> 870, and `records`, `distinct` and `first` HOLD
+        // AGAIN -- 15903, 127 and 315, the same three numbers W414 and W417 both
+        // left untouched.  The exporter gained exactly EIGHT streams, pool-A kind
+        // index 5's COLLECTED popup $1E24DC..$1E2728 at stride $54, and all eight
+        // land here.  [M] the bundle diff is `4343 -> 4351` streams with 8 ADDED
+        // and 0 REMOVED; `spr.maskUsed` grew by 656, shard 11 `maskLen` grew by the
+        // SAME 656, and shard 9 and shard 12 `maskLen` HELD exactly (only shard 12
+        // `maskFrom` slid by that 656), so nothing outside shard 11 moved.
+        //
+        // `records` HOLDING is again the witness that this is an addition and not
+        // a reshuffle, and here it is stronger than W417's: [M] NO call site in the
+        // 6 MB image passes D0 = $14 or $44 to any of the six pool-A allocator
+        // entries, so a kind-5 record cannot exist on this bench at all and this
+        // window cannot draw one of the eight.  See w422poolakind5.test.js.
+        11: { streams: 870, records: 15903, distinct: 127, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };

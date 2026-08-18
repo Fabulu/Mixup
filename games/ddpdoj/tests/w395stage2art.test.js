@@ -300,31 +300,38 @@ const W417 = Object.freeze({ streams: 16, maskWords: 3104, colWords: 9888 });
 // below do NOT carry a W419 addend.
 const W419 = Object.freeze({ streams: 36, maskWords: 7752, colWords: 23109 });
 
+// W422 ships pool-A kind index 5's COLLECTED popup ($1E24DC..$1E2728, stride $54) in the
+// same wave as its body $27FF9A -- EIGHT streams, all new, all on shard 11.  The live ring
+// that body animates needed nothing: [M] $1BCD0C + n * $34 was already 16 of 16, because
+// hyper kinds 9 and 13 share it.  [M] the bundle diff over the export is `4,343 -> 4,351`
+// with 8 added and 0 removed, and shard 11 is the only shard whose stream count moves.
+const W422 = Object.freeze({ streams: 8, maskWords: 656, colWords: 738 });
+
 test('W395 SECTION 4: the bundle grew by exactly these fourteen and by nothing else',
   { skip: SKIP }, () => {
     const { manifest, rows, shard } = bundle();
     assert.equal(manifest.spr.streamCount,
       BEFORE.streamCount + 14 + W396.streams + W397.streams
-        + W414.streams + W417.streams + W419.streams,
+        + W414.streams + W417.streams + W419.streams + W422.streams,
       '4,244 -> 4,258 (W395) -> 4,263 (W396) -> 4,267 (W397) -> 4,291 (W414) -> 4,307 (W417). '
       + 'This number is '
       + 'pinned in TWELVE test files and all twelve move together; the claim is "the bundle '
       + 'is what the tree measured", never a floor');
     assert.equal(shard.streams,
       BEFORE.shard11Streams + 14 + W396.streams + W397.streams
-        + W414.streams + W417.streams,
-      '799 -> 813 -> 818 -> 822 -> 846 -> 862 streams on shard 11');
+        + W414.streams + W417.streams + W422.streams,
+      '799 -> 813 -> 818 -> 822 -> 846 -> 862 -> 870 streams on shard 11');
     assert.equal(shard.maskLen,
       BEFORE.shard11MaskLen + 86476 + W396.maskWords + W397.maskWords
-        + W414.maskWords + W417.maskWords,
+        + W414.maskWords + W417.maskWords + W422.maskWords,
       '1,051,702 -> 1,138,178 -> 1,153,740 -> 1,166,372 -> 1,167,700 -> 1,170,804 mask words');
     assert.equal(shard.colLen,
       BEFORE.shard11ColLen + 315707 + W396.colWords + W397.colWords
-        + W414.colWords + W417.colWords,
+        + W414.colWords + W417.colWords + W422.colWords,
       '2,868,034 -> 3,183,741 -> 3,219,388 -> 3,260,515 -> 3,262,842 -> 3,272,730 colour words');
     assert.equal(manifest.spr.maskUsed,
       BEFORE.maskUsed + 86476 + W396.maskWords + W397.maskWords
-        + W414.maskWords + W417.maskWords + W419.maskWords,
+        + W414.maskWords + W417.maskWords + W419.maskWords + W422.maskWords,
       'and the whole packed mask space grew by the same amount all FIVE times: nothing else '
       + 'was added');
 
@@ -340,7 +347,9 @@ test('W395 SECTION 4: the bundle grew by exactly these fourteen and by nothing e
     // W417: index 11 is 846 + W417's SIXTEEN (pool-A kind index 3's own animation).
     // Every other entry is untouched, which is still the assertion -- the row was an
     // ADDITION to one shard and the sum below is what proves it.
-    const SIZES = [166, 67, 32, 54, 17, 70, 96, 298, 72, 313, 407, 862, 139, 228, 90, 4, 37,
+    // W422: index 11 is 862 + W422's EIGHT (pool-A kind index 5's collected popup), and
+    // every other entry HELD -- including index 9's 313, which W419 last moved.
+    const SIZES = [166, 67, 32, 54, 17, 70, 96, 298, 72, 313, 407, 870, 139, 228, 90, 4, 37,
       1231, 160];
     assert.deepEqual(manifest.spr.shards.map((s) => s.streams), SIZES,
       'every other shard holds exactly what it held before');
@@ -356,8 +365,8 @@ test('W395 SECTION 4: the bundle grew by exactly these fourteen and by nothing e
         sum += r.maskWords; n++;
       }
     }
-    assert.equal(n, 822 + W414.streams + W417.streams,
-      'all 846 of shard 11\'s streams are in the published list');
+    assert.equal(n, 822 + W414.streams + W417.streams + W422.streams,
+      'all 870 of shard 11\'s streams are in the published list');
     assert.equal(sum, shard.maskLen,
       'and their extents sum to the span exactly -- every stream owns its own mask block, which '
       + 'is what makes rewriting each header safe');

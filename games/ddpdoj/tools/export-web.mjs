@@ -2151,6 +2151,37 @@ const STRUCTURE_RANGES = Object.freeze([
     + 'Bounded by $27FF7E cmpi.l #$1BF58C -- the body\'s own wrap -- by template 3 '
     + '$280EDC\'s sprite long, and by the $1BF58C harvest that starts where this '
     + 'one ends. [M] 0 of 16 present before this row'],
+  // ------------------------------------------------------------------ WAVE 422
+  // POOL-A KIND INDEX 5 (and 17), whose body $27FF9A W422 ports.  ITS LIVE RING IS
+  // ALREADY HERE and nothing needs adding for it: [M] $1BCD0C + n * $34 is 16 of 16
+  // in the shipped bundle, because hyper kinds 9 and 13 animate the same ring and
+  // W266 harvested it.  What was missing is the COLLECTED popup.
+  //
+  // AND W422 WAS BRIEFED WITH STRIDE $34 FOR IT, WHICH IS WRONG.  $34 is the LIVE ring's
+  // stride; the popup's is $54, and the cartridge says so three separate ways:
+  //
+  //   1. $27FFC0 writes selector $00010004, whose LOW word 4 picks $280F34's SECOND
+  //      descriptor, $280F4C -- and that descriptor's last word, $280F56, is $0054.
+  //      That word is what $281010 stores into ($16,A6) as the popup's step.
+  //   2. the selector's HIGH word 1 indexes the descriptor's sprite table $280F8C,
+  //      whose entry [1] is $1E24DC and whose entry [2] is $1E277C.  $1E277C -
+  //      $1E24DC = $2A0 = 8 x $54 exactly, so the table closes the run itself.
+  //   3. `harvestStage4Arithmetic(0x1e2f5c, 8, 0x54, ...)` below is $280F8C[5], the
+  //      SAME descriptor reached by kind 18's selector $00050004 -- already shipped
+  //      at stride $54 since W216.  Two entries of one table cannot have two strides.
+  //
+  // $2810CA agrees a fourth time: it adds ($16,A6) once per tick while the phase byte
+  // at ($18,A6) counts 7 down to 0 and SUBTRACTS once it goes negative, so a collected
+  // record reaches base + 7 x $54 and no further -- eight frames, not more.
+  //
+  // [M] before this row the bundle held 0 of these 8, against 8 of 8 for the star's
+  // and medal's $1E179C popup and for kind 18's $1E2F5C.  Kind 5 is the last selector
+  // in the image whose popup was absent.
+  [0x1e24dc, 0x1e277c, 8, 'W422: the COLLECTED popup for selector $00010004 -- '
+    + 'pool-A kind index 5\'s, and the only arm in the image that writes that '
+    + 'selector and then reaches $280FDC. $280F8C[1], eight frames of stride $54, '
+    + 'closed by $280F8C[2] = $1E277C and by $2810CA reaching base + 7 x $54. '
+    + '[M] 0 of 8 present before this row'],
   // ------------------------------------------------------------------ WAVE 267
   // THE REST OF DOCKET D4.  W266 shipped the three impact animations and left six runs;
   // W267 built the `--extent` stride-walk probe (see `romExtent` above) and asked the
@@ -2242,7 +2273,7 @@ const STRUCTURE_STREAMS = Object.freeze([
   0x1727c4, 0x172d18, 0x1928bc, 0x192a48,
 ]);
 {
-  if (STRUCTURE_STREAMS.length !== 10 || STRUCTURE_RANGES.length !== 32) {
+  if (STRUCTURE_STREAMS.length !== 10 || STRUCTURE_RANGES.length !== 33) {
     throw new Error(`STRUCTURE_STREAMS holds ${STRUCTURE_STREAMS.length} `
       + `addresses and there are ${STRUCTURE_RANGES.length} chain ranges; `
       + 'W58 measured 18 and 4, W66 added the fifth ($12D430, 8 frames), and '
@@ -2256,7 +2287,10 @@ const STRUCTURE_STREAMS = Object.freeze([
       + 'plus the eight-frame collected popup the star shares with it. W417 added '
       + 'ONE: pool-A kind index 3\'s sixteen frames at $1BE94C, whose body it ports '
       + 'in the same wave. Kinds 8..15, which it also ports, needed NOTHING -- [M] '
-      + 'all four of their rings are already 16 of 16 in the bundle.');
+      + 'all four of their rings are already 16 of 16 in the bundle. W422 added '
+      + 'ONE more: pool-A kind index 5\'s eight-frame COLLECTED popup at $1E24DC, '
+      + 'stride $54 -- its live ring $1BCD0C needed nothing, being the ring hyper '
+      + 'kinds 9 and 13 already ship.');
   }
   let added = 0, already = 0, chained = 0;
   for (const [base, endsAt, count, why] of STRUCTURE_RANGES) {
