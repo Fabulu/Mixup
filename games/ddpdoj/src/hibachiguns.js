@@ -184,7 +184,8 @@ import { u16, i16 } from './ram.js';
 import { registerScript, a4Start25980C, a1Start259A18, a1Running259A4A,
   a1Stop259B08, a2Stop25994A, a2Run2598E6, seqStart2598D0 } from './scheduler.js';
 import { aim256, AimTables, targetSelect } from './aim.js';
-import { drawByte242B3C, drawByte242E24, drawWord242EC2 } from './rng.js';
+import { drawByte242B3C, drawByte242E24, drawNegative242EC2,
+  drawWord242EC2 } from './rng.js';
 import { fire, WriteLog } from './bullets.js';
 import { bossA5, bossA6 } from './boss.js';
 // W408: `$24249A`, the octagonal distance body, already transcribed for the MAIN scripts.
@@ -354,20 +355,23 @@ function shot(ram, rom, ctx, site, regs) {
  * ($8,A4)` and `$2A8200 add.w D0,($C,A4)` therefore add the ramp to the BIAS
  * halves, not to the kinds.
  *
- * `$2A81DA jsr $242EC2 / $2A81E0 bpl.w` looks like a random INITIAL DIRECTION
- * for the sweep -- `$2A81E4 neg.b ($11,A4)` would start it running down instead
- * of up.  It is DEAD.  `$242EC2` ends `move.b (A0,D0.w),D0 / rts` with no
- * `ext.w` at all (`src/rng.js` states it, and `$28A260` is the other routine it
- * strands), so D0 is 0..255 with the byte in the low half and bit 15 is always
- * clear: `bpl` is always taken.  Transcribed with both arms rather than folded
- * away, because a build that put the `ext.w` back would make it live.
+ * `$2A81DA jsr $242EC2 / $2A81E0 bpl.w` is a random INITIAL DIRECTION for the
+ * sweep: `$2A81E4 neg.b ($11,A4)` starts it running down instead of up.
+ *
+ * **W416 -- THIS ARM IS NOT DEAD, AND THIS COMMENT USED TO SAY IT WAS.**  It
+ * argued that `$242EC2` has no `ext.w`, so bit 15 of the returned word is
+ * always clear and `bpl` is always taken.  Bit 15 is not what `bpl` reads.
+ * `$242ED6 move.b (A0,D0.w),D0` is the last instruction in `$242EC2` to touch
+ * the CCR (`$242EDA movea.l` and `$242EDC rts` touch none), so N is **bit 7 of
+ * the table byte** and the negate runs on 128 of the 256 table entries.
+ * Docket D48; `src/rng.js drawNegative242EC2` is the flag.
  */
 export function gun5Init2A81BC(ram, rom, a4, a6) {
   copyTemplate(ram, rom, a4, HIBACHI_A1.gun5Template, 8);   // $2A81BC..$2A81CA
   // $2A81CC jsr $242E24 / addi.b #$60,D0 / move.b D0,($10,A4) -- the sweep's
   // random START, biased into $60..$15F truncated to a byte.
   ram.setU8(a4 + 0x10, u8(drawByte242E24(ram, rom) + 0x60));   // $2A81D2/$2A81D6
-  if (i16(drawWord242EC2(ram, rom)) < 0) {             // $2A81DA jsr / $2A81E0 bpl.w
+  if (drawNegative242EC2(ram, rom)) {                  // $2A81DA jsr / $2A81E0 bpl.w
     ram.setU8(a4 + 0x11, u8(-ram.u8(a4 + 0x11)));      // $2A81E4 neg.b ($11,A4)
   }
   const d0b = ram.u8(a6 + 0x1da);                      // $2A81E8 move.b ($1DA,A6),D0
@@ -717,9 +721,10 @@ export function gun7Step2A8538(ram, rom, ctx, a4, a5, a6) {
 // TEST can decline, and a fourteen-shot converging ring that always fires.
 // ===========================================================================
 /** `$2A8800` -- EIGHT template words (`moveq #$7`), the sweep's random start
- *  and one ramp.  The `$242EC2` sign test is the same DEAD arm gun 5 has: that
- *  routine ends with no `ext.w`, so bit 15 is always clear and `$2A8828 neg.b`
- *  never runs.  Transcribed with both arms, not folded.
+ *  and one ramp.  The `$242EC2` sign test is the same arm gun 5 has, and W416
+ *  corrects what stood here: the branch reads **bit 7 of the drawn table byte**,
+ *  not bit 15 of the returned word, so `$2A8828 neg.b ($11,A4)` runs on half
+ *  the draws.  Docket D48.
  *
  *  Gun 5 biases its draw by `+$60` into $60..$15F; gun 8 biases it by `-$20`,
  *  so the sweep starts anywhere in -$20..$DF and the bounce band it lands in is
@@ -727,8 +732,8 @@ export function gun7Step2A8538(ram, rom, ctx, a4, a5, a6) {
 export function gun8Init2A8800(ram, rom, a4, a6) {
   copyTemplate(ram, rom, a4, HIBACHI_A1.gun8Template, 8);   // $2A8800..$2A880E
   ram.setU8(a4 + 0x10, u8(drawByte242E24(ram, rom) - 0x20));   // $2A8810/$2A8816/$2A881A
-  if (i16(drawWord242EC2(ram, rom)) < 0) {             // $2A881E jsr / $2A8824 bpl.w
-    ram.setU8(a4 + 0x11, u8(-ram.u8(a4 + 0x11)));      // $2A8828 neg.b ($11,A4) -- DEAD
+  if (drawNegative242EC2(ram, rom)) {                  // $2A881E jsr / $2A8824 bpl.w
+    ram.setU8(a4 + 0x11, u8(-ram.u8(a4 + 0x11)));      // $2A8828 neg.b ($11,A4)
   }
   const d0 = ram.u8(a6 + 0x1ee);                       // $2A882C move.b ($1EE,A6),D0
   ram.setU8(a4 + 0x04, u8(ram.u8(a4 + 0x04) + d0));    // $2A8830 add.b D0,($4,A4)
@@ -852,10 +857,10 @@ export function gun8Step2A883A(ram, rom, ctx, a4, a5, a6) {
  * fields** (TRAP 3): `$2A89CA move.b #$20,($E,A4)` overwrites the high half with
  * the sweep's starting offset `$20` and leaves `$01` in `($F,A4)` as its step.
  *
- * `$2A89D0 jsr $242EC2 / $2A89D6 bpl.w` is the SAME DEAD ARM guns 5 and 8 have:
- * `$242EC2` ends `move.b (A0,D0.w),D0 / rts` with no `ext.w`, so bit 15 is
- * always clear, `bpl` is always taken and `$2A89DA neg.b ($F,A4)` never runs.
- * Both arms are transcribed rather than folded away.
+ * `$2A89D0 jsr $242EC2 / $2A89D6 bpl.w` is the SAME arm guns 5 and 8 have, and
+ * W416 corrects what stood here: `bpl` reads N, and N is **bit 7 of the byte
+ * `$242ED6 move.b` loaded**, so `$2A89DA neg.b ($F,A4)` runs on half the draws
+ * and gun 9's sweep starts DOWN as often as it starts up.  Docket D48.
  *
  * **AND THERE IS NO `$242E24` DRAW.**  Gun 5 seeds `($10,A4)` from one and gun 8
  * seeds `($10,A4)` from one; gun 9's sweep start is the CONSTANT `$20`, so this
@@ -865,8 +870,8 @@ export function gun8Step2A883A(ram, rom, ctx, a4, a5, a6) {
 export function gun9Init2A89BA(ram, rom, a4, a6) {
   copyTemplate(ram, rom, a4, HIBACHI_A1.gun9Template, 7);   // $2A89BA..$2A89C8
   ram.setU8(a4 + 0x0e, 0x20);                          // $2A89CA move.b #$20,($E,A4)
-  if (i16(drawWord242EC2(ram, rom)) < 0) {             // $2A89D0 jsr / $2A89D6 bpl.w
-    ram.setU8(a4 + 0x0f, u8(-ram.u8(a4 + 0x0f)));      // $2A89DA neg.b ($F,A4) -- DEAD
+  if (drawNegative242EC2(ram, rom)) {                  // $2A89D0 jsr / $2A89D6 bpl.w
+    ram.setU8(a4 + 0x0f, u8(-ram.u8(a4 + 0x0f)));      // $2A89DA neg.b ($F,A4)
   }
   ram.setU16(a4 + 0x08, u16(ram.u16(a4 + 0x08)
     + ram.u16(a6 + 0x1f8)));                           // $2A89DE/$2A89E2 add.w D0,($8,A4)
@@ -1030,9 +1035,11 @@ function distMinBoth242438(ram, a6) {
  *   ($C,A4)=$0003 / ($E,A4)=$0016   the D4 longword $00030016
  *   ($10,A4)=$02 spin       ($11,A4)=$00 heading        [$0200]  -- TRAP 3
  *
- * **THE `$242EC2` DRAW IS LIVE HERE, WHERE IT IS DEAD IN GUNS 5, 8 AND 9.**
- * Those three do `jsr $242EC2 / bpl.w` and test a sign bit the routine can never
- * set; gun `$A` does `$2A8BA8 jsr $242EC2 / $2A8BAE move.b D0,($11,A4)` and
+ * **THE `$242EC2` DRAW IS STORED HERE AND TESTED IN GUNS 5, 8 AND 9.**  W416
+ * corrects what stood here: it said the other three test "a sign bit the routine
+ * can never set".  They test N after `$242ED6 move.b`, which is bit 7 of the table
+ * byte and is set on half the draws; gun `$A` instead does `$2A8BA8 jsr $242EC2 /
+ * $2A8BAE move.b D0,($11,A4)` and
  * STORES the byte.  So the ring's starting heading is a real random 0..255 and
  * every run of gun `$A` points somewhere else.
  *

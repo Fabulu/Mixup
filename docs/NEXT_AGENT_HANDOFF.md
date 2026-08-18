@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W415)
+Updated: 2026-08-18 (W416)
 
 ## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
 
@@ -20,7 +20,86 @@ text:
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
 
-## START HERE -- W415 (docket D50)
+## START HERE -- W416 (docket D48)
+
+### FIFTEEN WRONG SITES, NOT ELEVEN AND NOT TWELVE
+
+Scan, and it re-runs as `tests/w416rngsignbit.test.js` SECTION 1: sweep the 6 MB image for
+`4E B9 0024 2EC2`, then read the opcode byte immediately after. **99** `jsr`, **0** `jmp`, **0**
+`bsr` (checked `$23A000..$24C000`, the only range a word `bsr` could reach from). **21** are
+followed by `bpl`/`bmi`; the other 78 have no `6A`/`6B` within eight bytes.
+
+Of the 21: three are in unported routines, three were already right, **fifteen were wrong**. The
+docket said eleven, W412 said twelve. **The four in `src/boss3.js` (`$29CE16 $29D1A8 $29D448
+$29D5A4`) are in neither count**, and `$29E162` in the same file was already correct and is the only
+`bmi` of the 21.
+
+**`[M]` exactly 128 of the 256 bytes in `$242EDE..$242FDD` have bit 7 set, and all 256 indices are
+reachable.** W412's "60 of the 128 reachable" is wrong on both numbers.
+
+### EVERY SITE WAS SWEPT OVER ALL 256 STATES, ITS WHOLE DOMAIN
+
+Before the fix, every one of the fifteen took the `bpl` arm on all 256 states. After, the split is
+128/128 at the byte sites. Examples: `$27D44A neg.w ($2A,A5)` went `$0080` x256 to `$0080` x128 /
+`$FF80` x128; `$29D5A4 subi.b #$C,($18,A4)` ran **0 of 256** and now runs **128 of 256**; the two
+`hibachiend` cue forks went from `10/0` on all 256 states to `10/0` on **zero** states, modal `5/5`.
+
+**13 of the 15 were driven end to end** through the scheduler's own A4 walk off the ROM tables
+(`$29CBD0`, `$29D252`, `$2A5886`), not hand-called. **Two were not** -- `$27B6FA` and `$27C77A` need
+stage-4 art state, and are pinned at byte level only. The agent said so rather than claiming
+otherwise. Copy that.
+
+### THREE TESTS WERE DEFENDING THE WRONG READING, AND PASSED UNDER BOTH
+
+`w404:397`, `w405:768`, `w406:479` each stated the reason wrongly ("bit 15 is ALWAYS clear, the
+negate NEVER runs") while asserting something accidentally true. **All three still passed after the
+fix**, because a fresh `Ram()` leaves `$803916` at 0, the draw indexes `$242EDE[1] = $10`, and
+`$10`'s bit 7 is clear. **A test that passes under both readings is not evidence for either.** Each
+now asserts `$242EDE[1] & 0x80 === 0` as an explicit fact about the bench and points at the sweep.
+
+A fourth defect in `w406`'s helper: `peek242EC2` read `$242E42`'s table, not `$242EDE`. Its only
+consumer was `assert.ok(want >= 0)`, true of every byte, so it could not fail.
+
+### THE TRAP LIST NEARLY COST THIS WAVE A REGRESSION
+
+The agent first read `44 6D 00 1C` as `neg.b` and "fixed" `initbody.js` to byte negates. **NEG/CLR/
+NOT/TST size bits are `00=byte, 01=word`** -- the list's own `4254 = clr.w` proves it -- so `44 6D`
+is `neg.w` and the port was already right. `44 2C` (the three guns) is the byte form. Reverted;
+both sizes are now asserted from the encoding. Coordinator confirmed the decode.
+
+**"Check WHICH bits" applies to SIZE fields, not just `andi` masks.**
+
+### IT IS MEASURABLY NOT AN RNG SHIFT
+
+Both readings draw exactly once at every one of the fifteen; no arm contains a `jsr`/`bsr` into the
+shared-counter family (asserted over all fifteen arm byte ranges); `soundPost` touches no RNG. The
+stream is byte-identical and **no gate baseline moved**. A live 5,400-frame bench reaches none of the
+fifteen -- only `spark.js`, already fixed in W412 -- which is why.
+
+### WHAT CHANGED IN `rng.js`
+
+New `drawNegative242EC2(ram, rom)` returns **the N flag itself** (bit 7 of the drawn byte), and the
+doc comment that asserted bit 15 and called the arms unreachable is rewritten. Callers no longer do
+bit arithmetic on a word whose sign is meaningless. `$29E162` keeps the word because it needs value
+and flag both. `spark.js` moved onto the shared helper.
+
+### THREE SITES DELIBERATELY NOT CHANGED
+
+`$2A7860` (gun 1), `$2A8EEE` (gun 12), `$2A9804` (alt table) are real forks in **unported** routines.
+**Warning for whoever ports them: their taken arm makes two further `$2431F4` draws, so porting gun 1
+WILL move the RNG stream.**
+
+### VERIFIED
+
+Suite **3774 pass / 0 fail / 0 skipped** (3760 before; +14). Gate **exit 0**, 31 PASS / 0 FAIL, **no
+baseline moved**. `--verify` **OK at 600 windows**, unchanged.
+
+### NEXT
+
+The frame-6495 kind-8 throw, kind 3's missing body, the pool-C guard that is narrower than the ROM
+(`handlers.js:2014`), then A4 `$14`, and on toward D36.
+
+## W415 NOTES
 
 ### THE LATE CRATER IS NOT A PORT DEFECT. IT IS A SHARD FETCH ORDER.
 

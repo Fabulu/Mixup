@@ -38,7 +38,7 @@ import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
 import { install24150A } from './palette.js';
 import { AimTables, aim64, aim64AtTarget, aim64FromCaller, aim256, targetSelect } from './aim.js';
-import { drawByte242B3C, drawByte242E24, drawWord242EC2,
+import { drawByte242B3C, drawByte242E24, drawNegative242EC2, drawWord242EC2,
   drawWord24328E, drawByte24311A, drawByte2431F4,
   drawLong243A9C } from './rng.js';
 import { loadAnimObjects246410 } from './animobjects.js';
@@ -650,7 +650,10 @@ BODY.set(0x264d5a, (ram, rom, a5, a6, unported) => {
     ram.setU16(a6 + S.posX, u16(ram.u16(a6 + S.posX) + 0x0900));
     ram.setU16(a6 + S.posY, u16(ram.u16(a6 + S.posY) - 0x0100));
   }
-  ram.setU8(a5 + R.rec38, i16(drawWord242EC2(ram, rom)) < 0 ? 2 : 0xfe);
+  // $264DF0 move.b #$FE,($38,A5) is UNCONDITIONAL; $264DF6 jsr $242EC2 / $264DFC bpl.s
+  // $264E04 then overwrites it with $02 when N is SET.  W416/D48: N is bit 7 of the
+  // table byte ($242ED6 move.b is the last CCR write), not bit 15 of the returned word.
+  ram.setU8(a5 + R.rec38, drawNegative242EC2(ram, rom) ? 2 : 0xfe);
 });
 
 // --- type $83 ($274B74): Stage-3's linked-hitbox aimed-ring enemy. W202.
@@ -1707,7 +1710,9 @@ BODY.set(0x27ad96, (ram, rom, a5, a6, unported, _tables, palette) => {
   ram.setU16(a6 + S.posY, ram.u16(a6 + S.posY) - 0x1d40);
   installBank(ram, rom, palette, unported, 0x17, 0x224b38, 0x27adce,
     'Stage-4 type $9C root palette');
-  if (i16(drawWord242EC2(ram, rom)) < 0)
+  // $27ADD4 jsr $242EC2 / $27ADDA 6A06 bpl.s $27ADE2 / $27ADDC 08EE 0006 0001
+  // bset #$6,($1,A6).  W416/D48: the branch reads bit 7 of the drawn byte.
+  if (drawNegative242EC2(ram, rom))
     ram.setU8(a6 + 1, ram.u8(a6 + 1) | 0x40);
 
   let count = 5, row = 0x27ae4e, family11 = false;
@@ -1761,9 +1766,14 @@ BODY.set(0x27c28e, (ram, rom, a5, a6) => {
   const signed = (random << 24) >> 24;
   ram.setU16(a5 + R.rec1C,
     u16(ram.u16(a5 + R.rec1C) + signed * 8));         // $27C2AE..$27C2BC
-  if (i16(drawWord242EC2(ram, rom)) < 0) {            // $27C2BC..$27C2CE
-    ram.setU8(a6 + S.f1c, 0x40);
-    ram.setU16(a5 + R.rec1C, u16(-ram.u16(a5 + R.rec1C)));
+  // $27C2BC jsr $242EC2 / $27C2C2 6A0A bpl.s $27C2CE (the rts).  W416/D48: bit 7.
+  if (drawNegative242EC2(ram, rom)) {                 // $27C2BC..$27C2CE
+    ram.setU8(a6 + S.f1c, 0x40);                      // $27C2C4 1D7C 0040 001C move.b
+    // $27C2CA `44 6D 00 1C` is NEG.**W** ($1C,A5): NEG is `0100 0100 SS eeeeee` and
+    // SS=01 is WORD, the same encoding that makes the brief's `4254` a `clr.w`.  W416
+    // checked this because the arm has never run, and the port's word negate is RIGHT.
+    // Contrast `$2A81E4 44 2C` (SS=00), which is the byte form.
+    ram.setU16(a5 + R.rec1C, u16(-ram.u16(a5 + R.rec1C)));     // $27C2CA neg.w
   }
 });
 
@@ -2306,7 +2316,10 @@ BODY.set(0x27d404, (ram, rom, a5, a6, unported) => {
   const linkedY = i16(drawWord24328E(ram, rom)) >> 1;
   ram.setU16(a5 + R.rec2C, linkedY);                    // $27D436..$27D43E
   ram.setU16(a6 + 0x24, u16(linkedY + 0x1c00));         // $27D442..$27D446
-  if (i16(drawWord242EC2(ram, rom)) < 0)
+  // $27D44A jsr $242EC2 / $27D450 6A04 bpl.s $27D456.  W416/D48: the branch reads
+  // bit 7 of the drawn byte.  `$27D452 44 6D 00 2A` is NEG.**W** ($2A,A5) -- SS=01 --
+  // so the word negate below is right; checked because the arm has never run.
+  if (drawNegative242EC2(ram, rom))
     ram.setU16(a5 + R.rec2A, u16(-ram.u16(a5 + R.rec2A))); // $27D44A..$27D452
   const spread = (drawByte242B3C(ram, rom) + 7) * 2;
   ram.setU8(a5 + R.rec1C, ram.u8(a5 + R.rec1C) - spread); // $27D456..$27D460

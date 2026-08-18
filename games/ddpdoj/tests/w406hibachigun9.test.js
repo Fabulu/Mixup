@@ -440,8 +440,12 @@ const rec = (ram, entry) => {
   };
 };
 const baseSpeed = (kind) => w(l(0x281956 + 4 * kind) + 0x0e);
-/** `$242EC2` without calling the port's copy: bump the counter, read the image's table. */
-const peek242EC2 = (ram) => IMG[0x242e42 + ((ram.u8(RNG.counter) + 1) & 0xff)];
+/** `$242EC2` without calling the port's copy: bump the counter, read the image's table.
+ *  **W416 FIXES THE TABLE ADDRESS.**  This read `$242E42`, which is `$242E24`'s table;
+ *  `$242EC2`'s is `$242EDE` (`$242ED0 lea ($242EDE,PC),A0`).  The only assertion that used the
+ *  result was `assert.ok(want >= 0)`, true of every byte in the image, so the error could not
+ *  fail.  It is now the byte the site really draws, and it is asserted against. */
+const peek242EC2 = (ram) => IMG[0x242ede + ((ram.u8(RNG.counter) + 1) & 0xff)];
 
 const AIM = () => new AimTables(new RomWindows(tables.rom));
 const aimAt = (py, px) => aim256(AIM(), 0x3800, 0x1c00, py, px);
@@ -473,11 +477,18 @@ test('W406 SECTION 4: the init is SEVEN template words, ONE draw and a hard-code
 
     // ONE draw, not two: gun 9 has no `$242E24` seed at all, where guns 5 and 8 both do.
     assert.equal(b.ram.u8(RNG.counter), u8(before + 1), 'exactly ONE RNG draw');
-    assert.ok(want >= 0, '  ...and it is $242EC2, whose byte is 0..255');
+    // **W416/D48 REPLACES THE CLAIM THESE LINES CARRIED.**  They said $2A89D6's bpl.w is
+    // "ALWAYS taken: $242EC2 ends with no ext.w, so bit 15 is clear whatever the table holds".
+    // `bpl` does not read bit 15 of a returned word -- it reads N, and $242ED6 `1030` move.b
+    // is the last instruction in $242EC2 to set it.  The branch is on BIT 7 of `want`, and the
+    // negate runs on 128 of the counter's 256 states.
+    assert.equal(want, IMG[0x242ede + 1], 'the drawn byte is $242EDE[1]: the bench starts '
+      + '$803916 at 0 and $242EC2 bumps it before reading');
+    assert.equal(want & 0x80, 0, '  ...and its bit 7 is CLEAR, so THIS bench takes the bpl arm '
+      + 'and ($F,A4) keeps the $01 asserted above -- see w416rngsignbit for the other 128');
     assert.equal(w(0x2a89d0), 0x4eb9, '$2A89D0 `4EB9` jsr');
     assert.equal(l(0x2a89d2), 0x00242ec2, '  ...$242EC2');
-    assert.equal(w(0x2a89d6), 0x6a00, '  ...$2A89D6 `6A00` bpl.w, and it is ALWAYS taken: '
-      + '$242EC2 ends with no ext.w, so bit 15 is clear whatever the table holds');
+    assert.equal(w(0x2a89d6), 0x6a00, '  ...$2A89D6 `6A00` bpl.w, on bit 7 of the table byte');
     assert.equal(0x2a89d8 + disp16(0x2a89d8), 0x2a89de, '  ...over $2A89DA neg.b ($F,A4)');
   });
 

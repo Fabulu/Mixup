@@ -13,7 +13,8 @@ import { armScreenClear243E02 } from './midboss.js';
 import { spawnEffect, clearEffectPool, B } from './effects.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { enqueueThroughStub, enqueueRegistersThroughStub } from './spritequeue.js';
-import { drawByte2431F4, drawWord242EC2, drawWord24328E } from './rng.js';
+import { drawByte2431F4, drawNegative242EC2, drawWord242EC2,
+  drawWord24328E } from './rng.js';
 import { install24150A } from './palette.js';
 import { loadAnimObjects246410, loadAnimObjects24652A,
   freeAnimObjects246800 } from './animobjects.js';
@@ -85,7 +86,9 @@ export function finalBurst27CBB6(ram, ctx, root) {
 }
 
 function randomDeathEffect(ram, rom, a5, root, ctx) {
-  ctx.soundPost?.(i16(drawWord242EC2(ram, rom)) < 0 ? 0x28c28e : 0x28c274);
+  // $27C774 lea $28C274,A0 / $27C77A jsr $242EC2 / $27C780 6A06 bpl.s $27C788 /
+  // $27C782 lea $28C28E,A0 / $27C788 jsr (A0).  W416/D48: the branch is on bit 7.
+  ctx.soundPost?.(drawNegative242EC2(ram, rom) ? 0x28c28e : 0x28c274);
   const kind = rom.u16(0x27c808 + (drawWord242EC2(ram, rom) & 7) * 2);
   const e = spawnEffect(ram, ctx, kind, 0x27c7a0);
   ram.setU32(e + B.pos, ram.u32(root + S.posX));

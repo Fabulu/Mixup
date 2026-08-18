@@ -394,13 +394,23 @@ test('W404 SECTION 5: gun 5\'s init is EIGHT template words and four ramp adds',
       '($8,A4) is the long $0000000B -- {speed bias 0, bullet KIND 11}');
     assert.equal(b.ram.u32(A4SLOT + 0x0c), 0x00040004,
       '($C,A4) is the long $00040004 -- {speed bias 4, bullet KIND 4}');
-    // `$2A81DA jsr $242EC2 / bpl.w` -- $242EC2 returns 0..255 in a word, so bit 15 is ALWAYS
-    // clear, the branch is always taken and the negate NEVER runs. Transcribed, not folded.
+    // **W416 REPLACES WHAT STOOD HERE, AND WHAT STOOD HERE WAS PINNING A DEFECT (D48).**
+    // It read: "$242EC2 returns 0..255 in a word, so bit 15 is ALWAYS clear, the branch is
+    // always taken and the negate NEVER runs", and asserted that `($11,A4)` stays $06.  The
+    // ASSERTION passed for a reason unrelated to its own justification: a fresh `Ram()` leaves
+    // $803916 at 0, the draw indexes $242EDE[1] = $10, and $10's bit 7 is clear.  It passes
+    // under BOTH readings, which is exactly how it came to defend the wrong one.  The bytes:
+    assert.equal(w(0x242ed6), 0x1030, '$242ED6 `1030` move.b (A0,D0.w),D0 -- a BYTE move, and '
+      + 'the LAST instruction in $242EC2 that writes the CCR');
+    assert.equal(w(0x242eda), 0x205f, '  ...$242EDA `205F` movea.l (A7)+,A0 -- MOVEA sets no flag');
+    assert.equal(w(0x242edc), 0x4e75, '  ...$242EDC `4E75` rts -- and RTS sets none either');
+    assert.equal(w(0x2a81e0), 0x6a00, '$2A81E0 `6A00` bpl.w, so it branches on N -- bit 7 of the '
+      + 'TABLE BYTE, not bit 15 of the returned word');
+    assert.equal(IMG[0x242ede + 1], 0x10, '$242EDE[1] is $10, bit 7 CLEAR: a fact about THIS '
+      + 'bench, not about the routine');
     assert.equal(b.ram.u8(A4SLOT + 0x11), 0x06,
-      '($11,A4) stays $06: $242EC2\'s result is never negative, so $2A81E4 neg.b is dead');
-    assert.equal(w(0x2a81e0), 0x6a00, '  ...and $2A81E0 really is `6A00` bpl.w, the arm that skips it');
-    assert.equal(w(0x242eda), 0x205f, '  ...and $242EDA `205F` movea.l (A7)+,A0 -- $242EC2 ends');
-    assert.equal(w(0x242edc), 0x4e75, '  ...at $242EDC 4E75 with NO ext.w, so bit 15 stays clear');
+      '  ...so ($11,A4) stays $06 here.  w416rngsignbit.test.js sweeps all 256 counter states '
+      + 'and gets $06 x128 and $FA x128');
 
     // THE RAMP. Re-run with the three A6 fields at their ceilings and every add lands.
     const c = gunBench();

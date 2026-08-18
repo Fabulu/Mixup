@@ -16,7 +16,8 @@ import { armScreenClear } from './midboss.js';
 import { scoreHit, scoreKill } from './score.js';
 import { spawnEffect, B } from './effects.js';
 import { spawnItem } from './items.js';
-import { drawByte2431F4, drawWord242EC2, drawWord24328E } from './rng.js';
+import { drawByte2431F4, drawNegative242EC2, drawWord242EC2,
+  drawWord24328E } from './rng.js';
 import { spawnCues28AC72 } from './cues.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 
@@ -195,7 +196,10 @@ function cleanup9D(ram, rom, a5, root, ctx) {
     ram.setU8(a5 + R.deathFx, old - 1);
     if (old === 0) {
       ram.setU8(a5 + R.deathFx, ram.u8(a5 + R.deathFxReload));
-      ctx.soundPost?.(i16(drawWord242EC2(ram, rom)) >= 0 ? 0x28c274 : 0x28c28e);
+      // $27B6F4 lea $28C274,A0 / $27B6FA jsr $242EC2 / $27B700 6A06 bpl.s $27B708 /
+      // $27B702 lea $28C28E,A0 / $27B708 jsr (A0).  W416/D48: N is bit 7 of the table
+      // byte, so the $28C28E arm runs on half the draws instead of never.
+      ctx.soundPost?.(drawNegative242EC2(ram, rom) ? 0x28c28e : 0x28c274);
       const kind = rom.u16(0x27b778 + (drawWord242EC2(ram, rom) & 7) * 2);
       const e = spawnEffect(ram, ctx, kind, 0x27b720);
       ram.setU32(e + B.pos, ram.u32(root + S.posX));

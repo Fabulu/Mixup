@@ -764,8 +764,16 @@ test('W405 SECTION 5: gun 8\'s init is EIGHT words, a $20-biased draw, and a DEA
     assert.equal(b.ram.u8(A4SLOT + 0x10), u8(draw - 0x20),
       '($10,A4) is $242E24\'s byte MINUS $20 -- gun 5 adds $60 to the same draw');
     assert.equal(w(0x2a8816), 0x0400, '  ...$2A8816 `0400` subi.b, not addi');
+    // **W416/D48 REPLACES THE REASON THIS PAIR USED TO GIVE.**  It said "$242EC2 has no ext.w,
+    // so $2A8824 bpl.w is always taken".  `bpl` reads N, and $242ED6 `1030` move.b is the last
+    // instruction in $242EC2 to write N, so N is bit 7 of the TABLE BYTE.  This bench starts
+    // $803916 at 0 and draws $242EDE[1] = $10, whose bit 7 is clear, so the value below is
+    // right for THIS bench and is not a property of the routine.
+    assert.equal(w(0x242ed6), 0x1030, '$242ED6 `1030` move.b -- the last CCR write in $242EC2');
+    assert.equal(IMG[0x242ede + 1] & 0x80, 0, '  ...and $242EDE[1] has bit 7 CLEAR on this bench');
     assert.equal(b.ram.u8(A4SLOT + 0x11), 0x03,
-      '($11,A4) stays $03: $242EC2 has no ext.w, so $2A8824 bpl.w is always taken');
+      '($11,A4) stays $03 when the drawn byte is positive; w416rngsignbit sweeps all 256 '
+      + 'counter states and gets $03 x128 and $FD x128');
     // ...and the two words the template holds that NOTHING in $2A8800..$2A898B reads.
     assert.equal(b.ram.u16(A4SLOT + 0x08), 0x0000, '($8,A4) is copied...');
     assert.equal(b.ram.u16(A4SLOT + 0x0a), 0x000c, '  ...and ($A,A4), and neither is ever read: '

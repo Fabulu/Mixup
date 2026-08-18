@@ -102,7 +102,7 @@ import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { install24150A } from './palette.js';
 import { spawnEffect, clearEffectPool, B } from './effects.js';
 import {
-  drawWord242EC2, drawByte2431F4, drawWord24328E, drawByte242B3C,
+  drawNegative242EC2, drawWord242EC2, drawByte2431F4, drawWord24328E, drawByte242B3C,
 } from './rng.js';
 import { finalBlast2440E0 } from './boss2.js';
 import { finalBurst27CBB6 } from './stage4type9f.js';
@@ -223,7 +223,8 @@ function frameBurst2A5D3A(ram, rom, ctx, a4, a6) {
   if (c !== 0) return;                                   // $2A5D3E bcc -> the rts
   ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));               // $2A5D40 move.b ($5,A4),($4,A4)
   // $2A5D46/$2A5D4C/$2A5D52/$2A5D54/$2A5D5A -- A0 is $28C274 unless the draw is NEGATIVE.
-  ctx.soundPost?.(i16(drawWord242EC2(ram, rom)) < 0 ? 0x28c28e : 0x28c274);
+  // W416/D48: NEGATIVE means bit 7 of the byte $242ED6 loaded, not bit 15 of the word.
+  ctx.soundPost?.(drawNegative242EC2(ram, rom) ? 0x28c28e : 0x28c274);
   const kind = rom.u16(HIBACHI_A4.kindTable
     + (drawWord242EC2(ram, rom) & 7) * 2);               // $2A5D5C..$2A5D6E
   const a0 = spawnEffect(ram, ctx, kind, 0x2a5d72);      // $2A5D72 jsr $289004
@@ -247,7 +248,8 @@ function frameBurst2A61F2(ram, rom, ctx, a4, a6) {
   ram.setU8(a4 + 0x04, u16(c - 1) & 0xff);               // $2A61F2 subq.b #1,($4,A4)
   if (c !== 0) return;                                   // $2A61F6 bcc -> the rts
   ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));               // $2A61F8
-  ctx.soundPost?.(i16(drawWord242EC2(ram, rom)) < 0 ? 0x28c28e : 0x28c274);
+  // $2A61FE/$2A6204/$2A620A/$2A620C/$2A6212 -- script 1's fork, one instruction for one.
+  ctx.soundPost?.(drawNegative242EC2(ram, rom) ? 0x28c28e : 0x28c274);
   const kind = rom.u16(HIBACHI_A4.kindTable
     + (drawWord242EC2(ram, rom) & 7) * 2);               // $2A6214..$2A6224
   const a0 = spawnEffect(ram, ctx, kind, 0x2a6228);      // $2A6228 jsr $289004
@@ -673,7 +675,7 @@ export function s5Step2A6458(ram, rom, ctx, a4) {
     // `movea.l (A7)+,A0 / rts`, neither of which touches the CCR, so N at $2A661E is the MSB
     // of the TABLE BYTE.  Testing the returned word's sign instead tests a bit of `$803916`'s
     // high half that is always clear, and picks $28C274 every time.
-    ctx.soundPost?.((drawWord242EC2(ram, rom) & 0x80) !== 0 ? 0x28c28e : 0x28c274);
+    ctx.soundPost?.(drawNegative242EC2(ram, rom) ? 0x28c28e : 0x28c274);
   }
   {
     const row = s5Row(rom, HIBACHI_A4.s5Emit, ram.u16(a4 + 0x08));   // $2A6628 lea / $2A662E

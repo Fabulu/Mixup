@@ -231,25 +231,57 @@ export const RNG_28AB86 = { table: 0x28aba0, entries: 64 };
 export const RNG_24311A = { table: 0x243174, entries: 128 };
 
 /**
- * `$242EC2` -- bump the shared counter, return `$242EDE[state]` SIGN-EXTENDED.
+ * `$242EC2` -- bump the shared counter, return `$242EDE[state]` in D0's low byte.
  *
- *   242ec2: addq.b #1,$803917
- *   242ec8: move.w $803916,D0             <-- NO MASK, exactly like $242FDE
- *   242ed0: lea ($242EDE,PC),A0 / move.b (A0,D0.w),D0 / rts
+ *   242ec2: 52 39 00 80 39 17   addq.b #1,$803917
+ *   242ec8: 30 39 00 80 39 16   move.w $803916,D0     <-- NO MASK, like $242FDE
+ *   242ece: 2f 08               move.l A0,-(A7)
+ *   242ed0: 41 fa 00 0c         lea ($242EDE,PC),A0
+ *   242ed4: 4e 71               nop
+ *   242ed6: 10 30 00 00         move.b (A0,D0.w),D0
+ *   242eda: 20 5f               movea.l (A7)+,A0
+ *   242edc: 4e 75               rts
  *
  * **AND THERE IS NO `ext.w`.**  `$242FDE` ends `move.b (A0,D0.w),D0 / ext.w D0`;
  * this one ends `move.b (A0,D0.w),D0 / rts`.  So D0's upper bits are whatever
- * `move.w $803916,D0` left there -- and `$803916`'s high byte is 0, so D0 is
- * 0..255 with the byte in the low half.  `$28A25E bpl.b` then tests bit 15 of
- * D0, which is ALWAYS clear, so `$28A260 moveq #$28,D3` is UNREACHABLE while
- * `$803916` stays a byte.  Transcribed with both arms rather than folded away.
- * @returns {number} D0, 0..65535 (in practice 0..255).
+ * `move.w $803916,D0` left there -- and `$803916`'s high byte is 0, so the word
+ * this returns is 0..255 and **ITS BIT 15 IS ALWAYS CLEAR AND MEANS NOTHING**.
+ *
+ * **W416 -- WHAT THE HARDWARE ACTUALLY SETS.  DOCKET D48.**  `$242EDA movea.l`
+ * does not affect the CCR and neither does `$242EDC rts`, so the last
+ * instruction in this routine to touch N is `$242ED6 move.b`, and N is **BIT 7
+ * OF THE TABLE BYTE**.  Every `bpl`/`bmi` that follows a `jsr $242EC2` branches
+ * on that bit, NOT on the returned word's sign.  This comment used to assert
+ * bit 15 and call the `bmi` arms unreachable; fifteen call sites believed it.
+ * Read the flag through `drawNegative242EC2` below rather than testing the word.
+ * `[M]` 128 of the 256 bytes in `$242EDE..$242FDD` have bit 7 set -- exactly
+ * half -- and all 256 indices are reachable, because `$23BE36 clr.w $803916`
+ * zeroes the high byte and `addq.b` walks the low one through 0..255.
+ * @returns {number} D0, 0..65535 (in practice 0..255).  NOT a signed value.
  */
 export function drawWord242EC2(ram, rom) {
   ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $242EC2
   const i = u16(ram.u16(RNG.state));                          // $242EC8, whole word
   const idx = i >= 0x8000 ? i - 0x10000 : i;                  // (A0,D0.w) is signed
   return (i & 0xff00) | rom.u8(RNG_242EC2.table + idx);       // $242ED6 move.b
+}
+
+/**
+ * `$242EC2`'s **N FLAG** -- the one thing a `bpl`/`bmi` after the `jsr` reads.
+ *
+ * `true` means N is SET, i.e. `bmi` is taken and `bpl` is not.  It is bit 7 of
+ * the byte `$242ED6 move.b (A0,D0.w),D0` loaded, for the reason spelled out on
+ * `drawWord242EC2` above.  Callers that need the VALUE as well as the flag (the
+ * `$29E162` site, which negates the byte on the `bpl` arm) still read the word
+ * and mask it themselves; every caller that needs only the branch uses this, so
+ * that no site has to re-derive which bit the CCR carries.
+ *
+ * It advances the shared counter exactly once, like every other member of the
+ * family -- it IS the draw, not a peek at one.
+ * @returns {boolean} N after `$242ED6`.
+ */
+export function drawNegative242EC2(ram, rom) {
+  return (drawWord242EC2(ram, rom) & 0x80) !== 0;
 }
 
 /**

@@ -166,7 +166,7 @@ import { unreached } from './unported.js';
 import { BUCKETS, ENQUEUE_MASK, NO_ZOOM_OR } from './spritequeue.js';
 import {
   drawByte242E24, drawSigned242FFC, drawByte28ABE0,
-  drawWord242EC2, drawByte28AB86, drawByte24311A,
+  drawNegative242EC2, drawByte28AB86, drawByte24311A,
 } from './rng.js';
 
 export const SPARK = {
@@ -345,8 +345,10 @@ function fillSlot(ram, rom, ctx, slot, tpl, spawner, d0, d7 = 0) {
  *     high byte is `$803916`'s, so bit 15 is always clear and `moveq #$28,D3`
  *     is unreachable.  N is not bit 15: `move.b` is the LAST instruction to set
  *     it, so `bpl` branches on **bit 7 of the table byte** and the `$28A260`
- *     arm runs on about half the draws.  Docket D48; this site is fixed because
- *     it is inside W411's unit, and the other eleven are not.
+ *     arm runs on about half the draws -- `[M]` on exactly 128 of the table's
+ *     256 bytes.  Docket D48; this site was fixed first because it is inside
+ *     W411's unit.  **W416 closed the other fifteen** and moved this site onto
+ *     the shared `drawNegative242EC2`, so no caller re-derives the bit.
  *  2. **`$241812` IS CALLED TWICE WITH THE SAME ANGLE AND TWO DIFFERENT
  *     SPEEDS**, and only the FIRST call's result reaches the velocity.  The
  *     second call's D3 nudges rec+$06 and its D2 is discarded.  A port that
@@ -364,7 +366,7 @@ function fillSlot(ram, rom, ctx, slot, tpl, spawner, d0, d7 = 0) {
  */
 function fillTail28A252(ram, rom, ctx, slot, d7) {
   let d3 = 0x18;                                   // $28A256 moveq #$18,D3
-  const draw = drawWord242EC2(ram, rom);           // $28A258 jsr $242EC2
+  const negative = drawNegative242EC2(ram, rom);   // $28A258 jsr $242EC2
   // DOCKET D48, AND THIS SITE IS INSIDE W411's OWN UNIT SO IT IS FIXED HERE.
   // `$28A25E 6a 02` is `bpl`, and the last instruction in `$242EC2` to touch N
   // is `$242ED6 move.b (A0,D0.w),D0` -- `$242EDA movea.l` and `$242EDC rts`
@@ -372,9 +374,9 @@ function fillTail28A252(ram, rom, ctx, slot, d7) {
   // of the word `$242EC8` loaded. This file used to read bit 15 and say in the
   // note below that `moveq #$28,D3` was therefore unreachable; it is reachable,
   // on roughly half the draws, and it moves the impact spark's angle base from
-  // $18 to $28. `src/rng.js` returns the whole word so both bits are available;
-  // the other ELEVEN bit-15 sites named in docket D48 are NOT touched here.
-  if ((draw & 0x80) !== 0) d3 = 0x28;              // $28A25E bpl / $28A260
+  // $18 to $28. W416 moved this read onto `src/rng.js drawNegative242EC2`, which
+  // returns the N flag itself, and closed the other FIFTEEN sites.
+  if (negative) d3 = 0x28;                         // $28A25E bpl / $28A260
   let d1 = drawByte28AB86(ram, rom);               // $28A262 bsr $28AB86
   d1 = ((d1 + d3) & 0xff) & 0x3f;                  // $28A266 add.b / $28A268 andi.b
   let d0 = (drawByte242E24(ram, rom) + 4) & 0xff;  // $28A26C jsr / $28A272 addq.b

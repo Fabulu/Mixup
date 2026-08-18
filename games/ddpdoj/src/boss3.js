@@ -15,8 +15,8 @@ import {
   AimTables, aim64, aim256, aim256FromCaller, slew64, targetSelect,
 } from './aim.js';
 import {
-  drawByte242B3C, drawByte242E24, drawSigned242FDE, drawWord242EC2,
-  drawLong243A9C, drawWord24328E,
+  drawByte242B3C, drawByte242E24, drawNegative242EC2, drawSigned242FDE,
+  drawWord242EC2, drawLong243A9C, drawWord24328E,
 } from './rng.js';
 import { fire as fireBullet, WriteLog } from './bullets.js';
 import { spawnEffect } from './effects.js';
@@ -404,6 +404,10 @@ function e5Step29E14C(ram, rom, ctx, a4) {
   const first = (ram.u8(a4 + 0x1f) & 1) === 0;
   ram.setU8(a4 + 0x1f, ram.u8(a4 + 0x1f) | 1);
   if (first) {
+    // $29E162 jsr $242EC2 / $29E168 `6B 02` bmi.s $29E16C / $29E16A `44 00` neg.b D0.
+    // This site was ALREADY right: it reads bit 7, which is what N is (W416/D48).  It
+    // needs the VALUE as well as the flag, so it keeps the word rather than using
+    // `drawNegative242EC2`.  Note the branch is `bmi`, so the negate is on N CLEAR.
     let direction = drawWord242EC2(ram, rom) & 0xff;
     if ((direction & 0x80) === 0) direction = (-direction) & 0xff;
     ram.setU8(a4 + 0x1e, direction);
@@ -842,8 +846,10 @@ function f9Step29D180(ram, rom, ctx, a4) {
 
   if (!due8(ram, a4 + 0x04)) return;
   ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));
-  const soundDraw = drawWord242EC2(ram, rom);
-  ctx.soundPost?.((soundDraw & 0x8000) !== 0 ? 0x28c28e : 0x28c274);
+  // $29D1A2 lea $28C274,A0 / $29D1A8 jsr $242EC2 / $29D1AE 6A06 bpl.s $29D1B6 /
+  // $29D1B0 lea $28C28E,A0 / $29D1B6 jsr (A0).  W416/D48: `bpl` reads N, and N is
+  // bit 7 of the byte $242ED6 loaded -- the port tested bit 15, which is always 0.
+  ctx.soundPost?.(drawNegative242EC2(ram, rom) ? 0x28c28e : 0x28c274);
   const kind = rom.u16(0x29d238 + (drawWord242EC2(ram, rom) & 7) * 2);
   const e = spawnEffect(ram, ctx, kind, 0x29d1c8);
   const a6 = ctx.bossSubRec;
@@ -1010,8 +1016,11 @@ function e1Init29D400(ram, rom, ctx, a4) {
   const row = rom.u32(0x29d340 + spread2595F2() * 4);
   for (let i = 0; i < 10; i++) ram.setU16(a4 + 0x02 + i * 2, rom.u16(row + i * 2));
   ram.setU8(a4 + 0x07, ram.u16(0x813098) === 0 ? 8 : 4);
-  ram.setU8(a4 + 0x16, drawWord242EC2(ram, rom));
-  ram.setU8(a4 + 0x17, (drawWord242EC2(ram, rom) & 0x8000) !== 0 ? -3 : 3);
+  ram.setU8(a4 + 0x16, drawWord242EC2(ram, rom));       // $29D43A/$29D440
+  // $29D444 move.w #$3,D1 / $29D448 jsr $242EC2 / $29D44E 6A04 bpl.s $29D454 /
+  // $29D450 move.w #-3,D1 / $29D454 move.b D1,($17,A4).  W416/D48: bit 7, so the
+  // E1 fan's step is -3 on half the inits instead of +3 on all of them.
+  ram.setU8(a4 + 0x17, drawNegative242EC2(ram, rom) ? -3 : 3);
   ram.setU16(a4 + 0x18, 0x0606);
 }
 
@@ -1065,7 +1074,9 @@ function e2Init29D556(ram, rom, ctx, a4) {
   ram.setU8(a4 + 0x17, 5);
   ram.setU8(a4 + 0x18, -first + 6);
   ram.setU8(a4 + 0x19, -5);
-  if ((drawWord242EC2(ram, rom) & 0x8000) !== 0)
+  // $29D5A4 jsr $242EC2 / $29D5AA 6A00 0008 bpl.w $29D5B4 / $29D5AE `04 2C 00 0C
+  // 00 18` subi.**b** #$C,($18,A4).  W416/D48: bit 7, not bit 15.
+  if (drawNegative242EC2(ram, rom))
     ram.setU8(a4 + 0x18, ram.u8(a4 + 0x18) - 0x0c);
   if (ram.u16(0x813098) !== 0) ram.setU8(a4 + 0x03, 3);
   void ctx;
@@ -1092,8 +1103,9 @@ function f1SpawnRow29CE86(ram, rom, ctx, a6, cursor, withSubs, site) {
 }
 
 function f1RandomSound29CE10(ram, rom, ctx) {
-  ctx.soundPost?.((drawWord242EC2(ram, rom) & 0x8000) !== 0
-    ? 0x28c28e : 0x28c274);
+  // $29CE10 lea $28C274,A0 / $29CE16 jsr $242EC2 / $29CE1C 6A06 bpl.s / $29CE1E lea
+  // $28C28E,A0.  W416/D48: bit 7 of the drawn byte -- the second cue was never posted.
+  ctx.soundPost?.(drawNegative242EC2(ram, rom) ? 0x28c28e : 0x28c274);
 }
 
 function f1Step29CC64(ram, rom, ctx, a4) {
