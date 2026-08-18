@@ -69,7 +69,50 @@ MEASURED BY ME, not adopted:
 The agent reported 3886. I measured 3896. **The gap is exactly the 10 tests in W423's own new
 file**, so the counts reconcile -- unlike W419, where a 15-test gap did not.
 
-## START HERE: D60 IS A HARD STOP AND THE RECON IS ALREADY DONE
+## D60 IS CLOSED. W424 PORTED IT. START AT D58 STEP 2.
+
+The owner's `$286AAA IS NOT PORTED YET` is fixed: `$286A82`, `$286AAA`, the tail `$286AEA..$286B9A`
+and the rank feeder `$2867B4` are ported and the `unreached` throw is gone.
+
+**THE ARM IS THE ON-SCREEN ITEM COUNTER, which no note here had said.** `$81B60C/$0E/$10/$12` are
+`hud.js`'s `itemTimer/itemDir/itemCount/itemKind`, drawn by `$2857B4` as an 8-nibble BCD walk.
+
+**THE BENCH TRAP, and it is the one to carry forward.** In the owner's scenario `$286AAA` goes
+STRAIGHT TO THE TAIL -- `$811F72` is negative once the bomb selected the bomb-laser, so
+`$286AB2 bmi` is taken and the start block never runs. **A fresh `Ram()` takes the OTHER arm and
+exercises none of the tail, the rank feeder or the score add.** Green, while testing none of the
+code that ran. W424 pinned that hole as its own test.
+
+Also: `$286A92`'s fork is live BOTH ways and the arms differ in the DIVIDER words while agreeing on
+the score, so **a score-only test would have passed under either reading**.
+
+**RE-CHECK D56 AND D59 AGAINST THIS FIRST -- it is cheap and undone.** The recon named `$286AAA` as
+their possible common cause and it is now ported.
+
+### CHECK LINE ENDINGS BY BYTES. `grep -c $'\r'` LIES.
+
+It reported 1425 carriage returns in a file containing **zero**. I converted a test file to CRLF on
+that basis, and then put the same wrong claim in W424's brief. **The repo is LF throughout**, bar
+`tools/webgate.mjs`, `tools/build-dist.mjs`, and five test files: `bullets`, `mover`, `w227death`,
+`w36handlers`, `w62stageend`. 299 of 304 test files are LF. Use:
+
+    python -c "d=open(P,'rb').read(); print(d.count(b'\r\n'), d.count(b'\n')-d.count(b'\r\n'))"
+
+### NEXT UNIT: D58 STEP 2 -- BRIEF ALREADY WRITTEN
+
+Convert the five `$28C170` sites from counted notes into real posts. `postBgmCommand` and
+`BGM_COMMANDS` already exist in `sound.js` with ten tests. **Only `$28C170` may go through
+`ctx.soundPost`** -- it sets both D0 and D1 itself; `$28C186` takes D1 from the caller and must keep
+the explicit form. **There is NO GATE on this path.** Twelve test files assert these notes and each
+assertion must be REWRITTEN to say the opposite, not deleted (the W420 mistake).
+
+### D55 IS DONE: FULLSCREEN NOW USES THE SCREEN
+
+The button existed since W268; it just did not use the screen. `fill` is opt-in, passed only while
+fullscreen, and **still floors below 2x** so the tetris-pieces defect keeps its range. Area
+recovered: +10.8% to +73.1% across twelve device-and-orientation pairs.
+
+
 
 The owner hit **`$286AAA IS NOT PORTED YET`** in the live build. The port refused rather than
 inventing frames, which is right, but the run ends. **It outranks everything else in the docket.**
