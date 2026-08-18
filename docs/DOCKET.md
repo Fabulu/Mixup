@@ -2643,3 +2643,60 @@ and sends the wave to the audio layer. One sentence saves the measurement.
 **Not urgent relative to D53**, but it is the kind of defect that makes everything feel wrong even
 when the port is exactly right.
 
+
+### D55: FULL SCREEN IN ALL CONFIGURATIONS, ASPECT PRESERVED, USING THE WHOLE DEVICE
+
+> "We also definitely need a full screen mode in all configurations. Always preserve aspect ratio,
+> but we need to use full possible screen of any device we're on."
+
+Owner, 2026-08-18.
+
+**FULLSCREEN ALREADY EXISTS AND IS NOT NAIVE.** `dist/games/ddpdoj/index.html` has a `FULL` button
+and a `LOCK` button, and the code already handles the hard parts: iOS Safari has no
+`requestFullscreen` on iPhone at all, the button state is driven from `fullscreenchange` rather than
+from the click (because the user can leave by system gesture), and `devicePixelRatio` changes when a
+window moves between displays. **Do not rewrite that. The gap is elsewhere.**
+
+**THE GAP IS THE SCALER, AND IT IS DELIBERATE.** `web/app.js pickScale`:
+
+    const scale = Math.max(1, Math.floor(Math.min(availW / pic.w, availH / pic.h)));
+
+`Math.floor` means **only integer multiples are ever used**. Its comment says why: a fractional
+scale "shows a resampled sub-pixel picture". That is a real choice -- integer scaling keeps every
+emulated pixel an exact square block -- and it is **why the screen is not filled**. Measured against
+a 240x320 picture:
+
+| device | integer scale | height used | fractional would be |
+|---|---|---|---|
+| 1080p | x3 | **89%** | x3.38 |
+| 1440p | x4 | **89%** | x4.50 |
+| phone landscape 2340x1080 | x3 | **89%** | x3.38 |
+| iPad 2360x1640 | x5 | 98% | x5.12 |
+
+**So the owner's ask and the current code are in direct conflict, and that must be resolved
+deliberately rather than by quietly deleting the `floor`.** Roughly 11% of the screen height is
+being left unused on the most common displays.
+
+**OPTIONS, with the trade named honestly:**
+1. **Integer backing store, fractional CSS box.** Render at the next integer multiple UP, then let
+   CSS scale it down to exactly fill. Fills the screen, keeps a clean source, and the resample is a
+   minification rather than a blur-inducing magnification. **Probably the right answer.**
+2. **Pure fractional scale.** Simplest, fills exactly, and gives uneven pixel sizes -- some rows one
+   device pixel wider than their neighbours. On a shmup with a 1-pixel bullet this is visible.
+3. **Keep integer, but guarantee the largest integer that fits the FULLSCREEN viewport**, and accept
+   the letterbox. Honest but does not satisfy the request.
+
+**"ALL CONFIGURATIONS" IS THE OTHER HALF OF THE ASK AND IT NEEDS ENUMERATING BEFORE IT IS BUILT:**
+desktop windowed, desktop fullscreen, phone portrait, phone landscape, tablet, and the two-player
+side-by-side mode if one exists. **Each has a different limiting dimension.** State which ones were
+actually exercised and which were reasoned about -- this project has been bitten repeatedly by
+conclusions drawn from a bench that could not produce the behaviour.
+
+**ASPECT RATIO IS NON-NEGOTIABLE** -- the owner said "always preserve". Any fix must be measured on
+a non-square viewport in BOTH orientations, and the assertion must be that the ratio is exact, not
+merely close.
+
+**A TEST ALREADY EXISTS:** `tests/web-page.test.js` section 5 covers `pickScale`, because it is "the
+arithmetic that decides which shard gets promoted". Whatever changes here must keep that intact and
+add cases for the fill behaviour. **Make the new test fail on HEAD first.**
+
