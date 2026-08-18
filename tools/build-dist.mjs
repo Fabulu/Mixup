@@ -30,6 +30,7 @@ import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { ROOT } from './oracle/_env.mjs';
 import { makePlaceholderPool } from './make-placeholder-tiles.mjs';
+import { versionShellTree } from './shellversion.mjs';
 
 const DIST = path.join(ROOT, 'dist');
 
@@ -541,6 +542,32 @@ fs.writeFileSync(path.join(DIST, 'games', g, 'src', 'buildid.js'), [
     }
     fs.writeFileSync(swp, stamped);
   }
+}
+
+// DOCKET D53 -- BUILD-SCOPED SHELL URLS, and this runs LAST because it moves the
+// tree `buildid.js` was just written into.
+//
+// The cache NAME already carried the build id; the module URLs did not, and that
+// is the whole bug. On the first load after any deploy the OLD worker is still the
+// controller -- the page is what registers the new one, at the bottom of its inline
+// module -- so the browser gets the NEW index.html network-first and then the OLD
+// worker answers every `./src/...` request cache-first out of the previous build's
+// cache. Measured on the real tree: 1 file new, 118 old. It also LATCHES, because a
+// module that throws means the registration line below the imports never runs, so
+// only a hard reload clears it. That is exactly what was reported.
+//
+// Moving the tree to `src-<buildId>/` means the old cache has never heard of the
+// URL, so it cannot answer -- including the already-deployed worker, which is what
+// a `?v=` query would NOT achieve (the shipped worker matches with
+// `ignoreSearch: true`, so the query is stripped and the stale entry still hits).
+//
+// GATED ON `sw.js`: only a game with a cache-first worker has the hole. Batman and
+// Gradius have none and keep their URLs.
+for (const g of GAMES) {
+  if (!fs.existsSync(path.join(DIST, 'games', g, 'sw.js'))) continue;
+  const v = versionShellTree(DIST, g, buildId);
+  console.log(`shell urls versioned: games/${g}/${v.src}/ (${v.files} modules), `
+    + `/${v.shared}/ -- ${v.htmlRefs} page entr(ies) and ${v.sharedRefs} shared import(s) repointed`);
 }
 
 let files = 0, bytes = 0;

@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W420)
+Updated: 2026-08-18 (W421)
 
 ## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
 
@@ -19,6 +19,68 @@ text:
 
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
+
+## START HERE -- W421 (docket D53, the staleness weapon)
+
+### IT WAS NOT A RACE. IT WAS EVERY DEPLOY, AND IT LATCHED.
+
+The coordinator's docket called this a race that would "pass most of the time". **Wrong.** It was
+the guaranteed outcome of every deploy for anyone who had visited before, and the split was
+measured: **1 file from the new build, 118 from the old.**
+
+    1. the OLD worker is still the controller -- the PAGE is what registers the new one
+    2. the navigation is network-first, so the browser gets the NEW index.html
+    3. that HTML asks for the SAME module URLs as yesterday
+    4. the old worker answers them cache-first out of the previous build's cache
+
+**AND IT LATCHES, which is why only Ctrl-Shift-R cleared it.**
+`navigator.serviceWorker.register()` sits at the bottom of the page's inline module, **below its
+imports**. A stale module throws, the module body never runs, the new worker is never registered,
+and the old one keeps answering for every ordinary reload -- indefinitely. A hard reload bypasses
+the worker, the page runs, registration finally happens, and the site "fixes itself".
+
+### THE FIX CHANGES THE URL, NOT THE POLICY
+
+The module tree ships under `src-<buildId>/`, so a previous cache has **never heard of the request**
+and physically cannot answer. Relative imports inside the tree need no rewriting -- they resolve
+against whatever directory their importer came from. Two consecutive builds confirmed different
+paths, and the old bare `src/` directory is gone.
+
+**`?v=BUILD` WOULD HAVE SILENTLY FAILED, and the docket suggested it.** The shipped worker matches
+with **`ignoreSearch: true`**, so it strips the query and the stale entry hits anyway. The fix had
+to change the PATH. That is pinned in the test so nobody retries it.
+
+### BATMAN AND GRADIUS DO NOT HAVE THE HOLE
+
+Only a game with a cache-first worker does. They have none, and the fix is gated on `sw.js`
+existing, so their URLs are untouched. The test asserts that too -- silently changing them would be
+scope the owner did not ask for.
+
+### THE AGENT DIED BEFORE THE TEST, AND THE TEST IS THE POINT
+
+It terminated on a connection loss with the message "The proof holds. Now the committed regression
+test." The coordinator wrote it, and then did the thing that makes it worth having: **ran it against
+the UNFIXED build, where 5 of its 6 checks fail.** A check that cannot fail is not a check -- this
+project has now been bitten five separate ways by tests that passed for the wrong reason.
+
+### AND IT HAD REWRITTEN 555 LINES OF LINE ENDINGS
+
+`tools/build-dist.mjs` is CRLF on HEAD; the agent rewrote the whole file to LF, turning a **27-line**
+change into a 1,137-line diff that would have buried the real edit in history and in blame.
+Restored to CRLF; the diff is 27 insertions. **Match the file you are editing.** `webgate.mjs` has
+the same trap and W417 hit it too.
+
+### VERIFIED
+
+Suite, gate and window verify run by the coordinator on the committed tree; figures in the commit.
+`dist/` is generated -- the change is in the GENERATOR (`tools/build-dist.mjs` plus new
+`tools/shellversion.mjs`), never in the output.
+
+### NEXT
+
+**D54**, sound lagging about a second: the one question that splits the causes is whether the delay
+GROWS during heavy play or stays fixed. **Ask the owner before spending a wave.** Then the front-end
+slot wiring, and D36.
 
 ## START HERE -- W420 (coordinator-ported)
 
