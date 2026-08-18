@@ -2752,3 +2752,75 @@ reads. The port maps one as `rec + P.flags1` and the other as `opt + OPT.flags1`
 exactly this class of mistake -- the same instruction text read against the wrong base.** If they
 are different blocks, this hypothesis is wrong and the real cause is elsewhere; say so.
 
+
+### D57: A SOUND LOOPS FOREVER AFTER TABBING AWAY AND BACK -- THERE IS NO AUDIO BACKSTOP
+
+> "Went to the inbetween level score screen. Looks good! Clicked some other tabs, game went silent
+> as it should. Came back, started level 2, and now a sound probably from before kept looping and
+> it never goes away. very annoying bug."
+
+Owner, 2026-08-18. **This is the worst of the audio cluster** because it does not recover: the other
+sound defects are late or missing, this one is permanent until reload.
+
+**THE ASYMMETRY IS THE FINDING, AND IT IS ALREADY IN THE TREE.** `src/web/input.js` has a
+**blur / pagehide / visibilitychange BACKSTOP** -- three of them, in fact: one that "clears the whole
+mask" (`input.js:24`), one for the coin word specifically because it is separate state
+(`input.js:216`), and a third at `:418`. `app.js:1650` cites "its own blur / pagehide /
+visibilitychange backstop for the same reason".
+
+**There is NO equivalent anywhere on the audio side.** A grep of `src/sound.js` and `src/web/` for
+those three events returns nothing, and there is no audio module in `src/web/` at all.
+
+So the pattern the input layer already applies -- *a browser event can strip you of the "release"
+half of a press, so clear the state explicitly* -- **has never been applied to sound**, where the
+same hazard exists: a cue that is playing or looping when the tab hides has no counterpart to stop
+it, and the state that would have stopped it belongs to a frame that never ran.
+
+**WHAT TO ESTABLISH FIRST, in order:**
+1. **Is the stuck sound a LOOPING cue or a retriggered one?** The packed longword carries
+   `[type][pan][id][chan]`, and `sound.js` distinguishes `WRAPPERS` from `STREAMING_LEAVES`. A
+   streaming/looping leaf that never receives its stop behaves exactly as described. **Read the type
+   of whatever is stuck rather than guessing.**
+2. **What happens to the ring while hidden?** If frames stop but posts do not, this compounds D54:
+   the owner tabs away, the ring fills, and on return it plays a backlog AND holds a stuck loop.
+   Measure the depth across a hide/show.
+3. **Does the audio context suspend and resume cleanly?** "Game went silent as it should" says the
+   suspend works. The defect is on the way BACK.
+
+**THE FIX IS PROBABLY THE INPUT LAYER'S OWN PATTERN**, and it should look like it deliberately:
+a backstop on the same three events that silences live channels and drops anything mid-flight, so
+returning starts from a known-quiet state rather than resuming a frame that no longer exists.
+
+**Prove it by reproducing it first.** Hide, wait, show, and demonstrate the stuck cue -- then show
+the same sequence silent after the fix. **The owner reproduced this in ordinary play; a wave that
+cannot reproduce it has not understood it.**
+
+### D58: THE BOSS EXPLOSION HAS NO SOUND, ON LEVEL ONE AND PROBABLY ALL LEVELS
+
+> "boss explosion doesn't have a sound on level one. None of the other levels likely do either"
+
+Owner, 2026-08-18.
+
+**The owner's "probably all levels" is a hypothesis worth testing FIRST**, because it decides the
+shape of the whole item. If every boss is silent, the cause is one shared death path and the fix is
+one place. If only level one is silent, it is that boss's own script and the others need checking
+individually. **Establish which before porting anything.**
+
+**Where to look, and what NOT to assume:** the boss death chain is `hibachi2.js` / `hibachiend.js`
+for the final boss and `boss.js` for the ordinary ones, and the cue mechanism is
+`ctx.soundPost?.(addr)` into `sound.js`. **Do not conclude "no cue is posted" from a grep** -- W412
+had an emitter firing 297 times per 900 frames while the owner saw nothing, because the defect was
+two files away in a register. And **an unmapped address THROWS rather than going silent**
+(`main.js:547`), so a silent explosion is NOT an unmapped wrapper.
+
+**Candidate shapes, in the order they cost:**
+1. The cue is posted but into the backlog described in **D54**, arriving so late it is not perceived
+   as the explosion. **Check D54 first -- it may be the same bug.**
+2. The cue is posted on a frame the death path no longer reaches, the way `bossExitShared` had no
+   phase-B caller for three waves after W403 dropped a jump.
+3. The cue was never ported and its `jsr` is a counted note.
+
+**Related and possibly the same root:** D52 is still open on whether the bee's collect sound fires,
+and the owner has confirmed medals DO sound. So the audio chain works in general, which makes shape
+3 less likely than it looks.
+
