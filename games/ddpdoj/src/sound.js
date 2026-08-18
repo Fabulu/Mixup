@@ -379,6 +379,56 @@ export function postWrapper(ram, sound, wrapperAddr) {
   return postEntry(ram, sound, w.entry, w.id, w.pan, w.ch);
 }
 
+/**
+ * `$28BBAC` -- THE SECOND PACKER, AND THE SECOND POSTING PATH. DOCKET D58.
+ *
+ * THE OWNER: "boss explosion doesn't have a sound on level one. None of the
+ * other levels likely do either." **The second sentence is right and the reason
+ * is structural: these are not per-level cues.** Five sites shared one gap.
+ *
+ * This is deliberately NOT a `WRAPPERS` row, and the header above says why at
+ * length: every row there sets three immediates and reaches `$28BB04`, while
+ * this tier sets two registers and reaches a different packer. Giving it a row
+ * would invent an id, a pan and a channel the cartridge never loads.
+ *
+ *     28BBAC  E148       lsl.w #8,D0
+ *     28BBAE  8041       or.w  D1,D0
+ *     28BBB0  4840       swap  D0        <- the packed word moves to the HIGH half
+ *     28BBB2  303C 0000  move.w #$0,D0   <- and the LOW word is zeroed
+ *     28BBB6  6000 FEE8  bra $28BAA0     <- straight to the ring enqueue
+ *
+ * So the longword is `((D0<<8 | D1) & $FFFF) << 16` with a zero low word.
+ *
+ * **THERE IS NO GATE ON THIS PATH.** `$28BBAC` branches straight to `$28BAA0`;
+ * it never reaches `$28C02A`/`$28C0AE`, so `gatePasses` must NOT be consulted.
+ * Running these through the SFX or BGM gate would suppress a boss clear
+ * whenever the gate happens to be down, which the cartridge does not do.
+ *
+ * A full ring still drops, exactly as every other path drops: the 68k sets the
+ * interrupt mask and returns.
+ */
+export const BGM_COMMANDS = {
+  0x28C170: 0x15,   // boss clear / ending / game over -- D1 always 0 at the call sites
+  0x28C186: 0x16,   // its sibling; D1 comes from the CALLER, so it must be passed
+};
+
+/** Post one `$28BBAC`-tier command. `d1` is the caller's D1 ($28C186 only). */
+export function postBgmCommand(ram, sound, wrapperAddr, d1 = 0) {
+  const d0 = BGM_COMMANDS[wrapperAddr];
+  if (d0 === undefined) {
+    throw new Error(`sound.postBgmCommand: no $28BBAC-tier command at `
+      + `$${wrapperAddr.toString(16).toUpperCase()} -- this path is only for `
+      + `$28C170 and $28C186; everything else belongs in WRAPPERS`);
+  }
+  // lsl.w #8 then or.w: both WORD operations, so the result is masked to 16 bits
+  // BEFORE the swap. A longword shift here would carry bits the 68k discards.
+  const packed = (((d0 << 8) & 0xFFFF) | (d1 & 0xFF)) & 0xFFFF;
+  const word = (packed << 16) >>> 0;              // swap + move.w #0,D0
+  if (enqueue(ram, word)) { sound.postCount++; sound.framePosts++; return true; }
+  sound.dropCount++; sound.frameDrops++;
+  return false;
+}
+
 /** The streaming-BGM rejoiners $28C11C (type $12) and $28C146 (type $11). The
  *  poller $28BE76 calls these with D0=id, D1=pan after gating on gateDual. They
  *  run the tail and pack through the $28BB9E variant (same longword shape). */
