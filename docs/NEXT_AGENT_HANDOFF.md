@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W423)
+Updated: 2026-08-18 (W422 + W423)
 
 ## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
 
@@ -19,6 +19,42 @@ text:
 
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
+
+## W422 LANDED -- POOL-A KIND 5, VERIFIED BY THE COORDINATOR
+
+`$27FF9A..$280081`, `$E8`, all code, **ZERO trailing bytes** -- a FOURTH gap shape, after W418's
+tables, W419's next-unit data and W420's padding. The last instruction ends exactly at `$280081`,
+so here entry-to-entry is exact rather than an upper bound.
+
+**THE TRAP WAS THE CULL.** Kind 5 is kind 0's body (byte-identical over `$60` bar five bytes), but
+kind 0 frees on `bmi` while kind 5 uses `cmpi.w #$FE00` + **`$6D`, which is BLT and SIGNED**. The
+record survives a long axis in `[-$200, 0)` where kind 0 frees it. **No fresh-`Ram` fixture would
+have caught the difference**, because a fresh slot never sits in that band -- the W416 shape again.
+
+**THE BRIEF WAS WRONG ABOUT THE ART AND THE WAVE SAID SO.** It gave stride `$34`; that is the LIVE
+ring's stride and the popup's is **`$54`**. Shipping the brief's eight addresses would have shipped
+four frames that are not in the animation and missed four that are.
+
+**KIND 5 IS NOT REACHABLE IN THIS ROM REVISION** -- all 27 references to the six entry addresses
+are `jsr` operands and not one passes `D0 = $14`/`$44`. The wave claims no state trace and produces
+none, which is the right answer. It is ported because it was the last live latent throw in
+`runBody`.
+
+**A PRE-EXISTING FALSE REASON IS CORRECTED.** `bee.js` and `export-tables.py` both said only three
+selectors exist in the image. There are FOUR. The bound of three was right; the stated reason was
+false, for eleven waves. **W418's fifth lie-shape again -- a true assertion resting on a wrong
+explanation.** Look for this shape; it has now appeared twice.
+
+MEASURED BY ME, not adopted:
+
+    node --test games/ddpdoj/tests/       3896 pass / 0 fail / 0 skipped
+    node games/ddpdoj/tools/webgate.mjs   exit 0, 31 PASS / 0 FAIL
+    export-tables.py --verify             OK at 606 windows, none added
+    manifest.json                         streamCount 4351; shard 11 870 streams and
+                                          1,171,460 mask words (+656); shard 9 HELD
+
+The agent reported 3886. I measured 3896. **The gap is exactly the 10 tests in W423's own new
+file**, so the counts reconcile -- unlike W419, where a 15-test gap did not.
 
 ## START HERE: D60 IS A HARD STOP AND THE RECON IS ALREADY DONE
 
