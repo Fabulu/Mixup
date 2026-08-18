@@ -1046,8 +1046,23 @@ try {
         // held. THREE spans. W84's sentence still applies unchanged: more
         // connections, more kills -- the spark's own consequence.
         // W411 (docket D49): 6091 -> 6079, the same shared-RNG shift.
-        9: { streams: 269, records: 6079, distinct: 204, first: 24,
-          what: 'THE ENEMY DEATH EXPLOSION (pool B, $289004 -> $288E4E)' },
+        // W415 (docket D50, THE LATE CRATER): 269 -> 277 streams, 6079 ->
+        // 16746 records, 204 -> 212 distinct, `first` HELD at 24.  THIS IS NOT
+        // AN RNG SHIFT AND NOT A NEW PICTURE: the port emits the identical list
+        // before and after, and every port-side field below is unchanged.  What
+        // moved is which SHARD eight streams are filed under -- pool C's kind-4
+        // death satellite, the GROUND MARK a dying ground enemy leaves
+        // ($289EAA/$289EBA/$289ECA, three `HARVEST` rows in export-web.mjs) --
+        // from shard 17, LAST of nineteen in `SPR_ORDER`, to shard 9, whose own
+        // `why` already names its deadline as "the first frame an enemy DIES".
+        // THE SPLIT IS EXACT AND WAS MEASURED ON THIS VERY WINDOW:
+        // 16,746 = 6,079 + 10,667 and 212 = 204 + 8, where 6,079 and 204 are
+        // W411's numbers UNCHANGED and the 10,667 records fall on exactly the 8
+        // moved streams.  Pool C's own first record here is frame 27; `first`
+        // stays 24 because pool B still gets there first.
+        9: { streams: 277, records: 16746, distinct: 212, first: 24,
+          what: 'THE ENEMY DEATH EXPLOSION (pool B, $289004 -> $288E4E) AND '
+            + 'THE GROUND MARK (pool C, $289B50 -> $289B80) -- W415' },
         // WAVE 61 -- THE ITEM.  `streams` is 139, THE WHOLE OF ALL TEN TABLES,
         // including the sixteen frames and the collected animation belonging to
         // the two HYPER kinds this wave REFUSES to allocate -- W53 §1.3's rule

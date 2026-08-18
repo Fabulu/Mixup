@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W414)
+Updated: 2026-08-18 (W415)
 
 ## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
 
@@ -20,7 +20,90 @@ text:
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
 
-## START HERE -- W414 (docket D51)
+## START HERE -- W415 (docket D50)
+
+### THE LATE CRATER IS NOT A PORT DEFECT. IT IS A SHARD FETCH ORDER.
+
+The crater is **pool C's kind-4 satellite** (`$289AF4` -> `$289B50`, driver `$289B80`), a record that
+scrolls with the ground. Its 8 art streams were filed under **sprite shard 17, fetched 19th of 19**
+(2.39 MB gz), while the **fireball the SAME death arm spawns is on shard 9, fetched 5th** (0.22 MB).
+A shard that has not landed is never drawn; `demand()` promotes 17 the first frame a crater asks,
+which is exactly why the owner saw it **late rather than never**.
+
+| shards landed | crater records undrawable |
+|---|---|
+| first five, before | **5,594 of 5,594** |
+| eighteen of nineteen, before | **5,594 of 5,594** |
+| first five, AFTER | **0 of 5,594** |
+
+Fix: three `HARVEST` rows moved to `EFFECT_SHARD`, whose own `why` already names its deadline as
+"the first frame an enemy DIES". Exact one-for-one move, `streamCount` **unchanged at 4,291**.
+
+### ON A FULL BENCH THE LAG IS ONE FRAME, AND THAT FRAME IS AUTHENTIC
+
+Death -> allocated is the SAME frame for all three producers. Allocated -> first drawn is 0 for the
+fireball and the debris and **1 for the crater**, because `$28B5E6 jsr $289B80` (pool C's driver)
+runs BEFORE `$28B5EC jsr $2634F4` (the enemy driver, inside which the death arm allocates), while
+pool B's driver is the fifth call. **That is the cartridge's call order.** Do not "fix" it.
+
+### "SOME OF THE ENEMIES" HAS TWO HALVES AND BOTH ARE THE CARTRIDGE
+
+1. Only types **`$11`** and **`$10`** reach a `jsr $289AF4`. The other four handlers that free a
+   record in that window leave no mark at all.
+2. `$268898 addq.w #1,$815EA4` / `$26889E btst #0,$815EA5` / `$2688A6 beq` -- **the first death of a
+   frame leaves a mark, the second does not, the third does.** Coordinator verified those bytes.
+
+### THE PORT WAS RULED OUT FIRST, AGAINST THE BOARD
+
+Seeding from the board's own `.ram.bin` at ten consecutive rungs lf2000..lf3000 and comparing pools
+B, C and D at the next rung: live counts matched the board **10 of 10 for all three pools**. The
+port's effect timing is oracle-clean. **Do that before blaming the port.**
+
+### MY BRIEF POINTED AT THE WRONG MECHANISM ENTIRELY
+
+I named `walkDeathSpawns270D92`, its six call sites, `T1B.deathSpawns` and nine `deathSeqNN`
+functions. **The crater is none of them** -- it is pool C, which my brief never mentions, and every
+`walkDeathSpawns270D92` caller is a stage-3 or stage-5 type that does not run in the first seconds
+of stage 1. Following my grep would have burned the wave.
+
+I also inverted the pool-driver shape (pool C's driver runs EARLIER than the code that allocates
+into it, which is what costs the frame), and framed the shard question as "is the art on a late
+shard" pointing at shard 11. **The decidable question is RELATIVE**: is this art's shard fetched
+later than the shard of the sibling effect the same death arm spawns? That is what
+`w415groundmark.test.js` now asserts, and it is the one assertion in that file which fails on HEAD.
+
+### THE BASELINE MOVE WAS DECOMPOSED ON ITS OWN WINDOW
+
+Shard 9: `records 6,079 -> 16,746 = 6,079 + 10,667`, `distinct 204 -> 212 = 204 + 8`, `streams 269
+-> 277`, **`first` HELD at 24** (pool C's own first is frame 27). The 10,667 fall on exactly the 8
+moved streams. Shard 17 lost precisely what shard 9 gained. The `SIZES` sum-equals-`streamCount`
+assertion in W395/W396/W397 is what proves it was a move and not an addition.
+
+### ONE LATENT THROW FOUND AND DELIBERATELY LEFT ALONE
+
+`handlers.js:2014` calls `spawnPoolC289B50(..., 8, ...)` for type `$8E`'s death, but the port's guard
+is `(kind & 0x3C) !== 4 -> unreached`, while the cartridge's template table `$289DEA` has real
+entries for kinds 0, 8, `$C` and `$10`. **The guard is narrower than the ROM.** Coupled to it: the 24
+streams those other pool-C families name are absent from the bundle entirely, so relaxing the guard
+alone would produce marks with no art -- the same two-halves shape W414 recorded for kind 3.
+
+### VERIFIED
+
+Suite **3760 pass / 0 fail / 0 skipped** (3754 before; +6). Gate **exit 0**, 31 PASS / 0 FAIL.
+`export-web.mjs` run BEFORE the gate. `--verify` **OK at 600 windows**, unchanged -- no new ROM
+window, `$289EAA` was already exported.
+
+### THIS ONE ONLY HELPS THE OWNER ONCE PUBLISHED
+
+It is a fetch-order fix. The tree being green changes nothing on the page until `export-web.mjs`
+then `publish.mjs` run.
+
+### NEXT
+
+**D48**'s remaining ten wrong-bit sites, the frame-6495 kind-8 throw, kind 3's missing body, the
+pool-C guard above, and A4 `$14`.
+
+## W414 NOTES
 
 ### THE MEDAL DRAWS. 20,079 DROPPED RECORDS -> 25, ACCOUNTED FOR ONE FOR ONE.
 

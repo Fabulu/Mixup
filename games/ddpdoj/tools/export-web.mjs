@@ -287,6 +287,11 @@ if (u17.length !== SOUND.fileSize) {
 // no INDEX reaches still has to be asked WHICH INDEX -- every lea in the
 // handler, not the one the row is written under.
 //
+// W415.  Declared HERE and not beside the effect-script harvest below, because
+// `HARVEST` is evaluated at module load and three of its rows now file pool C's
+// ground-mark art under the same shard as the explosion it accompanies.
+const EFFECT_SHARD = 9;
+
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
   [17, TYPE3B_ART.hullTable, TYPE3B_ART.hullFrames + 1, 4,
@@ -299,13 +304,32 @@ const HARVEST = Object.freeze([
     'stage-3 type $37 rotating body. Rounded heading selects one of 32 groups '
       + 'and the four-phase animation reaches exactly 128 pointers before the '
       + 'packed muzzle-vector table begins'],
-  [17, 0x289eaa, 4, 4, 36, 0x289f3a,
-    'pool-C kind-4 death satellite animation list 0; the valid stream run '
-      + 'continues through adjacent pool-C families'],
-  [17, 0x289eba, 4, 4, 32, 0x289f3a,
+  // W415 -- DOCKET D50, THE LATE CRATER.  These three rows were on SHARD 17,
+  // whose own `why` calls it "the stage-1 battleship ... plus stage-2 boss
+  // parts and late-game enemy families" and which is LAST of nineteen in
+  // `SPR_ORDER`.  The art they carry is the GROUND MARK a dying ground enemy
+  // leaves: pool C's kind-4 satellite, `$289B50`, allocated by `$2688BA` in
+  // type $11's death arm and by `$26821E` in type $10's.  [M] on the
+  // stage1-laser-hold ladder at lf2000 with fire held, 900 frames: 40 type-$11
+  // deaths and 4 type-$10 deaths, 12 pool-C records, 5,606 pool-C display-list
+  // records -- ALL of them asking shard 17, while the explosion beside them
+  // (pool B, 2,310 records) asks shard 9, which is FIFTH.  So on the published
+  // page the fireball lands on the frame of the death and the crater cannot be
+  // drawn until the last shard in the queue arrives; `demand()` promotes it,
+  // which is why the owner sees it "a tiny bit later" rather than never.
+  //
+  // SHARD 9 IS WHERE THEY BELONG, and its own `why` already says so: its
+  // deadline is "the first frame an enemy DIES".  That is this art's deadline
+  // exactly.  Nothing else changes -- the harvest, the extents and the run
+  // bounds are untouched, only the shard each stream is filed under.
+  [EFFECT_SHARD, 0x289eaa, 4, 4, 36, 0x289f3a,
+    'pool-C kind-4 death satellite animation list 0 -- THE GROUND MARK a dying '
+      + 'ground enemy leaves; the valid stream run continues through adjacent '
+      + 'pool-C families'],
+  [EFFECT_SHARD, 0x289eba, 4, 4, 32, 0x289f3a,
     'pool-C kind-4 death satellite animation list 1; the valid run continues '
       + 'through the byte-identical third list and adjacent pool-C families'],
-  [17, 0x289eca, 4, 4, 28, 0x289f3a,
+  [EFFECT_SHARD, 0x289eca, 4, 4, 28, 0x289f3a,
     'pool-C kind-4 death satellite animation list 2, duplicating list 1; the '
       + 'remaining valid-pointer run belongs to adjacent pool-C families'],
   [17, TYPE36_ART.upperTable, TYPE36_ART.headings, 4,
@@ -1663,7 +1687,7 @@ const BULLET_RANGES = Object.freeze([
 //     picture the day a boss or a `$2440E0` runs.
 const EFFECT_TABLES = [0x221520, 0x221630];
 const EFFECT_ENTRIES = 34;                    // $289004 `cmpi.w #$21,D1 / bgt`
-const EFFECT_SHARD = 9;
+// EFFECT_SHARD is declared above `HARVEST` (W415) -- three HARVEST rows use it.
 const EFFECT_DATA_END = 0x222618;             // both lists' far end, [M] exact
 
 /** `$288E4E` + `$288E20`, with the RAM writes removed: the stream addresses one

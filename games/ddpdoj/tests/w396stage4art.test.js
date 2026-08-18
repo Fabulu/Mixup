@@ -409,8 +409,14 @@ test('W396 SECTION 4: the bundle grew by exactly these five and by nothing else'
 
     // NO SHARD BUT 11 CHANGED MEMBERSHIP, in either wave.
     // Index 11 is 822 + W414's 24; every other entry is untouched, which IS the assertion.
-    const SIZES = [166, 67, 32, 54, 17, 70, 96, 298, 72, 269, 407, 846, 139, 228, 90, 4, 37,
-      1239, 160];
+    // W415 (docket D50) MOVED EIGHT STREAMS FROM 17 TO 9 AND ADDED NONE.
+    // They are pool C's kind-4 death satellite -- the GROUND MARK a dying ground
+    // enemy leaves -- and they were filed under shard 17, which `SPR_ORDER`
+    // fetches LAST, while the fireball the same death spawns is shard 9, fetched
+    // fifth. Index 9 is 269 + 8 and index 17 is 1239 - 8; `streamCount` is
+    // UNCHANGED, and the sum assertion below is what proves the move was a move.
+    const SIZES = [166, 67, 32, 54, 17, 70, 96, 298, 72, 277, 407, 846, 139, 228, 90, 4, 37,
+      1231, 160];
     assert.deepEqual(manifest.spr.shards.map((s) => s.streams), SIZES,
       'every other shard holds exactly what it held before');
     assert.equal(SIZES.reduce((a, b) => a + b, 0), manifest.spr.streamCount,
