@@ -3181,7 +3181,7 @@ carrier still did not die, which would point at HP or at the kill path instead.
 to opposite places, and picking one without checking is how D42 was closed wrongly.
 
 
-### D59: THERE ARE **TWO** POSITION GATES ON THE CARRIER, AND ONE MEASUREMENT SETTLES BOTH
+### D59 FOLLOW-UP -- TWO POSITION GATES ON THE CARRIER, AND ONE MEASUREMENT SETTLES BOTH
 
 Beside `$245248`, the bee fill has its own. `bee.js:331`, describing `$280B3E`:
 
@@ -3208,4 +3208,45 @@ innocent and this whole line of enquiry is dead -- **say so, and delete it**.
 
 This is still a hypothesis. It is a much better shaped one than "the bees are broken", because it
 predicts all three symptoms from one quantity and it names the number to print.
+
+
+### D56 LEAD: THE HYPER LASER'S HIT ANIMATION REACHES **ONE** ENEMY PER FRAME
+
+> "If you push laser and then bomb when you have a hyper, and then you continue firing your
+> laser... that still lacks the hit animation"
+> "bomb is just the trigger for hyper, there is no bomb"
+
+Pressing bomb while lasering runs `$24989E bset #$0,($1,A6)`, which selects the **bomb-laser**. So
+the weapon the owner calls the hyper laser is the one whose damage is `$2456A6`, and its hit
+animation comes from there -- not from block 7, block 8 or `$2453AC`.
+
+**AND `$2456A6` FLASHES EXACTLY ONE TARGET PER FRAME.** `bomb.js:1258` onward:
+
+    $2457FA  tst.w $812954 / beq        -- nothing unless a NEAREST was recorded
+    $245808  move.w $80FA72,D4
+    $24580E  ori.w  #$400,D4
+    $245812  or.w   D4,(A5)             <- THE HIT BITS, on ONE record
+    $245814  subi.w #$208,($18,A5)      <- and the damage, on that same one
+
+Pool B's loop deliberately does NOT damage inside itself; it records the NEAREST intersecting enemy
+in `$812954` and damages that one afterwards. The ordinary bomb arm, by contrast, ORs the mask on
+**every** enemy it touches (`$24569A`).
+
+**SO "NO HIT ANIMATION" AND "ONE HIT ANIMATION YOU DID NOT NOTICE" LOOK THE SAME ON SCREEN**, and
+the two have different fixes. **Establish which the owner is seeing before changing anything.**
+
+**A STALE NOTE THAT WOULD HAVE SENT THE NEXT WAVE TO THE WRONG FILE, now corrected in place.**
+`damage.js` said `$24560A` "is transcribed only as far as its own two guards ... and throws by
+address beyond them". That was true when written and is not true now: W65 ported the arm and it
+lives in `bomb.js`. The paragraph is KEPT as that wave's record with a dated correction under it.
+
+**WHAT IS STILL TRUE, AND IT IS THE WHOLE PROBLEM:** both guards -- `$245614 bpl` needing `$811F72`
+NEGATIVE, and `$245618 btst #$6` needing bit 6 of `($1,A4)` -- are **FALSE on every bench in this
+repo**. So not one line of the owner's weapon has ever executed in a test here. That is a fact
+about our BENCHES, not about the code, and it is the same distinction D60 turned on.
+
+**THE UNIT FOR D56 IS THEREFORE A BENCH BEFORE IT IS A FIX:** get `$811F72` negative and
+`($1,A4)` bit 6 set -- i.e. actually activate hyper while lasering -- and only then ask what the
+animation does. D56 already records me closing this item once on a bench where the word "hyper"
+appeared only in the test's title.
 

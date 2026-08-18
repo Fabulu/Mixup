@@ -139,6 +139,22 @@
 // `$24560A` (block 9, the BOMB-LASER's 966 bytes) is transcribed only as far as
 // its own two guards, both of which are FALSE on this tree, and throws by
 // address beyond them.  `$2459D0` and blocks 2-4 are unchanged (L16).
+//
+// **W423: THE PARAGRAPH ABOVE IS THE STATE AS OF THE WAVE THAT WROTE IT AND IS
+// NO LONGER TRUE.  IT IS KEPT BECAUSE IT IS THAT WAVE'S RECORD, NOT DELETED.**
+// `$24560A` no longer throws past its guards: `bomb.js:1102 bombDamage24560A`
+// runs the whole 150-slot walk, and `$245636 bne` routes the BOMB-LASER arm to
+// `bomb.js:1258 bombDamageAlt2456A6`, which W65 ported in full.
+//
+// Said plainly, because a reader who trusts the paragraph above will look in the
+// wrong file: **the bomb-laser's damage IS ported, and it lives in `bomb.js`.**
+//
+// WHAT REMAINS TRUE, and it is the part that matters for D56/D43: **both guards
+// are still FALSE on every bench in this repo.**  `$245614 bpl` needs `$811F72`
+// NEGATIVE and `$245618 btst #$6` needs bit 6 of `($1,A4)`.  So no test here has
+// ever run a single line of it.  That is a statement about the BENCHES, not
+// about the code -- exactly the distinction D60 turned on, where a routine
+// declared "two gates away from reachable" was being executed by the owner.
 
 // ================= WAVE 60 (I1): `$2459D0` AND BLOCKS 1, 2, 3, 4 =============
 //
