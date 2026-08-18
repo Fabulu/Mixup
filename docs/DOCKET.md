@@ -2563,6 +2563,48 @@ record lives** rather than once per event. The collected item record survives it
 collect arm that re-enters would post on every frame of it. One such cue at 60 posts a second, into
 a queue that drains 1 a frame, produces exactly this symptom and grows with activity.
 
+**THE OWNER ANSWERED, 2026-08-18, AND IT IS BETTER THAN THE QUESTION ASKED:**
+
+> "I think sound lag happens if my computer is loaded heavily, particularly when starting the game.
+> Then the sound might end up desynced. If I restart the game again by reloading page it often has
+> synced sound"
+
+**That is a LATCHED STARTUP BACKLOG, and it fits the ring arithmetic exactly.** Read against the
+mechanism above, every clause of that sentence is diagnostic:
+
+- **"when starting the game"** -- boot posts a burst of cues.
+- **"if my computer is loaded heavily"** -- under load the emulator's frames run slow while the
+  posts still happen, so the ring fills faster than one-per-frame can drain it.
+- **"then the sound might end up desynced"** -- and here is the crucial part: **the drain is one per
+  frame and the steady-state post rate is roughly one per frame too, so a backlog acquired during
+  the burst NEVER CLEARS.** The queue depth reached during startup becomes a permanent offset for
+  the rest of the session.
+- **"reloading the page often has synced sound"** -- a reload starts with an empty ring. If the
+  machine is not loaded that time, no backlog forms and there is nothing to persist.
+
+**SO THE EARLIER HYPOTHESIS IS PROBABLY WRONG.** This item first suspected an over-posting cue
+firing every frame (D52's shape). That would make the lag grow steadily during play. The owner
+describes it as established AT START and then STABLE -- which is a one-time fill, not a leak.
+**Check the over-posting theory anyway, but do not lead with it.**
+
+**WHAT TO MEASURE, and it is now very specific:** record ring depth per frame across a boot,
+deliberately under simulated slow frames. The prediction is a rise during the startup burst and then
+a FLAT plateau -- never recovering, because the drain has no headroom to catch up.
+
+**AND THE FIX IS A DESIGN QUESTION, NOT A BUG FIX, so bring it back before implementing.** The
+one-per-frame drain is the cartridge's own behaviour (`$18ACE0`) and must not simply be raised: on
+real hardware the frame rate never stalls, so a backlog of this kind cannot form and the cartridge
+has no recovery path because it never needs one. The port faces a situation the original never did.
+Options, none obviously right:
+1. **Drain more than one per frame while a backlog exists**, converging back to one. Diverges from
+   the cartridge only in a state the cartridge cannot reach.
+2. **Drop cues when the depth exceeds a threshold.** Keeps timing honest, loses sounds.
+3. **Do not post while frames are stalling.** Prevents the backlog at the source, needs a definition
+   of stalling.
+
+**Option 1 is the most faithful in spirit and the least faithful to the letter.** That trade is the
+owner's call, and it is exactly the kind of question D40 exists for.
+
 **ASK THE OWNER FIRST:** does the delay GROW during heavy play or stay fixed? A growing delay
 confirms the backlog and points at the over-posting cue; a fixed delay exonerates the ring entirely
 and sends the wave to the audio layer. One sentence saves the measurement.
