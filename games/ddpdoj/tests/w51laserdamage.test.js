@@ -337,15 +337,27 @@ test('$286774 adds $18 to $81B64A on its divider BORROW and nineteen bytes of '
     '$81B65C == 5 takes the `beq` and lands on the SAME instruction');
 });
 
-test('$286876 refuses to invent $286A82\'s tail: $8130F8 bit 2 throws by '
-  + 'address', () => {
+// W424 (D60) REPLACES THE TEST THAT USED TO SIT HERE.  It asserted that
+// `$8130F8` bit 2 THROWS `Unreached($286AAA)`, and it was green for 373 waves
+// -- because no bench in this repo had ever set that bit.  The owner set it by
+// arriving at the stage-2 boss and the throw ended their run.  The assertion
+// below is the same branch, taken, with its arithmetic checked instead.
+test('$28687E bne $286AAA is PORTED (W424/D60): $8130F8 bit 2 runs $286A82\'s '
+  + 'shared tail, and $811F72 NEGATIVE is what sends it straight there', () => {
   const ram = new Ram();
   ram.setU8(SCORE.g30f8, 0x04);             // $286876 btst #$2,$8130F8
-  try {
-    bombHitChain(ram, ctx(), 0x10, 0x14);
-    assert.fail('$28687E bne $286AAA must not be skipped');
-  } catch (err) {
-    assert.ok(err instanceof Unreached);
-    assert.equal(err.romAddress, SCORE.altBombShared);
-  }
+  ram.setU16(SCORE.laserRec, 0x8001);       // $286AB2 bmi.s -> $286AEA
+  ram.setU16(LEDGER.p1.w1e, 3);             // $286AFC subq.w #1,$81B5DE
+  ram.setU16(SCORE.laserRankDivider, 3);    // $2867B4 subq.w #1,$81B636
+  bombHitChain(ram, ctx(), 0x10, 0x14);
+  assert.equal(ram.u16(LEDGER.p1.w1e), 2, '$286AFC subq.w #1,$81B5DE');
+  assert.equal(ram.u16(SCORE.laserRankDivider), 2,
+    '$286AF8 bsr.w reaches $2867B4, whose displacement is off the EXTENSION '
+    + 'WORD $286AFA and not the PC after it');
+  assert.equal(ram.u32(0x81b4c0), 0x10,
+    '$286B7E move.l D3,D0 / $286B80 lea $81B4C4,A0 / $286B86 bsr $286626');
+  assert.equal(ram.u16(SCORE.itemTimer), 0x0a, '$286B8A move.w #$A,$81B60C');
+  assert.equal(ram.u16(SCORE.itemKind), 0x07, '$286B92 move.w #$7,$81B612');
+  assert.ok(Unreached, 'Unreached is still the mechanism for the arms that '
+    + 'remain -- $286B9C, P2\'s, is one');
 });

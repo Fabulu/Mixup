@@ -100,6 +100,11 @@
 //                     loops src/damage.js does not run
 //            $286A82 / $286DA8   behind $8130F8 bit 2 AND $811F72's sign AND
 //                     its bit 0 -- THE LASER, which has never executed
+//                     **$286A82 IS PORTED, W424 (D60)**, with $286AAA, the
+//                     shared tail $286AEA and the rank feeder $2867B4.  It HAD
+//                     executed -- on the owner's board, not on ours.  $286DA8
+//                     stays a note, because $2860C0's `beq $286102` steps over
+//                     the only branch that could reach it.
 //            $286674  the cap clamp's TAIL: the hyper-stock bonus into $81B64A
 //                     and `jmp $287682`, which GRANTS A HYPER ITEM and feeds
 //                     $285A62's +16 rank.  That is the owner's own case and it
@@ -154,6 +159,15 @@
 // The conclusion above still holds for the wave that wrote it: porting the BEAM
 // alone must not touch these arms.  What does not hold is the reachability
 // claim.  **Do not re-derive "the arm is dead" from the numbers above.**
+//
+// **W424 PORTED IT** -- see the WAVE 424 block further down this file for the
+// bytes and the three entrances.  The refusal is gone; nothing here throws any
+// more.  Two things this wave MEASURED that the recon did not have:
+// `initbody.js:1161`'s `| 0x05` sits literally inside the STAGE-2 BOSS's own
+// six palette installs, which is the owner's scenario exactly; and
+// `$284A72`/`$284A74` in `hud.js` refuse to latch `$81B62E` on any frame the
+// bomb-laser is selected, so `$286A92`'s fork turns on whether the latch went
+// up EARLIER in the fight.  Both of its arms are ported and both are tested.
 //            $28D520  the per-frame half, above.
 //
 // ============================== THE BCD, AND THE TRAP ========================
@@ -202,7 +216,6 @@
 // and its conclusion was right for one more wave than it expected.
 
 import { u16 } from './ram.js';
-import { unreached } from './unported.js';
 import { grantHyper287682, HYPER_MUTATE } from './hyper.js';
 
 export const SCORE = {
@@ -217,7 +230,12 @@ export const SCORE = {
   /** `$286876..$286A80`, 523 bytes -- `$286096`'s `$400`-bit arm.  PORTED in
    *  wave 51; see this file's header for why it stopped being unreachable. */
   altBomb: 0x286876,
+  /** `$28687E bne $286AAA` -- **PORTED, W424 (D60)**, the arm the owner hit.
+   *  `laserAltHit` below; it was an `unreached` throw and it ended their run. */
   altBombShared: 0x286aaa,  // its `$8130F8` bit-2 arm, INSIDE $286A82's body
+  laserSharedTail: 0x286aea,   // $286AB2/$286ABA/$286A92 all land here
+  laserItemStart: 0x286abc,    // $286A8A beq, and $286AAA's fall-through
+  laserItemAdd: 0x286b58,      // $286A9C/$286AA6's target, and $286B52's tail
   bombRankFeed: 0x286774,   // $2868EE bsr -- the twin of $2867B4
   hyperGrant: 0x287682,     // $2867A4 jsr, shared W163 grantor
   rankAccum: 0x81b64a,      // $28679E add.w D2,$81B64A
@@ -239,7 +257,17 @@ export const SCORE = {
   capWord: 0x81b5b2,        // $28616C move.w (A0,D2.w),$81B5B2
   refillAmt: 0x81b5e0,      // $2862D4 AND $286484 -- ONE word, both players
   loop: 0x813098,
+  stage: 0x813092,          // $286B16 cmpi.w #$3 -- src/hud.js HUDRAM.stage
   laserRec: 0x811f72,
+  // W424: the HUD's ITEM COUNTER, and all four are `src/hud.js` HUDRAM names
+  // already -- `$2857B4` draws `itemCount` as an 8-nibble BCD walk with
+  // `itemKind` as its colour/flip word.  `$286ABC`/`$286B8A` arm it; the HUD's
+  // `$284AC2` block drains it.
+  itemTimer: 0x81b60c,      // $286ABC / $286B8A move.w #$A
+  itemDir: 0x81b60e,        // $286AD2 clr.w
+  itemCount: 0x81b610,      // $286AEA tst.w / $286B58 add.w D0
+  itemKind: 0x81b612,       // $286AC4 / $286B92 move.w #$7
+  bossHpLatch: 0x81b62e,    // $286A8C tst.w -- $286A82's SECOND gate
   g30f8: 0x8130f8, g30f9: 0x8130f9,
   /** `$28616C lea $287DF0` -- the chain-meter CAP by loop word, `$813098 * 2`.
    *  MEASURED out of the image: `$0038 $005A` = 56 and 90, and W19 measured 56
@@ -511,6 +539,205 @@ function bombRankFeed(ram, ctx) {
   ram.setU16(SCORE.laserRankDivider, 8);                // $2867AA/$2867AC
 }
 
+// ===========================================================================
+// WAVE 424 (D60) -- `$286A82`, `$286AAA`, THE SHARED TAIL AND `$2867B4`.
+//
+// **THE OWNER EXECUTED THIS AND THE PORT REFUSED.**  `$286AAA IS NOT PORTED
+// YET`, stage-2 boss, `c` held, `y` on top of it.  Everything below is
+// transcribed from an `aligned.py` sweep of the image this wave, resumed from
+// each of `$286B2E`, `$286B3C`, `$286B52` and `$286B6A` because the tool
+// refuses at a flow break rather than guessing past one.
+//
+// **THE THREE ROUTINES ARE ONE BODY WITH THREE ENTRANCES**, and which entrance
+// you came in by decides what is skipped:
+//
+//     $286A82  ($2860C8 bsr, the LASER arm of $286096)
+//     $286AAA  ($28687E bne, the $400 arm's other entry -- the owner's throw)
+//        \___ $286ABC  START: arm the item counter from nothing
+//        \___ $286AEA  TAIL: rank feed, divider, item add, BCD add
+//
+// **WHAT $81B60C/$81B60E/$81B610/$81B612 ARE, and this is not a guess:**
+// `src/hud.js` HUDRAM already names all four -- `itemTimer`, `itemDir`,
+// `itemCount`, `itemKind`, the on-screen ITEM COUNTER `$2857B4` draws as an
+// 8-nibble BCD walk.  `$284B3E` writes kind 7 and `$284AFE` kind 8 from the
+// HUD side; this body writes kind 7 and timer $A.  So the laser's score arm is
+// what PUTS THE COUNTER ON SCREEN and keeps re-arming its timer, and the HUD's
+// own `$284AC2` block is what drains it.  A wave that ported this as "some
+// chain words" would have missed that the four addresses are already named.
+//
+// **THE DIVIDER IS `$81B5DE`, THE SAME WORD `$2862FC` USES** (LEDGER.p1.w1e),
+// not a private one -- so this arm and the ordinary chain machine share a
+// countdown.  `$2867B4`'s divider is the OTHER one, `$81B636`.
+//
+// **`$286AE0` IS `addq.w #8,D2`, NOT `addq #0`.**  `5042`'s data field of 0
+// means 8, so the reload is `16 - power`, not `8 - power`.  Getting this wrong
+// halves the counter's rate and nothing would have gone red.
+// ===========================================================================
+
+/**
+ * `$2867B4..$2867DC` -- **THE LASER'S RANK FEEDER**, the twin of `$286774`
+ * sixty-four bytes earlier and its `rts` at `$2867B2` is literally the twin's
+ * (`$2867BA bcc.s` displacement `$F6` branches BACKWARDS, to `$2867B2`, which
+ * is `$286774`'s own `4E75`).
+ *
+ * The difference from the twin is D2 and only D2: `$18` unconditionally there,
+ * **`4` here, or `$30` while a hyper is active** (`$2867BE tst.w $81B63E /
+ * $2867C4 beq` steps over `$2867C6 moveq #$30,D2`).  Same `$81B636` divider,
+ * same `add.w D2,$81B64A`, same `jsr $287682`, same `#8` reload.
+ *
+ * `37-recon-laser.md` §9.8: porting `$286A82` without this ships a laser that
+ * scores and does not raise rank.  It is not shipped without it.
+ */
+function laserRankFeed(ram, ctx) {
+  const d = u16(ram.u16(SCORE.laserRankDivider) - 1);   // $2867B4 subq.w #1
+  ram.setU16(SCORE.laserRankDivider, d);
+  if (d !== 0xffff) return;                             // $2867BA bcc -> $2867B2
+  const d2 = ram.u16(LEDGER.p1.hyper) !== 0 ? 0x30 : 4; // $2867BC/$2867C4/$2867C6
+  ram.setU16(SCORE.rankAccum, u16(ram.u16(SCORE.rankAccum) + d2));  // $2867C8
+  grantHyper287682(ram, ctx?.rom, ctx, false);          // $2867CE jsr $287682
+  ram.setU16(SCORE.laserRankDivider, 8);                // $2867D4/$2867D6
+}
+
+/** `$286ABC..$286AE8` -- START THE COUNTER FROM NOTHING.  Reached from
+ *  `$286A8A beq` (timer already 0) and by falling out of `$286AAA`'s two
+ *  tests.  Note the reload is `16 - power` and NOT the `(8-power)*1.5+$12`
+ *  `$2868C2` uses: this is a different formula in the same file. */
+function laserItemStart(ram) {
+  ram.setU16(SCORE.itemTimer, 0x0a);                    // $286ABC move.w #$A
+  ram.setU16(SCORE.itemKind, 0x07);                     // $286AC4 move.w #$7
+  ram.setU16(SCORE.itemCount, 0);                       // $286ACC clr.w
+  ram.setU16(SCORE.itemDir, 0);                         // $286AD2 clr.w
+  const d2 = u16(u16(8 - ram.u16(LEDGER.p1.power)) + 8);  // $286AD8/$286ADA/$286AE0
+  ram.setU16(LEDGER.p1.w1e, d2);                        // $286AE2 move.w D2,$81B5DE
+}                                                       // $286AE8 rts
+
+/** `$286B6A..$286B9A` -- the counter's CLAMP and the score's BCD add.  Both
+ *  the divider-borrow path and the no-borrow path end here, so **the pending
+ *  score gains D3 on every hit that reaches the tail**, while the counter only
+ *  moves on a borrow. */
+function laserClamp(ram, d3) {
+  if (ram.u16(SCORE.itemCount) > 0x7fff) {              // $286B6A cmpi.w/$286B72 bls
+    ram.setU16(SCORE.itemCount, 0x7fff);                // $286B76
+  }
+  bcdAdd(ram, LEDGER.p1.pendingEnd, d3);                // $286B7E/$286B80/$286B86
+  ram.setU16(SCORE.itemTimer, 0x0a);                    // $286B8A move.w #$A
+  ram.setU16(SCORE.itemKind, 0x07);                     // $286B92 move.w #$7
+}                                                       // $286B9A rts
+
+/** `$286B58..$286B68` -- add D0 to the counter, TWICE if D1 bit 6 is set.
+ *  Same `btst #$6,D1` `$286966` uses for the chain's double increment, i.e.
+ *  block 8's `$2452F2 ori.w #$4400,D4`. */
+function laserItemAdd(ram, d0, d1, d3) {
+  ram.setU16(SCORE.itemCount, u16(ram.u16(SCORE.itemCount) + d0));  // $286B58
+  if ((d1 & 0x40) !== 0) {                              // $286B5E btst #$6,D1
+    ram.setU16(SCORE.itemCount, u16(ram.u16(SCORE.itemCount) + d0));  // $286B64
+  }
+  return laserClamp(ram, d3);                           // falls into $286B6A
+}
+
+/**
+ * `$286AEA..$286B9A` -- THE SHARED TAIL, and the piece both entrances need.
+ *
+ * `$286AF8 bsr.w` displaces `-$346` from the EXTENSION WORD `$286AFA`, so its
+ * target is `$2867B4` and not `$2867B8`.  That is the trap the brief names and
+ * it is the difference between the rank feeder and two bytes into it.
+ *
+ * `$286B02 bcc.s $286B6A` is UNSIGNED and it means NO BORROW: the divider was
+ * non-zero, so the whole reload block AND the item add are skipped and only
+ * the clamp plus the BCD add run.
+ *
+ * On a borrow the reload splits three ways, and the hyper arm is the odd one:
+ *   * no hyper -> D0 = 1, divider = `16 - power`, minus 3 unless the option
+ *     FORMATION `$810440` is exactly 2 (`$286B4E beq` steps over `$286B50
+ *     subq.w #3,D2`);
+ *   * hyper, stage 3 -> D0 = `1 + $81B654`, divider = 0, or 2 in a later loop;
+ *   * hyper, any other stage -> D0 doubled, and doubled AGAIN in a later loop,
+ *     divider 0.  So outside stage 3 a hyper adds 2 or 4 per tick and inside
+ *     it adds `1 + level`.  Transcribed, not rationalised.
+ */
+function laserSharedTail(ram, ctx, d1, d3) {
+  if ((ram.u16(SCORE.itemCount) & 0x8000) !== 0) {      // $286AEA tst.w/$286AF0 bpl
+    ram.setU16(SCORE.itemCount, 0);                     // $286AF2 clr.w
+  }
+  laserRankFeed(ram, ctx);                              // $286AF8 bsr.w $2867B4
+  const w = u16(ram.u16(LEDGER.p1.w1e) - 1);            // $286AFC subq.w #1
+  ram.setU16(LEDGER.p1.w1e, w);
+  if (w !== 0xffff) return laserClamp(ram, d3);         // $286B02 bcc -> $286B6A
+  let d2 = 0;                                           // $286B04 moveq #0,D2
+  let d0 = 1;                                           // $286B06 moveq #1,D0
+  if (ram.u16(LEDGER.p1.hyper) === 0) {                 // $286B08 tst.w/$286B0E beq
+    // ---- $286B3C: the ORDINARY reload.  16 - power, less 3 off formation 2.
+    d2 = u16(u16(8 - ram.u16(LEDGER.p1.power)) + 8);    // $286B3C/$286B3E/$286B44
+    if (ram.u16(LEDGER.p1.formation) !== 2) d2 = u16(d2 - 3);  // $286B46/$286B4E/$286B50
+  } else {
+    d0 = u16(d0 + ram.u16(LEDGER.p1.hyperLvl));         // $286B10 add.w $81B654,D0
+    if (ram.u16(SCORE.stage) === 3) {                   // $286B16 cmpi.w #$3
+      if (ram.u16(SCORE.loop) !== 0) d2 = 2;            // $286B22 tst.w/$286B2A addq
+    } else {
+      d0 = u16(d0 + d0);                                // $286B2E add.w D0,D0
+      if (ram.u16(SCORE.loop) !== 0) d0 = u16(d0 + d0); // $286B30 tst.w/$286B38
+    }
+  }
+  ram.setU16(LEDGER.p1.w1e, d2);                        // $286B52 move.w D2,$81B5DE
+  return laserItemAdd(ram, d0, d1, d3);                 // -> $286B58
+}
+
+/**
+ * `$286A82..$286AA8` -- **`$286096`'s LASER arm**, the `$2860C8 bsr`.  D0 is
+ * `1 + $81B63E`, computed at `$2860C2`, exactly as `$2860E4` computes it for
+ * the arm below.  `$2860CC bra.b $2860DE` means the plain P1 add STILL RUNS
+ * after this, so both happen on one hit.
+ *
+ * The two tests are NOT `$286AAA`'s two:
+ *   * `$286A84 tst.w $81B60C / beq $286ABC` -- no counter on screen, so start;
+ *   * `$286A8C tst.w $81B62E / beq $286AEA` -- `bossHpLatch` (`src/hud.js`,
+ *     `$284A7A bset.b #$0`).  **With no boss latched the tail runs whole; with
+ *     a boss latched it jumps to `$286B58` and skips the rank feed, the
+ *     divider and the reload entirely.**  That is why the owner's report is a
+ *     BOSS report: the boss is what selects the short path here.
+ *
+ * **D1 IS LIVE ACROSS THIS CALL AND ITS BIT 6 MATTERS.**  `$286096` builds it
+ * as `moveq #$5C,D1 / and.b (A6),D1` and `$5C` INCLUDES bit 6, so `$286B5E
+ * btst #$6,D1` can double the item add on this entrance too.  Passing a zero
+ * here would have been a silent halving that nothing measures.
+ */
+export function laserScoreHit(ram, ctx, d0, d1) {
+  const d3 = d0 >>> 0;                                  // $286A82 move.l D0,D3
+  if (ram.u16(SCORE.itemTimer) === 0) {                 // $286A84 tst.w/$286A8A beq
+    return laserItemStart(ram);                         // -> $286ABC
+  }
+  if (ram.u16(SCORE.bossHpLatch) === 0) {               // $286A8C tst.w/$286A92 beq
+    return laserSharedTail(ram, ctx, d1, d3);           // -> $286AEA
+  }
+  let d0out = 1;                                        // $286A94 moveq #1,D0
+  if (ram.u16(LEDGER.p1.hyper) !== 0) {                 // $286A96 tst.w/$286A9C beq
+    d0out = u16(d0out + ram.u16(LEDGER.p1.hyperLvl));   // $286AA0 add.w $81B654,D0
+  }
+  return laserItemAdd(ram, d0out, d1, d3);              // $286AA6 bra.w $286B58
+}
+
+/**
+ * `$286AAA..$286AE8` -- **THE ARM THE OWNER HIT.**  `$28687E bne $286AAA`,
+ * i.e. `$286876`'s `$8130F8` bit-2 fork, landing INSIDE `$286A82`'s body.
+ *
+ * `$286AB2 bmi.s $286AEA` -- **the BOMB-LASER's record NEGATIVE sends this
+ * straight to the tail**, so in the owner's own scenario (the bomb selected
+ * that weapon, which is what makes `$811F72` negative) the start block is
+ * never reached and the tail runs from a divider whose value the previous
+ * hits left behind.  A bench built on a fresh `Ram()` would run the start
+ * block instead and never exercise the tail at all -- the W416 shape.
+ */
+export function laserAltHit(ram, ctx, d0, d1) {
+  const d3 = d0 >>> 0;                                  // $286AAA move.l D0,D3
+  if ((ram.u16(SCORE.laserRec) & 0x8000) !== 0) {       // $286AAC tst.w/$286AB2 bmi
+    return laserSharedTail(ram, ctx, d1, d3);           // -> $286AEA
+  }
+  if (ram.u16(SCORE.itemTimer) !== 0) {                 // $286AB4 tst.w/$286ABA bne
+    return laserSharedTail(ram, ctx, d1, d3);           // -> $286AEA
+  }
+  return laserItemStart(ram);                           // -> $286ABC
+}
+
 /**
  * `$286876..$286A80` -- `$286096`'s `$400`-bit arm, 523 bytes.  P1 only:
  * `$286118 bra.w $286B9C` is P2's and stays a note.
@@ -532,14 +759,13 @@ function bombRankFeed(ram, ctx) {
  * (`moveq #1 / add.w $81B63E`), D1 the hit mask.
  */
 export function bombHitChain(ram, ctx, d0, d1) {
+  // `$28687E bne $286AAA`.  **W424 (D60): PORTED.**  This was an `unreached`
+  // throw and the owner's run died on it -- `$8130F8` bit 2 is set at boss
+  // arrival by our own `initbody.js` (`| 0x05`), so the branch is taken every
+  // time a `$400` hit lands at a boss.  It is a `bne`, not a `bsr`: the rest
+  // of `$286876` does NOT run after it.
   if ((ram.u8(SCORE.g30f8) & 0x04) !== 0) {             // $286876 btst #$2/bne
-    unreached(SCORE.altBombShared, `$28687E bne $286AAA -- the $400 arm's `
-      + `OTHER entry, which lands INSIDE $286A82's body ($286AAA move.l D0,D3 / `
-      + `tst.w $811F72) and shares its 282-byte tail. $8130F8 bit 2 is the gate `
-      + `and it has been 0 on every frame of every run in this repo, including `
-      + `601 steps of a live beam in wave 51. Reaching it means the laser SCORE `
-      + `machine $286A82 is live, and $286A82 needs $2867B4 with it `
-      + `(37-recon-laser §9.8)`);
+    return laserAltHit(ram, ctx, d0, d1);               // $28687E bne $286AAA
   }
   const p = LEDGER.p1;
   const d3 = d0 >>> 0;                                  // $286882 move.l D0,D3
@@ -667,15 +893,12 @@ export function scoreHit(ram, ctx, a6, d1) {
     if ((d2 & 0x8000) !== 0 && (d2 & 0x01) !== 0      // $2860AE bpl / $2860B0 btst #0
         && (d2 & 0x0080) === 0) {                     // $2860B8 tst.b D2 / bmi
       if ((d1 & 0x10) !== 0) {                        // $2860BC btst #4,D1
-        note(ctx, SCORE.altLaserP1, `$2860C8 bsr $286A82 -- $286096's LASER `
-          + `arm ($8130F8 bit 2 + $811F72 negative + its bit 0 + its bit 7 `
-          + `clear). $2860CC bra.b $2860DE, so the plain P1 add below STILL `
-          + `RUNS and both happen, in that order. $286A82 needs $2867B4 `
-          + `($${SCORE.laserRankFeed.toString(16).toUpperCase()}) with it -- a `
-          + `separate 8-frame divider $81B636 that feeds $81B64A and grants a `
-          + `hyper stock through $287682, i.e. RANK. Porting the accumulator `
-          + `without the feeder ships a laser that scores and does not raise `
-          + `rank (37-recon-laser §9.8)`);
+        // **W424 (D60): PORTED**, with `$2867B4` beside it as §9.8 demands.
+        // `$2860C2 add.w $81B63E,D0` first -- the same `1 + hyper` value
+        // `$2860E4` computes for the arm below -- and `$2860CC bra.b $2860DE`
+        // then falls through to it, so BOTH happen on one hit, in this order.
+        const d0 = u16(1 + ram.u16(LEDGER.p1.hyper)); // $2860B6/$2860C2
+        laserScoreHit(ram, ctx, d0, d1);              // $2860C8 bsr.w $286A82
       } else {
         // ---------------------------------------------------------------
         // $2860C0 `beq.b $286102`, and it goes to **$286102**, not to the P2

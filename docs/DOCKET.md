@@ -3083,3 +3083,43 @@ Seven tests in `w423fullscreenfill.test.js`; **three were proven to fail with th
 disabled**, and the other four are guards that must hold under both readings, including "the
 windowed path is byte-identical to the pre-D55 arithmetic".
 
+
+### D60 CLOSED BY W424: `$286AAA` IS PORTED, AND THE OWNER'S RUN NO LONGER DIES
+
+`$286A82`, `$286AAA`, the shared tail `$286AEA..$286B9A` and the rank feeder `$2867B4..$2867DC` are
+ported. The `unreached(SCORE.altBombShared, ...)` in `bombHitChain` is gone. `$286B9C` is P2's and
+correctly stays a note.
+
+**WHAT THIS ARM ACTUALLY IS, which no note in this repo had said**: `$81B60C/$0E/$10/$12` are
+`hud.js`'s `itemTimer/itemDir/itemCount/itemKind` -- **the on-screen ITEM COUNTER** that `$2857B4`
+draws as an 8-nibble BCD walk. So this is the laser's hit-counter display plus the pending-score
+add, not "some chain words".
+
+**GATE 1 CONFIRMED AT THE OWNER'S EXACT STAGE:** `initbody.js:1161`'s `| 0x05` sits literally
+inside the STAGE-2 BOSS's six palette installs.
+
+**AND THE BENCH TRAP WAS REAL.** In the owner's scenario `$286AAA` goes STRAIGHT TO THE TAIL:
+`$811F72` is negative because the bomb selected the bomb-laser, so `$286AB2 bmi` is taken and the
+start block never runs. **A fresh `Ram()` takes the OTHER arm and exercises none of the tail, the
+rank feeder or the score add** -- a bench that forgot to dirty RAM would have been green while
+testing none of the code the owner executed. The wave pinned that hole as its own test.
+
+Findings worth keeping:
+- **`$286A92`'s fork is live BOTH ways**, and the two arms differ in the DIVIDER words while
+  agreeing on the score -- **a score-only test would have passed under either reading.**
+- `$2867B4`'s `bcc` displacement `$F6` branches BACKWARDS to `$2867B2`, which is `$286774`'s own
+  `4E75`: the two feeders share a return. Its D2 is 4, or `$30` hypering, never `$286774`'s `$18`.
+- `5042` is `addq.w #8,D2` confirmed: the reload is `16 - power`, `$D` at power 3, where the
+  `addq #0` misreading gives `$5`. Different numbers, so the fixture discriminates.
+
+**THE WAVE ALSO CORRECTED MY BRIEF.** I told it `games/ddpdoj/tests/*.js` are CRLF. **They are
+not: 299 of 304 are LF**, and the five exceptions are `bullets`, `mover`, `w227death`,
+`w36handlers`, `w62stageend`. My `grep -c $'\r'` check gives false positives and had already caused
+one wrong conversion the same day. **Check line endings by BYTES, never with that grep.**
+
+Verified by me on a quiet tree: 3919 pass / 0 fail / 0 skipped, gate exit 0 with 31 PASS / 0 FAIL,
+606 ROM windows and none added -- correct, since the unit reads no ROM table.
+
+**RE-CHECK D56 AND D59 AGAINST THIS.** The recon named this as their possible common cause, and it
+is now ported. That check is cheap and has not been done.
+
