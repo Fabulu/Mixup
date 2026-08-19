@@ -149,7 +149,46 @@ out, so it took ~670 frames to drift down. **That distance is an artifact of the
 measurement of the game.** The path is proven; the timing is not. **The owner has been asked where
 on the screen they see the flickering bees**, and that answer is what D59 now waits on.
 
-### NEXT UNIT: D56 -- A BENCH FOR THE HYPER LASER, BEFORE ANY FIX
+### W427 BENCHED IT, AND CORRECTED THE INSTRUCTION I NAMED TWICE
+
+**`$24989E` IS NOT THE SELECTOR. `$249A98` IS.** `08 ee` is mode 5 reg 6 = A6, the PLAYER record;
+`08 e9` is reg 1 = A1, and A1 IS `$811F72`. **That is this repo's own EA mode/reg trap, the one
+every brief carries, walked into by the person who writes the briefs.** `bomb.js:1548` had it right
+all along. Corrected in `score.js` and in the docket.
+
+**AND IT SPLITS THE ITEM IN TWO.** `$249864/$249866` forks on HYPER STOCK: non-zero goes to
+`$249868`, the hyper, which **never allocates `$811F72`**, so block 9 never runs; zero goes to
+`$249A98`, the bomb-laser, the only path to `$2456A6`. Measured live: at stock 1, **0 guard frames,
+0 `$2456A6` frames** across 182 hyper frames.
+
+**SO THE OWNER'S "WHEN YOU HAVE A HYPER" IS THE OTHER WEAPON, and W427 benched the bomb-laser.**
+Both are now exercised and **neither is silent**: the bomb-laser flashed up to 6 records in ONE
+frame and took 18,690 boss HP in 200 frames against the plain laser's 9,600; the hyper flashed 55
+times. **The bits and the HP are measured; THE PIXELS ARE NOT.** D56 now waits on the owner saying
+which press they mean.
+
+**A BENCH TRAP WORTH MORE THAN THE WAVE:** writing `$81B65C` alone is NOT a hyper.
+`collectHyperStock` also writes `$81B642`, and with the gauge at 0 the hyper ENDS on the frame it
+starts, so the whole arm silently measures zero and looks exactly like "the hyper does nothing".
+The wave's own first measurement was that. **It is now a test.**
+
+**ALSO: `c003000`/`c003100` cannot be used as seeds** -- they die at frame ~155 on
+`UNPORTED $27399E` in `spawnCues28AC72` (`handlers.js:3829`, handler 80). Pre-existing. It rules out
+the 17-record pool-B checkpoints, so stage 1 `c008000` is the only clean pool-B rung. **Its own
+unit if a wave needs those rungs.**
+
+### THE PATTERN THAT HAS NOW COST SIX ITEMS
+
+D42, D52, D56, D59, D60 and W412 all turned on the same thing: **a zero measured over benches that
+never enter the state is a fact about the BENCH.** Five waves running have now corrected their own
+brief. **Write briefs that invite the correction, and read it.**
+
+### NEXT UNIT
+
+Open. Candidates, none started: **stars' collect sound** (bees and medals confirmed, stars are
+NOT -- and do NOT re-kind a record, that was tried and is invalid); **`$27399E`** (blocks two
+checkpoint rungs); the front-end screens D33/D34/D35/D37; the 161 unported enemy types. **D36
+WHITE LABEL STAYS LAST.**
 
 It calls `ctx.soundPost?.(0x28c186)` and still throws. `$28C186` takes D1 FROM THE CALLER, so it
 cannot go through the address-only API -- **and that is not pedantry**: `background.js`'s cue
