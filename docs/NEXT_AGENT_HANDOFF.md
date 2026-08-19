@@ -338,7 +338,39 @@ only 62/80 -- **which is what proves the poke is not doing the wave's work.**
 Implementing the first with the second's doubling leaves counts, slots, kinds and descriptors all
 correct **and still turns the deliverable RED.**
 
-### NEXT UNIT: 24 MISSING RNG DRAWS -- IN PROGRESS (W437)
+### THE CRLF LIST IN EVERY EARLIER BRIEF IS WRONG. HERE IS THE MEASURED ONE.
+
+**22 CRLF files, not 8**, counted by bytes:
+
+    src/       bulletmath, bullets, framesync, movement, mover, spritequeue*, vectors*
+    tests/     bullets, mover, w227death, w36handlers, w62stageend
+    ddpdoj tools/  determinism, portdiff, shipgate, w21patterngate, w230descriptorsweep,
+                   w62stageendgate*, webgate
+    repo tools/    build-dist, render-frame, rendersong
+
+**The three starred files are MIXED, and all three are UNMODIFIED in git -- the mixing is
+PRE-EXISTING. Do not "fix" them.** Match whatever a file already is, checked by bytes.
+
+### W437 CLOSED THE LAST DIVERGENCE IN lf9300..9800
+
+**Unconditional 80/80, no cursor forcing**, every neighbour 80/80, empty draw-gap list.
+
+**HALF THE FIX WAS A REMOVAL** -- the port called `$27F8F8` on five paths where the ROM branches to
+a clear-and-return with no `jsr`. **CHECK THE PORT IS NOT DOING MORE THAN THE BOARD.**
+
+**AND I CHASED AN ALIASED NUMBER FOR TWO WAVES.** "24 missing draws" was `addq.b`'s delta **mod
+256**; the real figure is **280**. **SETTLE COUNTS ON A QUANTITY THAT CANNOT WRAP** -- the wave used
+pool A going 0 -> 68, because 24 draws buys 6 fills and 6 cannot become 68.
+
+**W436's "`$27F8F8` is ruled out" was BACKWARDS**: it matched on every frame it fired *because the
+port was inventing the call* on the compared path.
+
+### NEXT UNIT: POOL A's POSITION DRIVER `$27F95A` -- IN PROGRESS (W438)
+
+Pool A's allocation is now exact (68/68, status 62/70) but **only 2 of 70 slots are byte-identical**,
+differing at `+$02..+$05` on 65-68 of them. At lf9700 the port drains to 27 where the board holds 32.
+
+### SUPERSEDED: 24 MISSING RNG DRAWS (W437)
 
 `$242B3C` indexes with `$803916`. Over lf9501..9600 the port matches the board on **97 of 100
 frames** and is short on three: **lf9556 by 24** (the `$294DD4` frame), lf9562 and lf9592 by 1.
