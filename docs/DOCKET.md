@@ -3604,3 +3604,57 @@ exactly as the bee probe did.
 right. That is suggestive. **It is exactly the kind of source-reading that left this question open
 in the first place, so do not close D52 on it.**
 
+
+### D61: THREE ENEMY TYPES INSTALLED **ZERO CUES, FOREVER**, AND NOTHING THREW
+
+Found by W428 while chasing a different defect. **Not an owner report -- a silent bug the owner
+would have experienced without being able to name it**, which is why it gets its own number.
+
+`$27380E move.l A0,($44,A5)` stores the LOADER'S CURSOR. Three init bodies hard-coded
+`table + 28`. The ROM stores `table + 56`, because the stubs write `move.w #$1,($4,A5)` and the
+`dbra` therefore runs TWICE over the sub prototypes.
+
+**VERIFIED FROM THE IMAGE BY THE COORDINATOR** -- every wrong cursor lands on a sub prototype's
+own flags word, and every one of those has BIT 15 SET:
+
+    type $80   OLD $27396A = $A001  bit15 SET      NEW $273986 = $0992  clear
+    type $82   OLD $27478C = $A000  bit15 SET      NEW $2747A8 = $015E  clear
+    type $88   OLD $275EE8 = $8000  bit15 SET      NEW $275F04 = $0CDA  clear
+
+`$28AC72` reads that word as a THRESHOLD, sees bit 15, and **breaks on its first pass**. So any
+type `$80`, `$82` or `$88` spawned by the port installed **no cues at all, for its entire life,
+and threw nothing.** `$0992` is exactly the first real threshold of type `$80`'s script, which is
+what says the corrected cursor is right.
+
+**THIS IS THE FIFTH LIE-SHAPE IN ITS PUREST FORM: silence that looks like correctness.** There was
+no throw, no counter, no note. Nothing read the cursor back, so nothing could tell.
+
+### W428 IN PROGRESS -- NOT GREEN, NOT COMMITTED
+
+**The brief (mine) was wrong on its central claim.** `$27399E` is **not a routine and there was
+nothing to port**: it is the `script` longword of a cue record, read at `cues.js:84`. The defect
+was a **clipped ROM window** (W23's `$273920+$80` ends at `$27399F`), not an untranslated path.
+
+**IT IS REACHABLE BY ORDINARY PLAY.** Traced: the enemy's HP falls `$1400 -> $0950 -> $0824 ->
+$078E -> $06F8` against thresholds `$0992 $0785 $0578 $036B`. **Damaging it past about 46% health
+is all it takes.** Frame 156 on `c003000`, frame 56 on `c003100`.
+
+**A RULE IN EVERY BRIEF I WRITE IS WRONG FOR THIS CASE.** "Declare NEW ROM windows, never widen --
+abutting is correct" **FAILS when a multi-byte read STRADDLES the seam**: `RomWindows.#at` requires
+the whole read inside ONE window. The wave MEASURED this -- declared `$2739A0+$20`, regenerated,
+and `$27399E` threw identically. **Abutting is not always correct. Say so in future briefs.**
+
+Four clipped scripts, not one: `$268E38` (type `$1A`, record ZERO), `$27399E` (`$80`), `$2747AE`
+(`$82`), `$275F20` (`$88`, a WORD read not a longword).
+
+**WHY IT IS NOT GREEN.** Coordinator's own run on a verified-quiet tree: **3955 tests, 3941 pass,
+14 FAIL.** All fourteen assert `the overlap count still 71` or a window count, and the wave's four
+deliberate overlaps moved it. **Overlaps are not forbidden here -- there are already 71 of them --
+the tests pin the COUNT as a tripwire.** Coordinator's decision: keep the overlaps, update the
+tripwire, and **rewrite each assertion's PROSE rather than bumping an integer** (the W420 mistake).
+
+**AND `tests/w382stalenotes.test.js` IS GREEN ON A FALSE PREMISE.** It hard-codes the three OLD
+seeds and asserts the cursor "does not advance", on a stated reason that is false. **It is the
+repo's own guard against stale notes**, so a false reason living inside it is the worst possible
+place for one.
+
