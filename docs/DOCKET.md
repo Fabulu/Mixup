@@ -3896,3 +3896,44 @@ wave.**
 Verified by the coordinator on a quiet tree: **3977 pass / 0 fail / 0 skipped**, gate exit 0 with
 31 PASS / 0 FAIL, `--verify` OK at 612 windows with **none added**.
 
+
+### W434: POOL B IS 80/80 -- AND THE MISSING WRITER WAS AN INSTRUCTION NO SCAN WOULD FIND
+
+**`finalBlast2440E0` IS UNROLLED IN THE ROM AND THE BLOCKS ARE NOT ALL THE SAME.** `aligned.py`
+decodes 555 instructions over `$2440E0..$244ACE`: 4 preamble + **39 blocks of 14 (546)** + 4 tail +
+**EXACTLY ONE instruction that belongs to no block.**
+
+That one is **`$2441B4 move.b #$40,($1C,A0)`** -- bytes `11 7c 00 40 00 1c`, confirmed by the
+coordinator. It sits after block 2's last store and before block 3's first read, **so A0 is still
+block 2's slot.** The port read all 39 blocks as one uniform 16-byte-row loop and dropped it.
+
+**A LONGWORD OR TABLE SCAN WOULD NEVER HAVE FOUND IT: it is an IMMEDIATE, INSIDE CODE.** The
+layout pins which block on both ends -- all 39 are byte-identical 64-byte copies of block 0, block 2
+ends exactly at `$2441B4`, and block 38 ends exactly at `$244ABA`, which is W433's `jsr $260E36`.
+
+**THE DEFECT WAS NOT ONE SLOT IN ONE LADDER.** Falsified by toggling the store off: the same byte
+on the same slot 2 appears in **FIVE segments across FOUR ladders** -- including the stage-2 death
+at lf21800, **so `$2440E0`'s other caller carried it too.** All five are now **80/80**. W433's "one
+remainder" was one remainder *in the segment it measured*.
+
+**THE FREED-SLOT TRAP IS EVEN STRONGER THAN THE BRIEF SAID.** At lf10000 the board has **39
+non-blank slots and ZERO live ones** -- every row `$2440E0` wrote had been freed again by lf9975.
+**The whole comparison is residue on both sides.**
+
+**AND MY BRIEF'S FRAMING WAS WRONG:** I said "a LIVE-RECORD writer sets it", implying something
+running while the record lived. It is the **allocator's own caller, one instruction after
+allocation, on the same frame.** Nothing live ever touched that byte.
+
+**FALSIFICATION RUN EXPLICITLY, which is what makes this not a forced pass:** with the store
+disabled the ladder arm and the dirty-pool arm both go RED while the ROM-assertion arm stays green.
+The dirty-pool arm pre-fills every slot with `$5A` and **fails equally if EVERY slot gets `$40`** --
+so the test cannot be satisfied by writing a constant.
+
+Verified by the coordinator on a quiet tree: **3980 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 612 windows with none added.
+
+**TWO PRE-EXISTING POOL-B REDS FLAGGED, OUT OF SCOPE, measured identical with the fix on and off:**
+`stage1-laser-hold` lf9500->9600 at **60/80** (multi-byte, in `+$02..$05` position and `+$34..$37`
+velocity) and lf10300->10400 at **74/80** (six slots the port keeps alive that the board has
+blanked). **Neither is touched by this change.**
+

@@ -637,11 +637,34 @@ function f2SpawnRow(ram, rom, ctx, a6, cursor, withSubs) {
   return e;
 }
 
-/** `$2440E0`, clear pool B and seed the shared 39-row final boss blast. */
+/** `$2440E0`, clear pool B and seed the shared 39-row final boss blast.
+ *
+ *  THE ROUTINE IS UNROLLED IN THE ROM AND THE BLOCKS ARE NOT ALL THE SAME.
+ *  [M] `tools/aligned.py sweep 0x2440e0 0x244ace` decodes 555 instructions:
+ *  four of preamble, 39 blocks of FOURTEEN instructions each (546), four of
+ *  tail, and ONE instruction that belongs to no block --
+ *
+ *      $2441B4  11 7c 00 40 00 1c    move.b #$40,($1c,A0)
+ *
+ *  It sits AFTER block 2's last store (`$2441AE move.w #$2,($10,A0)`) and
+ *  BEFORE block 3's `$2441BA move.w (A1)+,D0`, so A0 is still block 2's slot:
+ *  the THIRD record this routine allocates, and only that one, gets `+$1C`
+ *  set.  Reading the 39 blocks as one uniform loop -- which is what this port
+ *  did from W433 until W434 -- drops that byte silently, because `$289004`
+ *  itself zeroes `+$1C` and every other field of row 2 still matches.
+ *
+ *  W434 MEASURED THE COST.  `stage1-laser-hold`, seeded lf9800, compared at
+ *  lf10000: pool-B slots byte-identical to the board's own dump were 79/80,
+ *  and the single differing byte was `+$1C` of pool slot 2 (board $40, port
+ *  $00) on a slot that had since been FREED.  Pool slot 2 is row 2's slot
+ *  because `clearEffectPool` runs first, so `$289004` hands out 0, 1, 2, ...
+ *  in order.  With this store the count is 80/80.
+ */
 export function finalBlast2440E0(ram, rom, ctx, a6) {
   clearEffectPool(ram);
   ram.setU16(0x803930, 0x0014);
-  for (let row = 0x244ace; row < 0x244d3e; row += 16) {
+  let block = 0;
+  for (let row = 0x244ace; row < 0x244d3e; row += 16, block++) {
     const e = spawnEffect(ram, ctx, rom.u16(row), 0x2440f8);
     ram.setU32(e + B.pos, ram.u32(a6 + 0x02));
     ram.setU16(e + B.bucket, rom.u16(row + 2));
@@ -651,6 +674,9 @@ export function finalBlast2440E0(ram, rom, ctx, a6) {
     ram.setU16(e + B.sub14, rom.u16(row + 12));
     ram.setU16(e + B.delay, rom.u16(row + 14));
     ram.setU16(e + B.hook, ram.u16(0x813092) === 4 ? 2 : 1);
+    // $2441B4 -- THE ONE OUT-OF-BLOCK INSTRUCTION.  A BYTE, and only on the
+    // block that has just finished; see the header for the sweep that pins it.
+    if (block === 2) ram.setU8(e + B.f1c, 0x40);
   }
   ram.setU16(0x813186, 1);
   ram.setU16(0x813188, 0);
