@@ -3987,3 +3987,54 @@ red 100-frame segment in lf9300..10700 -- its four neighbours are 80/80 includin
 Verified by the coordinator on a quiet tree: **3985 pass / 0 fail / 0 skipped**, gate exit 0 with
 31 PASS / 0 FAIL, `--verify` OK at **613 windows** (one added, abutting, overlaps unchanged at 75).
 
+
+### W436: THE THREE MISSING RECORDS ARE A3 SCRIPT 5'S SPARK BLOCKS -- AND THE 80/80 IS CONDITIONAL
+
+`boss.js partScriptStep` is shared by A3 scripts 4 and 5 and began at the state machine. **Script
+4's step opens `$293970 bra.w $293A44` and JUMPS its own copy of three `$3(a4)`-gated emitter
+blocks; script 5's step has NO such branch and REACHES them.** W62's note said "NOTHING sets a bit
+of `$3(a4)`" -- but `$293D32`'s eight burst entries carry loopctl 1, 2 and 3, so `burst2938AE`
+**(ported since W107) has been setting bits 0, 1 and 2 all along with nothing to read them.**
+
+Eight firings, which is exactly the eight non-blank records; three still live at lf9600, which is
+exactly the three live ones. **The records ARE spawnable in the port's state.**
+
+**THE WAVE DID NOT REACH AN UNCONDITIONAL 80/80 AND REFUSED TO CLAIM ONE.**
+
+    fix on                            63/80 identical, KIND WORD 80/80, DESCRIPTOR 80/80,
+                                      counts 33 live / 43 non-blank / $22 = THE BOARD'S
+    fix on, board's $803916 forced    80/80, ZERO differing bytes
+    fix off                           60/80, kind 67/80, descriptor 63/80, counts 30/35/$1F
+    fix off AND $803916 forced        62/80 -- so the RNG poke is NOT doing this wave's work
+
+**The 17 remaining slots differ ONLY at `+$02..+$05`, `+$1B` and `+$35..+$37` -- the angle and what
+follows from it.** Cause traced to a SECOND, OLDER defect: `$242B3C` indexes with `$803916`, and
+over lf9501..9600 the port's per-frame draw count matches the board on 97 of 100 frames and is
+short on three -- **lf9556 by 24** (the frame `$294DD4` runs), lf9562 and lf9592 by 1. **The 24
+draws produce no pool-B/C/D record and move no CLAIMED column; `$27F8F8` is ruled out.** That is
+the next unit.
+
+**THE UNROLL TRAP, CHECKED:** `$293BAE..$293C87` is **43 instructions: 2 + 13 + 14 + 14** -- the
+blocks are NOT uniform. Blocks 2 and 3 carry `add.b D0,D0`; **block 1 does not**, and block 3 has a
+different kind, bucket and speed. **Falsified: implementing block 1 with the doubling leaves counts,
+slots, kinds and descriptors all correct and STILL turns the deliverable RED.**
+
+**MY BRIEF WAS WRONG:** "its four neighbours are 80/80 including live records" -- **two of the four
+hold ZERO live records on the board** (lf9400, lf9500, 26 non-blank each). Only lf9700 and lf9800
+could ever have distinguished a missing live record.
+
+**THE RUNG IS LOAD-BEARING** (W435's trap applied): the board holds 43 records at lf9600, 33 live.
+
+Falsification: a `W436_MUTATE` seam returns the segment to 30/35/`$1F`; the dirty-pool arm asserts
+**eight firings into eight DISTINCT slots with three distinct signatures and at least five distinct
+angle bytes**, plus that all 22 untouched fields still read `$5A`. **A constant written eight times
+fails on the slot set, the signatures, the angles AND the residue.**
+
+Verified by the coordinator on a quiet tree: **3990 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows with **none added** -- the nudges are immediates
+inside code.
+
+**ALSO CORRECTED: `games/ddpdoj/tools/oracle/c1_*.py` ARE TRACKED and unmodified.** The
+session-start snapshot listing them as untracked is stale. **Leave them alone regardless -- they
+are not ours -- but the stated reason was wrong.**
+

@@ -813,14 +813,33 @@ function d6Step293E04(ram, rom, ctx, a4) {
 //
 //   * script 4's step BEGINS `$293970 bra.w $293A44`, jumping OVER
 //     `$293974..$293A42` -- three `$3(a4)`-gated spark bursts -- to the state
-//     machine.  Nothing branches back.  Sixty-nine instructions of dead code.
-//   * script 5's step has no such jump and reaches the same three blocks, but
-//     each is `btst.b #$n,$3(a4) / beq`.  W62 wrote "NOTHING sets a bit of
-//     `$3(a4)`" -- that was WRONG: the state-0 burst tables (`burst2938AE`'s
-//     `loopctl` field) set bits 0/1/2 of `$3(a4)`.  On the board those bits
-//     would arm script 5's three spark blocks; IN THE PORT those blocks are
-//     not translated (partScriptStep starts at the state machine), so the bits
-//     have no reader and no effect.  Stated rather than papered over.
+//     machine.  Nothing branches back.  Forty-one instructions of dead code.
+//     [M] `$293970` is `60 00 00 d2`, and `$293972 + $D2 = $293A44`, which
+//     `aligned.py` decodes as `cmpi.b #$2,($2,A4)` -- the state machine's own
+//     first instruction.  So script 4's blocks are UNREACHABLE and stay
+//     untranslated; that is a measurement, not a deferral.
+//   * script 5's step has no such jump: `$293BAE..$293BB4` is the same two-
+//     instruction scroll preamble and `$293BB8` is `btst #$2,($3,A4)` straight
+//     away.  It REACHES the same three blocks, each `btst.b #$n,$3(a4) / beq`.
+//     W62 wrote "NOTHING sets a bit of `$3(a4)`" -- that was WRONG: the
+//     state-0 burst tables (`burst2938AE`'s `loopctl` field) set bits 0/1/2 of
+//     `$3(a4)`, and `$293D32`'s eight entries carry loopctl 1, 2 and 3, so ALL
+//     THREE blocks arm on the frame the part detaches.
+//
+// **WAVE 436 TRANSLATES SCRIPT 5's THREE BLOCKS (`sparkBlocks293BB8`).**  They
+// were the only pool-B producer missing from `stage1-laser-hold` lf9500->9600,
+// which sat at 60/80 from W434 until this wave.  [M] board 33 live / 43
+// non-blank / count $22 against port 30 live / 35 non-blank / count $1F: the
+// EIGHT non-blank records the port never made are these blocks' eight firings
+// over lf9558..9574, and three of them are still live at lf9600.
+//
+// **THE BLOCKS ARE NOT THREE COPIES OF ONE SHAPE.**  `aligned.py` decodes
+// `$293BAE..$293C87` as 43 instructions: 2 preamble + 13 + 14 + 14.  Blocks 2
+// and 3 carry `$293C2E`/`$293C74 d0 00` -- `add.b D0,D0`, DOUBLING the
+// `$242B3C` angle byte -- and block 1 does NOT.  Reading them as one loop body
+// would put the wrong angle on two thirds of the sparks.  Block 3 is also a
+// different KIND ($6, not $10), a different bucket ($8, not $4) and a
+// different speed ($C, not $10).
 //
 // Their state machines are identical up to the field offsets: state 0 arms,
 // state 1 walks the part down by `$800` a tick until its Y goes negative, state
@@ -843,10 +862,81 @@ function partScriptInit(ram, a4) {                     // $29393A / $293B82
   ram.setU16(a4 + 0x0c, 0x0000);                       // $29395E
 }
 
+/** WAVE 436's falsification seam, same shape and same reset discipline as
+ *  `W96_MUTATE`: `'no-sparks'` puts `partScriptStep` back to where it was
+ *  before this wave, so the test can show the ladder goes RED without the
+ *  blocks instead of merely asserting it goes green with them. */
+export const W436_MUTATE = { value: null };
+
+/** `$293BB8..$293C87` -- SCRIPT 5's three `$3(a4)`-gated spark blocks, the ones
+ *  script 4 branches over at `$293970`.  Each is: `btst.b #bit,$3(A4)`, a
+ *  byte countdown at `$ctr(A4)` reloaded from `$ctr+1(A4)`, then ONE
+ *  `$289004` allocation whose position is the part's own `$62(A6)`.
+ *
+ *  [M] the three, in the ROM's order, from `aligned.py`:
+ *      $293BB8  bit 2  ctr $8/$9  kind $10  bucket $4  speed $10  nudge $FDFFFC00
+ *      $293BFC  bit 0  ctr $4/$5  kind $10  bucket $4  speed $10  nudge $F2000200  + add.b D0,D0
+ *      $293C42  bit 1  ctr $6/$7  kind $06  bucket $8  speed $0C  nudge $F5FFFC00  + add.b D0,D0
+ *  `partScriptInit` seeds all three counters at 0 with reloads $8, $5 and $7 --
+ *  script 5's own copy is `$293B8E`/`$293B94`/`$293B9A` (`$293946`/`$29394C`/
+ *  `$293952` is script 4's, and the two are word writes so the counter is 0 and
+ *  the reload is the low byte).  `subq.b #1` on 0 BORROWS, so every block fires
+ *  on the FIRST frame after the bits are set and then every reload+1 frames:
+ *  [M] lf9558/9566/9574, lf9558/9567 and lf9558/9564/9570 on the ladder.
+ *
+ *  ORDER MATTERS AND IS THE ROM's: each firing block consumes exactly one
+ *  `$242B3C` draw, so re-ordering them re-orders the RNG stream as well as the
+ *  allocations. */
+export function sparkBlocks293BB8(ram, rom, ctx, a4, a6) {
+  const pos = ram.u32(a6 + PART[5].pos);               // $293BEE/$293C34/$293C7A
+  // ---- $293BB8, bit 2
+  if ((ram.u8(a4 + 0x03) & 0x04) !== 0) {              // $293BB8 btst #$2,($3,A4)
+    if (!decByteBcc(ram, a4 + 0x08)) {                 // $293BC2 subq.b #1 / bcc
+      ram.setU8(a4 + 0x08, ram.u8(a4 + 0x09));         // $293BCA move.b ($9,A4),($8,A4)
+      const a0 = spawnEffect(ram, ctx, 0x10, 0x293bd2);// $293BD0 moveq #$10 / $293BD2 jsr
+      ram.setU16(a0 + B.bucket, 0x0004);               // $293BD8 move.w #$4,($1E,A0)
+      ram.setU8(a0 + B.speed, 0x10);                   // $293BDE move.b #$10,($1A,A0)
+      ram.setU8(a0 + B.angle, drawByte242B3C(ram, rom));  // $293BE4/$293BEA -- NO add.b
+      ram.setU32(a0 + B.pos, pos);                     // $293BEE move.l ($62,A6),($2,A0)
+      ram.setU32(a0 + B.nudge, 0xfdfffc00);            // $293BF4
+    }
+  }
+  // ---- $293BFC, bit 0
+  if ((ram.u8(a4 + 0x03) & 0x01) !== 0) {              // $293BFC btst #$0,($3,A4)
+    if (!decByteBcc(ram, a4 + 0x04)) {                 // $293C06 subq.b #1 / bcc
+      ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));         // $293C0E move.b ($5,A4),($4,A4)
+      const a0 = spawnEffect(ram, ctx, 0x10, 0x293c16);// $293C14 moveq #$10 / $293C16 jsr
+      ram.setU16(a0 + B.bucket, 0x0004);               // $293C1C move.w #$4,($1E,A0)
+      ram.setU8(a0 + B.speed, 0x10);                   // $293C22 move.b #$10,($1A,A0)
+      // $293C2E add.b D0,D0 -- the DOUBLED angle, byte-wide.
+      ram.setU8(a0 + B.angle, (drawByte242B3C(ram, rom) * 2) & 0xff);  // $293C28/$293C2E/$293C30
+      ram.setU32(a0 + B.pos, pos);                     // $293C34 move.l ($62,A6),($2,A0)
+      ram.setU32(a0 + B.nudge, 0xf2000200);            // $293C3A
+    }
+  }
+  // ---- $293C42, bit 1 -- A DIFFERENT KIND, BUCKET AND SPEED
+  if ((ram.u8(a4 + 0x03) & 0x02) !== 0) {              // $293C42 btst #$1,($3,A4)
+    if (!decByteBcc(ram, a4 + 0x06)) {                 // $293C4C subq.b #1 / bcc
+      ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));         // $293C54 move.b ($7,A4),($6,A4)
+      const a0 = spawnEffect(ram, ctx, 0x06, 0x293c5c);// $293C5A moveq #$6 / $293C5C jsr
+      ram.setU16(a0 + B.bucket, 0x0008);               // $293C62 move.w #$8,($1E,A0)
+      ram.setU8(a0 + B.speed, 0x0c);                   // $293C68 move.b #$C,($1A,A0)
+      ram.setU8(a0 + B.angle, (drawByte242B3C(ram, rom) * 2) & 0xff);  // $293C6E/$293C74/$293C76
+      ram.setU32(a0 + B.pos, pos);                     // $293C7A move.l ($62,A6),($2,A0)
+      ram.setU32(a0 + B.nudge, 0xf5fffc00);            // $293C80
+    }
+  }
+}
+
 function partScriptStep(ram, rom, ctx, a4, a6, id) {
   const f = PART[id];
   ram.setU16(a6 + f.scrollY, u16(ram.u16(a6 + f.scrollY)
     - ram.u16(0x813176)));                             // $293966/$29396C
+  // $293970 `bra.w $293A44` skips script 4's copy of the three blocks; script
+  // 5 has no such branch and runs them here, BEFORE its state machine.
+  if (id === 5 && W436_MUTATE.value !== 'no-sparks') {
+    sparkBlocks293BB8(ram, rom, ctx, a4, a6);          // $293BB8..$293C87
+  }
   if (ram.u8(a4 + 0x02) === 2) {                       // $293A44 / $293C88
     ctx.soundPost?.(0x28c2a8);                               // $293A4E -- SOUND
     // $293A54 move.l $POS(A6),D2 / lea $tState2 / bsr $2938F2 -- the part's

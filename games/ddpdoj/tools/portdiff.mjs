@@ -31,6 +31,7 @@ import { W94_MUTATE } from '../src/bossscripts.js';
 import { W95_MUTATE } from '../src/bossphase.js';
 import { W95G_MUTATE } from '../src/bossguns.js';
 import { W96_MUTATE } from '../src/bossarrival.js';
+import { W436_MUTATE } from '../src/boss.js';
 
 function readTsv(path) {
   const lines = readFileSync(path, 'utf8').trim().split(/\r?\n/);
@@ -142,6 +143,7 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
   W95_MUTATE.value = null;           // WAVE 95's seam, same rule
   W95G_MUTATE.value = null;          // WAVE 95's guns, same rule
   W96_MUTATE.value = null;           // WAVE 96's arrival, same rule
+  W436_MUTATE.value = null;          // WAVE 436's part-5 sparks, same rule
   if (opts.break) breakage(opts.break, game);
 
   const pokes = (opts.poke ?? '').split(',').filter(Boolean).map((kv) => {
