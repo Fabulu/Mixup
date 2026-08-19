@@ -3853,3 +3853,46 @@ Also recorded: `$260E58`/`$260E7A`/`$260E9C` (modes 2, 3, 4) have **NO caller an
 image** -- no absolute-long, no PC-relative `bsr`/`jsr`, and the longword does not appear as data --
 so `screenShake260EC8`'s note for "mode is not yet translated" **covers dead code.**
 
+
+### D64 FIXED BY W433 -- ONE LINE, AND THE ROUTINE HAD BEEN PORTED SINCE W189
+
+`boss.js d6Step293E04` state 5 carried `note(ctx, 0x2440e0)` at `$293EEC` -- **a W52-era deferral
+for a routine ported in W189.** `boss3.js` and `hibachiend.js` both already called
+`finalBlast2440E0`; **the stage-1 site was the one caller never wired up.** The note fired at
+lf9902, one frame before the board's first shake frame, **so it was on the real route the whole
+time, not absent.**
+
+**THE PROOF, 42 board values against 42 port values (`stage1-laser-hold`, seeded lf9800):
+MATCH 42, DIFFER 0.** Before the fix: MATCH 0, DIFFER 42. Zero on both sides on every other frame
+of lf9801..9960, so the window is 42 exactly on both. **All four corpus windows now match 42/42.**
+
+**MY BRIEF WAS WRONG IN FOUR PLACES and the wave corrected each:**
+1. D63 said "four of the five ladders carry a shake window". It is **THREE of five, and FOUR
+   windows** -- `fly-around` has none, `stage2-laser-hold` has TWO. **W432 verified that ladder's
+   SECOND window while its FIRST carried this exact defect.**
+2. "the only writers of `$813186` are the eight sites" -- there are eight REFERENCES; **six are
+   writers**, two are reads. Bound right, label wrong.
+3. "never calls `$2440E0`" -- true in effect, but it REACHES the site and COUNTS it. **That
+   distinction is what made it findable.**
+4. **Mode 2 is not an untranslated table.** Modes 1 and 2 SHARE `$260F4C` and differ only by
+   `$260F20 asr.w #1`. Only 3 and 4 have their own.
+
+**A SECOND DEFECT FOUND IN PASSING: the terminator test was wrong.** `$260EE6` tests **X ALONE**;
+the port required BOTH words zero. Same predicate on this table (0 of 42 pairs have X=0) so it
+changed no frame -- **but 7 of 42 have Y=0**, so it was one table away from mattering.
+
+**DEAD ARMS CONFIRMED INDEPENDENTLY.** `$00813186` occurs exactly 8 times, all in
+`$260E3A..$260F18`. Scanning `$260E58`/`$260E7A`/`$260E9C` as abs-long, as raw data, and as the
+target of every `Bcc`/`bsr`/`jsr`/`jmp (d16,PC)`/`lea (d16,PC)`/`pea (d16,PC)` at every even
+address: **zero references each.** Positive control on the same scanner found `$260EC8` reachable
+**PC-relative only** -- so a longword scan alone would have called the live driver dead. The note
+now says "UNREACHABLE on this ROM", not "not yet translated".
+
+**BONUS, MEASURED:** the stage-1 death also never cleared pool B or seeded the 39-row blast.
+Against the board's own dump at lf10000, **pool-B byte-identical slots went 37/80 -> 79/80.** The
+one remainder is a residue byte at `+$1C` of a FREED slot -- **flagged, out of scope, for a later
+wave.**
+
+Verified by the coordinator on a quiet tree: **3977 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 612 windows with **none added**.
+

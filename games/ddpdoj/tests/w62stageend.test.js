@@ -867,7 +867,15 @@ test('every emitter D-script 6 counts is keyed by the address it stands at',
     // those addresses since. The table described three gaps that did not exist,
     // and nothing read it, so no census was ever wrong -- which is exactly why
     // it survived. A documentation lie with no assertion over it.
-    assert.equal(Object.keys(BOSS_NOTED).length, 5);
+    //
+    // **W433 (D64) DROPS IT FROM 5 TO 4, AND THIS ONE WAS A REAL GAP.**
+    // $2440E0 -- the final boss blast, whose tail `$244ABA jsr $260E36` arms
+    // the screen shake -- has been PORTED since W189 for the stage-2 and
+    // stage-3 deaths, and `$293EEC` was the one call site never wired to it.
+    // Unlike W425's three, this note DID fire on the real route (lf9902 of
+    // out/w69/stage1-laser-hold) and 42 frames of $80B054 were missing behind
+    // it, on a column state.js CLAIMS.
+    assert.equal(Object.keys(BOSS_NOTED).length, 4);
 
     // THE GUARD THAT WOULD HAVE CAUGHT IT, added W425: every key must be an
     // address this file's own `note()` actually raises. Read straight out of
@@ -875,7 +883,8 @@ test('every emitter D-script 6 counts is keyed by the address it stands at',
     const src = fs.readFileSync(new URL('../src/boss.js', import.meta.url), 'utf8');
     const raised = new Set([...src.matchAll(/note\(ctx, (0x[0-9a-f]+)\)/g)]
       .map((m) => Number(m[1])));
-    assert.ok(raised.size >= 5, 'POSITIVE CONTROL: the scan found note() calls at all');
+    // W433: four, not five -- $2440E0's note() is gone because $293EEC calls it now.
+    assert.ok(raised.size >= 4, 'POSITIVE CONTROL: the scan found note() calls at all');
     for (const k of Object.keys(BOSS_NOTED).map(Number)) {
       assert.ok(raised.has(k),
         `$${k.toString(16).toUpperCase()} is in BOSS_NOTED but nothing note()s it`);

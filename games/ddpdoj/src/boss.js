@@ -82,6 +82,15 @@ import { armScreenClearMode } from './midboss.js';
 import { hibachiSecondForm2A6F12, bossExitShared } from './hibachi2.js';
 import { enqueueRegisters } from './spritequeue.js';
 import { spawnEffect, B } from './effects.js';
+// W433 (D64): the STAGE-1 boss death's own `$293EEC jsr $2440E0`.  The routine
+// has been ported since W189 and lives next to the stage-2 death that first
+// needed it; boss3.js and hibachiend.js already reach across for it the same
+// way.  The edge boss.js -> boss2.js closes a cycle that boss2.js's own
+// `import ... from './boss.js'` opens, and that is safe here for the reason
+// ESM makes it safe: `finalBlast2440E0` is an exported FUNCTION DECLARATION,
+// hoisted and initialised before either module body runs, and it is only ever
+// read at call time.  The same cycle already exists through `./hibachiend.js`.
+import { finalBlast2440E0 } from './boss2.js';
 import { drawByte242B3C, drawWord242EC2 } from './rng.js';
 
 /** The boss's record and sub-record fields, by the offset the ROM uses. */
@@ -125,15 +134,21 @@ export const BOSS = {
  *  W418's fifth lie and W422's `bee.js` bound: a true statement resting on a
  *  false explanation, or in this case a false statement nothing ever read.
  *
- *  What is left is genuinely deferred: the impact-pool-A `$2440E0` (W52's
- *  refusal), the animation-object loader `$246410` (the presentation tier), the
- *  hit-stop driver `$243DD0`, the `$8039xx` pause block `$23C4D0` and the A3
- *  stops `$2599EC`. Every one of them has a live `note()` call above. */
+ *  **W433 (D64) TOOK A FIFTH OUT, AND THAT ONE WAS A REAL GAP.** `$2440E0` is
+ *  gone from this table because `$293EEC` now CALLS it. It was not a
+ *  documentation lie like W425's three -- the `note()` fired, on the real
+ *  route, at lf9902 of `out/w69/stage1-laser-hold`, and the 42 frames of screen
+ *  shake behind it were missing from the port for 381 waves. The label was
+ *  wrong too: `$2440E0` opens with `jsr $288E0C`, the POOL-B (effect) whole-pool
+ *  clear, not "impact pool A".
+ *
+ *  What is left is genuinely deferred: the animation-object loader `$246410`
+ *  (the presentation tier), the hit-stop driver `$243DD0`, the `$8039xx` pause
+ *  block `$23C4D0` and the A3 stops `$2599EC`. Every one of them has a live
+ *  `note()` call above. */
 export const BOSS_NOTED = Object.freeze({
   0x243dd0: '$292912/$294C68/$294D4C jsr $243DD0 -- the hit-stop / screen-shake '
     + 'driver (170 instructions, no reader in the stage-end chain)',
-  0x2440e0: '$293EEC jsr $2440E0 -- impact pool A, exactly where W52/W53/W54 '
-    + 'left it',
   0x246410: '$293F18 / $29407C / $28D770 jsr $246410 -- the ANIMATION-OBJECT '
     + 'loader (286 instructions), the presentation tier',
   0x23c4d0: '$294DE4 jsr $23C4D0 -- the $8039xx pause/flag block',
@@ -687,7 +702,16 @@ function d6Step293E04(ram, rom, ctx, a4) {
     ram.setU16(a4 + D6.wait, n);
     if (n === 0) {
       ctx.soundPost?.(0x28c392);                       // WAVE A: BGM id=6, SOUND ($293EE6)
-      note(ctx, 0x2440e0);                             // $293EEC
+      // $293EEC jsr $2440E0 -- W433 (D64).  RUN, not counted.  This one call
+      // is the whole of the stage-1 boss death's SCREEN SHAKE: $2440E0's tail
+      // at $244ABA is `jsr $260E36`, which arms $813186 = 1 and zeroes the
+      // cursor $813188, and from the next frame on `$260EC8` walks the 42-pair
+      // table at $260F4C into $80B054/$80B056.  The board does it on
+      // lf9903..9944 of out/w69/stage1-laser-hold and the port left the column
+      // at 0 for all 42 frames from W52 until this wave -- a divergence on a
+      // CLAIMED column, because the routine was ported for the stage-2 and
+      // stage-3 deaths (W189) and this call site was never wired to it.
+      finalBlast2440E0(ram, rom, ctx, a6);             // $293EEC
       ram.setU16(a4 + D6.wait, 0x80);                  // $293EF2
       ram.setU8(a4 + D6.state, 6);                     // $293EF8
     }

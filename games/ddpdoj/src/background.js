@@ -1565,29 +1565,75 @@ function elementDriverAndShake(ram, rom, ctx) {
   screenShake260EC8(ram, rom, ctx);
 }
 
-/** `$260EC8`, the screen-shake driver. Mode 1 is the stage-2 boss death's
- * exact 42-pair sequence; other modes remain explicitly counted. */
+/**
+ * `$260EC8` -- THE SCREEN-SHAKE DRIVER, and the whole of it that this cartridge
+ * can reach.  W433 (D64) re-read it against the image and corrected two things
+ * the old body said.
+ *
+ * **THE SHAPE.**  `$260EC8` loads `$813186` and jumps through a five-entry
+ * longword table at `$260F38` (`$260ED6 lea ($60,PC),A0` -- extension word
+ * `$260ED8` + `$60`), so mode N picks the pair table for N:
+ *
+ *     mode 0  $00000000   -- `$260ECE beq.w $260F36`, an immediate `rts`
+ *     mode 1  $260F4C     42 pairs, terminator $00000000 at $260FF4
+ *     mode 2  $260F4C     THE SAME TABLE -- and `$260F14 cmpi.w #$1,$813186`
+ *                         is the only difference: mode 2 falls through to
+ *                         `$260F20 asr.w #$1,D0 / asr.w #$1,D1`, HALF AMPLITUDE
+ *     mode 3  $260FF8     26 pairs, terminator at $261060
+ *     mode 4  $261064
+ *
+ * So "mode 2 is a table we have not read" was never true; mode 2 is mode 1
+ * halved.  Only 3 and 4 have tables of their own, and neither is reachable.
+ *
+ * **THE ARMS ARE DEAD AND THIS IS THE MEASUREMENT, not an inherited claim.**
+ * `$813186` is written only by the five arms `$260E36`/`$260E58`/`$260E7A`/
+ * `$260E9C` (modes 1..4) and `$260EBE` (stop), plus `$260EF0`'s own clear on
+ * the terminator.  A scan of the decrypted image for the longword `$00813186`
+ * at ANY alignment finds exactly EIGHT occurrences and all eight are inside
+ * `$260E3A..$260F18` -- the six writes, `$260EC8`'s `move.w` read and
+ * `$260F14`'s `cmpi.w`.  Nothing else in the cartridge can set the mode.
+ * A second scan for `$260E58`/`$260E7A`/`$260E9C` -- as an absolute-long
+ * operand, as the target of every `Bcc.b`/`Bcc.w`/`bsr`, `jsr`/`jmp (d16,PC)`,
+ * `lea (d16,PC)` and `pea (d16,PC)` at every even address, and as raw data --
+ * finds ZERO references to each.  **Modes 2, 3 and 4 cannot be armed on this
+ * ROM revision**, so the `note()` below stands over unreachable state and says
+ * so; it is a guard against a corrupt seed, not a deferral.  Same scan finds
+ * `$260E36` reached from exactly three sites -- `$244ABA` (the tail of
+ * `$2440E0`), `$2A5C5C` and `$2A5FC4` -- `$260EBE` from `$28D5CA` alone, and
+ * `$260EC8` itself from `$2613A6` alone.  Porting 2/3/4 would be writing code
+ * to look complete; it is deliberately not written.
+ *
+ * **THE TERMINATOR IS THE FIRST WORD ONLY.**  `$260EE6 move.w (A0)+,D0 /
+ * $260EE8 cmpi.w #$0,D0 / $260EEC bne.w` tests D0 -- the X term -- and never
+ * looks at Y.  The old body required BOTH words to be zero.  That is the same
+ * predicate on this table (no entry of the 42 has X = 0, checked) so it changed
+ * no frame, but it is not what the instruction does and a table with a pure-Y
+ * pair would have run past its end.
+ */
 export function screenShake260EC8(ram, rom, ctx) {
-  const mode = ram.u16(BGRAM.shakeMode);
-  if (mode === 0) return;
+  const mode = ram.u16(BGRAM.shakeMode);                  // $260EC8 move.w
+  if (mode === 0) return;                                 // $260ECE beq.w
   if (mode !== 1) {
-    ctx.unportedLog.note(0x260ec8, `$260EC8 screen-shake mode ${mode} is not `
-      + 'yet translated; mode 1 is complete');
+    ctx.unportedLog.note(0x260ec8, `$260EC8 screen-shake mode ${mode} -- `
+      + 'UNREACHABLE on this ROM: nothing in the image references $260E58, '
+      + '$260E7A or $260E9C, so only $260E36 (mode 1) and $260EBE (stop) can '
+      + 'ever write $813186. Counted rather than ported, because a mode-2/3/4 '
+      + 'arm here would be code no cartridge path can run');
     return;
   }
-  const at = 0x260f4c + ram.u16(BGRAM.shakeCursor);
-  const x = rom.u16(at), y = rom.u16(at + 2);
-  if (x === 0 && y === 0) {
-    ram.setU16(BGRAM.shakeMode, 0);
-    ram.setU16(CAM.shakeX, 0);
-    ram.setU16(CAM.shakeY, 0);
-    ram.setU16(0x803934, 0);
-    ram.setU16(0x803936, 1);
-    return;
+  const at = 0x260f4c + ram.u16(BGRAM.shakeCursor);       // $260EDC/$260EE0
+  const x = rom.u16(at);                                  // $260EE6 move.w (A0)+
+  if (x === 0) {                                          // $260EE8 cmpi.w #$0
+    ram.setU16(BGRAM.shakeMode, 0);                       // $260EF0
+    ram.setU16(CAM.shakeX, 0);                            // $260EF8
+    ram.setU16(CAM.shakeY, 0);                            // $260F00
+    ram.setU16(0x803934, 0);                              // $260F08 jsr $23C4D0
+    ram.setU16(0x803936, 1);                              //   = clr.w $803934 /
+    return;                                               //     move.w #$1,$803936
   }
-  ram.setU16(CAM.shakeX, x);
-  ram.setU16(CAM.shakeY, y);
-  ram.setU16(BGRAM.shakeCursor, ram.u16(BGRAM.shakeCursor) + 4);
+  ram.setU16(CAM.shakeX, x);                              // $260F24 move.w D0
+  ram.setU16(CAM.shakeY, rom.u16(at + 2));                // $260F12/$260F2A
+  ram.setU16(BGRAM.shakeCursor, ram.u16(BGRAM.shakeCursor) + 4);  // $260F30
 }
 
 /**
