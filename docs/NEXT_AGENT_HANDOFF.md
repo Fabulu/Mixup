@@ -241,6 +241,25 @@ checking which case you are in.**
 the parent dies at frame 116 with `$4F` still on the countdown. Ported because they are the rest of
 the script and would throw the moment a longer-lived parent appears.
 
+### D52 IS CLOSED. ALL THREE COLLECT SOUNDS ACCOUNTED FOR.
+
+Medals confirmed by the owner, bees measured (id `$1F`), **stars measured by W430 (id `$1E`, word
+uniquely `$28C5E4` -- the TYPE nibble separates it from its neighbours). No defect, no code
+changed.**
+
+**W430 FOUND THE MECHANISM BEHIND THE OWNER'S OWN SENTENCE.** *"Only mid bosses leave stars"* is
+right about the trigger: the midboss death arms `armScreenClear` with **mode 0**, and the free arm
+allocates pool A at **kind index 0** from the BULLET's record. **The midboss does not drop stars --
+every live enemy bullet BECOMES one.** A bomb arms mode `$FFFF` and makes none. Only two sites in
+the port arm mode 0.
+
+**49 collects -> 49 posts sequentially, but ONE post when all 49 land together** -- that is
+`$28C5E4`'s own `debAlways` debounce, the ROM's guard, not a defect.
+
+**UNMEASURED AND NOT FORCED:** kind index 4 is the same arm as 0, but the only site allocating it is
+stage-2 type `$90` and **there is no stage-2 rung in `tools/oracle/out`.** Kind 3 likewise. **That
+missing stage-2 rung blocks more than this** -- see D56, whose only clean pool-B rung is stage 1.
+
 ### NEXT UNIT: OPEN
 
 Candidates, none started:
