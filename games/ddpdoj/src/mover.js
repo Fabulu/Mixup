@@ -55,8 +55,13 @@
 
 import { BUL, REC, TYPEBIT, behaviourFor } from './bullets.js';
 import { velocity } from './bulletmath.js';
+import { allocPoolA27F8F0 } from './bee.js';
 import { unreached } from './unported.js';
 import { i16, u16 } from './ram.js';
+
+/** WAVE 437 falsification seam.  `'no-death-effect'` puts `freeSlot` back to
+ *  what it was for 411 waves -- the `jsr $27F8F8` COUNTED and not run. */
+export const W437_MUTATE = { value: null };
 
 // --------------------------------------------------------------- addresses
 export const MOVER = {
@@ -144,7 +149,11 @@ function driveSlot(ctx, base, d6) {
   if (mask === 0) { plainPath(ctx, base, d6); return; }   // $281E74
 
   // $281ED6: reached for any of bits 14/12/8/7.
-  if (typeWord & TYPEBIT.kill) { freeSlot(ctx, base); return; }  // btst #$C; bne kill
+  // W437: `$281ED6 btst #$C,D2 / $281EDA bne` branches to **$281EC4**, which is
+  // `clr.w (A6) / move.w #$FFFF,($2,A6)` and NOTHING ELSE.  It is NOT $281E36,
+  // so the bit-12 kill makes no `$27F8F8` call -- measured off the branch
+  // displacement, `66 e8` from $281EDA.
+  if (typeWord & TYPEBIT.kill) { freeSlotNoEffect(ctx, base); return; }  // -> $281EC4
   // $281EDC sub.w D6,$4(A6) -- scroll-comp on posB for bit7/8/14 (bit8 undoes it).
   ram.setU16(base + REC.posB, u16(ram.u16(base + REC.posB) - d6));
 
@@ -297,21 +306,75 @@ function bit5Transform(ctx, base) {
 function boundsKill(ctx, base) {
   const { ram } = ctx;
   if (ctx.mut === 'break-kill') return false;       // RED: never free OOB
+  // W437 -- **BOTH `bcs`es GO TO $281EC4, NOT TO $281E36.**  `$281E8C 65 36` is
+  // $281E8E + $36 and `$281E94 65 2E` is $281E96 + $2E; both land on $281EC4,
+  // the bare `clr.w (A6) / move.w #$FFFF,($2,A6)`.  The port called the WITH-
+  // EFFECT free here for 411 waves, which is why the counted `$27F8F8` note
+  // fired on 37 frames of lf9501..9600 that the board spends no draw on: the
+  // cartridge never makes the call on the bounds path at all.
   const posB = ram.u16(base + REC.posB);
-  if (posB + BOUNDS.posBkill > 0xffff) { freeSlot(ctx, base); return true; }  // $281E8C bcs
+  if (posB + BOUNDS.posBkill > 0xffff) {            // $281E8C bcs $281EC4
+    freeSlotNoEffect(ctx, base); return true;
+  }
   const posA = ram.u16(base + REC.posA);
-  if (posA + BOUNDS.posAkill > 0xffff) { freeSlot(ctx, base); return true; }  // $281E94 bcs
+  if (posA + BOUNDS.posAkill > 0xffff) {            // $281E94 bcs $281EC4
+    freeSlotNoEffect(ctx, base); return true;
+  }
   return false;
 }
 
-/** Free a slot, noting the death-effect spawn `$27F8F8` (separate impact pool). */
+/**
+ * Free a slot AND spawn its death effect -- `$281E36..$281E4E`, all five
+ * instructions.
+ *
+ *   281e36  70 00                  moveq   #$0,D0
+ *   281e38  3f 07                  move.w  D7,-(A7)
+ *   281e3a  4e b9 0027f8f8         jsr     $27F8F8
+ *   281e40  3e 1f                  move.w  (A7)+,D7
+ *   281e42  42 56                  clr.w   (A6)
+ *   281e44  3d 7c ffff 0002        move.w  #$FFFF,($2,A6)
+ *
+ * ===================== WAVE 437: THE `jsr` IS NOT A NO-OP =====================
+ *
+ * From W27 to W436 this COUNTED the `jsr` and did not make it, on the stated
+ * reason that it "walks the impact pool $8171BE, NOT the bullet pool -- a
+ * W27/W28 effect-spawn side effect, IRRELEVANT TO BULLET STATE".  Both halves of
+ * that sentence are true and the conclusion drawn from them is false: `$27F8F8`
+ * is `$27F8F0`'s sibling entry (`$27F8F8 moveq #$0,D1 / moveq #$0,D2 / bra` into
+ * the same `$8171BE` scan), the fill it reaches DRAWS FROM THE SHARED RNG
+ * COUNTER `$803917`, and that counter is not pool-A state -- it is the state
+ * EVERY subsystem's draws index.  Skipping the spawn skipped the draws.
+ *
+ * [M] For D0 = 0 the finish is `$280C5E`, the shared speed/angle body, and it
+ * makes FOUR draws per record that actually allocates:
+ *
+ *     $280DEA-shape phase   `$242EC2`     drawWord242EC2
+ *     $280C84 speed         `$2431F4`     drawByte2431F4
+ *     $280C9x spread        `$242FDE`     drawSigned242FDE
+ *     $280CAx angle         `$2431F4`     drawByte2431F4
+ *
+ * and ZERO draws when `$280B2A`'s off-screen abort fires first, which is why
+ * this was invisible for so long.  A bullet freed by `boundsKill` has just left
+ * the playfield, so its effect aborts on position and draws nothing -- and
+ * `boundsKill` is how bullets die on an ordinary frame.  The draws only appear
+ * when something frees an ON-SCREEN bullet, i.e. the `$281E20` global-kill gate
+ * and the bit-12 kill.
+ *
+ * [M] `out/w69/stage1-laser-hold` lf9556 is exactly that frame: `$294DD4`'s
+ * `$294DDC bset #$7,$8130F8` makes `MOVER.stageKill` NEGATIVE, the global-kill
+ * gate takes every live bullet, and this routine runs 101 times in one frame.
+ * Six of the 101 are on-screen and allocate; 4 draws x 6 records = 24, which is
+ * the whole of the deficit W436 measured and could not attribute.
+ */
 function freeSlot(ctx, base) {
   const { ram } = ctx;
-  // $281E36 moveq #$0,D0 ; $281E38 move.w D7,-(A7) ; $281E3A jsr $27F8F8
-  ctx.notes?.note(MOVER.deathEffect,
-    `bullet death effect spawn (D0=${
-      0 /* moveq #0 */}): walks the impact pool $8171BE, NOT the bullet pool -- `
-    + `a W27/W28 effect-spawn side effect, irrelevant to bullet state`);
+  // $281E36 moveq #$0,D0 ; $281E38 move.w D7,-(A7) ; $281E3A jsr $27F8F8.
+  // D7 is saved and restored around the call because `$27F8F8` uses it as its
+  // own scan counter; the port's D7 is `fillGeneralImpact280B3E`'s parameter and
+  // the mover's slot index is a JS local, so the save is structural.
+  if (W437_MUTATE.value !== 'no-death-effect') {
+    allocPoolA27F8F0(ram, ctx.rom, ctx, 0, 0, 0, base);
+  }
   // $281E40 move.w (A7)+,D7 ; $281E42 clr.w (A6) ; $281E44 move.w #$ffff,$2(A6)
   freeSlotNoEffect(ctx, base);
 }

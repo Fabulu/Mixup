@@ -59,6 +59,12 @@
 // Before this wave the same forcing gives 62/80 -- so the poke does not paper
 // over the missing blocks, it isolates a second, older defect.
 //
+// **W437 CLOSED THAT SECOND DEFECT AND THIS FILE NOW MEASURES THE RESULT.**
+// The deficit was `$281E36 jsr $27F8F8` -- the mover's global-kill free, which
+// `mover.js` counted instead of calling -- so the two arms below that used to
+// assert the residual assert its ABSENCE, and lf9500->9600 is 80/80 with
+// NOTHING forced.  See `w437deatheffect.test.js` for the attribution.
+//
 // ---------------------------------------------------------------------------
 // WHAT THIS FILE PROVES, AND IN WHICH ORDER
 // ---------------------------------------------------------------------------
@@ -146,10 +152,22 @@ const S5_STATE0_TABLE = 0x293d32;      // PART[5].tState0, the loopctl source
 const BOARD_LIVE = 33;
 const BOARD_NONBLANK = 43;
 const BOARD_COUNT = 0x22;
-// [M] the byte offsets that still differ once the blocks are translated.
+// [M] the byte offsets that still differed while the `$803916` deficit was
+// open -- W436's residual, and now W437's RED arm.
 const ANGLE_TAIL = [0x02, 0x03, 0x04, 0x05, 0x1b, 0x35, 0x36, 0x37];
-// [M] the three frames the port draws fewer times than the board, and by how
-// much.  lf9556 is `$294DD4`'s own frame.
+// [M] the three frames W436 measured the port drawing fewer times than the
+// board, and by how much.  lf9556 is `$294DD4`'s own frame.
+//
+// ===================== WAVE 437 CLOSED ALL THREE =============================
+// The 24 missing draws on lf9556 are `$281E36 jsr $27F8F8`, the mover's
+// GLOBAL-KILL free.  `$294DDC bset #$7,$8130F8` makes that word NEGATIVE, so
+// `$281E20`'s gate takes every live bullet -- [M] 101 of them on that frame --
+// and six are still on screen, so six get past `$280B2A`'s abort and each makes
+// FOUR draws.  lf9562 and lf9592 are the same call: the bit stays set, so every
+// bullet that spawns afterwards is killed on the next mover pass.  `mover.js`
+// COUNTED that `jsr` instead of making it.  Both constants below are therefore
+// the state of the port under `W437_MUTATE = 'no-death-effect'` and NOT its
+// live state; with W437 on, both are EMPTY.
 const RNG_DEFICIT = [[9556, 4, 28], [9562, 12, 13], [9592, 0, 1]];
 
 const hx = (v) => `$${v.toString(16).toUpperCase()}`;
@@ -416,19 +434,27 @@ test('W436: lf9500->9600 -- the port now allocates the board\'s 43 records into 
   assert.equal(r.descSame, POOL_B.slots,
     '...and the board\'s own descriptor longword at +$0A');
 
-  // THE RESIDUAL, PINNED RATHER THAN WAVED AT.
-  assert.deepEqual(r.offsets, ANGLE_TAIL,
-    'the only bytes that may still differ are the position, the angle byte '
-    + `+$1B and the velocity it produces -- got ${r.differ.length} slots over `
-    + `offsets [${r.offsets.map(hx2).join(' ')}]`);
-  assert.deepEqual(r.drawGap, RNG_DEFICIT,
-    'and the reason is a DRAW-COUNT deficit, on exactly three frames of the '
-    + 'hundred: lf9556 (the frame $294DD4 runs) by 24, lf9562 by 1 and lf9592 '
-    + 'by 1. Every other frame in this window draws exactly as often as the '
-    + 'board does. THIS IS A SECOND DEFECT AND IT IS NOT POOL B\'S');
+  // THE RESIDUAL IS GONE.  W436 left eight offsets differing and three frames
+  // short; W437 closed the draw-count deficit behind them, so this arm now
+  // asserts the ABSENCE of both -- and W437's own RED arm re-creates them,
+  // which is what keeps this measurement load-bearing rather than satisfied.
+  assert.deepEqual(r.offsets, [],
+    'no byte of any pool-B slot may differ from the board -- W436 left '
+    + `[${ANGLE_TAIL.map(hx2).join(' ')}], the angle and what follows from it. `
+    + `Got ${r.differ.length} slots over [${r.offsets.map(hx2).join(' ')}]`);
+  assert.deepEqual(r.drawGap, [],
+    'and the port must draw from $803916 exactly as often as the board on ALL '
+    + '100 frames, with NOTHING forced. W436 measured a deficit on three: '
+    + `${JSON.stringify(RNG_DEFICIT)} -- lf9556 (the frame $294DD4 runs) by 24, `
+    + 'lf9562 by 1 and lf9592 by 1. W437 attributed all three to $281E36 '
+    + 'jsr $27F8F8, the mover GLOBAL-KILL free, and they are closed');
+  assert.equal(r.identical, POOL_B.slots,
+    '...so lf9500->9600 is 80/80 byte-identical UNCONDITIONALLY');
 
-  // THE DELIVERABLE: with the board's own index in $803916, all $38 bytes of
-  // all 80 slots.
+  // AND IT IS STILL 80/80 WITH THE BOARD'S OWN INDEX WRITTEN IN.  W436's
+  // deliverable was this line alone; it is kept because a fix that closed the
+  // deficit by drawing the WRONG number of times somewhere else could pass the
+  // unforced arm above and would still fail here.
   const forced = await runSegment(SEED_LF, CMP_LF, { forceRng: true });
   assert.deepEqual(forced.differ, [],
     `every pool-B slot must be byte-identical to the board at lf${CMP_LF} once `

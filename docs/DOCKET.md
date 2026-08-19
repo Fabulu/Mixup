@@ -4038,3 +4038,50 @@ inside code.
 session-start snapshot listing them as untracked is stale. **Leave them alone regardless -- they
 are not ours -- but the stated reason was wrong.**
 
+
+### W437: THE MISSING DRAWS ARE `$281E36 jsr $27F8F8` -- AND HALF THE FIX IS A REMOVAL
+
+`mover.js freeSlot` transcribed `$281E36..$281E4E` as a counted note and never made the call.
+`$294DDC bset #$7,$8130F8` makes that word negative, `$281E6A bmi` fires, and **every live bullet
+takes the kill arm -- 101 of them on lf9556.**
+
+**AND THE PORT WAS RUNNING SOMETHING IT SHOULD NOT.** The bounds kills (`$281E8C`, `$281E94`), the
+bit-12 kill (`$281EDA`) and the bit-7 bounds kills (`$281F46`, `$281F50`) all branch to
+**`$281EC4`**, which is `clr.w (A6) / move.w #$FFFF,($2,A6)` and **no `jsr`**. The port sent all
+five to `$281E36`.
+
+**UNCONDITIONAL 80/80, NO CURSOR FORCING**, with every neighbour also 80/80 and an empty draw-gap
+list across lf9300..9800. Port at lf9600: **33 live / 43 non-blank / `$22` = the board's**, and
+still 80/80 with the cursor forced. **All three frames closed** -- lf9562 and lf9592 are the same
+call, because the bit stays set.
+
+**MY BRIEF WAS WRONG IN FIVE PLACES, AND TWO MATTER:**
+1. **IT IS 280 DRAWS, NOT 24.** `addq.b #1,$803917` is a **BYTE** add, so the `rng` column only
+   shows delta **mod 256**; 280 = 24. **I had been reading an aliased number.** Settled on a
+   non-modular quantity: the board's pool A holds **0 at lf9500 and 68 at lf9600**, and **24 draws
+   buys 6 fills -- 6 cannot become 68.** The port now reaches 68/68 where it reached 0/0.
+2. **`$27F8F8` WAS NOT RULED OUT -- IT IS THE WHOLE CAUSE.** W436's "fires on 37 frames and the RNG
+   matches on every one" is true and **the inference is backwards**: on those frames the port was
+   INVENTING the call on the bounds path, where the ROM makes none, **so of course it matched.**
+3. lf9562/lf9592 were not a separate defect.
+4. **THE CRLF LIST IN EVERY BRIEF I WRITE IS WRONG.** Coordinator counted: **22 CRLF files**, not 8
+   -- and **THREE ARE MIXED** (`src/spritequeue.js`, `src/vectors.js`,
+   `tools/w62stageendgate.mjs`). All three are **unmodified in git, so the mixing is PRE-EXISTING.**
+5. **W433's trap met for real:** `$281F46`/`$281F50` are `bcs.W`; an 8-bit-only read resolves them
+   elsewhere. The scan decodes both forms with a positive control.
+
+**HOW THE FIX CANNOT BE FAKED, and this is the sharpest falsification yet.** The deliverable is a
+COUNT, so the obvious fake is a constant advance. Over `$5A` dirt, **eight bullets freed by the
+SAME gate on the SAME pass cost 16 draws for the four ON-SCREEN ones and ZERO for the four
+OFF-SCREEN ones**, because `$280B2A`'s abort fires before `$280C68`. **No constant k gives
+8k = 16 and 4k = 0.**
+
+Verified by the coordinator on a quiet tree: **4000 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows with none added.
+
+**RESIDUALS, NAMED BY THE WAVE:** pool A's occupancy and count are now exact (68/68) and status is
+62/70, **but only 2/70 slots are byte-identical**, differing overwhelmingly at `+$02..+$05` -- the
+per-record position. **That is `$27F95A`'s driver, now reachable and worth a wave.** Also
+lf9601..9800 has 15 draw-gap frames (18 before, so no regression), and `$282016 jsr $27F8F8` stays
+a note because it has **no `moveq #$0,D0`** in front of it, so its kind is unknown.
+

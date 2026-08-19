@@ -28,9 +28,16 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
 const TABLES = path.join(ROOT, 'rip', 'port', 'player.tables.json');
 const HAVE_TABLES = fs.existsSync(TABLES);
+const TABLES_JSON = HAVE_TABLES ? JSON.parse(fs.readFileSync(TABLES, 'utf8')) : null;
 const ROM = HAVE_TABLES
-  ? new (await import('../src/rom.js')).RomWindows(
-      JSON.parse(fs.readFileSync(TABLES, 'utf8')).rom)
+  ? new (await import('../src/rom.js')).RomWindows(TABLES_JSON.rom)
+  : null;
+// W437: the GLOBAL-KILL path is the one and only caller of `$281E36`'s
+// `jsr $27F8F8`, and that call reaches `$280B3E`'s fill, which resolves a
+// velocity out of the movement tables.  A ctx without them is no longer a ctx
+// the global-kill arm can run on, so it gets the real ones.
+const MT = HAVE_TABLES
+  ? new (await import('../src/vectors.js')).MoveTables(TABLES_JSON, ROM)
   : null;
 
 const i16 = (v) => (v << 16) >> 16;
@@ -133,7 +140,7 @@ test('the global-kill gate frees unless $811F72 bit0 set AND $8130F8 bit15 clear
     ram.setU16(MOVER.freezeC, f2);
     ram.setU16(MOVER.stageKill, sk);
     const base = seedBullet(ram, 0, { velA: 0, velB: 0 });
-    runMover({ ram, rom: ROM, notes: new UnportedLog() });
+    runMover({ ram, rom: ROM, tables: MT, notes: new UnportedLog() });
     assert.equal((ram.u16(base) & TYPEBIT.alive) !== 0, alive,
       `freezeC=$${f2.toString(16)} stageKill=$${sk.toString(16)} alive=${alive}`);
   }

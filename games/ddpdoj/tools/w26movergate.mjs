@@ -27,6 +27,7 @@ import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { BUL, REC } from '../src/bullets.js';
 import { runMover } from '../src/mover.js';
+import { MoveTables } from '../src/vectors.js';
 import { UnportedLog } from '../src/unported.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -110,7 +111,11 @@ const recField = (hex, off, n = 2) => parseInt(hex.substr(off * 2, n * 2), 16);
 
 // ------------------------------------------------------------------- the run
 function runOn(corpus, mut) {
-  const rom = new RomWindows(JSON.parse(fs.readFileSync(TABLES, 'utf8')).rom);
+  const tablesJson = JSON.parse(fs.readFileSync(TABLES, 'utf8'));
+  const rom = new RomWindows(tablesJson.rom);
+  // W437: the global-kill arm of `driveSlot` now really makes `$281E3A jsr
+  // $27F8F8`, whose fill resolves a velocity out of the movement tables.
+  const moveTables = new MoveTables(tablesJson, rom);
   let frames = 0, divergent = 0, slotCmp = 0;
   const byKind = new Map();
   const firstDiffs = [];
@@ -134,7 +139,7 @@ function runOn(corpus, mut) {
 
     let threw = null;
     try {
-      runMover({ ram, rom, notes, mut });
+      runMover({ ram, rom, tables: moveTables, notes, mut });
     } catch (e) { threw = e; }
 
     // compare every slot alive in BEFORE.
