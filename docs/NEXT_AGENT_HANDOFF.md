@@ -427,7 +427,38 @@ ZERO in the pool.**
 
 **SIX TESTS WERE ASSERTING THE DEFECT.** All rewritten, none deleted.
 
-### NEXT UNIT: THE LAST TWO -- IN PROGRESS (W441)
+### D56 IS FIXED AND LIVE. THE HYPER BEAM'S ART SHIPS.
+
+**W442 found the cause, W443 fixed it, published as `20260819205607`.** The exporter's beam harvest
+walked pair-table entries **0..4**; the hyper sits on **15..19**, all pointing at ONE block --
+**block 19 of 20.** Four frames never packaged. **Bucket-16 missing records 88 -> 0.**
+
+**IT WAS NEVER A WINDOW PROBLEM.** W226 had already declared that window and **its own comment names
+the hyper strip by address.** The cause was a `harvest: 5` cutoff.
+
+**AND THE EXPORTER'S OWN COMMENT PROMISED A LOUD THROW IF WINDOW AND HARVEST DISAGREED. THAT HAD
+BEEN FALSE SINCE W226 MOVED THE WINDOW ALONE** -- so reaching the hyper's art was a **QUIET BLANK**
+for 217 waves. **That is the owner's bug, and it is D66's shape exactly.**
+
+### D66 AUDITED (W444): 430 DEFERRALS, 6 FULLY STALE, GUARD SHIPPED
+
+**The safety net had the same bug.** `$27120A` was `ctx.unported?.unreached(...)` -- **a method
+`UnportedLog` does not implement** -- so on a bare ctx it **silently no-opped and returned.**
+
+`tests/w444deferrals.test.js` is **RED-proven seven ways** and covers **all five** bookkeeping tables
+plus `INIT_UNREAD` (W425 wired one). **It states what it cannot catch**, including whether the
+English is true.
+
+**`node --test` IS CWD-SENSITIVE** -- from `games/ddpdoj/`, twelve tests fail ENOENT on a doubled
+path. **Run it from the REPO ROOT.**
+
+### NEXT UNIT: THE FOUR STALE DEFERRALS -- IN PROGRESS (W445)
+
+`$2878CC`/`$28795C` (**live path -- the lives row is not redrawn on a loop extend**), `$27F87C`,
+`$2603DA`, `$24A810`. **Wiring one WILL turn W444's guard red. That is the guard working -- update
+the register, do not weaken it.**
+
+### SUPERSEDED: THE LAST TWO (W441)
 
 `lf9100->9200` stops at **176/210**, and W440 measured it as **two independent defects, neither its
 own**:
