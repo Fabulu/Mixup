@@ -189,7 +189,45 @@ The wave's own first measurement was that. **It is now a test.**
 the 17-record pool-B checkpoints, so stage 1 `c008000` is the only clean pool-B rung. **Its own
 unit if a wave needs those rungs.**
 
-### THE PATTERN THAT HAS NOW COST SIX ITEMS
+### W428: A CLIPPED WINDOW, A SILENT BUG, AND THE GUARD THAT DEFENDED IT
+
+**`$27399E` WAS NEVER A ROUTINE.** It is the `script` longword of a cue record, read at
+`cues.js:84`. The defect was a **clipped ROM window**. Reachable by anyone who shoots the enemy.
+
+**A RULE IN EVERY BRIEF I WRITE IS WRONG, AND W428 MEASURED IT.** "Declare NEW ROM windows, never
+widen -- abutting is correct" **FAILS when a multi-byte read STRADDLES the seam**, because
+`RomWindows` needs the whole read inside ONE window. It declared an abutting window, regenerated,
+and got the identical throw. **Say this in future briefs.** A RED test now pins it.
+
+**D61, THE SILENT BUG:** three init bodies seeded `table + 28` where the cartridge stores
+`table + 2*28`. Every wrong value is a sub prototype's flags word with bit 15 SET, which `$28AC72`
+reads as a threshold and breaks on -- so types `$80`, `$82`, `$88` installed **zero cues, forever,
+and threw nothing.**
+
+**AND THE REPO'S OWN GUARD AGAINST STALE NOTES WAS DEFENDING IT.**
+`tests/w382stalenotes.test.js` asserted those types "open their cue list with a NEGATIVE word".
+The words ARE negative -- they are the second sub prototype, not the cue list. **It passed, green,
+for waves, with the correct multiplier sitting in the very next test of the same file.** It now
+walks the cursor from the cartridge and DERIVES seeds by running the init body, so a regression
+moves the test instead of being defended by it.
+
+**THIRTEEN FILES EACH HELD THEIR OWN COPY OF A GLOBAL INVARIANT**, which is how four new windows
+broke fourteen tests. Both numbers now live once in `tests/romwindowset.js`, with a guard that
+dropping W428's four returns the overlap count to exactly 71 -- **the delta reconciles rather than
+merely agreeing.**
+
+**A GATE BASELINE MOVED (records 1742 -> 1821) AND THE HARDWARE SETTLED IT.** Across all 363 oracle
+RAM snapshots the three OLD cursor values appear **ZERO** times; the new ones appear 170, 1375 and
+145. **The baseline had been captured under the bug.** When the port and a baseline disagree, the
+cartridge decides.
+
+### NEXT UNIT: `UNPORTED $28AE24`, THE NEXT LIVE THROW IN THE CUE SUBSYSTEM
+
+5 of 363 rungs (`c003600`/`c003625`/`c003650`) arrive from the oracle with a **kind-`$C`** cue
+already live at frame 0. Descriptor `$28B08E` (flags `$800C`), dispatch entry 3. **`$28AFD4` holds
+14 live descriptors and `cues.js` covers 3.** Much bigger than what W428 fixed.
+
+### THE PATTERN THAT HAS NOW COST SEVEN ITEMS
 
 D42, D52, D56, D59, D60 and W412 all turned on the same thing: **a zero measured over benches that
 never enter the state is a fact about the BENCH.** Five waves running have now corrected their own
