@@ -54,6 +54,9 @@ import { RomWindows } from '../src/rom.js';
 import { resolveEmitStub, BUCKETS } from '../src/spritequeue.js';
 import { BGELEM_HANDLERS, BGRAM, ESLOT } from '../src/background.js';
 import { SCREEN8 } from '../src/objslot8.js';
+import {
+  OVERLAP_NOTE, ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs,
+} from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../rip/sound/maincpu.bin');
@@ -438,10 +441,10 @@ test('W394 SECTION 6: no new window -- the two addresses the port reads are alre
     // pair and five data tables, so the set is 583. The claim this line makes -- that W394 itself
     // added no window -- is unchanged; the two `covers()` assertions below are its real content
     // and they are untouched witnesses.
-    assert.equal(ws.length, 607, 'the exported set was 569 windows at W394, 570 after W398, '
+    assert.equal(ws.length, ROM_WINDOW_COUNT, 'the exported set was 569 windows at W394, 570 after W398, '
       + '575 after W399, 583 after W400, 585 after W402, 590 after W404, 593 after W405, '
       + '594 after W406, 595 after W407, 596 since W408 declared A1 gun $A\'s template, and is 599 since W409 declared A4 script 5\'s three blocks'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606. W425 declares $294134 ($20), the timer-D SOUND dispatch table of D-script 6 -- the eight cue-wrapper addresses the boss DEATH ANIMATION walks with `movea.l (A0),A0 / jsr (A0)`, which is the explosion rattle DOCKET D58 was opened on. The $294154 window from W107 ABUTS it and is NOT widened: the two are read by different routines for different reasons, and the overlap count is unchanged. So 607.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606. W425 declares $294134 ($20), the timer-D SOUND dispatch table of D-script 6 -- the eight cue-wrapper addresses the boss DEATH ANIMATION walks with `movea.l (A0),A0 / jsr (A0)`, which is the explosion rattle DOCKET D58 was opened on. The $294154 window from W107 ABUTS it and is NOT widened: the two are read by different routines for different reasons, and the overlap count is unchanged. So 607. W428 declares the FOUR word-threshold cue scripts ($268E32 $273986 $2747A8 $275F04), so 611. Each of the four begins INSIDE its type\'s prototype window and runs on to the handler that follows it, because a cue record\'s longwords straddle that window\'s end and RomWindows.#at cannot stitch a read across a seam -- W428 declared an abutting window and MEASURED that $27399E threw anyway. So for the first time in twelve waves the overlap count moves too, 71 -> 75, four new pairs for four new windows. Both numbers now live in tests/romwindowset.js, which is where to change them and where to read why.');
     const covers = (a) => ws.filter(([b, len]) => a >= b && a < b + len);
     // ONE: the per-stage table. `elemSpawn` does `rom.u32(tab + id*4)` and `backgroundInit` does
     // `rom.u32($262302 + stage*4)`; both are inside W-earlier `$262240 + $100`.
@@ -527,26 +530,19 @@ test('W394 SECTION 6: ABLATED FROM THE EXPORTED TABLES, both dependencies throw 
       'and slot 0 is running $262B6A, reached through both of the windows above');
   });
 
-test('W394 SECTION 6: the overlap count over the WHOLE set is unchanged at 71', { skip: SKIP_T },
+test('W394 SECTION 6: the overlap count over the WHOLE set is unchanged BY THIS WAVE, '
+  + 'which declares no window', { skip: SKIP_T },
   () => {
     const ws = WINDOWS();
-    const pairs = (list) => {
-      let n = 0;
-      for (let i = 0; i < list.length; i++) {
-        for (let k = i + 1; k < list.length; k++) {
-          const [a, la] = list[i]; const [b, lb] = list[k];
-          if (a < b + lb && b < a + la) n++;
-        }
-      }
-      return n;
-    };
-    assert.equal(pairs(ws), 71, '71 overlapping pairs, the same number W393 counted');
-    // W394 declares NO window, so "with and without mine" is the same set and the same 71. The
-    // honest extra measurement is that the two windows this wave leans on are members that
-    // overlap NOTHING -- dropping both leaves the count at 71, so neither is a duplicate of
+    assert.equal(overlappingPairs(ws), ROM_OVERLAP_PAIRS, OVERLAP_NOTE);
+    // W394 declares NO window, so "with and without mine" is the same set and the same count.
+    // The honest extra measurement is that the two windows this wave leans on are members that
+    // overlap NOTHING -- dropping both leaves the count unchanged, so neither is a duplicate of
     // another window that would have covered the reads anyway.
-    assert.equal(pairs(ws.filter(([a]) => a !== 0x262240 && a !== 0x23d760)), 71,
-      'dropping the two this wave depends on still leaves 71: neither overlaps anything');
+    assert.equal(overlappingPairs(ws.filter(([a]) => a !== 0x262240 && a !== 0x23d760)),
+      ROM_OVERLAP_PAIRS, 'dropping the two this wave depends on leaves the count '
+      + 'UNCHANGED: neither overlaps anything. The four pairs beyond W393\'s 71 are '
+      + 'W428\'s cue scripts, declared elsewhere.');
     assert.equal(ws.filter(([a]) => a === 0x262240).length, 1, '$262240 is declared once');
     assert.equal(ws.filter(([a]) => a === 0x23d760).length, 1, '  ...and so is $23D760');
     // THE WAVE'S LEDGER, in one line: fourteen new registry rows, zero new windows, and not one

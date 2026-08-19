@@ -967,13 +967,58 @@ ENEMY_PROTO_WINDOWS = [
     # the multi-sub-record types (runLen 1 -> 2 sub-records x 28 = 56 B).
     (0x273920, 0x0080, "W23: type $80 protos + palette $273922 (sub $27394E, "
                        "rec $27392C)"),
+    # W428: THE TAIL OF TYPE $80'S WORD-THRESHOLD CUE SCRIPT, and it was a LIVE
+    # crash. $273808 `jsr $2637A2` / $27380E `move.l A0,($44,A5)` seeds ($44,A5)
+    # with the loader's cursor; the init stub $2737FA `move.w #$1,($4,A5)` makes
+    # that TWO long-form sub-records, so the cursor is $27394E + 2*28 = $273986
+    # and the cue script is the FOUR 14-byte records $273986/$273994/$2739A2/
+    # $2739B0 plus the $FFFF at $2739BE. W23's $80 window ends at $27399F, which
+    # is INSIDE record 1 -- its script longword lives at $27399E..$2739A1 -- so
+    # $28AC72 threw `UNPORTED $27399E` the moment an ordinary player pushed the
+    # enemy's HP below the record's $0785 threshold. Measured on the W69 stage-1
+    # laser-hold rungs c003000 (frame 156) and c003100 (frame 56).
+    # THE OBVIOUS FIX -- an ABUTTING window at $2739A0 -- DOES NOT WORK, and
+    # that is worth carrying forward: `RomWindows.#at` requires the WHOLE read
+    # to sit inside ONE window (`a >= w.base && a + n <= w.base + w.len`). It
+    # does not stitch across a seam, so a longword that STRADDLES two abutting
+    # windows still throws. This wave measured that: with $2739A0+$20 declared,
+    # $27399E threw exactly as before. So the window is the STRUCTURE, declared
+    # from its own start and deliberately overlapping W23's above. It ends at
+    # $2739C0, which IS the handler's first instruction
+    # (`4e b9 00 26 38 a6  jsr $2638A6`), so it cannot be widened by accident.
+    (0x273986, 0x003A, "W428: type $80's COMPLETE word-threshold cue script, "
+                       "$273986..$2739BF -- four 14-byte records and the $FFFF "
+                       "at $2739BE. OVERLAPS W23's $273920+$80 by $1A bytes on "
+                       "purpose; see the note above for why abutting cannot "
+                       "work here"),
     (0x274740, 0x0070, "W23: type $82 protos + palette $27474A (sub $274770, "
                        "rec $274754)"),
+    # W428: type $82's cue script, the same shape as $80's. Stub $274622
+    # `move.w #$1,($4,A5)` -> two long-form subs -> cursor $274770 + 56 =
+    # $2747A8; TWO records ($2747A8 thr $015E, $2747B6 thr $00FA) and the $FFFF
+    # at $2747C4. W23's window ends at $2747AF, eight bytes into record 0, so
+    # the FIRST failing read is that record's D3 longword: MEASURED, a window
+    # list without this entry throws `UNPORTED $2747AE`, and its script longword
+    # at $2747B2 is outside too. $2747A8 + $1E == $2747C6, the handler's
+    # `jsr $2638A6`.
+    (0x2747A8, 0x001E, "W428: type $82's COMPLETE word-threshold cue script, "
+                       "$2747A8..$2747C5 -- two 14-byte records and the $FFFF "
+                       "at $2747C4. OVERLAPS W23's $274740+$70 by $8 bytes"),
     (0x275890, 0x0084, "W23/W182: shared types $85/$86 prototypes and complete "
                        "word-threshold cue script (palette $275890, rec "
                        "$27589A, two subs $2758B0, cues through $275914)"),
     (0x275EA0, 0x0080, "W23: type $88 protos + palette $275EA2 (sub $275ECC, "
                        "rec $275EAC)"),
+    # W428: type $88's cue script, same shape again. Stub $275D98
+    # `move.w #$1,($4,A5)` -> two long-form subs -> cursor $275ECC + 56 =
+    # $275F04; THREE records ($0CDA, $092E, $0582) and the $FFFF at $275F2E.
+    # W23's window ends at $275F1F, i.e. after records 0 and 1 exactly, so the
+    # THIRD record is outside from its very first byte: MEASURED, a window list
+    # without this entry throws `UNPORTED $275F20` on the THRESHOLD WORD, not on
+    # a longword. $275F04 + $2C == $275F30, the handler.
+    (0x275F04, 0x002C, "W428: type $88's COMPLETE word-threshold cue script, "
+                       "$275F04..$275F2F -- three 14-byte records and the $FFFF "
+                       "at $275F2E. OVERLAPS W23's $275EA0+$80 by $1C bytes"),
     (0x2766E0, 0x0030, "W23: type $8A protos (sub $2766E6, rec $2766E0)"),
     (0x276850, 0x0030, "W23: type $8B protos (sub $276862, rec $27685E)"),
     (0x277300, 0x0040, "W23: type $89 protos + palette $27730C (sub $277322, "
@@ -3467,6 +3512,22 @@ SHOT_WINDOWS.extend([
                        "15 0a / 0a 15, so the FIFTH row SWAPS base and XOR. Same $15/$0A pair $55's "
                        "prototype carries. Two sub-records ($268D1E move.w #$1,($4,A5)), so $40 of "
                        "sub prototype, and the handler at $268E6C is clear of it -- no overlap"),
+    # W428 CORRECTS W353'S ARITHMETIC ABOVE, and the extent it produced.  Two
+    # LONG-form sub prototypes are 28 TABLE bytes each, not $20 -- $20 is what
+    # $2637A2 WRITES into the sub-record, and W353 sized the window with the
+    # write stride.  So the sub prototypes end at $268DFA + 2*28 = $268E32, and
+    # the last EIGHT bytes of W353's window are already type $1A's word-
+    # threshold cue script, not prototype.  That script is FOUR 14-byte records
+    # ($1BC6/$159A/$0C58/$07B7) plus the $FFFF at $268E6A, so $268E32..$268E6B,
+    # and `$268EDC jsr $28AC72` in handler $268E6C reads it: with W353's bound
+    # the FIRST record's D3 longword at $268E38..$268E3B already fell outside.
+    # MEASURED, a window list without this entry throws `UNPORTED $268E38` --
+    # type $1A could not install even its first cue.  $268E32 + $3A == $268E6C,
+    # the handler.
+    (0x268E32, 0x003A, "W428: type $1A's COMPLETE word-threshold cue script, "
+                       "$268E32..$268E6B -- four 14-byte records and the $FFFF "
+                       "at $268E6A. OVERLAPS W353's $268DD2+$68 by $8 bytes -- "
+                       "the eight bytes W353 miscounted as sub prototype"),
     (0x269246, 0x0010, "W353: type $1A's FOUR art longwords, indexed by ($28,A6) -- $269246..$269256, "
                        "bounded by ADJACENCY to type $1B's init at $269256. High word $0017 constant, "
                        "low words $D17C $CE78 $CB74 $C870 DESCENDING by $304 -- the same $304 stride "

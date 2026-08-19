@@ -66,6 +66,9 @@ import {
   BGELEM_HANDLERS, BGRAM, BGTAB, BgVram, ESLOT,
   backgroundFrame, backgroundInit, pushExternalSpeed,
 } from '../src/background.js';
+import {
+  OVERLAP_NOTE, ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs,
+} from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -463,7 +466,8 @@ test('W398 SECTION 4: truncated to the columns -- the palette half of the window
 // SECTION 5 -- THE SET. Overlap counted with and without, and both abutments.
 // ===============================================================================================
 
-test('W398 SECTION 5: the window set, the overlap count still 71, and the span abuts W211 exactly',
+test('W398 SECTION 5: the window set, an overlap count this wave does not move, and the '
+  + 'span abuts W211 exactly',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
     // W399 and then W400 moved this ONE number and nothing else in this file: W399 declared
@@ -471,25 +475,16 @@ test('W398 SECTION 5: the window set, the overlap count still 71, and the span a
     // declared type $44's eight, so the set is 583. Everything below -- the overlap count, both
     // abutments, the five column streams -- is untouched, and neither wave's windows are anywhere
     // near this wave's span ($2A5xxx/$2A6xxx for W399, $26Dxxx/$26Exxx for W400).
-    assert.equal(ws.length, 607, '569 windows at W394, 570 after W398, 575 after W399, 583 '
+    assert.equal(ws.length, ROM_WINDOW_COUNT, '569 windows at W394, 570 after W398, 575 after W399, 583 '
       + 'after W400, 585 after W402, 590 after W404, 593 after W405, 594 after W406, 595 '
       + 'after W407, 596 after W408, 599 since W409'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606. W425 declares $294134 ($20), the timer-D SOUND dispatch table of D-script 6 -- the eight cue-wrapper addresses the boss DEATH ANIMATION walks with `movea.l (A0),A0 / jsr (A0)`, which is the explosion rattle DOCKET D58 was opened on. The $294154 window from W107 ABUTS it and is NOT widened: the two are read by different routines for different reasons, and the overlap count is unchanged. So 607.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606. W425 declares $294134 ($20), the timer-D SOUND dispatch table of D-script 6 -- the eight cue-wrapper addresses the boss DEATH ANIMATION walks with `movea.l (A0),A0 / jsr (A0)`, which is the explosion rattle DOCKET D58 was opened on. The $294154 window from W107 ABUTS it and is NOT widened: the two are read by different routines for different reasons, and the overlap count is unchanged. So 607. W428 declares the FOUR word-threshold cue scripts ($268E32 $273986 $2747A8 $275F04), so 611. Each of the four begins INSIDE its type\'s prototype window and runs on to the handler that follows it, because a cue record\'s longwords straddle that window\'s end and RomWindows.#at cannot stitch a read across a seam -- W428 declared an abutting window and MEASURED that $27399E threw anyway. So for the first time in twelve waves the overlap count moves too, 71 -> 75, four new pairs for four new windows. Both numbers now live in tests/romwindowset.js, which is where to change them and where to read why.');
     assert.equal(ws.filter(([a]) => a === STAGE5_COLS).length, 1, '$22D770 is declared once');
 
-    const pairs = (list) => {
-      let n = 0;
-      for (let i = 0; i < list.length; i++) {
-        for (let k = i + 1; k < list.length; k++) {
-          const [a, la] = list[i]; const [b2, lb] = list[k];
-          if (a < b2 + lb && b2 < a + la) n++;
-        }
-      }
-      return n;
-    };
-    assert.equal(pairs(ws), 71, '71 overlapping pairs WITH this window');
-    assert.equal(pairs(ws.filter(([a]) => a !== STAGE5_COLS)), 71,
-      '...and 71 without it: it overlaps nothing, the same number the last five waves counted');
+    assert.equal(overlappingPairs(ws), ROM_OVERLAP_PAIRS, OVERLAP_NOTE);
+    assert.equal(overlappingPairs(ws.filter(([a]) => a !== STAGE5_COLS)), ROM_OVERLAP_PAIRS,
+      '...and the SAME count without it: this window overlaps nothing. Only W428\'s '
+      + 'four cue scripts have ever deliberately overlapped, and they are not this one.');
 
     // Both ends. W211's stage-4 span ends exactly where this one begins -- abutting is not
     // overlapping -- and above it there is a genuine GAP up to the stage-1 spawn script.

@@ -70,6 +70,9 @@ import { installScripts, SCHED, a4Start25980C, scriptAddresses } from '../src/sc
 import { handler2A4606 } from '../src/boss.js';
 import { HIBACHI_A4, HIBACHI_END_SCRIPTS, HIBACHI_END_COUNTED } from '../src/hibachiend.js';
 import { HIBACHI_A1 } from '../src/hibachiguns.js';
+import {
+  OVERLAP_NOTE, ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs,
+} from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -709,36 +712,27 @@ test('W399 SECTION 6: the second-form gate is a LIVE branch into src/hibachi2.js
 // SECTION 7 -- THE SET.
 // ===============================================================================================
 
-test('W399 SECTION 7: 575 windows, the overlap count still 71, and all five sit in open ground',
+test('W399 SECTION 7: the window set, an overlap count these five do not move, and all five '
+  + 'sit in open ground',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
     // W400 declared eight more (type $44's init stub, its prototype pair and five data tables),
     // so this file's total moves and its own five-window claims below do not.
-    assert.equal(ws.length, 607, '570 windows before W399, 575 after it, 583 after W400, 585 '
+    assert.equal(ws.length, ROM_WINDOW_COUNT, '570 windows before W399, 575 after it, 583 after W400, 585 '
       + 'after W402, 590 after W404 (two A1 gun tables and three gun data blocks), 593 '
       + 'after W405, 594 after W406, 595 after W407, 596 after W408 added A1 gun $A\'s '
       + 'template, and 599 since W409 declared A4 script 5\'s three blocks'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606. W425 declares $294134 ($20), the timer-D SOUND dispatch table of D-script 6 -- the eight cue-wrapper addresses the boss DEATH ANIMATION walks with `movea.l (A0),A0 / jsr (A0)`, which is the explosion rattle DOCKET D58 was opened on. The $294154 window from W107 ABUTS it and is NOT widened: the two are read by different routines for different reasons, and the overlap count is unchanged. So 607.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606. W425 declares $294134 ($20), the timer-D SOUND dispatch table of D-script 6 -- the eight cue-wrapper addresses the boss DEATH ANIMATION walks with `movea.l (A0),A0 / jsr (A0)`, which is the explosion rattle DOCKET D58 was opened on. The $294154 window from W107 ABUTS it and is NOT widened: the two are read by different routines for different reasons, and the overlap count is unchanged. So 607. W428 declares the FOUR word-threshold cue scripts ($268E32 $273986 $2747A8 $275F04), so 611. Each of the four begins INSIDE its type\'s prototype window and runs on to the handler that follows it, because a cue record\'s longwords straddle that window\'s end and RomWindows.#at cannot stitch a read across a seam -- W428 declared an abutting window and MEASURED that $27399E threw anyway. So for the first time in twelve waves the overlap count moves too, 71 -> 75, four new pairs for four new windows. Both numbers now live in tests/romwindowset.js, which is where to change them and where to read why.');
     const mine = [HIBACHI_A4.table, HIBACHI_A4.poolCTable, HIBACHI_A4.kindTable,
       HIBACHI_A4.s1Anim, HIBACHI_A4.s3Anim];
     for (const a of mine) {
       assert.equal(ws.filter(([b]) => b === a).length, 1,
         `$${a.toString(16).toUpperCase()} is declared exactly once`);
     }
-    const pairs = (list) => {
-      let n = 0;
-      for (let i = 0; i < list.length; i++) {
-        for (let k = i + 1; k < list.length; k++) {
-          const [a, la] = list[i]; const [b2, lb] = list[k];
-          if (a < b2 + lb && b2 < a + la) n++;
-        }
-      }
-      return n;
-    };
-    assert.equal(pairs(ws), 71, '71 overlapping pairs WITH the five new windows');
-    assert.equal(pairs(ws.filter(([a]) => !mine.includes(a))), 71,
-      '...and 71 without them: none of the five overlaps anything, the same number the last '
-      + 'seven waves counted');
+    assert.equal(overlappingPairs(ws), ROM_OVERLAP_PAIRS, OVERLAP_NOTE);
+    assert.equal(overlappingPairs(ws.filter(([a]) => !mine.includes(a))), ROM_OVERLAP_PAIRS,
+      '...and the SAME count without them: none of the five overlaps anything. The '
+      + 'pairs beyond W393\'s 71 are W428\'s four cue scripts, none of them here.');
 
     // The nearest declared neighbours, both sides. The whole $2A5xxx/$2A6xxx block was empty:
     // the highest window before this wave ended at $2A4606 and the next above is $2C2CA2.

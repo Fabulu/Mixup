@@ -1257,7 +1257,28 @@ try {
         // front of it that were not there. `distinct` 34 and `first` 24 unmoved.
         // W321: 1739 -> 1742, with `streams` 407, `distinct` 34 and `first` 24
         // all held. Three records over 1500 frames of beam.
-        10: { streams: 407, records: 1742, distinct: 34, first: 24,
+        //
+        // W428: 1742 -> 1821, and `streams` 407, `distinct` 34 and `first` 24
+        // are ALL STILL HELD -- same art, same first frame, more records of it.
+        // [M] The cause is `src/initbody.js`: types $80/$82/$88 were seeding
+        // ($44,A5) with `table + 28` where the cartridge stores `table + 2*28`
+        // (each init stub writes `move.w #$1,($4,A5)`, so $2637A2's dbra copies
+        // TWO long-form sub prototypes at 28 TABLE bytes each). The wrong value
+        // is the second sub prototype's own flags word, bit 15 set, so
+        // `$28AC78 bmi` exited on the first pass and those three types
+        // installed ZERO threshold cues. They install them now, and this is
+        // the number moving to match.
+        //
+        // THIS BASELINE WAS CAPTURED UNDER THE BUG, so it had to move, and the
+        // move was not taken on argument. A/B MEASURED: with the old seeds
+        // restored this gate exits 0 at 1742, and with them corrected it
+        // reports 1821, nothing else in the run changing. WHICH SEED IS RIGHT
+        // IS SETTLED BY HARDWARE, not by the port: across all 363 oracle RAM
+        // snapshots under tools/oracle/out/w69, 310 live records of these three
+        // types carry ($44,A5), every one of them inside the type's real cue
+        // list ($273986..$2739BF, $2747A8..$2747C5, $275F04..$275F2F), and the
+        // three old values ($27396A/$27478C/$275EE8) appear ZERO times.
+        10: { streams: 407, records: 1821, distinct: 34, first: 24,
           what: 'THE LASER BEAM ($24BB0A x4 frames x5 powers + the segment '
             + 'and option blocks, bucket 16)' },
         // W66: 146 -> 153. The fifth chain range ($12D430, 8 frames of stride

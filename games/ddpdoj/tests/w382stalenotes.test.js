@@ -546,19 +546,73 @@ test('W382 [M] all four $28AC72 sites are unconditional `jsr`s', { skip: SKIP_IM
   assert.equal(IMG.readUInt16BE(0x26b8ee), 0x4e71, '$26B8EE nop');
 });
 
-test('W382 [M] types $80/$82/$88 open their cue list with a NEGATIVE word, so the '
-  + 'faithful call does nothing', { skip: SKIP_IMG }, () => {
-  // `$28AC72 movea.l ($44,A5),A1 / move.w (A1)+,D0 / $28AC78 bmi` -- a negative
-  // first word exits before any descriptor is touched. Each type's init writes
-  // ($44,A5) itself, so these three addresses are the whole story.
-  for (const [type, at] of [['$80', 0x27394e + 28], ['$82', 0x274770 + 28],
-    ['$88', 0x275ecc + 28]]) {
-    const head = IMG.readUInt16BE(at);
-    assert.ok((head & 0x8000) !== 0,
-      `type ${type}'s list at $${at.toString(16).toUpperCase()} opens $${
-        head.toString(16).toUpperCase()} -- negative, so $28AC78 bmi exits`);
+// W428 REPLACES THE TEST THAT USED TO SIT HERE, AND IT IS THE MOST EXPENSIVE
+// THING THIS FILE HAS EVER CONTAINED. It was titled "types $80/$82/$88 open
+// their cue list with a NEGATIVE word, so the faithful call does nothing", and
+// it read `$27394E + 28`, `$274770 + 28`, `$275ECC + 28`. Those three words ARE
+// negative, so the file stayed green for many waves -- **on a reason that was
+// false.** They are not the cue lists. They are the SECOND SUB PROTOTYPE of
+// each type, and the real lists are 28 bytes further on and are not empty.
+//
+// The arithmetic: each init stub writes `move.w #$1,($4,A5)`, so `$2637A2`'s
+// `dbra` runs TWICE and copies TWO sub prototypes. In the LONG form (bit 15 of
+// the flags word set) each costs 28 TABLE bytes, so the cursor `move.l
+// A0,($44,A5)` stores is `table + 2*28`, not `table + 28`. **The midboss test
+// immediately below this one always had it right** -- it says `$26B50E +
+// 28 * 17` for run length 16 -- so the multiplier was understood here and
+// simply left off for the three types whose run length is 1.
+//
+// The cost: `src/initbody.js` hard-coded the same three wrong values, so a
+// JS-spawned type $80/$82/$88 seeded ($44,A5) with a sub-prototype flags word,
+// `$28AC78 bmi` exited on the first pass, and the type installed ZERO of its
+// damage cues for as long as this test defended the reading. W428 corrected
+// both. The lists are walked from the ROM here rather than restated, so this
+// cannot rot the same way twice.
+test('W382/W428 [M] types $80/$82/$88 DO have cue lists, two sub prototypes past '
+  + 'the table, and they open POSITIVE', { skip: SKIP_IMG }, () => {
+  /** `$2637A2` over the cartridge bytes: `runLen + 1` sub prototypes, 28 table
+   *  bytes for the long form and 16 for the short, returning the cursor A0. */
+  const cursor = (table, runLen) => {
+    let a0 = table;
+    for (let n = 0; n <= runLen; n++) {
+      const flags = IMG.readUInt16BE(a0);
+      a0 += 2;
+      a0 += (flags & 0x8000) !== 0 ? 26 : 14;
+    }
+    return a0;
+  };
+  // run length comes from the type's own init stub, `3b 7c 00 0N 00 04`.
+  for (const [type, stub, table, wrong, list, first] of [
+    ['$80', 0x2737fa, 0x27394e, 0x27396a, 0x273986, 0x0992],
+    ['$82', 0x274622, 0x274770, 0x27478c, 0x2747a8, 0x015e],
+    ['$88', 0x275d98, 0x275ecc, 0x275ee8, 0x275f04, 0x0cda],
+  ]) {
+    assert.equal(IMG.readUInt16BE(stub), 0x3b7c, `${type}: stub is move.w #N,($4,A5)`);
+    assert.equal(IMG.readUInt16BE(stub + 4), 0x0004, `${type}: ...to ($4,A5)`);
+    const runLen = IMG.readUInt16BE(stub + 2);
+    assert.equal(runLen, 1, `${type}: run length 1, so TWO sub-records`);
+    assert.equal(cursor(table, runLen), list,
+      `${type}: $2637A2 from $${table.toString(16).toUpperCase()} ends on `
+      + `$${list.toString(16).toUpperCase()}`);
+    assert.equal(list - table, 56, `${type}: two LONG-form prototypes are 56 table bytes`);
+
+    // THE LIST IS NOT EMPTY. This is the assertion the old test had backwards.
+    const head = IMG.readUInt16BE(list);
+    assert.equal(head & 0x8000, 0, `${type}: $${list.toString(16).toUpperCase()} `
+      + `opens $${head.toString(16).toUpperCase()} -- POSITIVE, so $28AC78 bmi does NOT exit`);
+    assert.equal(head, first, `${type}: first threshold $${first.toString(16).toUpperCase()}`);
+
+    // AND WHY THE OLD READING LOOKED RIGHT: the address it used is the second
+    // sub prototype's flags word, which is negative because the long form is
+    // SELECTED by bit 15. A negative word there is not an empty list, it is a
+    // prototype -- read it, so nobody can restate the old reason.
+    assert.equal(wrong, table + 28, `${type}: the old, one-record-short address`);
+    assert.ok((IMG.readUInt16BE(wrong) & 0x8000) !== 0,
+      `${type}: $${wrong.toString(16).toUpperCase()} is a long-form prototype flags word`);
+    assert.equal(cursor(table, 0), wrong,
+      `${type}: ...which is exactly where ONE sub prototype ends`);
   }
-  assert.equal(IMG.readUInt16BE(0x28ac78), 0x6b22, '$28AC78 bmi -- the exit');
+  assert.equal(IMG.readUInt16BE(0x28ac78), 0x6b22, '$28AC78 bmi -- the exit that is NOT taken');
 });
 
 test('W382 [M] the MIDBOSS list is NOT empty, and its descriptor is outside the ported closure',
@@ -606,12 +660,19 @@ const liveCues = (ram) => Array.from({ length: 10 }, (_, n) => 0x81db90 + n * 0x
 test('W382 the type-$88 site really runs $28AC72 -- given a list, a cue lands in $81DB90',
   { skip: SKIP }, async () => {
     const { runHandler } = await import('../src/handlers.js');
-    // The FAITHFUL case first: type $88's own list at $275EE8 opens $8000, so
-    // `$28AC78 bmi` exits and the cartridge installs nothing.
-    const own = enemy(0x275ee8);
+    // THE FAITHFUL CASE, CORRECTED BY W428. This used to seed $275EE8 and
+    // assert that nothing happened, on the false premise that $275EE8 was type
+    // $88's list. It is the type's second sub prototype. The real list is
+    // $275F04 and it holds THREE records ($0CDA/$092E/$0582), all above this
+    // record's HP of $0100, so the faithful call installs all three and leaves
+    // the cursor on the $FFFF at $275F2E.
+    const own = enemy(0x275f04);
     runHandler(0x275f30, own.ram, ROM, own.a5, world().ctx);
-    assert.equal(liveCues(own.ram).length, 0, 'type $88 spawns no cue, because its list is empty');
-    assert.equal(own.ram.u32(own.a5 + 0x44), 0x275ee8, 'and ($44,A5) does not advance');
+    assert.equal(liveCues(own.ram).length, 3,
+      'type $88 spawns THREE cues from its own list -- the old test asserted zero '
+      + 'here, and was reading a sub prototype');
+    assert.equal(own.ram.u32(own.a5 + 0x44), 0x275f2e,
+      'and ($44,A5) advances to the $FFFF terminator');
 
     // Now the CONTROL: point ($44,A5) at type $84's list, whose first threshold
     // $1F72 is positive and >= this record's HP. If the `jsr` were still a note
@@ -630,16 +691,38 @@ test('W382 the type-$88 site really runs $28AC72 -- given a list, a cue lands in
 test('W382 the three wired sites no longer count $28AC72, and the midboss still does',
   { skip: SKIP }, async () => {
     const { runHandler } = await import('../src/handlers.js');
-    for (const [entry, list, what] of [
-      [0x2739c0, 0x27396a, 'type $80'],
-      [0x2747c6, 0x27478c, 'type $82'],
-      [0x275f30, 0x275ee8, 'type $88'],
+    const { runInitBodyAddr } = await import('../src/initbody.js');
+    // W428: the lists are DERIVED from each type's own init body rather than
+    // written down, so if a seed ever regresses this test moves with it instead
+    // of defending the old value. (The three literals that used to be here --
+    // $27396A, $27478C, $275EE8 -- were each one sub-record short.)
+    for (const [entry, body, table, what] of [
+      [0x2739c0, 0x273802, 0x27394e, 'type $80'],
+      [0x2747c6, 0x27462a, 0x274770, 'type $82'],
+      [0x275f30, 0x275da0, 0x275ecc, 'type $88'],
     ]) {
+      const seed = enemy(0);
+      seed.ram.setU16(seed.a5 + 0x04, 1);      // what the init stub writes
+      seed.ram.setU32(seed.a5 + 0x12, 0);      // no movement script
+      runInitBodyAddr(body, seed.ram, ROM, seed.a5, new UnportedLog(), TJ, null, null);
+      const list = seed.ram.u32(seed.a5 + 0x44);
+      assert.equal(list, table + 56,
+        `${what}: its init seeds ($44,A5) with the loader cursor, table + 2*28`);
+
       const e = enemy(list);
+      // TYPE $80 ONLY: `$273A00` holds HP at $7FFF while ($36,A5) is
+      // non-negative and drops it to $1400 on the borrow, so a shielded record
+      // sits above every threshold and installs nothing FOR A REASON THAT IS
+      // NOT THE SEED. Expire the shield, so this arm measures the list rather
+      // than the invulnerability window.
+      if (entry === 0x2739c0) e.ram.setU16(e.a5 + 0x36, 0xffff);
       const w = world();
       runHandler(entry, e.ram, ROM, e.a5, w.ctx);
       assert.ok(!/\$28AC72/i.test(w.log.report().join('\n')),
         `${what} no longer defers $28AC72`);
+      assert.ok(liveCues(e.ram).length > 0,
+        `${what} installs cues from its REAL list -- a green "no cue" here is `
+        + 'what let the seed stay wrong for eleven waves');
     }
 
     const { handlerMidboss } = await import('../src/midboss.js');

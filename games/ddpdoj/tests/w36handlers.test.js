@@ -63,10 +63,21 @@ function fixture(over = {}) {
   ram.setU8(A5 + 0x16, 1);                // has been on screen
   // W382: `$275FD6 jsr $28AC72` is now LIVE, and $28AC72 opens with
   // `movea.l ($44,A5),A1 / move.w (A1)+,D0`. A hand-built record left that zero,
-  // which is a state no cartridge is in: type $88's init at $275DA0 writes
-  // `$275ECC + 28 = $275EE8` there (src/initbody.js, `loadSubProto` + rec44).
-  // Any test here for a DIFFERENT type must override it with that type's script.
-  ram.setU32(A5 + 0x44, 0x275ee8);        // $275DA0's move.l A0,($44,A5)
+  // which is a state no cartridge is in, so the fixture seeds a real one.
+  //
+  // **W428 CORRECTED WHAT THIS COMMENT USED TO CLAIM.** It said type $88's init
+  // writes `$275ECC + 28 = $275EE8`. It does not, and never did: the init stub
+  // $275D98 writes `move.w #$1,($4,A5)`, so $2637A2 copies TWO sub prototypes
+  // and `$275DAC move.l A0,($44,A5)` stores `$275ECC + 2*28 = $275F04`. $275EE8
+  // is the SECOND SUB PROTOTYPE's flags word. The old value happened to give
+  // the behaviour this fixture wants -- bit 15 set, so `$28AC78 bmi` exits and
+  // no cue is installed -- which is exactly why nobody noticed for eleven waves.
+  //
+  // The seed below is the $FFFF that TERMINATES type $88's real list. It is the
+  // same inert behaviour with a true reason: a record that has already fired
+  // every threshold cue, which is a state the cartridge really is in. Any test
+  // here for a DIFFERENT type must override it with that type's script.
+  ram.setU32(A5 + 0x44, 0x275f2e);        // the $FFFF ending $275F04's list
   ram.setU16(0x813092, 1);                // stage 1
   ram.setU16(0x813096, 0);                // the box-table index
   ram.setU16(0x8103e6, 0x8000);           // P1 alive

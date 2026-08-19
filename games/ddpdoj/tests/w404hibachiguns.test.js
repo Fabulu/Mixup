@@ -57,6 +57,9 @@ import {
 } from '../src/hibachiguns.js';
 import { aim256, AimTables } from '../src/aim.js';
 import { poolClear } from '../src/bullets.js';
+import {
+  ROM_WINDOW_COUNT,
+} from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -907,14 +910,14 @@ test('W404 SECTION 6b: A4 $C starts main sequencer 6 ONCE, and hands to $D when 
 // SECTION 7 -- THE WINDOW SET.
 // ===============================================================================================
 
-test('W404 SECTION 7: five new windows, 590, and each bounded by an instruction operand',
+test('W404 SECTION 7: five new windows, each bounded by an instruction operand',
   { skip: SKIP }, () => {
     const set = new Map(WINDOWS());
     assert.equal(set.size, tables.rom.windows.length, 'no duplicate window bases');
-    assert.equal(tables.rom.windows.length, 607,
+    assert.equal(tables.rom.windows.length, ROM_WINDOW_COUNT,
       'W409 CORRECTION: 599 windows -- 585 + W404\'s five + W405\'s three + W406\'s one '
       + '+ W407\'s one + W408\'s one + W409\'s three'
-      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606. W425 declares $294134 ($20), the timer-D SOUND dispatch table of D-script 6 -- the eight cue-wrapper addresses the boss DEATH ANIMATION walks with `movea.l (A0),A0 / jsr (A0)`, which is the explosion rattle DOCKET D58 was opened on. The $294154 window from W107 ABUTS it and is NOT widened: the two are read by different routines for different reasons, and the overlap count is unchanged. So 607.');
+      + ' W411 declares $280F34, the collected-impact transform table, so 600. W418 declares the CONTINUE panel\'s two strings and three tables ($2886FC $28870C $28886A $2888B2 $2888DA), so 605. W419 declares $289EDA ($60), pool C\'s kind-8 and kind-$C descriptor lists -- the art half of opening $289B50\'s kind guard; W194\'s $289B50+$38A window is NOT widened, it abuts, and the overlap count is unchanged. So 606. W425 declares $294134 ($20), the timer-D SOUND dispatch table of D-script 6 -- the eight cue-wrapper addresses the boss DEATH ANIMATION walks with `movea.l (A0),A0 / jsr (A0)`, which is the explosion rattle DOCKET D58 was opened on. The $294154 window from W107 ABUTS it and is NOT widened: the two are read by different routines for different reasons, and the overlap count is unchanged. So 607. W428 declares the FOUR word-threshold cue scripts ($268E32 $273986 $2747A8 $275F04), so 611. Each of the four begins INSIDE its type\'s prototype window and runs on to the handler that follows it, because a cue record\'s longwords straddle that window\'s end and RomWindows.#at cannot stitch a read across a seam -- W428 declared an abutting window and MEASURED that $27399E threw anyway. So for the first time in twelve waves the overlap count moves too, 71 -> 75, four new pairs for four new windows. Both numbers now live in tests/romwindowset.js, which is where to change them and where to read why.');
 
     // 1 + 2 -- the two tables, at exactly 14 pairs each.
     for (const base of [HIBACHI_A1.main, HIBACHI_A1.alt]) {

@@ -814,8 +814,15 @@ BODY.set(0x269754, (ram, rom, a5, a6, unported, tables, palette) => {
 
 // type $80 ($273802): runLen 1, sprite/bucket from $272F7A, palette $273922.
 BODY.set(0x273802, (ram, rom, a5, a6, unported) => {
-  loadSubProto(ram, rom, a5, a6, 0x27394E);            // jsr $2637A2
-  ram.setU32(a5 + R.rec44, 0x27394E + 28);             // move.l A0,($44,A5) (A0 past sub)
+  // W428. `$27380E move.l A0,($44,A5)` stores THE LOADER'S CURSOR, and the init
+  // stub `$2737FA move.w #$1,($4,A5)` makes that TWO long-form sub-records, so
+  // the cursor is $27394E + 2*28 = $273986. This site used to hard-code
+  // `$27394E + 28` = $27396A, which is the SECOND sub prototype's own flags word
+  // ($A001). `$28AC72` reads that as a threshold, sees bit 15, and breaks on its
+  // first iteration -- so a JS-spawned type $80 installed ZERO of its four
+  // damage cues, silently, and no test read the pointer. Take the return value.
+  const cues80 = loadSubProto(ram, rom, a5, a6, 0x27394E);   // jsr $2637A2
+  ram.setU32(a5 + R.rec44, cues80);                    // $27380E move.l A0,($44,A5)
   loadRecordProto(ram, rom, a5, 0x27392C, 0x10);       // moveq #$10,D0; jsr $26377A
   readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
   if (ram.u16(G.rank98) !== 0) {                        // $273826 tst.w $813098
@@ -849,8 +856,11 @@ BODY.set(0x273802, (ram, rom, a5, a6, unported) => {
 // type $82 ($27462A): runLen 1, sprite/bucket from $272DFA, palette $27474A.
 BODY.set(0x27462A, (ram, rom, a5, a6, unported) => {
   if (ram.u16(G.stage) === 0 && ram.u16(G.d8) !== 0) { freeEnemy(ram, a5); return FREED; }
-  loadSubProto(ram, rom, a5, a6, 0x274770);            // jsr $2637A2
-  ram.setU32(a5 + R.rec44, 0x274770 + 28);
+  // W428: the same correction as type $80. Stub $274622 `move.w #$1,($4,A5)`,
+  // two long-form subs, so `$27464E move.l A0,($44,A5)` stores $274770 + 56 =
+  // $2747A8. `$274770 + 28` = $27478C was the second sub's flags word ($A000).
+  const cues82 = loadSubProto(ram, rom, a5, a6, 0x274770);   // jsr $2637A2
+  ram.setU32(a5 + R.rec44, cues82);                    // $27464E move.l A0,($44,A5)
   loadRecordProto(ram, rom, a5, 0x274754, 0x0d);       // moveq #$d,D0; jsr $26377A
   readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
   unported?.note(0x24200a, `$24200A aim in type $82 init -- bucket tracks W24 pos`);
@@ -922,8 +932,11 @@ BODY.set(0x275BB6, (ram, rom, a5, a6, unported) => {
 // type $88 ($275DA0): runLen 1, sprite/bucket from $272D7A (x2), sub-rec
 // sprite from $2763D8, palette $275EA2.
 BODY.set(0x275DA0, (ram, rom, a5, a6, unported) => {
-  loadSubProto(ram, rom, a5, a6, 0x275ECC);            // jsr $2637A2
-  ram.setU32(a5 + R.rec44, 0x275ECC + 28);
+  // W428: the same correction again. Stub $275D98 `move.w #$1,($4,A5)`, two
+  // long-form subs, so `$275DAC move.l A0,($44,A5)` stores $275ECC + 56 =
+  // $275F04. `$275ECC + 28` = $275EE8 was the second sub's flags word ($8000).
+  const cues88 = loadSubProto(ram, rom, a5, a6, 0x275ECC);   // jsr $2637A2
+  ram.setU32(a5 + R.rec44, cues88);                    // $275DAC move.l A0,($44,A5)
   loadRecordProto(ram, rom, a5, 0x275EAC, 0x0f);       // moveq #$f,D0; jsr $26377A
   readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
   unported?.note(0x24200a, `$24200A aim in type $88 init -- bucket tracks W24 pos`);

@@ -56,6 +56,9 @@ import {
   OPT_ROTATE, OPT_ROTATE_ENTRIES, OPT_ROT_ANGLE, POD_SPAWN_PTRS, POD_HYPER_COUNTS,
   F6_DEAD_D0,
 } from '../src/options.js';
+import {
+  OVERLAP_NOTE, ROM_OVERLAP_PAIRS, overlappingPairs,
+} from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../rip/sound/maincpu.bin');
@@ -904,19 +907,14 @@ test('W393 SECTION 6: the window is $24D3C0 + $BC, both bounds stated by code', 
     const w12 = ws.find(([a]) => a === 0x24d2e0);
     assert.deepEqual(w12, [0x24d2e0, 0xe0], 'W12 declared $24D2E0 + $E0');
     assert.equal(0x24d2e0 + 0xe0, 0x24d3c0, '  ...which ends exactly where this one begins');
-    // OVERLAP COUNT, over the WHOLE set, with and without. The brief says 71; so does this.
-    const pairs = (list) => {
-      let n = 0;
-      for (let i = 0; i < list.length; i++) {
-        for (let k = i + 1; k < list.length; k++) {
-          const [a, la] = list[i]; const [b2, lb] = list[k];
-          if (a < b2 + lb && b2 < a + la) n++;
-        }
-      }
-      return n;
-    };
-    assert.equal(pairs(ws), 71, '71 overlapping pairs with this window');
-    assert.equal(pairs(ws.filter(([a]) => a !== 0x24d3c0)), 71, '...and 71 without it');
+    // OVERLAP COUNT, over the WHOLE set, with and without. The number itself lives in
+    // tests/romwindowset.js -- it was 71 when W393 landed and is 75 since W428 declared the
+    // four cue scripts. What THIS wave claims is the second assertion: $24D3C0 is not one of
+    // them, so removing it moves nothing.
+    assert.equal(overlappingPairs(ws), ROM_OVERLAP_PAIRS, OVERLAP_NOTE);
+    assert.equal(overlappingPairs(ws.filter(([a]) => a !== 0x24d3c0)), ROM_OVERLAP_PAIRS,
+      '...and the SAME count without it: $24D3C0 overlaps nothing. That is this '
+      + 'wave\'s claim, and W428 adding four pairs elsewhere does not touch it.');
   });
 
 test('W393 SECTION 6: ABLATED FROM THE EXPORTED TABLES, the spawn throws BY ADDRESS',
