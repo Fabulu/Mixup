@@ -396,6 +396,20 @@ cue. Whether the explosion SFX is this cue or a separate one is NOT established.
 cue is missing before closing D58** -- closing an item on a bench that never exercised the reported
 thing is exactly the D56 mistake.
 
+## THE HALF-HOURLY ALARM CARRIES **TWO** STALE INSTRUCTIONS. BOTH ARE ANSWERED HERE.
+
+**1. "Publish is due at W375 -- run export-web.mjs BEFORE publish.mjs, because W374 added 33 ROM
+windows."** The W375 part is long gone. **The cadence is every FIFTH wave and the last publish was
+W427**, live as `20260819013654`, so **the next falls at W432**. The rest of that sentence is still
+RIGHT and must be obeyed: **`export-web.mjs` runs BEFORE `publish.mjs`**, because a wave once
+shipped stale assets and the owner had to hard-reload to see a fix. W428 added four ROM windows
+(607 -> 611), so it applies at W432.
+
+**2. The front-end slots -- already done, see below.**
+
+**Do not spend a wave on either. If the alarm still says these next session, that is the ALARM
+being stale, not the work being undone.**
+
 ## THE STANDING "WIRE THE FRONT-END SLOTS" INSTRUCTION IS ALREADY DONE
 
 The half-hourly alarm still says *"Wire the front-end slots (7, 9, 13, 15, 17) into main.js's
