@@ -198,6 +198,12 @@ const R = {
   // ($33,A5).  src/initbody.js has read `rec28` by that name since W36.
   headCadence26: 0x26, rec28: 0x28, rec29: 0x29, rec2A: 0x2a,
   rec2B: 0x2b, rec2C: 0x2c,
+  // W439, for `$274A9C` -- type $82's SECOND fire.  `($2F,A5)` is the cadence
+  // RELOAD the block writes into `($22,A5)` on entry, and `($24,A5)`/`($25,A5)`
+  // are the salvo counter and its own reload.  Named here rather than reused as
+  // `rec24`/`rec25` for the same reason the block above gives: one name per
+  // meaning.
+  fire2Reload2F: 0x2f, salvoCtr24: 0x24, salvoReload25: 0x25,
 };
 // sub-record (A6)
 const S = {
@@ -1368,12 +1374,11 @@ function handler82(ram, rom, a5, ctx) {
 //                         (`tst.w $813098`) so a rank-0 run never asks for it.
 //
 // WHAT IS STILL A NOTE, AND WHY.  `$27487A..$2749B2` is the aim + the six
-// bullet fans (`$281708` x4, `$281764` x2) and `$274A9C..$274AEE` is a seventh
-// through `$281484`.  Those are W21/W26/W27's subject, not this wave's; every
-// arm of them falls into the draw at `$274A22`, which is why the draw can be
-// wired without them and why the fighter becomes visible without inventing a
-// bullet.  The state they do not update is ($30,A5)/($31,A5), read by nothing
-// else in this handler.
+// bullet fans (`$281708` x4, `$281764` x2); that block still needs aim256
+// (`$2422A2`) and the ($30,A5)/($31,A5) stored aim byte it fires from, and it is
+// read by nothing else in this handler.  **`$274A9C..$274AEE`, the SEVENTH fan
+// through `$281484`, IS PORTED -- W439**; see `secondFire82`.  Both arms fall
+// into the draw at `$274A22`, which is why the draw was wirable without either.
 function fire82(ram, rom, a5, a6, ctx) {
   const u = ctx.unported;
   // W382. [M] `$274858  4e b9 00 28 ac 72` -- UNCONDITIONAL, and the very next
@@ -1428,8 +1433,93 @@ function fire82(ram, rom, a5, a6, ctx) {
   const c2 = ram.u8(a5 + R.cadence22);                 // $274A94 subq.b #1,($22,A5)
   ram.setU8(a5 + R.cadence22, (c2 - 1) & 0xff);
   if (c2 !== 0) return;                                // $274A98 bcs $274A9C
-  u?.note(0x274a9c, `$82 second fire $274A9C..$274AEE ($27327A muzzle table -> `
-    + `$281484 -- W27) rec $${a5.toString(16)}`);
+  secondFire82(ram, rom, a5, a6, ctx);                 // $274A9C..$274AEE
+}
+
+/** `$27327A` -- type $82's MUZZLE table, 32 longwords indexed by the stored
+ *  64-direction facing.  The index is `($2C,A5) & $3E` DOUBLED (`$274AAE andi.w
+ *  #$3E,D0 / $274AB2 add.w D0,D0`), so it steps by 4 over 32 entries and the
+ *  extent is $27327A..$2732F9 -- inside the existing `$273270 len $90` window,
+ *  which is why this wave declares no new one.  `$272DFA`, read six lines up in
+ *  `draw82`, is the same idiom over a different table. */
+const MUZZLE_82 = 0x27327a;
+
+/**
+ * `$274A9C..$274AEE` -- TYPE $82's SECOND FIRE.  W81 left it a counted note and
+ * W439 ports it, because it is the ONE spawn the port was missing on the
+ * `stage1-laser-hold` rung lf4025->4050: the board puts a live kind-7 bank-A
+ * bullet in slot 3 and the port left the slot byte-identical to the seed for all
+ * 25 frames.  [M] Over those frames the note fired EXACTLY ONCE, on enemy record
+ * `$81373C`, and the port made no other bullet-pool spawn at all.
+ *
+ * The whole block, read out of the image, in order:
+ *
+ *   $274A9C move.b ($2F,A5),($22,A5)     the cadence reload -- and it is
+ *                                        OVERWRITTEN at $274AEA when the salvo
+ *                                        counter also runs out, so the two
+ *                                        writes are not alternatives
+ *   $274AA2 lea    $27327A,A4            the muzzle table
+ *   $274AA8 move.w ($2C,A5),D1           THE ANGLE, 1/64 turn -- bank A's unit
+ *   $274AAC move.w D1,D0
+ *   $274AAE andi.w #$3E,D0
+ *   $274AB2 add.w  D0,D0                 (facing & $3E) * 2 -- a BYTE offset
+ *   $274AB4 move.l (A4,D0.w),D3          the muzzle OFFSET longword
+ *   $274AB8 swap   D3
+ *   $274ABA addi.w #$240,D3              ...+ $240 on the LONG axis only, and
+ *   $274ABE swap   D3                    `addi.w` cannot carry into the other
+ *                                        half, which is the whole reason for
+ *                                        the swap pair
+ *   $274AC0 move.l #$40007,D0            KIND 7, SPEED BIAS 4
+ *   $274AC6 move.l ($2,A6),D2            the firing enemy's position
+ *   $274ACA move.l A6,D4
+ *   $274ACC jsr    $281484               BANK A, and at rank 0 `$28148A beq`
+ *                                        TAKES the branch to the core $2814B6
+ *   $274AD2 subq.b #1,($24,A5)           the SALVO counter
+ *   $274AD6 bcc    $274AEE               ...not exhausted: rts
+ *   $274AD8 move.b ($25,A5),($24,A5)     reload the salvo
+ *   $274ADE move.w #$60,D0
+ *   $274AE2 sub.w  $8130B4,D0            RANK shortens the between-salvo wait
+ *   $274AE8 addq.w #4,D0
+ *   $274AEA move.b D0,($22,A5)           ...and that is the cadence, not $2F
+ *   $274AEE rts
+ *
+ * **THE BIAS IS THE CALL SITE'S, NOT THE GENERATOR'S.**  `$281402` and `$281450`
+ * add `#$40000` to D0 themselves, but only on their rank!=0 arms, and `$813098`
+ * is 0 here -- so the `4` in `$40007` is the only thing that can put the board's
+ * `+$1A = $18` in the record, against kind 7's template base speed of `$14`.
+ * That is a two-sided check on this transcription: the kind and the speed are
+ * both in one immediate and both are visible in the record.
+ *
+ * D4 is transcribed and unused, and D5 is not loaded here at all: `$2815C6[7]`
+ * is `$2818AC`, the shared epilogue that stores nothing, so neither register can
+ * reach the record.  D4 is passed anyway because the instruction IS there; D5 is
+ * passed as 0 because the ROM leaves whatever the caller had in it and no path
+ * out of kind 7 can read it.  Asserted against the table, not assumed -- five of
+ * the nine spawn-inits DO store D4.
+ */
+function secondFire82(ram, rom, a5, a6, ctx) {
+  ram.setU8(a5 + R.cadence22, ram.u8(a5 + R.fire2Reload2F));  // $274A9C
+  const d1 = ram.u16(a5 + R.rec2C);                    // $274AA8 move.w ($2C,A5),D1
+  const idx = u16((d1 & 0x3e) * 2);                    // $274AAE / $274AB2
+  const m = rom.u32(MUZZLE_82 + idx);                  // $274AB4 move.l (A4,D0.w),D3
+  // $274AB8 swap / $274ABA addi.w #$240 / $274ABE swap -- the LONG axis only.
+  const d3 = ((u16((m >>> 16) + 0x240) << 16) | (m & 0xffff)) >>> 0;
+  fireBullet({ ram, rom, log: new WriteLog(ram), mut: ctx.mut ?? null },
+    0x281484,                                          // $274ACC jsr $281484
+    { d0: 0x00040007,                                  // $274AC0 move.l #$40007,D0
+      d1,
+      d2: ram.u32(a6 + 0x02),                          // $274AC6 move.l ($2,A6),D2
+      d3,
+      d4: a6,                                          // $274ACA move.l A6,D4
+      d5: 0,
+      a5 });
+  const s = ram.u8(a5 + R.salvoCtr24);                 // $274AD2 subq.b #1,($24,A5)
+  ram.setU8(a5 + R.salvoCtr24, (s - 1) & 0xff);
+  if (s !== 0) return;                                 // $274AD6 bcc $274AEE
+  ram.setU8(a5 + R.salvoCtr24, ram.u8(a5 + R.salvoReload25));  // $274AD8
+  // $274ADE..$274AE8: `#$60 - $8130B4 + 4`, as WORDS, stored as a BYTE.
+  ram.setU8(a5 + R.cadence22,
+    u16(0x60 - ram.u16(G.b4) + 4) & 0xff);             // $274AEA move.b D0,($22,A5)
 }
 
 /** `$274A22..$274A82` -- TYPE $82's THREE RECORDS. */

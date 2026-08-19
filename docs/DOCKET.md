@@ -4138,3 +4138,52 @@ differing slot is **slot 3**: the board puts a live kind-7 bank-A bullet there; 
 **byte-identical to the lf4025 SEED for all 25 frames -- not spawned-and-killed, not killed early,
 simply NEVER WRITTEN.** One missing spawn, costing no RNG draw, in an otherwise perfect pool.
 
+
+### W439: THE MISSING BULLET IS TYPE $82's SECOND FIRE -- 210/210
+
+`$274A9C..$274AEE` had been a counted note in `handlers.js` since **W81**. Instrumenting every write
+to a bullet slot's type word over lf4026..4050: the port made **nine kills and ZERO spawns**, and
+`unportedLog` carried **exactly one** `$274A9C` line. **One note, one missing bullet.**
+
+**MY BRIEF SENT IT TO THE WRONG FILES.** `bullets.js` and `bulletdriver.js` are both exact and
+neither changed. **The bullet pool was not the producer -- it was the VICTIM. The producer is a
+CALLER.**
+
+Why it cost no RNG draw: `$274ACC jsr $281484` opens `tst.w $813098 / beq`, rank is 0, and the
+bank-A core allocates and copies a template **reading no RNG at all.**
+
+    lf4025->4050   bullets 209/210 -> 210/210   pool A 70/70   pool B 80/80
+    lf9500->9600   bullets 149/210 -> 149/210   pool A  2/70   -- UNCHANGED
+
+**"BEFORE" IS NOT ASSERTED FROM MEMORY:** the wave built a pre-fix copy of `src/` from
+`git show HEAD:` and ran the same harness against it. **lf9500->9600 did NOT improve, and that is
+asserted in the test file so it cannot be quietly re-claimed** -- one missing spawn was not the
+same defect as 61 differing slots.
+
+**FOUR FALSIFICATION ARMS, ALL PERFORMED:**
+1. **The frame is forced.** `($22,A5)` is 2 at lf4025 and `subq.b #1` borrows on the third
+   decrement, so the write lands on lf4028 and nowhere else -- and it is load-bearing: the port
+   frees slot 0 at lf4040, so a spawn one frame later takes slot 0 and **two** slots go wrong.
+2. **Bytes OUTSIDE the bullet pool.** Whole-RAM divergence at lf4050 falls **717 -> 292 bytes** --
+   **425 bytes turn on one call, far more than the 64 in the record. A bullet-pool poke could at
+   best reach 653.**
+3. **RED run:** raising `($22,A5)` so the cadence cannot borrow returns 209/210, zero type-word
+   writes, and 717 bytes.
+4. **The muzzle offset is READ, not constant.** Bumping the longword it indexes turns slot 3 red at
+   **exactly `+$02` and nowhere else**; bumping a different entry changes **nothing**. A hardcoded
+   value survives both.
+
+**W438's WIDE-BRANCH TRAP STRUCK ONE CALL DEEPER AND THE WAVE'S FIRST DRAFT HIT IT.**
+`$281490 60 00 ff 14` is `bra.w -> $2813A6` (confirmed by the coordinator). **Read `60 00` as 8-bit
+and it becomes a branch to the next instruction, and the three-way rank spread VANISHES.** Its own
+byte assertion caught the error.
+
+**AND W438's LAST TEST ASSERTED THE DEFECT** ("the port NEVER WRITES THIS SLOT") and went red.
+**Rewritten to assert the fix, keeping every W438 measurement still true** -- not deleted.
+
+**MY LINE-ENDING LIST WAS WRONG AGAIN:** `src/bulletdriver.js` is **LF** (269/0), not CRLF, and
+unmodified. `src/bullets.js` IS CRLF (731/0).
+
+Verified by the coordinator on a quiet tree: **4021 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows with none added.
+

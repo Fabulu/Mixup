@@ -100,8 +100,9 @@ const TABLES = path.join(GAME, 'rip', 'port', 'player.tables.json');
 const IMAGE = path.join(GAME, 'rip', 'sound', 'maincpu.bin');
 
 const RUNGS = [9500, 9600, 9700, 9800];
-// The 25-frame rungs the NEXT unit is measured on, guarded separately so the
-// deliverable does not skip when only they are missing.
+// The 25-frame rungs W438 named as the next unit and W439 closed, guarded
+// separately so this file's deliverable does not skip when only they are
+// missing.
 const FINE_RUNGS = [4025, 4050];
 const HAVE_TABLES = fs.existsSync(TABLES);
 const HAVE_IMAGE = fs.existsSync(IMAGE);
@@ -725,12 +726,22 @@ test('W438: handing the port the board\'s value for ALL FORTY OTHER BYTES of '
 });
 
 // ===========================================================================
-// 6. THE NEXT UNIT, PINNED AT ITS SMALLEST
+// 6. THE UNIT W438 PINNED -- AND **W439 CLOSED IT**
 // ===========================================================================
-test('W438: the bullet divergence at its cleanest -- lf4025->4050 is 209 of 210 '
-  + 'slots byte-identical, and the ONE that differs is a spawn the port never '
-  + 'makes: slot 3 is untouched for all 25 frames while the board puts a live '
-  + 'kind-7 bullet in it',
+//
+// W438 left this rung at 209/210 with slot 3 never written, and named that the
+// next unit.  W439 found it: `$274A9C..$274AEE`, type $82's SECOND fire, a
+// counted note in `src/handlers.js` since W81.  The assertions below are the
+// SAME MEASUREMENTS W438 made, with the two that recorded the DEFECT flipped to
+// record the fix, so the rung keeps guarding what W438 proved about it.
+//
+// **THE FULL FALSIFICATION LIVES IN `tests/w439secondfire82.test.js`** -- the
+// frame, the enemy's own record, a RED run that removes the spawn again, and a
+// pair of ROM-corruption arms that say the muzzle offset is read and not
+// constant.  This file keeps only the rung-level numbers.
+test('W438/W439: the bullet divergence at its cleanest -- lf4025->4050, where '
+  + 'W438 measured 209 of 210 slots and named slot 3 as ONE spawn the port '
+  + 'never made. W439 ports $274A9C and the rung is 210 of 210',
 { skip: SKIP_FINE }, async () => {
   const trace = readTrace(TRACE);
   const seed = boardRam(4025);
@@ -748,7 +759,9 @@ test('W438: the bullet divergence at its cleanest -- lf4025->4050 is 209 of 210 
   };
   assert.equal(live(seed), 28, 'the board holds 28 live bullets at lf4025');
   assert.equal(live(board), 20, '...and 20 at lf4050');
-  assert.equal(live(port), 19, '...where the port holds 19 -- ONE short');
+  assert.equal(live(port), 20,
+    '...and the port now holds 20 too. W438 measured NINETEEN here -- one '
+    + 'short -- and that single missing bullet was this rung\'s whole defect');
 
   const differ = [];
   for (let s = 0; s < BUL.slots; s++) {
@@ -757,14 +770,14 @@ test('W438: the bullet divergence at its cleanest -- lf4025->4050 is 209 of 210 
       if (board[o + k] !== port[o + k]) { differ.push(s); break; }
     }
   }
-  assert.deepEqual(differ, [3],
-    'exactly ONE of the 210 slots differs over these 25 frames. That is what '
-    + 'makes this the cheapest place in the ladder to attack the bullet pool: '
-    + 'the other 209 slots, live and dead, are byte-perfect');
+  assert.deepEqual(differ, [],
+    'and NONE of the 210 slots differs over these 25 frames. W438 measured '
+    + '`[3]` here');
   assert.deepEqual(drawGap, [],
-    '...and the port makes the board\'s number of RNG draws on every one of the '
-    + '25 frames, so the missing spawn costs no draw -- whatever declines it '
-    + 'declines BEFORE any draw');
+    '...with the port making the board\'s number of RNG draws on every one of '
+    + 'the 25 frames -- true BEFORE the fix, when the missing spawn cost no '
+    + 'draw, and still true after it, because $281484 at rank 0 reads no RNG '
+    + 'either. That is why a draw-count gate could never have found this');
 
   const o = slotOffBul(3);
   assert.equal(w(board, o) & 0x8000, 0x8000,
@@ -772,12 +785,18 @@ test('W438: the bullet divergence at its cleanest -- lf4025->4050 is 209 of 210 
   assert.equal(w(board, o) & TYPEBIT.kindMask, 0x07, '...carrying kind 7');
   assert.equal(w(board, o) & TYPEBIT.coreB, 0,
     '...with bit 9 CLEAR, so it was spawned by bank A ($2814B6) and not bank B');
-  assert.equal(w(port, o), 0, '...while the port\'s slot 3 is empty');
+  assert.equal(w(port, o), w(board, o),
+    '...and the port\'s slot 3 carries the same type word, where W438 measured '
+    + 'a zero');
+  let sameAsSeed = 0;
   for (let k = 0; k < BUL.stride; k++) {
-    assert.equal(port[o + k], seed[o + k],
-      `and the port's slot 3 is byte-identical to the lf4025 SEED at +$${
-        k.toString(16).padStart(2, '0')} -- it is not a bullet the port spawned `
-      + 'and killed, and it is not a bullet the port killed early: the port '
-      + 'NEVER WRITES THIS SLOT for 25 frames');
+    assert.equal(port[o + k], board[o + k],
+      `and the port's slot 3 matches the BOARD at +$${
+        k.toString(16).padStart(2, '0')}`);
+    if (port[o + k] === seed[o + k]) sameAsSeed++;
   }
+  assert.notEqual(sameAsSeed, BUL.stride,
+    '...and it is no longer byte-identical to the lf4025 SEED, which is exactly '
+    + 'the state W438 measured: not spawned-and-killed, not killed early, '
+    + 'simply NEVER WRITTEN');
 });
