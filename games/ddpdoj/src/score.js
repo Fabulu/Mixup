@@ -123,6 +123,31 @@
 // records of $30; type-5 call #7 `$255DD8` drives it; the only thing that
 // selects that weapon is `$24989E bset #$0,($1,A6)`, INSIDE THE BOMB).
 //
+// **W427: `$24989E` IS THE WRONG INSTRUCTION AND THIS LINE HAS BEEN COPIED INTO
+// TWO DOCKET ENTRIES.  THE SELECTOR IS `$249A98`.**  Read the EA bytes:
+//
+//     $24989E  08 ee 00 00 00 01   bset #$0,($1,A6)   mode 5 reg 6 = A6, the
+//                                                     PLAYER record's flags1
+//     $249A98  08 e9 00 00 00 01   bset #$0,($1,A1)   mode 5 reg 1 = A1, and A1
+//                                                     IS `$811F72`, the bomb record
+//
+// That is this repo's own EA mode/reg trap, the one the trap lists warn about
+// (`08 ae` is `(d16,A6)` where `08 ab` would be A3), walked into by the person
+// who wrote the trap list.  `src/bomb.js:1548` already had it right; nothing
+// had reconciled the two.
+//
+// **AND THEY ARE ON DIFFERENT ARMS OF THE SAME BUTTON.**  `$249864 move.w
+// (A1),D1 / $249866 beq.b -> $2498E2` forks on the HYPER STOCK:
+//   * stock NON-ZERO -> `$249868`, the HYPER, which reaches `$24989E` and sets
+//     the PLAYER's flags1 bit 0.  **It never allocates `$811F72` at all**, so
+//     block 9 and everything in this file behind it NEVER RUN.
+//   * stock ZERO -> `$2498E2`, whose laser arm runs `$249A98`, and that is the
+//     only path that reaches `$2456A6`.
+//
+// So "bomb while lasering" is TWO different weapons depending on hyper stock,
+// and W427 measured both: with stock 1 the press activates the hyper for 182
+// frames and `$811F72` is never allocated -- 0 guard frames, 0 `$2456A6` frames.
+//
 // **THE BEAM DOES NOT LIVE THERE.**  It lives in `$811EF2`/`$811F12` (the beam
 // records), `$811F32`/`$811F52` (the drawn column) and the two 32 x $30 pools
 // at `$8112F2`/`$8118F2` -- `src/laser.js SEG`/`BEAM`.  MEASURED, this wave:

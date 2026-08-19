@@ -3517,3 +3517,64 @@ sound right. That is suggestive and **it is not a measurement**.
 own report says mid-bosses drop them -- then watch `postCount` and the ring exactly as the bee
 probe did. Do not re-kind a record; it does not work.
 
+
+### D56 FOLLOW-UP -- **I NAMED THE WRONG INSTRUCTION, TWICE.** THE SELECTOR IS `$249A98`.
+
+The "D56 LEAD" entry above, and the D60 recon entry, both say bomb-while-lasering runs
+`$24989E bset #$0,($1,A6)` and that this selects the bomb-laser. **Both are wrong.** Read the EA
+bytes, verified from the image by the coordinator:
+
+    $24989E  08 ee 00 00 00 01   bset #$0,($1,A6)   mode 5 reg 6 = A6 -- the PLAYER record
+    $249A98  08 e9 00 00 00 01   bset #$0,($1,A1)   mode 5 reg 1 = A1, and A1 IS $811F72
+
+**THAT IS THIS REPO'S OWN EA MODE/REG TRAP** -- the one every agent brief carries (`08 ae` is
+`(d16,A6)` where `08 ab` would be A3) -- **walked into by the person who writes the trap lists.**
+`src/bomb.js:1548` already had it right and nothing had reconciled the two. Corrected in place in
+`src/score.js`.
+
+**AND THE TWO ARE ON DIFFERENT ARMS OF THE SAME BUTTON, which changes the item.**
+`$249864 move.w (A1),D1 / $249866 beq.b -> $2498E2` (`67 7a`, verified) forks on the **HYPER
+STOCK**:
+
+- **stock NON-ZERO** -> `$249868`, the HYPER. It reaches `$24989E` and sets the PLAYER's flags1
+  bit 0. **It never allocates `$811F72` at all**, so block 9, `$2456A6` and every laser fork in
+  `score.js` behind them NEVER RUN.
+- **stock ZERO** -> `$2498E2`, whose laser arm runs `$249A98`. **That is the only path to
+  `$2456A6`.**
+
+**MEASURED LIVE (W427):** with hyper stock 1 the press activates the hyper for 182 frames, sets
+`($1,A4)` bit 0 for all 182, and `$811F72` is never allocated -- **0 guard frames, 0 `$2456A6`
+frames**.
+
+**SO "BOMB WHILE LASERING" IS TWO DIFFERENT WEAPONS DEPENDING ON HYPER STOCK.** The owner said
+*"when you have a hyper"*. Taken literally, **the weapon they are reporting is the `$249868` one,
+and W427 benched the other.**
+
+**NEITHER IS SILENT ON THE BENCH, which is the other half of the answer:**
+
+    $2456A6 (bomb-laser, stock 0)   flashed up to 6 records in ONE frame; 30 pool-A + 51 pool-B
+                                    hits, against the plain laser's 63 total; boss HP -18690 in
+                                    200 frames against the plain laser's -9600
+    $249868 (hyper, stock 1)        55 pool-B flash events; boss HP -12375 at stock 1,
+                                    -20625 at stock 3
+
+**`$2456A6` DOES NOT FLASH "EXACTLY ONE TARGET PER FRAME" EITHER** -- my lead said that too, and it
+is true only of the `$2457FA` pool-B half. `$24581C`'s pool-A loop ORs the same bits onto every
+unshadowed intersecting record.
+
+**WHAT REMAINS UNANSWERED, and only the owner can settle it:** which press do they mean, and do
+they see the flash in a real browser at real speed? The bits and the HP are measured; **the pixels
+are not**. And the only clean pool-B rung is stage 1, so their stage-2 boss scenario is still not
+reproduced end to end.
+
+**A NEW BENCH TRAP, PINNED AS TEST 6 OF W427:** writing `$81B65C` alone is NOT a hyper.
+`$2530BE collectHyperStock` writes the stock **and** `$81B642`, and with the gauge at 0
+`$285A5E`'s `before < 2` runs `endHyper` on the same frame `$285A12` set it active. The stock is
+spent and `req`/`active`/`level`/`arm`/`mode` all read 0, so the whole hyper arm silently measures
+zero -- which looks exactly like "the hyper does nothing". **The wave's own first measurement was
+that, and it is now a test.**
+
+**ALSO FOUND:** `c003100` and `c003000` cannot be used as seeds -- they die at frame ~155 on
+`UNPORTED $27399E` inside `spawnCues28AC72` (`handlers.js:3829`, handler 80). Pre-existing, and it
+rules out the 17-record pool-B checkpoints. **Open it as its own unit if a wave needs those rungs.**
+
