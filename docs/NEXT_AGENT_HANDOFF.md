@@ -365,7 +365,32 @@ pool A going 0 -> 68, because 24 draws buys 6 fills and 6 cannot become 68.
 **W436's "`$27F8F8` is ruled out" was BACKWARDS**: it matched on every frame it fired *because the
 port was inventing the call* on the compared path.
 
-### NEXT UNIT: POOL A's POSITION DRIVER `$27F95A` -- IN PROGRESS (W438)
+### W438: THE DRIVER I SENT IT TO FIX WAS ALREADY EXACT. NO CODE CHANGED.
+
+`$27F95A` produces **70/70 byte-identical slots** on the board's own rung, reaching the board's
+count exactly. **My brief named the wrong subsystem**, and my "drains to 27 vs 32" conflated a
+200-frame run with the rung.
+
+**POOL A DOES NOT COMPUTE ITS POSITION, IT COPIES IT** -- `$280B56` is the **LONG** form and takes
+the whole longword **from the carrier**, a dying enemy bullet. So **pool A is byte-perfect on
+exactly the segments where the BULLET pool is, and on no other.** That is the root of what remains.
+
+**THE FALSIFICATION SHAPE TO COPY:** overwrite one group of bytes in the port's own state with the
+board's and step on. **Handing it the right answer for all 2,800 OTHER bytes moved the score by
+ZERO; four bytes moved it by sixty.** That rules out a second defect anywhere else in the record --
+something no amount of reading could establish.
+
+**A WIDE BRANCH READ AS 8-BIT SILENTLY DELETES AN ARM.** `$27F984` is `6b 00 17 44`; the 8-bit
+reading makes it a branch to the next instruction and the collected arm vanishes. Same shape as
+W437's `bcs.W`. **Decode `.W` forms.**
+
+### NEXT UNIT: ONE BULLET SLOT NEVER WRITTEN -- IN PROGRESS (W439)
+
+**`lf4025 -> 4050`: 209/210 bullets identical, zero draw-gap frames.** Slot 3: the board holds a
+live kind-7 bank-A bullet; **the port's slot 3 is byte-identical to the SEED for all 25 frames --
+never written -- and it costs NO RNG draw.**
+
+### SUPERSEDED: POOL A's POSITION DRIVER (W438)
 
 Pool A's allocation is now exact (68/68, status 62/70) but **only 2 of 70 slots are byte-identical**,
 differing at `+$02..+$05` on 65-68 of them. At lf9700 the port drains to 27 where the board holds 32.
