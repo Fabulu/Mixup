@@ -4335,3 +4335,62 @@ Verified by the coordinator on a quiet tree: **4051 pass / 0 fail / 0 skipped**,
 **PINNED, NOT MINE:** `lf8800->8900` is 171/210 and `lf8900->9000` is 189/210 -- pre-existing,
 identical before and after and under both RED arms, **so no later wave is credited with them.**
 
+
+### D65: BEE VISIBILITY -- THEY MAY BE TOO VISIBLE, AND SOMETIMES SHOULD NOT BE
+
+> "We need to make sure to make passes on how visible bees are any time. I have a feeling I can see
+> them better in this port than I should. They sometimes flicker but in some situation I think they
+> might have to be invisible? Bees are a bit of a mystery to me"
+> "Then when you uncover them they should be visible I think"
+
+**THE OWNER IS DESCRIBING A TWO-STATE OBJECT AND ASKING WHICH STATE IS WRONG.** Their model, which
+is the spec until measured otherwise: **hidden (or flickering) while still carried; VISIBLE once
+uncovered.**
+
+**THIS IS A DRAW QUESTION, NOT A GAMEPLAY ONE, AND D59 ALREADY BOUNDS IT.** W430 measured the whole
+bee lifecycle as correct -- carrier shot, bee dropped, drifts, collected, cue posted. So **the
+records and their timing are right; what is in question is whether they are DRAWN when the
+cartridge draws them.**
+
+**WHAT TO MEASURE, and the standard is the one W441 set:** compare the port's drawn output against
+the board's for the carrier and for a released bee, **on the frames each exists**. The carrier's
+flicker is a real cartridge behaviour (`$268916 eor.b palCycle,(palette)` with `andi.b #$A3`
+clearing it, `handlers.js damageArm5C`) -- **so "flickering" is not automatically a defect.** The
+question is whether the port flickers the SAME frames, and whether anything is drawn that the board
+suppresses.
+
+**DO NOT change a draw to match a description.** The owner says "I think" and "a bit of a mystery"
+-- they are reporting an impression, not a measurement. **Measure first, and if the port already
+matches the board, say so.**
+
+### D66: AUDIT EVERY DEFERRAL. THE OWNER IS RIGHT THAT THIS HAS BITTEN US REPEATEDLY.
+
+> "Also make a pass for all deferred stuff. Apparently it's bitten us plenty of times"
+
+**IT HAS, AND HERE IS THE EVIDENCE, ALL FROM THE LAST FIFTEEN WAVES:**
+
+- **W439**: a counted note from **W81** -- an enemy's second fire never happened for 358 waves.
+- **W435**: a `PRESENTATION_DEVIATION` that stood **ten waves** blaming a routine which had been
+  **ported and running since W91**. `PRESENTATION_DEVIATION` is now empty.
+- **W433**: a `note()` from **W52** for a routine **ported in W189** -- every other caller was
+  wired; that one site was not.
+- **W428**: three init bodies whose cursor was 28 bytes short, so three enemy types installed
+  **zero cues, forever, and threw nothing** (D61).
+- **W436**: a note saying "NOTHING sets a bit of `$3(a4)`" when `burst2938AE` had been setting
+  bits 0, 1 and 2 **since W107**.
+- **W425**: `BOSS_NOTED` listed three addresses as deferred SOUND that had been **real posts since
+  Wave A** -- invisible **because nothing read the table**.
+
+**THE SHAPE IS ALWAYS THE SAME: the assertion is true, the STATED REASON is false, and nothing ever
+reads the bookkeeping back.**
+
+**THE UNIT:** enumerate every deferral in `src/` -- `note()`, `unreached()`, `unported`,
+`PRESENTATION_DEVIATION`, `*_NOTED` tables -- and for each one **check whether its stated reason is
+still true**. Report: still true / **reason false but assertion holds** / **fully stale, the thing
+is ported**.
+
+**THE GENERAL FIX, ALREADY PROVEN TWICE:** W425 made a test **scan `src/` and fail on a dead key**;
+W428 made one **derive its seed by running the init body** instead of hard-coding it. **If you write
+bookkeeping, make a test READ it.** An audit that produces a list and no guard will go stale the
+same way.
+
