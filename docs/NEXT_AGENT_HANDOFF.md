@@ -384,7 +384,37 @@ something no amount of reading could establish.
 reading makes it a branch to the next instruction and the collected arm vanishes. Same shape as
 W437's `bcs.W`. **Decode `.W` forms.**
 
-### NEXT UNIT: ONE BULLET SLOT NEVER WRITTEN -- IN PROGRESS (W439)
+### W439: THE MISSING BULLET WAS A NOTE FROM W81. 210/210.
+
+Type `$82`'s SECOND FIRE, a counted note in `handlers.js` since **W81**. Nine kills and **zero
+spawns** across the window; the log carried **exactly one** line for it. **One note, one bullet.**
+
+**MY BRIEF SENT IT TO THE WRONG FILES.** `bullets.js` and `bulletdriver.js` are EXACT and neither
+changed. **The pool was the VICTIM; the producer is a CALLER.** Look at handlers and boss scripts,
+and at `unportedLog` for notes that fire in the window.
+
+**THE EVIDENCE THAT SETTLED IT WAS OUTSIDE THE POOL:** whole-RAM divergence fell **717 -> 292
+bytes** -- **425 bytes on one call, more than the 64 in the record, so no pool-local poke could
+produce it.**
+
+**A TEST WAS ASSERTING THE DEFECT.** W438's last test said "the port NEVER WRITES THIS SLOT" and
+went red when it was fixed. **If a test goes red, check whether it was pinning the bug -- then
+REWRITE it, do not delete it.**
+
+**WIDE BRANCHES HAVE NOW BITTEN THREE WAVES RUNNING** (W437 `bcs.W`, W438 `bmi.W`, W439 `bra.W`).
+`60 00`/`6b 00`/`65 00` read as 8-bit become a branch to the NEXT INSTRUCTION and an arm vanishes.
+
+### NEXT UNIT: THE LAST BULLET DIVERGENCE -- IN PROGRESS (W440)
+
+    lf9300->9400   bullets 111/210   <- worst, and the one being taken
+    lf9400->9500   bullets 113/210
+    lf9500->9600   bullets 149/210   pool A 2/70
+    lf9600->9800   bullets 210/210   pool A 70/70
+
+**W438 proved pool A is byte-perfect on exactly the segments where the bullet pool is**, so closing
+the bullets should carry pool A's 2/70 with it.
+
+### SUPERSEDED: ONE BULLET SLOT NEVER WRITTEN (W439)
 
 **`lf4025 -> 4050`: 209/210 bullets identical, zero draw-gap frames.** Slot 3: the board holds a
 live kind-7 bank-A bullet; **the port's slot 3 is byte-identical to the SEED for all 25 frames --
