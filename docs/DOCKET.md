@@ -3485,3 +3485,35 @@ than reading the code and concluding.
 open in the first place, and this project has been bitten five times by a stated reason that was
 false while the code looked right.
 
+
+### D52 FOLLOW-UP -- MY STAR PROBE **FAILED**, AND STARS ARE STILL UNMEASURED
+
+The bee result above is sound: a real released bee, collected on frame 2, **exactly one** ring slot
+changed, id `$1F`, which is the id `bee.js:2004` names. That one stands.
+
+**THE STAR ATTEMPT DOES NOT, AND I AM RECORDING IT SO NOBODY REPEATS IT.** I tried to reach the
+star's arm by clearing the kind bits (`status` bits 6..2) on the record the carrier had just
+dropped, so `runBody` would dispatch `$27FA30` instead of the bee body. Result:
+
+    re-kinded status       $8000
+    collected at frame     NEVER
+    postCount              48 -> 85   (delta 37, over 600 frames)
+    ring slots changed     37
+
+**37 CHANGED SLOTS IS ORDINARY GAMEPLAY SOUND OVER 600 FRAMES, NOT A COLLECT.** The `$01EB1E04`
+(id `$1E`) at slot 62 is NOT evidence of a star collect cue -- there was no collect. My probe's
+verdict line was inherited from the bee template and printed a conclusion the data does not
+support. **I nearly reported it.**
+
+**WHY THE PROBE IS INVALID:** the record was allocated and FILLED as a bee, so its sprite, speed,
+angle and template fields are the bee's. Re-labelling the kind gives the star body bee data. That
+is not a star; it is a chimera, and its failure to be collected says nothing about stars.
+
+**WHAT IS STILL TRUE AND CHEAP TO USE:** `COLLECT_ARMS.star27F9EE` (kinds 0 and 4) does carry
+`collectSound: 0x28C5E4`, the same cue the medal uses, and the owner has already confirmed medals
+sound right. That is suggestive and **it is not a measurement**.
+
+**TO ACTUALLY SETTLE STARS: get a REAL star spawned and collected in a live run** -- the owner's
+own report says mid-bosses drop them -- then watch `postCount` and the ring exactly as the bee
+probe did. Do not re-kind a record; it does not work.
+
