@@ -93,7 +93,16 @@ test('W220 pins D9/D10 and the complete six-object visible asset set',
     // on shard 11 beside the star's and kind 18's popups. [M] shard 11 goes 862 -> 870
     // streams and 1,170,804 -> 1,171,460 mask words, `spr.maskUsed` grows by the SAME
     // 656, and shard 9 HELD at 313/166,218 -- so nothing but these 8 moved.
-    assert.equal(manifest.spr.streamCount, 4351);
+    // W443: 4,351 -> 4,355. **DOCKET D56, the owner's oldest complaint.** The HYPER
+    // beam's own four frames ($022084 $022268 $02244C $022630, stride $1E4) -- the
+    // block $24BAE2 that pair-table entries 15..19, the `+$78` group `$255008
+    // addi.w #$78,D3` selects, all five point at. They had never been exported, so
+    // the port drew 88 bucket-16 records in 100 frames with no picture: the beam
+    // that "just cuts off". All four land on SHARD 10, the laser's own. [M] shard 10
+    // goes 407 -> 411 streams and 54,582 -> 56,510 mask words, `spr.maskUsed` grows
+    // by the SAME 1,928, and every other shard HELD -- shard 11 at 870/1,171,460 and
+    // shard 9 at 313/166,218.
+    assert.equal(manifest.spr.streamCount, 4355);
   });
 
 test('W220 MAIN0 terminal runs D9, D10, and six boss draws in the same pass',

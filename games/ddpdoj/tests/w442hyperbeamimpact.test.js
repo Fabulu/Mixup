@@ -136,7 +136,7 @@ const BEAM_WORD_P1 = 0x812964;       // $24CBD8 move.w D1 -- where the beam ends
 const BUCKET20_BUF = 0x808fa4;       // $28A0EC lea
 
 // The hyper, and the ONE bit that makes the beam the hyper beam.
-const P1_FLAGS1 = 0x8103e7;          // ($1,A4); bit 0 is $24989E's
+const P1_FLAGS1 = 0x8103e7;          // ($1,A5) at $255000; bit 0 is $24989E's
 const HYPER_ACTIVE = 0x81b63e;
 const HYPER_GAUGE = 0x81b642;        // $2530BE writes this AND the stock
 const HYPER_STOCK = 0x81b65c;
@@ -347,89 +347,125 @@ test('W442: granting $81B65C WITHOUT $81B642 measures zero hyper on the ladder '
 // oracle. There is no oracle frame to check against -- test 2 -- so this asks
 // the next question down: does what the port draws REACH PIXELS in the browser?
 //
-// It does not, and the gap is HYPER-ONLY. With EVERY sprite shard resident,
-// the port's own $800000 display list names EIGHTEEN sprite streams that are in
-// no shard of the shipped bundle at all -- 197 records over 100 frames -- and
-// the hyper-free control on the same rung names NONE of them. `portSpriteList`
-// skips a record whose stream it cannot resolve, so those 197 are simply not
-// drawn, permanently, in every browser.
+// **AT W442 IT DID NOT, AND THE GAP WAS HYPER-ONLY.** With every sprite shard
+// resident, the port's own $800000 display list named EIGHTEEN sprite streams
+// that were in no shard of the shipped bundle at all -- 197 records over 100
+// frames -- while the hyper-free control on the same rung named NONE of them.
+// `portSpriteList` skips a record whose stream it cannot resolve, so those 197
+// were simply not drawn, permanently, in every browser.
 //
-// **FOUR OF THEM ARE THE BEAM ITSELF.** `$022084 $022268 $02244C $022630`,
-// stride exactly `$1E4` -- a four-frame animation -- appear in bucket 16, the
-// beam's own bucket, 22 times each. And the reason is one address:
+// **FOUR OF THEM WERE THE BEAM ITSELF.** `$022084 $022268 $02244C $022630`,
+// stride exactly `$1E4` -- a four-frame animation -- appeared in bucket 16, the
+// beam's own bucket, 22 times each, 88 records in 100 frames. And the reason
+// was one address:
 //
-//     $255026 lea ($24BB0A,PC),A1 / adda.w D3,A1 / move.l ($4,A1),($12,A0)
-//     $255000 btst #$0,($1,A4) / $255008 addi.w #$78,D3    <- THE HYPER'S SLOT
+//     $255026 lea $24BB0A,A1 / adda.w D3,A1 / move.l (A1)+,(A0)+
+//     $255000 btst #$0,($1,A5) / $255008 addi.w #$78,D3   <- THE HYPER'S SLOT
 //
 // so the plain laser's art pointer is `$24B7EA` and the HYPER's is `$24BAE2`.
-// The bundle's only beam harvest is `manifest.spr.shards[10]` = "$24BB0A's
-// 4-frame animation for all five POWER steps", declared from `$24BB0A` and
-// running 468 entries to `$24C080`. **`$24BAE2` IS BELOW `$24BB0A`.** The
-// hyper's four frames sit $28 bytes under the bottom of the harvested window
-// and have never been exported.
+// The bundle's only beam harvest was `manifest.spr.shards[10]` = "$24BB0A's
+// 4-frame animation for all five POWER steps", walking pair entries 0..4 only.
+// `$24BAE2` is the block pair entries 15..19 -- the `+$78` group -- share, and
+// nothing walked them.
 //
-// THAT IS WHY 442 WAVES OF RAM COMPARISON FOUND NOTHING: the simulation is
-// right, the records are created, the display list carries them, and the
-// PICTURE does not exist in the shipped assets. It is the same shape as W58's
-// own note on shard 10 -- "[M] 29 of the beam's 33 descriptors had no picture:
-// the owner's flicker" -- one power step further along.
+// THAT IS WHY 442 WAVES OF RAM COMPARISON FOUND NOTHING: the simulation was
+// right, the records were created, the display list carried them, and the
+// PICTURE did not exist in the shipped assets. Same shape as W58's own note on
+// shard 10 -- "[M] 29 of the beam's 33 descriptors had no picture: the owner's
+// flicker" -- one power step further along.
+//
+// ---------------------------------------------------------------------------
+// **W443 SHIPPED THE ART AND THIS TEST IS REWRITTEN, NOT DELETED.**
+// ---------------------------------------------------------------------------
+// It was PINNING THE DEFECT: every assertion in it was true only while the four
+// frames were absent, so the fix turned it red. What it measured is kept as the
+// W442 column below and the post-fix column is asserted beside it, with a RED
+// ARM (`drop`) that takes those same four streams back out of the resolved map
+// and shows the 88 return. Without that arm "bucket 16 is clean" would also be
+// what a broken counter says.
+//
+//     bucket 16 (THE BEAM)      W442: 4 streams, 88 records  ->  W443: 0, 0
+//     bucket 25 (the HUD)       W442: 14 streams, 109 records -> W443: unchanged
+//     total missing streams     W442: 18, 197 records         ->  W443: 14, 109
+//
+// The fourteen HUD frames are a SECOND and SEPARATE gap -- they are not the hit
+// animation and must not be reported as one. W443 did not touch them and this
+// file keeps counting them so the next wave has the number.
 // ===========================================================================
-test('W442: with EVERY sprite shard resident the port still names 18 sprite '
-  + 'streams that are in NO shard, 197 records in 100 frames, and they appear '
-  + 'ONLY when the hyper is up', { skip: SKIP_BUNDLE || SKIP_LADDER },
-async () => {
+/** the four frames of the hyper beam's animation, W442's own measurement. */
+const BEAM_FOUR = [0x022084, 0x022268, 0x02244c, 0x022630];
+
+test('W443 (was W442 test 8): bucket 16 -- THE LASER BEAM -- now has ZERO '
+  + 'missing art with the hyper up, the 88 records are drawn, and the RED arm '
+  + 'that puts the four streams back out of the map measures the 88 again',
+{ skip: SKIP_BUNDLE || SKIP_LADDER }, async () => {
   const plain = await drawn(9100, 9200, {});
   const hyper = await drawn(9100, 9200, { hyper: true });
 
-  // The impact spark itself is fine, and that is half the answer: the record is
-  // created AND drawn, so this is not "the effect was never made".
+  // The impact spark itself was fine at W442 too, and that is half the answer:
+  // the record is created AND drawn, so this was never "the effect was never
+  // made". These three numbers are UNMOVED by W443.
   assert.equal(hyper.sparkSkipped, 0, 'every pool-E impact record resolves');
   assert.equal(hyper.sparkDrawn, 1597, 'and 1597 of them are DRAWN');
   assert.equal(plain.sparkDrawn, 1739, 'against the plain laser\'s 1739');
 
+  // **DOCKET D56.** 88 -> 0.
+  assert.equal(hyper.missingBucket.has(16), false,
+    'bucket 16 carries NO missing art with the hyper active. At W442 it '
+    + 'carried exactly BEAM_FOUR, 22 records each, 88 in 100 frames -- the '
+    + 'owner\'s "it just cuts off"');
+  for (const o of BEAM_FOUR) {
+    assert.equal(hyper.missing.has(o), false,
+      `${hx(o)} resolves to a shard now; it did not at W442`);
+  }
+  assert.equal(plain.missingBucket.has(16), false,
+    'and the PLAIN laser still has none -- it never did, which is what made '
+    + 'this the hyper\'s power slot and only the hyper\'s');
+
+  // WHAT IS LEFT, counted rather than waved at. The fourteen HUD frames are a
+  // SECOND and SEPARATE gap and W443 deliberately did not touch them.
   const only = [...hyper.missing.keys()].filter((o) => !plain.missing.has(o));
   const records = only.reduce((n, o) => n + hyper.missing.get(o), 0);
-  assert.equal(only.length, 18, 'eighteen streams the hyper needs and the '
-    + 'bundle does not have');
-  assert.equal(records, 197, 'and 197 records over the 100 frames');
+  assert.equal(only.length, 14,
+    'fourteen streams the hyper needs and the bundle still does not have, '
+    + 'down from EIGHTEEN at W442: the four the beam asked for are gone');
+  assert.equal(records, 109, '109 records over the 100 frames, down from 197 '
+    + '-- exactly the 88 bucket-16 records that now have a picture');
+  const b25 = hyper.missingBucket.get(25);
+  assert.ok(b25, 'bucket 25 -- the HUD -- still carries missing art');
+  const hudOnly = [...b25.keys()].filter((o) => !plain.missing.has(o));
+  assert.equal(hudOnly.length, 14, 'and it is ALL fourteen of them: every '
+    + 'stream still missing under a hyper is the HUD\'s, none is the beam\'s');
 
-  // The four in the BEAM's own bucket, and their $1E4 stride.
-  const BEAM_FOUR = [0x022084, 0x022268, 0x02244c, 0x022630];
+  // ---- RED. Take the four back OUT of the resolved map and the defect
+  // returns, to the record. A zero measured by a counter that stopped counting
+  // would not move here.
+  const red = await drawn(9100, 9200, { hyper: true, drop: BEAM_FOUR });
+  const b16 = red.missingBucket.get(16);
+  assert.ok(b16, 'with the four removed bucket 16 carries missing art again');
+  assert.deepEqual([...b16.keys()].sort((a, b) => a - b), BEAM_FOUR,
+    'exactly those four, nothing else');
+  assert.equal([...b16.values()].reduce((a, b) => a + b, 0), 88,
+    'and exactly 88 records -- W442\'s number, reproduced on demand');
   for (const o of BEAM_FOUR) {
-    assert.ok(hyper.missing.has(o), `${hx(o)} is drawn by the hyper beam and `
-      + 'is in no shard');
-    assert.equal(hyper.missing.get(o), 22, `${hx(o)} on 22 of 100 frames`);
-    assert.ok(!plain.missing.has(o), `${hx(o)} never appears without a hyper`);
+    assert.equal(red.missing.get(o), 22, `${hx(o)} on 22 of 100 frames`);
   }
+  const redOnly = [...red.missing.keys()].filter((o) => !plain.missing.has(o));
+  assert.equal(redOnly.length, 18, 'eighteen again, W442\'s count');
+  assert.equal(redOnly.reduce((n, o) => n + red.missing.get(o), 0), 197,
+    '...and 197 records again');
+  // The stride, which is what says these are four frames of one animation.
   for (let i = 1; i < BEAM_FOUR.length; i++) {
     assert.equal(BEAM_FOUR[i] - BEAM_FOUR[i - 1], 0x1e4,
       'four frames at a constant stride -- an ANIMATION, not four strays');
   }
-
-  // AND THEY ARE THE BEAM'S. `tools/webgate.mjs`'s own W58 line names bucket 16
-  // "THE LASER BEAM ($24BB0A x4 frames x5 powers + the segment and option
-  // blocks)", and the drain order says these four records are in it.
-  const b16 = hyper.missingBucket.get(16);
-  assert.ok(b16, 'bucket 16 -- THE LASER BEAM -- carries missing art');
-  assert.deepEqual([...b16.keys()].sort((a, b) => a - b), BEAM_FOUR,
-    'and it is exactly those four, nothing else');
-  assert.equal([...b16.values()].reduce((a, b) => a + b, 0), 88,
-    '88 of the beam\'s own records in 100 frames have no picture');
-  assert.ok(!plain.missingBucket.has(16),
-    'the PLAIN laser has no missing art in bucket 16 at all -- this is the '
-    + 'hyper\'s power slot and only the hyper\'s');
-
-  // The other fourteen are the HUD (bucket 25, src/hud.js), a SECOND and
-  // separate gap: it is not the hit animation and must not be reported as one.
-  const b25 = hyper.missingBucket.get(25);
-  assert.ok(b25, 'bucket 25 -- the HUD -- carries missing art too');
-  const hudOnly = [...b25.keys()].filter((o) => !plain.missing.has(o));
-  assert.equal(hudOnly.length, 14, 'fourteen HUD frames the hyper needs');
 });
 
-test('W442: the hyper beam takes its art from $24BAE2 and the plain laser from '
-  + '$24B7EA, and $24BAE2 is BELOW $24BB0A, the base of the only beam window '
-  + 'the bundle harvested', { skip: SKIP_LADDER || SKIP_BUNDLE }, async () => {
+test('W443 (was W442 test 8b): the hyper beam still takes its art from $24BAE2 '
+  + 'and the plain laser from $24B7EA -- and the shipped manifest now carries a '
+  + 'harvest row for BOTH', { skip: SKIP_LADDER || SKIP_BUNDLE }, async () => {
+  // THE CARTRIDGE HALF IS UNCHANGED AND IS NOT SUPPOSED TO MOVE. It is what
+  // W442 measured live, out of the beam block the port itself writes.
   const plain = await drawn(9100, 9200, {});
   const hyper = await drawn(9100, 9200, { hyper: true });
   assert.deepEqual([...plain.artBases].sort(), [0x24b7ea],
@@ -437,17 +473,25 @@ test('W442: the hyper beam takes its art from $24BAE2 and the plain laser from '
   assert.deepEqual([...hyper.artBases].sort(), [0x24b7ea, 0x24bae2],
     'the hyper adds $24BAE2 -- $255008 addi.w #$78,D3 indexes $24BB0A there');
 
-  // The harvest, from the shipped manifest and not from a note.
+  // THE BUNDLE HALF IS WHAT W443 MOVED. At W442 the ledger had ONE beam row,
+  // declared from $24BB0A, and $24BAE2 is $28 bytes BELOW that base, so no
+  // entry of that harvest could reach it. Now there are TWO rows and the
+  // second one is the block the hyper's five power steps share.
   const man = JSON.parse(fs.readFileSync(path.join(GAME, 'assets', 'manifest.json'),
     'utf8'));
   const laser = man.spr.shards.find((s) => s.kind === 'laser');
   assert.ok(laser, 'the bundle has a laser shard');
   const h = man.spr.harvest.filter((x) => x.shard === laser.i);
   assert.ok(h.some((x) => x.at === '$24BB0A'),
-    'and its beam harvest is declared from $24BB0A');
+    'W58\'s beam harvest is still declared from $24BB0A');
+  const hyperRow = h.find((x) => x.at === '$24BAE2');
+  assert.ok(hyperRow, 'and W443\'s is declared from $24BAE2, the block the '
+    + 'plain harvest could never reach. This assertion is the whole of D56');
+  assert.equal(hyperRow.entries, 4, 'four frames');
+  assert.equal(hyperRow.added, 4, 'all four NEW to the sheet');
   assert.ok(0x24bae2 < 0x24bb0a,
-    'the hyper\'s table starts $28 bytes BELOW that base, so no entry of the '
-    + 'harvest can reach it');
+    'and it is still BELOW $24BB0A -- the fix is a second declared read, not a '
+    + 'widened one');
 });
 
 // ===========================================================================
@@ -552,6 +596,11 @@ async function drawn(seedLf, cmpLf, opts) {
   // ready is what turns "has not arrived" into "does not exist".
   for (let i = 0; i < bundle.spr.state.length; i++) bundle.spr.state[i] = 'ready';
   const map = romToPackedMap(bundle.manifest, (b) => bundle.spr.shardOfBase(b));
+  // W443's RED ARM. `drop` takes streams back OUT of the resolved map, which is
+  // exactly the state the bundle was in before W443 harvested them -- so the
+  // "zero missing" this file now asserts is measured against a run that CAN
+  // still measure 88, rather than against a counter that stopped counting.
+  for (const o of (opts.drop ?? [])) map.delete(o);
   const sparkShard = bundle.manifest.spr.shards.find((s) => s.kind === 'spark').i;
 
   const man = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));

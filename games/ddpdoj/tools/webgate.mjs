@@ -1278,9 +1278,22 @@ try {
         // types carry ($44,A5), every one of them inside the type's real cue
         // list ($273986..$2739BF, $2747A8..$2747C5, $275F04..$275F2F), and the
         // three old values ($27396A/$27478C/$275EE8) appear ZERO times.
-        10: { streams: 407, records: 1821, distinct: 34, first: 24,
-          what: 'THE LASER BEAM ($24BB0A x4 frames x5 powers + the segment '
-            + 'and option blocks, bucket 16)' },
+        //
+        // W443 (DOCKET D56): `streams` 407 -> 411, and `records` 1821,
+        // `distinct` 34 and `first` 24 are ALL STILL HELD. The four new
+        // streams are the HYPER beam's own animation ($022084 $022268 $02244C
+        // $022630, stride $1E4) -- pair-table $24BB0A's entries 15..19, the
+        // `+$78` group `$255008 addi.w #$78,D3` selects, all five of which
+        // point at ONE block $24BAE2 that `export-web.mjs` never walked. THIS
+        // WINDOW CANNOT ASK FOR THEM: its scenario never presses Button 2 with
+        // stock, so `$8103E7` bit 0 is never set and the beam takes the +$0
+        // arm on all 1,500 frames -- which is exactly why `records`,
+        // `distinct` and `first` do NOT move and only the shard's size does.
+        // The hyper's own draw is measured in tests/w442hyperbeamimpact and
+        // tests/w443hyperbeamart, on the board-verified rung lf9100->9200.
+        10: { streams: 411, records: 1821, distinct: 34, first: 24,
+          what: 'THE LASER BEAM ($24BB0A x4 frames x5 powers + the HYPER block '
+            + '$24BAE2 x4 frames + the segment and option blocks, bucket 16)' },
         // W66: 146 -> 153. The fifth chain range ($12D430, 8 frames of stride
         // 68, closed by $12D650 being stride 1084) joins shard 11 -- W58 §2.2
         // identified $12D430 as "the first frame of the next family" and

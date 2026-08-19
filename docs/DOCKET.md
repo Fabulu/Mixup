@@ -4466,3 +4466,50 @@ to the byte.
 **THE FIX IS A SPRITE-HARVEST CHANGE IN `export-web.mjs` PLUS A FULL RE-EXPORT AND REPUBLISH.**
 Deliberately not attempted here; it needs its own wave and a quiet tree.
 
+
+### D56 FIXED BY W443 -- THE HYPER BEAM'S ART SHIPS. **88 MISSING RECORDS -> 0.**
+
+`export-web.mjs`'s `BEAM_ANIM.harvest = 5` walked pair-table entries **0..4 only**.
+`$255008 addi.w #$78,D3` puts the hyper on entries **15..19**, and all five point at **ONE** block,
+`$24BAE2` -- **the last of the twenty.** Walking it gives exactly W442's four streams at stride
+`$1E4`.
+
+    bucket-16 missing records, hyper rung   88 -> 0
+    missing streams / records under hyper   18 / 197 -> 14 / 109  (the rest is the HUD, D56b)
+    streamCount  4351 -> 4355        maskUsed  2,456,294 -> 2,458,222  (+1,928 = 4 x 482)
+    shard 10     407 -> 411 streams, 54,582 -> 56,510 maskLen
+    ALL 18 OTHER SHARDS HELD EXACTLY
+
+**MY BRIEF WAS WRONG IN SIX PLACES, and two matter:**
+1. **`$255000` is `btst #$0,($1,A5)`, not `($1,A4)`** (`08 2d`, confirmed by the coordinator), and
+   `$255026` is **absolute long** `lea $24BB0A,A1` (`43 f9`), not PC-relative. **W442's comment
+   carried the same three mis-quotes; corrected in both files.**
+2. **"`$24BAE2` is `$28` BELOW the window, outside it" is HALF WRONG.** It is `$28` below the
+   POINTER TABLE but **INSIDE the block array `$24B7EA..$24BB0A` -- block 19 of 20**
+   (`$24B7EA + 19*$28 = $24BAE2`, confirmed). The exporter reads the whole array from the raw
+   image, **so this was never a window problem. The cause is the `harvest: 5` cutoff.**
+3. **No new ROM window was needed** -- W226 already declared `(0x24B900, 0x02AA)` and **its own
+   comment names "the shared HYPER strip `$24BAE2`".** 613 windows, overlaps 75, unchanged.
+
+**A D66-SHAPED FIND, AND IT IS THE OWNER'S BUG ITSELF.** `export-web.mjs`'s stated reason for
+skipping these entries -- *"outside EVERY window ... a LOUD NAMED THROW ... the two must move
+together"* -- **has been FALSE since W226 moved the window alone.** From W226 to W442, reaching the
+hyper's block was **a QUIET BLANK: exactly what that comment existed to prevent, and exactly what
+the owner has been looking at.**
+
+**HOW IT FAILS IF FAKED:** section 1 derives the four addresses from `maincpu.bin` and never looks
+at the bundle; section 2 requires them contiguous in shard 10 with **pixels byte-identical to the
+cartridge (1,920 mask words compared)**; **section 3 requires every other shard to HOLD to the mask
+word, which refuses a 20-entry walk or a range scan -- both CONTAIN the four and both ship 40 extra
+streams.** On HEAD's bundle sections 2-4 were RED.
+
+**A RED ARM in `w442hyperbeamimpact.test.js`** drops the four from the resolved map and measures
+**88 records / exactly BEAM_FOUR / 18 streams / 197 records** again. **Both W442 tests that pinned
+the defect were REWRITTEN, not deleted** -- all eleven removed assertions reappear.
+
+**THE HUD GAP DID NOT FALL OUT FREE** -- 14 streams / 109 records remain, and the test asserts every
+one is bucket 25. **None is the beam's.**
+
+Verified by the coordinator on a quiet tree: **4069 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows. W441's band and W442's spark counts unmoved.
+

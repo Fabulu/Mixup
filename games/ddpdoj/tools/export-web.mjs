@@ -1837,22 +1837,58 @@ function walkEffectScript(desc, dur) {
 //     all of it DEFERRED, and the assertion below is that all 29 are inside it.
 //
 // WHAT IS DELIBERATELY NOT HARVESTED, named rather than omitted:
-//   * `$24BB0A` entries 5..19 -- the `+$28`/`+$50`/`+$78` groups, 60 more
-//     streams.  `+$28` needs `($58,A5)` (ship select) non-zero and
-//     `src/machine.js` records it as [M] 0 for TYPE-A over the whole corpus with
-//     nothing in the port writing it; `+$50` needs `($5a,A6) != 2` and
+//   * `$24BB0A` entries 5..14 -- the `+$28` and `+$50` groups, 40 more streams.
+//     `+$28` needs `($58,A5)` (ship select) non-zero and `src/machine.js`
+//     records it as [M] 0 for TYPE-A over the whole corpus with nothing in the
+//     port writing it; `+$50` needs `($5a,A6) != 2` and
 //     `tools/export-tables.py` records [M] 2 on every frame.  This is the
 //     `$268594` precedent: art for a state no ported code can enter.
-//   * AND IT IS SAFE TO LEAVE THEM OUT, because the port cannot silently draw
-//     the wrong thing there.  [M] the blocks those entries point at,
-//     `$24B902..$24BB0A`, are outside EVERY window `tools/export-tables.py`
-//     exports (`$24A800+$1100` stops at $24B900 and `$24BB00+$A0` starts after
-//     it), so reaching one is a LOUD NAMED THROW out of `src/rom.js` at $24B902
-//     -- which is more informative than a NO ART skip.  Widening that window
-//     WITHOUT this art would turn a loud throw into a quiet blank; the two must
-//     move together and neither moves in this wave.
 //   * the LASER's own impact spark `$22C6BC..$22C860` -- W53 Ã‚Â§6's, still behind
 //     the unported `$289F96`/`$289FC0`/`$289FDA`.
+//     **[W443] AND THIS ONE'S STATED REASON IS STALE TOO, THOUGH ITS
+//     ASSERTION STILL HOLDS.** `$289FC0` is NOT unported: W442 drove it
+//     live on rung lf9100->9200 and measured 44 impacts, 46 pool-E records
+//     and 1,597 bucket-20 sprite records DRAWN with `sparkSkipped` 0 -- so
+//     the impact spark the port actually emits already has its picture, in
+//     shard 8. What is still not harvested is this LIST; nothing measured
+//     has asked for it, and no wave should ship it until something does.
+//
+// ------------------------------------------------------------------ WAVE 443
+// **ENTRIES 15..19 -- THE `+$78` GROUP -- WERE ON THAT LIST AND WERE NEVER
+// UNREACHABLE.  THEY ARE THE HYPER BEAM, AND THEY ARE DOCKET D56, THE OWNER'S
+// OLDEST OPEN COMPLAINT.**
+//
+//   > "Laser comes out, it hits something, and it just cuts off, it has no hit
+//   >  animation or particles"
+//
+// `$255000 btst #$0,($1,A5)` / `$255008 addi.w #$78,D3` is the hyper arm of the
+// same indexed read the plain beam uses, so the hyper's art is entries 15..19
+// of this very table.  W442 measured the consequence on the board-verified rung
+// lf9100->9200 with the hyper active 99 frames of 100: with EVERY sprite shard
+// forced resident the port's own $800000 list names FOUR bucket-16 streams that
+// are in NO shard at all -- `$022084 $022268 $02244C $022630`, stride exactly
+// $1E4, 22 records each, 88 in 100 frames -- and the hyper-free control on the
+// same rung names NONE.  The simulation was right the whole time; the PICTURE
+// was never exported.  [M] all five `+$78` pairs point at ONE block, `$24BAE2`,
+// the LAST of the twenty, so the hyper beam has a single four-frame animation
+// shared by every power step.  IT IS HARVESTED BELOW, its four are asserted by
+// address the way `B16_MEASURED` asserts the plain beam's 33, and the assertion
+// is an EQUALITY so that a broad re-harvest fails it too.
+//
+// **AND THE REASON THIS BLOCK USED TO GIVE FOR LEAVING THEM OUT WAS STALE.**
+// It said the blocks `$24B902..$24BB0A` are outside every window
+// `tools/export-tables.py` exports, so reaching one is "a LOUD NAMED THROW out
+// of `src/rom.js` at $24B902 -- more informative than a NO ART skip", and that
+// the window and the art "must move together".  **W226 MOVED THE WINDOW ALONE**
+// (docket D1): `(0x24B900, 0x02AA, ...)`, whose own note names "the shared
+// HYPER strip $24BAE2".  So from W226 to W442 reaching the hyper's block has
+// been a QUIET BLANK -- exactly the thing that comment was written to prevent,
+// and exactly what the owner has been looking at.  D66's shape, once again: the
+// assertion held, the STATED REASON went false, and nothing read it back.
+// **NO WINDOW MOVES IN THIS WAVE EITHER** -- $24B900+$02AA already contains
+// $24BAE2..$24BB0A whole, so the art was all that was ever missing.  Entries
+// 5..14 keep the REACHABILITY argument above, which stands on its own; the
+// safety argument is withdrawn and not made for them.
 //
 // (1f) THE BIG MID-SCREEN STRUCTURES -- buckets 2, 3 and 7.
 // [M] 89.7 % of every missing sprite pixel in `55-diag`'s run and [M] 82.5 % of
@@ -1873,8 +1909,13 @@ const BEAM_ANIM = Object.freeze({
   ptrTab: 0x24bb0a, ptrEntries: 20, ptrStride: 8, ptrEndsAt: 0x24bbaa,
   blocks: 0x24b7ea, blockBytes: 0x28, start: 0x1e, step: 0x0a,
   /** entries 0..4: `($22,A5)*4` with the group offset 0 -- the power ladder of
-   *  the default ship and formation.  See the block header for 5..19. */
+   *  the default ship and formation.  See the block header for 5..14. */
   harvest: 5,
+  /** WAVE 443 (D56): `$255008 addi.w #$78,D3`, the HYPER's group offset, in
+   *  BYTES of this pair table.  The ENTRY INDEX is divided out of it below and
+   *  is deliberately not written down as a number, so the harvest moves with
+   *  the cartridge's own immediate instead of silently disagreeing with it. */
+  hyperGroupBytes: 0x78,
 });
 
 /** `[from, to, why]` -- scan for longwords that are MASK-ROM DIRECTORY entries. */
@@ -1906,6 +1947,23 @@ const B16_MEASURED = Object.freeze([
   0x01275c, 0x012990, 0x012bc4, 0x012df8, 0x013b94, 0x013c18, 0x022aec,
   0x022b90, 0x022c34, 0x022cd8, 0x022d7c, 0x022e20,
 ]);
+
+/** WAVE 443 (DOCKET D56) -- **THE HYPER BEAM'S OWN FOUR.**
+ *  [M] W442, on the board-verified rung lf9100->9200 with the hyper active for
+ *  99 of 100 frames and EVERY sprite shard forced resident: bucket 16 -- the
+ *  beam's own bucket -- asked for these four addresses 22 times each, 88
+ *  records in 100 frames, and the shipped bundle held NOT ONE of them.  The
+ *  hyper-free control on the same rung asked for none of them and had zero
+ *  missing art in bucket 16 at all.
+ *
+ *  **THIS IS ASSERTED AS AN EQUALITY, NOT AS A SUBSET, AND THAT IS THE POINT.**
+ *  A superset check passes for any harvest that over-reaches -- walking the
+ *  whole twenty-block array, or scanning $24B7EA..$24BB0A as a directory range
+ *  -- and both of those would ship art for states no ported code can enter
+ *  while still "containing" these four.  The `+$78` walk must produce exactly
+ *  this set and nothing else.  The stride is $1E4 throughout: four frames of
+ *  ONE animation, which is the other half of the claim. */
+const B16_HYPER = Object.freeze([0x022084, 0x022268, 0x02244c, 0x022630]);
 
 /** bucket 0's last four, a chain run pinned from above by W53's own boundary:
  *  [M] $22C59C..$22C6BC, and $22C6BC is exactly where the LASER's impact-spark
@@ -1946,6 +2004,43 @@ const B0_RUN = Object.freeze([0x22c59c, 0x22c6bc]);
   for (let k = 0; k < BEAM_ANIM.ptrEntries; k++) {
     blockAt.add(BEAM_ANIM.blocks + k * BEAM_ANIM.blockBytes);
   }
+
+  // ------------------------------------------------------------- WAVE 443/D56
+  // THE HYPER'S GROUP, DIVIDED OUT OF `$255008`'s OWN IMMEDIATE.  `addi.w
+  // #$78,D3` is a BYTE offset into this pair table, so the group is entries
+  // $78 / $8 = 15..19 -- five power steps, the same width as the +$0 group.
+  // Both of the next two throws are the anti-fake guard: if the cartridge ever
+  // stops agreeing that this group is five entries wide and that all five point
+  // at ONE block, this build STOPS rather than shipping a guess.
+  if (BEAM_ANIM.hyperGroupBytes % BEAM_ANIM.ptrStride) {
+    throw new Error(`the hyper's group offset $${BEAM_ANIM.hyperGroupBytes
+      .toString(16)} ($255008 addi.w) is not a whole number of `
+      + `$${BEAM_ANIM.ptrStride.toString(16)}-byte pairs.`);
+  }
+  const hyperFirst = BEAM_ANIM.hyperGroupBytes / BEAM_ANIM.ptrStride;
+  const hyperEntry = new Set();
+  for (let i = hyperFirst; i < BEAM_ANIM.ptrEntries; i++) hyperEntry.add(i);
+  if (hyperEntry.size !== BEAM_ANIM.harvest) {
+    throw new Error(`$255008's #$${BEAM_ANIM.hyperGroupBytes.toString(16)} puts `
+      + `the hyper at entry ${hyperFirst}, leaving ${hyperEntry.size} of the `
+      + `${BEAM_ANIM.ptrEntries} pairs -- the power ladder is `
+      + `${BEAM_ANIM.harvest} steps wide everywhere else in this table.`);
+  }
+  const lastBlock = BEAM_ANIM.blocks
+    + (BEAM_ANIM.ptrEntries - 1) * BEAM_ANIM.blockBytes;
+  const hyperBlocks = new Set([...hyperEntry].map((i) =>
+    romBe32(BEAM_ANIM.ptrTab + i * BEAM_ANIM.ptrStride + 4)));
+  if (hyperBlocks.size !== 1 || !hyperBlocks.has(lastBlock)) {
+    throw new Error(`the ${hyperEntry.size} +$78 (HYPER) pairs point at `
+      + `${hyperBlocks.size} block(s) `
+      + `${[...hyperBlocks].map((b) => '$' + b.toString(16)).join(' ')}; W443 `
+      + `measured ONE, and it is $${lastBlock.toString(16)}, the LAST of the `
+      + `${BEAM_ANIM.ptrEntries}. "The hyper beam has one four-frame animation `
+      + 'shared by every power step" is a statement the CARTRIDGE makes and not '
+      + 'one this file asserts, and this is where it is read back.');
+  }
+  const hyperStreams = new Set();
+
   for (let i = 0; i < BEAM_ANIM.ptrEntries; i++) {
     const a = BEAM_ANIM.ptrTab + i * BEAM_ANIM.ptrStride;
     const start = romBe32(a) & 0xffff, ptr = romBe32(a + 4);
@@ -1956,9 +2051,14 @@ const B0_RUN = Object.freeze([0x22c59c, 0x22c6bc]);
         + `block array $${BEAM_ANIM.blocks.toString(16)}..`
         + `$${BEAM_ANIM.ptrTab.toString(16)}.`);
     }
-    if (i >= BEAM_ANIM.harvest) continue;      // groups +$28/+$50/+$78: see above
+    // The HYPER's four go in their own set so that the W58 harvest above keeps
+    // its own numbers to the stream -- the ledger delta is then ONE new row of
+    // exactly four and not a re-count of 468 entries.
+    const dst = hyperEntry.has(i) ? hyperStreams
+      : (i < BEAM_ANIM.harvest ? laserStreams : null);
+    if (dst === null) continue;               // groups +$28/+$50: see above
     for (let off = BEAM_ANIM.start; off >= 0; off -= BEAM_ANIM.step) {
-      laserStreams.add(romBe32(ptr + off + 4) & 0x7fffff);   // ($a,A6)
+      dst.add(romBe32(ptr + off + 4) & 0x7fffff);            // ($a,A6)
     }
   }
   const beamCount = laserStreams.size;
@@ -1994,6 +2094,50 @@ const B0_RUN = Object.freeze([0x22c59c, 0x22c6bc]);
     + `${beamCount} beam streams; + $24A86A..$24B7EA and $24BBA0..$24C080 = `
     + `${laserStreams.size} total, and all ${B16_MEASURED.length} measured `
     + 'bucket-16 descriptors are in it');
+
+  // ------------------------------------------------------------- WAVE 443/D56
+  // THE HYPER BEAM'S FOUR FRAMES.  Its own ledger row, its own equality guard,
+  // and its own line of output, because it is its own claim: the W58 row above
+  // must hold to the stream while this one appears.
+  const gotHyper = [...hyperStreams].sort((a, b) => a - b);
+  const wantHyper = [...B16_HYPER].sort((a, b) => a - b);
+  const sameHyper = gotHyper.length === wantHyper.length
+    && gotHyper.every((o, k) => o === wantHyper[k]);
+  if (!sameHyper) {
+    throw new Error(`the $24BB0A +$78 (HYPER) walk resolves `
+      + `${gotHyper.map((o) => '$' + o.toString(16)).join(' ')}; W442 MEASURED `
+      + `the hyper beam asking for exactly `
+      + `${wantHyper.map((o) => '$' + o.toString(16)).join(' ')} (88 records in `
+      + '100 frames, none of them in any shard). This is an EQUALITY: a walk '
+      + 'that resolves MORE than these four is over-reaching into art no ported '
+      + 'state can enter, and one that resolves fewer puts DOCKET D56 back.');
+  }
+  for (let k = 1; k < gotHyper.length; k++) {
+    if (gotHyper[k] - gotHyper[k - 1] !== 0x1e4) {
+      throw new Error(`the hyper's frames step $${(gotHyper[k]
+        - gotHyper[k - 1]).toString(16)} from $${gotHyper[k - 1].toString(16)} `
+        + 'to $' + gotHyper[k].toString(16) + ', not the $1E4 W442 measured -- '
+        + 'these are not four frames of one animation.');
+    }
+  }
+  let hAdded = 0, hAlready = 0;
+  for (const offs of gotHyper) {
+    if (streams.has(offs)) { hAlready++; continue; }
+    streams.set(offs, romExtent(offs));     // throws unless it is a stream start
+    shardOfStream.set(offs, LASER_SHARD_W58);
+    hAdded++;
+  }
+  harvested += hAdded; harvestAlready += hAlready;
+  harvestReport.push({ shard: LASER_SHARD_W58, base: lastBlock,
+    entries: gotHyper.length, stride: BEAM_ANIM.step, runsTo: gotHyper.length,
+    endsAt: lastBlock + BEAM_ANIM.blockBytes, distinct: gotHyper.length,
+    added: hAdded, already: hAlready,
+    why: 'THE HYPER BEAM -- $24BB0A entries 15..19 (+$78) all point at this ONE '
+      + 'block; four frames walked $1E down by $A (W443, docket D56)' });
+  console.log(`  HYPER $${lastBlock.toString(16).toUpperCase()} `
+    + `(= $24BB0A[${hyperFirst}..${BEAM_ANIM.ptrEntries - 1}], the +$78 group, `
+    + `all ${hyperEntry.size} pairs on ONE block): ${gotHyper.length} frames at `
+    + `stride $1E4, ${hAdded} new, ${hAlready} already -- DOCKET D56`);
 }
 
 {

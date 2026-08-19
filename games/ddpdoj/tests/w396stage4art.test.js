@@ -408,6 +408,18 @@ const W419 = Object.freeze({ streams: 36, maskWords: 7752, colWords: 23109 });
 // with 8 added and 0 removed, and shard 11 is the only shard whose stream count moves.
 const W422 = Object.freeze({ streams: 8, maskWords: 656, colWords: 738 });
 
+// **W443 (DOCKET D56) MOVED THEM AGAIN, AND IT IS THE FIRST WAVE SINCE W419 TO MOVE A SHARD
+// OTHER THAN 11.** The HYPER beam's own four frames ($022084 $022268 $02244C $022630, stride
+// $1E4) had never been exported: `$255008 addi.w #$78,D3` puts the hyper on pair-table entries
+// 15..19 of $24BB0A, all five of which point at ONE block, $24BAE2, and `export-web.mjs` walked
+// entries 0..4 only. W442 measured the port drawing 88 bucket-16 records in 100 frames with no
+// picture -- the owner's "the laser just cuts off". FOUR streams, all new, all onto SHARD 10, the
+// laser's own. [M] shard 10 goes 407 -> 411 streams, 54,582 -> 56,510 mask words and
+// 118,820 -> 126,298 colour words; `spr.maskUsed` grows by the SAME 1,928; and shard 11 HELD at
+// 870/1,171,460/3,273,468 -- which is why the shard-11 terms below do NOT carry a W443 addend and
+// only `streamCount`, `maskUsed` and SIZES[10] do.
+const W443 = Object.freeze({ streams: 4, maskWords: 1928, colWords: 7478 });
+
 test('W396 SECTION 4: the bundle grew by exactly these five and by nothing else',
   { skip: SKIP }, () => {
     const { manifest, rows, shard } = bundle();
@@ -415,7 +427,7 @@ test('W396 SECTION 4: the bundle grew by exactly these five and by nothing else'
     // arm adds six streams where one of them replaces an entry that was already there.
     assert.equal(manifest.spr.streamCount,
       BEFORE.streamCount + 5 + W397.streams + W414.streams + W417.streams
-        + W419.streams + W422.streams,
+        + W419.streams + W422.streams + W443.streams,
       '4,258 -> 4,263 (W396) -> 4,267 (W397) -> 4,291 (W414) streams. This number is pinned in '
       + 'TWELVE test files and all twelve move together; the claim is "the bundle is what the '
       + 'tree measured", never a floor');
@@ -435,7 +447,7 @@ test('W396 SECTION 4: the bundle grew by exactly these five and by nothing else'
       '3,183,741 -> 3,219,388 -> 3,260,515 -> 3,262,842 -> 3,272,730 colour words');
     assert.equal(manifest.spr.maskUsed,
       BEFORE.maskUsed + 15562 + W397.maskWords + W414.maskWords + W417.maskWords
-        + W419.maskWords + W422.maskWords,
+        + W419.maskWords + W422.maskWords + W443.maskWords,
       'and the whole packed mask space grew by the same amount all three times: nothing else '
       + 'was added');
 
@@ -452,7 +464,9 @@ test('W396 SECTION 4: the bundle grew by exactly these five and by nothing else'
     // ADDITION to one shard and the sum below is what proves it.
     // W422: index 11 is 862 + W422's EIGHT (pool-A kind index 5's collected popup), and
     // every other entry HELD -- including index 9's 313, which W419 last moved.
-    const SIZES = [166, 67, 32, 54, 17, 70, 96, 298, 72, 313, 407, 870, 139, 228, 90, 4, 37,
+    // W443: index 10 is 407 + FOUR (the hyper beam's own animation, $24BAE2). Every other
+    // entry HELD -- including index 11's 870, which W422 last moved, and index 9's 313.
+    const SIZES = [166, 67, 32, 54, 17, 70, 96, 298, 72, 313, 411, 870, 139, 228, 90, 4, 37,
       1231, 160];
     assert.deepEqual(manifest.spr.shards.map((s) => s.streams), SIZES,
       'every other shard holds exactly what it held before');
