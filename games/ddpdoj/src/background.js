@@ -1206,14 +1206,20 @@ function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut) {
           ctx.soundPost?.(0x28c170);                       // $2621C4 jsr $28C170
           ctx.scrollEvent?.({ op, recTime, kind: 'cue', sub });
         } else if (sub === 2) {                            // $2621CC
-          const d1 = rom.u16(a2); a2 += 2;
-          // STILL COUNTED, AND NOT BY OVERSIGHT. $28C186 takes D1 FROM THE CALLER and this is the
-          // site that proves why an address-only post would be wrong: D1 is read out of the stage
-          // script, word by word, and is not always 0. Posting it by address alone would send
-          // command $1600 for every cue the script ever writes. It needs an explicit-D1 call
-          // (`postBgmCommand(ram, sound, 0x28c186, d1)`) that the scroll VM has no `sound` for.
-          note(0x28c186, `$28C186 -> $28BBAC D0=$16 D1=$${d1.toString(16)
-            .toUpperCase().padStart(4, '0')} (BGM command)`);
+          const d1 = rom.u16(a2); a2 += 2;                 // $2621CC move.w (A2)+,D1
+          // W426 -- A REAL POST, THROUGH THE D1-CARRYING API. $28C186 loads only D0 ($16) and
+          // falls into $28BBAC with the CALLER's D1, so it cannot go through the address-only
+          // `soundPost`; `ctx.soundPostD1(addr, d1)` is the half that was missing.
+          //
+          // THE WORD ABOVE IS THE ONLY REAL D1 IN THE IMAGE -- the other two $28C186 sites are
+          // `moveq #0,D1` -- AND IN THIS ROM REVISION IT IS ALWAYS ZERO. All five stage cue
+          // streams ($261602 $2618C4 $261A4C $261BF8 $261D92, from the $26153E pair table) carry
+          // exactly one sub-op 2 each and every one of them is followed by $0000. W425's note
+          // here said the opposite ("is not always 0") and that was never measured. It is now,
+          // by `w426bgmcommandd1.test.js`, which walks those five streams. The `d1` is still
+          // PASSED rather than hard-coded: the instruction reads a register, and a property of
+          // the data is not a property of the code.
+          ctx.soundPostD1?.(0x28c186, d1);                 // $2621CE jsr $28C186
           ctx.scrollEvent?.({ op, recTime, kind: 'cue', sub, d1 });
         } else {
           unreached(0x2621aa, `cue sub-op ${sub} at $${a2.toString(16)

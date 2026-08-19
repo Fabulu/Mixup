@@ -94,14 +94,29 @@ test('SECTION 3: $28C186 takes D1 from the CALLER, and D1 lands in the low byte'
   }
 });
 
-test('SECTION 3: the pack is WORD-sized, so a wide D1 cannot leak into the command', () => {
-  // lsl.w and or.w are both word operations. A longword shift would carry bits
-  // the 68k discards, and the command byte is what would be corrupted.
-  const ram = new Ram();
-  postBgmCommand(ram, newSound(), 0x28c186, 0x1ff);
-  assert.equal((ram.u32(RING) >>> 24) & 0xff, 0x16,
-    'the command byte is still $16 -- the excess bits were masked, not carried');
-});
+// W426 REWROTE THIS ASSERTION RATHER THAN DELETING IT, and the reason is the finding.
+//
+// It used to read `postBgmCommand(.., 0x1ff)` and assert the command byte was STILL $16, under
+// this same heading. That is not what "word-sized" means, and it was defending a defect: the
+// implementation masked D1 with `& 0xFF`, while `$28BBAE` is `8041` -- bits 8..6 = `001`, the
+// WORD form of OR -- so the 68k ORs D1's whole low word and $1600 | $01FF is $17FF. The
+// assertion passed because it described the code instead of the cartridge, and it went unnoticed
+// for three waves because every one of the three `$28C186` call sites passes D1 = 0.
+//
+// WORD-SIZED still means something, and it is the half below: D1's HIGH word never reaches the
+// packer, because `or.w` does not see it.
+test('SECTION 3: the pack is WORD-sized -- D1.w reaches the command, D1\'s high half does not',
+  () => {
+    const ram = new Ram();
+    postBgmCommand(ram, newSound(), 0x28c186, 0x1ff);
+    assert.equal(ram.u32(RING) >>> 16, 0x17ff,
+      '`or.w D1,D0` ORs the whole low word: $1600 | $01FF = $17FF. A byte mask packs $16FF');
+
+    const ram2 = new Ram();
+    postBgmCommand(ram2, newSound(), 0x28c186, 0x99990012);
+    assert.equal(ram2.u32(RING) >>> 16, 0x1612,
+      'and the high word is discarded, exactly as `lsl.w`/`or.w`/`swap`+`move.w #0,D0` discard it');
+  });
 
 test('SECTION 4: THERE IS NO GATE -- the cue posts with every gate word set', () => {
   // THE TRAP. $28BBAC branches straight to $28BAA0 and never reaches $28C02A or

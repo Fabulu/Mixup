@@ -380,10 +380,17 @@ export function postWrapper(ram, sound, wrapperAddr) {
     // W425 -- THE `$28BBAC` TIER. ONLY `$28C170` MAY COME THROUGH AN
     // ADDRESS-ONLY API. It sets BOTH registers itself (`move.w #$15,D0` /
     // `moveq #0,D1`), so the address is the whole command. Its sibling
-    // `$28C186` takes D1 FROM THE CALLER: accepting it here would post D1 = 0
-    // for every caller, silently and wrongly -- background.js's cue sub-op 2
-    // reads a REAL D1 out of the stage script. So it is refused, loudly, with
-    // the call it should have made.
+    // `$28C186` does NOT: `$28C186..$28C18D` is `movem.l` + `move.w #$16,D0`
+    // and then straight into `jsr $28BBAC`, with no `moveq #0,D1` anywhere, so
+    // D1 is whatever the caller left. It is refused here, loudly, with the call
+    // it should have made -- `ctx.soundPostD1(addr, d1)` / `postBgmCommand`.
+    //
+    // W426 CORRECTS THE REASON WHILE KEEPING THE RULE. W425 justified the
+    // refusal by claiming background.js's cue sub-op 2 reads a D1 that is not
+    // always 0. Measured out of the image, every sub-op-2 word in all five
+    // stage cue streams IS 0, so an address-only post would have produced the
+    // right longword by luck. The refusal stands on the INSTRUCTION, not on the
+    // data: a port that hard-codes D1 is wrong even when the data agrees.
     if (wrapperAddr === 0x28C170) return postBgmCommand(ram, sound, wrapperAddr);
     if (BGM_COMMANDS[wrapperAddr] !== undefined) {
       throw new Error(`sound.postWrapper: $${wrapperAddr.toString(16).toUpperCase()} is a `
@@ -438,11 +445,30 @@ export function postWrapper(ram, sound, wrapperAddr) {
  * **W425 -- HOW CALL SITES REACH THIS, AND WHY ONLY ONE OF THE TWO.**
  * `postWrapper` dispatches `$28C170` here, so every `ctx.soundPost?.(0x28c170)`
  * works and the nine sites that reach it stayed one-liners. `$28C186` is NOT
- * dispatched and must be called through `postBgmCommand` with an explicit `d1`:
- * two of its three sites pass 0 (`$291FAA` and `$28DE72`, both `moveq #0,D1`),
- * but the scroll VM's cue sub-op 2 reads a REAL D1 word out of the stage script
- * (`background.js`, `$2621CC`), so an address-only post would send command $1600
- * for every one of them. `postWrapper` refuses it loudly rather than defaulting.
+ * dispatched and must be called through `postBgmCommand` with an explicit `d1`
+ * -- from W426, through the ctx-level `soundPostD1(addr, d1)`.
+ *
+ * **W426 -- THE THREE `$28C186` SITES, ENUMERATED OUT OF THE IMAGE, AND WHAT
+ * THEIR D1 ACTUALLY IS.** The whole image holds exactly three `jsr $28C186`
+ * (`4EB9 0028 C186` at `$2621CE`, `$28DE72`, `$291FAC`) and no `jmp`, no
+ * `bsr`, no `jsr (d16,PC)` reaching it:
+ *
+ *     $291FAA  7200        moveq #0,D1        objslot15.js  -> D1 = 0
+ *     $28DE70  7200        moveq #0,D1        stageend.js   -> D1 = 0
+ *     $2621CC  321A        move.w (A2)+,D1    background.js -> the STAGE SCRIPT
+ *
+ * **AND THE SCRIPT WORD IS `$0000` IN ALL FIVE STAGES.** `$26153E` is a
+ * five-entry pair table; each stage's script 0 carries a cue stream at
+ * `script+4` (`$261602 $2618C4 $261A4C $261BF8 $261D92`) and script 1 carries
+ * NO cue stream at all (`$00000000`). Every sub-op-2 in those five streams is
+ * followed by the word `$0000`. So in THIS ROM revision all three sites post
+ * `$16000000`, and the W425 note that an address-only path "would send command
+ * $1600 for every one of them" was right about the value and wrong about it
+ * being wrong -- $1600 is what all three want. The explicit `d1` stays anyway,
+ * because `$28C186` genuinely reads the caller's D1 and hard-coding 0 would
+ * bake a property of the DATA into the port of the CODE. `w426bgmcommandd1`
+ * walks those five streams out of the image so the claim is measured, not
+ * asserted.
  */
 export const BGM_COMMANDS = {
   0x28C170: 0x15,   // boss clear / ending / game over -- D1 always 0 at the call sites
@@ -459,7 +485,18 @@ export function postBgmCommand(ram, sound, wrapperAddr, d1 = 0) {
   }
   // lsl.w #8 then or.w: both WORD operations, so the result is masked to 16 bits
   // BEFORE the swap. A longword shift here would carry bits the 68k discards.
-  const packed = (((d0 << 8) & 0xFFFF) | (d1 & 0xFF)) & 0xFFFF;
+  //
+  // W426 -- THE MASK ON D1 WAS `& 0xFF` AND THAT IS NOT `or.w`. `$28BBAE` is
+  // `8041`: bits 8..6 = 001, the WORD form, so the 68k ORs the whole low word of
+  // D1, not its low byte. With D1 = $01FF the board packs $17FF and the command
+  // byte becomes $17; the byte mask packed $16FF and kept the command at $16.
+  // W423's own doc line one screen up already said `((D0<<8 | D1) & $FFFF)`, so
+  // the CODE disagreed with the COMMENT for three waves, and SECTION 3 of
+  // `w423bgmcommand.test.js` asserted the code's version under the heading "the
+  // pack is WORD-sized". That test is rewritten, not deleted. Nothing observable
+  // moved -- every one of the three call sites passes D1 = 0 (see above) -- which
+  // is exactly why it survived.
+  const packed = ((d0 << 8) | d1) & 0xFFFF;
   const word = (packed << 16) >>> 0;              // swap + move.w #0,D0
   if (enqueue(ram, word)) { sound.postCount++; sound.framePosts++; return true; }
   sound.dropCount++; sound.frameDrops++;

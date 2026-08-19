@@ -830,8 +830,13 @@ function f8Exit28DE1E(ram, rom, ctx, a5) {
   ram.setU8(a5 + 0x06, 0x0b);                               // $28DE60
   const handle = chainLoader24652A(ram, rom, RESULT_ROM.animScript); // $28DE66
   ram.setU32(a5 + 0x08, handle >>> 0);                      // $28DE6C move.l D0,$8(A5)
-  note(ctx, 0x28c186, '$28DE72 jsr $28C186 (D1=0) -- the result-screen exit '
-    + 'handshake tail. Counted; its body $28BBAC is the presentation tier');
+  // W426 -- A REAL POST, NOT A COUNTED NOTE. `$28C186` is `$28C170`'s sibling in
+  // the `$28BBAC` tier; W423 built that tier's packer and W425 wired `$28C170`
+  // to it, but `$28C186` needed the caller's D1 and had nowhere to hand it in.
+  // `ctx.soundPostD1` is that hand-in. D1 IS READ OFF THE IMAGE, not assumed:
+  // `$28DE6C: 2B40 0008` / `$28DE70: 7200` (moveq #0,D1) / `$28DE72: 4EB9 0028
+  // C186`. So the result screen's exit handshake posts $16000000.
+  ctx.soundPostD1?.(0x28c186, 0);                           // $28DE70 moveq #0,D1 / $28DE72
 }
 
 // ============================================================================

@@ -3418,3 +3418,41 @@ leaves open, and (b) something the node bench does not reproduce about the live 
 **Ask the owner where on the screen they see the flickering bees**, because that single answer
 separates those two and neither can be settled from here.
 
+
+### W426: THE LAST `$28C186` THROW IS GONE -- AND IT FOUND A DEFECT IN MY OWN W423 CODE
+
+`objslot15.js:179` was a LIVE throw and always had been. It is now
+`ctx.soundPostD1?.(0x28c186, 0)`, against a new ctx key `soundPostD1(addr, d1)`. `stageend.js:833`
+and `background.js`'s cue sub-op 2 are converted too. **All three `$28C186` sites post.**
+
+**A REAL DEFECT IN `postBgmCommand`, WHICH I WROTE IN W423.** The code packed
+`(d0 << 8) | (d1 & 0xFF)`. **`$28BBAE` is `8041`: bits 8..6 = `001`, the WORD form of OR**, so the
+68k ORs D1's whole low word. With D1 = `$01FF` the board packs `$17FF` and the command byte becomes
+`$17`; the byte mask packed `$16FF` and kept it at `$16`. Verified from the image by the
+coordinator.
+
+**AND MY OWN DOC LINE ONE SCREEN ABOVE ALREADY SAID `((D0<<8 | D1) & $FFFF)`.** The code disagreed
+with the comment for three waves, and `w423bgmcommand.test.js` SECTION 3 asserted the code's
+version **under the heading "the pack is WORD-sized"**. That is **lie-shape 1 in my own work**. The
+assertion was REWRITTEN, not deleted. Nothing observable moved because all three sites pass D1 = 0,
+which is exactly why it survived.
+
+**THE BRIEF WAS WRONG ABOUT WHY THE API IS NEEDED, and the wave checked instead of inheriting.**
+W425 and I both said the scroll-VM site reads a real VARYING D1, so an address-only path would post
+`$1600` for everyone. The site does read a script word, but **in this ROM revision that word is
+`$0000` in every stage** -- five cue streams walked out of the image to prove it. So an address-only
+post would have been right BY LUCK. **The API is still the correct unit, but the reason is the
+INSTRUCTION (`$28C18A` sets D0 and never `moveq #0,D1`), not the data.** Both comments now say so.
+
+Site census swept over `$200000..$600000` for every call form: exactly THREE, at `$2621CE`,
+`$28DE72`, `$291FAC`. Coordinator confirmed the D1 loads: `321a` (`move.w (A2)+,D1`) at the first,
+`7200` at the other two. **The census is a test, so a fourth site fails rather than joining
+silently.**
+
+**BOOKKEEPING IS READ, NOT WRITTEN.** SECTION 9 scans all of `src/` for a surviving
+`note(..., 0x28c186)` and fails on any. That is the standing fix for the lie-shape that has now
+appeared five times.
+
+Verified by the coordinator on a quiet tree: **3942 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 607 windows with none added or widened, no EOL violations.
+

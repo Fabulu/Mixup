@@ -99,7 +99,7 @@ import { objSlot17 } from './objslot17.js';
 // `SOUND_WRAPPERS`/`STREAMING_LEAVES` were imported here only by W375's
 // `$18B0D6` guard in `#ctx().soundPost`; that guard moved into `isr.js` as a
 // counted `unported.note()`, so the two tables are no longer read in this file.
-import { SoundState, drainFrame, postWrapperWithRuntime,
+import { SoundState, drainFrame, postWrapperWithRuntime, postBgmCommand,
   soundFrameInput } from './sound.js';
 import {
   PaletteState, flush24133C, catchUpObjectStream, catchUpBgPalette,
@@ -566,6 +566,26 @@ export class Game {
         // effect ordered at the sound boundary; it is not a fifth payload byte.
         return postWrapperWithRuntime(this.ram, this.sound, this.soundSink, addr);
       },
+      // W426 -- THE SIBLING API, AND THE REASON THE ADDRESS-ONLY ONE CANNOT
+      // CARRY IT. `$28C186` is `$28C170`'s twin in the `$28BBAC` tier, except
+      // that `$28C170` loads BOTH registers (`move.w #$15,D0 / moveq #0,D1`)
+      // while `$28C186` loads only D0 (`move.w #$16,D0`) and falls into
+      // `jsr $28BBAC` with the CALLER's D1. An address is therefore the whole
+      // command for one of them and only half of it for the other, so
+      // `soundPost` refuses `$28C186` (sound.js `postWrapper`) rather than
+      // defaulting D1 to 0, and this key is where the other half arrives.
+      //
+      // NO `soundSink` HOP. `postWrapperWithRuntime`'s extra step exists purely
+      // to pre-select a streaming score GROUP for `STREAMING_LEAVES`; this tier
+      // has no group, no id, no pan and no channel -- the packed word is the
+      // entire payload -- so going straight to `postBgmCommand` is the faithful
+      // call, not a shortcut. An address that is not in this tier throws there,
+      // loudly, exactly as an unmapped wrapper throws above.
+      //
+      // Three call sites in the whole image, all measured: `$291FAA`
+      // (objslot15) and `$28DE70` (stageend) are `moveq #0,D1`; `$2621CC`
+      // (background's scroll VM) is `move.w (A2)+,D1` off the stage script.
+      soundPostD1: (addr, d1) => postBgmCommand(this.ram, this.sound, addr, d1),
       // WAVE 8: every record the shot spawn creates, and every frame it could
       // not.  Printed by the runner for the same reason `allocEvents` is: a
       // spawn that silently did nothing is indistinguishable from a spawn that

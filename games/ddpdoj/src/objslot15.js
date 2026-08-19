@@ -176,7 +176,14 @@ export function objSlot15(ram, rom, a5, ctx) {
       ram.setU16(a5 + SLOT15.phase, 1);                      // $291F94
       ram.setU32(a5 + SLOT15.handle,                         // $291FA0 jsr $246710 / $291FA6
         chainLoader246710(ram, rom, SLOT15.resource, ctx) >>> 0);
-      ctx.soundPost?.(0x28c186);                             // $291FAA moveq #0,D1 / $291FAC
+      // W426 -- THIS LINE WAS A LIVE THROW AND ALWAYS HAD BEEN. `soundPost`
+      // hands the address to `postWrapper`, which refuses `$28C186` on purpose:
+      // the routine loads only D0 and takes D1 from the caller, so an address is
+      // not the whole command. HERE D1 IS 0, read off the image and not assumed
+      // -- `$291FA6: 2B40 0008` (move.l D0,($8,A5)), `$291FAA: 7200`
+      // (moveq #0,D1), `$291FAC: 4EB9 0028 C186`. So the sequence's load posts
+      // BGM command $16 with argument 0, which packs to $16000000.
+      ctx.soundPostD1?.(0x28c186, 0);                        // $291FAA moveq #0,D1 / $291FAC
     }
   }
 
