@@ -90,15 +90,30 @@
 //
 //  (i) `add.l` means a carry out of the short axis propagates INTO the long
 //      axis.  $80B054 measured $00000000 on all 1,901 build-B frames of
-//      `stage1-open` -- PRESENCE, NOT COVERAGE.  It has six writers nobody has
-//      disassembled, one of them inside the IRQ-gated $240CC0.  `telemetry.b054`
-//      below counts non-zero frames LOUDLY for the day it moves.
+//      `stage1-open`, and on all 647 board RAM dumps in `tools/oracle/out`
+//      (W432 scanned every one) -- PRESENCE, NOT COVERAGE, because the value
+//      that moves it lives for FORTY-TWO FRAMES and no dump lands inside them.
+//      **W432 IDENTIFIED IT: $80B054/$80B056 IS THE SCREEN SHAKE**, written by
+//      `$260EC8` out of the 42-pair table at `$260F4C` (`background.js`
+//      `screenShake260EC8`), and the count matches the wave-17 corpus's "the 42
+//      frames the boss shakes the screen" exactly.  It is a BOSS DEATH, which
+//      is why 431 waves of stage-1 benches never saw it.
 // (ii) THE SHORT AXIS IS RE-MASKED TO $3FFF HERE -- FOURTEEN BITS -- but the
-//      hardware field is TEN and bits 13..11 are the ZOOM FIELD.  The enqueue
-//      pre-masks to $03FF, so today the extra bits are always clear; the instant
-//      $80B054 is non-zero (or a producer writes a negative short axis) an
-//      overflow silently POLLUTES THE ZOOM NIBBLE and the sprite changes size
-//      instead of position.  `assertShortAxis` is the standing assertion.
+//      hardware position field is TEN.  **W432, AND THIS IS THE CORRECTION:
+//      BIT 10 IS NOT PART OF EITHER FIELD.**  Zoom is bits 14..11
+//      (`render/spritelist.js` `yzom = (s[1] & 0x7800) >> 11`) and the sprite
+//      DMA DROPS bit 10 on the way into the buffer (`igs023_video.cpp`, word-1
+//      mask $FBFF).  The ten-bit position is SIGNED (`sext(s[1] & 0x03ff, 10)`),
+//      so a carry out of bit 9 is not an overflow at all -- it is two's
+//      complement wrapping, and the DMA's mask completes it.  The board's own
+//      display list already carries bit 10 set with $80B054 ZERO
+//      (`out/w69/stage1-play/ckpt/c019500.ram.bin` entry 65 = $814D $BFF8,
+//      zoom 7, position $3F8), so a set bit 10 is a NORMAL board state.
+//      THE REAL HAZARD IS NARROWER: the add can only pollute the zoom if it
+//      SETS a bit in 13..11 that the record did not already have, which needs
+//      the carry to cross bit 10 -- i.e. bit 10 already set in the staged
+//      request.  `assertShortAxis` is the standing assertion and it now tests
+//      exactly that; a bit-10 wrap is counted, not thrown.
 //(iii) the last two request bytes are OR-ED TOGETHER and written OVER the byte
 //      the preceding `move.l` already placed.  A port that copies the request
 //      straight through and forgets the patch loses flip and colour entirely.
@@ -280,33 +295,68 @@ function mutating(opts, name) {
 }
 
 /**
- * THE STANDING ASSERTION §3(ii).  After the `$3FFF` re-mask the short axis must
- * still fit in the hardware's TEN bits; bits 13..11 are the zoom field, so an
- * overflow does not clip a position, it changes a sprite's SIZE.
+ * THE STANDING ASSERTION §3(ii), AND W432 ANSWERED THE QUESTION IT ASKED.
+ *
+ * It asked: what happens the day `$80B054` moves?  The answer, measured, is
+ * that the CARTRIDGE ITSELF pollutes the zoom nibble, so this can no longer be
+ * a throw.  What follows is the whole chain, because every step of it is a
+ * number somebody can re-measure.
+ *
+ * 1. `$80B054`/`$80B056` IS THE SCREEN SHAKE.  `$260EC8` walks the 42-pair
+ *    table at `$260F4C` (`background.js screenShake260EC8`) and writes the two
+ *    words; the emit reads them as ONE longword.  The BOARD's own trace column
+ *    `b054` is non-zero on exactly lf21819..21860 of `out/w69/stage2-laser-hold`
+ *    -- FORTY-TWO frames, the stage-2 boss's death -- and every one of those 42
+ *    board values equals the port's, frame for frame ($FFE80000, $FFF80010,
+ *    $FFF8000C, $FFF80008, $00100008, ...).  That is why 647 board RAM dumps
+ *    all show `$80B054` = 0: 42 frames per boss death, and no dump lands in one.
+ *
+ * 2. BIT 10 IS IN NEITHER FIELD.  Zoom is bits 14..11
+ *    (`render/spritelist.js` `yzom = (s[1] & 0x7800) >> 11`) and the sprite DMA
+ *    DROPS bit 10 (igs023_video.cpp's word-1 mask $FBFF).  The position under it
+ *    is a SIGNED ten-bit field, `sext(s[1] & 0x03ff, 10)`, so a carry out of
+ *    bit 9 is not an overflow -- it is the two's complement wrap, and the DMA's
+ *    mask is what completes it: short axis $3F8 (= -8) plus a shake of +8 is 0
+ *    on the board and 0 here.  The board's own list already carries bit 10 set
+ *    with `$80B054` ZERO (`out/w69/stage1-play/ckpt/c019500.ram.bin` entry 65 =
+ *    $814D $BFF8, zoom 7, position $3F8).  So bit 10 is COUNTED, not thrown.
+ *
+ * 3. THE ZOOM REALLY IS POLLUTED, AND THE BOARD DOES IT.  `$23D6B2 or.l D3,D1`
+ *    restores bits 15..11 from the record, so a carry that CLEARS zoom bits
+ *    changes nothing and only bits the add SETS can survive -- the test is
+ *    `(after & ~before) & $3800`, not a delta.  Setting them needs a BORROW past
+ *    bit 10, i.e. a zoom-0 record whose short axis is 0..7 while `$80B056` is
+ *    negative.  Both halves are measured: 14 of the table's 42 pairs have a
+ *    negative short-axis term, and **2,330 of 64,239 board display-list entries
+ *    across 610 of 647 dumps are zoom-0, bit-10-clear, short axis 0..7**.  A
+ *    zoom-0 record at short axis 0 with `$80B056` = -8 becomes $3FF8 after
+ *    `andi.l`, and the OR gives zoom bits 111.  That is what the listing says
+ *    and the port already writes exactly those bytes.
+ *
+ * SO THIS IS NOT AN UNPORTED PATH.  `unreached()` means "a branch the port does
+ * not implement" (`unported.js`); the emit implements all of it.  D63 was this
+ * assertion stopping the live build on the cartridge's own arithmetic.  It is
+ * now a COUNTED, WARNED event with a STABLE message (`UnportedLog.note` keys on
+ * the text, so a per-record message would blow the map up).
  */
-export function assertShortAxis(before, after, entry, telemetry) {
-  // Bits 13..11 of the $3FFF-masked short axis ARE the zoom field's low three
-  // bits (zoom is bits 14..11; bit 14 is outside the mask, and bit 10 is
-  // dropped by the sprite DMA itself -- igs023_video.cpp's word-1 mask is
-  // $FBFF).  D3 carries a COPY of those bits and `$23D6B2 or.l D3,D1` puts them
-  // back, so having them SET is normal -- it is what a zoomed record looks
-  // like, and stage 1 really does contain them (measured, wave 11).
-  //
-  // THE HAZARD IS NOT THAT THEY ARE SET.  It is that `$23D6A6 add.l $80B054`
-  // can CARRY out of the ten-bit position field into them, and because the
-  // recombination is an OR the extra bits can only be ADDED -- a sprite that
-  // overflowed its position quietly changes SIZE.  So the assertion is on the
-  // DELTA across the add, not on the value: bits 13..10 must survive it.
-  if ((before & 0x3c00) !== (after & 0x3c00)) {
-    telemetry.shortAxisOverflow++;
-    unreached(0x23d6ac, `display-list entry ${entry}: adding $80B054 = `
-      + `$${[...telemetry.b054Values].map((v) => v.toString(16)).join(',')} `
-      + `carried out of the short axis's ten-bit position field -- bits 13..10 `
-      + `went $${(before & 0x3c00).toString(16)} -> $${(after & 0x3c00).toString(16)
-      }. Bits 13..11 are the ZOOM FIELD and $23D6B2 recombines by OR, so this `
-      + `record's zoom nibble has been polluted and the sprite changes SIZE, `
-      + `not position. 10-recon-display-list §2b named this hazard; nothing in `
-      + `the corpus has ever reached it because $80B054 has always been zero`);
+export function assertShortAxis(before, after, entry, telemetry, warn) {
+  // The wrap: the shake carried a sprite around the signed ten-bit position
+  // field.  Invisible on the board -- the DMA drops bit 10 -- so it is counted
+  // only, and the count is what says how often the shake reaches an edge.
+  if ((before & 0x0400) !== (after & 0x0400)) telemetry.shortAxisWrap++;
+  const polluted = (after & ~before) & 0x3800;
+  if (!polluted) return;
+  telemetry.shortAxisOverflow++;
+  if (telemetry.shortAxisFirst === null) {
+    telemetry.shortAxisFirst = { entry, before, after, polluted };
+  }
+  if (warn) {
+    warn("$23D6AC: the screen shake borrowed out of the short axis's signed "
+      + "ten-bit position field and INTO the zoom field (bits 13..11), which "
+      + "$23D6B2 recombines by OR -- so those records draw at the right place "
+      + "and the wrong SIZE. This is the CARTRIDGE's arithmetic, not a gap: "
+      + "it needs a zoom-0 record at short axis 0..7 while $80B056 is negative, "
+      + "and 14 of $260F4C's 42 pairs are. See displaylist.js assertShortAxis.");
   }
 }
 
@@ -328,7 +378,8 @@ export function buildDisplayList(ram, opts = {}) {
     queueBytes: 0, records: 0, fillers: 0, entries: 0, terminated: false,
     capFired: false, capBucket: -1, bucketsDrained: 0, bucketsAbandoned: 0,
     perBucketRecords: new Array(BUCKETS.length).fill(0),
-    b054: 0, b054Values: new Set(), shortAxisOverflow: 0,
+    b054: 0, b054Values: new Set(), shortAxisOverflow: 0, shortAxisWrap: 0,
+    shortAxisFirst: null,
     // W375 -- what `$23C008` mirrored into $B0E000 at each end of the build.
     ctrlAtStart: 0, ctrlAtEnd: 0,
   };
@@ -442,14 +493,15 @@ export function buildDisplayList(ram, opts = {}) {
   t.b054 = b054;
   t.b054Values.add(b054);
   if (b054 !== 0) {
-    // THE LOUD WATCH.  $80B054 was $00000000 on every frame anyone has measured
-    // and it has six writers nobody has read.  The instant it moves, the emit's
-    // 32-bit add and the $3FFF short-axis mask stop being theoretical.
+    // THE LOUD WATCH.  W432 named what moves it: `$260EC8`'s SCREEN SHAKE, 42
+    // frames per boss death out of the table at $260F4C.  It stays loud because
+    // these are the only frames on which the emit's 32-bit add and the $3FFF
+    // short-axis re-mask are anything but identities.
     warn(`$80B054 = $${b054.toString(16).padStart(8, '0')} -- the global sprite `
-      + `offset is NON-ZERO for the first time in this project. The emit's `
-      + `add.l ($23D6A6) now carries between the coordinate fields and the `
-      + `$3FFF re-mask ($23D6AC) can pollute the zoom nibble. See `
-      + `10-recon-display-list §7.3.`);
+      + `offset is NON-ZERO: this is $260EC8's screen shake (shakeX $80B054, `
+      + `shakeY $80B056, 42 pairs from $260F4C). The emit's add.l ($23D6A6) `
+      + `carries between the coordinate fields on these frames and the $3FFF `
+      + `re-mask ($23D6AC) is live. See 10-recon-display-list §7.3.`);
   }
 
   if (n === 0) {                                         // $23D654 beq $23D6EE
@@ -482,7 +534,7 @@ export function buildDisplayList(ram, opts = {}) {
         d1 = ((d1 + b054) >>> 0);                        // $23D6A6 add.l -- 32 BIT
       }
       d1 = (d1 & (mutating(opts, 'emit-mask-03ff') ? 0x07ff03ff : 0x07ff3fff)) >>> 0;
-      assertShortAxis(beforeAdd, d1 & 0xffff, t.entries, t);   // standing assertion
+      assertShortAxis(beforeAdd, d1 & 0xffff, t.entries, t, warn);  // §3(ii)
       d1 = (d1 | d3) >>> 0;                              // $23D6B2 or.l
       ram.setU16(a0 + 0, (d1 >>> 16) & 0xffff);          // $23D6B4 move.l
       ram.setU16(a0 + 2, d1 & 0xffff);

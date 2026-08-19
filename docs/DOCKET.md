@@ -3802,3 +3802,54 @@ record while the PARTS table gives A6 displacements. And it blamed the off-centr
 **falsified that itself** by steering to `$1C07` and measuring no change. It also rewrote the
 ladder's manifest rather than ship the pre-correction text it had snapshotted.
 
+
+### D63 FIXED BY W432 -- THE DEFECT WAS THE ASSERTION, NOT THE ARITHMETIC
+
+`$80B054`/`$80B056` **is the SCREEN SHAKE**, and the port's shake is already exact: the ladder's own
+`trace.tsv` shows the board non-zero on exactly **lf21819..21860, 42 frames**, and the port matches
+the board **frame for frame on all 42**. Nothing about the emit was wrong.
+
+**The old predicate `(before & 0x3c00) !== (after & 0x3c00)` covered bits 13..10, and BIT 10 IS NOT
+A ZOOM BIT.** Zoom is 14..11; the sprite DMA drops bit 10 (already modelled and tested). The
+position under it is a **SIGNED ten-bit field**, so a carry out of bit 9 is the two's-complement
+wrap, not an overflow -- `$3F8` (-8) + 8 = 0 on the board and 0 here. **A scan of all 647 board RAM
+dumps found `stage1-play/c019500` entry 65 carrying bit 10 set with `$80B054` ZERO**, so the throw
+was refusing a state the cartridge ships.
+
+**AND THE ZOOM POLLUTION IS REAL AND THE CARTRIDGE DOES IT.** `$23D6B2 or.l D3,D1` restores bits
+15..11, so only bits the add SETS survive; that needs a borrow past bit 10. Both halves measured:
+**14 of the table's 42 pairs** have a negative short-axis term, and **2,330 of 64,239 board
+display-list entries across 610 of 647 dumps** are zoom-0, bit-10-clear, short axis 0..7. So
+`unreached()` was wrong twice over -- **the emit implements all of it.**
+
+Fix: bit-10 carries counted as `telemetry.shortAxisWrap`; the test is now `(after & ~before) &
+0x3800` -- **set-only, zoom bits only** -- and it WARNS AND COUNTS rather than throwing. Measured
+over the window: 42 shake frames, **39 bit-10 wraps, 14 zoom pollutions**. The run now steps **700
+of 700 frames** from lf21800 through the death into stage 3. A full 281-rung sweep no longer sees
+`$23D6AC` anywhere.
+
+**THE HONEST SIZE: the fix is SMALLER than the throw suggested** -- one predicate plus a downgrade.
+**Masking, as the brief warned, would have been wrong in BOTH directions**: it would have hidden a
+wrap that is correct and a pollution that is the cartridge's.
+
+**MY BRIEF WAS WRONG AGAIN.** I wrote *"no previous ladder covered a boss death, which is why
+nothing had hit it."* **False -- four of the five `w69` ladders carry a board shake window and have
+for many waves.** The boss death was in the corpus all along; **what was missing was anyone
+stepping the port through those frames.** Same shape as W431's own correction.
+
+### D64: THE PORT'S STAGE-1 BOSS DEATH NEVER SHAKES THE SCREEN
+
+Found by W432 while proving the above, **not fixed, out of D63's scope.** On `stage1-laser-hold`
+the board moves `b054` on lf9903..9944 and **the port leaves it at 0 for all 42 frames.** `b054` is
+in `state.js` `CLAIMED`, so **that is 42 frames of divergence on a COMPARED column, sitting in the
+corpus untested.**
+
+Traced: the only writers of shake mode `$813186` are the eight sites in `$260E36..$260F18`, and the
+only reachable arm is `$260E36`, called from `$244ABA` (the tail of `$2440E0`, ported as
+`boss2.js finalBlast2440E0`), `$2A5C5C` and `$2A5FC4`. **So the port's stage-1 boss death never
+calls `$2440E0`.**
+
+Also recorded: `$260E58`/`$260E7A`/`$260E9C` (modes 2, 3, 4) have **NO caller anywhere in the
+image** -- no absolute-long, no PC-relative `bsr`/`jsr`, and the longword does not appear as data --
+so `screenShake260EC8`'s note for "mode is not yet translated" **covers dead code.**
+

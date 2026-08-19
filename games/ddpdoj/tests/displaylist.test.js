@@ -8,10 +8,16 @@
 // What they exist for is the two kinds of case the board cannot supply:
 //   * paths whose input the game can never hold (a queue pointer off the
 //     12-byte grid, so `beq` and `bge` become distinguishable), and
-//   * paths whose input the game has never been SEEN to hold ($80B054 non-zero,
-//     measured $00000000 on every frame this project has ever sampled).
+//   * paths whose input the game had never been SEEN to hold ($80B054 non-zero,
+//     measured $00000000 on every frame this project had ever sampled).
 // Both are labelled as listing-derived, here and in the worklog, and neither is
 // allowed to masquerade as a measurement.
+//
+// W432 CLOSED THE SECOND ONE.  $80B054 is $260EC8's SCREEN SHAKE and the board's
+// own trace column moves it on exactly 42 frames per boss death
+// (out/w69/stage2-laser-hold lf21819..21860, every value equal to the port's).
+// The three W432 tests below are still written on synthetic RAM, but what they
+// assert is no longer listing-derived -- it is what the board does.
 
 import test from 'node:test';
 import assert from 'node:assert';
@@ -354,20 +360,68 @@ test('LISTING-DERIVED, NOT BOARD-DERIVED: the cap is `beq`, and only a queue '
   assert.equal(ge.records, 251);
 });
 
-test('LISTING-DERIVED: $80B054 carries ACROSS the coordinate fields (add.l)', () => {
-  // MEASURED $00000000 on every frame this project has sampled, so the board
-  // cannot be asked either.  The instruction is `add.l`, and a port that used
-  // two 16-bit adds would drop the carry out of the short axis.
+test('W432: a bit-10 carry out of the SIGNED ten-bit position field is a WRAP, '
+  + 'not an overflow -- counted, never thrown', () => {
+  // D63.  This test asserted the OPPOSITE until W432: it required the standing
+  // assertion to THROW here.  It is wrong, and the board says so.  Short axis
+  // $3FF is -1 in the signed ten-bit field, +1 puts it at 0, and bit 10 -- which
+  // belongs to neither the position nor the zoom -- is dropped by the sprite DMA
+  // (igs023_video.cpp's word-1 mask $FBFF, modelled in render/spritelist.js).
+  // The board's own display list already carries bit 10 set with $80B054 ZERO:
+  // out/w69/stage1-play/ckpt/c019500.ram.bin entry 65 = $814D $BFF8.
   const ram = new Ram(null);
   ram.setU16(DL.queue + 0, 0x8000);         // long axis 0, grow set
-  ram.setU16(DL.queue + 2, 0x83ff);         // short axis $3FF, grow set
+  ram.setU16(DL.queue + 2, 0x83ff);         // short axis $3FF = -1, grow set
   ram.setU16(DL.queue + 8, 0x0410);         // a non-zero word 4 so it is a record
   ram.setU16(COUNTER_BASE, 12);
   ram.setU32(DL.globalOffset, 1);
-  const e = grab(() => buildDisplayList(ram));
-  assert.ok(e instanceof Unreached, 'the standing assertion must fire');
-  assert.equal(e.romAddress, 0x23d6ac);
-  assert.match(e.message, /ZOOM FIELD/);
+  const warned = [];
+  const t = buildDisplayList(ram, { warn: (m) => warned.push(m) });
+  assert.equal(t.shortAxisWrap, 1, 'the wrap is COUNTED');
+  assert.equal(t.shortAxisOverflow, 0, 'and it is NOT a zoom pollution');
+  assert.equal(ram.u16(DL.list + 2), 0x8400, 'bit 10 set, position back to 0');
+  assert.equal(warned.filter((m) => m.startsWith('$23D6AC')).length, 0);
+});
+
+test('W432: the shake BORROWING past bit 10 really does pollute the zoom, and '
+  + 'that is the CARTRIDGE -- warned and counted, never thrown', () => {
+  // $80B056 = -8 on 14 of $260F4C's 42 pairs.  A zoom-0 record at short axis 0
+  // goes $0000 + $FFF8 = $FFF8, `andi.l #$07FF3FFF` leaves $3FF8, and `$23D6B2
+  // or.l D3,D1` puts grow back -- so the entry is $BFF8: position -8, which is
+  // right, and zoom index 7, which is not.  The port writes the ROM's bytes.
+  const ram = new Ram(null);
+  ram.setU16(DL.queue + 0, 0x8000);         // long axis 0, grow set, zoom 0
+  ram.setU16(DL.queue + 2, 0x8000);         // short axis 0, grow set, zoom 0
+  ram.setU16(DL.queue + 8, 0x0410);
+  ram.setU16(COUNTER_BASE, 12);
+  ram.setU32(DL.globalOffset, 0x0000fff8); // shakeX 0, shakeY -8
+  const warned = [];
+  const t = buildDisplayList(ram, { warn: (m) => warned.push(m) });
+  assert.equal(t.shortAxisOverflow, 1);
+  assert.deepEqual(t.shortAxisFirst,
+    { entry: 0, before: 0x0000, after: 0x3ff8, polluted: 0x3800 });
+  assert.equal(ram.u16(DL.list + 2), 0xbff8, 'zoom bits 111 OR-ed back in');
+  assert.equal(warned.filter((m) => m.startsWith('$23D6AC')).length, 1);
+});
+
+test('W432: a borrow that CLEARS zoom bits is not pollution -- the OR restores '
+  + 'them from D3', () => {
+  // Same shake, but the record already carries zoom 7 (bits 13..11 set).  The
+  // borrow takes bits 13..11 from 111 to 011, and `or.l D3,D1` puts all of
+  // 15..11 back from the record, so the zoom is unchanged and the entry is
+  // $BFF8 -- position -8, zoom still 7.  A `!==` DELTA test, which is what this
+  // file asserted before W432, would have called this an overflow and thrown.
+  const ram = new Ram(null);
+  ram.setU16(DL.queue + 0, 0x8000);
+  ram.setU16(DL.queue + 2, 0xb800);         // grow 1, zoom 7, short axis 0
+  ram.setU16(DL.queue + 8, 0x0410);
+  ram.setU16(COUNTER_BASE, 12);
+  ram.setU32(DL.globalOffset, 0x0000fff8);
+  const warned = [];
+  const t = buildDisplayList(ram, { warn: (m) => warned.push(m) });
+  assert.equal(t.shortAxisOverflow, 0, 'no bit 13..11 was SET by the add');
+  assert.equal(ram.u16(DL.list + 2), 0xbff8, 'zoom 7 survives, position -8');
+  assert.equal(warned.filter((m) => m.startsWith('$23D6AC')).length, 0);
 });
 
 test('LISTING-DERIVED: two 16-bit adds LOSE the carry the `add.l` propagates', () => {

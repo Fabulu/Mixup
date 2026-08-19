@@ -119,14 +119,19 @@ export const WATCH_SPEC = [
   // be claiming the enemies.
   ['b002', 0x80b002],       // $23D3BC -- "bucket 20 was dropped this frame"
   ['b004', 0x80b004],       // $23D3D8 -- "buckets 6 and 9 were dropped"
-  ['b054', 0x80b054, 'l'],  // THE STANDING WATCH.  $00000000 on every frame
-                            // anyone has ever sampled (1,901 here, 5,000 in
-                            // 10-recon-display-list). Six writers, none read.
-                            // If it ever moves, the emit's `add.l` carries
-                            // between the coordinate fields and the $3FFF
-                            // re-mask can pollute the ZOOM nibble -- so it is a
-                            // compared column from the wave that first depends
-                            // on it, not from the wave that first sees it move.
+  ['b054', 0x80b054, 'l'],  // THE STANDING WATCH, AND W432 CAUGHT IT MOVING.
+                            // $00000000 on every frame anyone had sampled
+                            // (1,901 here, 5,000 in 10-recon-display-list, and
+                            // all 647 board RAM dumps in tools/oracle/out) --
+                            // because it is $260EC8's SCREEN SHAKE and it lives
+                            // for 42 FRAMES PER BOSS DEATH. The board's own
+                            // column moves on exactly lf21819..21860 of
+                            // out/w69/stage2-laser-hold and the port matches it
+                            // frame for frame on all 42. On those frames the
+                            // emit's `add.l` carries between the coordinate
+                            // fields and the $3FFF re-mask is live -- see
+                            // displaylist.js assertShortAxis for what that does
+                            // to the zoom nibble, which is D63.
   ['affc', 0x80affc],       // $23D62A -- the PREVIOUS frame's queue length, and
                             // the one word $23D70C's thirty-word clear does NOT
                             // reach.  Function of all 30 buckets: REPORTED.
@@ -412,8 +417,11 @@ export const CLAIMED = [
   // WAVE 11.  Claimed because the port computes them from state it HAS: the
   // two drop flags are cleared every frame and only set on an over-budget frame
   // (which never happens in a natural scenario -- and `pgm.py dlgate --cap`
-  // forces one and compares it); $80B054 the port never writes at all, so
-  // comparing it is what turns "it was zero" from an assumption into a watch;
+  // forces one and compares it); $80B054 the port did not write at all when
+  // this was written, so comparing it turned "it was zero" from an assumption
+  // into a watch -- and W432 collected on that, because `background.js`
+  // `screenShake260EC8` now writes it and the comparison is what proves the 42
+  // shake frames are the board's and not the port's invention;
   // and the thirty counters are zero on both sides because both clear them.
   'b002', 'b004', 'b054', 'sprctr',
   // WAVE 13 -- the scroll program, in the same commit as src/background.js.
