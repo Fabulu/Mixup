@@ -322,7 +322,34 @@ CLAIM.** `PRESENTATION_DEVIATION` is now `Object.freeze({})`.
 board's pool B is **entirely EMPTY there**, so 80/80 would be satisfied by anything that wipes the
 pool. **CHECK A RUNG IS LOAD-BEARING BEFORE TRUSTING IT.** The real rung is lf10500.
 
-### NEXT UNIT: THREE LIVE RECORDS THE PORT NEVER SPAWNS -- IN PROGRESS (W436)
+### W436: THE MISSING RECORDS WERE A3 SCRIPT 5'S SPARK BLOCKS
+
+`partScriptStep` is shared by scripts 4 and 5. **Script 4 opens with a `bra.w` that JUMPS three
+`$3(a4)`-gated emitter blocks; script 5 has no such branch and REACHES them**, and the port began
+at the state machine. W62 said "NOTHING sets a bit of `$3(a4)`" -- **`burst2938AE` has been setting
+bits 0, 1 and 2 since W107** with nothing to read them.
+
+**THE WAVE REFUSED TO CLAIM AN UNCONDITIONAL 80/80, AND THAT IS THE MODEL TO COPY.** Kind word and
+descriptor are 80/80 and the counts equal the board's, but 17 slots still differ **only at the
+angle**. Forcing the cursor gives 80/80 with zero differing bytes; forcing it with the fix OFF gives
+only 62/80 -- **which is what proves the poke is not doing the wave's work.**
+
+**THE UNROLL TRAP AGAIN:** the three blocks are **13/14/14 instructions and NOT uniform**.
+Implementing the first with the second's doubling leaves counts, slots, kinds and descriptors all
+correct **and still turns the deliverable RED.**
+
+### NEXT UNIT: 24 MISSING RNG DRAWS -- IN PROGRESS (W437)
+
+`$242B3C` indexes with `$803916`. Over lf9501..9600 the port matches the board on **97 of 100
+frames** and is short on three: **lf9556 by 24** (the `$294DD4` frame), lf9562 and lf9592 by 1.
+
+**Already ruled out by W436, do not redo:** the 24 draws produce no pool-B/C/D record, move no
+`CLAIMED` column, and `$27F8F8` is excluded (fires on 37 frames, RNG matches on every one).
+
+**`oracle/c1_*.py` ARE TRACKED** and unmodified -- the session-start snapshot is stale. Leave them
+alone regardless; they are not ours.
+
+### SUPERSEDED: THREE LIVE RECORDS THE PORT NEVER SPAWNS (W436)
 
 `stage1-laser-hold` lf9500->9600, **60/80**, and **the only red 100-frame segment in
 lf9300..10700** -- its four neighbours are 80/80 INCLUDING live records.
