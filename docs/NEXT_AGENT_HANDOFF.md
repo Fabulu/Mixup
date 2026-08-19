@@ -283,7 +283,13 @@ them. Two sweeps over 211 rungs see dispatch indices **0, 1, 2 and 8 only**, wit
 STOP, the same class as D60**, and **every player who kills the stage-2 boss reaches it.** It
 survived only because no ladder had ever covered a boss death.
 
-### PUBLISH IS DUE AT W432
+### PUBLISHED: build `20260819075340`, confirmed live 2026-08-19
+
+W432 was the fifth wave since W427, so this was the standing cadence. `export-web.mjs` ran BEFORE
+`publish.mjs`. **The owner gets the stage-2 boss-death crash fix (D63)** plus W428/W429's cue work.
+**NEXT PUBLISH FALLS AT W437.**
+
+### SUPERSEDED: PUBLISH WAS DUE AT W432
 
 Last publish W427 (`20260819013654`). **W428 and W429 both added ROM windows (606 -> 612), so
 `export-web.mjs` MUST run before `publish.mjs`.**
