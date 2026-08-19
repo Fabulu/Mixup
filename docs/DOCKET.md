@@ -4343,9 +4343,20 @@ identical before and after and under both RED arms, **so no later wave is credit
 > might have to be invisible? Bees are a bit of a mystery to me"
 > "Then when you uncover them they should be visible I think"
 
-**THE OWNER IS DESCRIBING A TWO-STATE OBJECT AND ASKING WHICH STATE IS WRONG.** Their model, which
-is the spec until measured otherwise: **hidden (or flickering) while still carried; VISIBLE once
-uncovered.**
+**THE OWNER EXPLICITLY REFUSED TO HAVE THEIR MODEL TREATED AS SPEC**, and the coordinator had
+written it as one -- corrected here:
+
+> "don't write my bee model down as spec, it's correct as it is for all I know. Needs check with
+> oracle."
+> "they're everywhere, should be possible to find"
+
+**SO THE ORACLE DECIDES. Not the owner's model, and not the coordinator's.** The owner is reporting
+an impression and saying so; the unit is to go and look.
+
+**AND THEY ARE RIGHT THAT THE DATA IS ABUNDANT.** W430 measured **1,292 carrier sightings in 3,000
+frames** on the stage-1 ladder, and the corpus holds 363 board RAM dumps plus the new 281-rung
+stage-2 ladder. **There is no shortage of frames on which to compare drawn output against the
+board's.**
 
 **THIS IS A DRAW QUESTION, NOT A GAMEPLAY ONE, AND D59 ALREADY BOUNDS IT.** W430 measured the whole
 bee lifecycle as correct -- carrier shot, bee dropped, drifts, collected, cue posted. So **the
