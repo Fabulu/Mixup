@@ -384,6 +384,17 @@ export function runLaserGate(ram, ctx, b) {
       // The (A) BOMB-LASER bit.  Its only writer in build B is $24989E, inside
       // the bomb, which src/player.js still throws on -- so this arm is
       // transcribed and unexercised, not dead.
+      //
+      // W442 CORRECTION (2026-08-19), and the paragraph above is KEPT as the
+      // record of what was believed.  **IT IS WRONG TWICE.**  W427 read the EA
+      // bytes: `$24989E 08 ee ...` is `bset #$0,($1,A6)` with A6 = the PLAYER
+      // record, and it sits inside `$249868 requestHyper`, the arm `$249866`
+      // takes when the HYPER STOCK is NON-ZERO.  It is not the bomb-laser's
+      // selector (that is `$249A98`, on A1 = `$811F72`, on the OTHER arm), and
+      // it is not unexercised: `tests/w442hyperbeamimpact.test.js` reaches this
+      // line on the board's own lf9100 rung with `$8103E7` bit 0 set on 99 of
+      // 100 frames.  **THIS IS THE INSTRUCTION THAT MAKES THE BEAM THE HYPER
+      // BEAM**, and `$24D00A` is the hyper's segment family (types 15..19).
       seedSegmentFamily2(ram, ctx, b, 0x24d00a);            // $24C1E8/$24C1EE
       return 'c33a';                                        // $24C1F2 bra
     }

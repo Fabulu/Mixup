@@ -4405,3 +4405,64 @@ W428 made one **derive its seed by running the init body** instead of hard-codin
 bookkeeping, make a test READ it.** An audit that produces a list and no guard will go stale the
 same way.
 
+
+### D56 CAUSE FOUND BY W442: **THE HYPER BEAM'S ART WAS NEVER EXPORTED.**
+
+> "Laser comes out, it hits something, and it just cuts off, it has no hit animation or particles"
+
+**THE SIMULATION IS CORRECT. THE PICTURE DOES NOT EXIST IN THE SHIPPED ASSETS.**
+
+With every sprite shard forced resident, the port's own `$800000` list names **18 sprite streams
+that are in NO shard of the shipped bundle -- 197 records in 100 frames -- and the hyper-free
+control on the same rung names NONE of them.**
+
+**Four are in BUCKET 16, THE LASER BEAM:** `$022084 $022268 $02244C $022630`, stride exactly
+`$1E4` -- **a four-frame animation, 22 records each, 88 total. The plain laser has ZERO missing art
+in bucket 16.**
+
+**MECHANISM, MEASURED LIVE:** `$255000 btst #$0,($1,A4)` / `$255008 addi.w #$78,D3` indexes
+`$24BB0A` at the hyper's slot. The plain laser's art pointer is `$24B7EA`; **the hyper's is
+`$24BAE2`**. The bundle's only beam harvest is shard 10, declared from **`$24BB0A`** -- and
+**`$24BAE2` is `$28` bytes BELOW that window** (confirmed by the coordinator against
+`export-web.mjs:1873`). **Outside the window, never exported.**
+
+**THAT IS WHY 442 WAVES OF RAM COMPARISON FOUND NOTHING: the records are created, correct and
+enqueued.** Same shape as shard 10's own note -- *"29 of the beam's 33 descriptors had no picture:
+the owner's flicker"* -- **one power step further along.**
+
+**THE BRIEF'S NAMED CAUSE DOES NOT EXIST.** `spawnBeamImpact289FC0` is not missing. On the
+board-verified rung with hyper active 99/100 frames: **44 impacts, 46 pool-E records, 1,597
+bucket-20 records drawn on 100/100 frames** (plain laser: 50 / 50 / 1,739). RED arms prove those
+counts are the cartridge's gate, not the harness: zeroing either gate gives **0 impacts**.
+
+### D56 FOLLOW-UP -- **THE ORACLE HAS NO HYPER.** THE VISUAL CHECK CANNOT RUN YET.
+
+The owner asked for the hyper beam to be checked visually against the oracle. **It cannot be, and
+here is exactly why:** a scan of **all 647 board RAM dumps** finds `$81B63E`/`$81B640` = 0 and
+`$8103E7` bit 0 = 0 on **every one**. Three ladders carry hyper STOCK and never spend it, because
+**no scenario script contains a `B`** -- `frame.lua`'s `BUTTONS` maps `B` to P1 Button 2.
+
+**AND THE TOOLS I NAMED IN THE BRIEF DO NOT EXIST HERE.** No `tools/render-frame.mjs`, no
+`rendercheck.py`, no `oracle/out/*/video/`. What exists is `tools/pixgate.mjs`, and it feeds
+**MAME's own video RAM** to the port's renderer -- **it gates the RENDERER, not the simulation**, so
+even with a hyper dump it could not answer this question.
+
+**TO PRODUCE THE ARTEFACT** (named by the wave, not guessed): add one bomb press to a ladder that
+already has stock -- e.g. `stage2-laser-hold`'s script `...;10402=DA;25000=DAB;25006=DA` in
+`tools/oracle/scenarios.json` -- then `python games/ddpdoj/tools/oracle/pgm.py ckpt
+stage2-laser-hold`.
+
+**A SECOND, SEPARATE GAP, REPORTED SO NOBODY CONFLATES IT:** the other 14 missing streams are
+**bucket 25, the HUD** (109 records) -- the hyper's HUD frames. **Not the hit animation.**
+
+**TRAP PINNED (test 6): THE LADDER'S PORT WORD IS ACTIVE LOW.** `input | BOMB` RELEASES every
+button. The wave's own first run did this, read hyper inactive on all 100 frames, and **looked
+exactly like the defect while still firing 34 impacts.**
+
+Verified by the coordinator on a quiet tree: **4061 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows. **Nothing regressed** -- W441's band is unchanged
+to the byte.
+
+**THE FIX IS A SPRITE-HARVEST CHANGE IN `export-web.mjs` PLUS A FULL RE-EXPORT AND REPUBLISH.**
+Deliberately not attempted here; it needs its own wave and a quiet tree.
+

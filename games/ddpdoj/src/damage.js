@@ -865,6 +865,15 @@ function laserDamageBody(ram, a1, a2, d6) {
   // ---- $2453EA..$24541C: the HYPER recompute of the damage word.  Both gates
   // are 0 on this tree ($81B6E6 is the tail's copy of $81B63E), so the arm is
   // transcribed and unexercised.  `$245414 subq.w #1,D7 / dbra` runs $81B6E8
+  //
+  // W442 CORRECTION (2026-08-19): "unexercised" was true of every BENCH, not of
+  // the code.  `$81B6E6` is non-zero for the whole of a live hyper -- the type-5
+  // tail loads D1 from `$81B63E` and D2 from `$81B654` (the hyper LEVEL) and
+  // `$244D68`/`$244D6E` publish them -- so this arm and the second one below run
+  // on every frame of the owner's D56 scenario.  `tests/w442hyperbeamimpact.test.js`
+  // is the first bench in this repo that enters it.  The sentence is kept as the
+  // record of what was believed; the shape is W418's fifth lie (a true assertion
+  // resting on a wrong explanation).  `$245414 subq.w #1,D7 / dbra` runs $81B6E8
   // times -- and 65,536 times when $81B6E8 is 0, which is the board's own
   // arithmetic and is not guarded here for the same reason `src/score.js`
   // does not guard `$28618A`'s.
