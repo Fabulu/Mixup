@@ -260,7 +260,35 @@ the port arm mode 0.
 stage-2 type `$90` and **there is no stage-2 rung in `tools/oracle/out`.** Kind 3 likewise. **That
 missing stage-2 rung blocks more than this** -- see D56, whose only clean pool-B rung is stage 1.
 
-### NEXT UNIT: OPEN
+### W431: THE RUNGS I SAID WERE MISSING ALREADY EXISTED, AND NOBODY HAD LOOKED
+
+I dispatched W431 saying `tools/oracle/out` had **no stage-2 rung**. **It had 92**, in the very
+ladder I named -- seventeen carrying the stage-2 BOSS. **362 waves, and nobody looked.** The real
+defect was that the ladder stopped a fifth of the way into the fight.
+
+**NEW LADDER `out/w69/stage2-laser-hold`** -- 281/281 rungs, 30,000 frames, `missing: []`. Boss
+arrives lf17900, phase transition lf20600 (main HP crosses `$EFC0`, all four parts die together),
+**boss dies lf21600**, stage 3 lf22300. Proved USABLE: one seed runs 1,000 unbroken frames
+reproducing the board's HP at every rung. **141 MB, and `out/` is gitignored.**
+
+**D56 IS UNBLOCKED** -- a live, vulnerable, dying stage-2 boss now exists as rungs.
+
+**AND MY DIAGNOSIS FOR POOL-A KINDS 3 AND 4 WAS WRONG:** a stage-2 rung was never what blocked
+them. Two sweeps over 211 rungs see dispatch indices **0, 1, 2 and 8 only**, with types `$90`,
+`$92`, `$93` all live. **The gates are SUB-STATES, not stages.** Kind 3 has TWO sites, not one.
+
+### NEXT UNIT: D63 -- IN PROGRESS (W432)
+
+`$23D6AC` throws at **lf21826**, 226 frames after the boss dies, pool B at 40 records. **A HARD
+STOP, the same class as D60**, and **every player who kills the stage-2 boss reaches it.** It
+survived only because no ladder had ever covered a boss death.
+
+### PUBLISH IS DUE AT W432
+
+Last publish W427 (`20260819013654`). **W428 and W429 both added ROM windows (606 -> 612), so
+`export-web.mjs` MUST run before `publish.mjs`.**
+
+### AFTER THAT: OPEN
 
 Candidates, none started:
 - **stars' collect sound** -- bees and medals confirmed, stars NOT. **Do NOT re-kind a record and do
