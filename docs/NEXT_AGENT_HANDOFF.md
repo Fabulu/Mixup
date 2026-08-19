@@ -221,7 +221,35 @@ RAM snapshots the three OLD cursor values appear **ZERO** times; the new ones ap
 145. **The baseline had been captured under the bug.** When the port and a baseline disagree, the
 cartridge decides.
 
-### NEXT UNIT: `UNPORTED $28AE24`, THE NEXT LIVE THROW IN THE CUE SUBSYSTEM
+### W429 CLOSED `$28AE24` -- AND FOUND A BUG ALREADY LIVE IN SHIPPED KINDS
+
+**D62: `$28ACFE..$28AD26` WAS MISSING FROM `installCue`.** Six of the fifty cue records reach it and
+**four of those six feed the ALREADY SHIPPED kinds `$00`/`$04`**. Not cosmetic: `$242FDE` bumps
+`$803917`, the cursor every other draw consumer shares, **so it desynced the RNG as well as storing
+the wrong byte.**
+
+**MY BRIEF WAS WRONG ABOUT THE UNIT'S SIZE.** `$28AFD4` holds 14 NON-ZERO entries, 12 DISTINCT
+addresses, and **SIX REACHABLE** ones -- the six scripts naming `$18..$3C` have ZERO references in
+the cartridge. The honest unit was THREE descriptors. **A brief's count is a hypothesis.**
+
+**AND W428'S LESSON IS SITUATIONAL.** "Abutting is wrong" holds for a read that STRADDLES a seam.
+W429 measured that here abutting is CORRECT (`$28AC72 + $41C = $28B08E` exactly, overlaps stayed
+75). Both cases sit together in `tests/romwindowset.js`. **Do not apply either rule without
+checking which case you are in.**
+
+**FLAGGED BY THE WAVE, NOT BY ME:** kinds `$10` and `$14` are ported but **NOT witnessed live** --
+the parent dies at frame 116 with `$4F` still on the countdown. Ported because they are the rest of
+the script and would throw the moment a longer-lived parent appears.
+
+### NEXT UNIT: OPEN
+
+Candidates, none started:
+- **stars' collect sound** -- bees and medals confirmed, stars NOT. **Do NOT re-kind a record and do
+  NOT use `allocBee27F92A`** (it refuses non-bee kinds); go via the `$280BCE`/`$280DBA` pool-A
+  allocator, or kill a mid-boss.
+- **the remaining cue kinds** -- `$18..$4C` throw with two distinct reasons, both correct today.
+- the front-end screens D33/D34/D35/D37; the 161 unported enemy types.
+**D36 WHITE LABEL STAYS LAST.**
 
 5 of 363 rungs (`c003600`/`c003625`/`c003650`) arrive from the oracle with a **kind-`$C`** cue
 already live at frame 0. Descriptor `$28B08E` (flags `$800C`), dispatch entry 3. **`$28AFD4` holds
