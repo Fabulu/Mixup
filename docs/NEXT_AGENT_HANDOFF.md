@@ -20,7 +20,19 @@ text:
 **Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
 D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
 
-## PUBLISHED: build `20260818210139`, confirmed live 2026-08-18
+## PUBLISHED: build `20260819013654`, confirmed live 2026-08-19
+
+W427 was the fifth wave since the last publish (W422, W427), so this is the standing cadence.
+`export-web.mjs` ran BEFORE `publish.mjs`. The publish ran its own full chain -- gradius tests and
+gate, ddpdoj tests and gate, batman gate -- and polled until three consecutive checks agreed.
+
+**WHAT THE OWNER GETS IN THIS BUILD:** the boss explosion's repeated bangs (D58, `$294134`), all
+nine `$28C170` cue sites plus the three `$28C186` ones, the `$286AAA` crash fix (D60), pool-A kind
+5, and fullscreen that uses the screen (D55).
+
+**NEXT PUBLISH FALLS AT W432.**
+
+## SUPERSEDED: build `20260818210139`, confirmed live 2026-08-18
 
 W422 was the fifth wave since the last publish (W412, W417, W422), so this was the standing
 cadence, not an ad-hoc push. `export-web.mjs` ran BEFORE `publish.mjs`. The publish ran its own
