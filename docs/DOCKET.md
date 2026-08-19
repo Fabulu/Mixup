@@ -3578,3 +3578,29 @@ that, and it is now a test.**
 `UNPORTED $27399E` inside `spawnCues28AC72` (`handlers.js:3829`, handler 80). Pre-existing, and it
 rules out the 17-record pool-B checkpoints. **Open it as its own unit if a wave needs those rungs.**
 
+
+### D52 FOLLOW-UP -- TWO WAYS TO REACH A STAR ARE NOW RULED OUT. NAMED SO NOBODY RETRIES THEM.
+
+Stars remain the one collect sound never measured. **Two obvious routes are dead:**
+
+1. **Re-kinding a released record does not work** (recorded above). The record is FILLED as a bee,
+   so clearing its kind bits hands the star body bee data. It was never collected in 600 frames.
+2. **`allocBee27F92A` cannot make one.** `bee.js:349` refuses outright:
+   `if (kind !== KIND.bee && kind !== KIND.beeFlying) unreached(POOL_A.alloc, ...)`. **The
+   reserved-ten allocator is BEE-ONLY**, so a star cannot come from there at all.
+
+**WHERE A STAR ACTUALLY COMES FROM, for whoever picks this up:** pool-A records are allocated by
+the table-driven `$280BCE` / `$280DBA` path with a D0 index -- W422 recorded that for kind 5
+(`$280BCE[17] = $280DBA`, D0 = `$44`, ending `andi.w #$FF83,(A0) / ori.w #$14,(A0)`, where `$14` is
+kind index 5). **A star is kind index 0 or 4**, so the ori constant is what selects it. Start
+there, not at the bee allocator.
+
+**AND THE OWNER ALREADY SAID WHERE THEY COME FROM IN PLAY:** *"only mid bosses leave stars"*. So a
+live-run route exists: kill a mid-boss on a rung that has one, and watch `postCount` and the ring
+exactly as the bee probe did.
+
+**WHAT IS KNOWN AND IS NOT A MEASUREMENT:** `COLLECT_ARMS.star27F9EE` (kinds 0 and 4) carries
+`collectSound: 0x28C5E4`, the same cue the medal uses, and the owner has confirmed medals sound
+right. That is suggestive. **It is exactly the kind of source-reading that left this question open
+in the first place, so do not close D52 on it.**
+
