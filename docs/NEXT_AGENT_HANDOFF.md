@@ -292,7 +292,30 @@ Found in passing by W433 and worth keeping: **the shake table's terminator test 
 where the ROM tests X ALONE.** Harmless on this table (0 of 42 pairs have X=0) but **7 of 42 have
 Y=0**, so it was one table away from mattering.
 
-### NEXT UNIT: THE LAST POOL-B RESIDUE BYTE -- IN PROGRESS (W434)
+### POOL B IS 80/80 (W434), AND THE LESSON IS ABOUT HOW WE READ ROUTINES
+
+**`finalBlast2440E0` IS UNROLLED AND ITS BLOCKS ARE NOT ALL THE SAME.** 555 instructions: 4
+preamble + **39 blocks of 14** + 4 tail + **EXACTLY ONE belonging to no block** --
+`$2441B4 move.b #$40,($1C,A0)`. The port read all 39 as a uniform loop and dropped it. **No table
+or longword scan could find it: it is an IMMEDIATE, INSIDE CODE.**
+
+**IF YOU READ A ROUTINE AS A LOOP, COUNT ITS INSTRUCTIONS AND PROVE THE COUNT DIVIDES EVENLY.**
+
+It was never one slot in one ladder: toggling the store off reproduced it in **five segments across
+four ladders**, including the stage-2 death, so `$2440E0`'s other caller had it too. All five are
+now 80/80.
+
+**AND THE FREED-SLOT TRAP IS STRONGER THAN ANYONE STATED:** at lf10000 the board has **39 non-blank
+slots and ZERO live ones**, so the whole comparison is residue on BOTH sides.
+
+### NEXT UNIT: TWO PRE-EXISTING POOL-B REDS -- IN PROGRESS (W435)
+
+Both measured identical with W434's fix on and off, so they are independent of it:
+
+    stage1-laser-hold  lf9500->9600    60/80   multi-byte, +$02..$05 position, +$34..$37 velocity
+    stage1-laser-hold  lf10300->10400  74/80   six slots the PORT KEEPS ALIVE that the BOARD FREED
+
+### SUPERSEDED: THE LAST POOL-B RESIDUE BYTE (W434)
 
 W433 took pool-B byte-identical slots from **37/80 to 79/80** at lf10000. One remains: `+$1C` of a
 FREED slot 2, `$40` board / `$00` port. `$289004` zeroes it, **so a LIVE-RECORD writer sets it.**
