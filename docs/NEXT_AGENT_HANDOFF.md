@@ -277,7 +277,34 @@ reproducing the board's HP at every rung. **141 MB, and `out/` is gitignored.**
 them. Two sweeps over 211 rungs see dispatch indices **0, 1, 2 and 8 only**, with types `$90`,
 `$92`, `$93` all live. **The gates are SUB-STATES, not stages.** Kind 3 has TWO sites, not one.
 
-### NEXT UNIT: D63 -- IN PROGRESS (W432)
+### D63 AND D64 ARE BOTH FIXED AND PUBLISHED
+
+**D63** -- the stage-2 boss-death crash **every player who kills that boss was hitting**. The defect
+was OUR ASSERTION, not the arithmetic: it guarded bits 13..10 and **bit 10 is the sign bit of a
+signed position**, not a zoom bit. A scan of all 647 board dumps found a real entry with it set.
+**Masking would have been wrong in both directions.**
+
+**D64** -- the stage-1 boss death not shaking. **ONE LINE**: a W52-era `note()` deferral for a
+routine ported in W189, whose every other caller was already wired. **42 board values vs 42 port
+values: MATCH 42, DIFFER 0.** All four corpus windows now match 42/42.
+
+Found in passing by W433 and worth keeping: **the shake table's terminator test compared BOTH words
+where the ROM tests X ALONE.** Harmless on this table (0 of 42 pairs have X=0) but **7 of 42 have
+Y=0**, so it was one table away from mattering.
+
+### NEXT UNIT: THE LAST POOL-B RESIDUE BYTE -- IN PROGRESS (W434)
+
+W433 took pool-B byte-identical slots from **37/80 to 79/80** at lf10000. One remains: `+$1C` of a
+FREED slot 2, `$40` board / `$00` port. `$289004` zeroes it, **so a LIVE-RECORD writer sets it.**
+**Do NOT force the byte** -- "unreachable, and 79/80 is already correct" is a legitimate answer.
+
+### WHEN CLAIMING SOMETHING HAS NO CALLER, SCAN PC-RELATIVE TOO
+
+W433 proved this the hard way: **`$260EC8` is reachable ONLY PC-relative**, so a longword scan alone
+would have declared a LIVE driver dead. Scan `Bcc`/`bsr`/`jsr`/`jmp (d16,PC)`/`lea (d16,PC)`/
+`pea (d16,PC)` at every even address, **and run a POSITIVE CONTROL on a routine you know is live.**
+
+### SUPERSEDED: D63 WAS IN PROGRESS (W432)
 
 `$23D6AC` throws at **lf21826**, 226 frames after the boss dies, pool B at 40 records. **A HARD
 STOP, the same class as D60**, and **every player who kills the stage-2 boss reaches it.** It
