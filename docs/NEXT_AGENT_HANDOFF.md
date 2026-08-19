@@ -116,7 +116,40 @@ did not exist, invisible **because nothing read the table**. `w62stageend.test.j
 `boss.js` and fails on a dead key. **That is the general fix for this shape: make something READ
 the bookkeeping.** This lie-shape has now appeared four times.
 
-### NEXT UNIT: `objslot15.js:179`, A LIVE THROW THAT ALWAYS WAS
+### W426 CLOSED THAT, AND FOUND A DEFECT IN MY OWN W423 CODE
+
+All three `$28C186` sites post now; the `objslot15.js:179` throw is gone. But the wave also found
+that `postBgmCommand` packed `(d0 << 8) | (d1 & 0xFF)` when **`$28BBAE` is `8041`, the WORD form of
+OR**. **My own doc line one screen above already said `& $FFFF`** -- the code disagreed with the
+comment for three waves, and my test asserted the code's version **under the heading "the pack is
+WORD-sized"**. Nothing observable moved because all three sites pass D1 = 0. **That is why it
+survived, and it is lie-shape 1 in my own work.**
+
+**MY BRIEF'S REASONING WAS ALSO WRONG AND THE WAVE CHECKED IT.** I said the scroll-VM site reads a
+varying D1. It reads a script word that is `$0000` in every stage of this revision, proven by
+walking five cue streams out of the image. The API is still right, but because of the INSTRUCTION,
+not the data.
+
+**FOUR WAVES RUNNING HAVE NOW CORRECTED THEIR BRIEF.** W422 the art stride, W424 the line endings,
+W425 five sites that were nine, W426 this. **Write briefs that invite it, and read the correction.**
+
+### D59 IS MEASURED AND THE PORT IS NOT AT FAULT
+
+Three probes, each measuring the thing itself and never an overlap. A carrier pinned onto block 7's
+own A2 takes real beam damage and **dies on frame 33**; a bee is **allocated on frame 34**; driven
+onto the ship it is **collected on frame 2**; and left **entirely alone** it drifts down by itself
+and is **still collected**. So the port shoots, kills, drops, flies and collects bees correctly.
+
+**Every D59 hypothesis is dead** -- the position gates, the damage pass, the drop, the collect --
+and each died to a measurement. **The reason none of it showed before: no bench had ever put a
+carrier in the beam**, because the laser-hold ladder parks the ship at the bottom centre by design.
+
+**THE CAVEAT IS THE COORDINATOR'S AND IT STANDS**: pinning to the muzzle put the bee ~21,500 units
+out, so it took ~670 frames to drift down. **That distance is an artifact of the setup, not a
+measurement of the game.** The path is proven; the timing is not. **The owner has been asked where
+on the screen they see the flickering bees**, and that answer is what D59 now waits on.
+
+### NEXT UNIT: D56 -- A BENCH FOR THE HYPER LASER, BEFORE ANY FIX
 
 It calls `ctx.soundPost?.(0x28c186)` and still throws. `$28C186` takes D1 FROM THE CALLER, so it
 cannot go through the address-only API -- **and that is not pedantry**: `background.js`'s cue
