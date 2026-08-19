@@ -3756,3 +3756,49 @@ the same arm (`DISPATCH[0]` and `DISPATCH[4]` are both `$27FA30`) but the only s
 `$10` is stage-2 type `$90`, and **there is no stage-2 rung in `tools/oracle/out`.** Kind 3
 (`$27FED2`, cue `$28C610`) is likewise unreached on any bench. Neither was forced.
 
+
+### D63: `$23D6AC` THROWS 226 FRAMES AFTER THE STAGE-2 BOSS DIES
+
+Found by W431. **A LIVE THROW in the boss death explosion**, at lf21826 with pool B at 40 records:
+*"display-list entry 23: adding `$80B054` = `$100008` carried out of the short axis's ten-bit
+position field"*. **No previous ladder covered a boss death, so nothing could have hit it.** Same
+class as D60, which ended the owner's run.
+
+### W431 -- MY BRIEF'S FIRST SENTENCE WAS FALSE, AND THAT IS THE FINDING
+
+I wrote *"`tools/oracle/out` contains no stage-2 rung"*. **It contains 92**, in the very ladder I
+named. `stage1-laser-hold`'s `$813092` goes 0 -> 1 between lf10300 and lf10400 and never returns,
+so 92 of its 210 rungs are stage-2, and **seventeen carry the stage-2 BOSS** (type `$30`,
+`$297120`) with its 23 type-`$4D` satellites. **Nobody had looked, for 362 waves.**
+
+**THE REAL DEFECT WAS THAT THE LADDER WAS TOO SHORT**: the boss's main HP falls 179,648 -> 142,598
+over lf18000..lf19500 and the run ends at lf19600, holding **only the first fifth of the fight**.
+
+**W431 BUILT A NEW CARTRIDGE LADDER, `out/w69/stage2-laser-hold`** -- 281 of 281 rungs, 30,000
+frames, `missing: []`, holding the COMPLETE fight:
+
+    lf10400  stage 2        lf20600->20700  PHASE TRANSITION, main HP 62,456 -> 61,088,
+    lf17900  boss arrives                   crossing $EFC0 = 61,376, exactly $298926's gate;
+    lf18600  damage starts                  all four parts die together
+    lf21600  BOSS DIES      lf22300         stage 3
+
+**Proved usable, not merely present:** `seedcmp` over lf17900..22400 gives 45 segments, 34 green,
+**1 blocked, 0 seedbad, 0 error**, and a single seed at lf20600 runs **1,000 unbroken frames**
+reproducing the board's HP at every rung.
+
+**D56 IS UNBLOCKED** -- a live, vulnerable, dying stage-2 boss now exists as rungs, and the
+HP-refill invulnerability `($148,A6)` is 1 only to lf18500.
+
+**BUT MY DIAGNOSIS FOR KINDS 3 AND 4 WAS WRONG, AND A STAGE-2 RUNG WAS NEVER WHAT BLOCKED THEM.**
+Two seeded sweeps (119 new rungs / 11,825 frames, and 92 old / 9,200) see dispatch indices
+**0, 1, 2 and 8 only -- never 3, never 4**, with types `$90`, `$92`, `$93` all live on the route.
+**The gates are SUB-STATES, not stages:** kind 4 needs `$279990` behind type `$90`'s
+`hp < cooldown` (measured `$1000` vs `$0` for its whole life); kind 3 needs `$279D64`/`$279F3C`,
+the death tails of `$92`/`$93` behind `($1,A6)` bit 7. **Kind 3 has TWO sites, not one.**
+
+**TWO SELF-CORRECTIONS THE WAVE MADE AND KEPT:** it first read the four PART HP words holding at
+`$5000` and concluded the boss took no damage -- wrong, the body's HP is `($16,A5)` on the ENEMY
+record while the PARTS table gives A6 displacements. And it blamed the off-centre ship, then
+**falsified that itself** by steering to `$1C07` and measuring no change. It also rewrote the
+ladder's manifest rather than ship the pre-correction text it had snapshotted.
+
