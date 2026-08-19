@@ -43,9 +43,26 @@
 // nothing", and they express that by comparing the count with and without their
 // own windows. That claim is untouched by W428's four.
 
+// ---------------------------------------------------------------------------
+// W429 ADDED ONE WINDOW AND THE OVERLAP COUNT DID NOT MOVE. THAT IS THE POINT.
+// ---------------------------------------------------------------------------
+// `$28B08E + $6A` -- the cue dispatch's kind-$C/$10/$14 descriptors and art
+// tables -- ABUTS W173's `$28AC72 + $41C`, which ends at exactly $28B08E.
+// Measured: 611 -> 612 windows, 75 -> 75 overlapping pairs. This is the
+// ORDINARY case the house rule describes, and it is worth stating next to
+// W428's note so the two are not confused: W428 had to overlap because a cue
+// RECORD's longword straddled a seam; here every read starts on a descriptor
+// or an art entry at $28B08E or above, and W173's window's last read is the
+// kind-8 art longword $28B08A..$28B08D. Nothing crosses. Abutting works when
+// the structures line up with the seam, and only then.
+
 /** The count `tables.rom.windows.length` must equal. MEASURED from
  *  `player.tables.json`, not computed by hand. */
-export const ROM_WINDOW_COUNT = 611;
+export const ROM_WINDOW_COUNT = 612;
+
+/** The one window W429 declared, and the window it abuts WITHOUT overlapping.
+ *  `tests/w429cuekinds.test.js` asserts the abutment is exact. */
+export const W429_ABUTTING_PAIR = Object.freeze([0x28b08e, 0x28ac72]);
 
 /** The number of overlapping PAIRS over the whole window set. MEASURED. */
 export const ROM_OVERLAP_PAIRS = 75;
@@ -84,5 +101,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "for twelve waves; W428 added FOUR, one per word-threshold cue script "
   + "($268E32 $273986 $2747A8 $275F04), each of which begins inside its type's "
   + "prototype window because a cue record's longwords straddle that window's "
-  + "end and RomWindows.#at cannot stitch across a seam. See "
+  + "end and RomWindows.#at cannot stitch across a seam. W429 added a window "
+  + "($28B08E) and did NOT move this number, because it abuts. See "
   + "tests/romwindowset.js.";

@@ -828,6 +828,18 @@ SHOT_WINDOWS.extend([
     (0x28AC72, 0x041C, "W173: type $84's inseparable cue spawner, live driver "
                        "path, dispatch/emitter tables and kind-4/kind-8 "
                        "descriptors/art tables ($28AC72..$28B08E)"),
+    # W429: cue script $28AF98 names dispatch indices $0C/$10/$14, whose three
+    # descriptors and art tables begin exactly where W173's window ends. This
+    # ABUTS at $28B08E and does not overlap: W173's window's last read is the
+    # kind-8 art longword $28B08A..$28B08D, and every read in here starts on a
+    # descriptor or art entry at $28B08E or above, so nothing straddles the
+    # seam (contrast W428, where a cue record's longword did).
+    # The far end is descriptor $28B0CA's eight-frame art table, $28B0D8 + 32
+    # == $28B0F8. $28B0F8..$28B14C holds six MORE descriptors, deliberately
+    # left out: nothing in the image references the cue scripts that name them.
+    (0x28B08E, 0x006A, "W429: the cue dispatch's kind-$C/$10/$14 descriptors "
+                       "and art tables, named by cue script $28AF98 "
+                       "($28B08E..$28B0F8)"),
     (0x279802, 0x02A0, "W174: complete stage-2 type $90 closure: run-length "
                        "stub, init, palettes/prototypes, handler and exact "
                        "four-word damage-particle table through the next "
@@ -6092,9 +6104,43 @@ def check_stage2_spawn_data(d: bytes) -> None:
         raise SystemExit("W173: type $84 muzzle table drifted")
     if u16(d, 0x275812) != 0x3B7C or 0x275812 - 0x2757F6 != 7 * 4:
         raise SystemExit("W173: type $84 seven-vector table extent drifted")
-    if [u32(d, 0x28AFD4 + i * 4) for i in range(20)][:3] != \
-            [0x28B024, 0x28B042, 0x28B060]:
-        raise SystemExit("W173: cue dispatch kinds 0/4/8 drifted")
+    if [u32(d, 0x28AFD4 + i * 4) for i in range(20)] != \
+            [0x28B024, 0x28B042, 0x28B060, 0x28B08E, 0x28B0AC, 0x28B0CA,
+             0x28B0F8, 0x28B0F8, 0x000000, 0x000000,
+             0x28B0F8, 0x28B106, 0x28B114, 0x28B122, 0x28B130, 0x28B13E,
+             0x000000, 0x000000, 0x000000, 0x000000]:
+        raise SystemExit("W173/W429: the twenty-entry cue dispatch drifted")
+    # W429: $28AE18 is the ART jump table, indexed by the same $7C-masked kind.
+    # Entries 10..19 REPEAT 0..9 -- the $20 bit of the kind is not looked at --
+    # and $28AF34 is the no-art body.  Six art bodies, 34 bytes each, back to
+    # back from $28AE68.
+    art_jump = [u32(d, 0x28AE18 + i * 4) for i in range(20)]
+    if art_jump[:10] != [0x28AE68, 0x28AE8A, 0x28AEAC, 0x28AECE, 0x28AEF0,
+                         0x28AF12, 0x28AF34, 0x28AF34, 0x28AF34, 0x28AF34] \
+            or art_jump[10:] != art_jump[:10]:
+        raise SystemExit("W429: $28AE18's art jump table drifted")
+    for k in range(6):
+        body = 0x28AE68 + k * 0x22
+        if d[body:body + 6].hex() != "302e002441fa" \
+                or d[body + 8:body + 0x16].hex() != "4e712d700000000a596e00246400" \
+                or d[body + 0x18:body + 0x1A].hex() != "3d7c" \
+                or d[body + 0x1C:body + 0x20].hex() != "00246000":
+            raise SystemExit(f"W429: cue art body {k} at ${body:06X} drifted")
+        # lea target = EXTENSION WORD address + displacement; both branches go
+        # to the shared tail $28AF36.
+        if body + 6 + u16(d, body + 6) != [0x28B032, 0x28B050, 0x28B06E,
+                                           0x28B09C, 0x28B0BA, 0x28B0D8][k] \
+                or u16(d, body + 0x1A) != [0x0C, 0x0C, 0x1C, 0x0C, 0x0C, 0x1C][k] \
+                or body + 0x16 + u16(d, body + 0x16) != 0x28AF36 \
+                or body + 0x20 + u16(d, body + 0x20) != 0x28AF36:
+            raise SystemExit(f"W429: cue art body {k} art/reload/tail drifted")
+    # W429: `$28ACFE..$28AD26` -- `tst.b D3 / bpl`, then `not.b D3` and two
+    # `eori.b` flips each gated on its own `jsr $242FDE`.  Six of the fifty cue
+    # records in the image reach it (all six carry D3 = $0010FFBF).
+    if d[0x28ACFE:0x28AD28].hex() != \
+            "4a036a26460308030005670c4eb900242fde66040a0300" \
+            "2008030006670c4eb900242fde66040a030040":
+        raise SystemExit("W429: the cue D3 emitter-select block drifted")
     if not (d[0x28AC72:0x28AC86] == bytes.fromhex(
                 "226d004430196b22b06e00186d1c6100001e60ec")
             and u16(d, 0x28ACA0) == 0x41F9 and u32(d, 0x28ACA2) == 0x0081DB90

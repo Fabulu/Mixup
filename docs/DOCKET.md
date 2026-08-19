@@ -3658,3 +3658,53 @@ seeds and asserts the cursor "does not advance", on a stated reason that is fals
 repo's own guard against stale notes**, so a false reason living inside it is the worst possible
 place for one.
 
+
+### D62: `$28ACFE..$28AD26` WAS MISSING FROM `installCue`, AND IT WAS LIVE IN SHIPPED KINDS
+
+Found by W429 while porting something else. **Not an owner report -- a bug that was already running
+in the build the owner is playing.**
+
+Before D3 is stored, the ROM does `tst.b D3 / bpl`, then on a NEGATIVE low byte `not.b D3` plus two
+`eori.b` flips, **each gated on its own `jsr $242FDE`**. `installCue` had none of it. Verified from
+the image by the coordinator: `$28ACFE 4a 03 6a 26` is `tst.b D3 / bpl -> $28AD26`, then `46 03`
+`not.b D3`, `08 03 00 05` `btst #5,D3`, then the `jsr`.
+
+**SIX of the fifty cue records in the image reach it, and FOUR of those SIX feed the ALREADY
+SHIPPED kinds `$00`/`$04`** (`$263BFC $263C0C $263C1C $263C2C`). So this was live and wrong before
+W429 existed.
+
+**AND IT IS NOT COSMETIC.** `$242FDE` bumps `$803917`, **the cursor every other draw consumer
+shares**, so the omission stored the wrong byte AND desynced the RNG for everything downstream.
+
+The reading is settled by elimination against the board: the record holds `$BF`, `not.b` alone
+would give `$40`, and all five oracle snapshots read `$00` at `+$18` and `$001E` at `+$1C`.
+
+### W429 CLOSED `$28AE24`, AND MY BRIEF WAS WRONG ABOUT THE SIZE OF THE UNIT
+
+**I said `$28AFD4` holds 14 live descriptors. It holds 14 NON-ZERO entries, 12 DISTINCT addresses,
+and SIX REACHABLE ones.** The table is indexed by words from a cue script, and the image contains
+exactly five referenced scripts (`$28AF84` 18 refs, `$28AF8A` 26, `$28AF98` 2, `$28AFA0` 2,
+`$28AFA4` 2). Between them they name `$00 $04 $08 $0C $10 $14` and nothing else. The six scripts
+naming `$18..$3C` have **ZERO references anywhere in the cartridge**.
+
+**So the honest unit was THREE descriptors -- the whole of cue script `$28AF98` -- not one and not
+fourteen**, and the wave declared no window for the unreachable six. Kinds `$18..$4C` still throw,
+with two DISTINCT reasons, and a test re-scans the image to rebuild the reachability claim rather
+than restating it.
+
+**W428's "ABUTTING IS WRONG" IS ITSELF SITUATIONAL, and W429 measured that too.** Here abutting is
+correct: `$28B08E + $6A` abuts `$28AC72 + $41C` exactly (coordinator confirmed:
+`$28AC72 + $41C = $28B08E`), nothing crosses the seam, and the overlap count stayed at **75**. Both
+cases now sit side by side in `tests/romwindowset.js` so they cannot be confused.
+
+**A STATE TRACE, NOT A GREEN RUN:** stepping `c003600` reproduces **all twelve fields** of the
+kind-`$C` record against four other snapshots at frames 25/50/75/100, no field diverging.
+
+**HONESTLY FLAGGED BY THE WAVE:** kinds `$10` and `$14` are ported but **NOT witnessed live** -- the
+parent dies at frame 116 with `$4F` still on the countdown, so no rung reaches them. They were
+ported because they are the rest of `$28AF98` and would throw the moment a longer-lived parent
+appears, **not because they were measured.**
+
+Verified by the coordinator on a quiet tree: **3970 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 612 windows, overlaps unchanged at 75.
+
