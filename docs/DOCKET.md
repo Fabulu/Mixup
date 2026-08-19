@@ -3456,3 +3456,32 @@ appeared five times.
 Verified by the coordinator on a quiet tree: **3942 pass / 0 fail / 0 skipped**, gate exit 0 with
 31 PASS / 0 FAIL, `--verify` OK at 607 windows with none added or widened, no EOL violations.
 
+
+### D52 FOLLOW-UP -- THE BEE'S COLLECT SOUND **DOES** FIRE, MEASURED ACROSS A REAL COLLECT
+
+> "I think medals have sounds too, maybe stars as well and bees too. Those are important"
+> "sounds when collected I mean"
+
+D52 carried an open question: the bee's collect cue `$28C62A` is posted from its own body
+(`bee.js:2004`) rather than from the shared `COLLECT_ARMS`, so nothing guaranteed it ran.
+
+**MEASURED, on a real collect rather than a forced one.** The D59 probe produces a genuinely
+released bee and drives it onto the ship; watching the 100-slot ring at `$81DD1E` across that:
+
+    sound.postCount        48 -> 49        exactly one cue
+    ring slots changed     1
+    slot 62                $00EB1F04       type $0, ID $1F
+    collected at frame     2
+
+**`$1F` is the id `bee.js:2004` names for the bee-collect sound.** So the cue posts, on the frame
+the bee is collected, and it is the right one.
+
+**THIS IS A POSITIVE RESULT AND IT NARROWS THE OWNER'S REQUEST.** They said medals were already
+good, and bees are now proven. **STARS ARE THE REMAINING ONE** and have not been measured. The same
+probe shape works: get a star collected in a live run and watch `postCount` and the ring, rather
+than reading the code and concluding.
+
+**DO NOT take "the call exists in the source" as evidence it runs.** That is what left this question
+open in the first place, and this project has been bitten five times by a stated reason that was
+false while the code looked right.
+
