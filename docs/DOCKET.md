@@ -3708,3 +3708,51 @@ appears, **not because they were measured.**
 Verified by the coordinator on a quiet tree: **3970 pass / 0 fail / 0 skipped**, gate exit 0 with
 31 PASS / 0 FAIL, `--verify` OK at 612 windows, overlaps unchanged at 75.
 
+
+### D52 CLOSED BY W430 -- STARS POST THEIR COLLECT CUE. ALL THREE ARE NOW ACCOUNTED FOR.
+
+> "I think medals have sounds too, maybe stars as well and bees too. Those are important"
+> "sounds when collected I mean"
+
+**MEDALS: confirmed by the owner. BEES: measured (id `$1F`). STARS: measured now. NO DEFECT, AND NO
+CODE WAS CHANGED.**
+
+**AND W430 FOUND THE MECHANISM BEHIND THE OWNER'S OWN SENTENCE.** They said *"only mid bosses leave
+stars"*, and they were right about the trigger while nobody here knew why. The midboss death
+`$26B7D8` arms `armScreenClear` with **mode 0**, and `runScreenClear` then takes the FREE arm whose
+`jsr $27F8F8` allocates pool A with **kind index 0 -- the star**, from the BULLET's own record.
+**The midboss does not drop stars: every live enemy bullet on screen BECOMES one.** That also
+explains why a bomb makes none -- `$243DA0` arms mode `$FFFF`, the transform arm, which allocates
+nothing. Only two sites in the port arm mode 0.
+
+Measured on `c003700` with the midboss alive, laser held: bullet pool 49 -> 0, pool-A live 7 -> 56,
+**49 records at kind index 0** with kind 0's own art `$1BCBEC`, allocated and filled from the
+cartridge template -- not re-kinded, not synthesised.
+
+    ONE STAR      collected frame 2; postCount 3 -> 4; ring slots changed 1;
+                  slot 24 = $01EB1E04, type $1, id $1E
+    49 STARS      98 frames, 49 collects, 49 posts of $01EB1E04, one per collect
+    ALL 49 AT ONCE   2 frames, 49 collects, ONE post
+
+**THE WORD IS UNIQUELY `$28C5E4`** -- the only wrapper with entry `$28C0AE` AND id `$1E`. The
+neighbours post `$00EB1E04` and `$00EB1F04`; **the TYPE nibble separates them**, which is why
+reading the id alone would not have been proof.
+
+**THE ONE-POST-FOR-49 CASE IS THE ROM'S OWN GUARD, NOT A DEFECT.** `$28C5E4` carries
+`deb: [$81DEB6, 2], debAlways`, so simultaneous collects collapse to a single cue.
+
+**MY BRIEF WAS WRONG ABOUT THE ROUTE.** I sent it to `$280BCE`/`$280DBA` expecting an `ori` constant
+to select the kind. Kind 0 comes from `allocPoolA27F8F0`'s D0 **directly** (`IMPACT_FINISH[0x00]`,
+hook `$280C5E`, `status: null`); the `ori.w #$14,(A0)` normalisation exists only for D0
+`$44`/`$48`/`$4C`. Starting where I said would have been a detour.
+
+**AND IT SETTLED MY EARLIER FALSE ALARM PROPERLY.** The failed probe saw `$01EB1E04` and I recorded
+that it "is NOT evidence" -- correct at the time, because nothing had been collected. **The word
+was the star cue all along; that probe simply never collected anything.** Both halves of that are
+now true and on the record.
+
+**STILL UNMEASURED, and the wave flagged it rather than glossing it:** kind index 4 is literally
+the same arm (`DISPATCH[0]` and `DISPATCH[4]` are both `$27FA30`) but the only site allocating D0
+`$10` is stage-2 type `$90`, and **there is no stage-2 rung in `tools/oracle/out`.** Kind 3
+(`$27FED2`, cue `$28C610`) is likewise unreached on any bench. Neither was forced.
+
