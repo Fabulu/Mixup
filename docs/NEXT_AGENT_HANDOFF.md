@@ -404,7 +404,39 @@ REWRITE it, do not delete it.**
 **WIDE BRANCHES HAVE NOW BITTEN THREE WAVES RUNNING** (W437 `bcs.W`, W438 `bmi.W`, W439 `bra.W`).
 `60 00`/`6b 00`/`65 00` read as 8-bit become a branch to the NEXT INSTRUCTION and an arm vanishes.
 
-### NEXT UNIT: THE LAST BULLET DIVERGENCE -- IN PROGRESS (W440)
+### W440: FOUR WIDE BRANCHES LEFT ALL THREE STAGE-1 BOSS GUNS FREE-RUNNING
+
+    $29690A / $29610E / $29621A  bcc.W -> the rts        read as 8-bit = fall through
+    $296116                      bcc.W -> NOT a return, the cadence RELOAD
+
+**SIX SEGMENTS IMPROVED, FIVE TO 210/210.** Sweep over all 209 rung pairs: **6 improved, 203
+unchanged, 0 REGRESSED.** **Pool A followed 2/70 -> 70/70 with NO pool-A code touched**, exactly as
+W438 predicted.
+
+**THE WIDE-BRANCH TRAP HAS NOW BITTEN FOUR WAVES RUNNING** -- W437 `bcs.W`, W438 `bmi.W`, W439
+`bra.W`, W440 **four `bcc.W` at once**. **It is the most expensive misreading in this codebase.
+Decode `.W` forms and ASSERT THE BYTES.**
+
+**THE PORT WAS DOING MORE THAN THE BOARD** -- 128 spawns where 112 is right, and 48 of one kind
+where the board fires ZERO. **Over-firing is as likely as under-firing.**
+
+**EVIDENCE FROM OUTSIDE THE STRUCTURE IS WHAT SETTLES THESE:** the boss's script slots are NOT in
+the pool and went 3/3/4 differing bytes -> 0/0/0; and only 1,793 of 4,043 differing bytes were
+inside the pool at all, so **a perfect pool poke floors at 2,250 while the real result is 637 with
+ZERO in the pool.**
+
+**SIX TESTS WERE ASSERTING THE DEFECT.** All rewritten, none deleted.
+
+### NEXT UNIT: THE LAST TWO -- IN PROGRESS (W441)
+
+`lf9100->9200` stops at **176/210**, and W440 measured it as **two independent defects, neither its
+own**:
+1. **a missing laser beam-impact spark** on two ticks -- and **handing the port those 8 draws
+   changes the bullet count by ZERO** (performed, not argued), so it is a draw-cursor defect;
+2. **an UNDER-FREE** -- the port spawns the board's 42 records and **frees 8 where the board frees
+   16**. `mover.js` / `boundsKill`.
+
+### SUPERSEDED: THE LAST BULLET DIVERGENCE (W440)
 
     lf9300->9400   bullets 111/210   <- worst, and the one being taken
     lf9400->9500   bullets 113/210
