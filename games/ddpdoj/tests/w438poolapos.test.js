@@ -17,10 +17,28 @@
 // bullet.  The port's enemy-bullet pool is where the divergence lives.
 //
 // ---------------------------------------------------------------------------
+// W440 CLOSED THE RESIDUAL, AND THIS FILE WAS REWRITTEN RATHER THAN DELETED
+// ---------------------------------------------------------------------------
+// W440 decoded four `.W` branches in the stage-1 boss's three rotation guns
+// ($29690A, $29610E, $29621A, $296116, all read as 8-bit) and lf9500->9600 went
+// **149/210 -> 210/210 bullets and 2/70 -> 70/70 pool A** with no line of
+// pool-A code touched.  So W438's prediction -- "pool A is byte-perfect on
+// exactly the segments where the BULLET pool is" -- came true in the only way
+// that could confirm it: someone fixed the bullet pool and pool A followed.
+//
+// Four tests in this file asserted the 2/70 residual and went RED when it was
+// closed.  They are REWRITTEN, not deleted: every number W438 measured is still
+// recorded here, and every claim it made is still checked -- the field
+// isolation now runs under `W440_MUTATE`, which recreates a divergence on
+// demand, so the experiment can still FAIL.  A test whose subject was fixed and
+// which was therefore removed is a claim nobody checks any more.
+//
+// ---------------------------------------------------------------------------
 // THE FIELD ISOLATION, WHICH IS ALSO THE FALSIFICATION
 // ---------------------------------------------------------------------------
 // The port's own lf9500->9600 run is taken at lf9600 and ONE GROUP OF BYTES per
-// arm is overwritten with the board's, then stepped 100 more frames to lf9700:
+// arm is overwritten with the board's, then stepped 100 more frames to lf9700.
+// [M] W438's numbers, against the port as it then stood:
 //
 //     patched group                  lf9600      lf9700
 //     ------------------------------ ----------- -----------
@@ -54,10 +72,14 @@
 //  2. THE SEGMENTS.  Pool A is byte-perfect on exactly the segments where the
 //     BULLET pool is byte-perfect and on no other:
 //
-//         segment          bullets      pool A     pool B
-//         lf9500->9600     149/210      2/70       80/80
-//         lf9600->9700     210/210     70/70       80/80
-//         lf9700->9800     210/210     70/70       80/80
+//         segment          bullets      pool A     pool B   (W438)  (W440)
+//         lf9500->9600     149/210      2/70       80/80    ->  210/210 70/70
+//         lf9600->9700     210/210     70/70       80/80    ->  unchanged
+//         lf9700->9800     210/210     70/70       80/80    ->  unchanged
+//
+//     THE CORRELATION IS THE CLAIM, AND IT SURVIVED THE FIX: the one row where
+//     the two pools disagreed with the board is the one row W440 moved, and it
+//     moved BOTH of them, together, in one edit to src/bossf23.js.
 //
 //  3. THE FIELD.  Of the 61 bullet slots that differ at lf9600, **61 differ at
 //     `+$05` and 56 at `+$04`** -- the low half of the very longword the fill
@@ -85,6 +107,7 @@ import { fileURLToPath } from 'node:url';
 import { POOL_A, B } from '../src/bee.js';
 import { POOL_B } from '../src/effects.js';
 import { BUL, REC, TYPEBIT } from '../src/bullets.js';
+import { W440_MUTATE } from '../src/bossf23.js';
 import { readTrace } from '../tools/portdiff.mjs';
 import {
   ROM_WINDOW_COUNT, ROM_OVERLAP_PAIRS, overlappingPairs, OVERLAP_NOTE,
@@ -529,9 +552,9 @@ test('W438: lf9700->9800 is 70/70 as well, and the board DRAINS pool A to zero '
 // ===========================================================================
 // 3. THE RESIDUAL -- lf9500->9600, AND EXACTLY WHICH FIELD RESISTS
 // ===========================================================================
-test('W438: lf9500->9600 -- 2/70, and SIXTY of the sixty-eight differing slots '
-  + 'differ ONLY at +$02..+$05, agreeing on status, sprite, blink, speed, angle '
-  + 'and the cached velocity',
+test('W438 (rewritten by W440): lf9500->9600 is now 70/70 pool A and 210/210 '
+  + 'bullets, where W438 measured 2/70 with SIXTY slots differing ONLY at '
+  + '+$02..+$05 -- the residual this file was written about is gone',
 { skip: SKIP_LADDER }, async () => {
   const r = await segment(9500, 9600);
 
@@ -543,22 +566,29 @@ test('W438: lf9500->9600 -- 2/70, and SIXTY of the sixty-eight differing slots '
   assert.deepEqual(r.drawGap, [],
     'and W437\'s draw-count agreement on all 100 frames is not regressed');
 
-  // The residual, classified rather than summarised.
-  assert.equal(r.a.identical, 2, 'two slots are byte-identical');
-  assert.deepEqual(r.a.identicalSlots, [1, 3], '...and they are slots 1 and 3');
-  assert.equal(r.a.statusSame, 62, 'the status word matches on 62 of 70');
-  assert.equal(r.a.posOnly.length, 60,
-    'SIXTY slots differ ONLY at +$02..+$05. That is the claim this whole file '
-    + 'exists to make measurable');
-  assert.deepEqual(r.a.otherwise, [15, 16, 30, 31, 64, 65, 68, 69],
-    'and the other eight are FOUR PAIRS, each a one-slot shift: the board holds '
-    + 'a record where the port holds none, and the port holds one in the next '
-    + 'slot. Pool A is allocated by scanning for the first free slot, and a fill '
-    + 'that ABORTS off-screen leaves its slot free -- so a carrier in a '
-    + 'different place shifts everything after it by one');
+  // W438's classification, re-asserted against the state that replaced it.
+  assert.equal(r.a.identical, POOL_A.generalSlots,
+    'SEVENTY of seventy pool-A slots are byte-identical. [M] W438 measured 2, '
+    + 'with slots 1 and 3 the only two, and W439 re-asserted that 2 so it could '
+    + 'not be quietly claimed later. W440 closed it from src/bossf23.js and '
+    + 'touched no pool-A code at all');
+  assert.equal(r.a.statusSame, POOL_A.generalSlots,
+    '...the status word matches on all seventy, where it matched on 62');
+  assert.deepEqual(r.a.posOnly, [],
+    '...NO slot differs only at +$02..+$05, where SIXTY did. That group was the '
+    + 'claim this whole file exists to make measurable, and it is empty because '
+    + 'the carrier those records copy their position from is now the board\'s');
+  assert.deepEqual(r.a.otherwise, [],
+    '...and no slot differs any other way either, where eight did -- FOUR '
+    + 'PAIRS, each a one-slot allocation shift, which is exactly what a wrongly '
+    + 'placed carrier produces in a pool allocated by a first-free scan');
+  assert.equal(r.bul.identical, BUL.slots,
+    'and the BULLET pool on the same run is 210/210, where it was 149. The two '
+    + 'moved together, in one edit, which is this file\'s central claim');
 
-  // On those sixty, every other field is already the board's -- named one by
-  // one rather than as "the rest", because "the rest" is what hides a defect.
+  // Every field of every record, named one by one rather than as "the rest",
+  // because "the rest" is what hides a defect.  W438 ran this loop over its
+  // sixty position-only slots; it now runs over all seventy.
   const { board, port } = r;
   const FIELDS = [
     ['status', [0x00, 0x01]],
@@ -575,7 +605,7 @@ test('W438: lf9500->9600 -- 2/70, and SIXTY of the sixty-eight differing slots '
     ['layer emitter', [0x28, 0x29, 0x2a, 0x2b]],
   ];
   for (const [name, ks] of FIELDS) {
-    for (const s of r.a.posOnly) {
+    for (const s of r.a.identicalSlots) {
       const o = slotOffA(s);
       for (const k of ks) {
         assert.equal(port[o + k], board[o + k],
@@ -593,6 +623,9 @@ test('W438: lf9500->9600 -- 2/70, and SIXTY of the sixty-eight differing slots '
   // can differ.
   assert.equal(r.a.posOnly.length + r.a.otherwise.length + r.a.identical,
     POOL_A.generalSlots, 'the three classes account for all seventy slots');
+  assert.equal(r.a.identicalSlots.length, POOL_A.generalSlots,
+    '...and the field loop above therefore ran over every one of them, not '
+    + 'over a subset that happened to agree');
 
   // Pool B, unregressed, on the segment W436 and W437 fought over.
   assert.equal(r.b.identical, POOL_B.slots, 'pool B is 80/80');
@@ -602,17 +635,21 @@ test('W438: lf9500->9600 -- 2/70, and SIXTY of the sixty-eight differing slots '
     '...and the board\'s 33 live / 43 non-blank / $81C8EA = $22');
 });
 
-test('W438: the brief\'s "27 where the board holds 32" is the lf9500->lf9700 '
-  + 'TWO-HUNDRED-frame run, not the lf9600->9700 rung -- both are asserted so '
-  + 'they can never be confused again',
+test('W438 (rewritten by W440): the TWO-HUNDRED-frame run lf9500->lf9700 now '
+  + 'reaches the board\'s 32 records and 70/70, where W438 measured 27 -- its '
+  + 'diagnosis of that 27 confirmed by the number moving when the CARRIER was '
+  + 'fixed and nothing else was',
 { skip: SKIP_LADDER }, async () => {
   const long = await segment(9500, 9700);
   assert.equal(long.boardA.occupied, BOARD_POOLA[9700],
     'the board holds 32 pool-A records at lf9700 either way');
-  assert.equal(long.a.occupied, 27,
-    'seeded at lf9500 the port reaches 27 -- the brief\'s number, and it is '
-    + 'real, but it is 200 frames of accumulated CARRIER error and not a '
-    + 'statement about the driver');
+  assert.equal(long.a.occupied, BOARD_POOLA[9700],
+    'seeded at lf9500 the port now reaches 32. [M] W438 measured 27 here and '
+    + 'named it correctly -- 200 frames of accumulated CARRIER error, not a '
+    + 'statement about $27F95A -- and W440 removed the carrier error without '
+    + 'touching this driver at all');
+  assert.equal(long.a.identical, POOL_A.generalSlots,
+    '...with all seventy slots byte-identical over the 200 frames');
   const short = await segment(9600, 9700);
   assert.equal(short.a.occupied, BOARD_POOLA[9700],
     '...while seeded at lf9600 it reaches the board\'s 32 exactly');
@@ -623,9 +660,10 @@ test('W438: the brief\'s "27 where the board holds 32" is the lf9500->lf9700 '
 // ===========================================================================
 // 4. THE ATTRIBUTION -- POOL A IS EXACT WHERE THE BULLET POOL IS
 // ===========================================================================
-test('W438: pool A is byte-perfect on exactly the segments where the BULLET '
-  + 'pool is byte-perfect -- and the 61 bullet slots that differ at lf9600 '
-  + 'differ at +$04/+$05, the half of the longword the fill copies',
+test('W438 (rewritten by W440): pool A is byte-perfect on exactly the segments '
+  + 'where the BULLET pool is -- and W440 fixing the bullet pool on the one '
+  + 'row where they disagreed carried pool A with it, which is this claim '
+  + 'confirmed and not restated',
 { skip: SKIP_LADDER }, async () => {
   const a = await segment(9500, 9600);
   const b = await segment(9600, 9700);
@@ -638,19 +676,28 @@ test('W438: pool A is byte-perfect on exactly the segments where the BULLET '
     'lf9700->9800: all 210 bullet slots byte-identical');
   assert.equal(c.a.identical, POOL_A.generalSlots, '...and pool A is 70/70');
 
-  assert.equal(a.bul.differ, 61,
-    'lf9500->9600: SIXTY-ONE bullet slots differ, seeded from the board\'s own '
-    + 'lf9500 RAM -- the port re-diverges inside the very window the pool-A '
-    + 'deliverable is measured on');
-  assert.equal(a.a.identical, 2, '...and pool A is 2/70 on that same run');
-  assert.equal(a.bul.offsets.get(0x05), 61,
-    'all 61 differ at +$05 -- the low byte of REC.posB');
-  assert.equal(a.bul.offsets.get(0x04), 56, '...and 56 at +$04, its high byte');
+  // The row W438 measured as the exception.  [M] then: 61 bullet slots differ
+  // (all 61 at +$05, 56 at +$04, NONE at +$02/+$03 because $281EC4 writes
+  // #$FFFF over the long axis when it frees a slot) and pool A is 2/70.
+  assert.equal(a.bul.differ, 0,
+    'lf9500->9600: ZERO bullet slots differ, where W438 measured SIXTY-ONE. '
+    + 'That segment was the only row in the table where the port re-diverged '
+    + 'inside the window the pool-A deliverable is measured on');
+  assert.equal(a.a.identical, POOL_A.generalSlots,
+    '...and pool A is 70/70 on that same run, where it was 2/70. ONE edit, in '
+    + 'src/bossf23.js, moved both -- so the correlation this test names is not '
+    + 'a coincidence of two pools that happen to be hard, it is a dependency');
+  assert.equal(a.bul.offsets.get(0x05) ?? 0, 0,
+    '...with nothing left at +$05, the low byte of REC.posB, where all 61 of '
+    + 'the differing slots used to sit');
+  assert.equal(a.bul.offsets.get(0x04) ?? 0, 0,
+    '...nor at +$04, its high byte, where 56 of them did');
   assert.equal(a.bul.offsets.get(0x02) ?? 0, 0,
-    'and NONE at +$02/+$03, because $281EC4 writes #$FFFF there when it frees '
-    + 'the slot -- the kill overwrites the long axis and leaves the short one '
-    + 'holding the position the bullet died at, which is the residue that '
-    + 'shows where the port put its bullets');
+    'and none at +$02/+$03 either -- which was ALREADY true in W438, because '
+    + '$281EC4 writes #$FFFF there when it frees a slot: the kill overwrites '
+    + 'the long axis and leaves the short one holding the position the bullet '
+    + 'died at. That is why the residue pointed at the position and not at the '
+    + 'record as a whole');
   assert.equal(a.bul.offsets.get(0x03) ?? 0, 0, '...neither at +$03');
   assert.equal(REC.posB, 0x04,
     'stated against the layout constant so a renamed offset cannot silently '
@@ -661,55 +708,91 @@ test('W438: pool A is byte-perfect on exactly the segments where the BULLET '
 // ===========================================================================
 // 5. THE FIELD ISOLATION, WHICH IS THE FALSIFICATION
 // ===========================================================================
-test('W438: handing the port the board\'s value for ALL FORTY OTHER BYTES of '
-  + 'every pool-A record moves NOTHING; handing it the four position bytes '
-  + 'moves 2/70 to 62/70 and survives 100 further frames at 52/70',
+test('W438 (rewritten by W440): the field isolation, run UNDER A MUTATION so '
+  + 'it can still fail -- with $29690A put back to its 8-bit reading, handing '
+  + 'the port the board\'s value for ALL FORTY OTHER BYTES moves NOTHING and '
+  + 'the four position bytes move 60/70 to 70/70',
 { skip: SKIP_LADDER }, async () => {
   const trace = readTrace(TRACE);
   const board9600 = boardRam(9600);
   const board9700 = boardRam(9700);
   const POS = [0x02, 0x03, 0x04, 0x05];
-  const ALL = Array.from({ length: POOL_A.stride }, (_, i) => i);
+  const OTHERS = Array.from({ length: POOL_A.stride }, (_, i) => i)
+    .filter((k) => k < 0x02 || k > 0x05);
 
-  async function arm(ks) {
-    const { game, pokes } = await makeGame(9500);
-    stepFrames(game, pokes, trace, 9500, 9600, null);
-    const before = poolA(board9600, game.ram.b).identical;
-    for (let s = 0; s < POOL_A.generalSlots; s++) {
-      const o = slotOffA(s);
-      for (const k of ks) game.ram.b[o + k] = board9600[o + k];
+  // W440 closed the divergence this experiment was run on, so the experiment
+  // is run on one it can create: `e14-fallthrough` restores the single 8-bit
+  // reading of $29690A and puts a wrongly-placed carrier back in the pool.
+  // The mechanism under test is unchanged; only its source of error is.
+  async function arm(ks, mut) {
+    const prev = W440_MUTATE.value;
+    W440_MUTATE.value = mut;
+    try {
+      const { game, pokes } = await makeGame(9500);
+      stepFrames(game, pokes, trace, 9500, 9600, null);
+      const before = poolA(board9600, game.ram.b);
+      for (let s = 0; s < POOL_A.generalSlots; s++) {
+        const o = slotOffA(s);
+        for (const k of ks) game.ram.b[o + k] = board9600[o + k];
+      }
+      const after = poolA(board9600, game.ram.b).identical;
+      stepFrames(game, pokes, trace, 9600, 9700, null);
+      return { before, after, at9700: poolA(board9700, game.ram.b).identical };
+    } finally {
+      W440_MUTATE.value = prev;
     }
-    const after = poolA(board9600, game.ram.b).identical;
-    stepFrames(game, pokes, trace, 9600, 9700, null);
-    return { before, after, at9700: poolA(board9700, game.ram.b).identical };
   }
 
-  const none = await arm([]);
-  assert.deepEqual([none.before, none.after, none.at9700], [2, 2, 2],
-    'the control arm patches nothing and stays at 2/70 through lf9700');
+  // FIRST: the port as shipped needs no patch at all.
+  const clean = await arm([], null);
+  assert.deepEqual(
+    [clean.before.identical, clean.after, clean.at9700],
+    [POOL_A.generalSlots, POOL_A.generalSlots, POOL_A.generalSlots],
+    'unmutated, the control arm patches nothing and is 70/70 at lf9600 and '
+    + 'still 70/70 100 frames later. [M] W438 measured 2, 2 and 2 here');
 
-  const pos = await arm(POS);
-  assert.equal(pos.after, 62,
-    'patching ONLY +$02..+$05 at lf9600 takes pool A from 2/70 to 62/70 -- the '
-    + 'sixty position-only slots plus the two that already matched');
-  assert.equal(pos.at9700, 52,
-    '...and after 100 MORE frames of $27F95A stepping them, 52 of 70 are still '
-    + 'byte-identical, where the unpatched run holds 2. A constant written into '
-    + 'the position could not survive that: the driver frees a record on the '
-    + 'frame its long axis goes negative, so a wrong position frees on a wrong '
-    + 'frame and the survivors are a different set');
+  const none = await arm([], 'e14-fallthrough');
+  assert.equal(none.before.identical, 60,
+    'with $29690A restored to its 8-bit reading the control arm falls to '
+    + '60/70 -- so this experiment has something to isolate again');
+  assert.equal(none.before.posOnly.length, 10,
+    '...and the TEN slots that differ, differ ONLY at +$02..+$05. That is '
+    + 'W438\'s central classification, reproduced on demand from one branch');
+  assert.deepEqual(none.before.otherwise, [],
+    '...with not one slot differing any other way');
+  assert.equal(none.at9700, 55,
+    '...and 100 frames later the unpatched arm holds 55 of 70');
 
-  // THE ARM THAT MAKES THIS UNFAKEABLE.  Every byte of the record EXCEPT the
-  // position is replaced with the board's, on all seventy slots -- forty bytes
-  // each, 2800 in total.  If the port had a second defect anywhere in the
-  // record, this arm would find it, because it is handed the right answer.
-  const restKeys = ALL.filter((k) => !POS.includes(k));
-  assert.equal(restKeys.length, POOL_A.stride - 4,
-    'the arm patches all 40 non-position bytes of the 44-byte record');
-  const rest = await arm(restKeys);
-  assert.deepEqual([rest.after, rest.at9700], [2, 2],
-    'and it moves the number by ZERO, at lf9600 and again at lf9700. The '
-    + 'position is not the LARGEST defect in pool A -- it is the ONLY one');
+  const others = await arm(OTHERS, 'e14-fallthrough');
+  assert.equal(others.after, 60,
+    'handing the port the board\'s value for ALL FORTY OTHER BYTES of every '
+    + 'record moves the number by ZERO -- 60/70 before and 60/70 after. A port '
+    + 'with a second defect anywhere else in the 44-byte record would improve '
+    + 'here, and this is the arm that says there is none');
+  assert.equal(others.at9700, 55, '...and 55 at lf9700, also unmoved');
+
+  const pos = await arm(POS, 'e14-fallthrough');
+  assert.equal(pos.after, POOL_A.generalSlots,
+    'patching ONLY +$02..+$05 at lf9600 takes pool A from 60/70 to 70/70 -- '
+    + 'four bytes against forty, and only the four move anything');
+  assert.equal(pos.at9700, POOL_A.generalSlots,
+    '...and after 100 MORE frames of $27F95A stepping them, ALL SEVENTY are '
+    + 'still byte-identical, where the unpatched run holds 55. A constant '
+    + 'written into the position could not survive that: the driver frees a '
+    + 'record on the frame its long axis goes negative, so a wrong position '
+    + 'frees on a wrong frame and the survivors are a different set');
+  assert.equal(W440_MUTATE.value, null,
+    '...and the mutation is back to null, asserted rather than trusted');
+
+  // THE ARM THAT MAKES THIS UNFAKEABLE, stated as a size: every byte of the
+  // record EXCEPT the position is replaced with the board's, on all seventy
+  // slots -- forty bytes each, 2,800 in total, and the number does not move.
+  assert.equal(OTHERS.length, POOL_A.stride - 4,
+    'the OTHERS arm patches all 40 non-position bytes of the 44-byte record');
+  assert.equal(OTHERS.length * POOL_A.generalSlots, 2800,
+    '...which is 2,800 bytes of the board\'s own answer handed to the port for '
+    + 'nothing. The position is not the LARGEST defect in pool A, it is the '
+    + 'ONLY one');
 
   // Four single-field controls, so "the position field" is not standing in for
   // "some field that happens to sit near it".
@@ -719,9 +802,10 @@ test('W438: handing the port the board\'s value for ALL FORTY OTHER BYTES of '
     ['sprite descriptor +$0A..+$0D', [0x0a, 0x0b, 0x0c, 0x0d]],
     ['status +$00/+$01', [0x00, 0x01]],
   ]) {
-    const one = await arm(ks);
-    assert.deepEqual([one.after, one.at9700], [2, 2],
-      `patching ${name} moves nothing -- it is already the board's`);
+    const one = await arm(ks, 'e14-fallthrough');
+    assert.deepEqual([one.after, one.at9700], [60, 55],
+      `patching ${name} moves nothing -- it is already the board's, at lf9600 `
+      + 'and still at lf9700');
   }
 });
 

@@ -516,12 +516,22 @@ function rotationGunInit(ram, rom, a4, a6, o) {
 function rotationGunStep(ram, rom, ctx, a4, a5, a6, o) {
   if (ram.u8(a6 + o.dead) !== 0) return;                // $2960F4/$296200
   const d2 = (ram.u32(a6 + o.pos) + o.bias) >>> 0;      // $2960FC/$296208
-  if (subqByteBcc(ram, a4 + 0x02)) {                    // $29610A/$296216
-    o.subTick(ram, a4);                                 // $296112..$29613C (when not firing)
-    o.advance(ram, a4);                                 // $296180/$29628C
+  // W440: `$29610E 64 00 00 76` and `$29621A 64 00 00 76` are `bcc.W`, and both
+  // land on their routine's OWN `rts` ($296110 + $76 = $296186; $29621C + $76 =
+  // $296292 -- and both of those bytes are `4e 75`).  So a frame on which the
+  // main cadence does NOT borrow does NOTHING AT ALL: no sub-cadence tick, no
+  // angle advance.  Read `64 00` as an 8-bit `bcc +0` and it becomes a branch to
+  // $296112 -- the next instruction -- which is how the port grew a phantom
+  // "when not firing" arm that ticked both sub-cadences and advanced the angle
+  // every single frame.  That arm is deleted here; it never existed.
+  if (subqByteBcc(ram, a4 + 0x02)) {                    // $29610A/$29610E bcc.w rts
+    // RED `rotgun-fallthrough`: the phantom arm the 8-bit reading created.
+    if (W440_MUTATE.value !== 'rotgun-fallthrough') return;
+    o.subTick(ram, a4);
+    o.advance(ram, a4);
     return;
   }
-  // Main cadence fired: reload, tick sub-cadences, fire volley.
+  // Main cadence fired: tick the sub-cadences, then the volley.
   o.subTick(ram, a4);                                   // $296112..$29613C
   let d1 = ram.u8(a4 + 0x0a);                           // $296142/$296144/$296250
   const d0 = ((ram.u16(a4 + 0x14) << 16) | 0x0013) >>> 0;   // $296148/$296254
@@ -544,12 +554,22 @@ function rotationGunStep(ram, rom, ctx, a4, a5, a6, o) {
 }
 // The sub-cadence tick: dec $e, on wrap reload and dec $3, copy $3->$2, dec $10.
 const subTickFn = (ram, a4) => {
-  if (subqByteBcc(ram, a4 + 0x0e)) return;              // $296112/$29621E
-  ram.setU8(a4 + 0x0e, ram.u8(a4 + 0x0f));              // $29611A/$296226
-  if (ram.u8(a4 + 0x03) !== 3)                          // $296120/$29622C
-    ram.setU8(a4 + 0x03, u8(ram.u8(a4 + 0x03) - 1));    // $29612A/$296236
+  // W440: `$296116 64 00 00 16` is a `bcc.W` to $296118 + $16 = **$29612E**,
+  // the `move.b ($3,A4),($2,A4)` -- NOT a return.  Only the $E reload and the
+  // $3 decrement sit under it; the main-cadence reload and the $10 tick below
+  // run either way.  The 8-bit reading makes `64 00` a branch to $29611A, the
+  // next instruction, and the port had turned it into an early `return` that
+  // skipped BOTH of those.  Same word at $29621E for E6.
+  const eNoBorrow = subqByteBcc(ram, a4 + 0x0e);        // $296112
+  // $296116 bcc.w $29612E -- RED `subtick-return` returns instead.
+  if (eNoBorrow && W440_MUTATE.value === 'subtick-return') return;
+  if (!eNoBorrow) {                                     // $296116 bcc.w $29612E
+    ram.setU8(a4 + 0x0e, ram.u8(a4 + 0x0f));            // $29611A/$296226
+    if (ram.u8(a4 + 0x03) !== 3)                        // $296120/$296126 beq.w $29612E
+      ram.setU8(a4 + 0x03, u8(ram.u8(a4 + 0x03) - 1));  // $29612A/$296236
+  }
   ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));              // $29612E/$29623A
-  if (subqByteBcc(ram, a4 + 0x10)) return;              // $296134/$296240
+  if (subqByteBcc(ram, a4 + 0x10)) return;              // $296134/$296138 bcc.w $296142
   ram.setU8(a4 + 0x10, ram.u8(a4 + 0x11));              // $29613C/$296248
 };
 const ROT5 = {
@@ -648,20 +668,57 @@ export function e12Step2966B8(ram, rom, ctx, a4, a5, a6) {
   void ctx;
 }
 
+/** WAVE 440's falsification seam, same shape and same reset discipline as
+ *  `W436_MUTATE`.  Each value puts ONE of the three branches this wave decoded
+ *  back to the reading the port carried before it, so the ladder can be shown
+ *  to go RED without that branch instead of the fix being merely asserted:
+ *
+ *    'e14-fallthrough'    -- $29690A read as an 8-bit `bcc +0`: the E14 outer
+ *                            cadence falls through into the fire cadence.
+ *    'rotgun-fallthrough' -- $29610E/$29621A read the same way: E5/E6 tick both
+ *                            sub-cadences and advance the angle on every frame.
+ *    'subtick-return'     -- $296116 read as a RETURN instead of a branch to
+ *                            $29612E: the $2 reload and the $10 tick are lost
+ *                            whenever ($E,A4) does not borrow.
+ *
+ *  `null` is the ported board. */
+export const W440_MUTATE = { value: null };
+
 // ===========================================================================
 // E 14 -- $2968E6 / $2968FE.  Rotation's own gun (kind 4 fan).
 // ===========================================================================
 export function e14Init2968E6(ram, a4) {
   ram.setU16(a4 + 0x04, 0x9050);                        // $2968E6 -- $4=$90, $5=$50
   ram.setU16(a4 + 0x06, 0);                             // $2968EC
-  ram.setU16(a4 + 0x08, 0x0001);                        // $2968F2 -- $8=1, $9=0
-  ram.setU16(a4 + 0x0a, 0x000c);                        // $2968F8 -- $a=$0C, $b=$00
+  // W440: these two comments were INVERTED, and the inversion hid the shape of
+  // the gun.  `setU16` is big-endian, so `#$0001` puts $00 in ($8,A4) and $01
+  // in ($9,A4), and `#$000C` puts $00 in ($A,A4) and $0C in ($B,A4).  [M] the
+  // board's own $812C18 at lf9100 reads `... 00 01 00 0C`, which settles it.
+  // The code was always right; only the annotation was wrong.
+  ram.setU16(a4 + 0x08, 0x0001);                        // $2968F2 -- $8=$00, $9=$01
+  ram.setU16(a4 + 0x0a, 0x000c);                        // $2968F8 -- $a=$00, $b=$0C
 }
 export function e14Step2968FE(ram, rom, ctx, a4, a5, a6) {
-  // $2968FE: if $8 == 0, run the outer cadence; else skip it.
-  if (ram.u8(a4 + 0x08) === 0) {                        // $2968FE/$296902
-    if (!subqByteBcc(ram, a4 + 0x04)) {                 // $296906
-      if (i8(ram.u8(a4 + 0x05)) > 0x10)                 // $29690E cmpi.b/bls
+  // $2968FE: if $8 == 0 run the outer cadence, else jump straight to the fire
+  // cadence.  `$296902 66 00 00 22` is a `bne.W`: the displacement lives in the
+  // EXTENSION WORD and $296904 + $22 = $296926.
+  if (ram.u8(a4 + 0x08) === 0) {                        // $2968FE/$296902 bne.w
+    const noBorrow = subqByteBcc(ram, a4 + 0x04);       // $296906 subq.b #1,($4,A4)
+    // W440: `$29690A 64 00 01 0C` is a **`bcc.W` to $296A18, the rts**
+    // ($29690C + $10C).  Read as an 8-bit `bcc +0` it becomes a branch to
+    // $29690E -- the very next instruction -- i.e. no branch at all, and that
+    // is the reading the port carried: the outer cadence fell through into the
+    // fire cadence on EVERY frame it did not borrow, so the gun fired every $C
+    // frames for as long as the script was scheduled where the board fires ONE
+    // burst per outer period and is silent between them.  Same wide-branch trap
+    // as W437, W438 and W439, a fourth time.
+    if (noBorrow && W440_MUTATE.value !== 'e14-fallthrough') return;
+    if (!noBorrow) {
+      // $29690E `cmpi.b #$10,($5,A4)` / $296914 `63 04 bls $29691A`.  `bls` is
+      // UNSIGNED, so the guard is an unsigned compare.  [M] inert on this rung
+      // -- ($5,A4) walks $50,$4C..$10 and never reaches $80 -- but the signed
+      // reading it replaces was wrong for every value above $7F.
+      if (ram.u8(a4 + 0x05) > 0x10)                     // $29690E cmpi.b/bls
         ram.setU8(a4 + 0x05, u8(ram.u8(a4 + 0x05) - 4));   // $296916
       ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));          // $29691A
       ram.setU8(a4 + 0x08, ram.u8(a4 + 0x09));          // $296920

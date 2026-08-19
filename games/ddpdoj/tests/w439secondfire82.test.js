@@ -58,11 +58,20 @@
 //     reads entry 17 and not entry 0.
 //
 // ---------------------------------------------------------------------------
-// WHAT THIS WAVE DOES **NOT** FIX, STATED PLAINLY
+// WHAT THIS WAVE DID **NOT** FIX -- AND WHAT W440 THEN DID
 // ---------------------------------------------------------------------------
-// lf9500->9600 is **149/210 bullets and 2/70 pool A before and after**.  One
-// missing spawn was not the same defect as the 61 slots that differ there, and
-// this file measures both so the claim cannot drift.
+// W439 measured lf9500->9600 at **149/210 bullets and 2/70 pool A before and
+// after**, and said so: one missing spawn was not the same defect as the 61
+// slots that differ there.  That was right.  W440 found the real one -- four
+// `.W` branches in the stage-1 boss's three rotation guns, read as 8-bit --
+// and lf9200->9300, lf9300->9400, lf9400->9500 and lf9500->9600 all went to
+// 210/210 with pool A at 70/70.
+//
+// The two tests at the foot of this file asserted W439's numbers and went RED
+// when W440 moved them.  They are REWRITTEN, not deleted, and they still say
+// the thing W439 wrote them to say: these segments are NOT what $274A9C fixed.
+// Each now asserts the post-W440 number and records W439's next to it, so the
+// history stays readable and the guard stays live.
 //
 // NO ROM WINDOW IS DECLARED OR WIDENED.  `$27327A..$2732F9` already lies inside
 // the exported window `$273270 + $90`.
@@ -685,9 +694,10 @@ test('W439: RED -- corrupting the ONE muzzle-table longword $274AB4 indexes '
 // ===========================================================================
 // 5. THE NEIGHBOURS -- W434..W438 NOT REGRESSED, AND WHAT DID **NOT** IMPROVE
 // ===========================================================================
-test('W439: the 100-frame rungs are exactly where W438 left them -- '
-  + 'lf9600->9700 and lf9700->9800 at 210/210 bullets and 70/70 pool A, and '
-  + 'lf9500->9600 STILL at 149/210 and 2/70. This wave did not improve it',
+test('W439 (rewritten by W440): lf9600->9700 and lf9700->9800 are where W438 '
+  + 'left them at 210/210 and 70/70, and lf9500->9600 -- which W439 measured '
+  + 'at 149/210 and 2/70 and explicitly did NOT fix -- is now 210/210 and '
+  + '70/70, fixed by W440 and not by $274A9C',
 { skip: SKIP_LADDER }, async () => {
   const a = await segment(9500, 9600);
   const b = await segment(9600, 9700);
@@ -700,11 +710,15 @@ test('W439: the 100-frame rungs are exactly where W438 left them -- '
   assert.equal(c.a.n, POOL_A.generalSlots, '...and pool A 70/70');
   assert.deepEqual(c.drawGap, [], '...with no draw-gap frame');
 
-  assert.equal(a.bul.n, 149,
-    'lf9500->9600 is STILL 149 of 210 bullet slots -- W438\'s number, unmoved. '
-    + 'ONE MISSING SPAWN WAS NOT THE SAME DEFECT AS THE 61 SLOTS THAT DIFFER '
-    + 'HERE, and this assertion exists so that cannot be quietly claimed later');
-  assert.equal(a.a.n, 2, '...and pool A is still 2/70 on that same run');
+  assert.equal(a.bul.n, BUL.slots,
+    'lf9500->9600 is 210 of 210 bullet slots. [M] W438 and W439 both measured '
+    + '149 here and W439 asserted it so it could not be quietly claimed later. '
+    + 'It was NOT quietly claimed: it moved when W440 decoded four wide '
+    + 'branches in src/bossf23.js, which is a different file from the one this '
+    + 'wave touched. ONE MISSING SPAWN WAS NOT THE SAME DEFECT AS THE 61 SLOTS '
+    + 'THAT DIFFERED HERE, and that is now proved rather than merely stated');
+  assert.equal(a.a.n, POOL_A.generalSlots,
+    '...and pool A is 70/70 on that same run, where it was 2/70');
   assert.deepEqual(a.drawGap, [], '...with W437\'s draw agreement intact');
 
   for (const [name, r] of [['lf9500->9600', a], ['lf9600->9700', b],
@@ -713,14 +727,17 @@ test('W439: the 100-frame rungs are exactly where W438 left them -- '
   }
 });
 
-test('W439: the two rungs BELOW the pool-A window are unregressed too -- '
-  + 'lf9300->9400 at 111/210 and lf9400->9500 at 113/210 bullets, both with '
-  + 'pool A 70/70 and pool B 80/80',
+test('W439 (rewritten by W440): the two rungs BELOW the pool-A window are '
+  + 'unregressed and then some -- lf9300->9400 and lf9400->9500, which W439 '
+  + 'measured at 111/210 and 113/210, are both 210/210 since W440',
 { skip: SKIP_LADDER }, async () => {
   const a = await segment(9300, 9400);
   const b = await segment(9400, 9500);
-  assert.equal(a.bul.n, 111, 'lf9300->9400 bullets 111/210');
-  assert.equal(b.bul.n, 113, 'lf9400->9500 bullets 113/210');
+  assert.equal(a.bul.n, BUL.slots,
+    'lf9300->9400 bullets 210/210, where W439 measured 111 and recorded it as '
+    + 'a rung it had not touched');
+  assert.equal(b.bul.n, BUL.slots,
+    'lf9400->9500 bullets 210/210, where W439 measured 113');
   for (const [name, r] of [['lf9300->9400', a], ['lf9400->9500', b]]) {
     assert.equal(r.a.n, POOL_A.generalSlots, `pool A is 70/70 on ${name}`);
     assert.equal(r.b.n, POOL_B.slots, `...and pool B 80/80 on ${name}`);

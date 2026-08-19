@@ -4187,3 +4187,58 @@ unmodified. `src/bullets.js` IS CRLF (731/0).
 Verified by the coordinator on a quiet tree: **4021 pass / 0 fail / 0 skipped**, gate exit 0 with
 31 PASS / 0 FAIL, `--verify` OK at 613 windows with none added.
 
+
+### W440: FOUR WIDE BRANCHES READ AS 8-BIT LEFT ALL THREE STAGE-1 BOSS GUNS FREE-RUNNING
+
+    $29690A  64 00 01 0C  bcc.W $296A18   the rts.  E14's outer cadence
+    $29610E  64 00 00 76  bcc.W $296186   the rts.  E5's whole body
+    $29621A  64 00 00 76  bcc.W $296292   the rts.  E6's whole body
+    $296116  64 00 00 16  bcc.W $29612E   NOT a return -- the ($3,A4)->($2,A4) reload
+
+All four confirmed from the image by the coordinator. **This is the same trap that bit W437
+(`bcs.W`), W438 (`bmi.W`) and W439 (`bra.W`) -- four waves running, and here FOUR instances at
+once.**
+
+**BEFORE measured from `git archive HEAD`, not asserted:**
+
+    lf9000->9100  194/210 -> 210/210     lf9300->9400  111/210 -> 210/210
+    lf9100->9200  113/210 -> 176/210     lf9400->9500  113/210 -> 210/210
+    lf9200->9300  108/210 -> 210/210     lf9500->9600  149/210 -> 210/210, pool A 2/70 -> 70/70
+
+**POOL A FOLLOWED WITH NO POOL-A CODE TOUCHED**, exactly as W438's finding predicted. Whole-ladder
+sweep over all 209 rung pairs: **6 improved, 203 unchanged, 0 REGRESSED.**
+
+**MY BRIEF WAS WRONG IN FOUR PLACES:** `lf9300->9400` was NOT the worst (`lf9200->9300` at 108/210
+was -- my table started too late; the band runs lf9000..9600); `lf9100->9200` carries a draw gap no
+earlier wave reported; **W439's method did not apply** (`unportedLog` has no counted note in this
+window, so the producers came from the type-word write log alone); and **the producer was not a
+missing spawn but three OVER-firing guns** -- the port spawned 128 bullets where it now spawns 112,
+and 48 of one kind where the board fires ZERO.
+
+**THE EVIDENCE THAT NO POOL POKE COULD PRODUCE:** the three script slots `$812BD8`/`$812BF8`/
+`$812C18` are **not in the pool** and differed by 3/3/4 bytes; now **0/0/0**. And at lf9400 only
+1,793 of 4,043 differing bytes were inside the 13,440-byte pool -- **a perfect pool poke floors at
+2,250. The result is 637, with ZERO in the pool.**
+
+**THE BOARD'S OWN WITNESS, independent of the port:** across lf9100..9200 `($4,A4)` falls by exactly
+$64 = 100 while **`($A,A4)`, the fire cadence, never moves** -- the board returned before the fire
+on all 100 frames.
+
+**THREE RED RUNS PERFORMED, one branch at a time**, each reddening differently, and **no single arm
+reproduces the pre-wave numbers** -- so all three are load-bearing.
+
+**SIX TESTS WERE ASSERTING THE DEFECT** -- four in `w438poolapos` and two in `w439secondfire82` --
+**all REWRITTEN, none deleted.** W438's field-isolation experiment now runs under a mutation seam so
+it can still fail.
+
+Also corrected: a **signed compare where the ROM is unsigned** (`$296914 bls`), stated as measured
+inert on this rung; and two inverted comments where the code was always right.
+
+Verified by the coordinator on a quiet tree: **4038 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows with none added.
+
+**LEFT OPEN, MEASURED NOT WAVED AT:** `lf9100->9200` stops at 176/210 and is **two independent
+defects, neither this wave's** -- the port misses the laser beam-impact spark on two ticks (and
+**handing it those 8 draws changes the bullet count by ZERO, performed not argued**), and it frees
+8 records where the board frees 16, which is `mover.js`/`boundsKill` territory.
+
