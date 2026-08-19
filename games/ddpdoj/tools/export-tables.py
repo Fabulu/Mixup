@@ -2401,9 +2401,12 @@ SHOT_WINDOWS.extend([
 # (the slide-out state machine) read four embedded data tables out of the
 # `$28Exxx` cluster.  Every extent is pinned by the routine's own end-marker
 # compare (`$28DB16 cmpa.l #$28E6E6` for the slide; `$28DE00 cmpa.l #$28E716`
-# for the medal walk) or by the template-copy length.  The anim-chain loader
-# reads only the node-count word of the `$28D862` script (the per-node content
-# is the presentation tier the anim driver `$246410` dispatches on -- R2b).
+# for the medal walk) or by the template-copy length.  W124's text here said the
+# anim-chain loader "reads only the node-count word of the `$28D862` script (the
+# per-node content is the presentation tier the anim driver `$246410` dispatches
+# on -- R2b)".  **W435 RETIRED THAT:** the content is seeded and the drain is
+# `animobjects.js runAnimObjects24683E`, so the script's content words are a
+# declared window now, immediately below.
 SHOT_WINDOWS.extend([
     # The F2 sprite-init prototype at $28E646 (18 bytes, copied by $28DA7A's
     # four longs + one word), the F3 slide-in delta table at $28E698 (39 words,
@@ -2418,11 +2421,24 @@ SHOT_WINDOWS.extend([
     # at the far end by $28EA98 (the teardown, code).
     (0x28EA54, 0x0044, "W124: banner slide-out template $28EA58 + DFEC seed "
                        "$28EA54; ends at $28EA98 (teardown, code)"),
-    # The anim-chain build script at $28D862: the loader reads only word 0 (the
-    # node count, $0008).  A 2-byte window is all the port reaches; the per-node
-    # content words are R2b (the anim driver $246410).
+    # The anim-chain build script at $28D862, word 0 -- the node count, $0008.
+    # W124 declared this alone because the port read nothing else; W435's window
+    # below carries the eight nodes it now reads.  Left as its own window rather
+    # than widened, per the house rule.
     (0x28D862, 0x0002, "W124: anim-chain script node-count word at $28D862 "
-                       "(the $24652A loader reads only this; content is R2b)"),
+                       "(W435 adds the content at $28D864)"),
+    # W435: ...and the eight nodes' CONTENT, which is no longer R2b. `$246582`
+    # (`animobjects.js CHAIN_CONTENT_24652A`) is SIX words per node -- family,
+    # current-offset, target.l, words-minus-one, timing -- so 8 * 12 = $60 bytes
+    # at $28D864, ending exactly at $28D8C4, which is the stage-5 ending script
+    # `$28DE44 lea $28D8C4(PC)` reads. Both ends are pinned: the count word
+    # above says 8 and the next script starts where the eighth node ends.
+    # ABUTTING $28D862 IS CORRECT HERE AND W428'S STRADDLE CASE DOES NOT APPLY:
+    # the loader's only read of the first window is `rom.u16($28D862)`, and the
+    # content cursor starts at $28D864, so no read crosses the seam.
+    (0x28D864, 0x0060, "W435: anim-chain script CONTENT at $28D864 -- 8 nodes x "
+                       "6 words for $246582's shape; ends at $28D8C4, the "
+                       "stage-5 script $28DE44 leas"),
     # W124: the next-stage BG PALETTE block at $229DF8.  background.js:1059 reads
     # rom.bytes(bgBlock, 32*64) = 2048 bytes during the stage-transition rebuild
     # ($2611C4 install2415E8 with D1=$1F = 32 banks x 64 bytes).  CATCHUP 7a named

@@ -41,6 +41,10 @@ import { BOSS, BOSS_NOTED, livePlayers2428A6, bossDamage294AD8, bossTimeout294F3
 import { ALLOC } from '../src/objalloc.js';
 import { OBJ } from '../src/objdriver.js';
 import { BUCKETS } from '../src/spritequeue.js';
+// W435: main-loop call #3. Type 6's state $B now WAITS on the anim chain
+// ($28D702 bne), and this is the only thing that drains it, so a fixture that
+// drives the handler without it drives half a machine.
+import { runAnimObjects24683E } from '../src/animobjects.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TABLES = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
@@ -663,13 +667,15 @@ test('type 6 HOLDS IN STATE 1 while the result screen waits for the tally '
       + 'so F8 waits. DEV-1 is gone: nothing sets bit 1 stand-in here');
   });
 
-test('once $8130F9 bit 1 is set, type 6 walks 1 -> $B -> 2 -> 3 -> 4',
+test('once $8130F9 bit 1 is set, type 6 walks 1 -> $B -> 2 -> 3 -> 4 (W435: and '
+  + 'state $B now costs THIRTY-TWO frames, not one)',
   { skip: SKIP }, () => {
     const { ram, slot } = type6Fixture();
     const { ctx } = ctxOf(ram);
     const h = makeStageClear(ROM);
     const seen = [];
     let bit1Set = false;
+    let framesInB = 0;
     for (let i = 0; i < 400; i++) {
       // simulate the tally completing once the result screen has run a while
       if (!bit1Set && ram.u8(slot + 0x06) === 1 && i > 20) {
@@ -677,11 +683,22 @@ test('once $8130F9 bit 1 is set, type 6 walks 1 -> $B -> 2 -> 3 -> 4',
         bit1Set = true;
       }
       h(ram, slot, 0, ctx);
+      // W435 -- main-loop call #3, which the machine runs AFTER the object
+      // driver. Without it the chain $28DE66 builds never drains and state $B
+      // never ends, which is the whole point of the wait.
+      runAnimObjects24683E(ram, ROM);
       const s = ram.u8(slot + 0x06);
+      if (s === 0x0b) framesInB++;
       if (seen[seen.length - 1] !== s) seen.push(s);
       if (s === 4) break;
     }
     assert.deepEqual(seen, [0, 0x0a, 1, 0x0b, 2, 3, 4]);
+    // [M] The $28D862 script's eight nodes all carry timing index 3, and
+    // $246B38[3] is reload 0 / step 1, so ($20,node) walks 1..$20 one per frame
+    // and ($18,node) clears on the 32nd. THIRTY-TWO is read off the ROM, not
+    // chosen -- tests/w435resultchain.test.js derives it from the image.
+    assert.equal(framesInB, 32,
+      "state $B holds for exactly the anim chain's drain, 32 frames");
     assert.equal(ram.u16(SE.stage), 1, '$25FD0C ran in state 2');
     assert.equal(ram.u16(SE.stageX4), 4);
     assert.equal(ram.u16(SE.clearing), 0, '$28D682 clr.w $812972 in state 3');
@@ -712,6 +729,7 @@ test('W124: the banner `$28E7F8` frees the slot -- type 6 LEAVES state 4 '
         bit1Set = true;
       }
       h(ram, slot, 0, ctx);
+      runAnimObjects24683E(ram, ROM);       // W435: state $B waits on this
     }
     assert.equal(ram.u8(slot + 0x06), 4, 'reached state 4');
     assert.equal(ram.u16(SE.dff6), 1, '$28E7DC set $81DFF6 in state 2');
@@ -820,30 +838,66 @@ test('W124 DEV-1 CLEARED: $8130F9 bit 1 has ONE producer, the REAL $285496 '
       'the tally body $285400 is ported in hud.js');
   });
 
-test('W124 DEV-2 REFINED: the only declared deviation key is $28D6FC',
-  { skip: SKIP }, () => {
-    assert.deepEqual(Object.keys(PRESENTATION_DEVIATION).map(Number), [0x28d6fc]);
-    assert.ok(/24681A|246410/.test(PRESENTATION_DEVIATION[0x28d6fc]),
-      'DEV-2 names the anim-driver gap ($246410) or the checker ($24681A)');
+test('W435 DEV-2 CLEARED: PRESENTATION_DEVIATION is EMPTY -- this file invents '
+  + 'no transition at all now', { skip: SKIP }, () => {
+    assert.deepEqual(Object.keys(PRESENTATION_DEVIATION), [],
+      'W124 removed DEV-1 ($28DE5C); W435 removed DEV-2 ($28D6FC) by seeding '
+      + "$24652A's per-node content and honouring $28D702's bne");
   });
 
-test('DEV-2 is COUNTED in unportedLog when the chain does not drain', { skip: SKIP }, () => {
+// W435 REPLACES 'DEV-2 IS COUNTED'. The old test asserted the port NOTED the
+// wait it was skipping. It no longer skips it, so the claim to pin is the
+// opposite one: with a real chain on ($8,A5), state $B HOLDS -- it does not
+// free, it does not clear $8130F8, and it does not advance. That is
+// `$28D702 bne.s $28D736`, whose target is the SAME $28D736 that `$28D6EA`
+// sends every non-$B state to.
+test('W435: state $B HOLDS while the anim chain is live, and every store past '
+  + 'the bne stays UNRUN', { skip: SKIP }, () => {
   const { ram, slot } = type6Fixture();
   const { ctx, notes } = ctxOf(ram);
   const h = makeStageClear(ROM);
-  // reach state $B: set bit 1 so F8 advances state 1 -> $B
   let bit1Set = false;
+  let reachedB = -1;
   for (let i = 0; i < 400; i++) {
     if (!bit1Set && ram.u8(slot + 0x06) === 1 && i > 10) {
       ram.setU8(SE.bossFlags9, ram.u8(SE.bossFlags9) | 0x02);
       bit1Set = true;
     }
     h(ram, slot, 0, ctx);
-    if (ram.u8(slot + 0x06) === 2) break;
+    // STOP the moment F8 hands over -- see the queue-cursor note below.
+    if (ram.u8(slot + 0x06) === 0x0b) { reachedB = i; break; }
   }
-  const r = notes.report().join('\n');
-  assert.ok(/\$28D6FC/.test(r), 'DEV-2 is counted (the chain did not drain, so '
-    + 'the port notes the wait-skip and frees the chain)');
+  assert.ok(reachedB >= 0, 'F8 must have advanced state 1 -> $B');
+  const handle = ram.u32(slot + 0x08) >>> 0;
+  assert.ok(handle !== 0 && handle !== 0xffffffff,
+    '$28DE66 jsr $24652A must have returned a real player-slot handle');
+  // The chain is live and this loop deliberately does NOT run main-loop call
+  // #3, so nothing steps it and state $B can never leave. 60 more calls: the
+  // bound is small on purpose, because this bare-`Ram` fixture has no frame
+  // reset for the sprite queue and past ~250 frames in one state the queue
+  // cursor walks into the object table itself.
+  ram.setU16(SE.bossFlags, 0x1234);                 // $28D722 would clear this
+  for (let i = 0; i < 60; i++) h(ram, slot, 0, ctx);
+  assert.equal(ram.u8(slot + 0x06), 0x0b,
+    'state $B holds on a live chain -- $28D702 bne.s $28D736');
+  assert.equal(ram.u16(SE.bossFlags), 0x1234,
+    '$28D722 clr.w $8130F8 is PAST the bne and must not have run');
+  assert.equal(ram.u16(handle) & 0x8000, 0x8000,
+    '...and $28D708 jsr $246800 did not free the chain');
+  assert.ok(!notes.report().join('\n').includes('$28D6FC'),
+    'and the DEV-2 note is gone, because the wait is real');
+
+  // ...and it is a WAIT, not a deadlock: run the drain and it ends. Exactly 32
+  // steps, because that is what the script's timing index buys.
+  let steps = 0;
+  while (ram.u8(slot + 0x06) === 0x0b && steps < 200) {
+    runAnimObjects24683E(ram, ROM);
+    h(ram, slot, 0, ctx);
+    steps++;
+  }
+  assert.equal(steps, 32, 'the chain drains in 32 frames and state $B ends');
+  assert.equal(ram.u8(slot + 0x06), 2, '$28D72E move.b #$2,$6(A5) runs then');
+  assert.equal(ram.u16(SE.bossFlags), 0, '$28D722 clr.w $8130F8 runs then too');
 });
 
 test('every emitter D-script 6 counts is keyed by the address it stands at',

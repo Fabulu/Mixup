@@ -454,10 +454,16 @@ export function runAnimObjects24683E(ram, rom) {
     let node = ram.u32(root + N.next);
     let activeSum = 0;
     while (node !== 0) {
-      // Result-screen `$24652A` chains are still deliberately content-light
-      // (stageend.js DEV-2): their executor pointer at +$06 is zero. They
-      // predate this palette executor and must remain inert until that distinct
-      // presentation family is ported. `$246410` always seeds a nonzero writer.
+      // **W435: THE SECOND CLAUSE IS A PORT INVENTION AND THE ROM HAS NO SUCH
+      // TEST.** [M] `$24687A 4a 54` is `tst.w (A4)` and `$24687C 67 00 02 B0`
+      // its `beq` -- the STATUS word is the whole gate -- and `$246880 22 6c
+      // 00 06` then loads `($6,A4)` into A1 unconditionally, so a zero there
+      // makes `$246B20 move.w #$1,(A1)` a wild write to address 0. The clause
+      // was added when `$24652A`'s chains were built content-light, and that
+      // reason is GONE: W435 switched `CHAIN_LOADERS[0].content` on, so every
+      // node this port builds now carries a real writer. It is kept only as the
+      // refusal to make that wild write. Nothing live depends on it -- measured
+      // by dropping it and re-running the stage1-laser-hold ladder.
       if (ram.u16(node + N.status) !== 0 && ram.u32(node + N.writer) !== 0) {
         stepNode(ram, rom, node);
       }

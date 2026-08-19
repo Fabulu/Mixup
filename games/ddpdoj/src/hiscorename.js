@@ -385,8 +385,11 @@ export function nameFrameBands28F542(ram, rom, a4, ctx) {
  * `$28F4A6` -- arm the grid: cursor to 1, the global active flag to 1, and hand `$28FA98` to
  * the animation driver.
  *
- * `$246410` is the anim-object driver `stageend.js` declares out of scope as
- * `PRESENTATION_DEVIATION[0x28d6fc]`, so this is COUNTED, not invented.
+ * `$246410` is the anim-object LOADER whose script window is not declared, so this is COUNTED,
+ * not invented.  **W435 CORRECTION:** this line used to cite
+ * `stageend.js PRESENTATION_DEVIATION[0x28d6fc]` as the reason.  That key is now EMPTY -- W435
+ * closed DEV-2 -- and the reason it gave (an unported execution engine) was never true: the
+ * engine is `animobjects.js runAnimObjects24683E`, main-loop call #3.
  *
  * **W389 CORRECTION TO THIS COMMENT'S SECOND HALF.** It used to add "and W303 counted `$246710`'s
  * content seeding for the same reason". That is no longer true: W388 ported `$24676A..$2467C3`
@@ -405,9 +408,10 @@ export function nameArmGrid28F4A6(ram, a4, ctx) {
   // `animobjects.js loadAnimObjects246410` is a real port, W387 already declared all four of
   // `$28FA98`'s fade targets, and arm 12 calls the same loader live. See W389's report.
   ctx?.unportedLog?.note(GRID_ROW.animDriver, `$28F4BA jsr $246410 with A0 = $28FA98 -- the `
-    + `name-entry grid's animation objects. Same presentation tier stageend.js declares out `
-    + `of scope (PRESENTATION_DEVIATION[0x28d6fc]); the cursor and the furniture around it `
-    + `ARE drawn, by $28FCAA`);
+    + `name-entry grid's animation objects. The DRAIN is ported (runAnimObjects24683E; W435 `
+    + `closed stageend.js's DEV-2 on it), so what is out of scope here is this call site and `
+    + `its $28FA98 script window, nothing deeper. The cursor and the furniture around it ARE `
+    + `drawn, by $28FCAA`);
 }
 
 /** `move.l #base,D1 / addi.l #delta,D1` -- a LONGWORD add, so the halves are not independent. */

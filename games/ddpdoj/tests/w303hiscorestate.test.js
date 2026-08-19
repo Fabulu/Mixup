@@ -139,12 +139,22 @@ test('W303 the label table stops before `$25B58C`', { skip: SKIP_IMG }, () => {
 // LIFECYCLE halves are the same instruction sequence apart from `($1E,node)`. That is asserted
 // field by field below, which is stronger than a byte compare that could not tell the two halves
 // apart in the first place.
+//
+// **W435 FINISHED THE THOUGHT.** The paragraph above says "feeding one loader's script to the
+// other is meaningless" and then this test did exactly that, which was harmless only while
+// `$24652A` stayed hollow. W435 switched its content on, and the four-word script now throws
+// `$246582` BY ADDRESS on the first node -- the right answer, loudly. Each head is given ITS
+// OWN script here: `$28D862` is `$24652A`'s (`$28DE5C lea`) and `$25BAAA` is `$246710`'s
+// (`$25B454 lea`), and both declare EIGHT nodes, so the pool slots and the link chain still
+// line up field for field. The one thing that cannot be compared this way is CONTENT, and
+// content is exactly what the two heads are not supposed to share.
+const SCRIPT_24652A = 0x28d862;          // $28DE5C lea (-$5FC,PC),A0 -- SIX words per node
 test('W303 the two loaders\' POOL LIFECYCLE halves differ only in `($1E,node)`', { skip: SKIP },
   () => {
     const a = new Ram();
     const b = new Ram();
     const w = world();
-    const ha = chainLoader24652A(a, ROM, SCREEN_STATE.script);
+    const ha = chainLoader24652A(a, ROM, SCRIPT_24652A);
     const hb = chainLoader246710(b, ROM, SCREEN_STATE.script, w.ctx);
     assert.equal(ha, hb, 'the same player slot');
     assert.notEqual(ha, 0xffffffff, 'and it succeeded');

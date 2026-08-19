@@ -49,9 +49,11 @@
 // wave's brief explicitly excludes.  Two of those three exits stand between the
 // boss's death and `$25FD0C`, so without them stage 1 cannot finish.
 //
-// **RECON 49 5.3 PRICED THE DEVIATION AT ONE SHORT-CIRCUIT.  IT IS TWO**, and
-// this file makes both of them, in one place, each naming the instruction it
-// stands in for and each counted in `unportedLog`:
+// **RECON 49 5.3 PRICED THE DEVIATION AT ONE SHORT-CIRCUIT.  IT WAS TWO.  IT IS
+// NOW ZERO** -- W124 closed DEV-1 and W435 closed DEV-2.  Both are kept below
+// because the SHAPE of each is worth more than the fact that it is gone, and
+// because DEV-2's stated cause was wrong for ten waves in a way that is easy to
+// repeat:
 //
 //   DEV-1  `$28DE5C` -- state 1 -> $B.  The real producer of `$8130F9` bit 1 is
 //          `$285496` and it is the ONLY one in build B (recon 49 3.1's census,
@@ -60,11 +62,17 @@
 //          assignment directly.  **It also sets `$8130F9` bit 1 itself**, so
 //          that a later wave which ports `$285496` for real makes the pinned
 //          test `w62 DEV-1 is still the only producer of $8130F9 bit 1` go RED.
-//   DEV-2  `$28D6FC` -- state $B -> 2.  The gate is `$24681A(($8,A5))` and
-//          `($8,A5)` is written at `$28DE5C jsr $24652A`, inside the same
-//          unported routine.  It is therefore 0, and `$24681A` would dereference
-//          address $2C.  The port treats the (nonexistent) animation chain as
-//          FINISHED and skips `$246800`, which has nothing to free.
+//   DEV-2  `$28D6FC` -- state $B -> 2.  **CLOSED BY W435.**  The gate is
+//          `$24681A(($8,A5))`, and the port used to compute it and then throw
+//          it away, advancing on state $B's first frame.  Every text that
+//          explained why -- W124's, W125's, W389's -- said the per-frame DRAIN
+//          was unported.  **It was not.**  `animobjects.js
+//          runAnimObjects24683E` is main-loop call #3 and has drained these
+//          nodes since W91.  It skipped `$24652A`'s because it refuses a node
+//          whose executor pointer `($6)` is zero, and `chainLoaderBody` was
+//          leaving that zero: the content block `$246582..$2465D9` was decoded
+//          in W389 and left switched OFF.  Turning it on and honouring
+//          `$28D702`'s `bne` gives the board's own 32-frame wait.
 //
 // AND ONE EXIT IS **NOT** FAKED, deliberately: state 4 waits on `$28E7E6`,
 // i.e. on `$81DFF6` going back to zero, and the only routine that clears it is
@@ -93,7 +101,7 @@ import { flushPendingHyper2875B4 } from './hyper.js';
 import { emit23F82A } from './bossarrival.js';
 // W389 -- `$24676A..$2467C3`, the per-node CONTENT seeding that lives INSIDE `$246710`'s
 // allocation loop. `animobjects.js` imports nothing from here, so this is not a cycle.
-import { seedChainNode24676A, CHAIN_CONTENT } from './animobjects.js';
+import { seedChainNode24676A, CHAIN_CONTENT, CHAIN_CONTENT_24652A } from './animobjects.js';
 
 export const SE = {
   stage: 0x813092, stageX2: 0x813094, stageX4: 0x813096,   // $25FD0C
@@ -463,46 +471,33 @@ function loadBannerArt(ram, ctx) {
 }
 
 // ------------------------------------------------------------- the deviation
-/** The ONE remaining invented transition, in one place, so a reader counts it.
- *  Each key is the ROM instruction the port stands in for.
+/** **EMPTY.  BOTH INVENTED TRANSITIONS ARE GONE.**  Kept as an export so the
+ *  tests that count it keep counting, and so the next reader can see that the
+ *  number is zero rather than merely absent.
  *
  *  W124 CLEARED DEV-1 (`$28DE5C`): the result-screen phase machine `$28D9AA`
  *  and the HUD tally `$285400` are now ported (see `result28D9AA` and
  *  `tally2853D2`), so `$8130F9` bit 1 has its real sole producer `$285496` and
  *  F8 advances on it naturally. The manual `bset #1` stand-in is gone.
  *
- *  W124 REFINED DEV-2 (`$28D6FC`), W125 CORRECTED: the animation chain
- *  primitives (`chainLoader24652A` / `chainCheck24681A` / `chainFree246800`) ARE
- *  ported and wired, so `($8,A5)` is REALLY written by `$24652A` and REALLY
- *  freed by `$246800`. W124's text named `$246410` as "the per-frame driver that
- *  drains `$18(node)`"; W125 disassembled `$246410` and that name is WRONG.
- *  `$246410` is a LOADER (10 absolute-long call sites: `$28D770` here plus
- *  `$26B802`/`$26C828`/`$278AC4`/`$279248`/...` in boss/midboss), a SIBLING of
- *  `$24652A` -- it claims a player slot at `$810346`, allocates nodes from
- *  `$80FA86`, seeds each node's content (code ptr from `$24627A`, anim data from
- *  `$246B38`, the `$30(node)` script copy) and SEEDS `$18(node):=$FFFF0000`. It
- *  does NOT decrement `$18`. The actual per-frame decrement -- the animation-
- *  object EXECUTION engine that walks the chain via address-register indirect
- *  (invisible to `xref.py`) and runs each node's code script -- is the TRUE
- *  remaining gap, and it is the deep presentation tier five waves have deferred.
- *  Without it `chainCheck24681A` never returns "done", so the port frees the
- *  chain and advances on state $B's first frame. The RAM lifecycle is faithful;
- *  only the visual wait collapses. */
-export const PRESENTATION_DEVIATION = Object.freeze({
-  0x28d6fc: 'DEV-2 -- $28D6FC. The anim chain is built by `chainLoader24652A` '
-    + '(F8 advance tail) and freed by `chainFree246800` (state $B) for real, so '
-    + '($8,A5) is honest. The chain does not DRAIN because the animation-object '
-    + 'EXECUTION engine -- the per-frame machine that walks the `$810346` chain '
-    + 'via register-indirect and runs each node\'s code script, decrementing its '
-    + 'lifetime $18(node) (seeded $FFFF0000) so chainCheck24681A eventually '
-    + 'returns "done" -- is unported presentation tier. (W125 CORRECTION: W124 '
-    + 'named $246410 as this driver; $246410 is a LOADER sibling of $24652A, '
-    + 'reached from 10 abs-long sites, that SEEDS $18 -- it does not decrement '
-    + 'it. The true drain is the execution engine, reached via register-indirect '
-    + 'so xref.py cannot see it.) The port therefore frees the chain and advances '
-    + 'on state $B\'s first frame. The pool lifecycle is faithful; the animation '
-    + 'wait is not.',
-});
+ *  **W435 CLEARED DEV-2 (`$28D6FC`), AND W125'S DIAGNOSIS WAS RIGHT ABOUT THE
+ *  MECHANISM AND WRONG ABOUT WHAT WAS MISSING.**  W125 wrote that "the
+ *  animation-object EXECUTION engine ... is the TRUE remaining gap, and it is
+ *  the deep presentation tier five waves have deferred".  That engine is
+ *  `animobjects.js runAnimObjects24683E`, **main-loop call #3, ported since
+ *  W91 and running every frame.**  What was actually missing was the input it
+ *  needs: `chainLoaderBody` was seeding `$24652A`'s chains WITHOUT their
+ *  per-node content, so `($6,node)` -- the executor pointer -- stayed zero and
+ *  `runAnimObjects24683E` skipped every node it built.  The chain therefore
+ *  never drained, and state $B was written to ignore `$28D702`'s `bne` and
+ *  advance on its first frame.
+ *
+ *  Both halves are now in: `CHAIN_LOADERS[0].content` is `CHAIN_CONTENT_24652A`
+ *  (`$246582..$2465D9`, decoded in W389 and unused until now) and state $B
+ *  honours the `bne`.  [M] Neither half works alone -- seeding without the
+ *  branch changes nothing, and the branch without the seeding hangs the stage
+ *  end forever.  See W435's entry. */
+export const PRESENTATION_DEVIATION = Object.freeze({});
 
 // ============================================================================
 // W124: THE RESULT SCREEN `$28D9AA`, THE ANIM CHAIN, THE BANNER `$28E7F8`
@@ -1179,8 +1174,11 @@ function p2NumberBlock(ram, rom, a6, beeOff, beeBin, itemOff, itemBin, base) {
 // `($2C,node)`.  Returns D0 = the player-slot handle (whose `($2C)` is the chain
 // head).  The checker sums `$18(node)`; the free walks and clears.  All three
 // are byte-for-byte from the ROM; they touch the SHARED `$80FA86` pool exactly
-// as the cartridge does.  See `PRESENTATION_DEVIATION[0x28d6fc]` for why the
-// faithful WAIT is a declared gap (the anim driver `$246410` is R2b).
+// as the cartridge does.  **W435: the faithful WAIT is no longer a declared gap.**
+// The per-frame drain is `animobjects.js runAnimObjects24683E`, main-loop call
+// #3, which has been running every frame since W91 -- it was skipping these
+// nodes only because the loader left `($6,node)` at zero.  See
+// `CHAIN_LOADERS` and the state-$B arm.
 
 const CHAIN = {
   playerList: 0x810346, playerStride: 0x30, playerSlots: 3,
@@ -1194,19 +1192,18 @@ const CHAIN = {
  *  pool scan and restores them before returning (`$2465E8`), so D0 is the slot,
  *  not the tail.
  *
- *  R2a ports the POOL LIFECYCLE byte-for-byte (claim slot, allocate N nodes from
- *  `$80FA86`, link at `($2C,node)`, seed the lifetime `$18 := $FFFF0000`) and the
- *  node-count word is the only script word it reads.
+ *  R2a ported the POOL LIFECYCLE byte-for-byte (claim slot, allocate N nodes from
+ *  `$80FA86`, link at `($2C,node)`, seed the lifetime `$18 := $FFFF0000`), and for eleven waves
+ *  the node-count word was the only script word it read.  **W435: it now reads all six words
+ *  per node**, which is why `$28D864 + $60` is a declared window.
  *
- *  **W389 CORRECTION -- THIS ROUTINE DOES HAVE A CONTENT BLOCK AND IT IS NOT PORTED HERE.**
- *  The old text called it "the presentation tier the anim driver `$246410` dispatches on", which
- *  was written before `$246410`'s executor was ported. `$246582..$2465D9` is a real 88-byte
- *  block, `$24676A`'s twin plus `$246598 move.l (A0)+,($A,A2)`, and W389 decoded it -- see
- *  `animobjects.js CHAIN_CONTENT_24652A`. It is deliberately still switched OFF for this head
- *  (`CHAIN_LOADERS[0].content` is `null`); the reasons are on `CHAIN_LOADERS` below, and the
- *  short version is that `animobjects.js loadAnimObjects24652A` is ALREADY a second, fully
- *  seeding port of this same routine and turning this one on changes the result screen's
- *  timing.  See `PRESENTATION_DEVIATION[0x28d6fc]`. */
+ *  **W389 DECODED THIS ROUTINE'S CONTENT BLOCK AND W435 SWITCHED IT ON.**
+ *  `$246582..$2465D9` is a real 88-byte block, `$24676A`'s twin plus `$246598 move.l
+ *  (A0)+,($A,A2)`, decoded in W389 as `animobjects.js CHAIN_CONTENT_24652A` and held at `null`
+ *  for six waves because turning it on "changes the result screen's timing". It does, and the
+ *  timing it changes to is the BOARD'S: [M] `stage1-laser-hold` unfreezes `$8130D2` at lf10334
+ *  and so does the port, where before it unfroze at lf10303. `CHAIN_LOADERS[0].content` is
+ *  `CHAIN_CONTENT_24652A` now. */
 export function chainLoader24652A(ram, rom, scriptAddr) {
   return chainLoaderBody(ram, rom, scriptAddr, CHAIN_LOADERS[0]);
 }
@@ -1263,16 +1260,18 @@ export function chainLoader246704(ram, rom, scriptAddr, ctx) {
  * #$246BB8,($A,A2)` hardcodes it in `$246710`, so `$24652A`'s script is SIX words per node and
  * `$246710`'s is FOUR. A single unconditional fold would have mis-parsed one of the two.
  *
- * `$24652A`'s is left at `null` **deliberately**, and this is a declared hold rather than an
- * oversight: its only caller here is `f8Exit28DE1E`, whose wait is `PRESENTATION_DEVIATION`
- * DEV-2, and `animobjects.js` ALREADY has a full second port of `$24652A`
- * (`loadAnimObjects24652A`, via `loadAnimObjectsNoFill`) that seeds all six words. Turning this
- * one on would give the result screen a real 16-frame-plus wait it has never had. See W389's
- * report -- it is the largest thing this file still gets wrong, and it is one line to change.
+ * **W435 TURNED `$24652A`'S CONTENT ON, AND THAT IS WHAT CLOSED DEV-2.** The hold above said
+ * the one line "would give the result screen a real 16-frame-plus wait it has never had". It
+ * does, and the wait is the board's: [M] the `$28D862` script is 8 nodes, every one of them
+ * timing index 3, and `$246B38[3]` is reload 0 / step 1, so `stepNode`'s `($20,node)` walks
+ * 1..$20 one per frame and `($18,node)` clears on the 32nd. `runAnimObjects24683E` sums those
+ * to zero exactly 32 frames after the loader ran, which is what `chainCheck24681A` reports to
+ * state $B. Seeding without honouring `$28D702`'s `bne` changes nothing, and honouring
+ * `$28D702` without seeding STALLS FOREVER -- the two halves are one fix.
  */
 const CHAIN_LOADERS = Object.freeze([
   // $246576 #$0 / $24652E D6=0 / content $246582 is SIX words -- see the note above
-  Object.freeze({ site: 0x24652a, field1e: 0, field4: 0, content: null }),
+  Object.freeze({ site: 0x24652a, field1e: 0, field4: 0, content: CHAIN_CONTENT_24652A }),
   // $246762 #$1 / $246714 D6=0 / content $24676A is FOUR words with the constant target
   Object.freeze({ site: 0x246710, field1e: 1, field4: 0, content: CHAIN_CONTENT }),
   // shares the body / $246708 D6=1 / same content block, reached through the same $246718
@@ -1570,15 +1569,22 @@ export function makeStageClear(rom) {
       return;                                          // $28D6E2 rts
     }
     // ---- state $B ($28D6E4) -- the result screen's F8 returns immediately here
-    // (state is already $B); the real work is the anim-chain check + free.  The
-    // chain would drain via `$246410` (R2b); until then the port frees it on the
-    // first frame and advances -- see `PRESENTATION_DEVIATION[0x28d6fc]`.
+    // (state is already $B); the real work is the anim-chain check + free, and
+    // W435 made the check a real WAIT -- the chain drains under
+    // `runAnimObjects24683E` in 32 frames, one per `($20,node)` step.
     if (st() === 0x0b) {
       result28D9AA(ram, rom, ctx, a5);                 // $28D6F4 bsr $28D9AA
       const handle = ram.u32(a5 + 0x08) >>> 0;         // $28D6F8 move.l $8(A5),D0
       const sum = (handle === 0 || handle === 0xffffffff)
         ? 0 : chainCheck24681A(ram, handle);           // $28D6FC jsr $24681A
-      if (sum !== 0) note(ctx, 0x28d6fc, PRESENTATION_DEVIATION[0x28d6fc]); // DEV-2
+      // W435 -- THE WAIT, WHICH DEV-2 USED TO SKIP. [M] `$28D702 66 32` is
+      // `bne.s $28D736`, and `$28D736` is where `$28D6EA bne.w` sends every
+      // state that is NOT $B -- so a live chain leaves the free, the two power
+      // resets, `$8130F8` and the state store all UNRUN, and the ladder below
+      // matches nothing while the state is still $B. Returning here is that
+      // branch. The guard on $0/$FFFFFFFF stays: the ROM would dereference
+      // address $2C, this refuses to.
+      if (sum !== 0) return;                           // $28D702 bne.s $28D736
       if (handle !== 0 && handle !== 0xffffffff) {
         chainFree246800(ram, handle);                  // $28D704/$28D708 jsr $246800
       }
@@ -1608,13 +1614,14 @@ export function makeStageClear(rom) {
         // `$28D7FE` script, claims a player slot at `$810346`, and installs N
         // nodes from `$80FA86` with full content (code ptrs from `$24627A`,
         // anim data from `$246B38`, the `$30(node)` script copy, lifetime
-        // `$18:=$FFFF0000`). The install needs the `$24627A`/`$246B38`/`$28D7FE`
-        // tables windowed AND is inert without the unported animation-object
-        // EXECUTION engine (see PRESENTATION_DEVIATION[0x28d6fc]); left a note.
+        // `$18:=$FFFF0000`). W435 CORRECTS THE SECOND HALF OF THIS NOTE: the
+        // execution engine is NOT unported -- it is `runAnimObjects24683E`,
+        // main-loop call #3. What still blocks this site is only the `$28D7FE`
+        // script window, so the note now says that and nothing more.
         note(ctx, 0x246410, '$28D770 jsr $246410 off the $28D7FE script -- the '
           + 'ANIMATION-OBJECT LOADER (sibling of $24652A; seeds $18, does not '
-          + 'drain it). Inert without the unported execution engine; tables '
-          + '$24627A/$246B38/$28D7FE not yet windowed');
+          + 'drain it). The drain is runAnimObjects24683E and IS ported (W435); '
+          + 'the $28D7FE script is not yet windowed');
         ram.setU8(a5 + 0x06, 1);                       // $28D776
         note(ctx, 0x28d77c, '$28D77C..$28D7DA -- sixteen longwords out of '
           + '$A00000+$5C0 (PALETTE RAM, which this port does not model) through '

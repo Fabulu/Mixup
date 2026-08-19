@@ -3937,3 +3937,53 @@ Verified by the coordinator on a quiet tree: **3980 pass / 0 fail / 0 skipped**,
 velocity) and lf10300->10400 at **74/80** (six slots the port keeps alive that the board has
 blanked). **Neither is touched by this change.**
 
+
+### W435: THE STAGE-END TRANSITION IS THE BOARD'S NOW, AND `PRESENTATION_DEVIATION` IS EMPTY
+
+`stage1-laser-hold` lf10300->10400 went **74/80 -> 80/80**, and the real proof is a state trace:
+**`$8130D2` matches the board's own per-frame column on all 300 frames of lf10201..10500**, and the
+port now unfreezes at **lf10334, the board's frame**, where before it unfroze at lf10303.
+
+**MY BRIEF WAS WRONG IN THREE PLACES AND THE WAVE REFUSED THE TEST I ASKED FOR:**
+1. **Not a lifetime defect, and the board has "blanked" nothing.** At lf10400 the board's pool B is
+   **entirely EMPTY, 0 of 80.** The port's six records are the stage-2 intro's own effects, spawned
+   correctly but **31 frames EARLY**.
+2. **`lf10400` COULD NEVER HAVE BEEN THE DELIVERABLE RUNG** -- both sides are an empty array there,
+   so 80/80 is satisfied by anything that wipes the pool. **The load-bearing rung is lf10500**,
+   where the board has six records and the port must produce the same six. The wave asserted both.
+3. **The seed rung matters:** seeded at lf10300 the port INHERITS the board's already-built chain,
+   so that seed cannot distinguish the two halves of the fix. **lf10200 is where the port builds it
+   itself.**
+
+**A `PRESENTATION_DEVIATION` STOOD FOR TEN WAVES ON A FALSE STATED REASON.** DEV-2 said the
+per-frame drain was unported presentation tier. **The drain is `animobjects.js
+runAnimObjects24683E` -- main-loop call #3, ported since W91, running every frame.** What was
+missing was its INPUT: the chain loader built nodes without their content, so `($6,node)` stayed 0
+and the walk skipped every node. W389 decoded that content block and left it `null`, writing that
+enabling it "changes the result screen's timing". **It does -- to the board's.**
+
+**NEITHER HALF WORKS ALONE, measured:** content on with the branch ignored moves nothing (74/80);
+the branch honoured with content off **hangs the stage end forever** (41/80). Both together give
+80/80 and lf10334 to the frame. The 32-frame figure is read off the image, not chosen.
+
+**`PRESENTATION_DEVIATION` IS NOW `Object.freeze({})` -- this port invents no stage-end transition
+at all.**
+
+**FALSIFICATION HELD TO W434'S STANDARD:** the dirty-pool arm pre-fills the node pool and root list
+with `$5A` and asserts **eight DISTINCT cursors**, so a constant written eight times fails. A RED
+test removes the new window and shows the loader throws by address.
+
+**TWO TESTS THAT CONTRADICTED THEIR OWN COMMENTS, fixed:** `w303hiscorestate` and
+`w308namecountdown` each say "feeding one loader's script to the other is meaningless" and then did
+exactly that -- harmless only while the head was hollow.
+
+**AND THE OTHER SEGMENT IS NOT WHAT I SAID EITHER.** lf9500->9600 is **not** position/velocity
+arithmetic: board 33 live / 43 non-blank, port 30 live / 35 non-blank. **The port is missing three
+LIVE records and eight non-blank ones**, and the diffs span the whole record. **It is a
+spawn-count divergence with everything downstream shifted by allocation order**, and it is the ONLY
+red 100-frame segment in lf9300..10700 -- its four neighbours are 80/80 including live records.
+**Unmoved by this wave: 60/80 with the fix on and off.**
+
+Verified by the coordinator on a quiet tree: **3985 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at **613 windows** (one added, abutting, overlaps unchanged at 75).
+

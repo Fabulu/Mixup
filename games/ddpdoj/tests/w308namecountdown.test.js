@@ -40,6 +40,7 @@ const FRAME = 0x02;
 const SUSPEND = 0x81e0d8;
 const FLAGBYTE = 0x81e0d9;
 const SCRIPT = 0x28fad2;
+const SCRIPT_24652A = 0x28d862;   // $28DE5C lea -- $24652A's OWN script, SIX words a node
 
 const factory = () => {
   const ram = new Ram();
@@ -264,10 +265,16 @@ test('W308 `$246704` is `$246710` with D6 = 1, and D6 is `($4,slot)`', { skip: S
 test('W308 `$246704` still differs from `$24652A` on BOTH axes', { skip: SKIP }, () => {
   // Two independent axes: `($1E,node)` and `($4,slot)`. `$24652A` is (0, 0), `$246710` is (1, 0)
   // and `$246704` is (1, 1), so the pair of them cannot be collapsed into one flag.
+  //
+  // W435: each head reads ITS OWN script now. `$28FAD2` is the `$246704`/`$246710` FOUR-word
+  // shape; `$28D862` is `$24652A`'s SIX-word one. Handing the four-word script to `$24652A`
+  // used to be harmless because that head was hollow, and since W435 seeded it that read
+  // throws `$246582` by address on the first node. Both scripts declare EIGHT nodes, so the
+  // pool slots and the `($2C)` walk below still line up.
   const base = new Ram();
   const both = new Ram();
   const w = world();
-  const h1 = chainLoader24652A(base, ROM, SCRIPT);
+  const h1 = chainLoader24652A(base, ROM, SCRIPT_24652A);
   const h2 = chainLoader246704(both, ROM, SCRIPT, w.ctx);
   assert.equal(h1, h2);
   assert.equal(base.u16(h1 + 0x04), 0);

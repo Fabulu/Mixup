@@ -44,6 +44,17 @@
 // own windows. That claim is untouched by W428's four.
 
 // ---------------------------------------------------------------------------
+// W435 ADDED ONE MORE, AND THE OVERLAP COUNT STILL DID NOT MOVE.
+// ---------------------------------------------------------------------------
+// `$28D864 + $60` -- the eight nodes of the `$28D862` anim-chain script -- ABUTS
+// W124's two-byte node-count window at `$28D862`, which ends at exactly $28D864.
+// Measured: 612 -> 613 windows, 75 -> 75 overlapping pairs. Same shape as W429's:
+// the loader's only read below the seam is `rom.u16($28D862)` and the content
+// cursor starts at $28D864, so no read crosses it. The far end is pinned by code
+// as well as by arithmetic -- 8 nodes x 6 words ends at $28D8C4, which is the
+// script `$28DE44 lea $28D8C4(PC)` hands the stage-5 arm.
+
+// ---------------------------------------------------------------------------
 // W429 ADDED ONE WINDOW AND THE OVERLAP COUNT DID NOT MOVE. THAT IS THE POINT.
 // ---------------------------------------------------------------------------
 // `$28B08E + $6A` -- the cue dispatch's kind-$C/$10/$14 descriptors and art
@@ -58,11 +69,15 @@
 
 /** The count `tables.rom.windows.length` must equal. MEASURED from
  *  `player.tables.json`, not computed by hand. */
-export const ROM_WINDOW_COUNT = 612;
+export const ROM_WINDOW_COUNT = 613;
 
 /** The one window W429 declared, and the window it abuts WITHOUT overlapping.
  *  `tests/w429cuekinds.test.js` asserts the abutment is exact. */
 export const W429_ABUTTING_PAIR = Object.freeze([0x28b08e, 0x28ac72]);
+
+/** The one window W435 declared, and the window it abuts WITHOUT overlapping.
+ *  `tests/w435resultchain.test.js` asserts the abutment is exact. */
+export const W435_ABUTTING_PAIR = Object.freeze([0x28d864, 0x28d862]);
 
 /** The number of overlapping PAIRS over the whole window set. MEASURED. */
 export const ROM_OVERLAP_PAIRS = 75;
@@ -102,5 +117,5 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "($268E32 $273986 $2747A8 $275F04), each of which begins inside its type's "
   + "prototype window because a cue record's longwords straddle that window's "
   + "end and RomWindows.#at cannot stitch across a seam. W429 added a window "
-  + "($28B08E) and did NOT move this number, because it abuts. See "
-  + "tests/romwindowset.js.";
+  + "($28B08E) and W435 added another ($28D864), and NEITHER moved this "
+  + "number, because both abut. See tests/romwindowset.js.";

@@ -142,24 +142,39 @@ test('W389 SECTION 1: `$24652A` HAS a content block at $246582, and it is `$2467
   assert.equal(CHAIN_CONTENT.targetFromScript, undefined, '...and $24677E has no script field');
 });
 
-test('W389 SECTION 1: the port keeps `$24652A` unseeded ON PURPOSE, and says so', { skip: SKIP },
-  () => {
-    // A DECLARED HOLD, asserted so it cannot rot into an oversight. `$24652A`'s only caller in
-    // `stageend.js` is `f8Exit28DE1E`, whose wait is PRESENTATION_DEVIATION DEV-2, and
-    // `animobjects.js` already carries a SECOND, fully-seeding port of the same routine
-    // (`loadAnimObjects24652A`). Turning this one on gives the result screen a wait it has never
-    // had, which is a behaviour change this wave was not asked to make.
+// W435 INVERTED THIS TEST, AND THAT INVERSION IS THE POINT OF W435.
+//
+// It used to read "the port keeps `$24652A` unseeded ON PURPOSE, and says so", and its comment
+// argued the hold was safe because "turning this one on gives the result screen a wait it has
+// never had". [M] The wait it gives is the BOARD'S: on `out/w69/stage1-laser-hold` the port now
+// clears `$8130D2` at lf10334, which is the frame the board's own trace clears it, where before
+// it cleared at lf10303. So the claim to pin is the opposite one -- every node `$24652A` builds
+// carries a real executor pointer, and `runAnimObjects24683E` steps all eight.
+//
+// AND NOTE WHICH SCRIPT. `SCREEN_STATE.script` ($25BAAA) is `$246710`'s FOUR-word shape; this
+// head reads SIX words a node, so it is given its own `$28D862`. The old test could hand it the
+// wrong script precisely because it read nothing past the count word.
+test('W435: `$24652A` SEEDS its per-node content, and the driver steps every node it built',
+  { skip: SKIP }, () => {
     const ram = new Ram();
     const rom = rawRom();
-    // Six-word script or not, the loader must not read past the count word while content is off.
-    const h = chainLoader24652A(ram, rom, SCREEN_STATE.script);
+    const h = chainLoader24652A(ram, rom, 0x28d862);
     assert.notEqual(h, 0xffffffff, 'it still allocates');
-    for (const node of chainNodes(ram, h)) {
-      assert.equal(ram.u32(node + 0x06), 0, 'and every node is still content-free...');
+    const nodes = chainNodes(ram, h);
+    assert.equal(nodes.length, 8, 'the $28D862 script builds eight');
+    for (const node of nodes) {
+      assert.notEqual(ram.u32(node + 0x06), 0,
+        '($6,node) -- the executor pointer $246588 writes. ZERO here was the whole defect: '
+        + 'runAnimObjects24683E skips such a node and the chain never drains');
       assert.equal(ram.u32(node + 0x18), 0xffff0000, '...with the lifecycle intact');
     }
-    // Which is exactly what `runAnimObjects24683E`'s own guard is written for.
-    assert.equal(runAnimObjects24683E(ram, rom).nodes, 8, 'the driver walks them and steps none');
+    // The driver walks them AND steps them, which is the half the old test could not have.
+    const before = nodes.map((n) => ram.u16(n + 0x20));
+    const seen = runAnimObjects24683E(ram, rom);
+    assert.equal(seen.nodes, 8, 'the driver walks all eight');
+    assert.deepEqual(before, new Array(8).fill(0), '...they started at progress 0');
+    assert.deepEqual(nodes.map((n) => ram.u16(n + 0x20)), new Array(8).fill(1),
+      '...and every one of them STEPPED. Before W435 this array was eight zeroes forever');
   });
 
 // ===============================================================================================
