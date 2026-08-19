@@ -643,7 +643,13 @@ test('W440: whole-RAM divergence at lf9400 falls to 637 bytes, and most of what 
     + 'were: a fake that wrote the board\'s whole 13,440-byte pool could have '
     + 'reached 2,250 and not one byte lower');
   const r2 = await segment(9500, 9600);
-  assert.equal(r2.ramBytes, 607, 'lf9600 is 607 bytes, down from 3,235');
+  assert.equal(r2.ramBytes, 606,
+    'lf9600 is 606 bytes, down from 3,235. **W441 REWROTE THIS NUMBER FROM 607**'
+    + ' -- not because W440\'s measurement was wrong, but because W441 corrected'
+    + ' a SECOND wide branch, `$29471E`, whose only effect on this segment is'
+    + ' one byte: $812B18, the D14 cadence. W440\'s 607 is still exactly what'
+    + ' this segment measures with that branch read as 8-bit, and W441\'s'
+    + ' `d14-home-tick` RED arm asserts it there');
   assert.equal(r2.inPool, 0, '...also with nothing left in the pool');
 });
 
@@ -766,19 +772,32 @@ test('W440: over lf9300->9400 the port spawns TWELVE kind-4 bullets where it '
 // ===========================================================================
 // 7. WHAT IS LEFT, MEASURED
 // ===========================================================================
-test('W440: lf9100->9200 is 176/210 and NOT closed by this wave -- the port '
-  + 'spawns the board\'s 42 bullets and frees 8 where the board frees 16',
+// ===== REWRITTEN BY W441.  W440 LEFT THIS SEGMENT AT 176 AND SAID SO; W441 =====
+// ===== CLOSED IT, AND EVERY NUMBER W440 MEASURED IS STILL ASSERTED HERE.   =====
+//
+// The original assertion was `r.bul.n === 176` with a note that "what is left
+// here is an UNDER-FREE".  Both halves survive as the RED arm below: with W441's
+// `$294666` restored to its 8-bit reading, this segment IS 176/210 and the port
+// DOES free 8 where the board frees 16.  What was wrong was the ATTRIBUTION --
+// the port freed 8 because its 42 bullets were fired from a gun mount 70 frames
+// out of phase, not because `mover.js` declines a free.  The test is rewritten
+// to assert the fix and keep the measurement, per W438's rule.
+test('W440 (REWRITTEN BY W441): lf9100->9200 is 210/210, and W440\'s 176 with '
+  + 'its 42 spawns and 8 frees is still exactly what the segment measures with '
+  + 'W441\'s $294666 read as an 8-bit branch',
 { skip: SKIP_LADDER }, async () => {
   const r = await segment(9100, 9200);
-  assert.equal(r.bul.n, 176,
-    'lf9100->9200 is 176 of 210, up from 113 but NOT closed. This assertion '
-    + 'exists so the wave cannot later be credited with a segment it left open');
-  assert.equal(r.spawns.length, 42, 'the port spawns 42 bullets in the window');
-  assert.equal(r.kills.length, 8, '...and frees 8');
-  assert.equal(r.portKinds.get(0x13), 34, '...leaving 34 live');
-  assert.equal(r.boardKinds.get(0x13), 26,
-    '...where the board holds 26. 42 - 26 = 16 frees on the board against the '
-    + 'port\'s 8, so what is left here is an UNDER-FREE and not an over-fire');
+  assert.equal(r.bul.n, BUL.slots,
+    'lf9100->9200 is 210 of 210. W440 left it at 176 and asserted that number '
+    + 'so it could not be quietly claimed later; W441 closed it');
+  assert.equal(r.spawns.length, 42,
+    'the port spawns 42 bullets in the window -- W440\'s number, unchanged by '
+    + 'W441, because the volley counts were never the defect');
+  assert.equal(r.kills.length, 16,
+    '...and now frees 16, which is the number W440 derived for the board from '
+    + '42 - 26');
+  assert.equal(r.portKinds.get(0x13), 26, '...leaving 26 live');
+  assert.equal(r.boardKinds.get(0x13), 26, '...which is what the board holds');
   assert.equal(r.portKinds.get(0x04), undefined,
     'and neither side has a single kind-4 bullet, so E14 is fully in step here');
   assert.equal(r.boardKinds.get(0x04), undefined, '...on both sides');
@@ -786,19 +805,52 @@ test('W440: lf9100->9200 is 176/210 and NOT closed by this wave -- the port '
     'both guns\' slot records are byte-identical to the board at lf9200, which '
     + 'is what says the VOLLEY COUNTS already agree: the angle field ($A,A4) '
     + 'steps by exactly +$F and -$F per volley and it lands on the board\'s '
-    + 'byte. The residue is downstream of the spawn');
+    + 'byte. W440 read that correctly and concluded the residue was downstream '
+    + 'of the spawn. It was UPSTREAM of it -- in the boss part POSITION the '
+    + 'spawn reads, which is in none of these three records');
+
+  // W440's own numbers, preserved as a falsifiable RED rather than as prose.
+  const { W441_MUTATE } = await import('../src/bossf23.js');
+  const was = W441_MUTATE.value;
+  W441_MUTATE.value = 'd14-wait-fallthrough';
+  let red;
+  try {
+    red = await segment(9100, 9200, 'w441-red');
+  } finally {
+    W441_MUTATE.value = was;
+  }
+  assert.equal(red.bul.n, 176, 'W440\'s 176/210, reproduced');
+  assert.equal(red.spawns.length, 42, '...its 42 spawns');
+  assert.equal(red.kills.length, 8, '...and its 8 frees');
+  assert.equal(red.portKinds.get(0x13), 34, '...leaving W440\'s 34 live');
+  assert.equal(W441_MUTATE.value, null, 'and the seam is reset');
 });
 
 test('W440: the OTHER thing left in lf9100->9200 is the laser beam impact, and '
   + 'it is not the bullet pool -- handing the port its 8 missing draws moves '
   + 'the bullet count by ZERO', { skip: SKIP_LADDER }, async () => {
-  const r = await segment(9100, 9200);
+  const { W441_MUTATE } = await import('../src/bossf23.js');
+  const was0 = W441_MUTATE.value;
+  W441_MUTATE.value = 'd14-wait-fallthrough';
+  let r;
+  try {
+    r = await segment(9100, 9200, 'w441-red-draws');
+  } finally {
+    W441_MUTATE.value = was0;
+  }
   assert.deepEqual(r.drawGap, [[9192, 0, 4], [9194, 0, 4]],
     'exactly two draw-gap frames, lf9192 and lf9194, each worth FOUR draws the '
     + 'board makes and the port does not. [M] every other tick of this 2-frame '
     + 'cadence in the window comes from `spawnBeamImpact289FC0` <- '
     + '`runBeamDraw` (src/laser.js -> src/spark.js, pool E) and draws the same '
-    + 'four: $242FFC, $242EC2, $28AB86, $242E24');
+    + 'four: $242FFC, $242EC2, $28AB86, $242E24. **W441 CLOSED THIS GAP AND SO '
+    + 'THE MEASUREMENT NOW RUNS UNDER W441\'s RED ARM**, which is the only way '
+    + 'to keep W440\'s number true and falsifiable at once');
+  const green = await segment(9100, 9200);
+  assert.deepEqual(green.drawGap, [],
+    '...and with $294666 decoded the gap is empty. W440\'s attribution below '
+    + 'is still exactly right -- the draws cannot move the pool -- but the two '
+    + 'were symptoms of ONE cause upstream of both, not two causes');
 
   // The attribution, performed: give the port the cursor those 8 draws would
   // have left behind and the bullet pool does not move.  Two defects, not one.
@@ -813,11 +865,13 @@ test('W440: the OTHER thing left in lf9100->9200 is the laser beam impact, and '
   }
   const board = boardRam(9200);
   const bul = sameSlots(board, game.ram.b, BUL.pool, BUL.slots, BUL.stride);
-  assert.equal(bul.n, r.bul.n,
+  assert.equal(bul.n, 210,
     'with the RNG cursor advanced by 4 after lf9192 and again after lf9194 -- '
     + 'exactly what the missing sparks would have left behind -- the bullet '
-    + 'pool is still 176/210. The two are independent, and the next wave should '
-    + 'not expect one to close the other');
+    + 'pool is UNMOVED by the draws. **W441 REWROTE THE CONSTANT FROM 176 TO '
+    + '210**: the run above is the FIXED port, whose pool is 210/210, and the '
+    + 'poked draws still change it by zero. W440\'s claim survives its own fix, '
+    + 'which is a stronger statement than the one it made');
 });
 
 test('W440: none of the three gun scripts is a counted note -- the port runs '

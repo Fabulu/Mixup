@@ -417,7 +417,16 @@ export function d14Step294658(ram, a4, a6) {
   if (ram.u8(a4 + 0x06) === 0) {                        // $294658
     const n = u16(ram.u16(a4 + 0x08) - 1);              // $294662
     ram.setU16(a4 + 0x08, n);
-    if (n === 0) {                                      // $294666
+    // W441: `$294666 66 00 00 f4` is a **`bne.W $29475C`** -- the routine's own
+    // `rts` ($294668 + $F4 = $29475C, and those two bytes ARE `4e 75`).  While
+    // the wait counter has not reached zero this script does NOTHING: it does
+    // not rotate the parts, and it does not run the state 1/2/3 blocks below.
+    // Read `66 00` as an 8-bit `bne +0` and it becomes a branch to $294668 --
+    // the NEXT INSTRUCTION -- so the wait arm falls straight into the rotate.
+    // That is what the port did: it turned both gun parts by ($3,A4) on EVERY
+    // frame of the wait, where the board turns them on none of it.
+    if (n !== 0 && W441_MUTATE.value !== 'd14-wait-fallthrough') return;
+    if (n === 0) {
       ram.setU8(a4 + 0x06, 1);                          // $29466A
       ram.setU16(a6 + 0x114, 1);                        // $294670
     }
@@ -449,6 +458,19 @@ export function d14Step294658(ram, a4, a6) {
     const target = u8(i8(ram.u8(a4 + 0x02)) * 2);       // $2946E0/$2946E4
     if (ram.u8(a4 + 0x03) === target) {                 // $2946EA beq
       // Home check: part 1 facing at $40 (bit 0 cleared)?
+      // W441: `$29471E 66 00 00 2c` is a **`bne.W $29474C`** -- the state-3
+      // check, i.e. this routine's exit.  Once ($3,A4) has reached its target
+      // the cadence is NOT ticked again: a facing that is not yet home simply
+      // waits.  The port carried an `else` arm here that re-ran $2946F0's
+      // subq/reload/`sub.b` block, which is the SAME 8-bit misreading -- the
+      // 8-bit form of `66 00` lands on $294720, the branch's own extension
+      // word, so it is no branch at all and the arm below it is entered.
+      // **THIS IS LOAD-BEARING, NOT INERT, AND IT WAS MEASURED BOTH WAYS.**
+      // [M] the `d14-home-tick` RED arm changes exactly ONE byte on the whole
+      // lf2000..lf10300 ladder -- $812B18, this slot's own ($4,A4) -- on
+      // lf9400->9500 (666 -> 667 differing RAM bytes) and lf9500->9600
+      // (606 -> 607).  Every bullet-pool count stays 210/210 under it, which
+      // is why only a whole-RAM measure catches this one.
       if ((ram.u8(a6 + 0x4b) & 0xfe) === 0x40) {        // $294712/$294716/$29471A
         ram.setU8(a6 + 0x4b, 0x40);                     // $294722
         ram.setU8(a6 + 0x8b, 0xc0);                     // $294728
@@ -456,10 +478,12 @@ export function d14Step294658(ram, a4, a6) {
         a1Stop259B08(ram, 5);                           // $294734
         a1Stop259B08(ram, 6);                           // $29473C
         a1Stop259B08(ram, 0x0e);                        // $294744
-      } else if (!subqByteBcc(ram, a4 + 0x04)) {        // $2946F0 (not home: tick)
-        ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));        // $2946F8
-        const dir = i8(ram.u8(a4 + 0x02));              // $294706
-        ram.setU8(a4 + 0x03, u8(ram.u8(a4 + 0x03) - dir));   // $29470A
+      } else if (W441_MUTATE.value === 'd14-home-tick') {
+        // RED: the arm the 8-bit reading of $29471E created.
+        if (!subqByteBcc(ram, a4 + 0x04)) {
+          ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));
+          ram.setU8(a4 + 0x03, u8(ram.u8(a4 + 0x03) - i8(ram.u8(a4 + 0x02))));
+        }
       }
     } else if (!subqByteBcc(ram, a4 + 0x04)) {          // $2946F0 (target not met)
       ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));          // $2946F8
@@ -683,6 +707,18 @@ export function e12Step2966B8(ram, rom, ctx, a4, a5, a6) {
  *
  *  `null` is the ported board. */
 export const W440_MUTATE = { value: null };
+
+/** WAVE 441 falsification seam, both arms of `$294658`'s wide-branch pair:
+ *
+ *    'd14-wait-fallthrough' -- $294666 read as an 8-bit `bne +0`, so the D14
+ *                            wait state falls through into the part rotate and
+ *                            turns both gun mounts on every frame of the wait.
+ *    'd14-home-tick'       -- $29471E read the same way, restoring the phantom
+ *                            cadence tick on the "target met, facing not home"
+ *                            arm.
+ *
+ *  `null` is the ported board. */
+export const W441_MUTATE = { value: null };
 
 // ===========================================================================
 // E 14 -- $2968E6 / $2968FE.  Rotation's own gun (kind 4 fan).

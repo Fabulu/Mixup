@@ -4281,3 +4281,57 @@ so this is the EFFECT, not the hit.
 **THE BENCH IS NOW FULLY SPECIFIED BY THE OWNER:** hyper stock non-zero, laser HELD, bomb pressed
 while it is held, laser still held. **Not "activate hyper" -- that ordering is the report.**
 
+
+### W441: THE "TWO DEFECTS" WERE ONE, IN NEITHER FILE I NAMED. THE BAND IS CLOSED.
+
+**`mover.js`, `laser.js` and `spark.js` are all UNTOUCHED.** The whole wave is ONE branch:
+
+    $294666  66 00 00 f4  bne.W $29475C   D14's WHOLE WAIT STATE
+    $29471E  66 00 00 2c  bne.W $29474C   the exit, NOT a cadence tick
+
+`$294658` is D14, the script that rotates the boss's two gun mounts. State 0 is a wait. **Read
+`66 00` as an 8-bit `bne +0` and it lands on `$294668` -- THE EXTENSION WORD ITSELF** (confirmed by
+the coordinator) -- so the wait falls straight into the code that turns both mounts. **The port
+rotated the mounts on every frame of a state that exists to turn nothing.**
+
+**FIFTH WAVE RUNNING ON THIS TRAP:** W437 `bcs.W`, W438 `bmi.W`, W439 `bra.W`, W440 four `bcc.W`,
+W441 two `bne.W`.
+
+**MY BRIEF WAS WRONG ABOUT BOTH DEFECTS:**
+- **Defect 2 was NOT an under-free.** `boundsKill` was right for 441 waves. The port freed 8
+  because its 42 bullets were fired from a mount **70 frames out of phase**, so they left the
+  playfield on different frames. It now frees **16**.
+- **Defect 1 is the SAME cause** -- the beam impact is position-gated on the same part. **W440's
+  "handing it 8 draws moves the pool by zero" was CORRECT: they could not move each other because
+  both are downstream of one thing.**
+
+    lf9100->9200   176/210 -> 210/210   (whole-RAM 2152 -> 608)
+    every segment lf9000..9600 now 210/210, pool A 70/70, pool B 80/80, draw gap [] throughout
+
+**Whole-ladder sweep, 209 rung pairs: 1 improved, 208 unchanged, 0 REGRESSED.** Whole-RAM bytes: 4
+fewer, 205 same, **0 more**.
+
+**THE WITNESS HAD TO COME FROM OUTSIDE THE STRUCTURE, and that is the lesson.** `$812B14` -- D14's
+own record -- is **byte-identical to the board BEFORE AND AFTER**, and every slot-record gate was
+green through 440 waves. **The defect leaves no trace in the structure that carries it.** What
+caught it: the board's part facings move `$40 -> $22` and `$C0 -> $A2`, both exactly **-30 =
+100-70**, a third independent count of the same 30 -- and **the 8-bit reading predicts `$DC`, which
+is exactly what the port had.**
+
+Also: the proving segment `lf9000->9100` was 210/210 **before and after** while its boss-body struct
+went **14 differing bytes -> 0**. No pool poke can do that. And at lf9200 only 570 of 2,152
+differing bytes were in the pool, so **a perfect pool poke floors at 1,582 where the result is 608
+with ZERO in the pool.**
+
+**`$29471E` WAS CALLED INERT IN A CODE COMMENT AND MEASURED FALSE BEFORE COMMIT** -- it costs 1 byte
+on two segments and is invisible to every pool count.
+
+**THREE W440 TESTS WERE PINNING THE DEFECT. All REWRITTEN, none deleted**, and now run under W441's
+RED arm so they stay true AND falsifiable.
+
+Verified by the coordinator on a quiet tree: **4051 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows with none added.
+
+**PINNED, NOT MINE:** `lf8800->8900` is 171/210 and `lf8900->9000` is 189/210 -- pre-existing,
+identical before and after and under both RED arms, **so no later wave is credited with them.**
+
