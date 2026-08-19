@@ -4242,3 +4242,42 @@ defects, neither this wave's** -- the port misses the laser beam-impact spark on
 **handing it those 8 draws changes the bullet count by ZERO, performed not argued**), and it frees
 8 records where the board frees 16, which is `mover.js`/`boundsKill` territory.
 
+
+### D59 CLOSED BY THE OWNER, AND LASER-ONLY IS **ORIGINAL BEHAVIOUR**
+
+> "bees seem ok now, though you can only uncover them with laser. I don't know if that's original
+> behavior."
+
+**IT IS ORIGINAL, and this repo measured why before the owner asked.** W410: the bee carrier's
+sub-proto word 0 is `$8100`, and of the four damage passes only **block 7** accepts it
+(`$245218 btst #$5,D4` OR `$24521E btst #$0,D4` -- `$81` has bit 0). The ordinary shot pass needs
+bit 13; block 8 and the beam's own pass need bit 5. **Block 7's A2 is `$811802` -- the BEAM MUZZLE,
+pool slot 27.** So the laser is the ONLY weapon that can damage a carrier. **The owner is describing
+the cartridge.**
+
+D59 is therefore closed on the owner's own play, and W430's measurements stand: shoot, kill, drop,
+drift and collect all verified, and the collect cue posts (id `$1F`).
+
+### D56 UPDATE -- THE OWNER'S EXACT SEQUENCE, AND IT IS THE `$249868` ARM
+
+> "I press laser button while I have hyper and keep it pressed. Laser fired. I keep it pressed and
+> hit bomb. I go into hyper. I keep laser pressed: Laser comes out, it hits something, and **it just
+> cuts off, it has no hit animation or particles or whatever.**"
+
+**THIS SETTLES THE QUESTION W427 COULD NOT.** The owner has hyper stock, so `$249864/$249866`
+forks to **`$249868`, the HYPER arm** -- which sets the PLAYER's flags1 bit 0 and **never allocates
+`$811F72` at all**. So `$2456A6` and block 9 never run, and **W427 benched the OTHER weapon.**
+
+**AND "IT JUST CUTS OFF" IS A PRECISE SYMPTOM, NOT A VAGUE ONE.** The beam terminating at the
+target is CORRECT -- that is the beam stopping where it hit. **What is missing is the IMPACT
+EFFECT at the termination point.**
+
+**THAT NAMES A SUBSYSTEM THIS PROJECT HAS JUST BEEN INSIDE.** W440 and W441 both handled a missing
+**laser beam-impact spark**: `spawnBeamImpact289FC0` <- `runBeamDraw` (`src/laser.js` ->
+`src/spark.js`, **pool E**), and W441 proved that spark is **position-gated on the part it hits**.
+**Start there, not in the damage passes.** The damage is landing -- the owner sees the beam react --
+so this is the EFFECT, not the hit.
+
+**THE BENCH IS NOW FULLY SPECIFIED BY THE OWNER:** hyper stock non-zero, laser HELD, bomb pressed
+while it is held, laser still held. **Not "activate hyper" -- that ordering is the report.**
+
