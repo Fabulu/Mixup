@@ -308,7 +308,32 @@ now 80/80.
 **AND THE FREED-SLOT TRAP IS STRONGER THAN ANYONE STATED:** at lf10000 the board has **39 non-blank
 slots and ZERO live ones**, so the whole comparison is residue on BOTH sides.
 
-### NEXT UNIT: TWO PRE-EXISTING POOL-B REDS -- IN PROGRESS (W435)
+### W435: THE STAGE-END TRANSITION IS THE BOARD'S. `PRESENTATION_DEVIATION` IS EMPTY.
+
+lf10300->10400 went **74/80 -> 80/80**, and the port now unfreezes at **lf10334, the board's frame**
+(was lf10303), matching `$8130D2` on all 300 frames of lf10201..10500.
+
+**A `PRESENTATION_DEVIATION` STOOD TEN WAVES ON A FALSE REASON.** DEV-2 blamed an unported
+presentation-tier drain. **That drain is `animobjects.js`, main-loop call #3, ported since W91 and
+running every frame.** The missing thing was its INPUT. **VERIFY A STATED REASON, NOT JUST THE
+CLAIM.** `PRESENTATION_DEVIATION` is now `Object.freeze({})`.
+
+**THE WAVE REFUSED THE TEST I ASKED FOR, CORRECTLY.** I named lf10400 as the deliverable rung; the
+board's pool B is **entirely EMPTY there**, so 80/80 would be satisfied by anything that wipes the
+pool. **CHECK A RUNG IS LOAD-BEARING BEFORE TRUSTING IT.** The real rung is lf10500.
+
+### NEXT UNIT: THREE LIVE RECORDS THE PORT NEVER SPAWNS -- IN PROGRESS (W436)
+
+`stage1-laser-hold` lf9500->9600, **60/80**, and **the only red 100-frame segment in
+lf9300..10700** -- its four neighbours are 80/80 INCLUDING live records.
+
+    board  33 live / 43 non-blank / count $22
+    port   30 live / 35 non-blank / count $1F
+
+**A spawn-count divergence**, not field arithmetic: three allocations that never happen, with
+everything downstream shifted by allocation order.
+
+### SUPERSEDED: TWO PRE-EXISTING POOL-B REDS (W435)
 
 Both measured identical with W434's fix on and off, so they are independent of it:
 
