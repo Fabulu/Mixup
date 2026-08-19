@@ -4085,3 +4085,56 @@ per-record position. **That is `$27F95A`'s driver, now reachable and worth a wav
 lf9601..9800 has 15 draw-gap frames (18 before, so no regression), and `$282016 jsr $27F8F8` stays
 a note because it has **no `moveq #$0,D0`** in front of it, so its kind is unknown.
 
+
+### W438: `$27F95A`'s DRIVER IS **EXACT**. MY BRIEF NAMED THE WRONG SUBSYSTEM.
+
+**NO PRODUCTION CODE CHANGED.** Seeded on the board's own lf9600 rung -- where the board holds 68
+pool-A records and drains to 32 by lf9700, so 36 are freed inside the window and every survivor is
+stepped 100 times -- the port produces **70/70 byte-identical slots**, `$817F7E` = 32, 32 distinct
+positions, zero draw-gap frames. Same at lf9700->9800.
+
+**AND MY "at lf9700 the port drains to 27 where the board holds 32" WAS A CONFLATION**: that is the
+lf9500->**9700** 200-frame run, not the lf9600->9700 rung. From lf9600 the port reaches 32 exactly.
+Both readings are now asserted in one file so they cannot be conflated again.
+
+**WHY POOL A LOOKS WRONG AT lf9600: THE POSITION IS COPIED, NOT COMPUTED.**
+`$280B56 add.l ($2,A6),D1` -- the **LONG** form (`d2 ae`, not `d2 6e`, confirmed by the
+coordinator) -- takes the record's whole position longword **from the CARRIER**, which on this
+route is a dying enemy bullet. Of the 68 differing slots, **60 differ ONLY at `+$02..+$05`**;
+status, sprite, descriptor, size, hitbox, blink, **speed, angle**, template, hit count, cached
+velocity and layer emitter are already the board's.
+
+**THE REAL DRIVER IS THE ENEMY-BULLET POOL, and pool A is byte-perfect on EXACTLY the segments where
+that pool is, and on no other:**
+
+    lf9500->9600   bullets 149/210   (61 differ; 61 at +$05, 56 at +$04)   pool A  2/70
+    lf9600->9700   bullets 210/210                                          pool A 70/70
+    lf9700->9800   bullets 210/210                                          pool A 70/70
+
+**THE FALSIFICATION IS THE STRONGEST YET.** Each arm overwrites ONE group of bytes in the port's own
+state with the board's, then steps 100 frames:
+
+    nothing                      2 -> 2/70
+    position +$02..+$05          2 -> 62/70   (52/70 at lf9700)
+    ALL FORTY OTHER BYTES        2 -> 2/70
+
+**Handing the port the right answer for every other byte of every record -- 2,800 bytes -- moves the
+number by ZERO. Four bytes move it by sixty.** A second defect anywhere in the 44-byte record would
+have shown on the all-but-position arm. A constant fails the byte compare outright and could not
+survive the 52/70 arm, because a wrong position frees on a wrong frame and yields a different
+survivor set. **RED run performed, not asserted:** injecting `- d6 - 1` into `$27F97A`'s scroll
+turns 6 of 8 tests red.
+
+**DECODE CORRECTIONS, all three confirmed by the coordinator from the image:** `$27F95A` is **21
+instructions** including a **`nop` at `$27F98C`** no note lists, and a **wide `bmi.w` at `$27F984`**
+(`6b 00 17 44` -> `$2810CA`) -- **an 8-bit read makes it a branch to the next instruction and the
+collected arm VANISHES.** Also `$27F978 beq` goes to `$27F972`, the advance, not `$27F976`; the
+wave's first draft had this wrong and its own test caught it.
+
+### NEXT UNIT, PINNED AT ITS SMALLEST BY W438
+
+**`lf4025 -> 4050`: 209 of 210 bullet slots byte-identical, zero draw-gap frames.** The single
+differing slot is **slot 3**: the board puts a live kind-7 bank-A bullet there; the port's slot 3 is
+**byte-identical to the lf4025 SEED for all 25 frames -- not spawned-and-killed, not killed early,
+simply NEVER WRITTEN.** One missing spawn, costing no RNG draw, in an otherwise perfect pool.
+
