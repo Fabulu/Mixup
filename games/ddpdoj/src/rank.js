@@ -62,6 +62,13 @@ import {
 } from './hud.js';
 import { install2414BE } from './palette.js';
 import { writeStage25FD0C, wipeStageBlock25FD24 } from './stageend.js';
+// W445 -- the three `$2605C8` sub-calls that were already ported and still counted.
+// `bee.js` is a leaf as far as this file is concerned; `objslot12.js` reaches back here
+// through `tallyscreen.js`, and that cycle is safe because every binding on both sides
+// is a hoisted `function` declaration used at CALL time, never at module-eval time --
+// the same shape as the `rank.js <-> tally.js` cycle that has stood since W289.
+import { clearPoolA } from './bee.js';
+import { clearPlayerRam24A810, clearRankRam2603DA } from './objslot12.js';
 import { u16, i16 } from './ram.js';
 
 /** ROM and RAM addresses the rank object speaks in, each cited at the line that
@@ -70,8 +77,10 @@ export const RANK = {
   dispatch: 0x240F62,       // object table; entry [10] = $260794, priority $001F
   handler: 0x260794,        // the state machine
   stateOff: 0x02,           // $260794 tst.b ($2,A5) -- the state byte
-  initState: 0x2605C8,      // state 0 -> INIT (DEFERRED, cold-boot only)
-  teardown2603DA: 0x2603DA, // state 2 -> jsr $2603DA then jmp $241292 (self-kill)
+  initState: 0x2605C8,      // state 0 -> INIT (PARTIAL, cold-boot only)
+  // state 2 -> jsr $2603DA then jmp $241292 (self-kill). W445: the body is RUN now
+  // (objslot12.js clearRankRam2603DA); this stays as the address the arm cites.
+  teardown2603DA: 0x2603DA,
   selfKill: 0x241292,       // lea $4C(A5),A0 / bra $241238 -- deferred kill by ID
   // state-1 per-frame body $2607A8..$260808
   gate813082: 0x813082,     // $2607A8 tst.w -- per-frame gate (set -> skip body)
@@ -122,9 +131,12 @@ export const RANK_DEVIATION = Object.freeze({
     + '$813080 = 0, $813082 = 1, the $813098 loop branch and the loop-2+ clears at '
     + '$260680..$2606C9) and $2606CE bsr $25FD0C; W385 adds $260700 bsr.w $25FE42, '
     + 'which fills both $25FF7A dispatcher records and creates the HUD and the two '
-    + 'announcement objects. Its nine remaining calls ($259C4A, $2603DA, $28D552, '
-    + '$28EBFE, $27F87C, $2884E2, $287024, $24A810, $288574) are counted at their '
-    + 'own call sites. $260666 move.w '
+    + 'announcement objects. W445 wires three more -- $260678 jsr $2603DA '
+    + '(objslot12.js clearRankRam2603DA), $2606E8 jsr $27F87C (bee.js clearPoolA) and '
+    + '$2606FA jsr $24A810 (objslot12.js clearPlayerRam24A810) -- so its SIX remaining '
+    + 'calls ($259C4A, $28D552, $28EBFE, $2884E2, $287024, $288574) are counted at '
+    + 'their own call sites, and none of the six has a port under either naming '
+    + 'convention. $260666 move.w '
     + '#$1,$813082 is the one that matters here: it is the gate $2607A8 tests, and '
     + 'while the whole INIT was deferred the gate stayed 0, so the per-frame body '
     + 'ran before $26089E had installed the rank base pointer $81315C.',
@@ -595,20 +607,49 @@ const INIT_LOOP2_LONGS = Object.freeze([0x813144, 0x813148, 0x81314c, 0x813150, 
 export const INIT_UNREAD = Object.freeze([
   Object.freeze([0x2605ce, 0x259c4a, 'a reset-prologue routine ($23BEEA\'s 20th call, '
     + 'frontend.js RESET_PROLOGUE)']),
-  Object.freeze([0x260678, 0x2603da, 'the presentation/teardown body this file already '
-    + 'counts from the state-2 arm at $260788']),
   Object.freeze([0x2606d2, 0x28d552, 'stageend.js has it as the module-private '
     + 'clear28D552 and does not export it']),
   Object.freeze([0x2606d8, 0x28ebfe, 'unread anywhere in this port']),
-  Object.freeze([0x2606e8, 0x27f87c, 'bee.js names it as the big $6E7-word clear and '
-    + 'does not implement it']),
   Object.freeze([0x2606ee, 0x2884e2, 'a reset-prologue routine (frontend.js '
     + 'RESET_PROLOGUE)']),
   Object.freeze([0x2606f4, 0x287024, 'unread anywhere in this port']),
-  Object.freeze([0x2606fa, 0x24a810, 'a reset-prologue routine (frontend.js '
-    + 'RESET_PROLOGUE)']),
   Object.freeze([0x260704, 0x288574, 'unread anywhere in this port']),
 ]);
+
+// W445 -- THREE ROWS LEFT THIS TABLE, and every one of their `why` strings was FALSE.
+// W444 found them by scanning; this wave ran them and measured what they do.
+//
+//   $260678 -> $2603DA   "the presentation/teardown body this file already counts from
+//                         the state-2 arm at $260788". It is not presentation and it is
+//                         not teardown-only: [M] `$2603DA..$2603FD` is `lea $81308C,A0 /
+//                         move.w #$65,D0 / move.w #$0,(A0)+ / dbra`, then `$FFFF` into
+//                         $8130BE and $8130C0. objslot12.js EXPORTS it as
+//                         `clearRankRam2603DA` and W388 calls it from $28F374.
+//                         **AND $260788 DEFERRED THE SAME ROUTINE for the same false
+//                         reason** -- the note there called it "(presentation/sound)".
+//                         Both are wired now. The state-2 site is [M] `4eba fc50` =
+//                         `jsr (-$3B0,PC)` off $26078A, which is $2603DA exactly.
+//   $2606E8 -> $27F87C   "bee.js NAMES it and DOES NOT IMPLEMENT IT". `bee.js clearPoolA`
+//                         IS the implementation, exported since W111 with its own test:
+//                         [M] `lea $8171BE,A0 / move.w #$6E6,D0 / move.w #$0,(A0)+ /
+//                         dbra` = $6E7 words, and POOL_A.clearWords is $6E7.
+//                         **AND THIS SITE IS THE ONLY CALLER, WHICH IS THE PROOF.**
+//                         `bee.js`'s own doc claimed `rebuildWorld25FD38` called it; [M]
+//                         `$25FD38` calls EIGHT resets and $27F87C is not among them, and
+//                         nothing in `src/` called `clearPoolA` either. `stageend.js`'s
+//                         range table has $27E98A covering $816B7A..$8171BD and $28131E
+//                         covering $817F8C..$81B41F -- pool A is $8171BE..$817F8B,
+//                         abutting BOTH to the byte. The world rebuild skips pool A on
+//                         purpose because THIS call owns it, so while $2606E8 was counted
+//                         nothing in the port ever cleared those 3,534 bytes.
+//   $2606FA -> $24A810   "a reset-prologue routine (frontend.js RESET_PROLOGUE)". That
+//                         list is an INVENTORY OF ADDRESSES, not a port, and it never
+//                         made the body unavailable: objslot12.js EXPORTS
+//                         `clearPlayerRam24A810` and W388 calls it from $28F368.
+//
+// **$2606EE ($2884E2) AND $2606F4 ($287024) STAY.** They sit between the two that were
+// wired, on the same `$813098`-gated run, and a scan for either name in `src/` finds
+// nothing -- no port under either convention. They are still genuinely out.
 
 // ===========================================================================
 // W385 -- `$25FE42`, THE ROUTINE THAT GIVES BOTH SIDES A PLAYER TO BE
@@ -783,7 +824,12 @@ function rankInit2605C8(ram, rom, a5, ctx) {
   ram.setU16(STAGESTART.wordD6, 0);                         // $260660 clr.w $813080
   ram.setU16(RANK.gate813082, 1);                           // $260666 -- THE GATE
   if (ram.u16(RANK.loopWord) === 0) {                       // $26066E tst.w / $260674 bne
-    defer(0x260678);                                        // $260678 jsr $2603DA
+    // $260678 `4eba fd60` = jsr (-$2A0,PC) off $26067A = $2603DA. W445 RUNS IT.
+    // Note the symmetry the deferral hid: the ELSE arm below already wrote $FFFF into
+    // $8130BE/$8130C0 inline ($260680/$260688), and $2603DA is how the loop-1 arm
+    // reaches the same two words. While it was counted, only one of the two arms
+    // seeded the lives words at all.
+    clearRankRam2603DA(ram);                                // $260678 jsr $2603DA
   } else {
     for (const [a, v] of INIT_LOOP2_WORDS) ram.setU16(a, v);     // $260680..$260697
     for (const a of INIT_LOOP2_LONGS) ram.setU32(a, 0);          // $260698..$2606C9
@@ -792,7 +838,10 @@ function rankInit2605C8(ram, rom, a5, ctx) {
   defer(0x2606d2);                                          // $2606D2 jsr $28D552
   defer(0x2606d8);                                          // $2606D8 jsr $28EBFE
   if (ram.u16(RANK.loopWord) === 0) {                       // $2606DE tst.w / $2606E4 bne
-    defer(0x2606e8); defer(0x2606ee); defer(0x2606f4); defer(0x2606fa);
+    clearPoolA(ram);                                        // $2606E8 jsr $27F87C
+    defer(0x2606ee);                                        // $2606EE jsr $2884E2
+    defer(0x2606f4);                                        // $2606F4 jsr $287024
+    clearPlayerRam24A810(ram);                              // $2606FA jsr $24A810
   }
   playerRecords25FE42(ram, rom, ctx);                       // $260700 bsr.w $25FE42
   defer(0x260704);                                          // $260704 jsr $288574
@@ -1003,12 +1052,17 @@ export function makeRankObject(rom) {
       return;
     }
     if (state === 2) {
-      // $2607A2 beq $260788 -- state 2 teardown: `$260788 jsr $2603DA` (noted,
-      // unported presentation/teardown work) then `jmp $241292` (self-kill by
-      // ID, the same deferred kill stageend.js `destroy28D5E6` uses).  Never
-      // reached on the seeded corpus.
-      note(ctx, RANK.teardown2603DA, '$2603DA -- the rank object state-2 '
-        + 'teardown body (presentation/sound), counted, not run this wave');
+      // $2607A2 beq $260788 -- state 2 teardown: `$260788 jsr $2603DA` then
+      // `jmp $241292` (self-kill by ID, the same deferred kill stageend.js
+      // `destroy28D5E6` uses).  Never reached on the seeded corpus.
+      //
+      // **W445 RUNS THE TEARDOWN BODY.** The note that stood here called $2603DA
+      // "(presentation/sound)"; it is neither -- it is 102 words of RAM clear from
+      // $81308C plus two $FFFF stores, and objslot12.js has exported it as
+      // `clearRankRam2603DA` since W387. This was the SECOND deferral of that one
+      // address in this file (the other was $260678), which is the W433 shape: wiring
+      // only the one the audit named would have left this one behind by itself.
+      clearRankRam2603DA(ram);                    // $260788 jsr $2603DA
       queueKill(ram, ram.u32(a5 + ALLOC.idOff));  // $26078C jmp $241292
       return;
     }

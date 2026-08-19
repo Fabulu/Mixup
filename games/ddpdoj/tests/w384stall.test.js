@@ -670,7 +670,16 @@ test('W385 rank.js RUNS bonus-line request 4 through tally.js and the player is 
   g.ram.setU16(TALLY.side0 + 0x16, 0);                    // $25FE6A -- side 0
   // ...and $2603FE's `$260434 jsr $25FF38` with D0 = 0, D1 = 4.
   g.ram.setU16(TALLY.side0 + 0x00, 4);
-  assert.equal(g.ram.i16(LIVES1), 0, 'POSITIVE CONTROL: the lives counter is still zero');
+  // **W445 REWRITES THIS CONTROL, AND THE BOARD IS WHY.** It read `0` -- "the lives counter is
+  // still zero" -- and zero was never the cartridge's value here. `$2603DA` ends
+  // `move.w #$FFFF,$8130BE / move.w #$FFFF,$8130C0`, and `rank.js`'s `$260678 jsr $2603DA` was
+  // COUNTED rather than run until W445, so the port sat at 0 where the board sits at -1.
+  // [M] ACROSS ALL 644 BOARD RAM DUMPS in tools/oracle/out/w69/*/ckpt/*.ram.bin: $8130BE = 2
+  // (644/644) and $8130C0 = $FFFF (644/644) -- the ABSENT side's word is the sentinel, not zero.
+  // The control still does its job: it says the counter has not been SEEDED yet, and -1 is the
+  // unseeded value.
+  assert.equal(g.ram.i16(LIVES1), -1,
+    'POSITIVE CONTROL: unseeded, and unseeded is $FFFF -- $2603DA\'s sentinel, not zero');
 
   // (a) THE WIRING. One real frame. `$2607A4` reaches `tallyDriver25FF7A`, which runs line 4.
   g.step(NO_PLAYER);

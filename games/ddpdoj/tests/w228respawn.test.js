@@ -72,9 +72,69 @@ test('W228 a life in hand creates the player object and spends the count',
     '$260032..$260044 hand the new object its side and its position');
 
     assert.deepEqual(events, [['respawn', 1, 0, 'ok']]);
-    // the only thing this arm defers is a VRAM clear and a HUD row
-    assert.deepEqual(log.report().map((l) => l.trim().split(' ')[2]),
-      ['$23C668', '$2878CC']);
+    // W445 REWRITES THIS ASSERTION -- IT WAS PINNING THE DEFECT. It read
+    // `['$23C668', '$2878CC']` and called that "the only thing this arm defers is a
+    // VRAM clear and a HUD row", which made the missing lives row look like the
+    // measured, intended state. `hud.js` has EXPORTED `livesRow2878CC` since W116 and
+    // the cartridge's `$260014` is an unconditional `jsr $2878CC`. Only `$23C668`
+    // ($907000, outside the $904000 TxVram this port models) is genuinely still out.
+    assert.deepEqual(log.report().map((l) => l.trim().split(' ')[2]), ['$23C668'],
+      '$2878CC is DRAWN now, not counted; if it comes back here the wiring was lost');
+  });
+
+// THE WIRING'S OWN WITNESS, AND IT IS OUTSIDE player.js ENTIRELY.
+// `livesRow2878CC` writes nothing player.js can see: it appends (dest, tile) pairs to
+// the `$80B058` TX DEFER BUFFER through `hud.js txPrint240DC2`/`txPrint240EBC`. So a
+// faked wiring -- a call that returns early, a stub, a re-added note -- leaves this
+// buffer at its head and this test red. The unarmed run below is the control that says
+// the 12 records are the DRAW and not the bench: same respawn, cursor never armed,
+// nothing written. (That unarmed case is also why the old note called $2878CC a
+// "ZERO RAM WRITES" draw -- it was measured on a bench with no buffer.)
+test('W445 the respawn REDRAWS the lives row, and an unarmed buffer is the control',
+  { skip: SKIP }, () => {
+    const HEAD = 0x80b058, CURSOR = 0x80c8d8;
+    const records = (ram) => {
+      const out = [];
+      for (let a = HEAD; a + 8 <= ram.u32(CURSOR); a += 8) out.push([ram.u32(a), ram.u32(a + 4)]);
+      return out;
+    };
+
+    const armed = new Ram();
+    armed.setU32(CURSOR, HEAD);                 // what camReset does before any body runs
+    respawn25FFA8(armed, ctxOf(armed).ctx, entry(armed, 1));
+    const recs = records(armed);
+    // Six vertical slots ($287902 moveq #5,D7 -> dbra = 6) each two cells wide
+    // ($287904 moveq #1,D2), so 12 pairs.
+    assert.equal(recs.length, 12, 'six 2-cell slots reached the defer buffer');
+    // $25FFC8 subq.w #$1 spent the one life BEFORE the row is drawn, so $28790C reads
+    // ZERO and $287910 beq skips the icon loop entirely: all six slots are blanks.
+    // That is the cartridge's order and it is why the row must be redrawn at all.
+    assert.equal(recs.filter(([, t]) => t === 0xc0000000).length, 12,
+      'twelve blank cells -- $240EBC discards D4 and writes $C0000000 into every one');
+    // AND THE ICON ARM IS REACHABLE, measured on the same body: give the count 3 and
+    // two of the six slots become icons off $2881E2. Without this the assertion above
+    // would also pass on a body that could only ever draw blanks.
+    {
+      const three = new Ram();
+      three.setU32(CURSOR, HEAD);
+      respawn25FFA8(three, ctxOf(three).ctx, entry(three, 3));
+      const r3 = records(three);
+      assert.equal(r3.length, 12, 'still six slots');
+      assert.equal(r3.filter(([, t]) => t !== 0xc0000000).length, 4,
+        'two life icons ($2881E2, two cells each) once the count survives the subq');
+      assert.deepEqual(r3.slice(0, 4).map(([, t]) => t >>> 0),
+        [0xc6270012, 0xc6280012, 0xc6270012, 0xc6280012],
+        '$2881E2 is $06270012 and $240DEE steps the tile $10000 per cell');
+    }
+    // P1's row walks its column base UP by $100 a slot ($28793C addi.w #$100,D1),
+    // so the six dests are $100 apart -- proof these are the ROW, not stray writes.
+    const cols = [...new Set(recs.map(([d]) => (d - 0x904000) & 0xff00))].sort((a, b) => a - b);
+    assert.deepEqual(cols, [0x200, 0x300, 0x400, 0x500, 0x600, 0x700],
+      'six slots, one row apart, from $2878D4 move.w #$200,D1');
+
+    const unarmed = new Ram();                  // cursor left at 0 -- the ROM's null case
+    respawn25FFA8(unarmed, ctxOf(unarmed).ctx, entry(unarmed, 1));
+    assert.equal(unarmed.u32(CURSOR), 0, 'an unarmed buffer draws nothing, as $240DCC does');
   });
 
 test('W228 the last life falls through to the game-over arm', { skip: SKIP }, () => {

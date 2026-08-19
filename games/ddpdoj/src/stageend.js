@@ -102,6 +102,11 @@ import { emit23F82A } from './bossarrival.js';
 // W389 -- `$24676A..$2467C3`, the per-node CONTENT seeding that lives INSIDE `$246710`'s
 // allocation loop. `animobjects.js` imports nothing from here, so this is not a cycle.
 import { seedChainNode24676A, CHAIN_CONTENT, CHAIN_CONTENT_24652A } from './animobjects.js';
+// W445 -- `$2537D2 jsr $2878CC` / `$253820 jsr $28795C`, the loop extend's LIVES row.
+// `hud.js` has PORTED that body since W116 and imports nothing from here, so this is
+// not a cycle: `hud.js -> items.js -> hud.js` is the pre-existing one, and this file
+// already sits above both.
+import { livesRow2878CC } from './hud.js';
 
 export const SE = {
   stage: 0x813092, stageX2: 0x813094, stageX4: 0x813096,   // $25FD0C
@@ -1661,9 +1666,20 @@ function loopExtend253794(ram, ctx, p2) {
   if (ram.u16(lives) !== 0) return;                    // $2537B6 / $253806
   if (ram.u16(lives) === 0x14) return;                 // $2537C0 / $25380E -- dead
   ram.setU16(lives, u16(ram.u16(lives) + 1));          // $2537CC / $25381A
-  note(ctx, p2 ? 0x28795c : 0x2878cc, `$${p2 ? '2537D8' : '2537D2'} jsr $${
-    p2 ? '28795C' : '2878CC'} -- that side's LIVES row after the loop extend, the `
-    + `same counted zero-RAM-write draw hud.js defers`);
+  // $2537D2 jsr $2878CC / $2537D8 jsr $28795C -- REDRAW THAT SIDE'S LIVES ROW, and
+  // W445 WIRES IT. The note that stood here said "the same counted zero-RAM-write
+  // draw hud.js defers"; `hud.js` has EXPORTED `livesRow2878CC` since W116 and does
+  // not defer it -- `items.js` ($25311E/$253126) and `tally.js` ($260014/$26001E,
+  // $260190/$2601CA) had it wired at four sites already. This was the fifth and the
+  // ONLY one on a live path, so a loop extend granted the free life and left the row
+  // on screen showing ZERO. `ctx.rom` is the same handle `bannerStep28ECCE` uses ten
+  // functions up; without one, `livesRow2878CC`'s own `if (!rom)` arm counts the miss,
+  // which is the declared no-resource fallback and not this deferral.
+  //
+  // [M] AND THE NOTE'S P2 ADDRESS WAS WRONG TOO: it printed "$2537D8 jsr $28795C",
+  // but $2537D8 is `4eb9 0028c678`, P1's OWN jingle. P2's row call is `$253820
+  // 4eb9 0028795c` and its jingle is `$253826`. The pair below is now [M]-correct.
+  livesRow2878CC(ram, ctx?.rom, ctx, p2 ? 1 : 0);      // $2537D2 / $253820
   ctx?.soundPost?.(0x28c678);                          // $2537D8 / $253826
   ctx?.stageEndEvent?.('loop-extend', p2 ? 2 : 1, ram.u16(lives));
 }

@@ -841,16 +841,34 @@ test('W393 SECTION 5: THE DEMOS PLAY. Past +5,996, and all three formations run'
     assert.equal(formations.get('2:rotate').first, 1935, 'demo 0\'s options come up at +1,935');
     assert.equal(formations.get('4:rotate').first, 5967, '  ...demo 1\'s at +5,967');
     assert.equal(formations.get('6:rotate').first, 9999, '  ...and demo 2\'s at +9,999');
-    assert.equal(formations.get('4:rotate').frames, 754,
-      'formation 4 runs for 754 frames -- 31 of which W392 never saw');
-    assert.equal(formations.get('2:rotate').frames, 1264, 'formation 2 for 1,264');
+    // **W445 RE-BASELINED TWO OF THESE THREE, and says plainly what kind of number they are.**
+    // Wiring the $2605C8 INIT's three already-ported clears ($2603DA, $27F87C, $24A810) changed
+    // demo 1 from 754 to 749 frames and demo 2 from 732 to 736. NOTHING ELSE MOVED: the sixteen
+    // `arms` transitions above are identical to the frame, all three demos still come up at
+    // +1,935 / +5,967 / +9,999, none throws, and the state-word set below is unchanged.
+    //
+    // **DEMO 0 IS UNCHANGED AT 1,264, AND THAT IS THE TELL.** Lap 1 runs on a board that was
+    // just booted, so the three clears have nothing to clear; laps 2 and 3 start on state the
+    // previous lap left behind, and removing that state is the entire purpose of the routines
+    // `$2606E8`/`$2606FA` call. A wiring that did nothing would have left all three equal.
+    //
+    // **THESE THREE NUMBERS ARE PORT-DERIVED, NOT BOARD-MEASURED** -- the oracle's 644 RAM
+    // dumps are gameplay ladders and carry no attract-demo option lifetimes -- which is why
+    // W394 already had to correct one of them from 443. Treat a change here as a re-baseline
+    // to explain, not as a regression to revert; the structural claims above are the ones that
+    // catch a real break.
+    assert.equal(formations.get('4:rotate').frames, 749,
+      'formation 4 runs for 749 frames -- 754 before W445 wired the INIT\'s three clears');
+    assert.equal(formations.get('2:rotate').frames, 1264,
+      'formation 2 for 1,264 -- UNCHANGED by W445, because lap 1 has nothing to clear');
     // **W394 CORRECTION.** This read 443, and 443 was not formation 6's length -- it was the
     // distance from demo 2's first option frame (+9,999) to the frame the port DIED on (+10,514,
     // `$262B4C`). With internal stage 2's fourteen background-element constructors ported the
     // demo runs to its own end and formation 6 gets its real 732 frames, which is 289 more than
     // any measurement before this wave could see. A number produced by a crash is not a
     // measurement of the thing that crashed.
-    assert.equal(formations.get('6:rotate').frames, 732, 'formation 6 for 732 -- see W394');
+    assert.equal(formations.get('6:rotate').frames, 736,
+      'formation 6 for 736 -- 732 before W445; see W394 for the 443 this used to read');
     // "2:rotate" and "6:rotate" are bookkeeping (those formations have no bit-2 arm); what the
     // key really says about formation 4 is that bit 2 was CLEAR on all 754 frames.
     assert.deepEqual([...formations.get('4:rotate').states].sort(), [0x8000, 0x8001, 0x8003],

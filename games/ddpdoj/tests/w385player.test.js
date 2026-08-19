@@ -101,6 +101,7 @@ const STATE = SCREEN8.state;          // $812E56
 const P1REC = RAM.player1;            // $8103E6
 const LIVEBITS = 0x813090;            // $2491CC ori.w #$1,$813090
 const LIVES1 = 0x8130BE;              // the P1 lives counter $25FE42 points ($8,A6) at
+const LIVES2 = 0x8130C0;              // W445 -- P2's, and on a P1-only run it is the ABSENT side
 const TABLE = 0x25fe22;               // $25FE42 lea (-$22,PC),A0
 
 const coinWord = () => (0xffff & ~(1 << COIN_BITS.COIN1)) & 0xffff;
@@ -156,7 +157,13 @@ const RUN = (() => {
     }
     for (const t of typesLive()) everLive.add(t);
     if (!firstRequest4Frame && g.ram.u16(TALLY.side0) === 4) firstRequest4Frame = f;
-    if (!firstLivesFrame && g.ram.i16(LIVES1) !== 0) firstLivesFrame = f;
+    // **W445 CHANGED THIS PROBE FROM `!== 0` TO `> 0`, and the old one was a proxy that only
+    // worked because the port was missing a write.** `$8130BE` is UNSEEDED at $FFFF, not at 0:
+    // `$2603DA` stamps `move.w #$FFFF,$8130BE` and `rank.js $260678 jsr $2603DA` was counted
+    // rather than run until W445. [M] all 644 board RAM dumps read $8130BE = 2 / $8130C0 =
+    // $FFFF, so $FFFF is the cartridge's "no count yet". The milestone this variable NAMES is
+    // the frame bonus line 4 SEEDED the counter off $2600CE, and only a positive value is that.
+    if (!firstLivesFrame && g.ram.i16(LIVES1) > 0) firstLivesFrame = f;
     if (!firstPlayerFrame && (g.ram.u16(P1REC) & 0x8000) !== 0) firstPlayerFrame = f;
     livesLow = Math.min(livesLow, g.ram.i16(LIVES1));
     // The END state of this run is a GAME OVER, so both of these read 0 at the last frame. What
@@ -513,6 +520,22 @@ test('W385 A COLD BOOT CREATES DISPATCH TYPE 2 -- THE SHIP EXISTS', () => {
     '$2428A6 returned $10 -- ONE live player, the value $2428AE produces for P1 alone');
   assert.equal(livePlayers2428A6(RUN.g.ram), 0,
     '...and it is back to 0 at the last frame, because the run ended on a GAME OVER');
+
+  // ------------------------------------------------------------------ W445, AND IT IS [M]
+  // THE ABSENT SIDE'S LIVES WORD IS $FFFF, NOT 0 -- AND THE BOARD IS THE WITNESS.
+  // [M] every one of the 644 board RAM dumps under tools/oracle/out/w69/*/ckpt/*.ram.bin
+  // reads $8130BE = 2 (644/644) and $8130C0 = $FFFF (644/644): P1 playing with two lives,
+  // P2 never joined and holding the sentinel. Until W445 this port produced 2/0, because
+  // the ONLY writer of that sentinel on the loop-1 arm is `$260678 jsr $2603DA` and rank.js
+  // COUNTED it instead of running it. `$260680`'s inline `move.w #$FFFF` covers loop 2+
+  // only, so on loop 1 nothing wrote it at all.
+  //
+  // This assertion is deliberately a RAM COMPARISON AGAINST THE CARTRIDGE and not another
+  // reading of the port's own arithmetic -- P2 never joins this run, so nothing in the port
+  // has any reason to touch $8130C0 except the routine under test.
+  assert.equal(RUN.g.ram.u16(LIVES2), 0xffff,
+    'the absent side holds $FFFF, which is what 644/644 board dumps hold. A 0 here means '
+    + '$2603DA stopped running -- and 0 is what this port produced for 445 waves');
 });
 
 test('W385 the lives counter is seeded from the DIP, through the pointer $25FE42 installed', () => {

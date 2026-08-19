@@ -160,9 +160,43 @@ test('W375: Game#ctx() carries unported/unportedLog and bgVram/vram, and each pa
 // POLL, reached by `$25CAE8 beq.w`, not a tail) and the note went with it. The walk's remaining
 // counted site is `$25CBF4 jsr $25E72E`, filed once per record from the same loop in the same
 // file through the same `ctx`, so it exercises the alias identically.
+/**
+ * W445 -- REMOVE THE SEED'S LIVE PLAYER OBJECT, because slot [9] state 0 IS THE START OF A
+ * CREDIT and the cartridge never reaches it with a player alive.
+ *
+ * `rip/web/seed.bin` is a MID-GAME board dump: dispatch type $8002 sits in the object table
+ * and `$8103E6` has bit 15. Planting slot [9] in state 0 on top of that makes the select
+ * screen's reset and a live ship coexist, which no board state does -- and W445 turned that
+ * synthetic overlap into a throw, for a faithful reason. `$25CA78 move.w #$A,D0 / jsr $241182`
+ * stages the RANK object, whose `$2605C8` state-0 INIT runs `$2606FA jsr $24A810` -- 9,618
+ * bytes of `$8103E6..$812977`, the whole player block. On a board that is free, because at the
+ * start of a credit there is no player: `tests/w378rank.test.js` measures the block at ZERO
+ * nonzero words on the frame the real cold-boot path enters the INIT. Here it wiped a running
+ * ship mid-pass and `spawnShot` then read a null table.
+ *
+ * So the bench, not the wiring, is what is corrected: the precondition is made the one the
+ * board has. Nothing this test asserts depends on the ship existing.
+ *
+ * @returns the number of player objects removed, so a seed that changes cannot silently make
+ *   this a no-op.
+ */
+function dropPlayerObjects(g) {
+  let n = 0;
+  for (let i = 0; i < OBJ.slots; i++) {
+    const a5 = OBJ.base + i * OBJ.stride;
+    const t = g.ram.u16(a5 + OBJ.typeOff) & 0x7fff;
+    if (t !== 2 && t !== 3) continue;                 // dispatch types 2 / 3 -- P1 / P2
+    for (let b = 0; b < OBJ.stride; b++) g.ram.setU8(a5 + b, 0);
+    n += 1;
+  }
+  return n;
+}
+
 test('W375: a front-end slot\'s ctx.unported?.note() REACHES the log from the driver', () => {
   const g = game();
   assert.equal(g.unportedLog.calls.size, 0, 'the log is not empty before the frame');
+  assert.equal(dropPlayerObjects(g), 1,
+    'the seed carried exactly one player object and it is gone -- see dropPlayerObjects');
 
   // Three frames: state 0 is the screen reset, and the record walk that reaches $25CBF4 runs in
   // the state it advances into, not on the frame that runs the reset.

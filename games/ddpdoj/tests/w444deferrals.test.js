@@ -42,9 +42,21 @@
 //      defers that same ROM address (the W433 / W443 shape). SECTION 2 fails
 //      on any overlap not explicitly declared, so the next one costs a wave's
 //      attention instead of 358 waves of silence.
-//   3. Silent drift in the four deferrals W444 confirmed STALE but did not
-//      rewire. SECTION 3 asserts that debt EXACTLY, so wiring one goes red and
-//      forces the register to be updated rather than quietly diverging.
+//   3. Silent drift in the deferrals W444 confirmed STALE. SECTION 3 asserted
+//      that debt EXACTLY, and it did its job: W445 wired all four and SECTION 2,
+//      2b, 3 and the old 3b all went red on the first run, which is how the
+//      register got updated instead of quietly diverging -- exactly as the
+//      W444 note above promised. SECTION 3 now asserts the register is EMPTY, 3b that
+//      the PORTED index still finds the three ports (an empty register is
+//      worthless if the index is what emptied), and 3c that each wiring is
+//      still a CALL at every site.
+//
+// WHAT W444 ITSELF MISSED, AND WHY SECTION 3c EXISTS.
+// W444 named `$2603DA @ rank.js $260678`. `rank.js` deferred the SAME address a
+// SECOND time at `$260788` (the state-2 teardown), with a DIFFERENT false reason
+// -- "(presentation/sound)" for a routine that is 102 words of RAM clear. The
+// scanner saw the address; the report named one site. So SECTION 3c counts CALL
+// SITES, not addresses: `clearRankRam2603DA` twice, `livesRow2878CC` five times.
 //
 // CANNOT -- these are real holes, stated plainly so nobody over-trusts this:
 //   a. A port that is MODULE-PRIVATE. SECTION 2 only sees `export function`,
@@ -240,10 +252,11 @@ const OVERLAP_DECLARED = Object.freeze({
     + '($242296 + $2817C2), not just the re-aim',
   0x244074: 'bullets.js `fire` merely NAMES $244074 in its doc; midboss.js counts the bullet-'
     + 'cancel SCORE walk. Doc-convention false positive, kept declared so it stays looked at',
-  // -- CONFIRMED STALE, NOT REWIRED THIS WAVE.  Also in SECTION 3's register. --
-  0x2878cc: 'STALE (W444): hud.js EXPORTS livesRow2878CC, a full port. player.js:642 and '
-    + 'stageend.js:1664 defer it saying "the same counted draw hud.js defers" -- hud.js does '
-    + 'not defer it. Rewiring emits sprites, so it is its own wave. See SECTION 3',
+  // W445 DELETED THE $2878CC ROW, per this file's own rule two tests down: the two
+  // stale deferrals were WIRED, so the address is no longer both ported and deferred
+  // and leaving the row would be the same rot one level up. What replaced it is
+  // SECTION 3c, which asserts the wiring is still THERE -- an allowlist row says
+  // "somebody looked once", and that is the wrong shape for a fix.
 });
 
 test('SECTION 2: every ported-and-still-deferred ROM address has a written reason', () => {
@@ -274,25 +287,36 @@ test('SECTION 2b: OVERLAP_DECLARED carries no dead entry either', () => {
 
 // ----------------------------------------------------------------- SECTION 3
 
-// THE STALE REGISTER. W444 confirmed these are stale and did NOT rewire them,
-// because each changes behaviour and needs its own bench. Asserted EXACTLY so
-// that wiring one turns this red and forces the register to be updated -- the
-// alternative is a comment nobody reads, which is the whole disease.
-test('SECTION 3: rank.js INIT_UNREAD -- exactly three targets are ported and exported', () => {
-  const portedTargets = INIT_UNREAD
-    .map(([, target]) => target)
-    .filter((t) => PORTED.has(t))
-    .sort((a, b) => a - b);
-  assert.deepEqual(portedTargets.map(hex), ['$27F87C', '$2603DA', '$24A810'].sort(),
-    'the set of $2605C8 sub-calls that are ALREADY PORTED changed.\n'
-    + 'W444 found three, each with a `why` string that is FALSE:\n'
+// THE STALE REGISTER. W444 confirmed four stale and did NOT rewire them; W445 wired
+// all four (and a fifth W444 missed -- see SECTION 3c). Asserted EXACTLY so that any
+// drift turns this red and forces the register to be updated -- the alternative is a
+// comment nobody reads, which is the whole disease.
+//
+// **THE REGISTER IS NOW EMPTY, AND AN EMPTY REGISTER IS THE WEAK CASE**: `deepEqual`
+// against `[]` also passes if the scan breaks, if `INIT_UNREAD` is emptied, or if the
+// `PORTED` index stops finding anything. So this test now carries its own floor: the
+// table must still hold the six targets that are GENUINELY out, by address, and the
+// three W445 wired must be ABSENT from it AND present in `PORTED`.
+test('SECTION 3: rank.js INIT_UNREAD -- no target is ported any more, and the six that '
+  + 'remain are the six with no port', () => {
+  const targets = INIT_UNREAD.map(([, target]) => target).sort((a, b) => a - b);
+  assert.deepEqual(targets.map(hex),
+    [0x259c4a, 0x287024, 0x2884e2, 0x288574, 0x28d552, 0x28ebfe].map(hex),
+    'INIT_UNREAD\'s membership changed. It is the $2605C8 state-0 INIT\'s remaining '
+    + 'deferred sub-calls and nothing else. W445 removed $2603DA, $27F87C and $24A810 '
+    + 'from it by WIRING them; anything else leaving or joining is a wave\'s work.');
+
+  const portedTargets = targets.filter((t) => PORTED.has(t)).sort((a, b) => a - b);
+  assert.deepEqual(portedTargets.map(hex), [],
+    'a $2605C8 sub-call is BOTH still in INIT_UNREAD and exported as a port. That is the\n'
+    + 'exact shape W444 found three times and W445 fixed:\n'
     + '  $2603DA -- "the presentation/teardown body this file already counts". It is\n'
-    + '             objslot12.js clearRankRam2603DA, exported, and W388 CALLS it.\n'
-    + '  $24A810 -- "a reset-prologue routine (frontend.js RESET_PROLOGUE)". It is\n'
-    + '             objslot12.js clearPlayerRam24A810, exported, and W388 CALLS it.\n'
-    + '  $27F87C -- "bee.js NAMES it and DOES NOT IMPLEMENT IT". bee.js clearPoolA IS\n'
-    + '             the implementation, exported since W111, with its own test.\n'
-    + 'If you wired one, drop its row from INIT_UNREAD and update this assertion.');
+    + '             objslot12.js clearRankRam2603DA, and rank.js CALLS it now, twice.\n'
+    + '  $24A810 -- "a reset-prologue routine (frontend.js RESET_PROLOGUE)". That list is\n'
+    + '             an INVENTORY OF ADDRESSES, not a port; objslot12.js exports the body.\n'
+    + '  $27F87C -- "bee.js NAMES it and DOES NOT IMPLEMENT IT". bee.js clearPoolA IS the\n'
+    + '             implementation, exported since W111, with its own test.\n'
+    + 'Drop the row from INIT_UNREAD and wire the call, or say here why not.');
 
   // ...and the one whose reason is STILL TRUE must stay out of that set.
   assert.equal(PORTED.has(0x28d552), false,
@@ -300,23 +324,62 @@ test('SECTION 3: rank.js INIT_UNREAD -- exactly three targets are ported and exp
     + 'module-private clear28D552 and does not export it", which was TRUE at W444. Wire it.');
 });
 
-test('SECTION 3b: $2878CC is still ported-and-deferred, and both stale reasons still read that way',
-  () => {
-    assert.ok(PORTED.has(0x2878cc), 'hud.js stopped exporting livesRow2878CC');
-    const sites = [...new Set(DEFERRED.get(0x2878cc) ?? [])];
-    assert.ok(sites.some((s) => s.startsWith('player.js')), 'player.js stopped deferring $2878CC');
-    assert.ok(sites.some((s) => s.startsWith('stageend.js')), 'stageend.js stopped deferring $2878CC');
-    // The exact falsehood, pinned. Both say hud.js DEFERS this draw; hud.js PORTS it.
-    // Matched in pieces because both strings are split across template-literal joins.
-    for (const [f, re] of [
-      ['player.js', /counted draw hud\.js takes on an extend/],
-      ['stageend.js', /counted zero-RAM-write draw hud\.js defers/],
-    ]) {
-      assert.match(readFileSync(join(SRC, f), 'utf8'), re,
-        `${f} changed its $2878CC wording -- if it was FIXED, delete this assertion and the `
-        + 'SECTION 2 row; if it was merely reworded, the stale claim is still stale');
-    }
-  });
+test('SECTION 3b: the three W445 wired are still exported, so an empty register cannot '
+  + 'be an empty INDEX', () => {
+  for (const [a, where] of [[0x27f87c, 'bee.js clearPoolA'],
+    [0x2603da, 'objslot12.js clearRankRam2603DA'],
+    [0x24a810, 'objslot12.js clearPlayerRam24A810']]) {
+    assert.ok(PORTED.has(a), `${hex(a)} is no longer indexed as ported (${where}). Either the `
+      + 'port was removed -- in which case rank.js is now calling nothing -- or the scan broke, '
+      + 'in which case SECTION 3\'s empty register means nothing');
+  }
+});
+
+// ---------------------------------------------------------------- SECTION 3c
+
+// W444 REPORTED FOUR STALE DEFERRALS AND MISSED A FIFTH ON THE SAME ADDRESS.
+// `rank.js` deferred `$2603DA` at BOTH `$260678` (the state-0 init, which W444 named)
+// and `$260788` (the state-2 teardown, which it did not) -- and the second one's reason,
+// "(presentation/sound)", was false in a different way from the first's. Wiring only the
+// named one would have left a lone survivor behind: the W433 shape exactly.
+//
+// An allowlist row would only record that somebody looked. These assert the CALLS.
+test('SECTION 3c: every W445 wiring is still a CALL, at every site, and nothing counts '
+  + 'those addresses any more', () => {
+  const src = (f) => readFileSync(join(SRC, f), 'utf8');
+
+  // 1. $2878CC / $28795C -- the LIVES row, EIGHT call sites in src/ now. hud.js's own
+  //    two ($284D10/$284D20) are the W271 pair its comment calls "the SAME defect ...
+  //    Both are wired now"; items.js ($25311E/$253126) and tally.js ($260014/$26001E,
+  //    $260190/$2601CA) are four more; stageend.js and player.js are W445's. Counted
+  //    per file rather than in total so that moving one from one file to another --
+  //    which is how a live path silently loses its draw -- cannot net out to eight.
+  for (const [f, n] of [['hud.js', 2], ['items.js', 2], ['tally.js', 2],
+    ['stageend.js', 1], ['player.js', 1]]) {
+    assert.equal((src(f).match(/^\s*livesRow2878CC\(/gm) ?? []).length, n,
+      `${f} should call livesRow2878CC ${n} time(s) -- W445 wired the last two of eight`);
+  }
+  for (const a of [0x2878cc, 0x28795c]) {
+    assert.deepEqual([...new Set(DEFERRED.get(a) ?? [])], [],
+      `${hex(a)} is being COUNTED again while hud.js EXPORTS livesRow2878CC. That is the `
+      + 'defect W445 fixed: the stageend.js site is on a live path (resetPower25313E -> '
+      + 'loop extend), so a counted draw is a lives row that never gets redrawn');
+  }
+
+  // 2. rank.js -- the three clears, at all FOUR sites ($2603DA has two).
+  const rank = src('rank.js');
+  for (const [re, n, what] of [
+    [/^\s*clearRankRam2603DA\(ram\);/gm, 2, '$260678 (state-0 init) AND $260788 (state-2 teardown)'],
+    [/^\s*clearPoolA\(ram\);/gm, 1, '$2606E8'],
+    [/^\s*clearPlayerRam24A810\(ram\);/gm, 1, '$2606FA'],
+  ]) {
+    assert.equal((rank.match(re) ?? []).length, n, `rank.js should carry ${n} call(s): ${what}`);
+  }
+  for (const a of [0x2603da, 0x27f87c, 0x24a810]) {
+    assert.deepEqual([...new Set(DEFERRED.get(a) ?? [])], [],
+      `${hex(a)} is counted again somewhere in src/ while its port is exported`);
+  }
+});
 
 // ----------------------------------------------------------------- SECTION 4
 

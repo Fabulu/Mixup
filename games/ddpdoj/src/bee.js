@@ -307,8 +307,21 @@ function note(ctx, addr, what) { ctx?.unportedLog?.note(addr, what); }
 
 /** `$27F87C` -- clear ALL of pool A: 80 slots plus the 7 trailing words
  *  ($817F7E live count, $817F80 bee count, $817F82 cursor, $817F84..$817F8A).
- *  1767 words from $8171BE.  Called from `rebuildWorld25FD38` (stageend.js)
- *  next to `clearItemPool`, the same site the item clear ships at. */
+ *  1767 words from $8171BE.
+ *
+ *  **W445 CORRECTS THIS DOC, AND THE OLD SENTENCE IS WHY POOL A WAS NEVER CLEARED.**
+ *  It read "Called from `rebuildWorld25FD38` (stageend.js) next to `clearItemPool`,
+ *  the same site the item clear ships at". [M] `$25FD38` calls EIGHT resets --
+ *  `$26331E $288E0C $289084 $289AE0 $28AC3A $289F3A $27E98A $28131E` -- and `$27F87C`
+ *  is NOT one of them. `src/stageend.js` never called this function either.
+ *
+ *  **THE EIGHT SKIP POOL A EXACTLY, WHICH IS THE PROOF.** `stageend.js`'s own range
+ *  table has `$27E98A` covering `$816B7A..$8171BD` and `$28131E` covering
+ *  `$817F8C..$81B41F`; pool A is `$8171BE..$817F8B`, abutting BOTH to the byte. The
+ *  gap is deliberate because a different routine owns it -- and that routine's only
+ *  call site is `$2606E8`, inside `rank.js`'s `$2605C8` state-0 INIT, which was
+ *  COUNTED and not run until W445. So a doc naming a caller that does not exist is
+ *  what hid a 3,534-byte span that nothing in the port ever cleared. */
 export function clearPoolA(ram) {
   for (let i = 0; i < POOL_A.clearWords; i++) {           // $27F88A dbra D0
     ram.setU16(POOL_A.base + i * 2, 0);                   // $27F886 move.w #0,(A0)+

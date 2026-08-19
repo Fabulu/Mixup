@@ -35,7 +35,7 @@ import {
 } from './hyper.js';
 import { spawnItem, collectHyperStock, POWER } from './items.js';
 import { BEAM, wipeSegmentPool } from './laser.js';
-import { hyperStock286ED6, txPrint240DC2, txPrint240E1A } from './hud.js';
+import { hyperStock286ED6, txPrint240DC2, txPrint240E1A, livesRow2878CC } from './hud.js';
 import { install2415A2 } from './palette.js';
 import { ALLOC, queueKill, stageCreate } from './objalloc.js';
 
@@ -596,6 +596,18 @@ export function armRequest25FF38(ram, side, request) {
 /**
  * `$25FFA8` -- the RESPAWN, jump-table entry 1 of the `$25FF7A` dispatcher.
  *
+ * **W445: THIS ROM ADDRESS IS PORTED TWICE, AND THE OTHER COPY IS THE LIVE ONE.**
+ * `tally.js bonusLine125FFA8` (W289) transcribes the SAME `$25FFA8..$260054` and is
+ * what `tallyDriver25FF7A`'s `case 1:` actually runs. This function has NO production
+ * caller -- `grep` over `src/`, `tools/` and `tests/` finds only its own definition and
+ * `tests/w228respawn.test.js`. The two disagreed on exactly one thing: `tally.js`
+ * CALLED `livesRow2878CC` at `$260014`, this copy DEFERRED it and said hud.js defers
+ * it too. **The cartridge settles it: [M] `$260014 4eb9 002878cc` is an unconditional
+ * `jsr`, so the draw happens, and this copy was the one that was wrong.** Wired below.
+ * The duplication itself is left standing and reported rather than half-removed: this
+ * is the copy with the `deathEvent` reporting and with `$26002E move.l D0,($18,A6)`,
+ * which the LIVE copy in `tally.js` does not transcribe. Merging them is its own wave.
+ *
  * W227 made a death survive the option object; this is the link after it.
  * `$24A210` writes the entry's index word, so the very next rank pass runs this,
  * and it is the routine that decides between another life and a game over:
@@ -638,10 +650,12 @@ export function respawn25FFA8(ram, ctx, a6) {
     ram.setU16(a6, 2);                               // $260004
     ctx?.deathEvent?.('game-over', p2 ? 2 : 1, ram.u16(count));
   } else {
-    // $260014 / $26001E -- the side's LIVES row, one of hud.js's counted draws.
-    ctx?.unportedLog?.note(p2 ? 0x28795c : 0x2878cc, `$25FFA8 redraws the `
-      + `${p2 ? 'P2' : 'P1'} LIVES row on a respawn (37 instructions, ZERO RAM `
-      + 'writes), the same counted draw hud.js takes on an extend');
+    // $260014 jsr $2878CC / $26001E jsr $28795C -- the side's LIVES row, and W445
+    // WIRES IT. The note that stood here called it "one of hud.js's counted draws ...
+    // the same counted draw hud.js takes on an extend"; hud.js has EXPORTED
+    // `livesRow2878CC` since W116 and defers nothing. [M] $260014 is `4eb9 002878cc`
+    // and $26001E is `4eb9 0028795c`, both UNCONDITIONAL on this arm.
+    livesRow2878CC(ram, ctx?.rom, ctx, p2 ? 1 : 0);  // $260014 / $26001E
     const type = ram.u16(a6 + 0x14);                 // $260024 move.w ($14,A6),D0
     const r = stageCreate(ram, type,                 // $260028 jsr $241182
       (t) => ctx.rom.u16(ROM.objDispatch + t * 8 + 4));

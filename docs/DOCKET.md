@@ -4566,3 +4566,58 @@ wave that shortens the command.**
 Verified by the coordinator on a quiet tree: **4080 pass / 0 fail / 0 skipped**, gate exit 0 with
 31 PASS / 0 FAIL, `--verify` OK at 613 windows with **none declared**.
 
+
+### D66 CLOSED BY W445 -- ALL FIVE WIRED, AND THE BOARD SETTLED A 445-WAVE ERROR
+
+**MY BRIEF SAID FOUR SITES. THERE ARE FIVE.** `rank.js` deferred `$2603DA` **TWICE** -- `$260678`
+(named) and **`$260788`, the state-2 teardown, which W444 did not name**, with a DIFFERENT false
+reason ("presentation/sound"). `4e ba fc 50` off `$26078A` resolves to `$2603DA`, confirmed by the
+coordinator. **Wiring only the named one would have left a lone survivor -- the W433 shape.** The
+guard's `SECTION 3c` now counts **CALL SITES, not addresses.**
+
+**THE HEADLINE: THE BOARD DECIDES, AND THE PORT WAS WRONG FOR 445 WAVES.** `$2603DA` ends
+`move.w #$FFFF,$8130BE / move.w #$FFFF,$8130C0`. **Across ALL 644 board RAM dumps: `$8130BE` = 2
+(644/644) and `$8130C0` = `$FFFF` (644/644).**
+
+    port BEFORE   0/0 from boot, then 2/0 at +2406        -- never matched the board
+    port AFTER    ffff/ffff,      then 2/ffff at +2406    -- exact match
+
+**The absent side's sentinel had NO WRITER AT ALL on loop 1** -- `$260680`'s inline `move.w #$FFFF`
+covers loop 2+ only.
+
+**`$2878CC`/`$28795C` -- the one that cost visible behaviour, wired at BOTH sites.** State trace on
+the TX defer buffer, **outside both changed files**: loop extend **0 defer records -> 12**; respawn
+report `['$23C668','$2878CC']` -> `['$23C668']`. P1 ladder `$200..$700`, P2 `$1400..$1900`, **so a
+`who = 0` fake fails.**
+
+**THE `$25FFA8` TWIN, ESTABLISHED BEFORE WIRING** (the trap the brief named): both copies
+transcribe `$25FFA8..$260054`; **`tally.js` is the LIVE one** (`tallyDriver25FF7A` case 1) and
+`player.js respawn25FFA8` **has no production caller.** `$260014 = 4eb9 002878cc` is an
+**unconditional** `jsr`, so **the deferring copy was the wrong one.**
+
+**`$27F87C` IS THE PROOF CASE.** `bee.js`'s doc claimed `rebuildWorld25FD38` called it. **It calls
+eight resets and `$27F87C` is not one -- nothing in `src/` called `clearPoolA` AT ALL.** `$27E98A`
+covers `$816B7A..$8171BD` and `$28131E` covers `$817F8C..$81B41F`; **pool A is `$8171BE..$817F8B`,
+abutting both to the byte.** The rebuild skips it because `$2606E8` owns it, **so 3,534 bytes were
+never cleared by anything.**
+
+**"GREEN SUITE" WAS NOT THE OUTCOME -- four UNRELATED tests went red, all pinning port-only
+values**, two asserting `$8130BE == 0` where the board says `$FFFF`. **Eight tests rewritten, none
+deleted.**
+
+**EIGHT RED ARMS, each fired**, every witness **outside the changed file**: the `$80B058` defer
+buffer, painted RAM spans, and the 644 board dumps.
+
+**JUDGEMENT CALLS STATED PLAINLY:** attract demo lengths moved (1264 unchanged, 754->749,
+732->736) with sequencer arms identical to the frame -- **port-derived numbers, not board-measured,
+and the test says so.** And `w375ctxkeys` planted a credit-start reset onto a mid-game seed with a
+live ship; **the BENCH was corrected, not the wiring**, with the reason documented.
+
+**NEW DEFECT FOUND, REPORTED NOT FIXED:** `tally.js bonusLine125FFA8` -- **the LIVE copy** --
+**omits `$26002E move.l D0,($18,A6)`**, which `player.js`'s caller-less copy has. `liveSides25FD94`
+counts a side live iff `($18,A6) != 0`, and bonus line 2 calls it, **so line 1's handle is never
+stored and the side count is wrong on the live tally path.** Merging the two copies is its own wave.
+
+Verified by the coordinator on a quiet tree: **4085 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows with none added. Ladder band untouched.
+

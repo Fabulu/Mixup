@@ -64,7 +64,7 @@ const coinWord = (...names) => {
 
 /** Cold boot -> credit -> P1 START, exactly the sequence the brief names. Returns the Game
  *  standing on the frame the crash used to be four frames away from. */
-function coldToStart() {
+function coldToStart({ startFrames = 8 } = {}) {
   const g = coldGame();
   g.boot();
   g.ram.setU8(COINAGE, 1);
@@ -77,7 +77,10 @@ function coldToStart() {
   run(COIN.idle, 12);                           // release -- the credit lands
   assert.equal(g.ram.u8(COIN.creditA + 2), 1, 'the coin credited');
   g.coinPort = COIN.idle;
-  for (let i = 0; i < 8; i++) g.step(P1_START); // P1 joins
+  // W445: `startFrames: 0` stops one step SHORT of the $2605C8 INIT (it lands on the
+  // FOURTH of these eight), which is what lets a test watch the frame that raises the
+  // gate rather than only its aftermath. Every existing caller keeps the eight.
+  for (let i = 0; i < startFrames; i++) g.step(P1_START); // P1 joins
   return g;
 }
 
@@ -140,7 +143,7 @@ test('W378 the gate the INIT raises is the SAME word the per-frame body tests', 
 // replaced by its inverse -- the census must carry NO note for $25FE42 -- so this test still fails
 // if the wiring is ever backed out, rather than quietly agreeing with either state. Nothing else
 // in the list moved.
-test('W378 the state-0 INIT does its own writes and counts its NINE remaining unread callees',
+test('W378 the state-0 INIT does its own writes and counts its SIX remaining unread callees',
   () => {
     const g = coldToStart();
     for (let i = 0; i < 30; i++) g.step(NO_PLAYER);
@@ -162,12 +165,30 @@ test('W378 the state-0 INIT does its own writes and counts its NINE remaining un
       '  ...and it ran: ($8,$8130FA) is the P1 LIVES POINTER out of the $25FE22 table');
     assert.equal(g.ram.u16(TALLY_SIDE0 + 0x14), 2, '  ...and ($14) is 2, the P1 object type');
 
-    // The NINE calls that are still deferred on the loop-1 arm ($2606E8..$2606FA run because
-    // $813098 is 0 on a cold board, so all nine are reached).
+    // **W445 EDITED THIS LIST, and it is the same edit W385 made one line up.** Three of the
+    // nine were ALREADY PORTED AND EXPORTED and were being counted anyway -- $2603DA
+    // (objslot12.js clearRankRam2603DA), $27F87C (bee.js clearPoolA) and $24A810
+    // (objslot12.js clearPlayerRam24A810). They are CALLS now, so the census must carry NO
+    // note for them; asserted FIRST, for the same reason W385 gave -- the list below would
+    // pass just as happily with six or with nine. The state each one produces is measured on
+    // the live path in the test after this one.
+    for (const [target, where] of [
+      [0x2603da, 'objslot12.js clearRankRam2603DA, from $260678 AND from $260788'],
+      [0x27f87c, 'bee.js clearPoolA, from $2606E8'],
+      [0x24a810, 'objslot12.js clearPlayerRam24A810, from $2606FA'],
+    ]) {
+      assert.deepEqual(noteKeys(g, target), [],
+        `$${target.toString(16).toUpperCase()} is a CALL now (${where}), not a deferral`);
+    }
+
+    // The SIX calls that are still deferred on the loop-1 arm ($2606E8..$2606FA run because
+    // $813098 is 0 on a cold board, so all six are reached). None of the six has a port in
+    // src/ under either naming convention -- tests/w444deferrals.test.js SECTION 3 is what
+    // keeps that true.
     for (const [site, target] of [
-      [0x2605ce, 0x259c4a], [0x260678, 0x2603da], [0x2606d2, 0x28d552],
-      [0x2606d8, 0x28ebfe], [0x2606e8, 0x27f87c], [0x2606ee, 0x2884e2],
-      [0x2606f4, 0x287024], [0x2606fa, 0x24a810],
+      [0x2605ce, 0x259c4a], [0x2606d2, 0x28d552],
+      [0x2606d8, 0x28ebfe], [0x2606ee, 0x2884e2],
+      [0x2606f4, 0x287024],
       [0x260704, 0x288574],
     ]) {
       const keys = noteKeys(g, target);
@@ -180,6 +201,99 @@ test('W378 the state-0 INIT does its own writes and counts its NINE remaining un
     }
     assert.match(RANK_DEVIATION[0x2605c8], /PARTIAL/, 'the summary says what is left');
   });
+
+// =================================================================================================
+// 2b -- W445. THE THREE CLEARS ACTUALLY RUN, MEASURED ON THE COLD-BOOT PATH.
+//
+// A missing note proves nothing on its own -- deleting the note would produce it. These are the
+// RAM spans the three routines write, watched across the one frame that raises $813082.
+//
+// **THE SPANS ARE PAINTED FIRST, because a zero measured over a bench that never enters the
+// state measures the bench.** On a cold board four frames after START, pool A and the player
+// block are both genuinely empty, so "all zero afterwards" would have passed before this wave
+// too. Painted with $A5A5 / $5A5A they cannot: only $27F87C and $24A810 write those spans, and
+// nothing else in the port zeroes 1,767 and 4,809 consecutive words.
+//
+// The lives pair needs no paint -- $2603DA WRITES $FFFF into $8130BE/$8130C0, and a cold board
+// reads 0 there. A write of a specific nonzero value is the strongest witness of the three.
+// =================================================================================================
+
+const POOL_A = { base: 0x8171be, words: 0x6e7 };      // $27F87C lea $8171BE,A0 / #$6E6 + dbra
+const PLAYER_BLOCK = { base: 0x8103e6, words: 0x12c9 }; // $24A810 #$12C8 + dbra, $8103E6..$812977
+
+const nonzero = (ram, { base, words }) => {
+  let n = 0;
+  for (let i = 0; i < words; i++) if (ram.u16(base + i * 2) !== 0) n += 1;
+  return n;
+};
+const paint = (ram, { base, words }, v) => {
+  for (let i = 0; i < words; i++) ram.setU16(base + i * 2, v);
+};
+
+test('W445 [M] the INIT frame clears pool A and the player block and stamps the lives pair',
+  () => {
+    const g = coldToStart({ startFrames: 0 });
+    assert.equal(g.ram.u16(RANK.gate813082), 0, 'the INIT has not run yet');
+
+    // Step to the frame that raises the gate, repainting both spans on the way in so the
+    // measurement afterwards is of a CLEAR and not of an empty board.
+    let frames = 0;
+    let before = null;
+    while (g.ram.u16(RANK.gate813082) === 0 && frames < 200) {
+      paint(g.ram, POOL_A, 0xa5a5);
+      paint(g.ram, PLAYER_BLOCK, 0x5a5a);
+      before = {
+        poolA: nonzero(g.ram, POOL_A), player: nonzero(g.ram, PLAYER_BLOCK),
+        livesP1: g.ram.u16(0x8130be), livesP2: g.ram.u16(0x8130c0),
+      };
+      g.step(frames < 8 ? P1_START : NO_PLAYER);
+      frames += 1;
+    }
+    assert.equal(g.ram.u16(RANK.gate813082), 1,
+      'the loop ended because $260666 raised the gate, not because it ran out of frames');
+    assert.equal(g.ram.u16(0x813098), 0,
+      'and $813098 is 0, so $260674 and $2606E4 both FELL THROUGH to the four calls');
+
+    assert.deepEqual(before, { poolA: 0x6e7, player: 0x12c9, livesP1: 0, livesP2: 0 },
+      'entering the INIT frame: both spans fully painted, both lives words still 0');
+
+    // $2606E8 jsr $27F87C -- bee.js clearPoolA, $6E7 words from $8171BE.
+    assert.equal(nonzero(g.ram, POOL_A), 0,
+      '$27F87C cleared all 1767 words of pool A; the paint is what makes this a measurement');
+    // $2606FA jsr $24A810 -- objslot12.js clearPlayerRam24A810, $12C9 words from $8103E6.
+    assert.equal(nonzero(g.ram, PLAYER_BLOCK), 0,
+      '$24A810 cleared all 4809 words of $8103E6..$812977');
+    // $260678 jsr $2603DA -- objslot12.js clearRankRam2603DA, and its TWO $FFFF stores.
+    assert.deepEqual([g.ram.u16(0x8130be), g.ram.u16(0x8130c0)], [0xffff, 0xffff],
+      '$2603EC/$2603F4 stamped $FFFF into both lives words, AFTER the loop that clears them');
+
+    // AND THE BOARD KEEPS RUNNING. Wiring three RAM clears into a cold boot is exactly the
+    // change that can strand the machine, so the run has to survive well past the INIT.
+    for (let i = 0; i < 300; i++) g.step(NO_PLAYER);
+    assert.equal(g.ram.u16(RANK.gate813082), 1, 'still gated, still alive 300 frames later');
+  });
+
+test('W445 [M] the loop-2+ arm still SKIPS all four, so the wiring did not lose the gate', () => {
+  // $2606DE tst.w $813098 / $2606E4 bne $260700. A zero measured over a run that never
+  // enters the state measures the bench -- so this is the arm where the clears must NOT
+  // happen, driven through the same handler with the same fixture as the arm where they must.
+  const g = coldToStart({ startFrames: 0 });
+  g.ram.setU16(0x813098, 1);                     // the LOOP word: pretend loop 2
+  paint(g.ram, POOL_A, 0xa5a5);
+  paint(g.ram, PLAYER_BLOCK, 0x5a5a);
+  let frames = 0;
+  while (g.ram.u16(RANK.gate813082) === 0 && frames < 200) {
+    g.step(frames < 8 ? P1_START : NO_PLAYER);
+    frames += 1;
+  }
+  assert.equal(g.ram.u16(RANK.gate813082), 1, 'the INIT still ran');
+  assert.equal(nonzero(g.ram, POOL_A), 0x6e7, '$2606E4 bne skipped $27F87C: pool A untouched');
+  assert.equal(nonzero(g.ram, PLAYER_BLOCK), 0x12c9, '  ...and $24A810: the block untouched');
+  // $260674 bne took the INLINE arm at $260680, which writes the SAME $FFFF pair itself --
+  // so this word is the one thing both arms agree on, and $2603DA is how loop 1 reaches it.
+  assert.deepEqual([g.ram.u16(0x8130be), g.ram.u16(0x8130c0)], [0xffff, 0xffff],
+    '$260680/$260688 move.w #$FFFF -- the loop-2+ arm stamps the pair inline');
+});
 
 // =================================================================================================
 // 3 -- $26089E, THE ONLY WRITER, AGAINST THE RAW BYTES.
