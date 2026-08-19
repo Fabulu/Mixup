@@ -929,7 +929,24 @@ test('every emitter D-script 6 counts is keyed by the address it stands at',
     // Unlike W425's three, this note DID fire on the real route (lf9902 of
     // out/w69/stage1-laser-hold) and 42 frames of $80B054 were missing behind
     // it, on a column state.js CLAIMS.
-    assert.equal(Object.keys(BOSS_NOTED).length, 4);
+    //
+    // **W444 (D66) DROPS IT FROM 4 TO 3, AND IT IS W425's THREE ALL OVER AGAIN.**
+    // $2599EC -- the A3 stops -- was listed as one of the four things "genuinely
+    // deferred", and `part1Death294E3E`/`part2Death294E94` had ALREADY RUN the
+    // stops on the line above the `note()` since W62:
+    //     for (const id of [0, 2, 8, 0xa, 0xc]) a3Stop2599EC(ram, id);
+    //     note(ctx, 0x2599ec);            <- counting work that was just DONE
+    // [M] $294E60..$294E87 and $294EB6..$294EDD are five `moveq #id / jsr $2599EC`
+    // pairs and nothing else, so the port was whole and the census was reporting a
+    // gap that had been closed for 382 waves.
+    //
+    // THIS ASSERTION WAS PINNING THAT. It is rewritten, not deleted -- and so is
+    // the `raised.size` control below, which counted the dead note as evidence the
+    // scan worked. The guard beneath could never have caught this one: it asks
+    // "does a note() exist for this key", and one DID. `w444deferrals.test.js`
+    // SECTION 2 asks the question that catches it -- "is this address ALSO an
+    // exported port?" -- and $2599EC is `scheduler.js a3Stop2599EC`.
+    assert.equal(Object.keys(BOSS_NOTED).length, 3);
 
     // THE GUARD THAT WOULD HAVE CAUGHT IT, added W425: every key must be an
     // address this file's own `note()` actually raises. Read straight out of
@@ -938,7 +955,13 @@ test('every emitter D-script 6 counts is keyed by the address it stands at',
     const raised = new Set([...src.matchAll(/note\(ctx, (0x[0-9a-f]+)\)/g)]
       .map((m) => Number(m[1])));
     // W433: four, not five -- $2440E0's note() is gone because $293EEC calls it now.
-    assert.ok(raised.size >= 4, 'POSITIVE CONTROL: the scan found note() calls at all');
+    // W444: THREE, not four -- $2599EC's two note() calls are gone because both
+    // sites already called `a3Stop2599EC`. Kept as a positive control on the regex,
+    // and pinned to the exact set so a silently-vanishing note() reds here.
+    assert.ok(raised.size >= 3, 'POSITIVE CONTROL: the scan found note() calls at all');
+    assert.deepEqual([...raised].sort((x, y) => x - y).map((a) => a.toString(16)),
+      ['23c4d0', '243dd0', '246410'],
+      'the set of addresses boss.js note()s changed -- reconcile it with BOSS_NOTED');
     for (const k of Object.keys(BOSS_NOTED).map(Number)) {
       assert.ok(raised.has(k),
         `$${k.toString(16).toUpperCase()} is in BOSS_NOTED but nothing note()s it`);

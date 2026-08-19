@@ -584,8 +584,15 @@ const INIT_LOOP2_WORDS = Object.freeze([
 const INIT_LOOP2_LONGS = Object.freeze([0x813144, 0x813148, 0x81314c, 0x813150, 0x813154]);
 
 /** The calls `$2605C8` makes that no wave has read, in ROM order: call site ->
- *  target. Each is counted at its OWN site so the report says which one. */
-const INIT_UNREAD = Object.freeze([
+ *  target. Each is counted at its OWN site so the report says which one.
+ *
+ *  **W444 (D66): THREE OF THESE `why` STRINGS ARE STALE AND THE TARGETS ARE
+ *  PORTED.** Exported this wave so `tests/w444deferrals.test.js` can READ this
+ *  table back -- nothing did, which is why the rot went unseen. See that file's
+ *  STALE REGISTER for `$2603DA`, `$24A810` and `$27F87C`; the deferral at THIS
+ *  call site is still real (nobody has wired `$2605C8`'s teardown), but the
+ *  stated reason "not implemented / unread" is false for those three. */
+export const INIT_UNREAD = Object.freeze([
   Object.freeze([0x2605ce, 0x259c4a, 'a reset-prologue routine ($23BEEA\'s 20th call, '
     + 'frontend.js RESET_PROLOGUE)']),
   Object.freeze([0x260678, 0x2603da, 'the presentation/teardown body this file already '

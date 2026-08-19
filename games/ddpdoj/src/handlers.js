@@ -9184,10 +9184,25 @@ function handler46(ram, rom, a5, ctx) {
     }
   }
 
-  // $27120A -- mode 3, the retract. UNREACHABLE: nothing writes 3. Kept as a named throw so that if the
-  // cartridge ever gets here the port says so instead of silently drawing a wrong frame.
+  // $27120A -- mode 3, the retract. UNREACHABLE: nothing writes 3 to THIS type's record. Kept as a
+  // named throw so that if the cartridge ever gets here the port says so instead of silently
+  // drawing a wrong frame.
+  //
+  // **W444 (D66): THAT PROMISE WAS FALSE, AND IT IS THE W443 SHAPE EXACTLY.** This was written
+  // `ctx.unported?.unreached(...)` -- a METHOD on the log. `UnportedLog` implements `note()` and
+  // `report()` and NOTHING ELSE, so [M] with a log present it threw a bare `TypeError` that is
+  // not an `Unreached` and carries no `romAddress`, and on a bare ctx the `?.` short-circuited to
+  // a SILENT NO-OP and the arm below returned -- the quiet wrong frame this comment exists to
+  // prevent. It is the free function `unreached` (imported at the top of this file, and what all
+  // 197 other sites use) that throws the named error. `w444deferrals.test.js` SECTION 5 fails on
+  // any `.unreached(` method call anywhere in src/, so this cannot come back.
+  //
+  // The claim itself is STILL TRUE and was re-checked this wave: [M] three sites in the image do
+  // `move.b #3,($17,A5)` -- $266B0C, $270F52 and $2725B0 -- but all three are OTHER object types
+  // over their own A5 ($270F52 is TYPE $45, handlers.js's own `ram.setU8(a5 + 0x17, 3)`), so none
+  // of them is this record. "Nothing writes 3" is about type $46 and only type $46.
   if (mode() === 3) {
-    ctx.unported?.unreached(0x27120a, `$27120A type $46 mode 3 (the retract ramp) was entered, but W352 `
+    unreached(0x27120a, `$27120A type $46 mode 3 (the retract ramp) was entered, but W352 `
       + `established nothing writes 3 to ($17,A5): mode 0 -> 1, 1 -> 2, 2 -> 4, 3 -> 4, and the child's `
       + `back-pointer is destroyed by $55's own prototype at $2723B8. If this fires, that reasoning is `
       + `wrong and the arm needs writing: subq.b #1,($1A,A5) then ($1C,A5) -= 4 to a 0 clamp, then mode 4`);

@@ -142,22 +142,35 @@ export const BOSS = {
  *  wrong too: `$2440E0` opens with `jsr $288E0C`, the POOL-B (effect) whole-pool
  *  clear, not "impact pool A".
  *
- *  What is left is genuinely deferred: the animation-object loader `$246410`
- *  (the presentation tier), the hit-stop driver `$243DD0`, the `$8039xx` pause
- *  block `$23C4D0` and the A3 stops `$2599EC`. Every one of them has a live
- *  `note()` call above. */
+ *  W444 (D66) DROPPED `$2599EC` FROM THIS TABLE, and it was W425's defect
+ *  exactly: `part1Death294E3E` and `part2Death294E94` have RUN the stops since
+ *  W62 -- `for (const id of [...]) a3Stop2599EC(ram, id)`, the five ids the
+ *  cartridge passes -- and then counted `$2599EC` as deferred on the very next
+ *  line. `[M]` $294E60..$294E87 and $294EB6..$294EDD are five `moveq #id /
+ *  jsr $2599EC` pairs and nothing else (ids 0,2,8,$A,$C and 1,3,9,$B,$D), so
+ *  the port was already whole and the `note()` was pure census noise: the
+ *  census reported a gap that had been closed for 382 waves.
+ *
+ *  What is left is genuinely deferred: the hit-stop driver `$243DD0` and the
+ *  `$8039xx` pause block `$23C4D0`. `$246410` stays too, but read its entry:
+ *  THE LOADER IS PORTED (`animobjects.js loadAnimObjects246410`, 19 call sites) --
+ *  what is deferred at those three sites is the TABLE each one passes, not the
+ *  routine. Every key here has a live `note()` call above, and
+ *  `w444deferrals.test.js` fails if one stops having one. */
 export const BOSS_NOTED = Object.freeze({
   0x243dd0: '$292912/$294C68/$294D4C jsr $243DD0 -- the hit-stop / screen-shake '
     + 'driver (170 instructions, no reader in the stage-end chain)',
-  0x246410: '$293F18 / $29407C / $28D770 jsr $246410 -- the ANIMATION-OBJECT '
-    + 'loader (286 instructions), the presentation tier',
+  0x246410: '$293F18 / $29407C / $28D770 jsr $246410 -- the loader ITSELF is '
+    + 'ported (animobjects.js loadAnimObjects246410, 19 call sites); what these '
+    + 'three sites still defer is the animation TABLE each one passes',
   0x23c4d0: '$294DE4 jsr $23C4D0 -- the $8039xx pause/flag block',
   // W382 dropped $253564 and $242922 from this table: both were ALREADY ported
   // (clamp253564 / bossClear242922, both live from $2A6DD2/$2A6DBC since W372)
   // and the three boss deaths were the only sites still deferring them.  The
   // three `jsr`s at $294DEA/$294DF0, $298978/$29897E and $29CAAC/$29CAB2 are
   // unconditional -- back-to-back `4EB9` with nothing between them.
-  0x2599ec: '$294E62.. jsr $2599EC -- A3 stops for the parts\' own scripts',
+  // W444 dropped $2599EC the same way: `a3Stop2599EC` was already being
+  // called at both sites that counted it.  See the header block.
 });
 
 const note = (ctx, a) => ctx.unportedLog?.note(a, BOSS_NOTED[a] ?? 'W62 boss');
@@ -184,7 +197,6 @@ function part1Death294E3E(ram, a5, a6, ctx) {
   ram.setU16(a6 + 0x20, 0x8000);                       // $294E54
   ram.setU8(a6 + 0x3d, 0x15);                          // $294E5A
   for (const id of [0, 2, 8, 0xa, 0xc]) a3Stop2599EC(ram, id);  // $294E60..$294E86
-  note(ctx, 0x2599ec);
   a3Start259962(ram, 4);                               // $294E88 moveq #$4 / jmp $259962
 }
 
@@ -196,7 +208,6 @@ function part2Death294E94(ram, a5, a6, ctx) {
   ram.setU16(a6 + 0x60, 0x8000);                       // $294EAA
   ram.setU8(a6 + 0x7d, 0x15);                          // $294EB0
   for (const id of [1, 3, 9, 0xb, 0xd]) a3Stop2599EC(ram, id);  // $294EB6..$294EDC
-  note(ctx, 0x2599ec);
   a3Start259962(ram, 5);                               // $294EDE moveq #$5 / jmp $259962
 }
 

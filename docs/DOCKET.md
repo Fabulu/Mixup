@@ -4513,3 +4513,56 @@ one is bucket 25. **None is the beam's.**
 Verified by the coordinator on a quiet tree: **4069 pass / 0 fail / 0 skipped**, gate exit 0 with
 31 PASS / 0 FAIL, `--verify` OK at 613 windows. W441's band and W442's spark counts unmoved.
 
+
+### D66 AUDITED BY W444 -- 430 DEFERRALS, 6 FULLY STALE, AND A GUARD THAT FIRES ON THE NEXT ONE
+
+**430 deferral records over 189 distinct ROM addresses**: 215 `note()` + 198 `unreached()` + 17
+table rows. **6 FULLY STALE** (2 fixed, 4 reported), **4 REASON FALSE / assertion holds** (3 fixed
+as text, 1 reported), the rest verified.
+
+**THE SHARPEST FINDING IS IN THE SAFETY NET ITSELF.** `$27120A` was written
+**`ctx.unported?.unreached(...)` -- a METHOD `UnportedLog` DOES NOT IMPLEMENT.** With a log it threw
+a bare `TypeError` carrying no ROM address; **on a bare ctx the `?.` short-circuited to a SILENT
+NO-OP and the arm returned** -- the exact quiet wrong frame its own comment promised to prevent.
+**That is W443's shape living inside the mechanism meant to stop it.** Fixed to the free
+`unreached`.
+
+**`$2599EC`**: `boss.js` **RAN** `a3Stop2599EC` for all five ids and then counted it as deferred
+**on the next line**, with `BOSS_NOTED` calling it "genuinely deferred". Closed since W62; **census
+wrong for 382 waves.**
+
+**REPORTED, NOT FIXED -- each is its own wave:**
+
+    $27F87C   rank.js says bee.js "does not implement it" -- clearPoolA has since W111
+    $2603DA   ported as objslot12.js clearRankRam2603DA; W388 calls it
+    $24A810   ported as objslot12.js clearPlayerRam24A810; W388 calls it
+    $2878CC / $28795C   both say "the same counted draw hud.js defers" -- hud.js PORTS it (W116)
+
+**THE LAST ONE COSTS VISIBLE BEHAVIOUR.** The `stageend.js` site is on a **live path**
+(`resetPower25313E` -> loop extend), so **the lives row is not redrawn on a loop extend.** Sharpest
+evidence: **`$25FFA8` is ported TWICE** -- `tally.js` draws the row on the live dispatcher, and
+`player.js` has a caller-less copy that DEFERS it.
+
+**THE GUARD, `tests/w444deferrals.test.js`, 11 tests, RED-PROVEN SEVEN WAYS** (each defect
+reintroduced, guard fired, restored): dead note, dead table key, undeclared ported-and-deferred
+overlap, dead allowlist row, dropped register row, wrong ROM-derived ids, method-style throw. **It
+covers all five tables plus `INIT_UNREAD`; W425 had wired only one.** S4 **re-derives the five A3
+ids FROM THE ROM** rather than typing them (W428's lesson).
+
+**STATED IN THE FILE, what it CANNOT catch:** module-private ports, ports following neither naming
+convention, **whether the English is true**, and W443's window-moved-away case.
+
+**A TEST WAS PINNING THE BUG AGAIN.** `w62stageend.test.js:932` asserted `BOSS_NOTED` had exactly 4
+keys **and** used a `raised.size >= 4` control that counted the dead note as proof the scan worked.
+**Rewritten, not deleted.** Its W425-era guard could never have caught `$2599EC`: it asked *"does a
+note() exist for this key"* -- **and one did.**
+
+**MY BRIEF WAS WRONG IN THREE PLACES:** its mechanism list missed `rank.js INIT_UNREAD` (where 3 of
+the 6 stale findings live), `objslot12.js SLOT12.clears`, and the broken `.unreached(` variant; the
+CRLF list is **5 files in `src/`, not 2**; and **`node --test` is cwd-sensitive** -- run from
+`games/ddpdoj/` twelve tests fail ENOENT on a doubled path. **Not a regression, but it will burn a
+wave that shortens the command.**
+
+Verified by the coordinator on a quiet tree: **4080 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows with **none declared**.
+
