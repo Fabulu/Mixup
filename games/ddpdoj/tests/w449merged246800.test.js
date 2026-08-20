@@ -267,6 +267,34 @@ test('SECTION 2: `$246800` is claimed EXACTLY ONCE, and the register is at 19', 
   assert.ok(!dup.includes(0x246800), '$246800 is off the register');
 });
 
+// W450: AND THIS WAVE IS THE PROOF THAT 19 WAS NEVER THE COUNT.
+//
+// `portedIndex()` above found THREE claimants of `$246800`. There were FOUR --
+// `animobjects.js clearChain`, private, no name suffix, no doc, reached at four
+// genuine ROM `bsr $246800` sites. The scan has no axis that could reach it.
+//
+// W450 widened it on three axes and re-ran: 19 -> 92 head-claimed duplicates,
+// plus 39 pairs of bodies transcribing a shared RUN of ROM instructions -- the
+// axis that names `clearChain`, and the ONLY one that does. W450's SECTION 6
+// replays these three bodies verbatim and requires all three pairings.
+test('SECTION 2e [W450]: the widened register is 92, and $246800 is claimed once under IT too',
+  async () => {
+    const { headRegister, bodyPairs } = await import('./w450widenedscan.js');
+    const wide = headRegister();
+    assert.equal(wide.length, 92,
+      'the widened duplicate register is not 92 -- w450widenedregister.test.js SECTION 3 owns the set');
+    assert.ok(!wide.includes(0x246800),
+      '$246800 is claimed twice AGAIN, and this time by a scan that can see a private copy. '
+      + 'That is this wave\'s merge coming undone');
+
+    // ...and no two bodies transcribe the chain free any more. `clearChain` and
+    // `chainFree246800` shared `$246806` and `$246808`; one body owns them now.
+    const chain = bodyPairs().filter(([, addrs]) => addrs.some((a) => a >= 0x246800 && a <= 0x246820));
+    assert.deepEqual(chain, [],
+      'two bodies are transcribing $246800..$246820 again. This is the axis that would have '
+      + 'caught the fourth copy in W447 instead of W449: ' + chain.map(([p]) => p).join(', '));
+  });
+
 test('SECTION 2: the two deleted bodies are GONE from src, by name', () => {
   const src = srcText();
   assert.ok(!/export function freeChain246800/.test(src.get('spawn.js')),

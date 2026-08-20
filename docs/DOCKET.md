@@ -4844,3 +4844,50 @@ Register: **20 -> 19**, updated in all three places, numeric `length` kept besid
 Verified by the coordinator on a quiet tree: **4142 pass / 0 fail / 0 skipped**, gate exit 0 with
 31 PASS / 0 FAIL, `--verify` OK at 613 windows with none added. Ladder band unmoved.
 
+
+### D69: THE TRUE DUPLICATE COUNT IS **92**, NOT 19 -- AND HEAD-WIDENING ALONE WOULD NOT HAVE
+### CAUGHT W449
+
+**73 newly visible.** All 19 shipped rows survive (0 dropped): 68 appear because of wider head
+forms, 5 because of the doc-span rule.
+
+**THE MOST IMPORTANT LINE, AND IT CORRECTS MY BRIEF:** **widening the head forms would NOT have
+caught W449's `clearChain`.** The wave recovered the real pre-W449 body from `819ea42~1` -- it had
+**no `export`, no name suffix and NO JSDoc** (confirmed by the coordinator). Its only address
+markers were **trailing body comments**. A head-only widened scan was measured against that tree
+and **still missed it.** It took a **THIRD axis -- body-comment markers -- that my brief did not ask
+for.**
+
+**AND A SECOND REGISTER THE OLD SCAN HAD NO AXIS FOR AT ALL: 39 PAIRS of bodies transcribing a
+shared RUN of ROM instructions, and 26 of those name a body on NO head-register row.**
+
+**"WHICH END OF A RANGE" -- BOTH, DELIBERATELY.** Taking only the opening address **dropped 3 of the
+shipped 19**. **Picking either end just moves the blind spot.** Indexing the whole span keeps all 19
+and adds three real rows, at a cost of 2 redundant ones.
+
+**THE REGISTER SCANNER IS ITSELF TRANSCRIBED FOUR TIMES** -- `w446`/`w447`/`w448`/`w449` each carry
+an identical inline `portedIndex()`. **That is the W446 defect one level up, living inside the
+guard.** Reported, not merged.
+
+**RED-PROVEN THREE WAYS, and the first is the one that matters:**
+1. **LIVE PLANT IN THE REAL TREE** -- a private second transcription of the address W446 merged,
+   put into `src/unported.js`. **W450 went RED; all four shipped registers stayed GREEN (56 tests,
+   0 fail).** That is **W449's blind spot reproduced live.** Restored byte-exact, sha256 verified.
+2. **Historical positive control** -- W449's three real bodies verbatim: the widened scan reports
+   all three pairings including the private one; the narrow scan reaches only the two exports.
+3. **Six hermetic arms** on synthetic trees, plus **two NEGATIVE controls** -- a call target must not
+   count as a transcription (**counting it inflated 39 pairs to 112**), and one shared address must
+   not make a pair.
+
+**SHARPEST NEWLY VISIBLE, each its own wave, NOTHING MERGED:**
+- **`$242684` -- SIX private transcriptions**, and **they already differ**: one reads two separate
+  words where the others read one longword, another inverts the sense. **All six were invisible.**
+- **`$242494`** -- exported vs private, bodies also sharing 6 instruction markers.
+- **`handlers.js fire11` <-> `turret.js turretStep`** -- 7 shared markers, **on neither head row**.
+- `$24631C`, `$2414BE`, `$28C0FC` (two written twice under the SAME name), and five more.
+
+Classified as NOT duplicates: same-file wrapper/entry pairs and the 2 range-end rows.
+
+Verified by the coordinator on a quiet tree: **4158 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows. **`src/` untouched -- tests only.**
+

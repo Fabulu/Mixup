@@ -279,6 +279,31 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
     + 'merges -- an empty dup list satisfies neither.');
 });
 
+// W450 CORRECTED WHAT THAT 19 MEANS. IT IS A FLOOR, NOT A COUNT.
+//
+// `portedIndex()` above indexes `export function` and nothing else, so a
+// module-private `function`, a `const` arrow, a method and any copy whose doc
+// names no address are ALL invisible to it. W449 found `$246800` transcribed a
+// FOURTH time behind the private name `animobjects.js clearChain`, and this
+// scan could not have told anyone.
+//
+// **MEASURED, NOT ARGUED:** W450 planted a private `respawn25FFA8` in
+// `src/unported.js` -- a second transcription of the very address THIS FILE
+// merged -- and every test in this file, w447, w448 and w449 stayed GREEN.
+// The widened guard went red on it.
+//
+// The 19 above is left EXACTLY as it was: it is a true statement about the
+// narrow index, w447/w448/w449 quote the same number, and weakening it would
+// lose the merge history. What is added is the true figure beside it.
+test('SECTION 2c [W450]: the widened register is 92, so the 19 above is read as a floor', async () => {
+  const { headRegister } = await import('./w450widenedscan.js');
+  assert.equal(headRegister().length, 92,
+    'the WIDENED register (private functions, arrows, methods and the whole doc opening '
+    + 'span, not just `export function`) is not 92. tests/w450widenedregister.test.js SECTION 3 '
+    + 'holds the exact set and is where a new duplicate must be resolved -- this is a '
+    + 'cross-check so that a wave reading 19 here cannot believe there are only 19');
+});
+
 // ======================================================= SECTION 3: THE STATE TRACE
 //
 // The production entry, two frames, exactly as `$25FF7A` runs it.

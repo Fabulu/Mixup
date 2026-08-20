@@ -481,3 +481,22 @@ test('SECTION 6: the doubly-claimed register is 19, and the two this wave merged
       + `wave merging it (${why}). If a wave DID merge it, drop the row here and say so`);
   }
 });
+
+// W450: THE 19 ABOVE COUNTS ONLY WHAT AN `export function` DECLARES.
+// W449's fourth copy of `$246800` was the module-private `clearChain`, invisible
+// to `portedIndex()` on every axis it has. The widened scan is 92. See
+// tests/w450widenedregister.test.js; the number is cross-checked in all four
+// register holders so none of them can be read as the whole count.
+test('SECTION 6b [W450]: the widened register is 92, and this wave\'s two merges hold under it too',
+  async () => {
+    const { headRegister } = await import('./w450widenedscan.js');
+    const wide = headRegister();
+    assert.equal(wide.length, 92,
+      'the widened duplicate register is not 92 -- w450widenedregister.test.js SECTION 3 owns the set');
+    // The two W447 merged must stay merged under a scan that can ALSO see a
+    // private re-transcription, which is the only way to know they really went.
+    assert.equal(wide.includes(0x2428a6), false,
+      '$2428A6 is claimed twice again under the widened scan. W447 merged it because one copy '
+      + 'read $8103E7 where the ROM btsts the byte at $8103E6, and Hibachi refilled its HP');
+    assert.equal(wide.includes(0x242b3c), false, '$242B3C is claimed twice again under the widened scan');
+  });

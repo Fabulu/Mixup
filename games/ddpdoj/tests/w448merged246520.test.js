@@ -241,11 +241,30 @@ test('SECTION 2: `$246520` and `$24652A` are each claimed EXACTLY ONCE, and by t
       + `import edge. Got ${claims[0]}`);
   }
   // The register itself, held here as well as in w446/w447 so deleting one guard cannot hide it.
+  // W450: THIS COUNTS `export function` CLAIMS ONLY, so it is a FLOOR. The scan that can also
+  // see private functions, arrows and methods reports 92 -- SECTION 2d below, and
+  // tests/w450widenedregister.test.js SECTION 3 for the set.
   const dup = [...idx].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
   assert.equal(dup.length, 19,
     'W446 counted 24, W447 merged two (22), W448 merges two more (20), W449 merges $246800, the '
     + 'chain free for these very chains (19). A NEW duplicate is a wave, '
     + 'not a row: ' + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
+});
+
+test('SECTION 2d [W450]: the widened register is 92, and this wave\'s three-copy constructor '
+  + 'stays merged under it', async () => {
+  const { headRegister } = await import('./w450widenedscan.js');
+  const wide = headRegister();
+  assert.equal(wide.length, 92,
+    'the widened duplicate register is not 92. The narrow count above sees only `export '
+    + 'function`; W448 merged THREE transcriptions of one body, and the scan that found them '
+    + 'would have missed a fourth written as a private function -- which is what happened to '
+    + 'W449 one wave later, at $246800');
+  for (const a of [0x246520, 0x24652a]) {
+    assert.equal(wide.includes(a), false,
+      `$${a.toString(16).toUpperCase()} is claimed twice again under the widened scan. This wave `
+      + 'merged it because NO copy was correct: the live one read palette RAM out of ROM');
+  }
 });
 
 test('SECTION 2: the two deleted bodies are GONE from src, by name', () => {
