@@ -452,7 +452,33 @@ English is true.
 **`node --test` IS CWD-SENSITIVE** -- from `games/ddpdoj/`, twelve tests fail ENOENT on a doubled
 path. **Run it from the REPO ROOT.**
 
-### NEXT UNIT: THE FOUR STALE DEFERRALS -- IN PROGRESS (W445)
+### D66 IS CLOSED. W445 WIRED FIVE, W446 MERGED A DUPLICATE.
+
+**W445: FIVE stale sites, not the four I briefed** -- one routine was deferred TWICE with two
+DIFFERENT false reasons. **The board settled it: `$8130BE`/`$8130C0` read 2/`$FFFF` on ALL 644
+dumps and the port had 0/0 -- wrong for 445 waves.** The lives row now redraws on a loop extend
+(defer records 0 -> 12).
+
+**W446: `$25FFA8` was ported TWICE and the LIVE copy was the broken one.** It omitted a store AND
+carried **`if (made.ok)` -- a guard the ROM has NO BRANCH for.** Cost: **the background froze with a
+player still alive.** Merged to one copy.
+
+**LESSONS THAT KEEP EARNING:**
+- **AN INVENTED CONDITION LOOKS LIKE A PORT.** When two copies differ by a conditional, **check the
+  ROM for the branch** -- the guarded one looks safer and was wrong.
+- **A GREEN SUITE IS NOT THE EXPECTED OUTCOME.** W445 turned four UNRELATED tests red, all pinning
+  port-only values. **The board decides.**
+- **BLINDING A WITNESS CAN LEAVE A SECTION GREEN** -- W446 proved this, which is why a second
+  section reads the actual field.
+
+### NEXT UNIT: 24 ROM ADDRESSES PORTED MORE THAN ONCE -- IN PROGRESS (W447)
+
+Pinned as an exact register in `w444deferrals.test.js` SECTION 2b so a 25th goes red.
+**`$246800` and `$246710` are each claimed by THREE exports.** W446 audited exactly one of the 24.
+
+**Merge only what is provably safe; "legitimately distinct" is a real answer.**
+
+### SUPERSEDED: THE FOUR STALE DEFERRALS (W445)
 
 `$2878CC`/`$28795C` (**live path -- the lives row is not redrawn on a loop extend**), `$27F87C`,
 `$2603DA`, `$24A810`. **Wiring one WILL turn W444's guard red. That is the guard working -- update
