@@ -3,7 +3,7 @@
 
 import { u16, i16 } from './ram.js';
 import { freeEnemy } from './initbody.js';
-import { stepMovement } from './movement.js';
+import { stepMovement, offScreen242684 } from './movement.js';
 import { AimTables, aim64FromCaller, aim256FromCaller, slew64 } from './aim.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { fire as fireBullet, WriteLog } from './bullets.js';
@@ -23,13 +23,12 @@ function borrow8(ram, at) {
   ram.setU8(at, old - 1);
   return old === 0;
 }
-function onScreen242684(ram, a6) {
-  const pos = ram.u32(a6 + 2);
-  let low = u16((pos & 0xffff) + 0x1c00);
-  low = u16(low + ram.u16(G.scroll172));
-  if (low + 0x9000 > 0xffff) return false;
-  return u16((pos >>> 16) + 0x0800) + 0x8000 <= 0xffff;
-}
+// `$242684` at `$266E46` -- W451 merged this file's copy into `movement.js
+// offScreen242684`.  It was the one copy that returned the NEGATION, and that
+// was NOT a defect: the name said `onScreen`, the body returned on-screen, and
+// the call site below inverted to match, so the arms landed where `$266E4A
+// bcc.w $266E58` puts them.  It is the same routine written upside down, so it
+// merges by flipping the call site back rather than by changing any arm.
 function bullet(ram, rom, ctx, a5, site, entry, regs) {
   const out = fireBullet({ ram, rom, log: new WriteLog(ram) }, entry,
     { ...regs, a5 });
@@ -108,8 +107,15 @@ export function handler16(ram, rom, a5, ctx) {
   const a6 = ram.u32(a5 + 6);
   ram.setU16(a6 + 2, u16(ram.u16(a6 + 2) - ram.u16(a5 + 0x1e)));
   if (stepMovement(ram, rom, a5, ctx.tables, ctx.unported)) return;
-  if (onScreen242684(ram, a6)) ram.setU8(a5 + 0x16, 1);
-  else if (ram.u8(a5 + 0x16) !== 0) { freeEnemy(ram, a5); return; }
+  // $266E46 jsr $242684 / $266E4A bcc.w $266E58 -- carry CLEAR (ON-screen) goes
+  // to $266E58 `move.b #$1,($16,A5)`; carry SET falls into $266E4A+8 `tst.b
+  // ($16,A5) / beq / jmp $263762`.  So the flag means HAS BEEN SEEN and the free
+  // is off-screen-AFTER-on, never off-screen alone.
+  if (offScreen242684(ram, a6)) {                     // $266E46 jsr / $266E4A bcc
+    if (ram.u8(a5 + 0x16) !== 0) { freeEnemy(ram, a5); return; }  // $266E52 jmp $263762
+  } else {
+    ram.setU8(a5 + 0x16, 1);                          // $266E58 move.b #$1,($16,A5)
+  }
 
   if (ram.u16(G.stage) !== 4) {
     const angle = ram.u8(a5 + 0x21);

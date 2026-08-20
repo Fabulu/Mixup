@@ -50,7 +50,7 @@ import { scoreHit } from './score.js';
 import { spawnEffect } from './effects.js';
 import { aim256, AimTables } from './aim.js';
 import { dist242494 } from './bossscripts.js';
-import { applyShotVelocity241E34 } from './movement.js';
+import { applyShotVelocity241E34, offScreen242684 } from './movement.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { fire as fireBullet, WriteLog } from './bullets.js';
 
@@ -156,19 +156,32 @@ export function handler42(ram, rom, a5, ctx) {
     ram.setU8(a6 + 0x1d, ram.u8(a6 + 0x3e));              // $2A3BEA
   }
 
-  // $2A3BF0 -- mode 1 only: leave the band and you are gone. `$242684` is the
-  // onscreen test and `$16(A5)` is a one-shot so the free needs TWO frames offscreen.
+  // $2A3BF0 -- mode 1 only: leave the band and you are gone.  `$16(A5)` is the
+  // HAS-BEEN-SEEN one-shot, so the free is off-screen-AFTER-on and never
+  // off-screen alone -- a child that spawns outside and flies in is NOT freed.
+  //
+  //   2A3C0E: 4e b9 00 24 26 84   jsr    $242684
+  //   2A3C14: 64 0e               bcc.s  $2A3C24     carry CLEAR = ON-screen
+  //   2A3C16: 4a 2d 00 16         tst.b  ($16,A5)
+  //   2A3C1A: 67 0e               beq.s  $2A3C2A     never seen -> carry on
+  //   2A3C1C: 4e f9 00 26 37 62   jmp    $263762     seen, now off -> free
+  //   2A3C24: 1b 7c 00 01 00 16   move.b #$1,($16,A5)
+  //
+  // W451: this was INVERTED here, both in the predicate and at this call site,
+  // so a child was flagged while OFF-screen and freed the frame it came ON.
   if (ram.u8(a5 + 0x3a) === 1) {                          // $2A3BF0 cmpi.b #$1
     const y = i16(ram.u16(a6 + 0x04));
     if (y <= i16(0xfc00) || y >= 0x3c00) {                // $2A3BFA/$2A3C04
       freeEnemy(ram, a5);                                 // $2A3C1C
       return true;
     }
-    if (!onScreen(ram, a6)) {                             // $2A3C0E jsr $242684
-      ram.setU8(a5 + 0x16, 1);                            // $2A3C24
-    } else if (ram.u8(a5 + 0x16) !== 0) {                 // $2A3C16 tst.b/beq
-      freeEnemy(ram, a5);                                 // $2A3C1C
-      return true;
+    if (offScreen242684(ram, a6)) {                       // $2A3C0E jsr / $2A3C14 bcc
+      if (ram.u8(a5 + 0x16) !== 0) {                      // $2A3C16 tst.b / $2A3C1A beq
+        freeEnemy(ram, a5);                               // $2A3C1C jmp $263762
+        return true;
+      }
+    } else {
+      ram.setU8(a5 + 0x16, 1);                            // $2A3C24 move.b #$1,($16,A5)
     }
   }
 
@@ -359,12 +372,30 @@ function phase3Positive(ram, rom, ctx, a5, a6) {
   }
 }
 
-/** `$242684` -- the onscreen test, whose CARRY says "off". Transcribed here rather
- *  than imported because `handlers.js`'s copy is module-private. */
-function onScreen(ram, a6) {
-  const y = i16(ram.u16(a6 + 0x02)), x = i16(ram.u16(a6 + 0x04));
-  return y >= -0x400 && y <= 0x6400 && x >= -0x400 && x <= 0x4000;
-}
+// `$242684` -- W451 DELETED this file's `onScreen`, which was an INVENTION and
+// not a transcription.  Kept here as the record of what it got wrong, because
+// its doc claimed to be `$242684` and nothing in the file contradicted it:
+//
+//     function onScreen(ram, a6) {
+//       const y = i16(ram.u16(a6 + 0x02)), x = i16(ram.u16(a6 + 0x04));
+//       return y >= -0x400 && y <= 0x6400 && x >= -0x400 && x <= 0x4000;
+//     }
+//
+//   * NO `$24268C add.w $813172`.  The scroll term is simply absent, so the
+//     test did not move with the playfield at all.
+//   * THE AXES ARE SWAPPED.  `move.l ($2,A6),D0` puts A6+$04 in D0.w, and the
+//     three word adds before `$242698 swap` run on D0.w -- so +$04 is the
+//     axis that gets `#$1C00`/`$813172`/`#$9000` and +$02 the one that gets
+//     `#$800`/`#$8000`.  This had them the other way round.
+//   * BOTH BANDS ARE MADE UP.  The ROM's are `u16(($4,A6)+$1C00+$813172) <
+//     $7000` and `u16(($2,A6)+$800) < $8000`, i.e. signed [-$800,$77FF] on
+//     +$02.  `-$400..$6400` and `-$400..$4000` are in neither `addi.w`.
+//   * IT RETURNED THE OPPOSITE SENSE and the call site inverted with it, so
+//     the two errors did not cancel -- they compounded (see $2A3C0E above).
+//
+// The surrounding `$2A3BFA`/`$2A3C04` band on +$04 pins that word into
+// (-$400, $3C00) before the call, which is why the bogus `x` half of the
+// condition was inert and only the +$02 half and the polarity ever showed.
 
 /** `$2A3C34..$2A3E15` -- the homing. */
 function moveAndHome(ram, rom, ctx, a5, a6) {

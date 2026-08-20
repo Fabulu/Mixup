@@ -208,6 +208,64 @@ export function scrollCompensate(ram, a5) {
   ram.setU16(a6 + SUB.posX, u16(i16(ram.u16(a6 + SUB.posX)) + i16(hi))); // $2417B0 add.w D0,($2,A6)
 }
 
+// ============================================= $242684 the off-screen test ===
+/**
+ * `$242684` -- the shared ON/OFF-SCREEN test, returning the 68000 CARRY.
+ *
+ * NINE instructions: one long load, five word adds (four immediate), one
+ * carry branch, one swap, and the final `rts`:
+ *
+ *     242684: 20 2e 00 02        move.l ($2,A6),D0
+ *     242688: 06 40 1c 00        addi.w #$1C00,D0
+ *     24268C: d0 79 00 81 31 72  add.w  $813172,D0
+ *     242692: 06 40 90 00        addi.w #$9000,D0
+ *     242696: 65 0a              bcs.s  $2426A2          carry -> OFF-screen
+ *     242698: 48 40              swap   D0
+ *     24269A: 06 40 08 00        addi.w #$800,D0
+ *     24269E: 06 40 80 00        addi.w #$8000,D0
+ *     2426A2: 4e 75              rts                     carry = X out of band
+ *
+ * **CARRY SET MEANS OFF-SCREEN**, which is why this returns `true` for OFF and
+ * not for ON.  Every one of the 30 ROM call sites reads it that way: 26 are
+ * `bcc` over a `move.b #$1,($16,A5)` (the "has been seen" one-shot) with the
+ * fall-through doing `tst.b ($16,A5) / beq / jmp $263762` -- so the free is
+ * OFF-SCREEN-AFTER-ON, never off-screen alone -- and 4 are `bcs` straight to
+ * `$27F2F0` (the item free).
+ *
+ * **WHICH WORD IS WHICH AXIS IS DECIDED BY `move.l`, NOT BY A NAME.**  On the
+ * big-endian bus `move.l ($2,A6),D0` puts the word at **A6+$04** into D0.w and
+ * the word at **A6+$02** into D0 high.  The three word adds before the `swap`
+ * therefore run on **+$04** -- the scroll-compensated axis, which is the one
+ * `$813172` belongs to -- and the two after the `swap` run on **+$02**.  Reading
+ * the longword or reading the two words separately is the same thing; reading
+ * them the other way round is not.
+ *
+ * `addi.w #$9000` sets carry exactly when the biased word is >= $7000, and
+ * `addi.w #$8000` exactly when its word is >= $8000, so the on-screen bands are
+ * `u16(($4,A6) + $1C00 + $813172) < $7000` and `u16(($2,A6) + $800) < $8000`.
+ * They are UNSIGNED 16-bit wraps; the second is the signed range [-$800,$77FF]
+ * only because $800 + $77FF is exactly $7FFF.
+ *
+ * W451 merged SIX private transcriptions of this routine into this one:
+ * `handlers.js onScreen242684` (a MISNOMER -- it returned OFF), `items.js`,
+ * `stage3carrier.js` and `stage4type41.js` `offScreen242684`, `stage3type16.js`
+ * `onScreen242684` (the negation, with a caller inverted to match), and
+ * `stage4type42.js onScreen`, which was an invention: no `$813172` term, the
+ * two axes swapped, both bands replaced by made-up signed constants, and a
+ * caller that set the one-shot on the wrong arm.
+ *
+ * @returns `true` when the record at `a6` is OFF-screen (carry set).
+ */
+export function offScreen242684(ram, a6) {
+  const pos = ram.u32(a6 + SUB.posX);                    // $242684 move.l ($2,A6),D0
+  // D0.w is the word at A6+$04 (SUB.posY) and D0 high the word at A6+$02.
+  let d0 = u16(u16((pos & 0xffff) + 0x1c00)              // $242688 addi.w #$1C00
+    + ram.u16(GL.scroll172));                            // $24268C add.w $813172,D0
+  if (d0 + 0x9000 > 0xffff) return true;                 // $242692/$242696 bcs $2426A2
+  d0 = u16((pos >>> 16) + 0x800);                        // $242698 swap / $24269A addi.w #$800
+  return d0 + 0x8000 > 0xffff;                           // $24269E addi.w #-$8000 -> rts
+}
+
 // =============================================== $2638A6 the per-frame step ===
 /**
  * `$2638A6` -- one frame of the movement interpreter for the enemy at `a5`.

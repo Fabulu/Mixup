@@ -2098,6 +2098,11 @@ both LAST in order and the terminal deliverable -- the docket ahead of it is not
 cut short in order to reach it, and reaching it early is not permitted either. Order is unchanged; only the
 endpoint is now named.
 
+**OWNER GOAL UPDATE, 2026-08-21:** finish the whole Black Label game, **including the complete second
+loop**, and finish the docket along the way. Then finish White Label last. A first-loop completion or a
+green subset of loop 2 is not the handoff point to D36; Black Label loop-2 fidelity and the open docket
+remain required work before White Label begins.
+
 **NOTHING HAS BEEN DECODED FOR IT.** No entry point, no region bound, no dispatch table. When its turn
 comes, the first job is to locate its reset vector and bound its region, not to assume it mirrors Black
 Label's layout.
@@ -4891,3 +4896,33 @@ Classified as NOT duplicates: same-file wrapper/entry pairs and the 2 range-end 
 Verified by the coordinator on a quiet tree: **4158 pass / 0 fail / 0 skipped**, gate exit 0 with
 31 PASS / 0 FAIL, `--verify` OK at 613 windows. **`src/` untouched -- tests only.**
 
+
+### D69 FOLLOW-UP -- W451 MERGED ALL SIX `$242684` COPIES, AND ONE WAS AN INVENTION
+
+**W450's sharpest row is gone:** six private helpers became one exported
+`movement.js offScreen242684`. The widened register moves **92 -> 91**, and the body-pair register
+moves **39 -> 38**. The narrow export-only register remains 19, which is why it could not guide this
+merge.
+
+**Five copies were equivalent after normalising their return sense. The sixth was not.**
+`stage4type42.js onScreen` omitted `$24268C add.w $813172,D0`, swapped A6+$02 and A6+$04, replaced
+both unsigned wrap bands with invented signed bounds, and drove the caller's one-shot on the wrong
+arm. A mode-1 type `$42` child could be marked while off-screen and freed on the frame it came
+on-screen.
+
+**THE IMAGE SETTLES EVERY AXIS.** `$242684 move.l ($2,A6),D0` leaves A6+$04 in D0.w, adds `$1C00`
+and `$813172`, then exits on carry from `+$9000`. After `swap`, A6+$02 takes `+$0800` and
+`+$8000`. Carry set means off-screen. The image has **30 direct callers: 26 BCC, 4 BCS**.
+
+**THE TRACE DISTINGUISHES NEVER SEEN FROM SEEN AND FREED:** off-screen -> on-screen -> off-screen
+produces `enemies.js` live counts **1, 1, 0**, then its allocator reuses the exact freed slot. Two
+opposite-RAM-state arms separately prove the scroll input and the A6+$02 boundary. The RED mutation
+replaced the survivor's scroll input with zero, failed on the opposite-scroll arm, and was restored
+byte-exactly.
+
+Verified independently by the coordinator: **4166 pass / 0 fail / 0 skipped**, webgate exit 0,
+`--verify` OK, and all six W441 rungs remain **210/210 bullets, pool A 70/70, pool B 80/80**.
+
+**NEXT VISIBLE DOCKET UNIT: D65, bee visibility against the oracle.** The owner's impression is not
+spec. Compare carrier and released-bee draw output on board frames where each exists; measure before
+changing code.

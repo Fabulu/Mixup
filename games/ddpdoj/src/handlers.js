@@ -97,7 +97,7 @@ import { handlerBoss29BE28 } from './boss3.js';
 import { handler99_29E6B0 } from './boss3type99.js';
 import { handler1E_296DD6 } from './bossf23.js';
 import { stepMovement, scrollCompensate, applyVelocity, applyVelocityA6,
-  stickMove242A48 } from './movement.js';
+  stickMove242A48, offScreen242684 } from './movement.js';
 import { readInput23D186 } from './tallyscreen.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
 // W372: type $4C's seven. `packedAdd` is deliberately absent -- it is a one-line local in
@@ -528,16 +528,14 @@ function boxTest2425B2(ram, rom, a6) {
 }
 
 // ----------------------------------------------- $242684: the onscreen test
-// `move.l $2(A6),D0 / addi.w #$1c00 / add.w $813172 / addi.w #$9000 / bcs /
-//  swap / addi.w #$800 / addi.w #$8000 / rts` -- carry SET = OFF-screen.
-function onScreen242684(ram, a6) {
-  const pos = ram.u32(a6 + 0x02);                      // $242684 move.l $2(A6)
-  let y = u16((pos & 0xffff) + 0x1c00);                // $242688 addi.w #$1c00
-  y = u16(y + ram.u16(G.scroll));                      // $24268C add.w $813172
-  if (u16(y) + 0x9000 > 0xffff) return true;           // $242696 bcs (Y off)
-  let x = u16((pos >>> 16) + 0x800);                   // swap; $24269A addi.w #$800
-  return u16(x) + 0x8000 > 0xffff;                     // carry = X off
-}
+// W451 MERGED IT INTO `movement.js offScreen242684`, and the name it had here
+// was a MISNOMER: `onScreen242684` returned TRUE for OFF-screen, because the
+// routine returns the 68000 CARRY and `$242696 bcs` takes carry as "off".  All
+// eight call sites below already consumed it that way; only the name lied.
+// `movement.js` is the leaf (it imports `ram.js` and `unported.js` and nothing
+// else), it already owns `$813172` as `GL.scroll172`, it already ports this
+// routine's page-neighbours `$24179E` and `$2417DE`, and this file already
+// imported it -- so nothing inverts.
 
 // ---------------------------------------- $2426A4: the OTHER onscreen test
 // The same eight instructions as `$242684` on a WIDER short axis, and it is a
@@ -1059,7 +1057,7 @@ function damageFirstHead269CEA(ram, rom, a5, a6, ctx) {
     ram.setU8(a6 + S.palette, ram.u8(a5 + 0x2a));      // $269D54/$26A34C
   }
   // $269D5A/$26A352: the onscreen test $242684 -> free if off-screen-after-on.
-  if (onScreen242684(ram, a6)) {                       // jsr $242684 / bcc
+  if (offScreen242684(ram, a6)) {                       // jsr $242684 / bcc
     if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return null; } // tst.b/jmp
   } else {
     ram.setU8(a5 + R.onScreen, 1);                     // move.b #$1,$16(A5)
@@ -1283,7 +1281,7 @@ function handler82(ram, rom, a5, ctx) {
   // in $05/$07/$27, fixed it there and filed $82's "with its wave"; this is
   // that wave.  Type $10's `$268268`/`$268276` really ARE `tst.w`/`move.w`, so
   // this is not one shape being pasted onto the other.
-  if (onScreen242684(ram, a6)) {                       // jsr $242684 / bcc $2747E2
+  if (offScreen242684(ram, a6)) {                       // jsr $242684 / bcc $2747E2
     if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; } // jmp $263762
   } else {
     ram.setU8(a5 + R.onScreen, 1);                     // $2747E2 move.b #$1,$16(A5)
@@ -2020,7 +2018,7 @@ function handler8E(ram, rom, a5, ctx) {
   if (stepMovement(ram, rom, a5, tables, u)) return;    // $2764D2 jsr $2638A6
 
   // $2764D8 -- `bcc $2764EE`, and the helper returns TRUE for off-screen (carry set).
-  if (onScreen242684(ram, a6)) {                        // off-screen
+  if (offScreen242684(ram, a6)) {                        // off-screen
     if (ram.u8(a5 + 0x16) !== 0) {                      // $2764E0 tst.b / beq $2764F4
       freeEnemy(ram, a5);                               // $2764E6 jmp $263762
       return;
@@ -4480,7 +4478,7 @@ function damageFirstHead(ram, rom, a5, a6, ctx, score) {
   } else {
     ram.setU8(a6 + S.palette, ram.u8(a5 + 0x2a));      // $26A64E/$26A8CA/$26AD92
   }
-  if (onScreen242684(ram, a6)) {                       // jsr $242684 / bcc
+  if (offScreen242684(ram, a6)) {                       // jsr $242684 / bcc
     if (ram.u8(a5 + R.onScreen) !== 0) {               // tst.b ($16,A5) / beq
       freeEnemy(ram, a5); return null;                 // jmp $263762
     }
@@ -4786,7 +4784,7 @@ function handler89(ram, rom, a5, ctx) {
   const { tables, unported: u } = ctx;
   const a6 = ram.u32(a5 + 0x06);
   if (stepMovement(ram, rom, a5, tables, u)) return;   // $27733E jsr $2638A6
-  if (onScreen242684(ram, a6)) {                       // $277344 jsr $242684 / bcc
+  if (offScreen242684(ram, a6)) {                       // $277344 jsr $242684 / bcc
     if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; }  // $277352
   } else {
     ram.setU8(a5 + R.onScreen, 1);                     // $27735A
@@ -5783,7 +5781,7 @@ function handler8D(ram, rom, a5, ctx) {
   const { tables, unported: u } = ctx;
   const a6 = ram.u32(a5 + 0x06);
   if (stepMovement(ram, rom, a5, tables, u)) return;  // $276A02
-  if (!onScreen242684(ram, a6)) ram.setU8(a5 + 0x16, 1);
+  if (!offScreen242684(ram, a6)) ram.setU8(a5 + 0x16, 1);
   else if (ram.u8(a5 + 0x16) !== 0) { freeEnemy(ram, a5); return; }
 
   const d1 = ram.u8(a6) & 0x5c;
@@ -5912,7 +5910,7 @@ function handler8F(ram, rom, a5, ctx) {
   const { tables, unported: u } = ctx;
   const a6 = ram.u32(a5 + 0x06);
   if (stepMovement(ram, rom, a5, tables, u)) return;  // $2775CC
-  if (!onScreen242684(ram, a6)) ram.setU8(a5 + 0x16, 1);
+  if (!offScreen242684(ram, a6)) ram.setU8(a5 + 0x16, 1);
   else if (ram.u8(a5 + 0x16) !== 0) { freeEnemy(ram, a5); return; }
 
   const d1 = ram.u8(a6) & 0x5c;
@@ -7995,7 +7993,7 @@ function death3E(ram, rom, a5, a6, ctx, d1) {
 
 function handler3E(ram, rom, a5, ctx) {
   const a6 = ram.u32(a5 + 0x06);
-  if (onScreen242684(ram, a6)) {                      // $265486 jsr / bcc
+  if (offScreen242684(ram, a6)) {                      // $265486 jsr / bcc
     if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; }
   } else {
     ram.setU8(a5 + R.onScreen, 1);                    // $26549E
@@ -8104,7 +8102,7 @@ function draw3F(ram, rom, a5, a6) {
 
 function handler3F(ram, rom, a5, ctx) {
   const a6 = ram.u32(a5 + 0x06);
-  if (onScreen242684(ram, a6)) {                      // $265850
+  if (offScreen242684(ram, a6)) {                      // $265850
     if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; }
   } else {
     ram.setU8(a5 + R.onScreen, 1);                    // $265868
@@ -8169,7 +8167,7 @@ function handler3F(ram, rom, a5, ctx) {
 
 function handler4D(ram, rom, a5, ctx) {
   const a6 = ram.u32(a5 + 0x06);
-  if (onScreen242684(ram, a6)) {                      // $29BB64 jsr / bcc
+  if (offScreen242684(ram, a6)) {                      // $29BB64 jsr / bcc
     if (ram.u8(a5 + 0x16) !== 0) { freeEnemy(ram, a5); return; }
   } else {
     ram.setU8(a5 + 0x16, 1);                         // $29BB7A

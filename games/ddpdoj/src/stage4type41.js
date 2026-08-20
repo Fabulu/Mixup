@@ -6,7 +6,7 @@
 
 import { i16, u16 } from './ram.js';
 import { freeEnemy } from './initbody.js';
-import { applyVelocity } from './movement.js';
+import { applyVelocity, offScreen242684 } from './movement.js';
 import { AimTables, aim64AtTarget } from './aim.js';
 import { emitScaled } from './bossarrival.js';
 
@@ -23,12 +23,12 @@ function due8(ram, addr) {
   return old === 0;
 }
 
-function offScreen242684(ram, root) {
-  let y = u16(ram.u16(root + 0x04) + 0x1c00);
-  y = u16(y + ram.u16(0x813172));
-  if (y + 0x9000 > 0xffff) return true;
-  return u16(ram.u16(root + 0x02) + 0x0800) + 0x8000 > 0xffff;
-}
+// `$242684` at `$2A3868` -- W451 merged this file's copy into `movement.js
+// offScreen242684`.  It was the only one of the six that read the two axes as
+// TWO SEPARATE WORDS (`root+$04` then `root+$02`) instead of one `move.l`, and
+// that turned out to be the same thing, not a difference: on the big-endian bus
+// `move.l ($2,A6),D0` puts A6+$04 in D0.w and A6+$02 in D0 high, so this copy
+// had the axes RIGHT.  It is the clearest statement of which word is which.
 
 /** `$29EC22`. Returns the 68000 carry flag consumed by `$2A3864`. */
 function screenClearImpact29EC22(ram, ctx, root, hitMask) {

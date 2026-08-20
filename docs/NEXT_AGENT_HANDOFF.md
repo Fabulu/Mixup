@@ -1,49 +1,67 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-18 (W422 + W423)
+Updated: 2026-08-21 (W451)
 
-## DOCKET -- THE OWNER'S PLAY REPORTS. `docs/DOCKET.md` IS AUTHORITATIVE.
+## CURRENT DIRECTION AND DEFINITION OF DONE
 
-Live items: **D42 D43 D46 D48 D50 D55 D56 D57 D58 D59**. Closed: **D44 D45** (W410/W411), **D47** (docs), **D53** (W421, build-scoped shell URLs), **D54** (W423, below). **D59 is the newest and the owner rates it high**: bees gate loop 2 and the true ending.
+Finish the complete Black Label Version-B game, including the full second loop, while closing the
+entire defect and finding docket along the way. Only after Black Label and its docket are complete,
+finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the project's terminal
+deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
+start.
 
-**THE TRIAGE THAT USED TO SIT HERE WAS WRONG IN THREE OF FIVE ITEMS AND HAS BEEN DELETED.** It is
-still in git history if you want it. What it got wrong, because the pattern matters more than the
-text:
+`docs/DOCKET.md` is authoritative. The highest visible open item is **D65, bee visibility against the
+oracle**. The owner's impression is not a specification. Compare carrier and released-bee draw output
+on frames where the board has them, and let the oracle decide. Also open: the 14 hyper-HUD streams,
+`$246410` returning zero instead of `$FFFFFFFF`, the two unwired `ctx.commit246800` frees, the widened
+duplicate register, front-end screens D33/D34/D35/D37, remaining enemy types, and complete loop-2
+coverage.
 
-- D44/D45: it named `items.js`, which is the WRONG SUBSYSTEM (P capsules). Stars and medals are
-  pool A. It then blamed the 31 unported enemy types; every one of the ten refusing handlers was
-  ported. Both guesses were mine and both were wrong.
-- D45: it called kind 1 the medal. Kind 1 is the bee. The medal is kind 2.
-- D43: it described the ordinary bomb's screen clear. **The owner corrected me**: the report is the
-  LASER BOMB, a separate weapon with its own damage pass `$2456A6`.
+## W451 LANDED -- `$242684` HAS ONE SURVIVOR
 
-**Read `docs/DOCKET.md` for the current state of each.** D44/D45 carry a full measured diagnosis;
-D43 carries the owner's correction and the pool-B arithmetic; D50 is the late crater, unstarted.
+Six private transcriptions of `$242684` are consolidated into `movement.js offScreen242684`. Five
+were equivalent after normalising return sense. `stage4type42.js onScreen` was not: it omitted
+`$813172`, swapped the two words, invented both bands, and inverted the caller arms. A type `$42`
+child could therefore be marked while off-screen and freed as it came on-screen.
 
-## PUBLISHED: build `20260819013654`, confirmed live 2026-08-19
+ROM truth: `move.l ($2,A6),D0` tests A6+$04 first with `$1C00 + $813172`, exits on carry from
+`+$9000`, then swaps and tests A6+$02 with `+$0800 + $8000`. Carry set means off-screen. The image has
+30 direct callers: 26 consume BCC and 4 consume BCS.
 
-W427 was the fifth wave since the last publish (W422, W427), so this is the standing cadence.
-`export-web.mjs` ran BEFORE `publish.mjs`. The publish ran its own full chain -- gradius tests and
-gate, ddpdoj tests and gate, batman gate -- and polled until three consecutive checks agreed.
+The new W451 proof includes all six deleted bodies in an axis table, ROM-decoded boundaries, two
+opposite-RAM-state arms, a RED mutation of the scroll input restored byte-exactly, and an off -> on
+-> off live trace witnessed by `enemies.js` slot count and allocator reuse. Widened registers move
+92 -> **91 heads** and 39 -> **38 body pairs**. The narrow export-only register remains 19.
 
-**WHAT THE OWNER GETS IN THIS BUILD:** the boss explosion's repeated bangs (D58, `$294134`), all
-nine `$28C170` cue sites plus the three `$28C186` ones, the `$286AAA` crash fix (D60), pool-A kind
-5, and fullscreen that uses the screen (D55).
+Coordinator verification on the final tree:
 
-**NEXT PUBLISH FALLS AT W432.**
+    focused W446..W451                    80 pass / 0 fail / 0 skipped
+    node --test games/ddpdoj/tests/     4166 pass / 0 fail / 0 skipped
+    node games/ddpdoj/tools/webgate.mjs exit 0, all checks passed
+    export-tables.py --verify           VERIFY OK, image sha256 4d3efd54...
+    W441 ladder band                    210/210 bullets, pool A 70/70, pool B 80/80
 
-## SUPERSEDED: build `20260818210139`, confirmed live 2026-08-18
+`movement.js` remains uniform CRLF. Every other W451 source and test remains LF, with final newline
+and no mixed endings.
 
-W422 was the fifth wave since the last publish (W412, W417, W422), so this was the standing
-cadence, not an ad-hoc push. `export-web.mjs` ran BEFORE `publish.mjs`. The publish ran its own
-full chain -- gradius tests and gate, ddpdoj tests and gate, batman gate -- and polled until three
-consecutive checks agreed the new build was live.
+## IMMEDIATE ORDER
 
-**WHAT THE OWNER GETS IN THIS BUILD:** the sound-lag ceiling (D54), the audio visibility backstop
-(D57), pool-A kind 5 with its collected popup (W422), and the build-scoped shell URLs (D53) that
-mean they no longer have to ctrl-shift-R.
+1. Publish against the quiet tracked tree. The last confirmed live build is `20260819205607` from
+   W443, so the five-wave cadence was due after W448 and is overdue. Run `games/ddpdoj/tools/export-web.mjs`
+   **before** `tools/publish.mjs`. Do not commit generated `rip/` or `assets/`.
+2. Dispatch W452 on D65, the bee-visibility oracle comparison. Measure before changing code.
+3. Continue the docket and full Black Label through loop 2, then White Label last.
 
-**NEXT PUBLISH FALLS AT W427.**
+## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES
+
+The front-end slots 7, 9, 13, 15 and 17 are already wired in `main.js`; slot 17 sets
+`ctx.selectDraws`. The alarm's W375 publish date is also stale. Publish follows the every-fifth-wave
+cadence above. Do not spend a wave redoing either clause.
+
+## PUBLISHED HISTORY
+
+Last confirmed live: build `20260819205607`, W443. It includes the hyper beam art. Earlier confirmed
+builds: `20260819075340`, `20260819013654`, and `20260818210139`.
 
 ## W422 LANDED -- POOL-A KIND 5, VERIFIED BY THE COORDINATOR
 

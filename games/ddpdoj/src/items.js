@@ -111,6 +111,7 @@ import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { drawByte242B3C, drawByte242E24 } from './rng.js';
 import { aim64, AimTables } from './aim.js';
 import { scoreByMask, abcd } from './score.js';
+import { offScreen242684 } from './movement.js';
 
 // ============================== THE GEOMETRY ================================
 
@@ -545,18 +546,10 @@ function scrollPair2417B6(ram) {
   return { d2: ram.u16(0x80b03c), d3: ram.u16(0x80b03e) };  // $2417C0/$2417C6
 }
 
-/** `$242684` -- the off-screen test, returning CARRY.  `move.l ($2,A6),D0`,
- *  then `+$1C00 + $813172 - $7000` on the SHORT axis (the low word) with the
- *  branch on the SECOND `addi`, and `swap` + `+$800 - $8000` on the LONG.
- *  Only the two `addi`s that are branched on decide anything. */
-function offScreen242684(ram, a6) {
-  const p = ram.u32(a6 + I.pos);
-  let d0 = u16((p & 0xffff) + 0x1c00);                 // $242688 addi.w #$1C00
-  d0 = u16(d0 + ram.u16(0x813172));                    // $24268C add.w $813172
-  if (d0 + 0x9000 > 0xffff) return true;               // $242692/$242696 bcs
-  const hi = u16((p >>> 16) + 0x800);                  // $242698 swap / $24269A
-  return hi + 0x8000 > 0xffff;                         // $24269E addi.w #-$8000
-}
+/** `$242684` -- W451 merged this file's private transcription into
+ *  `movement.js offScreen242684`.  It agreed with the image on every axis; the
+ *  only thing that made it a duplicate was that it was written down twice.
+ *  `I.pos` is +$02, which is what `move.l ($2,A6),D0` reads. */
 
 /** `$242494` -- an OCTAGONAL distance from `($2,A6)` to (D2, D3).
  *  `|dy| - |dy|>>2` against `|dx|`, then `max + min/2`.  Not a norm anybody

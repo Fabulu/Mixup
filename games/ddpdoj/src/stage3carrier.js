@@ -3,7 +3,7 @@
 
 import { u16, i16 } from './ram.js';
 import { freeEnemy } from './initbody.js';
-import { applyVelocity } from './movement.js';
+import { applyVelocity, offScreen242684 } from './movement.js';
 import { AimTables, aim64, aim64FromCaller, aim256AtTarget, slew64 } from './aim.js';
 import { dist242494 } from './bossscripts.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
@@ -46,13 +46,10 @@ function borrowByte(ram, at) {
 
 function unfreeze261142(ram) { ram.setU16(0x81317e, 2); }
 
-function offScreen242684(ram, a6) {
-  const pos = ram.u32(a6 + 2);
-  const y = u16((pos & 0xffff) + 0x1c00 + ram.u16(G.scroll172));
-  if (y + 0x9000 > 0xffff) return true;
-  const x = u16((pos >>> 16) + 0x0800);
-  return x + 0x8000 > 0xffff;
-}
+// `$242684` -- W451 merged this file's copy into `movement.js offScreen242684`.
+// It folded the two word adds `$242688 addi.w #$1C00` and `$24268C add.w
+// $813172` into ONE `u16(...)`, which is the same value (u16 is associative
+// over addition mod $10000) but hides that the ROM branches on neither of them.
 
 function bullet(ram, rom, ctx, a5, site, entry, regs) {
   const out = fireBullet({ ram, rom, log: new WriteLog(ram) }, entry,

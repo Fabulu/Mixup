@@ -72,6 +72,11 @@ import { chainLoader246710, chainLoader246704, chainCheck24681A } from '../src/s
 import { PARTS } from '../src/spawn.js';
 import { PaletteState, PALSTAGE, flush24133C } from '../src/palette.js';
 
+// W451: $242684 LEFT the widened register -- six private transcriptions of the
+// on/off-screen test merged into `movement.js offScreen242684`. 92 - 1 = 91.
+const W451_NOTE = 'W451 merged $242684 (SIX private transcriptions of the on/off-screen '
+  + 'test; survivor movement.js offScreen242684), so 92 - 1 = 91. ';
+
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../rip/sound/maincpu.bin');
 const SKIP = existsSync(IMAGE) ? false : 'no rip';
@@ -242,7 +247,7 @@ test('SECTION 2: `$246520` and `$24652A` are each claimed EXACTLY ONCE, and by t
   }
   // The register itself, held here as well as in w446/w447 so deleting one guard cannot hide it.
   // W450: THIS COUNTS `export function` CLAIMS ONLY, so it is a FLOOR. The scan that can also
-  // see private functions, arrows and methods reports 92 -- SECTION 2d below, and
+  // see private functions, arrows and methods reports 91 -- SECTION 2d below, and
   // tests/w450widenedregister.test.js SECTION 3 for the set.
   const dup = [...idx].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
   assert.equal(dup.length, 19,
@@ -251,12 +256,13 @@ test('SECTION 2: `$246520` and `$24652A` are each claimed EXACTLY ONCE, and by t
     + 'not a row: ' + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
 });
 
-test('SECTION 2d [W450]: the widened register is 92, and this wave\'s three-copy constructor '
+test('SECTION 2d [W450]: the widened register is 91, and this wave\'s three-copy constructor '
   + 'stays merged under it', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
   const wide = headRegister();
-  assert.equal(wide.length, 92,
-    'the widened duplicate register is not 92. The narrow count above sees only `export '
+  assert.equal(wide.length, 91,
+    'the widened duplicate register is not 91. ' + W451_NOTE
+    + 'The narrow count above sees only `export '
     + 'function`; W448 merged THREE transcriptions of one body, and the scan that found them '
     + 'would have missed a fourth written as a private function -- which is what happened to '
     + 'W449 one wave later, at $246800');
