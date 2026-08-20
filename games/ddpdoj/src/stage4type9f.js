@@ -136,7 +136,7 @@ function cleanup9F(ram, rom, a5, root, ctx) {
     ctx.soundPost?.(0x28c310);
   } else {
     if (left === 1) {
-      freeAnimObjects246800(ram, ram.u32(a5 + R.animHandle));
+      freeAnimObjects246800(ram, ram.u32(a5 + R.animHandle));  // $27C724 jsr $246800
       loadAnimObjects246410(ram, rom, 0x27ce46);
     }
     const old = ram.u8(a5 + R.effectTimer);

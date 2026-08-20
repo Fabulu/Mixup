@@ -20,7 +20,9 @@ import { hyperStock286ED6 } from './hud.js';
 import { screenWipe23C6C6 } from './background.js';
 import { stageCreate, queueKill } from './objalloc.js';
 import { readInput23D186 } from './tallyscreen.js';
-import { chainLoader246710, chainCheck24681A, chainFree246800 } from './stageend.js';
+import { chainLoader246710, chainCheck24681A } from './stageend.js';
+// W449: `$246800` merged into `animobjects.js`; `stageend.js chainFree246800` is gone.
+import { freeAnimObjects246800 } from './animobjects.js';
 import { install24150A } from './palette.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 
@@ -288,6 +290,14 @@ export function resourceLoader2907E2(ram, rom, ctx) {
     ram.setU32(0x81e10e, ctx.load246710?.(rom, rec) ?? 0);   // $290816 jsr $246710 / $29081C
     return;
   }
+  // W449 REPORTS, DOES NOT FIX: `$290846` and `$2908C2` are two of `$246800`'s twenty-one ROM
+  // callers, and in this port they reach it only through the OPTIONAL `ctx.commit246800` hook.
+  // NO production ctx supplies that key -- only `tests/w372pool7.test.js` does -- so these two
+  // frees never happen and the chains they own leak out of the twenty-slot `$80FA86` pool.
+  // `$2912D8` in this same file calls the ported routine directly. `w375ctxkeys.test.js` still
+  // describes the key as "$246800. Not ported.", which has been untrue since W341. Wiring these
+  // two is a behaviour change (two pool slots that currently leak would start being released),
+  // so it wants its own state trace and its own wave, not a merge wave's spare line.
   if (st === 2) {                                            // $290828
     if (!ctx.ready24681A?.(ram, ram.u32(0x81e10e))) return;  // $290836/$29083C jsr $24681A / bne
     ctx.commit246800?.(ram, ram.u32(0x81e10e));              // $290846 jsr $246800
@@ -414,7 +424,7 @@ export function menu2911B0(ram, rom, a5, a6, ctx) {
 
   if (ram.u16(a6 + 0x06) === 3) {                            // $2912C0
     if (chainCheck24681A(ram, ram.u32(a6 + 0x14)) === 0) {   // $2912CE jsr $24681A / $2912D4 bne
-      chainFree246800(ram, ram.u32(a6 + 0x14));              // $2912D8 jsr $246800
+      freeAnimObjects246800(ram, ram.u32(a6 + 0x14));        // $2912D8 jsr $246800
       ram.setU8(a5 + 0x02, 2);                               // $2912DE move.b #$2,($2,A5) -- A5, the
                                                              //   OUTER dispatch slot, not A6
     }

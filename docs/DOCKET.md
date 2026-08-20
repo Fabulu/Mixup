@@ -4791,3 +4791,56 @@ Verified by the coordinator on a quiet tree: **4120 pass / 0 fail / 0 skipped**,
 31 PASS / 0 FAIL, `--verify` OK at 613 windows with none added. **No unrelated test went red**;
 ladder band unmoved.
 
+
+### W449: `$246800` MERGED -- A **FOURTH** COPY WAS HIDDEN, AND THE CRASH IS THE CARTRIDGE'S
+
+**MY BRIEF SAID 1/1/10 CALL SITES, 12 TOTAL. IT IS 5/0/11, AND SIXTEEN.** The brief counted only
+calls through an exported `246800`-suffixed name. **`animobjects.js` reached its own body through
+the PRIVATE name `clearChain` -- a FOURTH transcription invisible to the register scan** -- at four
+sites, all genuine ROM `bsr $246800`. **And `spawn.js freeChain246800` had ZERO production
+callers.**
+
+**"THE LIVE COPY KEEPS BEING THE BROKEN ONE" BREAKS HERE, and that is worth recording.** W446/W447/
+W448 each found the shipping copy wrong. **Here the defect was in the copy with a production caller,
+and the copy correct on EVERY axis was the one nothing called.** SECTION 3b runs it verbatim and
+requires it to AGREE with the survivor across all 128 KiB of RAM.
+
+**DEFECT 1 CONFIRMED -- THE CONDITION WAS INVENTED AT BOTH LEVELS.** `$246812 66 f0` is `bne.s -16`
+to **`$246804`, the loop top**, and `$246804` is `movea.l D0,A0 / clr.w (A0)` -- **no `tst`, no
+`beq`.** **And the CALLER has no test either**: `$27C720 20 2d 00 34` then `$27C724 4e b9 ...` with
+**nothing between**. All confirmed by the coordinator. Same at `$28D704` and `$291FBC`.
+
+**DEFECT 2 IS NOT A DEFECT -- THE `$FFFFFFFF` FREE IS THE CARTRIDGE'S OWN BEHAVIOUR.** `$246608`,
+`$2465E6`, `$2464F6`, `$246518` are all `70 ff`, and `$27CB6E` is the ONLY writer of `($34,A5)` in
+the whole page -- it stores the return verbatim. **There is no guard to port:** `movea.l D0,A0`
+makes A0 `$FFFFFFFF`, the 24-bit bus takes it to `$FFFFFF`, and a word `clr.w` at an **ODD** address
+is a 68000 **ADDRESS ERROR, vector 3**. **A crash the board also has is not a defect**, so the port
+still stops -- but now by ADDRESS, not an anonymous `RangeError`. **Adding a quiet guard would have
+been DEFECT 1 again.**
+
+**SURVIVOR: `animobjects.js`** (leaf; `stageend.js` already imports it, so the other direction would
+have made a cycle). **The survivor is the UNION of the three**: `spawn.js`'s do-while, null refusal
+and cap, in `animobjects.js`'s file, serving `stageend.js`'s eleven sites.
+
+**THE ARM A PLAIN TRACE CANNOT REPLACE (SECTION 4b):** same handle and link count with `($2C)`
+pointing at the **opposite half of the pool**, requiring the released sets to be **DISJOINT**. **A
+body that clears the whole pool, or runs a fixed stride, or frees only the head, releases the same
+set in both arms and satisfies SECTION 3 outright.** A second arm walks the links **backward** so a
+stride-walker fails too. The trace is witnessed entirely in `palette.js`, outside all eight changed
+files, freeing mid-fade so the pool separates **released / did nothing / freed too much**, with a
+positive control.
+
+**NO TEST WAS PINNING THE DEFECT -- and that IS the finding.** `w341chainfree.test.js` proved the
+do-while from the image **while `animobjects.js` contradicted it for 108 waves.** The wave added the
+test that would have caught it.
+
+**REPORTED, NOT FIXED: two of the 21 ROM callers reach NO port at all.** `$290846` and `$2908C2` go
+through an optional `ctx.commit246800` hook **that no production ctx supplies** -- so those frees
+never run and their chains **leak** out of the 20-slot pool, while a third site in the same file
+calls the routine directly.
+
+Register: **20 -> 19**, updated in all three places, numeric `length` kept beside each set.
+
+Verified by the coordinator on a quiet tree: **4142 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows with none added. Ladder band unmoved.
+

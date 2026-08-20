@@ -80,9 +80,10 @@ import { clear23C47A } from './stageend.js';
 import { clear25C57E } from './objslot9.js';
 import { menuDips23C932 } from './tallyscreen.js';
 import { hiscoreScreen25B412 } from './hiscorescreen.js';
-import { loadAnimObjects246410 } from './animobjects.js';
+// W449: `$246800` merged into `animobjects.js`; `stageend.js chainFree246800` is gone.
+import { loadAnimObjects246410, freeAnimObjects246800 } from './animobjects.js';
 // W389 -- arm 12's screen is arm 2's twin and uses the same three chain primitives.
-import { chainCheck24681A, chainFree246800, chainLoader246710 } from './stageend.js';
+import { chainCheck24681A, chainLoader246710 } from './stageend.js';
 // W392 -- arm 5's banner ($28E7F8/$28E7A2/$28E7DC) and its one-shot handoff ($26070C).
 import { SE, banner28E7F8 } from './stageend.js';
 import { txPrint240DC2 } from './hud.js';
@@ -1028,7 +1029,7 @@ export function screen12Init25C2AE(ram, rom, ctx) {
 export function screen12Body25C2EA(ram, rom, ctx) {
   if (ram.u16(SCREEN12.state) === 0) {                         // $25C2EE cmpi.w #$0
     if (chainCheck24681A(ram, ram.u32(SCREEN12.handle)) === 0) {   // $25C300 jsr / $25C306 bne
-      chainFree246800(ram, ram.u32(SCREEN12.handle));          // $25C30A jsr $246800
+      freeAnimObjects246800(ram, ram.u32(SCREEN12.handle));    // $25C30A jsr $246800
       ram.setU16(SCREEN12.state, 1);                           // $25C310
       ctx?.unported?.note(SCREEN12.cue, '$25C318 jsr $28CAE2 -- D0=$44, D1=$FF, D2=$14 into '
         + '$28C02A. It is not a $28BB04 wrapper and it is not the $28BBAC tier W425 ported '
@@ -1049,7 +1050,7 @@ export function screen12Body25C2EA(ram, rom, ctx) {
   }
   if (ram.u16(SCREEN12.state) === 2) {                         // $25C34E
     if (chainCheck24681A(ram, ram.u32(SCREEN12.handle)) === 0) {   // $25C360 / $25C366 bne
-      chainFree246800(ram, ram.u32(SCREEN12.handle));          // $25C36A jsr $246800
+      freeAnimObjects246800(ram, ram.u32(SCREEN12.handle));    // $25C36A jsr $246800
       return false;                                            // $25C370 bra $25C382 -- carry CLEAR
     }
   }
@@ -1194,7 +1195,7 @@ export function screen9Init25C3E8(ram, rom, ctx) {
 export function screen9Body25C424(ram, rom, ctx) {
   if (ram.u16(ARM9SCREEN.state) === 0) {                       // $25C428 cmpi.w #$0
     if (chainCheck24681A(ram, ram.u32(ARM9SCREEN.handle)) === 0) {   // $25C43A jsr / $25C440 bne
-      chainFree246800(ram, ram.u32(ARM9SCREEN.handle));        // $25C444 jsr $246800
+      freeAnimObjects246800(ram, ram.u32(ARM9SCREEN.handle));  // $25C444 jsr $246800
       ram.setU16(ARM9SCREEN.state, 1);                         // $25C44A
       // NO `$28CAE2` HERE. Arm 12's $25C318 cue has no counterpart on this edge.
     }
@@ -1210,7 +1211,7 @@ export function screen9Body25C424(ram, rom, ctx) {
   }
   if (ram.u16(ARM9SCREEN.state) === 2) {                       // $25C482
     if (chainCheck24681A(ram, ram.u32(ARM9SCREEN.handle)) === 0) {   // $25C494 / $25C49A bne
-      chainFree246800(ram, ram.u32(ARM9SCREEN.handle));        // $25C49E jsr $246800
+      freeAnimObjects246800(ram, ram.u32(ARM9SCREEN.handle));  // $25C49E jsr $246800
       return false;                                            // $25C4A4 bra $25C4B6 -- carry CLEAR
     }
   }
@@ -1466,7 +1467,7 @@ export function screen1Body25BD7C(ram, rom, ctx) {
   }
   if ((ram.u8(ARM1SCREEN.flags) & 0x02) === 0) {               // $25BD9C btst #1 / $25BDA4 bne
     if (chainCheck24681A(ram, ram.u32(ARM1SCREEN.handle)) === 0) {   // $25BDAC / $25BDB2 bne
-      chainFree246800(ram, ram.u32(ARM1SCREEN.handle));        // $25BDB4 jsr $246800
+      freeAnimObjects246800(ram, ram.u32(ARM1SCREEN.handle));  // $25BDB4 jsr $246800
       ram.setU32(ARM1SCREEN.handle, 0);                        // $25BDBA moveq #0 / $25BDBC
       ram.setU8(ARM1SCREEN.flags, ram.u8(ARM1SCREEN.flags) | 0x02);   // $25BDC2 bset #1
       ram.setU16(ARM1SCREEN.phase, 1);                         // $25BDCA move.w #$1,$812E68
@@ -1485,7 +1486,7 @@ export function screen1Body25BD7C(ram, rom, ctx) {
           chainLoader246710(ram, rom, ARM1SCREEN.loadScript, ctx) >>> 0);
       }
     } else if (chainCheck24681A(ram, ram.u32(ARM1SCREEN.handle)) === 0) {  // $25BE2E/$25BE3A
-      chainFree246800(ram, ram.u32(ARM1SCREEN.handle));        // $25BE3E jsr $246800
+      freeAnimObjects246800(ram, ram.u32(ARM1SCREEN.handle));  // $25BE3E jsr $246800
       return false;                                            // $25BE44 bra $25BE6A -- carry CLEAR
     }
   }

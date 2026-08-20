@@ -16,11 +16,20 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { Unreached } from '../src/unported.js';
-import { freeChain246800, PARTS } from '../src/spawn.js';
+import { PARTS } from '../src/spawn.js';
 // W448 MERGED `$246520`: `spawn.js buildParts246520` was the THIRD independent
 // transcription of `$246532`'s body and the survivor is `animobjects.js`. The two
 // assertions below that pinned its DEFECTS are rewritten, not deleted -- see each.
-import { loadAnimObjects246520, loadAnimObjects24652A } from '../src/animobjects.js';
+//
+// W449 MERGED `$246800` ITSELF. `spawn.js freeChain246800` -- the body these tests were written
+// against, and the only one of the three that was correct on every axis -- is now
+// `animobjects.js freeAnimObjects246800`. Nothing below changes in substance: the same body,
+// under the surviving name, still refuses a null head and a cycle by address. What is ADDED is
+// the assertion W341 could have made and did not: the do-while it proves from the image at the
+// top of this file was CONTRADICTED in src by `animobjects.js`'s `if (root !== 0)` for 108
+// waves, and nothing here noticed. See the last test in this group.
+import { loadAnimObjects246520, loadAnimObjects24652A, freeAnimObjects246800 }
+  from '../src/animobjects.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IMAGE = path.join(HERE, '..', 'rip', 'sound', 'maincpu.bin');
@@ -75,7 +84,7 @@ test('W341 it releases every node in the chain and returns the count', () => {
     ram.setU16(at + 0x04, 0x1234);
     ram.setU32(at + 0x2c, i < 2 ? NODE + (i + 1) * STRIDE : 0);
   }
-  assert.equal(freeChain246800(ram, NODE), 3, 'three nodes released');
+  assert.equal(freeAnimObjects246800(ram, NODE), 3, 'three nodes released');
   for (let i = 0; i < 3; i++) {
     const at = NODE + i * STRIDE;
     assert.equal(ram.u16(at), 0, `node ${i} first word cleared`);
@@ -87,13 +96,13 @@ test('W341 a single unlinked node is released and the walk stops', () => {
   const ram = new Ram();
   ram.setU16(NODE, 0x8000);
   ram.setU32(NODE + 0x2c, 0);
-  assert.equal(freeChain246800(ram, NODE), 1);
+  assert.equal(freeAnimObjects246800(ram, NODE), 1);
   assert.equal(ram.u16(NODE), 0);
 });
 
 test('W341 a NULL head throws by address rather than clearing address 0', () => {
   const ram = new Ram();
-  assert.throws(() => freeChain246800(ram, 0),
+  assert.throws(() => freeAnimObjects246800(ram, 0),
     (e) => e instanceof Unreached && e.romAddress === 0x246800);
 });
 
@@ -103,8 +112,30 @@ test('W341 a CYCLE throws by address rather than hanging', () => {
   const ram = new Ram();
   ram.setU16(NODE, 0x8000);
   ram.setU32(NODE + 0x2c, NODE);            // points at itself
-  assert.throws(() => freeChain246800(ram, NODE),
+  assert.throws(() => freeAnimObjects246800(ram, NODE),
     (e) => e instanceof Unreached && e.romAddress === 0x246812);
+});
+
+// W449 ADDS THIS ONE, and it is the test this file was missing. Everything above proves the
+// DO-WHILE from the image -- and for 108 waves the copy that shipped, `animobjects.js`, wrapped
+// the same walk in `if (root !== 0)` and no test in the suite compared the two. A red arm has to
+// be able to see an INVENTED condition, not just a wrong constant.
+test('W341/W449 the survivor has no entry test, so a null head is REFUSED and not swallowed', () => {
+  const ram = new Ram();
+  ram.setU16(NODE, 0x8000);
+  ram.setU32(NODE + 0x2c, 0);
+  // The one live behaviour that separates a do-while from a guarded while: what a zero does.
+  assert.throws(() => freeAnimObjects246800(ram, 0),
+    (e) => e instanceof Unreached && e.romAddress === 0x246800,
+    'the deleted animobjects.js wrapper returned quietly here. $246804 is the branch target of '
+    + '$246812 and $246806 clr.w (A0) is the very next word, so the ROM has no such arm');
+  // ...and the loaders' failure return is refused too, by the instruction that faults.
+  assert.throws(() => freeAnimObjects246800(ram, 0xffffffff),
+    (e) => e instanceof Unreached && e.romAddress === 0x246804,
+    '$FFFFFFFF is what $246608/$2465E6/$2464F6/$246518 return, and on the 68000 clr.w at the '
+    + '24-bit address $FFFFFF is an ADDRESS ERROR -- the board does not survive it either');
+  // ...while a live head still works, which is what says the refusals are not a blanket refusal.
+  assert.equal(freeAnimObjects246800(ram, NODE), 1, 'and a real head is still freed');
 });
 
 // --- $246520 / $24652A, the constructor the chain-free tears down.

@@ -66,7 +66,9 @@
 import { u16, u32 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
-import { chainCheck24681A, chainFree246800, chainLoader246710 } from './stageend.js';
+import { chainCheck24681A, chainLoader246710 } from './stageend.js';
+// W449: `$246800` merged into `animobjects.js`; `stageend.js chainFree246800` is gone.
+import { freeAnimObjects246800 } from './animobjects.js';
 
 const EMIT = 0x23dfb4;                  // the register-convention emitter, W30's family
 const ROW_STEP = 0x11c0;                // subi.w #$11C0 -- the same in all nine routines
@@ -523,7 +525,7 @@ export const SCREEN_STATE = Object.freeze({
 export function hiscoreScreen25B412(ram, rom, ctx) {
   if (ram.u16(SCREEN_STATE.state) === 0) {                  // $25B416 cmpi.w #$0
     if (chainCheck24681A(ram, ram.u32(SCREEN_STATE.handle)) === 0) {  // $25B428 jsr / bne
-      chainFree246800(ram, ram.u32(SCREEN_STATE.handle));   // $25B432 jsr $246800
+      freeAnimObjects246800(ram, ram.u32(SCREEN_STATE.handle));  // $25B432 jsr $246800
       ram.setU16(SCREEN_STATE.state, 1);                    // $25B438
     }
   }
@@ -547,7 +549,7 @@ export function hiscoreScreen25B412(ram, rom, ctx) {
   }
   if (ram.u16(SCREEN_STATE.state) === 2) {                  // $25B46E
     if (chainCheck24681A(ram, ram.u32(SCREEN_STATE.handle)) === 0) {  // $25B480 / $25B486
-      chainFree246800(ram, ram.u32(SCREEN_STATE.handle));   // $25B488
+      freeAnimObjects246800(ram, ram.u32(SCREEN_STATE.handle));  // $25B488
       // $25B48E bra $25B4C8 -- the ONLY path that skips the draw.
       // W425 (D58): a REAL post. $28C170 is the $28BBAC tier, which `sound.js` could not pack
       // until W423 built it a second path; it has no WRAPPERS row and no gate, and the address

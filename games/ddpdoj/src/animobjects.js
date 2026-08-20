@@ -18,6 +18,12 @@ export const ANIM_OBJECT = Object.freeze({
   nodes: 0x80fa86, nodeStride: 0x70, nodeSlots: 20,
 });
 
+/** The node pool at `$80FA86` holds TWENTY `$70`-byte nodes (`$80FA86 + 20 * $70 == $810346`,
+ *  the root pool's own base -- the two pools ABUT, which is what proves both strides), so no
+ *  legitimate chain runs past a root plus twenty. This bound turns a ROM infinite loop into a
+ *  located throw. Moved here from `spawn.js` in W449 with the body it guards. */
+const CHAIN_CAP = 20;
+
 const N = Object.freeze({
   status: 0x00, mode: 0x04, writer: 0x06, target: 0x0a, current: 0x0e,
   fill: 0x12, countdown: 0x14, reload: 0x16, active: 0x18,
@@ -37,16 +43,6 @@ function timing(index) {
   if (index === 2) return [0, 2];
   if (index === 3) return [0, 1];
   return [index - 3, 1];                              // `$246B38` entries 4..31
-}
-
-function clearChain(ram, root) {
-  let at = root;
-  while (at !== 0) {
-    const next = ram.u32(at + N.next);
-    ram.setU16(at + N.status, 0);                     // $246806
-    ram.setU16(at + N.mode, 0);                       // $246808
-    at = next;
-  }
 }
 
 /** `$246410`, the counted palette-animation loader. The table is
@@ -78,7 +74,7 @@ export function loadAnimObjects246410(ram, rom, table, mode = 1) {
       const at = ANIM_OBJECT.nodes + i * ANIM_OBJECT.nodeStride;
       if (i16(ram.u16(at)) >= 0) { node = at; break; }
     }
-    if (node === 0) { clearChain(ram, root); return 0; }
+    if (node === 0) { freeAnimObjects246800(ram, root); return 0; }  // $246502 bsr $246800
 
     ram.setU16(node + N.status, 0x8000);
     ram.setU16(node + N.progress, 0);
@@ -92,7 +88,7 @@ export function loadAnimObjects246410(ram, rom, table, mode = 1) {
     const family = rom.u16(table); table += 2;
     const targetFamily = TARGETS[family];
     if (!targetFamily) {
-      clearChain(ram, root);
+      freeAnimObjects246800(ram, root);                 // $246502 bsr $246800
       unreached(0x246478, `$246410 target-family byte offset $${family
         .toString(16).toUpperCase()} is outside the three-entry $24627A table`);
     }
@@ -241,7 +237,7 @@ export function buildChain246532(ram, rom, table, spec) {
       // $2465EC tst.w D0 / $2465EE bpl -- negative, so UNWIND. `$2465F0 move.l A1,D0` uses the
       // A1 that `$2465E8 movem.l (A7)+,A0-A1` just restored: the ROOT, not the tail. Without
       // this the root slot leaks permanently out of THREE.
-      clearChain(ram, root);                                 // $2465F2 bsr $246800
+      freeAnimObjects246800(ram, root);                      // $2465F2 bsr $246800
       return 0xffffffff;                                     // $2465F6 bra / $246608 moveq #-$1
     }
     return root;                                             // $2465F8 move.l A1,D0
@@ -260,9 +256,87 @@ export function loadAnimObjects24652A(ram, rom, table) {
   return buildChain246532(ram, rom, table, CHAIN_SPECS[0x24652a]);
 }
 
-/** `$246800`, free one animation-object root and its linked node chain. */
-export function freeAnimObjects246800(ram, root) {
-  if (root !== 0) clearChain(ram, root);
+/**
+ * `$246800` -- THE CHAIN FREE, AND AS OF W449 THE ONLY BODY.
+ *
+ * W447's audit found `$246800` transcribed THREE times and W449 merged them: this file's
+ * private `clearChain` (which `freeAnimObjects246800` wrapped), `spawn.js freeChain246800`
+ * and `stageend.js chainFree246800`. The survivor is HERE because `animobjects.js` is a LEAF
+ * -- it imports only `ram.js` and `unported.js` -- and `stageend.js` already imports it, so
+ * merging the other way would have turned that edge into a cycle. Same rule, same survivor as
+ * W448.
+ *
+ * THE BYTES, off the image this wave:
+ *
+ *     246800  2f00              move.l D0,-(A7)
+ *     246802  2f08              move.l A0,-(A7)          <- TWO pushes, NOT a movem.l
+ *     246804  2040              movea.l D0,A0            <- THE LOOP TOP
+ *     246806  4250              clr.w (A0)
+ *     246808  317c 0000 0004    move.w #$0,($4,A0)
+ *     24680e  2028 002c         move.l ($2C,A0),D0
+ *     246812  66f0              bne.s $246804            <- $246814 - $10 = $246804
+ *     246814  205f              movea.l (A7)+,A0
+ *     246816  201f              move.l (A7)+,D0
+ *     246818  4e75              rts
+ *
+ * **IT IS A DO-WHILE AND THE ENTRY TEST WAS INVENTED.** `$246804` is the branch target and
+ * `$246806 clr.w (A0)` is the very next instruction, so nothing between the prologue and the
+ * first release tests D0. This export used to read `if (root !== 0) clearChain(ram, root)` --
+ * the W446 `if (made.ok)` shape, a guard with no branch behind it -- **and the CALLER has no
+ * such test either**: `$27C720 202d 0034` is `move.l ($34,A5),D0` and `$27C724 4eb9 0024 6800`
+ * is the `jsr` immediately after it. Same at `$28D704`/`$28D708` and `$291FBC`/`$291FCA`. The
+ * ROM frees the head unconditionally and relies on every one of its **TWENTY-ONE** callers
+ * passing a live pointer -- 21 measured this wave by scanning `$230000..$2B0000` for `bsr`/`jsr`
+ * targets: `$246502`, `$2465F2`, `$2466E6`, `$2467E0`, `$24686C` and sixteen `jsr.l`s.
+ *
+ * THE TWO REFUSALS BELOW ARE NOT GATES. THEY ARE THE BOARD'S OWN FAULTS, LOCATED.
+ *
+ * `head == 0`: the ROM would `clr.w ($0)`, writing into the 68000 vector table. W341 refused it
+ *   by address because a null here means the caller's `($2C)` bookkeeping is already wrong, and
+ *   swallowing it would hide that.
+ *
+ * `head == $FFFFFFFF`: **the cartridge genuinely faults here, so the port must stop too.**
+ *   `$246608`, `$2465E6`, `$2464F6` and `$246518` are all `70 ff` (`moveq #-$1,D0`), so every
+ *   failure arm in this family returns `$FFFFFFFF` and the callers store it verbatim --
+ *   `stage4type9f.js` writes it into `($34,A5)` at `$27CB6E`, the only writer, and `$27C724`
+ *   frees it with no test. On the 68000 `movea.l D0,A0` makes A0 = `$FFFFFFFF`, the 24-bit bus
+ *   takes that to `$FFFFFF`, and a WORD `clr.w` at an ODD address is an ADDRESS ERROR (vector
+ *   3). There is no guard to port. The port raises instead of pretending the free succeeded --
+ *   a crash the board also has is not a defect to be smoothed over.
+ *
+ * @param head the chain head (the ROM's D0 on entry)
+ * @returns {number} how many links were released
+ */
+export function freeAnimObjects246800(ram, head) {
+  const first = head >>> 0;
+  if (first === 0) {
+    unreached(0x246800, '$246800 was called with a NULL chain head. It is a do-while with no '
+      + 'entry test, so the ROM would clear address 0 -- all twenty-one of its callers are '
+      + "expected to pass a live pointer, and a null here means the caller's ($2C) chain "
+      + 'bookkeeping is already wrong');
+  }
+  if (first === 0xffffffff) {
+    unreached(0x246804, "$246800 was called with $FFFFFFFF, the failure return of this family's "
+      + 'loaders ($246608/$2465E6/$2464F6/$246518 are all `moveq #-$1,D0`). The board does not '
+      + 'guard it either: $246804 movea.l D0,A0 then $246806 clr.w (A0) is a WORD access at the '
+      + 'odd address $FFFFFF, which is a 68000 ADDRESS ERROR. A caller freed a load that failed');
+  }
+  let at = first;
+  let n = 0;
+  for (;;) {
+    ram.setU16(at + N.status, 0);                     // $246806 clr.w (A0)
+    ram.setU16(at + N.mode, 0);                       // $246808 move.w #$0,($4,A0)
+    n += 1;
+    const next = ram.u32(at + N.next) >>> 0;          // $24680E move.l ($2C,A0),D0
+    if (next === 0) return n;                         // $246812 bne $246804
+    if (n > CHAIN_CAP) {
+      unreached(0x246812, `$246800 followed more than ${CHAIN_CAP} ($2C) links. The node pool at `
+        + '$80FA86 holds only twenty $70-byte nodes, so a longer chain means a cycle -- which the '
+        + 'ROM would loop on forever, and a hanging suite is a worse way to learn that than a '
+        + 'failing one');
+    }
+    at = next;
+  }
 }
 
 // ===========================================================================
@@ -540,7 +614,7 @@ export function runAnimObjects24683E(ram, rom) {
       node = ram.u32(node + N.next);
     }
     if (ram.u16(root + N.mode) === 1 && activeSum === 0) {
-      clearChain(ram, root); freed++;
+      freeAnimObjects246800(ram, root); freed++;        // $24686C bsr $246800
     }
   }
   return { roots, nodes, freed };

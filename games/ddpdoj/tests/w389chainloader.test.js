@@ -36,13 +36,16 @@ import { Game } from '../src/main.js';
 import { ALLOC, killById, queueKill, commitKills } from '../src/objalloc.js';
 import {
   chainLoader246710, chainLoader246704,
-  chainCheck24681A, chainFree246800,
+  chainCheck24681A,
 } from '../src/stageend.js';
 import {
   CHAIN_CONTENT, CHAIN_CONTENT_24652A, ANIM_OBJECT, runAnimObjects24683E,
   seedChainContent24676A,
   // W448: `$24652A`'s head moved here when the three transcriptions of `$246532` merged.
   loadAnimObjects24652A,
+  // W449 dropped this file's `chainFree246800` import: the three transcriptions of `$246800`
+  // merged into `animobjects.js freeAnimObjects246800`, and this file never CALLED it -- the
+  // import had been dead since W389.
 } from '../src/animobjects.js';
 import { objSlot13, SCREEN13 } from '../src/objslot13.js';
 import { objSlot15, SLOT15 } from '../src/objslot15.js';

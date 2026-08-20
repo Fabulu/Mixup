@@ -242,8 +242,9 @@ test('SECTION 2: `$246520` and `$24652A` are each claimed EXACTLY ONCE, and by t
   }
   // The register itself, held here as well as in w446/w447 so deleting one guard cannot hide it.
   const dup = [...idx].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
-  assert.equal(dup.length, 20,
-    'W446 counted 24, W447 merged two (22), W448 merges two more (20). A NEW duplicate is a wave, '
+  assert.equal(dup.length, 19,
+    'W446 counted 24, W447 merged two (22), W448 merges two more (20), W449 merges $246800, the '
+    + 'chain free for these very chains (19). A NEW duplicate is a wave, '
     + 'not a row: ' + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
 });
 

@@ -230,7 +230,13 @@ const OVERLAP_DECLARED = Object.freeze({
   0x285fa6: 'hud.js hyperFlash285FA6: counts when called without `rom`',
   0x285fb6: 'hud.js creditRow285FB6: counts when called without `rom`',
   0x286040: 'hud.js chainHiWater286040: counts when called without `rom`',
-  0x246800: 'spawn.js freeChain246800: the port runs; the note is its own NULL-head `unreached`',
+  // W449 CORRECTED THIS ROW. It named `spawn.js freeChain246800`, which W449 deleted -- the
+  // three transcriptions of `$246800` merged into `animobjects.js freeAnimObjects246800`. The
+  // OVERLAP is unchanged and still real: the routine is ported AND still raises by address, now
+  // at two heads rather than one. The second is this wave's, and it is the board's own fault
+  // rather than a gap -- see w449merged246800.test.js SECTION 4.
+  0x246800: 'animobjects.js freeAnimObjects246800: the port runs; the notes are its NULL-head '
+    + '`unreached` and its $FFFFFFFF one, both of them faults the cartridge takes too',
   // -- the port runs, but this CHAIN has no such resource; counted, not silent --
   0x23c622: 'clearTx23C622 runs when ctx.tx exists; objslot12 counts the bare-ctx miss',
   // W446 CORRECTED THIS ROW'S ENGLISH. W444 wrote "four files"; it was FOUR SITES IN

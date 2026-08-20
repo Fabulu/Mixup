@@ -40,7 +40,6 @@
 // sentinel so the spawn still counts.  The enemy handlers (the `($4C,A5)`
 // dispatch the init stores) are W25/W29.
 
-import { unreached } from './unported.js';
 import { u16, i16, u32 } from './ram.js';
 import { allocEnemy, ENEMY } from './enemies.js';
 import { runInitBodyAddr, INIT_BODY_FREED } from './initbody.js';
@@ -512,66 +511,23 @@ export function runSpawnWalker(ram, rom, unported, tables, spawnEvent, palette,
 }
 
 // ===========================================================================
-// $246800 -- THE MULTI-PART CHAIN FREE.  W341.
+// $246800 -- THE MULTI-PART CHAIN FREE.  W341, **MERGED AWAY IN W449**.
 // ===========================================================================
 //
-// Six instructions, **TWENTY-ONE callers**, and it is the teardown half of the
-// multi-part object constructor at `$246520` (not yet ported):
+// `freeChain246800` was this file's transcription of `$246800`, and it was one of THREE --
+// `animobjects.js`'s private `clearChain` (wrapped by `freeAnimObjects246800`) and
+// `stageend.js chainFree246800` were the others. `animobjects.js freeAnimObjects246800` is the
+// survivor: it is the LEAF everyone already depends on, so the merge runs WITH the existing
+// `stageend -> animobjects` edge instead of inverting it.
 //
-//     246800  move.l D0,-(A7)          <-- TWO separate pushes, not a `movem.l`
-//     246802  move.l A0,-(A7)
-//     246804  movea.l D0,A0
-//     246806  clr.w (A0)               release the node
-//     246808  move.w #$0,($4,A0)       and its second field
-//     24680e  move.l ($2C,A0),D0
-//     246812  bne $246804              follow the ($2C) LINK and loop
-//     246814  movea.l (A7)+,A0 / move.l (A7)+,D0 / rts
+// **THIS COPY WAS THE BODY THAT WAS RIGHT**, and it is the first wave in four where the live
+// copy was not the broken one -- because this copy had no production caller at all. It had the
+// do-while, the NULL refusal and the cycle cap; `animobjects.js` carried an INVENTED
+// `if (root !== 0)` entry test (the W446 `if (made.ok)` shape) and `stageend.js` had the
+// do-while but no bound. The survivor is the union: this body, in that file. `CHAIN_CAP` moved
+// with it.
 //
-// The two writes are **exactly the inverse of `$246520`'s claim**, which sets
-// `move.w #$8000,(A1)` and `move.w D6,($4,A1)`.  So the pool convention is
-// confirmed from both ends: `tst.w / bmi` means occupied when NEGATIVE, and
-// `clr.w` is what frees a slot.
-//
-// `+$2C = next` and `+$18 = a per-node quantity` are a convention shared by at
-// least three routines -- `$24681A`, immediately after this one, walks the same
-// chain summing `($18,A0)`.
-//
-// **IT IS A DO-WHILE, NOT A WHILE.**  There is no null test before `$246804`, so
-// the ROM frees the head unconditionally and relies on every one of its
-// twenty-one callers passing a real pointer.  A null head would `clr.w` address
-// 0.  The port refuses by address rather than silently returning, because a null
-// reaching here means the caller's chain bookkeeping is already wrong and
-// swallowing it would hide that.
-//
-// @param head the chain head (the ROM's D0 on entry)
-// @returns {number} how many nodes were released
-export function freeChain246800(ram, head) {
-  if (head === 0) {
-    unreached(0x246800, '$246800 was called with a NULL chain head. It is a do-while with no entry '
-      + 'test, so the ROM would clear address 0 -- all twenty-one of its callers are expected to pass '
-      + 'a live pointer, and a null here means the caller\'s ($2C) chain bookkeeping is already wrong');
-  }
-  let at = head;
-  let n = 0;
-  for (;;) {
-    ram.setU16(at, 0);                                   // $246806 clr.w (A0)
-    ram.setU16(at + 0x04, 0);                            // $246808 move.w #$0,($4,A0)
-    n += 1;
-    const next = ram.u32(at + 0x2c);                     // $24680E move.l ($2C,A0),D0
-    if (next === 0) return n;                            // $246812 bne $246804
-    if (n > CHAIN_CAP) {
-      unreached(0x246812, `$246800 followed more than ${CHAIN_CAP} ($2C) links. The node pool at `
-        + '$80FA86 holds only twenty $70-byte nodes, so a longer chain means a cycle -- which the ROM '
-        + 'would loop on forever, and a hanging suite is a worse way to learn that than a failing one');
-    }
-    at = next;
-  }
-}
-
-/** The node pool at `$80FA86` holds TWENTY `$70`-byte nodes (`$80FA86 + 20 * $70 == $810346`, the
- *  parent pool's own base -- the two pools abut, which is what proves both strides). So no legitimate
- *  chain exceeds twenty, and this bound turns a ROM infinite loop into a located throw. */
-const CHAIN_CAP = 20;
+// `PARTS` below stays because it is the only place the ABUTMENT PROOF is written down.
 
 // ===========================================================================
 // $246520 / $24652A -- THE MULTI-PART OBJECT CONSTRUCTOR.  W341, **MERGED AWAY IN W448**.
@@ -598,8 +554,8 @@ const CHAIN_CAP = 20;
 //     the 6 MiB image. **Type $4C's death effect could not have run.** It throws, measured.
 //   `$246608 moveq #-$1,D0`  returned 0 instead of $FFFFFFFF, on both arms.
 //
-// `PARTS` below is kept because it is the only place the ABUTMENT PROOF is written down, and
-// `freeChain246800` stays: `$246800` is its own doubly-claimed row and its own wave.
+// `PARTS` below is kept because it is the only place the ABUTMENT PROOF is written down.
+// W449 took `freeChain246800` -- that row is merged now; see the block above.
 
 /** `$246520`'s two RAM pools and two dispatch tables.  The pools ABUT, which is what proves both
  *  strides: `$80FA86 + 20 * $70 == $810346` and `$810346 + 3 * $30 == $8103D6`. */

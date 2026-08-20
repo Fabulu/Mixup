@@ -243,7 +243,13 @@ const DOUBLY_CLAIMED_UNAUDITED = Object.freeze([
   // `$246520` D6=1 and `$24652A` D6=0 -- joined by `$246528 bra.s $246532`). The survivor
   // is `animobjects.js buildChain246532`; `spawn.js buildParts246520` and `stageend.js`'s
   // `chainLoader24652A` + `chainLoaderBody` are deleted. w448merged246520.test.js pins it.
-  0x2417de, 0x242ec2, 0x246710, 0x24676a, 0x246800, 0x249ee2,
+  //
+  // W449 REMOVED $246800: the chain free was transcribed THREE times as well -- `animobjects.js`
+  // reached its body through the private name `clearChain`, `spawn.js` had `freeChain246800`
+  // (no production caller) and `stageend.js` had `chainFree246800` (eleven). The survivor is
+  // `animobjects.js freeAnimObjects246800`, and the defect was an INVENTED `if (root !== 0)`
+  // over a routine the ROM enters unconditionally. w449merged246800.test.js pins it.
+  0x2417de, 0x242ec2, 0x246710, 0x24676a, 0x249ee2,
   0x2564f0, 0x259962, 0x25d9e6, 0x25da60, 0x25ff38, 0x263386, 0x2633be, 0x2638a6,
   0x27f6e4, 0x2875b4, 0x28d520, 0x28f588, 0x29f9b4, 0x2a11d4,
 ]);
@@ -263,9 +269,12 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
     + 'NOTE $2428A6 and $242B3C are deliberately ABSENT TOO: W447 merged them, and\n'
     + 'tests/w447merged2428a6.test.js SECTIONS 2 and 2b pin that. 24 - 2 = 22.\n'
     + 'NOTE $246520 and $24652A are ABSENT TOO: W448 merged the THREE transcriptions\n'
-    + 'of the one body at $246532. 22 - 2 = 20.');
-  assert.equal(dup.length, 20,
-    'the register is 20 after W448: 24 - $2428A6 - $242B3C - $246520 - $24652A. Asserted as a NUMBER as '
+    + 'of the one body at $246532. 22 - 2 = 20.\n'
+    + 'NOTE $246800 is ABSENT TOO: W449 merged the THREE transcriptions of the chain\n'
+    + 'free, and tests/w449merged246800.test.js SECTION 2 pins that. 20 - 1 = 19.');
+  assert.equal(dup.length, 19,
+    'the register is 19 after W449: 24 - $2428A6 - $242B3C - $246520 - $24652A - $246800. '
+    + 'Asserted as a NUMBER as '
     + 'well as a set, so that a scan which finds nothing cannot read as two more '
     + 'merges -- an empty dup list satisfies neither.');
 });

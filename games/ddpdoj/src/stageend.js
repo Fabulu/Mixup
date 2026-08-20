@@ -101,7 +101,9 @@ import { flushPendingHyper2875B4 } from './hyper.js';
 import { emit23F82A } from './bossarrival.js';
 // W389 -- `$24676A..$2467C3`, the per-node CONTENT seeding that lives INSIDE `$246710`'s
 // allocation loop. `animobjects.js` imports nothing from here, so this is not a cycle.
-import { buildChain246532, CHAIN_SPECS, loadAnimObjects24652A } from './animobjects.js';
+import { buildChain246532, CHAIN_SPECS, loadAnimObjects24652A,
+  // W449: `$246800` merged here; this file's `chainFree246800` is gone.
+  freeAnimObjects246800 } from './animobjects.js';
 // W445 -- `$2537D2 jsr $2878CC` / `$253820 jsr $28795C`, the loop extend's LIVES row.
 // `hud.js` has PORTED that body since W116 and imports nothing from here, so this is
 // not a cycle: `hud.js -> items.js -> hud.js` is the pre-existing one, and this file
@@ -1191,8 +1193,9 @@ function p2NumberBlock(ram, rom, a6, beeOff, beeBin, itemOff, itemBin, base) {
 // W448: the pool geometry USED to be repeated here as `playerList`/`pool` and in `spawn.js` as
 // `PARTS`. It is `animobjects.js ANIM_OBJECT` and nowhere else now; what is left is the node
 // field offsets `$24681A` and `$246800` read.
+// W449: `idOff`/`subOff` went with `chainFree246800`; `$24681A` reads only these two.
 const CHAIN = {
-  linkOff: 0x2c, lifeOff: 0x18, idOff: 0x00, subOff: 0x04,
+  linkOff: 0x2c, lifeOff: 0x18,
 };
 
 // `$24652A` -- **DELETED IN W448.** This file carried a second, independent transcription of
@@ -1290,18 +1293,18 @@ export function chainCheck24681A(ram, handle) {
   return sum;                                               // $246834/$246836 tst.w
 }
 
-/** `$246800` -- free the chain: clear each node's id word and sub word, walking
- *  `($2C,node)` until the link is zero. */
-export function chainFree246800(ram, handle) {
-  let cur = handle >>> 0;                                   // $246804 movea.l d0,a0
-  while (true) {
-    ram.setU16(cur, 0);                                     // $246806 clr.w (a0)
-    ram.setU16(cur + CHAIN.subOff, 0);                      // $246808 $4 := 0
-    const next = ram.u32(cur + CHAIN.linkOff);              // $24680E $2c(a0)
-    if (next === 0) break;                                  // $246812 bne loop
-    cur = next >>> 0;
-  }
-}
+// `$246800` -- **DELETED IN W449.** `chainFree246800` was this file's transcription of the
+// six-instruction chain free, and it was one of THREE (`spawn.js freeChain246800` and
+// `animobjects.js`'s private `clearChain`, wrapped by `freeAnimObjects246800`, were the others).
+// `animobjects.js freeAnimObjects246800` is the survivor and this file's ELEVEN call sites --
+// ten importers plus `f8Exit28DE1E` below -- go to it. Same direction as W448: `animobjects.js`
+// is a leaf and this file already imports it, so nothing inverts.
+//
+// What this copy had RIGHT: the DO-WHILE. `$246804` is the branch target of `$246812 66f0` and
+// `$246806 clr.w (A0)` follows it immediately, so the head is released with no entry test --
+// `animobjects.js` wrapped the walk in an INVENTED `if (root !== 0)`. What it had WRONG: no
+// bound, so a corrupt `($2C)` cycle hung the suite instead of naming itself, and no refusal for
+// the `$FFFFFFFF` a failed loader returns.
 
 // --------------------------------------------------------- the banner $28E7F8
 //
@@ -1544,7 +1547,7 @@ export function makeStageClear(rom) {
       // address $2C, this refuses to.
       if (sum !== 0) return;                           // $28D702 bne.s $28D736
       if (handle !== 0 && handle !== 0xffffffff) {
-        chainFree246800(ram, handle);                  // $28D704/$28D708 jsr $246800
+        freeAnimObjects246800(ram, handle);            // $28D704/$28D708 jsr $246800
       }
       resetPower25313E(ram, ctx, SE.p1, 0x25313e);     // $28D70E
       resetPower25313E(ram, ctx, SE.p2, 0x25318e);     // $28D714

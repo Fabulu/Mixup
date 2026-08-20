@@ -23,7 +23,9 @@
 
 import { u16, u32 } from './ram.js';
 import { install24150A } from './palette.js';
-import { chainLoader246710, chainCheck24681A, chainFree246800 } from './stageend.js';
+import { chainLoader246710, chainCheck24681A } from './stageend.js';
+// W449: `$246800` merged into `animobjects.js`; `stageend.js chainFree246800` is gone.
+import { freeAnimObjects246800 } from './animobjects.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { stageCreate, queueKill } from './objalloc.js';
 
@@ -189,6 +191,6 @@ export function objSlot15(ram, rom, a5, ctx) {
 
   if (ram.u16(a5 + SLOT15.phase) !== 1) return;              // $291FB2 cmpi.w #$1,($4,A5) / bne
   if (chainCheck24681A(ram, ram.u32(a5 + SLOT15.handle)) !== 0) return;   // $291FC0 / $291FC6 bne
-  chainFree246800(ram, ram.u32(a5 + SLOT15.handle));         // $291FCA jsr $246800
+  freeAnimObjects246800(ram, ram.u32(a5 + SLOT15.handle));   // $291FCA jsr $246800
   ram.setU8(a5 + SLOT15.state, 2);                           // $291FD0
 }

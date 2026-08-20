@@ -457,12 +457,13 @@ test('SECTION 5b: items.js no longer exports a second body, and the stream does 
 // The count is asserted here as well as there so that deleting the register does not silently
 // delete the debt.
 
-test('SECTION 6: the doubly-claimed register is 20, and the two this wave merged are ABSENT '
+test('SECTION 6: the doubly-claimed register is 19, and the two this wave merged are ABSENT '
   + 'from it', () => {
   const dup = [...portedIndex()].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
-  assert.equal(dup.length, 20,
+  assert.equal(dup.length, 19,
     'W446 counted 24. This wave merged $2428A6 and $242B3C, so 22; W448 then merged $246520 and '
-    + '$24652A -- the three-copy constructor named just above -- so 20. A different number means '
+    + '$24652A -- the three-copy constructor named just above -- so 20; W449 merged $246800, the '
+    + 'three-copy chain free that tears the same chains DOWN, so 19. A different number means '
     + 'either a merge was undone or a new duplicate landed -- and a NEW one is a wave, not a '
     + 'row: ' + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
   assert.equal(dup.includes(0x2428a6), false, '$2428A6 is merged');
