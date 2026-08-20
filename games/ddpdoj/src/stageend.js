@@ -101,7 +101,7 @@ import { flushPendingHyper2875B4 } from './hyper.js';
 import { emit23F82A } from './bossarrival.js';
 // W389 -- `$24676A..$2467C3`, the per-node CONTENT seeding that lives INSIDE `$246710`'s
 // allocation loop. `animobjects.js` imports nothing from here, so this is not a cycle.
-import { seedChainNode24676A, CHAIN_CONTENT, CHAIN_CONTENT_24652A } from './animobjects.js';
+import { buildChain246532, CHAIN_SPECS, loadAnimObjects24652A } from './animobjects.js';
 // W445 -- `$2537D2 jsr $2878CC` / `$253820 jsr $28795C`, the loop extend's LIVES row.
 // `hud.js` has PORTED that body since W116 and imports nothing from here, so this is
 // not a cycle: `hud.js -> items.js -> hud.js` is the pre-existing one, and this file
@@ -828,7 +828,10 @@ function f8Exit28DE1E(ram, rom, ctx, a5) {
   }
   // $28DE5C lea $28D862(PC),A0; $28DE60 move.b #$B,$6(A5); $28DE66 jsr $24652A
   ram.setU8(a5 + 0x06, 0x0b);                               // $28DE60
-  const handle = chainLoader24652A(ram, rom, RESULT_ROM.animScript); // $28DE66
+  // W448: `chainLoader24652A` was this file's own transcription of `$246532`. The survivor
+  // is `animobjects.js loadAnimObjects24652A`, and THE HANDLE IT RETURNS ON FAILURE IS NOW
+  // `$FFFFFFFF` FROM BOTH ARMS -- which is what `$246608 moveq #-$1,D0` stores into `($8,A5)`.
+  const handle = loadAnimObjects24652A(ram, rom, RESULT_ROM.animScript); // $28DE66
   ram.setU32(a5 + 0x08, handle >>> 0);                      // $28DE6C move.l D0,$8(A5)
   // W426 -- A REAL POST, NOT A COUNTED NOTE. `$28C186` is `$28C170`'s sibling in
   // the `$28BBAC` tier; W423 built that tier's packer and W425 wired `$28C170`
@@ -1183,35 +1186,31 @@ function p2NumberBlock(ram, rom, a6, beeOff, beeBin, itemOff, itemBin, base) {
 // The per-frame drain is `animobjects.js runAnimObjects24683E`, main-loop call
 // #3, which has been running every frame since W91 -- it was skipping these
 // nodes only because the loader left `($6,node)` at zero.  See
-// `CHAIN_LOADERS` and the state-$B arm.
+// `animobjects.js CHAIN_SPECS` and the state-$B arm.
 
+// W448: the pool geometry USED to be repeated here as `playerList`/`pool` and in `spawn.js` as
+// `PARTS`. It is `animobjects.js ANIM_OBJECT` and nowhere else now; what is left is the node
+// field offsets `$24681A` and `$246800` read.
 const CHAIN = {
-  playerList: 0x810346, playerStride: 0x30, playerSlots: 3,
-  pool: 0x80fa86, poolStride: 0x70, poolSlots: 20,
   linkOff: 0x2c, lifeOff: 0x18, idOff: 0x00, subOff: 0x04,
 };
 
-/** `$24652A` -- load a chain from the script at `scriptAddr` into the first free
- *  player slot.  Returns the player-slot address (the handle, whose `($2C)` is
- *  the chain head), or `$FFFFFFFF` on failure.  The ROM saves A0/A1 before the
- *  pool scan and restores them before returning (`$2465E8`), so D0 is the slot,
- *  not the tail.
- *
- *  R2a ported the POOL LIFECYCLE byte-for-byte (claim slot, allocate N nodes from
- *  `$80FA86`, link at `($2C,node)`, seed the lifetime `$18 := $FFFF0000`), and for eleven waves
- *  the node-count word was the only script word it read.  **W435: it now reads all six words
- *  per node**, which is why `$28D864 + $60` is a declared window.
- *
- *  **W389 DECODED THIS ROUTINE'S CONTENT BLOCK AND W435 SWITCHED IT ON.**
- *  `$246582..$2465D9` is a real 88-byte block, `$24676A`'s twin plus `$246598 move.l
- *  (A0)+,($A,A2)`, decoded in W389 as `animobjects.js CHAIN_CONTENT_24652A` and held at `null`
- *  for six waves because turning it on "changes the result screen's timing". It does, and the
- *  timing it changes to is the BOARD'S: [M] `stage1-laser-hold` unfreezes `$8130D2` at lf10334
- *  and so does the port, where before it unfroze at lf10303. `CHAIN_LOADERS[0].content` is
- *  `CHAIN_CONTENT_24652A` now. */
-export function chainLoader24652A(ram, rom, scriptAddr) {
-  return chainLoaderBody(ram, rom, scriptAddr, CHAIN_LOADERS[0]);
-}
+// `$24652A` -- **DELETED IN W448.** This file carried a second, independent transcription of
+// `$246532`'s body (`chainLoaderBody`, below, also gone) with `chainLoader24652A` as its head.
+// `animobjects.js loadAnimObjects24652A` is the survivor and `f8Exit28DE1E` calls it directly;
+// `animobjects.js` is a leaf (it imports only `ram.js` and `unported.js`) and this file already
+// depended on it, so the merge runs WITH the existing import edge rather than inverting it.
+//
+// What this copy had RIGHT and the other two did not: `$246608 moveq #-$1,D0`. It returned
+// `$FFFFFFFF`; `animobjects.js` and `spawn.js` both returned 0. That is the axis W447 asked to
+// settle from the image, and the image settles it -- **both failure arms of both entries are
+// `$FFFFFFFF`** (`$2465E6` falls through `$2465EC tst.w D0 / $2465EE bpl` into `$2465F0 move.l
+// A1,D0 / $2465F2 bsr $246800 / $2465F6 bra $246608`, and `$246608` is `moveq #-$1,D0`).
+//
+// What it had WRONG: the pool scan restarted at `$80FA86` for every node, where `$24654E move.w
+// #$13,D6` + `$2465E2 dbra D6,$246558` is ONE forward pass of twenty visits for the whole chain;
+// and `for (let n = 0; n < nodeCount; n++)` was an entry test the ROM does not have -- `$246558`
+// is reached unconditionally, so the node loop is a DO-WHILE.
 
 /**
  * `$246710` -- the SIBLING loader, and it is one constant away from `$24652A`.
@@ -1232,7 +1231,7 @@ export function chainLoader24652A(ram, rom, scriptAddr) {
  */
 export function chainLoader246710(ram, rom, scriptAddr, ctx) {
   void ctx;
-  return chainLoaderBody(ram, rom, scriptAddr, CHAIN_LOADERS[1]);
+  return buildChain246532(ram, rom, scriptAddr, CHAIN_SPECS[0x246710]);
 }
 
 /**
@@ -1248,7 +1247,7 @@ export function chainLoader246710(ram, rom, scriptAddr, ctx) {
  */
 export function chainLoader246704(ram, rom, scriptAddr, ctx) {
   void ctx;
-  return chainLoaderBody(ram, rom, scriptAddr, CHAIN_LOADERS[2]);
+  return buildChain246532(ram, rom, scriptAddr, CHAIN_SPECS[0x246704]);
 }
 
 /**
@@ -1274,56 +1273,10 @@ export function chainLoader246704(ram, rom, scriptAddr, ctx) {
  * state $B. Seeding without honouring `$28D702`'s `bne` changes nothing, and honouring
  * `$28D702` without seeding STALLS FOREVER -- the two halves are one fix.
  */
-const CHAIN_LOADERS = Object.freeze([
-  // $246576 #$0 / $24652E D6=0 / content $246582 is SIX words -- see the note above
-  Object.freeze({ site: 0x24652a, field1e: 0, field4: 0, content: CHAIN_CONTENT_24652A }),
-  // $246762 #$1 / $246714 D6=0 / content $24676A is FOUR words with the constant target
-  Object.freeze({ site: 0x246710, field1e: 1, field4: 0, content: CHAIN_CONTENT }),
-  // shares the body / $246708 D6=1 / same content block, reached through the same $246718
-  Object.freeze({ site: 0x246704, field1e: 1, field4: 1, content: CHAIN_CONTENT }),
-]);
+// `CHAIN_LOADERS` and `chainLoaderBody`: **DELETED IN W448.** The three-entry table is
+// `animobjects.js CHAIN_SPECS` (four entries -- it also carries `$246520`, which this file never
+// had a head for) and the body is `animobjects.js buildChain246532`.
 export const CHAIN_OTHER_BODY = Object.freeze([0x246610, 0x24661a, 0x246622]);
-
-function chainLoaderBody(ram, rom, scriptAddr, spec) {
-  for (let s = 0; s < CHAIN.playerSlots; s++) {             // $246538 moveq #2,d7
-    const slot = CHAIN.playerList + s * CHAIN.playerStride;
-    if ((ram.u16(slot) & 0x8000) !== 0) continue;           // $24653C bmi next
-    ram.setU16(slot, 0x8000);                               // $246540 claim
-    ram.setU16(slot + CHAIN.subOff, spec.field4);            // $246544/$24672A move.w D6,($4,A1)
-    const nodeCount = rom.u16(scriptAddr);                  // $24654C (A0)+,D0
-    let table = scriptAddr + 2;                             // A0, past the count word
-    let tail = slot;                                        // a1 walks prev -> node
-    let built = 0;
-    for (let n = 0; n < nodeCount; n++) {                   // $246558..$2465E2
-      let pslot = -1;
-      for (let p = 0; p < CHAIN.poolSlots; p++) {
-        if ((ram.u16(CHAIN.pool + p * CHAIN.poolStride) & 0x8000) === 0) { pslot = p; break; }
-      }
-      if (pslot < 0) break;                                 // $2465E6 pool full
-      const node = CHAIN.pool + pslot * CHAIN.poolStride;
-      ram.setU16(node, 0x8000);                             // $24655E claim
-      ram.setU16(node + 0x20, 0);                           // $246562
-      ram.setU32(node + CHAIN.linkOff, 0);                  // $246568
-      ram.setU32(tail + CHAIN.linkOff, node >>> 0);         // $246570 link prev
-      tail = node;                                          // $246574 a1 := a2
-      ram.setU16(node + 0x1e, spec.field1e);                // $246576 / $246762 -- the ONE
-      ram.setU16(node + 0x02, 0);                           // $24657C / $24675C
-      // $246768..$2467C3 -- THE CONTENT, inside this same loop, which is why `$2467CE`'s `dbra`
-      // closes back over it to `$24673E`. Without `($6,node)` the node is invisible to
-      // `runAnimObjects24683E` and the chain never drains: W388's whole finding.
-      if (spec.content) table = seedChainNode24676A(ram, rom, node, table, spec.content);
-      ram.setU32(node + CHAIN.lifeOff, 0xffff0000);         // $2465C0 the lifetime
-      built++;
-    }
-    if (built < nodeCount) {                                // $2465EC tst.w d0/bpl
-      chainFree246800(ram, slot);
-      ram.setU16(slot, 0);                                  // release the player slot
-      return 0xffffffff;                                    // $246608 moveq #$ff
-    }
-    return slot;                                            // $2465F8 D0 := player slot
-  }
-  return 0xffffffff;                                        // $246608 no free slot
-}
 
 /** `$24681A` -- walk the chain from `handle`, summing `$18(node)` (word).
  *  Returns the sum; Z (zero) means the chain has finished. */

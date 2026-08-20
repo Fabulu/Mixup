@@ -4729,3 +4729,65 @@ against a shrunken array and read as progress.**
 Verified by the coordinator on a quiet tree: **4104 pass / 0 fail / 0 skipped**, gate exit 0 with
 31 PASS / 0 FAIL, `--verify` OK at 613 windows. **No unrelated test went red**; ladder band 69/69.
 
+
+### D68: TYPE `$4C`'s DEATH EFFECT COULD NEVER HAVE RUN -- THE LIVE COPY READ RAM OUT OF ROM
+
+W448 merged `$246520`/`$24652A` and found the live copy crashes.
+
+**`$246528 60 08` is `bra.s $246532`** (confirmed by the coordinator) -- **`$246520` and `$24652A`
+are TWO HEADS ON ONE BODY.** That one routine existed **three times**.
+
+**`spawn.js`'s copy was the LIVE one** (`handlers.js`, type `$4C`'s death arm, `$26F6D8`) **and it
+read the palette snapshot with `rom.u16`.** `$2465C8` makes A3 `$24627A[family]` + bias, and
+`$24627A`'s bases are `$80E886 / $80FA66 / $80F086` -- **palette RAM.** Type `$4C`'s script is
+{count 1, family 0, bias `$480`} -> `rom.u16($80ED06)`, **outside every declared window and outside
+the 6 MiB image.** Measured: the deleted body **throws `Unreached`** on the real windowed face; the
+survivor returns `$810346`. **Third wave running where the LIVE copy is the broken one.**
+
+### W448: NO SINGLE COPY WAS CORRECT. THE UNION OF THEIR CORRECTNESS WAS THE ROM.
+
+**MY BRIEF SAID "same script layout under three vocabularies". THAT WAS TOO KIND.**
+
+    axis                                    animobjects   spawn      stageend
+    $246608 moveq #-$1,D0 failure return        0           0        $FFFFFFFF  ok
+    $24655E node claim / $246562                ok        ABSENT        ok
+    $246592 adda.w sign-extends the bias        ok       unsigned       ok
+    $2465D4 snapshot source                    RAM ok      ROM         RAM ok
+    ($12,A2) -- the ROM never writes it      INVENTED       ok           ok
+    $2465E2 one forward pass                  rescan        ok        rescan
+    $246558 is a DO-WHILE (no entry test)       ok          ok       for(n<count)
+
+**AND THE FAILURE RETURN WAS WORSE THAN I SAID -- FOUR wrong returns across two copies, both arms
+each**, not one entry differing. `$246608` and `$2465E6` are both `70 ff` (confirmed).
+**`stageend.js` was right; the other two were wrong.**
+
+**SURVIVOR: `animobjects.js`** -- a leaf importing only `ram.js`/`unported.js`, already owning the
+constants, and already imported by `stageend.js`, **so no import edge inverts.**
+
+**THE DISTINCTION WAS NOT LOST:** `$246762` writes `#$1` where `$246576` writes `#$0`, and the
+content shapes differ (6 words with a script target vs 4 words with a constant). **Both pinned
+against the image.**
+
+**THE RED ARM AND WHY A PLAIN TRACE IS NOT ENOUGH:** SECTION 3's cells are all script-derived, **so
+`spawn.js`'s ROM-reading body would have PASSED it outright.** SECTION 4b runs the same script with
+**palette RAM in the opposite state** and requires all 256 snapshot words to differ while every
+script-derived field stays identical -- **`($E,A2)` is the only input living in RAM, so this is the
+only arm that separates a loader reading `$80E886` from one reading `$24xxxx`.**
+
+**TWO TESTS WERE PINNING THE DEFECT** in `w341chainfree.test.js` -- one asserted `=== 0` **while
+citing `'$246608 moveq #-$1,D0'` in the same breath**, and the same file put the snapshot words
+into the ROM map. **Both rewritten.**
+
+**REPORTED, NOT FIXED: `$246410` has the IDENTICAL defect** -- `$2464F6`/`$246518` are both
+`moveq #-$1,D0` and `loadAnimObjects246410` returns `0`.
+
+**NOTE FOR THE RESERVED `$246800` WAVE:** `freeAnimObjects246800(ram, $FFFFFFFF)` raises
+`RangeError`. **Pre-existing** -- `chainLoader246710` already returned `$FFFFFFFF` -- so this wave
+makes the heads consistent with it rather than introducing it.
+
+Register: **22 - 2 = 20**, updated in three places, all keeping the numeric `length` beside the set.
+
+Verified by the coordinator on a quiet tree: **4120 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows with none added. **No unrelated test went red**;
+ladder band unmoved.
+

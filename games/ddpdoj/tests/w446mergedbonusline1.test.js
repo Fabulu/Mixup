@@ -238,7 +238,12 @@ test('SECTION 2: exactly ONE export in src/ claims $25FFA8, and it is the live o
 // which is the only thing that would have caught W446's defect at W289 instead of at
 // W445. Removing a row because a wave merged it is progress; ADDING one is a wave.
 const DOUBLY_CLAIMED_UNAUDITED = Object.freeze([
-  0x2417de, 0x242ec2, 0x246520, 0x24652a, 0x246710, 0x24676a, 0x246800, 0x249ee2,
+  // W448 REMOVED $246520 AND $24652A: `animobjects.js`, `spawn.js` and `stageend.js` each
+  // carried an independent transcription of the ONE body at `$246532` (two heads --
+  // `$246520` D6=1 and `$24652A` D6=0 -- joined by `$246528 bra.s $246532`). The survivor
+  // is `animobjects.js buildChain246532`; `spawn.js buildParts246520` and `stageend.js`'s
+  // `chainLoader24652A` + `chainLoaderBody` are deleted. w448merged246520.test.js pins it.
+  0x2417de, 0x242ec2, 0x246710, 0x24676a, 0x246800, 0x249ee2,
   0x2564f0, 0x259962, 0x25d9e6, 0x25da60, 0x25ff38, 0x263386, 0x2633be, 0x2638a6,
   0x27f6e4, 0x2875b4, 0x28d520, 0x28f588, 0x29f9b4, 0x2a11d4,
 ]);
@@ -256,9 +261,11 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
     + 'here. A row LEAVING is fine if a wave merged it; say so where you delete it.\n'
     + 'NOTE $25FFA8 is deliberately ABSENT: W446 merged it, and SECTION 2 pins that.\n'
     + 'NOTE $2428A6 and $242B3C are deliberately ABSENT TOO: W447 merged them, and\n'
-    + 'tests/w447merged2428a6.test.js SECTIONS 2 and 2b pin that. 24 - 2 = 22.');
-  assert.equal(dup.length, 22,
-    'the register is 22 after W447: 24 - $2428A6 - $242B3C. Asserted as a NUMBER as '
+    + 'tests/w447merged2428a6.test.js SECTIONS 2 and 2b pin that. 24 - 2 = 22.\n'
+    + 'NOTE $246520 and $24652A are ABSENT TOO: W448 merged the THREE transcriptions\n'
+    + 'of the one body at $246532. 22 - 2 = 20.');
+  assert.equal(dup.length, 20,
+    'the register is 20 after W448: 24 - $2428A6 - $242B3C - $246520 - $24652A. Asserted as a NUMBER as '
     + 'well as a set, so that a scan which finds nothing cannot read as two more '
     + 'merges -- an empty dup list satisfies neither.');
 });

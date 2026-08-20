@@ -441,6 +441,10 @@ test('SECTION 5b: items.js no longer exports a second body, and the stream does 
 //     $242B3C merged       -1     (items.js's byte-identical clone deleted)
 //     ------------------------
 //     W447 leaves          22
+//     $246520 merged       -1     (W448: spawn.js buildParts246520 deleted)
+//     $24652A merged       -1     (W448: stageend.js chainLoader24652A + chainLoaderBody deleted)
+//     ------------------------
+//     W448 leaves          20
 //
 // The other twenty-two were READ this wave and are in the docket with a classification each.
 // Seventeen of them are the doc-opening convention or a wrapper/entry pair and cannot drift
@@ -453,15 +457,18 @@ test('SECTION 5b: items.js no longer exports a second body, and the stream does 
 // The count is asserted here as well as there so that deleting the register does not silently
 // delete the debt.
 
-test('SECTION 6: the doubly-claimed register is 22, and the two this wave merged are ABSENT '
+test('SECTION 6: the doubly-claimed register is 20, and the two this wave merged are ABSENT '
   + 'from it', () => {
   const dup = [...portedIndex()].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
-  assert.equal(dup.length, 22,
-    'W446 counted 24. This wave merged $2428A6 and $242B3C, so 22. A different number means '
+  assert.equal(dup.length, 20,
+    'W446 counted 24. This wave merged $2428A6 and $242B3C, so 22; W448 then merged $246520 and '
+    + '$24652A -- the three-copy constructor named just above -- so 20. A different number means '
     + 'either a merge was undone or a new duplicate landed -- and a NEW one is a wave, not a '
     + 'row: ' + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
   assert.equal(dup.includes(0x2428a6), false, '$2428A6 is merged');
   assert.equal(dup.includes(0x242b3c), false, '$242B3C is merged');
+  assert.equal(dup.includes(0x246520), false, '$246520 is merged -- W448');
+  assert.equal(dup.includes(0x24652a), false, '$24652A is merged -- W448');
   assert.equal(dup.includes(0x25ffa8), false, '$25FFA8 stayed merged -- W446\'s row, still gone');
 
   // ...and the three the audit found are REAL second transcriptions must still be there, so an

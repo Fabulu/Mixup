@@ -15,8 +15,11 @@ import { RomWindows } from '../src/rom.js';
 import { UnportedLog } from '../src/unported.js';
 import { hiscoreDefaults28841E } from '../src/hiscore.js';
 import {
-  chainLoader24652A, chainLoader246710, chainLoader246704, CHAIN_OTHER_BODY,
+  chainLoader246710, chainLoader246704, CHAIN_OTHER_BODY,
 } from '../src/stageend.js';
+// W448 MERGED `$24652A`: `stageend.js chainLoader24652A` was one of THREE independent
+// transcriptions of `$246532`'s body. The survivor is `animobjects.js loadAnimObjects24652A`.
+import { loadAnimObjects24652A } from '../src/animobjects.js';
 import {
   NAME_REC, NAME_OBJ, NAME_SCREEN,
   nameCountdown28F4FC, nameFrameBands28F542, nameReleaseSetup28F6B0, nameArmGrid28F4A6,
@@ -274,7 +277,7 @@ test('W308 `$246704` still differs from `$24652A` on BOTH axes', { skip: SKIP },
   const base = new Ram();
   const both = new Ram();
   const w = world();
-  const h1 = chainLoader24652A(base, ROM, SCRIPT_24652A);
+  const h1 = loadAnimObjects24652A(base, ROM, SCRIPT_24652A);
   const h2 = chainLoader246704(both, ROM, SCRIPT, w.ctx);
   assert.equal(h1, h2);
   assert.equal(base.u16(h1 + 0x04), 0);

@@ -104,7 +104,6 @@ import { fire as fireBulletFan, WriteLog } from './bullets.js';
 // stage3carrier.js, not an export, so $4C inlines `u32(pos + delta)` instead.
 import { dist242494 } from './bossscripts.js';
 import { slew64FromRecord } from './aim.js';
-import { buildParts246520 } from './spawn.js';
 import { bigBurst28B4BE } from './boss.js';
 import { AimTables, AIM, aim64, aim256, aim64FromCaller, aim64AtTarget,
   aim64TurnStore, aim256FromCaller, slew64, targetSelect } from './aim.js';
@@ -125,7 +124,7 @@ import { spawnCues28AC72, spawnCues28AC86 } from './cues.js';
 // W340: `$261100`, the external speed push -- type $47 stops the scroll through it on BOTH of its exits.
 // Nine callers in build B; `background.js` has produced and consumed the three words since W13/W31.
 import { pushExternalSpeed } from './background.js';
-import { loadAnimObjects246410 } from './animobjects.js';
+import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { handler12, handler13, handler14 } from './stage3carrier.js';
 import { handler15, handler17, handler18 } from './stage3drop.js';
 import { handler83 } from './stage3type83.js';
@@ -9375,10 +9374,11 @@ const T4C = Object.freeze({
   // was the beginning of code, not the end of it, and the "19 rts sites" count was taken over a span
   // ~494 bytes short. $26FFE8 runs past $270000 and its beq reaches $270128.
   // The real bound is ADJACENCY: type $4E's init is at $2701D6, and $4C's own death-effect table sits
-  // immediately below it at $2701C8 ($26F6D2 lea ($2701C8,PC),A0 / jsr $246520 = buildParts246520).
+  // immediately below it at $2701C8 ($26F6D2 lea ($2701C8,PC),A0 / jsr $246520, which is
+  // animobjects.js loadAnimObjects246520 since W448 merged the three copies of $246532).
   handlerEnd: 0x2701d6,                       // exclusive; bounded by $4E's init, NOT by an rts scan
   lastSubEnd: 0x2701c8,                       // code stops here; $2701C8..$2701D6 is the death table
-  deathEffectTable: 0x2701c8,                 // $26F6D2, consumed by buildParts246520 (spawn.js)
+  deathEffectTable: 0x2701c8,                 // $26F6D2, consumed by $246520 (animobjects.js)
   recordProto: 0x26f55a, recordWords: 6,      // $26F4F4 move.w #$5,D0 -- SIX, where $55 and $1A have 15
   subProto: 0x26f566, subRecords: 5,          // $26F4DA move.w #$4,($4,A5) -- run length + 1
   subStride: 0x20, overlapBytes: 0x14,        // part 5 runs TWENTY bytes into the handler
@@ -9836,7 +9836,10 @@ function handler4C(ram, rom, a5, ctx) {
       // $26F6D2 lea ($2701C8,PC),A0 / $26F6D8 jsr $246520. The `mode` is NOT a caller register: it is
       // fixed by WHICH ENTRY is called -- 1 from $246520, 0 from $24652A (spawn.js's own docstring).
       // $4C calls $246520, so it is 1, and $2701C8's count word is 1.
-      buildParts246520(ram, rom, T4C.deathEffectTable, 1, 0x26f6d8);
+      // W448: `spawn.js buildParts246520` was a THIRD transcription of `$246532` and it read
+      // the palette snapshot out of ROM, so this line THREW on `$2701C8`'s family-0 script.
+      // `animobjects.js loadAnimObjects246520` is the survivor and reads it out of RAM.
+      loadAnimObjects246520(ram, rom, T4C.deathEffectTable);
     }
   } else {
     // $26F6DE -- an unhit frame REWRITES the palette byte rather than merely skipping the XOR. With

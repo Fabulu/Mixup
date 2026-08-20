@@ -35,12 +35,14 @@ import { Ram } from '../src/ram.js';
 import { Game } from '../src/main.js';
 import { ALLOC, killById, queueKill, commitKills } from '../src/objalloc.js';
 import {
-  chainLoader24652A, chainLoader246710, chainLoader246704,
+  chainLoader246710, chainLoader246704,
   chainCheck24681A, chainFree246800,
 } from '../src/stageend.js';
 import {
   CHAIN_CONTENT, CHAIN_CONTENT_24652A, ANIM_OBJECT, runAnimObjects24683E,
   seedChainContent24676A,
+  // W448: `$24652A`'s head moved here when the three transcriptions of `$246532` merged.
+  loadAnimObjects24652A,
 } from '../src/animobjects.js';
 import { objSlot13, SCREEN13 } from '../src/objslot13.js';
 import { objSlot15, SLOT15 } from '../src/objslot15.js';
@@ -158,7 +160,7 @@ test('W435: `$24652A` SEEDS its per-node content, and the driver steps every nod
   { skip: SKIP }, () => {
     const ram = new Ram();
     const rom = rawRom();
-    const h = chainLoader24652A(ram, rom, 0x28d862);
+    const h = loadAnimObjects24652A(ram, rom, 0x28d862);
     assert.notEqual(h, 0xffffffff, 'it still allocates');
     const nodes = chainNodes(ram, h);
     assert.equal(nodes.length, 8, 'the $28D862 script builds eight');
@@ -191,7 +193,7 @@ test('W389 SECTION 2: seeding inline lands byte-for-byte what W388\'s second pas
     const inline = new Ram();
     const twoPass = new Ram();
     const a = chainLoader246710(inline, rom, SCREEN_STATE.script, undefined);
-    // The old shape, reconstructed: the allocator with content OFF is `chainLoader24652A`'s
+    // The old shape, reconstructed: the allocator with content OFF is `loadAnimObjects24652A`'s
     // body, so drive the second pass over a chain built by the seeding loader and then blanked.
     const bh = chainLoader246710(twoPass, rom, SCREEN_STATE.script, undefined);
     for (const node of chainNodes(twoPass, bh)) {

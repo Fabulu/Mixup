@@ -16,7 +16,10 @@ import { RomWindows } from '../src/rom.js';
 import { UnportedLog } from '../src/unported.js';
 import { BUCKETS, resolveEmitStub } from '../src/spritequeue.js';
 import { hiscoreDefaults28841E } from '../src/hiscore.js';
-import { chainLoader24652A, chainLoader246710, chainCheck24681A } from '../src/stageend.js';
+// W448 MERGED `$24652A`: `stageend.js chainLoader24652A` was one of THREE independent
+// transcriptions of `$246532`'s body. The survivor is `animobjects.js loadAnimObjects24652A`.
+import { chainLoader246710, chainCheck24681A } from '../src/stageend.js';
+import { loadAnimObjects24652A } from '../src/animobjects.js';
 import {
   SCREEN, SCREEN_STATE, SCREEN_COLUMNS, LABEL_TABLE, FRAME_STUB_RTS,
   drawFrame25B4D6, drawRowLabels25B54C, hiscoreScreen25B412,
@@ -154,7 +157,7 @@ test('W303 the two loaders\' POOL LIFECYCLE halves differ only in `($1E,node)`',
     const a = new Ram();
     const b = new Ram();
     const w = world();
-    const ha = chainLoader24652A(a, ROM, SCRIPT_24652A);
+    const ha = loadAnimObjects24652A(a, ROM, SCRIPT_24652A);
     const hb = chainLoader246710(b, ROM, SCREEN_STATE.script, w.ctx);
     assert.equal(ha, hb, 'the same player slot');
     assert.notEqual(ha, 0xffffffff, 'and it succeeded');

@@ -75,10 +75,13 @@ import { RomWindows } from '../src/rom.js';
 import { Unreached } from '../src/unported.js';
 import { POOL_B, B } from '../src/effects.js';
 import {
-  chainLoader24652A, chainCheck24681A, PRESENTATION_DEVIATION,
+  chainCheck24681A, PRESENTATION_DEVIATION,
 } from '../src/stageend.js';
 import {
   runAnimObjects24683E, ANIM_OBJECT, CHAIN_CONTENT_24652A,
+  // W448: the `$24652A` head is here now -- `stageend.js chainLoader24652A` was the second
+  // of THREE transcriptions of `$246532` and it is gone.
+  loadAnimObjects24652A,
 } from '../src/animobjects.js';
 import { readTrace } from '../tools/portdiff.mjs';
 import {
@@ -355,7 +358,7 @@ test('W435: $24652A seeds eight nodes with eight DISTINCT palette cursors off '
   for (let a = PAL0; a < PAL0 + 0x800; a += 2) ram.setU16(a, (a >> 1) & 0x7fff);
   ram.setU16(DIRTY0, 0x5a5a);
 
-  const handle = chainLoader24652A(ram, rom, SCRIPT) >>> 0;
+  const handle = loadAnimObjects24652A(ram, rom, SCRIPT) >>> 0;
   assert.ok(handle !== 0 && handle !== 0xffffffff, 'the loader claimed a root');
   assert.equal(handle, ANIM_OBJECT.roots, '...the first one, over $5A5A dirt');
 
@@ -469,6 +472,6 @@ test('W435 RED: without the $28D864 window the loader throws BY ADDRESS, so the 
     + 'the gap could sit here unnoticed for eleven waves');
   assert.throws(() => old.u16(SCRIPT + 2), Unreached,
     "...but the first node's family word is outside it");
-  assert.throws(() => chainLoader24652A(new Ram(), old, SCRIPT), Unreached,
+  assert.throws(() => loadAnimObjects24652A(new Ram(), old, SCRIPT), Unreached,
     'and the seeding loader cannot run at all');
 });

@@ -16,7 +16,11 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { Unreached } from '../src/unported.js';
-import { freeChain246800, buildParts246520, PARTS } from '../src/spawn.js';
+import { freeChain246800, PARTS } from '../src/spawn.js';
+// W448 MERGED `$246520`: `spawn.js buildParts246520` was the THIRD independent
+// transcription of `$246532`'s body and the survivor is `animobjects.js`. The two
+// assertions below that pinned its DEFECTS are rewritten, not deleted -- see each.
+import { loadAnimObjects246520, loadAnimObjects24652A } from '../src/animobjects.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IMAGE = path.join(HERE, '..', 'rip', 'sound', 'maincpu.bin');
@@ -128,6 +132,10 @@ test('W341 $246B38 is bounded by the ROM\'s own mask, not by a guard', { skip: S
   assert.equal(IMG.readUInt16BE(0x2465a8), 0xd643, '$2465A8 add.w D3,D3 again -- so x4');
   assert.equal(IMG.readUInt32BE(0x246b38), 0x00000004, '[0]');
   assert.equal(IMG.readUInt32BE(0x246b38 + 31 * 4), 0x001c0001, '[31], the last reachable entry');
+  // W448: `animobjects.js timing()` MODELS this table instead of reading it, so the model has to
+  // be held against the cartridge or it is just a second transcription of a different kind.
+  assert.equal(IMG.readUInt32BE(0x246b38 + 9 * 4), 0x00060001,
+    '[9] = {reload 6, step 1} -- the row the constructor test above selects');
 });
 
 test('W341 the constructor claims a parent, links one node, and copies its payload', () => {
@@ -149,21 +157,33 @@ test('W341 the constructor claims a parent, links one node, and copies its paylo
   putW(TBL + 12, 0x0009);                        // -> the $246B38 index
   putL(0x24627a, 0x0080e886);                    // dispatch entry 0
   putL(0x24627e, 0x0080fa66);
-  putW(0x246b38 + 9 * 4, 0x1111);
-  putW(0x246b38 + 9 * 4 + 2, 0x2222);
-  for (let i = 0; i < 4; i++) putW(0x0080e886 + 0x0480 + i * 2, 0xaa00 + i);
+  // W448: the old draft wrote a SYNTHETIC $246B38 row here. `animobjects.js timing()` models the
+  // real 32-row table rather than reading it (which is why $246B38 needs no ROM window), so the
+  // synthetic row was never consulted and the test was pinning its own fixture. Index 9 selects
+  // the CARTRIDGE row, asserted against the image in the neighbouring test: {reload 6, step 1}.
+  // **W448 REWRITE, DEFECT PINNED HERE #1.** This line used to be `putW(...)` -- it put the
+  // four payload words into the ROM map, because `buildParts246520` read the snapshot with
+  // `rom.u16`. `$2465C8 movea.l ($E,A2),A3 / $2465D4 move.w (A3)+,(A4)+` reads through
+  // `($E,A2)`, which is `$24627A[family]` + the bias = `$80E886 + $480`: **PALETTE RAM**.
+  // Under the ROM map the production script's own base is `$80ED06`, outside the image.
+  for (let i = 0; i < 4; i++) ram.setU16(0x0080e886 + 0x0480 + i * 2, 0xaa00 + i);
 
-  const parent = buildParts246520(ram, rom, TBL, 1);
+  const parent = loadAnimObjects246520(ram, rom, TBL);
   assert.equal(parent, PARTS.parentPool, 'the FIRST parent slot was claimed');
   assert.equal(ram.u16(parent) & 0x8000, 0x8000, 'and marked occupied (negative)');
   assert.equal(ram.u16(parent + 0x04), 1, 'D6 = 1 reached ($4,A1) as the mode');
   const node = ram.u32(parent + 0x2c);
   assert.equal(node, PARTS.nodePool, 'one node linked, at the pool base');
+  // **W448, THE STORE `spawn.js` DID NOT HAVE.** `$24655E move.w #$8000,(A2)` claims the
+  // node. Without it the chain was built out of slots still reading FREE, and the pool is
+  // shared with `$246410`, `$246710` and `$246704` -- the next allocation took them back.
+  assert.equal(ram.u16(node) & 0x8000, 0x8000, '$24655E claimed the NODE too');
+  assert.equal(ram.u16(node + 0x20), 0, '$246562 move.w #$0,($20,A2) -- the progress word');
   assert.equal(ram.u32(node + 0x2c), 0, 'and its own link is null -- end of chain');
   assert.equal(ram.u32(node + 0x0e), 0x0080e886 + 0x0480, 'the sprite base is entry 0 + the bias');
-  assert.equal(ram.u16(node + 0x16), 0x1111, '($16,A2) from $246B38[9]');
-  assert.equal(ram.u16(node + 0x14), 0x1111, 'and the SAME word copied to ($14,A2)');
-  assert.equal(ram.u16(node + 0x1c), 0x2222, '($1C,A2) from the entry\'s second word');
+  assert.equal(ram.u16(node + 0x16), 6, '($16,A2) from $246B38[9] -- 9 - 3, off the image');
+  assert.equal(ram.u16(node + 0x14), 6, 'and the SAME word copied to ($14,A2) -- $2465B6');
+  assert.equal(ram.u16(node + 0x1c), 1, '($1C,A2) from the entry\'s second word');
   assert.equal(ram.u32(node + 0x18), 0xffff0000, '+$18 seeded to $FFFF0000 -- what $24681A sums');
   for (let i = 0; i < 4; i++) {
     assert.equal(ram.u16(node + 0x30 + i * 2), 0xaa00 + i, `payload word ${i} at +$30`);
@@ -174,18 +194,52 @@ test('W341 an out-of-range dispatch index THROWS rather than reading code', () =
   const ram = new Ram();
   const ROMW = new Map([[0x2701c8, 1], [0x2701ca, 0x0018]]);   // D2 = $18 -- past the three entries
   const rom = { u16: (a) => ROMW.get(a) ?? 0, u32: () => 0 };
-  assert.throws(() => buildParts246520(ram, rom, 0x2701c8, 0),
+  assert.throws(() => loadAnimObjects24652A(ram, rom, 0x2701c8),
     (e) => e instanceof Unreached && e.romAddress === 0x246588);
 });
 
-test('W341 a full parent pool returns 0 without touching the node pool', () => {
-  const ram = new Ram();
-  for (let s = 0; s < PARTS.parentSlots; s++) {
-    ram.setU16(PARTS.parentPool + s * PARTS.parentStride, 0x8000);
-  }
+// **W448 REWRITE, DEFECT PINNED HERE #2.** This test asserted `=== 0` and cited
+// `$246608 moveq #-$1,D0` in the same breath. `moveq #-$1,D0` is $FFFFFFFF. It was the sharpest
+// thread W447 named: three copies, and the pair returned differently on failure -- `stageend.js`
+// said $FFFFFFFF and the other two said 0. The image settles it, and BOTH arms of BOTH entries
+// return $FFFFFFFF:
+//
+//   $246600  43e9 0030   lea ($30,A1),A1        <- no free root: next slot
+//   $246604  51cf ff34   dbra D7,$24653A
+//   $246608  70ff        moveq #-$1,D0          <- ...and out of slots
+//   $2465E6  70ff        moveq #-$1,D0          <- node pool dry mid-chain
+//   $2465EC  4a40        tst.w D0
+//   $2465EE  6a08        bpl.s $2465F8          <- NOT taken: D0.w is $FFFF
+//   $2465F0  2009        move.l A1,D0           <- the RESTORED A1: the ROOT
+//   $2465F2  6100 020c   bsr.w $246800          <- free the partial chain
+//   $2465F6  6010        bra.s $246608          <- and fall into the SAME moveq #-$1
+//
+// so the value is $FFFFFFFF on both, and `$246710`'s twin is byte-for-byte the same shape
+// ($2467D2 / $2467F8). Asserted for BOTH heads and BOTH arms.
+test('W448 both failure arms of both heads return $FFFFFFFF -- $246608 moveq #-$1,D0', () => {
   const rom = { u16: () => 0, u32: () => 0 };
-  assert.equal(buildParts246520(ram, rom, 0x2701c8, 0), 0, '$246608 moveq #-$1,D0');
-  assert.equal(ram.u16(PARTS.nodePool), 0, 'and no node was claimed');
+
+  for (const [name, fn] of [['$246520', loadAnimObjects246520], ['$24652A', loadAnimObjects24652A]]) {
+    // ARM 1: no free root.
+    const noRoot = new Ram();
+    for (let s = 0; s < PARTS.parentSlots; s++) {
+      noRoot.setU16(PARTS.parentPool + s * PARTS.parentStride, 0x8000);
+    }
+    assert.equal(fn(noRoot, rom, 0x2701c8) >>> 0, 0xffffffff,
+      `${name} $246608 moveq #-$1,D0 -- NOT 0, which is what this test used to assert`);
+    assert.equal(noRoot.u16(PARTS.nodePool), 0, `${name} and no node was claimed`);
+
+    // ARM 2: a root is free but the node pool is dry, so `$2465F2 bsr $246800` unwinds first.
+    const noNode = new Ram();
+    for (let n = 0; n < PARTS.nodeSlots; n++) {
+      noNode.setU16(PARTS.nodePool + n * PARTS.nodeStride, 0x8000);
+    }
+    assert.equal(fn(noNode, rom, 0x2701c8) >>> 0, 0xffffffff,
+      `${name} $2465E6 moveq #-$1,D0 then $2465F6 bra $246608 -- the SAME value`);
+    assert.equal(noNode.u16(PARTS.parentPool), 0,
+      `${name} $2465F2 bsr $246800 released the root it had claimed -- without the unwind the `
+      + 'root leaks permanently out of THREE');
+  }
 });
 
 // --- type $4C's state machine: $26F858 sets, $26F86A dispatches. Two entries, not one routine.

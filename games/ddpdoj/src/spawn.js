@@ -574,103 +574,32 @@ export function freeChain246800(ram, head) {
 const CHAIN_CAP = 20;
 
 // ===========================================================================
-// $246520 / $24652A -- THE MULTI-PART OBJECT CONSTRUCTOR.  W341.
+// $246520 / $24652A -- THE MULTI-PART OBJECT CONSTRUCTOR.  W341, **MERGED AWAY IN W448**.
 // ===========================================================================
 //
-// **TWO ENTRY POINTS DIFFERING ONLY IN D6.**  `$246520` is `movem.l D1-D7/A0-A4,-(A7) /
-// move.w #$1,D6 / bra $246532`; `$24652A` is the same prologue with `move.w #$0,D6`
-// and falls through.  D6 lands in the parent's `($4,A1)` at `$246544`, so the two
-// entries set a mode word -- and then D6 is REUSED as the node-pool walk counter
-// at `$24654E move.w #$13,D6`.  One register, two roles, eight bytes apart.
+// `buildParts246520` was this file's own transcription of `$246532`'s body, and it was the
+// THIRD. `animobjects.js buildChain246532` is the survivor; `handlers.js` calls
+// `loadAnimObjects246520` now, which is the `move.w #$1,D6` head this call site takes
+// (`$26F6D8 jsr $246520`).
 //
-// TWO CONTIGUOUS RAM POOLS, AND THE ABUTMENT PROVES BOTH STRIDES:
+// **THIS COPY WAS THE BROKEN ONE, AND IT WAS THE LIVE ONE** -- the W446/W447 shape for the third
+// wave running. Measured against the image:
 //
-//     $80FA86 + 20 * $70 == $810346      the node pool ends EXACTLY at the parent base
-//     $810346 +  3 * $30 == $8103D6
+//   `$24655E move.w #$8000,(A2)`  ABSENT. It linked nodes it never marked occupied, so the very
+//     next allocation out of `$80FA86` -- by ANY of the three copies, they share the pool --
+//     handed the same slot out again.
+//   `$246562 move.w #$0,($20,A2)`  ABSENT. A recycled node kept the previous chain's progress
+//     word, and `$2468B4` retires a node the frame it reads `($20) == $20`.
+//   `$246592 adda.w (A0)+,A3`  read UNSIGNED. `adda.w` sign-extends.
+//   `$2465D4 move.w (A3)+,(A4)+`  read out of **ROM**. A3 is `($E,A2)` = `$24627A[family]` plus
+//     the bias, and `$24627A`'s three bases are `$80E886`/`$80F086`/`$80F886` -- PALETTE RAM.
+//     For this file's only production script (`$2701C8`: count 1, family 0, bias $480) that is
+//     `rom.u16($80ED06)`, which is outside every window `export-tables.py` declares AND outside
+//     the 6 MiB image. **Type $4C's death effect could not have run.** It throws, measured.
+//   `$246608 moveq #-$1,D0`  returned 0 instead of $FFFFFFFF, on both arms.
 //
-// Neither stride is derivable from the `dbra` literals (`#$13` and `#$2` are the
-// counts); they are separate `lea` displacements at `$2465DE` and `$246600`.
-//
-// TWO DISPATCH TABLES, WITH DIFFERENT BOUNDING DISCIPLINES:
-//
-//     $24627A   3 entries x 8 bytes, indexed by a caller word used as a BYTE offset.
-//               **Index 3 is `48E77F00` -- an INSTRUCTION.**  So 0/8/$10 only, and the
-//               port THROWS rather than clamping: the guard IS the semantics (W326).
-//     $246B38   32 entries x 4 bytes, indexed by `(caller word & $1F) * 4`.  The ROM's
-//               own `andi.w #$1F` bounds it, so no guard is needed or wanted.
-//
-// The caller's table is a COUNT WORD followed by count * 12-byte nodes.  `$4C` passes
-// `$2701C8`, whose count is 1 -- **the twenty-slot walk is the POOL's capacity, not any
-// caller's demand.  Do not size anything from `#$13`.**
-//
-// @param a0 the caller's table address (the ROM's A0)
-// @param mode D6 on entry: 1 from `$246520`, 0 from `$24652A`
-// @returns {number} the parent pointer (the ROM's D0), or 0 if the pools ran dry
-export function buildParts246520(ram, rom, a0, mode, site = 0x246520) {
-  // $246532 -- claim one of THREE parent slots.  `tst.w / bmi` means occupied when NEGATIVE.
-  let a1 = PARTS.parentPool;
-  let claimed = false;
-  for (let slot = 0; slot < PARTS.parentSlots; slot++) {       // moveq #$2,D7 + dbra = THREE
-    if ((ram.u16(a1) & 0x8000) === 0) { claimed = true; break; }   // $24653A tst.w (A1) / bmi
-    a1 += PARTS.parentStride;                                  // $246600 lea ($30,A1),A1
-  }
-  if (!claimed) return 0;                                      // $246608 moveq #-$1,D0
-  const parent = a1;
-  ram.setU16(a1, 0x8000);                                      // $246540 move.w #$8000,(A1)
-  ram.setU16(a1 + 0x04, mode);                                 // $246544 move.w D6,($4,A1) -- the MODE
-
-  let at = a0;
-  let remaining = rom.u16(at); at += 2;                        // $24654C move.w (A0)+,D0 -- the COUNT
-  let a2 = PARTS.nodePool;
-  let built = 0;
-  for (let walk = 0; walk < PARTS.nodeSlots; walk++) {         // move.w #$13,D6 + dbra = TWENTY
-    if ((ram.u16(a2) & 0x8000) !== 0) {                        // $246558 tst.w (A2) / bmi $2465DE
-      a2 += PARTS.nodeStride; continue;                        // $2465DE lea ($70,A2),A2
-    }
-    ram.setU32(a2 + 0x2c, 0);                                  // $246568 move.l #$0,($2C,A2)
-    ram.setU32(a1 + 0x2c, a2);                                 // $246570 move.l A2,($2C,A1) -- the LINK
-    a1 = a2;                                                   // $246574 movea.l A2,A1
-    ram.setU16(a2 + 0x1e, 0); ram.setU16(a2 + 0x02, 0);        // $246576 / $24657C
-
-    const d2 = rom.u16(at); at += 2;                           // $246582 move.w (A0)+,D2
-    if (d2 !== 0 && d2 !== 8 && d2 !== 0x10) {                 // $246584 lea ($24627A,PC),A3
-      unreached(0x246588, `$246588 indexed $24627A with D2 = $${d2.toString(16)}. That table holds `
-        + 'THREE 8-byte entries and index 3 is $48E77F00 -- an INSTRUCTION -- so only 0, 8 and $10 are '
-        + 'reachable. Clamping would read the ROM\'s own code as a pointer pair, which is why this '
-        + 'throws instead (the $27460A treatment, W326)');
-    }
-    ram.setU32(a2 + 0x06, rom.u32(PARTS.dispatch8 + d2 + 4));  // $246588 move.l ($4,A3,D2.w),($6,A2)
-    const base = rom.u32(PARTS.dispatch8 + d2);                // $24658E movea.l (A3,D2.w),A3
-    const bias = rom.u16(at); at += 2;                         // $246592 adda.w (A0)+,A3
-    ram.setU32(a2 + 0x0e, u32(base + bias));                   // $246594 move.l A3,($E,A2)
-    ram.setU32(a2 + 0x0a, rom.u32(at)); at += 4;               // $246598 move.l (A0)+,($A,A2)
-    ram.setU16(a2 + 0x04, rom.u16(at)); at += 2;               // $24659C move.w (A0)+,($4,A2)
-
-    // $2465A0 -- the SECOND table.  `andi.w #$1F` IS the bound, so no guard here.
-    const d3 = ((rom.u16(at) & 0x1f) * 4) & 0xffff; at += 2;   // $2465A0/$2465A6 two add.w D3,D3
-    const row = PARTS.dispatch4 + d3;                          // $2465AA lea ($246B38,PC),A3
-    ram.setU16(a2 + 0x16, rom.u16(row));                       // $2465B2 move.w (A3)+,($16,A2)
-    ram.setU16(a2 + 0x14, ram.u16(a2 + 0x16));                 // $2465B6 -- the SAME word, TWICE
-    ram.setU16(a2 + 0x1c, rom.u16(row + 2));                   // $2465BC move.w (A3),($1C,A2)
-    ram.setU32(a2 + 0x18, 0xffff0000);                         // $2465C0 -- what $24681A SUMS
-
-    // $2465C8 -- the payload: ($4,A2)+1 WORDS from the sprite base into the node at +$30.
-    const words = u16(ram.u16(a2 + 0x04)) + 1;                 // $2465CC move.w ($4,A2),D4 / dbra
-    const src = ram.u32(a2 + 0x0e);
-    for (let w = 0; w < words; w++) {                          // $2465D4 move.w (A3)+,(A4)+
-      ram.setU16(a2 + 0x30 + w * 2, rom.u16(src + w * 2));
-    }
-    built += 1;
-    remaining = u16(remaining - 1);                            // $2465DA subq.w #1,D0 / beq
-    if (remaining === 0) return parent;                        // $2465F8 -- success, A1 in D0
-    a2 += PARTS.nodeStride;
-  }
-  // $2465E6 moveq #-$1,D0 -- the node pool ran dry mid-chain, so UNWIND.  Without this the parent
-  // slot leaks permanently out of THREE.
-  freeChain246800(ram, parent);                                // $2465F2 bsr $246800
-  void built; void site;
-  return 0;
-}
+// `PARTS` below is kept because it is the only place the ABUTMENT PROOF is written down, and
+// `freeChain246800` stays: `$246800` is its own doubly-claimed row and its own wave.
 
 /** `$246520`'s two RAM pools and two dispatch tables.  The pools ABUT, which is what proves both
  *  strides: `$80FA86 + 20 * $70 == $810346` and `$810346 + 3 * $30 == $8103D6`. */
