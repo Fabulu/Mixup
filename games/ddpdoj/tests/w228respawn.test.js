@@ -1,5 +1,18 @@
 // W228: the respawn $25FFA8, jump-table entry 1 of the $25FF7A dispatcher
 // (docket D9, the link after W227).
+//
+// W446 -- THE SUBJECT MOVED AND NOT ONE ASSERTION DID. These five tests were written
+// against `player.js`'s copy, which W445 proved had NO PRODUCTION CALLER: the same
+// fifty-eight instructions were transcribed a second time as `tally.js
+// bonusLine125FFA8`, and THAT is what `tallyDriver25FF7A` case 1 runs. W446 merged the
+// two into the one live body, so this file now imports the survivor. Nothing below was
+// weakened to make it fit -- the point of pointing it here is that W228's evidence
+// (the id at `($18,A6)`, the 12-record defer buffer, the game-over handoff to request
+// 2, and the full-game death-and-respawn run) now bears on the copy the game runs.
+//
+// TWO ASSERTIONS BELOW WERE RED ON THE LIVE COPY BEFORE THE MERGE, and that is the
+// measurement: `$26002E move.l D0,($18,A6)` was absent from `tally.js`, so
+// `ram.u32(a6 + 0x18)` stayed at the bench's $DEADBEEF.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +21,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { UnportedLog } from '../src/unported.js';
-import { respawn25FFA8 } from '../src/player.js';
+import { bonusLine125FFA8 } from '../src/tally.js';
 import { ALLOC } from '../src/objalloc.js';
 import { Game } from '../src/main.js';
 import { portWordFromBits } from '../src/input.js';
@@ -53,7 +66,7 @@ test('W228 a life in hand creates the player object and spends the count',
     const { log, events, ctx } = ctxOf(ram);
     const a6 = entry(ram, 1);
 
-    respawn25FFA8(ram, ctx, a6);
+    bonusLine125FFA8(ram, ROM, ctx, a6);
 
     assert.equal(ram.u16(COUNT), 0, '$25FFC8 subq.w #$1 on the pointed-at word');
     assert.equal(ram.u16(a6), 0, '$26004A: state 0, the dispatcher goes idle');
@@ -82,8 +95,8 @@ test('W228 a life in hand creates the player object and spends the count',
       '$2878CC is DRAWN now, not counted; if it comes back here the wiring was lost');
   });
 
-// THE WIRING'S OWN WITNESS, AND IT IS OUTSIDE player.js ENTIRELY.
-// `livesRow2878CC` writes nothing player.js can see: it appends (dest, tile) pairs to
+// THE WIRING'S OWN WITNESS, AND IT IS OUTSIDE tally.js ENTIRELY.
+// `livesRow2878CC` writes nothing tally.js can see: it appends (dest, tile) pairs to
 // the `$80B058` TX DEFER BUFFER through `hud.js txPrint240DC2`/`txPrint240EBC`. So a
 // faked wiring -- a call that returns early, a stub, a re-added note -- leaves this
 // buffer at its head and this test red. The unarmed run below is the control that says
@@ -101,7 +114,7 @@ test('W445 the respawn REDRAWS the lives row, and an unarmed buffer is the contr
 
     const armed = new Ram();
     armed.setU32(CURSOR, HEAD);                 // what camReset does before any body runs
-    respawn25FFA8(armed, ctxOf(armed).ctx, entry(armed, 1));
+    bonusLine125FFA8(armed, ROM, ctxOf(armed).ctx, entry(armed, 1));
     const recs = records(armed);
     // Six vertical slots ($287902 moveq #5,D7 -> dbra = 6) each two cells wide
     // ($287904 moveq #1,D2), so 12 pairs.
@@ -117,7 +130,7 @@ test('W445 the respawn REDRAWS the lives row, and an unarmed buffer is the contr
     {
       const three = new Ram();
       three.setU32(CURSOR, HEAD);
-      respawn25FFA8(three, ctxOf(three).ctx, entry(three, 3));
+      bonusLine125FFA8(three, ROM, ctxOf(three).ctx, entry(three, 3));
       const r3 = records(three);
       assert.equal(r3.length, 12, 'still six slots');
       assert.equal(r3.filter(([, t]) => t !== 0xc0000000).length, 4,
@@ -133,7 +146,7 @@ test('W445 the respawn REDRAWS the lives row, and an unarmed buffer is the contr
       'six slots, one row apart, from $2878D4 move.w #$200,D1');
 
     const unarmed = new Ram();                  // cursor left at 0 -- the ROM's null case
-    respawn25FFA8(unarmed, ctxOf(unarmed).ctx, entry(unarmed, 1));
+    bonusLine125FFA8(unarmed, ROM, ctxOf(unarmed).ctx, entry(unarmed, 1));
     assert.equal(unarmed.u32(CURSOR), 0, 'an unarmed buffer draws nothing, as $240DCC does');
   });
 
@@ -142,7 +155,7 @@ test('W228 the last life falls through to the game-over arm', { skip: SKIP }, ()
     const { events, ctx } = ctxOf(ram);
     const a6 = entry(ram, 0);
 
-    respawn25FFA8(ram, ctx, a6);
+    bonusLine125FFA8(ram, ROM, ctx, a6);
 
     assert.equal(ram.u16(COUNT), 0xffff, 'the count goes NEGATIVE, which is the test');
     assert.equal(ram.u16(a6), 2,
@@ -156,7 +169,7 @@ test('W228 the last life falls through to the game-over arm', { skip: SKIP }, ()
 test('W228 the P2 arm writes the other three words', { skip: SKIP }, () => {
   const ram = new Ram();
   const { ctx } = ctxOf(ram);
-  respawn25FFA8(ram, ctx, entry(ram, 0, { p2: true, type: 3 }));
+  bonusLine125FFA8(ram, ROM, ctx, entry(ram, 0, { p2: true, type: 3 }));
   assert.deepEqual([ram.u16(0x812932), ram.u16(0x812936), ram.u16(0x81293a)],
     [0, 1, 0], '$25FFF0, P2 side');
   assert.deepEqual([ram.u16(0x812930), ram.u16(0x812934), ram.u16(0x812938)],

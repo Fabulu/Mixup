@@ -82,8 +82,41 @@ export const TALLY = Object.freeze({
 });
 
 // ===========================================================================
-// W289 -- `$25FFA8`, THE FIRST BONUS LINE
+// W289 -- `$25FFA8`, THE FIRST BONUS LINE. **W446 MERGED THE SECOND COPY IN.**
 // ===========================================================================
+// **THIS ROM ADDRESS WAS TRANSCRIBED TWICE FOR 157 WAVES**, here as bonus line 1
+// (W289) and in `player.js` as `respawn25FFA8` (W228), and the two drifted. W445
+// found the drift, W446 measured it and merged them. This is the one survivor;
+// `player.js` carries a pointer where its copy was, and `tests/w228respawn.test.js`
+// -- W228's own five tests, including the full-game death-and-respawn run -- points
+// here now, so both waves' evidence is aimed at one body.
+//
+// **THE TWO NAMES ARE ONE ROUTINE, and that is why nobody noticed.** `$25FF52[1]`
+// is `$25FFA8`, so this is what the dispatcher runs on request 1 -- and request 1 is
+// posted from TWO places: `$24A210` on a player death (W228 read it as "the respawn")
+// and the tally's own poster (W289 read it as "bonus line 1"). Both readings are
+// right. The cartridge has one routine and the port now has one function.
+//
+// **WHAT THE MERGE FIXED, AND IT WAS LIVE.** Diffed against the image rather than
+// against each other, THIS copy was missing TWO things and `player.js`'s was missing
+// none:
+//
+//   [M] $26002E  2d 40 00 18   move.l D0,($18,A6)   -- ABSENT HERE
+//   [M] $260032..$260044                            -- guarded by `made.ok` HERE,
+//                                                      unconditional in the cartridge
+//
+// The first one cost visible behaviour. `liveSides25FD94` counts a side live iff
+// `($18,A6) != 0` and bonus line 2 calls it at `$26005C`, so with the store missing
+// the count came out ZERO with a side still playing: `$81308E = $FFFF`, `$81308C = 0`
+// (the word `laser.js` gates the hyper beam's impact on) and `$25FDE0 bsr $25FD82`
+// **PAUSED THE BACKGROUND**. `tests/w446mergedbonusline1.test.js` traces exactly that
+// over two driver frames.
+//
+// The second one is smaller but is the same kind of error. `$2411D4`'s full-queue arm
+// returns the DUMMY at `$80D51C` in A0 and the four fills run into it regardless --
+// which is what lines 7 and 8 of this same file already do, and what `w276tallyscreen`
+// already pins ("the 3 landed on the dummy"). Skipping them was this copy's invention.
+//
 // `$25FF52`'s ten longwords are the bonus lines, selected by the request word
 // `$25FF38` posts and driven by `$25FF7A` over both records at stride `$24`.
 // Entry 0 is null and guarded by `$25FF84 cmpi.w #$0,D0 / beq`; **this is entry 1**,
@@ -100,8 +133,23 @@ export const TALLY = Object.freeze({
 //     not finished -- run one more frame of it:
 //   26000c    ($17,A6) ? $28795C : $2878CC   THE LIVES ROW, ported W116
 //   260024    the allocator-fill, and it is $2600D8's shape
+//   26002e    move.l D0,($18,A6)             THE HANDLE $25FD94 COUNTS
 //   26004a    (A6) = 0                       -> re-post, so the driver comes back
 //   26004e  ($2,A6) = 0 / rts
+//
+// **WHAT `move.l D0,($18,A6)` STORES IS THE ID, AND THE FAILURE ARM IS NOT A
+// CONVENTION.** `$2411C4 move.l $80E882,D0` leaves the freshly incremented object ID
+// in D0 on the success path, and the full-queue arm at `$2411D4` is `lea $80D51C,A0 /
+// **moveq #$0,D0**` -- so the cartridge itself stores ZERO there. `player.js`'s copy
+// called that "this port keeps stageend.js's convention of storing zero rather than
+// inventing the register's contents"; it is not a convention, it is the instruction.
+//
+// **THE ENTRY'S FIELDS, from W228's reading of the same record:** `($8,A6)` POINTS AT
+// the count -- MEASURED `$8130BE` for P1 and `$8130C0` for P2 -- `($14,A6)` is the
+// object type to create (2 and 3, the two player types), `($17,A6)` is the side, and
+// `($C,A6)`/`($E,A6)` are the position the new object starts at. Running the count
+// past the end arms request **2**, and `$25FF52[2]` is `$260056`, the credit/continue
+// entry -- so a game over is a handoff inside this same dispatcher, not a new one.
 //
 // **THE COUNTER IS A POINTER, NOT A FIELD.** `movea.l ($8,A6),A0 / subq.w #1,(A0)`
 // decrements a word the RECORD POINTS AT, so two records can share one counter and the
@@ -128,14 +176,18 @@ const BONUS1 = Object.freeze({
 });
 
 /**
- * `$25FFA8` -- bonus line 1. Returns true when the line FINISHED this frame.
+ * `$25FFA8` -- bonus line 1, **and the respawn**: one routine, one port since W446.
+ * Returns true when the line FINISHED this frame (the count borrowed).
  *
+ * @param ram
+ * @param rom  the RomWindows, for `livesRow2878CC` and the dispatch priority word
+ * @param ctx  `unportedLog` for `$23C668`, and W228's `deathEvent` reporting
  * @param a6 the tally record (`$8130FA` or `$81311E`)
  */
 export function bonusLine125FFA8(ram, rom, ctx, a6) {
-  ctx?.unportedLog?.note(0x23c668, '$25FFA8 jsr $23C668 -- clears 256 longwords of a '
-    + 'staging area this port does not model; the same note player.js and tally.js '
-    + 'both carry for their own callers of it');
+  ctx?.unportedLog?.note(0x23c668, '$25FFA8 jsr $23C668 -- clears 256 longwords of '
+    + '$907000, outside the $904000 TxVram this port models; the same note this file '
+    + 'carries at three sites and objslot8.js at one');
   ram.setU32(a6 + TALLY.result, 0);                        // $25FFAE move.l #$0
   ram.setU16(BONUS1.freeze, BONUS1.freezeFrames);          // $25FFB6 move.w #$78
   ram.setU16(BONUS1.crossA, 1);                            // $25FFBE jsr $261116
@@ -147,12 +199,15 @@ export function bonusLine125FFA8(ram, rom, ctx, a6) {
   const side = ram.u8(a6 + TALLY.row) !== 0 ? 1 : 0;
 
   if ((ram.u16(ctr) & 0x8000) !== 0) {                     // $25FFCA tst.w / $25FFCC bpl
-    // Finished. Three words for the side, then state 2.
+    // Finished. Three words for the side, then state 2. W231's reading, kept from
+    // the merged copy: 2 is not a state some other object reads, it is the next
+    // REQUEST for this same dispatcher, and $25FF52[2] is $260056.
     ram.setU16(BONUS1.doneA[side], 0);                     // $25FFD8 / $25FFF0
     ram.setU16(BONUS1.doneB[side], 1);                     // $25FFDE / $25FFF6
     ram.setU16(BONUS1.doneC[side], 0);                     // $25FFE6 / $25FFFE
     ram.setU16(a6 + 0x00, 2);                              // $260004 move.w #$2,(A6)
     ram.setU16(a6 + 0x02, 0);                              // $26004E
+    ctx?.deathEvent?.('game-over', side + 1, ram.u16(ctr));
     return true;
   }
 
@@ -164,14 +219,21 @@ export function bonusLine125FFA8(ram, rom, ctx, a6) {
   // here against ($10,A6)/($12,A6) there, which is why this is not one shared helper.
   const made = stageCreate(ram, ram.u16(a6 + TALLY.type),
     (t) => rom.u16(DISPATCH + t * 8 + 4));                 // $260028 jsr $241182
-  if (made.ok) {
-    ram.setU8(made.addr + 0x06, 0);                        // $260032
-    ram.setU8(made.addr + 0x07, ram.u8(a6 + TALLY.row));   // $260038
-    ram.setU16(made.addr + 0x08, ram.u16(a6 + 0x0c));      // $26003E ($C,A6)
-    ram.setU16(made.addr + 0x0a, ram.u16(a6 + 0x0e));      // $260044 ($E,A6)
-  }
+  // $26002E move.l D0,($18,A6) -- W446. THIS IS WHAT `liveSides25FD94` COUNTS, and
+  // this copy did not have it. D0 is `$2411C4 move.l $80E882,D0`, the ID the
+  // allocator just minted; on the full-queue arm `$2411DA moveq #$0,D0` makes it a
+  // literal zero, so the `!ok` branch below is the cartridge's own value.
+  ram.setU32(a6 + TALLY.result, made.ok ? ram.u32(made.addr + ALLOC.idOff) : 0);
+  // ...and the four fills are UNCONDITIONAL. On the full-queue arm A0 is the shared
+  // dummy `$80D51C` and the cartridge writes into it, exactly as lines 7 and 8 of
+  // this file already do through `resolveHandle241298`.
+  ram.setU8(made.addr + 0x06, 0);                          // $260032
+  ram.setU8(made.addr + 0x07, ram.u8(a6 + TALLY.row));     // $260038
+  ram.setU16(made.addr + 0x08, ram.u16(a6 + 0x0c));        // $26003E ($C,A6)
+  ram.setU16(made.addr + 0x0a, ram.u16(a6 + 0x0e));        // $260044 ($E,A6)
   ram.setU16(a6 + 0x00, 0);                                // $26004A move.w #$0,(A6)
   ram.setU16(a6 + 0x02, 0);                                // $26004E
+  ctx?.deathEvent?.('respawn', side + 1, ram.u16(ctr), made.result);
   return false;
 }
 

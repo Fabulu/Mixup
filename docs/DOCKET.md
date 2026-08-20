@@ -4621,3 +4621,50 @@ stored and the side count is wrong on the live tally path.** Merging the two cop
 Verified by the coordinator on a quiet tree: **4085 pass / 0 fail / 0 skipped**, gate exit 0 with
 31 PASS / 0 FAIL, `--verify` OK at 613 windows with none added. Ladder band untouched.
 
+
+### W446: `$25FFA8` MERGED TO ONE COPY -- AND THE LIVE ONE OMITTED **TWO** THINGS, NOT ONE
+
+**MY BRIEF SAID ONE MISSING LINE. IT WAS TWO.** Besides `$26002E move.l D0,($18,A6)`, `tally.js`
+wrapped `$260032..$260044` in **`if (made.ok)` -- a guard the ROM does not have.** Confirmed by the
+coordinator: **ZERO branches exist in `$26002E..$260048`.** `$2411D4`'s full-queue arm returns the
+dummy `$80D51C` in A0 and **the cartridge writes into it.** The same file's lines 7 and 8 already
+write that dummy, **so it was not even self-consistent.**
+
+**AND "THIS PORT KEEPS STAGEEND.JS'S CONVENTION" WAS FALSE.** `$2411DA` is `70 00 moveq #$0,D0`
+(confirmed). **It is the instruction, not a convention.**
+
+**WHAT IT COST, STATE TRACE ON THE LIVE PATH, two frames, P1 with lives left and P2 spending its
+last:**
+
+    $8130FA+$18   live-object handle      0 -> 1 ($80E882, the staged ($4C,A0))
+    $81308E       live-sides minus 1   $FFFF -> 0
+    $81308C       one-live-side            0 -> 1     (laser.js gates the beam impact on it)
+    $8130D2       background PAUSE         1 -> 0
+
+**HEAD FROZE THE BACKGROUND WITH A PLAYER STILL ALIVE.**
+
+**BOTH COPIES TRANSCRIBED THE SAME RANGE FROM THE SAME ENTRY WITH THE SAME CALLER CONTRACT**, so
+they were merged rather than patched. **Survivor: `tally.js`** (the dispatcher lives there;
+importing tally into player would invert the existing edge). `player.js respawn25FFA8` is gone.
+**W228's five tests -- including its full death-and-respawn run -- now aim at the survivor with NO
+assertion weakened**, and two of them were RED on the live copy.
+
+**SIX RED ARMS, each fired and restored with files hash-verified.** The sharpest:
+**blinding the witnesses left SECTION 3 green**, which is why SECTION 4 exists -- a `liveSides`
+that never reads `($18,A6)` passes a naive check.
+
+**THE GUARD MOVED AND THE WAVE SAID WHAT MOVED.** `w444deferrals` SECTION 3c went red:
+`player.js livesRow2878CC` 1 -> 0. **Not a lost draw -- a deleted DUPLICATE**, the same ROM site
+tally.js already had. Register updated to 7 sites **and STRENGTHENED**: tally's two calls must
+remain two DISTINCT ROM sites, since **per-file counting cannot tell two sites from one site called
+twice.**
+
+**NEW FINDING, REPORTED NOT FIXED: 24 OTHER ROM ADDRESSES ARE CLAIMED BY TWO OR MORE
+`export function`s** -- `$246800` by three, `$246710` by three. **W446 audited exactly one.** They
+are pinned as an exact register so a 25th goes red -- **the check that would have caught this at
+W289 instead of W445.**
+
+Verified by the coordinator on a quiet tree: **4093 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows with none added. **No unrelated test went red**, and
+W441-W445's numbers all hold.
+

@@ -233,7 +233,13 @@ const OVERLAP_DECLARED = Object.freeze({
   0x246800: 'spawn.js freeChain246800: the port runs; the note is its own NULL-head `unreached`',
   // -- the port runs, but this CHAIN has no such resource; counted, not silent --
   0x23c622: 'clearTx23C622 runs when ctx.tx exists; objslot12 counts the bare-ctx miss',
-  0x23c668: 'clearSlotTable23C668 runs when ctx.slotTable exists; four files count the miss',
+  // W446 CORRECTED THIS ROW'S ENGLISH. W444 wrote "four files"; it was FOUR SITES IN
+  // THREE FILES then, and is four sites in TWO now -- tally.js x3 ($25FFA8, $260056,
+  // $2601E8) and objslot8.js x1 -- because W446 merged player.js's fifth site away with
+  // the duplicate that carried it. SECTION 2 can never catch this (it cannot read
+  // English); it is fixed here because this wave moved the number.
+  0x23c668: 'clearSlotTable23C668 runs when ctx.slotTable exists; four sites in two files '
+    + 'count the miss -- tally.js x3 and objslot8.js x1',
   0x2414be: 'palette.js install2414BE: the ctx.palette-absent arm, at five sites',
   0x24150a: 'palette.js install24150A: the ctx.palette-absent arm, at fifteen sites',
   0x24157a: 'palette.js install24157A: the ctx.palette-absent arm',
@@ -348,16 +354,45 @@ test('SECTION 3c: every W445 wiring is still a CALL, at every site, and nothing 
   + 'those addresses any more', () => {
   const src = (f) => readFileSync(join(SRC, f), 'utf8');
 
-  // 1. $2878CC / $28795C -- the LIVES row, EIGHT call sites in src/ now. hud.js's own
-  //    two ($284D10/$284D20) are the W271 pair its comment calls "the SAME defect ...
-  //    Both are wired now"; items.js ($25311E/$253126) and tally.js ($260014/$26001E,
-  //    $260190/$2601CA) are four more; stageend.js and player.js are W445's. Counted
-  //    per file rather than in total so that moving one from one file to another --
-  //    which is how a live path silently loses its draw -- cannot net out to eight.
+  // 1. $2878CC / $28795C -- the LIVES row. W445 left EIGHT call sites in src/; W446
+  //    leaves SEVEN, and the missing one is not a lost draw -- IT IS A DELETED
+  //    DUPLICATE. Read this before "fixing" the count back to eight:
+  //
+  //      W445: hud.js 2 ($284D10/$284D20), items.js 2 ($25311E/$253126),
+  //            tally.js 2 ($260014/$26001E and $260190/$2601CA),
+  //            stageend.js 1, player.js 1 ($260014/$26001E)   = 8
+  //      W446: player.js 0.
+  //
+  //    player.js's site WAS `$260014/$26001E` -- THE SAME ROM SITE tally.js already
+  //    had, because `$25FFA8` was transcribed twice (`respawn25FFA8` there,
+  //    `bonusLine125FFA8` here) and W446 merged the two. The eighth call was never an
+  //    eighth place the cartridge draws the row; it was the seventh place, written
+  //    down twice. tally.js's count is UNCHANGED at 2 and covers the same two ROM
+  //    sites it always did.
+  //
+  //    Counted per file rather than in total so that moving one from one file to
+  //    another -- which is how a live path silently loses its draw -- cannot net out.
+  //    A zero is asserted for player.js for the same reason: "not mentioned" and
+  //    "asserted to be absent" are different, and only the second one goes red if the
+  //    duplicate comes back.
   for (const [f, n] of [['hud.js', 2], ['items.js', 2], ['tally.js', 2],
-    ['stageend.js', 1], ['player.js', 1]]) {
+    ['stageend.js', 1], ['player.js', 0]]) {
     assert.equal((src(f).match(/^\s*livesRow2878CC\(/gm) ?? []).length, n,
-      `${f} should call livesRow2878CC ${n} time(s) -- W445 wired the last two of eight`);
+      `${f} should call livesRow2878CC ${n} time(s) -- W445 wired the last two of `
+      + 'eight and W446 merged one duplicate away, leaving seven');
+  }
+
+  // ...and tally.js's two must still be the two DIFFERENT ROM sites. Counting calls
+  // per file cannot tell two sites from one site called twice, which is exactly the
+  // hole a merge could open: fold `$260190/$2601CA` into bonus line 1 and the count
+  // stays at 2 while the row stack stops painting.
+  {
+    const sites = [...src('tally.js').matchAll(/^[ 	]*livesRow2878CC\(.*\/\/ *(\$[0-9A-F]+)/gm)]
+      .map((m) => m[1]);
+    assert.deepEqual(sites, ['$260014', '$260190'],
+      "tally.js's two livesRow2878CC calls must stay the two distinct ROM sites -- "
+      + '$260014 (bonus line 1) and $260190 (the row stack). Two calls at one site '
+      + 'would satisfy the count above and paint half the tally');
   }
   for (const a of [0x2878cc, 0x28795c]) {
     assert.deepEqual([...new Set(DEFERRED.get(a) ?? [])], [],
