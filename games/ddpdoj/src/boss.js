@@ -76,7 +76,7 @@ import { runStageAdvance242952 } from './stageend.js';
 // W372: $243DD0 is a THIRD entry of this, not a routine of its own -- same guard, same
 // $81B410/$81B412 pair, differing only in the mode it arms.
 import { armScreenClearMode } from './midboss.js';
-// W403: HIBACHI's SECOND FORM. This is a CYCLE -- hibachi2.js imports bossDecide2428A6,
+// W403: HIBACHI's SECOND FORM. This is a CYCLE -- hibachi2.js imports livePlayers2428A6,
 // clamp253564 and bossClear242922 back out of this file -- and it is the same shape as the
 // `import './hibachiend.js'` below. Nothing on either side runs at module-evaluation time.
 import { hibachiSecondForm2A6F12, bossExitShared } from './hibachi2.js';
@@ -178,7 +178,39 @@ const note = (ctx, a) => ctx.unportedLog?.note(a, BOSS_NOTED[a] ?? 'W62 boss');
 // ---------------------------------------------------------------- $2428A6
 /** `$2428A6` -- IS ANY PLAYER ALIVE?  `$10` for P1 and `+$8` for P2, and the
  *  test is "record word NEGATIVE and bit 0 CLEAR" for each.  Non-zero iff at
- *  least one is playable, which is what `$294F44` branches on. */
+ *  least one is playable, which is what `$294F44` branches on.
+ *
+ *  **W447 MERGED THE SECOND TRANSCRIPTION OF THIS ROUTINE INTO IT, AND THE
+ *  SECOND ONE READ THE WRONG BYTE.**  W403 wrote `$2428A6` down again, lower in
+ *  this same file, as `bossDecide2428A6`, for Hibachi's second form.  Both
+ *  readings of the routine were true -- `$294F44` asks "is anybody alive" and
+ *  `$2A6CFC`/`$2A6EEE` ask "may the boss die" -- but the cartridge has ONE
+ *  routine, and the copies had drifted apart on the ONE line that matters:
+ *
+ *      $2428B0  0839 0000 0081 03e6   btst #$0,$8103E6
+ *
+ *  `btst` with a MEMORY operand is BYTE-sized, so the bit is bit 0 of the byte
+ *  AT `$8103E6` -- the record word's HIGH half, i.e. bit 8 of the word.  This
+ *  copy has always read `ram.u8(0x8103e6)`.  `bossDecide2428A6` read
+ *  `ram.u8(0x8103e6 + 1)`, the LOW half, which is a different bit of a different
+ *  byte.  Nothing compared them, so for 44 waves the two answered differently
+ *  for any record holding `$81xx`.
+ *
+ *  **WHAT THAT COST.** `hyper.js requestHyper249868` does `bset` bit 0 of
+ *  `($1,A6)` on the player record when Button 2 is pressed with hyper stock, so
+ *  a player in hyper has `$8103E7` bit 0 SET while the record is still NEGATIVE.
+ *  Under the wrong byte that player stopped counting, `$2A6CFC`/`$2A6EEE`/
+ *  `$2A7090` read zero, and the arm they take on zero is `move.l #$200,($16,A5)`
+ *  -- **Hibachi's second form REFILLS its HP pool instead of dying.**  The bug
+ *  was invisible to the 644 board dumps (P1's word is `$8000`/`$8020`/`$9000`/
+ *  `$A004`/`$8810` there, and those five agree under either byte), which is why
+ *  only the image settles it.
+ *
+ *  It returns a MASK, not a boolean, and the two halves are not symmetric:
+ *  `$2428BA moveq #$10,D0` SETS while `$2428CE addq.w #8` ADDS, so both players
+ *  live gives `$18`.  Its callers branch on zero, and zero means NEITHER player
+ *  is in that state -- reading it as "is the boss dead" inverts the fight, since
+ *  a NON-zero return is what lets the boss die. */
 export function livePlayers2428A6(ram) {
   let d0 = 0;                                          // $2428A6 moveq #$0
   const p1 = ram.u16(0x8103e6);
@@ -1443,30 +1475,6 @@ export function clamp253564(ram) {
   ram.setU16(0x811f8c, 0x14);                                // $25356E
 }
 
-/** `$2428A6` -- THE DECISION HIBACHI'S FIGHT TURNS ON. 44 bytes, asked from TWO sites: `$2A6CFC`, when
- *  the HP pool goes negative, and `$2A6EEE`, when the `($1A,A5)` countdown expires.
- *
- *  It returns a MASK, not a boolean: `$10` for P1 and `+8` for P2, each set only when that player's
- *  record word is NEGATIVE **and** its bit 0 is CLEAR. Both tests, in that order -- `bpl` skips on
- *  plus, `bne` skips on bit 0 set.
- *
- *  Its callers branch on zero, and zero means NEITHER player is in that state. In the body that is the
- *  arm which REFILLS the pool to `$200` and keeps the fight going, so reading this as "is the boss
- *  dead" inverts the fight: a non-zero return is what lets it die.
- */
-export function bossDecide2428A6(ram) {
-  let d0 = 0;                                                // $2428A6 moveq #$0,D0
-  if ((ram.u16(0x8103e6) & 0x8000) !== 0                     // $2428A8 tst.w / $2428AE bpl
-      && (ram.u8(0x8103e6 + 1) & 0x01) === 0) {              // $2428B0 btst #0 / $2428B8 bne
-    d0 = 0x10;                                               // $2428BA moveq #$10,D0 -- SETS, not ORs
-  }
-  if ((ram.u16(0x810448) & 0x8000) !== 0                     // $2428BC / $2428C2
-      && (ram.u8(0x810448 + 1) & 0x01) === 0) {              // $2428C4 / $2428CC
-    d0 = u16(d0 + 8);                                        // $2428CE addq.w #8 -- ADDS, so both = $18
-  }
-  return d0;                                                 // $2428D0 rts
-}
-
 /** The EIGHT damage-bearing parts. Same list and same order that `$2A6E74` arms, that the handler's
  *  eleven-call chain opens with, and that all three of this body's loops walk -- `$1A0` EIGHTH in every
  *  one. The handler's other three (`$140`/`$160`/`$180`) are armed by `$2A6E98`/`$2A6EA6`, carry no
@@ -1627,7 +1635,7 @@ export function bossBody2A6B94(ram, rom, a5, a6, ctx) {
     if ((ram.u32(a5 + 0x16) & 0x80000000) !== 0) {           // $2A6CFA bpl
       // $2A6CFC -- and "death" is a DECISION. NON-zero means a player is out and the fight ENDS;
       // zero refills the pool and it continues. Reading it the other way inverts the whole fight.
-      if (bossDecide2428A6(ram) !== 0) {                     // $2A6D02 tst.w D0 / bne $2A6D10
+      if (livePlayers2428A6(ram) !== 0) {                    // $2A6D02 tst.w D0 / bne $2A6D10
         if (ram.u16(0x813098) === 0 && ram.u16(0x80393a) === 0) {          // $2A6D10/$2A6D1A
           ram.setU32(0x81b61a, 0x00070000);                  // $2A6D24
         } else {

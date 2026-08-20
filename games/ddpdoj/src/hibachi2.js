@@ -98,7 +98,11 @@ import {
   a4Start25980C, a4Clear2598A2, a1Clear259B34, a2Stop25994A, a2Run2598E6, seqStart2598D0,
 } from './scheduler.js';
 import { armScreenClearMode } from './midboss.js';
-import { bossDecide2428A6, clamp253564, bossClear242922 } from './boss.js';
+// W447: `$2428A6` was in this project TWICE -- `livePlayers2428A6` (seven sites, and
+// the byte the image has) and `bossDecide2428A6` (this file's three sites plus
+// `$2A6D02`, reading `$8103E7` where the ROM reads `$8103E6`). One body now; the
+// name that survives is the one boss2/boss3/boss4 already call. See boss.js.
+import { livePlayers2428A6, clamp253564, bossClear242922 } from './boss.js';
 
 /** Every address and field this file stands on, so a test can assert the map. */
 export const HIBACHI2 = Object.freeze({
@@ -157,7 +161,7 @@ export function bossExitShared(ram, ctx, a5, a6, death) {
   const left = u16(ram.u16(a5 + 0x1a) - 1);            // $2A7088 subq.w #1,($1A,A5)
   ram.setU16(a5 + 0x1a, left);
   if (left !== 0) return;                              // $2A708C bne -> rts
-  if (bossDecide2428A6(ram) !== 0) {                   // $2A7090 jsr $2428A6 / tst.w / bne
+  if (livePlayers2428A6(ram) !== 0) {                   // $2A7090 jsr $2428A6 / tst.w / bne
     ram.setU16(a6 + 0x10a, 0);                         // $2A70A6 move.w #$0,($10A,A6)
     death();                                           // $2A70AC bra.w -- the death block
     return;
@@ -244,7 +248,7 @@ function phaseA2A6F1C(ram, rom, ctx, a5, a6) {
   if (ram.u16(a6 + 0x108) === 0) {                     // $2A6FCE tst.w / $2A6FD2 bne $2A7000
     ram.setU32(a5 + 0x16, u32(ram.u32(a5 + 0x16) - dmg));           // $2A6FD4 sub.l D5,($16,A5)
     if ((ram.u32(a5 + 0x16) & 0x80000000) !== 0) {                  // $2A6FD8 bpl $2A7000
-      if (bossDecide2428A6(ram) !== 0) {               // $2A6FDA/$2A6FE0/$2A6FE2 bne $2A6FEE
+      if (livePlayers2428A6(ram) !== 0) {               // $2A6FDA/$2A6FE0/$2A6FE2 bne $2A6FEE
         // $2A6FEE..$2A6FF8 -- NO $813098/$80393A test and NO $81B61A store: phase A always
         // pays the ledger, and it pays $80000 where form 1 pays $70000.
         scoreKill(ram, rom, ctx, HIBACHI2.phaseAKill, ram.u16(a6 + 0x10a));
@@ -405,7 +409,7 @@ function phaseB2A70B4(ram, ctx, a5, a6) {
   if (ram.u16(a6 + 0x108) === 0) {                     // $2A7152/$2A7156 bne $2A7180
     ram.setU32(a5 + 0x16, u32(ram.u32(a5 + 0x16) - dmg));           // $2A7158 sub.l D5,($16,A5)
     if ((ram.u32(a5 + 0x16) & 0x80000000) !== 0) {                  // $2A715C bpl $2A7180
-      if (bossDecide2428A6(ram) !== 0) {               // $2A715E/$2A7164/$2A7166 bne $2A7172
+      if (livePlayers2428A6(ram) !== 0) {               // $2A715E/$2A7164/$2A7166 bne $2A7172
         // $2A7172 -- NO $28615E at all.  The whole ledger for phase B's kill is this store.
         ram.setU32(0x81b61a, HIBACHI2.phaseBBombFlash);
         phaseBDeath2A722E(ram, ctx, a5, a6);           // $2A717C bra.w $2A722E

@@ -4668,3 +4668,64 @@ Verified by the coordinator on a quiet tree: **4093 pass / 0 fail / 0 skipped**,
 31 PASS / 0 FAIL, `--verify` OK at 613 windows with none added. **No unrelated test went red**, and
 W441-W445's numbers all hold.
 
+
+### D67: HIBACHI'S SECOND FORM REFILLED ITS HP INSTEAD OF DYING -- A DUPLICATE READ THE WRONG BYTE
+
+Found by W447 while auditing the 24 doubly-claimed addresses. **`$2428A6` was ported TWICE and one
+copy read the wrong byte.**
+
+`$2428B0` is `08 39 00 00 00 81 03 e6` -- **`btst` with an ABSOLUTE LONG operand of `$8103E6`**, and
+**a memory `btst` is BYTE-sized**, so it reads the byte AT `$8103E6`, the record word's HIGH half.
+Confirmed by the coordinator from the image. **`livePlayers2428A6` always had it.
+`bossDecide2428A6` read `$8103E6 + 1`.**
+
+**THE COST, AND IT IS THE END OF THE GAME.** `hyper.js requestHyper249868` sets bit 0 of `($1,A6)`
+when Button 2 is pressed with stock, so **a player in hyper holds `$8103E7` bit 0 set while the
+record is still negative.** Under the wrong byte **that player stopped counting**, and the arm taken
+on zero is `move.l #$200,($16,A5)` -- **Hibachi's second form refills its HP pool instead of
+dying.**
+
+**STATE TRACE**, phase B, one damage frame, P1 alive with the bit set by `hyper.js` (never typed).
+**Every witness outside the changed files:**
+
+    $2428A6 return                          0 -> $10
+    $81B61A  hud.js tallyMedalAcc           0 -> $00100000
+    $812D3C  scheduler.js A4 slot 0     $8013 -> $8005
+    $8130F8  stage-end handshake            0 -> $C0     (bits 6|7)
+    ($16,A5) THE HP POOL                $0200 -> $FFFFFFFF
+    ($15F,A6) phase B's dead flag          0 -> 1
+
+**THE SHARPEST RED ARM IS W446'S LESSON REPEATING:** blinding the survivor to a constant `$10`
+**left SECTIONS 3 and 3b GREEN** -- a function that ignores the records entirely satisfies the state
+trace. **SECTION 4b exists for that**: it runs the same frame with the record POSITIVE and requires
+the A4 slot to hold `$8013` (the phase check) rather than `$8005` (the ending script). **Same cell,
+two values, one per arm.** SECTION 3b also runs the **deleted body verbatim** and requires it to
+DISAGREE.
+
+### W447: THE 24-ROW AUDIT -- 2 MERGED, 5 REAL, 17 LEGITIMATELY DISTINCT
+
+**MY BRIEF WAS WRONG IN THREE PLACES:**
+1. **The register is NOT in `w444deferrals.test.js`** -- it is `w446mergedbonusline1.test.js`
+   SECTION 2b (`DOUBLY_CLAIMED_UNAUDITED`). **A wave editing the file I named would not have
+   touched the guard.**
+2. **"`$246710` by three" is a DOC MISLABEL.** Only one export transcribes it; another's header
+   literally says `$246710` when `$246704` is the function (`$246704 3c3c 0001` vs
+   `$246710 3c3c 0000`).
+3. **The worst drift risk is NOT `$246800`** -- it is `$246520`/`$24652A`: **three independent
+   transcriptions of one constructor** across `animobjects.js`, `spawn.js` and `stageend.js`, all
+   allocating from **identical pools** under three different vocabularies.
+
+**FIVE REAL SECOND TRANSCRIPTIONS LEFT AS THEIR OWN WAVES:** `$25D9E6`, **`$25DA60` (the W446 shape
+exactly -- the live copy is `loadSavedCursor25DA60`; `restoreCursors25DA60` has NO production
+caller)**, `$25FF38`, `$246520`+`$24652A`, and **`$246800` (THREE copies, and `animobjects.js`'s
+`if (root !== 0)` is an INVENTED condition -- `$246800..$246818` is a do-while with NO entry test:
+the `if (made.ok)` shape again)**.
+
+`$242B3C` also merged -- `items.js` and `rng.js` each carried an identical copy over **one shared
+`$803917` counter**. Register: **24 - 2 = 22**, and the wave **STRENGTHENED it** with a numeric
+`length === 22` beside the set comparison, **because an empty list would satisfy a set comparison
+against a shrunken array and read as progress.**
+
+Verified by the coordinator on a quiet tree: **4104 pass / 0 fail / 0 skipped**, gate exit 0 with
+31 PASS / 0 FAIL, `--verify` OK at 613 windows. **No unrelated test went red**; ladder band 69/69.
+

@@ -34,12 +34,17 @@ import { MoveTables } from '../src/vectors.js';
 import { BUCKETS } from '../src/spritequeue.js';
 import {
   ITEM, I, POOLS, DISPATCH, TEMPLATES, ANIM4, ANIM_LISTS, ANIM_END, POWER,
-  REFUSED_KINDS, RNG_242B3C,
+  REFUSED_KINDS,
   clearItemPool, spawnItem, fill27F6AE, freeItem, runItemDriver, itemCensus,
   collect27F54C, collectMax27F582, collectedStep27F5F4,
   collect252C96, collect252D24, collect252DAC, collect252E26,
-  collect25310E, collect253126, beamReset25270C, bcd242AC6, drawByte242B3C,
+  collect25310E, collect253126, beamReset25270C, bcd242AC6,
 } from '../src/items.js';
+// W447: `$242B3C` was transcribed in BOTH items.js and rng.js, byte for byte. The
+// two are one body now and it lives in rng.js, with the rest of the `$803916`
+// family. This import moving is the merge -- the assertions below are unchanged,
+// and they still read the same $242BAC table through the same shared counter.
+import { drawByte242B3C, RNG_242B3C } from '../src/rng.js';
 import { TYPE5, TYPE5_PORTED } from '../src/type5.js';
 import { SPAWN } from '../src/spawn.js';
 

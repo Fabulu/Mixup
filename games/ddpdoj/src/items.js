@@ -108,7 +108,7 @@ import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
 import { txPrint240DC2, livesRow2878CC } from './hud.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
-import { drawByte242E24, RNG } from './rng.js';
+import { drawByte242B3C, drawByte242E24 } from './rng.js';
 import { aim64, AimTables } from './aim.js';
 import { scoreByMask, abcd } from './score.js';
 
@@ -203,22 +203,19 @@ export const ANIM_LISTS = Object.freeze({
  *  `$27F500 + 8 + 17*4 == $27F54C` is the collect tail itself. */
 export const ANIM_END = { normal: 0x78, atMax: 0x44 };
 
-/** `$242B3C`'s table.  There is **NO MASK** (`move.w $803916,D0` then
- *  `move.b (A0,D0.w),D0`), so the index is the whole word -- the same shape as
- *  `$242FDE`, and 256 bytes for the same reason.  `$242BAC..$242CAB`, and
- *  `$242CAC` is the family's NEXT `addq.b #1,$803917` site (`src/rng.js`'s own
- *  32-site scan), which pins the far end. */
-export const RNG_242B3C = { routine: 0x242b3c, table: 0x242bac, entries: 256 };
-
-/** `$242B3C` -- bump the shared counter, return `$242BAC[state]` as a BYTE.
- *  D0's high byte survives from `move.w $803916,D0` and is 0 for the same
- *  reason `$242FDE`'s is: `$23BE36 clr.w $803916` and `addq.b` never carries. */
-export function drawByte242B3C(ram, rom) {
-  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $242B3C
-  const i = u16(ram.u16(RNG.state));                          // $242B42, WHOLE word
-  const idx = i >= 0x8000 ? i - 0x10000 : i;                  // (A0,D0.w) is signed
-  return rom.u8(RNG_242B3C.table + idx);                      // $242B50
-}
+// W447: `$242B3C` WAS TRANSCRIBED TWICE, AND THE TWO BODIES WERE BYTE-IDENTICAL.
+//
+// This file used to carry its own `RNG_242B3C` and its own `drawByte242B3C`, four
+// statements that matched `src/rng.js`'s to the character while advancing the SAME
+// `$803917` counter out of the SAME `$242BAC` table.  Two bodies for one routine is
+// the W446 defect class -- nothing compared them, so either could have drifted and
+// only half the eighty-odd call sites would have followed.  They are one body now,
+// in `rng.js`, which is where the other thirty members of the `$803916` family live.
+//
+// `bossf23.js` and `bossphase.js` reached in here for the draw; both already
+// imported `./rng.js` on the line above, so the edge they lost was the redundant one.
+// `RNG_242B3C` moved with it (`rng.js`'s copy is the same table and the same 256
+// entries; only the unread `routine:` field is gone).
 
 function note(ctx, addr, what) { ctx?.unportedLog?.note(addr, what); }
 

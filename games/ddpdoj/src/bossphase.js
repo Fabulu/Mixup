@@ -66,8 +66,7 @@ import {
 } from './scheduler.js';
 import { aim64, slew64, aim64FromCaller, aim256AtTarget, AimTables } from './aim.js';
 import { applyVelocity } from './movement.js';
-import { drawSigned242FDE } from './rng.js';
-import { drawByte242B3C } from './items.js';
+import { drawByte242B3C, drawSigned242FDE } from './rng.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
 import {
   BS, dist242494, bodyTail29314C, pickWaypoint2933DE, rampSpeed293400,

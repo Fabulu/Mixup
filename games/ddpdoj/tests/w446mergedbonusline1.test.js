@@ -210,16 +210,37 @@ test('SECTION 2: exactly ONE export in src/ claims $25FFA8, and it is the live o
 
 // THE REGISTER OF EVERY OTHER DOUBLY-CLAIMED ADDRESS, ASSERTED EXACTLY.
 //
-// **W446 AUDITED EXACTLY ONE OF THESE, `$25FFA8`.** The other 24 are NOT cleared and
-// NOT declared benign -- most look like the doc-opening convention naming a shared
-// entry point or a second sub-range, which is legitimate, but nobody has read them.
-// They are written down so that a TWENTY-FIFTH turns this red the day it appears,
+// **W446 AUDITED EXACTLY ONE OF THESE, `$25FFA8`.** It left 24 unread.
+//
+// **W447 READ ALL 24 AND MERGED TWO**, so the register is 22 and the arithmetic is:
+//
+//     W446 left            24
+//     $2428A6 merged       -1   two transcriptions in boss.js, and they DISAGREED:
+//                               `bossDecide2428A6` tested `$8103E7` where `$2428B0
+//                               btst #$0,$8103E6` tests the byte AT `$8103E6`. A
+//                               player in hyper has the low byte's bit 0 set, so
+//                               Hibachi form 2 refilled its HP pool instead of dying.
+//                               Survivor: `livePlayers2428A6`. See w447merged2428a6.
+//     $242B3C merged       -1   byte-identical clones in items.js and rng.js over the
+//                               one shared `$803917` counter. Survivor: rng.js's.
+//     ------------------------
+//     W447 leaves          22
+//
+// Of the 22 that remain, W447's audit classified SEVENTEEN as legitimately distinct:
+// either the doc-opening convention naming the caller or callee on the other side of
+// a single body, or a wrapper/entry pair where one function CALLS the other -- one
+// body, so drift is impossible. FIVE are real second transcriptions and each is its
+// own wave: `$25D9E6`, `$25DA60`, `$25FF38`, and `$246520`/`$24652A`, the last two
+// being the visible edge of THREE independent ports of one constructor
+// (`animobjects.js`, `spawn.js`, `stageend.js`) contending for the same two pools.
+//
+// They stay written down so that a TWENTY-THIRD turns this red the day it appears,
 // which is the only thing that would have caught W446's defect at W289 instead of at
 // W445. Removing a row because a wave merged it is progress; ADDING one is a wave.
 const DOUBLY_CLAIMED_UNAUDITED = Object.freeze([
-  0x2417de, 0x2428a6, 0x242b3c, 0x242ec2, 0x246520, 0x24652a, 0x246710, 0x24676a,
-  0x246800, 0x249ee2, 0x2564f0, 0x259962, 0x25d9e6, 0x25da60, 0x25ff38, 0x263386,
-  0x2633be, 0x2638a6, 0x27f6e4, 0x2875b4, 0x28d520, 0x28f588, 0x29f9b4, 0x2a11d4,
+  0x2417de, 0x242ec2, 0x246520, 0x24652a, 0x246710, 0x24676a, 0x246800, 0x249ee2,
+  0x2564f0, 0x259962, 0x25d9e6, 0x25da60, 0x25ff38, 0x263386, 0x2633be, 0x2638a6,
+  0x27f6e4, 0x2875b4, 0x28d520, 0x28f588, 0x29f9b4, 0x2a11d4,
 ]);
 
 test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
@@ -233,7 +254,13 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
     + 'A NEW one is W446\'s defect happening again: two bodies for one routine, free\n'
     + 'to drift, with only one of them live. Merge them -- do not add the address\n'
     + 'here. A row LEAVING is fine if a wave merged it; say so where you delete it.\n'
-    + 'NOTE $25FFA8 is deliberately ABSENT: W446 merged it, and SECTION 2 pins that.');
+    + 'NOTE $25FFA8 is deliberately ABSENT: W446 merged it, and SECTION 2 pins that.\n'
+    + 'NOTE $2428A6 and $242B3C are deliberately ABSENT TOO: W447 merged them, and\n'
+    + 'tests/w447merged2428a6.test.js SECTIONS 2 and 2b pin that. 24 - 2 = 22.');
+  assert.equal(dup.length, 22,
+    'the register is 22 after W447: 24 - $2428A6 - $242B3C. Asserted as a NUMBER as '
+    + 'well as a set, so that a scan which finds nothing cannot read as two more '
+    + 'merges -- an empty dup list satisfies neither.');
 });
 
 // ======================================================= SECTION 3: THE STATE TRACE

@@ -37,8 +37,7 @@ import { registerScript, seqStart2598D0, seqCurrent2598C8, spread2595F2,
 } from './scheduler.js';
 import { aim64, slew64, aim256FromCaller, AimTables } from './aim.js';
 import { applyVelocity } from './movement.js';
-import { drawSigned242FDE, drawWord242EC2 } from './rng.js';
-import { drawByte242B3C } from './items.js';
+import { drawByte242B3C, drawSigned242FDE, drawWord242EC2 } from './rng.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
 import { enqueueRegisters } from './spritequeue.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
