@@ -2218,8 +2218,8 @@ export function note28C6C6(ctx) {
   ctx?.soundPost?.(0x28c6c6);  // WAVE A: BGM id=$19, tally bonus-event ($285434/$28553E)
 }
 
-/** `$285A12` (P1) / `$285B3C` (P2), including activation and duration. */
-function hyper285A12(ram, ctx, who) {
+/** Adapts one HUD player slot to the shared hyper implementation and stock redraw. */
+function stepPlayerHyper(ram, ctx, who) {
   stepHyper285A12(ram, ctx.rom, ctx, who !== 0,
     player => hyperStock286ED6(ram, ctx.rom, ctx, player));
 }
@@ -2232,8 +2232,8 @@ export function perFrame28444E(ram, rom, ctx) {
     if (!slideIn284CF2(ram, rom, ctx)) return;           // $28445C bra.w $284CF2
     // $284D2A bra.w $284460 -- the settled arm RE-ENTERS here, same frame.
   }
-  hyper285A12(ram, ctx, 0);                             // $284460 bsr.w $285A12
-  hyper285A12(ram, ctx, 1);                             // $284464 bsr.w $285B3C
+  stepPlayerHyper(ram, ctx, 0);                           // $284460 bsr.w $285A12
+  stepPlayerHyper(ram, ctx, 1);                           // $284464 bsr.w $285B3C
   drainItems284468(ram);                                // $284468..$2844A0
   gates2844A6(ram, ctx, rom);                            // $2844A6..$284B6A
 }

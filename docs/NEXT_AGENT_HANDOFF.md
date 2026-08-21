@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W466 published as `20260821162642`)
+Updated: 2026-08-21 (W467)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,16 +10,24 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W466 removed the name-frame glue's two false endpoint claims.**
-`objslot12.js nameEntryFrame` still runs the full per-side frame in cartridge order, but its private
-wrapper identity no longer claims the canonical `$28F4C4` grid dispatch or `$28F666` button-tail end.
-Live scanner APIs report 16 narrow heads, 79 widened heads, 27 body pairs, and 22 body-only findings.
-The next direct batch candidate is **W467 `$285A12`, `hud.js hyper285A12` and
-`hyper.js stepHyper285A12`**. W466 was committed as `7584a63`, pushed, and published from a quiet tree
-after `games/ddpdoj/tools/export-web.mjs`. All publication gates passed and live build
-`20260821162642` was confirmed. W467 starts the next five-wave publication interval. Continue the
-widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black Label
-loop-2 coverage, and every other explicit docket item.
+`docs/DOCKET.md` is authoritative. **W467 removed the HUD caller adapter's false `$285A12` claim.**
+`hud.js stepPlayerHyper` still selects P1/P2, supplies `ctx.rom`, and redraws the correct stock row through
+`hyperStock286ED6`, while `hyper.js stepHyper285A12` remains the sole canonical activation and duration
+implementation. Live scanner APIs report 16 narrow heads, 78 widened heads, 27 body pairs, and 22
+body-only findings. The next direct batch candidate is **W468 `$2A6EDC`**. W467 is the first wave after
+live build `20260821162642`, so no publication is due. Continue the widened duplicate rows, front-end
+screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and every other
+explicit docket item.
+
+## W467 VERIFIED: HUD HYPER ADAPTER OWNS NO CARTRIDGE HEAD
+
+The former private `hud.js hyper285A12` was a caller adapter, not a second transcription. It still passes
+the selected player, HUD-owned ROM context, and `hyperStock286ED6` redraw callback to the exported
+`hyper.js stepHyper285A12`; only its address-bearing identity changed to `stepPlayerHyper`. Both calls in
+`perFrame28444E` remain in the same order and retain their `$284460/$284464` source markers. The
+canonical function remains the only `$285A12` claimant. Focused hyper, HUD, bee, and authoritative
+register coverage passed 60/60; the W446-W462 holder chain passed 187/187. Only widened heads changed,
+79 to 78. W467 starts the next five-wave publication interval; take W468 `$2A6EDC` next.
 
 ## W466 VERIFIED: NAME-FRAME GLUE OWNS NO CANONICAL ENDPOINT
 
@@ -27,7 +35,7 @@ The former `nameFrame28F4C4` is a private caller composite around already export
 steps. It is now `nameEntryFrame`, with its cartridge-range commentary inside the body. Every executable
 statement and caller stays in place, while `$28F4C4` and `$28F666` each return to one canonical claimant.
 The authoritative register passed 12/12 and the slot-12 surface passed 26/26. Only widened heads changed,
-81 to 79. W466 is live as build `20260821162642`; take W467 `$285A12` next.
+81 to 79. W466 is live as build `20260821162642`; W467 completed the next row above.
 
 ## W465 VERIFIED: ONE `$28C6C6` SOUND POSTER
 

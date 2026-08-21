@@ -5825,6 +5825,25 @@ passed, including all **4,280/4,280** DDPDOJ unit tests, bundle and web-fetch ga
 and the ROM-leak guard. Live build **`20260821162642`** was confirmed at the production URL. W467 begins
 the next five-wave publication interval.
 
-**NEXT OBVIOUS BATCH CANDIDATE: W467, `$285A12`.** The widened register names `hud.js hyper285A12`
-and `hyper.js stepHyper285A12`. Classify the HUD caller adaptation directly after publication. Continue
+**HISTORICAL W466 RECOMMENDATION FOR W467: `$285A12`.** W467 completed that direct classification below.
+
+
+### D75: FOLLOW-UP, W467 `$285A12`: HUD CALLER ADAPTER NO LONGER CLAIMS THE HYPER BODY
+
+`hyper.js stepHyper285A12` is the exported canonical P1/P2 hyper activation and duration implementation.
+The private `hud.js hyper285A12` was not a second transcription. It selected the side from `who`, passed
+`ctx.rom`, and supplied the HUD-owned callback that redraws the correct stock row through
+`hyperStock286ED6`. That adaptation remains intact under the address-free name `stepPlayerHyper`. Both
+`perFrame28444E` callers retain their order, player values, and `$284460/$284464` source markers. The
+private helper had no public consumer, so no compatibility alias is needed.
+
+The live registers move from 79 to **78 widened heads**. `$285A12` has one remaining claimant in
+`hyper.js`; narrow heads remain 16, body pairs remain 27, and body-only findings remain 22. Focused hyper,
+HUD, bee, and authoritative-register coverage passed **60/60**. The W446-W462 live holder chain passed
+**187/187**. No executable behavior, public ESM identity, dependency edge, ROM window, or generated output
+changed.
+
+W467 is the first wave after live build `20260821162642` and is not a publication wave.
+
+**NEXT OBVIOUS BATCH CANDIDATE: W468, `$2A6EDC`.** Classify the widened head claims directly. Continue
 Black Label through the full second loop and close its docket, then finish White Label last.
