@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W463)
+Updated: 2026-08-21 (W464)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,15 +10,22 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W463 classified both private `$28C0FC` `cueStreamNote`
-functions as counted-gap caller adapters, not cartridge implementations.** Both names are gone without
-aliases. The three slot-8 sites and one slot-12 site still call the optional `ctx.unported.note` hook
-directly with their own call-site addresses, and no sound behavior was invented. Live scanner APIs report
-16 narrow heads, 83 widened heads, 27 body pairs, and 22 body-only findings. The next obvious batch
-candidate is **W464 `$28E7A2`, `objslot8.js bannerClear28E7A2` and `stageend.js clear28E7A2`**. W461 was
-published as build `20260821132334`; W463 is the second wave after it and is not a publication wave.
-Continue the widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black
-Label loop-2 coverage, and every other explicit docket item.
+`docs/DOCKET.md` is authoritative. **W464 removed the second `$28E7A2` banner-clear loop.**
+`stageend.js clear28E7A2` is now the exported canonical body, and the arm-5 caller in `objslot8.js`
+imports it instead of maintaining `bannerClear28E7A2`. Live scanner APIs report 16 narrow heads, 82
+widened heads, 27 body pairs, and 22 body-only findings. The next direct batch candidate is **W465
+`$28C6C6`, `hud.js note28C6C6` and `stageend.js cue28C6C6`**. W461 was published as build
+`20260821132334`; W464 is the third wave after it and is not a publication wave. Continue the widened
+duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2
+coverage, and every other explicit docket item.
+
+## W464 VERIFIED: ONE `$28E7A2` BANNER CLEAR
+
+The two private loops both cleared the 40 words at `SE.banner`, including the two guards consumed by
+`banner28E7F8`. `stageend.js clear28E7A2` is now exported and its existing stage-end caller is unchanged.
+`objslot8.js` imports it for `$25C5F0`; the private `bannerClear28E7A2` identity is removed without an
+alias. The authoritative register passed 12/12 and the arm-5 plus stage-end caller surface passed 69/69.
+Only widened heads changed, 83 to 82. Next is W465 `$28C6C6`.
 
 ## W463 VERIFIED: PRIVATE `$28C0FC` COUNTED-GAP ADAPTERS REMOVED
 

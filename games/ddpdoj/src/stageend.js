@@ -410,7 +410,7 @@ function clear287DC8(ram) {
 function clear287DDC(ram) {
   for (let a = 0x81b60c; a !== 0x81b632; a += 2) ram.setU16(a, 0);   // $287DE6 cmpa.l
 }
-function clear28E7A2(ram) {
+export function clear28E7A2(ram) {
   for (let i = 0; i <= 0x27; i++) ram.setU16(SE.banner + i * 2, 0);
 }
 /** `$23C47A` -- six `clr.w` over `$80392E..$803939`. Exported because slot [9]'s seeder

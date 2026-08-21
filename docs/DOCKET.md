@@ -5770,7 +5770,21 @@ Focused W375/W377/W387 plus the authoritative widened register passed **93/93**.
 holder chain passed **187/187**. W463 is the second wave after published build `20260821132334` and is not
 a publication wave.
 
-**NEXT OBVIOUS BATCH CANDIDATE: W464, `$28E7A2`.** The live scanner reports
-`objslot8.js bannerClear28E7A2` and `stageend.js clear28E7A2`; both are private clear loops over the exported
-`SE.banner` span. Preserve dependency direction and caller identity while classifying them. Continue Black
-Label through the full second loop and close its docket, then finish White Label last.
+**HISTORICAL W463 RECOMMENDATION FOR W464: `$28E7A2`.** W464 completed that direct merge below.
+
+
+### D72: FOLLOW-UP, W464 `$28E7A2`: THE SECOND BANNER-CLEAR LOOP IS GONE
+
+`objslot8.js bannerClear28E7A2` and `stageend.js clear28E7A2` were the same 40-word clear over
+`SE.banner`. The stage-end copy is now exported, the arm-5 caller imports it, and the private slot-8
+loop is removed without an alias. Both existing caller paths still clear exactly `$81DFAC..$81DFFB`.
+
+The live registers move from 83 to **82 widened heads**. Narrow heads remain 16, body pairs remain 27,
+and body-only findings remain 22. The authoritative register passed 12/12, and the existing arm-5 plus
+stage-end caller surface passed 69/69. No ROM window or generated output changed. W464 is the third wave
+after published build `20260821132334` and is not a publication wave.
+
+**NEXT OBVIOUS BATCH CANDIDATE: W465, `$28C6C6`.** The widened register names `hud.js note28C6C6`
+and `stageend.js cue28C6C6`. Classify their caller adaptations directly, without restarting an exhaustive
+cartridge audit. Continue Black Label through the full second loop and close its docket, then finish White
+Label last.

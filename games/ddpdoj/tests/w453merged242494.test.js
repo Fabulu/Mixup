@@ -304,8 +304,8 @@ test('SECTION 6: live registers include W453 and every later proved merge',
     const heads = headRegister();
     const pairs = bodyPairs();
     const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
-    assert.equal(heads.length, 83,
-      'W450 92, W451 removed $242684, W453 $242494, W457 $25D9E6, W458 $25DA60, W459 $25FF38, W460 $24631C, W461 $242E24, W462 $2414BE and W463 $28C0FC');
+    assert.equal(heads.length, 82,
+      'W450 92, W451 removed $242684, W453 $242494, W457 $25D9E6, W458 $25DA60, W459 $25FF38, W460 $24631C, W461 $242E24, W462 $2414BE, W463 $28C0FC and W464 $28E7A2');
     assert.ok(!heads.includes(0x242494), '$242494 has one function head after the merge');
     assert.equal(pairs.length, 27,
       'W450 39, W451 removed one pair, W453 one, W454 one, W455 one, W456 four, W457 one, W458 one, W459 one and W461 one');

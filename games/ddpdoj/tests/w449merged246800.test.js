@@ -284,18 +284,18 @@ test('SECTION 2: `$246800` is claimed EXACTLY ONCE, and the live register is at 
 // merged `$25FF38` to leave 87, W460 removed the optional `$24631C` shim to leave 86,
 // W461 merged the private `$242E24` rank-byte body to leave 85, W462 removed both
 // private `$2414BE` adapter heads to leave 84, and W463 removed both private `$28C0FC`
-// counted-note adapter heads to leave 83. The body
+// counted-note adapter heads to leave 83, and W464 removed the duplicate $28E7A2 clear to leave 82. The body
 // register started at 39 pairs, fell to 38 at W451, 37 at W453, and 36 after
 // W454 merged the shared type $11/type $10 turret body. It records a shared RUN
 // of ROM instructions -- the
 // axis that names `clearChain`, and the ONLY one that does. W450's SECTION 6
 // replays these three bodies verbatim and requires all three pairings.
-test('SECTION 2e [W450/W463]: the widened register is 83, and $246800 is claimed once under IT too',
+test('SECTION 2e [W450/W464]: the widened register is 82, and $246800 is claimed once under IT too',
   async () => {
     const { headRegister, bodyPairs } = await import('./w450widenedscan.js');
     const wide = headRegister();
-    assert.equal(wide.length, 83,
-      'the widened duplicate register is not 83. ' + W453_NOTE
+    assert.equal(wide.length, 82,
+      'the widened duplicate register is not 82. ' + W453_NOTE
       + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
       + 'W460 removed the optional $24631C forwarding shim; W461 merged the private '
       + '$242E24 rank-byte body into rng.js drawByte242E24; W462 removed both private '

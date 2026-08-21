@@ -602,7 +602,7 @@ test('SECTION 5c: source-represented callers, the one static gap and dependency 
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live registers reconcile to 16 narrow, 83 widened, 27 pairs and 22 body-only', () => {
+test('SECTION 6: live registers reconcile to 16 narrow, 82 widened, 27 pairs and 22 body-only', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -615,7 +615,7 @@ test('SECTION 6: live registers reconcile to 16 narrow, 83 widened, 27 pairs and
     .some((body) => !visibleHeads.has(body)));
 
   assert.equal(narrow.length, 16, 'private wrappers never formed an export-only row');
-  assert.equal(heads.length, 83, 'W463 removes the $28C0FC widened row after W462 left 84');
+  assert.equal(heads.length, 82, 'W463 removes $28C0FC to leave 83; W464 removes $28E7A2 to leave 82');
   assert.equal(heads.includes(BODY_START), false);
   assert.equal(pairs.length, 27, 'the wrappers never formed a two-marker body edge');
   assert.equal(pairs.some(([pair]) => /installTxBank/.test(pair)), false);

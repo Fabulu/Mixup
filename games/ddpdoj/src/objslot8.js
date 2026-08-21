@@ -85,7 +85,7 @@ import { loadAnimObjects246410, freeAnimObjects246800 } from './animobjects.js';
 // W389 -- arm 12's screen is arm 2's twin and uses the same three chain primitives.
 import { chainCheck24681A, chainLoader246710 } from './stageend.js';
 // W392 -- arm 5's banner ($28E7F8/$28E7A2/$28E7DC) and its one-shot handoff ($26070C).
-import { SE, banner28E7F8 } from './stageend.js';
+import { SE, banner28E7F8, clear28E7A2 } from './stageend.js';
 import { txPrint240DC2 } from './hud.js';
 import {
   enqueueRegistersThroughStub, enqueueZoomedRegistersThroughStub,
@@ -641,9 +641,8 @@ function arm5(ram, rom, a5, ctx) {
 // Arm 1 emitted seven sprites through two emitters; arm 5 emits none through either.
 //
 // FOUR CALLEES, AND WHAT EACH ONE IS:
-//   `$28E7A2` -- the banner buffer clear, `$81DFAC` + $28 words. Already transcribed in
-//                `stageend.js` as the PRIVATE `clear28E7A2`; the two lines below run over that
-//                file's own exported `SE.banner`/`SE.bannerWords` so the width cannot drift.
+//   `$28E7A2` -- the banner buffer clear, `$81DFAC` + $28 words. Imported from
+//                `stageend.js` as `clear28E7A2`.
 //   `$28E7F8` -- `banner28E7F8`, exported by `stageend.js` and called for real. Both of its
 //                entry guards (`$81DFF8`, `$81DFF6`) are inside the block `$28E7A2` just
 //                cleared, so it is a genuine no-op until `$25C77A` arms it.
@@ -714,15 +713,6 @@ function counterClear23BDDA(ram) {
   }
 }
 
-/** `$28E7A2` -- `lea $81DFAC,A0 / move.w #$27,D0 / dbra`: FORTY words over the banner buffer.
- *  `stageend.js` transcribed this in W124 as the private `clear28E7A2`; this runs over that
- *  file's own exported `SE.banner` and `SE.bannerWords`, so the address and the width are one
- *  definition even though the loop is written twice. Exporting the function instead is a
- *  one-line change in a file W392 does not own. */
-function bannerClear28E7A2(ram) {
-  for (let i = 0; i <= SE.bannerWords - 1; i++) ram.setU16(SE.banner + i * 2, 0);
-}
-
 /**
  * `$25C592..$25C60B`, 122 bytes -- ARM 5'S INIT. `movem.l D0-D7/A0-A6` at both ends (trap 9),
  * so it is register-transparent and returns nothing; everything it does is in RAM.
@@ -777,7 +767,7 @@ export function screen5Init25C592(ram, rom, ctx) {
   const made = stageCreate(ram, A.rankType,                    // $25C5E2 #$A / $25C5E6 jsr
     (t) => rom.u16(SCREEN8.dispatch + t * 8 + 4));
   ram.setU16(made.addr + SCREEN8.param, d7);                   // $25C5EC move.w D7,($4,A0)
-  bannerClear28E7A2(ram);                                      // $25C5F0 jsr $28E7A2
+  clear28E7A2(ram);                                            // $25C5F0 jsr $28E7A2
   // $25C5F6/$25C5FC/$25C600 -- bank $C, NOT bank 0 used by guarded front-end callers.
   if (ctx?.palette) {
     install2414BE(ram, ctx.palette, A.palBank, rom.bytes(A.palSrc, 32), 0x25c600,
