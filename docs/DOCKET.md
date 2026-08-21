@@ -5121,3 +5121,82 @@ recycled records before merging or classifying. After W456 is independently veri
 `games/ddpdoj/tools/export-web.mjs` before `tools/publish.mjs`, and publish only on a quiet tree with no
 working agent. Continue Black Label through the full second loop and close its docket, then finish
 White Label last.
+
+
+### D69 FOLLOW-UP, W456 ITEM VELOCITY: ONE COMPLETE A6 BODY, SHORTER OVERLAPS UNMERGED
+
+**THE COMPLETE ITEM BODY IS EQUIVALENT AND MERGED.** `items.js applyItemVelocity` and
+`movement.js applyVelocityA6` transcribed the same complete `$2417DE..$241803` body. Item records own
+the exact raw A6 offsets: the first position word at +$02, second at +$04, speed byte at +$1A, and
+heading byte at +$1B. Both item source callers ignored the helper return, so five cartridge item
+transfers now pass caller-held A6 and `ctx.tables` through two direct calls to the canonical exported
+helper. The `$2417D4` option entry and player continuations remain independent: option owns D0/D1 as
+words and skips the speed/heading loads, while player callers consume returned D2/D3 and continue into
+player-specific stores.
+
+**THE IMAGE PINS THE COMPLETE BODY, VECTOR HEAD AND REAL CALLERS.** Raw image SHA-256 is
+`4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c`. The exact 38-byte body is
+`7000102E001A723FC22E001B4A79008130D2660C611ED56E0002D76E00044E75740076004E75`, SHA-256
+`ca3b54244f3033a7e0ce09004945a5fc7a069fd989d86ce2d51f190dd65c2024`. The regression also pins
+`$241812+$3E`, all five item caller spans at `$27EBBA/$27ED6A/$27EEFE/$27F62E/$27F686`, normal and max
+collected continuations, `$242684+$20`, option `$2417D4`, player `$2495CA+$16` and stage-clear
+`$24A404+$0C`.
+
+A scan of `$230000..$2AFFFF` finds exactly **65 direct transfers** to `$2417DE`: 62 absolute `jsr`, two
+absolute `jmp`, and one PC-relative `jmp`. The five item addresses above are the complete item subset.
+The source census pins seven `applyVelocityA6` name occurrences including its declaration: two raw A6
+handlers, two item paths representing five transfers, the declaration, the A5+$06 wrapper, and the raw
+stick tail. The wrapper itself has 31 production calls. Explicit A5 and A6 base ownership cannot drift
+silently.
+
+**THE ARITHMETIC IS INSTRUCTION-WIDTH EXACT.** D0 is zero-extended before `move.b +$1A`; D1 is owned by
+`moveq #$3F` before `and.b +$1B`. The word freeze gate branches before table lookup and returns D2=D3=0.
+The live arm calls `$241812`, which doubles word indices, reads the `$200920` pointer table, folds the
+heading, loads two longwords, applies `asr.l #4`, and negates quadrant-selected words. The body then uses
+two independent `add.w` operations. Low-half carry cannot enter the high half. Neither the body nor the
+vector routine contains a `swap`; the later `$242684` packed-position continuation has the relevant
+`move.l`, low-word carry tests, and one `swap D0`.
+
+**DIRTY EXTERNAL STATE PROVES THE CONSOLIDATION.** Direct A6 witnesses cover positive and negative
+words, opposite signs, low-half carry without propagation, high-half wrap, six-bit heading masking,
+live and frozen gates, and preservation of every unowned byte. A dirty A5 pointer with a decoy record
+proves only A5+$06 selects the wrapper target. Raw `$242A48` stick paths prove direct A6 ownership and
+the `$40` refusal heading. A reused free item proves only its first 32 bytes are initialized while
++$20..+$3F residue and pool sentinels survive. Real kinds `$00/$04/$08` prove queue output, off-screen
+free and count decrement, frozen draw continuation, and opposite lifecycle arms. Normal and maximum
+collected paths prove both carry states of the header `add.l`, packed queue coordinates, later independent
+movement words, frame/cursor continuation, and preserved recycled residue.
+
+**A REAL TEMPORARY RED MUTATION FAILED AND WAS RESTORED BYTE-EXACT.** Changing the canonical second-axis
+term from `v.dx` to `v.dy` failed four external-state sections: direct A6, A5-pointer, kind `$04`
+lifecycle, and collected animation. Before mutation and after restoration, `movement.js` SHA-256 was
+`f904abe74e6d7d91b7d2c769fe177f9ef459a207688f57583964054b02c90b61`; its 535 CRLF sequences and zero
+bare LF also match.
+
+The live duplicate registers reconcile exactly: narrow export-only heads **19**, unchanged; widened
+heads **90**, unchanged; body pairs **35 -> 31**; body-only findings **24 -> 22**. The live
+`headIndex()` derivation corrects the prior manually stated baseline of 23, which was one low. The
+deleted item node removed four edges. Item/movement and item/player-helper were also head-visible at
+`$2417DE`; item/option and item/updatePlayer were body-only. All six shorter movement/option/player suffix edges
+remain registered. No production ROM export window was added or widened.
+
+Validation on the final working tree: focused W456 **12 pass / 0 fail / 0 skipped**; the 18-file affected
+movement/item/D69 set **252 pass / 0 fail / 0 skipped**; full suite **4212 pass / 0 fail / 0 skipped**;
+webgate exit 0 with **31 PASS / 0 FAIL**; ROM verification returned **VERIFY OK at 613 windows**. Exact
+commands were:
+
+    node --test C:/programmieren/batman/games/ddpdoj/tests/w456mergedvelocity.test.js
+    node --test C:/programmieren/batman/games/ddpdoj/tests/integration.test.js C:/programmieren/batman/games/ddpdoj/tests/movement.test.js C:/programmieren/batman/games/ddpdoj/tests/w36handlers.test.js C:/programmieren/batman/games/ddpdoj/tests/w61items.test.js C:/programmieren/batman/games/ddpdoj/tests/w283itemsources.test.js C:/programmieren/batman/games/ddpdoj/tests/w401arity.test.js C:/programmieren/batman/games/ddpdoj/tests/w444deferrals.test.js C:/programmieren/batman/games/ddpdoj/tests/w446mergedbonusline1.test.js C:/programmieren/batman/games/ddpdoj/tests/w447merged2428a6.test.js C:/programmieren/batman/games/ddpdoj/tests/w448merged246520.test.js C:/programmieren/batman/games/ddpdoj/tests/w449merged246800.test.js C:/programmieren/batman/games/ddpdoj/tests/w450widenedregister.test.js C:/programmieren/batman/games/ddpdoj/tests/w451merged242684.test.js C:/programmieren/batman/games/ddpdoj/tests/w452beevisibility.test.js C:/programmieren/batman/games/ddpdoj/tests/w453merged242494.test.js C:/programmieren/batman/games/ddpdoj/tests/w454mergedturretstep.test.js C:/programmieren/batman/games/ddpdoj/tests/w455mergedbeamreset.test.js C:/programmieren/batman/games/ddpdoj/tests/w456mergedvelocity.test.js
+    node --test games/ddpdoj/tests/
+    node games/ddpdoj/tools/webgate.mjs
+    python games/ddpdoj/tools/export-tables.py --verify
+
+No export-web, asset export, publish, commit, push, branch switch or worktree operation occurred.
+
+**NEXT CONCRETE DOCKET UNIT: W457, D69 `tallyscreen.js cursorsFromPosted25D9E6` <->
+`tallyscreen.js mapSavedCursor25D9E6`.** It is the strongest live post-W456 pair, with six shared markers
+at `$25D9EA`, `$25D9F8`, `$25DA04`, `$25DA10`, `$25DA2E`, and `$25DA50`. Audit complete cartridge
+bodies, callers, saved/post cursor ownership, dirty state, branches and continuations before merging or
+classifying. The coordinator must first independently verify and land W456, then, on a quiet tree with
+no working agent, run `games/ddpdoj/tools/export-web.mjs` before `tools/publish.mjs`. Continue Black
+Label through the full second loop and close its docket, then finish White Label last.

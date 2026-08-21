@@ -353,8 +353,8 @@ test('SECTION 7: W454 removes one body pair while both head registers stay fixed
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   assert.equal(narrow.length, 19, 'the narrow export-only historical floor is unchanged');
   assert.equal(heads.length, 90, 'the widened head register is unchanged');
-  assert.equal(pairs.length, 35,
-    'W450 39, W451 one removal, W453 one, W454 one and W455 one');
+  assert.equal(pairs.length, 31,
+    'W450 39, W451 one removal, W453 one, W454 one, W455 one and W456 four');
   assert.ok(!pairs.some(([pair]) => pair === 'handlers.js fire11 <> turret.js turretStep'),
     'the seven-marker private fire11 body stays absent');
 });

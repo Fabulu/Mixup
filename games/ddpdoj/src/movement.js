@@ -90,13 +90,13 @@ const STICK_HEADINGS = Object.freeze([
  *  (`tables.vector`), apply D2->+$02 / D3->+$04, and return the pair for the
  *  caller to cache.  When `$8130D2` (freeze) is set the vector is {0,0} and NO
  *  apply happens (the `$2638A6` entry already returned in that case, but
- *  `$2417DE` has 63 jsr sites and its own gate).  Returns `{dy, dx}` (D2, D3).
+ *  `$2417DE` has 65 direct transfer sites and its own gate).  Returns `{dy, dx}` (D2, D3).
  */
 export function applyVelocity(ram, tables, a5) {
   return applyVelocityA6(ram, tables, ram.u32(a5 + MOVER.subRec));
 }
 
-/** `$2417DE` with A6 ALREADY ON THE RECORD -- the form its 63 `jsr` sites actually enter at.
+/** `$2417DE` with A6 ALREADY ON THE RECORD -- the form its 65 direct sites actually enter at.
  *  `applyVelocity` above is this plus the `A5 -> sub-record` hop, and `$242A48` below needs the
  *  raw form because it `jmp`s here with A6 unchanged. Exported for the same reason. */
 export function applyVelocityA6(ram, tables, a6) {

@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W455)
+Updated: 2026-08-21 (W456)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,82 +10,95 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W455 classified the D69 beam-reset pair and merged only its
-cartridge-identical inner tail.** The two full heads remain distinct because each owns a side-specific
-`andi.w #$DFFB`; all callers now reach one `laser.js wipeSegmentPool` for `$25279A..$2527BC`. The next
-concrete unit is **W456 / D69 `items.js applyItemVelocity` <-> `movement.js applyVelocityA6`**, a
-six-marker pair over `$2417E0..$2417F8`. Audit the complete bodies and every calling convention before
-merging or classifying. After W456 is verified and landed, run `games/ddpdoj/tools/export-web.mjs`
-before `tools/publish.mjs`, and publish only on a quiet tree with no working agent. Then continue the
-remaining widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black
-Label loop-2 coverage, and every other explicit docket item.
+`docs/DOCKET.md` is authoritative. **W456 proved the item pool carries the complete `$2417DE`
+A6-record convention and deleted its private velocity transcription.** All five cartridge item transfers
+now reach exported `movement.js applyVelocityA6` through two shared source paths. The shorter option
+`$2417D4` entry and player-specific continuations remain independent because they do not share the
+complete caller convention. The next concrete unit is **W457 / D69 `tallyscreen.js
+cursorsFromPosted25D9E6` <-> `tallyscreen.js mapSavedCursor25D9E6`**, the strongest live pair with six
+markers over `$25D9EA..$25DA50`. The coordinator must independently verify and land W456, then run
+`games/ddpdoj/tools/export-web.mjs` before `tools/publish.mjs`, on a quiet tree with no working agent.
+Continue the remaining widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy
+types, full Black Label loop-2 coverage, and every other explicit docket item.
 
-## W455 LANDED LOCALLY: ONE INNER BEAM WIPE, TWO FULL ENTRY HEADS
+## W456 READY FOR INDEPENDENT VERIFICATION: ONE COMPLETE A6 VELOCITY BODY
 
-The complete `$25270C` and `$252754` routines are not equivalent to the inner `$252714/$25275C`
-entries. Both full heads first apply `andi.w #$DFFB` to their own option state, then enter the same
-cartridge tail at `$25279A..$2527BC`. `items.js beamReset25270C` now owns only that extra mask and calls
-`laser.js wipeSegmentPool`. Release, bomb-fire and death callers still enter the inner convention and
-do not receive the mask. `bomb.js` now passes `BEAM[p2 ? 1 : 0]`, removing dependence on its inverted
-local D7 meaning.
+**THE COMPLETE ITEM BODY IS EQUIVALENT AND MERGED.** `items.js applyItemVelocity` duplicated the full
+`$2417DE..$241803` routine. The item layout owns position words at A6+$02/+$04 and speed/heading bytes
+at A6+$1A/+$1B exactly like the canonical raw record. Both item source callers ignore the returned
+D2/D3 pair, so they now pass caller-held A6 and `ctx.tables` directly to exported
+`movement.js applyVelocityA6`. The option `$2417D4` entry supplies D0/D1 as words and shares only the
+gated suffix. The player paths consume returned D2/D3 and have their own continuations. Neither shorter
+overlap was merged.
 
 Raw image SHA-256 is:
 
     4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c
 
-The focused test pins complete spans `$25270C+$48`, `$252754+$6A`, `$25279A+$24` and sound table
-`$2527BE+$10`. The selector is a word with valid values 0 and 2. The cartridge doubles it to byte
-offsets 0 and 4, so JavaScript uses `selector >>> 1`. P1 posts `$28C43C/$28C49C`; P2 posts
-`$28C452/$28C4B2`. Hyper checks `$81B63E/$81B640` and overrides with `$28C4FC/$28C512`. The former
-implementation indexed the selector incorrectly, always used P1 hyper state, and could select the wrong
-side's sound.
+The exact 38-byte `$2417DE..$241803` body is
+`7000102E001A723FC22E001B4A79008130D2660C611ED56E0002D76E00044E75740076004E75`, SHA-256
+`ca3b54244f3033a7e0ce09004945a5fc7a069fd989d86ce2d51f190dd65c2024`. D0 is zeroed before the speed
+byte, D1 is owned by `moveq #$3F` before the heading byte is masked, and the word freeze gate at
+`$8130D2` either zeroes D2/D3 or calls `$241812`. The live continuation applies independent wrapped
+`add.w D2,A6+$02` and `add.w D3,A6+$04`; no carry crosses the two words. `$241812` reads the speed table
+through `$200920`, folds the heading, loads two longwords, uses `asr.l #4`, and negates only the selected
+low words by quadrant. It contains no `swap`. The later `$242684` continuation reads the two words with
+`move.l`, operates on the low half, then performs its one `swap D0`, proving that movement itself did not
+use longword carry.
 
-The cartridge census found 14 live direct sites, one indirect hyper-request call site selecting either
-full head, and two dead direct references at `$24972E/$249742` in the unconditionally skipped
-`$249712..$2497A0` block. The live direct sites are four item calls, two end-hyper wrappers, two
-laser-bomb cleanup calls, and six inner calls from release, bomb fire and player death. Source census:
+A complete cartridge census found exactly 65 direct transfers to `$2417DE`: 62 absolute `jsr`, two
+absolute `jmp`, and one PC-relative `jmp`. The five item sites are `$27EBBA`, `$27ED6A`, `$27EEFE`,
+`$27F62E`, and `$27F686`; their complete motion/off-screen and normal/max collected continuations are
+pinned in `w456mergedvelocity.test.js`. The production source census has seven `applyVelocityA6`
+occurrences including its declaration: two in `handlers.js`, two reusable paths in `items.js`, and three
+in `movement.js` for the declaration, A5+$06 wrapper, and raw `$242A48` stick tail. The A5 wrapper has
+31 production calls. Explicit-base handler, stick, item, and A5-pointer conventions remain distinct.
 
-    beamReset25270C name occurrences          8 including its declaration
-    wipeSegmentPool name occurrences          5 including its declaration
+Dirty witnesses cover positive and negative words, opposite axis signs, low-half carry with no
+propagation, high-half wrap, six-bit heading mask, live and frozen gates, and a dirty decoy record behind
+an A5+$06 pointer. A recycled item allocation proves the cartridge-owned first 32 bytes overwrite while
++$20..+$3F residue and pool sentinels survive. Real kind `$00`, `$04`, and `$08` paths prove queue output,
+off-screen free/count decrement, frozen draw continuation, and opposite lifecycle arms. Normal and max
+collected paths separately prove `$27F606/$27F65E add.l` carry and no-carry queue coordinates before the
+later independent movement words, plus frame, cursor, sprite and status continuation.
 
-Dirty recycled RAM tests cover both players, selectors 0 and 2, and both hyper overrides. Every one of
-32 slot type words clears, including slot 31, while all remaining 46 bytes in every `$30`-byte slot
-survive. The beam record word, block word, block `+$16` word and option bit 7 clear at word or byte width
-exactly as decoded. Dirty neighboring bytes, opposite-player pools and controls, and boundary sentinels
-survive. Real P1 power, P2 full-power and P1 option-release callers prove the full/inner mask difference
-and their item, cursor, queue, reload and pod-swing continuations.
+The temporary RED mutation changed only the canonical second-axis term from `v.dx` to `v.dy`. Raw A6,
+A5-pointer, kind `$04` lifecycle, and collected-animation external witnesses all failed. Exact restoration
+returned `movement.js` to SHA-256:
 
-The temporary RED mutation changed `k <= 0x1F` to `k < 0x1F`. Four production-path witnesses failed
-because slot 31 retained `$801F` or `$811F`. Final `laser.js` SHA-256 matched before mutation and after
-exact restoration:
+    f904abe74e6d7d91b7d2c769fe177f9ef459a207688f57583964054b02c90b61
 
-    321ae35487624fb805feab77fd46270ad8bf8eb8e5a77b82f7adc2bcf2d51944
-
-The duplicate registers reconcile exactly:
+The restored file still has 535 CRLF sequences and zero bare LF. The duplicate registers reconcile:
 
     narrow export-only head rows             19, unchanged historical floor
     widened head rows                        90, unchanged
-    widened body pairs                       36 -> 35
-    body-only findings                       24 -> 23
+    widened body pairs                       35 -> 31
+    body-only findings                       24 -> 22
 
-Final W455 validation:
+The body-only count is now derived from the live widened head index. That corrects the prior manually
+stated baseline of 23, which was one low. The four disappearing edges all belonged to the deleted item
+node. Item/movement and item/player-helper
+were also represented by the `$2417DE` head row; item/option and item/updatePlayer were body-only. All
+six shorter-tail edges among movement, option and player bodies remain frozen and unaudited.
 
-    focused W455                             11 pass / 0 fail / 0 skipped
-    affected beam/item/caller/register      350 pass / 0 fail / 0 skipped
-    node --test games/ddpdoj/tests/         4200 pass / 0 fail / 0 skipped
-    node games/ddpdoj/tools/webgate.mjs       31 PASS / 0 FAIL, exit 0
-    export-tables.py --verify               VERIFY OK at 613 windows
+Final W456 validation on the working tree:
 
-No production ROM window was added or widened. The focused executable proof reads the raw image. No
-asset export, publish or live-build change occurred in W455. Live build **`20260820231140`** remains
-unchanged.
+    focused W456                              12 pass / 0 fail / 0 skipped
+    affected movement/item/D69 set           252 pass / 0 fail / 0 skipped
+    node --test games/ddpdoj/tests/          4212 pass / 0 fail / 0 skipped
+    node games/ddpdoj/tools/webgate.mjs        31 PASS / 0 FAIL, exit 0
+    export-tables.py --verify                VERIFY OK at 613 windows
+
+No production ROM window was added or widened. No generated asset, export-web, publish, commit or push
+operation was performed. The coordinator must independently verify and land W456. Only after landing,
+with no working agent, run `games/ddpdoj/tools/export-web.mjs` and then `tools/publish.mjs`.
 
 ## IMMEDIATE ORDER
 
-1. Dispatch exactly one W456 agent on D69 `items.js applyItemVelocity` <->
-   `movement.js applyVelocityA6`, six markers over `$2417E0..$2417F8`.
-2. Independently verify and land W456. Then, with no working agent, run
+1. Independently verify and land W456. With no working agent, run
    `games/ddpdoj/tools/export-web.mjs` followed by `tools/publish.mjs`.
+2. Dispatch W457 on D69 `tallyscreen.js cursorsFromPosted25D9E6` <->
+   `tallyscreen.js mapSavedCursor25D9E6`, six markers over `$25D9EA..$25DA50`.
 3. Continue the docket and complete Black Label through the full second loop.
 4. Finish White Label last, only after Black Label and its docket are complete.
 

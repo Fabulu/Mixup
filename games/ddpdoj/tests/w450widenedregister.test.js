@@ -1,7 +1,7 @@
 // WAVE 450 (D69) -- THE DUPLICATE REGISTER, WIDENED UNTIL IT CAN SEE A PRIVATE COPY.
 //
 // ---------------------------------------------------------------------------
-// THE NUMBER WAS 19, W450 FOUND 92, W451 LEFT 91, AND W453 LEAVES 90
+// THE NUMBER WAS 19, W450 FOUND 92, W451 LEFT 91, W453 LEFT 90, AND W456 KEEPS 90
 // ---------------------------------------------------------------------------
 // W444 built the index; W446, W447, W448 and W449 steered by it and merged five
 // addresses, each of which turned out to be a live defect. Then W449 found a
@@ -14,7 +14,8 @@
 // This wave widened the scan on three axes (see `w450widenedscan.js` for the
 // rules and the traps) and re-ran it. W450 measured 92 head rows and 39 body
 // pairs. W451 merged `$242684`; W453 merged `$242494`; W454 merged the turret
-// step; W455 has now merged the beam-reset tail, so the live registers are:
+// step and W455 merged the beam-reset tail. W456 merged the item-local
+// `$2417DE` body into `movement.js applyVelocityA6`, so the live registers are:
 //
 //     shipped `export function` scan     19 addresses claimed twice or more
 //     widened head scan                  90          "
@@ -28,9 +29,10 @@
 //     then merged by W451                -1
 //     then merged by W453                -1
 //
-// ...plus a second register the old scan had no axis for at all: 35 PAIRS OF
-// BODIES that transcribe a shared RUN of ROM instructions. 23 of those name a
-// body that appears nowhere on the head register.
+// ...plus a second register the old scan had no axis for at all: 31 PAIRS OF
+// BODIES that transcribe a shared RUN of ROM instructions. W456 removed four
+// pair edges by deleting one duplicate body; it did not classify the remaining
+// player and option suffixes.
 //
 // **A LIST IS NOT THE DELIVERABLE.** W444's rule, and W449 proved it again: the
 // stale-notes disease is a document nobody re-derives. Both registers here are
@@ -46,7 +48,7 @@
 //   1   the scan found something -- floors, so a broken regex cannot read clean
 //   2   the widening WEAKENS NOTHING: the shipped register is a strict subset
 //   3   THE HEAD REGISTER, exact, 90
-//   4   THE BODY REGISTER, exact, 35 pairs
+//   4   THE BODY REGISTER, exact, 31 pairs; 22 body-only findings
 //   5   RED PROOFS on synthetic trees -- one per axis, plus two negative controls
 //   6   THE HISTORICAL POSITIVE CONTROL: W449's own `clearChain`, verbatim
 
@@ -279,9 +281,16 @@ test('SECTION 3: the widened head register is exactly these 90 addresses', () =>
 // a RUN is a transcription. Keyed by `file name` and never by line number, so
 // an edit anywhere above a function cannot redden this.
 //
-// 23 of these 35 name a body that is on NO head register row, so they are
-// findings the address axis cannot make on its own. W455 removed the previous
-// strongest body-only row, `items.js beamReset25270C <> laser.js
+// W456 removed the `items.js applyItemVelocity` node. Its four pair edges to
+// movement, options and player disappeared, while all six shorter-tail edges
+// among the surviving bodies remain below. The item/movement and item/player-
+// helper edges were also represented by the `$2417DE` head row; the incidental
+// item/option and item/updatePlayer edges were body-only. A live derivation from
+// `headIndex()` finds the W455 baseline was 24, not its manually stated 23, so
+// the two removals leave 22. Only the complete item/movement body was
+// classified; no suffix was merged by this register update.
+//
+// W455 removed the previous strongest body-only row, `items.js beamReset25270C <> laser.js
 // wipeSegmentPool`: the full reset keeps its unique `andi.w #$DFFB` head and
 // delegates the cartridge's one `$25279A..$2527BC` tail to `wipeSegmentPool`.
 //
@@ -316,10 +325,9 @@ const BODY_REGISTER = Object.freeze([
   ['hud.js gates2844A6 <> hud.js playerBlock', [0x2844c8, 0x28465c]],
   ['initbody.js damageFirstFamily <> initbody.js init85Or86', [0x2637a2, 0x263808]],
   ['initbody.js rankByte242E24 <> rng.js drawByte242E24', [0x242e24, 0x242e3a]],
-  ['items.js applyItemVelocity <> movement.js applyVelocityA6', [0x2417e0, 0x2417e4, 0x2417ea, 0x2417f2, 0x2417f4, 0x2417f8]],
-  ['items.js applyItemVelocity <> options.js podKnockback24D188', [0x2417f2, 0x2417f4, 0x2417f8]],
-  ['items.js applyItemVelocity <> player.js applyPlayerVector2417DE', [0x2417ea, 0x2417f4, 0x2417f8]],
-  ['items.js applyItemVelocity <> player.js updatePlayer', [0x2417f4, 0x2417f8]],
+  // W456 REMOVED all four edges owned by `items.js applyItemVelocity`: the
+  // complete six-marker edge to movement plus three incidental suffix edges.
+  // The six surviving suffix edges below are intentionally still registered.
   ['laser.js runLaserGate <> options.js runOneBlock', [0x24c16e, 0x24c178]],
   ['movement.js applyVelocityA6 <> options.js podKnockback24D188', [0x2417f2, 0x2417f4, 0x2417f8]],
   ['movement.js applyVelocityA6 <> player.js applyPlayerVector2417DE', [0x2417ea, 0x2417f4, 0x2417f8]],
@@ -338,7 +346,7 @@ const BODY_REGISTER = Object.freeze([
   ['tallyscreen.js loadSavedCursor25DA60 <> tallyscreen.js restoreCursors25DA60', [0x25da6c, 0x25da86, 0x25da8a, 0x25da8e]],
 ]);
 
-test('SECTION 4: exactly these 35 pairs of bodies transcribe a shared run of ROM instructions',
+test('SECTION 4: exactly these 31 pairs of bodies transcribe a shared run of ROM instructions',
   () => {
     const got = bodyPairs().map(([p, v]) => [p, v]);
     assert.deepEqual(got.map(([p]) => p), BODY_REGISTER.map(([p]) => p),
@@ -357,9 +365,20 @@ test('SECTION 4: exactly these 35 pairs of bodies transcribe a shared run of ROM
         + 'or it can mean somebody deleted the comments that made the duplicate visible');
     }
 
-    assert.equal(got.length, 35,
-      'the body register is not 35 pairs (39 at W450, minus $242684 at W451, '
-      + '$242494 at W453, the turret block at W454 and the beam reset at W455). '
+    const visibleHeads = new Set();
+    for (const [, claims] of headIndex().idx) {
+      if (claims.size < 2) continue;
+      for (const key of claims.keys()) visibleHeads.add(key.replace(/:\d+ /, ' '));
+    }
+    const bodyOnly = got.filter(([pair]) => pair.split(' <> ')
+      .some((body) => !visibleHeads.has(body)));
+    assert.equal(bodyOnly.length, 22,
+      'body-only is derived from the live head register, not copied from a prior wave');
+
+    assert.equal(got.length, 31,
+      'the body register is not 31 pairs (39 at W450, minus $242684 at W451, '
+      + '$242494 at W453, the turret block at W454, the beam reset at W455 and four '
+      + '`applyItemVelocity` edges at W456). '
       + 'As a NUMBER as well as a set, because an empty list satisfies a deepEqual '
       + 'against a shrunken array and reads as progress');
   });

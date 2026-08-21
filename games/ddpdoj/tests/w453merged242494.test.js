@@ -306,8 +306,8 @@ test('SECTION 6: W453 removes exactly one widened head row and one body pair, no
     const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
     assert.equal(heads.length, 90, 'W450 92, W451 removed $242684, W453 removed $242494');
     assert.ok(!heads.includes(0x242494), '$242494 has one function head after the merge');
-    assert.equal(pairs.length, 35,
-      'W450 39, W451 removed one pair, W453 one, W454 one and W455 one');
+    assert.equal(pairs.length, 31,
+      'W450 39, W451 removed one pair, W453 one, W454 one, W455 one and W456 four');
     assert.ok(!pairs.some(([pair]) => pair === 'bossscripts.js dist242494 <> items.js dist242494'),
       'the deleted body must stay absent from the body-marker register');
     assert.equal(narrow.length, 19, 'the old export-only register remains its historical floor');

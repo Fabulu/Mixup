@@ -111,7 +111,7 @@ import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { drawByte242B3C, drawByte242E24 } from './rng.js';
 import { aim64, AimTables } from './aim.js';
 import { scoreByMask, abcd } from './score.js';
-import { offScreen242684 } from './movement.js';
+import { applyVelocityA6, offScreen242684 } from './movement.js';
 import { dist242494 } from './bossscripts.js';
 import { BEAM, wipeSegmentPool } from './laser.js';
 
@@ -528,18 +528,11 @@ function runBody(ram, rom, ctx, a6, d1, idx) {
 
 // ============================ THE SHARED PIECES =============================
 
-/** `$2417DE`, on the ITEM RECORD ITSELF.  `src/movement.js applyVelocity` is
- *  the same six instructions wrapped for an enemy's `A5 -> sub-record`; the
- *  item pool calls the raw form with A6 already on the record, so it is written
- *  out here rather than bent to fit.  D0 is the SPEED INDEX and D1 the ANGLE. */
-function applyItemVelocity(ram, ctx, a6) {
-  const speed = ram.u8(a6 + I.speed);                  // $2417E0 move.b ($1a,A6)
-  const angle = ram.u8(a6 + I.angle) & 0x3f;           // $2417E4/$2417E6
-  if (ram.u16(ITEM.freeze) !== 0) return;              // $2417EA tst.w $8130D2
-  const v = ctx.tables.vector(speed, angle);           // $2417F2 bsr $241812
-  ram.setU16(a6 + I.pos, u16(i16(ram.u16(a6 + I.pos)) + v.dy));    // $2417F4
-  ram.setU16(a6 + I.posX, u16(i16(ram.u16(a6 + I.posX)) + v.dx));  // $2417F8
-}
+// `$2417DE`: W456 proved the item pool enters the cartridge body with A6
+// already on the item record, whose +$02/+$04 and +$1A/+$1B fields match the
+// canonical raw layout exactly. The five item sites below therefore call
+// `movement.js applyVelocityA6` directly. The `$2417D4` option entry and the
+// player-specific continuations are shorter overlaps and remain independent.
 
 /** `$2417B6` -- the scroll pair, returned rather than applied.  Kind `$10`'s
  *  motion adds only D2, which is why this is not `$24179E`. */
@@ -714,7 +707,7 @@ function bounceLong27EBA0(ram, rom, a6) {
 
 /** `$27EBBA` -- every motion routine's tail: move, then the off-screen free. */
 function tail27EBBA(ram, ctx, a6) {
-  applyItemVelocity(ram, ctx, a6);                     // $27EBBA jsr $2417DE
+  applyVelocityA6(ram, ctx.tables, a6);                // $27EBBA jsr $2417DE
   if (offScreen242684(ram, a6)) {                      // $27EBC0 jsr / $27EBC6 bcs
     freeItem(ram, a6);                                 // $27F2F0
     return true;
@@ -1173,7 +1166,7 @@ export function collectedStep27F5F4(ram, rom, ctx, a6) {
   if (ram.u8(a6 + I.anim) !== 0) {                     // $27F61C tst.b ($e,A6)
     ram.setU16(a6 + I.pos, u16(ram.u16(a6 + I.pos) + 0x20));  // $27F624 addi.w #$20
   } else {
-    applyItemVelocity(ram, ctx, a6);                   // $27F62E jsr $2417DE
+    applyVelocityA6(ram, ctx.tables, a6);              // $27F62E jsr $2417DE
   }
   const c = (ram.u8(a6 + I.frame) - 1) & 0xff;         // $27F634 subq.b #1
   ram.setU8(a6 + I.frame, c);
