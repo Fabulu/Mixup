@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W468)
+Updated: 2026-08-21 (W469)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,14 +10,24 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W468 removed Hibachi form 1's false `$2A6EDC` head claim.**
-`boss.js bossForm1Exit` still supplies form 1's own ending thunk, while the exported
-`hibachi2.js bossExitShared` remains the sole implementation of all three byte-identical exit bodies.
-Live scanner APIs report 16 narrow heads, 77 widened heads, 27 body pairs, and 22 body-only findings.
-The next direct batch candidate is **W469 `$23C622`, `background.js clearTx23C622` and
-`objslot12.js clearTx`**. W468 is the second wave after live build `20260821162642`, so no publication is
-due. Continue the widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full
-Black Label loop-2 coverage, and every other explicit docket item.
+`docs/DOCKET.md` is authoritative. **W469 removed slot 12's false `$23C622` clear-body claim.**
+`objslot12.js clearTxOrNote` still guards missing `ctx.tx` and counts the exact call site, while the
+exported `background.js clearTx23C622` remains the sole canonical 2,048-longword TX clear. Live scanner
+APIs report 16 narrow heads, 76 widened heads, 27 body pairs, and 22 body-only findings. The next direct
+batch candidate is **W470 `$23BF74/$23BFDB`**, where `main.js Game#boot` caller documentation claims both
+endpoints of `frontend.js bootFrontEnd23BF74`. W469 is the third wave after live build `20260821162642`,
+so no publication is due. Continue the widened duplicate rows, front-end screens D33/D34/D35/D37,
+remaining enemy types, full Black Label loop-2 coverage, and every other explicit docket item.
+
+## W469 VERIFIED: SLOT-12 CLEAR ADAPTER OWNS NO CARTRIDGE HEAD
+
+The former private `objslot12.js clearTx` was a caller adapter, not a second TX-clear transcription. It
+still runs `background.js clearTx23C622(ctx.tx)` when render state exists; otherwise it records `$23C622`
+with the exact `$28F2BA` or `$28F386` caller and returns, preserving the unit-testable teardown behavior.
+Only its address-bearing preceding documentation and generic name changed to `clearTxOrNote`; both callers
+remain in place. Focused object-dispatch, context, deferral, and authoritative-register coverage passed
+49/49; the W446-W462 holder chain passed 187/187. Only widened heads changed, 77 to 76. Take W470's two
+front-end endpoint claims next.
 
 ## W468 VERIFIED: FORM-1 EXIT ADAPTER OWNS NO SHARED BODY HEAD
 
@@ -26,7 +36,7 @@ The former private `boss.js bossExit2A6EDC` supplied only Hibachi form 1's ROM/c
 already lives in exported `hibachi2.js bossExitShared`, shared with `$2A707E` and `$2A7294`. The adapter is
 now `bossForm1Exit`, with its detailed cartridge correction inside the function. Its phase caller and
 ending thunk are unchanged. Focused Hibachi and authoritative-register coverage passed 86/86; the
-W446-W462 holder chain passed 187/187. Only widened heads changed, 78 to 77. Take W469 `$23C622` next.
+W446-W462 holder chain passed 187/187. Only widened heads changed, 78 to 77. W469 completed the next row above.
 
 ## W467 VERIFIED: HUD HYPER ADAPTER OWNS NO CARTRIDGE HEAD
 

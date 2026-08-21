@@ -5866,7 +5866,28 @@ changed.
 
 W468 is the second wave after live build `20260821162642` and is not a publication wave.
 
-**NEXT OBVIOUS BATCH CANDIDATE: W469, `$23C622`.** The widened register names
-`background.js clearTx23C622` and `objslot12.js clearTx`. Preserve the slot-12 missing-`TxVram` counted
-adapter while leaving the background export canonical. Continue Black Label through the full second loop
-and close its docket, then finish White Label last.
+**HISTORICAL W468 RECOMMENDATION FOR W469: `$23C622`.** W469 completed that direct classification below.
+
+
+### D77: FOLLOW-UP, W469 `$23C622`: SLOT-12 ADAPTER NO LONGER CLAIMS THE TX CLEAR BODY
+
+`background.js clearTx23C622` remains the exported canonical 2,048-longword clear over the complete 64 by
+32 TX map. The private `objslot12.js clearTx` was not another implementation. It passed `ctx.tx` to that
+export when available, but allowed two teardown-shaped unit paths to run without `TxVram` by counting the
+exact `$28F2BA` or `$28F386` call site and returning. That caller adaptation remains under the address-free
+name `clearTxOrNote`, with its detailed `$23C622` explanation inside the helper body. Both calls and their
+optional-note behavior are unchanged. No compatibility alias is needed for the private helper.
+
+The live registers move from 77 to **76 widened heads**. `$23C622` has one remaining claimant in
+`background.js`; narrow heads remain 16, body pairs remain 27, and body-only findings remain 22. Focused
+object-dispatch, context, deferral, and authoritative-register coverage passed **49/49**. The W446-W462
+live holder chain passed **187/187**. No executable behavior, public ESM identity, dependency edge, ROM
+window, or generated output changed.
+
+W469 is the third wave after live build `20260821162642` and is not a publication wave.
+
+**NEXT OBVIOUS BATCH CANDIDATE: W470, `$23BF74/$23BFDB`.** The detailed documentation immediately before
+`main.js Game#boot` claims both endpoints of the exported `frontend.js bootFrontEnd23BF74` span even though
+the method only supplies `Game` state and stores the result. Preserve that caller adaptation and the cold
+boot warning while returning both endpoint claims to the canonical front-end body. Continue Black Label
+through the full second loop and close its docket, then finish White Label last.

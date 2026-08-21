@@ -233,12 +233,15 @@ export const SLOT12 = Object.freeze({
 // ---------------------------------------------------------------------------------------------
 // The remaining ctx-shaped gap is counted below.
 
-/** `$23C622` -- clear the TX layer. `Game#ctx()` carries the `TxVram` as BOTH `tx` and `txvram`,
- *  so on the driver path this always runs; slots [9], [13], [14] and [17] all call
- *  `clearTx23C622(ctx.tx)` UNGUARDED and throw on a bare ctx. This file guards and COUNTS
- *  instead, so a unit test can drive the two teardown-shaped states without a TxVram and the
- *  gap stays visible in the report rather than becoming a silent no-op. */
-function clearTx(ctx, site) {
+/** Clears the TX layer when present and counts missing render state by call site. */
+function clearTxOrNote(ctx, site) {
+  /*
+   * `$23C622` -- clear the TX layer. `Game#ctx()` carries the `TxVram` as BOTH `tx` and `txvram`,
+   * so on the driver path this always runs; slots [9], [13], [14] and [17] all call
+   * `clearTx23C622(ctx.tx)` UNGUARDED and throw on a bare ctx. This file guards and COUNTS
+   * instead, so a unit test can drive the two teardown-shaped states without a TxVram and the
+   * gap stays visible in the report rather than becoming a silent no-op.
+   */
   if (!ctx?.tx) {
     ctx?.unported?.note(0x23c622, `$${site.toString(16).toUpperCase()} jsr $23C622 -- no TxVram `
       + 'on this chain, so the TX layer was not cleared');
@@ -309,7 +312,7 @@ export function clearRankRam2603DA(ram) {
  * into whatever the other arm just left there, which is how the byte reaches `$3`.
  */
 export function init28F2BA(ram, rom, a5, ctx) {
-  clearTx(ctx, 0x28f2ba);                                    // $28F2BA jsr $23C622
+  clearTxOrNote(ctx, 0x28f2ba);                              // $28F2BA jsr $23C622
   ram.setU8(a5 + SLOT12.stateAt, 1);                         // $28F2C0 move.b #$1,($2,A5)
   for (let i = 0; i < SLOT12.workWords; i++) {               // $28F2D0 / $28F2D4 dbra -- $42 WORDS
     ram.setU16(SLOT12.work + i * 2, 0);
@@ -377,7 +380,7 @@ export function teardown28F368(ram, rom, a5, ctx) {
   clearRankRam2603DA(ram);                                   // $28F374 jsr $2603DA
   queueKill(ram, ram.u32(a5 + SLOT12.idAt));                 // $28F37A jsr $241292
   ctx?.unported?.note(SLOT12.cueStream, '$28F380' + CUE_STREAM_NOTE); // jsr $28C0FC
-  clearTx(ctx, 0x28f386);                                    // $28F386 jsr $23C622
+  clearTxOrNote(ctx, 0x28f386);                              // $28F386 jsr $23C622
   // $28F38C lea $222638,A0 / $28F392 moveq #0,D0 / $28F394 jsr $2414BE.
   if (!ctx?.palette) {
     ctx?.unported?.note(0x2414be, '$28F394 -- TX bank 0 <- $222638 with no PaletteState '
