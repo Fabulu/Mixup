@@ -582,7 +582,7 @@ test('SECTION 5c: cartridge and source reachability remain separate and dynamic 
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live scanner APIs reconcile to 16 narrow, 86 widened, 28 pairs and 22 body-only',
+test('SECTION 6: live scanner APIs reconcile to 16 narrow, 85 widened, 27 pairs and 22 body-only',
   () => {
     const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
     const heads = headRegister();
@@ -596,14 +596,18 @@ test('SECTION 6: live scanner APIs reconcile to 16 narrow, 86 widened, 28 pairs 
       .some((body) => !visibleHeads.has(body)));
 
     assert.equal(narrow.length, 16, 'neither old claimant formed a narrow duplicate row');
-    assert.equal(heads.length, 86, 'W460 removes one widened head from W459 baseline 87');
+    assert.equal(heads.length, 85, 'W461 removes one widened head from W460 baseline 86');
     assert.equal(heads.includes(BODY_START), false, '$24631C leaves the widened head register');
     assert.equal(narrow.some(([at]) => at === BODY_START), false, '$24631C remains absent narrowly');
-    assert.equal(pairs.length, 28, 'the optional shim never formed a two-marker body pair');
+    assert.equal(pairs.length, 27, 'W461 removes one body pair from W460 baseline 28');
     assert.equal(pairs.some(([pair]) => /24631C/i.test(pair)), false,
       '$24631C has no surviving body-pair edge');
+    assert.equal(heads.includes(0x242e24), false, '$242E24 leaves the widened head register in W461');
+    assert.equal(pairs.some(([pair]) => pair ===
+      'initbody.js rankByte242E24 <> rng.js drawByte242E24'), false,
+    '$242E24/$242E3A body pair leaves the register in W461');
     assert.equal(bodyOnly.length, 22,
-      'body-only findings are derived live from headIndex() and remain unchanged');
+      'body-only findings are derived live from headIndex() and stay unchanged after a head-visible pair removal');
   });
 
 test('SECTION 6b: executable cartridge proof adds no production ROM window declaration', () => {

@@ -528,7 +528,7 @@ test('SECTION 6: source census has one implementation and preserves every A5/A6 
     'player update retains its caller-specific D2/D3 continuation');
 });
 
-test('SECTION 6b: registers reconcile through W460 to 16 narrow, 86 widened, 28 pairs and 22 body-only', () => {
+test('SECTION 6b: registers reconcile through W461 to 16 narrow, 85 widened, 27 pairs and 22 body-only', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -538,14 +538,15 @@ test('SECTION 6b: registers reconcile through W460 to 16 narrow, 86 widened, 28 
     'tallyscreen.js cursorsFromPosted25D9E6 <> tallyscreen.js mapSavedCursor25D9E6',
     'tallyscreen.js loadSavedCursor25DA60 <> tallyscreen.js restoreCursors25DA60',
     'player.js armRequest25FF38 <> tallyscreen.js tallyRequest25FF38',
+    'initbody.js rankByte242E24 <> rng.js drawByte242E24',
   ];
   const bodyOnlyRemoved = [
     'items.js applyItemVelocity <> options.js podKnockback24D188',
     'items.js applyItemVelocity <> player.js updatePlayer',
   ];
   assert.equal(narrow.length, 16, 'W459 removes the exported $25FF38 duplicate');
-  assert.equal(heads.length, 86, 'W460 removes the widened $24631C head row');
-  assert.equal(pairs.length, 28, 'W459 removes one edge from W458 baseline 29');
+  assert.equal(heads.length, 85, 'W461 removes the widened $242E24 head row from W460 baseline 86');
+  assert.equal(pairs.length, 27, 'W461 removes one edge from W460 baseline 28');
   const visibleHeads = new Set();
   for (const [, claims] of headIndex().idx) {
     if (claims.size < 2) continue;
@@ -554,7 +555,7 @@ test('SECTION 6b: registers reconcile through W460 to 16 narrow, 86 widened, 28 
   const bodyOnly = pairs.filter(([pair]) => pair.split(' <> ')
     .some((body) => !visibleHeads.has(body)));
   assert.equal(bodyOnly.length, 22,
-    'headIndex() derives 22 after W456; W457 through W460 remove only head-visible rows or a non-pair head, so it remains 22');
+    'headIndex() derives 22 after W456; W457 through W461 remove only head-visible rows or a non-pair head, so it remains 22');
   for (const removed of [...headVisibleRemoved, ...bodyOnlyRemoved]) {
     assert.ok(!pairs.some(([pair]) => pair === removed), `${removed} stays absent`);
   }

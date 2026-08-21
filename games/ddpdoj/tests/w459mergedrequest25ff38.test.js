@@ -428,7 +428,7 @@ test('SECTION 5: cartridge and production-source reachability are proved separat
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live scanner APIs reconcile W459 through W460 and derive body-only count', () => {
+test('SECTION 6: live scanner APIs reconcile W459 through W461 and derive body-only count', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -440,15 +440,18 @@ test('SECTION 6: live scanner APIs reconcile W459 through W460 and derive body-o
   const bodyOnly = pairs.filter(([pair]) => pair.split(' <> ')
     .some((body) => !visibleHeads.has(body)));
   const removed = 'player.js armRequest25FF38 <> tallyscreen.js tallyRequest25FF38';
+  const removedRank = 'initbody.js rankByte242E24 <> rng.js drawByte242E24';
 
   assert.equal(narrow.length, 16, 'W459 removes one export-only $25FF38 head from W458 baseline 17');
-  assert.equal(heads.length, 86, 'W460 removes the widened $24631C row from W459 baseline 87');
-  assert.equal(pairs.length, 28, 'W459 removes the $25FF4A/$25FF4C body edge from baseline 29');
+  assert.equal(heads.length, 85, 'W461 removes the widened $242E24 row from W460 baseline 86');
+  assert.equal(pairs.length, 27, 'W461 removes the $242E24/$242E3A body edge from baseline 28');
   assert.equal(bodyOnly.length, 22,
-    'body-only is derived live and unchanged because W460 removes a non-pair head claim');
+    'body-only is derived live and unchanged because W461 removes a head-visible pair');
   assert.equal(heads.includes(BODY_START), false, '$25FF38 stays off the widened register');
   assert.equal(narrow.some(([at]) => at === BODY_START), false, '$25FF38 stays off the narrow register');
   assert.equal(pairs.some(([pair]) => pair === removed), false, '$25FF38 body edge stays absent');
   assert.equal(heads.includes(0x25d9e6), false, 'W457 merge remains absent');
   assert.equal(heads.includes(0x25da60), false, 'W458 merge remains absent');
+  assert.equal(heads.includes(0x242e24), false, 'W461 merge remains absent');
+  assert.equal(pairs.some(([pair]) => pair === removedRank), false, '$242E24 body edge stays absent');
 });

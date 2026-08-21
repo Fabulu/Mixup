@@ -99,7 +99,7 @@ export function objSlot14(ram, rom, a5, ctx) {
 
   if (ram.u16(a5 + 0x10) !== 0) return;                      // $288CA0 cmpi.w #$0 / bne -- no draw
 
-  // $288CD4 -- the RANK-selected table. rankByte242E24 >> 3 goes to ($16,A5); if that is zero the
+  // $288CD4 -- the RANK-selected table. The $242E24 byte shifted right by 3 goes to ($16,A5); if that is zero the
   // ($17,A5) counter bumps and, below 3, forces the selector back to 1. So the table only switches
   // after three consecutive zero rank bytes.
   const rank = (ctx.rankByte?.(ram, rom) ?? 0) >>> 3;        // $288CD4 jsr $242E24 / $288CDA lsr.w #3

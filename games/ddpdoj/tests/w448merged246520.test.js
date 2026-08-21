@@ -247,7 +247,7 @@ test('SECTION 2: `$246520` and `$24652A` are each claimed EXACTLY ONCE, and by t
   }
   // The register itself, held here as well as in w446/w447 so deleting one guard cannot hide it.
   // W450: THIS COUNTS `export function` CLAIMS ONLY, so it is a FLOOR. The scan that can also
-  // see private functions, arrows and methods reports 86 after W460. SECTION 2d below and
+  // see private functions, arrows and methods reports 85 after W461. SECTION 2d below and
   // tests/w450widenedregister.test.js SECTION 3 for the set.
   const dup = [...idx].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
   assert.equal(dup.length, 16,
@@ -256,14 +256,15 @@ test('SECTION 2: `$246520` and `$24652A` are each claimed EXACTLY ONCE, and by t
     + 'not a row: ' + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
 });
 
-test('SECTION 2d [W450/W460]: the widened register is 86, and this wave\'s three-copy constructor '
+test('SECTION 2d [W450/W461]: the widened register is 85, and this wave\'s three-copy constructor '
   + 'stays merged under it', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
   const wide = headRegister();
-  assert.equal(wide.length, 86,
-    'the widened duplicate register is not 86. ' + W453_NOTE
-    + 'W457 merged $25D9E6, W458 merged $25DA60, W459 merged $25FF38, and W460 '
-    + 'removed the optional $24631C forwarding shim. The narrow count above sees only `export '
+  assert.equal(wide.length, 85,
+    'the widened duplicate register is not 85. ' + W453_NOTE
+    + 'W457 merged $25D9E6, W458 merged $25DA60, W459 merged $25FF38, W460 removed '
+    + 'the optional $24631C forwarding shim, and W461 merged the private $242E24 rank-byte '
+    + 'body into rng.js drawByte242E24. The narrow count above sees only `export '
     + 'function`; W448 merged THREE transcriptions of one body, and the scan that found them '
     + 'would have missed a fourth written as a private function -- which is what happened to '
     + 'W449 one wave later, at $246800');

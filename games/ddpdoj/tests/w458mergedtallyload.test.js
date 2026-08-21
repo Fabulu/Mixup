@@ -369,7 +369,7 @@ test('SECTION 5: cartridge and production-source reachability are proved separat
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live scanner APIs reconcile through W460 and keep W457/W458 absent', () => {
+test('SECTION 6: live scanner APIs reconcile through W461 and keep W457/W458 absent', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -382,12 +382,13 @@ test('SECTION 6: live scanner APIs reconcile through W460 and keep W457/W458 abs
     .some((body) => !visibleHeads.has(body)));
   const removed = 'tallyscreen.js loadSavedCursor25DA60 <> tallyscreen.js restoreCursors25DA60';
   const removedRequest = 'player.js armRequest25FF38 <> tallyscreen.js tallyRequest25FF38';
+  const removedRank = 'initbody.js rankByte242E24 <> rng.js drawByte242E24';
 
   assert.equal(narrow.length, 16, 'W459 removes one exported $25FF38 head from W458 baseline 17');
-  assert.equal(heads.length, 86, 'W460 removes the widened $24631C row from W459 baseline 87');
-  assert.equal(pairs.length, 28, 'W459 removes the complete request-poster edge from baseline 29');
+  assert.equal(heads.length, 85, 'W461 removes the widened $242E24 row from W460 baseline 86');
+  assert.equal(pairs.length, 27, 'W461 removes the complete rank-byte edge from baseline 28');
   assert.equal(bodyOnly.length, 22,
-    'body-only remains derived live and unchanged because W460 removes a non-pair head claim');
+    'body-only remains derived live and unchanged because W461 removes a head-visible pair');
   assert.equal(heads.includes(BODY_START), false, '$25DA60 stays off the widened register');
   assert.equal(narrow.some(([at]) => at === BODY_START), false, '$25DA60 stays off the narrow register');
   assert.equal(pairs.some(([pair]) => pair === removed), false, '$25DA60 body edge stays absent');
@@ -395,4 +396,6 @@ test('SECTION 6: live scanner APIs reconcile through W460 and keep W457/W458 abs
   assert.equal(pairs.some(([pair]) => /25D9E6/.test(pair)), false, 'W457 body edge stays absent');
   assert.equal(heads.includes(0x25ff38), false, '$25FF38 stays off the widened register after W459');
   assert.equal(pairs.some(([pair]) => pair === removedRequest), false, 'W459 body edge stays absent');
+  assert.equal(heads.includes(0x242e24), false, '$242E24 stays off the widened register after W461');
+  assert.equal(pairs.some(([pair]) => pair === removedRank), false, 'W461 body edge stays absent');
 });

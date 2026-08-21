@@ -5522,10 +5522,117 @@ webgate **31 / 0**, ROM verification at **613 windows**, and the same docket ide
 scope, line-ending, punctuation and protected-path checks are clean. No export-web, publish, stage,
 commit, push, branch switch or worktree operation occurred during editing-agent work.
 
-**NEXT AUDIT CANDIDATE: W461, `$242E24` `initbody.js rankByte242E24` <->
-`rng.js drawByte242E24`.** This is stronger live evidence than another head-only claim: the widened
-register names both heads and `bodyPairs()` derives two shared body markers, `$242E24` and `$242E3A`.
-Audit the complete cartridge routine, every caller, width ownership, returned state, and source
-reachability before classifying. W461 is the next cadence publication only after its own work is verified
-on a quiet tree; run `export-web.mjs` before `publish.mjs`. Continue Black Label through the full second
-loop and close its docket, then finish White Label last.
+**HISTORICAL W460 RECOMMENDATION FOR W461: `$242E24` `initbody.js rankByte242E24` <->
+`rng.js drawByte242E24`.** At W460 close, this was stronger live evidence than another head-only claim:
+the widened register named both heads and `bodyPairs()` derived two shared body markers, `$242E24` and
+`$242E3A`. That recommendation is retained as history. W461 completed the audit below and proved the
+merge. The W460 note that W461 was the next cadence publication was also historical; this editing pass
+did not export or publish.
+
+
+### D69 FOLLOW-UP, W461 `$242E24`: THE PRIVATE RANK-BYTE BODY WAS THE CANONICAL RNG DRAW TRANSCRIBED TWICE
+
+**THIS IS A PROVED EQUIVALENT-BODY MERGE.** `initbody.js rankByte242E24` and `rng.js
+drawByte242E24` both incremented only byte `$803917`, used the post-increment word at `$803916`, masked
+it with `$007F`, and returned one unsigned table byte from `$242E42 + index`. W461 removes the private
+`initbody.js` body and its duplicate `rankReg`/`rankCtr` constants. Its type `$11` and type `$8D` callers
+now invoke `rng.js drawByte242E24`. The removed name was private, so no public ESM compatibility alias is
+needed. The existing dependency direction is preserved: `initbody.js` already imported multiple RNG
+helpers from `rng.js`, while `rng.js` imports only `ram.js`; no cycle or inverted dependency was added.
+
+**BUILD-B PINS ONE COMPLETE 30-BYTE BODY.** Main CPU SHA-256 is
+`4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c`. The exact half-open span is
+`[$242E24,$242E42)`, with SHA-256
+`5c280b15e6b2c520824f120b39e9ed5d47144209586b37852d8c8793b53440c3` and bytes
+`523900803917707fc079008039162f0841fa000c4e7110300000205f4e75`. Its nine instructions are
+`$242E24 ADDQ.B #1,$803917`, `$242E2A MOVEQ #$7F,D0`, `$242E2C AND.W $803916,D0`, `$242E32 MOVE.L
+A0,-(A7)`, `$242E34 LEA ($242E42,PC),A0`, `$242E38 NOP`, `$242E3A MOVE.B (A0,D0.W),D0`, `$242E3E
+MOVEA.L (A7)+,A0`, and `$242E40 RTS`.
+
+The preceding object is the complete 256-byte table `[$242D24,$242E24)`, SHA-256
+`f45979b11a2946df59ecc5f027d5603ffc2dd52cd29bac2997d1eb931cdd7157`. The indexed table is exactly
+`[$242E42,$242EC2)`, 128 bytes, SHA-256
+`81ec92daeca70fd966be91ca9f170a8a5c72724320c1c38f3614e57ca5853cbf`; `$242EC2` starts the next
+shared-counter routine. That next routine is `[$242EC2,$242EDE)`, 28 bytes, SHA-256
+`dd09ca2e3cf97f28d6cbe13b9929d6120a61457f0d9f284b4030e2a8c0b0cf58`. There is no fallthrough into
+or out of the target body.
+
+**THE COMPLETE ALIGNED 6 MiB TRANSFER CENSUS FINDS EXACTLY 37 STATIC EXTERNAL ENTRIES, ALL `JSR.L
+$242E24`.** They are `$265350`, `$265376`, `$26728A`, `$268744`, `$27699C`, `$27E02A`, `$27EAD6`,
+`$27EC86`, `$280CFA`, `$280D12`, `$288CD4`, `$289756`, `$28A26C`, `$28A2E8`, `$28A326`, `$28A360`,
+`$28A3A2`, `$28A3E0`, `$28A426`, `$2933DE`, `$2933EE`, `$297AF0`, `$297F94`, `$297F9E`, `$29924C`,
+`$299362`, `$29A132`, `$29A13C`, `$29D1EC`, `$2A5062`, `$2A5164`, `$2A51E0`, `$2A5424`, `$2A81CC`,
+`$2A83E8`, `$2A8810`, and `$2A8EE0`. The scan covers byte and word branches, DBcc, BSR, absolute-word
+and absolute-long JSR/JMP, PC-relative JSR/JMP, and all 110 aligned indexed-PC JSR/JMP candidates. There
+is no static internal entry, no non-JSR.L direct entry, and no indexed-PC zero-index base in the body.
+Exactly 37 aligned exact-longword references exist, each at its caller address plus two and each serving
+as that JSR operand. Dynamic indirect reachability beyond this static inventory remains explicitly
+unproved. Every direct caller's JSR and first complete continuation instruction is byte-pinned. Every
+continuation consumes D0; none immediately branches on the returned SR.
+
+**REGISTER, WIDTH, STATE AND CCR OWNERSHIP ARE EXACT.** `ADDQ.B` wraps `$803917` from `$FF` to `$00`
+without carrying into the high byte at `$803916`. The high byte is read but cannot affect the table index
+after `AND.W #$007F`. Incoming D0 dirt is irrelevant because `MOVEQ #$7F,D0` owns all 32 bits; the
+masked D0 is in `0..127`, and the final `MOVE.B` leaves all higher bits zero, so the API result is exactly
+`0..255`. A0 is preserved by its longword push and pop, A7 returns unchanged, and no other register is
+touched. The final `MOVE.B` owns N and Z from the returned byte, clears V and C, and preserves X. The
+focused model covers dirty D0, dirty state high byte, counter wrap, adjacent sentinels, all 256 recycled
+real-table draws, A0/A7 preservation, and both X inputs.
+
+Caller interpretation remains caller-local. Type `$11` uses `LSR.B #1`, so a table byte `$FF` becomes
+unsigned 127 before its bucket-word add. Type `$8D` uses `ASR.B #1`, so `$80` becomes signed -64 while a
+positive byte keeps its positive half. Both production paths now consume the same canonical unsigned
+byte; the merge does not collapse those opposite caller conventions.
+
+**CARTRIDGE STATIC REACHABILITY, DYNAMIC UNCERTAINTY AND PRODUCTION SOURCE REACHABILITY REMAIN
+SEPARATE.** Production has 19 canonical calls across ten files: `bee.js` 1, `boss2.js` 2,
+`boss2attacks.js` 2, `boss3.js` 1, `bossscripts.js` 2, `effects.js` 1, `hibachiguns.js` 3,
+`initbody.js` 3, `items.js` 2, and `spark.js` 2. One `bee.js` body represents two cartridge copies, so
+20 direct cartridge sites are source-represented: `$268744`, `$27699C`, `$27E02A`, `$27EAD6`,
+`$27EC86`, `$280CFA`, `$280D12`, `$289756`, `$28A26C`, `$28A3A2`, `$2933DE`, `$2933EE`, `$29924C`,
+`$299362`, `$29A132`, `$29A13C`, `$29D1EC`, `$2A81CC`, `$2A83E8`, and `$2A8810`. The other 17 direct
+cartridge callers remain source gaps. W461 does not silently classify them as absent or implemented.
+
+**THE TEMPORARY PRODUCTION RED NARROWED THE MASK TO `$003F`.** Changing only canonical
+`drawByte242E24` from `& 0x7f` to `& 0x3f` produced five meaningful W461 failures: dirty boundary
+ownership returned 190 instead of 255, the 256-draw sequence repeated the wrong 64-entry half, the real
+type `$11` witness returned 110 instead of 223, the real type `$8D` positive witness returned 78 instead
+of 127, and the source-instruction guard rejected the wrong mask. Seven independent cartridge,
+register-model, reachability, register and ROM-window sections remained green. Restoring the exact line
+returned `rng.js` byte-for-byte to pre-RED SHA-256
+`f5a3907b477e9df70e2ced5da1135c15d8efb5bd81557a3b90b98003e5da62bd`; focused W461 then passed 12
+of 12 with no skips.
+
+The live scanner APIs reconcile from W460 exactly: narrow heads **16 -> 16**, widened heads **86 -> 85**,
+body pairs **28 -> 27**, and body-only findings **22 -> 22**, derived live from current `headIndex()`.
+The removed `$242E24/$242E3A` pair was head-visible. Every live register holder from W446 through W461
+now agrees. The existing `$242E42 + $0080` production ROM window is retained exactly; no window was
+added or widened, and no generated rip or asset changed.
+
+Editing-agent validation on the restored final W461 tree:
+
+    focused W461                              12 pass / 0 fail / 0 skipped
+    focused W461 plus authoritative register 24 pass / 0 fail / 0 skipped
+    W446-W461 live-register chain            172 pass / 0 fail / 0 skipped
+    affected caller/RNG/register surface     586 pass / 0 fail / 0 skipped
+    node --test games/ddpdoj/tests/         4265 pass / 0 fail / 0 skipped
+    node games/ddpdoj/tools/webgate.mjs       31 PASS / 0 FAIL, exit 0
+    export-tables.py --verify               VERIFY OK at 613 windows
+    games/ddpdoj/tools/docket_ids.py        67 items, no duplicates, D70 next
+
+Coordinator-independent validation on the final tree repeated focused W461 at **12 pass**, the complete
+W446-W461 register chain at **172 pass**, the affected caller/RNG/register surface at **586 pass**, and
+the full suite at **4265 pass**. Webgate returned **31 PASS / 0 FAIL**, ROM verification returned
+**VERIFY OK at 613 windows**, and the docket remained 67 unique items with D70 next. The coordinator
+independently reproduced the complete 37-caller and 37-longword census, all five production RED failures,
+and exact `rng.js` restoration. Scope, hashes, line endings, CRLF `movement.js`, added punctuation,
+protected paths, generated outputs, staging state, and `git diff --check` are clean. The coordinator also
+corrected the regression's stale label for the preceding table from `$242CAC` to its pinned start
+`$242D24`; no behavior or cartridge claim changed.
+
+**NEXT AUDIT CANDIDATE: W462, `$2414BE` private `installTxBank` wrappers in `objslot8.js` and
+`objslot12.js`.** Both currently delegate to canonical `palette.js install2414BE`, making this a
+supportable wrapper-identity and reachability audit rather than an assumed merge. Pin the complete
+cartridge body, every transfer and caller convention, public compatibility requirements, and live source
+reachability before changing either wrapper. Continue Black Label through the full second loop and close
+its docket, then finish White Label last.

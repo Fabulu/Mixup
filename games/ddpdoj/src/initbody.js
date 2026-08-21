@@ -82,8 +82,6 @@ const G = {
   d8: 0x8130d8, da: 0x8130da, dc: 0x8130dc, de: 0x8130de, e0: 0x8130e0,
   e2: 0x8130e2, e4: 0x8130e4, e6: 0x8130e6, f6: 0x8130f6,
   f2: 0x8130f2, f4: 0x8130f4,
-  // $242E24's rank byte source + its increment side-effect
-  rankReg: 0x803916, rankCtr: 0x803917,
   scrollDelta: 0x813172,
 };
 
@@ -113,16 +111,6 @@ export function freeEnemy(ram, a5) {
 // deferred close through this call.
 export function readInitPosition(ram, rom, a5, unported) {
   readMovementInit(ram, rom, a5, unported);
-}
-
-// --------------------------------------------------------- $242E24: rank adjust
-// `addq.b #1,$803917 / moveq #$7f,D0 / and.w $803916,D0 / lea $242E42 /
-//  move.b (A0,D0.w),D0` -- returns a rank byte from table $242E42 indexed by
-// $803916 & $7F.  Type $11 halves it and adds it to the bucket word (+$28).
-function rankByte242E24(ram, rom) {
-  ram.setU8(G.rankCtr, (ram.u8(G.rankCtr) + 1) & 0xff);   // $242E24 addq.b #1
-  const d0 = rom.u8(0x242E42 + (ram.u16(G.rankReg) & 0x7f)); // $242E3A move.b (A0,D0)
-  return d0;
 }
 
 // ------------------------------------------- the heading-indexed table lookup
@@ -215,7 +203,7 @@ function init11(ram, rom, a5, a6, unported) {
   ram.setU8(a5 + R.rec28, (ram.u8(a5 + R.rec28) - d0) & 0xff);  // sub.b D0,($28,A5)
   ram.setU8(a5 + R.rec1A, (ram.u8(a5 + R.rec1A) - d0) & 0xff);  // sub.b D0,($1a,A5)
   // $268744: jsr $242E24 (rank byte); lsr.b #1,D0; add.b D0,($28,A5).
-  d0 = rankByte242E24(ram, rom) >> 1;                  // $26874A lsr.b #1,D0
+  d0 = drawByte242E24(ram, rom) >> 1;                  // $26874A lsr.b #1,D0
   ram.setU8(a5 + R.rec28, (ram.u8(a5 + R.rec28) + d0) & 0xff);  // add.b D0,($28,A5)
   // $268750: D0 = $8130BC >> 4; sub.b D0,($18,A5).
   d0 = (ram.u16(G.bc) & 0xff) >> 4;
@@ -1358,7 +1346,7 @@ BODY.set(0x276946, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + R.rec2B, drawWord242EC2(ram, rom));  // $276986..$27698C
   const rankBias = ((ram.u8(G.b6 + 1) - 4) & 0xff);
   ram.setU8(a5 + R.rec1A, ram.u8(a5 + R.rec1A) - rankBias); // $276990..$276998
-  const rankByte = rankByte242E24(ram, rom);
+  const rankByte = drawByte242E24(ram, rom);
   const signedHalf = ((rankByte << 24) >> 24) >> 1;    // $27699C/$2769A2 asr.b
   ram.setU8(a5 + R.rec1A, ram.u8(a5 + R.rec1A) + signedHalf); // $2769A4
 

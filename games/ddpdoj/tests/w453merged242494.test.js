@@ -304,11 +304,11 @@ test('SECTION 6: live registers include W453 and every later proved merge',
     const heads = headRegister();
     const pairs = bodyPairs();
     const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
-    assert.equal(heads.length, 86,
-      'W450 92, W451 removed $242684, W453 $242494, W457 $25D9E6, W458 $25DA60, W459 $25FF38 and W460 $24631C');
+    assert.equal(heads.length, 85,
+      'W450 92, W451 removed $242684, W453 $242494, W457 $25D9E6, W458 $25DA60, W459 $25FF38, W460 $24631C and W461 $242E24');
     assert.ok(!heads.includes(0x242494), '$242494 has one function head after the merge');
-    assert.equal(pairs.length, 28,
-      'W450 39, W451 removed one pair, W453 one, W454 one, W455 one, W456 four, W457 one, W458 one and W459 one');
+    assert.equal(pairs.length, 27,
+      'W450 39, W451 removed one pair, W453 one, W454 one, W455 one, W456 four, W457 one, W458 one, W459 one and W461 one');
     assert.ok(!pairs.some(([pair]) => pair === 'bossscripts.js dist242494 <> items.js dist242494'),
       'the deleted body must stay absent from the body-marker register');
     assert.equal(narrow.length, 16, 'W459 removed $25FF38 from W458 export-only floor of 17');
