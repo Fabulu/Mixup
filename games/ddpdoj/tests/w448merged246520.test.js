@@ -178,7 +178,7 @@ test('SECTION 1: the six axes the three copies disagreed on, each off the image'
 
     // -- and $246558 is entered by FALLING IN from $246552: no entry test, so a DO-WHILE
     assert.equal(l(0x246558), 0x4a526b00, '$246558 tst.w (A2) / $24655A bmi.w (first half)');
-    assert.equal(w(0x24655c), 0x0082, '  ...bmi.w displacement $82');
+    assert.equal(w(0x24655c), 0x0082, '  ...bmi.w displacement $81');
     assert.equal(0x24655c + 0x0082, 0x2465de, '  ...= $2465DE, the SKIP, not the exit');
   });
 
@@ -247,7 +247,7 @@ test('SECTION 2: `$246520` and `$24652A` are each claimed EXACTLY ONCE, and by t
   }
   // The register itself, held here as well as in w446/w447 so deleting one guard cannot hide it.
   // W450: THIS COUNTS `export function` CLAIMS ONLY, so it is a FLOOR. The scan that can also
-  // see private functions, arrows and methods reports 82 after W464. SECTION 2d below and
+  // see private functions, arrows and methods reports 81 after W465. SECTION 2d below and
   // tests/w450widenedregister.test.js SECTION 3 hold the set.
   const dup = [...idx].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
   assert.equal(dup.length, 16,
@@ -256,12 +256,12 @@ test('SECTION 2: `$246520` and `$24652A` are each claimed EXACTLY ONCE, and by t
     + 'not a row: ' + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
 });
 
-test('SECTION 2d [W450/W464]: the widened register is 82, and this wave\'s three-copy constructor '
+test('SECTION 2d [W450/W465]: the widened register is 81, and this wave\'s three-copy constructor '
   + 'stays merged under it', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
   const wide = headRegister();
-  assert.equal(wide.length, 82,
-    'the widened duplicate register is not 82. ' + W453_NOTE
+  assert.equal(wide.length, 81,
+    'the widened duplicate register is not 81. ' + W453_NOTE
     + 'W457 merged $25D9E6, W458 merged $25DA60, W459 merged $25FF38, W460 removed '
     + 'the optional $24631C forwarding shim, W461 merged the private $242E24 rank-byte '
     + 'body into rng.js drawByte242E24, W462 removed the private $2414BE adapter row, and W463 '

@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W464)
+Updated: 2026-08-21 (W465)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,14 +10,25 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W464 removed the second `$28E7A2` banner-clear loop.**
-`stageend.js clear28E7A2` is now the exported canonical body, and the arm-5 caller in `objslot8.js`
-imports it instead of maintaining `bannerClear28E7A2`. Live scanner APIs report 16 narrow heads, 82
-widened heads, 27 body pairs, and 22 body-only findings. The next direct batch candidate is **W465
-`$28C6C6`, `hud.js note28C6C6` and `stageend.js cue28C6C6`**. W461 was published as build
-`20260821132334`; W464 is the third wave after it and is not a publication wave. Continue the widened
-duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2
-coverage, and every other explicit docket item.
+`docs/DOCKET.md` is authoritative. **W465 removed the private `$28C6C6` caller-adapter identity.**
+`hud.js note28C6C6` is now the exported canonical sound poster. The result-screen helper keeps all
+four caller timers under the address-free name `throttledBonusCue` and delegates only the sound post.
+Live scanner APIs report 16 narrow heads, 81 widened heads, 27 body pairs, and 22 body-only findings.
+The next direct batch candidate is **W466 `$28F4C4`, `hiscorename.js drawGridFrame28F4C4` and
+`objslot12.js nameFrame28F4C4`**. W461 was published as build `20260821132334`; W465 is the fourth wave
+after it and is not a publication wave. W466 is the next fifth-wave publication, requiring a quiet tree
+and `export-web.mjs` before `publish.mjs`. Continue the widened duplicate rows, front-end screens
+D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and every other explicit
+docket item.
+
+## W465 VERIFIED: ONE `$28C6C6` SOUND POSTER
+
+The HUD helper is the cartridge entry's sound action and now owns its sole source identity. The result
+screen's former `cue28C6C6` was a caller adapter around two timer words, not a second implementation.
+Its renamed helper preserves the decrement, zero test, reload to 3, four caller paths, and canonical
+sound call. The authoritative register passed 12/12, the stage-end surface passed 44/44, and a direct
+poster check passed. Only widened heads changed, 82 to 81. Next is W466 `$28F4C4`, followed by the
+required fifth-wave publication.
 
 ## W464 VERIFIED: ONE `$28E7A2` BANNER CLEAR
 
@@ -25,7 +36,7 @@ The two private loops both cleared the 40 words at `SE.banner`, including the tw
 `banner28E7F8`. `stageend.js clear28E7A2` is now exported and its existing stage-end caller is unchanged.
 `objslot8.js` imports it for `$25C5F0`; the private `bannerClear28E7A2` identity is removed without an
 alias. The authoritative register passed 12/12 and the arm-5 plus stage-end caller surface passed 69/69.
-Only widened heads changed, 83 to 82. Next is W465 `$28C6C6`.
+Only widened heads changed, 83 to 82. W465 completed the next `$28C6C6` row above.
 
 ## W463 VERIFIED: PRIVATE `$28C0FC` COUNTED-GAP ADAPTERS REMOVED
 

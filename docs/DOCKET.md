@@ -5784,7 +5784,25 @@ and body-only findings remain 22. The authoritative register passed 12/12, and t
 stage-end caller surface passed 69/69. No ROM window or generated output changed. W464 is the third wave
 after published build `20260821132334` and is not a publication wave.
 
-**NEXT OBVIOUS BATCH CANDIDATE: W465, `$28C6C6`.** The widened register names `hud.js note28C6C6`
-and `stageend.js cue28C6C6`. Classify their caller adaptations directly, without restarting an exhaustive
-cartridge audit. Continue Black Label through the full second loop and close its docket, then finish White
-Label last.
+**HISTORICAL W464 RECOMMENDATION FOR W465: `$28C6C6`.** W465 completed that direct merge below.
+
+
+### D73: FOLLOW-UP, W465 `$28C6C6`: ONE SOUND POSTER, CALLER THROTTLE PRESERVED
+
+`hud.js note28C6C6` is the canonical bonus-event sound poster and is now exported. The result-screen
+`stageend.js cue28C6C6` claimant was not another cartridge implementation: it combined four callers'
+three-step RAM timer with the same sound post. That caller adaptation is now named `throttledBonusCue`
+and invokes the HUD export only when its timer expires. The four P1/P2 bee/item paths retain their timer
+addresses, decrement and reload order, and optional sound behavior. No compatibility alias is needed.
+
+The live registers move from 82 to **81 widened heads**. `$28C6C6` has one remaining claim, narrow heads
+remain 16, body pairs remain 27, and body-only findings remain 22. The authoritative register passed
+12/12, the existing stage-end caller surface passed 44/44, and a direct canonical-poster check passed.
+No ROM window or generated output changed. W465 is the fourth wave after published build
+`20260821132334` and is not a publication wave.
+
+**NEXT OBVIOUS BATCH CANDIDATE: W466, `$28F4C4`.** The widened register names
+`hiscorename.js drawGridFrame28F4C4` and `objslot12.js nameFrame28F4C4`. Handle their caller adaptation
+directly. W466 is the next fifth-wave publication: wait for a quiet tree, run `export-web.mjs` before
+`publish.mjs`, then verify and push the generated publication commit. Continue Black Label through the
+full second loop and close its docket, then finish White Label last.

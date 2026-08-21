@@ -490,12 +490,12 @@ test('SECTION 6: the doubly-claimed register is 16, and all later proved merges 
 // private $28C0FC counted-note adapter row at W463). See
 // tests/w450widenedregister.test.js; the number is cross-checked in all four
 // register holders so none of them can be read as the whole count.
-test('SECTION 6b [W450/W464]: the widened register is 82, and this wave\'s two merges hold under it too',
+test('SECTION 6b [W450/W465]: the widened register is 81, and this wave\'s two merges hold under it too',
   async () => {
     const { headRegister } = await import('./w450widenedscan.js');
     const wide = headRegister();
-    assert.equal(wide.length, 82,
-      'the widened duplicate register is not 82. ' + W453_NOTE
+    assert.equal(wide.length, 81,
+      'the widened duplicate register is not 81. ' + W453_NOTE
       + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
       + 'W460 removed the optional $24631C forwarding shim; W461 merged the private '
       + '$242E24 rank-byte body into rng.js drawByte242E24; W462 removed both private '

@@ -2214,7 +2214,7 @@ function tallyButton28556C(ram) {
 }
 
 /** `$28C6C6` -- the bonus-event sound cue (no arithmetic). WAVE A: now posts. */
-function note28C6C6(ctx) {
+export function note28C6C6(ctx) {
   ctx?.soundPost?.(0x28c6c6);  // WAVE A: BGM id=$19, tally bonus-event ($285434/$28553E)
 }
 

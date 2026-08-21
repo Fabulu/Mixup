@@ -108,7 +108,7 @@ import { buildChain246532, CHAIN_SPECS, loadAnimObjects24652A,
 // `hud.js` has PORTED that body since W116 and imports nothing from here, so this is
 // not a cycle: `hud.js -> items.js -> hud.js` is the pre-existing one, and this file
 // already sits above both.
-import { livesRow2878CC } from './hud.js';
+import { livesRow2878CC, note28C6C6 } from './hud.js';
 
 export const SE = {
   stage: 0x813092, stageX2: 0x813094, stageX4: 0x813096,   // $25FD0C
@@ -771,13 +771,13 @@ function f6BonusTick28DC2C(ram, ctx) {
       ram.setU16(a6 + RF.p1bee, u16(ram.u16(a6 + RF.p1bee) - 5)); // $28DC6E subq #5
       scoreByMask(ram, 0x50, 0x10);                         // $28DC74/$28DC7A jsr $286128
       credited = 1;                                         // $28DC74 moveq #1,d7
-      cue28C6C6(ram, ctx, CUE_TIMER.p1);                    // $28DC80..$28DC9C
+      throttledBonusCue(ram, ctx, CUE_TIMER.p1);             // $28DC80..$28DC9C
     }
     if (ram.u16(a6 + RF.p1item) !== 0) {                    // $28DCA4 tst/beq
       ram.setU16(a6 + RF.p1item, u16(ram.u16(a6 + RF.p1item) - 5)); // $28DCAA
       scoreByMask(ram, 0x50, 0x10);                         // $28DCB6 jsr $286128
       credited = 1;
-      cue28C6C6(ram, ctx, CUE_TIMER.p1);                    // $28DCC2..$28DCDE
+      throttledBonusCue(ram, ctx, CUE_TIMER.p1);             // $28DCC2..$28DCDE
     }
   }
   // ---- P2
@@ -787,13 +787,13 @@ function f6BonusTick28DC2C(ram, ctx) {
       ram.setU16(a6 + RF.p2bee, u16(ram.u16(a6 + RF.p2bee) - 5)); // $28DD1A
       scoreByMask(ram, 0x50, 0x08);                         // $28DD26 jsr $286128
       credited = 1;
-      cue28C6C6(ram, ctx, CUE_TIMER.p2);                    // $28DD2C..$28DD48
+      throttledBonusCue(ram, ctx, CUE_TIMER.p2);             // $28DD2C..$28DD48
     }
     if (ram.u16(a6 + RF.p2item) !== 0) {                    // $28DD50 tst/beq
       ram.setU16(a6 + RF.p2item, u16(ram.u16(a6 + RF.p2item) - 5)); // $28DD56
       scoreByMask(ram, 0x50, 0x08);                         // $28DD62 jsr $286128
       credited = 1;
-      cue28C6C6(ram, ctx, CUE_TIMER.p2);                    // $28DD6E..$28DD8A
+      throttledBonusCue(ram, ctx, CUE_TIMER.p2);             // $28DD6E..$28DD8A
     }
   }
   if (credited !== 0) return;                               // $28DD90 tst/bne rts
@@ -802,17 +802,15 @@ function f6BonusTick28DC2C(ram, ctx) {
   ram.setU16(a6 + RF.hold, ram.u16(0x81b610) !== 0 ? 0x08 : 0x01); // $28DD9A..$28DDAA
 }
 
-/** `$28C6C6`-style bonus cue, throttled by a 3-step timer at `timerAddr`.
- *  `$28C6C6` itself posts a sound cue (D0=$19/D1=$80/D2=$0 via `$28C02A`) and
- *  does NO arithmetic (the BCD conversion happened at the caller via `$242AC6`).
- *  Shipped as a note; the throttle decrement is real RAM. */
-function cue28C6C6(ram, ctx, timerAddr) {
+/** Result-screen bonus cue throttle shared by the four F6 drain caller sequences.
+ *  The imported sound poster has no arithmetic; each caller already converted its BCD value. */
+function throttledBonusCue(ram, ctx, timerAddr) {
   if (ram.u16(timerAddr) !== 0) {                           // tst.w/beq
     ram.setU16(timerAddr, u16(ram.u16(timerAddr) - 1));     // subq.w #1
     return;
   }
   ram.setU16(timerAddr, 3);                                 // move.w #$3
-  ctx.soundPost?.(0x28c6c6);  // WAVE A: BGM id=$19, bonus-event cue ($28C6C6 via $28C02A)
+  note28C6C6(ctx);
 }
 
 /** `$28DDB0..$28DE16` -- F7 medal walk: add the three per-index tables to the
