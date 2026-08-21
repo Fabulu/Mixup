@@ -6008,12 +6008,18 @@ W446-W462 live holder chain passed **187/187**.
 
 W475 is the fourth wave after live build `20260821175936` and is not a publication wave.
 
-**W475 RECOMMENDATION FOR W476: `$24150A`.** The widened scanner currently names
-`bomb.js installBombPalette`, `bossarrival.js note`, and the canonical `palette.js install24150A`. Classify
-the two caller-side helpers against the cartridge bank-upload entry while preserving the bomb palette guard,
-generic counted-note behavior, caller metadata, and public upload identity. W476 is the fifth interval wave
-and must publish from a quiet tracked tree after its editor and focused checks finish.
+### D84: W476 TYPE-5 CALL #13 `$2527CE`: HYPER STOCK FOLLOWER
 
-**NEXT OBVIOUS BATCH CANDIDATE: W476, `$24150A`.** Return the address to the canonical palette upload while
-preserving both caller-side behaviors. Continue Black Label through the full second loop and close its docket,
-then finish White Label last.
+`$28B62E` now runs `$2527CE` in the cartridge's type-5 order instead of counting it. For each live player
+with stock, the routine advances the fifteen-position history at `$81B660`/`$81B6A0`, records the current
+ship position, selects the stock-dependent delayed position and vertical offset, applies the loop-2 blink and
+draw gates, and appends the animated follower to sprite bucket 18 through the `$240A88` register convention.
+Stock 5 uses the cartridge's faster 16-frame animation cadence.
+
+Type-5 coverage moves from 19/23 to **20/23**. The remaining functional calls are #19 `$252BD0`, #22
+`$25292A`, and #23 `$252A52`. The focused W476 behavior check and syntax checks pass. W476 is the fifth
+interval wave and publishes after landing from a quiet tracked tree.
+
+Pure duplicate-register cleanup, including `$24150A`, is deliberately deferred until after Black Label's full
+second loop and White Label are functionally complete. The next bounded gameplay candidate is type-5 call #19
+`$252BD0`; verify its cartridge body and existing claims before translating it.

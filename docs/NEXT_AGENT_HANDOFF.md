@@ -1,25 +1,28 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W475)
+Updated: 2026-08-21 (W476)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
-Finish the complete Black Label Version-B game, including the full second loop, while closing the
-entire defect and finding docket along the way. Only after Black Label and its docket are complete,
-finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the project's terminal
-deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
-start.
+Finish the complete Black Label Version-B game, including the full second loop, then finish DoDonPachi
+DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
+fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W475 removed the generic palette coverage report's false `$24133C`
-cartridge-entry claim.** Exported `palette.js flush24133C` remains the once-per-frame upload and preserves
-all dirty-region copies, provenance, fade, and accounting behavior. `PaletteState#ledger` remains the same
-generic per-region report, with upload provenance now inside its body. Live scanner APIs report 15 narrow
-heads, 68 widened heads, 27 body pairs, and 22 body-only findings. The next direct batch candidate is **W476
-`$24150A`**, claimed by `bomb.js installBombPalette`, `bossarrival.js note`, and canonical `palette.js
-install24150A`. W471 remains live as build `20260821175936`; W475 is the fourth wave in the next five-wave
-interval. W476 must publish from a quiet tracked tree after its edit and focused checks. Continue the widened
-duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage,
-and every other explicit docket item.
+`docs/DOCKET.md` is authoritative. **W476 ports type-5 call #13 `$2527CE`, the hyper-stock follower.** It
+advances each live player's fifteen-position history, records the ship, selects the stock-dependent delayed
+position and offset, honors the loop-2 blink and draw gates, and appends the animated record to sprite bucket
+18. Type-5 coverage is now 20/23; the remaining calls are #19 `$252BD0`, #22 `$25292A`, and #23 `$252A52`.
+Live duplicate counts remain 15 narrow heads, 68 widened heads, 27 body pairs, and 22 body-only findings, but
+those rows wait until after White Label. W471 remains live as build `20260821175936`; W476 is the fifth
+interval wave and must publish from a quiet tracked tree after landing. The next bounded functional candidate
+is `$252BD0`.
+
+## W476 VERIFIED: TYPE-5 HYPER STOCK FOLLOWER
+
+`$28B62E` now dispatches `$2527CE` in the cartridge's type-5 call order. `hyper.js` shifts the fifteen saved
+positions at `$81B660`/`$81B6A0`, captures the current live ship, chooses the history sample and vertical
+offset from stock 1 through 5, applies the draw and loop-2 blink gates, and emits through bucket 18. The
+focused behavior test and syntax checks pass. Type-5 coverage moves from 19/23 to 20/23.
 
 ## W475 VERIFIED: GENERIC PALETTE REPORT OWNS NO UPLOAD ENTRY
 

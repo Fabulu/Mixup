@@ -249,14 +249,14 @@ asset path are live, and W471 published as build `20260821175936` after all
 4,280 DDPDOJ unit tests passed.
 
 That breadth does not mean the game is finished. The authoritative docket still
-tracks explicit defects and gaps, duplicate translated bodies, front-end
-screens, remaining enemy coverage, and behavior through the complete second
-loop. At W475 the duplicate scanners report 15 narrow heads, 68 widened heads,
-27 body pairs, and 22 body-only findings. Each row is closed by classifying and
-verifying the cartridge behavior rather than by hiding the address.
+tracks explicit defects and gaps, front-end screens, remaining enemy coverage,
+and behavior through the complete second loop. W476 ports the visible hyper-stock
+follower and raises the type-5 frame family to 20 of 23 calls. The duplicate
+scanners still report 15 narrow heads, 68 widened heads, 27 body pairs, and 22
+body-only findings, now deliberately deferred until functional completion.
 
 The completion order is deliberate: finish Black Label through the full second
-loop and close its entire docket, then finish White Label last. Current status
+loop, finish functional White Label, then close the duplicate-only audit rows. Current status
 lives in `docs/DOCKET.md` and `docs/NEXT_AGENT_HANDOFF.md`; old numbered
 worklogs are historical snapshots. `games/ddpdoj/README.md` contains setup,
 asset, oracle, testing, and fidelity details.

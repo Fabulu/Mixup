@@ -1,7 +1,7 @@
 // Chain-earned hyper item, request, activation, duration, and pending grant.
 // ROM: $249814/$285A12/$2875B4/$287682 and the P2 mirrors.
 
-import { u16 } from './ram.js';
+import { i16, u16 } from './ram.js';
 import { RAM, P } from './machine.js';
 import { spawnHyperItem } from './items.js';
 import { beamReset25270C } from './items.js';
@@ -10,11 +10,13 @@ import { enqueueRegisters } from './spritequeue.js';
 export const HYPER = Object.freeze({
   gate: 0x81b6e4, arm: 0x81b410, mode: 0x81b412,
   pause: 0x80392c, flags: 0x8130f8, drawGate: 0x812970,
+  frame: 0x80390a, phase: 0x80390c, secondLoop: 0x813098,
   p1: Object.freeze({
     who: 1, kind: 0x0c, player: RAM.player1, set: 0x81040a,
     active: 0x81b63e, gauge: 0x81b642, earn: 0x81b64a,
     power: 0x81b646, level: 0x81b654, req: 0x81b658,
     stock: 0x81b65c, pending: 0x81b6e0, subTick: 0x81b64e,
+    trail: 0x81b660,
     flashSprite: 0x81b6f2, endFlash: 0x81b6fa,
     liveFlash: 0x81b6fe, flashTick: 0x81b702, pos: 0x8103e8,
     chain: 0x81b5da, chainMeter: 0x81b5c0,
@@ -25,6 +27,7 @@ export const HYPER = Object.freeze({
     active: 0x81b640, gauge: 0x81b644, earn: 0x81b64c,
     power: 0x81b648, level: 0x81b656, req: 0x81b65a,
     stock: 0x81b65e, pending: 0x81b6e2, subTick: 0x81b650,
+    trail: 0x81b6a0,
     flashSprite: 0x81b6f6, endFlash: 0x81b6fc,
     liveFlash: 0x81b700, flashTick: 0x81b704, pos: 0x81044a,
     chain: 0x81b604, chainMeter: 0x81b5ea,
@@ -35,6 +38,38 @@ export const HYPER = Object.freeze({
 export const HYPER_MUTATE = { value: null };
 
 function side(p2) { return p2 ? HYPER.p2 : HYPER.p1; }
+
+function drawStockTrailSide(ram, h) {
+  const stock = ram.u16(h.stock);
+  if (i16(ram.u16(h.player)) >= 0 || stock === 0) return 0;       // $2527CE/$2527E6
+
+  // `$252850..$2528F6` shifts fifteen saved positions. Entry zero is not part
+  // of the history; the newest position is written at entry one.
+  for (let n = 15; n >= 2; n--) {
+    ram.setU32(h.trail + n * 4, ram.u32(h.trail + (n - 1) * 4));
+  }
+  const lead = ram.u16(h.player + 0x58) === 0 ? 0xf700 : 0xf800;
+  ram.setU32(h.trail + 4,
+    ((u16(ram.u16(h.player + 2) + lead) << 16) | ram.u16(h.player + 4)) >>> 0);
+
+  if (stock > 5 || ram.u16(HYPER.drawGate) !== 0) return 0;
+  if (ram.u16(HYPER.secondLoop) !== 0 && ram.u8(h.player + 0x3f) !== 0
+      && ram.u16(HYPER.phase) !== 0) return 0;
+
+  const saved = ram.u32(h.trail + stock * 12);
+  const long = u16((saved >>> 16) + 0xf000 + (5 - stock) * 0x0300);
+  if (i16(long) < -0x0500) return 0;                            // $25289E/$2528A2
+  const short = u16(saved + 0xfcc0);
+  const frame = ram.u16(HYPER.frame) & (stock === 5 ? 0x0f : 0x1e);
+  const sprite = 0x001b8578 + frame * (stock === 5 ? 0x34 : 0x1a);
+  enqueueRegisters(ram, 18, ((long << 16) | short) >>> 0, sprite, 0x0418, 5);
+  return 1;
+}
+
+/** `$2527CE`, the stock-dependent hyper follower for both players. */
+export function drawHyperStockTrail2527CE(ram) {
+  return drawStockTrailSide(ram, HYPER.p1) + drawStockTrailSide(ram, HYPER.p2);
+}
 
 /** `$287682/$287722`, threshold, refusal, immediate spawn, or pending bank. */
 export function grantHyper287682(ram, rom, ctx, p2 = false) {

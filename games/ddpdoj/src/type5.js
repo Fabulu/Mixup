@@ -10,7 +10,7 @@
 //           $252bd0   $281d9a   $25354c   $25292a   $252a52
 //   28b670: tst.w $81308c / beq $28b730 ...
 //
-// **THIS FILE RUNS NINETEEN OF THE TWENTY-THREE AND COUNTS THE OTHER FOUR.**
+// **THIS FILE RUNS TWENTY OF THE TWENTY-THREE AND COUNTS THE OTHER THREE.**
 // (W45 added #10 `$254680` and #11 `$255042`, the beam's segment driver and its
 // draw.  Both were counted as "three of the thirteen unported calls, with no
 // indication that they are the laser" -- `37-recon-laser.md` §5.)
@@ -155,6 +155,7 @@ import { clearPoolC289AE0, clearCuePool28AC3A } from './poolclear.js';
 import { poolClear as clearBulletPool28131E, poolPark as parkBulletSlots281330 }
   from './bullets.js';
 import { clearPool as clearSparkPool289F3A } from './spark.js';
+import { drawHyperStockTrail2527CE } from './hyper.js';
 
 export const TYPE5 = {
   handler: 0x28b5e0,
@@ -170,6 +171,7 @@ export const TYPE5 = {
   segmentDriver: 0x254680,  // $28B61C -- THE BEAM's 32-slot segment driver (W45)
   beamDraw: 0x255042,       // $28B622 -- THE BEAM's draw                   (W45)
   sparkDriver: 0x28a098,    // $28B628 -- POOL E, THE SHOT'S IMPACT SPARK (W53)
+  hyperStockTrail: 0x2527ce,// $28B62E -- stock-dependent follower draw        (W476)
   effectDriver: 0x288e4e,   // $28B5FE -- POOL B, THE DEATH EXPLOSION     (W54)
   subEffectDriver: 0x2890f2,// $28B604 -- POOL D, secondary debris        (W191)
   impactDriver: 0x27f95a,   // $28B5F4 -- POOL A, THE BEE/IMPACT DRIVER   (W111)
@@ -202,7 +204,7 @@ export function laserRampWouldMove(held, speedIdx, laserFloor) {
   return held >= TYPE5.laserRampFrames && speedIdx !== laserFloor;
 }
 
-/** The nine of the 23 `jsr` targets the port RUNS, by their position in the
+/** The twenty of the 23 `jsr` targets the port RUNS, by their position in the
  *  ROM's own call order.  Everything else is still counted.  The four ship-draw
  *  entries come BEFORE the option object in that order and that matters: the
  *  ship's records reach bucket 19 while the pods' reach bucket 15, and the two
@@ -238,6 +240,7 @@ export const TYPE5_PORTED = new Set([
   // `$289F54` (`src/shots.js firstHit` -> `src/spark.js spawnSpark`), because a
   // pool with a producer and no consumer is W33 4's leak.
   0x28a098,   // #12 THE SHOT'S IMPACT SPARK: pool E's driver + bucket 20 (W53)
+  0x2527ce,   // #13 THE HYPER STOCK FOLLOWER: position history + bucket 18 (W476)
   // W54 (E5b).  #5 is `$288E4E`, THE DEATH EXPLOSION's driver.  It ships in the
   // same commit as its allocator `$289004` (`src/effects.js spawnEffect`, called
   // from ~25 death arms in `src/handlers.js` and `src/midboss.js`) for W33 §4's
@@ -383,6 +386,9 @@ export function makeType5(rom) {
           // frame of every run before this wave -- and that is measurement, not
           // proof: the board's own writers into bucket 20 are unenumerated.
           ctx.sparkFrame = runSparkDriver(ram, rom, ctx);
+          break;
+        case TYPE5.hyperStockTrail:                      // $28B62E -> $2527CE
+          ctx.hyperStockTrails = drawHyperStockTrail2527CE(ram);
           break;
         case TYPE5.effectDriver:                        // $28B5FE -> $288E4E
           // WAVE 54.  FIFTH of twenty-three, and the position is load-bearing

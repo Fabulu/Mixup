@@ -4,12 +4,12 @@ This directory contains the JavaScript translation of **DoDonPachi DaiOuJou Blac
 
 ## Current status
 
-Updated 2026-08-21 after Wave 474.
+Updated 2026-08-21 after Wave 476.
 
 | area | current state |
 |---|---|
-| target | Finish Black Label Version-B through the full second loop and close every docket item. Finish White Label last. |
-| port | Active across the game loop, player, weapons, enemies, bosses, stage flow, scoring, chaining, hypers, rank, HUD, result and name-entry systems. Black Label is not complete yet. |
+| target | Finish Black Label Version-B through the full second loop, finish functional White Label, then close deferred duplicate-only findings. |
+| port | Active across the game loop, player, weapons, enemies, bosses, stage flow, scoring, chaining, hypers, rank, HUD, result and name-entry systems. W476 raised the type-5 frame family to 20/23 calls by porting the visible hyper-stock follower. Black Label is not complete yet. |
 | tests | `4,280` DDPDOJ unit tests passed in the W471 publication gate, with no failures or skips. |
 | duplicate audit | 15 narrow heads, 68 widened heads, 27 body pairs, and 22 body-only findings remain after W475. |
 | oracle | MAME 0.288, pinned to VERSION-B. Determinism and probe behavior are documented in `NOTES-oracle.md`. |
@@ -22,7 +22,7 @@ The live work queue is `../../docs/DOCKET.md`. The concise continuation state is
 
 The old README described a player-only vertical slice with no enemies or weapons. That stopped being accurate hundreds of waves ago. The port now contains broad cartridge-backed gameplay and presentation translations, including stage and boss object families, bullets, all three weapon systems, bombs, items and bees, result flow, high-score name entry, sound-post integration, and loop-aware systems.
 
-That breadth is not the definition of done. Remaining explicit gaps, defects, duplicate implementations, front-end work, enemy coverage, and second-loop behavior stay open in the docket until they are translated and verified. White Label work does not begin early to make the project appear complete.
+That breadth is not the definition of done. Remaining explicit gaps, defects, front-end work, enemy coverage, and second-loop behavior stay open until they are translated and verified. The order is Black Label through its full second loop, then functional White Label, then the deferred duplicate-only cleanup.
 
 ## ROM and generated assets
 
