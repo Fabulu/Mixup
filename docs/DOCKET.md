@@ -5906,9 +5906,28 @@ dependency edge, ROM window, or generated output changed.
 
 W470 is the fourth wave after live build `20260821162642` and is not a publication wave.
 
-**NEXT OBVIOUS BATCH CANDIDATE: W471, `$23E3E2`.** `bossarrival.js emitScaled` and
-`bossarrival.js emit23E3E2` claim the same cartridge address. Classify whether the former is caller
-adaptation or a duplicate body, preserve the arrival-effect behavior and caller conventions, and return the
-address to one canonical implementation. W471 is the fifth wave after the current live build, so publish
-from a quiet tree after landing it: run `games/ddpdoj/tools/export-web.mjs` before `tools/publish.mjs`.
-Continue Black Label through the full second loop and close its docket, then finish White Label last.
+**HISTORICAL W470 RECOMMENDATION FOR W471: `$23E3E2`.** W471 completed that direct
+classification below.
+
+
+### D79: FOLLOW-UP, W471 `$23E3E2`: SHARED EMITTER HELPER NO LONGER CLAIMS A CARTRIDGE ENTRY
+
+`bossarrival.js emit23E3E2` remains the private bucket-2 cartridge entry. The parameterized `emitScaled`
+helper is shared by the bucket-1, bucket-2, bucket-3, and bucket-22 entries and is not itself another
+`$23E3E2` entry. Its preceding documentation is now address-free; the exact four-entry family and
+bucket distinction remain in nearby cartridge commentary and line comments. All wrappers, bucket
+selection, extent scaling, position packing, attribute preservation, and caller behavior are unchanged.
+
+The live registers move from 74 to **73 widened heads**. `$23E3E2` has one remaining claimant in
+`bossarrival.js`; narrow heads remain 16, body pairs remain 27, and body-only findings remain 22. Focused
+boss-arrival and banner coverage passed **38/38**. The W446-W462 live holder chain passed **187/187**. No
+executable behavior, public ESM identity, dependency edge, ROM window, or generated output changed.
+
+W471 is the fifth wave after live build `20260821162642`, so publication is due from a quiet tree after
+landing: run `games/ddpdoj/tools/export-web.mjs` before `tools/publish.mjs`.
+
+**NEXT OBVIOUS BATCH CANDIDATE: W472, `$23FF06`.** `bomb.js packedPos23FF06` documents the shared
+position arithmetic while `draw23FF06` owns the cartridge entry and bucket-13 emission. Classify the helper
+claim, preserve both `$23FF06/$23FF42` arithmetic variants and draw behavior, and return the address to one
+canonical entry. Continue Black Label through the full second loop and close its docket, then finish White
+Label last.

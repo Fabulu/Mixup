@@ -464,7 +464,7 @@ test('SECTION 5b: cartridge static reachability, production source coverage and 
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live registers reconcile to 16 narrow, 74 widened after W470, 27 pairs and 22 body-only',
+test('SECTION 6: live registers reconcile to 16 narrow, 73 widened after W471, 27 pairs and 22 body-only',
   () => {
     const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
     const heads = headRegister();
@@ -478,7 +478,7 @@ test('SECTION 6: live registers reconcile to 16 narrow, 74 widened after W470, 2
       .some((body) => !visibleHeads.has(body)));
 
     assert.equal(narrow.length, 16, 'the private init helper never formed a narrow export row');
-    assert.equal(heads.length, 74, 'W463 removes $28C0FC to leave 83; W464 removes $28E7A2 to leave 82; W465 removes $28C6C6 to leave 81; W466 removes $28F4C4/$28F666 to leave 79; W467 removes $285A12 to leave 78; W468 removes $2A6EDC to leave 77; W469 removes $23C622 to leave 76; W470 removes $23BF74/$23BFDB to leave 74');
+    assert.equal(heads.length, 73, 'W463 removes $28C0FC to leave 83; W464 removes $28E7A2 to leave 82; W465 removes $28C6C6 to leave 81; W466 removes $28F4C4/$28F666 to leave 79; W467 removes $285A12 to leave 78; W468 removes $2A6EDC to leave 77; W469 removes $23C622 to leave 76; W470 removes $23BF74/$23BFDB to leave 74; W471 removes $23E3E2 to leave 73');
     assert.equal(heads.includes(BODY_START), false, '$242E24 leaves the widened head register');
     assert.equal(heads.includes(0x2414be), false, '$2414BE leaves the widened head register in W462');
     assert.equal(pairs.length, 27, 'W461 removes the two-marker duplicate body edge');

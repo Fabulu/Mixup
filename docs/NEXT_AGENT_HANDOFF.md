@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W470)
+Updated: 2026-08-21 (W471)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,16 +10,23 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W470 removed `Game#boot`'s false `$23BF74/$23BFDB`
-front-end endpoint claims.** The method still supplies `Game` state, stores `bootResult`, returns it, and
-retains the cold-boot and board fall-through warning inside its body. Exported `frontend.js
-bootFrontEnd23BF74` remains the sole canonical claimant for both endpoints. Live scanner APIs report 16
-narrow heads, 74 widened heads, 27 body pairs, and 22 body-only findings. The next direct batch candidate is
-**W471 `$23E3E2`**, where `bossarrival.js emitScaled` and `bossarrival.js emit23E3E2` claim the same
-cartridge address. W470 is the fourth wave after live build `20260821162642`; W471 will be the fifth and
-must be published from a quiet tree after `export-web.mjs`. Continue the widened duplicate rows, front-end
-screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and every other explicit
-docket item.
+`docs/DOCKET.md` is authoritative. **W471 removed the shared emitter helper's false `$23E3E2`
+cartridge-entry claim.** Private `bossarrival.js emit23E3E2` remains the bucket-2 entry, while
+parameterized `emitScaled` still serves the four extent-scaled bucket variants. Live scanner APIs report 16
+narrow heads, 73 widened heads, 27 body pairs, and 22 body-only findings. The next direct batch candidate is
+**W472 `$23FF06`**, where `bomb.js packedPos23FF06` documents arithmetic shared by the `$23FF06/$23FF42`
+variants and `draw23FF06` owns the bucket-13 entry. W471 is the fifth wave after live build
+`20260821162642`, so publish it from a quiet tree after `export-web.mjs`. Continue the widened duplicate
+rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and every
+other explicit docket item.
+
+## W471 VERIFIED: PARAMETERIZED EMITTER HELPER OWNS NO CARTRIDGE ENTRY
+
+`bossarrival.js emitScaled` is one shared implementation parameterized by sprite bucket, not a second
+`$23E3E2` entry. Its preceding documentation is address-free, while the cartridge family and bucket
+mapping remain documented beside the code. The four wrappers, extent scaling, packed position, attributes,
+and calls are unchanged. Focused boss-arrival and banner coverage passed 38/38; the W446-W462 holder chain
+passed 187/187. Only widened heads changed, 74 to 73. Publish W471 now, then take W472's `$23FF06` row.
 
 ## W470 VERIFIED: GAME BOOT ADAPTER OWNS NO FRONT-END ENDPOINT
 
@@ -27,8 +34,8 @@ docket item.
 the six-call front-end setup body. The method still stores and returns `bootResult`, remains absent from the
 constructor, and retains the full cold-boot and `$23BFDB` fall-through explanation inside its body. Its
 preceding documentation is now address-free. Focused front-end and cold-boot coverage passed 21/21; the
-W446-W462 holder chain passed 187/187. Only widened heads changed, 76 to 74. Take W471's `$23E3E2` row
-next, then publish it as the fifth wave.
+W446-W462 holder chain passed 187/187. Only widened heads changed, 76 to 74. W471 completed the next
+row above and is the fifth-wave publication.
 
 ## W469 VERIFIED: SLOT-12 CLEAR ADAPTER OWNS NO CARTRIDGE HEAD
 

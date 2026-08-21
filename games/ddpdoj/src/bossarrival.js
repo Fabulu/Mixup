@@ -406,9 +406,10 @@ const EMITTER_BUCKET = new Map([
   [0x23f82a, 22],                 // $809274 / $80AFE0
 ]);
 
-/** The shared extent-scaled emit body.  `$23E3E2` / `$23E36A` / `$23E45A` are
- *  this routine with one difference: which sprite bucket they write to. */
+/** Runs the shared extent-scaled emitter body for one sprite bucket. */
 function emitScaled(ram, rom, bucket, d1, d2, d3, d4, d6) {
+  // `$23E3E2` / `$23E36A` / `$23E45A` are this routine with one difference:
+  // which sprite bucket they write to.
   let d7 = (d6 >>> 8) >>> 0;                            // lsr.l #8
   const axis = (v) => u16(u16(-v) + 0x80);              // neg.w / addi.w #$80
   // ---- axis A: D3's bits 8..0, halved -> a BYTE offset into $23E78C

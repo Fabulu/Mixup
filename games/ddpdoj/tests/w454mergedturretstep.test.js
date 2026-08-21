@@ -352,8 +352,8 @@ test('SECTION 7: W454 merge stays absent after every later register change', () 
   const pairs = bodyPairs();
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   assert.equal(narrow.length, 16, 'W459 merged $25FF38 from W458 narrow baseline 17');
-  assert.equal(heads.length, 74,
-    'W463 removes $28C0FC to leave 83; W464 removes $28E7A2 to leave 82; W465 removes $28C6C6 to leave 81; W466 removes $28F4C4/$28F666 to leave 79; W467 removes $285A12 to leave 78; W468 removes $2A6EDC to leave 77; W469 removes $23C622 to leave 76; W470 removes $23BF74/$23BFDB to leave 74');
+  assert.equal(heads.length, 73,
+    'W463 removes $28C0FC to leave 83; W464 removes $28E7A2 to leave 82; W465 removes $28C6C6 to leave 81; W466 removes $28F4C4/$28F666 to leave 79; W467 removes $285A12 to leave 78; W468 removes $2A6EDC to leave 77; W469 removes $23C622 to leave 76; W470 removes $23BF74/$23BFDB to leave 74; W471 removes $23E3E2 to leave 73');
   assert.equal(pairs.length, 27,
     'W450 39, W451 one removal, W453 one, W454 one, W455 one, W456 four, W457 one, W458 one, W459 one and W461 one');
   assert.ok(!pairs.some(([pair]) => pair === 'handlers.js fire11 <> turret.js turretStep'),
