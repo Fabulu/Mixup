@@ -1,155 +1,116 @@
 # DoDonPachi DaiOuJou
 
-> ## STATUS, corrected 2026-08-01 (wave 6)
->
-> **The line below - "no ROM, no code, no port" - was true when this file was
-> written and is not true now.** The rest of the page is the phase-3 capability
-> record and is kept because it is still the argument for how the oracle was
-> chosen; read this box first.
->
-> | | |
-> |---|---|
-> | oracle | `tools/oracle/pgm.py`, pinned to VERSION-B, determinism a red-validated gate - `NOTES-oracle.md` |
-> | assets | decode bit-exact against MAME, gated, exported with a manifest - `NOTES-assets.md` |
-> | port | `src/` - main loop, ISR, counters, object driver + budget, allocator, THE PLAYER. `pgm.py flyaround`: **0 divergent frames, 34 columns, 2,200 logic frames** |
-> | renderer | `src/render/` - `pgm.py pixslice`: **13,647,872 / 13,647,872 pixels identical to MAME over 136 frame pairs**, 9 mutations RED - `NOTES-render.md` |
-> | demo | `index.html` (serve over HTTP, open `/games/ddpdoj/`). Needs ROM-derived files under `rip/` that are never committed. **The page has never been executed** - see `docs/worklog/ddpdoj/06-impl-pixel-slice.md` |
-> | NOT done | **enemies and all three weapons.** Wave 5 is BLOCKED: none of the five enemy handlers, four shot handlers or the bomb is translated, and each is a loud named throw carrying its ROM address |
->
-> The plan and its wave-by-wave exit conditions: `PLAN-vertical-slice.md`.
-> The evidence for every number above: `docs/worklog/ddpdoj/`.
+This directory contains the JavaScript translation of **DoDonPachi DaiOuJou Black Label Version-B** for the IGS PGM board. It is a source port, not a 68000 emulator. Cartridge routines are translated into named JavaScript functions and retain their original ROM addresses so behavior can be checked against the board.
 
-## Phase 3, preparatory - the capability question, and how it was answered
+## Current status
 
-This folder existed first to answer one question ahead of time, because
-answering it late would be expensive:
+Updated 2026-08-21 after Wave 466.
 
-> **Can we build an oracle for this at all?**
+| area | current state |
+|---|---|
+| target | Finish Black Label Version-B through the full second loop and close every docket item. Finish White Label last. |
+| port | Active across the game loop, player, weapons, enemies, bosses, stage flow, scoring, chaining, hypers, rank, HUD, result and name-entry systems. Black Label is not complete yet. |
+| tests | `4,280` DDPDOJ unit tests passed in the W466 publication gate, with no failures or skips. |
+| duplicate audit | 16 narrow heads, 79 widened heads, 27 body pairs, and 22 body-only findings remain after W466. |
+| oracle | MAME 0.288, pinned to VERSION-B. Determinism and probe behavior are documented in `NOTES-oracle.md`. |
+| renderer | The original pixel-slice gate matched `13,647,872 / 13,647,872` pixels over 136 frame pairs. This is historical slice evidence, not a claim that the unfinished full game is pixel-perfect. |
+| live build | `20260821162642` at <https://gbtman.pages.dev/games/ddpdoj/>. |
 
-Everything this project does rests on running the original binary as a reference and
-diffing against it (`docs/knowledge/01-the-oracle-method.md`). Batman had PyBoy. Gradius
-has Mesen. DaiOuJou would need MAME - and if MAME cannot give us execution hooks,
-deterministic headless stepping and a readable framebuffer, then the method does not
-apply and we would need to know that *before* committing to the game, not after.
+The live work queue is `../../docs/DOCKET.md`. The concise continuation state is `../../docs/NEXT_AGENT_HANDOFF.md`. Older numbered files under `../../docs/worklog/ddpdoj/` are historical wave records and may describe a much earlier port.
 
-## Why this one is different, and why it is the point
+## What is and is not complete
 
-Batman taught **semantic reconstruction**. Gradius teaches **hardware-shaped time**.
-DaiOuJou needs both, and it raises the stakes on the second one:
+The old README described a player-only vertical slice with no enemies or weapons. That stopped being accurate hundreds of waves ago. The port now contains broad cartridge-backed gameplay and presentation translations, including stage and boss object families, bullets, all three weapon systems, bombs, items and bees, result flow, high-score name entry, sound-post integration, and loop-aware systems.
 
-**Slowdown in a Cave shooter is a gameplay mechanic, not an artifact.** Dense bullet
-patterns are survivable *because* the machine slows down; players time their movement
-against it; scoring depends on it. A port with perfect logic and wrong slowdown is wrong
-in precisely the way that matters most to the people who care about this game.
+That breadth is not the definition of done. Remaining explicit gaps, defects, duplicate implementations, front-end work, enemy coverage, and second-loop behavior stay open in the docket until they are translated and verified. White Label work does not begin early to make the project appear complete.
 
-Read `docs/knowledge/06-lag-and-slowdown.md` before anything else here. The three
-mechanisms it describes - dropped updates, partial completion, time dilation - are not
-interchangeable, and **which one this hardware does decides the port's architecture**.
+## ROM and generated assets
 
-## ANSWERED - the oracle is viable, and both assumptions were wrong
+No ROM, disassembly listing, or generated cartridge asset is committed to this repository. Supply a legally owned `ddpdojblk` MAME set locally. The expected identity is recorded in `game.json`; the decrypted 6 MiB `maincpu` region has SHA-256:
 
-**MAME 0.288 satisfies all three oracle criteria**, headless, unattended, on Windows, with
-a working probe validated on a ROM we already own. `-video none` is a *documented* option
-(no undocumented mode needed, unlike Mesen), two runs produced byte-identical output
-including PNG bytes, and execution hooks work via `install_read_tap()` - an opcode fetch is
-a read, so a read tap is an execution hook with CPU registers readable inside it.
-
-**It is not Cave hardware.** DaiOuJou is an **IGS PolyGameMaster (PGM)** board -
-68000 @ 20 MHz, Z80 @ 8.4672 MHz, IGS023 video - in `src/mame/igs/pgm.cpp`. The 1997
-*DoDonPachi* is the Cave one. Reasoning carried over from "Cave board" needs re-checking.
-
-**The refresh rate is 15625/264 = 59.185606060606… Hz**, a frame period of exactly
-16.896 ms. Derived from the driver by two independent agents. The "about 54" estimate was
-wrong by nearly five frames a second - which is exactly why it was never written down.
-
-**Bullets are sprites**, and the sprite list is the first `0xa00` bytes of main RAM
-(`0x800000-0x8009ff`), DMA'd to the IGS023 at vblank rising. **Hard cap 256 entries**,
-10 bytes each, terminated early. That cap is a gameplay constraint and must be preserved -
-see `docs/knowledge/06` on object scarcity.
-
-**One fidelity caveat that must not be forgotten:** the IGS027A ARM7 protection ROM is
-`NO_DUMP`. MAME simulates it in ~40 lines of C++ and **decrypts the 68k ROM in place**. The
-protection does no game logic - good - but it means "the original binary" our oracle runs
-is *a decrypted image plus a simulated device*. **Any hash this project pins must say
-which.** That is a provenance question we have never had before.
-
-See `NOTES-machine.md` for the full memory map, sprite format and set list.
-
-## What we still do NOT know, and must not guess
-
-This project's rule is that a number is not a fact until it is measured. Nothing below is
-settled:
-
-- **Whether the slowdown is deterministic.** If the same inputs produce the same slowdown
-  on the same board, it can be verified frame-exactly. If not, the whole verification
-  strategy changes.
-- **Its granularity and mechanism**, per `06-lag-and-slowdown.md`.
-- **Whether the game's own logic observes it.** If any counter or RNG advances per *loop
-  iteration* rather than per frame, slowdown changes game *state* and not merely its pace
-  - and that cannot be bolted on afterwards at any price. This is the single most important
-  question in this folder.
-
-## The ROM
-
-**There is no ROM here and none is expected yet.** As with Batman and Gradius, nothing
-ROM-derived will ever be committed, and the cartridge/board image is supplied by whoever
-runs it. `.gitignore` already excludes `*.zip`-adjacent ROM forms for the other consoles;
-add whatever MAME's set requires when the time comes.
-
-The capability question can be answered **without** it - see below.
-
-## How to prove the oracle without the ROM
-
-MAME supports the Game Boy and the NES. We already have legal images for both from the
-earlier phases. So MAME's Lua API can be validated end to end on a ROM we already own,
-and that buys two things at once:
-
-1. **Proof of capability** - execution hooks, memory access, headless determinism,
-   framebuffer readback - on the same three criteria PyBoy and Mesen were judged by.
-2. **A cross-check of Gradius.** Running the same NES ROM under both Mesen and MAME and
-   getting the same per-frame state is far stronger evidence than either alone. Two
-   independent emulators agreeing is a much better reference than one emulator asserted to
-   be accurate.
-
-Everything about the *driver* - the machine, the clocks, the memory map, the refresh rate
-- is readable from MAME's source, which is public. That is a separate exercise from
-running it and needs no ROM either.
-
-## Where this sits
-
-`games/ddpdoj/` per the multi-game layout, and **it is now in
-`games/index.json`** (wave 7). That reverses the note that stood here before,
-and the reason it stood is worth keeping: the page used to fetch 58 MiB of
-graphics ROM plus a 4.0 MiB board capture straight out of the gitignored
-`rip/`, and a launcher tile that always fails is worse than no tile.
-
-What changed is that the assets got measured instead of guessed at. The page
-replays 161 captured frames with the ship's eight records written in from the
-port's own simulation (wave 12; before that they were relocated, position only),
-so the set of ROM bytes it can ever read is fixed and enumerable: 415 BG tiles,
-159 TX tiles and 166 sprite streams - 0.14 % of each sprite region. Sixteen of
-those streams are the ship's BANK FRAMES and are not in the recording at all:
-the recorded ship never tilted, so they are harvested from the sprite ROMs by
-address and shipped as `manifest.ship.pairs`. `tools/export-web.mjs` exports exactly those, decoded (tiles) and
-re-based (sprite streams), into `assets/`:
-
-```
-node games/ddpdoj/tools/export-web.mjs      363 KiB served, gzipped
-node games/ddpdoj/tools/bundlegate.mjs      the bundle renders 15955968/15955968
-node games/ddpdoj/tools/webgate.mjs         the browser fetch path, over real HTTP
-node --test games/ddpdoj/tests/             77 pass, 0 skipped
-python -m http.server 8000                  then open /games/ddpdoj/
+```text
+4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c
 ```
 
-`assets/` is ROM-derived and gitignored like every other game's. The card in the
-picker carries `code.page`, not `code.entry`: the launcher boots a game by
-importing entry + mods + input modules and this port has none of the three - it
-is a translated 68000 main loop plus a replayed capture, not a CPU emulator.
+Generate the local tables and browser bundle with:
 
-The page states on its own face what is simulated (the ship) and what is not
-(the enemies, every weapon, all sound). Wave 11 ported main-loop call #4
-(`$23D2AE`) whole - the port now *builds* a display list, verified byte-for-byte
-against the board over 1,901 consecutive frames - but it has a simulated feeder
-for one of the thirty sprite buckets, so the capture is still what fills the
-screen. Revisit when the producers land and the capture can be deleted
-(`PLAN-no-recordings.md`).
+```sh
+python games/ddpdoj/tools/export-tables.py
+node games/ddpdoj/tools/export-web.mjs
+```
+
+At W466, `export-web.mjs` produced a 12,401 KiB local bundle containing 4,355 sprite streams and 161 captured frames with 7,671 records. `rip/` and `assets/` are ROM-derived, gitignored, and must not be committed.
+
+Whenever a wave adds a ROM window, regenerate with `export-web.mjs` before publishing. Otherwise the deployed site serves stale generated data even when the source is current.
+
+## Run locally
+
+After exporting assets:
+
+```sh
+python -m http.server 8000
+# open http://localhost:8000/games/ddpdoj/
+```
+
+Module imports and asset fetches require HTTP rather than opening `index.html` directly.
+
+## Test and gate
+
+The unit suite uses synthetic fixtures and does not require a ROM:
+
+```sh
+node --test games/ddpdoj/tests/
+```
+
+ROM-backed and browser checks require locally generated data:
+
+```sh
+python games/ddpdoj/tools/export-tables.py --verify
+node games/ddpdoj/tools/bundlegate.mjs
+node games/ddpdoj/tools/webgate.mjs
+```
+
+The repository-wide publication path runs every game gate, rejects gate failures and disallowed gate skips, checks for ROM leakage, builds the distribution, deploys it, and polls the live site:
+
+```sh
+node games/ddpdoj/tools/export-web.mjs
+node tools/publish.mjs
+```
+
+Publishing requires a quiet working tree. Pushing Git does not publish the site, and publishing does not replace a Git push.
+
+## Machine and oracle facts
+
+DaiOuJou runs on an **IGS PolyGameMaster (PGM)** board, not on a proprietary Cave board. The relevant hardware is a 68000 at 20 MHz, a Z80 at 8.4672 MHz, and IGS023 video. The refresh rate is exactly `15625 / 264`, or approximately `59.185606 Hz`.
+
+Bullets are sprites. The first `0xA00` bytes of main RAM form a vblank-DMA sprite list with a hard maximum of 256 ten-byte entries. That capacity is gameplay behavior and must remain visible in the port.
+
+MAME's IGS027A protection ROM is marked `NO_DUMP`. MAME simulates the device and decrypts the 68000 image in place. Oracle evidence therefore identifies the decrypted VERSION-B image rather than pretending it is an untouched physical ROM dump. See `NOTES-machine.md` for the memory map, sprite format, set identity, and provenance details.
+
+The oracle is MAME 0.288 in headless mode. Lua hooks observe execution and state, and repeated runs established deterministic output for the validated scenarios. Static ROM analysis inventories branches and routines; dynamic oracle comparisons decide whether translated behavior is correct. Neither substitutes for the other.
+
+## Slowdown remains a fidelity requirement
+
+Slowdown in a Cave shooter is gameplay, not cosmetic performance loss. Dense patterns, movement timing, scoring, and survival depend on it. A translation with correct logic but wrong slowdown is still wrong.
+
+The remaining slowdown work must establish its mechanism, granularity, determinism, and whether game state advances per frame or per partial update. `../../docs/knowledge/06-lag-and-slowdown.md` records the architectural distinctions that must not be guessed.
+
+## Key paths
+
+| path | purpose |
+|---|---|
+| `src/` | translated game code |
+| `src/render/` | browser renderer and display-list interpretation |
+| `tests/` | ROM-free synthetic unit and regression tests |
+| `tools/` | exporters, scanners, gates, and the MAME oracle |
+| `assets/` | generated browser data, gitignored |
+| `rip/` | generated ROM extraction data, gitignored |
+| `game.json` | game metadata and ROM identity |
+| `../../docs/DOCKET.md` | authoritative open and completed work ledger |
+| `../../docs/NEXT_AGENT_HANDOFF.md` | current continuation state |
+
+## Historical capability record
+
+The project began with a preparatory question: could MAME provide deterministic headless stepping, execution hooks, readable machine state, and framebuffer evidence strong enough to support the same oracle method used for Batman and Gradius?
+
+That question was answered yes. Early waves validated MAME's Lua API, exact timing, VERSION-B identity, asset decoding, display-list translation, and a pixel-perfect vertical slice. Those experiments justified the current port architecture. Their measurements remain in `NOTES-oracle.md`, `NOTES-assets.md`, `NOTES-render.md`, `PLAN-vertical-slice.md`, and `../../docs/worklog/ddpdoj/`, but their old statements about an unexecuted page or missing weapons are historical only.

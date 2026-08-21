@@ -5819,9 +5819,11 @@ body pairs remain 27, and body-only findings remain 22. The authoritative regist
 existing slot-12 caller surface passed 26/26. No ROM window or generated output changed in the wave
 commit.
 
-W466 is the fifth wave after published build `20260821132334`. After this wave commit lands on `main`,
-run the authorized quiet-tree publication with `games/ddpdoj/tools/export-web.mjs` before
-`tools/publish.mjs` and record the resulting live build.
+W466 was committed as `7584a63`, pushed to `origin/main`, and published from a quiet tree after
+`games/ddpdoj/tools/export-web.mjs` regenerated the local bundle. The repository-wide publication gate
+passed, including all **4,280/4,280** DDPDOJ unit tests, bundle and web-fetch gates, the other game gates,
+and the ROM-leak guard. Live build **`20260821162642`** was confirmed at the production URL. W467 begins
+the next five-wave publication interval.
 
 **NEXT OBVIOUS BATCH CANDIDATE: W467, `$285A12`.** The widened register names `hud.js hyper285A12`
 and `hyper.js stepHyper285A12`. Classify the HUD caller adaptation directly after publication. Continue

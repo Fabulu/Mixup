@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W466)
+Updated: 2026-08-21 (W466 published as `20260821162642`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -15,10 +15,11 @@ start.
 wrapper identity no longer claims the canonical `$28F4C4` grid dispatch or `$28F666` button-tail end.
 Live scanner APIs report 16 narrow heads, 79 widened heads, 27 body pairs, and 22 body-only findings.
 The next direct batch candidate is **W467 `$285A12`, `hud.js hyper285A12` and
-`hyper.js stepHyper285A12`**. W466 is the fifth wave after live build `20260821132334`; land its wave
-commit, then publish from the quiet tree with `games/ddpdoj/tools/export-web.mjs` before
-`tools/publish.mjs`. Continue the widened duplicate rows, front-end screens D33/D34/D35/D37, remaining
-enemy types, full Black Label loop-2 coverage, and every other explicit docket item.
+`hyper.js stepHyper285A12`**. W466 was committed as `7584a63`, pushed, and published from a quiet tree
+after `games/ddpdoj/tools/export-web.mjs`. All publication gates passed and live build
+`20260821162642` was confirmed. W467 starts the next five-wave publication interval. Continue the
+widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black Label
+loop-2 coverage, and every other explicit docket item.
 
 ## W466 VERIFIED: NAME-FRAME GLUE OWNS NO CANONICAL ENDPOINT
 
@@ -26,7 +27,7 @@ The former `nameFrame28F4C4` is a private caller composite around already export
 steps. It is now `nameEntryFrame`, with its cartridge-range commentary inside the body. Every executable
 statement and caller stays in place, while `$28F4C4` and `$28F666` each return to one canonical claimant.
 The authoritative register passed 12/12 and the slot-12 surface passed 26/26. Only widened heads changed,
-81 to 79. Publish W466 next, then take W467 `$285A12`.
+81 to 79. W466 is live as build `20260821162642`; take W467 `$285A12` next.
 
 ## W465 VERIFIED: ONE `$28C6C6` SOUND POSTER
 
@@ -35,7 +36,7 @@ screen's former `cue28C6C6` was a caller adapter around two timer words, not a s
 Its renamed helper preserves the decrement, zero test, reload to 3, four caller paths, and canonical
 sound call. The authoritative register passed 12/12, the stage-end surface passed 44/44, and a direct
 poster check passed. Only widened heads changed, 82 to 81. W466 completed the next two endpoint rows
-above and is the required fifth-wave publication.
+above and was the required fifth-wave publication.
 
 ## W464 VERIFIED: ONE `$28E7A2` BANNER CLEAR
 

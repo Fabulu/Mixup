@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | stage 1 complete; stage 2 in progress |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; full second loop and docket still in progress |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -32,7 +32,7 @@ files that only exist after *you* run an exporter against *your* own copy.
 
 **The published site is a separate question, and the answer is not the same.**
 `tools/build-dist.mjs` reads every ROM present and blocks any file that appears
-byte-for-byte inside one - against 12 ROM files, 251 files checked, 47 of them
+byte-for-byte inside one - against 12 ROM files, 330 files checked, 58 of them
 also checked decompressed. It is not, however, absolute: **six files are
 published verbatim on purpose**, each enumerated in `PUBLISH_VERBATIM` with its
 own line of reasoning, and the list is printed on every single build. They are
@@ -164,21 +164,21 @@ There is **one gate per game**, and they are separate runners:
 ```sh
 npm test                                        # Batman unit tests only
 npm run test-all                                # Batman gate - 27 stages
-node games/gradius/tools/test-all.mjs           # Gradius gate - 12 stages
+node games/gradius/tools/test-all.mjs           # Gradius gate - 13 stages
 node --test games/gradius/tests/                # Gradius unit tests
 node --test games/ddpdoj/tests/                 # DaiOuJou unit tests
 npm run typecheck                               # tsc over the ports - no ROM needed
 ```
 
 `node tools/publish.mjs` is the only thing that runs **all** of them, and it
-refuses to publish on a red gate *or on any skip*. `--only gradius` /
+refuses to publish on a red gate or an unexpected gate skip. `--only gradius` /
 `--only ddpdoj` gate one game; `--dry` gates and builds without deploying.
 
-At DDPDOJ W183: **2,984 unit tests green** - 740 Batman, 725 Gradius, 1,519
-DaiOuJou. These are the recorded release counts, not a substitute for
-running the relevant focused check after a change.
-The Gradius gate is not yet wired into the root runner (its header says so and
-why: two writers in one file).
+At DDPDOJ W466, its unit suite records **4,280/4,280 passing**. The same
+publication completed the Gradius unit and 13-stage gate, the DDPDOJ bundle and
+web-fetch gates, the 27-stage Batman gate, and the repository ROM-leak guard.
+Live build `20260821162642` is the recorded release. These counts document that
+release; each change still needs its relevant focused check.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -239,27 +239,27 @@ start screen with level select and a starting power-up picker. They include
 checkpoint death-spiral) and `always-on-enemies`, which lifts the NES
 sprite-per-scanline cap without removing the flicker the game uses deliberately.
 
-### DoDonPachi DaiOuJou - stage 2 in progress
+### DoDonPachi DaiOuJou - Black Label in progress
 
-The active work. Stage 1 is feature-complete and playable: scrolling terrain,
-enemies, bullets, weapons, items, bees, boss and death sequence, result screen,
-HUD, scoring and chaining, earned hypers, rank, sound and music, browser
-controls, and deterministic REC/PLAY are translated and live.
+The active translation targets Black Label Version-B first. Its source now spans
+the main loop, player and all three weapon systems, bombs, bullets, enemies,
+bosses, items and bees, stage and result flow, score and chaining, hypers, rank,
+HUD, sound posts, and high-score name entry. The browser port and generated
+asset path are live, and W466 published as build `20260821162642` after all
+4,280 DDPDOJ unit tests passed.
 
-Stage 2 boots and scrolls. Its background elements and complete 332-record enemy
-program are installed, including chronological families `$95`, `$8D`, `$8F`,
-`$84`, `$90`, `$96`, `$8C`, `$91`, `$92`, `$97`, `$94`, `$93`, `$86`, and the
-type `$30` boss entry. W183 statically mapped and translated that entry, its
-complete multi-part damage/controller path, and arrival MAIN 0. W184 added all
-five initially armed A3 scripts. W185 added all eleven visible boss-part objects
-and their type `$4D` satellite. The controlled runtime now stops honestly at
-A4/F3 init `$299194`.
+That breadth does not mean the game is finished. The authoritative docket still
+tracks explicit defects and gaps, duplicate translated bodies, front-end
+screens, remaining enemy coverage, and behavior through the complete second
+loop. At W466 the duplicate scanners report 16 narrow heads, 79 widened heads,
+27 body pairs, and 22 body-only findings. Each row is closed by classifying and
+verifying the cartridge behavior rather than by hiding the address.
 
-The full game is not complete. Stages 2 through 5, their bosses, later loops,
-remaining systems and presentation, and authentic slowdown still require
-ROM-backed translation and verification. Feature completion and oracle evidence
-remain separate claims. `instructions.md` and the newest numbered worklogs are
-the current state; older briefs are historical.
+The completion order is deliberate: finish Black Label through the full second
+loop and close its entire docket, then finish White Label last. Current status
+lives in `docs/DOCKET.md` and `docs/NEXT_AGENT_HANDOFF.md`; old numbered
+worklogs are historical snapshots. `games/ddpdoj/README.md` contains setup,
+asset, oracle, testing, and fidelity details.
 
 ## Contributing
 
