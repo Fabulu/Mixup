@@ -12,7 +12,7 @@ export const HYPER = Object.freeze({
   pause: 0x80392c, flags: 0x8130f8, drawGate: 0x812970,
   frame: 0x80390a, phase: 0x80390c, secondLoop: 0x813098,
   stage: 0x813092, bossPhase: 0x81309c, firstLoopBossGate: 0x80393a,
-  bulletSpeedBias: 0x812950,
+  bulletSpeedBias: 0x812950, stockDrawGateP1: 0x803910,
   p1: Object.freeze({
     who: 1, kind: 0x0c, player: RAM.player1, set: 0x81040a,
     active: 0x81b63e, gauge: 0x81b642, earn: 0x81b64a,
@@ -25,6 +25,7 @@ export const HYPER = Object.freeze({
     chainHold: 0x81b5c2, chainSaved: 0x81b5ca, chainPulse: 0x81b5c8,
     bonus: 0x8128f4, bonusPos: 0x810436, bonusFrame: 0x812910,
     bonusTick: 0x812914, bonusReload: 0x812916,
+    stockAnimPos: 0x81291c, stockAnimTick: 0x812924, stockAnimReload: 0x812925,
   }),
   p2: Object.freeze({
     who: 2, kind: 0x14, player: RAM.player2, set: 0x81046c,
@@ -38,6 +39,7 @@ export const HYPER = Object.freeze({
     chainHold: 0x81b5ec, chainSaved: 0x81b5f4, chainPulse: 0x81b5f2,
     bonus: 0x812902, bonusPos: 0x810498, bonusFrame: 0x812912,
     bonusTick: 0x812918, bonusReload: 0x81291a,
+    stockAnimPos: 0x812920, stockAnimTick: 0x812926, stockAnimReload: 0x812927,
   }),
 });
 
@@ -137,6 +139,44 @@ export function drawBonusFollowers25292A(ram, rom) {
   if (ram.u16(HYPER.pause) !== 0) return 0;
   return drawBonusFollowerSide(ram, rom, HYPER.p1, false)
     + drawBonusFollowerSide(ram, rom, HYPER.p2, true);
+}
+
+function drawHyperStockAnimationSide(ram, h, p2) {
+  const state = ram.u16(h.player);
+  if (i16(state) >= 0 || ram.u16(h.stock) === 0) return 0;
+  if ((state & 0x4000) === 0 && ram.u16(h.bonus) !== 0) {
+    const gate = p2 ? ram.u8(HYPER.frame + 1) & 0x02 : ram.u16(HYPER.stockDrawGateP1);
+    if (gate === 0) return 0;
+  }
+
+  let tick = (ram.u8(h.stockAnimTick) - 1) & 0xff;
+  ram.setU8(h.stockAnimTick, tick);
+  let pos = ram.u32(h.stockAnimPos);
+  let longPause = false;
+  if (tick === 0xff) {
+    tick = ram.u8(h.stockAnimReload);
+    ram.setU8(h.stockAnimTick, tick);
+    pos = (pos + 0x74) >>> 0;
+    ram.setU32(h.stockAnimPos, pos);
+    if (pos === 0x001c40e4) {
+      ram.setU8(h.stockAnimTick, 0x10);
+      longPause = true;
+    }
+  }
+  if (!longPause && pos === 0x001c4410) {
+    pos = 0x001c3f14;
+    ram.setU32(h.stockAnimPos, pos);
+  }
+
+  enqueueRegisters(ram, 29, p2 ? 0x00811c00 : 0x00810000, pos, 0x0270, 9);
+  return 1;
+}
+
+/** `$252A52`, the mirrored hyper-stock animation in sprite bucket 29. */
+export function drawHyperStockAnimations252A52(ram) {
+  if (ram.u16(HYPER.pause) !== 0) return 0;
+  return drawHyperStockAnimationSide(ram, HYPER.p1, false)
+    + drawHyperStockAnimationSide(ram, HYPER.p2, true);
 }
 
 /** `$287682/$287722`, threshold, refusal, immediate spawn, or pending bank. */

@@ -6065,3 +6065,14 @@ Type-5 coverage moves from 21/23 to **22/23**. Only call #23 `$252A52` remains. 
 gate, timer, path, and call-order checks pass. W479 adds the `$25291C` ROM window, so generated web assets
 must be refreshed before the next publication. It is the third wave after live build `20260821205739` and is
 not a publication wave.
+
+### D88: W480 TYPE-5 CALL #23 `$252A52`: HYPER-STOCK ANIMATION
+
+`$28B66A` now runs `$252A52`, completing the cartridge's 23-call type-5 frame list. The mirrored player arms
+retain the pause, live-player, stock, bit-14, bonus, and per-player phase gates. Each arm decrements its byte
+timer, reloads on underflow, advances the `$81291C`/`$812920` animation path, installs the cartridge's longer
+midpoint pause, wraps at `$1C4410`, and appends to sprite bucket 29 through `$240976`.
+
+Type-5 coverage moves from 22/23 to **23/23**. Focused mirrored animation, gate, timer, path, bucket, and
+call-order checks pass. W480 is the fourth wave after live build `20260821205739` and is not a publication
+wave. The next wave returns to live Black Label stage and loop-2 gameplay content.
