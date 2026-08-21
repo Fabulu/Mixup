@@ -454,7 +454,7 @@ test('SECTION 5b: items.js no longer exports a second body, and the stream does 
 // The other twenty-two were READ this wave and are in the docket with a classification each.
 // Seventeen of them are the doc-opening convention or a wrapper/entry pair and cannot drift
 // (one body, two faces). THREE were real second transcriptions, and each received its own wave:
-// `$25D9E6` merged in W457, `$25DA60` merged in W458, and `$25FF38` remains. Two more rows --
+// `$25D9E6` merged in W457, `$25DA60` merged in W458, and `$25FF38` merged in W459. Two more rows --
 // `$246520` and `$24652A` -- are the visible edge of the biggest one: `animobjects.js`, `spawn.js` and `stageend.js` each carry
 // an INDEPENDENT transcription of the `$246520`/`$24652A`/`$246710` constructor, all three
 // allocating out of the same `$810346` (3 x $30) and `$80FA86` (20 x $70) pools.
@@ -462,12 +462,12 @@ test('SECTION 5b: items.js no longer exports a second body, and the stream does 
 // The count is asserted here as well as there so that deleting the register does not silently
 // delete the debt.
 
-test('SECTION 6: the doubly-claimed register is 17, and all later proved merges are ABSENT '
+test('SECTION 6: the doubly-claimed register is 16, and all later proved merges are ABSENT '
   + 'from it', () => {
   const dup = [...portedIndex()].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
-  assert.equal(dup.length, 17,
-    'W457 left the export-only floor at 18; W458 merged the complete $25DA60 cursor load, '
-    + 'so the live floor is 17. A different number means either a merge was undone or a new '
+  assert.equal(dup.length, 16,
+    'W458 left the export-only floor at 17; W459 merged the complete $25FF38 request poster, '
+    + 'so the live floor is 16. A different number means either a merge was undone or a new '
     + 'duplicate landed, and a new one is a wave, not a row: '
     + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
   assert.equal(dup.includes(0x2428a6), false, '$2428A6 is merged');
@@ -477,26 +477,24 @@ test('SECTION 6: the doubly-claimed register is 17, and all later proved merges 
   assert.equal(dup.includes(0x25ffa8), false, '$25FFA8 stayed merged -- W446\'s row, still gone');
   assert.equal(dup.includes(0x25d9e6), false, '$25D9E6 is merged -- W457');
   assert.equal(dup.includes(0x25da60), false, '$25DA60 is merged -- W458');
-
-  // The unaudited real second transcription must still be there, so an
-  // empty-set bug in the scan cannot be mistaken for progress.
-  assert.ok(dup.includes(0x25ff38), '$25FF38 left the register without a wave merging '
-    + 'armRequest25FF38 / tallyRequest25FF38. If a wave did merge it, say so here');
+  assert.equal(dup.includes(0x25ff38), false,
+    '$25FF38 is merged -- W459 corrected D0.W ownership and preserved the tally alias');
 });
 
 // W450: THE 19 ABOVE COUNTS ONLY WHAT AN `export function` DECLARES.
 // W449's fourth copy of `$246800` was the module-private `clearChain`, invisible
-// to `portedIndex()` on every axis it has. The widened scan is 88 (92 at W450,
-// minus $242684 at W451, $242494 at W453, $25D9E6 at W457 and $25DA60 at W458). See
+// to `portedIndex()` on every axis it has. The widened scan is 87 (92 at W450,
+// minus $242684 at W451, $242494 at W453, $25D9E6 at W457, $25DA60 at W458 and
+// $25FF38 at W459). See
 // tests/w450widenedregister.test.js; the number is cross-checked in all four
 // register holders so none of them can be read as the whole count.
-test('SECTION 6b [W450/W458]: the widened register is 88, and this wave\'s two merges hold under it too',
+test('SECTION 6b [W450/W459]: the widened register is 87, and this wave\'s two merges hold under it too',
   async () => {
     const { headRegister } = await import('./w450widenedscan.js');
     const wide = headRegister();
-    assert.equal(wide.length, 88,
-      'the widened duplicate register is not 88. ' + W453_NOTE
-      + 'W457 merged $25D9E6; W458 merged $25DA60; '
+    assert.equal(wide.length, 87,
+      'the widened duplicate register is not 87. ' + W453_NOTE
+      + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
       + 'w450widenedregister.test.js SECTION 3 owns the set');
     // The two W447 merged must stay merged under a scan that can ALSO see a
     // private re-transcription, which is the only way to know they really went.

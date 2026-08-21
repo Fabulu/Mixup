@@ -500,10 +500,10 @@ test('SECTION 7: W455 removes one body-only pair and changes no head register', 
   const heads = headRegister();
   const pairs = bodyPairs();
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
-  assert.equal(narrow.length, 17, 'W458 removed $25DA60 from W457 narrow baseline 18');
-  assert.equal(heads.length, 88, 'W458 removed $25DA60 from W457 widened baseline 89');
-  assert.equal(pairs.length, 29,
-    'W450 39 minus W451, W453, W454, W455, four W456 edges, W457 cursor map and W458 cursor load');
+  assert.equal(narrow.length, 16, 'W459 removed $25FF38 from W458 narrow baseline 17');
+  assert.equal(heads.length, 87, 'W459 removed $25FF38 from W458 widened baseline 88');
+  assert.equal(pairs.length, 28,
+    'W450 39 minus W451, W453, W454, W455, four W456 edges, W457 cursor map, W458 cursor load and W459 request poster');
   assert.ok(!pairs.some(([pair]) => pair === 'items.js beamReset25270C <> laser.js wipeSegmentPool'),
     'the six-marker private wipe stays absent');
 });

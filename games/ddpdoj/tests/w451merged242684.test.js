@@ -286,11 +286,11 @@ test('SECTION 3: one `$242684` claimant survives, and all six old private heads 
   const pairs = bodyPairs().map(([p]) => p);
   assert.equal(pairs.includes('handlers.js onScreen242684 <> items.js offScreen242684'), false,
     'the deleted body pair left the body register too');
-  assert.equal(headRegister().length, 88,
-    'W450 92 minus $242684 at W451, $242494 at W453, $25D9E6 at W457 and $25DA60 at W458 is 88');
-  assert.equal(pairs.length, 29,
+  assert.equal(headRegister().length, 87,
+    'W450 92 minus $242684 at W451, $242494 at W453, $25D9E6 at W457, $25DA60 at W458 and $25FF38 at W459 is 87');
+  assert.equal(pairs.length, 28,
     'W450 39 body pairs minus W451 $242684, W453 $242494, W454 turret, W455 '
-      + 'beam reset, four W456 item-velocity edges, W457 cursor map and W458 cursor load is 29');
+      + 'beam reset, four W456 item-velocity edges, W457 cursor map, W458 cursor load and W459 request poster is 28');
 });
 
 // ==============================================================================================

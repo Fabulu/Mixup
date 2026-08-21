@@ -48,6 +48,7 @@ import { queueKill } from './objalloc.js';
 import { txPrint240DC2, txPrint240E1A, HUDRAM } from './hud.js';
 import { announcePost, announceChoose260ACA } from './rank.js';
 import { tally2600D8, TALLY } from './tally.js';
+import { armRequest25FF38 } from './player.js';
 
 /** `$24018C`'s bucket: `lea $80AD14,A0 / adda.w $80AFEE,A0` is `BUCKETS[26]`, ten records of
  *  twelve. Declared in `spritequeue.js` since W30 and unused by anything until W328. */
@@ -235,20 +236,16 @@ export function screenHeader2533F6(ram, who) {
  * same `(request, state)` shape `announce260B30`'s mailbox at `$813162` uses. So the
  * tally record's head is a MAILBOX and this is its poster.
  *
- * `$25DCB0 move.w #$7,D1 / jsr $25FF38` is state 1's one call, so 7 is a request id --
+ * `$25DCB0 move.w #$7,D1 / jsr $25FF38` is state 1's one call, so 7 is a request id,
  * and `$25FF52` is the table it selects from: nine longwords starting `$00000000`,
  * `$0025FFA8`, `$00260056`, `$0026010E`, `$002601F4`, `$002602B6`, `$00260348`,
- * `$0026035A`, `$0026037C`. Those are CODE, they are the bonus lines W270 counted as
- * "eight bonus-line routines per side", and `$25FF92 lea ($25FF52,PC)` is the ONE
- * place that reads the table. **None of the nine is ported and none is called from
- * here**; posting the request is all this routine does.
+ * `$0026035A`, `$0026037C`. Those are code, they are the bonus lines W270 counted as
+ * "eight bonus-line routines per side", and `$25FF92 lea ($25FF52,PC)` is the one
+ * place that reads the table. W459 proved this historical transcription and
+ * `player.js armRequest25FF38` name the same complete 26-byte body. The production
+ * callers and this compatibility import now share that one function.
  */
-export function tallyRequest25FF38(ram, d0, d1) {
-  const rec = (d0 & 0xffff) !== 0 ? 0x81311e : 0x8130fa;   // $25FF3E tst.w / $25FF44
-  ram.setU16(rec + 0x00, u16(d1));                         // $25FF4A move.w D1,(A0)
-  ram.setU16(rec + 0x02, 0);                               // $25FF4C clr.w ($2,A0)
-  return rec;
-}
+export { armRequest25FF38 as tallyRequest25FF38 };
 
 /**
  * `$23D186` (side 0) / `$23D18E` (side 1) -- THE DESCRIPTOR'S INPUT READ.
@@ -910,8 +907,8 @@ export function pickFreeYRow25DA94(ram, rom, a5, ctx) {
 }
 
 /**
- * `$25DC2C..$25DCA8` -- OBJECT [11] PHASE 0's ARM: wait for START, then set up and advance to phase 1.
- * W344.
+ * `[$25DC2C,$25DCC0)` -- OBJECT [11] PHASE 0's ARM: wait for START, set up,
+ * advance to phase 1, post request 7, and account for the text continuation. W344/W459.
  *
  *     25dc2c  movea.l ($8,A5),A4                     the descriptor state 0 chose
  *     25dc30  cmpi.b #$0,($C,A5) / bne $25DCC0       PHASE 0 ONLY
@@ -928,6 +925,9 @@ export function pickFreeYRow25DA94(ram, rom, a5, ctx) {
  *     25dc8a  move.b ($7,A5),D0 / jsr $260A88        postAnnounce260A88
  *     25dc94  move.w ($14,A4),D0 / lea $225978,A0 / jsr $24150A     installBank
  *     25dca4  jsr $23C668                            clearSlotTable23C668
+ *     25dcaa  moveq #$0,D0 / move.b ($7,A5),D0       zero-extend side
+ *     25dcb0  move.w #$7,D1 / jsr $25FF38            post request 7
+ *     25dcba  jsr $25E0EA / nop                      select text row; printer still deferred
  *
  * **`$813098` AND `$813092` ARE ONE GATE, NOT TWO.** `tst.w` then `beq` FORWARD means a zero rank SKIPS the
  * stage test and runs the arm; only rank non-zero AND stage index 4 abandons it. So on stage 5 at rank the
@@ -972,5 +972,11 @@ export function tallyPhase0Arm25DC2C(ram, rom, a5, ctx) {
   else ctx?.unportedLog?.note(0x25dca4, '$25DCA4 jsr $23C668 clears the $907000 slot table '
     + '(clearSlotTable23C668, W344) but no SlotTable907000 is on ctx yet, so the clear is counted. '
     + 'Threading that object through is the remaining wiring.');
+  // $25DCAA zero-extends the side byte, then $25DCB0/$25DCB4 posts request 7.
+  armRequest25FF38(ram, ram.u8(a5 + SCREEN11.side), 7);
+  // $25DCBA calls the separate text continuation. Its two instructions select the
+  // $25E006 space row and branch to the still-unported $25E200 printer body.
+  ctx?.unportedLog?.note(0x25e0ea, '$25DCBA jsr $25E0EA selects the $25E006 space row '
+    + 'and branches to the unported $25E200 text-printer body');
   return true;
 }

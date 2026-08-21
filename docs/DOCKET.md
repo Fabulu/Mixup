@@ -5351,3 +5351,89 @@ registered by the widened head scan at `$25FF38` and by body markers `$25FF4A/$2
 cartridge bodies, every caller and continuation, side word polarity, dirty mailbox ownership and source
 reachability before merging or classifying. No publish is due at W458. Continue Black Label through the
 full second loop and close its docket, then finish White Label last.
+
+
+### D69 FOLLOW-UP, W459 REQUEST POSTER: ONE CORRECTED BODY AND ONE COMPATIBILITY NAME
+
+**THE TWO SOURCE TRANSCRIPTIONS WERE NOT EQUIVALENT BEFORE CORRECTION.** The cartridge tests D0.W,
+while `player.js armRequest25FF38` originally tested the complete JavaScript value with `side === 0`.
+For the concrete witness D0 = `$00010000`, the cartridge sees a zero low word and chooses `$8130FA`, but
+the old helper chose `$81311E`. `tallyscreen.js tallyRequest25FF38` already used low-word ownership. The
+canonical `armRequest25FF38` now truncates D0 to a word, truncates D1 on store, clears record `+2`, and
+returns the selected record for compatibility. `tallyRequest25FF38` is an ESM re-export alias to that same
+function object, so both public imports survive with one implementation.
+
+**BUILD-B PINS THE COMPLETE BODY AND ITS BOUNDARIES.** Main CPU SHA-256 is
+`4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c`. The exact 26-byte half-open
+span `[$25FF38,$25FF52)` is
+`41f9008130fa4a406700000841f90081311e3081426800024e75`, SHA-256
+`2c1447e71c1b53f32b005fbf92693968ca790f2dbdafb441e53f1b5544d91405`. Its seven instructions are
+`LEA $8130FA,A0`, `TST.W D0`, `BEQ.W $25FF4A`, `LEA $81311E,A0`, `MOVE.W D1,(A0)`,
+`CLR.W 2(A0)`, and `RTS`. `$25FF36` is `RTS`, so there is no prior fallthrough. `$25FF52` begins the
+nine-longword request dispatch table.
+
+**THE COMPLETE ALIGNED 6 MiB TRANSFER CENSUS FINDS NINE BODY ENTRIES.** `$25FF40 Bcc -> $25FF4A` is
+the one internal branch. The eight external transfers are `$25DCB4 JSR.L`, `$260434 JSR.PC16`,
+`$260472 JSR.PC16`, `$26080E JMP.L`, `$26083E JMP.L`, `$26084A JMP.L`, `$288B2C JSR.L`, and
+`$288C4C JSR.L`, all to `$25FF38`; no external transfer enters an internal instruction. The scan covers
+BSR, relevant BRA/Bcc, absolute and PC-relative JSR/JMP, and 110 aligned indexed-PC JSR/JMP opcode
+candidates, of which zero have a zero-index base inside the body. Six exact aligned longword references
+at `$25DCB6`, `$260810`, `$260840`, `$26084C`, `$288B2E`, and `$288C4E` are all operands of those
+absolute-long transfers.
+
+**CALLER OWNERSHIP IS WORD-SIZED AND RETURN STATE IS NOT CONSUMED.** D0.W zero selects `$8130FA`; any
+nonzero word, including `$8000` and `$FFFF`, selects `$81311E`. D0 high-word dirt is irrelevant. Only
+D1.W stores, so D1 high-word dirt is irrelevant too. The second word is always cleared. The final
+`CLR.W` sets Z, clears N/V/C, and preserves X, but callers either continue unconditionally or overwrite
+NZVC before a conditional use. No caller consumes a returned data value. `$26080A` posts request 1,
+`$260846` posts request 9, `$25DCB4` posts request 7, `$260434/$260472` post request 4, `$288B2C` posts
+request 8, and `$288C4C` posts request 6. `$260816` posts request 3 after `MOVE.W D2,D0`, deliberately
+leaving possible D0 high-word dirt, but has no aligned static caller, exact longword reference, or
+fallthrough. Dynamic indirect reachability beyond the indexed-PC census remains unproved and is not
+silently classified as dead.
+
+**SOURCE AND CARTRIDGE REACHABILITY ARE KEPT SEPARATE.** Production has one `$25FF38` function body and
+six caller bodies: `objslot13.js menuArm`, `objslot14.js state2`, `player.js playerDead24A130`,
+`player.js playerObject2491C0`, `rank.js stagePair2603FE`, and `tallyscreen.js tallyPhase0Arm25DC2C`.
+The death/reset request-1 stores now delegate to the canonical helper. The successful tally phase-0 path
+now includes its cartridge request-7 post at `$25DCB4`. The following `$25E0EA` selector and unported
+`$25E200` text-printer body remain an explicit deferral; W459 does not claim that separate continuation.
+
+**DIRTY WITNESSES COVER BOTH NAMES, BOTH RECORDS, BOTH ARMS AND PARTIAL-WIDTH DIRT.** The direct matrix
+runs D0 values `$00000000`, `$00010000`, `$DEAD0000`, `$00000001`, `$BEEF0002`, `$CAFE8000`,
+`$ABCDFFFF` and D1 values including `$00010000`, `$FFFFFFFF`, `$00010001`, `$12340000`, `$FACE7FFF`,
+and `$0001FFFF`. Every case starts with dirty request and state words, a dirty opposite record, and dirty
+adjacent memory. Real `$25DCB4` request-7 parent witnesses cover both sides, and real `$2603FE` request-4
+parent witnesses cover both records.
+
+**THE PRODUCTION RED MUTATION FAILED DIRECT AND REAL-PARENT STATE.** Temporarily inverting only the
+canonical D0.W side polarity made the dirty direct test return `$81311E` instead of `$8130FA` for zero.
+The real `$25DCB4` request-7 witness left the expected record at dirty `[$E712,$3D68]` instead of
+`[7,0]`. Exactly two W459 tests failed; seven cartridge and register checks remained green. The
+`$2603FE` witness remained green because that parent posts both sides. Restoring the one line returned
+`player.js` byte-for-byte to SHA-256
+`ff9400fff0d3cdaba17ddeee84e20eae508a370676f56cd9a4fa4b91fbd6b4b6`, 71,190 bytes, LF-only.
+
+The live scanner APIs reconcile exactly from the W458 baseline: narrow heads **17 -> 16**, widened heads
+**88 -> 87**, body pairs **29 -> 28**, and executable derivation from current `headIndex()` leaves
+body-only findings **22**, unchanged because the removed pair was head-visible. `$25FF38` is absent from
+both authoritative registers. No production ROM window was added or widened, and no generated rip or
+asset changed.
+
+Editing-agent validation on the final W459 tree: focused W459 **9 pass / 0 fail / 0 skipped**; complete
+W446-W459 register chain **148 pass / 0 fail / 0 skipped**; broad player, tally, rank, menu, death and
+register surface **395 pass / 0 fail / 0 skipped**; full suite **4241 pass / 0 fail / 0 skipped**; webgate
+**31 PASS / 0 FAIL**, exit 0; ROM verification **VERIFY OK at 613 windows**. The coordinator independently
+reproduced the exact image and body hashes, the complete aligned transfer and longword-reference census,
+and the same two meaningful RED failures, then restored `player.js` to the exact recorded SHA-256. The
+coordinator's focused run passed **9**, broader affected run passed **487**, full suite passed **4241**,
+webgate passed **31 / 0**, and ROM verification remained **VERIFY OK at 613 windows**. Diff, scope,
+line-ending, punctuation and protected-path checks are clean. No export-web, publish, stage, commit, push,
+branch switch or worktree operation occurred during editing-agent work.
+
+**NEXT AUDIT CANDIDATE: W460, `$24631C` `objslot8.js clear24631C` <->
+`stageend.js clear24631C`.** The live widened head register exposes the two claims, but the current
+two-marker body scan does not establish a duplicate pair. Treat it as an audit candidate, not a proved
+merge: pin complete bodies, callers, entries and dirty ownership before classifying. W459 is not a
+publication wave. Continue Black Label through the full second loop and close its docket, then finish
+White Label last.

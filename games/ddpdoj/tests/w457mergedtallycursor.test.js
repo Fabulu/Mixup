@@ -324,7 +324,7 @@ test('SECTION 6: source keeps one $25D9E6 body and W458 leaves one $25DA60 body'
     '$25DA60 imports now share one function object');
 });
 
-test('SECTION 6b: live registers derive 17 narrow, 88 widened, 29 pairs and 22 body-only', () => {
+test('SECTION 6b: live registers derive 16 narrow, 87 widened, 28 pairs and 22 body-only', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -337,10 +337,11 @@ test('SECTION 6b: live registers derive 17 narrow, 88 widened, 29 pairs and 22 b
     .some((body) => !visibleHeads.has(body)));
   const removed = 'tallyscreen.js cursorsFromPosted25D9E6 <> tallyscreen.js mapSavedCursor25D9E6';
   const mergedLoad = 'tallyscreen.js loadSavedCursor25DA60 <> tallyscreen.js restoreCursors25DA60';
+  const mergedRequest = 'player.js armRequest25FF38 <> tallyscreen.js tallyRequest25FF38';
 
-  assert.equal(narrow.length, 17, 'W457 removed one head and W458 removes the next');
-  assert.equal(heads.length, 88, 'W458 leaves 88 widened rows after W457 left 89');
-  assert.equal(pairs.length, 29, 'W458 removes the deferred body edge from W457 baseline 30');
+  assert.equal(narrow.length, 16, 'W459 removes $25FF38 after W458 left 17');
+  assert.equal(heads.length, 87, 'W459 leaves 87 widened rows after W458 left 88');
+  assert.equal(pairs.length, 28, 'W459 removes the request edge from W458 baseline 29');
   assert.equal(bodyOnly.length, 22,
     'body-only remains executable headIndex() derivation because both removed pairs were head-visible');
   assert.equal(heads.includes(BODY_START), false, '$25D9E6 stays off the widened register');
@@ -348,6 +349,8 @@ test('SECTION 6b: live registers derive 17 narrow, 88 widened, 29 pairs and 22 b
   assert.equal(pairs.some(([pair]) => pair === removed), false, 'W457 merged body edge stays absent');
   assert.equal(heads.includes(0x25da60), false, '$25DA60 stays off the widened register after W458');
   assert.equal(pairs.some(([pair]) => pair === mergedLoad), false, 'W458 merged body edge stays absent');
-  assert.deepEqual(pairs.filter(([pair]) => /25D9E6|25DA60/.test(pair)), [],
-    'both cursor-region duplicate pairs remain absent');
+  assert.equal(heads.includes(0x25ff38), false, '$25FF38 stays off the widened register after W459');
+  assert.equal(pairs.some(([pair]) => pair === mergedRequest), false, 'W459 request edge stays absent');
+  assert.deepEqual(pairs.filter(([pair]) => /25D9E6|25DA60|25FF38/i.test(pair)), [],
+    'all three tally-region duplicate pairs remain absent');
 });

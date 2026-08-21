@@ -381,10 +381,11 @@ test('SECTION 6: live scanner APIs derive W458 register deltas and keep W457 abs
   const bodyOnly = pairs.filter(([pair]) => pair.split(' <> ')
     .some((body) => !visibleHeads.has(body)));
   const removed = 'tallyscreen.js loadSavedCursor25DA60 <> tallyscreen.js restoreCursors25DA60';
+  const removedRequest = 'player.js armRequest25FF38 <> tallyscreen.js tallyRequest25FF38';
 
-  assert.equal(narrow.length, 17, 'W458 removes one exported $25DA60 head from W457 baseline 18');
-  assert.equal(heads.length, 88, 'W458 removes the widened $25DA60 row from baseline 89');
-  assert.equal(pairs.length, 29, 'W458 removes the one complete $25DA60 body edge from baseline 30');
+  assert.equal(narrow.length, 16, 'W459 removes one exported $25FF38 head from W458 baseline 17');
+  assert.equal(heads.length, 87, 'W459 removes the widened $25FF38 row from baseline 88');
+  assert.equal(pairs.length, 28, 'W459 removes the complete request-poster edge from baseline 29');
   assert.equal(bodyOnly.length, 22,
     'body-only remains derived live and unchanged because both removed bodies were head-visible');
   assert.equal(heads.includes(BODY_START), false, '$25DA60 stays off the widened register');
@@ -392,4 +393,6 @@ test('SECTION 6: live scanner APIs derive W458 register deltas and keep W457 abs
   assert.equal(pairs.some(([pair]) => pair === removed), false, '$25DA60 body edge stays absent');
   assert.equal(heads.includes(0x25d9e6), false, 'W457 $25D9E6 stays off the head register');
   assert.equal(pairs.some(([pair]) => /25D9E6/.test(pair)), false, 'W457 body edge stays absent');
+  assert.equal(heads.includes(0x25ff38), false, '$25FF38 stays off the widened register after W459');
+  assert.equal(pairs.some(([pair]) => pair === removedRequest), false, 'W459 body edge stays absent');
 });

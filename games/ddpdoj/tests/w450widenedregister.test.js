@@ -1,7 +1,7 @@
 // WAVE 450 (D69) -- THE DUPLICATE REGISTER, WIDENED UNTIL IT CAN SEE A PRIVATE COPY.
 //
 // ---------------------------------------------------------------------------
-// THE NUMBER WAS 19, W450 FOUND 92, W451 LEFT 91, W453 LEFT 90, W457 LEFT 89, W458 LEAVES 88
+// THE NUMBER WAS 19, W450 FOUND 92, W451 LEFT 91, W453 LEFT 90, W457 LEFT 89, W458 LEFT 88, W459 LEAVES 87
 // ---------------------------------------------------------------------------
 // W444 built the index; W446, W447, W448 and W449 steered by it and merged five
 // addresses, each of which turned out to be a live defect. Then W449 found a
@@ -17,11 +17,12 @@
 // step and W455 merged the beam-reset tail. W456 merged the item-local
 // `$2417DE` body into `movement.js applyVelocityA6`; W457 merged the tally
 // cursor map's second body into `cursorsFromPosted25D9E6`. W458 merged the two
-// complete `$25DA60` tally cursor loads. The live registers are:
+// complete `$25DA60` tally cursor loads. W459 corrected the D0.W request poster
+// and merged its second body. The live registers are:
 //
-//     shipped `export function` scan     17 addresses claimed twice or more
-//     widened head scan                  88          "
-//     of the shipped 17                  17 still there, NONE dropped
+//     shipped `export function` scan     16 addresses claimed twice or more
+//     widened head scan                  87          "
+//     of the shipped 16                  16 still there, NONE dropped
 //     newly visible                      71
 //     of those, originally visible because of
 //       wider HEAD FORMS (private
@@ -31,11 +32,12 @@
 //     then merged by W451                -1
 //     then merged by W453                -1
 //
-// ...plus a second register the old scan had no axis for at all: 29 PAIRS OF
+// ...plus a second register the old scan had no axis for at all: 28 PAIRS OF
 // BODIES that transcribe a shared RUN of ROM instructions. W456 removed four
 // pair edges by deleting one duplicate body; W457 removed the complete tally
-// cursor-map edge; W458 removed the complete tally cursor-load edge. It did not
-// classify the remaining player and option suffixes.
+// cursor-map edge; W458 removed the complete tally cursor-load edge; W459
+// removed the complete request-poster edge. It did not classify the remaining
+// player and option suffixes.
 //
 // **A LIST IS NOT THE DELIVERABLE.** W444's rule, and W449 proved it again: the
 // stale-notes disease is a document nobody re-derives. Both registers here are
@@ -50,8 +52,8 @@
 // ---------------------------------------------------------------------------
 //   1   the scan found something -- floors, so a broken regex cannot read clean
 //   2   the widening WEAKENS NOTHING: the shipped register is a strict subset
-//   3   THE HEAD REGISTER, exact, 88
-//   4   THE BODY REGISTER, exact, 29 pairs; 22 body-only findings
+//   3   THE HEAD REGISTER, exact, 87
+//   4   THE BODY REGISTER, exact, 28 pairs; 22 body-only findings
 //   5   RED PROOFS on synthetic trees -- one per axis, plus two negative controls
 //   6   THE HISTORICAL POSITIVE CONTROL: W449's own `clearChain`, verbatim
 
@@ -141,9 +143,10 @@ test('SECTION 2: the shipped register is a STRICT SUBSET of the widened one -- n
   + 'stopped being watched', () => {
   const narrow = narrowRegister();
   const wide = headRegister();
-  assert.equal(narrow.length, 17,
-    'the shipped `export function` scan no longer reports 17. W449 left 19, W457 removed '
-    + '$25D9E6 and W458 removed $25DA60 only after merging each complete pair: ' + narrow.map(hex).join(' '));
+  assert.equal(narrow.length, 16,
+    'the shipped `export function` scan no longer reports 16. W449 left 19, W457 removed '
+    + '$25D9E6, W458 removed $25DA60 and W459 removed $25FF38 only after merging each '
+    + 'complete pair: ' + narrow.map(hex).join(' '));
   const dropped = narrow.filter((a) => !wide.includes(a));
   assert.deepEqual(dropped.map(hex), [],
     'the widened scan LOST an address the narrow one had. The doc rule takes every address in '
@@ -177,7 +180,7 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 
 // ---------------------------------------------------------------- SECTION 3
 
-// THE HEAD REGISTER. 88 ROM addresses claimed by two or more function-like
+// THE HEAD REGISTER. 87 ROM addresses claimed by two or more function-like
 // heads in `src/`, by name suffix or by JSDoc opening span.
 //
 // **DECLARE, NEVER WIDEN** -- W444's rule, and W446/W447/W448/W449 all kept it.
@@ -226,7 +229,7 @@ const HEAD_REGISTER = Object.freeze([
   0x249e4e, 0x249ea0, 0x249ee2, 0x24c096, 0x24c338, 0x24caae,
   0x24d480, 0x253b94, 0x253e96, 0x2562fc, 0x2564f0, 0x259962,
   0x25a14c, 0x25cb92, 0x25e4d0, 0x25ef30,
-  0x25f074, 0x25ff38, 0x26070c, 0x26134e, 0x26233a, 0x263386,
+  0x25f074, 0x26070c, 0x26134e, 0x26233a, 0x263386,
   0x2633be, 0x2638a6, 0x268018, 0x269cea, 0x26a5e4, 0x27ea9a,
   0x27f6e4, 0x280b3e, 0x280fdc, 0x2820cc, 0x284190, 0x2847fe,
   0x284b6a, 0x2851d2, 0x285a12, 0x286096, 0x286128, 0x286a80,
@@ -237,7 +240,7 @@ const HEAD_REGISTER = Object.freeze([
   0x2a3e15, 0x2a6edc,
 ]);
 
-test('SECTION 3: the widened head register is exactly these 88 addresses', () => {
+test('SECTION 3: the widened head register is exactly these 87 addresses', () => {
   const { idx } = headIndex();
   const wide = headRegister();
   assert.deepEqual(wide.map(hex), [...HEAD_REGISTER].map(hex),
@@ -252,15 +255,15 @@ test('SECTION 3: the widened head register is exactly these 88 addresses', () =>
 
   // ASSERTED AS A NUMBER TOO -- W447's lesson. An empty list satisfies a
   // `deepEqual` against a shrunken array and reads as five merges' progress.
-  assert.equal(wide.length, 88,
-    'the widened register is not 88. W450 found 92, W451 merged $242684, W453 merged '
-    + '$242494, W457 merged $25D9E6, and W458 merged $25DA60');
+  assert.equal(wide.length, 87,
+    'the widened register is not 87. W450 found 92, W451 merged $242684, W453 merged '
+    + '$242494, W457 merged $25D9E6, W458 merged $25DA60, and W459 merged $25FF38');
 
   // ...and every address the four merged waves removed must STAY off it, now
   // measured by a scan that can see private copies rather than only exports.
   for (const [a, wave] of [[0x25ffa8, 'W446'], [0x2428a6, 'W447'], [0x242b3c, 'W447'],
     [0x246520, 'W448'], [0x24652a, 'W448'], [0x246800, 'W449'], [0x242684, 'W451'],
-    [0x242494, 'W453'], [0x25d9e6, 'W457'], [0x25da60, 'W458']]) {
+    [0x242494, 'W453'], [0x25d9e6, 'W457'], [0x25da60, 'W458'], [0x25ff38, 'W459']]) {
     assert.ok(!wide.includes(a),
       `${hex(a)} is claimed twice AGAIN under the widened scan (${wave} merged it). `
       + 'The narrow scan could not have told you: a private re-transcription is exactly '
@@ -286,7 +289,9 @@ test('SECTION 3: the widened head register is exactly these 88 addresses', () =>
 // mapSavedCursor25D9E6`: both real caller families now use the one word-width
 // body. W458 REMOVED `tallyscreen.js loadSavedCursor25DA60 <> tallyscreen.js
 // restoreCursors25DA60`: the live phase-0 caller and compatibility import now
-// share the one complete 52-byte body.
+// share the one complete 52-byte body. W459 REMOVED `player.js armRequest25FF38
+// <> tallyscreen.js tallyRequest25FF38`: every production caller and the
+// compatibility import now share the corrected D0.W body.
 //
 // W456 removed the `items.js applyItemVelocity` node. Its four pair edges to
 // movement, options and player disappeared, while all six shorter-tail edges
@@ -343,7 +348,6 @@ const BODY_REGISTER = Object.freeze([
   ['options.js podKnockback24D188 <> player.js applyPlayerVector2417DE', [0x2417f4, 0x2417f8]],
   ['options.js podKnockback24D188 <> player.js updatePlayer', [0x2417f4, 0x2417f8]],
   ['player.js applyPlayerVector2417DE <> player.js updatePlayer', [0x2417f4, 0x2417f8]],
-  ['player.js armRequest25FF38 <> tallyscreen.js tallyRequest25FF38', [0x25ff4a, 0x25ff4c]],
   ['rank.js playerRecords25FE42 <> rank.js stagePair2603FE', [0x24119c, 0x2411c4]],
   ['score.js laserAltHit <> score.js laserScoreHit', [0x286abc, 0x286aea]],
   ['spawn.js dispatchScriptRecord <> spawn.js walkScriptLoop', [0x2633e0, 0x263428]],
@@ -351,7 +355,7 @@ const BODY_REGISTER = Object.freeze([
   ['stageend.js f4BonusPool28DB5E <> stageend.js result28D9AA', [0x28db5e, 0x28dc18, 0x28dc1c]],
 ]);
 
-test('SECTION 4: exactly these 29 pairs of bodies transcribe a shared run of ROM instructions',
+test('SECTION 4: exactly these 28 pairs of bodies transcribe a shared run of ROM instructions',
   () => {
     const got = bodyPairs().map(([p, v]) => [p, v]);
     assert.deepEqual(got.map(([p]) => p), BODY_REGISTER.map(([p]) => p),
@@ -380,11 +384,11 @@ test('SECTION 4: exactly these 29 pairs of bodies transcribe a shared run of ROM
     assert.equal(bodyOnly.length, 22,
       'body-only is derived from the live head register, not copied from a prior wave');
 
-    assert.equal(got.length, 29,
-      'the body register is not 29 pairs (39 at W450, minus $242684 at W451, '
+    assert.equal(got.length, 28,
+      'the body register is not 28 pairs (39 at W450, minus $242684 at W451, '
       + '$242494 at W453, the turret block at W454, the beam reset at W455, four '
-      + '`applyItemVelocity` edges at W456, the cursor map at W457, and the cursor '
-      + 'load at W458). '
+      + '`applyItemVelocity` edges at W456, the cursor map at W457, the cursor '
+      + 'load at W458, and the request poster at W459). '
       + 'As a NUMBER as well as a set, because an empty list satisfies a deepEqual '
       + 'against a shrunken array and reads as progress');
   });

@@ -273,9 +273,7 @@ export function playerDead24A130(ram, slot, rec, ctx, p2 = false) {
   ram.setU16(rec, ram.u16(rec) & 0x7fff);                // $24A20A
 
   const idx = ram.u8(slot + 0x07);                       // $24A210
-  const reset = idx === 0 ? 0x8130fa : 0x81311e;
-  ram.setU16(reset, 1);                                  // $26080A -> $25FF38
-  ram.setU16(reset + 2, 0);
+  armRequest25FF38(ram, idx, 1);                        // $24A214 -> $26080A -> $25FF38
   queueKill(ram, ram.u32(slot + ALLOC.idOff));           // $24A21A -> $241292
   ctx.deathEvent?.('reset', p2 ? 2 : 1, keep20, keep22, keep25);
   return 'reset';
@@ -585,12 +583,14 @@ function powerListOffset(ram, rec) {
   return u16(u16(d0 * 2) * 2);
 }
 
-/** `$25FF38` -- write request D1 into the side's `$25FF7A` table entry and clear
- *  its `+2`. `$260846` is `move.w #$9,D1 / jmp $25FF38`, nothing else. */
-export function armRequest25FF38(ram, side, request) {
-  const entry = side === 0 ? 0x8130fa : 0x81311e;        // $25FF38 / $25FF44
-  ram.setU16(entry, u16(request));                       // $25FF4A
-  ram.setU16(entry + 0x02, 0);                           // $25FF4C
+/** `$25FF38` -- write D1.W into the record selected by D0.W and clear its
+ *  `+2` state word. Any zero low word selects `$8130FA`; any nonzero low word
+ *  selects `$81311E`. `$260846` is `move.w #$9,D1 / jmp $25FF38`. */
+export function armRequest25FF38(ram, d0, d1) {
+  const entry = (d0 & 0xffff) === 0 ? 0x8130fa : 0x81311e; // $25FF38..$25FF44
+  ram.setU16(entry, u16(d1));                              // $25FF4A move.w D1,(A0)
+  ram.setU16(entry + 0x02, 0);                             // $25FF4C clr.w ($2,A0)
+  return entry;
 }
 
 // ---------------------------------------------------------------------------

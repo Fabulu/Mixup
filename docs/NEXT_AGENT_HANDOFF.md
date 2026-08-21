@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W458)
+Updated: 2026-08-21 (W459)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,14 +10,94 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W458 proved the two complete `$25DA60` cursor-load
-transcriptions equivalent and merged them.** `loadSavedCursor25DA60` is the sole body and remains live
-through `tallyPhase0Arm25DC2C`; source-uncalled `restoreCursors25DA60` is a compatibility export alias.
-W458 also restored the previously omitted `$25DAB2..$25DAC0` descriptor-based saved-row store in the
-post-load picker. The next concrete unit is **W459 / D69 `player.js armRequest25FF38` <->
-`tallyscreen.js tallyRequest25FF38`**, the remaining pair with body markers `$25FF4A/$25FF4C`. No
-publish is due at W458. Continue the widened duplicate rows, front-end screens D33/D34/D35/D37,
+`docs/DOCKET.md` is authoritative. **W459 found the two `$25FF38` request-poster transcriptions were
+not initially equivalent, corrected D0.W ownership, and then merged them.** `player.js
+armRequest25FF38` is the sole body; `tallyscreen.js tallyRequest25FF38` is a compatibility export alias
+to the same function object. The successful tally phase-0 parent now posts its cartridge request 7, and
+the death/reset path delegates its request 1 to the canonical helper. The next audit candidate is **W460
+`$24631C`, `objslot8.js clear24631C` <-> `stageend.js clear24631C`**. The widened head register exposes
+two claims, but the two-marker body scan does not prove a duplicate, so audit before classifying. No
+publish is due at W459. Continue the widened duplicate rows, front-end screens D33/D34/D35/D37,
 remaining enemy types, full Black Label loop-2 coverage, and every other explicit docket item.
+
+## W459 COORDINATOR-VERIFIED: CORRECTED AND MERGED `$25FF38`
+
+**THE IMPLEMENTATIONS WERE NOT EQUIVALENT ON ENTRY.** The cartridge uses `TST.W D0`; the old
+`armRequest25FF38` used full-value `side === 0`. D0 = `$00010000` therefore selected the wrong record in
+source. The canonical helper now selects `$8130FA` for a zero low word and `$81311E` for any nonzero low
+word, writes only D1.W, clears record `+2`, and preserves the public tally import as an alias.
+
+Build-B main CPU SHA-256 is:
+
+    4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c
+
+The complete routine is the 26-byte half-open span `[$25FF38,$25FF52)`:
+
+    41f9008130fa4a406700000841f90081311e3081426800024e75
+
+Its body SHA-256 is `2c1447e71c1b53f32b005fbf92693968ca790f2dbdafb441e53f1b5544d91405c`.
+The seven instructions are `LEA`, `TST.W`, `BEQ.W`, the other `LEA`, `MOVE.W D1,(A0)`, `CLR.W 2(A0)`,
+and `RTS`. `$25FF36` is `RTS`; `$25FF52` starts the request table.
+
+A complete aligned scan of all 6 MiB finds one internal branch and eight external direct transfers. The
+external sites are `$25DCB4`, `$260434`, `$260472`, `$26080E`, `$26083E`, `$26084A`, `$288B2C`, and
+`$288C4C`, all entering at `$25FF38`. Six exact longword references are operands of the absolute-long
+transfers. Among 110 aligned indexed-PC JSR/JMP candidates, zero have a zero-index base in the body. No
+external direct transfer enters an internal instruction.
+
+D0.W alone owns side polarity; D0 high-word dirt is ignored. D1.W alone owns the request store; D1
+high-word dirt is ignored. The final clear leaves Z set, N/V/C clear and X unchanged, but no caller
+observes a returned data value or conditionally consumes that SR. `$260816` deliberately leaves possible
+D0 high-word dirt after `MOVE.W D2,D0`; it has no aligned static caller, exact longword reference, or
+fallthrough. Dynamic indirect reachability beyond the indexed-PC census remains unproved.
+
+Production source has one body and six caller bodies in `objslot13.js`, `objslot14.js`, `player.js`
+twice, `rank.js`, and `tallyscreen.js`. The tally phase-0 path now performs request 7 after its successful
+load, as `$25DCB4` does. Its following `$25E0EA` row selector branches to the still-unported `$25E200`
+text-printer body, which remains an explicit separate deferral.
+
+Dirty tests cover both import names, both side records, zero, noncanonical nonzero words, high-word dirt,
+D1 truncation, recycled request/state fields, adjacent memory, and the opposite record. Real parent
+witnesses cover `$25DCB4` request 7 and `$2603FE` request 4.
+
+The temporary production RED inverted side polarity. The direct zero case returned `$81311E` instead of
+`$8130FA`; the real request-7 parent left dirty `[$E712,$3D68]` instead of `[7,0]`. Exactly 2 of 9 W459
+tests failed. The request-4 pair parent stayed green because it writes both sides. Restoration returned
+`player.js` byte-for-byte to SHA-256:
+
+    ff9400fff0d3cdaba17ddeee84e20eae508a370676f56cd9a4fa4b91fbd6b4b6
+
+Live duplicate registers reconcile:
+
+    narrow export-only head rows             17 -> 16
+    widened head rows                        88 -> 87
+    widened body pairs                       29 -> 28
+    body-only findings                       22, unchanged and derived live
+
+Editing-agent validation on the restored final tree:
+
+    focused W459                               9 pass / 0 fail / 0 skipped
+    W446-W459 register chain                 148 pass / 0 fail / 0 skipped
+    broad affected surface                   395 pass / 0 fail / 0 skipped
+    node --test games/ddpdoj/tests/          4241 pass / 0 fail / 0 skipped
+    node games/ddpdoj/tools/webgate.mjs        31 PASS / 0 FAIL, exit 0
+    export-tables.py --verify                VERIFY OK at 613 windows
+
+Coordinator-independent validation on the restored final tree:
+
+    focused W459                               9 pass / 0 fail / 0 skipped
+    broader affected surface                 487 pass / 0 fail / 0 skipped
+    node --test games/ddpdoj/tests/          4241 pass / 0 fail / 0 skipped
+    node games/ddpdoj/tools/webgate.mjs        31 PASS / 0 FAIL, exit 0
+    export-tables.py --verify                VERIFY OK at 613 windows
+
+The coordinator independently reproduced the exact image and body hashes, all nine aligned body entries,
+six exact longword references and 110 indexed-PC candidates with no zero-index base in the body. Inverting
+D0.W side polarity reproduced the same two direct and real-parent RED failures; restoration returned
+`player.js` exactly to SHA-256 `ff9400fff0d3cdaba17ddeee84e20eae508a370676f56cd9a4fa4b91fbd6b4b6`.
+Diff, scope, line-ending, punctuation and protected-path checks are clean. No ROM window was added or widened.
+No generated asset, export-web, publish, stage, commit, push, branch switch or worktree operation occurred
+during editing-agent work. `$24631C` is the next audit candidate only, not a proved merge.
 
 ## W458 COORDINATOR-VERIFIED AND LANDED: ONE TALLY CURSOR LOAD BODY
 
@@ -110,11 +190,11 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. W458 is coordinator-verified, committed and pushed. Do not publish at W458.
-2. Dispatch W459 on D69 `player.js armRequest25FF38` <->
-   `tallyscreen.js tallyRequest25FF38`, body markers `$25FF4A/$25FF4C`.
-3. Audit complete cartridge bodies, all transfer forms, callers, continuations, dirty mailbox ownership
-   and source reachability before merging or classifying the `$25FF38` pair.
+1. W459 is coordinator-verified and this handoff is part of its landing. Do not publish at W459.
+2. Audit W460 candidate `$24631C`, `objslot8.js clear24631C` <->
+   `stageend.js clear24631C`; do not assume the two head claims prove body equivalence.
+3. Pin complete cartridge bodies, all transfer forms, callers, continuations, dirty ownership and source
+   reachability before merging or classifying the `$24631C` pair.
 4. Continue the docket and complete Black Label through the full second loop.
 5. Finish White Label last, only after Black Label and its docket are complete.
 
