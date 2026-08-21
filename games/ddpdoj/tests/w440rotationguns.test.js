@@ -874,8 +874,8 @@ test('W440: the OTHER thing left in lf9100->9200 is the laser beam impact, and '
     + 'which is a stronger statement than the one it made');
 });
 
-test('W440: none of the three gun scripts is a counted note -- the port runs '
-  + 'all of them, and unportedLog over the window is unchanged',
+test('W440: none of the three gun scripts is a counted note, and the remaining '
+  + 'unported ledger is unchanged except for W476',
 { skip: SKIP_LADDER }, async () => {
   const trace = readTrace(TRACE);
   const { game, pokes } = await makeGame(9300);
@@ -890,10 +890,7 @@ test('W440: none of the three gun scripts is a counted note -- the port runs '
     'no note names any of the gun scripts. This wave changed what they DO, not '
     + 'whether they run -- so a reader cannot mistake it for a wave that ported '
     + 'something new');
-  assert.equal(report.length, 13,
-    'and the whole unported ledger over these 100 frames is THIRTEEN lines, the '
-    + 'same thirteen as before this wave. [M] every one of them is a per-frame '
-    + 'background note that fires on all 100 frames; not one is a bullet '
-    + 'producer, which is why W439\'s "read the notes" method found nothing '
-    + 'here and the write log had to do the work');
+  assert.equal(report.length, 12,
+    'the ledger has twelve lines after W476 ports type-5 call $2527CE; the other '
+    + 'twelve are unchanged and none is one of these gun scripts');
 });

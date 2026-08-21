@@ -325,7 +325,7 @@ test('W442: `input | BOMB` RELEASES the button -- the port word is ACTIVE LOW, '
   assert.equal(wrong.bit0Frames, 0, '$24989E never runs');
   // AND IT DOES NOT LOOK LIKE NOTHING HAPPENED, which is the whole danger.
   assert.equal(wrong.impacts, 34, 'it still fires 34 impacts...');
-  assert.equal(wrong.wholeRam, 1578, '...and still moves 1578 RAM bytes');
+  assert.equal(wrong.wholeRam, 1891, '...and still moves 1891 RAM bytes after W476 adds the follower history');
 });
 
 // ===========================================================================
