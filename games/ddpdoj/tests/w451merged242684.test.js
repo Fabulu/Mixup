@@ -286,8 +286,10 @@ test('SECTION 3: one `$242684` claimant survives, and all six old private heads 
   const pairs = bodyPairs().map(([p]) => p);
   assert.equal(pairs.includes('handlers.js onScreen242684 <> items.js offScreen242684'), false,
     'the deleted body pair left the body register too');
-  assert.equal(headRegister().length, 91, 'W450 92 minus merged $242684 is 91');
-  assert.equal(pairs.length, 38, 'W450 39 body pairs minus the deleted $242684 pair is 38');
+  assert.equal(headRegister().length, 90,
+    'W450 92 minus merged $242684 at W451 and $242494 at W453 is 90');
+  assert.equal(pairs.length, 37,
+    'W450 39 body pairs minus the W451 $242684 pair and W453 $242494 pair is 37');
 });
 
 // ==============================================================================================

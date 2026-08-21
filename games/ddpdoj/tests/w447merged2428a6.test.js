@@ -84,10 +84,10 @@ import { HIBACHI2, hibachiSecondForm2A6F12 } from '../src/hibachi2.js';
 import { livePlayers2428A6 } from '../src/boss.js';
 import { RNG, RNG_242B3C, drawByte242B3C } from '../src/rng.js';
 
-// W451: $242684 LEFT the widened register -- six private transcriptions of the
-// on/off-screen test merged into `movement.js offScreen242684`. 92 - 1 = 91.
-const W451_NOTE = 'W451 merged $242684 (SIX private transcriptions of the on/off-screen '
-  + 'test; survivor movement.js offScreen242684), so 92 - 1 = 91. ';
+// W451 merged six `$242684` private screen tests, taking 92 to 91. W453 merged
+// the exported/private `$242494` octagonal-distance pair, taking 91 to 90.
+const W453_NOTE = 'W451 merged $242684 (92 - 1 = 91); W453 merged $242494 '
+  + '(survivor bossscripts.js dist242494), so 91 - 1 = 90. ';
 
 const here = (p) => join(dirname(fileURLToPath(import.meta.url)), p);
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -489,16 +489,16 @@ test('SECTION 6: the doubly-claimed register is 19, and the two this wave merged
 
 // W450: THE 19 ABOVE COUNTS ONLY WHAT AN `export function` DECLARES.
 // W449's fourth copy of `$246800` was the module-private `clearChain`, invisible
-// to `portedIndex()` on every axis it has. The widened scan is 91 (92 at W450, minus
-// $242684, which W451 merged -- SIX private copies of the on/off-screen test). See
+// to `portedIndex()` on every axis it has. The widened scan is 90 (92 at W450,
+// minus $242684 at W451 and $242494 at W453). See
 // tests/w450widenedregister.test.js; the number is cross-checked in all four
 // register holders so none of them can be read as the whole count.
-test('SECTION 6b [W450]: the widened register is 91, and this wave\'s two merges hold under it too',
+test('SECTION 6b [W450]: the widened register is 90, and this wave\'s two merges hold under it too',
   async () => {
     const { headRegister } = await import('./w450widenedscan.js');
     const wide = headRegister();
-    assert.equal(wide.length, 91,
-      'the widened duplicate register is not 91. ' + W451_NOTE
+    assert.equal(wide.length, 90,
+      'the widened duplicate register is not 90. ' + W453_NOTE
       + 'w450widenedregister.test.js SECTION 3 owns the set');
     // The two W447 merged must stay merged under a scan that can ALSO see a
     // private re-transcription, which is the only way to know they really went.

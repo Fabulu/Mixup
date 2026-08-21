@@ -1,7 +1,7 @@
 // WAVE 450 (D69) -- THE DUPLICATE REGISTER, WIDENED UNTIL IT CAN SEE A PRIVATE COPY.
 //
 // ---------------------------------------------------------------------------
-// THE NUMBER WAS 19, W450 FOUND 92, AND W451 LEAVES 91
+// THE NUMBER WAS 19, W450 FOUND 92, W451 LEFT 91, AND W453 LEAVES 90
 // ---------------------------------------------------------------------------
 // W444 built the index; W446, W447, W448 and W449 steered by it and merged five
 // addresses, each of which turned out to be a live defect. Then W449 found a
@@ -13,38 +13,40 @@
 //
 // This wave widened the scan on three axes (see `w450widenedscan.js` for the
 // rules and the traps) and re-ran it. W450 measured 92 head rows and 39 body
-// pairs. W451 has now merged `$242684`, so the live registers on this tree are:
+// pairs. W451 merged `$242684`; W453 has now merged `$242494`, so the live
+// registers on this tree are:
 //
 //     shipped `export function` scan     19 addresses claimed twice or more
-//     widened head scan                  91          "
+//     widened head scan                  90          "
 //     of the shipped 19                  19 still there, NONE dropped
-//     newly visible                      72
+//     newly visible                      71
 //     of those, originally visible because of
 //       wider HEAD FORMS (private
 //       `function`, `const` arrow,
 //       method, object property)         68
 //       the wider DOC-SPAN rule           5
 //     then merged by W451                -1
+//     then merged by W453                -1
 //
-// ...plus a second register the old scan had no axis for at all: 38 PAIRS OF
+// ...plus a second register the old scan had no axis for at all: 37 PAIRS OF
 // BODIES that transcribe a shared RUN of ROM instructions. 25 of those name a
 // body that appears nowhere on the head register.
 //
 // **A LIST IS NOT THE DELIVERABLE.** W444's rule, and W449 proved it again: the
 // stale-notes disease is a document nobody re-derives. Both registers here are
-// re-derived from `src/` on every run and asserted EXACTLY, so the 92nd address
-// and the 39th pair each cost a wave's attention on the day they appear.
+// re-derived from `src/` on every run and asserted EXACTLY, so the next address
+// or body pair costs a wave's attention on the day it appears.
 //
-// **NOTHING HERE IS MERGED.** The unit was the guard. Every row below is a
-// candidate for its own wave, exactly as W447 handled its 24.
+// Each remaining row is a candidate for its own wave, exactly as W447 handled
+// its 24. W451 and W453 removed rows only after cartridge and live-state proof.
 //
 // ---------------------------------------------------------------------------
 // SECTIONS
 // ---------------------------------------------------------------------------
 //   1   the scan found something -- floors, so a broken regex cannot read clean
 //   2   the widening WEAKENS NOTHING: the shipped register is a strict subset
-//   3   THE HEAD REGISTER, exact, 91
-//   4   THE BODY REGISTER, exact, 38 pairs
+//   3   THE HEAD REGISTER, exact, 90
+//   4   THE BODY REGISTER, exact, 37 pairs
 //   5   RED PROOFS on synthetic trees -- one per axis, plus two negative controls
 //   6   THE HISTORICAL POSITIVE CONTROL: W449's own `clearChain`, verbatim
 
@@ -170,7 +172,7 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 
 // ---------------------------------------------------------------- SECTION 3
 
-// THE HEAD REGISTER. 91 ROM addresses claimed by two or more function-like
+// THE HEAD REGISTER. 90 ROM addresses claimed by two or more function-like
 // heads in `src/`, by name suffix or by JSDoc opening span.
 //
 // **DECLARE, NEVER WIDEN** -- W444's rule, and W446/W447/W448/W449 all kept it.
@@ -189,23 +191,24 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 //   * a DOC MISLABEL -- W447 found `$246710` on a body that is `$246704`, and a
 //     wider doc scan finds MORE of these, not fewer. `$2415A2` (palette.js
 //     `install2415A2` against player.js `deathPalette2531DE`) has that smell.
-//   * a REAL SECOND TRANSCRIPTION in two different files. The sharpest was
-//     `$242684` -- SIX private copies of the on/off-screen test across handlers,
-//     items, stage3carrier, stage3type16, stage4type41 and stage4type42 -- and
-//     W451 READ ALL SIX AND MERGED THEM into `movement.js offScreen242684`, so
-//     the row is GONE and the count is 91. Five of the six agreed with the image
-//     on every axis (`stage4type41`'s two separate word reads at `root+$04` and
-//     `root+$02` are what `move.l ($2,A6),D0` IS on a big-endian bus, and
-//     `stage3type16`'s inverted return had a call site inverted to match). The
-//     SIXTH, `stage4type42.js onScreen`, was an INVENTION -- no `$24268C add.w
-//     $813172`, the two axes swapped, both bands made up, and the polarity
-//     wrong at the call site too, so a type $42 child was freed the frame it
-//     came ON screen. Next sharpest are
-//     `$242494` (`dist242494` in bossscripts.js AND items.js, whose bodies also
-//     share six instruction markers -- SECTION 4), `$24631C` (`clear24631C` in
-//     objslot8.js AND stageend.js), `$2414BE` and `$28C0FC` (`installTxBank` and
-//     `cueStreamNote`, each written twice under the SAME name in objslot8.js and
-//     objslot12.js), `$28E7A2`, `$28C6C6`, `$28F4C4`, `$285A12` and `$2A6EDC`.
+//   * a REAL SECOND TRANSCRIPTION in two different files. `$242684` had SIX
+//     private copies of the on/off-screen test across handlers, items,
+//     stage3carrier, stage3type16, stage4type41 and stage4type42. W451 READ ALL
+//     SIX AND MERGED THEM into `movement.js offScreen242684`, taking the count
+//     from 92 to 91. Five agreed with the image. The sixth,
+//     `stage4type42.js onScreen`, invented a scroll add, swapped the axes, made
+//     up both bands, and inverted the call-site polarity, so a type $42 child
+//     was freed the frame it came on screen.
+//
+//     W453 then read `$242494` in `bossscripts.js dist242494` and private
+//     `items.js dist242494`. Both heads and six shared body markers named the
+//     pair. Exact `$24248E..$2424B9` bytes and the real `$27EE88` dirty-item
+//     witness proved them equivalent, so the private body merged into the
+//     exported helper and the count fell from 91 to 90. Next sharpest are
+//     `$24631C` (`clear24631C` in objslot8.js AND stageend.js), `$2414BE` and
+//     `$28C0FC` (`installTxBank` and `cueStreamNote`, each written twice under
+//     the SAME name in objslot8.js and objslot12.js), `$28E7A2`, `$28C6C6`,
+//     `$28F4C4`, `$285A12` and `$2A6EDC`.
 //
 // Each of those is its own wave. W446/W447/W448/W449 say what they cost when
 // they are not: a frozen background, a boss that refills its HP, a death effect
@@ -213,7 +216,7 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 const HEAD_REGISTER = Object.freeze([
   0x23bf74, 0x23bfdb, 0x23c622, 0x23e3e2, 0x23ff06, 0x240dc2,
   0x240f62, 0x24133c, 0x2414be, 0x24150a, 0x2415a2, 0x241688,
-  0x24179e, 0x2417de, 0x242494, 0x242e24, 0x242ec2,
+  0x24179e, 0x2417de, 0x242e24, 0x242ec2,
   0x24560a, 0x2456a6, 0x24631c, 0x246710, 0x24676a, 0x2497aa,
   0x249e4e, 0x249ea0, 0x249ee2, 0x24c096, 0x24c338, 0x24caae,
   0x24d480, 0x253b94, 0x253e96, 0x2562fc, 0x2564f0, 0x259962,
@@ -229,7 +232,7 @@ const HEAD_REGISTER = Object.freeze([
   0x2a3e15, 0x2a6edc,
 ]);
 
-test('SECTION 3: the widened head register is exactly these 91 addresses', () => {
+test('SECTION 3: the widened head register is exactly these 90 addresses', () => {
   const { idx } = headIndex();
   const wide = headRegister();
   assert.deepEqual(wide.map(hex), [...HEAD_REGISTER].map(hex),
@@ -244,15 +247,17 @@ test('SECTION 3: the widened head register is exactly these 91 addresses', () =>
 
   // ASSERTED AS A NUMBER TOO -- W447's lesson. An empty list satisfies a
   // `deepEqual` against a shrunken array and reads as five merges' progress.
-  assert.equal(wide.length, 91,
-    'the widened register is not 91. W449 left the NARROW one at 19; widening the head '
+  assert.equal(wide.length, 90,
+    'the widened register is not 90. W449 left the NARROW one at 19; widening the head '
     + 'forms and the doc-span rule took it to 92, of which 19 were the old rows and 73 '
-    + 'newly visible -- and W451 merged $242684, the sharpest of them, so 92 - 1 = 91');
+    + 'newly visible. W451 merged $242684 (92 - 1 = 91), then W453 merged $242494 '
+    + '(91 - 1 = 90)');
 
   // ...and every address the four merged waves removed must STAY off it, now
   // measured by a scan that can see private copies rather than only exports.
   for (const [a, wave] of [[0x25ffa8, 'W446'], [0x2428a6, 'W447'], [0x242b3c, 'W447'],
-    [0x246520, 'W448'], [0x24652a, 'W448'], [0x246800, 'W449'], [0x242684, 'W451']]) {
+    [0x246520, 'W448'], [0x24652a, 'W448'], [0x246800, 'W449'], [0x242684, 'W451'],
+    [0x242494, 'W453']]) {
     assert.ok(!wide.includes(a),
       `${hex(a)} is claimed twice AGAIN under the widened scan (${wave} merged it). `
       + 'The narrow scan could not have told you: a private re-transcription is exactly '
@@ -274,12 +279,14 @@ test('SECTION 3: the widened head register is exactly these 91 addresses', () =>
 // a RUN is a transcription. Keyed by `file name` and never by line number, so
 // an edit anywhere above a function cannot redden this.
 //
-// 25 of these 38 name a body that is on NO head register row, so they are
+// 25 of these 37 name a body that is on NO head register row, so they are
 // findings the address axis cannot make on its own. The sharpest:
 //   7 markers  handlers.js `fire11`      <> turret.js `turretStep`   $268A1A..$268A54
 //   6 markers  items.js `beamReset25270C` <> laser.js `wipeSegmentPool` $25279A..$2527AE
-//   6 markers  bossscripts.js `dist242494` <> items.js `dist242494`  -- and BOTH also
-//              claim `$242494` by name, so this one is doubly attested.
+//
+// W453 REMOVED `bossscripts.js dist242494 <> items.js dist242494`, which shared
+// six markers and also occupied a head row. Exact cartridge bytes and the real
+// dirty-item `$27EE88` caller proved both bodies equivalent.
 const BODY_REGISTER = Object.freeze([
   ['aim.js targetSelectBy <> midboss.js bigFan', [0x24270a, 0x242726]],
   ['background.js elemScrollComp <> effects.js runEffectDriver', [0x2417a8, 0x2417b0]],
@@ -287,7 +294,6 @@ const BODY_REGISTER = Object.freeze([
   ['background.js resetScrolls23C61E <> web/app.js draw', [0x23c5f2, 0x23c5fc]],
   ['bee.js collectTransform280FDC <> bee.js collectedTransform280FDC', [0x280ffc, 0x280ffe, 0x281002, 0x281010]],
   ['bomb.js fireBomb2498E2 <> player.js bombAndShotGuards', [0x2498e2, 0x249b28]],
-  ['bossscripts.js dist242494 <> items.js dist242494', [0x24249c, 0x2424a2, 0x2424a4, 0x2424a6, 0x2424ac, 0x2424b2]],
   ['continuescreen.js continuePrompt28864C <> continuescreen.js continueWipe28871C', [0x28872a, 0x288758]],
   ['effects.js runEffectDriver <> movement.js scrollCompensate', [0x24179e, 0x2417a8, 0x2417b0]],
   ['handlers.js damageFirstHead <> handlers.js damageFirstHead269CEA', [0x242684, 0x263762]],
@@ -329,7 +335,7 @@ const BODY_REGISTER = Object.freeze([
   ['tallyscreen.js loadSavedCursor25DA60 <> tallyscreen.js restoreCursors25DA60', [0x25da6c, 0x25da86, 0x25da8a, 0x25da8e]],
 ]);
 
-test('SECTION 4: exactly these 38 pairs of bodies transcribe a shared run of ROM instructions',
+test('SECTION 4: exactly these 37 pairs of bodies transcribe a shared run of ROM instructions',
   () => {
     const got = bodyPairs().map(([p, v]) => [p, v]);
     assert.deepEqual(got.map(([p]) => p), BODY_REGISTER.map(([p]) => p),
@@ -348,9 +354,9 @@ test('SECTION 4: exactly these 38 pairs of bodies transcribe a shared run of ROM
         + 'or it can mean somebody deleted the comments that made the duplicate visible');
     }
 
-    assert.equal(got.length, 38,
-      'the body register is not 38 pairs (39 at W450, minus the $242684 pair W451 merged). '
-      + 'As a NUMBER as well as a set, because an empty '
+    assert.equal(got.length, 37,
+      'the body register is not 37 pairs (39 at W450, minus $242684 at W451 and '
+      + '$242494 at W453). As a NUMBER as well as a set, because an empty '
       + 'list satisfies a deepEqual against a shrunken array and reads as progress');
   });
 

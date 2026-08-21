@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W452)
+Updated: 2026-08-21 (W453)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,61 +10,55 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **D65 is closed by W452 with cartridge, board and port parity.**
-The next concrete unit is **W453 / D69 `$242494`**, the exported/private transcription pair W450's
-widened register found through six shared instruction markers. Audit cartridge semantics and both
-RAM-state arms before merging or classifying it. Also open: the remaining widened duplicate rows,
-front-end screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and other
-explicit docket items.
+`docs/DOCKET.md` is authoritative. **W453 merged D69 `$242494` with cartridge and dirty-item proof.**
+The next concrete unit is **W454 / D69 `handlers.js fire11` <-> `turret.js turretStep`**, now the
+strongest body-only duplicate pair: seven shared markers over `$268A1A..$268A54`, with neither body on
+a widened head-register row. Audit both bodies and their real callers before merging or classifying.
+Also open: the remaining widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy
+types, full Black Label loop-2 coverage, and other explicit docket items.
 
-## W452 LANDED LOCALLY: BEE VISIBILITY ALREADY MATCHES
+## W453 LANDED LOCALLY: `$242494` IS ONE EQUIVALENT BODY NOW
 
-No production source changed. Type `$8A` and released kind-1 bees follow two distinct cartridge rules:
+`items.js` imports the exported `bossscripts.js dist242494`, deletes its private transcription, and
+keeps the real `$27EE88` record reads explicit as A6+$02 Y, A6+$04 X, target Y `$4600`, target X
+`$1C00`. The survivor has 20 production calls.
 
-- A covered or distant carrier emits nothing. Once a live player is within `$240` on the short axis,
-  `$2767AA bchg #6,($1,A6)` and `$2767B0 bne $2767CE` emit every other eligible frame. Art changes
-  only on emitted frames.
-- A surviving in-bounds released bee emits every frame while its art cadence is B,A,A. It has no
-  carrier-style suppression gate.
+Exact raw-image bytes at `$24248E..$2424B9` pin both `movem.w` loads and every arithmetic step: wrapped
+word subtraction, `$8000` negation, Y-only three-quarter scale, unsigned compare and swap, logical
+half-minimum, wrapped final add, and `move.w D0,D0`. `$27EE80..$27EE9F` pins target order, `jsr`, the
+unsigned `$0200` threshold, latch and speed stores. No export window was needed or added.
 
-The old D65 attribution was wrong and is corrected: `$268916 eor.b palCycle,(palette)` is type `$11`
-damage flashing, not type `$8A` carrier visibility.
+The real item driver runs four dirty reused kind `$08` records. Positive and negative near-Y arms latch
+to `$A108`, speed `$0A`, angle `$20`; far-X-only and far-Y-only arms stay `$A008`, speed `$5D`, angle
+`$29`. Each emits one 12-byte bucket-17 record and preserves frozen coordinates plus unowned dirty
+bytes. This proves both RAM fields and their order outside the helper.
 
-Pinned evidence:
+A temporary stale-signature mutation changed the call back to `dist242494(ram, a6, D2, D3)`. The
+focused regression rejected the call shape and the behavioral witness stayed `$A008` where `$A108`
+was required. `items.js` SHA-256 matched before and after restoration:
 
-    board machine                         ddpdojblk, build B, FNV64 D4C25CA9C91B9D47
-    selected board frames                 20
-    external framebuffer identities       24
-    carrier lf3802..3805                  present, absent, present, absent
-    covered carrier lf11297/lf11378       exact target entry absent
-    released bee lf11380..11385           B,A,A,B,A,A, exact entry present on all 6
-    checkpoint replay                     20/20 exact object and enemy records
+    4cc3780ebca5af0b9e9cf3a6b3ac91baf12a9782a2974d7eb51832545fa04e5c
 
-`tools/oracle/w452beevisibility.py` pins cartridge windows `$276702..$276814` and
-`$27FACC..$27FCE6`, handles wide branch extension words, and verifies the compact witness against the
-two raw MAME captures. `tools/oracle/w452beevisibility.board.json` carries the selected records,
-entries, capture identities and framebuffer hashes. The Node regression derives each exact ten-byte
-hardware entry and checks aligned containment. It does not claim full-list equality where unrelated
-producers differ.
+The duplicate registers reconcile exactly:
 
-Dirty and opposite arms cover far-to-near carrier transition, no-live-player suppression, mover
-freeze bypass, dirty released-slot ownership, B,A,A continuous emission, and off-screen free. Two
-actual temporary RED mutations were run: inverted carrier suppression and timer-1 bee suppression.
-Both failed on the exact target behavior and both production files were restored to their original
-SHA-256 values.
+    narrow export-only head rows             19, unchanged historical floor
+    widened head rows                        91 -> 90
+    widened body pairs                       38 -> 37
 
-Final W452 validation on the quiet tree:
+Final W453 validation on the quiet tree:
 
-    focused W452 plus affected bee tests    40 pass / 0 fail / 0 skipped
-    node --test games/ddpdoj/tests/       4173 pass / 0 fail / 0 skipped
-    w452beevisibility.py                  20 frames / 24 framebuffer identities
-    node games/ddpdoj/tools/webgate.mjs  exit 0, all checks passed
-    export-tables.py --verify             VERIFY OK at 613 windows
+    focused W453                              8 pass / 0 fail / 0 skipped
+    affected item, W94, W446-W451/W453      165 pass / 0 fail / 0 skipped
+    node --test games/ddpdoj/tests/         4181 pass / 0 fail / 0 skipped
+    node games/ddpdoj/tools/webgate.mjs    exit 0, all checks passed
+    export-tables.py --verify               VERIFY OK at 613 windows
+
+The W441 D14 oracle ladder does not intersect kind `$08` item homing and was not relevant to this
+behavior-equivalent merge. No publish was requested; live build `20260820231140` remains unchanged.
 
 ## IMMEDIATE ORDER
 
-1. Dispatch W453 on D69 `$242494`: audit the exported/private pair and merge only if cartridge and
-   opposite-state evidence prove equivalence.
+1. Dispatch W454 on the D69 `handlers.js fire11` <-> `turret.js turretStep` seven-marker body pair.
 2. Continue the docket and complete Black Label through the full second loop.
 3. Finish White Label last, only after Black Label and its docket are complete.
 

@@ -4967,3 +4967,48 @@ values.
 that W450's widened register paired by six shared instruction markers. Merge only if cartridge bytes
 and opposite-state tests prove equivalence; otherwise classify the difference. Continue all Black
 Label, including the full second loop and remaining docket, then finish White Label last.
+
+
+### D69 FOLLOW-UP, W453 `$242494`: THE EXPORTED AND PRIVATE DISTANCE BODIES WERE EQUIVALENT
+
+**THE COPIES ARE MERGED.** `items.js` no longer carries a private `dist242494`; its real `$27EE88`
+caller now reads A6+$02 and A6+$04 explicitly and passes Y, X, target Y, target X to the exported
+`bossscripts.js dist242494`. The survivor now has 20 production calls. The narrow export-only
+register remains **19**, while the widened head register moves **91 -> 90** and the body-pair register
+moves **38 -> 37**.
+
+**THE IMAGE SETTLES THE CALLING CONVENTION AND EVERY WORD OPERATION.** Exact raw-image spans
+`$24248E..$2424B9` and `$27EE80..$27EE9F` pin both `movem.w` loads, both subtraction signs, word
+negation including `$8000`, Y-only three-quarter scaling, unsigned compare and conditional full-register
+swap, logical half-minimum, wrapped `add.w`, final `move.w D0,D0`, the fixed target `$4600/$1C00`, the
+`jsr`, unsigned `$0200` threshold, latch bit, and speed store. `movem.w` sign-extends both words, but the
+body consumes only their low words. The largest reachable coordinate result is `$B000`, so a final add
+carry is unreachable from valid inputs; a separate synthetic post-negation `$FFFF + ($0002 >> 1)`
+proves the decoded `add.w` wraps to `$0000` without inventing an impossible coordinate case. The image
+contains 21 direct `jsr $242494` sites, all pinned by address.
+
+**THE REAL ITEM DRIVER PROVES RAM ORDER AND EXTERNAL STATE.** Four dirty reused kind `$08` records
+run through `$27E99E`: near positive Y and mirrored near negative Y latch to status `$A108`, speed `$0A`
+and angle `$20`; far-X-only and far-Y-only records remain `$A008`, speed `$5D` and angle `$29`. Every
+arm emits one 12-byte bucket-17 record, preserves frozen coordinates and leaves unowned dirty bytes
+untouched. These opposite outcomes catch an omitted A6+$02 read, an omitted A6+$04 read, or swapped
+Y/X arguments.
+
+**A REAL TEMPORARY RED MUTATION WAS RUN AND RESTORED BYTE-EXACT.** Replacing the merged call with the
+old private signature `dist242494(ram, a6, D2, D3)` made SECTION 3 reject the stale call shape and made
+the behavioral arm fail because near positive Y remained status `$A008` instead of latching to
+`$A108`. `items.js` SHA-256 was
+`4cc3780ebca5af0b9e9cf3a6b3ac91baf12a9782a2974d7eb51832545fa04e5c` before mutation and exactly the
+same after restoration.
+
+Validation on the quiet tree: focused W453 **8 pass / 0 fail / 0 skipped**; directly affected item,
+W94 and W446-W451/W453 register regressions **165 pass / 0 fail / 0 skipped**; full suite **4181 pass /
+0 fail / 0 skipped**; webgate exit 0 with all checks passing; `--verify` OK at **613 windows**, with no
+window added. The W441 D14 oracle ladder does not intersect kind `$08` item homing and was not a
+relevant behavior ladder for this equivalent merge.
+
+**NEXT CONCRETE DOCKET UNIT: W454, D69 `handlers.js fire11` <-> `turret.js turretStep`.** It is now the
+strongest body-only pair: seven shared markers across `$268A1A..$268A54`, with neither body represented
+by a widened head-register row. Audit both bodies and their real callers against the cartridge before
+merging or classifying them. Continue Black Label through the full second loop and close its docket,
+then finish White Label last.

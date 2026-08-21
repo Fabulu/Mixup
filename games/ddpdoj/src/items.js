@@ -112,6 +112,7 @@ import { drawByte242B3C, drawByte242E24 } from './rng.js';
 import { aim64, AimTables } from './aim.js';
 import { scoreByMask, abcd } from './score.js';
 import { offScreen242684 } from './movement.js';
+import { dist242494 } from './bossscripts.js';
 
 // ============================== THE GEOMETRY ================================
 
@@ -551,20 +552,9 @@ function scrollPair2417B6(ram) {
  *  only thing that made it a duplicate was that it was written down twice.
  *  `I.pos` is +$02, which is what `move.l ($2,A6),D0` reads. */
 
-/** `$242494` -- an OCTAGONAL distance from `($2,A6)` to (D2, D3).
- *  `|dy| - |dy|>>2` against `|dx|`, then `max + min/2`.  Not a norm anybody
- *  would write down; transcribed because kind `$8`'s latch threshold `$200` is
- *  measured against exactly this arithmetic. */
-function dist242494(ram, a6, d2, d3) {
-  let d0 = u16(ram.u16(a6 + I.pos) - d2);              // $242494/$24249A sub.w
-  if (d0 & 0x8000) d0 = u16(-d0);                      // $24249C bpl / neg.w
-  const d4 = d0 >>> 2;                                 // $2424A2 lsr.w #2
-  d0 = u16(d0 - d4);                                   // $2424A4 sub.w D4,D0
-  let d1 = u16(ram.u16(a6 + I.posX) - d3);             // $2424A6 sub.w D3,D1
-  if (d1 & 0x8000) d1 = u16(-d1);                      // $2424A8 bpl / neg.w
-  if (d0 < d1) { const t = d0; d0 = d1; d1 = t; }      // $2424AC cmp/bcc/exg
-  return u16(d0 + (d1 >>> 1));                         // $2424B2 lsr.w #1 / add.w
-}
+// `$242494`: W453 merged this file's private octagonal-distance body into
+// `bossscripts.js dist242494`. Kind `$8` still supplies this record's Y/X
+// words explicitly at its real `$27EE88` caller below.
 
 /** The `$23EB06` emit every body and both steppers end with.  D1 is packed
  *  LONG:SHORT and `$23EB1C asr.l #6` runs on the whole 32 bits, which is why it
@@ -907,7 +897,9 @@ function motion27EE54(ram, rom, ctx, a6) {
       HOME_08.d2, HOME_08.d3);                         // $27EE76 jsr $242038
     ram.setU8(a6 + I.angle, d1 & 0xff);                // $27EE7C move.b D1
   }
-  const d0 = dist242494(ram, a6, HOME_08.d2, HOME_08.d3);   // $27EE88 jsr $242494
+  const d0 = dist242494(
+    ram.u16(a6 + I.pos), ram.u16(a6 + I.posX),
+    HOME_08.d2, HOME_08.d3);                           // $27EE88 jsr $242494
   if (d0 > 0x0200) return tail27EBBA(ram, ctx, a6);    // $27EE8E cmpi.w #$200/bhi
   ram.setU8(a6, ram.u8(a6) | 0x01);                    // $27EE96 bset #$0,(A6)
   ram.setU8(a6 + I.speed, 0x0a);                       // $27EE9A move.b #$A

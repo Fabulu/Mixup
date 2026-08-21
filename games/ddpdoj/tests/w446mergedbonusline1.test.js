@@ -58,10 +58,10 @@ import { RomWindows } from '../src/rom.js';
 import { UnportedLog } from '../src/unported.js';
 import { TALLY, tallyDriver25FF7A } from '../src/tally.js';
 import { ALLOC } from '../src/objalloc.js';
-// W451: $242684 LEFT the widened register -- six private transcriptions of the
-// on/off-screen test merged into `movement.js offScreen242684`. 92 - 1 = 91.
-const W451_NOTE = 'W451 merged $242684 (SIX private transcriptions of the on/off-screen '
-  + 'test; survivor movement.js offScreen242684), so 92 - 1 = 91. ';
+// W451 merged six `$242684` private screen tests, taking 92 to 91. W453 merged
+// the exported/private `$242494` octagonal-distance pair, taking 91 to 90.
+const W453_NOTE = 'W451 merged $242684 (92 - 1 = 91); W453 merged $242494 '
+  + '(survivor bossscripts.js dist242494), so 91 - 1 = 90. ';
 
 const here = (p) => join(dirname(fileURLToPath(import.meta.url)), p);
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -299,11 +299,11 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
 // The 19 above is left EXACTLY as it was: it is a true statement about the
 // narrow index, w447/w448/w449 quote the same number, and weakening it would
 // lose the merge history. What is added is the true figure beside it.
-test('SECTION 2c [W450]: the widened register is 91, so the 19 above is read as a floor', async () => {
+test('SECTION 2c [W450]: the widened register is 90, so the 19 above is read as a floor', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
-  assert.equal(headRegister().length, 91,
+  assert.equal(headRegister().length, 90,
     'the WIDENED register (private functions, arrows, methods and the whole doc opening '
-    + 'span, not just `export function`) is not 91. ' + W451_NOTE + 'tests/w450widenedregister.test.js SECTION 3 '
+    + 'span, not just `export function`) is not 90. ' + W453_NOTE + 'tests/w450widenedregister.test.js SECTION 3 '
     + 'holds the exact set and is where a new duplicate must be resolved -- this is a '
     + 'cross-check so that a wave reading 19 here cannot believe there are only 19');
 });

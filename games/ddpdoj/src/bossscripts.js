@@ -102,15 +102,21 @@ function aimTables(rom) {
 }
 
 // ===========================================================================
-// $242494 -- THE OCTAGONAL DISTANCE, and the Y axis is PRE-SCALED
+// $24248E/$242494 -- THE OCTAGONAL DISTANCE, and the Y axis is PRE-SCALED
 // ===========================================================================
-//   242494: movem.w $2(a6),d0-d1            d0 = Y, d1 = X
-//   24249A: sub.w d2,d0 / bpl.b / neg.w d0          |dY|
+//   24248E: movem.w $2(a0),d2-d3            target Y/X on the fall-through path
+//   242494: movem.w $2(a6),d0-d1            self Y/X on the direct entry
+//   24249A: sub.w d2,d0 / bpl.s $2424A0 / neg.w d0         |dY|
 //   2424A0: move.w d0,d4 / lsr.w #$2,d4 / sub.w d4,d0     ...x 3/4
-//   2424A6: sub.w d3,d1 / bpl.b / neg.w d1          |dX|
-//   2424AC: cmp.w d1,d0 / bcc.b / exg.l d1,d0       d0 := max, d1 := min
-//   2424B2: lsr.w #$1,d1 / add.w d1,d0              max + min/2
+//   2424A6: sub.w d3,d1 / bpl.s $2424AC / neg.w d1         |dX|
+//   2424AC: cmp.w d1,d0 / bcc.s $2424B2 / exg.l d1,d0     d0 := max, d1 := min
+//   2424B2: lsr.w #$1,d1 / add.w d1,d0 / move.w d0,d0     max + min/2
 //   2424B8: rts
+//
+// Direct `$242494` callers already hold target Y/X in D2/D3. `$242486` callers
+// load those words from `($2,A0)` at `$24248E` and fall through. Both `movem.w`
+// loads sign-extend into the data registers, but every operation below consumes
+// and wraps only the low word; the API therefore accepts and returns words.
 //
 // TWO THINGS THE ADDRESSES DO NOT TELL YOU:
 //

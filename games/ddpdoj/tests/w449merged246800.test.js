@@ -79,10 +79,10 @@ import {
 import { chainCheck24681A } from '../src/stageend.js';
 import { PaletteState, PALSTAGE, flush24133C } from '../src/palette.js';
 
-// W451: $242684 LEFT the widened register -- six private transcriptions of the
-// on/off-screen test merged into `movement.js offScreen242684`. 92 - 1 = 91.
-const W451_NOTE = 'W451 merged $242684 (SIX private transcriptions of the on/off-screen '
-  + 'test; survivor movement.js offScreen242684), so 92 - 1 = 91. ';
+// W451 merged six `$242684` private screen tests, taking 92 to 91. W453 merged
+// the exported/private `$242494` octagonal-distance pair, taking 91 to 90.
+const W453_NOTE = 'W451 merged $242684 (92 - 1 = 91); W453 merged $242494 '
+  + '(survivor bossscripts.js dist242494), so 91 - 1 = 90. ';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../rip/sound/maincpu.bin');
@@ -278,18 +278,18 @@ test('SECTION 2: `$246800` is claimed EXACTLY ONCE, and the register is at 19', 
 // `animobjects.js clearChain`, private, no name suffix, no doc, reached at four
 // genuine ROM `bsr $246800` sites. The scan has no axis that could reach it.
 //
-// W450 widened it on three axes and re-ran: 19 -> 92 head-claimed duplicates (91 after
-// W451 merged $242684, six private copies of the on/off-screen test),
-// plus 39 pairs of bodies at W450, now 38 after W451 merged `$242684`, transcribing a
+// W450 widened it on three axes and re-ran: 19 -> 92 head-claimed duplicates. W451
+// merged `$242684` to leave 91, then W453 merged `$242494` to leave 90. The body
+// register started at 39 pairs, fell to 38 at W451, and is 37 after W453. It records a
 // shared RUN of ROM instructions -- the
 // axis that names `clearChain`, and the ONLY one that does. W450's SECTION 6
 // replays these three bodies verbatim and requires all three pairings.
-test('SECTION 2e [W450]: the widened register is 91, and $246800 is claimed once under IT too',
+test('SECTION 2e [W450]: the widened register is 90, and $246800 is claimed once under IT too',
   async () => {
     const { headRegister, bodyPairs } = await import('./w450widenedscan.js');
     const wide = headRegister();
-    assert.equal(wide.length, 91,
-      'the widened duplicate register is not 91. ' + W451_NOTE
+    assert.equal(wide.length, 90,
+      'the widened duplicate register is not 90. ' + W453_NOTE
       + 'w450widenedregister.test.js SECTION 3 owns the set');
     assert.ok(!wide.includes(0x246800),
       '$246800 is claimed twice AGAIN, and this time by a scan that can see a private copy. '
