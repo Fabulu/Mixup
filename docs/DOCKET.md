@@ -5950,7 +5950,27 @@ W472 is the first wave after live build `20260821175936` and is not a publicatio
 `hud.js txPrint240DC2` and `ram.js u32`; classify those claims directly and preserve the actual TX-print
 entry and generic RAM access behavior.
 
-**NEXT OBVIOUS BATCH CANDIDATE: W473, `$240DC2`.** Classify `hud.js txPrint240DC2` against the
-`ram.js u32` claim, preserve the actual TX-print entry and generic RAM reader, and return the address to one
-canonical cartridge claimant. Continue Black Label through the full second loop and close its docket, then
-finish White Label last.
+
+### D81: FOLLOW-UP, W473 `$240DC2`: GENERIC UNSIGNED-LONGWORD HELPER NO LONGER CLAIMS A CARTRIDGE ENTRY
+
+`hud.js txPrint240DC2` remains the exported cartridge entry for the base-grid TX defer printer. It preserves
+`D4 | $C0000000`, the `$10000` per-cell tile step, the destination-grid iteration, and the deferred-buffer
+writes. `ram.js u32` remains the same exported generic unsigned 32-bit normalizer used across the port; a
+preceding JSDoc reference to the caller had made the widened scanner treat that arithmetic helper as a
+second `$240DC2` entry. The caller provenance now remains in line commentary after the declaration, without
+changing implementation, ESM identity, dependency edges, or behavior.
+
+The live registers move from 72 to **71 widened heads**. `$240DC2` has one remaining claimant in `hud.js`;
+narrow heads remain 16, body pairs remain 27, and body-only findings remain 22. Focused HUD coverage,
+syntax checking, the authoritative register, and the W446-W462 live holder chain passed **205/205**.
+
+W473 is the second wave after live build `20260821175936` and is not a publication wave.
+
+**W473 RECOMMENDATION FOR W474: `$240F62`.** The widened scanner currently names
+`hud.js makeHudObject` and `score.js notePerFrameLedger`; classify those claims directly while preserving
+the HUD object factory, per-frame ledger behavior, and cartridge provenance.
+
+**NEXT OBVIOUS BATCH CANDIDATE: W474, `$240F62`.** Classify `hud.js makeHudObject` against
+`score.js notePerFrameLedger`, preserve the actual object-dispatch and ledger behavior, and return the
+address to one canonical cartridge claimant. Continue Black Label through the full second loop and close
+its docket, then finish White Label last.

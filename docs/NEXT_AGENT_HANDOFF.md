@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W472)
+Updated: 2026-08-21 (W473)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,14 +10,22 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W472 removed the shared bomb-position helper's false `$23FF06`
-cartridge-entry claim.** Private `bomb.js draw23FF06` remains the bucket-13 entry, while
-`packBombRecordPosition` still provides the arithmetic shared with the register-saving `$23FF42` variant.
-Live scanner APIs report 16 narrow heads, 72 widened heads, 27 body pairs, and 22 body-only findings. The
-next direct batch candidate is **W473 `$240DC2`**, claimed by `hud.js txPrint240DC2` and `ram.js u32`.
-W471 remains live as build `20260821175936`; W472 is the first wave in the next five-wave interval.
-Continue the widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black
-Label loop-2 coverage, and every other explicit docket item.
+`docs/DOCKET.md` is authoritative. **W473 removed the generic unsigned-longword helper's false `$240DC2`
+cartridge-entry claim.** Exported `hud.js txPrint240DC2` remains the base-grid TX defer entry, while
+exported `ram.js u32` remains the same generic unsigned 32-bit normalizer used across the port. Live scanner
+APIs report 16 narrow heads, 71 widened heads, 27 body pairs, and 22 body-only findings. The next direct
+batch candidate is **W474 `$240F62`**, claimed by `hud.js makeHudObject` and
+`score.js notePerFrameLedger`. W471 remains live as build `20260821175936`; W473 is the second wave in the
+next five-wave interval. Continue the widened duplicate rows, front-end screens D33/D34/D35/D37, remaining
+enemy types, full Black Label loop-2 coverage, and every other explicit docket item.
+
+## W473 VERIFIED: GENERIC UNSIGNED-LONGWORD HELPER OWNS NO CARTRIDGE ENTRY
+
+`hud.js txPrint240DC2` remains the cartridge entry for the base-grid TX defer printer, preserving its tile
+bias, tile step, grid walk, and deferred writes. `ram.js u32` retains the same implementation and public ESM
+identity as the generic unsigned 32-bit normalizer; only its preceding documentation is now address-free.
+Focused HUD and live-register coverage passed 205/205. Only widened heads changed, 72 to 71. W471 remains
+live as build `20260821175936`; W473 is the second wave in the next publication interval.
 
 ## W472 VERIFIED: SHARED BOMB-POSITION HELPER OWNS NO CARTRIDGE ENTRY
 
