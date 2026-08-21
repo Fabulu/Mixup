@@ -4,14 +4,14 @@ This directory contains the JavaScript translation of **DoDonPachi DaiOuJou Blac
 
 ## Current status
 
-Updated 2026-08-21 after Wave 469.
+Updated 2026-08-21 after Wave 470.
 
 | area | current state |
 |---|---|
 | target | Finish Black Label Version-B through the full second loop and close every docket item. Finish White Label last. |
 | port | Active across the game loop, player, weapons, enemies, bosses, stage flow, scoring, chaining, hypers, rank, HUD, result and name-entry systems. Black Label is not complete yet. |
 | tests | `4,280` DDPDOJ unit tests passed in the W466 publication gate, with no failures or skips. |
-| duplicate audit | 16 narrow heads, 76 widened heads, 27 body pairs, and 22 body-only findings remain after W469. |
+| duplicate audit | 16 narrow heads, 74 widened heads, 27 body pairs, and 22 body-only findings remain after W470. |
 | oracle | MAME 0.288, pinned to VERSION-B. Determinism and probe behavior are documented in `NOTES-oracle.md`. |
 | renderer | The original pixel-slice gate matched `13,647,872 / 13,647,872` pixels over 136 frame pairs. This is historical slice evidence, not a claim that the unfinished full game is pixel-perfect. |
 | live build | `20260821162642` at <https://gbtman.pages.dev/games/ddpdoj/>. |

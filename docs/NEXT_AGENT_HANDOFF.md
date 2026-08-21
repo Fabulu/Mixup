@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W469)
+Updated: 2026-08-21 (W470)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,14 +10,25 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W469 removed slot 12's false `$23C622` clear-body claim.**
-`objslot12.js clearTxOrNote` still guards missing `ctx.tx` and counts the exact call site, while the
-exported `background.js clearTx23C622` remains the sole canonical 2,048-longword TX clear. Live scanner
-APIs report 16 narrow heads, 76 widened heads, 27 body pairs, and 22 body-only findings. The next direct
-batch candidate is **W470 `$23BF74/$23BFDB`**, where `main.js Game#boot` caller documentation claims both
-endpoints of `frontend.js bootFrontEnd23BF74`. W469 is the third wave after live build `20260821162642`,
-so no publication is due. Continue the widened duplicate rows, front-end screens D33/D34/D35/D37,
-remaining enemy types, full Black Label loop-2 coverage, and every other explicit docket item.
+`docs/DOCKET.md` is authoritative. **W470 removed `Game#boot`'s false `$23BF74/$23BFDB`
+front-end endpoint claims.** The method still supplies `Game` state, stores `bootResult`, returns it, and
+retains the cold-boot and board fall-through warning inside its body. Exported `frontend.js
+bootFrontEnd23BF74` remains the sole canonical claimant for both endpoints. Live scanner APIs report 16
+narrow heads, 74 widened heads, 27 body pairs, and 22 body-only findings. The next direct batch candidate is
+**W471 `$23E3E2`**, where `bossarrival.js emitScaled` and `bossarrival.js emit23E3E2` claim the same
+cartridge address. W470 is the fourth wave after live build `20260821162642`; W471 will be the fifth and
+must be published from a quiet tree after `export-web.mjs`. Continue the widened duplicate rows, front-end
+screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and every other explicit
+docket item.
+
+## W470 VERIFIED: GAME BOOT ADAPTER OWNS NO FRONT-END ENDPOINT
+
+`main.js Game#boot` adapts `Game` state to exported `frontend.js bootFrontEnd23BF74`; it does not duplicate
+the six-call front-end setup body. The method still stores and returns `bootResult`, remains absent from the
+constructor, and retains the full cold-boot and `$23BFDB` fall-through explanation inside its body. Its
+preceding documentation is now address-free. Focused front-end and cold-boot coverage passed 21/21; the
+W446-W462 holder chain passed 187/187. Only widened heads changed, 76 to 74. Take W471's `$23E3E2` row
+next, then publish it as the fifth wave.
 
 ## W469 VERIFIED: SLOT-12 CLEAR ADAPTER OWNS NO CARTRIDGE HEAD
 
@@ -26,8 +37,8 @@ still runs `background.js clearTx23C622(ctx.tx)` when render state exists; other
 with the exact `$28F2BA` or `$28F386` caller and returns, preserving the unit-testable teardown behavior.
 Only its address-bearing preceding documentation and generic name changed to `clearTxOrNote`; both callers
 remain in place. Focused object-dispatch, context, deferral, and authoritative-register coverage passed
-49/49; the W446-W462 holder chain passed 187/187. Only widened heads changed, 77 to 76. Take W470's two
-front-end endpoint claims next.
+49/49; the W446-W462 holder chain passed 187/187. Only widened heads changed, 77 to 76. W470
+completed the next two endpoint rows above.
 
 ## W468 VERIFIED: FORM-1 EXIT ADAPTER OWNS NO SHARED BODY HEAD
 

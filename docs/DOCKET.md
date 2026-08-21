@@ -5886,8 +5886,29 @@ window, or generated output changed.
 
 W469 is the third wave after live build `20260821162642` and is not a publication wave.
 
-**NEXT OBVIOUS BATCH CANDIDATE: W470, `$23BF74/$23BFDB`.** The detailed documentation immediately before
-`main.js Game#boot` claims both endpoints of the exported `frontend.js bootFrontEnd23BF74` span even though
-the method only supplies `Game` state and stores the result. Preserve that caller adaptation and the cold
-boot warning while returning both endpoint claims to the canonical front-end body. Continue Black Label
-through the full second loop and close its docket, then finish White Label last.
+**HISTORICAL W469 RECOMMENDATION FOR W470: `$23BF74/$23BFDB`.** W470 completed that direct
+classification below.
+
+
+### D78: FOLLOW-UP, W470 `$23BF74/$23BFDB`: GAME BOOT ADAPTER NO LONGER CLAIMS THE FRONT-END SPAN
+
+`frontend.js bootFrontEnd23BF74` remains the exported canonical front-end setup body. The `main.js
+Game#boot` method is not another implementation. It supplies the `Game` RAM, ROM, palette, and context,
+stores the setup result in `bootResult`, and returns it. Its detailed cold-boot warning and the board's
+fall-through into `Game#step()` remain inside the method body, while the preceding method documentation is
+address-free. The constructor still does not call `boot()`, and executable behavior is unchanged.
+
+The live registers move from 76 to **74 widened heads** because the old opening span claimed both
+`$23BF74` and `$23BFDB`. Both now have one remaining claimant in `frontend.js`; narrow heads remain 16,
+body pairs remain 27, and body-only findings remain 22. Focused front-end and cold-boot coverage passed
+**21/21**. The W446-W462 live holder chain passed **187/187**. No executable behavior, public ESM identity,
+dependency edge, ROM window, or generated output changed.
+
+W470 is the fourth wave after live build `20260821162642` and is not a publication wave.
+
+**NEXT OBVIOUS BATCH CANDIDATE: W471, `$23E3E2`.** `bossarrival.js emitScaled` and
+`bossarrival.js emit23E3E2` claim the same cartridge address. Classify whether the former is caller
+adaptation or a duplicate body, preserve the arrival-effect behavior and caller conventions, and return the
+address to one canonical implementation. W471 is the fifth wave after the current live build, so publish
+from a quiet tree after landing it: run `games/ddpdoj/tools/export-web.mjs` before `tools/publish.mjs`.
+Continue Black Label through the full second loop and close its docket, then finish White Label last.

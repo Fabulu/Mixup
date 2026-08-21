@@ -831,34 +831,37 @@ export class Game {
    * records (NOTES-replay.md constraint 3; measured input lead is ZERO).
    */
   /**
-   * `$23BF74..$23BFDB` -- THE FRONT-END BOOT BLOCK, and the gap it closes.
-   *
-   * `hiscore.js` has exported `hiscoreDefaults28841E` since W301 and, until this
-   * wave, **NOTHING IN `src/` CALLED IT**: fourteen test files did, and the port
-   * did not. `tests/w375slot8.test.js:718` recorded that as "`Game#boot()` DOES
-   * NOT DO THIS", which was true twice over -- there was no `boot()` at all. This
-   * is it, and the factory table is its first instruction, because `$23BF74 jsr
-   * $28841E` is the block's first instruction.
-   *
-   * **IT IS NOT CALLED FROM THE CONSTRUCTOR AND MUST NOT BE.** Every existing
-   * caller hands `Game` a MID-GAME snapshot (`rip/web/seed.bin` and the `.replay`
-   * fixtures), and `$28841E` overwrites `$803824..$8038B9` with the FACTORY
-   * table. On a seed taken mid-attract that is a no-op only because the shipped
-   * seed happens to hold the factory table (hiscore.js:355 measured exactly
-   * that); on a seed taken after somebody scored it would silently rewrite the
-   * board's own high scores and every column downstream of them. `boot()` is for
-   * a caller that starts from ZEROED RAM, which is what a cold boot is.
-   *
-   * THE FALL-THROUGH IS `step()`. The block does not return on the board: it runs
-   * off the end of `$23BFDB` into `$23BFDC`, the seven-call main loop, whose last
-   * instruction is `$23C006 bra.s $23BFDC`. So `boot()` then `step()` repeatedly
-   * IS `$23BF74`, whole, and the object it stages -- dispatch type 8 at state
-   * `$D` -- is picked up by the very next `step()`'s `commitCreates`.
+   * Boots the front end from zeroed RAM and stores its setup result.
    *
    * @returns the frontend.js result record: which banks installed, what the
    *   section flag and the control register ended at, and the staged record.
    */
   boot() {
+    /*
+     * `$23BF74..$23BFDB` -- THE FRONT-END BOOT BLOCK, and the gap it closes.
+     *
+     * `hiscore.js` has exported `hiscoreDefaults28841E` since W301 and, until this
+     * wave, **NOTHING IN `src/` CALLED IT**: fourteen test files did, and the port
+     * did not. `tests/w375slot8.test.js:718` recorded that as "`Game#boot()` DOES
+     * NOT DO THIS", which was true twice over -- there was no `boot()` at all. This
+     * is it, and the factory table is its first instruction, because `$23BF74 jsr
+     * $28841E` is the block's first instruction.
+     *
+     * **IT IS NOT CALLED FROM THE CONSTRUCTOR AND MUST NOT BE.** Every existing
+     * caller hands `Game` a MID-GAME snapshot (`rip/web/seed.bin` and the `.replay`
+     * fixtures), and `$28841E` overwrites `$803824..$8038B9` with the FACTORY
+     * table. On a seed taken mid-attract that is a no-op only because the shipped
+     * seed happens to hold the factory table (hiscore.js:355 measured exactly
+     * that); on a seed taken after somebody scored it would silently rewrite the
+     * board's own high scores and every column downstream of them. `boot()` is for
+     * a caller that starts from ZEROED RAM, which is what a cold boot is.
+     *
+     * THE FALL-THROUGH IS `step()`. The block does not return on the board: it runs
+     * off the end of `$23BFDB` into `$23BFDC`, the seven-call main loop, whose last
+     * instruction is `$23C006 bra.s $23BFDC`. So `boot()` then `step()` repeatedly
+     * IS `$23BF74`, whole, and the object it stages -- dispatch type 8 at state
+     * `$D` -- is picked up by the very next `step()`'s `commitCreates`.
+     */
     this.bootResult = bootFrontEnd23BF74(this.ram, this.rom, this.palette,
       this.#ctx());
     return this.bootResult;
