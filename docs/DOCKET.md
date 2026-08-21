@@ -5992,7 +5992,28 @@ W474 is the third wave after live build `20260821175936` and is not a publicatio
 `palette.js PaletteState#ledger` and `palette.js flush24133C`; classify the generic reporting method against
 the actual once-per-frame palette upload while preserving all ledger and flush behavior.
 
-**NEXT OBVIOUS BATCH CANDIDATE: W475, `$24133C`.** Classify `palette.js PaletteState#ledger` against
-`palette.js flush24133C`, preserve the generic palette accounting and cartridge upload entry, and return the
-address to one canonical cartridge claimant. Continue Black Label through the full second loop and close its
-docket, then finish White Label last.
+
+### D83: FOLLOW-UP, W475 `$24133C`: PALETTE COVERAGE REPORT OWNS NO UPLOAD ENTRY
+
+`palette.js flush24133C` remains the once-per-frame cartridge palette upload. It copies each dirty sprite,
+background, and text staging region into its own palette-RAM third, clears only the copied dirty flags,
+carries source provenance, runs the `$241404` background-fade tail, and records the flush. `PaletteState#ledger`
+remains the same generic source-coverage report by palette region. Its preceding JSDoc had made that report a
+second `$24133C` claimant; the address now remains as line commentary inside the method, without changing
+implementation, method identity, callers, dependencies, or behavior.
+
+The live registers move from 69 to **68 widened heads**. Narrow heads remain 15, body pairs remain 27, and
+body-only findings remain 22. Focused palette and authoritative-register checks passed **24/24**; the
+W446-W462 live holder chain passed **187/187**.
+
+W475 is the fourth wave after live build `20260821175936` and is not a publication wave.
+
+**W475 RECOMMENDATION FOR W476: `$24150A`.** The widened scanner currently names
+`bomb.js installBombPalette`, `bossarrival.js note`, and the canonical `palette.js install24150A`. Classify
+the two caller-side helpers against the cartridge bank-upload entry while preserving the bomb palette guard,
+generic counted-note behavior, caller metadata, and public upload identity. W476 is the fifth interval wave
+and must publish from a quiet tracked tree after its editor and focused checks finish.
+
+**NEXT OBVIOUS BATCH CANDIDATE: W476, `$24150A`.** Return the address to the canonical palette upload while
+preserving both caller-side behaviors. Continue Black Label through the full second loop and close its docket,
+then finish White Label last.

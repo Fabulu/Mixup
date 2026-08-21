@@ -1,7 +1,7 @@
 // WAVE 450 (D69) -- THE DUPLICATE REGISTER, WIDENED UNTIL IT CAN SEE A PRIVATE COPY.
 //
 // ---------------------------------------------------------------------------
-// THE NUMBER WAS 19, W450 FOUND 92, W451 LEFT 91, W453 LEFT 90, W457 LEFT 89, W458 LEFT 88, W459 LEFT 87, W460 LEFT 86, W461 LEFT 85, W462 LEFT 84, W463 LEFT 83, W464 LEFT 82, W465 LEFT 81, W466 LEFT 79, W467 LEFT 78, W468 LEFT 77, W469 LEFT 76, W470 LEFT 74, W471 LEFT 73, W472 LEFT 72, W473 LEFT 71, W474 LEAVES 69
+// THE NUMBER WAS 19, W450 FOUND 92, W451 LEFT 91, W453 LEFT 90, W457 LEFT 89, W458 LEFT 88, W459 LEFT 87, W460 LEFT 86, W461 LEFT 85, W462 LEFT 84, W463 LEFT 83, W464 LEFT 82, W465 LEFT 81, W466 LEFT 79, W467 LEFT 78, W468 LEFT 77, W469 LEFT 76, W470 LEFT 74, W471 LEFT 73, W472 LEFT 72, W473 LEFT 71, W474 LEFT 69, W475 LEAVES 68
 // ---------------------------------------------------------------------------
 // W444 built the index; W446, W447, W448 and W449 steered by it and merged five
 // addresses, each of which turned out to be a live defect. Then W449 found a
@@ -29,9 +29,9 @@
 // The live registers are:
 //
 //     shipped `export function` scan     15 addresses claimed twice or more
-//     widened head scan                  69          "
+//     widened head scan                  68          "
 //     of the shipped 15                  15 still there, NONE dropped
-//     newly visible                      54
+//     newly visible                      53
 //
 // ...plus a second register the old scan had no axis for at all: 27 PAIRS OF
 // BODIES that transcribe a shared RUN of ROM instructions. W456 removed four
@@ -54,7 +54,7 @@
 // ---------------------------------------------------------------------------
 //   1   the scan found something -- floors, so a broken regex cannot read clean
 //   2   the widening WEAKENS NOTHING: the shipped register is a strict subset
-//   3   THE HEAD REGISTER, exact, 69
+//   3   THE HEAD REGISTER, exact, 68
 //   4   THE BODY REGISTER, exact, 27 pairs; 22 body-only findings
 //   5   RED PROOFS on synthetic trees -- one per axis, plus two negative controls
 //   6   THE HISTORICAL POSITIVE CONTROL: W449's own `clearChain`, verbatim
@@ -182,7 +182,7 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 
 // ---------------------------------------------------------------- SECTION 3
 
-// THE HEAD REGISTER. 69 ROM addresses claimed by two or more function-like
+// THE HEAD REGISTER. 68 ROM addresses claimed by two or more function-like
 // heads in `src/`, by name suffix or by JSDoc opening span.
 //
 // **DECLARE, NEVER WIDEN** -- W444's rule, and W446/W447/W448/W449 all kept it.
@@ -251,13 +251,15 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 //     keeps the retired `score.js notePerFrameLedger` no-op and its full history,
 //     but moves cartridge addresses inside its body. `hud.js makeHudObject` is now
 //     the sole claimant for dispatch table `$240F62` and handler `$28D520`, leaving
-//     69 widened rows and 15 narrow rows.
+//     69 widened rows and 15 narrow rows. W475 moves `$24133C` detail inside the
+//     generic `PaletteState#ledger` reporting method, leaving `flush24133C` as the
+//     sole cartridge claimant and 68 widened rows.
 //
 // Each of those is its own wave. W446/W447/W448/W449 say what they cost when
 // they are not: a frozen background, a boss that refills its HP, a death effect
 // that can never run, and an invented condition in the only copy with a caller.
 const HEAD_REGISTER = Object.freeze([
-  0x24133c, 0x24150a, 0x2415a2, 0x241688,
+  0x24150a, 0x2415a2, 0x241688,
   0x24179e, 0x2417de, 0x242ec2,
   0x24560a, 0x2456a6, 0x246710, 0x24676a, 0x2497aa,
   0x249e4e, 0x249ea0, 0x249ee2, 0x24c096, 0x24c338, 0x24caae,
@@ -274,7 +276,7 @@ const HEAD_REGISTER = Object.freeze([
   0x2a3e15,
 ]);
 
-test('SECTION 3: the widened head register is exactly these 69 addresses', () => {
+test('SECTION 3: the widened head register is exactly these 68 addresses', () => {
   const { idx } = headIndex();
   const wide = headRegister();
   assert.deepEqual(wide.map(hex), [...HEAD_REGISTER].map(hex),
@@ -289,8 +291,8 @@ test('SECTION 3: the widened head register is exactly these 69 addresses', () =>
 
   // ASSERTED AS A NUMBER TOO -- W447's lesson. An empty list satisfies a
   // `deepEqual` against a shrunken array and reads as five merges' progress.
-  assert.equal(wide.length, 69,
-    'the widened register is not 69. W450 found 92, W451 merged $242684, W453 merged '
+  assert.equal(wide.length, 68,
+    'the widened register is not 68. W450 found 92, W451 merged $242684, W453 merged '
     + '$242494, W457 merged $25D9E6, W458 merged $25DA60, W459 merged $25FF38, '
     + 'W460 removed the optional $24631C shim, W461 merged the private $242E24 body, '
     + 'and W462 removed the private $2414BE adapter row, W463 removed the private '
@@ -302,7 +304,8 @@ test('SECTION 3: the widened head register is exactly these 69 addresses', () =>
     + 'endpoint claims from the Game#boot caller adapter, W471 removed the parameterized '
     + 'emitter helper claim at $23E3E2, W472 removed the shared bomb arithmetic '
     + 'helper claim at $23FF06, W473 removed the generic u32 helper claim at $240DC2, '
-    + 'and W474 removed the retired ledger note claims at $240F62 and $28D520');
+    + 'W474 removed the retired ledger note claims at $240F62 and $28D520, and W475 '
+    + 'removed the palette-reporting method claim at $24133C');
 
   // ...and every address the four merged waves removed must STAY off it, now
   // measured by a scan that can see private copies rather than only exports.
@@ -314,7 +317,7 @@ test('SECTION 3: the widened head register is exactly these 69 addresses', () =>
     [0x28f666, 'W466'], [0x285a12, 'W467'], [0x2a6edc, 'W468'],
     [0x23c622, 'W469'], [0x23bf74, 'W470'], [0x23bfdb, 'W470'],
     [0x23e3e2, 'W471'], [0x23ff06, 'W472'], [0x240dc2, 'W473'],
-    [0x240f62, 'W474'], [0x28d520, 'W474']]) {
+    [0x240f62, 'W474'], [0x28d520, 'W474'], [0x24133c, 'W475']]) {
     assert.ok(!wide.includes(a),
       `${hex(a)} is claimed twice AGAIN under the widened scan (${wave} merged it). `
       + 'The narrow scan could not have told you: a private re-transcription is exactly '

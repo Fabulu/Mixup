@@ -314,20 +314,20 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
 // proved merges move the live narrow count to 16. W460 removed a private optional shim,
 // W461 removed the private $242E24 rank-byte body, W462 removed both private
 // $2414BE adapter heads, and W463 removed both private $28C0FC counted-note adapters.
-// W474 removes the retired exported ledger note's $28D520 claim, leaving narrow 15
-// while the widened figure moves to 69.
-test('SECTION 2c [W450/W474]: the widened register is 69, so narrow 15 remains a floor', async () => {
+// W474 removes the retired exported ledger note's $28D520 claim, leaving narrow 15.
+// W475 removes the palette-reporting method's $24133C claim, leaving widened 68.
+test('SECTION 2c [W450/W475]: the widened register is 68, so narrow 15 remains a floor', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
-  assert.equal(headRegister().length, 69,
+  assert.equal(headRegister().length, 68,
     'the WIDENED register (private functions, arrows, methods and the whole doc opening '
-    + 'span, not just `export function`) is not 69. ' + W453_NOTE
+    + 'span, not just `export function`) is not 68. ' + W453_NOTE
     + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
     + 'W460 removed the optional $24631C forwarding shim; W461 merged the private '
     + '$242E24 rank-byte body into rng.js drawByte242E24; W462 removed both private '
     + '$2414BE installTxBank heads while retaining canonical palette.js install2414BE; W463 '
-    + 'removed both private $28C0FC counted-note adapter heads; W464 through W474 removed '
+    + 'removed both private $28C0FC counted-note adapter heads; W464 through W475 removed '
     + '$28E7A2, $28C6C6, $28F4C4/$28F666, $285A12, $2A6EDC, $23C622, '
-    + '$23BF74/$23BFDB, $23E3E2, $23FF06, $240DC2, and $240F62/$28D520 adapter/helper claims; '
+    + '$23BF74/$23BFDB, $23E3E2, $23FF06, $240DC2, $240F62/$28D520, and $24133C adapter/helper claims; '
     + 'tests/w450widenedregister.test.js SECTION 3 holds the exact set and is where a new '
     + 'duplicate must be resolved. This cross-check prevents narrow 15 being read as the total');
 });

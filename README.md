@@ -251,7 +251,7 @@ asset path are live, and W471 published as build `20260821175936` after all
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, duplicate translated bodies, front-end
 screens, remaining enemy coverage, and behavior through the complete second
-loop. At W474 the duplicate scanners report 15 narrow heads, 69 widened heads,
+loop. At W475 the duplicate scanners report 15 narrow heads, 68 widened heads,
 27 body pairs, and 22 body-only findings. Each row is closed by classifying and
 verifying the cartridge behavior rather than by hiding the address.
 

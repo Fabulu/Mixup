@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W474)
+Updated: 2026-08-21 (W475)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,15 +10,25 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W474 removed the retired ledger note's false `$240F62` and `$28D520`
-cartridge-entry claims.** Exported `hud.js makeHudObject` remains the factory for dispatch-table slot 0 and
-its three-state HUD handler. Exported `score.js notePerFrameLedger` remains the same compatibility no-op,
-with its retirement history now inside the body. Live scanner APIs report 15 narrow heads, 69 widened heads,
-27 body pairs, and 22 body-only findings. The next direct batch candidate is **W475 `$24133C`**, claimed by
-`palette.js PaletteState#ledger` and `palette.js flush24133C`. W471 remains live as build `20260821175936`;
-W474 is the third wave in the next five-wave interval. Continue the widened duplicate rows, front-end screens
-D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and every other explicit docket
-item.
+`docs/DOCKET.md` is authoritative. **W475 removed the generic palette coverage report's false `$24133C`
+cartridge-entry claim.** Exported `palette.js flush24133C` remains the once-per-frame upload and preserves
+all dirty-region copies, provenance, fade, and accounting behavior. `PaletteState#ledger` remains the same
+generic per-region report, with upload provenance now inside its body. Live scanner APIs report 15 narrow
+heads, 68 widened heads, 27 body pairs, and 22 body-only findings. The next direct batch candidate is **W476
+`$24150A`**, claimed by `bomb.js installBombPalette`, `bossarrival.js note`, and canonical `palette.js
+install24150A`. W471 remains live as build `20260821175936`; W475 is the fourth wave in the next five-wave
+interval. W476 must publish from a quiet tracked tree after its edit and focused checks. Continue the widened
+duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage,
+and every other explicit docket item.
+
+## W475 VERIFIED: GENERIC PALETTE REPORT OWNS NO UPLOAD ENTRY
+
+`palette.js flush24133C` remains the once-per-frame cartridge upload, preserving independent dirty-region
+copies, flag clears, source provenance, the background-fade tail, and accounting. `PaletteState#ledger`
+retains the same method identity and per-region coverage report; only its preceding documentation is now
+address-free. Focused palette and authoritative-register checks passed 24/24; the W446-W462 holder chain
+passed 187/187. Only widened heads changed, 69 to 68. W471 remains live as build `20260821175936`; W475 is
+the fourth wave in the next publication interval.
 
 ## W474 VERIFIED: RETIRED LEDGER NOTE OWNS NO CARTRIDGE ENTRY
 

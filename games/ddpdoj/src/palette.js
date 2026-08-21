@@ -176,12 +176,13 @@ export class PaletteState {
     return n;
   }
 
-  /** THE LEDGER, by third, because "N of 2,560" hides which third is still the
-   *  recording's and that is the number `39-OWNER` cares about.  The fourth row
-   *  is words $8F0..$9FF, which [M] NO region of $24133C copies and which are 0
-   *  on all 161 recorded frames -- they can never be sourced and saying so is
-   *  the point. */
+  /** Reports source coverage by palette region. */
   ledger() {
+    // Keep the ledger split by third because "N of 2,560" hides which third is
+    // still the recording's, and that is the number 39-OWNER tracks. The fourth
+    // row is words $8F0..$9FF, which no region of `$24133C` copies and which are
+    // zero on all 161 recorded frames. They can never be sourced, and saying so
+    // is the point.
     const rows = { spr: 0, bg: 0, tx: 0, unwritten: 0 };
     for (let i = 0; i < this.sourced.length; i++) {
       if (!this.sourced[i]) continue;
