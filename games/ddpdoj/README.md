@@ -10,11 +10,11 @@ Updated 2026-08-21 after Wave 471.
 |---|---|
 | target | Finish Black Label Version-B through the full second loop and close every docket item. Finish White Label last. |
 | port | Active across the game loop, player, weapons, enemies, bosses, stage flow, scoring, chaining, hypers, rank, HUD, result and name-entry systems. Black Label is not complete yet. |
-| tests | `4,280` DDPDOJ unit tests passed in the W466 publication gate, with no failures or skips. |
+| tests | `4,280` DDPDOJ unit tests passed in the W471 publication gate, with no failures or skips. |
 | duplicate audit | 16 narrow heads, 73 widened heads, 27 body pairs, and 22 body-only findings remain after W471. |
 | oracle | MAME 0.288, pinned to VERSION-B. Determinism and probe behavior are documented in `NOTES-oracle.md`. |
 | renderer | The original pixel-slice gate matched `13,647,872 / 13,647,872` pixels over 136 frame pairs. This is historical slice evidence, not a claim that the unfinished full game is pixel-perfect. |
-| live build | `20260821162642` at <https://gbtman.pages.dev/games/ddpdoj/>. |
+| live build | `20260821175936` at <https://gbtman.pages.dev/games/ddpdoj/>. |
 
 The live work queue is `../../docs/DOCKET.md`. The concise continuation state is `../../docs/NEXT_AGENT_HANDOFF.md`. Older numbered files under `../../docs/worklog/ddpdoj/` are historical wave records and may describe a much earlier port.
 
@@ -39,7 +39,7 @@ python games/ddpdoj/tools/export-tables.py
 node games/ddpdoj/tools/export-web.mjs
 ```
 
-At W466, `export-web.mjs` produced a 12,401 KiB local bundle containing 4,355 sprite streams and 161 captured frames with 7,671 records. `rip/` and `assets/` are ROM-derived, gitignored, and must not be committed.
+At W471, `export-web.mjs` produced a 12,401 KiB local bundle containing 4,355 sprite streams and 161 captured frames with 7,671 records. `rip/` and `assets/` are ROM-derived, gitignored, and must not be committed.
 
 Whenever a wave adds a ROM window, regenerate with `export-web.mjs` before publishing. Otherwise the deployed site serves stale generated data even when the source is current.
 

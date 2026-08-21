@@ -5923,8 +5923,12 @@ The live registers move from 74 to **73 widened heads**. `$23E3E2` has one remai
 boss-arrival and banner coverage passed **38/38**. The W446-W462 live holder chain passed **187/187**. No
 executable behavior, public ESM identity, dependency edge, ROM window, or generated output changed.
 
-W471 is the fifth wave after live build `20260821162642`, so publication is due from a quiet tree after
-landing: run `games/ddpdoj/tools/export-web.mjs` before `tools/publish.mjs`.
+W471 was the fifth wave after live build `20260821162642` and was published after regenerating the web
+bundle. The publication gate passed all **4,280/4,280** DDPDOJ tests, the DDPDOJ bundle and web-fetch gates,
+Gradius **746/746** unit tests and **13/13** gate stages, Batman **27/27** gate stages, and the ROM-leak
+guard over 330 files with the six deliberate exceptions. Dist contained 336 files and 19,885 KB. Preview
+`https://9b366a2a.gbtman.pages.dev` deployed successfully, and three production polls confirmed live build
+**`20260821175936`** at `https://gbtman.pages.dev/games/ddpdoj/`. W472 begins the next five-wave interval.
 
 **NEXT OBVIOUS BATCH CANDIDATE: W472, `$23FF06`.** `bomb.js packedPos23FF06` documents the shared
 position arithmetic while `draw23FF06` owns the cartridge entry and bucket-13 emission. Classify the helper
