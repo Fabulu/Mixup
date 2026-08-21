@@ -19,8 +19,51 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Unit tests (no ROM required)
+      - name: Batman unit tests (no ROM required)
         run: node --test games/batman/tests/
+
+  other-games:
+    # Gradius and DDPDOJ have large ROM-backed suites that cannot run on GitHub,
+    # but CI used to exercise neither game at all. These tests use only synthetic
+    # fixtures and catch executable regressions without committing cartridge data.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Gradius and DDPDOJ asset-free unit tests
+        run: >-
+          node --test
+          games/gradius/tests/loop.test.js
+          games/ddpdoj/tests/aim.test.js
+          games/ddpdoj/tests/background.test.js
+          games/ddpdoj/tests/displaylist.test.js
+          games/ddpdoj/tests/objalloc.test.js
+          games/ddpdoj/tests/render.test.js
+          games/ddpdoj/tests/shots.test.js
+          games/ddpdoj/tests/spritedir.test.js
+          games/ddpdoj/tests/turret.test.js
+          games/ddpdoj/tests/w115hud.test.js
+          games/ddpdoj/tests/w324beambody.test.js
+          games/ddpdoj/tests/w33carrier.test.js
+          games/ddpdoj/tests/w34damage.test.js
+          games/ddpdoj/tests/w373coinread.test.js
+          games/ddpdoj/tests/w375coindebounce.test.js
+          games/ddpdoj/tests/w375objtableinit.test.js
+          games/ddpdoj/tests/w424laserscore.test.js
+          games/ddpdoj/tests/w51laserdamage.test.js
+          games/ddpdoj/tests/w60playerbox.test.js
+          games/ddpdoj/tests/w67trail.test.js
+          games/ddpdoj/tests/w79autoshot.test.js
+          games/ddpdoj/tests/w80emission.test.js
+          games/ddpdoj/tests/w90impact.test.js
+          games/ddpdoj/tests/w93palette.test.js
+      - name: Syntax-check every game module and test
+        run: |
+          test -n "$(git ls-files 'games/**/*.js' 'games/**/*.mjs')"
+          while IFS= read -r file; do node --check "$file"; done \
+            < <(git ls-files 'games/**/*.js' 'games/**/*.mjs')
 
   typecheck:
     # tsc over games/batman/src/ with checkJs. Needs no ROM and no assets, so it
