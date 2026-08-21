@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W454)
+Updated: 2026-08-21 (W455)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,66 +10,82 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W454 merged the D69 type `$11` and type `$10` turret blocks with
-cartridge, dirty-handler and board-oracle proof.** The next concrete unit is **W455 / D69
-`items.js beamReset25270C` <-> `laser.js wipeSegmentPool`**, now the strongest body-only duplicate pair:
-six shared markers over `$25279A..$2527AE`. Audit both bodies, all callers and dirty pool-reset state
-before merging or classifying. Also open: the remaining widened duplicate rows, front-end screens
-D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and other explicit docket
-items.
+`docs/DOCKET.md` is authoritative. **W455 classified the D69 beam-reset pair and merged only its
+cartridge-identical inner tail.** The two full heads remain distinct because each owns a side-specific
+`andi.w #$DFFB`; all callers now reach one `laser.js wipeSegmentPool` for `$25279A..$2527BC`. The next
+concrete unit is **W456 / D69 `items.js applyItemVelocity` <-> `movement.js applyVelocityA6`**, a
+six-marker pair over `$2417E0..$2417F8`. Audit the complete bodies and every calling convention before
+merging or classifying. After W456 is verified and landed, run `games/ddpdoj/tools/export-web.mjs`
+before `tools/publish.mjs`, and publish only on a quiet tree with no working agent. Then continue the
+remaining widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black
+Label loop-2 coverage, and every other explicit docket item.
 
-## W454 LANDED LOCALLY: BOTH TURRET TYPES USE ONE PRODUCTION BODY
+## W455 LANDED LOCALLY: ONE INNER BEAM WIPE, TWO FULL ENTRY HEADS
 
-`handlers.js` imports `TURRET_HANDLERS` and `turretStep` from `turret.js`. Both complete production
-handlers pass the caller-held A6 register and their type specification. The helper reports the exact
-continuation: freeze and no-live-player carry branch to common draw; cadence no-borrow and successful
-aim reach each type's own fire counter and fan. Type `$11` retains `$268C9E`, draw size `$0620` and
-kind `$D`; type `$10` retains `$268694`, size `$0830` and kind `$C`.
+The complete `$25270C` and `$252754` routines are not equivalent to the inner `$252714/$25275C`
+entries. Both full heads first apply `andi.w #$DFFB` to their own option state, then enter the same
+cartridge tail at `$25279A..$2527BC`. `items.js beamReset25270C` now owns only that extra mask and calls
+`laser.js wipeSegmentPool`. Release, bomb-fire and death callers still enter the inner convention and
+do not receive the mask. `bomb.js` now passes `BEAM[p2 ? 1 : 0]`, removing dependence on its inverted
+local D7 meaning.
 
-Exact raw-image spans `$268A0E..$268A5D` and `$268376..$2683C5` pin all 80 bytes of each body. The seven
-W450 markers map to `$268A1A/$268382`, `$268A20/$268388`, `$268A26/$26838E`,
-`$268A36/$26839E`, `$268A38/$2683A0`, `$268A42/$2683AA` and `$268A54/$2683BC`. Only three bytes
-differ: the type-local freeze and carry displacements and the PC-relative table displacement. Short
-branches use opcode address plus two; type `$11`'s wide `beq` uses extension address `$268A60`; both
-`lea` targets use their extension-word addresses. No export window was needed or added.
+Raw image SHA-256 is:
 
-Both real handlers ran dirty recycled A5/A6 records through opposite freeze states, cadence
-non-borrow, cadence borrow, no-live-player carry and both table arms. External witnesses pin cadence,
-facing wrap 63 to 0, sprite longword, two-record bucket output, type-specific draw size and fire-counter
-continuation. A separate dirty-decoy test proves the helper consumes the live A6 value rather than
-re-reading A5+$06. W20's board oracle matched type `$10` and `$11` on 14,732 one-step pairs and 14,732
-closed-loop steps with zero divergence on facing, cadence and sprite.
+    4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c
 
-The temporary RED mutation routed type `$11` through `TURRET_10`; the focused production witness read
-sprite `$0016F8B4` from the wrong table instead of `$001676B4`. `handlers.js` SHA-256 matched before and
-after exact restoration:
+The focused test pins complete spans `$25270C+$48`, `$252754+$6A`, `$25279A+$24` and sound table
+`$2527BE+$10`. The selector is a word with valid values 0 and 2. The cartridge doubles it to byte
+offsets 0 and 4, so JavaScript uses `selector >>> 1`. P1 posts `$28C43C/$28C49C`; P2 posts
+`$28C452/$28C4B2`. Hyper checks `$81B63E/$81B640` and overrides with `$28C4FC/$28C512`. The former
+implementation indexed the selector incorrectly, always used P1 hyper state, and could select the wrong
+side's sound.
 
-    536d092bb1e90d8ed25a8e9cc84b77237f4df02f723e579ba1c612fe808c114a
+The cartridge census found 14 live direct sites, one indirect hyper-request call site selecting either
+full head, and two dead direct references at `$24972E/$249742` in the unconditionally skipped
+`$249712..$2497A0` block. The live direct sites are four item calls, two end-hyper wrappers, two
+laser-bomb cleanup calls, and six inner calls from release, bomb fire and player death. Source census:
+
+    beamReset25270C name occurrences          8 including its declaration
+    wipeSegmentPool name occurrences          5 including its declaration
+
+Dirty recycled RAM tests cover both players, selectors 0 and 2, and both hyper overrides. Every one of
+32 slot type words clears, including slot 31, while all remaining 46 bytes in every `$30`-byte slot
+survive. The beam record word, block word, block `+$16` word and option bit 7 clear at word or byte width
+exactly as decoded. Dirty neighboring bytes, opposite-player pools and controls, and boundary sentinels
+survive. Real P1 power, P2 full-power and P1 option-release callers prove the full/inner mask difference
+and their item, cursor, queue, reload and pod-swing continuations.
+
+The temporary RED mutation changed `k <= 0x1F` to `k < 0x1F`. Four production-path witnesses failed
+because slot 31 retained `$801F` or `$811F`. Final `laser.js` SHA-256 matched before mutation and after
+exact restoration:
+
+    321ae35487624fb805feab77fd46270ad8bf8eb8e5a77b82f7adc2bcf2d51944
 
 The duplicate registers reconcile exactly:
 
     narrow export-only head rows             19, unchanged historical floor
     widened head rows                        90, unchanged
-    widened body pairs                       37 -> 36
-    body-only findings                       25 -> 24
+    widened body pairs                       36 -> 35
+    body-only findings                       24 -> 23
 
-Final W454 validation on the quiet tree:
+Final W455 validation:
 
-    focused W454                              8 pass / 0 fail / 0 skipped
-    affected turret, handler, W446-W453     155 pass / 0 fail / 0 skipped
-    node --test games/ddpdoj/tests/         4189 pass / 0 fail / 0 skipped
-    node games/ddpdoj/tools/webgate.mjs    exit 0, all checks passed
+    focused W455                             11 pass / 0 fail / 0 skipped
+    affected beam/item/caller/register      350 pass / 0 fail / 0 skipped
+    node --test games/ddpdoj/tests/         4200 pass / 0 fail / 0 skipped
+    node games/ddpdoj/tools/webgate.mjs       31 PASS / 0 FAIL, exit 0
     export-tables.py --verify               VERIFY OK at 613 windows
-    w20turretgate.mjs                       14,732 one-step and closed-loop, 0 divergent
 
-No publish was due. Live build **`20260820231140`** remains unchanged. Publish is next due at **W456**.
-Run `export-web.mjs` before `publish.mjs`, and only against a quiet tree.
+No production ROM window was added or widened. The focused executable proof reads the raw image. No
+asset export, publish or live-build change occurred in W455. Live build **`20260820231140`** remains
+unchanged.
 
 ## IMMEDIATE ORDER
 
-1. Dispatch W455 on D69 `items.js beamReset25270C` <-> `laser.js wipeSegmentPool`, six markers over
-   `$25279A..$2527AE`.
-2. Publish at W456, with `export-web.mjs` first and no working agent in the tree.
+1. Dispatch exactly one W456 agent on D69 `items.js applyItemVelocity` <->
+   `movement.js applyVelocityA6`, six markers over `$2417E0..$2417F8`.
+2. Independently verify and land W456. Then, with no working agent, run
+   `games/ddpdoj/tools/export-web.mjs` followed by `tools/publish.mjs`.
 3. Continue the docket and complete Black Label through the full second loop.
 4. Finish White Label last, only after Black Label and its docket are complete.
 

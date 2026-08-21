@@ -95,7 +95,7 @@
 //
 // Counted notes (`unportedLog`), because they run on reachable frames and a
 // throw there is a page that will not play:
-//   $28C408 $28C422 $28C468 $28C482 $28C4C8 $28C4E2 $28C43C  -- SOUND requests
+//   $28C408 $28C422 $28C468 $28C482 $28C4C8 $28C4E2  -- deferred SOUND requests
 //            through `$28C074`/`$28C0E8` (D0/D1/D2 = id/pan/channel).  Sound is
 //            item 6 of `39-OWNER-visible-play-before-sound.md`, i.e. last.
 //   $289F96 $289FC0 $289FDA  -- the effect family, and ALL THREE NOW RUN. W90 took
@@ -313,38 +313,63 @@ function copySeedRecord(ram, ctx, b, a1, src) {
 }
 
 // =========================================================== $252714/$25275C
+/** The two fixed register conventions loaded before the common `$25279A` tail.
+ * The selector is a WORD whose live values are 0 and 2. `$25271E/$252766`
+ * doubles it into byte offsets 0 and 4 in the side's two-LONG sound table. */
+const WIPE_SIDES = Object.freeze([
+  Object.freeze({ name: 'P1', pool: 0x8112f2, rec: 0x811ef2, blk: 0x811f32,
+    opt: 0x8104aa, weapon: 0x81043e, hyper: 0x81b63e, table: 0x2527be,
+    sounds: Object.freeze([0x28c43c, 0x28c49c]), hyperSound: 0x28c4fc,
+    entry: LASER.poolWipeP1 }),
+  Object.freeze({ name: 'P2', pool: 0x8118f2, rec: 0x811f12, blk: 0x811f52,
+    opt: 0x81050e, weapon: 0x8104a0, hyper: 0x81b640, table: 0x2527c6,
+    sounds: Object.freeze([0x28c452, 0x28c4b2]), hyperSound: 0x28c512,
+    entry: LASER.poolWipeP2 }),
+]);
+
+function wipeSide(b) {
+  const side = WIPE_SIDES.find((s) => s.pool === b.pool && s.rec === b.rec
+    && s.blk === b.blk && s.opt === b.opt);
+  if (!side) {
+    unreached(LASER.poolWipeP1, '$252714/$25275C pool wipe received a mixed or '
+      + `unknown ownership row: pool $${b.pool?.toString(16).toUpperCase()}, rec `
+      + `$${b.rec?.toString(16).toUpperCase()}, blk $${b.blk?.toString(16)
+        .toUpperCase()}, opt $${b.opt?.toString(16).toUpperCase()}`);
+  }
+  return side;
+}
+
 /**
- * `$252714` (P1) / `$25275C` (P2) -- THE POOL WIPE, called from the release
- * teardown `$24C2DE`/`$24C2E4` and from the BOMB.
+ * `$252714` (P1) / `$25275C` (P2), through `$25279A..$2527BC`: the one
+ * cartridge implementation that posts the side-specific sound, clears the beam
+ * controls, and frees all 32 segment records by clearing only each type word.
  *
- * `$252738 jsr (A0)` is a SOUND: A0 comes from `$2527BE[$81043E]` (entries
- * `$28C43C`/`$28C49C`/`$28C452`/`$28C4B2`, all `movem.l / move.w #id,D0 / jsr
- * ($28C0E8,PC)`) or, while hypering, `$28C4FC`.  It is noted, not run.
- *
- * The ENTRY at `$25270C` -- which the bomb uses and this caller does not -- is
- * `andi.w #$DFFB,$8104AA` first, and that is why the teardown at `$24C2DE`
- * enters four bytes later.
+ * Release (`$24C2DE/$24C2E4`), laser-bomb arm (`$249ABE/$249AD2`) and death
+ * (`$249FB2/$24A056`) enter here and deliberately skip the full-entry
+ * `andi.w #$DFFB`. `items.js beamReset25270C` owns that extra instruction and
+ * delegates here. Side comes from the four fixed address registers, not `d7`:
+ * the option driver uses 1 for P1 while the bomb caller carried the inverse.
  */
 export function wipeSegmentPool(ram, ctx, b) {
-  const { pool, rec, blk, opt, d7 } = b;
-  // WAVE A: the pool wipe's `jsr (A0)` is a SOUND cue. A0 is read from the
-  // table at $2527BE indexed by the laser level ($81043E P1 / $8104A0 P2) with
-  // `add.w d0,d0` (level*2 stride -- faithful to the 68k; the corpus has level 0
-  // so it resolves to $28C43C), and overridden to $28C4FC while hypering
-  // ($81B63E != 0, $252732). The four table longwords are inlined here (their
-  // literal ROM contents at $2527BE) so the post does not open a new ROM window
-  // for a 16-byte constant table.
-  const LASER_WIPE_SND = [0x28C43C, 0x28C49C, 0x28C452, 0x28C4B2];
-  const level = u16(ram.u16(d7 ? 0x81043E : 0x8104A0));
-  let snd = LASER_WIPE_SND[level & 3];                         // $2527BE[level]; corpus has level 0
-  if (ram.u16(0x81B63E) !== 0) snd = 0x28C4FC;                  // $252732 hyper override
-  ctx.soundPost?.(snd);                                         // $252738 (P1) / $252780 (P2)
-  ram.bclr8(opt + OPT.flags1, 7);                           // $25279A bclr #7
-  ram.setU16(rec, 0);                                       // $2527A2 move.w
-  ram.setU16(blk, 0);                                       // $2527A4 move.w
-  ram.setU16(blk + 0x16, 0);                                // $2527A6 move.w
-  for (let k = 0; k <= 0x1f; k++) {                         // $2527AA moveq #$1F
-    ram.setU16(pool + k * SEG.stride, 0);                   // $2527AE / $2527B0
+  const side = wipeSide(b);
+  const selector = ram.u16(side.weapon);                     // $252718/$252760 move.w
+  if ((selector & 1) !== 0 || selector > 2) {
+    unreached(side.table, `$${side.entry.toString(16).toUpperCase()} doubles `
+      + `${side.name} selector $${selector.toString(16).toUpperCase()} and reads `
+      + `a LONG at $${side.table.toString(16).toUpperCase()} + selector*2; only `
+      + 'the cartridge rows 0 and 2 stay inside this side\'s two-entry table');
+  }
+  let snd = side.sounds[selector >>> 1];                      // $25271E..$252726 / mirror
+  if (ram.u16(side.hyper) !== 0) snd = side.hyperSound;       // $25272A..$252732 / mirror
+  ctx?.soundPost?.(snd);                                      // $252738 / $252780 jsr (A0)
+
+  const { pool, rec, blk, opt } = side;
+  ram.bclr8(opt + OPT.flags1, 7);                            // $25279A bclr #7,($1,A2)
+  ram.setU16(rec, 0);                                        // $2527A2 move.w D0,(A0)
+  ram.setU16(blk, 0);                                        // $2527A4 move.w D0,(A1)
+  ram.setU16(blk + 0x16, 0);                                 // $2527A6 move.w D0,($16,A1)
+  for (let k = 0; k <= 0x1f; k++) {                          // $2527AA move.w #$1F,D7
+    ram.setU16(pool + k * SEG.stride, 0);                    // $2527AE / $2527B0
   }
 }
 

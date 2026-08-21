@@ -267,6 +267,10 @@ test('$255FE2 walks 120 script frames and then TWELVE $256712 entries', () => {
   const rom = beamRom();
   let n = 0;
   while ((ram.u16(BOMBRAM.rec) & 0x8000) !== 0 && n < 400) {
+    // This synthetic bench does not drain per-frame sprite queues, so its old
+    // requests eventually overwrite player RAM. Restore the live type-A selector
+    // before each frame rather than feeding that bench artifact to $25270C.
+    ram.setU16(RAM.player1 + P.shipSel, 0);
     bombDriver255DD8(ram, rom, ctx()); n++;
   }
   // 120 from ($1A,A6)'s $78 seed plus 12 from the list, and the record is
@@ -290,6 +294,9 @@ test('$256468 clears BOTH ($1,A6) bit 6 AND bit 7, and $812954', () => {
   // says so rather than serving zeroes.
   for (let n = 0; n < 131; n++) bombDriver255DD8(ram, rom, ctx());
   ram.setU32(BOMBRAM.g12954, 0x00814000);
+  // The synthetic bench accumulates display requests across frames and can
+  // overwrite this selector; the board drains those requests every frame.
+  ram.setU16(RAM.player1 + P.shipSel, 0);
   bombDriver255DD8(ram, rom, ctx());
   // bit 6 is $2564F0's (both players); bit 7 is $256468's own $2564AA, and it
   // is the one that switches $2496A2 / $24D188 / $24A4E2 back off.

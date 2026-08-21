@@ -5064,3 +5064,60 @@ over `$25279A..$2527AE`. Audit cartridge bytes, all callers and dirty pool-reset
 merging or classifying. Publish is next due at **W456**, against a quiet tree and with `export-web.mjs`
 before `publish.mjs`. Continue Black Label through the full second loop and close its docket, then
 finish White Label last.
+
+
+### D69 FOLLOW-UP, W455 BEAM RESET: DISTINCT FULL HEADS, ONE SHARED INNER WIPE
+
+**THE COMPLETE ROUTINES ARE NOT EQUIVALENT, BUT THE DUPLICATED TAIL IS.** `$25270C` and `$252754`
+each execute a side-specific `andi.w #$DFFB` before entering `$252714` or `$25275C`. The cartridge has
+one common implementation at `$25279A..$2527BC`. `items.js beamReset25270C` is now a thin full-entry
+wrapper for the unique mask and delegates to the sole `laser.js wipeSegmentPool`; release, laser-bomb
+and death callers retain their inner-entry semantics and skip the mask. The bomb caller now passes the
+canonical `BEAM` side row instead of its locally inverted D7 convention.
+
+**THE IMAGE PINS BOTH HEADS, THE COMMON TAIL AND THE SOUND TABLE.** Raw image SHA-256
+`4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c` pins `$25270C+$48`,
+`$252754+$6A`, `$25279A+$24` and `$2527BE+$10`. The selector is a word with live values 0 and 2;
+`add.w D0,D0` forms byte offsets 0 and 4, not JavaScript indices 0 and 2. P1 therefore posts
+`$28C43C/$28C49C` from `$2527BE`, while P2 posts `$28C452/$28C4B2` from `$2527C6`. Hyper checks
+`$81B63E` or `$81B640` and overrides with `$28C4FC` or `$28C512` respectively. This fixes the old
+P2-table, P2-hyper and selector-index defects rather than preserving the counted sound note.
+
+**THE COMPLETE CALLER CENSUS SEPARATES ENTRY CONVENTIONS.** Four item callers, two end-hyper
+wrappers and two laser-bomb cleanup calls enter a full head directly. Hyper request loads either full
+head and calls it once through A0. Option release, bomb firing and player death contribute six live
+direct inner-entry calls. `$24972E/$249742` are the only other direct full-head references, inside the
+unconditionally skipped `$249712..$2497A0` block. The source census pins eight `beamReset25270C`
+function-name occurrences including its declaration and five `wipeSegmentPool` occurrences including
+its declaration.
+
+**DIRTY RECYCLED RAM PROVES OWNERSHIP AND CONTINUATION.** Both sides, selectors 0 and 2, and both
+hyper overrides clear all 32 slot type words, including slot 31, while preserving the other 46 bytes of
+every `$30`-byte slot. Only the beam record word, block word, block `+$16` word and option low-byte bit 7
+are cleared; dirty surrounding bytes, the opposite pool and controls, and boundary sentinels survive.
+Full-entry item paths additionally apply `#$DFFB`; the real option-release path does not and continues to
+`$24C2E8`, restoring reload and pod swing-back state. Real P1 power and P2 full-power item-driver paths
+also continue into their collected animation, cursor, queue and item-event behavior.
+
+**A REAL TEMPORARY RED MUTATION WAS RUN AND RESTORED BYTE-EXACT.** Changing the 32-slot loop from
+`k <= 0x1F` to `k < 0x1F` made four external witnesses fail because slot 31 retained `$801F` or `$811F`.
+`laser.js` SHA-256 was
+`321ae35487624fb805feab77fd46270ad8bf8eb8e5a77b82f7adc2bcf2d51944` before mutation and exactly the
+same after restoration.
+
+The duplicate registers reconcile exactly: narrow export-only heads **19**, unchanged; widened heads
+**90**, unchanged; body pairs **36 -> 35**; body-only findings **24 -> 23**. No production ROM export
+window was widened or added; the focused proof reads the raw image.
+
+Validation on the final tree: focused W455 **11 pass / 0 fail / 0 skipped**; affected beam, item, bomb,
+hyper, death, option, W444 and W450-W454 regressions **350 pass / 0 fail / 0 skipped**; full suite
+**4200 pass / 0 fail / 0 skipped**; webgate and export verification are recorded in the handoff after
+their final runs.
+
+**NEXT CONCRETE DOCKET UNIT: W456, D69 `items.js applyItemVelocity` <->
+`movement.js applyVelocityA6`.** It is a six-marker body pair over `$2417E0..$2417F8`. Audit the
+complete cartridge bodies, every calling convention, wrapped longword and word arithmetic, and dirty
+recycled records before merging or classifying. After W456 is independently verified and landed, run
+`games/ddpdoj/tools/export-web.mjs` before `tools/publish.mjs`, and publish only on a quiet tree with no
+working agent. Continue Black Label through the full second loop and close its docket, then finish
+White Label last.

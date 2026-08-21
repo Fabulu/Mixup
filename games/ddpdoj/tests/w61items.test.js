@@ -734,6 +734,7 @@ test('the $25520C row index must be EVEN and inside twelve longwords, or the '
   + 'SHOT list and the LASER list overlap', { skip: SKIP }, () => {
   const ram = new Ram();
   powerSeed(ram, { ship: 2, weapon: 1 });   // an ODD row
+  ram.setU16(POWER.p1Laser, 8);             // skip $25270C so this reaches $252CE6
   throwsAt(() => collect252C96(ram, ROM, ctxOf().ctx), 0x252ce6,
     'an ODD row pairs a shot list with the NEXT row"s shot list');
   const ram2 = new Ram();
@@ -753,6 +754,8 @@ test('a POWER-UP tears the BEAM down -- $25270C clears all 32 segment slots, '
   ram.setU16(0x8104aa, 0xffff);
   ram.setU8(0x8104ab, 0xff);
   const { ctx, log } = ctxOf();
+  const sounds = [];
+  ctx.soundPost = (addr) => sounds.push(addr);
   collect252C96(ram, ROM, ctx);
   for (let n = 0; n < 32; n++) {
     assert.equal(ram.u16(0x8112f2 + n * 0x30), 0, `segment slot ${n}`);
@@ -763,8 +766,10 @@ test('a POWER-UP tears the BEAM down -- $25270C clears all 32 segment slots, '
   assert.equal(ram.u16(0x8104aa), 0xdf7b,
     '$FFFF andi.w #$DFFB is $DFFB, and $25279A bclr #$7,($1,A2) then clears '
     + 'bit 7 of the LOW byte -- $DF7B');
-  assert.ok([...log.calls.keys()].some((k) => k.startsWith('$2527BE')),
-    'and its sound cue is COUNTED');
+  assert.deepEqual(sounds, [0x28c43c],
+    '$2527BE selector 0 posts the cartridge P1 reset cue');
+  assert.ok(![...log.calls.keys()].some((k) => k.startsWith('$2527BE')),
+    'the formerly deferred sound is production behavior now, not a counted skip');
 });
 
 test('$25310E caps at 20 and refuses with CARRY CLEAR -- which is why a 21st '

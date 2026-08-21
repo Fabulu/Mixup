@@ -13,8 +13,8 @@
 //
 // This wave widened the scan on three axes (see `w450widenedscan.js` for the
 // rules and the traps) and re-ran it. W450 measured 92 head rows and 39 body
-// pairs. W451 merged `$242684`; W453 has now merged `$242494`, so the live
-// registers on this tree are:
+// pairs. W451 merged `$242684`; W453 merged `$242494`; W454 merged the turret
+// step; W455 has now merged the beam-reset tail, so the live registers are:
 //
 //     shipped `export function` scan     19 addresses claimed twice or more
 //     widened head scan                  90          "
@@ -28,8 +28,8 @@
 //     then merged by W451                -1
 //     then merged by W453                -1
 //
-// ...plus a second register the old scan had no axis for at all: 36 PAIRS OF
-// BODIES that transcribe a shared RUN of ROM instructions. 24 of those name a
+// ...plus a second register the old scan had no axis for at all: 35 PAIRS OF
+// BODIES that transcribe a shared RUN of ROM instructions. 23 of those name a
 // body that appears nowhere on the head register.
 //
 // **A LIST IS NOT THE DELIVERABLE.** W444's rule, and W449 proved it again: the
@@ -46,7 +46,7 @@
 //   1   the scan found something -- floors, so a broken regex cannot read clean
 //   2   the widening WEAKENS NOTHING: the shipped register is a strict subset
 //   3   THE HEAD REGISTER, exact, 90
-//   4   THE BODY REGISTER, exact, 36 pairs
+//   4   THE BODY REGISTER, exact, 35 pairs
 //   5   RED PROOFS on synthetic trees -- one per axis, plus two negative controls
 //   6   THE HISTORICAL POSITIVE CONTROL: W449's own `clearChain`, verbatim
 
@@ -279,9 +279,11 @@ test('SECTION 3: the widened head register is exactly these 90 addresses', () =>
 // a RUN is a transcription. Keyed by `file name` and never by line number, so
 // an edit anywhere above a function cannot redden this.
 //
-// 24 of these 36 name a body that is on NO head register row, so they are
-// findings the address axis cannot make on its own. The sharpest:
-//   6 markers  items.js `beamReset25270C` <> laser.js `wipeSegmentPool` $25279A..$2527AE
+// 23 of these 35 name a body that is on NO head register row, so they are
+// findings the address axis cannot make on its own. W455 removed the previous
+// strongest body-only row, `items.js beamReset25270C <> laser.js
+// wipeSegmentPool`: the full reset keeps its unique `andi.w #$DFFB` head and
+// delegates the cartridge's one `$25279A..$2527BC` tail to `wipeSegmentPool`.
 //
 // W454 REMOVED `handlers.js fire11 <> turret.js turretStep`: the cartridge's
 // `$268A0E` and `$268376` blocks differ only in their type-local draw branches
@@ -318,7 +320,6 @@ const BODY_REGISTER = Object.freeze([
   ['items.js applyItemVelocity <> options.js podKnockback24D188', [0x2417f2, 0x2417f4, 0x2417f8]],
   ['items.js applyItemVelocity <> player.js applyPlayerVector2417DE', [0x2417ea, 0x2417f4, 0x2417f8]],
   ['items.js applyItemVelocity <> player.js updatePlayer', [0x2417f4, 0x2417f8]],
-  ['items.js beamReset25270C <> laser.js wipeSegmentPool', [0x25279a, 0x2527a2, 0x2527a4, 0x2527a6, 0x2527aa, 0x2527ae]],
   ['laser.js runLaserGate <> options.js runOneBlock', [0x24c16e, 0x24c178]],
   ['movement.js applyVelocityA6 <> options.js podKnockback24D188', [0x2417f2, 0x2417f4, 0x2417f8]],
   ['movement.js applyVelocityA6 <> player.js applyPlayerVector2417DE', [0x2417ea, 0x2417f4, 0x2417f8]],
@@ -337,7 +338,7 @@ const BODY_REGISTER = Object.freeze([
   ['tallyscreen.js loadSavedCursor25DA60 <> tallyscreen.js restoreCursors25DA60', [0x25da6c, 0x25da86, 0x25da8a, 0x25da8e]],
 ]);
 
-test('SECTION 4: exactly these 36 pairs of bodies transcribe a shared run of ROM instructions',
+test('SECTION 4: exactly these 35 pairs of bodies transcribe a shared run of ROM instructions',
   () => {
     const got = bodyPairs().map(([p, v]) => [p, v]);
     assert.deepEqual(got.map(([p]) => p), BODY_REGISTER.map(([p]) => p),
@@ -356,10 +357,11 @@ test('SECTION 4: exactly these 36 pairs of bodies transcribe a shared run of ROM
         + 'or it can mean somebody deleted the comments that made the duplicate visible');
     }
 
-    assert.equal(got.length, 36,
-      'the body register is not 36 pairs (39 at W450, minus $242684 at W451, '
-      + '$242494 at W453 and the turret block at W454). As a NUMBER as well as a set, '
-      + 'because an empty list satisfies a deepEqual against a shrunken array and reads as progress');
+    assert.equal(got.length, 35,
+      'the body register is not 35 pairs (39 at W450, minus $242684 at W451, '
+      + '$242494 at W453, the turret block at W454 and the beam reset at W455). '
+      + 'As a NUMBER as well as a set, because an empty list satisfies a deepEqual '
+      + 'against a shrunken array and reads as progress');
   });
 
 // ---------------------------------------------------------------- SECTION 5

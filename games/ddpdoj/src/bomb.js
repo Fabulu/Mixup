@@ -138,7 +138,7 @@ import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
 import { bcd242AC6, beamReset25270C } from './items.js';
 import { drawSigned242FDE } from './rng.js';
-import { wipeSegmentPool } from './laser.js';
+import { BEAM, wipeSegmentPool } from './laser.js';
 import { spawnBeamBombSpark289FF4 } from './spark.js';
 import { install24150A } from './palette.js';
 import { bombEndHyper249970, flushPendingHyper2875B4 } from './hyper.js';
@@ -1556,9 +1556,7 @@ export function fireBomb2498E2(ram, ctx, rec, playerIdx) {
     // A1 for the record would write $811FAA and $811FC8.
     const opt = p2 ? BOMBRAM.optP2 : BOMBRAM.optP1;    // $249AB2 / $249AC6
     const q = p2 ? BOMBRAM.soundQueueP2 : BOMBRAM.soundQueue;  // $249AB8/$249ACC
-    wipeSegmentPool(ram, ctx, p2                       // $249ABE / $249AD2
-      ? { pool: 0x8118f2, rec: 0x811f12, blk: 0x811f52, opt, d7: 1 }
-      : { pool: 0x8112f2, rec: 0x811ef2, blk: 0x811f32, opt, d7: 0 });
+    wipeSegmentPool(ram, ctx, BEAM[p2 ? 1 : 0]);         // $249ABE / $249AD2
     ram.setU16(opt + 0x38, 0x26);                      // $249AD8 move.w #$26
     ram.setU16(opt + 0x56, 0x08);                      // $249ADE move.w #$8
     ram.setU16(q, 1);                                  // $249AE4 move.w #$1,(A2)

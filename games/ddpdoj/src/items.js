@@ -113,6 +113,7 @@ import { aim64, AimTables } from './aim.js';
 import { scoreByMask, abcd } from './score.js';
 import { offScreen242684 } from './movement.js';
 import { dist242494 } from './bossscripts.js';
+import { BEAM, wipeSegmentPool } from './laser.js';
 
 // ============================== THE GEOMETRY ================================
 
@@ -1362,38 +1363,18 @@ function writeCursors(ram, rom, who) {
 }
 
 /**
- * `$25270C` (P1) / `$252754` (P2) -- **AND IT IS A BEAM RESET.**
+ * `$25270C` (P1) / `$252754` (P2), the full beam-reset entries.
  *
- *   andi.w #$DFFB,$8104AA                     the option block's state word
- *   A0 = $2527BE[$81043E * 2]  (or $28C4FC when $81B63E, the HYPER, is up)
- *   jsr (A0)                                  <- a SOUND cue.  COUNTED
- *   bclr #7,($1,A2)                           $8104AB bit 7
- *   $811EF2 = 0   $811F32 = 0   $811F48 = 0   the beam record and its column
- *   32 x `move.w #0,(A6) / lea ($30,A6),A6`   ALL of $8112F2 -- src/laser.js SEG
- *
- * Recon 59 §4.3 lists this as "whatever `$25270C` rebuilds"; it does not
- * rebuild, it TEARS DOWN. **Picking up a power-up destroys the beam you are
- * firing**, and W45's segment pool is what it wipes.
+ * These heads add exactly one owned operation to `laser.js wipeSegmentPool`:
+ * `andi.w #$DFFB` clears option-state word bits 13 and 2 before the inner entry
+ * posts its sound and reaches the cartridge's single `$25279A..$2527BC` wipe.
+ * Picking up power, requesting or ending a hyper, and the laser-bomb cleanup all
+ * destroy the firing beam while preserving every byte outside the owned words.
  */
 export function beamReset25270C(ram, ctx, who) {
-  const B = who === 0
-    ? { opt: 0x8104aa, pool: 0x8112f2, rec: 0x811ef2, blk: 0x811f32,
-      weapon: POWER.p1Weapon, hyper: 0x81b63e, at: 0x25270c, tbl: 0x2527be }
-    : { opt: 0x81050e, pool: 0x8118f2, rec: 0x811f12, blk: 0x811f52,
-      weapon: POWER.p2Weapon, hyper: 0x81b640, at: 0x252754, tbl: 0x2527c6 };
-  ram.setU16(B.opt, ram.u16(B.opt) & 0xdffb);          // $25270C andi.w #$DFFB
-  note(ctx, B.tbl, `$${B.at.toString(16).toUpperCase()} jsr (A0) -- the beam-`
-    + `reset SOUND cue, off the two-entry table $${B.tbl.toString(16)
-      .toUpperCase()} indexed by $${B.weapon.toString(16).toUpperCase()}*2 `
-    + `($28C43C / $28C49C), or $28C4FC when the HYPER $${B.hyper.toString(16)
-      .toUpperCase()} is up. The $28Cxxx sound family is deferred whole (W53)`);
-  ram.setU8(B.opt + 1, ram.u8(B.opt + 1) & ~0x80 & 0xff);   // $25279A bclr #$7
-  ram.setU16(B.rec, 0);                                // $2527A2 move.w D0,(A0)
-  ram.setU16(B.blk, 0);                                // $2527A4 move.w D0,(A1)
-  ram.setU16(B.blk + 0x16, 0);                         // $2527A6 move.w D0,($16,A1)
-  for (let n = 0; n < 32; n++) {                       // $2527AA move.w #$1F,D7
-    ram.setU16(B.pool + n * 0x30, 0);                  // $2527AE/$2527B0
-  }
+  const b = BEAM[who];
+  ram.setU16(b.opt, ram.u16(b.opt) & 0xdffb);             // $25270C / $252754 andi.w
+  wipeSegmentPool(ram, ctx, b);                           // $252714 / $25275C inner entry
 }
 
 /**
