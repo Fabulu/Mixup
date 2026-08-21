@@ -428,7 +428,7 @@ test('SECTION 5: cartridge and production-source reachability are proved separat
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live scanner APIs reconcile W459 through W467 and derive body-only count', () => {
+test('SECTION 6: live scanner APIs reconcile W459 through W468 and derive body-only count', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -443,7 +443,7 @@ test('SECTION 6: live scanner APIs reconcile W459 through W467 and derive body-o
   const removedRank = 'initbody.js rankByte242E24 <> rng.js drawByte242E24';
 
   assert.equal(narrow.length, 16, 'W459 removes one export-only $25FF38 head from W458 baseline 17');
-  assert.equal(heads.length, 78, 'W463 removes $28C0FC to leave 83; W464 removes $28E7A2 to leave 82; W465 removes $28C6C6 to leave 81; W466 removes $28F4C4/$28F666 to leave 79; W467 removes $285A12 to leave 78');
+  assert.equal(heads.length, 77, 'W463 removes $28C0FC to leave 83; W464 removes $28E7A2 to leave 82; W465 removes $28C6C6 to leave 81; W466 removes $28F4C4/$28F666 to leave 79; W467 removes $285A12 to leave 78; W468 removes $2A6EDC to leave 77');
   assert.equal(pairs.length, 27, 'W461 removes the $242E24/$242E3A body edge from baseline 28');
   assert.equal(bodyOnly.length, 22,
     'body-only is derived live and unchanged because W461 removes a head-visible pair');

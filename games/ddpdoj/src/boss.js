@@ -1481,22 +1481,25 @@ export function clamp253564(ram) {
  *  damage, and appear only in the draw chain. "The eleven" is two groups with different jobs. */
 const HIBACHI_PARTS = Object.freeze([0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0, 0x1a0]);
 
-/** `$2A6EDC` -- the body's EXIT, reached by `jmp` from both arms of the phase check.
- *
- *  **W403 CORRECTION, TWICE.** This routine is 52 bytes and it is BYTE-IDENTICAL to `$2A707E`
- *  and `$2A7294`, the second form's two exits, but for the one word of `bra.w` displacement
- *  that names each one's death block ($FE80 here, $FF5A and $FF6A there). Writing the second
- *  form showed that the version shipped here since W372 had lost two of the three tests:
- *
- *    1. `$2A6EDC 4a79 008130d2 / 6600 002a` -- the FREEZE GATE. `($1A,A5)` is not counted down
- *       at all while `$8130D2` is set, and this counted it every frame.
- *    2. `$2A6EF6 6600 000c` targets `$2A6F04`, which is `move.w #$0,($10A,A6)` and then
- *       `$2A6F0A 6000 FE80` -> $2A6F0C - $180 = `$2A6D8C`, THE ENDING BLOCK. The port
- *       `return`ed instead, so the timeout route into HIBACHI's death did not exist.
- *
- *  It is now `bossExitShared`, called with this site's own death block, so the three cannot
- *  drift apart again. */
-function bossExit2A6EDC(ram, rom, ctx, a5, a6) {
+/** Adapts Hibachi form 1 to the shared exit body and its own ending block. */
+function bossForm1Exit(ram, rom, ctx, a5, a6) {
+  /*
+   * `$2A6EDC` -- the body's EXIT, reached by `jmp` from both arms of the phase check.
+   *
+   * **W403 CORRECTION, TWICE.** This routine is 52 bytes and it is BYTE-IDENTICAL to `$2A707E`
+   * and `$2A7294`, the second form's two exits, but for the one word of `bra.w` displacement
+   * that names each one's death block ($FE80 here, $FF5A and $FF6A there). Writing the second
+   * form showed that the version shipped here since W372 had lost two of the three tests:
+   *
+   *   1. `$2A6EDC 4a79 008130d2 / 6600 002a` -- the FREEZE GATE. `($1A,A5)` is not counted down
+   *      at all while `$8130D2` is set, and this counted it every frame.
+   *   2. `$2A6EF6 6600 000c` targets `$2A6F04`, which is `move.w #$0,($10A,A6)` and then
+   *      `$2A6F0A 6000 FE80` -> $2A6F0C - $180 = `$2A6D8C`, THE ENDING BLOCK. The port
+   *      `return`ed instead, so the timeout route into HIBACHI's death did not exist.
+   *
+   * It is now `bossExitShared`, called with this site's own death block, so the three cannot
+   * drift apart again.
+   */
   bossExitShared(ram, ctx, a5, a6,
     () => bossEnding2A6D8C(ram, rom, a5, a6, ctx));           // $2A6F0A bra.w $2A6D8C
 }
@@ -1514,7 +1517,7 @@ function bossPhase2A6D42(ram, rom, a5, a6, ctx) {
     ram.setU8(a6 + 0x10c, 1);                                // $2A6D78 -- and the latch
     armScreenClearMode(ram, ctx, 0, 'HIBACHI $23000 phase', 0xffff, 0x243dd0);   // $2A6D7E
   }
-  bossExit2A6EDC(ram, rom, ctx, a5, a6);                     // $2A6D84 jmp $2A6EDC
+  bossForm1Exit(ram, rom, ctx, a5, a6);                       // $2A6D84 jmp $2A6EDC
 }
 
 /** `$2A6D8C` -- the ENDING block, reached only when `$2428A6` says a player is out. */

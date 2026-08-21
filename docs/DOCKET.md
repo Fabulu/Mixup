@@ -5845,5 +5845,28 @@ changed.
 
 W467 is the first wave after live build `20260821162642` and is not a publication wave.
 
-**NEXT OBVIOUS BATCH CANDIDATE: W468, `$2A6EDC`.** Classify the widened head claims directly. Continue
-Black Label through the full second loop and close its docket, then finish White Label last.
+**HISTORICAL W467 RECOMMENDATION FOR W468: `$2A6EDC`.** W468 completed that direct classification below.
+
+
+### D76: FOLLOW-UP, W468 `$2A6EDC`: FORM-1 ADAPTER NO LONGER CLAIMS THE SHARED EXIT BODY
+
+`hibachi2.js bossExitShared` is the exported canonical implementation of the three 52-byte exit bodies at
+`$2A6EDC`, `$2A707E`, and `$2A7294`. They differ only in the final branch displacement selecting each
+form's death block. The private `boss.js bossExit2A6EDC` was not another transcription. It supplied form
+1's ROM/context values and a thunk for `bossEnding2A6D8C`. That adaptation remains under the address-free
+name `bossForm1Exit`; its detailed W403 cartridge correction now lives inside the helper body. The phase
+caller, freeze gate, countdown, player test, re-arm path, and form-specific ending thunk are unchanged.
+No compatibility alias is needed for the private helper.
+
+The live registers move from 78 to **77 widened heads**. `$2A6EDC` has one remaining claimant in
+`hibachi2.js`; narrow heads remain 16, body pairs remain 27, and body-only findings remain 22. Focused
+Hibachi and authoritative-register coverage passed **86/86**. The W446-W462 live holder chain passed
+**187/187**. No executable behavior, public ESM identity, dependency edge, ROM window, or generated output
+changed.
+
+W468 is the second wave after live build `20260821162642` and is not a publication wave.
+
+**NEXT OBVIOUS BATCH CANDIDATE: W469, `$23C622`.** The widened register names
+`background.js clearTx23C622` and `objslot12.js clearTx`. Preserve the slot-12 missing-`TxVram` counted
+adapter while leaving the background export canonical. Continue Black Label through the full second loop
+and close its docket, then finish White Label last.

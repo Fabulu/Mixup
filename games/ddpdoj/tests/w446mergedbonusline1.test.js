@@ -312,18 +312,18 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
 // proved merges move the live narrow count to 16. W460 removed a private optional shim,
 // W461 removed the private $242E24 rank-byte body, W462 removed both private
 // $2414BE adapter heads, and W463 removed both private $28C0FC counted-note adapters.
-// Narrow remains 16 while the widened figure moves to 78.
-test('SECTION 2c [W450/W467]: the widened register is 78, so narrow 16 remains a floor', async () => {
+// Narrow remains 16 while the widened figure moves to 77.
+test('SECTION 2c [W450/W468]: the widened register is 77, so narrow 16 remains a floor', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
-  assert.equal(headRegister().length, 78,
+  assert.equal(headRegister().length, 77,
     'the WIDENED register (private functions, arrows, methods and the whole doc opening '
-    + 'span, not just `export function`) is not 78. ' + W453_NOTE
+    + 'span, not just `export function`) is not 77. ' + W453_NOTE
     + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
     + 'W460 removed the optional $24631C forwarding shim; W461 merged the private '
     + '$242E24 rank-byte body into rng.js drawByte242E24; W462 removed both private '
     + '$2414BE installTxBank heads while retaining canonical palette.js install2414BE; W463 '
-    + 'removed both private $28C0FC counted-note adapter heads; W464 through W467 removed '
-    + '$28E7A2, $28C6C6, $28F4C4/$28F666, and the private $285A12 HUD adapter claim; '
+    + 'removed both private $28C0FC counted-note adapter heads; W464 through W468 removed '
+    + '$28E7A2, $28C6C6, $28F4C4/$28F666, $285A12, and $2A6EDC adapter claims; '
     + 'tests/w450widenedregister.test.js SECTION 3 holds the exact set and is where a new '
     + 'duplicate must be resolved. This cross-check prevents narrow 16 being read as the total');
 });

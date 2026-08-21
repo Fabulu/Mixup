@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W467)
+Updated: 2026-08-21 (W468)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,14 +10,23 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W467 removed the HUD caller adapter's false `$285A12` claim.**
-`hud.js stepPlayerHyper` still selects P1/P2, supplies `ctx.rom`, and redraws the correct stock row through
-`hyperStock286ED6`, while `hyper.js stepHyper285A12` remains the sole canonical activation and duration
-implementation. Live scanner APIs report 16 narrow heads, 78 widened heads, 27 body pairs, and 22
-body-only findings. The next direct batch candidate is **W468 `$2A6EDC`**. W467 is the first wave after
-live build `20260821162642`, so no publication is due. Continue the widened duplicate rows, front-end
-screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and every other
-explicit docket item.
+`docs/DOCKET.md` is authoritative. **W468 removed Hibachi form 1's false `$2A6EDC` head claim.**
+`boss.js bossForm1Exit` still supplies form 1's own ending thunk, while the exported
+`hibachi2.js bossExitShared` remains the sole implementation of all three byte-identical exit bodies.
+Live scanner APIs report 16 narrow heads, 77 widened heads, 27 body pairs, and 22 body-only findings.
+The next direct batch candidate is **W469 `$23C622`, `background.js clearTx23C622` and
+`objslot12.js clearTx`**. W468 is the second wave after live build `20260821162642`, so no publication is
+due. Continue the widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full
+Black Label loop-2 coverage, and every other explicit docket item.
+
+## W468 VERIFIED: FORM-1 EXIT ADAPTER OWNS NO SHARED BODY HEAD
+
+The former private `boss.js bossExit2A6EDC` supplied only Hibachi form 1's ROM/context arguments and
+`bossEnding2A6D8C` tail thunk. The 52-byte freeze, countdown, live-player, re-arm, and death dispatch body
+already lives in exported `hibachi2.js bossExitShared`, shared with `$2A707E` and `$2A7294`. The adapter is
+now `bossForm1Exit`, with its detailed cartridge correction inside the function. Its phase caller and
+ending thunk are unchanged. Focused Hibachi and authoritative-register coverage passed 86/86; the
+W446-W462 holder chain passed 187/187. Only widened heads changed, 78 to 77. Take W469 `$23C622` next.
 
 ## W467 VERIFIED: HUD HYPER ADAPTER OWNS NO CARTRIDGE HEAD
 
@@ -27,7 +36,7 @@ the selected player, HUD-owned ROM context, and `hyperStock286ED6` redraw callba
 `perFrame28444E` remain in the same order and retain their `$284460/$284464` source markers. The
 canonical function remains the only `$285A12` claimant. Focused hyper, HUD, bee, and authoritative
 register coverage passed 60/60; the W446-W462 holder chain passed 187/187. Only widened heads changed,
-79 to 78. W467 starts the next five-wave publication interval; take W468 `$2A6EDC` next.
+79 to 78. W467 started the next five-wave publication interval; W468 completed the next row above.
 
 ## W466 VERIFIED: NAME-FRAME GLUE OWNS NO CANONICAL ENDPOINT
 
