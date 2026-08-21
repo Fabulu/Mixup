@@ -261,7 +261,7 @@ const DOUBLY_CLAIMED_UNAUDITED = Object.freeze([
   // calls, and tallyscreen.js preserves its historical name as a compatibility alias.
   0x2417de, 0x242ec2, 0x246710, 0x24676a, 0x249ee2,
   0x2564f0, 0x259962, 0x263386, 0x2633be, 0x2638a6,
-  0x27f6e4, 0x2875b4, 0x28d520, 0x28f588, 0x29f9b4, 0x2a11d4,
+  0x27f6e4, 0x2875b4, 0x28f588, 0x29f9b4, 0x2a11d4,
 ]);
 
 test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
@@ -287,9 +287,11 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
     + 'NOTE $25DA60 is ABSENT TOO: W458 merged its live and compatibility transcriptions. '
     + '18 - 1 = 17.\n'
     + 'NOTE $25FF38 is ABSENT TOO: W459 corrected D0.W ownership and merged its bodies. '
-    + '17 - 1 = 16.');
-  assert.equal(dup.length, 16,
-    'the register is 16 after W459: W458 left 17 and W459 merged $25FF38. '
+    + '17 - 1 = 16.\n'
+    + 'NOTE $28D520 is ABSENT TOO: W474 made the retired ledger note address-free. '
+    + '16 - 1 = 15.');
+  assert.equal(dup.length, 15,
+    'the register is 15 after W474: W459 left 16 and W474 removed the retired ledger note claim. '
     + 'Asserted as a NUMBER as '
     + 'well as a set, so that a scan which finds nothing cannot read as two more '
     + 'merges -- an empty dup list satisfies neither.');
@@ -312,21 +314,22 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
 // proved merges move the live narrow count to 16. W460 removed a private optional shim,
 // W461 removed the private $242E24 rank-byte body, W462 removed both private
 // $2414BE adapter heads, and W463 removed both private $28C0FC counted-note adapters.
-// Narrow remains 16 while the widened figure moves to 71.
-test('SECTION 2c [W450/W473]: the widened register is 71, so narrow 16 remains a floor', async () => {
+// W474 removes the retired exported ledger note's $28D520 claim, leaving narrow 15
+// while the widened figure moves to 69.
+test('SECTION 2c [W450/W474]: the widened register is 69, so narrow 15 remains a floor', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
-  assert.equal(headRegister().length, 71,
+  assert.equal(headRegister().length, 69,
     'the WIDENED register (private functions, arrows, methods and the whole doc opening '
-    + 'span, not just `export function`) is not 71. ' + W453_NOTE
+    + 'span, not just `export function`) is not 69. ' + W453_NOTE
     + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
     + 'W460 removed the optional $24631C forwarding shim; W461 merged the private '
     + '$242E24 rank-byte body into rng.js drawByte242E24; W462 removed both private '
     + '$2414BE installTxBank heads while retaining canonical palette.js install2414BE; W463 '
-    + 'removed both private $28C0FC counted-note adapter heads; W464 through W473 removed '
+    + 'removed both private $28C0FC counted-note adapter heads; W464 through W474 removed '
     + '$28E7A2, $28C6C6, $28F4C4/$28F666, $285A12, $2A6EDC, $23C622, '
-    + '$23BF74/$23BFDB, $23E3E2, $23FF06, and $240DC2 adapter/helper claims; '
+    + '$23BF74/$23BFDB, $23E3E2, $23FF06, $240DC2, and $240F62/$28D520 adapter/helper claims; '
     + 'tests/w450widenedregister.test.js SECTION 3 holds the exact set and is where a new '
-    + 'duplicate must be resolved. This cross-check prevents narrow 16 being read as the total');
+    + 'duplicate must be resolved. This cross-check prevents narrow 15 being read as the total');
 });
 
 // ======================================================= SECTION 3: THE STATE TRACE

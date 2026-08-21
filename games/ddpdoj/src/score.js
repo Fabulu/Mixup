@@ -1032,21 +1032,20 @@ export function scoreByMask(ram, d0, d1) {
   if ((d1 & 0x08) !== 0) bcdAdd(ram, LEDGER.p2.pendingEnd, d0);   // $28613E/$286144
 }
 
-/** **W63 (B1) RETIRED THIS NOTE, and the function is kept as the record.**
- *
- *  It fired once per collision pass for twenty-nine waves, saying that object
- *  type 0 was not ported and that "a chain this port starts never expires".
- *  `$240F62[0] = $28D520` is now DISPATCHED (`src/hud.js`, W63): `$2842B0`
- *  drains the pending score into the total and `$284636`/`$2847D4` decrement
- *  both chain meters, in the cartridge's own slot -- which is priority `$0009`,
- *  the LAST of the three ledger objects, exactly where W19 §1.5 measured the
- *  meter decrement.
- *
- *  The call site (`src/type5.js:371`) is kept and the note is not, because a
- *  note that has stopped being true is worse than no note: it is the shape of
- *  claim this project has been wrong about most often.  The function is a
- *  no-op with its history attached rather than a deletion, so a reader who
- *  greps `$28D520` in this file finds the answer instead of a hole. */
+/** Retired per-collision ledger note kept as a compatibility no-op. */
 export function notePerFrameLedger(ctx) {
+  // W63 (B1) retired this note. It had fired once per collision pass for
+  // twenty-nine waves, saying that object type 0 was not ported and that "a
+  // chain this port starts never expires".
+  //
+  // `$240F62[0] = $28D520` is now dispatched by src/hud.js: `$2842B0` drains
+  // the pending score into the total and `$284636`/`$2847D4` decrement both
+  // chain meters, in the cartridge's own slot. Its priority is `$0009`, the
+  // last of the three ledger objects, exactly where W19 section 1.5 measured
+  // the meter decrement.
+  //
+  // The call site in src/type5.js is kept and the note is not, because a note
+  // that has stopped being true is worse than no note. Keeping this public
+  // no-op also leaves the history searchable instead of creating a hole.
   void ctx;
 }

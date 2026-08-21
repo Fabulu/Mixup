@@ -5970,7 +5970,29 @@ W473 is the second wave after live build `20260821175936` and is not a publicati
 `hud.js makeHudObject` and `score.js notePerFrameLedger`; classify those claims directly while preserving
 the HUD object factory, per-frame ledger behavior, and cartridge provenance.
 
-**NEXT OBVIOUS BATCH CANDIDATE: W474, `$240F62`.** Classify `hud.js makeHudObject` against
-`score.js notePerFrameLedger`, preserve the actual object-dispatch and ledger behavior, and return the
-address to one canonical cartridge claimant. Continue Black Label through the full second loop and close
-its docket, then finish White Label last.
+
+### D82: FOLLOW-UP, W474 `$240F62` / `$28D520`: RETIRED LEDGER NOTE OWNS NO CARTRIDGE ENTRY
+
+`hud.js makeHudObject` remains the exported factory for dispatch-table slot 0 at `$240F62`, whose cartridge
+handler is `$28D520`. It preserves the three object states, HUD-existence flag, cold-boot score destinations,
+queue kill, pending-score drain, and per-frame HUD ledger. Exported `score.js notePerFrameLedger` remains the
+same compatibility no-op called by the collision pass. Its preceding JSDoc had made that retired historical
+note a second claimant for both the dispatch-table address and the handler address. The full retirement and
+cartridge history now remains as line commentary inside the no-op, without changing implementation, public
+ESM identity, call sites, dependencies, or behavior.
+
+The live registers move from 71 to **69 widened heads** and from 16 to **15 narrow heads**. `$240F62` and
+`$28D520` each have one remaining claimant in `hud.js`; body pairs remain 27 and body-only findings remain 22.
+Focused HUD coverage, syntax checking, the authoritative registers, and the W446-W462 live holder chain
+passed **224/224**.
+
+W474 is the third wave after live build `20260821175936` and is not a publication wave.
+
+**W474 RECOMMENDATION FOR W475: `$24133C`.** The widened scanner currently names
+`palette.js PaletteState#ledger` and `palette.js flush24133C`; classify the generic reporting method against
+the actual once-per-frame palette upload while preserving all ledger and flush behavior.
+
+**NEXT OBVIOUS BATCH CANDIDATE: W475, `$24133C`.** Classify `palette.js PaletteState#ledger` against
+`palette.js flush24133C`, preserve the generic palette accounting and cartridge upload entry, and return the
+address to one canonical cartridge claimant. Continue Black Label through the full second loop and close its
+docket, then finish White Label last.

@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W473)
+Updated: 2026-08-21 (W474)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,14 +10,24 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W473 removed the generic unsigned-longword helper's false `$240DC2`
-cartridge-entry claim.** Exported `hud.js txPrint240DC2` remains the base-grid TX defer entry, while
-exported `ram.js u32` remains the same generic unsigned 32-bit normalizer used across the port. Live scanner
-APIs report 16 narrow heads, 71 widened heads, 27 body pairs, and 22 body-only findings. The next direct
-batch candidate is **W474 `$240F62`**, claimed by `hud.js makeHudObject` and
-`score.js notePerFrameLedger`. W471 remains live as build `20260821175936`; W473 is the second wave in the
-next five-wave interval. Continue the widened duplicate rows, front-end screens D33/D34/D35/D37, remaining
-enemy types, full Black Label loop-2 coverage, and every other explicit docket item.
+`docs/DOCKET.md` is authoritative. **W474 removed the retired ledger note's false `$240F62` and `$28D520`
+cartridge-entry claims.** Exported `hud.js makeHudObject` remains the factory for dispatch-table slot 0 and
+its three-state HUD handler. Exported `score.js notePerFrameLedger` remains the same compatibility no-op,
+with its retirement history now inside the body. Live scanner APIs report 15 narrow heads, 69 widened heads,
+27 body pairs, and 22 body-only findings. The next direct batch candidate is **W475 `$24133C`**, claimed by
+`palette.js PaletteState#ledger` and `palette.js flush24133C`. W471 remains live as build `20260821175936`;
+W474 is the third wave in the next five-wave interval. Continue the widened duplicate rows, front-end screens
+D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and every other explicit docket
+item.
+
+## W474 VERIFIED: RETIRED LEDGER NOTE OWNS NO CARTRIDGE ENTRY
+
+`hud.js makeHudObject` remains the factory for `$240F62[0] = $28D520`, preserving all three HUD object
+states, the existence flag, cold-boot score destinations, queue kill, score drain, and per-frame ledger.
+`score.js notePerFrameLedger` retains the same public identity, call site, and no-op behavior; its preceding
+documentation is now address-free and the full history remains inside the function. Focused HUD and live
+register coverage passed 224/224. Widened heads changed 71 to 69 and narrow heads changed 16 to 15. W471
+remains live as build `20260821175936`; W474 is the third wave in the next publication interval.
 
 ## W473 VERIFIED: GENERIC UNSIGNED-LONGWORD HELPER OWNS NO CARTRIDGE ENTRY
 

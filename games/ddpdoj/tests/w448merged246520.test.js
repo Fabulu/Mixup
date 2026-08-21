@@ -247,25 +247,26 @@ test('SECTION 2: `$246520` and `$24652A` are each claimed EXACTLY ONCE, and by t
   }
   // The register itself, held here as well as in w446/w447 so deleting one guard cannot hide it.
   // W450: THIS COUNTS `export function` CLAIMS ONLY, so it is a FLOOR. The scan that can also
-  // see private functions, arrows and methods reports 71 after W473. SECTION 2d below and
+  // see private functions, arrows and methods reports 69 after W474. SECTION 2d below and
   // tests/w450widenedregister.test.js SECTION 3 hold the set.
   const dup = [...idx].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
-  assert.equal(dup.length, 16,
-    'W458 left 17; W459 merged the complete $25FF38 request-poster body, so the live narrow '
-    + 'floor is 16. A new duplicate is a wave, '
+  assert.equal(dup.length, 15,
+    'W459 left 16; W474 removed the retired ledger note claim, so the live narrow '
+    + 'floor is 15. A new duplicate is a wave, '
     + 'not a row: ' + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
 });
 
-test('SECTION 2d [W450/W473]: the widened register is 71, and this wave\'s three-copy constructor '
+test('SECTION 2d [W450/W474]: the widened register is 69, and this wave\'s three-copy constructor '
   + 'stays merged under it', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
   const wide = headRegister();
-  assert.equal(wide.length, 71,
-    'the widened duplicate register is not 71. ' + W453_NOTE
+  assert.equal(wide.length, 69,
+    'the widened duplicate register is not 69. ' + W453_NOTE
     + 'W457 merged $25D9E6, W458 merged $25DA60, W459 merged $25FF38, W460 removed '
     + 'the optional $24631C forwarding shim, W461 merged the private $242E24 rank-byte '
-    + 'body into rng.js drawByte242E24, W462 removed the private $2414BE adapter row, and W463 '
-    + 'removed the private $28C0FC counted-note adapter row. '
+    + 'body into rng.js drawByte242E24, W462 removed the private $2414BE adapter row, W463 '
+    + 'removed the private $28C0FC counted-note adapter row, and W474 removed the retired '
+    + 'ledger note claims at $240F62 and $28D520. '
     + 'The narrow count above sees only `export '
     + 'function`; W448 merged THREE transcriptions of one body, and the scan that found them '
     + 'would have missed a fourth written as a private function -- which is what happened to '
