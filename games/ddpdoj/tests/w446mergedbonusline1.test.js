@@ -253,8 +253,11 @@ const DOUBLY_CLAIMED_UNAUDITED = Object.freeze([
   // (no production caller) and `stageend.js` had `chainFree246800` (eleven). The survivor is
   // `animobjects.js freeAnimObjects246800`, and the defect was an INVENTED `if (root !== 0)`
   // over a routine the ROM enters unconditionally. w449merged246800.test.js pins it.
+  // W457 REMOVED $25D9E6: the tally posting and phase-0 load paths now call
+  // one complete word-width cursor-map body. w457mergedtallycursor.test.js pins
+  // the 122-byte cartridge span and both carry continuations.
   0x2417de, 0x242ec2, 0x246710, 0x24676a, 0x249ee2,
-  0x2564f0, 0x259962, 0x25d9e6, 0x25da60, 0x25ff38, 0x263386, 0x2633be, 0x2638a6,
+  0x2564f0, 0x259962, 0x25da60, 0x25ff38, 0x263386, 0x2633be, 0x2638a6,
   0x27f6e4, 0x2875b4, 0x28d520, 0x28f588, 0x29f9b4, 0x2a11d4,
 ]);
 
@@ -275,15 +278,17 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
     + 'NOTE $246520 and $24652A are ABSENT TOO: W448 merged the THREE transcriptions\n'
     + 'of the one body at $246532. 22 - 2 = 20.\n'
     + 'NOTE $246800 is ABSENT TOO: W449 merged the THREE transcriptions of the chain\n'
-    + 'free, and tests/w449merged246800.test.js SECTION 2 pins that. 20 - 1 = 19.');
-  assert.equal(dup.length, 19,
-    'the register is 19 after W449: 24 - $2428A6 - $242B3C - $246520 - $24652A - $246800. '
+    + 'free, and tests/w449merged246800.test.js SECTION 2 pins that. 20 - 1 = 19.\n'
+    + 'NOTE $25D9E6 is ABSENT TOO: W457 merged its posting and load transcriptions. '
+    + '19 - 1 = 18.');
+  assert.equal(dup.length, 18,
+    'the register is 18 after W457: W449 left 19 and W457 merged $25D9E6. '
     + 'Asserted as a NUMBER as '
     + 'well as a set, so that a scan which finds nothing cannot read as two more '
     + 'merges -- an empty dup list satisfies neither.');
 });
 
-// W450 CORRECTED WHAT THAT 19 MEANS. IT IS A FLOOR, NOT A COUNT.
+// W450 CORRECTED WHAT THE THEN-19 MEANT. IT WAS A FLOOR, NOT A COUNT.
 //
 // `portedIndex()` above indexes `export function` and nothing else, so a
 // module-private `function`, a `const` arrow, a method and any copy whose doc
@@ -296,16 +301,15 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
 // merged -- and every test in this file, w447, w448 and w449 stayed GREEN.
 // The widened guard went red on it.
 //
-// The 19 above is left EXACTLY as it was: it is a true statement about the
-// narrow index, w447/w448/w449 quote the same number, and weakening it would
-// lose the merge history. What is added is the true figure beside it.
-test('SECTION 2c [W450]: the widened register is 90, so the 19 above is read as a floor', async () => {
+// The old 19 remains in the arithmetic above as history; W457's proved merge
+// moves the live narrow count to 18. The widened figure beside it is the truth.
+test('SECTION 2c [W450/W457]: the widened register is 89, so narrow 18 remains a floor', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
-  assert.equal(headRegister().length, 90,
+  assert.equal(headRegister().length, 89,
     'the WIDENED register (private functions, arrows, methods and the whole doc opening '
-    + 'span, not just `export function`) is not 90. ' + W453_NOTE + 'tests/w450widenedregister.test.js SECTION 3 '
-    + 'holds the exact set and is where a new duplicate must be resolved -- this is a '
-    + 'cross-check so that a wave reading 19 here cannot believe there are only 19');
+    + 'span, not just `export function`) is not 89. ' + W453_NOTE + 'W457 merged $25D9E6; '
+    + 'tests/w450widenedregister.test.js SECTION 3 holds the exact set and is where a new '
+    + 'duplicate must be resolved. This cross-check prevents narrow 18 being read as the total');
 });
 
 // ======================================================= SECTION 3: THE STATE TRACE

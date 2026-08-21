@@ -500,10 +500,10 @@ test('SECTION 7: W455 removes one body-only pair and changes no head register', 
   const heads = headRegister();
   const pairs = bodyPairs();
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
-  assert.equal(narrow.length, 19, 'narrow export-only historical floor');
-  assert.equal(heads.length, 90, 'full and inner entry heads remain distinct cartridge conventions');
-  assert.equal(pairs.length, 31,
-    'W450 39 minus W451, W453, W454, W455 and four W456 item-velocity edges');
+  assert.equal(narrow.length, 18, 'W457 removed $25D9E6 from the narrow register');
+  assert.equal(heads.length, 89, 'W457 removed $25D9E6 from the widened register');
+  assert.equal(pairs.length, 30,
+    'W450 39 minus W451, W453, W454, W455, four W456 edges and the W457 cursor map');
   assert.ok(!pairs.some(([pair]) => pair === 'items.js beamReset25270C <> laser.js wipeSegmentPool'),
     'the six-marker private wipe stays absent');
 });

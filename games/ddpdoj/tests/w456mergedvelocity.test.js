@@ -528,21 +528,22 @@ test('SECTION 6: source census has one implementation and preserves every A5/A6 
     'player update retains its caller-specific D2/D3 continuation');
 });
 
-test('SECTION 6b: registers reconcile to 19 narrow, 90 widened, 31 pairs and 22 body-only', () => {
+test('SECTION 6b: registers reconcile through W457 to 18 narrow, 89 widened, 30 pairs and 22 body-only', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
   const headVisibleRemoved = [
     'items.js applyItemVelocity <> movement.js applyVelocityA6',
     'items.js applyItemVelocity <> player.js applyPlayerVector2417DE',
+    'tallyscreen.js cursorsFromPosted25D9E6 <> tallyscreen.js mapSavedCursor25D9E6',
   ];
   const bodyOnlyRemoved = [
     'items.js applyItemVelocity <> options.js podKnockback24D188',
     'items.js applyItemVelocity <> player.js updatePlayer',
   ];
-  assert.equal(narrow.length, 19, 'historical export-only floor remains unchanged');
-  assert.equal(heads.length, 90, '$2417DE still has other head claimants');
-  assert.equal(pairs.length, 31, 'W456 removes exactly four edges from W455 baseline 35');
+  assert.equal(narrow.length, 18, 'W457 removes the exported $25D9E6 duplicate');
+  assert.equal(heads.length, 89, 'W457 removes the widened $25D9E6 head row');
+  assert.equal(pairs.length, 30, 'W457 removes one edge from W456 baseline 31');
   const visibleHeads = new Set();
   for (const [, claims] of headIndex().idx) {
     if (claims.size < 2) continue;
@@ -551,7 +552,7 @@ test('SECTION 6b: registers reconcile to 19 narrow, 90 widened, 31 pairs and 22 
   const bodyOnly = pairs.filter(([pair]) => pair.split(' <> ')
     .some((body) => !visibleHeads.has(body)));
   assert.equal(bodyOnly.length, 22,
-    'live derivation corrects W455\'s manually stated 23 baseline to 24, then removes two');
+    'headIndex() derives 22 after W456; W457 removes a head-visible pair, so it remains 22');
   for (const removed of [...headVisibleRemoved, ...bodyOnlyRemoved]) {
     assert.ok(!pairs.some(([pair]) => pair === removed), `${removed} stays absent`);
   }

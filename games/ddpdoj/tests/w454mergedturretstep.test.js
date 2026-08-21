@@ -347,14 +347,14 @@ test('SECTION 6: one production body serves both handlers and preserves both con
     'all production imports, calls and the sole declaration are enumerated');
 });
 
-test('SECTION 7: W454 removes one body pair while both head registers stay fixed', () => {
+test('SECTION 7: W454 merge stays absent after every later register change', () => {
   const heads = headRegister();
   const pairs = bodyPairs();
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
-  assert.equal(narrow.length, 19, 'the narrow export-only historical floor is unchanged');
-  assert.equal(heads.length, 90, 'the widened head register is unchanged');
-  assert.equal(pairs.length, 31,
-    'W450 39, W451 one removal, W453 one, W454 one, W455 one and W456 four');
+  assert.equal(narrow.length, 18, 'W457 merged $25D9E6 from the narrow register');
+  assert.equal(heads.length, 89, 'W457 merged $25D9E6 from the widened register');
+  assert.equal(pairs.length, 30,
+    'W450 39, W451 one removal, W453 one, W454 one, W455 one, W456 four and W457 one');
   assert.ok(!pairs.some(([pair]) => pair === 'handlers.js fire11 <> turret.js turretStep'),
     'the seven-marker private fire11 body stays absent');
 });

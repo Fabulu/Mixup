@@ -324,11 +324,12 @@ export function gate25DFF6(ram, ctx) {
 }
 
 /**
- * `$25D9E6` -- TURN THE POSTED VALUES BACK INTO TABLE INDICES.
+ * `$25D9E6..$25DA5F` -- TURN THE POSTED VALUES BACK INTO TABLE INDICES.
  *
  * This is the exact inverse of state 2's lookup, and having both makes the design
  * plain: the cursors live in the record as INDICES, `$2600D8` posts the table VALUES
- * into `$81308x`, and this reads them back as indices again.
+ * into `$81308x`, and this reads them back as indices again. The complete cartridge
+ * body is 122 bytes and has two exits, both inside this span.
  *
  *   cmpi.w #$FF,D6 / bne $25DA10          $FF means "nothing saved"
  *     D5 == 0 -> (D6,D7) = (0, 0)         side 0's defaults
@@ -339,17 +340,19 @@ export function gate25DFF6(ram, ctx) {
  *     ...then $25DA4C, which pops and `andi #$FFFE,SR` -- CARRY CLEAR
  *
  * **THE TWO `dbra` COUNTS CONFIRM THE TABLE SIZES A THIRD TIME.** `moveq #$1,D0` with
- * `dbra` walks indices 1 then 0 -- two entries; `moveq #$2,D0` walks 2, 1, 0 -- three.
- * That agrees with `$25DD42 andi.b #$1,($e,A5)` and with the window's own far end at
- * `$25D990`, from three independent directions.
+ * `dbra` walks indices 1 then 0 in `$25D986..$25D989`; `moveq #$2,D0` walks 2, 1, 0
+ * in `$25D98A..$25D98F`. That agrees with `$25DD42 andi.b #$1,($e,A5)` and with the
+ * window's own far end at `$25D990`, from three independent directions.
  *
- * AND THE SEARCH IS DOWNWARD, so a value present twice would resolve to the LOWER
- * index. Neither table has a duplicate, but the direction is the ROM's and is kept.
+ * THE SEARCH IS DOWNWARD and branches away on the first match, so a duplicate value
+ * would resolve to the HIGHEST index. The cartridge tables have no duplicates, but
+ * the direction is executable and is kept.
  *
- * A value in neither table leaves D6/D7 AS THEY WERE -- the `dbra` just falls through
- * without storing. So the raw posted value ends up in the cursor, and state 2's own
- * bound is what catches it. Faithful, and the reason that bound is a note and not a
- * clamp.
+ * D5 is read only as a word. D6 and D7 are compared and replaced only as words;
+ * their high words belong to the caller and the real continuations observe only the
+ * low byte. A value in neither table leaves the owned word unchanged, so that raw
+ * posted value reaches the cursor and state 2's own bound catches it. This helper
+ * therefore normalises all three inputs to the width the cartridge owns.
  *
  * @returns {{x:number, y:number, defaulted:boolean}} `defaulted` is the C flag.
  */
@@ -369,6 +372,9 @@ export function cursorsFromPosted25D9E6(rom, d5, d6, d7) {
   }
   return { x, y, defaulted: false };                       // $25DA50 andi #$FFFE,SR
 }
+
+// Compatibility name from W344. This is an export alias, not a second body.
+export { cursorsFromPosted25D9E6 as mapSavedCursor25D9E6 };
 
 /**
  * `$25DA60` -- RESTORE THE CURSORS FROM WHAT THE TALLY POSTED.
@@ -887,49 +893,6 @@ export function pickFreeYRow25DA94(ram, a5, ctx) {
 const SAVED_CURSOR = Object.freeze({ x0: 0x813084, x1: 0x813086, y0: 0x813088, y1: 0x81308a });
 
 /**
- * `$25D9E6` -- MAP A SAVED CURSOR *VALUE* TO A TABLE *INDEX*, or substitute a per-side default.
- *
- *     25d9ea  cmpi.w #$FF,D6 / bne $25DA10       not the sentinel -> SEARCH
- *     25d9f2  tst.w D5 / bne $25DA04
- *     25d9f8  move.w #$0,D6 / move.w #$0,D7 / bra $25DA56      side 0's default: (0, 0)
- *     25da04  move.w #$1,D6 / move.w #$2,D7 / bra $25DA56      side 1's default: (1, 2)
- *     25da10  moveq #$1,D0 ... $25D986 ... cmp.w D6,D1 / move.w D0,D6 / dbra    X: TWO entries
- *     25da2e  moveq #$2,D0 ... $25D98A ... the same for D7                       Y: THREE entries
- *     25da50  andi #$FFFE,SR / rts        the SEARCH path -> carry CLEAR
- *     25da56  ori  #$1,SR    / rts        the DEFAULT path -> carry SET
- *
- * **THREE THINGS A PORT GETS WRONG HERE:**
- *
- * 1. **The search runs DOWNWARD.** `moveq #$1,D0` + `dbra` visits index 1 then 0, and `moveq #$2,D0` visits
- *    2, 1, 0. With duplicate values in a table the LAST index would win, not the first.
- * 2. **An unmatched value is left UNCHANGED.** `dbra` simply exhausts and falls through to the Y half; there
- *    is no not-found default. So a saved word that is neither `$FF` nor in its table passes through as a raw
- *    value and is stored as a cursor index -- which the ported `yRow` would then throw on. That is the
- *    board's behaviour and the throw is the right response to it.
- * 3. **The two exits differ in CARRY**: defaulted sets it, searched clears it. `$25DA60` ignores the flag,
- *    but it is returned here because the polarity is only visible at the `ori`/`andi` -- the fifth routine
- *    this session to report status that way.
- *
- * @returns {{x: number, y: number, defaulted: boolean}}
- */
-export function mapSavedCursor25D9E6(rom, d5, d6, d7) {
-  if ((d6 & 0xffff) === 0x00ff) {                          // $25D9EA cmpi.w #$FF,D6
-    return d5 !== 0
-      ? { x: 1, y: 2, defaulted: true }                    // $25DA04 side 1
-      : { x: 0, y: 0, defaulted: true };                   // $25D9F8 side 0
-  }
-  let x = d6;
-  for (let i = SCREEN11.xEntries - 1; i >= 0; i--) {       // $25DA10 moveq #$1,D0 + dbra -- DOWNWARD
-    if (rom.u16(SCREEN11.xTable + i * 2) === d6) { x = i; break; }   // $25DA1E cmp.w / $25DA24
-  }
-  let y = d7;
-  for (let i = SCREEN11.yEntries - 1; i >= 0; i--) {       // $25DA2E moveq #$2,D0 + dbra
-    if (rom.u16(SCREEN11.yTable + i * 2) === d7) { y = i; break; }
-  }
-  return { x, y, defaulted: false };                       // $25DA50 andi #$FFFE,SR
-}
-
-/**
  * `$25DA60` -- LOAD THIS SIDE'S SAVED CURSOR INTO `($E,A5)`/`($F,A5)`.
  *
  *     25da60  move.w $813084,D6 / move.w $813088,D7      side 0
@@ -951,7 +914,7 @@ export function loadSavedCursor25DA60(ram, rom, a5) {
   const side = ram.u8(a5 + SCREEN11.side);                 // $25DA6C tst.b ($7,A5)
   const d6 = ram.u16(side !== 0 ? SAVED_CURSOR.x1 : SAVED_CURSOR.x0);
   const d7 = ram.u16(side !== 0 ? SAVED_CURSOR.y1 : SAVED_CURSOR.y0);
-  const r = mapSavedCursor25D9E6(rom, side, d6, d7);       // $25DA86 bsr $25D9E6
+  const r = cursorsFromPosted25D9E6(rom, side, d6, d7);      // $25DA86 bsr $25D9E6
   ram.setU8(a5 + SCREEN11.xCur, r.x & 0xff);               // $25DA8A move.b D6,($E,A5)
   ram.setU8(a5 + SCREEN11.yCur, r.y & 0xff);               // $25DA8E move.b D7,($F,A5)
   return r;

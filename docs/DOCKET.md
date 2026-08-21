@@ -5200,3 +5200,74 @@ bodies, callers, saved/post cursor ownership, dirty state, branches and continua
 classifying. The coordinator must first independently verify and land W456, then, on a quiet tree with
 no working agent, run `games/ddpdoj/tools/export-web.mjs` before `tools/publish.mjs`. Continue Black
 Label through the full second loop and close its docket, then finish White Label last.
+
+
+### D69 FOLLOW-UP, W457 TALLY CURSOR: ONE COMPLETE WORD-WIDTH BODY, TWO CALLER CONVENTIONS
+
+**THE `$25D9E6` BODIES ARE EQUIVALENT AND MERGED.** `tallyscreen.js cursorsFromPosted25D9E6` is the
+sole production implementation. The former `mapSavedCursor25D9E6` name is an export alias, not a second
+body. Both `$25DA60` source functions now call the canonical body, but remain separate functions: this
+wave does not merge `loadSavedCursor25DA60` and `restoreCursors25DA60`.
+
+**THE BUILD-B IMAGE PINS THE COMPLETE ROUTINE, TABLES, BRANCHES AND CALLERS.** Main CPU SHA-256 is
+`4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c`. The complete 122-byte body is
+`$25D9E6..$25DA5F`, or half-open span `[$25D9E6,$25DA60)`, and its entire byte string is frozen in the
+W457 regression. X table `$25D986..$25D989` has two words `$0000,$0002`; Y table
+`$25D98A..$25D98F` has three words `$0002,$0004,$0006`. Every control target is pinned:
+`$25D9EE -> $25DA10`, `$25D9F4 -> $25DA04`, `$25DA00 -> $25DA56`, `$25DA0C -> $25DA56`,
+`$25DA20 -> $25DA2A`, `$25DA26 -> $25DA2E`, `$25DA2A -> $25DA12`, `$25DA3E -> $25DA48`,
+`$25DA44 -> $25DA4C`, and `$25DA48 -> $25DA30`. The last two loop edges are downward `DBRA` branches.
+X visits indices 1 then 0, Y visits 2 then 1 then 0, and the first match branches out. A duplicated
+value therefore selects the highest index. A synthetic duplicate overlay proves that direction, while
+raw production tables are separately proven unique.
+
+**WIDTH, SENTINEL AND CARRY OWNERSHIP ARE EXACT.** D0 and D1 are saved and restored. `TST.W` owns only
+D5.W; sentinel and comparisons own only D6.W; Y comparisons own only D7.W. High words remain caller
+state, and real continuations expose only D6.B and D7.B. D6.W equal to `$00FF` ignores D7 and defaults
+to `(0,0)` when D5.W is zero or `(1,2)` when D5.W is nonzero. `$25DA5A ORI.W #$1,SR` sets carry on
+that default arm. `$25DA50 ANDI.W #$FFFE,SR` clears carry after every searched arm, whether a value
+matched or not. Matched values become word indices; unmatched low words survive unchanged until caller
+byte stores truncate them. `$00FE` and `$0100` are searched, not adjacent sentinel aliases.
+
+**ALL THREE DIRECT CALLERS AND BOTH LIVE FAMILIES ARE PINNED.** Direct calls are `$25D9A6`, `$25D9D0`
+and `$25DA86`. Posting span `$25D990..$25D9E5` has side-0 and side-1 arms that prewrite two `$FF`
+sentinels, call the routine, test carry with `BCS`, and store D6.B/D7.B only when carry is clear. Its
+parent continuation `$260756..$260781` is frozen. Load span `$25DA60..$25DA93` calls once and stores both
+bytes without observing carry; its phase-0 parent continuation `$25DC7C..$25DCA9` is frozen. Thus carry
+has one observer family, not a universal return convention.
+
+**DIRTY RAM AND EXTERNAL WITNESSES PROVE BOTH CONVENTIONS.** Posting tests drive both sides through
+sentinel, searched, matched and unmatched values with dirty selection records. They prove carry-set
+sentinels remain `$FF,$FF`, matches store `(1,2)` or `(0,0)`, unmatched `$0100/$01FF` truncate to
+`$00/$FF`, and unowned bytes survive. Load tests prove side-0 sentinel `(0,0)`, side-1 sentinel `(1,2)`,
+matched `(1,1)`, and unmatched low-byte truncation. Full phase-0 tests preserve those cursors, advance
+phase to 1, post `[1,0]` to the correct side mailbox at `$813162` or `$813166`, and alter only phase and
+the two cursor bytes in each dirty object record.
+
+**A REAL TEMPORARY RED MUTATION FAILED AND WAS RESTORED BYTE-EXACT.** Changing the side-1 sentinel X
+default from 1 to 0 failed both the direct `$25DA60` external witness and the full `$25DC2C` phase-0
+witness, each receiving `(0,2)` instead of `(1,2)`. Before mutation and after restoration,
+`tallyscreen.js` SHA-256 is
+`7c7ce7b16ed4b9faef7df564fc06d64f71145fee557f158d8c8ac7a46cf3ec03`.
+
+The live registers reconcile exactly: narrow export-only heads **19 -> 18**; widened heads **90 -> 89**;
+body pairs **31 -> 30**; executable `headIndex()` derivation leaves body-only findings **22**, unchanged.
+The independent `$25DA60` pair remains registered with markers `$25DA6C`, `$25DA86`, `$25DA8A`, and
+`$25DA8E`. No production ROM window was added or widened, and no generated export or asset changed.
+
+Editing-agent validation on the W457 tree: focused W457 **11 pass / 0 fail / 0 skipped**; broad tally,
+front-end, integration and W446-W457 register set **675 pass / 0 fail / 0 skipped**; full suite
+**4223 pass / 0 fail / 0 skipped**; webgate exit 0 with **31 PASS / 0 FAIL**; ROM verification returned
+**VERIFY OK at 613 windows**. The coordinator independently repeated focused W457 at **11 pass**, an
+import-derived affected surface at **536 pass**, the full suite at **4223 pass**, webgate at **31 PASS / 0
+FAIL**, and ROM verification at **613 windows**. The coordinator also reproduced both RED external
+failures, restored the exact source hash, and scanned the complete 6 MiB image for BSR plus absolute and
+PC-relative JSR/JMP transfers; exactly the three pinned direct callers target `$25D9E6`.
+
+**NEXT CONCRETE DOCKET UNIT: W458, D69 `tallyscreen.js loadSavedCursor25DA60` <->
+`tallyscreen.js restoreCursors25DA60`.** Audit the complete `$25DA60` bodies and all four registered
+markers, caller reachability, side indexing, object layout, dirty preservation and continuations before
+merging or classifying. `loadSavedCursor25DA60` is live through `tallyPhase0Arm25DC2C`;
+`restoreCursors25DA60` has no production source caller, so do not infer equivalence from the shared
+inner call. No publish is due at W457. Continue Black Label through the full second loop and close its
+docket, then finish White Label last.

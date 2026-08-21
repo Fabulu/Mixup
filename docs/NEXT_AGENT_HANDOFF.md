@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W456)
+Updated: 2026-08-21 (W457)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,97 +10,107 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W456 proved the item pool carries the complete `$2417DE`
-A6-record convention and deleted its private velocity transcription.** All five cartridge item transfers
-now reach exported `movement.js applyVelocityA6` through two shared source paths. The shorter option
-`$2417D4` entry and player-specific continuations remain independent because they do not share the
-complete caller convention. The next concrete unit is **W457 / D69 `tallyscreen.js
-cursorsFromPosted25D9E6` <-> `tallyscreen.js mapSavedCursor25D9E6`**, the strongest live pair with six
-markers over `$25D9EA..$25DA50`. The coordinator must independently verify and land W456, then run
-`games/ddpdoj/tools/export-web.mjs` before `tools/publish.mjs`, on a quiet tree with no working agent.
-Continue the remaining widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy
-types, full Black Label loop-2 coverage, and every other explicit docket item.
+`docs/DOCKET.md` is authoritative. **W457 proved the two `$25D9E6` cursor-map transcriptions are one
+complete word-width body and deleted the duplicate implementation.** The old `mapSavedCursor25D9E6`
+name remains an export alias. Both `$25DA60` functions call the canonical body but remain independent.
+The next concrete unit is **W458 / D69 `tallyscreen.js loadSavedCursor25DA60` <->
+`tallyscreen.js restoreCursors25DA60`**, the deliberately deferred pair with four markers over
+`$25DA6C..$25DA8E`. No publish is due at W457. Continue the remaining widened duplicate rows,
+front-end screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and every
+other explicit docket item.
 
-## W456 READY FOR INDEPENDENT VERIFICATION: ONE COMPLETE A6 VELOCITY BODY
+## W457 COORDINATOR-VERIFIED AND LANDED: ONE COMPLETE TALLY CURSOR BODY
 
-**THE COMPLETE ITEM BODY IS EQUIVALENT AND MERGED.** `items.js applyItemVelocity` duplicated the full
-`$2417DE..$241803` routine. The item layout owns position words at A6+$02/+$04 and speed/heading bytes
-at A6+$1A/+$1B exactly like the canonical raw record. Both item source callers ignore the returned
-D2/D3 pair, so they now pass caller-held A6 and `ctx.tables` directly to exported
-`movement.js applyVelocityA6`. The option `$2417D4` entry supplies D0/D1 as words and shares only the
-gated suffix. The player paths consume returned D2/D3 and have their own continuations. Neither shorter
-overlap was merged.
+**THE `$25D9E6` IMPLEMENTATIONS ARE EQUIVALENT AND MERGED.**
+`tallyscreen.js cursorsFromPosted25D9E6` is now the sole function body.
+`mapSavedCursor25D9E6` remains a compatibility export alias to that same function object. Both
+`loadSavedCursor25DA60` and `restoreCursors25DA60` call it, but those two `$25DA60` functions remain
+separate and registered for W458.
 
-Raw image SHA-256 is:
+Build-B main CPU SHA-256 is:
 
     4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c
 
-The exact 38-byte `$2417DE..$241803` body is
-`7000102E001A723FC22E001B4A79008130D2660C611ED56E0002D76E00044E75740076004E75`, SHA-256
-`ca3b54244f3033a7e0ce09004945a5fc7a069fd989d86ce2d51f190dd65c2024`. D0 is zeroed before the speed
-byte, D1 is owned by `moveq #$3F` before the heading byte is masked, and the word freeze gate at
-`$8130D2` either zeroes D2/D3 or calls `$241812`. The live continuation applies independent wrapped
-`add.w D2,A6+$02` and `add.w D3,A6+$04`; no carry crosses the two words. `$241812` reads the speed table
-through `$200920`, folds the heading, loads two longwords, uses `asr.l #4`, and negates only the selected
-low words by quadrant. It contains no `swap`. The later `$242684` continuation reads the two words with
-`move.l`, operates on the low half, then performs its one `swap D0`, proving that movement itself did not
-use longword carry.
+The complete routine is the 122-byte half-open span `[$25D9E6,$25DA60)`, ending at `$25DA5F`; the W457
+regression pins every byte. X table `$25D986..$25D989` is two words `$0000,$0002`. Y table
+`$25D98A..$25D98F` is three words `$0002,$0004,$0006`. The ten branch edges are:
 
-A complete cartridge census found exactly 65 direct transfers to `$2417DE`: 62 absolute `jsr`, two
-absolute `jmp`, and one PC-relative `jmp`. The five item sites are `$27EBBA`, `$27ED6A`, `$27EEFE`,
-`$27F62E`, and `$27F686`; their complete motion/off-screen and normal/max collected continuations are
-pinned in `w456mergedvelocity.test.js`. The production source census has seven `applyVelocityA6`
-occurrences including its declaration: two in `handlers.js`, two reusable paths in `items.js`, and three
-in `movement.js` for the declaration, A5+$06 wrapper, and raw `$242A48` stick tail. The A5 wrapper has
-31 production calls. Explicit-base handler, stick, item, and A5-pointer conventions remain distinct.
+    $25D9EE BNE.W  -> $25DA10       $25D9F4 BNE.W  -> $25DA04
+    $25DA00 BRA.W  -> $25DA56       $25DA0C BRA.W  -> $25DA56
+    $25DA20 BNE.W  -> $25DA2A       $25DA26 BRA.W  -> $25DA2E
+    $25DA2A DBRA   -> $25DA12       $25DA3E BNE.W  -> $25DA48
+    $25DA44 BRA.W  -> $25DA4C       $25DA48 DBRA   -> $25DA30
 
-Dirty witnesses cover positive and negative words, opposite axis signs, low-half carry with no
-propagation, high-half wrap, six-bit heading mask, live and frozen gates, and a dirty decoy record behind
-an A5+$06 pointer. A recycled item allocation proves the cartridge-owned first 32 bytes overwrite while
-+$20..+$3F residue and pool sentinels survive. Real kind `$00`, `$04`, and `$08` paths prove queue output,
-off-screen free/count decrement, frozen draw continuation, and opposite lifecycle arms. Normal and max
-collected paths separately prove `$27F606/$27F65E add.l` carry and no-carry queue coordinates before the
-later independent movement words, plus frame, cursor, sprite and status continuation.
+The X loop searches indices 1 then 0. The Y loop searches 2 then 1 then 0. Each loop exits on its first
+match, so a duplicate resolves to the highest index. A synthetic read overlay proves this direction;
+the raw production X and Y tables are separately proven unique, so the test does not claim a production
+duplicate.
 
-The temporary RED mutation changed only the canonical second-axis term from `v.dx` to `v.dy`. Raw A6,
-A5-pointer, kind `$04` lifecycle, and collected-animation external witnesses all failed. Exact restoration
-returned `movement.js` to SHA-256:
+D0 and D1 are saved and restored. D5 is observed only by `TST.W`; D6 sentinel and X comparisons are
+word-sized; D7 Y comparisons are word-sized. High halves therefore remain caller-owned. The sentinel is
+exactly D6.W `$00FF`; D7 is ignored on that arm. D5.W zero defaults to `(0,0)`, while any nonzero D5.W
+defaults to `(1,2)`. `$25DA5A ORI.W #$1,SR` sets carry on the sentinel arm. `$25DA50 ANDI.W
+#$FFFE,SR` clears carry on every searched arm, matched or unmatched. An unmatched low word survives the
+body unchanged. Real continuations then store only D6.B and D7.B, establishing the low-byte truncation
+boundary. `$00FE` and `$0100` both take the searched arm.
 
-    f904abe74e6d7d91b7d2c769fe177f9ef459a207688f57583964054b02c90b61
+All three direct cartridge calls are pinned at `$25D9A6`, `$25D9D0`, and `$25DA86`. They form two live
+caller conventions:
 
-The restored file still has 535 CRLF sequences and zero bare LF. The duplicate registers reconcile:
+* Posting body `$25D990..$25D9E5` has one arm per side. Each prewrites `$FF,$FF`, calls `$25D9E6`,
+  observes carry with `BCS`, and stores D6.B/D7.B only after carry-clear. Its parent continuation
+  `$260756..$260781` is pinned.
+* Load body `$25DA60..$25DA93` calls `$25D9E6`, does not inspect carry, and always stores D6.B/D7.B.
+  Its phase-0 parent continuation `$25DC7C..$25DCA9` is pinned.
 
-    narrow export-only head rows             19, unchanged historical floor
-    widened head rows                        90, unchanged
-    widened body pairs                       35 -> 31
-    body-only findings                       24 -> 22
+Dirty posting witnesses cover both sides, sentinel and searched arms, matches, unmatched words,
+adjacent sentinel values, high-word residue, both carry states, byte truncation and preservation of every
+unowned record byte. Dirty load witnesses prove side-0 sentinel `(0,0)`, side-1 sentinel `(1,2)`, a
+matched `(1,1)`, and unmatched `$0100/$01FF -> $00/$FF`. Full phase-0 paths on both sides advance phase
+to 1, preserve the mapped cursors, post `[1,0]` to `$813162` or `$813166`, and leave all unowned object
+bytes untouched.
 
-The body-only count is now derived from the live widened head index. That corrects the prior manually
-stated baseline of 23, which was one low. The four disappearing edges all belonged to the deleted item
-node. Item/movement and item/player-helper
-were also represented by the `$2417DE` head row; item/option and item/updatePlayer were body-only. All
-six shorter-tail edges among movement, option and player bodies remain frozen and unaudited.
+The temporary RED mutation changed side-1 sentinel X from 1 to 0. Two meaningful external tests failed:
+the direct `$25DA60` load and full `$25DC2C` phase-0 witnesses both observed `(0,2)` instead of `(1,2)`.
+Exact restoration returned `tallyscreen.js` to SHA-256:
 
-Final W456 validation on the working tree:
+    7c7ce7b16ed4b9faef7df564fc06d64f71145fee557f158d8c8ac7a46cf3ec03
 
-    focused W456                              12 pass / 0 fail / 0 skipped
-    affected movement/item/D69 set           252 pass / 0 fail / 0 skipped
-    node --test games/ddpdoj/tests/          4212 pass / 0 fail / 0 skipped
+The duplicate registers reconcile:
+
+    narrow export-only head rows             19 -> 18
+    widened head rows                        90 -> 89
+    widened body pairs                       31 -> 30
+    body-only findings                       22, unchanged
+
+Body-only findings remain executable output derived from `headIndex()`, not a hand-maintained count.
+The remaining `$25DA60` body pair retains markers `$25DA6C`, `$25DA86`, `$25DA8A`, and `$25DA8E`.
+No production ROM window was added or widened. No generated asset, export-web, publish, commit or push
+operation was performed.
+
+Coordinator-independent W457 validation on the final tree:
+
+    focused W457                              11 pass / 0 fail / 0 skipped
+    affected imported surface                536 pass / 0 fail / 0 skipped
+    node --test games/ddpdoj/tests/          4223 pass / 0 fail / 0 skipped
     node games/ddpdoj/tools/webgate.mjs        31 PASS / 0 FAIL, exit 0
     export-tables.py --verify                VERIFY OK at 613 windows
 
-No production ROM window was added or widened. No generated asset, export-web, publish, commit or push
-operation was performed. The coordinator must independently verify and land W456. Only after landing,
-with no working agent, run `games/ddpdoj/tools/export-web.mjs` and then `tools/publish.mjs`.
+The editing agent's broader affected command independently passed 675 tests. The coordinator also reproduced
+the RED mutation's two external failures, restored SHA-256
+`7c7ce7b16ed4b9faef7df564fc06d64f71145fee557f158d8c8ac7a46cf3ec03`, and scanned the complete
+6 MiB image for BSR, absolute and PC-relative JSR, and absolute and PC-relative JMP transfers. Exactly
+the three pinned callers target `$25D9E6`.
 
 ## IMMEDIATE ORDER
 
-1. Independently verify and land W456. With no working agent, run
-   `games/ddpdoj/tools/export-web.mjs` followed by `tools/publish.mjs`.
-2. Dispatch W457 on D69 `tallyscreen.js cursorsFromPosted25D9E6` <->
-   `tallyscreen.js mapSavedCursor25D9E6`, six markers over `$25D9EA..$25DA50`.
-3. Continue the docket and complete Black Label through the full second loop.
-4. Finish White Label last, only after Black Label and its docket are complete.
+1. W457 is coordinator-verified, committed and pushed. Do not publish at W457.
+2. Dispatch W458 on D69 `tallyscreen.js loadSavedCursor25DA60` <->
+   `tallyscreen.js restoreCursors25DA60`, four markers over `$25DA6C..$25DA8E`.
+3. Treat `loadSavedCursor25DA60` as live through `tallyPhase0Arm25DC2C`; establish whether the
+   source-uncalled `restoreCursors25DA60` has a cartridge caller before merging or classifying.
+4. Continue the docket and complete Black Label through the full second loop.
+5. Finish White Label last, only after Black Label and its docket are complete.
 
 ## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES
 
@@ -110,8 +120,8 @@ cadence above. Do not spend a wave redoing either clause.
 
 ## PUBLISHED HISTORY
 
-Last confirmed live: build `20260820231140`, confirmed 2026-08-20. Earlier confirmed builds:
-`20260819205607`, `20260819075340`, `20260819013654`, and `20260818210139`.
+Last confirmed live: build `20260821060153`, confirmed 2026-08-21. Earlier confirmed builds:
+`20260820231140`, `20260819205607`, `20260819075340`, `20260819013654`, and `20260818210139`.
 
 ## W422 LANDED -- POOL-A KIND 5, VERIFIED BY THE COORDINATOR
 
