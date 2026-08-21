@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DoDonPachi DaiOuJou - start</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #080a0e; --panel: #141922; --line: #283140;
+    --fg: #e3e8ef; --dim: #8995a5; --accent: #e5b94d; --on: #8fd36f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; padding: 2rem 1rem 6rem;
+    background: var(--bg); color: var(--fg);
+    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 1rem; }
+  h1 { margin: 0 0 .3rem; font-size: 1.2rem; letter-spacing: .04em; }
+  h1 span, .sub { color: var(--dim); font-weight: 400; }
+  .sub { max-width: 90ch; font-size: 12px; }
+  a { color: var(--accent); }
+  h2 { margin: 1.6rem 0 .55rem; color: var(--dim); font-size: .78rem;
+    letter-spacing: .13em; text-transform: uppercase; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: .6rem; }
+  .card { padding: .72rem .82rem; text-align: left; color: inherit; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    font: inherit; }
+  .card:hover { border-color: #46536a; }
+  .card[aria-pressed="true"] { border-color: var(--on); background: #172319; }
+  .card .name { display: flex; justify-content: space-between; gap: .5rem; font-weight: 650; }
+  .card .mark { color: var(--on); visibility: hidden; }
+  .card[aria-pressed="true"] .mark { visibility: visible; }
+  .card .blurb { margin-top: .25rem; color: var(--dim); font-size: 12px; }
+  .card .effect { display: none; margin-top: .5rem; padding-top: .45rem;
+    border-top: 1px dashed var(--line); color: #b8c2cf; font-size: 11px; }
+  .card[aria-pressed="true"] .effect { display: block; }
+  .presets .card { background: #1b1710; border-color: #3e3521; }
+  .card.vanilla { background: #101820; }
+  .bar { position: sticky; bottom: 0; display: flex; flex-wrap: wrap;
+    align-items: center; gap: .8rem; margin-top: 1.6rem; padding: .9rem 1rem;
+    background: #10141b; border: 1px solid var(--line); border-radius: 6px; }
+  #summary { flex: 1 1 360px; color: var(--dim); font-size: 12px; }
+  #summary b { color: var(--fg); }
+  #conflict { color: var(--accent); }
+  button.action { padding: .45rem .8rem; color: var(--fg); cursor: pointer;
+    background: #1c2430; border: 1px solid var(--line); border-radius: 4px;
+    font: inherit; }
+  #launch { padding-inline: 1.3rem; color: #171208; background: var(--accent);
+    border-color: var(--accent); font-weight: 750; }
+  .policy { margin-top: 1rem; color: var(--dim); font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>DoDonPachi DaiOuJou <span>- Black Label start screen</span></h1>
+    <div class="sub">Every switch below has a concrete RAM, input, timing, or RGB hook.
+      Nothing selected launches the cartridge-faithful page with no mod state.
+      Loadouts are shareable URL hashes. <a href="../../index.html">All games</a></div>
+  </header>
+
+  <h2>Start here</h2>
+  <div class="grid presets" id="presets">
+    <button class="card vanilla" id="vanilla" type="button" aria-pressed="true">
+      <div class="name"><span>Original Game</span><span class="mark">ON</span></div>
+      <div class="blurb">No host RAM policy, input transform, timing transform, or pixel effect.</div>
+    </button>
+  </div>
+
+  <h2>Survival</h2><div class="grid" data-category="survival"></div>
+  <h2>Arsenal</h2><div class="grid" data-category="arsenal"></div>
+  <h2>Challenge and timing</h2><div class="grid" data-category="challenge"></div>
+  <h2>Presentation</h2><div class="grid" data-category="presentation"></div>
+
+  <div class="policy">Replay v1 does not carry simulation mods. REC and PLAY are refused
+    when any survival, arsenal, challenge, input, or timing mod is active.
+    Invert Colors, Monochrome, and Ghost Trail remain replay-compatible because they run
+    only on the finished RGB buffer.</div>
+
+  <div class="bar">
+    <div id="summary"></div>
+    <button class="action" id="games" type="button">GAMES</button>
+    <button class="action" id="clear" type="button">CLEAR</button>
+    <button class="action" id="launch" type="button">LAUNCH</button>
+  </div>
+</div>
+
+<script type="module">
+import {
+  MODS, PRESETS, resolveLoadout, describeMod, loadoutToHash, hashToLoadout,
+} from './src/mods.js';
+
+const selected = new Set(hashToLoadout(location.hash).ids);
+const cards = new Map();
+let lastConflicts = [];
+
+function makeCard(id, entry) {
+  const button = document.createElement('button');
+  button.className = 'card';
+  button.type = 'button';
+  button.dataset.id = id;
+  button.setAttribute('aria-pressed', 'false');
+
+  const heading = document.createElement('div');
+  heading.className = 'name';
+  const name = document.createElement('span');
+  name.textContent = entry.name;
+  const mark = document.createElement('span');
+  mark.className = 'mark';
+  mark.textContent = 'ON';
+  heading.append(name, mark);
+
+  const blurb = document.createElement('div');
+  blurb.className = 'blurb';
+  blurb.textContent = entry.blurb;
+  const effect = document.createElement('div');
+  effect.className = 'effect';
+  effect.textContent = describeMod(id).join(' | ');
+  button.append(heading, blurb, effect);
+  return button;
+}
+
+for (const [id, entry] of Object.entries(MODS)) {
+  const host = document.querySelector(`[data-category="${entry.category}"]`);
+  const button = makeCard(id, entry);
+  button.addEventListener('click', () => {
+    if (selected.has(id)) selected.delete(id); else selected.add(id);
+    sync();
+  });
+  host.appendChild(button);
+  cards.set(id, button);
+}
+
+for (const preset of Object.values(PRESETS)) {
+  const button = document.createElement('button');
+  button.className = 'card';
+  button.type = 'button';
+  const name = document.createElement('div');
+  name.className = 'name';
+  name.textContent = preset.name;
+  const blurb = document.createElement('div');
+  blurb.className = 'blurb';
+  blurb.textContent = preset.mods.map((id) => MODS[id].name).join(' + ');
+  button.append(name, blurb);
+  button.addEventListener('click', () => {
+    selected.clear();
+    for (const id of preset.mods) selected.add(id);
+    sync();
+  });
+  document.getElementById('presets').appendChild(button);
+}
+
+function sync() {
+  const resolved = resolveLoadout([...selected]);
+  lastConflicts = resolved.conflicts;
+  selected.clear();
+  for (const id of resolved.ids) selected.add(id);
+  for (const [id, button] of cards) {
+    button.setAttribute('aria-pressed', String(selected.has(id)));
+  }
+  document.getElementById('vanilla').setAttribute('aria-pressed', String(!resolved.ids.length));
+
+  const summary = document.getElementById('summary');
+  summary.replaceChildren();
+  const main = document.createElement('span');
+  if (resolved.ids.length) {
+    main.innerHTML = `<b>${resolved.ids.length}</b> active: `;
+    main.append(document.createTextNode(resolved.ids.map((id) => MODS[id].name).join(', ')));
+  } else {
+    main.innerHTML = '<b>Original Game</b>: nothing selected';
+  }
+  summary.appendChild(main);
+  if (lastConflicts.length) {
+    const warning = document.createElement('span');
+    warning.id = 'conflict';
+    const text = lastConflicts.map((c) =>
+      `${c.dropped.map((id) => MODS[id].name).join(', ')} ignored; ${MODS[c.winner].name} wins`)
+      .join(' | ');
+    warning.textContent = ` | ${text}`;
+    summary.appendChild(warning);
+  }
+  location.hash = loadoutToHash(resolved.ids);
+}
+
+document.getElementById('vanilla').addEventListener('click', () => {
+  selected.clear();
+  sync();
+});
+document.getElementById('clear').addEventListener('click', () => {
+  selected.clear();
+  sync();
+});
+document.getElementById('games').addEventListener('click', () => {
+  location.href = '../../index.html';
+});
+document.getElementById('launch').addEventListener('click', () => {
+  const hash = loadoutToHash([...selected]);
+  location.href = `./index.html${hash ? `#${hash}` : ''}`;
+});
+sync();
+</script>
+</body>
+</html>

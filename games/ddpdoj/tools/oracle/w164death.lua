@@ -1,9 +1,12 @@
--- W164 controlled VERSION-B player-death lifecycle capture.
+-- W164/W477 controlled VERSION-B player-death lifecycle capture.
 --
 -- At logic frame 1960, after normal boot and stage entry, this probe forces
 -- only the inputs to the authentic hit path: hit bit, zero invulnerability,
 -- known hyper rank/stock/gauge state, and two lives. The board then executes
--- $249F8A and the later $24A130 state without further intervention.
+-- $249F8A and the later $24A130 state without further intervention. After each
+-- authentic respawn, the probe supplies one more invulnerability-off hit. It
+-- verifies the 2 -> 1 -> 0 -> $FFFF life sequence, two respawns, and request 2
+-- entering the game-over path.
 --
 -- ENV: W164_INPUT W164_FRAMES
 
@@ -84,6 +87,9 @@ local lf, lastbuild, forced = 0, -1, false
 local init_lf, reset_lf = -1, -1
 local init_snapshot, reset_snapshot = "", ""
 local all_events = {}
+local hit_count, respawn_count, request2_lf = 0, 0, -1
+local ready_for_hit, life_trace = true, {}
+local last_lives = nil
 local REL = { [0x13c806] = true, [0x23c46c] = true }
 
 TAPS[#TAPS + 1] = PROG:install_write_tap(0x803940, 0x803941, "w164sem",
@@ -116,22 +122,42 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x803940, 0x803941, "w164sem",
           ru16(0x810408), ru8(0x81040b), ru16(0x8130fa), ru16(0x8130fc))
       end
 
-      if lf >= 1960 and init_lf < 0 then
-        -- These writes are the declared controlled intervention. They happen
-        -- after this frame's sample point, before the next player update.
+      local state = ru16(0x8103e6)
+      if forced and (state & 0x8000) == 0 then ready_for_hit = true end
+
+      if lf >= 1960 and hit_count < 3 and ready_for_hit and (state & 0x8000) ~= 0 then
+        -- The first hit also fixes rank-facing state so the original W164
+        -- initializer assertions remain exact. Later hits change only the hit
+        -- bit and invulnerability byte, after the cartridge respawns the ship.
+        if hit_count == 0 then
+          wu16(0x81b63e, 1)
+          wu16(0x81b646, 0x0050)
+          wu16(0x81b65c, 2)
+          wu16(0x81b64a, 0x0800)
+          wu16(0x8130be, 2)
+          wu16(0x812934, 1)
+          wu16(0x817f80, 9)
+          last_lives = 2
+          life_trace[#life_trace + 1] = 2
+        else
+          respawn_count = respawn_count + 1
+        end
         wu8(0x8103e6, ru8(0x8103e6) | 0x10)
         wu8(0x810424, 0)
-        wu16(0x81b63e, 1)
-        wu16(0x81b646, 0x0050)
-        wu16(0x81b65c, 2)
-        wu16(0x81b64a, 0x0800)
-        wu16(0x8130be, 2)
-        wu16(0x812934, 1)
-        wu16(0x817f80, 9)
-        if not forced then
-          p("FORCED start_lf=1960 hit=1 invuln=0 power=0050 stock=0002 earn=0800 lives=0002")
-        end
+        hit_count = hit_count + 1
+        ready_for_hit = false
+        p("FORCED hit=%d lf=%d invuln=0 lives=%04X", hit_count, lf,
+          ru16(0x8130be))
         forced = true
+      end
+
+      if forced then
+        local lives = ru16(0x8130be)
+        if lives ~= last_lives then
+          life_trace[#life_trace + 1] = lives
+          last_lives = lives
+        end
+        if request2_lf < 0 and ru16(0x8130fa) == 2 then request2_lf = lf end
       end
       set_held(script[lf] or "")
       events = {}
@@ -148,8 +174,25 @@ SUBS[#SUBS + 1] = emu.add_machine_frame_notifier(function()
     if got ~= "B" then p("FAIL BUILD want=B got=%s", got) end
     if init_lf < 0 then p("FAIL no authentic death initializer observed") end
     if reset_lf < 0 then p("FAIL no authentic player reset observed") end
+    if hit_count ~= 3 then p("FAIL hit count want=3 got=%d", hit_count) end
+    if respawn_count ~= 2 then p("FAIL respawn count want=2 got=%d", respawn_count) end
+    local want_lives = { 2, 1, 0, 0xffff }
+    if #life_trace ~= #want_lives then
+      p("FAIL life trace length want=%d got=%d", #want_lives, #life_trace)
+    else
+      for i, want in ipairs(want_lives) do
+        if life_trace[i] ~= want then
+          p("FAIL life trace at=%d want=%04X got=%04X", i, want, life_trace[i])
+        end
+      end
+    end
+    if request2_lf < 0 then p("FAIL no game-over request 2 observed") end
+    local life_parts = {}
+    for _, v in ipairs(life_trace) do life_parts[#life_parts + 1] = string.format("%04X", v) end
     p("INIT lf=%d %s", init_lf, init_snapshot)
     p("RESET lf=%d %s", reset_lf, reset_snapshot)
+    p("CYCLE hits=%d respawns=%d lives=%s request2_lf=%d",
+      hit_count, respawn_count, table.concat(life_parts, ">"), request2_lf)
     p("EVENTS %s", table.concat(all_events, ","))
     p("DONE logicframes=%d videoframes=%d build=%s", lf, SCR:frame_number(), got)
     M:exit()

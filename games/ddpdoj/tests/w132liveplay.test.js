@@ -83,8 +83,8 @@ function resetSwitches() {
 
 /** Parse "803970=FF,810424=FF" into [[addr,val]...], the way `replay.mjs:70
  *  parsePoke` does.  Inlined (not imported) because the headless tool keeps it
- *  private; the live page applies the hardcoded INVULN poke (`0x810424=FF`), and
- *  this helper applies the file's poke the same way `verifyReplay` does. */
+ *  private; a replay declares its own poke, and this helper applies that file
+ *  policy in the same order as `Demo.step()` and `verifyReplay`. */
 function parsePoke(s) {
   return (s ?? '').split(',').filter(Boolean).map((kv) => {
     const [a, v] = kv.split('=');

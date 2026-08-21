@@ -174,10 +174,10 @@ npm run typecheck                               # tsc over the ports - no ROM ne
 refuses to publish on a red gate or an unexpected gate skip. `--only gradius` /
 `--only ddpdoj` gate one game; `--dry` gates and builds without deploying.
 
-At DDPDOJ W471, its unit suite records **4,280/4,280 passing**. The same
+At DDPDOJ W476, its unit suite records **4,281/4,281 passing**. The same
 publication completed the Gradius unit and 13-stage gate, the DDPDOJ bundle and
 web-fetch gates, the 27-stage Batman gate, and the repository ROM-leak guard.
-Live build `20260821175936` is the recorded release. These counts document that
+Live build `20260821205739` is the recorded release. These counts document that
 release; each change still needs its relevant focused check.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
@@ -245,8 +245,9 @@ The active translation targets Black Label Version-B first. Its source now spans
 the main loop, player and all three weapon systems, bombs, bullets, enemies,
 bosses, items and bees, stage and result flow, score and chaining, hypers, rank,
 HUD, sound posts, and high-score name entry. The browser port and generated
-asset path are live, and W471 published as build `20260821175936` after all
-4,280 DDPDOJ unit tests passed.
+asset path are live, and W476 published as build `20260821205739` after all
+4,281 DDPDOJ unit tests passed. W477 adds a shipped start screen with 15 optional
+mods, including explicit Invincibility, while an empty loadout remains vanilla.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,

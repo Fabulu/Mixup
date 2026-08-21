@@ -6017,9 +6017,28 @@ draw gates, and appends the animated follower to sprite bucket 18 through the `$
 Stock 5 uses the cartridge's faster 16-frame animation cadence.
 
 Type-5 coverage moves from 19/23 to **20/23**. The remaining functional calls are #19 `$252BD0`, #22
-`$25292A`, and #23 `$252A52`. The focused W476 behavior check and syntax checks pass. W476 is the fifth
-interval wave and publishes after landing from a quiet tracked tree.
+`$25292A`, and #23 `$252A52`. The focused W476 behavior check and syntax checks pass. W476 was the fifth
+interval wave and published as build **`20260821205739`** from a quiet tracked tree.
 
 Pure duplicate-register cleanup, including `$24150A`, is deliberately deferred until after Black Label's full
-second loop and White Label are functionally complete. The next bounded gameplay candidate is type-5 call #19
-`$252BD0`; verify its cartridge body and existing claims before translating it.
+second loop and White Label are functionally complete.
+
+### D85: W477 SHIPPED MOD START SCREEN AND REAL DEATH POLICY
+
+The repository launcher now opens `games/ddpdoj/start.html`, a player-facing catalogue of 15 composable
+mods. The choices resolve in catalogue order, conflicting rank, timing, and Button-2 stock policies have fixed
+winners, and the launch hash is `index.html#mods=id+id`. Direct `index.html`, an empty hash, and an
+unknown-only hash attach no mod runtime and retain the vanilla simulation path. The selected Invincibility mod
+explicitly maintains `$810424 = $FF`; ordinary browser play no longer writes that byte.
+
+Progression ladders retain their labelled `$810424=FF` intervention so they can still reach deep content.
+Replay playback uses only the replay file's poke list, and replay v1 refuses REC or PLAY while a
+simulation-changing mod is active. Presentation-only Invert Colors, Monochrome, and Ghost Trail remain
+replay-compatible. The existing MAME death oracle now runs three invulnerability-off hits and verifies the
+`2 -> 1 -> 0 -> $FFFF` life sequence, two respawns, and game-over request 2. Its fresh W477 capture passed,
+and the translated death chain independently passes hit, death initialization, reset, respawn, and game-over
+coverage.
+
+Focused mod, browser-input, replay, and death checks pass **39/39**; browser module syntax checks and
+`git diff --check` pass. W477 is the first wave after live build `20260821205739` and is not a publication
+wave. The next bounded functional unit is type-5 call #19 `$252BD0`.

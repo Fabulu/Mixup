@@ -176,11 +176,11 @@ test('game.json spells the frame rate as the derived 15625/264', () => {
     /gameJson\.display\.frameHz/);
 });
 
-test('game.json carries code.page and NOT code.entry', () => {
-  // The root launcher imports entry + mods + input to boot a game inline; this
-  // port has none of the three. A code.entry here would make the picker try.
+test('game.json opens the start menu and keeps the inline contract absent', () => {
+  // The root launcher follows code.page into the shipped menu. This dedicated
+  // PGM host still has no generic inline entry, mods, or input module.
   assert.equal(gameJson.code.entry, null);
   assert.equal(gameJson.code.mods, null);
   assert.equal(gameJson.code.input, null);
-  assert.equal(gameJson.code.page, 'index.html');
+  assert.equal(gameJson.code.page, 'start.html');
 });

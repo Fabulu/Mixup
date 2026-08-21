@@ -31,8 +31,8 @@
     "entry": null,
     "mods": null,
     "input": null,
-    "page": "index.html",
-    "pageNote": "code.page, NOT code.entry. The root launcher expects a generic inline boot contract, while this translated PGM main loop owns a dedicated TATE host, asset loader, frame cadence, Web Audio runtime, and REC/PLAY UI. The picker therefore links to its own page."
+    "page": "start.html",
+    "pageNote": "code.page, NOT code.entry. The root launcher opens the shipped mod start screen. start.html hands a resolved loadout to index.html through #mods=id+id. Opening index.html directly, launching with an empty hash, or launching with unknown ids remains vanilla and attaches no mod state."
   },
   "input": {
     "note": "Bit POSITIONS in the P1 input mirror $803970, which is derived from the raw 68000 port word $C08000 by build A's $13D464 (one read per IRQ6, measured). The port takes the RAW PORT WORD as its input so the mirrors stay a genuinely compared field; src/input.js portWordFromBits() is the inverse, checked against the board: 1P Start alone -> $FFFE, P1 Button 3 held -> $FF7F. src/machine.js BIT is the authority and tests/web-input.test.js holds this table, BIT and src/web/input.js against each other.",

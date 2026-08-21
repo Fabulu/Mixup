@@ -207,10 +207,15 @@ import { APPROVED_SOUND_POLICIES } from '../soundpolicy.js';
 // (that is a Node tool).
 import {
   armRecorder, stopRecorder, b64 as recB64, beBytesFromWords,
-  sha256Hex, armPlayback, validateReplay,
+  sha256Hex, armPlayback, validateReplay, parsePoke,
   FORMAT as REPLAY_FORMAT, BUILD as REPLAY_BUILD, PERIOD_FRAMES as REPLAY_PERIOD,
 } from './replay.js';
 import { CLAIMED } from '../state.js';
+import {
+  MODS, createModState, applyPreFrameMods, applyPostFrameMods,
+  transformModInput, transformModTiming, applyPresentationMods,
+  assertReplayCompatible,
+} from '../mods.js';
 
 // --------------------------------------------------------------- PRESENTATION
 //
@@ -249,13 +254,11 @@ export const MODES = Object.freeze(Object.keys(PICTURES));
 /** Back-compat: the TATE picture's dimensions, which is what the page had. */
 export const CANVAS_W = PICTURES.tate.w, CANVAS_H = PICTURES.tate.h;
 
-// The fly-around scenario's intervention, applied here on the same terms as in
-// the comparison: $810424 is the player record's ($3e,A6) invulnerability
-// timer, held at $FF from the seed.  $FF is a value the game itself writes at
-// $2495A2; it changes WHETHER the ship dies, not what any ported routine
-// computes.  Without it a button-free run of this script dies at lf2469 on the
-// board (measured, `scenarios.json`).
-const LIVE_POKES = Object.freeze([[0x810424, 0xff]]);
+// Ladder checkpoints carry their own intervention. Ordinary play has no poke at
+// all; only an explicitly labelled rung or replay may populate this list.
+export function progressionPokesForRung(rung) {
+  return rung ? parsePoke(rung.poke) : [];
+}
 
 /**
  * PURE.  The largest whole scale in DEVICE pixels, for either picture.
@@ -730,9 +733,15 @@ export class Demo {
   //  is labelled on screen.  It is LOCAL DEVELOPMENT ONLY: the ladder files
   //  are not in dist/, so on the published page `rung` is always null.
   constructor(canvas, bundle, frameHz, mode = DEFAULT_MODE, rung = null,
-      soundController = null) {
+      soundController = null, loadout = null) {
     this.bundle = bundle;
     this.cap = bundle.cap;
+    // No recognized selection means no mod runtime object. Direct index.html,
+    // an empty hash, and an unknown-only hash all take this path.
+    const modState = createModState(loadout);
+    if (modState) this.mods = modState;
+    this.progressionPokes = progressionPokesForRung(rung);
+    this.progressionPoke = rung?.poke ?? '';
     // The tile functions come from the exported sheets; nothing else about the
     // renderer changes, and `tools/bundlegate.mjs` is what proves that.
     this.renderer = new Renderer(bundle.roms, bundle.tileFns);
@@ -903,18 +912,22 @@ export class Demo {
     // makes it independent of how often `draw()` runs: a mode change repaints
     // without stepping, and that must not shift the list by a frame.
     this.portList = portSpriteList(g.ram, this.romToPacked, this.listOpts);
-    const pokes = inPlayback ? this.playback.pokes : LIVE_POKES;
+    // Replay v1 carries its own poke list. Live play applies only an explicit
+    // ladder/replay intervention, then the selected mod policy. Ordinary play
+    // has neither and performs no host RAM write here.
+    const pokes = inPlayback ? this.playback.pokes : (this.progressionPokes ?? []);
     for (const [a, val] of pokes) g.ram.setU8(a, val);
+    applyPreFrameMods(this.mods, g.ram);
     // WAVE 131/132 -- THE INPUT WORD.  `pw` is computed once and used for the
     // REC tee (W131, when armed) and the step.  WAVE 132 PLAY replaces the live
     // `currentPortWord()` with the next recorded word: the visible Game is fed
     // exactly the input sequence the recording captured, so the picture the
-    // owner watches is the picture the verifier is hashing.  The live poke
-    // Live play uses the file's complete `poke` list, while ordinary play uses
-    // the live intervention below; there is no hidden second write.
-    const pw = inPlayback
+    // owner watches is the picture the verifier is hashing. Live input is then
+    // transformed only by a selected input mod.
+    const rawPw = inPlayback
       ? this.playback.words[this.playback.i++]
       : currentPortWord();
+    const pw = transformModInput(this.mods, rawPw, g.logicFrame);
     if (this.recorder) this.recorder.input(pw);
     // W375 -- THE COIN WORD, `$C08004`. A FIELD, not a second `step()` argument:
     // `.replay` v1 fixes `portin.encoding === 'u16be'` at ONE word per logic
@@ -936,6 +949,7 @@ export class Demo {
     // `COIN.idle` the recorded run is bit-identical whatever the keyboard does.
     g.coinPort = inPlayback ? COIN.idle : currentCoinWord();
     g.step(pw);
+    applyPostFrameMods(this.mods, g.ram);
     if (this.recorder) this.recorder.feed();
     // WAVE 132 -- THE PLAYBACK DIGEST FEED.  After the step hashes the state the
     // step produced (same position as the recorder's feed and `replay.mjs:140`).
@@ -983,6 +997,7 @@ export class Demo {
    */
   async armRecording() {
     if (this.recorder) return this.recorder;
+    assertReplayCompatible(this.mods, 'REC');
     // WAVE 132 -- REC and PLAY are mutually exclusive.  The recorder would tee
     // the recorded portin the playback is already feeding, double-counting the
     // input; and the seed the recorder captures at arm time would be the
@@ -1032,7 +1047,9 @@ export class Demo {
       },
       scenario: seeded?.scenario ?? 'live',
       intervention: seeded?.intervention,
-      poke: '810424=FF',               // the live INVULN intervention
+      // Empty on an ordinary launch. A ladder seed keeps its labelled policy in
+      // replay v1 instead of acquiring a hidden browser intervention.
+      poke: this.progressionPoke ?? '',
     });
     return this.recorder;
   }
@@ -1072,6 +1089,7 @@ export class Demo {
    * Returns the playback descriptor (or throws on a format/seed mismatch).
    */
   playFrom(obj) {
+    assertReplayCompatible(this.mods, 'PLAY');
     const parsed = validateReplay(obj);
     // Decode the seed the same way `replay.mjs:108-121` does.
     const { ram, bg, tables, words, pokes } = parsed;
@@ -1095,6 +1113,12 @@ export class Demo {
     // dropped (mutually exclusive); `onPlaybackUpdate` is left to the page.
     this.game = game;
     this.seedLf = seed.lf;
+    // The replay seed replaces any local ladder seed. Keep the file's explicit
+    // intervention for live continuation after end-of-portin.
+    this.rung = null;
+    this.progressionPokes = pokes;
+    this.progressionPoke = obj.poke ?? '';
+    if (this.mods) this.mods.runtime.ghost = null;
     this.prevTilt = game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
     this.prevPos = [game.ram.u16(RAM.player1 + P.posY),
       game.ram.u16(RAM.player1 + P.posX)];
@@ -1343,6 +1367,7 @@ export class Demo {
     this.paletteTotal = capPal.length;
     paletteRgb(this.palMerged, this.pal);
     resolveRgb(idx, this.pal, this.rgb);
+    applyPresentationMods(this.mods, this.rgb);
     // TATE rotates the BUFFER; yoko blits the board's own 448x224 buffer.
     // Either way the canvas backing store already matches (`setMode`).
     if (PICTURES[this.mode].rotate) {
@@ -1381,6 +1406,8 @@ export class Demo {
       frameCounter: g.ram.u16(RAM.frameCounter),
       logicHz: this.hz,
       mode: this.mode,
+      modIds: this.mods?.loadout.ids ?? [],
+      modNames: this.mods?.loadout.ids.map((id) => MODS[id].name) ?? [],
       spliced: this.spliced,
       // WAVE 37.  The page must keep SAYING what it is: `stripped` is how many
       // of the recording's own display-list records were thrown away this
@@ -1490,13 +1517,14 @@ export class Demo {
     if (!this.last) this.last = now;
     let dt = now - this.last;
     this.last = now;
+    const period = transformModTiming(this.mods, this.periodMs);
     // A tab that was in the background must not run a thousand frames at once.
     // Presentation is dropped; the SIMULATION is never altered.
-    if (dt > 200) dt = this.periodMs;
+    if (dt > 200) dt = period;
     this.acc += dt;
     let n = 0;
-    while (this.acc >= this.periodMs && n < 8) {
-      this.acc -= this.periodMs;
+    while (this.acc >= period && n < 8) {
+      this.acc -= period;
       this.step();
       n++;
     }
@@ -1670,7 +1698,8 @@ export async function boot(canvas, opts = {}) {
   // until assets arrive, then advances the singleton runtime silently until a
   // gesture attaches AudioOut. No pre-gesture PCM becomes an audible backlog.
   const sound = new AudioController(null, opts.onSoundError);
-  const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE, rung, sound);
+  const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE, rung, sound,
+    opts.mods ?? null);
   // WAVE 131 -- the asset base `armRecording()` re-fetches the tables from, so
   // a live REC's `version.tablesSha256` can match the shipped bytes rather than
   // the fallback `JSON.stringify(bundle.tables)`.

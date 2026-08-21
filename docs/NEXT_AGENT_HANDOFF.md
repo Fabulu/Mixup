@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W476)
+Updated: 2026-08-21 (W477)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,14 +8,24 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W476 ports type-5 call #13 `$2527CE`, the hyper-stock follower.** It
-advances each live player's fifteen-position history, records the ship, selects the stock-dependent delayed
-position and offset, honors the loop-2 blink and draw gates, and appends the animated record to sprite bucket
-18. Type-5 coverage is now 20/23; the remaining calls are #19 `$252BD0`, #22 `$25292A`, and #23 `$252A52`.
+`docs/DOCKET.md` is authoritative. **W477 ships the 15-mod start screen and removes hidden browser
+invulnerability from ordinary play.** Direct `index.html`, empty hashes, and unknown-only hashes attach no mod
+state. Invincibility is now an explicit selection; deep progression ladders retain their labelled intervention,
+and replay playback uses only the replay file's poke list. The MAME death oracle freshly passed three
+invulnerability-off hits, two respawns, the `2 -> 1 -> 0 -> $FFFF` life sequence, and game-over request 2.
+Type-5 coverage remains 20/23; the remaining calls are #19 `$252BD0`, #22 `$25292A`, and #23 `$252A52`.
 Live duplicate counts remain 15 narrow heads, 68 widened heads, 27 body pairs, and 22 body-only findings, but
-those rows wait until after White Label. W471 remains live as build `20260821175936`; W476 is the fifth
-interval wave and must publish from a quiet tracked tree after landing. The next bounded functional candidate
-is `$252BD0`.
+those rows wait until after White Label. W476 is live as build `20260821205739`; W477 is the first interval
+wave and does not publish. The next bounded functional candidate is `$252BD0`.
+
+## W477 VERIFIED: MOD MENU, VANILLA PATH, AND DEATH ORACLE
+
+`start.html` resolves 15 optional mods into deterministic `#mods=id+id` links. RAM, input, timing, and RGB
+hooks are isolated behind a nonempty loadout. Ordinary play performs no `$810424` write, selected
+Invincibility performs the explicit `$FF` write, progression scenarios keep their declared poke, and replay v1
+refuses simulation-changing loadouts while allowing presentation-only effects. Focused mod, replay, input, and
+death checks pass 39/39. The extended `w164death.py capture` MAME oracle also passes the complete
+invulnerability-off death, life-decrement, respawn, and game-over cycle.
 
 ## W476 VERIFIED: TYPE-5 HYPER STOCK FOLLOWER
 

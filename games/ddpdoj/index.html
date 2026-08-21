@@ -124,6 +124,8 @@
     touch-action: manipulation;
   }
   #bar button[aria-pressed="true"] { background: #234c70; border-color: #3f7fb4; }
+  #mods-active { display: none; color: #9fd58a; font-size: 10px; white-space: nowrap;
+                 max-width: 28em; overflow: hidden; text-overflow: ellipsis; }
   #stats { color: #6f7d8a; font-size: 10.5px; white-space: nowrap;
            overflow: hidden; text-overflow: ellipsis; }
   #sound-state { color: #7f91a1; font-size: 10px; white-space: nowrap;
@@ -308,6 +310,7 @@
 
 <div id="bar">
   <span class="name">DoDonPachi DaiOuJou <span class="dim">ddpdojblk BLACK VER</span></span>
+  <span id="mods-active" role="status"></span>
   <span class="spacer"></span>
   <span id="stats"></span>
   <span id="sound-state" role="status" aria-live="polite">sound locked</span>
@@ -605,11 +608,13 @@ something here looks wrong, saying so is useful.</p>
 
 <script type="module">
 import { boot, fitCanvas, MODES, DEFAULT_MODE } from './src/web/app.js';
+import { hashToLoadout } from './src/mods.js';
 import { attachPad, attachStick, clearKeyboard, CONTROLS } from './src/web/input.js';
 
 const canvas = document.getElementById('screen');
 const stage = document.getElementById('stage');
 const statsEl = document.getElementById('stats');
+const modsActiveEl = document.getElementById('mods-active');
 const soundBtn = document.getElementById('sound');
 const soundStateEl = document.getElementById('sound-state');
 const statusEl = document.getElementById('status');
@@ -622,6 +627,10 @@ const pad = document.getElementById('pad');
 //  to point at a different ladder under the asset base.  Absent on the live
 //  site, so a normal visitor sees the shipped seed and no banner.
 const params = new URLSearchParams(location.search);
+const resolvedMods = hashToLoadout(location.hash);
+// Do not pass an empty object into boot. This keeps direct, empty, and
+// unknown-only launches on the same no-mod path.
+const modLoadout = resolvedMods.ids.length ? resolvedMods : null;
 const rungRaw = params.has('rung') ? parseInt(params.get('rung'), 10) : null;
 const rungParam = Number.isFinite(rungRaw) ? rungRaw : null;
 const ladderParam = params.get('ladder') || undefined;
@@ -1034,6 +1043,7 @@ let booting = true;
 try {
   statusEl.textContent = 'loading the asset bundle…';
   const app = await boot(canvas, {
+    ...(modLoadout ? { mods: modLoadout } : {}),
     mode,
     rung: rungParam,
     ladder: ladderParam,
@@ -1053,6 +1063,11 @@ try {
   });
   booting = false;
   statusEl.textContent = '';
+  const activeModNames = app.stats().modNames;
+  if (activeModNames.length) {
+    modsActiveEl.textContent = `MODS: ${activeModNames.join(', ')}`;
+    modsActiveEl.style.display = 'inline';
+  }
   fit();
 
   // A DEBUGGING HANDLE, and nothing reads it inside the page.  The browser

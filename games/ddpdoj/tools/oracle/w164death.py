@@ -151,7 +151,7 @@ def capture(*, break_capture: bool = False) -> None:
     import pgm  # noqa: E402
 
     run = pgm.run(HERE / "w164death.lua", seconds=3600,
-                  env={"W164_INPUT": pgm.BOOT_B, "W164_FRAMES": "2750"},
+                  env={"W164_INPUT": pgm.BOOT_B, "W164_FRAMES": "3200"},
                   timeout=900)
     if run.returncode or run.fails:
         raise AssertionError(
@@ -160,6 +160,7 @@ def capture(*, break_capture: bool = False) -> None:
 
     init = next((x for x in run.lines if x.startswith("INIT ")), "")
     reset = next((x for x in run.lines if x.startswith("RESET ")), "")
+    cycle = next((x for x in run.lines if x.startswith("CYCLE ")), "")
     events = next((x for x in run.lines if x.startswith("EVENTS ")), "")
     if break_capture:
         init = init.replace("power=0014", "power=0015")
@@ -174,6 +175,12 @@ def capture(*, break_capture: bool = False) -> None:
     assert rm, f"unexpected reset snapshot: {reset}"
     assert int(rm.group(1)) - int(im.group(1)) == 70, \
         f"death state took {int(rm.group(1)) - int(im.group(1))} frames, not 70"
+    cm = re.fullmatch(
+        r"CYCLE hits=3 respawns=2 lives=0002>0001>0000>FFFF request2_lf=(\d+)",
+        cycle)
+    assert cm, f"unexpected death/respawn/game-over cycle: {cycle}"
+    assert int(cm.group(1)) > int(rm.group(1)), \
+        "game-over request preceded the first death reset"
 
     ordered = [
         "gauge-add@287B9A", "gauge-cap@287BAC",
@@ -191,8 +198,9 @@ def capture(*, break_capture: bool = False) -> None:
         assert pos >= 0, f"capture lacks ordered event {event}: {events}"
     print(init)
     print(reset)
-    print("PASS W164 MAME: authentic initializer/reset transition, exact "
-          "70-frame state lifetime and ordered rank-to-kill writes")
+    print(cycle)
+    print("PASS W164/W477 MAME: invulnerability-off hit, exact 70-frame death "
+          "state, two life-decrement respawns and game-over request 2")
 
 
 if __name__ == "__main__":

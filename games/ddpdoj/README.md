@@ -4,13 +4,13 @@ This directory contains the JavaScript translation of **DoDonPachi DaiOuJou Blac
 
 ## Current status
 
-Updated 2026-08-21 after Wave 476.
+Updated 2026-08-21 after Wave 477.
 
 | area | current state |
 |---|---|
 | target | Finish Black Label Version-B through the full second loop, finish functional White Label, then close deferred duplicate-only findings. |
-| port | Active across the game loop, player, weapons, enemies, bosses, stage flow, scoring, chaining, hypers, rank, HUD, result and name-entry systems. W476 raised the type-5 frame family to 20/23 calls by porting the visible hyper-stock follower. Black Label is not complete yet. |
-| tests | `4,280` DDPDOJ unit tests passed in the W471 publication gate, with no failures or skips. |
+| port | Active across the game loop, player, weapons, enemies, bosses, stage flow, scoring, chaining, hypers, rank, HUD, result and name-entry systems. W477 added the shipped 15-mod start menu without changing the vanilla simulation path. Black Label is not complete yet. |
+| tests | `4,281` DDPDOJ unit tests passed in the W476 publication gate, with no failures or skips. |
 | duplicate audit | 15 narrow heads, 68 widened heads, 27 body pairs, and 22 body-only findings remain after W475. |
 | oracle | MAME 0.288, pinned to VERSION-B. Determinism and probe behavior are documented in `NOTES-oracle.md`. |
 | renderer | The original pixel-slice gate matched `13,647,872 / 13,647,872` pixels over 136 frame pairs. This is historical slice evidence, not a claim that the unfinished full game is pixel-perfect. |
@@ -53,6 +53,8 @@ python -m http.server 8000
 ```
 
 Module imports and asset fetches require HTTP rather than opening `index.html` directly.
+
+The repository game launcher opens `start.html`, where any of 15 optional mods can be selected and launched through a deterministic `#mods=id+id` hash. Opening `index.html` directly, using an empty hash, or supplying only unknown mod ids creates no mod runtime and remains cartridge-faithful. Replay v1 refuses recording and playback while simulation-changing mods are active; Invert Colors, Monochrome, and Ghost Trail are presentation-only and remain replay-compatible.
 
 ## Test and gate
 
