@@ -23,6 +23,8 @@ export const HYPER = Object.freeze({
     liveFlash: 0x81b6fe, flashTick: 0x81b702, pos: 0x8103e8,
     chain: 0x81b5da, chainMeter: 0x81b5c0,
     chainHold: 0x81b5c2, chainSaved: 0x81b5ca, chainPulse: 0x81b5c8,
+    bonus: 0x8128f4, bonusPos: 0x810436, bonusFrame: 0x812910,
+    bonusTick: 0x812914, bonusReload: 0x812916,
   }),
   p2: Object.freeze({
     who: 2, kind: 0x14, player: RAM.player2, set: 0x81046c,
@@ -34,6 +36,8 @@ export const HYPER = Object.freeze({
     liveFlash: 0x81b700, flashTick: 0x81b704, pos: 0x81044a,
     chain: 0x81b604, chainMeter: 0x81b5ea,
     chainHold: 0x81b5ec, chainSaved: 0x81b5f4, chainPulse: 0x81b5f2,
+    bonus: 0x812902, bonusPos: 0x810498, bonusFrame: 0x812912,
+    bonusTick: 0x812918, bonusReload: 0x81291a,
   }),
 });
 
@@ -101,6 +105,38 @@ export function updateBulletSpeedBias252BD0(ram, rom) {
   bias = Math.min(bias, secondLoop ? 15 : 8);
   ram.setU16(HYPER.bulletSpeedBias, bias);
   return bias;
+}
+
+function drawBonusFollowerSide(ram, rom, h, p2) {
+  const state = ram.u16(h.player);
+  if (i16(state) >= 0 || (state & 0x4000) !== 0 || ram.u16(h.bonus) === 0) return 0;
+
+  let frame = p2 ? 8 : 7;
+  const tick = u16(ram.u16(h.bonusTick) - 1);
+  ram.setU16(h.bonusTick, tick);
+  if (tick === 0xffff) ram.setU16(h.bonusTick, ram.u16(h.bonusReload));
+  if (ram.u16(HYPER.phase) !== 0) {
+    frame = rom.u32(0x25291c + i16(ram.u16(h.bonusFrame)));
+  }
+
+  let pos = ram.u32(h.bonusPos);
+  const holdAtStart = ram.u16(HYPER.bossPhase) !== 0
+    || (ram.u8(HYPER.flags) & 0x01) !== 0;
+  if (!holdAtStart || pos !== 0x001c4410) {
+    pos = (pos + 0xc4) >>> 0;
+    if (pos === 0x001c8d90) pos = 0x001c4410;
+    ram.setU32(h.bonusPos, pos);
+  }
+
+  enqueueRegisters(ram, 28, p2 ? 0xff011e00 : 0xff010200, pos, 0x0460, frame);
+  return 1;
+}
+
+/** `$25292A`, the mirrored player bonus followers in sprite bucket 28. */
+export function drawBonusFollowers25292A(ram, rom) {
+  if (ram.u16(HYPER.pause) !== 0) return 0;
+  return drawBonusFollowerSide(ram, rom, HYPER.p1, false)
+    + drawBonusFollowerSide(ram, rom, HYPER.p2, true);
 }
 
 /** `$287682/$287722`, threshold, refusal, immediate spawn, or pending bank. */

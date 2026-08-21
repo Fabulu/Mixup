@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W478)
+Updated: 2026-08-21 (W479)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,15 +8,22 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W478 ports type-5 call #19 `$252BD0`, the loop-aware enemy-bullet
-speed bias.** It uses both players' hyper state plus cartridge flags, stage, loop, and boss phase, then writes
-`$812950` immediately before the bullet driver consumes it. Type-5 coverage is 21/23; the remaining calls are
-#22 `$25292A` and #23 `$252A52`. W477's 15-mod start screen keeps direct and empty launches vanilla, makes
-Invincibility explicit, and leaves labelled progression interventions intact. The MAME death oracle passed
-three invulnerability-off hits, two respawns, the `2 -> 1 -> 0 -> $FFFF` life sequence, and game-over request
-2. Live duplicate counts remain 15 narrow heads, 68 widened heads, 27 body pairs, and 22 body-only findings,
-but those rows wait until after White Label. W476 is live as build `20260821205739`; W478 is the second
-interval wave and does not publish. The next bounded functional candidate is `$25292A`.
+`docs/DOCKET.md` is authoritative. **W479 ports type-5 call #22 `$25292A`, the mirrored player bonus
+followers.** Both player arms retain the cartridge gates, animation tick, path movement, wrap, and bucket-28
+emit. Type-5 coverage is 22/23; only #23 `$252A52` remains. W477's 15-mod start screen keeps direct and
+empty launches vanilla, makes Invincibility explicit, and leaves labelled progression interventions intact. The
+MAME death oracle passed three invulnerability-off hits, two respawns, the `2 -> 1 -> 0 -> $FFFF` life
+sequence, and game-over request 2. Live duplicate counts remain 15 narrow heads, 68 widened heads, 27 body
+pairs, and 22 body-only findings, but those rows wait until after White Label. W476 is live as build
+`20260821205739`; W479 is the third interval wave and does not publish. W479 added a ROM window, so run
+`export-web.mjs` before the next publication. The next bounded functional candidate is `$252A52`.
+
+## W479 VERIFIED: TYPE-5 PLAYER BONUS FOLLOWERS
+
+`$28B664` now dispatches `$25292A`. The mirrored arms preserve the pause, player-state, bit-14, and bonus
+gates, reload animation ticks, read phase frames from `$25291C`, advance and wrap the follower path, and emit
+through `$240892` into bucket 28. Focused mirrored draw and call-order checks pass. Type-5 coverage moves
+from 21/23 to 22/23.
 
 ## W478 VERIFIED: TYPE-5 ENEMY-BULLET SPEED BIAS
 

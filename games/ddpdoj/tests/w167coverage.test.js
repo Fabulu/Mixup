@@ -95,7 +95,7 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   // unknown are [16] $256E7A, [18] $24902A, [19] $28EE88, and none of them is on the cold-boot
   // path -- see `w387slot12.test.js` SECTION 3.
   assert.match(got.stdout, /top_objects: 17\/20 ported, 3 unknown, 0 null/);
-  assert.match(got.stdout, /type5_calls: 21\/23 ported/);
+  assert.match(got.stdout, /type5_calls: 22\/23 ported/);
   // W229: 72 -> 76 ported and 54 -> 50 unknown, the four the Stage-4 waves added
   // after W217 (W218's $27C81A and $27DB30, W219's Type-$40 boss, W223's $41).
   // W323: 80 -> 81 ported and 46 -> 45 unknown, type $1B ($269350). The 130 nulls do not

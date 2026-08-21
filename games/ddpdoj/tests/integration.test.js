@@ -359,7 +359,7 @@ test('$2634F4 walks the SPAWN SCRIPT before the 58-slot driver',
 // ===========================================================================
 // type 5 itself: the three calls must RUN, not be counted.
 // ===========================================================================
-test('TYPE5_PORTED is TWENTY-ONE of the twenty-three, and the list is the ROM\'s', () => {
+test('TYPE5_PORTED is TWENTY-TWO of the twenty-three, and the list is the ROM\'s', () => {
   assert.equal(TYPE5.calls.length, 23, '$28B5E6..$28B66A');
   // W33 added call #3, `$28AD54`'s sub-record reaper. W173 adds its inseparable
   // `$28AD70` fall-through for type `$84`'s bounded cue descriptor family.
@@ -392,7 +392,7 @@ test('TYPE5_PORTED is TWENTY-ONE of the twenty-three, and the list is the ROM\'s
   // reason: a pool with a producer and no consumer is a leak.
   // W194 adds #1 `$289B80` with type `$37`'s directly reached pool-C kind-4
   // allocator, so its death satellite is consumed rather than leaked.
-  assert.equal(TYPE5_PORTED.size, 21);
+  assert.equal(TYPE5_PORTED.size, 22);
   assert.ok(TYPE5_PORTED.has(TYPE5.poolCDriver));
   assert.equal(TYPE5.calls.indexOf(TYPE5.poolCDriver), 0);
   assert.ok(TYPE5_PORTED.has(TYPE5.bombDriver));

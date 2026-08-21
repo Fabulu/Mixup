@@ -6053,3 +6053,15 @@ cartridge caps remain 8 in loop 1 and 15 in loop 2.
 Type-5 coverage moves from 20/23 to **21/23**. The remaining calls are #22 `$25292A` and #23 `$252A52`.
 Focused behavior and call-order checks pass. W478 is the second wave after live build `20260821205739` and
 is not a publication wave.
+
+### D87: W479 TYPE-5 CALL #22 `$25292A`: PLAYER BONUS FOLLOWERS
+
+`$28B664` now runs `$25292A` in cartridge order. The mirrored P1 and P2 arms retain the pause, live-player,
+bit-14, and bonus gates; decrement and reload each animation tick; select the phase-dependent frame from
+`$25291C`; advance or hold the follower path; wrap at `$1C8D90`; and append to sprite bucket 28 through the
+`$240892` register convention.
+
+Type-5 coverage moves from 21/23 to **22/23**. Only call #23 `$252A52` remains. Focused mirrored draw,
+gate, timer, path, and call-order checks pass. W479 adds the `$25291C` ROM window, so generated web assets
+must be refreshed before the next publication. It is the third wave after live build `20260821205739` and is
+not a publication wave.
