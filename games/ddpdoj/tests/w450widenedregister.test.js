@@ -1,7 +1,7 @@
 // WAVE 450 (D69) -- THE DUPLICATE REGISTER, WIDENED UNTIL IT CAN SEE A PRIVATE COPY.
 //
 // ---------------------------------------------------------------------------
-// THE NUMBER WAS 19, W450 FOUND 92, W451 LEFT 91, W453 LEFT 90, W457 LEFT 89, W458 LEFT 88, W459 LEFT 87, W460 LEFT 86, W461 LEFT 85, W462 LEFT 84, W463 LEFT 83, W464 LEFT 82, W465 LEAVES 81
+// THE NUMBER WAS 19, W450 FOUND 92, W451 LEFT 91, W453 LEFT 90, W457 LEFT 89, W458 LEFT 88, W459 LEFT 87, W460 LEFT 86, W461 LEFT 85, W462 LEFT 84, W463 LEFT 83, W464 LEFT 82, W465 LEFT 81, W466 LEAVES 79
 // ---------------------------------------------------------------------------
 // W444 built the index; W446, W447, W448 and W449 steered by it and merged five
 // addresses, each of which turned out to be a live defect. Then W449 found a
@@ -29,7 +29,7 @@
 // The live registers are:
 //
 //     shipped `export function` scan     16 addresses claimed twice or more
-//     widened head scan                  81          "
+//     widened head scan                  79          "
 //     of the shipped 16                  16 still there, NONE dropped
 //     newly visible                      68
 //
@@ -54,7 +54,7 @@
 // ---------------------------------------------------------------------------
 //   1   the scan found something -- floors, so a broken regex cannot read clean
 //   2   the widening WEAKENS NOTHING: the shipped register is a strict subset
-//   3   THE HEAD REGISTER, exact, 81
+//   3   THE HEAD REGISTER, exact, 79
 //   4   THE BODY REGISTER, exact, 27 pairs; 22 body-only findings
 //   5   RED PROOFS on synthetic trees -- one per axis, plus two negative controls
 //   6   THE HISTORICAL POSITIVE CONTROL: W449's own `clearChain`, verbatim
@@ -182,7 +182,7 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 
 // ---------------------------------------------------------------- SECTION 3
 
-// THE HEAD REGISTER. 81 ROM addresses claimed by two or more function-like
+// THE HEAD REGISTER. 79 ROM addresses claimed by two or more function-like
 // heads in `src/`, by name suffix or by JSDoc opening span.
 //
 // **DECLARE, NEVER WIDEN** -- W444's rule, and W446/W447/W448/W449 all kept it.
@@ -231,8 +231,9 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 //     at 83. W464 exported the stage-end `$28E7A2` clear and routed the arm-5 caller
 //     to it, removing the second identical 40-word loop and leaving 82. W465 exports
 //     the HUD `$28C6C6` sound poster and keeps the result-screen timer adaptation in a
-//     caller helper, leaving 81. Next sharpest is `$28F4C4`, followed by `$285A12`
-//     and `$2A6EDC`.
+//     caller helper, leaving 81. W466 removes the name-entry frame glue's private head
+//     and its opening-range endpoint claims, leaving 79. Next sharpest is `$285A12`,
+//     followed by `$2A6EDC`.
 //
 // Each of those is its own wave. W446/W447/W448/W449 say what they cost when
 // they are not: a frozen background, a boss that refills its HP, a death effect
@@ -251,12 +252,12 @@ const HEAD_REGISTER = Object.freeze([
   0x284b6a, 0x2851d2, 0x285a12, 0x286096, 0x286128, 0x286a80,
   0x286ae8, 0x286b9a, 0x2875b4, 0x289004, 0x289f96, 0x28ad54,
   0x28cb38, 0x28d520, 0x28ecb2,
-  0x28f4c4, 0x28f588, 0x28f666, 0x292902, 0x29321c, 0x293642,
+  0x28f588, 0x292902, 0x29321c, 0x293642,
   0x29f8f0, 0x29f9b4, 0x2a00c0, 0x2a0d16, 0x2a11d4, 0x2a3af6,
   0x2a3e15, 0x2a6edc,
 ]);
 
-test('SECTION 3: the widened head register is exactly these 81 addresses', () => {
+test('SECTION 3: the widened head register is exactly these 79 addresses', () => {
   const { idx } = headIndex();
   const wide = headRegister();
   assert.deepEqual(wide.map(hex), [...HEAD_REGISTER].map(hex),
@@ -271,13 +272,14 @@ test('SECTION 3: the widened head register is exactly these 81 addresses', () =>
 
   // ASSERTED AS A NUMBER TOO -- W447's lesson. An empty list satisfies a
   // `deepEqual` against a shrunken array and reads as five merges' progress.
-  assert.equal(wide.length, 81,
-    'the widened register is not 81. W450 found 92, W451 merged $242684, W453 merged '
+  assert.equal(wide.length, 79,
+    'the widened register is not 79. W450 found 92, W451 merged $242684, W453 merged '
     + '$242494, W457 merged $25D9E6, W458 merged $25DA60, W459 merged $25FF38, '
     + 'W460 removed the optional $24631C shim, W461 merged the private $242E24 body, '
     + 'and W462 removed the private $2414BE adapter row, W463 removed the private '
     + '$28C0FC counted-note adapter row, W464 merged the duplicate $28E7A2 clear, '
-    + 'then W465 removed the private $28C6C6 caller adapter');
+    + 'W465 removed the private $28C6C6 caller adapter, then W466 removed both '
+    + 'range claims from the private name-entry frame glue');
 
   // ...and every address the four merged waves removed must STAY off it, now
   // measured by a scan that can see private copies rather than only exports.
@@ -285,7 +287,8 @@ test('SECTION 3: the widened head register is exactly these 81 addresses', () =>
     [0x246520, 'W448'], [0x24652a, 'W448'], [0x246800, 'W449'], [0x242684, 'W451'],
     [0x242494, 'W453'], [0x25d9e6, 'W457'], [0x25da60, 'W458'], [0x25ff38, 'W459'],
     [0x24631c, 'W460'], [0x242e24, 'W461'], [0x2414be, 'W462'], [0x28c0fc, 'W463'],
-    [0x28e7a2, 'W464'], [0x28c6c6, 'W465']]) {
+    [0x28e7a2, 'W464'], [0x28c6c6, 'W465'], [0x28f4c4, 'W466'],
+    [0x28f666, 'W466']]) {
     assert.ok(!wide.includes(a),
       `${hex(a)} is claimed twice AGAIN under the widened scan (${wave} merged it). `
       + 'The narrow scan could not have told you: a private re-transcription is exactly '

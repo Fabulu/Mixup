@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W465)
+Updated: 2026-08-21 (W466)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,16 +10,23 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W465 removed the private `$28C6C6` caller-adapter identity.**
-`hud.js note28C6C6` is now the exported canonical sound poster. The result-screen helper keeps all
-four caller timers under the address-free name `throttledBonusCue` and delegates only the sound post.
-Live scanner APIs report 16 narrow heads, 81 widened heads, 27 body pairs, and 22 body-only findings.
-The next direct batch candidate is **W466 `$28F4C4`, `hiscorename.js drawGridFrame28F4C4` and
-`objslot12.js nameFrame28F4C4`**. W461 was published as build `20260821132334`; W465 is the fourth wave
-after it and is not a publication wave. W466 is the next fifth-wave publication, requiring a quiet tree
-and `export-web.mjs` before `publish.mjs`. Continue the widened duplicate rows, front-end screens
-D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and every other explicit
-docket item.
+`docs/DOCKET.md` is authoritative. **W466 removed the name-frame glue's two false endpoint claims.**
+`objslot12.js nameEntryFrame` still runs the full per-side frame in cartridge order, but its private
+wrapper identity no longer claims the canonical `$28F4C4` grid dispatch or `$28F666` button-tail end.
+Live scanner APIs report 16 narrow heads, 79 widened heads, 27 body pairs, and 22 body-only findings.
+The next direct batch candidate is **W467 `$285A12`, `hud.js hyper285A12` and
+`hyper.js stepHyper285A12`**. W466 is the fifth wave after live build `20260821132334`; land its wave
+commit, then publish from the quiet tree with `games/ddpdoj/tools/export-web.mjs` before
+`tools/publish.mjs`. Continue the widened duplicate rows, front-end screens D33/D34/D35/D37, remaining
+enemy types, full Black Label loop-2 coverage, and every other explicit docket item.
+
+## W466 VERIFIED: NAME-FRAME GLUE OWNS NO CANONICAL ENDPOINT
+
+The former `nameFrame28F4C4` is a private caller composite around already exported `hiscorename.js`
+steps. It is now `nameEntryFrame`, with its cartridge-range commentary inside the body. Every executable
+statement and caller stays in place, while `$28F4C4` and `$28F666` each return to one canonical claimant.
+The authoritative register passed 12/12 and the slot-12 surface passed 26/26. Only widened heads changed,
+81 to 79. Publish W466 next, then take W467 `$285A12`.
 
 ## W465 VERIFIED: ONE `$28C6C6` SOUND POSTER
 
@@ -27,8 +34,8 @@ The HUD helper is the cartridge entry's sound action and now owns its sole sourc
 screen's former `cue28C6C6` was a caller adapter around two timer words, not a second implementation.
 Its renamed helper preserves the decrement, zero test, reload to 3, four caller paths, and canonical
 sound call. The authoritative register passed 12/12, the stage-end surface passed 44/44, and a direct
-poster check passed. Only widened heads changed, 82 to 81. Next is W466 `$28F4C4`, followed by the
-required fifth-wave publication.
+poster check passed. Only widened heads changed, 82 to 81. W466 completed the next two endpoint rows
+above and is the required fifth-wave publication.
 
 ## W464 VERIFIED: ONE `$28E7A2` BANNER CLEAR
 

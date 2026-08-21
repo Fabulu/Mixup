@@ -392,16 +392,17 @@ export function teardown28F368(ram, rom, a5, ctx) {
   return made;
 }
 
-/**
- * `$28F4C4..$28F666` -- one frame of the screen, once a side's record is set up.
- *
- * Every piece below `$28F4C4` was already ported, by W305 through W382, in `hiscorename.js`;
- * this is the glue that runs them in the cartridge's order and counts the three draws that are
- * not ported. The order is not a detail -- `$28F4FC tst.w ($1E,A4) / beq $28F542` makes the
- * countdown and the input path EXCLUSIVE, and the two draws at `$28F4F4`/`$28F4F8` happen before
- * either, on every frame.
- */
-function nameFrame28F4C4(ram, rom, a4, a5, ctx) {
+/** One complete name-entry frame after a side's one-shot setup. */
+function nameEntryFrame(ram, rom, a4, a5, ctx) {
+  /*
+   * `$28F4C4..$28F666` -- one frame of the screen, once a side's record is set up.
+   *
+   * Every piece below `$28F4C4` was already ported, by W305 through W382, in `hiscorename.js`;
+   * this is the glue that runs them in the cartridge's order and counts the three draws that are
+   * not ported. The order is not a detail -- `$28F4FC tst.w ($1E,A4) / beq $28F542` makes the
+   * countdown and the input path EXCLUSIVE, and the two draws at `$28F4F4`/`$28F4F8` happen before
+   * either, on every frame.
+   */
   drawGridFrame28F4C4(ram, rom, a4, a5);                     // $28F4C4..$28F4F2
   noteDraw(ctx, SLOT12.draws[1]);                            // $28F4F4 bsr $28FB8A
   noteDraw(ctx, SLOT12.draws[2]);                            // $28F4F8 bsr $28FC36
@@ -465,7 +466,7 @@ export function nameArmHead(ram, rom, a5, ctx, side) {
       nameArmGrid28F4A6(ram, a4, ctx);                       // $28F44C bra.w $28F4A6, and it
     }                                                        // FALLS THROUGH ($28F4C0 bra +2)
   }
-  return nameFrame28F4C4(ram, rom, a4, a5, ctx);
+  return nameEntryFrame(ram, rom, a4, a5, ctx);
 }
 
 /**

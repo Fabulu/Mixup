@@ -5801,8 +5801,28 @@ remain 16, body pairs remain 27, and body-only findings remain 22. The authorita
 No ROM window or generated output changed. W465 is the fourth wave after published build
 `20260821132334` and is not a publication wave.
 
-**NEXT OBVIOUS BATCH CANDIDATE: W466, `$28F4C4`.** The widened register names
-`hiscorename.js drawGridFrame28F4C4` and `objslot12.js nameFrame28F4C4`. Handle their caller adaptation
-directly. W466 is the next fifth-wave publication: wait for a quiet tree, run `export-web.mjs` before
-`publish.mjs`, then verify and push the generated publication commit. Continue Black Label through the
-full second loop and close its docket, then finish White Label last.
+**HISTORICAL W465 RECOMMENDATION FOR W466: `$28F4C4`.** W466 completed that direct merge below.
+
+
+### D74: FOLLOW-UP, W466 `$28F4C4/$28F666`: NAME-FRAME GLUE NO LONGER CLAIMS TWO BODIES
+
+`objslot12.js nameFrame28F4C4` was private whole-frame glue, not a second implementation of either
+endpoint in its documented `$28F4C4..$28F666` range. It calls the exported
+`hiscorename.js drawGridFrame28F4C4`, then preserves the three counted draws, countdown, band, cursor,
+panel and input sequence before the canonical name-button tail. The helper is now named
+`nameEntryFrame`; its detailed range commentary lives inside the body so the widened scanner does not
+mistake the wrapper for either endpoint. No alias is needed and no executable statement changed.
+
+The live registers move from 81 to **79 widened heads** because the wrapper's opening range claimed both
+`$28F4C4` and `$28F666`. Each now has one canonical `hiscorename.js` claimant. Narrow heads remain 16,
+body pairs remain 27, and body-only findings remain 22. The authoritative register passed 12/12 and the
+existing slot-12 caller surface passed 26/26. No ROM window or generated output changed in the wave
+commit.
+
+W466 is the fifth wave after published build `20260821132334`. After this wave commit lands on `main`,
+run the authorized quiet-tree publication with `games/ddpdoj/tools/export-web.mjs` before
+`tools/publish.mjs` and record the resulting live build.
+
+**NEXT OBVIOUS BATCH CANDIDATE: W467, `$285A12`.** The widened register names `hud.js hyper285A12`
+and `hyper.js stepHyper285A12`. Classify the HUD caller adaptation directly after publication. Continue
+Black Label through the full second loop and close its docket, then finish White Label last.

@@ -582,7 +582,7 @@ test('SECTION 5c: cartridge and source reachability remain separate and dynamic 
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live scanner APIs reconcile to 16 narrow, 81 widened, 27 pairs and 22 body-only',
+test('SECTION 6: live scanner APIs reconcile to 16 narrow, 79 widened, 27 pairs and 22 body-only',
   () => {
     const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
     const heads = headRegister();
@@ -596,7 +596,7 @@ test('SECTION 6: live scanner APIs reconcile to 16 narrow, 81 widened, 27 pairs 
       .some((body) => !visibleHeads.has(body)));
 
     assert.equal(narrow.length, 16, 'neither old claimant formed a narrow duplicate row');
-    assert.equal(heads.length, 81, 'W463 removes $28C0FC to leave 83; W464 removes $28E7A2 to leave 82; W465 removes $28C6C6 to leave 81');
+    assert.equal(heads.length, 79, 'W463 removes $28C0FC to leave 83; W464 removes $28E7A2 to leave 82; W465 removes $28C6C6 to leave 81; W466 removes $28F4C4/$28F666 to leave 79');
     assert.equal(heads.includes(BODY_START), false, '$24631C leaves the widened head register');
     assert.equal(narrow.some(([at]) => at === BODY_START), false, '$24631C remains absent narrowly');
     assert.equal(pairs.length, 27, 'W461 removes one body pair from W460 baseline 28');
