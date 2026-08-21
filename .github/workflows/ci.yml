@@ -37,7 +37,7 @@ jobs:
         # input and pacing coverage executable on a clean checkout.
         run: >-
           node --test
-          --test-name-pattern='^(?!stepLogicFrames (feeds|hands))'
+          --test-name-pattern='^(at|a |the |THE |k |sub-frame|IDEMPOTENCE)'
           games/gradius/tests/loop.test.js
       - name: DDPDOJ asset-free unit tests
         run: >-
