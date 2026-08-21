@@ -6076,3 +6076,22 @@ midpoint pause, wraps at `$1C4410`, and appends to sprite bucket 29 through `$24
 Type-5 coverage moves from 22/23 to **23/23**. Focused mirrored animation, gate, timer, path, bucket, and
 call-order checks pass. W480 is the fourth wave after live build `20260821205739` and is not a publication
 wave. The next wave returns to live Black Label stage and loop-2 gameplay content.
+
+### D89: W481 STAGE-5 TYPE `$52`: FIRST LIVE TYPE `$4C` CHILD
+
+A corrected lifecycle bench reached `processDeferred` at frame 66, selected type `$52`'s init stub `$270634`,
+and stopped on its missing ROM read. W481 translates the real init body at `$27063C`, copies the deferred
+packed position and heading into its one sub-record, installs the nine-word record prototype, registers handler
+`$270694`, and drains the child through the ordinary deferred queue.
+
+The handler preserves movement-first lifetime and parent-presence retirement, hit scoring and palette flash,
+negative-HP death, kind-`$14` effect and cue, seven ordered state bits, edge turning, aim and slew, paired
+kind-`$07` shots, movement kick, randomized restart speed, and the static and turning sprite-table paths.
+Enemy coverage moves from **95/256 ported, 31 unknown, 130 null** to **96/256 ported, 30 unknown, 130 null**.
+One compact synthetic test covers deferred allocation, real init dispatch, copied fields, registered execution,
+movement, lethal hit, effect state, cue, and free.
+
+Four exact ROM windows cover the eight-byte init stub, adjacent record and long-form sub-record prototypes,
+eight static art pointers, and 32 turning-art rows. Local tables were regenerated. W481 is the fifth interval
+wave after live build `20260821205739`, so its quiet-tree publication must regenerate browser assets before
+running `publish.mjs`.

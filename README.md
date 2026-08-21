@@ -250,14 +250,17 @@ asset path are live, and W476 published as build `20260821205739` after all
 mods, including explicit Invincibility, while an empty loadout remains vanilla.
 W478 ports the loop-aware hyper contribution to enemy-bullet speed, W479
 restores the mirrored player bonus followers, and W480 closes the final type-5
-frame call with the hyper-stock animation.
+frame call with the hyper-stock animation. W481 follows corrected live stage-5
+evidence into type `$4C`'s first runtime-selected child, type `$52`, and raises
+enemy-handler coverage to 96 of 256 entries.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,
-and behavior through the complete second loop. W480 completes all 23 type-5
-frame calls. The duplicate
-scanners still report 15 narrow heads, 68 widened heads, 27 body pairs, and 22
-body-only findings, now deliberately deferred until functional completion.
+and behavior through the complete second loop. All 23 type-5 frame calls now
+run, while enemy-handler coverage is 96 ported, 30 unknown, and 130 null. The
+duplicate scanners still report 15 narrow heads, 68 widened heads, 27 body
+pairs, and 22 body-only findings, now deliberately deferred until functional
+completion.
 
 The completion order is deliberate: finish Black Label through the full second
 loop, finish functional White Label, then close the duplicate-only audit rows. Current status

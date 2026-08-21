@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W480)
+Updated: 2026-08-22 (W481)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,18 +8,29 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W480 ports final type-5 call #23 `$252A52`; all 23 calls now run.**
-The mirrored hyper-stock arms retain the cartridge gates, timer, midpoint pause, path wrap, and bucket-29
-emit. W477's 15-mod start screen keeps direct and empty launches vanilla, makes Invincibility explicit, and
-leaves labelled progression interventions intact. The MAME death oracle passed three invulnerability-off hits,
-two respawns, the `2 -> 1 -> 0 -> $FFFF` life sequence, and game-over request 2. Live duplicate counts
-remain 15 narrow heads, 68 widened heads, 27 body pairs, and 22 body-only findings, but those rows wait until
-after White Label. W476 is live as build `20260821205739`; W480 is the fourth interval wave and does not
-publish. W479 added a ROM window, so run `export-web.mjs` before the next publication.
+`docs/DOCKET.md` is authoritative. **W481 ports stage-5 enemy type `$52`, the first live runtime-selected
+child of type `$4C`.** Its deferred init and full handler now run, including movement, lifetime and parent
+gates, hit and death behavior, seven ordered state bits, paired fire, aim and slew, and both draw paths.
+Enemy-handler coverage is 96/256 ported, 30 unknown, and 130 null. W477's 15-mod start screen keeps direct
+and empty launches vanilla, makes Invincibility explicit, and leaves labelled progression interventions intact.
+The MAME death oracle passed three invulnerability-off hits, two respawns, the `2 -> 1 -> 0 -> $FFFF` life
+sequence, and game-over request 2. Live duplicate counts remain 15 narrow heads, 68 widened heads, 27 body
+pairs, and 22 body-only findings, but those rows wait until after White Label. W476 is live as build
+`20260821205739`. W481 is the fifth interval wave and therefore runs the quiet-tree publication gate. W479
+and W481 added ROM windows, so `export-web.mjs` must run before `publish.mjs`.
 
-Next, run a bounded stage-5 bench and fix the first live child-handler blocker. Do not select type `$54` from
-static scanning alone because its apparent spawn is behind a Version-B-disabled body. Types `$4E`, `$50`, or
-`$52` reached from `$4C` are likely candidates, but live evidence decides. W481 is the next publication wave.
+Next, continue the corrected bounded stage-5 lifecycle bench beyond type `$52` and fix the next live child or
+dependency blocker. Do not select a target from static scanning alone. Keep each fix bounded to runtime
+evidence and the exact ROM windows its reached path requires.
+
+## W481 VERIFIED: FIRST LIVE TYPE `$4C` CHILD
+
+At frame 66 the corrected bench drained type `$4C`'s deferred queue, selected type `$52` init `$270634`, and
+reached its missing stub read. W481 adds body `$27063C`, handler `$270694`, the exact prototype and draw-table
+windows, registration, and one compact lifecycle and lethal-hit behavior test. The child copies the deferred
+position and heading, runs all seven ordered state arms, emits paired kind-`$07` shots, and retires with the
+cartridge's kind-`$14` effect and cue. Focused lifecycle, registry, and coverage checks pass. Coverage moves
+from 95 ported and 31 unknown to 96 ported and 30 unknown; 130 null entries do not move.
 
 ## W480 VERIFIED: ALL TYPE-5 FRAME CALLS CLOSED
 

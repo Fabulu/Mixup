@@ -4,12 +4,12 @@ This directory contains the JavaScript translation of **DoDonPachi DaiOuJou Blac
 
 ## Current status
 
-Updated 2026-08-22 after Wave 480.
+Updated 2026-08-22 after Wave 481.
 
 | area | current state |
 |---|---|
 | target | Finish Black Label Version-B through the full second loop, finish functional White Label, then close deferred duplicate-only findings. |
-| port | Active across the game loop, player, weapons, enemies, bosses, stage flow, scoring, chaining, hypers, rank, HUD, result and name-entry systems. W477 added the shipped 15-mod start menu without changing the vanilla simulation path. W478 ports the loop-aware enemy-bullet speed bias, W479 restores the mirrored bonus followers, and W480 restores the hyper-stock animation. All 23 type-5 calls now run. Black Label is not complete yet. |
+| port | Active across the game loop, player, weapons, enemies, bosses, stage flow, scoring, chaining, hypers, rank, HUD, result and name-entry systems. W477 added the shipped 15-mod start menu without changing the vanilla simulation path. W478 ports the loop-aware enemy-bullet speed bias, W479 restores the mirrored bonus followers, W480 restores the hyper-stock animation and closes all 23 type-5 calls, and W481 ports stage-5 type `$52`, the first live runtime-selected child of type `$4C`. Enemy-handler coverage is now 96 ported, 30 unknown, and 130 null. Black Label is not complete yet. |
 | tests | `4,281` DDPDOJ unit tests passed in the W476 publication gate, with no failures or skips. |
 | duplicate audit | 15 narrow heads, 68 widened heads, 27 body pairs, and 22 body-only findings remain after W475. |
 | oracle | MAME 0.288, pinned to VERSION-B. Determinism and probe behavior are documented in `NOTES-oracle.md`. |

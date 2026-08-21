@@ -89,6 +89,14 @@ SHOT_WINDOWS = [
     (0x2551FA, 0x0006, "W164 death-reset formation cap bytes for formations 2/4/6"),
     (0x255B7C, 0x009C, "W164 death animation pointer list through its FFFFFFFF terminator"),
     (0x25291C, 0x000C, "W479 bonus-follower animation frames"),
+    # W481: type $52, the first live runtime-selected child of type $4C.
+    # The init dispatcher reads the eight-byte stub as data. The translated body then reads nine
+    # record words followed by one 28-byte long-form sub-record prototype, ending at the handler.
+    # The handler indexes eight static art pointers and 32 turning rows of sixteen bytes each.
+    (0x270634, 0x0008, "W481 type $52 init stub read by initDispatch"),
+    (0x270666, 0x002E, "W481 type $52 record and sub-record prototypes, ending at its handler"),
+    (0x270972, 0x0020, "W481 type $52 eight-entry static art table"),
+    (0x2709DC, 0x0200, "W481 type $52 32-row turning art and attribute table"),
     (0x252B42, 0x008E, "W163 hyper rank-power tables including power-zero reads"),
     (0x25531C, 0x001E, "W163 hyper pending and request mode tables"),
     (0x2866D2, 0x000C, "W163 chain cap stock adjustment table"),

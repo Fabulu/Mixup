@@ -2134,6 +2134,16 @@ BODY.set(0x26f4e2, (ram, rom, a5, a6, unported, _tables, palette) => {
     'Stage-5 type $4C palette bank $14');                  // $26F548
 });
 
+// --- type $52 ($270634 init, $27063C body): the first live child selected by type $4C.
+// The deferred record supplies the packed position at +$16 and heading in the high byte at +$1A.
+// The body copies both into the sub-record after loading its prototype, then installs nine record words.
+BODY.set(0x27063c, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x270678);                // $27063C..$270648 jsr $2637A2
+  ram.setU32(a6 + 0x02, ram.u32(a5 + 0x16));               // $270648 move.l ($16,A5),($2,A6)
+  ram.setU8(a6 + 0x1b, ram.u8(a5 + 0x1a));                 // $27064E move.b ($1A,A5),($1B,A6)
+  loadRecordProto(ram, rom, a5, 0x270666, 0x08);           // $270654..$270664 D0+1 = NINE words
+});
+
 // The five stage rows at `$2692D2` are ALL `0A 15` (verified by hex dump), so `$813094` -- the stage
 // index DOUBLED -- selects an identical pair every time. Ported as the indexed read the ROM performs
 // rather than as the constant it happens to produce: the sameness is a measurement about this build,

@@ -8693,6 +8693,7 @@ const HANDLERS = new Map([
   [0x2710e2, handler46],   // W352: stage-5 extend-spawn-retract arm, $55's PARENT, spec in T46
   [0x268e6c, handler1A],   // W365: stage-5 slewing twin-weapon turret -- spec in T1A
   [0x26f5f2, handler4C],   // W372: stage-5 multi-part set piece -- spec in T4C
+  [0x270694, handler52],   // W481: type $4C's first live runtime-selected child
   [0x2a4606, handler2A4606],  // W363: HIBACHI, stage 5's boss-route root -- spec in TB0. Its body
                               // $2A6B94 is a note(), so it appears and lets the stage clear but does
                               // not attack. Registered because the stage-clear path is COMPLETE.
@@ -9301,6 +9302,181 @@ const T1A = Object.freeze({
   spawnEffect: 0x289004,
   deathEffectKinds: Object.freeze([0xd, 0x5, 0x5]),
 });
+
+// ============================================ TYPE $52 (W481) ==================
+// Type $4C enqueues this one-record child from state 2 and its part-3 animator. The child keeps the
+// parent presence word `$8130DE` as a lifetime gate, flies and turns through seven independent state bits,
+// fires a paired kind-$07 shot, and uses separate static and turning draw tables.
+const T52 = Object.freeze({
+  handler: 0x270694,
+  parentPresent: 0x8130de,
+  frame: 0x80390a,
+  staticArt: 0x270972,
+  turnArt: 0x2709dc,
+  emit: 0x23df86,
+});
+
+function draw52(ram, rom, a5, a6) {
+  const pos = u32(ram.u32(a6 + S.posX) + 0xfa00fc00);     // $270956/$2709BC addi.l
+  if (ram.u8(a5 + R.rec17) === 0) {                        // $27093A
+    const off = (ram.u8(a6 + S.heading) & 0x0e) * 2;      // $27094A..$270952
+    enqueueRegistersThroughStub(ram, rom, T52.emit, pos,
+      rom.u32(T52.staticArt + off), 0x0620, ram.u8(a6 + S.palette));   // $270954..$27096A
+    return;
+  }
+  const row = T52.turnArt + (ram.u8(a6 + S.heading) & 0x3e) * 8;      // $27099C..$2709B2
+  const art = rom.u32(row + i16(ram.u16(a5 + R.rec1A)));              // $2709B4..$2709BA
+  const attr = u32(ram.u8(a6 + S.palette) + rom.u32(row + 0x0c));     // $2709CA..$2709D0
+  enqueueRegistersThroughStub(ram, rom, T52.emit, pos, art, 0x0620, attr);   // $2709D4
+}
+
+/** `$270694` -- stage-5 enemy type $52, a runtime-selected child of type $4C. */
+function handler52(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + R.subRec);
+  applyVelocityA6(ram, ctx.tables, a6);                    // $270694 jsr $2417DE
+
+  const life = u16(ram.u16(a5 + R.rec1C) - 1);            // $27069A subq.w #1
+  ram.setU16(a5 + R.rec1C, life);
+  if (life === 0 || ram.u16(T52.parentPresent) === 0) {    // $27069E..$2706A8
+    const effect = spawnEffect(ram, ctx, 0x14, 0x2706d8); // $2706D4..$2706D8
+    ram.setU32(effect + B.pos, ram.u32(a6 + S.posX));      // $2706DE
+    ram.setU16(effect + B.bucket, 0x10);                   // $2706E4
+    ctx.soundPost?.(0x28c2c2);                             // $2706EA
+    freeEnemy(ram, a5);                                    // $2706F0
+    return;
+  }
+
+  const hit = ram.u8(a6 + S.flags) & 0x5c;                // $2706AC..$2706B0
+  if (hit !== 0) {
+    ram.setU8(a6 + S.flags, ram.u8(a6 + S.flags) & 0xa3); // $2706B4..$2706B8
+    scoreHit(ram, ctx, a6, hit);                           // $2706BA
+    ram.setU8(a6 + S.palette, ram.u8(a6 + S.palette) ^ 0x0c); // $2706C0..$2706C8
+    if (i16(ram.u16(a6 + S.hp)) < 0) {                    // $2706CC/$2706D0
+      const effect = spawnEffect(ram, ctx, 0x14, 0x2706d8);
+      ram.setU32(effect + B.pos, ram.u32(a6 + S.posX));
+      ram.setU16(effect + B.bucket, 0x10);
+      ctx.soundPost?.(0x28c2c2);
+      freeEnemy(ram, a5);
+      return;
+    }
+  } else {
+    ram.setU8(a6 + S.palette, 0x13);                       // $2706F8
+  }
+
+  // Bit 3 turns at the three field edges, then slows to speed 8 and enters state 4.
+  if ((ram.u8(a5 + R.rec19) & 0x08) !== 0) {              // $2706FE
+    if ((ram.u8(a5 + R.rec19) & 0x80) === 0) {            // $270706
+      const turn = () => {
+        ram.setU8(a6 + S.heading, (ram.u8(a6 + S.heading) + 0x20) & 0x3f);
+        ram.setU8(a5 + R.rec19, ram.u8(a5 + R.rec19) | 0x80);
+      };
+      if (i16(ram.u16(a6 + S.posY)) < 0) turn();           // $27070E..$270722
+      if (i16(ram.u16(a6 + S.posY)) > 0x3800) turn();      // $270728..$27073C
+      if (i16(ram.u16(a6 + S.posX)) < 0x3200) turn();      // $270742..$270756
+    }
+    const speed = (ram.u8(a6 + S.speed) - 1) & 0xff;      // $27075C
+    ram.setU8(a6 + S.speed, speed);
+    if (speed === 8) {
+      ram.setU8(a5 + R.rec19, 0x04);                       // $27076E
+      ram.setU8(a5 + R.rec17, 0);                          // $270774
+    }
+  }
+
+  // Bit 0 expands the three-frame turning cursor on even frames.
+  if ((ram.u8(a5 + R.rec19) & 0x01) !== 0) {              // $27077A
+    ram.setU8(a5 + R.rec17, 1);                            // $270782
+    if ((ram.u16(T52.frame) & 1) === 0) {
+      const cursor = u16(ram.u16(a5 + R.rec1A) + 4);      // $270794
+      ram.setU16(a5 + R.rec1A, cursor);
+      if (i16(cursor) >= 0x0c) {                           // $270798..$27079E
+        ram.setU8(a5 + R.rec19, (ram.u8(a5 + R.rec19) & 0xfe) | 0x02);
+        ram.setU16(a5 + R.rec1A, 0);                       // $2707AE
+        ram.setU16(a5 + R.rec1E, 8);                       // $2707B2
+      }
+    }
+  }
+
+  // Bit 1 reverses that cursor for eight even ticks, then returns to the static draw.
+  if ((ram.u8(a5 + R.rec19) & 0x02) !== 0) {              // $2707B8
+    ram.setU8(a5 + R.rec17, 1);                            // $2707C0
+    if (ram.u16(a5 + R.rec1E) === 0) {
+      ram.setU8(a5 + R.rec19, ram.u8(a5 + R.rec19) & 0xfd); // $2707EE
+      ram.setU16(a5 + R.rec1A, 0);
+      ram.setU8(a5 + R.rec17, 0);
+    } else if ((ram.u16(T52.frame) & 1) === 0) {
+      ram.setU16(a5 + R.rec1E, ram.u16(a5 + R.rec1E) - 1); // $2707D8
+      if (ram.u16(a5 + R.rec1A) === 8) ram.setU16(a5 + R.rec1A, 0);
+      ram.setU16(a5 + R.rec1A, ram.u16(a5 + R.rec1A) + 4); // $2707E8
+    }
+  }
+
+  // Bit 2 aims by one step. No live target suppresses the volley but still advances the cycle.
+  if ((ram.u8(a5 + R.rec19) & 0x04) !== 0) {              // $2707FE
+    const before = ram.u8(a6 + S.heading);                 // $270808
+    const aimed = aim64TurnStore(aimTables(rom), ram, a5, a6); // $27080C jsr $242178
+    if (aimed.carry || ((before - aimed.dir) & 0xff) === 0) {
+      if (aimed.carry) ram.setU8(a5 + R.rec20, 1);         // $27081C..$270820
+      ram.setU8(a5 + R.rec19, 0x10);                       // $270826
+      ram.setU16(a5 + R.rec22, 4);                         // $27082C
+      ram.setU8(a5 + R.rec24, 0x10);                       // $270832
+    }
+  }
+
+  // Bit 4 fires at heading +1 and -1, then kicks the child along the opposite vector.
+  if ((ram.u8(a5 + R.rec19) & 0x10) !== 0) {              // $270838
+    if (ram.u8(a5 + R.rec24) !== 0) {
+      ram.setU8(a5 + R.rec24, ram.u8(a5 + R.rec24) - 1);  // $270842..$270848
+    } else if (ram.u16(a5 + R.rec22) === 0) {
+      ram.setU8(a5 + R.rec19, 0x20);                       // $2708AA
+      const target = (ram.u8(a6 + S.heading) + drawByte242B3C(ram, rom)) & 0x3f;
+      ram.setU8(a5 + R.rec26, target);                     // $2708B0..$2708C0
+      ram.setU8(a5 + R.rec24, 0x10);
+      ram.setU8(a5 + R.rec20, 0);
+    } else if (ram.u8(a5 + R.rec20) !== 0) {
+      ram.setU16(a5 + R.rec22, ram.u16(a5 + R.rec22) - 1); // $2708A4
+    } else if ((ram.u16(T52.frame) & 7) === 0) {
+      const pos = ram.u32(a6 + S.posX);
+      const heading = ram.u8(a6 + S.heading);
+      const ctxB = { ram, rom, log: new WriteLog(ram) };
+      const common = { d0: 0x00080007, d2: pos, d3: 0, d4: 0, d5: 0, a5 };
+      const first = fireBullet(ctxB, 0x281402,
+        { ...common, d1: (heading + 1) & 0xff });
+      ctx.bulletSpawn?.(0x27087e, first);
+      const second = fireBullet(ctxB, 0x281402,
+        { ...common, d1: (heading - 1) & 0xff });
+      ctx.bulletSpawn?.(0x270886, second);
+      const kick = ctx.tables.vector(0x30, (heading + 0x1f) & 0x3f); // $27088C..$270896
+      ram.setU16(a6 + S.posX, u16(ram.u16(a6 + S.posX) + kick.dy));
+      ram.setU16(a6 + S.posY, u16(ram.u16(a6 + S.posY) + kick.dx));
+      ram.setU16(a5 + R.rec22, ram.u16(a5 + R.rec22) - 1); // $2708A4
+    }
+  }
+
+  // Bit 5 slews to the random heading, then bit 6 waits before restarting at state $09.
+  if ((ram.u8(a5 + R.rec19) & 0x20) !== 0) {              // $2708D0
+    if (ram.u8(a5 + R.rec24) !== 0) {
+      ram.setU8(a5 + R.rec24, ram.u8(a5 + R.rec24) - 1);
+    } else {
+      const target = ram.u8(a5 + R.rec26);
+      const next = slew64(ram.u8(a6 + S.heading), target); // $2708E4..$2708F2
+      ram.setU8(a6 + S.heading, next);
+      if (((next - target) & 0xff) === 0) {
+        ram.setU8(a5 + R.rec19, 0x40);                     // $2708FC
+        ram.setU8(a5 + R.rec24, 0x10);
+      }
+    }
+  }
+  if ((ram.u8(a5 + R.rec19) & 0x40) !== 0) {              // $270908
+    const wait = (ram.u8(a5 + R.rec24) - 1) & 0xff;
+    ram.setU8(a5 + R.rec24, wait);
+    if (wait === 0) {
+      ram.setU8(a5 + R.rec19, 0x09);                       // $270916
+      ram.setU8(a6 + S.speed, 0x20 + (drawWord242EC2(ram, rom) & 7)); // $27091C..$27092C
+    }
+  }
+
+  draw52(ram, rom, a5, a6);                               // $270930/$270934
+}
 
 // ============================================ TYPE $4C (W354/W356) ============
 // Stage 5's FIVE-PART object, and the band's only multi-part member. ONE script record.

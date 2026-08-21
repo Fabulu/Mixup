@@ -109,7 +109,9 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   // W400: 94 -> 95 ported and 32 -> 31 unknown, type $44 ($26E02A). It is the first entry this
   // count has taken that NO stage script names: type $43 spawns it at ramp step $3C, so it was
   // never in `w314stage5scope`'s work list and the number moved anyway.
-  assert.match(got.stdout, /enemy_types: 95\/256 ported, 31 unknown, 130 null/);
+  // W481: 95 -> 96 ported and 31 -> 30 unknown, type $52 ($270694), the first child selected by
+  // a corrected live type-$4C deferred lifecycle bench.
+  assert.match(got.stdout, /enemy_types: 96\/256 ported, 30 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
   assert.match(got.stdout, /stage3_spawn_script: 414\/414 ported, 0 unknown, 0 null/);
