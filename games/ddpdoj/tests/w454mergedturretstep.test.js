@@ -351,10 +351,10 @@ test('SECTION 7: W454 merge stays absent after every later register change', () 
   const heads = headRegister();
   const pairs = bodyPairs();
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
-  assert.equal(narrow.length, 18, 'W457 merged $25D9E6 from the narrow register');
-  assert.equal(heads.length, 89, 'W457 merged $25D9E6 from the widened register');
-  assert.equal(pairs.length, 30,
-    'W450 39, W451 one removal, W453 one, W454 one, W455 one, W456 four and W457 one');
+  assert.equal(narrow.length, 17, 'W458 merged $25DA60 from W457 narrow baseline 18');
+  assert.equal(heads.length, 88, 'W458 merged $25DA60 from W457 widened baseline 89');
+  assert.equal(pairs.length, 29,
+    'W450 39, W451 one removal, W453 one, W454 one, W455 one, W456 four, W457 one and W458 one');
   assert.ok(!pairs.some(([pair]) => pair === 'handlers.js fire11 <> turret.js turretStep'),
     'the seven-marker private fire11 body stays absent');
 });

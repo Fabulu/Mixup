@@ -5271,3 +5271,83 @@ merging or classifying. `loadSavedCursor25DA60` is live through `tallyPhase0Arm2
 `restoreCursors25DA60` has no production source caller, so do not infer equivalence from the shared
 inner call. No publish is due at W457. Continue Black Label through the full second loop and close its
 docket, then finish White Label last.
+
+
+### D69 FOLLOW-UP, W458 TALLY LOAD: ONE COMPLETE BODY, ONE LIVE NAME, ONE COMPATIBILITY NAME
+
+**THE COMPLETE `$25DA60` BODIES ARE EQUIVALENT AND MERGED.** `loadSavedCursor25DA60` is the sole
+function body and remains live through `tallyPhase0Arm25DC2C`, which is reached by object `[11]` state 1
+in `tallyScreen25DBB4`. The source-uncalled `restoreCursors25DA60` name remains an export alias to the
+same function object. Source deadness was measured separately and was not used as cartridge-equivalence
+evidence. W457's `cursorsFromPosted25D9E6` body and `mapSavedCursor25D9E6` compatibility alias remain
+canonical and unchanged.
+
+**BUILD-B PINS THE COMPLETE BODY, BOUNDARIES AND CALLER CENSUS.** Main CPU SHA-256 is
+`4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c`. The exact 52-byte half-open
+span `[$25DA60,$25DA94)` is
+`3c39008130843e39008130884a2d00076700000e3c39008130863e390081308a7a001a2d00076100ff5e1b46000e1b47000f4e75`.
+The W458 regression separately enumerates all twelve instructions, with `$25DA70 BEQ.W -> $25DA80` and
+`$25DA86 BSR.W -> $25D9E6` as the only control edges. `$25DA5E` is `RTS`, so the body has no fallthrough
+entry, and `$25DA94` starts the next routine. A complete aligned scan over all 6 MiB covers BSR, BRA/Bcc,
+DBcc, absolute-word, absolute-long and PC-relative JSR/JMP forms, plus indexed-PC zero-base candidates.
+It finds one external direct caller, `$25DC7C BSR.W -> $25DA60`, one internal branch, and no other entry
+into the body.
+
+**THE COMPLETE PARENT GATE AND POST-LOAD ORDER ARE FROZEN.** Raw bytes pin the full
+`[$25DC2C,$25DCC0)` gate and continuation. Its gates branch to `$25DCC0`; the successful arm calls
+`$25DA60` at `$25DC7C`, then `$25DA94` at `$25DC80`, advances phase, posts the side announcement,
+installs the bank, clears the slot table, posts tally request 7, and reaches the `$25E0EA` continuation.
+W458 also found that W344 had stopped `$25DA94` too early. The complete picker is
+`[$25DA94,$25DAC2)`, not a body ending at `$25DAAE`: `$25DAB2..$25DAC0` reloads the descriptor, follows
+its `+$10` pointer to `$813008` or `$813018`, writes the collision-resolved Y row at `+$1`, and returns.
+The production port now performs that external saved-row store.
+
+**SIDE, WIDTH, MAILBOX AND RETURN CONVENTIONS ARE EXACT.** `$813084/$813086` are exactly
+`TALLY.postD0[0/1]`, and `$813088/$81308A` are exactly `TALLY.postD1[0/1]`. Side byte zero selects the
+first interleaved pair; every nonzero byte, including `$80` and `$FF`, selects the second. `$25DA80
+MOVEQ #0,D5` followed by `$25DA82 MOVE.B ($7,A5),D5` zero-extends the raw side byte. D6 and D7 are word
+loads. The canonical `$25D9E6` call returns mapped D6.W/D7.W and carry, but this caller ignores carry and
+immediately stores only D6.B and D7.B at object `+$0E/+$0F`, then returns with `RTS`. The JavaScript
+compatibility result exposes exactly `{x,y,defaulted}` and no unowned field. Mailbox words are read-only,
+and every object byte except `+$0E/+$0F` is unowned by the load.
+
+**DIRTY EXTERNAL WITNESSES COVER BOTH FORMER BODIES AND THE SURVIVOR.** Before the merge, twelve dirty
+executions ran the six-case matrix through both distinct source names. Final W458 tests run both import
+names through side bytes `0`, `1`, `$80`, `$FF`; both sides; sentinel and searched arms; matched and
+unmatched values; `$00FE/$00FF/$0100`; carry set and clear; low-byte truncation; dirty opposite mailbox
+words; dirty `$81308C/$81308E` neighbors; and preservation of every unowned object and mailbox byte.
+The live parent runs side 0 with inactive `$81308C`, where an equal other-side row is ignored, and side
+`$80` with active `$81308C`, where a loaded sentinel row 2 collides and `$25DA94` moves it to row 0 before
+publishing it. The opposite nonzero-phase gate changes no dirty object, cursor mailbox, saved-selection,
+or announcement byte.
+
+**THE PRODUCTION RED MUTATION FAILED DIRECT AND FULL-PARENT STATE.** Temporarily inverting the canonical
+mailbox-side polarity made the direct side-0 sentinel witness read dirty opposite-side words, returning
+`{x:$93BE,y:$3F6A,defaulted:false}` instead of `{x:0,y:0,defaulted:true}`. The full `$25DC2C` witness
+produced cursor bytes `$D0/$7C` instead of `(1,1)`. Exactly two W458 tests failed. Restoring the one line
+returned `tallyscreen.js` byte-for-byte to SHA-256
+`7abf028d0c7bf6c470fbdca1fd7babfd0fd98e353fe8bdee63f546a096cd44f0`, 57,952 bytes, LF-only.
+
+The live scanner APIs reconcile exactly from W457 baseline: narrow heads **18 -> 17**, widened heads
+**89 -> 88**, body pairs **30 -> 29**, and executable `headIndex()` derivation leaves body-only findings
+**22**, unchanged because the removed pair was head-visible. Both `$25D9E6` and `$25DA60` remain absent
+from head and body registers. No production ROM window was added or widened, and no generated rip or
+asset changed.
+
+Editing-agent validation on the final W458 tree: focused W458 **9 pass / 0 fail / 0 skipped**; complete
+W446-W458 register chain plus row picker **143 pass / 0 fail / 0 skipped**; broad tally, selection
+front-end, integration and register surface **402 pass / 0 fail / 0 skipped**; full suite **4232 pass / 0
+fail / 0 skipped**; webgate **31 PASS / 0 FAIL**, exit 0; ROM verification **VERIFY OK at 613 windows**.
+The coordinator independently repeated the focused W344/W457/W458 surface at **38 pass**, an imported
+affected surface at **545 pass**, the full suite at **4232 pass**, webgate at **31 PASS / 0 FAIL**, and
+ROM verification at **613 windows**. The coordinator reproduced both RED failures, restored the exact
+source hash, and independently scanned the complete image for body entries and exact longword references.
+`git diff --check`, added-character, hash, line-ending and ROM-window checks are clean. No export-web,
+publish, stage, commit, push, branch switch or worktree operation occurred during editing-agent work.
+
+**NEXT CONCRETE DOCKET UNIT: W459, D69 `player.js armRequest25FF38` <->
+`tallyscreen.js tallyRequest25FF38`.** This is the strongest remaining complete-looking live pair,
+registered by the widened head scan at `$25FF38` and by body markers `$25FF4A/$25FF4C`. Audit complete
+cartridge bodies, every caller and continuation, side word polarity, dirty mailbox ownership and source
+reachability before merging or classifying. No publish is due at W458. Continue Black Label through the
+full second loop and close its docket, then finish White Label last.

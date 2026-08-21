@@ -30,7 +30,10 @@ const SOURCE = join(ROOT, 'src', 'tallyscreen.js');
 const HAVE_IMAGE = existsSync(IMAGE);
 const IMG = HAVE_IMAGE ? readFileSync(IMAGE) : null;
 const SKIP_IMAGE = HAVE_IMAGE ? false : 'maincpu.bin absent; skip, not pass';
-const ROM = { u16: (at) => (IMG ? IMG.readUInt16BE(at) : 0) };
+const ROM = {
+  u16: (at) => (IMG ? IMG.readUInt16BE(at) : 0),
+  u32: (at) => (IMG ? IMG.readUInt32BE(at) : 0),
+};
 
 const IMAGE_SHA256 = '4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c';
 const BODY_START = 0x25d9e6;
@@ -303,23 +306,25 @@ test('SECTION 5b: phase-0 parent preserves both post-load continuations and dirt
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: source has one $25D9E6 body and leaves the separate $25DA60 pair intact', () => {
+test('SECTION 6: source keeps one $25D9E6 body and W458 leaves one $25DA60 body', () => {
   const source = readFileSync(SOURCE, 'utf8');
   assert.equal((source.match(/export function cursorsFromPosted25D9E6\s*\(/g) ?? []).length, 1);
   assert.equal((source.match(/export function mapSavedCursor25D9E6\s*\(/g) ?? []).length, 0,
     'the second body cannot regrow');
   assert.match(source, /export \{ cursorsFromPosted25D9E6 as mapSavedCursor25D9E6 \};/,
     'old import name remains a compatibility alias');
-  assert.equal((source.match(/const [cr] = cursorsFromPosted25D9E6\(rom,/g) ?? []).length, 2,
-    'restore and load callers both use the canonical body');
-  assert.equal((source.match(/export function restoreCursors25DA60\s*\(/g) ?? []).length, 1);
-  assert.equal((source.match(/export function loadSavedCursor25DA60\s*\(/g) ?? []).length, 1,
-    '$25DA60 pair remains unmerged for W458');
-  assert.notEqual(loadSavedCursor25DA60, restoreCursors25DA60,
-    '$25DA60 bodies remain separate function objects');
+  assert.equal((source.match(/const [cr] = cursorsFromPosted25D9E6\(rom,/g) ?? []).length, 1,
+    'W458 leaves one canonical load caller using the W457 body');
+  assert.equal((source.match(/export function loadSavedCursor25DA60\s*\(/g) ?? []).length, 1);
+  assert.equal((source.match(/export function restoreCursors25DA60\s*\(/g) ?? []).length, 0,
+    'W458 removed the deferred duplicate body');
+  assert.match(source, /export \{ loadSavedCursor25DA60 as restoreCursors25DA60 \};/,
+    'W458 preserves the historical import as an alias');
+  assert.equal(loadSavedCursor25DA60, restoreCursors25DA60,
+    '$25DA60 imports now share one function object');
 });
 
-test('SECTION 6b: live registers derive 18 narrow, 89 widened, 30 pairs and 22 body-only', () => {
+test('SECTION 6b: live registers derive 17 narrow, 88 widened, 29 pairs and 22 body-only', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -331,17 +336,18 @@ test('SECTION 6b: live registers derive 18 narrow, 89 widened, 30 pairs and 22 b
   const bodyOnly = pairs.filter(([pair]) => pair.split(' <> ')
     .some((body) => !visibleHeads.has(body)));
   const removed = 'tallyscreen.js cursorsFromPosted25D9E6 <> tallyscreen.js mapSavedCursor25D9E6';
-  const deferred = 'tallyscreen.js loadSavedCursor25DA60 <> tallyscreen.js restoreCursors25DA60';
+  const mergedLoad = 'tallyscreen.js loadSavedCursor25DA60 <> tallyscreen.js restoreCursors25DA60';
 
-  assert.equal(narrow.length, 18, 'one exported head row leaves the W456 baseline of 19');
-  assert.equal(heads.length, 89, 'one widened head row leaves the W456 baseline of 90');
-  assert.equal(pairs.length, 30, 'one body edge leaves the W456 baseline of 31');
+  assert.equal(narrow.length, 17, 'W457 removed one head and W458 removes the next');
+  assert.equal(heads.length, 88, 'W458 leaves 88 widened rows after W457 left 89');
+  assert.equal(pairs.length, 29, 'W458 removes the deferred body edge from W457 baseline 30');
   assert.equal(bodyOnly.length, 22,
-    'body-only remains executable headIndex() derivation because the removed pair was head-visible');
+    'body-only remains executable headIndex() derivation because both removed pairs were head-visible');
   assert.equal(heads.includes(BODY_START), false, '$25D9E6 stays off the widened register');
   assert.equal(narrow.some(([at]) => at === BODY_START), false, '$25D9E6 stays off the narrow register');
-  assert.equal(pairs.some(([pair]) => pair === removed), false, 'merged body edge stays absent');
-  assert.deepEqual(pairs.filter(([pair]) => /25D9E6|25DA60/.test(pair)), [
-    [deferred, [0x25da6c, 0x25da86, 0x25da8a, 0x25da8e]],
-  ], 'only the explicitly deferred $25DA60 pair remains in this cursor region');
+  assert.equal(pairs.some(([pair]) => pair === removed), false, 'W457 merged body edge stays absent');
+  assert.equal(heads.includes(0x25da60), false, '$25DA60 stays off the widened register after W458');
+  assert.equal(pairs.some(([pair]) => pair === mergedLoad), false, 'W458 merged body edge stays absent');
+  assert.deepEqual(pairs.filter(([pair]) => /25D9E6|25DA60/.test(pair)), [],
+    'both cursor-region duplicate pairs remain absent');
 });

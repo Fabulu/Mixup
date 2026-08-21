@@ -252,7 +252,7 @@ const srcText = () => {
 /** Comment lines are the RECORD of a merge, so every code check runs on code only. */
 const codeOf = (text) => text.split('\n').filter((L) => !/^\s*(\/\/|\*|\/\*)/.test(L)).join('\n');
 
-test('SECTION 2: `$246800` is claimed EXACTLY ONCE, and the live register is at 18', () => {
+test('SECTION 2: `$246800` is claimed EXACTLY ONCE, and the live register is at 17', () => {
   const idx = portedIndex();
   const claims = [...(idx.get(0x246800) ?? [])].sort();
   assert.equal(claims.length, 1,
@@ -265,8 +265,8 @@ test('SECTION 2: `$246800` is claimed EXACTLY ONCE, and the live register is at 
 
   // THE REGISTER, held here as well as in w446/w447/w448 so deleting one guard cannot hide it.
   const dup = [...idx].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
-  assert.equal(dup.length, 18,
-    'W449 left 19 and W457 merged the complete $25D9E6 cursor-map duplicate, leaving 18. '
+  assert.equal(dup.length, 17,
+    'W457 left 18 and W458 merged the complete $25DA60 cursor-load duplicate, leaving 17. '
     + 'A new duplicate is a wave, not a row: '
     + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
   assert.ok(!dup.includes(0x246800), '$246800 is off the register');
@@ -279,20 +279,21 @@ test('SECTION 2: `$246800` is claimed EXACTLY ONCE, and the live register is at 
 // genuine ROM `bsr $246800` sites. The scan has no axis that could reach it.
 //
 // W450 widened it on three axes and re-ran: 19 -> 92 head-claimed duplicates. W451
-// merged `$242684` to leave 91, W453 merged `$242494` to leave 90, and W457
-// merged `$25D9E6` to leave 89. The body
+// merged `$242684` to leave 91, W453 merged `$242494` to leave 90, W457
+// merged `$25D9E6` to leave 89, and W458 merged `$25DA60` to leave 88. The body
 // register started at 39 pairs, fell to 38 at W451, 37 at W453, and 36 after
 // W454 merged the shared type $11/type $10 turret body. It records a shared RUN
 // of ROM instructions -- the
 // axis that names `clearChain`, and the ONLY one that does. W450's SECTION 6
 // replays these three bodies verbatim and requires all three pairings.
-test('SECTION 2e [W450/W457]: the widened register is 89, and $246800 is claimed once under IT too',
+test('SECTION 2e [W450/W458]: the widened register is 88, and $246800 is claimed once under IT too',
   async () => {
     const { headRegister, bodyPairs } = await import('./w450widenedscan.js');
     const wide = headRegister();
-    assert.equal(wide.length, 89,
-      'the widened duplicate register is not 89. ' + W453_NOTE
-      + 'W457 merged $25D9E6; w450widenedregister.test.js SECTION 3 owns the set');
+    assert.equal(wide.length, 88,
+      'the widened duplicate register is not 88. ' + W453_NOTE
+      + 'W457 merged $25D9E6; W458 merged $25DA60; '
+      + 'w450widenedregister.test.js SECTION 3 owns the set');
     assert.ok(!wide.includes(0x246800),
       '$246800 is claimed twice AGAIN, and this time by a scan that can see a private copy. '
       + 'That is this wave\'s merge coming undone');

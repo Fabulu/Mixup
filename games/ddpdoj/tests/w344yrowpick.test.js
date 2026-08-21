@@ -18,6 +18,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IMAGE = path.join(HERE, '..', 'rip', 'sound', 'maincpu.bin');
 const IMG = existsSync(IMAGE) ? readFileSync(IMAGE) : null;
 const SKIP = IMG ? false : 'the ROM image is absent; skip, not pass';
+const ROM = {
+  u32(at) {
+    if (IMG) return IMG.readUInt32BE(at);
+    return at === SCREEN11.descA + 0x10 ? SCREEN11.savedA : SCREEN11.savedB;
+  },
+};
 
 /** a real object-record slot -- $80E240 is the one W93's witness uses. */
 const SLOT = 0x80e240;
@@ -42,17 +48,21 @@ test('W344 it accepts the current row when the other side does not hold it', () 
   const ram = new Ram();
   ram.setU8(SCREEN11.savedA + 1, 0xff);                    // "nothing saved" -> not held
   ram.setU8(SCREEN11.savedB + 1, 0xff);
+  ram.setU32(SLOT + SCREEN11.desc, SCREEN11.descA);
   ram.setU8(SLOT + SCREEN11.yCur, 1);
-  const got = pickFreeYRow25DA94(ram, SLOT, {});
+  const got = pickFreeYRow25DA94(ram, ROM, SLOT, {});
   assert.equal(got, 1, 'the current cursor is kept when it is free');
   assert.equal(ram.u8(SLOT + SCREEN11.yCur), 1, 'and written back');
+  assert.equal(ram.u8(SCREEN11.savedA + 1), 1, 'the complete body publishes it through descriptor +$10');
 });
 
 test('W344 it starts from the CURRENT cursor, not from zero', () => {
   const ram = new Ram();
   ram.setU8(SCREEN11.savedA + 1, 0xff);
   ram.setU8(SCREEN11.savedB + 1, 0xff);
+  ram.setU32(SLOT + SCREEN11.desc, SCREEN11.descA);
   ram.setU8(SLOT + SCREEN11.yCur, 2);
-  assert.equal(pickFreeYRow25DA94(ram, SLOT, {}), 2,
+  assert.equal(pickFreeYRow25DA94(ram, ROM, SLOT, {}), 2,
     'a free row 2 is kept -- a from-zero search would have returned 0');
+  assert.equal(ram.u8(SCREEN11.savedA + 1), 2, 'the accepted current row reaches the saved record');
 });

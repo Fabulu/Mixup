@@ -377,23 +377,31 @@ export function cursorsFromPosted25D9E6(rom, d5, d6, d7) {
 export { cursorsFromPosted25D9E6 as mapSavedCursor25D9E6 };
 
 /**
- * `$25DA60` -- RESTORE THE CURSORS FROM WHAT THE TALLY POSTED.
+ * `$25DA60` -- LOAD THIS SIDE'S SAVED CURSORS FROM WHAT THE TALLY POSTED.
+ *
+ * This is the one canonical body. W458 proved the former `restoreCursors25DA60`
+ * transcription byte-for-byte equivalent and keeps that name as an export alias below.
  *
  *   move.w $813084,D6 / move.w $813088,D7        side 0
  *   tst.b ($7,A5) / beq
- *   move.w $813086,D6 / move.w $81308A,D7        side 1
+ *   move.w $813086,D6 / move.w $81308A,D7        side nonzero
  *   moveq #0,D5 / move.b ($7,A5),D5 / bsr $25D9E6
  *   move.b D6,($e,A5) / move.b D7,($f,A5) / rts
  *
  * **THE PAIR IT READS IS THE PAIR `$2600D8` WROTE.** `TALLY.postD0`/`postD1` are the
- * same four words, so the screen and the tally are a round trip: state 2 posts the
- * table values, this reads them back as indices, and state 2 posts them again. That
- * closes the loop W273 landed one half of.
+ * same four interleaved words, so the screen and the tally are a round trip: state 2
+ * posts the table values, this reads them back as indices, and state 2 posts them again.
  *
- * `move.b D6,($e,A5)` stores only the LOW BYTE of a word `$25D9E6` may have left as a
- * raw posted value, so a value above $FF truncates here rather than there.
+ * The side test owns only `($7,A5)`: zero selects mailbox words `$813084/$813088`,
+ * every nonzero byte selects `$813086/$81308A`. The separate `moveq` plus `move.b`
+ * zero-extends that raw side byte into D5, so noncanonical `$80` and `$FF` remain
+ * nonzero for `$25D9E6`'s sentinel default. D6 and D7 are loaded as words. The inner
+ * helper's carry is ignored, while its `{ x, y, defaulted }` result exposes D6.W,
+ * D7.W and carry for compatibility. Only D6.B and D7.B are stored, so unmatched
+ * `$0100` truncates here. No mailbox byte or object field other than `+$0E/+$0F` is
+ * owned, and the cartridge returns with a plain `RTS`.
  */
-export function restoreCursors25DA60(ram, rom, a5) {
+export function loadSavedCursor25DA60(ram, rom, a5) {
   const side = ram.u8(a5 + SCREEN11.side) !== 0 ? 1 : 0;   // $25DA6C tst.b / beq
   const d6 = ram.u16(TALLY.postD0[side]);                  // $25DA60 / $25DA74
   const d7 = ram.u16(TALLY.postD1[side]);                  // $25DA66 / $25DA7A
@@ -403,6 +411,9 @@ export function restoreCursors25DA60(ram, rom, a5) {
   ram.setU8(a5 + SCREEN11.yCur, c.y & 0xff);               // $25DA8E move.b D7,($f,A5)
   return c;
 }
+
+// Compatibility name from W277. This is an export alias, not a second body.
+export { loadSavedCursor25DA60 as restoreCursors25DA60 };
 
 /**
  * `$25DB30` -- STATE 0. Choose the descriptor, print the header, post announcement
@@ -860,6 +871,12 @@ export function tallyScreen25DBB4(ram, slot, slotIndex, ctx) {
  * `$25DAEA` says the row is free. So the two sides never land on the same Y row, and which row a side gets
  * depends on where its cursor already was.
  *
+ * **THE BODY CONTINUES THROUGH `$25DAC0`, NOT `$25DAAE`.** After writing `($F,A5)`, `$25DAB2` reloads
+ * the descriptor from `($8,A5)`, follows its `+$10` data pointer, and stores the selected row at `+$1`.
+ * The two descriptor pointers are `$813008` and `$813018`, so phase 0 publishes its collision-resolved Y
+ * row to the same saved-selection record the live cursors later update. W344 stopped at `$25DAAE` and
+ * omitted this external store; W458 pins the complete `[$25DA94,$25DAC2)` body and restores it.
+ *
  * **THE `moveq` AT `$25DA94` IS LOAD-BEARING AND LOOKS DEAD.** `$25DA96`'s `move.b` writes only bits 0..7,
  * so without the `moveq` D7's upper bits would be whatever the caller left. `$25DAEA` is reached with D7 as
  * a whole register. Three genuinely dead instructions were found elsewhere this session (`$2716D8`'s `tst.w`
@@ -872,12 +889,15 @@ export function tallyScreen25DBB4(ram, slot, slotIndex, ctx) {
  * cannot hold three rows -- so the port throws by address rather than hanging, the same treatment W333 gave
  * `$270D92`'s terminator-less walk.
  */
-export function pickFreeYRow25DA94(ram, a5, ctx) {
+export function pickFreeYRow25DA94(ram, rom, a5, ctx) {
   let d7 = ram.u8(a5 + 0x0f) & 0xff;                       // $25DA94 moveq / $25DA96 move.b
   for (let tried = 0; tried <= 3; tried++) {
     if (!otherSideHolds25DAEA(ram, a5, d7)) {              // $25DA9A bsr / $25DA9E bcc
       ram.setU8(a5 + 0x0f, d7);                            // $25DAAE move.b D7,($F,A5)
-      return d7;
+      const a4 = ram.u32(a5 + SCREEN11.desc);              // $25DAB2 movea.l ($8,A5),A4
+      const a0 = rom.u32(a4 + 0x10);                       // $25DAB6 movea.l ($10,A4),A0
+      ram.setU8(a0 + 0x01, d7);                            // $25DABA move.b ($F,A5),($1,A0)
+      return d7;                                           // $25DAC0 rts
     }
     d7 = d7 + 1 <= 2 ? d7 + 1 : 0;                         // $25DAA2/$25DAA4/$25DAAA
   }
@@ -885,39 +905,8 @@ export function pickFreeYRow25DA94(ram, a5, ctx) {
     + 'never exit. Two sides cannot hold three rows, so the board cannot reach this -- it means '
     + '$25DAEA is being asked about a state that does not occur, or ($1,$813008)/($1,$813018) hold the '
     + '$FF sentinel with attract LIVE, which W332 established the board also cannot reach');
+  void ctx;
   return 0;
-}
-
-/** `$813084`..`$81308A` -- the two sides' SAVED cursor words, interleaved at a 2-byte stride, and the
- *  block continues into W343's `$81308C` one-player flag and `$81308E` count. Six words, one structure. */
-const SAVED_CURSOR = Object.freeze({ x0: 0x813084, x1: 0x813086, y0: 0x813088, y1: 0x81308a });
-
-/**
- * `$25DA60` -- LOAD THIS SIDE'S SAVED CURSOR INTO `($E,A5)`/`($F,A5)`.
- *
- *     25da60  move.w $813084,D6 / move.w $813088,D7      side 0
- *     25da6c  tst.b ($7,A5) / beq $25DA80
- *     25da74  move.w $813086,D6 / move.w $81308A,D7      side 1
- *     25da80  moveq #$0,D5 / move.b ($7,A5),D5           the side, zero-extended
- *     25da86  bsr $25D9E6
- *     25da8a  move.b D6,($E,A5) / move.b D7,($F,A5)      stored as BYTES
- *
- * **THIS IS WHAT FILLS THE FIELDS THE PORTED DRAW CODE ALREADY READS.** W332's `drawTallyYRows25DF4C`
- * indexes `$25DFF0 + ($F,A5) * 2` and W329/W330 read `($E,A5)`; until now nothing initialised either, so the
- * port drew from whatever the record happened to hold. Ported consumer, unported producer -- the same shape
- * as W343's `$81308C`, found the same way.
- *
- * `moveq #$0,D5` before `move.b ($7,A5),D5` is a zero-extend, not redundancy -- the same idiom as
- * `$25DA94`'s.
- */
-export function loadSavedCursor25DA60(ram, rom, a5) {
-  const side = ram.u8(a5 + SCREEN11.side);                 // $25DA6C tst.b ($7,A5)
-  const d6 = ram.u16(side !== 0 ? SAVED_CURSOR.x1 : SAVED_CURSOR.x0);
-  const d7 = ram.u16(side !== 0 ? SAVED_CURSOR.y1 : SAVED_CURSOR.y0);
-  const r = cursorsFromPosted25D9E6(rom, side, d6, d7);      // $25DA86 bsr $25D9E6
-  ram.setU8(a5 + SCREEN11.xCur, r.x & 0xff);               // $25DA8A move.b D6,($E,A5)
-  ram.setU8(a5 + SCREEN11.yCur, r.y & 0xff);               // $25DA8E move.b D7,($F,A5)
-  return r;
 }
 
 /**
@@ -968,7 +957,7 @@ export function tallyPhase0Arm25DC2C(ram, rom, a5, ctx) {
     + `phase 0 silently never complete. MEASUREMENT THAT REMOVES THE ASSUMPTION: read $23C98E to its rts `
     + `and find what sets its carry`);
   loadSavedCursor25DA60(ram, rom, a5);                      // $25DC7C bsr $25DA60
-  pickFreeYRow25DA94(ram, a5, ctx);                         // $25DC80 bsr $25DA94
+  pickFreeYRow25DA94(ram, rom, a5, ctx);                    // $25DC80 bsr $25DA94
   ram.setU8(a5 + SCREEN11.phase, 1);                        // $25DC84 -- PHASE 0 -> 1
   // $25DC8A move.b ($7,A5),D0 / $25DC8E jsr $260A88 -- rank.js already models all FOUR
   // announcement posters through announcePost, so this passes the SITE rather than reimplementing it.

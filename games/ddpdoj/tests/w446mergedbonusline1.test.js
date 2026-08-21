@@ -257,7 +257,7 @@ const DOUBLY_CLAIMED_UNAUDITED = Object.freeze([
   // one complete word-width cursor-map body. w457mergedtallycursor.test.js pins
   // the 122-byte cartridge span and both carry continuations.
   0x2417de, 0x242ec2, 0x246710, 0x24676a, 0x249ee2,
-  0x2564f0, 0x259962, 0x25da60, 0x25ff38, 0x263386, 0x2633be, 0x2638a6,
+  0x2564f0, 0x259962, 0x25ff38, 0x263386, 0x2633be, 0x2638a6,
   0x27f6e4, 0x2875b4, 0x28d520, 0x28f588, 0x29f9b4, 0x2a11d4,
 ]);
 
@@ -280,9 +280,11 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
     + 'NOTE $246800 is ABSENT TOO: W449 merged the THREE transcriptions of the chain\n'
     + 'free, and tests/w449merged246800.test.js SECTION 2 pins that. 20 - 1 = 19.\n'
     + 'NOTE $25D9E6 is ABSENT TOO: W457 merged its posting and load transcriptions. '
-    + '19 - 1 = 18.');
-  assert.equal(dup.length, 18,
-    'the register is 18 after W457: W449 left 19 and W457 merged $25D9E6. '
+    + '19 - 1 = 18.\n'
+    + 'NOTE $25DA60 is ABSENT TOO: W458 merged its live and compatibility transcriptions. '
+    + '18 - 1 = 17.');
+  assert.equal(dup.length, 17,
+    'the register is 17 after W458: W457 left 18 and W458 merged $25DA60. '
     + 'Asserted as a NUMBER as '
     + 'well as a set, so that a scan which finds nothing cannot read as two more '
     + 'merges -- an empty dup list satisfies neither.');
@@ -301,15 +303,16 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
 // merged -- and every test in this file, w447, w448 and w449 stayed GREEN.
 // The widened guard went red on it.
 //
-// The old 19 remains in the arithmetic above as history; W457's proved merge
-// moves the live narrow count to 18. The widened figure beside it is the truth.
-test('SECTION 2c [W450/W457]: the widened register is 89, so narrow 18 remains a floor', async () => {
+// The old 19 remains in the arithmetic above as history; W457 and W458's proved
+// merges move the live narrow count to 17. The widened figure beside it is the truth.
+test('SECTION 2c [W450/W458]: the widened register is 88, so narrow 17 remains a floor', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
-  assert.equal(headRegister().length, 89,
+  assert.equal(headRegister().length, 88,
     'the WIDENED register (private functions, arrows, methods and the whole doc opening '
-    + 'span, not just `export function`) is not 89. ' + W453_NOTE + 'W457 merged $25D9E6; '
+    + 'span, not just `export function`) is not 88. ' + W453_NOTE
+    + 'W457 merged $25D9E6; W458 merged $25DA60; '
     + 'tests/w450widenedregister.test.js SECTION 3 holds the exact set and is where a new '
-    + 'duplicate must be resolved. This cross-check prevents narrow 18 being read as the total');
+    + 'duplicate must be resolved. This cross-check prevents narrow 17 being read as the total');
 });
 
 // ======================================================= SECTION 3: THE STATE TRACE

@@ -20,7 +20,13 @@ const IMAGE = path.join(HERE, '..', 'rip', 'sound', 'maincpu.bin');
 const IMG = existsSync(IMAGE) ? readFileSync(IMAGE) : null;
 const SKIP = IMG ? false : 'the ROM image is absent; skip, not pass';
 const SLOT = 0x80e240;
-const ROM = { u16: (a) => (IMG ? IMG.readUInt16BE(a) : 0) };
+const ROM = {
+  u16: (a) => (IMG ? IMG.readUInt16BE(a) : 0),
+  u32(a) {
+    if (IMG) return IMG.readUInt32BE(a);
+    return a === SCREEN11.descA + 0x10 ? SCREEN11.savedA : SCREEN11.savedB;
+  },
+};
 
 /** a slot with every gate already satisfied and START held, so each test can spoil ONE thing. */
 function ready(ram) {
