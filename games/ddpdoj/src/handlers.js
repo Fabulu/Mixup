@@ -79,13 +79,9 @@
 //   * `$27E812` (types `$85`/`$86` death) -- THE ITEM allocator, and the one
 //     that really is the `$816B7A` family: six pools, 25 slots of `$40`,
 //     driven by type-5 call #18 `$27E99E`.  Wave I2.
-// The fire/state machines of `$10`, `$82` and `$05`/`$07` are still whole-block
-// notes: W30 wired `$11`, `$85` and `$80` and did NOT touch those three.
-// The fields those routines would have written (HP after a hit, spawned
-// effect/bullet records) are EXCLUDED from the compared set BY NAME.  The
-// position column (`$2/$4,A6`) is untouched by any of them -- it is the
-// verified done-when column (W24 proved it for one mover; W25 generalised the
-// proof to six types through the real per-frame dispatch, W30 to nine).
+// The type `$10`, `$11`, `$82` and `$05`/`$07` fire/state machines described
+// by the early W25/W30 census have since been ported. Their live implementations
+// below, not this historical inventory, define current production coverage.
 
 import { unreached } from './unported.js';
 import { install24150A } from './palette.js';
@@ -107,6 +103,7 @@ import { slew64FromRecord } from './aim.js';
 import { bigBurst28B4BE } from './boss.js';
 import { AimTables, AIM, aim64, aim256, aim64FromCaller, aim64AtTarget,
   aim64TurnStore, aim256FromCaller, slew64, targetSelect } from './aim.js';
+import { TURRET_HANDLERS, turretStep } from './turret.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
   enqueueRegistersThroughStub, enqueueZoomedThroughStub,
@@ -572,6 +569,8 @@ function aimTables(rom) {
   if (!t) { t = new AimTables(rom); AIM_TABLES.set(rom, t); }
   return t;
 }
+const TURRET_11 = TURRET_HANDLERS.get(0x2688cc);
+const TURRET_10 = TURRET_HANDLERS.get(0x268232);
 
 // helper: $11-style on-screen bounds test (Y first, then X; the inlined variant
 // at $2688D2).  Returns true if OFF-screen.
@@ -678,7 +677,6 @@ function deathSeq11(ram, rom, a5, a6, ctx, d1) {
 
 // ---- $268990..$268B1A: fire / state machine -------------------------------
 function fire11(ram, rom, a5, a6, ctx) {
-  const u = ctx.unported;
   if (ram.u16(G.freeze) === 0) {                       // $268990 tst.w $8130D2
     const d7 = ram.u16(a6 + S.speed);                  // $268998 move.w $1a(A6)
     let d1 = (d7 & 0x3e) << 2;                         // $26899C/A0/A2 (x4)
@@ -710,25 +708,11 @@ function fire11(ram, rom, a5, a6, ctx) {
       d1, u32(d2 + 0x22c59c), 0x410, 0x1e);            // $2689F6/$2689FC/$268A00/$268A08
     return;                                            // $268A08 jmp (A0)
   }
-  if (ram.u16(G.freeze) !== 0) { draw11(ram, rom, a5, a6); return; } // $268A0E
-  // $268A16 `move.b ($33,A5),D1` -- loaded, then overwritten by the aim below
-  // and never read on the no-aim path.  Transcribed as a comment, not as code.
-  // $268A1A: the aim CADENCE.  `bcc` is "no borrow", so the aim runs only on
-  // the frame the byte was already 0.
-  const cad = ram.u8(a5 + R.cooldown);                 // $268A1A subq.b #1,($18,A5)
-  ram.setU8(a5 + R.cooldown, (cad - 1) & 0xff);
-  if (cad === 0) {                                     // $268A1E bcc $268A5A
-    ram.setU8(a5 + R.cooldown, ram.u8(a5 + R.cooldownReload)); // $268A20 reload
-    const selfY = ram.u16(a6 + 0x02), selfX = ram.u16(a6 + 0x04); // $268A26 movem.w
-    // $268A2C addi.w #$200,D0 -- THE MUZZLE OFFSET, long axis only.
-    const r = aim64FromCaller(aimTables(rom), ram, a5, u16(selfY + 0x200), selfX);
-    if (r.carry) { draw11(ram, rom, a5, a6); return; } // $268A36 bcs $268A68
-    const nf = slew64(ram.u8(a5 + R.facing), r.dir);   // $268A38/$268A3C jsr $242190
-    ram.setU8(a5 + R.facing, nf);                      // $268A42 move.b D1,($33,A5)
-    // $268A46 addq.b #1,D1 / andi.w #$3E,D1 / add.w D1,D1 -- 32 entries, stride 4.
-    ram.setU32(a5 + R.sprite22,                        // $268A54 move.l (A0,D1.w)
-      rom.u32(SPRITE_TAB.h11_fire + (((nf + 1) & 0x3e) * 2)));
-  }
+  // `$268A0E..$268A5A`: shared with type $10. Frozen and no-live-player
+  // carry branch to this type's common draw; cadence no-borrow and a completed
+  // aim fall through into the type $11 fan below.
+  const turret = turretStep(() => aimTables(rom), ram, rom, a5, a6, TURRET_11);
+  if (turret.next === 'draw') { draw11(ram, rom, a5, a6); return; }
   // $268A5A: the FAN counter (+$28), behind the sub-record's bit-5 flag.
   if ((ram.u8(a6) & 0x20) === 0) { draw11(ram, rom, a5, a6); return; } // btst #5 / beq
   const c = (ram.u8(a5 + R.fireCtr) - 1) & 0xff;       // $268A62 subq.b #1,($28,A5)
@@ -869,7 +853,6 @@ function handler10(ram, rom, a5, ctx) {
 // LINES.  Nothing here fakes a rank input: `$813092` and `$813098` are read
 // out of RAM exactly as `$268ABE`'s caller reads them.
 function fire10(ram, rom, a5, a6, ctx) {
-  const u = ctx.unported;
   if (ram.u16(G.freeze) === 0) {                       // $2682F8 tst.w $8130D2
     const d7 = ram.u16(a6 + S.speed);                  // $268300 move.w ($1A,A6),D7
     // $268304 moveq #$3E / and.w D7,D1 / add.w D1,D1 / add.w D1,D1 -- x4, so
@@ -893,28 +876,16 @@ function fire10(ram, rom, a5, a6, ctx) {
       d1, u32(d2 + 0x22c59c), 0x410, 0x1e);            // $26835E/$268364/$268368
     return;                                            // $268370 jmp (A0)
   }
-  if (ram.u16(G.freeze) !== 0) { draw10(ram, rom, a5, a6); return; } // $268376
-  // $26837E `move.b ($33,A5),D1` -- loaded and overwritten by the aim, exactly
-  // as $268A16 is.  Transcribed as a comment, not as code.
-  const cad = ram.u8(a5 + R.cooldown);                 // $268382 subq.b #1,($18,A5)
-  ram.setU8(a5 + R.cooldown, (cad - 1) & 0xff);
-  if (cad === 0) {                                     // $268386 bcc $2683C2
-    ram.setU8(a5 + R.cooldown, ram.u8(a5 + R.cooldownReload));  // $268388
-    const selfY = ram.u16(a6 + 0x02), selfX = ram.u16(a6 + 0x04);  // $26838E movem.w
-    const r = aim64FromCaller(aimTables(rom), ram, a5,
-      u16(selfY + 0x200), selfX);                      // $268394/$268398 jsr $24200A
-    if (r.carry) { draw10(ram, rom, a5, a6); return; } // $26839E bcs $2683CE
-    const nf = slew64(ram.u8(a5 + R.facing), r.dir);   // $2683A0/$2683A4 jsr $242190
-    ram.setU8(a5 + R.facing, nf);                      // $2683AA move.b D1,($33,A5)
-    ram.setU32(a5 + R.sprite22,                        // $2683BC move.l (A0,D1.w)
-      rom.u32(SPRITE_TAB.h10_fire + (((nf + 1) & 0x3e) * 2)));
-  }
+  // `$268376..$2683C2`: the same production block type $11 enters at $268A0E,
+  // parameterised only by this type's `$268694` sprite table. Preserve its
+  // cartridge exits: freeze and aim carry draw, all other arms reach fire.
+  const turret = turretStep(() => aimTables(rom), ram, rom, a5, a6, TURRET_10);
+  if (turret.next === 'draw') { draw10(ram, rom, a5, a6); return; }
   if ((ram.u8(a6) & 0x20) === 0) { draw10(ram, rom, a5, a6); return; } // $2683C2 btst #5
   const c = (ram.u8(a5 + R.fireCtr) - 1) & 0xff;       // $2683C8 subq.b #1,($28,A5)
   ram.setU8(a5 + R.fireCtr, c);
   if (c !== 0) { draw10(ram, rom, a5, a6); return; }    // $2683CC beq $2683EC
   fireFan10(ram, rom, a5, a6, ctx);                    // $2683EC
-  void u;
 }
 
 /** $2683CE: TYPE $10's COMMON DRAW -- the register-convention emitter through

@@ -288,8 +288,8 @@ test('SECTION 3: one `$242684` claimant survives, and all six old private heads 
     'the deleted body pair left the body register too');
   assert.equal(headRegister().length, 90,
     'W450 92 minus merged $242684 at W451 and $242494 at W453 is 90');
-  assert.equal(pairs.length, 37,
-    'W450 39 body pairs minus the W451 $242684 pair and W453 $242494 pair is 37');
+  assert.equal(pairs.length, 36,
+    'W450 39 body pairs minus W451 $242684, W453 $242494 and W454 turret is 36');
 });
 
 // ==============================================================================================

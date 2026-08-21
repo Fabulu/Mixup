@@ -280,8 +280,9 @@ test('SECTION 2: `$246800` is claimed EXACTLY ONCE, and the register is at 19', 
 //
 // W450 widened it on three axes and re-ran: 19 -> 92 head-claimed duplicates. W451
 // merged `$242684` to leave 91, then W453 merged `$242494` to leave 90. The body
-// register started at 39 pairs, fell to 38 at W451, and is 37 after W453. It records a
-// shared RUN of ROM instructions -- the
+// register started at 39 pairs, fell to 38 at W451, 37 at W453, and 36 after
+// W454 merged the shared type $11/type $10 turret body. It records a shared RUN
+// of ROM instructions -- the
 // axis that names `clearChain`, and the ONLY one that does. W450's SECTION 6
 // replays these three bodies verbatim and requires all three pairings.
 test('SECTION 2e [W450]: the widened register is 90, and $246800 is claimed once under IT too',

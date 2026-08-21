@@ -5012,3 +5012,55 @@ strongest body-only pair: seven shared markers across `$268A1A..$268A54`, with n
 by a widened head-register row. Audit both bodies and their real callers against the cartridge before
 merging or classifying them. Continue Black Label through the full second loop and close its docket,
 then finish White Label last.
+
+
+### D69 FOLLOW-UP, W454 TURRET BODY MERGE: TWO TYPE EXITS, ONE PRODUCTION IMPLEMENTATION
+
+**THE BODIES ARE EQUIVALENT AND MERGED.** `handlers.js fire11` no longer carries the private
+transcription. Type `$11` and type `$10` both call exported `turret.js turretStep`, passing the live A6
+register plus a type specification. The shared result names the cartridge continuation: freeze and
+no-live-player carry go to that type's common draw, while cadence no-borrow and successful aim fall
+through into that type's own fire counter and fan. Type `$11` keeps table `$268C9E`, draw size `$0620`
+and kind `$D`; type `$10` keeps table `$268694`, draw size `$0830` and kind `$C`.
+
+**THE IMAGE PINS BOTH COMPLETE SHARED BLOCKS.** The exact 0x50-byte spans are
+`$268A0E..$268A5D` and `$268376..$2683C5`. All seven W450 markers map independently:
+`$268A1A/$268382`, `$268A20/$268388`, `$268A26/$26838E`, `$268A36/$26839E`,
+`$268A38/$2683A0`, `$268A42/$2683AA`, and `$268A54/$2683BC`. The 80-byte bodies differ at only
+three byte offsets: each type's freeze branch displacement, carry branch displacement and PC-relative
+sprite-table displacement. Short branches use opcode address plus two. Type `$11`'s `beq.w` at
+`$268A5E` targets `$268A68` from extension word `$268A60`; both `lea` targets are likewise based at
+their extension words, yielding `$268C9E` and `$268694`.
+
+**DIRTY PRODUCTION RECORDS PROVE THE CALLING CONVENTION AND EXTERNAL STATE.** Both complete handlers
+were driven with recycled A5 and A6 bytes through freeze, cadence non-borrow, cadence borrow and
+no-live-player carry. The witnesses include cadence, one-step facing wrap 63 to 0, sprite longword,
+type-specific two-record bucket output, draw size and fire counter. Borrow reloads the byte from
+A5+$19 before target selection. `movem.w ($2,A6),D0-D1` reads Y then X, sign-extends each word, and the
+subsequent word operations consume the low words. `addi.w #$0200,D0` applies the muzzle offset. The
+sprite index preserves `addq.b`, `andi.w #$003E`, and four-byte longword stride semantics. A separate
+dirty-pointer witness leaves A5+$06 aimed at a decoy while passing the caller-held A6; only the live
+A6 coordinates determine the result.
+
+**A REAL TEMPORARY RED MUTATION WAS RUN AND RESTORED BYTE-EXACT.** Routing the type `$11` production
+call through `TURRET_10` selected `$268694` instead of `$268C9E`. The focused external witness failed
+with sprite `$0016F8B4` instead of `$001676B4`. `handlers.js` SHA-256 was
+`536d092bb1e90d8ed25a8e9cc84b77237f4df02f723e579ba1c612fe808c114a` before mutation and exactly the
+same after restoration.
+
+The duplicate registers reconcile exactly: narrow export-only heads **19**, unchanged; widened heads
+**90**, unchanged; body pairs **37 -> 36**, with body-only findings **25 -> 24**. No ROM export window
+was widened or added.
+
+Validation on the quiet tree: focused W454 **8 pass / 0 fail / 0 skipped**; directly affected turret,
+handler and W446-W453 register regressions **155 pass / 0 fail / 0 skipped**; full suite **4189 pass /
+0 fail / 0 skipped**; webgate exit 0 with all checks passing; `--verify` OK at **613 windows**. The W20
+board oracle matched type `$10` and `$11` over **14,732 one-step pairs** and **14,732 closed-loop
+steps**, with zero facing, cadence or sprite divergence on its production sample-point arm.
+
+**NEXT CONCRETE DOCKET UNIT: W455, D69 `items.js beamReset25270C` <->
+`laser.js wipeSegmentPool`.** It is the strongest remaining body-only pair, with six shared markers
+over `$25279A..$2527AE`. Audit cartridge bytes, all callers and dirty pool-reset behavior before
+merging or classifying. Publish is next due at **W456**, against a quiet tree and with `export-web.mjs`
+before `publish.mjs`. Continue Black Label through the full second loop and close its docket, then
+finish White Label last.

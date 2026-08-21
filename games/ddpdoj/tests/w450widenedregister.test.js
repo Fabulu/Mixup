@@ -28,8 +28,8 @@
 //     then merged by W451                -1
 //     then merged by W453                -1
 //
-// ...plus a second register the old scan had no axis for at all: 37 PAIRS OF
-// BODIES that transcribe a shared RUN of ROM instructions. 25 of those name a
+// ...plus a second register the old scan had no axis for at all: 36 PAIRS OF
+// BODIES that transcribe a shared RUN of ROM instructions. 24 of those name a
 // body that appears nowhere on the head register.
 //
 // **A LIST IS NOT THE DELIVERABLE.** W444's rule, and W449 proved it again: the
@@ -46,7 +46,7 @@
 //   1   the scan found something -- floors, so a broken regex cannot read clean
 //   2   the widening WEAKENS NOTHING: the shipped register is a strict subset
 //   3   THE HEAD REGISTER, exact, 90
-//   4   THE BODY REGISTER, exact, 37 pairs
+//   4   THE BODY REGISTER, exact, 36 pairs
 //   5   RED PROOFS on synthetic trees -- one per axis, plus two negative controls
 //   6   THE HISTORICAL POSITIVE CONTROL: W449's own `clearChain`, verbatim
 
@@ -279,10 +279,13 @@ test('SECTION 3: the widened head register is exactly these 90 addresses', () =>
 // a RUN is a transcription. Keyed by `file name` and never by line number, so
 // an edit anywhere above a function cannot redden this.
 //
-// 25 of these 37 name a body that is on NO head register row, so they are
+// 24 of these 36 name a body that is on NO head register row, so they are
 // findings the address axis cannot make on its own. The sharpest:
-//   7 markers  handlers.js `fire11`      <> turret.js `turretStep`   $268A1A..$268A54
 //   6 markers  items.js `beamReset25270C` <> laser.js `wipeSegmentPool` $25279A..$2527AE
+//
+// W454 REMOVED `handlers.js fire11 <> turret.js turretStep`: the cartridge's
+// `$268A0E` and `$268376` blocks differ only in their type-local draw branches
+// and sprite-table address, so both production handlers now call one body.
 //
 // W453 REMOVED `bossscripts.js dist242494 <> items.js dist242494`, which shared
 // six markers and also occupied a head row. Exact cartridge bytes and the real
@@ -299,7 +302,6 @@ const BODY_REGISTER = Object.freeze([
   ['handlers.js damageFirstHead <> handlers.js damageFirstHead269CEA', [0x242684, 0x263762]],
   ['handlers.js damageFirstHead <> handlers.js handler82', [0x242684, 0x263762]],
   ['handlers.js damageFirstHead269CEA <> handlers.js handler82', [0x242684, 0x263762]],
-  ['handlers.js fire11 <> turret.js turretStep', [0x268a1a, 0x268a20, 0x268a26, 0x268a36, 0x268a38, 0x268a42, 0x268a54]],
   // W451 REMOVED `handlers.js onScreen242684 <> items.js offScreen242684`
   // ($242688, $24268C): both bodies are gone, merged into the one exported
   // `movement.js offScreen242684`. The three `damageFirstHead` rows below KEEP
@@ -335,7 +337,7 @@ const BODY_REGISTER = Object.freeze([
   ['tallyscreen.js loadSavedCursor25DA60 <> tallyscreen.js restoreCursors25DA60', [0x25da6c, 0x25da86, 0x25da8a, 0x25da8e]],
 ]);
 
-test('SECTION 4: exactly these 37 pairs of bodies transcribe a shared run of ROM instructions',
+test('SECTION 4: exactly these 36 pairs of bodies transcribe a shared run of ROM instructions',
   () => {
     const got = bodyPairs().map(([p, v]) => [p, v]);
     assert.deepEqual(got.map(([p]) => p), BODY_REGISTER.map(([p]) => p),
@@ -354,10 +356,10 @@ test('SECTION 4: exactly these 37 pairs of bodies transcribe a shared run of ROM
         + 'or it can mean somebody deleted the comments that made the duplicate visible');
     }
 
-    assert.equal(got.length, 37,
-      'the body register is not 37 pairs (39 at W450, minus $242684 at W451 and '
-      + '$242494 at W453). As a NUMBER as well as a set, because an empty '
-      + 'list satisfies a deepEqual against a shrunken array and reads as progress');
+    assert.equal(got.length, 36,
+      'the body register is not 36 pairs (39 at W450, minus $242684 at W451, '
+      + '$242494 at W453 and the turret block at W454). As a NUMBER as well as a set, '
+      + 'because an empty list satisfies a deepEqual against a shrunken array and reads as progress');
   });
 
 // ---------------------------------------------------------------- SECTION 5

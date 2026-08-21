@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W453)
+Updated: 2026-08-21 (W454)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,57 +10,68 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W453 merged D69 `$242494` with cartridge and dirty-item proof.**
-The next concrete unit is **W454 / D69 `handlers.js fire11` <-> `turret.js turretStep`**, now the
-strongest body-only duplicate pair: seven shared markers over `$268A1A..$268A54`, with neither body on
-a widened head-register row. Audit both bodies and their real callers before merging or classifying.
-Also open: the remaining widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy
-types, full Black Label loop-2 coverage, and other explicit docket items.
+`docs/DOCKET.md` is authoritative. **W454 merged the D69 type `$11` and type `$10` turret blocks with
+cartridge, dirty-handler and board-oracle proof.** The next concrete unit is **W455 / D69
+`items.js beamReset25270C` <-> `laser.js wipeSegmentPool`**, now the strongest body-only duplicate pair:
+six shared markers over `$25279A..$2527AE`. Audit both bodies, all callers and dirty pool-reset state
+before merging or classifying. Also open: the remaining widened duplicate rows, front-end screens
+D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and other explicit docket
+items.
 
-## W453 LANDED LOCALLY: `$242494` IS ONE EQUIVALENT BODY NOW
+## W454 LANDED LOCALLY: BOTH TURRET TYPES USE ONE PRODUCTION BODY
 
-`items.js` imports the exported `bossscripts.js dist242494`, deletes its private transcription, and
-keeps the real `$27EE88` record reads explicit as A6+$02 Y, A6+$04 X, target Y `$4600`, target X
-`$1C00`. The survivor has 20 production calls.
+`handlers.js` imports `TURRET_HANDLERS` and `turretStep` from `turret.js`. Both complete production
+handlers pass the caller-held A6 register and their type specification. The helper reports the exact
+continuation: freeze and no-live-player carry branch to common draw; cadence no-borrow and successful
+aim reach each type's own fire counter and fan. Type `$11` retains `$268C9E`, draw size `$0620` and
+kind `$D`; type `$10` retains `$268694`, size `$0830` and kind `$C`.
 
-Exact raw-image bytes at `$24248E..$2424B9` pin both `movem.w` loads and every arithmetic step: wrapped
-word subtraction, `$8000` negation, Y-only three-quarter scale, unsigned compare and swap, logical
-half-minimum, wrapped final add, and `move.w D0,D0`. `$27EE80..$27EE9F` pins target order, `jsr`, the
-unsigned `$0200` threshold, latch and speed stores. No export window was needed or added.
+Exact raw-image spans `$268A0E..$268A5D` and `$268376..$2683C5` pin all 80 bytes of each body. The seven
+W450 markers map to `$268A1A/$268382`, `$268A20/$268388`, `$268A26/$26838E`,
+`$268A36/$26839E`, `$268A38/$2683A0`, `$268A42/$2683AA` and `$268A54/$2683BC`. Only three bytes
+differ: the type-local freeze and carry displacements and the PC-relative table displacement. Short
+branches use opcode address plus two; type `$11`'s wide `beq` uses extension address `$268A60`; both
+`lea` targets use their extension-word addresses. No export window was needed or added.
 
-The real item driver runs four dirty reused kind `$08` records. Positive and negative near-Y arms latch
-to `$A108`, speed `$0A`, angle `$20`; far-X-only and far-Y-only arms stay `$A008`, speed `$5D`, angle
-`$29`. Each emits one 12-byte bucket-17 record and preserves frozen coordinates plus unowned dirty
-bytes. This proves both RAM fields and their order outside the helper.
+Both real handlers ran dirty recycled A5/A6 records through opposite freeze states, cadence
+non-borrow, cadence borrow, no-live-player carry and both table arms. External witnesses pin cadence,
+facing wrap 63 to 0, sprite longword, two-record bucket output, type-specific draw size and fire-counter
+continuation. A separate dirty-decoy test proves the helper consumes the live A6 value rather than
+re-reading A5+$06. W20's board oracle matched type `$10` and `$11` on 14,732 one-step pairs and 14,732
+closed-loop steps with zero divergence on facing, cadence and sprite.
 
-A temporary stale-signature mutation changed the call back to `dist242494(ram, a6, D2, D3)`. The
-focused regression rejected the call shape and the behavioral witness stayed `$A008` where `$A108`
-was required. `items.js` SHA-256 matched before and after restoration:
+The temporary RED mutation routed type `$11` through `TURRET_10`; the focused production witness read
+sprite `$0016F8B4` from the wrong table instead of `$001676B4`. `handlers.js` SHA-256 matched before and
+after exact restoration:
 
-    4cc3780ebca5af0b9e9cf3a6b3ac91baf12a9782a2974d7eb51832545fa04e5c
+    536d092bb1e90d8ed25a8e9cc84b77237f4df02f723e579ba1c612fe808c114a
 
 The duplicate registers reconcile exactly:
 
     narrow export-only head rows             19, unchanged historical floor
-    widened head rows                        91 -> 90
-    widened body pairs                       38 -> 37
+    widened head rows                        90, unchanged
+    widened body pairs                       37 -> 36
+    body-only findings                       25 -> 24
 
-Final W453 validation on the quiet tree:
+Final W454 validation on the quiet tree:
 
-    focused W453                              8 pass / 0 fail / 0 skipped
-    affected item, W94, W446-W451/W453      165 pass / 0 fail / 0 skipped
-    node --test games/ddpdoj/tests/         4181 pass / 0 fail / 0 skipped
+    focused W454                              8 pass / 0 fail / 0 skipped
+    affected turret, handler, W446-W453     155 pass / 0 fail / 0 skipped
+    node --test games/ddpdoj/tests/         4189 pass / 0 fail / 0 skipped
     node games/ddpdoj/tools/webgate.mjs    exit 0, all checks passed
     export-tables.py --verify               VERIFY OK at 613 windows
+    w20turretgate.mjs                       14,732 one-step and closed-loop, 0 divergent
 
-The W441 D14 oracle ladder does not intersect kind `$08` item homing and was not relevant to this
-behavior-equivalent merge. No publish was requested; live build `20260820231140` remains unchanged.
+No publish was due. Live build **`20260820231140`** remains unchanged. Publish is next due at **W456**.
+Run `export-web.mjs` before `publish.mjs`, and only against a quiet tree.
 
 ## IMMEDIATE ORDER
 
-1. Dispatch W454 on the D69 `handlers.js fire11` <-> `turret.js turretStep` seven-marker body pair.
-2. Continue the docket and complete Black Label through the full second loop.
-3. Finish White Label last, only after Black Label and its docket are complete.
+1. Dispatch W455 on D69 `items.js beamReset25270C` <-> `laser.js wipeSegmentPool`, six markers over
+   `$25279A..$2527AE`.
+2. Publish at W456, with `export-web.mjs` first and no working agent in the tree.
+3. Continue the docket and complete Black Label through the full second loop.
+4. Finish White Label last, only after Black Label and its docket are complete.
 
 ## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES
 

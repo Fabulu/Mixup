@@ -17,7 +17,7 @@ import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { Unreached } from '../src/unported.js';
 import { AIM, AimTables } from '../src/aim.js';
-import { TURRET, TURRET_HANDLERS, turretStep, turretHandler } from '../src/turret.js';
+import { TURRET, TURRET_HANDLERS, turretStep } from '../src/turret.js';
 import { PROTO, loadRecordProto, loadSubProto, loadOffsetPairs } from '../src/enemyproto.js';
 
 function grab(fn) { try { fn(); } catch (e) { return e; } return null; }
@@ -104,7 +104,7 @@ function scene({ facing = 0, cad = 0, rel = 1, freeze = 0, y = 0x3000,
 test('$268A1A re-aims only on the frame ($18,A5) BORROWS', () => {
   // cadence 1 -> 0: decrement, no aim, facing untouched
   let ram = scene({ facing: 5, cad: 1 });
-  let r = turretStep(T, ram, ROM, A5, SPEC);
+  let r = turretStep(T, ram, ROM, A5, A6, SPEC);
   assert.equal(r.aimed, false);
   assert.equal(ram.u8(A5 + TURRET.cadenceOff), 0);
   assert.equal(ram.u8(A5 + TURRET.facingOff), 5, 'no aim frame must not turn');
@@ -112,7 +112,7 @@ test('$268A1A re-aims only on the frame ($18,A5) BORROWS', () => {
   // The scene puts the player straight below the muzzle (dy = +$1E00, dx = 0),
   // so the aim is direction 0 and the short way from 5 is DOWNWARD.
   ram = scene({ facing: 5, cad: 0, rel: 1 });
-  r = turretStep(T, ram, ROM, A5, SPEC);
+  r = turretStep(T, ram, ROM, A5, A6, SPEC);
   assert.equal(r.aimed, true);
   assert.equal(r.dir, 0, 'straight below the muzzle is direction 0');
   assert.equal(ram.u8(A5 + TURRET.cadenceOff), 1, 'reloaded from ($19,A5)');
@@ -125,7 +125,7 @@ test('a reload of 3 makes the turret aim once every FOUR frames', () => {
   // asserted here rather than shipped unexercised.
   const ram = scene({ facing: 5, cad: 3, rel: 3 });
   const aims = [];
-  for (let f = 0; f < 12; f++) aims.push(turretStep(T, ram, ROM, A5, SPEC).aimed);
+  for (let f = 0; f < 12; f++) aims.push(turretStep(T, ram, ROM, A5, A6, SPEC).aimed);
   assert.deepEqual(aims, [false, false, false, true, false, false, false, true,
     false, false, false, true]);
 });
@@ -133,14 +133,14 @@ test('a reload of 3 makes the turret aim once every FOUR frames', () => {
 // ------------------------------------------------------------- the freeze gate
 test('$8130D2 freezes the CADENCE as well as the aim -- it preserves phase', () => {
   const ram = scene({ facing: 5, cad: 1, freeze: 1 });
-  const r = turretStep(T, ram, ROM, A5, SPEC);
+  const r = turretStep(T, ram, ROM, A5, A6, SPEC);
   assert.equal(r.frozen, true);
   assert.equal(ram.u8(A5 + TURRET.cadenceOff), 1,
     'a frozen frame must NOT decrement the countdown');
   assert.equal(ram.u8(A5 + TURRET.facingOff), 5);
   // and the mutation the gate uses must actually change this
   const ram2 = scene({ facing: 5, cad: 1, freeze: 1 });
-  turretStep(T, ram2, ROM, A5, SPEC, 'no-freeze-gate');
+  turretStep(T, ram2, ROM, A5, A6, SPEC, 'no-freeze-gate');
   assert.equal(ram2.u8(A5 + TURRET.cadenceOff), 0);
 });
 
@@ -152,7 +152,7 @@ test('both players dead: the RELOAD still happens, the aim does not', () => {
   // after a single player death -- and no board frame in either corpus has an
   // enemy aiming with both players dead, so only this test covers it.
   const ram = scene({ facing: 5, cad: 0, rel: 1, p1: 0x0000, p2: 0x0000 });
-  const r = turretStep(T, ram, ROM, A5, SPEC);
+  const r = turretStep(T, ram, ROM, A5, A6, SPEC);
   assert.equal(r.carry, true);
   assert.equal(r.aimed, false);
   assert.equal(ram.u8(A5 + TURRET.cadenceOff), 1, 'reloaded before the aim');
@@ -161,9 +161,9 @@ test('both players dead: the RELOAD still happens, the aim does not', () => {
 
 test('a nominated-but-dead P2 is rescued onto P1 by $242722', () => {
   const alive = scene({ facing: 0, cad: 0, targ: 0 });
-  turretStep(T, alive, ROM, A5, SPEC);
+  turretStep(T, alive, ROM, A5, A6, SPEC);
   const rescued = scene({ facing: 0, cad: 0, targ: 1 });   // nominate P2
-  turretStep(T, rescued, ROM, A5, SPEC);
+  turretStep(T, rescued, ROM, A5, A6, SPEC);
   assert.equal(rescued.u8(A5 + TURRET.facingOff),
     alive.u8(A5 + TURRET.facingOff), 'the fallback must reproduce the P1 aim');
 });
@@ -176,7 +176,7 @@ test('$268A54 indexes 32 entries with ((facing+1) & $3E) * 2', () => {
   const seen = new Set();
   for (const f of [0, 1, 2, 30, 31, 62, 63]) {
     const ram = scene({ facing: f, cad: 0 });
-    turretStep(T, ram, ROM, A5, SPEC);
+    turretStep(T, ram, ROM, A5, A6, SPEC);
     const got = ram.u32(A5 + TURRET.gfxOff);
     const facing = ram.u8(A5 + TURRET.facingOff);
     assert.equal(got >>> 16, 0xc0de, 'must come out of the 32-entry table');
@@ -196,10 +196,11 @@ test('the two turret types differ ONLY in their sprite table', () => {
   assert.equal(b.gfx, 0x268694);
 });
 
-test('dispatching a WHOLE handler is a LOUD NAMED THROW, not a quiet return', () => {
-  const e = grab(() => turretHandler(A5, 0x2688cc));
-  assert.ok(e instanceof Unreached);
-  assert.equal(e.romAddress, 0x2688cc);
+test('the shared block reports the exact draw or fire continuation', () => {
+  assert.equal(turretStep(T, scene({ freeze: 1 }), ROM, A5, A6, SPEC).next, 'draw');
+  assert.equal(turretStep(T, scene({ cad: 1 }), ROM, A5, A6, SPEC).next, 'fire');
+  assert.equal(turretStep(T, scene({ cad: 0, p1: 0, p2: 0 }), ROM, A5, A6, SPEC).next,
+    'draw', 'no-live-player carry branches to draw after cadence reload');
 });
 
 // ------------------------------------------------------- the prototype loaders

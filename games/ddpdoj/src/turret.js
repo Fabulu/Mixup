@@ -1,5 +1,5 @@
 // THE ROTATING TURRET -- `$268A0E..$268A5A` (type $11) and `$268376..$2683C2`
-// (type $10), which are the SAME BLOCK with a different sprite table.
+// (type $10), one shared production block with a different sprite table.
 //
 // THE OWNER NAMED THIS TEST (`20-OWNER-scenarios-must-play.md` §3): *"The first
 // enemies in the game ... have rotating turrets that point at you the whole
@@ -41,13 +41,12 @@
 // they do.  A port that re-aims every frame rotates its turrets twice as fast
 // as the cartridge and is wrong in a way a screenshot cannot see.
 //
-// WHAT IS DELIBERATELY NOT HERE: the fire block ($268A5A `btst #$5,(A6)` ->
-// `subq.b #1,($28,A5)` -> $268A86 -> the rank-gated wrapper $281402), the
-// movement interpreter $2638A6, the off-screen kill, the damage path and the
-// display emitters.  Those are W21/W24/W25/W26/W27 and each is a counted note,
-// never a silent skip.
+// What lives outside this leaf: the type-specific fire block at `$268A5A` or
+// `$2683C2`, movement, bounds, damage, death animation and display emitters.
+// `handlers.js` owns those arms and calls `turretStep` from both complete live
+// handlers. The result says whether the cartridge branches to the common draw
+// or falls through into that type's fire logic.
 
-import { unreached } from './unported.js';
 import { aim64FromCaller, slew64 } from './aim.js';
 
 /** The two turret handlers, keyed the way the driver keys them: on the handler
@@ -76,40 +75,40 @@ export const TURRET = {
  *
  * This is a STATE TRANSITION on `($18,A5)` and `($33,A5)` and it is written to
  * be runnable in isolation, because that is what makes it testable against the
- * board: the caller supplies the sub-record position (produced by the UNPORTED
- * movement interpreter `$2638A6`) and the port evolves the facing from its own
- * previous value.  A gate that fed the facing back in every frame would be
- * measuring the aim and nothing else.
+ * board: the caller supplies the sub-record position after the movement
+ * interpreter `$2638A6` has advanced it, and the port evolves the facing from
+ * its own previous value. A gate that fed the facing back in every frame would
+ * be measuring the aim and nothing else.
  *
- * @param t     AimTables
+ * @param t     AimTables, or a lazy getter for production branch exits
  * @param ram   the board's RAM image (the player records are read from it)
  * @param rom   RomWindows -- the 32-direction sprite table
  * @param a5    the enemy record
+ * @param a6    the sub-record pointer already held by the production handler
  * @param spec  one value of TURRET_HANDLERS
- * @returns {{aimed:boolean, dir:number, carry:boolean, frozen:boolean}}
- *          -- reported so a gate can say WHY a frame did not move the turret.
+ * @returns {{aimed:boolean, dir:number, carry:boolean, frozen:boolean, next:string}}
+ *          -- `next` preserves the cartridge branch into draw or fire logic.
  */
-export function turretStep(t, ram, rom, a5, spec, mut = null) {
+export function turretStep(t, ram, rom, a5, a6, spec, mut = null) {
   // $268A0E tst.w $8130D2 / bne $268A68 -- the background freeze / all-players-
   // dead gate (W17 named its writers: $25FD82 set, $25FD8C clear).  Note what
   // it skips: the CADENCE IS NOT DECREMENTED on a frozen frame, so a freeze
   // does not merely pause the rotation, it preserves the phase.
   // MUTATION `no-freeze-gate`: aim through the freeze.
   if (mut !== 'no-freeze-gate' && ram.u16(TURRET.freezeGate) !== 0) {
-    return { aimed: false, dir: -1, carry: false, frozen: true };
+    return { aimed: false, dir: -1, carry: false, frozen: true, next: 'draw' };
   }
   const cad = ram.u8(a5 + TURRET.cadenceOff);        // $268A1A subq.b #1,($18,A5)
   ram.setU8(a5 + TURRET.cadenceOff, (cad - 1) & 0xff);
   // MUTATION `aim-every-frame`: ignore the cadence and re-aim every frame --
   // the natural mistake, and it doubles every turret's rotation rate.
   if (cad !== 0 && mut !== 'aim-every-frame') {      // bcc -- no borrow, no aim
-    return { aimed: false, dir: -1, carry: false, frozen: false };
+    return { aimed: false, dir: -1, carry: false, frozen: false, next: 'fire' };
   }
   if (cad === 0) {
     ram.setU8(a5 + TURRET.cadenceOff,                // $268A20 reload
       ram.u8(a5 + TURRET.reloadOff));
   }
-  const a6 = ram.u32(a5 + TURRET.subOff) & 0xffffff; // $263524 ($6,A5)
   const selfY = ram.u16(a6 + 2);                     // $268A26 movem.w ($2,A6)
   const selfX = ram.u16(a6 + 4);
   // MUTATION `no-muzzle`: aim from the enemy's origin instead of $200 above it.
@@ -117,7 +116,7 @@ export function turretStep(t, ram, rom, a5, spec, mut = null) {
   const r = aim64FromCaller(t, ram, a5,
     (selfY + muzzle) & 0xffff, selfX, mut);          // $268A2C / $268A30
   if (r.carry) {                                     // $268A36 bcs $268A68
-    return { aimed: false, dir: -1, carry: true, frozen: false };
+    return { aimed: false, dir: -1, carry: true, frozen: false, next: 'draw' };
   }
   // MUTATION `no-slew`: snap straight to the aim. Every turret in the game then
   // points exactly at the ship on the frame it re-aims.
@@ -130,21 +129,5 @@ export function turretStep(t, ram, rom, a5, spec, mut = null) {
   // steps by 4 and the table has 32 entries, not 64).
   const off = ((nf + 1) & 0x3e) * 2;
   ram.setU32(a5 + TURRET.gfxOff, rom.u32(spec.gfx + off));   // $268A54
-  return { aimed: true, dir: r.dir, carry: false, frozen: false };
-}
-
-/**
- * The whole handler is NOT ported.  `$2688CC`/`$268232` open with
- * `jsr $2638A6` (the movement interpreter, W24), run an off-screen kill, a
- * damage path, two display emitters and a rank-gated fire block, and this wave
- * ported ONE block out of the middle of each.  Anything that dispatches the
- * handler as a whole must therefore say so, loudly, by address.
- */
-export function turretHandler(a5, handlerAddr) {
-  unreached(handlerAddr, `the full enemy handler $${handlerAddr.toString(16)
-    .toUpperCase()} for the record at $${a5.toString(16).toUpperCase()}. Wave 20 `
-    + `ported only its TURRET BLOCK (see turretStep) -- the movement `
-    + `interpreter $2638A6 (W24), the off-screen kill $2688D2, the damage path `
-    + `$268906, the display emitters ($2A,A5)/($2E,A5) and the fire block `
-    + `$268A5A -> $281402 are all still open`);
+  return { aimed: true, dir: r.dir, carry: false, frozen: false, next: 'fire' };
 }

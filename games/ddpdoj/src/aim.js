@@ -304,6 +304,7 @@ export function targetSelectRandom() {
  * a right turret.  Omitting the offsets cost the recon's model 5,051 of 6,139
  * rows -- so this entry takes the biased coordinates and never reads `(A6)`.
  *
+ * @param t AimTables, or a lazy getter when the caller can branch before the core
  * @returns {{dir:number, carry:boolean}} carry = both players dead, no aim.
  */
 export function aim64FromCaller(t, ram, a5, selfY, selfX, mut = null) {
@@ -311,7 +312,8 @@ export function aim64FromCaller(t, ram, a5, selfY, selfX, mut = null) {
   if (sel.carry) return { dir: 0, carry: true };     // $24200E bcs $241FF2 (rts)
   const ty = ram.u16(sel.addr + 2);                  // $242010 movem.w ($2,A0),D2-D3
   const tx = ram.u16(sel.addr + 4);
-  return { dir: aim64(t, selfY, selfX, ty, tx, mut), carry: false };  // $242016
+  const tables = typeof t === 'function' ? t() : t;
+  return { dir: aim64(tables, selfY, selfX, ty, tx, mut), carry: false }; // $242016
 }
 
 /** `$24202C` -- aim64 at the record's target, SELF read from `($2,A6)`.

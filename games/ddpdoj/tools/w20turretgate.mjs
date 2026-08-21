@@ -208,7 +208,7 @@ for (let i = 0; i + 1 < lfs.length; i++) {
     for (const [name, g, r] of [['a', A.g, rA], ['b', B.g, rB]]) {
       const s = one[name];
       const a5 = seed(g, { ...rA, sy: r.sy, sx: r.sx }, rA.facing, rA.cad);
-      const res = turretStep(aimT, ram, rom, a5, spec, MUT);
+      const res = turretStep(aimT, ram, rom, a5, rA.sub, spec, MUT);
       if (res.dir >= 0) dirsSeen.add(res.dir);
       if (name === 'b' && res.aimed) {
         aimedSteps++;
@@ -250,7 +250,7 @@ for (let i = 0; i + 1 < lfs.length; i++) {
     let st = portState.get(key(rA));
     if (!st) { st = { facing: rA.facing, cad: rA.cad }; seeded++; }
     const a5 = seed(B.g, { ...rA, sy: rB.sy, sx: rB.sx }, st.facing, st.cad);
-    turretStep(aimT, ram, rom, a5, spec, MUT);
+    turretStep(aimT, ram, rom, a5, rA.sub, spec, MUT);
     const cf = ram.u8(a5 + TURRET.facingOff);
     const cc = ram.u8(a5 + TURRET.cadenceOff);
     closed.n++;
