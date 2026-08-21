@@ -281,19 +281,20 @@ test('SECTION 2: `$246800` is claimed EXACTLY ONCE, and the live register is at 
 // W450 widened it on three axes and re-ran: 19 -> 92 head-claimed duplicates. W451
 // merged `$242684` to leave 91, W453 merged `$242494` to leave 90, W457
 // merged `$25D9E6` to leave 89, W458 merged `$25DA60` to leave 88, and W459
-// merged `$25FF38` to leave 87. The body
+// merged `$25FF38` to leave 87, and W460 removed the optional `$24631C` shim to leave 86. The body
 // register started at 39 pairs, fell to 38 at W451, 37 at W453, and 36 after
 // W454 merged the shared type $11/type $10 turret body. It records a shared RUN
 // of ROM instructions -- the
 // axis that names `clearChain`, and the ONLY one that does. W450's SECTION 6
 // replays these three bodies verbatim and requires all three pairings.
-test('SECTION 2e [W450/W459]: the widened register is 87, and $246800 is claimed once under IT too',
+test('SECTION 2e [W450/W460]: the widened register is 86, and $246800 is claimed once under IT too',
   async () => {
     const { headRegister, bodyPairs } = await import('./w450widenedscan.js');
     const wide = headRegister();
-    assert.equal(wide.length, 87,
-      'the widened duplicate register is not 87. ' + W453_NOTE
+    assert.equal(wide.length, 86,
+      'the widened duplicate register is not 86. ' + W453_NOTE
       + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
+      + 'W460 removed the optional $24631C forwarding shim; '
       + 'w450widenedregister.test.js SECTION 3 owns the set');
     assert.ok(!wide.includes(0x246800),
       '$246800 is claimed twice AGAIN, and this time by a scan that can see a private copy. '

@@ -421,7 +421,8 @@ function scanCtxReads() {
 // $287B0E, slot [7] +3 ($23C67E/$23C694/$23C6AA, the $A0xxxx clears inside `screenWipe23C6C6`).
 // Those were being emitted into nothing.
 const KNOWN_MISSING_OPTIONAL = Object.freeze({
-  clear24631C: '$24631C, the animation-object table clear. Not ported.',
+  // W460 removed `clear24631C`: slots [8], [13], and [14] now import the verified
+  // stageend.js body directly, so the cartridge clear cannot degrade to a no-op.
   rankByte: '$242E24. Ported as makeRankObject\'s own read; not on ctx, so slot [14] state 1 '
     + 'takes rank 0 and always picks tableA.',
   // `menuCarry28D53C` LEFT THIS INVENTORY IN W418, and its line here was FALSE the whole time.

@@ -309,13 +309,15 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
 // The widened guard went red on it.
 //
 // The old 19 remains in the arithmetic above as history; W457, W458 and W459's
-// proved merges move the live narrow count to 16. The widened figure beside it is the truth.
-test('SECTION 2c [W450/W459]: the widened register is 87, so narrow 16 remains a floor', async () => {
+// proved merges move the live narrow count to 16. W460 removed a private optional shim,
+// so narrow remains 16 while the widened figure beside it moves to 86.
+test('SECTION 2c [W450/W460]: the widened register is 86, so narrow 16 remains a floor', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
-  assert.equal(headRegister().length, 87,
+  assert.equal(headRegister().length, 86,
     'the WIDENED register (private functions, arrows, methods and the whole doc opening '
-    + 'span, not just `export function`) is not 87. ' + W453_NOTE
+    + 'span, not just `export function`) is not 86. ' + W453_NOTE
     + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
+    + 'W460 removed the optional $24631C forwarding shim; '
     + 'tests/w450widenedregister.test.js SECTION 3 holds the exact set and is where a new '
     + 'duplicate must be resolved. This cross-check prevents narrow 16 being read as the total');
 });

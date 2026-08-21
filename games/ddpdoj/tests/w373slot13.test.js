@@ -16,7 +16,7 @@ async function fx({ side = 0 } = {}) {
   const ram = new Ram();
   const notes = [];
   const ctx = { unported: { note: (a) => notes.push(a) }, unportedLog: { note: () => {} },
-    soundPost: () => {}, clear24631C: () => {}, menuCarry28D53C: () => false };
+    soundPost: () => {}, menuCarry28D53C: () => false };
   const a5 = 0x812600;
   ram.setU8(a5 + mod.SCREEN13.side, side);
   return { ...mod, ram, rom, ctx, notes, a5 };

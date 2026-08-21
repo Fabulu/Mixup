@@ -501,7 +501,7 @@ test('SECTION 7: W455 removes one body-only pair and changes no head register', 
   const pairs = bodyPairs();
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   assert.equal(narrow.length, 16, 'W459 removed $25FF38 from W458 narrow baseline 17');
-  assert.equal(heads.length, 87, 'W459 removed $25FF38 from W458 widened baseline 88');
+  assert.equal(heads.length, 86, 'W460 removed $24631C from W459 widened baseline 87');
   assert.equal(pairs.length, 28,
     'W450 39 minus W451, W453, W454, W455, four W456 edges, W457 cursor map, W458 cursor load and W459 request poster');
   assert.ok(!pairs.some(([pair]) => pair === 'items.js beamReset25270C <> laser.js wipeSegmentPool'),

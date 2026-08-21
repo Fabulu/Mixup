@@ -428,7 +428,7 @@ test('SECTION 5: cartridge and production-source reachability are proved separat
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live scanner APIs derive W459 register deltas and body-only count', () => {
+test('SECTION 6: live scanner APIs reconcile W459 through W460 and derive body-only count', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -442,10 +442,10 @@ test('SECTION 6: live scanner APIs derive W459 register deltas and body-only cou
   const removed = 'player.js armRequest25FF38 <> tallyscreen.js tallyRequest25FF38';
 
   assert.equal(narrow.length, 16, 'W459 removes one export-only $25FF38 head from W458 baseline 17');
-  assert.equal(heads.length, 87, 'W459 removes the widened $25FF38 row from baseline 88');
+  assert.equal(heads.length, 86, 'W460 removes the widened $24631C row from W459 baseline 87');
   assert.equal(pairs.length, 28, 'W459 removes the $25FF4A/$25FF4C body edge from baseline 29');
   assert.equal(bodyOnly.length, 22,
-    'body-only is derived live and unchanged because both removed bodies were head-visible');
+    'body-only is derived live and unchanged because W460 removes a non-pair head claim');
   assert.equal(heads.includes(BODY_START), false, '$25FF38 stays off the widened register');
   assert.equal(narrow.some(([at]) => at === BODY_START), false, '$25FF38 stays off the narrow register');
   assert.equal(pairs.some(([pair]) => pair === removed), false, '$25FF38 body edge stays absent');

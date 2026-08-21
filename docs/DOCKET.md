@@ -5437,3 +5437,95 @@ two-marker body scan does not establish a duplicate pair. Treat it as an audit c
 merge: pin complete bodies, callers, entries and dirty ownership before classifying. W459 is not a
 publication wave. Continue Black Label through the full second loop and close its docket, then finish
 White Label last.
+
+
+### D69 FOLLOW-UP, W460 `$24631C`: THE SECOND CLAIM WAS A DEAD OPTIONAL SHIM, AND THREE LIVE CALLERS DID NOTHING
+
+**THIS IS A CORRECTED MERGE, NOT AN EQUIVALENT-BODY MERGE.** `stageend.js` held the one real and
+RAM-correct transcription. `objslot8.js clear24631C` was only a forwarding shim to optional
+`ctx.clear24631C`, and production `Game#ctx()` supplied no such key. Its three cartridge-real calls at
+`$25A7C6`, `$25A956`, and `$25A9B8` therefore became silent no-ops. `objslot13.js` and `objslot14.js`
+independently used the same invented optional condition at `$288A48` and `$288C52`. The cartridge has no
+branch around any of those calls. W460 exports the verified body from `stageend.js`, removes the shim, and
+makes all six source-reachable caller bodies import and invoke it directly. There was no prior public
+`$24631C` ESM name to preserve as a compatibility alias.
+
+**BUILD-B PINS ONE COMPLETE 80-BYTE BODY.** Main CPU SHA-256 is
+`4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c`. The exact half-open span is
+`[$24631C,$24636C)`, with SHA-256
+`137f82cec8408762cfa4d794873d9004e99b3eda0882ea47a4d6afad15b61ad7` and bytes
+`41f90080fa86303c04af30fc000051c8fffa7e0241f9008103464250317c00000004217c00000000002c41e8003051cfffea3e3c001341f90080fa864250217c00000000002c41e8007051cffff04e75`.
+Its 18 instructions are `LEA $80FA86,A0`, `MOVE.W #$04AF,D0`, `MOVE.W #0,(A0)+`, `DBRA D0,$246326`,
+`MOVEQ #2,D7`, `LEA $810346,A0`, three root clears, `LEA $30(A0),A0`, `DBRA D7,$246336`,
+`MOVE.W #$0013,D7`, `LEA $80FA86,A0`, two node clears, `LEA $70(A0),A0`, `DBRA D7,$246358`, and
+`RTS`. The previous complete routine is `[$246292,$24631C)`, 138 bytes, SHA-256
+`7618bcd449ae591a909485d6864e289bc518dc0762e5113d00c0a151f7f8dd9f`, ending in `$24631A RTS`.
+The next routine starts exactly at `$24636C` with `48E7 C080`, `MOVEM.L D0-D1/A0,-(A7)`.
+
+**THE COMPLETE ALIGNED 6 MiB TRANSFER CENSUS FINDS TWELVE ENTRIES INTO THE BODY.** Nine external
+absolute-long JSR sites enter only at `$24631C`: `$23BF3E`, `$256DB0`, `$25A7C6`, `$25A956`,
+`$25A9B8`, `$288A48`, `$288C52`, `$28D578`, and `$28D5FA`. Three internal DBcc edges are
+`$24632A -> $246326`, `$24634A -> $246336`, and `$246366 -> $246358`. The scan covers BSR, BRA/Bcc,
+DBcc, absolute-word and absolute-long JSR/JMP, PC-relative JSR/JMP, and all 110 aligned indexed-PC
+JSR/JMP candidates. Zero indexed candidates have a zero-index base inside the body, and no external
+static transfer enters an internal instruction. The only exact aligned longword references are the nine
+absolute-long JSR operands at `$23BF40`, `$256DB2`, `$25A7C8`, `$25A958`, `$25A9BA`, `$288A4A`,
+`$288C54`, `$28D57A`, and `$28D5FC`. Dynamic indirect reachability beyond that static inventory remains
+unproved.
+
+**EVERY DIRECT CALLER AND IMMEDIATE CONTINUATION IS BYTE-PINNED.** The nine caller spans are
+`[$23BF38,$23BF4A)`, `[$256DAA,$256DC6)`, `[$25A7C0,$25A7D8)`, `[$25A94A,$25A968)`,
+`[$25A9B2,$25A9CA)`, `[$288A3C,$288A5E)`, `[$288C3E,$288C68)`, `[$28D566,$28D586)`, and
+`[$28D5FA,$28D60A)`. Calls return into unconditional local continuations or instructions that overwrite
+NZVC before a conditional use. No direct caller consumes returned A0, D0, D7, or SR.
+
+**RAM AND REGISTER OWNERSHIP ARE EXACT.** The first DBRA owns 1,200 words, exactly
+`[$80FA86,$8103E6)`. It clears recycled animation-node and root state, including three root records at
+`$810346/$810376/$8103A6` and twenty node records at `$80FA86 + n*$70`, `n=0..19`. The later loops
+perform cartridge-real redundant rewrites inside that already-cleared range: each root clears `+0.W`,
+`+4.W`, and `+$2C.L`; each node clears `+0.W` and `+$2C.L`. Production preserves all 1,249 ordered
+stores: 1,200 primary word stores, six root word stores, three root long stores, twenty node word stores,
+and twenty node long stores. Dirty adjacent sentinels survive. The opposite slot-14 countdown arm returns
+before the clear and leaves the dirty pool intact.
+
+On return, A0 is `$810346`. `MOVE.W #$04AF,D0` preserves incoming D0 high-word dirt and the first DBRA
+leaves D0 as `$xxxxFFFF`. `MOVEQ #2,D7` first owns the full register; the later `MOVE.W #$0013,D7` and
+DBRA leave D7 as `$0000FFFF`. The final DBRA leaves Z set, N/V/C clear, and X preserved. Source neither
+models nor observes these return registers or SR.
+
+**CARTRIDGE AND SOURCE REACHABILITY REMAIN SEPARATE.** Production reaches six cartridge contexts:
+`$25A7C6`, `$25A956`, `$25A9B8`, `$288A48`, `$288C52`, and `$28D578`. Three direct cartridge callers
+remain source gaps for independent reasons: reset prologue `$23BF3E` is intentionally skipped, main-loop
+call 1 at `$256DB0` remains unported, and object type 19 at `$28D5FA` remains unported. W460 does not
+silently promote any of those gaps to source reachability.
+
+**THE TEMPORARY PRODUCTION RED OMITTED THE FINAL PRIMARY WORD.** Changing the loop bound from
+`C.clearWords` to `C.clearWords - 1` left `$8103E4..$8103E5` dirty. It independently failed the complete
+2,400-byte owned-range witness, the exact 1,249-operation write trace, and a real `$25A7C6` coin-teardown
+caller witness. Restoration returned `stageend.js` byte-for-byte to pre-RED SHA-256
+`1229c5b24f105ab5f4a5f229d4336de01f8d662419e11627c90667b5ecc484e0`; the focused suite then passed
+12 of 12.
+
+The live scanner APIs reconcile from W459 exactly: narrow heads **16 -> 16**, widened heads **87 -> 86**,
+body pairs **28 -> 28**, and body-only findings **22 -> 22**, derived live from `headIndex()`. The optional
+shim never formed a two-marker body pair. Every live register holder from W446 through W460 now agrees.
+No production ROM window was added or widened, and no generated rip or asset changed.
+
+Editing-agent validation on the restored final tree: focused W460 **12 pass / 0 fail / 0 skipped**;
+affected caller, stage-end, chain and W446-W460 register surface **391 pass / 0 fail / 0 skipped**; full
+suite **4253 pass / 0 fail / 0 skipped**; webgate **31 PASS / 0 FAIL**, exit 0; ROM verification
+**VERIFY OK at 613 windows**; docket identifier check **67 items, D1..D69, no duplicates, D70 next**.
+The coordinator independently reproduced the exact body and adjacent boundaries, all twelve aligned
+entries, nine exact longword references, the same three meaningful RED failures and byte-exact source
+restoration. Coordinator validation passed focused **12**, broader affected **427**, full suite **4253**,
+webgate **31 / 0**, ROM verification at **613 windows**, and the same docket identifier check. Diff,
+scope, line-ending, punctuation and protected-path checks are clean. No export-web, publish, stage,
+commit, push, branch switch or worktree operation occurred during editing-agent work.
+
+**NEXT AUDIT CANDIDATE: W461, `$242E24` `initbody.js rankByte242E24` <->
+`rng.js drawByte242E24`.** This is stronger live evidence than another head-only claim: the widened
+register names both heads and `bodyPairs()` derives two shared body markers, `$242E24` and `$242E3A`.
+Audit the complete cartridge routine, every caller, width ownership, returned state, and source
+reachability before classifying. W461 is the next cadence publication only after its own work is verified
+on a quiet tree; run `export-web.mjs` before `publish.mjs`. Continue Black Label through the full second
+loop and close its docket, then finish White Label last.

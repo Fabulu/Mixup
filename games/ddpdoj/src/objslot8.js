@@ -76,7 +76,7 @@ import { u16 } from './ram.js';
 import { clearTx23C622, clearSlotTable23C668, camReset } from './background.js';
 import { install2414BE, install24150A, install2415E8 } from './palette.js';
 import { stageCreate, objTableInit24107C } from './objalloc.js';
-import { clear23C47A } from './stageend.js';
+import { clear23C47A, clear24631C } from './stageend.js';
 import { clear25C57E } from './objslot9.js';
 import { menuDips23C932 } from './tallyscreen.js';
 import { hiscoreScreen25B412 } from './hiscorescreen.js';
@@ -283,18 +283,7 @@ export function creditTake23C9F0(ram, ctx) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The two ctx-shaped gaps this file has to route round, both pre-existing and both counted.
-
-/** `$24631C` -- `stageend.js` HAS this routine (`clear24631C`, stageend.js:280) but does NOT
- *  export it, and `Game#ctx()` does not carry it either. `objslot13.js:210` and
- *  `objslot14.js:63` both reach for `ctx.clear24631C?.(ram)` and both SILENTLY skip it when it
- *  is absent; this file does the same reach but counts the miss, so the gap is visible in the
- *  unported report instead of being a quiet no-op. Registration is the coordinator's call. */
-function clear24631C(ram, ctx, site) {
-  if (ctx?.clear24631C) { ctx.clear24631C(ram); return; }
-  ctx?.unported?.note(0x24631c, `$${site.toString(16).toUpperCase()} jsr $24631C -- stageend.js `
-    + 'defines clear24631C but does not export it, and Game#ctx() does not supply it');
-}
+// The remaining ctx-shaped gap in this file is pre-existing and counted.
 
 /** `$2414BE` -- install a TX palette bank. THIRTY-TWO bytes, not 64: `$2414C8 lsl.w #$5` is
  *  five, and a TX bank is 32 bytes. Guarded on `ctx.palette` the way `objslot9.js` guards its
@@ -544,7 +533,7 @@ function arm2(ram, rom, a5, ctx) {
 function arm3(ram, rom, a5, ctx) {
   if (ram.u8(a5 + SCREEN8.inited) === 0) {                     // $25A94A/$25A94E
     ram.setU8(a5 + SCREEN8.inited, 1);                         // $25A950
-    clear24631C(ram, ctx, 0x25a956);                           // $25A956 jsr $24631C
+    clear24631C(ram);                                          // $25A956 jsr $24631C
     screen1Init25BBB4(ram, rom, ctx);                          // $25A95C jsr $25BBB4
     // $25A962 jsr $28C170 -- verified `4E B9 00 28 C1 70`. The credit screen's BGM cue,
     // $28BBAC-tier ($15000000). Posted since W425/D58.
@@ -628,7 +617,7 @@ function cueStreamNote(ctx, site) {
  */
 export function teardown25A9B2(ram, rom, ctx) {
   objTableInit24107C(ram);                                     // $25A9B2 jsr $24107C
-  clear24631C(ram, ctx, 0x25a9b8);                             // $25A9B8 jsr $24631C
+  clear24631C(ram);                                            // $25A9B8 jsr $24631C
   clear25C57E(ram);                                            // $25A9BE jsr $25C57E
   clearTx23C622(ctx.tx);                                       // $25A9C4 jsr $23C622
   const made = stageCreate(ram, SCREEN8.selfType,              // $25A9CA move.w #$8,D0 / $25A9CE
@@ -1668,7 +1657,7 @@ function arm14(ram, rom, ctx) {
  */
 export function coinTeardown25A7C0(ram, rom, ctx) {
   objTableInit24107C(ram);                                     // $25A7C0 jsr $24107C
-  clear24631C(ram, ctx, 0x25a7c6);                             // $25A7C6 jsr $24631C
+  clear24631C(ram);                                            // $25A7C6 jsr $24631C
   clear25C57E(ram);                                            // $25A7CC jsr $25C57E
   if (ram.u16(SCREEN8.dualGate) !== 0) {                       // $25A7D2 tst.w / beq $25A7EE
     ram.setU16(SCREEN8.dualGate, 0);                           // $25A7DC clr.w $803926

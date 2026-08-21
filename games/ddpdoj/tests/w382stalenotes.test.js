@@ -47,7 +47,7 @@ const world = () => {
   const log = new UnportedLog();
   const cues = [];
   return { log, cues, ctx: { rom: ROM, tables: MT, unported: log, unportedLog: log, notes: log,
-    soundPost: (a) => { cues.push(a); return true; }, clear24631C: () => {} } };
+    soundPost: (a) => { cues.push(a); return true; } } };
 };
 /** The two player records the way `$2428A6` wants to see them: P1 PLAYABLE. */
 function playersAlive(ram) {

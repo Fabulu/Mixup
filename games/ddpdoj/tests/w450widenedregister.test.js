@@ -1,7 +1,7 @@
 // WAVE 450 (D69) -- THE DUPLICATE REGISTER, WIDENED UNTIL IT CAN SEE A PRIVATE COPY.
 //
 // ---------------------------------------------------------------------------
-// THE NUMBER WAS 19, W450 FOUND 92, W451 LEFT 91, W453 LEFT 90, W457 LEFT 89, W458 LEFT 88, W459 LEAVES 87
+// THE NUMBER WAS 19, W450 FOUND 92, W451 LEFT 91, W453 LEFT 90, W457 LEFT 89, W458 LEFT 88, W459 LEFT 87, W460 LEAVES 86
 // ---------------------------------------------------------------------------
 // W444 built the index; W446, W447, W448 and W449 steered by it and merged five
 // addresses, each of which turned out to be a live defect. Then W449 found a
@@ -18,12 +18,13 @@
 // `$2417DE` body into `movement.js applyVelocityA6`; W457 merged the tally
 // cursor map's second body into `cursorsFromPosted25D9E6`. W458 merged the two
 // complete `$25DA60` tally cursor loads. W459 corrected the D0.W request poster
-// and merged its second body. The live registers are:
+// and merged its second body. W460 found `$24631C` was not a second body at all:
+// one real implementation plus a dead optional forwarding shim, now removed. The live registers are:
 //
 //     shipped `export function` scan     16 addresses claimed twice or more
-//     widened head scan                  87          "
+//     widened head scan                  86          "
 //     of the shipped 16                  16 still there, NONE dropped
-//     newly visible                      71
+//     newly visible                      70
 //     of those, originally visible because of
 //       wider HEAD FORMS (private
 //       `function`, `const` arrow,
@@ -52,7 +53,7 @@
 // ---------------------------------------------------------------------------
 //   1   the scan found something -- floors, so a broken regex cannot read clean
 //   2   the widening WEAKENS NOTHING: the shipped register is a strict subset
-//   3   THE HEAD REGISTER, exact, 87
+//   3   THE HEAD REGISTER, exact, 86
 //   4   THE BODY REGISTER, exact, 28 pairs; 22 body-only findings
 //   5   RED PROOFS on synthetic trees -- one per axis, plus two negative controls
 //   6   THE HISTORICAL POSITIVE CONTROL: W449's own `clearChain`, verbatim
@@ -180,7 +181,7 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 
 // ---------------------------------------------------------------- SECTION 3
 
-// THE HEAD REGISTER. 87 ROM addresses claimed by two or more function-like
+// THE HEAD REGISTER. 86 ROM addresses claimed by two or more function-like
 // heads in `src/`, by name suffix or by JSDoc opening span.
 //
 // **DECLARE, NEVER WIDEN** -- W444's rule, and W446/W447/W448/W449 all kept it.
@@ -212,8 +213,11 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 //     `items.js dist242494`. Both heads and six shared body markers named the
 //     pair. Exact `$24248E..$2424B9` bytes and the real `$27EE88` dirty-item
 //     witness proved them equivalent, so the private body merged into the
-//     exported helper and the count fell from 91 to 90. Next sharpest are
-//     `$24631C` (`clear24631C` in objslot8.js AND stageend.js), `$2414BE` and
+//     exported helper and the count fell from 91 to 90. W460 then audited
+//     `$24631C`: `stageend.js` had the correct complete RAM body, while the
+//     `objslot8.js` claimant was an optional ctx shim that became a production
+//     no-op. All six source callers now reach the exported stage-end body, so
+//     that widened-only row is gone. Next sharpest are `$2414BE` and
 //     `$28C0FC` (`installTxBank` and `cueStreamNote`, each written twice under
 //     the SAME name in objslot8.js and objslot12.js), `$28E7A2`, `$28C6C6`,
 //     `$28F4C4`, `$285A12` and `$2A6EDC`.
@@ -225,7 +229,7 @@ const HEAD_REGISTER = Object.freeze([
   0x23bf74, 0x23bfdb, 0x23c622, 0x23e3e2, 0x23ff06, 0x240dc2,
   0x240f62, 0x24133c, 0x2414be, 0x24150a, 0x2415a2, 0x241688,
   0x24179e, 0x2417de, 0x242e24, 0x242ec2,
-  0x24560a, 0x2456a6, 0x24631c, 0x246710, 0x24676a, 0x2497aa,
+  0x24560a, 0x2456a6, 0x246710, 0x24676a, 0x2497aa,
   0x249e4e, 0x249ea0, 0x249ee2, 0x24c096, 0x24c338, 0x24caae,
   0x24d480, 0x253b94, 0x253e96, 0x2562fc, 0x2564f0, 0x259962,
   0x25a14c, 0x25cb92, 0x25e4d0, 0x25ef30,
@@ -240,7 +244,7 @@ const HEAD_REGISTER = Object.freeze([
   0x2a3e15, 0x2a6edc,
 ]);
 
-test('SECTION 3: the widened head register is exactly these 87 addresses', () => {
+test('SECTION 3: the widened head register is exactly these 86 addresses', () => {
   const { idx } = headIndex();
   const wide = headRegister();
   assert.deepEqual(wide.map(hex), [...HEAD_REGISTER].map(hex),
@@ -255,15 +259,17 @@ test('SECTION 3: the widened head register is exactly these 87 addresses', () =>
 
   // ASSERTED AS A NUMBER TOO -- W447's lesson. An empty list satisfies a
   // `deepEqual` against a shrunken array and reads as five merges' progress.
-  assert.equal(wide.length, 87,
-    'the widened register is not 87. W450 found 92, W451 merged $242684, W453 merged '
-    + '$242494, W457 merged $25D9E6, W458 merged $25DA60, and W459 merged $25FF38');
+  assert.equal(wide.length, 86,
+    'the widened register is not 86. W450 found 92, W451 merged $242684, W453 merged '
+    + '$242494, W457 merged $25D9E6, W458 merged $25DA60, W459 merged $25FF38, and '
+    + 'W460 removed the optional $24631C shim');
 
   // ...and every address the four merged waves removed must STAY off it, now
   // measured by a scan that can see private copies rather than only exports.
   for (const [a, wave] of [[0x25ffa8, 'W446'], [0x2428a6, 'W447'], [0x242b3c, 'W447'],
     [0x246520, 'W448'], [0x24652a, 'W448'], [0x246800, 'W449'], [0x242684, 'W451'],
-    [0x242494, 'W453'], [0x25d9e6, 'W457'], [0x25da60, 'W458'], [0x25ff38, 'W459']]) {
+    [0x242494, 'W453'], [0x25d9e6, 'W457'], [0x25da60, 'W458'], [0x25ff38, 'W459'],
+    [0x24631c, 'W460']]) {
     assert.ok(!wide.includes(a),
       `${hex(a)} is claimed twice AGAIN under the widened scan (${wave} merged it). `
       + 'The narrow scan could not have told you: a private re-transcription is exactly '

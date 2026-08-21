@@ -366,15 +366,39 @@ function destroy28D5E6(ram, a5) {
 }
 
 // --- the eight small clears, each read out of the ROM this wave
-function clear24631C(ram) {
-  for (let i = 0; i <= 0x4af; i++) ram.setU16(0x80fa86 + i * 2, 0);   // $246322
-  for (let i = 0; i < 3; i++) {                        // $24632E moveq #$2
-    const a = 0x810346 + i * 0x30;                     // $246346 lea ($30,A0)
-    ram.setU16(a, 0); ram.setU16(a + 4, 0); ram.setU32(a + 0x2c, 0);
+
+/** The complete `$24631C..$24636B` animation-object pool reset. W460. */
+export const CLEAR24631C = Object.freeze({
+  entry: 0x24631c, end: 0x24636c, bytes: 0x50,
+  nodeBase: 0x80fa86, clearWords: 0x4b0,
+  rootBase: 0x810346, rootCount: 3, rootStride: 0x30,
+  nodeCount: 20, nodeStride: 0x70,
+});
+
+/**
+ * `$24631C`, exactly `[$24631C,$24636C)`. The first DBRA clears `$4B0` contiguous
+ * words at `$80FA86..$8103E5`. The following two DBRA loops deliberately rewrite
+ * fields inside that already-cleared span: three root records clear `+0.W`,
+ * `+4.W`, and `+$2C.L`; twenty node records clear `+0.W` and `+$2C.L`.
+ *
+ * The cartridge owns A0, D0, D7, and NZVC on return, with X preserved. No source
+ * caller models or observes those register results; W460 pins every continuation.
+ */
+export function clear24631C(ram) {
+  const C = CLEAR24631C;
+  for (let i = 0; i < C.clearWords; i++) {             // $246322 #$4AF + DBRA = $4B0
+    ram.setU16(C.nodeBase + i * 2, 0);                 // $246326 move.w #$0,(A0)+
   }
-  for (let i = 0; i < 20; i++) {                       // $24634E move.w #$13
-    const a = 0x80fa86 + i * 0x70;                     // $246362 lea ($70,A0)
-    ram.setU16(a, 0); ram.setU32(a + 0x2c, 0);
+  for (let i = 0; i < C.rootCount; i++) {              // $24632E moveq #$2
+    const a = C.rootBase + i * C.rootStride;            // $246346 lea ($30,A0),A0
+    ram.setU16(a, 0);                                   // $246336 clr.w (A0)
+    ram.setU16(a + 4, 0);                               // $246338 move.w #$0,($4,A0)
+    ram.setU32(a + 0x2c, 0);                            // $24633E move.l #$0,($2C,A0)
+  }
+  for (let i = 0; i < C.nodeCount; i++) {              // $24634E move.w #$13,D7
+    const a = C.nodeBase + i * C.nodeStride;            // $246362 lea ($70,A0),A0
+    ram.setU16(a, 0);                                   // $246358 clr.w (A0)
+    ram.setU32(a + 0x2c, 0);                            // $24635A move.l #$0,($2C,A0)
   }
 }
 function clear28D552(ram) {

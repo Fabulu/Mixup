@@ -21,6 +21,7 @@ import { u16 } from './ram.js';
 import { clearTx23C622, resetScrolls23C61E } from './background.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { loadAnimObjects246410 } from './animobjects.js';
+import { clear24631C } from './stageend.js';
 import { armRequest25FF38 } from './player.js';
 import { stageCreate, queueKill } from './objalloc.js';
 
@@ -55,13 +56,13 @@ function state0(ram, rom, a5, ctx) {
 }
 
 /** State 2 -- run out the second counter, then hand over to dispatch type $C and kill self. */
-function state2(ram, rom, a5, ctx) {
+function state2(ram, rom, a5) {
   const left = u16(ram.u16(a5 + 0x1c) - 1);                  // $288C3E subq.w #1
   ram.setU16(a5 + 0x1c, left);
   if (left !== 0) return;                                    // $288C42 bne
   armRequest25FF38(ram, 0, 6);                               // $288C46 moveq #$0,D0 (side)
                                                              // $288C48 move.w #$6,D1 (request)
-  ctx.clear24631C?.(ram);                                    // $288C52 jsr $24631C
+  clear24631C(ram);                                          // $288C52 jsr $24631C
   // $241182 takes the priority from the DISPATCH TABLE, not from the caller: `($4,A0,D1)` with A0
   // at $240F62. Passing a bare 0 here type-errors the moment this arm runs.
   stageCreate(ram, SLOT14.childType,                         // $288C58/$288C5C -- type $C
@@ -82,7 +83,7 @@ function state2(ram, rom, a5, ctx) {
 export function objSlot14(ram, rom, a5, ctx) {
   const st = ram.u8(a5 + SLOT14.stateAt);
   if (st === 0) { state0(ram, rom, a5, ctx); return; }        // $288C6C tst.b / beq $288BCE
-  if (st === 2) { state2(ram, rom, a5, ctx); return; }             // $288C74 cmpi.b #$2 / beq $288C3E
+  if (st === 2) { state2(ram, rom, a5); return; }             // $288C74 cmpi.b #$2 / beq $288C3E
 
   // $288C7C -- the first counter fires a cue ONCE when it reaches zero, not every frame after.
   if (ram.u16(a5 + 0x1a) !== 0) {                            // $288C7C tst.w / beq

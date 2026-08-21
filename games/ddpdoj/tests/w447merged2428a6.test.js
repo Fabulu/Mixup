@@ -483,18 +483,19 @@ test('SECTION 6: the doubly-claimed register is 16, and all later proved merges 
 
 // W450: THE 19 ABOVE COUNTS ONLY WHAT AN `export function` DECLARES.
 // W449's fourth copy of `$246800` was the module-private `clearChain`, invisible
-// to `portedIndex()` on every axis it has. The widened scan is 87 (92 at W450,
-// minus $242684 at W451, $242494 at W453, $25D9E6 at W457, $25DA60 at W458 and
-// $25FF38 at W459). See
+// to `portedIndex()` on every axis it has. The widened scan is 86 (92 at W450,
+// minus $242684 at W451, $242494 at W453, $25D9E6 at W457, $25DA60 at W458,
+// $25FF38 at W459 and the optional $24631C shim at W460). See
 // tests/w450widenedregister.test.js; the number is cross-checked in all four
 // register holders so none of them can be read as the whole count.
-test('SECTION 6b [W450/W459]: the widened register is 87, and this wave\'s two merges hold under it too',
+test('SECTION 6b [W450/W460]: the widened register is 86, and this wave\'s two merges hold under it too',
   async () => {
     const { headRegister } = await import('./w450widenedscan.js');
     const wide = headRegister();
-    assert.equal(wide.length, 87,
-      'the widened duplicate register is not 87. ' + W453_NOTE
+    assert.equal(wide.length, 86,
+      'the widened duplicate register is not 86. ' + W453_NOTE
       + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
+      + 'W460 removed the optional $24631C forwarding shim; '
       + 'w450widenedregister.test.js SECTION 3 owns the set');
     // The two W447 merged must stay merged under a scan that can ALSO see a
     // private re-transcription, which is the only way to know they really went.

@@ -27,20 +27,18 @@ async function fx({ dip = 0x00, dipCredit = 0x00 } = {}) {
   const ram = new Ram();
   const notes = [];
   const cues = [];
-  const clears = [];
   const ctx = {
     tx: new TxVram(),
     unported: { note: (a, w) => notes.push([a, w]) },
     unportedLog: { note: () => {} },
     soundPost: (a) => { cues.push(a); return true; },
-    clear24631C: () => clears.push(0x24631c),
     // no `palette` and no `slotTable`: both are gaps Game#ctx() really has, and the port has
     // to keep counting them rather than throwing.
   };
   const a5 = 0x812600;
   ram.setU8(mod.SCREEN8.dip, dip);
   ram.setU8(mod.SCREEN8.dipCredit, dipCredit);
-  return { ...mod, alloc, ram, rom, ctx, notes, cues, clears, a5, IMG };
+  return { ...mod, alloc, ram, rom, ctx, notes, cues, a5, IMG };
 }
 
 const noteAddrs = (notes) => notes.map(([a]) => a);
@@ -156,11 +154,12 @@ async function gated(opts) {
 test('W375 a COIN tears the screen down and restages slot [8] at state 3', { skip: SKIP }, async () => {
   const f = await gated();
   f.ram.setU8(f.SCREEN8.coinA, 1);               // $803958 -- $23C956's first counter
+  f.ram.setU16(0x80fa86, 0xa55a);               // dirty recycled animation-node head
   liveObject(f.ram);                             // a live object, to prove $24107C ran
   f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
 
   assert.ok(objectTableWiped(f.ram), '$24107C wiped the object table');
-  assert.ok(f.clears.includes(0x24631c), '$24631C ran');
+  assert.equal(f.ram.u16(0x80fa86), 0, '$24631C cleared the dirty animation-node head');
   const stage = 0x80d56c;
   assert.equal(f.ram.u16(stage) & 0x7fff, 0x0008, 'it restaged type 8 -- ITSELF');
   assert.equal(f.ram.u16(stage + 0x4a), 0x000a, 'with the TABLE\'s priority $000A');
@@ -670,12 +669,13 @@ test('W425 arm 3 polls $25ACAC every frame and POSTS $28C170 through the $28BBAC
   f.ram.setU16(f.SCREEN8.state, 0x0003);
   f.ram.setU16(f.SCREEN8.p1Raw, 0x8000);
   f.ram.setU8(f.SCREEN8.creditA, 1);
+  f.ram.setU16(0x80fa86, 0xa55a);               // W460: no ctx callback, clear the real pool
   f.objSlot8(f.ram, f.rom, f.a5, f.ctx);
   assert.deepEqual(f.cues, [0x28c170],
     '$25A962 jsr $28C170 -- the credit screen\'s BGM cue, posted by address');
   assert.equal(noteAddrs(f.notes).includes(0x28c170), false,
     'and NOT counted as unported any more -- it is not deferred, it is done');
-  assert.ok(f.clears.includes(0x24631c), '$25A956 jsr $24631C');
+  assert.equal(f.ram.u16(0x80fa86), 0, '$25A956 jsr $24631C cleared the dirty pool head');
   assert.equal(f.ram.u16(f.SCREEN8.state), 0x000e, 'and the poll joined, on COIN play');
   assert.equal(f.ram.u8(f.SCREEN8.creditA), 0);
 });
@@ -738,9 +738,10 @@ test('W392 NO arm of the sequencer is counted any more, and arm 5 holds only whi
 test('W375 $25A9B2, arm 5\'s teardown, restages slot [8] at state 2', { skip: SKIP }, async () => {
   const f = await fx();
   liveObject(f.ram);
+  f.ram.setU16(0x80fa86, 0xa55a);               // dirty recycled animation-node head
   const made = f.teardown25A9B2(f.ram, f.rom, f.ctx);
   assert.ok(objectTableWiped(f.ram), '$24107C ran');
-  assert.ok(f.clears.includes(0x24631c), '$24631C ran');
+  assert.equal(f.ram.u16(0x80fa86), 0, '$24631C cleared the dirty animation-node head');
   assert.equal(f.ram.u16(0x812e82), 0, '$25C57E cleared its fifteen words');
   assert.equal(f.ram.u16(made.addr) & 0x7fff, 0x0008, 'type 8 -- ITSELF');
   assert.equal(f.ram.u16(made.addr + 0x4a), 0x000a, 'at the table\'s priority');

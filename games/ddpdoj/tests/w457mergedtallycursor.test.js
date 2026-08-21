@@ -324,7 +324,7 @@ test('SECTION 6: source keeps one $25D9E6 body and W458 leaves one $25DA60 body'
     '$25DA60 imports now share one function object');
 });
 
-test('SECTION 6b: live registers derive 16 narrow, 87 widened, 28 pairs and 22 body-only', () => {
+test('SECTION 6b: live registers derive 16 narrow, 86 widened, 28 pairs and 22 body-only', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -340,10 +340,10 @@ test('SECTION 6b: live registers derive 16 narrow, 87 widened, 28 pairs and 22 b
   const mergedRequest = 'player.js armRequest25FF38 <> tallyscreen.js tallyRequest25FF38';
 
   assert.equal(narrow.length, 16, 'W459 removes $25FF38 after W458 left 17');
-  assert.equal(heads.length, 87, 'W459 leaves 87 widened rows after W458 left 88');
+  assert.equal(heads.length, 86, 'W460 removes $24631C after W459 left 87');
   assert.equal(pairs.length, 28, 'W459 removes the request edge from W458 baseline 29');
   assert.equal(bodyOnly.length, 22,
-    'body-only remains executable headIndex() derivation because both removed pairs were head-visible');
+    'body-only remains executable headIndex() derivation; W460 removes a non-pair head claim');
   assert.equal(heads.includes(BODY_START), false, '$25D9E6 stays off the widened register');
   assert.equal(narrow.some(([at]) => at === BODY_START), false, '$25D9E6 stays off the narrow register');
   assert.equal(pairs.some(([pair]) => pair === removed), false, 'W457 merged body edge stays absent');

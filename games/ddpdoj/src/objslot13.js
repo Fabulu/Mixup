@@ -30,7 +30,7 @@
 import { u16 } from './ram.js';
 import { readInput23D186, menuCarry28D53C, coinChanged23C796 } from './tallyscreen.js';
 import { announcePost } from './rank.js';
-import { bgPause25FD82 } from './stageend.js';
+import { bgPause25FD82, clear24631C } from './stageend.js';
 import { armRequest25FF38 } from './player.js';
 import { stageCreate, queueKill, objTableInit24107C } from './objalloc.js';
 
@@ -336,7 +336,7 @@ function state4(ram, rom, ctx) {
     + 'jsr\'s at $288A3C..$288A4E are back to back, so D0..D3 are whatever the caller left. '
     + 'sound.js keeps $28C0FC in ENTRY, not in WRAPPERS, so postWrapper throws on it. Posting '
     + 'it would mean inventing three fields the port does not track');
-  ctx.clear24631C?.(ram);                                    // $288A48
+  clear24631C(ram);                                          // $288A48
   // $288A4E jsr $24107C -- UNCONDITIONAL, four back-to-back `4EB9`s from $288A3C
   // with nothing between them.  It destroys ALL TWENTY object slots (including
   // this one) and resets the ID counter and both queue cursors, which is why the

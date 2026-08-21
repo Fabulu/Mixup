@@ -528,7 +528,7 @@ test('SECTION 6: source census has one implementation and preserves every A5/A6 
     'player update retains its caller-specific D2/D3 continuation');
 });
 
-test('SECTION 6b: registers reconcile through W459 to 16 narrow, 87 widened, 28 pairs and 22 body-only', () => {
+test('SECTION 6b: registers reconcile through W460 to 16 narrow, 86 widened, 28 pairs and 22 body-only', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -544,7 +544,7 @@ test('SECTION 6b: registers reconcile through W459 to 16 narrow, 87 widened, 28 
     'items.js applyItemVelocity <> player.js updatePlayer',
   ];
   assert.equal(narrow.length, 16, 'W459 removes the exported $25FF38 duplicate');
-  assert.equal(heads.length, 87, 'W459 removes the widened $25FF38 head row');
+  assert.equal(heads.length, 86, 'W460 removes the widened $24631C head row');
   assert.equal(pairs.length, 28, 'W459 removes one edge from W458 baseline 29');
   const visibleHeads = new Set();
   for (const [, claims] of headIndex().idx) {
@@ -554,7 +554,7 @@ test('SECTION 6b: registers reconcile through W459 to 16 narrow, 87 widened, 28 
   const bodyOnly = pairs.filter(([pair]) => pair.split(' <> ')
     .some((body) => !visibleHeads.has(body)));
   assert.equal(bodyOnly.length, 22,
-    'headIndex() derives 22 after W456; W457, W458 and W459 remove head-visible pairs, so it remains 22');
+    'headIndex() derives 22 after W456; W457 through W460 remove only head-visible rows or a non-pair head, so it remains 22');
   for (const removed of [...headVisibleRemoved, ...bodyOnlyRemoved]) {
     assert.ok(!pairs.some(([pair]) => pair === removed), `${removed} stays absent`);
   }

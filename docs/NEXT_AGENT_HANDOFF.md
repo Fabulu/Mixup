@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W459)
+Updated: 2026-08-21 (W460)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,15 +10,98 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W459 found the two `$25FF38` request-poster transcriptions were
-not initially equivalent, corrected D0.W ownership, and then merged them.** `player.js
-armRequest25FF38` is the sole body; `tallyscreen.js tallyRequest25FF38` is a compatibility export alias
-to the same function object. The successful tally phase-0 parent now posts its cartridge request 7, and
-the death/reset path delegates its request 1 to the canonical helper. The next audit candidate is **W460
-`$24631C`, `objslot8.js clear24631C` <-> `stageend.js clear24631C`**. The widened head register exposes
-two claims, but the two-marker body scan does not prove a duplicate, so audit before classifying. No
-publish is due at W459. Continue the widened duplicate rows, front-end screens D33/D34/D35/D37,
+`docs/DOCKET.md` is authoritative. **W460 proved the two `$24631C` head claims were not two
+implementations.** `stageend.js` had the one real clear; `objslot8.js` had an optional forwarding shim,
+and production supplied no callback, so three real slot-8 calls silently did nothing. Slots 13 and 14
+used the same invented optional gate. All six source-reachable caller bodies now import the canonical
+clear directly. The next audit candidate is **W461 `$242E24`, `initbody.js rankByte242E24` <->
+`rng.js drawByte242E24`**, named by both the widened head register and two live body markers. W461 is the
+next cadence publication only after its own work is verified on a quiet tree, with `export-web.mjs`
+before `publish.mjs`. Continue the widened duplicate rows, front-end screens D33/D34/D35/D37,
 remaining enemy types, full Black Label loop-2 coverage, and every other explicit docket item.
+
+## W460 COORDINATOR-VERIFIED: `$24631C` CORRECTED TO ONE REAL CLEAR
+
+**THE CLAIMANTS WERE NOT EQUIVALENT.** `stageend.js clear24631C` transcribed the cartridge. The
+`objslot8.js` head was only an optional `ctx.clear24631C` shim, and `Game#ctx()` never supplied that key,
+so `$25A7C6`, `$25A956`, and `$25A9B8` were no-ops. Slots 13 and 14 repeated the invented gate. W460
+exports the verified stage-end body, removes the shim, and makes all six source-reachable callers import
+it directly. No compatibility alias was needed because `$24631C` had no prior public ESM export.
+
+Build-B main CPU SHA-256 is:
+
+    4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c
+
+The complete routine is the 80-byte half-open span `[$24631C,$24636C)`, SHA-256
+`137f82cec8408762cfa4d794873d9004e99b3eda0882ea47a4d6afad15b61ad7`. Its exact bytes are:
+
+    41f90080fa86303c04af30fc000051c8fffa7e0241f9008103464250317c0000
+    0004217c00000000002c41e8003051cfffea3e3c001341f90080fa864250217c
+    00000000002c41e8007051cffff04e75
+
+The previous routine is exactly `[$246292,$24631C)`, ends with `$24631A RTS`, and hashes to
+`7618bcd449ae591a909485d6864e289bc518dc0762e5113d00c0a151f7f8dd9f`. `$24636C` starts the next
+routine with `MOVEM.L D0-D1/A0,-(A7)`.
+
+A complete aligned scan of all 6 MiB finds nine external absolute-long JSR callers, all entering at the
+head: `$23BF3E`, `$256DB0`, `$25A7C6`, `$25A956`, `$25A9B8`, `$288A48`, `$288C52`, `$28D578`, and
+`$28D5FA`. The only internal entries are the three DBcc loops at `$24632A`, `$24634A`, and `$246366`.
+The only exact longword references are the nine JSR operands. All 110 aligned indexed-PC JSR/JMP
+candidates have zero zero-index bases inside the body. No external static transfer enters an internal
+instruction. Dynamic indirect reachability beyond the static inventory remains unproved.
+
+The first DBRA clears 1,200 words, exactly `[$80FA86,$8103E6)`. Later loops deliberately repeat fields
+inside that span for three roots and twenty nodes. The canonical body preserves all 1,249 cartridge-real
+stores. Dirty tests pin both adjacent sentinels, root and node fields, opposite arms, and exact write
+order. A0 returns `$810346`; D0 returns `$xxxxFFFF` with incoming high-word dirt preserved; D7 returns
+`$0000FFFF`; Z is set, N/V/C are clear, and X is preserved. No caller observes those returns.
+
+Cartridge and source reachability stay separate. Production covers `$25A7C6`, `$25A956`, `$25A9B8`,
+`$288A48`, `$288C52`, and `$28D578`. Reset `$23BF3E`, main-loop call 1 `$256DB0`, and unported object
+type 19 `$28D5FA` remain explicit source gaps.
+
+The temporary RED shortened the primary loop by one word. It left `$8103E4..$8103E5` dirty and failed
+the 2,400-byte ownership witness, exact 1,249-write trace, and real `$25A7C6` caller witness. Restoration
+returned `stageend.js` byte-for-byte to SHA-256:
+
+    1229c5b24f105ab5f4a5f229d4336de01f8d662419e11627c90667b5ecc484e0
+
+Live duplicate registers reconcile:
+
+    narrow export-only head rows             16 -> 16
+    widened head rows                        87 -> 86
+    widened body pairs                       28 -> 28
+    body-only findings                       22 -> 22, derived live
+
+Editing-agent validation on the restored final tree:
+
+    focused W460                              12 pass / 0 fail / 0 skipped
+    affected caller/stage/chain/register     391 pass / 0 fail / 0 skipped
+    node --test games/ddpdoj/tests/          4253 pass / 0 fail / 0 skipped
+    node games/ddpdoj/tools/webgate.mjs        31 PASS / 0 FAIL, exit 0
+    export-tables.py --verify                VERIFY OK at 613 windows
+    games/ddpdoj/tools/docket_ids.py         67 items, no duplicates, D70 next
+
+Coordinator-independent validation on the restored final tree:
+
+    focused W460                              12 pass / 0 fail / 0 skipped
+    broader affected surface                 427 pass / 0 fail / 0 skipped
+    node --test games/ddpdoj/tests/          4253 pass / 0 fail / 0 skipped
+    node games/ddpdoj/tools/webgate.mjs        31 PASS / 0 FAIL, exit 0
+    export-tables.py --verify                VERIFY OK at 613 windows
+    games/ddpdoj/tools/docket_ids.py         67 items, no duplicates, D70 next
+
+The coordinator independently reproduced the exact body and boundary hashes, all twelve aligned entries,
+nine exact longword references and 110 indexed-PC candidates with no zero-index base in the body. The
+one-word-short RED mutation independently failed full range ownership, exact write count and the real
+`$25A7C6` parent; restoration returned `stageend.js` exactly to SHA-256
+`1229c5b24f105ab5f4a5f229d4336de01f8d662419e11627c90667b5ecc484e0`. Diff, scope, line-ending,
+punctuation and protected-path checks are clean. No ROM window was added or widened. No generated rip or
+asset changed. No export-web, publish, stage, commit, push, branch switch, or worktree operation occurred
+during editing-agent work. W461 should audit `$242E24` because the live widened register names both
+`initbody.js rankByte242E24` and `rng.js drawByte242E24`, while `bodyPairs()` also derives
+`$242E24/$242E3A`. W461 is the cadence publication after its own verified work on a quiet tree, not part
+of W460.
 
 ## W459 COORDINATOR-VERIFIED: CORRECTED AND MERGED `$25FF38`
 
@@ -190,13 +273,16 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. W459 is coordinator-verified and this handoff is part of its landing. Do not publish at W459.
-2. Audit W460 candidate `$24631C`, `objslot8.js clear24631C` <->
-   `stageend.js clear24631C`; do not assume the two head claims prove body equivalence.
-3. Pin complete cartridge bodies, all transfer forms, callers, continuations, dirty ownership and source
-   reachability before merging or classifying the `$24631C` pair.
-4. Continue the docket and complete Black Label through the full second loop.
-5. Finish White Label last, only after Black Label and its docket are complete.
+1. W460 is coordinator-verified and this handoff is part of its landing. Do not publish at W460.
+2. Audit W461 candidate `$242E24`, `initbody.js rankByte242E24` <->
+   `rng.js drawByte242E24`; two live body markers strengthen the widened-head claim but do not prove
+   equivalence.
+3. Pin complete cartridge bodies, all transfer forms, callers, continuations, width ownership, returned
+   state, dirty ownership, and source reachability before merging or classifying `$242E24`.
+4. After W461's own work is verified on a quiet tree, run `export-web.mjs` before `publish.mjs` for the
+   cadence publication.
+5. Continue the docket and complete Black Label through the full second loop.
+6. Finish White Label last, only after Black Label and its docket are complete.
 
 ## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES
 
