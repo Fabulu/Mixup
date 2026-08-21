@@ -5930,8 +5930,27 @@ guard over 330 files with the six deliberate exceptions. Dist contained 336 file
 `https://9b366a2a.gbtman.pages.dev` deployed successfully, and three production polls confirmed live build
 **`20260821175936`** at `https://gbtman.pages.dev/games/ddpdoj/`. W472 begins the next five-wave interval.
 
-**NEXT OBVIOUS BATCH CANDIDATE: W472, `$23FF06`.** `bomb.js packedPos23FF06` documents the shared
-position arithmetic while `draw23FF06` owns the cartridge entry and bucket-13 emission. Classify the helper
-claim, preserve both `$23FF06/$23FF42` arithmetic variants and draw behavior, and return the address to one
-canonical entry. Continue Black Label through the full second loop and close its docket, then finish White
-Label last.
+
+### D80: FOLLOW-UP, W472 `$23FF06`: SHARED BOMB-POSITION HELPER NO LONGER CLAIMS A CARTRIDGE ENTRY
+
+`bomb.js draw23FF06` remains the private cartridge entry that emits one bomb record to sprite bucket 13.
+The renamed private `packBombRecordPosition` helper owns the position, record-offset, signed shift, mask,
+and live-flag arithmetic shared by `$23FF06` and `$23FF42`; it is not itself another `$23FF06` entry.
+The `$23FF42` distinction, saving D0/A0-A1 around the same twenty instructions, remains explicit in line
+comments. No arithmetic, sprite-bucket selection, animation or attribute forwarding, caller behavior, or
+public ESM surface changed.
+
+The live registers move from 73 to **72 widened heads**. `$23FF06` has one remaining claimant in `bomb.js`;
+narrow heads remain 16, body pairs remain 27, and body-only findings remain 22. Focused bomb coverage,
+syntax checking, the authoritative register, and the W446-W462 live holder chain passed **221/221**.
+
+W472 is the first wave after live build `20260821175936` and is not a publication wave.
+
+**W472 RECOMMENDATION FOR W473: `$240DC2`.** The widened scanner currently names
+`hud.js txPrint240DC2` and `ram.js u32`; classify those claims directly and preserve the actual TX-print
+entry and generic RAM access behavior.
+
+**NEXT OBVIOUS BATCH CANDIDATE: W473, `$240DC2`.** Classify `hud.js txPrint240DC2` against the
+`ram.js u32` claim, preserve the actual TX-print entry and generic RAM reader, and return the address to one
+canonical cartridge claimant. Continue Black Label through the full second loop and close its docket, then
+finish White Label last.

@@ -423,12 +423,13 @@ function emitBucket13(ram, ctx, pos, animLong, w4, w5) {
   ctx.bombEvent?.('draw', `${pos.toString(16)}/${animLong.toString(16)}`);
 }
 
-/** `$23FF06`'s and `$23FF42`'s shared arithmetic: the record's own position,
- *  biased by ($6,A6)/($8,A6), `asr.l #$6`, masked and OR-ed with two live
- *  bits.  `$23FF42` differs from `$23FF06` ONLY in saving D0/A0-A1 -- the
- *  twenty instructions between the two entries are otherwise identical, which
- *  is worth stating because it is the kind of pair a port collapses wrongly. */
-function packedPos23FF06(ram, a6) {
+/** Packs one bomb record position with its live offset and flag bits. */
+function packBombRecordPosition(ram, a6) {
+  // `$23FF06` and `$23FF42` share this arithmetic: the record's own position,
+  // biased by ($6,A6)/($8,A6), `asr.l #$6`, masked and OR-ed with two live bits.
+  // `$23FF42` differs ONLY in saving D0/A0-A1; the twenty instructions between
+  // the two entries are otherwise identical, which is the kind of pair a port
+  // can collapse wrongly.
   // $23FF1E move.l (A1)+,D0 with A1 = ($2,A6): D0 = posY<<16 | posX
   let hi = ram.u16(a6 + B.posY), lo = ram.u16(a6 + B.posX);
   // $23FF20 swap / $23FF22 add.w (A1)+,D0  -- the LOW half is now posY
@@ -442,7 +443,7 @@ function packedPos23FF06(ram, a6) {
 }
 
 function draw23FF06(ram, ctx, a6) {
-  emitBucket13(ram, ctx, packedPos23FF06(ram, a6), ram.u32(a6 + B.anim),
+  emitBucket13(ram, ctx, packBombRecordPosition(ram, a6), ram.u32(a6 + B.anim),
     ram.u16(a6 + B.size), ram.u16(a6 + B.flipColour));
 }
 

@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W471)
+Updated: 2026-08-21 (W472)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,15 +10,22 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W471 removed the shared emitter helper's false `$23E3E2`
-cartridge-entry claim.** Private `bossarrival.js emit23E3E2` remains the bucket-2 entry, while
-parameterized `emitScaled` still serves the four extent-scaled bucket variants. Live scanner APIs report 16
-narrow heads, 73 widened heads, 27 body pairs, and 22 body-only findings. The next direct batch candidate is
-**W472 `$23FF06`**, where `bomb.js packedPos23FF06` documents arithmetic shared by the `$23FF06/$23FF42`
-variants and `draw23FF06` owns the bucket-13 entry. W471 was published as live build
-`20260821175936`; W472 starts the next five-wave interval. Continue the widened duplicate rows, front-end
-screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and every other explicit
-other explicit docket item.
+`docs/DOCKET.md` is authoritative. **W472 removed the shared bomb-position helper's false `$23FF06`
+cartridge-entry claim.** Private `bomb.js draw23FF06` remains the bucket-13 entry, while
+`packBombRecordPosition` still provides the arithmetic shared with the register-saving `$23FF42` variant.
+Live scanner APIs report 16 narrow heads, 72 widened heads, 27 body pairs, and 22 body-only findings. The
+next direct batch candidate is **W473 `$240DC2`**, claimed by `hud.js txPrint240DC2` and `ram.js u32`.
+W471 remains live as build `20260821175936`; W472 is the first wave in the next five-wave interval.
+Continue the widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black
+Label loop-2 coverage, and every other explicit docket item.
+
+## W472 VERIFIED: SHARED BOMB-POSITION HELPER OWNS NO CARTRIDGE ENTRY
+
+`bomb.js draw23FF06` remains the cartridge entry that writes the packed record to sprite bucket 13. The
+renamed private `packBombRecordPosition` helper preserves the position, live-offset, shift, mask, and flag
+arithmetic shared by `$23FF06` and `$23FF42`; it is not another `$23FF06` entry. Focused bomb and live
+register coverage passed 221/221. Only widened heads changed, 73 to 72. W471 remains live as build
+`20260821175936`; W472 starts the next publication interval.
 
 ## W471 VERIFIED: PARAMETERIZED EMITTER HELPER OWNS NO CARTRIDGE ENTRY
 
