@@ -286,8 +286,8 @@ test('SECTION 3: one `$242684` claimant survives, and all six old private heads 
   const pairs = bodyPairs().map(([p]) => p);
   assert.equal(pairs.includes('handlers.js onScreen242684 <> items.js offScreen242684'), false,
     'the deleted body pair left the body register too');
-  assert.equal(headRegister().length, 85,
-    'W450 92 minus $242684 at W451, $242494 at W453, $25D9E6 at W457, $25DA60 at W458, $25FF38 at W459, $24631C at W460 and $242E24 at W461 is 85');
+  assert.equal(headRegister().length, 84,
+    'W450 92 minus $242684 at W451, $242494 at W453, $25D9E6 at W457, $25DA60 at W458, $25FF38 at W459, $24631C at W460, $242E24 at W461 and $2414BE at W462 is 84');
   assert.equal(pairs.length, 27,
     'W450 39 body pairs minus W451 $242684, W453 $242494, W454 turret, W455 '
       + 'beam reset, four W456 item-velocity edges, W457 cursor map, W458 cursor load, W459 '

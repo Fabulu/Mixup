@@ -231,19 +231,7 @@ export const SLOT12 = Object.freeze({
 });
 
 // ---------------------------------------------------------------------------------------------
-// The two ctx-shaped gaps, both the same shape `objslot8.js` already carries.
-
-/** `$2414BE` -- install TX palette bank 0. THIRTY-TWO bytes (`$2414C8 lsl.w #$5`). Guarded on
- *  `ctx.palette` the way every other front-end slot guards its installs: a chain without a
- *  `PaletteState` must COUNT the miss rather than throw on `undefined`. */
-function installTxBank(ram, rom, ctx, src, site) {
-  if (!ctx?.palette) {
-    ctx?.unported?.note(0x2414be, `$${site.toString(16).toUpperCase()} -- TX bank 0 <- $${
-      src.toString(16).toUpperCase()} with no PaletteState on this chain`);
-    return;
-  }
-  install2414BE(ram, ctx.palette, 0, rom.bytes(src, 32), site, 'slot [12] name-entry TX palette');
-}
+// The remaining ctx-shaped gap is counted below.
 
 /** `$23C622` -- clear the TX layer. `Game#ctx()` carries the `TxVram` as BOTH `tx` and `txvram`,
  *  so on the driver path this always runs; slots [9], [13], [14] and [17] all call
@@ -394,7 +382,14 @@ export function teardown28F368(ram, rom, a5, ctx) {
   queueKill(ram, ram.u32(a5 + SLOT12.idAt));                 // $28F37A jsr $241292
   cueStreamNote(ctx, 0x28f380);                              // $28F380 jsr $28C0FC
   clearTx(ctx, 0x28f386);                                    // $28F386 jsr $23C622
-  installTxBank(ram, rom, ctx, SLOT12.txPal, 0x28f394);      // $28F38C..$28F394
+  // $28F38C lea $222638,A0 / $28F392 moveq #0,D0 / $28F394 jsr $2414BE.
+  if (!ctx?.palette) {
+    ctx?.unported?.note(0x2414be, '$28F394 -- TX bank 0 <- $222638 with no PaletteState '
+      + 'on this chain');
+  } else {
+    install2414BE(ram, ctx.palette, 0, rom.bytes(SLOT12.txPal, 32), 0x28f394,
+      'slot [12] name-entry TX palette');
+  }
   const made = stageCreate(ram, SLOT12.childType,            // $28F39A / $28F39E
     (t) => rom.u16(SLOT12.dispatch + t * 8 + 4));
   ram.setU16(made.addr + SLOT12.stateField, SLOT12.childState);   // $28F3A4 -- through A0

@@ -283,22 +283,6 @@ export function creditTake23C9F0(ram, ctx) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The remaining ctx-shaped gap in this file is pre-existing and counted.
-
-/** `$2414BE` -- install a TX palette bank. THIRTY-TWO bytes, not 64: `$2414C8 lsl.w #$5` is
- *  five, and a TX bank is 32 bytes. Guarded on `ctx.palette` the way `objslot9.js` guards its
- *  fifteen installs, because a chain without a `PaletteState` must count the miss rather than
- *  throw on `undefined`. */
-function installTxBank(ram, rom, ctx, src, site, why) {
-  if (!ctx?.palette) {
-    ctx?.unported?.note(0x2414be, `$${site.toString(16).toUpperCase()} -- TX bank 0 <- $${
-      src.toString(16).toUpperCase()} with no PaletteState on this chain`);
-    return;
-  }
-  install2414BE(ram, ctx.palette, 0, rom.bytes(src, 32), site, why);
-}
-
-// ---------------------------------------------------------------------------------------------
 // `$25B3DC` -- ARM 2'S INIT, and the one routine that stood between slot [8] and a cold boot.
 
 /**
@@ -499,7 +483,13 @@ function arm2(ram, rom, a5, ctx) {
     ram.setU8(a5 + SCREEN8.inited, 1);                         // $25A918
     clearTx23C622(ctx.tx);                                     // $25A91E jsr $23C622
     // $25A924 lea $222638,A0 / $25A92A moveq #0,D0 / $25A92C jsr $2414BE
-    installTxBank(ram, rom, ctx, SCREEN8.txPalMain, 0x25a92c, 'slot [8] arm 2 TX palette');
+    if (!ctx?.palette) {
+      ctx?.unported?.note(0x2414be, '$25A92C -- TX bank 0 <- $222638 with no PaletteState '
+        + 'on this chain');
+    } else {
+      install2414BE(ram, ctx.palette, 0, rom.bytes(SCREEN8.txPalMain, 32), 0x25a92c,
+        'slot [8] arm 2 TX palette');
+    }
     hiscoreInit25B3DC(ram, rom, ctx);                          // $25A932 jsr $25B3DC
   }
   if (!hiscoreScreen25B412(ram, rom, ctx)) {                   // $25A938 jsr / $25A93E bcs
@@ -643,7 +633,13 @@ function arm5(ram, rom, a5, ctx) {
     clearTx23C622(ctx.tx);                                     // $25A98E jsr $23C622
     ram.setU16(a5 + SCREEN8.param, 0);                         // $25A994 move.w #$0,($4,A5)
     // $25A99A lea $222618,A0 / $25A9A0 moveq #0,D0 / $25A9A2 jsr $2414BE
-    installTxBank(ram, rom, ctx, SCREEN8.txPalWarn, 0x25a9a2, 'slot [8] arm 5 TX palette');
+    if (!ctx?.palette) {
+      ctx?.unported?.note(0x2414be, '$25A9A2 -- TX bank 0 <- $222618 with no PaletteState '
+        + 'on this chain');
+    } else {
+      install2414BE(ram, ctx.palette, 0, rom.bytes(SCREEN8.txPalWarn, 32), 0x25a9a2,
+        'slot [8] arm 5 TX palette');
+    }
   }
   if (!screen5Body25C6D4(ram, rom, ctx)) {                     // $25A9A8 jsr / $25A9AE bcs
     teardown25A9B2(ram, rom, ctx);                             // $25A9B2 -- CARRY CLEAR only
@@ -826,7 +822,7 @@ export function screen5Init25C592(ram, rom, ctx) {
     (t) => rom.u16(SCREEN8.dispatch + t * 8 + 4));
   ram.setU16(made.addr + SCREEN8.param, d7);                   // $25C5EC move.w D7,($4,A0)
   bannerClear28E7A2(ram);                                      // $25C5F0 jsr $28E7A2
-  // $25C5F6/$25C5FC/$25C600 -- bank $C, NOT the bank 0 `installTxBank` hard-codes.
+  // $25C5F6/$25C5FC/$25C600 -- bank $C, NOT bank 0 used by guarded front-end callers.
   if (ctx?.palette) {
     install2414BE(ram, ctx.palette, A.palBank, rom.bytes(A.palSrc, 32), 0x25c600,
       'slot [8] arm 5 demo-play TX palette');
@@ -1552,7 +1548,8 @@ export function screen3Palettes25BE72(ram, rom, ctx) {
   }
 }
 
-/** `$2415C4` through its `(D1+1)`-bank sibling `$2415E8`, guarded the way `installTxBank` is. */
+/** `$2415C4` through its `(D1+1)`-bank sibling `$2415E8`, guarded like the direct `$2414BE`
+ *  caller sites in this file. */
 function installBgBank(ram, rom, ctx, src, bank, site) {
   if (!ctx?.palette) {
     ctx?.unported?.note(0x2415c4, `$${site.toString(16).toUpperCase()} jsr $2415C4 -- BG bank ${
@@ -1583,7 +1580,13 @@ function arm13(ram, rom, a5, ctx) {
     ram.setU8(a5 + SCREEN8.inited, 1);                         // $25ABFC
     clearTx23C622(ctx.tx);                                     // $25AC02 jsr $23C622
     // $25AC08 lea $222618,A0 / $25AC0E moveq #0,D0 / $25AC10 jsr $2414BE
-    installTxBank(ram, rom, ctx, SCREEN8.txPalWarn, 0x25ac10, 'slot [8] arm 13 TX palette');
+    if (!ctx?.palette) {
+      ctx?.unported?.note(0x2414be, '$25AC10 -- TX bank 0 <- $222618 with no PaletteState '
+        + 'on this chain');
+    } else {
+      install2414BE(ram, ctx.palette, 0, rom.bytes(SCREEN8.txPalWarn, 32), 0x25ac10,
+        'slot [8] arm 13 TX palette');
+    }
     ram.setU16(a5 + SCREEN8.cursor, 0);                        // $25AC16 move.w #$0,($6,A5)
     ram.setU16(a5 + SCREEN8.y, SCREEN8.warnY0);                // $25AC1C move.w #$B8,($8,A5)
     ram.setU16(a5 + SCREEN8.delay, SCREEN8.warnDelay);         // $25AC22 move.w #$1,($A,A5)
@@ -1669,7 +1672,13 @@ export function coinTeardown25A7C0(ram, rom, ctx) {
     ctx?.soundPost?.(SCREEN8.cueWrapper);                      // $25A800 jsr $28C5B0
   }
   // $25A806 lea $222638,A0 / $25A80C moveq #0,D0 / $25A80E jsr $2414BE -- THIRTY-TWO bytes.
-  installTxBank(ram, rom, ctx, SCREEN8.txPalMain, 0x25a80e, 'slot [8] coin-teardown TX palette');
+  if (!ctx?.palette) {
+    ctx?.unported?.note(0x2414be, '$25A80E -- TX bank 0 <- $222638 with no PaletteState '
+      + 'on this chain');
+  } else {
+    install2414BE(ram, ctx.palette, 0, rom.bytes(SCREEN8.txPalMain, 32), 0x25a80e,
+      'slot [8] coin-teardown TX palette');
+  }
   clearTx23C622(ctx.tx);                                       // $25A814 jsr $23C622
   const made = stageCreate(ram, SCREEN8.selfType,              // $25A81A move.w #$8,D0 / $25A81E
     (t) => rom.u16(SCREEN8.dispatch + t * 8 + 4));

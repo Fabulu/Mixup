@@ -226,7 +226,7 @@ export function interruptEnable23C1C2(ram, ctx) {
  *
  * @param pal  the `PaletteState` the five `$2414BE` installs write through. A
  *             caller without one gets five counted notes and no palette, the same
- *             bargain `objslot8.js installTxBank` already makes.
+ *             bargain the guarded direct `$2414BE` front-end callers already make.
  * @returns {{hiscore:boolean, sectionFlag:number, ctrl:number, banks:number,
  *            skipped:number, made:object, state:number}}
  */

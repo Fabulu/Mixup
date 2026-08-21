@@ -250,8 +250,8 @@ test('W392 SECTION 1: the palette is TX bank TWELVE, not the bank 0 every other 
     assert.equal(w(0x25c5f6), 0x41f9, '$25C5F6 lea abs.l,A0');
     assert.equal(l(0x25c5f8), ARM5SCREEN.palSrc, '  ...$2227F8');
     assert.equal(w(0x25c5fc), 0x303c, '$25C5FC move.w #imm,D0');
-    assert.equal(w(0x25c5fe), ARM5SCREEN.palBank, '  ...#$C. Arms 1, 3 and 5\'s WRAPPER all use '
-      + '`moveq #0,D0`; this one does not, and `installTxBank` hard-codes bank 0');
+    assert.equal(w(0x25c5fe), ARM5SCREEN.palBank, '  ...#$C. Arms 1, 3 and 5\'s guarded '
+      + 'front-end callers all use `moveq #0,D0`; this direct call passes bank 12');
     const { ctx } = unitCtx();
     const ram = new Ram(new Uint8Array(0x20000));
     screen5Init25C592(ram, rawRom(), ctx);

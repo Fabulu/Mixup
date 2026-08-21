@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W461)
+Updated: 2026-08-21 (W462)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,18 +10,121 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W461 proved the `$242E24` claim was one implementation transcribed
-twice.** The complete cartridge body increments byte `$803917`, masks the post-increment word to seven
-bits, and returns one unsigned byte from `$242E42`; both source bodies did exactly that. The private
-`initbody.js rankByte242E24` body is gone, and its type `$11` unsigned-shift and type `$8D` signed-shift
-callers now use canonical `rng.js drawByte242E24` without changing either convention. The next audit
-candidate is **W462 `$2414BE`, the private `installTxBank` wrappers in `objslot8.js` and `objslot12.js`**.
-They already delegate to `palette.js install2414BE`, but that makes them candidates for a wrapper-identity
-and reachability audit, not a proved removal. W461 editing explicitly did not export or publish. Continue
-the widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black Label
-loop-2 coverage, and every other explicit docket item.
+`docs/DOCKET.md` is authoritative. **W462 proved that the private `$2414BE` `installTxBank`
+functions were caller adapters, not separate cartridge implementations.** `palette.js install2414BE`
+remains the sole public ESM body. The private names in `objslot8.js` and `objslot12.js` are gone without
+aliases, while all five callers retain their absent-palette notes, deferred ROM reads, fixed bank 0,
+exact 32-byte sources, sites, and reasons. The live registers now reconcile to 16 narrow heads, 84
+widened heads, 27 body pairs, and 22 body-only findings derived from `headIndex()`. The next audit
+candidate is **W463 `$28C0FC`, the private `cueStreamNote` wrappers in `objslot8.js` and
+`objslot12.js`**. Treat them as audit candidates, not presumed removals. W461 was published as build
+`20260821132334`; W462 is the first wave after it and is not a publication wave. Continue the widened
+duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2
+coverage, and every other explicit docket item.
 
-## W461 COORDINATOR-VERIFIED: ONE CANONICAL `$242E24` RANK-BYTE DRAW
+## W462 VERIFIED: PRIVATE `$2414BE` ADAPTER IDENTITIES REMOVED
+
+**CLASSIFICATION AND IMPLEMENTATION.** `palette.js install2414BE` remains the sole canonical public ESM
+identity. The private `installTxBank` functions in `objslot8.js` and `objslot12.js` were not cartridge
+bodies and had no public consumer, so they were removed without compatibility aliases. Their adaptations
+remain directly at all five callers: exact bank 0 and 32-byte source, call site and reason, a counted
+unported note when `ctx.palette` is missing, and deferred ROM access on that arm. Slot 8 retains
+`$25A80E/$25A92C` main and `$25A9A2/$25AC10` warning sources; slot 12 retains `$28F394` main. The six
+production importers point toward `palette.js`, which does not import either object-slot module.
+
+Build-B main CPU size is `$600000` and SHA-256 is:
+
+    4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c
+
+The exact 36-byte body is `[$2414BE,$2414E2)`, SHA-256
+`57f81c30f0abf2d85a849805eb3fcdc0c891ddf0f5590ad62b7be6d26be22aa1`, with bytes:
+
+    48e780c043f90080f886eb48d2c0700722d851c8fffc33fc00010080fa6a4cdf03014e75
+
+It decodes as `$2414BE MOVEM.L D0/A0-A1,-(A7)`, `$2414C2 LEA $80F886,A1`, `$2414C8 LSL.W #5,D0`,
+`$2414CA ADDA.W D0,A1`, `$2414CC MOVEQ #7,D0`, `$2414CE MOVE.L (A0)+,(A1)+`, `$2414D0 DBRA
+D0,$2414CE`, `$2414D4 MOVE.W #1,$80FA6A`, `$2414DC MOVEM.L (A7)+,D0/A0-A1`, and `$2414E0 RTS`.
+The prior complete body `[$241404,$2414BE)` hashes to
+`a1fe60c29ae893e62620fa745100436f9def1073b6b66f28f3102647d1422a50` and ends with `$2414BC RTS`.
+The next multi-bank sibling `[$2414E2,$24150A)` hashes to
+`b344ea7538965782e90edc77ba553292f201072dc7a761a6253584ff3d42ce83`. Neither boundary falls through.
+
+The complete aligned scan decoded all 3,145,728 words. Image-wide transfer counts are Bcc.B 119480,
+Bcc.W 10851, BRA.B 6815, BRA.W 1969, BSR.B 5809, BSR.W 2042, DBcc 2287, JSR.W 6, JSR.L 12787,
+JSR.PC16 649, JSR.PCIX 4, JMP.W 4, JMP.L 1285, JMP.PC16 85, and JMP.PCIX 106. Exactly 29 external calls
+enter the head:
+
+    $23BF8E $23BF9C $23BFAA $23BFB8 $23BFC6 $2416C8 $241702 $241742 $24177C
+    $25A80E $25A92C $25A9A2 $25AC10 $25C600 $25C9AE $25CDCE $26056C
+    $2605DC $2605EA $2605F8 $260606 $260614 $260622 $260630 $26063E
+    $26064C $26065A $288590 $28F394
+
+Twenty-five are absolute-long JSR calls, each accounting for one of the 25 aligned exact-longword
+references into the body. `$2416C8`, `$241702`, `$241742`, and `$24177C` are PC-relative JSR calls. The
+sole internal entry is `$2414D0 DBRA -> $2414CE`. All 110 indexed-PC candidates have no zero-index base
+inside the body. There is no external static entry to an inner instruction. Every call and first complete
+continuation is byte-pinned, and none consumes returned CCR/SR. Dynamic indirect reachability is unproved.
+
+Every caller passes bank `0..14`, an even pointer, and exactly 32 source bytes. The complete
+`(call:bank/source)` census is:
+
+    $23BF8E:0/$222638  $23BF9C:1/$222658  $23BFAA:2/$222678
+    $23BFB8:3/$222698  $23BFC6:4/$2226B8  $2416C8:9/$2226F8
+    $241702:9/$222738  $241742:10/$222718 $24177C:10/$222758
+    $25A80E:0/$222638  $25A92C:0/$222638  $25A9A2:0/$222618
+    $25AC10:0/$222618  $25C600:12/$2227F8 $25C9AE:0/$222618
+    $25CDCE:0/$222618  $26056C:0/$222618  $2605DC:0/$222638
+    $2605EA:1/$222658  $2605F8:2/$222678  $260606:3/$222698
+    $260614:4/$2226B8  $260622:5/$2226D8  $260630:6/$222778
+    $26063E:7/$222798  $26064C:8/$2227B8  $26065A:11/$2227D8
+    $288590:13/$222818 $28F394:0/$222638
+
+Production represents 28 sites. `$288590`, bank 13 from `$222818`, is the sole static source gap and
+remains unclaimed because its reachability was not proved.
+
+Machine ownership is exact. MOVEM makes a 12-byte frame and restores D0, A0, A1, and A7; no other
+register is touched. `LSL.W #5` owns only D0's low word. `ADDA.W` sign-extends it, so `$07FF` becomes
+`$FFE0` and walks 32 bytes backward. Machine `$0800` can alias bank 0 after the word shift, but the public
+contract deliberately rejects every value outside `0..14`. Eight longword copies advance internal A0 and
+A1 by 32 bytes and write only 16 words of the selected TX bank. Bank 0 and 14 witnesses preserve adjacent
+sentinels. The final write sets TX dirty word `$80FA6A` to 1 without owning sprite `$80FA66` or background
+`$80FA68`. Internal D0 reaches `$0000FFFF` after DBRA, then MOVEM restores caller D0. Final N/Z/V/C are
+clear and X is preserved.
+
+The production RED changed `i < TX_BANK_WORDS` to `i < TX_BANK_WORDS - 1`. It failed three independent
+focused sections: word 15 remained dirty `$A55A` instead of `$591E`, provenance word 15 remained `$7E`
+instead of sourced `1`, and the exact production-loop guard rejected the shortened body. Twelve other
+sections stayed green. Exact restoration returned `palette.js` to both pre-RED and pre-task SHA-256:
+
+    aca9de23e439271c9c51e7ea105302ab53ef778e36ef0d6e89032f759fa00389
+
+Live scanner APIs now reconcile to narrow heads 16, widened heads 84, body pairs 27, and body-only 22,
+with body-only derived from `headIndex()`. `$2414BE` is no longer a duplicate head because only the
+canonical implementation remains. The complete W446-W462 holder chain passed 187/187. Existing palette
+windows remain exactly `$222618 + $0020`, `$222638 + $00C0`, `$2226F8 + $0080`, `$222778 + $0080`, and
+`$2227F8 + $0020`. The `$222818..$222838` source gap and executable body remain unexported.
+
+Editing-agent validation on the restored final W462 tree:
+
+    focused W462                              15 pass / 0 fail / 0 skipped
+    focused W462 plus authoritative register 27 pass / 0 fail / 0 skipped
+    W446-W462 live-register chain            187 pass / 0 fail / 0 skipped
+    affected palette/object/register surface 509 pass / 0 fail / 0 skipped
+    node --test games/ddpdoj/tests/         4280 pass / 0 fail / 0 skipped
+    node games/ddpdoj/tools/webgate.mjs       31 PASS / 0 FAIL, exit 0
+    export-tables.py --verify                VERIFY OK at 613 windows
+    games/ddpdoj/tools/docket_ids.py         68 items, no duplicates, D71 next
+
+W461 was published as build `20260821132334`. W462 is the first wave after that publication and is not a
+publication wave. No export-web, publish, stage, commit, push, branch switch, worktree, generated rip, or
+generated asset operation occurred.
+
+**NEXT AUDIT CANDIDATE: W463 `$28C0FC`.** Audit the private same-named `cueStreamNote` wrappers in
+`objslot8.js` and `objslot12.js`. Pin the complete cartridge body, all static and source reachability,
+caller adaptation, public identity, dependency direction, and sound-state ownership before deciding
+whether either identity is removed, retained, or aliased.
+
+## HISTORICAL W461 COORDINATOR-VERIFIED: ONE CANONICAL `$242E24` RANK-BYTE DRAW
 
 **THE BODIES ARE EQUIVALENT AND MERGED.** `initbody.js rankByte242E24` was a private transcription of
 `rng.js drawByte242E24`. Both incremented only byte `$803917`, read the resulting word at `$803916`,
@@ -112,10 +215,10 @@ line endings, CRLF `movement.js`, added punctuation, protected paths, generated 
 and `git diff --check` are clean. A stale regression label for the preceding table was corrected from
 `$242CAC` to the pinned `$242D24` start without changing behavior.
 
-**NEXT AUDIT CANDIDATE: W462 `$2414BE`.** Audit the private `installTxBank` wrappers in `objslot8.js`
-and `objslot12.js` against canonical `palette.js install2414BE`. They already delegate, but do not remove
-or alias them until the cartridge body, all transfers, source callers, dependency direction, and any
-public import identity are pinned.
+**HISTORICAL W461 RECOMMENDATION FOR W462 `$2414BE`.** W461 handed off the private `installTxBank`
+wrappers in `objslot8.js` and `objslot12.js` as audit candidates only. W462 completed the body,
+reachability, dependency, public-identity, and caller-adaptation proof above and removed both private
+names without aliases.
 
 ## HISTORICAL W460 COORDINATOR-VERIFIED: `$24631C` CORRECTED TO ONE REAL CLEAR
 
@@ -370,14 +473,15 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. W461 proved and merged the duplicate `$242E24` body. Do not redo that audit.
-2. Audit W462 candidate `$2414BE`: private `installTxBank` wrappers in `objslot8.js` and
-   `objslot12.js` versus canonical `palette.js install2414BE`. Existing delegation is evidence, not proof
-   that either wrapper identity may be removed.
-3. Pin the complete cartridge body, every transfer form and direct caller, width and state ownership,
-   source reachability, dependency direction, and public import compatibility before classifying W462.
-4. W461 editing did not run `export-web.mjs` or `publish.mjs`. Preserve the every-fifth-wave cadence and,
-   whenever publication is actually due on a quiet tree, run `export-web.mjs` before `publish.mjs`.
+1. W462 removed both private `$2414BE` adapter identities after proving the complete cartridge and caller
+   contract. Do not redo that audit.
+2. Audit W463 candidate `$28C0FC`: private `cueStreamNote` wrappers in `objslot8.js` and
+   `objslot12.js`. Same-name heads are evidence only, not proof that either identity can be removed.
+3. Pin the complete cartridge body, every transfer and caller convention, source reachability, dependency
+   direction, ESM identity, and sound-state ownership before classifying W463.
+4. W461 was published as build `20260821132334`. W462 is the first wave after it, is not a publication
+   wave, and did not run `export-web.mjs` or `publish.mjs`. Preserve the every-fifth-wave cadence and,
+   whenever publication is due on a quiet tree, run `export-web.mjs` before `publish.mjs`.
 5. Continue the docket and complete Black Label through the full second loop.
 6. Finish White Label last, only after Black Label and its docket are complete.
 

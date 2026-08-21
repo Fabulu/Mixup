@@ -324,7 +324,7 @@ test('SECTION 6: source keeps one $25D9E6 body and W458 leaves one $25DA60 body'
     '$25DA60 imports now share one function object');
 });
 
-test('SECTION 6b: live registers derive 16 narrow, 85 widened, 27 pairs and 22 body-only', () => {
+test('SECTION 6b: live registers derive 16 narrow, 84 widened, 27 pairs and 22 body-only', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -341,7 +341,7 @@ test('SECTION 6b: live registers derive 16 narrow, 85 widened, 27 pairs and 22 b
   const mergedRank = 'initbody.js rankByte242E24 <> rng.js drawByte242E24';
 
   assert.equal(narrow.length, 16, 'W459 removes $25FF38 after W458 left 17');
-  assert.equal(heads.length, 85, 'W461 removes $242E24 after W460 left 86');
+  assert.equal(heads.length, 84, 'W462 removes $2414BE after W461 left 85');
   assert.equal(pairs.length, 27, 'W461 removes the rank-byte edge from W460 baseline 28');
   assert.equal(bodyOnly.length, 22,
     'body-only remains executable headIndex() derivation; W461 removes a head-visible pair');

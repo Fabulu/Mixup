@@ -1,7 +1,7 @@
 // WAVE 450 (D69) -- THE DUPLICATE REGISTER, WIDENED UNTIL IT CAN SEE A PRIVATE COPY.
 //
 // ---------------------------------------------------------------------------
-// THE NUMBER WAS 19, W450 FOUND 92, W451 LEFT 91, W453 LEFT 90, W457 LEFT 89, W458 LEFT 88, W459 LEFT 87, W460 LEFT 86, W461 LEAVES 85
+// THE NUMBER WAS 19, W450 FOUND 92, W451 LEFT 91, W453 LEFT 90, W457 LEFT 89, W458 LEFT 88, W459 LEFT 87, W460 LEFT 86, W461 LEFT 85, W462 LEAVES 84
 // ---------------------------------------------------------------------------
 // W444 built the index; W446, W447, W448 and W449 steered by it and merged five
 // addresses, each of which turned out to be a live defect. Then W449 found a
@@ -22,19 +22,14 @@
 // one real implementation plus a dead optional forwarding shim, now removed. W461
 // proved initbody's private `$242E24` rank-byte body instruction-equivalent to the
 // exported rng.js implementation and routed its two callers to that canonical body.
+// W462 proved the two private `$2414BE installTxBank` heads were caller adapters,
+// retained their no-palette guards at all five sites, and removed both identities.
 // The live registers are:
 //
 //     shipped `export function` scan     16 addresses claimed twice or more
-//     widened head scan                  85          "
+//     widened head scan                  84          "
 //     of the shipped 16                  16 still there, NONE dropped
-//     newly visible                      70
-//     of those, originally visible because of
-//       wider HEAD FORMS (private
-//       `function`, `const` arrow,
-//       method, object property)         68
-//       the wider DOC-SPAN rule           5
-//     then merged by W451                -1
-//     then merged by W453                -1
+//     newly visible                      68
 //
 // ...plus a second register the old scan had no axis for at all: 27 PAIRS OF
 // BODIES that transcribe a shared RUN of ROM instructions. W456 removed four
@@ -57,7 +52,7 @@
 // ---------------------------------------------------------------------------
 //   1   the scan found something -- floors, so a broken regex cannot read clean
 //   2   the widening WEAKENS NOTHING: the shipped register is a strict subset
-//   3   THE HEAD REGISTER, exact, 85
+//   3   THE HEAD REGISTER, exact, 84
 //   4   THE BODY REGISTER, exact, 27 pairs; 22 body-only findings
 //   5   RED PROOFS on synthetic trees -- one per axis, plus two negative controls
 //   6   THE HISTORICAL POSITIVE CONTROL: W449's own `clearChain`, verbatim
@@ -185,7 +180,7 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 
 // ---------------------------------------------------------------- SECTION 3
 
-// THE HEAD REGISTER. 85 ROM addresses claimed by two or more function-like
+// THE HEAD REGISTER. 84 ROM addresses claimed by two or more function-like
 // heads in `src/`, by name suffix or by JSDoc opening span.
 //
 // **DECLARE, NEVER WIDEN** -- W444's rule, and W446/W447/W448/W449 all kept it.
@@ -225,17 +220,20 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 //     rankByte242E24` body exactly equivalent to `rng.js drawByte242E24`: one
 //     30-byte cartridge body, 37 direct callers, identical byte/word ownership,
 //     and an existing one-way dependency. Its two callers now use rng.js and the
-//     register is 85. Next sharpest are `$2414BE` and
-//     `$28C0FC` (`installTxBank` and `cueStreamNote`, each written twice under
-//     the SAME name in objslot8.js and objslot12.js), `$28E7A2`, `$28C6C6`,
-//     `$28F4C4`, `$285A12` and `$2A6EDC`.
+//     register fell to 85. W462 pinned the complete 36-byte `$2414BE` uploader and
+//     all 29 callers. The two private `installTxBank` heads were not public and
+//     their argument adaptation now remains at five direct canonical caller sites,
+//     so `$2414BE` leaves the register at 84. Next sharpest is `$28C0FC`
+//     (`cueStreamNote`, written twice under the same name in objslot8.js and
+//     objslot12.js), followed by `$28E7A2`, `$28C6C6`, `$28F4C4`, `$285A12` and
+//     `$2A6EDC`.
 //
 // Each of those is its own wave. W446/W447/W448/W449 say what they cost when
 // they are not: a frozen background, a boss that refills its HP, a death effect
 // that can never run, and an invented condition in the only copy with a caller.
 const HEAD_REGISTER = Object.freeze([
   0x23bf74, 0x23bfdb, 0x23c622, 0x23e3e2, 0x23ff06, 0x240dc2,
-  0x240f62, 0x24133c, 0x2414be, 0x24150a, 0x2415a2, 0x241688,
+  0x240f62, 0x24133c, 0x24150a, 0x2415a2, 0x241688,
   0x24179e, 0x2417de, 0x242ec2,
   0x24560a, 0x2456a6, 0x246710, 0x24676a, 0x2497aa,
   0x249e4e, 0x249ea0, 0x249ee2, 0x24c096, 0x24c338, 0x24caae,
@@ -252,7 +250,7 @@ const HEAD_REGISTER = Object.freeze([
   0x2a3e15, 0x2a6edc,
 ]);
 
-test('SECTION 3: the widened head register is exactly these 85 addresses', () => {
+test('SECTION 3: the widened head register is exactly these 84 addresses', () => {
   const { idx } = headIndex();
   const wide = headRegister();
   assert.deepEqual(wide.map(hex), [...HEAD_REGISTER].map(hex),
@@ -267,17 +265,18 @@ test('SECTION 3: the widened head register is exactly these 85 addresses', () =>
 
   // ASSERTED AS A NUMBER TOO -- W447's lesson. An empty list satisfies a
   // `deepEqual` against a shrunken array and reads as five merges' progress.
-  assert.equal(wide.length, 85,
-    'the widened register is not 85. W450 found 92, W451 merged $242684, W453 merged '
-    + '$242494, W457 merged $25D9E6, W458 merged $25DA60, W459 merged $25FF38, and '
-    + 'W460 removed the optional $24631C shim, and W461 merged the private $242E24 body');
+  assert.equal(wide.length, 84,
+    'the widened register is not 84. W450 found 92, W451 merged $242684, W453 merged '
+    + '$242494, W457 merged $25D9E6, W458 merged $25DA60, W459 merged $25FF38, '
+    + 'W460 removed the optional $24631C shim, W461 merged the private $242E24 body, '
+    + 'and W462 removed the private $2414BE adapter row');
 
   // ...and every address the four merged waves removed must STAY off it, now
   // measured by a scan that can see private copies rather than only exports.
   for (const [a, wave] of [[0x25ffa8, 'W446'], [0x2428a6, 'W447'], [0x242b3c, 'W447'],
     [0x246520, 'W448'], [0x24652a, 'W448'], [0x246800, 'W449'], [0x242684, 'W451'],
     [0x242494, 'W453'], [0x25d9e6, 'W457'], [0x25da60, 'W458'], [0x25ff38, 'W459'],
-    [0x24631c, 'W460'], [0x242e24, 'W461']]) {
+    [0x24631c, 'W460'], [0x242e24, 'W461'], [0x2414be, 'W462']]) {
     assert.ok(!wide.includes(a),
       `${hex(a)} is claimed twice AGAIN under the widened scan (${wave} merged it). `
       + 'The narrow scan could not have told you: a private re-transcription is exactly '

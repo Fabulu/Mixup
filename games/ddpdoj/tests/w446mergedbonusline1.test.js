@@ -310,16 +310,17 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
 //
 // The old 19 remains in the arithmetic above as history; W457, W458 and W459's
 // proved merges move the live narrow count to 16. W460 removed a private optional shim,
-// and W461 removed the private $242E24 rank-byte body, so narrow remains 16 while the
-// widened figure beside it moves to 85.
-test('SECTION 2c [W450/W461]: the widened register is 85, so narrow 16 remains a floor', async () => {
+// W461 removed the private $242E24 rank-byte body, and W462 removed both private
+// $2414BE adapter heads. Narrow remains 16 while the widened figure moves to 84.
+test('SECTION 2c [W450/W462]: the widened register is 84, so narrow 16 remains a floor', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
-  assert.equal(headRegister().length, 85,
+  assert.equal(headRegister().length, 84,
     'the WIDENED register (private functions, arrows, methods and the whole doc opening '
-    + 'span, not just `export function`) is not 85. ' + W453_NOTE
+    + 'span, not just `export function`) is not 84. ' + W453_NOTE
     + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
     + 'W460 removed the optional $24631C forwarding shim; W461 merged the private '
-    + '$242E24 rank-byte body into rng.js drawByte242E24; '
+    + '$242E24 rank-byte body into rng.js drawByte242E24; W462 removed both private '
+    + '$2414BE installTxBank heads while retaining canonical palette.js install2414BE; '
     + 'tests/w450widenedregister.test.js SECTION 3 holds the exact set and is where a new '
     + 'duplicate must be resolved. This cross-check prevents narrow 16 being read as the total');
 });

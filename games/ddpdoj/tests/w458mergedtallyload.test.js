@@ -369,7 +369,7 @@ test('SECTION 5: cartridge and production-source reachability are proved separat
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live scanner APIs reconcile through W461 and keep W457/W458 absent', () => {
+test('SECTION 6: live scanner APIs reconcile through W462 and keep W457/W458 absent', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -385,7 +385,7 @@ test('SECTION 6: live scanner APIs reconcile through W461 and keep W457/W458 abs
   const removedRank = 'initbody.js rankByte242E24 <> rng.js drawByte242E24';
 
   assert.equal(narrow.length, 16, 'W459 removes one exported $25FF38 head from W458 baseline 17');
-  assert.equal(heads.length, 85, 'W461 removes the widened $242E24 row from W460 baseline 86');
+  assert.equal(heads.length, 84, 'W462 removes the widened $2414BE row after W461 left 85');
   assert.equal(pairs.length, 27, 'W461 removes the complete rank-byte edge from baseline 28');
   assert.equal(bodyOnly.length, 22,
     'body-only remains derived live and unchanged because W461 removes a head-visible pair');
