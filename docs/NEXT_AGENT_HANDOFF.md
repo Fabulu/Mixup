@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W462)
+Updated: 2026-08-21 (W463)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,17 +10,31 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. **W462 proved that the private `$2414BE` `installTxBank`
-functions were caller adapters, not separate cartridge implementations.** `palette.js install2414BE`
-remains the sole public ESM body. The private names in `objslot8.js` and `objslot12.js` are gone without
-aliases, while all five callers retain their absent-palette notes, deferred ROM reads, fixed bank 0,
-exact 32-byte sources, sites, and reasons. The live registers now reconcile to 16 narrow heads, 84
-widened heads, 27 body pairs, and 22 body-only findings derived from `headIndex()`. The next audit
-candidate is **W463 `$28C0FC`, the private `cueStreamNote` wrappers in `objslot8.js` and
-`objslot12.js`**. Treat them as audit candidates, not presumed removals. W461 was published as build
-`20260821132334`; W462 is the first wave after it and is not a publication wave. Continue the widened
-duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2
-coverage, and every other explicit docket item.
+`docs/DOCKET.md` is authoritative. **W463 classified both private `$28C0FC` `cueStreamNote`
+functions as counted-gap caller adapters, not cartridge implementations.** Both names are gone without
+aliases. The three slot-8 sites and one slot-12 site still call the optional `ctx.unported.note` hook
+directly with their own call-site addresses, and no sound behavior was invented. Live scanner APIs report
+16 narrow heads, 83 widened heads, 27 body pairs, and 22 body-only findings. The next obvious batch
+candidate is **W464 `$28E7A2`, `objslot8.js bannerClear28E7A2` and `stageend.js clear28E7A2`**. W461 was
+published as build `20260821132334`; W463 is the second wave after it and is not a publication wave.
+Continue the widened duplicate rows, front-end screens D33/D34/D35/D37, remaining enemy types, full Black
+Label loop-2 coverage, and every other explicit docket item.
+
+## W463 VERIFIED: PRIVATE `$28C0FC` COUNTED-GAP ADAPTERS REMOVED
+
+The two same-named functions were private adapters around `ctx?.unported?.note`, not implementations of
+the cartridge entry. Neither was exported or imported. Their only adaptation was the caller address, so
+the three slot-8 calls (`$25A7E2`, `$25A7FA`, `$25A9DA`) and slot-12 call (`$28F380`) now retain direct,
+optional, address-specific notes. `$28C0FC` remains a counted sound gap because the address-only
+`soundPost` API still rejects this ENTRY; W463 does not alter `sound.js` or sound state.
+
+No dependency edge, ROM window, generated output, or public ESM identity changed. Existing W375, W377,
+and W387 tests already cover branch multiplicity, exact note keys, optional hooks, and the slot-12 count,
+so no new behavior test was needed. Live scanner APIs moved only widened heads from 84 to 83; narrow heads
+remain 16, body pairs 27, and body-only findings 22. Focused cue/register coverage passed 93/93, and
+the W446-W462 live holder chain passed 187/187. The next obvious batch is W464 `$28E7A2`, where
+`objslot8.js bannerClear28E7A2` and `stageend.js clear28E7A2` are two private clear loops over the same
+exported `SE.banner` span.
 
 ## W462 VERIFIED: PRIVATE `$2414BE` ADAPTER IDENTITIES REMOVED
 
@@ -119,10 +133,8 @@ W461 was published as build `20260821132334`. W462 is the first wave after that 
 publication wave. No export-web, publish, stage, commit, push, branch switch, worktree, generated rip, or
 generated asset operation occurred.
 
-**NEXT AUDIT CANDIDATE: W463 `$28C0FC`.** Audit the private same-named `cueStreamNote` wrappers in
-`objslot8.js` and `objslot12.js`. Pin the complete cartridge body, all static and source reachability,
-caller adaptation, public identity, dependency direction, and sound-state ownership before deciding
-whether either identity is removed, retained, or aliased.
+**HISTORICAL W462 RECOMMENDATION FOR W463:** audit the private `$28C0FC` `cueStreamNote` adapters.
+W463 completed that batch above without porting the counted sound gap.
 
 ## HISTORICAL W461 COORDINATOR-VERIFIED: ONE CANONICAL `$242E24` RANK-BYTE DRAW
 
@@ -473,17 +485,14 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. W462 removed both private `$2414BE` adapter identities after proving the complete cartridge and caller
-   contract. Do not redo that audit.
-2. Audit W463 candidate `$28C0FC`: private `cueStreamNote` wrappers in `objslot8.js` and
-   `objslot12.js`. Same-name heads are evidence only, not proof that either identity can be removed.
-3. Pin the complete cartridge body, every transfer and caller convention, source reachability, dependency
-   direction, ESM identity, and sound-state ownership before classifying W463.
-4. W461 was published as build `20260821132334`. W462 is the first wave after it, is not a publication
-   wave, and did not run `export-web.mjs` or `publish.mjs`. Preserve the every-fifth-wave cadence and,
-   whenever publication is due on a quiet tree, run `export-web.mjs` before `publish.mjs`.
-5. Continue the docket and complete Black Label through the full second loop.
-6. Finish White Label last, only after Black Label and its docket are complete.
+1. W463 removed both private `$28C0FC` counted-gap adapter identities while retaining all four direct,
+   optional call-site notes. Do not turn the gap into a `soundPost` call.
+2. Audit W464 candidate `$28E7A2`: `objslot8.js bannerClear28E7A2` and `stageend.js clear28E7A2`.
+3. W461 was published as build `20260821132334`. W463 is the second wave after it and is not a
+   publication wave. Preserve the every-fifth-wave cadence and, whenever publication is due on a quiet
+   tree, run `export-web.mjs` before `publish.mjs`.
+4. Continue the docket and complete Black Label through the full second loop.
+5. Finish White Label last, only after Black Label and its docket are complete.
 
 ## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES
 

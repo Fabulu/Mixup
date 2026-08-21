@@ -5743,8 +5743,34 @@ W461 was published as build `20260821132334`. W462 is the first wave after that 
 publication wave, and performed no export-web or publish. No stage, commit, push, branch switch, worktree,
 generated rip, or generated asset operation occurred.
 
-**NEXT AUDIT CANDIDATE: W463, `$28C0FC` private `cueStreamNote` wrappers in `objslot8.js` and
-`objslot12.js`.** The widened register has two same-named private heads. Pin the complete cartridge body,
-static and source reachability, exact caller adaptations, ESM identity, dependency direction, and dirty
-sound state before removing, aliasing, merging, or retaining either name. Continue Black Label through
-the full second loop and close its docket, then finish White Label last.
+**HISTORICAL W462 RECOMMENDATION FOR W463:** audit the two private `$28C0FC` `cueStreamNote`
+adapters. W463 completed that batch below.
+
+
+### D71: FOLLOW-UP, W463 `$28C0FC`: TWO PRIVATE COUNTED-GAP ADAPTER IDENTITIES REMOVED
+
+**THE FUNCTIONS WERE CALLER ADAPTERS, NOT CARTRIDGE IMPLEMENTATIONS.** Neither `cueStreamNote` was
+exported or imported. Both only supplied an address-specific message to the optional
+`ctx?.unported?.note` hook. The names are removed without aliases, while `$25A7E2`, `$25A7FA`, `$25A9DA`,
+and `$28F380` retain direct counted notes under `$28C0FC`. The first three still use `SCREEN8.cueStream`;
+the fourth still uses `SLOT12.cueStream`. No caller condition, ordering, optional-hook behavior, public
+identity, dependency edge, or sound state changed.
+
+**THE SOUND GAP REMAINS HONEST.** `sound.js` knows `$28C0FC` as an ENTRY, but the address-only
+`ctx.soundPost` path rejects it because it is not a WRAPPERS row. W463 does not invent caller registers or
+change the sound API. Existing W375, W377, and W387 coverage already pins the two independent coin arms,
+the arm-5 teardown, the slot-12 teardown, exact call-site keys, and the counted behavior, so no new test
+file was added.
+
+Live scanner APIs reconcile narrow heads **16 -> 16**, widened heads **84 -> 83**, body pairs **27 -> 27**,
+and body-only findings **22 -> 22**. `$28C0FC` has zero remaining function-head claims. No ROM window,
+generated output, staging, publication, or branch operation was involved.
+
+Focused W375/W377/W387 plus the authoritative widened register passed **93/93**. The W446-W462 live
+holder chain passed **187/187**. W463 is the second wave after published build `20260821132334` and is not
+a publication wave.
+
+**NEXT OBVIOUS BATCH CANDIDATE: W464, `$28E7A2`.** The live scanner reports
+`objslot8.js bannerClear28E7A2` and `stageend.js clear28E7A2`; both are private clear loops over the exported
+`SE.banner` span. Preserve dependency direction and caller identity while classifying them. Continue Black
+Label through the full second loop and close its docket, then finish White Label last.

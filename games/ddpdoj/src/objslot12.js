@@ -247,15 +247,11 @@ function clearTx(ctx, site) {
   clearTx23C622(ctx.tx);
 }
 
-/** `$28C0FC` -- the same counted post `objslot8.js cueStreamNote` counts, for the same reason:
- *  `$28C0FC -> $28BB76` posts the bare longword `$10000000`, not the `$28BB04` packer every
- *  `sound.js WRAPPERS` row describes, so posting it throws. */
-function cueStreamNote(ctx, site) {
-  ctx?.unported?.note(SLOT12.cueStream,
-    `$${site.toString(16).toUpperCase()} jsr $28C0FC -- $28C0FC -> $28BB76 posts the bare `
-    + 'longword $10000000 (type $10), NOT the $28BB04 packer every sound.js WRAPPERS row '
-    + 'describes, so posting it throws. Counted, as objslot8.js counts its four');
-}
+// `$28C0FC -> $28BB76` is an ENTRY that posts bare `$10000000`, not an address-only
+// WRAPPERS row. Keep this call as the same counted gap as the three slot [8] sites.
+const CUE_STREAM_NOTE = ' jsr $28C0FC -- $28C0FC -> $28BB76 posts the bare longword '
+  + '$10000000 (type $10), NOT the $28BB04 packer every sound.js WRAPPERS row describes, so '
+  + 'posting it throws. Counted with the three slot [8] call sites';
 
 // ---------------------------------------------------------------------------------------------
 
@@ -380,7 +376,7 @@ export function teardown28F368(ram, rom, a5, ctx) {
   ctx?.unported?.note(SLOT12.clears[1].at, SLOT12.clears[1].why);  // $28F36E jsr $259C4A
   clearRankRam2603DA(ram);                                   // $28F374 jsr $2603DA
   queueKill(ram, ram.u32(a5 + SLOT12.idAt));                 // $28F37A jsr $241292
-  cueStreamNote(ctx, 0x28f380);                              // $28F380 jsr $28C0FC
+  ctx?.unported?.note(SLOT12.cueStream, '$28F380' + CUE_STREAM_NOTE); // jsr $28C0FC
   clearTx(ctx, 0x28f386);                                    // $28F386 jsr $23C622
   // $28F38C lea $222638,A0 / $28F392 moveq #0,D0 / $28F394 jsr $2414BE.
   if (!ctx?.palette) {

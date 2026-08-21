@@ -464,7 +464,7 @@ test('SECTION 5b: cartridge static reachability, production source coverage and 
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live registers reconcile to 16 narrow, 84 widened, 27 pairs and 22 body-only',
+test('SECTION 6: live registers reconcile to 16 narrow, 83 widened, 27 pairs and 22 body-only',
   () => {
     const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
     const heads = headRegister();
@@ -478,7 +478,7 @@ test('SECTION 6: live registers reconcile to 16 narrow, 84 widened, 27 pairs and
       .some((body) => !visibleHeads.has(body)));
 
     assert.equal(narrow.length, 16, 'the private init helper never formed a narrow export row');
-    assert.equal(heads.length, 84, 'W462 removes the private $2414BE adapter row after W461 left 85');
+    assert.equal(heads.length, 83, 'W463 removes the private $28C0FC counted-note row after W462 left 84');
     assert.equal(heads.includes(BODY_START), false, '$242E24 leaves the widened head register');
     assert.equal(heads.includes(0x2414be), false, '$2414BE leaves the widened head register in W462');
     assert.equal(pairs.length, 27, 'W461 removes the two-marker duplicate body edge');

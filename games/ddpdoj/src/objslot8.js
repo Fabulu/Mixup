@@ -61,7 +61,7 @@
 // either THREW. On a cold boot the first one killed the run one frame after a coin credited.
 // **W425 (D58) SPLIT THAT PAIR.** `sound.js` grew the `$28BBAC` tier, so arm 3's `$28C170` POSTS
 // again ($15000000, no `WRAPPERS` row, no gate). The three `$28C0FC` are `$28BB76` -- a third
-// packer -- and stay counted; see `arm3` and `cueStreamNote`. `$25AFD8`, the OFF half of
+// packer -- and stay counted directly at their three call sites. `$25AFD8`, the OFF half of
 // the blink message, is ported in `fronttext.js` and called for real from the tail. `$25AD02`,
 // the ON half, is NOT the mirror of it -- it is a 1,754-byte dispatcher through $25B3DB with two
 // embedded data blocks and a second copy for separate credit pools -- and stays noted.
@@ -537,56 +537,12 @@ function arm3(ram, rom, a5, ctx) {
  *  `$25AA0E`. Each is a bare `rts` and nothing else; 7 and 8 share ONE of them. */
 function armRts() { /* $25A974 / $25A9E2 / $25A9E4 / $25AA0C / $25AA0E -- rts */ }
 
-/**
- * `$28C0FC` -- THE SECOND CUE IN THIS FILE THAT `soundPost` CANNOT POST, COUNTED AT ITS THREE
- * CALL SITES. W377.
- *
- * Found while fixing arm 3's `$28C170` and BELIEVED to be the same defect; W425 proved it is
- * not. Both were unpostable, but through different packers -- `$28C170` is `$28BBAC` and has a
- * posting path since D58, this is `$28BB76` and does not. One of the three sites is on the coin
- * path itself. Decoded off the image:
- *
- *     28C0FC  48E7 FFFE       movem.l D0-D7/A0-A6,-(A7)
- *     28C100  4EB9 0028BB76   jsr     $28BB76
- *     28C106  4CDF 7FFF       movem.l (A7)+,D0-D7/A0-A6
- *     28C10A  4E75            rts
- *
- *     28BB76  48E7 F000       movem.l D0-D3,-(A7)
- *     28BB7A  7010            moveq   #$10,D0
- *     28BB7C  E148            lsl.w   #8,D0        -> D0.w = $1000
- *     28BB7E  4840            swap    D0           -> D0   = $10000000
- *     28BB80  6100 FF1E       bsr     $28BAA0
- *     28BB84  4CDF 000F       movem.l (A7)+,D0-D3
- *     28BB88  4E75            rts
- *
- * So `$28C0FC` posts the bare longword `$10000000`: type $10, no id, no pan, no channel nibble,
- * no gate and no pan tail -- the `$28BBxx` family again, not the `$28BB04` packer that every
- * `sound.js` `WRAPPERS` row describes. `sound.js` carries `$28C0FC` in its `ENTRY` table (as
- * `type $10, gate none, tail false`) but `postWrapper` looks in `WRAPPERS` and `STREAMING_LEAVES`
- * only, so `ctx.soundPost(0x28C0FC)` throws `no wrapper at $28C0FC`. Verified: neither table has
- * it (`w377coin.test.js`).
- *
- * **THE THREE SITES, AND WHICH OF THEM A PLAYER CAN REACH.**
- *   `$25A7E2` -- coin teardown, behind `tst.w $803926` (the dual-play gate). Reachable.
- *   `$25A7FA` -- coin teardown, behind `cmpi.w #$C,$812E56`. Reachable: attract reaches state 12
- *                from arm 2, and a coin inserted there took this branch and threw.
- *   `$25A9DA` -- arm 5's teardown, which today needs the unported `$25C6D4` to hand it a clear
- *                carry, so it is a time bomb rather than a live crash.
- * Both coin sites were proved to throw before this change; see `w377coin.test.js`.
- *
- * **W425 CORRECTS THIS BLOCK'S OWN PREDICTION.** It used to say a `$28BBxx`-tier posting path
- * "would close all of these AND `$28C170` at once". THE TIER PATH SHIPPED (W423/W425, D58) AND IT
- * CLOSED `$28C170` ONLY. `$28C0FC` is a different packer again -- `$28BB76`, not `$28BBAC` -- so
- * `postBgmCommand` refuses it by design and these three stay counted. One prediction, two
- * addresses, and it was right about one of them; recorded rather than quietly deleted.
- */
-function cueStreamNote(ctx, site) {
-  ctx?.unported?.note(SCREEN8.cueStream,
-    `$${site.toString(16).toUpperCase()} jsr $28C0FC -- $28C0FC -> $28BB76 posts the bare `
-    + 'longword $10000000 (type $10), NOT the $28BB04 packer every sound.js WRAPPERS row '
-    + 'describes, so posting it throws. Arm 3\'s $28C170 was the OTHER half of this pair and '
-    + 'it posts now (W425/D58); this one does not, because $28BB76 is a third packer');
-}
+// `$28C0FC -> $28BB76` posts the bare `$10000000`. It is an ENTRY, not an address-only
+// WRAPPERS row, so `ctx.soundPost` throws. Keep each site as a counted gap with its own address.
+const CUE_STREAM_NOTE = ' jsr $28C0FC -- $28C0FC -> $28BB76 posts the bare longword '
+  + '$10000000 (type $10), NOT the $28BB04 packer every sound.js WRAPPERS row describes, so '
+  + 'posting it throws. Arm 3\'s $28C170 was the OTHER half of this pair and it posts now '
+  + '(W425/D58); this one does not, because $28BB76 is a third packer';
 
 /**
  * `$25A9B2` -- ARM 5's TEARDOWN, exported because the carry that reaches it comes from the
@@ -603,7 +559,7 @@ function cueStreamNote(ctx, site) {
  *
  * **W377: `$25A9DA jsr $28C0FC` IS A COUNTED NOTE.** W377 gave the reason as "the same reason
  * arm 3's `$28C170` is"; W425 ported `$28C170` and did NOT port this, so the shared reason was
- * never the real one. See `cueStreamNote` below for the reason that survives.
+ * never the real one. The counted-note block above records the reason that survives.
  */
 export function teardown25A9B2(ram, rom, ctx) {
   objTableInit24107C(ram);                                     // $25A9B2 jsr $24107C
@@ -616,7 +572,7 @@ export function teardown25A9B2(ram, rom, ctx) {
   // unconditionally: on a full queue $241182 hands back the DUMMY at $80D51C and the cartridge
   // writes through it just the same.
   ram.setU16(made.addr + SCREEN8.joinField, SCREEN8.teardownState);
-  cueStreamNote(ctx, 0x25a9da);                                // $25A9DA jsr $28C0FC
+  ctx?.unported?.note(SCREEN8.cueStream, '$25A9DA' + CUE_STREAM_NOTE); // $25A9DA jsr $28C0FC
   return made;
 }
 
@@ -1650,8 +1606,8 @@ function arm14(ram, rom, ctx) {
 /**
  * `$25A7C0` -- A COIN IS IN. Tear the screen down and restart at state 3.
  *
- * Two `$28C0FC`/`$28C5B0` pairs (the `$28C0FC` half of each is a counted note -- see
- * `cueStreamNote`), and they are NOT one pair with two conditions: `$25A7D2`
+ * Two `$28C0FC`/`$28C5B0` pairs (each `$28C0FC` half is counted directly below), and they are
+ * NOT one pair with two conditions: `$25A7D2`
  * fires them when `$803926` (the dual-play gate) is set, clearing it on the way, and `$25A7EE`
  * fires them again when the state is 12. Both true means both pairs post.
  *
@@ -1664,11 +1620,11 @@ export function coinTeardown25A7C0(ram, rom, ctx) {
   clear25C57E(ram);                                            // $25A7CC jsr $25C57E
   if (ram.u16(SCREEN8.dualGate) !== 0) {                       // $25A7D2 tst.w / beq $25A7EE
     ram.setU16(SCREEN8.dualGate, 0);                           // $25A7DC clr.w $803926
-    cueStreamNote(ctx, 0x25a7e2);                              // $25A7E2 jsr $28C0FC
+    ctx?.unported?.note(SCREEN8.cueStream, '$25A7E2' + CUE_STREAM_NOTE); // jsr $28C0FC
     ctx?.soundPost?.(SCREEN8.cueWrapper);                      // $25A7E8 jsr $28C5B0
   }
   if (ram.u16(SCREEN8.state) === 0x0c) {                       // $25A7EE cmpi.w #$C / bne $25A806
-    cueStreamNote(ctx, 0x25a7fa);                              // $25A7FA jsr $28C0FC
+    ctx?.unported?.note(SCREEN8.cueStream, '$25A7FA' + CUE_STREAM_NOTE); // jsr $28C0FC
     ctx?.soundPost?.(SCREEN8.cueWrapper);                      // $25A800 jsr $28C5B0
   }
   // $25A806 lea $222638,A0 / $25A80C moveq #0,D0 / $25A80E jsr $2414BE -- THIRTY-TWO bytes.
