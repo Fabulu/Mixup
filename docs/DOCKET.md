@@ -4369,11 +4369,12 @@ records and their timing are right; what is in question is whether they are DRAW
 cartridge draws them.**
 
 **WHAT TO MEASURE, and the standard is the one W441 set:** compare the port's drawn output against
-the board's for the carrier and for a released bee, **on the frames each exists**. The carrier's
-flicker is a real cartridge behaviour (`$268916 eor.b palCycle,(palette)` with `andi.b #$A3`
-clearing it, `handlers.js damageArm5C`) -- **so "flickering" is not automatically a defect.** The
-question is whether the port flickers the SAME frames, and whether anything is drawn that the board
-suppresses.
+the board's for the carrier and for a released bee, **on the frames each exists**. The type `$8A`
+carrier gate is `$2767AA bchg #6,($1,A6)` followed by `$2767B0 bne $2767CE`: only the old-clear
+bit-6 arm changes art and emits, so a proximity-eligible carrier draws every other frame. The older
+attribution to `$268916 eor.b palCycle,(palette)` was wrong: `$268916` is type `$11` damage flashing
+inside `handlers.js damageArm5C`, not type `$8A` visibility. The question is whether the port follows
+the real `$2767AA..$2767CE` cadence, and whether anything is drawn that the board suppresses.
 
 **DO NOT change a draw to match a description.** The owner says "I think" and "a bit of a mystery"
 -- they are reporting an impression, not a measurement. **Measure first, and if the port already
@@ -4926,3 +4927,43 @@ Verified independently by the coordinator: **4166 pass / 0 fail / 0 skipped**, w
 **NEXT VISIBLE DOCKET UNIT: D65, bee visibility against the oracle.** The owner's impression is not
 spec. Compare carrier and released-bee draw output on board frames where each exists; measure before
 changing code.
+
+
+### D65 FOLLOW-UP, W452 BEE DRAW ORACLE: TWO CADENCES, BOTH ALREADY MATCH
+
+**D65 IS CLOSED WITHOUT A PRODUCTION CHANGE.** Cartridge bytes, deterministic VERSION-B board
+captures, and checkpoint replay agree. The owner's impression remained a report rather than a
+specification, and the measured port already follows the cartridge.
+
+**THE COVERED CARRIER AND RELEASED BEE HAVE DIFFERENT RULES.** Type `$8A` returns without drawing
+while no live player is within `$240` on the short axis. Once eligible, `$2767AA bchg #6,($1,A6)` and
+`$2767B0 bne $2767CE` emit every other frame. The released kind-1 bee has no corresponding draw gate:
+its `$27FC8C..$27FCE6` idle arm emits on every surviving in-bounds frame while art cycles B,A,A.
+`$268916`, previously cited here as carrier flicker, is type `$11` hit-palette flashing and unrelated.
+
+**THE BOARD WITNESS IS OBJECT-SPECIFIC.** Covered carrier frames lf11297 and lf11378 contain the
+record but not its derived ten-byte hardware entry. Carrier lf3802..3805 and lf3998..4001 alternate
+present, absent, present, absent, with art changing only on present frames. After the carrier frees,
+lf11380..11385 carries a released bee and its exact entry on all six B,A,A,B,A,A frames. Twenty
+selected board frames and 24 framebuffer SHA-256 identities are pinned in
+`tools/oracle/w452beevisibility.board.json`; `w452beevisibility.py` verifies them against two raw MAME
+captures. Full-list equality is deliberately not claimed because unrelated producers differ. Exact
+target-record equality plus aligned target-entry containment is the falsifiable witness.
+
+**DIRTY AND OPPOSITE ARMS ARE PINNED.** A dirty far carrier preserves counter, status and descriptor
+and emits nothing; moving that same record near reloads `$000F`, decrements to `$000E`, and emits on
+old-clear bit-6 frames only. No-live-player suppresses, while mover freeze bypasses proximity as the
+ROM does. A recycled bee slot overwrites all 34 bytes owned by the fill, preserves ten cartridge holes
+including `+$1A/+$1B`, and still emits B,A,A continuously. Its off-screen opposite frees without an
+emit.
+
+**TWO TEMPORARY RED MUTATIONS WERE PERFORMED AND RESTORED BYTE-EXACT.** Inverting the carrier's
+`if (was) return` changed the first board-visible art and shifted requests to the wrong frames. Adding
+a timer-1 suppression to the released-bee idle arm removed the exact board entry at lf11381. Both
+focused runs failed for those reasons, and both source hashes returned exactly to their starting
+values.
+
+**NEXT CONCRETE DOCKET UNIT: W453, D69 `$242494`.** Audit the exported and private transcriptions
+that W450's widened register paired by six shared instruction markers. Merge only if cartridge bytes
+and opposite-state tests prove equivalence; otherwise classify the difference. Continue all Black
+Label, including the full second loop and remaining docket, then finish White Label last.

@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W451)
+Updated: 2026-08-21 (W452)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -10,47 +10,63 @@ finish DoDonPachi DaiOuJou White Label. **White Label remains last and is the pr
 deliverable.** Do not trade unfinished Black Label loop-2 or docket coverage for an early White Label
 start.
 
-`docs/DOCKET.md` is authoritative. The highest visible open item is **D65, bee visibility against the
-oracle**. The owner's impression is not a specification. Compare carrier and released-bee draw output
-on frames where the board has them, and let the oracle decide. Also open: the 14 hyper-HUD streams,
-`$246410` returning zero instead of `$FFFFFFFF`, the two unwired `ctx.commit246800` frees, the widened
-duplicate register, front-end screens D33/D34/D35/D37, remaining enemy types, and complete loop-2
-coverage.
+`docs/DOCKET.md` is authoritative. **D65 is closed by W452 with cartridge, board and port parity.**
+The next concrete unit is **W453 / D69 `$242494`**, the exported/private transcription pair W450's
+widened register found through six shared instruction markers. Audit cartridge semantics and both
+RAM-state arms before merging or classifying it. Also open: the remaining widened duplicate rows,
+front-end screens D33/D34/D35/D37, remaining enemy types, full Black Label loop-2 coverage, and other
+explicit docket items.
 
-## W451 LANDED -- `$242684` HAS ONE SURVIVOR
+## W452 LANDED LOCALLY: BEE VISIBILITY ALREADY MATCHES
 
-Six private transcriptions of `$242684` are consolidated into `movement.js offScreen242684`. Five
-were equivalent after normalising return sense. `stage4type42.js onScreen` was not: it omitted
-`$813172`, swapped the two words, invented both bands, and inverted the caller arms. A type `$42`
-child could therefore be marked while off-screen and freed as it came on-screen.
+No production source changed. Type `$8A` and released kind-1 bees follow two distinct cartridge rules:
 
-ROM truth: `move.l ($2,A6),D0` tests A6+$04 first with `$1C00 + $813172`, exits on carry from
-`+$9000`, then swaps and tests A6+$02 with `+$0800 + $8000`. Carry set means off-screen. The image has
-30 direct callers: 26 consume BCC and 4 consume BCS.
+- A covered or distant carrier emits nothing. Once a live player is within `$240` on the short axis,
+  `$2767AA bchg #6,($1,A6)` and `$2767B0 bne $2767CE` emit every other eligible frame. Art changes
+  only on emitted frames.
+- A surviving in-bounds released bee emits every frame while its art cadence is B,A,A. It has no
+  carrier-style suppression gate.
 
-The new W451 proof includes all six deleted bodies in an axis table, ROM-decoded boundaries, two
-opposite-RAM-state arms, a RED mutation of the scroll input restored byte-exactly, and an off -> on
--> off live trace witnessed by `enemies.js` slot count and allocator reuse. Widened registers move
-92 -> **91 heads** and 39 -> **38 body pairs**. The narrow export-only register remains 19.
+The old D65 attribution was wrong and is corrected: `$268916 eor.b palCycle,(palette)` is type `$11`
+damage flashing, not type `$8A` carrier visibility.
 
-Coordinator verification on the final tree:
+Pinned evidence:
 
-    focused W446..W451                    80 pass / 0 fail / 0 skipped
-    node --test games/ddpdoj/tests/     4166 pass / 0 fail / 0 skipped
-    node games/ddpdoj/tools/webgate.mjs exit 0, all checks passed
-    export-tables.py --verify           VERIFY OK, image sha256 4d3efd54...
-    W441 ladder band                    210/210 bullets, pool A 70/70, pool B 80/80
+    board machine                         ddpdojblk, build B, FNV64 D4C25CA9C91B9D47
+    selected board frames                 20
+    external framebuffer identities       24
+    carrier lf3802..3805                  present, absent, present, absent
+    covered carrier lf11297/lf11378       exact target entry absent
+    released bee lf11380..11385           B,A,A,B,A,A, exact entry present on all 6
+    checkpoint replay                     20/20 exact object and enemy records
 
-`movement.js` remains uniform CRLF. Every other W451 source and test remains LF, with final newline
-and no mixed endings.
+`tools/oracle/w452beevisibility.py` pins cartridge windows `$276702..$276814` and
+`$27FACC..$27FCE6`, handles wide branch extension words, and verifies the compact witness against the
+two raw MAME captures. `tools/oracle/w452beevisibility.board.json` carries the selected records,
+entries, capture identities and framebuffer hashes. The Node regression derives each exact ten-byte
+hardware entry and checks aligned containment. It does not claim full-list equality where unrelated
+producers differ.
+
+Dirty and opposite arms cover far-to-near carrier transition, no-live-player suppression, mover
+freeze bypass, dirty released-slot ownership, B,A,A continuous emission, and off-screen free. Two
+actual temporary RED mutations were run: inverted carrier suppression and timer-1 bee suppression.
+Both failed on the exact target behavior and both production files were restored to their original
+SHA-256 values.
+
+Final W452 validation on the quiet tree:
+
+    focused W452 plus affected bee tests    40 pass / 0 fail / 0 skipped
+    node --test games/ddpdoj/tests/       4173 pass / 0 fail / 0 skipped
+    w452beevisibility.py                  20 frames / 24 framebuffer identities
+    node games/ddpdoj/tools/webgate.mjs  exit 0, all checks passed
+    export-tables.py --verify             VERIFY OK at 613 windows
 
 ## IMMEDIATE ORDER
 
-1. Publish against the quiet tracked tree. The last confirmed live build is `20260819205607` from
-   W443, so the five-wave cadence was due after W448 and is overdue. Run `games/ddpdoj/tools/export-web.mjs`
-   **before** `tools/publish.mjs`. Do not commit generated `rip/` or `assets/`.
-2. Dispatch W452 on D65, the bee-visibility oracle comparison. Measure before changing code.
-3. Continue the docket and full Black Label through loop 2, then White Label last.
+1. Dispatch W453 on D69 `$242494`: audit the exported/private pair and merge only if cartridge and
+   opposite-state evidence prove equivalence.
+2. Continue the docket and complete Black Label through the full second loop.
+3. Finish White Label last, only after Black Label and its docket are complete.
 
 ## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES
 
@@ -60,8 +76,8 @@ cadence above. Do not spend a wave redoing either clause.
 
 ## PUBLISHED HISTORY
 
-Last confirmed live: build `20260819205607`, W443. It includes the hyper beam art. Earlier confirmed
-builds: `20260819075340`, `20260819013654`, and `20260818210139`.
+Last confirmed live: build `20260820231140`, confirmed 2026-08-20. Earlier confirmed builds:
+`20260819205607`, `20260819075340`, `20260819013654`, and `20260818210139`.
 
 ## W422 LANDED -- POOL-A KIND 5, VERIFIED BY THE COORDINATOR
 

@@ -1,0 +1,474 @@
+{
+  "wave": 452,
+  "machine": {
+    "set": "ddpdojblk",
+    "build": "B",
+    "maincpuFnv64": "D4C25CA9C91B9D47"
+  },
+  "captures": [
+    {
+      "id": "stage1-sweep/w452-carrier-board",
+      "file": "out/w452/carrier-board.tsv",
+      "sha256": "dc625fd1de1d9130da908d945af6bc1e8855b55e4d80fe2dcf06fbf66549faed",
+      "manifest": "out/w69/stage1-sweep/manifest.json",
+      "manifestSha256": "efcacdb1d432995af902b4c57c33dac6a594646dcac44d691ca66fde217fbfc3",
+      "frames": [
+        {
+          "lf": 3802,
+          "vf": 3838,
+          "phase": "carrier-spawn-visible",
+          "recordAddress": "81461c",
+          "record": "814075803500fa00fd00001bca8006180500070004000400000a1040001c00000000273d3130fa00fc000016",
+          "enemyAddress": "81378c",
+          "enemy": "8004200000000081461c00008a0100000000002323aa0000000e000400000024800000167b00007041a00023d7620023dece00160a15ffff0000000000000000ffe1ffeb002739860000000000276702",
+          "status": "8140",
+          "sprite": "001bca80",
+          "word18": "000a",
+          "entry": "81be80c81c1bca800618",
+          "entryOffsets": [
+            40
+          ],
+          "queueBytes": "033c",
+          "displayListSha256": "46ff379375e669d01c263e7e104ea1b924ac308061a259080f4b4ce5bf6065db"
+        },
+        {
+          "lf": 3803,
+          "vf": 3839,
+          "phase": "carrier-suppressed",
+          "recordAddress": "81461c",
+          "record": "810075803500fa00fd00001bca8006180500070004000400000a1040001c00000000273d3130fa00fc000016",
+          "enemyAddress": "81378c",
+          "enemy": "8004200000000081461c00008a0100000000002323aa0000000e000400000024800000167b00007041a00023d7620023dece00160a15ffff0000000000000000ffe1ffeb002739860000000000276702",
+          "status": "8100",
+          "sprite": "001bca80",
+          "word18": "000a",
+          "entry": "81be80c81c1bca800618",
+          "entryOffsets": [],
+          "queueBytes": "0324",
+          "displayListSha256": "db9a33f3e9029a6a6f4ca99c3d96cd3d36b639e0640fc7d9fc36aee5defcde56"
+        },
+        {
+          "lf": 3804,
+          "vf": 3840,
+          "phase": "carrier-visible",
+          "recordAddress": "81461c",
+          "record": "814075803500fa00fd00001bca3406180500070004000400000a1040001c00000000273d3130fa00fc000016",
+          "enemyAddress": "81378c",
+          "enemy": "8004200000000081461c00008a0100000000002323aa0000000e000400000024800000167b00007041a00023d7620023dece00160a15ffff0000000000000000ffe1ffeb002739860000000000276702",
+          "status": "8140",
+          "sprite": "001bca34",
+          "word18": "000a",
+          "entry": "81be80c81c1bca340618",
+          "entryOffsets": [
+            40
+          ],
+          "queueBytes": "0378",
+          "displayListSha256": "a4b472ceeaac8af8fc849d4f8d8cded6485e9680126d6a7ea42969af5aa60d24"
+        },
+        {
+          "lf": 3805,
+          "vf": 3841,
+          "phase": "carrier-suppressed",
+          "recordAddress": "81461c",
+          "record": "810075803500fa00fd00001bca3406180500070004000400000a1040001c00000000273d3130fa00fc000016",
+          "enemyAddress": "81378c",
+          "enemy": "8004200000000081461c00008a0100000000002323aa0000000e000400000024800000167b00007041a00023d7620023dece00160a15ffff0000000000000000ffe1ffeb002739860000000000276702",
+          "status": "8100",
+          "sprite": "001bca34",
+          "word18": "000a",
+          "entry": "81be80c81c1bca340618",
+          "entryOffsets": [],
+          "queueBytes": "036c",
+          "displayListSha256": "765c8f0539711962b836458fec5cc4056b3645aaeda3f666889f3a4a49b7d6e5"
+        },
+        {
+          "lf": 3998,
+          "vf": 4034,
+          "phase": "carrier-visible",
+          "recordAddress": "81461c",
+          "record": "81406f803500fa00fd00001bca8006180500070004000400000a1040001c00000000273d3130fa00fc000016",
+          "enemyAddress": "81378c",
+          "enemy": "8004200000000081461c00008a0100000000002323aa0100000e000400000024800000167b00007041a00023d7620023dece00160a15ffff0000000000000000ffe1ffeb002739860000000000276702",
+          "status": "8140",
+          "sprite": "001bca80",
+          "word18": "000a",
+          "entry": "81a680c81c1bca800618",
+          "entryOffsets": [
+            40
+          ],
+          "queueBytes": "04e0",
+          "displayListSha256": "11357939e23a20ef55d1d10fedfd1d1638616ee86bda91a773de5cedd4942823"
+        },
+        {
+          "lf": 3999,
+          "vf": 4035,
+          "phase": "carrier-suppressed",
+          "recordAddress": "81461c",
+          "record": "81006f803500fa00fd00001bca8006180500070004000400000a1040001c00000000273d3130fa00fc000016",
+          "enemyAddress": "81378c",
+          "enemy": "8004200000000081461c00008a0100000000002323aa0100000e000400000024800000167b00007041a00023d7620023dece00160a15ffff0000000000000000ffe1ffeb002739860000000000276702",
+          "status": "8100",
+          "sprite": "001bca80",
+          "word18": "000a",
+          "entry": "81a680c81c1bca800618",
+          "entryOffsets": [],
+          "queueBytes": "04d4",
+          "displayListSha256": "fbc45642bc3ed6d2c81583f970448fc807959094de17e149531194ed4f8cb956"
+        },
+        {
+          "lf": 4000,
+          "vf": 4036,
+          "phase": "carrier-visible",
+          "recordAddress": "81461c",
+          "record": "81406f803500fa00fd00001bca3406180500070004000400000a1040001c00000000273d3130fa00fc000016",
+          "enemyAddress": "81378c",
+          "enemy": "8004200000000081461c00008a0100000000002323aa0100000e000400000024800000167b00007041a00023d7620023dece00160a15ffff0000000000000000ffe1ffeb002739860000000000276702",
+          "status": "8140",
+          "sprite": "001bca34",
+          "word18": "000a",
+          "entry": "81a680c81c1bca340618",
+          "entryOffsets": [
+            40
+          ],
+          "queueBytes": "04c8",
+          "displayListSha256": "b4b64400ededa73f3a2675668ea277a6ed5b0d2b414455a26582e31ac58b1222"
+        },
+        {
+          "lf": 4001,
+          "vf": 4037,
+          "phase": "carrier-suppressed",
+          "recordAddress": "81461c",
+          "record": "81006f803500fa00fd00001bca3406180500070004000400000a1040001c00000000273d3130fa00fc000016",
+          "enemyAddress": "81378c",
+          "enemy": "8004200000000081461c00008a0100000000002323aa0100000e000400000024800000167b00007041a00023d7620023dece00160a15ffff0000000000000000ffe1ffeb002739860000000000276702",
+          "status": "8100",
+          "sprite": "001bca34",
+          "word18": "000a",
+          "entry": "81a680c81c1bca340618",
+          "entryOffsets": [],
+          "queueBytes": "04d4",
+          "displayListSha256": "2553d43877748a89612863f1a7742ac954a87209d544ac616ca1fcc12cb7f294"
+        }
+      ]
+    },
+    {
+      "id": "stage1-laser-hold/w452-bee-board",
+      "file": "out/w452/bee-board.tsv",
+      "sha256": "e2c376cf7f64234c5820a106da1040cc76dab5b35c0a08e02c34dfa810dcac33",
+      "manifest": "out/w69/stage1-laser-hold/manifest.json",
+      "manifestSha256": "799c74dbaa3d2fe32d478f17a1006126cf9abcba2eb5aa404f143d7ef5987232",
+      "frames": [
+        {
+          "lf": 11297,
+          "vf": 11441,
+          "phase": "carrier-spawn-covered",
+          "recordAddress": "8145dc",
+          "record": "810077c011c0fa00fd00001bca3406180500070004000400000a1040001c0003a20072402c40f8a6fc000019",
+          "enemyAddress": "8136ec",
+          "enemy": "800220000000008145dc00008a010000000000233f8400000000000400000024800000167c90007014a00023d7620023dece001d0a1500000000000000000000ffec0022000000006d00fb4000276702",
+          "status": "8100",
+          "sprite": "001bca34",
+          "word18": "000a",
+          "entry": "81c7803b1c1bca340618",
+          "entryOffsets": [],
+          "queueBytes": "0678",
+          "displayListSha256": "57cff5b81e6063fc7398fcec063efa6a488d294df33b6e82ebd50332c93bcc83"
+        },
+        {
+          "lf": 11378,
+          "vf": 11522,
+          "phase": "carrier-covered",
+          "recordAddress": "8145dc",
+          "record": "81006dc011c0fa00fd00001bca3406180500070004000400000a1040001c0003a20068402c40f892fc000019",
+          "enemyAddress": "8136ec",
+          "enemy": "800220000000008145dc00008a010000000000233f8401000000000400000024800000167c90007014a00023d7620023dece001d0a1500000000000000000000ffec0022000000006d00fb4000276702",
+          "status": "8100",
+          "sprite": "001bca34",
+          "word18": "000a",
+          "entry": "819f803b1c1bca340618",
+          "entryOffsets": [],
+          "queueBytes": "0630",
+          "displayListSha256": "bab0710bc986ae3bcc5ecaff656e8b8ddc8a49ee808305821b37728b42260cbe"
+        },
+        {
+          "lf": 11380,
+          "vf": 11524,
+          "phase": "released-bee",
+          "recordAddress": "817dc6",
+          "record": "80046d8011c0fa00fd00001bca800618098009800780078000020000001c960100000000000000000023d7da",
+          "enemyAddress": "8136ec",
+          "enemy": "000020000000008145dc00008a010000000000233f8401000000000400000024800000167c90007014a00023d7620023dece001d0a1500000000000000000000ffec0022000000006d00fb4000276702",
+          "status": "8004",
+          "sprite": "001bca80",
+          "word18": "0002",
+          "entry": "819e803b1c1bca800618",
+          "entryOffsets": [
+            440
+          ],
+          "queueBytes": "0630",
+          "displayListSha256": "6bb9332b369e9e2f62c68df816f499a43e525da5c924d53a8ea67c776c287e74"
+        },
+        {
+          "lf": 11381,
+          "vf": 11525,
+          "phase": "released-bee",
+          "recordAddress": "817dc6",
+          "record": "80046d4011c0fa00fd00001bca340618098009800780078000010000001c960100000000000000000023d7da",
+          "enemyAddress": "8136ec",
+          "enemy": "000020000000008145dc00008a010000000000233f8401000000000400000024800000167c90007014a00023d7620023dece001d0a1500000000000000000000ffec0022000000006d00fb4000276702",
+          "status": "8004",
+          "sprite": "001bca34",
+          "word18": "0001",
+          "entry": "819d803b1c1bca340618",
+          "entryOffsets": [
+            430
+          ],
+          "queueBytes": "060c",
+          "displayListSha256": "a491aa750babe2fd03664d04048d6460e375d41ee3992c36098441858f7cc845"
+        },
+        {
+          "lf": 11382,
+          "vf": 11526,
+          "phase": "released-bee",
+          "recordAddress": "817dc6",
+          "record": "80046d4011c0fa00fd00001bca340618098009800780078000000000001c960100000000000000000023d7da",
+          "enemyAddress": "8136ec",
+          "enemy": "000020000000008145dc00008a010000000000233f8401000000000400000024800000167c90007014a00023d7620023dece001d0a1500000000000000000000ffec0022000000006d00fb4000276702",
+          "status": "8004",
+          "sprite": "001bca34",
+          "word18": "0000",
+          "entry": "819d803b1c1bca340618",
+          "entryOffsets": [
+            430
+          ],
+          "queueBytes": "0624",
+          "displayListSha256": "82e4de7d879b71667dd591aa85e7663825e7041406b37069573b49bc1f2c02f3"
+        },
+        {
+          "lf": 11383,
+          "vf": 11527,
+          "phase": "released-bee",
+          "recordAddress": "817dc6",
+          "record": "80046d0011c0fa00fd00001bca800618098009800780078000020000001c960100000000000000000023d7da",
+          "enemyAddress": "8136ec",
+          "enemy": "000020000000008145dc00008a010000000000233f8401000000000400000024800000167c90007014a00023d7620023dece001d0a1500000000000000000000ffec0022000000006d00fb4000276702",
+          "status": "8004",
+          "sprite": "001bca80",
+          "word18": "0002",
+          "entry": "819c803b1c1bca800618",
+          "entryOffsets": [
+            420
+          ],
+          "queueBytes": "060c",
+          "displayListSha256": "0c6fb118505eda9eccd80a2f559d282cdde61d084d21f102c9189c85be001a85"
+        },
+        {
+          "lf": 11384,
+          "vf": 11528,
+          "phase": "released-bee",
+          "recordAddress": "817dc6",
+          "record": "80046d0011c0fa00fd00001bca340618098009800780078000010000001c960100000000000000000023d7da",
+          "enemyAddress": "8136ec",
+          "enemy": "000020000000008145dc00008a010000000000233f8401000000000400000024800000167c90007014a00023d7620023dece001d0a1500000000000000000000ffec0022000000006d00fb4000276702",
+          "status": "8004",
+          "sprite": "001bca34",
+          "word18": "0001",
+          "entry": "819c803b1c1bca340618",
+          "entryOffsets": [
+            430
+          ],
+          "queueBytes": "0618",
+          "displayListSha256": "5a1ece3f1d8e6d48869bae1ca37efc203332f09e8057400a12ed3d50619572b7"
+        },
+        {
+          "lf": 11385,
+          "vf": 11529,
+          "phase": "released-bee",
+          "recordAddress": "817dc6",
+          "record": "80046cc011c0fa00fd00001bca340618098009800780078000000000001c960100000000000000000023d7da",
+          "enemyAddress": "8136ec",
+          "enemy": "000020000000008145dc00008a010000000000233f8401000000000400000024800000167c90007014a00023d7620023dece001d0a1500000000000000000000ffec0022000000006d00fb4000276702",
+          "status": "8004",
+          "sprite": "001bca34",
+          "word18": "0000",
+          "entry": "819b803b1c1bca340618",
+          "entryOffsets": [
+            410
+          ],
+          "queueBytes": "05e8",
+          "displayListSha256": "bc3e51b365656a6926b694a545d24a9adb76fe8d3a75ffef5bfb1a25ad8efcdf"
+        },
+        {
+          "lf": 11400,
+          "vf": 11544,
+          "phase": "released-bee",
+          "recordAddress": "817dc6",
+          "record": "80046b0011c0fa00fd00001bca340618098009800780078000000000001c960100000000000000000023d7da",
+          "enemyAddress": "8136ec",
+          "enemy": "000020000000008145dc00008a010000000000233f8401000000000400000024800000167c90007014a00023d7620023dece001d0a1500000000000000000000ffec0022000000006d00fb4000276702",
+          "status": "8004",
+          "sprite": "001bca34",
+          "word18": "0000",
+          "entry": "8194803b1c1bca340618",
+          "entryOffsets": [
+            380
+          ],
+          "queueBytes": "0648",
+          "displayListSha256": "6e4fe7a47a5ead0cf719d8373fa78e578bee134ca3f369debd59ac8fe41ad1b1"
+        },
+        {
+          "lf": 11401,
+          "vf": 11545,
+          "phase": "released-bee",
+          "recordAddress": "817dc6",
+          "record": "80046ac011c0fa00fd00001bca800618098009800780078000020000001c960100000000000000000023d7da",
+          "enemyAddress": "8136ec",
+          "enemy": "000020000000008145dc00008a010000000000233f8401000000000400000024800000167c90007014a00023d7620023dece001d0a1500000000000000000000ffec0022000000006d00fb4000276702",
+          "status": "8004",
+          "sprite": "001bca80",
+          "word18": "0002",
+          "entry": "8193803b1c1bca800618",
+          "entryOffsets": [
+            370
+          ],
+          "queueBytes": "0624",
+          "displayListSha256": "3f319b19764f85b348fc5c7ee6e85fc8131376f5363b62dbe3dde45b8f81f593"
+        },
+        {
+          "lf": 11402,
+          "vf": 11546,
+          "phase": "released-bee",
+          "recordAddress": "817dc6",
+          "record": "80046ac011c0fa00fd00001bca340618098009800780078000010000001c960100000000000000000023d7da",
+          "enemyAddress": "8136ec",
+          "enemy": "000020000000008145dc00008a010000000000233f8401000000000400000024800000167c90007014a00023d7620023dece001d0a1500000000000000000000ffec0022000000006d00fb4000276702",
+          "status": "8004",
+          "sprite": "001bca34",
+          "word18": "0001",
+          "entry": "8193803b1c1bca340618",
+          "entryOffsets": [
+            380
+          ],
+          "queueBytes": "0648",
+          "displayListSha256": "c57c87c48c7a5417c003bb487ca0e5dda91a92557a7f0b4e9b7c10d9b1dde62f"
+        },
+        {
+          "lf": 11403,
+          "vf": 11547,
+          "phase": "released-bee",
+          "recordAddress": "817dc6",
+          "record": "80046a8011c0fa00fd00001bca340618098009800780078000000000001c960100000000000000000023d7da",
+          "enemyAddress": "8136ec",
+          "enemy": "000020000000008145dc00008a010000000000233f8401000000000400000024800000167c90007014a00023d7620023dece001d0a1500000000000000000000ffec0022000000006d00fb4000276702",
+          "status": "8004",
+          "sprite": "001bca34",
+          "word18": "0000",
+          "entry": "8192803b1c1bca340618",
+          "entryOffsets": [
+            370
+          ],
+          "queueBytes": "0630",
+          "displayListSha256": "6b85a48f85a1e94cba1fcc88d356b7ea855bd6805c6161a0c59c33e5510c2888"
+        }
+      ]
+    }
+  ],
+  "snapshots": [
+    {
+      "file": "w452-bee_lf011295.png",
+      "sha256": "04dcc290554bf0406aa4899075bb207f3153678850941e7525a1adbb16fb352f"
+    },
+    {
+      "file": "w452-bee_lf011296.png",
+      "sha256": "d45b87506a7790ab63bfa7e3c9e7b3730032664d3fb4da0432957bf6903f0a29"
+    },
+    {
+      "file": "w452-bee_lf011297.png",
+      "sha256": "d50c18cb72e543ff7273ffe7d2a199b6e79c0bfb735e2b35007c1a6f1563aea6"
+    },
+    {
+      "file": "w452-bee_lf011298.png",
+      "sha256": "f09d78f4584ddf460d7e92a8fb12c4395995509038d45c70e34945920df261ba"
+    },
+    {
+      "file": "w452-bee_lf011299.png",
+      "sha256": "d73aadb0b05a9ef031a7d24167c6b0bc6d55dd7f99bfbf9ab638ea41c5296c00"
+    },
+    {
+      "file": "w452-bee_lf011300.png",
+      "sha256": "ac3f3380d92a9acd305822f07fceb6566a9e170517711514e127ebfaf8f3da06"
+    },
+    {
+      "file": "w452-bee_lf011301.png",
+      "sha256": "97ee62e9a4988ec0b1876e97a4bf21163f13af60c0d633238fa6028ff39adc77"
+    },
+    {
+      "file": "w452-bee_lf011302.png",
+      "sha256": "dad1ae43bb2d1d5387c635d9c4fffb7b6826eba3492d66de54fd4d5d96752bd6"
+    },
+    {
+      "file": "w452-bee_lf011303.png",
+      "sha256": "4b444930c478547a13d6ddbc19994206009c24d7c449bf12db296da9c8972774"
+    },
+    {
+      "file": "w452-bee_lf011350.png",
+      "sha256": "5d8e827aa3c8082a9aa4c8cc5950e01871ce012fd11ba90cbad5ecce71f21d5f"
+    },
+    {
+      "file": "w452-bee_lf011400.png",
+      "sha256": "4aab33603134aa5ecbba544779685bacad84ddb7cd938f5ecbd8084592b97fe5"
+    },
+    {
+      "file": "w452-bee_lf011401.png",
+      "sha256": "979a5b49fad1c7f27bf80859fb3708d7159b2d4b51c0b9084411b4561e0043a6"
+    },
+    {
+      "file": "w452-bee_lf011402.png",
+      "sha256": "62272ebf3ab01ce1bcab66662152f5eb9368623dd8170c1db66506268faa633a"
+    },
+    {
+      "file": "w452-bee_lf011403.png",
+      "sha256": "01184578a172e33c15785d13865101c919e29ffbbe824e6378a86f3e7a6c4646"
+    },
+    {
+      "file": "w452-carrier_lf003998.png",
+      "sha256": "34e0910b16566466e33ad6d4833f0b4bc285c59612575ae266bbca99cf1533c8"
+    },
+    {
+      "file": "w452-carrier_lf003999.png",
+      "sha256": "7b6404144b801d88e552125aed6f92298fe86bbf68df2c50a9d4b2d2eb93f54b"
+    },
+    {
+      "file": "w452-carrier_lf004000.png",
+      "sha256": "0e0d9419f8148b3d2341b909941bc2c6699dbbecdfe1d388b03d9ba2adc1934e"
+    },
+    {
+      "file": "w452-carrier_lf004001.png",
+      "sha256": "fa1b7f167d451cb74b4e3da93ed3b772af80974216b6b33cd91085500e84cab9"
+    },
+    {
+      "file": "w452-carrier_lf004002.png",
+      "sha256": "76e26cce23ce5b5083e16de45f5b2858fa0021836165cd20473671414fd82118"
+    },
+    {
+      "file": "w452-carrier_lf004003.png",
+      "sha256": "6252ca13b389af93a212b3e860b1708c9151d3784a02ccfa187ef0f3e754c705"
+    },
+    {
+      "file": "w452-carrier_lf004445.png",
+      "sha256": "1a793c47c36af4ec49f86d438616d9c9b54003ed9a69b3d8b1048fbdf03da6ac"
+    },
+    {
+      "file": "w452-carrier_lf004446.png",
+      "sha256": "b01b2e42e853fe27b56bae563153a6bf25228a9e63214a4e498cc430ce196d47"
+    },
+    {
+      "file": "w452-carrier_lf004447.png",
+      "sha256": "c870587cd424bbf8563f6f9adda8f0f64efb6c049ac96942136d50cf178b0c5f"
+    },
+    {
+      "file": "w452-carrier_lf004448.png",
+      "sha256": "e3de4ce357c177687b2b9958d7151ea7f387716c4e38ef87390d699d425763f5"
+    }
+  ]
+}
