@@ -155,7 +155,7 @@ import { clearPoolC289AE0, clearCuePool28AC3A } from './poolclear.js';
 import { poolClear as clearBulletPool28131E, poolPark as parkBulletSlots281330 }
   from './bullets.js';
 import { clearPool as clearSparkPool289F3A } from './spark.js';
-import { drawHyperStockTrail2527CE } from './hyper.js';
+import { drawHyperStockTrail2527CE, updateBulletSpeedBias252BD0 } from './hyper.js';
 
 export const TYPE5 = {
   handler: 0x28b5e0,
@@ -176,6 +176,7 @@ export const TYPE5 = {
   subEffectDriver: 0x2890f2,// $28B604 -- POOL D, secondary debris        (W191)
   impactDriver: 0x27f95a,   // $28B5F4 -- POOL A, THE BEE/IMPACT DRIVER   (W111)
   itemDriver: 0x27e99e,     // $28B64C -- THE ITEM, pool family six       (W61)
+  bulletSpeedBias: 0x252bd0, // $28B652 -- hyper/loop enemy-bullet speed bias (W478)
   bombDriver: 0x255dd8,     // $28B5F8 -- **THE BOMB**, call #7            (W64)
   laserRampDown: 0x24c8be,  // inside it; $24C8CE is the write
   /** ($4b,A6)'s reload with the measured formation ($5a,A4) = 2: (2-2>>1)+4. */
@@ -204,7 +205,7 @@ export function laserRampWouldMove(held, speedIdx, laserFloor) {
   return held >= TYPE5.laserRampFrames && speedIdx !== laserFloor;
 }
 
-/** The twenty of the 23 `jsr` targets the port RUNS, by their position in the
+/** The twenty-one of the 23 `jsr` targets the port RUNS, by their position in the
  *  ROM's own call order.  Everything else is still counted.  The four ship-draw
  *  entries come BEFORE the option object in that order and that matters: the
  *  ship's records reach bucket 19 while the pods' reach bucket 15, and the two
@@ -268,6 +269,7 @@ export const TYPE5_PORTED = new Set([
   // for W33 §4's reason, and the pool it drives is the sixth family, not one of
   // `50-recon`'s five.
   0x27e99e,   // #18 THE ITEM: the 25-slot family's driver, bucket 17    (W61)
+  0x252bd0,   // #19 ENEMY-BULLET SPEED: hyper power, loop and boss bias (W478)
   // W64 (B2).  #7 is `$255DD8`, THE BOMB's driver -- the script machine that
   // runs the `$811F72` record `$249A4A` allocates, and the ONLY thing that
   // can free it (`$2564F0`, reached from the script's own terminator).  It
@@ -421,6 +423,9 @@ export function makeType5(rom) {
           // where the ROM's own `jsr` list puts it.
           ctx.itemFrame = runItemDriver(ram, rom, ctx);
           ctx.itemSink?.(ctx.itemFrame);
+          break;
+        case TYPE5.bulletSpeedBias:                       // $28B652 -> $252BD0
+          ctx.bulletSpeedBias = updateBulletSpeedBias252BD0(ram, rom);
           break;
         case TYPE5.subReaper:                           // $28B5F2 -> $28AD54
           // WAVE 33 ports the reaper half of `$28AD54`: the twelve

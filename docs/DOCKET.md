@@ -6042,3 +6042,14 @@ coverage.
 Focused mod, browser-input, replay, and death checks pass **39/39**; browser module syntax checks and
 `git diff --check` pass. W477 is the first wave after live build `20260821205739` and is not a publication
 wave. The next bounded functional unit is type-5 call #19 `$252BD0`.
+
+### D86: W478 TYPE-5 CALL #19 `$252BD0`: ENEMY-BULLET SPEED BIAS
+
+`$28B652` now runs `$252BD0` immediately before the cartridge's bullet-driver call. It selects the unsigned
+maximum of the two players' hyper power, quarters it while neither hyper is active, reads the loop-specific
+rank table, applies the global flag, stage, loop, and boss-phase adjustments, and writes `$812950`. The
+cartridge caps remain 8 in loop 1 and 15 in loop 2.
+
+Type-5 coverage moves from 20/23 to **21/23**. The remaining calls are #22 `$25292A` and #23 `$252A52`.
+Focused behavior and call-order checks pass. W478 is the second wave after live build `20260821205739` and
+is not a publication wave.

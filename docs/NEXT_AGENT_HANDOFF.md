@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-21 (W477)
+Updated: 2026-08-21 (W478)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,15 +8,22 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W477 ships the 15-mod start screen and removes hidden browser
-invulnerability from ordinary play.** Direct `index.html`, empty hashes, and unknown-only hashes attach no mod
-state. Invincibility is now an explicit selection; deep progression ladders retain their labelled intervention,
-and replay playback uses only the replay file's poke list. The MAME death oracle freshly passed three
-invulnerability-off hits, two respawns, the `2 -> 1 -> 0 -> $FFFF` life sequence, and game-over request 2.
-Type-5 coverage remains 20/23; the remaining calls are #19 `$252BD0`, #22 `$25292A`, and #23 `$252A52`.
-Live duplicate counts remain 15 narrow heads, 68 widened heads, 27 body pairs, and 22 body-only findings, but
-those rows wait until after White Label. W476 is live as build `20260821205739`; W477 is the first interval
-wave and does not publish. The next bounded functional candidate is `$252BD0`.
+`docs/DOCKET.md` is authoritative. **W478 ports type-5 call #19 `$252BD0`, the loop-aware enemy-bullet
+speed bias.** It uses both players' hyper state plus cartridge flags, stage, loop, and boss phase, then writes
+`$812950` immediately before the bullet driver consumes it. Type-5 coverage is 21/23; the remaining calls are
+#22 `$25292A` and #23 `$252A52`. W477's 15-mod start screen keeps direct and empty launches vanilla, makes
+Invincibility explicit, and leaves labelled progression interventions intact. The MAME death oracle passed
+three invulnerability-off hits, two respawns, the `2 -> 1 -> 0 -> $FFFF` life sequence, and game-over request
+2. Live duplicate counts remain 15 narrow heads, 68 widened heads, 27 body pairs, and 22 body-only findings,
+but those rows wait until after White Label. W476 is live as build `20260821205739`; W478 is the second
+interval wave and does not publish. The next bounded functional candidate is `$25292A`.
+
+## W478 VERIFIED: TYPE-5 ENEMY-BULLET SPEED BIAS
+
+`$28B652` now dispatches `$252BD0` immediately before call #20 `$281D9A`. `hyper.js` selects and, when
+inactive, quarters the players' maximum hyper power, reads the proper loop table, applies the cartridge's flag,
+stage, loop, and boss adjustments, caps at 8 or 15, and stores `$812950`. Focused behavior and call-order
+checks pass. Type-5 coverage moves from 20/23 to 21/23.
 
 ## W477 VERIFIED: MOD MENU, VANILLA PATH, AND DEATH ORACLE
 

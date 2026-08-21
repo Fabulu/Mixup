@@ -11,6 +11,8 @@ export const HYPER = Object.freeze({
   gate: 0x81b6e4, arm: 0x81b410, mode: 0x81b412,
   pause: 0x80392c, flags: 0x8130f8, drawGate: 0x812970,
   frame: 0x80390a, phase: 0x80390c, secondLoop: 0x813098,
+  stage: 0x813092, bossPhase: 0x81309c, firstLoopBossGate: 0x80393a,
+  bulletSpeedBias: 0x812950,
   p1: Object.freeze({
     who: 1, kind: 0x0c, player: RAM.player1, set: 0x81040a,
     active: 0x81b63e, gauge: 0x81b642, earn: 0x81b64a,
@@ -69,6 +71,36 @@ function drawStockTrailSide(ram, h) {
 /** `$2527CE`, the stock-dependent hyper follower for both players. */
 export function drawHyperStockTrail2527CE(ram) {
   return drawStockTrailSide(ram, HYPER.p1) + drawStockTrailSide(ram, HYPER.p2);
+}
+
+/** `$252BD0`, the hyper-power and loop contribution to enemy-bullet speed. */
+export function updateBulletSpeedBias252BD0(ram, rom) {
+  let power = Math.max(ram.u16(HYPER.p1.power), ram.u16(HYPER.p2.power));
+  if (power !== 0 && ram.u16(HYPER.p1.active) === 0
+      && ram.u16(HYPER.p2.active) === 0) {
+    power >>>= 2;
+  }
+
+  const secondLoop = ram.u16(HYPER.secondLoop) !== 0;
+  let bias = power === 0 ? 0 : rom.u16(
+    (secondLoop ? 0x252b8a : 0x252b44) + (power - 1) * 2);
+
+  if ((ram.u8(HYPER.flags) & 0x04) !== 0) {
+    bias++;
+    if (ram.u16(HYPER.stage) > 1) bias++;
+  }
+
+  if (secondLoop) {
+    bias++;
+    if (ram.u16(HYPER.stage) === 4 && ram.u16(HYPER.bossPhase) !== 0) bias += 4;
+  } else if (ram.u16(HYPER.firstLoopBossGate) !== 0
+      && ram.u16(HYPER.bossPhase) !== 0 && ram.u16(HYPER.bossPhase) !== 1) {
+    bias += 5;
+  }
+
+  bias = Math.min(bias, secondLoop ? 15 : 8);
+  ram.setU16(HYPER.bulletSpeedBias, bias);
+  return bias;
 }
 
 /** `$287682/$287722`, threshold, refusal, immediate spawn, or pending bank. */

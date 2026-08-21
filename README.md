@@ -248,11 +248,12 @@ HUD, sound posts, and high-score name entry. The browser port and generated
 asset path are live, and W476 published as build `20260821205739` after all
 4,281 DDPDOJ unit tests passed. W477 adds a shipped start screen with 15 optional
 mods, including explicit Invincibility, while an empty loadout remains vanilla.
+W478 ports the loop-aware hyper contribution to enemy-bullet speed.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,
-and behavior through the complete second loop. W476 ports the visible hyper-stock
-follower and raises the type-5 frame family to 20 of 23 calls. The duplicate
+and behavior through the complete second loop. W478 raises the type-5 frame
+family to 21 of 23 calls. The duplicate
 scanners still report 15 narrow heads, 68 widened heads, 27 body pairs, and 22
 body-only findings, now deliberately deferred until functional completion.
 
