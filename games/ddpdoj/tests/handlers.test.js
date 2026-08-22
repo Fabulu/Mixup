@@ -181,6 +181,7 @@ test('the ported handler addresses are registered through W223 type $41', () => 
       0x270446,   // W484: type $50, type $4C's part-4 child and a deferred source for type $51
       0x270516,   // W485: type $51, type $50's terminal reversing child
       0x270694,   // W481: type $52, the first live runtime-selected child of type $4C
+      0x270c66,   // W487: type $58, type $4C's paired state-4 child
       // W400: $26E02A is type $44, and it is NOT one of the 35 types stage 5's SCRIPT names -- type
       // $43 spawns it at its own ramp step $3C, so no `missingOf` census ever ranked it. It owns
       // $26E04C and $26E152, the last two unclaimed callers of `$261100`, and both of them also

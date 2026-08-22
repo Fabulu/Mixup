@@ -89,9 +89,13 @@ SHOT_WINDOWS = [
     (0x2551FA, 0x0006, "W164 death-reset formation cap bytes for formations 2/4/6"),
     (0x255B7C, 0x009C, "W164 death animation pointer list through its FFFFFFFF terminator"),
     (0x25291C, 0x000C, "W479 bonus-follower animation frames"),
-    # W486: state 4 of type $4C now reaches its live paired type-$58 emissions. The deferred drain reads
-    # only type $58's eight-byte init stub before the intentionally unported +8 body becomes the next frontier.
-    (0x270BDC, 0x0008, "W486 type $58 frontier init stub read by initDispatch"),
+    # W487: type $58, the paired state-4 child emitted by type $4C. Its body reads the adjacent eight-word
+    # record prototype and one 28-byte long-form sub-record prototype, ending exactly at the handler.
+    # The handler reuses W481's existing $270972 static-art window and reads no executable bytes as data.
+    (0x270C3A, 0x002C, "W487 type $58 record and sub-record prototypes, ending at its handler"),
+    # W486: state 4 of type $4C reaches its live paired type-$58 emissions. The deferred drain reads
+    # type $58's eight-byte init stub before dispatching the W487 body.
+    (0x270BDC, 0x0008, "W486 type $58 init stub read by initDispatch"),
     # W485: type $51, the terminal runtime child emitted when type $50 expires.
     # The dispatcher reads only the eight-byte init stub. The body reads the adjacent three-word record
     # prototype and one 28-byte long-form sub-record prototype, ending exactly at the handler. The handler's

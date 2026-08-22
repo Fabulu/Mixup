@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W486 published, W487 type `$58` next)
+Updated: 2026-08-22 (W487 type `$58` verified locally, unpublished)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,21 +8,32 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W486 restores type `$4C` state 4's live step-1 steering gate
-`$26FD8C..$26FD98` and paired arm `$26FDF4..$26FEC7`.** Step 1 now holds until `steer4C` reaches
-`$3200/$1C00`; only then does it write band `$04`, advance to step 2, and arm phase 1. Record `+$1E` then
-ramps by `$40` to `$600`; phase 2 runs eight every-eighth-frame passes and emits two type `$58` deferred
-children per pass with distinct packed positions and independently advanced headings. Draining that
-type-`$58`-only queue reaches its unported init+8 body `$270BE4`; init is `$270BDC` and handler is `$270C66`.
-Enemy-handler coverage remains 100/256 ported, 26 unknown, and 130 null. The init registry remains at 93 bodies. W477's 15-mod start screen keeps direct and empty
-launches vanilla. Live duplicate counts remain 15 narrow heads, 68 widened heads, 27 body pairs, and 22
-body-only findings, but those rows wait until after White Label. W486 is live as production build
-`20260822042005`, superseding `20260822010546`, after browser regeneration and the complete quiet-tree
-publication gate. Its DDPDOJ unit suite passed 4,310/4,310 with zero skips.
+`docs/DOCKET.md` is authoritative. **W487 ports the runtime-proven type `$58` init body `$270BE4` and
+handler `$270C66`.** W486's restored type `$4C` state-4 arm queues 16 records, and all 16 now drain. The body
+loads the exact `$270C3A` record prototype and `$270C4A` long-form sub-record, preserves queued position and
+heading, installs the vector at record `+$1E`, and uses `$20` as the no-player fan-heading fallback. The handler
+moves by that packed long, subtracts 2 from vertical velocity, cadence-filters its three-heading bullet fan to
+the open `($0C,$34)` arc, reuses art table `$270972`, and retires on a fatal hit, parent loss, or signed X `<= -$400`.
+The cartridge's `$270CB6 move.w #$14,D0 / $270CBA jsr $289004` allocates effect kind `$14`; the following `$10`
+is its bucket, and this handler has no `$28615E` kill-score call.
 
-Type `$58` is W487's next runtime-proven blocker. Do not follow the static `$48 -> $54` edge: Version B's
-live callers target the bare `rts` at `$2714AE`, and the `$54` call sits in the disabled body at `$2714B0`.
-Start with type `$58`'s init body `$270BE4`, init `$270BDC`, and handler `$270C66`.
+Enemy-handler coverage is 101/256 ported, 25 unknown, and 130 null. The init registry has 94 bodies. The one
+new `$270C3A + $2C` prototype window moves the exporter to 630 windows and 437,749 bytes, with 75 overlapping
+pairs unchanged. Focused lifecycle, W486 drain, registry, coverage, and dependency checks pass 35/35 with no
+failures or skips. The local generated player table was regenerated and verified, browser assets were not
+regenerated, the full suite was not run, and W487 is
+unpublished. W486 remains live as production build `20260822042005` after its 4,310/4,310 unit gate.
+
+Type `$58` emits no enemy child. Do not follow the static `$48 -> $54` edge: Version B's live callers target the
+bare `rts` at `$2714AE`, and the `$54` call sits in the disabled body at `$2714B0`. No next runtime blocker was
+established by this focused wave; use runtime progression evidence rather than promoting that static edge.
+
+## W487 VERIFIED: TYPE `$4C`'S PAIRED TYPE `$58` CHILD
+
+The exact implementation state is summarized above. The focused regression proves initialization and inherited
+heading, packed movement and vertical acceleration, old-zero cadence and fan filtering, bucket-7 drawing, hit
+scoring and death effect, and off-screen free. W486's regression now expects all 16 queued records to drain
+rather than an `UNPORTED $270BE4` throw. The exporter declares prototypes only and does not export handler code.
 
 ## W486 PUBLISHED: TYPE `$4C` COMPLETE STATE-4 OMISSIONS
 

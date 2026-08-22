@@ -15,7 +15,18 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TABLES_PATH = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
 const HAVE = existsSync(TABLES_PATH);
 const JSON_TABLES = HAVE ? JSON.parse(readFileSync(TABLES_PATH, 'utf8')) : null;
-const ROM = HAVE ? new RomWindows(JSON_TABLES.rom) : null;
+const W487_PROTO = Object.freeze({
+  base: '$270C3A', len: 0x2c,
+  why: 'W487 focused fixture for the newly declared type $58 prototype window',
+  hex: '00000002000000000000000010030008a00110010000000000000000020002000200020002000c0000130000',
+});
+const ROM_SPEC = HAVE ? {
+  ...JSON_TABLES.rom,
+  windows: JSON_TABLES.rom.windows.some((w) =>
+    parseInt(String(w.base).replace('$', ''), 16) === 0x270c3a)
+    ? JSON_TABLES.rom.windows : [...JSON_TABLES.rom.windows, W487_PROTO],
+} : null;
+const ROM = HAVE ? new RomWindows(ROM_SPEC) : null;
 const SKIP = HAVE ? false : 'generated ROM tables absent; skip, not pass';
 const T4C = TYPE_SPECS.get(0x4c);
 
@@ -51,7 +62,7 @@ function fixture() {
   };
 }
 
-test('W486 state 4 completes eight paired type $58 passes and exposes only its init body',
+test('W486 state 4 completes eight paired type $58 passes and drains every child',
   { skip: SKIP }, () => {
     const run = handlerMap().get(T4C.handler);
     const frame = (f, counter) => {
@@ -121,9 +132,7 @@ test('W486 state 4 completes eight paired type $58 passes and exposes only its i
       }
     }
 
-    assert.throws(
-      () => processDeferred(f.ram, ROM, f.unported, f.ctx.tables),
-      (error) => error?.romAddress === 0x270be4
-        && /UNPORTED \$270BE4/.test(error.message),
-      'draining the proven type-$58-only queue reaches its unported init+8 body');
+    assert.equal(processDeferred(f.ram, ROM, f.unported, f.ctx.tables), 16,
+      'the proven type-$58-only queue drains all sixteen records through the W487 body');
+    assert.equal(f.ram.u16(SPAWN.DEFQ_COUNT), 0, 'the deferred queue is empty after the drain');
   });

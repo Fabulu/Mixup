@@ -2181,6 +2181,22 @@ BODY.set(0x27063c, (ram, rom, a5, a6) => {
   loadRecordProto(ram, rom, a5, 0x270666, 0x08);           // $270654..$270664 D0+1 = NINE words
 });
 
+// --- type $58 ($270BDC init, $270BE4 body): type $4C's paired state-4 child.
+// The deferred record supplies packed position and heading. The body preserves both, installs eight record
+// words, derives the initial packed velocity, and aims its independent fan heading when a player is live.
+BODY.set(0x270be4, (ram, rom, a5, a6, _unported, tables) => {
+  loadSubProto(ram, rom, a5, a6, 0x270c4a);                // $270BE4..$270BF0
+  ram.setU32(a6 + 0x02, ram.u32(a5 + 0x16));               // $270BF0
+  ram.setU8(a6 + 0x1b, ram.u8(a5 + 0x1a));                 // $270BF6
+  loadRecordProto(ram, rom, a5, 0x270c3a, 0x07);           // $270BFC..$270C0C, D0+1 = EIGHT words
+  const velocity = tables.vector(ram.u8(a6 + 0x1a), ram.u8(a6 + 0x1b)); // $270C0C..$270C18
+  ram.setU16(a5 + 0x1e, velocity.dy);                      // $270C1E
+  ram.setU16(a5 + 0x20, velocity.dx);                      // $270C22
+  ram.setU8(a5 + 0x1c, 0x20);                             // $270C26, no-player fallback
+  const aimed = aim64AtTarget(aimTables(rom), ram, a5, a6); // $270C2C jsr $24202C
+  if (!aimed.carry) ram.setU8(a5 + 0x1c, aimed.dir);       // $270C32..$270C38
+});
+
 // The five stage rows at `$2692D2` are ALL `0A 15` (verified by hex dump), so `$813094` -- the stage
 // index DOUBLED -- selects an identical pair every time. Ported as the indexed read the ROM performs
 // rather than as the constant it happens to produce: the sameness is a measurement about this build,

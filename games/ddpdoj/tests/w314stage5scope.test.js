@@ -192,7 +192,7 @@ test('W314 each missing type\'s init and handler come from the cartridge\'s own 
     assert.equal(want.size, 12);
   });
 
-test('W485 TWO static cartridge spawn scans still point at unported children',
+test('W487 ONE static cartridge spawn scan still points at an unported child',
   { skip: SKIP_IMG }, () => {
     // W314 ranked the list by how many records each type covers. W317 scanned every remaining
     // handler for the three deferred-spawn entries (`$263678`/`$263684`/`$263690`) and read the
@@ -210,8 +210,7 @@ test('W485 TWO static cartridge spawn scans still point at unported children',
     // Asserted as the dependency edges rather than as byte counts, because the edges are what the
     // ROM says and the byte counts are bounded by the next table entry rather than measured.
     // This is static inventory, not runtime proof. Version B returns at `$2714AE` before `$48`'s
-    // disabled `$54` call, while the current `state4_4C` transcription omits the live `$58` arm at
-    // `$26FDF4..$26FEC7`. W486 must restore that parent arm before `$58` is runtime-proven.
+    // disabled `$54` call. W486 runtime-proved the live `$4C -> $58` edge, and W487 ports that child.
     const map = enemyHandlerMap(ROM);
     const spawnsOf = (handler, span) => {
       const out = new Set();
@@ -227,9 +226,9 @@ test('W485 TWO static cartridge spawn scans still point at unported children',
       }
       return out;
     };
-    // TWO now have an unported child, and which child. W351 ported $55, so $46's entry moved to the
-    // list below rather than being deleted -- deleting it would lose the only machine-checked record of
-    // the $46 -> $55 edge, which is exactly what made $55 worth porting.
+    // ONE has an unported child. W351 ported $55, so $46's entry moved to the list below rather
+    // than being deleted. W487 likewise moves $4C -> $58 while preserving the machine-checked edge.
+    // The remaining $48 -> $54 edge is static only: Version B returns before the child call.
     // W400: `[0x43, 0x10e, [0x44]]` MOVED to the ported list below. $44 is now handler44
     // (`src/stage5type44.js`), so the "and $44 is unported" half of this assertion is false and
     // keeping it here would fail. The scan half is kept, in the second loop, for the reason the
@@ -237,8 +236,7 @@ test('W485 TWO static cartridge spawn scans still point at unported children',
     // worth porting at all, and deleting the row would lose it.
     // W481 moves $52 into the ported loop while preserving the $4C -> $52 edge. W482 does the same for
     // $4E, W483 preserves the nested $4E -> $4F edge, W484 moves $50, and W485 moves its child $51.
-    for (const [t, span, kids] of [[0x48, 0x264, [0x54]],
-      [0x4c, 0xbe4, [0x58]]]) {
+    for (const [t, span, kids] of [[0x48, 0x264, [0x54]]]) {
       const got = spawnsOf(typeEntry(t).handler, span);
       for (const k of kids) {
         assert.ok(got.has(k), `type $${t.toString(16)} spawns $${k.toString(16)}`);
@@ -247,12 +245,12 @@ test('W485 TWO static cartridge spawn scans still point at unported children',
     }
     // Same treatment W319 gave $8E and W323 gave $1B: keep the scan assertion, flip the ported claim.
     for (const [t, span, kids] of [[0x46, 0x1a2, [0x55]], [0x43, 0x10e, [0x44]],
-      [0x4c, 0xbe4, [0x4e, 0x50, 0x52]], [0x4e, 0x76, [0x4f]], [0x50, 0x80, [0x51]]]) {
+      [0x4c, 0xbe4, [0x4e, 0x50, 0x52, 0x58]], [0x4e, 0x76, [0x4f]], [0x50, 0x80, [0x51]]]) {
       const got = spawnsOf(typeEntry(t).handler, span);
       for (const k of kids) {
         assert.ok(got.has(k), `type $${t.toString(16)} still spawns $${k.toString(16)}`);
         assert.ok(map.has(typeEntry(k).handler),
-          `and it is PORTED (W351 $55, W400 $44, W481 $52, W482 $4E, W483 $4F, W484 $50, W485 $51)`);
+          `and it is PORTED (W351 $55, W400 $44, W481 $52, W482 $4E, W483 $4F, W484 $50, W485 $51, W487 $58)`);
       }
     }
     // `$8E` was the biggest standalone one and W319 took it; `$1B` (5 records) was next and W323

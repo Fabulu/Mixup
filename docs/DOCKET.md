@@ -6291,3 +6291,34 @@ guard. Cloudflare deployment and live confirmation succeeded at
 **NEXT CONCRETE DOCKET UNIT: W487, TYPE `$58`.** Port the runtime-proven init body `$270BE4` and handler
 `$270C66`, beginning from init `$270BDC`. Do not follow the disabled `$48 -> $54` edge behind Version B's
 live `$2714AE` return.
+
+### D95: W487 TYPE `$58`, VERIFIED LOCALLY
+
+W487 ports init body `$270BE4` and handler `$270C66`. The body loads one long-form sub-record from `$270C4A`,
+copies the deferred position and heading, installs eight record words from `$270C3A`, stores the `$241812`
+vector at record `+$1E`, and aims the independent fan heading through `$24202C`, retaining `$20` when no player
+is live. W486's type-`$58`-only queue now drains all 16 records successfully.
+
+The handler frees at signed position word `<= -$400` before movement. Otherwise it adds the packed velocity long
+to position and subtracts 2 from its high word, retires when parent word `$8130DE` clears, consumes `$5C` hit
+bits through `$286096`, advances its eight-frame art cursor every fourth frame, and draws the existing
+`$270972` art through `$23DF86` with bias `$FA00FC00` and size `$0620`. Old-zero borrow cadence reloads from
+record byte `+$23`, advances fan heading by 3, checks three directions `$15` apart, and calls `$281402` only for
+directions strictly inside `($0C,$34)`.
+
+The death bytes are `$270CB6 move.w #$14,D0 / $270CBA jsr $289004`: they allocate effect kind `$14`, then set
+bucket `$10`, post `$28C2C2`, and free. There is no `$28615E` scoreKill call in `$270C66..$270D90`. The compact
+regression pins that cartridge behavior along with initialization, inherited heading, movement, acceleration,
+cadence-filtered fire, draw, hit scoring, death effect, and off-screen free.
+
+Only the contiguous prototype block `$270C3A + $2C` is newly declared. It ends exactly at handler `$270C66`, so
+no executable handler byte is exported, and the handler reuses W481's existing `$270972 + $20` art window.
+`export-tables.py --verify` measures 630 windows and 437,749 bytes, with 75 overlapping pairs unchanged.
+Enemy coverage is 101 ported, 25 unknown, and 130 null; the init registry has 94 bodies. Focused lifecycle,
+W486 drain, registry, coverage, and dependency checks pass 35/35 with no failures or skips.
+
+The local generated player table was regenerated and verified, browser assets were not regenerated, the full
+suite was not run, and W487 is unpublished. W486
+remains live as build `20260822042005`. Type `$58` emits no enemy child. The only remaining static unported edge
+is `$48 -> $54`, disabled behind Version B's live `$2714AE` return, so this wave establishes no next runtime
+blocker. Select the next target from runtime progression evidence rather than promoting that disabled edge.

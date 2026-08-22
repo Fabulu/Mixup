@@ -8698,6 +8698,7 @@ const HANDLERS = new Map([
   [0x270446, handler50],   // W484: type $4C's part-4 child, expiring into type $51
   [0x270516, handler51],   // W485: type $50's terminal child, reversing then leaving the screen
   [0x270694, handler52],   // W481: type $4C's first live runtime-selected child
+  [0x270c66, handler58],   // W487: type $4C's paired state-4 child
   [0x2a4606, handler2A4606],  // W363: HIBACHI, stage 5's boss-route root -- spec in TB0. Its body
                               // $2A6B94 is a note(), so it appears and lets the stage clear but does
                               // not attack. Registered because the stage-clear path is COMPLETE.
@@ -9700,6 +9701,84 @@ function handler52(ram, rom, a5, ctx) {
   }
 
   draw52(ram, rom, a5, a6);                               // $270930/$270934
+}
+
+// ============================================ TYPE $58 (W487) ==================
+// Type $4C emits this paired one-record child from its restored state-4 arm. It inherits the queued position
+// and heading, accelerates upward, filters a three-heading fan to the visible arc, and shares type $52's art.
+const T58 = Object.freeze({
+  handler: 0x270c66,
+  parentPresent: 0x8130de,
+  frame: 0x80390a,
+  art: T52.staticArt,
+  emit: 0x23df86,
+});
+
+function retire58(ram, a5, a6, ctx) {
+  // `$270CB6 move.w #$14,D0 / $270CBA jsr $289004`: $14 is the effect KIND. The following $10 is
+  // the effect bucket. There is no `$28615E` scoreKill call anywhere in this handler.
+  const effect = spawnEffect(ram, ctx, 0x14, 0x270cba);
+  ram.setU32(effect + B.pos, ram.u32(a6 + S.posX));         // $270CC0
+  ram.setU16(effect + B.bucket, 0x10);                      // $270CC6
+  ctx.soundPost?.(0x28c2c2);                               // $270CCC
+  freeEnemy(ram, a5);                                      // $270CD2
+}
+
+/** `$270C66` -- stage-5 enemy type $58, the terminal paired child of type $4C state 4. */
+function handler58(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + R.subRec);
+  if (i16(ram.u16(a6 + S.posX)) <= -0x0400) {              // $270C66..$270C70
+    freeEnemy(ram, a5);
+    return;
+  }
+
+  ram.setU32(a6 + S.posX,
+    u32(ram.u32(a6 + S.posX) + ram.u32(a5 + R.rec1E)));    // $270C78..$270C7C
+  ram.setU16(a5 + R.rec1E, u16(ram.u16(a5 + R.rec1E) - 2)); // $270C80, vertical acceleration
+
+  if (ram.u16(T58.parentPresent) === 0) {                   // $270C84..$270C8A
+    retire58(ram, a5, a6, ctx);
+    return;
+  }
+
+  const hit = ram.u8(a6 + S.flags) & 0x5c;                 // $270C8E..$270C92
+  if (hit !== 0) {
+    ram.setU8(a6 + S.flags, ram.u8(a6 + S.flags) & 0xa3);  // $270C96..$270C9A
+    scoreHit(ram, ctx, a6, hit);                            // $270C9C
+    ram.setU8(a6 + S.palette, ram.u8(a6 + S.palette) ^ 0x0c); // $270CA2..$270CAA
+    if (i16(ram.u16(a6 + S.hp)) < 0) {                     // $270CAE..$270CB2
+      retire58(ram, a5, a6, ctx);
+      return;
+    }
+  } else {
+    ram.setU8(a6 + S.palette, 0x13);                        // $270CDA
+  }
+
+  if ((ram.u16(T58.frame) & 3) === 0) {                    // $270CE0..$270CE8
+    ram.setU16(a5 + R.rec1A, u16(ram.u16(a5 + R.rec1A) + 4) & 0x1f); // $270CEA..$270CEE
+  }
+
+  if (ram.u16(a5 + R.rec24) !== 0 && due8(ram, a5 + R.rec22)) { // $270CF4..$270D00
+    ram.setU8(a5 + R.rec22, ram.u8(a5 + R.rec23));         // $270D04
+    const first = (ram.u8(a5 + R.rec1C) + 3) & 0x3f;       // $270D0A..$270D0E
+    ram.setU8(a5 + R.rec1C, first);
+    const pos = ram.u32(a6 + S.posX);
+    const ctxB = { ram, rom, log: new WriteLog(ram) };
+    for (let i = 0, heading = first; i < 3; i++, heading = (heading + 0x15) & 0x3f) {
+      if (heading > 0x0c && heading < 0x34) {               // $270D6E..$270D7A, open interval
+        const result = fireBullet(ctxB, 0x281402, {
+          d0: 0xfffc0007, d1: heading, d2: pos, d3: 0, d4: 0, d5: 0, a5,
+        });
+        ctx.bulletSpawn?.(0x270d88, result);                // $270D88
+      }
+    }
+    ram.setU16(a5 + R.rec24, ram.u16(a5 + R.rec24) - 1);   // $270D42
+  }
+
+  const art = rom.u32(T58.art + ram.u16(a5 + R.rec1A));    // $270D46..$270D4E
+  const pos = u32(ram.u32(a6 + S.posX) + 0xfa00fc00);      // $270D50..$270D54
+  enqueueRegistersThroughStub(ram, rom, T58.emit, pos,
+    art, 0x0620, ram.u8(a6 + S.palette));                   // $270D5A..$270D64
 }
 
 // ============================================ TYPE $4C (W354/W356) ============

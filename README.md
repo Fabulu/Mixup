@@ -178,11 +178,12 @@ At published DDPDOJ W486, its unit suite records **4,310/4,310 passing with zero
 skips**. The same publication passed all **746/746 Gradius units**, the **13/13
 Gradius gate with zero skips**, the DDPDOJ bundle and web-fetch gates, the **27/27
 Batman gate with zero skips**, the distribution build, and the repository ROM-leak
-guard. Production build `20260822042005` supersedes `20260822010546`. W487
-continues with runtime-proven type `$58`; W486's focused type `$4C` set passes
-96/96, and its ignored local export measures 629 windows with 75 overlapping
-pairs. These counts document their respective gates, and each change still needs
-its relevant focused check.
+guard. Production build `20260822042005` supersedes `20260822010546`. W487 is
+verified locally and remains unpublished: its focused lifecycle, W486 drain,
+registry, coverage, and dependency checks pass 35/35, and the exporter now
+measures 630 windows with 75 overlapping pairs. The local generated player table
+was regenerated and verified; browser assets were not regenerated. These counts document their respective gates, and each change
+still needs its relevant focused check.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -271,17 +272,20 @@ live step-1 steering gate at `$26FD8C..$26FD98` and paired fall-through arm at
 `$26FDF4..$26FEC7`. Step 1 now holds until arrival at `$3200/$1C00`; only then
 does record `+$1E` begin ramping by `$40` to `$600`. Eight every-eighth-frame
 passes each enqueue a paired type `$58` emission with separate packed biases and
-headings. The focused drain now reaches only type `$58`'s unported init body at
-`$270BE4`; its cartridge init is `$270BDC` and its handler is `$270C66`.
-Enemy-handler coverage remains 100 of 256 entries. The static `$48 -> $54` edge
-remains disabled behind Version B's `$2714AE` return. W486 is published as
-production build `20260822042005`, superseding `20260822010546`; W487 continues
-with runtime-proven type `$58`.
+headings. W487 ports type `$58` init body `$270BE4` and handler `$270C66`. The
+16-child queue now drains successfully; each child inherits heading, moves with
+vertical acceleration, cadence-filters a three-heading fan, draws with the
+existing `$270972` art table, and retires on a fatal hit, parent loss, or its signed
+off-screen bound. Coverage is 101 ported, 25 unknown, and 130 null, with 94 init
+bodies. Type `$58` emits no enemy child, and the remaining static `$48 -> $54`
+edge is disabled behind Version B's `$2714AE` return, so no next runtime blocker
+has been established. W486 remains published as production build
+`20260822042005`; W487 is verified locally and unpublished.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,
 and behavior through the complete second loop. All 23 type-5 frame calls now
-run, while enemy-handler coverage is 100 ported, 26 unknown, and 130 null. The
+run, while enemy-handler coverage is 101 ported, 25 unknown, and 130 null. The
 duplicate scanners still report 15 narrow heads, 68 widened heads, 27 body
 pairs, and 22 body-only findings, now deliberately deferred until functional
 completion.

@@ -502,8 +502,8 @@ test('W443 (was W442 test 8b): the hyper beam still takes its art from $24BAE2 '
 // 9. The standing tripwire. This wave declares no window.
 // ===========================================================================
 test('W442 adds no ROM window and moves no overlap', () => {
-  assert.equal(ROM_WINDOW_COUNT, 629,
-    'W482-W486 add eleven further windows; W442 itself still adds none');
+  assert.equal(ROM_WINDOW_COUNT, 630,
+    'W482-W487 add twelve further windows; W442 itself still adds none');
   assert.equal(ROM_OVERLAP_PAIRS, 75, 'where W428 left it');
 });
 
