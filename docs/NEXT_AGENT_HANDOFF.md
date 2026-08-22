@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W489 browser defaults verified locally, unpublished)
+Updated: 2026-08-22 (W490 transient notices verified locally, unpublished)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,28 +8,42 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W489 removes the fly-around oracle's embedded
-`$810424=$FF` intervention from ordinary browser launches.** The browser clones the captured seed,
-clears only P1's invulnerability byte for an ordinary launch, and leaves the generated bundle seed
-unchanged. Labelled progression rungs and replay seeds remain exact. Explicit Invincibility retains
-`$FF` from the first rendered frame, while authentic player start and respawn still install and count
-down the cartridge's `$F0` grace period. Vanilla play is therefore mortal and the persistent aura is
-gone.
+`docs/DOCKET.md` is authoritative. **W490 gives every large replay and recording notice a
+bounded four-second lifetime.** REC armed/saved, playback start, green/red verdicts, replay errors,
+and local recording or load failures all route through one controller. Replacing a notice cancels its
+pending timer and advances a revision token; even an already-queued stale callback cannot hide newer
+text or discard its timer handle. Hiding clears class, content, display, and ARIA overlay state. The REC
+button remains the persistent recording indicator, and replay operation failures no longer enter the
+permanent fatal runtime overlay.
 
-Sound is enabled by default and arms on the first pointer, key, touch, or click gesture, including one
-received while the bundle is loading. SOUND remains an explicit mute/on control. SOUND-origin events
-cannot briefly arm audio before a mute click, and both the global unlock listeners and page click
-handler are removed after failed boot or `stop()`. The mortality, mod, ship-aura, sound-runtime,
-controller, and browser-default set passes 91/91 with no failures or skips. The W489 regression was
-observed failing before implementation. The full suite was not run, browser assets were not
-regenerated, and W489 is unpublished.
+The focused W490 notice, W489 browser-default, and W158 sound set passes 19/19 with no failures or
+skips. The new import regression failed before implementation, and the chained stale-callback witness
+also failed before the callback guard was corrected. Independent review additionally passed W490 at
+4/4 and the existing recording/playback set at 7/7, finding no concrete defect. The full suite was not
+run, browser assets were not regenerated, and W490 is unpublished.
 
-W488 ports `$25F2D0..$25F30B`, the shared two-line per-side label printer used by object slots [17]
-and [9]. Its two disjoint data windows moved the exporter to 632 windows and 437,789 bytes. W487
-remains the last gameplay wave and ports type `$58`, leaving enemy-handler coverage at 101/256
-ported, 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow
-the static `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
-W486 remains live as production build `20260822042005`; W487, W488, and W489 are unpublished.
+W489 removed the fly-around oracle's embedded `$810424=$FF` intervention from ordinary browser
+launches, leaving labelled progression, replay, explicit Invincibility, and authentic `$F0` grace exact.
+W488 ports the shared two-line per-side label printer `$25F2D0`. W487 remains the last gameplay wave
+and ports type `$58`, leaving enemy-handler coverage at 101/256 ported, 25 unknown, and 130 null,
+with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static `$48 -> $54` edge because
+Version B's live callers target the bare `rts` at `$2714AE`. W486 remains live as production build
+`20260822042005`; W487 through W490 are unpublished.
+
+## W490 VERIFIED: TRANSIENT REPLAY AND RECORDING NOTICES
+
+`createAutoDismissNotice` owns exactly one timer and revision. `show` cancels the previous handle,
+advances the revision, paints the banner, and schedules concealment. The callback first verifies its
+captured revision before touching the shared handle, which is load-bearing: the first draft correctly
+refused to hide newer text but still nulled that text's timer handle. A chained replacement test exposed
+that defect before correction. `hide` invalidates the revision and clears class name, HTML, inline display,
+and `aria-hidden` state.
+
+The page uses this controller for REC armed, REC saved, PLAY, divergent, green, red, mismatch, and replay
+error reports. Arming, stopping, and local replay-load exceptions use the same transient red report instead
+of `showError`, which remains reserved for fatal boot and runtime stops. Replay-origin error text is HTML
+escaped. The banner stays pointer-transparent, while the button continues to show `STOP REC` for the whole
+armed interval.
 
 ## W489 VERIFIED: VANILLA MORTALITY AND DEFAULT-ON SOUND
 
@@ -788,19 +802,17 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. Land W489 after final diff and focused checks.
-2. W490 must make `REC saved`, replay-start, replay-error, and similar notices auto-dismiss without a stale
-   timer hiding a newer notice or leaving an input-blocking overlay over gameplay.
-3. W491 must add hide/show controls in every layout, maximize the game viewport, top-align it when aspect
+1. Land W490 after final diff and focused checks.
+2. W491 must add hide/show controls in every layout, maximize the game viewport, top-align it when aspect
    ratio is the limiter, overlay semi-transparent mobile controls where needed, and display floating-stick
    origin and displacement only while pressed.
-4. W491 is the fifth wave after published W486. On a quiet tracked tree, regenerate with
+3. W491 is the fifth wave after published W486. On a quiet tracked tree, regenerate with
    `node games/ddpdoj/tools/export-web.mjs` before `node tools/publish.mjs`, then confirm the live build.
-5. Add the next 15 transformative mods in bounded waves without changing vanilla behavior. Ships and pilots
+4. Add the next 15 transformative mods in bounded waves without changing vanilla behavior. Ships and pilots
    are core fidelity work, not part of that mod count.
-6. Make both cartridge-supported ships and all three pilots selectable and playable, then complete Black
+5. Make both cartridge-supported ships and all three pilots selectable and playable, then complete Black
    Label through the full second loop.
-7. Finish functional White Label after Black Label. Leave duplicate-only cleanup until both are complete.
+6. Finish functional White Label after Black Label. Leave duplicate-only cleanup until both are complete.
 
 ## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES
 
@@ -810,8 +822,8 @@ cadence above. Do not spend a wave redoing either clause.
 
 ## PUBLISHED HISTORY
 
-Last confirmed live: build `20260821060153`, confirmed 2026-08-21. Earlier confirmed builds:
-`20260820231140`, `20260819205607`, `20260819075340`, `20260819013654`, and `20260818210139`.
+Last confirmed live: build `20260822042005`, confirmed 2026-08-22. Earlier confirmed builds include
+`20260822010546`, `20260821175936`, `20260821162642`, `20260821132334`, and `20260821060153`.
 
 ## W422 LANDED -- POOL-A KIND 5, VERIFIED BY THE COORDINATOR
 

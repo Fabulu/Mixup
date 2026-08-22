@@ -315,6 +315,46 @@ export function toggleSound(sound) {
 }
 
 /**
+ * Show one bounded browser notice. Replacing or manually hiding it invalidates
+ * the old callback, so an already-queued stale timer cannot hide newer text.
+ */
+export function createAutoDismissNotice(
+    element, delay = 4000, timerHost = globalThis) {
+  let revision = 0;
+  let timer = null;
+  const clearPending = () => {
+    if (timer === null) return;
+    timerHost.clearTimeout(timer);
+    timer = null;
+  };
+  const conceal = (expected) => {
+    if (expected !== revision) return false;
+    clearPending();
+    revision++;
+    element.className = '';
+    element.innerHTML = '';
+    element.style.display = 'none';
+    element.setAttribute?.('aria-hidden', 'true');
+    return true;
+  };
+  const hide = () => conceal(revision);
+  const show = (className, innerHTML) => {
+    clearPending();
+    const own = ++revision;
+    element.className = className;
+    element.innerHTML = innerHTML;
+    element.style.display = 'block';
+    element.setAttribute?.('aria-hidden', 'false');
+    timer = timerHost.setTimeout(() => {
+      if (own !== revision) return;
+      timer = null;
+      conceal(own);
+    }, delay);
+  };
+  return { show, hide };
+}
+
+/**
  * PURE.  The largest whole scale in DEVICE pixels, for either picture.
  *
  * `image-rendering: pixelated` AND a whole-number scale.  Both are needed: a

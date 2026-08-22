@@ -6369,3 +6369,29 @@ failures or skips. The W489 regression was observed failing before implementatio
 found no remaining sound lifecycle defect. The full suite was not run, browser assets were not regenerated,
 and W489 is unpublished. W486 remains live as build `20260822042005`. W487, W488, and W489 are the first
 three unpublished waves after it; W491 remains the fifth-wave publication point.
+
+### D98: W490 TRANSIENT REPLAY AND RECORDING NOTICES, VERIFIED LOCALLY
+
+The replay banner was pointer-transparent but permanent. REC armed and saved wrote it directly; PLAY,
+divergence, green/red verdicts, and replay errors wrote through a helper that likewise never removed it.
+Arming, stopping, or loading failures instead entered `showError`, the permanent fatal-runtime overlay,
+even though gameplay could continue. A successful save therefore left a large box over play indefinitely.
+
+W490 adds `createAutoDismissNotice`, with one timer and one monotonically advancing revision. Every show
+cancels the prior handle, advances the revision, paints the new class and HTML, clears `aria-hidden`, and
+schedules concealment after four seconds. The callback verifies its captured revision before touching either
+the current notice or timer handle. Manual or timed hiding invalidates the revision and clears class, content,
+inline display, and ARIA state. The REC button remains the persistent armed indicator after its banner clears.
+
+Every recording and playback report now uses that controller. Arming, stopping, and local replay-load
+exceptions produce a transient red operation report rather than a fatal overlay. Replay-origin error text is
+escaped before entering HTML. Existing fatal boot, asset, unported, and frame-loop failures remain on
+`showError` and are not auto-dismissed.
+
+The focused W490 notice, W489 browser-default, and W158 sound set passes 19/19 with no failures or skips.
+The missing-export regression was observed failing before implementation. A second red witness caught the
+first callback draft nulling the current timer handle when a stale callback ran; the revision guard now runs
+before that write. Independent review passed W490 at 4/4 and existing recording/playback behavior at 7/7,
+and found no concrete defect. The full suite was not run, browser assets were not regenerated, and W490 is
+unpublished. W486 remains live as build `20260822042005`; W491 is the next wave and the fifth-wave
+publication point.

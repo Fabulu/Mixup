@@ -357,7 +357,7 @@
 <div id="status">loading&hellip;</div>
 <div id="err"></div>
 <div id="rung-banner"></div>
-<div id="replay-banner"></div>
+<div id="replay-banner" role="status" aria-live="polite" aria-hidden="true"></div>
 <div id="control-help" role="status" aria-live="polite"></div>
 
 <div id="info">
@@ -608,7 +608,7 @@ something here looks wrong, saying so is useful.</p>
 
 <script type="module">
 import {
-  boot, fitCanvas, MODES, DEFAULT_MODE, toggleSound,
+  boot, createAutoDismissNotice, fitCanvas, MODES, DEFAULT_MODE, toggleSound,
 } from './src/web/app.js';
 import { hashToLoadout } from './src/mods.js';
 import { attachPad, attachStick, clearKeyboard, CONTROLS } from './src/web/input.js';
@@ -648,6 +648,17 @@ const playLabel = document.getElementById('play');
 const playInput = document.getElementById('play-input');
 const infoEl = document.getElementById('info');
 const infoBtn = document.getElementById('infobtn');
+
+// Replay operation reports are transient. The REC button itself remains the
+// persistent armed indicator; the large banner must leave the playfield.
+const replayNotice = createAutoDismissNotice(replayBannerEl, 4000);
+const paintReplayBanner = (cls, inner) => replayNotice.show(cls, inner);
+const noticeText = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[char]);
+const showReplayError = (error, when) => paintReplayBanner('red',
+  `<span class="bad">${noticeText(when)}</span> `
+  + noticeText(error?.message ?? error ?? '(unknown)'));
 
 // ---- on-screen controls + touch-scheme picker (WAVE 109) -------------------
 // The owner chose (04-INPUT-SYSTEM.md section 11): touch Auto default = floating
@@ -1180,12 +1191,11 @@ try {
       try {
         await app.armRecording();
         recArmed = true;
-        replayBannerEl.innerHTML =
+        paintReplayBanner('',
           `<span class="rec">REC armed</span> at lf${app.game.logicFrame}`
-          + `\nsaving one .replay word per logic frame; click STOP REC to save.`;
-        replayBannerEl.style.display = 'block';
+          + `\nsaving one .replay word per logic frame; click STOP REC to save.`);
       } catch (e) {
-        showError(e, 'arming REC failed.');
+        showReplayError(e, 'arming REC failed.');
       } finally {
         recArming = false;
         recBtn.disabled = false;
@@ -1210,17 +1220,16 @@ try {
         a.href = url; a.download = fname;
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 4000);
-        replayBannerEl.innerHTML =
+        paintReplayBanner('',
           `<span class="rec">REC saved</span> ${fname}\n`
           + `${n} logic frames, ${obj.digest.periods.length} period(s), `
           + `cumulative ${obj.digest.cumulative.slice(0, 12)}...\n`
-          + `verify headlessly: node tools/replay.mjs ${fname}`;
-        replayBannerEl.style.display = 'block';
+          + `verify headlessly: node tools/replay.mjs ${fname}`);
       } else {
-        replayBannerEl.style.display = 'none';
+        replayNotice.hide();
       }
     } catch (e) {
-      showError(e, 'stopping REC failed.');
+      showReplayError(e, 'stopping REC failed.');
     } finally {
       recArming = false;
       recBtn.disabled = false;
@@ -1241,11 +1250,6 @@ try {
   // hex chars would be noise on a phone, and a green/red verdict + the window is
   // what the owner reads.
   const shortHex = (h) => (h ? String(h).slice(0, 12) : '(none)');
-  const paintReplayBanner = (cls, inner) => {
-    replayBannerEl.className = cls;          // '' (neutral) | 'green' | 'red'
-    replayBannerEl.innerHTML = inner;
-    replayBannerEl.style.display = 'block';
-  };
   app.onPlaybackUpdate = (state) => {
     if (state.kind === 'playing') {
       paintReplayBanner('',
@@ -1294,7 +1298,7 @@ try {
     }
     if (state.kind === 'error') {
       paintReplayBanner('red',
-        `<span class="bad">REPLAY ERROR</span> ${state.error ?? '(unknown)'}`);
+        `<span class="bad">REPLAY ERROR</span> ${noticeText(state.error ?? '(unknown)')}`);
     }
   };
 
@@ -1316,7 +1320,7 @@ try {
       const obj = JSON.parse(text);
       app.playFrom(obj);
     } catch (e) {
-      showError(e, 'loading the .replay failed.');
+      showReplayError(e, 'loading the .replay failed.');
     } finally {
       // Reset so selecting the SAME file again fires change (otherwise the owner
       // cannot re-play after editing the file on disk).
