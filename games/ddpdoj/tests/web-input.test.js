@@ -19,10 +19,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { BIT } from '../src/machine.js';
-import { portWordFromBits } from '../src/input.js';
+import { portWordFromBits, portWordFromPlayerBits, mirrorsFromPort } from '../src/input.js';
 import {
-  CONTROLS, COIN_BITS, KEYMAP, DPAD_MASK, dpadMask, currentMask, currentBits,
-  currentPortWord, setTouchButton, setTouchDirections, clearTouch, clearKeyboard,
+  CONTROLS, COIN_BITS, KEYMAP, DPAD_MASK, dpadMask, currentMask, currentP2Mask,
+  currentBits, currentPortWord, setTouchButton, setTouchDirections, clearTouch, clearKeyboard,
 } from '../src/web/input.js';
 
 const GAME = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -172,6 +172,26 @@ test('currentBits enumerates the positions portWordFromBits wants', () => {
   setTouchDirections((1 << CONTROLS.DOWN) | (1 << CONTROLS.RIGHT));
   assert.deepEqual(currentBits(), [BIT.down, BIT.right]);
   assert.equal(currentPortWord(), portWordFromBits([BIT.down, BIT.right]));
+  clearTouch();
+});
+
+test('the machine packer feeds both halves of the board one-word P1/P2 contract', () => {
+  const word = portWordFromPlayerBits(
+    [BIT.up, BIT.b1, BIT.start],
+    [BIT.down, BIT.b2, BIT.start],
+  );
+  assert.equal(word, 0xbadc, 'P1 is the low port byte and P2 is the high port byte');
+  assert.deepEqual(mirrorsFromPort(word), { p1: 0xa291, p2: 0xffa2 },
+    '$13D464 derives both full hardware mirrors, including ignored cross-byte garbage');
+});
+
+test('the mobile mask remains confined to P1', () => {
+  clearTouch(); clearKeyboard();
+  setTouchDirections(1 << CONTROLS.LEFT);
+  setTouchButton('SHOT', true);
+  assert.equal(currentMask(), (1 << BIT.left) | (1 << BIT.b1));
+  assert.equal(currentP2Mask(), 0, 'touch does not synthesize P2 movement or fire');
+  assert.equal(currentPortWord() >>> 8, 0xff, 'the board P2 half stays idle');
   clearTouch();
 });
 

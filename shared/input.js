@@ -1,6 +1,6 @@
 // THE SHARED INPUT LAYER.
 //
-// Normalized input: keyboard + gamepad (W3C Standard mapping) unified into one
+// Normalized input: keyboard + profiled browser gamepads unified into one
 // directional + action state. Each game's adapter reads this through its own
 // ROM-faithful bit shuffle (DOJ's portWordFromBits, Gradius's queue, Batman's
 // joypad). This module never names a game concept: directions are up/down/
@@ -39,13 +39,98 @@ export const NORMAL = Object.freeze({
   source: null,   // 'keyboard' | 'gamepad' | 'touch-stick' | null
 });
 
-// Canonical Standard Gamepad button indices (W3C Standard Gamepad spec).
+// Canonical Gamepad button names. STD is the W3C Standard profile and remains
+// public because existing game adapters configure actions with these names.
 export const STD = Object.freeze({
   a: 0, b: 1, x: 2, y: 3,
   lb: 4, rb: 5, lt: 6, rt: 7,
   back: 8, start: 9, home: 16,
   dup: 12, ddown: 13, dleft: 14, dright: 15,
 });
+
+const STANDARD_DPAD = Object.freeze({ up: 12, down: 13, left: 14, right: 15 });
+const STANDARD_BUTTONS = Object.freeze({
+  a: 0, b: 1, x: 2, y: 3,
+  lb: 4, rb: 5, lt: 6, rt: 7,
+  back: 8, start: 9, home: 16,
+});
+
+/**
+ * Browser gamepad profiles, ordered from exact to conservative.
+ *
+ * Standard pads use the W3C mapping regardless of their printed labels. The
+ * named non-Standard profiles cover layouts browsers commonly expose without a
+ * mapping string. The final DirectInput fallback deliberately requires two axes
+ * and ten buttons, enough for movement, three actions, select and start. It
+ * assumes only the widespread 0/1/2 face and 8/9 system-button convention.
+ * Unknown smaller devices remain unsupported rather than receiving a hazardous
+ * partial mapping.
+ */
+export const GAMEPAD_PROFILES = Object.freeze([
+  Object.freeze({
+    name: 'standard',
+    match: (pad) => pad.mapping === 'standard',
+    buttons: STANDARD_BUTTONS,
+    dpad: STANDARD_DPAD,
+    stick: Object.freeze([0, 1]),
+  }),
+  // Legacy PS3 DirectInput is unlike every modern Standard-like Sony layout:
+  // Select/Start are 0/3, the d-pad is 4..7, and face buttons are 12..15.
+  Object.freeze({
+    name: 'playstation-3-directinput',
+    match: (pad) => pad.mapping !== 'standard'
+      && /PLAYSTATION\(R\)3|PLAYSTATION 3|DUALSHOCK 3|054c[^\n]*0268/i.test(pad.id || ''),
+    buttons: Object.freeze({
+      a: 14, b: 13, x: 15, y: 12,
+      lb: 10, rb: 11, lt: 8, rt: 9,
+      back: 0, start: 3, home: 16,
+    }),
+    dpad: Object.freeze({ up: 4, down: 6, left: 7, right: 5 }),
+    stick: Object.freeze([0, 1]),
+  }),
+  // Switch Pro/Joy-Con pairs exposed raw retain the common physical-position
+  // order: B/A/Y/X occupy indices 0/1/2/3, minus/plus are 8/9.
+  Object.freeze({
+    name: 'nintendo-switch-directinput',
+    match: (pad) => pad.mapping !== 'standard'
+      && /NINTENDO|SWITCH|057e/i.test(pad.id || ''),
+    buttons: STANDARD_BUTTONS,
+    dpad: STANDARD_DPAD,
+    stick: Object.freeze([0, 1]),
+    dpadAxes: Object.freeze([6, 7]),
+    hatAxis: 9,
+  }),
+  // Modern Sony pads are normally Standard. Firefox/Linux combinations that
+  // expose them raw commonly retain the Standard-like 0..3, 8/9 and 12..15
+  // indices, unlike the explicitly matched PS3 profile above.
+  Object.freeze({
+    name: 'playstation-directinput',
+    match: (pad) => pad.mapping !== 'standard'
+      && /PLAYSTATION|DUALSHOCK|DUALSENSE|WIRELESS CONTROLLER|054c/i.test(pad.id || ''),
+    buttons: STANDARD_BUTTONS,
+    dpad: STANDARD_DPAD,
+    stick: Object.freeze([0, 1]),
+    dpadAxes: Object.freeze([6, 7]),
+    hatAxis: 9,
+  }),
+  Object.freeze({
+    name: 'generic-directinput',
+    match: (pad) => pad.mapping !== 'standard'
+      && (pad.axes?.length ?? 0) >= 2 && (pad.buttons?.length ?? 0) >= 10,
+    buttons: STANDARD_BUTTONS,
+    dpad: STANDARD_DPAD,
+    stick: Object.freeze([0, 1]),
+    dpadAxes: Object.freeze([6, 7]),
+    hatAxis: 9,
+  }),
+]);
+
+/** Resolve one browser Gamepad to a maintained profile, or null if it is too
+ * small/unknown for a complete conservative mapping. */
+export function gamepadProfile(pad) {
+  if (!pad || pad.connected === false) return null;
+  return GAMEPAD_PROFILES.find((profile) => profile.match(pad)) ?? null;
+}
 
 const DIR_NAMES = ['up', 'down', 'left', 'right'];
 const ACTION_NAMES = ['a1', 'a2', 'a3', 'start', 'select'];
@@ -83,12 +168,39 @@ export function gate8way(x, y, dz = DEADZONE) {
   }
 }
 
-/** Read a Standard Gamepad button as a boolean. `.pressed` if present (digital
+/** Read a profiled Gamepad button as a boolean. `.pressed` if present (digital
  *  buttons carry it), else `.value > 0.5` (analog triggers carry `.value`). */
 function btnPressed(b) {
   if (!b) return false;
   if (typeof b.pressed === 'boolean') return b.pressed;
   return typeof b.value === 'number' && b.value > 0.5;
+}
+
+const axisValue = (pad, index) => {
+  const value = pad.axes?.[index];
+  return Number.isFinite(value) ? value : 0;
+};
+
+/** Chrome's older DirectInput path exposes a POV hat as one axis with eight
+ * values from -1 through +1; neutral is outside that range. Accept only values
+ * close to those eight detents, so an ordinary analog axis is never guessed as
+ * a d-pad. */
+function hat8way(value) {
+  const none = { up: false, down: false, left: false, right: false };
+  if (!Number.isFinite(value) || value < -1.05 || value > 1.05) return none;
+  const detent = Math.round((value + 1) * 3.5);
+  const expected = -1 + detent * (2 / 7);
+  if (detent < 0 || detent > 7 || Math.abs(value - expected) > 0.08) return none;
+  switch (detent) {
+    case 0: return { up: true, down: false, left: false, right: false };
+    case 1: return { up: true, down: false, left: false, right: true };
+    case 2: return { up: false, down: false, left: false, right: true };
+    case 3: return { up: false, down: true, left: false, right: true };
+    case 4: return { up: false, down: true, left: false, right: false };
+    case 5: return { up: false, down: true, left: true, right: false };
+    case 6: return { up: false, down: false, left: true, right: false };
+    default: return { up: true, down: false, left: true, right: false };
+  }
 }
 
 /**
@@ -98,14 +210,16 @@ function btnPressed(b) {
  * @param {Object} opts.keyboard  KEYMAP_BY_CODE: { [e.code]: action } where
  *   action is 'UP'|'DOWN'|'LEFT'|'RIGHT'|'A1'|'A2'|'A3'|'START'|'SELECT'.
  *   Two codes may map to the same action (Swiss QWERTZ KeyY + KeyZ).
- * @param {Object} [opts.gamepad]  GAMEPAD_MAP: { [stdName]: action } where
- *   stdName is a key of STD ('a','b','x','start',...). D-pad buttons and the
- *   left stick are ALWAYS wired to directions; this maps only the face/system
- *   buttons. If omitted, gamepad face buttons are unmapped (directions still
+ * @param {Object} [opts.gamepad]  GAMEPAD_MAP: { [canonicalName]: action } where
+ *   canonicalName is a key of STD ('a','b','x','start',...). Profiled d-pad
+ *   buttons and the left stick are ALWAYS wired to directions; this maps only
+ *   face/system buttons. If omitted, face buttons are unmapped (directions still
  *   work).
+ * @param {number} [opts.gamepadIndex] Exact browser Gamepad.index to own. If
+ *   omitted, the first supported pad is used, preserving the single-player API.
  * @returns {Object} the controller.
  */
-export function createInput({ keyboard = {}, gamepad = {} } = {}) {
+export function createInput({ keyboard = {}, gamepad = {}, gamepadIndex = null } = {}) {
   // Each source keeps its OWN state; state() returns the OR. This is the only
   // correct way to merge sources: if keyboard and gamepad both press UP and the
   // keyboard then releases, UP must stay true while the stick holds it.
@@ -115,8 +229,7 @@ export function createInput({ keyboard = {}, gamepad = {} } = {}) {
 
   let source = null;
   const listeners = [];
-  const pressed = new Set();   // tracked gamepad buttons, for edge detection
-  const nonStandardLogged = new Set();
+  const unsupportedLogged = new Set();
   let target = null;
   let attached = false;
 
@@ -161,73 +274,110 @@ export function createInput({ keyboard = {}, gamepad = {} } = {}) {
   };
 
   // ---- gamepad ----
-  const gpConnected = (e) => {
-    if (e.gamepad && e.gamepad.mapping === 'standard') listeners.hasPad = true;
+  const clearGamepadState = () => {
+    let changed = false;
+    for (const n of ALL_NAMES) if (gp[n]) { gp[n] = false; changed = true; }
+    if (changed) { source = 'gamepad'; emit(); }
   };
-  const gpDisconnected = (e) => {
+
+  const entriesFor = (pads) => Array.from(pads ?? [], (pad, slot) => ({
+    pad,
+    index: Number.isInteger(pad?.index) ? pad.index : slot,
+  }));
+
+  const selectGamepad = (pads) => {
+    for (const entry of entriesFor(pads)) {
+      if (!entry.pad || (gamepadIndex !== null && entry.index !== gamepadIndex)) continue;
+      const profile = gamepadProfile(entry.pad);
+      if (profile) return { ...entry, profile };
+    }
+    return null;
+  };
+
+  const noteUnsupported = (pads) => {
+    for (const { pad, index } of entriesFor(pads)) {
+      if (!pad || (gamepadIndex !== null && index !== gamepadIndex) || gamepadProfile(pad)) continue;
+      const key = `${index}:${pad.id || 'unknown'}`;
+      if (unsupportedLogged.has(key)) continue;
+      unsupportedLogged.add(key);
+      // The status line is the owner's domain; this is a hint, not a crash.
+      console.warn(`Gamepad "${pad.id || 'unknown'}" at index ${index} has no safe input profile.`);
+    }
+  };
+
+  const gpConnected = (e) => {
+    const pad = e.gamepad;
+    if (!pad || !gamepadProfile(pad)) return;
+    if (gamepadIndex === null || pad.index === gamepadIndex) listeners.hasPad = true;
+  };
+  const gpDisconnected = () => {
     const pads = typeof navigator !== 'undefined' && navigator.getGamepads
       ? navigator.getGamepads() : [];
-    const has = [...pads].some((p) => p && p.mapping === 'standard');
-    listeners.hasPad = has;
-    if (!has) {
-      let changed = false;
-      for (const n of ALL_NAMES) if (gp[n]) { gp[n] = false; changed = true; }
-      if (changed) { source = 'gamepad'; emit(); }
-    }
+    const selected = selectGamepad(pads);
+    listeners.hasPad = !!selected;
+    listeners.profile = selected?.profile.name ?? null;
+    if (!selected) clearGamepadState();
   };
 
   function pollGamepad() {
     if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
     const pads = navigator.getGamepads();
-    let pad = null;
-    for (const p of pads) {
-      if (p && p.mapping === 'standard') { pad = p; break; }
-    }
-    // A non-standard pad is logged once by id and skipped (never guess a layout).
-    if (!pad) {
-      for (const p of pads) {
-        if (p && p.mapping !== 'standard' && !nonStandardLogged.has(p.id)) {
-          nonStandardLogged.add(p.id);
-          // The status line is the owner's domain; this is a hint, not a crash.
-          console.warn(`Non-standard gamepad "${p.id}" skipped (no Standard mapping).`);
-        }
-      }
-    }
-    if (listeners.hasPad !== !!pad) listeners.hasPad = !!pad;
-    if (!pad) {
-      let changed = false;
-      for (const n of ALL_NAMES) if (gp[n]) { gp[n] = false; changed = true; }
-      if (changed) { source = 'gamepad'; emit(); }
+    const selected = selectGamepad(pads);
+    noteUnsupported(pads);
+    listeners.hasPad = !!selected;
+    listeners.profile = selected?.profile.name ?? null;
+    if (!selected) {
+      clearGamepadState();
       return;
     }
 
-    let changed = false;
-    const set = (name, val) => {
-      if (gp[name] !== val) { gp[name] = val; changed = true; }
-    };
+    const { pad, profile } = selected;
+    const next = Object.fromEntries(ALL_NAMES.map((name) => [name, false]));
 
-    // D-pad buttons 12-15.
-    set('up', btnPressed(pad.buttons[STD.dup]));
-    set('down', btnPressed(pad.buttons[STD.ddown]));
-    set('left', btnPressed(pad.buttons[STD.dleft]));
-    set('right', btnPressed(pad.buttons[STD.dright]));
-
-    // Left stick axes 0/1 through the 8-way gate (OR with the D-pad).
-    const g = gate8way(pad.axes[0] || 0, pad.axes[1] || 0);
-    set('up', gp.up || g.up);
-    set('down', gp.down || g.down);
-    set('left', gp.left || g.left);
-    set('right', gp.right || g.right);
-
-    // Face/system buttons per GAMEPAD_MAP.
-    for (const [stdName, action] of Object.entries(gamepad)) {
-      const idx = STD[stdName];
-      if (idx === undefined) continue;
-      const name = action.toLowerCase();
-      if (!ALL_NAMES.includes(name)) continue;
-      set(name, btnPressed(pad.buttons[idx]));
+    // Profiled digital d-pad. Its existence suppresses the more conservative
+    // DirectInput axis/hat fallbacks, even while all four buttons are released.
+    let hasDigitalDpad = false;
+    for (const name of DIR_NAMES) {
+      const index = profile.dpad?.[name];
+      if (index === undefined || !pad.buttons?.[index]) continue;
+      hasDigitalDpad = true;
+      next[name] ||= btnPressed(pad.buttons[index]);
     }
 
+    // Every maintained profile has a left stick, quantized through the arcade
+    // 8-way gate. Missing/non-numeric axes read as neutral.
+    const stick = profile.stick ?? [0, 1];
+    const analog = gate8way(axisValue(pad, stick[0]), axisValue(pad, stick[1]));
+    for (const name of DIR_NAMES) next[name] ||= analog[name];
+
+    // DirectInput commonly reports the d-pad either as the old Chrome POV-hat
+    // axis 9 or as axes 6/7. Prefer a present hat axis; using both can mistake
+    // trigger axes 6/7 for a held direction on layouts that expose ten axes.
+    if (!hasDigitalDpad && profile.hatAxis !== undefined
+        && pad.axes?.length > profile.hatAxis) {
+      const hat = hat8way(pad.axes[profile.hatAxis]);
+      for (const name of DIR_NAMES) next[name] ||= hat[name];
+    } else if (!hasDigitalDpad && profile.dpadAxes
+        && pad.axes?.length > Math.max(...profile.dpadAxes)) {
+      const dpad = gate8way(axisValue(pad, profile.dpadAxes[0]),
+        axisValue(pad, profile.dpadAxes[1]), 0.5);
+      for (const name of DIR_NAMES) next[name] ||= dpad[name];
+    }
+
+    // Face/system buttons use canonical names at the adapter boundary, then the
+    // selected profile translates each name to its physical browser index.
+    for (const [canonicalName, action] of Object.entries(gamepad)) {
+      const index = profile.buttons[canonicalName];
+      if (index === undefined) continue;
+      const name = action.toLowerCase();
+      if (!ALL_NAMES.includes(name)) continue;
+      next[name] ||= btnPressed(pad.buttons?.[index]);
+    }
+
+    let changed = false;
+    for (const name of ALL_NAMES) {
+      if (gp[name] !== next[name]) { gp[name] = next[name]; changed = true; }
+    }
     if (changed) { source = 'gamepad'; emit(); }
   }
 
@@ -263,6 +413,8 @@ export function createInput({ keyboard = {}, gamepad = {} } = {}) {
     target.removeEventListener('gamepaddisconnected', gpDisconnected);
     kbClear();
     for (const n of ALL_NAMES) gp[n] = false;
+    listeners.hasPad = false;
+    listeners.profile = null;
     attached = false;
     target = null;
   }
@@ -275,6 +427,7 @@ export function createInput({ keyboard = {}, gamepad = {} } = {}) {
     onChange: (fn) => { cbs.add(fn); return () => cbs.delete(fn); },
     clearKeyboard: kbClear,
     get hasPad() { return !!listeners.hasPad; },
+    get profile() { return listeners.profile ?? null; },
   });
 }
 

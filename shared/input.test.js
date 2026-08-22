@@ -9,7 +9,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { gate8way, createInput, NORMAL, STD } from './input.js';
+import {
+  gate8way, createInput, gamepadProfile, GAMEPAD_PROFILES, NORMAL, STD,
+} from './input.js';
 
 // ------------------------------------------------------------- gate8way
 
@@ -163,4 +165,29 @@ test('STD carries the Standard Gamepad indices', () => {
   assert.equal(STD.x, 2);
   assert.equal(STD.start, 9);
   assert.equal(STD.back, 8);
+});
+
+test('gamepad profiles resolve Standard, Sony, Nintendo, and conservative DirectInput pads', () => {
+  const pad = (id, mapping = '', buttons = 17, axes = 2) => ({
+    id, mapping,
+    buttons: Array.from({ length: buttons }, () => ({ pressed: false, value: 0 })),
+    axes: Array(axes).fill(0),
+  });
+  assert.deepEqual(GAMEPAD_PROFILES.map((profile) => profile.name), [
+    'standard',
+    'playstation-3-directinput',
+    'nintendo-switch-directinput',
+    'playstation-directinput',
+    'generic-directinput',
+  ]);
+  assert.equal(gamepadProfile(pad('Xbox-compatible', 'standard')).name, 'standard');
+  assert.equal(gamepadProfile(pad('PLAYSTATION(R)3 Controller Vendor: 054c Product: 0268')).name,
+    'playstation-3-directinput');
+  assert.equal(gamepadProfile(pad('Nintendo Switch Pro Controller')).name,
+    'nintendo-switch-directinput');
+  assert.equal(gamepadProfile(pad('DualSense Wireless Controller')).name,
+    'playstation-directinput');
+  assert.equal(gamepadProfile(pad('USB Gamepad', '', 10, 2)).name, 'generic-directinput');
+  assert.equal(gamepadProfile(pad('Tiny unknown device', '', 4, 1)), null,
+    'an incomplete unknown layout is not guessed');
 });

@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W498 restores Game Over by packing slot 14's nine authentic cartridge sprite streams and adds shared mobile plus first Standard-controller P1 coin/start with lifecycle-safe coin edges; full second loop and docket still in progress |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W499 completes D106 controller work with indexed P1/P2 physical pads, separate COIN1/COIN2 paths, and Standard plus practical PlayStation, Nintendo/Switch, and DirectInput profiles while mobile remains P1-only; full second loop and docket still in progress |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -181,7 +181,9 @@ Batman gate with zero skips**, the distribution build, and the repository ROM-le
 guard. Production build `20260822120853` supersedes `20260822080859` and carries
 W492 through W496, including all fifteen requested transformative mods. W493's focused
 affected set passes 232/232, W494's passes 118/118, W495's passes 89/89, W496's
-passes 170/170, and the bundle gate remains pixel-exact.
+passes 170/170, and the bundle gate remains pixel-exact. W498's focused visible-input
+and Game Over set passes 93/93. W499's bounded controller plus directly affected
+shared/web input and coin set passes 83/83; W499 is local and unpublished.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -304,8 +306,13 @@ The cartridge does not yet prove the human pilot-name mapping, so the UI does no
 guess it. Empty and default launches remain byte-exact. The coordinator repeated W497's
 159/159 bounded affected set, and its regenerated bundle remains
 15,955,968/15,955,968 pixel-identical while containing 4,898 validated sprite streams
-in 12,623.9 KiB. It is not published; W501 remains the next periodic
-publication point.
+in 12,623.9 KiB. W498 restores authentic Game Over art and shared mobile P1 COIN/START
+with lifecycle-safe first-controller coin edges. W499 completes D106: browser Gamepad
+index 0 drives P1, index 1 drives P2 through the existing two-half `$C08000` machine
+word, and each controller has its own active-low `$C08004` coin path. Standard,
+PlayStation, Nintendo/Switch, and conservative generic DirectInput profiles are
+supported; mobile remains P1-only. W497 through W499 are local and not published;
+W501 remains the next periodic publication point.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,

@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W498 visible D106 Game Over and P1 entry-control repair verified locally)
+Updated: 2026-08-22 (W499 D106 two-controller and practical gamepad-profile work verified locally)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,21 +8,22 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W498 closes the visible half of D106.** Slot 14 keeps its authentic
-rank-selected cartridge sprite enqueue, and `export-web.mjs` now packs the nine distinct streams named by its
-two eight-entry tables into boot shard 0. There is no synthetic TX string or DOM overlay. One shared mobile
-row exposes P1 COIN and START in AUTO, FIXED, and FLOAT layouts. Standard first-controller back/select feeds
-P1's existing active-low `$C08004` pulse and start remains on the measured `$C08000` player-port path.
-Controller coin edges now clear and block a held SELECT across disconnect, blur, page hide, document
-visibility change, replay entry, and replay exit until release. Keyboard controls, Swiss QWERTZ `KeyY` plus
-`KeyZ` shot, menu hide/reveal, viewport fill, translucent controls, and floating-stick visuals were not
-changed.
+`docs/DOCKET.md` is authoritative. **W499 closes D106.** W498 restored slot 14's authentic Game Over art
+and shared mobile P1 COIN/START. W499 assigns browser Gamepad index 0 to P1 and index 1 to P2, each with
+directions, shot, bomb, auto, start, and its own select-backed active-low coin edge. Both players feed the
+low/high byte paths of the board's existing one-word `$C08000` contract; P2 coin uses `$C08004` bit 1. There is
+no host-side P2 mode. Mobile and keyboard remain P1-only. Lifecycle and replay clears block either held coin
+button until release without rearming an expired pulse.
 
-W498's focused authentic Game Over sprite, packed-map/runtime, mobile-input, coin-debounce, replay-gate,
-object-slot, controller-lifecycle, and metadata set passes 93/93 with no failures or skips. `export-web.mjs`
-regenerated ignored assets with 4,907 sprite streams in a 12,803.6 KiB bundle. No ROM window or tracked
-ROM-derived output was added. The full suite and publish were not run. Production remains W496 build
-`20260822120853`; W501 is the next five-wave publication point.
+The shared resolver now accepts W3C Standard pads plus explicit legacy PS3, modern PlayStation,
+Nintendo/Switch, and conservative generic DirectInput profiles. The fallback requires at least two axes and
+ten buttons and understands common button d-pads, axes 6/7, and POV-hat axis 9. Unknown smaller devices are
+left inactive rather than partially guessed. No remapping UI was added.
+
+W499's bounded controller regression plus directly affected shared-input, web-input, W375 coin-debounce/wiring,
+and W498 preservation tests pass 83/83 with no failures or skips. Syntax checks pass. No ROM window, generated
+asset, full suite, publish, commit, or push operation was performed. W499 is local. Production remains W496
+build `20260822120853`; W501 is the next five-wave publication point.
 
 **W497 remains the first substantial D26 implementation slice.** The cartridge-proven ship domain is `{0,2}`
 and the style domain is `{2,4,6}`. Selector 0 is Type-A and selector 2 is Type-B. The cartridge census does
@@ -35,15 +36,41 @@ ordinary-bomb families, and the complete two-ship laser-bomb range. The W497 pos
 D26 is not closed by the bounded matrix. Run all six pairs through the complete Black Label second loop and
 follow only selector-specific runtime evidence. Remaining D26 edges are the complete cartridge player-select
 flow, any P2 authentic-selection path beyond the live P1 browser seed, and the human pilot-name mapping if it
-can be proved. D106 remains open only for full P2 controls on a second physical controller, without putting
-P2's full set on mobile, and explicit practical mappings for non-Standard controllers. Keep those controller
-items separate from D26's authentic P1 seed selector.
+can be proved. D106's browser control transport is closed and remains separate from D26's authentic seed and
+cartridge-select flow.
 
 W492 through W496's fifteen transformative additions remain unchanged and all block replay v1. Empty,
 unknown-only, direct, Original, and later vanilla-Game paths install no mod callback or policy. W488 ports
 the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage remains 101/256 ported, 25
 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
+
+## W499 VERIFIED LOCALLY: TWO INDEXED CONTROLLERS AND PRACTICAL PAD PROFILES
+
+`shared/input.js` keeps `createInput` backward compatible and adds optional `gamepadIndex`. Omitted means the
+first supported pad, as before; DaiOuJou explicitly constructs index 0 and index 1 controllers. The profile
+resolver is ordered exact-to-conservative: W3C Standard, legacy PS3 DirectInput with its distinct 0/3 system,
+4..7 d-pad, and 12..15 face layout, Nintendo/Switch raw, modern PlayStation raw, then generic DirectInput with
+at least two axes and ten buttons. The last three use common physical-position 0/1/2 actions and 8/9 system
+buttons. Digital d-pad buttons take priority; absent buttons permit a POV hat on axis 9 or axes 6/7. A present
+hat takes priority over axes 6/7 so trigger axes cannot create a stuck direction. Unknown smaller pads are
+logged once and ignored. No user-remapping UI exists.
+
+`src/web/input.js` gives only controller index 0 the existing keyboard map and ORs only that controller with
+the existing P1 touch mask. Controller index 1 has no keyboard or touch producer. `portWordFromPlayerBits`
+uses the measured `portWordFromBits` inverse independently for both panels and packs their port bytes into the
+single `$C08000` word. `$13D464` therefore continues to derive `$803970` and `$803976` itself. Controller 0
+select feeds COIN1; controller 1 select feeds COIN2, active-low `$C08004` bit 1. Their sampled down, blocked,
+and present states are independent. `clearCoin` and disconnect loss clear both pulses and block any pad that
+was present until sampled release, preserving W498's blur, pagehide, visibility, replay-entry, and replay-exit
+behavior. Mobile remains P1-only.
+
+`tests/w499controllers.test.js` proves exact assignment by `Gamepad.index`, complete P1 and P2 player masks and
+port bytes through both Standard and legacy PS3 layouts, separate and simultaneous COIN1/COIN2 edges, no held
+rearm, lifecycle/replay-style clear blocking, disconnect/reconnect blocking, and actual Nintendo plus generic
+DirectInput mapping. `shared/input.test.js` pins the profile order and safe rejection; `web-input.test.js` pins
+the two-half machine packer and P1-only touch. Together with W375 coin-debounce/wiring and W498 preservation,
+the affected set is 83/83. No full suite or publication ran. W499 adds no generated or ROM-derived data.
 
 ## W498 VERIFIED LOCALLY: AUTHENTIC GAME OVER ART AND P1 ENTRY CONTROLS
 
@@ -69,8 +96,8 @@ pulse before a held reconnect. `clearCoin` cancels keyboard/mobile held state an
 controller edge, and preserves a block for a controller that was present. The existing replay-entry and
 replay-exit calls therefore suppress a SELECT held across either boundary. `attachCoinKeys` puts blur,
 pagehide, and gamepad disconnect on the window target, but puts `visibilitychange` on the document target.
-The shared layer still selects only the first browser-Standard pad, skips non-Standard mappings, and has no P2
-adapter. Those limits are deliberate remaining D106 work.
+At W498 the shared layer still selected only the first browser-Standard pad, skipped non-Standard mappings,
+and had no P2 adapter. W499's section above closes those then-remaining limits.
 
 `tests/w498d106.test.js` decodes `assets/manifest.json` and `spr/streams.u32.gz`, proves the two tables' exact
 nine-stream union is in boot shard 0, then drives all sixteen table selections through slot 14, the display-list

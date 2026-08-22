@@ -6597,7 +6597,7 @@ the next publication point. D26 stays open for full-second-loop exercise of ever
 pilot names if they can be proved, the complete cartridge player-select flow, and selector-specific gaps
 exposed outside the bounded matrix.
 
-### D106: POST-W497 BROWSER AND CONTROL FOLLOW-UPS
+### D106: POST-W497 BROWSER AND CONTROL FOLLOW-UPS, CLOSED W499
 
 W498 closes the two bounded visible items:
 
@@ -6625,12 +6625,24 @@ before the first frame and 11,888.3 KiB deferred. No ROM window or tracked ROM-d
 full suite was not run, W498 was not published, and production remains W496 build `20260822120853`; W501 stays
 the next publication point.
 
-D106 remains open for exactly two controller follow-ups:
+W499 closes the two remaining controller follow-ups:
 
-* Support P2's complete controls from a second physical controller. Do not put P2's full controls on mobile.
-* Broaden handling beyond browser Standard mappings to practical non-Standard controller types. Do not guess
-  button layouts without an explicit mapping.
+* **Two physical controllers now drive the board's real two-player input word.** The shared input API accepts an
+  optional exact browser `Gamepad.index` while preserving its first-supported-pad default for existing callers.
+  DaiOuJou binds index 0 to P1 and index 1 to P2. Both supply directions, shot, bomb, auto, and start. Their bit
+  sets are packed into the low and high byte paths of the single `$C08000` word that `$13D464` already turns into
+  `$803970` and `$803976`; there is no fake second game mode or parallel machine input. Back/select on index 0
+  edges COIN1, while back/select on index 1 independently edges active-low COIN2 bit 1 on `$C08004`. Both use the
+  existing 12-debounce-call pulse, no-held-rearm rule, and release block across disconnect, blur, page hide,
+  document visibility, replay entry, and replay exit. Keyboard and every touch scheme remain P1-only.
+* **Practical profiled browser pads replace the Standard-only gate.** The maintained resolver covers W3C
+  Standard pads, legacy PS3 DirectInput, modern PlayStation raw layouts, Nintendo/Switch raw layouts, and a
+  conservative generic DirectInput fallback requiring at least two axes and ten buttons. It supports the common
+  digital d-pad indices, DirectInput axes 6/7, and Chrome POV-hat axis 9 without adding a remapping UI. Unknown
+  smaller devices are logged once and left inactive rather than receiving a partial guessed layout.
 
-Keep the P2 physical-controller work separate from D26's authentic P1 seed selector. It must preserve the
-existing keyboard, mobile P1, replay, and default-launch behavior while exposing the board's real second-player
-input path.
+The bounded W499 regression and directly affected shared-input, web-input, W375 coin-debounce/wiring, and W498
+preservation set passes 83/83 with no failures or skips. Syntax checks pass. No ROM window, generated asset,
+full suite, publish, commit, or push operation was performed. W499 is local, production remains W496 build
+`20260822120853`, and W501 remains the next publication point. D106 is closed; D26's authentic selector and
+full-second-loop work remain separate.

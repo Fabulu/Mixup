@@ -38,7 +38,7 @@
 // keyboard's blur reset would wipe a finger that is still on the screen.
 
 import { BIT } from '../machine.js';
-import { portWordFromBits } from '../input.js';
+import { portWordFromPlayerBits } from '../input.js';
 import { createInput, attachFloatingStick } from '../../../../shared/input.js';
 
 /** Control name -> a bit POSITION in $803970's layout (machine.js BIT). */
@@ -88,33 +88,39 @@ export const GAMEPAD_MAP = Object.freeze({
   a: 'A1', b: 'A2', x: 'A3', back: 'SELECT', start: 'START',
 });
 
-// The shared controller (keyboard + gamepad).  null in headless: the tests drive
-// the touch setters and read currentMask() directly, so there is no controller
-// to read and the keyboard contribution is zero.
+// Two shared controllers feed the board's two halves of `$C08000`. Controller 0
+// also owns the P1 keyboard map; controller 1 is physical-pad only, so mobile and
+// keyboard remain P1-only.
 let controller = null;
-let controllerCoinDown = false;
-let controllerCoinBlocked = false;
-let controllerHadPad = false;
+let controllerP2 = null;
+const controllerCoinDown = [false, false];
+const controllerCoinBlocked = [false, false];
+const controllerHadPad = [false, false];
 let touchHeld = 0;
 
-/** The live mask, controller (keyboard + gamepad) OR pad, one bit per CONTROLS
- *  entry.  In headless the controller is null and this returns just touchHeld,
- *  which is what the unit tests drive. */
-export function currentMask() {
-  let cm = 0;
-  if (controller) {
-    const s = controller.state();
-    if (s.up) cm |= M('UP');
-    if (s.down) cm |= M('DOWN');
-    if (s.left) cm |= M('LEFT');
-    if (s.right) cm |= M('RIGHT');
-    if (s.a1) cm |= M('SHOT');
-    if (s.a2) cm |= M('BOMB');
-    if (s.a3) cm |= M('AUTO');
-    if (s.start) cm |= M('START');
-  }
-  return (cm | touchHeld) & 0xffff;
+/** Convert one normalized controller state to `$803970/$803976` bit positions. */
+function maskFromController(c) {
+  if (!c) return 0;
+  const s = c.state();
+  let mask = 0;
+  if (s.up) mask |= M('UP');
+  if (s.down) mask |= M('DOWN');
+  if (s.left) mask |= M('LEFT');
+  if (s.right) mask |= M('RIGHT');
+  if (s.a1) mask |= M('SHOT');
+  if (s.a2) mask |= M('BOMB');
+  if (s.a3) mask |= M('AUTO');
+  if (s.start) mask |= M('START');
+  return mask & 0xffff;
 }
+
+/** P1's live mask: controller index 0 plus the P1-only mobile/keyboard paths. */
+export function currentMask() {
+  return (maskFromController(controller) | touchHeld) & 0xffff;
+}
+
+/** P2's live mask: controller index 1 only. Mobile remains deliberately P1-only. */
+export function currentP2Mask() { return maskFromController(controllerP2); }
 
 /** Bit POSITIONS, for `portWordFromBits`. */
 export function currentBits(mask = currentMask()) {
@@ -123,8 +129,11 @@ export function currentBits(mask = currentMask()) {
   return out;
 }
 
-/** The 68000 port word this frame, via the inverse of $13D464. */
-export function currentPortWord() { return portWordFromBits(currentBits()); }
+/** The board's one `$C08000` word this frame, with P1 in its low-byte path
+ * and P2 in its high-byte path, through `$13D464`'s existing machine contract. */
+export function currentPortWord() {
+  return portWordFromPlayerBits(currentBits(), currentBits(currentP2Mask()));
+}
 
 // ----------------------------------------------------------------- $C08004, THE COIN PORT
 //
@@ -224,8 +233,10 @@ export function tickCoinPulse() {
 export function clearCoin() {
   coinHeld = 0;
   for (const k of Object.keys(coinPulse)) coinPulse[k] = 0;
-  controllerCoinDown = false;
-  controllerCoinBlocked = controllerCoinBlocked || controllerHadPad;
+  for (let i = 0; i < 2; i++) {
+    controllerCoinDown[i] = false;
+    controllerCoinBlocked[i] ||= controllerHadPad[i];
+  }
 }
 
 /**
@@ -268,58 +279,69 @@ export function attachCoinKeys(
  * Create and attach the shared input controller (keyboard + gamepad).  Replaces
  * the per-game keyboard handler: the launch-Enter / `e.repeat` / firstSample
  * guard is now generalized inside `shared/input.js`'s `createInput`, and the
- * gamepad (Standard mapping, radial deadzone + 8-way gate) is wired alongside.
+ * gamepads (Standard and maintained non-Standard profiles, radial deadzone plus
+ * 8-way gate) are wired alongside it by exact browser index. Index 0 owns P1;
+ * index 1 owns P2 and receives no keyboard mapping.
  *
- * The controller's normalized state is read by `currentMask()` above each logic
- * frame; the ROM-faithful `portWordFromBits` shuffle is UNCHANGED.
+ * Both normalized states are read by `currentPortWord()` above each logic frame;
+ * the ROM-faithful one-word `$C08000` shuffle is unchanged.
  *
- * @returns the controller (for hasPad queries, etc.).  In headless (no target)
- *          the controller is still created but not attached, and currentMask()
- *          reads zero from it -- which is what the tests expect.
+ * @returns P1's controller, preserving the existing caller contract.
  */
 export function attachInput(target = (typeof window !== 'undefined' ? window : null)) {
-  controller = createInput({ keyboard: KEYMAP_BY_CODE, gamepad: GAMEPAD_MAP });
-  controllerCoinDown = false;
-  controllerCoinBlocked = false;
-  controllerHadPad = false;
-  if (target) controller.attach(target);
+  controller = createInput({
+    keyboard: KEYMAP_BY_CODE,
+    gamepad: GAMEPAD_MAP,
+    gamepadIndex: 0,
+  });
+  controllerP2 = createInput({ gamepad: GAMEPAD_MAP, gamepadIndex: 1 });
+  controllerCoinDown.fill(false);
+  controllerCoinBlocked.fill(false);
+  controllerHadPad.fill(false);
+  if (target) {
+    controller.attach(target);
+    controllerP2.attach(target);
+  }
   return controller;
 }
 
-/** Refresh the gamepad state. Call once per ANIMATION frame (rAF), not per
- *  logic frame. Standard back/select feeds COIN1's existing fixed pulse, while
- *  Standard start remains in the player-port mapping above. A lifecycle clear
- *  blocks a held SELECT until this sampler observes its release. */
+/** Refresh both indexed gamepads once per animation frame. Each pad's
+ * back/select feeds its matching active-low coin bit through the existing fixed
+ * pulse. Lifecycle clears block either held SELECT until that pad releases. */
 export function pollInput() {
-  if (!controller) return;
-  const hadPad = controllerHadPad;
-  controller.pollGamepad();
-  const hasPad = controller.hasPad;
+  const pads = [controller, controllerP2];
+  if (!pads[0] || !pads[1]) return;
 
-  if (hadPad && !hasPad) {
+  for (const pad of pads) pad.pollGamepad();
+  const hasPad = pads.map((pad) => pad.hasPad);
+  const lostPad = controllerHadPad.some((had, i) => had && !hasPad[i]);
+  if (lostPad) {
     clearCoin();
-    controllerHadPad = false;
+    for (let i = 0; i < 2; i++) controllerHadPad[i] = hasPad[i];
     return;
   }
-  controllerHadPad = hasPad;
-  if (!hasPad) return;
+  for (let i = 0; i < 2; i++) controllerHadPad[i] = hasPad[i];
 
-  const down = !!controller.state().select;
-  if (!down) {
-    setCoinKey('COIN1', false);
-    controllerCoinDown = false;
-    controllerCoinBlocked = false;
-    return;
+  for (let i = 0; i < 2; i++) {
+    if (!hasPad[i]) continue;
+    const down = !!pads[i].state().select;
+    const coin = i === 0 ? 'COIN1' : 'COIN2';
+    if (!down) {
+      setCoinKey(coin, false);
+      controllerCoinDown[i] = false;
+      controllerCoinBlocked[i] = false;
+      continue;
+    }
+    if (controllerCoinDown[i]) continue;
+    controllerCoinDown[i] = true;
+    if (!controllerCoinBlocked[i]) setCoinKey(coin, true);
   }
-  if (controllerCoinDown) return;
-  controllerCoinDown = true;
-  if (!controllerCoinBlocked) setCoinKey('COIN1', true);
 }
 
-/** Whether a Standard gamepad was seen on the last poll.  UI hint only: the
- *  browser user-gesture requirement means a pad often reports only after the
- *  first button press. */
-export function hasGamepad() { return !!controller?.hasPad; }
+/** Whether either profiled gamepad was seen on the last poll. UI hint only. */
+export function hasGamepad() {
+  return !!(controller?.hasPad || controllerP2?.hasPad);
+}
 
 // ------------------------------------------------------------ on-screen pad
 

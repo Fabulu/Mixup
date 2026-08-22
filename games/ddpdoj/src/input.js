@@ -55,6 +55,21 @@ export function portWordFromBits(bits) {
   return w;
 }
 
+/**
+ * Pack both physical player panels into the board's one `$C08000` word.
+ *
+ * `$13D464` reads one word, keeps it for P1, and also shifts its high byte down
+ * before applying the identical rotate/not shuffle for P2. Therefore each side
+ * first uses the same measured `portWordFromBits` inverse; P1's resulting port
+ * byte occupies bits 0..7 and P2's occupies bits 8..15. This is the machine's
+ * existing P1/P2 input contract, not a host-side second-player mode.
+ */
+export function portWordFromPlayerBits(p1Bits = [], p2Bits = []) {
+  const p1 = portWordFromBits(p1Bits);
+  const p2 = portWordFromBits(p2Bits);
+  return ((p2 << 8) | (p1 & 0xff)) & 0xffff;
+}
+
 /** $13D46C..$13D476 exactly: the P1 and P2 mirrors from one port word. */
 export function mirrorsFromPort(portWord) {
   const w = portWord & 0xffff;

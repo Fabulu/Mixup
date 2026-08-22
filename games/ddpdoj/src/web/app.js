@@ -1627,10 +1627,10 @@ export class Demo {
 
   loop(now) {
     if (!this.running) return;
-    // WAVE 109 -- poll the gamepad ONCE per ANIMATION frame (this callback is
-    // the rAF), not per logic frame. The Standard Gamepad API is polled, not
-    // event-driven; currentPortWord() reads the controller's state each logic
-    // frame inside step(), so this refresh happens before any step() runs.
+    // W499 -- poll both indexed gamepads ONCE per ANIMATION frame (this callback
+    // is the rAF), not per logic frame. Standard and maintained non-Standard
+    // profiles are sampled through the same API; currentPortWord() packs their
+    // P1/P2 states before each logic frame inside step().
     pollInput();
     if (!this.last) this.last = now;
     let dt = now - this.last;
