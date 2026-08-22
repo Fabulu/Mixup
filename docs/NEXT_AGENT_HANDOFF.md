@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W486 source-complete, unpublished)
+Updated: 2026-08-22 (W486 published, W487 type `$58` next)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -16,17 +16,15 @@ children per pass with distinct packed positions and independently advanced head
 type-`$58`-only queue reaches its unported init+8 body `$270BE4`; init is `$270BDC` and handler is `$270C66`.
 Enemy-handler coverage remains 100/256 ported, 26 unknown, and 130 null. The init registry remains at 93 bodies. W477's 15-mod start screen keeps direct and empty
 launches vanilla. Live duplicate counts remain 15 narrow heads, 68 widened heads, 27 body pairs, and 22
-body-only findings, but those rows wait until after White Label. W481 remains live as build `20260822010546`
-after browser regeneration and the complete quiet-tree publication gate. That published gate passed
-4,305/4,305 DaiOuJou tests; W486's relevant type `$4C` set passes 96/96 and has not been published.
+body-only findings, but those rows wait until after White Label. W486 is live as production build
+`20260822042005`, superseding `20260822010546`, after browser regeneration and the complete quiet-tree
+publication gate. Its DDPDOJ unit suite passed 4,310/4,310 with zero skips.
 
-Type `$58` is the next runtime-proven blocker. Do not follow the static `$48 -> $54` edge: Version B's live
-callers target the bare `rts` at `$2714AE`, and the `$54` call sits in the disabled body at `$2714B0`. W486 is
-the fifth-wave publication point after W481, but this editing wave deliberately stopped before publication.
-Main must ensure the tracked tree is quiet, verify the regenerated local tables, run `export-web.mjs` because
-W486 adds a ROM window, then run `publish.mjs`, confirm the deployed build, and only then update the live pin.
+Type `$58` is W487's next runtime-proven blocker. Do not follow the static `$48 -> $54` edge: Version B's
+live callers target the bare `rts` at `$2714AE`, and the `$54` call sits in the disabled body at `$2714B0`.
+Start with type `$58`'s init body `$270BE4`, init `$270BDC`, and handler `$270C66`.
 
-## W486 SOURCE-COMPLETE: TYPE `$4C` COMPLETE STATE-4 OMISSIONS
+## W486 PUBLISHED: TYPE `$4C` COMPLETE STATE-4 OMISSIONS
 
 Independent review caught the first draft still omitting `$26FD8C..$26FD98`. Step 1 loads target
 `$3200/$1C00` and calls `steer4C`; `$26FD98 bcs.w $26FDAE` must leave step 1 and phase `+$2A = 0` intact
@@ -49,8 +47,10 @@ The new regression proves no emission one ramp step below the cap, verifies all 
 type `$58` to the named unported body `$270BE4`. Its red switch fails with child `$57`. The arm's table was
 already windowed; only init stub `$270BDC + $08` is new. The regenerated ignored export is 629 windows and
 437,705 bytes with 75 overlapping pairs unchanged. The focused W486 test passes 1/1; the existing type `$4C`
-field, runtime, retirement, and new arm set passes 96/96. Browser assets and the full suite were not run.
-No commit, push, or publication was performed. Build `20260822010546` remains the live pin.
+field, runtime, retirement, and new arm set passes 96/96. The repaired publication gate passed Gradius units
+746/746, the Gradius gate 13/13 with zero skips, DDPDOJ units 4,310/4,310 with zero skips, the DDPDOJ bundle
+and web-fetch gates, the Batman gate 27/27 with zero skips, the distribution build, and the ROM-leak guard.
+Cloudflare confirmed production build `20260822042005` at <https://gbtman.pages.dev/games/ddpdoj/>.
 
 ## W485 VERIFIED: TERMINAL TYPE `$50` CHILD
 

@@ -6237,7 +6237,7 @@ therefore the existing type `$4C` port's omitted live state-4 arm at **`$26FDF4.
 at `$26FE5C` and `$26FE8C` to emit type `$58` with distinct packed biases. Restoring that parent arm is required
 before type `$58` can be honestly runtime-proven.
 
-### D94: W486 TYPE `$4C` COMPLETE STATE-4 OMISSIONS, SOURCE-COMPLETE AND UNPUBLISHED
+### D94: W486 TYPE `$4C` COMPLETE STATE-4 OMISSIONS, PUBLISHED
 
 W486 restores both live omissions inside `state4_4C`: the step-1 steering gate `$26FD8C..$26FD98` and the
 paired arm `$26FDF4..$26FEC7`. Independent review caught the first W486 draft still advancing step 1
@@ -6281,7 +6281,13 @@ new test passes 1/1, and the relevant type `$4C` field, runtime, retirement, and
 no failures or skips. Enemy-handler and init-body coverage do not move because type `$58` itself remains
 unported.
 
-W486 is source-complete but unpublished. No full suite, browser-asset regeneration, commit, push, or publication
-was run. Published build **`20260822010546`** remains pinned to W481. Main must first obtain a quiet tracked
-tree, run `export-tables.py --verify`, run `export-web.mjs` because the ROM-window set changed, then run
-`publish.mjs` and confirm the deployed build before changing the live build pin.
+W486 was published as production build **`20260822042005`**, superseding build
+**`20260822010546`**. The repaired quiet-tree publication gate passed Gradius units **746/746**, the
+Gradius gate **13/13 with zero skips**, DaiOuJou units **4,310/4,310 with zero skips**, the DaiOuJou bundle
+and web-fetch gates, the Batman gate **27/27 with zero skips**, the distribution build, and the ROM-leak
+guard. Cloudflare deployment and live confirmation succeeded at
+<https://gbtman.pages.dev/games/ddpdoj/>.
+
+**NEXT CONCRETE DOCKET UNIT: W487, TYPE `$58`.** Port the runtime-proven init body `$270BE4` and handler
+`$270C66`, beginning from init `$270BDC`. Do not follow the disabled `$48 -> $54` edge behind Version B's
+live `$2714AE` return.
