@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W495 fourth transformative-mod wave verified locally)
+Updated: 2026-08-22 (W496 final transformative-mod wave verified locally)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,18 +8,18 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W495 adds two more mods in the additional
-transformative roster.** The catalogue now has 28 entries. Friendly Converted Bullets turns each
-ordinary canceled enemy bullet into an upward projectile in the authentic P1 shot pool after preserving
-the cancel impact and authentic bullet free. Loop 2 From Stage 1 writes `$813098 := 1` only into the copied
-seed for an ordinary selected launch. Labelled progression, replay seeds, source seed bytes, and later
-vanilla Games remain unchanged. W492 through W494's eleven additions remain unchanged. Every new mod
-blocks replay v1. Empty, unknown-only, direct, Original, and later vanilla-Game paths install no mod
-callback or policy.
+`docs/DOCKET.md` is authoritative. **W496 completes the additional transformative roster.** The catalogue
+now has 30 entries. Boss Rush dynamically scans each newly installed stage script through its `$FFFF`
+sentinel, keeps the final approach records from roughly 16 clock units before the last trigger, and leaves
+the authentic walker, allocation, boss, result, and stage flow in control. Stage Remix transforms only
+`$242952`'s next-stage value to route Stage 1, Stage 3, Stage 2, Stage 4, and Stage 5, including the same
+stateless route in loop 2 and the unchanged stage-5 ending value. W492 through W495's thirteen additions
+remain unchanged. All fifteen additions block replay v1. Empty, unknown-only, direct, Original, and later
+vanilla-Game paths install no mod callback or policy.
 
-The W495 focused and directly affected set passes 89/89. Syntax, diff hygiene, and
+The W496 focused and directly affected set passes 170/170. Syntax, diff hygiene, and
 forbidden-punctuation checks pass. The published-bundle gate remains 15,955,968/15,955,968
-pixel-identical. W495 is not published; W496 remains the next publication point.
+pixel-identical. W496 is ready for the scheduled five-wave publication gate.
 
 W490 makes all large replay and recording notices transient. W489 removed the fly-around oracle's embedded
 `$810424=$FF` intervention from ordinary browser launches, leaving labelled progression, replay, explicit
@@ -28,6 +28,23 @@ Invincibility, and authentic `$F0` grace exact. W488 ports the shared two-line p
 101/256 ported, 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not
 follow the static `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
 W491 is live as production build `20260822080859`, superseding W486's `20260822042005`.
+
+## W496 VERIFIED LOCALLY: BOSS RUSH AND STAGE REMIX
+
+`spawn.js` invokes one selected callback only after an authentic stage-script installation, both in the
+initial type-5 reset and in later stage rebuilds. Boss Rush scans that installed script dynamically to its
+`$FFFF` sentinel, derives the final trigger minus `$10`, puts the live cursor at the first retained record,
+and aligns `$8130CE` to the threshold. It commits no ROM-derived trigger table and cannot rewind during an
+ordinary script walk.
+
+`stageend.js` computes the cartridge next-stage value first, then optionally transforms only the value stored
+in the new type-6 object. Stage Remix maps 1 to 2, 3 to 1, and 2 to 3, while 4 and 5 remain authentic. This
+routes stages 1, 3, 2, 4, and 5, preserves the ending selector, and repeats without stored host state in loop
+2. Vanilla Games own neither callback.
+
+The focused and directly affected set passes 170/170. All changed JavaScript parses, `git diff --check` and
+the U+2014 scan pass, and the published-bundle gate remains pixel-identical. W496 completes all fifteen
+requested additions and is ready for the scheduled publication gate.
 
 ## W495 VERIFIED LOCALLY: FRIENDLY CONVERSIONS AND LOOP-2 LAUNCH
 
@@ -877,16 +894,14 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. Add the remaining 2 transformative mods in W496 without changing vanilla behavior. Ships and
-   pilots are core fidelity work, not part of that mod count.
-2. Make both cartridge-supported ships and all three pilots selectable and playable.
-3. Complete Black Label through the full second loop.
-4. Finish functional White Label after Black Label. Leave duplicate-only cleanup until both are complete.
-5. After D26 and functional completion, D28a and D28b use one synchronized control stream, option-like
+1. Make both cartridge-supported ships and all three pilots selectable and playable.
+2. Complete Black Label through the full second loop.
+3. Finish functional White Label after Black Label. Leave duplicate-only cleanup until both are complete.
+4. After D26 and functional completion, D28a and D28b use one synchronized control stream, option-like
    formation offsets, coordinated movement, and combined firepower for both authentic ships and then all
    three authentic pilots. Do not use independent controls or cloned stand-ins.
-6. The next periodic publication is W496, five waves after published W491. If any intervening wave adds ROM
-   windows, run `export-web.mjs` before that publication.
+5. Land W496, regenerate browser assets, and run the scheduled publication gate from a quiet tracked tree.
+   After W496 is live, the next five-wave publication point is W501.
 
 ## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES
 

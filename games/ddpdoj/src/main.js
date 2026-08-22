@@ -410,6 +410,8 @@ export class Game {
       'friendlyBulletConvertHook',
       'enemyBulletCollisionFilter',
       'scoreAddendTransform',
+      'stageScriptInstallHook',
+      'stageAdvanceTransform',
     ]) {
       if (opts[name] == null) continue;
       if (typeof opts[name] !== 'function') {
@@ -538,6 +540,10 @@ export class Game {
         ? { friendlyBulletConvertHook: this.friendlyBulletConvertHook } : {}),
       ...(this.enemyBulletCollisionFilter
         ? { enemyBulletCollisionFilter: this.enemyBulletCollisionFilter } : {}),
+      ...(this.stageScriptInstallHook
+        ? { stageScriptInstallHook: this.stageScriptInstallHook } : {}),
+      ...(this.stageAdvanceTransform
+        ? { stageAdvanceTransform: this.stageAdvanceTransform } : {}),
       // WAVE 57: the BG videoram, because an ENEMY HANDLER writes it.  Type
       // $1C ($26C20C, what the midboss's death spawns) copies 23 x 9 map
       // longwords into $9000xx -- the same array `$240D9A` writes through

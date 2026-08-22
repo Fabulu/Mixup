@@ -107,7 +107,7 @@ export function stageTableEntry(rom, stage) {
  * queue.  The resource #$1F install (`$246CAC`) is noted, not ported (W24).
  * The port sets LIVE_CURSOR = script and AUX_BASE = aux, mirroring $26339C/$26339E.
  */
-export function installStage(ram, rom, stage, unported, prot) {
+export function installStage(ram, rom, stage, unported, prot, stageScriptInstallHook) {
   const e = stageTableEntry(rom, stage);
   ram.setU32(SPAWN.LIVE_CURSOR, e.script);          // $26339c move.l (A0)+,(A4)
   ram.setU32(SPAWN.AUX_BASE, e.aux);                // $26339e move.l (A0)+,($4,A4)
@@ -118,6 +118,7 @@ export function installStage(ram, rom, stage, unported, prot) {
   // resource -- the bytes are plain ROM, recon §2); `prot?.setSlot` keeps the
   // simulated $500000 latch faithful to the board for any other reader.
   prot?.setSlot(0x1f, e.res);                       // $246D04($1F, res)
+  stageScriptInstallHook?.(ram, rom, e);
 }
 
 /**
@@ -126,12 +127,14 @@ export function installStage(ram, rom, stage, unported, prot) {
  * `$263330 bsr.w $263386` is inside the reset routine, after the DBRA clear.
  * The half-open clear ends exactly where `$27E98A` starts the item pool.
  */
-export function resetAndInstallStage26331E(ram, rom, unported, prot) {
+export function resetAndInstallStage26331E(ram, rom, unported, prot,
+  stageScriptInstallHook) {
   for (let i = 0; i < SPAWN.RESET_WORDS; i++) {
     ram.setU16(SPAWN.RESET_BASE + i * 2, 0);         // $263328 move.w #0,(A0)+
   }
   const stage = stageIndex(ram);                     // $26338C $813096 / 4
-  installStage(ram, rom, stage, unported, prot);     // $263330 bsr.w $263386
+  installStage(ram, rom, stage, unported, prot,
+    stageScriptInstallHook);                          // $263330 bsr.w $263386
   return stageTableEntry(rom, stage);
 }
 

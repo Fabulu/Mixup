@@ -10,6 +10,7 @@ import { spawnCore, WriteLog } from './bullets.js';
 import { AimTables, aim64FromCaller } from './aim.js';
 import { abcd, bcdAdd, LEDGER } from './score.js';
 import { spawnConvertedShot } from './shots.js';
+import { SPAWN } from './spawn.js';
 
 export const CATEGORIES = Object.freeze(['survival', 'arsenal', 'challenge', 'presentation']);
 
@@ -146,6 +147,16 @@ export const MODS = Object.freeze({
     blurb: 'Begin stage 1 with the cartridge loop counter set for loop 2.',
     effects: ['ordinary selected launch: $813098 := 1 once; stage and progression remain cartridge-owned'],
   }),
+  'boss-rush': mod({
+    name: 'Boss Rush', category: 'challenge',
+    blurb: 'Begin every stage at the final authentic boss approach.',
+    effects: ['stage script install: scan to $FFFF, retain records from final trigger - $10, and align $8130CE'],
+  }),
+  'stage-remix': mod({
+    name: 'Stage Remix', category: 'challenge',
+    blurb: 'Route each loop through Stage 1, Stage 3, Stage 2, Stage 4, and Stage 5.',
+    effects: ['$242952 next-stage value: 1->2, 3->1, 2->3, 4->4, 5->5'],
+  }),
 
   'invert-colors': mod({
     name: 'Invert Colors', category: 'presentation', replaySafe: true,
@@ -233,6 +244,8 @@ export function resolveLoadout(ids = []) {
     bulletPolarity: has('bullet-polarity'),
     scoreMultiplierMayhem: has('score-multiplier-mayhem'),
     loop2FromStage1: has('loop-2-from-stage-1'),
+    bossRush: has('boss-rush'),
+    stageRemix: has('stage-remix'),
     rank: has('maximum-rank') ? 'maximum' : has('low-rank') ? 'low' : null,
     precisionShip: has('precision-ship'),
   });
@@ -470,6 +483,37 @@ function multiplyFinalScoreAddend(addend, ram) {
   return multiplyPackedBcd(addend, multiplier);
 }
 
+function startAtFinalBossApproach(ram, rom, entry) {
+  let cursor = entry.script;
+  let finalTrigger = null;
+  for (;;) {
+    const trigger = rom.u16(cursor);
+    if (trigger === 0xffff) break;
+    finalTrigger = trigger;
+    cursor += 8;
+  }
+  if (finalTrigger == null) return;
+
+  const threshold = Math.max(0, finalTrigger - 0x10);
+  cursor = entry.script;
+  for (;;) {
+    const trigger = rom.u16(cursor);
+    if (trigger === 0xffff || trigger >= threshold) break;
+    cursor += 8;
+  }
+  ram.setU32(SPAWN.LIVE_CURSOR, cursor);
+  ram.setU16(SPAWN.DISTANCE_CLOCK, threshold);
+}
+
+function remixNextStageValue(value) {
+  switch (value) {
+    case 1: return 2;
+    case 3: return 1;
+    case 2: return 3;
+    default: return value;
+  }
+}
+
 /** Per-Game callback options, or null when this loadout needs no callback seam. */
 export function modGameOptions(state) {
   if (!state) return null;
@@ -493,6 +537,8 @@ export function modGameOptions(state) {
   if (sim.friendlyConvertedBullets) options.friendlyBulletConvertHook = convertCanceledBullet;
   if (sim.bulletPolarity) options.enemyBulletCollisionFilter = hostilePolarityBank;
   if (sim.scoreMultiplierMayhem) options.scoreAddendTransform = multiplyFinalScoreAddend;
+  if (sim.bossRush) options.stageScriptInstallHook = startAtFinalBossApproach;
+  if (sim.stageRemix) options.stageAdvanceTransform = remixNextStageValue;
   return Object.keys(options).length ? Object.freeze(options) : null;
 }
 

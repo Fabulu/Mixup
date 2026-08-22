@@ -326,7 +326,8 @@ export function notStarted28B5A8(ram, rom, ctx) {
   clearCuePool28AC3A(ram);                             // $28B5C6 jsr $28AC3A
   clearSparkPool289F3A(ram);                           // $28B5CC jsr $289F3A
   // $28B5D2 jsr $26331E -- the clear AND `$263330 bsr.w $263386`'s install.
-  return resetAndInstallStage26331E(ram, rom, ctx.unportedLog, ctx.prot);
+  return resetAndInstallStage26331E(ram, rom, ctx.unportedLog, ctx.prot,
+    ctx.stageScriptInstallHook);
 }
 
 /** Handlers this module dispatches to, built once per Game. */

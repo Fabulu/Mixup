@@ -6521,3 +6521,25 @@ The focused and directly affected W495 set passes 89/89 with no failures or skip
 hygiene, and the forbidden-punctuation scan pass. The published-bundle gate remains
 15,955,968/15,955,968 pixel-identical. The full unit suite was not run, browser assets were not regenerated,
 and W495 is unpublished. It is the fourth wave after W491; W496 remains the next periodic publication point.
+
+### D104: W496 BOSS RUSH AND STAGE REMIX MODS, VERIFIED LOCALLY
+
+The start menu now exposes 30 mods, completing all fifteen requested transformative additions beyond the
+original fifteen. W496 adds Boss Rush and Stage Remix. Both change simulation and block replay v1. Their
+selected callbacks are validated per Game and absent from empty, unknown-only, direct, Original, replay,
+and later vanilla Games.
+
+Boss Rush runs only after an authentic stage-script installation. It dynamically scans the script through
+its `$FFFF` sentinel, derives a threshold `$10` below the final trigger, and retains records from the first
+trigger at or above that threshold. It aligns the distance clock once per installation, commits no
+ROM-derived trigger table, and leaves ordinary script walking, allocation, bosses, results, and progression
+intact. Initial type-5 setup and later stage rebuilds both use the seam; ordinary frames cannot rewind it.
+
+Stage Remix transforms only the next-stage value computed by `$242952`. Values 1, 3, and 2 become 2, 1,
+and 3; values 4 and 5 stay authentic. The resulting route is Stage 1, Stage 3, Stage 2, Stage 4, and Stage 5.
+The stage-5 ending selector remains intact and the stateless mapping repeats naturally in loop 2.
+
+The focused and directly affected W496 set passes 170/170 with no failures or skips. Syntax checks, diff
+hygiene, and the forbidden-punctuation scan pass. The published-bundle gate remains
+15,955,968/15,955,968 pixel-identical. The full unit suite has not yet run; browser asset regeneration and
+the scheduled W496 publication gate follow this bounded landing.

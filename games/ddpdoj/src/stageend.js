@@ -256,7 +256,8 @@ export function rebuildWorld25FD38(ram, ctx) {
   wipeStageBlock25FD24(ram);                           // $25FD38 bsr $25FD24
   // $25FD3A -- the first reset is one dependency-closed operation: clear
   // `$81332C..$816B79`, then install the current stage through `$263386`.
-  resetAndInstallStage26331E(ram, ctx.rom, ctx.unportedLog, ctx.prot);
+  resetAndInstallStage26331E(ram, ctx.rom, ctx.unportedLog, ctx.prot,
+    ctx.stageScriptInstallHook);
   ctx.stageEndEvent?.('spawn-install', ram.u32(0x8132cc));
   clearEffectPool(ram);                                 // $25FD40 jsr $288E0C
   clearSubEffectPool(ram);                              // $25FD46 jsr $289084
@@ -290,7 +291,9 @@ export function runStageAdvance242952(ram, rom, ctx) {
   ram.setU16(SE.clearing, 1);                              // $242968
   playerBit5(ram, SE.p1);                                  // $242970..$242992
   playerBit5(ram, SE.p2);                                  // $242994..$2429B6
-  const d7 = u16(ram.u16(SE.stage) + 1);                   // $2429B8/$2429BE
+  const authenticNext = u16(ram.u16(SE.stage) + 1);             // $2429B8/$2429BE
+  const d7 = ctx.stageAdvanceTransform
+    ? u16(ctx.stageAdvanceTransform(authenticNext)) : authenticNext;
   // $242A30..$242A3E -- create OBJECT TYPE 6 and hand it the new stage number.
   const r = stageCreate(ram, SE.type6, (t) => rom.u16(SE.dispatch + t * 8 + 4));
   ram.setU16(r.addr + 0x04, d7);                           // $242A3A move.w D7,$4(A0)
