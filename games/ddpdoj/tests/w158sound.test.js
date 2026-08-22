@@ -187,8 +187,12 @@ test('W158 page has accessible non-overlapping sound UI and no sound title toolt
   const html = readFileSync(ROOT + '/index.html', 'utf8');
   const button = html.match(/<button id="sound"[\s\S]*?<\/button>/)?.[0] ?? '';
   assert.match(button, /aria-label="Enable or mute game sound"/);
+  assert.match(button, /aria-pressed="true"/);
+  assert.match(button, />SOUND ON<\/button>/);
   assert.doesNotMatch(button, /\btitle=/);
   assert.match(html, /#sound-state[^}]*pointer-events:\s*none/);
-  assert.match(html, /app\.sound\.arm\(\);\s*\/\/ synchronous gesture boundary/);
+  assert.match(html, /toggleSound\(sound\)/);
+  assert.match(html, /removeEventListener\('click', onClick\)/);
+  assert.match(html, /onSoundDispose:\s*\(\) => unbindSoundController\(\)/);
   assert.match(html, /two permanently[\s\S]*approximations/i);
 });

@@ -212,7 +212,7 @@ import {
 } from './replay.js';
 import { CLAIMED } from '../state.js';
 import {
-  MODS, createModState, applyPreFrameMods, applyPostFrameMods,
+  MODS, MOD_RAM, createModState, applyPreFrameMods, applyPostFrameMods,
   transformModInput, transformModTiming, applyPresentationMods,
   assertReplayCompatible,
 } from '../mods.js';
@@ -258,6 +258,60 @@ export const CANVAS_W = PICTURES.tate.w, CANVAS_H = PICTURES.tate.h;
 // all; only an explicitly labelled rung or replay may populate this list.
 export function progressionPokesForRung(rung) {
   return rung ? parsePoke(rung.poke) : [];
+}
+
+/**
+ * The published seed comes from the labelled fly-around oracle scenario, whose
+ * own intervention already left P1's `$810424` byte at `$FF` in `seed.bin`.
+ * Reapplying no poke is therefore not enough to make ordinary browser play
+ * vanilla. A normal launch removes that one host intervention from a copy of
+ * the seed. Labelled progression rungs keep their exact snapshots, and an
+ * explicitly selected Invincibility mod deliberately restores `$FF` before the
+ * first picture can show a mortal ship.
+ */
+export function launchSeedForBrowser(seed, rung, mods) {
+  if (rung) return seed;
+  const clean = Uint8Array.from(seed);
+  clean[MOD_RAM.invulnP1 - MACHINE.ramBase] =
+    mods?.loadout?.sim?.invincibility ? 0xff : 0;
+  return clean;
+}
+
+/**
+ * Browser autoplay permits AudioContext construction only inside a gesture.
+ * Sound is a default-on policy, so the first pointer, keyboard, touch, or click
+ * gesture arms it without requiring a separate visit to the SOUND button.
+ */
+export function armSoundOnFirstGesture(sound, target = globalThis, soundToggle = null) {
+  const events = ['pointerdown', 'keydown', 'touchstart', 'click'];
+  let listening = true;
+  const detach = () => {
+    if (!listening) return;
+    listening = false;
+    for (const event of events) target.removeEventListener?.(event, arm);
+  };
+  const arm = (event) => {
+    const onToggle = soundToggle && (event?.target === soundToggle
+      || soundToggle.contains?.(event?.target));
+    if (onToggle) {
+      // The button's click handler runs before this bubbled click. A first click
+      // mutes without ever arming; a later enabling click arms synchronously in
+      // `toggleSound`, after which this one-shot listener can retire.
+      if (event?.type === 'click' && sound.stats().status !== 'locked') detach();
+      return;
+    }
+    detach();
+    if (!sound.muted) sound.arm();
+  };
+  for (const event of events) target.addEventListener?.(event, arm);
+  return detach;
+}
+
+/** Toggle the explicit SOUND preference. Enabling also unlocks a still-locked controller. */
+export function toggleSound(sound) {
+  sound.setMuted(!sound.muted);
+  if (!sound.muted && sound.stats().status === 'locked') sound.arm();
+  return !sound.muted;
 }
 
 /**
@@ -779,7 +833,8 @@ export class Demo {
     //       in place of the capture's, which is what takes L5 and L6's program
     //       half off the CAPTURE LEDGER.
     this.soundController = soundController;
-    this.game = new Game(rung ? rung.seed : bundle.seed, bundle.tables, {
+    const launchSeed = launchSeedForBrowser(rung ? rung.seed : bundle.seed, rung, modState);
+    this.game = new Game(launchSeed, bundle.tables, {
       logicFrame: this.seedLf,
       videoFrame: rung ? rung.vf : this.cap.frames[0].vf,
       bgSeed: rung ? rung.bgSeed : this.cap.part(0, 'bg'),
@@ -1654,18 +1709,42 @@ export async function boot(canvas, opts = {}) {
   const base = opts.base ?? new URL('../../assets/', import.meta.url);
   const gameJsonUrl = opts.gameJson ?? new URL('../../game.json', import.meta.url);
 
+  // This must run before the first await. The SOUND control is already visible
+  // while the bundle loads, and any gesture in that interval must count.
+  const sound = new AudioController(null, opts.onSoundError);
+  const detachSoundUnlock = armSoundOnFirstGesture(sound,
+    opts.target ?? globalThis, opts.soundToggle ?? null);
+  let soundDisposed = false;
+  const disposeSound = () => {
+    if (soundDisposed) return;
+    soundDisposed = true;
+    detachSoundUnlock();
+    opts.onSoundDispose?.(sound);
+  };
+  try {
+    opts.onSoundController?.(sound);
+  } catch (e) {
+    disposeSound();
+    throw e;
+  }
+  try {
   const r = await fetch(gameJsonUrl);
-  if (!r.ok) throw new AssetError(`game.json: HTTP ${r.status}`);
+  if (!r.ok) {
+    disposeSound();
+    throw new AssetError(`game.json: HTTP ${r.status}`);
+  }
   const gameJson = await r.json();
   const frameHz = gameJson.display.frameHz;
   // Spelled once, in game.json, DERIVED (15625/264) and not rounded. If the two
   // ever disagree the page is running at a rate the port was not measured at.
   if (Math.abs(frameHz - MACHINE.refreshHz) > 1e-6) {
+    disposeSound();
     throw new AssetError(`game.json says ${frameHz} Hz, the port's machine `
       + `model says ${MACHINE.refreshHz}. One of them is wrong.`);
   }
 
-  const bundle = await loadBundle(httpReader(base, opts.onProgress), opts.bundleOpts);
+  const bundle = await loadBundle(
+    httpReader(base, opts.onProgress), opts.bundleOpts);
   // WAVE 14.  `loadBundle` awaited the BOOT shards only (0 and 1, 210.3 KiB --
   // less than the 408 KiB the wave-13 page fetched before its first frame).
   // The other six are queued HERE, after boot has returned, so they compete
@@ -1691,13 +1770,13 @@ export async function boot(canvas, opts = {}) {
   //  visitor with no `?rung=` sees nothing change.  See `101-Plan-...md` for
   //  why a seeded page must label itself: it proves CODE, never a ROUTE.
   const rung = opts.rung != null
-    ? await loadRung(opts.ladderBase ?? new URL('../../tools/oracle/out/', import.meta.url),
+    ? await loadRung(
+        opts.ladderBase ?? new URL('../../tools/oracle/out/', import.meta.url),
         opts.rung, opts.ladder, opts.ladderDir)
     : null;
   // One controller exists before Game. It retains only compact frame inputs
   // until assets arrive, then advances the singleton runtime silently until a
   // gesture attaches AudioOut. No pre-gesture PCM becomes an audible backlog.
-  const sound = new AudioController(null, opts.onSoundError);
   const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE, rung, sound,
     opts.mods ?? null);
   // WAVE 131 -- the asset base `armRecording()` re-fetches the tables from, so
@@ -1788,6 +1867,13 @@ export async function boot(canvas, opts = {}) {
     get game() { return demo.game; },
     sound,
     soundReady,
-    stop() { demo.running = false; },
+    stop() {
+      disposeSound();
+      demo.running = false;
+    },
   };
+  } catch (e) {
+    disposeSound();
+    throw e;
+  }
 }

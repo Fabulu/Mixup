@@ -178,12 +178,12 @@ At published DDPDOJ W486, its unit suite records **4,310/4,310 passing with zero
 skips**. The same publication passed all **746/746 Gradius units**, the **13/13
 Gradius gate with zero skips**, the DDPDOJ bundle and web-fetch gates, the **27/27
 Batman gate with zero skips**, the distribution build, and the repository ROM-leak
-guard. Production build `20260822042005` supersedes `20260822010546`. W487 and
-W488 are verified locally and remain unpublished. W488's directly affected
-front-end set passes 153/153, its exporter and focused guards pass 40/40, and the
-exporter now measures 632 windows with 75 overlapping pairs. Browser assets were
-not regenerated. These counts document their respective gates, and each change
-still needs its relevant focused check.
+guard. Production build `20260822042005` supersedes `20260822010546`. W487,
+W488, and W489 are verified locally and remain unpublished. W488's exporter now
+measures 632 windows with 75 overlapping pairs; browser assets were not regenerated.
+W489's mortality, mod, ship-aura, sound-runtime, controller, and browser-default set
+passes 91/91 with no failures or skips. These counts document their respective gates,
+and each change still needs its relevant focused check.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -278,12 +278,17 @@ vertical acceleration, cadence-filters a three-heading fan, draws with the
 existing `$270972` art table, and retires on a fatal hit, parent loss, or its signed
 off-screen bound. W488 restores the shared front-end label printer `$25F2D0`: both
 screen slots now draw each side's two cartridge strings in side order through
-`$25A14C`, using the two fixed descriptors at `$25F43A`. Coverage is 101 ported,
+`$25A14C`, using the two fixed descriptors at `$25F43A`. W489 removes the fly-around
+oracle's embedded `$810424=$FF` hold from ordinary browser launches, so vanilla play
+is mortal and has no persistent invulnerability aura. Labelled progression and replay
+seeds remain exact, explicit Invincibility still starts and stays at `$FF`, and sound is
+now enabled by default on the first browser gesture while SOUND remains an explicit
+mute/on control. Coverage is 101 ported,
 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child,
 and the remaining static `$48 -> $54` edge is disabled behind Version B's
 `$2714AE` return, so no next runtime blocker has been established. W486 remains
-published as production build `20260822042005`; W487 and W488 are verified locally
-and unpublished.
+published as production build `20260822042005`; W487, W488, and W489 are verified
+locally and unpublished.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,

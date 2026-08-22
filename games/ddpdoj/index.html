@@ -313,9 +313,9 @@
   <span id="mods-active" role="status"></span>
   <span class="spacer"></span>
   <span id="stats"></span>
-  <span id="sound-state" role="status" aria-live="polite">sound locked</span>
-  <button id="sound" type="button" aria-pressed="false"
-    aria-label="Enable or mute game sound">SOUND</button>
+  <span id="sound-state" role="status" aria-live="polite">sound on by default; starts with first input</span>
+  <button id="sound" type="button" aria-pressed="true"
+    aria-label="Enable or mute game sound">SOUND ON</button>
   <button id="full" type="button" aria-label="Enter or leave fullscreen" aria-pressed="false" data-help="FULL hides the browser's own bars, which on a phone in landscape take most of the screen. It needs a tap: browsers only grant fullscreen from a real gesture.">FULL</button>
   <button id="rot" type="button" aria-label="Switch between TATE portrait and WIDE landscape picture" aria-pressed="true" data-help="TATE shows the cabinet's 224x448 portrait picture. WIDE shows the raw 448x224 board buffer.">TATE</button>
   <button id="lock" type="button" aria-label="Lock or unlock the screen orientation" aria-pressed="false" data-help="LOCK stops the screen rotating when you tilt the device. It is remembered between visits. Most engines only allow a lock while fullscreen, so turning it on also asks for fullscreen.">LOCK</button>
@@ -607,7 +607,9 @@ something here looks wrong, saying so is useful.</p>
 </div>
 
 <script type="module">
-import { boot, fitCanvas, MODES, DEFAULT_MODE } from './src/web/app.js';
+import {
+  boot, fitCanvas, MODES, DEFAULT_MODE, toggleSound,
+} from './src/web/app.js';
 import { hashToLoadout } from './src/mods.js';
 import { attachPad, attachStick, clearKeyboard, CONTROLS } from './src/web/input.js';
 
@@ -1039,6 +1041,50 @@ function showError(e, when) {
 // line already prints `shards n/8` every frame from `bg.status()`, and a shard a
 // DRAW actually waited on says `WAITING ON SHARD n` there.
 let booting = true;
+let soundController = null;
+let unbindSoundController = () => {};
+
+const paintSound = () => {
+  const s = soundController?.stats() ?? { status: 'locked' };
+  const enabled = !soundController?.muted;
+  soundBtn.disabled = s.status === 'unsupported' || s.status === 'failed';
+  soundBtn.setAttribute('aria-pressed', String(enabled));
+  if (s.status === 'failed') {
+    soundBtn.textContent = 'SOUND FAILED';
+    soundStateEl.textContent = `sound failed: ${s.error || 'unknown error'}`;
+  } else if (s.status === 'unsupported') {
+    soundBtn.textContent = 'NO AUDIO';
+    soundStateEl.textContent = 'this browser has no AudioContext support';
+  } else if (!enabled) {
+    soundBtn.textContent = 'SOUND MUTED';
+    soundStateEl.textContent = 'sound muted; synthesizer state still advances';
+  } else if (s.status === 'on') {
+    soundBtn.textContent = 'SOUND ON';
+    soundStateEl.textContent = `sound on ${s.rate} Hz; backlog ${s.backlog}, `
+      + `dropped ${s.dropped}, underruns ${s.underruns}`;
+  } else if (s.status === 'loading') {
+    soundBtn.textContent = 'SOUND ON';
+    soundStateEl.textContent = 'audio enabled; deferred sound assets loading';
+  } else {
+    soundBtn.textContent = 'SOUND ON';
+    soundStateEl.textContent = 'sound enabled; starts with the first input';
+  }
+};
+
+function bindSoundController(sound) {
+  unbindSoundController();
+  soundController = sound;
+  const onClick = () => {
+    toggleSound(sound);
+    if (soundController === sound) paintSound();
+  };
+  soundBtn.addEventListener('click', onClick);
+  unbindSoundController = () => {
+    soundBtn.removeEventListener('click', onClick);
+    if (soundController === sound) soundController = null;
+  };
+  paintSound();
+}
 
 try {
   statusEl.textContent = 'loading the asset bundle…';
@@ -1048,6 +1094,9 @@ try {
     rung: rungParam,
     ladder: ladderParam,
     ladderDir: ladderDirParam,
+    soundToggle: soundBtn,
+    onSoundController: bindSoundController,
+    onSoundDispose: () => unbindSoundController(),
     onProgress: (name, n, total) => {
       if (!booting) return;              // the deferred shards are not the
       statusEl.textContent = total       // loading screen's business
@@ -1078,39 +1127,6 @@ try {
   // a sprite" into a measurement.
   window.__mixup = app;
 
-  const paintSound = () => {
-    const s = app.sound.stats();
-    soundBtn.disabled = s.status === 'unsupported' || s.status === 'failed';
-    soundBtn.setAttribute('aria-pressed', String(s.status === 'on'));
-    if (s.status === 'on') {
-      soundBtn.textContent = 'SOUND ON';
-      soundStateEl.textContent = `sound on ${s.rate} Hz; backlog ${s.backlog}, `
-        + `dropped ${s.dropped}, underruns ${s.underruns}`;
-    } else if (s.status === 'muted') {
-      soundBtn.textContent = 'SOUND MUTED';
-      soundStateEl.textContent = 'sound muted; synthesizer state still advances';
-    } else if (s.status === 'loading') {
-      soundBtn.textContent = 'SOUND…';
-      soundStateEl.textContent = 'audio armed; deferred sound assets loading';
-    } else if (s.status === 'failed') {
-      soundBtn.textContent = 'SOUND FAILED';
-      soundStateEl.textContent = `sound failed: ${s.error || 'unknown error'}`;
-    } else if (s.status === 'unsupported') {
-      soundBtn.textContent = 'NO AUDIO';
-      soundStateEl.textContent = 'this browser has no AudioContext support';
-    } else {
-      soundBtn.textContent = 'SOUND';
-      soundStateEl.textContent = 'sound locked; press SOUND to enable';
-    }
-  };
-  soundBtn.addEventListener('click', () => {
-    const status = app.sound.stats().status;
-    if (status === 'locked') app.sound.arm(); // synchronous gesture boundary
-    else if (status === 'on' || status === 'muted') {
-      app.sound.setMuted(status === 'on');
-    }
-    paintSound();
-  });
   app.soundReady.finally(paintSound);
   paintSound();
 

@@ -6342,3 +6342,30 @@ unchanged. The directly affected screen set passes 153/153; the exporter plus fo
 pass 40/40. The new regression was observed failing before implementation and now pins descriptor read order,
 side order, string stride, row decrement, and removal of the `$25F2D0` note. Browser assets were not regenerated,
 the full suite was not run, and W488 is unpublished. W486 remains live as build `20260822042005`.
+
+### D97: W489 VANILLA MORTALITY AND DEFAULT-ON SOUND, VERIFIED LOCALLY
+
+The optional loadout was already correct: an empty launch selected no mod runtime, and explicit
+Invincibility alone wrote `$810424=$FF`. The defect was the generated fly-around seed itself. Its P1
+record contained `$FF`, the oracle's indefinite hold, so ordinary browser play began protected and drew
+the invulnerability aura continuously. P2's corresponding byte was zero.
+
+W489 adds `launchSeedForBrowser`. An ordinary browser launch gets a cloned seed with only P1's embedded
+invulnerability intervention cleared; unrelated RAM and the generated bundle seed remain unchanged.
+Explicit Invincibility retains `$FF` before the first render. Labelled progression rungs retain their exact
+seed, while replay reconstruction continues to use its replay-owned seed and poke list. Cartridge mortality
+is otherwise untouched: player start and respawn still install `$F0` grace, non-`$FF` values count down,
+and zero reaches the authentic hit, death, life-decrement, respawn, and game-over paths.
+
+Sound now defaults on subject to browser gesture policy. `AudioController` is created and exposed before
+the first asynchronous bundle fetch, and removable one-shot listeners arm it on the first pointer, key,
+touch, or click input. SOUND-origin events are excluded until the button's explicit toggle runs, preventing
+a mute click from briefly enabling audio. SOUND remains a direct mute/on control. Failed boot and `stop()`
+remove both the global unlock listeners and the page's named click handler; disposal remains idempotent
+across every later boot failure.
+
+The mortality, mod, ship-aura, sound-runtime, controller, and browser-default set passes 91/91 with no
+failures or skips. The W489 regression was observed failing before implementation. Independent review
+found no remaining sound lifecycle defect. The full suite was not run, browser assets were not regenerated,
+and W489 is unpublished. W486 remains live as build `20260822042005`. W487, W488, and W489 are the first
+three unpublished waves after it; W491 remains the fifth-wave publication point.
