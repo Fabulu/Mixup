@@ -129,7 +129,7 @@
   /* D13: `flex-wrap` so a fourth control cannot push the name off the strip on a
      narrow phone. The horizontal safe-area insets are on `body`, not here --
      #bar is INSIDE the padded box, so adding them again would double-count. */
-  #bar { grid-area: bar; display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+  #bar { display: flex; grid-area: bar; align-items: center; gap: 8px; padding: 5px 8px;
          border-bottom: 1px solid var(--line); font-size: 11.5px; min-width: 0;
          flex-wrap: wrap; row-gap: 4px; }
   #bar .name { color: #d6e2ee; font-weight: 600; white-space: nowrap;
