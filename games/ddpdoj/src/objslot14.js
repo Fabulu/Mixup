@@ -1,9 +1,8 @@
-// OBJECT DISPATCH [14], `$288C6C` -- W372. The FIRST front-end dispatch slot this port has written.
+// OBJECT DISPATCH [14], `$288C6C` -- W372, identified as the Game Over transition in W386.
 //
-// WHAT IT IS is not yet named. It is not a screen that prints: it draws ONE sprite through $23DECE
-// per frame, picks its art from a rank-selected table, and after a countdown stages a create of
-// dispatch type $C and kills itself. A transitional object rather than a menu -- which is why the
-// text scan that classified [16] and [17] found nothing here.
+// The cartridge draws ONE rank-selected sprite through $23DECE per frame. Slot 14 owns the screen
+// reset, the 300-frame lifetime, and the handoff to dispatch type $C; its two descriptor tables and
+// existing sprite enqueue path are the authoritative Game Over presentation.
 //
 // TWO THINGS ABOUT ITS SHAPE, both of which cost measurements before they were noticed:
 //

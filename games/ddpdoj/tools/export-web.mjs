@@ -294,6 +294,13 @@ const EFFECT_SHARD = 9;
 
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
+  // W498. Slot 14 selects one of these two eight-entry tables for its authentic
+  // Game Over sprite enqueue. They overlap in seven descriptors, so the full
+  // runtime dependency family is exactly nine distinct boot-time streams.
+  [0, 0x288d62, 8, 4, 25, 0x288dc6,
+    'slot-14 Game Over rank-selected table A, eight reachable descriptors'],
+  [0, 0x288d82, 8, 4, 17, 0x288dc6,
+    'slot-14 Game Over rank-selected table B, eight reachable descriptors'],
   [17, TYPE3B_ART.hullTable, TYPE3B_ART.hullFrames + 1, 4,
     30, 0x265348,
     'stage-3 type $3B hull animation plus its fixed satellite. The handler '
@@ -1236,6 +1243,24 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
   harvestReport.push({ shard, base, entries: n, stride, runsTo, endsAt,
     distinct: seen.size, added, already, why });
 }
+// W498's two rank-selected slot-14 tables overlap in seven entries. The
+// cartridge therefore requires exactly nine Game Over streams, all in the boot
+// shard because the front-end can request them before deferred art settles.
+{
+  const ptrs = [];
+  for (const base of [0x288d62, 0x288d82]) {
+    for (let i = 0; i < 8; i++) ptrs.push(romBe32(base + i * 4) & 0x7fffff);
+  }
+  const unique = new Set(ptrs);
+  const rows = harvestReport.filter((r) => r.base === 0x288d62 || r.base === 0x288d82);
+  if (unique.size !== 9 || rows.length !== 2
+      || rows.some((r) => r.distinct !== 8)
+      || [...unique].some((offs) => !streams.has(offs) || shardOfStream.get(offs) !== 0)) {
+    throw new Error(`W498 slot-14 Game Over art drifted: ${unique.size} distinct `
+      + `pointers across ${rows.length} rows; expected two eight-entry tables, `
+      + 'nine packed streams, all in boot shard 0');
+  }
+}
 // W203's two tables are a deliberately exact 64-stream family: the pointers
 // interleave, but their union is the single uniform $F4 chain.  Keep this
 // check beside the harvest so a table truncation or accidental duplicate is
@@ -1252,18 +1277,16 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
   if (unique.size !== 64 || [...unique].some((a) => !chain.has(a))
       || w203Rows.length !== 2 || w203Rows.some((r) => r.added !== 32 || r.already !== 0)
       || w203StreamsBefore !== 166 + typeBShipAdded
-      || streams.size !== 2011 + typeBShipAdded) {
+      || streams.size !== 2020 + typeBShipAdded) {
     throw new Error(`W203 type $16 art harvest drifted: ${unique.size} distinct `
       + `pointers, ${w203StreamsBefore} pre-harvest streams, ${streams.size} total; `
       + `expected 64 on the $F4 chain, ${166 + typeBShipAdded} before, and `
-      + `${2011 + typeBShipAdded} after with ${typeBShipAdded} Type-B ship streams`);
+      + `${2020 + typeBShipAdded} after with ${typeBShipAdded} Type-B ship streams`);
   }
-  // W419 MOVED THE LAST NUMBER ONLY, 1975 -> 2011, AND IT IS DECOMPOSED HERE.
-  // The three pool-C rows added above are the whole of it: 3 families x 12
-  // pointers, all distinct, none already present ([M] against the previous
-  // bundle: 36 of 36 absent). The fixed W203 baseline remains 166 before and
-  // 2011 after; W497 adds the separately asserted 17 Type-B ship streams to
-  // both totals. The two W203 rows remain added 32 / already 0.
+  // W419 moved the fixed post-harvest baseline from 1975 to 2011. W498 adds
+  // slot 14's separately asserted nine-stream Game Over family, making it 2020.
+  // W497's 17 Type-B ship streams remain an independent addition to both exact
+  // totals. The two W203 rows remain added 32 / already 0.
 }
 
 // W497: Type-B's attached draw dependencies. The selector tables point to a

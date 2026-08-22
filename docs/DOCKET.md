@@ -6599,13 +6599,37 @@ exposed outside the bounded matrix.
 
 ### D106: POST-W497 BROWSER AND CONTROL FOLLOW-UPS
 
-These are recorded follow-ups, not hidden extensions of W497:
+W498 closes the two bounded visible items:
 
-* Restore the missing Game Over text.
-* Add mobile COIN and START controls.
-* Support P2's complete controls from a second physical controller.
-* Do not place P2's full control set on the mobile interface.
-* Broaden gamepad handling beyond XInput assumptions to as many practical controller types as possible.
+* **Authentic Game Over presentation restored.** Slot 13 state 4 still stages dispatch type `$E`, and slot 14
+  still owns the screen clear, 300-frame interval, rank-selected sprite enqueue, and type `$C` handoff. Slot
+  14's two eight-entry cartridge tables at `$288D62` and `$288D82` overlap in seven entries and therefore name
+  exactly nine distinct streams. `export-web.mjs` now harvests all nine into boot shard 0 and asserts both valid
+  table extents, the nine-stream union, and packed ownership. Slot 14's existing `$23DECE` cartridge sprite
+  enqueue remains unchanged. There is no hardcoded Game Over string, synthetic `$25A14C` TX path, or DOM
+  overlay. A focused regression decodes the regenerated packed map, drives every entry in both rank arms through
+  slot 14 and the display-list builder, and proves all sixteen selections draw with no missing stream.
+* **P1 mobile and first-controller entry controls landed.** One shared compact P1 COIN plus START row remains
+  visible with AUTO, FIXED, and FLOAT movement schemes. Touch COIN1 calls the existing active-low `$C08004`
+  fixed 12-call pulse; START remains on the measured `$C08000` player-port path. Standard controller button 8
+  (`back`/`select`) feeds that same P1 coin pulse and Standard button 9 remains P1 START. Controller coin input
+  now has explicit sampled edge and lifecycle state: disconnect, blur, page hide, document visibility change,
+  replay entry, and replay exit cancel the pulse and block a still-held SELECT until release. A later genuine
+  press remains usable. Keyboard mappings, including both `KeyY` and `KeyZ` for shot, menu hide/reveal,
+  viewport fill, translucent overlays, and floating-stick visuals are unchanged.
+
+The W498 focused authentic Game Over sprite, packed-map/runtime, mobile-input, coin-debounce, replay-gate,
+object-slot, controller-lifecycle, and metadata set passes 93/93 with no failures or skips. `export-web.mjs`
+regenerated the ignored browser bundle at 4,907 validated sprite streams and 12,803.6 KiB total, with 915.3 KiB
+before the first frame and 11,888.3 KiB deferred. No ROM window or tracked ROM-derived output was added. The
+full suite was not run, W498 was not published, and production remains W496 build `20260822120853`; W501 stays
+the next publication point.
+
+D106 remains open for exactly two controller follow-ups:
+
+* Support P2's complete controls from a second physical controller. Do not put P2's full controls on mobile.
+* Broaden handling beyond browser Standard mappings to practical non-Standard controller types. Do not guess
+  button layouts without an explicit mapping.
 
 Keep the P2 physical-controller work separate from D26's authentic P1 seed selector. It must preserve the
 existing keyboard, mobile P1, replay, and default-launch behavior while exposing the board's real second-player

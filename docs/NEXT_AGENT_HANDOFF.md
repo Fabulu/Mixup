@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W497 Type-B and authentic selector slice verified locally)
+Updated: 2026-08-22 (W498 visible D106 Game Over and P1 entry-control repair verified locally)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,40 +8,80 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W497 is the first substantial D26 implementation slice.** The
-cartridge-proven ship domain is `{0,2}` and the style domain is `{2,4,6}`. Selector 0 is Type-A and
-selector 2 is Type-B. The cartridge census does not prove which numeric style names Shotia, Leinyan, or
-Exy, so retain numeric labels until evidence establishes that mapping.
+`docs/DOCKET.md` is authoritative. **W498 closes the visible half of D106.** Slot 14 keeps its authentic
+rank-selected cartridge sprite enqueue, and `export-web.mjs` now packs the nine distinct streams named by its
+two eight-entry tables into boot shard 0. There is no synthetic TX string or DOM overlay. One shared mobile
+row exposes P1 COIN and START in AUTO, FIXED, and FLOAT layouts. Standard first-controller back/select feeds
+P1's existing active-low `$C08004` pulse and start remains on the measured `$C08000` player-port path.
+Controller coin edges now clear and block a held SELECT across disconnect, blur, page hide, document
+visibility change, replay entry, and replay exit until release. Keyboard controls, Swiss QWERTZ `KeyY` plus
+`KeyZ` shot, menu hide/reveal, viewport fill, translucent controls, and floating-stick visuals were not
+changed.
 
-Ordinary P1 browser starts expose all six authentic pairs separately from the 30-mod catalogue. Empty,
-default, invalid, labelled-rung, and replay paths remain exact. An explicit non-default launch updates the
-selector mailboxes and derives every live player and option field from `$2491C0`'s cartridge arithmetic.
-Type-B now has its complete packed 17-image tilt row, shadow, ordinary-glow and down-stick-glow art,
-player and option shots for every style, all reachable regular-laser groups, both ordinary-bomb 4/8/4
-families, and the complete two-ship laser-bomb range. Both ships intentionally share the horizontal hitbox
-row because `$249E68..$249E78` clears the selector before its lookup.
+W498's focused authentic Game Over sprite, packed-map/runtime, mobile-input, coin-debounce, replay-gate,
+object-slot, controller-lifecycle, and metadata set passes 93/93 with no failures or skips. `export-web.mjs`
+regenerated ignored assets with 4,907 sprite streams in a 12,803.6 KiB bundle. No ROM window or tracked
+ROM-derived output was added. The full suite and publish were not run. Production remains W496 build
+`20260822120853`; W501 is the next five-wave publication point.
 
-The bounded post-review W497 set passes 159/159 with no failures or skips, independently repeated by the
-coordinator. The regenerated bundle remains 15,955,968/15,955,968 pixel-identical. Table regeneration
-produced 633 windows and 444,237 exported bytes. Browser assets were regenerated after the final table
-change: 4,898 validated sprite streams, 313 shot streams, a 27,954-byte manifest, and 12,623.9 KiB total,
-split into 735.6 KiB boot and 11,888.4 KiB deferred. Sprite shards 0, 10, and 13 now carry 268, 451, and
-412 streams, respectively. Generated ROM data remains ignored. The full suite, web-fetch gate, and publish
-were not run for W497. Production remains W496 build `20260822120853`; W501 is the next five-wave
-publication point.
+**W497 remains the first substantial D26 implementation slice.** The cartridge-proven ship domain is `{0,2}`
+and the style domain is `{2,4,6}`. Selector 0 is Type-A and selector 2 is Type-B. The cartridge census does
+not prove which numeric style names Shotia, Leinyan, or Exy, so retain numeric labels until evidence establishes
+that mapping. Ordinary P1 browser starts expose all six authentic pairs separately from the 30-mod catalogue.
+Empty, default, invalid, labelled-rung, and replay paths remain exact. Type-B has its packed 17-image tilt row,
+shadow and glow art, player and option shots for every style, all reachable regular-laser groups, both
+ordinary-bomb families, and the complete two-ship laser-bomb range. The W497 post-review set remains 159/159.
 
 D26 is not closed by the bounded matrix. Run all six pairs through the complete Black Label second loop and
-follow only selector-specific runtime evidence. Remaining explicit D26 edges are the complete cartridge
-player-select flow, any P2 authentic-selection path beyond the live P1 browser seed, and the human pilot-name
-mapping if it can be proved. Separately queued after W497: restore Game Over text; add mobile COIN and START;
-map full P2 controls to a second physical controller without adding P2's full controls to mobile; and broaden
-gamepad support beyond XInput assumptions.
+follow only selector-specific runtime evidence. Remaining D26 edges are the complete cartridge player-select
+flow, any P2 authentic-selection path beyond the live P1 browser seed, and the human pilot-name mapping if it
+can be proved. D106 remains open only for full P2 controls on a second physical controller, without putting
+P2's full set on mobile, and explicit practical mappings for non-Standard controllers. Keep those controller
+items separate from D26's authentic P1 seed selector.
 
 W492 through W496's fifteen transformative additions remain unchanged and all block replay v1. Empty,
 unknown-only, direct, Original, and later vanilla-Game paths install no mod callback or policy. W488 ports
 the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage remains 101/256 ported, 25
 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
+
+## W498 VERIFIED LOCALLY: AUTHENTIC GAME OVER ART AND P1 ENTRY CONTROLS
+
+Slot 13 state 4 continues to post the Game Over cue, reset the object table, and stage dispatch type `$E`.
+Slot 14 continues to clear TX/BG, run its 300-frame interval, enqueue one rank-selected sprite each state-1
+frame, and hand off to type `$C`. Its two eight-entry descriptor tables begin at `$288D62` and `$288D82`.
+Each table has eight distinct entries, they overlap in seven entries, and their union is exactly nine streams.
+`export-web.mjs` harvests both tables into boot shard 0, validates the cartridge's 25-entry and 17-entry
+stream-shaped runs ending at `$288DC6`, and asserts that all nine union members are packed. Slot 14's existing
+`enqueueRegistersThroughStub` call through `$23DECE` is unchanged. Do not reintroduce a hardcoded padded text
+literal, a host-fed `$25A14C` helper, or a DOM overlay.
+
+`index.html` adds only `data-coin="COIN1"` beside the existing `data-btn="START"` in the one face cluster
+shared by AUTO, FIXED, and FLOAT. `attachPad` validates and dispatches the player and coin attributes
+separately. Touch coin uses `setCoinKey`, so a release preserves the existing 12-debounce-call pulse; touch
+START still uses `setTouchButton` and the measured `$FFFE` player-port word. `GAMEPAD_MAP` adds only
+`back: 'SELECT'`; Standard button 9 remains `start: 'START'`.
+
+Controller COIN1 is no longer mirrored as a level every poll. `pollInput` tracks the sampled SELECT edge,
+current Standard-pad presence, and a lifecycle block. First discovery with button 8 pressed remains a genuine
+press, a held button cannot rearm an expired pulse, release enables a later press, and disconnect cancels the
+pulse before a held reconnect. `clearCoin` cancels keyboard/mobile held state and pulse state, resets the
+controller edge, and preserves a block for a controller that was present. The existing replay-entry and
+replay-exit calls therefore suppress a SELECT held across either boundary. `attachCoinKeys` puts blur,
+pagehide, and gamepad disconnect on the window target, but puts `visibilitychange` on the document target.
+The shared layer still selects only the first browser-Standard pad, skips non-Standard mappings, and has no P2
+adapter. Those limits are deliberate remaining D106 work.
+
+`tests/w498d106.test.js` decodes `assets/manifest.json` and `spr/streams.u32.gz`, proves the two tables' exact
+nine-stream union is in boot shard 0, then drives all sixteen table selections through slot 14, the display-list
+builder, and `portSpriteList` with one draw and zero misses each. It also separates touch COIN1 and START by
+port and exercises first controller discovery, held expiry, release/new press, replay entry/exit, blur,
+pagehide, document visibility, disconnect, and held reconnect. `web-input.test.js` keeps `game.json`, markup,
+`$C08000`, and `$C08004` declarations distinct. The new plus directly affected set is 93/93:
+`w498d106`, `web-input`, `w372objdispatch`, `w375coindebounce`, `w375coinwiring`, and `w386gameover`.
+`export-web.mjs` regenerated 4,907 validated sprite streams in a 12,803.6 KiB ignored bundle, split into
+915.3 KiB before the first frame and 11,888.3 KiB deferred. No full suite, web gate, publish, commit, or push
+was performed.
 
 ## W497 VERIFIED LOCALLY: TYPE-B AND ALL THREE AUTHENTIC STYLE SLOTS
 

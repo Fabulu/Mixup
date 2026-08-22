@@ -451,6 +451,7 @@ function stubDemo(playback = null) {
     inPlayback: Demo.prototype.inPlayback,
     coinTick: Demo.prototype.coinTick,
     step: Demo.prototype.step,
+    _emitPlayback() {},
     endPlayback() { throw new Error('endPlayback reached -- give the fixture more words'); },
   };
   stub.game = new Game(seedBytes.slice(), tablesJson, {
@@ -463,12 +464,17 @@ function stubDemo(playback = null) {
 /** A playback descriptor with everything `step()` touches and nothing else. `count` is far past
  *  any frame these tests drive, so `endPlayback()` is never reached. */
 const fakePlayback = (frames) => ({
+  obj: { seed: { lf: 0 } },
   ended: false,
   i: 0,
   count: 1e9,
   words: new Array(frames + 8).fill(NO_PLAYER),
   pokes: [],
-  verifier: { periodBounds: [], feed() {} },
+  verifier: {
+    periodBounds: [],
+    feed() {},
+    finalize: () => Promise.resolve({ green: true }),
+  },
 });
 
 test('W375: Demo#inPlayback() is playback AND NOT ended, not merely playback', () => {
@@ -518,21 +524,29 @@ test('W375: the same key credits when NOT playing back', () => {
   clearCoin();
 });
 
-test('W375: coin input comes BACK when the playback ends', () => {
-  // `endPlayback()` sets `ended` and leaves the descriptor; the coin port must go live again on
-  // the very next step, or one replay disables coins for the rest of the session.
+test('W375/W498: coin input returns only after a new press when playback ends', async () => {
+  // Exercise the REAL replay-exit method. It clears the stale live pulse before
+  // `ended` exposes live input again; release plus a new press must still work.
   clearCoin();
   const pb = fakePlayback(8);
   const stub = stubDemo(pb);
   setCoinKey('COIN1', true);
   stub.step();
-  assert.equal(stub.game.coinPort, COIN.idle, 'still playing -- port pinned');
+  assert.equal(stub.game.coinPort, COIN.idle, 'still playing, so the port is pinned');
 
-  pb.ended = true;
+  Demo.prototype.endPlayback.call(stub);
+  assert.equal(pb.ended, true);
+  assert.equal(currentCoinWord(), COIN.idle, 'the real replay exit cancels stale live input');
+  stub.step();
+  assert.equal(stub.game.coinPort, COIN.idle,
+    'the next live frame cannot inherit the press held through playback');
+
+  setCoinKey('COIN1', false);
+  setCoinKey('COIN1', true);
   stub.step();
   assert.notEqual(stub.game.coinPort, COIN.idle,
-    'after endPlayback the live coin word must reach the Game again');
-  assert.equal(stub.game.coinPort, currentCoinWord(), 'and it must be the LIVE word, unmodified');
+    'release followed by a new press reaches the live Game');
+  await pb.pending;
   clearCoin();
 });
 
@@ -547,4 +561,12 @@ test('W375: both Games the page builds get the GATED coin tick', () => {
     'both new Game(...) sites in web/app.js must pass the playback-gated tick');
   assert.equal(/coinTick:\s*tickCoinPulse/.test(src), false,
     'an ungated tickCoinPulse would advance the coin pulse during playback');
+
+  const playFromAt = src.indexOf('  playFrom(obj) {');
+  const endAt = src.indexOf('  endPlayback() {');
+  assert.ok(playFromAt >= 0 && endAt > playFromAt, 'the two replay boundaries are present');
+  assert.match(src.slice(playFromAt, endAt), /clearCoin\(\)/,
+    'replay entry must clear live coin state');
+  assert.match(src.slice(endAt, src.indexOf('\n  /**', endAt)), /clearCoin\(\)/,
+    'replay exit must clear live coin state before live input resumes');
 });

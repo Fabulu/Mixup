@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { BIT } from '../src/machine.js';
 import { portWordFromBits } from '../src/input.js';
 import {
-  CONTROLS, KEYMAP, DPAD_MASK, dpadMask, currentMask, currentBits,
+  CONTROLS, COIN_BITS, KEYMAP, DPAD_MASK, dpadMask, currentMask, currentBits,
   currentPortWord, setTouchButton, setTouchDirections, clearTouch, clearKeyboard,
 } from '../src/web/input.js';
 
@@ -76,13 +76,20 @@ test('every key is bound by e.code, i.e. by physical position', () => {
   }
 });
 
-test('index.html data-btn names are all real controls', () => {
+test('index.html mobile buttons match the two input ports in game.json', () => {
   const names = [...padHtml.matchAll(/data-btn="([^"]*)"/g)].map((m) => m[1]);
-  assert.ok(names.length >= 4, 'the page has on-screen buttons');
+  const coins = [...padHtml.matchAll(/data-coin="([^"]*)"/g)].map((m) => m[1]);
+  assert.ok(names.length >= 4, 'the page has on-screen player buttons');
   for (const n of names) assert.ok(n in CONTROLS, `data-btn="${n}"`);
-  // ...and game.json's written description names the same set.
+  for (const n of coins) assert.ok(n in COIN_BITS, `data-coin="${n}"`);
+  assert.deepEqual(coins, ['COIN1'], 'mobile exposes P1 coin, not P2 controls');
+  assert.ok(names.includes('START'), 'mobile keeps P1 START');
+  // The shared face cluster serves AUTO, FIXED and FLOAT, and game.json names
+  // exactly the same controls without pretending COIN1 is in $C08000.
   const declared = gameJson.input.touchLayout.clusters.flat().sort();
-  assert.deepEqual(names.slice().sort(), declared);
+  assert.deepEqual([...names, ...coins].sort(), declared);
+  assert.deepEqual(gameJson.input.coinButtons,
+    [{ id: 'COIN1', port: 'C08004', bit: 0, activeLow: true }]);
 });
 
 test('index.html d-pad cells match game.json and dpadMask()', () => {

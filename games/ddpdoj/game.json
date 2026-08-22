@@ -46,6 +46,9 @@
       { "id": "AUTO", "bit": 6, "mask": 64 },
       { "id": "START", "bit": 15, "mask": 32768 }
     ],
+    "coinButtons": [
+      { "id": "COIN1", "port": "C08004", "bit": 0, "activeLow": true }
+    ],
     "defaultKeymap": {
       "ArrowUp": "UP", "ArrowDown": "DOWN", "ArrowLeft": "LEFT", "ArrowRight": "RIGHT",
       "KeyW": "UP", "KeyS": "DOWN", "KeyA": "LEFT", "KeyD": "RIGHT",
@@ -55,13 +58,13 @@
     },
     "keymapNote": "Matched on e.code, i.e. PHYSICAL key position. KeyZ and KeyY are BOTH shot: on a Swiss QWERTZ keyboard the key printed Z sits where QWERTY has Y and reports KeyY. A standing requirement, asked for twice.",
     "touchLayout": {
-      "note": "The on-screen pad in index.html. The d-pad is ONE pointer-capture surface hit-tested as a 3x3 grid, not four buttons: four captured buttons can never report a diagonal, because the capture that stops a stuck direction is also what stops a second button ever seeing the finger. A vertical shooter without diagonals is not playable. The corner cells report TWO bits, which is exactly what $803970 carries -- one bit per direction, tested independently by the mover at $141B2E. The face cluster is stacked, START above the three fire buttons: inline, the row is wider than the space beside the d-pad and the rightmost button falls off a narrow phone.",
+      "note": "The on-screen pad in index.html. The d-pad is ONE pointer-capture surface hit-tested as a 3x3 grid, not four buttons: four captured buttons can never report a diagonal, because the capture that stops a stuck direction is also what stops a second button ever seeing the finger. A vertical shooter without diagonals is not playable. The corner cells report TWO bits, which is exactly what $803970 carries -- one bit per direction, tested independently by the mover at $141B2E. One shared face cluster serves AUTO, FIXED and FLOAT: P1 COIN and START sit above the three fire buttons. COIN1 uses the separate active-low $C08004 pulse path rather than the player-port shuffle.",
       "dpad": [
         ["UP", "LEFT"], ["UP"], ["UP", "RIGHT"],
         ["LEFT"], [], ["RIGHT"],
         ["DOWN", "LEFT"], ["DOWN"], ["DOWN", "RIGHT"]
       ],
-      "clusters": [["START"], ["AUTO", "BOMB", "SHOT"]]
+      "clusters": [["COIN1", "START"], ["AUTO", "BOMB", "SHOT"]]
     }
   },
   "assets": {

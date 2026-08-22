@@ -81,15 +81,20 @@ const KEYMAP_BY_CODE = Object.freeze(
     .map(([code, control]) => [code, DOJ_TO_NORMAL[control]])));
 
 // Owner decision (04-INPUT-SYSTEM.md section 11): gamepad bomb = button B
-// (Standard button 1).  A -> a1 (SHOT), B -> a2 (BOMB), X -> a3 (AUTO),
-// start -> start.  DOJ has no select.  D-pad buttons and the left stick are
-// wired to directions automatically by the shared controller.
-const GAMEPAD_MAP = Object.freeze({ a: 'A1', b: 'A2', x: 'A3', start: 'START' });
+// (Standard button 1). A -> a1 (SHOT), B -> a2 (BOMB), X -> a3 (AUTO),
+// start -> START, and back/select -> SELECT. DOJ routes SELECT to the separate
+// P1 coin port below; it never enters the player-port bit shuffle.
+export const GAMEPAD_MAP = Object.freeze({
+  a: 'A1', b: 'A2', x: 'A3', back: 'SELECT', start: 'START',
+});
 
 // The shared controller (keyboard + gamepad).  null in headless: the tests drive
 // the touch setters and read currentMask() directly, so there is no controller
 // to read and the keyboard contribution is zero.
 let controller = null;
+let controllerCoinDown = false;
+let controllerCoinBlocked = false;
+let controllerHadPad = false;
 let touchHeld = 0;
 
 /** The live mask, controller (keyboard + gamepad) OR pad, one bit per CONTROLS
@@ -213,21 +218,28 @@ export function tickCoinPulse() {
   for (const k of Object.keys(coinPulse)) if (coinPulse[k] > 0) coinPulse[k]--;
 }
 
-/** The coin backstop, for blur / pagehide / visibilitychange. Its own, because the coin word is
- *  its own port: `clearTouch` and `clearKeyboard` never touch these bits. */
+/** The coin backstop for replay, controller loss, and page lifecycle boundaries.
+ *  A controller that was already present is blocked until a sampled release, so
+ *  its still-held SELECT cannot recreate the pulse that this boundary cancels. */
 export function clearCoin() {
   coinHeld = 0;
   for (const k of Object.keys(coinPulse)) coinPulse[k] = 0;
+  controllerCoinDown = false;
+  controllerCoinBlocked = controllerCoinBlocked || controllerHadPad;
 }
 
 /**
  * Wire the coin keys. Separate from `attachInput`'s shared controller because the shared
  * controller speaks the PLAYER port's normalized vocabulary and these switches are not in it.
+ * `visibilitychange` belongs to the document, not the window event target.
  *
- * @returns {() => void} the backstop, already wired to blur / pagehide / visibilitychange.
+ * @returns {() => void} the backstop, already wired to lifecycle boundaries.
  */
-export function attachCoinKeys(target = (typeof window !== 'undefined' ? window : null)) {
-  if (!target) return clearCoin;                     // headless: the tests drive setCoinKey
+export function attachCoinKeys(
+  target = (typeof window !== 'undefined' ? window : null),
+  documentTarget = (typeof document !== 'undefined' ? document : null),
+) {
+  if (!target && !documentTarget) return clearCoin;   // headless tests drive setCoinKey
   const onDown = (e) => {
     const name = COIN_KEYMAP[e.code];
     if (!name) return;
@@ -241,11 +253,12 @@ export function attachCoinKeys(target = (typeof window !== 'undefined' ? window 
     e.preventDefault();
     setCoinKey(name, false);
   };
-  target.addEventListener('keydown', onDown);
-  target.addEventListener('keyup', onUp);
-  for (const t of ['blur', 'pagehide', 'visibilitychange']) {
-    target.addEventListener(t, clearCoin);
-  }
+  target?.addEventListener('keydown', onDown);
+  target?.addEventListener('keyup', onUp);
+  target?.addEventListener('blur', clearCoin);
+  target?.addEventListener('pagehide', clearCoin);
+  target?.addEventListener('gamepaddisconnected', clearCoin);
+  documentTarget?.addEventListener('visibilitychange', clearCoin);
   return clearCoin;
 }
 
@@ -266,13 +279,42 @@ export function attachCoinKeys(target = (typeof window !== 'undefined' ? window 
  */
 export function attachInput(target = (typeof window !== 'undefined' ? window : null)) {
   controller = createInput({ keyboard: KEYMAP_BY_CODE, gamepad: GAMEPAD_MAP });
+  controllerCoinDown = false;
+  controllerCoinBlocked = false;
+  controllerHadPad = false;
   if (target) controller.attach(target);
   return controller;
 }
 
-/** Refresh the gamepad state.  Call once per ANIMATION frame (rAF), not per
- *  logic frame -- the Standard Gamepad API is polled, not event-driven. */
-export function pollInput() { controller?.pollGamepad(); }
+/** Refresh the gamepad state. Call once per ANIMATION frame (rAF), not per
+ *  logic frame. Standard back/select feeds COIN1's existing fixed pulse, while
+ *  Standard start remains in the player-port mapping above. A lifecycle clear
+ *  blocks a held SELECT until this sampler observes its release. */
+export function pollInput() {
+  if (!controller) return;
+  const hadPad = controllerHadPad;
+  controller.pollGamepad();
+  const hasPad = controller.hasPad;
+
+  if (hadPad && !hasPad) {
+    clearCoin();
+    controllerHadPad = false;
+    return;
+  }
+  controllerHadPad = hasPad;
+  if (!hasPad) return;
+
+  const down = !!controller.state().select;
+  if (!down) {
+    setCoinKey('COIN1', false);
+    controllerCoinDown = false;
+    controllerCoinBlocked = false;
+    return;
+  }
+  if (controllerCoinDown) return;
+  controllerCoinDown = true;
+  if (!controllerCoinBlocked) setCoinKey('COIN1', true);
+}
 
 /** Whether a Standard gamepad was seen on the last poll.  UI hint only: the
  *  browser user-gesture requirement means a pad often reports only after the
@@ -327,8 +369,9 @@ export function dpadMask(u, v, w, h) {
 }
 
 /**
- * Wire an on-screen pad.  `dpadEl` is ONE capture target hit-tested by
- * `dpadMask`; `buttons` are elements carrying `data-btn="SHOT"` etc.
+ * Wire an on-screen pad. `dpadEl` is ONE capture target hit-tested by
+ * `dpadMask`; `buttons` carry either `data-btn="SHOT"` for the player port or
+ * `data-coin="COIN1"` for the separate coin port.
  *
  * @returns {() => void} the backstop, so the page can also call it from
  *          `blur` / `pagehide` / `visibilitychange`.
@@ -371,21 +414,32 @@ export function attachPad(dpadEl, buttons, { onPaint } = {}) {
 
   for (const b of buttons) {
     const name = b.dataset.btn;
-    if (!(name in CONTROLS)) {
+    const coinName = b.dataset.coin;
+    if ((name ? 1 : 0) + (coinName ? 1 : 0) !== 1) {
+      throw new Error('on-screen button needs exactly one of data-btn or data-coin');
+    }
+    if (name && !(name in CONTROLS)) {
       throw new Error(`on-screen button data-btn="${name}" is not a control; `
         + `known: ${Object.keys(CONTROLS).join(', ')}`);
     }
+    if (coinName && !(coinName in COIN_BITS)) {
+      throw new Error(`on-screen button data-coin="${coinName}" is not a coin switch; `
+        + `known: ${Object.keys(COIN_BITS).join(', ')}`);
+    }
+    const setButton = coinName
+      ? (down) => setCoinKey(coinName, down)
+      : (down) => setTouchButton(name, down);
     const press = (e) => {
       e.preventDefault();
       // The finger may slide off the button; the capture keeps its release ours.
       b.setPointerCapture?.(e.pointerId);
       b.dataset.on = '1';
-      setTouchButton(name, true);
+      setButton(true);
     };
     const release = (e) => {
       e.preventDefault();
       delete b.dataset.on;
-      setTouchButton(name, false);
+      setButton(false);
     };
     b.addEventListener('pointerdown', press);
     b.addEventListener('pointerup', release);
@@ -400,7 +454,10 @@ export function attachPad(dpadEl, buttons, { onPaint } = {}) {
     clearTouch();
     padPointer = null;
     paint(0);
-    for (const b of buttons) delete b.dataset.on;
+    for (const b of buttons) {
+      if (b.dataset.coin) setCoinKey(b.dataset.coin, false);
+      delete b.dataset.on;
+    }
   };
 }
 
@@ -412,7 +469,7 @@ export function attachPad(dpadEl, buttons, { onPaint } = {}) {
  * schemes feed exactly the same path, and the picker can switch between them
  * at runtime with no game-logic change.
  *
- * The face buttons (SHOT/BOMB/AUTO/START) stay the fixed cluster; the floating
+ * The face buttons (COIN1/START/SHOT/BOMB/AUTO) stay the fixed cluster; the floating
  * stick replaces ONLY the D-pad. `onPaint` receives the direction mask while
  * `onVisual` receives the shared stick's origin and current pointer, or two
  * nulls when it clears.
