@@ -174,20 +174,18 @@ npm run typecheck                               # tsc over the ports - no ROM ne
 refuses to publish on a red gate or an unexpected gate skip. `--only gradius` /
 `--only ddpdoj` gate one game; `--dry` gates and builds without deploying.
 
-At published DDPDOJ W496, its unit suite records **4,360/4,360 passing with zero
+At published DDPDOJ W501, its unit suite records **4,397/4,397 passing with zero
 skips**. The same publication passed all **746/746 Gradius units**, the **13/13
 Gradius gate with zero skips**, the DDPDOJ bundle and web-fetch gates, the **27/27
 Batman gate with zero skips**, the distribution build, and the repository ROM-leak
-guard. Production build `20260822120853` supersedes `20260822080859` and carries
-W492 through W496, including all fifteen requested transformative mods. W493's focused
-affected set passes 232/232, W494's passes 118/118, W495's passes 89/89, W496's
-passes 170/170, and the bundle gate remains pixel-exact. W498's focused visible-input
-and Game Over set passes 93/93. W499's bounded controller plus directly affected
-shared/web input and coin set passes 83/83. W500's bounded selection, slot,
-registry, and window set passes 193/193. W501's compact state-7 lifecycle and ROM-window set
-passes 101/101; the local export now holds 637 windows and 444,613 bytes with 76 overlap pairs.
-W497 through W500 are landed on main and unpublished; W501 is locally verified at the required
-publication point.
+guard. Production build `20260822192350` supersedes `20260822120853` and carries
+W497 through W501. W493's focused affected set passes 232/232, W494's passes
+118/118, W495's passes 89/89, W496's passes 170/170, and the bundle gate remains
+pixel-exact. W498's focused visible-input and Game Over set passes 93/93. W499's
+bounded controller plus directly affected shared/web input and coin set passes 83/83.
+W500's bounded selection, slot, registry, and window set passes 193/193. W501's
+compact state-7 lifecycle and ROM-window set passes 101/101; the export holds 637
+windows and 444,613 bytes with 76 overlap pairs.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -254,8 +252,8 @@ The active translation targets Black Label Version-B first. Its source now spans
 the main loop, player and all three weapon systems, bombs, bullets, enemies,
 bosses, items and bees, stage and result flow, score and chaining, hypers, rank,
 HUD, sound posts, and high-score name entry. The browser port and generated
-asset path are live, and W496 published as production build `20260822120853`
-after all 4,360 DDPDOJ unit tests passed with zero skips. W477 shipped the first
+asset path are live, and W501 published as production build `20260822192350`
+after all 4,397 DDPDOJ unit tests passed with zero skips. W477 shipped the first
 15 optional mods, including explicit Invincibility, while an empty loadout remains
 vanilla. W492 through W496 raise the catalogue to 30 with Hyper Overdrive, Adaptive Slow
 Motion, Bee Magnet, Boss Enrage, Graze Reactor, Glass Cannon, Auto Deathbomb,
@@ -300,8 +298,8 @@ it when the other axis cannot grow, overlays translucent mobile controls, and sh
 floating stick's origin and bounded displacement only while held. Coverage is 101 ported,
 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child,
 and the remaining static `$48 -> $54` edge is disabled behind Version B's
-`$2714AE` return, so no next runtime blocker has been established. W492 through W496
-are live in production build `20260822120853` with all fifteen requested transformative
+`$2714AE` return, so no next runtime blocker has been established. W492 through W501
+are live in production build `20260822192350`; W492 through W496 supplied all fifteen requested transformative
 mods. W497 is the first substantial D26 cartridge-choice slice: ordinary browser starts
 can select Type-A or Type-B with numeric style selectors 2, 4, or 6, independently
 of mods. Both ships have their complete browser-packed 17-image animation, attached
@@ -325,9 +323,10 @@ without changing 76 overlap pairs. W501 closes state 7's remaining counted head:
 draws the main sequence and zoomed detail pair, advances the pause satellites, and retires
 at sequence `$9C`. Three exact disjoint animation windows at `$25F7C8+$A0`, `$25F880+$78`,
 and `$25F8F8+$40` raise the registry to 637 windows and 444,613 bytes without moving the
-76 overlap pairs. The next counted D34 edge is the per-record `$25E72E` select-screen draw.
-W497 through W500 are landed on main and unpublished; W501 is locally verified at the fifth-wave
-publication point.
+76 overlap pairs. Production build `20260822192350` publishes W497 through W501 after
+4,397/4,397 DDPDOJ units, all bundle and web gates, the cross-game gates, the distribution
+build, the ROM-leak guard, deployment, and three successful live polls. The next counted D34
+edge is the per-record `$25E72E` select-screen draw.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,

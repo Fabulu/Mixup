@@ -6703,7 +6703,7 @@ run. W500 is independently verified and landed on main but unpublished, is the f
 build `20260822120853`, and W501 remains the next publication wave. `$25F530` with inner `$25F592` is the
 next live unresolved D34 edge.
 
-### D108: W501 D34 STATE-7 HEAD AND RECORD ANIMATION, VERIFIED LOCALLY
+### D108: W501 D34 STATE-7 HEAD AND RECORD ANIMATION, PUBLISHED
 
 W501 replaces state 7's final counted call with live `$25F530..$25F57F` and `$25F592..$25F7C1` bodies.
 The head implements the cartridge's D7-sensitive P1 preference and eligible-P2 fallback. The inner body
@@ -6720,9 +6720,11 @@ pairs unchanged at 76. No ROM-derived file is tracked.
 The compact state-7 lifecycle, exact-extent, registry, and directly affected select-screen integration regression
 passes 101/101 with no failures or skips.
 The focused test proves distinct `$80008000/$80005000` detail flags, the shared satellite index/emitter word,
-palette one-shot behavior, sequence pause and retirement, D7 selection, and P2 fallback. W501 is locally
-verified at the fifth-wave publication point. Production remains W496 build `20260822120853` until the quiet
-tracked tree runs `export-web.mjs` and then `publish.mjs`.
+palette one-shot behavior, sequence pause and retirement, D7 selection, and P2 fallback. The final quiet-tree
+publication passed all **4,397/4,397** DDPDOJ units with zero failures or skips, the DDPDOJ bundle and
+web-fetch gates, all **746/746** Gradius units, the **13/13** Gradius gate, the **27/27** Batman gate, the
+distribution build, and the ROM-leak guard. Production build **`20260822192350`** deployed successfully and
+passed three live polls, publishing W497 through W501.
 
 The next counted D34 edge is `$25E72E..$25E7B7`, reached once per selection record from `$25CBF4` for both
 live and dead records. Keep the next wave bounded to that draw and its actually required `$260A7C/$25F1EC`

@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W501 D34 state-7 head and record animation verified locally)
+Updated: 2026-08-22 (W501 published as production build `20260822192350`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -22,8 +22,10 @@ and live `$25F2D0`. Keep the next wave bounded to that draw and only the depende
 W501 adds exact disjoint windows `$25F7C8+$A0`, `$25F880+$78`, and `$25F8F8+$40`. `export-tables.py`
 regenerated 637 windows and 444,613 bytes; overlap pairs remain 76 because the four palettes were already
 inside `$222A78+$2880`. The compact state-7 lifecycle, exact-extent, window, and directly affected
-select-screen integration regression passes 101/101 with no failures or skips. W501 is locally verified at the fifth-wave publication point. Production remains
-W496 build `20260822120853` until a quiet tracked tree runs `export-web.mjs` and then `publish.mjs`.
+select-screen integration regression passes 101/101 with no failures or skips. The final quiet-tree publication
+passes 4,397/4,397 DDPDOJ units, the DDPDOJ bundle and web-fetch gates, 746/746 Gradius units, the 13/13
+Gradius gate, the 27/27 Batman gate, the distribution build, and the ROM-leak guard. Production build
+`20260822192350` deployed successfully and passed three live polls, publishing W497 through W501.
 
 **W497 remains the first substantial D26 implementation slice.** The cartridge-proven ship domain is `{0,2}`
 and the style domain is `{2,4,6}`. Selector 0 is Type-A and selector 2 is Type-B. The cartridge census does
@@ -45,7 +47,7 @@ the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage rem
 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
 
-## W501 VERIFIED LOCALLY: `$25F530/$25F592` STATE-7 ANIMATION
+## W501 PUBLISHED: `$25F530/$25F592` STATE-7 ANIMATION
 
 `state7Head25F530` selects P1 only when D7 is nonzero and its record is active and unretired, then falls
 back to the same eligibility check on P2. `state7Player25F592` decrements the initial delay before touching
@@ -65,8 +67,7 @@ already covers `$2241F8..$2242F7`. `w501state7head.test.js`, the W374 extent and
 registry checks, and directly affected slot-9, context, and W500 selector checks form the 101/101 set.
 
 **Next:** port `$25E72E..$25E7B7`, the sole counted per-record select-screen draw, after reading its exact
-`$260A7C/$23E08C/$25F1EC/$25F2D0` call behavior. W501 is the required publication wave. Regenerate browser
-assets before publishing and keep the tracked tree quiet.
+`$260A7C/$23E08C/$25F1EC/$25F2D0` call behavior. W501 is published; W502 is the first wave after it.
 
 ## W500 VERIFIED LOCALLY: `$25FAA4` ORDINARY-LOOP MODE SELECTOR
 
@@ -1079,8 +1080,8 @@ cadence above. Do not spend a wave redoing either clause.
 
 ## PUBLISHED HISTORY
 
-Last confirmed live: build `20260822120853`, confirmed 2026-08-22. Earlier confirmed builds include
-`20260822080859`, `20260822042005`, `20260822010546`, `20260821175936`, `20260821162642`,
+Last confirmed live: build `20260822192350`, confirmed 2026-08-22. Earlier confirmed builds include
+`20260822120853`, `20260822080859`, `20260822042005`, `20260822010546`, `20260821175936`, `20260821162642`,
 `20260821132334`, and `20260821060153`.
 
 ## W422 LANDED -- POOL-A KIND 5, VERIFIED BY THE COORDINATOR
