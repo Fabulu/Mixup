@@ -252,9 +252,10 @@ const OVERLAP_DECLARED = Object.freeze({
   0x2415e8: 'palette.js install2415E8: the ctx.palette-absent arm',
   0x241688: 'palette.js paletteSet241688: the ctx.palette-absent arm',
   // -- the ROUTINE is ported; what the site defers is genuinely something else --
-  0x246410: 'animobjects.js loadAnimObjects246410 has 19 call sites. The three boss/arrival/midboss '
-    + 'sites defer the animation TABLE each passes, NOT the loader. W444 rewrote BOSS_NOTED, '
-    + 'which had called the loader itself "the presentation tier, genuinely deferred"',
+  0x246410: 'animobjects.js loadAnimObjects246410 has 20 call sites after W509 directly wired '
+    + 'the reached $290892 mode-0 call. The three boss/arrival/midboss sites defer the animation '
+    + 'TABLE each passes, NOT the loader. W444 rewrote BOSS_NOTED, which had called the loader '
+    + 'itself "the presentation tier, genuinely deferred"',
   0x28ac72: 'cues.js spawnCues28AC72 is ported; the midboss record selects descriptor $28B08E, '
     + 'outside the kind-0/4/8 closure cues.js implements',
   0x24200a: 'aim.js is ported; initbody defers because the SPAWN POSITION is W24-derived, so the '

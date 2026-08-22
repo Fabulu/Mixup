@@ -44,8 +44,9 @@
 //
 // SECTION 1   the bytes: ten instruction words, the loop top, and the caller with no test
 // SECTION 2   the merge: one claimant, the register at 19, the deleted names gone, still a leaf
-// SECTION 2b  ALL EIGHTEEN current call sites reaching the survivor -- W503 added the type-$13
-//             ending handoff and W504 added the type-7 script interpreter to W449's sixteen
+// SECTION 2b  ALL TWENTY current call sites reaching the survivor -- W503 added the type-$13
+//             ending handoff, W504 added the type-7 script interpreter, and W509 directly wired
+//             the auxiliary loader's two previously optional frees
 // SECTION 3   THE STATE TRACE, with palette.js as the witness outside every changed file, and
 //             a decoy chain that separates "freed correctly" from "freed too much"
 // SECTION 3b  the DELETED bodies, verbatim: two required to DISAGREE, one required to AGREE
@@ -54,13 +55,14 @@
 //             that ignores the links passes SECTION 3 outright.
 // SECTION 5   the pool did not move
 //
-// REPORTED, NOT FIXED -- TWO OF THE TWENTY-ONE CALLERS DO NOT REACH ANY PORT AT ALL.
-// `$290846` and `$2908C2` (`objslot7pool.js` states 2 and 4) go through the OPTIONAL
-// `ctx.commit246800` hook, and no production ctx supplies that key -- only
-// `tests/w372pool7.test.js` does. So those two frees never run and their chains leak out of the
-// twenty-slot `$80FA86` pool, while `$2912D8` in the same file calls the routine directly.
-// `w375ctxkeys.test.js` still calls the key "$246800. Not ported.", untrue since W341. Wiring
-// them changes live behaviour and wants its own trace; the note is in `objslot7pool.js` too.
+// W449 REPORTED, W509 FIXED -- TWO OF THE TWENTY-ONE CARTRIDGE CALLERS WERE NOT DIRECTLY WIRED.
+// `$290846` and `$2908C2` (`objslot7pool.js` states 2 and 4) formerly went through the optional
+// `ctx.commit246800` hook, which no production ctx supplied. W509's reached `$8005` state trace
+// proved both auxiliary-loader releases and replaced that hook with direct
+// `freeAnimObjects246800` calls. The same state machine now also calls its existing production
+// loaders and `$24681A` check directly, so W375 removes all four obsolete optional-key rows.
+// The exact image scan below remains twenty-one cartridge callers; SECTION 2b now inventories
+// twenty source calls reaching the survivor, including these two newly wired sites.
 //
 // REPORTED, NOT FIXED (W448's, still open) -- `loadAnimObjects246410` returns 0 where
 // `$2464F6`/`$246518` are both `70 ff`. SECTION 2b reads those two bytes, so the evidence is
@@ -348,9 +350,10 @@ test('SECTION 2: animobjects.js is STILL A LEAF, which is the whole reason it is
 // SECTION 2b -- EVERY CALL SITE REACHING THE SURVIVOR, SHOWN.
 // ===============================================================================================
 //
-// EIGHTEEN now, not the twelve the W449 brief named. W449 found sixteen; W503 added the
-// type-$13 ending handoff at `$28EEE6/$28EEEA`, and W504 added the type-7 script
-// interpreter at `$290A92`.
+// TWENTY now, not the twelve the W449 brief named. W449 found sixteen; W503 added the
+// type-$13 ending handoff at `$28EEE6/$28EEEA`, W504 added the type-7 script
+// interpreter at `$290A92`, and W509 directly wired auxiliary states 2 and 4 at
+// `$290846` and `$2908C2`.
 
 /** file -> the ROM addresses whose `jsr`/`bsr $246800` that file's calls stand for. */
 const CALL_SITES = Object.freeze({
@@ -358,12 +361,12 @@ const CALL_SITES = Object.freeze({
   'stageend.js': ['$28D704/$28D708', '$28EEE6/$28EEEA'],
   'hiscorescreen.js': ['$25B432', '$25B488'],
   'objslot15.js': ['$291FCA'],
-  'objslot7pool.js': ['$290A92', '$2912D8'],
+  'objslot7pool.js': ['$290846', '$2908C2', '$290A92', '$2912D8'],
   'objslot8.js': ['$25C30A', '$25C36A', '$25C444', '$25C49E', '$25BDB4', '$25BE3E'],
   'stage4type9f.js': ['$27C724'],
 });
 
-test('SECTION 2b: all EIGHTEEN current call sites call the survivor and name their ROM address',
+test('SECTION 2b: all TWENTY current source calls reach the survivor and name their ROM address',
   () => {
     const src = srcText();
     let total = 0;
@@ -381,8 +384,8 @@ test('SECTION 2b: all EIGHTEEN current call sites call the survivor and name the
       }
       total += calls;
     }
-    assert.equal(total, 18,
-      'W449 reconciled sixteen calls; W503 added the ending handoff and W504 the type-7 interpreter');
+    assert.equal(total, 20,
+      'W449 reconciled sixteen source calls; W503 and W504 added one each, and W509 directly wired two');
   });
 
 test('SECTION 2b: the four ex-`clearChain` sites are the ROM `bsr`s, not invented cleanups',

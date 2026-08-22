@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; local W508 carries the natural stage-5 type `$13` handoff through type 7's complete five-script variant-0 list, with the final script's 16 ordered pool spawns, two cartridge position groups, `$0808` cadence, `$80` wait, operand-4 resource lifecycle, and authentic transition into inner state 1; production build `20260822223516` remains W502 through W506, the next bounded edge is sequence list A's first script at `$2914F0`, and the full second loop and docket remain in progress |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; local W509 carries the natural stage-5 type `$13` handoff through variant 0's complete five-script list and sequence list A's first script, including `$8005`'s two-node palette resource, 26 ordered pool spawns, three cartridge position groups, `$2000` initial cadence, `$C0` wait, and cursor-4 pool clear; production build `20260822223516` remains W502 through W506, the next bounded edge is sequence list A entry 1 at `$29154A`, and the full second loop and docket remain in progress |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -185,11 +185,11 @@ W502's compact affected set passes 54/54, W503's passes 139/139, W504's passes
 and W506's passes 97/97 plus its direct 1/1 rerun. The published export holds 690
 windows and 445,369 bytes with 76 overlap pairs. The source commits are `36b289b`,
 `bb9046b`, `5236b8a`, `96b0235`, and `66ebeaa`; bounded stale-test repair `bcf6281`
-completed the publication tree. W507 was subsequently committed as `f942dbe`. Local W508's
-direct natural integration passes 1/1, and its compact natural-integration, slot-7,
-ROM-registry, and coverage set passes 30/30. The local export now holds 718 windows
-and 445,659 bytes with 76 overlap pairs; no full suite, browser export, build, or
-publication was run for W508.
+completed the publication tree. W507 and W508 were subsequently committed as `f942dbe` and
+`faab91f`. Local W509's direct natural integration passes 1/1, and its compact
+natural-integration, slot-7, ROM-registry, and coverage set passes 30/30. The local
+export now holds 732 windows and 445,921 bytes with 76 overlap pairs; no full suite,
+browser export, build, or publication was run for W509.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -333,18 +333,19 @@ and active-record label exits, `$25F1EC` credit-message carry path, coordinate a
 art-offset selection, and `$23E08C` bucket-7 enqueue. The exact disjoint windows
 `$25E716+$18` and `$25F270+$60` raise the registry to 639 windows and 444,733 bytes while
 preserving 76 overlap pairs. W503 ports dispatch type `$13` at `$28EE88`, restoring the
-bounded stage-5 ending tally and type-7 handoff. W504 through local W508 follow that natural
-loop-2 edge through variant 0's complete five-script list at `$290F66`, `$290F8E`, `$290FE2`,
-`$2910F6`, and `$291172`, emitting 126 visible spawns and completing all five `$8003` resource
-lifecycles. W508's final script adds 16 ordered spawns in two eight-record position groups,
-changes cadence to `$0808` for three nine-frame gaps, waits exactly for `$80`, and reuses
-operand 4's one-node `$290E80` chain without a new interpreter arm. Its `$FFFF` advances list
-cursor 16 to 20 and clears the pool; the following `$FFFFFFFF` authentically selects inner
-state 1. The local registry has 718 windows and 445,659 bytes with 76 overlap pairs.
-Production build `20260822223516` still publishes only W502 through W506 after 4,404/4,404
-DDPDOJ units, all bundle and web gates, the cross-game gates, the distribution build, the
-ROM-leak guard, deployment, and three consecutive live confirmations. W508's exact next
-gameplay edge is sequence list A's first script at `$2914F0`.
+bounded stage-5 ending tally and type-7 handoff. W504 through local W509 follow that natural
+loop-2 edge through variant 0's complete five-script list and sequence list A's first entry,
+emitting 152 visible pool records and completing six `$8003` resource lifecycles. W509's
+`$2914F0..$291549` script proves `$8005`: operands 1 and 3 publish banner 1, select W372's
+existing two-node `$290E1C` mode-0 resource, run its two exact 32-word palettes for 32 animation
+steps, and free it. The same script emits 26 records across 10, 8, and 8-record position groups
+after an exact 32-frame `$2000` delay, waits for `$C0`, completes operand 0's one-node resource,
+advances sequence-list cursor 0 to 4, and clears the pool. The local registry has 732 windows and
+445,921 bytes with 76 overlap pairs. Production build `20260822223516` still publishes only W502
+through W506 after 4,404/4,404 DDPDOJ units, all bundle and web gates, the cross-game gates, the
+distribution build, the ROM-leak guard, deployment, and three consecutive live confirmations.
+W507 and W508 are committed as `f942dbe` and `faab91f` but remain unpublished. W509's exact next
+gameplay edge is sequence list A entry 1 at `$29154A`.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,

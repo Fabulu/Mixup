@@ -22,7 +22,7 @@ import { stageCreate, queueKill } from './objalloc.js';
 import { readInput23D186 } from './tallyscreen.js';
 import { chainLoader246710, chainCheck24681A } from './stageend.js';
 // W449: `$246800` merged into `animobjects.js`; `stageend.js chainFree246800` is gone.
-import { freeAnimObjects246800 } from './animobjects.js';
+import { freeAnimObjects246800, loadAnimObjects246410 } from './animobjects.js';
 import { install24150A } from './palette.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 
@@ -120,6 +120,15 @@ export const SCRIPT7 = Object.freeze({
   END: 0xffff,
 });
 
+/** `$2907C2` -- arm `$2907E2` only while its auxiliary resource state is idle. `$8005` always
+ * advances after this call, even when a prior resource keeps the arm from replacing its operands. */
+export function armResource2907C2(ram, nextBanner, index) {
+  if (ram.u16(0x81e108) !== 0) return;                         // $2907C2 tst.w / bne $2907E0
+  ram.setU16(0x81e108, 1);                                    // $2907CC move.w #$1
+  ram.setU16(0x81e10a, u16(nextBanner));                      // $2907D4 move.w D0
+  ram.setU16(0x81e10c, u16(index));                           // $2907DA move.w D1
+}
+
 /** `$2909AA` -- THE SCRIPT INTERPRETER. Returns TRUE while the script is still running, which the ROM
  *  carries in the carry flag through `ori.w #$1,SR` / `andi.w #$FFFE,SR`.
  *
@@ -129,6 +138,7 @@ export const SCRIPT7 = Object.freeze({
  *      $8001  LONG operand   cursor += 6    and LOOP internally
  *      $8002  wait           cursor += 4 ONLY when the count matches, else ZERO and return
  *      $8003  resource       load and hold; once ready, free, cursor += 4, and LOOP internally
+ *      $8005  word, word     arm the auxiliary loader if idle, cursor += 6, and LOOP internally
  *
  *  A fixed stride desynchronises the whole script, and silently: the first command still works.
  *  The two waiting opcodes returning WITHOUT advancing is how the script holds -- the next call
@@ -191,6 +201,12 @@ export function scriptStep2909AA(ram, rom, ctx, scriptBase) {
       ram.setU16(SCRIPT7.cursor,
         u16(ram.u16(SCRIPT7.cursor) + 4));                   // $290AA2 addq.w #4,$81E0F8
       continue;                                              // $290AA8 bra $2909AA
+    }
+    if (word === 0x8005) {                                   // $290AAC -- ARM AUXILIARY RESOURCE
+      armResource2907C2(ram, rom.u16(at + 2), rom.u16(at + 4));   // $290AB4..$290ABA
+      ram.setU16(SCRIPT7.cursor,
+        u16(ram.u16(SCRIPT7.cursor) + 6));                    // $290ABE addq.w #6,$81E0F8
+      continue;                                              // $290AC4 bra $2909AA
     }
     if (word === SCRIPT7.END) return false;                  // $FFFF -- the carry-CLEAR exit
     return false;                                            // any other $80xx: unread, stop cleanly
@@ -277,10 +293,11 @@ export function innerState0_290E9E(ram, rom, ctx, a5, a6) {
  *  pairs and an idle:
  *
  *      0  idle
- *      1  load through $246710 from the $290CE8 table   -> 2
- *      2  WAIT on $24681A, COMMIT with $246800          -> 3
- *      3  load through $24641A from the $290DAE table   -> 4
- *      4  WAIT on $24681A, COMMIT with $246800          -> 0
+ *      1  if no banner is live, publish `$8005`'s D0 and skip to state 3;
+ *         otherwise load through $246710 from the $290CE8 table   -> 2
+ *      2  WAIT on $24681A, FREE with $246800, publish D0          -> 3
+ *      3  load through $24641A from the $290DAE table             -> 4
+ *      4  WAIT on $24681A, FREE with $246800                      -> 0
  *
  *  Both loads cache their handle in the SAME word, `$81E10E`, and both waits consume it -- so the
  *  pairs must not be collapsed or interleaved: state 3 overwrites what state 2 committed, and doing
@@ -290,42 +307,50 @@ export function innerState0_290E9E(ram, rom, ctx, a5, a6) {
  *  routine rather than two routines.
  */
 export function resourceLoader2907E2(ram, rom, ctx) {
-  const st = ram.u16(0x81e108);
+  let st = ram.u16(0x81e108);
   if (st === 0) return;                                      // $2907E2 tst.w / beq $2908D0
 
   if (st === 1) {                                            // $2907EC
-    if (ram.u16(0x81e106) === 0) return;                     // $2907F8 tst.w / beq -- not armed yet
-    const rec = rom.u32(0x290ce8 + (u16(ram.u16(0x81e10c)) << 2));   // $290802..$290812
-    ram.setU32(0x81e10e, ctx.load246710?.(rom, rec) ?? 0);   // $290816 jsr $246710 / $29081C
-    return;
+    if (ram.u16(0x81e106) !== 0) {                           // $2907F8 tst.w / beq $29084C
+      const rec = rom.u32(0x290ce8 + (u16(ram.u16(0x81e10c)) << 2));
+      ram.setU32(0x81e10e, chainLoader246710(ram, rom, rec, ctx) >>> 0);   // $290816/$29081C
+      ram.setU16(0x81e108, 2);                               // $290822
+    } else {
+      // `$2907FE beq $29084C` deliberately skips the first resource when no banner is live.
+      ram.setU16(0x81e106, ram.u16(0x81e10a));                // $29084C
+      ram.setU16(0x81e108, 3);                               // $290856
+      if (ram.u16(0x81e106) === 0) {                         // $29085E/$29086A
+        ram.setU16(0x81e108, 0);
+        return;
+      }
+    }
   }
-  // W449 REPORTS, DOES NOT FIX: `$290846` and `$2908C2` are two of `$246800`'s twenty-one ROM
-  // callers, and in this port they reach it only through the OPTIONAL `ctx.commit246800` hook.
-  // NO production ctx supplies that key -- only `tests/w372pool7.test.js` does -- so these two
-  // frees never happen and the chains they own leak out of the twenty-slot `$80FA86` pool.
-  // `$2912D8` in this same file calls the ported routine directly. `w375ctxkeys.test.js` still
-  // describes the key as "$246800. Not ported.", which has been untrue since W341. Wiring these
-  // two is a behaviour change (two pool slots that currently leak would start being released),
-  // so it wants its own state trace and its own wave, not a merge wave's spare line.
-  if (st === 2) {                                            // $290828
-    if (!ctx.ready24681A?.(ram, ram.u32(0x81e10e))) return;  // $290836/$29083C jsr $24681A / bne
-    ctx.commit246800?.(ram, ram.u32(0x81e10e));              // $290846 jsr $246800
-    ram.setU16(0x81e106, ram.u16(0x81e10a));                 // $29084C move.w $81E10A,$81E106
+
+  st = ram.u16(0x81e108);
+  if (st === 2) {                                            // $29082A, reached in the same call as state 1
+    const handle = ram.u32(0x81e10e);
+    if (chainCheck24681A(ram, handle) !== 0) return;          // $290836..$290842
+    freeAnimObjects246800(ram, handle);                       // $290846
+    ram.setU16(0x81e106, ram.u16(0x81e10a));                  // $29084C
     ram.setU16(0x81e108, 3);                                 // $290856
-    return;
+    if (ram.u16(0x81e106) === 0) {                           // $29085E/$29086A
+      ram.setU16(0x81e108, 0);
+      return;
+    }
   }
-  if (st === 3) {                                            // $29085E
-    // The SECOND table and the mode-0 entry. Same shape as state 1, different table and mode, and it
-    // overwrites $81E10E -- which is why state 2 must have committed before this runs.
-    const rec = rom.u32(0x290dae + (u16(ram.u16(0x81e10c)) << 2));   // $29087E..$29088E
-    ram.setU32(0x81e10e, ctx.loadAnim0?.(rom, rec) ?? 0);    // $290892 jsr $24641A -- MODE 0
+
+  st = ram.u16(0x81e108);
+  if (st === 3) {                                            // $290872, also reached by fallthrough
+    const rec = rom.u32(0x290dae + (u16(ram.u16(0x81e10c)) << 2));
+    ram.setU32(0x81e10e, loadAnimObjects246410(ram, rom, rec, 0) >>> 0);   // $290892/$290898
     ram.setU16(0x81e108, 4);                                 // $29089E
-    return;
   }
-  if (st === 4) {                                            // $2908A6
-    if (!ctx.ready24681A?.(ram, ram.u32(0x81e10e))) return;  // $2908B2/$2908B8
-    ctx.commit246800?.(ram, ram.u32(0x81e10e));              // $2908C2
-    ram.setU16(0x81e108, 0);                                 // $2908C8 -- back to IDLE, not onward
+
+  if (ram.u16(0x81e108) === 4) {                             // $2908A6
+    const handle = ram.u32(0x81e10e);
+    if (chainCheck24681A(ram, handle) !== 0) return;          // $2908B2..$2908BE
+    freeAnimObjects246800(ram, handle);                       // $2908C2
+    ram.setU16(0x81e108, 0);                                 // $2908C8
   }
 }
 

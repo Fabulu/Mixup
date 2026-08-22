@@ -216,11 +216,15 @@ test('W372 opcode $8003 loads once, waits, frees, and its records precede the ta
   assert.equal(0x290e8a + 5 * 4, 0x290e9e, 'and the table ends exactly at inner state 0');
 });
 
-test('W372 the interpreter advances the cursor PER OPCODE, and waits do not advance', { skip: SKIP }, async () => {
+test('W372/W509 the interpreter advances the cursor per opcode, including $8005', { skip: SKIP }, async () => {
   const { scriptStep2909AA, SCRIPT7, POOL7: P } = await import('../src/objslot7pool.js');
   const { Ram } = await import('../src/ram.js');
-  // A synthetic script exercising each advance: $8000 (+4), $8001 (+6), $8002 wait (0 then +4), $FFFF.
-  const words = [0x8000, 0x0301, 0x8001, 0x1234, 0x5678, 0x8002, 0x0002, 0xffff];
+  // A synthetic script exercising each advance: $8005 (+6), $8000 (+4), $8001 (+6),
+  // $8002 wait (0 then +4), and $FFFF.
+  const words = [
+    0x8005, 0x0001, 0x0003,
+    0x8000, 0x0301, 0x8001, 0x1234, 0x5678, 0x8002, 0x0002, 0xffff,
+  ];
   const base = 0x400000;
   const rom = {
     u16: (a) => words[(a - base) >> 1] ?? 0xffff,
@@ -229,11 +233,15 @@ test('W372 the interpreter advances the cursor PER OPCODE, and waits do not adva
   const ram = new Ram();
   ram.setU16(SCRIPT7.cursor, 0);
 
-  // $8000 then $8001 loop INTERNALLY, so one call runs both and then blocks on $8002's wait.
+  // `$8005`, `$8000`, and `$8001` loop internally before `$8002` holds.
   let running = scriptStep2909AA(ram, rom, {}, base);
   assert.equal(running, true, 'still running');
+  assert.equal(ram.u16(0x81e108), 1, '$8005 armed the auxiliary loader while idle');
+  assert.equal(ram.u16(0x81e10a), 1, '  ...stored its first operand');
+  assert.equal(ram.u16(0x81e10c), 3, '  ...stored its second operand');
   assert.equal(ram.u16(SCRIPT7.counter), 0x0301, '$8000 armed counter AND reload in one word write');
-  assert.equal(ram.u16(SCRIPT7.cursor), 4 + 6, '  ...cursor advanced 4 then 6 -- NOT 4 twice');
+  assert.equal(ram.u16(SCRIPT7.cursor), 6 + 4 + 6,
+    'cursor advanced 6, 4, and 6 bytes before the wait');
   assert.equal(ram.u16(SCRIPT7.loopCount), 1, 'and $8002 bumped its count');
 
   // The wait must NOT advance until the count matches its operand of 2.
@@ -339,45 +347,46 @@ test('W372 $24641A is $246410 with mode 0, not a routine of its own', { skip: SK
   assert.equal(loadAnimObjects246410.length, 3, 'mode is optional, so old callers are unchanged');
 });
 
-test('W372 the loader is TWO load/wait pairs sharing ONE handle word', { skip: SKIP }, async () => {
-  const { resourceLoader2907E2 } = await import('../src/objslot7pool.js');
+test('W509 $8005 idle arm skips the absent banner phase and runs its mode-0 pair',
+{ skip: SKIP }, async () => {
+  const { armResource2907C2, resourceLoader2907E2 } =
+    await import('../src/objslot7pool.js');
   const { Ram } = await import('../src/ram.js');
   const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
-  const rom = { u32: (a) => IMG.readUInt32BE(a), u16: (a) => IMG.readUInt16BE(a) };
-  const ram = new Ram();
-  let ready = false;
-  const commits = [];
-  const ctx = {
-    load246710: () => 0x1111, loadAnim0: () => 0x2222,
-    ready24681A: () => ready, commit246800: (r, h) => commits.push(h),
+  const rom = {
+    u32: (a) => IMG.readUInt32BE(a),
+    u16: (a) => IMG.readUInt16BE(a),
+    i16: (a) => IMG.readInt16BE(a),
   };
-  // State 0 does nothing at all.
-  resourceLoader2907E2(ram, rom, ctx);
-  assert.equal(ram.u16(0x81e108), 0, 'idle stays idle');
+  const ram = new Ram();
 
-  // State 1 is GATED on $81E106 -- unarmed, it must not load.
-  ram.setU16(0x81e108, 1);
-  resourceLoader2907E2(ram, rom, ctx);
-  assert.equal(ram.u32(0x81e10e), 0, 'unarmed: no load');
-  ram.setU16(0x81e106, 1);
-  resourceLoader2907E2(ram, rom, ctx);
-  assert.equal(ram.u32(0x81e10e), 0x1111, 'armed: the first handle is cached');
+  resourceLoader2907E2(ram, rom, {});
+  assert.equal(ram.u16(0x81e108), 0, 'state 0 is idle');
 
-  // State 2 WAITS, then commits and advances.
-  ram.setU16(0x81e108, 2);
-  resourceLoader2907E2(ram, rom, ctx);
-  assert.deepEqual(commits, [], 'not ready: nothing committed and no advance');
-  assert.equal(ram.u16(0x81e108), 2, '  ...still in state 2');
-  ready = true;
-  resourceLoader2907E2(ram, rom, ctx);
-  assert.deepEqual(commits, [0x1111], 'ready: the FIRST handle committed');
-  assert.equal(ram.u16(0x81e108), 3, '  ...and it advanced');
+  armResource2907C2(ram, 1, 3);
+  assert.equal(ram.u16(0x81e108), 1, '$2907C2 armed state 1');
+  assert.equal(ram.u16(0x81e10a), 1, 'D0 became the pending banner');
+  assert.equal(ram.u16(0x81e10c), 3, 'D1 became the resource index');
+  armResource2907C2(ram, 6, 8);
+  assert.deepEqual([ram.u16(0x81e10a), ram.u16(0x81e10c)], [1, 3],
+    'a non-idle arm does not replace the live operands');
 
-  // State 3 OVERWRITES the same handle word -- which is why the pairs cannot be collapsed.
-  resourceLoader2907E2(ram, rom, ctx);
-  assert.equal(ram.u32(0x81e10e), 0x2222, 'the second load overwrites the first handle');
-  assert.equal(ram.u16(0x81e108), 4);
-  resourceLoader2907E2(ram, rom, ctx);
-  assert.deepEqual(commits, [0x1111, 0x2222], 'and the SECOND handle commits separately');
-  assert.equal(ram.u16(0x81e108), 0, 'then back to IDLE, not onward');
+  resourceLoader2907E2(ram, rom, {});
+  assert.equal(ram.u16(0x81e106), 1,
+    'zero prior banner skipped the first load and published operand 1');
+  assert.equal(ram.u16(0x81e108), 4,
+    'the same call fell through state 3 and loaded the second resource');
+  const handle = ram.u32(0x81e10e);
+  assert.notEqual(handle, 0, 'the mode-0 root handle is cached');
+  assert.equal(ram.u16(handle + 0x04), 0, '$24641A installed mode 0');
+  const nodes = [];
+  for (let at = ram.u32(handle + 0x2c); at !== 0; at = ram.u32(at + 0x2c)) nodes.push(at);
+  assert.equal(nodes.length, 2, '$290E1C allocated its exact two nodes');
+
+  for (const node of nodes) ram.setU16(node + 0x18, 0);
+  resourceLoader2907E2(ram, rom, {});
+  assert.equal(ram.u16(0x81e108), 0, 'a drained state-4 chain returns to idle');
+  assert.equal(ram.u16(handle), 0, '$246800 freed the mode-0 root');
+  assert.equal(ram.u32(0x81e10e), handle,
+    'the cartridge leaves the freed handle value cached until reset');
 });

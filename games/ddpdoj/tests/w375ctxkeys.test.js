@@ -408,8 +408,8 @@ function scanCtxReads() {
 
 // The GUARDED reads of keys `Game#ctx()` does not supply. Each one is a real gap -- the routine
 // silently does nothing from the driver -- and each is listed here with what it would need, so
-// that a NEW one fails this test instead of joining them unnoticed. Adding a key to `#ctx()`
-// means deleting its line here.
+// that a NEW one fails this test instead of joining them unnoticed. Supplying a key through `#ctx()` or
+// replacing an obsolete optional read with a direct production call means deleting its line here.
 //
 // `unported` and `bgVram` LEFT THIS INVENTORY IN W375's SECOND PASS. Both were the same alias
 // defect as `tx`/`videoRegs`, only guarded, and both are now supplied by `Game#ctx()` and
@@ -421,6 +421,9 @@ function scanCtxReads() {
 const KNOWN_MISSING_OPTIONAL = Object.freeze({
   // W460 removed `clear24631C`: slots [8], [13], and [14] now import the verified
   // stageend.js body directly, so the cartridge clear cannot degrade to a no-op.
+  // W509 removed `load246710`, `loadAnim0`, `ready24681A`, and `commit246800`: the reached
+  // objslot7pool.js `$2907E2` state machine now calls the existing production loaders, check,
+  // and free directly, so none remains a guarded ctx read or a missing Game#ctx capability.
   rankByte: '$242E24. Ported as makeRankObject\'s own read; not on ctx, so slot [14] state 1 '
     + 'takes rank 0 and always picks tableA.',
   // `menuCarry28D53C` LEFT THIS INVENTORY IN W418, and its line here was FALSE the whole time.
@@ -433,10 +436,6 @@ const KNOWN_MISSING_OPTIONAL = Object.freeze({
   // you add a line here, and again when you read one.**
   menuGate2901E0: 'objslot7pool.js:563 -- an OVERRIDE by design: `(ctx.menuGate2901E0 ?? '
     + 'menuGate2901E0)` falls back to the module\'s own ported gate. Absent from ctx on purpose.',
-  load246710: '$246710, the animation-resource load. Not ported.',
-  loadAnim0: '$24641A mode 0. Not ported.',
-  ready24681A: '$24681A. Not ported.',
-  commit246800: '$246800. Not ported.',
   cue28CC28: '$28CC28. Not ported.',
 });
 
