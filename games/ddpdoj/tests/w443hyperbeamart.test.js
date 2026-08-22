@@ -561,7 +561,7 @@ test('W443 SECTION 5: W226\'s $24B900+$02AA already serves the hyper block '
   assert.ok(holds(PTRTAB, PTRTAB + PAIRS * PAIRSTRIDE),
     'and so is the pair table it abuts');
   // The standing tripwire. This wave adds NO window.
-  assert.equal(ROM_WINDOW_COUNT, 618,
-    'W478-W481 later add five windows; W443 itself still declares none');
+  assert.equal(ROM_WINDOW_COUNT, 629,
+    'W482-W486 add eleven further windows; W443 itself still declares none');
   assert.equal(ROM_OVERLAP_PAIRS, 75, 'where W428 left it');
 });

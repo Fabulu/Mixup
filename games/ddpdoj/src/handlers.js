@@ -9363,15 +9363,20 @@ const T4F = Object.freeze({
   buckets: Object.freeze([7, 22]),
 });
 
+/** `$2704AA..$2704C0` -- the one retirement tail shared by types $4F and $50. */
+function retire4F50(ram, a5, a6, ctx) {
+  const effect = spawnEffect(ram, ctx, 0x04, 0x2704ae);    // $2704AA..$2704AE
+  ram.setU32(effect + B.pos, ram.u32(a6 + S.posX));        // $2704B4
+  ram.setU16(effect + B.bucket, 0x10);                     // $2704BA
+  freeEnemy(ram, a5);                                      // $2704C0 jmp $263762
+}
+
 /** `$2702E6` -- stage-5 enemy type $4F, the nested runtime child of type $4E. */
 function handler4F(ram, rom, a5, ctx) {
   const a6 = ram.u32(a5 + R.subRec);
 
   if (ram.u16(T4F.parentPresent) === 0) {                  // $2702E6 beq.w $2704AA
-    const effect = spawnEffect(ram, ctx, 0x04, 0x2704ae); // $2704AA..$2704AE
-    ram.setU32(effect + B.pos, ram.u32(a6 + S.posX));      // $2704B4
-    ram.setU16(effect + B.bucket, 0x10);                   // $2704BA
-    freeEnemy(ram, a5);                                    // $2704C0 jmp $263762
+    retire4F50(ram, a5, a6, ctx);
     return;
   }
 
@@ -9437,10 +9442,7 @@ function handler50(ram, rom, a5, ctx) {
   const a6 = ram.u32(a5 + R.subRec);
 
   if (ram.u16(T50.parentPresent) === 0) {                    // $270446 beq.w $2704AA
-    const effect = spawnEffect(ram, ctx, 0x04, 0x2704ae);   // $2704AA..$2704AE
-    ram.setU32(effect + B.pos, ram.u32(a6 + S.posX));        // $2704B4
-    ram.setU16(effect + B.bucket, 0x10);                     // $2704BA
-    freeEnemy(ram, a5);                                      // $2704C0 jmp $263762
+    retire4F50(ram, a5, a6, ctx);
     return;
   }
 
