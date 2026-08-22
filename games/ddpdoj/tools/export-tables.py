@@ -89,6 +89,11 @@ SHOT_WINDOWS = [
     (0x2551FA, 0x0006, "W164 death-reset formation cap bytes for formations 2/4/6"),
     (0x255B7C, 0x009C, "W164 death animation pointer list through its FFFFFFFF terminator"),
     (0x25291C, 0x000C, "W479 bonus-follower animation frames"),
+    # W482: type $4E, type $4C's paired child and a deferred source for type $4F.
+    # The init dispatcher reads the eight-byte stub. The translated body reads the adjacent two-word
+    # record prototype and one 28-byte long-form sub-record prototype, ending exactly at the handler.
+    (0x2701D6, 0x0008, "W482 type $4E init stub read by initDispatch"),
+    (0x270202, 0x0020, "W482 type $4E record and sub-record prototypes, ending at its handler"),
     # W481: type $52, the first live runtime-selected child of type $4C.
     # The init dispatcher reads the eight-byte stub as data. The translated body then reads nine
     # record words followed by one 28-byte long-form sub-record prototype, ending at the handler.

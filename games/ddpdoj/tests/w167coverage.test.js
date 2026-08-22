@@ -111,7 +111,9 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   // never in `w314stage5scope`'s work list and the number moved anyway.
   // W481: 95 -> 96 ported and 31 -> 30 unknown, type $52 ($270694), the first child selected by
   // a corrected live type-$4C deferred lifecycle bench.
-  assert.match(got.stdout, /enemy_types: 96\/256 ported, 30 unknown, 130 null/);
+  // W482: 96 -> 97 ported and 30 -> 29 unknown, type $4E ($270222), the paired child whose expiry
+  // enqueues two type-$4F records with independently biased coordinates.
+  assert.match(got.stdout, /enemy_types: 97\/256 ported, 29 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
   assert.match(got.stdout, /stage3_spawn_script: 414\/414 ported, 0 unknown, 0 null/);

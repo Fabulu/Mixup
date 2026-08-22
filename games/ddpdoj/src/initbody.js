@@ -2134,6 +2134,16 @@ BODY.set(0x26f4e2, (ram, rom, a5, a6, unported, _tables, palette) => {
     'Stage-5 type $4C palette bank $14');                  // $26F548
 });
 
+// --- type $4E ($2701D6 init, $2701DE body): type $4C's paired deferred child.
+// The parent supplies the packed position at +$16 and a lateral child bias at +$1A. The body copies the
+// position after loading the single long-form sub-record, then installs only two record words, so +$1A stays
+// intact for the handler's expiry split.
+BODY.set(0x2701de, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x270206);                // $2701DE..$2701EA jsr $2637A2
+  ram.setU32(a6 + 0x02, ram.u32(a5 + 0x16));               // $2701EA move.l ($16,A5),($2,A6)
+  loadRecordProto(ram, rom, a5, 0x270202, 0x01);           // $2701F0..$270200 D0+1 = TWO words
+});
+
 // --- type $52 ($270634 init, $27063C body): the first live child selected by type $4C.
 // The deferred record supplies the packed position at +$16 and heading in the high byte at +$1A.
 // The body copies both into the sub-record after loading its prototype, then installs nine record words.

@@ -193,7 +193,10 @@ test('the Stage-1 through W223 Stage-4 bodies are dispatched', () => {
   // W481: 88 -> 89, type $52's body $27063C, selected by type $4C through the deferred queue.
   assert.ok(INIT_BODY_ADDRESSES.includes(0x27063c),
     'W481: type $52 body $27063C -- the first live runtime-selected child of type $4C');
-  assert.equal(INIT_BODY_ADDRESSES.length, 89,
+  // W482: 89 -> 90, type $4E's body $2701DE, emitted as a mirrored pair by type $4C.
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x2701de),
+    'W482: type $4E body $2701DE -- type $4C\'s paired child and a source for type $4F');
+  assert.equal(INIT_BODY_ADDRESSES.length, 90,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
     + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
     + `W170's $277836, W171's $276946, W172's $27751C, W173's $275154, `
@@ -207,7 +210,7 @@ test('the Stage-1 through W223 Stage-4 bodies are dispatched', () => {
     + `W203's $266D36, W207's $29EAE2, W209's $29E580, W211's $27896A, `
     + `W212's $27AC4A, W213's $27CFAC, W214's $27AD96, W215's `
     + `$27B2FE/$27C28E, W216's $27D404, and W217's $27CEB4, W218's $27C5BE/$27DA78, W219's $29EC82, and W223's $2A37E4, and W254's $2A3952, `
-    + `W316's $270DD8, W317's $2659E4, W319's $27640C, W323's $26925E, W400's $26DF48, and W481's $27063C`);
+    + `W316's $270DD8, W317's $2659E4, W319's $27640C, W323's $26925E, W400's $26DF48, W481's $27063C, and W482's $2701DE`);
 });
 
 test('runInitBodyAddr throws on an unknown body address', () => {

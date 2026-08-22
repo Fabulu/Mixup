@@ -6102,3 +6102,26 @@ The affected set passed **136/136** and the full DaiOuJou suite passed **4,305/4
 W481 was the fifth interval wave after build `20260821205739`. The quiet-tree publication completed the
 Gradius, DaiOuJou bundle and web-fetch, Batman, build, ROM-leak, deployment, and live-confirmation gates and
 published build **`20260822010546`**.
+
+### D90: W482 STAGE-5 TYPE `$4E`: PAIRED TYPE `$4C` CHILD
+
+The corrected deferred lifecycle next selected type `$4E`, init stub `$2701D6`, first missing read `$2701D8`,
+and handler `$270222`. W482 translates body `$2701DE`: it loads the exact one-record long-form prototype at
+`$270206`, copies the parent-supplied packed position before installing the two-word record prototype at
+`$270202`, and deliberately preserves the parent lateral bias at `+$1A`.
+
+The handler calls vector lookup `$241812` directly, without `$2417DE`'s freeze gate, and advances both packed
+position words. Its `$28`-frame expiry enqueues two type `$4F` children, with the second child receiving
+independent `+$0A00` and parent-bias word additions, then frees type `$4E`. Surviving frames draw fixed art
+`$1499CC` through the register-convention bucket-2 stub `$23DF2A`. Enemy coverage moves from **96/256
+ported, 30 unknown, 130 null** to **97/256 ported, 29 unknown, 130 null**. Init-body coverage moves from 89
+to 90 registered bodies.
+
+Two exact ROM windows cover the eight-byte init stub and the contiguous `$20`-byte prototype block. The local
+export moves from 618 to **620 windows** while staying at **75 overlapping pairs**. One compact synthetic test
+covers deferred init, exact prototype fields, preserved parent bias, movement, both child coordinates, and
+free. The focused lifecycle, registry, coverage, dependency, and ROM-window checks pass **43/43** with no
+skips. No browser assets were regenerated, and W482 is not published.
+
+Continuing the corrected lifecycle one drain further reaches the next runtime blocker: type `$4F`, init
+`$270298`, first missing read `$27029A`, and handler `$2702E6`.

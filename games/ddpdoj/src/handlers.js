@@ -8693,6 +8693,7 @@ const HANDLERS = new Map([
   [0x2710e2, handler46],   // W352: stage-5 extend-spawn-retract arm, $55's PARENT, spec in T46
   [0x268e6c, handler1A],   // W365: stage-5 slewing twin-weapon turret -- spec in T1A
   [0x26f5f2, handler4C],   // W372: stage-5 multi-part set piece -- spec in T4C
+  [0x270222, handler4E],   // W482: type $4C's paired child, splitting into type $4F
   [0x270694, handler52],   // W481: type $4C's first live runtime-selected child
   [0x2a4606, handler2A4606],  // W363: HIBACHI, stage 5's boss-route root -- spec in TB0. Its body
                               // $2A6B94 is a note(), so it appears and lets the stage clear but does
@@ -9302,6 +9303,50 @@ const T1A = Object.freeze({
   spawnEffect: 0x289004,
   deathEffectKinds: Object.freeze([0xd, 0x5, 0x5]),
 });
+
+// ============================================ TYPE $4E (W482) ==================
+// Type $4C emits this one-part child as a mirrored pair. It travels for $28 frames, then replaces itself
+// with two type-$4F children. The second child receives two independent word additions, not one packed long
+// addition, so neither coordinate can carry into the other.
+const T4E = Object.freeze({
+  handler: 0x270222,
+  child: 0x4f,
+  emit: 0x23df2a,
+  art: 0x001499cc,
+});
+
+/** `$270222` -- stage-5 enemy type $4E, type $4C's paired deferred child. */
+function handler4E(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + R.subRec);
+
+  // This calls $241812 directly. Unlike $2417DE, it has no $8130D2 freeze gate.
+  const velocity = ctx.tables.vector(ram.u8(a6 + S.speed), ram.u8(a6 + S.heading));
+  ram.setU16(a6 + S.posX, u16(ram.u16(a6 + S.posX) + velocity.dy)); // $270234 add.w D2
+  ram.setU16(a6 + S.posY, u16(ram.u16(a6 + S.posY) + velocity.dx)); // $270238 add.w D3
+
+  const life = u16(ram.u16(a5 + R.rec18) - 1);             // $27023C subq.w #1
+  ram.setU16(a5 + R.rec18, life);
+  if (life === 0) {
+    const pos = ram.u32(a6 + S.posX);
+    const first = enqueueDeferred(ram, T4E.child, DEFQ_D1.FIXED00); // $270244 jsr $263684
+    if (!first.dropped) ram.setU32(first.addr + 0x16, pos);          // $27024C
+
+    const second = enqueueDeferred(ram, T4E.child, DEFQ_D1.FIXED00); // $270252 jsr $263684
+    if (!second.dropped) {
+      ram.setU32(second.addr + 0x16, pos);                           // $27025A
+      ram.setU16(second.addr + 0x16,
+        u16(ram.u16(second.addr + 0x16) + 0x0a00));                  // $270260 addi.w
+      ram.setU16(second.addr + 0x18,
+        u16(ram.u16(second.addr + 0x18) + ram.u16(a5 + R.rec1A)));  // $270266 add.w
+    }
+    freeEnemy(ram, a5);                                             // $27026E jmp $263762
+    return;
+  }
+
+  enqueueRegistersThroughStub(ram, rom, T4E.emit,
+    u32(ram.u32(a6 + S.posX) + 0xfa00ff00), T4E.art,
+    0x0608, ram.u8(a6 + S.palette));                                // $270276..$270290
+}
 
 // ============================================ TYPE $52 (W481) ==================
 // Type $4C enqueues this one-record child from state 2 and its part-3 animator. The child keeps the

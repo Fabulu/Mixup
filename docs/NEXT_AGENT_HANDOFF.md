@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W481)
+Updated: 2026-08-22 (W482)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,20 +8,35 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W481 ports stage-5 enemy type `$52`, the first live runtime-selected
-child of type `$4C`.** Its deferred init and full handler now run, including movement, lifetime and parent
-gates, hit and death behavior, seven ordered state bits, paired fire, aim and slew, and both draw paths.
-Enemy-handler coverage is 96/256 ported, 30 unknown, and 130 null. W477's 15-mod start screen keeps direct
-and empty launches vanilla, makes Invincibility explicit, and leaves labelled progression interventions intact.
-The MAME death oracle passed three invulnerability-off hits, two respawns, the `2 -> 1 -> 0 -> $FFFF` life
-sequence, and game-over request 2. Live duplicate counts remain 15 narrow heads, 68 widened heads, 27 body
-pairs, and 22 body-only findings, but those rows wait until after White Label. W481 is live as build
-`20260822010546` after browser regeneration and the complete quiet-tree publication gate. DaiOuJou passed
-4,305/4,305 tests with no failures or skips; the bundle and web-fetch gates passed too.
+`docs/DOCKET.md` is authoritative. **W482 ports stage-5 enemy type `$4E`, the next runtime-proven child of
+type `$4C`.** Its deferred init, direct vector movement, fixed bucket-2 draw, `$28`-frame lifetime, paired
+type-`$4F` split, and free now run. Enemy-handler coverage is 97/256 ported, 29 unknown, and 130 null.
+W477's 15-mod start screen keeps direct and empty launches vanilla, makes Invincibility explicit, and leaves
+labelled progression interventions intact. The MAME death oracle passed three invulnerability-off hits, two
+respawns, the `2 -> 1 -> 0 -> $FFFF` life sequence, and game-over request 2. Live duplicate counts remain 15
+narrow heads, 68 widened heads, 27 body pairs, and 22 body-only findings, but those rows wait until after White
+Label. W481 remains live as build `20260822010546` after browser regeneration and the complete quiet-tree
+publication gate. That published gate passed 4,305/4,305 DaiOuJou tests; W482's focused set passes 43/43 and
+has not been published.
 
-Next, continue the corrected bounded stage-5 lifecycle bench at its next runtime blocker: type `$4E`, init
-`$2701D6`, first missing read `$2701D8`, and handler `$270222`. Do not select a target from static scanning
+Next, continue the corrected bounded stage-5 lifecycle bench at its next runtime blocker: type `$4F`, init
+`$270298`, first missing read `$27029A`, and handler `$2702E6`. Do not select a target from static scanning
 alone. Keep the fix bounded to this runtime evidence and the exact ROM windows its reached path requires.
+
+## W482 VERIFIED: PAIRED TYPE `$4C` CHILD
+
+The lifecycle selected type `$4E` at init `$2701D6` and failed on its stub word at `$2701D8`. W482 adds body
+`$2701DE`, handler `$270222`, and the exact init and prototype windows. The body loads one long-form sub-record,
+copies the parent position, installs a two-word record prototype, and preserves the parent `+$1A` lateral bias.
+The handler calls `$241812` directly, moves, draws through `$23DF2A`, and on expiry creates two type `$4F`
+children. The second child receives separate `+$0A00` and parent-bias word additions before `$4E` frees.
+
+Coverage moves from 96 ported and 30 unknown to 97 ported and 29 unknown; 130 null entries do not move. The
+init registry moves from 89 to 90 bodies. Two disjoint windows move the local export from 618 to 620 windows,
+with 75 overlapping pairs unchanged. The 43 focused lifecycle, registry, coverage, dependency, and window
+checks pass with no skips. Browser assets were not regenerated, and W482 is not published. Continuing the same
+lifecycle one drain further runtime-proves type `$4F`, init `$270298`, first missing read `$27029A`, and handler
+`$2702E6` as the next blocker.
 
 ## W481 VERIFIED: FIRST LIVE TYPE `$4C` CHILD
 
