@@ -3189,6 +3189,12 @@ SHOT_WINDOWS.extend([
                        "with 43 picture words total, followed by $8002, $8003, and $FFFF. It exports "
                        "only the runtime-selected script and stops exactly at variant 0's fifth script, "
                        "$291172"),
+    (0x291172, 0x003E, "W508: slot [7] variant-0 fifth and final listed script, $291172..$2911AF -- "
+                       "two $8001 groups with 16 picture words total, a second $8000 cadence command, "
+                       "$8002, $8003, and $FFFF. It stops exactly at $2911B0 menu code"),
+    (0x29060A, 0x0004, "W508: slot [7] fifth-script spawn-table longword for concrete index $D2"),
+    (0x290656, 0x0004, "W508: slot [7] fifth-script spawn-table longword for concrete index $E5"),
+    (0x29065A, 0x0004, "W508: slot [7] fifth-script spawn-table longword for concrete index $E6"),
     (0x2902EA, 0x0004, "W507: slot [7] fourth-script spawn-table longword for concrete index $0A"),
     (0x2903F6, 0x0004, "W507: slot [7] fourth-script spawn-table longword for concrete index $4D"),
     (0x2903FA, 0x0004, "W507: slot [7] fourth-script spawn-table longword for concrete index $4E"),

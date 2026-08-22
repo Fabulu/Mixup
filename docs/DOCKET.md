@@ -28,15 +28,17 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF LOCAL W507 (2026-08-23).** Dispatch remains **18 of 20**: W503 ports and registers
-`[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W507 drive that exact
-natural loop-2 edge through type 7's first four variant-0 scripts at `$290F66`, `$290F8E`, `$290FE2`, and
-`$2910F6`, including 110 visible spawns and four complete `$8003` resource lifecycles. W507's fourth
-script preserves 43 ordered art selections in 13, 13, 11, and 6-record position groups, spends its exact
-`$100` wait, clears the pool, and advances the list cursor to 16 without needing a new interpreter arm.
-Production build `20260822223516` still publishes W502 through W506 after the full publication gate and
-three consecutive live confirmations; W507 is local and unpublished. The exact next gameplay edge is
-variant 0's fifth script at `$291172`. The two without a handler are `[16] $256E7A` and `[18] $24902A`.
+**STANDING AS OF LOCAL W508 (2026-08-23).** Dispatch remains **18 of 20**: W503 ports and registers
+`[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W508 drive that exact
+natural loop-2 edge through type 7's complete five-script variant-0 list at `$290F66`, `$290F8E`, `$290FE2`,
+`$2910F6`, and `$291172`, including 126 visible spawns and five complete `$8003` resource lifecycles. W508's
+final script preserves 16 ordered art selections in two eight-record position groups, switches to `$0808`
+cadence for its final three spawns, spends its exact `$80` wait, clears the pool, and advances the list cursor
+to 20 without needing a new interpreter arm. The list's `$FFFFFFFF` then authentically selects inner state 1.
+Production build `20260822223516` still publishes W502 through W506 after the full publication gate and three
+consecutive live confirmations; W507 is committed as `f942dbe`, W508 is local, and neither is published. The
+exact next gameplay edge is sequence list A's first script at `$2914F0`. The two without a handler are `[16]
+$256E7A` and `[18] $24902A`.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
@@ -1984,7 +1986,43 @@ every `$400` position walk, pins the exact `$100` wait, loads and frees the one-
 handle and the presentation pool, and advances the list cursor from 12 to 16. The next call fails loudly at
 the unexported fifth script `$291172`. The direct rerun passes 1/1; the compact natural-integration,
 slot-7, registry, and coverage set passes 30/30. Table regeneration and verification measure 714 windows,
-445,585 bytes, and 76 overlap pairs. W507 is local; no full suite, browser export, build, or publication ran.
+445,585 bytes, and 76 overlap pairs. No full suite, browser export, build, or publication ran at W507's
+bounded verification point. W507 was subsequently committed as `f942dbe`.
+
+**W508 COMPLETES VARIANT 0'S FIVE-SCRIPT LIST AND FOLLOWS ITS AUTHENTIC TERMINATOR.** List entry 4
+at `$290F2E` points to `$291172`; `$FFFFFFFF` follows at `$290F32`. The exact fifth script spans
+`$291172..$2911AF`, is `$3E` bytes, and stops exactly before `$2911B0` menu code:
+
+```text
+8000 0000
+8001 4800 0200
+0054 004D 0054 0058 0064 00E5 00D2 0065
+8001 4000 0200
+00E6 004F 004D 005B 0059
+8000 0808
+0005 0005 0005
+8002 0080
+8003 0004
+FFFF
+```
+
+The 16 ordered picture words select 12 distinct cartridge art pointers. Two eight-record position groups
+begin at `$48000200` and `$40000200`, with each packed position advancing by `$400`. The initial `$0000`
+cadence emits the first 13 records on consecutive driver frames; `$8000 $0808` writes counter and reload
+bytes `$08/$08`, spacing the final three records by nine driver frames. Only spawn-table indices `$D2`,
+`$E5`, and `$E6` were absent; their exact longwords are `$29060A -> $1EC580`, `$290656 -> $1EC82C`, and
+`$29065A -> $1EC850`. Every other selection reuses W504-W507 windows. `$8002 $0080` observes an exact
+maximum loop count of `$80`. `$8003 $0004` selects the existing one-node resource at `$290E80`, already
+covered by W372's resource window, and performs the established load-once, wait-for-drain, free, and
+handle-clear lifecycle. No opcode or terminator arm changed.
+
+The fifth `$FFFF` advances variant 0's list cursor from 16 to 20 and the inter-script clear removes all
+fifth-script pool records. The existing `$FFFFFFFF` arm then advances variant 0 into inner state 1, which
+initializes sequence list A at `$2914C8`; its first pointer is the unexported `$2914F0` script. That loud
+`Unreached` is the next concrete runtime boundary, without inspecting another variant. The direct expanded
+integration passes 1/1, and the compact natural-integration, slot-7, registry, and coverage set passes 30/30
+with no failures or skips. W508 adds four disjoint windows and 74 bytes, so table regeneration measures 718
+windows, 445,659 bytes, and 76 overlap pairs. No full suite, browser export, build, or publication ran.
 
 **W502-W506 PUBLICATION FOLLOW-UP:** Production build `20260822223516` publishes all five waves from
 source commits `36b289b`, `bb9046b`, `5236b8a`, `96b0235`, and `66ebeaa`; bounded stale-test repair
@@ -1993,9 +2031,9 @@ bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate with zero 
 gate with zero skips, the distribution build, and the ROM-leak guard. Deployment and three consecutive
 live confirmations passed.
 
-This does not yet identify every ending-selection condition or close D37. After local W507, the exact next
-gameplay edge is variant 0's fifth type-7 script at `$291172`, again following only its first concrete
-runtime edge rather than broadening into speculative ending-selection research.
+This does not yet identify every ending-selection condition or close D37. After local W508, the exact next
+gameplay edge is sequence list A's first type-7 script at `$2914F0`, again following only the first concrete
+runtime edge rather than broadening into speculative ending-selection or other-variant research.
 
 **W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own
 text says otherwise: `$24910E` is `'Asic27 Test'`, `$24911A` is `'Wait or Press Any To Start !!'`, and the
