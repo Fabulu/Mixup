@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; local W502 ports D34's sole counted per-record `$25E72E` draw, including mailbox and active-record label exits, `$25F1EC` credit-message carry behavior, side-selected cartridge art, and ordinary bucket-7 output; production remains W501 build `20260822192350`, the next publication is W506, and the full second loop and docket remain in progress |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; local W503 restores the stage-5 result exit into live object type `$13`, including loop-aware life and bonus tallying, the exact 19-node ending chain, and the handoff to type 7; production remains W501 build `20260822192350`, the next publication is W506, and the full second loop and docket remain in progress |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason

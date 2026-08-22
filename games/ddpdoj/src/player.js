@@ -35,7 +35,8 @@ import {
 } from './hyper.js';
 import { spawnItem, collectHyperStock, POWER } from './items.js';
 import { BEAM, wipeSegmentPool } from './laser.js';
-import { hyperStock286ED6, txPrint240DC2, txPrint240E1A } from './hud.js';
+import { hyperStock286ED6, setPanelBody2532B6 } from './hud.js';
+export { setPanelBody2532B6 } from './hud.js';
 import { install2415A2 } from './palette.js';
 import { ALLOC, queueKill } from './objalloc.js';
 
@@ -354,74 +355,9 @@ const PLAYER_OBJECT = [
 // `$253322 add.w D7,D1` uses it after the call, and `$253324`'s `bmi` doubles it only for
 // P1 -- so P1 steps `+$200` and P2 `-$200`, matching the hardcoded steps in `$2533F6`/
 // `$253448` but derived. Two routines, the same immediate, one dead and one load-bearing.
-const PANEL_SIDES = Object.freeze([
-  Object.freeze({ site: 0x2532b6, d1: 0x0000, top: 0x02d8000a, step: 0x0100 }),
-  Object.freeze({ site: 0x2532d0, d1: 0x1b00, top: 0x02d8008a, step: 0xfe00 }),
-]);
-const PANEL_TILES = Object.freeze({
-  runA: 0x02cc000a,      // $25333E
-  runB: 0x02c0000a,      // $25335C
-  runC: 0x02c6000a,      // $253372
-  closer: 0x02d2000a,    // $253384
-});
-/** The two thresholds, on the PLAYER record. */
-const PANEL_LO = 0x24;   // $253338 move.b ($24,A6),D5
-const PANEL_HI = 0x25;   // $253330 move.b ($25,A6),D5
-// $25332C moveq #$5,D6. FIVE as an immediate, SIX passes through `dbra` -- the two
-// numbers are both correct and mean different things, so the constant keeps the
-// ROM's value and the `<=` in loop C is where the extra pass comes from.
-const PANEL_ROWS = 5;
+// W503: the body now lives with its `$240DC2`/`$240E1A` leaves in hud.js.
+// This file re-exports it for the existing player-facing API.
 
-/**
- * `$2532B6` (P1) / `$2532D0` (P2) -- the SET/bonus panel's five-row bar.
- *
- * @param rec the PLAYER record, `$8103E6` or `$810448`
- * @returns {{runA:number,runB:number,runC:number}} the three segment lengths, for a test
- */
-export function setPanelBody2532B6(ram, who, rec) {
-  const s = PANEL_SIDES[who === 0 ? 0 : 1];
-  let d1 = s.d1;
-  // $25331C -- the header, through the STRIDE printer, with D5 = 2 and D3 = 0.
-  txPrint240E1A(ram, 8, d1, 2, 0, s.top, 2);
-  d1 = u16(d1 + s.step);                                  // $253322 add.w D7,D1
-  // $253324 tst.w D7 / bmi / add.w D7,D7 -- doubled only when NON-NEGATIVE.
-  const step = (s.step & 0x8000) !== 0 ? s.step : u16(s.step + s.step);
-
-  const hi = ram.u8(rec + PANEL_HI);                      // $253330
-  const lo = ram.u8(rec + PANEL_LO);                      // $253338
-  // $253334 sub.b D5,D6 -- a BYTE subtract, so it wraps rather than going negative, and
-  // $25336E's `tst.b D6 / bmi` is what catches an ($25,A6) above 5.
-  const d6 = (PANEL_ROWS - hi) & 0xff;
-
-  // LOOP A: ($24,A6) rows, and it takes the same amount off the high half.
-  let runA = 0;
-  for (let n = lo; n !== 0; n = (n - 1) & 0xffff) {        // $25333C beq / $253354 bne
-    txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runA);     // $253344
-    d1 = u16(d1 + step);                                  // $25334A
-    runA++;
-  }
-  // LOOP B: what is LEFT of ($25,A6) after loop A took its share.
-  const left = u16(hi - runA);
-  let runB = 0;
-  if ((left & 0x8000) === 0 && left !== 0) {               // $253358 subq / bcs
-    for (let n = 0; n < left; n++) {                       // dbra
-      txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runB);   // $253362
-      d1 = u16(d1 + step);
-      runB++;
-    }
-  }
-  // LOOP C: 5 - ($25,A6), and `tst.b D6 / bmi` skips it when that wrapped negative.
-  let runC = 0;
-  if ((d6 & 0x80) === 0) {                                 // $25336E tst.b / bmi
-    for (let n = 0; n <= d6; n++) {                        // dbra runs D6+1 times
-      txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runC);    // $253378
-      d1 = u16(d1 + step);
-      runC++;
-    }
-  }
-  txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.closer);      // $25338A
-  return { runA, runB, runC };
-}
 
 /** `$2603B0`, jump-table entry 9 of `$25FF7A`: the SET/bonus panel, which the
  *  player object's own INIT arms through `$260846`. `$2534F8`/`$253522` fork on

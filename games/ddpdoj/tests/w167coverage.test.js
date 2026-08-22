@@ -94,7 +94,11 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   // this handler's teardown (`$28F368`) stages dispatch type 8 straight back. The three still
   // unknown are [16] $256E7A, [18] $24902A, [19] $28EE88, and none of them is on the cold-boot
   // path -- see `w387slot12.test.js` SECTION 3.
-  assert.match(got.stdout, /top_objects: 17\/20 ported, 3 unknown, 0 null/);
+  // W503: 17 -> 18 ported and 3 -> 2 unknown. Slot [19] = `$28EE88` is the
+  // bounded stage-5 ending tally. The result F8 arm stages it, it preserves
+  // loop-1 lives or drains loop-2 bonuses, waits for `$28D8C4`, then stages type 7.
+  // The two still unknown are [16] $256E7A and [18] $24902A.
+  assert.match(got.stdout, /top_objects: 18\/20 ported, 2 unknown, 0 null/);
   assert.match(got.stdout, /type5_calls: 23\/23 ported/);
   // W229: 72 -> 76 ported and 54 -> 50 unknown, the four the Stage-4 waves added
   // after W217 (W218's $27C81A and $27DB30, W219's Type-$40 boss, W223's $41).

@@ -83,10 +83,10 @@
 // `$25FD38`) has already happened in states 2 and 3.
 
 import { u16 } from './ram.js';
-import { stageCreate, queueKill, ALLOC } from './objalloc.js';
+import { stageCreate, queueKill, objTableInit24107C, ALLOC } from './objalloc.js';
 import { clearItemPool, bcd242AC6 } from './items.js';
 import { resetAndInstallStage26331E } from './spawn.js';
-import { bcdAdd, scoreByMask } from './score.js';
+import { bcdAdd, scoreByMask, scorePending } from './score.js';
 import { enqueueRegistersThroughStub, enqueueRegisters, enqueueRequest } from './spritequeue.js';
 import { install24150A } from './palette.js';
 import { clearEffectPool, clearSubEffectPool } from './effects.js';
@@ -108,7 +108,7 @@ import { buildChain246532, CHAIN_SPECS, loadAnimObjects24652A,
 // `hud.js` has PORTED that body since W116 and imports nothing from here, so this is
 // not a cycle: `hud.js -> items.js -> hud.js` is the pre-existing one, and this file
 // already sits above both.
-import { livesRow2878CC, note28C6C6 } from './hud.js';
+import { livesRow2878CC, note28C6C6, setPanelBody2532B6 } from './hud.js';
 
 export const SE = {
   stage: 0x813092, stageX2: 0x813094, stageX4: 0x813096,   // $25FD0C
@@ -127,7 +127,8 @@ export const SE = {
   result: 0x81debe, resultWords: 0x77,        // $28D552
   e024: 0x81e024, e026: 0x81e026, e028: 0x81e028, e02a: 0x81e02a, e02c: 0x81e02c,
   dispatch: 0x240f62,      // the object table; entry 6 is $28D63C, priority $A
-  type6: 6,
+  type6: 6, type7: 7, type13: 0x13,
+  ending13: 0x81e02e,      // $28EE88 A6; 20 words through $81E055
 };
 
 /** Both entry points into the stage-advance tail, and what separates them. */
@@ -840,17 +841,22 @@ function f7MedalWalk28DDB0(ram, rom) {
   }
 }
 
-/** `$28DE1E..$28DE78` -- F8 exit handshake: once `$8130F9` bit 1 is set, advance
- *  type 6 out of state 1: load the fly-away anim chain (`$24652A`), store its
- *  handle at `($8,A5)`, and set state `$B`.  The stage-5 variant (state $15,
- *  create type $13) is out of scope -- no stage 5 in the seed. */
+/** `$28DE1E..$28DE78` -- F8 exit handshake. Once `$8130F9` bit 1 is set,
+ *  ordinary stages load the fly-away chain and enter state `$B`. Stage 5 enters
+ *  state `$15` and stages object type `$13`, whose handler owns the ending tally
+ *  and handoff to object type 7. */
 function f8Exit28DE1E(ram, rom, ctx, a5) {
   const st = ram.u8(a5 + 0x06);                             // $28DE2A cmpi.b #$b
   if (st === 0x0b || st === 0x15) return;                   // $28DE30/$28DE38 beq rts
   if (ram.u16(a5 + 0x04) === 5) {                           // $28DE3A cmpi.w #$5
-    // stage-5 ending arm ($28DE44): create type $13.  Not reached on the seed.
-    note(ctx, 0x28de44, '$28DE44..$28DE58 stage-5 ending: lea $28D8C4 / state $15 '
-      + '/ jsr $241182 type $13. Out of scope (no stage 5)');
+    // $28DE44's `lea $28D8C4(PC),A0` is overwritten inside `$241182`; type $13
+    // reads that script itself at $28EEC6. The live effects here are the state
+    // store, type-$13 create, and the shared sound post at $28DE70.
+    ram.setU8(a5 + 0x06, 0x15);                              // $28DE48
+    const r = stageCreate(ram, SE.type13,
+      (t) => rom.u16(SE.dispatch + t * 8 + 4));              // $28DE4E/$28DE52
+    ctx.stageEndEvent?.('ending-created', r.addr, r.result);
+    ctx.soundPostD1?.(0x28c186, 0);                          // $28DE58 bra / $28DE70/$28DE72
     return;
   }
   // $28DE5C lea $28D862(PC),A0; $28DE60 move.b #$B,$6(A5); $28DE66 jsr $24652A
@@ -1506,6 +1512,196 @@ function bannerSlideOutStep(ram, ctx) {
   }
   ram.setU16(BANNER.dff6, 0);                               // $28EAD4 clr $81DFF6 -- THE CLEARER
   ram.setU16(a6, 0);                                        // $28EADA clr (a6)
+}
+
+// ============================================================================
+// W503: OBJECT TYPE $13, THE STAGE-5 ENDING TALLY AND TYPE-7 HANDOFF
+// ============================================================================
+
+export const ENDING13 = Object.freeze({
+  base: SE.ending13, words: 0x14,
+  flagsP1: 0x04, flagsP2: 0x05, stateP1: 0x06, stateP2: 0x08,
+  timer: 0x0a, delay: 0x0c, active: 0x0e, cue: 0x10, handle: 0x12,
+  animScript: 0x28d8c4,
+});
+
+const ENDING_SIDES = Object.freeze([
+  Object.freeze({
+    index: 0, who: 1, flags: ENDING13.flagsP1, state: ENDING13.stateP1,
+    rec: SE.p1, lives: 0x8130be, savedLives: 0x8130c2,
+    carry: 0x81e04e, aux: 0x81e052, marker: 0x81b4ac, gate: 0x81b49a,
+    bonus: 0x8128f4, stockByte: 0x81040a,
+  }),
+  Object.freeze({
+    index: 1, who: 2, flags: ENDING13.flagsP2, state: ENDING13.stateP2,
+    rec: SE.p2, lives: 0x8130c0, savedLives: 0x8130c4,
+    carry: 0x81e050, aux: 0x81e054, marker: 0x81b4b0, gate: 0x81b49e,
+    bonus: 0x812902, stockByte: 0x81046c,
+  }),
+]);
+
+/** `$28EE66..$28EE86`, reached when type `$13` has phase byte zero. */
+function endingInit28EE66(ram, a5) {
+  for (let i = 0; i < ENDING13.words; i++) {                 // $28EE68 move.w #$13 / dbra
+    ram.setU16(ENDING13.base + i * 2, 0);                    // $28EE6C
+  }
+  ram.setU8(a5 + 0x02, 1);                                  // $28EE74
+  ram.setU16(ENDING13.base + ENDING13.timer, 0x60);          // $28EE7A
+  ram.setU16(ENDING13.base + ENDING13.delay, 0x10);          // $28EE80
+}
+
+function endingPostCues(ram, ctx, p2, timerBeforeFlag) {
+  const base = ENDING13.base;
+  const cue = base + ENDING13.cue;
+  if (!p2) {
+    ram.setU16(base + ENDING13.timer, 0x30);                 // $28EF9A/$28EFE6/$28F046/$28F090
+    ram.setU8(cue, ram.u8(cue) | 0x01);                     // $28EFA0 and mirrors
+  } else {
+    if (timerBeforeFlag) ram.setU16(base + ENDING13.timer, 0x30); // $28F150
+    const wasSet = (ram.u8(cue) & 0x01) !== 0;
+    ram.setU8(cue, ram.u8(cue) & 0xfe);                     // $28F156 and mirrors
+    if (wasSet) return;                                     // shared cue already posted by P1
+    if (!timerBeforeFlag) ram.setU16(base + ENDING13.timer, 0x30);
+  }
+  ctx?.soundPost?.(0x28c678);
+  ctx?.soundPost?.(0x28c65e);
+  ctx?.soundPost?.(0x28c610);
+}
+
+function endingFinishSide(ram, side) {
+  const base = ENDING13.base;
+  ram.setU16(side.savedLives, ram.u16(side.carry));          // $28EF52/$28F108
+  ram.setU16(base + ENDING13.active,
+    u16(ram.u16(base + ENDING13.active) - 1));               // $28EF5C/$28F112
+  const flags = base + side.flags;
+  ram.setU8(flags, ram.u8(flags) | 0x80);                    // $28EF60/$28F116
+}
+
+/** `$28EEFA..$28F0AE` and mirrored `$28F0B0..$28F274`. */
+function endingSide28EEFA(ram, rom, ctx, side) {
+  const base = ENDING13.base;
+  const flags = base + side.flags;
+  const oldFlags = ram.u8(flags);
+  ram.setU8(flags, oldFlags | 0x01);                         // $28EEFA/$28F0B0 bset #0
+
+  if ((oldFlags & 0x01) === 0) {
+    if ((ram.u16(side.rec) & 0x8000) === 0) {                // $28EF04/$28F0BA bpl
+      ram.setU8(flags, ram.u8(flags) | 0x80);
+      return;
+    }
+    ram.setU16(side.carry, 0);                               // $28EF0E/$28F0C4
+    ram.setU16(side.aux, 0);                                 // $28EF14/$28F0CA
+    ram.setU32(side.marker, 0xffffffff);                     // $28EF1A/$28F0D0
+    if (ram.u16(side.gate) !== 0) {                          // $28EF24/$28F0DA
+      ram.setU8(flags, ram.u8(flags) | 0x80);
+      return;
+    }
+    if (ram.u16(0x813098) === 0) {                           // $28EF2E/$28F0E4
+      ram.setU16(side.savedLives, ram.u16(side.lives));      // $28EF38/$28F0EE
+      ram.setU8(flags, ram.u8(flags) | 0x80);
+      return;
+    }
+    ram.setU16(base + ENDING13.active,
+      u16(ram.u16(base + ENDING13.active) + 1));             // $28EF46/$28F0FC
+    ram.setU16(base + side.state, 2);                        // $28EF4A/$28F100
+    return;
+  }
+
+  if ((ram.u8(flags) & 0x80) !== 0) return;                  // $28EF68/$28F11E
+  const stateAddr = base + side.state;
+  const state = ram.u16(stateAddr);
+
+  if (state === 1) {
+    if (ram.u16(side.lives) === 0) { endingFinishSide(ram, side); return; }
+    scorePending(ram, side.who, 0x03000000);                 // $28EF82/$28F138
+    ram.setU16(side.lives, u16(ram.u16(side.lives) - 1));    // $28EF8E/$28F144
+    livesRow2878CC(ram, rom, ctx, side.index);               // $28EF94/$28F14A
+    endingPostCues(ram, ctx, side.index === 1, true);
+    return;
+  }
+
+  if (state === 2) {
+    if (ram.u16(side.lives) === 0) {                         // $28EFC4/$28F17E
+      ram.setU16(stateAddr, 3);                              // $28F006/$28F1C4
+      return;
+    }
+    scorePending(ram, side.who, 0x05000000);                 // $28EFCE/$28F188
+    ram.setU16(side.lives, u16(ram.u16(side.lives) - 1));
+    livesRow2878CC(ram, rom, ctx, side.index);
+    endingPostCues(ram, ctx, side.index === 1, false);
+    return;
+  }
+
+  if (state === 3) {
+    if ((ram.u8(side.rec) & 0x40) !== 0 || ram.u16(side.bonus) === 0) {
+      ram.setU16(stateAddr, 4);                              // $28F066/$28F228
+      return;
+    }
+    scorePending(ram, side.who, 0x10000000);                 // $28F02E/$28F1EC
+    ram.setU16(side.bonus, 0);
+    setPanelBody2532B6(ram, side.index, side.rec);            // $28F040/$28F1FE
+    endingPostCues(ram, ctx, side.index === 1, false);
+    return;
+  }
+
+  if (ram.u8(side.stockByte) === 0) { endingFinishSide(ram, side); return; }
+  scorePending(ram, side.who, 0x00500000);                   // $28F078/$28F23A
+  ram.setU8(side.stockByte, (ram.u8(side.stockByte) - 1) & 0xff);
+  setPanelBody2532B6(ram, side.index, side.rec);              // $28F08A/$28F24C
+  endingPostCues(ram, ctx, side.index === 1, false);
+}
+
+/** `$28D5FA..$28D638`, the ending tally's transition into object type 7. */
+function endingHandoff28D5FA(ram, rom, ctx) {
+  clear24631C(ram);                                          // $28D5FA
+  objTableInit24107C(ram);                                   // $28D600
+  clear28D552(ram);                                          // $28D606
+  clear27F8C4(ram);                                          // $28D60A
+  clear287DDC(ram);                                          // $28D610
+  ram.setU16(SE.bossFlags, 0);                               // $28D616
+  resetPower25313E(ram, ctx, SE.p1, 0x25313e);               // $28D61C
+  resetPower25313E(ram, ctx, SE.p2, 0x25318e);               // $28D622
+  ram.setU16(0x81b6ee, 0);                                  // $28D628
+  return stageCreate(ram, SE.type7,
+    (t) => rom.u16(SE.dispatch + t * 8 + 4));                // $28D630/$28D634
+}
+
+/** `$28EE88`, object dispatch type `$13` (decimal 19, priority `$001E`). */
+export function makeStage5Ending(rom) {
+  return function stage5Ending(ram, slot, index, ctx) {
+    void index;
+    const base = ENDING13.base;
+    // `$28F276` is a bare `rts` in Version B, so the entry's first bsr is inert.
+    if (ram.u8(slot + 0x02) === 0) { endingInit28EE66(ram, slot); return; } // $28EE92/$28EE96
+    if (ram.u16(base + ENDING13.timer) !== 0) {              // $28EE98
+      ram.setU16(base + ENDING13.timer,
+        u16(ram.u16(base + ENDING13.timer) - 1));             // $28EEA0
+      return;
+    }
+    endingSide28EEFA(ram, rom, ctx, ENDING_SIDES[0]);        // $28EEA6
+    endingSide28EEFA(ram, rom, ctx, ENDING_SIDES[1]);        // $28EEAA
+    if (ram.u16(base + ENDING13.active) !== 0) return;       // $28EEAE
+
+    if (ram.u16(base + ENDING13.delay) !== 0) {              // $28EEB6
+      const n = u16(ram.u16(base + ENDING13.delay) - 1);
+      ram.setU16(base + ENDING13.delay, n);                  // $28EEBE
+      if (n !== 0) return;                                   // $28EEC2
+      const handle = loadAnimObjects24652A(ram, rom, ENDING13.animScript); // $28EEC6/$28EECC
+      ram.setU32(base + ENDING13.handle, handle >>> 0);      // $28EED2
+      return;
+    }
+
+    const handle = ram.u32(base + ENDING13.handle) >>> 0;    // $28EED8
+    const sum = (handle === 0 || handle === 0xffffffff)
+      ? 0 : chainCheck24681A(ram, handle);                   // $28EEDC
+    if (sum !== 0) return;                                   // $28EEE2
+    if (handle !== 0 && handle !== 0xffffffff) {
+      freeAnimObjects246800(ram, handle);                    // $28EEE6/$28EEEA
+    }
+    const r = endingHandoff28D5FA(ram, rom, ctx);            // $28EEF0
+    ram.setU16(slot, 0);                                     // $28EEF6
+    ctx?.stageEndEvent?.('ending-handoff', r.addr, r.result);
+  };
 }
 
 /**

@@ -2479,6 +2479,11 @@ SHOT_WINDOWS.extend([
     (0x28D864, 0x0060, "W435: anim-chain script CONTENT at $28D864 -- 8 nodes x "
                        "6 words for $246582's shape; ends at $28D8C4, the "
                        "stage-5 script $28DE44 leas"),
+    # W503: type $13 reloads the stage-5 script at $28EEC6 and passes it to
+    # $24652A. Its count word is 19 and each node is six words, so the exact
+    # extent is 2 + 19*12 = $E6 bytes, ending at $28D9AA (result-screen code).
+    (0x28D8C4, 0x00E6, "W503: stage-5 ending chain $28D8C4 -- count word plus "
+                       "19 nodes x 6 words; ends at $28D9AA code"),
     # W124: the next-stage BG PALETTE block at $229DF8.  background.js:1059 reads
     # rom.bytes(bgBlock, 32*64) = 2048 bytes during the stage-transition rebuild
     # ($2611C4 install2415E8 with D1=$1F = 32 banks x 64 bytes).  CATCHUP 7a named

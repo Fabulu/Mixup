@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W502 verified locally; production remains W501 build `20260822192350`)
+Updated: 2026-08-22 (W503 verified locally; production remains W501 build `20260822192350`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,22 +8,24 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **Local W502 removes D34's sole counted per-record draw.** Slot [9]
-now calls live `$25E72E..$25E7B7` once for each live or dead selection record. The body preserves D7 record
-and side selection, `$260A7C` mailbox-state gating, active-record and global-gate label exits, `$25F1EC`
-credit/configuration carry, shared `$25F2D0` labels, independent packed-coordinate half additions, returned
-art offset, and ordinary `$23E08C` bucket-7 output. W501's state-7 animation, W500's ROM-fed one/two-round
-mode selector, two-side rendezvous, `{0,2}` ship domain, `{2,4,6}` style domain, draw-tail order, P2 controller
-transport, and ordinary browser launch remain unchanged.
+`docs/DOCKET.md` is authoritative. **Local W503 restores the live stage-5 ending arm.** Result F8
+`$28DE44..$28DE58` parks type 6 in state `$15`, stages dispatch type `$13`, and keeps the shared
+`$28C186` post. Entry 19 is `$28EE88` with priority `$001E`. Its bounded Version-B handler clears the
+20-word `$81E02E..$81E055` tally block, waits `$60`, preserves remaining P1/P2 lives on loop 1 or drains
+loop-2 life, item, and stock bonuses through packed BCD, keeps the mirrored shared-cue suppression, waits
+`$10`, loads and drains the exact 19-node `$28D8C4` chain, runs `$28D5FA`, and stages type 7. Top-level
+dispatch coverage is now 18/20; only types 16 and 18 remain unknown.
 
-W502 adds exact disjoint windows `$25E716+$18` and `$25F270+$60`. `export-tables.py` regenerated 639
-windows and 444,733 bytes; overlap pairs remain 76. The compact draw, slot, context, shared-label, state-7
-preservation, and registry set passes 54/54 with no failures or skips, and syntax checks pass. The full suite,
-`export-web.mjs`, and publication did not run. Production remains W501 build `20260822192350`, which passed
-4,397/4,397 DDPDOJ units and published W497 through W501. W506 is the next publication wave.
+W503 adds exact abutting window `$28D8C4+$E6`. `export-tables.py` regenerated 640 windows and
+444,963 bytes; overlap pairs remain 76. The focused and directly affected stage-end, object coverage,
+panel-helper, and global-window set passes 139/139 with no failures or skips. Syntax, docket-ID,
+diff-whitespace, and U+2014 checks pass. The full suite, `export-web.mjs`, and publication did not run.
+Production remains W501 build `20260822192350`, which passed 4,397/4,397 DDPDOJ units and published
+W497 through W501. W506 is the next publication wave.
 
-No next gameplay target has yet been established. Continue from fresh Black Label runtime or docket evidence,
-keep the next wave bounded, and do not substitute duplicate-only cleanup or an invented D34 edge for evidence.
+The next bounded gameplay/progression check is the stage-5 handoff through the already-ported type-7
+path. Drive the real transition far enough to identify its first concrete unported or divergent edge;
+do not broaden into ending-selection reconnaissance, duplicate-only cleanup, or a guessed visual path.
 
 **W497 remains the first substantial D26 implementation slice.** The cartridge-proven ship domain is `{0,2}`
 and the style domain is `{2,4,6}`. Selector 0 is Type-A and selector 2 is Type-B. The cartridge census does
@@ -44,6 +46,28 @@ unknown-only, direct, Original, and later vanilla-Game paths install no mod call
 the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage remains 101/256 ported, 25
 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
+
+## W503 VERIFIED LOCALLY: STAGE-5 ENDING TALLY AND TYPE-7 HANDOFF
+
+Exact Version-B code settles the arm. `$28D6CE` recognizes state `$15` and calls `$28D9AA` without
+advancing type 6. F8 at `$28DE44` loads `$28D8C4`, stores state `$15`, puts `$13` in D0, calls
+`$241182`, and reaches the shared sound post. The allocator overwrites incoming A0, so the live
+cartridge effect is object creation; type `$13` reloads `$28D8C4` itself at `$28EEC6`.
+
+`makeStage5Ending` transcribes `$28EE66..$28F276` and `$28D5FA`. `$28F276` is inert in Version B.
+The mirrored side records preserve loop-1 lives to `$8130C2/$8130C4`; loop 2 awards `$5,000,000`
+per life, `$10,000,000` for the item bonus, and `$500,000` per stock byte through existing packed-BCD
+pending ledgers. P1 sets and P2 clears one shared cue bit, preventing duplicate posts when both award
+on the same pass. Once both sides retire, the handler spends the `$10` delay, waits for the 19-node
+animation chain's 32 live frames, frees it, resets shared systems, clears itself, and stages type 7.
+
+The one new cartridge dependency is the count word plus 19 six-word records at `$28D8C4+$E6`.
+It starts exactly at W435's prior window end and ends at `$28D9AA` code. The global set is 640 windows,
+444,963 bytes, and 76 overlapping pairs. Five new W503 tests pin F8 creation, exact 20-word init,
+loop-1 preservation and full chain handoff, loop-2 scoring, and simultaneous P1/P2 cue suppression.
+With directly affected coverage, panel, and window checks, the local set is 139/139. The F8 test was
+red-validated by changing state `$15` to `$14`; it failed on the exact `$28DE48` assertion and passed
+after restoration.
 
 ## W502 VERIFIED LOCALLY: `$25E72E` PER-RECORD DRAW
 
@@ -66,7 +90,8 @@ mailboxes, all three label-only gates, carry suppression, TX messages, and separ
 directly affected W373, W375, W428, W488, and W501 files, the compact set passes 54/54.
 
 W502 is local only. Do not run `export-web.mjs` until a publication wave requires regenerated assets. The
-next publication is W506. No next gameplay target is established by this wave.
+next publication is W506. **Superseded by W503:** the stage-5 F8 arm and type `$13` ending tally are
+now the current progression slice, as recorded above.
 
 ## W501 PUBLISHED: `$25F530/$25F592` STATE-7 ANIMATION
 

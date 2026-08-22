@@ -790,6 +790,55 @@ export function txPrint240E1A(ram, d0, d1, d2, d3, d4, d5) {
   txDeferGrid(ram, d0, d1, d2, d3, u32(d4 + 0xc0000000), 0x10000, stride);
 }
 
+// `$2532B6` and `$2532D0` are direct users of the two text-grid leaves above.
+// W503 moved this body from player.js so stageend.js can reuse it without the
+// stageend -> player -> bomb -> boss -> stageend initialization cycle.
+const PANEL_SIDES = Object.freeze([
+  Object.freeze({ d1: 0x0000, top: 0x02d8000a, step: 0x0100 }),
+  Object.freeze({ d1: 0x1b00, top: 0x02d8008a, step: 0xfe00 }),
+]);
+const PANEL_TILES = Object.freeze({
+  runA: 0x02cc000a, runB: 0x02c0000a, runC: 0x02c6000a, closer: 0x02d2000a,
+});
+
+/** `$2532B6` (P1) / `$2532D0` (P2), the SET/bonus panel's segmented bar. */
+export function setPanelBody2532B6(ram, who, rec) {
+  const s = PANEL_SIDES[who === 0 ? 0 : 1];
+  let d1 = s.d1;
+  txPrint240E1A(ram, 8, d1, 2, 0, s.top, 2);               // $25331C
+  d1 = u16(d1 + s.step);                                    // $253322
+  const step = (s.step & 0x8000) !== 0 ? s.step : u16(s.step + s.step);
+  const hi = ram.u8(rec + 0x25);                            // $253330
+  const lo = ram.u8(rec + 0x24);                            // $253338
+  const d6 = (5 - hi) & 0xff;                               // $25332C..$253334
+
+  let runA = 0;
+  for (let n = lo; n !== 0; n = (n - 1) & 0xffff) {
+    txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runA);      // $253344
+    d1 = u16(d1 + step);
+    runA++;
+  }
+  const left = u16(hi - runA);
+  let runB = 0;
+  if ((left & 0x8000) === 0 && left !== 0) {
+    for (let n = 0; n < left; n++) {
+      txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runB);    // $253362
+      d1 = u16(d1 + step);
+      runB++;
+    }
+  }
+  let runC = 0;
+  if ((d6 & 0x80) === 0) {
+    for (let n = 0; n <= d6; n++) {
+      txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runC);    // $253378
+      d1 = u16(d1 + step);
+      runC++;
+    }
+  }
+  txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.closer);      // $25338A
+  return { runA, runB, runC };
+}
+
 /** `$240E84` -- the SINGLE-cell variant. dest = `$904000 + D0 + D1`, tile =
  *  `D4 | $C0000000`. No grid. */
 export function txPrint240E84(ram, d0, d1, d4) {

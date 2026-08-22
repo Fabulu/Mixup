@@ -28,9 +28,9 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W408 (2026-08-18).** Dispatch is **17 of 20**, not 16: `[12] $28F3AC` has been
-ported since the block below was written, so the three without a handler are `[16] $256E7A`,
-`[18] $24902A`, `[19] $28EE88`. The newest items are **D42..D47**, opened from a play session on
+**STANDING AS OF W503 (2026-08-22).** Dispatch is **18 of 20**: W503 ports and registers
+`[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. The two without a handler are
+`[16] $256E7A` and `[18] $24902A`. The newest items are **D42..D47**, opened from a play session on
 build `20260816181806` and appended at the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
 wave plus two in `NEXT_AGENT_HANDOFF.md`, archive older waves into `docs/worklog/` unedited, refresh
@@ -1901,8 +1901,22 @@ rather than independent bugs, so re-read them once this lands.
 
 ### D37: THE GAME'S ENDINGS
 
-Every ending the cartridge can reach, and the conditions that select between them. Nothing here is measured
-yet.
+Every ending the cartridge can reach, and the conditions that select between them.
+
+**W503 LANDS THE FIRST EXECUTABLE ENDING SLICE.** The result-screen F8 arm at `$28DE44..$28DE58`
+parks type 6 in state `$15` and stages dispatch type `$13`. Cartridge entry 19 is `$28EE88`, priority
+`$001E`, and its Version-B closure is bounded: `$28F276` is a bare `rts`; the live body uses existing
+score, lives-row, panel, chain, clear, power-reset, and object-allocation leaves. It clears the 20-word
+`$81E02E..$81E055` tally block, waits `$60`, preserves remaining P1/P2 lives on loop 1 or drains loop-2
+life, item, and stock bonuses with the cartridge's shared cue suppression, waits `$10`, loads the
+19-node chain at `$28D8C4`, frees it after its 32 live frames, then runs `$28D5FA` and stages type 7.
+The exact `$28D8C4+$E6` window abuts W435's prior chain window and ends at `$28D9AA` code. The
+focused and directly affected stage-end, coverage, panel, and global-window set passes 139/139; table
+regeneration measures 640 windows, 444,963 bytes, and 76 overlap pairs. W503 is local only.
+
+This does not yet identify every ending-selection condition or close D37. The next bounded progression
+check is the stage-5 handoff through the already-ported type-7 path, following only the first concrete
+runtime edge.
 
 **W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own
 text says otherwise: `$24910E` is `'Asic27 Test'`, `$24911A` is `'Wait or Press Any To Start !!'`, and the

@@ -164,7 +164,15 @@
 // control streams consumed by `$25FAA4`'s local leaves. It is disjoint from
 // every prior declaration. Measured: 633 -> 634 windows, 76 -> 76 pairs.
 
-export const ROM_WINDOW_COUNT = 639;
+// ---------------------------------------------------------------------------
+// W503 ADDED ONE WINDOW AND THE OVERLAP COUNT STILL DID NOT MOVE.
+// ---------------------------------------------------------------------------
+// `$28D8C4 + $E6` contains the type-$13 ending script's count word and nineteen
+// six-word nodes. It begins exactly where W435's `$28D864 + $60` window ends,
+// and ends exactly at `$28D9AA` code. Measured: 639 -> 640 windows,
+// 444,733 -> 444,963 bytes, 76 -> 76 pairs.
+
+export const ROM_WINDOW_COUNT = 640;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -220,5 +228,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "where the $24DDB0 authentic-style template's +$1E longword crosses the "
   + "$24DDD0 seam. W500 added the disjoint $25FC68+$20 control-stream window, "
   + "W501 added disjoint $25F7C8+$A0, $25F880+$78, and $25F8F8+$40 animation "
-  + "windows, and W502 added disjoint $25E716+$18 records and $25F270+$60 messages; "
-  + "none moved the overlap count. See tests/romwindowset.js.";
+  + "windows, W502 added disjoint $25E716+$18 records and $25F270+$60 messages, "
+  + "and W503 added the abutting $28D8C4+$E6 ending script; none moved the "
+  + "overlap count. See tests/romwindowset.js.";

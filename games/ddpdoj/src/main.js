@@ -74,7 +74,7 @@ import { bootFrontEnd23BF74 } from './frontend.js';
 import { ProtLatch } from './protsim.js';
 import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
 import { makeBackground, BgVram, TxVram, VideoRegs } from './background.js';
-import { makeStageClear } from './stageend.js';
+import { makeStageClear, makeStage5Ending } from './stageend.js';
 import { makeHudObject } from './hud.js';
 import { makeRankObject, announce260B30 } from './rank.js';
 import { tallyScreen25DBB4 } from './tallyscreen.js';
@@ -146,7 +146,7 @@ export const PRODUCED_BUCKETS = [
  *  holds TEN of its 23 subsystem calls, not the "NINE" this comment claimed
  *  until wave 44 (W33 added `$28AD54` and did not update this line).  Among them
  *  W29's enemy subsystem ($2634F4) and bullet subsystem ($281D9A + its timer
- *  $25354C).  4 of the 20 top-level entries. */
+ *  $25354C).  18 of the 20 top-level entries now run. */
 export function defaultHandlers(rom, vram, opts = {}) {
   return new Map([
     // WAVE 63 (B1).  $240F62[0] = $28D520, priority $0009 -- THE PER-FRAME
@@ -296,6 +296,11 @@ export function defaultHandlers(rom, vram, opts = {}) {
       if (ctx) ctx.selectDraws ??= slot9;                // the namespace IS the keyed set
       return objSlot17(ram, rom, slot, ctx);
     }],
+    // W503. $240F62[$13] = $28EE88, priority $001E. Stage 5's result F8 arm
+    // creates this ending-tally object and leaves type 6 parked in state $15.
+    // The handler preserves remaining lives on loop 1, drains the loop-2 life
+    // and item bonuses, waits for the $28D8C4 chain, then stages type 7.
+    [19, makeStage5Ending(rom)],
   ]);
 }
 

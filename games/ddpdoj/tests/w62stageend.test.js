@@ -27,7 +27,8 @@ import { HANDLER_ADDRESSES } from '../src/handlers.js';
 import {
   SE, ADVANCE_ENTRIES, PRESENTATION_DEVIATION, runStageAdvance242952,
   writeStage25FD0C, wipeStageBlock25FD24, bgDestroy25FCFA, rebuildWorld25FD38,
-  makeStageClear, bannerStep28ECCE, result28D9AA, draw1_28DED8, draw2_28E1AC,
+  makeStageClear, makeStage5Ending, ENDING13, bannerStep28ECCE, result28D9AA,
+  draw1_28DED8, draw2_28E1AC,
 } from '../src/stageend.js';
 import {
   SCHED, installScripts, runScheduler25962E, registerScript, scriptAddresses,
@@ -39,6 +40,7 @@ import {
 import { BOSS, BOSS_NOTED, livePlayers2428A6, bossDamage294AD8, bossTimeout294F32,
   handlerBoss292902 } from '../src/boss.js';
 import { ALLOC } from '../src/objalloc.js';
+import { LEDGER } from '../src/score.js';
 import { OBJ } from '../src/objdriver.js';
 import { BUCKETS } from '../src/spritequeue.js';
 // W435: main-loop call #3. Type 6's state $B now WAITS on the anim chain
@@ -971,4 +973,162 @@ test('every emitter D-script 6 counts is keyed by the address it stands at',
 test('$292902 is in the handler registry -- 19 of 19 stage-1 script handlers',
   { skip: SKIP }, () => {
     assert.ok(HANDLER_ADDRESSES.includes(0x292902));
+  });
+
+// ===========================================================================
+// W503: STAGE-5 RESULT EXIT AND OBJECT TYPE $13
+// ===========================================================================
+
+test('W503: stage-5 F8 parks type 6 in state $15 and stages cartridge type $13',
+  { skip: SKIP }, () => {
+    const { ram, slot } = type6Fixture();
+    const { ctx, notes } = ctxOf(ram);
+    const posts = [];
+    ctx.soundPostD1 = (addr, d1) => posts.push([addr, d1]);
+    ram.setU16(slot + 0x04, 5);
+    ram.setU8(slot + 0x06, 1);
+    ram.setU8(SE.result + 0x02, 0x0f);       // F0, F1, F4 and F6 already complete
+    ram.setU16(SE.result + 0x06, 0xffff);    // slide-in complete
+    ram.setU16(SE.result + 0x3e, 0xffff);    // medal walk complete
+    ram.setU8(SE.bossFlags9, 0x02);          // the F8 handshake
+
+    result28D9AA(ram, ROM, ctx, slot);
+
+    assert.equal(ram.u8(slot + 0x06), 0x15, '$28DE48 move.b #$15,$6(A5)');
+    assert.equal(ram.u16(ALLOC.createStage) & 0xff, 0x13,
+      '$28DE4E stages dispatch index $13');
+    assert.equal(ram.u16(ALLOC.createStage + ALLOC.priOff), 0x001e,
+      '$240F62[$13] publishes priority $001E');
+    assert.deepEqual(posts, [[0x28c186, 0]], '$28DE70/$28DE72 still posts D1=0');
+    assert.ok(!notes.report().join('\n').includes('$28DE44'),
+      'the former stage-5 ending note is gone');
+  });
+
+test('W503: type $13 init clears exactly 20 words and seeds $60/$10',
+  { skip: SKIP }, () => {
+    const ram = new Ram();
+    const slot = OBJ.base;
+    const { ctx } = ctxOf(ram);
+    ram.setU16(slot, 0x8013);
+    ram.setU16(ENDING13.base - 2, 0x1357);
+    for (let i = 0; i < ENDING13.words; i++) {
+      ram.setU16(ENDING13.base + i * 2, 0xffff);
+    }
+    ram.setU16(ENDING13.base + ENDING13.words * 2, 0x2468);
+
+    makeStage5Ending(ROM)(ram, slot, 0, ctx);
+
+    assert.equal(ram.u16(ENDING13.base - 2), 0x1357, 'word below is untouched');
+    for (let i = 0; i < ENDING13.words; i++) {
+      const expected = i === ENDING13.timer / 2 ? 0x60
+        : i === ENDING13.delay / 2 ? 0x10 : 0;
+      assert.equal(ram.u16(ENDING13.base + i * 2), expected,
+        `ending word ${i} matches $28EE66..$28EE86`);
+    }
+    assert.equal(ram.u16(ENDING13.base + ENDING13.words * 2), 0x2468,
+      'word above is untouched');
+    assert.equal(ram.u8(slot + 0x02), 1, '$28EE74 enters phase 1');
+  });
+
+test('W503: loop 1 preserves lives, drains the 19-node chain, and stages type 7',
+  { skip: SKIP }, () => {
+    const ram = new Ram();
+    const slot = OBJ.base;
+    const { ctx, ev } = ctxOf(ram);
+    const h = makeStage5Ending(ROM);
+    ram.setU16(slot, 0x8013);
+    ram.setU16(SE.p1, 0x8000);
+    ram.setU16(0x8130be, 3);
+    ram.setU16(0x813098, 0);                 // loop 1
+    h(ram, slot, 0, ctx);                    // $28EE66 init
+    ram.setU16(ENDING13.base + ENDING13.timer, 0);
+
+    let frames = 0;
+    let chainFrames = 0;
+    let sawHandle = false;
+    while (ram.u16(ALLOC.createStage) === 0 && frames < 300) {
+      h(ram, slot, 0, ctx);
+      const handle = ram.u32(ENDING13.base + ENDING13.handle) >>> 0;
+      if (handle !== 0 && handle !== 0xffffffff) {
+        sawHandle = true;
+        chainFrames++;
+      }
+      runAnimObjects24683E(ram, ROM);
+      frames++;
+    }
+
+    assert.equal(ram.u16(0x8130c2), 3, '$28EF38 preserves P1 lives on loop 1');
+    assert.equal(ram.u16(0x8130c4), 0, 'the absent P2 side retires cleanly');
+    assert.ok(sawHandle, '$28EEC6 loaded the $28D8C4 chain');
+    assert.equal(chainFrames, 33,
+      'the handler observes 32 live chain frames, then the zero-sum handoff frame');
+    assert.ok(frames < 300, `bounded ending handoff completed in ${frames} frames`);
+    assert.equal(ram.u16(ALLOC.createStage) & 0xff, 7, '$28D630 stages type 7');
+    assert.equal(ram.u16(ALLOC.createStage + ALLOC.priOff),
+      ROM.u16(SE.dispatch + 7 * 8 + 4), 'type 7 receives its cartridge priority');
+    assert.equal(ram.u16(slot), 0, '$28EEF6 clears the type-$13 object');
+    assert.ok(ev.some(([kind]) => kind === 'ending-handoff'));
+  });
+
+test('W503: loop 2 drains life, item and stock bonuses through packed BCD',
+  { skip: SKIP }, () => {
+    const ram = new Ram();
+    const slot = OBJ.base;
+    const { ctx } = ctxOf(ram);
+    const posts = [];
+    ctx.soundPost = (addr) => posts.push(addr);
+    const h = makeStage5Ending(ROM);
+    ram.setU16(slot, 0x8013);
+    ram.setU16(SE.p1, 0x8000);
+    ram.setU16(0x813098, 1);                 // loop 2
+    ram.setU16(0x8130be, 1);                 // one life at $5,000,000
+    ram.setU16(0x8128f4, 1);                 // one item award at $10,000,000
+    ram.setU8(0x81040a, 1);                  // one stock award at $500,000
+    h(ram, slot, 0, ctx);                    // init
+    ram.setU16(ENDING13.base + ENDING13.timer, 0);
+
+    let frames = 0;
+    while ((ram.u8(ENDING13.base + ENDING13.flagsP1) & 0x80) === 0
+      && frames < 300) {
+      h(ram, slot, 0, ctx);
+      frames++;
+    }
+
+    assert.ok(frames < 300, `loop-2 tally completed in ${frames} frames`);
+    assert.equal(ram.u32(LEDGER.p1.pendingEnd - 4), 0x15500000,
+      '$5m + $10m + $500k is packed BCD $15500000');
+    assert.equal(ram.u16(0x8130be), 0, 'remaining life drained');
+    assert.equal(ram.u16(0x8128f4), 0, 'item bonus drained');
+    assert.equal(ram.u8(0x81040a), 0, 'stock byte drained');
+    assert.equal(ram.u16(ENDING13.base + ENDING13.active), 0,
+      'the P1 tally side retired');
+    assert.equal(ram.u8(ENDING13.base + ENDING13.flagsP1) & 0x80, 0x80,
+      'P1 completion bit is latched');
+    assert.equal(posts.length, 9, 'three awards each post the three cartridge cues');
+  });
+
+test('W503: simultaneous P1/P2 awards share one three-cue post',
+  { skip: SKIP }, () => {
+    const ram = new Ram();
+    const slot = OBJ.base;
+    const { ctx } = ctxOf(ram);
+    const posts = [];
+    ctx.soundPost = (addr) => posts.push(addr);
+    const h = makeStage5Ending(ROM);
+    ram.setU16(slot, 0x8013);
+    ram.setU16(SE.p1, 0x8000);
+    ram.setU16(SE.p2, 0x8000);
+    ram.setU16(0x813098, 1);
+    ram.setU16(0x8130be, 1);
+    ram.setU16(0x8130c0, 1);
+    h(ram, slot, 0, ctx);
+    ram.setU16(ENDING13.base + ENDING13.timer, 0);
+    h(ram, slot, 0, ctx);                    // initialize both mirrored sides
+    h(ram, slot, 0, ctx);                    // both spend one life in one pass
+
+    assert.equal(ram.u32(LEDGER.p1.pendingEnd - 4), 0x05000000);
+    assert.equal(ram.u32(LEDGER.p2.pendingEnd - 4), 0x05000000);
+    assert.equal(posts.length, 3, 'P2 suppresses the duplicate cue trio posted by P1');
+    assert.equal(ram.u8(ENDING13.base + ENDING13.cue) & 1, 0,
+      'the P2 mirror clears the shared suppression bit');
   });
