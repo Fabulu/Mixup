@@ -6046,9 +6046,10 @@ wave. The next bounded functional unit is type-5 call #19 `$252BD0`.
 ### D86: W478 TYPE-5 CALL #19 `$252BD0`: ENEMY-BULLET SPEED BIAS
 
 `$28B652` now runs `$252BD0` immediately before the cartridge's bullet-driver call. It selects the unsigned
-maximum of the two players' hyper power, quarters it while neither hyper is active, reads the loop-specific
-rank table, applies the global flag, stage, loop, and boss-phase adjustments, and writes `$812950`. The
-cartridge caps remain 8 in loop 1 and 15 in loop 2.
+maximum of the two players' hyper power and quarters it while neither hyper is active. Only a nonzero
+post-quarter value reads the loop-specific rank table and applies the global flag and stage adjustments; the
+zero-power branch skips directly to the loop and boss-phase adjustments. The cartridge caps remain 8 in loop
+1 and 15 in loop 2.
 
 Type-5 coverage moves from 20/23 to **21/23**. The remaining calls are #22 `$25292A` and #23 `$252A52`.
 Focused behavior and call-order checks pass. W478 is the second wave after live build `20260821205739` and
@@ -6092,6 +6093,12 @@ One compact synthetic test covers deferred allocation, real init dispatch, copie
 movement, lethal hit, effect state, cue, and free.
 
 Four exact ROM windows cover the eight-byte init stub, adjacent record and long-form sub-record prototypes,
-eight static art pointers, and 32 turning-art rows. Local tables were regenerated. W481 is the fifth interval
-wave after live build `20260821205739`, so its quiet-tree publication must regenerate browser assets before
-running `publish.mjs`.
+eight static art pointers, and 32 turning-art rows. Local tables and browser assets were regenerated. The first
+publication attempt exposed a W478 transcription error: `$252BD0` had applied flag and stage bonuses after
+zero power, although the cartridge branches past them. Correcting the source restored the exact W438-W442
+checkpoint oracles; only genuine lifecycle, ledger, window-count, and W479 follower changes were rebased.
+The affected set passed **136/136** and the full DaiOuJou suite passed **4,305/4,305** with no skips.
+
+W481 was the fifth interval wave after build `20260821205739`. The quiet-tree publication completed the
+Gradius, DaiOuJou bundle and web-fetch, Batman, build, ROM-leak, deployment, and live-confirmation gates and
+published build **`20260822010546`**.

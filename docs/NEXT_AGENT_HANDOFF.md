@@ -15,13 +15,13 @@ Enemy-handler coverage is 96/256 ported, 30 unknown, and 130 null. W477's 15-mod
 and empty launches vanilla, makes Invincibility explicit, and leaves labelled progression interventions intact.
 The MAME death oracle passed three invulnerability-off hits, two respawns, the `2 -> 1 -> 0 -> $FFFF` life
 sequence, and game-over request 2. Live duplicate counts remain 15 narrow heads, 68 widened heads, 27 body
-pairs, and 22 body-only findings, but those rows wait until after White Label. W476 is live as build
-`20260821205739`. W481 is the fifth interval wave and therefore runs the quiet-tree publication gate. W479
-and W481 added ROM windows, so `export-web.mjs` must run before `publish.mjs`.
+pairs, and 22 body-only findings, but those rows wait until after White Label. W481 is live as build
+`20260822010546` after browser regeneration and the complete quiet-tree publication gate. DaiOuJou passed
+4,305/4,305 tests with no failures or skips; the bundle and web-fetch gates passed too.
 
-Next, continue the corrected bounded stage-5 lifecycle bench beyond type `$52` and fix the next live child or
-dependency blocker. Do not select a target from static scanning alone. Keep each fix bounded to runtime
-evidence and the exact ROM windows its reached path requires.
+Next, continue the corrected bounded stage-5 lifecycle bench at its next runtime blocker: type `$4E`, init
+`$2701D6`, first missing read `$2701D8`, and handler `$270222`. Do not select a target from static scanning
+alone. Keep the fix bounded to this runtime evidence and the exact ROM windows its reached path requires.
 
 ## W481 VERIFIED: FIRST LIVE TYPE `$4C` CHILD
 
@@ -49,9 +49,10 @@ from 21/23 to 22/23.
 ## W478 VERIFIED: TYPE-5 ENEMY-BULLET SPEED BIAS
 
 `$28B652` now dispatches `$252BD0` immediately before call #20 `$281D9A`. `hyper.js` selects and, when
-inactive, quarters the players' maximum hyper power, reads the proper loop table, applies the cartridge's flag,
-stage, loop, and boss adjustments, caps at 8 or 15, and stores `$812950`. Focused behavior and call-order
-checks pass. Type-5 coverage moves from 20/23 to 21/23.
+inactive, quarters the players' maximum hyper power. A nonzero result reads the proper loop table and applies
+the flag and stage bonuses; zero skips those bonuses and continues with the loop and boss adjustments. The
+result is capped at 8 or 15 and stored at `$812950`. The W481 publication repair corrected that zero-power
+branch and restored the exact checkpoint ladders. Type-5 coverage is 21/23 at this historical wave.
 
 ## W477 VERIFIED: MOD MENU, VANILLA PATH, AND DEATH ORACLE
 
