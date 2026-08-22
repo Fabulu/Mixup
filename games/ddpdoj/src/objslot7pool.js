@@ -114,7 +114,7 @@ export const SCRIPT7 = Object.freeze({
   loopCount: 0x81e0fc,     // $8002's repeat counter
   resource: 0x81e0fe,      // $8003's cache -- non-zero means "already loaded"
   scriptPtr: 0x81e102,     // $8001's long
-  spawnBias: 0x81e104,     // bumped by $400 per spawn
+  spawnBias: 0x81e104,     // its LOW WORD, bumped by $400 after each spawn
   resTable: 0x290e8a,      // $8003's five records, which sit BEFORE this table
   spawnTable: 0x2902c2,    // pointer table indexed directly by each plain script word
   END: 0xffff,

@@ -28,12 +28,13 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W504 (2026-08-22).** Dispatch remains **18 of 20**: W503 ports and registers
-`[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 drives that exact natural
-loop-2 edge through type 7's first common script at `$290F66`, including its visible spawns and complete
-`$8003` resource lifecycle; the next deliberate executable boundary is `$290F8E`. The two without a
-handler are `[16] $256E7A` and `[18] $24902A`. The newest items are **D42..D47**, opened from a play
-session on build `20260816181806` and appended at the end of this file; they outrank further boss internals.
+**STANDING AS OF W505 (2026-08-22).** Dispatch remains **18 of 20**: W503 ports and registers
+`[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 and W505 drive that exact
+natural loop-2 edge through type 7's first two common scripts at `$290F66` and `$290F8E`, including
+36 visible spawns and both complete `$8003` resource lifecycles; the next deliberate executable boundary
+is variant 0's third script at `$290FE2`. The two without a handler are `[16] $256E7A` and `[18]
+$24902A`. The newest items are **D42..D47**, opened from a play session on build `20260816181806` and
+appended at the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
 wave plus two in `NEXT_AGENT_HANDOFF.md`, archive older waves into `docs/worklog/` unedited, refresh
 the stale headers here, and check that a new docket ID is free before using it. The handoff split is
@@ -1933,9 +1934,24 @@ one-node `$290E58` resource and its release, then stops deliberately when the ne
 unexported `$290F8E`. Focused and directly affected checks pass 94/94; the final lifecycle rerun passes
 17/17. Table verification measures 649 windows, 445,035 bytes, and 76 overlap pairs. W504 is local only.
 
+**W505 EXTENDS THE SAME INTEGRATION THROUGH THE SECOND COMMON SCRIPT.** All three lists name
+`$290F8E` at entry 1. The exact `$54`-byte stream arms cadence word `$0000`, then uses three `$8001`
+position groups rooted at `$48000200`, `$40000200`, and `$38000200`. Its 26 picture words select 22
+distinct art pointers. Indices `$05`, `$59`, and `$CC` reuse W504 windows; W505 exports only the nineteen
+other concrete spawn-table longwords. `$81E104` is the low word of `$81E102`, so each spawn's `$400`
+bump advances the position consumed by the next pool allocation rather than a separate field.
+
+After all 26 records are live, the script spends its exact `$C0` wait and reuses operand 0's one-node
+`$290E58` resource. The already faithful interpreter loads, holds, frees, clears, advances, reads `$FFFF`,
+clears the pool, and moves variant 0's list cursor from 4 to 8. The next object-driver call fails loudly at
+the intentionally unexported third script `$290FE2`. The extended compact integration and directly affected
+set pass 94/94; the direct rerun passes 1/1. Table verification measures 669 windows, 445,195 bytes, and 76
+overlap pairs. W505 is local only, production remains W501 build `20260822192350`, and W506 is the next
+publication wave.
+
 This does not yet identify every ending-selection condition or close D37. The next bounded progression
-check is the second common type-7 script at `$290F8E`, again following only its first concrete runtime
-edge rather than broadening into speculative ending-selection research.
+check is variant 0's third type-7 script at `$290FE2`, again following only its first concrete runtime edge
+rather than broadening into speculative ending-selection research.
 
 **W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own
 text says otherwise: `$24910E` is `'Asic27 Test'`, `$24911A` is `'Wait or Press Any To Start !!'`, and the
