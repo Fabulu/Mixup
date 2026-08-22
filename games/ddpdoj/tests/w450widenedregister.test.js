@@ -175,7 +175,7 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
       // not `mentions`"). The span rule takes the first backtick span that holds
       // an address, which is what "opens with" was always meant to mean.
       '$278320 effects.js:231 remapBucket',
-      '$283BAF bullets.js:713 behaviourFor',
+      '$283BAF bullets.js:748 behaviourFor',
     ], 'a THIRD claim is attributed differently by the two scans. Read both docs and decide '
       + 'which reading is right before adding a row here');
   });
