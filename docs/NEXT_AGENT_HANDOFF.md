@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W503 verified locally; production remains W501 build `20260822192350`)
+Updated: 2026-08-22 (W504 verified locally; production remains W501 build `20260822192350`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,24 +8,32 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **Local W503 restores the live stage-5 ending arm.** Result F8
-`$28DE44..$28DE58` parks type 6 in state `$15`, stages dispatch type `$13`, and keeps the shared
-`$28C186` post. Entry 19 is `$28EE88` with priority `$001E`. Its bounded Version-B handler clears the
-20-word `$81E02E..$81E055` tally block, waits `$60`, preserves remaining P1/P2 lives on loop 1 or drains
-loop-2 life, item, and stock bonuses through packed BCD, keeps the mirrored shared-cue suppression, waits
-`$10`, loads and drains the exact 19-node `$28D8C4` chain, runs `$28D5FA`, and stages type 7. Top-level
-dispatch coverage is now 18/20; only types 16 and 18 remain unknown.
+`docs/DOCKET.md` is authoritative. **Local W504 follows W503's exact natural stage-5 type-`$13`
+to type-7 handoff through its first common script.** On loop 2 the menu gate short-circuits, posted value 2
+selects variant 0, `$290F12` selects list `$290F1E`, and its first entry reads `$290F66`. That exact
+`$28`-byte script is now browser-readable with only its eight concrete spawn-table longwords. It emits ten
+pool records over eight distinct cartridge art pointers, spends the `$60` wait, and completes `$8003`'s
+one-node `$290E58` animation-resource lifecycle. Top-level dispatch coverage remains 18/20; only types 16
+and 18 remain unknown.
 
-W503 adds exact abutting window `$28D8C4+$E6`. `export-tables.py` regenerated 640 windows and
-444,963 bytes; overlap pairs remain 76. The focused and directly affected stage-end, object coverage,
-panel-helper, and global-window set passes 139/139 with no failures or skips. Syntax, docket-ID,
-diff-whitespace, and U+2014 checks pass. The full suite, `export-web.mjs`, and publication did not run.
-Production remains W501 build `20260822192350`, which passed 4,397/4,397 DDPDOJ units and published
-W497 through W501. W506 is the next publication wave.
+W504 replaces `$8003`'s production-absent optional `ctx.load246710` call with the existing faithful direct
+`chainLoader246710`, `chainCheck24681A`, and `freeAnimObjects246800` path. The exact cartridge arm loads
+once, holds while the handle is live, frees it when ready, clears `$81E0FE`, advances `$81E0F8` by four,
+and continues interpreting. The compact integration starts from staged type `$13`, observes `$28D5FA`
+stage and commit type 7, collects the eight distinct pictures, observes resource load and release, then
+stops at the deliberate next browser boundary `$290F8E`.
 
-The next bounded gameplay/progression check is the stage-5 handoff through the already-ported type-7
-path. Drive the real transition far enough to identify its first concrete unported or divergent edge;
-do not broaden into ending-selection reconnaissance, duplicate-only cleanup, or a guessed visual path.
+The exact script window and eight sparse four-byte pointer windows take the export from 640 to 649 windows
+and 444,963 to 445,035 bytes; all are disjoint and overlap pairs remain 76. The focused and directly
+affected W372/W373 type-7, W503 stage-end, global-window, and W504 integration set passes 94/94; the final
+resource-lifecycle rerun passes 17/17. `export-tables.py --verify` and focused JavaScript/Python syntax
+checks pass. The full suite, `export-web.mjs`, and publication did not run. Production remains W501 build
+`20260822192350`, which passed 4,397/4,397 DDPDOJ units and published W497 through W501. W506 is the next
+publication wave.
+
+The next bounded gameplay/progression check is the second common type-7 script at `$290F8E`. Follow only
+its first concrete runtime edge from W504's integration, and do not broaden into ending-selection
+reconnaissance, duplicate-only cleanup, or a guessed visual path.
 
 **W497 remains the first substantial D26 implementation slice.** The cartridge-proven ship domain is `{0,2}`
 and the style domain is `{2,4,6}`. Selector 0 is Type-A and selector 2 is Type-B. The cartridge census does
@@ -46,6 +54,38 @@ unknown-only, direct, Original, and later vanilla-Game paths install no mod call
 the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage remains 101/256 ported, 25
 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
+
+## W504 VERIFIED LOCALLY: TYPE 7'S FIRST COMMON SCRIPT
+
+The natural edge is concrete and loop-2 bounded. `$28D5FA` stages type 7; the next object-driver pass
+commits it. With `$813098 != 0`, `$2901E0` returns before menu side effects. P1 post value 2 maps to
+variant 0, `$290F12 -> $290F1E`, and list entry 0 is `$290F66`. Before W504, browser `RomWindows`
+threw `UNPORTED $290F66` because W372's exact sequence window ended where this first script begins.
+
+The script words are exact:
+
+```text
+8000 3000
+8001 3C00 0800
+00E0 004A 0065 00CC 0073 005B 0059 0005 0005 0005
+8002 0060
+8003 0000
+FFFF
+```
+
+It occupies `$290F66..$290F8D`. Its eight distinct spawn-table reads are `$2902D6 -> $1EA8AC`,
+`$2903EA -> $1EB260`, `$290426 -> $1EB47C`, `$29042E -> $1EB4C4`, `$290456 -> $1EB62C`,
+`$29048E -> $1EB824`, `$2905F2 -> $1EC4A8`, and `$290642 -> $1EC778`. W504 declares exactly those
+eight longwords rather than widening the 256-entry table. Operand 0 of `$8003` selects the already
+exported `$290E58` one-node `$246710` record through `$290E8A[0]`.
+
+The cartridge's missing tail is `$290A88 jsr $24681A / bne $2909F0`, `$290A92 jsr $246800`, clear
+`$81E0FE`, add four to `$81E0F8`, then branch to `$2909AA`. `scriptStep2909AA` now transcribes that
+arm directly. The compact test drives `stageCreate(type $13)` through `runObjectDriver`, shortens only
+the initial `$60` tally timer, runs animation objects in normal frame order, and proves the type-7
+create, eight distinct visible art pointers, nonzero resource handle, wait, free, clear, and list-cursor
+advance. It then throws at exactly `$290F8E`, the intentionally unexported second common script. Do not
+widen past that address until its first concrete edge is driven.
 
 ## W503 VERIFIED LOCALLY: STAGE-5 ENDING TALLY AND TYPE-7 HANDOFF
 
@@ -90,8 +130,8 @@ mailboxes, all three label-only gates, carry suppression, TX messages, and separ
 directly affected W373, W375, W428, W488, and W501 files, the compact set passes 54/54.
 
 W502 is local only. Do not run `export-web.mjs` until a publication wave requires regenerated assets. The
-next publication is W506. **Superseded by W503:** the stage-5 F8 arm and type `$13` ending tally are
-now the current progression slice, as recorded above.
+next publication is W506. **Superseded by W503 and W504:** the stage-5 F8 arm, type `$13` ending tally,
+and type 7's first common script are the current progression slices recorded above.
 
 ## W501 PUBLISHED: `$25F530/$25F592` STATE-7 ANIMATION
 

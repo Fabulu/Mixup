@@ -116,7 +116,7 @@ export const SCRIPT7 = Object.freeze({
   scriptPtr: 0x81e102,     // $8001's long
   spawnBias: 0x81e104,     // bumped by $400 per spawn
   resTable: 0x290e8a,      // $8003's five records, which sit BEFORE this table
-  spawnTable: 0x2902c2,    // 64 pointers to $24-byte records
+  spawnTable: 0x2902c2,    // pointer table indexed directly by each plain script word
   END: 0xffff,
 });
 
@@ -128,11 +128,12 @@ export const SCRIPT7 = Object.freeze({
  *      $8000  word operand   cursor += 4    and LOOP internally
  *      $8001  LONG operand   cursor += 6    and LOOP internally
  *      $8002  wait           cursor += 4 ONLY when the count matches, else ZERO and return
- *      $8003  load+cache     cursor UNCHANGED, always returns
+ *      $8003  resource       load and hold; once ready, free, cursor += 4, and LOOP internally
  *
  *  A fixed stride desynchronises the whole script, and silently: the first command still works.
  *  The two waiting opcodes returning WITHOUT advancing is how the script holds -- the next call
- *  re-reads the same command.
+ *  re-reads the same command. `$8003` is the exception only after `$24681A` reports zero: the
+ *  cartridge frees the cached `$246710` chain, clears its handle, advances, and keeps interpreting.
  */
 export function scriptStep2909AA(ram, rom, ctx, scriptBase) {
   for (;;) {                                                 // $290A10/$290A26/$290A4A bra back
@@ -175,13 +176,21 @@ export function scriptStep2909AA(ram, rom, ctx, scriptBase) {
       ram.setU16(SCRIPT7.loopCount, u16(ram.u16(SCRIPT7.loopCount) + 1)); // $290A4E addq.w #1
       return true;                                           // $290A54 -- HOLD, cursor UNCHANGED
     }
-    if (word === 0x8003) {                                   // $290A56 -- LOAD, cached
-      if (ram.u32(SCRIPT7.resource) === 0) {                 // $290A5E/$290A64 bne -- already loaded
-        const idx = rom.u16(at + 2);                         // $290A68
-        const res = ctx.load246710?.(rom, rom.u32(SCRIPT7.resTable + (idx << 2))) ?? 0;  // $290A78
-        ram.setU32(SCRIPT7.resource, res >>> 0);             // $290A7E
+    if (word === 0x8003) {                                   // $290A56 -- LOAD, WAIT, FREE
+      const handle = ram.u32(SCRIPT7.resource) >>> 0;        // $290A5E move.l $81E0FE,D0
+      if (handle === 0) {                                    // $290A64 bne $290A88
+        const idx = rom.u16(at + 2);                         // $290A68 move.w (A2),D0
+        const rec = rom.u32(SCRIPT7.resTable + (idx << 2));  // $290A6A..$290A74
+        ram.setU32(SCRIPT7.resource,
+          chainLoader246710(ram, rom, rec, ctx) >>> 0);      // $290A78/$290A7E
+        return true;                                         // $290A84 bra $2909F0
       }
-      return true;                                           // $290A84 -- HOLD, cursor UNCHANGED
+      if (chainCheck24681A(ram, handle) !== 0) return true;  // $290A88/$290A8E bne $2909F0
+      freeAnimObjects246800(ram, handle);                    // $290A92 jsr $246800
+      ram.setU32(SCRIPT7.resource, 0);                       // $290A98 move.l #0,$81E0FE
+      ram.setU16(SCRIPT7.cursor,
+        u16(ram.u16(SCRIPT7.cursor) + 4));                   // $290AA2 addq.w #4,$81E0F8
+      continue;                                              // $290AA8 bra $2909AA
     }
     if (word === SCRIPT7.END) return false;                  // $FFFF -- the carry-CLEAR exit
     return false;                                            // any other $80xx: unread, stop cleanly

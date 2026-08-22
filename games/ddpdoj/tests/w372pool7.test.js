@@ -183,18 +183,28 @@ test('W372 the sequence "steps" are SCRIPTS -- $2909AA is their interpreter', { 
   }
 });
 
-test('W372 opcode $8003 caches its load, and its records come BEFORE their table', { skip: SKIP }, () => {
+test('W372 opcode $8003 loads once, waits, frees, and its records precede the table', { skip: SKIP }, () => {
   const IMG = readFileSync('games/ddpdoj/rip/sound/maincpu.bin');
-  // $8003 loads a resource through $246710 and caches the result in $81E0FE. If the cache is already
-  // set it skips the load entirely -- and either way it exits CARRY SET without advancing the cursor,
-  // so like $8002 it holds until it is satisfied.
+  // A zero cache loads through $246710 and returns carry set without advancing. A nonzero cache takes
+  // the other arm: wait through $24681A, keep holding while it is live, then free through $246800,
+  // clear the cache, advance four bytes and loop back into the interpreter.
   assert.equal(IMG.readUInt16BE(0x290a56), 0x0c40, '$290A56 cmpi.w #imm,D0');
   assert.equal(IMG.readUInt16BE(0x290a58), 0x8003, '  ...#$8003');
   assert.equal(IMG.readUInt32BE(0x290a60), 0x0081e0fe, '$290A5E move.l $81E0FE,D0 -- the cache');
-  assert.equal(IMG.readUInt16BE(0x290a64), 0x6600, '  ...bne -- already loaded, skip the load');
+  assert.equal(IMG.readUInt16BE(0x290a64), 0x6600, '  ...bne -- already loaded, take the wait arm');
   assert.equal(IMG.readUInt32BE(0x290a7a), 0x00246710, '$290A78 jsr $246710');
   assert.equal(IMG.readUInt32BE(0x290a80), 0x0081e0fe, '$290A7E caches the result');
-  assert.equal(0x290a86 + IMG.readInt16BE(0x290a86), 0x2909f0, '$290A84 bra -> the CARRY SET exit');
+  assert.equal(0x290a86 + IMG.readInt16BE(0x290a86), 0x2909f0, '$290A84 bra -> the carry-set exit');
+  assert.equal(IMG.readUInt32BE(0x290a8a), 0x0024681a, '$290A88 jsr $24681A');
+  assert.equal(0x290a90 + IMG.readInt16BE(0x290a90), 0x2909f0,
+    '$290A8E bne keeps holding while the chain is live');
+  assert.equal(IMG.readUInt32BE(0x290a94), 0x00246800, '$290A92 jsr $246800');
+  assert.equal(IMG.readUInt32BE(0x290a9a), 0, '$290A98 clears the cached handle');
+  assert.equal(IMG.readUInt32BE(0x290a9e), 0x0081e0fe, '  ...at $81E0FE');
+  assert.equal(IMG.readUInt16BE(0x290aa2), 0x5879, '$290AA2 addq.w #4');
+  assert.equal(IMG.readUInt32BE(0x290aa4), 0x0081e0f8, '  ...advances the script cursor');
+  assert.equal(0x290aaa + IMG.readInt16BE(0x290aaa), 0x2909aa,
+    '$290AA8 loops back into the interpreter');
   // Its table sits AFTER its records -- the reverse of $290CE8 and $290F12 -- so "first entry bounds
   // the table" gives the lower bound here, not the upper one.
   const first = IMG.readUInt32BE(0x290e8a);

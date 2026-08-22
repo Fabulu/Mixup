@@ -3173,6 +3173,18 @@ SHOT_WINDOWS.extend([
                        "sequence begins, and the sequences end where their first STEP ($290F66) begins. "
                        "The three differ in exactly ONE step -- index 2, $290FE2 / $291040 / $29109C -- "
                        "so they are one sequence with a single swapped stage"),
+    (0x290F66, 0x0028, "W504: slot [7]'s first common script, $290F66..$290F8D -- exact $8000, $8001, "
+                       "ten picture words, $8002, $8003, and $FFFF stream reached from variant 0. It "
+                       "begins where W372's sequence set ends and stops exactly at the next script, "
+                       "$290F8E"),
+    (0x2902D6, 0x0004, "W504: slot [7] first-script spawn-table longword for concrete index $05"),
+    (0x2903EA, 0x0004, "W504: slot [7] first-script spawn-table longword for concrete index $4A"),
+    (0x290426, 0x0004, "W504: slot [7] first-script spawn-table longword for concrete index $59"),
+    (0x29042E, 0x0004, "W504: slot [7] first-script spawn-table longword for concrete index $5B"),
+    (0x290456, 0x0004, "W504: slot [7] first-script spawn-table longword for concrete index $65"),
+    (0x29048E, 0x0004, "W504: slot [7] first-script spawn-table longword for concrete index $73"),
+    (0x2905F2, 0x0004, "W504: slot [7] first-script spawn-table longword for concrete index $CC"),
+    (0x290642, 0x0004, "W504: slot [7] first-script spawn-table longword for concrete index $E0"),
     (0x290CE8, 0x00C6, "W372: slot [7]'s $2907E2 descriptor set -- NINE pointers at $290CE8 followed "
                        "immediately by the nine 18-byte descriptors they point at, $290D0C..$290DAE. "
                        "The pointer table is bounded by its OWN FIRST ENTRY: [0] is $290D0C, which is "

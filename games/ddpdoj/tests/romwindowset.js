@@ -172,7 +172,16 @@
 // and ends exactly at `$28D9AA` code. Measured: 639 -> 640 windows,
 // 444,733 -> 444,963 bytes, 76 -> 76 pairs.
 
-export const ROM_WINDOW_COUNT = 640;
+// ---------------------------------------------------------------------------
+// W504 ADDED NINE WINDOWS AND THE OVERLAP COUNT STILL DID NOT MOVE.
+// ---------------------------------------------------------------------------
+// `$290F66 + $28` is type 7's exact first common script and abuts W372's
+// sequence set. Eight sparse four-byte windows expose only the spawn-table
+// longwords that script reads, at indices $05, $4A, $59, $5B, $65, $73, $CC,
+// and $E0. All nine declarations are disjoint. Measured: 640 -> 649 windows,
+// 444,963 -> 445,035 bytes, 76 -> 76 pairs.
+
+export const ROM_WINDOW_COUNT = 649;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -229,5 +238,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "$24DDD0 seam. W500 added the disjoint $25FC68+$20 control-stream window, "
   + "W501 added disjoint $25F7C8+$A0, $25F880+$78, and $25F8F8+$40 animation "
   + "windows, W502 added disjoint $25E716+$18 records and $25F270+$60 messages, "
-  + "and W503 added the abutting $28D8C4+$E6 ending script; none moved the "
-  + "overlap count. See tests/romwindowset.js.";
+  + "W503 added the abutting $28D8C4+$E6 ending script, and W504 added the "
+  + "abutting $290F66+$28 first type-7 script plus its eight sparse spawn-table "
+  + "longwords; none moved the overlap count. See tests/romwindowset.js.";

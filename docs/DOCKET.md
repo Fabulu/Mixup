@@ -28,10 +28,12 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W503 (2026-08-22).** Dispatch is **18 of 20**: W503 ports and registers
-`[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. The two without a handler are
-`[16] $256E7A` and `[18] $24902A`. The newest items are **D42..D47**, opened from a play session on
-build `20260816181806` and appended at the end of this file; they outrank further boss internals.
+**STANDING AS OF W504 (2026-08-22).** Dispatch remains **18 of 20**: W503 ports and registers
+`[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 drives that exact natural
+loop-2 edge through type 7's first common script at `$290F66`, including its visible spawns and complete
+`$8003` resource lifecycle; the next deliberate executable boundary is `$290F8E`. The two without a
+handler are `[16] $256E7A` and `[18] $24902A`. The newest items are **D42..D47**, opened from a play
+session on build `20260816181806` and appended at the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
 wave plus two in `NEXT_AGENT_HANDOFF.md`, archive older waves into `docs/worklog/` unedited, refresh
 the stale headers here, and check that a new docket ID is free before using it. The handoff split is
@@ -1914,9 +1916,26 @@ The exact `$28D8C4+$E6` window abuts W435's prior chain window and ends at `$28D
 focused and directly affected stage-end, coverage, panel, and global-window set passes 139/139; table
 regeneration measures 640 windows, 444,963 bytes, and 76 overlap pairs. W503 is local only.
 
+**W504 FOLLOWS ONLY THAT FIRST RUNTIME EDGE.** On loop 2, `$813098 != 0` short-circuits the
+ending-menu gate, P1's posted value 2 selects variant 0, `$290F12` selects list `$290F1E`, and its first
+entry is script `$290F66`. Browser `RomWindows` previously threw on that first word because W372's
+bounded sequence window ended exactly there. W504 exports only `$290F66+$28` and the eight concrete
+four-byte spawn-table longwords it reads. The script runs its exact `$8000`, `$8001`, ten data words,
+`$8002`, `$8003`, and `$FFFF` stream, producing eight distinct cartridge-selected art pointers.
+
+The source had a second blocker on the same first script: `$8003` called optional `ctx.load246710`, a
+key no production `Game#ctx()` supplies, then omitted the cartridge's nonzero-handle arm. It therefore
+cached zero and held forever. The transcription now calls the existing `$246710`, `$24681A`, and
+`$246800` implementations directly: load once, hold while live, free when ready, clear `$81E0FE`, add
+four to `$81E0F8`, and continue at `$2909AA`. A compact object-driver integration starts at staged type
+`$13`, observes `$28D5FA` stage and commit type 7, collects all eight distinct pictures, observes a live
+one-node `$290E58` resource and its release, then stops deliberately when the next list entry reads
+unexported `$290F8E`. Focused and directly affected checks pass 94/94; the final lifecycle rerun passes
+17/17. Table verification measures 649 windows, 445,035 bytes, and 76 overlap pairs. W504 is local only.
+
 This does not yet identify every ending-selection condition or close D37. The next bounded progression
-check is the stage-5 handoff through the already-ported type-7 path, following only the first concrete
-runtime edge.
+check is the second common type-7 script at `$290F8E`, again following only its first concrete runtime
+edge rather than broadening into speculative ending-selection research.
 
 **W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own
 text says otherwise: `$24910E` is `'Asic27 Test'`, `$24911A` is `'Wait or Press Any To Start !!'`, and the
