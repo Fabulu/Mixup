@@ -8695,6 +8695,7 @@ const HANDLERS = new Map([
   [0x26f5f2, handler4C],   // W372: stage-5 multi-part set piece -- spec in T4C
   [0x270222, handler4E],   // W482: type $4C's paired child, splitting into type $4F
   [0x2702e6, handler4F],   // W483: type $4E's nested child, decelerating then accelerating
+  [0x270446, handler50],   // W484: type $4C's part-4 child, expiring into type $51
   [0x270694, handler52],   // W481: type $4C's first live runtime-selected child
   [0x2a4606, handler2A4606],  // W363: HIBACHI, stage 5's boss-route root -- spec in TB0. Its body
                               // $2A6B94 is a note(), so it appears and lets the stage clear but does
@@ -9416,6 +9417,49 @@ function handler4F(ram, rom, a5, ctx) {
   const bucket = ram.u16(T4F.zoomSelect) !== 0 ? T4F.buckets[1] : T4F.buckets[0];
   enqueueZoomedRegisters(ram, bucket, pos, art, 0x0620,
     ram.u8(a6 + S.palette), 0xf800f800);                    // $270390..$2703B2
+}
+
+// ============================================ TYPE $50 (W484) ==================
+// Type $4C's part-4 animator emits this child from one randomly selected half. It moves for $30 frames,
+// draws fixed art through bucket 2, then replaces itself with type $51. It shares type $4F's parent gate
+// and kind-$04 retirement tail at $2704AA.
+const T50 = Object.freeze({
+  handler: 0x270446,
+  parentPresent: 0x8130e0,
+  child: 0x51,
+  emit: 0x23df2a,
+  art: 0x00149978,
+});
+
+/** `$270446` -- stage-5 enemy type $50, type $4C's part-4 runtime child. */
+function handler50(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + R.subRec);
+
+  if (ram.u16(T50.parentPresent) === 0) {                    // $270446 beq.w $2704AA
+    const effect = spawnEffect(ram, ctx, 0x04, 0x2704ae);   // $2704AA..$2704AE
+    ram.setU32(effect + B.pos, ram.u32(a6 + S.posX));        // $2704B4
+    ram.setU16(effect + B.bucket, 0x10);                     // $2704BA
+    freeEnemy(ram, a5);                                      // $2704C0 jmp $263762
+    return;
+  }
+
+  // This calls $241812 directly, so there is no $8130D2 freeze gate.
+  const velocity = ctx.tables.vector(ram.u8(a6 + S.speed), ram.u8(a6 + S.heading));
+  ram.setU16(a6 + S.posX, u16(ram.u16(a6 + S.posX) + velocity.dy)); // $270462 add.w D2
+  ram.setU16(a6 + S.posY, u16(ram.u16(a6 + S.posY) + velocity.dx)); // $270466 add.w D3
+
+  const life = u16(ram.u16(a5 + R.rec18) - 1);               // $27046A subq.w #1
+  ram.setU16(a5 + R.rec18, life);
+  if (life === 0) {
+    const child = enqueueDeferred(ram, T50.child, DEFQ_D1.FIXED00); // $270472 jsr $263684
+    if (!child.dropped) ram.setU32(child.addr + 0x16, ram.u32(a6 + S.posX)); // $27047A
+    freeEnemy(ram, a5);                                      // $270480 jmp $263762
+    return;
+  }
+
+  enqueueRegistersThroughStub(ram, rom, T50.emit,
+    u32(ram.u32(a6 + S.posX) + 0xf600fe00), T50.art,
+    0x0a10, ram.u8(a6 + S.palette));                         // $270488..$2704A2
 }
 
 // ============================================ TYPE $52 (W481) ==================

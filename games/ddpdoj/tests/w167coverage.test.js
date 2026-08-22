@@ -115,7 +115,9 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   // enqueues two type-$4F records with independently biased coordinates.
   // W483: 97 -> 98 ported and 29 -> 28 unknown, type $4F ($2702E6), the nested runtime child emitted
   // twice by type $4E. The 130 null table entries remain unchanged.
-  assert.match(got.stdout, /enemy_types: 98\/256 ported, 28 unknown, 130 null/);
+  // W484: 98 -> 99 ported and 28 -> 27 unknown, type $50 ($270446), the part-4 child emitted by
+  // type $4C. The 130 null table entries remain unchanged.
+  assert.match(got.stdout, /enemy_types: 99\/256 ported, 27 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
   assert.match(got.stdout, /stage3_spawn_script: 414\/414 ported, 0 unknown, 0 null/);

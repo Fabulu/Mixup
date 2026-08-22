@@ -2153,6 +2153,15 @@ BODY.set(0x2702a0, (ram, rom, a5, a6) => {
   loadRecordProto(ram, rom, a5, 0x2702c4, 0x02);           // $2702B2..$2702C2 D0+1 = THREE words
 });
 
+// --- type $50 ($2703FA init, $270402 body): type $4C's part-4 runtime child.
+// Its deferred parent supplies the packed position at +$16. The body loads one long-form sub-record,
+// preserves that position in the sub-record, then installs the two record words, including lifetime $30.
+BODY.set(0x270402, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x27042a);                // $270402..$27040E jsr $2637A2
+  ram.setU32(a6 + 0x02, ram.u32(a5 + 0x16));               // $27040E move.l ($16,A5),($2,A6)
+  loadRecordProto(ram, rom, a5, 0x270426, 0x01);           // $270414..$270424 D0+1 = TWO words
+});
+
 // --- type $52 ($270634 init, $27063C body): the first live child selected by type $4C.
 // The deferred record supplies the packed position at +$16 and heading in the high byte at +$1A.
 // The body copies both into the sub-record after loading its prototype, then installs nine record words.

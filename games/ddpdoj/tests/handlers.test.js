@@ -178,6 +178,7 @@ test('the ported handler addresses are registered through W223 type $41', () => 
       0x26f5f2,   // W372: stage-5 type $4C, the multi-part set piece -- the LAST of stage 5's
       0x270222,   // W482: type $4E, type $4C's paired child and a deferred source for type $4F
       0x2702e6,   // W483: type $4F, type $4E's nested deferred child
+      0x270446,   // W484: type $50, type $4C's part-4 child and a deferred source for type $51
       0x270694,   // W481: type $52, the first live runtime-selected child of type $4C
       // W400: $26E02A is type $44, and it is NOT one of the 35 types stage 5's SCRIPT names -- type
       // $43 spawns it at its own ramp step $3C, so no `missingOf` census ever ranked it. It owns

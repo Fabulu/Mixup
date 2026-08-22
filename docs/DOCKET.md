@@ -6161,3 +6161,38 @@ browser assets were regenerated, no full suite was run, and W483 is not publishe
 The ordinary bounded lifecycle now reaches types `$52`, `$4E`, and `$4F` over 5,000 frames without another
 missing read. Exercising type `$4C`'s cartridge-backed part-4 firing branch runtime-selects the next blocker:
 type `$50`, init `$2703FA`, first missing read `$2703FC`, and handler `$270446`.
+
+### D92: W484 STAGE-5 TYPE `$50`: TYPE `$4C` PART-4 CHILD
+
+The bounded part-4 lifecycle selected type `$50`, init stub `$2703FA`, first missing read `$2703FC`, and
+handler `$270446`. The stub is exactly `move.w #0,($4,A5); rts`. W484 translates body `$270402`: it loads
+one long-form sub-record from `$27042A`, copies the type `$4C` supplied packed position from record `+$16`
+to sub-record `+$02`, then installs exactly two record words from `$270426`. Those words are `$0000,$0030`,
+so the handler receives a 48-frame lifetime. The long-form prototype begins with flags `$8001`, supplies
+speed `$08`, heading `$20`, HP `$7FFF`, and palette `$12`, and ends exactly where the handler begins.
+
+The handler first tests shared parent word `$8130E0`. If it is clear, control uses the same `$2704AA` tail as
+type `$4F`: allocate effect kind `$04` at `$2704AE`, copy position, set effect bucket `$10`, and free. While
+the parent remains present, the handler calls vector lookup `$241812` directly without the `$2417DE` freeze
+gate, updates both packed position words, and decrements record word `+$18`. A surviving frame adds position
+bias `$F600FE00` as one longword, draws fixed art `$149978` with size `$0A10` and the sub-record palette
+through register-convention stub `$23DF2A` into bucket 2. On the zero frame it enqueues type `$51`, copies the
+post-movement position to child record `+$16`, and frees without drawing.
+
+Two exact ROM windows cover the eight-byte init stub and the contiguous `$20`-byte record and long-form
+sub-record prototype block. The ignored local table was regenerated. Its export moves from 623 to **625
+windows** while staying at **75 overlapping pairs**. Enemy coverage moves from **98/256 ported, 28 unknown,
+130 null** to **99/256 ported, 27 unknown, 130 null**. Init-body coverage moves from 91 to 92 registered
+bodies. The stage-5 dependency census moves `$4C -> $50` to the ported set and preserves the new `$50 -> $51`
+unported edge; the other unported child edges remain `$48 -> $54` and `$4C -> $58`.
+
+One compact synthetic lifecycle test covers deferred init, exact prototype fields, direct movement, fixed-art
+bucket-2 drawing, movement-before-expiry ordering, type `$51` emission, and the shared effect retirement. It
+failed before implementation on the absent `$270402` body registration, then passed after the port. The
+focused W481-W484 lifecycle, registry, coverage, dependency, and ROM-window set passes **46/46** with no
+skips. `export-tables.py --verify` is part of the final W484 gate. No full suite or browser-asset regeneration
+was run, and W484 is not published. Published build **`20260822010546`** remains pinned to W481.
+
+Driving the cartridge-seeded 48-frame lifetime against the regenerated real window set enqueues type `$51`.
+Draining it selects init `$2704C8` and throws on its stub word at `$2704CA`; its cartridge handler is `$270516`.
+That type `$51` lifecycle is the next runtime blocker.
