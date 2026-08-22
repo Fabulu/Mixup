@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W482)
+Updated: 2026-08-22 (W483)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,20 +8,43 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W482 ports stage-5 enemy type `$4E`, the next runtime-proven child of
-type `$4C`.** Its deferred init, direct vector movement, fixed bucket-2 draw, `$28`-frame lifetime, paired
-type-`$4F` split, and free now run. Enemy-handler coverage is 97/256 ported, 29 unknown, and 130 null.
-W477's 15-mod start screen keeps direct and empty launches vanilla, makes Invincibility explicit, and leaves
-labelled progression interventions intact. The MAME death oracle passed three invulnerability-off hits, two
-respawns, the `2 -> 1 -> 0 -> $FFFF` life sequence, and game-over request 2. Live duplicate counts remain 15
-narrow heads, 68 widened heads, 27 body pairs, and 22 body-only findings, but those rows wait until after White
-Label. W481 remains live as build `20260822010546` after browser regeneration and the complete quiet-tree
-publication gate. That published gate passed 4,305/4,305 DaiOuJou tests; W482's focused set passes 43/43 and
-has not been published.
+`docs/DOCKET.md` is authoritative. **W483 ports stage-5 enemy type `$4F`, the nested child emitted twice by
+type `$4E`.** Its deferred init, direct vector movement, deceleration, reversal, rank-sensitive acceleration,
+zoom drawing, parent-gated effect retirement, and free now run. Enemy-handler coverage is 98/256 ported, 28
+unknown, and 130 null. W477's 15-mod start screen keeps direct and empty launches vanilla, makes
+Invincibility explicit, and leaves labelled progression interventions intact. The MAME death oracle passed
+three invulnerability-off hits, two respawns, the `2 -> 1 -> 0 -> $FFFF` life sequence, and game-over request
+2. Live duplicate counts remain 15 narrow heads, 68 widened heads, 27 body pairs, and 22 body-only findings,
+but those rows wait until after White Label. W481 remains live as build `20260822010546` after browser
+regeneration and the complete quiet-tree publication gate. That published gate passed 4,305/4,305 DaiOuJou
+tests; W483's focused set passes 43/43 and has not been published.
 
-Next, continue the corrected bounded stage-5 lifecycle bench at its next runtime blocker: type `$4F`, init
-`$270298`, first missing read `$27029A`, and handler `$2702E6`. Do not select a target from static scanning
-alone. Keep the fix bounded to this runtime evidence and the exact ROM windows its reached path requires.
+The ordinary 5,000-frame fixture now passes types `$52`, `$4E`, and `$4F` without another missing read. A
+bounded run through type `$4C`'s cartridge-backed part-4 firing branch selects the next runtime blocker: type
+`$50`, init `$2703FA`, first missing read `$2703FC`, and handler `$270446`. Do not select a target from static
+scanning alone. Keep the fix bounded to this runtime evidence and the exact ROM windows its reached path
+requires.
+
+## W483 VERIFIED: NESTED TYPE `$4E` CHILD
+
+The lifecycle selected type `$4F` at init `$270298` and failed on its stub word at `$27029A`. The stub installs
+a zero run length. W483 adds body `$2702A0`, handler `$2702E6`, and three exact windows: the eight-byte init
+stub, the contiguous `$22`-byte record and long-form sub-record prototype block at `$2702C4`, and the `$2C`
+bytes of eleven reachable art pointers at `$2703BA`. The body loads one long-form sub-record, copies the parent
+position, and installs exactly three words from the record prototype.
+
+While parent word `$8130E0` remains set, the handler applies the seen-on-screen retirement rule, calls vector
+lookup `$241812` directly, moves, decelerates to zero, reverses to heading `$20`, and then accelerates once or
+twice according to rank word `$813098`. Byte-borrow cadence advances a longword art cursor and wraps `$2C`
+to `$14` before the read. It draws through bucket 7 or 22 according to `$803910`. When the parent word clears,
+it emits kind `$04` at `$2704AE`, copies position, sets effect bucket `$10`, and frees the child.
+
+Coverage moves from 97 ported and 29 unknown to 98 ported and 28 unknown; 130 null entries do not move. The
+init registry moves from 90 to 91 bodies. Three disjoint windows move the local export from 620 to 623
+windows, with 75 overlapping pairs unchanged. The 43 focused lifecycle, registry, coverage, dependency, and
+window checks pass with no skips. Mutating the rank gate makes the lifecycle test fail at expected speed
+`$12` versus actual `$11`, and restoration returns it to green. Browser assets were not regenerated, the full
+suite was not run, and W483 is not published. Type `$50` at `$2703FC` is the next bounded runtime blocker.
 
 ## W482 VERIFIED: PAIRED TYPE `$4C` CHILD
 

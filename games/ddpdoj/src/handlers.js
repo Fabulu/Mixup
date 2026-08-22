@@ -106,7 +106,7 @@ import { AimTables, AIM, aim64, aim256, aim64FromCaller, aim64AtTarget,
 import { TURRET_HANDLERS, turretStep } from './turret.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
-  enqueueRegistersThroughStub, enqueueZoomedThroughStub,
+  enqueueRegistersThroughStub, enqueueZoomedRegisters, enqueueZoomedThroughStub,
   EMIT_TABLE } from './spritequeue.js';
 import { armScreenClear, armScreenClear243E02, handlerMidboss } from './midboss.js';
 import { scoreByMask, scoreHit, scoreKill } from './score.js';
@@ -8694,6 +8694,7 @@ const HANDLERS = new Map([
   [0x268e6c, handler1A],   // W365: stage-5 slewing twin-weapon turret -- spec in T1A
   [0x26f5f2, handler4C],   // W372: stage-5 multi-part set piece -- spec in T4C
   [0x270222, handler4E],   // W482: type $4C's paired child, splitting into type $4F
+  [0x2702e6, handler4F],   // W483: type $4E's nested child, decelerating then accelerating
   [0x270694, handler52],   // W481: type $4C's first live runtime-selected child
   [0x2a4606, handler2A4606],  // W363: HIBACHI, stage 5's boss-route root -- spec in TB0. Its body
                               // $2A6B94 is a note(), so it appears and lets the stage clear but does
@@ -9346,6 +9347,75 @@ function handler4E(ram, rom, a5, ctx) {
   enqueueRegistersThroughStub(ram, rom, T4E.emit,
     u32(ram.u32(a6 + S.posX) + 0xfa00ff00), T4E.art,
     0x0608, ram.u8(a6 + S.palette));                                // $270276..$270290
+}
+
+// ============================================ TYPE $4F (W483) ==================
+// Type $4E emits this child as a pair. It decelerates to zero, reverses heading, accelerates with a
+// rank-sensitive second step, and retires with a kind-$04 effect when its shared parent gate clears.
+const T4F = Object.freeze({
+  handler: 0x2702e6,
+  parentPresent: 0x8130e0,
+  rank: 0x813098,
+  zoomSelect: 0x803910,
+  art: 0x2703ba,
+  buckets: Object.freeze([7, 22]),
+});
+
+/** `$2702E6` -- stage-5 enemy type $4F, the nested runtime child of type $4E. */
+function handler4F(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + R.subRec);
+
+  if (ram.u16(T4F.parentPresent) === 0) {                  // $2702E6 beq.w $2704AA
+    const effect = spawnEffect(ram, ctx, 0x04, 0x2704ae); // $2704AA..$2704AE
+    ram.setU32(effect + B.pos, ram.u32(a6 + S.posX));      // $2704B4
+    ram.setU16(effect + B.bucket, 0x10);                   // $2704BA
+    freeEnemy(ram, a5);                                    // $2704C0 jmp $263762
+    return;
+  }
+
+  if (offScreen242684(ram, a6)) {                          // $2702F0 jsr $242684
+    if (ram.u8(a5 + R.onScreen) !== 0) {                   // $2702F8 tst.b ($16,A5)
+      freeEnemy(ram, a5);                                  // $2702FE jmp $263762
+      return;
+    }
+  } else {
+    ram.setU8(a5 + R.onScreen, 1);                         // $270306 move.b #1,($16,A5)
+  }
+
+  // This calls $241812 directly, so there is no $8130D2 freeze gate.
+  const velocity = ctx.tables.vector(ram.u8(a6 + S.speed), ram.u8(a6 + S.heading));
+  ram.setU16(a6 + S.posX, u16(ram.u16(a6 + S.posX) + velocity.dy)); // $27031E add.w D2
+  ram.setU16(a6 + S.posY, u16(ram.u16(a6 + S.posY) + velocity.dx)); // $270322 add.w D3
+
+  if (ram.u8(a5 + R.rec17) === 0) {                        // $270326 tst.b ($17,A5)
+    const speed = (ram.u8(a6 + S.speed) - 1) & 0xff;       // $27032E subq.b #1
+    ram.setU8(a6 + S.speed, speed);
+    if (speed === 0) {
+      ram.setU8(a5 + R.rec17, 1);                          // $270336 move.b #1,($17,A5)
+      ram.setU8(a6 + S.heading, 0x20);                     // $27033C move.b #$20,($1B,A6)
+    }
+  } else {
+    ram.setU8(a6 + S.speed, (ram.u8(a6 + S.speed) + 1) & 0xff); // $270346 addq.b #1
+    if (ram.u16(T4F.rank) !== 0) {
+      ram.setU8(a6 + S.speed, (ram.u8(a6 + S.speed) + 1) & 0xff); // $270354 addq.b #1
+    }
+  }
+
+  const oldCadence = ram.u8(a5 + R.rec1A);                 // $270358 subq.b #1
+  ram.setU8(a5 + R.rec1A, (oldCadence - 1) & 0xff);
+  if (oldCadence === 0) {                                  // $27035C bcc skips on no borrow
+    ram.setU8(a5 + R.rec1A, ram.u8(a5 + R.rec1B));         // $270360 reload cadence
+    let cursor = u16(ram.u16(a5 + R.rec18) + 4);           // $270366 addq.w #4
+    if (i16(cursor) >= 0x2c) cursor = 0x14;                 // $27036A..$270374
+    ram.setU16(a5 + R.rec18, cursor);
+  }
+
+  const cursor = i16(ram.u16(a5 + R.rec18));
+  const art = rom.u32(T4F.art + cursor);                    // $27037A..$270384
+  const pos = u32(ram.u32(a6 + S.posX) + 0xfa00fc00);      // $270386..$270390
+  const bucket = ram.u16(T4F.zoomSelect) !== 0 ? T4F.buckets[1] : T4F.buckets[0];
+  enqueueZoomedRegisters(ram, bucket, pos, art, 0x0620,
+    ram.u8(a6 + S.palette), 0xf800f800);                    // $270390..$2703B2
 }
 
 // ============================================ TYPE $52 (W481) ==================

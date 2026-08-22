@@ -6125,3 +6125,39 @@ skips. No browser assets were regenerated, and W482 is not published.
 
 Continuing the corrected lifecycle one drain further reaches the next runtime blocker: type `$4F`, init
 `$270298`, first missing read `$27029A`, and handler `$2702E6`.
+
+### D91: W483 STAGE-5 TYPE `$4F`: NESTED TYPE `$4E` CHILD
+
+The corrected deferred lifecycle selected type `$4F`, init stub `$270298`, first missing read `$27029A`, and
+handler `$2702E6`. The stub is exactly `move.w #0,($4,A5); rts`. W483 translates body `$2702A0`: it loads
+one long-form sub-record from `$2702CA`, copies the type `$4E` supplied packed position from record `+$16`
+to sub-record `+$02`, then loads exactly three record words from `$2702C4`. There is no movement script,
+palette install, or bespoke global setup.
+
+The handler first retires through `$2704AA` when shared parent word `$8130E0` clears, allocating effect kind
+`$04` at call site `$2704AE`, copying position, setting effect bucket `$10`, and freeing the enemy. Otherwise
+it applies `$242684`'s seen-on-screen retirement rule, calls velocity lookup `$241812` directly without a
+freeze gate, and updates both position words. Before reversal it decrements speed to zero, sets record byte
+`+$17`, and changes heading to `$20`; afterward it accelerates by one, plus one more while `$813098` is
+nonzero. Cadence borrow reloads record byte `+$1A`, advances the art cursor by four, and wraps `$2C` to `$14`
+before reading. The eleven reachable art longs start at `$2703BA`. Drawing uses size `$0620`, sub-record
+palette `+$1D`, flags `$F800F800`, bucket 7 through `$23E282` when `$803910` is zero, or bucket 22 through
+`$23F82A` otherwise.
+
+Three exact ROM windows cover the eight-byte init stub, the contiguous `$22`-byte record and sub-record
+prototype block, and the `$2C`-byte set of eleven reachable art pointers. The local export moves from 620 to
+**623 windows** while staying at **75 overlapping pairs**. Enemy coverage moves from **97/256 ported, 29
+unknown, 130 null** to **98/256 ported, 28 unknown, 130 null**. Init-body coverage moves from 90 to 91
+registered bodies, and the stage-5 dependency census now preserves the nested `$4E -> $4F` edge.
+
+One compact synthetic test covers ordinary deferred init, exact prototype fields, movement ordering,
+deceleration, reversal, rank-sensitive acceleration, cadence and art wrap, both zoom buckets, effect
+retirement, and free. A one-line rank-gate mutation makes it fail at expected speed `$12` versus actual
+`$11`; restored source passes. The focused lifecycle, registry, coverage, dependency, and ROM-window checks
+pass **43/43** with no skips. `export-tables.py --verify` covers the regenerated ignored local table. No
+browser assets were regenerated, no full suite was run, and W483 is not published. Published build
+**`20260822010546`** remains pinned to W481.
+
+The ordinary bounded lifecycle now reaches types `$52`, `$4E`, and `$4F` over 5,000 frames without another
+missing read. Exercising type `$4C`'s cartridge-backed part-4 firing branch runtime-selects the next blocker:
+type `$50`, init `$2703FA`, first missing read `$2703FC`, and handler `$270446`.

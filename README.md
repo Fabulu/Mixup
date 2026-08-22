@@ -177,7 +177,7 @@ refuses to publish on a red gate or an unexpected gate skip. `--only gradius` /
 At published DDPDOJ W481, its unit suite records **4,305/4,305 passing**. The same
 publication completed the Gradius unit and 13-stage gate, the DDPDOJ bundle and
 web-fetch gates, the 27-stage Batman gate, and the repository ROM-leak guard.
-Live build `20260822010546` is the recorded release. W482 is the current
+Live build `20260822010546` is the recorded release. W483 is the current
 unpublished source wave; its focused lifecycle, registry, coverage, dependency,
 and ROM-window checks pass 43/43. These counts document their respective gates,
 and each change still needs its relevant focused check.
@@ -256,13 +256,16 @@ restores the mirrored player bonus followers, and W480 closes the final type-5
 frame call with the hyper-stock animation. W481 follows corrected live stage-5
 evidence into type `$4C`'s first runtime-selected child, type `$52`. W482 follows
 the next runtime blocker into type `$4E`, whose expiry emits two independently
-positioned type `$4F` children, and raises enemy-handler coverage to 97 of 256
-entries.
+positioned type `$4F` children. W483 completes that nested type `$4F` lifecycle:
+it decelerates, reverses, rank-accelerates, selects either zoom sprite bucket,
+and retires with effect kind `$04`. Enemy-handler coverage is now 98 of 256
+entries. The next bounded runtime blocker is type `$50`, init `$2703FA`, first
+missing read `$2703FC`, and handler `$270446`.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,
 and behavior through the complete second loop. All 23 type-5 frame calls now
-run, while enemy-handler coverage is 97 ported, 29 unknown, and 130 null. The
+run, while enemy-handler coverage is 98 ported, 28 unknown, and 130 null. The
 duplicate scanners still report 15 narrow heads, 68 widened heads, 27 body
 pairs, and 22 body-only findings, now deliberately deferred until functional
 completion.
