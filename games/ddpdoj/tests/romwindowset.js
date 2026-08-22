@@ -139,7 +139,14 @@
 // +$1E spans `$24DDCE..$24DDD1`; an abutting seam at `$24DDD0` cannot serve that
 // read because RomWindows.#at does not stitch. Measured: 75 -> 76 pairs.
 
-export const ROM_WINDOW_COUNT = 633;
+// ---------------------------------------------------------------------------
+// W500 ADDED ONE WINDOW AND THE OVERLAP COUNT STILL DID NOT MOVE.
+// ---------------------------------------------------------------------------
+// `$25FC68 + $20` contains the two adjacent, independently $FF-terminated TX
+// control streams consumed by `$25FAA4`'s local leaves. It is disjoint from
+// every prior declaration. Measured: 633 -> 634 windows, 76 -> 76 pairs.
+
+export const ROM_WINDOW_COUNT = 634;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -193,4 +200,5 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "end and RomWindows.#at cannot stitch across a seam. W429 and W435 each "
   + "added an abutting window and moved no pair. W497 added one forced pair "
   + "where the $24DDB0 authentic-style template's +$1E longword crosses the "
-  + "$24DDD0 seam. See tests/romwindowset.js.";
+  + "$24DDD0 seam. W500 added the disjoint $25FC68+$20 control-stream window "
+  + "and moved no pair. See tests/romwindowset.js.";

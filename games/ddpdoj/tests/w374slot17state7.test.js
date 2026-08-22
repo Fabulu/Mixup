@@ -179,12 +179,12 @@ test('W374 $25D574: a non-zero $813098 skips $25FAA4 and BOTH pair gates, and la
     assert.equal(ram.u16(a6 + H.frameAt), 1, 'and the body ran on');
     assert.deepEqual(s.names(), ORDER);
 
-    // With the counter clear and the same dead partner, $25FAA4 IS called and nothing is announced.
+    // With the counter clear and the same dead partner, `$25FAA4` now executes and nothing is noted.
     ram.setU16(H.loopCounter, 0);
     notes.length = 0;
     frameStart(ram);
     phase7_25D560(ram, rom, ctx, a5, a6, 1, s.draws);
-    assert.equal(notesAt(notes, H.perFrame).length, 1, '$25FAA4 is called when $813098 is clear');
+    assert.deepEqual(notesAt(notes, H.perFrame), [], '$25FAA4 is live when $813098 is clear');
   });
 
 test('W374 $25D5A4 INVERTS the side $25D4E4 returned', { skip: SKIP }, async () => {
@@ -836,12 +836,10 @@ test('W374 the branch senses the port rests on, read out of the ROM', { skip: SK
   assert.equal(rom.u32(0x25d644), 0x0024150a, '$25D642 jsr $24150A');
 });
 
-// W375 EDITED THIS TEST. `H.handoff` ($26070C, 124 B) and `H.tailCall` ($25F456, 218 B) were in
-// the list below and are now PORTED (`handoff26070C` / `playerRecords25F456` in objslot17.js), so
-// they are no longer noted -- `w375state7callees.test.js` drives them instead, and asserts there
-// that neither address is noted any more. What $26070C left behind, `$260580`, is checked there
-// with its own extent. The two that remain unported here are $25F530 and $25FAA4.
-test('W374 the four unported callees are noted with their exact extents', { skip: SKIP },
+// W500 EDITED THIS TEST AGAIN. `$25FAA4` and its bounded local leaves are now ported and driven by
+// `w500perframe25faa4.test.js`. The remaining state-7 entry edge is `$25F530`; its note also names
+// the inner `$25F592` body and exact extent.
+test('W374 the remaining state-7 head edge is noted with its exact extent', { skip: SKIP },
   async () => {
     const { phase7_25D560, HANDLER7: H, SCREEN17, ram, rom, ctx, notes, a5 } = await fx();
     const a6 = SCREEN17.recs;
@@ -854,11 +852,11 @@ test('W374 the four unported callees are noted with their exact extents', { skip
     phase7_25D560(ram, rom, ctx, a5, a6, 1, spy().draws);
 
     const texts = notes.map((n) => n.what);
-    for (const [addr, size] of [[H.head, 80], [H.perFrame, 334]]) {
-      const hit = notes.find((n) => n.addr === addr);
-      assert.ok(hit, `$${addr.toString(16).toUpperCase()} was noted`);
-      assert.match(hit.what, new RegExp(`${size} bytes`), `  ...with its ${size}-byte extent`);
-    }
+    const hit = notes.find((n) => n.addr === H.head);
+    assert.ok(hit, `$${H.head.toString(16).toUpperCase()} was noted`);
+    assert.match(hit.what, new RegExp(`${H.headBytes} bytes`),
+      `  ...with its ${H.headBytes}-byte extent`);
+    assert.deepEqual(notesAt(notes, H.perFrame), [], '$25FAA4 no longer files a note');
     assert.ok(texts.some((t) => t.includes('560-byte $25F592')), '$25F530s inner bsr is named');
     // $260A9A is NOT noted: rank.js announcePost owns that site.
     assert.deepEqual(notesAt(notes, H.announce), [], '$260A9A goes through rank.js, not a note');

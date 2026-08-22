@@ -750,7 +750,7 @@ ship selector at `+$58` and the pilot/style selector at `+$5A`; the proven domai
 styles `{2,4,6}`. Selector 0 is Type-A and selector 2 is Type-B. The listing does not prove which style
 value names Shotia, Leinyan, or Exy, so no UI or documentation may guess that mapping.
 
-The first substantial D26 slice is locally implemented. Ordinary P1 browser starts expose all six pairs
+The first substantial D26 slice is implemented and landed on main. Ordinary P1 browser starts expose all six pairs
 outside the mod system. Explicit non-default selection updates the selector mailboxes and the cartridge-
 derived live player and option state, while absent, invalid, default, rung, and replay paths stay exact.
 Both 17-image ship rows and all Type-B attached shadow/glow families are packed. Type-B player and option
@@ -760,7 +760,7 @@ ships' independent 4/8/4 ordinary-bomb phases, and the full `$256662..$256CA9` t
 are packed and selected by runtime cartridge pointers. `$249E68..$249E78` deliberately clears the selector
 before indexing the horizontal hitbox row, so both ships share that row rather than inventing a Type-B table.
 The post-review focused set passes 159/159. Generated ignored assets contain 4,898 sprite streams in a
-12,623.9 KiB bundle; W497 remains local and unpublished.
+12,623.9 KiB bundle; W497 is landed on main and unpublished.
 
 D26 remains open beyond this slice. Exercise every one of the six pairs through the complete Black Label
 second loop and close only selector-specific runtime gaps that those runs prove. The browser still applies
@@ -1744,9 +1744,10 @@ were wrong by a lot. Measured to the real `rts`: `$25E6CE` is **70** bytes (reco
 **Still open in slot [9]:** `$25CB94`, the dispatcher's tail past the record walk -- it reads
 `$23D16C`, tests bit `$F`, checks record 1 and calls `$23C98E`. Unread, and a counted note.
 
-**Still open in slot [17]:** the six `$25D560` callees, all counted notes and all sized --
-`$25F530` (80 B, which `bsr`s the 560-byte `$25F592`), `$25FAA4` (334 B), `$25F456` (218 B),
-`$26070C` (124 B) and `$2603FE` (172 B).
+**SUPERSEDED THROUGH W500:** slot [17]'s `$25F456`, `$26070C`, and `$2603FE` callees were already live,
+and W500 ports `$25FAA4..$25FBF1` plus local leaves `$25FBF2` and `$25FC14`. The exact remaining
+state-7 edge is `$25F530` (80 B) and its 560-byte inner `$25F592`; both stay counted and neither was
+invented or partially translated in W500.
 
 Five of the eleven are now candidates: **[17] D33, [9] D34, [18] D37, [16] service, [12] hiscore, [13] stage
 progression.** (The [18] anchor was withdrawn in W373 -- see D37.)
@@ -1817,6 +1818,24 @@ together rather than twice. `tallyscreen.js` already has the cursor machinery (`
 `mapSavedCursor25D9E6`, `loadSavedCursor25DA60`, `tallyPhase0Arm25DC2C`), and W344's four descriptor reads
 were fixed there. A select screen is a cursor over a descriptor table with a saved position -- check that
 file before writing anything new, the way `$55` should have been checked against `aim.js`.
+
+**W500 BOUNDED ADVANCE:** `$25D560` now executes its ordinary-loop per-frame call `$25FAA4` instead
+of filing a counted note. The exact body is `$25FAA4..$25FBF1`; its two local leaves are `$25FBF2`
+(34 B) and `$25FC14` (84 B). Their `$256F14/$256F78` tails reduce to the already-ported `$240CF0`
+TX blitter, raw input reduces to the existing `$23D16C/$23D17E` RAM contract, `$28C6FA/$28C6E0`
+remain sound posts, and retirement reuses `$240EBC`. The two adjacent `$FF`-terminated cartridge TX
+streams occupy one exact `$25FC68+$20` window. No source text or DOM art replaces them.
+
+The body redraws both one/two-round labels, lets bit 0/1 move the mode, ORs every joined side's raw
+input into `$813072` for the `$70` confirmation mask, but deliberately tests direction on D0 from the
+last joined side whose accessor ran. Confirmation copies `$813074` to `$80393A`, posts the cue, blinks
+from the low byte of a 32-tick timer, sets `$813078`, and queues the cartridge's 5-by-12 blank grid.
+Its full-register save/restore means the state-7 caller's inherited D0 survives. Two-side rendezvous,
+selector domains `{0,2}` and `{2,4,6}`, shared label ordering, draw-tail order, one-shot handoff, and
+ordinary launch behavior remain unchanged.
+
+**Next live D34 edge:** `$25F530` and inner `$25F592` at the head of the same state-7 handler. W500
+intentionally leaves that counted note loud rather than broadening scope.
 
 ### D35: THE LIFE AND COIN SYSTEM
 
@@ -6643,6 +6662,30 @@ W499 closes the two remaining controller follow-ups:
 
 The bounded W499 regression and directly affected shared-input, web-input, W375 coin-debounce/wiring, and W498
 preservation set passes 83/83 with no failures or skips. Syntax checks pass. No ROM window, generated asset,
-full suite, publish, commit, or push operation was performed. W499 is local, production remains W496 build
+full suite, or publication was performed. W499 is landed on main and unpublished; production remains W496 build
 `20260822120853`, and W501 remains the next publication point. D106 is closed; D26's authentic selector and
 full-second-loop work remain separate.
+
+### D107: W500 D34 `$25FAA4` ORDINARY-LOOP SELECTOR, VERIFIED AND LANDED
+
+W500 ports only the narrowed live per-frame edge `$25FAA4..$25FBF1` from `$25D560`, plus its bounded
+local leaves `$25FBF2` and `$25FC14`. It redraws the cartridge's two one/two-round TX labels, blanks and
+highlights the appropriate cursor cell, reads only joined sides, preserves the cartridge's last-live-side
+D0 directional test while OR-ing all joined inputs for confirmation, and posts the existing move cue only
+when the mode changes. A `$70` input confirms, copies `$813074` to `$80393A`, posts the confirm cue, blinks
+for exactly 32 ticks, sets `$813078`, and queues `$240EBC`'s 5-by-12 clear. The routine's matching
+full-register movems preserve the caller's inherited D0.
+
+`$256F14` and `$256F78` reduce directly to the existing `$240CF0` TX blitter; `$23D16C/$23D17E`,
+`$28C6FA/$28C6E0`, and `$240EBC` likewise reuse existing bodies or contracts. The only cartridge data
+addition is the exact disjoint `$25FC68+$20` window containing two adjacent `$10`-byte, `$FF`-terminated
+control streams. `export-tables.py` regenerated the ignored local export at 634 windows and 444,269 bytes;
+overlap pairs remain 76. No browser sprite dependency was added, so `export-web.mjs` did not run, and no
+ROM-derived output is tracked.
+
+The compact W500 regression plus directly affected state-7, slot-17, shared-draw, saved-selection,
+shared-label, authentic-domain, object-dispatch, handler-registry, and ROM-window tests pass 193/193 with
+no failures or skips. JavaScript syntax checks pass. The full suite, browser export, and publication were not
+run. W500 is independently verified and landed on main but unpublished, is the fourth wave after W496, production remains W496
+build `20260822120853`, and W501 remains the next publication wave. `$25F530` with inner `$25F592` is the
+next live unresolved D34 edge.

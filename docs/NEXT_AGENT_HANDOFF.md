@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W499 D106 two-controller and practical gamepad-profile work verified locally)
+Updated: 2026-08-22 (W500 D34 `$25FAA4` ordinary-loop selector verified and landed)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,22 +8,24 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W499 closes D106.** W498 restored slot 14's authentic Game Over art
-and shared mobile P1 COIN/START. W499 assigns browser Gamepad index 0 to P1 and index 1 to P2, each with
-directions, shot, bomb, auto, start, and its own select-backed active-low coin edge. Both players feed the
-low/high byte paths of the board's existing one-word `$C08000` contract; P2 coin uses `$C08004` bit 1. There is
-no host-side P2 mode. Mobile and keyboard remain P1-only. Lifecycle and replay clears block either held coin
-button until release without rearming an expired pulse.
+`docs/DOCKET.md` is authoritative. **W500 advances D34 without broadening scope.** State-7 handler
+`$25D560` now executes `$25FAA4..$25FBF1` on the ordinary-loop path. Its bounded local leaves `$25FBF2`
+and `$25FC14` draw the cartridge one/two-round labels, restore and highlight the two cursor cells, process
+two-side raw input, latch the chosen mode to `$80393A`, blink for 32 ticks, and queue the cartridge clear.
+The two-side rendezvous, `{0,2}` ship domain, `{2,4,6}` style domain, draw-tail order, one-shot handoff,
+P2 controller transport, and ordinary browser launch remain unchanged.
 
-The shared resolver now accepts W3C Standard pads plus explicit legacy PS3, modern PlayStation,
-Nintendo/Switch, and conservative generic DirectInput profiles. The fallback requires at least two axes and
-ten buttons and understands common button d-pads, axes 6/7, and POV-hat axis 9. Unknown smaller devices are
-left inactive rather than partially guessed. No remapping UI was added.
+The next exact live D34 edge is `$25F530` with inner `$25F592`, called at the head of the same state-7
+handler. Both remain one loud counted note. Read their exact ROM bodies and all call forms before changing
+them; do not infer behavior from the old D33/D34 estimates. W500 deliberately did not partially port them.
 
-W499's bounded controller regression plus directly affected shared-input, web-input, W375 coin-debounce/wiring,
-and W498 preservation tests pass 83/83 with no failures or skips. Syntax checks pass. No ROM window, generated
-asset, full suite, publish, commit, or push operation was performed. W499 is local. Production remains W496
-build `20260822120853`; W501 is the next five-wave publication point.
+W500's compact regression plus directly affected state-7, slot-17, shared-draw, saved-selection,
+shared-label, authentic-domain, object-dispatch, handler-registry, and ROM-window tests pass 193/193 with no
+failures or skips. Syntax checks pass. `export-tables.py` regenerated the ignored local table export at 634
+windows and 444,269 bytes for the one exact `$25FC68+$20` control-stream window; overlap pairs remain 76.
+No browser sprite dependency was added, so `export-web.mjs` was not run. No full suite or publication was
+performed. W500 is independently verified and landed on main but unpublished, the fourth wave after W496. Production remains
+W496 build `20260822120853`; W501 is the next five-wave publication point.
 
 **W497 remains the first substantial D26 implementation slice.** The cartridge-proven ship domain is `{0,2}`
 and the style domain is `{2,4,6}`. Selector 0 is Type-A and selector 2 is Type-B. The cartridge census does
@@ -44,6 +46,33 @@ unknown-only, direct, Original, and later vanilla-Game paths install no mod call
 the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage remains 101/256 ported, 25
 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
+
+## W500 VERIFIED LOCALLY: `$25FAA4` ORDINARY-LOOP MODE SELECTOR
+
+`perFrame25FAA4` is called only when `$813098` is clear, exactly where `$25D57E` makes the cartridge call.
+The routine first restores both cursor cells and both ROM-fed labels. While `$813006` is clear, it zeros
+`$813072`, reads `$23D16C/$23D17E` only for selectors not equal to `$00FF`, and ORs each raw word into that
+aggregate. Direction bits 0/1 deliberately act on D0 from the last joined side whose accessor ran; the
+cartridge does not reload the aggregate before those tests. A mode change toggles `$813074` and posts
+`$28C6FA`. Any aggregate bit in `$70` sets `$813006`.
+
+The confirm arm copies `$813074` to `$80393A`, posts `$28C6E0`, loads `$813076` with `$20`, and decrements it
+on the same frame. `$813077` bit 1 controls whether the selected label is redrawn over the normal pair, which
+produces the cartridge blink. Zero sets `$813078` and calls `$240EBC` with D0/D1/D2/D3 =
+`$74/$0800/$4/$B`. `$25FAA4` saves and restores D0-D7/A0-A6, so `phase7_25D560` must not clear its tracked
+D0 provenance after the call.
+
+The local leaves are exact and bounded: `$25FBF2..$25FC13` draws both streams through `$256F14`, and
+`$25FC14..$25FC67` draws one highlighted cursor and stream through `$256F78/$256F14`. Both wrappers reduce
+to `txBlock240CF0`; retirement reuses `txPrint240EBC`. The streams stay in `RomWindows` at
+`$25FC68+$20`, two adjacent `$10`-byte ranges each ending in `$FF`. Do not replace them with source strings.
+`tests/w500perframe25faa4.test.js` drives the state-7 wiring against the regenerated window, checks movement,
+ROM-fed highlight output, confirmation, the full timer, retirement, and the inert done gate.
+
+**Next:** port `$25F530` and its inner `$25F592` only after re-reading their exact extents and call forms from
+the local decrypted image. They remain the sole counted state-7 head edge. W501 is also the next publication
+wave, so regenerate browser assets with `export-web.mjs` after all W501 edits settle and before `publish.mjs`.
+Keep the tree quiet for publication.
 
 ## W499 VERIFIED LOCALLY: TWO INDEXED CONTROLLERS AND PRACTICAL PAD PROFILES
 

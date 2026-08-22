@@ -24,7 +24,8 @@
 
 import { u16, i16 } from './ram.js';
 import { install24150A, install2414BE, paletteSet241688 } from './palette.js';
-import { clearTx23C622, txString25A14C } from './background.js';
+import { clearTx23C622, txBlock240CF0, txString25A14C } from './background.js';
+import { txPrint240EBC } from './hud.js';
 import { announcePost, stageStart260580, stagePair2603FE } from './rank.js';
 import { cursorsFromPosted25D9E6 } from './tallyscreen.js';
 import { stageCreate, queueKill } from './objalloc.js';
@@ -744,6 +745,134 @@ export function handoff26070C(ram, rom, ctx, d0, d1, d2, d3, d4, save = savedSel
   return true;
 }
 
+/** `$25FAA4..$25FBF1` -- the ordinary-loop selection-mode body. Its entry saves D0-D7/A0-A6
+ *  and restores every register at `$25FBEC`, so the caller's live D0 survives this whole routine.
+ *
+ *  `$25FBF2` and `$25FC14` are the routine's two local leaves. Both reduce to `$256F14` or
+ *  `$256F78`, and those reduce to the already-ported `$240CF0` TX blitter. The two label streams
+ *  remain cartridge data at `$25FC68/$25FC78`; no source string stands in for them. */
+export const PERFRAME_25FAA4 = Object.freeze({
+  addr: 0x25faa4, bytes: 334,
+  doneAt: 0x813078, delayAt: 0x813070, inputAt: 0x813072,
+  modeAt: 0x813074, confirmAt: 0x813076, confirmByteAt: 0x813077,
+  requestedAt: 0x813006, modeOut: 0x80393a,
+  selectors: Object.freeze([0x813084, 0x813086]),
+  rawInputs: Object.freeze([0x803970, 0x803976]),
+  labelDraw: 0x25fbf2, labelDrawBytes: 34,
+  modeDraw: 0x25fc14, modeDrawBytes: 84,
+  labels: Object.freeze([0x25fc68, 0x25fc78]), labelBytes: 0x10,
+  cursor: Object.freeze([
+    Object.freeze({ d0: 0x0007, d1: 0x001d }),
+    Object.freeze({ d0: 0x0007, d1: 0x0019 }),
+  ]),
+  moveSound: 0x28c6fa, confirmSound: 0x28c6e0, confirmFrames: 0x0020,
+  clear: Object.freeze({ d0: 0x0074, d1: 0x0800, d2: 0x0004, d3: 0x000b }),
+});
+
+/** `$256F14..$256F4B` -- consume a cartridge TX control stream and draw each glyph through
+ *  `$240CF0`. `$7F` begins another positioned run and `$FF` ends the stream. */
+function txControl256F14(tx, rom, d5, start) {
+  let a0 = start;
+  for (;;) {
+    let d0 = rom.u8(a0++);                                    // $256F20 move.b (A0)+,D0
+    const d1 = rom.u8(a0++);                                  // $256F22 move.b (A0)+,D1
+    a0 += 1;                                                   // $256F24 addq.w #1,A0
+    for (;;) {
+      const glyph = rom.u8(a0++);                             // $256F28 move.b (A0)+,D4
+      if (glyph === 0x7f) break;                              // $256F2A/$256F2E: another run
+      if (glyph === 0xff) return;                             // $256F30/$256F34: stream end
+      const d4 = (((glyph & 0xff) << 16) | (d5 & 0xffff)) >>> 0;
+      txBlock240CF0(tx, d0, d1, 0, 0, d4);                   // $256F3E jsr $240CF0
+      d0 = u16(d0 + 1);                                      // $256F44 addq.w #1,D0
+    }
+  }
+}
+
+/** `$256F78..$256F93` -- one TX cell, tail-called into `$240CF0`. */
+function txCell256F78(tx, d0, d1, d2) {
+  const d4 = i16(d2) < 0 ? 0x00200002 : 0x003e0002;          // $256F78..$256F8A
+  txBlock240CF0(tx, d0, d1, 0, 0, d4);                      // $256F8E jmp $240CF0
+}
+
+/** `$25FBF2..$25FC13` -- draw both cartridge labels with attribute zero. */
+function selectionLabels25FBF2(tx, rom) {
+  const P = PERFRAME_25FAA4;
+  txControl256F14(tx, rom, 0, P.labels[0]);                  // $25FBFC jsr $256F14
+  txControl256F14(tx, rom, 0, P.labels[1]);                  // $25FC0C jsr $256F14
+}
+
+/** `$25FC14..$25FC67` -- highlight the current mode's cursor and cartridge label. */
+function selectedMode25FC14(ram, rom, tx) {
+  const P = PERFRAME_25FAA4;
+  const display = ram.u16(P.modeAt) === 0 ? 1 : 0;           // $25FC14 beq: zero takes second stream
+  txCell256F78(tx, P.cursor[display].d0, P.cursor[display].d1, 1); // $25FC2A/$25FC50
+  txControl256F14(tx, rom, 2, P.labels[display]);             // $25FC3A/$25FC60 jsr $256F14
+}
+
+/** `$25FAA4` -- draw and operate the cartridge's ordinary-loop one/two-round selector.
+ *
+ * The directional test deliberately uses D0 from the LAST joined side whose raw accessor ran,
+ * while `$813072` receives the OR of every joined side. That is what the instruction sequence says:
+ * it never reloads the aggregate before `btst #0/#1,D0`. Confirmation accepts any of bits 4-6,
+ * latches the selected mode to `$80393A`, blinks for 32 ticks, then queues `$240EBC`'s exact clear. */
+export function perFrame25FAA4(ram, rom, ctx) {
+  const P = PERFRAME_25FAA4;
+  if (ram.u16(P.doneAt) !== 0) return;                        // $25FAA8 bne $25FBEC
+
+  txCell256F78(ctx.tx, P.cursor[0].d0, P.cursor[0].d1, -1);  // $25FABE jsr $256F78
+  txCell256F78(ctx.tx, P.cursor[1].d0, P.cursor[1].d1, -1);  // $25FAD0 jsr $256F78
+  selectionLabels25FBF2(ctx.tx, rom);                         // $25FAD6 bsr $25FBF2
+
+  if (ram.u16(P.delayAt) !== 0) {                             // $25FADA tst.w $813070
+    ram.setU16(P.delayAt, u16(ram.u16(P.delayAt) - 1));      // $25FAE4 subq.w #1
+    return;
+  }
+
+  if (ram.u16(P.requestedAt) === 0) {                         // $25FAEE tst.w $813006
+    ram.setU16(P.inputAt, 0);                                 // $25FAF8 move.w #0,$813072
+    let d0 = 0;                                               // `$25FB30` sees the last live reader
+    for (let side = 0; side < P.selectors.length; side++) {
+      if (ram.u16(P.selectors[side]) === 0x00ff) continue;    // $25FB00/$25FB18 sentinel guards
+      d0 = ram.u16(P.rawInputs[side]);                         // $23D16C / $23D17E exact two-op bodies
+      ram.setU16(P.inputAt, u16(ram.u16(P.inputAt) | d0));    // $25FB12/$25FB2A or.w D0
+    }
+
+    if ((d0 & 0x0001) !== 0) {                               // $25FB30 btst #0,D0
+      if (ram.u16(P.modeAt) === 0) {
+        ram.setU16(P.modeAt, 1);                              // $25FB42 move.w #1,$813074
+        ctx.soundPost?.(P.moveSound);                         // $25FB4A jsr $28C6FA
+      }
+    } else if ((d0 & 0x0002) !== 0 && ram.u16(P.modeAt) !== 0) { // $25FB54 btst #1,D0
+      ram.setU16(P.modeAt, 0);                                // $25FB66 move.w #0,$813074
+      ctx.soundPost?.(P.moveSound);                           // $25FB6E jsr $28C6FA
+    }
+
+    selectedMode25FC14(ram, rom, ctx.tx);                     // $25FB74 bsr $25FC14
+    if ((ram.u16(P.inputAt) & 0x0070) === 0) return;          // $25FB78..$25FB82
+    ram.setU16(P.requestedAt, 1);                             // $25FB86 move.w #1,$813006
+  }
+
+  if (ram.u16(P.confirmAt) === 0) {                           // $25FB8E tst.w $813076
+    ram.setU16(P.modeOut, ram.u16(P.modeAt));                 // $25FB98 move.w -> $80393A
+    ctx.soundPost?.(P.confirmSound);                          // $25FBA2 jsr $28C6E0
+    ram.setU16(P.confirmAt, P.confirmFrames);                 // $25FBA8 move.w #$20
+  }
+
+  const left = u16(ram.u16(P.confirmAt) - 1);                 // $25FBB0 subq.w #1,$813076
+  ram.setU16(P.confirmAt, left);
+  if (left === 0) {
+    ram.setU16(P.doneAt, 1);                                  // $25FBD2 move.w #1,$813078
+    const c = P.clear;
+    txPrint240EBC(ram, c.d0, c.d1, c.d2, c.d3);              // $25FBE6 jsr $240EBC
+    return;
+  }
+
+  selectionLabels25FBF2(ctx.tx, rom);                         // $25FBBA bsr $25FBF2
+  if ((ram.u8(P.confirmByteAt) & 0x02) === 0) {               // $25FBBE btst #1,$813077
+    selectedMode25FC14(ram, rom, ctx.tx);                     // $25FBCA bsr $25FC14
+  }
+}
+
 /** `$25D560` -- THE STATE-7 HANDLER, shared by object-dispatch slots [17] and [9]. Seven hundred
  *  and thirty-two bytes, one `rts`, and the routine that finally gives the already-ported
  *  `draw25E4D0` a caller.
@@ -794,8 +923,8 @@ export function phase7_25D560(ram, rom, ctx, a5, a6, d7, draws = ctx?.selectDraw
   if (ram.u16(H.loopCounter) !== 0) {
     announce = true;
   } else {
-    ctx.unported?.note(H.perFrame, `${hex7(H.perFrame)} -- ${H.perFrameBytes} bytes. Unread`);
-    d0Site = 0;                                              // $25D57E jsr $25FAA4 clobbers D0
+    perFrame25FAA4(ram, rom, ctx);                            // $25D57E jsr $25FAA4
+    // `$25FAA4` opens/closes with matching full-register movems, so D0 and its provenance survive.
     if (ram.u8(a0 + H.liveAt) !== 0) {                       // $25D584 tst.b (A0) / beq.s $25D5B0
       // $25D588 cmpi.b #$7,($1,A0) / $25D58E bne.w $25D800 -- THE RENDEZVOUS.
       if (ram.u8(a0 + H.rendezvousAt) !== H.rendezvous) {

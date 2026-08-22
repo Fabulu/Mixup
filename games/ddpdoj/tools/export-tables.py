@@ -3279,6 +3279,12 @@ SHOT_WINDOWS.extend([
     (0x223EF8, 0x0040, "W373: slot [9] record-state-0 palette, bank 15 through $24150A. Sixty-four "
                        "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
                        "slot [17]; this one is slot [9]'s own"),
+    # ---- W500: $25FAA4's two adjacent cartridge TX control streams ----------------------------
+    (0x25FC68, 0x0020, "W500: $25FBF2/$25FC14 feed two adjacent $10-byte TX control streams to "
+                       "$256F14. Each stream begins with three positioning/control bytes and ends "
+                       "at its own $FF sentinel; $25FC68..$25FC77 and $25FC78..$25FC87 therefore "
+                       "form one exact $20-byte window. The port reads these cartridge glyph bytes "
+                       "at runtime and does not replace them with source text"),
     # ---- W375: $25F456's two tables ----------------------------------------------------------
     (0x25F868, 0x0018, "W375: $25F456's per-selection record table, THREE entries of eight bytes. "
                        "$25F468 and $25F4D0 lea (d16,PC),A0 and index it by (sel-2)*4 -- the STRIDE "

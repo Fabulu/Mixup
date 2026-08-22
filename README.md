@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W499 completes D106 controller work with indexed P1/P2 physical pads, separate COIN1/COIN2 paths, and Standard plus practical PlayStation, Nintendo/Switch, and DirectInput profiles while mobile remains P1-only; full second loop and docket still in progress |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W500 advances D34 by running cartridge `$25FAA4` from selection state 7, including ROM-fed one/two-round labels, two-side raw input, confirmation blink, and transition clear; `$25F530/$25F592` remains next; full second loop and docket still in progress |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -183,7 +183,8 @@ W492 through W496, including all fifteen requested transformative mods. W493's f
 affected set passes 232/232, W494's passes 118/118, W495's passes 89/89, W496's
 passes 170/170, and the bundle gate remains pixel-exact. W498's focused visible-input
 and Game Over set passes 93/93. W499's bounded controller plus directly affected
-shared/web input and coin set passes 83/83; W499 is local and unpublished.
+shared/web input and coin set passes 83/83. W500's bounded selection, slot,
+registry, and window set passes 193/193; W497 through W500 are landed on main and unpublished.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -311,8 +312,14 @@ with lifecycle-safe first-controller coin edges. W499 completes D106: browser Ga
 index 0 drives P1, index 1 drives P2 through the existing two-half `$C08000` machine
 word, and each controller has its own active-low `$C08004` coin path. Standard,
 PlayStation, Nintendo/Switch, and conservative generic DirectInput profiles are
-supported; mobile remains P1-only. W497 through W499 are local and not published;
-W501 remains the next periodic publication point.
+supported; mobile remains P1-only. W500 advances D34's cartridge state-7 path:
+`$25FAA4` now draws both one/two-round labels from ROM, applies the last joined
+side's directional input while OR-ing both sides for confirmation, blinks the chosen
+mode for 32 ticks, stores it to `$80393A`, and queues the cartridge clear before
+retirement. Its exact `$25FC68+$20` data window raises the registry to 634 windows
+without changing 76 overlap pairs. `$25F530/$25F592` remains the next live state-7
+edge. W497 through W500 are landed on main and not published; W500 is the fourth wave after
+W496, and W501 remains the next periodic publication point.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,
