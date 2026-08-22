@@ -6236,3 +6236,52 @@ therefore the existing type `$4C` port's omitted live state-4 arm at **`$26FDF4.
 `$26FDF4`. The cartridge arm ramps record word `+$1E` to `$0600`, arms eight paired passes, and calls `$263684`
 at `$26FE5C` and `$26FE8C` to emit type `$58` with distinct packed biases. Restoring that parent arm is required
 before type `$58` can be honestly runtime-proven.
+
+### D94: W486 TYPE `$4C` COMPLETE STATE-4 OMISSIONS, SOURCE-COMPLETE AND UNPUBLISHED
+
+W486 restores both live omissions inside `state4_4C`: the step-1 steering gate `$26FD8C..$26FD98` and the
+paired arm `$26FDF4..$26FEC7`. Independent review caught the first W486 draft still advancing step 1
+unconditionally. The cartridge loads target `$3200/$1C00`, calls `$26FF9E`, and `$26FD98 bcs.w $26FDAE`
+skips the band, step, and phase stores while steering remains in progress. Carry clear falls through to write
+band `$04`, step 2, and phase byte `+$2A = 1`. The later step comparisons still run in either case, but phase
+zero keeps the paired arm inactive until that first waypoint has actually been reached.
+
+The second decisive control-flow fact is that `$26FDC4 bcs.w` lands at `$26FDD4`, whose still-step-2
+comparison routes onward to `$26FDF4`, while `$26FDEA bcs.w` lands there directly. Neither route reaches
+`$26FEC8 rts`. The arm therefore runs while the two later state-4 waypoints are still travelling. Replacing
+those edges with JavaScript `return` had silently removed the whole parent path and made type `$58` look
+unreachable.
+
+At `$26FDF4`, sub-record byte `+$2A == 1` gates the ramp. Record word `+$1E` is compared with `$0600`
+before the add; if unequal, `$26FE08` adds `$0040`, then the signed `blt.w` at `$26FE14` leaves phase 1
+armed while the result is below `$0600`. Reaching or passing the cap stores exactly `$0600`, changes
+`+$2A` to 2, loads eight passes into `+$2B`, and clears heading cursor `+$34`. Phase 2 runs only when the
+low byte of `$80390A & 7` is zero. It indexes the already-exported eight-long table `$26FCD2` by
+`(+$2B & 7) * 4`, so the eight pass indices are 0, 7, 6, 5, 4, 3, 2, 1.
+
+Each due pass calls deferred fixed-zero enqueue `$263684` twice, at `$26FE5C` and `$26FE8C`, for type
+`$58`. Both children add the selected table long to the copied parent position, but the first also adds
+packed bias `$0C7FF600` and the second `$0C800A00`. Each copies `(4 - +$34) & $3F` into child byte
+`+$1A`, and each emission increments `+$34` separately modulo 8. The pass counter decrements after the
+pair; only its eighth zero clears phase byte `+$2A`.
+
+The compact W486 runtime regression first places step 1 far from `$3200/$1C00` and proves both the step and
+phase remain unchanged, then places it exactly at the waypoint and proves band `$04`, step 2, and phase 1 are
+written only after arrival. It next starts below the cap, proves there is no early emission, drives all eight
+every-eighth-frame passes, checks every off-cycle frame and all 16 queue records field by field, and drains the
+queue. Every queued type is `$58`; the drain reads init stub `$270BDC` and reaches only the unported init+8 body
+`$270BE4`. The cartridge handler is `$270C66`, so type `$58` is now the next runtime-proven blocker. Bypassing
+the step-1 steering result fails expected step 1 versus actual step 2. Mutating the child to `$57` also makes the
+regression fail, and restoring both cartridge values returns it to green.
+
+The arm reuses the existing `$26FCD2 + $20` table window. The only genuinely new read is the eight-byte type
+`$58` init stub, so W486 adds exactly `$270BDC + $08`. The regenerated ignored local export moves from 628 to
+**629 windows** and from 437,697 to **437,705 bytes**, with **75 overlapping pairs unchanged**. The focused
+new test passes 1/1, and the relevant type `$4C` field, runtime, retirement, and W486 set passes **96/96** with
+no failures or skips. Enemy-handler and init-body coverage do not move because type `$58` itself remains
+unported.
+
+W486 is source-complete but unpublished. No full suite, browser-asset regeneration, commit, push, or publication
+was run. Published build **`20260822010546`** remains pinned to W481. Main must first obtain a quiet tracked
+tree, run `export-tables.py --verify`, run `export-web.mjs` because the ROM-window set changed, then run
+`publish.mjs` and confirm the deployed build before changing the live build pin.

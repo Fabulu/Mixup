@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W485)
+Updated: 2026-08-22 (W486 source-complete, unpublished)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,23 +8,49 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W485 ports terminal stage-5 enemy type `$51`, emitted when type `$50`
-expires.** Its deferred init, seen-on-screen retirement, direct vector movement, reversal, rank acceleration,
-byte-underflow animation, both zoom buckets, and off-screen free now run. Enemy-handler coverage is 100/256
-ported, 26 unknown, and 130 null. The init registry contains 93 bodies. W477's 15-mod start screen keeps
-direct and empty launches vanilla, makes Invincibility explicit, and leaves labelled progression interventions
-intact. The MAME death oracle passed three invulnerability-off hits, two respawns, the `2 -> 1 -> 0 -> $FFFF`
-life sequence, and game-over request 2. Live duplicate counts remain 15 narrow heads, 68 widened heads, 27
-body pairs, and 22 body-only findings, but those rows wait until after White Label. W481 remains live as build
-`20260822010546` after browser regeneration and the complete quiet-tree publication gate. That published gate
-passed 4,305/4,305 DaiOuJou tests; W485's compact focused set passes 47/47 and has not been published.
+`docs/DOCKET.md` is authoritative. **W486 restores type `$4C` state 4's live step-1 steering gate
+`$26FD8C..$26FD98` and paired arm `$26FDF4..$26FEC7`.** Step 1 now holds until `steer4C` reaches
+`$3200/$1C00`; only then does it write band `$04`, advance to step 2, and arm phase 1. Record `+$1E` then
+ramps by `$40` to `$600`; phase 2 runs eight every-eighth-frame passes and emits two type `$58` deferred
+children per pass with distinct packed positions and independently advanced headings. Draining that
+type-`$58`-only queue reaches its unported init+8 body `$270BE4`; init is `$270BDC` and handler is `$270C66`.
+Enemy-handler coverage remains 100/256 ported, 26 unknown, and 130 null. The init registry remains at 93 bodies. W477's 15-mod start screen keeps direct and empty
+launches vanilla. Live duplicate counts remain 15 narrow heads, 68 widened heads, 27 body pairs, and 22
+body-only findings, but those rows wait until after White Label. W481 remains live as build `20260822010546`
+after browser regeneration and the complete quiet-tree publication gate. That published gate passed
+4,305/4,305 DaiOuJou tests; W486's relevant type `$4C` set passes 96/96 and has not been published.
 
-Type `$51` emits no child. Do not follow the static `$48 -> $54` edge: Version B's live callers target the bare
-`rts` at `$2714AE`, and the `$54` call sits in the disabled body at `$2714B0`. The next runtime blocker found is
-an incomplete existing parent transcription: `state4_4C` omits the cartridge's live `$26FDF4..$26FEC7` arm.
-That arm ramps record `+$1E`, arms eight paired passes, and emits type `$58` twice per due pass. Restore the
-parent arm with a focused runtime regression before treating type `$58` as proven. Browser assets are due at
-W486's publication wave, only after all source work is quiet and `export-web.mjs` has regenerated them.
+Type `$58` is the next runtime-proven blocker. Do not follow the static `$48 -> $54` edge: Version B's live
+callers target the bare `rts` at `$2714AE`, and the `$54` call sits in the disabled body at `$2714B0`. W486 is
+the fifth-wave publication point after W481, but this editing wave deliberately stopped before publication.
+Main must ensure the tracked tree is quiet, verify the regenerated local tables, run `export-web.mjs` because
+W486 adds a ROM window, then run `publish.mjs`, confirm the deployed build, and only then update the live pin.
+
+## W486 SOURCE-COMPLETE: TYPE `$4C` COMPLETE STATE-4 OMISSIONS
+
+Independent review caught the first draft still omitting `$26FD8C..$26FD98`. Step 1 loads target
+`$3200/$1C00` and calls `steer4C`; `$26FD98 bcs.w $26FDAE` must leave step 1 and phase `+$2A = 0` intact
+while travel is in progress. Arrival alone falls through to band `$04`, step 2, and phase 1. The regression
+proves both sides and fails expected step 1 versus actual step 2 when the steering result is bypassed.
+
+The later flow is equally exact. `$26FDC4 bcs.w` lands at `$26FDD4`, whose still-step-2 comparison routes
+onward to `$26FDF4`; `$26FDEA bcs.w` lands there directly. The arm therefore runs while state 4 is still
+travelling. The former JavaScript waypoint `return` erased that fall-through. Phase byte `+$2A == 1` compares
+record word `+$1E` with `$600`, adds `$40` when unequal, uses the signed post-add comparison to continue
+ramping, then clamps to `$600`, sets phase 2, loads eight passes into `+$2B`, and clears cursor `+$34`.
+
+Phase 2 is due only when `$80390A & 7 == 0`. It indexes existing table `$26FCD2` by `(+ $2B & 7) * 4` and
+calls `$263684` at `$26FE5C` and `$26FE8C`. Both deferred records are type `$58` with fixed-zero flags and copy
+the parent position plus the selected table long. Their separate packed biases are `$0C7FF600` and
+`$0C800A00`. Each copies `(4 - +$34) & $3F` into child `+$1A` and increments `+$34` independently. After eight
+pairs, `+$2B` and phase `+$2A` both reach zero.
+
+The new regression proves no emission one ramp step below the cap, verifies all 16 children, and drains only
+type `$58` to the named unported body `$270BE4`. Its red switch fails with child `$57`. The arm's table was
+already windowed; only init stub `$270BDC + $08` is new. The regenerated ignored export is 629 windows and
+437,705 bytes with 75 overlapping pairs unchanged. The focused W486 test passes 1/1; the existing type `$4C`
+field, runtime, retirement, and new arm set passes 96/96. Browser assets and the full suite were not run.
+No commit, push, or publication was performed. Build `20260822010546` remains the live pin.
 
 ## W485 VERIFIED: TERMINAL TYPE `$50` CHILD
 

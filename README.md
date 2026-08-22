@@ -177,10 +177,11 @@ refuses to publish on a red gate or an unexpected gate skip. `--only gradius` /
 At published DDPDOJ W481, its unit suite records **4,305/4,305 passing**. The same
 publication completed the Gradius unit and 13-stage gate, the DDPDOJ bundle and
 web-fetch gates, the 27-stage Batman gate, and the repository ROM-leak guard.
-Live build `20260822010546` is the recorded release. W485 is the current
-unpublished source wave; its focused lifecycle, registry, coverage, dependency,
-and ROM-window checks pass 47/47. These counts document their respective gates,
-and each change still needs its relevant focused check.
+Live build `20260822010546` is the recorded release. W486 is the current
+source-complete but unpublished wave: its focused type `$4C` arm and retirement
+set passes 96/96, and its ignored local export measures 629 windows with 75
+overlapping pairs. These counts document their respective gates, and each change
+still needs its relevant focused check.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -263,11 +264,17 @@ runtime child: it moves and draws for a `$30`-frame lifetime, then emits type
 `$51`, while sharing type `$4F`'s parent-gated effect retirement. W485 completes
 that terminal type `$51` lifecycle: it arms retirement once seen, moves without a
 freeze gate, decelerates, reverses, rank-accelerates, animates through either zoom
-bucket, and frees after leaving the screen. Enemy-handler coverage is now 100 of
-256 entries. The next runtime blocker is not type `$54`: Version B returns at
-`$2714AE` before that disabled body. It is type `$4C`'s omitted live state-4 arm
-at `$26FDF4..$26FEC7`, which must be restored before its paired type `$58`
-emission can be driven.
+bucket, and frees after leaving the screen. W486 restores type `$4C` state 4's
+live step-1 steering gate at `$26FD8C..$26FD98` and paired fall-through arm at
+`$26FDF4..$26FEC7`. Step 1 now holds until arrival at `$3200/$1C00`; only then
+does record `+$1E` begin ramping by `$40` to `$600`. Eight every-eighth-frame
+passes each enqueue a paired type `$58` emission with separate packed biases and
+headings. The focused drain now reaches only type `$58`'s unported init body at
+`$270BE4`; its cartridge init is `$270BDC` and its handler is `$270C66`.
+Enemy-handler coverage remains 100 of 256 entries. The static `$48 -> $54` edge
+remains disabled behind Version B's `$2714AE` return. W486 is source-complete but
+unpublished; live build `20260822010546` remains pinned until the quiet-tree
+export and publication gate succeeds.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,

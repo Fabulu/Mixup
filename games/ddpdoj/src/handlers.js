@@ -9755,9 +9755,9 @@ const T4C = Object.freeze({
   // $55 gives this byte four cascade values and $46 gives it five modes; here it is a draw variant.
   drawSelectAt: 0x17,
   drawStubs: Object.freeze([0x23dece, 0x23df58]),
-  // All three word comparisons in the span are the SAME test: cmpi.w #$0600,($1E,A5) at $26FC32,
-  // $26FDFE and $26FE0E. $0600 is also $55's ramp cap and ($1E,A5) is a cursor there too, so this looks
-  // like the same ramp-with-cap gating THREE different arms. Mapping those is the next step.
+  // All three word comparisons in the span are the SAME cap test: state 2 raises ($1E,A5), while
+  // W486's state-4 phase arm at $26FDF4 compares before and after its own +$40 ramp. Reaching $600
+  // clamps the record field and starts the eight paired type-$58 passes below.
   rampAt: 0x1e, rampCap: 0x0600,
   rampSites: Object.freeze([0x26fc32, 0x26fdfe, 0x26fe0e]),
   // The sub-record tests, by part: part 1's $1A against $8 twice, part 2's $0A against $1 and $2,
@@ -9876,14 +9876,15 @@ const T4C = Object.freeze({
   stepAt: 0x28,                               // same field as frameCounterAt -- it is the script step
   // W372: state 2's spawn-bias table, eight longs, indexed by ($34,A6) & 7. The volley fires TWICE per
   // pass -- one spawn per counter-rotating cursor -- and only on EVEN frames ($80390A & 1).
-  // W372: the two tables the drafted states index. Both are windowed and both are bounded by the ROM's
-  // own mask, so neither needs a guard: state 1's cursor is masked to $7 (two 4-byte points) and the
-  // fan's index to $3F (64 longs).
+  // W486: state 4 reuses the SAME table and packed biases for eight paired type-$58 passes. Its slower
+  // gate is every eighth frame, and each of the two emissions increments ($34,A6) independently.
+  // Both tables below are windowed and bounded by the ROM's own masks, so neither needs a guard.
   state1Table: 0x26f984, state1Points: 2,
   fanTable: 0x2735fa, fanEntries: 64, fanPasses: 37, fanEntryHeading: 0x2e,
   spawnBiasTable: 0x26fcd2, spawnBiasEntries: 8, spawnChild: 0x52,
   spawnParityGlobal: 0x80390a,
   spawnBiases: Object.freeze([0x0c7ff600, 0x0c800a00]),   // STRADDLE $0C7F/$0C80, like the draw pairs
+  state4SpawnChild: 0x58, state4DueMask: 0x07,
   // W367: THE DRAW TABLE. FIVE sprites per frame, from five subroutines that each hard-code one part's
   // offsets -- which is what the unrolled parts are FOR and why there is no loop.
   //
@@ -10326,7 +10327,12 @@ function travelDwell4C(ram, rom, a5, a6, dwell) {
   if (left === 0) setState4C(ram, a6, 1);                    // $26FD5E / $26FF36
 }
 
-/** State 4 `$26FD66` -- a WAYPOINT CHAIN at X $3600, over state 1's two Ys, then state 5. */
+/** State 4 `$26FD66` -- THREE waypoint gates plus the paired type-$58 arm at `$26FDF4`.
+ *
+ * Step 1 must arrive at $3200/$1C00 before it writes band $04, advances to step 2 and arms phase 1.
+ * The step-2 travel branch lands at the step-3 check, which then routes to the arm; the step-3 travel
+ * branch lands on the arm directly. That fall-through lets record +$1E climb to $600 and lets all
+ * eight due passes run while the object is still travelling. */
 function state4_4C(ram, rom, a5, a6) {
   if (ram.u16(a6 + T4C.stepAt) === 0) {                      // $26FD66
     ram.setU8(a6 + T4C.bandAt, 0x08);                        // $26FD76 -- and $8 IS a band value
@@ -10334,20 +10340,61 @@ function state4_4C(ram, rom, a5, a6) {
     ram.setU16(a6 + T4C.stepAt, 1);                          // $26FD70
   }
   if (ram.u16(a6 + T4C.stepAt) === 1) {                      // $26FD82
-    ram.setU8(a6 + T4C.bandAt, 0x04);                        // $26FD9C
-    ram.setU16(a6 + T4C.stepAt, 2);                          // $26FDA2
-    ram.setU8(a6 + 0x2a, 1);                                 // $26FDA8
+    if (!steer4C(ram, rom, a6, 0x3200, 0x1c00)) {            // $26FD8C/$26FD94
+      ram.setU8(a6 + T4C.bandAt, 0x04);                      // $26FD9C
+      ram.setU16(a6 + T4C.stepAt, 2);                        // $26FDA2
+      ram.setU8(a6 + 0x2a, 1);                               // $26FDA8
+    }
   }
-  for (const [step, y, next] of [[2, 0x2a00, 3], [3, 0x0e00, null]]) {
-    if (ram.u16(a6 + T4C.stepAt) !== step) continue;         // $26FDAE / $26FDD4
-    if (steer4C(ram, rom, a6, 0x3600, y)) return;            // $26FDB8/$26FDC0 -- bcs, still going
-    if (next !== null) {
-      ram.setU16(a6 + T4C.stepAt, next);                     // $26FDC8
+  if (ram.u16(a6 + T4C.stepAt) === 2) {                      // $26FDAE
+    if (!steer4C(ram, rom, a6, 0x3600, 0x2a00)) {            // $26FDB8/$26FDC0
+      ram.setU16(a6 + T4C.stepAt, 3);                        // $26FDC8
       ram.setU8(a6 + 0x2a, 1);                               // $26FDCE
-    } else {
+    }
+  }
+  if (ram.u16(a6 + T4C.stepAt) === 3) {                      // $26FDD4
+    if (!steer4C(ram, rom, a6, 0x3600, 0x0e00)) {            // $26FDDE/$26FDE6
       setState4C(ram, a6, 5);                                // $26FDEE/$26FDF0
     }
   }
+
+  // $26FDF4 -- PHASE 1. The compare-before-add matters: an existing $600 skips the add, while any
+  // newly-added signed value below $600 leaves phase 1 armed for another state-4 frame.
+  if (ram.u8(a6 + 0x2a) === 1) {
+    let ramp = ram.u16(a5 + T4C.rampAt);
+    let reached = ramp === T4C.rampCap;                      // $26FDFE/$26FE04
+    if (!reached) {
+      ramp = u16(ramp + 0x40);                               // $26FE08 addi.w #$40
+      ram.setU16(a5 + T4C.rampAt, ramp);
+      reached = i16(ramp) >= i16(T4C.rampCap);               // $26FE0E/$26FE14 blt
+    }
+    if (reached) {
+      ram.setU16(a5 + T4C.rampAt, T4C.rampCap);              // $26FE18 -- clamp
+      ram.setU8(a6 + 0x2a, 2);                               // $26FE1E
+      ram.setU8(a6 + 0x2b, 8);                               // $26FE24 -- EIGHT due passes
+      ram.setU8(a6 + 0x34, 0);                               // $26FE2A
+    }
+  }
+
+  // $26FE30 -- PHASE 2. `andi.b #$7` gates on the low byte of the frame word, equivalent to & 7.
+  if (ram.u8(a6 + 0x2a) !== 2
+      || (ram.u16(T4C.spawnParityGlobal) & T4C.state4DueMask) !== 0) return;
+  const tableAt = T4C.spawnBiasTable + ((ram.u8(a6 + 0x2b) & 7) << 2); // $26FE48..$26FE58
+  const tableBias = rom.u32(tableAt);
+  for (const packedBias of T4C.spawnBiases) {
+    const q = enqueueDeferred(ram, T4C.state4SpawnChild, DEFQ_D1.FIXED00); // $26FE5C/$26FE8C
+    if (!q.dropped) {
+      ram.setU32(q.addr + 0x16,                              // $26FE6E/$26FE9E
+        u32(u32(ram.u32(a6 + 0x02) + packedBias) + tableBias));
+      ram.setU8(q.addr + 0x1a,                              // $26FE7C/$26FEAC
+        (4 - ram.u8(a6 + 0x34)) & 0x3f);
+    }
+    // Each emission advances this byte separately, including when the queue is full.
+    ram.setU8(a6 + 0x34, (ram.u8(a6 + 0x34) + 1) & 7);      // $26FE80/$26FEB0
+  }
+  const passes = (ram.u8(a6 + 0x2b) - 1) & 0xff;             // $26FEBA
+  ram.setU8(a6 + 0x2b, passes);
+  if (passes === 0) ram.setU8(a6 + 0x2a, 0);                 // $26FEC2
 }
 
 /** State 6 `$26FF3E` -- DEATH. Three instructions, and the middle one sets a speed AND a heading with
