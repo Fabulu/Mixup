@@ -190,7 +190,16 @@
 // All twenty declarations are disjoint. Measured: 649 -> 669 windows,
 // 445,035 -> 445,195 bytes, 76 -> 76 pairs.
 
-export const ROM_WINDOW_COUNT = 669;
+// ---------------------------------------------------------------------------
+// W506 ADDED TWENTY-ONE WINDOWS AND THE OVERLAP COUNT STILL DID NOT MOVE.
+// ---------------------------------------------------------------------------
+// `$290FE2 + $5E` is variant 0's exact third script and abuts W505's second
+// script. Twenty sparse four-byte windows expose only its previously absent
+// spawn-table longwords; six selections reuse W504/W505 windows. All twenty-one
+// declarations are disjoint. Measured: 669 -> 690 windows,
+// 445,195 -> 445,369 bytes, 76 -> 76 pairs.
+
+export const ROM_WINDOW_COUNT = 690;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

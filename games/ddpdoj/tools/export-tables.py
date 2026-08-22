@@ -3181,6 +3181,30 @@ SHOT_WINDOWS.extend([
                        "with 26 picture words total, followed by $8002, $8003, and $FFFF. It begins "
                        "where W504's first script ends and stops exactly at variant 0's third script, "
                        "$290FE2"),
+    (0x290FE2, 0x005E, "W506: slot [7] variant-0 third script, $290FE2..$29103F -- three $8001 groups "
+                       "with 31 picture words total, followed by $8002, $8003, and $FFFF. It begins "
+                       "where W505's second script ends and stops exactly at variant 1's third script, "
+                       "$291040"),
+    (0x2902DE, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $07"),
+    (0x290472, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $6C"),
+    (0x29049A, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $76"),
+    (0x29049E, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $77"),
+    (0x2904A2, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $78"),
+    (0x2904B6, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $7D"),
+    (0x2904BA, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $7E"),
+    (0x2904BE, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $7F"),
+    (0x2904C6, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $81"),
+    (0x2904CA, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $82"),
+    (0x2904D2, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $84"),
+    (0x2904EA, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $8A"),
+    (0x2904EE, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $8B"),
+    (0x2904FA, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $8E"),
+    (0x29050A, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $92"),
+    (0x29050E, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $93"),
+    (0x290522, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $98"),
+    (0x290672, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $EC"),
+    (0x2906CA, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $102"),
+    (0x2906DA, 0x0004, "W506: slot [7] third-script spawn-table longword for concrete index $106"),
     (0x2903EE, 0x0004, "W505: slot [7] second-script spawn-table longword for concrete index $4B"),
     (0x2903FE, 0x0004, "W505: slot [7] second-script spawn-table longword for concrete index $4F"),
     (0x290412, 0x0004, "W505: slot [7] second-script spawn-table longword for concrete index $54"),

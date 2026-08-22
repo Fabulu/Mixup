@@ -28,11 +28,11 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W505 (2026-08-22).** Dispatch remains **18 of 20**: W503 ports and registers
-`[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 and W505 drive that exact
-natural loop-2 edge through type 7's first two common scripts at `$290F66` and `$290F8E`, including
-36 visible spawns and both complete `$8003` resource lifecycles; the next deliberate executable boundary
-is variant 0's third script at `$290FE2`. The two without a handler are `[16] $256E7A` and `[18]
+**STANDING AS OF W506 (2026-08-22).** Dispatch remains **18 of 20**: W503 ports and registers
+`[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W506 drive that exact
+natural loop-2 edge through type 7's first three variant-0 scripts at `$290F66`, `$290F8E`, and `$290FE2`,
+including 67 visible spawns and three complete `$8003` resource lifecycles; the next deliberate executable
+boundary is variant 0's fourth script at `$2910F6`. The two without a handler are `[16] $256E7A` and `[18]
 $24902A`. The newest items are **D42..D47**, opened from a play session on build `20260816181806` and
 appended at the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
@@ -1860,8 +1860,9 @@ words by `$FA00/$EC00`, then emits D1-D4 through ordinary bucket-7 stub `$23E08C
 
 The exact disjoint windows `$25E716+$18` and `$25F270+$60` raise the local export from 637 to 639 windows
 and 444,613 to 444,733 bytes without moving the 76 overlap pairs. The compact directly affected set passes
-54/54. W502 is local only, production remains W501 build `20260822192350`, and W506 is the next publication
-wave. No next D34 gameplay edge has yet been established.
+54/54. W502 is local only and is superseded by the ending progression through local W506 below. Production
+remains W501 build `20260822192350`; W506 publication is left to the coordinator. No next D34 gameplay
+edge has yet been established.
 
 ### D35: THE LIFE AND COIN SYSTEM
 
@@ -1946,11 +1947,25 @@ After all 26 records are live, the script spends its exact `$C0` wait and reuses
 clears the pool, and moves variant 0's list cursor from 4 to 8. The next object-driver call fails loudly at
 the intentionally unexported third script `$290FE2`. The extended compact integration and directly affected
 set pass 94/94; the direct rerun passes 1/1. Table verification measures 669 windows, 445,195 bytes, and 76
-overlap pairs. W505 is local only, production remains W501 build `20260822192350`, and W506 is the next
-publication wave.
+overlap pairs. W505 is local only and is superseded by W506 below.
+
+**W506 FOLLOWS VARIANT 0'S EXACT THIRD SCRIPT.** `$290FE2..$29103F` is a `$5E`-byte stream:
+`$8000 $0000`, then three `$8001` groups rooted at `$48000200`, `$40000200`, and `$38000200`
+with 11, 12, and 8 picture words, followed by `$8002 $00C0`, `$8003 $0000`, and `$FFFF`. Its 31
+picture words select 26 distinct spawn-table art pointers. Six indices reuse W504/W505 windows, so W506
+exports only the exact script and twenty previously absent four-byte longwords. The window stops at
+`$291040`, variant 1's adjacent third script, without exposing it.
+
+No opcode arm changed: the stream contains only behavior already pinned by the interpreter. The natural
+object-driver integration reaches 31 simultaneous pool records, preserves every ordered art pointer and all
+three `$400` position walks, spends the `$C0` wait, loads and releases operand 0's `$290E58` resource, clears
+the pool, and advances variant 0's list cursor from 8 to 12. Its next call fails loudly at the intentionally
+unexported entry-3 script `$2910F6`. The compact ending, slot-7, coverage, and global-window set passes 97/97;
+the direct rerun passes 1/1. Table verification measures 690 windows, 445,369 bytes, and 76 overlap pairs.
+W506 is local only, production remains W501 build `20260822192350`, and publication is left to the coordinator.
 
 This does not yet identify every ending-selection condition or close D37. The next bounded progression
-check is variant 0's third type-7 script at `$290FE2`, again following only its first concrete runtime edge
+check is variant 0's fourth type-7 script at `$2910F6`, again following only its first concrete runtime edge
 rather than broadening into speculative ending-selection research.
 
 **W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own
@@ -6805,5 +6820,5 @@ pairs of `$10`-byte TX message slots. `export-tables.py` regenerated the ignored
 and 444,733 bytes. Both are disjoint, so overlap pairs remain 76. The compact W502 draw, slot, context,
 shared-label, state-7 preservation, and registry set passes 54/54 with no failures or skips; syntax checks
 pass. The full suite, `export-web.mjs`, publication, commit, and push did not run. W502 is local only.
-Production remains W501 build `20260822192350`, W506 is the next publication wave, and no next gameplay
-target is established here.
+Production remains W501 build `20260822192350`; local W506 now awaits separate coordinator publication,
+and this W502 record's missing next target is superseded by D37's W503 through W506 progression above.

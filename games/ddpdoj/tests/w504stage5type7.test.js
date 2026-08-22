@@ -1,4 +1,4 @@
-// W504/W505: drive the loop-2 type-$13 handoff through type 7's first two common scripts.
+// W504/W505/W506: drive the loop-2 type-$13 handoff through type 7's first three scripts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -28,7 +28,8 @@ const SKIP = HAVE ? false : 'rip/port/player.tables.json missing; run export-tab
 
 const FIRST_SCRIPT = 0x290f66;
 const SECOND_SCRIPT = 0x290f8e;
-const NEXT_SCRIPT = 0x290fe2;
+const THIRD_SCRIPT = 0x290fe2;
+const NEXT_SCRIPT = 0x2910f6;
 const FIRST_INDICES = Object.freeze([0xe0, 0x4a, 0x65, 0xcc, 0x73, 0x5b, 0x59, 0x05]);
 const FIRST_ART = Object.freeze([
   0x1ec778, 0x1eb260, 0x1eb62c, 0x1ec4a8,
@@ -50,6 +51,23 @@ const SECOND_POSITIONS = Object.freeze([
   ...Array.from({ length: 9 }, (_, i) => 0x40000200 + i * 0x400),
   ...Array.from({ length: 12 }, (_, i) => 0x38000200 + i * 0x400),
 ]);
+const THIRD_INDICES = Object.freeze([
+  0x7f, 0x93, 0x07, 0x84, 0x77, 0x76, 0x65, 0x106, 0x102, 0x62, 0x6c,
+  0xec, 0x64, 0x8e, 0x7e, 0x07, 0x7d, 0x98, 0x8a, 0x92, 0x07, 0x81, 0x62,
+  0x82, 0x78, 0x8b, 0x54, 0x59, 0x05, 0x05, 0x05,
+]);
+const THIRD_ART = Object.freeze([
+  0x1eb9d4, 0x1ebca4, 0x1ea8f4, 0x1eba88, 0x1eb8b4, 0x1eb890, 0x1eb62c,
+  0x1eccd0, 0x1ecc40, 0x1eb5c0, 0x1eb728, 0x1ec928, 0x1eb608, 0x1ebbf0,
+  0x1eb9b0, 0x1ea8f4, 0x1eb98c, 0x1ebd58, 0x1ebb60, 0x1ebc80, 0x1ea8f4,
+  0x1eba1c, 0x1eb5c0, 0x1eba40, 0x1eb8d8, 0x1ebb84, 0x1eb3c8, 0x1eb47c,
+  0x1ea8ac, 0x1ea8ac, 0x1ea8ac,
+]);
+const THIRD_POSITIONS = Object.freeze([
+  ...Array.from({ length: 11 }, (_, i) => 0x48000200 + i * 0x400),
+  ...Array.from({ length: 12 }, (_, i) => 0x40000200 + i * 0x400),
+  ...Array.from({ length: 8 }, (_, i) => 0x38000200 + i * 0x400),
+]);
 
 function clearSpriteCounters(ram) {
   for (const bucket of BUCKETS) ram.setU16(bucket.counter, 0);
@@ -65,7 +83,7 @@ function livePoolRecords(ram) {
   return out;
 }
 
-test('W504/W505: natural loop-2 type $13 handoff completes type 7 first two scripts',
+test('W504/W505/W506: natural loop-2 type $13 handoff completes type 7 first three scripts',
   { skip: SKIP }, () => {
     assert.equal(ROM.u32(0x290f12), 0x290f1e,
       '$290F12 variant 0 points at its five-step list');
@@ -74,8 +92,10 @@ test('W504/W505: natural loop-2 type $13 handoff completes type 7 first two scri
     assert.deepEqual([0x290f22, 0x290f3a, 0x290f52].map((at) => ROM.u32(at)),
       [SECOND_SCRIPT, SECOND_SCRIPT, SECOND_SCRIPT],
       'all three variant lists use $290F8E as entry 1');
-    assert.equal(ROM.u32(0x290f26), NEXT_SCRIPT,
+    assert.equal(ROM.u32(0x290f26), THIRD_SCRIPT,
       'variant 0 entry 2 selects $290FE2 after the common script');
+    assert.equal(ROM.u32(0x290f2a), NEXT_SCRIPT,
+      'variant 0 entry 3 selects the next common $2910F6 script');
     assert.deepEqual(Array.from({ length: 20 }, (_, i) => ROM.u16(FIRST_SCRIPT + i * 2)), [
       0x8000, 0x3000, 0x8001, 0x3c00, 0x0800,
       0x00e0, 0x004a, 0x0065, 0x00cc, 0x0073,
@@ -95,6 +115,17 @@ test('W504/W505: natural loop-2 type $13 handoff completes type 7 first two scri
     ], '$290F8E..$290FE1 is the exact second script');
     assert.deepEqual(SECOND_INDICES.map((i) => ROM.u32(SCRIPT7.spawnTable + i * 4)),
       SECOND_ART, 'the second script resolves all 26 data words through $2902C2');
+    assert.deepEqual(Array.from({ length: 47 }, (_, i) => ROM.u16(THIRD_SCRIPT + i * 2)), [
+      0x8000, 0x0000,
+      0x8001, 0x4800, 0x0200, 0x007f, 0x0093, 0x0007, 0x0084, 0x0077,
+      0x0076, 0x0065, 0x0106, 0x0102, 0x0062, 0x006c,
+      0x8001, 0x4000, 0x0200, 0x00ec, 0x0064, 0x008e, 0x007e, 0x0007,
+      0x007d, 0x0098, 0x008a, 0x0092, 0x0007, 0x0081, 0x0062,
+      0x8001, 0x3800, 0x0200, 0x0082, 0x0078, 0x008b, 0x0054, 0x0059,
+      0x0005, 0x0005, 0x0005, 0x8002, 0x00c0, 0x8003, 0x0000, 0xffff,
+    ], '$290FE2..$29103F is the exact variant-0 third script');
+    assert.deepEqual(THIRD_INDICES.map((i) => ROM.u32(SCRIPT7.spawnTable + i * 4)),
+      THIRD_ART, 'the third script resolves all 31 data words through $2902C2');
 
     const ram = new Ram();
     const log = new UnportedLog();
@@ -128,12 +159,15 @@ test('W504/W505: natural loop-2 type $13 handoff completes type 7 first two scri
     let sawType7 = false;
     let sawFirstResource = false;
     let sawSecondResource = false;
+    let sawThirdResource = false;
     let maxFirstLive = 0;
     let maxSecondLive = 0;
+    let maxThirdLive = 0;
     let secondPeak = [];
+    let thirdPeak = [];
     let nextError = null;
     const firstSeenArt = new Set();
-    for (let frame = 0; frame < 800 && nextError == null; frame++) {
+    for (let frame = 0; frame < 1200 && nextError == null; frame++) {
       clearSpriteCounters(ram);
       ctx.budget.beginFrame();
       try {
@@ -152,6 +186,7 @@ test('W504/W505: natural loop-2 type $13 handoff completes type 7 first two scri
       if (ram.u32(SCRIPT7.resource) !== 0) {
         if (sequenceCursor === 0) sawFirstResource = true;
         if (sequenceCursor === 4) sawSecondResource = true;
+        if (sequenceCursor === 8) sawThirdResource = true;
       }
       const live = livePoolRecords(ram);
       if (sequenceCursor === 0) {
@@ -161,6 +196,10 @@ test('W504/W505: natural loop-2 type $13 handoff completes type 7 first two scri
       if (sequenceCursor === 4 && live.length > maxSecondLive) {
         maxSecondLive = live.length;
         secondPeak = live;
+      }
+      if (sequenceCursor === 8 && live.length > maxThirdLive) {
+        maxThirdLive = live.length;
+        thirdPeak = live;
       }
     }
 
@@ -177,13 +216,19 @@ test('W504/W505: natural loop-2 type $13 handoff completes type 7 first two scri
     assert.deepEqual(secondPeak.map(({ position }) => position), SECOND_POSITIONS,
       'the second script preserved all three $8001 bases and each $400 low-word bump');
     assert.ok(sawSecondResource, 'the second $8003 loaded its one-node $290E58 resource');
+    assert.equal(maxThirdLive, 31, 'the third script allocated all 31 pool records');
+    assert.deepEqual(thirdPeak.map(({ art }) => art), THIRD_ART,
+      'the third script preserved all cartridge-selected art pointers and repetitions');
+    assert.deepEqual(thirdPeak.map(({ position }) => position), THIRD_POSITIONS,
+      'the third script preserved all three $8001 bases and each $400 low-word bump');
+    assert.ok(sawThirdResource, 'the third $8003 loaded its one-node $290E58 resource');
     assert.equal(ram.u32(SCRIPT7.resource), 0,
-      'the second resource completed the shared load, wait, free, clear, and advance path');
-    assert.equal(ram.u16(SLOT7.work + 0x0c), 8,
-      'inner state 0 advanced from list entry 1 to list entry 2');
+      'the third resource completed the shared load, wait, free, clear, and advance path');
+    assert.equal(ram.u16(SLOT7.work + 0x0c), 12,
+      'inner state 0 advanced from list entry 2 to list entry 3');
     assert.ok(nextError instanceof Unreached,
-      `the bounded run should stop at the third unwidened script, got ${nextError}`);
+      `the bounded run should stop at the fourth unwidened script, got ${nextError}`);
     assert.equal(nextError.romAddress, NEXT_SCRIPT,
-      'the next executable edge is variant 0 third script at $290FE2');
+      'the next executable edge is variant 0 fourth script at $2910F6');
     assert.equal(ram.u16(ALLOC.createSp), 0, 'the type-7 create queue drained');
   });
