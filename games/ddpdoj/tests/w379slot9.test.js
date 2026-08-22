@@ -516,7 +516,8 @@ test('W379 the two arms are P1 and P2, and $25CB94 tst.w D7 is what picks them',
   const g = coldGame();
   g.boot();
   const a5 = 0x812c00;
-  const ctx = { unported: g.unportedLog, unportedLog: g.unportedLog, rom: g.rom };
+  const ctx = { unported: g.unportedLog, unportedLog: g.unportedLog, rom: g.rom,
+    tx: new TxVram() };
   g.ram.setU8(a5 + SCREEN9.state, 1);
   g.ram.setU8(REC0, 0);
   g.ram.setU8(REC1, 0);
@@ -554,7 +555,8 @@ function doneFixture(r0, r1) {
   }
   g.ram.setU16(SCREEN8.p1Raw, 0);                            // nobody is pressing START
   g.ram.setU16(SCREEN8.p2Raw, 0);
-  const ctx = { unported: g.unportedLog, unportedLog: g.unportedLog, rom: g.rom };
+  const ctx = { unported: g.unportedLog, unportedLog: g.unportedLog, rom: g.rom,
+    tx: new TxVram() };
   return { g, a5, ctx };
 }
 

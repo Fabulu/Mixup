@@ -361,20 +361,20 @@ test('SECTION 3c: every W445 wiring is still a CALL, at every site, and nothing 
   const src = (f) => readFileSync(join(SRC, f), 'utf8');
 
   // 1. $2878CC / $28795C -- the LIVES row. W445 left EIGHT call sites in src/; W446
-  //    leaves SEVEN, and the missing one is not a lost draw -- IT IS A DELETED
-  //    DUPLICATE. Read this before "fixing" the count back to eight:
+  //    removed one duplicate, and W503 added two authentic type-$13 ending-tally sites,
+  //    leaving NINE:
   //
   //      W445: hud.js 2 ($284D10/$284D20), items.js 2 ($25311E/$253126),
   //            tally.js 2 ($260014/$26001E and $260190/$2601CA),
   //            stageend.js 1, player.js 1 ($260014/$26001E)   = 8
-  //      W446: player.js 0.
+  //      W446: player.js 0                                  = 7
+  //      W503: stageend.js +2 ($28EF94/$28F14A and the state-2 mirrors) = 9
   //
   //    player.js's site WAS `$260014/$26001E` -- THE SAME ROM SITE tally.js already
   //    had, because `$25FFA8` was transcribed twice (`respawn25FFA8` there,
   //    `bonusLine125FFA8` here) and W446 merged the two. The eighth call was never an
   //    eighth place the cartridge draws the row; it was the seventh place, written
-  //    down twice. tally.js's count is UNCHANGED at 2 and covers the same two ROM
-  //    sites it always did.
+  //    down twice. W503 then added two distinct ending-tally states in stageend.js.
   //
   //    Counted per file rather than in total so that moving one from one file to
   //    another -- which is how a live path silently loses its draw -- cannot net out.
@@ -382,10 +382,10 @@ test('SECTION 3c: every W445 wiring is still a CALL, at every site, and nothing 
   //    "asserted to be absent" are different, and only the second one goes red if the
   //    duplicate comes back.
   for (const [f, n] of [['hud.js', 2], ['items.js', 2], ['tally.js', 2],
-    ['stageend.js', 1], ['player.js', 0]]) {
+    ['stageend.js', 3], ['player.js', 0]]) {
     assert.equal((src(f).match(/^\s*livesRow2878CC\(/gm) ?? []).length, n,
-      `${f} should call livesRow2878CC ${n} time(s) -- W445 wired the last two of `
-      + 'eight and W446 merged one duplicate away, leaving seven');
+      `${f} should call livesRow2878CC ${n} time(s) -- W446 left seven and W503 added `
+      + 'two authentic ending-tally calls, leaving nine');
   }
 
   // ...and tally.js's two must still be the two DIFFERENT ROM sites. Counting calls

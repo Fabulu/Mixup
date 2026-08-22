@@ -105,9 +105,9 @@ const CALLER_SPANS = Object.freeze([
 ]);
 
 const SOURCE_CALLER_SITES = Object.freeze([
-  0x25a7c6, 0x25a956, 0x25a9b8, 0x288a48, 0x288c52, 0x28d578,
+  0x25a7c6, 0x25a956, 0x25a9b8, 0x288a48, 0x288c52, 0x28d578, 0x28d5fa,
 ]);
-const SOURCE_GAPS = Object.freeze([0x23bf3e, 0x256db0, 0x28d5fa]);
+const SOURCE_GAPS = Object.freeze([0x23bf3e, 0x256db0]);
 
 function bytes(at, count) { return IMG.subarray(at, at + count); }
 function signed8(value) { return (value & 0x80) !== 0 ? value - 0x100 : value; }
@@ -430,7 +430,7 @@ test('SECTION 3b: exact write trace preserves every redundant root and node rewr
 
 // ---------------------------------------------------------------- SECTION 4
 
-test('SECTION 4: all six source-reachable callers clear dirty edges and reach their continuations',
+test('SECTION 4: the six W460 caller fixtures clear dirty edges and reach their continuations',
   { skip: SKIP_IMAGE }, () => {
     const a5 = 0x812600;
 
@@ -500,14 +500,14 @@ test('SECTION 4: all six source-reachable callers clear dirty edges and reach th
 
 // ---------------------------------------------------------------- SECTION 5
 
-test('SECTION 5: source has one body, six direct caller bodies and no optional ctx gate', () => {
+test('SECTION 5: source has one body, seven direct caller bodies and no optional ctx gate', () => {
   const sourceMap = new Map(sources());
   const allCode = [...sourceMap.values()].join('\n')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const declarations = allCode.match(/\bfunction\s+clear24631C\s*\(/g) ?? [];
   const calls = allCode.match(/\bclear24631C\s*\(/g) ?? [];
   assert.equal(declarations.length, 1, 'one canonical production declaration remains');
-  assert.equal(calls.length, 7, 'six calls plus the one declaration are present');
+  assert.equal(calls.length, 8, 'seven calls plus the one declaration are present');
   assert.doesNotMatch(allCode, /ctx(?:\?\.)?\.clear24631C|clear24631C\?\./,
     'the cartridge call cannot degrade to an optional production no-op');
 
@@ -526,6 +526,7 @@ test('SECTION 5: source has one body, six direct caller bodies and no optional c
     'objslot8.js arm3',
     'objslot8.js coinTeardown25A7C0',
     'objslot8.js teardown25A9B2',
+    'stageend.js endingHandoff28D5FA',
     'stageend.js init28D566',
   ], 'every source-reachable caller body is inventoried');
 
@@ -559,14 +560,18 @@ test('SECTION 5b: source caller ordering matches each cartridge context, not one
   assertOrder(functionText(sourceMap.get('stageend.js'), 'init28D566'), [
     'ram.setU8(a5 + 0x07, 4)', 'clear24631C(ram)', 'clear28D552(ram)', 'clear287DC8(ram)',
   ], 'type 6 init');
+  assertOrder(functionText(sourceMap.get('stageend.js'), 'endingHandoff28D5FA'), [
+    'clear24631C(ram)', 'objTableInit24107C(ram)', 'clear28D552(ram)', 'clear27F8C4(ram)',
+    'clear287DDC(ram)', 'stageCreate(ram, SE.type7',
+  ], 'W503 type 13 ending handoff');
 });
 
 test('SECTION 5c: cartridge and source reachability remain separate and dynamic indirects unproved',
   { skip: SKIP_IMAGE }, () => {
     assert.deepEqual(EXTERNAL_CALLERS.filter((at) => SOURCE_CALLER_SITES.includes(at)),
-      SOURCE_CALLER_SITES, 'six cartridge sites have direct source caller bodies');
+      SOURCE_CALLER_SITES, 'seven cartridge sites have direct source caller bodies after W503');
     assert.deepEqual(EXTERNAL_CALLERS.filter((at) => !SOURCE_CALLER_SITES.includes(at)),
-      SOURCE_GAPS, 'reset prologue, main-loop call 1 and type 19 remain source gaps');
+      SOURCE_GAPS, 'only reset prologue and main-loop call 1 remain source gaps');
 
     const frontend = readFileSync(join(SRC, 'frontend.js'), 'utf8');
     const main = readFileSync(join(SRC, 'main.js'), 'utf8');
@@ -574,8 +579,8 @@ test('SECTION 5c: cartridge and source reachability remain separate and dynamic 
       'reset prologue documents why the cartridge call is not source-executed');
     assert.match(main, /unportedLog\.note\(ROM\.call1, 'main-loop call #1 \(\$256D5A\)'\)/,
       'main-loop call 1 remains explicitly unported');
-    assert.equal(SOURCE_GAPS.includes(0x28d5fa), true,
-      'the type 19 cartridge arm has no source caller body');
+    assert.equal(SOURCE_CALLER_SITES.includes(0x28d5fa), true,
+      'W503 gives the type 19 cartridge arm a direct source caller body');
     assert.equal('dynamic indirect reachability', 'dynamic indirect reachability',
       'reachability beyond the static and indexed-PC inventories remains unproved, not absent');
   });

@@ -44,7 +44,8 @@
 //
 // SECTION 1   the bytes: ten instruction words, the loop top, and the caller with no test
 // SECTION 2   the merge: one claimant, the register at 19, the deleted names gone, still a leaf
-// SECTION 2b  ALL SIXTEEN call sites reaching the survivor -- shown, not asserted
+// SECTION 2b  ALL EIGHTEEN current call sites reaching the survivor -- W503 added the type-$13
+//             ending handoff and W504 added the type-7 script interpreter to W449's sixteen
 // SECTION 3   THE STATE TRACE, with palette.js as the witness outside every changed file, and
 //             a decoy chain that separates "freed correctly" from "freed too much"
 // SECTION 3b  the DELETED bodies, verbatim: two required to DISAGREE, one required to AGREE
@@ -347,21 +348,22 @@ test('SECTION 2: animobjects.js is STILL A LEAF, which is the whole reason it is
 // SECTION 2b -- EVERY CALL SITE REACHING THE SURVIVOR, SHOWN.
 // ===============================================================================================
 //
-// SIXTEEN, not the twelve the brief named. The four extra are the `clearChain` sites: the brief
-// counted only calls that went through an exported `246800`-suffixed name.
+// EIGHTEEN now, not the twelve the W449 brief named. W449 found sixteen; W503 added the
+// type-$13 ending handoff at `$28EEE6/$28EEEA`, and W504 added the type-7 script
+// interpreter at `$290A92`.
 
 /** file -> the ROM addresses whose `jsr`/`bsr $246800` that file's calls stand for. */
 const CALL_SITES = Object.freeze({
   'animobjects.js': ['$246502', '$246502', '$2465F2', '$24686C'],
-  'stageend.js': ['$28D704/$28D708'],
+  'stageend.js': ['$28D704/$28D708', '$28EEE6/$28EEEA'],
   'hiscorescreen.js': ['$25B432', '$25B488'],
   'objslot15.js': ['$291FCA'],
-  'objslot7pool.js': ['$2912D8'],
+  'objslot7pool.js': ['$290A92', '$2912D8'],
   'objslot8.js': ['$25C30A', '$25C36A', '$25C444', '$25C49E', '$25BDB4', '$25BE3E'],
   'stage4type9f.js': ['$27C724'],
 });
 
-test('SECTION 2b: all SIXTEEN call sites call the survivor, and each still names its ROM address',
+test('SECTION 2b: all EIGHTEEN current call sites call the survivor and name their ROM address',
   () => {
     const src = srcText();
     let total = 0;
@@ -379,9 +381,8 @@ test('SECTION 2b: all SIXTEEN call sites call the survivor, and each still names
       }
       total += calls;
     }
-    assert.equal(total, 16,
-      'sixteen production call sites. The brief said twelve because four of them went through '
-      + 'the private name `clearChain`');
+    assert.equal(total, 18,
+      'W449 reconciled sixteen calls; W503 added the ending handoff and W504 the type-7 interpreter');
   });
 
 test('SECTION 2b: the four ex-`clearChain` sites are the ROM `bsr`s, not invented cleanups',
