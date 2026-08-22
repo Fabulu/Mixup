@@ -2162,6 +2162,15 @@ BODY.set(0x270402, (ram, rom, a5, a6) => {
   loadRecordProto(ram, rom, a5, 0x270426, 0x01);           // $270414..$270424 D0+1 = TWO words
 });
 
+// --- type $51 ($2704C8 init, $2704D0 body): type $50's expiry child.
+// Its deferred parent supplies the packed position at +$16. The body loads one long-form sub-record,
+// preserves that position, then installs three record words: seen/phase zeroes and cadence bytes $01/$01.
+BODY.set(0x2704d0, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x2704fa);                // $2704D0..$2704DC jsr $2637A2
+  ram.setU32(a6 + 0x02, ram.u32(a5 + 0x16));               // $2704DC move.l ($16,A5),($2,A6)
+  loadRecordProto(ram, rom, a5, 0x2704f4, 0x02);           // $2704E2..$2704F2 D0+1 = THREE words
+});
+
 // --- type $52 ($270634 init, $27063C body): the first live child selected by type $4C.
 // The deferred record supplies the packed position at +$16 and heading in the high byte at +$1A.
 // The body copies both into the sub-record after loading its prototype, then installs nine record words.

@@ -89,6 +89,13 @@ SHOT_WINDOWS = [
     (0x2551FA, 0x0006, "W164 death-reset formation cap bytes for formations 2/4/6"),
     (0x255B7C, 0x009C, "W164 death animation pointer list through its FFFFFFFF terminator"),
     (0x25291C, 0x000C, "W479 bonus-follower animation frames"),
+    # W485: type $51, the terminal runtime child emitted when type $50 expires.
+    # The dispatcher reads only the eight-byte init stub. The body reads the adjacent three-word record
+    # prototype and one 28-byte long-form sub-record prototype, ending exactly at the handler. The handler's
+    # cursor reaches fourteen aligned art longs at offsets $00..$34 and wraps $38 to $28 before reading.
+    (0x2704C8, 0x0008, "W485 type $51 init stub read by initDispatch"),
+    (0x2704F4, 0x0022, "W485 type $51 record and sub-record prototypes, ending at its handler"),
+    (0x2705FC, 0x0038, "W485 type $51 fourteen reachable zoom-art pointers"),
     # W484: type $50, the part-4 runtime child emitted by type $4C.
     # The dispatcher reads only the eight-byte init stub. The body reads the adjacent two-word record
     # prototype and one 28-byte long-form sub-record prototype, ending exactly at the handler.

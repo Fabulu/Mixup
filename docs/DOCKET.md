@@ -6196,3 +6196,43 @@ was run, and W484 is not published. Published build **`20260822010546`** remains
 Driving the cartridge-seeded 48-frame lifetime against the regenerated real window set enqueues type `$51`.
 Draining it selects init `$2704C8` and throws on its stub word at `$2704CA`; its cartridge handler is `$270516`.
 That type `$51` lifecycle is the next runtime blocker.
+
+### D93: W485 STAGE-5 TYPE `$51`: TERMINAL TYPE `$50` CHILD
+
+W485 translates the exact zero-run init stub `$2704C8`, body `$2704D0`, and handler `$270516`. The body loads
+one 28-byte long-form sub-record from `$2704FA`, preserves the deferred packed position at record `+$16` into
+sub-record `+$02`, and installs the three record words at `$2704F4`: `$0000,$0000,$0101`. The sub-record
+prototype supplies flags `$8000`, HP `$7FFF`, speed `$18`, heading `$00`, and palette `$14` while deliberately
+skipping the destination position bytes.
+
+The handler applies the shared `$242684` seen-on-screen rule: an unseen off-screen child continues, an on-screen
+frame sets record byte `+$16`, and a later off-screen frame frees before movement or drawing. It calls `$241812`
+directly, with no `$8130D2` freeze gate, and updates both packed position words. Before reversal it decrements
+speed; reaching zero sets record byte `+$17`, heading `$20`, and flags `$8001`. After reversal, rank word
+`$813098 == 0` accelerates by one to `$1C`; nonzero rank accelerates by four to `$3C`. Byte-underflow cadence
+reloads record byte `+$1A` from `+$1B`, advances the signed art cursor by four, and wraps `$38` to `$28` before
+reading `$2705FC + cursor`. Drawing adds packed bias `$F600FA00`, uses size `$0A30`, palette `+$1D`, and flags
+`$F800F800`; `$803910` selects bucket 7 through `$23E282` or bucket 22 through `$23F82A`. Type `$51` emits no
+child and terminates by leaving the screen.
+
+Three exact, disjoint ROM windows cover the eight-byte init stub, the contiguous `$22`-byte record and
+sub-record prototype block ending exactly at the handler, and 14 reachable art longs. The regenerated ignored
+local export moves from 625 to **628 windows** and 437,697 ROM-window bytes, with **75 overlapping pairs**
+unchanged. Enemy coverage moves from **99/256 ported, 27 unknown, 130 null** to **100/256 ported, 26 unknown,
+130 null**. Init-body coverage moves from 92 to **93** registered bodies. The dependency census moves
+`$50 -> $51` to ported and leaves two statically unported edges, `$48 -> $54` and `$4C -> $58`.
+
+One compact synthetic lifecycle regression covers deferred init, exact prototype fields, movement ordering,
+seen-on-screen retirement, reversal, both rank arms, cadence and cursor wrap, both zoom buckets, and free. It
+failed before implementation on the absent `$2704D0` body registration, then passed after the port. The compact
+W481-W485 lifecycle, registry, coverage, dependency, and ROM-window checks pass **47/47** with no failures or
+skips. `export-tables.py --verify` covers the regenerated ignored local table. No full suite, browser-asset
+regeneration, commit, push, or publication was run. W485 is unpublished, and published build
+**`20260822010546`** remains pinned to W481.
+
+Type `$51` is terminal. The `$48 -> $54` scan is not a live Version-B frontier: both live callers target the bare
+`rts` at `$2714AE`, leaving the `$54` call in the disabled body at `$2714B0`. The next runtime blocker found is
+therefore the existing type `$4C` port's omitted live state-4 arm at **`$26FDF4..$26FEC7`**, first missing at
+`$26FDF4`. The cartridge arm ramps record word `+$1E` to `$0600`, arms eight paired passes, and calls `$263684`
+at `$26FE5C` and `$26FE8C` to emit type `$58` with distinct packed biases. Restoring that parent arm is required
+before type `$58` can be honestly runtime-proven.

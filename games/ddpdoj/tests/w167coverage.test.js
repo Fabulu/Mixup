@@ -117,7 +117,9 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   // twice by type $4E. The 130 null table entries remain unchanged.
   // W484: 98 -> 99 ported and 28 -> 27 unknown, type $50 ($270446), the part-4 child emitted by
   // type $4C. The 130 null table entries remain unchanged.
-  assert.match(got.stdout, /enemy_types: 99\/256 ported, 27 unknown, 130 null/);
+  // W485: 99 -> 100 ported and 27 -> 26 unknown, type $51 ($270516), the terminal child emitted when
+  // type $50 expires. The 130 null table entries remain unchanged.
+  assert.match(got.stdout, /enemy_types: 100\/256 ported, 26 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
   assert.match(got.stdout, /stage3_spawn_script: 414\/414 ported, 0 unknown, 0 null/);

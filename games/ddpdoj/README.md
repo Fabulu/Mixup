@@ -4,13 +4,13 @@ This directory contains the JavaScript translation of **DoDonPachi DaiOuJou Blac
 
 ## Current status
 
-Updated 2026-08-22 after Wave 484.
+Updated 2026-08-22 after Wave 485.
 
 | area | current state |
 |---|---|
 | target | Finish Black Label Version-B through the full second loop, finish functional White Label, then close deferred duplicate-only findings. |
-| port | Active across the game loop, player, weapons, enemies, bosses, stage flow, scoring, chaining, hypers, rank, HUD, result and name-entry systems. W477 added the shipped 15-mod start menu without changing the vanilla simulation path. W478 ports the loop-aware enemy-bullet speed bias, W479 restores the mirrored bonus followers, W480 restores the hyper-stock animation and closes all 23 type-5 calls, W481 ports stage-5 type `$52`, W482 ports type `$4E`, W483 completes its nested type `$4F` lifecycle, and W484 ports type `$50`, type `$4C`'s part-4 child, through its 48-frame movement and draw lifetime, type `$51` emission, and shared effect retirement. Enemy-handler coverage is now 99 ported, 27 unknown, and 130 null. The next bounded runtime blocker is type `$51`, init `$2704C8`, first missing read `$2704CA`, and handler `$270516`. Black Label is not complete yet. |
-| tests | W484's focused lifecycle, registry, coverage, dependency, and ROM-window set passes 46/46. The published W481 gate passed all `4,305` DDPDOJ unit tests with no failures or skips. |
+| port | Active across the game loop, player, weapons, enemies, bosses, stage flow, scoring, chaining, hypers, rank, HUD, result and name-entry systems. W477 added the shipped 15-mod start menu without changing the vanilla simulation path. W478 ports the loop-aware enemy-bullet speed bias, W479 restores the mirrored bonus followers, W480 restores the hyper-stock animation and closes all 23 type-5 calls, W481 ports stage-5 type `$52`, W482 ports type `$4E`, W483 completes its nested type `$4F` lifecycle, W484 ports type `$50`, and W485 completes terminal child `$51` through seen-on-screen retirement, direct vector movement, reversal, rank acceleration, byte-underflow animation, both zoom buckets, and off-screen free. Enemy-handler coverage is now 100 ported, 26 unknown, and 130 null; 93 init bodies are registered. The next runtime blocker is type `$4C`'s omitted live state-4 arm at `$26FDF4..$26FEC7`, which suppresses its paired type `$58` emitter. The static `$48 -> $54` edge is in Version B's disabled `$2714B0` body behind the live `$2714AE` return. Black Label is not complete yet. |
+| tests | W485's focused lifecycle, registry, coverage, dependency, and ROM-window set passes 47/47. The published W481 gate passed all `4,305` DDPDOJ unit tests with no failures or skips. |
 | duplicate audit | 15 narrow heads, 68 widened heads, 27 body pairs, and 22 body-only findings remain after W475. |
 | oracle | MAME 0.288, pinned to VERSION-B. Determinism and probe behavior are documented in `NOTES-oracle.md`. |
 | renderer | The original pixel-slice gate matched `13,647,872 / 13,647,872` pixels over 136 frame pairs. This is historical slice evidence, not a claim that the unfinished full game is pixel-perfect. |

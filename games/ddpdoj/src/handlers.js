@@ -8696,6 +8696,7 @@ const HANDLERS = new Map([
   [0x270222, handler4E],   // W482: type $4C's paired child, splitting into type $4F
   [0x2702e6, handler4F],   // W483: type $4E's nested child, decelerating then accelerating
   [0x270446, handler50],   // W484: type $4C's part-4 child, expiring into type $51
+  [0x270516, handler51],   // W485: type $50's terminal child, reversing then leaving the screen
   [0x270694, handler52],   // W481: type $4C's first live runtime-selected child
   [0x2a4606, handler2A4606],  // W363: HIBACHI, stage 5's boss-route root -- spec in TB0. Its body
                               // $2A6B94 is a note(), so it appears and lets the stage clear but does
@@ -9460,6 +9461,68 @@ function handler50(ram, rom, a5, ctx) {
   enqueueRegistersThroughStub(ram, rom, T50.emit,
     u32(ram.u32(a6 + S.posX) + 0xf600fe00), T50.art,
     0x0a10, ram.u8(a6 + S.palette));                         // $270488..$2704A2
+}
+
+// ============================================ TYPE $51 (W485) ==================
+// Type $50 expires into this child. It enters from off screen, decelerates to zero, reverses, then
+// accelerates to a rank-sensitive target while cycling zoom art. Once seen, leaving the screen frees it.
+const T51 = Object.freeze({
+  handler: 0x270516,
+  rank: 0x813098,
+  zoomSelect: 0x803910,
+  art: 0x2705fc,
+  buckets: Object.freeze([7, 22]),
+});
+
+/** `$270516` -- stage-5 enemy type $51, type $50's terminal runtime child. */
+function handler51(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + R.subRec);
+
+  if (offScreen242684(ram, a6)) {                          // $270516 jsr $242684 / $27051C bcc
+    if (ram.u8(a5 + R.onScreen) !== 0) {                   // $27051E tst.b ($16,A5)
+      freeEnemy(ram, a5);                                  // $270524 jmp $263762
+      return;
+    }
+  } else {
+    ram.setU8(a5 + R.onScreen, 1);                         // $27052C move.b #1,($16,A5)
+  }
+
+  // This calls $241812 directly, so there is no $8130D2 freeze gate.
+  const velocity = ctx.tables.vector(ram.u8(a6 + S.speed), ram.u8(a6 + S.heading));
+  ram.setU16(a6 + S.posX, u16(ram.u16(a6 + S.posX) + velocity.dy)); // $270544 add.w D2
+  ram.setU16(a6 + S.posY, u16(ram.u16(a6 + S.posY) + velocity.dx)); // $270548 add.w D3
+
+  if (ram.u8(a5 + R.rec17) === 0) {                        // $27054C tst.b ($17,A5)
+    const speed = (ram.u8(a6 + S.speed) - 1) & 0xff;       // $270554 subq.b #1
+    ram.setU8(a6 + S.speed, speed);
+    if (speed === 0) {
+      ram.setU8(a5 + R.rec17, 1);                          // $27055C move.b #1,($17,A5)
+      ram.setU8(a6 + S.heading, 0x20);                     // $270562 move.b #$20,($1B,A6)
+      ram.setU16(a6 + S.flags, 0x8001);                    // $270568 move.w #$8001,(A6)
+    }
+  } else if (ram.u16(T51.rank) === 0) {                    // $270570 tst.w $813098
+    const speed = ram.u8(a6 + S.speed);
+    if (speed !== 0x1c) ram.setU8(a6 + S.speed, (speed + 1) & 0xff); // $27057A..$270584
+  } else {
+    const speed = ram.u8(a6 + S.speed);
+    if (speed < 0x3c) ram.setU8(a6 + S.speed, (speed + 4) & 0xff);   // $27058C..$270596
+  }
+
+  const oldCadence = ram.u8(a5 + R.rec1A);                 // $27059A subq.b #1
+  ram.setU8(a5 + R.rec1A, (oldCadence - 1) & 0xff);
+  if (oldCadence === 0) {                                  // $27059E bcc skips on no borrow
+    ram.setU8(a5 + R.rec1A, ram.u8(a5 + R.rec1B));         // $2705A2 reload cadence
+    let cursor = u16(ram.u16(a5 + R.rec18) + 4);           // $2705A8 addq.w #4
+    if (i16(cursor) >= 0x38) cursor = 0x28;                 // $2705AC..$2705B6
+    ram.setU16(a5 + R.rec18, cursor);
+  }
+
+  const cursor = i16(ram.u16(a5 + R.rec18));
+  const art = rom.u32(T51.art + cursor);                    // $2705BC..$2705C6
+  const pos = u32(ram.u32(a6 + S.posX) + 0xf600fa00);      // $2705C8..$2705D2
+  const bucket = ram.u16(T51.zoomSelect) !== 0 ? T51.buckets[1] : T51.buckets[0];
+  enqueueZoomedRegisters(ram, bucket, pos, art, 0x0a30,
+    ram.u8(a6 + S.palette), 0xf800f800);                    // $2705D2..$2705FA
 }
 
 // ============================================ TYPE $52 (W481) ==================

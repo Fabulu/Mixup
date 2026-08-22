@@ -192,7 +192,7 @@ test('W314 each missing type\'s init and handler come from the cartridge\'s own 
     assert.equal(want.size, 12);
   });
 
-test('W484 THREE runtime dependencies still lead to unported children',
+test('W485 TWO static cartridge spawn scans still point at unported children',
   { skip: SKIP_IMG }, () => {
     // W314 ranked the list by how many records each type covers. W317 scanned every remaining
     // handler for the three deferred-spawn entries (`$263678`/`$263684`/`$263690`) and read the
@@ -204,11 +204,14 @@ test('W484 THREE runtime dependencies still lead to unported children',
     //   $43 x1  ~270B   spawns $44, UNPORTED
     //   $4C x1  ~3044B  spawns $4E, $50, $52 and $58 -- W481/W482/W484 port three of them
     //   $4E nested         spawns $4F twice -- W483 ports $4F and preserves the machine-checked edge
-    //   $50 nested         spawns $51 on expiry -- W484 preserves that edge and leaves $51 unported
+    //   $50 nested         spawns $51 on expiry -- W485 ports that terminal child
     //   the other nine are standalone, and `$8E` (6 records, ~468B) is the best of them
     //
     // Asserted as the dependency edges rather than as byte counts, because the edges are what the
     // ROM says and the byte counts are bounded by the next table entry rather than measured.
+    // This is static inventory, not runtime proof. Version B returns at `$2714AE` before `$48`'s
+    // disabled `$54` call, while the current `state4_4C` transcription omits the live `$58` arm at
+    // `$26FDF4..$26FEC7`. W486 must restore that parent arm before `$58` is runtime-proven.
     const map = enemyHandlerMap(ROM);
     const spawnsOf = (handler, span) => {
       const out = new Set();
@@ -224,7 +227,7 @@ test('W484 THREE runtime dependencies still lead to unported children',
       }
       return out;
     };
-    // THREE now have an unported child, and which child. W351 ported $55, so $46's entry moved to the
+    // TWO now have an unported child, and which child. W351 ported $55, so $46's entry moved to the
     // list below rather than being deleted -- deleting it would lose the only machine-checked record of
     // the $46 -> $55 edge, which is exactly what made $55 worth porting.
     // W400: `[0x43, 0x10e, [0x44]]` MOVED to the ported list below. $44 is now handler44
@@ -233,9 +236,9 @@ test('W484 THREE runtime dependencies still lead to unported children',
     // comment above gives: the $43 -> $44 edge is the only machine-checked record of why $44 was
     // worth porting at all, and deleting the row would lose it.
     // W481 moves $52 into the ported loop while preserving the $4C -> $52 edge. W482 does the same for
-    // $4E, W483 preserves the nested $4E -> $4F edge, and W484 moves $50 while preserving $50 -> $51.
+    // $4E, W483 preserves the nested $4E -> $4F edge, W484 moves $50, and W485 moves its child $51.
     for (const [t, span, kids] of [[0x48, 0x264, [0x54]],
-      [0x4c, 0xbe4, [0x58]], [0x50, 0x80, [0x51]]]) {
+      [0x4c, 0xbe4, [0x58]]]) {
       const got = spawnsOf(typeEntry(t).handler, span);
       for (const k of kids) {
         assert.ok(got.has(k), `type $${t.toString(16)} spawns $${k.toString(16)}`);
@@ -244,12 +247,12 @@ test('W484 THREE runtime dependencies still lead to unported children',
     }
     // Same treatment W319 gave $8E and W323 gave $1B: keep the scan assertion, flip the ported claim.
     for (const [t, span, kids] of [[0x46, 0x1a2, [0x55]], [0x43, 0x10e, [0x44]],
-      [0x4c, 0xbe4, [0x4e, 0x50, 0x52]], [0x4e, 0x76, [0x4f]]]) {
+      [0x4c, 0xbe4, [0x4e, 0x50, 0x52]], [0x4e, 0x76, [0x4f]], [0x50, 0x80, [0x51]]]) {
       const got = spawnsOf(typeEntry(t).handler, span);
       for (const k of kids) {
         assert.ok(got.has(k), `type $${t.toString(16)} still spawns $${k.toString(16)}`);
         assert.ok(map.has(typeEntry(k).handler),
-          `and it is PORTED (W351 $55, W400 $44, W481 $52, W482 $4E, W483 $4F, W484 $50)`);
+          `and it is PORTED (W351 $55, W400 $44, W481 $52, W482 $4E, W483 $4F, W484 $50, W485 $51)`);
       }
     }
     // `$8E` was the biggest standalone one and W319 took it; `$1B` (5 records) was next and W323

@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W484)
+Updated: 2026-08-22 (W485)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,21 +8,46 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W484 ports stage-5 enemy type `$50`, the part-4 child emitted by type
-`$4C`.** Its deferred init, direct vector movement, 48-frame lifetime, bucket-2 fixed-art drawing, type `$51`
-emission, parent-gated kind-`$04` effect retirement, and free now run. Enemy-handler coverage is 99/256
-ported, 27 unknown, and 130 null. The init registry contains 92 bodies. W477's 15-mod start screen keeps
+`docs/DOCKET.md` is authoritative. **W485 ports terminal stage-5 enemy type `$51`, emitted when type `$50`
+expires.** Its deferred init, seen-on-screen retirement, direct vector movement, reversal, rank acceleration,
+byte-underflow animation, both zoom buckets, and off-screen free now run. Enemy-handler coverage is 100/256
+ported, 26 unknown, and 130 null. The init registry contains 93 bodies. W477's 15-mod start screen keeps
 direct and empty launches vanilla, makes Invincibility explicit, and leaves labelled progression interventions
 intact. The MAME death oracle passed three invulnerability-off hits, two respawns, the `2 -> 1 -> 0 -> $FFFF`
 life sequence, and game-over request 2. Live duplicate counts remain 15 narrow heads, 68 widened heads, 27
 body pairs, and 22 body-only findings, but those rows wait until after White Label. W481 remains live as build
 `20260822010546` after browser regeneration and the complete quiet-tree publication gate. That published gate
-passed 4,305/4,305 DaiOuJou tests; W484's focused set passes 46/46 and has not been published.
+passed 4,305/4,305 DaiOuJou tests; W485's compact focused set passes 47/47 and has not been published.
 
-The cartridge-seeded type `$50` lifecycle runs for 48 frames against the regenerated real ROM-window set,
-enqueues type `$51`, and then stops when that child drains: init `$2704C8`, first missing read `$2704CA`, and
-handler `$270516`. Do not select a target from static scanning alone. Keep W485 bounded to this runtime
-evidence and the exact ROM windows its reached path requires.
+Type `$51` emits no child. Do not follow the static `$48 -> $54` edge: Version B's live callers target the bare
+`rts` at `$2714AE`, and the `$54` call sits in the disabled body at `$2714B0`. The next runtime blocker found is
+an incomplete existing parent transcription: `state4_4C` omits the cartridge's live `$26FDF4..$26FEC7` arm.
+That arm ramps record `+$1E`, arms eight paired passes, and emits type `$58` twice per due pass. Restore the
+parent arm with a focused runtime regression before treating type `$58` as proven. Browser assets are due at
+W486's publication wave, only after all source work is quiet and `export-web.mjs` has regenerated them.
+
+## W485 VERIFIED: TERMINAL TYPE `$50` CHILD
+
+The lifecycle selected type `$51` at init `$2704C8` and failed on its stub word at `$2704CA`. The exact stub
+installs zero run length. W485 adds body `$2704D0`, handler `$270516`, and three exact windows: the eight-byte
+init stub, the contiguous `$22`-byte record and long-form sub-record prototype block at `$2704F4`, and 14
+reachable art longs at `$2705FC`. The body loads the 28-byte long-form sub-record, preserves the deferred packed
+position, and installs record words `$0000,$0000,$0101`.
+
+The handler uses `$242684` to arm retirement after its first on-screen frame and frees before movement once it
+later leaves the screen. It calls `$241812` directly without a freeze gate, decelerates to zero, changes heading
+to `$20` and flags to `$8001`, then accelerates by one to `$1C` at rank zero or by four to `$3C` otherwise.
+Byte-underflow cadence advances its signed art cursor and wraps `$38` to `$28`. It draws with packed bias
+`$F600FA00`, size `$0A30`, palette `+$1D`, and flags `$F800F800` through bucket 7 or 22 according to `$803910`.
+It emits no child.
+
+Coverage moves from 99 ported and 27 unknown to 100 ported and 26 unknown; 130 null entries do not move. The
+init registry moves from 92 to 93 bodies. Three disjoint windows move the local export from 625 to 628 windows,
+with 75 overlapping pairs unchanged. The dependency census moves `$50 -> $51` to ported and leaves two static
+unported edges. The compact lifecycle, registry, coverage, dependency, and window checks pass 47/47 with no
+failures or skips. The regression first failed on the absent body registration. The ignored local table was
+regenerated and verified. Browser assets were not regenerated, the full suite was not run, and W485 remains
+unpublished at build pin `20260822010546`.
 
 ## W484 VERIFIED: TYPE `$4C` PART-4 CHILD
 

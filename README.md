@@ -177,9 +177,9 @@ refuses to publish on a red gate or an unexpected gate skip. `--only gradius` /
 At published DDPDOJ W481, its unit suite records **4,305/4,305 passing**. The same
 publication completed the Gradius unit and 13-stage gate, the DDPDOJ bundle and
 web-fetch gates, the 27-stage Batman gate, and the repository ROM-leak guard.
-Live build `20260822010546` is the recorded release. W484 is the current
+Live build `20260822010546` is the recorded release. W485 is the current
 unpublished source wave; its focused lifecycle, registry, coverage, dependency,
-and ROM-window checks pass 46/46. These counts document their respective gates,
+and ROM-window checks pass 47/47. These counts document their respective gates,
 and each change still needs its relevant focused check.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
@@ -260,14 +260,19 @@ positioned type `$4F` children. W483 completes that nested type `$4F` lifecycle:
 it decelerates, reverses, rank-accelerates, selects either zoom sprite bucket,
 and retires with effect kind `$04`. W484 ports type `$50`, type `$4C`'s part-4
 runtime child: it moves and draws for a `$30`-frame lifetime, then emits type
-`$51`, while sharing type `$4F`'s parent-gated effect retirement. Enemy-handler
-coverage is now 99 of 256 entries. The next bounded runtime blocker is type
-`$51`, init `$2704C8`, first missing read `$2704CA`, and handler `$270516`.
+`$51`, while sharing type `$4F`'s parent-gated effect retirement. W485 completes
+that terminal type `$51` lifecycle: it arms retirement once seen, moves without a
+freeze gate, decelerates, reverses, rank-accelerates, animates through either zoom
+bucket, and frees after leaving the screen. Enemy-handler coverage is now 100 of
+256 entries. The next runtime blocker is not type `$54`: Version B returns at
+`$2714AE` before that disabled body. It is type `$4C`'s omitted live state-4 arm
+at `$26FDF4..$26FEC7`, which must be restored before its paired type `$58`
+emission can be driven.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,
 and behavior through the complete second loop. All 23 type-5 frame calls now
-run, while enemy-handler coverage is 99 ported, 27 unknown, and 130 null. The
+run, while enemy-handler coverage is 100 ported, 26 unknown, and 130 null. The
 duplicate scanners still report 15 narrow heads, 68 widened heads, 27 body
 pairs, and 22 body-only findings, now deliberately deferred until functional
 completion.
