@@ -28,14 +28,17 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF PUBLISHED W506 (2026-08-23).** Dispatch remains **18 of 20**: W503 ports and registers
-`[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W506 drive that exact
-natural loop-2 edge through type 7's first three variant-0 scripts at `$290F66`, `$290F8E`, and `$290FE2`,
-including 67 visible spawns and three complete `$8003` resource lifecycles. Production build
-`20260822223516` publishes W502 through W506 after the full publication gate and three consecutive live
-confirmations. W507's exact next gameplay edge is variant 0's fourth script at `$2910F6`. The two without
-a handler are `[16] $256E7A` and `[18] $24902A`. The newest items are **D42..D47**, opened from a play
-session on build `20260816181806` and appended at the end of this file; they outrank further boss internals.
+**STANDING AS OF LOCAL W507 (2026-08-23).** Dispatch remains **18 of 20**: W503 ports and registers
+`[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W507 drive that exact
+natural loop-2 edge through type 7's first four variant-0 scripts at `$290F66`, `$290F8E`, `$290FE2`, and
+`$2910F6`, including 110 visible spawns and four complete `$8003` resource lifecycles. W507's fourth
+script preserves 43 ordered art selections in 13, 13, 11, and 6-record position groups, spends its exact
+`$100` wait, clears the pool, and advances the list cursor to 16 without needing a new interpreter arm.
+Production build `20260822223516` still publishes W502 through W506 after the full publication gate and
+three consecutive live confirmations; W507 is local and unpublished. The exact next gameplay edge is
+variant 0's fifth script at `$291172`. The two without a handler are `[16] $256E7A` and `[18] $24902A`.
+The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
+the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
 wave plus two in `NEXT_AGENT_HANDOFF.md`, archive older waves into `docs/worklog/` unedited, refresh
 the stale headers here, and check that a new docket ID is free before using it. The handoff split is
@@ -1968,6 +1971,21 @@ unexported entry-3 script `$2910F6`. The compact ending, slot-7, coverage, and g
 the direct rerun passes 1/1. Table verification measured 690 windows, 445,369 bytes, and 76 overlap pairs.
 At its bounded verification point, W506 had not yet been published.
 
+**W507 FOLLOWS VARIANT 0'S EXACT FOURTH SCRIPT.** List entry 3 points to `$2910F6`; entry 4 points
+to `$291172`, followed by the list terminator. The exact `$2910F6..$291171` stream is `$7C` bytes:
+`$8000 $0000`, four `$8001` groups rooted at `$48000200`, `$40000200`, `$38000200`, and
+`$30000200` with 13, 13, 11, and 6 picture words, `$8002 $0100`, `$8003 $0000`, and `$FFFF`.
+Its 43 ordered picture words select 36 distinct spawn-table art pointers. Thirteen distinct selections
+reuse W504-W506 windows, so W507 declares only the script and twenty-three absent four-byte longwords.
+Operand 0 reuses W372's exact `$290E58+$46` resource set.
+
+No opcode arm changed. The natural integration reaches all 43 pool records in cartridge order, preserves
+every `$400` position walk, pins the exact `$100` wait, loads and frees the one-node resource, clears its
+handle and the presentation pool, and advances the list cursor from 12 to 16. The next call fails loudly at
+the unexported fifth script `$291172`. The direct rerun passes 1/1; the compact natural-integration,
+slot-7, registry, and coverage set passes 30/30. Table regeneration and verification measure 714 windows,
+445,585 bytes, and 76 overlap pairs. W507 is local; no full suite, browser export, build, or publication ran.
+
 **W502-W506 PUBLICATION FOLLOW-UP:** Production build `20260822223516` publishes all five waves from
 source commits `36b289b`, `bb9046b`, `5236b8a`, `96b0235`, and `66ebeaa`; bounded stale-test repair
 `bcf6281` completed the publication tree. The quiet-tree gate passed 4,404/4,404 DDPDOJ units plus its
@@ -1975,9 +1993,9 @@ bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate with zero 
 gate with zero skips, the distribution build, and the ROM-leak guard. Deployment and three consecutive
 live confirmations passed.
 
-This does not yet identify every ending-selection condition or close D37. W507's exact next gameplay edge
-is variant 0's fourth type-7 script at `$2910F6`, again following only its first concrete runtime edge
-rather than broadening into speculative ending-selection research.
+This does not yet identify every ending-selection condition or close D37. After local W507, the exact next
+gameplay edge is variant 0's fifth type-7 script at `$291172`, again following only its first concrete
+runtime edge rather than broadening into speculative ending-selection research.
 
 **W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own
 text says otherwise: `$24910E` is `'Asic27 Test'`, `$24911A` is `'Wait or Press Any To Start !!'`, and the
