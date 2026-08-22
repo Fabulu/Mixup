@@ -987,7 +987,10 @@ try {
         // real pool-A allocations into the frame, and each one draws from the SHARED
         // RNG counter $803917, so every downstream stream shifts. These numbers are a
         // whole-run fingerprint, not a claim about the shots themselves.
-        6: { streams: 96, records: 22684, distinct: 30, first: 1,
+        // W497: `streams` 96 -> 313 while records 22684, distinct 30 and first 1
+        // all hold. The 217 additions are the authentic Type-B player-shot and
+        // selector-expanded option families; this Type-A seed never requests them.
+        6: { streams: 313, records: 22684, distinct: 30, first: 1,
           what: 'THE PLAYER\'S SHOTS ($2554EA/$255502 + the pods\' $24D2FC/$24D35C)' },
         // 36 distinct images, not 32: W81 wired type $10's and $82's fans and
         // [M] they reach four bullet images this window had never produced.
@@ -1291,7 +1294,10 @@ try {
         // `distinct` and `first` do NOT move and only the shard's size does.
         // The hyper's own draw is measured in tests/w442hyperbeamimpact and
         // tests/w443hyperbeamart, on the board-verified rung lf9100->9200.
-        10: { streams: 411, records: 1821, distinct: 34, first: 24,
+        // W497: `streams` 411 -> 451 while records 1821, distinct 34 and first 24
+        // all hold. The 40 additions are the two authentic regular-laser groups
+        // made reachable by the ship/style selector; this Type-A seed uses neither.
+        10: { streams: 451, records: 1821, distinct: 34, first: 24,
           what: 'THE LASER BEAM ($24BB0A x4 frames x5 powers + the HYPER block '
             + '$24BAE2 x4 frames + the segment and option blocks, bucket 16)' },
         // W66: 146 -> 153. The fifth chain range ($12D430, 8 frames of stride
@@ -2217,11 +2223,15 @@ try {
         // times over.  The TAP arm on the same shard is 346 records EXACTLY as
         // recorded, which is the control: the ordinary bomb's 16 streams did not
         // move shard, so its count did not move either.
+        // W497: `streams` 228 -> 412 while both scenarios retain their exact
+        // records, distinct images and first frame. The 184 additions are the
+        // authentic Type-B ordinary-bomb and laser-bomb families; this Type-A
+        // seed still exercises the same three bomb spans recorded above.
         hold: { records: 3218, distinct: 115, first: 201,
           what: 'THE LASER BOMB ($255FE2\'s four heads and 41 segments out of '
             + '$256662..$256986, + pool E, the bit-7 aura and type $8A) with '
             + 'fire HELD' },
-        streams: 228,
+        streams: 412,
       };
       const runW66 = (frames, hold) => {
         const g = new Game(bundle.seed, bundle.tables, {
