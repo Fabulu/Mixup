@@ -271,8 +271,11 @@ test('W427 with hyper stock, bomb-while-lasering runs $249868 and block 9 stays 
   { skip: SKIP }, async () => {
     const r = await arm(POOL_B_RUNG, { press: true, hyperStock: 1, warm: 30 });
     assert.ok(r.hyperFrames > 0, `the hyper is ACTIVE for ${r.hyperFrames} frames`);
-    assert.equal(r.hyperFrames, 182);
-    assert.equal(r.bit0Frames, 182, '$24989E bset #$0,($1,A6) on the PLAYER record, '
+    // W478's cartridge type-5 speed bias makes the seeded enemy bullets end this
+    // fixed-input hyper seven frames sooner. Both counters still cover every active
+    // hyper frame, which is the gate this test owns.
+    assert.equal(r.hyperFrames, 175);
+    assert.equal(r.bit0Frames, 175, '$24989E bset #$0,($1,A6) on the PLAYER record, '
       + 'which is what $24C1B2 reads to seed segment family 2 from $24D00A');
     assert.equal(r.recWord, 0, '$811F72 is NEVER allocated -- $2498E2 did not run');
     assert.equal(r.guardFrames, 0, 'so neither guard into $24560A opens');

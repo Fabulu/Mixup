@@ -68,7 +68,10 @@ test('W227 a real death runs its animation and reset instead of stopping',
     // land at 497 and now lands at 495, so stopping at 496 would step PAST the reset and find
     // the option block re-armed at $8001 by the respawn instead of cleared by the death.
     // W411: 494 -> 493, for the same one-frame shift the note below records.
-    for (let f = 92; f <= 493; f++) {
+    // W478: 493 -> 490 because `$252BD0` moves this hyper run's enemy bullets
+    // with the cartridge speed bias. Frame 490 is the reset and still precedes
+    // the staged respawn, so the cleared option block remains observable.
+    for (let f = 92; f <= 490; f++) {
       g.step(shot);
       if (!died && (g.ram.u8(RAM.player1 + P.state) & 1) !== 0) died = f;
     }
@@ -92,7 +95,11 @@ test('W227 a real death runs its animation and reset instead of stopping',
     // shared `$803916`, every later event one frame earlier. MEASURED as an RNG shift and
     // not an art change: with `src/spark.js`'s D48 fix alone and `src/laser.js` at HEAD the
     // frame is still 424; with the laser fix alone it is 423.
-    assert.equal(died, 423, 'the player dies where the RNG draws now put it');
+    // W478: 423 -> 420 after `$252BD0` began updating the cartridge's enemy-bullet
+    // speed bias immediately before `$281D9A`. This live hyper run now moves the
+    // bullets with that type-5 state update, so the fixed input is hit three frames
+    // earlier. The death and reset behavior this test owns is unchanged.
+    assert.equal(died, 420, 'the player dies on the current cartridge-faithful trajectory');
     assert.equal(g.ram.u16(OPTION_BLOCKS[0].opt), 0,
       'and its option block is cleared, not stepped');
     assert.equal(g.ram.u16(0x8130fa), 1,

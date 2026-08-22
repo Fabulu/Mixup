@@ -186,12 +186,17 @@ test('W231 a real respawn puts the ship back and deploys its pods',
     // one draws the shared `$803916`. MEASURED as an RNG shift: `src/spark.js`'s D48 fix
     // alone leaves the frame at 496, the laser fix alone moves it to 495. The SHAPE is
     // untouched: one frame clears the record and the NEXT runs the respawn's init.
-    for (let f = 92; f <= 494; f++) g.step(shot);
-    // frame 494 is the reset: the record is cleared and the respawn is armed
+    // W478 moves the fixed-input death from 423 to 420. The reset now lands on
+    // frame 490, the dispatcher stages the replacement on 491, and INIT runs on 492.
+    for (let f = 92; f <= 490; f++) g.step(shot);
+    // frame 490 is the reset: the record is cleared and the respawn is armed
     assert.deepEqual([g.ram.u16(RAM.player1 + P.posY),
       g.ram.u16(RAM.player1 + P.posX)], [0, 0]);
 
-    g.step(shot);                            // 495: the new object runs its INIT
+    g.step(shot);                            // 491: dispatcher stages the object
+    assert.deepEqual([g.ram.u16(RAM.player1 + P.posY),
+      g.ram.u16(RAM.player1 + P.posX)], [0, 0], 'staging does not run INIT early');
+    g.step(shot);                            // 492: the new object runs its INIT
     assert.deepEqual([g.ram.u16(RAM.player1 + P.posY),
       g.ram.u16(RAM.player1 + P.posX)], [0x1000, 0x0e00],
     'the ship is back where the respawn entry said, not at zero');
@@ -200,8 +205,8 @@ test('W231 a real respawn puts the ship back and deploys its pods',
       'the option block was reset by $2492C8, so its pods start stowed');
     assert.equal(g.ram.u8(opt + OPT.speedIdx), 8, 'and the deploy has begun');
 
-    // $E0 / 8 is 28 passes, so the deploy finishes 27 frames later -- 524 now.
-    for (let f = 498; f <= 524; f++) g.step(shot);
+    // $E0 / 8 is 28 passes, so the deploy finishes 27 frames later, on 519.
+    for (let f = 493; f <= 519; f++) g.step(shot);
     assert.equal(g.ram.u8(opt + OPT.speedIdx), 0xe0,
       '$24C928[0] is $E0 and the deploy stops exactly there');
     assert.equal(g.ram.u16(opt + OPT.state) & 0x0002, 0x0002, 'the pods are out');

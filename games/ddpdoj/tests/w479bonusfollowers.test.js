@@ -61,5 +61,5 @@ test('W479 $25292A preserves pause and player eligibility gates', () => {
 test('W479 type-5 ports call 22 in cartridge order', () => {
   assert.equal(TYPE5.calls[21], 0x25292a);
   assert.ok(TYPE5_PORTED.has(0x25292a));
-  assert.equal(TYPE5_PORTED.size, 22);
+  assert.equal(TYPE5_PORTED.size, 23, 'W480 completed call 23 after this one');
 });

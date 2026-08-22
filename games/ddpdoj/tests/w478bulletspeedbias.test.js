@@ -54,8 +54,8 @@ test('W478 $252BD0 derives and caps both loops enemy-bullet speed bias', () => {
     ram.setU16(HYPER.bossPhase, 1);
     ram.setU8(HYPER.flags, 0x04);
 
-    assert.equal(updateBulletSpeedBias252BD0(ram, rom), 7,
-      'zero power still receives flag, stage and loop additions');
+    assert.equal(updateBulletSpeedBias252BD0(ram, rom), 5,
+      'zero power skips the flag bonuses but receives loop and boss additions');
     assert.deepEqual(reads, [], 'zero power does not read before either table');
   }
 
@@ -76,5 +76,5 @@ test('W478 type-5 runs $252BD0 immediately before the bullet driver', () => {
   assert.equal(speed, 18, '$252BD0 is call 19');
   assert.equal(TYPE5.calls[speed + 1], 0x281d9a, '$281D9A remains call 20');
   assert.ok(TYPE5_PORTED.has(0x252bd0));
-  assert.equal(TYPE5_PORTED.size, 21);
+  assert.equal(TYPE5_PORTED.size, 23, 'W480 completed all 23 cartridge calls');
 });

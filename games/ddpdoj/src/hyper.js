@@ -88,12 +88,13 @@ export function updateBulletSpeedBias252BD0(ram, rom) {
   }
 
   const secondLoop = ram.u16(HYPER.secondLoop) !== 0;
-  let bias = power === 0 ? 0 : rom.u16(
-    (secondLoop ? 0x252b8a : 0x252b44) + (power - 1) * 2);
-
-  if ((ram.u8(HYPER.flags) & 0x04) !== 0) {
-    bias++;
-    if (ram.u16(HYPER.stage) > 1) bias++;
+  let bias = 0;
+  if (power !== 0) {
+    bias = rom.u16((secondLoop ? 0x252b8a : 0x252b44) + (power - 1) * 2);
+    if ((ram.u8(HYPER.flags) & 0x04) !== 0) {
+      bias++;
+      if (ram.u16(HYPER.stage) > 1) bias++;
+    }
   }
 
   if (secondLoop) {

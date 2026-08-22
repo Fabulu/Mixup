@@ -214,7 +214,11 @@ test('W228 a real death respawns and keeps running',
     // shared `$803916`, every later event one frame earlier. MEASURED as an RNG shift and
     // not an art change: with `src/spark.js`'s D48 fix alone and `src/laser.js` at HEAD the
     // frame is still 424; with the laser fix alone it is 423.
-    assert.equal(died, 423);
+    // W478: 423 -> 420 after type-5 call `$252BD0` began applying the cartridge's
+    // enemy-bullet speed bias immediately before `$281D9A`. The fixed-input hyper
+    // run is hit three frames sooner; the life spend and respawn invariants below
+    // are unchanged.
+    assert.equal(died, 420);
     assert.equal(g.ram.u16(COUNT), 1, 'one life spent');
     assert.equal(g.ram.u16(ENTRY), 0, 'and the dispatcher is idle again');
     assert.equal(g.ram.u8(RAM.player1) & 1, 0, 'the death bit is clear');

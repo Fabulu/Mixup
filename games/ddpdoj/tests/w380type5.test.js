@@ -47,6 +47,7 @@ import { COIN } from '../src/isr.js';
 import { COIN_BITS } from '../src/web/input.js';
 import { Ram } from '../src/ram.js';
 import { TYPE5 } from '../src/type5.js';
+import { HYPER } from '../src/hyper.js';
 import { POOL_B, POOL_C, POOL_D } from '../src/effects.js';
 import { CUE } from '../src/cues.js';
 import { SPARK } from '../src/spark.js';
@@ -145,40 +146,30 @@ test('W380 a cold boot + coin + P1 START runs THROUGH $28B5A8 into gameplay with
 // 2 -- `$28B5DE rts`. THE FIRST FRAME DOES THE RESETS AND NOTHING ELSE.
 //
 // In ROM `$28B5A8` sits BEFORE `$28B5E0`, so `beq $28B5A8` branches BACKWARDS and the `rts` at
-// `$28B5DE` ends the frame. The twenty-three subsystem calls do NOT run on it. The observable
-// is the four type-5 calls the port still counts ($2527CE, $252BD0, $25292A, $252A52): they are
-// noted once per frame the main body runs and never on the not-started frame.
+// `$28B5DE` ends the frame. The twenty-three subsystem calls do NOT run on it. W480
+// completed all 23 calls, so the observable is now `$252BD0`: seed its output with a
+// sentinel before the not-started frame, then show that the sentinel survives that frame
+// and is replaced on the next one.
 //
-// ABLATION (run before this test was written): delete the `return;` after
-// `ram.setU8(slot + 2, 1)` in `src/type5.js`. The counted calls then appear on frame 2058 too
-// and this fails with
-//
-//   AssertionError: the 23 calls do NOT run on the frame $28B5A8 takes
-//   + actual - expected     + 1     - 0
+// ABLATION: delete the `return;` after `ram.setU8(slot + 2, 1)` in `src/type5.js`.
+// `$252BD0` then replaces the sentinel on frame 2058 and the first assertion fails.
 // =================================================================================================
 
 test('W380 the not-started frame RETURNS -- the 23 subsystem calls do not run on it', () => {
   const g = coldToStart();
-  const counted = () => {
-    let n = 0;
-    for (const [k, v] of g.unportedLog.calls) {
-      if (k.includes('object type 5 ($28B5E0) subsystem call')) n = Math.max(n, v);
-    }
-    return n;
-  };
 
   for (let f = 1; f <= 2057; f++) g.step(NO_PLAYER);
   assert.equal(g.ram.u32(SCRIPT_CURSOR), 0, 'frame 2057: $28B5A8 has not run yet');
-  const before = counted();
+  g.ram.setU16(HYPER.bulletSpeedBias, 0xbeef);
 
   g.step(NO_PLAYER);                                   // FRAME 2058 -- $28B5A8
   assert.notEqual(g.ram.u32(SCRIPT_CURSOR), 0, 'frame 2058: $26331E installed the script');
-  assert.equal(counted() - before, 0,
+  assert.equal(g.ram.u16(HYPER.bulletSpeedBias), 0xbeef,
     'the 23 calls do NOT run on the frame $28B5A8 takes');
 
   g.step(NO_PLAYER);                                   // FRAME 2059 -- ($2,A5) is 1 now
-  assert.equal(counted() - before, 1,
-    'and they DO run on the very next frame, once');
+  assert.equal(g.ram.u16(HYPER.bulletSpeedBias), 0,
+    'and $252BD0 runs on the very next frame');
 });
 
 // =================================================================================================
