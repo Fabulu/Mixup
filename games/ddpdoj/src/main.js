@@ -407,6 +407,7 @@ export class Game {
       'deathPositionCapture',
       'respawnPositionTransform',
       'enemyDeathHook',
+      'friendlyBulletConvertHook',
       'enemyBulletCollisionFilter',
       'scoreAddendTransform',
     ]) {
@@ -533,6 +534,8 @@ export class Game {
       ...(this.respawnPositionTransform
         ? { respawnPositionTransform: this.respawnPositionTransform } : {}),
       ...(this.enemyDeathHook ? { enemyDeathHook: this.enemyDeathHook } : {}),
+      ...(this.friendlyBulletConvertHook
+        ? { friendlyBulletConvertHook: this.friendlyBulletConvertHook } : {}),
       ...(this.enemyBulletCollisionFilter
         ? { enemyBulletCollisionFilter: this.enemyBulletCollisionFilter } : {}),
       // WAVE 57: the BG videoram, because an ENEMY HANDLER writes it.  Type

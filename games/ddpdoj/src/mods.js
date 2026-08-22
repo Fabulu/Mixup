@@ -9,6 +9,7 @@ import { fireBomb2498E2 } from './bomb.js';
 import { spawnCore, WriteLog } from './bullets.js';
 import { AimTables, aim64FromCaller } from './aim.js';
 import { abcd, bcdAdd, LEDGER } from './score.js';
+import { spawnConvertedShot } from './shots.js';
 
 export const CATEGORIES = Object.freeze(['survival', 'arsenal', 'challenge', 'presentation']);
 
@@ -78,6 +79,11 @@ export const MODS = Object.freeze({
     blurb: 'Earn 100 score for each live enemy bullet that passes within three pixels of the hitbox.',
     effects: ['$2459D0 near miss -> packed-BCD +100 once per player and bullet slot lifetime'],
   }),
+  'friendly-converted-bullets': mod({
+    name: 'Friendly Converted Bullets', category: 'arsenal',
+    blurb: 'Turn canceled enemy fire into upward-moving player shots that can damage ordinary enemies.',
+    effects: ['$281D22 cancel/free -> one P1 shot-pool projectile from the bullet final position'],
+  }),
 
   'low-rank': mod({
     name: 'Low Rank', category: 'challenge', conflict: 'rank', priority: 10,
@@ -134,6 +140,11 @@ export const MODS = Object.freeze({
     name: 'Score Multiplier Mayhem', category: 'challenge',
     blurb: 'Cycle score awards through a deterministic x1 to x8 multiplier every logic frame.',
     effects: ['$81B4C0/$81B4C4 final pending ledger addends x (($80390A & 7) + 1), packed BCD'],
+  }),
+  'loop-2-from-stage-1': mod({
+    name: 'Loop 2 From Stage 1', category: 'challenge',
+    blurb: 'Begin stage 1 with the cartridge loop counter set for loop 2.',
+    effects: ['ordinary selected launch: $813098 := 1 once; stage and progression remain cartridge-owned'],
   }),
 
   'invert-colors': mod({
@@ -213,6 +224,7 @@ export function resolveLoadout(ids = []) {
     hyperOverdrive: has('hyper-overdrive'),
     beeMagnet: has('bee-magnet'),
     grazeReactor: has('graze-reactor'),
+    friendlyConvertedBullets: has('friendly-converted-bullets'),
     autoDeathbomb: has('auto-deathbomb'),
     resurrectionInPlace: has('resurrection-in-place'),
     glassCannon: has('glass-cannon'),
@@ -220,6 +232,7 @@ export function resolveLoadout(ids = []) {
     revengeBullets: has('revenge-bullets'),
     bulletPolarity: has('bullet-polarity'),
     scoreMultiplierMayhem: has('score-multiplier-mayhem'),
+    loop2FromStage1: has('loop-2-from-stage-1'),
     rank: has('maximum-rank') ? 'maximum' : has('low-rank') ? 'low' : null,
     precisionShip: has('precision-ship'),
   });
@@ -310,6 +323,7 @@ export const MOD_RAM = Object.freeze({
   player2Y: 0x81044a,
   player2X: 0x81044c,
   logicFrame: 0x80390a,
+  loopCounter: 0x813098,
 });
 
 const BEE_MAGNET_STEP = 0x80;
@@ -426,6 +440,10 @@ function fireRevengeBullet(ram, event, ctx) {
   return spawnCore({ ram, rom: ctx.rom, log: new WriteLog(ram) }, regs, 'A');
 }
 
+function convertCanceledBullet(ram, event, ctx) {
+  return spawnConvertedShot(ram, ctx.rom, ctx, event.y, event.x);
+}
+
 function hostilePolarityBank(ram, event) {
   const focused = (ram.u8(event.player + 0x18) & 0x10) !== 0;
   return event.bank === (focused ? 'A' : 'B');
@@ -472,6 +490,7 @@ export function modGameOptions(state) {
       consumeResurrectionPosition(state, ram, side, y, x);
   }
   if (sim.revengeBullets) options.enemyDeathHook = fireRevengeBullet;
+  if (sim.friendlyConvertedBullets) options.friendlyBulletConvertHook = convertCanceledBullet;
   if (sim.bulletPolarity) options.enemyBulletCollisionFilter = hostilePolarityBank;
   if (sim.scoreMultiplierMayhem) options.scoreAddendTransform = multiplyFinalScoreAddend;
   return Object.keys(options).length ? Object.freeze(options) : null;

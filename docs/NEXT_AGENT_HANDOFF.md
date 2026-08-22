@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W494 third transformative-mod wave verified locally)
+Updated: 2026-08-22 (W495 fourth transformative-mod wave verified locally)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,18 +8,18 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W494 adds the next three mods in the additional
-transformative roster.** The catalogue now has 26 entries. Revenge Bullets emits one aimed Bank-A shot
-through the central allocator only for a scored fatal retirement in the ordinary enemy band. Bullet
-Polarity makes unfocused players phase through Bank A and focused players phase through Bank B, resolving
-P1 and P2 independently. Score Multiplier Mayhem applies a deterministic packed-BCD x1 through x8 factor
-only to final pending score-ledger additions. W492 and W493's eight additions remain unchanged. Every new
-mod blocks replay v1. Empty, unknown-only, direct, Original, and later vanilla-Game paths install no mod
+`docs/DOCKET.md` is authoritative. **W495 adds two more mods in the additional
+transformative roster.** The catalogue now has 28 entries. Friendly Converted Bullets turns each
+ordinary canceled enemy bullet into an upward projectile in the authentic P1 shot pool after preserving
+the cancel impact and authentic bullet free. Loop 2 From Stage 1 writes `$813098 := 1` only into the copied
+seed for an ordinary selected launch. Labelled progression, replay seeds, source seed bytes, and later
+vanilla Games remain unchanged. W492 through W494's eleven additions remain unchanged. Every new mod
+blocks replay v1. Empty, unknown-only, direct, Original, and later vanilla-Game paths install no mod
 callback or policy.
 
-The W494 focused and directly affected set passes 118/118. Syntax, diff hygiene, and
+The W495 focused and directly affected set passes 89/89. Syntax, diff hygiene, and
 forbidden-punctuation checks pass. The published-bundle gate remains 15,955,968/15,955,968
-pixel-identical. W494 is not published; W496 remains the next publication point.
+pixel-identical. W495 is not published; W496 remains the next publication point.
 
 W490 makes all large replay and recording notices transient. W489 removed the fly-around oracle's embedded
 `$810424=$FF` intervention from ordinary browser launches, leaving labelled progression, replay, explicit
@@ -28,6 +28,23 @@ Invincibility, and authentic `$F0` grace exact. W488 ports the shared two-line p
 101/256 ported, 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not
 follow the static `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
 W491 is live as production build `20260822080859`, superseding W486's `20260822042005`.
+
+## W495 VERIFIED LOCALLY: FRIENDLY CONVERSIONS AND LOOP-2 LAUNCH
+
+`bulletdriver.js` invokes one selected conversion hook only after the ordinary screen-clear arm preserves
+its existing impact allocation and authentic bullet-free writes. `shots.js` scans the cartridge P1 primary
+and secondary allocation windows, fills a real primary-shot record, switches it to the already-moving
+handler, and gives it a fixed upward velocity. Full shot windows refuse without overwriting anything. Free,
+unarmed, out-of-window, and high-bit transform-only bullet records never create shots. The converted record
+then moves through `runShotDriver` and damages enemies through the existing shot collision path.
+
+`launchSeedForBrowser` writes loop 1 in board numbering only into an ordinary launch copy when Loop 2 From
+Stage 1 is selected. It does not hold the word during frames, change the stage, mutate the source seed, or
+touch labelled progression and replay paths. Ordinary mortality remains enabled.
+
+The focused and directly affected set passes 89/89. All changed JavaScript parses, `git diff --check` and
+the U+2014 scan pass, and the published-bundle gate remains pixel-identical. W495 is the fourth wave after
+W491 and is not published.
 
 ## W494 VERIFIED LOCALLY: REVENGE, POLARITY, AND SCORE MODS
 
@@ -860,7 +877,7 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. Add the remaining 4 transformative mods in W495 and W496 without changing vanilla behavior. Ships and
+1. Add the remaining 2 transformative mods in W496 without changing vanilla behavior. Ships and
    pilots are core fidelity work, not part of that mod count.
 2. Make both cartridge-supported ships and all three pilots selectable and playable.
 3. Complete Black Label through the full second loop.

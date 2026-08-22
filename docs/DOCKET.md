@@ -6501,3 +6501,23 @@ The focused and directly affected W494 set passes 118/118 with no failures or sk
 hygiene, and the forbidden-punctuation scan pass. The published-bundle gate remains
 15,955,968/15,955,968 pixel-identical. The full unit suite was not run, browser assets were not regenerated,
 and W494 is unpublished. It is the third wave after W491; W496 remains the next periodic publication point.
+
+### D103: W495 FRIENDLY CONVERSION AND LOOP-2 LAUNCH MODS, VERIFIED LOCALLY
+
+The start menu now exposes 28 mods. W495 adds Friendly Converted Bullets and Loop 2 From Stage 1. Both
+change simulation and block replay v1. Friendly Converted Bullets adds a selected callback only at the end
+of the ordinary screen-clear cancel/free arm, after the existing impact allocation and bullet retirement.
+Each canceled live record allocates one upward projectile from the authentic P1 primary or secondary shot
+window, uses a real primary-shot template and the already-moving handler, and continues through the normal
+shot driver and enemy-damage path. A full player-shot window refuses cleanly. Free, unarmed, out-of-window,
+high-bit transform-only, and vanilla cases create no projectile.
+
+Loop 2 From Stage 1 writes `$813098 := 1` once into the copied seed of an ordinary selected browser launch.
+It retains stage 1 and authentic mortality, does not hold the loop word during frames, and does not mutate
+the source seed. Labelled progression snapshots, replay-created Games, and later vanilla launches remain
+unchanged.
+
+The focused and directly affected W495 set passes 89/89 with no failures or skips. Syntax checks, diff
+hygiene, and the forbidden-punctuation scan pass. The published-bundle gate remains
+15,955,968/15,955,968 pixel-identical. The full unit suite was not run, browser assets were not regenerated,
+and W495 is unpublished. It is the fourth wave after W491; W496 remains the next periodic publication point.

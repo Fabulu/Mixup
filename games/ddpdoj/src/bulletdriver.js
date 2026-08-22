@@ -204,9 +204,14 @@ export function runScreenClear(ctx) {
     // it was that $280B3E's template came from a hand-transcribed map instead of from
     // $280E4A, so kind $0 -- the screen clear's own kind -- had no entry. The template
     // and the animation hooks now come out of the cartridge for all twenty kinds.
+    const finalY = ram.u16(base + CLR.posA);
+    const finalX = ram.u16(base + 0x04);
     allocPoolA27F8F0(ram, ctx.rom, ctx, mode, 0, 0, base);  // $281D2E jsr $27F8F8
     ram.setU16(base, 0);                                // $281D36 clr.w (A6)
     ram.setU16(base + CLR.posA, 0xffff);                // $281D38 move.w #$FFFF
+    ctx.friendlyBulletConvertHook?.(ram, {
+      bullet: base, y: finalY, x: finalX, mode,
+    }, ctx);
     hit++;
   }
   return hit;

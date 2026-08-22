@@ -103,6 +103,44 @@ export const SPAWN = {
  */
 export const PLAYER_SLOTS = { primary: [14, 18], secondary: [21, 25] };
 
+const CONVERTED_SHOT_SPEED = 0x0400;
+
+/**
+ * Allocate one cancel-converted projectile in the cartridge P1 shot pool.
+ * It uses a live primary-shot template and the existing shot driver/damage pass,
+ * but begins in the already-moving entry so it is not carried by the player.
+ */
+export function spawnConvertedShot(ram, rom, ctx, y, x) {
+  let rec = null;
+  for (const [first, last] of [PLAYER_SLOTS.primary, PLAYER_SLOTS.secondary]) {
+    for (let slot = first; slot <= last; slot++) {
+      const candidate = SHOT.p1Table + slot * SHOT.stride;
+      if ((ram.u16(candidate) & 0x8000) === 0) { rec = candidate; break; }
+    }
+    if (rec != null) break;
+  }
+  if (rec == null) return null;
+
+  const prec = SHOT.p1Rec;
+  const power = u16(ram.u16(prec + PS.power));
+  const templateTable = rom.u32(SPAWN.ptrPrimary);
+  const template = rom.u32(templateTable + power * 2);
+  const phase = ram.u16(prec + PS.animPhase);
+  const animIdx = ram.u16(prec + PS.animIdx);
+  fillShotRecord(ram, rom, rec, template, prec);
+  ram.setU16(prec + PS.animPhase, phase);
+  ram.setU16(prec + PS.animIdx, animIdx);
+
+  ram.setU16(rec, (ram.u16(rec) & 0xff00) | 0x0048);
+  ram.setU16(rec + S.posY, y);
+  ram.setU16(rec + S.posX, x);
+  ram.setU16(rec + S.velY, CONVERTED_SHOT_SPEED);
+  ram.setU16(rec + S.velX, 0);
+  ram.setU16(SHOT.liveCount, u16(ram.u16(SHOT.liveCount) + 1));
+  ctx?.shotSpawn?.('converted', rec);
+  return rec;
+}
+
 /** `subq.w #n` on a word: the 68000 sets carry on an unsigned BORROW.  Written
  *  once because two places get it wrong by testing the sign bit instead. */
 function subqBorrow(v, n) { return { v: u16(v - n), borrow: u16(v) < n }; }
