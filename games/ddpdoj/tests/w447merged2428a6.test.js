@@ -462,13 +462,13 @@ test('SECTION 5b: items.js no longer exports a second body, and the stream does 
 // The count is asserted here as well as there so that deleting the register does not silently
 // delete the debt.
 
-test('SECTION 6: the doubly-claimed register is 15, and all later proved merges are ABSENT '
+test('SECTION 6: the doubly-claimed register is 16, and all later proved merges are ABSENT '
   + 'from it', () => {
   const dup = [...portedIndex()].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
-  assert.equal(dup.length, 15,
-    'W459 left the export-only floor at 16; W474 removed the retired ledger note claim, '
-    + 'so the live floor is 15. A different number means either a merge was undone or a new '
-    + 'duplicate landed, and a new one is a wave, not a row: '
+  assert.equal(dup.length, 16,
+    'W474 left the export-only floor at 15; W497 registers the authentic $2491C0 '
+    + 'seed-adapter claim, so the live floor is 16. A different number means either a '
+    + 'merge was undone or an unclassified duplicate landed: '
     + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
   assert.equal(dup.includes(0x2428a6), false, '$2428A6 is merged');
   assert.equal(dup.includes(0x242b3c), false, '$242B3C is merged');
@@ -492,18 +492,19 @@ test('SECTION 6: the doubly-claimed register is 15, and all later proved merges 
 // private $28C0FC counted-note adapter row at W463). See
 // tests/w450widenedregister.test.js; the number is cross-checked in all four
 // register holders so none of them can be read as the whole count.
-test('SECTION 6b [W450/W475]: the widened register is 68, and this wave\'s two merges hold under it too',
+test('SECTION 6b [W450/W497]: the widened register is 71, and this wave\'s two merges hold under it too',
   async () => {
     const { headRegister } = await import('./w450widenedscan.js');
     const wide = headRegister();
-    assert.equal(wide.length, 68,
-      'the widened duplicate register is not 68. ' + W453_NOTE
+    assert.equal(wide.length, 71,
+      'the widened duplicate register is not 71. ' + W453_NOTE
       + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
       + 'W460 removed the optional $24631C forwarding shim; W461 merged the private '
       + '$242E24 rank-byte body into rng.js drawByte242E24; W462 removed both private '
       + '$2414BE installTxBank heads; W463 removed both private $28C0FC counted-note heads; '
       + 'W474 removed the retired ledger note claims at $240F62 and $28D520; W475 removed '
-      + 'the palette-reporting method claim at $24133C; '
+      + 'the palette-reporting method claim at $24133C; W497 registers $2491C0 and '
+      + 'the $253D82/$253D90 Type-B hit-flag wrapper rows; '
       + 'w450widenedregister.test.js SECTION 3 owns the set');
     // The two W447 merged must stay merged under a scan that can ALSO see a
     // private re-transcription, which is the only way to know they really went.

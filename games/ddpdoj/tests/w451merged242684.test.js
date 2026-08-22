@@ -286,12 +286,10 @@ test('SECTION 3: one `$242684` claimant survives, and all six old private heads 
   const pairs = bodyPairs().map(([p]) => p);
   assert.equal(pairs.includes('handlers.js onScreen242684 <> items.js offScreen242684'), false,
     'the deleted body pair left the body register too');
-  assert.equal(headRegister().length, 68,
-    'W450 92 minus $242684 at W451, $242494 at W453, $25D9E6 at W457, $25DA60 at W458, $25FF38 at W459, $24631C at W460, $242E24 at W461, $2414BE at W462, $28C0FC at W463, $28E7A2 at W464, $28C6C6 at W465 and $28F4C4/$28F666 at W466 leaves 79, then $285A12 at W467 leaves 78, $2A6EDC at W468 leaves 77, $23C622 at W469 leaves 76, $23BF74/$23BFDB at W470 leave 74, $23E3E2 at W471 leaves 73, $23FF06 at W472 leaves 72, $240DC2 at W473 leaves 71, $240F62/$28D520 at W474 leave 69, and $24133C at W475 leaves 68');
-  assert.equal(pairs.length, 27,
-    'W450 39 body pairs minus W451 $242684, W453 $242494, W454 turret, W455 '
-      + 'beam reset, four W456 item-velocity edges, W457 cursor map, W458 cursor load, W459 '
-      + 'request poster and W461 rank byte is 27');
+  assert.equal(headRegister().length, 71,
+    'W475 left 68; W497 adds $2491C0 and $253D82/$253D90');
+  assert.equal(pairs.length, 28,
+    'W461 left 27; W497 adds the authentic-selection/player-object body pair');
 });
 
 // ==============================================================================================

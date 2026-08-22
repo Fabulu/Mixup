@@ -107,12 +107,10 @@ test('W218 pins the type-$9F/$A4 closures and complete live art set',
     // goes 407 -> 411 streams and 54,582 -> 56,510 mask words, `spr.maskUsed` grows
     // by the SAME 1,928, and every other shard HELD -- shard 11 at 870/1,171,460 and
     // shard 9 at 313/166,218.
-    assert.equal(manifest.spr.streamCount, 4355,
+    assert.equal(manifest.spr.streamCount, 4907,
       'W220 adds 64 live boss-part streams after the arrival body; W275 adds the 50 '
-      + 'of the ship\'s dying animation, which is why this number moves whenever a '
-      + 'wave harvests art. TWELVE test files pin it -- these eleven and W397 SECTION 4 '
-      + '-- and all twelve get bumped together; the claim is "the bundle is what the '
-      + 'tree measured", not a floor');
+      + 'of the ship\'s dying animation. W497 then adds 543 authentic Type-B/selection '
+      + 'streams and W498 adds nine Game Over streams. The bundle total is exact, not a floor');
   });
 
 test('W218 real clock-$266 spawn damages, sheds a live fragment, and draws it',

@@ -237,8 +237,10 @@ test('the shot harvest includes ship and option hyper handlers', () => {
   assert.ok(/if \(!\(nib in SHOT_HIT_TABLE\)\) \{[\s\S]{0,400}throw new Error/.test(s),
     'a template carrying an unported nibble must STOP the export, not ship art '
     + 'for a handler that does not exist ($268594 is the precedent)');
-  assert.ok(s.includes("[0x24d2fc, 4, 'option pod 0 hyper"),
-    'the option pods\' +4 hyper templates are harvested too');
+  assert.ok(s.includes("...[0x24d2fc, 0x24d35c].flatMap((ptr) => [0, 4, 8, 12].map((selector) =>"),
+    'both style-2 option tables harvest ship-selector and +4 hyper offsets');
+  assert.ok(s.includes("[ptr, selector, 'style-2 option pod, ship selector plus hyper offset']"),
+    'the expanded W497 harvest keeps the option hyper ownership explicit');
 });
 
 test('every bullet range must close EXACTLY on its stated end address', () => {

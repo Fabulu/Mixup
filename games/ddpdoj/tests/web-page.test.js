@@ -770,7 +770,7 @@ test('nothing claims the ship cannot bank any more', () => {
   // be sitting on the page as a limitation.
   const html = read('index.html');
   assert.ok(!/ship does NOT bank/i.test(html));
-  assert.match(html, /The ship banks/i);
+  assert.match(html, /Both ships bank/i);
   assert.match(html, /17 rebased/i,
     'the page must say where the bank images come from, not just that they work');
 });

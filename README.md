@@ -333,7 +333,7 @@ That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,
 and behavior through the complete second loop. All 23 type-5 frame calls now
 run, while enemy-handler coverage is 101 ported, 25 unknown, and 130 null. The
-duplicate scanners still report 15 narrow heads, 68 widened heads, 27 body
+duplicate scanners still report 16 narrow heads, 71 widened heads, 28 body
 pairs, and 22 body-only findings, now deliberately deferred until functional
 completion.
 

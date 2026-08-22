@@ -419,6 +419,8 @@ const W422 = Object.freeze({ streams: 8, maskWords: 656, colWords: 738 });
 // 870/1,171,460/3,273,468 -- which is why the shard-11 terms below do NOT carry a W443 addend and
 // only `streamCount`, `maskUsed` and SIZES[10] do.
 const W443 = Object.freeze({ streams: 4, maskWords: 1928, colWords: 7478 });
+const W497 = Object.freeze({ streams: 543, maskWords: 123510 });
+const W498 = Object.freeze({ streams: 9, maskWords: 26226 });
 
 test('W396 SECTION 4: the bundle grew by exactly these five and by nothing else',
   { skip: SKIP }, () => {
@@ -427,10 +429,9 @@ test('W396 SECTION 4: the bundle grew by exactly these five and by nothing else'
     // arm adds six streams where one of them replaces an entry that was already there.
     assert.equal(manifest.spr.streamCount,
       BEFORE.streamCount + 5 + W397.streams + W414.streams + W417.streams
-        + W419.streams + W422.streams + W443.streams,
-      '4,258 -> 4,263 (W396) -> 4,267 (W397) -> 4,291 (W414) streams. This number is pinned in '
-      + 'TWELVE test files and all twelve move together; the claim is "the bundle is what the '
-      + 'tree measured", never a floor');
+        + W419.streams + W422.streams + W443.streams + W497.streams + W498.streams,
+      'W497 adds 543 authentic Type-B and selector-dependent streams; W498 adds nine '
+      + 'Game Over streams. The current 4,907-stream bundle total is exact, never a floor');
     assert.equal(shard.streams,
       BEFORE.shard11Streams + 5 + W397.streams + W414.streams + W417.streams
         + W422.streams,
@@ -447,29 +448,18 @@ test('W396 SECTION 4: the bundle grew by exactly these five and by nothing else'
       '3,183,741 -> 3,219,388 -> 3,260,515 -> 3,262,842 -> 3,272,730 colour words');
     assert.equal(manifest.spr.maskUsed,
       BEFORE.maskUsed + 15562 + W397.maskWords + W414.maskWords + W417.maskWords
-        + W419.maskWords + W422.maskWords + W443.maskWords,
-      'and the whole packed mask space grew by the same amount all three times: nothing else '
-      + 'was added');
+        + W419.maskWords + W422.maskWords + W443.maskWords
+        + W497.maskWords + W498.maskWords,
+      'W497 adds 123,510 mask words and W498 adds 26,226; the current packed mask '
+      + 'usage is exact');
 
-    // NO SHARD BUT 11 CHANGED MEMBERSHIP, in either wave.
-    // Index 11 is 822 + W414's 24; every other entry is untouched, which IS the assertion.
-    // W415 (docket D50) MOVED EIGHT STREAMS FROM 17 TO 9 AND ADDED NONE.
-    // They are pool C's kind-4 death satellite -- the GROUND MARK a dying ground
-    // enemy leaves -- and they were filed under shard 17, which `SPR_ORDER`
-    // fetches LAST, while the fireball the same death spawns is shard 9, fetched
-    // fifth. Index 9 is 269 + 8 and index 17 is 1239 - 8; `streamCount` is
-    // UNCHANGED, and the sum assertion below is what proves the move was a move.
-    // W417: index 11 is 846 + W417's SIXTEEN (pool-A kind index 3's own animation).
-    // Every other entry is untouched, which is still the assertion -- the row was an
-    // ADDITION to one shard and the sum below is what proves it.
-    // W422: index 11 is 862 + W422's EIGHT (pool-A kind index 5's collected popup), and
-    // every other entry HELD -- including index 9's 313, which W419 last moved.
-    // W443: index 10 is 407 + FOUR (the hyper beam's own animation, $24BAE2). Every other
-    // entry HELD -- including index 11's 870, which W422 last moved, and index 9's 313.
-    const SIZES = [166, 67, 32, 54, 17, 70, 96, 298, 72, 313, 411, 870, 139, 228, 90, 4, 37,
+    // W396 through W443 establish the historical structure and laser additions. W497 then
+    // expands shards 0, 6, 10, and 13, while W498 adds nine Game Over streams to shard 0.
+    // Keep every current shard exact so the global total cannot hide a misplaced stream.
+    const SIZES = [277, 67, 32, 54, 17, 70, 313, 298, 72, 313, 451, 870, 139, 412, 90, 4, 37,
       1231, 160];
     assert.deepEqual(manifest.spr.shards.map((s) => s.streams), SIZES,
-      'every other shard holds exactly what it held before');
+      'the exact current stream membership of every shard');
     assert.equal(SIZES.reduce((a, b) => a + b, 0), manifest.spr.streamCount,
       'and the nineteen shard counts sum to the total with nothing left over: the shards are '
       + 'disjoint by construction (FIRST shard wins in `shardOfStream`), so a stream added twice '

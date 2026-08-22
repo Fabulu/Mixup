@@ -259,7 +259,7 @@ const DOUBLY_CLAIMED_UNAUDITED = Object.freeze([
   // the 122-byte cartridge span and both carry continuations.
   // W459 REMOVED $25FF38: the corrected player.js D0.W body now owns all production
   // calls, and tallyscreen.js preserves its historical name as a compatibility alias.
-  0x2417de, 0x242ec2, 0x246710, 0x24676a, 0x249ee2,
+  0x2417de, 0x242ec2, 0x246710, 0x24676a, 0x2491c0, 0x249ee2,
   0x2564f0, 0x259962, 0x263386, 0x2633be, 0x2638a6,
   0x27f6e4, 0x2875b4, 0x28f588, 0x29f9b4, 0x2a11d4,
 ]);
@@ -272,9 +272,8 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
     .sort((a, b) => a - b);
   assert.deepEqual(dup.map(hex), [...DOUBLY_CLAIMED_UNAUDITED].map(hex),
     'the set of ROM addresses claimed by more than one `export function` moved.\n'
-    + 'A NEW one is W446\'s defect happening again: two bodies for one routine, free\n'
-    + 'to drift, with only one of them live. Merge them -- do not add the address\n'
-    + 'here. A row LEAVING is fine if a wave merged it; say so where you delete it.\n'
+    + 'A NEW one is a second body that must be classified before it is either\n'
+    + 'registered for deferred cleanup or merged. A row LEAVING is fine if a wave documents it.\n'
     + 'NOTE $25FFA8 is deliberately ABSENT: W446 merged it, and SECTION 2 pins that.\n'
     + 'NOTE $2428A6 and $242B3C are deliberately ABSENT TOO: W447 merged them, and\n'
     + 'tests/w447merged2428a6.test.js SECTIONS 2 and 2b pin that. 24 - 2 = 22.\n'
@@ -289,9 +288,11 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
     + 'NOTE $25FF38 is ABSENT TOO: W459 corrected D0.W ownership and merged its bodies. '
     + '17 - 1 = 16.\n'
     + 'NOTE $28D520 is ABSENT TOO: W474 made the retired ledger note address-free. '
-    + '16 - 1 = 15.');
-  assert.equal(dup.length, 15,
-    'the register is 15 after W474: W459 left 16 and W474 removed the retired ledger note claim. '
+    + '16 - 1 = 15.\n'
+    + 'NOTE $2491C0 is now registered: W497 reapplies selector-derived fields to the '
+    + 'already-live browser seed, so 15 + 1 = 16.');
+  assert.equal(dup.length, 16,
+    'the register is 16 after W497 adds the declared authentic-selection adapter claim. '
     + 'Asserted as a NUMBER as '
     + 'well as a set, so that a scan which finds nothing cannot read as two more '
     + 'merges -- an empty dup list satisfies neither.');
@@ -316,11 +317,13 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
 // $2414BE adapter heads, and W463 removed both private $28C0FC counted-note adapters.
 // W474 removes the retired exported ledger note's $28D520 claim, leaving narrow 15.
 // W475 removes the palette-reporting method's $24133C claim, leaving widened 68.
-test('SECTION 2c [W450/W475]: the widened register is 68, so narrow 15 remains a floor', async () => {
+// W497 registers the authentic `$2491C0` seed adapter, two Type-B hit-flag wrapper
+// rows, and one head-visible body pair: narrow 16, widened 71, body pairs 28.
+test('SECTION 2c [W450/W497]: the widened register is 71, so narrow 16 remains a floor', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
-  assert.equal(headRegister().length, 68,
+  assert.equal(headRegister().length, 71,
     'the WIDENED register (private functions, arrows, methods and the whole doc opening '
-    + 'span, not just `export function`) is not 68. ' + W453_NOTE
+    + 'span, not just `export function`) is not 71. ' + W453_NOTE
     + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
     + 'W460 removed the optional $24631C forwarding shim; W461 merged the private '
     + '$242E24 rank-byte body into rng.js drawByte242E24; W462 removed both private '
@@ -329,7 +332,7 @@ test('SECTION 2c [W450/W475]: the widened register is 68, so narrow 15 remains a
     + '$28E7A2, $28C6C6, $28F4C4/$28F666, $285A12, $2A6EDC, $23C622, '
     + '$23BF74/$23BFDB, $23E3E2, $23FF06, $240DC2, $240F62/$28D520, and $24133C adapter/helper claims; '
     + 'tests/w450widenedregister.test.js SECTION 3 holds the exact set and is where a new '
-    + 'duplicate must be resolved. This cross-check prevents narrow 15 being read as the total');
+    + 'duplicate must be classified. This cross-check prevents narrow 16 being read as the total');
 });
 
 // ======================================================= SECTION 3: THE STATE TRACE

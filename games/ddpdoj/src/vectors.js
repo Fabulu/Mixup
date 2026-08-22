@@ -183,7 +183,8 @@ export class MoveTables {
 
   /** $249E4E: the tilt-indexed image pair from the ship-selected $25533A bank,
    *  plus the shared X half-extents from $2553CA -> $2553F2. */
-  anim(tilt, shipSel = 0) {
+  anim(tilt, shipSel) {
+    if (shipSel === undefined) shipSel = 0;
     if (shipSel !== 0 && shipSel !== 2) {
       unreached(0x249e58, `ship selector ${shipSel} is outside the cartridge set {0, 2}`);
     }

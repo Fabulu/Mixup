@@ -500,10 +500,10 @@ test('SECTION 7: W455 removes one body-only pair and changes no head register', 
   const heads = headRegister();
   const pairs = bodyPairs();
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
-  assert.equal(narrow.length, 15, 'W474 removed the retired exported ledger note claim from W459 floor 16');
-  assert.equal(heads.length, 68, 'W463 removed $28C0FC to leave 83; W464 removed $28E7A2 to leave 82; W465 removed $28C6C6 to leave 81; W466 removed $28F4C4/$28F666 to leave 79; W467 removed $285A12 to leave 78; W468 removed $2A6EDC to leave 77; W469 removed $23C622 to leave 76; W470 removed $23BF74/$23BFDB to leave 74; W471 removed $23E3E2 to leave 73; W472 removed $23FF06 to leave 72; W473 removed $240DC2 to leave 71; W474 removed $240F62/$28D520 to leave 69; W475 removed $24133C to leave 68');
-  assert.equal(pairs.length, 27,
-    'W450 39 minus W451, W453, W454, W455, four W456 edges, W457 cursor map, W458 cursor load, W459 request poster and W461 rank byte');
+  assert.equal(narrow.length, 16, 'W497 registers the authentic-selection adapter at $2491C0');
+  assert.equal(heads.length, 71, 'W475 left 68; W497 adds $2491C0 and $253D82/$253D90');
+  assert.equal(pairs.length, 28,
+    'W461 left 27; W497 adds the authentic-selection/player-object body pair');
   assert.ok(!pairs.some(([pair]) => pair === 'items.js beamReset25270C <> laser.js wipeSegmentPool'),
     'the six-marker private wipe stays absent');
 });

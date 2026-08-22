@@ -506,10 +506,9 @@ test('W443/W497 SECTION 5: W226\'s $24B900+$02AA serves all beam groups whole',
   assert.ok(holds(PTRTAB, PTRTAB + PAIRS * PAIRSTRIDE),
     'and so is the pair table it abuts');
   // W497 adds one unrelated 24-byte hit-flag window and no beam window moves.
-  // That table is disjoint; W497's separate authentic-style template widening
-  // contributes the forced six-byte overlap named in tests/romwindowset.js.
-  assert.equal(ROM_WINDOW_COUNT, 633,
-    'W497 adds only one bounded RomWindows table');
+  // W500 adds one disjoint label window and W501 adds three disjoint animation windows.
+  assert.equal(ROM_WINDOW_COUNT, 637,
+    'W497, W500, and W501 reconcile the current exact RomWindows registry');
   assert.equal(ROM_OVERLAP_PAIRS, 76,
-    'the beam window is unchanged; W497 names its separate forced overlap');
+    'the beam window is unchanged; W497 names the only later forced overlap');
 });

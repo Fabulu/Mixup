@@ -474,14 +474,15 @@ test('$269EC8 is the family\'s SECOND DRAW ARM, and it is ART, not buckets', () 
     + 'have to re-derive it from $269B8C');
 });
 
-test('SHARD 0 IS THE BOOT SHARD and holds the recording plus the ship', () => {
+test('SHARD 0 IS THE BOOT SHARD and holds both ships plus Game Over art', () => {
   const src = read('tools/export-web.mjs');
   assert.match(src, /const SPR_BOOT = \[0\];/);
-  assert.match(src, /BYTE-IDENTICAL to what shipped before W47/,
-    'shard 0 must stay what the bundle already shipped, or capture.bin is '
-    + 'rewritten and bundlegate\'s 100.0000 % pixel identity moves');
+  assert.match(src, /the recording, both ships.*17 main tilts/,
+    'W497 keeps both authentic ship families available in the boot shard');
+  assert.match(src, /nine Game Over streams, all in the boot/,
+    'W498 keeps the front-end Game Over family available before deferred art settles');
   assert.match(src, /const LASER_SHARD = 1;/,
-    'the laser\'s 5 streams go in shard 1, NOT shard 0, for that same reason');
+    'the laser remains in the first deferred shard rather than the expanded boot shard');
 });
 
 test('the stream table is a TYPED ARRAY, because manifest.json is boot bytes',
