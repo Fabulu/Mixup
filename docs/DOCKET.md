@@ -6417,6 +6417,8 @@ and visibility loss through the existing shared backstops.
 The focused W491 viewport, fullscreen, browser-default, notice, and input set passes 46/46 with no
 failures or skips. The new viewport regression was observed failing before implementation. Independent
 review caught opaque pressed-state fills on otherwise translucent touch controls; both active fills now
-retain alpha and the regression pins them. The full suite was not run and browser assets were not
-regenerated. W491 is locally verified and unpublished; it is the fifth wave after live W486, so a
-quiet-tree `export-web.mjs` followed by `publish.mjs` is required next.
+retain alpha and the regression pins them. The first publication gate exposed W279's source-text check
+assuming `display` was the first `#bar` declaration; reordering the unchanged declarations restored it.
+The final publication gate passed all 4,328 DDPDOJ units with zero failures or skips, the DDPDOJ bundle
+and web-fetch gates, all other game gates, the distribution build, and the ROM-leak guard. W491 is
+published and confirmed as production build `20260822080859`, superseding W486's `20260822042005`.

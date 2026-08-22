@@ -174,17 +174,15 @@ npm run typecheck                               # tsc over the ports - no ROM ne
 refuses to publish on a red gate or an unexpected gate skip. `--only gradius` /
 `--only ddpdoj` gate one game; `--dry` gates and builds without deploying.
 
-At published DDPDOJ W486, its unit suite records **4,310/4,310 passing with zero
+At published DDPDOJ W491, its unit suite records **4,328/4,328 passing with zero
 skips**. The same publication passed all **746/746 Gradius units**, the **13/13
 Gradius gate with zero skips**, the DDPDOJ bundle and web-fetch gates, the **27/27
 Batman gate with zero skips**, the distribution build, and the repository ROM-leak
-guard. Production build `20260822042005` supersedes `20260822010546`. W487
-through W491 are verified locally and remain unpublished. W488's exporter now
-measures 632 windows with 75 overlapping pairs; browser assets were not regenerated.
-W489's mortality and sound set passes 91/91, W490's notice lifecycle and affected
-browser set passes 19/19, and W491's viewport and input set passes 46/46, all with
-no failures or skips. These counts document their respective gates, and each change
-still needs its relevant focused check.
+guard. Production build `20260822080859` supersedes `20260822042005` and carries
+W487 through W491. W488's regenerated exporter measures 632 windows with 75
+overlapping pairs. W489's mortality and sound set passes 91/91, W490's notice
+lifecycle and affected browser set passes 19/19, and W491's viewport and input set
+passes 46/46, all with no failures or skips.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -251,8 +249,8 @@ The active translation targets Black Label Version-B first. Its source now spans
 the main loop, player and all three weapon systems, bombs, bullets, enemies,
 bosses, items and bees, stage and result flow, score and chaining, hypers, rank,
 HUD, sound posts, and high-score name entry. The browser port and generated
-asset path are live, and W486 published as production build `20260822042005`
-after all 4,310 DDPDOJ unit tests passed with zero skips. W477 adds a shipped
+asset path are live, and W491 published as production build `20260822080859`
+after all 4,328 DDPDOJ unit tests passed with zero skips. W477 adds a shipped
 start screen with 15 optional
 mods, including explicit Invincibility, while an empty loadout remains vanilla.
 W478 ports the loop-aware hyper contribution to enemy-bullet speed, with its
@@ -292,9 +290,8 @@ it when the other axis cannot grow, overlays translucent mobile controls, and sh
 floating stick's origin and bounded displacement only while held. Coverage is 101 ported,
 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child,
 and the remaining static `$48 -> $54` edge is disabled behind Version B's
-`$2714AE` return, so no next runtime blocker has been established. W486 remains
-published as production build `20260822042005`; W487 through W491 are verified
-locally and unpublished.
+`$2714AE` return, so no next runtime blocker has been established. W491 is
+published as production build `20260822080859`.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,

@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W491 viewport and mobile controls verified locally, unpublished)
+Updated: 2026-08-22 (W491 viewport and mobile controls published)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -19,8 +19,10 @@ visibility backstops.
 The focused W491 viewport, fullscreen, browser-default, notice, and input set passes 46/46 with no
 failures or skips. Its first feature run failed on the absent hide control before implementation. Independent
 review caught opaque pressed-state fills on otherwise translucent touch controls; both active fills now
-retain alpha and the test pins them. The full suite was not run, browser assets were not regenerated, and
-W491 is unpublished.
+retain alpha and the test pins them. The first publication gate found W279's source-text check expecting
+`display` first in `#bar`; declaration reordering fixed it without changing layout. The final gate passed
+all 4,328 DDPDOJ units with zero failures or skips, the DDPDOJ bundle and web-fetch gates, all other
+game gates, the distribution build, and the ROM-leak guard. W491 is published as build `20260822080859`.
 
 W490 makes all large replay and recording notices transient. W489 removed the fly-around oracle's embedded
 `$810424=$FF` intervention from ordinary browser launches, leaving labelled progression, replay, explicit
@@ -28,9 +30,9 @@ Invincibility, and authentic `$F0` grace exact. W488 ports the shared two-line p
 `$25F2D0`. W487 remains the last gameplay wave and ports type `$58`, leaving enemy-handler coverage at
 101/256 ported, 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not
 follow the static `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
-W486 remains live as production build `20260822042005`; W487 through W491 are unpublished.
+W491 is live as production build `20260822080859`, superseding W486's `20260822042005`.
 
-## W491 VERIFIED: VIEWPORT, CHROME, AND MOBILE CONTROL VISUALS
+## W491 PUBLISHED: VIEWPORT, CHROME, AND MOBILE CONTROL VISUALS
 
 The page grid now has only the menu and stage rows. `body.chrome-hidden` removes the menu row entirely,
 while SHOW UI stays fixed at the safe-area corner. Both actions call `fit()` after changing the class. The
@@ -815,14 +817,13 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. Land W491 after final diff, focused checks, and narrow independent review.
-2. W491 is the fifth wave after published W486. On a quiet tracked tree, regenerate with
-   `node games/ddpdoj/tools/export-web.mjs` before `node tools/publish.mjs`, then confirm the live build.
-3. Add the next 15 transformative mods in bounded waves without changing vanilla behavior. Ships and pilots
+1. Add the next 15 transformative mods in bounded waves without changing vanilla behavior. Ships and pilots
    are core fidelity work, not part of that mod count.
-4. Make both cartridge-supported ships and all three pilots selectable and playable, then complete Black
-   Label through the full second loop.
-5. Finish functional White Label after Black Label. Leave duplicate-only cleanup until both are complete.
+2. Make both cartridge-supported ships and all three pilots selectable and playable.
+3. Complete Black Label through the full second loop.
+4. Finish functional White Label after Black Label. Leave duplicate-only cleanup until both are complete.
+5. The next periodic publication is W496, five waves after published W491. If any intervening wave adds ROM
+   windows, run `export-web.mjs` before that publication.
 
 ## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES
 
@@ -832,8 +833,9 @@ cadence above. Do not spend a wave redoing either clause.
 
 ## PUBLISHED HISTORY
 
-Last confirmed live: build `20260822042005`, confirmed 2026-08-22. Earlier confirmed builds include
-`20260822010546`, `20260821175936`, `20260821162642`, `20260821132334`, and `20260821060153`.
+Last confirmed live: build `20260822080859`, confirmed 2026-08-22. Earlier confirmed builds include
+`20260822042005`, `20260822010546`, `20260821175936`, `20260821162642`, `20260821132334`, and
+`20260821060153`.
 
 ## W422 LANDED -- POOL-A KIND 5, VERIFIED BY THE COORDINATOR
 
