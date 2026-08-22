@@ -30,13 +30,12 @@
 
       node games/ddpdoj/tools/export-web.mjs
 
-  builds it from games/ddpdoj/rip/ -- 363 KiB served, gzipped: 415 decoded BG
-  tiles, 159 decoded TX tiles, 150 re-based sprite streams, 161 frames of board
-  capture and the player's tables. That is everything the opening of stage 1
-  can possibly read and nothing else; the measurement is in
-  tools/export-web.mjs and the proof that it is complete is
-  tools/bundlegate.mjs, which renders the whole demo off this bundle and scores
-  15,955,968/15,955,968 pixels against MAME.
+  builds the ignored browser bundle from games/ddpdoj/rip/. The exporter prints
+  the exact current shard, stream, decoded-byte and first-frame totals and checks
+  every closed cartridge extent it walks. W497's export includes both 17-image
+  ship rows and every normal and hyper player/option shot family for selectors
+  0/2 and style slots 2/4/6. tools/bundlegate.mjs provides the browser-side
+  coverage check.
 
   WHAT IS AND IS NOT SIMULATED IS ON THE PAGE. Do not remove it, and do not
   leave it stale -- it has been wrong twice and both times a player found it.
@@ -495,12 +494,10 @@ of all eight &mdash; position, image, size, flip and colour &mdash; is compared
 against the board's own staged bucket bytes AND against the display-list entries
 they become, <b>0 divergent frames over 2,200 logic frames</b>
 (<code>pgm.py shipgate</code>), and ten deliberate mistakes were watched go red
-on that gate first. <b>The ship banks.</b> It has
-computed its own tilt since wave&nbsp;4 and could never draw it, because the
-bundle's sprite streams are re-based and the map was not shipped; the 17 rebased
-image pairs are in the manifest now, and 16 of them are not in the recording at
-all &mdash; the recorded ship never banked, so they were read out of the sprite
-ROMs by address.</p>
+on that gate first. <b>Both ships bank.</b> The manifest now carries separate,
+selector-keyed rows of 17 rebased image pairs for Type-A and Type-B. Type-A
+retains its compatibility row, and W497 adds all 17 Type-B image streams from
+the cartridge rather than borrowing Type-A art.</p>
 
 <p class="warn">What the recording still supplies for these eight is <b>which
 display-list slot they occupy</b>, and nothing else. That is the last thread,
@@ -529,17 +526,13 @@ solidly at half opacity, because that would look better and be something the
 board never did. If it bothers you, that is a decision worth making
 deliberately &mdash; it is written up, not overlooked.</p>
 
-<p><b>Your ship banks now, and here is why it did not before.</b> The port has
-computed the tilt and the tilt-indexed image words since wave&nbsp;4. What was
-missing was not the arithmetic: it was the <em>map</em>. The exporter re-bases
-every sprite stream into a packed 16-bit space to keep the bundle small, so the
-port's ROM-space image addresses pointed at nothing the page had &mdash; and
-sixteen of the seventeen bank images were not in the bundle at all, because the
-recorded ship's X never moved (one single value on all 161 frames) and the
-recording therefore contains only the level-flight image. Wave&nbsp;12 harvests
-the other sixteen out of the sprite ROMs by address and ships the 17 rebased
-pairs in <code>manifest.ship</code>. A limitation that looked like a missing
-feature was a missing table.</p>
+<p><b>Both authentic ship types bank, and each uses its own cartridge art.</b>
+The port computes tilt-indexed image words from ship selector 0 or 2. The
+exporter re-bases both 17-image rows and emits them in
+<code>manifest.ship.pairsBySelector</code>; the old
+<code>manifest.ship.pairs</code> field remains the Type-A compatibility row.
+Horizontal hitboxes remain shared because <code>$249E68</code> deliberately
+clears the selector before indexing that cartridge table.</p>
 
 <p><b>Sound is available after you press SOUND.</b> Browser autoplay rules keep
 it locked until that gesture; its deferred sample data never delays the first
@@ -646,6 +639,7 @@ import {
   boot, createAutoDismissNotice, fitCanvas, MODES, DEFAULT_MODE, toggleSound,
 } from './src/web/app.js';
 import { hashToLoadout } from './src/mods.js';
+import { authenticSelectionFromParams } from './src/authentic.js';
 import { attachPad, attachStick, clearKeyboard, CONTROLS } from './src/web/input.js';
 
 const canvas = document.getElementById('screen');
@@ -668,6 +662,7 @@ const resolvedMods = hashToLoadout(location.hash);
 // Do not pass an empty object into boot. This keeps direct, empty, and
 // unknown-only launches on the same no-mod path.
 const modLoadout = resolvedMods.ids.length ? resolvedMods : null;
+const authenticSelection = authenticSelectionFromParams(params);
 const rungRaw = params.has('rung') ? parseInt(params.get('rung'), 10) : null;
 const rungParam = Number.isFinite(rungRaw) ? rungRaw : null;
 const ladderParam = params.get('ladder') || undefined;
@@ -1154,6 +1149,7 @@ try {
   statusEl.textContent = 'loading the asset bundle…';
   const app = await boot(canvas, {
     ...(modLoadout ? { mods: modLoadout } : {}),
+    ...(authenticSelection ? { authentic: authenticSelection } : {}),
     mode,
     rung: rungParam,
     ladder: ladderParam,

@@ -13,7 +13,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import { Ram } from '../src/ram.js';
 import { RAM, P, OPT } from '../src/machine.js';
-import { UnportedLog, Unreached } from '../src/unported.js';
+import { UnportedLog } from '../src/unported.js';
 import { podKnockback24D188, POD_KNOCK } from '../src/options.js';
 import {
   BOMB, BOMBRAM, BEAM_REC, BEAM_TEMPLATES, bombDriver255DD8,
@@ -34,6 +34,11 @@ const PTRS = 0x256692;
 const PTR_TARGETS = 0x2566b2;
 const LIST = 0x256712;
 const LIST_TABLES = 0x256806;
+const HEAD_B = [0x256986, 0x256992, 0x25699e, 0x2569aa]; // rec 0 / 43 / 42 / 44
+const PTRS_B = 0x2569b6;
+const PTR_TARGETS_B = 0x2569d6;
+const LIST_B = 0x256a36;
+const LIST_TABLES_B = 0x256b2a;
 
 /** `$255FEA..$256062`'s copy sequence, as `[srcOffset, recordOffset, size]`.
  *  Written out rather than generated so a reader can check it against the
@@ -97,21 +102,31 @@ function beamRom() {
   const S = BEAM_TEMPLATES.seg;
   w(S, 0x8000); l(S + 2, 0xfe00f800); w(S + 6, 0x0240);
   l(S + 8, 0x02000200); l(S + 12, 0x08000800); w(S + 16, 0x0006);
-  // ---- the four head tables, three longwords each (index space {8,4,0}).
-  HEAD.forEach((h, i) => { for (let k = 0; k < 3; k++) l(h + k * 4, 0x900 + i * 0x10 + k); });
-  // ---- $256692's eight pointers and their twelve-byte targets.
-  for (let i = 0; i < 8; i++) {
-    l(PTRS + i * 4, PTR_TARGETS + i * 12);
-    for (let k = 0; k < 3; k++) l(PTR_TARGETS + i * 12 + k * 4, 0xa00 + i * 0x10 + k);
+  // Both ships have the same cartridge geometry with distinct art streams.
+  const families = [
+    [HEAD, PTRS, PTR_TARGETS, LIST, LIST_TABLES, 0],
+    [HEAD_B, PTRS_B, PTR_TARGETS_B, LIST_B, LIST_TABLES_B, 0x100],
+  ];
+  for (const [heads, ptrs, ptrTargets, list, listTables, tag] of families) {
+    heads.forEach((h, i) => {
+      for (let k = 0; k < 3; k++) l(h + k * 4, 0x900 + tag + i * 0x10 + k);
+    });
+    for (let i = 0; i < 8; i++) {
+      l(ptrs + i * 4, ptrTargets + i * 12);
+      for (let k = 0; k < 3; k++) {
+        l(ptrTargets + i * 12 + k * 4, 0xa00 + tag + i * 0x10 + k);
+      }
+    }
+    for (let i = 0; i < 12; i++) {
+      const e = list + i * 20;
+      for (let k = 0; k < 4; k++) l(e + k * 4, 0xb00 + tag + i * 0x10 + k);
+      l(e + 16, listTables + i * 0x20);
+      for (let k = 0; k < 8; k++) {
+        l(listTables + i * 0x20 + k * 4, 0xc00 + tag + i * 8 + k);
+      }
+    }
+    l(list + 12 * 20, 0xffffffff);
   }
-  // ---- $256712: TWELVE five-longword entries and the $FFFFFFFF.
-  for (let i = 0; i < 12; i++) {
-    const e = LIST + i * 20;
-    for (let k = 0; k < 4; k++) l(e + k * 4, 0xb00 + i * 0x10 + k);
-    l(e + 16, LIST_TABLES + i * 0x20);
-    for (let k = 0; k < 8; k++) l(LIST_TABLES + i * 0x20 + k * 4, 0xc00 + i * 8 + k);
-  }
-  l(LIST + 12 * 20, 0xffffffff);
   // ---- POOL E, because $255FE2 reaches $289FF4 whenever $812954 is set
   // ($256354 -> $25636E clears record 44's bit 1 -> $256162 jmp).  The
   // three canned RNG tables and the three templates are served as CONSTANTS,
@@ -211,6 +226,22 @@ test('$255FE2 installs FOUR records -- 0, 42, 43 and 44 -- and NOT 1..41',
     assert.equal(ram.u32(BOMBRAM.rec + BEAM_REC.mid + 0x1e), HEAD[1]);
     assert.equal(ram.u32(BOMBRAM.rec + BEAM_REC.tail + 0x1e), HEAD[2]);
   });
+
+test('Type-B laser bomb installs all six alternate pointers and $28C542', () => {
+  const ram = new Ram();
+  const cues = [];
+  ram.setU16(BOMBRAM.rec, 0x8003);                    // laser bit 0 plus ship bit 1
+  bombDriver255DD8(ram, beamRom(), ctx({ soundPost: (a) => cues.push(a) }));
+  assert.equal(ram.u32(BOMBRAM.rec + 0x1e), HEAD_B[0]);
+  assert.equal(ram.u32(BOMBRAM.rec + 0x28), LIST_B);
+  assert.equal(ram.u32(BOMBRAM.rec + 0x2c), PTRS_B);
+  assert.equal(ram.u32(BOMBRAM.rec + BEAM_REC.tail + 0x1e), HEAD_B[2]);
+  assert.equal(ram.u32(BOMBRAM.rec + BEAM_REC.mid + 0x1e), HEAD_B[1]);
+  assert.equal(ram.u32(BOMBRAM.rec + BEAM_REC.tip + 0x1e), HEAD_B[3]);
+  assert.deepEqual(cues, [BOMB.beamCue28C542]);
+  assert.equal(ram.u32(BOMBRAM.rec + 0x0a), 0x00000a01,
+    'the first frame reads index 4 from the Type-B record-0 head table');
+});
 
 test('record 44 is installed with bit 1 SET, which is what keeps $289FF4 '
   + 'out of the first frames', () => {
@@ -319,16 +350,19 @@ test('$256346 IS A BARE `rts` and $256348 is the routine after it', () => {
     'the bare rts is a COUNTED note, not a silent skip');
 });
 
-test('the ($1,A6)-bit-1 twin of $255FE2 THROWS at $256986', () => {
+test('the Type-B laser twin reaches its own $256A36 phase-2 list', () => {
   const ram = new Ram();
-  ram.setU16(BOMBRAM.rec, 0x8003);       // bit 0 (laser) AND bit 1 (selector)
-  try {
-    bombDriver255DD8(ram, beamRom(), ctx());
-    assert.fail('$256086 must not be run');
-  } catch (e) {
-    assert.ok(e instanceof Unreached);
-    assert.equal(e.romAddress, BOMB.beamScriptAltP1);
+  const rom = beamRom();
+  ram.setU16(BOMBRAM.rec, 0x8003);
+  for (let frame = 0; frame < 120; frame++) {
+    ram.setU16(BOMBRAM.bucket13Counter, 0);
+    ram.setU16(RAM.player1 + P.shipSel, 2);
+    bombDriver255DD8(ram, rom, ctx());
   }
+  assert.equal(ram.u16(BOMBRAM.rec + 0x18), 1,
+    '$256118 enters phase 2 on the 120th frame');
+  assert.equal(ram.u32(BOMBRAM.rec + 0x28), LIST_B + 20,
+    '$25618E advances from the first Type-B five-longword entry');
 });
 
 // ===========================================================================
@@ -706,17 +740,19 @@ test('the exporter ASSERTS the LASER BOMB extents against the cartridge',
 
 test('the eight W65 ROM windows are declared with the lengths the port reads',
   () => {
-    for (const [a, n] of [['0x256662', '0x0324'], ['0x256CAA', '0x00B0'],
+    for (const [a, n] of [['0x256662', '0x0648'], ['0x256CAA', '0x00B0'],
       ['0x242EDE', '0x0100'], ['0x28ABA0', '0x0040'], ['0x243174', '0x0080'],
       ['0x28A030', '0x000C'], ['0x28A464', '0x00A2'], ['0x24D282', '0x003C']]) {
       assert.ok(TOOL.includes(`(${a}, ${n},`), `${a} + ${n}`);
     }
-    // $256662's length is the one the port's own walk depends on: four
-    // 12-byte head tables, $256692's eight pointers, their eight 12-byte
-    // targets, $256712's twelve 20-byte entries and the twelve 32-byte tables
-    // they name -- 4*12 + 32 + 96 + 12*20 + 4 + 12*32 == $324.
-    assert.equal(4 * 12 + 32 + 96 + 12 * 20 + 4 + 12 * 32, 0x324);
-    assert.equal(BEAM_TEMPLATES.dataLen, 0x324);
+    // Each ship's half is $324 bytes: four 12-byte head tables, eight
+    // pointers, eight 12-byte targets, twelve 20-byte entries plus terminator,
+    // and twelve 32-byte tables. The combined window is twice that size.
+    const oneShip = 4 * 12 + 32 + 96 + 12 * 20 + 4 + 12 * 32;
+    assert.equal(oneShip, 0x324);
+    assert.equal(BEAM_TEMPLATES.dataLen, oneShip * 2);
+    assert.equal(BEAM_TEMPLATES.data + BEAM_TEMPLATES.dataLen,
+      BEAM_TEMPLATES.install);
     // ...and $256CAA's is the install sequence plus the 18-byte segment
     // template, which must abut it.
     assert.equal(BEAM_TEMPLATES.install + BEAM_TEMPLATES.installLen,

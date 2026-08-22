@@ -50,6 +50,12 @@ export class MoveTables {
     this.shotFold = rom
       ? Array.from({ length: 256 }, (_, i) => rom.u16(0x241af4 + i * 2))
       : null;
+    // $253D88: the Type-B player's even power word 0,2,...,$A indexes six
+    // cartridge longwords at $253A58. Read the bounded RomWindows table once at
+    // boot so a stale export fails before the first Type-B shot hits anything.
+    this.typeBHitZoomFlags = rom
+      ? Array.from({ length: 6 }, (_, i) => rom.u32(0x253a58 + i * 4))
+      : null;
     this.dir = t.dirTable.bytes;          // $2552DC
     this.fold = t.foldTable.words;        // $2418B4
     // WAVE 8: the $200920 table is 256 levels (re-measured; wave 4's "64" was
@@ -62,12 +68,17 @@ export class MoveTables {
     this.speedLevels = t.speed.levels;    // 256, the table's measured END
     this.exportedLevels = t.speed.exported;
     this.entries = t.speed.quadEntries;   // 65
-    this.animA = t.anim.a.shipSel0;       // $25533A -> $255362, the IMAGE
+    this.animByShip = {
+      0: t.anim.a.shipSel0,              // $25533A -> $255362, Type-A IMAGE
+      2: t.anim.a.shipSel2,              // $25533A -> $2553A6, Type-B IMAGE
+    };
+    this.animA = this.animByShip[0];      // compatibility for focused table tests
     // $2553CA -> $2553F2 is NOT a second animation table: it is the ship's X
     // half-extents, indexed by the same tilt, and $2459D0 reads it as the
-    // hitbox (10-recon-combat §3).  The exporter still writes it under the key
-    // `anim.b` for one release so an old rip/ still loads; the port's name for
-    // it is `hitX` and `anim()` returns it under that name only.
+    // hitbox (10-recon-combat §3).  $249E68 clears D1 before the pointer lookup,
+    // so both ship selectors intentionally use this selector-zero row.  The
+    // exporter still writes it under `anim.b` for one release so an old rip/
+    // still loads; `anim()` returns it under the `hitX` name only.
     this.hitX = t.anim.hitX?.shipSel0 ?? t.anim.b.shipSel0;
     this.tiltMin = t.anim.tiltMin;
     this.tiltStep = t.anim.tiltStep;
@@ -158,16 +169,36 @@ export class MoveTables {
     return this.shotVectorShift(speedIndex, angleByte, 4);
   }
 
-  /** $249E4E: the tilt-indexed pair -- the ship's IMAGE long ($25533A) and its
-   *  X HALF-EXTENTS ($2553CA -> $2553F2).  Both over [-$20,+$20] step 4. */
-  anim(tilt) {
+  /** `$253D82..$253D90`: even power words 0,2,...,$A select six longs. */
+  typeBHitFlags(power) {
+    if ((power & 1) !== 0 || power > 0x0a) {
+      unreached(0x253d88,
+        `Type-B shot power ${power} cannot index the six longs at $253A58`);
+    }
+    if (!this.typeBHitZoomFlags) {
+      unreached(0x253d88, 'the $253A58 Type-B hit-flag RomWindows table was not loaded');
+    }
+    return this.typeBHitZoomFlags[power >> 1];
+  }
+
+  /** $249E4E: the tilt-indexed image pair from the ship-selected $25533A bank,
+   *  plus the shared X half-extents from $2553CA -> $2553F2. */
+  anim(tilt, shipSel = 0) {
+    if (shipSel !== 0 && shipSel !== 2) {
+      unreached(0x249e58, `ship selector ${shipSel} is outside the cartridge set {0, 2}`);
+    }
+    const image = this.animByShip[shipSel];
+    if (!image) {
+      unreached(0x249e5e, `ship selector ${shipSel} has no exported $25533A image row. `
+        + `Regenerate the local ROM-derived tables with tools/export-tables.py`);
+    }
     const i = (i16(tilt) - this.tiltMin) / this.tiltStep;
-    if (!Number.isInteger(i) || i < 0 || i >= this.animA.length) {
+    if (!Number.isInteger(i) || i < 0 || i >= image.length) {
       unreached(0x249e62,
         `tilt ${i16(tilt)} is outside the [-$20,+$20] step-4 range the $25533A `
         + `animation table covers -- the ramp at $2495F6/$24962E can only reach `
         + `those values, so something else moved it`);
     }
-    return { a: this.animA[i], hitX: this.hitX[i] };
+    return { a: image[i], hitX: this.hitX[i] };
   }
 }

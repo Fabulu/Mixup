@@ -56,11 +56,12 @@
 // ever reached in the opening.  Live shots peak at 20 per frame and are 0 on
 // 2,025 of the 2,600 frames.
 //
-// WAVE 8 TRANSLATES ALL FOUR (src/shots.js), and the enqueue with them: the
-// "sprite request pipeline" $253B1E's `jmp $23F3AE` pulls in turned out to be
-// fourteen instructions appending one 12-byte record to one bucket
-// (src/spritequeue.js), not main-loop call #4.  The other twelve dispatch
-// entries are still loud named throws carrying their ROM address.
+// WAVE 8 TRANSLATED THE FOUR MEASURED ENTRIES (src/shots.js), and the enqueue
+// with them: the "sprite request pipeline" $253B1E's `jmp $23F3AE` pulls in
+// turned out to be fourteen instructions appending one 12-byte record to one
+// bucket (src/spritequeue.js), not main-loop call #4. W497 completes the same
+// evidence-backed dispatch family: `shotHandlers()` now registers all sixteen
+// cartridge entries, including the Type-B player and option arms.
 //
 // THE SCROLL, and the one thing this driver reads that the port cannot compute:
 // $253A76 `move.w $813176,D6` and $253AA6 `sub.w D6,($4,A6)` pull every live
@@ -129,8 +130,9 @@ export function runShotDriver(ram, rom, handlers, ctx) {
           + `at $${rec.toString(16).toUpperCase()} with type word `
           + `$${t.toString(16).toUpperCase()}. Wave 5 measured only FOUR of the `
           + `sixteen reached in the stage-1 opening ($253B1E $253E34 $253BDA `
-          + `$253EC6) and wave 8 translated exactly those four; the other `
-          + `twelve have never been executed by anything this project has run`);
+          + `$253EC6), while W497's shotHandlers() supplies every cartridge `
+          + `entry. Reaching this fallback means the caller passed an incomplete `
+          + `handler map`);
       }
       // $253ABC jsr (A0).  D1 is the type word AS READ AT $253A9C -- the
       // handlers test its low byte with `tst.b D1` AFTER they have already

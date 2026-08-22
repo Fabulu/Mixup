@@ -904,8 +904,8 @@ const W202_IMMEDIATES = Object.freeze([
 // player presses fire.  `SPR_ORDER` below is what says so; the queue used to
 // assume ascending index WAS need order and after this wave it is not.
 const SPR_SHARDS = Object.freeze([
-  [0, 'boot', 'the recording\'s 150 streams + the ship\'s 17 tilts (W12). '
-    + 'BYTE-IDENTICAL to what shipped before W47.'],
+  [0, 'boot', 'the recording, both ships\' 17 main tilts, and Type-B\'s attached '
+    + 'shadow and two glow families (W12/W497).'],
   [1, 'type11', 'type $11\'s hull $268B9E + turret $268C9E, and the laser\'s 5 '
     + '(W45). The owner\'s missing tank bodies.'],
   [2, 'type89', 'type $89\'s body table $272E7A'],
@@ -924,10 +924,9 @@ const SPR_SHARDS = Object.freeze([
     + '$221520/$221630, 23 distinct scripts of 12..36 cells each, walked the '
     + 'way $288E4E and $288E20 walk them (W54). What happens when an enemy '
     + 'actually dies.'],
-  [10, 'laser', 'THE LASER BEAM: $24BB0A\'s 4-frame animation for all five '
-    + 'POWER steps + the segment block $24A86A..$24B7EA and the option block '
-    + '$24BBA0..$24C080 (W58). [M] 29 of the beam\'s 33 descriptors had no '
-    + 'picture: the owner\'s flicker.'],
+  [10, 'laser', 'THE LASER BEAM: $24BB0A\'s 4-frame animations for all three '
+    + 'reachable regular groups and the separate hyper group, plus the segment '
+    + 'block $24A86A..$24B7EA and option block $24BBA0..$24C080 (W58/W443/W497).'],
   [11, 'structures', 'buckets 2/3/7 -- background structures, midboss and large '
     + 'emplacements, [M] 111 streams = 82.5 % of every missing sprite PIXEL '
     + '(W58). The 288x208 hole in the middle of the playfield.'],
@@ -940,9 +939,9 @@ const SPR_SHARDS = Object.freeze([
   // UNCOMPRESSED, so every character of it is a boot byte. [M] W66: the first
   // draft of this string cost 329 B and the shipped one costs 174 (E3 Ã‚Â§3's
   // trim-after-measuring, for the same reason).
-  [13, 'bomb', 'THE BOMB, LASER BOMB, AND HYPER AURA: $255E3E\'s three phase scripts, '
-    + 'the laser bomb\'s data block $256662..$256986, pool E\'s $28A464, the '
-    + 'ship\'s bit-7 aura, hyper activation burst, and type $8A\'s pair (W66/W188)'],
+  [13, 'bomb', 'THE TYPE-A/TYPE-B BOMB, LASER BOMB, AND HYPER AURA: both '
+    + 'ordinary phase families, laser-bomb data $256662..$256CAA, pool E, the '
+    + 'ship bit-7 aura, hyper activation burst, and type $8A (W66/W188/W497)'],
   [14, 'type10', 'THE GOLD MECH: type $10\'s hull $268594 (64, by heading) and '
     + 'turret $268694 (32, by facing) -- the pair W80 read as one 96-entry '
     + 'table. The owner\'s "tanks on the golden terrain" (W81)'],
@@ -1134,52 +1133,49 @@ for (let i = 0; i < cap.length; i++) {
 }
 
 // ------------------------------------------------------------------- WAVE 12
-// THE SEVENTEEN SHIP IMAGES -- and the reason the ship has never banked.
-//
-// `render/capture.js` wrote this down and left it for a later wave: the port
-// DOES compute the tilt and DOES compute the tilt-indexed animation long
-// ($25533A -> $255362, `vectors.js` anim()), those longs ARE display-list words
-// 2-3, "and what stops it is that export-web.mjs RE-BASES every sprite stream
-// into a packed 16-bit space and does not ship the map".
-//
-// The map cannot be built from the capture, and that is the whole problem: the
-// recorded ship never moved on the short axis (`frameList[].px` is 5312 on all
-// 161 frames), so its tilt was 0 throughout and exactly ONE of the seventeen
-// streams -- $1520 -- appears in the coverage pass above.  The other sixteen are
-// not in the packed sheet, so there is nothing for a rebased map to point at.
-//
-// So they are HARVESTED HERE, by address, out of the same sprite ROMs every
-// other stream comes from.  The addresses are the ROM's own table (exported by
-// tools/export-tables.py, read the way $249E5A reads it) and the extents are the
-// ship record's ($e,A6), MEASURED $0620 = 3 x 32 on every one of the 2,233 drawn
-// frames of fly-around -- not a guess, and it is asserted below against the one
-// stream the capture does contain.
+// THE TWO SEVENTEEN-IMAGE SHIP BANKS.  Both banks come from the cartridge's
+// $25533A pointer table.  Type-A retains the measured 3 x 32 record check;
+// Type-B is independently sized by `romExtent` rather than inheriting that
+// shape without evidence.
 const SHIP_SIZE = 0x0620;                   // MEASURED ($e,A6) on $8103E6
 const shipWide = (SHIP_SIZE >> 9) & 0x3f;   // spritelist.js: width bits 14..9
 const shipHigh = SHIP_SIZE & 0x1ff;         // ...height bits 8..0
 const shipTable = JSON.parse(tables.toString('utf8')).anim;
-const shipOffs = shipTable.a.shipSel0.map(([hi, lo]) => ((hi & 0x7f) << 16) | lo);
-if (shipOffs.length !== 17) {
-  throw new Error(`the $25533A ship animation table has ${shipOffs.length} tilt `
-    + 'entries, not 17 -- re-run tools/export-tables.py');
+const shipBanks = [
+  ['shipSel0', shipTable.a.shipSel0, true],
+  ['shipSel2', shipTable.a.shipSel2, false],
+];
+const shipOffsBySelector = Object.freeze({
+  0: shipTable.a.shipSel0.map(([hi, lo]) => ((hi & 0x7f) << 16) | lo),
+  2: shipTable.a.shipSel2.map(([hi, lo]) => ((hi & 0x7f) << 16) | lo),
+});
+for (const [name, row] of shipBanks) {
+  if (!row || row.length !== 17) {
+    throw new Error(`the $25533A ${name} image row has ${row?.length ?? 0} tilt `
+      + 'entries, not 17 -- re-run tools/export-tables.py');
+  }
 }
-//
-// WAVE 35.  The harvest no longer needs `SHIP_SIZE` to know how much to take --
-// `romExtent` reads that off the chain.  The constant is kept and CHECKED, which
-// turns a measured number into a number the cartridge agrees with: all 17 tilt
-// images must be exactly `3 x 32` streams.
-let shipHarvested = 0;
-for (const offs of shipOffs) {
-  const w = romExtent(offs);
-  if (w.stride - 4 !== shipWide * shipHigh) {
-    throw new Error(`ship tilt stream $${offs.toString(16)}: the ROM chain says `
-      + `${w.stride - 4} mask words, the MEASURED ($e,A6) = $0620 says `
-      + `${shipWide} x ${shipHigh} = ${shipWide * shipHigh}. One of the two is `
-      + 'wrong and neither may be assumed.');
+
+let shipHarvested = 0, typeBShipAdded = 0;
+for (const [name, row, measuredTypeA] of shipBanks) {
+  for (const [hi, lo] of row) {
+    const offs = ((hi & 0x7f) << 16) | lo;
+    const w = romExtent(offs);
+    if (measuredTypeA && w.stride - 4 !== shipWide * shipHigh) {
+      throw new Error(`${name} tilt stream $${offs.toString(16)}: the ROM chain says `
+        + `${w.stride - 4} mask words, the measured Type-A ($e,A6) = $0620 says `
+        + `${shipWide} x ${shipHigh} = ${shipWide * shipHigh}. One of the two is `
+        + 'wrong and neither may be assumed.');
+    }
+    if (!streams.has(offs)) {
+      streams.set(offs, w); shardOfStream.set(offs, 0); shipHarvested++;
+      if (name === 'shipSel2') typeBShipAdded++;
+    }
   }
-  if (!streams.has(offs)) {
-    streams.set(offs, w); shardOfStream.set(offs, 0); shipHarvested++;
-  }
+}
+if (typeBShipAdded !== 17) {
+  throw new Error(`the $25533A Type-B row added ${typeBShipAdded} streams, not 17; `
+    + 'a duplicate or overlap would leave one of the 17 tilt images unpacked');
 }
 
 // ------------------------------------------------------------------- WAVE 47
@@ -1255,19 +1251,65 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
     || r.base === 0x267160);
   if (unique.size !== 64 || [...unique].some((a) => !chain.has(a))
       || w203Rows.length !== 2 || w203Rows.some((r) => r.added !== 32 || r.already !== 0)
-      || w203StreamsBefore !== 166 || streams.size !== 2011) {
+      || w203StreamsBefore !== 166 + typeBShipAdded
+      || streams.size !== 2011 + typeBShipAdded) {
     throw new Error(`W203 type $16 art harvest drifted: ${unique.size} distinct `
       + `pointers, ${w203StreamsBefore} pre-harvest streams, ${streams.size} total; `
-      + 'expected 64 on the $F4 chain, 166 before, and 2011 after this harvest');
+      + `expected 64 on the $F4 chain, ${166 + typeBShipAdded} before, and `
+      + `${2011 + typeBShipAdded} after with ${typeBShipAdded} Type-B ship streams`);
   }
   // W419 MOVED THE LAST NUMBER ONLY, 1975 -> 2011, AND IT IS DECOMPOSED HERE.
   // The three pool-C rows added above are the whole of it: 3 families x 12
   // pointers, all distinct, none already present ([M] against the previous
-  // bundle: 36 of 36 absent).  The other four terms HELD -- `unique.size` 64,
-  // the $F4 chain membership, `w203StreamsBefore` 166 (it is sampled BEFORE the
-  // harvest loop, so no harvest row can move it) and both W203 rows at
-  // added 32 / already 0.  1975 + 36 = 2011.
+  // bundle: 36 of 36 absent). The fixed W203 baseline remains 166 before and
+  // 2011 after; W497 adds the separately asserted 17 Type-B ship streams to
+  // both totals. The two W203 rows remain added 32 / already 0.
 }
+
+// W497: Type-B's attached draw dependencies. The selector tables point to a
+// centre address indexed by the same signed 17-value tilt domain as the main
+// ship. Shadows hold one descriptor per tilt. Both glow families hold a pointer
+// per tilt and the runtime indexes phases 0 and 4 through that pointer. These are
+// boot art because they can be requested on the first selected Type-B frame.
+const TYPE_B_ATTACHED = Object.freeze([
+  Object.freeze({ name: 'shadow', table: 0x25545a, phases: Object.freeze([null]) }),
+  Object.freeze({ name: 'ordinary glow', table: 0x2556e2, phases: Object.freeze([0, 4]) }),
+  Object.freeze({ name: 'down-stick glow', table: 0x255882,
+    phases: Object.freeze([0, 4]) }),
+]);
+for (const family of TYPE_B_ATTACHED) {
+  const perShip = romBe32(family.table + 4);             // ship selector 2 -> +4
+  const familyStreams = new Set();
+  for (let tilt = -0x20; tilt <= 0x20; tilt += 4) {
+    const cell = romBe32(perShip + tilt);
+    for (const phase of family.phases) {
+      const descriptor = phase === null ? cell : romBe32(cell + phase);
+      const offs = descriptor & 0x7fffff;
+      familyStreams.add(offs);
+    }
+  }
+  const expected = 17 * family.phases.length;
+  if (familyStreams.size !== expected) {
+    throw new Error(`Type-B ${family.name} resolves ${familyStreams.size} distinct `
+      + `streams over 17 tilts x ${family.phases.length} runtime phase(s), not `
+      + `${expected}. A duplicate would leave one selected frame without its own `
+      + 'packed-map witness.');
+  }
+  let added = 0, already = 0;
+  for (const offs of familyStreams) {
+    if (streams.has(offs)) { already++; continue; }
+    streams.set(offs, romExtent(offs));
+    shardOfStream.set(offs, 0);
+    added++;
+  }
+  harvested += added; harvestAlready += already;
+  harvestReport.push({ shard: 0, base: family.table, entries: expected,
+    stride: 4, runsTo: expected, endsAt: perShip + 0x24,
+    distinct: familyStreams.size, added, already,
+    why: `Type-B ship ${family.name}, 17 tilts${family.phases.length === 2
+      ? ' x phases 0/4' : ''} (W497)` });
+}
+
 // W205 A2 object 1 carries its fixed hull as an immediate rather than a table.
 for (const offs of [0x000a3514]) {
   if (!streams.has(offs)) {
@@ -1554,25 +1596,23 @@ for (const [base, who] of [[0x2882a6, 'P1'], [0x288326, 'P2']]) {
 //   `streamExtent` solves each stream's stride out of the cartridge and the
 //   walk ENDS EXACTLY on the stated address or this build stops.
 const SHOT_TABLES = Object.freeze([
-  [0x2554ea, 0, 'ship PRIMARY normal, $249C3E'],
-  [0x255502, 0, 'ship SECONDARY normal, $249C88'],
-  [0x2554ea, 4, 'ship PRIMARY hyper, $249C3A adds 4'],
-  [0x255502, 4, 'ship SECONDARY hyper, $249C3A adds 4'],
-  [0x25551a, 4, 'option hyper family selected by $249D5E'],
-  [0x24d2fc, 0, 'option pod 0, $24D4EA `movea.l ($24D2FC,PC,D0.w),A0`. D0 = '
-    + '($58,A4)*4 and MEASURED ($58,A4) = 0 (TYPE-A) -- machine.js P.shipSel'],
-  [0x24d35c, 0, 'option pod 1, $24D4EE, the same index'],
-  [0x24d2fc, 4, 'option pod 0 hyper, $24D4C6 adds 4'],
-  [0x24d35c, 4, 'option pod 1 hyper, $24D4C6 adds 4'],
-  [0x24d2fc, 12, 'TYPE-B option pod 0 hyper, ship selector 2 plus 4'],
-  [0x24d35c, 12, 'TYPE-B option pod 1 hyper, ship selector 2 plus 4'],
+  ...[0, 4, 8, 12, 16, 20].map((selector) =>
+    [0x2554ea, selector, 'Type-A primary player shot, $249C3E']),
+  ...[0, 4, 16, 20].map((selector) =>
+    [0x255502, selector, 'Type-A secondary player shot, bypassed by style 4']),
+  ...[0, 4, 8, 12, 16, 20].map((selector) =>
+    [0x25551a, selector, 'Type-B player shot, $249D6C']),
+  ...[0x24d2fc, 0x24d35c].flatMap((ptr) => [0, 4, 8, 12].map((selector) =>
+    [ptr, selector, 'style-2 option pod, ship selector plus hyper offset'])),
+  ...[0, 4, 8, 12].map((selector) =>
+    [0x24d41c, selector, 'style-6 option pair, two consecutive templates', [0, 0x26]]),
 ]);
 /** the five POWER steps: `$249C48`/`$24D4F8` index by ($20,A6)*2 and the power
  *  word is 0,2,4,6,8 -- `src/shots.js PS.power`. */
 const SHOT_POWERS = [0, 2, 4, 6, 8];
-/** `$253C7A` (dispatch nibble 0/8) and `$253F38` (nibble 2/10): the HIT
- *  re-point tables, indexed by the template's own ($26,A6). */
-const SHOT_HIT_TABLE = { 0: 0x24deb2, 2: 0x25014c,
+/** The first-hit re-point tables for normal and hyper player/option families,
+ *  indexed by the template's own ($26,A6). */
+const SHOT_HIT_TABLE = { 0: 0x24deb2, 1: 0x24e5ee, 2: 0x25014c, 3: 0x250dea,
   4: 0x24ed4e, 5: 0x24f4ae, 6: 0x2519e0, 7: 0x2525d6 };
 /** `$24A238 move.l (A2,D0.w),(A0)+` / `$24D548`: D0 is the firing object's
  *  animation PHASE, which `$24A26E`/`$24D500` cycle 8,4,0. */
@@ -1582,50 +1622,103 @@ const SPAWN_PHASES = [0, 4, 8];
  *  player's ($44,A6), which `$24A32E` cycles 4,0; a pod copies its own D7
  *  phase, which `$24D510` cycles 8,4,0. */
 const SHOT_ANIM_TOP = { 0x2554ea: 4, 0x255502: 4, 0x25551a: 8,
-  0x24d2fc: 8, 0x24d35c: 8 };
+  0x24d2fc: 8, 0x24d35c: 8, 0x24d41c: 8 };
 
 const shotStreams = new Set();
+const shotStreamSources = new Map();
 const shotReport = [];
-for (const [ptr, selector, why] of SHOT_TABLES) {
+
+function addShotStream(value, source) {
+  const offs = value & 0x7fffff;
+  shotStreams.add(offs);
+  if (!shotStreamSources.has(offs)) shotStreamSources.set(offs, new Set());
+  shotStreamSources.get(offs).add(source);
+}
+
+function addShotHitStreams(nib, tableIndex, source) {
+  if (!(nib in SHOT_HIT_TABLE)) {
+    throw new Error(`${source} carries dispatch nibble ${nib}, which src/shots.js `
+      + 'does not handle');
+  }
+  const blk = romBe32(SHOT_HIT_TABLE[nib] + tableIndex);
+  const hp = romBe32(blk + 6), top = romBe32(blk + 10) & 0xffff;
+  if (top === 0 || top % 4 !== 0 || top > 0x100) {
+    throw new Error(`${source}: shot hit block $${blk.toString(16)} says its animation starts `
+      + `at index $${top.toString(16)}, not a positive multiple of 4 under $100`);
+  }
+  // Every hit continuation subtracts 4 before reading the animation pointer.
+  // `top` is the initial cursor copied to record +$24, not a readable phase.
+  for (let k = 0; k < top; k += 4) {
+    addShotStream(romBe32(hp + k), `${source}, hit phase $${k.toString(16)}`);
+  }
+  return { blk, top };
+}
+
+function harvestStandardShotTemplate(ptr, selector, pw, tpl, why) {
+  const nib = romBe16(tpl) & 0xf;
+  const a2 = romBe32(tpl + 10);
+  for (const k of SPAWN_PHASES) {
+    addShotStream(romBe32(a2 + k), `${why}, template $${tpl.toString(16)}, spawn phase $${k.toString(16)}`);
+  }
+  const ap = romBe32(tpl + 30);
+  for (let k = 0; k <= SHOT_ANIM_TOP[ptr]; k += 4) {
+    addShotStream(romBe32(ap + k), `${why}, template $${tpl.toString(16)}, frame $${k.toString(16)}`);
+  }
+  const { blk, top } = addShotHitStreams(nib, romBe16(tpl + 36),
+    `shot template $${tpl.toString(16)} from $${ptr.toString(16)}[${selector}]`);
+  shotReport.push({ ptr, selector, pw, tpl, nib, a2, ap, hit: blk, top, why });
+}
+
+for (const [ptr, selector, why, templateOffsets = [0]] of SHOT_TABLES) {
   const table = romBe32(ptr + selector);
+  for (const pw of SHOT_POWERS) {
+    const baseTemplate = romBe32(table + pw * 2);
+    for (const templateOffset of templateOffsets) {
+      harvestStandardShotTemplate(ptr, selector, pw, baseTemplate + templateOffset, why);
+    }
+  }
+}
+
+// Style 4 uses `$24D6D2`'s 34-byte rotating template.  Its spawn animation
+// pointer is at +$0A, while its per-frame pointer comes from each of the 17
+// folded-angle structs reached through the +$02 pointer.  `$24D72C` copies +$1E
+// to record +$22, then `$24D72E` writes D7 to +$24; `$24D730` copies +$20 to
+// the hit-table index at record +$26.
+for (const selector of [0, 4, 8, 12]) {
+  const table = romBe32(0x24d3bc + selector);
   for (const pw of SHOT_POWERS) {
     const tpl = romBe32(table + pw * 2);
     const nib = romBe16(tpl) & 0xf;
-    if (!(nib in SHOT_HIT_TABLE)) {
-      throw new Error(`shot template $${tpl.toString(16)} (from $${ptr.toString(16)}`
-        + `[${selector}], power ${pw}) carries type word $${romBe16(tpl).toString(16)}, i.e. `
-        + `$253ADE dispatch nibble ${nib}. src/shots.js has no matching handler; `
-        + `harvesting art for a handler that does not exist is what `
-        + `$268594 is NAMED for. (${why})`);
+    const spawnAnim = romBe32(tpl + 10);
+    for (const phase of SPAWN_PHASES) {
+      addShotStream(romBe32(spawnAnim + phase),
+        `style-4 template $${tpl.toString(16)}, spawn phase $${phase.toString(16)}`);
     }
-    // the SPAWN's own descriptor: the template's +$0A pointer, three phases.
-    const a2 = romBe32(tpl + 10);
-    for (const k of SPAWN_PHASES) shotStreams.add(romBe32(a2 + k) & 0x7fffff);
-    // the per-frame animation: the template's +$1E pointer, indices 0..top.
-    const ap = romBe32(tpl + 30);
-    for (let k = 0; k <= SHOT_ANIM_TOP[ptr]; k += 4) {
-      shotStreams.add(romBe32(ap + k) & 0x7fffff);
+    const anglePtrs = romBe32(tpl + 2);
+    for (let folded = 0; folded <= 0x40; folded += 4) {
+      const angleStruct = romBe32(anglePtrs + folded);
+      const perFrame = romBe32(angleStruct + 4);
+      for (const phase of SPAWN_PHASES) {
+        addShotStream(romBe32(perFrame + phase),
+          `style-4 template $${tpl.toString(16)}, angle $${folded.toString(16)}, frame $${phase.toString(16)}`);
+      }
     }
-    // the HIT re-point.  `$253C90 move.l (A0)+,$22(A6)` is a LONGWORD whose LOW
-    // word is the index the hit animation starts at and counts DOWN to 0 --
-    // reading it as a word leaves the index stale AND under-sizes this harvest.
-    const blk = romBe32(SHOT_HIT_TABLE[nib] + romBe16(tpl + 36));
-    const hp = romBe32(blk + 6), top = romBe32(blk + 10) & 0xffff;
-    if (top === 0 || top % 4 !== 0 || top > 0x100) {
-      throw new Error(`shot hit block $${blk.toString(16)} says its animation `
-        + `starts at index $${top.toString(16)}, which is not a positive multiple `
-        + 'of 4 under $100. Either $253C90 is being read as a word or the hit '
-        + 'table has moved.');
-    }
-    for (let k = 0; k <= top; k += 4) shotStreams.add(romBe32(hp + k) & 0x7fffff);
-    shotReport.push({ ptr, selector, pw, tpl, nib, a2, ap, hit: blk, top });
+    const { blk, top } = addShotHitStreams(nib, romBe16(tpl + 32),
+      `style-4 option template $${tpl.toString(16)}`);
+    shotReport.push({ ptr: 0x24d3bc, selector, pw, tpl, nib,
+      a2: spawnAnim, ap: anglePtrs, hit: blk, top, why: 'style-4 rotating option shot' });
   }
 }
 {
   let added = 0, already = 0;
   for (const offs of [...shotStreams].sort((a, b) => a - b)) {
     if (streams.has(offs)) { already++; continue; }
-    streams.set(offs, romExtent(offs));      // throws unless it is a stream start
+    try {
+      streams.set(offs, romExtent(offs));    // throws unless it is a stream start
+    } catch (cause) {
+      const sources = [...(shotStreamSources.get(offs) ?? [])].join('; ');
+      throw new Error(`shot stream $${offs.toString(16)} from ${sources} is invalid`, { cause });
+    }
     shardOfStream.set(offs, 6);
     added++;
   }
@@ -1812,8 +1905,10 @@ function walkEffectScript(desc, dur) {
 // `$2550A0 subi.w #$a` walks.  Shipping the 29 ships ONE of those blocks and
 // the beam goes blank again the first time the player picks up a power-up.  So:
 //
-//   * THE BEAM: `$24BB0A` entries 0..4 -- the five POWER steps of the default
-//     loadout -- walked to all four frames each. 20 streams.
+//   * THE REGULAR BEAM: `$24BB0A` entries 0..14 -- three five-power groups:
+//     default Type-A style 2 at +$00, Type-B style 2 at +$28, and either ship's
+//     styles 4/6 at +$50. W497 makes all three groups browser-reachable, so all
+//     four frames of all fifteen entries are packed. 60 streams.
 //     THREE THINGS PIN THE STRUCTURE AND ALL THREE ARE ASSERTED BELOW:
 //       [M] $24B7EA + 20*$28 == $24BB0A, i.e. the block array ABUTS the pointer
 //           table exactly, which is what says there are twenty blocks;
@@ -1836,22 +1931,13 @@ function walkEffectScript(desc, dur) {
 //     [M] It costs 104.5 KiB gz for 399 new streams against 7.7 KiB for the 29,
 //     all of it DEFERRED, and the assertion below is that all 29 are inside it.
 //
-// WHAT IS DELIBERATELY NOT HARVESTED, named rather than omitted:
-//   * `$24BB0A` entries 5..14 -- the `+$28` and `+$50` groups, 40 more streams.
-//     `+$28` needs `($58,A5)` (ship select) non-zero and `src/machine.js`
-//     records it as [M] 0 for TYPE-A over the whole corpus with nothing in the
-//     port writing it; `+$50` needs `($5a,A6) != 2` and
-//     `tools/export-tables.py` records [M] 2 on every frame.  This is the
-//     `$268594` precedent: art for a state no ported code can enter.
-//   * the LASER's own impact spark `$22C6BC..$22C860` -- W53 Ã‚Â§6's, still behind
-//     the unported `$289F96`/`$289FC0`/`$289FDA`.
-//     **[W443] AND THIS ONE'S STATED REASON IS STALE TOO, THOUGH ITS
-//     ASSERTION STILL HOLDS.** `$289FC0` is NOT unported: W442 drove it
-//     live on rung lf9100->9200 and measured 44 impacts, 46 pool-E records
-//     and 1,597 bucket-20 sprite records DRAWN with `sparkSkipped` 0 -- so
-//     the impact spark the port actually emits already has its picture, in
-//     shard 8. What is still not harvested is this LIST; nothing measured
-//     has asked for it, and no wave should ship it until something does.
+// W497 makes the two formerly excluded regular groups reachable:
+//   * `$24BB0A` entries 5..9 are the `+$28` Type-B style-2 power ladder.
+//   * entries 10..14 are the `+$50` styles-4/6 power ladder for either ship.
+// Both are harvested with entries 0..4 below. The only remaining omission is
+// the laser's separate impact-spark list, which no runtime record requests.
+// W443 measured that the separate list is not the live impact producer; the
+// packed pool-E spark in shard 8 is. No scenario has requested the extra list.
 //
 // ------------------------------------------------------------------ WAVE 443
 // **ENTRIES 15..19 -- THE `+$78` GROUP -- WERE ON THAT LIST AND WERE NEVER
@@ -1885,10 +1971,8 @@ function walkEffectScript(desc, dur) {
 // been a QUIET BLANK -- exactly the thing that comment was written to prevent,
 // and exactly what the owner has been looking at.  D66's shape, once again: the
 // assertion held, the STATED REASON went false, and nothing read it back.
-// **NO WINDOW MOVES IN THIS WAVE EITHER** -- $24B900+$02AA already contains
-// $24BAE2..$24BB0A whole, so the art was all that was ever missing.  Entries
-// 5..14 keep the REACHABILITY argument above, which stands on its own; the
-// safety argument is withdrawn and not made for them.
+// **NO WINDOW MOVED FOR W443 OR W497'S BEAM ART** -- $24B900+$02AA already
+// contains every +$28, +$50, and +$78 block through $24BB0A whole.
 //
 // (1f) THE BIG MID-SCREEN STRUCTURES -- buckets 2, 3 and 7.
 // [M] 89.7 % of every missing sprite pixel in `55-diag`'s run and [M] 82.5 % of
@@ -1908,9 +1992,10 @@ const STRUCT_SHARD = 11;
 const BEAM_ANIM = Object.freeze({
   ptrTab: 0x24bb0a, ptrEntries: 20, ptrStride: 8, ptrEndsAt: 0x24bbaa,
   blocks: 0x24b7ea, blockBytes: 0x28, start: 0x1e, step: 0x0a,
-  /** entries 0..4: `($22,A5)*4` with the group offset 0 -- the power ladder of
-   *  the default ship and formation.  See the block header for 5..14. */
-  harvest: 5,
+  /** entries 0..14: all three browser-reachable regular groups, each five
+   *  power steps wide. Entries 15..19 remain the separately proved hyper group. */
+  normalEntries: 15,
+  powerSteps: 5,
   /** WAVE 443 (D56): `$255008 addi.w #$78,D3`, the HYPER's group offset, in
    *  BYTES of this pair table.  The ENTRY INDEX is divided out of it below and
    *  is deliberately not written down as a number, so the harvest moves with
@@ -1957,12 +2042,11 @@ const B16_MEASURED = Object.freeze([
  *  missing art in bucket 16 at all.
  *
  *  **THIS IS ASSERTED AS AN EQUALITY, NOT AS A SUBSET, AND THAT IS THE POINT.**
- *  A superset check passes for any harvest that over-reaches -- walking the
- *  whole twenty-block array, or scanning $24B7EA..$24BB0A as a directory range
- *  -- and both of those would ship art for states no ported code can enter
- *  while still "containing" these four.  The `+$78` walk must produce exactly
- *  this set and nothing else.  The stride is $1E4 throughout: four frames of
- *  ONE animation, which is the other half of the claim. */
+ *  W497 now packs all twenty entries, but the `+$78` derivation remains separate:
+ *  mixing any regular frame into the hyper set would still contain these four
+ *  while losing the proof that every hyper power step shares exactly one block.
+ *  The `+$78` walk must produce this set and nothing else. The stride is $1E4
+ *  throughout: four frames of ONE animation, the other half of the claim. */
 const B16_HYPER = Object.freeze([0x022084, 0x022268, 0x02244c, 0x022630]);
 
 /** bucket 0's last four, a chain run pinned from above by W53's own boundary:
@@ -2020,11 +2104,13 @@ const B0_RUN = Object.freeze([0x22c59c, 0x22c6bc]);
   const hyperFirst = BEAM_ANIM.hyperGroupBytes / BEAM_ANIM.ptrStride;
   const hyperEntry = new Set();
   for (let i = hyperFirst; i < BEAM_ANIM.ptrEntries; i++) hyperEntry.add(i);
-  if (hyperEntry.size !== BEAM_ANIM.harvest) {
+  if (hyperEntry.size !== BEAM_ANIM.powerSteps
+      || BEAM_ANIM.normalEntries + hyperEntry.size !== BEAM_ANIM.ptrEntries) {
     throw new Error(`$255008's #$${BEAM_ANIM.hyperGroupBytes.toString(16)} puts `
       + `the hyper at entry ${hyperFirst}, leaving ${hyperEntry.size} of the `
-      + `${BEAM_ANIM.ptrEntries} pairs -- the power ladder is `
-      + `${BEAM_ANIM.harvest} steps wide everywhere else in this table.`);
+      + `${BEAM_ANIM.ptrEntries} pairs. Each group must be exactly `
+      + `${BEAM_ANIM.powerSteps} power steps, with the first `
+      + `${BEAM_ANIM.normalEntries} entries covering the three regular groups.`);
   }
   const lastBlock = BEAM_ANIM.blocks
     + (BEAM_ANIM.ptrEntries - 1) * BEAM_ANIM.blockBytes;
@@ -2051,12 +2137,13 @@ const B0_RUN = Object.freeze([0x22c59c, 0x22c6bc]);
         + `block array $${BEAM_ANIM.blocks.toString(16)}..`
         + `$${BEAM_ANIM.ptrTab.toString(16)}.`);
     }
-    // The HYPER's four go in their own set so that the W58 harvest above keeps
-    // its own numbers to the stream -- the ledger delta is then ONE new row of
-    // exactly four and not a re-count of 468 entries.
+    // Keep hyper separate so its exact four-frame W443 equality remains visible;
+    // every preceding entry belongs to one of W497's reachable regular groups.
     const dst = hyperEntry.has(i) ? hyperStreams
-      : (i < BEAM_ANIM.harvest ? laserStreams : null);
-    if (dst === null) continue;               // groups +$28/+$50: see above
+      : (i < BEAM_ANIM.normalEntries ? laserStreams : null);
+    if (dst === null) {
+      throw new Error(`beam entry ${i} belongs to neither the regular nor hyper groups`);
+    }
     for (let off = BEAM_ANIM.start; off >= 0; off -= BEAM_ANIM.step) {
       dst.add(romBe32(ptr + off + 4) & 0x7fffff);            // ($a,A6)
     }
@@ -2089,8 +2176,8 @@ const B0_RUN = Object.freeze([0x22c59c, 0x22c6bc]);
   harvestReport.push({ shard: LASER_SHARD_W58, base: BEAM_ANIM.ptrTab,
     entries: laserStreams.size, stride: 0, runsTo: laserStreams.size,
     endsAt: 0x24c080, distinct: laserStreams.size, added, already,
-    why: 'THE LASER -- beam 5-power ladder + segment/option blocks (W58)' });
-  console.log(`  laser $24BB0A[0..${BEAM_ANIM.harvest - 1}] x4 frames = `
+    why: 'THE LASER -- three regular 5-power groups + segment/option blocks (W58/W497)' });
+  console.log(`  laser $24BB0A[0..${BEAM_ANIM.normalEntries - 1}] x4 frames = `
     + `${beamCount} beam streams; + $24A86A..$24B7EA and $24BBA0..$24C080 = `
     + `${laserStreams.size} total, and all ${B16_MEASURED.length} measured `
     + 'bucket-16 descriptors are in it');
@@ -2109,8 +2196,8 @@ const B0_RUN = Object.freeze([0x22c59c, 0x22c6bc]);
       + `the hyper beam asking for exactly `
       + `${wantHyper.map((o) => '$' + o.toString(16)).join(' ')} (88 records in `
       + '100 frames, none of them in any shard). This is an EQUALITY: a walk '
-      + 'that resolves MORE than these four is over-reaching into art no ported '
-      + 'state can enter, and one that resolves fewer puts DOCKET D56 back.');
+      + 'that resolves MORE has mixed a regular group into the hyper derivation, '
+      + 'and one that resolves fewer puts DOCKET D56 back.');
   }
   for (let k = 1; k < gotHyper.length; k++) {
     if (gotHyper[k] - gotHyper[k - 1] !== 0x1e4) {
@@ -3537,23 +3624,17 @@ harvestStage4Arithmetic(0x000dafc4, 1, 0,
 // `$2766E0+$30` (W23).  The hole is not this wave's and the throw stays.
 const BOMB_SHARD = 13;
 
-/** (a) THE ORDINARY BOMB.  Each of `$255E3E`'s three phases installs a template
- *  and the template's own `($1E,A6)` long names the script that phase walks:
- *
- *    $25653C[+$10] -> $256558   phase 0: 12-byte entries, anim at +4, to $FFFF
- *    $2565BC[+$14] -> $2565DE   phase 1: longs at index $1C..0 step 4  (8)
- *    $25661E[+$14] -> $25663A   phase 2: longs to $FFFFFFFF
- *
- *  The `+$10` / `+$14` are counted from `src/bomb.js`'s own INIT/FADE/BLINK
- *  step lists (the byte position of the `($1E,A6)` long inside each template),
- *  not guessed, and `tools/export-tables.py check_bomb_extents` already asserts
- *  `$25653C[+$10] == $256558` against the cartridge on every export.  Each
- *  walk's END IS THE CLAIM: a script that does not terminate where this file
- *  says stops the build. */
+/** (a) THE ORDINARY BOMBS. Type-A's three installs carry their script pointer
+ *  in the named template field. Type-B's dispatcher installs the three adjacent
+ *  scripts directly. Both ships use the same terminated/indexed/long-list walk,
+ *  and each independent phase family must resolve 4 / 8 / 4 entries. */
 const BOMB_PHASES = Object.freeze([
-  [0x25653c, 0x10, 'terminated', 0x256558],
-  [0x2565bc, 0x14, 'indexed', 0x2565de],
-  [0x25661e, 0x14, 'longs', 0x25663a],
+  [0x25653c, 0x10, 'terminated', 0x256558, 'Type-A'],
+  [0x2565bc, 0x14, 'indexed', 0x2565de, 'Type-A'],
+  [0x25661e, 0x14, 'longs', 0x25663a, 'Type-A'],
+  [null, 0, 'terminated', 0x25658a, 'Type-B'],
+  [null, 0, 'indexed', 0x2565fe, 'Type-B'],
+  [null, 0, 'longs', 0x25664e, 'Type-B'],
 ]);
 
 /** (b)..(f), each a `[from, to, why]` scan for MASK-ROM DIRECTORY entries --
@@ -3561,11 +3642,11 @@ const BOMB_PHASES = Object.freeze([
  *  ask for a stream outside these blocks, because the only code that writes
  *  these records' `($a,A6)` reads them out of exactly these bytes. */
 const BOMB_BLOCKS = Object.freeze([
-  [0x256662, 0x256986, 'THE LASER BOMB. W65\'s own derived data block: the four '
-    + '12-byte head anim tables $256662/$25666E/$25667A/$256686, the '
-    + 'eight-pointer table $256692 and its targets, and $256712\'s twelve '
-    + 'five-longword entries. Its far end $256986 is the ($1,A6)-bit-1 twin\'s '
-    + 'first script -- i.e. the code src/bomb.js THROWS on'],
+  [0x256662, 0x256caa, 'THE TYPE-A/TYPE-B LASER BOMBS. The combined runtime '
+    + 'data span starts with Type-A at $256662, continues with Type-B at $256986, '
+    + 'and ends at $256CAA where the install routine begins. It contains both '
+    + 'ships\' head animations, segment pointer tables, twelve-entry phase-2 '
+    + 'lists, and every eight-pointer target those lists select'],
   [0x28a464, 0x28a506, 'POOL E\'s OTHER TEMPLATES ($28A464/$28A47A/$28A490 and '
     + 'their lists), which $289FF4 installs. W65 exported this window for the '
     + 'STATE and [M] W66 measures buckets 20/23 asking for 21 of its streams '
@@ -3646,15 +3727,15 @@ const B13_MEASURED = Object.freeze([
   const bombStreams = new Set();
   const phaseCounts = [];
 
-  // (a) the three scripts, walked the way `bombScript255E3E` walks them.
-  for (const [tpl, off, kind, expect] of BOMB_PHASES) {
-    const base = romBe32(tpl + off);
+  // (a) both ships' three scripts, walked the way `bombScript255E3E` walks them.
+  for (const [tpl, off, kind, expect, ship] of BOMB_PHASES) {
+    const base = tpl === null ? expect : romBe32(tpl + off);
     if (base !== expect) {
-      throw new Error(`the bomb template $${tpl.toString(16)}'s ($1E,A6) long `
+      throw new Error(`the ${ship} bomb template $${tpl.toString(16)}'s script long `
         + `is at byte +$${off.toString(16)} and the cartridge holds `
         + `$${base.toString(16)} there; this file says $${expect.toString(16)}. `
         + 'That long IS the script a phase walks, so a wrong offset harvests '
-        + 'the wrong animation -- or none.');
+        + 'the wrong animation or none.');
     }
     let n = 0;
     if (kind === 'terminated') {
@@ -3693,10 +3774,12 @@ const B13_MEASURED = Object.freeze([
     }
     phaseCounts.push(n);
   }
-  if (phaseCounts.join(',') !== '4,8,4') {
-    throw new Error(`the bomb's three phases walk ${phaseCounts.join('/')} `
-      + 'entries; [M] W66 measured 4 / 8 / 4, which is 16 distinct streams and '
-      + 'exactly the 16 a bombing run asks bucket 13 for.');
+  const typeAShape = phaseCounts.slice(0, 3).join(',');
+  const typeBShape = phaseCounts.slice(3, 6).join(',');
+  if (typeAShape !== '4,8,4' || typeBShape !== '4,8,4') {
+    throw new Error(`the ordinary bomb phases walk Type-A ${typeAShape.replaceAll(',', '/')} `
+      + `and Type-B ${typeBShape.replaceAll(',', '/')} entries; each cartridge `
+      + 'family must independently retain the 4 / 8 / 4 script shape.');
   }
   const ordinary = bombStreams.size;
 
@@ -3718,10 +3801,8 @@ const B13_MEASURED = Object.freeze([
       if (isDirEntry(v)) bombStreams.add(v & 0x7fffff);
     }
     // THE AURA BLOCK'S CONTENT IS DERIVABLE AND THEREFORE ASSERTED, and the
-    // reason it needs its own row is that only ship selector 0's four frames
-    // are ever REACHED (`src/machine.js`: [M] `($58,A6)` is 0 on the whole
-    // corpus), so `B13_MEASURED` cannot see the other four at all -- a range
-    // that dropped them would sit exactly where two readings agree.
+    // reason it needs its own row is that both ship selectors are now reachable
+    // and neither four-frame row may disappear behind the other:
     //   $2556BA and $2556BE are the two POINTERS ($24A4F2 at ($58,A6)*2);
     //   $249A8C seeds ($28,A6) = $C and $24A526 steps it -4 with a wrap, so
     //   each pointer names FOUR frames. 2 x 4 = 8.
@@ -3733,9 +3814,8 @@ const B13_MEASURED = Object.freeze([
           + `$${to.toString(16)} resolves ${got} streams and its two pointers `
           + `are $${p0.toString(16)} and $${p1.toString(16)}. It must be TWO `
           + 'pointers, both INSIDE the block, naming FOUR frames each: '
-          + '$249A8C seeds ($28,A6) = $C and $24A526 steps it by 4. Only ship '
-          + 'selector 0 is ever reached, so nothing else in this file can '
-          + 'notice the other four going missing.');
+          + '$249A8C seeds ($28,A6) = $C and $24A526 steps it by 4. Both '
+          + 'authentic ship selectors are reachable, so both rows are required.');
       }
     }
   }
@@ -3767,11 +3847,13 @@ const B13_MEASURED = Object.freeze([
   harvestReport.push({ shard: BOMB_SHARD, base: 0x25653c,
     entries: bombStreams.size, stride: 0, runsTo: bombStreams.size,
     endsAt: 0x28a506, distinct: bombStreams.size, added, already,
-    why: 'THE BOMB and THE LASER BOMB -- 3 scripts + 3 bounded blocks (W66)' });
-  console.log(`  the BOMB: ${ordinary} streams over $255E3E's three phases `
-    + `(${phaseCounts.join('/')}), + the LASER BOMB's $256662..$256986, pool E's `
-    + `$28A464, the bit-7 aura $2556BA and type $8A = ${bombStreams.size} `
-    + `total, and all ${B13_MEASURED.length} measured addresses are in it`);
+    why: 'THE TYPE-A/TYPE-B BOMB and LASER BOMB -- 6 scripts + 3 bounded blocks (W66/W497)' });
+  console.log(`  both ordinary BOMBS: ${ordinary} distinct streams over six phases `
+    + `(Type-A ${phaseCounts.slice(0, 3).join('/')}, Type-B `
+    + `${phaseCounts.slice(3).join('/')}), + both LASER BOMBS' `
+    + `$256662..$256CAA, pool E $28A464, the bit-7 aura $2556BA and type $8A = `
+    + `${bombStreams.size} total, and all ${B13_MEASURED.length} measured `
+    + 'addresses are in it');
 }
 
 const bgList = [...bgUsed].sort((a, b) => a - b);
@@ -4579,6 +4661,16 @@ for (let i = 0; i < sprStreamList.length; i++) {
 }
 put('spr/streams.u32', sprStreamU32);
 
+const packedShipPairs = Object.fromEntries(Object.entries(shipOffsBySelector)
+  .map(([selector, row]) => [selector, row.map((offs) => {
+    const nb = offsMap.get(offs);
+    if (nb === undefined) {
+      throw new Error(`ship selector ${selector} stream $${offs.toString(16)} was `
+        + 'harvested but not rebased -- the packer and the harvest disagree');
+    }
+    return [(nb >>> 16) & 0x7f, nb & 0xffff];
+  })]));
+
 const manifest = {
   note: 'Generated by games/ddpdoj/tools/export-web.mjs. Nothing here is '
     + 'committed: assets/ is gitignored. Regenerate from your own cartridge.',
@@ -4774,20 +4866,8 @@ const manifest = {
     rom: '$25533A -> $255362', reads: '$249E62 move.l (A0,D0.w),($a,A6)',
     tiltMin: shipTable.tiltMin, tiltStep: shipTable.tiltStep,
     size: SHIP_SIZE, wide: shipWide, high: shipHigh,
-    pairs: shipOffs.map((o) => {
-      const nb = offsMap.get(o);
-      if (nb === undefined) {
-        throw new Error(`ship stream $${o.toString(16)} was harvested but not `
-          + 'rebased -- the packer and the harvest disagree');
-      }
-      // The capture stores word 2 bits 6..0 as `offs` bits 22..16 and word 3 as
-      // bits 15..0.  W47: the packed space outgrew 16 bits, so the high 7 are
-      // emitted rather than assumed zero -- `Capture.splice` has always written
-      // them (`(word2 & $FF80) | pair[0]`).  All 17 tilts are in the BOOT shard,
-      // which is packed first, so in practice pair[0] is still 0; it is computed
-      // rather than hardcoded so that stops being a silent dependency.
-      return [(nb >>> 16) & 0x7f, nb & 0xffff];
-    }),
+    pairs: packedShipPairs[0],
+    pairsBySelector: packedShipPairs,
     note: 'PACKED-SPACE (word2Low7, word3) per tilt step, 17 entries. The ROM '
       + 'longs these came from are NOT usable directly: export-web.mjs re-bases '
       + 'every stream. 16 of the 17 do not appear in capture.bin at all -- the '

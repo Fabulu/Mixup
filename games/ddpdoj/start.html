@@ -23,6 +23,7 @@
   h2 { margin: 1.6rem 0 .55rem; color: var(--dim); font-size: .78rem;
     letter-spacing: .13em; text-transform: uppercase; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: .6rem; }
+  #styles { margin-top: .6rem; }
   .card { padding: .72rem .82rem; text-align: left; color: inherit; cursor: pointer;
     background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
     font: inherit; }
@@ -68,6 +69,35 @@
     </button>
   </div>
 
+  <h2>Authentic cartridge selection</h2>
+  <div class="sub">Ship and pilot/style are original Version-B cartridge choices, not mods.
+    The listing proves selector values 2, 4, and 6 but does not prove which human-readable
+    pilot name belongs to each, so this page keeps the cartridge numbers explicit.</div>
+  <div class="grid" id="ships">
+    <button class="card" type="button" data-auth-ship="0" aria-pressed="true">
+      <div class="name"><span>Type-A ship</span><span class="mark">ON</span></div>
+      <div class="blurb">Cartridge ship selector 0. Default.</div>
+    </button>
+    <button class="card" type="button" data-auth-ship="2" aria-pressed="false">
+      <div class="name"><span>Type-B ship</span><span class="mark">ON</span></div>
+      <div class="blurb">Cartridge ship selector 2.</div>
+    </button>
+  </div>
+  <div class="grid" id="styles">
+    <button class="card" type="button" data-auth-style="2" aria-pressed="true">
+      <div class="name"><span>Pilot/style slot 1</span><span class="mark">ON</span></div>
+      <div class="blurb">Cartridge selector 2. Default.</div>
+    </button>
+    <button class="card" type="button" data-auth-style="4" aria-pressed="false">
+      <div class="name"><span>Pilot/style slot 2</span><span class="mark">ON</span></div>
+      <div class="blurb">Cartridge selector 4.</div>
+    </button>
+    <button class="card" type="button" data-auth-style="6" aria-pressed="false">
+      <div class="name"><span>Pilot/style slot 3</span><span class="mark">ON</span></div>
+      <div class="blurb">Cartridge selector 6.</div>
+    </button>
+  </div>
+
   <h2>Survival</h2><div class="grid" data-category="survival"></div>
   <h2>Arsenal</h2><div class="grid" data-category="arsenal"></div>
   <h2>Challenge and timing</h2><div class="grid" data-category="challenge"></div>
@@ -90,8 +120,14 @@
 import {
   MODS, PRESETS, resolveLoadout, describeMod, loadoutToHash, hashToLoadout,
 } from './src/mods.js';
+import {
+  authenticSelectionFromParams, authenticSelectionQuery,
+} from './src/authentic.js';
 
 const selected = new Set(hashToLoadout(location.hash).ids);
+const initialAuthentic = authenticSelectionFromParams(new URLSearchParams(location.search));
+let authenticShip = initialAuthentic?.ship ?? 0;
+let authenticStyle = initialAuthentic?.style ?? 2;
 const cards = new Map();
 let lastConflicts = [];
 
@@ -160,6 +196,12 @@ function sync() {
     button.setAttribute('aria-pressed', String(selected.has(id)));
   }
   document.getElementById('vanilla').setAttribute('aria-pressed', String(!resolved.ids.length));
+  for (const button of document.querySelectorAll('[data-auth-ship]')) {
+    button.setAttribute('aria-pressed', String(Number(button.dataset.authShip) === authenticShip));
+  }
+  for (const button of document.querySelectorAll('[data-auth-style]')) {
+    button.setAttribute('aria-pressed', String(Number(button.dataset.authStyle) === authenticStyle));
+  }
 
   const summary = document.getElementById('summary');
   summary.replaceChildren();
@@ -171,6 +213,9 @@ function sync() {
     main.innerHTML = '<b>Original Game</b>: nothing selected';
   }
   summary.appendChild(main);
+  const authentic = document.createElement('span');
+  authentic.textContent = ` | Type-${authenticShip === 0 ? 'A' : 'B'}, pilot/style selector ${authenticStyle}`;
+  summary.appendChild(authentic);
   if (lastConflicts.length) {
     const warning = document.createElement('span');
     warning.id = 'conflict';
@@ -183,12 +228,27 @@ function sync() {
   location.hash = loadoutToHash(resolved.ids);
 }
 
+for (const button of document.querySelectorAll('[data-auth-ship]')) {
+  button.addEventListener('click', () => {
+    authenticShip = Number(button.dataset.authShip);
+    sync();
+  });
+}
+for (const button of document.querySelectorAll('[data-auth-style]')) {
+  button.addEventListener('click', () => {
+    authenticStyle = Number(button.dataset.authStyle);
+    sync();
+  });
+}
+
 document.getElementById('vanilla').addEventListener('click', () => {
   selected.clear();
   sync();
 });
 document.getElementById('clear').addEventListener('click', () => {
   selected.clear();
+  authenticShip = 0;
+  authenticStyle = 2;
   sync();
 });
 document.getElementById('games').addEventListener('click', () => {
@@ -196,7 +256,8 @@ document.getElementById('games').addEventListener('click', () => {
 });
 document.getElementById('launch').addEventListener('click', () => {
   const hash = loadoutToHash([...selected]);
-  location.href = `./index.html${hash ? `#${hash}` : ''}`;
+  const query = authenticSelectionQuery({ ship: authenticShip, style: authenticStyle });
+  location.href = `./index.html${query}${hash ? `#${hash}` : ''}`;
 });
 sync();
 </script>

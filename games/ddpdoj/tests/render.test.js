@@ -419,6 +419,44 @@ test('the splice moves ONLY the position fields of a display-list record', () =>
   assert.equal(st.spritebuffer[1] & 0x3ff, 90 - 16);
 });
 
+test('the capture splice selects the packed ship row by cartridge selector', () => {
+  const frameBytes = 16;
+  const json = {
+    layout: [['spritebuffer', 16]], frameBytes,
+    frameList: [{ lf: 1, vf: 1, regs: {}, player: [[0, 0, 0]] }],
+    shipCorrelation: { accepted: [{ off: '0,0', hits: 1 }], lag: 1 },
+  };
+  const words = new Uint16Array(8);
+  words[2] = 0xab80;
+  words[3] = 0x9999;
+  words[4] = 0x0620;
+  const bin = new Uint8Array(frameBytes);
+  for (let i = 0; i < words.length; i++) {
+    bin[i * 2] = words[i] >> 8; bin[i * 2 + 1] = words[i] & 0xff;
+  }
+  const rowA = Array.from({ length: 17 }, () => [0x12, 0x3456]);
+  const rowB = Array.from({ length: 17 }, () => [0x34, 0x5678]);
+  const ship = {
+    tiltMin: -0x20, tiltStep: 4, wide: 3, high: 0x20,
+    pairs: rowA,
+    pairsBySelector: { 0: rowA, 2: rowB },
+  };
+  const cap = new Capture(json, bin);
+
+  const defaultState = { spritebuffer: cap.part(0, 'spritebuffer') };
+  cap.splice(defaultState, 0, 0, 0, { tilt: 0, ship });
+  assert.equal(defaultState.spritebuffer[2], 0xab92,
+    'an omitted selector preserves the selector-zero row');
+  assert.equal(defaultState.spritebuffer[3], 0x3456);
+
+  const typeBState = { spritebuffer: cap.part(0, 'spritebuffer') };
+  cap.splice(typeBState, 0, 0, 0, { tilt: 0, ship, shipSel: 2 });
+  assert.equal(typeBState.spritebuffer[2], 0xabb4,
+    'selector 2 preserves attributes and installs its own packed high bits');
+  assert.equal(typeBState.spritebuffer[3], 0x5678);
+  assert.equal(cap.lastBanked, true);
+});
+
 test('Capture refuses a bin whose length disagrees with its manifest', () => {
   assert.throws(() => new Capture({
     layout: [['spritebuffer', 16]], frameBytes: 16,

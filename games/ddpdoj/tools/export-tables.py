@@ -144,16 +144,14 @@ SHOT_WINDOWS = [
     # window is here because the port throws by address if $8127E4 ever points
     # anywhere else, which is exactly what happened the first time it ran.
     (0x255200, 0x0100, "the $8127E4 shot-count words at $25523C.."),
-    # $24A222's template: 38 bytes copied field by field into the shot record.
-    # $24DA20..$24DB9B is the ten SHOT templates (2 tables x 5 powers).
-    (0x24D8A0, 0x0360, "shot templates $24DA20.. + the $24D8AC/$24D918 anim tables"),
-    # ...and the HYPER-shot templates plus their anim tables.
-    (0x24E740, 0x0320, "hyper-shot templates $24E8BC.. + $24E744/$24E7D4"),
-    # The $25551A family's templates and anim tables ($24DFE8/$24E054 and
-    # $24EEA4/$24EF34).  Not reached by the player's own spawn; reached by a
-    # SEEDED option-pod shot, whose ($1a,A6) the handlers feed to $241D34.
-    (0x24DFE0, 0x0300, "$25551A[0] templates $24E15C.. + $24DFE8/$24E054"),
-    (0x24EEA0, 0x0360, "$25551A[1] templates $24F01C.. + $24EEA4/$24EF34"),
+    # $24A222/$24A33C's templates: 38 bytes copied field by field into a shot
+    # record.  The three authentic style families occupy $24DA20..$24DDD5.
+    (0x24D8A0, 0x0536, "shot templates $24DA20..$24DDB0 + pointed anim tables"),
+    # ...and the three HYPER-shot style families through $24EC71.
+    (0x24E740, 0x0532, "hyper-shot templates $24E8BC..$24EC4C + pointed anim tables"),
+    # The $25551A Type-B family's normal and hyper templates for all styles.
+    (0x24DFE0, 0x050C, "$25551A normal templates $24E15C..$24E4C6 + anim tables"),
+    (0x24EEA0, 0x050C, "$25551A hyper templates $24F01C..$24F386 + anim tables"),
     (0x24EC72, 0x022E, "W188 P1 hyper-shot normal/hit tables and pointed structs"),
     # The OPTION PODS' pointer tables and templates ($24D4E2's $24D2FC/$24D35C).
     (0x24D2E0, 0x00E0, "$24D2FC/$24D35C + their per-power tables"),
@@ -189,12 +187,23 @@ SHOT_WINDOWS = [
     (0x24DDD0, 0x01B0, "$24DDD6 and $24DEB2 + the structs they point at"),
     # $253E5A lea $24FC8E
     (0x24FC80, 0x0100, "$24FC8E + its structs"),
-    # $253F38 lea $25014C
-    (0x250140, 0x0100, "$25014C + its structs"),
+    # `$24D4EA/$24D654/$24D7BC` selects the Type-B option templates at
+    # $25058A..$2507D5. Their +$0A pointers reach the animation rows at
+    # $250282/$2502A6/$2502CA, while dispatch entry 3 uses the normal table
+    # $25092C and hit table $250DEA. This is one packed normal-shot family:
+    # W393's existing option window ends exactly at $250000 and $250F40 is the
+    # separately named first hyper animation table, so those two boundaries
+    # state the closed span without importing executable data beyond it.
+    (0x250000, 0x0F40, "W497 Type-A/Type-B option normal templates, animations, "
+                       "normal tables and hit tables through $250F40"),
     # $241D46 lea ($241AF4,PC) -- the SECOND angle-fold table.  256 words,
     # indexed by the WHOLE angle byte (D3 = D1*2), not by angle&$3f*4 like
     # $2418B4.  Same triangle, different stride: do not alias the two.
     (0x241AF4, 0x0200, "$241AF4 the shot vector's angle-fold table"),
+    # $253D88 indexes six longwords at $253A58 by the Type-B player's even
+    # power word 0,2,...,$A. Keep the exact six-entry table in RomWindows so the
+    # browser consumes cartridge data rather than source-code copies.
+    (0x253A58, 0x0018, "W497 Type-B player-shot hit zoom flags, six longwords"),
     # $2433C2 lea ($2433D0,PC) -- the 64-longword pseudo-random table.
     (0x2433D0, 0x0100, "$2433D0 the $2433AE pseudo-random longword table"),
     # W31: $2433AE IS ONE OF A FAMILY.  A scan of the whole decrypted image for
@@ -225,9 +234,9 @@ SHOT_WINDOWS = [
     #   $25567A the aura's 16 sprite longs, read at $24A4BA with ($28,A6)
     #   $2556BA/$255676 their ($1,A6)-bit-7 twins ($24A4F2/$24A510) -- UNREACHED
     #   $2556E2 the glow's per-ship/per-tilt sprite tables ($24A55C)
-    #   $255882 ...and their stick-down variant ($24A576) -- UNREACHED
+    #   $255882 ...and the Type-B stick-down variant ($24A576)
     #   $255A22 the glow's {protection bias, dx, size} struct ($24A562)
-    #   $255A36 ...and its variant ($24A57C) -- UNREACHED
+    #   $255A36 ...and its Type-B stick-down variant ($24A57C)
     (0x255330, 0x0900, "WAVE 12: $25533A/$2553CA/$25545A/$255672/$25567A/"
                        "$2556BA/$2556E2/$255882/$255A22/$255A36 -- every table "
                        "the ship's draw block $24A482 and its shadow $249EA0 read"),
@@ -1895,8 +1904,8 @@ SHOT_WINDOWS.extend([
 
 # ============ W64 (B2): THE BOMB'S RECORD TEMPLATES AND SCRIPTS =============
 #
-# ONE window, $25653C..$25664D, and it is a UNION of six extents that are each
-# derived from an instruction.  `check_bomb_extents` asserts every one of them
+# ONE window, $25653C..$256661, and it is a union of nine extents that are each
+# derived from an instruction. `check_bomb_extents` asserts every one of them
 # against the image on every export.
 #
 #   $25653C  the INIT install `$255E52..$255E74` copies into the record.  The
@@ -1907,10 +1916,8 @@ SHOT_WINDOWS.extend([
 #   $256558  the phase-0 SCRIPT.  `$255E9C` reads w,w,l,w,w == 12 bytes per
 #            entry and `$255EC6 cmpi.w #$FFFF,(A0)` terminates it.  FOUR
 #            entries and the $FFFF == **50 bytes**, ending at $256589.
-#   $25658A  the ($1,A6)-bit-1 twin of it, same shape, 50 bytes.  UNREACHED in
-#            this port (src/bomb.js throws by address) and exported anyway,
-#            because the union is one window and a hole in it would be a
-#            second window with no reader.
+#   $25658A  the ($1,A6)-bit-1 twin of it, same shape, 50 bytes. W497 makes it
+#            reachable for the authentic Type-B selector.
 #   $2565BC  the FADE install `$255ED2..$255EF0`: l,(skip 4),w,l,l,l,w,l,l,l,w
 #            == 17 words == **34 bytes**.  Its +$14 long is $002565DE.
 #   $2565DE  the fade's ANIM table.  `$255F24 move.w ($24,A6),D0 / move.l
@@ -1922,14 +1929,16 @@ SHOT_WINDOWS.extend([
 #            $0025663A.
 #   $25663A  the blink's list, walked `move.l (A0)+` until $FFFFFFFF -- FOUR
 #            longwords and the terminator, **20 bytes**, ending at $25664D.
+#   $25664E  the bit-1 blink twin, also FOUR longwords and $FFFFFFFF, ending
+#            exactly at $256662 where the laser-bomb data begins.
 SHOT_WINDOWS.append(
-    (0x25653C, 0x0112, "W64: the BOMB's three record templates ($25653C, "
+    (0x25653C, 0x0126, "W64/W497: the BOMB's three record templates ($25653C, "
                        "$2565BC, $25661E), its phase-0 script ($256558) and "
                        "the two anim lists ($2565DE, $25663A), plus the three "
                        "($1,A6)-bit-1 twins that sit between them. Every "
                        "extent is derived from the copy sequence or from a "
                        "terminator instruction; check_bomb_extents asserts "
-                       "all six"),
+                       "all nine"),
 )
 
 # ========== W65 (B3): THE LASER BOMB -- `$249A80`, `$255FE2`, `$2456A6` ======
@@ -1940,36 +1949,27 @@ SHOT_WINDOWS.append(
 # own windows.  Every extent below is derived from an INSTRUCTION or a
 # TERMINATOR and `check_beam_bomb_extents` asserts each one against the image.
 #
-#   $256662  THE DATA BLOCK, 804 bytes, and it is ONE contiguous run:
-#              $256662 $25666E $25667A $256686   four 12-byte anim tables, one
-#                        per head record.  The index space is {8,4,0}: the
-#                        install puts $0008 on ($24,A6) and $2560D2 is
-#                        `subq.w #$4` with $2560D8 reloading from ($26,A6),
-#                        which the install sets to $0008.  THREE longwords.
-#              $256692  eight pointers.  $2561AA's own cursor is ($80A,A6),
-#                        seeded $1C by $2561B0 and stepped `subq.w #$4`, so the
-#                        index space is $1C..0 -- EIGHT.
-#              $2566B2  those eight pointers' targets, 12 bytes each = 96.
-#              $256712  TWELVE five-longword entries, walked one per frame by
-#                        $25617A..$25618E, and $256802 is the $FFFFFFFF that
-#                        $256170 `cmpi.l` tests.
-#              $256806..$256985  the twelve tables each entry's fifth long
-#                        names, eight pointers each = 384 bytes, ending exactly
-#                        at $256986 -- which is the ($1,A6)-bit-1 twin's first
-#                        script, i.e. the far end is pinned by the code
-#                        `src/bomb.js` throws on.
+#   $256662  THE DATA BLOCK, 1608 bytes. Type-A occupies $256662..$256985;
+#            Type-B repeats the same cartridge geometry at $256986..$256CA9.
+#            Each half contains:
+#              +$00  four 12-byte head anim tables. The index space is {8,4,0}.
+#              +$30  eight pointers. The segment cursor spans $1C..0 by fours.
+#              +$50  those eight pointers' 12-byte targets, 96 bytes total.
+#              +$B0  twelve five-longword entries followed by $FFFFFFFF.
+#              +$1A4 twelve eight-pointer tables named by the fifth longwords.
+#            The final Type-B table ends exactly at $256CAA, which is pinned by
+#            the record install beginning there.
 #   $256CAA  the RECORD INSTALL, 158 bytes, counted from the copy sequence
 #            $255FEA..$256062 (12 moves, then `lea ($7B0,A1),A1`, then three
 #            blocks of 13/12/13) and NOT from a run.  It ends exactly at:
 #   $256D48  the 18-byte SEGMENT template, read at $2561EE, $256282 and
 #            $2563F0 with three different splices of the same 18 bytes.
 SHOT_WINDOWS.extend([
-    (0x256662, 0x0324, "W65: the LASER BOMB's data -- four head anim tables "
-                       "($256662/$25666E/$25667A/$256686), $256692's eight "
-                       "pointers and their targets, $256712's twelve "
-                       "five-longword script entries and the twelve "
-                       "eight-pointer tables they name. Far end pinned by "
-                       "$256986, the bit-1 twin's own script"),
+    (0x256662, 0x0648, "W65/W497: both ships' LASER BOMB data. Each $324-byte "
+                       "half has four head anim tables, one eight-pointer "
+                       "segment table and targets, twelve five-longword list "
+                       "entries, and twelve eight-pointer tables. Far end "
+                       "pinned by the $256CAA record install"),
     (0x256CAA, 0x00B0, "W65: the LASER BOMB's 158-byte record install "
                        "($255FEA..$256062) and the 18-byte segment template "
                        "$256D48 that abuts it"),
@@ -7234,27 +7234,21 @@ def option_speed_indices(d: bytes) -> list[int]:
     s.update(range(0, max(tops) + 1, 8))
     return sorted(s)
 
-# $249C3E/$249C88: `lea $2554EA,A1 / movea.l (A1,D0.w),A1` with
-# D0 = ((form-2)*4) + 4 if laser.  Only formation 2 (MEASURED: ($5a,A6) = 2 on
-# every frame of stage1-open) and its laser twin are reachable without the
-# formation code, so the walk below covers entries 0 and 1 of each table and
-# says so rather than pretending to enumerate all formations.
-# $25551A is the THIRD table of the same shape.  The player's own spawn never
-# reads it ($249C3E/$249C88 use the first two), but the OPTION PODS' shots --
-# created by the unported $24D484 into slots 0..12 of the SAME 36-slot table --
-# are driven by the SAME four handlers, and a seeded pod shot carries a speed
-# index ($1a,A6) out of these templates.  MEASURED: the port threw
-# `speed index 68 was not exported` on the first pod shot in the seed.  So the
-# walk covers it, and the reason is here rather than in a widened constant.
-# ...and $24D2FC/$24D35C are the OPTION PODS' own pair, read at $24D4E2 with
-# the same (ship*4 [+4 laser]) index and the same power*2 sub-index.  Their
-# templates carry speed indices 68, 80, 88, 96, 120 and 168, none of which the
-# player's own templates use, and a seeded pod shot is driven by the SAME four
-# handlers this wave translated -- so the port needs those quadrant tables even
-# though it never creates a pod shot.  MEASURED: the port threw
-# `speed index 68 was not exported` twice before this line existed.
-SPAWN_PTR_TABLES = [0x2554EA, 0x255502, 0x25551A, 0x24D2FC, 0x24D35C]
-SPAWN_FORMATION_ENTRIES = 2      # entry 0 = shot, entry 1 = laser
+# $249C3E and $249D6C select normal/hyper pairs for authentic style selectors
+# 2, 4 and 6.  $249C88 selects the Type-A secondary family only on styles 2
+# and 6 because style 4 takes the single-pool branch before that lookup.  Its
+# two style-4 entries are zero sentinels and are intentionally not followed.
+# The option-pod tables keep their own two-entry ship/laser domain.
+#
+# Each selected long points at the five-entry per-power table indexed by the
+# even power word 0, 2, 4, 6 or 8.
+SPAWN_PTR_TABLES = {
+    0x2554EA: (0, 1, 2, 3, 4, 5),
+    0x255502: (0, 1, 4, 5),
+    0x25551A: (0, 1, 2, 3, 4, 5),
+    0x24D2FC: (0, 1),
+    0x24D35C: (0, 1),
+}
 SPAWN_POWERS = 5                 # power word 0,2,4,6,8 -> byte index 0,4,8,12,16
 TEMPLATE_LEN = 0x26              # $24A222 consumes exactly 38 bytes from A1
 TEMPLATE_SPEED_OFF = 26          # ...and byte 26 lands in ($1a,A6), the speed index
@@ -7402,14 +7396,13 @@ def speed_levels(d: bytes) -> int:
 
 
 def spawn_templates(d: bytes) -> dict:
-    """Walk $2554EA/$255502 exactly as $249BFC does and return the reachable
-    38-byte templates keyed by ROM address.  This is a MEASUREMENT of what the
-    spawn can read, not a guess at a table length: the walk is the ROM's own
-    indexing arithmetic."""
+    """Walk the three player and two option pointer families with each call
+    site's proven selector count.  Return every reachable 38-byte template keyed
+    by ROM address."""
     out = {}
-    for tbl in SPAWN_PTR_TABLES:
-        for form in range(SPAWN_FORMATION_ENTRIES):
-            per_power = u32(d, tbl + 4 * form)
+    for tbl, selectors in SPAWN_PTR_TABLES.items():
+        for selector in selectors:
+            per_power = u32(d, tbl + 4 * selector)
             for pw in range(SPAWN_POWERS):
                 # $249C48 `move.w ($20,A6),D0 / add.w D0,D0 / movea.l (A1,D0.w),A1`
                 # -- power word 0,2,4,6,8 becomes byte index 0,4,8,12,16.
@@ -8482,12 +8475,13 @@ def check_bomb_extents(d: bytes) -> None:
     (W54 6.2, and W63 9b made it a rule).  Every assertion below reads either
     an INSTRUCTION that produces the extent or the TERMINATOR that ends it.
     """
-    # 1. The window must cover all six, i.e. reach $25664E.
+    # 1. The window must cover all nine extents and end at $256662, where the
+    #    laser-bomb block begins.
     declared = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x25653C]
-    if not declared or 0x25653C + declared[0][1] < 0x25664E:
+    if not declared or 0x25653C + declared[0][1] != 0x256662:
         raise SystemExit(
-            f"the $25653C window is {declared} and must reach $25664E -- "
-            f"$25663A + four longwords + the $FFFFFFFF terminator.")
+            f"the $25653C window is {declared} and must end exactly at "
+            f"$256662 after the Type-B blink list's $FFFFFFFF terminator.")
     # 2. $255E52 is `lea $25653C,A0`, i.e. the init template's ADDRESS is in
     #    the instruction and not in this file.
     if u32(d, 0x255E54) != 0x0025653C:
@@ -8499,12 +8493,18 @@ def check_bomb_extents(d: bytes) -> None:
         raise SystemExit(
             f"$25653C[+$10] is ${u32(d, 0x25653C + 0x10):08X}; it must be "
             f"$00256558 -- the long the init install drops on ($1E,A6).")
-    # 4. FOUR script entries of 12 bytes and then $FFFF, which is what makes
-    #    the phase-0 extent 50 bytes rather than "whatever a run walked".
-    if u16(d, 0x256558 + 4 * 12) != 0xFFFF:
+    # 4. FOUR script entries of 12 bytes and then $FFFF in both ship lists.
+    #    The Type-B address is the immediate written by $255E84.
+    if u32(d, 0x255E86) != 0x0025658A:
         raise SystemExit(
-            f"$256558 + 4*12 is ${u16(d, 0x256558 + 4 * 12):04X} and must be "
-            f"$FFFF -- $255EC6 cmpi.w #$FFFF,(A0) is the only terminator.")
+            f"$255E84 now installs ${u32(d, 0x255E86):08X}; it must install "
+            f"the Type-B phase-0 list at $0025658A.")
+    for script, ship in ((0x256558, "Type-A"), (0x25658A, "Type-B")):
+        if u16(d, script + 4 * 12) != 0xFFFF:
+            raise SystemExit(
+                f"{ship} bomb script ${script:06X} + 4*12 is "
+                f"${u16(d, script + 4 * 12):04X} and must be $FFFF; "
+                f"$255EC6 cmpi.w #$FFFF,(A0) is the only terminator.")
     # 5. $2565BC's and $25661E's addresses come from their own `lea`s.
     if u32(d, 0x255ED4) != 0x002565BC:
         raise SystemExit(f"$255ED2 lea now reads ${u32(d, 0x255ED4):08X}.")
@@ -8525,16 +8525,27 @@ def check_bomb_extents(d: bytes) -> None:
     if d[0x255F32] != 0x59 or d[0x255F33] != 0x6E:
         raise SystemExit("$255F32 is no longer `subq.w #$4,($24,A6)`, so the "
                          "$2565DE table's stride is no longer derived.")
-    # 7. THE BLINK's list ends at the FIRST $FFFFFFFF, and $255F94 is the
+    if u32(d, 0x255EFC) != 0x002565FE:
+        raise SystemExit(
+            f"$255EFA now installs ${u32(d, 0x255EFC):08X}; it must install "
+            f"the Type-B fade table at $002565FE.")
+    # The same $1C seed and $255F32 step make `$2565FE..$25661D` eight longs.
+    # 7. Both blink lists end at the FIRST $FFFFFFFF, and $255F94 is the
     #    instruction that says so.
     if u32(d, 0x25661E + 0x14) != 0x0025663A:
         raise SystemExit(
             f"$25661E[+$14] is ${u32(d, 0x25661E + 0x14):08X}; it must be "
             f"$0025663A.")
-    if u32(d, 0x25663A + 4 * 4) != 0xFFFFFFFF:
+    if u32(d, 0x255F78) != 0x0025664E:
         raise SystemExit(
-            f"$25663A + 4 longwords is ${u32(d, 0x25663A + 4 * 4):08X} and "
-            f"must be $FFFFFFFF -- $255F94 cmpi.l is the terminator.")
+            f"$255F76 now installs ${u32(d, 0x255F78):08X}; it must install "
+            f"the Type-B blink list at $0025664E.")
+    for script, ship in ((0x25663A, "Type-A"), (0x25664E, "Type-B")):
+        if u32(d, script + 4 * 4) != 0xFFFFFFFF:
+            raise SystemExit(
+                f"{ship} blink list ${script:06X} + 4 longwords is "
+                f"${u32(d, script + 4 * 4):08X} and must be $FFFFFFFF; "
+                f"$255F94 cmpi.l is the terminator.")
 
 
 def s16(v: int) -> int:
@@ -8607,36 +8618,57 @@ def check_beam_bomb_extents(d: bytes) -> None:
             f"$256692's eight entries are derived from $1C and `subq.w #$4`.")
     if d[0x2561AA] != 0x59 or d[0x2561AB] != 0x6E:
         raise SystemExit("$2561AA is no longer `subq.w #$4,($80A,A6)`.")
-    # 7. $256712's TWELVE five-longword entries and the terminator $256170
-    #    tests.  Walk it here rather than trusting the count.
-    a, n = 0x256712, 0
-    while u32(d, a) != 0xFFFFFFFF:
-        n, a = n + 1, a + 20
-        if n > 64:
-            raise SystemExit("$256712 has no $FFFFFFFF within 64 entries; "
-                             "$256170 cmpi.l is the only terminator.")
-    if n != 12 or a != 0x256802:
+    # 7. Each ship has TWELVE five-longword entries followed by the terminator
+    #    $256170 tests. Walk both lists rather than trusting either count.
+    for base, ship in ((0x256662, "Type-A"), (0x256986, "Type-B")):
+        a, n = base + 0xB0, 0
+        while u32(d, a) != 0xFFFFFFFF:
+            n, a = n + 1, a + 20
+            if n > 64:
+                raise SystemExit(
+                    f"{ship} laser-bomb list at ${base + 0xB0:06X} has no "
+                    f"$FFFFFFFF within 64 entries; $256170 is the terminator.")
+        if n != 12 or a != base + 0x1A0:
+            raise SystemExit(
+                f"{ship} laser-bomb list walks {n} entries and terminates at "
+                f"${a:06X}; it must be 12 entries ending at "
+                f"${base + 0x1A0:06X}.")
+    # 8. The six Type-B pointer writes and alternate cue are encoded directly
+    #    by `$256086..$2560BA`. Validate both immediate and destination offset.
+    alt_writes = (
+        (0x256086, 0x256986, 0x001E),
+        (0x25608E, 0x256A36, 0x0028),
+        (0x256096, 0x2569B6, 0x002C),
+        (0x25609E, 0x25699E, 0x07FE),
+        (0x2560A6, 0x256992, 0x082E),
+        (0x2560AE, 0x2569AA, 0x085E),
+    )
+    for at, ptr, dest in alt_writes:
+        if (u16(d, at) != 0x2D7C or u32(d, at + 2) != ptr
+                or u16(d, at + 6) != dest):
+            raise SystemExit(
+                f"${at:06X} must be `move.l #${ptr:06X},(${dest:X},A6)`; "
+                f"it reads {d[at:at + 8].hex()}.")
+    if u16(d, 0x2560B6) != 0x41F9 or u32(d, 0x2560B8) != 0x0028C542:
         raise SystemExit(
-            f"$256712 walks {n} entries and terminates at ${a:06X}; it must "
-            f"be 12 and $256802.")
-    # 8. THE FAR END.  The last entry's fifth long names an eight-pointer
-    #    table, and that table's end is the window's end -- pinned by $256986,
-    #    which is `$256086 move.l #$256986,($1E,A6)`, the bit-1 twin.
-    last = u32(d, 0x256712 + 11 * 20 + 16)
-    if last + 32 != 0x256986:
-        raise SystemExit(
-            f"the last $256712 entry names ${last:06X}, whose eight pointers "
-            f"end at ${last + 32:06X}; the window's far end must be $256986.")
-    if u32(d, 0x256088) != 0x00256986:
-        raise SystemExit(
-            f"$256086 now writes ${u32(d, 0x256088):08X}; $256986 is what pins "
-            f"the $256662 window's far end.")
+            f"$2560B6 must load the Type-B cue $28C542; it reads "
+            f"{d[0x2560B6:0x2560BC].hex()}.")
+
+    # 9. The last entry in each ship's list names an eight-pointer table whose
+    #    end is that ship block's exact far end.
+    for base, ship in ((0x256662, "Type-A"), (0x256986, "Type-B")):
+        last = u32(d, base + 0xB0 + 11 * 20 + 16)
+        if last + 32 != base + 0x324:
+            raise SystemExit(
+                f"the last {ship} laser-bomb entry names ${last:06X}, whose "
+                f"eight pointers end at ${last + 32:06X}; expected "
+                f"${base + 0x324:06X}.")
     declared = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x256662]
-    if not declared or 0x256662 + declared[0][1] != 0x256986:
+    if not declared or 0x256662 + declared[0][1] != 0x256CAA:
         raise SystemExit(
             f"the $256662 window is {declared} and must end exactly at "
-            f"$256986.")
-    # 9. `$28A030` has THREE entries because `$28A03C` is CODE, and $243174's
+            f"$256CAA, where the record install begins.")
+    # 10. `$28A030` has THREE entries because `$28A03C` is CODE, and $243174's
     #    bytes are 0/1/2 -- the two halves of one claim.
     if u32(d, 0x28A03C) != 0x48E7FFFE:
         raise SystemExit(
@@ -9762,13 +9794,10 @@ def build(d: bytes) -> dict:
                          for i in range(QUAD_ENTRIES)]
 
     def anim(tbl: int, idx: int) -> list[list[int]]:
-        # LITERALLY as the ROM addresses it: `move.w ($58,A6),D0 / add.w D0,D0 /
-        # movea.l (A0,D0.w),A0`.  Note the consequence, which is why only index
-        # 0 is exported: with ($58,A6) = 1 the longword read is at tbl+2 and
-        # lands MIDWAY through the first pointer.  The two pointers here are 4
-        # bytes apart, so the ship selector must be 0 or 2, not 0 or 1 -- and
-        # ($58,A6) was MEASURED to be 0 for TYPE-A over the whole corpus.
-        # TYPE-B was never exercised, so the port throws rather than guess.
+        # LITERALLY as the image lookup addresses $25533A: `move.w ($58,A6),D0 /
+        # add.w D0,D0 / movea.l (A0,D0.w),A0`.  A selector of 1 reads midway
+        # through the first pointer.  The two valid pointers are four bytes apart,
+        # so the cartridge selectors are 0 and 2.
         ptr = u32(d, tbl + idx * 2)
         return [[u16(d, ptr + t), u16(d, ptr + t + 2)]
                 for t in range(TILT_MIN, TILT_MAX + 1, TILT_STEP)]
@@ -9822,13 +9851,18 @@ def build(d: bytes) -> dict:
         # animation table.  It is emitted TWICE for one release -- under the old
         # `b` so an unregenerated rip/ still loads, and under `hitX`, which is
         # what src/vectors.js reads -- and the verifier below asserts they are
-        # identical.  MEASURED, all 17 entries (+X/-X): (0000,0080) at tilt -$20,
+        # identical.  $249E68 clears D1 before indexing this pointer table, so
+        # both authentic ship selectors deliberately use the selector-zero row.
+        # MEASURED, all 17 entries (+X/-X): (0000,0080) at tilt -$20,
         # (0080,0080) at 0, (0080,0000) at +$20; build A's twin $1549AE holds
         # $00C0 where this holds $0080, which is the Black Label 2/3 hitbox.
         "anim": {"tiltMin": TILT_MIN, "tiltStep": TILT_STEP,
-                 "a": {"rom": f"${ANIM_A:06X}", "shipSel0": anim(ANIM_A, 0)},
+                 "a": {"rom": f"${ANIM_A:06X}",
+                       "shipSel0": anim(ANIM_A, 0),
+                       "shipSel2": anim(ANIM_A, 2)},
                  "b": {"rom": f"${ANIM_B:06X}", "shipSel0": anim(ANIM_B, 0)},
-                 "hitX": {"rom": f"${ANIM_B:06X}", "reads": "$2459E4/$2459E8",
+                 "hitX": {"rom": f"${ANIM_B:06X}",
+                          "reads": "$249E68/$249E72/$2459E4/$2459E8",
                           "shipSel0": anim(ANIM_B, 0)}},
         # WAVE 12 -- the OPTION templates, walked the way $24C0D2 walks them.
         "option": {"templateTable": f"${OPT_TEMPLATES:06X}",
@@ -9899,9 +9933,14 @@ def verify(t: dict) -> list[str]:
     for k, (a, n) in GOV_TABLES.items():
         if len(t["gov"][k]["words"]) != n:
             bad.append(f"gov table {k} is not {n} words")
-    for k in ("a", "b", "hitX"):
+    expected_tilts = (TILT_MAX - TILT_MIN) // TILT_STEP + 1
+    for selector in ("shipSel0", "shipSel2"):
+        n = len(t["anim"]["a"][selector])
+        if n != expected_tilts:
+            bad.append(f"anim a {selector}: {n} tilt entries, expected 17")
+    for k in ("b", "hitX"):
         n = len(t["anim"][k]["shipSel0"])
-        if n != (TILT_MAX - TILT_MIN) // TILT_STEP + 1:
+        if n != expected_tilts:
             bad.append(f"anim {k}: {n} tilt entries, expected 17")
     if t["anim"]["hitX"]["shipSel0"] != t["anim"]["b"]["shipSel0"]:
         bad.append("anim.hitX and the legacy anim.b disagree -- they are the "

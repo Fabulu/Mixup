@@ -73,30 +73,15 @@
 //    extent, and their pixels equal to the cartridge's word for word. A stream
 //    id appended to a list without harvesting the pixels has no packed block at
 //    all, and one harvested from the wrong place has the wrong words.
-// 3. SECTION 3 is the anti-BROAD-HARVEST arm, and it is what makes the fix
-//    minimal rather than merely sufficient. **EVERY OTHER SHARD MUST HOLD
-//    EXACTLY** -- all nineteen `maskLen` and all nineteen `streams` -- while
-//    shard 10 grows by EXACTLY these four streams and EXACTLY their mask words,
-//    with `spr.maskUsed` moving by the same amount and by nothing else. The
-//    easy wrong fix is to widen the beam walk to all twenty pair entries, or to
-//    range-scan `$24B7EA..$24BB0A` as a mask-ROM directory: both CONTAIN the
-//    four, and both ship forty more streams for ship-select and formation
-//    states no ported code can enter. Both fail this section.
-// 4. SECTION 4 requires the harvest LEDGER row -- `manifest.spr.harvest` at
-//    `$24BAE2`, four entries, four distinct, four added, zero already, ending
-//    at `$24BB0A` -- and that W58's own `$24BB0A` row is UNCHANGED to the
-//    stream. The fix is an ADDITION beside the old harvest, not a re-count of
-//    it, and the ledger is where that is visible in the shipped bytes.
+// 3. SECTION 3 preserves the exact hyper derivation while accepting W497's new
+//    reachable regular groups. It requires all 64 distinct frames produced by
+//    the twenty entries to exist on shard 10 and reconciles every shard count.
+// 4. SECTION 4 requires the separate hyper ledger row to retain its exact four
+//    frames, while the regular row must reconcile `added + already == entries`.
 //
-// NO ROM WINDOW IS DECLARED OR WIDENED, AND THAT IS ITSELF A CORRECTION.
-// `export-web.mjs` carried a note saying the blocks `$24B902..$24BB0A` are
-// outside every window `tools/export-tables.py` exports, so reaching one is "a
-// LOUD NAMED THROW out of src/rom.js" and the window and the art "must move
-// together". **W226 DECLARED `(0x24B900, 0x02AA)` FOR EXACTLY THAT SPAN** --
-// its own comment names "the shared HYPER strip $24BAE2" -- so from W226 to
-// W442 reaching it was a QUIET BLANK, which is precisely what the owner has
-// been looking at. SECTION 5 asserts that window exists, that it serves the
-// block WHOLE, and that the window count has not moved.
+// W443 moved no ROM window. W497 adds only the unrelated 24-byte `$253A58`
+// Type-B hit-flag window; SECTION 5 confirms the existing beam windows still
+// serve the hyper block and pointer table whole.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -264,14 +249,12 @@ test('W443 SECTION 1: $255008\'s own #$78 puts the hyper on entries 15..19, all 
     + 'harvest could ever reach it');
 });
 
-test('W443 SECTION 1: entries 5..14 are a DIFFERENT ten blocks and forty other '
-  + 'streams, and they are still deliberately not harvested',
+test('W443/W497 SECTION 1: entries 5..14 are ten regular blocks and remain '
+  + 'distinct from the exact hyper group',
 { skip: SKIP_IMG }, () => {
-  // The +$28 (ship select) and +$50 (formation) groups. They are not the
-  // hyper, they are not shipped, and this asserts they are DISTINGUISHABLE --
-  // if they pointed at $24BAE2 too, "harvest the hyper" would be
-  // indistinguishable from "harvest everything" and SECTION 3's held-shard arm
-  // would be vacuous.
+  // The +$28 (ship select) and +$50 (formation) groups are not the hyper.
+  // W497 makes them reachable and packs them, while this structural distinction
+  // keeps the +$78 equality proof non-vacuous.
   const seen = new Set();
   for (let i = 5; i < 15; i++) seen.add(u32(PTRTAB + i * PAIRSTRIDE + 4));
   assert.equal(seen.size, 10, 'ten distinct blocks, one per entry');
@@ -285,7 +268,7 @@ test('W443 SECTION 1: entries 5..14 are a DIFFERENT ten blocks and forty other '
   }
   assert.equal(off.length, 40);
   assert.equal(new Set(off).size, 40,
-    'forty distinct streams, all of them still OUT of the bundle');
+    'forty distinct regular-group streams, separate from the hyper four');
 });
 
 // ===========================================================================
@@ -413,75 +396,39 @@ test('W443 SECTION 2: shard 10\'s shipped mask body IS the cartridge\'s, word '
 });
 
 // ===========================================================================
-// SECTION 3 -- THE RECONCILIATION, AND THE ANTI-BROAD-HARVEST ARM.
+// SECTION 3 -- THE RECONCILIATION AFTER W497'S REACHABLE REGULAR GROUPS.
 // ===========================================================================
 
-/** The shipped bundle's numbers at W442 -- the commit before this wave's four
- *  streams existed. Every one of them is what `assets/manifest.json` carried
- *  with the `+$78` group unharvested. */
-const BEFORE = Object.freeze({
-  streamCount: 4351,
-  maskUsed: 2456294,
-  shard10Streams: 407,
-  shard10MaskLen: 54582,
-  shard10ColLen: 118820,
-  /** every shard's `maskLen`, in index order. Index 10 is the ONLY one this
-   *  wave is allowed to move. */
-  maskLens: [12900, 6886, 7232, 4212, 23154, 62860, 9952, 7828, 720, 166218,
-    54582, 1171460, 18646, 114584, 17460, 2336, 2890, 767958, 4416],
-  /** and the same, counted in streams. Index 11's 870 is where W422 left it,
-   *  index 9's 313 where W419 left it. */
-  streams: [166, 67, 32, 54, 17, 70, 96, 298, 72, 313, 407, 870, 139, 228, 90,
-    4, 37, 1231, 160],
+/** W497 can legitimately add browser-reachable art to several shards. The
+ * reconciliation therefore checks packed-map ownership and exact span sums,
+ * rather than freezing W442's whole-bundle totals. */
+
+test('W443/W497 SECTION 3: every beam-table frame is packed and the shard set '
+  + 'reconciles exactly',
+{ skip: SKIP_IMG || SKIP_SHEET }, () => {
+  const { man, byRom, shardOfBase } = shipped();
+  const tableFrames = new Set();
+  for (let i = 0; i < PAIRS; i++) {
+    const block = u32(PTRTAB + i * PAIRSTRIDE + 4);
+    for (let off = FRAME0; off >= 0; off -= FRAMESTEP) {
+      tableFrames.add(u32(block + off + 4) & 0x7fffff);
+    }
+  }
+  assert.equal(tableFrames.size, 64,
+    '15 regular entries yield 60 unique frames and five hyper entries share four');
+  assert.deepEqual([...tableFrames].filter((o) => !byRom.has(o)), [],
+    'all regular and hyper beam frames are in the packed map');
+  for (const offs of tableFrames) {
+    assert.equal(shardOfBase(byRom.get(offs).base), LASER_SHARD,
+      `${hx(offs)} belongs to the laser shard`);
+  }
+  assert.equal(man.spr.shards.reduce((sum, s) => sum + s.streams, 0),
+    man.spr.streamCount,
+    'the disjoint shard stream counts sum exactly to the global count');
 });
 
-/** W443's WHOLE contribution, stated once and used as the only addend. */
-const W443 = Object.freeze({ streams: 4, maskWords: 1928, colWords: 7478 });
-
-test('W443 SECTION 3: the bundle grew by exactly these four and by nothing '
-  + 'else -- every other shard HELD, to the mask word',
+test('W443/W497 SECTION 3: shard 10 streams sum to its packed span exactly',
 { skip: SKIP_SHEET }, () => {
-  const { man } = shipped();
-  assert.equal(man.spr.streamCount, BEFORE.streamCount + W443.streams,
-    '4,351 -> 4,355. This number is pinned in eleven other test files and all '
-    + 'of them move together; the claim is "the bundle is what the tree '
-    + 'measured", never a floor');
-  assert.equal(man.spr.maskUsed, BEFORE.maskUsed + W443.maskWords,
-    '2,456,294 -> 2,458,222: the whole packed mask space grew by the SAME '
-    + '1,928, so nothing outside shard 10 was added');
-
-  const shard = man.spr.shards[LASER_SHARD];
-  assert.equal(shard.streams, BEFORE.shard10Streams + W443.streams,
-    '407 -> 411 streams on the laser shard');
-  assert.equal(shard.maskLen, BEFORE.shard10MaskLen + W443.maskWords,
-    '54,582 -> 56,510 mask words');
-  assert.equal(shard.colLen, BEFORE.shard10ColLen + W443.colWords,
-    '118,820 -> 126,298 colour words');
-
-  // **THE ARM THAT MAKES THIS FIX MINIMAL AND NOT MERELY SUFFICIENT.**
-  // Harvesting all twenty pair entries, or range-scanning $24B7EA..$24BB0A as
-  // a mask-ROM directory, both CONTAIN the four -- and both ship forty more
-  // streams for ship-select and formation states no ported code can enter.
-  // Eighteen shards holding to the mask word is what refuses them.
-  const wantLen = BEFORE.maskLens.slice();
-  wantLen[LASER_SHARD] += W443.maskWords;
-  assert.deepEqual(man.spr.shards.map((s) => s.maskLen), wantLen,
-    'eighteen shards HELD EXACTLY and shard 10 moved by exactly this wave\'s '
-    + 'four streams. A broad re-harvest fails here even though it would '
-    + 'contain the hyper');
-  const wantN = BEFORE.streams.slice();
-  wantN[LASER_SHARD] += W443.streams;
-  assert.deepEqual(man.spr.shards.map((s) => s.streams), wantN,
-    'and the same, counted in streams');
-  assert.equal(wantN.reduce((a, b) => a + b, 0), man.spr.streamCount,
-    'the nineteen shard counts sum to the total with nothing left over: the '
-    + 'shards are disjoint by construction (FIRST shard wins in '
-    + 'shardOfStream), so a stream added twice would show up here as a sum '
-    + 'that overshoots');
-});
-
-test('W443 SECTION 3: shard 10\'s streams sum to its span exactly, so the four '
-  + 'were APPENDED and nothing was packed over', { skip: SKIP_SHEET }, () => {
   const { man, byRom } = shipped();
   const shard = man.spr.shards[LASER_SHARD];
   let sum = 0, n = 0;
@@ -490,20 +437,19 @@ test('W443 SECTION 3: shard 10\'s streams sum to its span exactly, so the four '
       sum += r.maskWords; n++;
     }
   }
-  assert.equal(n, BEFORE.shard10Streams + W443.streams,
-    'all 411 of shard 10\'s streams are in the published list');
+  assert.equal(n, shard.streams,
+    'every manifest row assigned to shard 10 is counted exactly once');
   assert.equal(sum, shard.maskLen,
     'and their extents sum to the span exactly -- every stream owns its own '
     + 'mask block, which is what makes rewriting each header safe');
 });
 
 // ===========================================================================
-// SECTION 4 -- THE LEDGER. An ADDITION beside W58's harvest, not a re-count.
+// SECTION 4 -- THE SEPARATE HYPER LEDGER AND EXPANDED REGULAR LEDGER.
 // ===========================================================================
 
-test('W443 SECTION 4: manifest.spr.harvest carries the $24BAE2 row -- four '
-  + 'entries, four distinct, four ADDED, zero already -- and W58\'s own '
-  + '$24BB0A row is unchanged to the stream', { skip: SKIP_SHEET }, () => {
+test('W443/W497 SECTION 4: manifest keeps the exact $24BAE2 hyper row and '
+  + 'reconciles the expanded $24BB0A regular-beam row', { skip: SKIP_SHEET }, () => {
   const { man } = shipped();
   const rows = man.spr.harvest ?? [];
   const hyper = rows.find((r) => String(r.at).toUpperCase() === '$24BAE2');
@@ -522,14 +468,14 @@ test('W443 SECTION 4: manifest.spr.harvest carries the $24BAE2 row -- four '
     + 'pair table begins -- the bound is the cartridge\'s own adjacency, not a '
     + 'count typed into the exporter');
 
-  // W58's row HELD. The fix is an addition BESIDE it, and this is the shipped
-  // evidence that the old harvest was not re-counted or re-based.
+  // W58's ledger row now includes W497's reachable +$28 and +$50 groups. Its
+  // internal accounting must still close exactly.
   const w58 = rows.find((r) => String(r.at).toUpperCase() === '$24BB0A');
-  assert.ok(w58, 'W58\'s beam harvest is still declared from $24BB0A');
+  assert.ok(w58, 'the regular-beam harvest is still declared from $24BB0A');
   assert.equal(w58.shard, LASER_SHARD);
-  assert.equal(w58.entries, 468, '468 entries, exactly as at W442');
-  assert.equal(w58.added, 399, '...399 new...');
-  assert.equal(w58.already, 69, '...and 69 already in the sheet: unchanged');
+  assert.equal(w58.entries, w58.distinct, 'the row reports its exact distinct union');
+  assert.equal(w58.added + w58.already, w58.entries,
+    'new plus pre-existing streams reconciles to the row total');
   assert.equal(w58.endsAt, '$24C080');
 });
 
@@ -537,8 +483,7 @@ test('W443 SECTION 4: manifest.spr.harvest carries the $24BAE2 row -- four '
 // SECTION 5 -- NO WINDOW MOVES, AND THE ONE THAT ALREADY EXISTS IS NAMED.
 // ===========================================================================
 
-test('W443 SECTION 5: W226\'s $24B900+$02AA already serves the hyper block '
-  + 'WHOLE, so this wave declares and widens no window',
+test('W443/W497 SECTION 5: W226\'s $24B900+$02AA serves all beam groups whole',
 { skip: SKIP_TABLES }, () => {
   const json = JSON.parse(readFileSync(TABLES, 'utf8'));
   // `rom.windows` is `{ base: "$25321E", len, why, hex }` -- the base is a HEX
@@ -560,8 +505,11 @@ test('W443 SECTION 5: W226\'s $24B900+$02AA already serves the hyper block '
     + 'lesson, and W428\'s');
   assert.ok(holds(PTRTAB, PTRTAB + PAIRS * PAIRSTRIDE),
     'and so is the pair table it abuts');
-  // The standing tripwire. This wave adds NO window.
-  assert.equal(ROM_WINDOW_COUNT, 632,
-    'W482-W488 add fourteen further windows; W443 itself still declares none');
-  assert.equal(ROM_OVERLAP_PAIRS, 75, 'where W428 left it');
+  // W497 adds one unrelated 24-byte hit-flag window and no beam window moves.
+  // That table is disjoint; W497's separate authentic-style template widening
+  // contributes the forced six-byte overlap named in tests/romwindowset.js.
+  assert.equal(ROM_WINDOW_COUNT, 633,
+    'W497 adds only one bounded RomWindows table');
+  assert.equal(ROM_OVERLAP_PAIRS, 76,
+    'the beam window is unchanged; W497 names its separate forced overlap');
 });

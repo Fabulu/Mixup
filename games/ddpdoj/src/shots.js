@@ -49,7 +49,7 @@
 import { P } from './machine.js';
 import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
-import { enqueueShotSprite } from './spritequeue.js';
+import { enqueueShotSprite, enqueueZoomedRequest } from './spritequeue.js';
 import { SHOT } from './weapons.js';
 import { drawWord } from './rng.js';
 import { spawnSpark } from './spark.js';
@@ -84,6 +84,7 @@ export const SPAWN = {
   secondaryOffset: 0x2a0 + 0x150,  // $249C60 lea ($150,A0),A4   -> slot 21
   ptrPrimary: 0x2554ea,            // $249C3E
   ptrSecondary: 0x255502,          // $249C88
+  ptrTypeB: 0x25551a,              // $249D6C
   gate308c: 0x81308c,              // $249C64 tst.w $81308C  (a FROZEN global)
   fill: 0x24a222,
 };
@@ -165,7 +166,8 @@ function subqBorrow(v, n) { return { v: u16(v - n), borrow: u16(v) < n }; }
  * column to diverge, at the first spawn, and an objhunt on $81042A named
  * $24A32E/$24A334 as its only per-frame writers.
  *
- * @param tail  `true` for $24A2D6, the SECONDARY filler with the extra block.
+ * @param tail  `true` for $24A2D6 or $24A33C, the fillers that also cycle
+ *              the player's animation index at +$44.
  */
 function fillShotRecord(ram, rom, rec, tmpl, prec, tail = false) {
   let a = tmpl;
@@ -205,6 +207,18 @@ function fillShotRecord(ram, rom, rec, tmpl, prec, tail = false) {
   }
 }
 
+function failPlayerShotAllocation(ram, prec) {
+  if (u16(ram.u16(prec + PS.power)) === 8) return;
+  ram.setU8(prec + 0x2b, 0);
+  ram.bclr8(prec + P.state, 3);
+}
+
+function postPlayerShotSound(ram, prec, ctx, normalRequest, hyper) {
+  if (ram.u8(prec + PS.soundGate) !== 0) return;
+  ram.setU8(prec + PS.soundGate, 2);
+  ctx?.soundPost?.(hyper ? 0x28c3ee : normalRequest);
+}
+
 /**
  * $249BFC -- the ship-0 shot spawn, reached from `$249BE2`'s two-entry jump
  * table at the end of the player's cadence machine.
@@ -223,18 +237,35 @@ export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
   let d7 = hyper ? 6 : rom.u16(countPtr);                           // $249C24
 
   const form = u16(ram.u16(prec + PS.formation));                   // $249C28
+  if (form !== 2 && form !== 4 && form !== 6) {
+    unreached(0x249c2c, `style selector ${form} is outside the cartridge set {2, 4, 6}`);
+  }
   let d0 = u16((form - 2) << 2);                                    // $249C2C
   if (hyper) d0 = u16(d0 + 4);                                      // $249C3A
   const d5 = d0;                                                    // $249C3C
-
-  if (form === 4) {                                                 // $249C52
-    unreached(0x249cc8, `the ($5a,A6) == 4 formation branch ($249CC8 `
-      + `lea ($1b0,A0),A0 / addq.w #2,D7 -- ONE scan of five slots at offset `
-      + `$1B0 instead of the two-table shape). MEASURED: ($5a,A6) = 2 on every `
-      + `one of the 2,600 frames of stage1-open; formation 4 was never reached`);
-  }
   const primary = rom.u32(rom.u32(SPAWN.ptrPrimary + d0)            // $249C3E
     + u16(ram.u16(prec + PS.power)) * 2);                           // $249C48
+
+  // $249CC8: style 4 uses one scan beginning at slot 9 and the tail filler.
+  if (form === 4) {
+    let a0 = base + 0x1b0;
+    d7 = u16(d7 + 2);
+    if (ram.u16(SPAWN.gate308c) === 0 && d7 > 4) d7 = 4;
+    let found = false;
+    for (let i = 0; i <= d7; i++) {
+      if ((ram.u16(a0) & 0x8000) === 0) { found = true; break; }
+      a0 += SHOT.stride;
+    }
+    if (!found) {
+      failPlayerShotAllocation(ram, prec);                          // $249CEA..$249CFC
+      ctx?.shotSpawn?.('single-full', a0);
+      return;
+    }
+    fillShotRecord(ram, rom, a0, primary, prec, true);              // $249D00
+    ctx?.shotSpawn?.('single', a0);
+    postPlayerShotSound(ram, prec, ctx, 0x28c3ba, hyper);
+    return;
+  }
 
   let a0 = base + SPAWN.primaryOffset;                              // $249C5C
   let a4 = base + SPAWN.secondaryOffset;                            // $249C60
@@ -268,21 +299,87 @@ export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
     // $249CA8 -- THE FEEDBACK wave 5 named: no free secondary slot clears the
     // cadence counter and bit 3, so the shot table's occupancy is an INPUT to
     // the player record and not merely an effect of it.
-    if (u16(ram.u16(prec + PS.power)) !== 8) {                      // $249CA8
-      ram.setU8(prec + 0x2b, 0);                                    // $249CB0
-      ram.bclr8(prec + P.state, 3);                                 // $249CB4
-    }
+    failPlayerShotAllocation(ram, prec);                            // $249CA8..$249CB4
     ctx?.shotSpawn?.('secondary-full', a4);
     if (found < 0) return;                     // $249CB8 tst.w D7 / bmi $249E4E
   }
 
-  // $249D04..$249D26 -- the fire SOUND on a two-frame gate.  The request
-  // ($28C3BA / $28C3EE -> $28C02A) is UNPORTED: audio is outside the slice
-  // (PLAN 6.2).  The GATE BYTE is ported, because it is game state the
-  // comparison can see and the sound is not.
-  if (ram.u8(prec + PS.soundGate) !== 0) return;                    // $249D04
-  ram.setU8(prec + PS.soundGate, 2);                                // $249D0C
-  ctx.soundPost?.(hyper ? 0x28c3ee : 0x28c3ba);                    // $249D18..$249D26
+  postPlayerShotSound(ram, prec, ctx, 0x28c3ba, hyper);             // $249D04..$249D26
+}
+
+/** `$249D2C..$249E4C`: the ship-selector-2 player shot spawn. */
+export function spawnShotTypeB(ram, rom, prec, ctx, { player = 0 } = {}) {
+  if (player !== 0) {
+    unreached(0x249d3e, `the Type-B P2 shot spawn ($249D3E lea $810C32,A0 / `
+      + `movea.l $8127EC,A2). P2 is ported but no scenario has a second player`);
+  }
+  const base = SHOT.p1Table;
+  const hyper = ram.btst8(prec + P.flags1, 0) === 1;                // $249D4C
+  const countPtr = ram.u32(SPAWN.countPtrP1);
+  let d7 = hyper ? 6 : rom.u16(countPtr);                           // $249D4A..$249D54
+  const form = u16(ram.u16(prec + PS.formation));
+  if (form !== 2 && form !== 4 && form !== 6) {
+    unreached(0x249d5c, `style selector ${form} is outside the cartridge set {2, 4, 6}`);
+  }
+  let d0 = u16((form - 2) << 2);                                    // $249D58..$249D60
+  if (hyper) d0 = u16(d0 + 4);                                      // $249D62..$249D6A
+  const template = rom.u32(rom.u32(SPAWN.ptrTypeB + d0)
+    + u16(ram.u16(prec + PS.power)) * 2);                           // $249D6C..$249D7C
+
+  if (form === 4) {
+    let rec = base + 0x1b0;                                         // $249DF4
+    d7 = u16(d7 + 2);
+    if (ram.u16(SPAWN.gate308c) === 0 && d7 > 4) d7 = 4;
+    let found = false;
+    for (let i = 0; i <= d7; i++) {
+      if ((ram.u16(rec) & 0x8000) === 0) { found = true; break; }
+      rec += SHOT.stride;
+    }
+    if (!found) {
+      failPlayerShotAllocation(ram, prec);                          // $249E16..$249E26
+      ctx?.shotSpawn?.('type-b-single-full', rec);
+      return;
+    }
+    fillShotRecord(ram, rom, rec, template, prec, true);            // $249E28
+    ctx?.shotSpawn?.('type-b-single', rec);
+    postPlayerShotSound(ram, prec, ctx, 0x28c3d4, hyper);
+    return;
+  }
+
+  let rec = base + SPAWN.primaryOffset;                             // $249D8A
+  d7 = u16(d7 * 2 + 1);                                             // $249D8E/$249D90
+  if (ram.u16(SPAWN.gate308c) === 0 && d7 > 7) d7 = 7;
+  let first = null;
+  for (;;) {
+    if ((ram.u16(rec) & 0x8000) === 0) { first = rec; break; }
+    if (d7 === 0) break;
+    d7 = u16(d7 - 1);                                               // $249DAA dbra
+    rec += SHOT.stride;
+  }
+  if (first === null) {
+    failPlayerShotAllocation(ram, prec);                            // $249DAE..$249DC0
+    ctx?.shotSpawn?.('type-b-pair-full', rec);
+    return;
+  }
+
+  rec = first + SHOT.stride;                                        // $249DC4..$249DC6
+  let second = null;
+  for (;;) {
+    if ((ram.u16(rec) & 0x8000) === 0) { second = rec; break; }
+    if (d7 === 0) break;
+    d7 = u16(d7 - 1);                                               // $249DCE dbra
+    rec += SHOT.stride;
+  }
+  if (second === null) {
+    failPlayerShotAllocation(ram, prec);                            // $249DD2..$249DE4
+    ctx?.shotSpawn?.('type-b-pair-full', rec);
+    return;
+  }
+
+  fillShotRecord(ram, rom, second, template, prec);                 // $249DE8
+  fillShotRecord(ram, rom, first, template, prec, true);            // $249DEE
+  ctx?.shotSpawn?.('type-b-pair', first, second);
+  postPlayerShotSound(ram, prec, ctx, 0x28c3d4, hyper);             // $249E2C..$249E4C
 }
 
 // ---------------------------------------------------------------- handlers
@@ -520,6 +617,167 @@ export function handler253EC6(ram, rom, rec, ctx, prec, d1) {
   return hitPath(ram, rom, rec, ctx, 0x253eca, prec);
 }
 
+/** `$253D0C..$253D50`, the moving tail shared by entries 1 and 9. */
+function typeBPlayerNormal(ram, rom, rec) {
+  ram.setU16(rec + S.posY,
+    u16(ram.u16(rec + S.posY) + ram.u16(rec + S.velY)));
+  if (ram.u16(rec + S.posY) >= 0x7800) { ram.setU16(rec, 0); return; }
+  ram.setU16(rec + S.posX,
+    u16(ram.u16(rec + S.posX) + ram.u16(rec + S.velX)));
+  if (u16(ram.u16(rec + S.posX) + 0x0800) >= 0x4800) {
+    ram.setU16(rec, 0);
+    return;
+  }
+  const anim = ram.u32(rec + S.animPtr);
+  ram.setU32(rec + S.dlWord23, rom.u32(anim + i16(ram.u16(rec + S.animIdx))));
+  const n = subqBorrow(ram.u16(rec + S.animIdx), 4);
+  ram.setU16(rec + S.animIdx, n.borrow ? 4 : n.v);
+  enqueueShotSprite(ram, rec);
+}
+
+/** `$253D82..$253D90`: power words 0,2,...,10 index the six cartridge
+ *  longwords exported through MoveTables from the bounded $253A58 window. */
+function typeBHitFlags(rec, ram, tables) {
+  return tables.typeBHitFlags(ram.u16(rec + S.power));
+}
+
+/** `$253D5C..$253D98`, including the shot-only `$23F42E` zoom enqueue. */
+function typeBPlayerLaterHit(ram, rom, rec, ctx) {
+  const n = subqBorrow(ram.u16(rec + S.animIdx), 4);
+  ram.setU16(rec + S.animIdx, n.v);
+  if (n.borrow) { ram.setU16(rec, 0); return; }
+  ram.setU16(rec + S.posY,
+    u16(ram.u16(rec + S.posY) + ram.u16(rec + S.velY)));
+  ram.setU16(rec + S.posX,
+    u16(ram.u16(rec + S.posX) + ram.u16(rec + S.velX)));
+  const anim = ram.u32(rec + S.animPtr);
+  ram.setU32(rec + S.dlWord23, rom.u32(anim + i16(ram.u16(rec + S.animIdx))));
+  enqueueZoomedRequest(ram, rec, typeBHitFlags(rec, ram, ctx.tables), 14);
+}
+
+/** `$253DAC..$253E30`, the first hit for Type-B player shots. */
+function typeBPlayerFirstHit(ram, rom, rec, ctx, prec) {
+  if (ram.u16(SPAWN.gate308c) !== 0) spawnSpark(ram, rom, ctx, rec, prec);
+  let vy = ram.u16(rec + S.velY);
+  let vx = ram.u16(rec + S.velX);
+  if (ram.btst8(rec + S.type, 0)
+      && (!ram.btst8(rec + 0x29, 2) || ram.u16(rec + S.power) === 0x0a)) {
+    ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + 0x0300));
+  }
+  vy = u16(vy + (drawWord(ram, rom) >> 1));
+  vx = u16(vx + (drawWord(ram, rom) >> 1));
+  ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + vy));
+  ram.setU16(rec + S.posX, u16(ram.u16(rec + S.posX) + vx));
+  ram.setU16(rec + S.velY, u16(i16(vy) >> 2));
+  ram.setU16(rec + S.velX, u16(i16(vx) >> 2));
+  ctx.soundPost?.(0x28c714);
+  let a0 = rom.u32(0x24e5ee + i16(ram.u16(rec + S.tableIdx)));
+  ram.setU32(rec + S.drawOff, rom.u32(a0)); a0 += 4;
+  ram.setU16(rec + S.dlWord4, rom.u16(a0)); a0 += 2;
+  ram.setU32(rec + S.animPtr, rom.u32(a0)); a0 += 4;
+  ram.setU32(rec + S.anim2, rom.u32(a0));
+  typeBPlayerLaterHit(ram, rom, rec, ctx);
+}
+
+function typeBPlayerHit(ram, rom, rec, ctx, prec) {
+  if (ram.bset8(rec + S.type, 1) === 0) {
+    typeBPlayerFirstHit(ram, rom, rec, ctx, prec);
+    return;
+  }
+  typeBPlayerLaterHit(ram, rom, rec, ctx);
+}
+
+/** `$253C98`, dispatch entry 1 for normal Type-B player shots. */
+export function handler253C98(ram, rom, rec, ctx, prec, d1) {
+  if (ram.bset8(rec + S.lowByte, 6) === 0) {
+    ram.setU8(rec + S.dlWord5, ram.u8(rec + S.dlWord5) ^ 0x40);
+    enqueueShotSprite(ram, rec);
+    return;
+  }
+  if (ram.bset8(rec + S.type, 0) === 0) {
+    ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + ram.u16(prec + P.velY)));
+    ram.setU16(rec + S.posX, u16(ram.u16(rec + S.posX) + ram.u16(prec + P.velX)));
+    ram.setU8(rec + S.dlWord5, ram.u8(rec + S.dlWord5) ^ 0x40);
+    enqueueShotSprite(ram, rec);
+    return;
+  }
+  ram.setU16(rec, u16(ram.u16(rec) | 0x0008));
+  if (d1 & 0x80) { typeBPlayerHit(ram, rom, rec, ctx, prec); return; }
+  let a0 = rom.u32(0x24e512 + i16(ram.u16(rec + S.tableIdx)));
+  ram.setU32(rec + S.drawOff, rom.u32(a0)); a0 += 4;
+  ram.setU16(rec + S.dlWord4, rom.u16(a0)); a0 += 2;
+  ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + rom.u16(a0)));
+  const v = ctx.tables.shotVector(ram.u8(rec + S.speedIdx), ram.u8(rec + S.angle));
+  ram.setU16(rec + S.velY, u16(v.dy));
+  ram.setU16(rec + S.velX, u16(v.dx));
+  ram.bclr8(rec + S.type, 0);
+  typeBPlayerNormal(ram, rom, rec);
+}
+
+/** `$253D52`, dispatch entry 9 for moving Type-B player shots. */
+export function handler253D52(ram, rom, rec, ctx, prec, d1) {
+  if ((d1 & 0x80) === 0) typeBPlayerNormal(ram, rom, rec);
+  else typeBPlayerHit(ram, rom, rec, ctx, prec);
+}
+
+/** `$253FB8..$253FE6`, the moving tail shared by entries 3 and 11. */
+function typeBOptionNormal(ram, rec) {
+  ram.bset8(rec + S.type, 0);
+  ram.setU16(rec + S.posY,
+    u16(ram.u16(rec + S.posY) + ram.u16(rec + S.velY)));
+  if (ram.u16(rec + S.posY) >= 0x7400) { ram.setU16(rec, 0); return; }
+  ram.setU16(rec + S.posX,
+    u16(ram.u16(rec + S.posX) + ram.u16(rec + S.velX)));
+  if (u16(ram.u16(rec + S.posX) + 0x0600) >= 0x4400) {
+    ram.setU16(rec, 0);
+    return;
+  }
+  enqueueShotSprite(ram, rec);
+}
+
+const TYPE_B_OPTION_HIT = Object.freeze({
+  table: 0x250dea,
+  recoil: false,
+  scatterShift: 2,
+  scatterIntoPos: true,
+  moves: false,
+});
+
+function typeBOptionHit(ram, rom, rec, ctx, prec) {
+  if (ram.bset8(rec + S.type, 1) === 0) {
+    firstHit(ram, rom, rec, ctx, TYPE_B_OPTION_HIT, prec);
+    return;
+  }
+  laterHit(ram, rom, rec, TYPE_B_OPTION_HIT);
+}
+
+/** `$253F56`, dispatch entry 3 for normal Type-B option shots. */
+export function handler253F56(ram, rom, rec, ctx, prec, d1) {
+  if (ram.bset8(rec + S.lowByte, 6) === 0) {
+    enqueueShotSprite(ram, rec);
+    return;
+  }
+  ram.bset8(rec + S.type, 0);
+  ram.setU16(rec, u16(ram.u16(rec) | 0x0008));
+  if (d1 & 0x80) { typeBOptionHit(ram, rom, rec, ctx, prec); return; }
+  let a0 = rom.u32(0x25092c + i16(ram.u16(rec + S.tableIdx)));
+  ram.setU32(rec + S.drawOff, rom.u32(a0)); a0 += 4;
+  ram.setU16(rec + S.dlWord4, rom.u16(a0));
+  const v = ctx.tables.shotVector(ram.u8(rec + S.speedIdx), ram.u8(rec + S.angle));
+  ram.setU16(rec + S.velY, u16(v.dy));
+  ram.setU16(rec + S.velX, u16(v.dx));
+  const anim = ram.u32(rec + S.animPtr);
+  ram.setU32(rec + S.dlWord23, rom.u32(anim));
+  ram.bclr8(rec + S.type, 0);
+  typeBOptionNormal(ram, rec);
+}
+
+/** `$253FE8`, dispatch entry 11 for moving Type-B option shots. */
+export function handler253FE8(ram, rom, rec, ctx, prec, d1) {
+  if ((d1 & 0x80) === 0) typeBOptionNormal(ram, rec);
+  else typeBOptionHit(ram, rom, rec, ctx, prec);
+}
+
 const HYPER_SHOT = Object.freeze({
   p1: Object.freeze({ normal: 0x24ec72, hit: 0x24ed4e }),
   p2: Object.freeze({ normal: 0x24f3d2, hit: 0x24f4ae }),
@@ -672,8 +930,12 @@ export function shotHandlers() {
   return new Map([
     [0x253b1e, handler253B1E],
     [0x253bda, handler253BDA],
+    [0x253c98, handler253C98],
+    [0x253d52, handler253D52],
     [0x253e34, handler253E34],
     [0x253ec6, handler253EC6],
+    [0x253f56, handler253F56],
+    [0x253fe8, handler253FE8],
     [0x254078, handler254078],
     [0x254136, handler254136],
     [0x2541bc, handler2541BC],

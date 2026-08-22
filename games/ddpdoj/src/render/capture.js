@@ -356,7 +356,8 @@ export class Capture {
    * offsets `capture.json` accepted -- and exists so a test can show that the
    * matcher's answer is a SUPERSET rather than a different one.
    */
-  splice(st, i, py, px, { records = 'attached', tilt = null, ship = null } = {}) {
+  splice(st, i, py, px,
+      { records = 'attached', tilt = null, ship = null, shipSel = 0 } = {}) {
     if (!this.spliceable) return 0;
     const recs = records === 'packer'
       ? (this.frames[i].player ?? []).map(([r, dx, dy]) => [r, 'rigid', dx, dy])
@@ -384,7 +385,8 @@ export class Capture {
       st.spritebuffer[b + 1] = (st.spritebuffer[b + 1] & 0xfc00) | ((a.y + dy) & 0x03ff);
       if (idx === shipIdx && tilt !== null) {
         const k = (tilt - ship.tiltMin) / ship.tiltStep;
-        const pair = Number.isInteger(k) ? ship.pairs[k] : undefined;
+        const pairs = ship.pairsBySelector?.[shipSel] ?? ship.pairs;
+        const pair = Number.isInteger(k) ? pairs?.[k] : undefined;
         if (pair) {
           // Word 2's high byte is flip + colour + pri and is NOT touched: the
           // pair carries only the offs bits, which the packed space says are

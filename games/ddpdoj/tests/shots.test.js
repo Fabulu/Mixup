@@ -17,8 +17,9 @@ import { SPRQ, enqueueShotSprite } from '../src/spritequeue.js';
 // part of it the port models -- src/displaylist.js.
 import { resetSpriteQueueCounters } from '../src/displaylist.js';
 import { RNG, draw } from '../src/rng.js';
-import { S, PS, PLAYER_SLOTS, shotHandlers, handler253BDA } from '../src/shots.js';
-import { SHOT, SHOT_HANDLERS } from '../src/weapons.js';
+import { S, PS, PLAYER_SLOTS, shotHandlers, handler253BDA,
+  handler253D52, handler253FE8 } from '../src/shots.js';
+import { SHOT, SHOT_HANDLERS, runShotDriver } from '../src/weapons.js';
 import { TYPE5 } from '../src/type5.js';
 import { RAWDUMP_SPEC, EXEC_SPEC, REPORTED_COLUMNS, CLAIMED } from '../src/state.js';
 
@@ -123,21 +124,192 @@ test('the ten compared slots are the two bases $249C5C/$249C60 name', () => {
   assert.equal(a2, 0x810962); assert.equal(l2, 5 * SHOT.stride);
 });
 
-test('ordinary and hyper shot base/continuation entries are registered', () => {
+test('all sixteen cartridge shot dispatch entries are registered', () => {
   const h = shotHandlers();
-  assert.deepEqual([...h.keys()].sort(),
-    [0x253b1e, 0x253bda, 0x253e34, 0x253ec6,
-      0x254078, 0x254136, 0x2541bc, 0x25427a,
-      0x254300, 0x2543a4, 0x25442a, 0x2544ce].sort());
-  // dispatch entries 0, 8, 2 and 10 -- the four low nibbles wave 5 measured
-  for (const [i, a] of [[0, 0x253b1e], [8, 0x253bda], [2, 0x253e34], [10, 0x253ec6]]) {
-    assert.equal(SHOT_HANDLERS[i], a, `$253ADE[${i}]`);
+  assert.deepEqual([...h.keys()].sort(), SHOT_HANDLERS.toSorted());
+  for (let i = 0; i < SHOT_HANDLERS.length; i++) {
+    assert.equal(h.has(SHOT_HANDLERS[i]), true,
+      `$253ADE[${i}] -> $${SHOT_HANDLERS[i].toString(16).toUpperCase()}`);
   }
-  for (const [i, a] of [[4, 0x254078], [12, 0x254136],
-    [5, 0x2541bc], [13, 0x25427a], [6, 0x254300], [14, 0x2543a4],
-    [7, 0x25442a], [15, 0x2544ce]]) {
-    assert.equal(SHOT_HANDLERS[i], a, `$253ADE[${i}] hyper shot`);
+  assert.equal(SHOT_HANDLERS[1], 0x253c98, 'Type-B player base');
+  assert.equal(SHOT_HANDLERS[9], 0x253d52, 'Type-B player continuation');
+  assert.equal(SHOT_HANDLERS[3], 0x253f56, 'Type-B option base');
+  assert.equal(SHOT_HANDLERS[11], 0x253fe8, 'Type-B option continuation');
+});
+
+test('Type-B player shot survives entry 1, transitions to entry 9, and moves', () => {
+  const r = new Ram();
+  const rec = SHOT.p1Table;
+  const prec = SHOT.p1Rec;
+  const rom = romWindows([
+    [0x24e512, [0x00, 0x24, 0xe5, 0x30]],
+    [0x24e530, [0xfc, 0x00, 0xfe, 0x00, 0x08, 0x10, 0x00, 0x00]],
+    [0x24e600, [0x11, 0x11, 0x11, 0x11, 0x22, 0x22, 0x22, 0x22]],
+  ]);
+  r.setU16(rec, 0x8001);
+  r.setU16(rec + S.posY, 0x4000);
+  r.setU16(rec + S.posX, 0x2000);
+  r.setU32(rec + S.animPtr, 0x24e600);
+  r.setU16(rec + S.animIdx, 4);
+  r.setU16(prec + 0x30, 0x0020);
+  r.setU16(prec + 0x32, 0x0010);
+  const ctx = { tables: { shotVector: () => ({ dy: -0x0100, dx: 0x0080 }) } };
+
+  for (let frame = 0; frame < 4; frame++) {
+    assert.equal(runShotDriver(r, rom, shotHandlers(), ctx), 1, `frame ${frame}`);
   }
+  assert.equal(r.u16(rec) & 0x000f, 9, '`ori.w #$8` selects dispatch entry 9');
+  assert.equal(r.u16(rec + S.posY), 0x3e20,
+    'one carried frame followed by two velocity frames');
+  assert.equal(r.u16(rec + S.posX), 0x2110);
+  assert.equal(r.u32(rec + S.drawOff), 0xfc00fe00, '$24E512 normal block');
+  assert.equal(r.u32(rec + S.dlWord23), 0x11111111, 'entry 9 advances the animation');
+  assert.equal(r.u16(SPRQ.shotBucketCount), 4 * SPRQ.recordBytes);
+  assert.notEqual(r.u16(rec), 0, 'the normal Type-B player shot remains live');
+});
+
+test('Type-B player hit uses $24E5EE and consumes MoveTables zoom flags', () => {
+  const r = new Ram();
+  const rec = SHOT.p1Table;
+  const sounds = [];
+  const rom = romWindows([
+    [RNG.table, Array(256).fill(0)],
+    [0x24e5ee, [0x00, 0x24, 0xe6, 0x20]],
+    [0x24e620, [0xfc, 0x00, 0xfe, 0x00, 0x08, 0x10,
+      0x00, 0x24, 0xe6, 0x40, 0x00, 0x00, 0x00, 0x08]],
+    [0x24e640, [0x11, 0x11, 0x11, 0x11, 0x22, 0x22, 0x22, 0x22]],
+  ]);
+  r.setU16(rec, 0x81c9);
+  r.setU16(rec + S.posY, 0x2000);
+  r.setU16(rec + S.posX, 0x1800);
+  r.setU16(rec + S.velY, 0x0100);
+  r.setU16(rec + S.velX, 0x0080);
+  r.setU16(rec + S.tableIdx, 0);
+  r.setU16(rec + S.power, 0);
+  const requestedPowers = [];
+  const syntheticFlags = new Map([[0, 0x8800a400], [0x0a, 0x9800b400]]);
+  const ctx = {
+    soundPost: (cue) => sounds.push(cue),
+    tables: {
+      typeBHitFlags(power) {
+        requestedPowers.push(power);
+        return syntheticFlags.get(power);
+      },
+    },
+  };
+
+  handler253D52(r, rom, rec, ctx, SHOT.p1Rec, 0xc9);
+  assert.equal(r.u16(rec + S.posY), 0x2440,
+    '$253DE0 adds $300, then the full and quartered velocities move the hit');
+  assert.equal(r.u16(rec + S.posX), 0x18a0);
+  assert.equal(r.u16(rec + S.velY), 0x0040);
+  assert.equal(r.u16(rec + S.velX), 0x0020);
+  assert.equal(r.u32(rec + S.drawOff), 0xfc00fe00, '$24E5EE hit block');
+  assert.equal(r.u16(rec + S.animIdx), 4);
+  assert.deepEqual(sounds, [0x28c714]);
+  assert.equal((r.u32(SPRQ.shotBucket) & 0xf800fc00) >>> 0, syntheticFlags.get(0),
+    'power 0 consumes the hit flags supplied by MoveTables');
+
+  r.setU16(rec + S.power, 0x0a);
+  handler253D52(r, rom, rec, ctx, SHOT.p1Rec, 0xc9);
+  assert.equal(r.u16(rec + S.animIdx), 0, 'later hit steps the replacement animation');
+  assert.equal(r.u16(rec + S.posY), 0x2480, 'later hits keep drifting');
+  assert.equal(r.u16(SPRQ.shotBucketCount), 24);
+  assert.equal((r.u32(SPRQ.shotBucket + 12) & 0xf800fc00) >>> 0,
+    syntheticFlags.get(0x0a), 'power 10 consumes the final MoveTables entry');
+  assert.deepEqual(requestedPowers, [0, 0x0a],
+    'the runtime forwards the record power to the cartridge-backed accessor');
+});
+
+test('Type-B option shot survives entry 3 and transitions to entry 11', () => {
+  const r = new Ram();
+  const rec = SHOT.p1Table;
+  const rom = romWindows([
+    [0x25092c, [0x00, 0x25, 0x09, 0x40]],
+    [0x250940, [0xfb, 0x00, 0xfd, 0x00, 0x06, 0x10]],
+    [0x250960, [0x33, 0x33, 0x33, 0x33]],
+  ]);
+  r.setU16(rec, 0x8003);
+  r.setU16(rec + S.posY, 0x3000);
+  r.setU16(rec + S.posX, 0x2000);
+  r.setU32(rec + S.animPtr, 0x250960);
+  const ctx = { tables: { shotVector: () => ({ dy: -0x0100, dx: 0x0100 }) } };
+
+  for (let frame = 0; frame < 3; frame++) {
+    assert.equal(runShotDriver(r, rom, shotHandlers(), ctx), 1, `frame ${frame}`);
+  }
+  assert.equal(r.u16(rec) & 0x000f, 0x0b, '`ori.w #$8` selects dispatch entry 11');
+  assert.equal(r.u16(rec + S.posY), 0x2e00);
+  assert.equal(r.u16(rec + S.posX), 0x2200);
+  assert.equal(r.u32(rec + S.drawOff), 0xfb00fd00, '$25092C normal block');
+  assert.equal(r.u32(rec + S.dlWord23), 0x33333333);
+  assert.equal(r.u16(SPRQ.shotBucketCount), 36);
+  assert.notEqual(r.u16(rec), 0, 'the normal Type-B option shot remains live');
+});
+
+test('Type-B normal shot bounds use the cartridge $7800/$4800 and $7400/$4400 limits', () => {
+  const aliveAt = (handler, y, x, vy = 0, vx = 0) => {
+    const r = new Ram();
+    const rec = SHOT.p1Table;
+    r.setU16(rec, handler === handler253D52 ? 0x8049 : 0x814b);
+    r.setU16(rec + S.posY, y); r.setU16(rec + S.posX, x);
+    r.setU16(rec + S.velY, vy); r.setU16(rec + S.velX, vx);
+    r.setU32(rec + S.animPtr, 0x240000); r.setU16(rec + S.animIdx, 4);
+    const rom = romAt(0x240000, Array(8).fill(0));
+    handler(r, rom, rec, {}, SHOT.p1Rec, r.u8(rec + S.lowByte));
+    return r.u16(rec) !== 0;
+  };
+  assert.equal(aliveAt(handler253D52, 0x76ff, 0x3fff, 0x0100), true);
+  assert.equal(aliveAt(handler253D52, 0x7700, 0x2000, 0x0100), false,
+    'Type-B player Y == $7800 dies');
+  assert.equal(aliveAt(handler253D52, 0x1000, 0x4000), false,
+    'Type-B player X + $800 == $4800 dies');
+  assert.equal(aliveAt(handler253D52, 0x1000, 0xf800), true,
+    'Type-B player negative X survives the biased carry test');
+  assert.equal(aliveAt(handler253FE8, 0x72ff, 0x3dff, 0x0100), true);
+  assert.equal(aliveAt(handler253FE8, 0x7300, 0x2000, 0x0100), false,
+    'Type-B option Y == $7400 dies');
+  assert.equal(aliveAt(handler253FE8, 0x1000, 0x3e00), false,
+    'Type-B option X + $600 == $4400 dies');
+  assert.equal(aliveAt(handler253FE8, 0x1000, 0xfa00), true,
+    'Type-B option negative X survives the biased carry test');
+});
+
+test('Type-B option hit uses $250DEA and does not drift on later hits', () => {
+  const r = new Ram();
+  const rec = SHOT.p1Table;
+  const sounds = [];
+  const rom = romWindows([
+    [RNG.table, Array(256).fill(0)],
+    [0x250dea, [0x00, 0x25, 0x0e, 0x20]],
+    [0x250e20, [0xfb, 0x00, 0xfd, 0x00, 0x06, 0x10,
+      0x00, 0x25, 0x0e, 0x40, 0x00, 0x00, 0x00, 0x08]],
+    [0x250e40, [0x44, 0x44, 0x44, 0x44, 0x55, 0x55, 0x55, 0x55]],
+  ]);
+  r.setU16(rec, 0x81cb);
+  r.setU16(rec + S.posY, 0x2000);
+  r.setU16(rec + S.posX, 0x1800);
+  r.setU16(rec + S.velY, 0x0100);
+  r.setU16(rec + S.velX, 0x0080);
+  r.setU16(rec + S.tableIdx, 0);
+  const ctx = { soundPost: (cue) => sounds.push(cue) };
+
+  handler253FE8(r, rom, rec, ctx, SHOT.p1Rec, 0xcb);
+  assert.equal(r.u16(rec + S.posY), 0x2100);
+  assert.equal(r.u16(rec + S.posX), 0x1880);
+  assert.equal(r.u16(rec + S.velY), 0x0040);
+  assert.equal(r.u16(rec + S.velX), 0x0020);
+  assert.equal(r.u32(rec + S.drawOff), 0xfb00fd00, '$250DEA hit block');
+  assert.equal(r.u16(rec + S.animIdx), 4);
+  assert.equal((r.u32(SPRQ.shotBucket) & 0x80008000) >>> 0, 0x80008000,
+    'option hit uses the ordinary $23F3AE emitter');
+  assert.deepEqual(sounds, [0x28c714]);
+
+  handler253FE8(r, rom, rec, ctx, SHOT.p1Rec, 0xcb);
+  assert.equal(r.u16(rec + S.animIdx), 0);
+  assert.equal(r.u16(rec + S.posY), 0x2100, 'later option hits do not drift');
+  assert.equal(r.u16(rec + S.posX), 0x1880);
+  assert.equal(r.u16(SPRQ.shotBucketCount), 24);
 });
 
 test('$253BDA takes the HIT path only on bit 7 of the type word\'s LOW byte', () => {

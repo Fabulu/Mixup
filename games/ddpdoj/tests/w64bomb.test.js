@@ -404,6 +404,38 @@ test('$255ED2: the FOURTH terminator installs the FADE and $255F02 runs in the '
     + 'returned after the install would run the fade one frame long');
 });
 
+test('Type-B ordinary bomb selects all three cartridge script families', () => {
+  const init = new Ram();
+  init.setU16(BOMBRAM.rec, 0x8002);
+  bombScript255E3E(init, ROM, ctx());
+  assert.equal(init.u32(BOMBRAM.rec + 0x1e), 0x25658a + 12,
+    '$255E84 selects $25658A before the first phase-0 entry advances');
+
+  const fade = new Ram();
+  fade.setU16(BOMBRAM.rec, 0x8102);                   // initialised, ship selector 2
+  fade.setU32(BOMBRAM.rec + 0x1e, 0x25658a + 3 * 12);
+  fade.setU8(BOMBRAM.rec + 0x22, 0);                 // borrow after the fourth entry
+  bombScript255E3E(fade, ROM, ctx());
+  assert.equal(fade.u32(BOMBRAM.rec + 0x1e), 0x2565fe,
+    '$255EFA replaces the shared fade template pointer with $2565FE');
+  assert.equal(fade.u16(BOMBRAM.rec + 0x28), 1);
+
+  const blink = new Ram();
+  blink.setU16(BOMBRAM.rec, 0x8102);
+  blink.setU16(BOMBRAM.rec + 0x28, 1);
+  blink.setU16(BOMBRAM.rec + 0x24, 0);
+  blink.setU16(BOMBRAM.rec + 0x2a, 1);
+  blink.setU32(BOMBRAM.rec + 0x1e, 0x2565fe);
+  bombScript255E3E(blink, ROM, ctx());
+  assert.equal(blink.u32(BOMBRAM.rec + 0x1e), 0x25664e,
+    '$255F76 selects the Type-B blink list');
+  assert.equal(blink.u16(BOMBRAM.rec + 0x28), 2);
+  bombScript255E3E(blink, ROM, ctx());
+  assert.equal(blink.u32(BOMBRAM.rec + 0x0a), 0x0003b1ec,
+    'the first Type-B blink image comes from $25664E');
+  assert.equal(blink.u32(BOMBRAM.rec + 0x1e), 0x256652);
+});
+
 test('**$255F7E bchg SETS Z FROM THE OLD BIT** -- the blink draws on the frame '
   + 'it CLEARS the bit, not the frame it sets it', () => {
   const ram = new Ram();
@@ -595,24 +627,25 @@ test('$24560A\'s two guards are checked BEFORE $245622 writes $812952', () => {
 // ===========================================================================
 const TOOL = (n) => fs.readFileSync(new URL(`../tools/${n}`, import.meta.url), 'utf8');
 
-test('the exporter DECLARES the bomb window and ASSERTS its six extents', () => {
+test('the exporter DECLARES the bomb window and ASSERTS all nine extents', () => {
   const s = TOOL('export-tables.py');
   assert.ok(/def check_bomb_extents/.test(s));
   assert.ok(/check_hud_extents\(d\)[^\n]*\n(\s*check_\w+\(d\)[^\n]*\n)*\s*check_bomb_extents\(d\)/.test(s),
     'and it runs on EVERY export, not behind a flag');
-  assert.ok(/\(0x25653C, 0x0112,/.test(s),
-    'the window is the UNION of the six extents, $25653C..$25664D');
+  assert.ok(/\(0x25653C, 0x0126,/.test(s),
+    'the window is the union of the nine extents, $25653C..$256661');
   for (const pin of [/0x255E54\) != 0x0025653C/, /0x25653C \+ 0x10\) != 0x00256558/,
-    /0x256558 \+ 4 \* 12\) != 0xFFFF/, /0x2565BC \+ 0x1A\) != 0x001C/,
-    /0x25663A \+ 4 \* 4\) != 0xFFFFFFFF/]) {
+    /0x255E86\) != 0x0025658A/, /0x255EFC\) != 0x002565FE/,
+    /0x255F78\) != 0x0025664E/, /\(0x256558, "Type-A"\), \(0x25658A, "Type-B"\)/,
+    /\(0x25663A, "Type-A"\), \(0x25664E, "Type-B"\)/]) {
     assert.ok(pin.test(s), `check_bomb_extents must pin ${pin}`);
   }
 });
 
 test('the port declares the same window the exporter does', () => {
   assert.equal(BOMB_TEMPLATES.window, 0x25653c);
-  assert.equal(BOMB_TEMPLATES.windowLen, 0x112);
-  assert.equal(BOMB_TEMPLATES.window + BOMB_TEMPLATES.windowLen, 0x25664e);
+  assert.equal(BOMB_TEMPLATES.windowLen, 0x126);
+  assert.equal(BOMB_TEMPLATES.window + BOMB_TEMPLATES.windowLen, 0x256662);
   assert.equal(BOMB_TEMPLATES.init + BOMB_TEMPLATES.initLen, 0x25655a);
   assert.equal(BOMB_TEMPLATES.fade + BOMB_TEMPLATES.fadeLen, 0x2565de,
     'the FADE template ends exactly where its own anim table begins');

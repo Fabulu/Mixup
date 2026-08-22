@@ -296,8 +296,16 @@ floating stick's origin and bounded displacement only while held. Coverage is 10
 and the remaining static `$48 -> $54` edge is disabled behind Version B's
 `$2714AE` return, so no next runtime blocker has been established. W492 through W496
 are live in production build `20260822120853` with all fifteen requested transformative
-mods. W496's focused affected set passes 170/170, the full suite passes 4,360/4,360,
-and the bundle gate remains pixel-exact. W501 is the next periodic publication point.
+mods. W497 is the first substantial D26 cartridge-choice slice: ordinary browser starts
+can select Type-A or Type-B with numeric style selectors 2, 4, or 6, independently
+of mods. Both ships have their complete browser-packed 17-image animation, attached
+shadow/glow, shot, option, regular-laser, ordinary-bomb, and laser-bomb dependencies.
+The cartridge does not yet prove the human pilot-name mapping, so the UI does not
+guess it. Empty and default launches remain byte-exact. The coordinator repeated W497's
+159/159 bounded affected set, and its regenerated bundle remains
+15,955,968/15,955,968 pixel-identical while containing 4,898 validated sprite streams
+in 12,623.9 KiB. It is not published; W501 remains the next periodic
+publication point.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,

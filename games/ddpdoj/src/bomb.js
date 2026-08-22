@@ -121,17 +121,11 @@
 //    Fixing it is a subsystem, not a line: see `90-impl` §2.4.  Nothing here
 //    hand-patches a palette, because a typed-in colour is a fabricated one.
 //  * **THE HYPER.** W163 owns `$249868` and the shared end/debit dependency.
-//  * `$2456A6` -- `$24560A`'s OTHER arm, behind `btst #$0,D5` (bit 0 of the
-//    record's own type word, i.e. bit 0 of `($58,A6)`).  `[M]` `($58,A6)` is 0
-//    on every frame of every run in this corpus and the exporter exports
-//    selector 0 only, exactly as `src/player.js`'s ship-2 shot throw says.  A
-//    named throw, not a skip.
-//  * `$255FE2` -- the OTHER dispatch entry of `$255DD8`'s four-entry table.
-//    `[M]` the index is `(record & $7)`, the record's low bits are `($58,A6)`,
-//    and entries 0 and 2 are both `$255E3E`.  Throws by address.
-//  * The `($1,A6)`-bit-1 halves of the driver's three script installs
-//    (`$25658A`, `$2565FE`, `$25664E`).  Bit 1 of `$811F73` is `($58,A6)`
-//    bit 1 -- the same word -- so the same argument and the same throw.
+//  * **TYPE-B IS NOT A REMAINING EXCLUSION.**  W497 ports the selector-bit-1
+//    ordinary scripts at `$25658A`, `$2565FE`, and `$25664E`, plus `$255FE2`'s
+//    Type-B laser-bomb family at `$256986..$256CA9` and its `$28C542` cue.
+//    Dispatch entries 0/2 run the ordinary bomb and entries 1/3 run the laser
+//    bomb, with selector 0 choosing Type-A data and selector 2 choosing Type-B.
 
 import { RAM, P } from './machine.js';
 import { u16, i16 } from './ram.js';
@@ -273,19 +267,15 @@ export const BEAM_REC = { head: 0x000, tail: 0x7e0, mid: 0x810, tip: 0x840,
  *  not from a run: 158 bytes, ending exactly at `$256D48`, which is the
  *  18-byte segment template `$2561EE`/`$256282`/`$2563F0` all read.
  *
- *  `$256662..$256985` is the DATA the install's four script pointers name --
- *  four 12-byte anim tables ($256662/$25666E/$25667A/$256686, index space
- *  {8,4,0} from `($24,A6) = 8` and `$2560D2 subq.w #$4`), the eight-pointer
- *  table `$256692` (index space $1C..0 from `$2561AA`'s own `subq.w #$4` and
- *  `move.w #$1C`), its eight 12-byte targets, and `$256712`'s TWELVE
- *  five-longword entries plus the `$FFFFFFFF` terminator at `$256802`.  Each of
- *  the twelve names a further eight-pointer table, and the last of those ends
- *  at `$256986` -- which is the ($1,A6)-bit-1 twin's first script, i.e. the far
- *  end is pinned by the code this port throws on. */
+ *  `$256662..$256CA9` is the DATA the install's Type-A and Type-B script
+ *  pointers name. Each ship has four 12-byte anim tables, one eight-pointer
+ *  table and its eight 12-byte targets, one twelve-entry phase-2 list, and
+ *  twelve eight-pointer tables. The Type-A half is `$256662..$256985`; the
+ *  Type-B half is `$256986..$256CA9`, ending where the install begins. */
 export const BEAM_TEMPLATES = {
   install: 0x256caa, installLen: 158,
   seg: 0x256d48, segLen: 18,
-  data: 0x256662, dataLen: 0x324,
+  data: 0x256662, dataLen: 0x648,
   animStride: 12, ptrEntries: 8, listStride: 20, listEntries: 12,
   listEnd: 0x256802,
 };
@@ -321,8 +311,8 @@ export const BOMB_TEMPLATES = {
   init: 0x25653c, initLen: 30,
   fade: 0x2565bc, fadeLen: 34,
   blink: 0x25661e, blinkLen: 28,
-  /** The window that covers all six installs and both scripts. */
-  window: 0x25653c, windowLen: 0x112,
+  /** The window that covers all six installs and all six scripts/lists. */
+  window: 0x25653c, windowLen: 0x126,
 };
 
 // ===========================================================================
@@ -505,9 +495,9 @@ export function bombCooldownExpiry2564BA(ram) {
  *
  * `$255DF6` onward picks the handler by `D0 & $7` out of the table at
  * `$255E2E` -- `[$255E3E, $255FE2, $255E3E, $255FE2]`.  D0 is the record's own
- * type word, whose low three bits are `($58,A6)` (the SHIP SELECTOR), so
- * `[M]` the index is 0 on every frame of every run in this corpus and entries
- * 1 and 3 throw by address.
+ * type word. Its low three bits combine the laser-bomb bit with the ship
+ * selector, so entries 0/2 run `$255E3E` for Type-A/Type-B ordinary bombs and
+ * entries 1/3 run `$255FE2` for Type-A/Type-B laser bombs.
  *
  * A4/A5 are set from `tst.b ($1,A6)` -- the P2 bit -- and are the ONLY reason
  * the driver reads the record's low byte at all.
@@ -528,9 +518,8 @@ export function bombDriver255DD8(ram, rom, ctx) {
   if (idx === 1 || idx === 3) {
     // `$255E2E[1]` and `[3]` are both `$255FE2` -- **THE LASER BOMB**, W65.
     // The index's bit 0 is `$249A98 bset #$0,($1,A1)`'s and bit 1 is the ship
-    // selector's, so entry 3 needs a selector this port has never seen; the
-    // handler is the same routine either way and the bit-1 forks INSIDE it
-    // throw on their own addresses.
+    // selector's. Both entries call the same routine; its bit-1 forks choose
+    // the Type-B script pointers and sound cue.
     bombScriptAlt255FE2(ram, rom, ctx, (d0 & 0x80) !== 0);
     return true;
   }
@@ -601,10 +590,7 @@ export function bombScript255E3E(ram, rom, ctx) {
     ram.bset8(rec, 0);                                 // $255E4E bset #$0,(A6)
     installTemplate(ram, rom, BOMB_TEMPLATES.init, INIT_STEPS);
     if (ram.btst8(rec + B.low, 1)) {                   // $255E7C btst #$1,$1(A6)
-      unreached(BOMB.scriptAltP1, `$255E84 move.l #$25658A,($1E,A6) -- the `
-        + `SECOND init script, taken when bit 1 of $811F73 is set. That byte `
-        + `is ($7,A5)<<7 | ($58,A6), so bit 1 is bit 1 of the SHIP SELECTOR, `
-        + `which is 0 on every frame of every run in this corpus`);
+      ram.setU32(rec + B.script, BOMB.scriptAltP1);     // $255E84 move.l #$25658A
     }
     ctx.soundPost?.(0x28c55c);  // WAVE A: BGM id=$10, bomb's own cue ($255E92)
   }
@@ -634,8 +620,7 @@ export function bombScript255E3E(ram, rom, ctx) {
     // ---- $255ED2: install the FADE and fall into the phase test.
     installTemplate(ram, rom, BOMB_TEMPLATES.fade, FADE_STEPS);
     if (ram.btst8(rec + B.low, 1)) {                   // $255EF2 btst #$1
-      unreached(BOMB.scriptAlt2, `$255EFA move.l #$2565FE,($1E,A6) -- the `
-        + `bit-1 FADE table. Same word, same argument as $255E84's`);
+      ram.setU32(rec + B.script, BOMB.scriptAlt2);     // $255EFA move.l #$2565FE
     }
     ctx.bombEvent?.('phase', 1);
     // $255EF8 beq $255F02 -- and $255F02 is the NEXT test, in the SAME frame.
@@ -662,8 +647,7 @@ export function bombScript255E3E(ram, rom, ctx) {
     // ---- $255F4E: install the BLINK and fall into $255F7E.
     installTemplate(ram, rom, BOMB_TEMPLATES.blink, BLINK_STEPS);
     if (ram.btst8(rec + B.low, 1)) {                   // $255F6E btst #$1
-      unreached(BOMB.scriptAlt3, `$255F76 move.l #$25664E,($1E,A6) -- the `
-        + `bit-1 BLINK table. Same word, same argument as $255E84's`);
+      ram.setU32(rec + B.script, BOMB.scriptAlt3);     // $255F76 move.l #$25664E
     }
     ctx.bombEvent?.('phase', 2);
   }
@@ -981,15 +965,17 @@ export function bombScriptAlt255FE2(ram, rom, ctx, p2) {
     ram.setU16(rec + BEAM_REC.tail + 0x02,
       u16(ram.u16(a5 + P.posY) + 0xfe00));             // $25606C move.w
     ram.setU16(BOMBRAM.g12968, 0);                     // $256072 move.w D0
+    let cue = BOMB.beamCue28C528;
     if (ram.btst8(rec + B.low, 1)) {                   // $25607E btst #$1
-      unreached(BOMB.beamScriptAltP1, `$256086 -- the LASER BOMB's ($1,A6)-`
-        + `bit-1 twin: six move.l script pointers ($256986, $256A36, $2569B6, `
-        + `$25699E, $256992, $2569AA) and a different sound cue ($28C542 `
-        + `rather than $28C528). Bit 1 of $811F73 is bit 1 of ($58,A6), the `
-        + `SHIP SELECTOR, 0 on every frame of every run in this corpus -- the `
-        + `same argument $255E84's twin throws on`);
+      ram.setU32(rec + B.script, 0x256986);            // $256086
+      ram.setU32(rec + 0x28, 0x256a36);                // $25608E
+      ram.setU32(rec + 0x2c, 0x2569b6);                // $256096
+      ram.setU32(rec + BEAM_REC.tail + B.script, 0x25699e); // $25609E
+      ram.setU32(rec + BEAM_REC.mid + B.script, 0x256992);  // $2560A6
+      ram.setU32(rec + BEAM_REC.tip + B.script, 0x2569aa);  // $2560AE
+      cue = BOMB.beamCue28C542;                        // $2560B6 lea $28C542,A0
     }
-    ctx.soundPost?.(0x28c528);  // WAVE A: BGM id=$F, LASER BOMB cue ($2560BC)
+    ctx.soundPost?.(cue);  // WAVE A: BGM id=$F, LASER BOMB cue ($2560BC)
     ctx.bombEvent?.('beam-init', 0);
   }
   // ---- $2560BE: the four heads follow the ship.  THREE of the four writes are

@@ -745,17 +745,28 @@ loader's count off by one, and `stageend.js` has three chain loaders now.
 > significant job with all these sprites, particularly since we still seem to be missing
 > stuff for this pilot ship combo alone."
 
-Recorded because the owner is right on all three counts, and this belongs in the plan rather
-than arriving as a surprise: there is another ship, there are two more pilots, it is a large
-sprite job, and **the current combination is not finished yet** -- which is the argument for
-sequencing it after the current one is clean, not for skipping it.
+W497 replaces the old planning assumption with a bounded cartridge census. The player record stores the
+ship selector at `+$58` and the pilot/style selector at `+$5A`; the proven domains are ships `{0,2}` and
+styles `{2,4,6}`. Selector 0 is Type-A and selector 2 is Type-B. The listing does not prove which style
+value names Shotia, Leinyan, or Exy, so no UI or documentation may guess that mapping.
 
-This is a PLANNING item, not a next wave. The honest position: the goal is one credit from
-stage 1 to stage 5 with no Unreached, for the ship the port flies today. Other ship/pilot
-combinations multiply the ART and the per-combination tables, and every item above
-(D20..D24) is a gap in the combination already flown. Finish those first, then scope D26
-with a real census of what is per-combination and what is SHARED -- because if most of it is
-shared, D26 is far smaller than it looks, and that census is the wave that finds out.
+The first substantial D26 slice is locally implemented. Ordinary P1 browser starts expose all six pairs
+outside the mod system. Explicit non-default selection updates the selector mailboxes and the cartridge-
+derived live player and option state, while absent, invalid, default, rung, and replay paths stay exact.
+Both 17-image ship rows and all Type-B attached shadow/glow families are packed. Type-B player and option
+shots work across all three style selectors; the six Type-B player-hit flags come from the bounded
+`$253A58+$18` ROM table rather than source literals. All fifteen non-hyper regular-laser entries, both
+ships' independent 4/8/4 ordinary-bomb phases, and the full `$256662..$256CA9` two-ship laser-bomb range
+are packed and selected by runtime cartridge pointers. `$249E68..$249E78` deliberately clears the selector
+before indexing the horizontal hitbox row, so both ships share that row rather than inventing a Type-B table.
+The post-review focused set passes 159/159. Generated ignored assets contain 4,898 sprite streams in a
+12,623.9 KiB bundle; W497 remains local and unpublished.
+
+D26 remains open beyond this slice. Exercise every one of the six pairs through the complete Black Label
+second loop and close only selector-specific runtime gaps that those runs prove. The browser still applies
+its authentic choice to the live P1 seed rather than recreating the cartridge's complete player-select boot,
+and no evidence-backed human pilot-name mapping has been established. P2 browser selection and full P2
+control support remain separate work. Do not claim D26 complete from stage-1 focused matrices alone.
 
 ### D28: MODS, AFTER THE GAME IS DONE -- FLY BOTH SHIPS, THEN ALL THREE PILOTS
 
@@ -776,10 +787,10 @@ ludicrous combined firepower. They must be the authentic D26 ships and pilots, n
 D28a needs a second player-controlled ship, which the two-sided machinery may nearly give
 already. D28b needs a THIRD, which is where the pool sizing question below actually bites.
 
-**The counts are the owner's from memory and are NOT yet a measurement.** D26's census settles
-them from the ROM: how many ship entries the player tables really hold and how many pilots
-index them. Take that number from the cartridge rather than from either party's recollection,
-and if it disagrees with two-and-three, the census wins and this item gets corrected.
+**W497 measured the counts from the cartridge:** ship selectors `{0,2}` and pilot/style selectors
+`{2,4,6}` give two ships and three authentic style slots. The census does not establish which human pilot
+name belongs to each numeric style. D28 must consume the authentic D26 implementations and retain those
+numeric identities until cartridge evidence proves the names.
 
 **Explicitly deferred by the owner. Do not start this before the game is finished.** Recorded
 now so it is not lost and so the waves before it can avoid painting it into a corner.
@@ -6552,3 +6563,50 @@ the DDPDOJ bundle and web-fetch gates, all **746/746** Gradius units, the **13/1
 skips, the **27/27** Batman gate with zero skips, the distribution build, and the ROM-leak guard. Production
 build **`20260822120853`** is deployed and confirmed live, superseding `20260822080859`. W501 is the next
 five-wave publication point.
+
+### D105: W497 D26 TYPE-B AND AUTHENTIC STYLE SELECTION, VERIFIED LOCALLY
+
+The bounded cartridge census proves ship selectors `{0,2}` and style selectors `{2,4,6}` in the
+player record and the four P1/P2 selector mailboxes. Selector 0 is Type-A and selector 2 is Type-B. The
+listing does not prove which numeric style maps to Shotia, Leinyan, or Exy, so `start.html` labels the three
+slots numerically and does not invent a name mapping. Authentic choices are query parameters, not mods.
+Empty, default, invalid, rung, and replay launches do not patch the browser seed. Every explicit non-default
+ordinary P1 choice derives its initialized image, vertical hitbox, two power-list pointers, speed bytes, ramp
+words, and rearmed option state from the same cartridge indexes used by `$2491C0`.
+
+Type-B now has its own 17-image tilt row, shadows, aura, ordinary and down-stick glow families, player-shot
+spawn for all three style values in normal and hyper states, option-shot handlers, every reachable regular-
+laser group, ordinary-bomb scripts, and laser-bomb scripts and cue. The shot dispatch map registers all
+sixteen entries at `$253ADE`, and Type-B hit flags are read from the bounded `$253A58+$18` table through
+`MoveTables` rather than copied into source. Both ships deliberately share horizontal hitboxes because
+`$249E68..$249E78` clears the selector before reading `$2553CA`; the adjacent data is not treated as an
+unproven Type-B row.
+
+The exporter carries the exact packed `$250000..$250F3F` normal option family and the new disjoint
+`$253A58+$18` Type-B hit-flag table. `export-tables.py` regenerated 633 windows and 444,237 ROM bytes.
+`export-web.mjs` packs the Type-B attached art, all fifteen reachable regular-beam entries, both ships'
+independent 4/8/4 ordinary-bomb phases, and the full two-ship laser-bomb range. It regenerated ignored
+assets with 4,898 validated sprite streams, 313 shot streams, a 27,954-byte manifest, and a 12,623.9 KiB
+bundle split into 735.6 KiB before first frame and 11,888.4 KiB deferred. No ROM-derived output is tracked.
+
+The explicit W497 authentic-selection, Type-B matrix, shot, render, ordinary-bomb, beam-art, and ROM-window
+set passes 159/159 with no failures or skips. The coordinator independently repeated all 159 and verified
+the regenerated bundle at 15,955,968/15,955,968 pixels identical to MAME. This wave did not run the full
+suite or publish. Production therefore remains W496 build `20260822120853`; W501 remains
+the next publication point. D26 stays open for full-second-loop exercise of every pair, evidence-backed
+pilot names if they can be proved, the complete cartridge player-select flow, and selector-specific gaps
+exposed outside the bounded matrix.
+
+### D106: POST-W497 BROWSER AND CONTROL FOLLOW-UPS
+
+These are recorded follow-ups, not hidden extensions of W497:
+
+* Restore the missing Game Over text.
+* Add mobile COIN and START controls.
+* Support P2's complete controls from a second physical controller.
+* Do not place P2's full control set on the mobile interface.
+* Broaden gamepad handling beyond XInput assumptions to as many practical controller types as possible.
+
+Keep the P2 physical-controller work separate from D26's authentic P1 seed selector. It must preserve the
+existing keyboard, mobile P1, replay, and default-launch behavior while exposing the board's real second-player
+input path.

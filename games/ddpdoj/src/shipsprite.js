@@ -537,10 +537,6 @@ function drawGlow(ram, rec, ctx, stateHi) {
   let geomTbl = SHIP_TABLES.glowGeom;                     // $24A562 lea $255A22
   // $24A568 btst #1,($18,A6) / beq ; $24A570 tst.w ($58,A6) / beq
   if ((ram.u8(rec + P.dirByte) & 0x02) && ram.u16(rec + P.shipSel) !== 0) {
-    unreached(0x24a576, `$24A576 swaps the glow's tables to $255882/$255A36 when `
-      + `the stick is DOWN and the ship selector is non-zero. Selector 0 is the `
-      + `only one this corpus has ever run (measured every frame), so the pair `
-      + `is unexported and this is the throw wave 12 leaves for a TYPE-B run`);
     spriteTbl = SHIP_TABLES.glowSpriteAlt;
     geomTbl = SHIP_TABLES.glowGeomAlt;
   }

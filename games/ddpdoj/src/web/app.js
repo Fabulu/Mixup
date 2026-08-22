@@ -148,9 +148,10 @@
 //     eight is gated by `pgm.py shipgate` against the board's own staged bucket
 //     bytes AND against the display-list entries they become: 0 divergent
 //     frames over 2,200 logic frames of `fly-around`, with ten red-validated
-//     mutations.  THE SHIP BANKS: `manifest.ship.pairs` is the 17 rebased
-//     animation pairs the exporter now emits, 16 of which are not in the
-//     capture at all because the recorded ship never tilted.
+//     mutations.  THE SHIP BANKS: `manifest.ship.pairsBySelector` holds a
+//     selector-keyed row of 17 rebased animation pairs for both Type-A and
+//     Type-B. `manifest.ship.pairs` retains the Type-A row for compatibility;
+//     16 Type-A images were absent from the capture because its ship never tilted.
 //
 //     WHAT THE RECORDING STILL SUPPLIES FOR THEM is WHICH SLOT each occupies.
 //     That is not a property of the ship: the port cannot build the whole list
@@ -178,6 +179,9 @@
 // frame out, on any machine, at any refresh rate.
 
 import { Game, RAM, MACHINE } from '../main.js';
+import {
+  applyAuthenticSelection, normalizeAuthenticSelection,
+} from '../authentic.js';
 import { P } from '../machine.js';
 import {
   Renderer, paletteRgb, resolveRgb, rotateCCW, rgbToRgba, SCREEN_W, SCREEN_H,
@@ -580,12 +584,13 @@ export function stripToAttached(st, recs) {
 //     power of two by design.  The map is `manifest.spr.streams`, which
 //     `export-web.mjs` has always computed and, until wave 44, discarded.
 //
-// (2) THE MISS POLICY: EXACT MAP, LOUD MISS, NEVER A FALLBACK.  The shipped
-//     sheet is 166 streams harvested from a 161-frame recording; the port asks
-//     for whatever stage 1 asks for.  A record whose stream is not in the sheet
-//     is NOT DRAWN and its CARTRIDGE ADDRESS is counted and named, on the status
-//     line and in `tools/webgate.mjs`'s output.  No modulo, no clamp, no
-//     nearest-stream, no "draw it anyway": the entire value of this guard is
+// (2) THE MISS POLICY: EXACT MAP, LOUD MISS, NEVER A FALLBACK. At wave 44 the
+//     sheet held 166 streams harvested from a 161-frame recording; later
+//     cartridge-address harvests widened it, but the policy is unchanged. A
+//     record whose stream is not in the sheet is NOT DRAWN and its CARTRIDGE
+//     ADDRESS is counted and named, on the status line and in
+//     `tools/webgate.mjs`'s output. No modulo, no clamp, no nearest-stream, no
+//     "draw it anyway": the entire value of this guard is
 //     that a short sheet produces an ADDRESS, which is what makes the next wave
 //     a shopping list instead of a hunt.
 //
@@ -833,13 +838,17 @@ export class Demo {
   //  is labelled on screen.  It is LOCAL DEVELOPMENT ONLY: the ladder files
   //  are not in dist/, so on the published page `rung` is always null.
   constructor(canvas, bundle, frameHz, mode = DEFAULT_MODE, rung = null,
-      soundController = null, loadout = null) {
+      soundController = null, loadout = null, authenticSelection = null) {
     this.bundle = bundle;
     this.cap = bundle.cap;
     // No recognized selection means no mod runtime object. Direct index.html,
     // an empty hash, and an unknown-only hash all take this path.
     const modState = createModState(loadout);
     if (modState) this.mods = modState;
+    // Authentic cartridge content is not a mod.  Labelled rungs own their exact
+    // RAM snapshot, so an ordinary-launch selection is ignored for a rung.
+    const authentic = rung ? null : normalizeAuthenticSelection(authenticSelection);
+    if (authentic) this.authentic = authentic;
     this.progressionPokes = progressionPokesForRung(rung);
     this.progressionPoke = rung?.poke ?? '';
     // The tile functions come from the exported sheets; nothing else about the
@@ -895,7 +904,9 @@ export class Demo {
       // See `Demo#coinTick`.
       coinTick: () => this.coinTick(),
     });
+    if (authentic) applyAuthenticSelection(this.game, authentic);
     this.prevTilt = this.game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
+    this.prevShipSel = this.game.ram.u16(RAM.player1 + P.shipSel);
     this.prevPos = [this.game.ram.u16(RAM.player1 + P.posY),
       this.game.ram.u16(RAM.player1 + P.posX)];
 
@@ -1008,6 +1019,7 @@ export class Demo {
     const inPlayback = this.inPlayback();
     this.prevPos = [g.ram.u16(RAM.player1 + P.posY), g.ram.u16(RAM.player1 + P.posX)];
     this.prevTilt = g.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;   // ($4e,A6)
+    this.prevShipSel = g.ram.u16(RAM.player1 + P.shipSel);         // ($58,A6)
     // WAVE 44 -- THE ONE-FRAME HOLD, and it is here rather than in `draw()` on
     // purpose.  Taken BEFORE `g.step()`, $800000 still holds the list the
     // PREVIOUS frame built, which is the frame the sprite DMA would have put on
@@ -1224,6 +1236,7 @@ export class Demo {
     this.progressionPoke = obj.poke ?? '';
     if (this.mods) this.mods.runtime.ghost = null;
     this.prevTilt = game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
+    this.prevShipSel = game.ram.u16(RAM.player1 + P.shipSel);
     this.prevPos = [game.ram.u16(RAM.player1 + P.posY),
       game.ram.u16(RAM.player1 + P.posX)];
     this.portList = portSpriteList(game.ram, this.romToPacked, this.listOpts);
@@ -1362,7 +1375,8 @@ export class Demo {
     // same measured reason the position is one frame behind: the sprite buffer
     // lags main RAM by one frame.
     this.spliced = this.cap.splice(st, fi, this.prevPos[0], this.prevPos[1],
-      { tilt: this.prevTilt, ship: this.bundle.manifest.ship ?? null });
+      { tilt: this.prevTilt, shipSel: this.prevShipSel,
+        ship: this.bundle.manifest.ship ?? null });
     // WAVE 37 -- AND NOW THE RECORDED ENEMIES COME OFF.  AFTER the splice, for
     // the reason `stripToAttached`'s header gives: the splice addresses records
     // by their index in the ORIGINAL list.  MEASURED over all 161 frames of the
@@ -1827,7 +1841,7 @@ export async function boot(canvas, opts = {}) {
   // until assets arrive, then advances the singleton runtime silently until a
   // gesture attaches AudioOut. No pre-gesture PCM becomes an audible backlog.
   const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE, rung, sound,
-    opts.mods ?? null);
+    opts.mods ?? null, opts.authentic ?? null);
   // WAVE 131 -- the asset base `armRecording()` re-fetches the tables from, so
   // a live REC's `version.tablesSha256` can match the shipped bytes rather than
   // the fallback `JSON.stringify(bundle.tables)`.

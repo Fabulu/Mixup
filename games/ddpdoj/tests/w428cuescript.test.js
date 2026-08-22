@@ -76,7 +76,7 @@ import { loadSubProto } from '../src/enemyproto.js';
 import { runInitBodyAddr } from '../src/initbody.js';
 import {
   OVERLAP_PAIRS_BEFORE_W428, ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT,
-  W428_OVERLAP_PAIRS, overlappingPairs,
+  W428_OVERLAP_PAIRS, W497_OVERLAP_PAIR, overlappingPairs,
 } from './romwindowset.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -339,8 +339,8 @@ test('tests/romwindowset.js states the window count and the overlap count the '
     'ROM_OVERLAP_PAIRS must be what tools/export-tables.py emits');
 });
 
-test('the overlap count moved by EXACTLY the four windows W428 declared, and by '
-  + 'nothing else', { skip: SKIP }, () => {
+test('W428 still contributes exactly its four overlaps after W497 added one more',
+  { skip: SKIP }, () => {
   const ws = tables.rom.windows.map(
     (w) => [parseInt(String(w.base).replace('$', ''), 16), w.len]);
   const mine = new Set(W428_OVERLAP_PAIRS.map(([script]) => script));
@@ -350,16 +350,14 @@ test('the overlap count moved by EXACTLY the four windows W428 declared, and by 
       `${hx(base)} is declared exactly once`);
   }
 
-  // WITHOUT the four, the set is what the last twelve waves measured. This is
-  // the assertion that makes the delta reconcile instead of merely agreeing:
-  // 71 -> 75 is four, and four windows were added.
+  // W428 contributed four pairs to the historical 71. W497 later contributed
+  // one separately named pair, so removing only W428's four now leaves 72.
   const without = ws.filter(([a]) => !mine.has(a));
-  assert.equal(without.length, ROM_WINDOW_COUNT - 4, 'four windows added');
-  assert.equal(overlappingPairs(without), OVERLAP_PAIRS_BEFORE_W428,
-    'drop W428\'s four and the overlap count is 71 again -- so the four new '
-    + 'pairs are W428\'s and no pre-existing pair moved');
-  assert.equal(ROM_OVERLAP_PAIRS - OVERLAP_PAIRS_BEFORE_W428, 4,
-    'one new overlapping pair per new window, and no more');
+  assert.equal(without.length, ROM_WINDOW_COUNT - 4, 'four windows removed');
+  assert.equal(overlappingPairs(without), OVERLAP_PAIRS_BEFORE_W428 + 1,
+    'drop W428\'s four and only W497\'s later forced pair remains above 71');
+  assert.equal(ROM_OVERLAP_PAIRS - (OVERLAP_PAIRS_BEFORE_W428 + 1), 4,
+    'W428 still contributes one overlapping pair per cue-script window');
 
   // ...and each new pair is the cue script against the PROTOTYPE window that
   // used to clip it, not against something unrelated.
@@ -373,4 +371,23 @@ test('the overlap count moved by EXACTLY the four windows W428 declared, and by 
     assert.ok(a[0] > b[0], `${hx(script)} starts INSIDE ${hx(proto)}`);
     assert.ok(a[0] + a[1] > b[0] + b[1], `...and runs past its end`);
   }
+});
+
+test('W497\'s one new pair is the exact six-byte authentic-template overlap',
+  { skip: SKIP }, () => {
+  const ws = tables.rom.windows.map(
+    (w) => [parseInt(String(w.base).replace('$', ''), 16), w.len]);
+  const [templates, prior] = W497_OVERLAP_PAIR;
+  const a = ws.find(([base]) => base === templates);
+  const b = ws.find(([base]) => base === prior);
+  assert.ok(a && b, 'both W497 overlap windows are declared');
+  assert.equal(a[0] + a[1], 0x24ddd6,
+    'the widened window covers the final 38-byte template whole');
+  assert.equal(b[0], 0x24ddd0, 'the prior pointed-struct window keeps its base');
+  assert.equal(Math.min(a[0] + a[1], b[0] + b[1]) - Math.max(a[0], b[0]), 6,
+    'the two declarations overlap by exactly six bytes');
+
+  const crossingLong = 0x24ddb0 + 0x1e;
+  assert.ok(crossingLong < b[0] && crossingLong + 4 > b[0],
+    'the final template longword crosses the $24DDD0 seam, so abutting cannot work');
 });

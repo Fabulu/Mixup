@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W496 published, D26 ships and pilots next)
+Updated: 2026-08-22 (W497 Type-B and authentic selector slice verified locally)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,26 +8,77 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W496 completes the additional transformative roster.** The catalogue
-now has 30 entries. Boss Rush dynamically scans each newly installed stage script through its `$FFFF`
-sentinel, keeps the final approach records from roughly 16 clock units before the last trigger, and leaves
-the authentic walker, allocation, boss, result, and stage flow in control. Stage Remix transforms only
-`$242952`'s next-stage value to route Stage 1, Stage 3, Stage 2, Stage 4, and Stage 5, including the same
-stateless route in loop 2 and the unchanged stage-5 ending value. W492 through W495's thirteen additions
-remain unchanged. All fifteen additions block replay v1. Empty, unknown-only, direct, Original, and later
-vanilla-Game paths install no mod callback or policy.
+`docs/DOCKET.md` is authoritative. **W497 is the first substantial D26 implementation slice.** The
+cartridge-proven ship domain is `{0,2}` and the style domain is `{2,4,6}`. Selector 0 is Type-A and
+selector 2 is Type-B. The cartridge census does not prove which numeric style names Shotia, Leinyan, or
+Exy, so retain numeric labels until evidence establishes that mapping.
 
-The W496 focused and directly affected set passes 170/170. The repaired publication suite passes
-4,360/4,360 with no failures or skips. Syntax, diff hygiene, and forbidden-punctuation checks pass. The
-published-bundle gate remains 15,955,968/15,955,968 pixel-identical. Production build `20260822120853`
-is deployed and confirmed live; W501 is the next five-wave publication point.
+Ordinary P1 browser starts expose all six authentic pairs separately from the 30-mod catalogue. Empty,
+default, invalid, labelled-rung, and replay paths remain exact. An explicit non-default launch updates the
+selector mailboxes and derives every live player and option field from `$2491C0`'s cartridge arithmetic.
+Type-B now has its complete packed 17-image tilt row, shadow, ordinary-glow and down-stick-glow art,
+player and option shots for every style, all reachable regular-laser groups, both ordinary-bomb 4/8/4
+families, and the complete two-ship laser-bomb range. Both ships intentionally share the horizontal hitbox
+row because `$249E68..$249E78` clears the selector before its lookup.
 
-W491's mortality, sound, notice, and layout work remains intact. W488 ports the shared two-line per-side
-label printer `$25F2D0`. W487 remains the last gameplay translation wave and ports type `$58`, leaving
-enemy-handler coverage at 101/256 ported, 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits
-no enemy child. Do not follow the static `$48 -> $54` edge because Version B's live callers target the bare
-`rts` at `$2714AE`. W496 is live as production build `20260822120853`, superseding W491's
-`20260822080859`.
+The bounded post-review W497 set passes 159/159 with no failures or skips, independently repeated by the
+coordinator. The regenerated bundle remains 15,955,968/15,955,968 pixel-identical. Table regeneration
+produced 633 windows and 444,237 exported bytes. Browser assets were regenerated after the final table
+change: 4,898 validated sprite streams, 313 shot streams, a 27,954-byte manifest, and 12,623.9 KiB total,
+split into 735.6 KiB boot and 11,888.4 KiB deferred. Sprite shards 0, 10, and 13 now carry 268, 451, and
+412 streams, respectively. Generated ROM data remains ignored. The full suite, web-fetch gate, and publish
+were not run for W497. Production remains W496 build `20260822120853`; W501 is the next five-wave
+publication point.
+
+D26 is not closed by the bounded matrix. Run all six pairs through the complete Black Label second loop and
+follow only selector-specific runtime evidence. Remaining explicit D26 edges are the complete cartridge
+player-select flow, any P2 authentic-selection path beyond the live P1 browser seed, and the human pilot-name
+mapping if it can be proved. Separately queued after W497: restore Game Over text; add mobile COIN and START;
+map full P2 controls to a second physical controller without adding P2's full controls to mobile; and broaden
+gamepad support beyond XInput assumptions.
+
+W492 through W496's fifteen transformative additions remain unchanged and all block replay v1. Empty,
+unknown-only, direct, Original, and later vanilla-Game paths install no mod callback or policy. W488 ports
+the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage remains 101/256 ported, 25
+unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
+`$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
+
+## W497 VERIFIED LOCALLY: TYPE-B AND ALL THREE AUTHENTIC STYLE SLOTS
+
+`src/authentic.js` is the boundary between authentic cartridge selection and mods. It accepts only ships
+0/2 and styles 2/4/6, treats (ship 0, style 2) as the exact no-patch default, and uses the initializer's
+selector arithmetic for image, vertical hitbox, power lists, speed bytes, ramps, and the 100-byte P1 option
+record. `start.html` emits `?ship=N&style=N` only for non-default choices. `index.html` ignores malformed
+pairs and keeps mods in the URL hash. Labelled rungs suppress authentic patching and replay construction never
+reapplies it.
+
+`vectors.js`, `player.js`, `shipsprite.js`, and selector-keyed `manifest.ship.pairsBySelector` carry both
+17-image rows. Type-B endpoints are `$18A4`, `$1BC4`, and `$1EE4`; horizontal hitboxes remain the shared
+selector-zero row by cartridge instruction, not fallback. `export-web.mjs` also walks the Type-B shadow
+selector at `$25545A` and both two-phase glow selectors at `$2556E2/$255882` over all 17 tilts, yielding
+17/34/34 packed boot descriptors. `shots.js` uses Type-B spawn table `$25551A` for styles 2/4/6 in normal
+and hyper arms and registers every entry in `$253ADE`, including `$253C98`, `$253D52`, `$253F56`, and
+`$253FE8`. Its six hit-zoom longwords are consumed through `MoveTables.typeBHitFlags()` from the exact
+`$253A58+$18` `RomWindows` table, with no source copy of those cartridge values. Focused matrices cover
+option spawning for both ships and all styles. Regular laser export covers entries 0 through 14, including
+the reachable `+$28` and `+$50` groups, while W443 keeps the five-entry `+$78` hyper derivation separate.
+`bomb.js` selects Type-B ordinary scripts `$25658A/$2565FE/$25664E` and the `$256986..$256CA9`
+laser-bomb family with cue `$28C542`; packed-map tests derive every dependency from those runtime pointers.
+
+The packed Type-A/Type-B normal option family keeps its exact `$250000..$250F3F` window, bounded by the
+previous option window and the first separately named hyper table at `$250F40`. The independent review also
+closed four browser-export gaps: all fifteen reachable regular-beam entries, Type-B attached ship art, both
+ships' ordinary and laser-bomb data, and cartridge-backed Type-B hit flags. The `$24D8A0+$536` authentic-
+style template window necessarily overlaps `$24DDD0+$1B0` by six bytes because the final template's `+$1E`
+longword crosses that seam; `tests/romwindowset.js` records 633 windows and 76 overlap pairs. W497 regenerated
+`player.tables.json` before `export-web.mjs`. Preserve that order whenever a ROM window changes, and never
+add `rip/port/player.tables.json` or `assets/` to Git.
+
+Focused tests are `tests/w497authenticselection.test.js`, `tests/w497typeb.test.js`, `tests/shots.test.js`,
+`tests/render.test.js`, `tests/w64bomb.test.js`, `tests/w65beam.test.js`, `tests/w443hyperbeamart.test.js`,
+and `tests/w428cuescript.test.js`; together they pass 159/159. Do not lower their exact cartridge
+checkpoints. The next D26 evidence should come from longer all-six-pair play through loop 2, not more
+duplicate-only scrutiny or guessed pilot names.
 
 ## W496 PUBLISHED: BOSS RUSH AND STAGE REMIX
 
@@ -896,7 +947,8 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. Make both cartridge-supported ships and all three pilots selectable and playable.
+1. Exercise both cartridge-supported ships and all three numeric style slots through the complete Black Label
+   second loop, closing only selector-specific gaps those runs prove.
 2. Complete Black Label through the full second loop.
 3. Finish functional White Label after Black Label. Leave duplicate-only cleanup until both are complete.
 4. After D26 and functional completion, D28a and D28b use one synchronized control stream, option-like
@@ -1083,9 +1135,9 @@ walks the cursor from the cartridge and DERIVES seeds by running the init body, 
 moves the test instead of being defended by it.
 
 **THIRTEEN FILES EACH HELD THEIR OWN COPY OF A GLOBAL INVARIANT**, which is how four new windows
-broke fourteen tests. Both numbers now live once in `tests/romwindowset.js`, with a guard that
-dropping W428's four returns the overlap count to exactly 71 -- **the delta reconciles rather than
-merely agreeing.**
+broke fourteen tests. Both numbers now live once in `tests/romwindowset.js`. W428's four pairs remain
+independently reconciled against the historical 71, while W497's later six-byte authentic-template overlap
+is named separately; the current measured total is 76 rather than merely a bumped unexplained integer.
 
 **A GATE BASELINE MOVED (records 1742 -> 1821) AND THE HARDWARE SETTLED IT.** Across all 363 oracle
 RAM snapshots the three OLD cursor values appear **ZERO** times; the new ones appear 170, 1375 and

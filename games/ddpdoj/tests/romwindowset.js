@@ -128,7 +128,22 @@
 
 /** The count `tables.rom.windows.length` must equal. MEASURED from
  *  `player.tables.json`, not computed by hand. */
-export const ROM_WINDOW_COUNT = 632;
+// ---------------------------------------------------------------------------
+// W497 ADDED ONE WINDOW AND ONE FORCED OVERLAP.
+// ---------------------------------------------------------------------------
+// `$253D88` indexes six longwords at `$253A58` by even power word 0..$A. Its
+// exact 24-byte window is disjoint from every prior declaration, taking the set
+// from 632 to 633 windows. Separately, the widened `$24D8A0` authentic-style
+// template window now ends at `$24DDD6` and overlaps `$24DDD0 + $1B0` by six
+// bytes. The last 38-byte template begins at `$24DDB0`, and its longword at
+// +$1E spans `$24DDCE..$24DDD1`; an abutting seam at `$24DDD0` cannot serve that
+// read because RomWindows.#at does not stitch. Measured: 75 -> 76 pairs.
+
+export const ROM_WINDOW_COUNT = 633;
+
+/** W497's forced `[authentic-style templates, prior pointed-struct window]`
+ * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
+export const W497_OVERLAP_PAIR = Object.freeze([0x24d8a0, 0x24ddd0]);
 
 /** The one window W429 declared, and the window it abuts WITHOUT overlapping.
  *  `tests/w429cuekinds.test.js` asserts the abutment is exact. */
@@ -139,7 +154,7 @@ export const W429_ABUTTING_PAIR = Object.freeze([0x28b08e, 0x28ac72]);
 export const W435_ABUTTING_PAIR = Object.freeze([0x28d864, 0x28d862]);
 
 /** The number of overlapping PAIRS over the whole window set. MEASURED. */
-export const ROM_OVERLAP_PAIRS = 75;
+export const ROM_OVERLAP_PAIRS = 76;
 
 /** The four pairs W428 added, `[cue script, the prototype window it straddles]`. */
 export const W428_OVERLAP_PAIRS = Object.freeze([
@@ -175,6 +190,7 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "for twelve waves; W428 added FOUR, one per word-threshold cue script "
   + "($268E32 $273986 $2747A8 $275F04), each of which begins inside its type's "
   + "prototype window because a cue record's longwords straddle that window's "
-  + "end and RomWindows.#at cannot stitch across a seam. W429 added a window "
-  + "($28B08E) and W435 added another ($28D864), and NEITHER moved this "
-  + "number, because both abut. See tests/romwindowset.js.";
+  + "end and RomWindows.#at cannot stitch across a seam. W429 and W435 each "
+  + "added an abutting window and moved no pair. W497 added one forced pair "
+  + "where the $24DDB0 authentic-style template's +$1E longword crosses the "
+  + "$24DDD0 seam. See tests/romwindowset.js.";

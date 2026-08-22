@@ -26,7 +26,7 @@
 import { P, OPT, RAM, CLAMP, ROM } from './machine.js';
 import { i16, u16 } from './ram.js';
 import { unreached } from './unported.js';
-import { spawnShot } from './shots.js';
+import { spawnShot, spawnShotTypeB } from './shots.js';
 import { drawShipShadow, SHIP_MUTATE } from './shipsprite.js';
 import { fireBomb2498E2, BOMBRAM } from './bomb.js';
 import {
@@ -948,15 +948,14 @@ function finish(ram, rec, d2, d3, ctx, skipClamps) {
  *  stage-clear path can reach it without re-running the clamps. */
 function tail249E4E(ram, rec, ctx) {
   const { unportedLog } = ctx;
-  const t = ctx.tables.anim(ram.u16(rec + P.tilt));
+  const ship = ram.u16(rec + P.shipSel);
+  const t = ctx.tables.anim(ram.u16(rec + P.tilt), ship);
   ram.setU16(rec + P.animA, t.a[0]);                 // $249E62
   ram.setU16(rec + P.animA + 2, t.a[1]);
-  // THE WRONG PORT, and it is deliberately separable from the image above: a
-  // port that banks the SPRITE and freezes the HITBOX looks completely right on
-  // screen and is wrong about every collision.  `hitx-frozen` is red on the
-  // hitbox columns and GREEN on bucket 19, which is exactly why the hitbox
-  // needed columns of its own rather than being trusted to the picture.
-  const h = SHIP_MUTATE.value === 'hitx-frozen' ? ctx.tables.anim(0) : t;
+  // $249E68 clears D1 before $2553CA's pointer lookup, so Type-A and Type-B
+  // deliberately share the selector-zero hitbox row.  The mutation freezes its
+  // tilt index without changing the independently selected image bank.
+  const h = SHIP_MUTATE.value === 'hitx-frozen' ? ctx.tables.anim(0, ship) : t;
   ram.setU16(rec + P.hitXPlus, h.hitX[0]);           // $249E78, the LONG at +$14
   ram.setU16(rec + P.hitXMinus, h.hitX[1]);          // ...i.e. +$14 and +$16
   // $249E7E onward: the ground-plane shadow emit ($249EA0 -> $23EFC0, bucket 5)
@@ -1277,17 +1276,16 @@ export function bombAndShotGuards(ram, rec, ctx, playerIdx) {
   }
   ram.setU8(rec + 0x2a, d & 0xff);                       // $249BDE
 
-  // $249BE2..$249BF8 -- a two-entry jump table on the SHIP TYPE ($58,A6):
+  // $249BE2..$249BF8 -- the cartridge's two-entry jump table on ship selector:
   //   ship 0 -> $249BFC   ship 2 -> $249D2C
-  // Both are THE SPAWN.  Wave 8 translates ship 0 (src/shots.js); ship 2 is a
-  // named throw, because ($58,A6) was MEASURED 0 on every frame of every run
-  // and the exporter only exports selector 0's tables.
   const ship = ram.u16(rec + P.shipSel);                 // $249BE2
-  if (ship !== 0) {
-    unreached(0x249d2c, `THE SHOT SPAWN for ship type ${ship} ($249BF8 bra `
-      + `$249D2C, the second entry of the $249BF4 jump table). TYPE-B was `
-      + `never exercised: ($58,A6) is 0 on every frame of every run in this `
-      + `corpus, and tools/export-tables.py exports selector 0 only`);
+  if (ship === 0) {
+    spawnShot(ram, ctx.rom, rec, ctx, { player: playerIdx });
+    return;
   }
-  spawnShot(ram, ctx.rom, rec, ctx, { player: playerIdx });
+  if (ship === 2) {
+    spawnShotTypeB(ram, ctx.rom, rec, ctx, { player: playerIdx });
+    return;
+  }
+  unreached(0x249bf8, `ship selector ${ship} is outside the cartridge set {0, 2}`);
 }
