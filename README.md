@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W500 advances D34 by running cartridge `$25FAA4` from selection state 7, including ROM-fed one/two-round labels, two-side raw input, confirmation blink, and transition clear; `$25F530/$25F592` remains next; full second loop and docket still in progress |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W501 completes D34 state 7 by running cartridge `$25F530/$25F592`, including joined-side record selection, palettes, main and zoomed sprite animation, pause, satellites, and retirement; `$25E72E` remains the next counted select-screen draw edge; full second loop and docket still in progress |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -184,7 +184,10 @@ affected set passes 232/232, W494's passes 118/118, W495's passes 89/89, W496's
 passes 170/170, and the bundle gate remains pixel-exact. W498's focused visible-input
 and Game Over set passes 93/93. W499's bounded controller plus directly affected
 shared/web input and coin set passes 83/83. W500's bounded selection, slot,
-registry, and window set passes 193/193; W497 through W500 are landed on main and unpublished.
+registry, and window set passes 193/193. W501's compact state-7 lifecycle and ROM-window set
+passes 101/101; the local export now holds 637 windows and 444,613 bytes with 76 overlap pairs.
+W497 through W500 are landed on main and unpublished; W501 is locally verified at the required
+publication point.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -317,9 +320,14 @@ supported; mobile remains P1-only. W500 advances D34's cartridge state-7 path:
 side's directional input while OR-ing both sides for confirmation, blinks the chosen
 mode for 32 ticks, stores it to `$80393A`, and queues the cartridge clear before
 retirement. Its exact `$25FC68+$20` data window raises the registry to 634 windows
-without changing 76 overlap pairs. `$25F530/$25F592` remains the next live state-7
-edge. W497 through W500 are landed on main and not published; W500 is the fourth wave after
-W496, and W501 remains the next periodic publication point.
+without changing 76 overlap pairs. W501 closes state 7's remaining counted head:
+`$25F530` selects P1 or falls back to P2, and `$25F592` installs each record's palettes,
+draws the main sequence and zoomed detail pair, advances the pause satellites, and retires
+at sequence `$9C`. Three exact disjoint animation windows at `$25F7C8+$A0`, `$25F880+$78`,
+and `$25F8F8+$40` raise the registry to 637 windows and 444,613 bytes without moving the
+76 overlap pairs. The next counted D34 edge is the per-record `$25E72E` select-screen draw.
+W497 through W500 are landed on main and unpublished; W501 is locally verified at the fifth-wave
+publication point.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,

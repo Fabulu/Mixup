@@ -836,30 +836,27 @@ test('W374 the branch senses the port rests on, read out of the ROM', { skip: SK
   assert.equal(rom.u32(0x25d644), 0x0024150a, '$25D642 jsr $24150A');
 });
 
-// W500 EDITED THIS TEST AGAIN. `$25FAA4` and its bounded local leaves are now ported and driven by
-// `w500perframe25faa4.test.js`. The remaining state-7 entry edge is `$25F530`; its note also names
-// the inner `$25F592` body and exact extent.
-test('W374 the remaining state-7 head edge is noted with its exact extent', { skip: SKIP },
+// W501 ports `$25F530` and `$25F592`; `w501state7head.test.js` drives their record animation.
+test('W501 the state-7 head and inner body are live with exact cartridge extents', { skip: SKIP },
   async () => {
     const { phase7_25D560, HANDLER7: H, SCREEN17, ram, rom, ctx, notes, a5 } = await fx();
     const a6 = SCREEN17.recs;
     const a0 = a6 + H.otherRec;
     ram.setU8(a0 + H.liveAt, 1);
     ram.setU8(a0 + H.rendezvousAt, H.rendezvous);
-    // Open the $25D630 bset block: ($48,A6) at or past $300 and ($46,A6) under $7000.
     ram.setU16(a6 + H.rampE.openAt, 0x0300);
     frameStart(ram);
     phase7_25D560(ram, rom, ctx, a5, a6, 1, spy().draws);
 
-    const texts = notes.map((n) => n.what);
-    const hit = notes.find((n) => n.addr === H.head);
-    assert.ok(hit, `$${H.head.toString(16).toUpperCase()} was noted`);
-    assert.match(hit.what, new RegExp(`${H.headBytes} bytes`),
-      `  ...with its ${H.headBytes}-byte extent`);
-    assert.deepEqual(notesAt(notes, H.perFrame), [], '$25FAA4 no longer files a note');
-    assert.ok(texts.some((t) => t.includes('560-byte $25F592')), '$25F530s inner bsr is named');
-    // $260A9A is NOT noted: rank.js announcePost owns that site.
-    assert.deepEqual(notesAt(notes, H.announce), [], '$260A9A goes through rank.js, not a note');
+    assert.equal(rom.u32(H.head), 0x48e7fffe, '$25F530 saves D0-D7/A0-A6');
+    assert.equal(rom.u32(H.head + H.headBytes - 6), 0x4cdf7fff, '$25F57A restores them');
+    assert.equal(rom.u16(H.head + H.headBytes - 2), 0x4e75, '$25F57E is the exact head end');
+    assert.equal(rom.u32(H.headInner), 0x4a6e0002, '$25F592 starts on the delay word');
+    assert.equal(rom.u16(H.headInner + H.headInnerBytes - 2), 0x4e75,
+      '$25F7C0 is the exact inner end');
+    assert.deepEqual(notesAt(notes, H.head), [], '$25F530 no longer files a note');
+    assert.deepEqual(notesAt(notes, H.perFrame), [], '$25FAA4 remains live');
+    assert.deepEqual(notesAt(notes, H.announce), [], '$260A9A remains live');
   });
 
 test('W374 the tail files a counted note per MISSING draw rather than silently skipping it',

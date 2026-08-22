@@ -3279,6 +3279,18 @@ SHOT_WINDOWS.extend([
     (0x223EF8, 0x0040, "W373: slot [9] record-state-0 palette, bank 15 through $24150A. Sixty-four "
                        "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
                        "slot [17]; this one is slot [9]'s own"),
+    # ---- W501: $25F530/$25F592 selection-record animation -------------------------------------
+    # The four palettes at $2241F8..$2242F7 already live inside the cartridge-backed
+    # $222A78+$2880 palette window, so W501 adds no redundant overlapping declaration for them.
+    (0x25F7C8, 0x00A0, "W501: $25F592's 40-long main animation table. Record word +$A starts at "
+                       "zero, advances by four, pauses at $5C, and retires at $9C; the inclusive "
+                       "{0,4,..,$9C} domain therefore reads exactly $A0 bytes and ends at $25F868"),
+    (0x25F880, 0x0078, "W501: the three contiguous $28-byte sprite blocks pointed to by W375's "
+                       "$25F868 table. Record word +$16 advances by eight and wraps at $28, while "
+                       "$25F5FC reads two adjacent longs, so every block is consumed through +$27"),
+    (0x25F8F8, 0x0040, "W501: $25F68E's 16-long satellite zoom-flag table. $80390A is masked with "
+                       "$001E then doubled as a byte offset, so the exact domain is {0,4,..,$3C}; "
+                       "the final move.l consumes bytes $25F934..$25F937"),
     # ---- W500: $25FAA4's two adjacent cartridge TX control streams ----------------------------
     (0x25FC68, 0x0020, "W500: $25FBF2/$25FC14 feed two adjacent $10-byte TX control streams to "
                        "$256F14. Each stream begins with three positioning/control bytes and ends "

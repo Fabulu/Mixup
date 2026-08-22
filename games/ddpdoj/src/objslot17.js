@@ -29,6 +29,9 @@ import { txPrint240EBC } from './hud.js';
 import { announcePost, stageStart260580, stagePair2603FE } from './rank.js';
 import { cursorsFromPosted25D9E6 } from './tallyscreen.js';
 import { stageCreate, queueKill } from './objalloc.js';
+import {
+  enqueueRegistersThroughStub, enqueueZoomedRegistersThroughStub,
+} from './spritequeue.js';
 
 /** The fifteen palette installs state 0 ends with, in cartridge order. Fourteen go through
  *  `$24150A` and the FIRST goes through `$2414BE`, which is a different routine and a different
@@ -452,6 +455,25 @@ export const TAIL_25D560 = Object.freeze([
   Object.freeze({ at: 0x25d834, addr: 0x25f074, fn: 'draw25F074', gate: null, d7: true }),
 ]);
 
+export const STATE7_HEAD_25F530 = Object.freeze({
+  addr: 0x25f530, bytes: 80, inner: 0x25f592, innerBytes: 560,
+  records: Object.freeze([0x813028, 0x81304c]),
+  delayAt: 0x02, positionAt: 0x04,
+  sequenceTickAt: 0x08, sequenceReloadAt: 0x09, sequenceAt: 0x0a, pauseAt: 0x0c,
+  palettePtrAt: 0x0e, paletteBankAt: 0x12,
+  spriteTickAt: 0x14, spriteReloadAt: 0x15, spriteAt: 0x16, spritePtrAt: 0x18,
+  satellites: Object.freeze([0x1c, 0x1e, 0x20, 0x22]),
+  frameTable: 0x25f7c8, frameTableBytes: 0x00a0,
+  spriteTables: 0x25f880, spriteTableBytes: 0x0078,
+  palettes: 0x2241f8, paletteBytes: 0x0100,
+  commonPalette: 0x2242b8, commonBank: 0x0016, selectedPaletteSite: 0x25f5ba,
+  mainEmitter: 0x23df86, detailEmitter: 0x23e4d2,
+  detailDuplicateAt: 0x803912, satelliteGateAt: 0x80390c,
+  satelliteFlagsAt: 0x80390a, satelliteEmitterAt: 0x80390b,
+  satelliteFlagTable: 0x25f8f8, satelliteFlagTableBytes: 0x0040,
+  requestedAt: 0x813006,
+});
+
 export const HANDLER7 = Object.freeze({
   addr: 0x25d560, rts: 0x25d83a, bytes: 732, drawTail: 0x25d800,
   otherRec: 0x70,                            // $25D56A lea ($70,A6) / $25D570 lea (-$70,A6)
@@ -488,7 +510,8 @@ export const HANDLER7 = Object.freeze({
   stepTable: 0x25d85c, stepEntries: 122, stepBytes: 0x00f6, stepSentinel: 0xffff,
   stepCursorAt: 0x52, stepIntoAt: 0x4e, stepCeil: 0x3800,    // $25D7D4 / $25D7EE / $25D7C4
   halfIntoAt: 0x50, halfCeil: 0x1c00,                        // $25D7F2 / $25D7FC
-  head: 0x25f530, headBytes: 80, headInner: 0x25f592, headInnerBytes: 560,   // $25D560
+  head: STATE7_HEAD_25F530.addr, headBytes: STATE7_HEAD_25F530.bytes,
+  headInner: STATE7_HEAD_25F530.inner, headInnerBytes: STATE7_HEAD_25F530.innerBytes,   // $25D560
   perFrame: 0x25faa4, perFrameBytes: 334,                    // $25D57E
 });
 
@@ -607,6 +630,130 @@ export function playerRecords25F456(ram, rom, a5) {
     const d0 = rom.u16(w);                                  // $25F4B0 move.w (A0)+,D0 -- the THIRD
     for (const off of P.fW2) ram.setU16(s.base + off, d0);  // $25F4B2/$25F4B6/$25F4BA/$25F4BE
   }
+}
+
+function addWordToLong(v, add) {
+  return (((v >>> 0) & 0xffff0000) | u16((v & 0xffff) + add)) >>> 0;
+}
+
+function swapWords(v) {
+  return (((v << 16) | (v >>> 16)) >>> 0);
+}
+
+function installState7Palette(ram, rom, ctx, source, bank, site, why) {
+  if (ctx.palette) {
+    install24150A(ram, ctx.palette, bank, rom.bytes(source, 0x40), site, why);
+    return;
+  }
+  ctx.unported?.note(0x24150a, `$24150A bank ${bank} <- ${hex7(source)} from ${hex7(site)} `
+    + 'with no PaletteState on this chain');
+}
+
+/** `$25F592..$25F7C1` -- animate and draw one joined selection record. */
+export function state7Player25F592(ram, rom, ctx, a6) {
+  const K = STATE7_HEAD_25F530;
+  if (ram.u16(a6 + K.delayAt) !== 0) {                         // $25F592 tst.w ($2,A6)
+    ram.setU16(a6 + K.delayAt, u16(ram.u16(a6 + K.delayAt) - 1));
+    return;
+  }
+
+  if (ram.bset8(a6, 1) === 0) {                               // $25F59E bset #1,(A6)
+    installState7Palette(ram, rom, ctx, K.commonPalette, K.commonBank, 0x25f5ac,
+      `${hex7(K.addr)} common selection palette`);
+    installState7Palette(ram, rom, ctx, ram.u32(a6 + K.palettePtrAt),
+      ram.u16(a6 + K.paletteBankAt), K.selectedPaletteSite,
+      `${hex7(K.addr)} selected pilot palette`);
+  }
+
+  let d1 = (ram.u32(a6 + K.positionAt) + 0xf400e400) >>> 0;   // $25F5C0/$25F5C4
+  let d2 = rom.u32(K.frameTable + ram.u16(a6 + K.sequenceAt));
+  enqueueRegistersThroughStub(ram, rom, K.mainEmitter, d1, d2, 0x0ce0, K.commonBank);
+
+  if (ram.u16(a6 + K.pauseAt) === 0) {                         // $25F5E6 beq $25F78C
+    const tick = ram.u8(a6 + K.sequenceTickAt);
+    ram.setU8(a6 + K.sequenceTickAt, u16(tick - 1) & 0xff);   // $25F78C subq.b #1
+    if (tick !== 0) return;
+    ram.setU8(a6 + K.sequenceTickAt, ram.u8(a6 + K.sequenceReloadAt));
+    const sequence = u16(ram.u16(a6 + K.sequenceAt) + 4);     // $25F798 addq.w #4
+    ram.setU16(a6 + K.sequenceAt, sequence);
+    if (sequence === 0x005c) {
+      ram.setU16(a6 + K.pauseAt, 0x0090);                      // $25F7A4
+      return;
+    }
+    if (sequence === 0x009c) {
+      ram.bset8(a6, 2);                                       // $25F7B4
+      ram.setU16(K.requestedAt, 1);                            // $25F7B8
+    }
+    return;
+  }
+
+  ram.setU16(a6 + K.pauseAt, u16(ram.u16(a6 + K.pauseAt) - 1)); // $25F5EE
+  let a0 = ram.u32(a6 + K.spritePtrAt) + ram.u16(a6 + K.spriteAt);
+  d2 = rom.u32(a0); a0 += 4;
+  d1 = (ram.u32(a6 + K.positionAt) + 0xf600f800) >>> 0;
+  d1 = addWordToLong(d1, 0xee00);                              // $25F608 addi.w #-$1200
+  const detailBank = ram.u16(a6 + K.paletteBankAt);
+  enqueueZoomedRegistersThroughStub(
+    ram, rom, K.detailEmitter, d1, d2, 0x0a40, detailBank, 0x80008000,
+  );
+  // `$25F62A` performs a dead lookup before `$25F640` replaces D6 with the
+  // second detail sprite's visible zoom flags.
+  if (ram.u16(K.detailDuplicateAt) !== 0) {
+    enqueueZoomedRegistersThroughStub(
+      ram, rom, K.detailEmitter, d1, d2, 0x0a40, detailBank, 0x80005000,
+    );
+  }
+  d2 = rom.u32(a0);
+
+  for (const off of K.satellites) {                            // $25F64E..$25F680
+    if (ram.u16(a6 + off) === 0x0280) continue;
+    ram.setU16(a6 + off, u16(ram.u16(a6 + off) + 8));
+    break;
+  }
+
+  if (ram.u16(K.satelliteGateAt) !== 0) {                     // $25F684 tst.w $80390C
+    d1 = (ram.u32(a6 + K.positionAt) + 0xfe00f000) >>> 0;
+    d1 = addWordToLong(d1, 0x0900);
+    d1 = swapWords(addWordToLong(swapWords(d1), 0x0600));
+    const flagOffset = (ram.u16(K.satelliteFlagsAt) & 0x001e) * 2;
+    const flags = rom.u32(K.satelliteFlagTable + flagOffset);
+    const regular = (ram.u8(K.satelliteEmitterAt) & 0x02) !== 0;
+    const emit = (coords, art, size) => {
+      if (regular) {
+        enqueueRegistersThroughStub(ram, rom, K.mainEmitter, coords, art, size, detailBank);
+      } else {
+        enqueueZoomedRegistersThroughStub(
+          ram, rom, K.detailEmitter, coords, art, size, detailBank, flags,
+        );
+      }
+    };
+    emit(d1, d2, ram.u16(a6 + K.satellites[0]));
+    for (let i = 1; i < K.satellites.length; i++) {
+      const d3 = ram.u16(a6 + K.satellites[i]);
+      if (d3 === 0x0200) continue;
+      d1 = (d1 + 0xfc000000) >>> 0;
+      d2 = (d2 + 0x84) >>> 0;
+      emit(d1, d2, d3);
+    }
+  }
+
+  const spriteTick = ram.u8(a6 + K.spriteTickAt);             // $25F76C subq.b #1
+  ram.setU8(a6 + K.spriteTickAt, u16(spriteTick - 1) & 0xff);
+  if (spriteTick === 0) {
+    ram.setU8(a6 + K.spriteTickAt, ram.u8(a6 + K.spriteReloadAt));
+    const sprite = u16(ram.u16(a6 + K.spriteAt) + 8);
+    ram.setU16(a6 + K.spriteAt, sprite === 0x0028 ? 0 : sprite);
+  }
+}
+
+/** `$25F530..$25F57F` -- choose the eligible joined record and run `$25F592`. */
+export function state7Head25F530(ram, rom, ctx, d7) {
+  const K = STATE7_HEAD_25F530;
+  const eligible = (base) => (ram.u8(base) & 0x01) !== 0 && (ram.u8(base) & 0x04) === 0;
+  let base = null;
+  if (u16(d7) !== 0 && eligible(K.records[0])) base = K.records[0];
+  if (base === null && eligible(K.records[1])) base = K.records[1];
+  if (base !== null) state7Player25F592(ram, rom, ctx, base);
 }
 
 /** `$25D990..$25D9E5`, 84 bytes -- **SAVE BOTH SIDES' SELECTIONS**, and the reason `$26070C`
@@ -902,12 +1049,11 @@ export function perFrame25FAA4(ram, rom, ctx) {
  */
 export function phase7_25D560(ram, rom, ctx, a5, a6, d7, draws = ctx?.selectDraws) {
   const H = HANDLER7;
-  ctx.unported?.note(H.head, `${hex7(H.head)} -- ${H.headBytes} bytes, and it bsr's the `
-    + `${H.headInnerBytes}-byte ${hex7(H.headInner)}. Unread`);            // $25D560 jsr $25F530
+  state7Head25F530(ram, rom, ctx, d7);                          // $25D560 jsr $25F530
 
   // D0, all thirty-two bits of it: $25D71C writes a LONG into it and `move.w` leaves the high half
-  // standing. `d0Site` is where the value came from, or 0 for "a callee this port has not read".
-  // $25F530 has just returned, so it starts UNKNOWN rather than at the caller's value.
+  // standing. `d0Site` is where the value came from, or 0 for a value inherited from outside this
+  // translated routine. `$25F530` preserves D0-D7/A0-A6 through matching full-register movems.
   let d0 = 0;
   let d0Site = 0;
   const setD0W = (v, site) => { d0 = (((d0 & 0xffff0000) | (v & 0xffff)) >>> 0); d0Site = site; };

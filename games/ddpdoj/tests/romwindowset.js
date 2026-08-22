@@ -140,13 +140,23 @@
 // read because RomWindows.#at does not stitch. Measured: 75 -> 76 pairs.
 
 // ---------------------------------------------------------------------------
+// W501 ADDED THREE WINDOWS AND THE OVERLAP COUNT STILL DID NOT MOVE.
+// ---------------------------------------------------------------------------
+// `$25F7C8 + $A0` is the 40-long main animation table indexed by record word +$A over
+// `{0,4,..,$9C}`. `$25F880 + $78` contains the three contiguous `$28`-byte sprite blocks whose
+// pointers W375 already exports. `$25F8F8 + $40` is the 16-long satellite zoom-flag table indexed
+// over byte offsets `{0,4,..,$3C}`. All three declarations are disjoint. The four palettes consumed
+// by `$25F592` already sit inside `$222A78 + $2880`, so no redundant overlapping palette window was
+// added. Measured: 634 -> 637 windows, 444,269 -> 444,613 bytes, 76 -> 76 pairs.
+
+// ---------------------------------------------------------------------------
 // W500 ADDED ONE WINDOW AND THE OVERLAP COUNT STILL DID NOT MOVE.
 // ---------------------------------------------------------------------------
 // `$25FC68 + $20` contains the two adjacent, independently $FF-terminated TX
 // control streams consumed by `$25FAA4`'s local leaves. It is disjoint from
 // every prior declaration. Measured: 633 -> 634 windows, 76 -> 76 pairs.
 
-export const ROM_WINDOW_COUNT = 634;
+export const ROM_WINDOW_COUNT = 637;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -200,5 +210,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "end and RomWindows.#at cannot stitch across a seam. W429 and W435 each "
   + "added an abutting window and moved no pair. W497 added one forced pair "
   + "where the $24DDB0 authentic-style template's +$1E longword crosses the "
-  + "$24DDD0 seam. W500 added the disjoint $25FC68+$20 control-stream window "
-  + "and moved no pair. See tests/romwindowset.js.";
+  + "$24DDD0 seam. W500 added the disjoint $25FC68+$20 control-stream window, "
+  + "and W501 added disjoint $25F7C8+$A0, $25F880+$78, and $25F8F8+$40 animation "
+  + "windows; neither wave moved the overlap count. See tests/romwindowset.js.";

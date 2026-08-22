@@ -1744,10 +1744,9 @@ were wrong by a lot. Measured to the real `rts`: `$25E6CE` is **70** bytes (reco
 **Still open in slot [9]:** `$25CB94`, the dispatcher's tail past the record walk -- it reads
 `$23D16C`, tests bit `$F`, checks record 1 and calls `$23C98E`. Unread, and a counted note.
 
-**SUPERSEDED THROUGH W500:** slot [17]'s `$25F456`, `$26070C`, and `$2603FE` callees were already live,
-and W500 ports `$25FAA4..$25FBF1` plus local leaves `$25FBF2` and `$25FC14`. The exact remaining
-state-7 edge is `$25F530` (80 B) and its 560-byte inner `$25F592`; both stay counted and neither was
-invented or partially translated in W500.
+**SUPERSEDED THROUGH W501:** slot [17]'s `$25F456`, `$26070C`, and `$2603FE` callees were already live,
+W500 ports `$25FAA4..$25FBF1` plus local leaves `$25FBF2` and `$25FC14`, and W501 ports the final
+state-7 head `$25F530` (80 B) and its 560-byte inner `$25F592`. That head now has no counted routine note.
 
 Five of the eleven are now candidates: **[17] D33, [9] D34, [18] D37, [16] service, [12] hiscore, [13] stage
 progression.** (The [18] anchor was withdrawn in W373 -- see D37.)
@@ -1834,8 +1833,22 @@ Its full-register save/restore means the state-7 caller's inherited D0 survives.
 selector domains `{0,2}` and `{2,4,6}`, shared label ordering, draw-tail order, one-shot handoff, and
 ordinary launch behavior remain unchanged.
 
-**Next live D34 edge:** `$25F530` and inner `$25F592` at the head of the same state-7 handler. W500
-intentionally leaves that counted note loud rather than broadening scope.
+**W501 STATE-7 CLOSURE:** `$25D560` now calls live `$25F530..$25F57F` and
+`$25F592..$25F7C1` bodies. The head preserves all registers, prefers an eligible P1 record when D7 is
+nonzero, and falls back to P2. Each selected record waits out its delay, installs the common and selected
+palettes once, draws the `$25F7C8` main sequence, pauses at `$5C`, and retires at `$9C` through record bit
+2 and `$813006`. During the pause it draws the `$25F880` detail blocks through `$23E4D2` with distinct
+D6 values `$80008000/$80005000`, advances four satellite scales and the `$28`-byte sprite cursor, and
+selects ordinary `$23DF86` or zooming `$23E4D2` satellite output from `$80390B` bit 1. Zoom flags come
+from `$25F8F8[(($80390A & $1E) * 2)]`.
+
+The three exact disjoint windows `$25F7C8+$A0`, `$25F880+$78`, and `$25F8F8+$40` raise the export from
+634 to 637 windows and 444,269 to 444,613 bytes without moving the 76 overlap pairs. The existing
+`$222A78+$2880` window already contains all four palettes, so W501 adds no redundant palette overlap.
+
+**Next counted D34 edge:** `$25E72E..$25E7B7`, the per-record select-screen draw reached for both live
+and dead records at `$25CBF4`. Its body rebuilds a sprite through `$260A7C/$23E08C` and calls `$25F1EC`
+and the already-live `$25F2D0`; it remains loud rather than partially translated in W501.
 
 ### D35: THE LIFE AND COIN SYSTEM
 
@@ -6689,3 +6702,28 @@ no failures or skips. JavaScript syntax checks pass. The full suite, browser exp
 run. W500 is independently verified and landed on main but unpublished, is the fourth wave after W496, production remains W496
 build `20260822120853`, and W501 remains the next publication wave. `$25F530` with inner `$25F592` is the
 next live unresolved D34 edge.
+
+### D108: W501 D34 STATE-7 HEAD AND RECORD ANIMATION, VERIFIED LOCALLY
+
+W501 replaces state 7's final counted call with live `$25F530..$25F57F` and `$25F592..$25F7C1` bodies.
+The head implements the cartridge's D7-sensitive P1 preference and eligible-P2 fallback. The inner body
+preserves the initial delay, one-time common and per-selection palette installs, main sequence cadence,
+`$5C` pause, zoom-detail pair with separate D6 flags, optional indexed satellites, sprite-cursor wrap, and
+`$9C` retirement request. It uses the ordinary and zooming register-enqueue conventions separately rather
+than routing `$23E4D2` through the ordinary resolver.
+
+Three disjoint cartridge windows are new: the 40-long main sequence at `$25F7C8+$A0`, three contiguous
+`$28`-byte detail blocks at `$25F880+$78`, and the 16-long satellite flag table at `$25F8F8+$40`. The four
+palettes were already covered. Regeneration measures 637 windows and 444,613 exported bytes, with overlap
+pairs unchanged at 76. No ROM-derived file is tracked.
+
+The compact state-7 lifecycle, exact-extent, registry, and directly affected select-screen integration regression
+passes 101/101 with no failures or skips.
+The focused test proves distinct `$80008000/$80005000` detail flags, the shared satellite index/emitter word,
+palette one-shot behavior, sequence pause and retirement, D7 selection, and P2 fallback. W501 is locally
+verified at the fifth-wave publication point. Production remains W496 build `20260822120853` until the quiet
+tracked tree runs `export-web.mjs` and then `publish.mjs`.
+
+The next counted D34 edge is `$25E72E..$25E7B7`, reached once per selection record from `$25CBF4` for both
+live and dead records. Keep the next wave bounded to that draw and its actually required `$260A7C/$25F1EC`
+dependencies.
