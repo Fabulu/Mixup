@@ -6,7 +6,9 @@
 // touching RAM, input, timing, or pixels.
 
 import { fireBomb2498E2 } from './bomb.js';
-import { bcdAdd, LEDGER } from './score.js';
+import { spawnCore, WriteLog } from './bullets.js';
+import { AimTables, aim64FromCaller } from './aim.js';
+import { abcd, bcdAdd, LEDGER } from './score.js';
 
 export const CATEGORIES = Object.freeze(['survival', 'arsenal', 'challenge', 'presentation']);
 
@@ -118,6 +120,21 @@ export const MODS = Object.freeze({
     blurb: 'Remove both ships\' protection windows and double nonnegative player damage at resolution.',
     effects: ['$810424/$810486 := 0', 'shot, beam, and bomb HP subtraction damage x2, capped at $7FFF'],
   }),
+  'revenge-bullets': mod({
+    name: 'Revenge Bullets', category: 'challenge',
+    blurb: 'Each ordinary enemy you destroy releases one aimed bullet from its final position.',
+    effects: ['$28615E plus common-band fatal retirement -> one kind-5 bank-A spawn through $2814B6'],
+  }),
+  'bullet-polarity': mod({
+    name: 'Bullet Polarity', category: 'challenge',
+    blurb: 'Shot movement phases through bank A; holding the laser phases through bank B.',
+    effects: ['$2459D0 collision: unfocused ignores bank A, focused ignores bank B, per player'],
+  }),
+  'score-multiplier-mayhem': mod({
+    name: 'Score Multiplier Mayhem', category: 'challenge',
+    blurb: 'Cycle score awards through a deterministic x1 to x8 multiplier every logic frame.',
+    effects: ['$81B4C0/$81B4C4 final pending ledger addends x (($80390A & 7) + 1), packed BCD'],
+  }),
 
   'invert-colors': mod({
     name: 'Invert Colors', category: 'presentation', replaySafe: true,
@@ -200,6 +217,9 @@ export function resolveLoadout(ids = []) {
     resurrectionInPlace: has('resurrection-in-place'),
     glassCannon: has('glass-cannon'),
     bossEnrage: has('boss-enrage'),
+    revengeBullets: has('revenge-bullets'),
+    bulletPolarity: has('bullet-polarity'),
+    scoreMultiplierMayhem: has('score-multiplier-mayhem'),
     rank: has('maximum-rank') ? 'maximum' : has('low-rank') ? 'low' : null,
     precisionShip: has('precision-ship'),
   });
@@ -289,6 +309,7 @@ export const MOD_RAM = Object.freeze({
   player2: 0x810448,
   player2Y: 0x81044a,
   player2X: 0x81044c,
+  logicFrame: 0x80390a,
 });
 
 const BEE_MAGNET_STEP = 0x80;
@@ -380,6 +401,57 @@ function consumeResurrectionPosition(state, _ram, side, y, x) {
   return saved;
 }
 
+const REVENGE_AIM_TABLES = new WeakMap();
+
+function revengeAimTables(rom) {
+  let tables = REVENGE_AIM_TABLES.get(rom);
+  if (!tables) {
+    tables = new AimTables(rom);
+    REVENGE_AIM_TABLES.set(rom, tables);
+  }
+  return tables;
+}
+
+function fireRevengeBullet(ram, event, ctx) {
+  const aimed = aim64FromCaller(
+    () => revengeAimTables(ctx.rom), ram, event.rec, event.y, event.x,
+  );
+  if (aimed.carry) return null;
+  const regs = {
+    d0: 5,
+    d1: aimed.dir,
+    d2: ((event.y << 16) | event.x) >>> 0,
+    d3: 0, d4: 0, d5: 0, a5: event.rec,
+  };
+  return spawnCore({ ram, rom: ctx.rom, log: new WriteLog(ram) }, regs, 'A');
+}
+
+function hostilePolarityBank(ram, event) {
+  const focused = (ram.u8(event.player + 0x18) & 0x10) !== 0;
+  return event.bank === (focused ? 'A' : 'B');
+}
+
+function multiplyPackedBcd(addend, multiplier) {
+  const source = addend >>> 0;
+  if (multiplier === 1) return source;
+  let total = 0;
+  for (let n = 0; n < multiplier; n++) {
+    let next = 0, x = 0;
+    for (let shift = 0; shift < 32; shift += 8) {
+      const r = abcd((total >>> shift) & 0xff, (source >>> shift) & 0xff, x);
+      next = (next | (r.v << shift)) >>> 0;
+      x = r.x;
+    }
+    total = next;
+  }
+  return total;
+}
+
+function multiplyFinalScoreAddend(addend, ram) {
+  const multiplier = (ram.u16(MOD_RAM.logicFrame) & 7) + 1;
+  return multiplyPackedBcd(addend, multiplier);
+}
+
 /** Per-Game callback options, or null when this loadout needs no callback seam. */
 export function modGameOptions(state) {
   if (!state) return null;
@@ -399,6 +471,9 @@ export function modGameOptions(state) {
     options.respawnPositionTransform = (ram, side, y, x) =>
       consumeResurrectionPosition(state, ram, side, y, x);
   }
+  if (sim.revengeBullets) options.enemyDeathHook = fireRevengeBullet;
+  if (sim.bulletPolarity) options.enemyBulletCollisionFilter = hostilePolarityBank;
+  if (sim.scoreMultiplierMayhem) options.scoreAddendTransform = multiplyFinalScoreAddend;
   return Object.keys(options).length ? Object.freeze(options) : null;
 }
 

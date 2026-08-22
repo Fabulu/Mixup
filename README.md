@@ -182,9 +182,9 @@ guard. Production build `20260822080859` supersedes `20260822042005` and carries
 W487 through W491. W488's regenerated exporter measures 632 windows with 75
 overlapping pairs. W489's mortality and sound set passes 91/91, W490's notice
 lifecycle and affected browser set passes 19/19, and W491's viewport and input set
-passes 46/46, all with no failures or skips. Unpublished W492 and W493 add eight
-transformative mods; W493's focused affected set passes 232/232 and the bundle gate
-remains pixel-exact.
+passes 46/46, all with no failures or skips. Unpublished W492 through W494 add eleven
+transformative mods; W493's focused affected set passes 232/232, W494's passes
+118/118, and the bundle gate remains pixel-exact.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -254,10 +254,10 @@ HUD, sound posts, and high-score name entry. The browser port and generated
 asset path are live, and W491 published as production build `20260822080859`
 after all 4,328 DDPDOJ unit tests passed with zero skips. W477 shipped the first
 15 optional mods, including explicit Invincibility, while an empty loadout remains
-vanilla. W492 and W493 raise the catalogue to 23 with Hyper Overdrive, Adaptive Slow
-Motion, Bee Magnet, Boss Enrage, Graze Reactor, Glass Cannon, Auto Deathbomb, and
-Resurrection in Place. Each remains behind explicit state-local simulation seams and
-replay blocking.
+vanilla. W492 through W494 raise the catalogue to 26 with Hyper Overdrive, Adaptive Slow
+Motion, Bee Magnet, Boss Enrage, Graze Reactor, Glass Cannon, Auto Deathbomb,
+Resurrection in Place, Revenge Bullets, Bullet Polarity, and Score Multiplier Mayhem.
+Each remains behind explicit state-local simulation seams and replay blocking.
 W478 ports the loop-aware hyper contribution to enemy-bullet speed, with its
 zero-power flag branch corrected during the W481 publication gate. W479
 restores the mirrored player bonus followers, and W480 closes the final type-5
@@ -296,8 +296,8 @@ floating stick's origin and bounded displacement only while held. Coverage is 10
 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child,
 and the remaining static `$48 -> $54` edge is disabled behind Version B's
 `$2714AE` return, so no next runtime blocker has been established. W491 is
-published as production build `20260822080859`. W492 and W493 are verified locally
-with eight new transformative mods; W493's focused affected set passes 232/232 and the
+published as production build `20260822080859`. W492 through W494 are verified locally
+with eleven new transformative mods; W494's focused affected set passes 118/118 and the
 bundle gate remains pixel-exact, but publication waits for W496.
 
 That breadth does not mean the game is finished. The authoritative docket still

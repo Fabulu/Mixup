@@ -107,6 +107,7 @@ import {
 } from './palette.js';
 import { runAnimObjects24683E } from './animobjects.js';
 import { installBulletSpeedTransform, installBulletSpawnHook } from './bullets.js';
+import { installScoreAddendTransform } from './score.js';
 
 /** THE BUCKETS `pgm.py shipgate` SUBSTITUTES, in drain (= depth) order.
  *
@@ -405,6 +406,9 @@ export class Game {
       'lethalHitHook',
       'deathPositionCapture',
       'respawnPositionTransform',
+      'enemyDeathHook',
+      'enemyBulletCollisionFilter',
+      'scoreAddendTransform',
     ]) {
       if (opts[name] == null) continue;
       if (typeof opts[name] !== 'function') {
@@ -413,6 +417,9 @@ export class Game {
       this[name] = opts[name];
     }
     if (this.bulletSpawnHook) installBulletSpawnHook(this.ram, this.bulletSpawnHook);
+    if (this.scoreAddendTransform) {
+      installScoreAddendTransform(this.ram, this.scoreAddendTransform);
+    }
     this.wallHits = [];
     this.allocEvents = new Map();
     this.bulletSpawns = new Map();   // WAVE 30, see #ctx()'s bulletSpawn
@@ -525,6 +532,9 @@ export class Game {
         ? { deathPositionCapture: this.deathPositionCapture } : {}),
       ...(this.respawnPositionTransform
         ? { respawnPositionTransform: this.respawnPositionTransform } : {}),
+      ...(this.enemyDeathHook ? { enemyDeathHook: this.enemyDeathHook } : {}),
+      ...(this.enemyBulletCollisionFilter
+        ? { enemyBulletCollisionFilter: this.enemyBulletCollisionFilter } : {}),
       // WAVE 57: the BG videoram, because an ENEMY HANDLER writes it.  Type
       // $1C ($26C20C, what the midboss's death spawns) copies 23 x 9 map
       // longwords into $9000xx -- the same array `$240D9A` writes through

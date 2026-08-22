@@ -392,6 +392,10 @@ export function playerBox(ram, a4, ctx = null) {
     // a FREE slot whose stale position falls inside the box is a hit, which is
     // the board's behaviour and is why the pool's clear at $28131E matters).
     if ((ram.u8(rec) & 0x51) !== 0) continue;         // $245A3C/$245A40
+    if (ctx?.enemyBulletCollisionFilter) {
+      const bank = (ram.u16(rec) & 0x0200) !== 0 ? 'B' : 'A';
+      if (!ctx.enemyBulletCollisionFilter(ram, { player: a4, bullet: rec, bank })) continue;
+    }
     ram.setU8(rec, ram.u8(rec) | 0x10);               // $245A44 or.b D4,(-$4,A6)
     ram.setU8(a4, ram.u8(a4) | 0x10);                 // $245A48 or.b D4,(A4)
     ram.setU16(DMG.fa7e, 1);                          // $245A4A move.w #$1

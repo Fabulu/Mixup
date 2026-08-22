@@ -397,8 +397,28 @@ export function abcd(dst, src, x) {
  *   $28662E sub.w D2,D2          clear X
  *   $286630 abcd -(A1),-(A0)  x4
  */
+// Compact score call sites do not carry Game context. Only an explicitly
+// installed Ram gets a final-ledger policy; vanilla bcdAdd keeps the ROM addend.
+const SCORE_ADDEND_TRANSFORMS = new WeakMap();
+
+export function installScoreAddendTransform(ram, transform) {
+  if (typeof transform !== 'function') {
+    throw new TypeError('score addend transform must be a function');
+  }
+  SCORE_ADDEND_TRANSFORMS.set(ram, transform);
+}
+
 export function bcdAdd(ram, accEnd, d0) {
-  ram.setU32(SCORE.scratch, d0 >>> 0);                // $28662C move.l D0,(A1)+
+  let addend = d0 >>> 0;
+  if (accEnd === LEDGER.p1.pendingEnd || accEnd === LEDGER.p2.pendingEnd) {
+    const transform = SCORE_ADDEND_TRANSFORMS.get(ram);
+    if (transform) {
+      const side = accEnd === LEDGER.p1.pendingEnd ? 0 : 1;
+      const transformed = transform(addend, ram, side);
+      if (Number.isFinite(transformed)) addend = Math.trunc(transformed) >>> 0;
+    }
+  }
+  ram.setU32(SCORE.scratch, addend);                  // $28662C move.l D0,(A1)+
   let x = 0;                                          // $28662E sub.w D2,D2
   for (let i = 1; i <= 4; i++) {                      // $286630..$286636
     const a = accEnd - i, b = SCORE.scratch + 4 - i;

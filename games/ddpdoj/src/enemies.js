@@ -139,8 +139,24 @@ export function runEnemyDriver(ram, handlers, ctx) {
         + `($2688CC x8411, $268232 x740, $26A2E2 x662, $269CEA x429, `
         + `$275914 x133) and translated NONE of them`);
     }
-    fn(ram, rec, i, ctx);                               // $263538 jsr (A1)
+    // The first ten slots are the special and boss bands. A score event alone
+    // is not fatal: the same handler must also retire its common-band record.
+    const deathHook = rec >= ENEMY.bandCommon ? ctx?.enemyDeathHook : null;
+    let fatal = null;
+    const handlerCtx = deathHook ? {
+      ...ctx,
+      killEvent: (d0, d1) => {
+        fatal = {
+          rec, sub, y: ram.u16(sub + 0x02), x: ram.u16(sub + 0x04), d0, d1,
+        };
+        ctx.killEvent?.(d0, d1);
+      },
+    } : ctx;
+    fn(ram, rec, i, handlerCtx);                         // $263538 jsr (A1)
     processed++;
+    if (fatal && (ram.u16(rec) & 0x8000) === 0) {
+      deathHook(ram, fatal, handlerCtx);
+    }
     // $26353C..$263566 -- the survivor bookkeeping.  `tst.w (A5) / bpl` means
     // "the handler cleared bit 15", i.e. it killed the enemy this frame; those
     // are not counted.

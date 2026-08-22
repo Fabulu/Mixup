@@ -6478,3 +6478,26 @@ with no regression caused by those fixes. The published-bundle gate remains 15,9
 pixel-identical. Syntax checks, diff hygiene, and the no-em-dash check pass. The full unit suite was not
 run, browser assets were not regenerated, and W493 is unpublished. It is the second wave after W491; W496
 remains the next periodic publication point.
+
+### D102: W494 REVENGE, POLARITY, AND SCORE MODS, VERIFIED LOCALLY
+
+The start menu now exposes 26 mods. W494 adds Revenge Bullets, Bullet Polarity, and Score Multiplier
+Mayhem. All three change simulation and block replay v1. Their callbacks are installed only for selected
+Games, and later vanilla Games retain the cartridge path without callback properties or per-RAM policy.
+
+Revenge Bullets wraps the central kill signal only for the 48 ordinary enemy records, then emits one aimed
+kind-5 Bank-A bullet through the authentic centralized allocator only when the same handler retires that
+record. Free records, offscreen retirement, boss and special bands, nonfatal score events, freeze refusal,
+and full pools produce no shot. Bullet Polarity filters only the final enemy-bullet collision: an unfocused
+player phases through Bank A while a player holding laser focus phases through Bank B, with each side read
+from its own player record. The remaining hostile bank keeps the original hit path.
+
+Score Multiplier Mayhem transforms only additions to P1 or P2's final pending score ledger. The logic-frame
+word selects deterministic x1 through x8 packed-BCD multiplication with the authentic eight-digit wrap.
+Internal chain accumulators and vanilla `bcdAdd` remain exact, and Graze Reactor awards pass through the
+factor exactly once.
+
+The focused and directly affected W494 set passes 118/118 with no failures or skips. Syntax checks, diff
+hygiene, and the forbidden-punctuation scan pass. The published-bundle gate remains
+15,955,968/15,955,968 pixel-identical. The full unit suite was not run, browser assets were not regenerated,
+and W494 is unpublished. It is the third wave after W491; W496 remains the next periodic publication point.

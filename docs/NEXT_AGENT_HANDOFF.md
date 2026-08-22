@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W493 second transformative-mod wave verified locally)
+Updated: 2026-08-22 (W494 third transformative-mod wave verified locally)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,20 +8,18 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W493 adds the second four mods in the additional
-transformative roster.** The catalogue now has 23 entries. Graze Reactor rewards a player's first near
-miss for each live bullet-slot lifetime. Glass Cannon removes both protection windows and doubles
-nonnegative player damage, including ramming. Auto Deathbomb spends stock through the cartridge bomb arm
-and cancels a pending lethal hit only when that arm fires. Resurrection in Place gives each player one
-side-local saved death position, consumed only by a successful authentic respawn allocation. W492's Hyper
-Overdrive, Adaptive Slow Motion, Bee Magnet, and Boss Enrage remain unchanged. Every new mod blocks replay
-v1. Empty, unknown-only, direct, Original, and later vanilla-Game paths install no mod callback or policy.
+`docs/DOCKET.md` is authoritative. **W494 adds the next three mods in the additional
+transformative roster.** The catalogue now has 26 entries. Revenge Bullets emits one aimed Bank-A shot
+through the central allocator only for a scored fatal retirement in the ordinary enemy band. Bullet
+Polarity makes unfocused players phase through Bank A and focused players phase through Bank B, resolving
+P1 and P2 independently. Score Multiplier Mayhem applies a deterministic packed-BCD x1 through x8 factor
+only to final pending score-ledger additions. W492 and W493's eight additions remain unchanged. Every new
+mod blocks replay v1. Empty, unknown-only, direct, Original, and later vanilla-Game paths install no mod
+callback or policy.
 
-The W493 focused and directly affected set passes 232/232. Independent read-only review confirmed the three
-post-review corrections: spawn-based graze lifetime reset, transformed ramming damage, and last-life
-resurrection-cache clearing. Syntax, diff hygiene, and forbidden-punctuation checks pass. The
-published-bundle gate remains 15,955,968/15,955,968 pixel-identical. W493 is not published; W496 remains
-the next publication point.
+The W494 focused and directly affected set passes 118/118. Syntax, diff hygiene, and
+forbidden-punctuation checks pass. The published-bundle gate remains 15,955,968/15,955,968
+pixel-identical. W494 is not published; W496 remains the next publication point.
 
 W490 makes all large replay and recording notices transient. W489 removed the fly-around oracle's embedded
 `$810424=$FF` intervention from ordinary browser launches, leaving labelled progression, replay, explicit
@@ -30,6 +28,23 @@ Invincibility, and authentic `$F0` grace exact. W488 ports the shared two-line p
 101/256 ported, 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not
 follow the static `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
 W491 is live as production build `20260822080859`, superseding W486's `20260822042005`.
+
+## W494 VERIFIED LOCALLY: REVENGE, POLARITY, AND SCORE MODS
+
+`enemies.js` wraps the central score-kill callback only while dispatching an ordinary-band record and calls
+the selected death hook only if the same handler clears that record's live bit. Revenge Bullets aims from
+the captured final sub-record position and uses `spawnCore` Bank A kind 5, retaining authentic no-player,
+freeze, and pool-full refusals. Boss and special bands never acquire this seam.
+
+`damage.js` asks one optional filter immediately before authentic enemy-bullet hit marking. Bullet Polarity
+uses each player's own focus bit: unfocused ignores Bank A, focused ignores Bank B, and the opposite bank
+continues through the original collision writes. `score.js` registers a per-RAM final-addend transform and
+applies it only for P1/P2 pending-ledger endpoints. Score Multiplier Mayhem reads `$80390A & 7`, multiplies
+packed BCD x1 through x8, and leaves intermediate accumulators and later vanilla Games unchanged.
+
+The compact and directly affected set passes 118/118. All changed JavaScript parses, `git diff --check` and
+the U+2014 scan pass, and the published-bundle gate remains pixel-identical. W494 is the third wave after
+W491 and is not published.
 
 ## W493 VERIFIED LOCALLY: COLLISION AND DEATH MODS
 
@@ -845,7 +860,7 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. Add the remaining 7 transformative mods in bounded waves without changing vanilla behavior. Ships and
+1. Add the remaining 4 transformative mods in W495 and W496 without changing vanilla behavior. Ships and
    pilots are core fidelity work, not part of that mod count.
 2. Make both cartridge-supported ships and all three pilots selectable and playable.
 3. Complete Black Label through the full second loop.
