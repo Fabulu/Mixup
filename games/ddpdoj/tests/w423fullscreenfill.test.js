@@ -1,5 +1,5 @@
 // ===============================================================================================
-// W423 -- DOCKET D55. FULLSCREEN USES THE WHOLE SCREEN.
+// W423 / W491 -- DOCKET D55. EVERY LAYOUT USES THE AVAILABLE SCREEN.
 // ===============================================================================================
 //
 // THE OWNER: "We also definitely need a full screen mode in all configurations. Always preserve
@@ -14,7 +14,7 @@
 // play: a fractional scale puts 1:1 pixels on non-integer device pixels, and the Batman port's
 // dithered circle came out looking like tetris pieces. So:
 //
-//   * the WINDOWED page is untouched -- `fill` is opt-in and the page passes it only in fullscreen;
+//   * callers that omit `fill` are untouched, while the shipped page opts in for every layout;
 //   * and `fill` STILL FLOORS BELOW 2x, because between 1x and 2x the uneven pixels differ by
 //     100% (one device pixel against two), which is exactly the reported defect. Above 2x the
 //     worst case is 3 against 4.
@@ -24,7 +24,7 @@
 // SECTION 3  the aspect ratio is preserved exactly, which the owner asked for FIRST
 // SECTION 4  fill still floors below 2x, so the reported defect's range is unchanged
 // SECTION 5  how much screen this actually recovers
-// SECTION 6  the page asks for it only in fullscreen, and reads the DOCUMENT
+// SECTION 6  the shipped page requests fill in every layout
 // ===============================================================================================
 
 import test from 'node:test';
@@ -50,8 +50,7 @@ const SCREENS = [
 ];
 
 test('SECTION 1: without fill NOTHING changes -- the whole-number scale still wins', () => {
-  // The windowed page is where the reported defect lives. If this section ever goes
-  // red, the fix has leaked out of fullscreen and the tetris pieces are back.
+  // This remains the non-fill API contract for callers that want integral scaling.
   for (const s of SCREENS) {
     for (const mode of ['tate', 'yoko']) {
       const pic = PICTURES[mode];
@@ -139,24 +138,15 @@ test('SECTION 5: this recovers real screen, and the numbers are the reason D55 e
     + `${(best.gain * 100).toFixed(1)}%`);
 });
 
-test('SECTION 6: the page asks for fill ONLY in fullscreen', () => {
-  // Source-text, the rule w268fullscreen.test.js states for itself: the suite runs
-  // without a browser. What matters is that `fill` is not passed unconditionally --
-  // that would put fractional scaling on the windowed page.
-  assert.match(MODULE, /fitCanvas\(canvas, stage, mode, \{ fill: isFull\(\) \}\)/,
-    'the single fit() call passes fill from the fullscreen state');
-  assert.doesNotMatch(MODULE, /fitCanvas\([^)]*fill:\s*true/,
-    'and never passes fill unconditionally');
+test('SECTION 6: the shipped page asks for fill in every layout', () => {
+  assert.match(MODULE, /fitCanvas\(canvas, stage, mode, \{ fill: true \}\)/,
+    'the page always uses the aspect-preserving fill path');
+  assert.doesNotMatch(MODULE, /fill:\s*isFull\(\)/,
+    'viewport use no longer depends on fullscreen state');
 });
 
-test('SECTION 6: it reads the DOCUMENT, so Escape is handled too', () => {
-  // Leaving fullscreen with Escape fires no click. A flag we maintained ourselves
-  // would go stale and the page would keep a fractional scale in a window.
-  assert.match(MODULE, /const isFull = \(\) =>[^\n]*document\.fullscreenElement/,
-    'the state comes from document.fullscreenElement');
-  assert.match(MODULE, /webkitFullscreenElement/, 'with the webkit spelling for older Safari');
-  // and the existing platform-event path must still re-fit, which is what makes
-  // the Escape case actually repaint -- W268 pinned this and it must survive.
+test('SECTION 6: fullscreen transitions still refit', () => {
+  // Escape and browser fullscreen controls still change the available stage box.
   assert.match(MODULE,
     /document\.addEventListener\(ev, \(\) => \{ paintFull\(\); fit\(\); applyLock\(\); \}\)/,
     'the fullscreenchange path still calls fit()');

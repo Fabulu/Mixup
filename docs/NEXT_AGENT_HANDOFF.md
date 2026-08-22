@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W490 transient notices verified locally, unpublished)
+Updated: 2026-08-22 (W491 viewport and mobile controls verified locally, unpublished)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,27 +8,40 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W490 gives every large replay and recording notice a
-bounded four-second lifetime.** REC armed/saved, playback start, green/red verdicts, replay errors,
-and local recording or load failures all route through one controller. Replacing a notice cancels its
-pending timer and advances a revision token; even an already-queued stale callback cannot hide newer
-text or discard its timer handle. Hiding clears class, content, display, and ARIA overlay state. The REC
-button remains the persistent recording indicator, and replay operation failures no longer enter the
-permanent fatal runtime overlay.
+`docs/DOCKET.md` is authoritative. **W491 reclaims the full viewport in every layout.** HIDE UI removes
+the menu row and refits the canvas; a fixed SHOW UI action remains available outside that row. The shipped
+page always uses the aspect-preserving fill path and top-aligns the picture when the other axis has unused
+room. Touch controls are semi-transparent overlays whose container does not intercept the gap between the
+D-pad and face buttons. The floating stick now paints its origin and a knob clamped to 44 CSS pixels while
+held, then clears both through release, cancellation, lost capture, scheme-change, blur, page-hide, and
+visibility backstops.
 
-The focused W490 notice, W489 browser-default, and W158 sound set passes 19/19 with no failures or
-skips. The new import regression failed before implementation, and the chained stale-callback witness
-also failed before the callback guard was corrected. Independent review additionally passed W490 at
-4/4 and the existing recording/playback set at 7/7, finding no concrete defect. The full suite was not
-run, browser assets were not regenerated, and W490 is unpublished.
+The focused W491 viewport, fullscreen, browser-default, notice, and input set passes 46/46 with no
+failures or skips. Its first feature run failed on the absent hide control before implementation. Independent
+review caught opaque pressed-state fills on otherwise translucent touch controls; both active fills now
+retain alpha and the test pins them. The full suite was not run, browser assets were not regenerated, and
+W491 is unpublished.
 
-W489 removed the fly-around oracle's embedded `$810424=$FF` intervention from ordinary browser
-launches, leaving labelled progression, replay, explicit Invincibility, and authentic `$F0` grace exact.
-W488 ports the shared two-line per-side label printer `$25F2D0`. W487 remains the last gameplay wave
-and ports type `$58`, leaving enemy-handler coverage at 101/256 ported, 25 unknown, and 130 null,
-with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static `$48 -> $54` edge because
-Version B's live callers target the bare `rts` at `$2714AE`. W486 remains live as production build
-`20260822042005`; W487 through W490 are unpublished.
+W490 makes all large replay and recording notices transient. W489 removed the fly-around oracle's embedded
+`$810424=$FF` intervention from ordinary browser launches, leaving labelled progression, replay, explicit
+Invincibility, and authentic `$F0` grace exact. W488 ports the shared two-line per-side label printer
+`$25F2D0`. W487 remains the last gameplay wave and ports type `$58`, leaving enemy-handler coverage at
+101/256 ported, 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not
+follow the static `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
+W486 remains live as production build `20260822042005`; W487 through W491 are unpublished.
+
+## W491 VERIFIED: VIEWPORT, CHROME, AND MOBILE CONTROL VISUALS
+
+The page grid now has only the menu and stage rows. `body.chrome-hidden` removes the menu row entirely,
+while SHOW UI stays fixed at the safe-area corner. Both actions call `fit()` after changing the class. The
+page requests `{ fill: true }` in every layout, retaining `pickScale`'s aspect ratio and below-2x integral
+floor while using the limiting axis above it. `#stage` aligns the canvas at the top.
+
+The fixed touch pad overlays the stage with translucent control surfaces. Its full-width container has
+`pointer-events: none`; only `.dpad` and `.cluster` restore input. `attachStick` now forwards an
+`onVisual` callback into shared `attachFloatingStick`. The page paints fixed-position origin and knob
+markers, clamps visual displacement to 44 CSS pixels, and relies on the shared null callback for every
+release and backstop path.
 
 ## W490 VERIFIED: TRANSIENT REPLAY AND RECORDING NOTICES
 
@@ -802,17 +815,14 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. Land W490 after final diff and focused checks.
-2. W491 must add hide/show controls in every layout, maximize the game viewport, top-align it when aspect
-   ratio is the limiter, overlay semi-transparent mobile controls where needed, and display floating-stick
-   origin and displacement only while pressed.
-3. W491 is the fifth wave after published W486. On a quiet tracked tree, regenerate with
+1. Land W491 after final diff, focused checks, and narrow independent review.
+2. W491 is the fifth wave after published W486. On a quiet tracked tree, regenerate with
    `node games/ddpdoj/tools/export-web.mjs` before `node tools/publish.mjs`, then confirm the live build.
-4. Add the next 15 transformative mods in bounded waves without changing vanilla behavior. Ships and pilots
+3. Add the next 15 transformative mods in bounded waves without changing vanilla behavior. Ships and pilots
    are core fidelity work, not part of that mod count.
-5. Make both cartridge-supported ships and all three pilots selectable and playable, then complete Black
+4. Make both cartridge-supported ships and all three pilots selectable and playable, then complete Black
    Label through the full second loop.
-6. Finish functional White Label after Black Label. Leave duplicate-only cleanup until both are complete.
+5. Finish functional White Label after Black Label. Leave duplicate-only cleanup until both are complete.
 
 ## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES
 

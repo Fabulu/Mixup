@@ -99,11 +99,29 @@
      transparent gap above a dark bar, which looks like a bug rather than safety.
      The bar's own horizontal padding grows instead, below. */
   body {
-    display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+    display: grid; grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "bar" "stage";
     height: 100vh; height: 100dvh; width: 100%;
     padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom)
                 env(safe-area-inset-left);
     gap: 0;
+  }
+  body.chrome-hidden {
+    grid-template-rows: minmax(0, 1fr); grid-template-areas: "stage";
+  }
+  body.chrome-hidden #bar { display: none; }
+  body.chrome-hidden #show-ui { display: block; }
+
+  /* The reveal control is outside the grid, so hiding the bar gives every row
+     it occupied back to the game in windowed, fullscreen, desktop, and touch. */
+  #show-ui {
+    position: fixed; z-index: 19; display: none;
+    top: max(5px, env(safe-area-inset-top));
+    right: max(6px, env(safe-area-inset-right));
+    border: 1px solid #34485a; border-radius: 5px; padding: 4px 7px;
+    background: rgba(16, 24, 32, .58); color: #d8e5ef; opacity: .62;
+    font: 600 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    touch-action: manipulation;
   }
 
   /* ---- row 1: ONE LINE. ---------------------------------------------------
@@ -111,7 +129,7 @@
   /* D13: `flex-wrap` so a fourth control cannot push the name off the strip on a
      narrow phone. The horizontal safe-area insets are on `body`, not here --
      #bar is INSIDE the padded box, so adding them again would double-count. */
-  #bar { display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+  #bar { grid-area: bar; display: flex; align-items: center; gap: 8px; padding: 5px 8px;
          border-bottom: 1px solid var(--line); font-size: 11.5px; min-width: 0;
          flex-wrap: wrap; row-gap: 4px; }
   #bar .name { color: #d6e2ee; font-weight: 600; white-space: nowrap;
@@ -135,14 +153,10 @@
   @media (max-width: 760px) { #sound-state { display: none; } }
 
   /* ---- row 2: THE PICTURE, and nothing else. ------------------------------
-     image-rendering: pixelated AND an integer scale -- both are needed. A
-     fractional scale puts the canvas's 1:1 pixels on non-integer DEVICE pixels
-     and the browser resamples them. The Batman port shipped a dithered circle
-     that looked like tetris pieces because of exactly this, and it was
-     reported from play. src/web/app.js's pickScale() picks the integer, and
-     THE ROTATION IS DONE IN THE PIXEL BUFFER, NOT BY A CSS TRANSFORM, so the
-     canvas box stays an exact whole multiple in both orientations. */
-  #stage { display: flex; align-items: center; justify-content: center;
+     image-rendering keeps the source pixels crisp. pickScale preserves the
+     aspect ratio, keeps integral scaling below 2x, and fills the limiting axis
+     above that. Rotation happens in the pixel buffer, not with CSS. */
+  #stage { grid-area: stage; display: flex; align-items: flex-start; justify-content: center;
            min-height: 0; min-width: 0; overflow: hidden; position: relative; }
   canvas { image-rendering: pixelated; display: block; background: #000; }
 
@@ -153,10 +167,29 @@
   #stickzone { position: absolute; left: 0; top: 0; width: 50%; height: 100%;
                touch-action: none; display: none; z-index: 5; }
   body.stick #stickzone.on { display: block; }
+  #stick-origin, #stick-knob {
+    position: fixed; display: none; z-index: 8; pointer-events: none;
+    transform: translate(-50%, -50%); border-radius: 50%;
+  }
+  #stick-origin[aria-hidden="false"], #stick-knob[aria-hidden="false"] {
+    display: block;
+  }
+  #stick-origin {
+    width: 88px; height: 88px; border-radius: 50%;
+    border: 2px solid rgba(190, 220, 245, .58);
+    background: rgba(30, 55, 75, .18);
+    box-shadow: 0 0 0 1px rgba(5, 10, 15, .3) inset;
+  }
+  #stick-knob {
+    width: 34px; height: 34px;
+    border: 2px solid rgba(225, 240, 255, .72);
+    background: rgba(70, 135, 190, .58);
+  }
 
-  /* ---- row 3: the on-screen pad ------------------------------------------
+  /* ---- the on-screen pad overlays row 2 -----------------------------------
      Shown only on a COARSE pointer. On a desktop it is display:none and the
-     keyboard path is exactly what it was.
+     keyboard path is exactly what it was. The transparent container covers no
+     gameplay hit area; pointer events are restored only on the two controls.
 
      The d-pad is ONE pointer-capture surface hit-tested as a 3x3 grid, NOT
      four buttons. Four captured buttons can never report a diagonal -- the
@@ -172,34 +205,39 @@
   #pad { display: none; }
   body.touch .keyhint { display: none; }
   #pad.on {
-    display: flex; align-items: center; justify-content: space-between;
-    width: 100%; gap: 10px; padding: 6px 8px 4px;
+    position: fixed; z-index: 6;
+    left: env(safe-area-inset-left); right: env(safe-area-inset-right);
+    bottom: env(safe-area-inset-bottom);
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 10px; padding: 6px 8px 4px; pointer-events: none;
     touch-action: none; user-select: none; -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
   }
+  #pad.on .dpad, #pad.on .cluster { pointer-events: auto; }
   .dpad {
     display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px);
-    background: #10141a; border: 1px solid #2b3340; border-radius: 14px; padding: 3px;
+    background: rgba(16, 20, 26, .46); border: 1px solid rgba(90, 108, 132, .55);
+    border-radius: 14px; padding: 3px;
     touch-action: none;
   }
   .dpad i {
     display: flex; align-items: center; justify-content: center;
     font-style: normal; font-size: 15px; color: #6b7686;
-    border-radius: 9px; margin: 2px; background: #1a2028;
+    border-radius: 9px; margin: 2px; background: rgba(26, 32, 40, .58);
   }
   .dpad i[data-cell=""] { background: transparent; }
-  .dpad i[data-on] { background: #2f6ea8; color: #eaf3ff; }
+  .dpad i[data-on] { background: rgba(47, 110, 168, .76); color: #eaf3ff; }
   .cluster { display: flex; flex-direction: column; align-items: center; gap: 6px; }
   .row { display: flex; gap: 10px; align-items: center; }
   .tbtn {
-    background: #1d232d; border: 1px solid #37404f; color: #cde;
+    background: rgba(29, 35, 45, .64); border: 1px solid rgba(96, 113, 139, .68); color: #cde;
     font: 600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     width: 54px; height: 54px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     touch-action: none; cursor: pointer; padding: 0;
   }
   .tbtn.sml { width: 68px; height: 24px; border-radius: 6px; font-size: 10px; }
-  .tbtn[data-on] { background: #2f6ea8; border-color: #4d92cf; color: #fff; }
+  .tbtn[data-on] { background: rgba(47, 110, 168, .76); border-color: #4d92cf; color: #fff; }
   /* Landscape on a phone: in TATE the picture is 224x448, so a short viewport
      leaves real estate on both sides. Put the pad in the letterbox rather than
      under the picture, so #stage keeps the full height and pickScale() can
@@ -207,11 +245,6 @@
      back on for the two clusters, so the invisible strip across the middle
      cannot swallow a tap. */
   @media (orientation: landscape) and (max-height: 560px) {
-    #pad.on {
-      position: fixed; left: 0; right: 0; bottom: 0;
-      padding: 0 12px 8px; pointer-events: none;
-    }
-    #pad.on .dpad, #pad.on .cluster { pointer-events: auto; }
     #bar .name { display: none; }
   }
 
@@ -324,9 +357,11 @@
   <label id="play" class="bar-btn" for="play-input" role="button" tabindex="0" aria-label="Play a replay file" data-help="PLAY loads a replay file and checks every recorded input, poke, frame, and digest window.">PLAY</label>
   <input id="play-input" type="file" accept=".replay,application/json">
   <button id="infobtn" type="button" aria-label="Open information" aria-pressed="false" data-help="INFO opens the project notes. Press Escape or INFO again to close.">INFO</button>
+  <button id="hide-ui" type="button" aria-label="Hide the game menu and maximize the picture">HIDE UI</button>
 </div>
+<button id="show-ui" type="button" aria-label="Show the game menu">SHOW UI</button>
 
-<div id="stage"><canvas id="screen" width="224" height="448"></canvas><div id="stickzone"></div></div>
+<div id="stage"><canvas id="screen" width="224" height="448"></canvas><div id="stickzone"><i id="stick-origin" aria-hidden="true"></i><i id="stick-knob" aria-hidden="true"></i></div></div>
 
 <!--
   The pad's LAYOUT is here; the BITS are CONTROLS in src/web/input.js, looked up
@@ -639,6 +674,10 @@ const ladderParam = params.get('ladder') || undefined;
 const ladderDirParam = params.get('ladderDir') || undefined;
 const dpadEl = document.getElementById('dpad');
 const stickzone = document.getElementById('stickzone');
+const stickOriginEl = document.getElementById('stick-origin');
+const stickKnobEl = document.getElementById('stick-knob');
+const hideUiBtn = document.getElementById('hide-ui');
+const showUiBtn = document.getElementById('show-ui');
 const rotBtn = document.getElementById('rot');
 const ctrlBtn = document.getElementById('ctrl');
 const recBtn = document.getElementById('rec');
@@ -687,6 +726,23 @@ const paintDpad = (mask) => {
     else delete c.el.dataset.on;
   }
 };
+const paintStick = (origin, current) => {
+  if (!origin || !current) {
+    stickOriginEl.setAttribute('aria-hidden', 'true');
+    stickKnobEl.setAttribute('aria-hidden', 'true');
+    return;
+  }
+  const dx = current.x - origin.x;
+  const dy = current.y - origin.y;
+  const distance = Math.hypot(dx, dy);
+  const ratio = distance ? Math.min(1, 44 / distance) : 0;
+  stickOriginEl.style.left = `${origin.x}px`;
+  stickOriginEl.style.top = `${origin.y}px`;
+  stickKnobEl.style.left = `${origin.x + dx * ratio}px`;
+  stickKnobEl.style.top = `${origin.y + dy * ratio}px`;
+  stickOriginEl.setAttribute('aria-hidden', 'false');
+  stickKnobEl.setAttribute('aria-hidden', 'false');
+};
 
 // Both touch sources are always wired; the picker controls VISIBILITY only.
 // A display:none element does not receive pointer events, so the inactive
@@ -694,7 +750,7 @@ const paintDpad = (mask) => {
 // visible whenever touch is on.
 const padBackstop = attachPad(dpadEl, [...pad.querySelectorAll('.tbtn')],
   { onPaint: paintDpad });
-const stickBackstop = attachStick(stickzone);
+const stickBackstop = attachStick(stickzone, { onVisual: paintStick });
 
 function applyScheme() {
   const useFloat = scheme === 'auto' || scheme === 'float';
@@ -753,20 +809,17 @@ try {
 // anything else useful), on orientationchange (a phone rotating changes the
 // stage's shape without a resize on some browsers) and on visualViewport resize
 // (the URL bar sliding away only moves the visual viewport).
-// D55 -- THE OWNER: "Always preserve aspect ratio, but we need to use full
-// possible screen of any device we're on."  W268 gave the page a FULL button;
-// what it did not give it was the SCREEN, because pickScale floors to a whole
-// multiple and everything up to the next one stayed black bar.
 //
-// `fill` is passed ONLY here, and only while actually fullscreen.  The windowed
-// page keeps the whole-number scale, which exists because of a defect reported
-// from play (see pickScale) -- and pickScale still floors below 2x even in fill,
-// so the range that defect was reported in is unchanged.
-//
-// It reads the DOCUMENT rather than a flag of our own, so that leaving fullscreen
-// by Escape -- which fires no click -- still fits the windowed way.
-const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
-const fit = () => fitCanvas(canvas, stage, mode, { fill: isFull() });
+// W491 applies the existing aspect-preserving fill path in every layout. The
+// whole-number path remains available to callers of fitCanvas, but the shipped
+// page no longer leaves the space between integer scales unused while windowed.
+const fit = () => fitCanvas(canvas, stage, mode, { fill: true });
+function setChromeHidden(hidden) {
+  document.body.classList.toggle('chrome-hidden', hidden);
+  fit();
+}
+hideUiBtn.addEventListener('click', () => setChromeHidden(true));
+showUiBtn.addEventListener('click', () => setChromeHidden(false));
 addEventListener('resize', fit);
 addEventListener('orientationchange', fit);
 window.visualViewport?.addEventListener('resize', fit);

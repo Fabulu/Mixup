@@ -6395,3 +6395,28 @@ before that write. Independent review passed W490 at 4/4 and existing recording/
 and found no concrete defect. The full suite was not run, browser assets were not regenerated, and W490 is
 unpublished. W486 remains live as build `20260822042005`; W491 is the next wave and the fifth-wave
 publication point.
+
+### D99: W491 VIEWPORT, CHROME, AND MOBILE CONTROL VISUALS, VERIFIED LOCALLY
+
+Every layout now has an explicit HIDE UI action in the menu and a small fixed SHOW UI action outside it.
+The hidden state removes the bar's grid row and immediately refits the canvas, so the reclaimed area is
+usable in desktop, touch, windowed, and fullscreen layouts rather than becoming another empty strip.
+
+The shipped page now always selects `fitCanvas`'s aspect-preserving fill path. The non-fill integer API
+remains unchanged for other callers, and fill still floors below 2x, but the game no longer discards the
+space between larger integer scales. The stage uses top alignment, so any vertical room that aspect ratio
+cannot use stays below the picture rather than centering it away from the top.
+
+Fixed touch controls are now a semi-transparent fixed overlay over the game. The pad container is
+pointer-transparent and restores pointer events only on the D-pad and face-button cluster, leaving the
+space between them available to gameplay. The floating-stick adapter forwards the shared controller's
+origin and current pointer to two page-owned markers. The knob is clamped to 44 CSS pixels from its
+origin, and both markers clear on release, cancellation, lost capture, scheme changes, blur, page hide,
+and visibility loss through the existing shared backstops.
+
+The focused W491 viewport, fullscreen, browser-default, notice, and input set passes 46/46 with no
+failures or skips. The new viewport regression was observed failing before implementation. Independent
+review caught opaque pressed-state fills on otherwise translucent touch controls; both active fills now
+retain alpha and the regression pins them. The full suite was not run and browser assets were not
+regenerated. W491 is locally verified and unpublished; it is the fifth wave after live W486, so a
+quiet-tree `export-web.mjs` followed by `publish.mjs` is required next.

@@ -413,11 +413,13 @@ export function attachPad(dpadEl, buttons, { onPaint } = {}) {
  * at runtime with no game-logic change.
  *
  * The face buttons (SHOT/BOMB/AUTO/START) stay the fixed cluster; the floating
- * stick replaces ONLY the D-pad.
+ * stick replaces ONLY the D-pad. `onPaint` receives the direction mask while
+ * `onVisual` receives the shared stick's origin and current pointer, or two
+ * nulls when it clears.
  *
  * @returns {() => void} the backstop, for blur / pagehide / visibilitychange.
  */
-export function attachStick(zoneEl, { onPaint } = {}) {
+export function attachStick(zoneEl, { onPaint, onVisual } = {}) {
   const onDirections = ({ up, down, left, right }) => {
     let m = 0;
     if (up) m |= M('UP');
@@ -427,5 +429,5 @@ export function attachStick(zoneEl, { onPaint } = {}) {
     setTouchDirections(m);
     onPaint?.(m, up || down || left || right);
   };
-  return attachFloatingStick(zoneEl, { onDirections });
+  return attachFloatingStick(zoneEl, { onDirections, onPaint: onVisual });
 }
