@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W501 published as production build `20260822192350`)
+Updated: 2026-08-22 (W502 verified locally; production remains W501 build `20260822192350`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,24 +8,22 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W501 closes the remaining counted state-7 head.** Handler `$25D560`
-now runs `$25F530..$25F57F` and inner `$25F592..$25F7C1`. The head applies the cartridge's D7-sensitive
-P1 preference and P2 fallback. The record body preserves delay, one-time palette setup, main animation,
-`$5C` pause, two distinctly flagged zoom details, indexed satellite output, sprite-cursor wrap, and `$9C`
-retirement. W500's ROM-fed one/two-round mode selector, two-side rendezvous, `{0,2}` ship domain,
-`{2,4,6}` style domain, draw-tail order, P2 controller transport, and ordinary browser launch remain unchanged.
+`docs/DOCKET.md` is authoritative. **Local W502 removes D34's sole counted per-record draw.** Slot [9]
+now calls live `$25E72E..$25E7B7` once for each live or dead selection record. The body preserves D7 record
+and side selection, `$260A7C` mailbox-state gating, active-record and global-gate label exits, `$25F1EC`
+credit/configuration carry, shared `$25F2D0` labels, independent packed-coordinate half additions, returned
+art offset, and ordinary `$23E08C` bucket-7 output. W501's state-7 animation, W500's ROM-fed one/two-round
+mode selector, two-side rendezvous, `{0,2}` ship domain, `{2,4,6}` style domain, draw-tail order, P2 controller
+transport, and ordinary browser launch remain unchanged.
 
-The next counted D34 edge is `$25E72E..$25E7B7`, called once for each selection record from `$25CBF4`
-regardless of whether it is live or dead. It rebuilds a sprite through `$260A7C/$23E08C` and calls `$25F1EC`
-and live `$25F2D0`. Keep the next wave bounded to that draw and only the dependencies its exact body requires.
+W502 adds exact disjoint windows `$25E716+$18` and `$25F270+$60`. `export-tables.py` regenerated 639
+windows and 444,733 bytes; overlap pairs remain 76. The compact draw, slot, context, shared-label, state-7
+preservation, and registry set passes 54/54 with no failures or skips, and syntax checks pass. The full suite,
+`export-web.mjs`, and publication did not run. Production remains W501 build `20260822192350`, which passed
+4,397/4,397 DDPDOJ units and published W497 through W501. W506 is the next publication wave.
 
-W501 adds exact disjoint windows `$25F7C8+$A0`, `$25F880+$78`, and `$25F8F8+$40`. `export-tables.py`
-regenerated 637 windows and 444,613 bytes; overlap pairs remain 76 because the four palettes were already
-inside `$222A78+$2880`. The compact state-7 lifecycle, exact-extent, window, and directly affected
-select-screen integration regression passes 101/101 with no failures or skips. The final quiet-tree publication
-passes 4,397/4,397 DDPDOJ units, the DDPDOJ bundle and web-fetch gates, 746/746 Gradius units, the 13/13
-Gradius gate, the 27/27 Batman gate, the distribution build, and the ROM-leak guard. Production build
-`20260822192350` deployed successfully and passed three live polls, publishing W497 through W501.
+No next gameplay target has yet been established. Continue from fresh Black Label runtime or docket evidence,
+keep the next wave bounded, and do not substitute duplicate-only cleanup or an invented D34 edge for evidence.
 
 **W497 remains the first substantial D26 implementation slice.** The cartridge-proven ship domain is `{0,2}`
 and the style domain is `{2,4,6}`. Selector 0 is Type-A and selector 2 is Type-B. The cartridge census does
@@ -47,6 +45,29 @@ the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage rem
 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
 
+## W502 VERIFIED LOCALLY: `$25E72E` PER-RECORD DRAW
+
+`draw25E72E` chooses `$25E716` for D7 zero and `$25E722` for D7 nonzero, while side remains
+`(D7+1)&1`. `$260A7C` reuses `announceBox260A20(side)` and returns mailbox word +2 from P1 `$813162`
+or P2 `$813166`. Nonzero `$813005`, announcement state 4, and an active current record all draw only the
+existing `$25F2D0` side labels.
+
+A dead record calls `selectOffset25F1EC`, the direct `$25F1EC -> $25F30C` behavior. It reuses
+`menuDips23C932`, shared/separate P1/P2 credit sources, `txString25A14C`, and `hexDigit23CD80`. The
+three two-line cartridge-message leaves set carry, which suppresses both labels and sprite output. Carry-clear
+leaves return art offset 0 or 4. The draw then adds `$FA00` to the coordinate high word and `$EC00` to the
+low word independently, reads the selected art long, and calls ordinary register emitter `$23E08C` with
+D3 `$06A0` and D4 `$000B` into bucket 7.
+
+The exact windows are `$25E716+$18` for two 12-byte coordinate/art records and `$25F270+$60` for three
+pairs of `$10`-byte TX message slots. Regeneration measures 639 windows, 444,733 bytes, and 76 overlap
+pairs. `tests/w502draw25e72e.test.js` covers both D7 sides, both art offsets, packed coordinate output,
+mailboxes, all three label-only gates, carry suppression, TX messages, and separate P2 credits. With the
+directly affected W373, W375, W428, W488, and W501 files, the compact set passes 54/54.
+
+W502 is local only. Do not run `export-web.mjs` until a publication wave requires regenerated assets. The
+next publication is W506. No next gameplay target is established by this wave.
+
 ## W501 PUBLISHED: `$25F530/$25F592` STATE-7 ANIMATION
 
 `state7Head25F530` selects P1 only when D7 is nonzero and its record is active and unretired, then falls
@@ -66,8 +87,9 @@ consume `$25F880+$78`; 16 satellite longwords consume `$25F8F8+$40`. The existin
 already covers `$2241F8..$2242F7`. `w501state7head.test.js`, the W374 extent and phase checks, W428
 registry checks, and directly affected slot-9, context, and W500 selector checks form the 101/101 set.
 
-**Next:** port `$25E72E..$25E7B7`, the sole counted per-record select-screen draw, after reading its exact
-`$260A7C/$23E08C/$25F1EC/$25F2D0` call behavior. W501 is published; W502 is the first wave after it.
+**Superseded by W502:** W501 handed off `$25E72E..$25E7B7`, the sole counted per-record
+select-screen draw, after reading its exact `$260A7C/$23E08C/$25F1EC/$25F2D0` behavior. The W502
+section above records its completed implementation and local verification.
 
 ## W500 VERIFIED LOCALLY: `$25FAA4` ORDINARY-LOOP MODE SELECTOR
 
@@ -1070,7 +1092,7 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 4. After D26 and functional completion, D28a and D28b use one synchronized control stream, option-like
    formation offsets, coordinated movement, and combined firepower for both authentic ships and then all
    three authentic pilots. Do not use independent controls or cloned stand-ins.
-5. W501 is the next five-wave publication point.
+5. W506 is the next five-wave publication point; W502 is the first local wave after published W501.
 
 ## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES
 

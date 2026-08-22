@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W501 completes D34 state 7 by running cartridge `$25F530/$25F592`, including joined-side record selection, palettes, main and zoomed sprite animation, pause, satellites, and retirement; `$25E72E` remains the next counted select-screen draw edge; full second loop and docket still in progress |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; local W502 ports D34's sole counted per-record `$25E72E` draw, including mailbox and active-record label exits, `$25F1EC` credit-message carry behavior, side-selected cartridge art, and ordinary bucket-7 output; production remains W501 build `20260822192350`, the next publication is W506, and the full second loop and docket remain in progress |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -184,8 +184,11 @@ W497 through W501. W493's focused affected set passes 232/232, W494's passes
 pixel-exact. W498's focused visible-input and Game Over set passes 93/93. W499's
 bounded controller plus directly affected shared/web input and coin set passes 83/83.
 W500's bounded selection, slot, registry, and window set passes 193/193. W501's
-compact state-7 lifecycle and ROM-window set passes 101/101; the export holds 637
-windows and 444,613 bytes with 76 overlap pairs.
+compact state-7 lifecycle and ROM-window set passes 101/101; its published export held 637
+windows and 444,613 bytes with 76 overlap pairs. Local W502's compact draw, context, shared-label,
+state-7 preservation, and registry set passes 54/54. Its regenerated local export holds 639 windows
+and 444,733 bytes with the same 76 overlap pairs. W502 was not published; W506 is the next
+publication wave.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -322,11 +325,17 @@ without changing 76 overlap pairs. W501 closes state 7's remaining counted head:
 `$25F530` selects P1 or falls back to P2, and `$25F592` installs each record's palettes,
 draws the main sequence and zoomed detail pair, advances the pause satellites, and retires
 at sequence `$9C`. Three exact disjoint animation windows at `$25F7C8+$A0`, `$25F880+$78`,
-and `$25F8F8+$40` raise the registry to 637 windows and 444,613 bytes without moving the
+and `$25F8F8+$40` raise the published registry to 637 windows and 444,613 bytes without moving the
 76 overlap pairs. Production build `20260822192350` publishes W497 through W501 after
 4,397/4,397 DDPDOJ units, all bundle and web gates, the cross-game gates, the distribution
-build, the ROM-leak guard, deployment, and three successful live polls. The next counted D34
-edge is the per-record `$25E72E` select-screen draw.
+build, the ROM-leak guard, deployment, and three successful live polls. Local W502 removes D34's
+sole counted per-record edge by porting `$25E72E..$25E7B7`. Both live and dead records now take
+its exact side selection, announcement and active-record label exits, `$25F1EC` credit-message
+carry path, coordinate adjustment, art-offset selection, and `$23E08C` bucket-7 enqueue. The two
+exact disjoint windows `$25E716+$18` and `$25F270+$60` raise the local registry to 639 windows and
+444,733 bytes while overlap pairs remain 76. Its compact affected set passes 54/54. W502 is local
+only, production remains W501 build `20260822192350`, and W506 is the next publication wave. No
+next gameplay target has yet been established beyond continuing Black Label functional work.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,

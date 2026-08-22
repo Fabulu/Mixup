@@ -3279,6 +3279,13 @@ SHOT_WINDOWS.extend([
     (0x223EF8, 0x0040, "W373: slot [9] record-state-0 palette, bank 15 through $24150A. Sixty-four "
                        "bytes because that is the CALLEE's constant. Banks 24-28 are shared with "
                        "slot [17]; this one is slot [9]'s own"),
+    # ---- W502: $25E72E per-record select-screen draw ------------------------------------------
+    (0x25E716, 0x0018, "W502: $25E72E's two 12-byte side records. Each contains one packed coordinate "
+                       "long followed by two art longs selected by $25F1EC's returned word offset; "
+                       "the exact pair therefore occupies $25E716..$25E72D"),
+    (0x25F270, 0x0060, "W502: $25F30C's three 32-byte message pairs. Each pair contains two adjacent "
+                       "$10-byte TX string slots consumed through $25A14C, so the exact six-slot "
+                       "message domain occupies $25F270..$25F2CF"),
     # ---- W501: $25F530/$25F592 selection-record animation -------------------------------------
     # The four palettes at $2241F8..$2242F7 already live inside the cartridge-backed
     # $222A78+$2880 palette window, so W501 adds no redundant overlapping declaration for them.

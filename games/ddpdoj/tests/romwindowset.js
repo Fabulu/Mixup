@@ -140,6 +140,14 @@
 // read because RomWindows.#at does not stitch. Measured: 75 -> 76 pairs.
 
 // ---------------------------------------------------------------------------
+// W502 ADDED TWO WINDOWS AND THE OVERLAP COUNT STILL DID NOT MOVE.
+// ---------------------------------------------------------------------------
+// `$25E716 + $18` contains the two 12-byte coordinate-and-art records consumed by `$25E72E`.
+// `$25F270 + $60` contains the three pairs of `$10`-byte TX message slots consumed by `$25F30C`.
+// Both declarations are disjoint. Measured: 637 -> 639 windows, 444,613 -> 444,733 bytes,
+// 76 -> 76 pairs.
+
+// ---------------------------------------------------------------------------
 // W501 ADDED THREE WINDOWS AND THE OVERLAP COUNT STILL DID NOT MOVE.
 // ---------------------------------------------------------------------------
 // `$25F7C8 + $A0` is the 40-long main animation table indexed by record word +$A over
@@ -156,7 +164,7 @@
 // control streams consumed by `$25FAA4`'s local leaves. It is disjoint from
 // every prior declaration. Measured: 633 -> 634 windows, 76 -> 76 pairs.
 
-export const ROM_WINDOW_COUNT = 637;
+export const ROM_WINDOW_COUNT = 639;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -211,5 +219,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "added an abutting window and moved no pair. W497 added one forced pair "
   + "where the $24DDB0 authentic-style template's +$1E longword crosses the "
   + "$24DDD0 seam. W500 added the disjoint $25FC68+$20 control-stream window, "
-  + "and W501 added disjoint $25F7C8+$A0, $25F880+$78, and $25F8F8+$40 animation "
-  + "windows; neither wave moved the overlap count. See tests/romwindowset.js.";
+  + "W501 added disjoint $25F7C8+$A0, $25F880+$78, and $25F8F8+$40 animation "
+  + "windows, and W502 added disjoint $25E716+$18 records and $25F270+$60 messages; "
+  + "none moved the overlap count. See tests/romwindowset.js.";

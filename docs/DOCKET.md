@@ -1744,9 +1744,10 @@ were wrong by a lot. Measured to the real `rts`: `$25E6CE` is **70** bytes (reco
 **Still open in slot [9]:** `$25CB94`, the dispatcher's tail past the record walk -- it reads
 `$23D16C`, tests bit `$F`, checks record 1 and calls `$23C98E`. Unread, and a counted note.
 
-**SUPERSEDED THROUGH W501:** slot [17]'s `$25F456`, `$26070C`, and `$2603FE` callees were already live,
-W500 ports `$25FAA4..$25FBF1` plus local leaves `$25FBF2` and `$25FC14`, and W501 ports the final
-state-7 head `$25F530` (80 B) and its 560-byte inner `$25F592`. That head now has no counted routine note.
+**SUPERSEDED THROUGH W502:** slot [17]'s `$25F456`, `$26070C`, and `$2603FE` callees were already live,
+W500 ports `$25FAA4..$25FBF1` plus local leaves `$25FBF2` and `$25FC14`, W501 ports the final
+state-7 head `$25F530` (80 B) and its 560-byte inner `$25F592`, and W502 ports the per-record
+`$25E72E` draw plus its bounded `$260A7C/$25F1EC` dependencies. Those sites now have no counted routine note.
 
 Five of the eleven are now candidates: **[17] D33, [9] D34, [18] D37, [16] service, [12] hiscore, [13] stage
 progression.** (The [18] anchor was withdrawn in W373 -- see D37.)
@@ -1846,9 +1847,18 @@ The three exact disjoint windows `$25F7C8+$A0`, `$25F880+$78`, and `$25F8F8+$40`
 634 to 637 windows and 444,269 to 444,613 bytes without moving the 76 overlap pairs. The existing
 `$222A78+$2880` window already contains all four palettes, so W501 adds no redundant palette overlap.
 
-**Next counted D34 edge:** `$25E72E..$25E7B7`, the per-record select-screen draw reached for both live
-and dead records at `$25CBF4`. Its body rebuilds a sprite through `$260A7C/$23E08C` and calls `$25F1EC`
-and the already-live `$25F2D0`; it remains loud rather than partially translated in W501.
+**W502 PER-RECORD DRAW CLOSURE:** `$25CBF4` now calls live `$25E72E..$25E7B7` for both live and dead
+records. The body selects `$25E716/$25E722` from D7, derives side `(D7+1)&1`, reads announcement state
+through `$260A7C`, and shares the existing `$25F2D0` side-label printer across the global gate,
+announcement-state-4, and active-record exits. A dead record reaches the bounded `$25F1EC -> $25F30C`
+credit/configuration paths. Their carry-setting two-line cartridge messages suppress labels and sprite output;
+carry-clear paths preserve D0 as art offset 0 or 4. The final arm adjusts the coordinate long's high and low
+words by `$FA00/$EC00`, then emits D1-D4 through ordinary bucket-7 stub `$23E08C` with `$06A0/$000B`.
+
+The exact disjoint windows `$25E716+$18` and `$25F270+$60` raise the local export from 637 to 639 windows
+and 444,613 to 444,733 bytes without moving the 76 overlap pairs. The compact directly affected set passes
+54/54. W502 is local only, production remains W501 build `20260822192350`, and W506 is the next publication
+wave. No next D34 gameplay edge has yet been established.
 
 ### D35: THE LIFE AND COIN SYSTEM
 
@@ -6729,3 +6739,22 @@ passed three live polls, publishing W497 through W501.
 The next counted D34 edge is `$25E72E..$25E7B7`, reached once per selection record from `$25CBF4` for both
 live and dead records. Keep the next wave bounded to that draw and its actually required `$260A7C/$25F1EC`
 dependencies.
+
+### D108 FOLLOW-UP -- W502 D34 PER-RECORD DRAW, VERIFIED LOCALLY
+
+W502 completes that bounded successor without broadening the audit. `$25E72E..$25E7B7` now chooses the
+`$25E716/$25E722` record from D7, derives side `(D7+1)&1`, and uses `$260A7C`'s mailbox state word +2.
+The `$813005`, announcement-state-4, and active-record arms draw the existing `$25F2D0` two-line side labels
+and return. Dead records call the direct `$25F1EC -> $25F30C` body. It reuses `menuDips23C932`, preserves
+shared versus separate credit-pool selection, prints the exact two-line cartridge messages through `$25A14C`
+with `$23CD80` digits where required, and returns carry plus D0. Carry suppresses labels and sprite output.
+Carry clear preserves art offset 0 or 4, adds `$FA00/$EC00` independently to the packed coordinate halves,
+and emits D1-D4 through ordinary bucket-7 register stub `$23E08C` with D3 `$06A0` and D4 `$000B`.
+
+The exact new windows are `$25E716+$18`, two 12-byte coordinate/art records, and `$25F270+$60`, three
+pairs of `$10`-byte TX message slots. `export-tables.py` regenerated the ignored local table at 639 windows
+and 444,733 bytes. Both are disjoint, so overlap pairs remain 76. The compact W502 draw, slot, context,
+shared-label, state-7 preservation, and registry set passes 54/54 with no failures or skips; syntax checks
+pass. The full suite, `export-web.mjs`, publication, commit, and push did not run. W502 is local only.
+Production remains W501 build `20260822192350`, W506 is the next publication wave, and no next gameplay
+target is established here.

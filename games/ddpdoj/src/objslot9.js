@@ -26,9 +26,11 @@ import { RAM } from './machine.js';
 import { SCHED } from './scheduler.js';
 import { paletteSet241688, install24150A, install2414BE, fade246292 } from './palette.js';
 import { txString25A14C, clearTx23C622 } from './background.js';
-import { readInput23D186 } from './tallyscreen.js';
+import { hexDigit23CD80 } from './fronttext.js';
+import { menuDips23C932, readInput23D186 } from './tallyscreen.js';
 import { enqueueRegistersThroughStub, enqueueZoomedRegistersThroughStub } from './spritequeue.js';
 import { queueKill, stageCreate } from './objalloc.js';
+import { announceBox260A20 } from './rank.js';
 // $25C8C2 jsr $23C47A -- the SAME routine stageend.js calls from $28D5C4. Imported rather than
 // transcribed a second time so the two callers cannot drift apart. stageend.js imports neither
 // objslot9.js nor objslot17.js, so there is no cycle.
@@ -51,7 +53,7 @@ import {
 } from './objslot8.js';
 import {
   SCREEN17, phase3_25D306, phase5_25D39C, phase6_25D4F0, phase7_25D560, sideFromD7_25D4E4, DESC17,
-  clear25F442,
+  clear25F442, LABELS_25F2D0, sideLabels25F2D0,
 } from './objslot17.js';
 
 export const SCREEN9 = Object.freeze({
@@ -466,6 +468,116 @@ function joinPoll25CB94(ram, ctx, a6, d7) {
   ram.setU8(a6, 1);                                          // $25CBC2 / $25CBF0 move.b #$1,(A6)
 }
 
+export const DRAW_25E72E = Object.freeze({
+  addr: 0x25e72e, bytes: 0x8a,
+  records: Object.freeze([0x25e716, 0x25e722]), recordBytes: 0x0c,
+  gate: 0x813005, announce: 0x260a7c, announceStateAt: 0x02,
+  offset: 0x25f1ec, offsetBody: 0x25f30c,
+  message: Object.freeze([0x25f270, 0x25f290, 0x25f2b0]), messageStride: 0x10,
+  config: 0x803808, separate: 0x80380b,
+  pair: Object.freeze({
+    commonRate: 0x803956, commonCoins: 0x803958, coinRateA: 0x803959,
+    commonCoinsB: 0x80395e, coinRateB: 0x80395f,
+  }),
+  coordHighAdd: 0xfa00, coordLowAdd: 0xec00,
+  emitter: 0x23e08c, d3: 0x06a0, d4: 0x000b,
+});
+
+/** `$260A7C..$260A87` -- preserve A4, select `$813162/$813166`, and return mailbox word +2. */
+export function announceState260A7C(ram, side) {
+  return ram.u16(announceBox260A20(side) + DRAW_25E72E.announceStateAt);
+}
+
+/** `$23C838/$23C874`, only as `$25F30C` consumes their returned D0/D1 pair. */
+function creditPair25F372(ram, d7) {
+  const D = DRAW_25E72E;
+  const config = ram.u8(D.config);
+  if (config === 0x12) return [0, 0];                           // $23C842/$23C87E -- FREE PLAY
+  const separate = ram.u8(D.separate) === 1;
+  if (u16(d7) !== 0) {                                        // $25F382 jsr $23C838 -- P1
+    if (config === 0x11) return [ram.u8(D.pair.coinRateA), ram.u8(D.pair.commonCoins)];
+    return [ram.u8(D.pair.commonRate), ram.u8(D.pair.commonCoins)];
+  }
+  // $25F378 jsr $23C874 -- P2. Separate pools replace only D1's coin source here.
+  const d1 = ram.u8(separate ? D.pair.commonCoinsB : D.pair.commonCoins);
+  if (config === 0x11) return [ram.u8(D.pair.coinRateB), d1];
+  return [ram.u8(D.pair.commonRate), d1];
+}
+
+/** The three `$25F39C/$25F3DE/$25F414` message leaves, each exactly two `$10`-spaced lines. */
+function offsetMessage25F39C(tx, rom, desc, addr, digit) {
+  const D = DRAW_25E72E;
+  const d0 = rom.u16(desc + 2);
+  const d1 = rom.u16(desc);
+  txString25A14C(tx, rom, d0, d1, 0, addr);                    // $25F3AC/$25F3EE/$25F422
+  txString25A14C(tx, rom, d0, u16(d1 - 1), 0, addr + D.messageStride);
+  if (digit !== undefined) {
+    hexDigit23CD80(tx, u16(d0 + 1), u16(d1 - 1), 0, digit);    // $25F3C6/$25F408
+    return u16(d0 + 1);
+  }
+  return d0;
+}
+
+/** `$25F1EC -> $25F30C` -- return the art offset and the carry consumed at `$25E780`.
+ *
+ * The no-message leaves return D0 0 or 4 with carry clear. The three message leaves draw their
+ * cartridge TX strings and set carry, which suppresses both side labels and the record sprite in the caller. */
+export function selectOffset25F1EC(ram, rom, tx, d7) {
+  const D = DRAW_25E72E;
+  const side = sideFromD7_25D4E4(d7);
+  const desc = LABELS_25F2D0.descriptors[side];                 // $25F30C/$25F318, selected by D7
+  let [d0, d1] = menuDips23C932(ram);                          // $25F31E jsr $23C932
+  if (u16(d7) === 0 && ram.u8(D.separate) === 1) d0 = d1;      // $25F324..$25F336
+  if (d0 !== 0) return { d0: 4, carry: false };                // $25F338 -> $25F360
+
+  const config = ram.u8(D.config);
+  if (config === 0x12) return { d0: 4, carry: false };         // $25F344 -> $25F366
+  if (config !== 0x11 && i8(config) < 9) return { d0: 0, carry: false };   // $25F35C
+
+  [d0, d1] = creditPair25F372(ram, d7);                        // $25F372/$25F382
+  if (d0 === 1) {                                             // $25F388 cmpi.w #1,D0
+    return { d0: d1 !== 0 ? 4 : 0, carry: false };             // $25F390..$25F394
+  }
+  if (d1 === 0) {
+    const out = offsetMessage25F39C(tx, rom, desc, D.message[0], d0);   // $25F39C..$25F3CC
+    return { d0: out, carry: true };                           // $25F3CC ori #1,SR
+  }
+
+  const diff = u16(d0 - d1);                                  // $25F3D2 sub.w D1,D0
+  if (i16(diff) <= 0) return { d0: 4, carry: false };          // $25F3D4 ble $25F360
+  const out = diff === 1
+    ? offsetMessage25F39C(tx, rom, desc, D.message[2])         // $25F414..$25F434, no digit
+    : offsetMessage25F39C(tx, rom, desc, D.message[1], diff);  // $25F3DE..$25F40E
+  return { d0: out, carry: true };                             // both leaves `ori #1,SR`
+}
+
+/** `$25E72E..$25E7B7` -- one select-screen draw for the caller's current record. */
+export function draw25E72E(ram, rom, ctx, a6, d7) {
+  const D = DRAW_25E72E;
+  const side = u16(d7 + 1) & 1;                                // $25E746..$25E74C
+  // These three exits share `$25E762`: draw the side labels, then return without a sprite.
+  if (ram.u8(D.gate) !== 0                                    // $25E73C tst.b $813005
+    || announceState260A7C(ram, side) === 4                    // $25E74E/$25E754
+    || ram.u8(a6) !== 0) {                                    // $25E75C tst.b (A6)
+    sideLabels25F2D0(ctx.tx, rom, side);
+    return;
+  }
+
+  // `$25E774..$25E77C` saves D7/A0-A6 around the helper. D0 and carry are its only products here.
+  const offset = selectOffset25F1EC(ram, rom, ctx.tx, d7);
+  if (offset.carry) return;                                    // $25E780 bcs $25E7B6
+  sideLabels25F2D0(ctx.tx, rom, side);                         // $25E78E jsr $25F2D0
+
+  // D7 zero keeps `$25E716`; nonzero selects `$25E722`. Each record is coordinate plus two art longs.
+  const rec = D.records[u16(d7) !== 0 ? 1 : 0];
+  const coord = rom.u32(rec);                                  // $25E796 move.l (A0)+,D1
+  const hi = u16((coord >>> 16) + D.coordHighAdd);             // $25E798 swap / addi.w #$FA00
+  const lo = u16(coord + D.coordLowAdd);                       // $25E79E swap / addi.w #$EC00
+  const art = rom.u32(rec + 4 + i16(offset.d0));               // $25E7A4 adda.w D0,A0 / move.l (A0)
+  enqueueRegistersThroughStub(ram, rom, D.emitter,
+    ((hi << 16) | lo) >>> 0, art, D.d3, D.d4);                 // $25E7A8..$25E7B0, bucket 7
+}
+
 /** `$25C818` -- see `PULSE9`. */
 export function pulse25C818(ram, ctx) {
   if (ram.u8(PULSE9.gate) !== 0) return;                     // $25C81C tst.b / $25C822 bne.w $25C89C
@@ -530,13 +642,9 @@ export function objSlot9(ram, rom, a5, ctx) {
     } else {
       recordWalk25CAEC(ram, rom, ctx, a5, a6, d7);           // $25CAEC..$25CB92
     }
-    // $25CBF4 jsr $25E72E -- EVERY record reaches this, live or dead, and it is the only thing
-    // both arms share. $25E72E..$25E7B7 is 138 bytes ending at `$25E7B6 rts`; it gates on the same
-    // $813005 `$25C818` latches, rebuilds a sprite through $260A7C and $23E08C, and calls $25F1EC
-    // and $25F2D0. Two of those four are unported, so this is COUNTED rather than half-run.
-    ctx.unported?.note(WALK9.draw, `$${WALK9.draw.toString(16).toUpperCase()
-      } -- slot [9]'s per-record select-screen sprite, $${WALK9.drawBytes.toString(16).toUpperCase()
-      } bytes to the $25E7B6 rts. Reached from $25CBF4 for BOTH live and dead records. Unread`);
+    // $25CBF4 jsr $25E72E -- EVERY record reaches this, live or dead. The callee either draws the
+    // side labels alone, prints its carry-setting credit message, or enqueues one bucket-7 record sprite.
+    draw25E72E(ram, rom, ctx, a6, d7);
     // $25CBFA lea ($70,A6),A6 / $25CBFE dbra D7,$25CAE6 ($51CF FEE6, -282 from $25CC00).
   }
 

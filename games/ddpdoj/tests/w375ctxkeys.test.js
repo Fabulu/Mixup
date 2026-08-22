@@ -151,15 +151,11 @@ test('W375: Game#ctx() carries unported/unportedLog and bgVram/vram, and each pa
     assert.equal(ctx.vram.long(3, 7), 0);
   });
 
-// THE ALIAS, DRIVEN. Not "the key is present" -- "a `ctx.unported?.note(..)` written inside a
-// front-end slot file lands in the census the gates print". Slot [9]'s record walk files one, and
-// before the alias that call evaluated to undefined and the frame reported nothing at all.
-//
-// W379 MOVED WHICH NOTE THIS WATCHES, and only that. The site used to be `$25CB94`, which W375
-// read as a once-a-frame continuation past the walk; W379 ported it (it is the dead-record JOIN
-// POLL, reached by `$25CAE8 beq.w`, not a tail) and the note went with it. The walk's remaining
-// counted site is `$25CBF4 jsr $25E72E`, filed once per record from the same loop in the same
-// file through the same `ctx`, so it exercises the alias identically.
+// THE ALIAS, DRIVEN. W375 originally proved it with slot [9]'s counted unported note. W379 moved
+// that note from `$25CB94` to the real per-record `$25CBF4 jsr $25E72E` site, and W502 ports that
+// final site. The stronger successor drives the same slot from `Game#step`, forces `$25E72E`'s
+// label-only branch, and observes cartridge TX output through `ctx.tx` while proving the old census
+// entry is gone.
 /**
  * W445 -- REMOVE THE SEED'S LIVE PLAYER OBJECT, because slot [9] state 0 IS THE START OF A
  * CREDIT and the cartridge never reaches it with a player alive.
@@ -192,22 +188,24 @@ function dropPlayerObjects(g) {
   return n;
 }
 
-test('W375: a front-end slot\'s ctx.unported?.note() REACHES the log from the driver', () => {
+test('W502: slot [9] reaches its live $25E72E TX draw through Game#ctx()', () => {
   const g = game();
   assert.equal(g.unportedLog.calls.size, 0, 'the log is not empty before the frame');
   assert.equal(dropPlayerObjects(g), 1,
     'the seed carried exactly one player object and it is gone -- see dropPlayerObjects');
 
-  // Three frames: state 0 is the screen reset, and the record walk that reaches $25CBF4 runs in
-  // the state it advances into, not on the frame that runs the reset.
-  plant(g, firstEmptySlot(g), 9, 0);
-  for (let i = 0; i < 3; i++) g.step(0);
+  const a5 = plant(g, firstEmptySlot(g), 9, 0);
+  g.step(0);                                           // state 0 clears TX and advances to state 1
+  assert.equal(g.ram.u8(a5 + 0x02), 1);
+  assert.equal(txAllZero(g), true, 'slot [9] state 0 did not establish a clear TX map');
 
-  const hit = g.unportedLog.report().filter((l) => l.includes('$25E72E'));
-  assert.equal(hit.length, 1, 'objslot9.js\'s `ctx.unported?.note($25E72E, ..)` did not reach '
-    + `the log -- the front end's notes are still a no-op. log: ${
-      g.unportedLog.report().join(' | ')}`);
-  assert.match(hit[0], /slot \[9\]'s per-record select-screen sprite/);
+  g.ram.setU8(0x813005, 1);                           // `$25E73C` forces the label-only branch
+  g.step(0);
+
+  assert.equal(txAllZero(g), false,
+    'the live per-record draw did not write its cartridge side labels through ctx.tx');
+  assert.deepEqual(g.unportedLog.report().filter((l) => l.includes('$25E72E')), [],
+    '$25E72E still reached the unported census instead of its live draw');
 });
 
 // `$288BDA jsr $23C638` through `ctx.bgVram`, driven. Before the alias the guard swallowed it and
@@ -347,7 +345,7 @@ test('W375: the two callees, called directly off a real ctx, take the aliased ob
 // WHAT IT DOES NOT COVER: computed access (`ctx[expr]`), destructuring (`const {a} = ctx` --
 // none of the six do this today, unlike handlers.js), a ctx bound to another name and read
 // through it, and `ctx.<name>` inside a regex literal. It is a lexical scan, not a type
-// checker. It is worth having anyway: all 88 reads in these files are literal `ctx.<name>`.
+// checker. It is worth having anyway: every current read in these files is literal `ctx.<name>`.
 //
 // THE ONE IT DEMONSTRABLY MISSES, and it bit in this very wave: a ctx read in a CALLEE that
 // lives outside the six files. Slot [7] passes `ctx` whole to `screenWipe23C6C6`, whose two
