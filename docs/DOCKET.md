@@ -769,6 +769,10 @@ So TWO mods, in this order:
 * **D28a -- fly BOTH ships side by side.** Two simultaneous player-controlled ships.
 * **D28b -- all THREE pilots, each piloting a ship.** Three simultaneous ships, one per pilot.
 
+Both formations use one synchronized control stream rather than separate controls. The extra ships hold
+option-like formation offsets, move in coordination with the lead, and fire together for deliberately
+ludicrous combined firepower. They must be the authentic D26 ships and pilots, not visual clones.
+
 D28a needs a second player-controlled ship, which the two-sided machinery may nearly give
 already. D28b needs a THIRD, which is where the pool sizing question below actually bites.
 
@@ -6422,3 +6426,29 @@ assuming `display` was the first `#bar` declaration; reordering the unchanged de
 The final publication gate passed all 4,328 DDPDOJ units with zero failures or skips, the DDPDOJ bundle
 and web-fetch gates, all other game gates, the distribution build, and the ROM-leak guard. W491 is
 published and confirmed as production build `20260822080859`, superseding W486's `20260822042005`.
+
+### D100: W492 FIRST FOUR TRANSFORMATIVE MODS, VERIFIED LOCALLY
+
+The existing start menu now exposes 19 mods. W492 adds Hyper Overdrive, Adaptive Slow Motion, Bee Magnet,
+and Boss Enrage. Every one is replay-v1 blocking because it changes simulation, and the empty or
+unknown-only launch still creates no mod runtime or callback.
+
+Hyper Overdrive snapshots both gauges before each logic frame and restores only the cartridge's exact
+two-point drain when that player is active after the frame. This covers the activation frame without
+changing activation state, hyper power, hyper level, gains, larger losses, or deactivation. Adaptive Slow
+Motion samples the live bullet-density word after every step and scales host cadence from 1x through 2.25x
+without skipping or duplicating simulation frames. It has fixed priority over Turbo and Bullet Time.
+
+Bee Magnet uses one optional Pool-A callback before the authentic bee body. Allocated, uncollected bee
+kinds move at most `$80` per axis toward the nearest live player; non-bees, free records, and collected
+score popups remain untouched. Boss Enrage registers a per-RAM bullet-speed transform. During a nonzero
+boss phase it adds six to the final authentic speed byte, clamps at `$FF`, and writes the same result to
+live and original speed while preserving caller registers. A later vanilla `Game` proves the transform
+cannot leak across instances.
+
+The focused affected set passes 133/133. Independent review found the activation-frame case before the
+final review and then found collected bees entering the magnet seam; both were corrected, with the final
+bee and W492 set passing 46/46 and the reviewer confirming the exclusion. The published-bundle gate still
+renders 15,955,968/15,955,968 pixels identical to its MAME reference. Syntax checks, diff hygiene, and the
+no-em-dash check pass. The full unit suite was not run, browser assets were not regenerated, and W492 is
+unpublished. It is the first wave after W491; W496 remains the next periodic publication point.

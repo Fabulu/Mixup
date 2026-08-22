@@ -214,7 +214,7 @@ import { CLAIMED } from '../state.js';
 import {
   MODS, MOD_RAM, createModState, applyPreFrameMods, applyPostFrameMods,
   transformModInput, transformModTiming, applyPresentationMods,
-  assertReplayCompatible,
+  assertReplayCompatible, modGameOptions,
 } from '../mods.js';
 
 // --------------------------------------------------------------- PRESENTATION
@@ -874,11 +874,13 @@ export class Demo {
     //       half off the CAPTURE LEDGER.
     this.soundController = soundController;
     const launchSeed = launchSeedForBrowser(rung ? rung.seed : bundle.seed, rung, modState);
+    const gameMods = modGameOptions(modState);
     this.game = new Game(launchSeed, bundle.tables, {
       logicFrame: this.seedLf,
       videoFrame: rung ? rung.vf : this.cap.frames[0].vf,
       bgSeed: rung ? rung.bgSeed : this.cap.part(0, 'bg'),
       soundSink: soundController,
+      ...(gameMods ?? {}),
       // W375 -- THE COIN PULSE ADVANCE. `Game#step` calls this at the ONE site
       // it calls `coinDebounce13CEC8`, i.e. once every two video frames, which
       // is the rate `currentCoinWord()`'s purity exists to protect.
@@ -1194,6 +1196,7 @@ export class Demo {
       videoFrame: seed.vf,
       bgSeed: beWords(bg),
       soundSink: this.soundController,
+      ...(modGameOptions(this.mods) ?? {}),
       // W375, as in the constructor above -- and gated the same way, so the
       // pulse cannot advance while this Game is being fed a recording.
       coinTick: () => this.coinTick(),

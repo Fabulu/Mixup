@@ -106,6 +106,7 @@ import {
   catchUpTextPalette,
 } from './palette.js';
 import { runAnimObjects24683E } from './animobjects.js';
+import { installBulletSpeedTransform } from './bullets.js';
 
 /** THE BUCKETS `pgm.py shipgate` SUBSTITUTES, in drain (= depth) order.
  *
@@ -382,6 +383,21 @@ export class Game {
     // at the ONE site `coinDebounce13CEC8` is called, never anywhere else.
     // Optional: null in every headless caller, which drives `coinPort` directly.
     this.coinTick = opts.coinTick ?? null;
+    // Optional per-Game host seams. They carry no catalogue knowledge: a caller
+    // either supplies a function or the simulation has no callback at all.
+    if (opts.beeRecordHook != null) {
+      if (typeof opts.beeRecordHook !== 'function') {
+        throw new TypeError('Game beeRecordHook must be a function');
+      }
+      this.beeRecordHook = opts.beeRecordHook;
+    }
+    if (opts.bulletSpeedTransform != null) {
+      if (typeof opts.bulletSpeedTransform !== 'function') {
+        throw new TypeError('Game bulletSpeedTransform must be a function');
+      }
+      this.bulletSpeedTransform = opts.bulletSpeedTransform;
+      installBulletSpeedTransform(this.ram, opts.bulletSpeedTransform);
+    }
     this.wallHits = [];
     this.allocEvents = new Map();
     this.bulletSpawns = new Map();   // WAVE 30, see #ctx()'s bulletSpawn
@@ -482,6 +498,9 @@ export class Game {
       rom: this.rom,
       prot: this.prot,          // WAVE 12: the $500000 latch, on the ship's own
                                 // draw path through $24A5B6 (src/protsim.js)
+      ...(this.beeRecordHook ? { beeRecordHook: this.beeRecordHook } : {}),
+      ...(this.bulletSpeedTransform
+        ? { bulletSpeedTransform: this.bulletSpeedTransform } : {}),
       // WAVE 57: the BG videoram, because an ENEMY HANDLER writes it.  Type
       // $1C ($26C20C, what the midboss's death spawns) copies 23 x 9 map
       // longwords into $9000xx -- the same array `$240D9A` writes through

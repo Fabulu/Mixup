@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W491 viewport and mobile controls published)
+Updated: 2026-08-22 (W492 first four transformative mods verified and pushed)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,21 +8,18 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W491 reclaims the full viewport in every layout.** HIDE UI removes
-the menu row and refits the canvas; a fixed SHOW UI action remains available outside that row. The shipped
-page always uses the aspect-preserving fill path and top-aligns the picture when the other axis has unused
-room. Touch controls are semi-transparent overlays whose container does not intercept the gap between the
-D-pad and face buttons. The floating stick now paints its origin and a knob clamped to 44 CSS pixels while
-held, then clears both through release, cancellation, lost capture, scheme-change, blur, page-hide, and
-visibility backstops.
+`docs/DOCKET.md` is authoritative. **W492 adds the first four mods in the second transformative
+roster.** The catalogue now has 19 entries: Hyper Overdrive cancels only the exact two-point active
+hyper-gauge drain for both players, including activation frames; Adaptive Slow Motion scales host cadence
+from live bullet density without skipping simulation frames; Bee Magnet pulls allocated, uncollected bees
+toward the nearest live player; Boss Enrage adds six to boss-phase bullet speed with an `$FF` clamp.
+Every new mod blocks replay v1. Empty, unknown-only, direct, Original, and later vanilla-Game paths install
+no mod callback or policy.
 
-The focused W491 viewport, fullscreen, browser-default, notice, and input set passes 46/46 with no
-failures or skips. Its first feature run failed on the absent hide control before implementation. Independent
-review caught opaque pressed-state fills on otherwise translucent touch controls; both active fills now
-retain alpha and the test pins them. The first publication gate found W279's source-text check expecting
-`display` first in `#bar`; declaration reordering fixed it without changing layout. The final gate passed
-all 4,328 DDPDOJ units with zero failures or skips, the DDPDOJ bundle and web-fetch gates, all other
-game gates, the distribution build, and the ROM-leak guard. W491 is published as build `20260822080859`.
+The focused affected set passes 133/133. Independent review found the activation-frame omission and a
+collected-bee popup entering the magnet seam; both are fixed. The final bee and W492 set passes 46/46,
+and the reviewer confirmed the exclusion. The published-bundle gate remains
+15,955,968/15,955,968 pixel-identical. W492 is not published; W496 remains the next publication point.
 
 W490 makes all large replay and recording notices transient. W489 removed the fly-around oracle's embedded
 `$810424=$FF` intervention from ordinary browser launches, leaving labelled progression, replay, explicit
@@ -31,6 +28,20 @@ Invincibility, and authentic `$F0` grace exact. W488 ports the shared two-line p
 101/256 ported, 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not
 follow the static `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
 W491 is live as production build `20260822080859`, superseding W486's `20260822042005`.
+
+## W492 VERIFIED: FIRST FOUR TRANSFORMATIVE MODS
+
+`mods.js` owns the new catalogue entries, RAM addresses, timing map, gauge snapshot, bee target helper, and
+per-Game callback selection. `bee.js` invokes the optional magnet seam only for status words whose allocated
+bit is set, collected bit is clear, and kind is bee or flying bee. `bullets.js` applies a per-RAM transform
+to the final speed byte immediately before writing both live and original speed. `Game` validates and
+registers only callbacks supplied by the selected loadout; `Demo` passes them to initial and replay-created
+Games.
+
+Hyper Overdrive restores a gauge only when the post-frame player is active and the change is exactly minus
+two. Adaptive Slow Motion wins the timing conflict at priority 30 and maps density 48..210 to scale 1..2.25.
+Bee Magnet moves at most `$80` on each axis toward the nearest allocated player record. Boss Enrage reads
+`$81309C`, changes no spawn when it is zero, and adds six with saturation when it is nonzero.
 
 ## W491 PUBLISHED: VIEWPORT, CHROME, AND MOBILE CONTROL VISUALS
 
@@ -817,12 +828,15 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. Add the next 15 transformative mods in bounded waves without changing vanilla behavior. Ships and pilots
-   are core fidelity work, not part of that mod count.
+1. Add the remaining 11 transformative mods in bounded waves without changing vanilla behavior. Ships and
+   pilots are core fidelity work, not part of that mod count.
 2. Make both cartridge-supported ships and all three pilots selectable and playable.
 3. Complete Black Label through the full second loop.
 4. Finish functional White Label after Black Label. Leave duplicate-only cleanup until both are complete.
-5. The next periodic publication is W496, five waves after published W491. If any intervening wave adds ROM
+5. After D26 and functional completion, D28a and D28b use one synchronized control stream, option-like
+   formation offsets, coordinated movement, and combined firepower for both authentic ships and then all
+   three authentic pilots. Do not use independent controls or cloned stand-ins.
+6. The next periodic publication is W496, five waves after published W491. If any intervening wave adds ROM
    windows, run `export-web.mjs` before that publication.
 
 ## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES

@@ -191,6 +191,20 @@ export class WriteLog {
 }
 
 // ------------------------------------------------------------------ the core
+
+// Fire sites construct compact local contexts throughout the port, but every
+// one shares the per-Game Ram. This weak registry carries only an explicitly
+// installed host callback across that boundary. Vanilla Games never get an
+// entry, and the cartridge core remains unaware of catalogue ids.
+const BULLET_SPEED_TRANSFORMS = new WeakMap();
+
+export function installBulletSpeedTransform(ram, transform) {
+  if (typeof transform !== 'function') {
+    throw new TypeError('bullet speed transform must be a function');
+  }
+  BULLET_SPEED_TRANSFORMS.set(ram, transform);
+}
+
 /**
  * `$2814B6` (bank A) and `$2817C2` (bank B) -- THE SPAWN CORES.
  *
@@ -262,12 +276,13 @@ export function spawnCore(ctx, regs, bank) {
   }
 
   const addr = BUL.pool + slot * BUL.stride;
-  emitRecord(ctx, regs, bank, addr, entry);
+  const speedTransform = ctx.bulletSpeedTransform ?? BULLET_SPEED_TRANSFORMS.get(ram);
+  emitRecord(ctx, regs, bank, addr, entry, speedTransform);
   return { carry: false, slot, addr, declined: false };
 }
 
 /** `$281554`/`$281860` onwards -- the template copy and everything after it. */
-function emitRecord(ctx, regs, bank, base, entry) {
+function emitRecord(ctx, regs, bank, base, entry, speedTransform = null) {
   const { ram, rom, log } = ctx;
   const mut = ctx.mut ?? null;
   // $281556 andi.w #$3F,D0 -- the LOW WORD only; the high word (the speed bias)
@@ -323,6 +338,16 @@ function emitRecord(ctx, regs, bank, base, entry) {
     d7 = u16(d7 + ram.u16(BUL.speedBias1));           // $28157A
     d7 = u16(d7 + ram.u16(BUL.speedBias2));           // $281580
   }
+  // Optional policy-neutral host transform. It sees the authentic final byte,
+  // cannot mutate caller registers, and affects both the live and original-speed
+  // fields together. An absent callback leaves the write log byte-for-byte exact.
+  let spawnedSpeed = d7 & 0xff;
+  if (speedTransform) {
+    const transformed = speedTransform(spawnedSpeed, ram);
+    if (Number.isFinite(transformed)) {
+      spawnedSpeed = Math.max(0, Math.min(0xff, Math.trunc(transformed)));
+    }
+  }
 
   // ---- THE ANGLE.  Bank A's callers pass 1/64 turn; the core scales it.
   // MUTATION `no-angle-scale` / `scale-both-banks`: the bank split, both ways.
@@ -333,9 +358,9 @@ function emitRecord(ctx, regs, bank, base, entry) {
     regs.d1 = ((regs.d1 & ~0xff) | ((regs.d1 << 2) & 0xff)) >>> 0;  // $281586 x2, BYTE
   }
 
-  log.w8(base + REC.speed, d7 & 0xff);                // $28158A move.b D7,($a,A0)
+  log.w8(base + REC.speed, spawnedSpeed);                  // $28158A move.b D7,($a,A0)
   log.w8(base + REC.dir, regs.d1 & 0xff);             // $28158E move.b D1,($b,A0)
-  log.w8(base + REC.origSpeed, d7 & 0xff);            // $281592 ($2a,A0)
+  log.w8(base + REC.origSpeed, spawnedSpeed);              // $281592 ($2a,A0)
   log.w8(base + REC.origDir, regs.d1 & 0xff);         // $281596 ($2b,A0)
 
   // $28159A lsr.b #2,D1 -- bank A only.  See the header: LOSSY above $40.

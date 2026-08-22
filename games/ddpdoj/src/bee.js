@@ -960,12 +960,21 @@ export function runPoolADriver(ram, rom, ctx) {
     slot++;
     t.live++; t.walked++;
     const d1 = ram.u16(a6 + B.status);                    // $27F976
+    // Optional host policy seam. It runs only for allocated, uncollected bee kinds,
+    // before scroll, dispatch, emission, and the later authentic collision pass.
+    // With no callback this branch performs no read or write beyond the driver's
+    // existing status load above.
+    const kind = d1 & 0x7c;
+    if ((d1 & 0x8001) === 0x8000
+        && (kind === KIND.bee || kind === KIND.beeFlying)) {
+      ctx?.beeRecordHook?.(ram, a6, d1);
+    }
     // $27F97A sub.w D6,($4,A6): scroll the SHORT axis (X).
     ram.setU16(a6 + B.posX, u16(ram.u16(a6 + B.posX) - d6)); // $27F97A
     t.scrolled++;
     // $27F97E/$27F980: 5-bit kind index = status & $7C (a byte offset into
     // the stride-4 table at $27F99E, NOT a plain index).
-    const d0 = d1 & 0x7c;                                 // $27F97E/$27F980
+    const d0 = kind;                                        // $27F97E/$27F980
     // $27F982 tst.b D1 / bmi $2810CA: bit 7 selects the collected animation.
     // Type A3's kinds 18/19 set it through `$280FDC` on their collision frame.
     if ((d1 & 0x80) !== 0) {

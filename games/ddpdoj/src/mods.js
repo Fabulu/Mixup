@@ -47,6 +47,16 @@ export const MODS = Object.freeze({
     blurb: 'Continuously arm the laser-bomb bullet conversion path.',
     effects: ['$243DA0 policy: $81B410 := 1 and $81B412 := $FFFF'],
   }),
+  'hyper-overdrive': mod({
+    name: 'Hyper Overdrive', category: 'arsenal',
+    blurb: 'Stop only the ordinary two-point gauge drain while an active hyper keeps running.',
+    effects: ['$81B642/$81B644: undo an exact active-frame -2 change only'],
+  }),
+  'bee-magnet': mod({
+    name: 'Bee Magnet', category: 'arsenal',
+    blurb: 'Pull live bee medals toward the nearest active player at a bounded rate.',
+    effects: ['$817DC6 reserved bee records: position approaches live P1/P2 by at most $80 per axis'],
+  }),
 
   'low-rank': mod({
     name: 'Low Rank', category: 'challenge', conflict: 'rank', priority: 10,
@@ -72,6 +82,16 @@ export const MODS = Object.freeze({
     name: 'Bullet Time', category: 'challenge', conflict: 'timing', priority: 20,
     blurb: 'Run logic at half the cabinet rate without skipping a logic frame.',
     effects: ['host frame period x 2'],
+  }),
+  'adaptive-slow-motion': mod({
+    name: 'Adaptive Slow Motion', category: 'challenge', conflict: 'timing', priority: 30,
+    blurb: 'Slow the cabinet cadence progressively as the live enemy-bullet pool fills.',
+    effects: ['$81B40C after each logic frame -> bounded host period scale 1.0..2.25'],
+  }),
+  'boss-enrage': mod({
+    name: 'Boss Enrage', category: 'challenge',
+    blurb: 'Add six speed steps to newly spawned enemy bullets during authentic boss phases.',
+    effects: ['$81309C != 0: spawned bullet speed + 6, clamped to $FF'],
   }),
 
   'invert-colors': mod({
@@ -148,11 +168,15 @@ export function resolveLoadout(ids = []) {
     infiniteHyperStock: has('infinite-hyper-stock'),
     nativeAutoFire: has('native-auto-fire'),
     bulletCanceller: has('bullet-canceller'),
+    hyperOverdrive: has('hyper-overdrive'),
+    beeMagnet: has('bee-magnet'),
+    bossEnrage: has('boss-enrage'),
     rank: has('maximum-rank') ? 'maximum' : has('low-rank') ? 'low' : null,
     precisionShip: has('precision-ship'),
   });
   const timing = Object.freeze({
     scale: has('bullet-time') ? 2 : has('turbo') ? 0.5 : 1,
+    adaptive: has('adaptive-slow-motion'),
   });
   const presentation = Object.freeze({
     invert: has('invert-colors'), monochrome: has('monochrome'), ghost: has('ghost-trail'),
@@ -166,7 +190,7 @@ export function resolveLoadout(ids = []) {
 /** Return runtime state only for a recognized, nonempty loadout. */
 export function createModState(loadout) {
   if (!loadout || !loadout.ids?.length) return null;
-  return { loadout, runtime: { ghost: null } };
+  return { loadout, runtime: { ghost: null, hyperGauge: null, bulletDensity: 0 } };
 }
 
 export function describeMod(id) {
@@ -216,7 +240,70 @@ export const MOD_RAM = Object.freeze({
   autoFireDip: 0x80380f,
   cancelArm: 0x81b410,
   cancelMode: 0x81b412,
+  hyperActiveP1: 0x81b63e,
+  hyperActiveP2: 0x81b640,
+  hyperGaugeP1: 0x81b642,
+  hyperGaugeP2: 0x81b644,
+  bulletDensity: 0x81b40c,
+  bossPhase: 0x81309c,
+  player1: 0x8103e6,
+  player1Y: 0x8103e8,
+  player1X: 0x8103ea,
+  player2: 0x810448,
+  player2Y: 0x81044a,
+  player2X: 0x81044c,
 });
+
+const BEE_MAGNET_STEP = 0x80;
+const BOSS_ENRAGE_ADD = 6;
+
+function signedWordDelta(target, current) {
+  return (((target - current) & 0xffff) << 16) >> 16;
+}
+
+function approachWord(current, target, limit) {
+  const delta = signedWordDelta(target, current);
+  const step = Math.max(-limit, Math.min(limit, delta));
+  return (current + step) & 0xffff;
+}
+
+/** Optional Pool-A callback installed only for a Bee Magnet Game. */
+function pullBeeTowardPlayer(ram, slot) {
+  const players = [];
+  if ((ram.u16(MOD_RAM.player1) & 0x8000) !== 0) {
+    players.push([ram.u16(MOD_RAM.player1Y), ram.u16(MOD_RAM.player1X)]);
+  }
+  if ((ram.u16(MOD_RAM.player2) & 0x8000) !== 0) {
+    players.push([ram.u16(MOD_RAM.player2Y), ram.u16(MOD_RAM.player2X)]);
+  }
+  if (!players.length) return;
+
+  const y = ram.u16(slot + 0x02), x = ram.u16(slot + 0x04);
+  let target = players[0], best = Infinity;
+  for (const candidate of players) {
+    const dy = signedWordDelta(candidate[0], y);
+    const dx = signedWordDelta(candidate[1], x);
+    const distance = dy * dy + dx * dx;
+    if (distance < best) { best = distance; target = candidate; }
+  }
+  ram.setU16(slot + 0x02, approachWord(y, target[0], BEE_MAGNET_STEP));
+  ram.setU16(slot + 0x04, approachWord(x, target[1], BEE_MAGNET_STEP));
+}
+
+/** Optional spawn callback installed only for a Boss Enrage Game. */
+function enrageBossBulletSpeed(speed, ram) {
+  if (ram.u16(MOD_RAM.bossPhase) === 0) return speed;
+  return Math.min(0xff, speed + BOSS_ENRAGE_ADD);
+}
+
+/** Per-Game callback options, or null when this loadout needs no callback seam. */
+export function modGameOptions(state) {
+  if (!state) return null;
+  const options = {};
+  if (state.loadout.sim.beeMagnet) options.beeRecordHook = pullBeeTowardPlayer;
+  if (state.loadout.sim.bossEnrage) options.bulletSpeedTransform = enrageBossBulletSpeed;
+  return Object.keys(options).length ? Object.freeze(options) : null;
+}
 
 function applyRamMods(state, ram) {
   if (!state) return;
@@ -254,14 +341,44 @@ function applyRamMods(state, ram) {
   }
 }
 
+const HYPER_ACTIVE_GAUGE = Object.freeze([
+  Object.freeze([MOD_RAM.hyperActiveP1, MOD_RAM.hyperGaugeP1]),
+  Object.freeze([MOD_RAM.hyperActiveP2, MOD_RAM.hyperGaugeP2]),
+]);
+
+function cacheHyperGauge(state, ram) {
+  if (!state?.loadout.sim.hyperOverdrive) return;
+  state.runtime.hyperGauge = HYPER_ACTIVE_GAUGE.map(([, gauge]) => ram.u16(gauge));
+}
+
+function preserveOrdinaryHyperDrain(state, ram) {
+  if (!state?.loadout.sim.hyperOverdrive) return;
+  const cached = state.runtime.hyperGauge;
+  state.runtime.hyperGauge = null;
+  if (!cached) return;
+  for (let i = 0; i < HYPER_ACTIVE_GAUGE.length; i++) {
+    const [active, gauge] = HYPER_ACTIVE_GAUGE[i];
+    const before = cached[i];
+    if (ram.u16(active) !== 0
+      && ram.u16(gauge) === ((before - 2) & 0xffff)) {
+      ram.setU16(gauge, before);
+    }
+  }
+}
+
 /** Explicit host policy immediately before Game.step(). */
 export function applyPreFrameMods(state, ram) {
+  cacheHyperGauge(state, ram);
   applyRamMods(state, ram);
 }
 
 /** Explicit host policy immediately after Game.step(). */
 export function applyPostFrameMods(state, ram) {
+  preserveOrdinaryHyperDrain(state, ram);
   applyRamMods(state, ram);
+  if (state?.loadout.timing.adaptive) {
+    state.runtime.bulletDensity = ram.u16(MOD_RAM.bulletDensity);
+  }
 }
 
 /** Transform the active-low raw PGM input word before Game.step(). */
@@ -272,9 +389,20 @@ export function transformModInput(state, word, logicFrame) {
   return (word | 0x001e) & 0xffff;
 }
 
+/** Pure density mapping: normal through 48 bullets, then smoothly to a 44% floor. */
+export function adaptiveSlowMotionScale(bulletDensity) {
+  const density = Number.isFinite(bulletDensity)
+    ? Math.max(0, Math.min(210, Math.trunc(bulletDensity))) : 0;
+  if (density <= 48) return 1;
+  return 1 + (density - 48) * 1.25 / 162;
+}
+
 /** Transform only host cadence. Game still receives every logic frame. */
 export function transformModTiming(state, basePeriodMs) {
-  return basePeriodMs * (state?.loadout.timing.scale ?? 1);
+  const scale = state?.loadout.timing.adaptive
+    ? adaptiveSlowMotionScale(state.runtime.bulletDensity)
+    : (state?.loadout.timing.scale ?? 1);
+  return basePeriodMs * scale;
 }
 
 /** Mutate the finished RGB888 board buffer, before rotation and RGBA packing. */
