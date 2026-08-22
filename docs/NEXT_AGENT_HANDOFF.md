@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W506 verified locally; production remains W501 build `20260822192350`)
+Updated: 2026-08-23 (W502 through W506 published in production build `20260822223516`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,7 +8,7 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **Local W506 follows W503's exact natural stage-5 type-`$13`
+`docs/DOCKET.md` is authoritative. **Published W506 follows W503's exact natural stage-5 type-`$13`
 to type-7 handoff through variant 0's first three scripts.** On loop 2 the menu gate short-circuits, posted
 value 2 selects variant 0, `$290F12` selects list `$290F1E`, and its first three entries read `$290F66`,
 `$290F8E`, and `$290FE2`. All three exact scripts are now browser-readable with only their concrete
@@ -27,12 +27,14 @@ stops at the deliberate next browser boundary `$2910F6`.
 The exact `$5E`-byte script window and twenty new sparse four-byte pointer windows take the export from
 669 to 690 windows and 445,195 to 445,369 bytes. All are disjoint and overlap pairs remain 76. The
 focused ending, slot-7, coverage, and global-window set passes 97/97; the direct W506 rerun passes 1/1.
-`export-tables.py --verify` and focused JavaScript and Python syntax checks pass. The full suite,
-`export-web.mjs`, publication, commit, and push did not run. Production remains W501 build
-`20260822192350`, which passed 4,397/4,397 DDPDOJ units and published W497 through W501. W506
-publication will be handled separately by the coordinator.
+`export-tables.py --verify` and focused JavaScript and Python syntax checks passed before publication.
+The quiet-tree publication then passed 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates,
+746/746 Gradius units plus the 13/13 gate with zero skips, the 27/27 Batman gate with zero skips, the
+distribution build, and the ROM-leak guard. Production build `20260822223516` deployed W502 through
+W506 and passed three consecutive live confirmations. Their source commits are `36b289b`, `bb9046b`,
+`5236b8a`, `96b0235`, and `66ebeaa`; bounded stale-test repair `bcf6281` completed the publication tree.
 
-The next bounded gameplay/progression check is variant 0's fourth type-7 script at `$2910F6`. Follow only
+The exact W507 gameplay/progression target is variant 0's fourth type-7 script at `$2910F6`. Follow only
 its first concrete runtime edge from W506's integration, and do not broaden into ending-selection
 reconnaissance, duplicate-only cleanup, or a guessed visual path.
 
@@ -98,7 +100,8 @@ low-word bump, then observes the inter-script pool clear and list-cursor advance
 
 The natural next call follows variant 0's entry 3 pointer and throws at `$2910F6`. Do not mistake the
 physically adjacent `$291040` variant-1 script for this path's next executable edge, and do not widen either
-script until its own concrete runtime edge is driven. Publication is left to the coordinator.
+script until its own concrete runtime edge is driven. This bounded slice is now published in build
+`20260822223516`; continue at `$2910F6` for W507.
 
 ## W505 VERIFIED LOCALLY: TYPE 7'S SECOND COMMON SCRIPT
 
@@ -216,9 +219,9 @@ pairs. `tests/w502draw25e72e.test.js` covers both D7 sides, both art offsets, pa
 mailboxes, all three label-only gates, carry suppression, TX messages, and separate P2 credits. With the
 directly affected W373, W375, W428, W488, and W501 files, the compact set passes 54/54.
 
-W502 is local only. W506 now awaits separate coordinator publication. **Superseded by W503 through
-W506:** the stage-5 F8 arm, type `$13` ending tally, and type 7's first three scripts are the current
-progression slices recorded above.
+At its bounded verification point, W502 had not yet been published. W502 through W506 are now published in build
+`20260822223516`. **Superseded by W503 through W506:** the stage-5 F8 arm, type `$13` ending tally,
+and type 7's first three scripts are the current progression slices recorded above.
 
 ## W501 PUBLISHED: `$25F530/$25F592` STATE-7 ANIMATION
 
@@ -1245,8 +1248,6 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 5. After D26 and functional completion, D28a and D28b use one synchronized control stream, option-like
    formation offsets, coordinated movement, and combined firepower for both authentic ships and then all
    three authentic pilots. Do not use independent controls or cloned stand-ins.
-6. Local W506 is ready for the five-wave publication point; the coordinator will export browser assets and
-   publish separately.
 
 ## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES
 
@@ -1256,9 +1257,9 @@ cadence above. Do not spend a wave redoing either clause.
 
 ## PUBLISHED HISTORY
 
-Last confirmed live: build `20260822192350`, confirmed 2026-08-22. Earlier confirmed builds include
-`20260822120853`, `20260822080859`, `20260822042005`, `20260822010546`, `20260821175936`, `20260821162642`,
-`20260821132334`, and `20260821060153`.
+Last confirmed live: build `20260822223516`, confirmed 2026-08-23 after three consecutive live checks.
+Earlier confirmed builds include `20260822192350`, `20260822120853`, `20260822080859`, `20260822042005`,
+`20260822010546`, `20260821175936`, `20260821162642`, `20260821132334`, and `20260821060153`.
 
 ## W422 LANDED -- POOL-A KIND 5, VERIFIED BY THE COORDINATOR
 
