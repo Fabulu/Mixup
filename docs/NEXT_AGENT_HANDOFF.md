@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W487 type `$58` verified locally, unpublished)
+Updated: 2026-08-22 (W488 front-end labels verified locally, unpublished)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,25 +8,32 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W487 ports the runtime-proven type `$58` init body `$270BE4` and
-handler `$270C66`.** W486's restored type `$4C` state-4 arm queues 16 records, and all 16 now drain. The body
-loads the exact `$270C3A` record prototype and `$270C4A` long-form sub-record, preserves queued position and
-heading, installs the vector at record `+$1E`, and uses `$20` as the no-player fan-heading fallback. The handler
-moves by that packed long, subtracts 2 from vertical velocity, cadence-filters its three-heading bullet fan to
-the open `($0C,$34)` arc, reuses art table `$270972`, and retires on a fatal hit, parent loss, or signed X `<= -$400`.
-The cartridge's `$270CB6 move.w #$14,D0 / $270CBA jsr $289004` allocates effect kind `$14`; the following `$10`
-is its bucket, and this handler has no `$28615E` kill-score call.
+`docs/DOCKET.md` is authoritative. **W488 ports `$25F2D0..$25F30B`, the shared two-line
+per-side label printer used by object slots [17] and [9].** Its low-word D0 selector chooses the
+four-byte descriptor at `$25F43A` or `$25F43E`; the descriptor supplies the text column and row,
+and two `$25A14C` calls print the `$10`-strided strings at `$25F1F0` with the second one a row
+higher. Slot [17]'s state-6 arm calls it for side 0 then side 1 before its sound gate, exactly as the
+cartridge does. Two disjoint data windows move the exporter to 632 windows and 437,789 bytes;
+75 overlap pairs remain unchanged. The directly affected screen set passes 153/153, the exporter
+plus focused window and deferral guards pass 40/40, and `export-tables.py --verify` is clean. The
+ignored player table was regenerated. Browser assets were not regenerated, the full suite was not
+run, and W488 is unpublished.
 
-Enemy-handler coverage is 101/256 ported, 25 unknown, and 130 null. The init registry has 94 bodies. The one
-new `$270C3A + $2C` prototype window moves the exporter to 630 windows and 437,749 bytes, with 75 overlapping
-pairs unchanged. Focused lifecycle, W486 drain, registry, coverage, and dependency checks pass 35/35 with no
-failures or skips. The local generated player table was regenerated and verified, browser assets were not
-regenerated, the full suite was not run, and W487 is
-unpublished. W486 remains live as production build `20260822042005` after its 4,310/4,310 unit gate.
+W487 remains the last gameplay wave: it ports type `$58` init body `$270BE4` and handler `$270C66`,
+so all 16 children queued by type `$4C` state 4 drain, inherit heading, move, fire their filtered fan,
+draw, and retire on fatal hit, parent loss, or signed X `<= -$400`. Enemy-handler coverage remains
+101/256 ported, 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do
+not follow the static `$48 -> $54` edge: Version B's live callers target the bare `rts` at `$2714AE`,
+and the `$54` call sits in the disabled body at `$2714B0`. W486 remains live as production build
+`20260822042005` after its 4,310/4,310 unit gate.
 
-Type `$58` emits no enemy child. Do not follow the static `$48 -> $54` edge: Version B's live callers target the
-bare `rts` at `$2714AE`, and the `$54` call sits in the disabled body at `$2714B0`. No next runtime blocker was
-established by this focused wave; use runtime progression evidence rather than promoting that static edge.
+## W488 VERIFIED: SHARED FRONT-END LABEL PRINTER
+
+The exact implementation state is summarized above. The focused regression failed before the
+implementation, then proves side order, descriptor read order, the `$10` string stride, the D1 row
+decrement, and removal of the counted `$25F2D0` deferral. Slot [9]'s larger `$25E72E` draw remains a
+counted unit because it also depends on unported `$25F1EC`; W488 does not pretend that whole caller
+is complete.
 
 ## W487 VERIFIED: TYPE `$4C`'S PAIRED TYPE `$58` CHILD
 

@@ -6322,3 +6322,23 @@ suite was not run, and W487 is unpublished. W486
 remains live as build `20260822042005`. Type `$58` emits no enemy child. The only remaining static unported edge
 is `$48 -> $54`, disabled behind Version B's live `$2714AE` return, so this wave establishes no next runtime
 blocker. Select the next target from runtime progression evidence rather than promoting that disabled edge.
+
+### D96: W488 SHARED FRONT-END LABEL PRINTER, VERIFIED LOCALLY
+
+The old D11 `$253794` lead was stale twice over: W241 proved the routine is the loop-only zero-life extend rather
+than option-pod teardown, and W435 measured the complete stage transition against the board. W488 therefore
+takes a bounded visible front-end gap instead of resuming an open-ended blocker capture.
+
+W488 ports `$25F2D0..$25F30B`. Low-word D0 zero selects descriptor `$25F43A`; non-zero selects `$25F43E`.
+The descriptor's second word becomes the text column and its first word the row. The routine prints the string
+at `$25F1F0`, advances A0 by `$10`, decrements the row, and prints the second string through `$25A14C`. Object
+slot [17]'s state-6 arm calls it for side 0 then side 1 before its sound gate, replacing the counted deferral.
+Object slot [9] shares that state arm, but its separate `$25E72E` draw remains counted because it still also
+requires unported `$25F1EC`; W488 does not overstate that larger caller as complete.
+
+Two disjoint data windows add the two `$10`-byte string slots and two four-byte descriptors. The ignored player
+table was regenerated; `export-tables.py --verify` measures 632 windows and 437,789 bytes with 75 overlap pairs
+unchanged. The directly affected screen set passes 153/153; the exporter plus focused window and deferral guards
+pass 40/40. The new regression was observed failing before implementation and now pins descriptor read order,
+side order, string stride, row decrement, and removal of the `$25F2D0` note. Browser assets were not regenerated,
+the full suite was not run, and W488 is unpublished. W486 remains live as build `20260822042005`.

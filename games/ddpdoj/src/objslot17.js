@@ -304,6 +304,25 @@ export function sideFromD7_25D4E4(d7) {
   return u16(d7) !== 0 ? 0 : 1;                              // $25D4E6 tst.w D7 / bne / $25D4EC
 }
 
+/** `$25F2D0..$25F30B` -- the two-line label printer. D0 selects `$25F43A` when its low word is zero
+ *  and `$25F43E` otherwise. The descriptor's second word becomes D0, its first becomes D1, and the
+ *  second string is `$10` bytes later at D1 - 1. Both `$25A14C` calls preserve their arguments. */
+export const LABELS_25F2D0 = Object.freeze({
+  addr: 0x25f2d0, bytes: 0x3c, strings: 0x25f1f0, stringStride: 0x10,
+  descriptors: Object.freeze([0x25f43a, 0x25f43e]),
+});
+
+export function sideLabels25F2D0(tx, rom, d0) {
+  const L = LABELS_25F2D0;
+  const a4 = L.descriptors[u16(d0) === 0 ? 0 : 1];             // $25F2D4..$25F2E2
+  const stringD0 = rom.u16(a4 + 2);                            // $25F2EA move.w ($2,A4),D0
+  let stringD1 = rom.u16(a4);                                 // $25F2EE move.w (A4),D1
+  txString25A14C(tx, rom, stringD0, stringD1, 0, L.strings);   // $25F2F4 jsr $25A14C
+  stringD1 = u16(stringD1 - 1);                               // $25F2FE subq.w #1,D1
+  txString25A14C(tx, rom, stringD0, stringD1, 0,
+    L.strings + L.stringStride);                               // $25F300 jsr $25A14C
+}
+
 export const HANDLER6 = Object.freeze({
   addr: 0x25d4f0, gate: 0x813098, sound: 0x28caae, announce: 0x260a9a,
   labels: 0x25f2d0, nextPhase: 0x07,
@@ -321,9 +340,8 @@ export const HANDLER6 = Object.freeze({
  *  reached when `$813098` is SET *or* `(A0)` is zero -- two unrelated conditions, one arm.
  */
 export function phase6_25D4F0(ram, rom, ctx, a6, d7) {
-  ctx.unported?.note(HANDLER6.labels, '$25D4F2/$25D4FA jsr $25F2D0 with D0 = 0 then 1 -- the '
-    + 'two-line per-side label printer. It prints through $25A14C twice, advancing A0 by $10 and '
-    + 'D1 by -1 between them, from a descriptor at $25F43E. Head unread, so it is noted');
+  sideLabels25F2D0(ctx.tx, rom, 0);                            // $25D4F2 moveq #0 / $25D4F4 jsr
+  sideLabels25F2D0(ctx.tx, rom, 1);                            // $25D4FA moveq #1 / $25D4FC jsr
 
   if (ram.u16(HANDLER6.gate) === 0) {                        // $25D500 tst.w $813098 / bne $25D510
     ctx.soundPost?.(HANDLER6.sound);                         // $25D50A jsr $28CAAE

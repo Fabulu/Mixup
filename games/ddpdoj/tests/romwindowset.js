@@ -44,6 +44,13 @@
 // own windows. That claim is untouched by W428's four.
 
 // ---------------------------------------------------------------------------
+// W488 ADDED TWO MORE, AND THE OVERLAP COUNT STILL DID NOT MOVE.
+// ---------------------------------------------------------------------------
+// `$25F2D0` reads two fixed `$10`-byte label-string slots at `$25F1F0` and two
+// four-byte descriptors at `$25F43A`. Both windows are disjoint from every prior declaration.
+// Measured: 630 -> 632 windows, 437,749 -> 437,789 bytes, 75 -> 75 overlapping pairs.
+
+// ---------------------------------------------------------------------------
 // W487 ADDED ONE MORE, AND THE OVERLAP COUNT STILL DID NOT MOVE.
 // ---------------------------------------------------------------------------
 // Type $58's contiguous record and sub-record prototype block at `$270C3A + $2C` ends exactly at
@@ -121,7 +128,7 @@
 
 /** The count `tables.rom.windows.length` must equal. MEASURED from
  *  `player.tables.json`, not computed by hand. */
-export const ROM_WINDOW_COUNT = 630;
+export const ROM_WINDOW_COUNT = 632;
 
 /** The one window W429 declared, and the window it abuts WITHOUT overlapping.
  *  `tests/w429cuekinds.test.js` asserts the abutment is exact. */

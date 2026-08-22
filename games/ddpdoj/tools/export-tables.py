@@ -3387,6 +3387,13 @@ SHOT_WINDOWS.extend([
                        "$25F0E4..$25F0F2. Four distinct frames at stride $E4 ($1A02A0, $1A0384, "
                        "$1A0468, $1A054C), each held for THREE ticks, and the tick only advances "
                        "on frames where ($2C,A6) is non-zero"),
+    # ---- W488: $25F2D0's two fixed-width strings and two descriptors ---------------------------
+    (0x25F1F0, 0x0020, "W488: $25F2D0's two label strings at stride $10. Each string occupies one "
+                       "$10-byte slot and terminates with two NUL bytes; $25F2FA advances A0 by "
+                       "exactly $10 before the second $25A14C call"),
+    (0x25F43A, 0x0008, "W488: $25F2D0's two four-byte descriptors. D0 zero selects $25F43A and "
+                       "non-zero selects $25F43E; each contributes move.w ($2,A4),D0 followed by "
+                       "move.w (A4),D1"),
     # ---- W374: the ZOOMING REGISTER emitter family, all thirteen stubs -----------------------
     # $23E2F2 and its twelve siblings are the zooming enqueue in REGISTER form -- $23D9E2's twin,
     # with D1/D2/D3/D4 in place of the object record plus D6, the zoom-flags longword. The port
