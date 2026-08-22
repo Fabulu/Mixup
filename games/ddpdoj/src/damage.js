@@ -340,7 +340,28 @@ export function bulletWindowSlots(ram) {
   return (DMG.bulletD6[rung] + 1) * DMG.bulletUnroll;
 }
 
-export function playerBox(ram, a4) {
+const GRAZE_MARGIN = 0x0300;
+const BULLET_POOL_SLOTS = (DMG.bulletD6.at(-1) + 1) * DMG.bulletUnroll;
+
+function scanPlayerGrazes(ram, player, box, slots, hook) {
+  const live = [];
+  const near = [];
+  const margin2 = GRAZE_MARGIN * GRAZE_MARGIN;
+  for (let s = 0; s < BULLET_POOL_SLOTS; s++) {
+    const rec = DMG.bulletPool + s * DMG.bulletStride;
+    if ((ram.u16(rec) & 0x8000) === 0) continue;
+    live.push(rec);
+    if (s >= slots || (ram.u8(rec) & 0x51) !== 0) continue;
+    const y = ram.u16(rec + 0x02);
+    const x = ram.u16(rec + 0x04);
+    const dy = y < box.d1 ? box.d1 - y : y > box.d0 ? y - box.d0 : 0;
+    const dx = x < box.d3 ? box.d3 - x : x > box.d2 ? x - box.d2 : 0;
+    if ((dy !== 0 || dx !== 0) && dy * dy + dx * dx <= margin2) near.push(rec);
+  }
+  hook(ram, { player, live, near });
+}
+
+export function playerBox(ram, a4, ctx = null) {
   // $2459D0..$2459EA.  D0/D1 are the LONG axis (record +$02) and D2/D3 the
   // SHORT (+$04), and each pair uses its OWN two half-extents: +$10/+$12 for
   // the long, +$14/+$16 for the short.  `machine.js`'s P.hitYPlus..P.hitXMinus
@@ -351,6 +372,9 @@ export function playerBox(ram, a4) {
   const d2 = u16(ram.u16(a4 + 0x04) + ram.u16(a4 + 0x14));   // $2459DE/$2459E4
   const d3 = u16(ram.u16(a4 + 0x04) - ram.u16(a4 + 0x16));   // $2459E2/$2459E8
   const slots = bulletWindowSlots(ram);
+  if (ctx?.playerGrazeHook) {
+    scanPlayerGrazes(ram, a4, { d0, d1, d2, d3 }, slots, ctx.playerGrazeHook);
+  }
   for (let s = 0; s < slots; s++) {
     // A6 walks base+2, so `(A6)+` is record +$02, `(A6)` is +$04 and
     // `(-$4,A6)` -- after the one post-increment -- is +$00's HIGH BYTE.
@@ -511,7 +535,7 @@ export function impactCollisionBlock(ram, box, d7) {
 //        natural misreading of a `bra` out of a `dbra` is "it leaves the
 //        routine"; it does not, and that is worth one line here.
 // ---------------------------------------------------------------------------
-function ramCollisionBlock(ram, box, d7, a4) {
+function ramCollisionBlock(ram, box, d7, a4, ctx = null) {
   let d6 = u16(ram.u16(DMG.poolACount) + ram.u16(DMG.poolBCount));  // $244E62/$244E68
   if (d6 === 0) return { rammed: false };             // $244E6E beq $244EE0
   const { d0, d1, d2, d3 } = box;
@@ -546,8 +570,10 @@ function ramCollisionBlock(ram, box, d7, a4) {
     // A6 is rec+2 here, so `(-$2,A6)` is +$00 and `($16,A6)` is +$18.
     ram.setU16(rec, u16(ram.u16(rec) | ram.u16(DMG.fa72)));  // $244EC8/$244ECE
     const hp0 = ram.u16(rec + 0x18);
-    ram.setU16(rec + 0x18, u16(hp0 - 1));             // $244ED2 subq.w #1
-    return { rammed: true, rec, hp0, hp1: u16(hp0 - 1) };  // $244ED6 bra $244EE0
+    const damage = transformedPlayerDamage(ctx, 1, 'ramming');
+    const hp1 = u16(hp0 - damage);
+    ram.setU16(rec + 0x18, hp1);                        // $244ED2 subq.w #1
+    return { rammed: true, rec, hp0, hp1 };             // $244ED6 bra $244EE0
   }
   void d6;
   return { rammed: false };
@@ -631,7 +657,15 @@ export function shotBoundingBox(ram, table, d7) {
  * live records runs the body 7 times.  A port that walked all 100 would be
  * right on every frame until the counters disagreed with the slots.
  */
-export function poolDamage(ram, pool, count, table, d7, mask, gate308c, variant) {
+function transformedPlayerDamage(ctx, amount, source) {
+  const transform = ctx?.playerDamageTransform;
+  if (!transform) return amount;
+  const result = transform(amount & 0xffff, source);
+  if (!Number.isFinite(result)) return amount;
+  return Math.max(0, Math.min(0xffff, Math.trunc(result)));
+}
+
+export function poolDamage(ram, pool, count, table, d7, mask, gate308c, variant, ctx = null) {
   if (count === 0) return 0;                          // $244F74 / $245086 beq.w
   const offLimit = variant === 'A' ? 0x9700 : 0x8800; // $244FC4 / $2450EC
   let hits = 0;
@@ -703,6 +737,7 @@ export function poolDamage(ram, pool, count, table, d7, mask, gate308c, variant)
         // elided -- see this function's header.
         ram.setU16(rec + 0x18, hp0);
         if (ram.u16(rec + 0x02) >= 0x6f00) continue;  // $245058 cmpi.w #$6F00,(A5)
+        d5 = transformedPlayerDamage(ctx, d5, 'shot');
         const nhp = u16(ram.u16(rec + 0x18) - d5);    // $24505E sub.w D5,$16(A5)
         ram.setU16(rec + 0x18, nhp);
         if ((nhp & 0x8000) !== 0) break;              // $245062 bmi $24506C
@@ -715,6 +750,7 @@ export function poolDamage(ram, pool, count, table, d7, mask, gate308c, variant)
         if (gate308c === 0) {                         // $245162 tst.w / bne -- AFTER
           d5 = u16(d5 - (u16(d5) >>> 2));             // $24516A/$24516C/$24516E
         }
+        d5 = transformedPlayerDamage(ctx, d5, 'shot');
         const nhp = u16(ram.u16(rec + 0x18) - d5);    // $245170 sub.w D5,$16(A5)
         ram.setU16(rec + 0x18, nhp);
         if ((nhp & 0x8000) !== 0) break;              // $245174 bmi $24517E
@@ -751,7 +787,7 @@ export function poolDamage(ram, pool, count, table, d7, mask, gate308c, variant)
 // reduce by a QUARTER (`lsr.w #2`).  Four separate reductions in one routine,
 // none of them the same; this is the kind of thing "tidying" destroys.
 // ---------------------------------------------------------------------------
-function weaponObjectPass(ram, a2, d6, opts) {
+function weaponObjectPass(ram, a2, d6, opts, ctx = null) {
   if ((ram.u16(a2) & 0x8000) === 0) return 0;         // $2451A2/$24525C tst.w/bpl
   if (opts.block === 7) {
     ram.bclr8(a2, 4);                                 // $2451A8 bclr #$4,(A2)
@@ -797,6 +833,7 @@ function weaponObjectPass(ram, a2, d6, opts) {
     if (ram.u16(DMG.gate308c) === 0) {                // $24522E / $2452DE tst/bne
       d5 = u16(d5 - ((d5 & 0xffff) >>> 1));           // $245236/$245238/$24523A
     }
+    d5 = transformedPlayerDamage(ctx, d5, 'weapon-object');
     ram.setU16(rec, u16(ram.u16(rec) | ram.u16(DMG.fa72) | hitBits));  // or.w D4
     if (ram.u16(rec + 0x02) >= 0x6f00) continue;      // $245248 / $2452F8 bcc
     ram.setU16(rec + 0x18, u16(ram.u16(rec + 0x18) - d5));  // $245250 / $245300
@@ -841,19 +878,19 @@ function weaponObjectPass(ram, a2, d6, opts) {
 // transcribed and NOT guarded, and it is called out here so the next person to
 // see an enemy gain HP knows which instruction did it.
 // ---------------------------------------------------------------------------
-export function laserDamagePass(ram, a1, d6) {
+export function laserDamagePass(ram, a1, d6, ctx = null) {
   ram.setU16(DMG.fa7c, 0);                            // $2453AC clr.w $80FA7C
   const a2 = a1;                                      // $2453B2 movea.l A1,A2
   if ((ram.u16(a1) & 0x8000) === 0) return 0;         // $2453B4 tst.w/bpl
   if (ram.bset8(a1, 1) === 0) return 0;               // $2453BA bset #$1/beq
-  return laserDamageBody(ram, a1, a2, d6);
+  return laserDamageBody(ram, a1, a2, d6, ctx);
 }
 
 /** `$2453C2..$245608` -- the body, and the ONLY thing `$245314`/`$24536E`
  *  would reach if either were reachable (`$245364 bsr $2453C2`).  Split out at
  *  the ROM's own entry point so the boundary is legible; both callers stay
  *  unported and are named on `DMG`. */
-function laserDamageBody(ram, a1, a2, d6) {
+function laserDamageBody(ram, a1, a2, d6, ctx) {
   ram.bclr8(a1, 4);                                   // $2453C2 bclr #$4,(A1)
   ram.setU16(a1 + 0x10, u16(0x7400 + d6));            // $2453C6/$2453CC
   // $2453D0 `lea ($2,A1),A0` and five post-increment reads.
@@ -897,7 +934,7 @@ function laserDamageBody(ram, a1, a2, d6) {
   // upper Y bound with the reach of the last enemy pool A hit, and nothing
   // between `$2454FA` and `$245580 cmp.w D4,D0` reloads it.  Returning the box
   // rather than a hit count is the only way a JS transcription keeps that.
-  const a = laserPool(ram, a1, d6, DMG.poolA, 100, { d0, d1, d2, d3 }, 'A');
+  const a = laserPool(ram, a1, d6, DMG.poolA, 100, { d0, d1, d2, d3 }, 'A', ctx);
   hits += a.hits; d0 = a.d0;
   // ---- $2454FA `movea.l A2,A1` -- A1 was never moved, but the board restores
   // it here and the restore is what makes pool B read the same record.
@@ -924,7 +961,7 @@ function laserDamageBody(ram, a1, a2, d6) {
     }
   }
   // ======================== $245542: POOL B, 50 SLOTS ======================
-  hits += laserPool(ram, a1, d6, DMG.poolB, 50, { d0, d1, d2, d3 }, 'B').hits;
+  hits += laserPool(ram, a1, d6, DMG.poolB, 50, { d0, d1, d2, d3 }, 'B', ctx).hits;
   ram.setU16(a1 + 0x10, u16(ram.u16(a1 + 0x10) - d6));  // $245604 sub.w D6
   return hits;
 }
@@ -932,7 +969,7 @@ function laserDamageBody(ram, a1, a2, d6) {
 /** `$245438..$2454F8` (pool A) and `$24555A..$245602` (pool B).  The two share
  *  their box test instruction for instruction and differ ONLY after the HP
  *  test, which is why one function takes a `which`. */
-function laserPool(ram, a1, d6, pool, slots, box, which) {
+function laserPool(ram, a1, d6, pool, slots, box, which, ctx) {
   let { d0 } = box;
   const { d1, d2, d3 } = box;
   let hits = 0;
@@ -989,6 +1026,7 @@ function laserPool(ram, a1, d6, pool, slots, box, which) {
     if (ram.u16(DMG.gate308c) === 0) {                // $2454CC/$2455DE tst.w/bne
       d5 = u16(d5 - ((d5 & 0xffff) >>> 2));           // $2454D4/$2454D6/$2454D8
     }
+    d5 = transformedPlayerDamage(ctx, d5, 'beam');
     ram.setU16(rec, u16(ram.u16(rec) | ram.u16(DMG.fa72) | 0x400));  // $2454DA..$2454E4
     if (which === 'A' && ram.u16(rec + 0x02) >= 0x6f00) continue;    // $2454E6 bcc
     ram.setU16(rec + 0x18, u16(ram.u16(rec + 0x18) - d5));  // $2454EE/$2455F8
@@ -1032,7 +1070,7 @@ export function collisionPass(ram, ctx, { table, mask, d1, d2, player, a1, a2, a
   const pbox = { boxRun: false, hitPlayer: false, items: 0, impacts: 0, rammed: false };
   if ((ram.u16(player) & 0x8000) !== 0) {
     ram.setU16(DMG.fa7e, 0);                          // $244D7E clr.w $80FA7E
-    const box = playerBox(ram, player);               // $244D84 jsr ($2459D0,PC)
+    const box = playerBox(ram, player, ctx);                  // $244D84 jsr ($2459D0,PC)
     pbox.boxRun = true; pbox.hitPlayer = box.hit;
     // $244D8A `tst.w $80FA7E / bne.w $244EE0`.  NOTE it re-reads the WORD --
     // it does not use $2459D0's carry or a register -- so a routine that set
@@ -1047,7 +1085,7 @@ export function collisionPass(ram, ctx, { table, mask, d1, d2, player, a1, a2, a
       };
       pbox.items = itemCollisionBlock(ram, b, d7);           // $244D9C block 2
       pbox.impacts = impactCollisionBlock(ram, b, d7);      // $244DFE block 3
-      const r = ramCollisionBlock(ram, b, d7, player);       // $244E5C block 4
+      const r = ramCollisionBlock(ram, b, d7, player, ctx);  // $244E5C block 4
       pbox.rammed = r.rammed; pbox.ram = r.rammed ? r : null;
       // `$244ED6 bra $244EE0` from block 4's hit lands on the SAME instruction
       // its fall-through does, so a ram does not skip the shot loops.  (An
@@ -1064,7 +1102,7 @@ export function collisionPass(ram, ctx, { table, mask, d1, d2, player, a1, a2, a
   const gate = ram.u16(DMG.gate308c);
   // ---- $244F68: pool A, $81459C, 100 slots.
   const hitsA = poolDamage(ram, DMG.poolA, ram.u16(DMG.poolACount), table, d7,
-    ram.u16(DMG.fa72), gate, 'A');
+    ram.u16(DMG.fa72), gate, 'A', ctx);
   // ---- $245078: pool B, $81521C, 50 slots.  $24508C rebiases the box by
   // $F000 (= -$1000) and D7 becomes $1800; $2800 + $F000 = $1800, so the box
   // and the coordinates stay in step.  The rebias happens ONLY when
@@ -1077,7 +1115,7 @@ export function collisionPass(ram, ctx, { table, mask, d1, d2, player, a1, a2, a
     }
     d7 = 0x1800;                                      // $24509E move.w #$1800,D7
     hitsB = poolDamage(ram, DMG.poolB, cntB, table, d7, ram.u16(DMG.fa72),
-      gate, 'B');
+      gate, 'B', ctx);
   }
   const w = weaponTail(ram, ctx, player, a1, a2, a3);
   return { hitsA, hitsB, anyShot: true, player: pbox, ...w };
@@ -1115,9 +1153,9 @@ function weaponTail(ram, ctx, player, a1, a2, a3) {
     // this file, not a board state, so it says so rather than guessing.
     throw new Error('collisionPass: the $28B670 tail must pass A1/A2/A3');
   }
-  const hits27 = weaponObjectPass(ram, a2, d6, { block: 7 });   // $2451A2
-  const hits30 = weaponObjectPass(ram, a3, d6, { block: 8 });   // $24525C
-  const beam = laserDamagePass(ram, a1, d6);                    // $24530C bsr
+  const hits27 = weaponObjectPass(ram, a2, d6, { block: 7 }, ctx);   // $2451A2
+  const hits30 = weaponObjectPass(ram, a3, d6, { block: 8 }, ctx);   // $24525C
+  const beam = laserDamagePass(ram, a1, d6, ctx);                    // $24530C bsr
   bombLaserBlock(ram, ctx, player);                             // $245310 bra.w
   return { weapon: { hits27, hits30, beam } };
 }
@@ -1217,7 +1255,7 @@ function tailNoPlayer(ram, ctx, args) {
   ram.setU16(DMG.b6e8, args.d2);                      // $244D4C move.w D2
   // $244D52 move.w #$2800,D7 -- loaded and never used on this path.
   if ((ram.u16(args.player) & 0x8000) === 0) return null;  // $244D56/$244D58 bpl
-  const box = playerBox(ram, args.player);            // $244D5A jmp ($2459D0,PC)
+  const box = playerBox(ram, args.player, ctx);              // $244D5A jmp ($2459D0,PC)
   return { player: { boxRun: true, hitPlayer: box.hit, items: 0, impacts: 0,
     rammed: false, entry: DMG.passNoPlayer } };
 }

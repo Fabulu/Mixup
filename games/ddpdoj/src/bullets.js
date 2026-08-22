@@ -197,12 +197,20 @@ export class WriteLog {
 // installed host callback across that boundary. Vanilla Games never get an
 // entry, and the cartridge core remains unaware of catalogue ids.
 const BULLET_SPEED_TRANSFORMS = new WeakMap();
+const BULLET_SPAWN_HOOKS = new WeakMap();
 
 export function installBulletSpeedTransform(ram, transform) {
   if (typeof transform !== 'function') {
     throw new TypeError('bullet speed transform must be a function');
   }
   BULLET_SPEED_TRANSFORMS.set(ram, transform);
+}
+
+export function installBulletSpawnHook(ram, hook) {
+  if (typeof hook !== 'function') {
+    throw new TypeError('bullet spawn hook must be a function');
+  }
+  BULLET_SPAWN_HOOKS.set(ram, hook);
 }
 
 /**
@@ -278,6 +286,8 @@ export function spawnCore(ctx, regs, bank) {
   const addr = BUL.pool + slot * BUL.stride;
   const speedTransform = ctx.bulletSpeedTransform ?? BULLET_SPEED_TRANSFORMS.get(ram);
   emitRecord(ctx, regs, bank, addr, entry, speedTransform);
+  const spawnHook = ctx.bulletSpawnHook ?? BULLET_SPAWN_HOOKS.get(ram);
+  spawnHook?.(ram, { addr, slot, bank });
   return { carry: false, slot, addr, declined: false };
 }
 

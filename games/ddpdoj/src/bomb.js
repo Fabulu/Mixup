@@ -1100,6 +1100,14 @@ function beamListStep25616C(ram, rom, ctx, a5) {
  * a port that "fixed" it to `poolACount` would damage a different set of
  * enemies from the board.
  */
+function transformedPlayerDamage(ctx, amount, source) {
+  const transform = ctx?.playerDamageTransform;
+  if (!transform) return amount;
+  const result = transform(amount & 0xffff, source);
+  if (!Number.isFinite(result)) return amount;
+  return Math.max(0, Math.min(0xffff, Math.trunc(result)));
+}
+
 export function bombDamage24560A(ram, ctx, a4) {
   const d5rec = ram.u16(BOMBRAM.rec);                  // $245612 move.w (A6),D5
   if ((d5rec & 0x8000) === 0) return null;             // $245614 bpl.w $2459CE
@@ -1118,7 +1126,8 @@ export function bombDamage24560A(ram, ctx, a4) {
   // frame the driver has installed a script and **1** for the frames between
   // the record's allocation and the driver's first init.  One, not zero and
   // not $50 -- and it is a whole frame of the bomb's damage.
-  const d5 = ram.u16(BOMBRAM.rec + B.script) !== 0 ? 0x50 : 1;
+  let d5 = ram.u16(BOMBRAM.rec + B.script) !== 0 ? 0x50 : 1;
+  d5 = transformedPlayerDamage(ctx, d5, 'bomb');
 
   let hits = 0;
   for (let n = 0; n < 150; n++) {                      // $245644 move.w #$95,D7
@@ -1307,7 +1316,8 @@ export function bombDamageAlt2456A6(ram, ctx, a4) {
     const d4 = u16(ram.u16(BOMBRAM.hitMask) | 0x400);  // $245808/$24580E ori #$400
     ram.setU16(a5, u16(ram.u16(a5) | d4));             // $245812 or.w D4,(A5)
     ctx.bombEvent?.('beam-400', 'B');                  // recon 38 1.5 is stale
-    ram.setU16(a5 + 0x18, u16(ram.u16(a5 + 0x18) - 0x208));   // $245814 subi.w
+    const damage = transformedPlayerDamage(ctx, 0x208, 'laser-bomb');
+    ram.setU16(a5 + 0x18, u16(ram.u16(a5 + 0x18) - damage));  // $245814 subi.w
     hitsB = 1;
   }
 
@@ -1343,7 +1353,8 @@ export function bombDamageAlt2456A6(ram, ctx, a4) {
       const m = u16(ram.u16(BOMBRAM.hitMask) | 0x400); // $2458DC/$2458E2
       ram.setU16(a5, u16(ram.u16(a5) | m));            // $2458E6 or.w D4,(A5)
       ctx.bombEvent?.('beam-400', 'A');                // recon 38 1.5 is stale
-      const hp = u16(ram.u16(a5 + 0x18) - 0x1e0);      // $2458E8 subi.w #$1E0
+      const damage = transformedPlayerDamage(ctx, 0x1e0, 'laser-bomb');
+      const hp = u16(ram.u16(a5 + 0x18) - damage);      // $2458E8 subi.w #$1E0
       ram.setU16(a5 + 0x18, hp);
       hitsA++;
       if ((hp & 0x8000) !== 0) break;                  // $2458EE bmi $2458F8

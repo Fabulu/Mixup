@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W492 first four transformative mods verified and pushed)
+Updated: 2026-08-22 (W493 second transformative-mod wave verified locally)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,18 +8,20 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W492 adds the first four mods in the second transformative
-roster.** The catalogue now has 19 entries: Hyper Overdrive cancels only the exact two-point active
-hyper-gauge drain for both players, including activation frames; Adaptive Slow Motion scales host cadence
-from live bullet density without skipping simulation frames; Bee Magnet pulls allocated, uncollected bees
-toward the nearest live player; Boss Enrage adds six to boss-phase bullet speed with an `$FF` clamp.
-Every new mod blocks replay v1. Empty, unknown-only, direct, Original, and later vanilla-Game paths install
-no mod callback or policy.
+`docs/DOCKET.md` is authoritative. **W493 adds the second four mods in the additional
+transformative roster.** The catalogue now has 23 entries. Graze Reactor rewards a player's first near
+miss for each live bullet-slot lifetime. Glass Cannon removes both protection windows and doubles
+nonnegative player damage, including ramming. Auto Deathbomb spends stock through the cartridge bomb arm
+and cancels a pending lethal hit only when that arm fires. Resurrection in Place gives each player one
+side-local saved death position, consumed only by a successful authentic respawn allocation. W492's Hyper
+Overdrive, Adaptive Slow Motion, Bee Magnet, and Boss Enrage remain unchanged. Every new mod blocks replay
+v1. Empty, unknown-only, direct, Original, and later vanilla-Game paths install no mod callback or policy.
 
-The focused affected set passes 133/133. Independent review found the activation-frame omission and a
-collected-bee popup entering the magnet seam; both are fixed. The final bee and W492 set passes 46/46,
-and the reviewer confirmed the exclusion. The published-bundle gate remains
-15,955,968/15,955,968 pixel-identical. W492 is not published; W496 remains the next publication point.
+The W493 focused and directly affected set passes 232/232. Independent read-only review confirmed the three
+post-review corrections: spawn-based graze lifetime reset, transformed ramming damage, and last-life
+resurrection-cache clearing. Syntax, diff hygiene, and forbidden-punctuation checks pass. The
+published-bundle gate remains 15,955,968/15,955,968 pixel-identical. W493 is not published; W496 remains
+the next publication point.
 
 W490 makes all large replay and recording notices transient. W489 removed the fly-around oracle's embedded
 `$810424=$FF` intervention from ordinary browser launches, leaving labelled progression, replay, explicit
@@ -28,6 +30,21 @@ Invincibility, and authentic `$F0` grace exact. W488 ports the shared two-line p
 101/256 ported, 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not
 follow the static `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
 W491 is live as production build `20260822080859`, superseding W486's `20260822042005`.
+
+## W493 VERIFIED LOCALLY: COLLISION AND DEATH MODS
+
+`mods.js` owns four new state-local policies. Graze Reactor tracks Pool-A and Pool-B record addresses per
+player, adds packed-BCD 100 for a genuine near miss, and resets both players' seen state whenever that
+record is successfully reallocated. Glass Cannon zeros both protection bytes and transforms every
+nonnegative player-damage resolution, including shot, weapon, beam, bomb, laser-bomb, and ramming paths;
+negative translated damage remains unchanged. Auto Deathbomb delegates to `fireBomb2498E2` and clears the
+pending lethal bit only after the authentic arm reports a fired bomb. Resurrection in Place captures a
+side's coordinates only when a reserve life exists and consumes them only after successful respawn-object
+allocation. A last-life death clears stale state, while allocation refusal retains it for a retry.
+
+`Game` validates and exposes only selected callbacks. Per-RAM bullet-spawn registration lets compact bullet
+contexts reset Graze Reactor slot lifetimes without global policy. Vanilla Games own none of these callback
+properties, and all four additions block replay v1.
 
 ## W492 VERIFIED: FIRST FOUR TRANSFORMATIVE MODS
 
@@ -828,7 +845,7 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. Add the remaining 11 transformative mods in bounded waves without changing vanilla behavior. Ships and
+1. Add the remaining 7 transformative mods in bounded waves without changing vanilla behavior. Ships and
    pilots are core fidelity work, not part of that mod count.
 2. Make both cartridge-supported ships and all three pilots selectable and playable.
 3. Complete Black Label through the full second loop.

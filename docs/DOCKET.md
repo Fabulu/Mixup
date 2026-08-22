@@ -6452,3 +6452,29 @@ bee and W492 set passing 46/46 and the reviewer confirming the exclusion. The pu
 renders 15,955,968/15,955,968 pixels identical to its MAME reference. Syntax checks, diff hygiene, and the
 no-em-dash check pass. The full unit suite was not run, browser assets were not regenerated, and W492 is
 unpublished. It is the first wave after W491; W496 remains the next periodic publication point.
+
+### D101: W493 COLLISION AND DEATH MODS, VERIFIED LOCALLY
+
+The start menu now exposes 23 mods. W493 adds Graze Reactor, Glass Cannon, Auto Deathbomb, and
+Resurrection in Place. All four change simulation and therefore block replay v1. The null loadout and
+later vanilla `Game` path own none of their callbacks.
+
+Graze Reactor scans live enemy bullets outside the exact player hitbox and adds packed-BCD 100 for each
+record that passes within three pixels. P1 and P2 have independent seen sets. Every successful centralized
+Bank-A or Bank-B allocation clears that record from both sets, so reuse while a player is dead begins a new
+bullet lifetime; refused and full-pool allocations do not. Glass Cannon removes both protection windows
+and doubles nonnegative player damage at shot, weapon, beam, bomb, laser-bomb, and ramming resolution,
+with saturation at `$7FFF`. Negative translated damage remains unchanged.
+
+Auto Deathbomb calls the authentic `$2498E2` bomb arm when `$249542` sees a pending lethal hit. It clears
+that hit only if the arm fires, preserving stock checks and authentic refusal. Resurrection in Place
+captures each player's death coordinates only when a reserve life exists and applies them only after
+successful authentic respawn-object allocation. A refused allocation preserves the one-shot position for
+a retry, a successful allocation consumes it, and a last-life death clears stale state before game over.
+
+The focused and directly affected W493 set passes 232/232 with no failures or skips. Independent read-only
+review confirmed the spawn-based graze reset, transformed ramming damage, and last-life cache clearing,
+with no regression caused by those fixes. The published-bundle gate remains 15,955,968/15,955,968
+pixel-identical. Syntax checks, diff hygiene, and the no-em-dash check pass. The full unit suite was not
+run, browser assets were not regenerated, and W493 is unpublished. It is the second wave after W491; W496
+remains the next periodic publication point.

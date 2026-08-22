@@ -158,6 +158,8 @@ function deathPalette2531DE(ram, rom, ctx, p2) {
 export function playerHit249F8A(ram, slot, rec, ctx, p2 = false) {
   const d = deathSide(p2);
   const h = d.h;
+  ctx.deathPositionCapture?.(ram, p2 ? 1 : 0,
+    ram.u16(rec + P.posY), ram.u16(rec + P.posX), ram.u16(d.lives) !== 0);
 
   ram.setU16(0x81316c, 1);                              // $261116
   ram.setU16(0x81316a, 0);                              // $26111E
@@ -612,6 +614,16 @@ export function armRequest25FF38(ram, d0, d1) {
 // `armRequest25FF38` above is what puts a side ON that line, and it stays here.
 // ---------------------------------------------------------------------------
 
+export function playerLethalHit249542(ram, rec, ctx, playerIdx) {
+  if (ctx.lethalHitHook
+    && ram.btst8(rec + P.state, 4)
+    && ctx.lethalHitHook(ram, rec, playerIdx, ctx)) {
+    ram.bclr8(rec + P.state, 4);
+    return false;
+  }
+  return ram.bclr8(rec + P.state, 4) !== 0;
+}
+
 /**
  * $2494FA -- one frame of the player.
  * @param ctx {{tables, unportedLog, wallHits}}
@@ -654,7 +666,7 @@ export function updatePlayer(ram, slot, slotIndex, ctx) {
     }
   } else {
     ram.setU8(rec + P.dirLatch, ram.u8(rec + 0x3b)); // $24953C
-    if (ram.bclr8(rec + P.state, 4)) {               // $249542 bclr #4,(A6)/bne
+    if (playerLethalHit249542(ram, rec, ctx, idx)) {    // $249542 bclr #4,(A6)/bne
       // W64 made this reachable: `$2564BA` clears the bomb's invulnerability,
       // and the collision pass sets this bit. W164 follows the complete death
       // initializer and its later `$24A130..$24A21A` reset state. Returning at

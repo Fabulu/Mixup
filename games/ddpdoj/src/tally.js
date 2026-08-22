@@ -229,8 +229,17 @@ export function bonusLine125FFA8(ram, rom, ctx, a6) {
   // this file already do through `resolveHandle241298`.
   ram.setU8(made.addr + 0x06, 0);                          // $260032
   ram.setU8(made.addr + 0x07, ram.u8(a6 + TALLY.row));     // $260038
-  ram.setU16(made.addr + 0x08, ram.u16(a6 + 0x0c));        // $26003E ($C,A6)
-  ram.setU16(made.addr + 0x0a, ram.u16(a6 + 0x0e));        // $260044 ($E,A6)
+  let spawnY = ram.u16(a6 + 0x0c);
+  let spawnX = ram.u16(a6 + 0x0e);
+  if (made.ok && ctx?.respawnPositionTransform) {
+    const position = ctx.respawnPositionTransform(ram, side, spawnY, spawnX);
+    if (position && Number.isFinite(position.y) && Number.isFinite(position.x)) {
+      spawnY = u16(Math.trunc(position.y));
+      spawnX = u16(Math.trunc(position.x));
+    }
+  }
+  ram.setU16(made.addr + 0x08, spawnY);                     // $26003E ($C,A6)
+  ram.setU16(made.addr + 0x0a, spawnX);                     // $260044 ($E,A6)
   ram.setU16(a6 + 0x00, 0);                                // $26004A move.w #$0,(A6)
   ram.setU16(a6 + 0x02, 0);                                // $26004E
   ctx?.deathEvent?.('respawn', side + 1, ram.u16(ctr), made.result);

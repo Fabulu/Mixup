@@ -5,6 +5,9 @@
 // below. A vanilla launch never creates a mod state, so every hook returns before
 // touching RAM, input, timing, or pixels.
 
+import { fireBomb2498E2 } from './bomb.js';
+import { bcdAdd, LEDGER } from './score.js';
+
 export const CATEGORIES = Object.freeze(['survival', 'arsenal', 'challenge', 'presentation']);
 
 const mod = (entry) => Object.freeze({ replaySafe: false, ...entry,
@@ -13,6 +16,7 @@ const mod = (entry) => Object.freeze({ replaySafe: false, ...entry,
 export const MODS = Object.freeze({
   'invincibility': mod({
     name: 'Invincibility', category: 'survival',
+    conflict: 'player-durability', priority: 10,
     blurb: 'Hold the player record invulnerability byte at $FF.',
     effects: ['$810424 := $FF before and after every logic frame'],
   }),
@@ -25,6 +29,16 @@ export const MODS = Object.freeze({
     name: 'Unbreakable Chain', category: 'survival',
     blurb: 'Once a chain exists, keep its cartridge meter from expiring.',
     effects: ['$81B5C0 := $7FFF while $81B5DA chain hits are nonzero'],
+  }),
+  'auto-deathbomb': mod({
+    name: 'Auto Deathbomb', category: 'survival',
+    blurb: 'Spend a stocked bomb through the cartridge bomb arm when a pending hit would kill.',
+    effects: ['$249542 pending lethal hit -> $2498E2 authentic bomb arm; clear the hit only if it fires'],
+  }),
+  'resurrection-in-place': mod({
+    name: 'Resurrection in Place', category: 'survival',
+    blurb: 'The next authentic respawn starts where that player died.',
+    effects: ['$249F8A caches death Y/X per player only with a reserve life; $25FFA8 consumes it for the next respawn object'],
   }),
 
   'bottomless-bombs': mod({
@@ -56,6 +70,11 @@ export const MODS = Object.freeze({
     name: 'Bee Magnet', category: 'arsenal',
     blurb: 'Pull live bee medals toward the nearest active player at a bounded rate.',
     effects: ['$817DC6 reserved bee records: position approaches live P1/P2 by at most $80 per axis'],
+  }),
+  'graze-reactor': mod({
+    name: 'Graze Reactor', category: 'arsenal',
+    blurb: 'Earn 100 score for each live enemy bullet that passes within three pixels of the hitbox.',
+    effects: ['$2459D0 near miss -> packed-BCD +100 once per player and bullet slot lifetime'],
   }),
 
   'low-rank': mod({
@@ -92,6 +111,12 @@ export const MODS = Object.freeze({
     name: 'Boss Enrage', category: 'challenge',
     blurb: 'Add six speed steps to newly spawned enemy bullets during authentic boss phases.',
     effects: ['$81309C != 0: spawned bullet speed + 6, clamped to $FF'],
+  }),
+  'glass-cannon': mod({
+    name: 'Glass Cannon', category: 'challenge',
+    conflict: 'player-durability', priority: 20,
+    blurb: 'Remove both ships\' protection windows and double nonnegative player damage at resolution.',
+    effects: ['$810424/$810486 := 0', 'shot, beam, and bomb HP subtraction damage x2, capped at $7FFF'],
   }),
 
   'invert-colors': mod({
@@ -170,6 +195,10 @@ export function resolveLoadout(ids = []) {
     bulletCanceller: has('bullet-canceller'),
     hyperOverdrive: has('hyper-overdrive'),
     beeMagnet: has('bee-magnet'),
+    grazeReactor: has('graze-reactor'),
+    autoDeathbomb: has('auto-deathbomb'),
+    resurrectionInPlace: has('resurrection-in-place'),
+    glassCannon: has('glass-cannon'),
     bossEnrage: has('boss-enrage'),
     rank: has('maximum-rank') ? 'maximum' : has('low-rank') ? 'low' : null,
     precisionShip: has('precision-ship'),
@@ -190,7 +219,14 @@ export function resolveLoadout(ids = []) {
 /** Return runtime state only for a recognized, nonempty loadout. */
 export function createModState(loadout) {
   if (!loadout || !loadout.ids?.length) return null;
-  return { loadout, runtime: { ghost: null, hyperGauge: null, bulletDensity: 0 } };
+  return { loadout, runtime: {
+    ghost: null,
+    hyperGauge: null,
+    bulletDensity: 0,
+    grazedBullets: [new Set(), new Set()],
+    grazeCount: [0, 0],
+    resurrectionPositions: [null, null],
+  } };
 }
 
 export function describeMod(id) {
@@ -229,6 +265,7 @@ export function assertReplayCompatible(state, action = 'replay') {
 
 export const MOD_RAM = Object.freeze({
   invulnP1: 0x810424,
+  invulnP2: 0x810486,
   livesP1: 0x8130be,
   bombStockP1: 0x81040a,
   hyperStockP1: 0x81b65c,
@@ -296,12 +333,72 @@ function enrageBossBulletSpeed(speed, ram) {
   return Math.min(0xff, speed + BOSS_ENRAGE_ADD);
 }
 
+const GRAZE_SCORE_BCD = 0x00000100;
+
+function rewardGraze(state, ram, event) {
+  const side = event.player === MOD_RAM.player1 ? 0
+    : event.player === MOD_RAM.player2 ? 1 : -1;
+  if (side < 0) return;
+  const seen = state.runtime.grazedBullets[side];
+  const live = new Set(event.live);
+  for (const rec of seen) if (!live.has(rec)) seen.delete(rec);
+  const ledger = side === 0 ? LEDGER.p1 : LEDGER.p2;
+  for (const rec of event.near) {
+    if (seen.has(rec)) continue;
+    seen.add(rec);
+    bcdAdd(ram, ledger.pendingEnd, GRAZE_SCORE_BCD);
+    state.runtime.grazeCount[side]++;
+  }
+}
+
+function resetGrazeBulletLifetime(state, _ram, event) {
+  for (const seen of state.runtime.grazedBullets) seen.delete(event.addr);
+}
+
+function doublePlayerDamage(amount) {
+  const word = amount & 0xffff;
+  if ((word & 0x8000) !== 0) return word;
+  return Math.min(0x7fff, word * 2);
+}
+
+function autoDeathbomb(ram, rec, playerIdx, ctx) {
+  const result = fireBomb2498E2(ram, ctx, rec, playerIdx);
+  ctx.bombEvent?.('press', result);
+  return result.startsWith('fired');
+}
+
+function captureResurrectionPosition(state, _ram, side, y, x, canRespawn) {
+  state.runtime.resurrectionPositions[side] = canRespawn
+    ? { y: y & 0xffff, x: x & 0xffff }
+    : null;
+}
+
+function consumeResurrectionPosition(state, _ram, side, y, x) {
+  const saved = state.runtime.resurrectionPositions[side];
+  if (!saved) return { y, x };
+  state.runtime.resurrectionPositions[side] = null;
+  return saved;
+}
+
 /** Per-Game callback options, or null when this loadout needs no callback seam. */
 export function modGameOptions(state) {
   if (!state) return null;
   const options = {};
-  if (state.loadout.sim.beeMagnet) options.beeRecordHook = pullBeeTowardPlayer;
-  if (state.loadout.sim.bossEnrage) options.bulletSpeedTransform = enrageBossBulletSpeed;
+  const sim = state.loadout.sim;
+  if (sim.beeMagnet) options.beeRecordHook = pullBeeTowardPlayer;
+  if (sim.bossEnrage) options.bulletSpeedTransform = enrageBossBulletSpeed;
+  if (sim.grazeReactor) {
+    options.bulletSpawnHook = (ram, event) => resetGrazeBulletLifetime(state, ram, event);
+    options.playerGrazeHook = (ram, event) => rewardGraze(state, ram, event);
+  }
+  if (sim.glassCannon) options.playerDamageTransform = doublePlayerDamage;
+  if (sim.autoDeathbomb) options.lethalHitHook = autoDeathbomb;
+  if (sim.resurrectionInPlace) {
+    options.deathPositionCapture = (ram, side, y, x, canRespawn) =>
+      captureResurrectionPosition(state, ram, side, y, x, canRespawn);
+    options.respawnPositionTransform = (ram, side, y, x) =>
+      consumeResurrectionPosition(state, ram, side, y, x);
+  }
   return Object.keys(options).length ? Object.freeze(options) : null;
 }
 
@@ -309,6 +406,10 @@ function applyRamMods(state, ram) {
   if (!state) return;
   const s = state.loadout.sim;
   if (s.invincibility) ram.setU8(MOD_RAM.invulnP1, 0xff);
+  if (s.glassCannon) {
+    ram.setU8(MOD_RAM.invulnP1, 0);
+    ram.setU8(MOD_RAM.invulnP2, 0);
+  }
   if (s.infiniteLives) ram.setU16(MOD_RAM.livesP1, 3);
   if (s.unbreakableChain && ram.u16(MOD_RAM.chainHitsP1) !== 0) {
     ram.setU16(MOD_RAM.chainMeterP1, 0x7fff);

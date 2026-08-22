@@ -106,7 +106,7 @@ import {
   catchUpTextPalette,
 } from './palette.js';
 import { runAnimObjects24683E } from './animobjects.js';
-import { installBulletSpeedTransform } from './bullets.js';
+import { installBulletSpeedTransform, installBulletSpawnHook } from './bullets.js';
 
 /** THE BUCKETS `pgm.py shipgate` SUBSTITUTES, in drain (= depth) order.
  *
@@ -398,6 +398,21 @@ export class Game {
       this.bulletSpeedTransform = opts.bulletSpeedTransform;
       installBulletSpeedTransform(this.ram, opts.bulletSpeedTransform);
     }
+    for (const name of [
+      'bulletSpawnHook',
+      'playerGrazeHook',
+      'playerDamageTransform',
+      'lethalHitHook',
+      'deathPositionCapture',
+      'respawnPositionTransform',
+    ]) {
+      if (opts[name] == null) continue;
+      if (typeof opts[name] !== 'function') {
+        throw new TypeError(`Game ${name} must be a function`);
+      }
+      this[name] = opts[name];
+    }
+    if (this.bulletSpawnHook) installBulletSpawnHook(this.ram, this.bulletSpawnHook);
     this.wallHits = [];
     this.allocEvents = new Map();
     this.bulletSpawns = new Map();   // WAVE 30, see #ctx()'s bulletSpawn
@@ -501,6 +516,15 @@ export class Game {
       ...(this.beeRecordHook ? { beeRecordHook: this.beeRecordHook } : {}),
       ...(this.bulletSpeedTransform
         ? { bulletSpeedTransform: this.bulletSpeedTransform } : {}),
+      ...(this.bulletSpawnHook ? { bulletSpawnHook: this.bulletSpawnHook } : {}),
+      ...(this.playerGrazeHook ? { playerGrazeHook: this.playerGrazeHook } : {}),
+      ...(this.playerDamageTransform
+        ? { playerDamageTransform: this.playerDamageTransform } : {}),
+      ...(this.lethalHitHook ? { lethalHitHook: this.lethalHitHook } : {}),
+      ...(this.deathPositionCapture
+        ? { deathPositionCapture: this.deathPositionCapture } : {}),
+      ...(this.respawnPositionTransform
+        ? { respawnPositionTransform: this.respawnPositionTransform } : {}),
       // WAVE 57: the BG videoram, because an ENEMY HANDLER writes it.  Type
       // $1C ($26C20C, what the midboss's death spawns) copies 23 x 9 map
       // longwords into $9000xx -- the same array `$240D9A` writes through
