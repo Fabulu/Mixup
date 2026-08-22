@@ -6541,5 +6541,14 @@ The stage-5 ending selector remains intact and the stateless mapping repeats nat
 
 The focused and directly affected W496 set passes 170/170 with no failures or skips. Syntax checks, diff
 hygiene, and the forbidden-punctuation scan pass. The published-bundle gate remains
-15,955,968/15,955,968 pixel-identical. The full unit suite has not yet run; browser asset regeneration and
-the scheduled W496 publication gate follow this bounded landing.
+15,955,968/15,955,968 pixel-identical.
+
+D104 publication follow-up: `export-web.mjs` regenerated the W496 browser assets at 12,401.9 KiB with
+4,355 sprite streams, 161 captured frames, and 7,671 records. The first publication attempt exposed one
+stale widened-register source-line expectation after W494 moved `behaviourFor` from line 713 to 748. The
+scan still found the same address, file, function, and classification, so W496 repaired only that metadata.
+The repaired quiet-tree publication passed all **4,360/4,360** DDPDOJ units with zero failures or skips,
+the DDPDOJ bundle and web-fetch gates, all **746/746** Gradius units, the **13/13** Gradius gate with zero
+skips, the **27/27** Batman gate with zero skips, the distribution build, and the ROM-leak guard. Production
+build **`20260822120853`** is deployed and confirmed live, superseding `20260822080859`. W501 is the next
+five-wave publication point.

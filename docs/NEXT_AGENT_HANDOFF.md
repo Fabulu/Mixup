@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-22 (W496 final transformative-mod wave verified locally)
+Updated: 2026-08-22 (W496 published, D26 ships and pilots next)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -17,19 +17,19 @@ stateless route in loop 2 and the unchanged stage-5 ending value. W492 through W
 remain unchanged. All fifteen additions block replay v1. Empty, unknown-only, direct, Original, and later
 vanilla-Game paths install no mod callback or policy.
 
-The W496 focused and directly affected set passes 170/170. Syntax, diff hygiene, and
-forbidden-punctuation checks pass. The published-bundle gate remains 15,955,968/15,955,968
-pixel-identical. W496 is ready for the scheduled five-wave publication gate.
+The W496 focused and directly affected set passes 170/170. The repaired publication suite passes
+4,360/4,360 with no failures or skips. Syntax, diff hygiene, and forbidden-punctuation checks pass. The
+published-bundle gate remains 15,955,968/15,955,968 pixel-identical. Production build `20260822120853`
+is deployed and confirmed live; W501 is the next five-wave publication point.
 
-W490 makes all large replay and recording notices transient. W489 removed the fly-around oracle's embedded
-`$810424=$FF` intervention from ordinary browser launches, leaving labelled progression, replay, explicit
-Invincibility, and authentic `$F0` grace exact. W488 ports the shared two-line per-side label printer
-`$25F2D0`. W487 remains the last gameplay wave and ports type `$58`, leaving enemy-handler coverage at
-101/256 ported, 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not
-follow the static `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
-W491 is live as production build `20260822080859`, superseding W486's `20260822042005`.
+W491's mortality, sound, notice, and layout work remains intact. W488 ports the shared two-line per-side
+label printer `$25F2D0`. W487 remains the last gameplay translation wave and ports type `$58`, leaving
+enemy-handler coverage at 101/256 ported, 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits
+no enemy child. Do not follow the static `$48 -> $54` edge because Version B's live callers target the bare
+`rts` at `$2714AE`. W496 is live as production build `20260822120853`, superseding W491's
+`20260822080859`.
 
-## W496 VERIFIED LOCALLY: BOSS RUSH AND STAGE REMIX
+## W496 PUBLISHED: BOSS RUSH AND STAGE REMIX
 
 `spawn.js` invokes one selected callback only after an authentic stage-script installation, both in the
 initial type-5 reset and in later stage rebuilds. Boss Rush scans that installed script dynamically to its
@@ -42,9 +42,11 @@ in the new type-6 object. Stage Remix maps 1 to 2, 3 to 1, and 2 to 3, while 4 a
 routes stages 1, 3, 2, 4, and 5, preserves the ending selector, and repeats without stored host state in loop
 2. Vanilla Games own neither callback.
 
-The focused and directly affected set passes 170/170. All changed JavaScript parses, `git diff --check` and
-the U+2014 scan pass, and the published-bundle gate remains pixel-identical. W496 completes all fifteen
-requested additions and is ready for the scheduled publication gate.
+The focused and directly affected set passes 170/170. The first publication run exposed one stale
+source-line expectation in the widened-register scan after W494 moved `behaviourFor`; the repaired scan
+still identifies the same `$283BAF` claim. The final quiet-tree gate passes 4,360/4,360 DDPDOJ units,
+746/746 Gradius units, the 13/13 Gradius gate, the 27/27 Batman gate, both DDPDOJ browser gates, the
+distribution build, and the ROM-leak guard. Build `20260822120853` is confirmed live.
 
 ## W495 VERIFIED LOCALLY: FRIENDLY CONVERSIONS AND LOOP-2 LAUNCH
 
@@ -900,8 +902,7 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 4. After D26 and functional completion, D28a and D28b use one synchronized control stream, option-like
    formation offsets, coordinated movement, and combined firepower for both authentic ships and then all
    three authentic pilots. Do not use independent controls or cloned stand-ins.
-5. Land W496, regenerate browser assets, and run the scheduled publication gate from a quiet tracked tree.
-   After W496 is live, the next five-wave publication point is W501.
+5. W501 is the next five-wave publication point.
 
 ## THE HALF-HOURLY ALARM STILL CARRIES TWO STALE CLAUSES
 
@@ -911,9 +912,9 @@ cadence above. Do not spend a wave redoing either clause.
 
 ## PUBLISHED HISTORY
 
-Last confirmed live: build `20260822080859`, confirmed 2026-08-22. Earlier confirmed builds include
-`20260822042005`, `20260822010546`, `20260821175936`, `20260821162642`, `20260821132334`, and
-`20260821060153`.
+Last confirmed live: build `20260822120853`, confirmed 2026-08-22. Earlier confirmed builds include
+`20260822080859`, `20260822042005`, `20260822010546`, `20260821175936`, `20260821162642`,
+`20260821132334`, and `20260821060153`.
 
 ## W422 LANDED -- POOL-A KIND 5, VERIFIED BY THE COORDINATOR
 
