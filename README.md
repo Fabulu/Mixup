@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W512 carries the natural stage-5 type `$13` handoff through variant 0's complete five-script list and sequence list A's first four scripts, with entry 3's 33 ordered pool spawns, 9/11/13 cartridge position groups, consecutive `$0000` cadence, `$C0` wait, operand-0 primary resource lifecycle, and `$8005 $0002 $0004` auxiliary phase-1 handoff; production build `20260823005140` remains published through W511, the next bounded edge is sequence list A entry 4 at `$29166C`, and the full second loop and docket remain in progress |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W513 carries the natural stage-5 type `$13` handoff through variant 0's complete five-script list and sequence list A's first five scripts, with entry 4's nine ordered pool spawns at `$30000200`, consecutive `$0000` cadence, `$60` wait, operand-0 primary resource lifecycle, and completion of W512's auxiliary phase handoff into the two-node `$290E3A` second phase; production build `20260823005140` remains published through W511, W513 is the second unpublished wave after W511, the next bounded edge is sequence list A entry 5 at `$291692`, and the full second loop and docket remain in progress |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -182,10 +182,12 @@ guard. Production build `20260823005140` supersedes `20260822223516`, carries
 W507 through W511, and passed deployment plus three consecutive live confirmations.
 W511's direct natural integration passes 1/1, and its compact natural-integration,
 slot-7, ROM-registry, and coverage set passes 30/30. W512's expanded direct integration
-passes 1/1, and its compact directly affected set passes 32/32. `export-tables.py --verify`
-passes at 755 windows and 446,291 bytes with 76 overlap pairs; the published W511 export
-remains 749 windows and 446,167 bytes with the same 76 pairs. The source commits are `f942dbe`,
-`faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. The next publication point is W516.
+passes 1/1, and its compact directly affected set passes 32/32. W513's direct natural
+integration passes 1/1, and its compact directly affected set passes 63/63 with both exact
+registry sentinels included. `export-tables.py --verify` passes at 757 windows and 446,333
+bytes with 76 overlap pairs; the published W511 export remains 749 windows and 446,167 bytes
+with the same 76 pairs. The source commits are `f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`,
+and `d7c2da0`. W513 is the second unpublished wave after W511, and the next publication point is W516.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -329,21 +331,23 @@ and active-record label exits, `$25F1EC` credit-message carry path, coordinate a
 art-offset selection, and `$23E08C` bucket-7 enqueue. The exact disjoint windows
 `$25E716+$18` and `$25F270+$60` raise the registry to 639 windows and 444,733 bytes while
 preserving 76 overlap pairs. W503 ports dispatch type `$13` at `$28EE88`, restoring the
-bounded stage-5 ending tally and type-7 handoff. W504 through W511 follow that natural
-loop-2 edge through variant 0's complete five-script list and sequence list A's first three entries,
-emitting 213 visible pool records and completing eight `$8003` resource lifecycles. W509's
+bounded stage-5 ending tally and type-7 handoff. W504 through W513 follow that natural
+loop-2 edge through variant 0's complete five-script list and sequence list A's first five entries,
+emitting 255 visible pool records and completing ten `$8003` resource lifecycles. W509's
 `$2914F0..$291549` script proves `$8005`: operands 1 and 3 publish banner 1, select W372's
 existing two-node `$290E1C` mode-0 resource, run its two exact 32-word palettes for 32 animation
-steps, and free it. W510 adds `$29154A..$29159F`, and W511 adds `$2915A0..$291603`, both without
-a new opcode arm. W511's 34 records use 13, 13, and 8-record position groups with five-frame
-`$0404` cadence, wait for `$60`, complete operand 0's one-node resource without rearming the
-auxiliary loader, advance sequence-list cursor 8 to 12, and clear the pool. The published registry has
-749 windows and 446,167 bytes with 76 overlap pairs. Production build `20260823005140` publishes
+steps, and free it. W510 adds `$29154A..$29159F`, W511 adds `$2915A0..$291603`, W512 adds
+`$291604..$29166B`, and W513 adds `$29166C..$291691`, all without a new opcode arm. W513's
+nine records share one `$30000200` position group and consecutive `$0000` cadence, wait for `$60`,
+and complete operand 0's one-node resource. During the same script, W512's two-node auxiliary first
+phase publishes banner 2 and loads `$290E3A`; at the next boundary both second-phase nodes are at
+progress 29. `$FFFF` advances sequence-list cursor 16 to 20 and clears the pool. The current registry
+has 757 windows and 446,333 bytes with 76 overlap pairs. Production build `20260823005140` publishes
 W507 through W511 after 4,404/4,404 DDPDOJ units, all bundle and web gates, the cross-game gates,
 the distribution build, the ROM-leak guard, deployment, and three consecutive live confirmations.
-The five source commits are `f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. W511's
-exact next gameplay edge is sequence list A entry 3
-at `$291604`.
+The five source commits are `f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. W513 is the
+second unpublished wave after W511, and the exact next gameplay edge is sequence list A entry 5 at
+`$291692`.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,
