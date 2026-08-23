@@ -364,7 +364,14 @@
 // exact sound, effect, and animation tables. Measured: 793 -> 794 windows,
 // 449,409 -> 450,451 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 794;
+// ---------------------------------------------------------------------------
+// W542 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$273F06 + $8` is type $81's complete init stub. Spawn init dispatch reads
+// its run-length immediate at `$273F08`. Measured: 794 -> 795 windows,
+// 450,451 -> 450,459 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 795;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

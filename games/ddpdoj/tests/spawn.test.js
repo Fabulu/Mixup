@@ -551,6 +551,22 @@ test('the REAL type $11 +8: the init pointer resolves and init+8 = init + 8', {
     'type $A7 -> NULL_INIT2');
 });
 
+test('W542 the real type $81 init stub supplies its cartridge run length', {
+  skip: haveTables ? false : `${TABLES} absent -- run tools/export-tables.py`,
+}, () => {
+  const spec = JSON.parse(fs.readFileSync(TABLES, 'utf8'));
+  const R = new RomWindows(spec.rom);
+  const ram = new Ram();
+  const rec = ENEMY.bandCommon;
+  ram.setU8(rec + 0x0c, 0x81);
+  ram.setU8(rec + 0x0d, 0x00);
+
+  const result = initDispatch(ram, R, rec, { note() {} }, NOBODY);
+  assert.deepEqual([result.init, result.initBody, result.runLen],
+    [0x273f06, 0x273f0e, 1]);
+  assert.equal(ram.u32(rec + 0x4c), 0x274076, 'the adjacent high-table handler');
+});
+
 test('the REAL stage-1 script: 339 records, terminator at $231704', {
   skip: haveTables ? false : `${TABLES} absent`,
 }, () => {

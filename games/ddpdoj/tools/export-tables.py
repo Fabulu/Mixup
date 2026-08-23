@@ -2950,6 +2950,10 @@ SHOT_WINDOWS.extend([
     # sixteen bytes against the ROM IMAGE so a hand-copied table cannot drift unnoticed.
     (0x267C50, 0x0020, "W325: type $01's 2-word record prototype and its sub prototype, "
                        "$267C50..$267C6F, ending at its handler $267C70"),
+    # W542: live spawn dispatch reads the instruction immediate at init+2. Export the complete
+    # eight-byte cartridge stub, not only the two-byte word that happened to fail first.
+    (0x273F06, 0x0008, "W542: type $81 init stub read by initDispatch, including its exact "
+                       "run-length word $0001 at $273F08"),
     # W326: the REAL type $81. TWO windows and BOTH far ends are pinned by CODE.
     #   $273FE4 + $92   the five two-byte stage rows (11 0E four times then 0D 12 -- NOT all the
     #                   same, unlike $1A's and $1B's), the 11-word record prototype at $273FEE, and
