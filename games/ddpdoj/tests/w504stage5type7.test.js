@@ -1,4 +1,4 @@
-// W504-W520: drive the loop-2 type-$13 handoff through type 7 and slots [15]/[14]/[12].
+// W504-W521: drive the loop-2 type-$13 handoff through type 7 and slots [15]/[14]/[12]/[8].
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { MoveTables } from '../src/vectors.js';
-import { UnportedLog, Unreached, unreached } from '../src/unported.js';
+import { UnportedLog, Unreached } from '../src/unported.js';
 import { WorkBudget } from '../src/budget.js';
 import { ObjOrder, runObjectDriver, OBJ } from '../src/objdriver.js';
 import { stageCreate, ALLOC } from '../src/objalloc.js';
@@ -17,6 +17,9 @@ import { objSlot7, POOL7, SCRIPT7, SLOT7 } from '../src/objslot7pool.js';
 import { objSlot15, SLOT15 } from '../src/objslot15.js';
 import { objSlot14, SLOT14 } from '../src/objslot14.js';
 import { objSlot12, SLOT12 } from '../src/objslot12.js';
+import { objSlot8, SCREEN8 } from '../src/objslot8.js';
+import { SCREEN_STATE } from '../src/hiscorescreen.js';
+import { hiscoreDefaults28841E } from '../src/hiscore.js';
 import { drawByte242E24 } from '../src/rng.js';
 import { PaletteState, PALSTAGE } from '../src/palette.js';
 import { ANIM_OBJECT, runAnimObjects24683E } from '../src/animobjects.js';
@@ -297,7 +300,7 @@ function chainNodes(ram, root) {
   return out;
 }
 
-test('W504-W520: natural type $13 handoff runs type 7 then slots [15], [14], and [12]',
+test('W504-W521: natural type $13 handoff reaches slot [8] arm 2 presentation',
   { skip: SKIP }, () => {
     assert.equal(ROM.u32(0x290f12), 0x290f1e,
       '$290F12 variant 0 points at its five-step list');
@@ -605,6 +608,9 @@ test('W504-W520: natural type $13 handoff runs type 7 then slots [15], [14], and
     let slot12TxPalette = [];
     let slot12CreateQueued = false;
     let slot12KillQueued = false;
+    const slot8Runs = [];
+    let slot8Id = 0;
+    let slot8BoundaryFrame = null;
     const ctx = {
       rom: ROM,
       tables: MOVE,
@@ -645,10 +651,29 @@ test('W504-W520: natural type $13 handoff runs type 7 then slots [15], [14], and
         }
         return result;
       }],
-      [0x08, () => unreached(ROM.u32(SE.dispatch + 0x08 * 8),
-        'W520 stops before following slot [8] beyond slot [12]')],
+      [0x08, (r, slot, _index, c) => {
+        objSlot8(r, ROM, slot, c);
+        slot8Id = r.u32(slot + OBJ.idOff);
+        const handle = r.u32(SCREEN_STATE.handle);
+        const nodes = handle === 0 ? [] : chainNodes(r, handle);
+        slot8Runs.push({
+          frame: currentFrame,
+          constructed: r.u8(slot + SCREEN8.constructed),
+          inited: r.u8(slot + SCREEN8.inited),
+          state: r.u16(SCREEN8.state),
+          screenState: r.u16(SCREEN_STATE.state),
+          timer: r.u16(SCREEN_STATE.timer),
+          handle,
+          nodes: nodes.length,
+          nodeProgress: nodes.map((node) => r.u16(node + 0x20)),
+          queueBytes: BUCKETS.reduce((sum, bucket) => sum + r.u16(bucket.counter), 0),
+        });
+      }],
     ]);
 
+    // `$23BF74` installs the factory table before boot stages slot [8]; this integration
+    // begins mid-game at type $13, so preserve that earlier cartridge precondition explicitly.
+    hiscoreDefaults28841E(ram, ROM);
     ram.setU16(SE.p1, 0x8000);
     ram.setU16(0x813098, 1);
     ram.setU16(SLOT7.postD1[0], 2);
@@ -854,6 +879,7 @@ test('W504-W520: natural type $13 handoff runs type 7 then slots [15], [14], and
     let slot15MaxGlyphsPerFrame = 0;
     let slot15Handle = 0;
     let slot15Node = 0;
+    let slot15NodeFreedAtHandoff = null;
     let slot15PeakNodes = 0;
     let slot15Id = 0;
     let slot15DoneAtHandoff = null;
@@ -867,6 +893,8 @@ test('W504-W520: natural type $13 handoff runs type 7 then slots [15], [14], and
     let slot14MaxQueueBytes = 0;
     let slot14Root = 0;
     let slot14Node = 0;
+    let slot14RootFreedAtHandoff = null;
+    let slot14NodeFreedAtHandoff = null;
     let slot14ResourceFreedFrame = null;
     let slot14PeakRoots = 0;
     let slot14PeakNodes = 0;
@@ -887,6 +915,10 @@ test('W504-W520: natural type $13 handoff runs type 7 then slots [15], [14], and
       }
       if (frame === 0) ram.setU16(ENDING13.base + ENDING13.timer, 0);
       runAnimObjects24683E(ram, ROM);
+      if (slot8Runs.length === 3) {
+        slot8BoundaryFrame = frame;
+        break;
+      }
 
       for (let i = 0; i < OBJ.slots; i++) {
         const slot = OBJ.base + i * OBJ.stride;
@@ -932,6 +964,7 @@ test('W504-W520: natural type $13 handoff runs type 7 then slots [15], [14], and
           if (ram.u8(slot + SLOT15.state) === 2 && ram.u16(ALLOC.createSp) !== 0) {
             slot15HandoffFrame = frame;
             slot15DoneAtHandoff = ram.u16(SLOT15.doneFlag);
+            slot15NodeFreedAtHandoff = slot15Node === 0 ? null : ram.u16(slot15Node);
             slot15PaletteAtHandoff = Array.from({ length: 32 }, (_, i) =>
               ram.u16(PALSTAGE.spr.stage + SLOT15.palBank * 64 + i * 2));
           }
@@ -967,6 +1000,8 @@ test('W504-W520: natural type $13 handoff runs type 7 then slots [15], [14], and
           }
           if (ram.u8(slot + SLOT14.stateAt) === 2 && ram.u16(ALLOC.createSp) !== 0) {
             slot14HandoffFrame = frame;
+            slot14RootFreedAtHandoff = slot14Root === 0 ? null : ram.u16(slot14Root);
+            slot14NodeFreedAtHandoff = slot14Node === 0 ? null : ram.u16(slot14Node);
             slot14PaletteAtHandoff = Array.from({ length: 32 }, (_, i) =>
               ram.u16(0x80e906 + i * 2) & 0x7fff);
           }
@@ -1339,7 +1374,7 @@ test('W504-W520: natural type $13 handoff runs type 7 then slots [15], [14], and
       soundPostsD1: soundPostsD1.map(([address, d1, frame]) =>
         [address, d1, frame - slot15StartFrame]),
       peakNodes: slot15PeakNodes,
-      nodeFreed: slot15Node === 0 ? null : ram.u16(slot15Node),
+      nodeFreed: slot15NodeFreedAtHandoff,
       slot15Id,
     }, {
       startFrame: 3145,
@@ -1403,8 +1438,10 @@ test('W504-W520: natural type $13 handoff runs type 7 then slots [15], [14], and
     }, 'W519 preserves slot [14] timing, visible queue, resource pool, cue, and handoff');
     assert.notEqual(slot14Root, 0, 'slot [14] allocated its mode-1 animation root');
     assert.notEqual(slot14Node, 0, 'slot [14] allocated its one concrete animation node');
-    assert.equal(ram.u16(slot14Root), 0, 'slot [14] retired its mode-1 root after completion');
-    assert.equal(ram.u16(slot14Node), 0, 'slot [14] retired its animation node after completion');
+    assert.equal(slot14RootFreedAtHandoff, 0,
+      'slot [14] retired its mode-1 root before staging slot [12]');
+    assert.equal(slot14NodeFreedAtHandoff, 0,
+      'slot [14] retired its animation node before staging slot [12]');
     assert.deepEqual(slot14PaletteAtHandoff,
       Array.from({ length: 32 }, (_, i) => ROM.u16(0x2252f8 + i * 2) & 0x7fff),
       'slot [14] completed its exact 32-word Game Over palette fade before slot [12] replaced it');
@@ -1822,8 +1859,7 @@ test('W504-W520: natural type $13 handoff runs type 7 then slots [15], [14], and
       'slot [15] raised its authentic completion flag before slot [12] cleared rank RAM');
     assert.equal(ram.u16(SLOT15.clearFlag), 0,
       'slot [15] cleared $81E0DA before staging its child');
-    assert.ok(nextError instanceof Unreached,
-      `the bounded run should stop before slot [8], got ${nextError}`);
+    assert.equal(nextError, null, `the bounded slot-[8] slice should not throw, got ${nextError}`);
     assert.equal(ROM.u32(SE.dispatch + 0x0e * 8), SLOT14_BOUNDARY,
       'dispatch type $0E resolves to the reused slot [14] entry');
     assert.equal(ROM.u32(SLOT14.dispatch + SLOT14.childType * 8), SLOT12_BOUNDARY,
@@ -1846,19 +1882,50 @@ test('W504-W520: natural type $13 handoff runs type 7 then slots [15], [14], and
     assert.ok(slot12CreateQueued && slot12KillQueued,
       'slot [12] queued the attract child and its own retirement on the teardown call');
     assert.equal(ROM.u32(SE.dispatch + SLOT12.childType * 8), NEXT_OBJECT_BOUNDARY,
-      'slot [12] child type 8 resolves to the next object boundary');
-    assert.equal(nextError.romAddress, NEXT_OBJECT_BOUNDARY,
-      'the exact next executable edge is slot [8] at $25A770');
+      'slot [12] child type 8 resolves to the existing $25A770 sequencer entry');
+
+    assert.deepEqual(slot8Runs, [
+      {
+        frame: 11529, constructed: 1, inited: 0, state: 2,
+        screenState: 0, timer: 0, handle: 0, nodes: 0, nodeProgress: [], queueBytes: 0,
+      },
+      {
+        frame: 11530, constructed: 1, inited: 1, state: 2,
+        screenState: 0, timer: 0xf0, handle: 0x810346, nodes: 7,
+        nodeProgress: Array(7).fill(0), queueBytes: 99 * 12,
+      },
+      {
+        frame: 11531, constructed: 1, inited: 1, state: 2,
+        screenState: 0, timer: 0xf0, handle: 0x810346, nodes: 7,
+        nodeProgress: Array(7).fill(2), queueBytes: 99 * 12,
+      },
+    ], 'slot [8] constructs once, then repeats the exact arm-2 display while its first chain lives');
+    assert.equal(slot8BoundaryFrame, 11531,
+      'W521 stops after only two concrete arm-2 presentation calls');
+    assert.equal(slot8Id, 5, 'slot [8] keeps the fifth natural object id in this handoff chain');
+    assert.deepEqual(chainNodes(ram, ram.u32(SCREEN_STATE.handle)).map((node) =>
+      ram.u16(node + 0x20)), Array(7).fill(4),
+    'two normal animation steps leave all seven timing-index-2 nodes at progress 4');
+    assert.deepEqual(Array.from({ length: 16 }, (_, i) =>
+      ram.u16(PALSTAGE.tx.stage + i * 2)),
+    Array.from({ length: 16 }, (_, i) => ROM.u16(SCREEN8.txPalMain + i * 2)),
+    'arm 2 installs the exact 16-word main TX palette into bank 0');
+    assert.equal(palette.installs.get('$25A92C TX bank 0 <- slot [8] arm 2 TX palette')?.n, 1,
+      'the arm-2 TX palette init runs once across both presentation calls');
+    assert.ok(!soundPosts.some(([address, frame]) =>
+      address === SCREEN_STATE.endCue && frame >= slot8Runs[0].frame),
+    'the live first chain has not reached arm 2\'s ending cue');
+
     const finalTypes = Array.from({ length: OBJ.slots }, (_, i) =>
       ram.u16(OBJ.base + i * OBJ.stride) & 0xff);
     const slot8Index = finalTypes.indexOf(SLOT12.childType);
     assert.notEqual(slot8Index, -1, 'slot [12] committed its normal type-8 handoff');
     assert.equal(ram.u16(OBJ.base + slot8Index * OBJ.stride + SLOT12.stateField),
-      SLOT12.childState, 'slot [12] seeded the attract child at cartridge state 2');
+      SLOT12.childState, 'slot [8] retains the inherited cartridge state-2 seed');
     assert.ok(!finalTypes.includes(0x0c), 'the completed slot [12] object retired by id');
     assert.ok(!finalTypes.includes(0x0e), 'the completed slot [14] object remained retired');
     assert.ok(!finalTypes.includes(0x0f), 'the completed slot [15] object remained retired');
     assert.ok(!finalTypes.includes(0x07), 'the completed type-7 object remained retired');
-    assert.equal(ram.u16(ALLOC.createSp), 0, 'the type-8 create queue drained');
-    assert.equal(ram.u16(ALLOC.killSp), 0, 'the slot-[12] kill queue drained');
+    assert.equal(ram.u16(ALLOC.createSp), 0, 'no later object handoff is queued at the boundary');
+    assert.equal(ram.u16(ALLOC.killSp), 0, 'the slot-[12] kill queue remains drained');
   });
