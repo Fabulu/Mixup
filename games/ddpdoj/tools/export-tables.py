@@ -3269,6 +3269,11 @@ SHOT_WINDOWS.extend([
     (0x290606, 0x0004, "W515: slot [7] list-A seventh-script spawn-table longword for concrete index $D1"),
     (0x290616, 0x0004, "W515: slot [7] list-A seventh-script spawn-table longword for concrete index $D5"),
     (0x2906A2, 0x0004, "W515: slot [7] list-A seventh-script spawn-table longword for concrete index $F8"),
+    (0x291700, 0x007C, "W516: slot [7] inner-state-1 sequence-list-A eighth script, $291700..$29177B -- "
+                       "$8000 $0000, four $8001 groups with 38 picture words total, a mid-script "
+                       "$8000 $0202, $8002 $00C0, $8005 $0000/$0003, $8003 $0003, and $FFFF. "
+                       "It stops exactly at list A's next script, $29177C"),
+    (0x29063A, 0x0004, "W516: slot [7] list-A eighth-script spawn-table longword for concrete index $DE"),
     (0x2902EA, 0x0004, "W507: slot [7] fourth-script spawn-table longword for concrete index $0A"),
     (0x2903F6, 0x0004, "W507: slot [7] fourth-script spawn-table longword for concrete index $4D"),
     (0x2903FA, 0x0004, "W507: slot [7] fourth-script spawn-table longword for concrete index $4E"),

@@ -28,20 +28,23 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W515 (2026-08-23), ATOP PUBLISHED W511.** Dispatch remains **18 of 20**: W503 ports and registers
+**STANDING AS OF W516 (2026-08-23), ATOP PUBLISHED W511.** Dispatch remains **18 of 20**: W503 ports and registers
 `[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W508 drive that exact
 natural loop-2 edge through type 7's complete five-script variant-0 list at `$290F66`, `$290F8E`, `$290FE2`,
-`$2910F6`, and `$291172`; W509 through W515 follow its authentic transition into inner state 1 and sequence
-list A entries 0 through 6 at `$2914F0`, `$29154A`, `$2915A0`, `$291604`, `$29166C`, `$291692`, and
-`$2916DA`. Together they preserve 287 ordered presentation records and twelve complete `$8003` resource
-lifecycles. W509 proves `$8005 $0001 $0003` and its complete two-node mode-0 auxiliary palette resource.
-W515 emits nine records in one `$30000200` group on consecutive `$0000` cadence, spends the exact `$60`
-wait, completes operand 0's primary resource while the earlier auxiliary loader remains idle, and advances
-sequence-list A's cursor from 24 to 28 while remaining in inner state 1. Production build `20260823005140`
-publishes W507 through W511 from commits `f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0` after
-the full publication gate and three consecutive live confirmations. W515 is the fourth unpublished wave after
-W511. The exact next gameplay edge is sequence list A entry 7 at `$291700`; W516 remains the next publication
-point. The two without a handler are `[16] `$256E7A` and `[18] $24902A`.
+`$2910F6`, and `$291172`; W509 through W516 follow its authentic transition into inner state 1 and sequence
+list A entries 0 through 7 at `$2914F0`, `$29154A`, `$2915A0`, `$291604`, `$29166C`, `$291692`,
+`$2916DA`, and `$291700`. Together they preserve 325 ordered presentation records and thirteen complete
+`$8003` resource lifecycles. W509 proves `$8005 $0001 $0003` and its complete two-node mode-0 auxiliary
+palette resource. W516 emits 38 records in 11, 9, 6, and 12-record groups; the first 26 use consecutive `$0000`
+cadence and `$0202` spaces the final 12 by three frames. After the exact `$C0` wait, operand 3's one-node
+primary and `$8005 $0000 $0003`'s two-node first phase finish together after 32 steps. Banner 0 is already
+live, so the auxiliary loader returns directly from state 2 to idle without a second phase. W516 advances
+sequence-list A's cursor from 28 to 32 and reaches `$29177C` while remaining in inner state 1. Production
+build `20260823005140` publishes W507 through W511 from commits `f942dbe`, `faab91f`, `1f1cb60`,
+`38bf2e6`, and `d7c2da0` after the full publication gate and three consecutive live confirmations. W516 is
+the fifth unpublished wave after W511 and closes the next publication batch. Browser assets must be regenerated
+before publishing. The exact next gameplay edge is sequence list A entry 8 at `$29177C`. The two without a
+handler are `[16] `$256E7A` and `[18] $24902A`.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current

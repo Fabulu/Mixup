@@ -186,11 +186,12 @@ passes 1/1, and its compact directly affected set passes 32/32. W513's direct na
 integration passes 1/1, and its compact directly affected set passes 63/63 with both exact
 registry sentinels included. W514's direct natural integration passes 1/1 and both focused exact
 registry sentinels pass 2/2. W515's direct natural integration passes 1/1 with no new interpreter
-arm. `export-tables.py
---verify` passes at 775 windows and 446,507 bytes with 76 overlap pairs; the published W511
-export remains 749 windows and 446,167 bytes with the same 76 pairs. The source commits are
-`f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. W515 is the fourth unpublished wave
-after W511, and the next publication point is W516.
+arm. W516's direct natural integration passes 1/1 and likewise reuses the existing interpreter.
+`export-tables.py --verify` passes at 777 windows and 446,635 bytes with 76 overlap pairs; the
+published W511 export remains 749 windows and 446,167 bytes with the same 76 pairs. The source
+commits are `f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. W516 is the fifth
+unpublished wave after W511 and closes the next publication batch. Browser assets must be
+regenerated with `export-web.mjs` before publishing.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -334,22 +335,26 @@ and active-record label exits, `$25F1EC` credit-message carry path, coordinate a
 art-offset selection, and `$23E08C` bucket-7 enqueue. The exact disjoint windows
 `$25E716+$18` and `$25F270+$60` raise the registry to 639 windows and 444,733 bytes while
 preserving 76 overlap pairs. W503 ports dispatch type `$13` at `$28EE88`, restoring the
-bounded stage-5 ending tally and type-7 handoff. W504 through W515 follow that natural
-loop-2 edge through variant 0's complete five-script list and sequence list A's first seven entries,
-emitting 287 visible pool records and completing twelve `$8003` resource lifecycles. W509's
+bounded stage-5 ending tally and type-7 handoff. W504 through W516 follow that natural
+loop-2 edge through variant 0's complete five-script list and sequence list A's first eight entries,
+emitting 325 visible pool records and completing thirteen `$8003` resource lifecycles. W509's
 `$2914F0..$291549` script proves `$8005`: operands 1 and 3 publish banner 1, select W372's
 existing two-node `$290E1C` mode-0 resource, run its two exact 32-word palettes for 32 animation
 steps, and free it. W510 adds `$29154A..$29159F`, W511 adds `$2915A0..$291603`, W512 adds
-`$291604..$29166B`, W513 adds `$29166C..$291691`, W514 adds `$291692..$2916D9`, and W515
-adds `$2916DA..$2916FF`, all without a new opcode arm. W515's nine records occupy one
-`$30000200` group, arrive on consecutive `$0000` cadence, wait for `$60`, and complete operand
-0's one-node resource before `$FFFF` advances the cursor from 24 to 28 and clears the pool. The
-current registry has 775 windows and 446,507 bytes with 76 overlap pairs. Production
+`$291604..$29166B`, W513 adds `$29166C..$291691`, W514 adds `$291692..$2916D9`, W515
+adds `$2916DA..$2916FF`, and W516 adds `$291700..$29177B`, all without a new opcode arm.
+W516's four groups emit 38 records: the first 26 arrive on consecutive `$0000` cadence, then
+`$0202` spaces the final 12 by three frames. After the `$C0` wait, `$8003 $0003` completes its
+one-node `$290E76` primary resource while `$8005 $0000 $0003` runs the two-node `$290D42`
+first phase for 32 steps and returns directly to idle because banner 0 is already live. `$FFFF`
+advances the cursor from 28 to 32, clears the pool, and reaches entry 8 at `$29177C`. The current
+registry has 777 windows and 446,635 bytes with 76 overlap pairs. Production
 build `20260823005140` publishes W507 through W511 after 4,404/4,404 DDPDOJ units, all bundle
 and web gates, the cross-game gates, the distribution build, the ROM-leak guard, deployment,
 and three consecutive live confirmations. The five source commits are `f942dbe`, `faab91f`,
-`1f1cb60`, `38bf2e6`, and `d7c2da0`. W515 is the fourth unpublished wave after W511, and the
-exact next gameplay edge is sequence list A entry 7 at `$291700`.
+`1f1cb60`, `38bf2e6`, and `d7c2da0`. W516 is the fifth unpublished wave after W511 and closes
+the next publication batch. Browser assets must be regenerated before publishing. The exact next
+gameplay edge is sequence list A entry 8 at `$29177C`.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,
