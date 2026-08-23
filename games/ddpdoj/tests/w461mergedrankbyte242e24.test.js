@@ -110,7 +110,7 @@ const CALLER_SPANS = Object.freeze([
 
 const SOURCE_REPRESENTED_SITES = Object.freeze([
   0x268744, 0x27699c, 0x27e02a, 0x27ead6, 0x27ec86,
-  0x280cfa, 0x280d12, 0x289756, 0x28a26c, 0x28a3a2,
+  0x280cfa, 0x280d12, 0x288cd4, 0x289756, 0x28a26c, 0x28a3a2,
   0x2933de, 0x2933ee, 0x29924c, 0x299362, 0x29a132,
   0x29a13c, 0x29d1ec, 0x2a81cc, 0x2a83e8, 0x2a8810,
 ]);
@@ -451,13 +451,13 @@ test('SECTION 5: one canonical source body serves all production calls with no c
 
 test('SECTION 5b: cartridge static reachability, production source coverage and indirect uncertainty stay separate',
   () => {
-    assert.equal(SOURCE_REPRESENTED_SITES.length, 20,
-      'nineteen source calls represent twenty cartridge sites because the bee body serves two copies');
-    assert.equal(SOURCE_GAPS.length, 17);
+    assert.equal(SOURCE_REPRESENTED_SITES.length, 21,
+      'nineteen direct source calls plus W519 ctx wiring represent twenty-one cartridge sites because the bee body serves two copies');
+    assert.equal(SOURCE_GAPS.length, 16);
     assert.deepEqual([...SOURCE_REPRESENTED_SITES, ...SOURCE_GAPS].sort((a, b) => a - b),
       [...EXTERNAL_CALLERS], 'source-covered sites and explicit gaps partition the static callers');
-    assert.ok(SOURCE_GAPS.includes(0x288cd4),
-      '$288CD4 remains the optional rankByte context gap, not invented reachability');
+    assert.equal(SOURCE_GAPS.includes(0x288cd4), false,
+      '$288CD4 is represented by W519 Game#ctx rankByte wiring');
     assert.equal('dynamic indirect reachability remains unproved',
       'dynamic indirect reachability remains unproved');
   });

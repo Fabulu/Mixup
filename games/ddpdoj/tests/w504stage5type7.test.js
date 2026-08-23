@@ -1,4 +1,4 @@
-// W504-W518: drive the loop-2 type-$13 handoff through type 7 and slot [15]'s normal path.
+// W504-W519: drive the loop-2 type-$13 handoff through type 7 and slots [15]/[14].
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -15,6 +15,8 @@ import { stageCreate, ALLOC } from '../src/objalloc.js';
 import { SE, ENDING13, makeStage5Ending } from '../src/stageend.js';
 import { objSlot7, POOL7, SCRIPT7, SLOT7 } from '../src/objslot7pool.js';
 import { objSlot15, SLOT15 } from '../src/objslot15.js';
+import { objSlot14, SLOT14 } from '../src/objslot14.js';
+import { drawByte242E24 } from '../src/rng.js';
 import { PaletteState, PALSTAGE } from '../src/palette.js';
 import { ANIM_OBJECT, runAnimObjects24683E } from '../src/animobjects.js';
 import { BUCKETS } from '../src/spritequeue.js';
@@ -46,7 +48,8 @@ const NEXT_BOUNDARY = 0x2917be;
 const SLOT15_TEXT = 0x2921ba;
 const SLOT15_TEXT_END = 0x2923da;
 const SLOT15_FONT_END = 0x2926da;
-const NEXT_OBJECT_BOUNDARY = 0x288c6c;
+const SLOT14_BOUNDARY = 0x288c6c;
+const NEXT_OBJECT_BOUNDARY = 0x28f3ac;
 const FIRST_INDICES = Object.freeze([0xe0, 0x4a, 0x65, 0xcc, 0x73, 0x5b, 0x59, 0x05]);
 const FIRST_ART = Object.freeze([
   0x1ec778, 0x1eb260, 0x1eb62c, 0x1ec4a8,
@@ -277,6 +280,11 @@ function liveSlot15Records(ram) {
   return out;
 }
 
+function activeAnimRecords(ram, base, stride, entries) {
+  return Array.from({ length: entries }, (_, i) => base + i * stride)
+    .filter((at) => (ram.u16(at) & 0x8000) !== 0);
+}
+
 function chainNodes(ram, root) {
   const out = [];
   let at = ram.u32(root + 0x2c);
@@ -287,7 +295,7 @@ function chainNodes(ram, root) {
   return out;
 }
 
-test('W504-W518: natural type $13 handoff runs type 7 then slot [15] to type $0E',
+test('W504-W519: natural type $13 handoff runs type 7 then slots [15] and [14] to type $0C',
   { skip: SKIP }, () => {
     assert.equal(ROM.u32(0x290f12), 0x290f1e,
       '$290F12 variant 0 points at its five-step list');
@@ -583,6 +591,7 @@ test('W504-W518: natural type $13 handoff runs type 7 then slot [15] to type $0E
     const ram = new Ram();
     const log = new UnportedLog();
     const events = [];
+    const soundPosts = [];
     const soundPostsD1 = [];
     const palette = new PaletteState();
     let currentFrame = -1;
@@ -598,7 +607,8 @@ test('W504-W518: natural type $13 handoff runs type 7 then slot [15] to type $0E
       bgVram: new BgVram(),
       slotTable: new SlotTable907000(),
       palette,
-      soundPost: () => true,
+      rankByte: drawByte242E24,
+      soundPost: (address) => { soundPosts.push([address, currentFrame]); return true; },
       soundPostD1: (...post) => { soundPostsD1.push([...post, currentFrame]); return true; },
       stageEndEvent: (...event) => events.push(event),
     };
@@ -606,8 +616,9 @@ test('W504-W518: natural type $13 handoff runs type 7 then slot [15] to type $0E
       [0x13, makeStage5Ending(ROM)],
       [0x07, (r, slot, _index, c) => objSlot7(r, ROM, slot, c)],
       [0x0f, (r, slot, _index, c) => objSlot15(r, ROM, slot, c)],
-      [0x0e, () => unreached(ROM.u32(SE.dispatch + 0x0e * 8),
-        'W518 stops before following slot [14] beyond slot [15]')],
+      [0x0e, (r, slot, _index, c) => objSlot14(r, ROM, slot, c)],
+      [0x0c, () => unreached(ROM.u32(SE.dispatch + 0x0c * 8),
+        'W519 stops before following slot [12] beyond slot [14]')],
     ]);
 
     ram.setU16(SE.p1, 0x8000);
@@ -818,6 +829,20 @@ test('W504-W518: natural type $13 handoff runs type 7 then slot [15] to type $0E
     let slot15PeakNodes = 0;
     let slot15Id = 0;
     let slot15PaletteAtStart = [];
+    let slot15PaletteAtHandoff = [];
+    let sawSlot14 = false;
+    let slot14StartFrame = null;
+    let slot14State2Frame = null;
+    let slot14HandoffFrame = null;
+    let slot14DrawFrames = 0;
+    let slot14MaxQueueBytes = 0;
+    let slot14Root = 0;
+    let slot14Node = 0;
+    let slot14ResourceFreedFrame = null;
+    let slot14PeakRoots = 0;
+    let slot14PeakNodes = 0;
+    const slot14Descriptors = new Set();
+    let slot14Id = 0;
     let nextError = null;
     const firstSeenArt = new Set();
     for (let frame = 0; frame < 16000 && nextError == null; frame++) {
@@ -876,6 +901,41 @@ test('W504-W518: natural type $13 handoff runs type 7 then slot [15] to type $0E
           }
           if (ram.u8(slot + SLOT15.state) === 2 && ram.u16(ALLOC.createSp) !== 0) {
             slot15HandoffFrame = frame;
+            slot15PaletteAtHandoff = Array.from({ length: 32 }, (_, i) =>
+              ram.u16(PALSTAGE.spr.stage + SLOT15.palBank * 64 + i * 2));
+          }
+        }
+        if ((ram.u16(slot) & 0xff) === 0x0e) {
+          sawSlot14 = true;
+          if (slot14StartFrame === null) {
+            slot14StartFrame = frame;
+            slot14Id = ram.u32(slot + SLOT14.idAt);
+          }
+          const roots = activeAnimRecords(ram, ANIM_OBJECT.roots,
+            ANIM_OBJECT.rootStride, ANIM_OBJECT.rootSlots);
+          const nodes = activeAnimRecords(ram, ANIM_OBJECT.nodes,
+            ANIM_OBJECT.nodeStride, ANIM_OBJECT.nodeSlots);
+          slot14PeakRoots = Math.max(slot14PeakRoots, roots.length);
+          slot14PeakNodes = Math.max(slot14PeakNodes, nodes.length);
+          if (slot14Root === 0 && roots.length !== 0) {
+            slot14Root = roots[0];
+            slot14Node = ram.u32(slot14Root + 0x2c);
+          }
+          if (slot14Root !== 0 && slot14ResourceFreedFrame === null
+              && (ram.u16(slot14Root) & 0x8000) === 0) {
+            slot14ResourceFreedFrame = frame;
+          }
+          const queued = BUCKETS.reduce((sum, bucket) => sum + ram.u16(bucket.counter), 0);
+          if (queued !== 0) {
+            slot14DrawFrames++;
+            slot14MaxQueueBytes = Math.max(slot14MaxQueueBytes, queued);
+            slot14Descriptors.add(ram.u32(slot + 0x0c));
+          }
+          if (slot14State2Frame === null && ram.u8(slot + SLOT14.stateAt) === 2) {
+            slot14State2Frame = frame;
+          }
+          if (ram.u8(slot + SLOT14.stateAt) === 2 && ram.u16(ALLOC.createSp) !== 0) {
+            slot14HandoffFrame = frame;
           }
         }
       }
@@ -1278,9 +1338,43 @@ test('W504-W518: natural type $13 handoff runs type 7 then slot [15] to type $0E
     assert.deepEqual(slot15PaletteAtStart,
       Array.from({ length: 32 }, (_, i) => ROM.u16(SLOT15.palBlock + i * 2)),
       'slot [15] installed all 32 cartridge palette words into bank 2 on state 0');
-    assert.deepEqual(Array.from({ length: 32 }, (_, i) =>
-      ram.u16(PALSTAGE.spr.stage + SLOT15.palBank * 64 + i * 2)), Array(32).fill(0),
+    assert.deepEqual(slot15PaletteAtHandoff, Array(32).fill(0),
     'slot [15] animation resource authentically faded all 32 bank-2 words to black');
+
+    assert.ok(sawSlot14, 'slot [15] committed and executed slot [14] at $288C6C');
+    assert.deepEqual({
+      startFrame: slot14StartFrame,
+      state2Offset: slot14State2Frame - slot14StartFrame,
+      handoffOffset: slot14HandoffFrame - slot14StartFrame,
+      drawFrames: slot14DrawFrames,
+      maxQueueBytes: slot14MaxQueueBytes,
+      resourceFreedOffset: slot14ResourceFreedFrame - slot14StartFrame,
+      peakRoots: slot14PeakRoots,
+      peakNodes: slot14PeakNodes,
+      sounds: soundPosts.filter(([address]) => address === 0x28cb4c)
+        .map(([address, frame]) => [address, frame - slot14StartFrame]),
+      descriptors: [...slot14Descriptors],
+      slot14Id,
+    }, {
+      startFrame: 11193,
+      state2Offset: 301,
+      handoffOffset: 333,
+      drawFrames: 301,
+      maxQueueBytes: 12,
+      resourceFreedOffset: 95,
+      peakRoots: 1,
+      peakNodes: 1,
+      sounds: [[0x28cb4c, 32]],
+      descriptors: [ROM.u32(SLOT14.tableA)],
+      slot14Id: 3,
+    }, 'W519 preserves slot [14] timing, visible queue, resource pool, cue, and handoff');
+    assert.notEqual(slot14Root, 0, 'slot [14] allocated its mode-1 animation root');
+    assert.notEqual(slot14Node, 0, 'slot [14] allocated its one concrete animation node');
+    assert.equal(ram.u16(slot14Root), 0, 'slot [14] retired its mode-1 root after completion');
+    assert.equal(ram.u16(slot14Node), 0, 'slot [14] retired its animation node after completion');
+    assert.deepEqual(Array.from({ length: 32 }, (_, i) => ram.u16(0x80e906 + i * 2) & 0x7fff),
+      Array.from({ length: 32 }, (_, i) => ROM.u16(0x2252f8 + i * 2) & 0x7fff),
+      'slot [14] completed its exact 32-word Game Over palette fade');
 
     assert.ok(sawType7, '$28D5FA staged type 7 and the object driver committed it');
     assert.ok(events.some(([kind]) => kind === 'ending-handoff'),
@@ -1696,16 +1790,19 @@ test('W504-W518: natural type $13 handoff runs type 7 then slot [15] to type $0E
     assert.equal(ram.u16(SLOT15.clearFlag), 0,
       'slot [15] cleared $81E0DA before staging its child');
     assert.ok(nextError instanceof Unreached,
-      `the bounded run should stop before slot [14], got ${nextError}`);
-    assert.equal(ROM.u32(SE.dispatch + 0x0e * 8), NEXT_OBJECT_BOUNDARY,
-      'dispatch type $0E resolves to the already ported slot [14] entry');
+      `the bounded run should stop before slot [12], got ${nextError}`);
+    assert.equal(ROM.u32(SE.dispatch + 0x0e * 8), SLOT14_BOUNDARY,
+      'dispatch type $0E resolves to the reused slot [14] entry');
+    assert.equal(ROM.u32(SLOT14.dispatch + SLOT14.childType * 8), NEXT_OBJECT_BOUNDARY,
+      'slot [14] dispatch type $0C resolves to the next object boundary');
     assert.equal(nextError.romAddress, NEXT_OBJECT_BOUNDARY,
-      'the next executable edge is slot [14] at $288C6C');
+      'the next executable edge is slot [12] at $28F3AC');
     const finalTypes = Array.from({ length: OBJ.slots }, (_, i) =>
       ram.u16(OBJ.base + i * OBJ.stride) & 0xff);
-    assert.ok(finalTypes.includes(0x0e), 'slot [15] committed its normal type-$0E handoff');
-    assert.ok(!finalTypes.includes(0x0f), 'the completed slot [15] object retired by id');
+    assert.ok(finalTypes.includes(0x0c), 'slot [14] committed its normal type-$0C handoff');
+    assert.ok(!finalTypes.includes(0x0e), 'the completed slot [14] object retired by id');
+    assert.ok(!finalTypes.includes(0x0f), 'the completed slot [15] object remained retired');
     assert.ok(!finalTypes.includes(0x07), 'the completed type-7 object remained retired');
-    assert.equal(ram.u16(ALLOC.createSp), 0, 'the type-$0E create queue drained');
-    assert.equal(ram.u16(ALLOC.killSp), 0, 'the slot-[15] kill queue drained');
+    assert.equal(ram.u16(ALLOC.createSp), 0, 'the type-$0C create queue drained');
+    assert.equal(ram.u16(ALLOC.killSp), 0, 'the slot-[14] kill queue drained');
   });

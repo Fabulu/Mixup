@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-23 (W518 bounded and unpublished; W516 published in `20260823031213`)
+Updated: 2026-08-23 (W519 bounded and unpublished; W516 published in `20260823031213`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,26 +8,22 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W518 follows W503's exact natural stage-5 type-`$13`
-to type-7 handoff through variant 0, all nine sequence-list A scripts, and slot [15]'s existing normal path.**
-W517's list terminator queues type `$0F` and retires type 7. W518 commits and executes already ported
-`objSlot15` at `$291F66` without retranscribing it. Top-level dispatch coverage remains 18/20; only types 16
-and 18 remain unknown.
+`docs/DOCKET.md` is authoritative. **W519 follows W503's exact natural stage-5 type-`$13`
+to type-7 handoff through variant 0, all nine sequence-list A scripts, slot [15], and slot [14]'s existing
+normal path.** W518 commits type `$0E`; W519 invokes the already ported `objSlot14` at `$288C6C` without
+retranscription. Top-level dispatch coverage remains 18/20; only types 16 and 18 remain unknown.
 
-Slot [15] state 0 clears its 50-entry pool, arms drift `$20`, installs `$222838` into palette bank 2, sets its
-`$80` timer, and raises `$81309A` under the inherited nonzero gate. Its exact 47-entry schedule runs 46 text
-payloads over 35 distinct strings and 648 ordered characters through the horizontal `$2923DA` or vertical
-`$29255A` glyph table. The final `$FFFFFFFF` payload stops drift at +7,791. All 47 records spawned, 43 retired,
-and four horizontal records remain frozen. After drift stops, the timer loads the existing one-node `$291FD8`
-animation at +7,918 and posts `$28C186` with D1 zero. The resource fades all 32 bank-2 words to black, drains,
-and is freed. State 2 arrives at +8,046; at +8,047 slot [15] stages type `$0E`, clears `$81E0DA`, queues its
-own id for retirement, and both queues drain. The bounded run stops before slot [14] at `$288C6C`.
+Slot [14] state 0 clears the TX and BG maps, resets the scroll registers, arms its 300-frame life and two
+`$20` counters, and loads the existing one-node mode-1 `$288C2E` palette resource. Production now supplies
+`drawByte242E24` as `ctx.rankByte`, replacing the old optional zero fallback with the authentic shared-counter
+draw. The resource frees at +95 after reaching all 32 `$2252F8` target words. State 1 posts `$28CB4C` once at
++32 and emits one `$23DECE` sprite record on each of 301 visible frames. It enters state 2 at +301, then at +333
+clears the shared resource state, stages type `$0C`, and queues its own id for retirement. Both queues drain.
+The bounded run stops before executing slot [12] at `$28F3AC`.
 
-W518 adds only `$2921BA+$220` for the exact text pool and adjacent `$2923DA+$180` and `$29255A+$180`
-96-longword horizontal and vertical glyph tables. They add 1,312 bytes. The local export therefore moves from
-780 to 783 windows and from 446,709 to 448,021 bytes. All three are disjoint and mutually abutting, so overlap
-pairs remain 76. The direct W518 natural integration passes 1/1, both exact registry sentinels pass 2/2, and
-`export-tables.py --verify` passes. No production source changed. W518 is bounded and unpublished.
+W519 adds no ROM windows. The local registry therefore remains 783 windows, 448,021 bytes, and 76 overlap
+pairs. The direct W519 natural integration passes 1/1. Because the registry did not change, W519 did not rerun
+`export-tables.py --verify` or the two registry sentinels. W519 is bounded and unpublished.
 
 Production build `20260823031213` still publishes W512 through W516. Its quiet-tree publication passed
 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate
@@ -36,7 +32,7 @@ then passed deployment and three consecutive live confirmations. The published s
 `434ac34`, `181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`. The published registry has 777 windows,
 446,635 bytes, and 76 overlap pairs. W521 remains the next periodic publication point.
 
-The exact next executable edge after W518 is the already ported slot [14] entry at `$288C6C`. Follow it only in
+The exact next executable edge after W519 is the already ported slot [12] entry at `$28F3AC`. Follow it only in
 a later explicitly bounded wave. Do not broaden into another ending arm, another type-7 list or variant,
 duplicate-only cleanup, or a guessed visual path.
 
@@ -59,6 +55,24 @@ unknown-only, direct, Original, and later vanilla-Game paths install no mod call
 the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage remains 101/256 ported, 25
 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
+
+## W519 VERIFIED: SLOT [14] NORMAL PATH
+
+W518's normal type-`$0E` handoff commits slot [14] at `$288C6C`. W519 invokes the existing `objSlot14`
+directly from the object-driver map. It starts at integration frame 11,193, resets the screen, loads one mode-1
+root and one node from `$288C2E`, and completes and frees both at +95. Production `Game#ctx()` now aliases
+the existing `drawByte242E24` implementation as `rankByte`, so all 301 visible calls use the authentic shared
+counter and `$242E42+$80` table instead of the prior optional-zero fallback.
+
+The object posts `$28CB4C` exactly once at +32. Its life reaches zero without advancing, borrows to `$FFFF`
+on the next call, and enters state 2 at +301. Each state-1 call, including that borrow call, queues exactly one
+12-byte sprite record through `$23DECE`. After the second `$20` counter drains, +333 stages dispatch type
+`$0C`, priority from `$240F62`, clears the shared animation state, and retires slot [14] by its long id. The next
+frame drains both queues and stops deliberately before slot [12] entry `$28F3AC`.
+
+No new window is required: `$288C2E`, both descriptor tables, `$2252F8+$40`, `$242E42+$80`, and the dispatch
+table were already declared. The registry stays at 783 windows, 448,021 bytes, and 76 overlap pairs. The direct
+integration passes 1/1. No registry verification, full suite, web export, build, publish, commit, or push ran.
 
 ## W518 VERIFIED: SLOT [15] NORMAL PATH
 

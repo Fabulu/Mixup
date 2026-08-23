@@ -28,21 +28,18 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W518 (2026-08-23), UNPUBLISHED AFTER BUILD `20260823031213`.** Dispatch remains **18 of 20**: W503 ports and registers
+**STANDING AS OF W519 (2026-08-23), UNPUBLISHED AFTER BUILD `20260823031213`.** Dispatch remains **18 of 20**: W503 ports and registers
 `[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W508 drive that exact
 natural loop-2 edge through type 7's complete five-script variant-0 list; W509 through W517 complete all nine
-sequence-list A scripts. Together they preserve 343 ordered presentation records and fourteen complete `$8003`
-resource lifecycles. W517's terminator queues type `$0F` and retires type 7. W518 follows that exact normal edge
-through already ported slot [15] at `$291F66`: all 47 timed entries run, its 46 text payloads use the authentic
-horizontal or vertical glyph tables and shared pool, the final `$FFFFFFFF` payload stops drift after 7,791 calls,
-and 43 entries retire while four horizontal records remain frozen. The exact `$80` post-drift timer loads slot
-[15]'s one-node animation at +7,918, posts `$28C186` with D1 zero, fades its installed bank-2 palette to black,
-frees the node, reaches state 2 at +8,046, then queues type `$0E` and retires one frame later. The bounded run
-stops before already ported slot [14] at `$288C6C`. The local registry has 783 windows, 448,021 bytes, and 76
-overlap pairs. Production build `20260823031213` still publishes W512 through W516 from commits `434ac34`,
-`181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`; its published registry has 777 windows, 446,635 bytes, and 76
-overlap pairs. W518 is the second unpublished wave toward the W521 publication point. The two without a handler
-are `[16] `$256E7A` and `[18] $24902A`.
+sequence-list A scripts. W518 follows the normal edge through slot [15]. W519 then reuses already ported slot
+[14] at `$288C6C`: state 0 resets the screen and loads its one-node mode-1 palette resource, 301 visible calls
+queue one `$23DECE` record each, the cue posts once at +32, the resource frees at +95, state 2 begins at +301,
+and +333 queues type `$0C` while retiring slot [14]. `Game#ctx()` now exposes existing `drawByte242E24` as
+`rankByte`, replacing the old zero fallback. The bounded run stops before slot [12] at `$28F3AC`. No ROM
+window changed; the local registry remains 783 windows, 448,021 bytes, and 76 overlap pairs. Production build
+`20260823031213` still publishes W512 through W516 from commits `434ac34`, `181172d`, `ff007e5`, `f99a3a3`,
+and `7f29cbb`; its registry has 777 windows, 446,635 bytes, and 76 overlap pairs. W519 is the third unpublished
+wave toward the W521 publication point. The two without a handler are `[16] $256E7A` and `[18] $24902A`.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
@@ -2368,6 +2365,25 @@ remain 76. The expanded direct natural integration passes 1/1, both exact regist
 `export-tables.py --verify` passes. No full suite, web-asset export, build, publish, commit, or push ran. W518 is
 the second unpublished wave after W516; W521 remains the publication point.
 
+**W519 FOLLOWS SLOT [14]'S AUTHENTIC NORMAL PATH.** W518's type `$0E` handoff reaches the existing
+`objSlot14` entry at `$288C6C`; W519 invokes that function directly rather than retranscribing it. State 0 resets
+all four scroll registers, clears TX and BG VRAM, arms the 300-frame life plus both `$20` counters, and loads the
+existing one-node mode-1 descriptor at `$288C2E`. Production `Game#ctx()` now exposes shared
+`drawByte242E24` under the handler's `rankByte` key, so the visible path advances the authentic RNG counter and
+reads `$242E42+$80` rather than falling back to rank zero.
+
+The direct run starts slot [14] at frame 11,193. Its one root and node free at +95 after all 32 staging-bank words
+reach `$2252F8`. `$28CB4C` posts once at +32. State 1 queues one 12-byte `$23DECE` sprite record per call for
+301 visible calls; the 300-frame life reaches zero, then borrows before state 2 begins at +301. The second `$20`
+counter reaches zero at +333, when slot [14] clears shared animation state, queues type `$0C` with its dispatch
+priority, and retires by its long id. Both queues drain on the next frame. The deliberate type-`$0C` handler stops
+before slot [12] at `$28F3AC`; no next-object body or unrelated ending path was inspected or executed.
+
+No new ROM window is needed. The local registry remains exactly 783 windows, 448,021 bytes, and 76 overlap
+pairs. The expanded direct integration passes 1/1. Registry verification was not rerun because no declaration
+changed. No full suite, web-asset export, build, publish, commit, or push ran. W519 is the third unpublished wave
+after W516; W521 remains the publication point.
+
 **W512-W516 PUBLICATION FOLLOW-UP:** Production build `20260823031213` publishes all five waves from
 source commits `434ac34`, `181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`. Browser assets were regenerated
 first. The quiet-tree gate passed 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746
@@ -2388,9 +2404,10 @@ bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate with zero 
 gate with zero skips, the distribution build, and the ROM-leak guard. Deployment and three consecutive
 live confirmations passed.
 
-This does not yet identify every ending-selection condition or close D37. W518 follows sequence list A's normal
-slot [15] path through its concrete lifecycle and reaches the existing slot [14] entry at `$288C6C`. That exact
-next executable edge remains deliberately unfollowed rather than broadening into slot [14] or another ending arm.
+This does not yet identify every ending-selection condition or close D37. W519 follows sequence list A's normal
+slot [15] and slot [14] paths through their concrete lifecycles and reaches the existing slot [12] entry at
+`$28F3AC`. That exact next executable edge remains deliberately unfollowed rather than broadening into slot [12]
+or another ending arm.
 
 **W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own
 text says otherwise: `$24910E` is `'Asic27 Test'`, `$24911A` is `'Wait or Press Any To Start !!'`, and the

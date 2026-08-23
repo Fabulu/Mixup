@@ -424,8 +424,8 @@ const KNOWN_MISSING_OPTIONAL = Object.freeze({
   // W509 removed `load246710`, `loadAnim0`, `ready24681A`, and `commit246800`: the reached
   // objslot7pool.js `$2907E2` state machine now calls the existing production loaders, check,
   // and free directly, so none remains a guarded ctx read or a missing Game#ctx capability.
-  rankByte: '$242E24. Ported as makeRankObject\'s own read; not on ctx, so slot [14] state 1 '
-    + 'takes rank 0 and always picks tableA.',
+  // W519 removed `rankByte`: Game#ctx now supplies the shared drawByte242E24 body,
+  // so slot [14] state 1 no longer silently falls back to rank 0.
   // `menuCarry28D53C` LEFT THIS INVENTORY IN W418, and its line here was FALSE the whole time.
   // It said "$28D53C. Not ported." -- but `$28D53C` has been `tallyscreen.js menuCarry28D53C`
   // since W278, and `objslot8.js` and `tallyscreen.js` itself both call it directly. The one

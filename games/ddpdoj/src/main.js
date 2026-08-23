@@ -64,6 +64,7 @@ import { playerObject2491C0, FROZEN_GLOBALS } from './player.js';
 import { UnportedLog, unreached } from './unported.js';
 import { MoveTables } from './vectors.js';
 import { RomWindows } from './rom.js';
+import { drawByte242E24 } from './rng.js';
 import { makeType5 } from './type5.js';
 import { PLAYER_SLOTS } from './shots.js';
 import { buildDisplayList } from './displaylist.js';
@@ -685,6 +686,10 @@ export class Game {
       // credits a coin whenever a player holds a button in the `$E0` mask,
       // which is how that defect was caught (isr.js:48).
       coinPort: this.coinPort,
+      // W519: slot [14] calls the shared $242E24 draw once per visible frame. The
+      // existing function advances the authentic shared counter and reads the declared
+      // 128-byte cartridge table; exposing it here removes the old zero-rank fallback.
+      rankByte: drawByte242E24,
       budget: this.budget,
       order: this.order,
       // WAVE 13.  The video registers the ISR6-gated $140FFE uploads, and the
