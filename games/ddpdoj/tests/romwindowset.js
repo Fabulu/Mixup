@@ -406,7 +406,14 @@
 // terminator. It ends at the first routine. Measured: 809 -> 810 windows,
 // 450,571 -> 450,651 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 810;
+// ---------------------------------------------------------------------------
+// W552 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$2A6788 + $3A` is Hibachi A4 script 0's four-record animation chain. It
+// ends exactly at A4 script 6. Measured: 810 -> 811 windows,
+// 450,651 -> 450,709 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 811;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

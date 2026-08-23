@@ -1,4 +1,4 @@
-// HIBACHI'S ENDING -- A4 SCRIPTS 1..5, AND BOTH EXTERNAL SPEED PUSHES.  W399, W403, W409.
+// HIBACHI'S A4 SCRIPT 0 AND ENDING SCRIPTS 1..5, WITH BOTH SPEED PUSHES. W399, W403, W409, W552.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -114,6 +114,8 @@ export const HIBACHI_A4 = Object.freeze({
   table: 0x2a5886,                 // $2A4318 lea $2A5886,A4 -> $2A432E jsr $259554
   pairs: 21,                       // $2A5886 + 21*8 = $2A592E = entry [0].init, the table's end
   endScript: 1,                    // $2A6E20 jmp $25980C with D0 = 1
+  s0Init: 0x2a592e, s0Step: 0x2a597c,       // W552 -- the opening script $2A4384 starts
+  s0Frames: 0x0260, s0Hold: 0x0160, s0Next: 6,
   s1Init: 0x2a5a1c, s1Step: 0x2a5a28,
   s2Init: 0x2a5ea0, s2Step: 0x2a5eb8,
   s3Init: 0x2a5f8e, s3Step: 0x2a5fa2,
@@ -129,7 +131,7 @@ export const HIBACHI_A4 = Object.freeze({
   s5DeadRow: 0x2a6760,                      // a SEVENTH $246410 record the count of 6 never reads
   s5Suspend: 0x2a6466,                      // jsr $2595E8 -- the SECOND site, not A4 $14's
   s5WhiteBank: 0x0e, s5WhiteSrc: 0x246bf8,  // $2A6418 moveq-shaped move.w #$E,D0 / $2A641C lea
-  s0Anim: 0x2a6788,                         // A4 script 0's chain -- $2A5A04's lea, NOT A4 5's
+  s0Anim: 0x2a6788, s0AnimCount: 4,          // $2A5A04 lea; 2 + 4*14 = $3A, ending at A4 6
   // the DATA the three of them read
   poolCTable: 0x2a5cc0, poolCRows: 21,      // $2A5C9A moveq #$14,D7 + dbra -- TRAP 2, N+1
   kindTable: 0x2a5dc8, kindEntries: 8,      // $2A5D62 andi.w #$7,D0 / $2A5D66 add.w D0,D0
@@ -151,9 +153,9 @@ export const HIBACHI_END_NOTED = Object.freeze({
   0x289b22: '$2A5CAA jsr $289B22 -- pool C\'s THIRD allocator, twenty-one times off the '
     + '$2A5CC0 longword table. src/effects.js ports $289AF4 and $289B50; this one is a '
     + 'different entry and only the first-loop arm reaches it',
-  0x23c4d0: '$2A5F66 jsr $23C4D0 -- the $8039xx pause/flag block. It is `clr.w $803934 / '
-    + 'move.w #$1,$803936 / rts`, but src/boss.js has counted it since W357 and '
-    + 'tests/w382stalenotes.test.js asserts that note, so it stays counted here too',
+  0x23c4d0: '$2A5946/$2A5F66/$2A63F4 jsr $23C4D0 -- the $8039xx pause/flag block. It is '
+    + '`clr.w $803934 / move.w #$1,$803936 / rts`, but src/boss.js has counted it since W357 '
+    + 'and tests/w382stalenotes.test.js asserts that note, so it stays counted here too',
   0x24150a: '$2A6422 jsr $24150A -- A4 script 5\'s bank $E <- $246BF8 (32 x $7FFF, WHITE). '
     + 'RUN when ctx.palette is present and counted when it is not, exactly as '
     + 'src/background.js and src/bossarrival.js do at their own $24150A sites',
@@ -264,6 +266,68 @@ function frameBurst2A61F2(ram, rom, ctx, a4, a6) {
   // again: a dead store, kept as a comment rather than as JavaScript that does nothing.
   ram.setU16(a0 + B.nudge, u16(i16(drawWord24328E(ram, rom)) - 0x800));
   ram.setU16(a0 + B.nudge + 2, u16(i16(drawWord24328E(ram, rom)) >> 1));  // $2A626C..$2A6274
+}
+
+// =============================================================== A4 SCRIPT 0 -- THE ARRIVAL
+// W552. `$2A4384` starts this script after the Hibachi init body installs the scheduler tables.
+// The A4 convention has no `rts` between `$2A592E` and `$2A597C`, so the init dispatch also runs
+// the first timer step. The optional $160 hold enables the fight while the independent $260 timer
+// continues to count. Its final frame arms the eight damage parts, starts A4 6, and frees this slot.
+const S0_PARTS = Object.freeze([0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0, 0x1a0]);
+
+/** `$2A592E`. Start both opening A3 scripts and main script 0, then seed the two timers. */
+export function s0Init2A592E(ram, ctx, a4) {
+  a3Start259962(ram, 0);                                  // $2A592E/$2A5930
+  a3Start259962(ram, 1);                                  // $2A5936/$2A5938
+  seqStart2598D0(ram, 0);                                 // $2A593E/$2A5940
+  note(ctx, 0x23c4d0);                                    // $2A5946
+  ram.setU16(a4 + 0x02, HIBACHI_A4.s0Frames);             // $2A594C
+  ram.setU16(a4 + 0x04, 0);                               // $2A5952
+
+  if (ram.u16(HIBACHI_A4.forkLoopWord) !== 0) return;      // $2A5956/$2A595C
+  if (ram.u16(HIBACHI_A4.forkFlag) !== 0) {                // $2A5960/$2A5966
+    ram.setU32(bossA5(ctx, 0x2a596a) + 0x16, 0x00062000); // $2A596A
+    return;                                                // $2A5972 bra.w $2A597C
+  }
+  ram.setU16(a4 + 0x04, HIBACHI_A4.s0Hold);               // $2A5976
+}
+
+/** `$2A597C`. Enable the first-loop fight after $160 frames and finish the arrival at $260. */
+export function s0Step2A597C(ram, rom, ctx, a4) {
+  if (ram.u16(a4 + 0x04) !== 0) {                         // $2A597C tst.w / beq $2A59C0
+    const hold = u16(ram.u16(a4 + 0x04) - 1);             // $2A5984 subq.w #1
+    ram.setU16(a4 + 0x04, hold);
+    if (hold === 0) {                                     // $2A5988 bne $2A59C0
+      ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x01);       // $2A598C bset #0
+      ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x04);       // $2A5994 bset #2
+      ram.setU8(0x8130f9, ram.u8(0x8130f9) | 0x01);       // $2A599C bset #0
+      const a5 = bossA5(ctx, 0x2a59a4);
+      ram.setU32(a5 + 0x16, 0x00062000);                  // $2A59A4
+      ram.setU32(0x81b626, 0x00000700);                   // $2A59AC
+      ram.setU32(0x81b62a, a5 + 0x16);                    // $2A59B6/$2A59BA
+    }
+  }
+
+  const left = u16(ram.u16(a4 + 0x02) - 1);               // $2A59C0 subq.w #1
+  ram.setU16(a4 + 0x02, left);
+  if (left !== 0) return;                                 // $2A59C4 bne.s $2A5A1A
+
+  ram.setU16(0x81b6e4, 1);                               // $2A59C6
+  if (ram.u16(HIBACHI_A4.forkLoopWord) === 0
+    && ram.u16(HIBACHI_A4.forkFlag) === 0) {              // $2A59CE..$2A59DE
+    ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x02);         // $2A59E2 bset #1
+    ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0x10);         // $2A59EA bset #4
+  } else {
+    ram.setU16(0x81309c, 1);                              // $2A59F6
+  }
+
+  const a6 = bossA6(ctx, 0x2a59fe);
+  for (const off of S0_PARTS) {                           // $2A59FE jsr $2A6E38
+    ram.setU16(a6 + off, ram.u16(a6 + off) | 0xa001);
+  }
+  loadAnimObjects246410(ram, rom, HIBACHI_A4.s0Anim);     // $2A5A04/$2A5A0A
+  a4Start25980C(ram, HIBACHI_A4.s0Next);                  // $2A5A10/$2A5A12
+  ram.setU16(a4, 0);                                     // $2A5A18 clr.w (A4)
 }
 
 // =============================================================== A4 SCRIPT 1 -- THE ENDING
@@ -765,6 +829,10 @@ export function s14Step2A6B80(ram, a4) {
   ram.setU16(a4, 0);                                     // $2A6B8E clr.w (A4) -- 4254, the SLOT
 }
 
+registerScript(HIBACHI_A4.s0Init, initThenStep(
+  (ram, rom, ctx, a4) => s0Init2A592E(ram, ctx, a4),
+  (ram, rom, ctx, a4) => s0Step2A597C(ram, rom, ctx, a4)));
+registerScript(HIBACHI_A4.s0Step, (ram, rom, ctx, a4) => s0Step2A597C(ram, rom, ctx, a4));
 registerScript(HIBACHI_A4.s1Init, initThenStep(
   (ram, rom, ctx, a4) => s1Init2A5A1C(ram, a4),
   (ram, rom, ctx, a4) => s1Step2A5A28(ram, rom, ctx, a4)));
@@ -792,12 +860,12 @@ registerScript(HIBACHI_A4.s14Step, (ram, rom, ctx, a4) => s14Step2A6B80(ram, a4)
 
 /** The A4 ids whose init AND step this file registers. A test asserts this against the
  *  cartridge's own table rather than against the list above. */
-export const HIBACHI_END_SCRIPTS = Object.freeze([1, 2, 3, 4, 5, 0x14]);
+export const HIBACHI_END_SCRIPTS = Object.freeze([0, 1, 2, 3, 4, 5, 0x14]);
 
 /** Every A4 id the chain hands to that is NOT ported, with the byte extent each occupies
  *  between its table entry and the next one. Counted, with the numbers measured. */
 export const HIBACHI_END_COUNTED = Object.freeze({
-  0x00: { init: 0x2a592e, step: 0x2a597c, bytes: 0x00ee, why: 'the OPENING script $2A42D8 starts' },
+  // W552: 0 is no longer here. `$2A4384` starts it and this file runs both entries.
   // W404/W405: $0A..$0D are no longer here -- `src/hibachiguns.js` ports all four, together
   // with A1 guns 5, 6, 7 and 8, and the real path now RUNS the {$A,$B,$C,$D} attack loop
   // rather than stopping inside it.

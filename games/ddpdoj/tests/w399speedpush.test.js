@@ -306,8 +306,8 @@ test('W399 SECTION 2: nine callers of $261100, FOUR of them unclaimed and two pu
       '$2A5886[3] is $2A5A28, A4 script 1\'s STEP');
     assert.ok(HIBACHI_A4.s1Step < 0x2a5d28 && 0x2a5d28 < HIBACHI_A4.s2Init,
       '  ...and $2A5D28 is inside it, between entry [3] and entry [4]');
-    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort((a, b) => a - b), [1, 2, 3, 4, 5, 0x14],
-      'A4 1, 2 and 3 from this wave, 4 from W403 and 5 from W409 -- init and step');
+    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 0x14],
+      'A4 0 from W552, 1, 2 and 3 from this wave, 4 from W403, 5 from W409 and $14');
     for (const id of HIBACHI_END_SCRIPTS) {
       for (const off of [0, 4]) {
         assert.ok(scriptAddresses().includes(l(HIBACHI_A4.table + id * 8 + off)),
@@ -734,13 +734,13 @@ test('W399 SECTION 7: the window set, an overlap count these five do not move, a
       '...and the SAME count without them: none of the five overlaps anything. The '
       + 'pairs beyond W393\'s 71 are W428\'s four cue scripts, none of them here.');
 
-    // The nearest declared neighbours, both sides. The whole $2A5xxx/$2A6xxx block was empty:
-    // the highest window before this wave ended at $2A4606 and the next above is $2C2CA2.
+    // The nearest declared neighbours, both sides. W551 later placed the A2
+    // prefill window below this wave, ending at $2A4702.
     const others = ws.filter(([a]) => !mine.includes(a));
     const below = Math.max(...others.filter(([a, ln]) => a + ln <= HIBACHI_A4.table)
       .map(([a, ln]) => a + ln));
-    assert.equal(below, 0x2a4606,
-      'the nearest window below is W369\'s $2A443C+$1CA, ending at $2A4606 -- $1280 bytes clear');
+    assert.equal(below, 0x2a4702,
+      'the nearest window below is W551\'s A2 prefill list ending at $2A4702');
     const above = Math.min(...others.filter(([a]) => a >= HIBACHI_A4.s3Anim + 0x80).map(([a]) => a));
     // W409 CORRECTION: the nearest neighbour above is no longer W404\'s A1 gun table. A4
     // script 5\'s own emitter rows $2A6688 are declared now, $388 bytes past the end of this

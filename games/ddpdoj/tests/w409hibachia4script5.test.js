@@ -114,11 +114,13 @@ test('W409 SECTION 1: the $3AA is $270 of CODE, $100 of A4 5\'s data and $3A tha
   assert.equal(HIBACHI_A4.s5Emit, A4_5_CODE_END + 2, '  ...which begins right after the rts');
 
   // ---- THE THIRD NUMBER, and it is what makes $3AA an upper bound this wave too.
-  // $2A5A04 is inside A4 SCRIPT 0 ($2A592E..$2A5A1B, still counted) and it names $2A6788.
+  // $2A5A04 is inside A4 SCRIPT 0 ($2A592E..$2A5A1B, ported by W552) and names $2A6788.
   assert.equal(w(0x2a5a04), 0x41fa, '$2A5A04 `41FA` lea (d16,PC),A0');
   assert.equal(0x2a5a06 + disp16(0x2a5a06), S0_ANIM, '  ...and it names $2A6788');
-  assert.ok(0x2a5a04 >= HIBACHI_END_COUNTED[0x00].init && 0x2a5a04 < HIBACHI_A4.s1Init,
-    '  ...from inside A4 SCRIPT 0, which is still counted');
+  assert.ok(0x2a5a04 >= HIBACHI_A4.s0Init && 0x2a5a04 < HIBACHI_A4.s1Init,
+    '  ...from inside translated A4 SCRIPT 0');
+  assert.equal(HIBACHI_END_COUNTED[0x00], undefined,
+    '  ...which W552 removed from the counted inventory');
   assert.equal(w(0x2a5a0a), 0x4eb9, '  ...$2A5A08 nop, $2A5A0A `4EB9` jsr');
   assert.equal(l(0x2a5a0c), 0x00246410, '  ...$246410, so $2A6788 is an ANIMATION CHAIN');
   assert.equal(w(S0_ANIM), 0x0004, '$2A6788\'s count word is 4');
@@ -289,8 +291,8 @@ test('W409 SECTION 3: THE RUN NO LONGER STOPS -- $2595E8 fires on frame 4889 and
   assert.ok(new Set(scriptAddresses()).has(A4_5_INIT), '(c) $2A6418 is registered');
   assert.ok(new Set(scriptAddresses()).has(HIBACHI_A4.s5Step), '  ...and $2A6458');
   assert.equal(HIBACHI_END_COUNTED[0x05], undefined, '  ...and it is out of the counted list');
-  assert.deepEqual([...HIBACHI_END_SCRIPTS], [1, 2, 3, 4, 5, 0x14],
-    '  ...and in the ported one -- W420 added $14, the FIRST-loop ending');
+  assert.deepEqual([...HIBACHI_END_SCRIPTS], [0, 1, 2, 3, 4, 5, 0x14],
+    '  ...and in the ported one, including W552 script 0 and W420 script $14');
 
   // ---- WHAT IS STILL NOT REACHED, stated so the next reader is not misled: this bench is
   // script 1's SECOND-loop arm. A4 $14 -- the FIRST-loop arm's ending -- is PORTED as of W420,
@@ -810,8 +812,8 @@ test('W409 SECTION 7: THREE new windows, and three bounds on each', { skip: SKIP
   assert.equal(set.get(0x246bb8), 0x80, '  ...which is NOT widened');
   // ---- and the FOURTEEN dead bytes get no window at all, deliberately.
   assert.equal(set.get(DEAD_ROW), undefined, '$2A6760 has no window: nothing reads it');
-  assert.equal(set.get(S0_ANIM), undefined,
-    '$2A6788 has none either -- it is A4 script 0\'s and script 0 is still counted');
+  assert.equal(set.get(S0_ANIM), 0x3a,
+    '$2A6788 has the exact four-record window W552 now consumes');
 });
 
 // ===============================================================================================
