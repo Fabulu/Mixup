@@ -28,18 +28,18 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W519 (2026-08-23), UNPUBLISHED AFTER BUILD `20260823031213`.** Dispatch remains **18 of 20**: W503 ports and registers
+**STANDING AS OF W520 (2026-08-23), UNPUBLISHED AFTER BUILD `20260823031213`.** Dispatch remains **18 of 20**: W503 ports and registers
 `[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W508 drive that exact
 natural loop-2 edge through type 7's complete five-script variant-0 list; W509 through W517 complete all nine
-sequence-list A scripts. W518 follows the normal edge through slot [15]. W519 then reuses already ported slot
-[14] at `$288C6C`: state 0 resets the screen and loads its one-node mode-1 palette resource, 301 visible calls
-queue one `$23DECE` record each, the cue posts once at +32, the resource frees at +95, state 2 begins at +301,
-and +333 queues type `$0C` while retiring slot [14]. `Game#ctx()` now exposes existing `drawByte242E24` as
-`rankByte`, replacing the old zero fallback. The bounded run stops before slot [12] at `$28F3AC`. No ROM
-window changed; the local registry remains 783 windows, 448,021 bytes, and 76 overlap pairs. Production build
-`20260823031213` still publishes W512 through W516 from commits `434ac34`, `181172d`, `ff007e5`, `f99a3a3`,
-and `7f29cbb`; its registry has 777 windows, 446,635 bytes, and 76 overlap pairs. W519 is the third unpublished
-wave toward the W521 publication point. The two without a handler are `[16] $256E7A` and `[18] $24902A`.
+sequence-list A scripts. W518 follows the normal edge through slot [15], W519 through slot [14], and W520
+reuses already ported slot [12] at `$28F3AC`. Its first call installs the four exact name-entry sprite palettes,
+checks inherited P1, and leaves the owed-name byte zero because the inherited score is zero. One call later its
+`nobody` teardown restores the attract TX palette, stages type 8 at state 2, and retires slot [12]. The bounded
+run stops before slot [8] at `$25A770`, with no input arm entered. No ROM window or context key changed; the
+local registry remains 783 windows, 448,021 bytes, and 76 overlap pairs. Production build `20260823031213`
+still publishes W512 through W516 from commits `434ac34`, `181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`;
+its registry has 777 windows, 446,635 bytes, and 76 overlap pairs. W520 is the fourth unpublished wave toward
+the W521 publication point. The two without a handler are `[16] $256E7A` and `[18] $24902A`.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current

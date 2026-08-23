@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-23 (W519 bounded and unpublished; W516 published in `20260823031213`)
+Updated: 2026-08-23 (W520 bounded and unpublished; W516 published in `20260823031213`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,22 +8,21 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W519 follows W503's exact natural stage-5 type-`$13`
-to type-7 handoff through variant 0, all nine sequence-list A scripts, slot [15], and slot [14]'s existing
-normal path.** W518 commits type `$0E`; W519 invokes the already ported `objSlot14` at `$288C6C` without
-retranscription. Top-level dispatch coverage remains 18/20; only types 16 and 18 remain unknown.
+`docs/DOCKET.md` is authoritative. **W520 follows W503's exact natural stage-5 type-`$13`
+to type-7 handoff through variant 0, all nine sequence-list A scripts, and slots [15], [14], and [12].**
+W520 invokes the already ported `objSlot12` at `$28F3AC` without retranscription. Top-level dispatch coverage
+remains 18/20; only types 16 and 18 remain unknown.
 
-Slot [14] state 0 clears the TX and BG maps, resets the scroll registers, arms its 300-frame life and two
-`$20` counters, and loads the existing one-node mode-1 `$288C2E` palette resource. Production now supplies
-`drawByte242E24` as `ctx.rankByte`, replacing the old optional zero fallback with the authentic shared-counter
-draw. The resource frees at +95 after reaching all 32 `$2252F8` target words. State 1 posts `$28CB4C` once at
-+32 and emits one `$23DECE` sprite record on each of 301 visible frames. It enters state 2 at +301, then at +333
-clears the shared resource state, stages type `$0C`, and queues its own id for retirement. Both queues drain.
-The bounded run stops before executing slot [12] at `$28F3AC`.
+The inherited player record is active but carries a zero score, so slot [12] state 0 clears its work block,
+installs the four exact name-entry sprite palettes, checks P1, and leaves the owed-name byte zero. It advances to
+state 1 without posting the entry cue or entering either input arm. On the following driver call the `nobody`
+arm takes the existing teardown, restores the attract TX palette, stages type 8 at cartridge state 2, and queues
+slot [12]'s retirement. Both queues drain. The bounded run stops before executing slot [8] at `$25A770`.
 
-W519 adds no ROM windows. The local registry therefore remains 783 windows, 448,021 bytes, and 76 overlap
-pairs. The direct W519 natural integration passes 1/1. Because the registry did not change, W519 did not rerun
-`export-tables.py --verify` or the two registry sentinels. W519 is bounded and unpublished.
+W520 adds no ROM windows and changes no `Game#ctx` key. The local registry therefore remains 783 windows,
+448,021 bytes, and 76 overlap pairs. The direct W520 natural integration passes 1/1. Because the registry did
+not change, W520 does not need registry sentinels. `export-tables.py --verify` passes. W520 is bounded and
+unpublished.
 
 Production build `20260823031213` still publishes W512 through W516. Its quiet-tree publication passed
 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate
@@ -32,9 +31,9 @@ then passed deployment and three consecutive live confirmations. The published s
 `434ac34`, `181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`. The published registry has 777 windows,
 446,635 bytes, and 76 overlap pairs. W521 remains the next periodic publication point.
 
-The exact next executable edge after W519 is the already ported slot [12] entry at `$28F3AC`. Follow it only in
-a later explicitly bounded wave. Do not broaden into another ending arm, another type-7 list or variant,
-duplicate-only cleanup, or a guessed visual path.
+The exact next executable edge after W520 is the already ported slot [8] entry at `$25A770`. Follow it only in
+a later explicitly bounded wave. Do not inspect later name-entry states, force input, broaden into another ending
+arm, another type-7 list or variant, duplicate-only cleanup, or a guessed visual path.
 
 **W497 remains the first substantial D26 implementation slice.** The cartridge-proven ship domain is `{0,2}`
 and the style domain is `{2,4,6}`. Selector 0 is Type-A and selector 2 is Type-B. The cartridge census does
@@ -55,6 +54,23 @@ unknown-only, direct, Original, and later vanilla-Game paths install no mod call
 the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage remains 101/256 ported, 25
 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
+
+## W520 VERIFIED: SLOT [12] NO-NAME PASS-THROUGH
+
+W519's normal type-`$0C` handoff commits slot [12] at `$28F3AC`. W520 invokes the existing `objSlot12`
+directly from the object-driver map. On its first call, state 0 clears the TX layer and 66-word work block,
+installs the exact `$2254B8`, `$2254F8`, `$225538`, and `$225478` blocks into sprite banks 2 through 5,
+and checks the inherited active P1 record. Its score is zero and does not enter the table, so the owed-name byte
+remains zero, state advances to 1, the name-entry cue does not post, and neither input arm runs.
+
+One driver call later, the existing `nobody` arm runs `$28F368`: it takes the established teardown, restores the
+16-word `$222638` TX palette to bank 0, stages type 8 with child state 2, and queues slot [12]'s own long id for
+retirement. The next frame drains both queues and reaches the deliberate boundary before slot [8] at `$25A770`.
+No input is synthesized and no later name-entry state is inspected.
+
+No new window, production source, or context key is required. The registry stays at 783 windows, 448,021 bytes,
+and 76 overlap pairs. The direct integration passes 1/1 and `export-tables.py --verify` passes. Registry sentinels,
+the full suite, browser export, build, publication, commit, and push do not run.
 
 ## W519 VERIFIED: SLOT [14] NORMAL PATH
 
