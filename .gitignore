@@ -65,3 +65,6 @@ dist-rom/
 # files across two of them, PNGs of the running game among them, one
 # `git add -A` from being committed. Not anchored, so it covers every game's.
 .scratch/
+
+# Exact progression checkpoint blobs contain evolved RAM and stay local.
+games/ddpdoj/probes/checkpoints/
