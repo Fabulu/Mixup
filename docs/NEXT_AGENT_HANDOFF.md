@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-23 (W522 bounded and unpublished; W521 published in `20260823074549`)
+Updated: 2026-08-23 (W523 bounded and unpublished; W521 published in `20260823074549`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -30,14 +30,13 @@ veto, and no continue, followed by an OR of Bee Perfect cursor `>= $0C`, miss co
 `$813098 || $80393A`: one-round mode reaches Hibachi in round 1, two-round mode skips it in round 1, and round 2
 reaches it unconditionally. Qualification controls access to round 2 and is not rechecked at Hibachi.
 
-The next smallest confirmed production fix is separate and already cartridge-proven. In `objslot17.js`,
-`phase5_25D39C` wrongly returns when the round word is nonzero. `$25D3A2 bne $25D3C4` skips only the style
-rewrite, then the common tail must advance state 5 to 6. Correct that source and the wrong assertion in
-`w373slot17.test.js`, run its focused file, land W523, then resume the default pair beyond logic frame 25,730.
-Do not add a new `stageend.js` Hibachi branch; the authentic final fork is already implemented in `hibachiend.js`.
+W523 fixes the separate cartridge-proven round-2 selector stall. In `objslot17.js`, `$25D3A2 bne $25D3C4`
+now skips only the style rewrite when the round word is nonzero. The common display tail still advances state 5
+to 6, and the complete slot pass cascades state 3 through both common tails to state 7. The focused file passes
+24/24. No ROM window, table, registry count, or generated asset changes. Do not add a new `stageend.js` Hibachi
+branch; the authentic final fork is already implemented in `hibachiend.js`.
 
-D109 has a hard deadline of 2026-08-28. Immediately after the bounded W523 stall fix, prioritize the second
-asset-free public deployment, preferably `ddpdoj.pages.dev`, while preserving the current site. It must boot all
+D109 has a hard deadline of 2026-08-28 and is now the exact next priority. Build the second asset-free public deployment, preferably `ddpdoj.pages.dev`, while preserving the current site. It must boot all
 three games from player-supplied ROM files or a reusable local folder, persist a directory handle where supported,
 ship no cartridge assets, document exact names/sizes/SHA-256/revisions, and diagnose DaiOuJou variants in detail.
 Do not let ordinary progression waves consume the five-day release window before this architecture is secured.
@@ -90,6 +89,19 @@ unknown-only, direct, Original, and later vanilla-Game paths install no mod call
 the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage is 102/256 ported, 24
 unknown, and 130 null, with 95 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
+
+## W523 VERIFIED: ROUND-2 SLOT [17] NO LONGER STALLS
+
+Direct cartridge disassembly corrects the old interpretation of `$25D3A2 bne $25D3C4`. With `$813098`
+nonzero, phase 5 skips only `$25D3A6..$25D3C2`'s style table lookup and side-byte rewrite. It still runs the
+shared `$25D3C4..$25D3E8` display tail and writes phase 6 at `$25D3E2`. The port previously returned before
+that tail and could leave every ship/style pair stuck at phase 5 during round 2.
+
+W523 guards only the rewrite. Its direct regression proves the selected style byte stays unchanged while phase
+5 advances to 6. The complete slot-[17] test then proves a round-2 record cascades state 3 through the phase-5
+and phase-6 common tails to state 7 in one pass. The focused file passes 24/24. No ROM window, table, context
+key, registry count, generated asset, build, or publication changes. W523 is the second unpublished wave after
+W521; W526 remains the periodic publication point.
 
 ## W522 VERIFIED: FIRST SIX-PAIR PROGRESSION BLOCKER
 

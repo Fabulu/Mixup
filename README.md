@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W522 starts all-six-pair loop-2 exercise, ports the first stage-3 blocker, type `$3D`, and records exact one-round/two-round and Hibachi rules; production build `20260823074549` publishes W517 through W521, while W522 is the first local wave toward W526 |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | W523 fixes the all-pairs round-2 selector stall after W522's first stage-3 progression blocker; production build `20260823074549` publishes W517 through W521, W522-W523 are local, and D109 now targets a parallel asset-free public release by 2026-08-28 |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -351,7 +351,10 @@ and `4c6a8c2`; publication repairs are `e55af96` and `b2e671c`. W522 starts the 
 matrix. The default pair reaches stage 3, exposes unported type `$3D`, and crosses that boundary after its exact
 init and handler are translated. The local registry is 785 windows, 448,099 bytes, and 77 overlap pairs.
 Cartridge evidence now records exact `1 ROUND GAME` and `2 ROUND GAME` semantics, the round-2 qualification
-gate, and the final Hibachi route truth table. Remaining ending variants will be batched by complete family or
+gate, and the final Hibachi route truth table. W523 then fixes the shared round-2 slot-[17] stall: the nonzero
+round branch skips only a style rewrite and still advances through both common tails to state 7. D109 now has
+a hard 2026-08-28 deadline for a second public site that ships no cartridge assets and boots all three games
+from locally supplied, exactly identified ROMs. Remaining ending variants will be batched by complete family or
 variant rather than split into one commit per understood script.
 
 That breadth does not mean the game is finished. The authoritative docket still

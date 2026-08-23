@@ -171,13 +171,13 @@ Production already translates and tests:
 - the `$2A5C7A/$2A5C84` final route fork;
 - Hibachi continuation scripts and stage completion.
 
-One cartridge-proven production defect remains at this writing.
-`src/objslot17.js` `phase5_25D39C` returns immediately when `$813098` is
-nonzero. The cartridge's `$25D3A2 bne $25D3C4` skips only the style-value rewrite
-at `$25D3A6..$25D3C2`; it still executes the common display tail and advances
-record state 5 to 6 at `$25D3E2`. The current return can leave the second-round
-slot `[17]` handoff stuck forever. `tests/w373slot17.test.js` currently pins that
-incorrect behavior and must be corrected with the production fix.
+W523 fixes the cartridge-proven round-2 selector defect in `src/objslot17.js`.
+`phase5_25D39C` previously returned immediately when `$813098` was nonzero.
+The cartridge's `$25D3A2 bne $25D3C4` skips only the style-value rewrite at
+`$25D3A6..$25D3C2`; it still executes the common display tail and advances
+record state 5 to 6 at `$25D3E2`. The port now does the same, and the full slot
+`[17]` pass proves that round 2 cascades state 3 through the state-5 and state-6
+common tails to state 7 instead of stalling.
 
 Some comments in `objslot17.js` also reverse fighter and style terminology. The
 behavior stores them correctly: fighter is `$813084/$813086`, Doll/style is

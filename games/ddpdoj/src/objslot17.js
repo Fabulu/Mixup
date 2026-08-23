@@ -264,8 +264,9 @@ export function objSlot17(ram, rom, a5, ctx) {
 /** `$25D39C` -- THE STATE-5 HANDLER, and it is SHARED: slot [17] runs it at state 5 and slot [9]
  *  runs the same routine at the same state over the same records.
  *
- *  It picks a value from the four-word table at `$25D294` using `($5,A6)`, writes it into THIS
- *  SIDE's byte of the object's pair array, prints one string, and advances the record to state 6.
+ *  When `$813098` is zero it picks a value from the table at `$25D294` using `($5,A6)` and writes it
+ *  into THIS SIDE's byte of the object's pair array. A nonzero round word skips only that rewrite at
+ *  `$25D3A6..$25D3C2`; both paths print one string and advance the record to state 6.
  *
  *  THE SIDE COMES FROM THE CALLER'S D7, THE `dbra` COUNTER. `tst.w D7 / beq` takes `($5,A5)` when it
  *  is zero and `($4,A5)` otherwise -- and `dbra` counts DOWN, so record 0 runs with D7 = 1 and takes
@@ -283,10 +284,11 @@ export const HANDLER5 = Object.freeze({
 });
 
 export function phase5_25D39C(ram, rom, ctx, a5, a6, d7, a4) {
-  if (ram.u16(HANDLER5.gate) !== 0) return;                  // $25D39C tst.w $813098 / bne $25D3C4
-  const d0 = rom.u16(HANDLER5.table + u16(ram.u8(a6 + 0x05) << 1));   // $25D3A8/$25D3AC/$25D3B2
-  // $25D3B6 tst.w D7 / beq $25D3C0 -- the caller's dbra counter IS the side select.
-  ram.setU8(a5 + (d7 !== 0 ? 0x04 : 0x05), d0 & 0xff);       // $25D3BA / $25D3C0
+  if (ram.u16(HANDLER5.gate) === 0) {                         // $25D39C tst.w / $25D3A2 bne $25D3C4
+    const d0 = rom.u16(HANDLER5.table + u16(ram.u8(a6 + 0x05) << 1)); // $25D3A8..$25D3B2
+    // $25D3B6 tst.w D7 / beq $25D3C0 -- the caller's dbra counter IS the side select.
+    ram.setU8(a5 + (d7 !== 0 ? 0x04 : 0x05), d0 & 0xff);     // $25D3BA / $25D3C0
+  }
 
   // $25D3C4 move.w ($A,A4),D1 -- A4 is set by NEITHER this routine nor either caller, so its value
   // is inherited from further up the frame. The string still prints; only its ROW is unresolved,

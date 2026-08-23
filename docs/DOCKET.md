@@ -28,7 +28,13 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W522 (2026-08-23), UNPUBLISHED AFTER BUILD `20260823074549`.** W522 begins the six-pair
+**STANDING AS OF W523 (2026-08-23), UNPUBLISHED AFTER BUILD `20260823074549`.** W523 fixes the
+cartridge-proven round-2 slot-[17] stall. `$25D3A2 bne $25D3C4` skips only the style rewrite when `$813098`
+is nonzero; both paths still run the common display tail and advance phase 5 to 6. The complete slot pass now
+cascades phase 3 through phases 5 and 6 to 7 instead of leaving every ship/style pair stuck in round 2. The
+focused file passes 24/24. No ROM window or registry count changes.
+
+W522 begins the six-pair
 Black Label loop-2 matrix with `{ship:0, style:2}`. The labelled invulnerable probe reaches stages 1, 2, and 3,
 then exposes `UNPORTED $26725C` at logic frame 25,710. W522 ports type `$3D` init body `$267262` and handler
 `$2673FA`, including its three phase gates, movement, bounds, two-trip damage lifecycle, effects, aim, firing,
@@ -48,14 +54,13 @@ round 2, not Hibachi appearance at the final fork.
 Production build `20260823074549` publishes W517 through W521 from commits `e28336b`, `f2266f8`, `7918d8a`,
 `4ce2536`, and `4c6a8c2`; publication repairs are `e55af96` and `b2e671c`. Its registry has 783 windows,
 448,021 bytes, and 77 overlap pairs. The full gate and three live confirmations passed. W526 is the next periodic
-publication point. The next confirmed fix is `objslot17.js` phase 5: round 2 must skip only the style rewrite,
-execute the common tail, and advance state 5 to 6 rather than return and stall.
+publication point. W523 is the second unpublished wave after W521.
 
 **D109 HAS A HARD PUBLIC-RELEASE DEADLINE OF 2026-08-28.** It requires a second, parallel asset-free site,
 preferably `ddpdoj.pages.dev`, which boots each game from player-supplied ROM files or a reusable local folder,
 publishes exact size/checksum/revision instructions, and gives detailed DaiOuJou variant diagnostics. The current
-asset-backed site stays live. After the bounded W523 stall fix, D109 outranks ordinary progression waves until
-its deadline-critical architecture and release path are secured.
+asset-backed site stays live. D109 now outranks ordinary progression waves until its deadline-critical architecture
+and release path are secured.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
@@ -2402,6 +2407,16 @@ No new ROM window is needed. The local registry remains exactly 783 windows, 448
 pairs. The expanded direct integration passes 1/1. Registry verification was not rerun because no declaration
 changed. No full suite, web-asset export, build, publish, commit, or push ran. W519 is the third unpublished wave
 after W516; W521 remains the publication point.
+
+**W523 FIXES THE ROUND-2 SLOT [17] STALL FOR ALL SIX PAIRS.** Direct disassembly proves that
+`$25D3A2 bne $25D3C4` skips only `$25D3A6..$25D3C2`'s style lookup and side-byte rewrite. The port's prior
+immediate return also skipped the `$25D3C4..$25D3E8` display tail and `$25D3E2` phase advance, leaving the
+record at phase 5 whenever `$813098` was nonzero.
+
+W523 guards only the rewrite. Its direct test keeps the style byte unchanged and advances phase 5 to 6. The full
+slot-[17] pass proves round 2 cascades phase 3 through both common tails to phase 7. The focused file passes 24/24
+with no failures or skips. No ROM window, export table, context key, registry count, generated asset, build, or
+publication changes. W523 is the second unpublished wave after W521.
 
 **W522 FIXES THE FIRST SIX-PAIR PROGRESSION BLOCKER.** The authentic matrix is `{0,2}`, `{0,4}`, `{0,6}`,
 `{2,2}`, `{2,4}`, and `{2,6}`. W522 begins with the default pair and stops at the first loud failure. The

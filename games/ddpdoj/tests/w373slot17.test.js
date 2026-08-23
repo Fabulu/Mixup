@@ -210,9 +210,9 @@ test("W373 $25D39C writes THIS side's byte, picked by the caller's dbra counter"
     assert.equal(ram.u8(a5 + 0x04), 0xff, 'and the even one was left alone');
   });
 
-test('W373 $25D39C is gated on $813098 and does nothing at all when it is set',
+test('W523 $25D39C round 2 skips the style rewrite but still advances through the common tail',
   { skip: SKIP }, async () => {
-    const { phase5_25D39C, SCREEN17, ram, rom, ctx } = await fx();
+    const { phase5_25D39C, SCREEN17, HANDLER5, ram, rom, ctx } = await fx();
     const { TxVram } = await import('../src/background.js');
     ctx.tx = new TxVram();
     const a5 = 0x812800;
@@ -221,9 +221,10 @@ test('W373 $25D39C is gated on $813098 and does nothing at all when it is set',
     ram.setU8(a5 + 0x04, 0xff);
     ram.setU8(a6 + SCREEN17.phaseAt, 5);
     phase5_25D39C(ram, rom, ctx, a5, a6, 1, undefined);
-    assert.equal(ram.u8(a5 + 0x04), 0xff, 'nothing written');
-    assert.equal(ram.u8(a6 + SCREEN17.phaseAt), 5,
-      'and the state did NOT advance -- the gate is before everything');
+    assert.equal(ram.u8(a5 + 0x04), 0xff,
+      'the round-2 branch skips only the $25D3A6..$25D3C2 style rewrite');
+    assert.equal(ram.u8(a6 + SCREEN17.phaseAt), HANDLER5.nextPhase,
+      '$25D3C4 common display tail still advances state 5 to 6');
   });
 
 test('W373 the $25D294 values are known even though its EXTENT is not', { skip: SKIP }, async () => {
@@ -356,14 +357,16 @@ test('W373 a NEGATIVE other-side byte defaults to each side\'s own end', { skip:
   assert.equal(b.ram.u16(a6 + 0x04), 2, 'side 1 defaults to 2 -- the opposite end');
 });
 
-test('W373 slot [17] OVERWRITES the state 4 that $25D306 sets', { skip: SKIP }, async () => {
-  const { objSlot17, SCREEN17, HANDLER3, ram, rom, ctx, a5 } = await fx({ p1: true });
-  objSlot17(ram, rom, a5, ctx);                              // state 0 seeds ($1,A6) = 3
-  ram.setU8(SCREEN17.recs + SCREEN17.phaseAt, SCREEN17.phaseSeed);
-  ram.setU16(0x813098, 1);                                   // shut states 5/6 so 3 is observable
-  objSlot17(ram, rom, a5, ctx);
-  assert.notEqual(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), HANDLER3.nextPhase,
-    'slot [17] did NOT leave it at 4 -- it has no state-4 arm');
-  assert.equal(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), SCREEN17.firstSetsPhase,
-    'it overwrote 4 with 5 at $25CEE8');
-});
+test('W523 slot [17] round 2 cascades state 3 through both common tails to state 7',
+  { skip: SKIP }, async () => {
+    const { objSlot17, SCREEN17, HANDLER3, HANDLER6, ram, rom, ctx, a5 } =
+      await fx({ p1: true });
+    objSlot17(ram, rom, a5, ctx);                              // state 0 seeds ($1,A6) = 3
+    ram.setU8(SCREEN17.recs + SCREEN17.phaseAt, SCREEN17.phaseSeed);
+    ram.setU16(0x813098, 1);                                  // skip rewrites and the state-6 sound only
+    objSlot17(ram, rom, a5, ctx);
+    assert.notEqual(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), HANDLER3.nextPhase,
+      'slot [17] does not leave the record at unhandled state 4');
+    assert.equal(ram.u8(SCREEN17.recs + SCREEN17.phaseAt), HANDLER6.nextPhase,
+      'state 3 enters 5, then the cartridge common tails advance 5 -> 6 -> 7');
+  });
