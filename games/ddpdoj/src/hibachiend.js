@@ -1,4 +1,5 @@
-// HIBACHI'S A4 SCRIPT 0 AND ENDING SCRIPTS 1..5, WITH BOTH SPEED PUSHES. W399, W403, W409, W552.
+// HIBACHI'S A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..5, WITH BOTH SPEED PUSHES.
+// W399, W403, W409, W552, W553.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -98,6 +99,7 @@ import {
   suspend2595E8, fadeArm259B7E, fadeDone259B9E,
 } from './scheduler.js';
 import { pushExternalSpeed } from './background.js';
+import { scrollCompensate } from './movement.js';
 import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { install24150A } from './palette.js';
 import { spawnEffect, clearEffectPool, B } from './effects.js';
@@ -107,6 +109,15 @@ import {
 import { finalBlast2440E0 } from './boss2.js';
 import { finalBurst27CBB6 } from './stage4type9f.js';
 import { bossA5, bossA6, bigBurst28B34A } from './boss.js';
+
+/** `$2A4300` installs this main-sequencer table. It contains twelve init/step pairs;
+ *  A4 script 0 starts id 0 on Hibachi's first scheduler frame. */
+export const HIBACHI_A0 = Object.freeze({
+  table: 0x2a4e56,
+  pairs: 12,
+  s0Init: 0x2a4f56,
+  s0Step: 0x2a4f86,
+});
 
 /** Every address in this file's flow that is real ROM data or a real ROM entry point, so a
  *  test can assert the map instead of a prose claim. */
@@ -266,6 +277,51 @@ function frameBurst2A61F2(ram, rom, ctx, a4, a6) {
   // again: a dead store, kept as a comment rather than as JavaScript that does nothing.
   ram.setU16(a0 + B.nudge, u16(i16(drawWord24328E(ram, rom)) - 0x800));
   ram.setU16(a0 + B.nudge + 2, u16(i16(drawWord24328E(ram, rom)) >> 1));  // $2A626C..$2A6274
+}
+
+// ========================================================== A0 MAIN SCRIPT 0 -- THE ARRIVAL POSITION
+// `$2A4E56` entry 0 is {$2A4F56, $2A4F86}. The init has no rts, so its first
+// dispatch falls through to the step. The step scroll-compensates the root and
+// then runs the shared `$2A4EB6` body that attaches ten Hibachi parts to it.
+const MAIN0_OFFSET_PARTS = Object.freeze([
+  [0x020, 0x14c0, 0xf180],
+  [0x040, 0xfb00, 0xee40],
+  [0x060, 0xe880, 0xeec0],
+  [0x080, 0x0740, 0x1040],
+  [0x0a0, 0xf780, 0x14c0],
+  [0x0c0, 0xe540, 0x1040],
+]);
+const MAIN0_ROOT_PARTS = Object.freeze([0x1a0, 0x140, 0x160, 0x180]);
+
+/** `$2A4EB6`. Copy the root position into all ten attached part records. */
+function placeMain0Parts2A4EB6(ram, a6) {
+  const rootY = ram.u16(a6 + 0x02);
+  const rootX = ram.u16(a6 + 0x04);
+  for (const [off, dy, dx] of MAIN0_OFFSET_PARTS) {
+    ram.setU16(a6 + off + 0x02, u16(rootY + dy));
+    ram.setU16(a6 + off + 0x04, u16(rootX + dx));
+  }
+  const root = ram.u32(a6 + 0x02);
+  for (const off of MAIN0_ROOT_PARTS) ram.setU32(a6 + off + 0x02, root);
+}
+
+/** `$2A4F56`. Seed the arrival position and three headings from one cartridge draw. */
+export function main0Init2A4F56(ram, rom, ctx) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s0Init);
+  ram.setU16(a6 + 0x02, 0xb000);                            // $2A4F56
+  ram.setU16(a6 + 0x04, u16(0x1c00 - ram.u16(0x813172)));  // $2A4F5C..$2A4F68
+  const heading = drawWord242EC2(ram, rom) & 0xff;          // $2A4F6C
+  ram.setU8(a6 + 0x01b, heading);                           // $2A4F72
+  ram.setU8(a6 + 0x131, u16(heading + 0x10) & 0xff);        // $2A4F76..$2A4F7A
+  ram.setU8(a6 + 0x13d, u16(heading + 0x40) & 0xff);        // $2A4F7E..$2A4F82
+}
+
+/** `$2A4F86`. Apply the shared scroll delta and keep every attached part positioned. */
+export function main0Step2A4F86(ram, _rom, ctx) {
+  const a5 = bossA5(ctx, HIBACHI_A0.s0Step);
+  const a6 = bossA6(ctx, HIBACHI_A0.s0Step);
+  scrollCompensate(ram, a5);                               // $2A4F86 jsr $24179E
+  placeMain0Parts2A4EB6(ram, a6);                          // $2A4F8C bra.w $2A4EB6
 }
 
 // =============================================================== A4 SCRIPT 0 -- THE ARRIVAL
@@ -828,6 +884,12 @@ export function s14Step2A6B80(ram, a4) {
   suspend2595E8(ram);                                    // $2A6B88 jsr $2595E8
   ram.setU16(a4, 0);                                     // $2A6B8E clr.w (A4) -- 4254, the SLOT
 }
+
+registerScript(HIBACHI_A0.s0Init, initThenStep(
+  (ram, rom, ctx) => main0Init2A4F56(ram, rom, ctx),
+  (ram, rom, ctx) => main0Step2A4F86(ram, rom, ctx)));
+registerScript(HIBACHI_A0.s0Step,
+  (ram, rom, ctx) => main0Step2A4F86(ram, rom, ctx));
 
 registerScript(HIBACHI_A4.s0Init, initThenStep(
   (ram, rom, ctx, a4) => s0Init2A592E(ram, ctx, a4),

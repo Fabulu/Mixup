@@ -413,7 +413,14 @@
 // ends exactly at A4 script 6. Measured: 810 -> 811 windows,
 // 450,651 -> 450,709 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 811;
+// ---------------------------------------------------------------------------
+// W553 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$2A4E56 + $60` is Hibachi's twelve-pair A0 main-sequencer table. It ends
+// exactly at the shared `$2A4EB6` part-position body. Measured: 811 -> 812
+// windows, 450,709 -> 450,805 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 812;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

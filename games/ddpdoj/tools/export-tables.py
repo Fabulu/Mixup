@@ -3879,6 +3879,9 @@ SHOT_WINDOWS.extend([
     (0x2A46B2, 0x0050, "W551: HIBACHI's A2 scheduler prefill list, nineteen routine pointers followed "
                        "by the $FFFFFFFF terminator $2595B2 walks to. The exact span ends at $2A4702, "
                        "the first pointed-to routine, so no scheduler code is exported as data"),
+    (0x2A4E56, 0x0060, "W553: HIBACHI's A0 main-sequencer table, twelve init/step pairs. The exact span "
+                       "ends at $2A4EB6, the shared part-position body whose first opcode is $4CAE; "
+                       "entry 0 is {$2A4F56, $2A4F86}, started by A4 script 0 at $2A593E"),
     (0x2A6788, 0x003A, "W552: HIBACHI A4 script 0's $246410 animation chain. Its count word is four, "
                        "so the exact span is 2 + 4 * 14 bytes and ends at $2A67C2, A4 script 6's init"),
     (0x268DD2, 0x0068, "W353: type $1A's FIVE palette rows, 15-word record prototype and $20-byte sub "
