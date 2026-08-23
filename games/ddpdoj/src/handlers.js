@@ -9114,10 +9114,10 @@ function fire55(ram, rom, a5, a6, ctx) {
   // $2725E2 -- re-aim ONLY while the counter still equals its reload, i.e. the burst's FIRST volley.
   if (ram.u8(a5 + T55.burstAt) === ram.u8(a5 + T55.burstReloadAt)) {
     const target = targetSelect(ram, a5);                    // the bsr $24270A inside $24226E
-    const angle = target === null
+    const angle = target.carry
       ? T55.aimFallback                                      // $272602 -- the carry exit default $80
       : aim256(aimTables(rom), u16(ram.u16(a6 + 0x02) + T55.aimXBias), ram.u16(a6 + 0x04),
-        ram.u16(target + 0x02), ram.u16(target + 0x04));
+        ram.u16(target.addr + 0x02), ram.u16(target.addr + 0x04));
     ram.setU8(a5 + T55.aimAt, angle & 0xff);                 // $272606 move.b D1,($28,A5)
   }
 

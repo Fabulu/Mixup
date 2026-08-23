@@ -11,10 +11,21 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { Ram } from '../src/ram.js';
+import { RomWindows } from '../src/rom.js';
+import { MoveTables } from '../src/vectors.js';
+import { runHandler } from '../src/handlers.js';
+import { UnportedLog } from '../src/unported.js';
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IMAGE = path.join(HERE, '..', 'rip', 'sound', 'maincpu.bin');
+const TABLES = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
 const IMG = existsSync(IMAGE) ? readFileSync(IMAGE) : null;
 const SKIP = IMG ? false : 'the ROM image is absent; skip, not pass';
+const HAVE_RUNTIME = existsSync(TABLES);
+const TABLE_JSON = HAVE_RUNTIME ? JSON.parse(readFileSync(TABLES, 'utf8')) : null;
+const ROM = HAVE_RUNTIME ? new RomWindows(TABLE_JSON.rom) : null;
+const MOVE = HAVE_RUNTIME ? new MoveTables(TABLE_JSON, ROM) : null;
 
 test('W351 the cascade is FALL-THROUGH: four tests on the same byte, none of them else-if', { skip: SKIP }, () => {
   // Each test branches FORWARD past its own arm. A switch would make them exclusive, and mode 2 -- which
@@ -91,6 +102,34 @@ test('W351 arm A hands off to mode 2, and its #$1 store is DEAD', { skip: SKIP }
   assert.equal(IMG.readUInt16BE(0x272516), 0x0017, '  ...the SAME byte');
   // Six bytes apart with no branch between, so mode 1 is never reached from arm A.
   assert.equal(0x27250c + 6, 0x272512, 'consecutive: the #$1 cannot be observed');
+});
+
+test('W548 type $55 aims its first live volley at the selected player record',
+  { skip: !HAVE_RUNTIME && 'the generated ROM tables are absent; skip, not pass' }, () => {
+  const ram = new Ram();
+  const a5 = 0x81364c, a6 = 0x81459c;
+  ram.setU16(a5, 0x8055);
+  ram.setU32(a5 + 0x06, a6);
+  ram.setU8(a5 + 0x17, 3);              // firing mode
+  ram.setU8(a5 + 0x26, 0);              // volley due now
+  ram.setU8(a5 + 0x2e, 2);
+  ram.setU8(a5 + 0x2f, 2);              // first volley re-aims
+  ram.setU16(a6 + 0x02, 0x3000);
+  ram.setU16(a6 + 0x04, 0x4000);
+  ram.setU16(a6 + 0x18, 0x1000);
+  ram.setU16(0x8103e6, 0x8000);          // P1 alive
+  ram.setU16(0x8103e8, 0x5000);
+  ram.setU16(0x8103ea, 0x6000);
+  const bullets = [];
+
+  runHandler(0x272424, ram, ROM, a5, {
+    tables: MOVE,
+    unported: new UnportedLog(),
+    bulletSpawn: (site, result) => bullets.push([site, result]),
+  });
+
+  assert.equal(ram.u8(a5 + 0x28), 0x25, 'aim256 result from P1 coordinates');
+  assert.equal(bullets.length, 15, 'the ordinary first volley completes');
 });
 
 test('W351 death TAIL-JUMPS -- $55 neither frees itself nor marks-and-continues', { skip: SKIP }, () => {
