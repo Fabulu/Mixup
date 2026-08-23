@@ -50,6 +50,12 @@ Production build `20260823074549` publishes W517 through W521 from commits `e283
 448,021 bytes, and 77 overlap pairs. The full gate and three live confirmations passed. W526 is the next periodic
 publication point. The next confirmed fix is `objslot17.js` phase 5: round 2 must skip only the style rewrite,
 execute the common tail, and advance state 5 to 6 rather than return and stall.
+
+**D109 HAS A HARD PUBLIC-RELEASE DEADLINE OF 2026-08-28.** It requires a second, parallel asset-free site,
+preferably `ddpdoj.pages.dev`, which boots each game from player-supplied ROM files or a reusable local folder,
+publishes exact size/checksum/revision instructions, and gives detailed DaiOuJou variant diagnostics. The current
+asset-backed site stays live. After the bounded W523 stall fix, D109 outranks ordinary progression waves until
+its deadline-critical architecture and release path are secured.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
@@ -7317,3 +7323,45 @@ shared-label, state-7 preservation, and registry set passes 54/54 with no failur
 pass. At W502's bounded verification point, the full suite, `export-web.mjs`, publication, commit, and push
 had not yet run. W502 through W506 later published in production build `20260822223516`, and this W502
 record's missing next target is superseded by D37's W503 through W506 progression above.
+
+### D109: ASSET-FREE PUBLIC RELEASE ON A SECOND SITE BY 2026-08-28
+
+**OPEN, HARD DEADLINE 2026-08-28.** Keep the current asset-backed site online and deploy a second public
+version in parallel that ships no ROM-derived game assets. Try to obtain `ddpdoj.pages.dev`; if that Cloudflare
+Pages project name is unavailable, record the chosen fallback hostname rather than delaying the release.
+
+The second site needs a setup screen before game launch. A player chooses the game and supplies their legally
+owned ROM material locally. Support both individual file upload and pointing at a folder. Where the browser's
+File System Access API permits it, save the directory handle in IndexedDB, request or verify permission on the
+next visit, and let the player reuse it without choosing the folder every time. Provide a clear fallback for
+browsers that cannot persist a directory handle. ROM bytes stay local and must not be uploaded to the site or
+committed to the repository.
+
+For Batman, Gradius, and DaiOuJou, publish exact acquisition-neutral identity instructions: expected filename or
+MAME set member names, exact byte length, SHA-256, region, revision, and whether the input is a raw cartridge,
+archive member, encrypted program image, decrypted combined region, or another specific form. Verify the Batman
+region explicitly, including whether the accepted image is the USA/Europe release. DaiOuJou needs an especially
+precise manifest because many White Label, Black Label, revision, region, encrypted, decrypted, split-chip, and
+combined images circulate.
+
+Validation must compute and display each supplied file's actual name, byte length, and checksum before launch.
+A mismatch must not end at "wrong ROM". Report the expected identity beside the actual identity, identify a known
+alternate game/revision/region/set member when the checksum catalogue can do so, distinguish missing and duplicate
+files, explain archive or folder-shape mistakes, and name likely encrypted-versus-decrypted, split-versus-combined,
+byte-order, revision, or wrong-MAME-set causes when evidence supports them. Never claim a likely diagnosis as
+certain. Give the player exact corrective instructions and preserve a copyable diagnostic report.
+
+Definition of done:
+
+1. A separate asset-free distribution and Cloudflare Pages deployment exists alongside the current site.
+2. Its built files contain no ROM-derived asset shards, tables, seeds, captures, or other cartridge bytes.
+3. The startup setup screen supports file and folder selection, permission-aware saved-folder reuse, game-specific
+   validation, removal/replacement, and a privacy statement that processing is local.
+4. Every accepted input identity has filename/member, size, SHA-256, region/revision, and input-form documentation.
+5. Known wrong variants receive specific, evidence-backed diagnostics; unknown inputs receive complete actual
+   metadata and actionable generic troubleshooting.
+6. Batman, Gradius, and DaiOuJou each boot from valid user-supplied inputs without fetching cartridge assets from
+   the server.
+7. Build gates prove the asset-free package contains no generated cartridge data, deployment succeeds, and live
+   checks cover the setup screen, one valid local boot per game, persistence fallback, and rejection diagnostics.
+8. The current asset-backed production URL remains live and unchanged unless separately authorized.

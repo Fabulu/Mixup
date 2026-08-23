@@ -36,6 +36,12 @@ rewrite, then the common tail must advance state 5 to 6. Correct that source and
 `w373slot17.test.js`, run its focused file, land W523, then resume the default pair beyond logic frame 25,730.
 Do not add a new `stageend.js` Hibachi branch; the authentic final fork is already implemented in `hibachiend.js`.
 
+D109 has a hard deadline of 2026-08-28. Immediately after the bounded W523 stall fix, prioritize the second
+asset-free public deployment, preferably `ddpdoj.pages.dev`, while preserving the current site. It must boot all
+three games from player-supplied ROM files or a reusable local folder, persist a directory handle where supported,
+ship no cartridge assets, document exact names/sizes/SHA-256/revisions, and diagnose DaiOuJou variants in detail.
+Do not let ordinary progression waves consume the five-day release window before this architecture is secured.
+
 Slot [12] still takes its inherited zero-score no-name exit and commits type 8 with cartridge state 2. Slot [8]
 constructs at integration frame 11,529, copies that seed to shared state `$812E56`, and resets its init and blink
 fields. At 11,530 arm 2 initializes the high-score screen, installs the exact `$222638` TX palette, loads the
