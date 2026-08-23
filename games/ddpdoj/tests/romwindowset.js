@@ -371,7 +371,14 @@
 // its run-length immediate at `$273F08`. Measured: 794 -> 795 windows,
 // 450,451 -> 450,459 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 795;
+// ---------------------------------------------------------------------------
+// W543 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$269256 + $8` is type $1B's complete init stub. It abuts the prior art
+// window ending at `$269256`. Measured: 795 -> 796 windows,
+// 450,459 -> 450,467 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 796;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

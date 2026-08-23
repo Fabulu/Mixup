@@ -2935,6 +2935,10 @@ SHOT_WINDOWS.extend([
     #                   over $269740..$26974C. Overlap is fine and is already used on purpose in
     #                   this file (see the $2881D2 note); what is NOT fine is widening an existing
     #                   window, so a new one is declared instead of stretching that one.
+    # W543: live spawn dispatch reads the cartridge instruction immediate at init+2. The prior
+    # W353 art window ends exactly where this stub starts, so this remains a separate declaration.
+    (0x269256, 0x0008, "W543: type $1B init stub read by initDispatch, including its exact "
+                       "run-length word $0001 at $269258"),
     (0x2692D2, 0x007E, "W323: type $1B's five stage rows, 15-word record prototype and sub "
                        "prototype, $2692D2..$26934F, ending at its handler $269350"),
     (0x26970C, 0x0040, "W323: type $1B's three tables back to back -- the death arm's four rows "

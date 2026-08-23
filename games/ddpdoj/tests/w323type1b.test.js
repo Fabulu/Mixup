@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
+import { ENEMY } from '../src/enemies.js';
+import { initDispatch } from '../src/spawn.js';
 import { MoveTables } from '../src/vectors.js';
 import { UnportedLog } from '../src/unported.js';
 import { handlerMap, HANDLER_ADDRESSES } from '../src/handlers.js';
@@ -88,6 +90,18 @@ test('W323 the type table names exactly these two addresses', { skip: SKIP_IMG }
   const off = 0x1b * 8;
   assert.equal(IMG.readUInt32BE(0x267824 + off), 0x269256, 'the init stub');
   assert.equal(IMG.readUInt32BE(0x267824 + off + 4), HANDLER, 'and the handler');
+});
+
+test('W543 spawn dispatch reads type $1B\'s exact cartridge run length', { skip: SKIP }, () => {
+  const ram = new Ram();
+  const rec = ENEMY.bandCommon;
+  ram.setU8(rec + 0x0c, 0x1b);
+  ram.setU8(rec + 0x0d, 0x00);
+
+  const result = initDispatch(ram, ROM, rec, { note() {} }, () => {});
+  assert.deepEqual([result.init, result.initBody, result.runLen],
+    [0x269256, INITBODY, 1]);
+  assert.equal(ram.u32(rec + 0x4c), HANDLER, 'the adjacent low-table handler');
 });
 
 // ==================== 2. THE FIVE STAGE ROWS ARE ALL THE SAME, AND THAT IS MEASURED
