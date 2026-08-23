@@ -349,7 +349,15 @@
 // through the 68000's 24-bit external bus. Measured: 791 -> 792 windows,
 // 449,329 -> 449,349 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 792;
+// ---------------------------------------------------------------------------
+// W535 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$23F746 + $3C` is Type $9E's exact negative-velocity, record-convention
+// bucket-22 sprite enqueue routine. It ends at its `rts`, before the unrelated
+// saved-register body at $23F782. Measured: 792 -> 793 windows,
+// 449,349 -> 449,409 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 793;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

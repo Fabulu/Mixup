@@ -136,3 +136,23 @@ test('W215 real clock-$1D8 carrier draws and launches a live type-$9E child',
   assert.ok(ram.u16(BUCKETS[2].counter) > 0,
     'the live child emits its own cartridge sprite');
 });
+
+test('W535 type-$9E negative velocity uses the exact bucket-22 record stub',
+  { skip: SKIP }, () => {
+  const ram = new Ram();
+  const a5 = ENEMY.bandCommon;
+  const sub = 0x8145bc;
+  ram.setU16(0x8130d8, 1);
+  ram.setU32(a5 + 0x06, sub);
+  ram.setU16(a5 + 0x1a, 0xfe00);
+  ram.setU16(sub + 0x02, 0x2000);
+  ram.setU16(sub + 0x04, 0x3000);
+  ram.setU16(sub + 0x18, 0x0400);
+  ram.setU32(sub + 0x0a, 0x2c90f8);
+
+  const before = ram.u16(BUCKETS[22].counter);
+  assert.doesNotThrow(() => runHandler(0x27c2fc, ram, ROM, a5, {}));
+  assert.equal(ram.u16(BUCKETS[22].counter), before + 12);
+  assert.equal(ram.u16(BUCKETS[2].counter), 0,
+    'the negative branch must not use the positive-velocity bucket');
+});

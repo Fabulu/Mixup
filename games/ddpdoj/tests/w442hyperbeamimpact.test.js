@@ -502,8 +502,8 @@ test('W443 (was W442 test 8b): the hyper beam still takes its art from $24BAE2 '
 // 9. The standing tripwire. This wave declares no window.
 // ===========================================================================
 test('W442 adds no ROM window and later waves reconcile the exact registry', () => {
-  assert.equal(ROM_WINDOW_COUNT, 792,
-    'W534 adds the disjoint five-longword wrapped BIOS window');
+  assert.equal(ROM_WINDOW_COUNT, 793,
+    'W535 adds Type $9E\'s disjoint bucket-22 record enqueue stub');
   assert.equal(ROM_OVERLAP_PAIRS, 77,
     'W518 vertical glyph data overlaps W23 slot-[14] init data by ten exact bytes');
 });

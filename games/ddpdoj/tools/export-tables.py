@@ -85,6 +85,11 @@ SCAN_CAP = 512                # see speed_levels(): a scan cap, not the table en
 # know are used, because "wider than measured" fails loudly at the export and
 # "narrower than used" fails at runtime on the player's machine.
 SHOT_WINDOWS = [
+    # W535: Type $9E's signed negative velocity branch at $27C432 jumps to
+    # this record-convention sprite enqueue routine. It is the exact bucket-22
+    # body from `lea $809274,A0` through `rts`, disjoint from W255's later
+    # register-convention routine at $23F7C6.
+    (0x23F746, 0x003C, "W535 type-$9E negative-velocity bucket-22 record enqueue stub"),
     # W534: Type $9C's family-$11 satellites mark themselves dead when their
     # signed X crosses $7000, then the cartridge's next pass enters $27DD00
     # without installing the ordinary death-animation list. Their retained
