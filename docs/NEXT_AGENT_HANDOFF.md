@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-23 (W521 bounded and unpublished; W516 published in `20260823031213`)
+Updated: 2026-08-23 (W517-W521 published in `20260823074549`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -21,23 +21,26 @@ the same 99-record display without rerunning init. Shared screen state remains 0
 normal animation steps leave all seven timing-index-2 nodes at progress 4. No cue, create, kill, state-12 arm,
 or later object handoff is reached.
 
-W521 adds no ROM window, production source, or `Game#ctx` key. The local registry remains 783 windows,
-448,021 bytes, and 77 overlap pairs. The direct W521 natural integration passes 1/1. Because the registry did
-not change, W521 does not need registry sentinels. `export-tables.py --verify` passes. W521 reaches the standing
-five-wave publication cadence but remains unpublished because its bounded brief explicitly forbids web export,
-build, publication, commit, and push.
+W521 adds no ROM window, production source, or `Game#ctx` key. The registry remains 783 windows,
+448,021 bytes, and 77 overlap pairs. The direct W521 natural integration passes 1/1 and
+`export-tables.py --verify` passes.
 
-Production build `20260823031213` still publishes W512 through W516. Its quiet-tree publication passed
-4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate
-with zero skips, the 27/27 Batman gate with zero skips, the distribution build, and the ROM-leak guard,
-then passed deployment and three consecutive live confirmations. The published source commits are
-`434ac34`, `181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`. The published registry has 777 windows,
-446,635 bytes, and 76 overlap pairs.
+Production build `20260823074549` publishes W517 through W521. Browser assets were regenerated first.
+The quiet-tree gate passed 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746 Gradius
+units plus the 13/13 gate with zero skips, the 27/27 Batman gate with zero skips, the distribution build,
+and the ROM-leak guard, then passed deployment and three consecutive live confirmations. The source commits
+are `e28336b`, `f2266f8`, `7918d8a`, `4ce2536`, and `4c6a8c2`; publication repairs `e55af96` and `b2e671c`
+record W518's exact ten-byte overlap and the measured 77-pair registry. The leak guard checked 333 files,
+including 58 decompressed payloads, and the deployed distribution contains 339 files totalling 20,446 KB.
+W526 is the next periodic publication point.
 
-The exact next bounded continuation is the already active slot [8] arm-2 body at `$25B412`, waiting in its
-first live seven-node presentation chain. Follow that wait only in a later explicitly bounded wave. Do not trace
-the whole attract cycle, force input, inspect later slot-8 states, follow another ending arm, touch duplicate-only
-cleanup, or broaden into a guessed visual path.
+The next development phase is gameplay, not another tiny ending segment. First record cartridge evidence for the
+startup one-loop/two-loop choice and exact Hibachi qualification and branch rules. Then run all six authentic
+ship/style pairs `{0,2} x {2,4,6}` through Black Label loop 2 and fix the first concrete selector-specific,
+second-loop, or Hibachi blocker each run exposes. Ordinary launches must remain mortal; invulnerable labelled
+progression oracles remain explicit test tools only. When ending work resumes, seed directly at known presentation
+entries and batch complete script-list families or whole variants. Do not return to one commit per understood
+ending script or replay the full 11,000-frame chain for every segment.
 
 **W497 remains the first substantial D26 implementation slice.** The cartridge-proven ship domain is `{0,2}`
 and the style domain is `{2,4,6}`. Selector 0 is Type-A and selector 2 is Type-B. The cartridge census does
@@ -83,7 +86,8 @@ Extending the test made arm 2 authentically reuse animation addresses that W518 
 final snapshot. Those older resource-retirement assertions now capture the same zero words at their respective
 handoff frames, before reuse. No production module, ROM window, context key, or registry sentinel changes.
 The registry remains 783 windows, 448,021 bytes, and 77 overlap pairs. The direct integration passes 1/1 and
-`export-tables.py --verify` passes. The full suite, web export, build, publication, commit, and push do not run.
+`export-tables.py --verify` passes. At W521's bounded verification point the full suite and publication did not
+run; the subsequent quiet-tree publication is recorded in the current-status block above.
 
 ## W520 VERIFIED: SLOT [12] NO-NAME PASS-THROUGH
 
@@ -99,7 +103,7 @@ retirement. The next frame drains both queues and reaches the deliberate boundar
 No input is synthesized and no later name-entry state is inspected.
 
 No new window, production source, or context key is required. The registry stays at 783 windows, 448,021 bytes,
-and 76 overlap pairs. The direct integration passes 1/1 and `export-tables.py --verify` passes. Registry sentinels,
+and 77 overlap pairs. The direct integration passes 1/1 and `export-tables.py --verify` passes. Registry sentinels,
 the full suite, browser export, build, publication, commit, and push do not run.
 
 ## W519 VERIFIED: SLOT [14] NORMAL PATH

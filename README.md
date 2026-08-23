@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W516 carries the natural stage-5 type `$13` handoff through variant 0's complete five-script list and sequence list A's first eight entries, ending with 38 ordered pool spawns, exact primary and auxiliary resource lifecycles, and cursor advance to entry 8 at `$29177C`; production build `20260823031213` publishes W512 through W516, and the full second loop and docket remain in progress |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W517 completes sequence list A, W518 through W521 follow the normal handoff through slots [15], [14], [12], and [8] to the first stable high-score presentation; production build `20260823074549` publishes W517 through W521, and gameplay work now returns to Hibachi, authentic loop selection, and all six ship/style pairs through loop 2 |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -174,20 +174,17 @@ npm run typecheck                               # tsc over the ports - no ROM ne
 refuses to publish on a red gate or an unexpected gate skip. `--only gradius` /
 `--only ddpdoj` gate one game; `--dry` gates and builds without deploying.
 
-At published DDPDOJ W516, its unit suite records **4,404/4,404 passing**.
+At published DDPDOJ W521, its unit suite records **4,404/4,404 passing**.
 The same publication passed all **746/746 Gradius units**, the **13/13
 Gradius gate with zero skips**, the DDPDOJ bundle and web-fetch gates, the **27/27
 Batman gate with zero skips**, the distribution build, and the repository ROM-leak
-guard. Production build `20260823031213` supersedes `20260823005140`, carries
-W512 through W516, and passed deployment plus three consecutive live confirmations.
-W512's expanded direct integration passes 1/1, and its compact directly affected set
-passes 32/32. W513's direct natural integration passes 1/1, and its compact directly
-affected set passes 63/63 with both exact registry sentinels included. W514's direct
-natural integration passes 1/1 and both focused exact registry sentinels pass 2/2.
-W515 and W516 each pass direct natural integration 1/1 without a new interpreter arm;
-both focused exact registry sentinels pass 2/2. The published export has 777 windows,
-446,635 bytes, and 76 overlap pairs. The source commits are `434ac34`, `181172d`,
-`ff007e5`, `f99a3a3`, and `7f29cbb`. W521 is the next periodic publication point.
+guard. Production build `20260823074549` supersedes `20260823031213`, carries
+W517 through W521, and passed deployment plus three consecutive live confirmations.
+The published export has 783 windows, 448,021 bytes, and 77 overlap pairs. The source
+commits are `e28336b`, `f2266f8`, `7918d8a`, `4ce2536`, and `4c6a8c2`; publication
+repairs `e55af96` and `b2e671c` reconcile the measured overlap registry. The leak guard
+checked 333 files, including 58 decompressed payloads, and the deployed distribution
+contains 339 files totalling 20,446 KB. W526 is the next periodic publication point.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -254,7 +251,7 @@ The active translation targets Black Label Version-B first. Its source now spans
 the main loop, player and all three weapon systems, bombs, bullets, enemies,
 bosses, items and bees, stage and result flow, score and chaining, hypers, rank,
 HUD, sound posts, and high-score name entry. The browser port and generated
-asset path are live, and W511 published as production build `20260823005140`
+asset path are live, and W521 published as production build `20260823074549`
 after all 4,404 DDPDOJ unit tests passed. W477 shipped the first
 15 optional mods, including explicit Invincibility, while an empty loadout remains
 vanilla. W492 through W496 raise the catalogue to 30 with Hyper Overdrive, Adaptive Slow
@@ -300,8 +297,8 @@ it when the other axis cannot grow, overlays translucent mobile controls, and sh
 floating stick's origin and bounded displacement only while held. Coverage is 101 ported,
 25 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child,
 and the remaining static `$48 -> $54` edge is disabled behind Version B's
-`$2714AE` return, so no next runtime blocker has been established. W492 through W511
-are live in production build `20260823005140`; W492 through W496 supplied all fifteen requested transformative
+`$2714AE` return, so no next runtime blocker has been established. W492 through W521
+are live in production build `20260823074549`; W492 through W496 supplied all fifteen requested transformative
 mods. W497 is the first substantial D26 cartridge-choice slice: ordinary browser starts
 can select Type-A or Type-B with numeric style selectors 2, 4, or 6, independently
 of mods. Both ships have their complete browser-packed 17-image animation, attached
@@ -343,13 +340,17 @@ W516's four groups emit 38 records: the first 26 arrive on consecutive `$0000` c
 `$0202` spaces the final 12 by three frames. After the `$C0` wait, `$8003 $0003` completes its
 one-node `$290E76` primary resource while `$8005 $0000 $0003` runs the two-node `$290D42`
 first phase for 32 steps and returns directly to idle because banner 0 is already live. `$FFFF`
-advances the cursor from 28 to 32, clears the pool, and reaches entry 8 at `$29177C`. The current
-registry has 777 windows and 446,635 bytes with 76 overlap pairs. Production
-build `20260823031213` publishes W512 through W516 after 4,404/4,404 DDPDOJ units, all bundle
-and web gates, the cross-game gates, the distribution build, the ROM-leak guard, deployment,
-and three consecutive live confirmations. The five source commits are `434ac34`, `181172d`,
-`ff007e5`, `f99a3a3`, and `7f29cbb`; W521 is the next periodic publication point. The exact next
-gameplay edge is sequence list A entry 8 at `$29177C`.
+advances the cursor from 28 to 32, clears the pool, and reaches entry 8 at `$29177C`. W517 finishes
+sequence list A. W518 follows the normal handoff through slot [15]'s complete credits-text lifecycle, W519
+through slot [14]'s normal Game Over lifecycle, W520 through slot [12]'s zero-score no-name exit, and W521
+into slot [8]'s first stable state-2 high-score presentation. The current registry has 783 windows and 448,021
+bytes with 77 overlap pairs. Production build `20260823074549` publishes W517 through W521 after
+4,404/4,404 DDPDOJ units, all bundle and web gates, the cross-game gates, the distribution build, the
+ROM-leak guard, deployment, and three consecutive live confirmations. The source commits are `e28336b`,
+`f2266f8`, `7918d8a`, `4ce2536`, and `4c6a8c2`; publication repairs are `e55af96` and `b2e671c`.
+Gameplay work now returns to authentic one-loop/two-loop selection, Hibachi qualification, and exercising all
+six ship/style pairs through Black Label loop 2. Remaining ending variants will be batched by complete family
+or variant rather than split into one commit per understood script.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,

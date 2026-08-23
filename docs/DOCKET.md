@@ -28,7 +28,7 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W521 (2026-08-23), UNPUBLISHED AFTER BUILD `20260823031213`.** Dispatch remains **18 of 20**: W503 ports and registers
+**STANDING AS OF W521 (2026-08-23), PUBLISHED IN BUILD `20260823074549`.** Dispatch remains **18 of 20**: W503 ports and registers
 `[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W508 drive that exact
 natural loop-2 edge through type 7's complete five-script variant-0 list; W509 through W517 complete all nine
 sequence-list A scripts. W518 follows the normal edge through slot [15], W519 through slot [14], W520 through
@@ -36,11 +36,12 @@ slot [12], and W521 reuses already ported slot [8] at `$25A770`. Its state-2 see
 arm 2 initializes the high-score presentation at `$25B412`. Two presentation calls each queue 99 sprite records
 while the seven-node `$25BA46` chain remains live; screen state stays 0, timer stays `$F0`, and both allocation
 queues remain empty. The bounded run stops with all seven nodes at progress 4, before chain completion or any
-later slot-8 state. No ROM window, production source, or context key changed; the local registry remains 783
-windows, 448,021 bytes, and 77 overlap pairs. Production build `20260823031213` still publishes W512 through
-W516 from commits `434ac34`, `181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`; its registry has 777 windows,
-446,635 bytes, and 76 overlap pairs. W521 reaches the five-wave publication cadence but remains unpublished by
-its explicit bounded brief. The two without a handler are `[16] $256E7A` and `[18] $24902A`.
+later slot-8 state. The registry has 783 windows, 448,021 bytes, and 77 overlap pairs. Production build
+`20260823074549` publishes W517 through W521 from commits `e28336b`, `f2266f8`, `7918d8a`, `4ce2536`, and
+`4c6a8c2`; publication repairs `e55af96` and `b2e671c` reconcile W518's exact forced overlap. The full gate and
+three live confirmations passed. W526 is the next periodic publication point. Development now pivots to exact
+one-loop/two-loop and Hibachi rules, then complete Black Label loop-2 exercise of all six ship/style pairs. The
+two dispatch types without a handler are `[16] $256E7A` and `[18] $24902A`.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
@@ -2383,10 +2384,33 @@ counter reaches zero at +333, when slot [14] clears shared animation state, queu
 priority, and retires by its long id. Both queues drain on the next frame. The deliberate type-`$0C` handler stops
 before slot [12] at `$28F3AC`; no next-object body or unrelated ending path was inspected or executed.
 
-No new ROM window is needed. The local registry remains exactly 783 windows, 448,021 bytes, and 76 overlap
+No new ROM window is needed. The local registry remains exactly 783 windows, 448,021 bytes, and 77 overlap
 pairs. The expanded direct integration passes 1/1. Registry verification was not rerun because no declaration
 changed. No full suite, web-asset export, build, publish, commit, or push ran. W519 is the third unpublished wave
 after W516; W521 remains the publication point.
+
+**W517-W521 PUBLICATION FOLLOW-UP:** Production build `20260823074549` publishes all five waves from
+source commits `e28336b`, `f2266f8`, `7918d8a`, `4ce2536`, and `4c6a8c2`; publication repairs `e55af96`
+and `b2e671c` reconcile W518's forced ten-byte overlap and both final registry sentinels. Browser assets were
+regenerated first: 4,907 sprite streams across 19 shards, 12,809.0 KiB total, with 920.6 KiB before first frame.
+The quiet-tree gate passed 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746 Gradius units
+plus the 13/13 gate with zero skips, the 27/27 Batman gate with zero skips, the distribution build, and the
+ROM-leak guard. The leak guard checked 333 files, including 58 decompressed payloads and 12 ROMs with six
+deliberate exceptions. Deployment contains 339 files totalling 20,446 KB. Three consecutive live confirmations
+passed. The published registry has 783 windows, 448,021 bytes, and 77 overlap pairs. W526 is the next periodic
+publication point.
+
+**W520-W521 COMPLETE THE NORMAL HANDOFF TO THE FIRST HIGH-SCORE PRESENTATION.** W520 follows slot
+[12]'s zero-score no-name path: it installs the four exact name-entry palettes, owes no name, restores the TX
+palette, stages type 8 at state 2, and retires. W521 constructs slot [8] and runs its state-2 arm through the first
+stable seven-node, 99-record high-score display boundary. Neither wave adds a production module, context key, or
+ROM window. Their direct integration passes 1/1 and `export-tables.py --verify` passes.
+
+The next phase is gameplay rather than another small ending script. Record exact cartridge evidence for the
+startup one-loop/two-loop choice and Hibachi qualification and branch rules, then exercise all six authentic
+ship/style pairs `{0,2} x {2,4,6}` through Black Label loop 2 and fix concrete blockers. When ending work
+resumes, seed directly at known presentation entries and batch complete script-list families or whole variants.
+Do not return to one commit per understood script or replay the complete 11,000-frame chain for every segment.
 
 **W512-W516 PUBLICATION FOLLOW-UP:** Production build `20260823031213` publishes all five waves from
 source commits `434ac34`, `181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`. Browser assets were regenerated
@@ -2409,9 +2433,9 @@ gate with zero skips, the distribution build, and the ROM-leak guard. Deployment
 live confirmations passed.
 
 This does not yet identify every ending-selection condition or close D37. W519 follows sequence list A's normal
-slot [15] and slot [14] paths through their concrete lifecycles and reaches the existing slot [12] entry at
-`$28F3AC`. That exact next executable edge remains deliberately unfollowed rather than broadening into slot [12]
-or another ending arm.
+slot [15] and slot [14] paths, W520 follows the zero-score slot [12] exit, and W521 reaches slot [8]'s first stable
+state-2 high-score presentation. Further ending work is deliberately deferred behind one-loop/two-loop and
+Hibachi evidence plus six-pair Black Label loop-2 exercise, and will be batched when it resumes.
 
 **W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own
 text says otherwise: `$24910E` is `'Asic27 Test'`, `$24911A` is `'Wait or Press Any To Start !!'`, and the
