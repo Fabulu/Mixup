@@ -110,11 +110,16 @@
       </div>
     </section>
 
-    <section class="panel pending" aria-labelledby="boot-title">
+    <section class="panel boot" aria-labelledby="boot-title">
       <p class="step">05 / BOOT</p>
-      <h2 id="boot-title">Game launch is not enabled yet</h2>
-      <p>This foundation build validates local files and saved-folder behavior. It is not the compliant public release yet: Batman, Gradius, and DaiOuJou still need their local extraction and boot paths connected before the 2026-08-28 deadline.</p>
-      <button type="button" disabled>Launch game (pending)</button>
+      <h2 id="boot-title">Launch a validated local game</h2>
+      <p id="boot-help">Select an unlocked primary world. DaiOuJou can now boot directly from its validated local members with no captures, seeds, generated cartridge tables, or game-data requests. Batman and Gradius launch paths are still being connected.</p>
+      <button id="launch-game" type="button" disabled>Choose an unlocked primary world</button>
+      <p id="boot-status" role="status" aria-live="polite"></p>
+      <div id="game-screen" class="game-screen" hidden>
+        <canvas id="game-canvas" tabindex="0" aria-label="DaiOuJou game screen"></canvas>
+        <p>Keyboard: arrows or WASD move, Y/Z/Space shoots, X bombs, C auto, Enter starts, and 5 inserts a coin. Standard and maintained non-Standard gamepads are supported.</p>
+      </div>
     </section>
   </main>
 

@@ -144,8 +144,20 @@ pre { min-height: 116px; max-height: 460px; overflow: auto; margin: 0; padding: 
 .role-preview div { display: grid; gap: 5px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; }
 .role-preview span { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; }
 .role-preview div[aria-disabled="true"] { opacity: 0.45; }
-.pending { border-color: rgba(213, 255, 73, 0.45); }
-.pending p:not(.step) { max-width: 780px; color: var(--muted); line-height: 1.6; }
+.boot { border-color: rgba(213, 255, 73, 0.45); }
+.boot p:not(.step) { max-width: 780px; color: var(--muted); line-height: 1.6; }
+#boot-status { min-height: 1.5em; }
+.game-screen { margin-top: 18px; }
+.game-screen canvas {
+  display: block;
+  width: min(100%, 448px);
+  height: auto;
+  margin-inline: auto;
+  border: 1px solid var(--line);
+  background: #000;
+  image-rendering: pixelated;
+}
+.game-screen p { margin: 12px auto 0; text-align: center; }
 footer { display: flex; justify-content: space-between; gap: 20px; padding: 28px 0 46px; color: #898f8b; font-size: 0.78rem; }
 code { font-family: ui-monospace, monospace; }
 

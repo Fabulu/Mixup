@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DIST_ROM = path.join(ROOT, 'dist-rom');
-export const SOURCE_ALLOWLIST = Object.freeze([
+const SHELL_ALLOWLIST = Object.freeze([
   'rom-site/index.html',
   'rom-site/styles.css',
   'rom-site/src/buildid.js',
@@ -19,6 +19,56 @@ export const SOURCE_ALLOWLIST = Object.freeze([
   'rom-site/src/selection.js',
   'rom-site/src/setup.js',
 ]);
+const RUNTIME_ROOTS = Object.freeze(['rom-site/src/ddpdoj-local.js']);
+const FROM_MODULE_RE = /^\s*(?:import|export)\s+[^;]*?\bfrom\s*['"]([^'"]+)['"]/gm;
+const SIDE_EFFECT_MODULE_RE = /^\s*import\s*['"]([^'"]+)['"]/gm;
+const DYNAMIC_MODULE_RE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
+
+function posixPath(value) { return value.split(path.sep).join('/'); }
+
+function resolveModule(source, specifier) {
+  if (specifier.startsWith('/')) return specifier.slice(1);
+  if (!specifier.startsWith('.')) {
+    throw new Error(`asset-free build: bare browser import ${specifier} in ${source}`);
+  }
+  return path.posix.normalize(path.posix.join(path.posix.dirname(source), specifier));
+}
+
+function browserModuleClosure(roots) {
+  const pending = roots.slice();
+  const seen = new Set();
+  while (pending.length) {
+    const source = pending.pop();
+    if (seen.has(source)) continue;
+    if (!(source.startsWith('rom-site/src/') || source.startsWith('games/ddpdoj/src/')
+        || source.startsWith('shared/'))) {
+      throw new Error(`asset-free build: browser module escapes approved source roots: ${source}`);
+    }
+    const absolute = path.join(ROOT, source);
+    if (!fs.statSync(absolute).isFile()) {
+      throw new Error(`asset-free build: browser module is not a file: ${source}`);
+    }
+    seen.add(source);
+    const body = fs.readFileSync(absolute, 'utf8');
+    for (const pattern of [FROM_MODULE_RE, SIDE_EFFECT_MODULE_RE, DYNAMIC_MODULE_RE]) {
+      pattern.lastIndex = 0;
+      let match;
+      while ((match = pattern.exec(body))) {
+        const dependency = resolveModule(source, match[1]);
+        if (!dependency.endsWith('.js')) {
+          throw new Error(`asset-free build: non-JavaScript browser import ${match[1]} in ${source}`);
+        }
+        pending.push(dependency);
+      }
+    }
+  }
+  return Array.from(seen).sort();
+}
+
+export const SOURCE_ALLOWLIST = Object.freeze(Array.from(new Set([
+  ...SHELL_ALLOWLIST,
+  ...browserModuleClosure(RUNTIME_ROOTS),
+])).sort());
 export const GENERATED_ALLOWLIST = Object.freeze(['_headers']);
 
 const FORBIDDEN_SEGMENTS = new Set([
@@ -56,8 +106,12 @@ function cartridgeCandidates(root) {
   });
 }
 
+function outputRelative(source) {
+  return source.startsWith('rom-site/') ? source.slice('rom-site/'.length) : source;
+}
+
 export function auditAssetFreeOutput(directory, options = {}) {
-  const expected = [...SOURCE_ALLOWLIST.map((source) => source.replace(/^rom-site\//, '')),
+  const expected = [...SOURCE_ALLOWLIST.map(outputRelative),
     ...GENERATED_ALLOWLIST].sort();
   const actual = walk(directory);
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -76,8 +130,9 @@ export function auditAssetFreeOutput(directory, options = {}) {
       throw new Error(`asset-free audit: cartridge/archive extension is forbidden: ${relative}`);
     }
     const size = fs.statSync(path.join(directory, relative)).size;
-    if (size > 256 * 1024) {
-      throw new Error(`asset-free audit: hand-authored shell file exceeds 256 KiB: ${relative} (${size} bytes)`);
+    const limit = path.extname(relative).toLowerCase() === '.js' ? 768 * 1024 : 256 * 1024;
+    if (size > limit) {
+      throw new Error(`asset-free audit: hand-authored shell file exceeds ${limit} bytes: ${relative} (${size} bytes)`);
     }
   }
 
@@ -108,7 +163,7 @@ export function buildAssetFreeSite(options = {}) {
   for (const source of SOURCE_ALLOWLIST) {
     const sourcePath = path.join(ROOT, source);
     if (!fs.statSync(sourcePath).isFile()) throw new Error(`asset-free build: allowlisted source is not a file: ${source}`);
-    const relative = source.replace(/^rom-site\//, '');
+    const relative = outputRelative(source);
     const destination = path.join(DIST_ROM, relative);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     if (relative === 'src/buildid.js') {

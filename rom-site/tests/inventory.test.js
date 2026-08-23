@@ -20,9 +20,9 @@ function allExactFiles() {
 }
 
 function identityDigest(counter) {
-  return async (_algorithm, bytes) => {
+  return async (algorithm, bytes) => {
     counter.calls++;
-    return bytes;
+    return algorithm === 'SHA-1' ? bytes.slice(0, 20) : bytes;
   };
 }
 
@@ -37,6 +37,9 @@ test('one mixed folder hashes each file once and unlocks all three games', async
   assert.equal(inventory.games.batman.acceptedFiles.length, 1);
   assert.equal(inventory.games.gradius.acceptedFiles.length, 1);
   assert.equal(inventory.games.ddpdoj.acceptedFiles.length, 10);
+  assert.equal(inventory.games.ddpdoj.acceptedInputs.length, 10);
+  assert.deepEqual(inventory.games.ddpdoj.acceptedInputs[0].satisfiesNames,
+    [GAME_CATALOGUE.ddpdoj.accepted[0].name]);
 });
 
 test('unknown extras remain diagnostic but do not relock an exact game', async () => {
@@ -51,12 +54,34 @@ test('unknown extras remain diagnostic but do not relock an exact game', async (
   const inventory = await inspectInventory([batman, unknown], {
     digest: identityDigest(counter),
   });
-  assert.equal(counter.calls, 2);
+  assert.equal(counter.calls, 3, 'accepted input needs SHA-256; unknown input also gets SHA-1');
   assert.equal(inventory.games.batman.complete, true);
   assert.equal(inventory.games.batman.acceptedFiles.length, 1);
   assert.equal(inventory.games.batman.extras.length, 1);
   assert.equal(inventory.games.batman.extras[0].status, 'unknown');
   assert.equal(inventory.games.gradius.complete, false);
+  assert.equal(inventory.games.ddpdoj.complete, false);
+});
+
+test('unknown SHA-256 inputs get one evidence-bounded SHA-1 revision lookup', async () => {
+  const alternate = GAME_CATALOGUE.ddpdoj.knownAlternates.find((identity) =>
+    identity.set === 'ddpdojblkb');
+  const sha1 = Buffer.from(alternate.sha1, 'hex');
+  const file = {
+    name: alternate.name,
+    size: alternate.size,
+    arrayBuffer: async () => sha1.buffer.slice(sha1.byteOffset, sha1.byteOffset + sha1.byteLength),
+  };
+  const algorithms = [];
+  const inventory = await inspectInventory([file], {
+    digest: async (algorithm, bytes) => {
+      algorithms.push(algorithm);
+      return algorithm === 'SHA-256' ? Buffer.alloc(32, 0xaa) : bytes;
+    },
+  });
+  assert.deepEqual(algorithms, ['SHA-256', 'SHA-1']);
+  assert.equal(inventory.games.ddpdoj.reports[0].status, 'known-alternate-revision');
+  assert.match(inventory.games.ddpdoj.reports[0].knownIdentity, /ddpdojblkb/);
   assert.equal(inventory.games.ddpdoj.complete, false);
 });
 
@@ -76,6 +101,8 @@ test('decrypted maincpu replaces both raw u45 and BIOS requirements', async () =
   assert.deepEqual(summary.missing, []);
   assert.deepEqual(summary.duplicates, []);
   assert.equal(summary.acceptedFiles.length, 9);
+  assert.equal(summary.acceptedInputs.length, 9);
+  assert.ok(summary.acceptedInputs.some((input) => input.satisfiesNames.length === 2));
 });
 
 test('duplicate or conflicting required identities lock only the affected game', async () => {

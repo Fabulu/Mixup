@@ -6,6 +6,7 @@ export const CATALOGUE_PROVENANCE = Object.freeze({
   gradius: 'games/gradius/game.json and games/gradius/README.md; SHA-256 independently measured from the verified ignored local image on 2026-08-23',
   ddpdoj: 'games/ddpdoj/rip/assets/manifest.json and games/ddpdoj/NOTES-machine.md; generated manifest values transcribed into this tracked catalogue on 2026-08-23',
   ddpdojDecrypted: 'games/ddpdoj/README.md, decrypted combined maincpu image measurement',
+  ddpdojAlternates: 'MAME 0.289 src/mame/igs/pgm.cpp ROM_START and GAME declarations, read 2026-08-23',
 });
 
 const member = (name, size, sha256, inputForm, extra = {}) => Object.freeze({
@@ -71,6 +72,57 @@ const ddpdojMembers = Object.freeze([
   member('pgm_t01s.rom', 2097152, 'c128ef491505564550f3fe61363a5d7671d102721710ed3bcf91c14d1b355b19', 'Extracted MAME BIOS text member', { crc32: '1a7123a0' }),
 ]);
 
+const knownMameMember = (name, size, sha1, crc32, set, region, revision, inputForm) =>
+  Object.freeze({ name, size, sha1, crc32, set, region, revision, inputForm });
+
+const ddpdojKnownAlternates = Object.freeze([
+  knownMameMember('ddp3_v101_16m.u36', 0x200000,
+    '59c1a76243e587c07215c8a76649401ef0bff7c7', 'fba2180e', 'ddp3', 'World',
+    'DoDonPachi III, 2002.05.15 Master Ver',
+    'Raw MAME 68k program member; ROM_LOAD16_WORD_SWAP'),
+  knownMameMember('ddp3_v101.u36', 0x200000,
+    'f18d791c034b0a3d85888a92fb5d326ee3deb04f', '195b5c1e', 'ddpdoj', 'Japan',
+    '2002.04.05.Master Ver, 68k label V101',
+    'Raw MAME 68k program member; ROM_LOAD16_WORD_SWAP'),
+  knownMameMember('ddp3_d_d_1_0.u36', 0x200000,
+    '4c24ea206140863d456179750366921442e1d2b8', '5d3f85ba', 'ddpdoja', 'Japan',
+    '2002.04.05.Master Ver, 68k label V100',
+    'Raw MAME 68k program member; ROM_LOAD16_WORD_SWAP'),
+  knownMameMember('dd_v100.u36', 0x200000,
+    'aca2fe35ba0ab3628900fa2aba2d22fc4fd7046d', '7da0c1e4', 'ddpdojb', 'Japan',
+    '2002.04.05 Master Ver',
+    'Raw MAME 68k program member; ROM_LOAD16_WORD_SWAP'),
+  knownMameMember('pgmbios.u20.27c210', 0x020000,
+    '025a9f2bb64887699bf7ccab0f2ccfc55c3ad75c', '1d2a7c15', 'ddpdojp', 'Japan',
+    '2002.04.05 Master Ver, location test',
+    'Location-test split BIOS member; ROM_LOAD16_WORD_SWAP'),
+  knownMameMember('ca008.cod_prom.u13.27c322', 0x400000,
+    'c4c5425a2455cb95555d94bbf8afc83cf0b140e8', '2ba7fa3b', 'ddpdojp', 'Japan',
+    '2002.04.05 Master Ver, location test',
+    'Location-test split 68k program member; ROM_LOAD16_WORD_SWAP'),
+  knownMameMember('ddb_1dot.u45', 0x200000,
+    '91abc7fc4722f3d01d76a4c1ae14c4132e4e576c', '265f26cd', 'ddpdojblka', 'Japan',
+    '2002.10.07.Black Ver, older',
+    'Raw MAME 68k program member; ROM_LOAD16_WORD_SWAP'),
+  knownMameMember('ddb10.u45', 0x200000,
+    '9a432e5e1ebe61aafd737b6acc905653e5af0d38', '72b35510', 'ddpdojblkb', 'Japan',
+    '2002.10.07 Black Ver',
+    'Raw MAME 68k program member; ROM_LOAD16_WORD_SWAP'),
+  knownMameMember('ddp3blk_defaults.nv', 0x020000,
+    '5b80d3c4c764895c40953a66161d4dd84f742604', 'a1651904',
+    'ddpdojblka or ddpdojblkb', 'Japan',
+    'Black Label alternate default NVRAM, shared by the older and undotted sets',
+    'Extracted MAME default NVRAM member'),
+  knownMameMember('ddp_doj_u1.bin', 0x400000,
+    '187c37e5319395e36a1cf3626b53e08df615cc0c', 'eb4ab06a', 'ddpdojblkbl', 'Japan',
+    '2002.10.07 Black Ver., bootleg Knights of Valour Super Heroes conversion',
+    'Bootleg combined 68k program member; ROM_LOAD16_WORD_SWAP'),
+  knownMameMember('b04401w064_corrupt.u1', 0x800000,
+    'eef1cd566bc70ebf45f047e56026803d5c1dac43', '8cbff066', 'ddpdojblkbl', 'Japan',
+    '2002.10.07 Black Ver., bootleg Knights of Valour Super Heroes conversion',
+    'Bootleg corrupt bitmap member recorded by MAME'),
+]);
+
 const ddpdoj = Object.freeze({
   id: 'ddpdoj',
   title: 'DoDonPachi DaiOuJou Black Label',
@@ -82,9 +134,10 @@ const ddpdoj = Object.freeze({
     'ddb10_10_8_434f.u45 is the raw encrypted program member. MAME loads it with 16-bit word swapping and decrypts it in place.',
     'The protection ROM is undumped. MAME simulates the protection device.',
     'This cartridge also contains Version A, 2002.04.05 MASTER VER. A Version A chooser result does not imply a different cartridge digest.',
-    'Other sets such as ddp3, ddpdoj, ddpdoja, ddpdojb, ddpdojp, ddpdojblka, ddpdojblkb, and ddpdojblkbl are not assigned by digest until exact alternate checksums are tracked.',
+    'MAME SHA-1 and CRC32 identities distinguish ddp3, ddpdoj, ddpdoja, ddpdojb, ddpdojp, ddpdojblka, ddpdojblkb, and ddpdojblkbl without assigning an unknown digest to a guessed set.',
   ],
   accepted: ddpdojMembers,
+  knownAlternates: ddpdojKnownAlternates,
   alternateForms: Object.freeze([
     member(null, 6291456,
       '4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c',

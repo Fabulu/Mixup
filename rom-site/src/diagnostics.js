@@ -23,7 +23,12 @@ function expectedView(identity) {
 }
 
 function actualView(actual) {
-  return { name: actual.name, size: actual.size, sha256: actual.sha256 };
+  return {
+    name: actual.name,
+    size: actual.size,
+    sha256: actual.sha256,
+    ...(actual.sha1 ? { sha1: actual.sha1 } : {}),
+  };
 }
 
 function result(status, actual, options = {}) {
@@ -46,8 +51,15 @@ export function classifyMetadata(gameId, actual) {
     throw new TypeError('Actual file metadata needs name, integer size, and SHA-256');
   }
 
+  if (actual.sha1 != null && !/^[0-9a-f]{40}$/i.test(actual.sha1)) {
+    throw new TypeError('Actual file SHA-1 must be 40 hexadecimal characters when supplied');
+  }
   const sha256 = actual.sha256.toLowerCase();
-  const normalized = { ...actual, sha256 };
+  const normalized = {
+    ...actual,
+    sha256,
+    ...(actual.sha1 ? { sha1: actual.sha1.toLowerCase() } : {}),
+  };
   const selectedKnown = [
     ...game.accepted.map((identity) => ({ identity, alternate: false })),
     ...(game.alternateForms ?? []).map((identity) => ({ identity, alternate: true })),
@@ -71,6 +83,29 @@ export function classifyMetadata(gameId, actual) {
       likelyCauses: renamed
         ? ['The bytes are an exact accepted match, but the file was renamed. Renaming is allowed.']
         : [],
+    });
+  }
+
+  const knownRevision = game.knownAlternates?.find((identity) =>
+    identity.sha1 === normalized.sha1 && identity.size === actual.size);
+  if (knownRevision) {
+    const acceptedRole = knownRevision.inputForm.includes('program') ? 'ddb10_10_8_434f.u45'
+      : knownRevision.inputForm.includes('BIOS') ? 'ddp3_bios.u37'
+        : knownRevision.inputForm.includes('NVRAM') ? 'ddp3blk_defaults.nv'
+          : knownRevision.inputForm.includes('bitmap') ? 'cave_b04401w064.u1' : null;
+    const expected = game.accepted.find((identity) => identity.name === actual.name)
+      ?? game.accepted.find((identity) => identity.name === acceptedRole);
+    return result('known-alternate-revision', normalized, {
+      expected,
+      knownIdentity: `${knownRevision.set}: ${knownRevision.revision}; ${knownRevision.region}; `
+        + `${knownRevision.inputForm}; exact member ${knownRevision.name}, `
+        + `SHA-1 ${knownRevision.sha1}, CRC32 ${knownRevision.crc32}`,
+      likelyCauses: actual.name === knownRevision.name ? [] : [
+        `The bytes exactly match MAME member ${knownRevision.name}, but the selected file was renamed.`,
+      ],
+      correctiveAction: `This launch currently accepts only ${game.set} `
+        + `${game.revision}. Keep this exact ${knownRevision.set} member with its matching set, `
+        + 'or supply the accepted identity set listed below.',
     });
   }
 
@@ -142,19 +177,40 @@ export function classifyMetadata(gameId, actual) {
   });
 }
 
-export async function sha256Hex(file, digest = globalThis.crypto?.subtle?.digest?.bind(globalThis.crypto.subtle)) {
-  if (typeof digest !== 'function') throw new Error('Web Crypto SHA-256 is not available in this browser.');
-  const bytes = await file.arrayBuffer();
-  const hash = new Uint8Array(await digest('SHA-256', bytes));
+async function digestHex(algorithm, bytes,
+  digest = globalThis.crypto?.subtle?.digest?.bind(globalThis.crypto.subtle)) {
+  if (typeof digest !== 'function') throw new Error(`Web Crypto ${algorithm} is not available in this browser.`);
+  const hash = new Uint8Array(await digest(algorithm, bytes));
   return Array.from(hash, (value) => value.toString(16).padStart(2, '0')).join('');
+}
+
+export async function sha256Hex(file,
+  digest = globalThis.crypto?.subtle?.digest?.bind(globalThis.crypto.subtle)) {
+  return digestHex('SHA-256', await file.arrayBuffer(), digest);
+}
+
+function knownBySha256(metadata) {
+  if (allKnown().some(({ identity }) =>
+    identity.sha256 === metadata.sha256 && identity.size === metadata.size)) return true;
+  const u45 = GAME_CATALOGUE.ddpdoj.accepted.find((identity) =>
+    identity.name === 'ddb10_10_8_434f.u45');
+  return u45.byteSwappedSha256 === metadata.sha256 && u45.size === metadata.size;
 }
 
 export async function inspectInventory(files, options = {}) {
   const digest = options.digest;
   const items = [];
   for (const file of files) {
-    const sha256 = await sha256Hex(file, digest);
-    items.push({ file, metadata: { name: file.name, size: file.size, sha256 } });
+    const bytes = await file.arrayBuffer();
+    const metadata = {
+      name: file.name,
+      size: file.size,
+      sha256: await digestHex('SHA-256', bytes, digest),
+    };
+    if (!knownBySha256(metadata)) {
+      metadata.sha1 = await digestHex('SHA-1', bytes, options.sha1Digest ?? digest);
+    }
+    items.push({ file, metadata });
   }
 
   const games = Object.fromEntries(GAME_IDS.map((gameId) => {
@@ -189,6 +245,7 @@ export function summarizeReports(gameId, reports, options = {}) {
     && report.actual.name === report.expected.name
     && !report.status.startsWith('accepted'));
   const acceptedFiles = [];
+  const acceptedInputs = [];
   const seenFiles = new Set();
   for (let index = 0; index < reports.length; index++) {
     if (!reports[index].status.startsWith('accepted')
@@ -197,12 +254,20 @@ export function summarizeReports(gameId, reports, options = {}) {
     if (file && !seenFiles.has(file)) {
       seenFiles.add(file);
       acceptedFiles.push(file);
+      acceptedInputs.push({
+        file,
+        satisfiesNames: reports[index].satisfiesNames.slice(),
+        sha256: reports[index].actual.sha256,
+      });
     }
   }
   const extras = reports.filter((report) => report.satisfiesNames.length === 0);
   const complete = missing.length === 0 && duplicates.length === 0
     && conflicts.length === 0;
-  return { gameId, reports, missing, duplicates, conflicts, extras, acceptedFiles, complete };
+  return {
+    gameId, reports, missing, duplicates, conflicts, extras,
+    acceptedFiles, acceptedInputs, complete,
+  };
 }
 
 export function formatDiagnostic(summary) {
@@ -211,6 +276,7 @@ export function formatDiagnostic(summary) {
     lines.push('', `${report.status}: ${report.actual.name}`,
       `  actual size: ${report.actual.size}`,
       `  actual SHA-256: ${report.actual.sha256}`);
+    if (report.actual.sha1) lines.push(`  actual SHA-1: ${report.actual.sha1}`);
     if (report.expected) {
       lines.push(`  expected name: ${report.expected.name ?? '(name is not an identity)'}`,
         `  expected size: ${report.expected.size}`,
@@ -238,7 +304,7 @@ export function formatDiagnostic(summary) {
     }
   }
   lines.push('', summary.complete
-    ? 'Required identity set complete. Additional files, if any, remain listed separately. Game boot is not enabled in this foundation build.'
+    ? 'Required identity set complete. Additional files, if any, remain listed separately. This game card is unlocked.'
     : 'Identity validation is not complete. No ROM bytes were uploaded or saved.');
   return lines.join('\n');
 }

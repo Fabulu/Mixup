@@ -86,6 +86,48 @@ export function adoptCurrentWindows(frozen, current) {
   return current;
 }
 
+export class FullRom {
+  constructor(bytes) {
+    if (!(bytes instanceof Uint8Array)) {
+      throw new TypeError('FullRom needs a Uint8Array');
+    }
+    this.data = bytes;
+  }
+
+  #at(a, n, what) {
+    if (!Number.isSafeInteger(a) || !Number.isSafeInteger(n)
+        || a < 0 || n < 0 || a + n > this.data.length) {
+      throw new RangeError(`${what} at $${Number(a).toString(16).toUpperCase()} is outside `
+        + `the ${this.data.length}-byte full ROM image`);
+    }
+    return a;
+  }
+
+  u8(a) { return this.data[this.#at(a, 1, 'byte')]; }
+
+  u16(a) {
+    const i = this.#at(a, 2, 'word');
+    return (this.data[i] << 8) | this.data[i + 1];
+  }
+
+  i16(a) { const v = this.u16(a); return v >= 0x8000 ? v - 0x10000 : v; }
+
+  u32(a) {
+    const i = this.#at(a, 4, 'longword');
+    return ((this.data[i] << 24) | (this.data[i + 1] << 16)
+      | (this.data[i + 2] << 8) | this.data[i + 3]) >>> 0;
+  }
+
+  i32(a) { return this.u32(a) | 0; }
+
+  bytes(a, n) {
+    const i = this.#at(a, n, `${n} bytes`);
+    return Array.from(this.data.subarray(i, i + n));
+  }
+
+  get byteCount() { return this.data.length; }
+}
+
 export class RomWindows {
   /** @param spec the `rom` object from tools/export-tables.py's JSON. */
   constructor(spec) {

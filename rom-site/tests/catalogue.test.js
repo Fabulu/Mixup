@@ -18,6 +18,14 @@ test('catalogue records exact complete identities and regions', () => {
   assert.equal(ddpdoj.set, 'ddpdojblk');
   assert.equal(ddpdoj.accepted.length, 10);
   assert.equal(ddpdoj.alternateForms.length, 1);
+  assert.ok(ddpdoj.knownAlternates.length >= 10);
+  assert.deepEqual(new Set(ddpdoj.knownAlternates.map((identity) => identity.set)),
+    new Set(['ddp3', 'ddpdoj', 'ddpdoja', 'ddpdojb', 'ddpdojp', 'ddpdojblka',
+      'ddpdojblkb', 'ddpdojblka or ddpdojblkb', 'ddpdojblkbl']));
+  for (const identity of ddpdoj.knownAlternates) {
+    assert.match(identity.sha1, /^[0-9a-f]{40}$/);
+    assert.match(identity.crc32, /^[0-9a-f]{8}$/);
+  }
   for (const game of Object.values(GAME_CATALOGUE)) {
     for (const identity of [...game.accepted, ...(game.alternateForms ?? [])]) {
       assert.match(identity.sha256, /^[0-9a-f]{64}$/);
@@ -55,6 +63,23 @@ test('known archive, wrong bytes, and unknown digest stay evidence-bounded', () 
   assert.equal(unknown.status, 'unknown');
   assert.equal(unknown.knownIdentity, null);
   assert.match(unknown.likelyCauses.join(' '), /not a revision assignment/);
+});
+
+test('known MAME alternates are identified by exact SHA-1 without being accepted', () => {
+  const alternate = GAME_CATALOGUE.ddpdoj.knownAlternates.find((identity) =>
+    identity.set === 'ddpdojblka');
+  const report = classifyMetadata('ddpdoj', {
+    name: alternate.name,
+    size: alternate.size,
+    sha256: '3'.repeat(64),
+    sha1: alternate.sha1,
+  });
+  assert.equal(report.status, 'known-alternate-revision');
+  assert.deepEqual(report.satisfiesNames, []);
+  assert.match(report.knownIdentity, /ddpdojblka/);
+  assert.match(report.knownIdentity, new RegExp(alternate.crc32));
+  assert.match(formatDiagnostic(summarizeReports('ddpdoj', [report])),
+    new RegExp(alternate.sha1));
 });
 
 test('byte-swapped and decrypted DaiOuJou program forms are distinguished', () => {

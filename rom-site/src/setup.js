@@ -24,6 +24,10 @@ const report = document.querySelector('#report');
 const identities = document.querySelector('#identities');
 const gameCards = Array.from(document.querySelectorAll('.game-card'));
 const primaryWorld = document.querySelector('#primary-world');
+const launchGame = document.querySelector('#launch-game');
+const bootStatus = document.querySelector('#boot-status');
+const gameScreen = document.querySelector('#game-screen');
+const gameCanvas = document.querySelector('#game-canvas');
 const build = document.querySelector('#build');
 
 let savedHandle = null;
@@ -32,12 +36,24 @@ let diagnosticText = '';
 let launcherState = createLauncherState();
 const selectedFilesByGame = new Map();
 let lastInventory = null;
+let activeRuntime = null;
+let launching = false;
 
 build.textContent = BUILD_ID;
 
 function setStatus(message, kind = '') {
   status.textContent = message;
   status.dataset.kind = kind;
+}
+
+function stopRuntime() {
+  activeRuntime?.stop();
+  activeRuntime = null;
+  gameScreen.hidden = true;
+}
+
+function setBootStatus(message = '') {
+  bootStatus.textContent = message;
 }
 
 function formatBytes(value) {
@@ -101,6 +117,16 @@ function renderLauncher() {
   primaryWorld.textContent = launcherState.primary
     ? GAME_CATALOGUE[launcherState.primary].title
     : 'None selected';
+  const canLaunchDdpdoj = launcherState.primary === 'ddpdoj'
+    && launcherState.validated.ddpdoj === true;
+  launchGame.disabled = launching || !canLaunchDdpdoj;
+  launchGame.textContent = launching
+    ? 'Preparing local DaiOuJou...'
+    : (canLaunchDdpdoj
+      ? 'Launch DaiOuJou from local ROMs'
+      : (launcherState.primary
+        ? `${GAME_CATALOGUE[launcherState.primary].title} launch path pending`
+        : 'Choose an unlocked primary world'));
 }
 
 function renderSelectedDiagnostic() {
@@ -117,6 +143,8 @@ function renderSelectedDiagnostic() {
 }
 
 function resetInventory() {
+  stopRuntime();
+  setBootStatus('');
   lastInventory = null;
   selectedFilesByGame.clear();
   for (const gameId of GAME_IDS) {
@@ -133,6 +161,14 @@ async function validate(files, source) {
     return;
   }
   const selection = describeSelection(files);
+  stopRuntime();
+  setBootStatus('');
+  lastInventory = null;
+  selectedFilesByGame.clear();
+  for (const gameId of GAME_IDS) {
+    launcherState = applyValidation(launcherState, gameId, false);
+  }
+  renderLauncher();
   setStatus(`Hashing ${selection.count} file${selection.count === 1 ? '' : 's'} once, then matching every game locally (${formatBytes(selection.totalBytes)} bytes)...`, 'working');
   report.textContent = '';
   copyReport.disabled = true;
@@ -188,11 +224,51 @@ dropZone.addEventListener('drop', async (event) => {
 });
 for (const card of gameCards) {
   card.addEventListener('click', () => {
+    if (activeRuntime && card.dataset.gameId !== launcherState.primary) {
+      stopRuntime();
+      setBootStatus('Local game stopped because the primary world changed.');
+    }
     launcherState = selectPrimary(launcherState, card.dataset.gameId);
     renderLauncher();
-    setStatus(`${GAME_CATALOGUE[card.dataset.gameId].title} selected as the primary world. Launch and cross-game characters are not enabled yet.`, 'good');
+    setStatus(card.dataset.gameId === 'ddpdoj'
+      ? 'DaiOuJou selected as the primary world. Its validated local set is ready to launch.'
+      : `${GAME_CATALOGUE[card.dataset.gameId].title} selected as the primary world. Its local launch path is still being connected.`, 'good');
   });
 }
+launchGame.addEventListener('click', async () => {
+  if (launching || launcherState.primary !== 'ddpdoj'
+      || !lastInventory?.games.ddpdoj.complete) return;
+  stopRuntime();
+  launching = true;
+  renderLauncher();
+  setBootStatus('Preparing validated local DaiOuJou files...');
+  try {
+    const { LocalDdpdojRuntime } = await import('./ddpdoj-local.js');
+    activeRuntime = await LocalDdpdojRuntime.create(
+      lastInventory.games.ddpdoj,
+      gameCanvas,
+      {
+        onStatus: setBootStatus,
+        onError: (error) => {
+          activeRuntime = null;
+          gameScreen.hidden = true;
+          setBootStatus(`DaiOuJou stopped: ${error.message}`);
+        },
+      },
+    );
+    gameScreen.hidden = false;
+    activeRuntime.start();
+    gameCanvas.focus();
+    setBootStatus('DaiOuJou is running entirely from validated local ROMs. Insert a coin with 5, then press Enter.');
+  } catch (error) {
+    stopRuntime();
+    setBootStatus(`DaiOuJou could not start: ${error.message}`);
+  } finally {
+    launching = false;
+    renderLauncher();
+  }
+});
+
 gameSelect.addEventListener('change', () => {
   renderIdentities();
   renderSelectedDiagnostic();

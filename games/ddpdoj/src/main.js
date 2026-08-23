@@ -324,7 +324,7 @@ export class Game {
     // WAVE 8: the cartridge, as a set of declared windows.  The shot spawn
     // follows pointers out of a ROM template, so the port reads ROM the way the
     // 68000 does and throws BY ADDRESS on anything the exporter did not cover.
-    this.rom = new RomWindows(tables.rom);
+    this.rom = opts.rom ?? new RomWindows(tables.rom);
     this.tables = new MoveTables(tables, this.rom);
     this.gov = Object.fromEntries(
       Object.entries(tables.gov).map(([k, v]) => [k, v.words]));
