@@ -194,6 +194,23 @@ test('$263502 walks 58 slots, compensates the scroll and throws by handler', () 
   assert.match(e.message, /FIVE distinct handlers/);
 });
 
+test('W549 $263502 executes both cartridge NULL handlers as $263762', () => {
+  for (const handler of [0x26781c, 0x27e40a]) {
+    const r = new Ram();
+    const rec = ENEMY.bandCommon;
+    const sub = 0x816000;
+    r.setU16(rec, 0x8000);
+    r.setU32(rec + ENEMY.subRecOff, sub);
+    r.setU32(rec + ENEMY.handlerOff, handler);
+    r.setU16(rec + ENEMY.seqOff, 0);
+
+    assert.equal(runEnemyDriver(r, new Map(), {}), 1);
+    assert.equal(r.u16(rec), 0, `$${handler.toString(16)} clears the record`);
+    assert.equal(r.u8(sub), 1, `$${handler.toString(16)} marks its sub-record dead`);
+    assert.equal(r.u16(ENEMY.liveCount), 0);
+  }
+});
+
 test('$263502 counts survivors into $815E9C and splits by ($D,A5) bit 7 / bit 5',
   () => {
     const r = new Ram();

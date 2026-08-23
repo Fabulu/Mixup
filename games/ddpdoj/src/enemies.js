@@ -107,6 +107,16 @@ export const ENEMY_HANDLERS_SEEN = new Map([
   [0x269cea, 429], [0x275914, 133],
 ]);
 
+// The two cartridge dummy handlers are both `jmp $263762`. They are complete
+// without belonging to the translated-handler registry.
+export const ENEMY_NULL_HANDLERS = new Set([0x26781c, 0x27e40a]);
+function runNullHandler(ram, a5) {
+  const a6 = ram.u32(a5 + ENEMY.subRecOff);
+  const run = ram.u16(a5 + ENEMY.seqOff);
+  for (let i = 0; i <= run; i++) ram.setU8(a6 + i * 0x20, 1);
+  ram.setU16(a5, 0);
+}
+
 /**
  * $263502 -- one pass of the enemy driver.
  *
@@ -130,7 +140,7 @@ export function runEnemyDriver(ram, handlers, ctx) {
     // live enemy and it is a WRITE.
     ram.setU16(sub + 4, u16(i16(ram.u16(sub + 4)) - i16(scroll)));
     const h = ram.u32(rec + ENEMY.handlerOff) & 0xffffff;   // $263532
-    const fn = handlers?.get(h);
+    const fn = ENEMY_NULL_HANDLERS.has(h) ? runNullHandler : handlers?.get(h);
     if (!fn) {
       unreached(h, `enemy handler at $${h.toString(16).toUpperCase()}, `
         + `dispatched from $263538 for the record at `
