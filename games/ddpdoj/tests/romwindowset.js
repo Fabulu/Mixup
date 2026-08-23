@@ -277,7 +277,17 @@
 // disjoint. Measured: 757 -> 768 windows, 446,333 -> 446,445 bytes,
 // 76 -> 76 pairs.
 
-export const ROM_WINDOW_COUNT = 768;
+// ---------------------------------------------------------------------------
+// W515 ADDED SEVEN WINDOWS AND THE OVERLAP COUNT STILL DID NOT MOVE.
+// ---------------------------------------------------------------------------
+// `$2916DA + $26` is sequence list A's exact seventh script and abuts W514's
+// script. Six sparse four-byte windows expose only its absent spawn-table
+// longwords, while three distinct selections reuse W504-W514 and resource
+// operand 0 reuses W372's `$290E58 + $46` set. All seven declarations are
+// disjoint. Measured: 768 -> 775 windows, 446,445 -> 446,507 bytes,
+// 76 -> 76 pairs.
+
+export const ROM_WINDOW_COUNT = 775;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -344,5 +354,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "nine sparse longwords, W511 added $2915A0+$64 plus six sparse longwords, "
   + "W512 added $291604+$68 plus five sparse longwords, W513 added the "
   + "abutting $29166C+$26 script plus one sparse longword, and W514 added the "
-  + "abutting $291692+$48 script plus ten sparse longwords; none moved the overlap "
+  + "abutting $291692+$48 script plus ten sparse longwords, and W515 added the "
+  + "abutting $2916DA+$26 script plus six sparse longwords; none moved the overlap "
   + "count. See tests/romwindowset.js.";

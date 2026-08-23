@@ -1,4 +1,4 @@
-// W504-W514: drive the loop-2 type-$13 handoff through variant 0 and sequence list A's first six scripts.
+// W504-W515: drive the loop-2 type-$13 handoff through variant 0 and sequence list A's first seven scripts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -37,7 +37,8 @@ const SEQUENCE_A_THIRD = 0x2915a0;
 const SEQUENCE_A_FOURTH = 0x291604;
 const SEQUENCE_A_FIFTH = 0x29166c;
 const SEQUENCE_A_SIXTH = 0x291692;
-const NEXT_SCRIPT = 0x2916da;
+const SEQUENCE_A_SEVENTH = 0x2916da;
+const NEXT_SCRIPT = 0x291700;
 const FIRST_INDICES = Object.freeze([0xe0, 0x4a, 0x65, 0xcc, 0x73, 0x5b, 0x59, 0x05]);
 const FIRST_ART = Object.freeze([
   0x1ec778, 0x1eb260, 0x1eb62c, 0x1ec4a8,
@@ -199,6 +200,15 @@ const SEQUENCE_A_SIXTH_POSITIONS = Object.freeze([
   ...Array.from({ length: 11 }, (_, i) => 0x30000200 + i * 0x400),
   ...Array.from({ length: 12 }, (_, i) => 0x28000200 + i * 0x400),
 ]);
+const SEQUENCE_A_SEVENTH_INDICES = Object.freeze([
+  0xf8, 0xd1, 0x65, 0xd5, 0xae, 0x74, 0xbb, 0x57, 0x59,
+]);
+const SEQUENCE_A_SEVENTH_ART = Object.freeze([
+  0x1ecad8, 0x1ec55c, 0x1eb62c, 0x1ec5ec, 0x1ec070,
+  0x1eb848, 0x1ec244, 0x1eb434, 0x1eb47c,
+]);
+const SEQUENCE_A_SEVENTH_POSITIONS = Object.freeze(
+  Array.from({ length: 9 }, (_, i) => 0x30000200 + i * 0x400));
 
 function clearSpriteCounters(ram) {
   for (const bucket of BUCKETS) ram.setU16(bucket.counter, 0);
@@ -224,7 +234,7 @@ function chainNodes(ram, root) {
   return out;
 }
 
-test('W504-W514: natural type $13 handoff runs variant 0 and sequence-list-A entries 0 through 5',
+test('W504-W515: natural type $13 handoff runs variant 0 and sequence-list-A entries 0 through 6',
   { skip: SKIP }, () => {
     assert.equal(ROM.u32(0x290f12), 0x290f1e,
       '$290F12 variant 0 points at its five-step list');
@@ -253,8 +263,10 @@ test('W504-W514: natural type $13 handoff runs variant 0 and sequence-list-A ent
       'sequence list A entry 4 is the concrete $29166C script');
     assert.equal(ROM.u32(SLOT7.seqLists[0] + 20), SEQUENCE_A_SIXTH,
       'sequence list A entry 5 is the concrete $291692 script');
-    assert.equal(ROM.u32(SLOT7.seqLists[0] + 24), NEXT_SCRIPT,
-      'sequence list A entry 6 is the next concrete $2916DA script');
+    assert.equal(ROM.u32(SLOT7.seqLists[0] + 24), SEQUENCE_A_SEVENTH,
+      'sequence list A entry 6 is the concrete $2916DA script');
+    assert.equal(ROM.u32(SLOT7.seqLists[0] + 28), NEXT_SCRIPT,
+      'sequence list A entry 7 is the next concrete $291700 script');
     assert.deepEqual(Array.from({ length: 20 }, (_, i) => ROM.u16(FIRST_SCRIPT + i * 2)), [
       0x8000, 0x3000, 0x8001, 0x3c00, 0x0800,
       0x00e0, 0x004a, 0x0065, 0x00cc, 0x0073,
@@ -414,6 +426,15 @@ test('W504-W514: natural type $13 handoff runs variant 0 and sequence-list-A ent
     assert.deepEqual(SEQUENCE_A_SIXTH_INDICES.map((i) =>
       ROM.u32(SCRIPT7.spawnTable + i * 4)), SEQUENCE_A_SIXTH_ART,
       'sequence list A entry 5 resolves all 23 ordered picture words');
+    assert.deepEqual(Array.from({ length: 19 }, (_, i) => ROM.u16(SEQUENCE_A_SEVENTH + i * 2)), [
+      0x8000, 0x0000,
+      0x8001, 0x3000, 0x0200,
+      0x00f8, 0x00d1, 0x0065, 0x00d5, 0x00ae, 0x0074, 0x00bb, 0x0057, 0x0059,
+      0x8002, 0x0060, 0x8003, 0x0000, 0xffff,
+    ], '$2916DA..$2916FF is sequence list A\'s exact seventh script');
+    assert.deepEqual(SEQUENCE_A_SEVENTH_INDICES.map((i) =>
+      ROM.u32(SCRIPT7.spawnTable + i * 4)), SEQUENCE_A_SEVENTH_ART,
+      'sequence list A entry 6 resolves all nine ordered picture words');
 
     const ram = new Ram();
     const log = new UnportedLog();
@@ -559,6 +580,21 @@ test('W504-W514: natural type $13 handoff runs variant 0 and sequence-list-A ent
     let sawSequenceCursor24 = false;
     let sawSequenceSixthPoolClear = false;
     let sequenceSixthBoundaryFrame = null;
+    let maxSequenceSeventhLive = 0;
+    let maxSequenceSeventhWait = 0;
+    let sequenceSeventhPeak = [];
+    let lastSequenceSeventhLive = 0;
+    const sequenceSeventhSpawnFrames = [];
+    let sawSequenceSeventhResource = false;
+    let auxStateAtSeventhStart = null;
+    let auxHandleAtSeventhStart = null;
+    let primaryHandleAtSeventhStart = null;
+    let sawSequenceCursor28 = false;
+    let sawSequenceSeventhPoolClear = false;
+    let sequenceSeventhBoundaryFrame = null;
+    let auxStateAtSeventhBoundary = null;
+    let auxHandleAtSeventhBoundary = null;
+    let primaryHandleAtSeventhBoundary = null;
     let nextError = null;
     const firstSeenArt = new Set();
     for (let frame = 0; frame < 2600 && nextError == null; frame++) {
@@ -787,8 +823,33 @@ test('W504-W514: natural type $13 handoff runs variant 0 and sequence-list-A ent
       }
       if (innerState === 1 && ram.u16(SLOT7.work + 0x06) === 1 && sequenceCursor === 24) {
         sawSequenceCursor24 = true;
-        if (live.length === 0) sawSequenceSixthPoolClear = true;
-        if (sequenceSixthBoundaryFrame === null) sequenceSixthBoundaryFrame = frame;
+        if (live.length === 0 && sequenceSixthBoundaryFrame === null) {
+          sawSequenceSixthPoolClear = true;
+          sequenceSixthBoundaryFrame = frame;
+          auxStateAtSeventhStart = ram.u16(0x81e108);
+          auxHandleAtSeventhStart = ram.u32(0x81e10e);
+          primaryHandleAtSeventhStart = ram.u32(SCRIPT7.resource);
+        }
+        if (ram.u16(SCRIPT7.cursor) === 0x1c) {
+          maxSequenceSeventhWait = Math.max(maxSequenceSeventhWait, ram.u16(SCRIPT7.loopCount));
+        }
+        if (ram.u32(SCRIPT7.resource) !== 0) sawSequenceSeventhResource = true;
+        if (live.length > lastSequenceSeventhLive) sequenceSeventhSpawnFrames.push(frame);
+        lastSequenceSeventhLive = Math.max(lastSequenceSeventhLive, live.length);
+        if (live.length > maxSequenceSeventhLive) {
+          maxSequenceSeventhLive = live.length;
+          sequenceSeventhPeak = live;
+        }
+      }
+      if (innerState === 1 && ram.u16(SLOT7.work + 0x06) === 1 && sequenceCursor === 28) {
+        sawSequenceCursor28 = true;
+        if (live.length === 0 && sequenceSeventhBoundaryFrame === null) {
+          sawSequenceSeventhPoolClear = true;
+          sequenceSeventhBoundaryFrame = frame;
+          auxStateAtSeventhBoundary = ram.u16(0x81e108);
+          auxHandleAtSeventhBoundary = ram.u32(0x81e10e);
+          primaryHandleAtSeventhBoundary = ram.u32(SCRIPT7.resource);
+        }
       }
     }
 
@@ -1047,20 +1108,52 @@ test('W504-W514: natural type $13 handoff runs variant 0 and sequence-list-A ent
     assert.ok(sawSequenceSixthPoolClear,
       'the sequence driver cleared all 23 entry-5 pool records at cursor 24');
     assert.ok(sequenceSixthBoundaryFrame > sequenceFifthBoundaryFrame,
-      'entry 5 reached its next concrete script boundary after running');
+      'entry 5 reached entry 6 after running');
+    assert.equal(maxSequenceSeventhLive, 9,
+      'sequence list A entry 6 allocated all nine pool records');
+    assert.deepEqual(sequenceSeventhPeak.map(({ art }) => art), SEQUENCE_A_SEVENTH_ART,
+      'sequence list A entry 6 preserved every ordered art pointer');
+    assert.deepEqual(sequenceSeventhPeak.map(({ position }) => position),
+      SEQUENCE_A_SEVENTH_POSITIONS,
+      'sequence list A entry 6 preserved its nine-record position group and $400 bumps');
+    assert.equal(sequenceSeventhSpawnFrames[0] - sequenceSixthBoundaryFrame, 1,
+      '$8000 $0000 made the first entry-6 record eligible on the next driver call');
+    assert.deepEqual(sequenceSeventhSpawnFrames.slice(1).map((at, i) =>
+      at - sequenceSeventhSpawnFrames[i]), Array(8).fill(1),
+      'reload zero emitted all remaining entry-6 records on consecutive driver frames');
+    assert.equal(maxSequenceSeventhWait, 0x60,
+      'sequence list A entry 6 held at its exact $60 wait count');
+    assert.ok(sawSequenceSeventhResource,
+      'entry 6 $8003 operand 0 completed the existing one-node $290E58 lifecycle');
+    assert.equal(auxStateAtSeventhStart, 0,
+      'the earlier two-phase auxiliary resource was idle before entry 6 began');
+    assert.equal(auxStateAtSeventhBoundary, 0,
+      'entry 6 left the completed auxiliary resource idle');
+    assert.equal(auxHandleAtSeventhBoundary, auxHandleAtSeventhStart,
+      'entry 6 left the cached freed auxiliary handle unchanged');
+    assert.equal(primaryHandleAtSeventhStart, 0,
+      'entry 5 cleared its primary resource handle before entry 6 began');
+    assert.equal(primaryHandleAtSeventhBoundary, 0,
+      'entry 6 freed and cleared its primary resource handle before $FFFF');
+    assert.ok(sawSequenceCursor28,
+      '$FFFF advanced sequence list A from cursor 24 to cursor 28');
+    assert.ok(sawSequenceSeventhPoolClear,
+      'the sequence driver cleared all nine entry-6 pool records at cursor 28');
+    assert.ok(sequenceSeventhBoundaryFrame > sequenceSixthBoundaryFrame,
+      'entry 6 reached its next concrete script boundary after running');
     assert.equal(ram.u16(SLOT7.work + SLOT7.innerAt), 1,
-      'the sixth sequence script leaves the driver in inner state 1');
+      'the seventh sequence script leaves the driver in inner state 1');
     assert.equal(ram.u16(SLOT7.work + 0x06), 1,
       'inner state 1 remains in its active sequence sub-state');
-    assert.equal(ram.u16(SLOT7.work + 0x0c), 24,
-      'sequence list A now selects entry 6');
+    assert.equal(ram.u16(SLOT7.work + 0x0c), 28,
+      'sequence list A now selects entry 7');
     assert.equal(ram.u16(SCRIPT7.cursor), 0,
       'the inter-script pool clear reset the shared script cursor');
     assert.deepEqual(livePoolRecords(ram), [],
       'the presentation pool remains clear at the next concrete boundary');
     assert.ok(nextError instanceof Unreached,
-      `the bounded run should stop at sequence list A entry 6, got ${nextError}`);
+      `the bounded run should stop at sequence list A entry 7, got ${nextError}`);
     assert.equal(nextError.romAddress, NEXT_SCRIPT,
-      'the next executable edge is sequence list A entry 6 at $2916DA');
+      'the next executable edge is sequence list A entry 7 at $291700');
     assert.equal(ram.u16(ALLOC.createSp), 0, 'the type-7 create queue drained');
   });

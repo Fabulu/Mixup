@@ -28,20 +28,20 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W514 (2026-08-23), ATOP PUBLISHED W511.** Dispatch remains **18 of 20**: W503 ports and registers
+**STANDING AS OF W515 (2026-08-23), ATOP PUBLISHED W511.** Dispatch remains **18 of 20**: W503 ports and registers
 `[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W508 drive that exact
 natural loop-2 edge through type 7's complete five-script variant-0 list at `$290F66`, `$290F8E`, `$290FE2`,
-`$2910F6`, and `$291172`; W509 through W514 follow its authentic transition into inner state 1 and sequence
-list A entries 0 through 5 at `$2914F0`, `$29154A`, `$2915A0`, `$291604`, `$29166C`, and `$291692`.
-Together they preserve 278 ordered presentation records and eleven complete `$8003` resource lifecycles. W509
-proves `$8005 $0001 $0003` and its complete two-node mode-0 auxiliary palette resource. W514 emits 23 records
-in 11-record `$30000200` and 12-record `$28000200` groups on consecutive `$0000` cadence, spends the exact
-`$60` wait, completes operand 0's primary resource, and advances sequence-list A's cursor from 20 to 24 while
-remaining in inner state 1. Production build `20260823005140` publishes W507 through W511 from commits
-`f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0` after the full publication gate and three consecutive
-live confirmations. W514 is the third unpublished wave after W511. The exact next gameplay edge is sequence
-list A entry 6 at `$2916DA`; W516 remains the next publication point. The two without a handler are `[16]
-`$256E7A` and `[18] $24902A`.
+`$2910F6`, and `$291172`; W509 through W515 follow its authentic transition into inner state 1 and sequence
+list A entries 0 through 6 at `$2914F0`, `$29154A`, `$2915A0`, `$291604`, `$29166C`, `$291692`, and
+`$2916DA`. Together they preserve 287 ordered presentation records and twelve complete `$8003` resource
+lifecycles. W509 proves `$8005 $0001 $0003` and its complete two-node mode-0 auxiliary palette resource.
+W515 emits nine records in one `$30000200` group on consecutive `$0000` cadence, spends the exact `$60`
+wait, completes operand 0's primary resource while the earlier auxiliary loader remains idle, and advances
+sequence-list A's cursor from 24 to 28 while remaining in inner state 1. Production build `20260823005140`
+publishes W507 through W511 from commits `f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0` after
+the full publication gate and three consecutive live confirmations. W515 is the fourth unpublished wave after
+W511. The exact next gameplay edge is sequence list A entry 7 at `$291700`; W516 remains the next publication
+point. The two without a handler are `[16] `$256E7A` and `[18] $24902A`.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
@@ -2266,6 +2266,36 @@ and `export-tables.py --verify` passes. W514 is the third unpublished wave after
 No full suite, web-asset export, build, commit, or publication ran. The next natural call fails loudly at deliberately
 unexported sequence-list A entry 6 script `$2916DA`; no later entry or broader path was inspected.
 
+**W515 FOLLOWS SEQUENCE LIST A'S EXACT SEVENTH SCRIPT.** Entry 6 at `$2914E0` points to `$2916DA`,
+and entry 7 at `$2914E4` fixes the next boundary at `$291700`. The exact 19-word script spans
+`$2916DA..$2916FF`, is `$26` bytes, and stops without reading the next script:
+
+```text
+8000 0000
+8001 3000 0200
+00F8 00D1 0065 00D5 00AE 0074 00BB 0057 0059
+8002 0060
+8003 0000
+FFFF
+```
+
+The nine ordered picture words select nine distinct indices and art pointers, resolving to `$1ECAD8`, `$1EC55C`,
+`$1EB62C`, `$1EC5EC`, `$1EC070`, `$1EB848`, `$1EC244`, `$1EB434`, and `$1EB47C`. Indices `$65`,
+`$74`, and `$59` reuse prior exact windows. W515 adds only indices `$57`, `$AE`, `$BB`, `$D1`, `$D5`,
+and `$F8`. The one `$8001` group creates nine records from `$30000200..$30002200`, advancing by `$400`.
+`$8000 $0000` emits all nine on consecutive driver calls, `$8002 $0060` spends the exact wait, and `$8003
+$0000` completes operand 0's existing one-node `$290E58` lifecycle. The earlier auxiliary loader is idle before
+and after the script and retains its cached freed handle. `$FFFF` advances the sequence-list cursor from 24 to 28,
+clears all nine records, and leaves inner state and active sub-state at 1 with the primary resource and pool clear.
+No interpreter or other production source change was needed.
+
+The exact `$2916DA+$26` script abuts W514's script. Its six sparse longwords are disjoint. The seven windows
+add 62 bytes, so table regeneration and `export-tables.py --verify` measure 775 windows, 446,507 bytes, and
+76 overlap pairs. The direct natural integration passes 1/1 and both focused exact registry sentinels pass 2/2.
+W515 is the fourth unpublished wave after W511. No full suite, web-asset export, build, commit, or publication
+ran. The next natural call fails loudly at deliberately unexported sequence-list A entry 7 script `$291700`; no
+later entry or broader path was inspected.
+
 **W507-W511 PUBLICATION FOLLOW-UP:** Production build `20260823005140` publishes all five waves from
 source commits `f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. The quiet-tree gate passed
 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate
@@ -2279,8 +2309,8 @@ bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate with zero 
 gate with zero skips, the distribution build, and the ROM-leak guard. Deployment and three consecutive
 live confirmations passed.
 
-This does not yet identify every ending-selection condition or close D37. After W514, the exact next
-gameplay edge is sequence list A entry 6's type-7 script at `$2916DA`, again following only the first concrete
+This does not yet identify every ending-selection condition or close D37. After W515, the exact next
+gameplay edge is sequence list A entry 7's type-7 script at `$291700`, again following only the first concrete
 runtime edge rather than broadening into speculative ending-selection or other-variant research.
 
 **W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own

@@ -185,10 +185,11 @@ slot-7, ROM-registry, and coverage set passes 30/30. W512's expanded direct inte
 passes 1/1, and its compact directly affected set passes 32/32. W513's direct natural
 integration passes 1/1, and its compact directly affected set passes 63/63 with both exact
 registry sentinels included. W514's direct natural integration passes 1/1 and both focused exact
-registry sentinels pass 2/2. `export-tables.py
---verify` passes at 768 windows and 446,445 bytes with 76 overlap pairs; the published W511
+registry sentinels pass 2/2. W515's direct natural integration passes 1/1 with no new interpreter
+arm. `export-tables.py
+--verify` passes at 775 windows and 446,507 bytes with 76 overlap pairs; the published W511
 export remains 749 windows and 446,167 bytes with the same 76 pairs. The source commits are
-`f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. W514 is the third unpublished wave
+`f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. W515 is the fourth unpublished wave
 after W511, and the next publication point is W516.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
@@ -333,22 +334,22 @@ and active-record label exits, `$25F1EC` credit-message carry path, coordinate a
 art-offset selection, and `$23E08C` bucket-7 enqueue. The exact disjoint windows
 `$25E716+$18` and `$25F270+$60` raise the registry to 639 windows and 444,733 bytes while
 preserving 76 overlap pairs. W503 ports dispatch type `$13` at `$28EE88`, restoring the
-bounded stage-5 ending tally and type-7 handoff. W504 through W514 follow that natural
-loop-2 edge through variant 0's complete five-script list and sequence list A's first six entries,
-emitting 278 visible pool records and completing eleven `$8003` resource lifecycles. W509's
+bounded stage-5 ending tally and type-7 handoff. W504 through W515 follow that natural
+loop-2 edge through variant 0's complete five-script list and sequence list A's first seven entries,
+emitting 287 visible pool records and completing twelve `$8003` resource lifecycles. W509's
 `$2914F0..$291549` script proves `$8005`: operands 1 and 3 publish banner 1, select W372's
 existing two-node `$290E1C` mode-0 resource, run its two exact 32-word palettes for 32 animation
 steps, and free it. W510 adds `$29154A..$29159F`, W511 adds `$2915A0..$291603`, W512 adds
-`$291604..$29166B`, W513 adds `$29166C..$291691`, and W514 adds `$291692..$2916D9`, all
-without a new opcode arm. W514's 23 records occupy 11-record `$30000200` and 12-record
-`$28000200` groups, arrive on consecutive `$0000` cadence, wait for `$60`, and complete
-operand 0's one-node resource before `$FFFF` advances the cursor from 20 to 24 and clears the
-pool. The current registry has 768 windows and 446,445 bytes with 76 overlap pairs. Production
+`$291604..$29166B`, W513 adds `$29166C..$291691`, W514 adds `$291692..$2916D9`, and W515
+adds `$2916DA..$2916FF`, all without a new opcode arm. W515's nine records occupy one
+`$30000200` group, arrive on consecutive `$0000` cadence, wait for `$60`, and complete operand
+0's one-node resource before `$FFFF` advances the cursor from 24 to 28 and clears the pool. The
+current registry has 775 windows and 446,507 bytes with 76 overlap pairs. Production
 build `20260823005140` publishes W507 through W511 after 4,404/4,404 DDPDOJ units, all bundle
 and web gates, the cross-game gates, the distribution build, the ROM-leak guard, deployment,
 and three consecutive live confirmations. The five source commits are `f942dbe`, `faab91f`,
-`1f1cb60`, `38bf2e6`, and `d7c2da0`. W514 is the third unpublished wave after W511, and the
-exact next gameplay edge is sequence list A entry 6 at `$2916DA`.
+`1f1cb60`, `38bf2e6`, and `d7c2da0`. W515 is the fourth unpublished wave after W511, and the
+exact next gameplay edge is sequence list A entry 7 at `$291700`.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,
