@@ -4,7 +4,8 @@
 The inventory is derived from the local cartridge image and live source
 registries. It covers all five spawn scripts, all five background-element lists,
 progression top objects and type-5 dispatch, source-visible deferred emissions,
-and movement-stream child types used by scripted carriers. Operator-only diagnostics
+movement-stream child types used by scripted carriers, and exact eight-byte init-stub
+ROM coverage for every type in that recursive closure. Operator-only diagnostics
 are reported but do not block gameplay; a mandatory init that immediately frees its
 enemy closes that row without requiring its unreachable alternate handler.
 """
@@ -19,6 +20,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 GAME = HERE.parent
 SRC = GAME / "src"
+TABLES_PATH = GAME / "rip" / "port" / "player.tables.json"
 sys.path.insert(0, str(HERE))
 
 from dojcoverage import (  # noqa: E402
@@ -49,6 +51,29 @@ MANDATORY_FREE_ENEMIES = {
 
 def cfg_by_name(config: dict, name: str) -> dict:
     return next(row for row in config["families"] if row["name"] == name)
+
+
+def generated_rom_windows(path: Path = TABLES_PATH) -> list[tuple[int, int]]:
+    if not path.exists():
+        raise FileNotFoundError(f"{path} missing; run tools/export-tables.py")
+    tables = json.loads(path.read_text(encoding="utf-8"))
+    return [(int(row["base"].removeprefix("$"), 16), int(row["len"]))
+            for row in tables["rom"]["windows"]]
+
+
+def init_stub_rows(rom: Rom, closure_types: set[int],
+                   windows: list[tuple[int, int]]) -> list[dict]:
+    rows = []
+    for typ in sorted(closure_types):
+        table = 0x267824 if typ < 0x80 else 0x27E412
+        init = rom.r32(table + (typ & 0x7F) * 8)
+        if (rom.r16(init) != 0x3B7C or rom.r16(init + 4) != 0x0004
+                or rom.r16(init + 6) != 0x4E75):
+            raise ValueError(f"type ${typ:02X} init stub at ${init:06X} changed shape")
+        rows.append({"type": typ, "init": init, "run_length": rom.r16(init + 2),
+                     "windowed": any(base <= init and init + 8 <= base + length
+                                     for base, length in windows)})
+    return rows
 
 
 def source_files() -> list[Path]:
@@ -221,6 +246,7 @@ def build_closure(rom_path: Path = ROM_PATH) -> dict:
     carrier_types = {row["type"] for row in carrier_rows}
     direct_types = {row["type"] for rows in stage_entries for row in rows}
     closure_types = direct_types | source_types | carrier_types
+    init_stubs = init_stub_rows(rom, closure_types, generated_rom_windows())
 
     top_rows, top_phantoms = walk_top_objects(
         rom, regs, cfg_by_name(config, "top_objects"))
@@ -269,6 +295,12 @@ def build_closure(rom_path: Path = ROM_PATH) -> dict:
             unresolved.append(unresolved_row(
                 "enemy_type", row, enemy_type=typ,
                 init_body=row["init_body"], handler=row["handler"]))
+    for row in init_stubs:
+        if not row["windowed"]:
+            unresolved.append({"kind": "init_stub_window",
+                               "label": f"enemy type ${row['type']:02X} init stub",
+                               "addresses": [row["init"]], "enemy_type": row["type"],
+                               "run_length": row["run_length"]})
     for stage, rows in enumerate(bgelem_stages, 1):
         for row in rows:
             if row["state"] == "unknown":
@@ -299,6 +331,9 @@ def build_closure(rom_path: Path = ROM_PATH) -> dict:
         "deferred_source_types": sorted(source_types),
         "carrier_types": sorted(carrier_types),
         "closure_types": sorted(closure_types),
+        "init_stubs": {"entries": len(init_stubs),
+                       "windowed": sum(row["windowed"] for row in init_stubs),
+                       "rows": init_stubs},
         "carrier_records": carrier_rows,
         "deferred_sites": deferred_sites,
         "top_objects": {"entries": len(required_top_rows),
@@ -341,6 +376,8 @@ def main() -> int:
     print(f"  deferred source types: {hex_list(report['deferred_source_types'])}")
     print(f"  carrier stream types: {hex_list(report['carrier_types'])}")
     print(f"  recursive closure: {len(report['closure_types'])} enemy types")
+    stubs = report["init_stubs"]
+    print(f"  init stubs: {stubs['windowed']}/{stubs['entries']} windowed")
     top = report["top_objects"]
     print(f"  progression top objects: {top['ported']}/{top['entries']} ported")
     for row in top["operator_only"]:

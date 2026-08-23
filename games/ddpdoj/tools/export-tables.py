@@ -3111,6 +3111,24 @@ SHOT_WINDOWS.extend([
     (0x26DF00, 0x0040, "W341: type $43's SIXTEEN draw longwords, $26DF00..$26DF3F"),
 ])
 
+# W546: the recursive Black Label progression closure's remaining init stubs. Spawn dispatch reads
+# every run-length immediate at init+2 before entering the already translated init+8 body. The live
+# type-$45 failure exposed this missing static axis, so all eleven disjoint eight-byte stubs are
+# exported together instead of waiting for ten more sequential runtime failures.
+SHOT_WINDOWS.extend([
+    (0x267814, 0x0008, "W546: type $00 null init stub, exact run-length word $0000"),
+    (0x270DD0, 0x0008, "W546: type $45 init stub, exact run-length word $0000"),
+    (0x27102C, 0x0008, "W546: type $46 init stub, exact run-length word $0000"),
+    (0x26D6EE, 0x0008, "W546: type $47 init stub, exact run-length word $0003"),
+    (0x271284, 0x0008, "W546: type $48 init stub, exact run-length word $0001"),
+    (0x27159E, 0x0008, "W546: type $49 init stub, exact run-length word $0000"),
+    (0x2719AE, 0x0008, "W546: type $4A init stub, exact run-length word $0001"),
+    (0x271C92, 0x0008, "W546: type $4B init stub, exact run-length word $0000"),
+    (0x26F4DA, 0x0008, "W546: type $4C init stub, exact run-length word $0004"),
+    (0x272390, 0x0008, "W546: type $55 init stub, exact run-length word $0000"),
+    (0x2A42D4, 0x0008, "W546: type $B0 Hibachi init stub, exact run-length word $000F"),
+])
+
 # W400: type $44 ($26DF40 init / $26DF48 initBody / $26E02A handler), the object type $43 spawns at
 # its ramp step $3C and the owner of the LAST TWO unclaimed callers of $261100.  Seven windows, and
 # every extent below is stated by an instruction:

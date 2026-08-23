@@ -392,7 +392,14 @@
 // death-spawn list and W341's prototype window. Measured: 797 -> 798 windows,
 // 450,475 -> 450,483 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 798;
+// ---------------------------------------------------------------------------
+// W546 ADDED ELEVEN DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// The recursive progression closure now verifies every reachable eight-byte
+// init stub. Its eleven remaining stubs add 88 exact bytes and no overlap.
+// Measured: 798 -> 809 windows, 450,483 -> 450,571 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 809;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

@@ -20,6 +20,7 @@ test('W533 round-2 preflight closes gameplay and excludes diagnostics',
   });
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /stage 5: 770 records, 35 types, unknown none/);
+  assert.match(result.stdout, /init stubs: 103\/103 windowed/);
   assert.match(result.stdout, /progression top objects: 18\/18 ported/);
   assert.match(result.stdout,
     /operator-only object \$10 excluded: \$256E7A operator service-menu dispatcher/);

@@ -205,6 +205,27 @@ test('W545 spawn dispatch reads type $43\'s exact zero run length', { skip: SKIP
   assert.equal(ram.u32(rec + 0x4c), 0x26de32, 'the adjacent low-table handler');
 });
 
+test('W546 every remaining recursive-closure init stub supplies its exact run length',
+  { skip: SKIP }, () => {
+    const expected = [
+      [0x00, 0x267814, 0], [0x45, 0x270dd0, 0], [0x46, 0x27102c, 0],
+      [0x47, 0x26d6ee, 3], [0x48, 0x271284, 1], [0x49, 0x27159e, 0],
+      [0x4a, 0x2719ae, 1], [0x4b, 0x271c92, 0], [0x4c, 0x26f4da, 4],
+      [0x55, 0x272390, 0], [0xb0, 0x2a42d4, 15],
+    ];
+    for (const [type, init, runLen] of expected) {
+      const ram = new Ram();
+      const rec = ENEMY.bandCommon;
+      ram.setU8(rec + 0x0c, type);
+      ram.setU8(rec + 0x0d, 0x00);
+      const result = initDispatch(ram, ROM, rec, { note() {} }, () => {});
+      assert.deepEqual([result.init, result.initBody, result.runLen],
+        [init, init + 8, runLen], `type $${type.toString(16).toUpperCase()}`);
+      assert.equal(ram.u32(rec + 0x4c), typeEntry(type).handler,
+        `type $${type.toString(16).toUpperCase()} handler`);
+    }
+  });
+
 test('W487 ONE static cartridge spawn scan still points at an unported child',
   { skip: SKIP_IMG }, () => {
     // W314 ranked the list by how many records each type covers. W317 scanned every remaining
