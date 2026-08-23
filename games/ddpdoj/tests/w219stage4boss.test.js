@@ -220,3 +220,33 @@ test('W219 linked damage keeps the largest delta and honors the part-flash gate'
     assert.deepEqual([0x146, 0x147, 0x148, 0x149, 0x14a, 0x14b]
       .map((off) => ram.u8(a6 + off)), [0x1f, 0x14, 0x15, 0x15, 0x15, 0x1f]);
   });
+
+test('W539 Stage-4 fatal damage runs the complete cartridge death conductor',
+  { skip: SKIP }, () => {
+  const { ram, log, a5, a6 } = stage4Boss();
+  const sounds = [], events = [];
+  ram.setU16(0x8103e6, 0x8000);                 // one live player
+  ram.setU16(0x810448, 0);
+  ram.setU16(0x811f8c, 0x30);                   // exercise $253564's clamp
+  ram.setU32(a5 + 0x16, 0xffffffff);            // exact fatal branch
+  ram.setU16(a6 + 0x166, 0);
+  ram.setU8(a6 + 0x9f, 1);                      // pods already died in phase 3
+  ram.setU8(a6 + 0xbf, 1);
+  const ctx = { ram, rom: ROM, tables: MT, unported: log, unportedLog: log,
+    soundPost(site) { sounds.push(site); },
+    bossEvent(name) { events.push(name); }, effectSpawn() {}, bulletSpawn() {} };
+
+  assert.doesNotThrow(() => boss4Damage29FB5C(ram, ROM, a5, a6, ctx));
+  assert.equal(ram.u8(0x8130f8) & 0xc0, 0xc0, '$29FE8A/$29FE92 set both death bits');
+  assert.equal(ram.u16(0x8130f0), 1, '$29FE9A retires type-$42 children');
+  assert.equal(ram.u16(0x811f8c), 0x14, '$29FEA8 clamps the shared counter');
+  assert.deepEqual([ram.u16(0x81b410), ram.u16(0x81b412)], [1, 0xffff],
+    '$29FEB4 arms the boss-death bullet cancel');
+  assert.deepEqual([ram.u32(a5 + 0x16), ram.u16(a6 + 0x166),
+    ram.u8(a6 + 0x3f), ram.u16(a6 + 0x20), ram.u16(SCHED.a4Base)],
+  [0xffffffff, 1, 1, 0x8000, 0x8002]);
+  assert.deepEqual([0x146, 0x147, 0x148, 0x149, 0x14a, 0x14b]
+    .map((off) => ram.u8(a6 + off)), [0x13, 0x14, 0x15, 0x15, 0x15, 0x14]);
+  assert.ok(sounds.includes(0x28c170), '$242922 posts the boss-clear cue');
+  assert.deepEqual(events, ['death']);
+});

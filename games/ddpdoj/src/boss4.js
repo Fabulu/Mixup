@@ -13,7 +13,9 @@ import { asr, i16, i32, u16 } from './ram.js';
 import { unreached } from './unported.js';
 import { freeEnemy } from './initbody.js';
 import { scoreHit } from './score.js';
-import { livePlayers2428A6, bigBurst28B4BE } from './boss.js';
+import {
+  livePlayers2428A6, bigBurst28B4BE, clamp253564, bossClear242922,
+} from './boss.js';
 import { spawnEffect, B } from './effects.js';
 import { applyVelocity } from './movement.js';
 import { install24150A } from './palette.js';
@@ -25,6 +27,7 @@ import { fire as fireBullet, WriteLog } from './bullets.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { runStageAdvance242952 } from './stageend.js';
+import { armScreenClearMode } from './midboss.js';
 import {
   runScheduler25962E, registerScript, seqStart2598D0, a2Run2598E6,
   a2Stop25994A, a4Start25980C, a4Clear2598A2, a1Clear259B34,
@@ -118,9 +121,25 @@ function spriteAttr(ram, a6, attrOff, paletteOff) {
   return (ram.u16(a6 + attrOff) & 0xff00) | ram.u8(a6 + paletteOff);
 }
 
-function phaseDeathNotYet() {
-  unreached(0x29fe8a,
-    'Stage-4 boss reached its death conductor beyond the W219 arrival slice');
+function phaseDeath29FE8A(ram, rom, a5, a6, ctx) {
+  ram.setU8(0x8130f8, ram.u8(0x8130f8) | 0xc0);            // $29FE8A/$29FE92
+  ram.setU16(BOSS_F0, 1);                                  // $29FE9A
+  ctx.unported?.note(0x23c4d0, '$29FEA2 Stage-4 boss death pause/flag block');
+  clamp253564(ram);                                        // $29FEA8
+  bossClear242922(ram, ctx);                               // $29FEAE
+  armScreenClearMode(ram, ctx, livePlayers2428A6(ram),
+    'Stage-4 boss death $29FEB4', 0xffff, 0x243ce0);       // $29FEB4
+  ram.setU16(a6 + 0x166, 1);                               // $29FEBA bsr $2A0042
+  a1Clear259B34(ram);                                      // $29FEBE
+  a4Clear2598A2(ram);                                      // $29FEC4
+  ram.setU32(a5 + 0x16, 0xffffffff);                       // $29FECA
+  ram.setU8(a6 + 0x3f, 1);                                // $29FED2
+  ram.setU16(a6 + 0x20, 0x8000);                          // $29FED8
+  resetBoss4Palettes(ram, a6);                             // $29FEDE..$29FEFC
+  podDestroy29FF14(ram, rom, ctx, a6, POD_LEFT);           // $29FF02
+  podDestroy29FF14(ram, rom, ctx, a6, POD_RIGHT);          // $29FF06
+  a4Start25980C(ram, 2);                                   // $29FF0A/$29FF0C
+  ctx.bossEvent?.('death', ram.u16(0x8130ce));
 }
 
 function placeBoss4Parts29F50E(ram, ctx, slot) {
@@ -232,7 +251,10 @@ export function boss4Damage29FB5C(ram, rom, a5, a6, ctx) {
 
   if (i32(ram.u32(a5 + 0x16)) < 0) {
     if (livePlayers2428A6(ram) === 0) ram.setU32(a5 + 0x16, 0x200);
-    else phaseDeathNotYet();
+    else {
+      phaseDeath29FE8A(ram, rom, a5, a6, ctx);
+      return;
+    }
   }
 
   if (ram.u8(a6 + 0x16c) === 0) {
@@ -269,7 +291,10 @@ export function boss4Damage29FB5C(ram, rom, a5, a6, ctx) {
     ram.setU16(a5 + 0x1c, timeout);
     if (timeout === 0) {
       if (livePlayers2428A6(ram) === 0) ram.setU16(a5 + 0x1c, 0x78);
-      else phaseDeathNotYet();
+      else {
+        phaseDeath29FE8A(ram, rom, a5, a6, ctx);
+        return;
+      }
     }
   }
 }
