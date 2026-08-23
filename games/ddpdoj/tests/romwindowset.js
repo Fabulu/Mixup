@@ -333,7 +333,15 @@
 // W526 then extends `$24DDD0` to abut `$24DFE0`, without changing its identity.
 // Measured: 785 -> 786 windows, 448,099 -> 448,415 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 786;
+// ---------------------------------------------------------------------------
+// W527-W529 ADDED FIVE DISJOINT WINDOWS; W530-W531 ADDED NONE.
+// ---------------------------------------------------------------------------
+// W527 adds Type-B's `$24E5EE + $136` hit-descriptor family. W528 adds the
+// `$27FD72 + $9C` flying-bee waypoint rows. W529 adds Type `$A5`'s eight-byte
+// init stub, 56-byte prototype block, and 384-byte direction tables.
+// Measured: 786 -> 791 windows, 448,415 -> 449,329 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 791;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
