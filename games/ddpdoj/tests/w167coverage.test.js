@@ -124,8 +124,8 @@ test('W217 reusable coverage derives the current closed-family totals', { skip: 
   // W485: 99 -> 100 ported and 27 -> 26 unknown, type $51 ($270516), the terminal child emitted when
   // type $50 expires. The 130 null table entries remain unchanged.
   // W487 moves 100 -> 101 and 26 -> 25 with runtime-selected type $58. W522 moves 101 -> 102 and
-  // 25 -> 24 with Stage-3 type $3D, first reached by the authentic-pair progression probe.
-  assert.match(got.stdout, /enemy_types: 102\/256 ported, 24 unknown, 130 null/);
+  // 25 -> 24 with Stage-3 type $3D. W529 moves 102 -> 103 and 24 -> 23 with deferred type $A5.
+  assert.match(got.stdout, /enemy_types: 103\/256 ported, 23 unknown, 130 null/);
   assert.match(got.stdout, /stage1_spawn_script: 339\/339 ported/);
   assert.match(got.stdout, /stage2_spawn_script: 332\/332 ported/);
   assert.match(got.stdout, /stage3_spawn_script: 414\/414 ported, 0 unknown, 0 null/);
